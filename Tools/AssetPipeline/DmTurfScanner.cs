@@ -68,10 +68,15 @@ public sealed class TurfDef
 	/// tile dela e o do MEIO. Sem este par, uma construcao de tres tiles de largura aparece um
 	/// tile pra direita de onde ela esta.
 	///
-	/// Quem le hoje e o catalogo de tecnologia (`DmTechScanner.Resolver`). O conversor de mapa
-	/// ainda desenha tudo colado no tile -- os `pixel_x` do cenario ficam anotados como divida.
+	/// Quem le: o catalogo de tecnologia (`DmTechScanner.Resolver`) e o conversor de mapa, que tira
+	/// daqui a ancora do tile (`MapConverter.AncoraDoTipo`).
+	///
+	/// HERDA, como toda variavel do DM: os rifts (`/obj/Rift/GodKi_Enter_Rift`) nao escrevem nada e
+	/// saem centrados na celula porque `/obj/Rift` declara `pixel_x = -34` e `pixel_y = -34`
+	/// (`Rifts.dm:19-20`). O par `...Set` diz se o valor foi DECLARADO -- zero tambem e um valor.
 	/// </summary>
 	public double PixelX, PixelY;
+	public bool PixelXSet, PixelYSet;
 
 	/// <summary>
 	/// TURF HD: o desenho nao e UM tile, e um MOSAICO montado por coordenada.
@@ -86,11 +91,106 @@ public sealed class TurfDef
 	public bool IsHDSet, TamanhoSet;
 
 	/// <summary>
+	/// `dir` -- PRA ONDE O DESENHO OLHA, e o campo que fazia toda borda de penhasco sair virada pro sul.
+	///
+	/// As 24 arestas (`/obj/barrier/Edges/Edge1N`..`Edge6S`, `barrier.dm:92-211`) sao SEIS desenhos, e
+	/// nao vinte e quatro: cada estado da folha (`"1"`..`"6"`) tem quatro direcoes, e o que separa a
+	/// `Edge2N` da `Edge2W` e so esta linha. Sem ela o conversor pintava o primeiro quadro (o SUL) em
+	/// todas -- 857 arestas viradas em Vegeta, 10.596 nos quatro mapas.
+	///
+	/// O valor e o numero do BYOND (<see cref="Direcoes"/>); o padrao e SUL (`dir var (atom)` da
+	/// referencia do DM). HERDA como os outros campos: ver o `Resolve`.
+	/// </summary>
+	public int Dir = Direcoes.Sul;
+	public bool DirSet;
+
+	/// <summary>
+	/// `layer` -- A ALTURA EM QUE O BYOND DESENHA ESTE TIPO. So interessa onde o `.dmm` EMPILHA dois
+	/// turfs na mesma celula: o de baixo vira underlay do de cima, e underlay desenha na camada DELE
+	/// (ver o `Por` do `MapConverter`). `/turf/decor` declara `layer=4` (`Turfs.dm:1657`) e por isso
+	/// uma mesa listada ANTES do piso aparece POR CIMA dele.
+	/// </summary>
+	public double Layer;
+	public bool LayerSet;
+
+	/// <summary>
+	/// A camada que vale: a declarada (ou herdada), senao o padrao do BYOND pro tipo -- TURF_LAYER 2,
+	/// OBJ_LAYER 3 (`layer var (atom)` da referencia do DM).
+	/// </summary>
+	public double Camada => LayerSet ? Layer : Path.StartsWith("/turf", StringComparison.Ordinal) ? 2 : 3;
+
+	/// <summary>
 	/// Qual ARQUIVO de atlas este typepath acabou usando (`res://...`), depois de resolver
 	/// nomes repetidos. O `Icon` e so o nome que o DM escreveu -- e ha 79 nomes que apontam
 	/// pra mais de um arquivo.
 	/// </summary>
 	public string? Atlas;
+
+	/// <summary>
+	/// A MESMA FICHA COM AS VARIAVEIS QUE UMA INSTANCIA DO MAPA TROCA (`Teleporter{icon = '...';
+	/// icon_state = "13"}`). E uma copia: a ficha do tipo continua intacta pra quem nao as troca. O
+	/// `Atlas` volta a nulo porque o icone pode ter mudado -- quem resolve e o conversor, de novo.
+	/// </summary>
+	public TurfDef ComVariaveisDeInstancia(IReadOnlyDictionary<string, string> vars)
+	{
+		var copia = (TurfDef)MemberwiseClone();
+		copia.Atlas = null;
+		foreach (string campo in DmTurfScanner.VariaveisDeAparencia)
+			if (vars.TryGetValue(campo, out string? valor)) DmTurfScanner.AplicarProp(copia, campo, valor);
+		copia.PixelX += Passo(vars, "step_x");
+		copia.PixelY += Passo(vars, "step_y");
+		return copia;
+	}
+
+	private static double Passo(IReadOnlyDictionary<string, string> vars, string campo) =>
+		vars.TryGetValue(campo, out string? v)
+		&& double.TryParse(v.Trim(), System.Globalization.NumberStyles.Float,
+						   System.Globalization.CultureInfo.InvariantCulture, out double passo) ? passo : 0;
+}
+
+/// <summary>
+/// AS DIRECOES DO BYOND, e onde cada uma mora dentro de um estado do `.dmi`.
+///
+/// O numero e o do motor (`NORTH` 1, `SOUTH` 2, `EAST` 4, `WEST` 8; as diagonais sao a soma). A ORDEM
+/// DENTRO DA FOLHA e outra coisa, e e fixa: sul, norte, leste, oeste, sudeste, sudoeste, nordeste,
+/// noroeste -- um estado de 4 direcoes guarda as quatro primeiras, um de 8 guarda todas.
+/// </summary>
+public static class Direcoes
+{
+	public const int Norte = 1, Sul = 2, Leste = 4, Oeste = 8;
+
+	private static readonly int[] OrdemNaFolha = [Sul, Norte, Leste, Oeste, Sul | Leste, Sul | Oeste, Norte | Leste, Norte | Oeste];
+
+	/// <summary>`NORTH`, `SOUTHWEST`... ou o numero puro, que e como o `.dmm` escreve (`dir = 4`). Nulo = nao e direcao.</summary>
+	public static int? Ler(string valor) => valor.Trim() switch
+	{
+		"NORTH" => Norte,
+		"SOUTH" => Sul,
+		"EAST" => Leste,
+		"WEST" => Oeste,
+		"NORTHEAST" => Norte | Leste,
+		"NORTHWEST" => Norte | Oeste,
+		"SOUTHEAST" => Sul | Leste,
+		"SOUTHWEST" => Sul | Oeste,
+		string s when int.TryParse(s, out int n) && Array.IndexOf(OrdemNaFolha, n) >= 0 => n,
+		_ => null,
+	};
+
+	/// <summary>
+	/// QUANTOS QUADROS ADIANTE do primeiro esta a direcao pedida, num estado com
+	/// <paramref name="dirsDoEstado"/> direcoes. Estado sem direcao (1) so tem um desenho, e ele vale
+	/// pra todas.
+	///
+	/// DEVOLVE -1 QUANDO O ESTADO NAO TEM A DIRECAO (uma diagonal num estado de 4). O BYOND escolhe ai
+	/// "a mais proxima da orientacao anterior" (`dir var (atom)`), que um mapa parado nao tem; quem
+	/// chama decide o que pintar e CONTA o caso. Nenhum dos quatro mapas chega aqui hoje.
+	/// </summary>
+	public static int NaFolha(int dir, int dirsDoEstado)
+	{
+		if (dirsDoEstado <= 1) return 0;
+		int i = Array.IndexOf(OrdemNaFolha, dir);
+		return i >= 0 && i < dirsDoEstado ? i : -1;
+	}
 }
 
 /// <summary>
@@ -111,12 +211,30 @@ public sealed class TurfDef
 public static class DmTurfScanner
 {
 	private static readonly Regex RxProp = new(
-		@"^(icon|icon_state|density|opacity|Water|destroyable|isHD|getWidth|getHeight|pixel_x|pixel_y)\s*=\s*(.+?)\s*$",
+		@"^(icon|icon_state|dir|layer|density|opacity|Water|destroyable|isHD|getWidth|getHeight|pixel_x|pixel_y)\s*=\s*(.+?)\s*$",
 		RegexOptions.Compiled);
 
 	/// <summary>`Nome propriedade = valor` numa linha so -- forma que o DM aceita e o jogo usa.</summary>
 	private static readonly Regex RxUmaLinha = new(
-		@"^([A-Za-z_][A-Za-z0-9_/]*)\s+(icon|icon_state|density|opacity|Water|destroyable|isHD|getWidth|getHeight|pixel_x|pixel_y)\s*=\s*(.+?)\s*$",
+		@"^([A-Za-z_][A-Za-z0-9_/]*)\s+(icon|icon_state|dir|layer|density|opacity|Water|destroyable|isHD|getWidth|getHeight|pixel_x|pixel_y)\s*=\s*(.+?)\s*$",
+		RegexOptions.Compiled);
+
+	/// <summary>
+	/// O QUE UMA INSTANCIA DO `.dmm` PODE TROCAR NA APARENCIA do tipo. Dos 19 nomes de variavel que os
+	/// quatro mapas escrevem entre chaves, os tres primeiros escolhem QUAL desenho a celula mostra e os
+	/// dois ultimos ONDE ele cai (os outros sao destino de teleporte, nome, berco...). O `step_x`/
+	/// `step_y` -- o micro-ondas dez pixels acima do tampo da mesa -- tambem desloca o desenho, e SOMA
+	/// no par. Quem os aplica e o <see cref="TurfDef.ComVariaveisDeInstancia"/>.
+	/// </summary>
+	internal static readonly string[] VariaveisDeAparencia = ["icon", "icon_state", "dir", "pixel_x", "pixel_y"];
+
+	/// <summary>A instancia do mapa troca alguma coisa que muda o desenho ou onde ele cai?</summary>
+	internal static bool MudaAparencia(IReadOnlyDictionary<string, string> vars) =>
+		VariaveisDeAparencia.Any(vars.ContainsKey) || vars.ContainsKey("step_x") || vars.ContainsKey("step_y");
+
+	/// <summary>`layer = MOB_LAYER+1`: uma das constantes do `stddef.dm`, com ou sem soma.</summary>
+	private static readonly Regex RxCamada = new(
+		@"^(AREA_LAYER|TURF_LAYER|OBJ_LAYER|MOB_LAYER|FLY_LAYER|\d+(?:\.\d+)?)\s*(?:([+-])\s*(\d+(?:\.\d+)?))?$",
 		RegexOptions.Compiled);
 
 	public static Dictionary<string, TurfDef> Scan(string codeRoot)
@@ -213,12 +331,20 @@ public static class DmTurfScanner
 		}
 	}
 
-	private static void AplicarProp(TurfDef d, string prop, string val)
+	internal static void AplicarProp(TurfDef d, string prop, string val)
 	{
 		switch (prop)
 		{
 			case "icon": d.Icon = Unquote(val); break;
 			case "icon_state": d.IconState = Unquote(val); break;
+			// valor que nao e direcao (uma conta, uma variavel) nao e a direcao do TIPO: fica o que havia
+			case "dir":
+				if (Direcoes.Ler(val) is { } dir) { d.Dir = dir; d.DirSet = true; }
+				break;
+			// idem a camada: `MOB_LAYER + HAIR_LAYER` e conta de overlay de mob, nao altura de cenario
+			case "layer":
+				if (LerCamada(val) is { } camada) { d.Layer = camada; d.LayerSet = true; }
+				break;
 			case "density": d.Density = val.StartsWith('1'); d.DensitySet = true; break;
 			case "opacity": d.Opacity = val.StartsWith('1'); d.OpacitySet = true; break;
 			case "Water": d.Water = val.StartsWith('1'); d.WaterSet = true; break;
@@ -235,13 +361,40 @@ public static class DmTurfScanner
 				break;
 			case "pixel_x":
 				if (double.TryParse(val, System.Globalization.NumberStyles.Float,
-									System.Globalization.CultureInfo.InvariantCulture, out double pxv)) d.PixelX = pxv;
+									System.Globalization.CultureInfo.InvariantCulture, out double pxv))
+				{
+					d.PixelX = pxv; d.PixelXSet = true;
+				}
 				break;
 			case "pixel_y":
 				if (double.TryParse(val, System.Globalization.NumberStyles.Float,
-									System.Globalization.CultureInfo.InvariantCulture, out double pyv)) d.PixelY = pyv;
+									System.Globalization.CultureInfo.InvariantCulture, out double pyv))
+				{
+					d.PixelY = pyv; d.PixelYSet = true;
+				}
 				break;
 		}
+	}
+
+	/// <summary>O valor de um `layer = ...` do DM. Nulo quando a conta usa nome que nao e do `stddef.dm`.</summary>
+	private static double? LerCamada(string val)
+	{
+		Match m = RxCamada.Match(val.Trim());
+		if (!m.Success) return null;
+
+		double b = m.Groups[1].Value switch
+		{
+			"AREA_LAYER" => 1,
+			"TURF_LAYER" => 2,
+			"OBJ_LAYER" => 3,
+			"MOB_LAYER" => 4,
+			"FLY_LAYER" => 5,
+			string n => double.Parse(n, System.Globalization.CultureInfo.InvariantCulture),
+		};
+		if (!m.Groups[3].Success) return b;
+
+		double soma = double.Parse(m.Groups[3].Value, System.Globalization.CultureInfo.InvariantCulture);
+		return m.Groups[2].Value == "-" ? b - soma : b + soma;
 	}
 
 	/// <summary>
@@ -257,8 +410,7 @@ public static class DmTurfScanner
 	{
 		foreach (TurfDef d in defs.Values)
 		{
-			if (d.Icon != null && d.IconState != null && d.DensitySet && d.OpacitySet && d.WaterSet
-				&& d.DestroyableSet) continue;
+			if (Completa(d)) continue;
 			string p = d.Path;
 			while (true)
 			{
@@ -288,12 +440,26 @@ public static class DmTurfScanner
 				{
 					d.GetWidth = pai.GetWidth; d.GetHeight = pai.GetHeight; d.TamanhoSet = true;
 				}
+				// A DIRECAO E A CAMADA HERDAM como o resto: `/turf/decor` declara `layer=4` uma vez
+				// (`Turfs.dm:1657`) e as mesas, plantas e pedras dele so trocam o icone.
+				if (!d.DirSet && pai.DirSet) { d.Dir = pai.Dir; d.DirSet = true; }
+				if (!d.LayerSet && pai.LayerSet) { d.Layer = pai.Layer; d.LayerSet = true; }
+				if (!d.PixelXSet && pai.PixelXSet) { d.PixelX = pai.PixelX; d.PixelXSet = true; }
+				if (!d.PixelYSet && pai.PixelYSet) { d.PixelY = pai.PixelY; d.PixelYSet = true; }
 				d.Parent ??= p;
-				if (d.Icon != null && d.IconState != null && d.DensitySet && d.OpacitySet
-					&& d.WaterSet && d.DestroyableSet && d.IsHDSet && d.TamanhoSet) break;
+				if (Completa(d)) break;
 			}
 		}
 	}
+
+	/// <summary>
+	/// Nao falta herdar mais nada? UMA pergunta pras duas saidas do laco acima (pular o tipo, parar de
+	/// subir): com duas listas, um campo novo entra numa e esquece a outra, e o tipo que cair na
+	/// lista curta deixa de herdar esse campo sem aviso nenhum.
+	/// </summary>
+	private static bool Completa(TurfDef d) =>
+		d.Icon != null && d.IconState != null && d.DensitySet && d.OpacitySet && d.WaterSet
+		&& d.DestroyableSet && d.IsHDSet && d.TamanhoSet && d.DirSet && d.LayerSet && d.PixelXSet && d.PixelYSet;
 
 	private static TurfDef Get(Dictionary<string, TurfDef> defs, string path)
 	{

@@ -45,7 +45,11 @@ public sealed class ReceitaDeProjetil
 	/// <summary>`maxdamage` (0 = sem teto). Opcional no `DamageCalc` do DM, e por isso opcional aqui.</summary>
 	public double MaxDano;
 
-	/// <summary>`speed` 1..5. Ver <see cref="Projetil.SegundosPorTile"/> -- ela vira ATRASO, nao velocidade.</summary>
+	/// <summary>
+	/// `speed` 1..5 -- o numero do DM, como a tecnica o escreve. Ver <see cref="Projetil.SegundosPorTile"/>:
+	/// ele vira ATRASO, nao velocidade, e a conta que o converte (<see cref="Projetil.AtrasoDeBola"/>,
+	/// <see cref="Projetil.AtrasoDeRaio"/>) e onde mora a pressa que o dono pediu.
+	/// </summary>
 	public double Velocidade = 1;
 
 	/// <summary>`range` em TILES (min. 5 na loja de pontos, padrao 20).</summary>
@@ -68,6 +72,33 @@ public sealed class ReceitaDeProjetil
 
 	/// <summary>`piercer`: atravessa quem acerta em vez de sumir.</summary>
 	public bool Piercer;
+
+	/// <summary>
+	/// NASCE PERSEGUINDO o alvo marcado de quem atira, dentro da curva do <see cref="Combat.Teleguiado"/> (dono,
+	/// 2026-10-09). E o que a mesa de tecnicas liga num RAIO (`TecnicaCustomizada.Teleguiado`). A bola teleguiada
+	/// nao passa por aqui: ela e um TIPO (<see cref="TipoDeProjetil.Guided"/>), e a tecnica que a atira escreve o
+	/// alvo por conta propria. Sem ninguem marcado o tiro sai reto, como qualquer outro.
+	/// </summary>
+	public bool Teleguiado;
+
+	/// <summary>
+	/// ESTE RAIO ESTOURA NO PRIMEIRO CORPO QUE ACERTA, como uma bola: UM golpe, e acabou.
+	///
+	/// DIVERGENCIA DECLARADA DO DM (dono, 2026-10-08, sobre o Death Beam: *"ao se chocar ele diferente dos
+	/// outros beams ele explode igual um blast causando 1 hit apenas"*). No original o Death Beam e um
+	/// `WaveAttack` como os outros cinco raios nomeados (`beams/DeathBeam.dm:29-57`): a cabeca fica presa no
+	/// corpo e o trem de segmentos bate de novo a cada `sleep(2)` (`beams.dm:205`). Com isto ligado ele nao se
+	/// planta, nao moi, nao carrega ninguem e nao vira embate contra a guarda -- o impacto e o de uma bola
+	/// (<see cref="Projetil.EstouraComoBola"/>). So tem efeito num `Beam`: a bola ja estoura.
+	/// </summary>
+	public bool EstouraNoImpacto;
+
+	/// <summary>
+	/// QUANTAS VEZES MAIS RAPIDO QUE NO DM este tiro voa, quando isso NAO sai da regra do tipo (0 = sai:
+	/// <see cref="Projetil.PressaDeRaio"/> no raio, o `lag` na bola). So a tecnica cuja velocidade foi posta
+	/// fora da conta comum a declara -- hoje o Death Beam. Ver <see cref="Projetil.Pressa"/>.
+	/// </summary>
+	public double PressaSobreODm;
 
 	/// <summary>
 	/// `wavemult` -- O TIRO CARREGA UM PODER MAIOR QUE O DO DONO.
@@ -203,6 +234,8 @@ public sealed class ReceitaDeProjetil
 /// La o passo e por TILE: `walk(A, dir, lag)` anda um tile a cada `lag` tiques de 0,1 s. O beam
 /// nao e um objeto -- e um TREM: `ShootBeam` cria um segmento NOVO na mao do dono a cada 0,2 s e
 /// todos andam juntos (`beams.dm:64-205`); so o da frente e denso (`objects.dm:190` `KHH()`).
+/// (Isto e a LETRA do DM. O que o BYOND faz com ela foi MEDIDO em 2026-10-08 e esta no bloco "A VELOCIDADE",
+/// la embaixo: a bola some no primeiro passo, o lag vale em tiques inteiros e o `Burnout()` nao corre.)
 ///
 /// Aqui o passo continua sendo por tile e com o mesmo atraso -- o que muda e a REPRESENTACAO do
 /// beam: um objeto so, com <see cref="Pos"/> na cabeca e <see cref="Cauda"/> no fim do rastro.
@@ -211,7 +244,9 @@ public sealed class ReceitaDeProjetil
 /// custo de tique cai de N segmentos pra 1 -- e o custo de tique e a regra 0.4 da casa.
 ///
 /// O QUE SE PERDEU: no DM da pra encurvar um beam ja disparado (`beamturndelay`, `linear=0`), e
-/// aqui nao. Ficou anotado; ninguem pediu, e o preco seria guardar a lista de segmentos de volta.
+/// aqui nao -- o preco seria guardar a lista de segmentos de volta. O que o dono pediu depois
+/// (2026-10-09) foi o raio TELEGUIADO, e ele cabe no objeto unico: o feixe gira inteiro em torno da
+/// cauda, sem entortar. Ver <see cref="Teleguiado"/>.
 /// =======================================================================================
 /// </summary>
 public sealed class Projetil
@@ -221,7 +256,11 @@ public sealed class Projetil
 	/// <summary>Quem atirou (`proprietor`). Zero = ninguem -- o tiro continua valendo.</summary>
 	public int Dono;
 
-	/// <summary>O corpo perseguido, so no <see cref="TipoDeProjetil.Guided"/>. Zero = voa reto.</summary>
+	/// <summary>
+	/// O corpo perseguido -- a bola <see cref="TipoDeProjetil.Guided"/> e o raio de receita teleguiada
+	/// (<see cref="ReceitaDeProjetil.Teleguiado"/>). Zero = voa reto. Quanto ele vira atras do alvo e do
+	/// <see cref="Teleguiado"/>.
+	/// </summary>
 	public int Alvo;
 
 	/// <summary>
@@ -248,6 +287,14 @@ public sealed class Projetil
 
 	/// <summary>Pra onde anda, normalizado. `dir` do DM, sem os 8 setores.</summary>
 	public Vec2 Rumo;
+
+	/// <summary>
+	/// O RUMO EM QUE ELE SAIU -- a regua do leque do teleguiado (<see cref="Teleguiado.DesvioMaximoEmGraus"/>):
+	/// por mais que o alvo ande, o tiro nunca aponta a mais do que isso deste rumo. Nulo = ele ainda nao saiu
+	/// (a bola que nasce parada em volta do alvo), e o primeiro passo da caca o escreve. Quem REAPONTA o tiro
+	/// (a bola devolvida pelo parry) reescreve.
+	/// </summary>
+	public Vec2 RumoDaSaida;
 
 	/// <summary>`distance`: quantos tiles ainda pode andar. Zerou, acabou.</summary>
 	public double Distancia;
@@ -295,6 +342,24 @@ public sealed class Projetil
 	public bool Deflectivel = true, Piercer, Fisico;
 
 	/// <summary>
+	/// `ReceitaDeProjetil.EstouraNoImpacto`, copiado no disparo -- e pra quem nasce deste tiro (a parte de la de
+	/// um corte, o trecho desviado): o pedaco de um raio que estoura tambem estoura.
+	/// </summary>
+	public bool EstouraNoImpacto;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): o raio que estoura no primeiro corpo volta a ser um raio como os outros -- a
+	/// cabeca se planta em quem acertou e moi a cada 0,2 s. Era o Death Beam ate 2026-10-08.
+	/// </summary>
+	public static bool RaioQueEstouraMoiDeTeste;
+
+	/// <summary>
+	/// ESTE TIRO ACABA NO PRIMEIRO CORPO, COM UM GOLPE SO, mesmo sendo raio? E a pergunta que o impacto faz
+	/// (`GameServer.Acertar`, `Matar`) -- ver `ReceitaDeProjetil.EstouraNoImpacto`.
+	/// </summary>
+	public bool EstouraComoBola => EstouraNoImpacto && !RaioQueEstouraMoiDeTeste;
+
+	/// <summary>
 	/// `paralysis` -- ver o mesmo campo na receita. O <see cref="MultDeOnda"/> NAO tem irmao aqui de
 	/// proposito: ele ja foi consumido no disparo, dentro do <see cref="Bp"/>. Guardar os dois
 	/// separados criaria a segunda resposta pra "qual e o poder deste tiro".
@@ -336,11 +401,22 @@ public sealed class Projetil
 	///   * blast/guided -- `lag = max(1, round(4 - speed))` (`customattacks.dm:519`);
 	///   * beam         -- `beamspeed = 1 / speed` (`customattacks.dm:452`).
 	///
-	/// Repare que os dois nao sao a mesma escala: com `speed = 1` a bola leva 0,3 s por tile
-	/// (~107 px/s, mais devagar que alguem correndo) e o raio leva 0,1 s (320 px/s). E do jogo
-	/// original, e e o que faz o raio ser a arma de longe e a bola ser o tiro de perto.
+	/// AQUI ELE NAO E MAIS O DO DM (dono, 2026-10-08: os ataques de ki estavam lentos demais) -- a regra e a
+	/// divergencia estao escritas junto de <see cref="AtrasoDeBola"/> e <see cref="AtrasoDeRaio"/>, que sao
+	/// quem o calcula no disparo. Com `speed = 1` a bola leva 1/16 s por tile (512 px/s) e o raio 1/20 s
+	/// (640 px/s): o raio continua na frente, e nenhum dos dois perde mais de quem corre.
 	/// </summary>
-	public double SegundosPorTile = 0.3;
+	public double SegundosPorTile = 1.0 / 16;
+
+	/// <summary>
+	/// QUANTAS VEZES MAIS RAPIDO QUE NO DM ESTE TIRO VOA (1 = a velocidade do original). Escrita no disparo,
+	/// junto do <see cref="SegundosPorTile"/>, e copiada pra quem nasce dele (a parte de la de um corte, o
+	/// trecho desviado).
+	///
+	/// ELA NAO MOVE NADA: quem move e o `SegundosPorTile`. Ela existe pras regras que o DM mede em DISTANCIA
+	/// e que sao, na verdade, tempo de aviso -- ver <see cref="AvisoDe"/> e o bloco da velocidade la embaixo.
+	/// </summary>
+	public double Pressa = 1;
 
 	/// <summary>Segundos ja acumulados rumo ao proximo tile. E o que fatia o passo grosso do DM.</summary>
 	public double Acumulado;
@@ -362,6 +438,18 @@ public sealed class Projetil
 
 	/// <summary>Ja acertou alguem e esta EMPURRANDO contra ele -- a cabeca para e continua moendo.</summary>
 	public bool Encostado;
+
+	/// <summary>
+	/// O CORPO EM QUE ESTA CABECA ESTA BATENDO SEM FERIR (zero = ninguem) -- o ramo do corte dos fracos
+	/// (`objects.dm:355-357`, ver <see cref="DanoDeKi.CorteDoFraco"/>): o raio fica parado na frente dele, e o corpo
+	/// pode andar raio adentro (*"they should be able to walk through beams"*, `objects.dm:451`).
+	///
+	/// E MEMORIA DE UM CICLO: nasce na batida que nao feriu (`GameServer.EstourarSemFerir`) e cai quando o ciclo
+	/// dela vence e a cabeca volta a testar o mundo (`GameServer.AndarProjetil`, passo 4). Enquanto vale, a cabeca
+	/// RECUA na frente do corpo que avanca contra ela (`GameServer.RecuarNaFrenteDeQuemAvanca`) -- sem ela, quem
+	/// entrasse no raio ficava com a cabeca desenhada em cima do corpo ate a batida seguinte.
+	/// </summary>
+	public int BatendoSemFerir;
 
 	/// <summary>
 	/// O CORPO QUE ESTA CABECA ESTA LEVANDO NA FRENTE. Zero = nao esta levando ninguem.
@@ -478,6 +566,10 @@ public sealed class Projetil
 	// objetos pelo mesmo motivo do corte (`NascidoDoCorte`): o feixe e um segmento reto da mao ate a cabeca,
 	// e um raio torto e dois segmentos. Os quatro campos abaixo sao as duas pontas desse laco. Ver
 	// `GameServer.ParryDeKi.cs`.
+	//
+	// NA TELA ELES SAO UM RAIO SO (dono, 2026-10-08): o ramo sai da DOBRA -- a cabeca plantada do pai, na
+	// frente de quem desviou -- e o cliente desenha os dois trechos como uma fita unica que faz a curva
+	// (`ProjetilState.Dobra`, `ProjetilDesenhado.DesenharDobrado`).
 	// ======================================================================================================
 
 	/// <summary>
@@ -495,13 +587,78 @@ public sealed class Projetil
 
 	/// <summary>
 	/// NO RAMO: quem desviou. O ramo so continua alimentado enquanto o pai for desviado por ESTE corpo -- um
-	/// segundo parry do mesmo raio, por outro corpo, e outro ramo. Ele nao precisa de protecao contra o ramo: a
-	/// cauda nasce ALEM do corpo dele, no rumo do ramo, e o corte e a cabeca so enxergam o que esta a frente dela.
+	/// segundo parry do mesmo raio, por outro corpo, e outro ramo.
+	///
+	/// E ESTE CORPO E CEGO PRO RAMO, PRA SEMPRE: a cabeca do ramo nao o acerta e ele nao corta o tronco
+	/// (`Colidiu`, `CortarOndeEncostaram`). Ate 2026-10-08 isso era geometria -- a cauda nascia ALEM do corpo
+	/// dele e nada do ramo ficava a frente --, e a exclusao escrita era letra morta. Com o ramo saindo da
+	/// DOBRA, na frente de quem desviou e de lado, o corpo dele fica a um contato exato da cabeca recem-nascida
+	/// (por construcao: a cabeca do pai e plantada a um contato dele): sem a regra, quem acerta o parry levaria
+	/// o proprio desvio na cara. E o mesmo papel do `Dono`, que tambem nunca e alvo do proprio tiro.
 	/// </summary>
 	public int Desviador;
 
-	/// <summary>NO RAMO: onde a cauda fica presa enquanto o pai o alimenta -- a beirada do corpo de quem desviou.</summary>
+	/// <summary>
+	/// NO RAMO: onde a cauda fica presa enquanto o pai o alimenta -- a DOBRA (<see cref="Feixe.DobraDoDesvio"/>),
+	/// que acompanha a cabeca plantada do pai.
+	/// </summary>
 	public Vec2 PontoDoDesvio;
+
+	// ============================ O RASPAO ENCERRA O ENCONTRO (2026-10-08) ============================
+	// `prob(deflectchance/2)` no `Bump` (`objects.dm:358-363`): o corpo gira, da um passo de lado e o `Bump`
+	// devolve sem dano. UM `Bump`, UM sorteio -- e o que vem depois depende de QUEM estava andando. MEDIDO no
+	// BYOND 516, num mundo minimo com os dois ramos do `Move()` do tiro (`objects.dm:89-154`) copiados a letra:
+	//
+	//   * A BOLA QUE ANDA (reta ou `walk_towards`) SOME: o passo dela falhou, e o ramo `!WaveAttack` do `Move()`
+	//     trata todo passo falhado como fim de alcance -- `if(!.) spawn explode(); src.loc=null` (`:92-99`), e o
+	//     `explode()` adiado ja acha `loc` nula e nao explode nada. 1 `Bump`, nenhum dano, a bola fora do mundo;
+	//   * A CABECA DO RAIO SEGUE VIAGEM: o ramo `WaveAttack` (`:100-113`) nao olha o que o passo devolveu, o corpo
+	//     saiu do tile, e o `walk` seguinte passa. 1 `Bump`, e a cabeca foi ate a borda do mapa;
+	//   * A BOLA PARADA (as do `Ki_Bomb`, sem `walk`) FICA: quem esbarra e o corpo (`mobBump.dm:57-58` chama o
+	//     `Bump` dela na mao), nenhum `Move()` dela falhou, e o corpo e que e posto pra fora.
+	// (AQUELE MUNDO MINIMO NAO TINHA o `obj/Move()` de `Code/Ki Attacks.dm:31-39`, que chama `..()` sem devolver o
+	// valor. Com a cadeia inteira -- medida no mesmo dia -- TODO passo de bola chega "falhado" ao `Move()` do tiro:
+	// ela some no primeiro, com raspao ou sem, e raspao de bola so existe a queima-roupa. A regra daqui nao muda; a
+	// historia inteira esta no bloco "A VELOCIDADE", la embaixo.)
+	//
+	// O CORPO NAO DA O PASSO AQUI (dono, 2026-09-25: a esquiva e desenhada, as listras do Zanzoken) -- divergencia
+	// declarada do `M.dir=pick(turn(M.dir,135),turn(M.dir,-135))` + `step(M,M.dir)` (`objects.dm:360-362`). Entao
+	// "o corpo saiu da linha" vira MEMORIA DO TIRO: quem raspou nao e testado de novo (nem pela cabeca nem pelo
+	// tronco) enquanto continuar em cima dele; saiu e voltou, e outro encontro -- o corpo do DM, um tile ao lado,
+	// tambem so leva o raio de novo se pisar nele (`Crossed`, `objects.dm:156-171`).
+	// (No DM, quem raspa CERCADO nao sai do tile, e a cabeca do raio da outro `Bump` a cada passo -- medido: 20 em
+	// 20. Aqui nao ha passo que falhe.)
+	// ==================================================================================================
+
+	/// <summary>
+	/// QUEM JA SAIU DA LINHA DESTE TIRO NUM RASPAO e continua em cima dele (ids de corpo; nulo = ninguem, que e
+	/// o estado de quase todo tiro -- a lista so nasce no primeiro raspao). Quem a esvazia e o tique do servidor
+	/// (`ReverQuemSaiuDaLinha`), pela regua de <see cref="Feixe.EmCimaDoTiro"/>.
+	/// </summary>
+	public List<int>? ForaDaLinha;
+
+	/// <summary>Este corpo raspou neste tiro e ainda nao saiu de cima dele? Entao o tiro nao o enxerga.</summary>
+	public bool EstaForaDaLinha(int corpo) => ForaDaLinha != null && ForaDaLinha.Contains(corpo);
+
+	/// <summary>O corpo saiu da linha (raspao): o tiro deixa de enxerga-lo ate ele sair de cima e voltar.</summary>
+	public void TirarDaLinha(int corpo)
+	{
+		ForaDaLinha ??= [];
+		if (!ForaDaLinha.Contains(corpo)) ForaDaLinha.Add(corpo);
+	}
+
+	/// <summary>
+	/// ESTE TIRO ACABA NO RASPAO? So a bola que esta ANDANDO -- e o passo DELA que falha (`objects.dm:92-99`). O
+	/// raio segue e a bola parada fica; ver o bloco acima.
+	/// </summary>
+	public bool AcabaNoRaspao => Tipo != TipoDeProjetil.Beam && Rumo.LengthSquared >= 1e-6f;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): o raspao nao encerra o encontro -- a bola continua viva em cima do corpo, o
+	/// raio nao lembra de quem saiu da linha, e o `Acertar` roda de novo a cada sub-passo (credito, treino e os
+	/// DOIS sorteios outra vez). Era o jogo ate 2026-10-08: quem "esquivava" levava o tiro 16 px depois.
+	/// </summary>
+	public static bool RaspaoSorteiaDeNovoDeTeste;
 
 	/// <summary>Como ele se chama no relato. A COR sai do dono -- ver o mesmo campo na receita.</summary>
 	public string Nome = "ataque de ki";
@@ -538,6 +695,106 @@ public sealed class Projetil
 	/// </summary>
 	public double EscalaVisual = 1;
 
+	// =====================================================================
+	// O RAIO CRESCE COM O PODER DE QUEM O SEGURA (dono, 2026-10-08)
+	// =====================================================================
+	// O pedido: *"ao usar um beam e dar um power up (transformacao, kaioken ou oq for) q faca o bp subir o beam vai
+	// ficar maior proporcionalmente com esse crescimento, entao se o cara vira um ssj nao masterizado (2x) no meio
+	// de um clash, o beam vai aumentar o tamanho em 100%"* -- *"com limite de 3x o tamanho original, e o final flash
+	// e o unico q isso n acontece"*.
+	//
+	// ============================ NAO HA NADA DISSO NO DM ============================
+	// La o tamanho do raio e escrito uma vez (`A.transform *= wavemult`, `beams.dm:149`) e ninguem mais mexe nele;
+	// o que a disputa rele a cada ciclo e o PODER (`BeamClash.dm:176-177`), e a tela nao mostrava a virada. Isto e
+	// do port, por ordem do dono, e e so TAMANHO: o `Bp` do tiro continua com a regra dele (congelado
+	// no disparo, vivo na disputa -- ver `LerOPoderDoDono`).
+	//
+	// ============================ "PROPORCIONAL AO CRESCIMENTO": CONTRA O QUE? ============================
+	// Contra o MENOR poder que o dono expressou desde que o raio saiu (`PoderDeReferencia`), e nao
+	// contra o do disparo. O `expressedBP` nao fica parado enquanto se segura um raio: ele cai com o Ki (o
+	// `kiratio`, com piso de 0,6 -- `Fighter.Power.cs:40`), e o raio e a disputa cobram Ki o tempo todo. Medido
+	// contra o disparo, quem vira Super Saiyajin com 70% do Ki veria o raio crescer 40% e nao os 100% do pedido:
+	// o Ki ja gasto comeria o salto. Com a regua descendo junto, o salto de 2x vale 2x a qualquer momento; e
+	// depois dele, se o poder escorre, o raio murcha na mesma proporcao. Nunca abaixo do tamanho com que nasceu.
+	//
+	// ============================ E O TAMANHO E REGRA, NAO SO DESENHO ============================
+	// A frente da cabeca e a meia espessura do tronco saem da `EscalaVisual`
+	// (`Feixe.AlcanceDaCabeca`, `Feixe.MeiaEspessuraDoTronco`): o raio que engrossa encosta, disputa e e cortado
+	// pelo tamanho novo.
+	// =====================================================================================================
+
+	/// <summary>
+	/// ESTE RAIO ENGROSSA COM O PODER DE QUEM O SEGURA? Todo raio que nasce de uma MAO (`GameServer.Disparar`),
+	/// menos o do <see cref="VerboQueNaoCresce"/>. Quem nasce de outro tiro (a parte de la de um corte, o trecho
+	/// desviado) nao tem mao: o trecho desviado copia o tamanho do pai, e o pedaco solto fica como estava.
+	/// </summary>
+	public bool CresceComOPoder;
+
+	/// <summary>
+	/// O UNICO RAIO QUE NAO CRESCE, pelo VERBO (dono, 2026-10-08: *"o final flash e o unico q isso n acontece"*)
+	/// -- ele ja nasce um muro de quatro vezes. E pelo verbo, e nao por um campo da receita, de proposito: as
+	/// cenas do trailer e as bancadas de foto disparam "Final_Flash" com a receita de bancada, e uma regra
+	/// escrita na receita de producao nao valeria pra elas. O verbo e o que todos os caminhos tem em comum.
+	/// </summary>
+	public const string VerboQueNaoCresce = "Final_Flash";
+
+	/// <summary>
+	/// A ESCALA COM QUE ELE NASCEU: a que viajou no `Nasceu` (quem a escreve e o `GameServer.AnunciarProjetil`,
+	/// junto do byte, pra as duas nunca discordarem). O crescimento e medido a partir dela, e o snapshot so
+	/// carrega a escala de quem ja nao esta nela (`ProjetilState.Escala`).
+	/// </summary>
+	public double EscalaDeNascenca = 1;
+
+	/// <summary>O MENOR `expressedBP` do dono desde o disparo: a regua do crescimento. Ver o bloco acima.</summary>
+	public double PoderDeReferencia;
+
+	/// <summary>O teto: tres vezes o tamanho com que o raio saiu da mao (o numero e do dono).</summary>
+	public const double TetoDoCrescimento = 3;
+
+	/// <summary>
+	/// A QUE PASSO O TAMANHO ANDA ATE O ALVO, em vezes por segundo: o dobro em um quarto de segundo, o teto em
+	/// meio. O poder da ficha muda em DEGRAU (o laco de fichas roda a 5 Hz e uma forma liga de uma vez), e um
+	/// raio que dobrasse de um tique pro outro pularia de lugar junto -- a cabeca plantada num corpo e o ponto
+	/// de encontro de uma disputa saem do tamanho dele.
+	/// </summary>
+	public const double CrescimentoPorSegundo = 4;
+
+	/// <summary>
+	/// O QUANTO O PODER TEM QUE SUBIR PRA O RAIO REAGIR: 5%, o passo em que a escala viaja no fio
+	/// (`Protocol.EscalaDeProjetilEmByte`). Menos que isso e a ficha respirando -- o arredondamento do BP, a
+	/// raiva mexendo um ponto --, e um raio que treme de tamanho a cada respiro seria ruido.
+	/// </summary>
+	public const double CrescimentoQueSeVe = 1.05;
+
+	/// <summary>A maior escala que cabe no byte do fio (255 / 20). O crescimento para nela.</summary>
+	public const double MaiorEscalaDoFio = 12.75;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): o raio fica do tamanho com que saiu da mao, suba o poder do dono quanto
+	/// subir. Era o jogo ate 2026-10-08.
+	/// </summary>
+	public static bool RaioNaoCresceDeTeste;
+
+	/// <summary>
+	/// O PODER DE AGORA DE QUEM SEGURA ESTE RAIO -> O TAMANHO DELE. Um passo por tique do servidor, pro raio que
+	/// uma mao ainda alimenta (`GameServer.AndarProjetil`).
+	/// </summary>
+	public void CrescerComOPoder(double expressedBpDeAgora, double dt)
+	{
+		if (!CresceComOPoder || RaioNaoCresceDeTeste || expressedBpDeAgora <= 0) return;
+
+		// A REGUA SO DESCE: e o menor poder desde o disparo.
+		if (PoderDeReferencia <= 0 || expressedBpDeAgora < PoderDeReferencia) PoderDeReferencia = expressedBpDeAgora;
+
+		double alvo = Math.Min(expressedBpDeAgora / PoderDeReferencia, TetoDoCrescimento);
+		if (alvo < CrescimentoQueSeVe) alvo = 1;
+
+		double nascenca = EscalaDeNascenca > 0 ? EscalaDeNascenca : 1;
+		double agora = EscalaVisual / nascenca, passo = CrescimentoPorSegundo * dt;
+		agora = alvo > agora ? Math.Min(alvo, agora + passo) : Math.Max(alvo, agora - passo);
+		EscalaVisual = Math.Min(nascenca * agora, Math.Max(MaiorEscalaDoFio, nascenca));
+	}
+
 	/// <summary>Copiado da receita no nascimento; viaja no anuncio. Ver `ReceitaDeProjetil.Invisivel`.</summary>
 	public bool Invisivel;
 
@@ -548,14 +805,47 @@ public sealed class Projetil
 	// =====================================================================
 	// OS NUMEROS DO DM
 	// =====================================================================
-	/// <summary>`Burnout()` sem argumento = `burnouttime=50` tiques (`objects.dm:655`).</summary>
+	/// <summary>
+	/// `Burnout()` sem argumento = `burnouttime=50` tiques (`objects.dm:655`).
+	///
+	/// DIVERGENCIA DECLARADA: no DM esse prazo so corre com o TEMPO PARADO -- o laco de dentro e
+	/// `while(!TimeStopped&amp;&amp;!CanMoveInFrozenTime) sleep(1)` (`objects.dm:658`), e em tempo normal ele nao sai
+	/// nunca. MEDIDO no BYOND 516 (2026-10-08): bola parada com `Burnout()` e com `Burnout(40)` continuava no mapa
+	/// 15 s depois; com `TimeStopped = 1` saiu em 4,2 s. Aqui todo prazo de tiro (este, os 4 s das minas, os 120 s
+	/// da teleguiada) corre sempre, com o numero que o verb escreve.
+	/// </summary>
 	public const double SegundosDeBurnout = 5.0;
 
 	/// <summary>
-	/// A CADENCIA DO TREM DE BEAM: `sleep(2)` no fim do `ShootBeam` (`beams.dm:205`) = 0,2 s.
-	/// E ela que dita de quanto em quanto um beam encostado volta a machucar.
+	/// A CADENCIA DO TREM DE BEAM: `sleep(2)` no fim do `ShootBeam` (`beams.dm:209`) = 0,2 s -- de quanto em quanto o
+	/// dono paga o Ki do raio e um segmento novo sai da mao. Aqui e ela, tambem, que dita de quanto em quanto um beam
+	/// encostado volta a machucar.
+	///
+	/// DIVERGENCIA DECLARADA (dono, 2026-10-08): no DM o raio encostado QUE FERE NAO espera este ciclo. A cabeca presa
+	/// num corpo esbarra de novo a cada passo do `walk(src, src.dir, beamspeed)` (`objects.dm:241`), e cada `Bump` e
+	/// um golpe inteiro, com `DamageLimb` e `MiniStun` (`:439`, `:457`). MEDIDO no BYOND 516 (`world.fps = 12`): 12
+	/// batidas por segundo -- uma por tique, 110 vaos de 0,83 decimo em 110 -- com `beamspeed` 1, 0,6, 0,5, 0,4, 0,3
+	/// e 0,2 (lag 2 da 6 por segundo, lag 3 da 4). La o numero e o tique do mundo, que o admin muda (`World.dm:30`);
+	/// aqui o raio que fere bate 5 vezes por segundo, fixas, e o `MiniStun` de raio nao foi portado. (O raio que NAO
+	/// fere tem a cadencia dele, que e a medida no DM: <see cref="SegundosPorBatidaSemFerir"/>.)
+	///
+	/// ELA ANDA JUNTO COM O SORTEIO DE MEMBRO, que tambem diverge (ver `MeleeResolver.AplicarDanoPronto`): la 22% das
+	/// batidas nao acham membro e so 22% caem em nucleo. Medido no Core com um raio de 13,3 por batida segurado em
+	/// cima de um corpo inteiro: 5,7 s ate o nocaute hoje; 2,4 s so com as 12 batidas; 13,0 s so com o sorteio do DM;
+	/// 5,4 s com os dois. Portar um sem o outro muda a letalidade do raio umas 2,4 vezes.
 	/// </summary>
 	public const double SegundosPorCicloDeBeam = 0.2;
+
+	/// <summary>
+	/// A CADENCIA DA BATIDA QUE NAO FERE: cinco tiques do mundo de 12 fps do DM (`World.dm:5`).
+	///
+	/// No ramo do corte (`objects.dm:355-357`, ver <see cref="DanoDeKi.CorteDoFraco"/>) a cabeca do raio nao moi: ela
+	/// e marcada (`stoopme`), some no `Move()` seguinte (`objects.dm:149-154`), e o segmento de tras so vira cabeca
+	/// no laco do `KHH()` (`sleep(2)`, `:194`), anda um tile e bate de novo. MEDIDO no BYOND 516 (2026-10-08): uma
+	/// batida a cada 5 tiques -- 4,15 decimos de segundo -- contra uma POR TIQUE quando o raio fere. Cada batida
+	/// ainda treina os dois lados (`:306-319`), entao esta cadencia e a taxa desse treino.
+	/// </summary>
+	public const double SegundosPorBatidaSemFerir = 5.0 / 12;
 
 	/// <summary>
 	/// O RAIO DA CABECA, em pixels. Um tile e 32; meio tile e o que faz "encostou" querer dizer
@@ -563,13 +853,213 @@ public sealed class Projetil
 	/// </summary>
 	public const float RaioDeImpacto = 16f;
 
-	/// <summary>`lag = max(1, round(4 - speed))` tiques de 0,1 s (blast e guided).</summary>
-	public static double AtrasoDeBola(double velocidade)
-		=> Math.Max(1, Math.Round(4 - velocidade, MidpointRounding.AwayFromZero)) * 0.1;
+	// =====================================================================
+	// A VELOCIDADE -- DIVERGENCIA DECLARADA DO DM (dono, 2026-10-08)
+	// =====================================================================
+	// O pedido: *"deixe os ataques de ki mais rapidos, principalmente esferas, e projeteis como kienzan,
+	// blast etc eles estao mt lentos"*.
+	//
+	// ============================ O QUE O DM ESCREVE, O QUE ELE FAZ, E POR QUE ERA LENTO AQUI ============================
+	// A LETRA (e contra ela que a regra nova se mede):
+	//   * bola e teleguiada CUSTOMIZADAS -- `walk(A, dir, lag)` com `lag = max(1, round(4 - speed))` decimos de
+	//     segundo (`customattacks.dm:520-521`, `:531-537`): 0,3 / 0,2 / 0,1 s por tile = 3,3 / 5 / 10 tiles por
+	//     segundo. Os verbs NOMEADOS escrevem o `walk` direto: sem lag nenhum (`walk(A,usr.dir)`, `blasts.dm:78`,
+	//     o Basic_Blast) ou com lag 2 (`Ki2.0/Debuffs.dm:37`, a Paralysis). Este port mede toda bola pelo `speed`
+	//     da customizada (`ReceitaDeProjetil.Velocidade`), e a bola comum saiu com `speed = 1` -- o lag 3;
+	//   * raio -- `walk(src, src.dir, beamspeed)` (`objects.dm:241`), com `beamspeed = 1 / speed` na customizada
+	//     (`customattacks.dm:445`): 0,1 s por tile = 10 tiles por segundo.
+	//
+	// O QUE O BYOND FAZ COM ELA -- MEDIDO em 2026-10-08 (516.1684, `world.fps = 12` de `World.dm:5`), num mundo
+	// minimo com os trechos copiados por linha:
+	//   * NENHUMA BOLA VOA. `obj/Move()` (`Code/Ki Attacks.dm:31-39`) chama `..()` sem `. = ..()` e devolve nulo; o
+	//     `Move()` do tiro le isso como passo falhado e tira a bola do mundo (`objects.dm:92-99`). Ela entra no tile
+	//     seguinte e some na mesma chamada, no PRIMEIRO passo do `walk`, com lag 0, 1, 2 ou 3 -- so ha acerto de
+	//     bola a queima-roupa (o `Bump` desse passo). O raio voa: o ramo `WaveAttack` (`:100-113`) nao olha o que
+	//     o passo devolveu;
+	//   * O LAG VALE EM TIQUES INTEIROS do mundo (0,83 decimo a 12 fps). Tirando o `obj/Move()` da cadeia, a bola
+	//     anda 12 tiles por segundo com lag 0 ou 1, 6 com lag 2 e 4 com lag 3. A cabeca do raio, que voa de
+	//     verdade, anda um tile por tique com `beamspeed` 1, 0,6, 0,5, 0,4, 0,3 e 0,2: 12 tiles por segundo -- a
+	//     escada de `beamspeed` dos raios nomeados nao muda a velocidade de nenhum;
+	//   * O `Burnout()` NAO CORRE em tempo normal (`objects.dm:658`) -- ver <see cref="SegundosDeBurnout"/>.
+	// ENTAO "a velocidade do DM", neste arquivo e nas bancadas (`VelocidadeDoDmDeTeste`, `LagDeBolaNoDm`,
+	// `AtrasoDeRaioNoDm`, a `Pressa`), e a da LETRA -- lag e `beamspeed` em decimos de segundo --, que e o que este
+	// port fazia ate 2026-10-08. Nao e o que o jogo antigo mostrava: la a bola nao saia do lugar.
+	//
+	// POR QUE ERA LENTO AQUI: neste port o corpo anda 5 tiles por segundo e CORRE a 11 (`MoveRules.BaseSpeedPx`,
+	// `MultiplicadorCorrida`). A bola comum, no lag 3, era mais lenta que alguem ANDANDO, e ate o raio perdia de
+	// quem corre. Um tiro de que se foge a pe nao e um tiro.
+	//
+	// ============================ A REGRA NOVA ============================
+	//   * BOLA: `22 - 2 x lag` tiles por segundo -- 20 / 18 / 16 pro lag 1 / 2 / 3 do DM. A ordem do
+	//     original fica (quem pagou por `speed` continua mais rapido), mas a escada ACHATA: quem mais
+	//     ganha e a bola comum (4,8 vezes), que era a queixa; a mais rapida dobra.
+	//   * RAIO: o dobro (`PressaDoRaio`). O raio comum continua empatado com a bola mais rapida, como na
+	//     letra do DM (10 = 10 la, 20 = 20 aqui). Os raios NOMEADOS ficam um pouco acima dele, entre 24 e 30
+	//     (<see cref="VelocidadeDeRaioNomeado"/>), e o Death Beam muito acima (66,7) -- ver o bloco do `beamspeed`.
+	// O PRAZO DE 5 s DESTE PORT (`SegundosDeBurnout`) NAO MUDOU, e por isso o alcance agora manda: no passo antigo
+	// a bola comum morria com 17 tiles andados (5 s a 3,3) e hoje chega aos 30 que a receita dela sempre disse
+	// (`AlcanceTiles`).
+	//
+	// ============================ E AS REGRAS MEDIDAS EM DISTANCIA ANDAM JUNTO ============================
+	// Tres defesas do jogo enxergam o tiro por DISTANCIA (`view(1)`, "a dois tiles", `BCL_NPC_DETECT 7`):
+	// a Precognicao, os sopros de Kiai e o contra-feixe do NPC. Distancia sobre velocidade e TEMPO DE
+	// AVISO -- e um tiro quase cinco vezes mais rapido deixaria essas tres com um quinto do aviso, sem
+	// ninguem ter pedido isso. Entao cada tiro carrega a propria <see cref="Pressa"/> (quantas vezes mais
+	// rapido que no DM ele voa) e essas distancias sao multiplicadas por ela NA DIRECAO EM QUE ELE VEM
+	// (<see cref="VemPraCimaDe"/>): o aviso, em segundos, e o do original -- e a largura da regra tambem.
+	// =======================================================================================================
 
-	/// <summary>`beamspeed = 1 / speed` tiques de 0,1 s.</summary>
-	public static double AtrasoDeRaio(double velocidade)
-		=> 1.0 / Math.Max(velocidade, 0.01) * 0.1;
+	/// <summary>Quantas vezes mais rapido que no DM um raio voa. Ver o bloco acima.</summary>
+	public const double PressaDoRaio = 2;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): todo tiro volta ao passo da LETRA do DM, que este port fazia ate 2026-10-08 -- a
+	/// bola comum a 3,3 tiles por segundo, perdendo de quem ANDA; o raio a 10, perdendo de quem corre. Sempre falso
+	/// em jogo.
+	/// </summary>
+	public static bool VelocidadeDoDmDeTeste;
+
+	/// <summary>O `lag` de uma bola no DM, em tiques de 0,1 s: `max(1, round(4 - speed))` (`customattacks.dm:519`).</summary>
+	public static double LagDeBolaNoDm(double velocidade)
+		=> Math.Max(1, Math.Round(4 - velocidade, MidpointRounding.AwayFromZero));
+
+	/// <summary>Segundos por tile de um raio NO DM: `beamspeed = 1 / speed` tiques de 0,1 s (`customattacks.dm:452`).</summary>
+	public static double AtrasoDeRaioNoDm(double velocidade) => 1.0 / Math.Max(velocidade, 0.01) * 0.1;
+
+	/// <summary>
+	/// SEGUNDOS POR TILE de uma bola, a partir do `lag` dela no DM (em tiques; nem sempre inteiro -- a Death
+	/// Ball anda um tile por pulso de `Eactspeed / 5` tiques). `22 - 2 x lag` tiles por segundo, e NUNCA
+	/// menos que o dobro do original: a reta cruzaria o zero num lag de 11, e um lag grande assim (um corpo
+	/// muito lento guiando a Death Ball) continua valendo o dobro do que valia.
+	/// </summary>
+	public static double AtrasoDeBolaPorLag(double lagNoDm)
+	{
+		double lag = Math.Max(lagNoDm, 1);
+		return VelocidadeDoDmDeTeste ? lag * 0.1 : 1.0 / Math.Max(22 - 2 * lag, 20 / lag);
+	}
+
+	/// <summary>Segundos por tile de uma bola ou teleguiada com este `speed`. Ver <see cref="AtrasoDeBolaPorLag"/>.</summary>
+	public static double AtrasoDeBola(double velocidade) => AtrasoDeBolaPorLag(LagDeBolaNoDm(velocidade));
+
+	/// <summary>Segundos por tile de um raio com este `speed`: o do DM (<see cref="AtrasoDeRaioNoDm"/>), na <see cref="PressaDeRaio"/>.</summary>
+	public static double AtrasoDeRaio(double velocidade) => AtrasoDeRaioNoDm(velocidade) / PressaDeRaio;
+
+	/// <summary>A <see cref="Pressa"/> de uma bola que no DM tinha este `lag`, em tiques.</summary>
+	public static double PressaDeBolaPorLag(double lagNoDm)
+		=> Math.Max(lagNoDm, 1) * 0.1 / AtrasoDeBolaPorLag(lagNoDm);
+
+	/// <summary>A <see cref="Pressa"/> de um raio: a <see cref="PressaDoRaio"/> -- ou 1, com o defeito injetado.</summary>
+	public static double PressaDeRaio => VelocidadeDoDmDeTeste ? 1 : PressaDoRaio;
+
+	// ============================ O `beamspeed` DOS RAIOS NOMEADOS E UM ATRASO (2026-10-08) ============================
+	// Os verbs de raio do DM escrevem `beamspeed` direto (`beamspeed=0.3`, `beams/DeathBeam.dm:48`), e quem o
+	// consome e `walk(src, src.dir, beamspeed)` (`objects.dm:241,278`): e o LAG do passo, em decimos de segundo --
+	// MENOR = MAIS RAPIDO. E o mesmo numero que a tecnica customizada calcula como `beamspeed = 1 / S.speed`
+	// (`customattacks.dm:445`), ou seja o `speed` equivalente e `1 / beamspeed`.
+	//
+	// Os lotes G5 e G6 deste port o entregam como `ReceitaDeProjetil.Velocidade`, que e `speed` (MAIOR = mais
+	// rapido): a ordem dos raios nomeados saiu INVERTIDA. O Death Beam, que o proprio DM descreve como *"low
+	// drain, high speed"* (0,3 -- o segundo menor atraso do jogo), voava a 6 tiles por segundo; o Ki Wave comum,
+	// a 20.
+	//
+	// O DEATH BEAM FOI ACERTADO PELA LETRA (dono, 2026-10-08: *"death beam deveria ser mt rapido"*): 1 / 0,3 de
+	// `speed`, que na pressa de todo raio da 66,7 tiles por segundo.
+	//
+	// OS OUTROS FORAM NIVELADOS ENTRE 24 E 30 (dono, no mesmo dia: *"pode nivelar entre 24 e 30"*). Antes voavam
+	// Kamehameha 8, Galick Ho 6 a 8, Enkumei 4 a 6, Dodon Ray 12, Final Flash 12, Massive Beam 10 e Boom Wave 4 --
+	// todos atras do Ki Wave comum (20), e alguns atras de quem ANDA. Lidos pela letra iriam de 33 a 100, e um
+	// Kamehameha a 50 nao se desvia depois da carga. O que se escolheu e o que o jogo antigo fazia NA PRATICA,
+	// medido no BYOND (ver o bloco "A VELOCIDADE"): la a escada de `beamspeed` nao mudava a velocidade de nenhum
+	// -- todo raio andava um tile por tique. Aqui eles ficam um pouco acima do raio comum, com a ORDEM do verb
+	// (menor atraso, mais rapido): 0,2 -> 30 | 0,3 -> 28,5 | 0,4 -> 27 | 0,5 -> 25,5 | 0,6 -> 24 tiles por segundo.
+	// ===================================================================================================================
+
+	/// <summary>
+	/// O `speed` que corresponde a um `beamspeed` do DM: `1 / beamspeed` (`customattacks.dm:445`). Ver o bloco
+	/// acima. Com o defeito injetado devolve o proprio `beamspeed` -- a leitura que deixava o raio lento.
+	/// </summary>
+	public static double VelocidadeDeBeamspeed(double beamspeed)
+		=> BeamspeedLidoComoSpeedDeTeste ? beamspeed : 1 / Math.Max(beamspeed, 0.01);
+
+	/// <summary>
+	/// O `speed` DE UM RAIO NOMEADO, a partir do `beamspeed` do verb dele: de 1,2 vezes o raio comum (o atraso
+	/// maior, 0,6 -- Final Flash, Dodon Ray) a 1,5 vezes (o menor, 0,2 -- Boom Wave), em linha reta entre os dois.
+	/// Na pressa de todo raio sao 24 a 30 tiles por segundo. Ver o bloco acima: e ordem do dono, nao a letra do DM.
+	/// Com o defeito injetado devolve o proprio `beamspeed` -- a leitura que os deixava atras do raio comum.
+	/// </summary>
+	public static double VelocidadeDeRaioNomeado(double beamspeed)
+	{
+		if (BeamspeedLidoComoSpeedDeTeste) return beamspeed;
+		double t = Math.Clamp((BeamspeedMaisLento - beamspeed) / (BeamspeedMaisLento - BeamspeedMaisRapido), 0, 1);
+		return RaioNomeadoMaisLento + t * (RaioNomeadoMaisRapido - RaioNomeadoMaisLento);
+	}
+
+	/// <summary>O maior e o menor `beamspeed` que um verb de raio nomeado escreve (`FinalFlash.dm:45`, `beams.dm:490`).</summary>
+	public const double BeamspeedMaisLento = 0.6, BeamspeedMaisRapido = 0.2;
+
+	/// <summary>
+	/// Os dois extremos do raio nomeado, em `speed` (vezes o raio comum): 24 e 30 tiles por segundo na
+	/// <see cref="PressaDoRaio"/>. Os numeros sao do dono.
+	/// </summary>
+	public const double RaioNomeadoMaisLento = 1.2, RaioNomeadoMaisRapido = 1.5;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): o `beamspeed` dos raios nomeados volta a ser lido como `speed` -- o Death Beam a
+	/// 6 tiles por segundo, o Kamehameha a 8, o Boom Wave a 4: todos atras do raio comum, e alguns atras de quem
+	/// corre. Era o jogo ate 2026-10-08.
+	/// </summary>
+	public static bool BeamspeedLidoComoSpeedDeTeste;
+
+	/// <summary>
+	/// A <see cref="Pressa"/> de um raio que voa a este `speed`, medida contra o que um raio ANDAVA no DM: um
+	/// tile por decimo de segundo (<see cref="AtrasoDeRaioNoDm"/> de 1 -- abaixo disso o `walk` nao passava do
+	/// tique do mundo). E a que a tecnica mais rapida que a regra declara (`ReceitaDeProjetil.PressaSobreODm`):
+	/// com ela as distancias de aviso continuam valendo o mesmo TEMPO que valiam no original.
+	/// </summary>
+	public static double PressaSobreORaioDoDm(double velocidade) => AtrasoDeRaioNoDm(1) / AtrasoDeRaio(velocidade);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): o tiro devolvido pela Deflexao volta no passo do EMPURRAO de uma disputa (o
+	/// que o `Devolver` deixa nele) -- 10 tiles por segundo, mais devagar que qualquer bola e que quem corre.
+	/// </summary>
+	public static bool DeflexaoNoPassoDoEmpurraoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): toda distancia de AVISO volta a ser a do DM, sem a <see cref="Pressa"/> do
+	/// tiro -- o jogo em que so a velocidade mudou, e a Precognicao, os sopros e o contra-feixe ficaram com
+	/// uma fracao do tempo que tinham.
+	/// </summary>
+	public static bool AvisoSemPressaDeTeste;
+
+	/// <summary>
+	/// UMA DISTANCIA DE AVISO DO DM, NA PRESSA DESTE TIRO: quantos pixels antes ele tem que ser visto pra que
+	/// o tempo ate chegar seja o do original. Ver o bloco "AS REGRAS MEDIDAS EM DISTANCIA".
+	/// </summary>
+	public float AvisoDe(float distanciaNoDm) => AvisoSemPressaDeTeste ? distanciaNoDm : distanciaNoDm * (float)Pressa;
+
+	/// <summary>
+	/// ESTE TIRO VEM PRA CIMA DESTE CORPO e chega no tempo que o DM dava a quem o via a `distanciaNoDm`? O corpo
+	/// A FRENTE dele, no rumo, ate a distancia de aviso (<see cref="AvisoDe"/>) -- e numa faixa da LARGURA do
+	/// original, nao mais.
+	///
+	/// SO PRA FRENTE, de proposito. Esticar a regra pra todo lado (um raio de dois tiles virando um de nove)
+	/// faria um sopro apagar tiros que passam longe e quem ve o futuro pular de lado por causa de uma bola do
+	/// outro lado da tela. O que a pressa encurtou foi o tempo de quem ESTA NA LINHA do tiro; e so esse que volta.
+	/// </summary>
+	public bool VemPraCimaDe(Vec2 corpo, float distanciaNoDm)
+	{
+		if (Rumo.LengthSquared < 1e-6f) return false;
+		Vec2 d = corpo - Pos;
+		float frente = d.X * Rumo.X + d.Y * Rumo.Y;
+		return frente > 0 && frente <= AvisoDe(distanciaNoDm) && MathF.Abs(d.X * Rumo.Y - d.Y * Rumo.X) <= distanciaNoDm;
+	}
+
+	/// <summary>
+	/// ESTE TIRO ESTA "A `distanciaNoDm`" DESTE CORPO, pra uma regra de alcance do DM? Dentro da distancia do
+	/// original, como sempre -- ou vindo pra cima dele dentro do aviso (<see cref="VemPraCimaDe"/>).
+	/// </summary>
+	public bool AoAlcanceDe(Vec2 corpo, float distanciaNoDm)
+		=> (corpo - Pos).LengthSquared <= distanciaNoDm * distanciaNoDm || VemPraCimaDe(corpo, distanciaNoDm);
 
 	/// <summary>
 	/// QUANTO TEMPO DE CARGA, em segundos, pra o raio sair.
@@ -699,7 +1189,7 @@ public sealed class Projetil
 	/// sete rumos ao mesmo tempo.
 	/// </summary>
 	public bool PodeArrastar()
-		=> Tipo == TipoDeProjetil.Beam && FatorDeEmpurrao() <= 0 && AndouTiles < TilesDeArrasto;
+		=> Tipo == TipoDeProjetil.Beam && !EstouraComoBola && FatorDeEmpurrao() <= 0 && AndouTiles < TilesDeArrasto;
 
 	/// <summary>
 	/// ATE ONDE O FEIXE CARREGA, em tiles a partir da mao do dono: `if(getdist(Owner,P) &lt; 10)`

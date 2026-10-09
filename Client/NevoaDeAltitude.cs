@@ -50,24 +50,79 @@ public partial class NevoaDeAltitude : CanvasLayer
 	/// <summary>O que o shader esta mostrando AGORA -- a bancada le isto pra provar que subiu.</summary>
 	public float FracaoNaTela => _agora;
 
+	/// <summary>O arquivo do shader. Publico pra o `Aquecimento` po-lo na fila de carga do lobby -- ver <see cref="Ensaiar"/>.</summary>
+	public const string CaminhoDoShader = "res://Assets/Shaders/Altitude.gdshader";
+
 	public override void _Ready()
 	{
 		Layer = Camada;
 
-		var sh = GD.Load<Shader>("res://Assets/Shaders/Altitude.gdshader");
-		if (sh == null) { GD.PushWarning("[nevoa] Altitude.gdshader nao carregou"); return; }
+		if (NovoPano() is not { } novo) return;
+		(_pano, _mat) = novo;
+		_pano.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+		AddChild(_pano);
+	}
 
-		_mat = new ShaderMaterial { Shader = sh };
-		_pano = new ColorRect
+	/// <summary>
+	/// O PANO DA NEVOA: o retangulo e o material dele, como a tela os usa. UMA receita pra duas casas, a da tela
+	/// (<see cref="_Ready"/>) e a do palco do ensaio (<see cref="Ensaiar"/>): e isso que faz a pipeline montada no ensaio
+	/// ser a que o primeiro voo acha pronta. Nulo se o shader nao carregou.
+	/// </summary>
+	private static (ColorRect Pano, ShaderMaterial Tinta)? NovoPano()
+	{
+		var sh = GD.Load<Shader>(CaminhoDoShader);
+		if (sh == null) { GD.PushWarning("[nevoa] Altitude.gdshader nao carregou"); return null; }
+
+		var tinta = new ShaderMaterial { Shader = sh };
+		var pano = new ColorRect
 		{
 			Name = "Nevoa",
-			Material = _mat,
+			Material = tinta,
 			// O RETANGULO NAO PODE ROUBAR O CLIQUE. Ele cobre a tela inteira; sem isto, mirar num
 			// inimigo com o mouse pararia de funcionar assim que se saisse do chao.
 			MouseFilter = Control.MouseFilterEnum.Ignore,
 		};
-		_pano.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-		AddChild(_pano);
+		return (pano, tinta);
+	}
+
+	/// <summary>O lado do pano do ensaio, em pixels do palco: a pipeline e do shader e do jeito de desenhar, e nao do tamanho.</summary>
+	private const float PanoDoEnsaio = 32f;
+
+	/// <summary>
+	/// O ENSAIO DO LOBBY (ver `Aquecimento.AtosDaNevoa`): o pano da nevoa, pela receita de producao (<see cref="NovoPano"/>),
+	/// num palco fora da tela -- pra o shader ser compilado e a pipeline dele montada ALI, e nao no quadro em que o corpo
+	/// sai do chao pela primeira vez no processo.
+	///
+	/// ============================ O QUE ISTO TIRA DO PRIMEIRO VOO ============================
+	/// Esta classe so nasce no primeiro quadro em que o corpo tem altura (`World.EfeitosDaAltura`), e o shader dela nem na
+	/// fila de carga do aquecimento estava: era lido do disco, compilado e desenhado no mesmo quadro -- o da primeira
+	/// decolagem. MEDIDO em 2026-10-09 pela `--diagestouro --avulsos`, o quadro em que a nevoa aparece, em relogio:
+	///
+	///     com o driver de video FRIO .......... 50 a 55 ms   script 6 a 7, a espera pelo shader 24 a 26, a pipeline 19 a 21
+	///     com o driver quente ................. 33 ms        so a espera: e o cache de shader do Godot vazio, o de quem abre
+	///                                                        o jogo pela primeira vez
+	///     a gemea ILUMINADA, driver frio ...... 62 a 65 ms   60 a 62 deles a pipeline do item COM luz, montada depois da sem luz
+	///
+	/// A GEMEA EXISTE PORQUE O PANO E ALCANCADO PELAS LUZES DO MUNDO: ele mora na camada 0 (ver <see cref="Camada"/>), que e
+	/// a faixa de camadas das luzes -- basta a aura de uma forma, um tiro de ki ou uma fogueira na tela, de noite. Quem
+	/// voava de dia pagava o primeiro quadro; no primeiro voo com uma luz na tela, pagava o outro, maior.
+	///
+	/// DEPOIS: nenhuma pipeline nasce no quadro em que a nevoa aparece, com luz ou sem ela, e ele custa 8 a 9 ms -- uma
+	/// volta do monitor --, com o driver quente ou frio.
+	/// ========================================================================================
+	///
+	/// A MEIA ALTURA (`altura` 0,5) e SEM RELOGIO: quem persegue a altura e o <see cref="_Process"/> de uma
+	/// `NevoaDeAltitude` viva, e aqui nao ha uma. Morre com o palco do aquecimento.
+	/// </summary>
+	public static void Ensaiar(Node2D pai, Vector2 onde)
+	{
+		if (NovoPano() is not { } novo) return;
+		(ColorRect pano, ShaderMaterial tinta) = novo;
+		pano.Name = "NevoaDoEnsaio";
+		pano.Size = new Vector2(PanoDoEnsaio, PanoDoEnsaio);
+		pano.Position = onde - pano.Size * 0.5f;
+		tinta.SetShaderParameter("altura", 0.5f);
+		pai.AddChild(pano);
 	}
 
 	public override void _Process(double delta)

@@ -431,6 +431,10 @@ public partial class GameServer
 		// ==========================================================================================================================
 		if (pl.Livro.AlgumaAprendidaDa(_skills, verb)) return true;
 
+		// OS VERBS DE QUEM ESTA DENTRO DE UM MAJIN (`MajinSaga.dm:160-164`): nulo em todo corpo que nao
+		// absorveu ninguem, entao o caminho comum paga um teste de referencia. Ver `ServerPlayer.VerbosAbsorvidos`.
+		if (pl.VerbosAbsorvidos?.Contains(verb) == true) return true;
+
 		// ============================ E OS DEGRAUS DE NIVEL, QUE NINGUEM LIA ============================
 		// COMPRAR a skill nao e o unico jeito de destravar uma habilidade: o `effector()` do DM concede
 		// verbs por NIVEL (`assignverb` dentro do degrau), e o extrator ja trazia isso -- `niveis.json`
@@ -471,6 +475,11 @@ public partial class GameServer
 		// por que esta chamada faltava. As duas listas tem que ser a MESMA: o que o menu mostra e o
 		// que o `SabeTecnica` aceita, senao o botao existe e o servidor diz nao (ou o contrario).
 		foreach (string v in pl.Niveis.VerbosAtivos(_skills, pl.Livro.Escolhas)) if (!l.Contains(v)) l.Add(v);
+
+		// ...E OS EMPRESTADOS DE QUEM O MAJIN ABSORVEU, pela mesma regra das duas listas iguais: o botao
+		// nasce desta lista e o `SabeTecnica` aceita o verb pela outra metade.
+		if (pl.VerbosAbsorvidos != null)
+			foreach (string v in pl.VerbosAbsorvidos) if (!l.Contains(v)) l.Add(v);
 
 		return l;
 	}

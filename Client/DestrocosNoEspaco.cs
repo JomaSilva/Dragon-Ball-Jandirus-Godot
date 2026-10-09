@@ -109,7 +109,7 @@ public partial class DestrocosNoEspaco : Node2D
 		// calado. Esta arte em particular passou de 1 de agosto ate agora **importada e sem um unico
 		// consumidor**, entao o caso "ela nao resolve" e tudo menos hipotetico.
 		if (ResourceLoader.Exists(Folha))
-			_folha = ResourceLoader.Load<SpriteFrames>(Folha);
+			_folha = FolhasPresas.Carregar(Folha);
 
 		if (_folha == null)
 			GD.PushWarning($"[destrocos] `{Folha}` nao resolve -- o planeta vai sumir sem deixar caco.");

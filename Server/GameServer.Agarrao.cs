@@ -27,6 +27,12 @@ public enum MotivoDaSoltura
 
 	/// <summary>O preso se debateu ate se soltar (`movement handler.dm:238-250`).</summary>
 	Escapou,
+
+	/// <summary>
+	/// O preso foi ABSORVIDO por um Majin -- muitas vezes por quem o segurava (`MajinSaga.dm:186-193`:
+	/// *"solta o agarrao pendente (o Majin costuma agarrar pra absorver)"*). Quem conta o que houve e a absorcao.
+	/// </summary>
+	Absorvido,
 }
 
 /// <summary>
@@ -342,6 +348,7 @@ public sealed partial class GameServer
 			MotivoDaSoltura.OutraZona => ($"o mundo muda sob os seus pés e você perde {d.Name}.", null),
 			MotivoDaSoltura.Distancia => ($"{d.Name} escapa do seu alcance.",
 										  $"você escapa do alcance de {a.Name}."),
+			MotivoDaSoltura.Absorvido => ($"{d.Name} some das suas mãos, engolido.", null),
 			_ => ($"{d.Name} se solta do seu aperto!", $"você se solta de {a.Name}!"),
 		};
 

@@ -175,13 +175,17 @@ public static class FichaDeSkill
 	/// <summary>
 	/// "habilidade nova: Kiai" / "habilidades novas: Study Other, Focus Skill". O nome vem da tabela de
 	/// tecnicas quando ela tem a tecnica; a que nao esta portada sai dizendo isso, como o botao dela.
+	///
+	/// A QUE E ATENDIDA POR OUTRO CANAL (o voo, a absorcao da raca, a mesa de tecnicas) sai com o nome dela
+	/// e SEM a ressalva: ela tem corpo, so nao tem entrada na tabela de tecnicas -- ver
+	/// <see cref="CensoDeSkills.AtendidoPorOutroCanal"/>.
 	/// </summary>
 	private static string Habilidades(string[] verbos)
 	{
 		var nomes = verbos.Select(v =>
-			Tecnicas.Get(v) is { Modo: not Modo.NaoPortada } t
-				? t.Nome
-				: $"{Tecnicas.Get(v)?.Nome ?? NomesLegiveis.Habilidade(v)} (efeito ainda não portado)").ToList();
+			Tecnicas.Get(v) is { Modo: not Modo.NaoPortada } t ? t.Nome
+			: CensoDeSkills.AtendidoPorOutroCanal(v) ? NomesLegiveis.Habilidade(v)
+			: $"{Tecnicas.Get(v)?.Nome ?? NomesLegiveis.Habilidade(v)} (efeito ainda não portado)").ToList();
 		return (nomes.Count == 1 ? "habilidade nova: " : "habilidades novas: ") + string.Join(", ", nomes);
 	}
 

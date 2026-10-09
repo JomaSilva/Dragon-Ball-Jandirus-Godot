@@ -300,6 +300,30 @@ public partial class RaiosDaForma : Node2D
 		AddChild(_fogo);
 	}
 
+	/// <summary>Este node e o do palco do ensaio do lobby, e nao o de um corpo. Ver <see cref="Ensaiar"/>.</summary>
+	private bool _deEnsaio;
+
+	/// <summary>
+	/// O ENSAIO DO LOBBY (ver `Aquecimento.AtosDosRaios`): uma faisca de verdade -- o mesmo node, o mesmo
+	/// <see cref="_Ready"/>, o mesmo <see cref="Definir"/> que o corpo transformado recebe -- solta num palco fora da
+	/// tela, pra a pipeline do raio desenhado por PARTICULA ser montada ALI, e nao no quadro em que o primeiro corpo do
+	/// processo crepita.
+	///
+	/// O NODE "NASCE DESLIGADO" JUSTAMENTE PRA NAO ENGASGAR NA TRANSFORMACAO (ver o cabecalho), e isso so pagava a
+	/// metade da conta: o emissor e os dois materiais ja existiam, mas a pipeline do shader so e montada quando ele e
+	/// DESENHADO pela primeira vez -- e quem nasce invisivel nao e desenhado.
+	///
+	/// NA INTENSIDADE MAIS ALTA e de qualquer cor: cor, intensidade e quantos raios saem sao VALORES, e nao mudam
+	/// shader nem pipeline. NAO ESTALA: o som de cada rajada e do corpo, e o ensaio cai nos primeiros quadros do mundo
+	/// quando o login foi mais rapido que ele -- nao pode ser ouvido. Morre com o palco do aquecimento.
+	/// </summary>
+	public static void Ensaiar(Node2D pai, Vector2 onde)
+	{
+		var raios = new RaiosDaForma { Name = "RaiosDoEnsaio", Position = onde, _deEnsaio = true };
+		pai.AddChild(raios);
+		raios.Definir(true, Colors.White, 2);
+	}
+
 	/// <summary>
 	/// LIGA, DESLIGA E PINTA. <paramref name="intensidade"/> 0 apaga; 1 e o crepitar do SSJ2 e 2 o das
 	/// outras quatro. Nao ha mais nada acima -- ver `FormaDef.Raios`.
@@ -385,7 +409,7 @@ public partial class RaiosDaForma : Node2D
 	/// acontecimento da zona.
 	/// ========================================================================
 	/// </summary>
-	private static readonly string[] Estalos =
+	internal static readonly string[] Estalos =
 	[
 		"res://Assets/Sounds/Effects/sparks/sparks1.mp3",
 		"res://Assets/Sounds/Effects/sparks/sparks2.mp3",
@@ -398,8 +422,12 @@ public partial class RaiosDaForma : Node2D
 
 	private void Disparar()
 	{
-		AudioDirector.EfeitoNoLugar(this, Estalos[GD.Randi() % (uint)Estalos.Length], 0.55f, 320f);
-		EstalosDeTeste++;
+		// (o ensaio do lobby nao estala: ver `Ensaiar`)
+		if (!_deEnsaio)
+		{
+			AudioDirector.EfeitoNoLugar(this, Estalos[GD.Randi() % (uint)Estalos.Length], 0.55f, 320f);
+			EstalosDeTeste++;
+		}
 
 		int quantos = _sorte.RandiRange(1, TetoDaIntensidade());
 		UltimaRajadaDeTeste = quantos;

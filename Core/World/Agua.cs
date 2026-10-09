@@ -4,16 +4,20 @@ namespace Jandirus.Core.World;
 /// COMO ESTE CORPO ESTA ATRAVESSANDO O MUNDO AGORA.
 ///
 /// Nao e um estado do personagem -- e o ARGUMENTO de uma pergunta ("esta celula me para?"). Os
-/// quatro valores sao literalmente os quatro ramos do `testWaters()` do original
+/// quatro primeiros valores sao literalmente os quatro ramos do `testWaters()` do original
 /// (`Code/Modules/Movement Improvement/Swim.dm:26-38`):
 ///
 ///     if(M:flight|M:swim|M:KB|M:boat) return 1
 ///     else return 0
 ///
 /// <see cref="Voando"/> cobre o `flight` E o `boat`: no DM pilotar liga `pilot.flight = 1`
-/// (`ShipVessel.dm`, e o comentario de `GameServer.Nave.cs:438` ja diz isso), e neste port quem
-/// voa alto nem chega a consultar mapa -- o `AtravessandoCenario` manda `mapa = null`.
+/// (`ShipVessel.dm`, e o comentario de `GameServer.Nave.cs:438` ja diz isso).
 /// <see cref="Arremessado"/> e o `M.KB`: quem esta sendo jogado atravessa o lago no ar.
+///
+/// O QUINTO, <see cref="PorCima"/>, NAO E DO `testWaters()`: e a ALTURA, que o DM nao tem. Ate
+/// 2026-10-08 quem voava alto nem consultava mapa (o chamador mandava `mapa = null`); agora
+/// consulta, com este modo, e a unica coisa que o para e a parede de predio -- ver
+/// <see cref="ClasseDePredio"/>.
 /// </summary>
 public enum ModoDeTravessia : byte
 {
@@ -28,6 +32,14 @@ public enum ModoDeTravessia : byte
 
 	/// <summary>Sendo arremessado -- o `KB` do DM (`Swim.dm:31`).</summary>
 	Arremessado = 3,
+
+	/// <summary>
+	/// Voando ACIMA do cenario (<see cref="Voo.AtravessaCenario"/>): do mapa, so a parede de predio o
+	/// para (<see cref="ClasseDePredio.BarraQuemVoa"/>). Pra agua, nuvem e corpo alheio ele responde
+	/// como <see cref="Voando"/> -- ver <see cref="Voo.Voa"/>. Quem o escolhe e o
+	/// <see cref="Voo.ModoNaAltura"/>, um lugar so.
+	/// </summary>
+	PorCima = 4,
 }
 
 /// <summary>

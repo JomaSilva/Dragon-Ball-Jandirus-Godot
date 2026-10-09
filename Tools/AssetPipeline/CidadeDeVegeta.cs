@@ -69,11 +69,34 @@ public static class CidadeDeVegeta
 		"WWWWW+WWWWWWW",
 	];
 
-	/// <summary>As paredes de pedra de castelo -- `VEG_WALL` (VegetaCity.dm:11-16).</summary>
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): a planta volta a pedir a MEIA-janela do DM (`Window2`, o estado
+	/// `window top`), sem a metade de baixo. Falso na conversao, sempre.
+	/// </summary>
+	public static bool MeiaJanelaDeTeste;
+
+	/// <summary>A janela do DM (`"O"`, VegetaCity.dm:13) e a que o port carimba no lugar dela.</summary>
+	public const string MeiaJanela = "/turf/CastleWall/Window2", JanelaInteira = "/turf/CastleWall/Window1";
+
+	/// <summary>
+	/// As paredes de pedra de castelo -- `VEG_WALL` (VegetaCity.dm:11-16).
+	///
+	/// ============================ DIVERGENCIA DECLARADA: A JANELA ============================
+	/// O DM escreve `"O" = /turf/CastleWall/Window2` (VegetaCity.dm:13), e `Window2` e o estado
+	/// `window top` (Turfs.dm:496-498): o ARCO de cima de uma janela de DOIS tiles. Nos mapas ela vem
+	/// sempre em cima de uma `Window1` (`window`, Turfs.dm:493-495) -- sao 5 pares, todos no Templo.
+	/// A parede da cidade tem UM tile de espessura, entao o original mostra ali 32 arcos soltos, sem
+	/// janela nenhuma embaixo: e um dos "icones cortados" de que o dono reclamou.
+	///
+	/// Aqui a planta pede a `Window1`: a grade com o peitoril, que sozinha le como janela inteira. E
+	/// irma da outra (mesma folha, mesma densidade herdada de `/turf/CastleWall`), entao colisao,
+	/// visao e teto ficam iguais -- muda so o quadro.
+	/// =========================================================================================
+	/// </summary>
 	private static string? Parede(char c) => c switch
 	{
 		'W' => "/turf/CastleWall/Center",
-		'O' => "/turf/CastleWall/Window2",
+		'O' => MeiaJanelaDeTeste ? MeiaJanela : JanelaInteira,
 		'T' => "/turf/CastleWall/Torch2",
 		'B' => "/turf/CastleWall/Banner2",
 		_ => null,
@@ -212,9 +235,10 @@ public static class CidadeDeVegeta
 	///
 	/// <paramref name="temArte"/> responde "este typepath consegue virar pixel?". ELE E O FREIO,
 	/// e existe por uma regra que este port ja pagou caro pra aprender: nada pode ser SOLIDO E
-	/// INVISIVEL. Duas pecas da cidade tem `icon_state` que a folha nao tem -- uma delas
-	/// (`/obj/buildables/rtable`) e DENSA --, e carimba-las produziria exatamente a parede
-	/// fantasma que estamos consertando. Sem arte, a peca NAO ENTRA e vai pro relatorio.
+	/// INVISIVEL. Peca cujo `icon_state` a folha nao tem NAO ENTRA e vai pro relatorio: carimbada,
+	/// ela seria exatamente a parede fantasma que este pipeline existe pra nao produzir. A unica que
+	/// caia aqui era a mesa redonda (`/obj/buildables/rtable`, DENSA), e o estado dela ja chega
+	/// consertado -- ver `MapConverter.EstadoDoMapa`. O freio fica pra proxima.
 	/// </summary>
 	public static Relatorio Erguer(DmmMap.Result dados, DmmLevel nivel, Func<string, bool> temArte)
 	{
@@ -233,7 +257,7 @@ public static class CidadeDeVegeta
 		// AS PAREDES SAO CONFERIDAS ANTES DE UM TIJOLO SER POSTO. Uma casa com metade das paredes
 		// e pior que casa nenhuma: os buracos seriam solidos ou nao conforme a peca, e o dono
 		// veria um comodo aberto que nao da pra atravessar. Faltando estrutura, nao se ergue nada.
-		string[] estruturais = [ChaoDeCasa, ChaoDeLab, Porta, "/turf/CastleWall/Center", "/turf/CastleWall/Window2"];
+		string[] estruturais = [ChaoDeCasa, ChaoDeLab, Porta, Parede('W')!, Parede('O')!];
 		foreach (string bp in estruturais) Da(bp);
 		if (semArte.Count > 0) return new Relatorio(0, 0, 0, 0, 0, semArte);
 

@@ -773,7 +773,10 @@ public sealed partial class GameServer
 			Tipo = TipoDeProjetil.Guided,
 			BaseDano = 1,                 // `A.basedamage = 1` -- fixo, como o Kienzan
 			Velocidade = 1,
-			AlcanceTiles = 200,           // quem apaga estas bolas e o prazo, nao o alcance
+			// OS 200 TILES SAO O PRAZO DO DM ESCRITO EM CHAO: 60 s no passo de la (3,3 tiles por segundo). Na
+			// velocidade de hoje (dono, 2026-10-08) quem apaga a bola e este alcance, aos 12 s -- a mesma
+			// distancia de perseguicao de antes, em menos tempo.
+			AlcanceTiles = 200,
 			Nome = "Bala Dispersa",
 		};
 

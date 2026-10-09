@@ -86,7 +86,7 @@ public partial class GameServer
 
 		Projetil p = Disparar(atira, new ReceitaDeProjetil
 		{
-			Tipo = tipo, BaseDano = 0.002, Velocidade = 1, AlcanceTiles = 40, Deflectivel = false,
+			Tipo = tipo, BaseDano = BaseQueFereUmIgual(atira, tipo), Velocidade = 1, AlcanceTiles = 40, Deflectivel = false,
 			EscalaVisual = escala, Nome = "Faisca",
 		}, verbo: verbo);
 		if (tipo == TipoDeProjetil.Beam) p.Canalizando = true;

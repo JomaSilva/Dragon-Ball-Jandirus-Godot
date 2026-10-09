@@ -68,8 +68,18 @@ public sealed partial class GameServer
 	///
 	/// Nenhum verb de bola do DM escreve `maxdistance` -- eles confiam no `Burnout()` de 5 s pra
 	/// apagar o tiro. O port precisa dos dois (o alcance tambem alimenta o `rangemod` e a forca do
-	/// empurrao de perto), entao herda os 30 que o `Basic_Blast` ja usava. Com o passo mais lento
-	/// (0,3 s/tile) o prazo vence primeiro, que e exatamente o que acontece la.
+	/// empurrao de perto), entao herda os 30 que o `Basic_Blast` ja usava.
+	///
+	/// DIVERGENCIA DECLARADA -- NO DM A BOLA NAO CHEGA A LUGAR NENHUM (medido em 2026-10-08, BYOND 516): ela sai do
+	/// mundo no primeiro passo do `walk`, porque `obj/Move()` (`Code/Ki Attacks.dm:31-39`) nao devolve o `..()` e o
+	/// `Move()` do tiro (`objects.dm:92-99`) le passo falhado; e o `Burnout()` nem corre em tempo normal
+	/// (`objects.dm:658`). Alcance e prazo de bola sao regra DESTE port, com os numeros que o DM escreve -- a
+	/// historia inteira esta no bloco "A VELOCIDADE" de `Core/Combat/Projetil.cs`.
+	///
+	/// QUEM APAGA A BOLA HOJE E O ALCANCE, E NAO O PRAZO. Enquanto ela andava no passo antigo deste port (0,3 s por
+	/// tile, o lag 3 da letra do DM) o prazo vencia primeiro, aos ~17 tiles; na velocidade que o dono pediu em
+	/// 2026-10-08 (16 a 20 tiles por segundo, `Projetil.AtrasoDeBola`) os 30 tiles acabam em menos de dois segundos
+	/// e os 5 s nunca chegam. A bola comum passou a alcancar os 30 que a receita sempre disse.
 	/// </summary>
 	private const double AlcanceDeBolaG5 = 30;
 
@@ -166,7 +176,11 @@ public sealed partial class GameServer
 		{
 			Tipo = TipoDeProjetil.Beam,
 			BaseDano = 4,
-			Velocidade = 0.5,        // metade da velocidade: 0,2 s por tile
+			// `beamspeed = 0.5` (`beams.dm:430`), nivelado como todo raio nomeado: 25,5 tiles por segundo. Ate
+			// 2026-10-08 o numero ia direto pra `Velocidade` e ele voava a 10 -- ver `Projetil.VelocidadeDeRaioNomeado`.
+			Velocidade = Projetil.VelocidadeDeRaioNomeado(0.5),
+			PressaSobreODm = Projetil.BeamspeedLidoComoSpeedDeTeste ? 0
+				: Projetil.PressaSobreORaioDoDm(Projetil.VelocidadeDeRaioNomeado(0.5)),
 			AlcanceTiles = 30,
 			MultDeOnda = 2,
 			CargaMinima = 5,
@@ -213,7 +227,11 @@ public sealed partial class GameServer
 		{
 			Tipo = TipoDeProjetil.Beam,
 			BaseDano = powmod,
-			Velocidade = 0.6,
+			// `beamspeed = 0.6` (`FinalFlash.dm:45`), nivelado como todo raio nomeado: 24 tiles por segundo, o mais
+			// lento deles. Ate 2026-10-08 voava a 12 -- ver `Projetil.VelocidadeDeRaioNomeado`.
+			Velocidade = Projetil.VelocidadeDeRaioNomeado(0.6),
+			PressaSobreODm = Projetil.BeamspeedLidoComoSpeedDeTeste ? 0
+				: Projetil.PressaSobreORaioDoDm(Projetil.VelocidadeDeRaioNomeado(0.6)),
 			AlcanceTiles = alcance,
 			MultDeOnda = 4,          // *"makes the FinalFlash BP 4x greater than your own. Oof."*
 			CargaMinima = 1,         // o verb nao mexe no `chargedelay`: fica o padrao
@@ -330,7 +348,7 @@ public sealed partial class GameServer
 		pl.Ficha.Ki -= custo;
 		for (int i = 0; i < 4; i++) pl.Ficha.BlastGain(_rng);
 
-		Vec2 frente = MeleeArea.Frente(pl.Facing);
+		Vec2 frente = RumoDoTiro(pl);   // no marcado, se houver (dono, 2026-10-09)
 		Vec2 lado = new(-frente.Y, frente.X);
 		float[] desvios = [-24, -8, 8, 24];
 
@@ -413,7 +431,7 @@ public sealed partial class GameServer
 		CreditarContador(pl, "volleycounter", quantas);
 		if (disperso) CreditarContador(pl, "homingcounter", quantas);
 
-		Vec2 frente = MeleeArea.Frente(pl.Facing);
+		Vec2 frente = RumoDoTiro(pl);   // no marcado, se houver (dono, 2026-10-09)
 		var receita = new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Blast,

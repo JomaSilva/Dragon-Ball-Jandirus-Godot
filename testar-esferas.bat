@@ -13,7 +13,7 @@ REM  o claim planetario. Os DESEJOS e a LINGUA DOS DEUSES sao a Fase 2 -- e o
 REM  ponto de plugue delas ja existe e ja e exercitado aqui (`ContarUmDesejo` e
 REM  `ConsumirAsSupers`), pra a Fase 2 nao chegar num plugue que nunca rodou.
 REM
-REM  SAO 51 CONFERENCIAS, e nenhuma pergunta "o campo foi escrito":
+REM  SAO 62 CONFERENCIAS, e nenhuma pergunta "o campo foi escrito":
 REM
 REM     o espalhamento cai em chao ANDAVEL  -> perguntado ao mapa de COLISAO
 REM     o nocaute derruba as sete           -> medido em `Portador == 0`
@@ -29,7 +29,7 @@ REM     o radar acha a acordada    x  e NAO acha a apagada
 REM     o claim de 10 s fecha      x  e CAI se o disputante se afasta
 REM     passada a espera, acorda   x  antes dela, a invocacao e recusada
 REM
-REM  QUATRO FAMILIAS COM DEFEITO INJETADO (o padrao da --provateste: mede o
+REM  CINCO FAMILIAS COM DEFEITO INJETADO (o padrao da --provateste: mede o
 REM  codigo de producao, estraga, mede de novo -- tem que REPROVAR --, conserta,
 REM  mede de novo). Uma checagem que so foi vista passando e indistinguivel de
 REM  `Checa("...", true)`:
@@ -38,6 +38,8 @@ REM     A. a celula proibida  -> o sorteio SEM a rejeicao do `rand(-8,8)`
 REM     B. a espera           -> o carimbo de reativacao puxado pro passado
 REM     C. a policia          -> a zona do set torta (o `Ballplanet` nulo do DM)
 REM     D. o save             -> o ciclo zerado (o campo que carrega ONDE elas estao)
+REM     E. o corte do zelador -> a espera do Porunga cortada so na memoria (um mundo
+REM                              recem-nascido que reinicia 1 h e 34 h depois)
 REM
 REM  E A PROVA DO REUSO: a bancada le a FILA DA CONQUISTA depois de abrir uma
 REM  disputa de Super Esfera. Se o recado nao estiver la, foi criada uma segunda
@@ -97,7 +99,7 @@ if %errorlevel%==0 (
 )
 
 echo.
-echo  ---- as esferas do dragao (51 conferencias, 4 defeitos injetados) ----
+echo  ---- as esferas do dragao (62 conferencias, 5 defeitos injetados) ----
 "%GODOT%" --headless --path . --host --rede 7977 --esferateste ^
           --raca Namekian --conta bancada_db --senha teste --nome DbBanca
 

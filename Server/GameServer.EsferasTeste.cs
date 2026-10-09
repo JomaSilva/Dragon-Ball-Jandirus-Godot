@@ -1,6 +1,7 @@
 using Godot;
 using Jandirus.Core.Magic;
 using Jandirus.Core.World;
+using Jandirus.Net;
 
 namespace Jandirus.Server;
 
@@ -32,9 +33,18 @@ namespace Jandirus.Server;
 ///      (`_recadosDeConquista`) depois de abrir uma disputa. E a prova do reuso que a tarefa pediu --
 ///      e o proprio DM manda reusar (`sdb_contest_channel` chama `conq_notify_owner`, :1547).
 ///  10. **SOBREVIVE AO REINICIO?** Ida e volta pelo `esferas.json` de verdade.
+///  11. **A ESPERA DO PORUNGA CONTA DO NASCIMENTO, E NAO DO PROXIMO REINICIO?** Um mundo recem-nascido
+///      sobe, tica um segundo e reinicia -- pelos carregadores e pelo tique de producao -- e o que se le
+///      e o ARQUIVO: o reinicio nao tem outra coisa pra ler.
+///  12. **QUEM ESTA NO PLANETA VE AS ESFERAS ACENDEREM?** O "acordado" do servidor e conta de relogio; o da
+///      tela e o ultimo `S2C.Esferas` que chegou. Um set recem-nascido atravessa a espera pelas quatro portas
+///      que zeram a contagem de pedidos (erguer, refazer, o Porunga de um mundo novo, o eterno refeito pelo
+///      zelador) e o que se le e o FIO de quem ficou parado no planeta -- os bytes que sairam pro `Peer`
+///      dele, na ordem do leitor do cliente. A quinta cena e o controle: o set que GASTOU pedidos sempre
+///      avisou, e e ela que prova que a escuta enxerga um aviso quando ele sai.
 /// ================================================================================
 ///
-/// ============================ AS QUATRO FAMILIAS COM DEFEITO INJETADO ============================
+/// ============================ AS SETE FAMILIAS COM DEFEITO INJETADO ============================
 /// As checagens acima afirmam. As familias provam que aquelas afirmacoes **sabem ficar vermelhas** --
 /// e o `Mutacao` da `--provateste`, reusado.
 ///
@@ -48,6 +58,16 @@ namespace Jandirus.Server;
 ///      fazia `Scatter()` rodar a cada 10 s pra sempre.
 ///   D. **O SAVE** -> reprova se o set nao voltar do disco com a identidade. Defeito injetado: o
 ///      `Ciclo` zerado no arquivo -- que e o campo que carrega ONDE as sete estao.
+///   E. **O CORTE DO ZELADOR** -> reprova se o arquivo nao tiver o prazo que a memoria tem, se um
+///      reinicio 1 h depois rearmar a espera, ou se um reinicio 34 h depois apagar esferas que ja
+///      estavam acordadas. Defeito injetado: o zelador que corta e nao grava -- o que este port fez
+///      ate 2026-10-09.
+///   F. **O AVISO DE QUEM ACORDA** -> reprova se o set recem-nascido acordar e a tela de quem esta no
+///      planeta continuar com a estatua e as sete apagadas. Defeito injetado: so avisa a zona o set que
+///      tem pedido gasto pra zerar -- o que este port fez ate 2026-10-09.
+///   G. **UMA VEZ SO** -> reprova se o aviso se repetir nos tiques seguintes. Defeito injetado: o trinco da
+///      virada solto antes de cada tique -- o pacote por segundo, pra sempre, que o `Pedidos != 0` do tique
+///      existia pra evitar.
 /// ============================================================================================
 ///
 ///     Godot --headless --path . --host --rede 7977 --conta bancada_db --senha teste
@@ -508,9 +528,23 @@ public partial class GameServer
 				Checa("...e o zelador o levanta se alguem o inertar",
 					  InertarELevantar(eterno));
 			}
+
+			// =====================================================================
+			// 13. A ESPERA DO PORUNGA CONTA DO NASCIMENTO -- com defeito injetado
+			// =====================================================================
+			SecaoDoEternoNoReinicio(Checa);
+
+			// =====================================================================
+			// 14. QUEM ESTA NO PLANETA VE AS ESFERAS ACENDEREM -- com defeito injetado
+			// =====================================================================
+			SecaoDeQuemAcorda(Checa, pl);
 		}
 		finally
 		{
+			AcordarCaladoDeTeste = false;
+			_trincoSolto = false;
+			EscutaDoFioDasEsferas = null;
+
 			_sets.Clear(); _sets.AddRange(setsGuardados);
 			_esferas.Clear(); _esferas.AddRange(esferasGuardadas);
 			foreach ((int n, string dono, string nome) in supersGuardadas)
@@ -592,6 +626,423 @@ public partial class GameServer
 		ManterOSetEterno();
 		return !eterno.Inerte && eterno.Desejos == Esferas.DesejosDoEterno;
 	}
+
+	// =====================================================================
+	// O REINICIO DE UM MUNDO CUJO PORUNGA ACABOU DE NASCER
+	// =====================================================================
+	/// <summary>
+	/// **13. A ESPERA DO PORUNGA CONTA DO NASCIMENTO, E NAO DO PROXIMO REINICIO** -- a familia E do cabecalho.
+	///
+	/// O eterno nasce com a espera de nascimento de todo set (0,4 ano, `Dragonballs.dm:108`) e o zelador a
+	/// corta pro teto dele (0,1, `:414`) na primeira manutencao. No DM esse corte mora na estatua e vai pro
+	/// disco com ela (`SaveItems`, `MapSave.dm:108-114`). Aqui ele ficava so na memoria: o `esferas.json`
+	/// guardava os 0,4, e o primeiro reinicio cortava DE NOVO, contando dele.
+	///
+	/// As duas afirmacoes da frente nao sao o conserto, e estao ali por isso: se o eterno ja nascesse dentro
+	/// do teto nao haveria corte nenhum pra gravar, e as tres familias de baixo ficariam verdes de graca.
+	/// </summary>
+	private void SecaoDoEternoNoReinicio(ChecagemDeEsfera Checa)
+	{
+		const double hora = 3600;
+		double nascer = Esferas.SegundosDe(Esferas.EsperaDeNascimento);
+		double teto = Esferas.SegundosDe(Esferas.TetoDeEsperaEterna);
+
+		ReinicioDoEterno m = MedirOReinicioDoEterno(1);
+		ReinicioDoEterno n = MedirOReinicioDoEterno(34);
+		GD.Print($"  [medido] nasce faltando {m.Nascido / hora:0.00} h | depois do 1o tique: {m.Cortado / hora:0.00} h "
+			   + $"na memoria, {m.FaltaNoArquivo / hora:0.00} h no arquivo | reinicio 1 h depois: faltavam "
+			   + $"{m.FaltavaAntes / hora:0.00} h, faltam {m.FaltaDepois / hora:0.00} h | reinicio 34 h depois: "
+			   + $"{(n.AcordadasAntes ? "acordadas" : "apagadas")} antes, "
+			   + (n.AcordadasDepois ? "acordadas depois" : $"apagadas por mais {n.FaltaDepois / hora:0.00} h depois"));
+
+		Checa($"mundo recem-nascido: o eterno nasce apagado por {nascer / hora:0.#} h (0,4 ano, `Dragonballs.dm:108`)",
+			  m.ArquivoAntesDoTique && Math.Abs(m.Nascido - nascer) <= 5, $"nasceu faltando {m.Nascido:0} s");
+		Checa($"...e o primeiro tique o corta pra {teto / hora:0.#} h (o teto do zelador, `:414`)",
+			  Math.Abs(m.Cortado - teto) <= 5, $"depois do tique faltam {m.Cortado:0} s");
+
+		const string defeito = "o zelador corta e NAO grava: o corte fica so na memoria";
+		Action injetar = () => ZeladorSoNaMemoriaDeTeste = true;
+		Action desfazer = () => ZeladorSoNaMemoriaDeTeste = false;
+
+		MutacaoDeEsfera(Checa,
+			"o corte ESTA NO ARQUIVO: o `esferas.json` guarda o mesmo prazo que a memoria tem depois do tique",
+			defeito,
+			() => MedirOReinicioDoEterno(1) is var x && x.NoArquivo > 0 && x.NoArquivo == x.NaMemoria,
+			injetar, desfazer);
+
+		MutacaoDeEsfera(Checa,
+			"um reinicio 1 h depois NAO rearma a espera: faltam as horas que faltavam com o servidor de pe",
+			defeito,
+			() => MedirOReinicioDoEterno(1) is var x && Math.Abs(x.FaltaDepois - x.FaltavaAntes) <= 5,
+			injetar, desfazer);
+
+		MutacaoDeEsfera(Checa,
+			"um reinicio 34 h depois NAO apaga esferas que ja estavam ACORDADAS",
+			defeito,
+			() => MedirOReinicioDoEterno(34) is var x && x.AcordadasAntes && x.AcordadasDepois,
+			injetar, desfazer);
+	}
+
+	/// <summary>
+	/// O que um mundo cujo Porunga acabou de nascer viu em cada instante: nascer, o primeiro tique, e o
+	/// reinicio. Em SEGUNDOS QUE FALTAM pro Porunga acordar, menos os dois carimbos crus do meio (memoria e
+	/// arquivo, negativo = nao ha), que se comparam um com o outro.
+	/// </summary>
+	private readonly record struct ReinicioDoEterno(
+		bool ArquivoAntesDoTique, double Nascido, double Cortado, double NaMemoria, double NoArquivo,
+		double FaltavaAntes, double FaltaDepois, bool AcordadasAntes, bool AcordadasDepois)
+	{
+		/// <summary>Quanto o ARQUIVO dizia que faltava no instante do primeiro tique. Negativo = nao ha arquivo.</summary>
+		public double FaltaNoArquivo => NoArquivo < 0 ? -1 : Cortado + (NoArquivo - NaMemoria);
+	}
+
+	/// <summary>
+	/// O `AtivoEm` DO SET ETERNO COMO O `esferas.json` O GUARDA AGORA -- lido do disco, e nao da memoria.
+	/// Negativo se nao ha arquivo, ou se nao ha eterno nele.
+	///
+	/// E a medida que serve aqui: o reinicio so tem o arquivo pra ler, e a memoria de quem cortou e nao gravou
+	/// esta certa ate o processo cair.
+	/// </summary>
+	private double AtivoEmDoEternoNoDisco()
+	{
+		if (!System.IO.File.Exists(CaminhoDasEsferas)) return -1;
+		LivroDasEsferas? l = System.Text.Json.JsonSerializer.Deserialize<LivroDasEsferas>(
+			System.IO.File.ReadAllText(CaminhoDasEsferas),
+			new System.Text.Json.JsonSerializerOptions { IncludeFields = true });
+		return l?.Sets.Find(s => s.Eterno)?.AtivoEm ?? -1;
+	}
+
+	/// <summary>
+	/// O PRIMEIRO SEGUNDO E O REINICIO de um mundo cujo Porunga acabou de nascer: o tique de producao (o
+	/// zelador corta a espera de nascimento), `horasDepois` horas de relogio, e o carregador de producao --
+	/// que e o reinicio no que toca as esferas, e so tem o ARQUIVO pra ler.
+	///
+	/// Quem chama poe o mundo no ponto de partida (o primeiro boot aqui, a limpeza na `--wipeteste`) e devolve
+	/// o relogio e as listas depois: o adianto fica, e a memoria sai com o que o carregador leu.
+	/// </summary>
+	private ReinicioDoEterno TicarEReiniciarOEterno(double horasDepois)
+	{
+		bool haviaArquivo = System.IO.File.Exists(CaminhoDasEsferas);
+		double nascido = (_sets.Find(s => s.Eterno)?.AtivoEm ?? -1) - TempoDoMundo;
+
+		TickDasEsferas();
+		SetDeEsferas? vivo = _sets.Find(s => s.Eterno);
+		double naMemoria = vivo?.AtivoEm ?? -1;
+		double cortado = naMemoria - TempoDoMundo;
+		double noArquivo = AtivoEmDoEternoNoDisco();
+
+		_adiantoDoCeu += horasDepois * 3600;
+		double faltava = naMemoria - TempoDoMundo;
+		bool acordadasAntes = vivo != null && SetAtivo(vivo);
+
+		CarregarEsferas();
+		SetDeEsferas? relido = _sets.Find(s => s.Eterno);
+		return new ReinicioDoEterno(haviaArquivo, nascido, cortado, naMemoria, noArquivo, faltava,
+			(relido?.AtivoEm ?? -1) - TempoDoMundo, acordadasAntes, relido != null && SetAtivo(relido));
+	}
+
+	/// <summary>
+	/// UM MUNDO RECEM-NASCIDO QUE REINICIA `horasDepois` HORAS DEPOIS. O primeiro boot e o carregador de
+	/// producao numa pasta de saves vazia; o resto e o <see cref="TicarEReiniciarOEterno"/>. As listas e o
+	/// relogio voltam como estavam, entao a medida pode ser repetida.
+	///
+	/// A PASTA VAZIA E UMA TEMPORARIA (o palco da `--porungateste`), e nao a do servidor com o arquivo
+	/// apagado: apagar o `esferas.json` de quem esta de pe deixaria a pasta sem as estatuas dela ate o
+	/// `finally` -- e esta bancada tambem roda em cima de pasta de verdade.
+	/// </summary>
+	private ReinicioDoEterno MedirOReinicioDoEterno(double horasDepois)
+	{
+		var setsVivos = new List<SetDeEsferas>(_sets);
+		var esferasVivas = new List<Esfera>(_esferas);
+		double ceuVivo = _adiantoDoCeu;
+
+		using PalcoDeApagamentos caixa = PalcoDeApagamentosDeBancada();
+		try
+		{
+			CarregarEsferas();
+			return TicarEReiniciarOEterno(horasDepois);
+		}
+		finally
+		{
+			_adiantoDoCeu = ceuVivo;
+			_sets.Clear(); _sets.AddRange(setsVivos);
+			_esferas.Clear(); _esferas.AddRange(esferasVivas);
+		}
+	}
+
+	// =====================================================================
+	// QUEM ESTA NO PLANETA VE AS ESFERAS ACENDEREM
+	// =====================================================================
+	/// <summary>
+	/// O INTERRUPTOR DO DEFEITO DA FAMILIA G: a bancada solta o trinco da virada
+	/// (<see cref="SetDeEsferas.VistoAcordado"/>) antes de cada tique que vem depois de o set acordar.
+	///
+	/// Mora aqui pelo motivo do <see cref="_sorteioSemRejeicao"/>: o que a familia mede e que o TRINCO faz
+	/// diferenca, e o "sem trinco" e um tique que ve a virada de novo a cada segundo. Um segundo botao de defeito
+	/// no codigo de jogo so pra isso custaria mais que a linha daqui.
+	/// </summary>
+	private bool _trincoSolto;
+
+	/// <summary>
+	/// **14. O SET QUE ACORDA AVISA A ZONA, UMA VEZ** -- as familias F e G do cabecalho.
+	///
+	/// No DM cada esfera troca o proprio `icon_state` quando a espera vence (`Tick()`, `Dragonballs.dm:282-286`,
+	/// rearmado de 10 em 10 s em `:330`): quem esta olhando ve acender. Aqui o desenho so muda quando chega um
+	/// `S2C.Esferas` novo, e o pacote leva o bit de apagada calculado na hora do envio -- o servidor pode
+	/// responder ACORDADAS no `db_ver`, o radar pode achar as sete, e a tela continuar com o retrato de nascimento.
+	///
+	/// AS PORTAS SAO AS QUE ZERAM A CONTAGEM DE PEDIDOS, e sao quatro: `ErguerEstatua`, `RefazerOSet`, o
+	/// `ErguerOSetEterno` de um mundo novo e o zelador refazendo as sete do eterno. Todas passam pelo
+	/// `RefazerAsEsferas`. O set que GASTOU os pedidos e a quinta cena e e o controle: esse sempre avisou.
+	///
+	/// O TESTADOR FICA PARADO NO PLANETA do nascimento ao fim de cada cena: reentrar na zona reenvia o pacote, e
+	/// esconderia justamente o que ela veio medir.
+	/// </summary>
+	private void SecaoDeQuemAcorda(ChecagemDeEsfera Checa, ServerPlayer pl)
+	{
+		var terra = ZoneKey.Premade("Earth");
+		var namek = ZoneKey.Premade(Esferas.PlanetaEterno);
+
+		// O PALCO: nenhum dragao de pe, nenhuma esfera na mao de ninguem, e so o eterno em `_sets`. O set da Terra
+		// que as secoes de cima deixaram ja foi gasto, espalhado e remexido a mao -- nao e nascimento de nada.
+		_invocacoes.Clear();
+		_sets.RemoveAll(s => !s.Eterno);
+		_esferas.RemoveAll(e => !_sets.Any(s => s.Id == e.Set));
+		foreach (Esfera e in _esferas) e.Portador = 0;
+
+		// O RADAR NA MOCHILA: e por ele e pelo `db_ver` que a cena le o que o SERVIDOR responde, nas palavras que
+		// o jogador le -- o outro lado da comparacao com a tela.
+		if (pl.Mochila.Quantos(Jandirus.Core.Items.CatalogoDeItens.Radar) <= 0)
+			pl.Mochila.Guardar(Jandirus.Core.Items.CatalogoDeItens.Radar);
+
+		// ------------------------------------------------------------------ NA TERRA: o set de jogador
+		MoveToZone(pl.Id, terra, PontoDeNascimento(terra));
+
+		SetDeEsferas? DaTerra() => _sets.Find(s => !s.Eterno && s.Zona.Hash == terra.Hash);
+
+		// A bancada tira a estatua anterior na mao: o que se mede e o NASCIMENTO, e a derrubada (`db_derrubar`)
+		// nao e desta cena.
+		SetDeEsferas? Erguer()
+		{
+			if (DaTerra() is { } velho)
+			{
+				_esferas.RemoveAll(e => e.Set == velho.Id);
+				_sets.Remove(velho);
+			}
+			ErguerEstatua(pl, "");
+			return DaTerra();
+		}
+
+		ChecarAVirada(Checa, "set de jogador recem-erguido (`db_estatua`)", NascerEAcordarNaTela(pl, Erguer));
+
+		// `db_refazer` num set ja acordado: as sete nascem de novo, com a espera de nascimento e a contagem em zero.
+		ChecarAVirada(Checa, "set refeito pelo criador (`db_refazer`)",
+			NascerEAcordarNaTela(pl, () => { RefazerOSet(pl, "2"); return DaTerra(); }));
+
+		// O CONTROLE: o set que gastou tudo o que tinha (o funil de producao conta, apaga e espalha). Este sempre
+		// avisou ao acordar -- e a cena que mostra que a escuta do fio enxerga um aviso quando ele sai. Sem ela,
+		// "nao chegou pacote" nas cenas de cima podia ser uma escuta surda.
+		ChecarAVirada(Checa, "CONTROLE: set que gastou os pedidos (`ContarUmDesejo`)",
+			NascerEAcordarNaTela(pl, () =>
+			{
+				if (DaTerra() is not { } s) return null;
+				s.Desejos = 1;
+				s.Pedidos = 0;
+				ContarUmDesejo(s);
+				return s;
+			}));
+
+		MutacaoDeEsfera(Checa,
+			"set recem-nascido que acorda: a tela de quem esta no planeta RECEBE a estatua e as sete acesas",
+			"so avisa a zona o set que tem pedido gasto pra zerar -- o que este port fez ate 2026-10-09",
+			() => NascerEAcordarNaTela(pl, Erguer) is var x && x.NasceApagado && x.OServidorAcordou && x.ATelaAcendeu,
+			() => AcordarCaladoDeTeste = true,
+			() => AcordarCaladoDeTeste = false);
+
+		MutacaoDeEsfera(Checa,
+			$"o aviso da virada sai UMA vez: um pacote no tique em que o set acorda, nenhum nos {TiquesDepoisDaVirada} seguintes",
+			"o trinco da virada solto antes de cada tique -- o pacote por segundo que o `Pedidos != 0` evitava",
+			() => NascerEAcordarNaTela(pl, Erguer) is var x && x.PacotesNaVirada == 1 && x.PacotesDepois == 0,
+			() => _trincoSolto = true,
+			() => _trincoSolto = false);
+
+		// ------------------------------------------------------------------ EM NAMEK: o Porunga
+		MoveToZone(pl.Id, namek, PontoDeNascimento(namek));
+
+		// O `ErguerOSetEterno` e por onde o Porunga nasce nos tres casos de producao: o primeiro boot de um mundo, a
+		// limpeza total e a restauracao do planeta. O primeiro tique dele corta a espera de nascimento (0,4 ano)
+		// pro teto do zelador (0,1) -- e a espera que a cena atravessa e a que sobra depois do corte.
+		ChecarAVirada(Checa, "Porunga de um mundo novo (`ErguerOSetEterno`)",
+			NascerEAcordarNaTela(pl, () =>
+			{
+				_esferas.RemoveAll(e => e.Set == Esferas.IdDoSetEterno);
+				_sets.RemoveAll(s => s.Eterno);
+				ErguerOSetEterno();
+				return _sets.Find(s => s.Eterno);
+			}));
+
+		// O ZELADOR REFAZ AS SETE do eterno ja acordado porque uma sumiu (`eternal_maintain`, `Dragonballs.dm:408-412`):
+		// o nascimento aqui e do proprio tique de producao, e nao de verbo nenhum.
+		ChecarAVirada(Checa, "Porunga refeito pelo zelador (uma das sete sumiu)",
+			NascerEAcordarNaTela(pl, () =>
+			{
+				if (_sets.Find(x => x.Eterno) is not { } s || _esferas.Find(x => x.Set == s.Id) is not { } sumida)
+					return null;
+				_esferas.Remove(sumida);
+				TickDasEsferas();
+				return s;
+			}));
+	}
+
+	/// <summary>Quantos tiques a cena ainda roda DEPOIS de o set acordar, pra ver se o aviso se repete.</summary>
+	private const int TiquesDepoisDaVirada = 5;
+
+	/// <summary>
+	/// O QUE A TELA DE QUEM ESTA PARADO NO PLANETA RECEBEU, do nascimento de um set ate bem depois de ele acordar --
+	/// lido do fio (<see cref="EscutaDoFioDasEsferas"/>), ao lado do que o servidor responde a quem pergunta.
+	/// </summary>
+	private readonly record struct ViradaNaTela(
+		bool Nasceu, int PacotesAoNascer, int CoisasAoNascer, int ApagadasAoNascer, double Espera,
+		bool DbVerAcordadas, int SinaisNoRadar, int PacotesNaVirada, int PacotesDepois,
+		int CoisasNaTela, int ApagadasNaTela, string EstadosNaTela)
+	{
+		/// <summary>O retrato de nascimento chegou, com a estatua e as sete, todas apagadas.</summary>
+		public bool NasceApagado =>
+			Nasceu && PacotesAoNascer >= 1 && CoisasAoNascer == 1 + Esferas.Total && ApagadasAoNascer == CoisasAoNascer;
+
+		/// <summary>Passada a espera, o servidor responde acordado pelos dois verbos que o jogador tem pra perguntar.</summary>
+		public bool OServidorAcordou => DbVerAcordadas && SinaisNoRadar == Esferas.Total;
+
+		/// <summary>O ultimo retrato que a tela tem mostra a estatua e as sete, nenhuma apagada.</summary>
+		public bool ATelaAcendeu => CoisasNaTela == 1 + Esferas.Total && ApagadasNaTela == 0;
+	}
+
+	/// <summary>
+	/// UM SET NASCE, ATRAVESSA A ESPERA E ACORDA com o testador parado no planeta dele. `nascer` e a porta de
+	/// producao que faz o set nascer (e devolve o set); o resto e o tique de producao e o relogio do mundo.
+	///
+	/// O RELOGIO ANDA, e nao o carimbo do set: mexer no `AtivoEm` seria trocar a regra da espera por outra pra
+	/// medir o aviso dela. Quem chama devolve o relogio (o `finally` da bancada).
+	/// </summary>
+	private ViradaNaTela NascerEAcordarNaTela(ServerPlayer pl, Func<SetDeEsferas?> nascer)
+	{
+		var fio = new List<(int Para, byte[] Fio)>();
+		List<string>? avisosAntes = EscutaDeAvisos;
+		EscutaDoFioDasEsferas = fio;
+		try
+		{
+			if (nascer() is not { } s) return default;
+
+			// O PRIMEIRO SEGUNDO DE VIDA, ainda apagado. No eterno e aqui que o zelador corta a espera.
+			TickDasEsferas();
+			int aoNascer = fio.Count(p => p.Para == pl.Id);
+			List<CoisaNoFio> telaAoNascer = TelaDoSet(fio, pl.Id, s.Id);
+
+			double espera = Math.Max(0, s.AtivoEm - TempoDoMundo);
+			_adiantoDoCeu += espera + 5;
+
+			TickDasEsferas();   // o tique da virada
+			int naVirada = fio.Count(p => p.Para == pl.Id) - aoNascer;
+
+			for (int i = 0; i < TiquesDepoisDaVirada; i++)
+			{
+				if (_trincoSolto) s.VistoAcordado = false;
+				TickDasEsferas();
+			}
+			int depois = fio.Count(p => p.Para == pl.Id) - aoNascer - naVirada;
+			List<CoisaNoFio> tela = TelaDoSet(fio, pl.Id, s.Id);
+
+			// O OUTRO LADO: o que o servidor responde, pelos verbos de producao e nas palavras que o jogador le.
+			// Nenhum dos dois manda `S2C.Esferas` -- a tela de cima ja foi lida, e eles nao a mudariam.
+			EscutaDeAvisos = [];
+			VerAsEsferas(pl);
+			bool dbVer = EscutaDeAvisos.Any(t => t.Contains("ACORDADAS"));
+			EscutaDeAvisos.Clear();
+			UsarORadar(pl);
+			int radar = EscutaDeAvisos.Count(t => t.Contains("estrela"));
+
+			return new ViradaNaTela(true, aoNascer, telaAoNascer.Count, telaAoNascer.Count(c => c.Apagada), espera,
+				dbVer, radar, naVirada, depois, tela.Count, tela.Count(c => c.Apagada), EstadosDasEsferas(tela));
+		}
+		finally
+		{
+			EscutaDoFioDasEsferas = null;
+			EscutaDeAvisos = avisosAntes;
+		}
+	}
+
+	/// <summary>As tres afirmacoes de uma cena da secao 14, com a linha de medida na frente.</summary>
+	private static void ChecarAVirada(ChecagemDeEsfera Checa, string porta, ViradaNaTela m)
+	{
+		string servidor = $"db_ver {(m.DbVerAcordadas ? "ACORDADAS" : "apagadas")}, radar com {m.SinaisNoRadar} sinal(is)";
+		string naTela = $"{m.ApagadasNaTela} de {m.CoisasNaTela} coisas apagadas (esferas: {m.EstadosNaTela})";
+
+		GD.Print($"  [medido] {porta}: nasce com {m.PacotesAoNascer} pacote(s) pra tela, {m.ApagadasAoNascer} de "
+			   + $"{m.CoisasAoNascer} coisas apagadas | espera de {m.Espera / 3600.0:0.00} h | passada a espera o servidor "
+			   + $"responde: {servidor} | pra tela: {m.PacotesNaVirada} pacote(s) no tique da virada, {m.PacotesDepois} nos "
+			   + $"{TiquesDepoisDaVirada} seguintes | a tela ficou com {naTela}");
+
+		Checa($"{porta}: NASCE APAGADO na tela de quem esta no planeta (a estatua e as {Esferas.Total}, lidas do fio)",
+			  m.NasceApagado,
+			  !m.Nasceu ? "o set nao nasceu" : $"{m.PacotesAoNascer} pacote(s), {m.ApagadasAoNascer} de {m.CoisasAoNascer} apagadas");
+		Checa("...e quando a espera vence a tela RECEBE a virada: um pacote, com a estatua e as sete acesas",
+			  m.OServidorAcordou && m.PacotesNaVirada == 1 && m.ATelaAcendeu,
+			  $"o servidor responde: {servidor}; pra tela foram {m.PacotesNaVirada} pacote(s), e ela ficou com {naTela}");
+		Checa($"...e UMA vez: os {TiquesDepoisDaVirada} tiques seguintes nao mandam mais nada",
+			  m.Nasceu && m.PacotesDepois == 0, $"{m.PacotesDepois} pacote(s) a mais");
+	}
+
+	/// <summary>UMA COISA DO `S2C.Esferas` COMO ELA VIAJA: o que a tela usa pra decidir o desenho.</summary>
+	private readonly record struct CoisaNoFio(int Id, Protocol.CoisaDeEsfera Tipo, int Numero, bool Apagada);
+
+	/// <summary>
+	/// LE UM `S2C.Esferas` DO FIO, campo a campo na ordem do leitor do cliente (`GameClient`, ramo `S2C.Esferas`).
+	/// A posicao e a folha sao lidas e largadas: quem decide apagada ou acesa e o bit.
+	/// </summary>
+	private static List<CoisaNoFio> LerOFioDasEsferas(byte[] fio)
+	{
+		var r = new LiteNetLib.Utils.NetDataReader(fio);
+		r.GetByte();   // o opcode
+		int n = r.GetUShort();
+		var coisas = new List<CoisaNoFio>(n);
+		for (int i = 0; i < n; i++)
+		{
+			int id = r.GetInt();
+			var tipo = (Protocol.CoisaDeEsfera)r.GetByte();
+			int numero = r.GetByte();
+			r.GetFloat();
+			r.GetFloat();
+			bool apagada = r.GetBool();
+			r.GetString(16);
+			coisas.Add(new CoisaNoFio(id, tipo, numero, apagada));
+		}
+		return coisas;
+	}
+
+	/// <summary>
+	/// A TELA DE UM JOGADOR, recortada num set: o ULTIMO `S2C.Esferas` que saiu pra ele (o cliente troca a lista
+	/// inteira a cada pacote), so com a estatua e as esferas daquele set -- pelo id de tela `set*10 + n` do
+	/// <see cref="MandarEsferas"/>. Vazia se nao chegou pacote nenhum.
+	/// </summary>
+	private static List<CoisaNoFio> TelaDoSet(List<(int Para, byte[] Fio)> fio, int jogador, int set)
+	{
+		int ultimo = fio.FindLastIndex(p => p.Para == jogador);
+		if (ultimo < 0) return [];
+
+		return [.. LerOFioDasEsferas(fio[ultimo].Fio).Where(c =>
+			(c.Tipo == Protocol.CoisaDeEsfera.Estatua && c.Id == set * 10)
+			|| (c.Tipo == Protocol.CoisaDeEsfera.Esfera && c.Numero >= 1 && c.Numero <= Esferas.Total
+				&& c.Id == set * 10 + c.Numero))];
+	}
+
+	/// <summary>
+	/// O `icon_state` de cada esfera de uma tela, pela MESMA funcao que o cliente chama pra escolher a animacao
+	/// (<see cref="Esferas.EstadoDoSprite"/>, via `EsferaDesenhada.FolhaDe`): "inactive x7" ou "1,2,3,4,5,6,7".
+	/// </summary>
+	private static string EstadosDasEsferas(List<CoisaNoFio> tela) => string.Join(",",
+		tela.Where(c => c.Tipo == Protocol.CoisaDeEsfera.Esfera).OrderBy(c => c.Numero)
+			.Select(c => Esferas.EstadoDoSprite(c.Numero, c.Apagada))
+			.GroupBy(e => e).Select(g => g.Count() > 1 ? $"{g.Key} x{g.Count()}" : g.Key));
 
 	/// <summary>
 	/// O `Mutacao` da `--provateste`, na mesma forma e pelo mesmo motivo: **uma checagem que nunca

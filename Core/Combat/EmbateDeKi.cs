@@ -104,7 +104,10 @@ public static class EmbateDeKi
 	/// <summary>`var/intel = 50` (`BeamClash.dm:145`) -- a inteligencia de quem nao e NPC.</summary>
 	public const double InteligenciaPadrao = 50;
 
-	/// <summary>`BCL_NPC_DETECT 7` -- a que distancia, em tiles, o NPC percebe um feixe vindo.</summary>
+	/// <summary>
+	/// `BCL_NPC_DETECT 7` -- a que distancia, em tiles, o NPC percebe um feixe vindo NA VELOCIDADE DO DM. Quem
+	/// le multiplica pela pressa do raio (`Projetil.AvisoDe`): o que o numero garante e o tempo de aviso.
+	/// </summary>
 	public const double TilesDeFaro = 7;
 
 	/// <summary>`BCL_NPC_BEAM_CD 220` tiques -- o respiro entre contra-feixes de um NPC.</summary>
@@ -129,7 +132,10 @@ public static class EmbateDeKi
 	/// <summary>`BCL_NPC_KI_MIN 0.25` -- fracao minima de Ki pro NPC tentar o contra-feixe.</summary>
 	public const double FracaoDeKiDoContraFeixe = 0.25;
 
-	/// <summary>`BCL_PUSH_STEP 2` -- segundos por tile do empurrao depois da vitoria (0,2 s).</summary>
+	/// <summary>
+	/// `BCL_PUSH_STEP 2` -- segundos por tile do empurrao depois da vitoria (0,2 s) NA VELOCIDADE DO DM. Quem
+	/// escreve no tiro divide pela pressa dos raios (`GameServer.RenovarParaOEmpurrao`).
+	/// </summary>
 	public const double SegundosPorTileDoEmpurrao = 0.2;
 
 	/// <summary>`BCL_PUSH_MAX 30` -- quantos tiles o feixe vencedor empurra antes de voltar ao voo normal.</summary>
@@ -199,9 +205,35 @@ public static class EmbateDeKi
 	/// </summary>
 	public static bool PrazoHerdadoDeTeste;
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): as maos voltam a valer o NUMERADOR da chance de deflexao sobre 100
+	/// (`objects.dm:333`) -- a escala ate 2026-10-08, em que todo raio que feria atraves da guarda tinha de 165 a
+	/// 1900 vezes o poder delas (o teto da vantagem e 6): quem segurava perdia sempre, e "segurar e devolver" so
+	/// existia na bancada.
+	/// </summary>
+	public static bool MaosPelaDeflexaoDeTeste;
+
 	// =====================================================================
 	// O PODER DE CADA LADO
 	// =====================================================================
+	/// <summary>
+	/// O DANO QUE AS MAOS EMPATAM: 20, em vida de membro (o membro cheio tem 100). **NOVO, E O NUMERO E DO DONO**
+	/// (2026-10-08) -- o embate de guarda nao existe no DM, entao nao ha `#define` de onde ele pudesse vir.
+	///
+	/// E a escala do <see cref="PoderDeSegurar"/>: um feixe que faria exatamente isto ATRAVES da guarda de quem
+	/// segura abre a disputa empatada (vantagem 1 x 1); o dobro vale 2 pro feixe, a metade vale 2 pras maos.
+	///
+	/// ============================ ELE CONVERSA COM O CORTE DOS FRACOS ============================
+	/// O embate de guarda so abre depois do corte (<see cref="DanoDeKi.CorteDoFraco"/>, `objects.dm:355-357`; ver o
+	/// passo 3a-bis do `GameServer.Acertar`): o raio mais fraco que chega a disputar faz 10, e por isso a razao da
+	/// disputa nasce em `CorteDoFraco / DanoQueAsMaosEmpatam` -- 0,5 hoje, as maos com o dobro da forca do raio que
+	/// mal fere. Quem mexer num dos dois botoes mexe nessa razao: com o corte ACIMA deste numero, todo embate de
+	/// guarda ja nasceria perdido pra quem enfrenta um atirador que aperta as letras.
+	///
+	/// BOTAO, E NAO CONSTANTE, como o <see cref="DanoDeKi.CorteDoFraco"/>: e balanceamento.
+	/// </summary>
+	public static double DanoQueAsMaosEmpatam = 20;
+
 	/// <summary>
 	/// O PODER DE UM FEIXE -- `BP * mods * basedamage`.
 	///
@@ -236,32 +268,69 @@ public static class EmbateDeKi
 		=> Math.Max(bp, 1) * Math.Max(mods, 1e-6) * Math.Max(baseDano, 1e-6);
 
 	/// <summary>
-	/// O PODER DE SEGURAR UM FEIXE COM AS MAOS. **NOVO** -- o DM so disputa feixe contra feixe.
+	/// O PODER DE SEGURAR UM FEIXE COM AS MAOS. **NOVO** -- o DM so disputa feixe contra feixe, entao a escala
+	/// daqui e deste port: divergencia declarada, decidida pelo dono em 2026-10-08.
 	///
-	/// ============================ O NUMERO NAO E INVENTADO ============================
-	/// Ele e o NUMERADOR da chance de deflexao do proprio DM (`objects.dm:333`, ja portado em
-	/// <see cref="DanoDeKi.ChanceDeDeflexao"/>): `Ekidef * max(expressedBP,1) * max(Ekiskill,
-	/// Etechnique) * max(kidefenseskill/10,1)`, e o DENOMINADOR de la e exatamente
-	/// `BP * mods * basedamage`, que e o <see cref="PoderDoFeixe"/> acima. Quer dizer: o jogo ja
-	/// tinha uma conta que compara um corpo com um tiro de ki -- ela e a razao entre estes dois
-	/// numeros --, e o que este metodo faz e usa-la pra outra pergunta.
+	/// ============================ AS MAOS SE MEDEM PELO DANO ============================
+	/// As maos valem o feixe que faria <see cref="DanoQueAsMaosEmpatam"/> de dano ATRAVES da guarda de quem segura:
+	/// na unidade do <see cref="PoderDoFeixe"/>, `poder deste feixe x DanoQueAsMaosEmpatam / dano que ele faria`.
+	/// A razao da disputa -- o que a <see cref="Vantagem"/> recebe -- fica sendo `dano / DanoQueAsMaosEmpatam`.
 	///
-	/// A DIVISAO POR 100 e a unica coisa a explicar. A razao do DM sai em PORCENTO (`prob(chance)`),
-	/// entao o ponto em que o corpo defletiria o tiro SEMPRE (100%) e o ponto em que as duas forcas
-	/// se anulam -- e e ali que a disputa tem que comecar empatada. Sem esta normalizacao as maos
-	/// nasceriam cem vezes mais fracas que qualquer feixe e o embate de guarda seria decorativo.
+	/// O DANO E O DA CADEIA DE KI DE SEMPRE (<see cref="DanoDeKi.Final"/>, `objects.dm:315-344`, com a guarda que o
+	/// corpo tem na hora), pela MESMA chamada que o `GameServer.Acertar` faz um passo antes pra perguntar se o
+	/// impacto e golpe (o corte dos fracos, `objects.dm:355-357`). Um numero so responde "isto fere?" e "quanto as
+	/// maos aguentam?", e nada da cadeia e escrito duas vezes: armadura, pericia de defesa, resistencia, o gap de
+	/// poder e o `maxdamage` da tecnica entram por onde ja entravam -- quem mexer na cadeia leva o embate junto.
 	///
-	/// A GUARDA DOBRA, como no DM (`if(M.blocking) deflectchance *= 2`, `objects.dm:341`) -- e por
-	/// isso quem SOLTA a guarda no meio perde forca na hora, que e o que faz "sair do embate" ter
-	/// preco tambem deste lado.
-	/// ==================================================================================
+	/// A GUARDA ENTRA PELO DANO (`dmg /= 2 * log_4(...)`, `objects.dm:342-344`). Quem a abaixa no meio nem chega a
+	/// perder forca: o lado das maos cai inteiro (`GameServer.LadoOk`), que e o "sair e perder" de sempre.
+	///
+	/// E O PODER E O DE AGORA, DOS DOIS LADOS: o servidor rele esta conta a cada tique
+	/// (`GameServer.LerOPoderDeAgora`), com o `Bp` do feixe relido do dono e o `expressedBP` de quem segura. Quem
+	/// se transforma segurando vira a disputa, como vira quem se transforma atirando.
+	///
+	/// ============================ O QUE ELA ERA, E POR QUE SAIU ============================
+	/// Ate 2026-10-08 as maos valiam o NUMERADOR da chance de deflexao do DM (`objects.dm:333`) dividido por 100: o
+	/// empate ficava no feixe que o corpo defletiria sempre. So que `chance% x dano` e uma constante do corpo que
+	/// apanha (6 numa ficha nova, ~1 numa treinada -- a conta esta no <see cref="DanoDeKi.CorteDoFraco"/>), entao
+	/// aquele empate era um raio de 0,06 de dano, e o embate so abre com dano >= 10. MEDIDO: no corte o feixe tinha
+	/// 165 vezes o poder das maos de uma ficha nova, ~900 de uma treinada, 1900 com armadura de ki -- contra um teto
+	/// de vantagem de 6. Quem segurava perdia SEMPRE, em 0,9 s (4,2 s se o atirador nao apertasse nada), e "segurar e
+	/// devolver" so acontecia na bancada, num par que nao existe em jogo. Trocar so o divisor nao servia: o que
+	/// empatava a ficha nova no corte deixava a treinada cinco vezes e meia atras. O dano serve pras duas.
+	/// (O defeito injetado <see cref="MaosPelaDeflexaoDeTeste"/> e essa escala, lida da `DanoDeKi.ChanceDeDeflexao`.)
+	///
+	/// ============================ O QUE A ESCALA DA, MEDIDO (familia 13 da `--embatekiteste`) ============================
+	/// Com 20, entre dois iguais, quem segura e acerta toda letra:
+	///   * contra um atirador que tambem aperta (ou um NPC): VENCE e devolve ate 18 de dano por batida, EMPATA em 20
+	///     (o prazo estoura nos dois) e PERDE de 22 pra cima -- em 12 s com 25, em 3,6 s com 40;
+	///   * contra um atirador que nao aperta: vence ate 35, empata em 40, perde de 45 pra cima;
+	///   * do teto da vantagem em diante (120) e engolido em 0,9 s, ou 4,2 s se o atirador nao apertar.
+	/// O raio que mal fere (10, o do corte) e segurado e devolvido em 2,7 a 3,6 s. Cada numero cai das constantes do
+	/// `BeamClash.dm` e do prazo; a bancada imprime a tabela inteira e so afirma a escala, as pontas e a forma.
+	///
+	/// O MEDIDOR NAO E O UNICO RELOGIO. Os dois pagam a disputa (<see cref="KiPorCiclo"/>), mas quem atira paga
+	/// TAMBEM o aluguel do raio (`GameServer.Canalizar`), e sem Ki o lado cai (`GameServer.LadoOk`, o `side_ok` do
+	/// DM). A tabela acima e a do raio mais barato; com o custo do Kamehameha nos degraus de 10, 20 e 30 vezes
+	/// (`Kamehameha.dm:47-77`), num corpo de 100 de Ki e sem eficiencia treinada, o tanque de quem atira paga 1,9 s,
+	/// 0,9 s e 0,5 s de disputa -- e quem segura vence ali, qualquer que seja o medidor. Tambem medido na familia 13.
+	/// ====================================================================================================================
 	/// </summary>
-	public static double PoderDeSegurar(Fighter f, bool bloqueando)
+	public static double PoderDeSegurar(Projetil feixe, CombatState quemSegura)
 	{
-		double cima = f.Ekidef * Math.Max(f.expressedBP, 1) * Math.Max(f.Ekiskill, f.Etechnique)
-					* Math.Max(f.kidefenseskill / 10, 1);
-		if (bloqueando) cima *= 2;
-		return Math.Max(cima / 100, 1e-6);
+		double doFeixe = feixe.PoderDeEmbate();
+		double mods = feixe.ModsAgora();
+
+		if (MaosPelaDeflexaoDeTeste)
+		{
+			double chance = DanoDeKi.ChanceDeDeflexao(quemSegura.F, feixe.Bp, mods, feixe.BaseDano,
+													  quemSegura.Bloqueando, feixe.Fisico);
+			return Math.Max(doFeixe * chance / 100, 1e-6);
+		}
+
+		double dano = DanoDeKi.Final(mods, feixe.BaseDano, feixe.MaxDano, feixe.Bp, quemSegura,
+									 quemSegura.Bloqueando, feixe.Fisico);
+		return doFeixe * DanoQueAsMaosEmpatam / Math.Max(dano, 1e-9);
 	}
 
 	/// <summary>

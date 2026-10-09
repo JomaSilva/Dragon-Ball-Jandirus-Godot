@@ -85,6 +85,17 @@ public partial class GameServer
 			return true;
 		}
 
+		// ---- 1c. UM BLOCO ERGUIDO NA CELULA? ----
+		// A parede e a porta fechada que um jogador ergueu (`GameServer.Blocos.cs`). Antes do turf pelo
+		// mesmo motivo da obra e da nave: o bloco OCUPA a celula, e perguntar do chao antes derrubaria o
+		// cenario debaixo dele pela resistencia do MAPA (20) em vez da dele.
+		if (BlocoQueBarra(a.Zone, cx, cy) is { } bloco)
+		{
+			Baque(a, nivel);
+			SocarBloco(a, bloco, bp);
+			return true;
+		}
+
 		// ---- 2. UM TILE DENSO? ----
 		ZoneCollision? mapa = MapaDaZonaOuCatalogo(a.Zone);
 
@@ -268,15 +279,64 @@ public partial class GameServer
 		AplicarColisaoDasObras(zona);
 		MandarObras(zona);
 
-		// A POEIRA SAI NO LUGAR DELA. O pacote de cenario e o unico canal de "caiu alguma coisa
-		// aqui" que o cliente ja sabe desenhar; a celula nao tem tile (o conversor tirou a obra do
-		// tilemap), entao apagar nao apaga nada e o efeito e o que sobra.
+		// A CELULA DELA CAI JUNTO, e nas duas pontas -- ver `ACelulaDaObraCaiu`.
 		(int cx, int cy) = CatalogoDeObras.Celula(o.X, o.Y);
-		MandarCelulaCaida(zona, cx, cy);
+		ACelulaDaObraCaiu(zona, cx, cy);
 
 		GD.Print($"[server] {nome} (#{o.Id}) foi ao chao em {o.Zona}"
 				 + (autor != null ? $" -- {autor.Name} com {dano:0} de forca" : ""));
 		if (autor != null) Avisar(autor, $"{nome} vem abaixo.");
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): a obra cai e o servidor so AVISA que a celula caiu -- nao a anota nem a abre.
+	/// E o mundo de antes do conserto, no mesmo binario: a macieira derrubada deixa a celula barrando.
+	/// Falso em jogo, sempre.
+	/// </summary>
+	public static bool ObraCaidaSoAvisaDeTeste;
+
+	/// <summary>
+	/// ============================ A OBRA CAIU: A CELULA DELA CAI COM ELA, NAS DUAS PONTAS ============================
+	/// A queixa do dono (2026-10-09): a macieira destruida deixava *"um bloco de terra q tem colisao ai vc tem q
+	/// quebrar esse bloco de terra tb"*, e ele pediu que ela quebrasse *"como todos os outros objetos do jogo (o chao
+	/// em baixo fica terra e nao cria um objeto com o icone da terra q tem fisica)"*.
+	///
+	/// O "bloco de terra" era a propria celula. A mobilia que o MAPA traz (medido nos `.objetos`: 23 macieiras, 18
+	/// bancos, 10 bancadas de pesquisa) barra por DOIS caminhos: a camada das obras (`AplicarColisaoDasObras`), que
+	/// sai com ela, e o bit do `.col`, que o conversor assa de proposito (`MapConverter`: "A COLISAO CONTINUA NO
+	/// `.col`, como a da porta"). Daqui so saia o AVISO (`MandarCelulaCaida`): o cliente soltava a poeira, pintava
+	/// terra batida e abria a celula na copia DELE, e o servidor seguia com a parede do arquivo. O corpo levava
+	/// correcao em cima de um chao de terra, e so passava depois que outro soco derrubasse a "parede" pelo caminho
+	/// do turf (`SocarCenario`, passo 2) -- o segundo bloco que o dono tinha de quebrar. Quem chegava depois nem a
+	/// terra via: a celula nao entrava no retrato (`MandarCenario`), e sobrava uma parede sem desenho.
+	///
+	/// A macieira e so a que se ve: fica ao ar livre e todo mundo passa por ela. Banco e bancada tinham o mesmo
+	/// defeito, e a obra erguida por jogador tinha a metade dele (a terra batida que so quem viu a queda enxergava).
+	///
+	/// AGORA A CELULA ENTRA NO ESTRAGO DA ZONA, como entra a parede que cai: anotada no `_cenarioCaido` (o retrato
+	/// de quem chega, o `Restaurar` do admin) e aberta no mapa do servidor. E um caminho PROPRIO, e nao o
+	/// `DerrubarCelula`, porque as recusas de la guardam CENARIO (o `destroyable = 0`, a barreira do Outro Mundo) e
+	/// isto nao e cenario: e a pegada da propria obra, que acabou de sair.
+	///
+	/// DIVERGENCIA DECLARADA (ja era do port, e o dono a descreve como o certo): no DM o `obj` destruido some e o
+	/// turf debaixo fica o que era -- `obj/proc/testDestroy` chama `deleteMe(src)` e so (`barrier.dm:41-49`), e a
+	/// arvore nem poeira levanta (`obj/Trees`: `fragile=1`, `createDust=0`, `Plants.dm:15-20`). Aqui o chao debaixo
+	/// vira terra batida, o mesmo `Ground8` da parede que cai.
+	/// ====================================================================================================================
+	/// </summary>
+	private void ACelulaDaObraCaiu(ZoneKey zona, int cx, int cy)
+	{
+		if (!ObraCaidaSoAvisaDeTeste)
+		{
+			if (!_cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? caidas))
+				_cenarioCaido[zona.Name] = caidas = [];
+			caidas.Add((cx, cy));
+			AbrirACelulaCaida(zona, cx, cy);
+		}
+
+		// A POEIRA SAI NO LUGAR DELA: o pacote de cenario e o canal de "caiu alguma coisa aqui" que o cliente ja
+		// sabe desenhar (poeira, faisca, terra batida) -- ver `World.AplicarEstrago`.
+		MandarCelulaCaida(zona, cx, cy);
 	}
 
 	/// <summary>

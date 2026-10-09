@@ -412,7 +412,7 @@ public sealed partial class GameServer
 			_proximoRaio[hash] = agora + Sortear(EsperaDeRaioMin, EsperaDeRaioMax) * aperto;
 
 			// perto de ALGUÉM da zona, e não do mesmo alguém sempre
-			ServerPlayer perto = zona[_sorteioDoRaio.Next(zona.Count)];
+			if (SortearQuemPuxaORaio(zona, ceu.Tipo) is not { } perto) continue;
 			double ang = _sorteioDoRaio.NextDouble() * Math.PI * 2;
 			double dist = Sortear(RaioPertoMin, RaioPertoMax);
 			var onde = new Vec2(
@@ -425,6 +425,41 @@ public sealed partial class GameServer
 			foreach (ServerPlayer o in zona)
 				o.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 		}
+	}
+
+	/// <summary>
+	/// PERTO DE QUEM O RAIO CAI. Nulo = ninguem desta zona puxa raio agora, e a descarga nao acontece.
+	///
+	/// ============================ QUEM ESTA SOB TETO NAO PUXA RAIO ============================
+	/// No DM a descarga da tempestade sai do `doWeatherEffects()` de cada mob
+	/// (`Weather.dm:243-254`), que le o clima da AREA DO MOB -- e a area interna nao tem clima
+	/// nenhum (`Weather.dm:76-80`). Dentro de casa ninguem sorteia raio; se a zona inteira esta
+	/// abrigada, nao cai raio nela.
+	///
+	/// ONDE ele cai continua livre, como la: o DM poe a descarga num atomo qualquer do `oview()` de
+	/// quem a puxou, e o `oview()` de quem esta na rua alcanca o telhado do vizinho.
+	///
+	/// A DESTRUICAO DO PLANETA E A EXCECAO (ver `CelulaInterna.TiraOClima`): o laco dela roda pra
+	/// toda area do planeta, a interna inclusive (`Area_Death.dm:81-98`).
+	///
+	/// DUAS PASSADAS E NENHUMA LISTA: conta quem esta ao ar livre, sorteia um indice, anda ate ele.
+	/// Isto roda uma vez por descarga (de 3 em 3 s no minimo), entao o que importa e nao alocar.
+	/// ==========================================================================================
+	/// </summary>
+	private ServerPlayer? SortearQuemPuxaORaio(List<ServerPlayer> zona, TipoDeClima tipo)
+	{
+		if (zona.Count == 0) return null;
+		if (!CelulaInterna.TiraOClima(tipo)) return zona[_sorteioDoRaio.Next(zona.Count)];
+
+		int aoArLivre = 0;
+		foreach (ServerPlayer p in zona)
+			if (!SobTeto(p)) aoArLivre++;
+		if (aoArLivre == 0) return null;
+
+		int k = _sorteioDoRaio.Next(aoArLivre);
+		foreach (ServerPlayer p in zona)
+			if (!SobTeto(p) && k-- == 0) return p;
+		return null;
 	}
 
 	private double Sortear(double a, double b) => a + _sorteioDoRaio.NextDouble() * (b - a);

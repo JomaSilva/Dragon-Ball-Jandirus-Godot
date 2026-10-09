@@ -14,9 +14,10 @@ namespace Jandirus.Client;
 /// ate ela. Se o servidor calar, ele para -- que e a leitura honesta de "perdi o pacote".
 ///
 /// A INTERPOLACAO E DE DESENHO, NAO DE VERDADE: ela existe porque 30 Hz de posicao num objeto que
-/// anda a 320 px/s da saltos de 10 px, e o olho pega. O ponto que ACERTA e sempre o do servidor;
-/// este node pode estar meio quadro atras dele, e e por isso que a explosao vem no pacote de morte
-/// (com a posicao certa) em vez de sair daqui quando o desenho "chega".
+/// anda a 640 px/s da saltos de 21 px, e o olho pega. O ponto que ACERTA e sempre o do servidor: o
+/// LUGAR da explosao vem no pacote de morte, e nunca de onde este node estiver. So o INSTANTE dela
+/// espera o desenho -- este node anda atras do servidor, e o que o servidor anuncia de um tiro so
+/// aparece quando o desenho chega la (ver <see cref="AnuncioSemEsperaDeTeste"/>).
 /// ====================================================================================
 ///
 /// ============================ O DESENHO E SHADER, E NAO MAIS A FOLHA DO BYOND ============================
@@ -61,6 +62,111 @@ public partial class ProjetilDesenhado : Node2D
 	/// </summary>
 	private const float Suavizacao = 22f;
 
+	// =====================================================================
+	// O DESENHO ANDA ATRAS -- e o que o servidor ANUNCIA espera por ele (2026-10-08)
+	// =====================================================================
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): o que o servidor anuncia de um tiro aparece na CHEGADA do pacote, sem
+	/// esperar o desenho -- o sulco nasce a frente da ponta do raio e a bola some antes do ponto em que
+	/// estoura. E o jogo de antes de 2026-10-08. Sempre falso em jogo.
+	///
+	/// ============================ A RAIZ E UMA SO ============================
+	/// O `Lerp` do `_Process` deixa a cabeca desenhada um TEMPO atras da do servidor, e esse tempo nao
+	/// depende da velocidade do tiro -- a DISTANCIA e que cresce com ela. Quando os tiros ficaram mais
+	/// rapidos (o bloco "A VELOCIDADE" de `Core.Combat.Projetil`), o atraso em pixel passou de 5 pra 23
+	/// na bola comum e de 14 pra 29 no raio comum, quase um tile, e dois anuncios do canal confiavel
+	/// passaram a chegar VISIVELMENTE antes de o desenho chegar la:
+	///
+	///   * a MARCA NO CHAO (`Protocol.Decal.Sulco`), carimbada debaixo da cabeca de verdade
+	///     (`GameServer.MarcarSulcoDoTiro`): aparecia a frente da ponta enquanto o raio esticava;
+	///   * a MORTE, que traz o ponto de verdade em que o tiro acabou. E o tiro morto nem viaja no
+	///     snapshot do tique em que morre (`GameServer.TirosDaZona`), entao o ultimo alvo deste node
+	///     ainda e o do tique ANTERIOR: a bola sumia quase um tile antes de onde o estouro aparecia.
+	///
+	/// A REGRA: o anuncio espera o desenho chegar la. A marca fica na fila do `World` enquanto estiver
+	/// no vao entre as duas cabecas (<see cref="AindaNaoChegouEm"/>); a bola voa o ultimo trecho ate o
+	/// ponto da morte, e so entao o `World` a recolhe e solta o estouro (<see cref="VoarAteOFim"/>).
+	///
+	/// ============================ O QUE NAO SE FEZ, E POR QUE ============================
+	/// EXTRAPOLAR (andar a frente do ultimo pacote) fecharia o vao e quebraria a promessa do cabecalho:
+	/// a cabeca do raio entraria no corpo de quem ela acerta. SUBIR a <see cref="Suavizacao"/> encurta o
+	/// atraso e devolve o serrilhado dos 30 Hz que ela existe pra tirar. E um RELOGIO ("espere
+	/// 1 / Suavizacao") erraria pros dois lados: o atraso de verdade muda com a taxa de quadros (a conta
+	/// do `Lerp` atras de um alvo de 30 Hz da 35 ms a 60 quadros por segundo, uns 52 a 144 e 12 a 30), e
+	/// a cabeca que LEVA alguem e desenhada ainda mais atras, na linha do tempo do corpo (a ancora do
+	/// `_Process`).
+	/// Quem sabe onde o desenho esta e o desenho -- entao a pergunta e feita a ele.
+	/// ====================================================================================
+	/// </summary>
+	public static bool AnuncioSemEsperaDeTeste;
+
+	/// <summary>Menos que isto nao se ve: e a folga de "chegou", em px.</summary>
+	private const float MeioPixel = 0.5f;
+
+	/// <summary>
+	/// De lado do eixo, ate onde um ponto ainda e "do caminho deste raio", em px: um quarto de tile. As
+	/// marcas do proprio raio nascem EM CIMA do eixo (`GameServer.CarimbarSulco` as interpola sobre a
+	/// reta que a cabeca andou); a folga e pro rumo, que aqui sai da subtracao de dois pontos do fio.
+	/// </summary>
+	private const float FaixaDoCaminho = ZoneCollision.TileSize / 4f;
+
+	/// <summary>
+	/// A CABECA DESENHADA AINDA NAO CHEGOU NESTE PONTO DO CAMINHO, e a do servidor ja passou por ele?
+	/// E a pergunta que a marca no chao faz antes de nascer (`World.TickDosSulcosEsperando`): verdadeiro
+	/// quer dizer "voce esta no vao entre o que o servidor ja fez e o que a tela ja mostrou -- espere".
+	///
+	/// SO O RAIO RENTE AO CHAO responde sim: e so ele que risca o chao (`GameServer.RastroDoTiroVale`).
+	/// E SO COM A CABECA DO SERVIDOR JA ADIANTE DO PONTO: uma marca a frente dela nao e deste raio (e o
+	/// rastro de um corpo arremessado, ou a de um tique cujo snapshot se perdeu), e segura-la aqui
+	/// atrasaria o que nao esta esperando ninguem.
+	///
+	/// O `World` roda ANTES deste node no quadro, entao a cabeca lida aqui e a do quadro que JA FOI
+	/// desenhado: a marca nasce no quadro seguinte ao da passagem, e nunca no anterior.
+	/// </summary>
+	public bool AindaNaoChegouEm(Vector2 ponto)
+	{
+		if (Tipo != TipoDeProjetil.Beam || Altitude > 0f || !_temRumo) return false;
+
+		Vector2 doServidor = ponto - _cabecaAlvo;
+		if (doServidor.Dot(_rumo) > MeioPixel || Mathf.Abs(doServidor.Cross(_rumo)) > FaixaDoCaminho) return false;
+		return (ponto - _cabeca).Dot(_rumo) > MeioPixel;
+	}
+
+	/// <summary>O ponto em que o servidor disse que este tiro acabou (nulo = ele ainda voa). Ver <see cref="VoarAteOFim"/>.</summary>
+	private Vector2? _fim;
+
+	/// <summary>A que velocidade o ultimo trecho e voado, em px/s: a que o fecha em 1 / <see cref="Suavizacao"/> segundos.</summary>
+	private float _passoDoFim;
+
+	/// <summary>
+	/// O SERVIDOR DISSE ONDE ESTE TIRO ACABOU: ele voa em linha reta ate la e para. O `World` pergunta
+	/// <see cref="ChegouAoFim"/> a cada quadro, e so entao recolhe o node e solta o efeito da morte.
+	///
+	/// ============================ EM LINHA RETA, E EM 1 / Suavizacao ============================
+	/// O ponto da morte nao e mais um alvo de snapshot: e o FIM. Entregue ao `Lerp`, ele nunca seria
+	/// alcancado -- o `Lerp` fecha uma FRACAO do que falta por quadro, e a bola frearia em cima do alvo
+	/// sem encostar. Entao o trecho e andado em velocidade constante, a que o fecha em 1 / Suavizacao
+	/// segundos: e o atraso com que o `Lerp` segue um alvo que anda, ou seja e quando a bola chegaria la
+	/// se nada tivesse acontecido. O primeiro passo sai do tamanho do que o `Lerp` daria neste quadro
+	/// (a mesma fracao do mesmo vao), entao a bola nao da tranco: ela so continua.
+	///
+	/// NAO E EXTRAPOLACAO: o ponto veio do servidor, e o node para NELE.
+	///
+	/// MENOS DE MEIO PIXEL NAO E TRECHO. E o caso de tudo que morre parado (a mina, a Death Ball ainda
+	/// sobre a cabeca): ele ja chegou, e o `World` o recolhe no mesmo quadro, como sempre fez.
+	/// ==========================================================================================
+	/// </summary>
+	public void VoarAteOFim(Vector2 fim)
+	{
+		float falta = _cabeca.DistanceTo(fim);
+		if (falta <= MeioPixel) _cabeca = fim;
+		_passoDoFim = falta * Suavizacao;
+		_fim = fim;
+	}
+
+	/// <summary>Este tiro ja esta desenhado no ponto em que acabou? Falso enquanto o servidor nao disser que ele acabou.</summary>
+	public bool ChegouAoFim => _fim is { } fim && _cabeca == fim;
+
 	/// <summary>
 	/// Meio tile: a distancia do centro de um corpo ate a frente dele. O raio nasce ali -- a cauda que o
 	/// servidor manda e a BOCA, um tile a frente do corpo (`BocaDeCano.De`), e a mao fica no meio do
@@ -87,6 +193,26 @@ public partial class ProjetilDesenhado : Node2D
 	/// ser um muro e o Ki Wave um fio. Ver `Core.Combat.Projetil.EscalaVisual`.
 	/// </summary>
 	public float Escala = 1f;
+
+	/// <summary>
+	/// A ESCALA QUE O SERVIDOR MANDOU NO ULTIMO SNAPSHOT (0 = a de nascenca; ver `ProjetilState.Escala`).
+	///
+	/// O RAIO ENGROSSA QUANDO QUEM O SEGURA SOBE DE PODER (dono, 2026-10-08: *"o beam vai ficar maior
+	/// proporcionalmente com esse crescimento"* -- `Core.Combat.Projetil.CrescerComOPoder`). Quem decide o
+	/// tamanho e o servidor, que ja encosta e disputa por ele; aqui o desenho ANDA ate la em vez de pular (ver
+	/// <see cref="Reescalar"/>): o byte chega em degraus de 1/20, a 30 Hz, e escrito cru o feixe cresceria aos
+	/// solavancos.
+	/// </summary>
+	public float EscalaDoServidor;
+
+	/// <summary>A escala do `Nasceu`: pra onde o desenho volta quando o servidor para de mandar outra.</summary>
+	private float _escalaDeNascenca = 1f;
+
+	/// <summary>
+	/// A QUE PASSO O TAMANHO DESENHADO ALCANCA O DO SERVIDOR, em tamanhos de nascenca por segundo. O dobro da
+	/// rampa de la (`Projetil.CrescimentoPorSegundo`): acompanha sem ficar pra tras, e so alisa os degraus.
+	/// </summary>
+	private const float PassoDaEscala = 2f * (float)Projetil.CrescimentoPorSegundo;
 
 	/// <summary>
 	/// A QUE ALTURA ELE VOA, em pixels de MUNDO -- a do dono no instante do disparo, vinda no pacote
@@ -239,6 +365,42 @@ public partial class ProjetilDesenhado : Node2D
 	public static Func<int, Vector2?>? OndeEstaOCorpo;
 
 	/// <summary>
+	/// ESTE RAIO E A CONTINUACAO DE OUTRO (0 = nao e): o id do raio que o alimenta -- ver `ProjetilState.Dobra`.
+	/// E o trecho que sai de um raio DESVIADO pelo parry, enquanto o desvio dura.
+	///
+	/// ============================ DOIS OBJETOS NO SERVIDOR, UM RAIO NA TELA (dono, 2026-10-08) ============================
+	/// *"o deflect ele deveria ao bater no jogador e o jogador dar o deflect o beam dar curva pro lado e nao
+	/// criar um novo beam atras do jogador"*. Desenhado sozinho, este trecho tem ponta de tras propria -- e o
+	/// que se via era exatamente um segundo feixe. Entao, enquanto ele continua outro, ele NAO se desenha:
+	/// apresenta-se ao pai a cada quadro (<see cref="_Process"/>), e e o PAI que pinta a fita inteira, da mao
+	/// de quem atirou ate a ponta DESTE trecho, fazendo a curva na dobra (<see cref="DesenharDobrado"/>).
+	///
+	/// QUEM PINTA E O PAI de proposito: o material e o relogio sao dele, e o raio que vinha vindo nao muda de
+	/// desenho no quadro em que e desviado -- a fita so passa a continuar pra outro lado.
+	///
+	/// Acabou o desvio (o servidor zera o campo), cada um volta a se desenhar: o pai como um raio comum, este
+	/// como um raio solto que vai embora.
+	/// ====================================================================================================================
+	/// </summary>
+	public int ContinuaDe;
+
+	/// <summary>O NO DE UM TIRO, por id -- quem responde e o `World`. E por ele que o trecho desviado acha o pai.</summary>
+	public static Func<int, ProjetilDesenhado?>? OndeEstaOTiro;
+
+	/// <summary>O trecho desviado que me continua, e o quadro em que ele se apresentou pela ultima vez.</summary>
+	private ProjetilDesenhado? _ramo;
+	private long _ramoNoQuadro = -10;
+
+	/// <summary>O quadro em que eu me apresentei a um pai -- enquanto for o de agora, quem me pinta e ele.</summary>
+	private long _paiNoQuadro = -10;
+
+	/// <summary>
+	/// O quadro ainda e o de uma apresentacao? Com um de folga: o `_Process` de um e o `_Draw` do outro caem no
+	/// mesmo quadro, mas a ordem entre irmaos nao e contrato -- e um quadro de fita emendada a mais nao se ve.
+	/// </summary>
+	private static bool Agora(long quadro) => (long)Engine.GetProcessFrames() - quadro <= 1;
+
+	/// <summary>
 	/// SEM LUZ -- a previa da mesa de tecnicas. Um tiro desenhado dentro de um painel de interface nao
 	/// ilumina cenario nenhum, e pendurar uma `PointLight2D` ali gastaria uma vaga do teto de luzes de ki
 	/// (`Settings.LuzesDeKi`) pra clarear um retangulo cinza. Falso em jogo, sempre.
@@ -274,9 +436,25 @@ public partial class ProjetilDesenhado : Node2D
 		/// quatro eixos o feixe sai torto -- e em CURVA, porque a saida continua apontando pro rumo de verdade.
 		/// </summary>
 		SemGirar,
+
+		/// <summary>
+		/// A CABECA E PINTADA ADIANTE DA PONTA QUE O NODE ANUNCIA (<see cref="PontaDesenhada"/>), por
+		/// <see cref="PixelsDaPontaAdiante"/> px: o shader recebe um comprimento maior que o da fita. Nenhuma
+		/// leitura de CAMPO ve isto -- a ponta anunciada nao sai do lugar, e duas pontas numa disputa continuam
+		/// "no mesmo ponto" com uma cabeca desenhada dentro da outra. Quem tem que reprovar e a foto
+		/// (`--diagembateki`, as pontas no pixel).
+		/// </summary>
+		PontaAdiante,
 	}
 
 	public static DefeitoDoFeixe DefeitoDeTeste = DefeitoDoFeixe.Nenhum;
+
+	/// <summary>
+	/// Quanto a cabeca passa da ponta anunciada no <see cref="DefeitoDoFeixe.PontaAdiante"/>, em px. Cabe na
+	/// fita de qualquer raio: ela sobra `PintorDeKi.FolgaNaPonta` alem da ponta, que nunca e menos de 9 px
+	/// (o halo tem 7 de piso, e ha 2 de sobra).
+	/// </summary>
+	public const float PixelsDaPontaAdiante = 8f;
 
 	/// <summary>
 	/// BANCADA: o instante que TODO tiro escreve no shader, em vez da propria idade (nulo = a idade, que e
@@ -361,6 +539,7 @@ public partial class ProjetilDesenhado : Node2D
 	{
 		Arte = arte;
 		Escala = escala > 0 ? escala : 1f;
+		_escalaDeNascenca = Escala;
 
 		if (Tipo == TipoDeProjetil.Beam)
 		{
@@ -374,6 +553,21 @@ public partial class ProjetilDesenhado : Node2D
 			_raioDaBola = _estiloDaBola.Raio * Escala;
 			Material = PintorDeKi.MaterialDeBola(_estiloDaBola, _raioDaBola, Cor);
 		}
+	}
+
+	/// <summary>
+	/// O RAIO MUDA DE TAMANHO VIVO. Refaz as MEDIDAS -- que o desenho, a ancora de quem ele leva, a dobra e o
+	/// estouro leem a cada quadro -- e escreve no material o que depende delas. O material, a semente do ruido e
+	/// as cores sao os mesmos: o raio cresce, nao troca de desenho (`PintorDeKi.EscalarFeixe`).
+	///
+	/// A LUZ DO CHAO FICA A DE NASCENCA: ela e montada uma vez (`LuzDeKi.Nova`), ja com um alcance que passa do
+	/// raio mesmo no teto do crescimento, e de dia nem existe.
+	/// </summary>
+	private void Reescalar(float nova)
+	{
+		Escala = nova;
+		_medidas = PintorDeKi.Medir(Arte, Escala);
+		if (Material is ShaderMaterial m) PintorDeKi.EscalarFeixe(m, _estiloDoFeixe, _medidas);
 	}
 
 	/// <summary>O servidor falou: e para AQUI que o tiro esta indo.</summary>
@@ -510,8 +704,19 @@ public partial class ProjetilDesenhado : Node2D
 	public override void _Process(double delta)
 	{
 		_idade += delta;
+
+		// O RAIO QUE ENGROSSOU (ou murchou de volta) NO SERVIDOR: o desenho anda ate o tamanho de la. Ver
+		// `EscalaDoServidor`. Antes de tudo, porque a ancora e o desenho deste quadro ja leem as medidas novas.
+		if (Tipo == TipoDeProjetil.Beam)
+		{
+			float alvo = EscalaDoServidor > 0f ? EscalaDoServidor : _escalaDeNascenca;
+			if (!Mathf.IsEqualApprox(Escala, alvo))
+				Reescalar(Mathf.MoveToward(Escala, alvo, PassoDaEscala * _escalaDeNascenca * (float)delta));
+		}
+
 		float t = Mathf.Min(1f, (float)delta * Suavizacao);
-		_cabeca = _cabeca.Lerp(_cabecaAlvo, t);
+		// O ULTIMO TRECHO E RETO E TEM FIM -- ver `VoarAteOFim`. Fora dele, o `Lerp` de sempre.
+		_cabeca = _fim is { } fim ? _cabeca.MoveToward(fim, _passoDoFim * (float)delta) : _cabeca.Lerp(_cabecaAlvo, t);
 		_cauda = _cauda.Lerp(_caudaAlvo, t);
 
 		// A POSICAO DO NODE E A CABECA, e o desenho e em coordenadas locais: assim o Y-sort do
@@ -529,6 +734,18 @@ public partial class ProjetilDesenhado : Node2D
 
 		Position = _cabeca;
 		_luzDoTronco?.Esticar(_cabeca, _cauda, SubidaNaTela);
+
+		// O TRECHO DESVIADO SE APRESENTA AO PAI, a cada quadro -- ver `ContinuaDe`. Sem rumo ainda (o primeiro
+		// pacote: cabeca e cauda no mesmo ponto) nao ha pra onde continuar, e o pai segue se desenhando sozinho.
+		if (ContinuaDe != 0 && Tipo == TipoDeProjetil.Beam && _temRumo
+			&& OndeEstaOTiro?.Invoke(ContinuaDe) is { Tipo: TipoDeProjetil.Beam, _temRumo: true, Vestido: true } pai
+			&& pai != this)
+		{
+			long quadro = (long)Engine.GetProcessFrames();
+			pai._ramo = this;
+			pai._ramoNoQuadro = quadro;
+			_paiNoQuadro = quadro;
+		}
 
 		// OS DOIS ESTADOS ANDAM, NAO PULAM. Chegam do fio como bit (solto) e como velocidade medida a 30 Hz;
 		// escritos crus no shader, a boca do raio sumiria num quadro e o rastro da bola piscaria.
@@ -564,6 +781,14 @@ public partial class ProjetilDesenhado : Node2D
 	private void DesenharRaio(ShaderMaterial mat)
 	{
 		if (!_temRumo) return;
+
+		// O RAIO DESVIADO E UMA FITA SO, e quem a pinta e o pai -- ver `ContinuaDe`.
+		if (Agora(_paiNoQuadro) && !SemDobraDeTeste) return;
+		if (_ramo is { } ramo && Agora(_ramoNoQuadro) && IsInstanceValid(ramo) && !SemDobraDeTeste)
+		{
+			DesenharDobrado(mat, ramo);
+			return;
+		}
 
 		Vector2 ponta = _rumo * _medidas.Frente;
 		(Vector2 mao, Vector2 saida) = AMao(_cauda - _cabeca);
@@ -604,6 +829,9 @@ public partial class ProjetilDesenhado : Node2D
 			comprimento = PintorDeKi.FitaCurva(this, degraus, DegrausDaCurva + 1, meia, naMao, naPonta);
 		else
 			PintorDeKi.FitaReta(this, mao, ponta, meia, naMao, naPonta);
+
+		// CONTRAPROVA: a fita e a de sempre, e o shader pinta a cabeca adiante da ponta dela.
+		if (DefeitoDeTeste == DefeitoDoFeixe.PontaAdiante) comprimento += PixelsDaPontaAdiante;
 
 		mat.SetShaderParameter("comprimento", comprimento);
 	}
@@ -681,6 +909,112 @@ public partial class ProjetilDesenhado : Node2D
 			_curva[i] = mao * (u * u) + controle * (2f * u * t) + ponta * (t * t);
 		}
 		return _curva;
+	}
+
+	// =====================================================================
+	// O RAIO DESVIADO -- uma fita, com a curva na dobra (dono, 2026-10-08)
+	// =====================================================================
+	/// <summary>
+	/// BANCADA: desliga a emenda -- o raio desviado volta a ser desenhado como DOIS (o pai ate a cabeca
+	/// plantada, o trecho desviado com ponta de tras propria), que e o desenho de antes de 2026-10-08. Sempre
+	/// falso em jogo.
+	/// </summary>
+	public static bool SemDobraDeTeste;
+
+	/// <summary>Em quantos degraus o arco da dobra e cortado. Num quarto de volta de 20 px de raio da 2,6 px por degrau.</summary>
+	private const int PassosDaDobra = 12;
+
+	/// <summary>O caminho da fita dobrada: a mao, o arco, a ponta. Alocado na primeira vez -- quase nenhum raio e desviado.</summary>
+	private Vector2[]? _dobrado;
+
+	/// <summary>
+	/// O RAIO DESVIADO, INTEIRO, NUMA FITA SO: da mao de quem atirou ate a dobra, a curva, e dali ate a ponta
+	/// do trecho desviado. Em coordenada local DESTE node (o pai), cuja origem e a cabeca plantada.
+	///
+	/// PRO SHADER NADA MUDOU: o `UV.x` e o comprimento percorrido (`PintorDeKi.FitaCurva`), entao ele pinta o
+	/// mesmo feixe de sempre -- a boca na mao, a cabeca na ponta do trecho desviado, e as fitas que giram em
+	/// volta do tronco seguindo a curva sem emenda.
+	/// </summary>
+	private void DesenharDobrado(ShaderMaterial mat, ProjetilDesenhado ramo)
+	{
+		(Vector2 mao, _) = AMao(_cauda - _cabeca);
+		Vector2 dobra = ramo._cauda - _cabeca;
+		Vector2 ponta = ramo._cabeca + ramo._rumo * ramo._medidas.Frente - _cabeca;
+
+		mat.SetShaderParameter("solto", _soltura);
+
+		int n = CaminhoDobrado(mao, dobra, ponta);
+		float comprimento = n < 2 ? 0f : PintorDeKi.FitaCurva(this, _dobrado!, n, PintorDeKi.MeiaFita(_estiloDoFeixe, _medidas),
+															  PintorDeKi.FolgaNaMao(_medidas), PintorDeKi.FolgaNaPonta(_medidas));
+		mat.SetShaderParameter("comprimento", comprimento);
+	}
+
+	/// <summary>
+	/// QUANTO DE CADA TRECHO O ARCO DA DOBRA COME, em pixel: a distancia da dobra ate onde a curva comeca
+	/// (e, do outro lado, ate onde acaba).
+	///
+	/// A CURVA TEM QUE SER MAIS ABERTA QUE O RAIO E GORDO. A fita e desenhada com a normal de cada degrau, e
+	/// do lado de DENTRO de uma curva ela se dobra sobre si mesma a partir de um raio de curvatura da largura
+	/// dela. O que precisa caber inteiro ali e o que o shader pinta no meio do tronco -- o macico, as fitas e o
+	/// halo, que ficam dentro de `Alcance + Halo` do eixo. (A fita e mais larga que isso, mas o resto dela so
+	/// tem tinta nas duas pontas: os leques.) Num Kamehameha sao uns 20 px; num Final Flash, 200.
+	/// </summary>
+	private float TangenteDaDobra() => Mathf.Max(_medidas.Frente, _medidas.Alcance + _medidas.Halo);
+
+	/// <summary>
+	/// MONTA O CAMINHO da fita dobrada em <see cref="_dobrado"/> e devolve quantos pontos ele tem: a mao, um
+	/// ARCO DE CIRCULO que sai tangente ao trecho que chega e entra tangente no que sai, e a ponta.
+	///
+	/// O arco encolhe pra caber: nunca come mais que 45% do trecho que chega (sobra raio reto saindo da mao)
+	/// nem mais que o trecho que sai inteiro -- e por isso o ramo recem-nascido, com poucos pixels, comeca num
+	/// canto vivo e a curva abre conforme ele cresce.
+	/// </summary>
+	private int CaminhoDobrado(Vector2 mao, Vector2 dobra, Vector2 ponta)
+	{
+		_dobrado ??= new Vector2[PassosDaDobra + 3];
+
+		Vector2 chega = dobra - mao, sai = ponta - dobra;
+		float c = chega.Length(), s = sai.Length();
+		// sem um dos dois trechos nao ha o que dobrar: a fita vai reta da mao a ponta
+		if (c < 1f || s < 1f)
+		{
+			_dobrado[0] = mao;
+			_dobrado[1] = ponta;
+			return (ponta - mao).LengthSquared() > 0.25f ? 2 : 0;
+		}
+
+		Vector2 e1 = chega / c, e2 = sai / s;
+		float cos = Mathf.Clamp(e1.Dot(e2), -1f, 1f);
+		float tg = Mathf.Tan(Mathf.Acos(cos) * 0.5f);            // a tangente de MEIA virada
+		float t = Mathf.Min(TangenteDaDobra(), Mathf.Min(c * 0.45f, s));
+
+		// quase reto (menos de ~3 graus), quase meia-volta, ou sem espaco: nao ha arco, so o canto
+		if (tg < 0.03f || tg > 8f || t < 1f)
+		{
+			_dobrado[0] = mao;
+			_dobrado[1] = dobra;
+			_dobrado[2] = ponta;
+			return 3;
+		}
+
+		float raio = t / tg;
+		Vector2 a = dobra - e1 * t, b = dobra + e2 * t;
+		// o centro fica do lado de DENTRO da virada: de `a`, perpendicular ao trecho que chega, pro lado do que sai
+		Vector2 centro = a + (e2 - e1 * cos).Normalized() * raio;
+		float de = (a - centro).Angle();
+		float varre = Mathf.Wrap((b - centro).Angle() - de, -Mathf.Pi, Mathf.Pi);
+
+		int k = 0;
+		_dobrado[k++] = mao;
+		for (int i = 0; i <= PassosDaDobra; i++)
+		{
+			float ang = de + varre * i / PassosDaDobra;
+			_dobrado[k++] = centro + new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * raio;
+		}
+		// com o trecho que sai inteiro dentro do arco, o fim do arco JA e a ponta (um ponto repetido deixaria
+		// um degrau sem direcao)
+		if (s - t > 0.5f) _dobrado[k++] = ponta;
+		return k;
 	}
 
 	// =====================================================================

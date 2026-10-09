@@ -150,7 +150,15 @@ public partial class RemotePlayer : Node2D
 	public override void _Ready()
 	{
 		_visual = GetNode<CharacterVisual>("Visual");
+
+		// O FILHO QUE NASCER DAQUI PRA FRENTE COM O CORPO NO AR sobe na hora -- ver `SubirComOVoo.AoNascer`.
+		// Sinal do proprio node: morre com ele, nao ha o que cancelar.
+		ChildEnteredTree += LevantarFilhoNovo;
 	}
+
+	/// <summary>A altura que os filhos ja tem (a do ultimo `Altura`) vai pro filho que acabou de nascer.</summary>
+	private void LevantarFilhoNovo(Node filho)
+		=> SubirComOVoo.AoNascer(filho, new Vector2(0, -_altitude * Voo.EscalaNaTela));
 
 	/// <summary>
 	/// CRAVA O CORPO num ponto, sem suavizar.

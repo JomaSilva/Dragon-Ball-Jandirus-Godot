@@ -72,6 +72,19 @@ REM        por      Volume(BusEfeitos, s.VolumeEfeitos);
 REM     MEDIDO: 1 vermelha
 REM        "mexer no controle de EFEITOS dentro do vacuo NAO devolve o som"
 REM
+REM  ============================ O PALCO DO ESPACO, E A QUINTA (por CHAVE) ============================
+REM  O corpo chega no espaco pelo ponto de DECOLAGEM do planeta de casa
+REM  (Espaco.PontoDeDecolagem, o mesmo do GameServer.Decolar): 90 px fora do
+REM  disco. Ate 2026-10-09 ele chegava em (0,0), que e o CENTRO do disco da
+REM  Terra -- la em cima encostar num disco e pousar, o servidor descia o corpo
+REM  no tique seguinte e a rodada parava em "o cliente nunca chegou no espaco".
+REM
+REM  E) o PALCO EM CIMA DO DISCO (o de antes)
+REM     acrescente   --palconodisco   na linha do Godot, la embaixo
+REM     MEDIDO: 3 OK, 0 FALHA(S), 1 SEM MEDIDA, e a linha
+REM        "o servidor me tirou do espaco em 0,03 s (rota: Espaco -> Earth): o
+REM         ponto de chegada (0; 0) esta DENTRO do disco de `Earth` (raio 220)"
+REM
 REM  PROCURE no fim:   ===== FIM: 17 OK, 0 FALHA(S), 0 SEM MEDIDA =====
 REM ===========================================================================
 

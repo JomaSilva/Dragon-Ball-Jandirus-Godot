@@ -177,7 +177,9 @@ public partial class PauseMenu : CanvasLayer
         // no nascimento e o defeito que este projeto ja pagou na tela de apagar personagem.
         AjustarAoContexto();
 
-        // MUSICA SO DENTRO DO MUNDO -- ver `Fechar`.
+        // MUSICA SO DENTRO DO MUNDO -- ver `Fechar`. A faixa que sai do saco aqui ja esta na memoria: ela foi
+        // pedida a thread de carga quando passou a ser a proxima (`AudioDirector.Adiantar`), e este mesmo
+        // `Musica` pede a seguinte. Lido na hora, o mp3 parava a tela por 4 a 45 ms no quadro em que o ESC abria.
         if (NoMundo) AudioDirector.Instance?.Musica(Trilha.Menu(), AudioDirector.Camada.Menu, "ESC abriu");
     }
 

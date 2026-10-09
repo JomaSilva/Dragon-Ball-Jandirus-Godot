@@ -356,6 +356,16 @@ public sealed class Convivio
 		EhAmigo(sig) || TemRelacao(sig, Relacao.MuitoBom, Relacao.Amor);
 
 	/// <summary>
+	/// ESTA PESSOA SENDO ABSORVIDA NA MINHA FRENTE ME ENFURECE?
+	///
+	/// `MajinSaga.dm:172` -- `A.check_relation(M, list("Good","Very Good")) == TRUE || A.is_friend(M)`. A
+	/// consequencia e a da MORTE (furia extrema), mas a lista e outra e mais curta: nem `Love`, nem
+	/// `Rival/Good`. E do original, e fica como esta.
+	/// </summary>
+	public bool LutoPorAbsorcao(string sig) =>
+		EhAmigo(sig) || TemRelacao(sig, Relacao.Bom, Relacao.MuitoBom);
+
+	/// <summary>
 	/// QUEM ME DERRUBOU ERA INIMIGO? -- perguntado a VITIMA sobre o algoz.
 	///
 	/// `Death.dm:75` e `KO.dm:34`, a mesma linha nos dois: `!is_friend(foe) &amp;&amp;

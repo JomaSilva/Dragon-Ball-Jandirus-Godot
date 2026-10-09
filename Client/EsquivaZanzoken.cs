@@ -128,7 +128,7 @@ public partial class EsquivaZanzoken : Node2D
 			return;
 		}
 
-		var folha = ResourceLoader.Load<SpriteFrames>(Arte);
+		var folha = FolhasPresas.Carregar(Arte);
 		if (folha == null) return;
 		string[] nomes = folha.GetAnimationNames();
 		// SEM ARTE, SEM TROCA. Esconder o corpo e nao desenhar nada no lugar seria a queixa do dono

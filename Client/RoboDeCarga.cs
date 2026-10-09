@@ -266,6 +266,11 @@ public partial class RoboDeCarga : Node
 	public override void _Ready()
 	{
 		if (C == null) { Nota("sem GameClient -- nada a medir"); return; }
+
+		// ESTA BANCADA NAO PAUSA JUNTO. A prova do corpo pausa a arvore entre as fotos (ver
+		// `AndarNaProvaDoCorpo`), e quem a solta e este mesmo `_Process`: herdando a pausa, ela
+		// congelaria junto e o jogo ficaria parado pra sempre.
+		ProcessMode = ProcessModeEnum.Always;
 		CallDeferred(nameof(Emancipar));
 		_modoQueda = Array.IndexOf(OS.GetCmdlineArgs(), "--quedanomeio") >= 0;
 		Familia0();
@@ -353,10 +358,22 @@ public partial class RoboDeCarga : Node
 
 		// ============================ O CONTROLE NEGATIVO ============================
 		// Sem ele, `HasCached` podendo responder "sim" pra tudo deixaria a linha de cima verde num
-		// mundo em que o aquecimento nunca rodou. Este arquivo existe, e do mesmo tipo (.gdshader) e
-		// esta DE FORA da lista de propositio -- ele so e usado no mergulho mental.
-		const string frio = "res://Assets/Shaders/Zanzoken.gdshader";
-		Checa("e o cache sabe dizer NAO (controle negativo)", !ResourceLoader.HasCached(frio), frio);
+		// mundo em que o aquecimento nunca rodou. Este arquivo EXISTE, e do mesmo tipo (.gdshader) e
+		// NINGUEM O CARREGA, nem o aquecimento nem o jogo: e o shader que somava a cor do ki nas folhas
+		// de ataque, e nenhuma linha do jogo o pede mais (conferido em 2026-10-09, no codigo e nos
+		// recursos de `Assets/`).
+		//
+		// (Ate 2026-10-09 o arquivo frio era o `Zanzoken.gdshader`, que estava de fora da lista por
+		// descuido, e nao de proposito: a primeira miragem do processo o lia do disco no meio da luta.
+		// Ele entrou no aquecimento -- ver `Aquecimento.AtosDaMiragem` --, e o controle passou pra um
+		// arquivo que ninguem pede.)
+		//
+		// O `Exists` E PRA O CONTROLE NAO APODRECER CALADO: um arquivo que SUMIU tambem "nao esta no
+		// cache", e a linha passaria sem provar nada. Se este um dia for apagado, ela reprova e diz.
+		const string frio = "res://Assets/Shaders/Ki.gdshader";
+		bool existe = ResourceLoader.Exists(frio), noCache = ResourceLoader.HasCached(frio);
+		Checa("e o cache sabe dizer NAO (controle negativo)", existe && !noCache,
+			  $"{frio}: o arquivo {(existe ? "existe" : "NAO EXISTE MAIS -- o controle precisa de outro")}, e {(noCache ? "ESTA no cache" : "nao esta no cache")}");
 
 		// QUANTO CUSTA AGORA o que custava ~630 ms na primeira entrada. Nao e o ganho (pra medir o
 		// ganho seria preciso um processo frio), e sim a prova de que o `World._Ready` vai encontrar
@@ -379,8 +396,13 @@ public partial class RoboDeCarga : Node
 		if (_corrida is { } c) Fotograma(c, delta);
 
 		// E A PROVA DO CORPO ANDA LOGO DEPOIS, no mesmo quadro em que a corrida fechou: ela precisa
-		// dos tres quadros SEGUIDOS ao ultimo da corrida. Ver `AndarNaProvaDoCorpo`.
-		if (_prova is not (Prova.Nao or Prova.Feita)) AndarNaProvaDoCorpo();
+		// dos quadros SEGUIDOS ao ultimo da corrida. Ver `AndarNaProvaDoCorpo`.
+		//
+		// O ROTEIRO ESPERA A PROVA ACABAR, e por dois motivos. Ela pausa a arvore, e tecla apertada com
+		// a arvore pausada nao chega a ninguem -- o passo seguinte do roteiro e justamente o ESC do menu
+		// de pausa. E o ultimo passo e o `Terminar`: chegando antes da ultima foto, ele fecharia a
+		// bancada com a prova do login pela metade e o jogo ainda pausado.
+		if (_prova is not (Prova.Nao or Prova.Feita)) { AndarNaProvaDoCorpo(); return; }
 
 		// A QUEDA DO SERVIDOR TEM ROTEIRO PROPRIO -- ver `AndarNaQueda`.
 		if (_modoQueda) { AndarNaQueda(delta); return; }
@@ -542,8 +564,9 @@ public partial class RoboDeCarga : Node
 		_feitas.Add(c);
 		_corrida = null;
 
-		// A PROVA DO CORPO COMECA AGORA, NESTA MESMA ITERACAO. Ela precisa de tres quadros SEGUIDOS
-		// (ver `AndarNaProvaDoCorpo`), e adiar por um so ja deixaria o cenario andar entre eles.
+		// A PROVA DO CORPO COMECA AGORA, NESTA MESMA ITERACAO. E nela que a arvore e pausada (ver
+		// `AndarNaProvaDoCorpo`), e a pausa tem que entrar antes do proximo quadro: um quadro de jogo
+		// a mais entre a foto julgada e as fotos pausadas e um quadro de neve andando.
 		_provaDe = c.Nome;
 		_prova = Prova.Esconder;
 
@@ -554,7 +577,7 @@ public partial class RoboDeCarga : Node
 	{
 		_quadrosComCorpo = 0;
 		_primeiroSemCobertura = null;
-		_semCorpo = _comCorpo = null;
+		_semCorpo = _comCorpo = _semCorpoDeNovo = null;
 		_prova = Prova.Nao;
 		_corrida = new Corrida
 		{
@@ -824,28 +847,82 @@ public partial class RoboDeCarga : Node
 	/// quadro que mora a pergunta do dono.
 	///
 	/// ============================ COMO SE MEDE PIXEL DE CORPO SEM SABER COMO O CORPO E ============================
-	/// Por DIFERENCA, e em tres quadros seguidos:
+	/// Por DIFERENCA, em quatro quadros seguidos -- os tres ultimos com a ARVORE PAUSADA:
 	///
 	///     quadro M-1   o primeiro quadro sem cobertura -- a foto que esta sendo julgada  (A)
 	///     quadro M     o mesmo lugar com o corpo ESCONDIDO                               (B)
 	///     quadro M+1   o mesmo lugar com o corpo de volta                                (C)
+	///     quadro M+2   o corpo escondido DE NOVO                                         (D)
 	///
-	/// Os pixels que mudam entre B e C SAO o corpo -- e uma mascara medida, nao um retangulo
-	/// chutado, e ela nao depende de saber a cor da pele, o tamanho do sprite nem o desenho da
-	/// roupa. Dentro dessa mascara a pergunta fica simples: a foto A parece mais com C (corpo
-	/// desenhado) ou com B (corpo ausente)?
+	/// Pixel de corpo e o que difere de C nas DUAS fotos sem corpo, e so onde as duas sem corpo
+	/// concordam entre si -- e uma mascara medida, nao um retangulo chutado, e ela nao depende de
+	/// saber a cor da pele, o tamanho do sprite nem o desenho da roupa. Dentro dessa mascara a
+	/// pergunta fica simples: a foto A parece mais com C (corpo desenhado) ou com B (corpo ausente)?
 	///
-	/// TRES QUADROS SEGUIDOS e nao "alguns quadros depois" de proposito: entre M-1 e M+1 o cenario
-	/// quase nao anda, e o que anda aparece na conta "fora da janela", que sai impressa junto.
 	/// Esconder o corpo por um quadro nao e invencao da bancada -- e o que o `World` ja faz no
 	/// zanzoken, com o mesmo `Visible`.
+	///
+	/// ============================ A ARVORE PAUSADA E A FOTO D: O MUNDO NAO PARA SOZINHO ============================
+	/// A primeira versao tirava B e C com o jogo ANDANDO, na aposta de que "entre tres quadros
+	/// seguidos o cenario quase nao anda". Nao e verdade justamente aqui: os quadros da entrada no
+	/// mundo custam de 130 a 400 ms cada (medido), e nesse tempo a neve e a chuva atravessam a janela
+	/// inteira. Tudo que mudava entre B e C entrava na mascara como se fosse corpo, e dentro dela a
+	/// foto A concorda com B ou com C por sorteio -- o floco de B nao esta em A nem em C.
+	///
+	/// MEDIDO em 2026-10-08, numa madrugada de neve: dos 4890 pixels da "mascara do corpo", 3549
+	/// (73%) eram FLOCO espalhado pela janela inteira e so 1341 eram corpo. A conta deu 0,069 contra
+	/// 0,130 e REPROVOU a cobertura com o corpo inteiro desenhado na foto A (nos 1341 dele, 0,061
+	/// contra 0,151). De dia e de ceu limpo a mesma conta dava 0,031 contra 0,628. A regua media o
+	/// CLIMA da hora em que alguem a rodava -- que sai do relogio de parede (`Clima.TipoDoBloco`) --,
+	/// e de noite pesava mais: no escuro o corpo quase nao se destaca do chao, e o floco sim.
+	///
+	/// O conserto e o MESMO da `--diagboca` (`RoboDeBocaDeCano.Obturador`), que ja tinha pago esta
+	/// conta com a agua animada:
+	///   * a ARVORE PAUSADA entre as fotos para script, sprite animado e particula. A pausa entra
+	///     ANTES de o quadro B ser desenhado, entao a neve de B, C e D e a mesma da foto A. Medido
+	///     na neve: B e D saem identicas byte a byte na tela inteira, e de A pra C mudam uns 45 dos
+	///     52 mil pontos de fora da janela -- com o jogo andando mudavam 1200;
+	///   * a foto D peneira o que a pausa nao alcanca, e aqui isso tem nome: o berco da Terra e o
+	///     `obj/SpawnPoint` do original (`SpawnPoints.dm:40`, 'Spirit Energy.dmi'), que o conversor
+	///     de mapas fez virar TILE ANIMADO, quatro quadros de 0,1 s, bem atras do corpo. Tile animado
+	///     anda pelo relogio do renderizador e nao pelo da arvore: ate 810 pixels dele mudam entre B
+	///     e D com tudo pausado. Onde B e D discordam o fundo se mexeu sozinho, e aquele pixel sai
+	///     da conta -- a leitura honesta de "nao da pra saber quem pintou aqui".
+	///
+	/// ============================ E A LUZ DO QUADRO JULGADO E DESCONTADA ============================
+	/// A foto A e a unica que nao se tira de novo, e o mundo pode estar com outra LUZ nela: numa
+	/// tempestade cai um relampago a cada 3 a 10 s, e ele clareia a tela inteira por uma fracao de
+	/// segundo. MEDIDO numa madrugada de tempestade: a foto A saiu 0,035 mais clara que a C em cada
+	/// canal, por igual em volta do corpo, e a conta deu 0,093 contra 0,171 -- reprovou outra vez um
+	/// corpo que estava la, porque no escuro o corpo se destaca do chao por menos do que um relampago
+	/// clareia.
+	///
+	/// Entao a pergunta e feita EM RELACAO AO ENTORNO: a diferenca de luz entre A e C e medida nos
+	/// pixels da janela onde nao ha corpo (os dois quadros mostram ali o mesmo chao) e descontada de A
+	/// antes da comparacao. Sem relampago ela da zero cravado e nada muda; com aquele, a mesma foto
+	/// passou a dar 0,019 contra 0,126.
+	///
+	/// E O CONTRA-EXEMPLO FICOU MAIS FIRME, nao mais frouxo: com o defeito de origem
+	/// (`--semcobertura`) a foto A e o fundo chapado do lobby, e o desconto a leva pra cor do chao em
+	/// volta -- ela passa a parecer o SEM-corpo a qualquer hora. Sem o desconto, de madrugada o azul
+	/// do lobby ficava perto da cor do corpo no escuro e a conta crua dava 0,61, a um passo do corte
+	/// de 0,5; com ele as provas injetadas dao de 1,07 a 1,44, do meio-dia limpo a madrugada de
+	/// tempestade.
+	///
+	/// O QUE ISTO NAO MEDE, e fica dito:
+	///   * C e tirada um quadro depois de A, com o mundo parado. Um corpo desenhado em A mas ainda
+	///     SEM uma peca (roupa que chegasse do servidor quadros depois) passaria -- a pergunta daqui
+	///     e "o corpo esta na tela?", e nao "o corpo ja e o definitivo?";
+	///   * uma troca de luz da tela INTEIRA entre A e C tambem passa, seja relampago, seja um mundo
+	///     que acendesse um quadro atrasado. Ela nao some: sai impressa na linha "a luz do quadro
+	///     julgado", junto de quantos pontos de fora da janela mudaram.
 	/// ==============================================================================================================
 	/// </summary>
-	private enum Prova { Nao, Esconder, LerSemCorpo, LerComCorpo, Feita }
+	private enum Prova { Nao, Esconder, LerSemCorpo, LerComCorpo, LerSemCorpoDeNovo, Feita }
 
 	private Prova _prova = Prova.Nao;
 	private Amostra? _primeiroSemCobertura;
-	private Image? _semCorpo, _comCorpo;
+	private Image? _semCorpo, _comCorpo, _semCorpoDeNovo;
 	private Vector2 _ondeOCorpoEsta;
 	private string _provaDe = "";
 
@@ -867,18 +944,30 @@ public partial class RoboDeCarga : Node
 				// a diferenca entre os pixels, e nao esta coordenada -- ela so evita varrer a tela
 				// inteira e evita que uma nuvem do outro canto entre na mascara.
 				_ondeOCorpoEsta = corpo.GetGlobalTransformWithCanvas().Origin;
+
+				// A PAUSA ENTRA AQUI, antes de o quadro B ser desenhado -- ver o cabecalho. O jogo nunca
+				// pausa a arvore (o `PauseMenu` diz por que), entao nao ha pausa alheia pra respeitar.
+				GetTree().Paused = true;
 				corpo.Visible = false;
 				_prova = Prova.LerSemCorpo;
 				return;
 
 			case Prova.LerSemCorpo:
-				_semCorpo = GetViewport()?.GetTexture()?.GetImage();   // o quadro que acabou de ser desenhado: sem corpo
+				_semCorpo = GetViewport()?.GetTexture()?.GetImage();         // o quadro que acabou de ser desenhado: sem corpo
 				if (Corpo is { } devolta) devolta.Visible = true;
 				_prova = Prova.LerComCorpo;
 				return;
 
 			case Prova.LerComCorpo:
-				_comCorpo = GetViewport()?.GetTexture()?.GetImage();   // e este ja tem o corpo de volta
+				_comCorpo = GetViewport()?.GetTexture()?.GetImage();         // e este ja tem o corpo de volta
+				if (Corpo is { } denovo) denovo.Visible = false;
+				_prova = Prova.LerSemCorpoDeNovo;
+				return;
+
+			case Prova.LerSemCorpoDeNovo:
+				_semCorpoDeNovo = GetViewport()?.GetTexture()?.GetImage();   // sem corpo outra vez: a peneira
+				if (Corpo is { } volta) volta.Visible = true;
+				GetTree().Paused = false;
 				_prova = Prova.Feita;
 				JulgarOCorpo();
 				return;
@@ -901,18 +990,34 @@ public partial class RoboDeCarga : Node
 		Nota("");
 		Nota($"===== {_provaDe.ToUpperInvariant()}: o corpo no PIXEL (a borda de saida) =====");
 
-		if (_primeiroSemCobertura?.Foto is not { } a || _semCorpo is not { } semC || _comCorpo is not { } comC)
+		if (_primeiroSemCobertura?.Foto is not { } a || _semCorpo is not { } semC || _comCorpo is not { } comC
+			|| _semCorpoDeNovo is not { } semD)
 		{
-			Nota("  --     faltou uma das tres fotos: a prova do corpo NAO foi medida");
+			Nota("  --     faltou uma das quatro fotos: a prova do corpo NAO foi medida");
 			return;
 		}
 
 		int w = a.GetWidth(), h = a.GetHeight();
-		if (semC.GetWidth() != w || semC.GetHeight() != h || comC.GetWidth() != w || comC.GetHeight() != h)
+		if (new[] { semC, comC, semD }.Any(f => f.GetWidth() != w || f.GetHeight() != h))
 		{
-			Nota("  --     as tres fotos nao tem o mesmo tamanho: a prova do corpo NAO foi medida");
+			Nota("  --     as quatro fotos nao tem o mesmo tamanho: a prova do corpo NAO foi medida");
 			return;
 		}
+
+		// AS QUATRO FOTOS VAO PRO DISCO ANTES DO VEREDITO, com qualquer placar: a conta que reprova e
+		// justamente a que alguem vai querer conferir no olho.
+		Guardar(a, $"corpo{Marca}-{_provaDe}-A-primeiro-sem-cobertura.png");
+		Guardar(semC, $"corpo{Marca}-{_provaDe}-B-corpo-escondido.png");
+		Guardar(comC, $"corpo{Marca}-{_provaDe}-C-corpo-de-volta.png");
+		Guardar(semD, $"corpo{Marca}-{_provaDe}-D-corpo-escondido-de-novo.png");
+
+		// O PALCO VAI ESCRITO JUNTO DO VEREDITO. Hora e clima saem do relogio de parede, e uma linha
+		// vermelha sem eles nao diz se quem reprovou foi a cobertura ou a noite em que a bancada rodou.
+		if (World.Instancia?.Ceu is { } ceu)
+			Nota($"   --    o palco: {Jandirus.Core.World.Ceu.NomeDaHora(ceu.Hora)}, "
+				 + (World.Instancia.TempoQueFaz is { Ativo: true } tq
+					? $"{Jandirus.Core.World.Clima.Nome(tq.Tipo)} (forca {tq.Forca:0.00})"
+					: "ceu limpo"));
 
 		// A JANELA: generosa o bastante pra caber o corpo inteiro e a aura, apertada o bastante pra
 		// deixar o resto da tela de fora.
@@ -922,39 +1027,81 @@ public partial class RoboDeCarga : Node
 		int x0 = Math.Max(0, cx - Raio), x1 = Math.Min(w, cx + Raio);
 		int y0 = Math.Max(0, cy - Raio), y1 = Math.Min(h, cy + Raio);
 
-		int mascara = 0, minX = w, minY = h, maxX = -1, maxY = -1;
-		double somaSem = 0, somaCom = 0;
+		// A MASCARA VAI PRA FOTO TAMBEM: uma sonda que conta pixels tem que mostrar QUAIS ela contou.
+		// Branco e corpo; vermelho e o que se mexeu sozinho com a arvore pausada, e ficou fora da conta.
+		Image retrato = Image.CreateEmpty(w, h, false, Image.Format.Rgb8);
+
+		// CADA PIXEL DA JANELA CAI NUM DE TRES BALDES: o que se mexeu sozinho, o CORPO (a mascara) e o
+		// ENTORNO -- o chao em volta, que a foto A e a foto C mostram igual.
+		var corpo = new List<(Color A, Color Sem, Color Com)>();
+		List<float> luzR = [], luzG = [], luzB = [];
+		int andou = 0, minX = w, minY = h, maxX = -1, maxY = -1;
 		for (int y = y0; y < y1; y++)
 			for (int x = x0; x < x1; x++)
 			{
-				Color pSem = semC.GetPixel(x, y), pCom = comC.GetPixel(x, y);
-				if (Dist(pSem, pCom) <= LimiarDeMudanca) continue;   // aqui nao ha corpo
+				Color pSem = semC.GetPixel(x, y), pCom = comC.GetPixel(x, y), pSemD = semD.GetPixel(x, y);
 
-				mascara++;
-				minX = Math.Min(minX, x); maxX = Math.Max(maxX, x);
-				minY = Math.Min(minY, y); maxY = Math.Max(maxY, y);
+				// O FUNDO TEM QUE ESTAR PARADO. Se as duas fotos sem corpo discordam aqui, alguma coisa
+				// se mexeu sozinha apesar da pausa, e nao da pra dizer de quem e a diferenca.
+				if (Dist(pSem, pSemD) > LimiarDeMudanca)
+				{
+					andou++;
+					retrato.SetPixel(x, y, Colors.Red);
+					continue;
+				}
 
 				Color pA = a.GetPixel(x, y);
-				somaSem += Dist(pA, pSem);
-				somaCom += Dist(pA, pCom);
-			}
+				if (Dist(pSem, pCom) <= LimiarDeMudanca || Dist(pSemD, pCom) <= LimiarDeMudanca)
+				{
+					// AQUI NAO HA CORPO: e o entorno, e o que A e C diferem nele e LUZ -- ver logo abaixo.
+					luzR.Add(pA.R - pCom.R);
+					luzG.Add(pA.G - pCom.G);
+					luzB.Add(pA.B - pCom.B);
+					continue;
+				}
 
-		// O CONTROLE: fora da janela, esconder e mostrar o corpo nao pode mudar quase nada. Se este
-		// numero fosse grande, a "mascara" acima seria cenario andando e nao corpo -- e a prova toda
-		// estaria medindo vento. Amostrado em grade porque e so um contexto, nao um veredito.
-		int foraMudou = 0, foraOlhados = 0;
+				corpo.Add((pA, pSem, pCom));
+				retrato.SetPixel(x, y, Colors.White);
+				minX = Math.Min(minX, x); maxX = Math.Max(maxX, x);
+				minY = Math.Min(minY, y); maxY = Math.Max(maxY, y);
+			}
+		int mascara = corpo.Count;
+		Guardar(retrato, $"corpo{Marca}-{_provaDe}-M-mascara.png");
+
+		// A LUZ DO QUADRO JULGADO, DESCONTADA -- ver o cabecalho. E a MEDIANA do entorno, e nao a media:
+		// um pedaco dele pode ter mudado por outro motivo entre A e C (o tile do berco trocou de quadro,
+		// entrou uma linha no chat), e a mediana nao segue um pedaco.
+		(float R, float G, float B) luz = (Mediana(luzR), Mediana(luzG), Mediana(luzB));
+		double somaSem = 0, somaCom = 0;
+		foreach ((Color pA, Color pSem, Color pCom) in corpo)
+		{
+			var naLuzDasPausadas = new Color(pA.R - luz.R, pA.G - luz.G, pA.B - luz.B);
+			somaSem += Dist(naLuzDasPausadas, pSem);
+			somaCom += Dist(naLuzDasPausadas, pCom);
+		}
+
+		// OS DOIS CONTROLES, fora da janela -- onde nao ha corpo. Amostrados em grade porque sao
+		// contexto, nao veredito:
+		//   * B contra D: o que se mexeu COM A ARVORE PAUSADA;
+		//   * A contra C: o quanto o mundo andou do quadro julgado ate as fotos pausadas.
+		int foraPausado = 0, foraDeA = 0, foraOlhados = 0;
 		for (int y = 2; y < h - 2; y += 4)
 			for (int x = 2; x < w - 2; x += 4)
 			{
 				if (x >= x0 && x < x1 && y >= y0 && y < y1) continue;
 				foraOlhados++;
-				if (Dist(semC.GetPixel(x, y), comC.GetPixel(x, y)) > LimiarDeMudanca) foraMudou++;
+				if (Dist(semC.GetPixel(x, y), semD.GetPixel(x, y)) > LimiarDeMudanca) foraPausado++;
+				if (Dist(a.GetPixel(x, y), comC.GetPixel(x, y)) > LimiarDeMudanca) foraDeA++;
 			}
 
 		Nota($"   --    o corpo ocupa {mascara} pixels, na caixa ({minX},{minY})-({maxX},{maxY}),"
 			 + $" achada por diferenca e nao por chute");
-		Nota($"   --    fora da janela, esconder o corpo mudou {foraMudou} de {foraOlhados} pontos"
-			 + " (o cenario estava parado entre os tres quadros)");
+		Nota($"   --    com a arvore pausada, {andou} pixel(s) da janela se mexeram sozinhos (fora da conta)"
+			 + $" e {foraPausado} de {foraOlhados} pontos de fora dela");
+		Nota($"   --    do quadro julgado ate as fotos pausadas mudaram {foraDeA} de {foraOlhados} pontos"
+			 + " de fora da janela");
+		Nota($"   --    a luz do quadro julgado menos a das fotos pausadas, no entorno do corpo:"
+			 + $" ({luz.R:+0.000;-0.000}, {luz.G:+0.000;-0.000}, {luz.B:+0.000;-0.000}) -- descontada da conta");
 
 		// ---------- O CORPO TEM PIXEL? ----------
 		// Sem esta conta, tudo abaixo ficaria verde num mundo onde o corpo nunca e desenhado: duas
@@ -973,12 +1120,14 @@ public partial class RoboDeCarga : Node
 			  mediaCom < mediaSem * 0.5,
 			  $"aquele quadro esta a {mediaCom:0.000} do COM-corpo e a {mediaSem:0.000} do SEM-corpo"
 			  + $" (quanto menor, mais parecido)");
+	}
 
-		// AS TRES FOTOS DA PROVA vao pro disco com a caixa do corpo no nome, pra quem quiser conferir
-		// no olho o que a conta afirmou.
-		Guardar(a, $"corpo{Marca}-{_provaDe}-A-primeiro-sem-cobertura.png");
-		Guardar(semC, $"corpo{Marca}-{_provaDe}-B-corpo-escondido.png");
-		Guardar(comC, $"corpo{Marca}-{_provaDe}-C-corpo-de-volta.png");
+	/// <summary>O valor do meio. Ordena a lista que recebeu -- quem chama nao a usa de novo.</summary>
+	private static float Mediana(List<float> v)
+	{
+		if (v.Count == 0) return 0f;
+		v.Sort();
+		return v[v.Count / 2];
 	}
 
 	// =====================================================================

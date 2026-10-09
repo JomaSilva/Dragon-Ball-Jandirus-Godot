@@ -313,10 +313,10 @@ public partial class GameServer
 	///     EXTREMELY enraged"*);
 	///   * um jogador foi NOCAUTEADO: <see cref="NivelDeRaiva.Lendaria"/>. No DM e `KO.dm:29-41`.
 	///
-	/// FICOU DE FORA o `MajinSaga.dm:173` (ver um amigo ser ABSORVIDO vale o mesmo que ve-lo
-	/// morrer): a absorcao do Majin **nao existe neste port** -- nao ha `majin_absorb`, bolso
-	/// dimensional nem verb de absorver. E chamada sem chamador, e o dia em que a saga vier ela
-	/// chama isto com `Extrema` e acabou.
+	/// E A TERCEIRA, que este cabecalho esperava: o `MajinSaga.dm:173` (ver um amigo ser ABSORVIDO
+	/// vale o mesmo que ve-lo morrer). Quem chama e o `LutoPelaAbsorcao`
+	/// (`GameServer.AbsorcaoMajin.cs`), com `Extrema` -- e por fora do `LutoNaVizinhanca`, porque as
+	/// condicoes dela sao outras (esta escrito la).
 	///
 	/// Quem responde "e amigo?" e o `Core.Social.Convivio` (`is_friend()`, `FRIEND_REQ = 50`). **E a
 	/// PORTA DESTE GANCHO MUDOU DE PRECO a pedido do dono**: o `ACQUAINTANCE_CAP = 49` do DM nao foi

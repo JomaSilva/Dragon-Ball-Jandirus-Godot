@@ -324,6 +324,7 @@ public sealed partial class GameServer
 	{
 		porque = "";
 		if (m.Instantaneo && !m.Aplicar(Compra.InstantaneoDesligar, 0, out porque)) return false;
+		if (m.Teleguiado && !m.Aplicar(Compra.TeleguiadoDesligar, 0, out porque)) return false;
 
 		if ((int)m.Alcance != (int)TecnicaCustomizada.AlcancePadrao
 			&& !m.Aplicar(Compra.Alcance, TecnicaCustomizada.AlcancePadrao, out porque)) return false;
@@ -560,6 +561,12 @@ public sealed partial class GameServer
 
 		if (t.DizGritoDeCarga && t.GritoDeCarga.Length > 0)
 			Falar(pl, Protocol.Fala.Diz, t.GritoDeCarga);
+
+		// O RAIO TELEGUIADO SEM NINGUEM MARCADO SAI RETO, E AVISA -- a frase da bola teleguiada
+		// (`customattacks.dm:536`), pelo mesmo motivo: sem ela o jogador acha que o que comprou nao funciona.
+		// (Quem marcar alguem durante a carga ainda pega: o alvo e lido quando a cabeca nasce.)
+		if (t.Teleguiado && AlvoDeTeleguiado(pl) == null)
+			Avisar(pl, "sem alvo marcado: o raio vai sair reto. (Marque alguem com duplo clique.)");
 
 		Canalizar(pl, t.Verbo, custo, t.Receita());
 

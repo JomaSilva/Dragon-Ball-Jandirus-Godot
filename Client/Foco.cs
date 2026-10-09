@@ -24,9 +24,10 @@ public static class Foco
 	// que fecha o circulo: a tela que liga a tecla e a tecla ligada usam o mesmo portao.
 	// A QUINTA FONTE e a caixa de texto do menu E (`CaixaDeTexto`, a lapide): um `LineEdit` de verdade,
 	// com o teclado dentro dele -- sem esta linha o "E" do epitafio abriria outro menu por cima.
+	// A SEXTA e a pergunta da senha, ao erguer uma porta (`ModoDeConstruir`): outro `LineEdit` de verdade.
 	public static bool Digitando =>
 		Chat.Digitando || MenuJogo.Digitando || TelaDeTecnicas.Digitando || TelaDeTeclas.Digitando
-		|| CaixaDeTexto.Digitando;
+		|| CaixaDeTexto.Digitando || ModoDeConstruir.Digitando;
 
 	/// <summary>
 	/// POSSO DISPARAR UM ATALHO AGORA? A pergunta dos ATALHOS -- menu, aba, mochila, interacao, chat,

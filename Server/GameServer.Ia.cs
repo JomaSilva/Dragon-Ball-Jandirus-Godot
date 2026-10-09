@@ -198,7 +198,7 @@ public partial class GameServer
 	///
 	///   1. `MarchaDeVoo(pl, shift)`  -- o Superflight;
 	///   2. `PodeCorrer(pl, dt)`      -- **e ele que COBRA** `MaxKi * 0,02` por segundo de corrida;
-	///   3. o mapa nulo em altura      -- `AtravessandoCenario`, o `isflying` do original.
+	///   3. o modo `PorCima` em altura -- `Voo.ModoNaAltura`, o `isflying` do original (menos o predio).
 	/// ==========================================================================================================
 	///
 	/// ============================ DOIS DEFEITOS QUE MORAVAM AQUI ============================
@@ -285,7 +285,10 @@ public partial class GameServer
 			return;
 		}
 
-		ZoneCollision? mapa = AtravessandoCenario(npc) ? null : MapaDaZonaOuCatalogo(npc.Zone);
+		// O MAPA VAI SEMPRE, e a altura entra pelo MODO (`Voo.ModoNaAltura`, na chamada do `Advance` logo
+		// abaixo): o NPC que voa alto continua passando por cima da montanha, e para na parede de predio
+		// como o jogador para -- a mesma funcao, pela regra deste arquivo.
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(npc.Zone);
 
 		Vec2 antes = npc.Pos;
 		// ============================ A AGUA VALE PRA IA PELA MESMA FUNCAO ============================
@@ -310,7 +313,7 @@ public partial class GameServer
 		// na ressalva do `MoveRules.ValidateStep` (que abstem-se dos corpos de proposito; ver la).
 		// ====================================================================================================
 		npc.Pos = MoveRules.Advance(npc.Pos, c.Rumo, (float)dt, npc.SpeedStat, mapa, out bool barrado, correndo,
-									ModoDeTravessiaDe(npc), VizinhancaDe(npc));
+									Voo.ModoNaAltura(npc.Altitude, ModoDeTravessiaDe(npc)), VizinhancaDe(npc));
 		npc.Moving = (npc.Pos - antes).LengthSquared > 0.01f;
 		// ============================ BATEU EM PAREDE OU EM AGUA? ============================
 		// O `Advance` nao distingue, e a distincao e a pergunta inteira da `Travessia`: parede se

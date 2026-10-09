@@ -173,7 +173,16 @@ public sealed class Body
 		return b;
 	}
 
-	public BodyPart? Achar(string nome) => Partes.FirstOrDefault(p => p.Nome == nome);
+	// UM LACO, e nao `Partes.FirstOrDefault(p => p.Nome == nome)`: o lambda captura `nome`, e isso sao um fecho e
+	// um delegate novos a cada consulta. O snapshot do servidor pergunta pelo rabo de cada corpo a cada tique
+	// (`ServerPlayer.TemRaboAgora`) -- medido em 2026-10-08 com 149 corpos: 5,8 mil consultas por segundo,
+	// 0,45 MB/s de lixo (`--diagcoletor`).
+	public BodyPart? Achar(string nome)
+	{
+		foreach (BodyPart p in Partes)
+			if (p.Nome == nome) return p;
+		return null;
+	}
 
 	/// <summary>
 	/// DE QUAL MEMBRO SAI QUAL PECA -- a tabela do BYOND, colada linha a linha.
@@ -264,6 +273,12 @@ public sealed class Body
 	/// <summary>
 	/// Sorteia qual membro o golpe pega. A zona mirada nao GARANTE o membro -- so pesa a
 	/// favor dele. Errar a mira e parte do jogo.
+	///
+	/// DIVERGENCIA DECLARADA (dono, 2026-10-08): isto nao e o `DamageLimb` do DM (`Injuries.dm:33-49`). La cada
+	/// membro passa por um `prob()` proprio e a lista pode sair VAZIA -- o golpe nao fere ninguem: 22,3% dos tiros
+	/// de ki (zona nula) e, pela mesma tabela, 8,9% dos socos mirando o peito. Aqui e um sorteio so, que sempre
+	/// acha, e os pesos (<see cref="BodyPart.Chance"/>) nao sao os `targetchance` do `mobparts.dm:119-293`. A
+	/// historia e os numeros estao em <see cref="MeleeResolver.AplicarDanoPronto"/>.
 	/// </summary>
 	public BodyPart? Sortear(string? zona, Random rng)
 	{

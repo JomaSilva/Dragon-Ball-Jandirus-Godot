@@ -240,6 +240,121 @@ public sealed partial class GameServer
 
 		_fotoRaio = p.Id;
 		_fotoRaioZona = dono.Zone.Hash;
+		_fotoRaioDisparado = p;
+		return p.Id;
+	}
+
+	/// <summary>O proprio raio da foto, guardado pra <see cref="FimDoRaioDaFoto"/> depois que ele sai da lista da zona.</summary>
+	private Projetil? _fotoRaioDisparado;
+
+	/// <summary>
+	/// DE QUE O RAIO DA FOTO MORREU, e quanto ele tinha andado -- pra a frase de quem reprova. O
+	/// <see cref="RaioDaFoto"/> so sabe dizer "nao esta vivo": o tiro que morre sai da lista da zona, e
+	/// "morreu de que?" e a pergunta inteira quando uma cena espera que ele pegue um corpo.
+	/// </summary>
+	internal string FimDoRaioDaFoto()
+	{
+		if (_fotoRaioDisparado is not { } p) return "sem raio";
+		string estado = !p.Vivo ? $"morreu de {p.Fim}" : p.Esvaziando ? $"esvaziando por {p.FimPendente}" : "vivo";
+		return $"{estado}, com {p.AndouTiles:0.0} tiles andados (alcance que restava {p.Distancia:0.0} de {p.MaxDistancia:0.0}, "
+			 + $"prazo que restava {p.VidaRestante:0.00} s)";
+	}
+
+	/// <summary>
+	/// UMA BOLA DE VERDADE SAINDO DA MAO DO JOGADOR, pela mesma porta unica -- a irma do
+	/// <see cref="RaioDeFoto"/> pra cena em que o tiro ACABA num corpo (a F: a bola desenhada chega ao ponto
+	/// em que estoura).
+	///
+	/// `Deflectivel = false` pelo motivo de sempre (um sorteio no meio de uma foto fotografaria o dado) e
+	/// `Empurra = false` porque a cena e a bola chegando, e nao o alvo voando. `Velocidade = 1` e a bola
+	/// COMUM, a de 16 tiles por segundo -- a da queixa.
+	///
+	/// Ela ocupa a vaga do raio da foto de proposito: o <see cref="RaioDaFoto"/> passa a responder por ela
+	/// (vivo, onde, quanto andou) e o <see cref="LimparAFoto"/> a recolhe se a cena acabar antes dela.
+	/// </summary>
+	internal int BolaDeFoto(int idDono, Vec2 rumo, double alcanceTiles, double baseDano)
+	{
+		if (!_players.TryGetValue(idDono, out ServerPlayer? dono)) return 0;
+
+		dono.Ficha.Ki = dono.Ficha.MaxKi;
+		Projetil p = Disparar(dono, new ReceitaDeProjetil
+		{
+			Tipo = TipoDeProjetil.Blast, BaseDano = baseDano, Velocidade = 1,
+			AlcanceTiles = alcanceTiles, Deflectivel = false, Empurra = false, Nome = "Bola de Ki",
+		}, rumoDado: rumo);
+
+		_fotoRaio = p.Id;
+		_fotoRaioZona = dono.Zone.Hash;
+		return p.Id;
+	}
+
+	/// <summary>
+	/// A MESMA BOLA, FERINDO: o dano final dela NESTE alvo e cravado em <paramref name="danoFinal"/>.
+	///
+	/// ============================ A BOLA DE COCEGAS NAO E MAIS GOLPE ============================
+	/// As cenas que medem geometria atiram com `baseDano: 0.002`: a bola encosta, estoura e nao machuca o boneco
+	/// no meio da medida. Desde o corte dos fracos (`DanoDeKi.CorteDoFraco`, `objects.dm:355-357`) esse impacto
+	/// nao e golpe -- o tiro estoura e NAO sai relato (`EstourarSemFerir`). A cena que precisa do RELATO -- o
+	/// clarao, a faisca, a musica de combate entrando: a `--diagestouro` -- precisa de um tiro que fira.
+	///
+	/// O DANO E CRAVADO DEPOIS DE O TIRO SAIR pela porta de producao, pelo <see cref="CravarDanoFinal"/> das
+	/// bancadas do corte: o `ModsBase` dele e escalado ate a conta do `Acertar` (`DanoDeKi.Final`, com os mesmos
+	/// argumentos) dar o numero pedido contra ESTE corpo, com a ficha e a guarda que ele tem agora. Quem pede
+	/// escolhe quanto: pouco acima do corte fere sem marcar o sprite (a ferida so aparece com 15% do membro, que
+	/// tem 100 de vida -- ver `Feridas.HematomaComeca`).
+	/// ==============================================================================================
+	/// </summary>
+	internal int BolaDeFotoQueFere(int idDono, int idAlvo, Vec2 rumo, double alcanceTiles, double danoFinal)
+	{
+		int id = BolaDeFoto(idDono, rumo, alcanceTiles, baseDano: 1);
+		if (id == 0 || !_players.TryGetValue(idAlvo, out ServerPlayer? alvo) || alvo.Combate == null) return id;
+
+		foreach (Projetil p in ProjeteisDaZona(alvo.Zone.Hash))
+			if (p.Id == id) CravarDanoFinal(p, alvo, danoFinal);
+		return id;
+	}
+
+	/// <summary>
+	/// O CORPO DE VOLTA AO QUE ERA, entre um tiro que fere e o seguinte. Um golpe pouco acima do corte nao marca
+	/// o sprite; dois no mesmo membro marcam, e a mascara de feridas viajando no quadro de um golpe entraria na
+	/// conta de quem mede esse quadro.
+	/// </summary>
+	internal void SararCorpoDeFoto(int id)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl) || pl.Combate is not { } estado) return;
+		estado.Corpo.Restaurar();
+		estado.SincronizarVida();
+	}
+
+	/// <summary>
+	/// O MESMO RAIO, FERINDO -- o irmao da <see cref="BolaDeFotoQueFere"/>: o dano final dele NESTE alvo e cravado
+	/// em <paramref name="danoFinal"/>. E o raio das cenas da `--diagraio` em que o impacto tem que ser GOLPE: a C
+	/// (desde o corte dos fracos o raio de cocegas planta na frente do corpo e nao leva ninguem) e os voos do
+	/// raio da F (o relato do golpe).
+	///
+	/// `estoura` liga o `ReceitaDeProjetil.EstouraNoImpacto`: o raio que acaba no primeiro corpo, como bola (o do
+	/// Death Beam). Esse sai sem empurrar, pelo motivo da bola de foto -- a cena e o tiro chegando, e nao o alvo
+	/// voando.
+	///
+	/// O `Canalizando` na unha e a vaga do raio da foto sao os do <see cref="RaioDeFoto"/>, e pelos mesmos motivos.
+	/// </summary>
+	internal int RaioDeFotoQueFere(int idDono, int idAlvo, Vec2 rumo, double alcanceTiles, double danoFinal,
+								   bool estoura = false)
+	{
+		if (!_players.TryGetValue(idDono, out ServerPlayer? dono)) return 0;
+
+		dono.Ficha.Ki = dono.Ficha.MaxKi;
+		Projetil p = Disparar(dono, new ReceitaDeProjetil
+		{
+			Tipo = TipoDeProjetil.Beam, BaseDano = 1, Velocidade = 1, AlcanceTiles = alcanceTiles,
+			Deflectivel = false, EstouraNoImpacto = estoura, Empurra = !estoura, Nome = "Onda de Ki",
+		}, rumoDado: rumo);
+		p.Canalizando = true;
+		if (_players.TryGetValue(idAlvo, out ServerPlayer? alvo) && alvo.Combate != null) CravarDanoFinal(p, alvo, danoFinal);
+
+		_fotoRaio = p.Id;
+		_fotoRaioZona = dono.Zone.Hash;
+		_fotoRaioDisparado = p;
 		return p.Id;
 	}
 

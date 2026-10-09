@@ -31,7 +31,10 @@ public partial class GameServer
 		public int Tiles = 12;
 		/// <summary>Quantos pixels a linha de B fica abaixo da de A.</summary>
 		public float Lateral;
-		/// <summary>B comeca a carregar este tanto de segundos depois de A.</summary>
+		/// <summary>
+		/// B comeca a carregar este tanto de segundos depois de A -- escrito em TILES QUE O RAIO DE A JA ANDOU
+		/// quando o de B nasce (<see cref="TileDeRaio"/>): as duas cargas duram o mesmo, entao o atraso inteiro vira voo.
+		/// </summary>
 		public double AtrasoB;
 		public bool BAtira = true;
 		/// <summary>A SOLTA o raio este tanto de segundos depois de ele nascer (-1 = nunca solta).</summary>
@@ -84,6 +87,17 @@ public partial class GameServer
 		public bool BLevou;
 	}
 
+	/// <summary>
+	/// QUANTO TEMPO UM RAIO COMUM LEVA PRA ANDAR UM TILE -- a unidade das cenas desta varredura.
+	///
+	/// As cenas eram montadas em segundos ("B carrega 1,0 s depois", "A solta 0,2 s depois de nascer"), e o que
+	/// elas QUERIAM dizer era geometria: o raio de A a dois tiles de B quando o de B nasce; um raio solto de dois
+	/// tiles de comprimento. Com o raio no dobro da velocidade (dono, 2026-10-08) o mesmo segundo virou outra
+	/// cena -- o raio de A chegava em B antes de ele terminar a carga, e o "solta antes do encontro" soltava no
+	/// tique do encontro. Em tiles, a cena e a mesma em qualquer pressa.
+	/// </summary>
+	private static readonly double TileDeRaio = Projetil.AtrasoDeRaio(1);
+
 	private void NuncaSeSobrepoem()
 	{
 		GD.Print("[embateki] -- 1d) AS CABECAS NUNCA SE SOBREPOEM: varredura de cenas de frente (a regua e a FRENTE desenhada)");
@@ -91,8 +105,8 @@ public partial class GameServer
 		CenaDeFrente[] cenas =
 		[
 			new() { Nome = "juntos a 12 tiles (o controle da 1b)", DisputasEsperadas = 1 },
-			new() { Nome = "B carrega 0,4 s depois", AtrasoB = 0.4, DisputasEsperadas = 1 },
-			new() { Nome = "B carrega 1,0 s depois", AtrasoB = 1.0, DisputasEsperadas = 1 },
+			new() { Nome = "B atira com o raio de A ja 4 tiles a caminho", AtrasoB = 4 * TileDeRaio, DisputasEsperadas = 1 },
+			new() { Nome = "B atira com o raio de A ja 10 tiles a caminho (quase nele)", AtrasoB = 10 * TileDeRaio, DisputasEsperadas = 1 },
 			new() { Nome = "linhas a 12 px uma da outra", Lateral = 12, DisputasEsperadas = 1 },
 			new() { Nome = "linhas a 24 px uma da outra", Lateral = 24, DisputasEsperadas = 1 },
 			new() { Nome = "linhas VIZINHAS (40 px): o `range(1)` do DM disputa", Lateral = 40, DisputasEsperadas = 1 },
@@ -103,8 +117,8 @@ public partial class GameServer
 					EscalaA = 4, BAtira = false, Tiles = 16, CorpoDeLado = 60 },
 			new() { Nome = "Final Flash A QUEIMA-ROUPA (corpo a 3 tiles): o feixe nunca fica ao contrario", VerboA = "Final_Flash",
 					EscalaA = 4, BAtira = false, Tiles = 3, QueimaRoupa = true, Segundos = 4 },
-			new() { Nome = "A SOLTA o raio antes do encontro (solto x alimentado)", SoltarAEm = 0.2 },
-			new() { Nome = "os DOIS soltam o raio antes do encontro (solto x solto)", SoltarAEm = 0.2, SoltarBEm = 0.2 },
+			new() { Nome = "A SOLTA o raio antes do encontro (solto x alimentado)", SoltarAEm = 2 * TileDeRaio },
+			new() { Nome = "os DOIS soltam o raio antes do encontro (solto x solto)", SoltarAEm = 2 * TileDeRaio, SoltarBEm = 2 * TileDeRaio },
 			new() { Nome = "REVANCHE: B perde a disputa e atira de novo no feixe que vem", Tiles = 20, Revanche = true, DisputasEsperadas = 2 },
 			new() { Nome = "Final Flash x Final Flash (folha de 64 px, escala 4)", VerboA = "Final_Flash", VerboB = "Final_Flash",
 					EscalaA = 4, EscalaB = 4, Tiles = 22, DisputasEsperadas = 1 },
@@ -229,9 +243,12 @@ public partial class GameServer
 		b.Altitude = c.AlturaDeB;
 		double vidaDeB = b.Combate!.Corpo.Vida();
 
-		ReceitaDeProjetil ra = SemDeflexao();
+		// OS DOIS RAIOS SAEM COM A BASE DE UM GOLPE (2026-10-08): o Ki Wave de producao entre dois iguais cai no corte
+		// dos fracos (`DanoDeKi.CorteDoFraco`) e nao e golpe -- e tres cenas daqui medem justamente o corpo ACERTADO
+		// (o Final Flash de lado, a queima-roupa, o feixe que vence e chega em B). A base sobe igual pros dois lados.
+		ReceitaDeProjetil ra = QueFereUmIgual(SemDeflexao(), a);
 		ra.EscalaVisual = c.EscalaA;
-		ReceitaDeProjetil rb = SemDeflexao();
+		ReceitaDeProjetil rb = QueFereUmIgual(SemDeflexao(), b);
 		rb.EscalaVisual = c.EscalaB;
 
 		var m = new MedidaDeFrente();

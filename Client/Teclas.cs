@@ -172,6 +172,10 @@ public static class Teclas
 		new("ui_mochila", "mochila", GrupoDeTecla.Interface, [Key.I], NoInputMap: false),
 		new("ui_ajuda", "mostrar/esconder a lista de teclas", GrupoDeTecla.Interface, [Key.Tab], NoInputMap: false),
 
+		// O MODO DE CONSTRUIR. No original e o M (`Hotkeys_Defaults.dm:7`), que aqui e meditar desde o
+		// primeiro dia; o B estava livre na tabela inteira e e a inicial de "base". Ver `ModoDeConstruir`.
+		new("ui_construir", "construir base: paredes, pisos e portas (liga e desliga)", GrupoDeTecla.Interface, [Key.B], NoInputMap: false),
+
 		// AS TRES QUE NAO SE RELIGAM -- ver `AcaoDeTecla.Fixa`.
 		new("fixa_sair", "fechar a tela aberta / pausa", GrupoDeTecla.Interface,
 			[Key.Escape], NoInputMap: false, Fixa: true),
@@ -193,6 +197,22 @@ public static class Teclas
 	public static event Action? Mudou;
 
 	public static AcaoDeTecla? Acao(string id) => Array.Find(Todas, a => a.Id == id);
+
+	// ============================ O NOME DE CADA ACAO NO MOTOR, UM `StringName` SO ============================
+	// `Input.IsActionPressed("run")` recebe um `StringName`, e a `string` entregue no lugar fabrica um NOVO a
+	// cada chamada -- lixo com finalizador, que sobrevive a primeira coleta (ver o compasso do
+	// `CharacterVisual`). O corpo local le vinte e quatro teclas por quadro: medido em 2026-10-08, 3 mil
+	// `StringName` por segundo, quase tudo o que sobrava de finalizavel depois do conserto do relogio de
+	// animacao (`--diagcoletor`). Aqui cada nome vira `StringName` na primeira leitura e e o MESMO dali em diante.
+	// ==========================================================================================================
+	private static readonly Dictionary<string, StringName> _nomesNoMotor = [];
+
+	/// <summary>O `StringName` da acao `id` do `InputMap`, guardado -- e o que as leituras de tecla por quadro entregam.</summary>
+	public static StringName NomeNoMotor(string id)
+	{
+		if (!_nomesNoMotor.TryGetValue(id, out StringName? nome)) _nomesNoMotor[id] = nome = id;
+		return nome;
+	}
 
 	/// <summary>As teclas de agora desta acao. Vazio = ela ficou SEM tecla (o jogador deu a dela a outra coisa).</summary>
 	public static Key[] Teclado(string id) =>

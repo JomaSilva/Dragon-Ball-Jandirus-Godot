@@ -92,34 +92,8 @@ public static class TileIndex
 
 		for (int i = 0; i < ordenadas.Count; i++)
 		{
-			(string nome, FonteDeAtlas f) = (ordenadas[i].Key, ordenadas[i].Value);
-			int cols = Math.Max(1, f.Cols);
-
-			sb.Append("  { \"atlas\": \"").Append(Escapar(nome)).Append("\", ");
-			sb.Append("\"fonte\": ").Append(f.Id).Append(", ");
-			sb.Append("\"colunas\": ").Append(cols).Append(", ");
-			sb.Append("\"iw\": ").Append(f.IconW).Append(", ");
-			sb.Append("\"ih\": ").Append(f.IconH).Append(", ");
-			sb.Append("\"res\": \"").Append(Escapar(f.ResPath)).Append("\", ");
-			sb.Append("\"estados\": [");
-
-			// em ordem de INDICE: o arquivo sai na mesma ordem em que a folha desenha, o que faz
-			// um erro de grade (estado saltando linha) aparecer a olho nu
-			bool primeiro = true;
-			foreach ((string estado, int idx) in f.StateIndex.OrderBy(kv => kv.Value))
-			{
-				if (!primeiro) sb.Append(", ");
-				primeiro = false;
-				// A MESMA CONTA DO CONVERSOR (`MapConverter.Coord`). Ela e trivial e por isso mesmo
-				// perigosa de reescrever: se as colunas daqui saissem de outro lugar que nao o
-				// `SheetWidth / IconWidth` da fonte, o indice e o tileset apontariam pra celulas
-				// diferentes do MESMO png -- e cada tile viria trocado por um vizinho.
-				sb.Append('"').Append(Escapar(estado)).Append('=')
-				  .Append(idx % cols).Append(',').Append(idx / cols).Append('"');
-				estados++;
-			}
-
-			sb.Append("] }").Append(i + 1 < ordenadas.Count ? ",\n" : "\n");
+			sb.Append(Entrada(ordenadas[i].Key, ordenadas[i].Value)).Append(i + 1 < ordenadas.Count ? ",\n" : "\n");
+			estados += ordenadas[i].Value.StateIndex.Count;
 		}
 		sb.Append("]\n");
 
@@ -131,6 +105,40 @@ public static class TileIndex
 	}
 
 	/// <summary>Nome do .png sem pasta e sem extensao; cai no `res://` se a chave vier vazia.</summary>
+	/// <summary>
+	/// UMA LINHA DO INDICE (sem a virgula do fim): a mesma pra conversao cheia e pra quem so ACRESCENTA
+	/// fontes a um indice que ja existe (`MapConverter.EscreverAcrescimos`) -- as duas escritas nao
+	/// podem divergir num campo.
+	/// </summary>
+	internal static string Entrada(string nome, FonteDeAtlas f)
+	{
+		int cols = Math.Max(1, f.Cols);
+		var sb = new StringBuilder();
+		sb.Append("  { \"atlas\": \"").Append(Escapar(nome)).Append("\", ");
+		sb.Append("\"fonte\": ").Append(f.Id).Append(", ");
+		sb.Append("\"colunas\": ").Append(cols).Append(", ");
+		sb.Append("\"iw\": ").Append(f.IconW).Append(", ");
+		sb.Append("\"ih\": ").Append(f.IconH).Append(", ");
+		sb.Append("\"res\": \"").Append(Escapar(f.ResPath)).Append("\", ");
+		sb.Append("\"estados\": [");
+
+		// em ordem de INDICE: o arquivo sai na mesma ordem em que a folha desenha, o que faz
+		// um erro de grade (estado saltando linha) aparecer a olho nu
+		bool primeiro = true;
+		foreach ((string estado, int idx) in f.StateIndex.OrderBy(kv => kv.Value))
+		{
+			if (!primeiro) sb.Append(", ");
+			primeiro = false;
+			// A MESMA CONTA DO CONVERSOR (`MapConverter.Coord`). Ela e trivial e por isso mesmo
+			// perigosa de reescrever: se as colunas daqui saissem de outro lugar que nao o
+			// `SheetWidth / IconWidth` da fonte, o indice e o tileset apontariam pra celulas
+			// diferentes do MESMO png -- e cada tile viria trocado por um vizinho.
+			sb.Append('"').Append(Escapar(estado)).Append('=')
+			  .Append(idx % cols).Append(',').Append(idx / cols).Append('"');
+		}
+		return sb.Append("] }").ToString();
+	}
+
 	private static string NomeDoAtlas(FonteDeAtlas f)
 	{
 		string n = Path.GetFileNameWithoutExtension(f.Chave);

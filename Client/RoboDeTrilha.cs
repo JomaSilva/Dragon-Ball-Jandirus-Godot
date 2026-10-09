@@ -173,6 +173,53 @@ public partial class RoboDeTrilha : Node
 		Nota("de pe. Os roteiros do dono, no jogo, com o relogio de verdade.");
 		OSorteioNaoMisturaAsPastas();
 		OSilencioDoEspaco();
+		AFaixaAindaNaThreadDeCarga();
+	}
+
+	// =====================================================================
+	// ROTEIRO 0c -- A FAIXA PEDIDA E TOCADA NO MESMO QUADRO (sem relogio)
+	// =====================================================================
+	/// <summary>
+	/// ============================ A LUTA PODE COMECAR ANTES DE A LEITURA ACABAR ============================
+	/// O `AudioDirector` le a proxima faixa de combate numa thread de carga (`Adiantar`), pra o mp3 nao
+	/// ser lido pela thread principal no quadro do primeiro golpe. A leitura leva 6 a 19 ms -- e nada impede a
+	/// luta de comecar dentro deles. Nesse instante a faixa nao esta na memoria NEM pode ser carregada do jeito
+	/// de sempre: um `ResourceLoader.Load` de um caminho que ainda esta na thread de carga trava a thread
+	/// principal (o cabecalho do `Aquecimento` mediu 240 s de log mudo). Quem a entrega e o `LoadThreadedGet`,
+	/// que espera a leitura em andamento -- e o ramo do `Cruzar` que so roda nessa corrida.
+	///
+	/// A `--diagestouro` nao passa por ele: la as lutas ficam a segundos umas das outras. Aqui o pedido e o
+	/// toque saem na mesma linha de tempo, com microssegundos entre os dois, e a faixa TEM que entrar no ar.
+	///
+	/// A ESPERA E DE VERDADE, E AQUI E A PIOR QUE HA: este roteiro roda no quadro da entrada no mundo, com a
+	/// fila da thread de carga cheia, e a thread principal esperou 86 ms por um mp3 que sozinho se le em 4
+	/// (2026-10-08). Por isso o teto abaixo e folgado -- ele separa ESPERAR de TRAVAR, e nao mede pressa.
+	///
+	/// NAO HA CONTRA-EXEMPLO GUARDADO, e fica dito: o defeito que este roteiro vigia e um travamento, e uma
+	/// bancada que o injetasse nao terminaria pra contar. Quem denuncia a volta dele e esta corrida nao chegar
+	/// ao placar.
+	/// ========================================================================================================
+	/// </summary>
+	private void AFaixaAindaNaThreadDeCarga()
+	{
+		Nota("");
+		Nota("===== ROTEIRO 0c -- a faixa pedida e tocada no MESMO quadro =====");
+		if (AudioDirector.Instance is not { } a) { Conferir(false, "o AudioDirector existe pra medir a carga em thread"); return; }
+
+		a.Adiantar(AudioDirector.Camada.Combate);   // o pedido: a leitura comeca agora, em outra thread
+		string faixa = Trilha.Combate();   // ...e o sorteio entrega justamente a que foi pedida
+		ulong t0 = Time.GetTicksUsec();
+		a.Musica(faixa, AudioDirector.Camada.Combate, "bancada: faixa pedida e tocada no mesmo quadro");
+		double ms = (Time.GetTicksUsec() - t0) / 1000.0;
+
+		Conferir(a.FaixaDeTeste == faixa && a.TocandoDeTeste,
+				 $"a faixa que ainda estava na thread de carga entrou no ar e TOCA (`{faixa.GetFile()}`)");
+		Conferir(ms < 2000, $"...e a thread principal ESPEROU por ela, sem travar ({ms:0.0} ms pra por no ar)");
+		Nota($"  --     MEDIDO: a thread principal esperou {a.UltimaEntradaDeTeste.Espera:0.0} ms pelo arquivo, "
+		   + "pedido a thread de carga microssegundos antes");
+
+		// DEVOLVE O TOCADOR: os roteiros seguintes comecam do que a ZONA pede, e nao de uma briga da bancada.
+		a.PararCamada(AudioDirector.Camada.Combate, "bancada: devolve o tocador");
 	}
 
 	// =====================================================================
@@ -341,6 +388,37 @@ public partial class RoboDeTrilha : Node
 					? $"...e os {rodadas} sairam todos de dentro da pasta `battle ost`"
 					: $"...e saem todos de `battle ost` (fora da pasta: {string.Join(", ", forasteiras)})");
 
+		// ============================ ESPIAR NAO E SORTEAR ============================
+		// O `AudioDirector` le numa thread de carga a faixa que o PROXIMO `Trilha.Combate()` vai devolver
+		// (`Trilha.ProximaDeCombate`), pra ela ja estar na memoria no primeiro golpe da luta. Tudo depende de o
+		// que se ESPIA ser o que SAI: se nao for, a faixa carregada e uma e a tocada e outra -- lida do disco no
+		// quadro do golpe, que e o defeito de volta, sem nada na tela nem no ouvido que o denuncie.
+		//
+		// E espiar nao pode mexer no sorteio. No fim de uma rodada quem espia faz o embaralhamento da seguinte
+		// acontecer mais cedo (`Saco.Espiar`), e e ali que um erro trocaria a ordem: por isso sao tres voltas do
+		// saco, com as viradas de rodada no meio, e a pergunta de sempre -- cada volta entrega a pasta inteira,
+		// uma vez cada faixa, e a rodada nova nao comeca com a faixa em que a velha terminou.
+		// ==============================================================================
+		var saidas = new List<string>();
+		int trocadas = 0;
+		for (int i = 0; i < combate.Count * 3 + 5; i++)
+		{
+			string espiada = Trilha.ProximaDeCombate();
+			string deNovo = Trilha.ProximaDeCombate();
+			string saiu = Trilha.Combate();
+			if (espiada != saiu || deNovo != saiu) trocadas++;
+			saidas.Add(saiu);
+		}
+		Conferir(trocadas == 0,
+				 $"o que o `ProximaDeCombate` ESPIA e o que o `Combate` entrega em seguida, em {saidas.Count} sorteios ({trocadas} diferente(s))");
+
+		int seguidas = 0;
+		for (int i = 1; i < saidas.Count; i++) if (saidas[i] == saidas[i - 1]) seguidas++;
+		Conferir(seguidas == 0,
+				 $"...e nenhuma faixa saiu duas vezes SEGUIDAS, nem na virada de rodada ({seguidas} repeticao(oes))");
+		Conferir(SaiEmRodadas(saidas, combate),
+				 "...e o saco continua saindo em RODADAS: cada volta entrega a pasta inteira, uma vez cada faixa");
+
 		// O CONTRA-EXEMPLO. Sem ele, um `Trilha.Combate()` que devolvesse "" pra sempre passaria as
 		// duas checagens acima -- "nenhuma de menu, nenhuma de fora" e verdade sobre lista nenhuma --
 		// e o jogo estaria MUDO em vez de consertado.
@@ -356,6 +434,33 @@ public partial class RoboDeTrilha : Node
 					: $"o sorteio de menu so devolve faixa de `Menu ost` (fora: {string.Join(", ", forasteirasMenu)})");
 		Nota("");
 	}
+
+	/// <summary>
+	/// A SEQUENCIA E A DE UM SACO DE SORTEIO? Tem que existir um ponto de corte a partir do qual cada bloco do
+	/// tamanho da pasta e a pasta inteira sem repeticao; o que vem antes do corte (o resto da rodada que ja
+	/// estava em curso) e o que sobra depois do ultimo bloco inteiro tambem nao repetem nada.
+	///
+	/// O CORTE E PROCURADO, e nao fixo: quem chega aqui nao sabe em que ponto da rodada o saco estava -- o
+	/// roteiro 0 ja tirou dele duas voltas e pouco logo acima.
+	/// </summary>
+	private static bool SaiEmRodadas(List<string> saidas, List<string> pasta)
+	{
+		int n = pasta.Count;
+		if (n < 2) return true;
+
+		for (int corte = 0; corte < n && corte <= saidas.Count; corte++)
+		{
+			bool ok = SemRepetir(saidas, 0, corte);
+			int i = corte;
+			for (; ok && i + n <= saidas.Count; i += n)
+				ok = SemRepetir(saidas, i, n) && saidas.GetRange(i, n).TrueForAll(pasta.Contains);
+			if (ok && SemRepetir(saidas, i, saidas.Count - i)) return true;
+		}
+		return false;
+	}
+
+	private static bool SemRepetir(List<string> l, int de, int quantos)
+		=> new HashSet<string>(l.GetRange(de, quantos)).Count == quantos;
 
 	/// <summary>A pasta de onde cada faixa DEVE sair, lida uma vez. Ver <see cref="Pasta"/>.</summary>
 	private List<string>? _daBatalha, _doMenu;

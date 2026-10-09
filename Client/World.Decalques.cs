@@ -98,7 +98,66 @@ public partial class World : Node2D
 	}
 
 	private void AoCairDecalque(Protocol.Decal tipo, Vec2 onde, Facing dir, PecaDeCorpo peca)
-		=> _decalques?.Plantar(tipo, new Vector2(onde.X, onde.Y), dir, peca);
+	{
+		var ponto = new Vector2(onde.X, onde.Y);
+
+		// O SULCO PASSA PELA FILA: se foi um raio que o riscou, ele espera a cabeca DESENHADA chegar nele. O
+		// `TickDosSulcosEsperando` roda neste mesmo quadro, e planta na hora o que nao espera ninguem.
+		if (tipo == Protocol.Decal.Sulco && !ProjetilDesenhado.AnuncioSemEsperaDeTeste)
+			_sulcosEsperando.Add((ponto, dir, _relogioDecal));
+		else
+			_decalques?.Plantar(tipo, ponto, dir, peca);
+	}
+
+	/// <summary>Os sulcos que ja chegaram do servidor e ainda nao nasceram. Ver <see cref="TickDosSulcosEsperando"/>.</summary>
+	private readonly List<(Vector2 Onde, Facing Dir, double Chegou)> _sulcosEsperando = [];
+
+	/// <summary>
+	/// O MAXIMO QUE UMA MARCA ESPERA, em segundos -- a rede de seguranca, e nao a regra. E o dobro do teto
+	/// do atraso com que um corpo remoto e desenhado (`RemotePlayer.AtrasoTeto`, 250 ms): a espera mais
+	/// longa que existe de verdade e a da cabeca ancorada em quem ela leva, que anda nessa linha do tempo.
+	/// </summary>
+	private const double EsperaMaximaDoSulco = 0.5;
+
+	/// <summary>
+	/// ============================ O SULCO NASCE DEBAIXO DA CABECA QUE SE VE (2026-10-08) ============================
+	/// O servidor carimba a marca debaixo da cabeca de VERDADE do raio (`GameServer.MarcarSulcoDoTiro`), e o
+	/// desenho anda atras dela -- ver `ProjetilDesenhado.AnuncioSemEsperaDeTeste`. Plantada na chegada do
+	/// pacote, a terra revirada aparecia a frente da ponta enquanto o raio esticava (medido na `--diagraio`,
+	/// cena E: 27,5 px no raio comum), e mais ainda com a cabeca levando alguem.
+	///
+	/// Entao a marca espera enquanto estiver no VAO de algum raio: a cabeca do servidor ja passou por ela e
+	/// a desenhada ainda nao (`ProjetilDesenhado.AindaNaoChegouEm`). A PERGUNTA E DE GEOMETRIA, E NAO DE
+	/// DONO: o pacote nao diz quem riscou, e o sulco de um corpo arremessado usa o mesmo tipo. O dele nao
+	/// esta no vao de raio nenhum, e nasce neste mesmo quadro como sempre nasceu.
+	///
+	/// NENHUMA MARCA SE PERDE: raio recolhido nao segura ninguem, e o prazo (<see cref="EsperaMaximaDoSulco"/>)
+	/// solta a que um raio parado nunca alcancaria.
+	/// ================================================================================================================
+	/// </summary>
+	private void TickDosSulcosEsperando()
+	{
+		if (_sulcosEsperando.Count == 0 || _decalques == null) return;
+
+		// NA ORDEM EM QUE CHEGARAM: as que ficam sao empurradas pro comeco da lista, as outras nascem.
+		int ficam = 0;
+		for (int i = 0; i < _sulcosEsperando.Count; i++)
+		{
+			(Vector2 onde, Facing dir, double chegou) = _sulcosEsperando[i];
+			if (_relogioDecal - chegou < EsperaMaximaDoSulco && AlgumRaioAindaNaoChegouEm(onde))
+				_sulcosEsperando[ficam++] = _sulcosEsperando[i];
+			else
+				_decalques.Plantar(Protocol.Decal.Sulco, onde, dir);
+		}
+		_sulcosEsperando.RemoveRange(ficam, _sulcosEsperando.Count - ficam);
+	}
+
+	private bool AlgumRaioAindaNaoChegouEm(Vector2 ponto)
+	{
+		foreach (ProjetilDesenhado tiro in _tiros.Values)
+			if (IsInstanceValid(tiro) && tiro.AindaNaoChegouEm(ponto)) return true;
+		return false;
+	}
 
 	/// <summary>
 	/// HA UM RETRATO DE PECAS ESPERANDO O CHAO CERTO. Ver <see cref="PlantarORetratoDePecas"/>: ele
@@ -142,6 +201,8 @@ public partial class World : Node2D
 	{
 		_decalques?.Limpar();
 		_terraRevirada.Clear();
+		// E O SULCO QUE AINDA ESPERAVA A CABECA DE UM RAIO: ele e do chao que acabou de sumir.
+		_sulcosEsperando.Clear();
 	}
 
 	/// <summary>
@@ -284,6 +345,7 @@ public partial class World : Node2D
 		if (_decalques == null) return;
 		_relogioDecal += delta;
 
+		TickDosSulcosEsperando();   // os sulcos que chegaram: nascem agora, ou esperam a cabeca do raio que os riscou
 		PlantarORetratoDePecas();   // so faz algo quando ha retrato pendente E a zona dele e esta
 
 		int t = ZoneCollision.TileSize;
@@ -407,8 +469,8 @@ public partial class World : Node2D
 	/// trava por projetil) faria dois raios paralelos empilharem duas ondas no mesmo tile, que e
 	/// exatamente o que o `sleep(20)` do original existe pra impedir.
 	///
-	/// E A CADENCIA NAO APERTA O RAIO: ele anda 3,3 tiles/s (`Projetil.SegundosPorTile`, 0,3 s por
-	/// tile) contra os 2 s da trava -- cada celula do caminho dele e virgem, entao o rastro sai
+	/// E A CADENCIA NAO APERTA O TIRO: ele anda de 16 a 20 tiles/s (`Projetil.SegundosPorTile`)
+	/// contra os 2 s da trava -- cada celula do caminho dele e virgem, entao o rastro sai
 	/// inteiro. So a cabeca PARADA (o raio encostado em alguem) deixa de repintar, que e o certo.
 	/// ====================================================================================================
 	/// </summary>

@@ -345,6 +345,20 @@ public sealed class ServerPlayer
 	/// <summary>De quem este clone e reflexo (0 = nao e clone).</summary>
 	public int DonoDoClone;
 
+	/// <summary>
+	/// O PRISIONEIRO QUE ESTE CORPO GUARDA (0 = nao e guardiao) -- o `guard_sig` do `mob/npc/AbsorbGuardian`
+	/// (`MajinSaga.dm:306`): a imagem do Majin que o absorvido tem que vencer pra sair. Quem a ergue, dirige
+	/// e desfaz e o `GameServer.AbsorcaoMajin.cs`.
+	/// </summary>
+	public int PresoGuardado;
+
+	/// <summary>
+	/// O PINO DE BP DO GUARDIAO (0 = nao e pinado por aqui) -- o `guard_seed_bp` (`MajinSaga.dm:308`), metade
+	/// do poder expresso do Majin na hora da absorcao. Irmao do <see cref="BpDaMente"/> e pelo mesmo motivo:
+	/// lutar rende BP a todo corpo, e a imagem nao pode crescer.
+	/// </summary>
+	public double BpDoGuardiao;
+
 	/// <summary>O clone que este jogador invocou (0 = nenhum), e de onde ele veio.</summary>
 	public int CloneId;
 	public ZoneKey ZonaDeOrigem;
@@ -1379,6 +1393,21 @@ public sealed class ServerPlayer
 	/// </summary>
 	public DisfarceG12? Disfarce;
 
+	/// <summary>
+	/// O QUE O MAJIN VESTE DA ULTIMA VITIMA (nulo = nada) -- o guarda-roupa da absorcao
+	/// (`majin_wear_victim_outfit`, `MajinSaga.dm:98-118`). Irmao dos dois de cima, e pelo mesmo motivo: e
+	/// copia so visual, e a aparencia que vai pro disco nao e tocada. A fusao e o disfarce VENCEM. Nao
+	/// persiste (la a lista e `tmp`). Ver `GameServer.VestirAUltimaRefeicao`.
+	/// </summary>
+	public Jandirus.Core.Appearance.Appearance? LookDoMajin;
+
+	/// <summary>
+	/// OS VERBS QUE ESTE MAJIN TEM POR CAUSA DE QUEM ESTA DENTRO DELE (nulo = nenhum) -- os `added_verbs`
+	/// de cada absorvido (`MajinSaga.dm:160-164`), somados. Quem os le sao as duas perguntas de sempre
+	/// (`SabeTecnica` e `TecnicasDe`); quem os poe e tira e o `GameServer.AbsorcaoMajin.cs`.
+	/// </summary>
+	public HashSet<string>? VerbosAbsorvidos;
+
 	/// <summary>A conta a que este personagem pertence, e em qual dos tres slots ele mora.</summary>
 	public string Conta = "";
 	public int Slot = -1;
@@ -1492,6 +1521,14 @@ public sealed class ServerPlayer
 	/// cobra nada, e o snapshot e que leva -- um pacote de pose seria desfeito pelo snapshot seguinte.
 	/// </summary>
 	public long GestoAte;
+
+	/// <summary>
+	/// O OLHAR QUE O SERVIDOR CRAVOU NESTE CORPO, e ate quando ele vale (relogio real, ms). Hoje quem crava e
+	/// o ataque de ki com alguem marcado (`GameServer.CravarOlhar`): nesse prazo o olhar que o cliente manda no
+	/// pacote de movimento nao e escrito. Ver `MiraDeKi.OlharDoTiroMs`.
+	/// </summary>
+	public Facing OlharCravado;
+	public long OlharCravadoAte;
 
 	/// <summary>
 	/// A pose que os outros veem. Sai do ESTADO do servidor, nao de um pedido do cliente --
@@ -2338,6 +2375,20 @@ public partial class GameServer : Node
 		// `--formasteste`: sobe a escada inteira no primeiro que entrar e confere o BP degrau a
 		// degrau. Ver GameServer.FormasTeste.cs -- ela MEXE no personagem, entao so com a flag.
 		_formasDeTeste = Array.IndexOf(args, "--formasteste") >= 0;
+
+		// `--semmiradeki` / `--teleguiadosemlimite`: O JOGO DE ANTES DE 2026-10-09, pra comparar uma bancada
+		// velha lado a lado -- o tiro sai pra onde o corpo olha mesmo com alguem marcado, e o teleguiado vira
+		// sem limite. Sao os defeitos injetaveis do `MiraDeKi` e do `Teleguiado`, ligados pelo processo inteiro.
+		if (Array.IndexOf(args, "--semmiradeki") >= 0)
+		{
+			MiraDeKi.TiroSoPraFrenteDeTeste = true;
+			GD.Print("[server] BANCADA: ataques de ki SEM mira no marcado (o jogo de antes de 2026-10-09)");
+		}
+		if (Array.IndexOf(args, "--teleguiadosemlimite") >= 0)
+		{
+			Teleguiado.SemLimiteDeTeste = true;
+			GD.Print("[server] BANCADA: teleguiado SEM limite de curva (o jogo de antes de 2026-10-09)");
+		}
 		if (_formasDeTeste) GD.Print("[server] BANCADA: escada de formas sera exercitada no 1o login");
 
 		// `--frostteste`: a escada do FROST DEMON -- repouso, supressoes, evolucoes e o motor do
@@ -2580,6 +2631,11 @@ public partial class GameServer : Node
 		_luaSomeDeTeste = Array.IndexOf(args, "--luasometeste") >= 0;
 		if (_luaSomeDeTeste) GD.Print("[server] BANCADA: a lua some e a fera cai, no 1o login");
 
+		// A DO TETO mede a regra de quem esta sob teto (a area `Inside` do DM): dentro do Banco a lua
+		// nao transforma nem se anuncia, e o raio nao e sorteado. Ver `GameServer.TetoTeste.cs`.
+		_tetoDeTeste = Array.IndexOf(args, "--tetoteste") >= 0;
+		if (_tetoDeTeste) GD.Print("[server] BANCADA: sob teto nao ha ceu, no 1o login");
+
 		// A DA ROTINA (vida diaria dos habitantes) no 1o login: so acorda com jogador na zona.
 		// Ver `GameServer.RotinaTeste.cs`.
 		_rotinaDeTeste = Array.IndexOf(args, "--rotinateste") >= 0;
@@ -2707,6 +2763,15 @@ public partial class GameServer : Node
 			// nenhum byte sai no fio. Ver `GameServer.ProjeteisTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--projetilteste") >= 0) RodarBancadaDeProjeteis();
 
+			// `--miradekiteste`: a mira do ataque de ki no marcado e a curva do teleguiado (dono, 2026-10-09).
+			// No boot e com a infraestrutura da de cima, pelos mesmos motivos. Ver `GameServer.MiraDeKiTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--miradekiteste") >= 0) RodarBancadaDaMiraDeKi();
+
+			// `--majinteste`: a absorcao do Majin (dono, 2026-10-09) -- o bolsao, a imagem que guarda o
+			// prisioneiro e as cinco saidas. No boot pelos mesmos motivos das de cima: os corpos dela nascem
+			// sem `Peer`. Ver `GameServer.AbsorcaoMajinTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--majinteste") >= 0) RodarBancadaDaAbsorcaoMajin();
+
 			// `--pecateste`: O MEMBRO QUE CAI DO CORPO. Dois corpos brigam pelo `Atacar` de producao
 			// e a bancada le os DOIS pacotes que saem da amputacao -- o `S2C.Hit` (de onde o jato de
 			// sangue nasce no cliente) e o `S2C.Decalque` (de onde a peca no chao nasce). No boot
@@ -2726,6 +2791,11 @@ public partial class GameServer : Node
 			// recusou continuam MUDAS -- e uma tecnica meio-portada nao aparece em lugar nenhum.
 			// Ver `GameServer.PunhoTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--punhoteste") >= 0) RodarBancadaDoPunho();
+
+			// `--roupateste`: A ROUPA NA MOCHILA -- tirar a peca da criacao, guarda-la e trocar por outra, tudo
+			// pelo `ComandoDeItem` (o funil do botao da mochila). Mesma infraestrutura da `--punhoteste`.
+			// Ver `GameServer.RoupaTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--roupateste") >= 0) RodarBancadaDaRoupa();
 
 			// `--g10teste`: OS VINTE DO LOTE G10 (os golpes do molde do G7 que o censo achou mudos + a
 			// Trindade). Mesma infraestrutura da `--punhoteste`. Ver `GameServer.G10Teste.cs`.
@@ -2785,6 +2855,11 @@ public partial class GameServer : Node
 			// resultado no CORPO do outro, sem olhar `Peer` em linha nenhuma. Ver
 			// `GameServer.KbTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--kbteste") >= 0) RodarBancadaDoArremesso();
+
+			// `--blocoteste`: A CONSTRUCAO DE BASE -- erguer, recusar, desmanchar e derrubar parede, piso e
+			// porta (com e sem senha), a porta do mapa que cai e a macieira que cai. Mesma infraestrutura
+			// das de cima (corpos forjados na Terra, ninguem logado). Ver `GameServer.BlocosTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--blocoteste") >= 0) RodarBancadaDosBlocos();
 
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--arranqueteste") >= 0) RodarBancadaDoArranque();
 			// `--passagemteste`: a boca da caverna lacrada, o gatilho na borda do passo e a chegada um
@@ -3091,6 +3166,7 @@ public partial class GameServer : Node
 		{
 			foreach (ServerPlayer p in Jogadores.ToList()) { Persistir(p); n++; }
 			GravarMundo();
+			GravarBasesSeMudou();
 			SalvarCargos();
 			GD.Print($"[server] fechando: {n} personagem(ns), o mundo e os cargos gravados");
 		}
@@ -3134,7 +3210,7 @@ public partial class GameServer : Node
 		}
 
 		_catalogo = ZoneCatalog.Parse(Godot.FileAccess.GetFileAsString(manifesto));
-		int ok = 0, comVista = 0, comAgua = 0, comDuro = 0, comNuvem = 0;
+		int ok = 0, comVista = 0, comAgua = 0, comDuro = 0, comNuvem = 0, comDentro = 0;
 		foreach (ZoneEntry e in _catalogo.Todas)
 		{
 			if (!Godot.FileAccess.FileExists(e.Colisao)) continue;
@@ -3184,6 +3260,14 @@ public partial class GameServer : Node
 			else if (Godot.FileAccess.FileExists(e.CaminhoDoDuro)
 					 && e.Mapa.CarregarDuro(Godot.FileAccess.GetFileAsBytes(e.CaminhoDoDuro))) comDuro++;
 
+			// O QUE NASCE SOB TETO -- a area `Inside` do original, pendurada no mesmo mapa pelo motivo
+			// dos outros planos. O servidor a le pra REGRA (a lua nao nasce pra quem esta dentro, e o
+			// raio nao e sorteado por quem esta dentro -- ver `GameServer.Teto.cs`); o cliente le o
+			// MESMO arquivo em `World.MapaCacheado` pro desenho. Sem esta linha o `.dentro` fica no
+			// disco e o Saiyajin vira macaco olhando pro teto do Banco, calado.
+			if (Godot.FileAccess.FileExists(e.CaminhoDoDentro)
+				&& e.Mapa.CarregarDentro(Godot.FileAccess.GetFileAsBytes(e.CaminhoDoDentro))) comDentro++;
+
 			// O `.vis` E OUTRO MAPA, e nao um campo deste. Ele diz o que CEGA, nao o que bloqueia --
 			// porta cega e nao bloqueia, beirada bloqueia e nao cega. Quem le e a VOZ
 			// (`MapaDaVista`), pra decidir "ha parede entre os dois?" com a MESMA resposta que a
@@ -3196,7 +3280,7 @@ public partial class GameServer : Node
 		}
 		GD.Print($"[server] zonas: {_catalogo.Todas.Count()} | com colisao: {ok} | com vista: {comVista}"
 				 + $" | com agua: {comAgua} | com nuvem: {comNuvem}"
-				 + $" | com celula indestrutivel: {comDuro}");
+				 + $" | com celula indestrutivel: {comDuro} | com interior: {comDentro}");
 
 		// ============================ ZONA PRE-FEITA SEM `.duro` E SUSPEITA ============================
 		// Todo `.dmm` feito a mao cerca o retangulo com `/turf/Other/Blank` -- e o jeito do BYOND de
@@ -3255,6 +3339,9 @@ public partial class GameServer : Node
 		if (Godot.FileAccess.FileExists(dados))
 		{
 			_visual = Jandirus.Core.Appearance.VisualCatalog.Parse(Godot.FileAccess.GetFileAsString(dados));
+			// A ROUPA GUARDADA NA MOCHILA e um item cuja ficha sai DESTE catalogo (`RoupaGuardada`). Ligado aqui,
+			// antes de qualquer save ser lido: o `Inventario.Sanear` da carga joga fora o item que nao resolve.
+			Jandirus.Core.Items.CatalogoDeItens.Visual = _visual;
 			GD.Print($"[server] aparencia: {_visual.Cabelos.Count} cabelos, {_visual.Roupas.Count} roupas");
 		}
 		else GD.PushWarning("[server] sem visual.json: rode o AssetPipeline (comando 'visual')");
@@ -3288,6 +3375,9 @@ public partial class GameServer : Node
 
 		CarregarSkills();
 		CarregarTech();
+		// AS BASES (parede, piso e porta erguidos por jogador) depois das zonas e das construcoes: os
+		// blocos do disco sao assentados no mapa de cada zona de arquivo aqui mesmo. Ver `GameServer.Blocos.cs`.
+		CarregarBlocos();
 		// DEPOIS do `CarregarTech`: a nave le o catalogo de construcoes pra saber nome, arte e
 		// densidade dela. Carregada antes, toda nave do disco voltaria sem sprite e sem parede.
 		CarregarNaves();
@@ -3602,6 +3692,15 @@ public partial class GameServer : Node
 			{
 				bool subir = reader.GetBool();
 				if (_byPeer.TryGetValue(peer, out ServerPlayer? quemTransforma)) Transformar(quemTransforma, subir);
+				break;
+			}
+			// ERGUER OU DESMANCHAR UM BLOCO. O leitor casa byte a byte com o `GameClient.SendBloco`.
+			case Protocol.C2S.Bloco:
+			{
+				byte acao = reader.GetByte();
+				int bx = reader.GetUShort(), by = reader.GetUShort(), numero = reader.GetUShort();
+				string senha = reader.GetString(64);
+				if (_byPeer.TryGetValue(peer, out ServerPlayer? quemErgue)) ComandoDeBloco(quemErgue, acao, bx, by, numero, senha);
 				break;
 			}
 			case Protocol.C2S.Zanzoken:
@@ -4026,6 +4125,9 @@ public partial class GameServer : Node
 		// batido -- ver `ResgatarDeInteriorMorto`, que e onde o caso esta escrito por inteiro.
 		ResgatarDeInteriorMorto(pl);
 
+		// ...E QUEM FICOU DENTRO DE UM MAJIN quando o servidor caiu: o bolsao nao atravessa a sessao.
+		AcordarSemAbsorcao(pl);
+
 		// POSICAO ZERADA (save antigo, ou canto do mapa) cai no ponto de chegada da zona em que o
 		// corpo esta -- e nao no berco: quem deslogou em Namek tem que acordar em Namek.
 		if (pl.Pos.X == 0 && pl.Pos.Y == 0) pl.Pos = PontoDeNascimento(pl.Zone);
@@ -4380,6 +4482,9 @@ public partial class GameServer : Node
 		if (_rotinaDeTeste) { _rotinaDeTeste = false; RodarBancadaDaRotina(pl); }
 		if (_nadoIaDeTeste) { _nadoIaDeTeste = false; RodarBancadaDoNadoDaIa(pl); }
 		if (_torneioDeTeste) { _torneioDeTeste = false; RodarBancadaDoTorneio(pl); }
+		// A DO TETO no login pelos motivos da lua da fera: moldes, ceu e um jogador de verdade na zona.
+		// Devolve o relogio do mundo e o piso que derruba no `finally`. Ver `GameServer.TetoTeste.cs`.
+		if (_tetoDeTeste) { _tetoDeTeste = false; RodarBancadaDoTeto(pl); }
 
 		// O TORNEIO VE QUEM ENTROU: convite atrasado (inscricoes abertas) ou a volta de quem estava
 		// na chave e desconectou (a chave e do servidor; o corpo novo e reconhecido pela assinatura).
@@ -4420,6 +4525,9 @@ public partial class GameServer : Node
 		MandarSupers(pl);
 		MandarPortas(pl);
 		MandarCenario(pl);
+		// OS BLOCOS ERGUIDOS DEPOIS DO CENARIO: o cliente aplica os dois quando o chao da zona monta, e
+		// nessa ordem (o bloco assentado em cima de chao rachado esta de pe).
+		MandarBlocos(pl);
 		if (_cenarioDeTeste && pl.Peer != null) AgendarViagemDoCenario(pl);
 		// AS PECAS DE CORPO NO CHAO, pelo mesmo argumento do cenario derrubado: o `S2C.Decalque` que as
 		// plantou saiu uma vez, pra quem estava la -- e quem loga no meio dos 600 s de uma peca precisa
@@ -4574,10 +4682,27 @@ public partial class GameServer : Node
 	}
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancada): o `PeerLook` do reflexo da mente e da copia do Splitform volta a sair
+	/// sem o byte do tipo de fusao no fim -- o layout do SEGUNDO escritor deste pacote (o `MandarLook` do
+	/// `GameServer.Clone.cs`), que existiu ate 2026-10-08 e atendia so esses dois: o corpo SEM DONO erguido
+	/// a partir de um jogador, que tem cerebro e nao tem molde de NPC. O cliente le o byte sempre -- com o
+	/// buffer do tamanho exato ele estoura e a ficha do corpo se perde, com o buffer do pool ele le lixo
+	/// como tipo de fusao (ver `GameClient.PacotesMalLidos`). Sempre falso em jogo.
+	/// </summary>
+	public static bool LookSemTipoDeFusaoDeTeste;
+
+	/// <summary>
 	/// O PACOTE `PeerLook` DE UM CORPO -- a aparencia que o mundo ve. Era a funcao local `Ficha` do
 	/// <see cref="TrocarAparencias"/>; virou metodo em 2026-09-15 porque ganhou um SEGUNDO chamador
 	/// (<see cref="ReapresentarAparencia"/>, a cor do ki mudando em jogo), e dois montadores do mesmo
 	/// pacote e o defeito de sync que este projeto ja registrou sete vezes.
+	///
+	/// **E HAVIA UM SEGUNDO MONTADOR MESMO ASSIM, FORA DESTE ARQUIVO** (achado em 2026-10-08): o
+	/// `MandarLook` do `GameServer.Clone.cs`, do reflexo da mente e da copia do Splitform, mais velho que
+	/// o byte do tipo de fusao la embaixo e nunca atualizado. Ele foi APAGADO, e os dois corpos entram
+	/// pelo <see cref="TrocarAparencias"/> como qualquer corpo novo. Este metodo e o UNICO lugar do
+	/// servidor que escreve `S2C.PeerLook`: quem precisar apresentar um corpo chama um dos dois funis, e
+	/// nao `Protocol.Begin`. Ver <see cref="LookSemTipoDeFusaoDeTeste"/>.
 	/// </summary>
 	private NetDataWriter PacoteDeAparencia(ServerPlayer p)
 	{
@@ -4620,6 +4745,11 @@ public partial class GameServer : Node
 		// fusao estao em `_fundidos` (dono e passageiro), e so um deles esta VESTINDO a fusao. Quem
 		// desenha a fusao e quem tem a aparencia dela -- e e ele quem o `PassarOControle` troca.
 		// ========================================================================================
+		//
+		// O PACOTE QUE ACABAVA AQUI, SEM A LINHA DE BAIXO, e o do segundo escritor -- so na bancada, e so
+		// pros dois corpos que ele atendia. Ver o campo.
+		if (LookSemTipoDeFusaoDeTeste && p is { Peer: null, Cerebro: not null, Papel: null }) return w;
+
 		w.Put((byte)(p.LookDeFusao != null && FusaoDe(p.Id) is { } fus
 			? (byte)fus.Tipo
 			: 0));
@@ -4629,18 +4759,22 @@ public partial class GameServer : Node
 	/// <summary>
 	/// REAPRESENTA a aparencia de um corpo a zona dele -- ele incluso -- porque ela MUDOU em jogo.
 	///
-	/// Hoje so a cor do ki muda depois do login (`ca_cor`, o `Blast_Color()` do DM), e ela viaja no
-	/// `Appearance.CorKi` deste pacote: sem reapresentar, quem esta perto continuaria vendo os tiros
-	/// na cor velha ate alguem trocar de zona, e o proprio dono tambem (a cor do tiro sai do
-	/// `World._looks`, que so este pacote escreve). Nao e o <see cref="TrocarAparencias"/> porque
-	/// aquele tambem sincroniza formas e aureolas e reenvia a zona INTEIRA pro corpo -- e nada disso
-	/// mudou.
+	/// Duas coisas mudam depois do login: a cor do ki (`ca_cor`, o `Blast_Color()` do DM), que viaja no
+	/// `Appearance.CorKi` deste pacote, e a ROUPA (vestir e tirar pela mochila, `GameServer.Mochila.cs`).
+	/// Sem reapresentar, quem esta perto continuaria vendo o corpo de antes ate alguem trocar de zona, e
+	/// o proprio dono tambem (o `World._looks` so e escrito por este pacote). Nao e o
+	/// <see cref="TrocarAparencias"/> porque aquele tambem sincroniza formas e aureolas e reenvia a zona
+	/// INTEIRA pro corpo -- e nada disso mudou.
 	/// </summary>
 	private void ReapresentarAparencia(ServerPlayer pl)
 	{
 		NetDataWriter w = PacoteDeAparencia(pl);
 		foreach (ServerPlayer outro in ZoneList(pl.Zone.Hash))
 			outro.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+
+		// A FILEIRA "VESTINDO" DA MOCHILA ANDA JUNTO: ela mostra `pl.Visual.Roupa`, e quem mexe na roupa por
+		// outra porta que nao a mochila passa por aqui. Sem mudanca a assinatura segura o pacote.
+		MandarMochila(pl);
 	}
 
 	/// <summary>A COR DO KI de um corpo -- pra bancada `--diagmesa`, que roda com o servidor no mesmo processo.</summary>
@@ -4665,6 +4799,10 @@ public partial class GameServer : Node
 			if (outro != novo)
 				novo.Peer?.Send(PacoteDeAparencia(outro), Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 		}
+
+		// A FILEIRA "VESTINDO" DA MOCHILA, pelo mesmo motivo do `ReapresentarAparencia`: virar bio-androide
+		// tira a roupa do corpo e passa por aqui, e nao pela mochila.
+		MandarMochila(novo);
 
 		// ============================ A APARENCIA BASE NAO E A APARENCIA ============================
 		// O `PeerLook` acima descreve o corpo de FICHA: cabelo escolhido na criacao, roupa, cor de pele.
@@ -4869,7 +5007,8 @@ public partial class GameServer : Node
 		long valiaEm = Math.Min(chegada + 100, tempoMs + (long)Math.Round(pl.Relogio.Deslizar(chegada)));
 		void Carimbar() { pl.PosMs = valiaEm; pl.PosVemDoCliente = true; }
 
-		var facing = (Facing)(flags & 0x03);
+		// O OLHAR DO PACOTE -- menos pra quem acabou de atirar em alguem marcado: ver `OlharDoPacote`.
+		Facing facing = OlharDoPacote(pl, (Facing)(flags & 0x03));
 		bool moving = (flags & Protocol.InputAndando) != 0;
 		bool querCorrer = (flags & Protocol.InputCorrendo) != 0;
 		// SUBIR/DESCER SAO PEDIDOS, como correr. Quem le e o `TickDoVoo`, que so obedece a quem
@@ -4997,13 +5136,17 @@ public partial class GameServer : Node
 			return;
 		}
 
-		// ============================ VOANDO ALTO, NAO HA MAPA ============================
-		// E o `isflying` do original, e a forma mais barata de dize-lo: `ValidateStep` com mapa nulo
-		// so confere VELOCIDADE. Nao ha um segundo caminho de colisao pra manter em dia, e o cliente
-		// toma a MESMA decisao pelo MESMO numero (ver `LocalPlayer`) -- que e a unica maneira de
-		// isto nao virar briga de posicao entre as duas pontas.
-		// =================================================================================
-		ZoneCollision? mapa = AtravessandoCenario(pl) ? null : MapaDaZonaOuCatalogo(pl.Zone);
+		// ============================ VOANDO ALTO, SO O PREDIO PARA ============================
+		// Era `AtravessandoCenario(pl) ? null : mapa` -- o `isflying` do original dito do jeito mais
+		// barato: sem mapa o `ValidateStep` so confere VELOCIDADE. E por isso se voava por cima de casa
+		// (dono, 2026-10-08: "voar por cima de parede de base de player n deveria ser possivel").
+		//
+		// Agora o mapa vai sempre, e quem diz que o corpo esta acima do cenario e o MODO
+		// (`Voo.ModoNaAltura`, logo abaixo): com ele a montanha continua passando por baixo e a parede
+		// de predio barra (`ClasseDePredio`). O cliente toma a MESMA decisao pelo MESMO numero (ver
+		// `LocalPlayer`) -- que e a unica maneira de isto nao virar briga de posicao entre as duas pontas.
+		// =====================================================================================
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(pl.Zone);
 
 		// ============================ E O PASSO VAI COM O **MODO** ============================
 		// E a `testWaters()` do original (`Swim.dm:26-38`) chegando no unico lugar onde ela decide o
@@ -5022,14 +5165,13 @@ public partial class GameServer : Node
 		// mesma pergunta:
 		//   * ARREMESSADO -- o ramo `pl.TiquesDeVoo > 0` deu `return` antes daqui, entao esta entrada
 		//     nunca chega valendo. E o mesmo `arremessado: false` que o cliente crava.
-		//   * NO AR -- convive de proposito com o `AtravessandoCenario` da linha acima, por limiares
-		//     DIFERENTES: acima de `Voo.AlturaQueAtravessa` nao ha mapa nenhum a consultar; ABAIXO
-		//     dela (a decolagem e a queda, os primeiros 32 px) o mapa vale e e o modo `Voando` que
-		//     impede a parede de agua na beira do lago. O cliente faz as duas leituras iguais, com a
-		//     mesma funcao, no mesmo `Advance`.
+		//   * NO AR -- sao DOIS limiares, de proposito: acima de `Voo.AlturaQueAtravessa` o modo vira
+		//     `PorCima` (so a parede de predio para); ABAIXO dela (a decolagem e a queda, os primeiros
+		//     32 px) vale o modo `Voando`, que e o que impede a parede de agua na beira do lago. O
+		//     cliente faz as duas leituras iguais, com a mesma funcao, no mesmo `Advance`.
 		// ======================================================================================
 		if (MoveRules.ValidateStep(pl.Pos, claimed, dt, pl.SpeedStat, mapa, ref pl.OrcamentoPx, out Vec2 ok, correndo,
-								   ModoDeTravessiaDe(pl)))
+								   Voo.ModoNaAltura(pl.Altitude, ModoDeTravessiaDe(pl))))
 		{
 			pl.Pos = ok;
 
@@ -5135,6 +5277,11 @@ public partial class GameServer : Node
 		// dentro ele relogaria trancado num quarto branco pra sempre, porque a unica saida (a fusao)
 		// morreu com a sessao de quem caiu. Ver `SoltarDaFusao`.
 		SoltarDaFusao(pl.Id);
+
+		// A ABSORCAO DO MAJIN SE DESFAZ ANTES DO SAVE, pelo mesmo motivo das duas linhas de cima: o
+		// absorvido esta num bolso `Interior` que morre com a sessao, e o Majin carrega poder emprestado.
+		// E o `DoLogoutStuff` do DM (`Login.dm:198-202`). Ver `DesfazerAAbsorcaoAoSair`.
+		DesfazerAAbsorcaoAoSair(pl);
 
 		Persistir(pl);
 		// SOLTA DO EMBATE ANTES de sumir da lista: o `Terminar` precisa do corpo pra devolver a
@@ -5305,6 +5452,10 @@ public partial class GameServer : Node
 		// depois de encostar nela.
 		TickDasPortas();
 
+		// AS PORTAS ERGUIDAS no mesmo tique, pelo mesmo motivo; e a gravacao das bases, que so pesa de
+		// tres em tres segundos e so se alguem construiu. Ver `GameServer.Blocos.cs`.
+		TickDasBases();
+
 		// AS PASSAGENS NO TIQUE CHEIO, junto das portas e pelo mesmo motivo: elas reagem a ENCOSTAR,
 		// e uma reacao a 5 Hz deixaria o corpo atravessar a celula sem que ninguem percebesse.
 		TickDasPassagens();
@@ -5356,8 +5507,8 @@ public partial class GameServer : Node
 		//   * o CANAL primeiro, porque e ele quem PARE o raio (a carga fechando) e quem o mata por
 		//     falta de Ki -- assim o tiro que nasce neste quadro ja anda neste quadro, em vez de
 		//     ficar 33 ms parado na mao;
-		//   * os PROJETEIS depois, e no tique cheio: um raio a 320 px/s anda 10 px por quadro a
-		//     30 Hz, e a 5 Hz andaria 64 px de uma vez -- passaria por dentro de um corpo sem
+		//   * os PROJETEIS depois, e no tique cheio: um raio a 640 px/s anda 21 px por quadro a
+		//     30 Hz, e a 5 Hz andaria 128 px de uma vez -- passaria por dentro de um corpo sem
 		//     encostar nele, que e a pior falha possivel num sistema de acerto.
 		TickDosCanaisDeKi(Protocol.TickSeconds);
 		// O LOTE G12 ENTRE OS DOIS pelo mesmo motivo do canal: e ele quem PARE as esferas das rajadas e da
@@ -5813,6 +5964,7 @@ public partial class GameServer : Node
 		// `.col` do cliente tem que casar com o do servidor (ver MandarPortas).
 		MandarPortas(pl);
 		MandarCenario(pl);
+		MandarBlocos(pl);   // ...e a base que alguem ergueu la, pelo mesmo motivo das portas
 		// ...e as PECAS DE CORPO no chao da zona nova, pelo mesmo motivo do cenario: sem esta linha,
 		// quem volta do Outro Mundo pra onde perdeu o braco nao ve o braco. Ver `GameServer.Pecas.cs`.
 		MandarPecas(pl);
@@ -6029,5 +6181,5 @@ public partial class GameServer : Node
 	/// e a UNICA excecao de propósito e ela esta comentada la -- ninguem entra no mundo ja fundido.
 	/// </summary>
 	private static Jandirus.Core.Appearance.Appearance VisualVisivel(ServerPlayer p) =>
-		p.LookDeFusao ?? p.Disfarce?.Visual ?? p.Visual;
+		p.LookDeFusao ?? p.Disfarce?.Visual ?? p.LookDoMajin ?? p.Visual;
 }

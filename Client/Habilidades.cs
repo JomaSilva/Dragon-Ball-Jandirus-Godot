@@ -166,6 +166,38 @@ public static class Habilidades
 				+ "tem os órgãos pra isso.",
 				() => GameClient.Instance?.SendHabilidade("absorver")) { Chave = "hab:absorver" });
 
+		// ============================ A ABSORCAO DO MAJIN ============================
+		// PELA RACA, como a do bio logo acima e pela mesma razao: no DM e o verb de um OBJETO que a arvore
+		// racial concede (`obj/Buu_Absorb`, `Race Trees/majin.dm:38-40`). Quem ainda nao comprou a skill
+		// aperta e ouve onde ela mora -- a recusa e do servidor, e ela ensina a arvore.
+		//
+		// O `absorver` e o MESMO id do bio de proposito: no original os dois sao o verb `Absorb`, e quem
+		// decide entre CONSUMIR e SELAR e a raca de quem aperta (`Absorption.dm:83`).
+		if (raca == "Majin")
+		{
+			Verbos.Registrar(new Verbo(
+				"Absorver",
+				Verbos.Skills,
+				"Puxa pra dentro de você alguém NOCAUTEADO e vivo ao seu lado.\n\n"
+				+ "Um JOGADOR não morre: ele vai VIVO pro interior do seu corpo, acorda inteiro e encara uma "
+				+ "IMAGEM sua, com metade do seu poder. Enquanto ele estiver lá dentro você usa 10% do poder "
+				+ "dele, as técnicas dele e veste as roupas dele.\n\n"
+				+ "Ele ESCAPA se vencer a imagem, se morrer lá dentro, se você for nocauteado ou se você o "
+				+ "expelir -- e você perde na hora o que tinha por causa dele.\n\n"
+				+ "Um NPC é devorado por inteiro: morre, e rende os mesmos 10% até você cair.",
+				() => GameClient.Instance?.SendHabilidade("absorver")) { Chave = "hab:absorver" });
+
+			Verbos.Registrar(new Verbo(
+				"Expelir todos",
+				Verbos.Skills,
+				"Cospe de volta todo mundo que está dentro de você, ao seu lado e de pé. Você perde o poder, "
+				+ "as técnicas e o que mais tinha por causa deles.",
+				() => GameClient.Instance?.SendHabilidade("expelir"),
+				() => GameClient.Instance is { AbsorvidosDoMajin.Count: > 0 }) { Chave = "hab:expelir" });
+
+			DosAbsorvidosDoMajin();
+		}
+
 		// SO O NAMEKUSEIJIN. Era `"Namekian" or "Majin" or "BioAndroid" or "Shapeshifter"`, e as tres
 		// racas a mais nao vinham de desenho: vinham de reusar a lista do `canheallopped`, que responde
 		// outra pergunta (ver `GameServer.Raciais.PodeRegenerar`). O servidor deixou de aceitar delas, e
@@ -227,6 +259,29 @@ public static class Habilidades
 				+ "Só funciona na SUA mente, e só se você estiver sozinho nela.",
 				() => GameClient.Instance?.SendHabilidade($"mente_chefe:{molde}"))
 				{ Chave = $"hab:mente_chefe:{molde}" });
+		}
+	}
+
+	/// <summary>
+	/// UM BOTAO POR ABSORVIDO -- o "Um" do `Absorb_Expel()` (`Absorption.dm:182-190`), que la abre uma lista
+	/// pra escolher. A lista e do servidor (`S2C.AbsorvidosDoMajin`), no mesmo desenho do
+	/// <see cref="DosChefesDaMente"/>: o canal de habilidade leva um id de texto e o menu e a propria lista.
+	/// </summary>
+	private static void DosAbsorvidosDoMajin()
+	{
+		if (GameClient.Instance is not { } cli) return;
+
+		foreach (GameClient.AbsorvidoDoMajin a in cli.AbsorvidosDoMajin)
+		{
+			int numero = a.Numero;
+			Verbos.Registrar(new Verbo(
+				$"Expelir: {a.Nome}",
+				Verbos.Skills,
+				a.Devorado
+					? $"{a.Nome} foi devorado: não há quem devolver. Expelir só abre mão do poder que ele te dava."
+					: $"Cospe {a.Nome} de volta, ao seu lado e de pé. Você perde o poder e as técnicas que "
+					  + "tinha por causa dele.",
+				() => GameClient.Instance?.SendHabilidade($"expelir:{numero}")) { Chave = $"hab:expelir:{numero}" });
 		}
 	}
 
@@ -717,6 +772,12 @@ public static class Habilidades
 			if (t == null) return;
 
 			bool pronta = t.Modo != Modo.NaoPortada;
+
+			// O VERB ATENDIDO POR OUTRO CANAL NAO GANHA O BOTAO CINZA: ele tem corpo, e o botao (ou a tecla)
+			// que o aciona nasce de outro lugar -- a absorcao e o `Absorver` da raca, o voo e uma tecla, a
+			// mesa de tecnicas mora na aba de Ki. Um "(nao portada)" ao lado do botao que funciona e mentira.
+			if (!pronta && CensoDeSkills.AtendidoPorOutroCanal(id)) return;
+
 			string idLocal = id;
 			Verbos.Registrar(new Verbo(
 				pronta ? t.Nome : $"{t.Nome} (nao portada)",

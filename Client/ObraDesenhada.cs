@@ -116,7 +116,7 @@ public partial class ObraDesenhada : Node2D
 	{
 		if (Arte.Length == 0) { Reclamar("o catalogo nao tem arte pra ela"); return; }
 		if (!ResourceLoader.Exists(Arte)) { Reclamar("o .tres nao existe no disco"); return; }
-		if (ResourceLoader.Load<SpriteFrames>(Arte) is not { } folha)
+		if (FolhasPresas.Carregar(Arte) is not { } folha)
 		{ Reclamar("o .tres nao carregou como SpriteFrames"); return; }
 
 		string anim = Estado.Length > 0 ? Sanear(Estado) : "default";

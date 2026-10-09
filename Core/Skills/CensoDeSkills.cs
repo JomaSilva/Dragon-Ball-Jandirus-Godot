@@ -135,6 +135,11 @@ public static class CensoDeSkills
 		// chegou quando chegou outro.
 		["Bio_Absorb"] = "absorver",
 
+		// E O SELO DO MAJIN CHEGOU (2026-10-09): o `GameServer.AbsorcaoMajin.cs` -- o interior, a imagem
+		// que guarda o absorvido, as saidas e o expel. O canal e o MESMO `absorver` do bio, como no DM,
+		// onde os dois sao o verb `Absorb` e quem bifurca e a raca (`Absorption.dm:83`).
+		["Buu_Absorb"] = "absorver",
+
 		// O `Absorb_Ki` do androide de absorcao (`DNALabs.dm:213`). Ele nao vem de skill nenhuma no
 		// DM (a CONVERSAO o concede com `assignverb`), entao ele so aparece neste censo se alguem o
 		// pendurar numa arvore -- e a linha esta aqui pra esse dia, com o canal ja apontado.
@@ -156,6 +161,29 @@ public static class CensoDeSkills
 		// gateia pela MESMA `conq_owns_any` que o verb ja consulta -- nada aqui muda.
 		["Create_Dragon_Statue"] = "db_estatua",
 	};
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): o verb atendido por outro canal volta a ser tratado como MUDO pelas tres
+	/// bocas que falam com o jogador -- a ficha da skill ("efeito ainda nao portado"), o botao cinza
+	/// "(nao portada)" e o aviso de compra. Era o estado de antes de 2026-10-09. Lido pela propria linha do
+	/// <see cref="AtendidoPorOutroCanal"/>.
+	/// </summary>
+	public static bool OutroCanalEhMudoDeTeste;
+
+	/// <summary>
+	/// ============================ "ESTE VERB TEM CORPO, SO QUE COM OUTRO NOME?" ============================
+	/// A pergunta de quem fala com o JOGADOR. O censo ja sabia a resposta (a tabela acima); a ficha da skill
+	/// e o botao do menu nao perguntavam -- os dois liam so o <see cref="Tecnicas"/>, e todo verb desta
+	/// tabela saia como *"efeito ainda nao portado"* na ficha e como um botao cinza *"(nao portada)"* ao
+	/// lado do botao que funciona.
+	///
+	/// Quem mostrou foi a foto do menu do Majin (2026-10-09): `Absorver` aceso e, do lado, `Buu Absorb (nao
+	/// portada)`, com a skill dizendo que o efeito nao tinha sido trazido -- no mesmo dia em que ele foi. O
+	/// bio-androide tinha o mesmo par desde o port da absorcao dele.
+	/// =====================================================================================================
+	/// </summary>
+	public static bool AtendidoPorOutroCanal(string verbo) =>
+		!OutroCanalEhMudoDeTeste && PorOutroCanal.ContainsKey(verbo);
 
 	// =====================================================================
 	// TABELA 3 -- O QUE CADA VERB MUDO ESPERA
@@ -194,9 +222,10 @@ public static class CensoDeSkills
 		// ---- 7 ----
 		// O `Bio_Absorb` SAIU daqui pro `PorOutroCanal` -- ver a nota la. Depois dele, o lote G12 tirou
 		// `Soul_Absorb`, `Absorb_Android` e `Imitation` (portados como as tecnicas que sao, sem dimensao
-		// interna: o ramo COMUM do `absorb()` mata a vitima e nao sela ninguem). Ficam o `Buu_Absorb`
-		// (o Majin SELA -- e um motor diferente), a Imitacao Permanente (sobrecarga de genoma) e o Bodyswap.
-		["Buu_Absorb"] = SistAbsorcao, ["Permanent_Imitation"] = SistAbsorcao,
+		// interna: o ramo COMUM do `absorb()` mata a vitima e nao sela ninguem). O `Buu_Absorb` saiu por
+		// ultimo (o selo do Majin, ver o `PorOutroCanal`). Ficam a Imitacao Permanente (sobrecarga de
+		// genoma) e o Bodyswap.
+		["Permanent_Imitation"] = SistAbsorcao,
 		["BodyswapOBJ"] = SistAbsorcao,
 
 		// ============================ ERAM 7, VIRARAM 2 -- E CINCO DELES NUNCA PRECISARAM DESTE SISTEMA ============================
@@ -645,7 +674,7 @@ public static class CensoDeSkills
 		foreach (string v in s.Verbos)
 		{
 			if (Tecnicas.Get(v) is { Modo: not Modo.NaoPortada }) return null;
-			if (PorOutroCanal.ContainsKey(v)) return null;
+			if (AtendidoPorOutroCanal(v)) return null;
 			falta ??= Esperando.GetValueOrDefault(v);
 		}
 		return falta ?? "um sistema que este port ainda nao tem";

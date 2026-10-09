@@ -213,9 +213,15 @@ public partial class LuaNoCeu : VBoxContainer
 	/// onde a lua cheia é o gatilho do Oozaru, ver ou não ver a lua é informação de jogo, não
 	/// enfeite. Ver `EstadoDoClima.Encobre`.
 	/// </param>
-	public void Aplicar(EstadoDoCeu ceu, double encoberta)
+	/// <param name="sobTeto">
+	/// O corpo local esta sob teto (a area `Inside` do DM)? De dentro de casa nao se ve o ceu -- e la
+	/// o mob le lua 0 (`Weather.dm:76-80`) --, entao o mostrador some como some de dia. E o botao vai
+	/// junto: o servidor recusaria o clique (`GameServer.OlharParaALua`). So o HUD passa isto; a ficha
+	/// do planeta no menu mostra a lua do lugar, e nao a que se ve daqui.
+	/// </param>
+	public void Aplicar(EstadoDoCeu ceu, double encoberta, bool sobTeto = false)
 	{
-		if (!ceu.LuaNoCeu) { Visible = false; return; }
+		if (!ceu.LuaNoCeu || sobTeto) { Visible = false; return; }
 		Visible = true;
 
 		_tinta.SetShaderParameter("fase", (ceu.Fase - 1) / (float)Ceu.Fases);
@@ -248,7 +254,7 @@ public partial class LuaNoCeu : VBoxContainer
 
 	private static Texture2D? Quadro()
 	{
-		var frames = ResourceLoader.Load<SpriteFrames>(Folha);
+		var frames = FolhasPresas.Carregar(Folha);
 		if (frames != null && frames.HasAnimation("default") && frames.GetFrameCount("default") > 0)
 			return frames.GetFrameTexture("default", 0);
 

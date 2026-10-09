@@ -2056,6 +2056,10 @@ public partial class GameServer
 				// `C2S.Voz` entrou no "Grande Update parte 3" sem ninguem decidir o lado, e esta linha ficou
 				// vermelha ate 2026-09-02 -- exatamente o que ela existe pra fazer.
 				Protocol.C2S.Voz,
+				// A OBRA DE BASE (2026-10-09) passa pelo motivo da `Tech`, que ja ergue maquina com o corpo
+				// possuido: construir e interface, e quem confere alcance e terreno e o servidor. Entrou sem
+				// lado e deixou esta linha vermelha por algumas horas -- de novo o que ela existe pra fazer.
+				Protocol.C2S.Bloco,
 			];
 
 			// A VARREDURA E DO ENUM INTEIRO, e as duas listas tem que cobri-lo sem sobra nem falta. Sem

@@ -71,6 +71,15 @@ public partial class ClimaNaTela : Node2D
 	private GpuParticles2D _queda = null!;
 	private ParticleProcessMaterial _fisica = null!;
 
+	/// <summary>
+	/// O material do que cai. Existe por UMA razao: apagar o floco sobre celula sob teto -- ver
+	/// `Assets/Shaders/Queda.gdshader`.
+	/// </summary>
+	private ShaderMaterial _tintaQueda = null!;
+
+	/// <summary>O que esta sob teto nesta zona. Do `World`; nulo ate o <see cref="UsarTeto"/>.</summary>
+	private TetoDaZona? _teto;
+
 	private Sprite2D _raio = null!;
 	private ShaderMaterial _tintaRaio = null!;
 
@@ -87,9 +96,10 @@ public partial class ClimaNaTela : Node2D
 	private static GradientTexture2D _pingo => _pingoCache ??= TexturaDePingo();
 	private static GradientTexture2D _floco => _flocoCache ??= TexturaDeFloco();
 
-	private static Shader? _shVeu, _shRaio;
+	private static Shader? _shVeu, _shRaio, _shQueda;
 	private static Shader ShVeu => _shVeu ??= ResourceLoader.Load<Shader>("res://Assets/Shaders/Clima.gdshader");
 	private static Shader ShRaio => _shRaio ??= ResourceLoader.Load<Shader>("res://Assets/Shaders/Raio.gdshader");
+	private static Shader ShQueda => _shQueda ??= ResourceLoader.Load<Shader>("res://Assets/Shaders/Queda.gdshader");
 
 	public override void _Ready()
 	{
@@ -121,17 +131,111 @@ public partial class ClimaNaTela : Node2D
 		//
 		// Sprite2D com uma textura de 1 pixel esticada: o UV continua indo de 0 a 1 (que e o que
 		// o shader espera) e o node vive na arvore do mundo, que e o que se queria.
-		_tintaRaio = new ShaderMaterial { Shader = ShRaio };
-		_raio = new Sprite2D
-		{
-			Name = "Raio",
-			Texture = UmPixel(),
-			Material = _tintaRaio,
-			Centered = false,
-			Visible = false,
-			ZIndex = CamadaDoRaio,
-		};
+		(_raio, _tintaRaio) = NovoRisco();
 		AddChild(_raio);
+
+		// A POSICAO DO TETO NA TELA E ESCRITA NO ULTIMO INSTANTE -- ver `AntesDeDesenhar`.
+		RenderingServer.FramePreDraw += AntesDeDesenhar;
+	}
+
+	/// <summary>
+	/// Os dois emissores de fora deste node (o renderizador e o teto do `World`) vivem mais que ele:
+	/// sem os dois `-=` cada relog deixaria um `ClimaNaTela` morto pendurado em cada um.
+	/// </summary>
+	public override void _ExitTree()
+	{
+		RenderingServer.FramePreDraw -= AntesDeDesenhar;
+		if (_teto != null) _teto.Mudou -= AoMudarOTeto;
+	}
+
+	// =====================================================================
+	// SOB TETO -- a area `Inside` do original
+	// =====================================================================
+	private static readonly StringName
+		UniTeto = "teto", UniTetoCelulas = "teto_celulas", UniTetoOrigem = "teto_origem",
+		UniTetoTamanho = "teto_tamanho", UniTetoRecorta = "teto_recorta";
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): a posicao do teto na tela e escrita no `Aplicar`, junto do resto,
+	/// e nao no ultimo instante antes do quadro. E a versao obvia, e com ela a mascara fica um quadro
+	/// atras da camera -- escorrega sobre o predio enquanto o jogador anda. Falso em jogo, sempre.
+	/// </summary>
+	public static bool TetoAtrasadoDeTeste;
+
+	/// <summary>O ultimo `teto_origem` escrito nos dois materiais. So pra bancada.</summary>
+	public Vector2 OrigemDoTetoDeTeste { get; private set; }
+
+	/// <summary>
+	/// O TETO DA ZONA, que mora no `World`. Chamado uma vez, quando a iluminacao nasce: o objeto e
+	/// o mesmo a sessao inteira, e o que troca a cada zona e a TEXTURA dele (dai o `Mudou`).
+	/// </summary>
+	public void UsarTeto(TetoDaZona teto)
+	{
+		if (_teto != null) _teto.Mudou -= AoMudarOTeto;
+		_teto = teto;
+		_teto.Mudou += AoMudarOTeto;
+		AoMudarOTeto();
+	}
+
+	/// <summary>A zona carregou, ou uma celula interna caiu: os dois materiais recebem o plano de agora.</summary>
+	private void AoMudarOTeto()
+	{
+		Texture2D? plano = _teto?.Textura;
+		var celulas = new Vector2(Math.Max(_teto?.Largura ?? 0, 1), Math.Max(_teto?.Altura ?? 0, 1));
+
+		_tintaVeu.SetShaderParameter(UniTeto, plano!);
+		_tintaVeu.SetShaderParameter(UniTetoCelulas, celulas);
+		_tintaQueda.SetShaderParameter(UniTeto, plano!);
+		_tintaQueda.SetShaderParameter(UniTetoCelulas, celulas);
+		AcertarORecorte();
+	}
+
+	/// <summary>
+	/// RECORTA OU NAO. Sao duas perguntas: ha teto nesta zona, e o clima de agora fica de fora do
+	/// interior? A destruicao do planeta nao fica (`CelulaInterna.TiraOClima`), e por isso isto e
+	/// refeito tambem quando o TIPO de clima troca.
+	/// </summary>
+	private void AcertarORecorte()
+	{
+		float recorta = _teto?.Textura != null && CelulaInterna.TiraOClima(_desenhado) ? 1f : 0f;
+		_tintaVeu.SetShaderParameter(UniTetoRecorta, recorta);
+		_tintaQueda.SetShaderParameter(UniTetoRecorta, recorta);
+	}
+
+	/// <summary>
+	/// ============================ A CAMERA DESTE QUADRO, E NAO A DO ANTERIOR ============================
+	/// Os dois shaders acham a celula de um pixel pela conta "canto da tela no mundo + fracao da tela
+	/// vezes o mundo que ela cobre". O canto vem da camera -- e o `Aplicar` roda no `_Process` da
+	/// `Iluminacao`, que na arvore vem ANTES do corpo do jogador. Lida ali, a camera ainda e a do
+	/// quadro passado: a `--diagteto` mediu 1 px de mundo de atraso so ANDANDO (sao 2 a 3 de tela), e
+	/// correndo e voando e bem mais. O ruido da nuvem aguenta esse atraso (ninguem ve); o corte na
+	/// parede nao -- a neve entraria uma faixa pra dentro da sala do lado pra onde se anda.
+	///
+	/// O `FramePreDraw` do renderizador dispara depois de TODOS os `_Process` e antes do desenho, que
+	/// e o unico instante em que a camera do quadro ja esta decidida. Ele dispara com a arvore
+	/// pausada tambem, e e isso que a bancada de foto precisa.
+	///
+	/// Zona sem teto nao escreve nada: sao quatro uniformes por quadro que ninguem leria.
+	/// ====================================================================================================
+	/// </summary>
+	private void AntesDeDesenhar()
+	{
+		if (_teto?.Textura == null || TetoAtrasadoDeTeste) return;
+		EscreverOndeOTetoEsta();
+	}
+
+	private void EscreverOndeOTetoEsta()
+	{
+		Camera2D? cam = GetViewport()?.GetCamera2D();
+		Vector2 tela = GetViewportRect().Size;
+		Vector2 mundo = cam != null ? tela / cam.Zoom : tela;
+		Vector2 origem = (cam?.GetScreenCenterPosition() ?? GlobalPosition) - mundo * 0.5f;
+
+		_tintaVeu.SetShaderParameter(UniTetoOrigem, origem);
+		_tintaVeu.SetShaderParameter(UniTetoTamanho, mundo);
+		_tintaQueda.SetShaderParameter(UniTetoOrigem, origem);
+		_tintaQueda.SetShaderParameter(UniTetoTamanho, mundo);
+		OrigemDoTetoDeTeste = origem;
 	}
 
 	/// <summary>Um pixel branco. Esticado pelo `Scale`, ele e o quad em que o raio e desenhado.</summary>
@@ -142,9 +246,77 @@ public partial class ClimaNaTela : Node2D
 		return ImageTexture.CreateFromImage(img);
 	}
 
+	/// <summary>
+	/// O RISCO DO RAIO: o sprite e o material dele, como o mundo os usa -- invisivel ate um raio cair dentro da tela.
+	/// UMA receita pra duas casas, a do mundo (<see cref="_Ready"/>) e a do palco do ensaio (<see cref="Ensaiar"/>): e
+	/// isso que faz a pipeline montada no ensaio ser a que o primeiro raio acha pronta.
+	/// </summary>
+	private static (Sprite2D Risco, ShaderMaterial Tinta) NovoRisco()
+	{
+		var tinta = new ShaderMaterial { Shader = ShRaio };
+		var risco = new Sprite2D
+		{
+			Name = "Raio",
+			Texture = UmPixel(),
+			Material = tinta,
+			Centered = false,
+			Visible = false,
+			ZIndex = CamadaDoRaio,
+		};
+		return (risco, tinta);
+	}
+
+	/// <summary>O tamanho do risco do ensaio, em pixels do palco: estreito e alto, como o do mundo.</summary>
+	private static readonly Vector2 RiscoDoEnsaio = new(24, 96);
+
+	/// <summary>
+	/// O ENSAIO DO LOBBY (ver `Aquecimento.AtosDoRelampago`): o risco de um raio, pela receita de producao
+	/// (<see cref="NovoRisco"/>), ACESO num palco fora da tela -- pra a pipeline do `Raio.gdshader` ser montada ALI, e nao
+	/// no quadro em que o primeiro raio do processo cai dentro da tela.
+	///
+	/// O RISCO NASCE INVISIVEL COM O MUNDO, e era isso que escondia a conta: o shader esta na fila de carga do
+	/// aquecimento desde que nasceu, o material dele e criado na entrada, e a pipeline so era montada no primeiro
+	/// DESENHO -- o primeiro raio da tempestade da estreia do Super Saiyajin (a cinematica mais vista do jogo), ou o
+	/// primeiro de uma tempestade natural.
+	///
+	/// MEDIDO em 2026-10-09 pela `--diagestouro`, o desenho do quadro em que o primeiro raio risca a tela, com uma pipeline
+	/// montada nele: 1,0 ms com o cache de shader do DRIVER de video quente, e 25 a 41 ms com ele frio -- 36,5, 39,5 e
+	/// 40,6 com o sal (`--driverfrio Raio`), 25,4 com o cache do driver novo de verdade -- dois ou tres quadros de tela
+	/// parada (a 60 Hz) pra quem abre o jogo pela primeira vez. (Uma quinta corrida, com o build de outra sessao rodando
+	/// ao lado, deu 200: a conta e de processador, e cresce com a maquina ocupada.) DEPOIS: nenhuma pipeline nasce no
+	/// quadro, e o desenho dele custa 0,3 a 0,8 ms com o driver quente e com ele frio.
+	///
+	/// NO MEIO DA VIDA (`idade` 0,3: a frente ja desceu e o brilho esta no repique) e SEM RELOGIO: quem envelhece o
+	/// risco do mundo e o <see cref="Raio"/> de um `ClimaNaTela` vivo, e aqui nao ha um. NAO CLAREIA O CEU NEM TROVEJA:
+	/// o ensaio cai nos primeiros quadros do mundo quando o login foi mais rapido que ele, e nao pode ser visto nem
+	/// ouvido. Morre com o palco do aquecimento.
+	/// </summary>
+	public static void Ensaiar(Node2D pai, Vector2 onde)
+	{
+		(Sprite2D risco, ShaderMaterial tinta) = NovoRisco();
+		risco.Name = "RiscoDoEnsaio";
+		risco.Position = onde - RiscoDoEnsaio * 0.5f;
+		risco.Scale = RiscoDoEnsaio;   // a textura tem 1 px: a escala E o tamanho
+		risco.Visible = true;
+		tinta.SetShaderParameter(UniIdade, 0.3f);
+		tinta.SetShaderParameter("razao", RiscoDoEnsaio.Y / RiscoDoEnsaio.X);
+		pai.AddChild(risco);
+	}
+
 	private void MontarQueda()
 	{
-		_fisica = new ParticleProcessMaterial
+		(_queda, _fisica, _tintaQueda) = NovaQueda();
+		AddChild(_queda);
+	}
+
+	/// <summary>
+	/// A QUEDA: o emissor, a fisica e o material do que cai, como o mundo os usa -- desligado ate o primeiro clima que
+	/// precipita. UMA receita pra duas casas, a do mundo (<see cref="MontarQueda"/>) e a do palco do ensaio
+	/// (<see cref="EnsaiarAChuva"/>), pelo mesmo motivo do <see cref="NovoRisco"/>.
+	/// </summary>
+	private static (GpuParticles2D Queda, ParticleProcessMaterial Fisica, ShaderMaterial Tinta) NovaQueda()
+	{
+		var fisica = new ParticleProcessMaterial
 		{
 			// A CAIXA DE EMISSÃO ACOMPANHA A CÂMERA, e é daqui que sai a propriedade de "só
 			// existe o que a câmera vê" -- ver `AjustarCaixa`.
@@ -153,11 +325,14 @@ public partial class ClimaNaTela : Node2D
 			ParticleFlagDisableZ = true,
 		};
 
-		_queda = new GpuParticles2D
+		var tinta = new ShaderMaterial { Shader = ShQueda };
+
+		var queda = new GpuParticles2D
 		{
 			Name = "Queda",
 			Amount = Pingos,
-			ProcessMaterial = _fisica,
+			ProcessMaterial = fisica,
+			Material = tinta,
 			Texture = _pingo,
 			Emitting = false,
 			// SEM `Explosiveness`: a chuva tem que estar CHEIA no primeiro quadro em que aparece.
@@ -178,7 +353,38 @@ public partial class ClimaNaTela : Node2D
 
 			ZIndex = CamadaDaChuva,
 		};
-		AddChild(_queda);
+		return (queda, fisica, tinta);
+	}
+
+	/// <summary>
+	/// O ENSAIO DO LOBBY (ver `Aquecimento.AtosDaChuva`): o que cai do ceu -- o emissor, a fisica e o material de producao
+	/// (<see cref="NovaQueda"/>) -- LIGADO num palco fora da tela, pra a pipeline do `Queda.gdshader` ser montada ALI, e
+	/// nao no quadro em que a primeira chuva comeca.
+	///
+	/// O EMISSOR DO MUNDO NASCE DESLIGADO, e o motor nao desenha particula inativa (Godot 4.7,
+	/// `renderer_canvas_render_rd.cpp`, `_render_batch`: `particles_is_inactive` sai do desenho antes de a pipeline ser
+	/// pedida). A pipeline so era montada quando o primeiro pingo era desenhado -- no meio do jogo, na primeira vez que
+	/// chove (ou neva, ou venta areia) desde que o processo abriu.
+	///
+	/// MEDIDO em 2026-10-09 pela rodada do ceu da `--diagestouro` (`--temas --ceu`, que faz uma tempestade COMECAR no
+	/// meio do jogo), o desenho do quadro em que o primeiro pingo e desenhado, com uma pipeline montada nele: 1,1 a 1,9 ms
+	/// com o cache de shader do DRIVER de video quente (quatro corridas) e 28 a 38 ms com ele frio (o `Queda.gdshader`
+	/// salgado pelo `--driverfrio`, seis). DEPOIS: nenhuma pipeline nasce no quadro nem nos tres seguintes, e o desenho
+	/// deles custa 0,4 a 0,7 ms com o driver quente e com ele frio.
+	/// E SO A PIPELINE: o quadro nao traz shader de particula compilado na hora -- a fisica da chuva (`Reconfigurar`) so
+	/// muda valores na do emissor que nasceu com o mundo.
+	///
+	/// PARADA EM CIMA DO PONTO: sem velocidade os pingos ficam na caixa de emissao -- e, do lado iluminado do palco,
+	/// debaixo da luz dele. Caixa e velocidade sao VALORES, e nao mudam shader nem pipeline. Morre com o palco.
+	/// </summary>
+	public static void EnsaiarAChuva(Node2D pai, Vector2 onde)
+	{
+		(GpuParticles2D queda, ParticleProcessMaterial fisica, _) = NovaQueda();
+		queda.Name = "ChuvaDoEnsaio";
+		queda.Position = onde;
+		fisica.EmissionBoxExtents = new Vector3(10, 10, 0);
+		queda.Emitting = true;
+		pai.AddChild(queda);
 	}
 
 	/// <summary>
@@ -381,6 +587,15 @@ public partial class ClimaNaTela : Node2D
 	// =====================================================================
 	// APLICAR
 	// =====================================================================
+	// OS UNIFORMES ESCRITOS A CADA QUADRO (os onze do veu, e a idade do raio enquanto ele risca). Um `StringName`
+	// guardado por nome: a `string` entregue ao `SetShaderParameter` fabrica um NOVO a cada chamada, lixo com
+	// finalizador que sobrevive a primeira coleta -- medido em 2026-10-08 (`--diagcoletor`), eram 111 KB/s so
+	// daqui, o terceiro maior da cena depois do conserto do relogio de animacao do `CharacterVisual`.
+	private static readonly StringName
+		UniTempo = "tempo", UniForca = "forca", UniCor = "cor", UniDensidade = "densidade", UniEscala = "escala",
+		UniDeriva = "deriva", UniManchado = "manchado", UniClarao = "clarao", UniOrigem = "origem",
+		UniTamanho = "tamanho", UniParalaxe = "paralaxe", UniIdade = "idade";
+
 	/// <summary>
 	/// PÕE O CLIMA NA TELA. Chamado a cada quadro pela <see cref="Iluminacao"/>, que é quem tem o
 	/// relógio -- este node não conta tempo de mundo de propósito, pelo mesmo motivo da lua: dois
@@ -413,21 +628,25 @@ public partial class ClimaNaTela : Node2D
 		{
 			_desenhado = clima.Tipo;
 			Reconfigurar(r);
+			AcertarORecorte();   // a destruicao do planeta nao respeita teto; os outros climas sim
 		}
 
+		// O defeito de bancada: a posicao do teto escrita AQUI, um quadro atras -- ver `AntesDeDesenhar`.
+		if (TetoAtrasadoDeTeste && _teto?.Textura != null) EscreverOndeOTetoEsta();
+
 		// ---- a massa ----
-		_tintaVeu.SetShaderParameter("tempo", (float)_t);
-		_tintaVeu.SetShaderParameter("forca", forca);
-		_tintaVeu.SetShaderParameter("cor", r.CorDaMassa * ambiente);
-		_tintaVeu.SetShaderParameter("densidade", r.Densidade);
-		_tintaVeu.SetShaderParameter("escala", r.Escala);
-		_tintaVeu.SetShaderParameter("deriva", r.Deriva);
-		_tintaVeu.SetShaderParameter("manchado", r.Manchado);
-		_tintaVeu.SetShaderParameter("clarao", _clarao);
+		_tintaVeu.SetShaderParameter(UniTempo, (float)_t);
+		_tintaVeu.SetShaderParameter(UniForca, forca);
+		_tintaVeu.SetShaderParameter(UniCor, r.CorDaMassa * ambiente);
+		_tintaVeu.SetShaderParameter(UniDensidade, r.Densidade);
+		_tintaVeu.SetShaderParameter(UniEscala, r.Escala);
+		_tintaVeu.SetShaderParameter(UniDeriva, r.Deriva);
+		_tintaVeu.SetShaderParameter(UniManchado, r.Manchado);
+		_tintaVeu.SetShaderParameter(UniClarao, _clarao);
 		// ONDE ESTE PEDACO DE CEU ESTA NO PLANETA -- e o que prende a nuvem ao mapa
-		_tintaVeu.SetShaderParameter("origem", origem);
-		_tintaVeu.SetShaderParameter("tamanho", mundo);
-		_tintaVeu.SetShaderParameter("paralaxe", r.Paralaxe);
+		_tintaVeu.SetShaderParameter(UniOrigem, origem);
+		_tintaVeu.SetShaderParameter(UniTamanho, mundo);
+		_tintaVeu.SetShaderParameter(UniParalaxe, r.Paralaxe);
 
 		// ---- o que cai ----
 		_queda.Emitting = r.Cai && forca > 0.02f;
@@ -557,7 +776,7 @@ public partial class ClimaNaTela : Node2D
 
 		if (_idadeDoRaio >= 1) return;
 		_idadeDoRaio = Math.Min(1, _idadeDoRaio + delta * 3.0);
-		_tintaRaio.SetShaderParameter("idade", (float)_idadeDoRaio);
+		_tintaRaio.SetShaderParameter(UniIdade, (float)_idadeDoRaio);
 		if (_idadeDoRaio >= 1) _raio.Visible = false;
 	}
 
@@ -642,6 +861,13 @@ public partial class ClimaNaTela : Node2D
 
 	/// <summary>O clima que está sendo desenhado. A bancada lê daqui.</summary>
 	public EstadoDoClima Estado => _estado;
+
+	/// <summary>
+	/// O QUE CAI e A MASSA, como nodes -- so pra bancada do teto (`--diagteto`), que os esconde um de
+	/// cada vez com a arvore pausada e mede, no pixel, o que cada um POE na tela.
+	/// </summary>
+	public CanvasItem QuedaDeTeste => _queda;
+	public CanvasItem MassaDeTeste => _veu;
 
 	/// <summary>Quantos pingos estão vivos agora -- pro diagnóstico provar que o custo é fixo.</summary>
 	public int PingosVivos => _queda.Emitting ? (int)(Pingos * _queda.AmountRatio) : 0;

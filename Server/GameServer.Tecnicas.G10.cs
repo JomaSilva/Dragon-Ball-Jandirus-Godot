@@ -571,8 +571,12 @@ public sealed partial class GameServer
 			{
 				dmg += 2;
 				paredes++;
-				bool caiu = f.expressedBP >= Empurrao.ResistenciaPadrao && !mapa.NaBorda(cx, cy)
-							&& DerrubarCelula(pl.Zone, cx, cy);
+				// O BLOCO ERGUIDO NO CAMINHO cai pela resistencia DELE (`T.destroyable && T.Resistance <=
+				// expressedBP`, `Beserker Skills.dm:57-66`), e nao pelo 20 do cenario.
+				bool caiu = BlocoQueBarra(pl.Zone, cx, cy) is { } bloco
+					? DerrubarBlocoSeAguenta(bloco, f.expressedBP, pl)
+					: f.expressedBP >= Empurrao.ResistenciaPadrao && !mapa.NaBorda(cx, cy)
+					  && DerrubarCelula(pl.Zone, cx, cy);
 				if (!caiu) dmg += 2;
 			}
 			if (mapa != null && MoveRules.PathOccupied(mapa, pl.Pos, aFrente)) continue;   // o `step` bate na parede
@@ -599,7 +603,8 @@ public sealed partial class GameServer
 		Avisar(pl, $"voce esmaga {preso.Name} no fim da corrida ({passos} passos, {paredes} paredes; -{custo:0} de energia).");
 		AvisarSePessoa(preso, $"{pl.Name} te esmaga no chao no fim da corrida!");
 		int celulas = RacharChao(pl.Zone, pl.Pos, f.expressedBP,
-								 raio: Math.Clamp((int)Math.Floor(f.Ephysoff / 2 + 1), 0, RaioMaximoDeViewG10), chance: 1);
+								 raio: Math.Clamp((int)Math.Floor(f.Ephysoff / 2 + 1), 0, RaioMaximoDeViewG10), chance: 1,
+								 levaBlocos: true);
 		if (celulas > 0) Avisar(pl, $"o chao em volta racha ({celulas} celulas).");
 	}
 
@@ -671,7 +676,8 @@ public sealed partial class GameServer
 		Travar(alvo, 0.4);
 		GolpeG3(pl, alvo, addDano: 15, nivel: 3);
 		int raio = (int)Math.Floor(pl.Ficha.Ephysoff);
-		int celulas = RacharChao(pl.Zone, pl.Pos, pl.Ficha.expressedBP, raio: Math.Clamp(raio, 0, RaioMaximoDeViewG10), chance: 1);
+		int celulas = RacharChao(pl.Zone, pl.Pos, pl.Ficha.expressedBP, raio: Math.Clamp(raio, 0, RaioMaximoDeViewG10), chance: 1,
+								 levaBlocos: true);
 		Travar(alvo, 2.0);
 
 		// o tremor e de quem esta perto (o `emit_Sound('kiplosion.wav')` + a poeira dos turfs)

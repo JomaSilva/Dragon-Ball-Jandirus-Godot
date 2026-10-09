@@ -111,7 +111,7 @@ public static class ClasseDeNuvem
 	public static TravessiaDaNuvem Travessia(ModoDeTravessia modo, bool zonaDerruba)
 	{
 		// O UNICO QUE PASSA. Ver o quadro acima: `isflying` e a condicao inteira do `Enter()` da nuvem.
-		if (modo == ModoDeTravessia.Voando) return TravessiaDaNuvem.Atravessa;
+		if (Voo.Voa(modo)) return TravessiaDaNuvem.Atravessa;
 		return zonaDerruba ? TravessiaDaNuvem.Derruba : TravessiaDaNuvem.Bloqueia;
 	}
 

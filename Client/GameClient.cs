@@ -94,6 +94,12 @@ public partial class GameClient : Node
 	/// <summary>Um corpo fez um gesto (`S2C.Gesto`): quem, e qual (`Protocol.GestoDoCorpo`). Som e desenho.</summary>
 	public event Action<int, byte>? GestoDoCorpo;
 
+	/// <summary>
+	/// O servidor virou o MEU corpo (`S2C.Olhar`): pra que lado. Hoje quem vira e o ataque de ki com alguem
+	/// marcado -- ver `GameServer.CravarOlhar` e `LocalPlayer.ReceberOlhar`.
+	/// </summary>
+	public event Action<Jandirus.Core.World.Facing>? OlharCravado;
+
 	/// <summary>O estado de cada membro do MEU corpo. So chega quando muda.</summary>
 	public event Action<List<Protocol.ParteState>>? CorpoAtualizado;
 
@@ -141,6 +147,54 @@ public partial class GameClient : Node
 	/// </summary>
 	public long ServidorMsDoSnapshot { get; private set; }
 
+	/// <summary>
+	/// ============================ PACOTE MAL LIDO: O TRATADOR LANCOU, OU LEU ALEM DO FIM ============================
+	/// Quantas vezes, nesta sessao, o tratador deste pacote nao chegou inteiro ao fim dele: lancou no
+	/// meio, ou leu o que o servidor NAO escreveu. (A excecao conta venha de onde vier -- um assinante
+	/// com node liberado tambem derruba o tratador --, porque pra quem pergunta "este pacote foi
+	/// tratado?" a resposta e a mesma.)
+	///
+	/// AS DUAS FORMAS SAO O MESMO DEFEITO, E SO UMA FAZ BARULHO. Quando o leitor quer um campo que o
+	/// escritor nao mandou, o `NetDataReader` do LiteNetLib nao confere o fim do pacote: `GetByte()` e
+	/// `_data[_position]`, e o que ha depois do fim depende do BUFFER -- que e do pool da biblioteca, e
+	/// nao do pacote. Buffer do tamanho exato: `IndexOutOfRangeException`, e o resto do tratador nao
+	/// roda. Buffer maior (reciclado de um pacote mais longo): o byte que sobrou de OUTRO pacote, lido
+	/// como se fosse deste, calado.
+	///
+	/// Medido em 2026-10-08 com o `PeerLook` do reflexo da mente, que tinha um segundo escritor sem o
+	/// byte do tipo de fusao: na MESMA rodada, um mergulho estourou (e o reflexo ficou sem ficha) e o
+	/// outro nao. Contar so a excecao deixaria a bancada verde nos dias de sorte e o jogador com um corpo
+	/// sem aparencia nos de azar -- `AvailableBytes` NEGATIVO depois do tratador e o juizo que nao
+	/// depende do pool.
+	///
+	/// LER DE MENOS NAO ENTRA NA CONTA: ha tratador que sai cedo de proposito (o mundo ainda nao montou,
+	/// o pacote e de outra zona) e deixa bytes por ler. Ler ALEM do fim nunca e de proposito.
+	/// ==================================================================================================================
+	/// </summary>
+	public int PacotesMalLidos(Protocol.S2C op) => _malLidos.TryGetValue((byte)op, out int n) ? n : 0;
+
+	private readonly Dictionary<byte, int> _malLidos = [];
+
+	/// <summary>Os tipos de pacote cuja leitura alem do fim ja foi avisada -- ver <see cref="AnotarLeituraAlemDoFim"/>.</summary>
+	private readonly HashSet<byte> _avisouAlemDoFim = [];
+
+	/// <summary>
+	/// O tratador leu alem do fim sem lancar. UM AVISO POR TIPO DE PACOTE, e nao um por pacote: o mesmo
+	/// desencontro num pacote de 30 Hz afogaria o console, e a segunda linha nao diria nada que a primeira
+	/// nao disse. A conta inteira continua no <see cref="PacotesMalLidos"/>.
+	///
+	/// O CONJUNTO E PROPRIO, e nao "o contador ja tem esta chave": a excecao soma no mesmo contador, e um
+	/// pacote que estourasse antes de ler alem do fim nunca ganharia a linha que explica o que houve.
+	/// </summary>
+	private void AnotarLeituraAlemDoFim(byte op, int bytes)
+	{
+		_malLidos[op] = PacotesMalLidos((Protocol.S2C)op) + 1;
+		if (_avisouAlemDoFim.Add(op))
+			GD.PushWarning($"[client] o tratador do pacote {op} ({(Protocol.S2C)op}) leu {bytes} byte(s) ALEM do fim do pacote: "
+						 + "o leitor quer um campo que o escritor nao mandou, e o que ele leu e sobra do buffer. "
+						 + "(avisado uma vez por tipo de pacote)");
+	}
+
 	public GameClient()
 	{
 		_net = new NetManager(_listener)
@@ -168,9 +222,15 @@ public partial class GameClient : Node
 		{
 			// O OPCODE E LIDO ANTES: depois da excecao o leitor ja andou e o numero se perdeu.
 			byte op = reader.AvailableBytes > 0 ? reader.PeekByte() : (byte)255;
-			try { Handle(reader); }
+			try
+			{
+				Handle(reader);
+				// O IRMAO CALADO DA EXCECAO LOGO ABAIXO -- ver `PacotesMalLidos`.
+				if (reader.AvailableBytes < 0) AnotarLeituraAlemDoFim(op, -reader.AvailableBytes);
+			}
 			catch (Exception ex)
 			{
+				_malLidos[op] = PacotesMalLidos((Protocol.S2C)op) + 1;
 				// ============================ A EXCECAO SAI INTEIRA, E COM O OPCODE ============================
 				// "pacote invalido: {Message}" escondeu por um dia um defeito que nao era de pacote nenhum:
 				// um World morto ainda assinado no `DecalqueCaiu` estourava `ObjectDisposedException` a cada
@@ -639,6 +699,15 @@ public partial class GameClient : Node
 	public event Action? ChefesVistosMudaram;
 
 	/// <summary>
+	/// ALGUEM QUE ESTA DENTRO DE MIM (so um Majin recebe isto). O NUMERO e o que o botao de expelir manda
+	/// de volta; DEVORADO e o NPC que virou so poder emprestado. Ver `Protocol.S2C.AbsorvidosDoMajin`.
+	/// </summary>
+	public readonly record struct AbsorvidoDoMajin(int Numero, string Nome, bool Devorado);
+
+	public List<AbsorvidoDoMajin> AbsorvidosDoMajin { get; private set; } = [];
+	public event Action? AbsorvidosDoMajinMudaram;
+
+	/// <summary>
 	/// AS TECNICAS DE KI QUE EU INVENTEI, e o rascunho aberto na mesa (nulo = nenhum).
 	///
 	/// ============================ O CLIENTE NAO CALCULA PONTO NENHUM ============================
@@ -668,6 +737,13 @@ public partial class GameClient : Node
 	/// <summary>O que eu carrego. Chega inteiro quando muda -- ver `S2C.Inventario`.</summary>
 	public Jandirus.Core.Items.Inventario Mochila { get; private set; } = new();
 	public event Action? MochilaMudou;
+
+	/// <summary>
+	/// AS PECAS QUE EU VISTO AGORA, na ordem em que estao no corpo -- a fileira "vestindo" da mochila. Chegam
+	/// no MESMO pacote da mochila (ver `Protocol.PutInventario`, que conta por que nao saem do `PeerLook`), e
+	/// por isso o <see cref="MochilaMudou"/> avisa das duas.
+	/// </summary>
+	public List<Jandirus.Core.Appearance.PecaDeRoupa> Vestindo { get; } = [];
 
 	/// <summary>
 	/// UMA COISA DE ESFERA NO CHAO DESTA ZONA: a estatua, uma das sete, ou o dragao de pe.
@@ -815,8 +891,64 @@ public partial class GameClient : Node
 	/// <summary>Quantos retratos de cenario ja chegaram nesta sessao -- so pras bancadas.</summary>
 	public int RetratosDeCenarioDeTeste { get; private set; }
 
-	/// <summary>Zera o estrago guardado. Devolve `true` pra caber no `when` do `switch`.</summary>
-	private bool LimparCenario() { CenarioCaido.Clear(); CenarioDaZona = 0; return true; }
+	/// <summary>
+	/// Zera o estrago guardado -- e os blocos erguidos, que sao da zona pelo mesmo motivo. Devolve `true`
+	/// pra caber no `when` do `switch`.
+	/// </summary>
+	private bool LimparCenario()
+	{
+		CenarioCaido.Clear();
+		CenarioDaZona = 0;
+		Blocos.Clear();
+		BlocosDaZona = 0;
+		return true;
+	}
+
+	// =====================================================================
+	// OS BLOCOS ERGUIDOS (parede, piso, porta) -- ver `GameServer.Blocos.cs`
+	// =====================================================================
+	/// <summary>Um bloco erguido, como este cliente o conhece: qual e, e as marcas DESTE jogador.</summary>
+	public readonly record struct BlocoInfo(ushort Numero, byte Marcas)
+	{
+		public bool Meu => (Marcas & Protocol.BlocoMeu) != 0;
+		public bool Trancado => (Marcas & Protocol.BlocoTrancado) != 0;
+		public bool Aberto => (Marcas & Protocol.BlocoAberto) != 0;
+		public bool SeiASenha => (Marcas & Protocol.BlocoSeiASenha) != 0;
+	}
+
+	/// <summary>
+	/// OS BLOCOS DA ZONA, por celula. Guardados aqui e nao so desenhados, pelo motivo escrito no
+	/// <see cref="CenarioCaido"/>: quem aplica e o `World`, e so quando o chao DESTA zona esta montado.
+	/// </summary>
+	public readonly Dictionary<(int X, int Y), BlocoInfo> Blocos = [];
+
+	/// <summary>De que zona e a lista <see cref="Blocos"/>. Zero entre o `ZoneChanged` e o retrato da zona nova.</summary>
+	public ulong BlocosDaZona { get; private set; }
+
+	/// <summary>O retrato dos blocos de uma zona chegou.</summary>
+	public event Action? BlocosChegaram;
+
+	/// <summary>Um bloco subiu, trocou, ou (com `ePorta`) uma porta abriu, fechou ou trocou de senha.</summary>
+	public event Action<int, int, bool>? BlocoMudou;
+
+	/// <summary>Um bloco saiu: desmanchado pelo dono, ou (com `derrubado`) derrubado na porrada.</summary>
+	public event Action<int, int, bool>? BlocoSaiu;
+
+	/// <summary>
+	/// ERGUER OU DESMANCHAR UM BLOCO. So a celula viaja: quem decide se sobe e o servidor. O formato casa
+	/// byte a byte com o leitor de `C2S.Bloco` em `GameServer.cs`.
+	/// </summary>
+	public void SendBloco(byte acao, int cx, int cy, int numero, string senha = "")
+	{
+		if (!Connected) return;
+		var w = Protocol.Begin(Protocol.C2S.Bloco);
+		w.Put(acao);
+		w.Put((ushort)cx);
+		w.Put((ushort)cy);
+		w.Put((ushort)numero);
+		w.Put(senha);
+		_peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
 
 	/// <summary>O canal unico de tecnologia. Ver `GameServer.Tech.cs`.</summary>
 	/// <summary>
@@ -1472,6 +1604,9 @@ public partial class GameClient : Node
 				// dentro da mesma sessao herdaria a fera do anterior e o botao da lua ficaria escondido
 				// pra um corpo que nunca se transformou.
 				MeuOozaru = Jandirus.Core.Forms.FormaOozaru.Nao;
+				// NINGUEM CONTINUA COM GENTE DENTRO DESLOGADO, pelo mesmo motivo: o servidor desfaz a absorcao
+				// do Majin antes do save, e o outro personagem da conta herdaria os botoes de expelir deste.
+				AbsorvidosDoMajin = [];
 				Sheet = SheetState.Read(reader);
 				Visual = reader.GetAppearance();   // o servidor devolve a versao SANEADA
 				// A seed do universo vem JUNTO: a carta estelar precisa dela em terra firme, e nao
@@ -1571,6 +1706,10 @@ public partial class GameClient : Node
 				GestoDoCorpo?.Invoke(quem, reader.GetByte());
 				break;
 			}
+
+			case Protocol.S2C.Olhar:
+				OlharCravado?.Invoke((Jandirus.Core.World.Facing)reader.GetByte());
+				break;
 
 			case Protocol.S2C.Chat:
 			{
@@ -1741,6 +1880,18 @@ public partial class GameClient : Node
 				break;
 			}
 
+			// QUEM ESTA DENTRO DE MIM. Lista inteira, como os chefes vistos -- ver `S2C.AbsorvidosDoMajin`.
+			case Protocol.S2C.AbsorvidosDoMajin:
+			{
+				int n = reader.GetByte();
+				var l = new List<AbsorvidoDoMajin>(n);
+				for (int i = 0; i < n; i++)
+					l.Add(new AbsorvidoDoMajin(reader.GetInt(), reader.GetString(64), reader.GetBool()));
+				AbsorvidosDoMajin = l;
+				AbsorvidosDoMajinMudaram?.Invoke();
+				break;
+			}
+
 			case Protocol.S2C.Customizadas:
 			{
 				int n = reader.GetByte();
@@ -1870,6 +2021,39 @@ public partial class GameClient : Node
 			{
 				(bool completo, List<(int X, int Y, bool Aberta)> portas) = reader.GetPortas();
 				PortasMudaram?.Invoke(completo, portas);
+				break;
+			}
+
+			// OS BLOCOS ERGUIDOS, em quatro modos (ver `Protocol.BlocosRetrato`).
+			case Protocol.S2C.Blocos:
+			{
+				byte modo = reader.GetByte();
+				if (modo == Protocol.BlocosRetrato)
+				{
+					ulong zonaDosBlocos = reader.GetULong();
+					int n = reader.GetInt();
+					Blocos.Clear();
+					for (int i = 0; i < n; i++)
+					{
+						int x = reader.GetUShort(), y = reader.GetUShort();
+						Blocos[(x, y)] = new BlocoInfo(reader.GetUShort(), reader.GetByte());
+					}
+					BlocosDaZona = zonaDosBlocos;
+					BlocosChegaram?.Invoke();
+					break;
+				}
+
+				int bx = reader.GetUShort(), by = reader.GetUShort();
+				if (modo == Protocol.BlocosTirado)
+				{
+					bool derrubado = reader.GetBool();
+					Blocos.Remove((bx, by));
+					BlocoSaiu?.Invoke(bx, by, derrubado);
+					break;
+				}
+
+				Blocos[(bx, by)] = new BlocoInfo(reader.GetUShort(), reader.GetByte());
+				BlocoMudou?.Invoke(bx, by, modo == Protocol.BlocosPorta);
 				break;
 			}
 
@@ -2197,7 +2381,7 @@ public partial class GameClient : Node
 				break;
 
 			case Protocol.S2C.Inventario:
-				Mochila = reader.GetInventario();
+				Mochila = reader.GetInventario(Vestindo);
 				MochilaMudou?.Invoke();
 				break;
 

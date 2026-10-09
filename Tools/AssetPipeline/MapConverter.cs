@@ -67,6 +67,19 @@ public static class MapConverter
 	private const string SemFisica = "collision_enabled = false\n";
 
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): o estado volta a ser procurado SEM OLHAR A CAIXA, e ganha o primeiro
+	/// da folha -- `Computer2` (a torre) cai em `computer2` (um pedaco de outra maquina). Falso na
+	/// conversao, sempre.
+	/// </summary>
+	public static bool EstadoSemCaixaDeTeste;
+
+	/// <summary>
+	/// Um estado da folha: o nome EXATO que o `.dmi` declara, onde o primeiro quadro dele mora, e
+	/// quantas direcoes e quadros ele ocupa (os quadros de uma direcao ficam a `Dirs` de distancia).
+	/// </summary>
+	private readonly record struct EstadoDaFolha(string Nome, int Indice, int Dirs, int Quadros);
+
 	private sealed class Fonte
 	{
 		public int Id;
@@ -75,7 +88,60 @@ public static class MapConverter
 		/// <summary>Caminho no DISCO -- e a chave do dicionario de fontes, e o que o TurfDef guarda.</summary>
 		public string Chave = "";
 		public int IconW, IconH, Cols;
-		public Dictionary<string, int> StateIndex = new(StringComparer.OrdinalIgnoreCase); // icon_state -> indice do 1o quadro
+
+		/// <summary>
+		/// A ANCORA PROPRIA desta fonte: o `texture_origin` que TODO tile dela declara, no lugar do padrao
+		/// da folha (centrado, base no pe da celula). Nula em toda fonte que nao e variante -- ver
+		/// <see cref="AncoraDoTipo"/>.
+		/// </summary>
+		public (int X, int Y)? Origem;
+
+		/// <summary>
+		/// O que distingue uma VARIANTE da fonte comum da mesma folha: `@x,y`, a ancora dela. Duas fontes
+		/// podem dividir a textura; o dicionario de fontes as separa por <see cref="Entrada"/>.
+		/// </summary>
+		public string Sufixo => Origem is { } o ? $"@{o.X},{o.Y}" : "";
+
+		/// <summary>A chave desta fonte no dicionario de fontes (e o que o `TurfDef.Atlas` guarda).</summary>
+		public string Entrada => Chave + Sufixo;
+
+		/// <summary>
+		/// O nome com que a fonte entra no `tiles.json`. Vazio = o nome do arquivo, que e o de toda fonte
+		/// descoberta pela conversao cheia; as acrescentadas trazem o delas (ver <see cref="NomeNoIndice"/>).
+		/// </summary>
+		public string Nome = "";
+
+		/// <summary>Os estados pelo nome EXATO. Nome repetido na mesma folha fica com o primeiro.</summary>
+		public Dictionary<string, EstadoDaFolha> Exatos = new(StringComparer.Ordinal);
+
+		/// <summary>
+		/// Os mesmos estados SEM OLHAR A CAIXA, o primeiro de cada nome. E a rede de baixo do
+		/// <see cref="Achar"/>, e e o que vai pro `tiles.json` -- o leitor dele (`CatalogoDeTiles`)
+		/// tambem nao olha a caixa, entao mandar os dois nomes faria o ultimo apagar o primeiro la.
+		/// </summary>
+		public Dictionary<string, EstadoDaFolha> SemCaixa = new(StringComparer.OrdinalIgnoreCase);
+
+		/// <summary>
+		/// O ESTADO QUE ESTE NOME PEDE: o de nome EXATO, e so na falta dele o que difere na caixa.
+		///
+		/// ============================ `Computer2` NAO E `computer2` ============================
+		/// O BYOND casa `icon_state` letra por letra, e a `Lab.dmi` tem os dois: `computer2` (quadro
+		/// 184, um PEDACO de outra maquina) e `Computer2` (quadro 293, a torre inteira). Procurando sem
+		/// caixa ganhava o primeiro, e os 8 computadores dos laboratorios de Vegeta
+		/// (`/obj/buildables/Computer2`, `buildobjects.dm:265-268`) saiam com o pedaco -- um dos "icones
+		/// cortados" da queixa do dono.
+		///
+		/// A REDE SEM CAIXA FICA, e e divergencia declarada: no BYOND o nome que so difere na caixa nao
+		/// casa, e o desenho cai no estado vazio da folha. Aqui ele continua casando, porque tira-la
+		/// trocaria por outro desenho tudo que hoje depende dela -- e isso e uma decisao por tipo, nao um
+		/// efeito colateral. O relatorio do andar conta quantas celulas passam por ela.
+		/// ======================================================================================
+		/// </summary>
+		public EstadoDaFolha? Achar(string nome)
+		{
+			if (!EstadoSemCaixaDeTeste && Exatos.TryGetValue(nome, out EstadoDaFolha exato)) return exato;
+			return SemCaixa.TryGetValue(nome, out EstadoDaFolha parecido) ? parecido : null;
+		}
 
 		/// <summary>Os estados como o .dmi os declara -- e daqui que saem as animacoes.</summary>
 		public List<DmiState> States = [];
@@ -92,8 +158,11 @@ public static class MapConverter
 		/// </summary>
 		public Fonte? Companheira;
 
-		/// <summary>Estado reempacotado -> a LINHA dele no companheiro. Vazio = nada foi reempacotado.</summary>
-		public Dictionary<string, int> Refeitos = new(StringComparer.OrdinalIgnoreCase);
+		/// <summary>
+		/// Estado reempacotado (pelo nome EXATO, o mesmo que o <see cref="Achar"/> devolve) -> a LINHA
+		/// dele no companheiro. Vazio = nada foi reempacotado.
+		/// </summary>
+		public Dictionary<string, int> Refeitos = new(StringComparer.Ordinal);
 
 		/// <summary>Por linha do companheiro: quantos quadros e quanto dura cada um (ja em segundos).</summary>
 		public List<double[]> Duracoes = [];
@@ -109,11 +178,193 @@ public static class MapConverter
 	/// ele viria de uma diferenca entre o indice em memoria e o tileset do disco, nao de mapa.
 	/// </param>
 	public static void Convert(string dmmDir, string spritesDir, string outDir, Dictionary<string, TurfDef> turfs,
-							   bool soFisica = false)
+							   bool soFisica = false) =>
+		Passada(dmmDir, spritesDir, outDir, turfs, soFisica, trava: null);
+
+	/// <summary>
+	/// REPINTA UM ANDAR SO, COM AS FONTES PRESAS AS DO DISCO -- o comando `repintar`.
+	///
+	/// ============================ POR QUE NAO E A CONVERSAO CHEIA ============================
+	/// O `id` de cada fonte do tileset nasce de um contador por ORDEM DE DESCOBERTA (`proxId++`), e o
+	/// `.pedacos` de cada planeta guarda esse numero em toda celula. Reconverter um andar pela passada
+	/// cheia renumeraria as fontes -- ou seja, obrigaria a reescrever o tileset, o `tiles.json` e os 40
+	/// `.pedacos` pra consertar um planeta, e ainda trocaria de arquivo as folhas de nome repetido (o
+	/// `DU/Items/Lab.png` contra o `Misc/Objects/Technology/Lab.png`: quem ganha e a ordem do disco).
+	///
+	/// Aqui as fontes NAO sao descobertas: sao SEMEADAS do `Assets/Data/tiles.json` (id, textura,
+	/// colunas, tamanho do icone) e conferidas contra o `tileset.tres` ao lado. A MESMA passada roda,
+	/// pelas mesmas regras de desenho e de fisica, e so o andar pedido sai -- numa pasta de rascunho.
+	/// Tileset, indice, manifesto, as tiras `__anim` e as cenas binarias ficam como estao.
+	/// ========================================================================================
+	///
+	/// ============================ FALHA ALTO, E NAO GRAVA NADA ============================
+	/// Se o andar pedir uma folha que o tileset do disco nao tem, um estado que so existe noutro
+	/// arquivo de mesmo nome, ou um quadro que o tileset nao declara (ou declara com outra animacao), a
+	/// lista sai no console e NENHUM arquivo e escrito. Um `.pedacos` com uma celula apontando pra
+	/// fora do tileset nao da erro no jogo: o Godot so nao desenha a celula, e o buraco apareceria
+	/// meses depois sem dizer de onde veio.
+	/// ======================================================================================
+	/// </summary>
+	/// <param name="pastaDoDisco">O `Assets/Maps` vivo: de onde sai o `tileset.tres` (e, ao lado, o `Data/tiles.json`).</param>
+	/// <param name="rascunho">Onde os arquivos do andar sao escritos. Nao pode ser a pasta viva.</param>
+	/// <returns>0 se o andar saiu; 1 se faltou alguma coisa e nada foi gravado.</returns>
+	public static int RepintarAndar(string dmmDir, string spritesDir, string pastaDoDisco, string rascunho,
+									Dictionary<string, TurfDef> turfs, int z)
+	{
+		string? raiz = AcharRaiz(pastaDoDisco);
+		if (raiz == null)
+		{
+			Console.WriteLine($"ERRO: nao achei o project.godot subindo de {pastaDoDisco} -- sem ele nao ha `res://` pra casar");
+			return 1;
+		}
+		if (string.Equals(Path.GetFullPath(rascunho).TrimEnd('\\', '/'), Path.GetFullPath(pastaDoDisco).TrimEnd('\\', '/'),
+						  StringComparison.OrdinalIgnoreCase))
+		{
+			Console.WriteLine("ERRO: o rascunho e a propria pasta viva. Este comando reescreve o `.col` e o `.vis` do andar "
+							  + "por inteiro; quem aplica o rascunho e quem o revisou.");
+			return 1;
+		}
+		return Passada(dmmDir, spritesDir, rascunho, turfs, soFisica: false,
+					   new Trava
+					   {
+						   Z = z, Raiz = raiz, PastaDoDisco = pastaDoDisco,
+						   Sprites = Path.GetFullPath(spritesDir), Icones = new IconesDoDm(dmmDir),
+					   });
+	}
+
+	/// <summary>
+	/// REPINTA TODOS OS ANDARES COM AS FONTES PRESAS E ACRESCENTA AS QUE FALTAM -- o comando `acrescentar`.
+	///
+	/// E o <see cref="RepintarAndar"/> com uma licenca a mais: quando um tipo pede uma fonte que o
+	/// tileset do disco nao tem (a folha do jogo no lugar da homonima, a arte que nunca foi copiada, a
+	/// variante com a ancora do BYOND -- ver <see cref="FonteDoTipo"/>), ela NASCE, com um `id` depois
+	/// do ultimo do disco. Por isso sao os 40 andares numa passada so: o `id` de uma fonte nova tem que
+	/// ser o mesmo em todo `.pedacos` que a usa.
+	///
+	/// TUDO SAI NO RASCUNHO, espelhando o repo: `Assets/Maps` (o `tileset.tres` com os acrescimos e os
+	/// arquivos de cada andar), `Assets/Data/tiles.json` e, pra arte que nao estava em `Assets/Sprites`,
+	/// o PNG no caminho que ele tera. Nada do que o disco tem e reescrito -- ver
+	/// <see cref="EscreverAcrescimos"/>.
+	/// </summary>
+	/// <returns>0 se saiu; 1 se faltou alguma coisa e nada dos andares foi gravado.</returns>
+	public static int AcrescentarAndares(string dmmDir, string spritesDir, string pastaDoDisco, string rascunho,
+										 Dictionary<string, TurfDef> turfs)
+	{
+		string? raiz = AcharRaiz(pastaDoDisco);
+		if (raiz == null)
+		{
+			Console.WriteLine($"ERRO: nao achei o project.godot subindo de {pastaDoDisco} -- sem ele nao ha `res://` pra casar");
+			return 1;
+		}
+		string pastaDeMapas = Path.Combine(Path.GetFullPath(rascunho), "Assets", "Maps");
+		if (string.Equals(pastaDeMapas.TrimEnd('\\', '/'), Path.GetFullPath(pastaDoDisco).TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase))
+		{
+			Console.WriteLine("ERRO: o rascunho e a propria raiz do projeto. Este comando reescreve os planos de todos os "
+							  + "andares por inteiro; quem aplica o rascunho e quem o revisou.");
+			return 1;
+		}
+		return Passada(dmmDir, spritesDir, pastaDeMapas, turfs, soFisica: false,
+					   new Trava
+					   {
+						   Z = Trava.Todos, Raiz = raiz, PastaDoDisco = pastaDoDisco, Novas = [],
+						   Rascunho = Path.GetFullPath(rascunho), Sprites = Path.GetFullPath(spritesDir),
+						   Icones = new IconesDoDm(dmmDir),
+					   });
+	}
+
+	/// <summary>
+	/// O TILESET DO DISCO, visto por quem repinta um andar sem poder mexer nele (ver
+	/// <see cref="RepintarAndar"/>): o que ele declara, o que mais existe em `Assets/Sprites` com o
+	/// mesmo nome, e a lista do que o andar pediu e ele nao tem.
+	/// </summary>
+	private sealed class Trava
+	{
+		public required int Z;
+		public required string Raiz;
+		public required string PastaDoDisco;
+
+		/// <summary>
+		/// O `tiles.json` que acompanha ESTE tileset: o da pasta `Data` ao lado da de mapas. No repo e o
+		/// `Assets/Data/tiles.json`; apontando o comando pra um rascunho ja com acrescimos, e o do rascunho.
+		/// </summary>
+		public string Indice => Path.GetFullPath(Path.Combine(PastaDoDisco, "..", "Data", "tiles.json"));
+
+		/// <summary>
+		/// Onde uma textura `res://` esta no disco: no repo, ou -- a arte que ainda nao foi aplicada -- na
+		/// arvore de rascunho de onde o tileset veio.
+		/// </summary>
+		public string ArquivoDe(string res)
+		{
+			string rel = res["res://".Length..].Replace('/', Path.DirectorySeparatorChar);
+			string noRepo = Path.GetFullPath(Path.Combine(Raiz, rel));
+			string aoLado = Path.GetFullPath(Path.Combine(PastaDoDisco, "..", "..", rel));
+			return File.Exists(noRepo) || !File.Exists(aoLado) ? noRepo : aoLado;
+		}
+
+		/// <summary>O `Z` de quem pede TODOS os andares (o comando `acrescentar`); o `repintar` pede um.</summary>
+		public const int Todos = 0;
+
+		public bool Pede(int z) => Z == Todos || Z == z;
+
+		/// <summary>
+		/// AS FONTES QUE ESTA PASSADA PODE ACRESCENTAR ao tileset do disco, na ordem em que nasceram. Nula
+		/// = nenhuma: o andar que pedir uma fonte que o disco nao tem falha alto (o `repintar`).
+		/// </summary>
+		public List<Fonte>? Novas;
+
+		/// <summary>O id da proxima fonte acrescentada: o maior do disco + 1, e dali pra frente.</summary>
+		public int ProximoId;
+
+		/// <summary>
+		/// A raiz do rascunho, que espelha a do repo (`Assets/Maps`, `Assets/Data`, `Assets/Sprites`): pra
+		/// onde vao o tileset e o indice com os acrescimos, e o PNG de arte que nunca tinha sido copiada.
+		/// </summary>
+		public string Rascunho = "";
+
+		/// <summary>A pasta `Assets/Sprites` viva.</summary>
+		public string Sprites = "";
+
+		/// <summary>Os arquivos de icone do original, pela ordem dos FILE_DIR. Nulo = nao perguntar ao DM qual folha e.</summary>
+		public IconesDoDm? Icones;
+
+		/// <summary>PNG copiado pro rascunho nesta passada (caminho `res://`): arte que o Godot ainda tem que importar.</summary>
+		public List<string> Copiados = [];
+
+		/// <summary>`sources/N` -> tile declarado -> quantos quadros ele anima (1 = parado).</summary>
+		public Dictionary<int, Dictionary<(int X, int Y), int>> Declarados = [];
+
+		/// <summary>Nome de atlas -> todo `.png` de `Assets/Sprites` com esse nome, preso ou nao.</summary>
+		public Dictionary<string, List<string>> NoDisco = new(StringComparer.OrdinalIgnoreCase);
+
+		/// <summary>Folha do tileset que nao pode ser usada (sumiu, mudou de grade...) -> o motivo.</summary>
+		public Dictionary<string, string> Suspeitas = new(StringComparer.OrdinalIgnoreCase);
+
+		private readonly List<string> _faltas = [];
+		private readonly HashSet<string> _vistas = new(StringComparer.Ordinal);
+
+		/// <summary>O que o andar pediu e o tileset do disco nao tem. Vazia = pode gravar.</summary>
+		public IReadOnlyList<string> Faltas => _faltas;
+
+		public void Faltar(string oque)
+		{
+			if (_vistas.Add(oque)) _faltas.Add(oque);
+		}
+
+		/// <summary>Quantos quadros o tileset do disco anima neste tile. 0 = o tile nao esta declarado.</summary>
+		public int QuadrosDeclarados(int fonte, (int X, int Y) c) =>
+			Declarados.TryGetValue(fonte, out Dictionary<(int X, int Y), int>? tiles) ? tiles.GetValueOrDefault(c) : 0;
+	}
+
+	private static int Passada(string dmmDir, string spritesDir, string outDir, Dictionary<string, TurfDef> turfs,
+							   bool soFisica, Trava? trava)
 	{
 		Directory.CreateDirectory(outDir);
 		if (soFisica) Console.WriteLine("SO FISICA: tileset, tiles.json, cenas, pedacos e luzes ficam como estao; "
 										 + "o .col e o .vis so PERDEM bits");
+
+		// O DM ERROU O NOME DE UM ESTADO, e o mapa usa o certo -- ver `EstadoDoMapa`.
+		foreach (TurfDef td in turfs.Values) td.IconState = EstadoDoMapa(td.Path, td.IconState);
+		var fichas = new Fichas(turfs);
 
 		// A RAIZ DO PROJETO GODOT, achada pelo `project.godot` -- NAO o diretorio de trabalho.
 		//
@@ -122,7 +373,7 @@ public static class MapConverter
 		// jogo nem o editor acham a textura, o TileSet carrega com ZERO tiles e o editor cospe
 		// "TileSetAtlasSource has no tile at (0,0)" pra cada celula do mapa. De qual pasta o
 		// comando foi chamado nao pode decidir o conteudo do arquivo gerado.
-		string? raizAchada = AcharRaiz(outDir);
+		string? raizAchada = trava?.Raiz ?? AcharRaiz(outDir);
 		string raiz = raizAchada ?? Directory.GetCurrentDirectory();
 		if (raizAchada == null)
 			Console.WriteLine("AVISO: nao achei o project.godot subindo de " + outDir +
@@ -139,18 +390,30 @@ public static class MapConverter
 		//
 		// A desambiguacao e por DADO, nao por palpite: ganha o arquivo que REALMENTE tem o
 		// `icon_state` que o typepath pediu.
+		//
+		// PRESO, O INDICE NAO E VARRIDO: cada nome aponta pra folha que o tileset do disco ja usa, e so
+		// pra ela. O que mais houver em `Assets/Sprites` com o mesmo nome fica anotado a parte
+		// (`Trava.NoDisco`), pra o `Garantir` acusar o andar que precisaria dele.
 		var atlasPorNome = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+		var fontes = new Dictionary<string, Fonte>(StringComparer.OrdinalIgnoreCase);
+		Dictionary<string, List<string>> varridos = trava?.NoDisco ?? atlasPorNome;
 		foreach (string png in Directory.GetFiles(spritesDir, "*.png", SearchOption.AllDirectories))
 		{
 			string chave = Path.GetFileNameWithoutExtension(png);
-			if (!atlasPorNome.TryGetValue(chave, out List<string>? l)) atlasPorNome[chave] = l = [];
+			if (!varridos.TryGetValue(chave, out List<string>? l)) varridos[chave] = l = [];
 			l.Add(png);
 		}
-		int repetidos = atlasPorNome.Count(kv => kv.Value.Count > 1);
-		if (repetidos > 0)
-			Console.WriteLine($"nomes de atlas repetidos: {repetidos} (resolvidos pelo icon_state)");
+		if (trava != null)
+		{
+			if (!Semear(trava, fontes, atlasPorNome)) return 1;
+		}
+		else
+		{
+			int repetidos = atlasPorNome.Count(kv => kv.Value.Count > 1);
+			if (repetidos > 0)
+				Console.WriteLine($"nomes de atlas repetidos: {repetidos} (resolvidos pelo icon_state)");
+		}
 
-		var fontes = new Dictionary<string, Fonte>(StringComparer.OrdinalIgnoreCase);
 		var semAtlas = new HashSet<string>();
 		int proxId = 0;
 
@@ -171,14 +434,18 @@ public static class MapConverter
 		bool TemArte(string bp)
 		{
 			if (!turfs.TryGetValue(bp, out TurfDef? td) || td.Icon == null) return false;
-			Fonte? f = Garantir(td.Icon, td.IconState, raiz, fontes, atlasPorNome, semAtlas, ref proxId);
-			return f != null && f.StateIndex.ContainsKey(td.IconState ?? "");
+			Fonte? f = Garantir(td.Icon, td.IconState, raiz, fontes, atlasPorNome, semAtlas, ref proxId, trava);
+			return f != null && f.Achar(td.IconState ?? "") != null;
 		}
+		// A cidade ficou de pe? O plano do que nasce sob teto (`.dentro`) so marca as celulas dela
+		// se sim -- ver `CelulasInternas`.
+		bool cidadeDeVegetaDePe = false;
 		foreach ((string _, DmmMap.Result d3, int off3) in mapas)
 			foreach (DmmLevel n3 in d3.Levels)
 			{
 				if (n3.Z + off3 != CidadeDeVegeta.Z) continue;
 				CidadeDeVegeta.Relatorio r = CidadeDeVegeta.Erguer(d3, n3, TemArte);
+				cidadeDeVegetaDePe = r.Celulas > 0;
 				Console.WriteLine($"cidade de Vegeta: {r.Celulas} celulas carimbadas "
 								  + $"({r.Paredes} paredes, {r.Portas} portas, {r.Moveis} moveis, "
 								  + $"{r.Maquinas} maquinas)");
@@ -194,19 +461,26 @@ public static class MapConverter
 		// pareciam separadas: "falta coisa no mapa" e "tem parede invisivel". Sao a MESMA coisa
 		// -- 41% dos prefabs da Terra tem um /obj (arvore, minerio, cerca, cadeira), o desenho
 		// ignorava todos e a colisao NAO: uma AppleTree densa virava um muro que ninguem via.
-		foreach ((string _, DmmMap.Result dados, int _off) in mapas)
-			foreach (string[] tipos in dados.Keys.Values)
+		//
+		// PRESO, SO O ANDAR PEDIDO REGISTRA: a pergunta e "o tileset do disco tem o que ESTE andar
+		// usa?", e ela nao pode reprovar por uma folha que so outro planeta pede.
+		foreach ((string _, DmmMap.Result dados, int off1) in mapas)
+			foreach (string[] tipos in trava == null ? dados.Keys.Values : ComposicoesDoAndar(dados, off1, trava.Z))
 				foreach (string tp in tipos)
 				{
 					string bp = DmmMap.BasePath(tp);
 					if (!Desenhavel(bp)) continue;
-					if (!turfs.TryGetValue(bp, out TurfDef? td) || td.Icon == null) continue;
+					if (fichas.De(tp) is not { Icon: not null } td) continue;
 
-					Fonte? f = Garantir(td.Icon, td.IconState, raiz, fontes, atlasPorNome, semAtlas, ref proxId);
+					// PRESO, o nome da folha nao basta pra saber a fonte -- ver `FonteDoTipo`. A ficha que ja
+					// foi resolvida (o mesmo tipo noutra composicao) nao pergunta de novo.
+					Fonte? f = td.Atlas != null && fontes.TryGetValue(td.Atlas, out Fonte? resolvida) ? resolvida
+						: trava == null ? Garantir(td.Icon, td.IconState, raiz, fontes, atlasPorNome, semAtlas, ref proxId)
+						: FonteDoTipo(td, trava, fontes, atlasPorNome, semAtlas, ref proxId);
 					if (f == null) continue;
-					td.Atlas = f.Chave;   // guarda QUAL arquivo venceu: o resto do pipeline usa este
+					td.Atlas = f.Entrada;   // guarda QUAL fonte venceu: o resto do pipeline usa esta
 
-					(int X, int Y) coord = Coord(f, td.IconState);
+					(int X, int Y) coord = Coord(f, td.IconState, td.Dir);
 					f.Usadas.Add(coord);
 					if (td.Density) f.Densas.Add(coord);
 					if (td.Opacity) f.Opacas.Add(coord);
@@ -221,15 +495,21 @@ public static class MapConverter
 		// Aqui a densidade vem do TIPO, nao do uso: todo estado de um typepath denso ganha
 		// fisica em TODOS os seus quadros e direcoes -- uma parede virada pro norte e parede
 		// igual, e a mesma parede no quadro 2 da animacao tambem.
-		int marcados = MarcarSolidos(turfs, fontes, atlasPorNome);
-		int opacos = fontes.Values.Sum(f => f.Opacas.Count);
-		Console.WriteLine($"tiles com fisica : {marcados} | com oclusao: {opacos}");
+		//
+		// PRESO, NADA DISTO RODA: a fisica do tile e as tiras de animacao sao assunto do TILESET, e o
+		// tileset e o do disco (as tiras dele ja foram planejadas no `Semear`).
+		if (trava == null)
+		{
+			int marcados = MarcarSolidos(turfs, fontes, atlasPorNome);
+			int opacos = fontes.Values.Sum(f => f.Opacas.Count);
+			Console.WriteLine($"tiles com fisica : {marcados} | com oclusao: {opacos}");
+		}
 
 		// ============================ AS ANIMACOES QUE NAO CABIAM ============================
 		// Tem que vir ANTES do tileset E antes das cenas: o reempacote cria FONTES NOVAS e muda a
 		// coordenada das celulas que usam esses estados. Fazer depois deixaria as cenas apontando
 		// pro quadro parado enquanto o tileset ja anunciava o animado.
-		if (!soFisica)
+		if (!soFisica && trava == null)
 		{
 			int reempacotadas = Reempacotar(fontes, raiz, ref proxId);
 			if (reempacotadas > 0)
@@ -247,7 +527,8 @@ public static class MapConverter
 			TileIndex.Resultado idx = TileIndex.Escrever(
 				Path.Combine(raiz, "Assets", "Data", "tiles.json"),
 				fontes.Values.Select(f => new FonteDeAtlas(
-					f.Id, f.Chave, f.ResPath, f.IconW, f.IconH, f.Cols, f.StateIndex)));
+					f.Id, f.Chave, f.ResPath, f.IconW, f.IconH, f.Cols,
+					f.SemCaixa.ToDictionary(kv => kv.Key, kv => kv.Value.Indice, StringComparer.OrdinalIgnoreCase))));
 			Console.WriteLine($"indice de tiles  : {idx.Atlas} atlas, {idx.Estados} estados"
 							  + (idx.Colisoes.Count > 0 ? $" | {idx.Colisoes.Count} nome(s) em disputa" : ""));
 			foreach (string c in idx.Colisoes) Console.WriteLine("   " + c);
@@ -276,14 +557,34 @@ public static class MapConverter
 			return (alvo.Nome, cx * t + t / 2f, cy * t + t / 2f);
 		};
 
+		// PRESO: folha que faltou ja e motivo pra parar, antes de pintar uma celula.
+		if (trava is { Faltas.Count: > 0 }) return Recusar(trava, "ao registrar as folhas do andar");
+
+		// AS FONTES QUE FALTAVAM, no rascunho: o tileset e o indice do disco com elas a mais. Antes das
+		// cenas, porque uma celula apontando pra um `id` que nenhum tileset declara e o buraco calado
+		// que o modo preso existe pra nao produzir.
+		if (trava is { Novas: { } novas })
+		{
+			if (novas.Count > 0) EscreverAcrescimos(trava, trava.Indice);
+			Console.WriteLine($"FONTES ACRESCENTADAS: {novas.Count}"
+							  + (novas.Count > 0 ? $" (ids {novas[0].Id}..{novas[^1].Id}) -- tileset.tres e tiles.json do rascunho" : " -- o tileset do disco ja tem tudo"));
+			foreach (Fonte f in novas)
+				Console.WriteLine($"   {f.Id,4}  {f.Nome,-44} {f.ResPath["res://Assets/Sprites/".Length..]}"
+								  + (f.Origem is { } o ? $"   ancora ({o.X},{o.Y})" : ""));
+			foreach (string res in trava.Copiados)
+				Console.WriteLine($"   PNG NOVO (falta importar no Godot): {res}");
+		}
+
 		// ---- passada 2: uma cena por andar + o mapa de colisao que o SERVIDOR le ----
 		int cenas = 0, celulas = 0, bloqueadas = 0, totalPortas = 0, totalMaquinas = 0, totalPassagens = 0;
-		int totalAgua = 0, totalDuro = 0, totalNuvem = 0;
+		int totalAgua = 0, totalDuro = 0, totalNuvem = 0, totalDentro = 0;
 		int libertadas = 0, cegasLibertadas = 0, novasNaoGravadas = 0;
 		var manifesto = new List<string>();
 		foreach ((string arquivo, DmmMap.Result dados, int off) in mapas)
 			foreach (DmmLevel nivel in dados.Levels)
 			{
+				if (trava != null && !trava.Pede(nivel.Z + off)) continue;
+
 				string nome = NomeDoAndar(dados, nivel, off);
 				string cena = Path.Combine(outDir, nome + ".tscn");
 
@@ -292,12 +593,18 @@ public static class MapConverter
 				// funcoes calculando "o que e parede" por caminhos diferentes divergiam em ~2%
 				// das celulas, e divergencia entre o que se ve e o que se atravessa e
 				// exatamente a queixa que estamos consertando.
-				celulas += EscreverCena(cena, nome, nivel, dados, turfs, fontes, atlasPorNome,
+				celulas += EscreverCena(cena, nome, nivel, dados, fichas, fontes, atlasPorNome,
 										semAtlas, ref proxId, out HashSet<(int, int)> paredes,
 										out HashSet<(int, int)> cegos,
 										out List<string> portas,
 										out List<string> maquinas,
-										out List<string> passagens, gravar: !soFisica);
+										out List<string> passagens, gravar: !soFisica, trava);
+
+				// PRESO: a cena nao gravou nada se uma celula apontou pra fora do tileset do disco, e os
+				// planos e as listas do andar tambem nao saem -- um `.col` novo ao lado de um `.pedacos`
+				// velho e o par "solido e invisivel" de novo.
+				if (trava is { Faltas.Count: > 0 }) return Recusar(trava, $"ao pintar {nome}");
+
 				if (soFisica)
 				{
 					(int lc, int nc) = LibertarNaColisao(Path.Combine(outDir, nome + ".col"), nivel.Width, nivel.Height, paredes);
@@ -356,6 +663,19 @@ public static class MapConverter
 				}
 				else if (File.Exists(arqDuro)) File.Delete(arqDuro);
 
+				// ...e este e O QUE NASCE SOB TETO: a area `Inside` do original, onde nao cai clima nem
+				// noite. Quinto plano no mesmo formato, e arquivo separado pelo motivo dos outros quatro.
+				// Ver `ConverterInteriores`, que e o caminho que roda sozinho, e `Core/World/CelulaInterna.cs`.
+				List<(int X, int Y)> internas = CelulasInternas(
+					nivel, dados, cidadeDeVegetaDePe && nivel.Z + off == CidadeDeVegeta.Z);
+				string arqDentro = Path.Combine(outDir, nome + ".dentro");
+				if (internas.Count > 0)
+				{
+					EscreverColisao(arqDentro, nivel.Width, nivel.Height, internas);
+					totalDentro += internas.Count;
+				}
+				else if (File.Exists(arqDentro)) File.Delete(arqDentro);
+
 				// AS PORTAS DA ZONA. Sai sempre, mesmo vazio: um arquivo que as vezes existe e as
 				// vezes nao vira um `if` no leitor, e um `if` a menos vale o punhado de bytes.
 				File.WriteAllText(Path.Combine(outDir, nome + ".portas"),
@@ -384,6 +704,7 @@ public static class MapConverter
 							  $"\"agua\": \"res://Assets/Maps/{nome}.agua\", " +
 						  $"\"nuvem\": \"res://Assets/Maps/{nome}.nuvem\", " +
 						  $"\"duro\": \"res://Assets/Maps/{nome}.duro\", " +
+						  $"\"dentro\": \"res://Assets/Maps/{nome}.dentro\", " +
 							  $"\"luzes\": \"res://Assets/Maps/{nome}.luz\", " +
 							$"\"portas\": \"res://Assets/Maps/{nome}.portas\", " +
 							$"\"objetos\": \"res://Assets/Maps/{nome}.objetos\", " +
@@ -400,7 +721,26 @@ public static class MapConverter
 			Console.WriteLine($"col libertadas : {libertadas} celula(s) que bloqueavam sem ninguem que as desenhasse");
 			Console.WriteLine($"vis libertadas : {cegasLibertadas} celula(s) que cegavam por baixo de outro turf");
 			Console.WriteLine($"novas ignoradas: {novasNaoGravadas} (bits que a passada quis e o disco nao tem -- so relato)");
-			return;
+			return 0;
+		}
+
+		if (trava != null)
+		{
+			if (cenas == 0)
+			{
+				Console.WriteLine($"ERRO: nenhum dos mapas tem o andar z{trava.Z:00} -- nada foi gravado");
+				return 1;
+			}
+			int acrescentadas = trava.Novas?.Count ?? 0;
+			Console.WriteLine((trava.Z == Trava.Todos ? $"andares repintados: {cenas}" : $"andar repintado: z{trava.Z:00}")
+							  + $", {celulas} celulas, com as {fontes.Count - acrescentadas} fontes do tileset do disco"
+							  + (trava.Novas != null ? $" e {acrescentadas} acrescentada(s)" : ""));
+			Console.WriteLine($"   .col {bloqueadas} | agua {totalAgua} | ceu {totalNuvem} | duro {totalDuro} | sob teto {totalDentro}"
+							  + $" | portas {totalPortas} | maquinas {totalMaquinas} | passagens {totalPassagens}");
+			Console.WriteLine($"   escrito em {outDir} -- "
+							  + (acrescentadas > 0 ? "o tileset e o tiles.json com os acrescimos estao no MESMO rascunho; " : "tileset, tiles.json, ")
+							  + "manifesto e o que ha em Assets NAO foram tocados");
+			return 0;
 		}
 
 		File.WriteAllText(Path.Combine(outDir, "manifest.json"),
@@ -416,10 +756,65 @@ public static class MapConverter
 		Console.WriteLine($"agua           : {totalAgua} celulas (terceira classe: para a pe, nao para nadando/voando)");
 		Console.WriteLine($"ceu            : {totalNuvem} celulas (quarta classe: SO quem voa passa; z6/z12 derrubam)");
 		Console.WriteLine($"duro           : {totalDuro} celulas (destroyable=0: bloqueia e NAO cede a soco nenhum)");
+		Console.WriteLine($"sob teto       : {totalDentro} celulas (area Inside: sem clima, sem noite, sem lua)");
 		Console.WriteLine($"celulas        : {celulas}");
 		Console.WriteLine($"fontes no tileset: {fontes.Count}");
 		if (semAtlas.Count > 0)
 			Console.WriteLine($"SEM atlas ({semAtlas.Count}): {string.Join(", ", semAtlas.Take(8))}");
+		return 0;
+	}
+
+	/// <summary>A lista do que faltou, no console. Devolve o codigo de saida do comando.</summary>
+	private static int Recusar(Trava trava, string quando)
+	{
+		Console.WriteLine($"\nNADA FOI GRAVADO: {quando}, {trava.Faltas.Count} coisa(s) que o andar pede e o tileset do disco nao tem:");
+		foreach (string f in trava.Faltas) Console.WriteLine("   - " + f);
+		Console.WriteLine("   (o conserto e por o que falta no tileset -- o comando `acrescentar`, que so acrescenta fontes; a "
+						  + "conversao cheia, `maps`, renumera as que existem -- e repintar de novo)");
+		return 1;
+	}
+
+	/// <summary>As composicoes de typepath que as celulas de UM andar usam, cada uma uma vez.</summary>
+	private static IEnumerable<string[]> ComposicoesDoAndar(DmmMap.Result dados, int offset, int z)
+	{
+		var vistas = new HashSet<string>(StringComparer.Ordinal);
+		foreach (DmmLevel nivel in dados.Levels)
+		{
+			if (z != Trava.Todos && nivel.Z + offset != z) continue;
+			for (int y = 0; y < nivel.Height; y++)
+				for (int x = 0; x < nivel.Width; x++)
+					if (nivel.Cells[x, y] is { } k && vistas.Add(k) && dados.Keys.TryGetValue(k, out string[]? tipos))
+						yield return tipos;
+		}
+	}
+
+	/// <summary>
+	/// A FICHA DE CADA COISA QUE O MAPA POE NUMA CELULA: a do tipo, ou uma copia dela quando a
+	/// INSTANCIA troca a aparencia.
+	///
+	/// O `.dmm` deixa cada instancia sobrescrever variaveis (`Teleporter{icon = 'Icons/Turfs/Turf
+	/// 57.dmi'; icon_state = "13"}`), e o conversor lia so o tipo: as duas bocas de caverna de Vegeta
+	/// sairam com o brilho de teleporte no lugar do buraco na rocha. Aqui a instancia que troca icone,
+	/// estado ou direcao ganha ficha propria, uma por texto de instancia -- e e a MESMA nas duas
+	/// passadas, porque e nela que a primeira anota qual atlas venceu.
+	/// </summary>
+	private sealed class Fichas(Dictionary<string, TurfDef> doTipo)
+	{
+		private readonly Dictionary<string, TurfDef?> _porInstancia = new(StringComparer.Ordinal);
+
+		public TurfDef? De(string tp)
+		{
+			if (tp.IndexOf('{') < 0) return doTipo.GetValueOrDefault(tp.Trim());
+			if (_porInstancia.TryGetValue(tp, out TurfDef? pronta)) return pronta;
+
+			TurfDef? ficha = doTipo.GetValueOrDefault(DmmMap.BasePath(tp));
+			if (ficha != null)
+			{
+				IReadOnlyDictionary<string, string> vars = DmmMap.Variaveis(tp);
+				if (DmTurfScanner.MudaAparencia(vars)) ficha = ficha.ComVariaveisDeInstancia(vars);
+			}
+			return _porInstancia[tp] = ficha;
+		}
 	}
 
 	/// <summary>
@@ -503,22 +898,11 @@ public static class MapConverter
 			if (f == null) continue;
 
 			// acha o estado pelo nome pra saber quantos quadros e direcoes ele ocupa
-			if (!f.StateIndex.TryGetValue(td.IconState ?? "", out int idx)) continue;
+			if (f.Achar(td.IconState ?? "") is not { } st) continue;
 
-			DmiState? st = null;
-			int passo = 0;
-			foreach (DmiState cand in f.States)
+			for (int i = 0; i < st.Dirs * st.Quadros; i++)
 			{
-				int tam = Math.Max(1, cand.Dirs) * Math.Max(1, cand.Frames);
-				if (passo == idx) { st = cand; break; }
-				passo += tam;
-			}
-			if (st == null) continue;
-
-			int total = Math.Max(1, st.Dirs) * Math.Max(1, st.Frames);
-			for (int i = 0; i < total; i++)
-			{
-				(int X, int Y) c = Indice(f, idx + i);
+				(int X, int Y) c = Indice(f, st.Indice + i);
 				if (td.Density && f.Densas.Add(c)) n++;
 				if (td.Opacity) f.Opacas.Add(c);
 			}
@@ -538,7 +922,7 @@ public static class MapConverter
 		{
 			if (!fontes.TryGetValue(cand, out Fonte? f)) continue;
 			primeira ??= f;
-			if (f.StateIndex.ContainsKey(estado ?? "")) return f;
+			if (f.Achar(estado ?? "") != null) return f;
 		}
 		return primeira;
 	}
@@ -566,10 +950,197 @@ public static class MapConverter
 	/// <summary>
 	/// Typepath que vira TILE na cena. Turf e o chao/parede; obj e tudo que fica em cima dele.
 	/// `/mob` fica de fora: NPC nao e cenario, e entidade -- entra pelo servidor, nao pelo mapa.
+	///
+	/// E O EFEITO QUE SE APAGA SOZINHO TAMBEM FICA DE FORA. `/obj/Tornado` chama `deleteMe()` de 10 a
+	/// 20 segundos depois de nascer (`dusts.dm:178-183`: `spawn(rand(100,200))`), entao o que o
+	/// mapeador deixou no `.dmm` de Vegeta some antes de alguem chegar la. Assado como tile, ele ficava
+	/// girando no mesmo lugar pra sempre.
 	/// </summary>
 	private static bool Desenhavel(string bp) =>
-		bp.StartsWith("/turf", StringComparison.Ordinal) ||
-		bp.StartsWith("/obj", StringComparison.Ordinal);
+		(bp.StartsWith("/turf", StringComparison.Ordinal) || bp.StartsWith("/obj", StringComparison.Ordinal))
+		&& bp != "/obj/Tornado";
+
+	/// <summary>
+	/// A aresta de penhasco (`/obj/barrier/Edges/*`, `barrier.dm:81-211`): um risco rente ao chao, sem
+	/// altura -- por isso e ela quem desce pra decoracao quando divide a celula com um objeto que tem
+	/// corpo. Ver <see cref="DoisDaCelula"/>.
+	/// </summary>
+	internal static bool EhAresta(string bp) => bp.StartsWith("/obj/barrier/Edges/", StringComparison.Ordinal);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): o PRIMEIRO objeto da lista fica com a camada e ninguem desce pra
+	/// decoracao -- o pinheiro que o mapa lista depois de uma aresta volta a sumir. Falso na conversao,
+	/// sempre.
+	/// </summary>
+	public static bool PrimeiroObjetoVenceDeTeste;
+
+	/// <summary>O que a escolha da camada precisa saber de um objeto solto da celula.</summary>
+	/// <param name="TemArte">A folha dele esta no tileset: ha o que pintar.</param>
+	/// <param name="CabeNumTile">O desenho e de 32x32 -- pode ficar abaixo dos atores sem que se note.</param>
+	/// <param name="Aresta">E um risco de penhasco (<see cref="EhAresta"/>).</param>
+	/// <param name="Camada">O `layer` do DM (<see cref="TurfDef.Camada"/>).</param>
+	internal readonly record struct Solto(bool TemArte, bool CabeNumTile, bool Aresta, double Camada);
+
+	/// <summary>
+	/// MAIS DE UM OBJETO NA MESMA CELULA: quem fica na camada de objetos, quem desce pra decoracao, e
+	/// quantos sobram sem camada.
+	///
+	/// ============================ O PRIMEIRO DA LISTA NAO E O DE CIMA ============================
+	/// A camada de objetos guarda UM tile por celula, e quem ficava com ela era o primeiro `/obj` que o
+	/// `.dmm` lista. Fora de Vegeta isso apagava coisa que o original mostra:
+	///   - Icer (z04) lista a aresta ANTES do pinheiro em dez celulas (`Edge5N, LargePineSnow`): ficava
+	///     o risco da aresta, e o pinheiro -- denso, `Plants.dm:332-335` -- sumia;
+	///   - o Alem (z06) poe a lampada, o micro-ondas e o interfone EM CIMA da mesa (`o38, lamp`,
+	///     `buildobjects.dm:36` e `:326`): ficava a mesa vazia. Catorze celulas la, e mais uma no
+	///     Inferno, no Paraiso e na caverna da Terra.
+	///
+	/// A REGRA E A DO BYOND: com o mesmo `layer`, quem foi gerado por ultimo desenha por cima ("the
+	/// order the sprites were generated in is the final tie-breaker", `Understanding the renderer` da
+	/// referencia), e o mapa cria os objetos na ordem em que a celula os lista. Fica na camada de
+	/// objetos o CORPO (o que nao e aresta) de maior `layer` -- no empate, o ultimo da lista.
+	///
+	/// QUEM DESCE PRA DECORACAO: o corpo logo abaixo dele, se o desenho couber num tile; senao a
+	/// primeira aresta. So com arestas (a quina de um penhasco sao DUAS na mesma celula, a do norte e
+	/// a do oeste), a primeira da lista desce e a segunda fica por cima: elas se cruzam no canto, e a
+	/// ordem aparece.
+	///
+	/// DIVERGENCIAS DECLARADAS:
+	///   - a decoracao fica ABAIXO dos atores e nao ordena por Y com eles. Um desenho de 32x32 nao
+	///     passa do proprio tile, entao quem esta na celula vizinha nao o cobre nem e coberto por ele;
+	///     um desenho maior (arvore) nao desce -- fica sem camada, e e contado;
+	///   - a aresta desce mesmo quando o mapa a lista DEPOIS do corpo (no BYOND ela riscaria por cima
+	///     do pe da arvore): quem tem altura e que precisa ordenar por Y com quem passa;
+	///   - o MESMO objeto posto duas vezes na celula (o `.dmm` repete arvore, aresta e espuma) desenha
+	///     uma vez -- quem chama ja entrega a lista sem repeticao. Num desenho opaco nao muda um pixel;
+	///   - `step_x/step_y/pixel_x/pixel_y` da INSTANCIA (o micro-ondas 10 px acima do tampo) nao cabem
+	///     num tile: o objeto aparece assentado na celula.
+	///
+	/// OBJETO SEM ARTE NAO DISPUTA: o gerador de bicho (`icon = null`) nao desenha nada, e nao tira a
+	/// vez de quem desenha. Quando NINGUEM da celula tem arte volta o primeiro, so pra conta do
+	/// "objeto SEM arte" do relatorio.
+	/// =============================================================================================
+	/// </summary>
+	/// <param name="soltos">Os `/obj` desenhaveis da celula que nao sao maquina, na ordem do `.dmm` e sem repeticao.</param>
+	internal static (string? Objeto, string? DeBaixo, int SemCamada) DoisDaCelula(
+		IReadOnlyList<string> soltos, Func<string, Solto> ficha)
+	{
+		if (soltos.Count == 0) return (null, null, 0);
+		if (PrimeiroObjetoVenceDeTeste) return (soltos[0], null, soltos.Count - 1);
+
+		var corpos = new List<(string Tp, Solto S)>();
+		var arestas = new List<string>();
+		foreach (string tp in soltos)
+		{
+			Solto s = ficha(tp);
+			if (!s.TemArte) continue;
+			if (s.Aresta) arestas.Add(tp);
+			else corpos.Add((tp, s));
+		}
+
+		if (corpos.Count == 0)
+			return arestas.Count switch
+			{
+				0 => (soltos[0], null, 0),
+				1 => (arestas[0], null, 0),
+				_ => (arestas[1], arestas[0], arestas.Count - 2),
+			};
+
+		int cima = 0, abaixo = -1;
+		for (int i = 1; i < corpos.Count; i++)
+			if (corpos[i].S.Camada >= corpos[cima].S.Camada) cima = i;
+		for (int i = 0; i < corpos.Count; i++)
+			if (i != cima && corpos[i].S.CabeNumTile
+				&& (abaixo < 0 || corpos[i].S.Camada >= corpos[abaixo].S.Camada)) abaixo = i;
+
+		string? deBaixo = abaixo >= 0 ? corpos[abaixo].Tp : arestas.Count > 0 ? arestas[0] : null;
+		return (corpos[cima].Tp, deBaixo, corpos.Count + arestas.Count - (deBaixo == null ? 1 : 2));
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): a celula volta a guardar so tres desenhos (chao, decoracao e objetos)
+	/// -- o trilho do meio da quina da ponte de Namek volta a sumir. Falso na conversao, sempre.
+	/// </summary>
+	public static bool SoTresDesenhosDeTeste;
+
+	/// <summary>Um desenho da celula: um turf (o de verdade, ou um underlay) ou um objeto solto com arte.</summary>
+	/// <param name="Real">E o turf de verdade da celula -- o ULTIMO da lista do mapa.</param>
+	/// <param name="CabeNumTile">O desenho e de 32x32 (ver <see cref="Solto"/>).</param>
+	/// <param name="Camada">O `layer` do DM.</param>
+	internal readonly record struct Desenho(string Tipo, bool Turf, bool Real, bool CabeNumTile, double Camada);
+
+	/// <summary>
+	/// ESTA CELULA NAO CABE EM "CHAO, DECORACAO E OBJETOS"? Duas maneiras de nao caber:
+	///   - sao mais de dois desenhos CHATOS (tres turfs empilhados, tres arestas, duas arestas e uma
+	///     arvore): a quina da ponte de Namek e `N025, decor/bridgeW, Bridge/Edges/bridgeS`, e so o
+	///     primeiro e o ultimo eram desenhados;
+	///   - um turf tem `layer` MAIOR que o de um objeto de um tile: no BYOND ele desenha por cima do
+	///     objeto (a mesa `/turf/decor/Table4`, layer 4, cobre a faca `o3`, layer 3), e a camada de
+	///     objetos fica acima de toda decoracao.
+	/// Quem nao cai aqui segue pelo caminho de sempre, sem mudar uma celula.
+	/// </summary>
+	/// <param name="desenhos">Os turfs da celula (sem repeticao) e depois os objetos soltos com arte, na ordem do mapa.</param>
+	internal static bool PrecisaDePilha(IReadOnlyList<Desenho> desenhos)
+	{
+		int objetos = desenhos.Count(d => !d.Turf);
+		if (desenhos.Count - Math.Min(objetos, 1) > 2) return true;
+		return desenhos.Any(o => !o.Turf && o.CabeNumTile && desenhos.Any(t => t.Turf && t.Camada > o.Camada));
+	}
+
+	/// <summary>
+	/// A PILHA DE UMA CELULA, NA ORDEM EM QUE O BYOND A DESENHA: do menor `layer` pro maior e, no
+	/// empate, na ordem do mapa (os turfs empilhados viram underlays do ultimo e cada um desenha na
+	/// camada DELE -- ver o laco das celulas; objeto tem `layer` 3, um acima do turf comum).
+	///
+	/// QUEM VAI PRA CAMADA DE OBJETOS (a unica que ordena por Y com os atores): o corpo ALTO mais de
+	/// cima -- a arvore, que no original mora num plano acima de tudo (`plane=8`, `Plants.dm:19`) --;
+	/// sem corpo alto, o ultimo da pilha, se for um objeto. Um turf no topo (a mesa por cima da faca)
+	/// deixa a camada de objetos vazia: os dois ficam chatos, na ordem certa.
+	///
+	/// OS OUTROS SAO CHATOS, de baixo pra cima: chao, decoracao e, dali em diante, uma camada a mais
+	/// por desenho (`Decor2`, `Decor3`...). DIVERGENCIA DECLARADA: todo chato fica ABAIXO dos atores,
+	/// inclusive o turf de `layer` 4 ou 5 que no BYOND desenharia por cima de quem passa (o vidro da
+	/// estacao, a escada sobre o teleporte).
+	/// </summary>
+	internal static (List<Desenho> Chatos, Desenho? NoObjetos) PilhaDaCelula(IReadOnlyList<Desenho> desenhos)
+	{
+		List<Desenho> ordem = [.. desenhos.OrderBy(d => d.Camada)];   // estavel: no empate vale a ordem do mapa
+		int alto = ordem.FindLastIndex(d => !d.Turf && !d.CabeNumTile);
+		int noObjetos = alto >= 0 ? alto : ordem.Count > 0 && !ordem[^1].Turf ? ordem.Count - 1 : -1;
+
+		Desenho? deCima = noObjetos >= 0 ? ordem[noObjetos] : null;
+		if (noObjetos >= 0) ordem.RemoveAt(noObjetos);
+		if (SoTresDesenhosDeTeste && ordem.Count > 2) ordem.RemoveRange(1, ordem.Count - 2);
+		return (ordem, deCima);
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): a mesa redonda volta a pedir o estado que o DM escreveu (`rtable`),
+	/// que a folha nao tem -- e volta a ficar fora da cidade, sem desenho e sem corpo. Falso na
+	/// conversao, sempre.
+	/// </summary>
+	public static bool MesaComEstadoDoDmDeTeste;
+
+	/// <summary>O tipo cujo estado o DM escreveu errado, o que ele escreveu e o que a folha tem.</summary>
+	internal const string MesaRedonda = "/obj/buildables/rtable", EstadoErradoDaMesa = "rtable", EstadoDaMesa = "round table";
+
+	/// <summary>
+	/// O ESTADO COM QUE O MAPA DESENHA UM TIPO: o do DM, menos onde o DM errou o nome.
+	///
+	/// ============================ DIVERGENCIA DECLARADA: A MESA REDONDA ============================
+	/// `/obj/buildables/rtable` declara `icon_state="rtable"` (`buildobjects.dm:311-315`), e a folha
+	/// `!!!  house furniture.dmi` nao tem esse estado -- a mesa redonda dela chama `round table`. E erro
+	/// de digitacao do original. No BYOND o estado que nao existe cai no estado de nome vazio da folha
+	/// (`icon_state var (atom)` da referencia: "the default null state will be displayed if it
+	/// exists"), que nesta folha e um tufo de flores: as 12 mesas da cidade de Vegeta sao flores que
+	/// param o corpo.
+	///
+	/// Aqui ela e desenhada com `round table` e bloqueia (`density=1`, `buildobjects.dm:315`). Sem a
+	/// troca nao ha quadro pra pintar, o freio da cidade a recusa (ver `CidadeDeVegeta.Erguer`) e a
+	/// casa fica sem mesa nenhuma.
+	/// ==============================================================================================
+	/// </summary>
+	internal static string? EstadoDoMapa(string tipo, string? estadoDoDm) =>
+		!MesaComEstadoDoDmDeTeste && tipo == MesaRedonda && estadoDoDm == EstadoErradoDaMesa ? EstadoDaMesa : estadoDoDm;
 
 	/// <summary>
 	/// Sobe a partir de <paramref name="daqui"/> ate achar a pasta com `project.godot`.
@@ -595,42 +1166,397 @@ public static class MapConverter
 	/// </summary>
 	private static Fonte? Garantir(string icone, string? estado, string raiz,
 		Dictionary<string, Fonte> fontes, Dictionary<string, List<string>> atlasPorNome,
-		HashSet<string> semAtlas, ref int proxId)
+		HashSet<string> semAtlas, ref int proxId, Trava? trava = null)
 	{
 		string chave = Path.GetFileNameWithoutExtension(icone);
 		if (!atlasPorNome.TryGetValue(chave, out List<string>? candidatos) || candidatos.Count == 0)
 		{
+			// PRESO: nome que existe em `Assets/Sprites` e nao esta no tileset do disco e folha que a
+			// conversao cheia traria -- o andar nao pode sair sem ela. (Nome que nao existe em lugar
+			// nenhum e o `.dmi` que nunca virou `.png`: fica sem desenho, como sempre ficou.)
+			if (trava != null && trava.Suspeitas.TryGetValue(chave, out string? motivo))
+				trava.Faltar($"a folha '{chave}' esta no tileset do disco e nao serve mais: {motivo}");
+			else if (trava != null && trava.NoDisco.TryGetValue(chave, out List<string>? soltas))
+				trava.Faltar($"a folha '{chave}' ({Path.GetRelativePath(raiz, soltas[0])}) nao esta no tileset do disco");
 			semAtlas.Add(icone);
 			return null;
 		}
 
 		string png = candidatos[0];
-		if (candidatos.Count > 1)
-		{
-			string? escolhido = null;
-			foreach (string cand in candidatos)
-			{
-				DmiFile.Result? m = DmiFile.Read(cand);
-				if (m == null) continue;
-				foreach (DmiState st in m.States)
-					if (string.Equals(st.Name, estado ?? "", StringComparison.OrdinalIgnoreCase))
-					{ escolhido = cand; break; }
-				if (escolhido != null) break;
-			}
-			png = escolhido ?? candidatos.OrderByDescending(c => new FileInfo(c).Length).First();
-		}
+		if (candidatos.Count > 1) png = Escolher(candidatos, estado ?? "");
 
 		// A CHAVE DO CACHE E O CAMINHO, nao o nome do icone: dois `Namek.dmi` diferentes sao
 		// duas fontes diferentes, e guardar por nome faria um sobrescrever o outro de novo.
-		if (fontes.TryGetValue(png, out Fonte? existente)) return existente;
+		if (fontes.TryGetValue(png, out Fonte? existente))
+		{
+			// PRESO: o estado que a folha do tileset nao tem e OUTRO arquivo de mesmo nome tem e o caso
+			// em que a conversao cheia abriria uma fonte nova. Aqui ele cairia no quadro 0, calado.
+			if (trava != null && existente.Achar(estado ?? "") == null
+				&& trava.NoDisco.TryGetValue(chave, out List<string>? homonimos)
+				&& homonimos.FirstOrDefault(h => !string.Equals(h, png, StringComparison.OrdinalIgnoreCase)
+												 && TemEstado(h, estado ?? "", StringComparison.OrdinalIgnoreCase)) is { } outro)
+				trava.Faltar($"o estado \"{estado}\" de '{chave}' so existe em {Path.GetRelativePath(raiz, outro)}, "
+							 + $"e o tileset do disco usa {existente.ResPath}");
+			return existente;
+		}
 
-		// o .dmi original guarda os metadados; o .png convertido e copia crua dele
+		Fonte? f = Abrir(png, raiz, proxId);
+		if (f == null) { semAtlas.Add(icone); return null; }
+
+		proxId++;
+		fontes[png] = f;
+		return f;
+	}
+
+	/// <summary>
+	/// QUAL DOS ARQUIVOS DE MESMO NOME: o que tem o estado pedido com o nome EXATO; na falta, o que o
+	/// tem ignorando a caixa; na falta, a folha maior. A ordem das duas primeiras e a do
+	/// <see cref="Fonte.Achar"/> -- uma folha com `computer2` nao pode ganhar de outra com `Computer2`
+	/// quando o tipo pede `Computer2`.
+	/// </summary>
+	private static string Escolher(List<string> candidatos, string estado) =>
+		candidatos.FirstOrDefault(c => TemEstado(c, estado, StringComparison.Ordinal))
+		?? candidatos.FirstOrDefault(c => TemEstado(c, estado, StringComparison.OrdinalIgnoreCase))
+		?? candidatos.OrderByDescending(c => new FileInfo(c).Length).First();
+
+	private static bool TemEstado(string png, string estado, StringComparison caixa) =>
+		DmiFile.Read(png) is { } m && m.States.Any(st => string.Equals(st.Name, estado, caixa));
+
+	// =====================================================================
+	// A FONTE DE UM TIPO QUANDO O NOME DA FOLHA NAO BASTA -- o que o `acrescentar` acrescenta
+	// =====================================================================
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): a folha volta a ser achada so pelo NOME -- o `White rock.dmi` do
+	/// minerio de Icer volta a ser a rocha de 250x250 da arvore `DU/`. Falso na conversao, sempre.
+	/// </summary>
+	public static bool FolhaPeloNomeDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): todo desenho maior que o tile volta a ser centrado, e o `pixel_y` e
+	/// o `step_y` voltam a ser ignorados -- a estatua do Inferno volta pra cima do degrau. Falso na
+	/// conversao, sempre.
+	/// </summary>
+	public static bool TudoCentradoDeTeste;
+
+	/// <summary>
+	/// ONDE O BYOND POE UM DESENHO, dito como o `texture_origin` de um tile -- ou nulo quando o padrao
+	/// da folha (<see cref="DeclararTiles"/>: centrado, base no pe da celula) ja e isso.
+	///
+	/// ============================ SO A ARVORE E CENTRADA ============================
+	/// O BYOND ancora todo icone no canto INFERIOR ESQUERDO do tile e soma `pixel_x`/`pixel_y`. O jogo
+	/// centra na mao as ARVORES (`Plants.dm:31-35`, no `New()` de `/obj/Trees`: `pixel_x = 16 -
+	/// largura/2`) e a Reincarnation_Tree (`ReincarnationTree.dm:9-12`) -- e mais ninguem. O tileset
+	/// centrava TODO tile maior que 32: a fonte de sangue do Inferno (`/turf/decor/PondBlood`, 145x112)
+	/// saia 56 px a esquerda, as duas estatuas da escada 33 px (uma em cima do degrau), o portao 98.
+	///
+	/// `/obj/Trees/PalmTreeLeft` chama o `..()` e DEPOIS escreve `pixel_x = largura/2 - 16`
+	/// (`Plants.dm:186-190`): e a unica arvore que nao fica centrada.
+	///
+	/// A CONTA: o Godot desenha o tile centrado na celula e SUBTRAI o `texture_origin`. A borda esquerda
+	/// do desenho cai em `16 - largura/2 - origem.x` e a base em `16 + altura/2 - origem.y`, medidas do
+	/// canto de cima da celula; o BYOND as quer em `pixel_x` e em `32 - pixel_y`. Os dois sao inteiros:
+	/// numa folha de lado impar sobra meio pixel, o mesmo que o padrao ja deixa.
+	/// ================================================================================
+	/// </summary>
+	internal static (int X, int Y)? AncoraDoTipo(string tipo, double pixelX, double pixelY, int largura, int altura)
+	{
+		int padraoY = (altura - Cell) / 2;
+		if (TudoCentradoDeTeste) return null;
+
+		const string palmeira = "/obj/Trees/PalmTreeLeft";
+		bool centrada = tipo == "/obj/Reincarnation_Tree"
+						|| (tipo.StartsWith("/obj/Trees/", StringComparison.Ordinal) && tipo != palmeira);
+		if (tipo == palmeira) pixelX = largura / 2.0 - 16;
+
+		int x = centrada ? 0 : -((largura - Cell) / 2) - (int)Math.Round(pixelX);
+		int y = padraoY + (int)Math.Round(pixelY);
+		return (x, y) == (0, padraoY) ? null : (x, y);
+	}
+
+	/// <summary>
+	/// O quadro que este estado/direcao usa na folha PRESA tem outro desenho na folha do jogo? Nulo =
+	/// nao deu pra comparar. Folha do jogo que nao tem o estado nao e "outro desenho": e o caso em que
+	/// o BYOND cairia no estado vazio, e ai quem responde e a rede sem caixa do <see cref="Fonte.Achar"/>.
+	/// </summary>
+	private static bool? QuadroDifere(Fonte presa, string doJogo, string estado, int dir)
+	{
+		if (DmiFile.Read(doJogo) is not { } m) return null;
+		if (m.IconWidth != presa.IconW || m.IconHeight != presa.IconH) return true;
+		if (presa.Achar(estado) is not { } naPresa) return false;
+
+		int cols = Math.Max(1, m.SheetWidth / Math.Max(1, m.IconWidth)), idx = 0;
+		foreach (DmiState st in m.States)
+		{
+			int dirs = Math.Max(1, st.Dirs);
+			if (st.Name == estado)
+			{
+				int i = idx + Math.Max(0, Direcoes.NaFolha(dir, dirs));
+				(int X, int Y) a = Indice(presa, naPresa.Indice + Math.Max(0, Direcoes.NaFolha(dir, naPresa.Dirs)));
+				return !PngPixels.QuadrosIguais(presa.Chave, a.X * presa.IconW, a.Y * presa.IconH, doJogo,
+												i % cols * m.IconWidth, i / cols * m.IconHeight, presa.IconW, presa.IconH);
+			}
+			idx += dirs * Math.Max(1, st.Frames);
+		}
+		return false;
+	}
+
+	/// <summary>
+	/// O NOME DE UMA FONTE ACRESCENTADA NO `tiles.json`: `folha[~pasta.com.pontos][@x,y]`.
+	///
+	/// NAO PODE TER BARRA, e nao pode repetir um nome que ja existe: o leitor do jogo
+	/// (`CatalogoDeTiles.Parse`) corta o nome na ultima barra e guarda um atlas por nome, o ULTIMO
+	/// vencendo -- uma segunda `White rock` trocaria, calada, a folha de quem ja pede `White rock`
+	/// pelo nome. O `~pasta` so entra na folha HOMONIMA (o nome puro ja e de outra); o `@x,y` e a
+	/// ancora de uma variante (<see cref="Fonte.Sufixo"/>). O <see cref="Semear"/> le os dois de volta.
+	/// </summary>
+	private static string NomeNoIndice(string png, string pastaDeSprites, bool nomeTomado, (int X, int Y)? origem)
+	{
+		string nome = Path.GetFileNameWithoutExtension(png);
+		if (nomeTomado)
+			nome += "~" + (Path.GetDirectoryName(Path.GetRelativePath(pastaDeSprites, png)) ?? "")
+				.Replace('\\', '.').Replace('/', '.');
+		return nome + (origem is { } o ? $"@{o.X},{o.Y}" : "");
+	}
+
+	/// <summary>A ancora escrita no fim de um nome do indice (`@x,y`), ou nula.</summary>
+	private static (int X, int Y)? OrigemDoNome(string nome)
+	{
+		int arroba = nome.LastIndexOf('@');
+		if (arroba < 0) return null;
+		string[] xy = nome[(arroba + 1)..].Split(',');
+		return xy.Length == 2 && int.TryParse(xy[0], out int x) && int.TryParse(xy[1], out int y) ? (x, y) : null;
+	}
+
+	/// <summary>Conta um tile declarado: a coordenada e quantos quadros ele anima (o formato do <see cref="DeclararTiles"/>).</summary>
+	private static void AnotarTile(Dictionary<(int X, int Y), int> tiles, string linha)
+	{
+		if (linha.Length == 0 || !char.IsDigit(linha[0]) || RxTile.Match(linha) is not { Success: true } m) return;
+		(int X, int Y) c = (int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value));
+		int quadros = m.Groups[3].Success ? int.Parse(m.Groups[3].Value) + 1 : 1;
+		tiles[c] = Math.Max(tiles.GetValueOrDefault(c), quadros);
+	}
+
+	/// <summary>
+	/// A FOLHA DE UM TIPO: a presa, a nao ser que o jogo queira dizer outro arquivo.
+	///   - sem folha presa (o tileset nunca teve o nome): a copia do arquivo do jogo em `Assets/Sprites`,
+	///     ou -- arte que nunca foi copiada -- o caminho que ela TERA, dentro do rascunho, e de onde copiar;
+	///   - com folha presa: a do jogo so quando e OUTRO arquivo e o quadro pedido tem outro desenho nele.
+	///     Onde o desenho e o mesmo a presa fica, por mais que seja a homonima (as portas `Door4` e sete
+	///     usuarios de `Lab.dmi` pintam hoje a copia da arvore `DU/`, com os mesmos pixels): trocar a
+	///     fonte delas mexeria em `.portas`, na cidade de Vegeta e em quem acha o tile pelo nome, sem
+	///     mudar um pixel.
+	/// </summary>
+	/// <returns>A folha (vazia = nenhuma); de onde copia-la, se ela ainda nao existe; e se a comparacao de quadros falhou.</returns>
+	private static (string Png, string? CopiarDe, bool SemComparar) FolhaDoTipo(
+		IconesDoDm? icones, string sprites, string rascunho, string icone, string estado, int dir, Fonte? presa)
+	{
+		string daPresa = presa?.Chave ?? "";
+		if (FolhaPeloNomeDeTeste || icones?.Resolver(icone, estado) is not { } doDm) return (daPresa, null, false);
+
+		string rel = icones.Espelho(doDm);
+		string espelho = Path.GetFullPath(Path.Combine(sprites, rel));
+		if (presa == null)
+		{
+			if (File.Exists(espelho)) return (espelho, null, false);
+			return DmiFile.Read(doDm) == null || rascunho.Length == 0
+				? ("", null, false)
+				: (Path.GetFullPath(Path.Combine(rascunho, "Assets", "Sprites", rel)), doDm, false);
+		}
+		if (!File.Exists(espelho) || string.Equals(espelho, Path.GetFullPath(presa.Chave), StringComparison.OrdinalIgnoreCase))
+			return (daPresa, null, false);
+
+		bool? difere = QuadroDifere(presa, espelho, estado, dir);
+		return difere == null ? (espelho, null, true) : (difere.Value ? espelho : daPresa, null, false);
+	}
+
+	/// <summary>
+	/// A MESMA ESCOLHA DE FOLHA, pra bancada perguntar sem converter nada: a folha presa e dita pelo
+	/// caminho do `.png` dela (nulo = o tileset nao tem folha pro nome).
+	/// </summary>
+	internal static string FolhaDoTipoParaBancada(IconesDoDm icones, string sprites, string rascunho, string icone,
+												  string estado, string? pngDaPresa) =>
+		FolhaDoTipo(icones, sprites, rascunho, icone, estado, Direcoes.Sul,
+					pngDaPresa == null ? null : Abrir(pngDaPresa, sprites, 0)).Png;
+
+	/// <summary>
+	/// A FONTE DE UM TIPO, PRESA -- a folha que o tileset do disco tem pro nome, a nao ser que o tipo
+	/// precise de OUTRA fonte:
+	///   - a folha do JOGO, quando a presa e uma homonima e o quadro pedido tem outro desenho nela
+	///     (ver <see cref="IconesDoDm"/>), ou quando o tileset nunca teve folha nenhuma pro nome (arte
+	///     que nao foi copiada: `jungletree3.png`, as 11 arvores de Hera que nao aparecem nem param);
+	///   - uma VARIANTE com ancora propria, quando o BYOND nao centra o desenho (<see cref="AncoraDoTipo"/>).
+	///
+	/// NADA DO QUE O DISCO TEM E MEXIDO. A variante divide a textura com a fonte comum e nasce com outro
+	/// `id`: o tile que ja existe serve a arvore centrada E ao desenho ancorado, e mudar a ancora dele
+	/// deslocaria o que hoje esta certo em todos os mapas.
+	///
+	/// SO O `acrescentar` CRIA (<see cref="Trava.Novas"/>). No `repintar`, o tipo que pedir uma fonte que
+	/// o disco nao tem vira falta -- e a falta diz qual comando a traz.
+	/// </summary>
+	private static Fonte? FonteDoTipo(TurfDef td, Trava trava, Dictionary<string, Fonte> fontes,
+		Dictionary<string, List<string>> atlasPorNome, HashSet<string> semAtlas, ref int proxId)
+	{
+		string icone = td.Icon!, estado = td.IconState ?? "";
+		if (EhPorta(td.Path) && estado.Length == 0) estado = "Closed";
+		string nome = Path.GetFileNameWithoutExtension(icone);
+		Fonte? presa = atlasPorNome.TryGetValue(nome, out List<string>? l) && l.Count > 0 ? fontes.GetValueOrDefault(l[0]) : null;
+
+		// 1. A FOLHA
+		(string png, string? copiarDe, bool semComparar) =
+			FolhaDoTipo(trava.Icones, trava.Sprites, trava.Rascunho, icone, estado, td.Dir, presa);
+		if (semComparar)
+			trava.Faltar($"{td.Path}: nao deu pra comparar o quadro \"{estado}\" de {presa!.ResPath} com o da folha do jogo ({png})");
+		if (png.Length == 0) return Garantir(icone, td.IconState, trava.Raiz, fontes, atlasPorNome, semAtlas, ref proxId, trava);
+
+		// a arte que nunca foi copiada nasce no rascunho, e o `res://` dela e o que tera no repo
+		string raizDoRes = copiarDe == null ? trava.Raiz : trava.Rascunho;
+		string pastaDeSprites = copiarDe == null ? trava.Sprites : Path.Combine(trava.Rascunho, "Assets", "Sprites");
+
+		// 2. A ANCORA
+		bool aPresa = presa != null && png == presa.Chave;
+		DmiFile.Result? meta = aPresa ? null : DmiFile.Read(copiarDe ?? png);
+		if (!aPresa && meta == null) { semAtlas.Add(icone); return null; }
+		(int X, int Y)? origem = AncoraDoTipo(td.Path, td.PixelX, td.PixelY,
+											  aPresa ? presa!.IconW : meta!.IconWidth, aPresa ? presa!.IconH : meta!.IconHeight);
+		if (aPresa && origem == null)
+			return Garantir(icone, td.IconState, trava.Raiz, fontes, atlasPorNome, semAtlas, ref proxId, trava);
+
+		string entrada = png + (origem is { } o ? $"@{o.X},{o.Y}" : "");
+		if (fontes.TryGetValue(entrada, out Fonte? ja)) return ja;
+
+		// 3. A FONTE NOVA
+		string nomeNovo = NomeNoIndice(png, pastaDeSprites, nomeTomado: presa != null && !aPresa, origem);
+		if (trava.Novas == null)
+		{
+			trava.Faltar($"{td.Path}: pede a fonte `{nomeNovo}` ({Path.GetRelativePath(pastaDeSprites, png).Replace('\\', '/')}), "
+						 + "que o tileset do disco nao tem -- quem a traz e o comando `acrescentar`");
+			return null;
+		}
+		if (copiarDe != null && !File.Exists(png))
+		{
+			Directory.CreateDirectory(Path.GetDirectoryName(png)!);
+			File.Copy(copiarDe, png);
+		}
+
+		if (Abrir(png, raizDoRes, trava.ProximoId) is not { } nova) { semAtlas.Add(icone); return null; }
+		nova.Origem = origem;
+		nova.Nome = nomeNovo;
+		trava.ProximoId++;
+		fontes[nova.Entrada] = nova;
+		trava.Novas.Add(nova);
+		if (copiarDe != null && !trava.Copiados.Contains(nova.ResPath)) trava.Copiados.Add(nova.ResPath);
+		if (presa == null && origem == null) atlasPorNome[nome] = [png];   // o nome estava livre: passa a ser desta folha
+
+		// ...E A TIRA DELA, se a folha tem animacao que nao cabe numa linha e a tira ja esta composta no
+		// disco (compor e o Godot quem faz, e este comando nao o chama). Sem a tira, a celula que
+		// precisar dela e acusada na hora de pintar.
+		List<AtlasAnimado.Tira> plano = PlanejarTiras(nova);
+		Fonte tira = Companheira(nova, plano, trava.ProximoId, raizDoRes);
+		if (plano.Count > 0 && File.Exists(tira.Chave))
+		{
+			tira.Origem = origem;
+			tira.Nome = Path.GetFileNameWithoutExtension(tira.Chave) + nomeNovo[Path.GetFileNameWithoutExtension(png).Length..];
+			trava.ProximoId++;
+			nova.Companheira = tira;
+			fontes[tira.Entrada] = tira;
+			trava.Novas.Add(tira);
+		}
+
+		// o que a fonte nova DECLARA: a mesma lista que o `Por` cobra das fontes do disco
+		foreach (Fonte f in nova.Companheira == null ? [nova] : new[] { nova, nova.Companheira })
+		{
+			var bloco = new StringBuilder();
+			DeclararTiles(bloco, f);
+			Dictionary<(int X, int Y), int> tiles = trava.Declarados[f.Id] = [];
+			foreach (string linha in bloco.ToString().Split('\n')) AnotarTile(tiles, linha);
+		}
+		return nova;
+	}
+
+	/// <summary>O trecho de UMA fonte no `tileset.tres`: a textura, o atlas com os tiles dela e a linha de `sources/`.</summary>
+	private static (int Tiles, int Animados) BlocoDaFonte(Fonte f, StringBuilder ext, StringBuilder sub, StringBuilder res)
+	{
+		string extId = $"{f.Id}_atlas";
+		ext.Append($"[ext_resource type=\"Texture2D\" path=\"{f.ResPath}\" id=\"{extId}\"]\n");
+
+		sub.Append($"[sub_resource type=\"TileSetAtlasSource\" id=\"Atlas_{f.Id}\"]\n");
+		sub.Append($"texture = ExtResource(\"{extId}\")\n");
+		sub.Append($"texture_region_size = Vector2i({f.IconW}, {f.IconH})\n");
+		(int Tiles, int Animados) conta = DeclararTiles(sub, f);
+		sub.Append('\n');
+
+		res.Append($"sources/{f.Id} = SubResource(\"Atlas_{f.Id}\")\n");
+		return conta;
+	}
+
+	/// <summary>
+	/// GRAVA NO RASCUNHO O TILESET E O INDICE DO DISCO COM AS FONTES NOVAS -- e so com elas a mais.
+	///
+	/// ============================ SO ACRESCIMO, E NO TEXTO ============================
+	/// O `tileset.tres` e de todos os mapas: uma fonte que mudasse de `id`, de textura ou de grade
+	/// trocaria o desenho de celulas que este comando nem leu. Entao ele NAO e reescrito a partir das
+	/// fontes em memoria (que e o que a conversao cheia faz, e por isso ela renumera): o texto do disco
+	/// e copiado byte a byte e recebe tres insercoes -- as texturas novas depois da ultima
+	/// `ext_resource`, os atlas novos antes do `[resource]`, as linhas de `sources/` no fim -- mais o
+	/// `load_steps` do cabecalho, que conta os recursos. O `tiles.json` ganha as entradas novas depois
+	/// da ultima. Nenhuma linha que existe e tocada alem do cabecalho.
+	/// ==================================================================================
+	/// </summary>
+	private static void EscreverAcrescimos(Trava trava, string indiceDoDisco)
+	{
+		List<Fonte> novas = trava.Novas!;
+		string pastaMaps = Path.Combine(trava.Rascunho, "Assets", "Maps"), pastaData = Path.Combine(trava.Rascunho, "Assets", "Data");
+		Directory.CreateDirectory(pastaMaps);
+		Directory.CreateDirectory(pastaData);
+
+		var ext = new StringBuilder();
+		var sub = new StringBuilder();
+		var res = new StringBuilder();
+		foreach (Fonte f in novas) BlocoDaFonte(f, ext, sub, res);
+
+		string texto = File.ReadAllText(Path.Combine(trava.PastaDoDisco, "tileset.tres"));
+		string nl = texto.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+		string Fim(StringBuilder sb) => nl == "\n" ? sb.ToString() : sb.ToString().Replace("\n", nl);
+
+		int ultimaTextura = texto.LastIndexOf("[ext_resource ", StringComparison.Ordinal);
+		int fimDasTexturas = texto.IndexOf('\n', ultimaTextura) + 1;
+		int recurso = texto.IndexOf(nl + "[resource]" + nl, StringComparison.Ordinal) + nl.Length;
+		Match passos = Regex.Match(texto, @"load_steps=(\d+)");
+		if (ultimaTextura < 0 || recurso < nl.Length || !passos.Success || passos.Index > texto.IndexOf('\n'))
+			throw new InvalidDataException("o tileset.tres do disco nao tem a forma que o `EscreverTileSet` escreve");
+
+		string cabecalho = texto[..passos.Groups[1].Index] + (int.Parse(passos.Groups[1].Value) + 2 * novas.Count)
+						   + texto[(passos.Groups[1].Index + passos.Groups[1].Length)..fimDasTexturas];
+		File.WriteAllText(Path.Combine(pastaMaps, "tileset.tres"),
+						  cabecalho + Fim(ext) + texto[fimDasTexturas..recurso] + Fim(sub) + texto[recurso..] + Fim(res),
+						  new UTF8Encoding(false));
+
+		string indice = File.ReadAllText(indiceDoDisco);
+		int ultima = indice.LastIndexOf('}');
+		var entradas = new StringBuilder();
+		foreach (Fonte f in novas)
+			entradas.Append(",\n").Append(TileIndex.Entrada(f.Nome, new FonteDeAtlas(
+				f.Id, f.Chave, f.ResPath, f.IconW, f.IconH, f.Cols,
+				f.SemCaixa.ToDictionary(kv => kv.Key, kv => kv.Value.Indice, StringComparer.OrdinalIgnoreCase))));
+		string nlDoIndice = indice.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+		File.WriteAllText(Path.Combine(pastaData, "tiles.json"),
+						  indice[..(ultima + 1)] + entradas.ToString().Replace("\n", nlDoIndice) + indice[(ultima + 1)..],
+						  new UTF8Encoding(false));
+	}
+
+	/// <summary>
+	/// ABRE UMA FOLHA: le a grade e os estados do `.png` (que e o `.dmi` copiado cru, com os metadados
+	/// dentro) e monta a fonte com o `id` dado. Nulo quando o arquivo nao e um PNG que se leia.
+	/// </summary>
+	private static Fonte? Abrir(string png, string raiz, int id)
+	{
 		DmiFile.Result? meta = DmiFile.Read(png);
-		if (meta == null) { semAtlas.Add(icone); return null; }
+		if (meta == null) return null;
 
 		var f = new Fonte
 		{
-			Id = proxId++,
+			Id = id,
 			Chave = png,
 			ResPath = "res://" + Path.GetRelativePath(raiz, png).Replace('\\', '/'),
 			IconW = meta.IconWidth,
@@ -641,22 +1567,170 @@ public static class MapConverter
 		int idx = 0;
 		foreach (DmiState st in meta.States)
 		{
-			f.StateIndex.TryAdd(st.Name, idx);
-			idx += Math.Max(1, st.Dirs) * Math.Max(1, st.Frames);
+			var e = new EstadoDaFolha(st.Name, idx, Math.Max(1, st.Dirs), Math.Max(1, st.Frames));
+			f.Exatos.TryAdd(st.Name, e);
+			f.SemCaixa.TryAdd(st.Name, e);
+			idx += e.Dirs * e.Quadros;
 		}
 		f.States = meta.States;
 		f.TotalQuadros = idx;
-
-		fontes[png] = f;
 		return f;
 	}
 
 	/// <summary>
-	/// PLANEJA E COMPOE OS ATLAS COMPANHEIROS: uma tira por estado animado que nao cabia numa linha.
+	/// ONDE O CONVERSOR APONTA `(estado, direcao)` NUMA FOLHA -- a mesma conta que pinta o mapa
+	/// (<see cref="Fonte.Achar"/> + <see cref="Coord"/>), aberta pra bancada perguntar sem converter
+	/// nada. Nulo quando a folha nao abre ou nao tem o estado.
+	/// </summary>
+	internal static (int X, int Y)? QuadroNaFolha(string png, string? estado, int dir = Direcoes.Sul) =>
+		Abrir(png, Path.GetDirectoryName(png) ?? "", 0) is { } f && f.Achar(estado ?? "") != null
+			? Coord(f, estado, dir)
+			: null;
+
+	// =====================================================================
+	// AS FONTES PRESAS -- o tileset do disco, lido de volta (ver RepintarAndar)
+	// =====================================================================
+
+	/// <summary>
+	/// SEMEIA AS FONTES A PARTIR DO DISCO, em vez de descobri-las por ordem.
 	///
-	/// SO O QUADRO DA DIRECAO 0 interessa. O mapa pinta pelo NOME do estado, e o `Coord` sempre
-	/// devolve o primeiro quadro (dir 0) -- as outras direcoes de um turf nunca sao usadas pelo
-	/// .dmm. Reempacotar as quatro seria quadruplicar a imagem por nada.
+	/// QUEM MANDA E O `tiles.json`: o `id` de cada folha, a textura, as colunas e o tamanho do icone. O
+	/// `tileset.tres` ao lado entra pra duas coisas que o indice nao guarda -- quais tiles ele DECLARA
+	/// (e com quantos quadros de animacao) e a prova de que os dois arquivos falam do mesmo `id`. Os
+	/// estados de cada folha vem do proprio `.png`, que traz os nomes com a caixa certa (o indice so
+	/// guarda o primeiro de cada nome sem caixa) -- e tem que ser os MESMOS que o indice lista, cada
+	/// um no mesmo quadro: folha que mudou por dentro desde o tileset nao e a folha presa.
+	///
+	/// FOLHA QUE NAO BATE NAO DERRUBA A SEMEADURA: ela fica de fora, com o motivo anotado, e so vira
+	/// falta se o andar a pedir. O tileset tem 162 fontes e Vegeta usa 39.
+	///
+	/// AS TIRAS `__anim` NAO SAO COMPOSTAS, SAO REENCONTRADAS: o plano de cada uma (que estado mora
+	/// em que linha) e funcao pura da folha dona, entao e refeito por <see cref="PlanejarTiras"/> e
+	/// casado com a tira que o tileset ja tem -- linha por linha, com o numero de quadros de cada uma.
+	/// Dona com plano e sem tira que case fica sem companheira, e a celula que precisar dela e acusada
+	/// na hora de pintar, com o estado e a linha que faltaram (ver o `Por`).
+	/// </summary>
+	/// <returns>Falso quando nem da pra comecar (falta o indice ou o tileset).</returns>
+	private static bool Semear(Trava trava, Dictionary<string, Fonte> fontes, Dictionary<string, List<string>> atlasPorNome)
+	{
+		string arqIndice = trava.Indice;
+		string arqTileset = Path.Combine(trava.PastaDoDisco, "tileset.tres");
+		if (!File.Exists(arqIndice) || !File.Exists(arqTileset))
+		{
+			Console.WriteLine($"ERRO: sem {arqIndice} ou sem {arqTileset} -- nao ha tileset do disco pra prender");
+			return false;
+		}
+
+		Dictionary<int, string> texturas = LerTileSet(arqTileset, trava.Declarados);
+		trava.ProximoId = texturas.Count == 0 ? 0 : texturas.Keys.Max() + 1;
+		Jandirus.Core.World.CatalogoDeTiles indice =
+			Jandirus.Core.World.CatalogoDeTiles.Parse(File.ReadAllText(arqIndice));
+
+		string NoDisco(string res) => trava.ArquivoDe(res);
+
+		var tiras = new List<Jandirus.Core.World.AtlasDeTiles>();
+		var planos = new Dictionary<string, List<AtlasAnimado.Tira>>(StringComparer.OrdinalIgnoreCase);
+		foreach (Jandirus.Core.World.AtlasDeTiles a in indice.Todos.OrderBy(a => a.Fonte))
+		{
+			if (!texturas.TryGetValue(a.Fonte, out string? textura) || textura != a.ResPath)
+			{
+				trava.Suspeitas[a.Nome] = $"o tiles.json diz fonte {a.Fonte} = {a.ResPath} e o tileset.tres diz "
+										  + (textura ?? "que essa fonte nao existe");
+				continue;
+			}
+			// FONTE ACRESCENTADA: o nome traz a ancora da variante (`@x,y`) e, na folha homonima, a pasta
+			// (`~pasta`) -- ver `NomeNoIndice`. A variante divide a textura com a fonte comum e entra no
+			// dicionario pela `Entrada` dela; o nome PURO continua sendo so o da fonte comum.
+			(int X, int Y)? origem = OrigemDoNome(a.Nome);
+			int fimDaFolha = a.Nome.IndexOfAny(['~', '@']);
+			string folha = fimDaFolha < 0 ? a.Nome : a.Nome[..fimDaFolha];
+			if (folha.EndsWith(AtlasAnimado.Sufixo, StringComparison.Ordinal)) { tiras.Add(a); continue; }
+
+			string png = NoDisco(a.ResPath);
+			Fonte? f = File.Exists(png) ? Abrir(png, trava.Raiz, a.Fonte) : null;
+			if (f != null)
+			{
+				f.ResPath = a.ResPath;
+				f.Origem = origem;
+				f.Nome = a.Nome;
+			}
+			if (f == null) { trava.Suspeitas[a.Nome] = $"{a.ResPath} nao abre"; continue; }
+			if (f.Cols != a.Colunas || f.IconW != a.LarguraDoIcone || f.IconH != a.AlturaDoIcone)
+			{
+				trava.Suspeitas[a.Nome] = $"{a.ResPath} tem hoje {f.Cols} colunas de {f.IconW}x{f.IconH} e o tiles.json "
+										  + $"guarda {a.Colunas} de {a.LarguraDoIcone}x{a.AlturaDoIcone}";
+				continue;
+			}
+			if (a.Estados.Count != f.SemCaixa.Count
+				|| a.Estados.Any(kv => !f.SemCaixa.TryGetValue(kv.Key, out EstadoDaFolha e) || Indice(f, e.Indice) != kv.Value))
+			{
+				trava.Suspeitas[a.Nome] = $"os estados de {a.ResPath} nao sao mais os que o tiles.json lista "
+										  + $"({f.SemCaixa.Count} na folha de hoje, {a.Estados.Count} no indice)";
+				continue;
+			}
+			fontes[f.Entrada] = f;
+			if (origem == null && !a.Nome.Contains('~')) atlasPorNome[a.Nome] = [png];
+			planos[f.Entrada] = PlanejarTiras(f);
+		}
+
+		int casadas = 0;
+		foreach (Jandirus.Core.World.AtlasDeTiles a in tiras)
+		{
+			string pngDaTira = NoDisco(a.ResPath);
+			string pngDaDona = pngDaTira[..^(AtlasAnimado.Sufixo.Length + ".png".Length)] + ".png";
+			string daDona = pngDaDona + (OrigemDoNome(a.Nome) is { } o ? $"@{o.X},{o.Y}" : "");
+			if (!fontes.TryGetValue(daDona, out Fonte? dona)) continue;   // a dona ja ficou de fora, com motivo
+
+			Fonte tira = Companheira(dona, planos[daDona], a.Fonte, trava.Raiz);
+			tira.ResPath = a.ResPath;
+			tira.Origem = dona.Origem;
+			tira.Nome = a.Nome;
+			bool linhasBatem = Enumerable.Range(0, dona.Duracoes.Count)
+				.All(l => trava.QuadrosDeclarados(a.Fonte, (0, l)) == dona.Duracoes[l].Length);
+			if (!File.Exists(tira.Chave) || tira.Cols != a.Colunas || !linhasBatem) continue;
+
+			dona.Companheira = tira;
+			fontes[tira.Entrada] = tira;
+			casadas++;
+		}
+
+		Console.WriteLine($"FONTES PRESAS: {fontes.Count} do tileset do disco ({casadas} sao tiras de animacao reencontradas)"
+						  + (trava.Suspeitas.Count > 0 ? $" | {trava.Suspeitas.Count} fora, so acusadas se o andar pedir" : ""));
+		foreach ((string nome, string motivo) in trava.Suspeitas.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase))
+			Console.WriteLine($"   fora: {nome} -- {motivo}");
+		return true;
+	}
+
+	private static readonly Regex RxTextura = new(
+		@"^\[ext_resource type=""Texture2D"" path=""([^""]+)"" id=""(\d+)_atlas""\]", RegexOptions.Compiled);
+	private static readonly Regex RxAtlas = new(@"^\[sub_resource type=""TileSetAtlasSource"" id=""Atlas_(\d+)""\]", RegexOptions.Compiled);
+	private static readonly Regex RxTile = new(@"^(\d+):(\d+)/(?:0 = 0|animation_frame_(\d+)/duration\b)", RegexOptions.Compiled);
+
+	/// <summary>
+	/// O QUE O `tileset.tres` DECLARA: a textura de cada fonte e, por fonte, cada tile com o numero de
+	/// quadros que ele anima. O formato e o que o <see cref="EscreverTileSet"/> escreve, linha a linha.
+	/// </summary>
+	private static Dictionary<int, string> LerTileSet(string caminho, Dictionary<int, Dictionary<(int X, int Y), int>> declarados)
+	{
+		var texturas = new Dictionary<int, string>();
+		Dictionary<(int X, int Y), int>? tiles = null;
+		foreach (string linha in File.ReadLines(caminho))
+		{
+			if (linha.Length == 0) continue;
+			if (linha[0] == '[')
+			{
+				tiles = null;
+				if (RxTextura.Match(linha) is { Success: true } t) texturas[int.Parse(t.Groups[2].Value)] = t.Groups[1].Value;
+				else if (RxAtlas.Match(linha) is { Success: true } a) declarados[int.Parse(a.Groups[1].Value)] = tiles = [];
+				continue;
+			}
+			if (tiles != null) AnotarTile(tiles, linha);
+		}
+		return texturas;
+	}
+
+	/// <summary>
+	/// PLANEJA E COMPOE OS ATLAS COMPANHEIROS: uma tira por estado animado que nao cabia numa linha.
 	///
 	/// A FISICA E A OCLUSAO VAO JUNTO. Um tile de agua que virou tira continua sendo o mesmo turf:
 	/// se o original era denso ou opaco, a tira tem que ser tambem, senao a parede animada deixa de
@@ -670,55 +1744,11 @@ public static class MapConverter
 
 		foreach (Fonte f in fontes.Values.ToList())
 		{
-			var tiras = new List<AtlasAnimado.Tira>();
-			int idx = 0;
-
-			foreach (DmiState st in f.States)
-			{
-				int dirs = Math.Max(1, st.Dirs);
-				int quadros = Math.Max(1, st.Frames);
-				(int X, int Y) baseC = Indice(f, idx);
-
-				// o MESMO teste do DeclararTiles: se cabe na linha, o caminho antigo ja resolve
-				bool cabe = baseC.X + (quadros - 1) * dirs < f.Cols
-							&& idx + (quadros - 1) * dirs < f.TotalQuadros;
-
-				if (quadros > 1 && !cabe && st.Name != null)
-				{
-					var q = new int[quadros];
-					for (int k = 0; k < quadros; k++) q[k] = idx + k * dirs;
-
-					var dur = new double[quadros];
-					for (int k = 0; k < quadros; k++)
-					{
-						double d10 = k < st.Delays.Length ? st.Delays[k] : 1;
-						dur[k] = Math.Max(d10, 0.1) / 10.0;   // decimos do BYOND -> segundos
-					}
-
-					f.Refeitos[st.Name] = tiras.Count;
-					f.Duracoes.Add(dur);
-					tiras.Add(new AtlasAnimado.Tira { Origem = f.Chave, Quadros = q, Linha = tiras.Count });
-					total++;
-				}
-
-				idx += dirs * quadros;
-			}
-
+			List<AtlasAnimado.Tira> tiras = PlanejarTiras(f);
 			if (tiras.Count == 0) continue;
+			total += tiras.Count;
 
-			string destino = Path.ChangeExtension(f.Chave, null) + AtlasAnimado.Sufixo + ".png";
-			int largura = tiras.Max(t => t.Quadros.Length);
-
-			var comp = new Fonte
-			{
-				Id = proxId++,
-				Chave = destino,
-				ResPath = "res://" + Path.GetRelativePath(raiz, destino).Replace('\\', '/'),
-				IconW = f.IconW,
-				IconH = f.IconH,
-				Cols = largura,
-				TotalQuadros = largura * tiras.Count,
-			};
+			Fonte comp = Companheira(f, tiras, proxId++, raiz);
 
 			// a fisica/oclusao do original vale pra tira: e o mesmo turf desenhado noutro lugar
 			foreach ((string estado, int linha) in f.Refeitos)
@@ -729,9 +1759,8 @@ public static class MapConverter
 			}
 
 			f.Companheira = comp;
-			comp.Duracoes = f.Duracoes;
 			novas.Add(comp);
-			trabalho[f.Chave] = (destino, f.IconW, f.IconH, f.Cols, tiras);
+			trabalho[f.Chave] = (comp.Chave, f.IconW, f.IconH, f.Cols, tiras);
 		}
 
 		if (total == 0) return 0;
@@ -761,44 +1790,86 @@ public static class MapConverter
 		return 0;
 	}
 
-	private static (int X, int Y) Coord(Fonte f, string? state)
+	/// <summary>
+	/// O PLANO DAS TIRAS DE UMA FOLHA: quais estados animados nao cabem numa linha dela, e em que
+	/// linha do companheiro cada um vai morar (anotado na propria folha, em `Refeitos` e `Duracoes`).
+	/// E funcao pura da folha -- por isso serve tanto pra COMPOR o companheiro
+	/// (<see cref="Reempacotar"/>) quanto pra REENCONTRAR o que o disco ja tem (<see cref="Semear"/>).
+	///
+	/// SO A DIRECAO SUL VAI PRA TIRA. Tudo que anima nos mapas de hoje olha pro sul (agua, lava, o
+	/// brilho do teleporte), e reempacotar as quatro direcoes de cada estado quadruplicaria a imagem
+	/// por celulas que nao existem. A celula que pedir OUTRA direcao de um estado destes fica no atlas
+	/// original, parada, e sai no relatorio de animacao perdida do andar.
+	/// </summary>
+	private static List<AtlasAnimado.Tira> PlanejarTiras(Fonte f)
 	{
+		var tiras = new List<AtlasAnimado.Tira>();
 		int idx = 0;
-		if (state != null) f.StateIndex.TryGetValue(state, out idx);
-		return (idx % f.Cols, idx / f.Cols);
+
+		foreach (DmiState st in f.States)
+		{
+			var e = new EstadoDaFolha(st.Name, idx, Math.Max(1, st.Dirs), Math.Max(1, st.Frames));
+
+			// se cabe na linha, o atlas original ja declara o tile animado (ver `DeclararTiles`)
+			if (e.Quadros > 1 && !CabeNaLinha(f, e))
+			{
+				var q = new int[e.Quadros];
+				for (int k = 0; k < e.Quadros; k++) q[k] = idx + k * e.Dirs;
+
+				var dur = new double[e.Quadros];
+				for (int k = 0; k < e.Quadros; k++)
+				{
+					double d10 = k < st.Delays.Length ? st.Delays[k] : 1;
+					dur[k] = Math.Max(d10, 0.1) / 10.0;   // decimos do BYOND -> segundos
+				}
+
+				// nome repetido na folha: vale a tira do PRIMEIRO, que e o estado que o `Achar` devolve
+				f.Refeitos.TryAdd(st.Name, tiras.Count);
+				f.Duracoes.Add(dur);
+				tiras.Add(new AtlasAnimado.Tira { Origem = f.Chave, Quadros = q, Linha = tiras.Count });
+			}
+
+			idx += e.Dirs * e.Quadros;
+		}
+		return tiras;
 	}
 
-	/// <summary>Quantos quadros o .dmi declara pra este estado. 0 = o estado nao existe na folha.</summary>
-	private static int Quadros(Fonte f, string estado)
+	/// <summary>A fonte do atlas companheiro de uma folha: uma linha por tira, na largura da mais comprida.</summary>
+	private static Fonte Companheira(Fonte f, List<AtlasAnimado.Tira> tiras, int id, string raiz)
 	{
-		foreach (DmiState st in f.States)
-			if (st.Name == estado) return Math.Max(1, st.Frames);
-		return 0;
+		string destino = Path.ChangeExtension(f.Chave, null) + AtlasAnimado.Sufixo + ".png";
+		int largura = tiras.Count == 0 ? 0 : tiras.Max(t => t.Quadros.Length);
+		return new Fonte
+		{
+			Id = id,
+			Chave = destino,
+			ResPath = "res://" + Path.GetRelativePath(raiz, destino).Replace('\\', '/'),
+			IconW = f.IconW,
+			IconH = f.IconH,
+			Cols = largura,
+			TotalQuadros = largura * tiras.Count,
+			Duracoes = f.Duracoes,
+		};
 	}
 
 	/// <summary>
-	/// Os quadros deste estado cabem todos na MESMA LINHA do atlas?
+	/// O quadro de um estado NUMA DIRECAO -- o primeiro da animacao dela. Estado que a folha nao tem
+	/// cai no quadro 0 e direcao que o estado nao tem cai na primeira; quem pinta o mapa conta os dois
+	/// casos antes de chegar aqui (ver o `Por`).
+	/// </summary>
+	private static (int X, int Y) Coord(Fonte f, string? estado, int dir = Direcoes.Sul) =>
+		f.Achar(estado ?? "") is { } e ? Indice(f, e.Indice + Math.Max(0, Direcoes.NaFolha(dir, e.Dirs))) : (0, 0);
+
+	/// <summary>
+	/// Os quadros deste estado, na direcao dada, cabem todos na MESMA LINHA do atlas?
 	///
 	/// E a condicao pra o `DeclararTiles` conseguir declarar o tile animado no atlas ORIGINAL --
 	/// com `animation_columns = 0` o Godot le os quadros correndo pra direita a partir da coordenada
-	/// base, e virar a linha nao existe. Mesma conta do <see cref="Reempacotar"/>, escrita uma vez.
+	/// base, e virar a linha nao existe. Os quadros de uma direcao ficam a `Dirs` celulas um do outro.
 	/// </summary>
-	private static bool CabeNaLinha(Fonte f, string estado)
-	{
-		int idx = 0;
-		foreach (DmiState st in f.States)
-		{
-			int dirs = Math.Max(1, st.Dirs), quadros = Math.Max(1, st.Frames);
-			if (st.Name == estado)
-			{
-				(int X, int Y) b = Indice(f, idx);
-				return b.X + (quadros - 1) * dirs < f.Cols
-					   && idx + (quadros - 1) * dirs < f.TotalQuadros;
-			}
-			idx += dirs * quadros;
-		}
-		return true;   // estado que nao existe: o relatorio de "quadro 0" ja cobre esse caso
-	}
+	private static bool CabeNaLinha(Fonte f, EstadoDaFolha e, int dirNaFolha = 0) =>
+		Indice(f, e.Indice + dirNaFolha).X + (e.Quadros - 1) * e.Dirs < f.Cols
+		&& e.Indice + (e.Quadros - 1) * e.Dirs + dirNaFolha < f.TotalQuadros;
 
 	/// <summary>
 	/// OS MAPAS NA ORDEM DO `.dme`, cada um com o DESLOCAMENTO de z dele. CADA .dmm NUMERA O PROPRIO z A
@@ -1082,22 +2153,10 @@ public static class MapConverter
 
 		foreach (Fonte f in fontes.Values.OrderBy(v => v.Id))
 		{
-			string extId = $"{f.Id}_atlas";
-			ext.Append($"[ext_resource type=\"Texture2D\" path=\"{f.ResPath}\" id=\"{extId}\"]\n");
-			passos++;
-
-			sub.Append($"[sub_resource type=\"TileSetAtlasSource\" id=\"Atlas_{f.Id}\"]\n");
-			sub.Append($"texture = ExtResource(\"{extId}\")\n");
-			sub.Append($"texture_region_size = Vector2i({f.IconW}, {f.IconH})\n");
-
-			(int Tiles, int Animados) conta = DeclararTiles(sub, f);
+			(int Tiles, int Animados) conta = BlocoDaFonte(f, ext, sub, res);
 			totalTiles += conta.Tiles;
 			totalAnimados += conta.Animados;
-
-			sub.Append('\n');
-			passos++;
-
-			res.Append($"sources/{f.Id} = SubResource(\"Atlas_{f.Id}\")\n");
+			passos += 2;   // a textura e o atlas
 		}
 
 		Console.WriteLine($"tiles no tileset : {totalTiles} ({totalAnimados} animados)");
@@ -1119,11 +2178,11 @@ public static class MapConverter
 	// .tscn do andar
 	// ---------------------------------------------------------------------
 	private static int EscreverCena(string caminho, string nome, DmmLevel nivel, DmmMap.Result dados,
-		Dictionary<string, TurfDef> turfs, Dictionary<string, Fonte> fontes,
+		Fichas fichas, Dictionary<string, Fonte> fontes,
 		Dictionary<string, List<string>> atlasPorNome, HashSet<string> semAtlas, ref int proxId,
 		out HashSet<(int, int)> paredes, out HashSet<(int, int)> cegos,
 		out List<string> portasDaCena, out List<string> maquinasDaCena,
-		out List<string> passagensDaCena, bool gravar = true)
+		out List<string> passagensDaCena, bool gravar = true, Trava? trava = null)
 	{
 		var passagens = new List<string>();
 		int semDestino = 0;
@@ -1170,6 +2229,13 @@ public static class MapConverter
 
 		int usadas = 0, comObj = 0, objSemArte = 0;
 
+		// O QUE AS DUAS REGRAS DE EMPILHAMENTO FIZERAM NESTE ANDAR -- ver o laco das celulas.
+		int underlaysPorCima = 0, arestasPorBaixo = 0, corposPorBaixo = 0, objetosSemCamada = 0;
+
+		// E O QUE A FOLHA RESPONDEU TORTO: estado casado so ignorando a caixa, direcao que o estado nao tem.
+		int soSemCaixa = 0;
+		var semDirecao = new Dictionary<string, int>(StringComparer.Ordinal);
+
 		/// <summary>Maquina que o catalogo reconhece mas que nao conseguiu virar desenho.</summary>
 		var maquinaSemArte = new Dictionary<string, int>(StringComparer.Ordinal);
 
@@ -1211,11 +2277,8 @@ public static class MapConverter
 				string? k = nivel.Cells[x, y];
 				if (k == null || !dados.Keys.TryGetValue(k, out string[]? tipos)) continue;
 				foreach (string tp in tipos)
-				{
-					string bp = DmmMap.BasePath(tp);
-					if (turfs.TryGetValue(bp, out TurfDef? td) && td.Icon == null && td.Density)
+					if (fichas.De(tp) is { Icon: null, Density: true })
 					{ mudas.Add((x, y)); break; }
-				}
 			}
 
 		var costuras = new HashSet<(int, int)>();
@@ -1271,20 +2334,29 @@ public static class MapConverter
 		// ============================ `fisica`: SO O ULTIMO TURF DA CELULA TEM CORPO ============================
 		// Uma celula do `.dmm` pode listar dois turfs -- `(/turf/decor/Table4, /turf/Tile/Tile5)` no
 		// castelo de Vegeta, `(/turf/decor/SnowBush, /turf/Grass/Grass23)` na neve. No BYOND so o
-		// ULTIMO existe: cada `new /turf` substitui o anterior, e o que sobra do primeiro e no
-		// maximo um desenho por baixo. Densidade, opacidade, `Enter()`, luz: tudo do ultimo.
+		// ULTIMO existe: cada `new /turf` substitui o anterior, e o que sobra do primeiro e so um
+		// desenho (qual dos dois fica por cima e assunto do laco das celulas). Densidade, opacidade
+		// e `Enter()`: tudo do ultimo.
 		//
-		// O desenho aqui ja fazia isso certo (o primeiro vai pro `Chao`, o ultimo pro `Decor`, por
-		// cima). A FISICA nao: as duas chamadas de `Por` somavam `muros` e `vendados`, e a mesa
+		// A FISICA nao fazia isso: as duas chamadas de `Por` somavam `muros` e `vendados`, e a mesa
 		// densa escondida embaixo do piso virava uma parede invisivel. Foi o que o dono viu no
 		// castelo: "o icone nao aparece, so a hitbox, em varios locais do mapa". O `.agua`, o `.duro`
 		// e o `.nuvem` sempre perguntaram pelo ultimo turf (ver `CelulasDeAgua`); este era o unico
 		// dos cinco mapas de celula que perguntava pelos dois.
 		// ========================================================================================================
-		bool Por(string? bp, List<Jandirus.Core.World.CelulaDePedaco> destino, int x, int y, bool cega = true, bool fisica = true)
+		//
+		// `acende` diz se a LUZ deste typepath vale, e a luz e de quem APARECE: o turf de baixo nao
+		// acende escondido sob o de cima, e acende quando e desenhado por cima dele. Sem dizer nada, ela
+		// acompanha a `fisica` (o turf de verdade da celula e os objetos acendem).
+		//
+		// `tp` E O TYPEPATH COMO O MAPA O ESCREVE, com as variaveis da instancia: a ficha sai dele (ver
+		// `Fichas`), e as regras que so olham o tipo usam o `bp`.
+		bool Por(string? tp, List<Jandirus.Core.World.CelulaDePedaco> destino, int x, int y, bool cega = true, bool fisica = true,
+				 bool? acende = null)
 		{
-			if (bp == null) return false;
-			if (!turfs.TryGetValue(bp, out TurfDef? td)) return false;
+			if (tp == null) return false;
+			if (fichas.De(tp) is not { } td) return false;
+			string bp = td.Path;
 			if (!fisica && td.Density) subsolo[bp] = subsolo.GetValueOrDefault(bp) + 1;
 
 			// BORDA DO MUNDO. `/turf/Other/Blank` e denso, opaco e NAO TEM ICONE -- e o limite
@@ -1326,23 +2398,43 @@ public static class MapConverter
 			// Como o indice 0 e o fallback silencioso, nem o relatorio de "estado que faltou"
 			// pegava este caso.
 			if (EhPorta(bp) && estado.Length == 0) estado = "Closed";
-			if (!f.StateIndex.ContainsKey(estado))
+			EstadoDaFolha? achado = f.Achar(estado);
+			if (achado == null)
 			{
 				string chave = $"{bp} -> {td.Icon} estado \"{estado}\"";
 				semEstado[chave] = semEstado.GetValueOrDefault(chave) + 1;
 			}
+			else if (achado.Value.Nome != estado) soSemCaixa++;
 
-			(int X, int Y) c = Coord(f, estado);
+			// ============================ A DIRECAO ESCOLHE O QUADRO ============================
+			// Um estado direcional guarda um desenho por direcao, na ordem sul, norte, leste, oeste (ver
+			// `Direcoes`), e o `dir` do tipo diz qual deles e o da celula. O conversor pintava sempre o
+			// primeiro: as 24 arestas de penhasco (`barrier.dm:92-211`) sao 6 estados de 4 direcoes, e
+			// todas saiam viradas pro sul -- o risco da borda ficava do lado errado do tile, que e como
+			// "sprite cortado" aparece na tela. O tileset ja declarava um tile por direcao.
+			// ====================================================================================
+			int dirNaFolha = achado is { } e0 ? Direcoes.NaFolha(td.Dir, e0.Dirs) : 0;
+			if (dirNaFolha < 0)
+			{
+				string chave = $"{bp} dir={td.Dir} num estado de {achado!.Value.Dirs} direcoes (\"{estado}\")";
+				semDirecao[chave] = semDirecao.GetValueOrDefault(chave) + 1;
+				dirNaFolha = 0;
+			}
+
+			(int X, int Y) c = achado is { } e1 ? Indice(f, e1.Indice + dirNaFolha) : (0, 0);
 
 			// ESTADO REEMPACOTADO MORA NOUTRA FONTE. A celula tem que apontar pra tira, senao ela
 			// continua pintando o quadro parado do atlas original enquanto o tile animado que o
-			// tileset declarou fica sem ninguem usando.
+			// tileset declarou fica sem ninguem usando. (A tira so guarda a direcao sul -- ver
+			// `PlanejarTiras`.)
 			Fonte fUsada = f;
-			bool naTira = f.Companheira != null && f.Refeitos.TryGetValue(estado, out int linha);
+			int linha = -1;
+			bool planejada = dirNaFolha == 0 && achado is { } e2 && f.Refeitos.TryGetValue(e2.Nome, out linha);
+			bool naTira = planejada && f.Companheira != null;
 			if (naTira)
 			{
 				fUsada = f.Companheira!;
-				c = (0, f.Refeitos[estado]);
+				c = (0, linha);
 				repontadas++;
 				// as do estado PADRAO sao exatamente as que a guarda de nulo comia
 				if (estado.Length == 0) repontadasPadrao++;
@@ -1358,9 +2450,10 @@ public static class MapConverter
 			// na tela: ja quebrou por PNG sem `.import` e por guarda de nulo no estado padrao, e nenhuma
 			// das duas aparecia em contador nenhum. Aqui a pergunta e a que importa -- ESTA CELULA ANIMA?
 			// =========================================================================================
-			if (!naTira && Quadros(f, estado) is > 1 and var nq && !CabeNaLinha(f, estado))
+			bool animaNoOriginal = achado is { Quadros: > 1 } e3 && CabeNaLinha(f, e3, dirNaFolha);
+			if (!naTira && achado is { Quadros: > 1 } e4 && !animaNoOriginal)
 			{
-				string k = $"{bp} -> {td.Icon} \"{estado}\" ({nq} quadros)";
+				string k = $"{bp} -> {td.Icon} \"{estado}\" ({e4.Quadros} quadros)";
 				semAnimacao[k] = semAnimacao.GetValueOrDefault(k) + 1;
 			}
 
@@ -1414,6 +2507,31 @@ public static class MapConverter
 			}
 			else
 			{
+				// ============================ PRESO: A CELULA SO APONTA PRO QUE O DISCO DECLARA ============================
+				// O tile tem que existir no `tileset.tres` do disco E animar o numero de quadros que a
+				// folha de hoje pede: uma folha que ganhou um quadro desde o tileset tocaria a animacao
+				// antiga, e uma tira planejada que o disco nao tem deixaria a celula parada. Nos dois
+				// casos o certo e a conversao cheia, e nao um `.pedacos` novo apontando pro velho. (No
+				// estado que a folha nao tem a celula cai no quadro 0, e ai so se cobra que ele exista.)
+				// ==========================================================================================================
+				if (trava != null)
+				{
+					int declarados = trava.QuadrosDeclarados(fUsada.Id, c);
+					int esperados = naTira ? f.Duracoes[linha].Length
+						: animaNoOriginal ? achado!.Value.Quadros
+						: achado == null ? declarados
+						: 1;
+					if (planejada && !naTira)
+						trava.Faltar($"{bp}: o estado \"{estado}\" de {f.ResPath} precisa da tira de animacao (linha {linha}) "
+									 + "e o tileset do disco nao tem a companheira dela");
+					else if (declarados == 0)
+						trava.Faltar($"{bp}: o tile ({c.X},{c.Y}) de {fUsada.ResPath} (fonte {fUsada.Id}, estado \"{estado}\") "
+									 + "nao esta declarado no tileset do disco");
+					else if (declarados != esperados)
+						trava.Faltar($"{bp}: o tile ({c.X},{c.Y}) de {fUsada.ResPath} (estado \"{estado}\") anima {declarados} "
+									 + $"quadro(s) no tileset do disco e a folha de hoje pede {esperados}");
+				}
+
 				// A ALTERNATIVA DO TILE NAO E GRAVADA porque ela sempre foi 0 aqui -- o formato do
 				// `.pedacos` a deixa de fora e economiza dois bytes por celula.
 				destino.Add(new Jandirus.Core.World.CelulaDePedaco(
@@ -1471,11 +2589,38 @@ public static class MapConverter
 			if (fisica && td.Density && cega && !decor) vendados.Add((x, y));
 
 			// FONTE DE LUZ. Fogueira, tocha, lampada e lava acendem o cenario -- ver LightCatalog.
-			if (fisica && LightCatalog.Da(bp) is { } luz)
+			if ((acende ?? fisica) && LightCatalog.Da(bp) is { } luz)
 				luzes.Add(new LuzDeTile(x, y, luz.Raio, luz.Cor, luz.Forca, luz.Tremula));
 
 			return true;
 		}
+
+		// O que a escolha da camada de objetos precisa saber de um `/obj` solto -- ver `DoisDaCelula`.
+		// "Tem arte" e a mesma pergunta que o `Por` faz antes de pintar.
+		Solto FichaDoSolto(string tp)
+		{
+			TurfDef? td = fichas.De(tp);
+			Fonte? f = td is { Icon: not null, Atlas: { } atlas } ? fontes.GetValueOrDefault(atlas) : null;
+			return new Solto(f != null, f is { IconW: Cell, IconH: Cell }, EhAresta(DmmMap.BasePath(tp)), td?.Camada ?? 3);
+		}
+
+		// os `/obj` soltos da celula da vez, na ordem do mapa e sem repeticao (a lista e uma so, reusada)
+		var soltos = new List<string>();
+
+		// ...e os turfs dela, pra pilha da celula que nao cabe em tres desenhos (ver `PilhaDaCelula`). O
+		// mesmo turf posto duas vezes vale a ULTIMA vez: o de baixo fica inteiro debaixo do de cima.
+		var turfsDaCelula = new List<string>();
+		var desenhos = new List<Desenho>();
+
+		// AS CAMADAS CHATAS ALEM DA DECORACAO (`Decor2`, `Decor3`...), criadas quando a primeira celula
+		// do andar as pede. Andar que nao empilha continua com as tres de sempre, no arquivo e na cena.
+		var maisDecoracao = new List<List<Jandirus.Core.World.CelulaDePedaco>>();
+		int celulasEmPilha = 0;
+
+		// O turf, pra pilha: tem desenho (ou e porta/maquina, que desenha fora do tilemap)?
+		bool TurfDesenha(string tp) =>
+			fichas.De(tp) is { Icon: not null, Atlas: { } atlas } && fontes.ContainsKey(atlas);
+
 		for (int y = 0; y < nivel.Height; y++)
 			for (int x = 0; x < nivel.Width; x++)
 			{
@@ -1487,8 +2632,13 @@ public static class MapConverter
 				// jogava fora tudo que estava POR CIMA do chao: a porta da casa, o litoral
 				// curvo, as plantas, as cadeiras, as pedras, as mesas. So na Terra sao 575
 				// turfs em 572 celulas, e e metade da queixa "falta coisa no mapa".
-				string? fundo = null, topo = null, objeto = null, maquina = null, tpTopo = null;
+				//
+				// Todos guardam o typepath COMO O MAPA O ESCREVE (com as variaveis da instancia): e
+				// dele que sai a ficha de quem troca icone, e o destino de quem teleporta.
+				string? fundo = null, topo = null, maquina = null;
 				bool tinhaObj = false;
+				soltos.Clear();
+				turfsDaCelula.Clear();
 
 				foreach (string tp in tipos)
 				{
@@ -1509,9 +2659,10 @@ public static class MapConverter
 					// teleportaria) uma celula que no original e chao comum. Os `/obj` nunca sao underlay.
 					if (bp.StartsWith("/turf", StringComparison.Ordinal))
 					{
-						fundo ??= bp;
-						topo = bp;                        // sempre o ultimo visto
-						tpTopo = tp;
+						fundo ??= tp;
+						topo = tp;                        // sempre o ultimo visto
+						turfsDaCelula.Remove(tp);
+						turfsDaCelula.Add(tp);
 					}
 					else if (Passagens.De(tp) is { } destObj && Destinos != null)
 					{
@@ -1519,7 +2670,7 @@ public static class MapConverter
 							passagens.Add(LinhaDePassagem(x, y, onde, destObj));
 						else semDestino++;
 					}
-					else if (bp.StartsWith("/obj", StringComparison.Ordinal))
+					else if (bp.StartsWith("/obj", StringComparison.Ordinal) && Desenhavel(bp))
 					{
 						tinhaObj = true;
 
@@ -1537,14 +2688,17 @@ public static class MapConverter
 						// as duas na mesma celula, como cabiam no original.
 						//
 						// SO ESTA CELULA EMPILHA MOVEL EM CIMA DE MAQUINA hoje: das 1.823 celulas com
-						// dois ou mais `/obj` nos 26 mapas, 1.797 sao pares de `/obj/barrier/Edges`
-						// (colisao, que entra por outro caminho).
-						if (Obras.PorTypepath(bp) != null) maquina ??= bp;
-						else objeto ??= bp;
+						// dois ou mais `/obj` nos 26 mapas, 1.797 sao pares de `/obj/barrier/Edges`.
+						//
+						// OS OUTROS SO SE JUNTAM AQUI. A camada de objetos guarda um tile por celula, e
+						// quem fica com ele (e quem desce pra decoracao) se decide com a lista inteira na
+						// mao -- ver `DoisDaCelula`. O mesmo objeto posto duas vezes entra uma vez so.
+						if (Obras.PorTypepath(bp) != null) maquina ??= tp;
+						else if (!soltos.Contains(tp)) soltos.Add(tp);
 					}
 				}
 
-				if (tpTopo != null && Passagens.De(tpTopo) is { } dest && Destinos != null)
+				if (topo != null && Passagens.De(topo) is { } dest && Destinos != null)
 				{
 					if (Destinos(dest.X, dest.Y, dest.Z) is { } onde) passagens.Add(LinhaDePassagem(x, y, onde, dest));
 					else semDestino++;
@@ -1552,9 +2706,104 @@ public static class MapConverter
 
 				// uma celula com um turf so nao precisa de decoracao; com dois ou mais, o
 				// primeiro e o chao e o ULTIMO vai por cima
-				bool empilhado = topo != null && !ReferenceEquals(fundo, topo) && fundo != topo;
-				Por(fundo, bytes, x, y, fisica: !empilhado);   // por baixo de outro turf, e so desenho
-				if (empilhado) Por(topo, decoracao, x, y);
+				//
+				// ============================ ...MENOS QUANDO O DE BAIXO TEM A CAMADA MAIOR ============================
+				// Os turfs que o `.dmm` empilha viram, no BYOND, UM turf (o ultimo) com os outros de
+				// underlay ("When multiple turfs are stacked ... there is actually only one turf (the
+				// topmost) and the rest are all underlays", `underlays var (atom)` da referencia; o
+				// carregador de mapa do proprio jogo faz igual, `lib/iainperegrine.dmm_suite/reader.dm:
+				// 136-147`). E underlay que e retrato de outro objeto desenha na camada DELE, nao embaixo
+				// do dono ("the drawing layer of that object is used", `overlays var (atom)`).
+				//
+				// `/turf/decor` declara `layer=4` (`Turfs.dm:1657`), o dobro de um turf comum. Entao em
+				// `(/turf/decor/Table4, /turf/Tile/Tile5)` o piso e o turf de verdade e a mesa aparece POR
+				// CIMA dele -- e aqui ela ia pro chao e o piso a cobria: 7 mesas do castelo de Vegeta, 12
+				// plantas e uma ponta de ponte sumiam debaixo do proprio chao (20 celulas no planeta).
+				//
+				// SO O DESENHO TROCA DE CAMADA. O corpo continua sendo o do ULTIMO turf: a mesa por cima
+				// do piso aparece e nao bloqueia, que e o que ela faz no original.
+				//
+				// ...E A LUZ VAI COM O DESENHO. O DM nao tem luz nenhuma (`TurfOnNew.dm:1`); aqui a tocha
+				// acende porque se ve a chama. Num templo de Namek ha duas `/turf/decor/Torch3` listadas
+				// antes do piso: a chama aparece por cima dele, entao a luz dela vale.
+				// =======================================================================================================
+				// QUEM FICA COM A CAMADA DE OBJETOS, E QUEM DESCE. Uma celula com um objeto so -- quase
+				// todas -- nao tem o que escolher.
+				string? objeto = soltos.Count == 1 ? soltos[0] : null, embaixo = null;
+				int semLugar = 0;
+				if (soltos.Count > 1) (objeto, embaixo, semLugar) = DoisDaCelula(soltos, FichaDoSolto);
+
+				// ============================ A CELULA QUE NAO CABE EM TRES DESENHOS ============================
+				// Tres turfs empilhados, tres arestas, a mesa por cima da faca -- ver `PrecisaDePilha`. A
+				// lista so e montada pra quem pode precisar: tres coisas na celula, ou um objeto em cima de
+				// um turf de `layer` alto (a cachoeira, `MOB_LAYER+1`, cobre a aresta que o mapa pos nela).
+				bool emPilha = false, objetoChato = false;
+				if (turfsDaCelula.Count + soltos.Count > 2 || (soltos.Count > 0 && topo != null && fichas.De(topo)?.Camada > 3))
+				{
+					desenhos.Clear();
+					foreach (string t in turfsDaCelula)
+						if (TurfDesenha(t)) desenhos.Add(new Desenho(t, Turf: true, Real: t == topo, CabeNumTile: true, fichas.De(t)!.Camada));
+					foreach (string o in soltos)
+						if (FichaDoSolto(o) is { TemArte: true } s) desenhos.Add(new Desenho(o, Turf: false, Real: false, s.CabeNumTile, s.Camada));
+					emPilha = PrecisaDePilha(desenhos);
+				}
+
+				bool decorOcupado = false;
+				if (emPilha)
+				{
+					// DE BAIXO PRA CIMA: chao, decoracao e, dali em diante, uma camada a mais por desenho. O
+					// turf de verdade pinta com o corpo dele; o underlay e so desenho, e acende quando aparece
+					// por cima do turf de verdade (a regra da tocha, no bloco de cima); o objeto para e nao cega.
+					(List<Desenho> chatos, Desenho? noObjetos) = PilhaDaCelula(desenhos);
+					double camadaDoReal = topo == null ? 0 : fichas.De(topo)?.Camada ?? 0;
+					int vaga = 0;
+					foreach (Desenho d in chatos)
+					{
+						while (maisDecoracao.Count < vaga - 1) maisDecoracao.Add([]);
+						List<Jandirus.Core.World.CelulaDePedaco> destino = vaga == 0 ? bytes : vaga == 1 ? decoracao : maisDecoracao[vaga - 2];
+						bool pintou = !d.Turf ? Por(d.Tipo, destino, x, y, cega: false)
+							: d.Real ? Por(d.Tipo, destino, x, y)
+							: Por(d.Tipo, destino, x, y, fisica: false, acende: d.Camada > camadaDoReal);
+						if (!pintou) continue;
+						vaga++;
+						objetoChato |= !d.Turf;
+					}
+					// o turf de verdade que nao desenha (o vazio denso) ainda tem corpo
+					if (topo != null && !desenhos.Exists(d => d.Real)) Por(topo, bytes, x, y);
+					objeto = noObjetos?.Tipo;
+					embaixo = null;
+					celulasEmPilha++;
+				}
+				else
+				{
+					objetosSemCamada += semLugar;
+
+					bool empilhado = topo != null && DmmMap.BasePath(fundo!) != DmmMap.BasePath(topo);
+					bool underlayPorCima = empilhado && fichas.De(fundo!) is { } deBaixo && fichas.De(topo!) is { } deCima
+										   && deBaixo.Camada > deCima.Camada;
+					if (underlayPorCima)
+					{
+						Por(topo, bytes, x, y);
+						decorOcupado = Por(fundo, decoracao, x, y, fisica: false, acende: true);
+						if (decorOcupado) underlaysPorCima++;
+					}
+					else
+					{
+						// sem empilhar, o turf da celula e o ULTIMO da lista (que e o unico, ou o mesmo tipo repetido)
+						Por(empilhado ? fundo : topo, bytes, x, y, fisica: !empilhado);   // por baixo de outro turf, e so desenho
+						decorOcupado = empilhado && Por(topo, decoracao, x, y);
+					}
+				}
+
+				// O DE BAIXO, na decoracao: abaixo dos atores, em vez de ordenar por Y com eles (as
+				// divergencias estao em `DoisDaCelula`). Com a decoracao ocupada por outro turf ele
+				// continua sem lugar -- uma quarta camada pediria cena e cliente novos.
+				if (embaixo != null)
+				{
+					if (decorOcupado || !Por(embaixo, decoracao, x, y, cega: false)) objetosSemCamada++;
+					else if (EhAresta(DmmMap.BasePath(embaixo))) arestasPorBaixo++;
+					else corposPorBaixo++;
+				}
 
 				// A CAMADA DE OBJETOS NAO CEGA -- e o que tira a sombra das arvores.
 				//
@@ -1573,9 +2822,12 @@ public static class MapConverter
 				// `Obras.PorTypepath` vinte linhas acima.
 				bool posMaq = Por(maquina, objetos, x, y, cega: false);
 				if (maquina != null && !posMaq)
-					maquinaSemArte[maquina] = maquinaSemArte.GetValueOrDefault(maquina) + 1;
+				{
+					string tipoDaMaquina = DmmMap.BasePath(maquina);
+					maquinaSemArte[tipoDaMaquina] = maquinaSemArte.GetValueOrDefault(tipoDaMaquina) + 1;
+				}
 
-				bool posObj = Por(objeto, objetos, x, y, cega: false);
+				bool posObj = Por(objeto, objetos, x, y, cega: false) || objetoChato;
 				if (posObj || posMaq) comObj++;
 				if (tinhaObj && !posObj && !posMaq) objSemArte++;
 			}
@@ -1678,6 +2930,30 @@ public static class MapConverter
 		sb.Append(SemFisica);
 		sb.Append("tile_set = ExtResource(\"1_ts\")\n\n");
 
+		// ============================ AS CAMADAS A MAIS: `Decor2`, `Decor3`... ============================
+		// So no andar que tem celula em pilha (ver `PilhaDaCelula`), e so quantas a mais funda pede. Mesmo
+		// `z_index` da decoracao: quem decide a ordem entre elas e a ordem dos nos, e cada uma vem DEPOIS
+		// da anterior -- acima da decoracao, abaixo dos objetos e dos atores.
+		//
+		// O CLIENTE NAO MUDA: ele acha a camada de cada pedaco pelo NOME que o `.pedacos` traz
+		// (`PlanetaPreFeito.FonteDoArquivo.Achar`) e apaga o que caiu por TIPO (`World.CamadasDoCenario`).
+		// Mas o jogo carrega a cena BINARIA (`.scn`): quem aplicar um `.tscn` com camada nova tem que
+		// regerar o `.scn` (comando `binario`) ANTES de por o `.pedacos` -- com a cena velha, o cliente
+		// avisa que a camada nao existe e os desenhos dela simplesmente nao aparecem.
+		var nomesDasCamadas = new List<string> { "Chao", "Decor" };
+		var celulasDasCamadas = new List<List<Jandirus.Core.World.CelulaDePedaco>> { bytes, decoracao };
+		for (int i = 0; i < maisDecoracao.Count; i++)
+		{
+			nomesDasCamadas.Add($"Decor{i + 2}");
+			celulasDasCamadas.Add(maisDecoracao[i]);
+			sb.Append($"[node name=\"Decor{i + 2}\" type=\"TileMapLayer\" parent=\".\"]\n");
+			sb.Append("z_index = -1\n");
+			sb.Append(SemFisica);
+			sb.Append("tile_set = ExtResource(\"1_ts\")\n\n");
+		}
+		nomesDasCamadas.Add("Objetos");
+		celulasDasCamadas.Add(objetos);
+
 		// SEGUNDA CAMADA: o que fica EM CIMA do chao. Precisa ser um layer proprio porque o
 		// TileMapLayer guarda UM tile por celula -- arvore e grama na mesma celula sao duas
 		// camadas, nao duas entradas na mesma.
@@ -1691,7 +2967,8 @@ public static class MapConverter
 
 		// SO GRAVA QUANDO PEDIDO: a reconversao de fisica (`fisica`, ver `Convert`) passa por aqui pra
 		// obter `paredes`/`cegos` pela MESMA regra da cena, e nao pode reescrever cena, pedacos nem luz.
-		if (gravar)
+		// E PRESO SO GRAVA O QUE CABE NO TILESET DO DISCO: com uma falta anotada, nada sai (ver `Trava`).
+		if (gravar && trava is not { Faltas.Count: > 0 })
 		{
 			File.WriteAllText(caminho, sb.ToString(), new UTF8Encoding(false));
 
@@ -1702,8 +2979,8 @@ public static class MapConverter
 			Jandirus.Core.World.PedacosDoMapa.Escrever(
 				arqPedacos,
 				Jandirus.Core.World.PedacosDoMapa.LadoPadrao,
-				["Chao", "Decor", "Objetos"],
-				[bytes, decoracao, objetos]);
+				[.. nomesDasCamadas],
+				[.. celulasDasCamadas]);
 
 			// ============================ LER DE VOLTA E CONFERIR A CONTA ============================
 			// Um mapa que perde celulas no caminho nao falha: ele DESENHA errado, e so alguem olhando
@@ -1716,8 +2993,9 @@ public static class MapConverter
 			// de cada celula e NAO depende da ordem -- que e o que muda de propósito no agrupamento.
 			//
 			// Sao ~5 ms por mapa pra transformar "confio no meu agrupamento" em "esta escrito".
-			int esperadas = bytes.Count + decoracao.Count + objetos.Count;
-			ulong assinado = Assinar(bytes, 0) ^ Assinar(decoracao, 1) ^ Assinar(objetos, 2);
+			int esperadas = celulasDasCamadas.Sum(c => c.Count);
+			ulong assinado = 0;
+			for (int c = 0; c < celulasDasCamadas.Count; c++) assinado ^= Assinar(celulasDasCamadas[c], c);
 
 			Jandirus.Core.World.PedacosDoMapa? relido =
 				Jandirus.Core.World.PedacosDoMapa.Ler(File.ReadAllBytes(arqPedacos));
@@ -1766,6 +3044,19 @@ public static class MapConverter
 		if (repontadas > 0)
 			Console.WriteLine($"  {nome}: {repontadas} celulas apontam pra uma tira animada"
 							  + (repontadasPadrao > 0 ? $" ({repontadasPadrao} no estado PADRAO)" : ""));
+		if (celulasEmPilha > 0)
+			Console.WriteLine($"  {nome}: {celulasEmPilha} celula(s) em PILHA (mais de tres desenhos, ou turf por cima de objeto)"
+							  + $" -- {maisDecoracao.Count} camada(s) a mais na cena: "
+							  + string.Join(", ", Enumerable.Range(2, maisDecoracao.Count).Select(i => $"Decor{i} ({maisDecoracao[i - 2].Count})")));
+		if (underlaysPorCima + arestasPorBaixo + corposPorBaixo + objetosSemCamada > 0)
+			Console.WriteLine($"  {nome}: {underlaysPorCima} turf(s) de baixo desenhados POR CIMA (camada maior que a do turf de cima)"
+							  + $" | {arestasPorBaixo} aresta(s) na decoracao, por baixo de outro objeto"
+							  + (corposPorBaixo > 0 ? $" | {corposPorBaixo} objeto(s) de um tile na decoracao, por baixo de outro" : "")
+							  + (objetosSemCamada > 0 ? $" | {objetosSemCamada} objeto(s) com arte SEM camada (a celula so guarda dois)" : ""));
+		if (soSemCaixa > 0)
+			Console.WriteLine($"  {nome}: {soSemCaixa} celula(s) casaram o estado so IGNORANDO A CAIXA (no BYOND cairiam no estado vazio)");
+		foreach ((string q, int n) in semDirecao.OrderByDescending(kv => kv.Value))
+			Console.WriteLine($"     DIRECAO QUE O ESTADO NAO TEM, pintada com a primeira: {n,7}x  {q}");
 
 		// QUADRO 0 SILENCIOSO. Quando o `icon_state` do typepath nao existe no atlas, o Coord
 		// devolve o quadro 0 sem dizer nada -- e o quadro 0 de uma folha qualquer pode ser um
@@ -1872,6 +3163,13 @@ public static class MapConverter
 
 		void Ancora((int X, int Y) c, StringBuilder onde)
 		{
+			// A VARIANTE TRAZ A ANCORA DELA (o desenho que o BYOND nao centra -- ver `AncoraDoTipo`), e
+			// vale pra folha de 32x32 tambem: e o `step_y` de uma instancia do mapa.
+			if (f.Origem is { } propria)
+			{
+				onde.Append($"{c.X}:{c.Y}/0/texture_origin = Vector2i({propria.X}, {propria.Y})\n");
+				return;
+			}
 			if (!grande) return;
 			onde.Append($"{c.X}:{c.Y}/0/texture_origin = Vector2i(0, {desY})\n");
 
@@ -2007,6 +3305,13 @@ public static class MapConverter
 	/// estado ficava vazio e TODA celula HD desenhava o mesmo quadro. Sao 55 mil celulas na
 	/// Terra -- 22% do planeta com a mesma grama errada.
 	///
+	/// O ESTADO QUE O TIPO DECLARA NAO SEGURA O MOSAICO. `VegetaWaterHD` escreve `icon_state="0,0"`
+	/// (`NewTurfs.dm:212-217`), e o `New()` chama o `autofill()` em TODO turf HD com tamanho, sem
+	/// perguntar se ja havia estado (`TurfOnNew.dm:11-14`) -- o `"0,0"` e so o que o editor de mapa
+	/// mostra. Devolver o declarado repetia o canto noroeste em toda celula: o lago inteiro de Vegeta
+	/// (79.135 celulas) e a lava saiam com o mesmo pedaco de 32 px lado a lado, com a emenda aparecendo
+	/// em toda borda de celula. Os 13 tipos que declaram estado tem o mosaico completo na folha.
+	///
 	/// O EIXO Y: o `autofill` usa o y do BYOND, que conta DE BAIXO PRA CIMA, e o DmmMap guarda
 	/// em ordem de arquivo (linha 0 no topo). Sem converter, o mosaico sai espelhado na
 	/// vertical -- funciona, e fica sutilmente errado, que e pior que quebrar.
@@ -2014,8 +3319,6 @@ public static class MapConverter
 	private static string? EstadoDaCelula(TurfDef td, int x, int y, int altura)
 	{
 		if (!td.IsHD) return td.IconState;
-		// tipo HD que ja declara o estado na mao (WaterHD1) manda mais que o autofill
-		if (!string.IsNullOrEmpty(td.IconState)) return td.IconState;
 
 		int bx = x + 1;              // o BYOND indexa a partir de 1
 		int by = altura - y;         // e conta de baixo pra cima
@@ -2185,6 +3488,154 @@ public static class MapConverter
 
 		Console.WriteLine($"andares: {andares} | com ceu: {comCeu} ({derrubam} derrubam) | celulas: {total}"
 						  + (apagados > 0 ? $" | .nuvem apagados: {apagados}" : ""));
+	}
+
+	// =====================================================================
+	// O QUE NASCE SOB TETO -- a area `Inside` do original (ver Interiores.cs)
+	// =====================================================================
+
+	/// <summary>
+	/// AS CELULAS QUE NASCEM SOB TETO NESTE ANDAR. As tres fontes estao no cabecalho de
+	/// <see cref="Interiores"/>; esta funcao so as junta.
+	///
+	/// A AREA E O ULTIMO `/area` DA CHAVE e o turf e o ULTIMO `/turf`, a mesma regra de desempate da
+	/// agua e do duro.
+	///
+	/// Sai como funcao propria, e nao dentro do `EscreverCena`, pelo mesmo motivo dos outros planos:
+	/// ela roda tambem no comando `dentro`, que existe pra NAO reconverter os sprites.
+	/// </summary>
+	/// <param name="comACidadeDeVegeta">
+	/// Marca as celulas que o `Build_Vegeta_Structures` carimba (`VegetaCity.dm:42`). So faz sentido
+	/// no andar dela E com a cidade de pe no que o jogo carrega: marcar a planta sobre chao nu daria
+	/// oito retangulos secos no meio do campo. Quem decide e o chamador, que e quem sabe se ela foi
+	/// erguida (ver <see cref="CidadeDeVegetaDePe"/>).
+	/// </param>
+	internal static List<(int X, int Y)> CelulasInternas(DmmLevel nivel, DmmMap.Result dados,
+														 bool comACidadeDeVegeta)
+	{
+		var internas = new HashSet<(int, int)>();
+		for (int y = 0; y < nivel.Height; y++)
+			for (int x = 0; x < nivel.Width; x++)
+			{
+				string? k = nivel.Cells[x, y];
+				if (k == null || !dados.Keys.TryGetValue(k, out string[]? tipos)) continue;
+
+				string? ultimoTurf = null, area = null;
+				foreach (string tp in tipos)
+				{
+					string bp = DmmMap.BasePath(tp);
+					if (bp.StartsWith("/turf", StringComparison.Ordinal)) ultimoTurf = bp;
+					else if (bp.StartsWith("/area", StringComparison.Ordinal)) area = bp;
+				}
+
+				if ((area != null && Interiores.EhAreaInterna(area))
+					|| (ultimoTurf != null && Interiores.EhTurfErguido(ultimoTurf)))
+					internas.Add((x, y));
+			}
+
+		if (comACidadeDeVegeta)
+			foreach (CidadeDeVegeta.Peca p in CidadeDeVegeta.Planta())
+			{
+				(int x, int y) = CidadeDeVegeta.NoPort(p, nivel.Height);
+				if (x >= 0 && y >= 0 && x < nivel.Width && y < nivel.Height) internas.Add((x, y));
+			}
+
+		return [.. internas];
+	}
+
+	/// <summary>
+	/// A CIDADE DE VEGETA ESTA DE PE no `.col` que o jogo carrega?
+	///
+	/// O comando `dentro` nao reconverte o mapa, entao ele nao tem o relatorio do
+	/// <see cref="CidadeDeVegeta.Erguer"/> pra perguntar. Mas o `Erguer` e tudo-ou-nada na estrutura
+	/// (faltando arte de parede ele nao poe um tijolo), entao UMA parede prometida responde por todas:
+	/// se ela bloqueia no `.col`, a cidade foi carimbada.
+	/// </summary>
+	internal static bool CidadeDeVegetaDePe(Jandirus.Core.World.ZoneCollision? col, int altura)
+	{
+		if (col == null) return false;
+		foreach (CidadeDeVegeta.Peca p in CidadeDeVegeta.Planta())
+		{
+			if (!CidadeDeVegeta.EhParede(p.Turf)) continue;
+			(int x, int y) = CidadeDeVegeta.NoPort(p, altura);
+			return col.BlockedCell(x, y);
+		}
+		return false;
+	}
+
+	/// <summary>
+	/// Grava o `.dentro` de todos os andares E MAIS NADA -- irmao do <see cref="ConverterAguas"/> e
+	/// do <see cref="ConverterDuros"/>, e pelo motivo deles: a conversao cheia reescreve o tileset, o
+	/// `tiles.json`, os 40 `.tscn`/`.pedacos` e o indice de sprites pra buscar UM bit por celula.
+	///
+	/// ANDAR SEM INTERIOR NAO GANHA ARQUIVO, e um `.dentro` velho de um andar que perdeu o interior e
+	/// APAGADO: o leitor confiaria nele e deixaria um pedaco de campo aberto sem chuva pra sempre.
+	///
+	/// NAO PRECISA DA ARVORE DE TIPOS (`pastaCode`), ao contrario dos irmaos: a regra so le o nome da
+	/// area e o prefixo do turf, e os dois estao no proprio `.dmm`.
+	/// </summary>
+	public static void ConverterInteriores(string dmmDir, string outDir)
+	{
+		Directory.CreateDirectory(outDir);
+
+		int andares = 0, comInterior = 0, total = 0, apagados = 0;
+		foreach ((string _, DmmMap.Result dados, int off) in LerMapas(dmmDir))
+			foreach (DmmLevel nivel in dados.Levels)
+			{
+				string nome = NomeDoAndar(dados, nivel, off);
+				string caminho = Path.Combine(outDir, nome + ".dentro");
+				string arqCol = Path.Combine(outDir, nome + ".col");
+				Jandirus.Core.World.ZoneCollision? col = File.Exists(arqCol)
+					? Jandirus.Core.World.ZoneCollision.Load(File.ReadAllBytes(arqCol))
+					: null;
+
+				bool andarDaCidade = nivel.Z + off == CidadeDeVegeta.Z;
+				bool cidade = andarDaCidade && CidadeDeVegetaDePe(col, nivel.Height);
+				if (andarDaCidade && !cidade)
+					Console.WriteLine($"  {nome,-34} AVISO: a cidade de Vegeta NAO esta de pe no .col -- "
+									  + "as celulas dela NAO foram marcadas");
+
+				List<(int X, int Y)> internas = CelulasInternas(nivel, dados, cidade);
+				andares++;
+
+				if (internas.Count == 0)
+				{
+					if (File.Exists(caminho)) { File.Delete(caminho); apagados++; }
+					continue;
+				}
+
+				EscreverColisao(caminho, nivel.Width, nivel.Height, internas);
+				comInterior++;
+				total += internas.Count;
+
+				// RELER O QUE ACABOU DE SER ESCRITO, pelo mesmo motivo do `.agua` e do `.duro`: o que
+				// interessa nao e "o conversor decidiu N celulas", e "o objeto que o JOGO consulta
+				// responde N". O `CarregarDentro` RECUSA CALADO quando o tamanho nao bate, e uma recusa
+				// calada aqui seria verde na bancada e neve dentro do Banco em jogo.
+				var relido = Jandirus.Core.World.ZoneCollision.Montar(
+					nivel.Width, nivel.Height, new byte[(nivel.Width * nivel.Height + 7) / 8]);
+				int conferidas = 0, densas = 0;
+				if (!relido.CarregarDentro(File.ReadAllBytes(caminho)))
+					Console.WriteLine($"  {nome,-34} FALHOU: o .dentro escrito nao volta pelo CarregarDentro");
+				else
+					for (int y = 0; y < nivel.Height; y++)
+						for (int x = 0; x < nivel.Width; x++)
+						{
+							if (!relido.NasceuDentro(x, y)) continue;
+							conferidas++;
+							// QUANTAS SAO PAREDE/TELHADO: o predio entra inteiro, e o numero mostra o
+							// quanto do plano e casca (o que se ve de fora) e o quanto e piso.
+							if (col != null && col.BlockedCell(x, y)) densas++;
+						}
+
+				string aviso = conferidas == internas.Count ? "" : $"  <-- RELEU {conferidas}, DIVERGE";
+				Console.WriteLine($"  {nome,-34} {internas.Count,8} celulas sob teto"
+								  + $" ({densas} sao parede/telhado/porta fechada)"
+								  + (cidade ? " [com a cidade de Vegeta]" : "") + aviso);
+			}
+
+		Console.WriteLine($"andares: {andares} | com interior: {comInterior} | celulas: {total}"
+						  + (apagados > 0 ? $" | .dentro apagados: {apagados}" : ""));
 	}
 
 	// =====================================================================

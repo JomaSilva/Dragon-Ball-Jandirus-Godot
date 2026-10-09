@@ -241,6 +241,7 @@ public sealed partial class GameServer
 			OArremessoNoAr();
 			OMuroQueParaEOMuroQueCai();
 			AObraQueACaixaToca();
+			NoArAParedeDePredioPara();
 
 			// ---- AS DUAS QUEIXAS DO DONO, CRONOMETRADAS NUMA BRIGA DE VERDADE ----
 			// Um par de brigas de 60 s (com e sem o defeito injetado) alimenta as DUAS familias
@@ -1460,6 +1461,108 @@ public sealed partial class GameServer
 			if (daFrente != null) _noChao.Remove(daFrente);
 			if (rasteira != null || densa != null || daFrente != null) MandarObras(zona);
 			d.TiquesDeVoo = 0;
+		}
+	}
+
+	// =====================================================================
+	// 13) NO AR, A PAREDE DE PREDIO PARA
+	// =====================================================================
+	/// <summary>
+	/// ============================ O QUE NAO SE VOA POR CIMA, O ARREMESSADO NAO PASSA POR CIMA ============================
+	/// A familia 10 mede a frase do dono de 2026-09-07 -- no ar o arremesso passa por cima do muro, "isso conta pra
+	/// paredes que dao pra voar por cima". Em 2026-10-08 ele tirou uma parede dessa lista: "voar por cima de parede
+	/// de base de player n deveria ser possivel". Entao a parede de PREDIO (a celula que barra e esta sob teto, ver
+	/// `ClasseDePredio`) para o corpo arremessado em qualquer altura -- senao bastava um soco pra por alguem dentro da
+	/// casa dos outros, por cima da parede.
+	///
+	/// A CENA E A PAREDE SUL DO BANCO DA TERRA, numa coluna sem porta: o corpo paira quatro celulas ao sul dela e e
+	/// jogado pro norte, tres vezes.
+	///   A. abaixo da resistencia: para na ultima amostra livre antes da parede, e ela fica de pe;
+	///   B. o contra-exemplo (o defeito injetado do Core): o mesmo arremesso atravessa o Banco inteiro;
+	///   C. com a forca da parede: ela CAI la de cima tambem, como cai rente ao chao (familia 11), e o corpo passa dela.
+	/// O muro solto por cima do qual se continua passando e a familia 10, que nao mudou.
+	/// ==================================================================================================================
+	/// </summary>
+	private void NoArAParedeDePredioPara()
+	{
+		GD.Print("[kb] -- 13) NO AR, a parede de PREDIO para o arremesso --");
+		const int T = ZoneCollision.TileSize;
+		const int Coluna = 76, Parede = 262;   // a parede sul do Banco; (76,263..266) e chao livre ao ar livre
+		ServerPlayer d = Forjar("kbPredio", new Vec2(8 * T, 8 * T), 5_551);
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(d.Zone);
+
+		if (mapa == null) { AfirmarKb("(montagem) a zona da bancada tem mapa de colisao", false, $"zona {d.Zone.Name}"); return; }
+
+		bool cena = mapa.BlockedCell(Coluna, Parede) && CelulaInterna.SobTeto(mapa, Coluna, Parede, caiu: false)
+					&& mapa.BloqueadaNoArquivo(Coluna, Parede) && !mapa.Indestrutivel(Coluna, Parede);
+		for (int k = 1; k <= 4 && cena; k++)
+			cena = mapa.ServeDeChao(Coluna, Parede + k) && !CelulaInterna.SobTeto(mapa, Coluna, Parede + k, caiu: false);
+		AfirmarKb("(montagem) a parede sul do Banco barra, esta sob teto e cai; ao sul dela ha quatro celulas de chao ao ar livre",
+				  cena, $"zona {d.Zone.Name}");
+		if (!cena) return;
+
+		var origem = new Vec2(Coluna * T + T / 2f, (Parede + 4) * T + T / 2f);
+		float baseDaParede = (Parede + 1) * T;
+		HashSet<(int X, int Y)> caidasAntes =
+			_cenarioCaido.TryGetValue(d.Zone.Name, out HashSet<(int X, int Y)>? jaCaidas) ? [.. jaCaidas] : [];
+
+		void Jogar(double forca)
+		{
+			// SO O MEU VOO -- o `TickDoEmpurrao` e de todos (o mesmo cuidado das familias 10 e 11).
+			foreach (ServerPlayer o in TodosOsCorpos().ToList())
+				if (o != d) { o.TiquesDeVoo = 0; o.TiquesIniciaisDoVoo = 0; }
+			d.Pos = origem;
+			d.Voando = true;
+			d.Altitude = Voo.AlturaDePairar;
+			d.Ficha.Ki = d.Ficha.MaxKi;
+			d.Ficha.KO = false;
+			Arremessar(d, new Vec2(0, -1), forca, 6);
+			for (int i = 0; i < 90 && d.TiquesDeVoo > 0; i++) { TickDoEmpurrao(); TickDoVoo(d, Protocol.TickSeconds); }
+		}
+		// a borda de CIMA da caixa dos pes: e ela que encosta numa parede que fica ao norte
+		float TopoDaCaixa() => d.Pos.Y + MoveRules.FeetOffsetY - MoveRules.BodyHalfH;
+
+		try
+		{
+			AfirmarKb("(montagem) pairando, o corpo esta acima do cenario", Voo.AtravessaCenario(Voo.AlturaDePairar));
+
+			// ---- A. abaixo da resistencia ----
+			Jogar(0);
+			AfirmarKb("VOANDO acima do cenario, o arremesso PARA na parede de predio: a caixa dos pes fica ao sul dela",
+					  TopoDaCaixa() >= baseDaParede - 0.5f, $"topo da caixa em y {TopoDaCaixa():0.#}, a parede acaba em {baseDaParede:0}");
+			AfirmarKb("...depois de ter voado ate ela (mais de duas celulas pro norte)",
+					  origem.Y - d.Pos.Y > 2 * T, $"andou {origem.Y - d.Pos.Y:0} px");
+			AfirmarKb("...a parede continua de pe (forca abaixo da resistencia)", mapa.BlockedCell(Coluna, Parede));
+			AfirmarKb("...e a altura fica onde estava", Mathf.IsEqualApprox(d.Altitude, Voo.AlturaDePairar) && d.Voando,
+					  $"altitude {d.Altitude:0}, voando {d.Voando}");
+
+			// ---- B. o contra-exemplo: o mundo de antes ----
+			ClasseDePredio.QuemVoaAtravessaDeTeste = true;
+			try { Jogar(0); }
+			finally { ClasseDePredio.QuemVoaAtravessaDeTeste = false; }
+			AfirmarKb("(defeito injetado: parede de predio nao para quem voa) o mesmo arremesso passa POR CIMA da parede, pra dentro do Banco",
+					  TopoDaCaixa() < Parede * T && mapa.BlockedCell(Coluna, Parede),
+					  $"topo da caixa em y {TopoDaCaixa():0.#}, a parede comeca em {Parede * T}");
+
+			// ---- C. com a forca da parede, ela cai -- la de cima tambem ----
+			Jogar(Empurrao.ResistenciaPadrao);
+			AfirmarKb("com a forca da parede ela CAI tambem pra quem vem pelo ar, e o corpo passa dela (`Movement Effects.dm:66-68`)",
+					  !mapa.BlockedCell(Coluna, Parede) && TopoDaCaixa() < baseDaParede,
+					  $"parede de pe={mapa.BlockedCell(Coluna, Parede)} | topo da caixa em y {TopoDaCaixa():0.#}");
+		}
+		finally
+		{
+			// A PAREDE VOLTA -- esta Terra e a de todo mundo (o mesmo `finally` da familia 11).
+			if (_cenarioCaido.TryGetValue(d.Zone.Name, out HashSet<(int X, int Y)>? caidas))
+				foreach ((int X, int Y) cel in caidas.Where(c => !caidasAntes.Contains(c)).ToList())
+				{
+					caidas.Remove(cel);
+					mapa.Fechar(cel.X, cel.Y);
+				}
+			ClasseDePredio.QuemVoaAtravessaDeTeste = false;
+			d.TiquesDeVoo = 0;
+			d.Voando = false;
+			d.Altitude = 0f;
 		}
 	}
 }

@@ -151,7 +151,11 @@ public static class CombatMath
 		return dano * (soma / contados);
 	}
 
-	/// <summary>Armadura de ki: retorno decrescente, nunca zera o dano.</summary>
+	/// <summary>
+	/// Armadura de ki: retorno decrescente, nunca zera o dano. E o ramo TRUE do `ArmorCalc` (`calcs.dm:28-36`), o
+	/// do soco (`:169`). O tiro de ki do DM chama o ramo FALSE, um limiar -- divergencia declarada em
+	/// <see cref="DanoDeKi.Final"/>.
+	/// </summary>
 	public static double Armadura(double dano, double armadura)
 	{
 		double f = Math.Clamp(armadura, 0, 100) / 100;

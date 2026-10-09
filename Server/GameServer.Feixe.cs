@@ -85,6 +85,11 @@ public sealed partial class GameServer
 		{
 			if (o.Id == p.Dono || o.Combate == null || o.Combate.Intocavel) continue;
 			if (o.Id == p.Arrastando) continue;
+			// quem desviou nao corta o trecho que ele mesmo desviou (a dobra fica colada nele) -- `Projetil.Desviador`
+			if (p.Desviador != 0 && o.Id == p.Desviador && !Feixe.RamoPegaQuemDesviouDeTeste) continue;
+			// quem raspou neste feixe saiu da linha dele: o tronco passa sem ser cortado (no DM o corpo esta um tile
+			// ao lado, e so corta se voltar a pisar nele) -- `Projetil.ForaDaLinha`
+			if (p.EstaForaDaLinha(o.Id)) continue;
 			if (!Voo.PodeAcertar(Voo.Andar(p.Altitude), Voo.Andar(o.Altitude))) continue;
 			// A BEIRADA DO TRONCO, e nao o eixo (2026-09-23): o corpo encosta quando a meia largura dele alcanca a
 			// meia espessura DESENHADA do feixe. Com o raio fixo de 16 px, um corpo 80 px ao lado do eixo de um
@@ -142,14 +147,18 @@ public sealed partial class GameServer
 				Distancia = p.Distancia, MaxDistancia = p.MaxDistancia, RangeMod = p.RangeMod,
 				ModsBase = p.ModsBase, Bp = p.Bp, MultDeOnda = p.MultDeOnda, BaseDano = p.BaseDano, MaxDano = p.MaxDano,
 				Letal = p.Letal, Deflectivel = p.Deflectivel, Piercer = p.Piercer, Fisico = p.Fisico,
-				Paralisia = p.Paralisia, Empurra = p.Empurra, Altitude = p.Altitude,
-				SegundosPorTile = p.SegundosPorTile, Acumulado = p.Acumulado, VidaRestante = p.VidaRestante,
+				Paralisia = p.Paralisia, Empurra = p.Empurra, Altitude = p.Altitude, EstouraNoImpacto = p.EstouraNoImpacto,
+				SegundosPorTile = p.SegundosPorTile, Pressa = p.Pressa, Acumulado = p.Acumulado, VidaRestante = p.VidaRestante,
 				Canalizando = false,
 				Encostado = p.Encostado, AteMoerDeNovo = p.AteMoerDeNovo, Arrastando = p.Arrastando,
+				BatendoSemFerir = p.BatendoSemFerir,
 				Esvaziando = p.Esvaziando, FimPendente = p.FimPendente, JaDisputou = p.JaDisputou,
 				Nome = p.Nome, Arte = p.Arte, EscalaVisual = p.EscalaVisual, Invisivel = p.Invisivel,
 				UltimoSulco = p.UltimoSulco,
 				NascidoDoCorte = p.Id,
+				// quem raspou no feixe inteiro continua fora da linha da parte de la: ela e o mesmo raio, e ele pode
+				// estar parado justamente nela (copia, e nao a mesma lista: cada parte esquece por conta propria)
+				ForaDaLinha = p.ForaDaLinha == null ? null : [.. p.ForaDaLinha],
 			};
 			lista.Add(deLa);
 			_projeteisVivos++;
@@ -162,6 +171,7 @@ public sealed partial class GameServer
 		p.Distancia += (cabecaVelha - p.Pos).Length / ZoneCollision.TileSize;
 		p.Arrastando = 0;
 		p.Encostado = false;
+		p.BatendoSemFerir = 0;
 		p.AteMoerDeNovo = 0;
 		p.Esvaziando = false;
 		p.FimPendente = FimDeProjetil.Nenhum;

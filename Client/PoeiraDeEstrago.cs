@@ -82,6 +82,57 @@ public partial class PoeiraDeEstrago : Node2D
 	private static readonly Color TerraPadrao = new(0.46f, 0.36f, 0.26f);
 
 	/// <summary>
+	/// OS TRES MATERIAIS DE PARTICULA DA PRIMEIRA POEIRA DO PROCESSO, segurados pra sempre.
+	///
+	/// ============================ O SHADER MORRE COM O ULTIMO MATERIAL ============================
+	/// Um `ParticleProcessMaterial` nao tem shader proprio: o Godot gera um por COMBINACAO de recursos
+	/// ligados (curva de escala, rampa de cor, turbulencia...), divide-o entre todos os materiais da mesma
+	/// combinacao e conta os donos. Quando o ultimo dono some, o shader e LIBERADO -- e o proximo material
+	/// daquela combinacao o compila de novo, na hora, dentro da chamada que o criou. Os tres emissores daqui
+	/// sao tres combinacoes, e cada poeira fazia os tres materiais dela e os levava embora ao sumir.
+	///
+	/// Medido com janela (`--diagestouro`, 2026-10-08), no quadro em que a poeira nasce:
+	///
+	///   * a PRIMEIRA do processo: 321 ms com o cache de shader em disco vazio (`user://shader_cache` --
+	///     e o que toda bancada e toda tomada do trailer tem, por causa do APPDATA desviado), e uns 20 ms
+	///     com ele cheio;
+	///   * e DE NOVO uns 20 ms toda vez que a ultima poeira ja tinha sumido e o coletor do .NET passado:
+	///     numa luta, a cada troca de golpes separada por alguns segundos.
+	///
+	/// Era a travada do primeiro tiro de ki que acerta -- quem solta poeira naquele quadro e o
+	/// `World.RecolherTiro`.
+	///
+	/// Com um material de cada combinacao segurado aqui, o shader e compilado UMA vez por processo; e essa
+	/// vez e no lobby, pelo <see cref="Ensaiar"/> (ver `Aquecimento`). Os segurados sao os da primeira
+	/// poeira que nascer, qualquer que seja o rumo dela: rumo e espalhamento sao VALORES, e a combinacao e
+	/// a mesma. E o mesmo principio do `Aquecimento._presos`: segurar a referencia e o que mantem o cache.
+	/// ================================================================================================
+	/// </summary>
+	private static Material[]? _moldes;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagestouro`): a poeira NAO segura os materiais de particula -- o jogo de
+	/// antes: cada efeito leva os tres dele ao sumir, o Godot libera os shaders, e a poeira seguinte os compila
+	/// de novo no quadro em que nasce. Sempre falso em jogo.
+	/// </summary>
+	public static bool SemSegurarDeTeste;
+
+	/// <summary>
+	/// O ENSAIO DO LOBBY (ver `Aquecimento`): monta uma poeira de verdade -- os mesmos tres emissores do
+	/// <see cref="Soltar"/> -- so pra o processo pagar ALI, e nao no meio de uma luta, a compilacao dos
+	/// shaders de particula.
+	///
+	/// NAO E UM PEDIDO, e por isso nao passa pelo `Soltar`: nao conta no <see cref="PedidosDeTeste"/> (as
+	/// bancadas do cenario leem esse numero como "caiu poeira no mundo") nem ocupa vaga no teto dos vivos.
+	/// </summary>
+	public static void Ensaiar(Node pai, Vector2 onde)
+	{
+		var p = new PoeiraDeEstrago { Position = onde, ZIndex = 1 };
+		pai.AddChild(p);
+		p.Montar(default, TerraPadrao);
+	}
+
+	/// <summary>
 	/// Solta a poeira numa celula.
 	/// </summary>
 	/// <param name="rumo">
@@ -254,6 +305,19 @@ public partial class PoeiraDeEstrago : Node2D
 
 		// DEPOIS DE TODOS OS EMISSORES: quem decide quando o node morre sao eles. Ver `CalcularFim`.
 		CalcularFim();
+
+		// OS MATERIAIS DA PRIMEIRA POEIRA DO PROCESSO FICAM -- ver `_moldes`.
+		if (SemSegurarDeTeste) _moldes = null;
+		else _moldes ??= MateriaisDeParticula();
+	}
+
+	/// <summary>Os materiais de particula dos emissores deste efeito, um por emissor.</summary>
+	private Material[] MateriaisDeParticula()
+	{
+		var materiais = new List<Material>();
+		foreach (Node n in GetChildren())
+			if (n is GpuParticles2D { ProcessMaterial: { } m }) materiais.Add(m);
+		return [.. materiais];
 	}
 
 	// =====================================================================

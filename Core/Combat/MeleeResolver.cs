@@ -319,7 +319,7 @@ public static class MeleeResolver
 
 	/// <summary>
 	/// UM DANO JA CALCULADO NUM MEMBRO SORTEADO -- o `DamageLimb(dmg, selectzone, murderToggle, 5)`
-	/// do DM, que e como o projetil de ki fere (`objects.dm:440`).
+	/// do DM, que e como o projetil de ki fere (`objects.dm:439`).
 	///
 	/// ============================ POR QUE ELE ENTRA POR AQUI, E NAO POR UM CAMINHO PROPRIO ============================
 	/// A conta do dano de ki e outra (ver <see cref="DanoDeKi"/>), mas o que acontece DEPOIS do
@@ -334,6 +334,21 @@ public static class MeleeResolver
 	/// isto e um metodo separado e nao um parametro do <see cref="Resolver"/> -- juntar os dois
 	/// exigiria um `if` no meio da cadeia de melee pra pular metade dela.
 	/// ==========================================================================================================
+	///
+	/// ============================ O SORTEIO: DIVERGENCIA DECLARADA (dono, 2026-10-08) ============================
+	/// O `DamageLimb` do DM (`Injuries.dm:33-49`) nao sorteia UM membro. Cada membro entra numa lista com
+	/// `prob(targetchance)` se for da zona pedida, ou `prob(targetchance/4)` se nao for, e o golpe cai num deles ao
+	/// acaso -- ou em NENHUM, quando a lista sai vazia. E a zona que o tiro de ki passa e o `selectzone` do OBJETO
+	/// (`objects.dm:35`), que nenhum verb de ki preenche: la o ki nunca mira.
+	///
+	/// Pela tabela do `mobparts.dm:119-293` sao 22,3% de impactos de ki sem membro nenhum (MEDIDO no BYOND 516: 126
+	/// de 572, e 39 e 52 de 200 noutra sessao) e so 22,4% em cabeca, torso ou abdomen. Aqui o
+	/// <see cref="Body.Sortear"/> sempre acha um membro e o tiro segue a mira de quem ATIRA (`GameServer.Acertar`):
+	/// nucleo em 46,7% dos impactos sem mira, 68% mirando o torso.
+	///
+	/// ELE ANDA JUNTO COM A CADENCIA DO RAIO, que tambem diverge -- os numeros dos dois estao em
+	/// <see cref="Projetil.SegundosPorCicloDeBeam"/>.
+	/// =====================================================================================================================
 	/// </summary>
 	public static GolpeResultado AplicarDanoPronto(CombatState d, double dano, bool letal,
 												   Random rng, string? zona = null)

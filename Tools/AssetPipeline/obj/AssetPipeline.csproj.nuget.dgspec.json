@@ -15,7 +15,7 @@
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "E:\\Users\\Joao\\Desktop\\dragon-ball-jandirus\\NuGet.Config",
-          "C:\\Users\\Joao\\AppData\\Roaming\\NuGet\\NuGet.Config"
+          "E:\\Users\\Joao\\Desktop\\dragon-ball-jandirus\\Trailer\\bruto\\appdata\\_rodada3\\NuGet\\NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net8.0"
@@ -91,7 +91,7 @@
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "E:\\Users\\Joao\\Desktop\\dragon-ball-jandirus\\NuGet.Config",
-          "C:\\Users\\Joao\\AppData\\Roaming\\NuGet\\NuGet.Config"
+          "E:\\Users\\Joao\\Desktop\\dragon-ball-jandirus\\Trailer\\bruto\\appdata\\_rodada3\\NuGet\\NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net8.0"

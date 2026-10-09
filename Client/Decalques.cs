@@ -181,6 +181,12 @@ public partial class Decalques : Node2D
 		_ => ("", ""),
 	};
 
+	/// <summary>
+	/// O arquivo da arte de um tipo de decalque. E por aqui que o `Aquecimento` sabe o que trazer no lobby (as duas
+	/// crateras e a fumaca), e que a bancada pergunta ao Godot se elas estao na memoria.
+	/// </summary>
+	public static string CaminhoDaArte(Protocol.Decal t) => Arte(t).Folha;
+
 	/// <summary>1280x720 de arte pra um buraco de um tile: a fumaca nasce pequena.</summary>
 	private const float EscalaDaFumaca = 0.07f;
 
@@ -188,6 +194,37 @@ public partial class Decalques : Node2D
 	private const float CrescimentoDaFumaca = 2.6f;
 
 	private readonly Dictionary<string, SpriteFrames?> _folhas = [];
+
+	/// <summary>
+	/// ============================ A TEXTURA SOLTA TEM DONO ============================
+	/// A fumaca nao e folha: e um PNG de 1280x720 (ver <see cref="Arte"/>), e o <see cref="Plantar"/> fazia um
+	/// `GD.Load` a cada fumaca plantada. Carregar assim nao segura nada. Quem segurava a textura era o `Sprite2D` da
+	/// propria nuvem, que vive 2,6 s; dali em diante so o involucro C# dela, ate o coletor do .NET passar -- e ai o
+	/// Godot a tira do cache, e a fumaca seguinte a le do disco de novo, descomprimida de novo, pela thread
+	/// principal, no quadro em que nasce.
+	///
+	/// MEDIDO em 2026-10-08 pela `--diagestouro --temas --cenas ... --cenacoleta` (uma coleta forcada entre uma cena e
+	/// a seguinte): 13,6 a 15,4 ms a cada leitura, em seis cenas de seis -- sozinha, mais da metade do quadro do beat
+	/// que ASSUME de uma cinematica de transformacao (18 a 38 ms). E nao e so da cinematica: toda cratera de combate
+	/// planta a mesma fumaca (`World.Decalques`).
+	///
+	/// ESTATICO, como a `FolhasPresas` e os recursos do `Aquecimento`: o custo e do PROCESSO, e este node morre a cada
+	/// troca de zona. Sao 3,7 MB de textura que nao voltam -- contra a tela parada a cada chao que abre.
+	/// (O `Aquecimento` ainda a traz no lobby, numa thread: com ele nem a PRIMEIRA fumaca le disco.)
+	/// ==================================================================================
+	/// </summary>
+	private static readonly Dictionary<string, Texture2D> _soltas = new(StringComparer.Ordinal);
+
+	private static Texture2D? TexturaSolta(string caminho)
+	{
+		// (o jogo de antes, pra bancada: ver `Aquecimento.SemAdiantarACenaDeTeste`)
+		if (Aquecimento.SemAdiantarACenaDeTeste) return GD.Load<Texture2D>(caminho);
+		if (_soltas.TryGetValue(caminho, out Texture2D? presa)) return presa;
+
+		var textura = GD.Load<Texture2D>(caminho);
+		if (textura != null) _soltas[caminho] = textura;
+		return textura;
+	}
 
 	/// <summary>
 	/// Os decalques com prazo, com o TIPO de cada um junto.
@@ -241,7 +278,8 @@ public partial class Decalques : Node2D
 
 	public override void _Ready()
 	{
-		Instancia = this;
+		// (o palco do ensaio do lobby nao e o `Decalques` do mundo: ver `Ensaiar`)
+		if (!_deEnsaio) Instancia = this;
 		// ATRAS DOS CORPOS. Decalque e chao: desenhado por cima, ele taparia o personagem que
 		// acabou de cair nele.
 		ZIndex = -2;
@@ -249,6 +287,32 @@ public partial class Decalques : Node2D
 	}
 
 	public override void _ExitTree() { if (Instancia == this) Instancia = null; }
+
+	/// <summary>Este node e o palco do ensaio do lobby, e nao o `Decalques` do mundo. Ver <see cref="Ensaiar"/>.</summary>
+	private bool _deEnsaio;
+
+	/// <summary>
+	/// O ENSAIO DO LOBBY (ver `Aquecimento.AtosDoChao`): uma cratera e a fumaca dela, plantadas pelo <see cref="Plantar"/>
+	/// de producao num `Decalques` so do palco, fora da tela -- pra o processo pagar ALI, e nao no primeiro chao que
+	/// abre, o primeiro uso do caminho inteiro: o sorteio da animacao, o sprite, os tweens que fazem a cratera crescer
+	/// e a fumaca inchar e se dissolver.
+	///
+	/// MEDIDO em 2026-10-08 pela `--diagestouro --temas --cenas`, no beat que ASSUME: a cratera da primeira cena do
+	/// processo custava 9,5 ms e a de uma cena seguinte, com a mesma leitura de disco (a folha da cratera pequena, na
+	/// primeira vez dela), 5,9 -- os 3 a 4 de diferenca sao codigo rodando pela primeira vez. Os arquivos saem do
+	/// quadro pela fila do `Aquecimento`; o codigo, so rodando.
+	///
+	/// O PALCO NAO E O `Decalques` DO MUNDO: nao toma a <see cref="Instancia"/> (o ensaio cai nos primeiros quadros do
+	/// mundo quando o login foi mais rapido que ele, e ali ja ha um dono) e nao entra nos contadores de bancada.
+	/// Morre com o palco do aquecimento, e leva a cratera e a fumaca junto.
+	/// </summary>
+	public static void Ensaiar(Node2D pai, Vector2 onde)
+	{
+		var palco = new Decalques { Name = "DecalquesDoEnsaio", _deEnsaio = true };
+		pai.AddChild(palco);
+		palco.Plantar(Protocol.Decal.CrateraGrande, onde, Facing.South);
+		palco.Plantar(Protocol.Decal.Fumaca, onde, Facing.South);
+	}
 
 	/// <summary>Some com tudo. Chamado na troca de zona -- marca da Terra nao vai pra Namek.</summary>
 	/// <summary>
@@ -352,7 +416,8 @@ public partial class Decalques : Node2D
 						PecaDeCorpo peca = PecaDeCorpo.Nenhuma, double? restaSegundos = null)
 	{
 		if (restaSegundos is <= 0) return;
-		PedidosDeTeste++;
+		// (o ensaio do lobby planta por esta mesma porta e nao entra na conta de bancada nenhuma)
+		if (!_deEnsaio) PedidosDeTeste++;
 		if (tipo == Protocol.Decal.Sangue) { SangueDeTeste++; OndeSangrouDeTeste = onde; }
 		if (tipo == Protocol.Decal.Membro) { MembrosDeTeste++; UltimaPecaDeTeste = peca; }
 
@@ -366,7 +431,7 @@ public partial class Decalques : Node2D
 		if (!solta)
 		{
 			if (!_folhas.TryGetValue(caminho, out folha))
-				_folhas[caminho] = folha = GD.Load<SpriteFrames>(caminho);
+				_folhas[caminho] = folha = FolhasPresas.Carregar(caminho);
 			if (folha == null) return;
 
 			// A PECA ESCOLHE PELO NOME, nao pelo sorteio do `Escolher`: a folha tem dez recortes que
@@ -429,7 +494,7 @@ public partial class Decalques : Node2D
 		Node2D s;
 		if (solta)
 		{
-			var tex = GD.Load<Texture2D>(caminho);
+			Texture2D? tex = TexturaSolta(caminho);
 			if (tex == null) return;
 			s = new Sprite2D { Texture = tex, Position = onde, Scale = escala, Modulate = new Color(1, 1, 1, 0.75f) };
 
@@ -505,7 +570,7 @@ public partial class Decalques : Node2D
 		}
 
 		_vivos.Add((s, _relogio + prazo, tipo));
-		VivosDeTeste = _vivos.Count;
+		if (!_deEnsaio) VivosDeTeste = _vivos.Count;
 	}
 
 	/// <summary>
@@ -555,6 +620,6 @@ public partial class Decalques : Node2D
 			_vivos[i].No.QueueFree();
 			_vivos.RemoveAt(i);
 		}
-		VivosDeTeste = _vivos.Count;
+		if (!_deEnsaio) VivosDeTeste = _vivos.Count;
 	}
 }

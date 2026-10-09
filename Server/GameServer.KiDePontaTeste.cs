@@ -76,6 +76,25 @@ public partial class GameServer
 	/// </summary>
 	private const int CampoDaMetadeViva = TilesAteOBonecoDaPonta + 1;
 
+	/// <summary>
+	/// QUANTO O TIRO HONESTO DA METADE VIVA TIRA DO BONECO, de tanque cheio -- o BP do boneco e acertado pra isto
+	/// (ver o <see cref="ArmarAMetadeViva"/>).
+	///
+	/// ============================ PELO TIRO, E NAO POR UMA FRACAO DO BP ============================
+	/// O tiro honesto tem que ser GOLPE: abaixo de `DanoDeKi.CorteDoFraco` (10, o `objects.dm:355-357`) a bola
+	/// estoura sem ferir e sem relato, e "o tiro HONESTO acerta" le zero acerto. Um boneco com o poder de quem atira
+	/// leva uns nove -- ja nao serve. E "a metade do poder" tambem nao: a potencia do tiro depende da CLASSE que a
+	/// conta nova sorteia (`Projetil.ModsDoTiro` e `Ekioff * Ekiskill`), e com a metade do BP cru o mesmo robo
+	/// tirou de 12 a 27 por acerto em tres rodadas de 2026-10-08 -- uma classe fraca de ki cairia abaixo do corte
+	/// depois do relogin com o jogo certo, e uma forte somava 85 em quatro acertos.
+	///
+	/// DEZOITO CABE DOS DOIS LADOS. No piso do Ki (o `kiratio` nao desce de 0,6, e o poder do tiro cai com ele)
+	/// ainda sao 10,8, acima do corte. E os quatro tiros da metade viva (dois antes do relogin, dois depois) somam
+	/// no maximo 72: nem caindo todos no mesmo nucleo o derrubam (`Regras.LimiarQuebra`: ele so cede com 80).
+	/// ===============================================================================================
+	/// </summary>
+	private const double DanoDoTiroHonestoDaPonta = 18;
+
 	private void AfirmarPp(string oque, bool passou, string detalhe = "")
 	{
 		if (passou) { _ppOk++; GD.Print($"[kiponta]   OK    {oque}"); return; }
@@ -215,6 +234,12 @@ public partial class GameServer
 		// UM PONTO A CADA 0,1 (`round((amount - rangemodifier) * 10)`) -- e o ALERTA do DM diz 2.
 		new(Compra.DistanciaMod, ":1377", null, TecnicaCustomizada.DistModPadrao + 0.1,
 			t => t.DistanciaMod, +0.1, +1),
+
+		// O RAIO TELEGUIADO NAO E DO `customattacks.dm`: e pedido do dono (2026-10-09), com o preco que o painel
+		// ANTIGO de bolas anuncia pra mesma coisa (`blasts/GenericBlastCustomization.dm:122`, "Costs 2").
+		new(Compra.TeleguiadoLigar,    "dono, 2026-10-09", null, 0, t => t.Teleguiado ? 1 : 0, +1, +2),
+		new(Compra.TeleguiadoDesligar, "dono, 2026-10-09", t => t.Aplicar(Compra.TeleguiadoLigar, 0, out _), 0,
+			t => t.Teleguiado ? 1 : 0, -1, -2),
 	];
 
 	/// <summary>
@@ -523,8 +548,8 @@ public partial class GameServer
 		// A grade acima compara duas contas; esta compara VIDA PERDIDA depois de o tiro nascer,
 		// voar, colidir e passar pelo `AplicarDanoPronto`. Quarenta tiros em cada um porque o membro
 		// atingido e SORTEADO -- com um tiro so, mediria-se o sorteio.
-		double perdaFraca = VidaPerdidaEmTiros(fatorDeDefesa: 1, tiros: 40);
-		double perdaForte = VidaPerdidaEmTiros(fatorDeDefesa: 2, tiros: 40);
+		double perdaFraca = VidaPerdidaEmTiros(fatorDeDefesa: 1, tiros: 40, maisDefendido: 2);
+		double perdaForte = VidaPerdidaEmTiros(fatorDeDefesa: 2, tiros: 40, maisDefendido: 2);
 		GD.Print($"[kiponta]      vida perdida em 40 tiros: defesa 1x -> {perdaFraca:0.##}, "
 				 + $"defesa 2x -> {perdaForte:0.##} (razao {perdaFraca / Math.Max(perdaForte, 1e-9):0.##})");
 		AfirmarPp("ao vivo: quem tem o DOBRO de defesa de ki perde ~4x menos vida nos mesmos 40 tiros",
@@ -567,14 +592,28 @@ public partial class GameServer
 	///     primeira rodada mediu, 1,69 no lugar de ~4;
 	///   * o NOCAUTE, pelo mesmo motivo: quem cai deixa de ser o mesmo alvo.
 	/// ==========================================================================================================
+	///
+	/// ============================ O TIRO E O MESMO NAS DUAS MEDIDAS, E E GOLPE NAS DUAS ============================
+	/// A base era 1: uns 7 de dano por tiro no corpo de defesa 1x e 1,8 no de 2x. Abaixo de
+	/// `DanoDeKi.CorteDoFraco` (10, o `objects.dm:355-357`) o tiro estoura sem ferir, e a cena passou a
+	/// medir 0 contra 0. A base agora e a de um golpe (12) no MAIS DEFENDIDO da comparacao
+	/// (<paramref name="maisDefendido"/>, o mesmo numero nas duas chamadas -- e isso que faz o tiro ser
+	/// o mesmo): o menos defendido leva o quadrado da diferenca a mais (48 com o dobro), longe de
+	/// saturar um membro de 100 restaurado a cada tiro (o piso do nao-letal fica em 19,8) e longe do
+	/// nocaute (um nucleo cai abaixo de 20% com 80).
+	/// ===============================================================================================================
 	/// </summary>
-	private double VidaPerdidaEmTiros(double fatorDeDefesa, int tiros)
+	private double VidaPerdidaEmTiros(double fatorDeDefesa, int tiros, double maisDefendido)
 	{
 		Vec2 raia = CorredorLivre(20);
 		ServerPlayer atirador = Forjar("Metralhador", raia, bp: 5_000);
 		atirador.Facing = Facing.East;
 		ServerPlayer alvo = Forjar("Saco", new Vec2(raia.X + 160, raia.Y), bp: 5_000);
-		alvo.Ficha.Ekidef *= fatorDeDefesa;
+
+		double ekidefDoSaco = alvo.Ficha.Ekidef;
+		alvo.Ficha.Ekidef = ekidefDoSaco * maisDefendido;
+		double baseDano = BaseQueFere(atirador, alvo, TipoDeProjetil.Blast);
+		alvo.Ficha.Ekidef = ekidefDoSaco * fatorDeDefesa;
 
 		double periciaFixa = alvo.Ficha.kidefenseskill;
 		double defesaFixa = alvo.Ficha.Ekidef;
@@ -588,7 +627,7 @@ public partial class GameServer
 
 			Projetil p = Disparar(atirador, new ReceitaDeProjetil
 			{
-				Tipo = TipoDeProjetil.Blast, BaseDano = 1, Velocidade = 5,
+				Tipo = TipoDeProjetil.Blast, BaseDano = baseDano, Velocidade = 5,
 				AlcanceTiles = 20, Deflectivel = false, Nome = "tiro de bancada",
 			});
 			for (int k = 0; k < 120 && p.Vivo; k++) TickDosProjeteis(Protocol.TickSeconds);
@@ -615,15 +654,36 @@ public partial class GameServer
 	{
 		GD.Print("[kiponta] -- 4) OS TRES TIPOS VOAM DIFERENTE, E O TELEGUIADO PERSEGUE");
 
-		// ---- AS DUAS ESCALAS DO DM, QUE NAO SAO A MESMA ----
-		// bola/teleguiado: `lag = max(1, round(4-speed))` tiques de 0,1 s -> 0,3 s por tile no 1.
-		// raio:            `beamspeed = 1/speed` tiques de 0,1 s          -> 0,1 s por tile no 1.
-		AfirmarPp("com `speed = 1` a bola leva 3x o tempo do raio por tile (as duas escalas do DM)",
-				  Math.Abs(Projetil.AtrasoDeBola(1) / Projetil.AtrasoDeRaio(1) - 3) < 1e-6,
-				  $"bola {Projetil.AtrasoDeBola(1):0.###}s, raio {Projetil.AtrasoDeRaio(1):0.###}s");
+		// ---- AS DUAS ESCALAS, QUE NAO SAO A MESMA -- E QUE NAO SAO MAIS AS DO DM (dono, 2026-10-08) ----
+		// No DM: bola/teleguiado `lag = max(1, round(4-speed))` tiques -> 0,3 s por tile no 1 (3,3 tiles/s);
+		//        raio `beamspeed = 1/speed` tiques -> 0,1 s por tile no 1 (10 tiles/s).
+		// O dono pediu os ataques de ki mais rapidos, "principalmente esferas": a bola comum foi a 16 tiles por
+		// segundo e o raio a 20 (`Projetil.AtrasoDeBola`, `Projetil.AtrasoDeRaio`). O que a regua cobra e o
+		// MOTIVO do pedido: nenhum dos dois pode perder de quem corre.
+		float andando = MoveRules.SpeedPx(1f) / ZoneCollision.TileSize;
+		float correndo = MoveRules.SpeedPx(1f, correndo: true) / ZoneCollision.TileSize;
+		bool TiroGanhaDeQuemCorre() => 1 / Projetil.AtrasoDeBola(1) > correndo && 1 / Projetil.AtrasoDeRaio(1) > correndo;
+		AfirmarPp("com `speed = 1` a bola anda 16 tiles por segundo e o raio 20: o raio na frente, e os DOIS ganham de quem corre",
+				  Math.Abs(1 / Projetil.AtrasoDeBola(1) - 16) < 1e-6 && Math.Abs(1 / Projetil.AtrasoDeRaio(1) - 20) < 1e-6
+				  && TiroGanhaDeQuemCorre(),
+				  $"bola {1 / Projetil.AtrasoDeBola(1):0.#} tiles/s, raio {1 / Projetil.AtrasoDeRaio(1):0.#}, corrida {correndo:0.#}");
 		AfirmarPp("...e a velocidade 5 da loja acelera os dois, cada um na sua escala",
 				  Projetil.AtrasoDeBola(5) < Projetil.AtrasoDeBola(1)
 				  && Projetil.AtrasoDeRaio(5) < Projetil.AtrasoDeRaio(1));
+		AfirmarPp("...e a ordem da bola e a do DM: quem tem mais `speed` nunca anda menos (lag 4, 3, 2, 1)",
+				  Projetil.AtrasoDeBola(0.2) > Projetil.AtrasoDeBola(1) && Projetil.AtrasoDeBola(1) > Projetil.AtrasoDeBola(2)
+				  && Projetil.AtrasoDeBola(2) > Projetil.AtrasoDeBola(3) && Projetil.AtrasoDeBola(3) == Projetil.AtrasoDeBola(5),
+				  $"{1 / Projetil.AtrasoDeBola(0.2):0.#} / {1 / Projetil.AtrasoDeBola(1):0.#} / {1 / Projetil.AtrasoDeBola(2):0.#} / {1 / Projetil.AtrasoDeBola(3):0.#} tiles/s");
+
+		// O JOGO DE ANTES: as duas escalas do DM, num mundo em que o corpo anda 5 tiles por segundo e corre a 11.
+		Projetil.VelocidadeDoDmDeTeste = true;
+		try
+		{
+			AfirmarPp("(defeito injetado: a velocidade do DM) a bola comum perde de quem ANDA e o raio de quem corre",
+					  1 / Projetil.AtrasoDeBola(1) < andando && 1 / Projetil.AtrasoDeRaio(1) < correndo && !TiroGanhaDeQuemCorre(),
+					  $"bola {1 / Projetil.AtrasoDeBola(1):0.#} tiles/s contra {andando:0.#} andando; raio {1 / Projetil.AtrasoDeRaio(1):0.#} contra {correndo:0.#} correndo");
+		}
+		finally { Projetil.VelocidadeDoDmDeTeste = false; }
 
 		// ============================ MEDIDO NO AR: MEIO SEGUNDO DE CADA UM ============================
 		// O RAIO PRECISA DE UM CANAL PRA EXISTIR, e isto e regra e nao detalhe de bancada: um beam
@@ -670,8 +730,9 @@ public partial class GameServer
 			AfirmarPp("o raio existe (ele so nasce de um CANAL -- ver a nota acima)", raio is { Vivo: true });
 		}
 		GD.Print($"[kiponta]      meio segundo de voo: raio {andouRaio:0} px, bola {andouBola:0} px");
-		AfirmarPp("em meio segundo de voo o RAIO anda ~3x o que a BOLA anda -- medido, nao tabelado",
-				  andouRaio / Math.Max(andouBola, 1e-6) > 2.5,
+		const int Tile = ZoneCollision.TileSize;
+		AfirmarPp("em meio segundo de voo a BOLA anda ~8 tiles e o RAIO ~10 -- medido, nao tabelado",
+				  Math.Abs(andouBola - 8 * Tile) < Tile && Math.Abs(andouRaio - 10 * Tile) < Tile && andouRaio > andouBola,
 				  $"raio {andouRaio:0} px, bola {andouBola:0} px");
 		LimparTudoDaBancada();
 
@@ -701,10 +762,23 @@ public partial class GameServer
 		LimparTudoDaBancada();
 	}
 
-	/// <summary>Um tiro contra um alvo que FOGE transversalmente. Devolve se acertou.</summary>
+	/// <summary>
+	/// Um tiro contra um alvo que FOGE transversalmente. Devolve se acertou A PRESA.
+	///
+	/// ============================ NO ANDAR MAIS ALTO, E O ACERTO TEM DONO ============================
+	/// A cena voava rasante (`Voo.AlturaQueAtravessa + 1`, o andar 1) e lia so o motivo do fim (`Acertou`). So que
+	/// do andar 1 um tiro ALCANCA O CHAO (`Voo.PodeAcertar`), e esta raia tem 60 tiles de mundo vivo pela frente:
+	/// na rodada de 2026-10-08 um cidadao que passava levou as duas bolas (*"Cacador NOCAUTEOU Pirozhki"*) -- o
+	/// teleguiado "alcancou" sem tocar na presa e o contra-exemplo reprovou sem defeito nenhum no jogo.
+	///
+	/// Do andar 3 so se alcanca quem voa alto, e ninguem do mundo voa ali num boot em paz. E "acertou" passou a
+	/// ser o credito do impacto NA PRESA (`UltimoAgressor`, o passo 1 do `Acertar`): um tiro que morre noutro
+	/// corpo nao conta pra nenhum dos dois lados da comparacao.
+	/// ==================================================================================================
+	/// </summary>
 	private bool TiroContraQuemFoge(TipoDeProjetil tipo, out Vec2 ondeParou)
 	{
-		float noAr = Voo.AlturaQueAtravessa + 1;
+		float noAr = Voo.AlturaMaxima * 0.9f;
 		Vec2 pista = CorredorLivre(4);
 		ServerPlayer atirador = Forjar("Cacador", pista, bp: 5_000);
 		atirador.Facing = Facing.East;
@@ -713,7 +787,7 @@ public partial class GameServer
 		presa.Altitude = noAr;
 
 		// `Deflectivel = false` PELA RAZAO DO `RaioDaBancada` (`GameServer.ProjeteisTeste.cs:2167`): o
-		// que se mede aqui e a PERSEGUICAO, e o `Acertar` sorteia deflexao em todo impacto contra quem
+		// que se mede aqui e a PERSEGUICAO, e o `Acertar` sorteia deflexao em todo impacto acima do corte dos fracos contra quem
 		// esta de pe (`GameServer.Projeteis.cs:1190-1240`) -- com 5.000 contra 5.000 e `base_damage` 15
 		// da 0,0044% por impacto, e um `Defletido` no fim da caca viraria "o teleguiado nao alcancou".
 		// Vale pros DOIS tipos: o teleguiado e o contra-exemplo passam pela mesma receita de proposito.
@@ -728,7 +802,7 @@ public partial class GameServer
 			TickDosProjeteis(Protocol.TickSeconds);
 		}
 		ondeParou = p.Pos;
-		bool acertou = p.Fim == FimDeProjetil.Acertou;
+		bool acertou = p.Fim == FimDeProjetil.Acertou && presa.UltimoAgressor == atirador.Id;
 		LimparTudoDaBancada();
 		return acertou;
 	}
@@ -803,6 +877,10 @@ public partial class GameServer
 			// A BOCA: texto e quadros de Opus. A voz nao tem nem campo de destino (ver o cabecalho dela
 			// em `Net/Protocol.cs`) -- nao ha numero ali que chegue perto de um tiro
 			Protocol.C2S.Chat, Protocol.C2S.Voz,
+			// A OBRA (2026-10-09): "erga / desmanche um bloco NESTA celula" -- a celula, o numero do
+			// catalogo e a senha da porta. Alcance, terreno, dono e teto quem confere e o servidor
+			// (`GameServer.RecusaDeErguer`), e bloco nao fere ninguem
+			Protocol.C2S.Bloco,
 		];
 		static List<string> SemArgumento(Protocol.C2S[] lista) =>
 			[.. Enum.GetValues<Protocol.C2S>().Where(c => Array.IndexOf(lista, c) < 0).Select(c => c.ToString())];
@@ -1901,7 +1979,7 @@ public partial class GameServer
 			Pos = new Vec2(vivo.Pos.X + TilesAteOBonecoDaPonta * ZoneCollision.TileSize, vivo.Pos.Y),
 			Conta = "bancada_ponta",
 			Slot = 0,
-			// ============================ O BONECO E TAO FORTE QUANTO QUEM ATIRA ============================
+			// ============================ O BONECO TEM A METADE DO PODER DE QUEM ATIRA ============================
 			// A primeira versao dava 2.000 de BP contra os 200.000 do jogador, e o `BPModulus` do DM
 			// -- que multiplica a cadeia INTEIRA pela razao de poder -- transformava um tiro de
 			// bancada em 1.014 de dano: o boneco morria no primeiro, sumia da lista de alvos, e a
@@ -1913,11 +1991,16 @@ public partial class GameServer
 			// lado ruim: ~100 por tiro num membro de 100 e nocaute no primeiro acerto num nucleo
 			// (`Regras.LimiarQuebra`), ou seja, conforme o membro que o dado sorteasse.
 			//
-			// PODER IGUAL: o `BPModulus` vale 1, cada acerto tira uns dez de um membro, e os quatro
-			// tiros da metade viva (dois antes do relogin, dois depois) nao derrubam ninguem nem
-			// caindo todos no mesmo lugar.
-			// ==========================================================================================
-			Ficha = new Fighter { Race = "Human", BP = vivo.Ficha.BP },
+			// A terceira dava PODER IGUAL: `BPModulus` 1, uns nove de dano por acerto de tanque cheio e
+			// uns seis depois do relogin (o Ki volta como saiu, e o poder expresso cai com ele). Com o
+			// corte dos fracos (`DanoDeKi.CorteDoFraco`, o `objects.dm:355-357`) isso nao e golpe: a
+			// bola estoura sem ferir e sem relato, e "o tiro HONESTO acerta" passou a ler zero acerto.
+			//
+			// A QUARTA nasce com a metade e e ACERTADA PELO TIRO logo abaixo: quem diz o tamanho do boneco e o
+			// dano que o tiro honesto faz nele (`DanoDoTiroHonestoDaPonta`, que explica por que nao e uma
+			// fracao fixa do BP).
+			// ================================================================================================
+			Ficha = new Fighter { Race = "Human", BP = vivo.Ficha.BP / 2 },
 			Livro = new SkillBook(),
 		};
 		boneco.Ficha.Class = "Normal";
@@ -1925,7 +2008,23 @@ public partial class GameServer
 		boneco.Ficha.Ki = boneco.Ficha.MaxKi;
 		boneco.Ficha.Tick(agoraMs: NowMs());
 
+		// O BP DO BONECO, ACERTADO PELO TIRO (`DanoDoTiroHonestoDaPonta`): a bola mais forte que os pontos de uma
+		// conta nova compram -- a que o robo inventa, potencia 1,3 -- pela conta de producao, com a ficha de quem
+		// vai atirar. O dano e inversamente proporcional ao poder de quem apanha (`BPModulus`), entao uma regra de
+		// tres acerta; o placar diz o numero de antes e o de depois.
+		double potencia = TecnicaCustomizada.DanoPadrao + TecnicaCustomizada.PontosTotais * TecnicaCustomizada.DanoPasso;
+		double DoTiroHonesto() => DanoDeKi.Final(Projetil.ModsDoTiro(vivo.Ficha, TipoDeProjetil.Blast) * potencia, potencia, 0,
+												 vivo.Ficha.expressedBP, boneco.Combate!, false);
+		double comAMetadeDoBp = DoTiroHonesto();
+		boneco.Ficha.BP *= comAMetadeDoBp / DanoDoTiroHonestoDaPonta;
+		boneco.Ficha.Statify();
+		boneco.Ficha.Ki = boneco.Ficha.MaxKi;
+		boneco.Ficha.Tick(agoraMs: NowMs());
+
 		GD.Print($"[kiponta] o boneco '{boneco.Name}' (id {boneco.Id}) esta de pe a {TilesAteOBonecoDaPonta} tiles de "
-				 + $"'{vivo.Name}' -- a metade viva (`--diagki`) comeca agora.");
+				 + $"'{vivo.Name}' -- a metade viva (`--diagki`) comeca agora. O tiro honesto de {vivo.Ficha.Class} (bola de "
+				 + $"potencia {potencia:0.0}) faria {comAMetadeDoBp:0.##} nele com a metade do BP; acertado pra {DoTiroHonesto():0.##} "
+				 + $"(poder expresso {boneco.Ficha.expressedBP:0} contra {vivo.Ficha.expressedBP:0}, `BPModulus` "
+				 + $"{CombatMath.BpModulus(vivo.Ficha.expressedBP, boneco.Ficha.expressedBP):0.00}).");
 	}
 }

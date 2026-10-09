@@ -56,11 +56,32 @@ REM     %%APPDATA%%\Godot\app_userdata\Dragon ball Jandirus\embateki-*.png
 REM  e as que respondem sozinhas sao as TIRAS, que a propria bancada cola:
 REM     embateki-tira-do-empurrao.png   encontro / empurrando / vitoria
 REM     embateki-tira-do-empate.png     a explosao, e os dois voando
+REM     embateki-tira-da-estrela.png    a estrela sem pintar (defeito injetado) /
+REM                                     a producao / a mascara do que ela pintou
+REM     embateki-tira-das-pontas.png    as duas cabecas do Final Flash sem estrela
+REM                                     e sem halo: pintadas 8 px adiante da ponta
+REM                                     (defeito injetado) / a producao. MAGENTA e
+REM                                     o que as DUAS pintaram: uma dentro da outra
+REM
+REM  (2026-10-08) O ENCONTRO DAS CABECAS E LIDO NA FOTO, nas cenas 1 e 3. A linha
+REM  de antes lia a ponta que cada node ANUNCIA (um campo), e dizia "0,0 px entre
+REM  elas" com cada cabeca do Final Flash pintada de 7 a 20 px alem da propria
+REM  ponta -- uma dentro da outra, debaixo da estrela: a bola da MAO nao cabia no
+REM  feixe curto da disputa (consertado no FeixeDeKi.gdshader). Agora cada cabeca
+REM  e fotografada sozinha e a regua mede a tinta dela; o Ki Wave da cena 1 sai
+REM  recortado e ampliado em embateki-1-pontas.png.
 REM
 REM  `--horateste 0.45` adianta o relogio pra o comeco da tarde: a hora do mundo
-REM  e sorteada, e uma foto de duelo as 3 da manha mostra dois vultos. O CLIMA
-REM  continua sorteado (o `--climateste` so forca clima RUIM, nao o limpo), entao
-REM  a foto pode sair com chuva -- os feixes aparecem do mesmo jeito.
+REM  e sorteada, e uma foto de duelo as 3 da manha mostra dois vultos.
+REM
+REM  (2026-10-08) O CLIMA A BANCADA CRAVA SOZINHA: ceu limpo, pedido ao servidor
+REM  antes da primeira cena. Ele era sorteado, e a foto 6 reprovava "o miolo da
+REM  estrela esta aceso" com 0,83 toda vez que o dia do jogo caia em tempestade:
+REM  o veu do clima fica na frente do ki tambem, e a regua lia o ceu (e as
+REM  cabecas dos feixes -- o centro e branco com ou sem estrela). A estrela agora
+REM  e medida pela TINTA, o que muda na foto quando o node dela e escondido, com
+REM  o defeito injetado ao lado. Pra ver o palco de antes reprovar de novo, ponha
+REM  `--climateste Tempestade` na linha do passo 3.
 REM
 REM  A JANELA ABRE NO SEGUNDO MONITOR (`--position 1920,0`): o dono trabalha no
 REM  principal. Se a sua tela 2 comeca noutro X, mude o numero.

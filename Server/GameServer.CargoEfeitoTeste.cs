@@ -216,7 +216,7 @@ public partial class GameServer
 			// Repetir a cena aqui seria a segunda tela que concorda com a primeira.
 			["BusterBarrage"] = ("Server/GameServer.G12Teste.cs", "o aperto liga a barragem"),
 			["Death_Ball"] = ("Server/GameServer.G12Teste.cs", "o nocaute durante a carga desfaz a Death Ball e solta o corpo (na medida do nocaute)"),
-			["SpiritBomb"] = ("Server/GameServer.G12Teste.cs", "2 s depois a Genkidama SAI: nao inerte, pra frente, um tile por tique, 100 s de prazo, escala mantida"),
+			["SpiritBomb"] = ("Server/GameServer.G12Teste.cs", "2 s depois a Genkidama SAI: nao inerte, pra frente, na velocidade da bola mais rapida, 100 s de prazo, escala mantida"),
 			["Grow_Senzu_Bean"] = ("Server/GameServer.G12Teste.cs", "aos 60 s a Semente Senzu APARECE na mochila"),
 			["SplitForm"] = ("Server/GameServer.G12Teste.cs", "o aperto poe uma copia NOVA no mundo, com cerebro (IA), o nome '<dono> Copy' e METADE do poder expresso"),
 			["Expand_Body"] = ("Server/GameServer.G11Teste.cs", "2o grau: Tphysoff +1,25, Tphysdef +1,125 e Tspeed -(1 - 1/1,125) -- os numeros do `Loop()`"),

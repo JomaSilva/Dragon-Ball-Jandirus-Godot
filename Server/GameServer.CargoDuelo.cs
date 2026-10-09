@@ -92,9 +92,26 @@ public partial class GameServer
 	private string ArquivoDoTitulo =>
 		System.IO.Path.Combine(_store?.Pasta ?? ProjectSettings.GlobalizePath("user://saves"), "titulo.txt");
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--cargoportas` e `--wipeteste`): o carregador zera GRAVANDO antes de ler --
+	/// o `titulo.txt` e regravado com zeros e o reinicio apaga o relogio do titulo. Falso em jogo, sempre.
+	/// </summary>
+	public static bool TituloGravadoAoCarregarDeTeste;
+
+	/// <summary>
+	/// O RELOGIO DO TITULO, DO `titulo.txt` -- o `god_state_load` do DM (`:645-657`), que so LE.
+	///
+	/// A memoria e esvaziada antes da leitura (pasta sem arquivo e mundo sem relogio, e a bancada da limpeza
+	/// rele com o servidor de pe), e SO a memoria. Este metodo comecava pelo `LimparEstadoDoTitulo`, que
+	/// tambem grava: o arquivo era regravado com zeros uma linha antes de ser lido, e todo boot devolvia um
+	/// trono sem relogio. O primeiro tique reacende a posse de quem nao tem (`TickDoDuelo`, passo 0), entao
+	/// em jogo a carencia de 7 dias recomecava a cada reinicio -- o Deus ficava indesafiavel --, e os
+	/// adiamentos da semana, as falhas de tarefa e a tarefa de mundo sumiam. A `--cargoportas` (secao 6)
+	/// grava, reinicia e rele.
+	/// </summary>
 	private void CarregarTitulo()
 	{
-		LimparEstadoDoTitulo();
+		if (TituloGravadoAoCarregarDeTeste) LimparEstadoDoTitulo(); else ZerarEstadoDoTitulo();
 		if (!System.IO.File.Exists(ArquivoDoTitulo)) return;
 		foreach (string linha in System.IO.File.ReadAllLines(ArquivoDoTitulo))
 		{
@@ -136,10 +153,11 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// O TITULO VAGOU: o relogio do proximo Deus comeca do zero. E o `god_lose_title` zerando o
-	/// estado (`:110-111`) mais o que o `god_gain_title` reinicia ao coroar (`:85-90`).
+	/// O RELOGIO DO TITULO VOLTA AO ZERO, SO NA MEMORIA. E o que o carregador faz antes de ler e o `Zerar` do
+	/// inscrito na limpeza total (`GameServer.Limpeza.cs`): nos dois, gravar seria escrever zeros por cima de
+	/// um arquivo que ainda vale, ou numa pasta que nao e pra ser tocada.
 	/// </summary>
-	private void LimparEstadoDoTitulo()
+	private void ZerarEstadoDoTitulo()
 	{
 		_duelo.TituloDesde = _duelo.UltimoDuelo = _duelo.SemanaDosAdiamentos = 0;
 		_duelo.Adiamentos = 0;
@@ -150,6 +168,16 @@ public partial class GameServer
 		_tarefaPlanetaChave = _tarefaPlanetaNome = "";
 		_tarefaPrazo = _tarefaProxima = 0;
 		_tarefaFalhas = 0;
+	}
+
+	/// <summary>
+	/// O TITULO VAGOU: o relogio do proximo Deus comeca do zero, e o arquivo fica sabendo na hora. E o
+	/// `god_lose_title` zerando o estado e gravando (`:110-112`) mais o que o `god_gain_title` reinicia ao
+	/// coroar (`:85-90`).
+	/// </summary>
+	private void LimparEstadoDoTitulo()
+	{
+		ZerarEstadoDoTitulo();
 		SalvarTitulo();
 	}
 

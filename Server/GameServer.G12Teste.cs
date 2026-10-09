@@ -354,6 +354,10 @@ public partial class GameServer
 		GD.Print("[g12] -- 3) BUSTER BARRAGE: liga, sustenta, DESLIGA");
 
 		ServerPlayer pl = ForjarG12("Broly", PracaLivre(), bp: 50_000, skills: [PathBusterG12]);
+		// DE CIMA, ONDE O CENARIO NAO ALCANCA -- a mesma razao da Giratoria (ver `AsDuasRajadasG12`): as esferas saem em
+		// rumos sorteados de uma praca de 3x3 tiles, e a 18 ou 20 tiles por segundo a que acabou de nascer ja saiu
+		// da praca dois tiques depois. Se sobrava alguma viva pra medir era sorte do mapa em volta.
+		pl.Altitude = Voo.AlturaQueAtravessa;
 		Fighter f = pl.Ficha;
 		double kiAntes = f.Ki;
 		ApertarEOuvir(pl, "BusterBarrage");
@@ -373,8 +377,10 @@ public partial class GameServer
 		BusterG12 estado = _busterG12[pl.Id];
 		AfirmarG12("em tres segundos e meio saíram seis esferas (duas por ciclo de Eactspeed*3/4 tiques)",
 				   estado.Cuspidas == 6, $"{estado.Cuspidas} cuspidas, {tiros.Count} vivas");
-		AfirmarG12("...e as vivas VOAM (rumo nao nulo, um ou dois tiques por tile)",
-				   tiros.Count >= 1 && tiros.All(t => t.Rumo.LengthSquared > 0.9f && (Math.Abs(t.SegundosPorTile - 0.1) < 1e-9 || Math.Abs(t.SegundosPorTile - 0.2) < 1e-9)),
+		// O `lag` e o do DM (`rand(1,2)` tiques por tile); a velocidade e a de toda bola com esse lag (`AtrasoDeBolaPorLag`).
+		AfirmarG12("...e as vivas VOAM (rumo nao nulo, na velocidade de uma bola de lag 1 ou de lag 2)",
+				   tiros.Count >= 1 && tiros.All(t => t.Rumo.LengthSquared > 0.9f
+					   && (Math.Abs(t.SegundosPorTile - Projetil.AtrasoDeBolaPorLag(1)) < 1e-9 || Math.Abs(t.SegundosPorTile - Projetil.AtrasoDeBolaPorLag(2)) < 1e-9)),
 				   $"{tiros.Count} vivas");
 		AfirmarG12("...em rumos DIFERENTES (o `rand(1,8)`)", estado.RumosVistos.Count >= 2, $"{estado.RumosVistos.Count} rumos");
 		AfirmarG12("...com o dano do `Create_Blast`: (0,5 + Ekioff) x Ephysoff",
@@ -439,8 +445,8 @@ public partial class GameServer
 		List<Projetil> tiros = TirosDeG12(pl);
 		int cuspidasC = _voleiG12.TryGetValue(pl.Id, out EstadoDoVoleiG12? vc) ? vc.Duracao : -1;
 		AfirmarG12("um segundo depois saíram ~dez esferas a mais (uma por 0,1 s)", cuspidasC >= 11 && cuspidasC <= 12, $"{cuspidasC} cuspidas, {tiros.Count} vivas");
-		AfirmarG12("...todas pra FRENTE (leste), um tile por tique",
-				   tiros.Count >= 5 && tiros.All(t => t.Rumo.X > 0.99 && Math.Abs(t.SegundosPorTile - 0.1) < 1e-9), $"{tiros.Count} vivas");
+		AfirmarG12("...todas pra FRENTE (leste), na velocidade da bola mais rapida (o `walk` sem lag do DM)",
+				   tiros.Count >= 5 && tiros.All(t => t.Rumo.X > 0.99 && Math.Abs(t.SegundosPorTile - Projetil.AtrasoDeBolaPorLag(1)) < 1e-9), $"{tiros.Count} vivas");
 		AfirmarG12("...nascidas num LEQUE de +-45 graus (o Y das vivas varia entre tres fileiras)",
 				   tiros.Select(t => Math.Round(t.Pos.Y)).Distinct().Count() >= 2 && tiros.All(t => Math.Abs(t.Pos.Y - pl.Pos.Y) <= 32.5));
 		AfirmarG12("...com o dano do DM: 0,7 x Ekioff x log10(max(blastskill,10)) x dano global x os dois logs do `mods`",
@@ -470,13 +476,18 @@ public partial class GameServer
 				   $"piscou={piscou}, rajada {(_voleiG12.ContainsKey(pl.Id) ? "ligada" : "DESLIGADA")}, "
 				   + $"corpo em ({pl.Pos.X:0},{pl.Pos.Y:0}), piscou pra ({ondePisca.X:0},{ondePisca.Y:0}), saiu de ({antesDaPiscada.X:0},{antesDaPiscada.Y:0})");
 		List<Projetil> novas = TirosDeG12(pl).FindAll(t => !jaVoavam.Contains(t));
-		// A MAIS NOVA e a que menos andou: nasceu um tile a frente e um no leque (`step` + `step`), e voou um tile por tique.
-		Projetil? maisNova = novas.Count == 0 ? null : novas.MinBy(t => t.Pos.X);
+		// ONDE A MAIS NOVA NASCEU, e nao onde ela esta: um tile a frente e um no leque (`step` + `step`) do corpo. A
+		// regua era a posicao de agora com tres tiles de folga -- e isso so separava o ponto novo do velho enquanto a
+		// esfera andava um tile a cada tres tiques: a 20 tiles por segundo (dono, 2026-10-08) uma esfera nascida do
+		// ponto VELHO ja estaria a frente do novo em tres tiques, e a prova passaria com o defeito de volta. O
+		// nascimento sai da propria esfera: onde ela esta menos o que ela andou (`AndouTiles`).
+		Projetil? maisNova = novas.Count == 0 ? null : novas.MinBy(t => t.AndouTiles);
+		float nasceuEmX = maisNova == null ? 0 : maisNova.Pos.X - maisNova.Rumo.X * (float)(maisNova.AndouTiles * ZoneCollision.TileSize);
 		AfirmarG12("...e a esfera seguinte nasce do ponto NOVO (o `locate(usr.x,usr.y,usr.z)` de dentro do `while`, `:300`)",
-				   maisNova != null && maisNova.Pos.X > ondePisca.X && maisNova.Pos.X - ondePisca.X <= 3 * ZoneCollision.TileSize
+				   maisNova != null && nasceuEmX > ondePisca.X && nasceuEmX - ondePisca.X <= 2 * ZoneCollision.TileSize + 0.5f
 				   && Math.Abs(maisNova.Pos.Y - ondePisca.Y) <= 32.5f,
 				   maisNova == null ? "nenhuma esfera nova"
-				   : $"a mais nova em ({maisNova.Pos.X:0},{maisNova.Pos.Y:0}), o corpo em ({ondePisca.X:0},{ondePisca.Y:0})");
+				   : $"a mais nova nasceu em x={nasceuEmX:0} (esta em ({maisNova.Pos.X:0},{maisNova.Pos.Y:0})), o corpo em ({ondePisca.X:0},{ondePisca.Y:0})");
 
 		// APERTAR DE NOVO DESLIGA, e abre a espera de 5 s no `_volleyPronto` (o `barrageCD`).
 		ApertarEOuvir(pl, "Continuous_Energy_Bullets");
@@ -497,6 +508,11 @@ public partial class GameServer
 		// A GIRATORIA: duas por tique, nasce em volta, e sai nos OITO rumos (o DM soltava tudo pra frente: 1 rumo).
 		ServerPlayer giro = ForjarG12("Giro", PracaLivre(), bp: 50_000, degraus: [(PathVolleyG12, 50)]);
 		giro.Facing = Facing.East;
+		// DE CIMA, ONDE O CENARIO NAO ALCANCA (`Voo.AtravessaCenario`). A praca so garante 3x3 tiles livres e as
+		// esferas saem pros oito lados: a 20 tiles por segundo (dono, 2026-10-08) elas cruzam a praca em dois tiques
+		// e batiam no que houvesse em volta -- quantas chegavam vivas ao fim do segundo era sorte do sorteio de rumos
+		// (4 ou 5, com a regua em 5). O que esta cena mede e a tecnica, e nao o mapa em volta da praca.
+		giro.Altitude = Voo.AlturaQueAtravessa;
 		Fighter g = giro.Ficha;
 		g.Ki = g.MaxKi = 5_000_000_000;
 		double kiG = g.Ki;
@@ -571,8 +587,9 @@ public partial class GameServer
 		AfirmarG12("o segundo aperto pede o disparo (fase 2) e a bola ainda esta parada", g.Fase == 2 && g.Bola is { Inerte: true });
 		TiquesG12(TiquesDeG12(2.0) + 1);
 		Projetil? bomba = g.Bola;
-		AfirmarG12("2 s depois a Genkidama SAI: nao inerte, pra frente, um tile por tique, 100 s de prazo, escala mantida",
-				   g.Fase == 3 && bomba is { Vivo: true, Inerte: false } && bomba.Rumo.X > 0.99 && Math.Abs(bomba.SegundosPorTile - 0.1) < 1e-9
+		AfirmarG12("2 s depois a Genkidama SAI: nao inerte, pra frente, na velocidade da bola mais rapida, 100 s de prazo, escala mantida",
+				   g.Fase == 3 && bomba is { Vivo: true, Inerte: false } && bomba.Rumo.X > 0.99
+				   && Math.Abs(bomba.SegundosPorTile - Projetil.AtrasoDeBolaPorLag(1)) < 1e-9
 				   && Math.Abs(bomba.VidaRestante - 100) < 0.2 && Math.Abs(bomba.EscalaVisual - semDoador) < 1e-9,
 				   bomba == null ? "sem bola" : $"fase {g.Fase} inerte {bomba.Inerte} rumo {bomba.Rumo} vida {bomba.VidaRestante:0.#}");
 		double bpSemDoador = bomba?.Bp ?? 0;
@@ -1030,8 +1047,16 @@ public partial class GameServer
 				   $"{alvos.Count} alvos");
 		Projetil alvo = alvos[0];
 		Vec2 nasceu = alvo.Pos;
-		TiquesG12(TiquesDeG12(2.0));
-		AfirmarG12("...e VAGA (um tile sorteado a cada 0,5 s)", Vec2.Distance(alvo.Pos, nasceu) > 1 || !alvo.Vivo, $"{nasceu} -> {alvo.Pos}");
+		// SAIU DO LUGAR EM ALGUM TIQUE, e nao "esta noutro lugar no fim": sao quatro passos sorteados em oito
+		// rumos, e um em cada vinte passeios desses VOLTA ao tile de onde saiu (leste e oeste, norte e sul) -- a
+		// regua que so olhava o fim reprovava um alvo que andou os quatro passos.
+		bool vagou = false;
+		for (int i = TiquesDeG12(2.0); i > 0; i--)
+		{
+			TiquesG12(1);
+			vagou |= Vec2.Distance(alvo.Pos, nasceu) > 1;
+		}
+		AfirmarG12("...e VAGA (um tile sorteado a cada 0,5 s)", vagou || !alvo.Vivo, $"{nasceu} -> {alvo.Pos}");
 		TiquesG12(TiquesDeG12(1.6));
 		AfirmarG12("aos 3,5 s nasce o segundo", TirosDeG12(pl).Count >= 2, $"{TirosDeG12(pl).Count}");
 		TiquesG12(TiquesDeG12(1.5));
@@ -1078,6 +1103,35 @@ public partial class GameServer
 				   && vidente.Facing == Facing.North,
 				   $"esquivas +{_esquivasDePrecognicaoG12 - esquivasAntes}, pos {chao} -> {vidente.Pos}, olhar {vidente.Facing}");
 
+		// ============================ DE QUALQUER DISTANCIA, E NAO SO DA QUE CALHA DE DAR CERTO ============================
+		// A Precognicao e amostrada a 5 Hz, e a bola comum anda 3,2 tiles entre duas amostras (dono, 2026-10-08): com
+		// a caixa de 1,5 tile do DM parada, o tiro so seria visto se uma amostra calhasse de cair no pedaco de tile em
+		// que ele ja esta na caixa e ainda nao acertou. O aviso anda com a pressa do tiro (`Projetil.VemPraCimaDe`),
+		// e por isso quem ve o futuro esquiva de TODOS -- o atirador a 3, a 3,5 ... a 6 tiles.
+		// ====================================================================================================================
+		// A PISTA E DE TERRA FIRME NAS TRES FILEIRAS (o passo de lado precisa do tile de cima livre) e o atirador
+		// fica DENTRO dela -- na cena de cima ele mora quatro tiles a oeste do corredor, fora do trecho garantido.
+		// Os dois corpos voltam pro corredor deles no fim e a faixa volta pro mapa: as familias seguintes nao
+		// perdem chao por causa desta.
+		int faixaDaPista = _pjProximoCorredor;
+		Vec2 posto = TerraFirmeG12(10) + new Vec2(7 * ZoneCollision.TileSize, 0);
+		(int esquivou, int tiros, string semEsquiva) = OVidenteContraTirosDeTodaDistancia(vidente, atirador, posto);
+		AfirmarG12($"quem ve o futuro esquiva do tiro que vem de QUALQUER distancia ({esquivou} de {tiros})",
+				   tiros >= 6 && esquivou == tiros, "nao esquivou de: " + semEsquiva);
+
+		Projetil.AvisoSemPressaDeTeste = true;
+		try
+		{
+			(int comDefeito, int total, string quais) = OVidenteContraTirosDeTodaDistancia(vidente, atirador, posto);
+			AfirmarG12("(defeito injetado: a caixa de 1,5 tile do DM, sem a pressa do tiro) a bola atravessa a caixa entre duas "
+					   + $"amostras e quem ve o futuro LEVA o tiro ({total - comDefeito} de {total})",
+					   comDefeito < total, "nao esquivou de: " + quais);
+		}
+		finally { Projetil.AvisoSemPressaDeTeste = false; }
+		vidente.Pos = chao + new Vec2(0, -ZoneCollision.TileSize);
+		atirador.Pos = chao - new Vec2(4 * ZoneCollision.TileSize, 0);
+		_pjProximoCorredor = faixaDaPista;
+
 		// QUEM NAO TEM A SKILL NAO SE MEXE.
 		Vec2 chao2 = CorredorLivre(24);
 		ServerPlayer cego = ForjarG12("Cego", chao2, bp: 5_000);
@@ -1098,6 +1152,45 @@ public partial class GameServer
 		TiquesG12(TiquesDeG12(1.0));
 		AfirmarG12("o PROPRIO tiro nao dispara a esquiva (`A.proprietor != savant`)", Vec2.Distance(proprio.Pos, chao3) < 0.5 && _esquivasDePrecognicaoG12 == esquivas);
 		LimparTudoG12();
+	}
+
+	/// <summary>
+	/// UMA BOLA COMUM POR DISTANCIA, do atirador a 3 ate 6 tiles de quem ve o futuro, de meio em meio tile: de
+	/// quantas ele esquivou, quantas foram, e de quais nao. A bola nao machuca nem empurra (o que se mede e o
+	/// PASSO DE LADO, e um corpo arremessado ou nocauteado nao da passo nenhum).
+	/// </summary>
+	private (int Esquivou, int Tiros, string SemEsquiva) OVidenteContraTirosDeTodaDistancia(ServerPlayer vidente, ServerPlayer atirador, Vec2 posto)
+	{
+		int esquivou = 0, tiros = 0;
+		var semEsquiva = new System.Text.StringBuilder();
+		for (float tiles = 3; tiles <= 6.01f; tiles += 0.5f)
+		{
+			ApagarOsTirosDaZonaG12(vidente);
+			vidente.Pos = posto;
+			atirador.Pos = posto - new Vec2(tiles * ZoneCollision.TileSize, 0);
+			atirador.Facing = Facing.East;
+
+			int antes = _esquivasDePrecognicaoG12;
+			Disparar(atirador, new ReceitaDeProjetil
+			{
+				Tipo = TipoDeProjetil.Blast, BaseDano = 0, Velocidade = 1, AlcanceTiles = 12,
+				Deflectivel = false, Empurra = false, Nome = "bola de prova",
+			});
+			TiquesG12(TiquesDeG12(1.0));
+			tiros++;
+			if (_esquivasDePrecognicaoG12 > antes && Vec2.Distance(vidente.Pos, posto) > ZoneCollision.TileSize / 2f) esquivou++;
+			else semEsquiva.Append($"{tiles:0.#} tiles; ");
+		}
+		ApagarOsTirosDaZonaG12(vidente);
+		return (esquivou, tiros, semEsquiva.ToString());
+	}
+
+	/// <summary>Apaga todo tiro vivo da zona deste corpo e roda um tique, pra a lista esvaziar de verdade.</summary>
+	private void ApagarOsTirosDaZonaG12(ServerPlayer quem)
+	{
+		foreach (Projetil velho in ProjeteisDaZona(quem.Zone.Hash).ToList())
+			if (velho.Vivo) Matar(velho, FimDeProjetil.Apagou);
+		TiquesG12(1);
 	}
 
 	// =====================================================================

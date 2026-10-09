@@ -226,19 +226,54 @@ public partial class GameServer
 	private List<Nave> NavesParadasEm(ZoneKey z) =>
 		[.. _naves.Where(n => n.PilotoId == 0 && n.Zona.Equals(z))];
 
+	// ============================ TRES LACOS, E NAO TRES `_naves.Any(n => ...)` ============================
+	// As duas perguntas de baixo sao feitas pelo SNAPSHOT (`EstadoDe`), por corpo, por tique -- e a de cima pelo
+	// tique de fichas. Escritas com LINQ, cada consulta montava um fecho (o lambda captura o `id`) e um
+	// delegate: medido em 2026-10-08 com 149 corpos, 10 mil por segundo, 0,87 MB/s -- quase metade de tudo o
+	// que o servidor aloca por tique (`--diagcoletor`). A resposta e a mesma; so nao sobra nada pro coletor.
+	// ========================================================================================================
+
 	/// <summary>A nave que este corpo esta pilotando, ou nula.</summary>
-	private Nave? NaveDoPiloto(ServerPlayer pl) => _naves.FirstOrDefault(n => n.PilotoId == pl.Id);
+	private Nave? NaveDoPiloto(ServerPlayer pl)
+	{
+		foreach (Nave n in _naves)
+			if (n.PilotoId == pl.Id) return n;
+		return null;
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagcoletor --coletordefeito piloto`): as duas perguntas do snapshot voltam a
+	/// ser feitas por LINQ, com um fecho e um delegate por corpo, por tique. A regua da bancada tem que reprovar
+	/// o servidor.
+	/// </summary>
+	internal static bool PilotoPorFechoDeTeste;
+
+	// (Em metodos proprios: um lambda que captura o parametro faz o compilador montar o fecho na ENTRADA do
+	// metodo, com o defeito ligado ou nao.)
+	private bool PilotandoPorFecho(int id) => _naves.Any(n => n.PilotoId == id);
+	private bool PilotandoGrandePorFecho(int id) => _naves.Any(n => n.PilotoId == id && NaveGrande.EhNaveGrande(n.Tipo));
 
 	/// <summary>Ele esta pilotando alguma coisa? E o bit que vai no snapshot.</summary>
-	public bool EstaPilotando(int id) => _naves.Any(n => n.PilotoId == id);
+	public bool EstaPilotando(int id)
+	{
+		if (PilotoPorFechoDeTeste) return PilotandoPorFecho(id);
+		foreach (Nave n in _naves)
+			if (n.PilotoId == id) return true;
+		return false;
+	}
 
 	/// <summary>
 	/// ...E E A GRANDE? O segundo bit do snapshot, e ele existe pra o cliente escolher o SPRITE --
 	/// ver `EntityState.NaveGrande`. Sem ele, quem pilota uma Capital Ship apareceria dentro de uma
 	/// capsula de um tile.
 	/// </summary>
-	public bool PilotaNaveGrande(int id) =>
-		_naves.Any(n => n.PilotoId == id && NaveGrande.EhNaveGrande(n.Tipo));
+	public bool PilotaNaveGrande(int id)
+	{
+		if (PilotoPorFechoDeTeste) return PilotandoGrandePorFecho(id);
+		foreach (Nave n in _naves)
+			if (n.PilotoId == id && NaveGrande.EhNaveGrande(n.Tipo)) return true;
+		return false;
+	}
 
 	/// <summary>
 	/// A NAVE PARADA AO ALCANCE DA MAO -- mesmo `AlcanceDeUso` de qualquer construcao, e mesma
@@ -453,8 +488,8 @@ public partial class GameServer
 
 		// PILOTAR CONTA COMO VOO (`pilot.flight = 1`, :135) -- e o que faz o pod atravessar agua,
 		// lava e abismo no original (`testWaters` confere `flight`). Aqui o equivalente e o
-		// `pl.Voando`, que e o mesmo bit que o `AtravessandoCenario` (GameServer.Voo.cs:399) le pra
-		// validar o passo com o mapa NULO.
+		// `pl.Voando`, que e o mesmo bit de que sai a altura que o `Voo.ModoNaAltura` le pra validar o
+		// passo com o modo `PorCima` (do mapa, so a parede de predio para quem pilota).
 		pl.NaveDevolveVoo = pl.Voando;   // o `pod_had_flight` do DM (:53): quem ja voava continua voando
 		pl.Voando = true;
 		RecalcularVelocidade(pl);

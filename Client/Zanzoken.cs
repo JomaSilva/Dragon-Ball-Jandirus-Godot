@@ -62,11 +62,28 @@ public partial class Zanzoken : Node2D
 	/// O CODIGO DESTE EFEITO mora num `.gdshader` de verdade -- ver o comentario de
 	/// <see cref="CharacterVisual"/>: efeito procedural nao se acerta lendo codigo, se acerta
 	/// arrastando o valor e OLHANDO, e pra isso ele precisa abrir no editor do Godot.
+	///
+	/// PUBLICO porque quem o traz pra memoria e o `Aquecimento`, no lobby, numa thread de carga -- e porque a bancada
+	/// pergunta por ele ao cache do Godot (a `--diagestouro --pecas`: o arquivo ja estava na memoria ANTES da primeira
+	/// miragem do processo?). Ver <see cref="Ensaiar"/>.
 	/// </summary>
-	private const string CaminhoDoShader = "res://Assets/Shaders/Zanzoken.gdshader";
+	public const string CaminhoDoShader = "res://Assets/Shaders/Zanzoken.gdshader";
 
 	private static Shader? _shader;
-	private static Shader Sh => _shader ??= ResourceLoader.Load<Shader>(CaminhoDoShader);
+
+	/// <summary>
+	/// PREGUICOSO, E QUASE NUNCA O PRIMEIRO A PEDIR: o arquivo ja veio do lobby, e este `Load` so o acha no cache. Quem
+	/// ainda le o disco aqui e o processo que nao aquece (`--semaquecimento`).
+	/// </summary>
+	public static Shader Sh => _shader ??= ResourceLoader.Load<Shader>(CaminhoDoShader);
+
+	/// <summary>
+	/// Quantas MIRAGENS o JOGO ja deixou neste processo -- o estilo <see cref="EstiloDeVulto.Miragem"/>; o vulto simples
+	/// da esquiva nao leva shader, e nao conta, e a do ensaio do lobby (<see cref="Ensaiar"/>) tambem nao, que nao e de
+	/// ninguem. SO PRA BANCADA: e como a `--diagestouro` acha o quadro em que uma nasce quando quem a pede e um pacote do
+	/// servidor, e nao ela.
+	/// </summary>
+	public static int MiragensDeTeste { get; private set; }
 
 	private double _resta = Duracao;
 	private bool _simples;
@@ -139,7 +156,69 @@ public partial class Zanzoken : Node2D
 			v._mats.Add(m);
 		}
 
+		MiragensDeTeste++;
 		palco.AddChild(v);
+	}
+
+	/// <summary>
+	/// O ENSAIO DO LOBBY (ver `Aquecimento.AtosDaMiragem`): uma miragem de verdade -- a mesma <see cref="Deixar"/> que o
+	/// `World.AoPiscar` chama -- de um boneco que nao e de ninguem, num palco fora da tela, pra o shader ser compilado e
+	/// as pipelines dele montadas ALI, e nao no quadro do primeiro Zanzoken do processo.
+	///
+	/// ============================ O QUE ISTO TIRA DO MEIO DA LUTA ============================
+	/// O shader deste efeito era carregado na hora do primeiro uso (o <see cref="Sh"/> e preguicoso, e ninguem o trazia
+	/// antes), e o primeiro uso e o primeiro Zanzoken de uma luta, ou o primeiro arranque de quem tem a Afterimage.
+	/// MEDIDO em 2026-10-09 pela `--diagestouro --pecas`, antes do conserto -- a miragem sozinha num quadro, de um corpo
+	/// de tres camadas --, com o cache de shader do Godot vazio (o de quem abre o jogo pela primeira vez, e o de toda
+	/// bancada) e o do driver de video quente:
+	///
+	///     o quadro da primeira miragem do processo ....... 32,8 a 34,8 ms de trabalho   (o de uma miragem qualquer: 2,3 a 3,9)
+	///       -- esperando o shader compilar ............... 24 a 27 ms     a thread principal parada no PREPARO do desenho
+	///       -- a chamada inteira, na primeira vez ........ 3,2 a 3,3 ms   a foto, um material por camada, e o codigo
+	///                                                                     dela rodando pela primeira vez
+	///       -- o arquivo, lido do disco .................. 0,8 ms
+	///       -- a pipeline, no primeiro desenho ........... 1,1 a 1,4 ms   com o driver de video quente
+	///
+	/// (Com o cache de shader do Godot CHEIO -- o de quem ja jogou uma vez -- a espera some sozinha: o defeito eram 7,3 ms
+	/// de trabalho, num quadro de 8,8 de relogio. Com o driver FRIO, o de quem acabou de instalar, 56 a 57 ms de relogio:
+	/// os 25 da espera e mais 24 a 25 da pipeline montada do zero. E COM UMA LUZ EM CIMA DA MIRAGEM -- de noite, ao lado
+	/// de uma aura, de uma fogueira, de um tiro de ki -- a pipeline e a gemea do sprite iluminado, que custa ao driver
+	/// quase o triplo: 68 a 75 ms, num quadro de 101 a 108.)
+	///
+	/// DEPOIS: 3,2 a 4,4 ms de trabalho, numa volta do monitor, em qualquer um desses casos; nenhuma pipeline nasce no
+	/// quadro, e a thread principal nao le o arquivo. A conta inteira, o preco no lobby e a regua estao no cabecalho do
+	/// `RoboDoPrimeiroEstouro`, no bloco "E A PRIMEIRA MIRAGEM".
+	///
+	/// A ESPERA E DO MATERIAL, E NAO DO DESENHO, como a do borrao (`--pecas --miragempartida`, que nasce cada peca sozinha
+	/// num quadro): a miragem inteira montada pela <see cref="Deixar"/> num palco FORA da arvore, sem nada desenhado, parou
+	/// o quadro 26 ms no preparo; o primeiro desenho, um segundo depois, custou 1 ms (25 com o driver frio) e trouxe so a
+	/// pipeline.
+	///
+	/// E O ATO PAGA TAMBEM O CODIGO DE PRIMEIRA VEZ, que o do borrao nao paga: por ser a chamada do jogo, e nao um sprite
+	/// solto, a primeira miragem de verdade custa de script o que custa uma qualquer (2,7 a 3,9 ms contra 1,8 a 3,3).
+	/// ========================================================================================
+	///
+	/// O CORPO E DE MENTIRA E NUNCA E DESENHADO: um node escondido com o boneco do ensaio dentro, sob o nome que a
+	/// <see cref="Deixar"/> procura (`Visual`). Escondido porque quem tem que aparecer no palco e a FOTO, e nao ele: o
+	/// boneco desenhado montaria aqui as pipelines do `Personagem.gdshader`, que sao do ato do corpo
+	/// (`Aquecimento.AtosDoCorpo`) -- e a rodada de injecao daquele ato deixaria de reprovar. A foto sai inteira mesmo
+	/// assim: a <see cref="CharacterVisual.Fotografar"/> olha se a CAMADA esta visivel, e nao o pai dela. Tirada a foto,
+	/// o corpo sai do palco.
+	///
+	/// COM A FOLHA DE MENTIRA DO BONECO (um quadro branco so, feito na memoria): a pipeline e do shader e do jeito de
+	/// desenhar, e nao da textura -- e nenhuma folha de aparencia pode ser pedida daqui, que quando o ensaio comeca elas
+	/// ainda estao na thread de carga do `Aquecimento`.
+	/// </summary>
+	public static void Ensaiar(Node2D pai, Vector2 onde)
+	{
+		var corpo = new Node2D { Name = "CorpoDaMiragemDoEnsaio", Position = onde, Visible = false };
+		pai.AddChild(corpo);
+		CharacterVisual.PorOBonecoDoEnsaio(corpo, Vector2.Zero, "Visual");
+		// (a conta da bancada e das miragens do JOGO: a do ensaio nao entra nela)
+		int doJogo = MiragensDeTeste;
+		Deixar(pai, corpo);
+		MiragensDeTeste = doJogo;
+		corpo.QueueFree();
 	}
 
 	/// <summary>

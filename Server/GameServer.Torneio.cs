@@ -40,6 +40,8 @@ namespace Jandirus.Server;
 ///   * Sem camera de espectador (`Assistir Torneio`): quem quer ver vai ate a beirada da arena.
 ///   * Um reinicio do servidor no meio do torneio o cancela; a agenda ja foi gravada no comeco,
 ///     entao ele nao recomeca sozinho no boot.
+///   * A LIMPEZA TOTAL do servidor (`GameServer.Limpeza.cs`) devolve este sistema ao primeiro boot:
+///     o torneio em disputa cai e a agenda volta a ter so o primeiro da Terra. Ver `ZerarTorneio`.
 /// =========================================================================================
 /// </summary>
 public sealed partial class GameServer
@@ -50,7 +52,8 @@ public sealed partial class GameServer
 	private bool _torneioDeTeste;
 
 	/// <summary>Faixa de lugares propria pros NPCs do torneio (longe dos habitantes, das sagas e das bancadas).</summary>
-	private ulong _lugarDoTorneio = 7_000_000;
+	private const ulong PrimeiroLugarDoTorneio = 7_000_000;
+	private ulong _lugarDoTorneio = PrimeiroLugarDoTorneio;
 
 	/// <summary>Gancho de bancada: os anuncios do torneio, na ordem. Nulo fora de teste.</summary>
 	internal static List<string>? EscutaDoTorneio;
@@ -117,6 +120,24 @@ public sealed partial class GameServer
 		else GD.PushWarning("[server] sem torneio.json -- os torneios usam os padroes do codigo");
 		foreach (string p in _torneioCfg.Problemas()) GD.PushError($"[server] torneio.json: {p}");
 
+		CarregarAgenda();
+		GD.Print($"[server] torneios: Terra em {QuandoEm(_agenda.ProximoDaTerraMs)}, Outro Mundo "
+			   + (_agenda.ProximoDoAlemMs > 0 ? $"em {QuandoEm(_agenda.ProximoDoAlemMs)}" : "depois do proximo da Terra")
+			   + $" | {_torneioCfg.Vagas} vagas, inscricao {_torneioCfg.InscricaoSegundos:0} s, luta ate {_torneioCfg.LutaSegundosMax:0} s, "
+			   + $"arenas {_torneioCfg.Terra.Arena} ({_torneioCfg.Terra.Zona}) e {_torneioCfg.Alem.Arena} ({_torneioCfg.Alem.Zona})");
+	}
+
+	/// <summary>
+	/// A AGENDA DESTE MUNDO, do `torneio.json` da pasta de saves. Separada das manivelas de cima porque
+	/// aquelas sao CONTEUDO (`res://Assets/Data/torneio.json`) e esta e MUNDO: a bancada da limpeza
+	/// recarrega o mundo do disco (`RecarregarMundoDoDisco`) e nao tem por que reler o conteudo junto.
+	///
+	/// SEM ARQUIVO A MEMORIA FICA COMO ESTA. No boot ela esta zerada, e o primeiro torneio e marcado e
+	/// gravado aqui; depois de um <see cref="ZerarTorneio"/> ela ja tem o primeiro marcado, e esta
+	/// leitura nao grava por cima de nada.
+	/// </summary>
+	private void CarregarAgenda()
+	{
 		try
 		{
 			if (System.IO.File.Exists(CaminhoDaAgenda))
@@ -125,18 +146,21 @@ public sealed partial class GameServer
 		}
 		catch (Exception e) { GD.PushWarning($"[server] torneio.json (agenda) ilegivel: {e.Message}"); }
 
-		// O PRIMEIRO TORNEIO DA TERRA e marcado no primeiro boot; dali em diante cada torneio marca o
-		// seguinte ao COMECAR (assim um reinicio no meio nao o repete).
 		if (_agenda.ProximoDaTerraMs == 0)
 		{
-			_agenda.ProximoDaTerraMs = NowMs() + (long)(_torneioCfg.PrimeiroDaTerraDias * MsPorDia);
+			MarcarOPrimeiroDaTerra();
 			SalvarAgenda();
 		}
-		GD.Print($"[server] torneios: Terra em {QuandoEm(_agenda.ProximoDaTerraMs)}, Outro Mundo "
-			   + (_agenda.ProximoDoAlemMs > 0 ? $"em {QuandoEm(_agenda.ProximoDoAlemMs)}" : "depois do proximo da Terra")
-			   + $" | {_torneioCfg.Vagas} vagas, inscricao {_torneioCfg.InscricaoSegundos:0} s, luta ate {_torneioCfg.LutaSegundosMax:0} s, "
-			   + $"arenas {_torneioCfg.Terra.Arena} ({_torneioCfg.Terra.Zona}) e {_torneioCfg.Alem.Arena} ({_torneioCfg.Alem.Zona})");
 	}
+
+	/// <summary>
+	/// O PRIMEIRO TORNEIO DA TERRA de um mundo: `primeiroEmDias` a contar de agora. Dali em diante cada
+	/// torneio marca o seguinte ao COMECAR (assim um reinicio no meio nao o repete). Um mundo nasce de
+	/// dois jeitos e os dois passam por aqui: o primeiro boot (<see cref="CarregarAgenda"/>) e a limpeza
+	/// total (<see cref="ZerarTorneio"/>).
+	/// </summary>
+	private void MarcarOPrimeiroDaTerra() =>
+		_agenda.ProximoDaTerraMs = NowMs() + (long)(_torneioCfg.PrimeiroDaTerraDias * MsPorDia);
 
 	private string QuandoEm(long ms)
 	{
@@ -155,6 +179,48 @@ public sealed partial class GameServer
 			System.IO.File.Move(tmp, CaminhoDaAgenda, overwrite: true);
 		}
 		catch (Exception e) { GD.PushWarning($"[server] nao deu pra salvar torneio.json: {e.Message}"); }
+	}
+
+	/// <summary>
+	/// ESTE MUNDO JA TEM DE TORNEIO ALGUMA COISA QUE UM PRIMEIRO BOOT NAO TERIA? E o contador do inscrito
+	/// na limpeza total (`GameServer.Limpeza.cs`).
+	///
+	/// O primeiro boot so marca o primeiro Torneio da Terra. O resto -- o ultimo ja aberto, o do Outro
+	/// Mundo a caminho, uma chave de pe -- so aparece quando um torneio COMECA (<see cref="Reagendar"/>).
+	/// Uma data remarcada na mao (`trn_agenda terra N`) numa agenda virgem nao conta: continua sendo um
+	/// mundo que nunca teve torneio, so com o primeiro noutro dia.
+	/// </summary>
+	private bool CalendarioDeTorneiosAndou =>
+		_torneio != null || _agenda.UltimoDaTerraMs != 0 || _agenda.ProximoDoAlemMs != 0;
+
+	/// <summary>
+	/// O `Zerar` do inscrito na limpeza total: **o sistema volta ao primeiro boot** -- nenhum torneio em
+	/// disputa, a agenda so com o PRIMEIRO Torneio da Terra marcado, e a faixa de lugares dos convidados
+	/// no comeco.
+	///
+	/// ============================ O QUE SOBREVIVIA SEM ISTO ============================
+	/// A vassoura apaga o `torneio.json`, e a memoria nao. O mundo "novo" seguia o calendario do antigo:
+	/// o Torneio do Outro Mundo abria na data marcada por um torneio que aquele mundo nunca teve, e o
+	/// primeiro <see cref="Reagendar"/> (ou `trn_agenda`) regravava o arquivo com o `UltimoDaTerraMs` do
+	/// mundo apagado. E um torneio EM DISPUTA no instante da limpeza seguia de pe sem ninguem: quem
+	/// entrasse no mundo novo durante as inscricoes era convidado pra ele, e uma chave ja montada era
+	/// decidida luta a luta por dupla ausencia, anunciando os nomes de personagens que ja nao existem.
+	/// ===================================================================================
+	///
+	/// O torneio vivo cai pelo <see cref="EncerrarTorneio"/> de producao, e nao por `_torneio = null`.
+	/// Na limpeza de verdade os corpos ja sairam (`DerrubarTodoMundoParaALimpeza` esvazia `_players`) e
+	/// ele nao acha ninguem pra soltar; mas a bancada chama este `Zerar` sozinho, com o mundo de pe, e
+	/// ai sao os convidados e os presos da area de espera que nao podem ficar pra tras.
+	///
+	/// GRAVAR NAO E AQUI, pelo motivo do `ZerarSemente`: este e o passo 3 da limpeza e o disco so e
+	/// varrido no passo 4. Quem grava a agenda do mundo novo e o `AdminLimparServidor`, depois da vassoura.
+	/// </summary>
+	private void ZerarTorneio()
+	{
+		if (_torneio != null) EncerrarTorneio(_torneio);
+		_agenda = new AgendaDeTorneios();
+		MarcarOPrimeiroDaTerra();
+		_lugarDoTorneio = PrimeiroLugarDoTorneio;
 	}
 
 	// --- ganchos de bancada ---------------------------------------------------

@@ -117,6 +117,7 @@ public partial class MenuJogo : CanvasLayer
 			cli.TechMudou += AoTech;
 			cli.EstilosMudaram += AoEstilos;
 			cli.ChefesVistosMudaram += AoChefesVistos;
+			cli.AbsorvidosDoMajinMudaram += AoAbsorvidosDoMajin;
 			cli.CustomizadasMudaram += AoCustomizadas;
 			cli.ObrasMudaram += AoObras;
 			_atributos = cli.Atributos;
@@ -144,6 +145,7 @@ public partial class MenuJogo : CanvasLayer
 			cli.TechMudou -= AoTech;
 			cli.EstilosMudaram -= AoEstilos;
 			cli.ChefesVistosMudaram -= AoChefesVistos;
+			cli.AbsorvidosDoMajinMudaram -= AoAbsorvidosDoMajin;
 			cli.CustomizadasMudaram -= AoCustomizadas;
 			cli.ObrasMudaram -= AoObras;
 		}
@@ -217,6 +219,20 @@ public partial class MenuJogo : CanvasLayer
 	/// </summary>
 	private void AoChefesVistos()
 	{
+		Habilidades.Montar(_atributos.Raca ?? "");
+		if (Visible) Redesenhar();
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): a lista de absorvidos muda e o menu nao remonta os botoes -- o Majin fica
+	/// com gente dentro e sem o `Expelir: nome` de ninguem. Lida pela propria linha do remonte, logo abaixo.
+	/// </summary>
+	public static bool AbsorvidosNaoRemontamDeTeste;
+
+	/// <summary>ENTROU OU SAIU ALGUEM DE DENTRO DO MAJIN -- e cada absorvido e um botao de expelir.</summary>
+	private void AoAbsorvidosDoMajin()
+	{
+		if (AbsorvidosNaoRemontamDeTeste) return;
 		Habilidades.Montar(_atributos.Raca ?? "");
 		if (Visible) Redesenhar();
 	}

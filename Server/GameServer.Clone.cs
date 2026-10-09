@@ -125,8 +125,32 @@ public partial class GameServer
 		if (dono.Livro?.Sabe(PathDoZanzoken) == true) clone.Livro.Dar(PathDoZanzoken);
 		clone.Combate.Letal = false;   // a mente nao decepa membro nem mata: e treino
 
-		// a APARENCIA precisa ir pro dono, senao ele ve um boneco sem roupa nem cabelo
-		MandarLook(dono, clone);
+		// ============================ A FICHA DELE SAI PELA PORTA DE TODO CORPO NOVO ============================
+		// Sem ela o dono luta contra um corpo que nao foi vestido. Ate 2026-10-08 esta linha era um
+		// `MandarLook(dono, clone)`: um SEGUNDO escritor do `S2C.PeerLook`, deste arquivo, do tempo em que
+		// o pacote acabava na aparencia. O campo seguinte (o tipo de fusao, ver `PacoteDeAparencia`) entrou
+		// so no escritor principal, e o cliente passou a ler um byte que este caminho nao mandava. Como o
+		// leitor do LiteNetLib nao confere o fim do pacote, o resultado dependia do buffer: do tamanho
+		// exato o tratador estourava e o reflexo ficava SEM FICHA (invisivel e sem nome -- do Saiyajin
+		// sobrava o rabo, que vem do snapshot); maior, ele lia a sobra de outro pacote como tipo de fusao.
+		// As duas coisas na mesma rodada, fotografadas pela `--diagreflexo` (`Client/RoboDoReflexo.cs`).
+		//
+		// `TrocarAparencias` e por onde passa todo corpo que comeca a existir numa zona (o NPC, o corpo
+		// largado, o cadaver): UM escritor, e recebe quem estiver no bolso -- o dono hoje, e um visitante
+		// no dia em que a mente erguer alguem com ele la dentro. As metades de volta (a zona pro reflexo,
+		// a mochila dele) nao mandam nada: ele nao tem `Peer`.
+		//
+		// O QUE ESSA PORTA MANDA DESTE CORPO, DECLARADO: o nome, a raca, o genero e a aparencia DELE --
+		// `NomeVisivel`/`VisualVisivel` so desviam de quem veste uma fusao ou um disfarce, e o reflexo nao
+		// veste nenhum dos dois, entao sao os campos crus do inicializador la em cima -- e tipo de fusao
+		// ZERO: ele nao e dois corpos, e o portao do byte e o `LookDeFusao`, que nele e nulo.
+		//
+		// O QUE ELE COPIA DO DONO NAO MUDOU NESTE CONSERTO, E DIVERGE DO DM: aqui e a ficha de save
+		// (`dono.Visual`, `dono.Name`); la o reflexo e `C.name = M.name` e `C.appearance = M.appearance`
+		// (`MindMeditate.dm:239`, `:243`), a cara que o mundo ve NAQUELE instante. Um dono fundido ou
+		// disfarcado encontra aqui o proprio rosto de verdade, e no DM encontraria a mascara.
+		// ======================================================================================================
+		TrocarAparencias(clone);
 		return clone;
 	}
 
@@ -570,6 +594,12 @@ public partial class GameServer
 			// A COPIA DO SPLIT FORM (lote G12): quem manda nela e a ORDEM do dono, por verbo -- nem molde,
 			// nem fera. Ver `GuiarSplitformG12`.
 			if (!GuiarSplitformG12(npc, copiaDividida, out presa, out destino)) return;
+		}
+		else if (npc.PresoGuardado != 0)
+		{
+			// A IMAGEM DE UM MAJIN, dentro dele: a presa e o prisioneiro que ela guarda, e so ele -- nem
+			// molde, nem fera. Ver `GuiarOGuardiaoDoMajin` (`GameServer.AbsorcaoMajin.cs`).
+			if (!GuiarOGuardiaoDoMajin(npc, out presa, out destino)) return;
 		}
 		else if (npc.Papel != null && npc.CerebroDaPosse == null)
 		{
@@ -1292,16 +1322,4 @@ public partial class GameServer
 	private static bool ComandoDeCorpo(Protocol.C2S id) => id is Protocol.C2S.Action
 		or Protocol.C2S.Guard or Protocol.C2S.Carregar or Protocol.C2S.Habilidade
 		or Protocol.C2S.Transformar or Protocol.C2S.Zanzoken;
-
-	/// <summary>Manda a aparencia de um corpo pra um jogador (o clone precisa disto pra existir na tela).</summary>
-	private static void MandarLook(ServerPlayer para, ServerPlayer quem)
-	{
-		var w = Protocol.Begin(Protocol.S2C.PeerLook);
-		w.Put(quem.Id);
-		w.Put(quem.Name);
-		w.Put(quem.Race);
-		w.Put(quem.Genero);
-		w.PutAppearance(quem.Visual);
-		para.Peer?.Send(w, Protocol.ChannelReliable, LiteNetLib.DeliveryMethod.ReliableOrdered);
-	}
 }

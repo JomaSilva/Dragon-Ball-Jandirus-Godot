@@ -209,6 +209,8 @@ public sealed partial class GameServer
 		public bool Guiando = true;
 		public bool Lancada;
 		public double ProximoPulsoDeGuiaEm;
+		/// <summary>Pra onde o dono olhava no ultimo pulso de guia que a bola ouviu. Ver `TickDaDeathBallG12`.</summary>
+		public Facing OlharDaGuia;
 		public Vec2 Ancora;
 		public ulong Zona;
 	}
@@ -321,7 +323,10 @@ public sealed partial class GameServer
 			Tipo = TipoDeProjetil.Blast,
 			BaseDano = baseDano,
 			Velocidade = 1,
-			AlcanceTiles = 1000,          // ela anda por `step()`, sem `distance`: quem a limita e o prazo
+			// ela anda por `step()`, sem `distance`: no DM quem a limita e o prazo (ate 120 s). Os 1000 tiles sao
+			// esse prazo em chao, no passo de la; na pressa de hoje (dono, 2026-10-08) eles acabam antes, aos ~50 s
+			// -- mais chao do que qualquer mapa tem em linha reta.
+			AlcanceTiles = 1000,
 			Nome = "Death Ball",
 			EscalaVisual = 1 + db.Estagio / 4.0,   // `nA.Scale(1+movestrength/4, ...)` (`:81`); o estagio 1 e a matriz identidade
 		}, rumoDado: Vec2.Zero, deOnde: pl.Pos + new Vec2(0, -ZoneCollision.TileSize), verbo: "Death_Ball");
@@ -381,7 +386,14 @@ public sealed partial class GameServer
 			if (!db.Guiando) { EncerrarDeathBallG12(pl, db); continue; }
 			if (_relogioG12 < db.ProximoPulsoDeGuiaEm) continue;
 			db.ProximoPulsoDeGuiaEm = _relogioG12 + Math.Max(f.Eactspeed / 5, 1) * TempoDoDm.SegundosPorTique;
-			db.Bola.Rumo = MeleeArea.Frente(pl.Facing);
+			// A GUIA SO REAPONTA QUANDO O DONO VIRA. A bola parte no rumo EXATO do marcado (`RumoDoTiro`, dono
+			// 2026-10-09), e a frente do corpo so tem quatro lados: reescrever o rumo a cada pulso a tiraria desse
+			// rumo sem ninguem ter virado. Quem vira o corpo continua guiando, como no `A.dir = usr.dir` do DM.
+			if (pl.Facing != db.OlharDaGuia)
+			{
+				db.OlharDaGuia = pl.Facing;
+				db.Bola.Rumo = MeleeArea.Frente(pl.Facing);
+			}
 			f.BlastGain(_rng);
 			CreditarContador(pl, "blastcounter", 3);
 			CreditarContador(pl, "guidedcounter", 3);
@@ -402,15 +414,22 @@ public sealed partial class GameServer
 		db.Carregando = false;
 		p.Inerte = false;
 		p.VidaRestante = Math.Min(f.Ekioff * f.Ekiskill * 4.0, 120);   // `*40` tiques = *4 s; `Burnout(1200)` = 120 s
-		Vec2 frente = MeleeArea.Frente(pl.Facing);
+		Vec2 frente = RumoDoTiro(pl);   // no marcado, se houver (dono, 2026-10-09)
+		db.OlharDaGuia = pl.Facing;
 		p.Pos = BocaDeCano.De(pl.Pos, frente);
 		p.Cauda = p.Pos;
-		p.SegundosPorTile = Math.Max(f.Eactspeed / 5, 1) * TempoDoDm.SegundosPorTique;   // um `step()` por pulso de `Eactspeed/5` tiques
+		// NO DM, um `step()` por pulso de `Eactspeed/5` tiques: o pulso era ao mesmo tempo o PASSO da bola e a
+		// vez de ela ouvir o olhar do dono. A bola agora anda na pressa de toda bola (dono, 2026-10-08 -- ver
+		// `Projetil.AtrasoDeBolaPorLag`), e o PULSO continua no relogio do original: e ele que da a guia e o
+		// treino (`Blast_Gain` + contadores, um por pulso), e nenhum dos dois ficou mais rapido.
+		double pulso = Math.Max(f.Eactspeed / 5, 1);
+		p.SegundosPorTile = Projetil.AtrasoDeBolaPorLag(pulso);
+		p.Pressa = Projetil.PressaDeBolaPorLag(pulso);
 		Falar(pl, Protocol.Fala.Diz, "Death Ball!!");
 		if (db.Guiando)
 		{
 			p.Rumo = frente;
-			db.ProximoPulsoDeGuiaEm = _relogioG12 + p.SegundosPorTile;
+			db.ProximoPulsoDeGuiaEm = _relogioG12 + pulso * TempoDoDm.SegundosPorTique;
 			Avisar(pl, "a esfera sai e OBEDECE ao seu olhar. Aperte de novo pra solta-la.");
 		}
 		else
@@ -528,7 +547,7 @@ public sealed partial class GameServer
 		{
 			Tipo = TipoDeProjetil.Blast,
 			BaseDano = (0.5 + f.Ekioff) * f.Ephysoff,   // `Create_Blast`: `basedamage = 0.5+Ekioff`, `A.basedamage = basedamage*Ephysoff`
-			Velocidade = lag == 1 ? 3 : 2,              // `AtrasoDeBola`: 3 -> 1 tique/tile, 2 -> 2 tiques/tile
+			Velocidade = lag == 1 ? 3 : 2,              // `AtrasoDeBola`: 3 -> o lag 1 do DM (20 tiles/s), 2 -> o lag 2 (18)
 			AlcanceTiles = 1000,                        // sem `distance`: quem a apaga e o `del` abaixo
 			Nome = "esfera do Buster Barrage",
 		}, rumoDado: rumo, deOnde: berco, verbo: "BusterBarrage");
@@ -675,7 +694,9 @@ public sealed partial class GameServer
 	private void CuspirEsferaDoVoleiG12(ServerPlayer pl, EstadoDoVoleiG12 v)
 	{
 		Fighter f = pl.Ficha;
-		Vec2 rumo = MeleeArea.Frente(pl.Facing);
+		// O GIRO SORTEIA O PROPRIO RUMO, logo abaixo; as balas continuas saem no marcado (`RumoDoTiro`, dono
+		// 2026-10-09) -- e so elas viram o corpo.
+		Vec2 rumo = v.Giro ? Vec2.Zero : RumoDoTiro(pl);
 		Vec2 berco;
 		if (v.Giro)
 		{
@@ -825,8 +846,8 @@ public sealed partial class GameServer
 		{
 			Tipo = TipoDeProjetil.Blast,
 			BaseDano = 30,          // `A.basedamage = 30` (`:67`)
-			Velocidade = 3,         // `walk(A, usr.dir)` sem lag no disparo: um tile por tique
-			AlcanceTiles = 1000,    // quem a limita e o `Burnout(1000)`
+			Velocidade = 3,         // `walk(A, usr.dir)` sem lag no disparo: um tile por tique do DM, o passo da bola mais rapida
+			AlcanceTiles = 1000,    // o `Burnout(1000)` em chao, no passo do DM (100 s a 10 tiles/s); a 20 tiles/s acaba aos 50 s
 			Deflectivel = false,    // `A.deflectable = 0` (`:64`)
 			Nome = "Genkidama",
 			EscalaVisual = g.Escala,
@@ -978,7 +999,7 @@ public sealed partial class GameServer
 	/// <summary>
 	/// O DISPARO (`:159-179`). O `A.BP = expressedBP` do `:170` NAO veio -- ver o cabecalho: a bola parte
 	/// com o poder ACUMULADO na espera (decisao do dono, 2026-09-02). Ela deixa de ser inerte, vai pra
-	/// boca do cano e voa no rumo do olhar, um tile por tique, por 100 s.
+	/// boca do cano e voa no rumo do olhar por 100 s (um tile por tique no DM; aqui, na pressa de toda bola).
 	/// </summary>
 	private void LancarGenkidamaG12(ServerPlayer pl, EstadoDaGenkidamaG12 g)
 	{
@@ -989,11 +1010,13 @@ public sealed partial class GameServer
 		p.Inerte = false;
 		p.Bp = g.BpAcumulado;              // o `A.BP = expressedBP` do `:170` descartava isto -- ver o cabecalho
 		p.VidaRestante = 100;              // `A.Burnout(1000)` (`:178`)
-		Vec2 frente = MeleeArea.Frente(pl.Facing);
+		Vec2 frente = RumoDoTiro(pl);   // no marcado, se houver (dono, 2026-10-09)
 		p.Pos = BocaDeCano.De(pl.Pos, frente);
 		p.Cauda = p.Pos;
 		p.Rumo = frente;
-		p.SegundosPorTile = TempoDoDm.SegundosPorTique;   // `walk(A, usr.dir)` sem lag
+		// `walk(A, usr.dir)` sem lag: um tile por tique no DM -- a bola mais rapida de la, na pressa das de ca
+		p.SegundosPorTile = Projetil.AtrasoDeBolaPorLag(1);
+		p.Pressa = Projetil.PressaDeBolaPorLag(1);
 		Falar(pl, Protocol.Fala.Diz, "GENKIDAMA!!");
 		Avisar(pl, $"a Genkidama parte com escala {g.Escala:0.0} ({g.Doadores} doador(es)) e o poder acumulado na espera: "
 				   + $"{g.BpAcumulado:N0} (o seu proprio e {f.expressedBP:N0}).");
@@ -1465,7 +1488,18 @@ public sealed partial class GameServer
 
 		PorNoMundo(copia);
 		copia.Combate.Letal = false;   // `murderToggle` de um mob novo e 0
-		foreach (ServerPlayer o in ZoneList(copia.Zone.Hash)) MandarLook(o, copia);
+
+		// QUEM ESTA NA ZONA PRECISA VER A COPIA, e a ficha dela sai pela porta de todo corpo novo
+		// (`TrocarAparencias`, como o NPC). Aqui havia um laco sobre o `MandarLook`, o segundo escritor do
+		// `S2C.PeerLook`, que nao mandava o byte do tipo de fusao: o `CriarClone` (`GameServer.Clone.cs`)
+		// conta o defeito inteiro, e o que esta declarado la vale aqui -- a copia manda os campos DELA
+		// (ela nao tem fusao nem disfarce proprios) e tipo de fusao ZERO.
+		//
+		// E A MESMA DIVERGENCIA DO DM, que este conserto tambem nao mexeu: a copia nasce da ficha de save
+		// do dono (`dono.Visual`, `dono.Name`), e la ela sai de `z.name="[name] Copy"`, `z.icon = icon` e
+		// `z.overlayList = overlayList.Copy()` (`CopyMaker.dm:37`, `:43`, `:75`) -- o visual do MOMENTO.
+		// Quem divide o corpo disfarcado pela Imitacao ganha aqui uma copia com o rosto de verdade.
+		TrocarAparencias(copia);
 		_splitformsG12[copia.Id] = new SplitformG12
 		{
 			Master = dono.Id,
@@ -1860,7 +1894,13 @@ public sealed partial class GameServer
 		if (_precognitivosG12.Count == 0 || _relogioG12 < _proximoReflexoDePrecognicaoG12) return;
 		_proximoReflexoDePrecognicaoG12 = _relogioG12 + 0.2;
 
-		const float alcance = 1.5f * ZoneCollision.TileSize;   // o 3x3: ate um tile e meio do centro
+		// O 3x3 DO DM: ate um tile e meio do centro -- NA VELOCIDADE DE LA. Ele e amostrado a 5 Hz, e o que
+		// decide se a esquiva sai e quanto o tiro anda entre duas amostras: com a bola quase cinco vezes mais
+		// rapida (dono, 2026-10-08) e a caixa parada, quem ve o futuro passaria a ver um tiro em cada quatro.
+		// A caixa continua a do DM, e o tiro que VEM PRA CIMA e visto mais cedo, na pressa dele
+		// (`Projetil.VemPraCimaDe`): pra quem esta na linha do tiro a conta do original fica intacta, e uma
+		// bola que passa longe continua nao sendo assunto de ninguem.
+		const float alcanceNoDm = 1.5f * ZoneCollision.TileSize;
 		foreach (int id in _precognitivosG12)
 		{
 			if (!_players.TryGetValue(id, out ServerPlayer? pl)) continue;
@@ -1870,7 +1910,8 @@ public sealed partial class GameServer
 			foreach (Projetil t in tiros)
 			{
 				if (!t.Vivo || t.Inerte || t.Dono == id || t.Rumo.LengthSquared < 1e-6f) continue;
-				if (Math.Abs(t.Pos.X - pl.Pos.X) > alcance || Math.Abs(t.Pos.Y - pl.Pos.Y) > alcance) continue;
+				bool naCaixa = Math.Abs(t.Pos.X - pl.Pos.X) <= alcanceNoDm && Math.Abs(t.Pos.Y - pl.Pos.Y) <= alcanceNoDm;
+				if (!naCaixa && !t.VemPraCimaDe(pl.Pos, alcanceNoDm)) continue;
 
 				Vec2 rumo = t.Rumo.Girado90().Normalized();
 				Vec2 destino = pl.Pos + rumo * ZoneCollision.TileSize;

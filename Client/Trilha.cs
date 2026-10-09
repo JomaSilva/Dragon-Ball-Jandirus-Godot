@@ -48,6 +48,20 @@ public static class Trilha
     /// <summary>Uma faixa de combate, diferente da anterior.</summary>
     public static string Combate() => BattleOst.Proxima();
 
+    /// <summary>
+    /// A faixa que o proximo <see cref="Combate"/> vai devolver, SEM tira-la do saco -- vazio se a pasta nao
+    /// existir. E o que deixa o `AudioDirector` le-la numa thread de carga antes de a luta comecar: ver
+    /// `AudioDirector.Adiantar`.
+    /// </summary>
+    public static string ProximaDeCombate() => BattleOst.Espiar();
+
+    /// <summary>
+    /// A faixa que o proximo <see cref="Menu"/> vai devolver, SEM tira-la do saco -- vazio se a pasta nao
+    /// existir. Irma da <see cref="ProximaDeCombate"/>, e pelo mesmo motivo: e o que deixa o `AudioDirector`
+    /// le-la numa thread de carga antes de o ESC abrir.
+    /// </summary>
+    public static string ProximaDeMenu() => MenuOst.Espiar();
+
     /// <summary>O som de fundo de cada planeta. Vazio = silencio.</summary>
     public static string? AmbienteDe(string zona) => zona switch
     {
@@ -114,6 +128,59 @@ public static class Trilha
 
     /// <summary>Soco no ar. E o mesmo som pra errar e pra socar o vazio -- e o mesmo gesto.</summary>
     public static string SocoNoAr() => Erro.Proxima();
+
+    /// <summary>
+    /// TODAS AS AMOSTRAS DE GOLPE -- a pasta inteira, uns 40 arquivos e 1 MB. E o que o `Aquecimento`
+    /// carrega no lobby e SEGURA: ninguem as segurava, entao cada uma saia do cache junto com o ultimo
+    /// tocador e voltava do disco, na thread principal, no golpe seguinte que a sorteasse. Medido com
+    /// janela (`--diagestouro`, 2026-10-08): com elas ja na memoria a primeira bola da noite caiu de 16
+    /// pra 10 a 14 ms, e o relato do primeiro golpe de 17-22 pra 12-18. O que sobrava no golpe nao era
+    /// amostra: era a musica de combate, lida do disco na hora -- e que hoje chega antes da luta (ver
+    /// `AudioDirector.Adiantar`).
+    /// </summary>
+    public static List<string> AmostrasDeGolpe() => ArquivosDeAudio(P.TrimEnd('/'));
+
+    private static readonly string[] Extensoes = [".ogg", ".mp3", ".wav"];
+
+    /// <summary>
+    /// OS ARQUIVOS DE AUDIO DE UMA PASTA. O Godot deixa .ogg/.mp3/.wav passarem pro pacote com o nome
+    /// original, entao listar funciona tambem na build exportada -- mas as sobras `.import` e `.remap`
+    /// aparecem na listagem e precisam sair.
+    /// </summary>
+    private static List<string> ArquivosDeAudio(string pasta)
+    {
+        var achados = new List<string>();
+        foreach (string bruto in DirAccess.GetFilesAt(pasta))
+        {
+            string nome = bruto;
+            if (nome.EndsWith(".remap")) nome = nome[..^6];
+            if (nome.EndsWith(".import")) nome = nome[..^7];
+
+            bool audio = false;
+            foreach (string ext in Extensoes)
+                if (nome.EndsWith(ext, StringComparison.OrdinalIgnoreCase)) { audio = true; break; }
+            if (!audio) continue;
+
+            string caminho = $"{pasta}/{nome}";
+            if (!achados.Contains(caminho)) achados.Add(caminho);
+        }
+        return achados;
+    }
+
+    /// <summary>
+    /// TODO SOM DE CAMINHO FIXO DESTA CLASSE -- o valor de cada constante publica dela, sem repeticao. E o que deixa
+    /// o `Aquecimento` trazer no lobby, numa thread, os sons que os gestos tocam (ver `Aquecimento.SonsDeGesto`).
+    ///
+    /// SAI DO SIMBOLO, e nao de uma segunda lista escrita ao lado: constante de caminho nova nesta classe ja esta
+    /// nesta conta. (Os de SACO DE SORTEIO nao sao constantes, e saem todos da pasta de <see cref="AmostrasDeGolpe"/>.)
+    /// </summary>
+    public static List<string> EfeitosFixos()
+    {
+        var caminhos = new List<string>();
+        foreach (System.Reflection.FieldInfo campo in typeof(Trilha).GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static))
+            if (campo.GetValue(null) is string { Length: > 0 } caminho && !caminhos.Contains(caminho)) caminhos.Add(caminho);
+        return caminhos;
+    }
 
     /// <summary>O "sopro" do golpe saindo, que toca junto com o impacto no original.</summary>
     public const string Assobio = P + "meleeflash.ogg";
@@ -322,8 +389,6 @@ public static class Trilha
         private string _ultima = "";
         private static readonly RandomNumberGenerator Rng = new();
 
-        private static readonly string[] Extensoes = [".ogg", ".mp3", ".wav"];
-
         public Saco(string[] itens)
         {
             _itens = [.. itens];
@@ -339,13 +404,30 @@ public static class Trilha
 
         public string Proxima()
         {
+            // UMA CONTA SO: o que sai e o que o `Espiar` diria agora. Duas contas pra mesma resposta sao duas
+            // contas pra discordarem -- e aqui a discordancia e uma faixa carregada a toa e outra lida do disco
+            // no meio do golpe (ver `AudioDirector.Adiantar`).
+            string proxima = Espiar();
+            if (_itens.Count > 1) { _ultima = proxima; _i++; }
+            return proxima;
+        }
+
+        /// <summary>
+        /// A QUE O PROXIMO <see cref="Proxima"/> VAI ENTREGAR, sem tira-la do saco.
+        ///
+        /// Quem espia no fim de uma rodada faz o embaralhamento da rodada seguinte acontecer AGORA, em vez de
+        /// na entrega. E a mesma chamada, com a mesma `_ultima`, so mais cedo: a regra "a rodada nova nao
+        /// comeca com a faixa em que a velha terminou" e decidida la dentro e nao muda de lugar. O que nao
+        /// da e responder sem embaralhar -- seria um palpite, e a entrega seguinte sortearia outra coisa.
+        /// </summary>
+        public string Espiar()
+        {
             if (_pasta != null && _itens.Count == 0) Varrer();
             if (_itens.Count == 0) return "";
             if (_itens.Count == 1) return _itens[0];
 
             if (_i >= _itens.Count) Embaralhar();
-            _ultima = _itens[_i++];
-            return _ultima;
+            return _itens[_i];
         }
 
         private void Embaralhar()
@@ -361,37 +443,16 @@ public static class Trilha
             _i = 0;
         }
 
-        /// <summary>
-        /// Le a pasta. O Godot deixa .ogg/.mp3/.wav passarem pro pacote com o nome original,
-        /// entao listar funciona tambem na build exportada -- mas as sobras `.import` e
-        /// `.remap` aparecem na listagem e precisam sair.
-        /// </summary>
+        /// <summary>Le a pasta -- ver <see cref="ArquivosDeAudio"/>.</summary>
         private void Varrer()
         {
-            string[] nomes = DirAccess.GetFilesAt(_pasta!);
-            if (nomes.Length == 0)
+            if (DirAccess.GetFilesAt(_pasta!).Length == 0)
             {
                 GD.PushWarning($"[audio] pasta vazia ou ausente: {_pasta}");
                 return;
             }
 
-            var achados = new List<string>();
-            foreach (string bruto in nomes)
-            {
-                string nome = bruto;
-                if (nome.EndsWith(".remap")) nome = nome[..^6];
-                if (nome.EndsWith(".import")) nome = nome[..^7];
-
-                bool audio = false;
-                foreach (string ext in Extensoes)
-                    if (nome.EndsWith(ext, StringComparison.OrdinalIgnoreCase)) { audio = true; break; }
-                if (!audio) continue;
-
-                string caminho = $"{_pasta}/{nome}";
-                if (!achados.Contains(caminho)) achados.Add(caminho);
-            }
-
-            _itens = achados;
+            _itens = ArquivosDeAudio(_pasta!);
             Embaralhar();
             GD.Print($"[audio] {_pasta}: {_itens.Count} faixas na rotacao");
         }

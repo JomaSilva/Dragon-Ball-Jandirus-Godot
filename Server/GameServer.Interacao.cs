@@ -113,6 +113,14 @@ public sealed partial class GameServer
 			case "sala_soltar":
 				return ComandoDaSalaDoTempo(pl, cmd, arg);
 
+			// A PORTA ERGUIDA (`GameServer.Blocos.cs`): digitar a senha, bater, e o dono trocar a senha.
+			// Como a nave e o cadaver, ela NAO passa pelo `ObraQueAceita` -- nao e uma obra, e um bloco
+			// da base de alguem --, e o alcance e conferido la dentro, contra a celula dela.
+			case "porta_senha":
+			case "porta_bater":
+			case "porta_trocar":
+				return ComandoDePortaErguida(pl, cmd, arg);
+
 			default: return ComandoDeGravidade(pl, cmd, arg);
 		}
 	}
@@ -287,7 +295,15 @@ public sealed partial class GameServer
 					// `Caiu` e o mesmo helper da skill ativa do Namek (`GameServer.Raciais.cs`): nao
 					// devolve a mao antes do braco, senao a vez e desperdicada num membro que voltaria
 					// junto com a raiz de qualquer jeito.
-					BodyPart? volta = c.Corpo.Partes.FirstOrDefault(p => p.Decepado && !Caiu(c.Corpo, p.Dono));
+					//
+					// LACO A MAO, e este e o que mais importa do metodo: o `FirstOrDefault(p => ... c.Corpo ...)` que
+					// estava aqui CAPTURAVA o `c`, e o compilador monta o fecho de uma variavel capturada na ENTRADA
+					// do escopo dela -- ou seja em cada volta do laco de fora, por corpo, por tique, mesmo sem a
+					// execucao nunca chegar a esta linha. Medido em 2026-10-08 (`--diagcoletor`): 3,5 mil fechos por
+					// segundo, o maior alocador que sobrava no tique.
+					BodyPart? volta = null;
+					foreach (BodyPart p in c.Corpo.Partes)
+						if (p.Decepado && !Caiu(c.Corpo, p.Dono)) { volta = p; break; }
 					if (volta != null && c.Corpo.Regenerar(volta))
 					{
 						AjustarGanhoDoRabo(pl);

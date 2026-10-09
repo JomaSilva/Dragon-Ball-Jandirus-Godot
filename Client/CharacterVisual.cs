@@ -67,6 +67,147 @@ public partial class CharacterVisual : Node2D
 	private readonly List<AnimatedSprite2D> _camadas = [];
 	private AnimatedSprite2D? _corpo;
 
+	// ============================ O COMPASSO DE CADA CAMADA ============================
+	// O relogio desta classe (ver `_Process`) precisa, por camada, de tres coisas da animacao em que ela
+	// esta: se a folha TEM essa animacao, quanto dura o ciclo e quando cada quadro acaba. Ele perguntava
+	// tudo isso ao Godot em TODO QUADRO DE TELA, e cada pergunta fabrica lixo do pior tipo:
+	//
+	//   * ler `sprite.Animation` devolve um `StringName` NOVO a cada leitura;
+	//   * entregar uma `string` onde o Godot quer um `StringName` (`HasAnimation`, `GetFrameCount`,
+	//     `GetFrameDuration`, `GetAnimationSpeed`, `GetMeta`, `SetShaderParameter`) fabrica outro, por chamada;
+	//   * e um `StringName` nao e um objeto so. O GodotSharp registra cada um numa tabela de descartaveis
+	//     (um `WeakReference` e um no de dicionario) e ele tem FINALIZADOR: sao tres objetos que SOBREVIVEM
+	//     a primeira coleta, porque so morrem depois de a thread de finalizacao rodar.
+	//
+	// MEDIDO em 2026-10-08 (`--diagcoletor`, 41 corpos na tela): 332 mil `StringName` por segundo, 40 MB/s
+	// -- 97% de tudo o que o processo alocava --, e 13 dos 16 MB da geracao 0 sobrevivendo a cada coleta:
+	// uma pausa de 38 a 44 ms a cada 0,37 s, mais de 10% do tempo com o jogo parado. E 3,4 dos 5 ms de
+	// script de cada quadro.
+	//
+	// AGORA A RESPOSTA FICA GUARDADA POR CAMADA e so e relida quando o proprio sprite avisa que a animacao
+	// ou a folha mudaram (`AnimationChanged` / `SpriteFramesChanged`) -- quem quer que as tenha trocado, por
+	// este arquivo ou por fora dele. Os numeros sao os MESMOS do Godot, somados na MESMA ordem: nenhum
+	// quadro de nenhuma camada muda.
+	//
+	// O QUE ELE SUPOE: que ninguem EDITA uma folha depois de vesti-la. Hoje toda `SpriteFrames` do jogo e um
+	// `.tres` carregado e nenhuma linha do cliente chama `AddFrame`/`SetAnimationSpeed`; se um dia uma folha
+	// for montada em codigo e mexida ja vestida, o sprite nao avisa (quem avisa e o `Changed` do recurso) e o
+	// compasso ficaria com os tempos de antes.
+	// ====================================================================================
+	private sealed class Compasso
+	{
+		/// <summary>Falso = a animacao ou a folha mudaram desde a ultima leitura: reler antes de usar.</summary>
+		public bool EmDia;
+
+		/// <summary>
+		/// A animacao em que o sprite esta, como o Godot a entregou na ultima leitura. Fica GUARDADA (e nao so os
+		/// numeros dela) porque e com este objeto que se pergunta o resto a folha -- a textura do quadro, por
+		/// exemplo -- sem fabricar outro `StringName`. Nula sem folha.
+		/// </summary>
+		public StringName? Animacao;
+
+		/// <summary>A folha da camada tem a animacao em que o sprite esta.</summary>
+		public bool TemAnimacao;
+
+		public int Quadros;
+
+		/// <summary>Duracao total da animacao, em segundos.</summary>
+		public double Ciclo;
+
+		/// <summary>O instante em que cada quadro ACABA, contado do comeco do ciclo, em segundos.</summary>
+		public double[] Fim = [];
+
+		/// <summary>
+		/// Em que quadro a animacao esta no instante <paramref name="t"/>, RESPEITANDO a duracao
+		/// de cada quadro.
+		///
+		/// Nao da pra dividir o ciclo em partes iguais: o estado parado do corpo tem `delay =
+		/// 1,1,1,30`, ou seja tres quadros de 0,1s (a piscada) e um segurando 3 segundos (de pe,
+		/// olhos abertos). Distribuindo linearmente, cada quadro ganhava 0,82s e a piscada virava
+		/// camera lenta -- foi o que o dono viu como "quase 5 segundos por piscada".
+		/// </summary>
+		public int QuadroEm(double t)
+		{
+			if (Quadros <= 1) return 0;
+			for (int i = 0; i < Quadros; i++)
+				if (t < Fim[i]) return i;
+			return Quadros - 1;
+		}
+	}
+
+	private readonly System.Runtime.CompilerServices.ConditionalWeakTable<AnimatedSprite2D, Compasso> _compassos = new();
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagcoletor --coletordefeito relogio`): o compasso nunca vale. O relogio
+	/// volta a perguntar a animacao e os tempos dela ao Godot em todo quadro, por camada, e o `StringName` de
+	/// cada pergunta fica pro finalizador -- o custo que o compasso existe pra tirar. A regua da bancada tem
+	/// que reprovar a cena.
+	/// </summary>
+	public static bool CompassoVencidoDeTeste;
+
+	/// <summary>
+	/// O compasso desta camada, em dia. Quem o mantem em dia sao os dois sinais do proprio sprite, ligados
+	/// aqui na primeira vez que ele e pedido.
+	/// </summary>
+	private Compasso CompassoDe(AnimatedSprite2D s)
+	{
+		if (!_compassos.TryGetValue(s, out Compasso? c))
+		{
+			var novo = new Compasso();
+			s.AnimationChanged += () => novo.EmDia = false;
+			s.SpriteFramesChanged += () => novo.EmDia = false;
+			_compassos.Add(s, novo);
+			c = novo;
+		}
+		if (!c.EmDia || CompassoVencidoDeTeste) Reler(s, c);
+		return c;
+	}
+
+	/// <summary>
+	/// Le do Godot a animacao da camada e os tempos dela. As contas sao as do `SpriteFrames` (duracao do
+	/// quadro sobre a velocidade da animacao), acumuladas do primeiro quadro pro ultimo.
+	/// </summary>
+	private static void Reler(AnimatedSprite2D s, Compasso c)
+	{
+		c.EmDia = true;
+		c.TemAnimacao = false;
+		c.Quadros = 0;
+		c.Ciclo = 0;
+
+		// O NOME DE ANTES E DEVOLVIDO NA HORA (`Dispose`), em vez de ficar pro finalizador -- o defeito injetado
+		// e justamente deixa-lo ficar.
+		if (!CompassoVencidoDeTeste) c.Animacao?.Dispose();
+		c.Animacao = null;
+		if (s.SpriteFrames is not { } f) return;
+
+		// UMA leitura por troca de animacao, e o MESMO objeto serve a todas as perguntas: as de baixo e as de
+		// quem pedir o compasso ate a proxima troca (`AtualizarCaixa`).
+		StringName anim = s.Animation;
+		c.Animacao = anim;
+		if (!f.HasAnimation(anim)) return;
+
+		int n = f.GetFrameCount(anim);
+		double vel = Math.Max(f.GetAnimationSpeed(anim), 0.01);
+		if (c.Fim.Length != n) c.Fim = new double[n];
+		double total = 0;
+		for (int i = 0; i < n; i++)
+		{
+			total += f.GetFrameDuration(anim, i) / vel;
+			c.Fim[i] = total;
+		}
+		c.TemAnimacao = true;
+		c.Quadros = n;
+		c.Ciclo = total;
+	}
+
+	// OS NOMES QUE ESTE ARQUIVO ENTREGA AO GODOT POR QUADRO -- o impacto enquanto dura, o contorno da forma
+	// enquanto a aura esta acesa, a caixa do quadro a cada troca dele, a meta que o relogio le. Um `StringName`
+	// guardado por nome, pelo motivo do compasso: a `string` entregue no lugar fabricaria um a cada chamada.
+	private static readonly StringName
+		UniFlashCor = "flash_cor", UniContornoCor = "contorno_cor", UniFlash = "flash", UniAchatar = "achatar",
+		UniEmpurrao = "empurrao", UniContorno = "contorno", UniAuraCor = "aura_cor", UniAura = "aura",
+		UniQuadroMin = "quadro_min", UniQuadroMax = "quadro_max", MetaSync = "sync";
+
 	/// <summary>
 	/// A ANIMACAO QUE ESTA TOCANDO no corpo agora. So pras bancadas.
 	///
@@ -114,6 +255,57 @@ public partial class CharacterVisual : Node2D
 	private void Garantir() => _corpo ??= NovaCamada(0);
 
 	/// <summary>
+	/// O ENSAIO DO LOBBY (ver `Aquecimento.AtosDoCorpo`): um boneco de verdade -- o mesmo node, o mesmo
+	/// <see cref="_Ready"/>, a mesma camada com o mesmo material (<see cref="NovaCamada"/>) -- parado num palco fora da
+	/// tela, do lado escuro e do lado iluminado dele, pra as DUAS pipelines do `Personagem.gdshader` serem montadas
+	/// ALI: a do boneco sem luz, que sem isto nasce no quadro em que o primeiro corpo aparece, e a do boneco COM luz em
+	/// cima, que nascia no quadro em que a primeira luz alcancava um corpo -- de noite, a luz de ki do primeiro tiro,
+	/// no meio da luta; ou a primeira fogueira, a primeira aura acesa ao lado, o primeiro teto com luz.
+	///
+	/// MEDIDO em 2026-10-09 pela `--diagestouro`, o desenho do quadro em que a primeira luz alcanca o corpo, com uma
+	/// pipeline montada nele: 1,2 ms com o cache de shader do DRIVER de video quente; com ele frio (`--driverfrio
+	/// Personagem`), 101 a 106 ms de noite, na primeira bola de ki (seis corridas; o quadro inteiro, 110 a 120), e 101 de
+	/// dia, com uma luz acesa em cima do boneco (`--temas --raioscomluz`, uma). DEPOIS: nenhuma pipeline nasce no
+	/// quadro, e o desenho dele custa 0,3 a 0,5 ms com o driver quente e com ele frio. (No lobby, o quadro do ato custa
+	/// 60 ms com o driver quente e 213 com ele frio.)
+	///
+	/// COM UMA FOLHA DE MENTIRA, de um quadro branco so (<see cref="FolhaDoEnsaio"/>): a pipeline e do shader e do
+	/// jeito de desenhar, e nao da textura -- e a folha de um corpo de verdade ou depende de quem entrou (que e o que
+	/// o aquecimento nao sabe) ou esta na segunda fila dele, ainda na thread de carga quando o ensaio roda (e pedir ao
+	/// `ResourceLoader` um arquivo que esta no ar e o travamento do cabecalho do `Aquecimento`). Morre com o palco.
+	/// </summary>
+	public static void Ensaiar(Node2D pai, Vector2 onde) => PorOBonecoDoEnsaio(pai, onde, "BonecoDoEnsaio");
+
+	/// <summary>
+	/// O BONECO DO ENSAIO, filho de <paramref name="pai"/> e com o nome que quem chama pedir: o do ato do corpo
+	/// (<see cref="Ensaiar"/>), e o que a miragem do Zanzoken fotografa no ato dela (`Zanzoken.Ensaiar`: a miragem e a
+	/// foto da pilha de um boneco chamado `Visual`, e por isso o nome vem de fora).
+	/// </summary>
+	public static void PorOBonecoDoEnsaio(Node pai, Vector2 onde, string nome)
+	{
+		var boneco = new CharacterVisual { Name = nome, Position = onde };
+		pai.AddChild(boneco);   // o `_Ready` de producao: e nele que a camada do corpo nasce, com o material dela
+		if (boneco._corpo is not { } corpo) return;
+		corpo.SpriteFrames = FolhaDoEnsaio();
+		boneco.Aplicar(force: true);
+	}
+
+	/// <summary>
+	/// A folha do boneco do ensaio: uma animacao so -- a pose parada virada pro sul, que e a que um corpo recem-nascido
+	/// escolhe (<see cref="Escolher"/>) -- com um quadro so, branco, do tamanho de um tile. Feita na memoria.
+	/// </summary>
+	private static SpriteFrames FolhaDoEnsaio()
+	{
+		const string parado = "default_south";
+		Image img = Image.CreateEmpty(Celula, Celula, false, Image.Format.Rgba8);
+		img.Fill(Colors.White);
+		var folha = new SpriteFrames();
+		folha.AddAnimation(parado);
+		folha.AddFrame(parado, ImageTexture.CreateFromImage(img));
+		return folha;
+	}
+
+	/// <summary>
 	/// Uma camada nova. <paramref name="ordem"/> e a posicao dela na PILHA do personagem
 	/// (corpo 0, rabo 1, roupa 2.., cabelo 10, olhos 11) -- e nao um z_index.
 	///
@@ -145,6 +337,11 @@ public partial class CharacterVisual : Node2D
 		//
 		// Pelo SINAL, e nao por quadro de render: `FrameChanged` dispara quando a pose troca de
 		// verdade (~5-10 Hz), e nao 60 vezes por segundo pra reescrever o mesmo valor.
+		//
+		// O COMPASSO NASCE ANTES, E A ORDEM E A REGRA: o Godot chama os ouvintes de um sinal na ordem em que
+		// foram ligados, e o `AtualizarCaixa` le a animacao do compasso -- entao quem VENCE o compasso (ligado
+		// dentro do `CompassoDe`) tem que ouvir o `AnimationChanged` antes de quem o le.
+		CompassoDe(s);
 		s.FrameChanged += () => AtualizarCaixa(s);
 		s.AnimationChanged += () => AtualizarCaixa(s);
 
@@ -154,15 +351,20 @@ public partial class CharacterVisual : Node2D
 	}
 
 	/// <summary>Manda pro shader onde este quadro comeca e acaba dentro da folha.</summary>
-	private static void AtualizarCaixa(AnimatedSprite2D s)
+	private void AtualizarCaixa(AnimatedSprite2D s)
 	{
 		if (!IsInstanceValid(s) || s.Material is not ShaderMaterial m) return;
-		if (s.SpriteFrames is not { } sf || s.Animation.IsEmpty) return;
-		if (s.Frame < 0 || s.Frame >= sf.GetFrameCount(s.Animation)) return;
+		if (s.SpriteFrames is not { } sf) return;
 
-		(Vector2 min, Vector2 max) = BorraoDirecional.Caixa(sf.GetFrameTexture(s.Animation, s.Frame));
-		m.SetShaderParameter("quadro_min", min);
-		m.SetShaderParameter("quadro_max", max);
+		// A ANIMACAO VEM DO COMPASSO, e nao de uma leitura nova de `s.Animation`: cada leitura fabrica um
+		// `StringName`, e isto roda a cada troca de quadro de cada camada de cada corpo.
+		Compasso c = CompassoDe(s);
+		int quadro = s.Frame;
+		if (!c.TemAnimacao || c.Animacao is not { } anim || quadro < 0 || quadro >= c.Quadros) return;
+
+		(Vector2 min, Vector2 max) = BorraoDirecional.Caixa(sf.GetFrameTexture(anim, quadro));
+		m.SetShaderParameter(UniQuadroMin, min);
+		m.SetShaderParameter(UniQuadroMax, max);
 	}
 
 	/// <summary>
@@ -230,15 +432,14 @@ public partial class CharacterVisual : Node2D
 		// SUFIXO VAZIO NOS MODOS QUE NAO TROCAM, e nao "nao chamar": o `CabeloDaForma("")` e o que
 		// devolve o penteado do jogador (o `RemoveHair()` + `/hairs/hair` do DM). Pular a chamada
 		// deixaria o cabelo da forma ANTERIOR na cabeca -- o tombo do `ussj_saved_icon`.
-		bool troca = modo is Jandirus.Core.Forms.ModoDoCabelo.Trocar
-						  or Jandirus.Core.Forms.ModoDoCabelo.TrocarETingir
-						  or Jandirus.Core.Forms.ModoDoCabelo.TrocarOuTingir
-						  or Jandirus.Core.Forms.ModoDoCabelo.TrocarERecolorir;
+		// (QUAIS modos trocam a folha, e com que sufixo, mora no `SufixoQueAFormaPede`: a cinematica faz a mesma
+		// pergunta antes da hora, pra trazer a folha do disco sem parar o quadro em que ela e vestida.)
+		//
 		// O SUFIXO SAI DO CORE E NAO DO CAMPO CRU, e a diferenca e o Grade 4: o SSJ1 a 100% de
 		// maestria pede `SSjFP` em vez de `SSj` (ver `Catalogo.SufixoDoCabeloDe`). Ler `d.SufixoDoCabelo`
 		// aqui era o ultimo dos dois lugares onde o pedido do `fp` morria -- o outro era o catalogo,
 		// que nunca escreveu esse sufixo em entrada nenhuma.
-		string sufixo = troca ? Jandirus.Core.Forms.Catalogo.SufixoDoCabeloDe(d, _dominouAForma) : "";
+		string sufixo = SufixoQueAFormaPede(modo, d);
 		bool trocou = CabeloDaForma(sufixo);
 
 		// A TINTA. No `TrocarOuTingir` ela e ALTERNATIVA e nao acumulo -- ver o enum: quem ganhou a
@@ -328,6 +529,43 @@ public partial class CharacterVisual : Node2D
 		// `Catalogo.CorDoOlho(d, semRedeas)`). Quem chega numa zona onde alguem ja esta possuido veste
 		// o olho certo por esta linha, e nao por um remendo depois.
 		TingirOlhos(Jandirus.Core.Forms.Catalogo.CorDoOlho(d, _semRedeas) is { } co ? new Color(co) : null);
+	}
+
+	/// <summary>
+	/// O SUFIXO DE PENTEADO QUE ESTA FORMA PEDE A ESTE CORPO -- vazio nos modos que nao trocam a folha (os que so
+	/// tingem, e os que nao mexem no cabelo). O dominio da forma entra na conta: ver <see cref="_dominouAForma"/>.
+	/// </summary>
+	private string SufixoQueAFormaPede(Jandirus.Core.Forms.ModoDoCabelo modo, Jandirus.Core.Forms.FormaDef? d) =>
+		modo is Jandirus.Core.Forms.ModoDoCabelo.Trocar
+			 or Jandirus.Core.Forms.ModoDoCabelo.TrocarETingir
+			 or Jandirus.Core.Forms.ModoDoCabelo.TrocarOuTingir
+			 or Jandirus.Core.Forms.ModoDoCabelo.TrocarERecolorir
+			? Jandirus.Core.Forms.Catalogo.SufixoDoCabeloDe(d, _dominouAForma) : "";
+
+	/// <summary>
+	/// ============================ AS FOLHAS QUE VESTIR ESTA FORMA VAI PEDIR A ESTE CORPO ============================
+	/// O corpo proprio, o penteado e as coladas -- na ordem em que o `Transformacao.Vestir` os pede, e pelos MESMOS
+	/// tres resolvedores que o <see cref="CorpoDaForma(Jandirus.Core.Forms.CorpoDeForma)"/>, o
+	/// <see cref="CabeloDaForma"/> e o <see cref="ColadasDaForma"/> usam na hora de vestir. Quem pergunta e a
+	/// cinematica, que conhece a forma segundos antes do beat que a veste e pede as folhas a thread de carga
+	/// (`Transformacao.AdiantarAsFolhasDaForma`).
+	///
+	/// A RESPOSTA E DESTE CORPO, e por isso nao da pra traze-las no lobby: o penteado sai do cabelo da ficha (e do
+	/// sexo, e de ser fusao), o corpo musculoso sai da pele, os do Frost Demon saem das escolhas da criacao.
+	///
+	/// VALE PRO INSTANTE DA PERGUNTA. Uma aparencia que mude no meio da cena faz o beat pedir outra folha, e ai ela e
+	/// lida na hora, como sempre foi: adiantar e economia, nao promessa.
+	/// ================================================================================================================
+	/// </summary>
+	public IEnumerable<string> FolhasDaForma(Jandirus.Core.Forms.FormaDef? d)
+	{
+		if (CaminhoDoCorpoDaForma(d?.Corpo ?? Jandirus.Core.Forms.CorpoDeForma.Nenhum,
+								  Jandirus.Core.Forms.Catalogo.DegrauDoFrost(d)) is { Length: > 0 } corpo)
+			yield return corpo;
+		if (VarianteDoCabelo(SufixoQueAFormaPede(Jandirus.Core.Forms.Catalogo.ModoDoCabelo(d), d)) is { } cabelo)
+			yield return cabelo;
+		foreach (Jandirus.Core.Forms.Colada colada in Jandirus.Core.Forms.Catalogo.Coladas(d))
+			yield return ColadasDeForma.CaminhoDa(colada.Folha);
 	}
 
 	/// <summary>
@@ -754,6 +992,20 @@ public partial class CharacterVisual : Node2D
 		if (s.Material is ShaderMaterial m) t.Escrever(m);
 	}
 
+	/// <summary>
+	/// O MATERIAL QUE PINTA UMA PECA DE ROUPA FORA DO BONECO -- o icone dela na mochila (`TelaDeInventario`).
+	/// E o MESMO shader e a MESMA tinta (MATIZ) que a peca recebe no corpo, pela mesma porta (<see cref="Tinta"/>):
+	/// um `Modulate` no icone multiplicaria a arte, e a camisa tingida de azul apareceria na mochila numa cor
+	/// e no corpo noutra. Nulo sem cor -- a peca crua nao precisa de material.
+	/// </summary>
+	public static ShaderMaterial? MaterialDeRoupa(Rgb? cor)
+	{
+		if (cor == null) return null;
+		var m = new ShaderMaterial { Shader = ShaderTinta };
+		Tinta.DaFicha(cor, matiz: true).Escrever(m);
+		return m;
+	}
+
 
 	// =====================================================================
 	// APARENCIA
@@ -1168,7 +1420,11 @@ public partial class CharacterVisual : Node2D
 	private static void Trocar(AnimatedSprite2D alvo, string caminho)
 	{
 		if (alvo.GetMeta("src", "").AsString() == caminho) return;   // ja e esse: nao reinicia a animacao
-		var f = ResourceLoader.Load<SpriteFrames>(caminho);
+		// PELA PORTA, e nao pelo `ResourceLoader` direto: a folha que um corpo veste fica presa pelo processo
+		// inteiro. Solta, ela morria com o ultimo corpo que a vestia, os quadros que o `AtualizarCaixa` e o
+		// `Ancorar` tinham pedido ficavam no cache so pelo involucro C#, e recarrega-la aqui fazia o motor logar
+		// `Handle is not initialized` no meio do vestir. Ver `FolhasPresas`.
+		var f = FolhasPresas.Carregar(caminho);
 		if (f == null) { GD.PushWarning($"[visual] sprite ausente: {caminho}"); return; }
 		alvo.SpriteFrames = f;
 		alvo.SetMeta("src", caminho);
@@ -1486,14 +1742,14 @@ public partial class CharacterVisual : Node2D
 		_ritmo = 1;
 		_flickAcabou = false;   // um golpe NOVO: o `flick` toca de novo, do comeco
 		Aplicar(force: true);   // ja zera o relogio: o golpe recomeca do primeiro quadro
-		if (duracaoAlvo <= 0 || _corpo?.SpriteFrames is not { } f) return;
+		if (duracaoAlvo <= 0 || _corpo?.SpriteFrames == null) return;
 
 		// ENCAIXA A ANIMACAO NO TEMPO DO GOLPE. O .dmi traz o soco na cadencia do BYOND
 		// (~0,8 s); com a cadencia nova de ~0,33 s a animacao nao terminaria antes do
 		// proximo soco e o boneco pareceria empacado no meio do movimento. Esticar o relogio
 		// conserta na raiz -- e como o mesmo relogio move TODAS as camadas, roupa e cabelo
 		// aceleram junto sem sair de compasso.
-		double ciclo = f.HasAnimation(_corpo.Animation) ? Ciclo(f, _corpo.Animation) : 0;
+		double ciclo = CompassoDe(_corpo).Ciclo;
 		if (ciclo > 0) _ritmo = Math.Clamp(ciclo / duracaoAlvo, 0.5, 6);
 	}
 
@@ -1692,49 +1948,17 @@ public partial class CharacterVisual : Node2D
 	public double FaseDoCorpoDeTeste => _relogio;
 
 	/// <summary>A duracao do ciclo da pose atual do corpo, em segundos. SO PRA BANCADA.</summary>
-	public double CicloDoCorpoDeTeste => _corpo?.SpriteFrames is { } f ? Ciclo(f, _corpo.Animation) : 0;
+	public double CicloDoCorpoDeTeste => _corpo is { } corpo ? CompassoDe(corpo).Ciclo : 0;
 
 	/// <summary>Onde o relogio do corpo comeca numa pose nova: zero no mundo, a hora do mundo no retrato.</summary>
 	private double RelogioInicial()
 	{
-		if (!RelogioDoMundo || _corpo?.SpriteFrames is not { } f) return 0;
-		double ciclo = Ciclo(f, _corpo.Animation);
+		if (!RelogioDoMundo || _corpo == null) return 0;
+		double ciclo = CompassoDe(_corpo).Ciclo;
 		return ciclo > 0 ? (Time.GetTicksMsec() / 1000.0 + DeslocamentoDoRelogio) % ciclo : 0;
 	}
 
-	/// <summary>Duracao total de uma animacao, em segundos.</summary>
-	private static double Ciclo(SpriteFrames f, string anim)
-	{
-		if (!f.HasAnimation(anim)) return 0;
-		double vel = Math.Max(f.GetAnimationSpeed(anim), 0.01);
-		double total = 0;
-		for (int i = 0; i < f.GetFrameCount(anim); i++) total += f.GetFrameDuration(anim, i) / vel;
-		return total;
-	}
-
-	/// <summary>
-	/// Em que quadro a animacao esta no instante <paramref name="t"/>, RESPEITANDO a duracao
-	/// de cada quadro.
-	///
-	/// Nao da pra dividir o ciclo em partes iguais: o estado parado do corpo tem `delay =
-	/// 1,1,1,30`, ou seja tres quadros de 0,1s (a piscada) e um segurando 3 segundos (de pe,
-	/// olhos abertos). Distribuindo linearmente, cada quadro ganhava 0,82s e a piscada virava
-	/// camera lenta -- foi o que o dono viu como "quase 5 segundos por piscada".
-	/// </summary>
-	private static int QuadroEm(SpriteFrames f, string anim, double t)
-	{
-		int n = f.GetFrameCount(anim);
-		if (n <= 1) return 0;
-		double vel = Math.Max(f.GetAnimationSpeed(anim), 0.01);
-
-		double acc = 0;
-		for (int i = 0; i < n; i++)
-		{
-			acc += f.GetFrameDuration(anim, i) / vel;
-			if (t < acc) return i;
-		}
-		return n - 1;
-	}
+	// (A duracao do ciclo e o quadro de cada instante saem do `Compasso` da camada, la em cima.)
 
 	// =====================================================================
 	// IMPACTO
@@ -1875,8 +2099,8 @@ public partial class CharacterVisual : Node2D
 		foreach (AnimatedSprite2D s in _camadas)
 		{
 			if (!EhSilhueta(s) || s.Material is not ShaderMaterial m) continue;
-			m.SetShaderParameter("aura_cor", cor);
-			m.SetShaderParameter("aura", forca);
+			m.SetShaderParameter(UniAuraCor, cor);
+			m.SetShaderParameter(UniAura, forca);
 		}
 	}
 
@@ -2049,9 +2273,7 @@ public partial class CharacterVisual : Node2D
 		//
 		// `_ficha` NULO E LEGITIMO (um boneco que ainda nao se vestiu) e devolve `null`, que cai no
 		// caminho do `Nenhum`. O `Vestir` chama este metodo de novo no fim, ja com a ficha na mao.
-		string? caminho = CorposDeForma.Caminho(
-			simbolo, _corpo?.GetMeta("src", "").AsString() ?? "",
-			_ficha?.FormasDeFrost, _degrauDoFrost);
+		string? caminho = CaminhoDoCorpoDaForma(simbolo, _degrauDoFrost);
 
 		if (string.IsNullOrEmpty(caminho))
 		{
@@ -2083,7 +2305,7 @@ public partial class CharacterVisual : Node2D
 			return;
 		}
 
-		var frames = ResourceLoader.Load<SpriteFrames>(caminho);
+		var frames = FolhasPresas.Carregar(caminho);
 		if (frames == null) { GD.PushWarning($"[visual] corpo de forma nao carregou: {caminho}"); return; }
 
 		_simboloDoCorpo = simbolo;
@@ -2149,6 +2371,13 @@ public partial class CharacterVisual : Node2D
 		Aplicar(force: true);
 		Reordenar();
 	}
+
+	/// <summary>
+	/// A folha do corpo proprio que este simbolo da a ESTE corpo -- a pele (pro musculoso) e a ficha (pro Frost
+	/// Demon) entram na conta --, ou nulo quando nao ha. Ver o bloco no comeco do <see cref="CorpoDaForma(Jandirus.Core.Forms.CorpoDeForma)"/>.
+	/// </summary>
+	private string? CaminhoDoCorpoDaForma(Jandirus.Core.Forms.CorpoDeForma simbolo, int degrauDoFrost) =>
+		CorposDeForma.Caminho(simbolo, _corpo?.GetMeta("src", "").AsString() ?? "", _ficha?.FormasDeFrost, degrauDoFrost);
 
 	private AnimatedSprite2D? _corpoDaForma;
 
@@ -2254,7 +2483,7 @@ public partial class CharacterVisual : Node2D
 		for (int i = 0; i < quero.Length; i++)
 		{
 			string caminho = ColadasDeForma.CaminhoDa(quero[i].Folha);
-			var frames = ResourceLoader.Load<SpriteFrames>(caminho);
+			var frames = FolhasPresas.Carregar(caminho);
 			if (frames == null) { GD.PushWarning($"[visual] colada nao carregou: {caminho}"); continue; }
 
 			// CAMADA MORTA SE SUBSTITUI EM VEZ DE SE REUSAR: uma troca de aparencia (`Vestir`) pode
@@ -2777,8 +3006,7 @@ public partial class CharacterVisual : Node2D
 		// E ELE ENTRA COMO `bool` DE PROPOSITO, mesmo tendo virado tipo: a FOLHA nao depende do tipo de
 		// fusao -- toda fusao em SSJ4 usa a cabeca do Gogeta. O que a correcao do dono separou foi a COR
 		// (ver `Fusao.TintaDoCabeloDaFusao`), e passar o tipo aqui sugeriria uma escolha que nao existe.
-		string? variante = string.IsNullOrEmpty(sufixo)
-			? null : CabelosDeForma.De(_cabeloBase, sufixo, _feminina, _fusao != null);
+		string? variante = VarianteDoCabelo(sufixo);
 		string? alvo = variante ?? _cabeloBase;
 		if (alvo == null || alvo == _cabeloAtual) return variante != null;
 
@@ -2791,6 +3019,14 @@ public partial class CharacterVisual : Node2D
 		Aplicar(force: true);
 		return variante != null;
 	}
+
+	/// <summary>
+	/// A folha de penteado que este sufixo da a ESTE corpo, ou nulo quando o penteado dele nao tem variante (ou o
+	/// sufixo e vazio). O penteado e o BASE, e nao o que esta na cabeca agora: ver <see cref="CabeloDaForma"/>.
+	/// </summary>
+	private string? VarianteDoCabelo(string sufixo) =>
+		string.IsNullOrEmpty(sufixo)
+			? null : CabelosDeForma.De(_cabeloBase ?? _cabeloAtual, sufixo, _feminina, _fusao != null);
 
 	private string? _cabeloBase, _cabeloAtual;
 
@@ -3182,9 +3418,9 @@ public partial class CharacterVisual : Node2D
 			// enquanto o gesto dura (0,15 s num soco), e faz o estado do canal ser um so: quem entrar
 			// na pilha no meio ja entra pintado.
 			// ==========================================================================================
-			m.SetShaderParameter("flash_cor", _corDaLavagem);
-			m.SetShaderParameter("contorno_cor", _corDoContornoDoSoco);
-			m.SetShaderParameter("flash", f * _lavagem);
+			m.SetShaderParameter(UniFlashCor, _corDaLavagem);
+			m.SetShaderParameter(UniContornoCor, _corDoContornoDoSoco);
+			m.SetShaderParameter(UniFlash, f * _lavagem);
 			// ============================ O ACHATAMENTO E DO GOLPE, NAO DO CANAL ============================
 			// Isto era `f * 0.18f` cravado, e ficou errado no dia em que um SEGUNDO gesto passou a usar o
 			// mesmo `flash`: o <see cref="Banhar"/> lava o corpo na cor da forma por 0,6 s, e com o literal
@@ -3192,9 +3428,9 @@ public partial class CharacterVisual : Node2D
 			// achata e quem CHAMA, e por isso o fator virou campo (`_achatamento`), escrito por
 			// `Impacto` (0,18) e por `Banhar` (0). Mesma razao do `_empurrao`, que ja era campo.
 			// ==========================================================================================
-			m.SetShaderParameter("achatar", f * _achatamento);
-			m.SetShaderParameter("empurrao", _empurrao * f);
-			if (EhSilhueta(s)) m.SetShaderParameter("contorno", f);
+			m.SetShaderParameter(UniAchatar, f * _achatamento);
+			m.SetShaderParameter(UniEmpurrao, _empurrao * f);
+			if (EhSilhueta(s)) m.SetShaderParameter(UniContorno, f);
 		}
 	}
 
@@ -3340,8 +3576,7 @@ public partial class CharacterVisual : Node2D
 
 		// TUDO anima, inclusive parado: a pose parada e um estado proprio com ciclo proprio
 		// (a "respiracao"). Quem NAO anima e a camada que caiu numa pose emprestada.
-		SpriteFrames? corpoF = _corpo.SpriteFrames;
-		double ciclo = corpoF == null ? 0 : Ciclo(corpoF, _corpo.Animation);
+		double ciclo = CompassoDe(_corpo).Ciclo;
 
 		// O PASSO ACELERA NA CORRIDA. Sem isto o personagem desliza: as pernas andam na cadencia
 		// de caminhada enquanto o corpo atravessa o dobro do chao, e o cerebro le como patinacao.
@@ -3366,8 +3601,7 @@ public partial class CharacterVisual : Node2D
 			_flickAcabou = true;
 			_ritmo = 1;
 			Aplicar(force: true);   // o corpo volta ao parado/andando, do primeiro quadro
-			corpoF = _corpo.SpriteFrames;
-			ciclo = corpoF == null ? 0 : Ciclo(corpoF, _corpo.Animation);
+			ciclo = CompassoDe(_corpo).Ciclo;   // o `Aplicar` trocou a animacao: o sinal dela ja venceu o compasso
 			ritmo = _correndo && _moving ? RitmoDaCorrida : 1;
 		}
 		_relogio = ciclo > 0 ? (_relogio + delta * ritmo) % ciclo : 0;
@@ -3385,8 +3619,10 @@ public partial class CharacterVisual : Node2D
 
 		foreach (AnimatedSprite2D s in _camadas)
 		{
-			SpriteFrames? f = s.SpriteFrames;
-			if (f == null || !s.Visible || !f.HasAnimation(s.Animation)) continue;
+			// (sem folha, ou com a folha sem a animacao em que o sprite esta, o compasso diz `TemAnimacao` falso)
+			if (!s.Visible) continue;
+			Compasso c = CompassoDe(s);
+			if (!c.TemAnimacao) continue;
 			// ============================ EFEITO NAO EMPRESTA O RELOGIO DO CORPO ============================
 			// Aqui embaixo estava o defeito que o dono viu: "os overlays das formas god e lssj estao com
 			// baixo fps quando to PARADO, cada frame demora pra trocar, parece um slide show, mas quando
@@ -3434,16 +3670,14 @@ public partial class CharacterVisual : Node2D
 			// ==============================================================================================
 			if (EhEfeito(s))
 			{
-				int n = f.GetFrameCount(s.Animation);
-				double proprio = Ciclo(f, s.Animation);
-				int q = n > 1 && proprio > 0
-					? Mathf.Clamp(QuadroEm(f, s.Animation, _relogioSolto % proprio), 0, n - 1)
+				int q = c.Quadros > 1 && c.Ciclo > 0
+					? Mathf.Clamp(c.QuadroEm(_relogioSolto % c.Ciclo), 0, c.Quadros - 1)
 					: 0;
 				if (s.Frame != q) s.Frame = q;
 				continue;
 			}
 
-			if (!s.GetMeta("sync", true).AsBool())
+			if (!s.GetMeta(MetaSync, true).AsBool())
 			{
 				// PARTE DO CORPO em pose EMPRESTADA congela no primeiro quadro: a peca nao tem aquele
 				// movimento (13 roupas nao tem ataque, 68 nao tem treino -- ver `Escolher`), e percorrer
@@ -3455,7 +3689,7 @@ public partial class CharacterVisual : Node2D
 			// A MESMA FASE do corpo, lida no relogio DESTA camada: o `ClothesSaiyanSuit` tem
 			// 8 quadros de caminhada onde o corpo tem 4, e cada folha pode ter duracoes
 			// diferentes. Assim ninguem corre em velocidade errada nem sai de compasso.
-			int alvo = QuadroEm(f, s.Animation, fase * Ciclo(f, s.Animation));
+			int alvo = c.QuadroEm(fase * c.Ciclo);
 			if (s.Frame != alvo) s.Frame = alvo;
 		}
 	}
@@ -3652,7 +3886,7 @@ public partial class CharacterVisual : Node2D
 		// continua sendo escrita pra TODAS de proposito: e por este funil unico que a colada passa, e
 		// tirar a colada daqui e o caminho conhecido pro node sair da alcada da `Escondida`.
 		bool naPose = nome.StartsWith(Familia(), StringComparison.Ordinal);
-		sprite.SetMeta("sync", naPose);
+		sprite.SetMeta(MetaSync, naPose);
 
 		if (force || sprite.Animation != nome) sprite.Animation = nome;
 		sprite.Stop();          // ninguem toca sozinho: o relogio desta classe manda em todos

@@ -151,8 +151,8 @@ public static class DimensaoMental
 	///
 	/// **E O "TELEPORTA DE VOLTA" NAO ERA TELEPORTE NENHUM.** Nao ha reposicionamento na mente: a volta
 	/// do planeta (`GameServer.Volta`) desiste em `!Espaco.EhPlaneta`, e interior esta fora. Quem
-	/// produzia o sintoma era a PAREDE, por um caminho que so aparece medindo o voo: quem voa alto anda
-	/// com `mapa = null` (ver <see cref="Voo"/>, `AtravessaCenario`) e ATRAVESSA o anel; ao pousar, a
+	/// produzia o sintoma era a PAREDE, por um caminho que so aparece medindo o voo: quem voa alto passa
+	/// por cima do cenario (ver <see cref="Voo"/>, `AtravessaCenario`) e ATRAVESSA o anel; ao pousar, a
 	/// colisao volta a valer com o corpo dentro do muro e o servidor o crava pra fora. Sem parede a
 	/// causa nao existe, e nao ha o que consertar em cima dela.
 	/// ================================================================================================

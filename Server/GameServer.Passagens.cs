@@ -98,6 +98,12 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
+	/// A COPIA DE `_players` QUE AS PASSAGENS E A NUVEM VARREM, reusada a cada tique (`Clear` nao devolve a
+	/// capacidade). Os dois lacos rodam um depois do outro no `Tick()`, nunca um por dentro do outro.
+	/// </summary>
+	private readonly List<ServerPlayer> _copiaDosCorpos = [];
+
+	/// <summary>
 	/// QUEM PISOU NUMA PASSAGEM ATRAVESSA. Roda no tique cheio.
 	///
 	/// O CUSTO E O NUMERO DE JOGADORES, e nao o de passagens -- como nas portas. So as zonas com
@@ -109,7 +115,13 @@ public sealed partial class GameServer
 
 		// A LISTA E COPIADA porque atravessar MEXE em `_players` por dentro (`MoveToZone` troca a
 		// lista da zona), e iterar uma colecao que muda no meio estoura.
-		foreach (ServerPlayer pl in _players.Values.ToList())
+		//
+		// A COPIA E REUSADA: era um `_players.Values.ToList()` -- uma lista de TODO corpo do servidor alocada a
+		// cada tique, o mesmo defeito que o `_noEspaco` (`GameServer.RelogiosDoCorpo.cs`) ja conta. A queda pela
+		// nuvem, que roda logo depois e nunca por dentro deste laco, usa o mesmo buffer.
+		_copiaDosCorpos.Clear();
+		_copiaDosCorpos.AddRange(_players.Values);
+		foreach (ServerPlayer pl in _copiaDosCorpos)
 		{
 			if (pl.Ficha.KO) continue;
 

@@ -44,6 +44,12 @@ REM  NA FRENTE de quem acerta, 12) o TRONCO se corta em quem pisa nele (a parte 
 REM  segue), 13) apanhar de bola ou soco derruba o raio -- e a --diagraio ganhou a
 REM  CENA D, a foto do corte visto pelo cliente (raio-4-corte.png).
 REM
+REM  (2026-10-08) A --diagraio ganhou as CENAS E e F, do desenho do tiro que anda
+REM  atras do servidor: a marca no chao nasce debaixo da cabeca que se VE, e nao a
+REM  frente da ponta (raio-5-sulco-dois.png), e a bola e desenhada ATE o ponto em que
+REM  estoura (raio-6-bola-quatro.png). Cada tira traz a regra e, ao lado, o defeito
+REM  injetado -- o jogo de antes, com a mesma regua reprovando.
+REM
 REM  AS FOTOS saem em
 REM     %%APPDATA%%\Godot\app_userdata\Dragon ball Jandirus\raio-*.png
 REM  e as duas que respondem sozinhas sao as TIRAS, que a propria bancada cola:

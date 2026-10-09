@@ -191,8 +191,11 @@ public sealed partial class GameServer
 			// antes do catalogo pelo mesmo motivo que a mente vem: o catalogo resolve pelo NOME, e
 			// "Selado" nao tem entrada nenhuma la, entao sem esta linha o passageiro cairia num bolso
 			// sem colisao (chao infinito, sem parede) em vez de num quarto.
+			// E O INTERIOR DE UM MAJIN, que tambem e uma planta do Core (`InteriorDoMajin.Planta`) e tambem
+			// nao tem entrada no catalogo: sem esta linha o absorvido cairia num bolso sem parede nenhuma.
 			ZoneKey.KindInterior => MapaDaMente(zona)
 									?? (EhOSelo(zona) ? DimensaoMental.Planta().Colisao : null)
+									?? (InteriorDoMajin.EhOInterior(zona) ? InteriorDoMajin.Planta().Colisao : null)
 									?? MapaDoInterior(zona) ?? _catalogo?.Get(zona)?.Mapa,
 			_ => _catalogo?.Get(zona)?.Mapa,
 		};

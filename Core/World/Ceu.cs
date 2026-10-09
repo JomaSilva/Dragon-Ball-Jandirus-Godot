@@ -384,6 +384,10 @@ public static class Ceu
 		// INTERIOR NÃO VÊ LUA -- é a regra que o DM escreve duas vezes: as áreas `Inside` nascem
 		// com `HasMoon = 0` (`Weather.dm:76-80`) e o gatilho do Oozaru ainda confere o nome da
 		// área antes de deixar o Saiyajin olhar pra cima (`Weather.dm:202`). Teto é teto.
+		//
+		// ISTO E O INTERIOR QUE E UMA ZONA INTEIRA (a nave). A casa DENTRO de um mapa que tem ceu --
+		// o Banco da Terra, as cavernas -- nao passa por aqui: la o teto e por CELULA, e quem o
+		// conhece e o `CelulaInterna`.
 		if (zona.Kind == ZoneKey.KindInterior) return SemCeu;
 
 		if (zona.Kind == ZoneKey.KindProcedural) return DaSeed(zona.Seed);

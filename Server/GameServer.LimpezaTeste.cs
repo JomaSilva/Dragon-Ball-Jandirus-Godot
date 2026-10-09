@@ -49,6 +49,18 @@ namespace Jandirus.Server;
 ///     INVOCA, REIVINDICA as Super Esferas e deixa uma PROCURACAO de pe, tudo pelos verbos de
 ///     producao; e so entao a limpeza. E a unica secao que mede este sistema pelo gesto, e nao pelo
 ///     campo escrito a mao. **10b** e ela provada disparando, com o `Zerar` das esferas mudo.
+/// 11. OS TORNEIOS -- o dia marcado chega, o TIQUE de producao abre um torneio, e so entao a limpeza:
+///     o calendario volta ao primeiro boot na memoria, e o arquivo que volta nao lembra do mundo velho.
+///     E a unica secao que atravessa o VERB inteiro (previa + codigo certo), que e onde a agenda do
+///     mundo novo vai pro disco. **11b** e ela provada disparando, com o `Zerar` dos torneios mudo.
+/// 12. ZERAR E RELER NAO ESCREVEM -- as duas promessas das ferramentas desta bancada, medidas: o
+///     `ZerarSoAMemoria` nao poe arquivo na caixa (senao o "primeiro boot" dela e lido como save
+///     antigo), e a pasta de onde o `NaCaixa` saiu volta byte a byte como estava, com o relogio do
+///     titulo dela. **12b** e **12c** sao ela provada disparando: o `Zerar` e o carregador do titulo
+///     que GRAVAM.
+/// 13. O PORUNGA DO MUNDO NOVO -- a vassoura leva o `esferas.json` e a limpeza nao o regrava; quem o
+///     devolve e o primeiro TIQUE, e um reinicio depois dele le o Porunga que a limpeza ergueu, com a
+///     espera contada DELA. **13b** e ela provada disparando, com o zelador que corta e nao grava.
 ///
 /// ============================ AS SECOES 5 A 8 NAO SAO ENFEITE DA 4 ============================
 /// A secao 4 pergunta "a memoria zerou e a pasta esvaziou?", e as duas respostas sao SIM num
@@ -110,6 +122,9 @@ public partial class GameServer
 		SecaoDoServidorDepois();
 		SecaoDasEsferasJogadas();
 		SecaoDoZerarMudoDasEsferas();
+		SecaoDosTorneios();
+		SecaoDoZerarQueNaoGrava();
+		SecaoDoEternoDepoisDaLimpeza();
 		SecaoDoConteudoDoJogo(conteudoAntes);
 
 		GD.Print($"[wipe] ================ {_wtOk} OK, {_wtFalhou} FALHA(S) ================");
@@ -647,6 +662,16 @@ public partial class GameServer
 		CarregarHerdeiros();
 		CarregarTitulo();
 		CarregarMissoes();
+
+		// AS BASES. O leitor delas esvazia antes de ler (ver `CarregarBasesDeDisco`), entao pode ser
+		// chamado de novo tal como esta. Sem esta linha a devolucao do `NaCaixa` zerava as bases do mundo
+		// de verdade na memoria e nao as trazia de volta.
+		CarregarBasesDeDisco(CaminhoDasBases);
+
+		// A AGENDA DOS TORNEIOS, e so ela: as manivelas (`res://Assets/Data/torneio.json`) sao conteudo e
+		// nunca sairam da memoria. Numa pasta sem `torneio.json` a leitura deixa a agenda como o
+		// `ZerarTorneio` acabou de deixar -- o primeiro torneio marcado --, que e o primeiro boot.
+		CarregarAgenda();
 	}
 
 	// =====================================================================
@@ -714,7 +739,7 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// O SERVIDOR ESCREVE TUDO O QUE ELE LEMBRA -- os catorze escritores DE PRODUCAO.
+	/// O SERVIDOR ESCREVE TUDO O QUE ELE LEMBRA -- os dezesseis escritores DE PRODUCAO.
 	///
 	/// ============================ ESTA LISTA E A MAO, E E DE PROPOSITO ============================
 	/// Ela e a UNICA lista escrita a mao neste trabalho, e ela tem que ser, porque e a
@@ -742,6 +767,7 @@ public partial class GameServer
 		// `FichaDoUniverso`, que e o que faz os tres retratos serem comparaveis.
 		SalvarSemente();
 		GravarMundo();
+		GravarBases();
 		GravarNaves();
 		SalvarSagas();
 		SalvarReputacao();
@@ -754,6 +780,10 @@ public partial class GameServer
 		SalvarMestres();
 		SalvarHerdeiros();
 		SalvarTitulo();
+		// A AGENDA DOS TORNEIOS. Em producao ela so vai pro disco quando um torneio comeca (ou um admin a
+		// remarca); aqui e a mesma antecipacao dos outros. O tamanho dela no retrato nao depende de QUANDO
+		// o primeiro torneio foi marcado: carimbo em milissegundos tem 13 digitos de 2001 a 2286.
+		SalvarAgenda();
 		// AS CONTAS NAO TEM ESCRITOR COLETIVO -- cada uma e gravada por `Persistir`/`_store.Gravar`,
 		// e o `Persistir` esta medido na secao 3. Quem semeia conta aqui grava na hora.
 	}
@@ -776,6 +806,12 @@ public partial class GameServer
 	/// e `SalvarSupers` consultam, e esta funcao e literalmente o passo 3 da limpeza rodando sozinho.
 	/// Guardado e devolvido, porque o `ExecutarLimpeza` pode estar por fora.
 	/// ====================================================================================================================
+	///
+	/// E O PORTAO NAO COBRIA TUDO: o `Zerar` do relogio do titulo gravava por conta propria (era o
+	/// `LimparEstadoDoTitulo`, e o `SalvarTitulo` nao consulta portao nenhum) -- um `titulo.txt` zerado na
+	/// caixa e na pasta de verdade, a cada passada. Hoje ele so mexe na memoria, e o "sem tocar no disco" do
+	/// titulo desta funcao parou de depender de leitura: a secao 12 o mede, com todos os inscritos, numa
+	/// pasta vazia.
 	/// </summary>
 	private void ZerarSoAMemoria()
 	{
@@ -800,6 +836,9 @@ public partial class GameServer
 	/// mentira. A devolucao zera a memoria e recarrega dos arquivos de verdade: sem o `Zerar` na
 	/// frente, os quatro carregadores que enchem sem limpar (`mundo`, `naves`, `conquista`,
 	/// `reputacao`) DUPLICARIAM o mundo do dono a cada secao.
+	///
+	/// "NUNCA E TOCADA" TEM MEDIDA: a devolucao nao pode fazer com a pasta de onde a caixa saiu mais do que um
+	/// reinicio do servidor faria. Quem confere e a secao 12, com uma caixa no papel da pasta de verdade.
 	/// </summary>
 	private void NaCaixa(string etiqueta, Action<string> corpo)
 	{
@@ -888,6 +927,17 @@ public partial class GameServer
 		var obra = new Obra { Id = 90_001, Tipo = molde?.Tipo ?? "Research_Station", DoMapa = false };
 		obra.PorZona(zona);
 		_noChao.Add(obra);
+
+		// ---------------------------------------------------------- 2b. um bloco de base de pe
+		// O `bases.json` e arquivo de mundo como o `mundo.json` (ver `GameServer.Blocos.cs`): sem um bloco
+		// semeado aqui, o inscrito dele teria zero nos tres retratos e o `ZerarBases` passaria sem ser medido.
+		if (_blocos?.Todos.FirstOrDefault() is { } tipoDeBloco)
+			GuardarBloco(new BlocoDePe
+			{
+				Tipo = tipoDeBloco.Id, Def = tipoDeBloco,
+				ZonaTipo = zona.Kind, ZonaNome = zona.Name, ZonaSeed = zona.Seed,
+				X = 20, Y = 20, DonoConta = "jogador_do_wipe", DonoNome = "JogadorDoWipe", Resistencia = 20,
+			});
 
 		// ---------------------------------------------------------- 3. uma nave comprada
 		var nave = new Nave { Id = 90_002, Tipo = "Spacepod", DonoConta = "jogador_do_wipe", DonoNome = "JogadorDoWipe" };
@@ -1006,6 +1056,13 @@ public partial class GameServer
 		};
 		_precoPendente = ("jogador_do_wipe", -910_009, NowMs() + 60_000);
 
+		// ---------------------------------------------------------- 17. um TORNEIO que ja comecou
+		// O que o jogo escreve na agenda quando um Torneio da Terra COMECA -- o ultimo, o seguinte e o do
+		// Outro Mundo a caminho --, pelo `Reagendar` de producao (que ja grava). Sem isto a agenda teria o
+		// mesmo conteudo nos tres retratos (so o primeiro torneio marcado) e o `ZerarTorneio` passaria sem
+		// ser medido. O torneio EM DISPUTA nao vai pro disco: quem o mede, pelo gesto, e a secao 11.
+		Reagendar(Jandirus.Core.Torneio.TipoDeTorneio.Terra, NowMs());
+
 		ForcarGravacaoDeTudo();
 	}
 
@@ -1048,6 +1105,15 @@ public partial class GameServer
 		{
 			// ------------------------------------------------------ A. o primeiro boot
 			SemearPrimeiroBoot();
+
+			// A REFERENCIA TEM QUE SER UM PRIMEIRO BOOT, e quem diz e a semente: pasta so com o `admin.log` e
+			// mundo NOVO, e mundo novo SORTEIA (`CarregarSemente`, caminho 3). Um `Zerar` que escreva na caixa
+			// antes da leitura faz dela um "save antigo", que adota a semente legada (caminho 2) -- e o
+			// retrato A passa a ser o de um mundo adotado, sem nenhuma linha dele mudar. Quem e o culpado, a
+			// secao 12 nomeia.
+			AfirmarWt("o primeiro boot da caixa e de MUNDO NOVO: semente SORTEADA, e nao a legada de um save antigo",
+					  SeedDoUniverso != SementeLegada, $"semente {SeedDoUniverso}");
+
 			ForcarGravacaoDeTudo();
 			List<string> a = RetratoDoMundo();
 			GD.Print($"[wipe]         retrato A (primeiro boot): {a.Count} item(ns)");
@@ -1981,6 +2047,517 @@ public partial class GameServer
 	}
 
 	// =====================================================================
+	// 11. OS TORNEIOS -- o calendario do mundo velho nao atravessa
+	// =====================================================================
+	/// <summary>
+	/// **O CALENDARIO DOS TORNEIOS VOLTA AO PRIMEIRO BOOT -- medido pelo gesto, como a secao 10.**
+	///
+	/// ============================ O DEFEITO QUE ESTA SECAO GUARDA ============================
+	/// O `torneio.json` nasceu fora do registro dos sistemas do mundo. A vassoura o apagava com todos os
+	/// outros e a MEMORIA da agenda ficava: o mundo "novo" seguia o calendario do antigo -- o Torneio do
+	/// Outro Mundo marcado por um torneio que ele nunca teve -- e regravava o arquivo na primeira
+	/// mudanca. A secao 5 pega isso no retrato (o item 17 do `SemearMundoJogado`); esta diz O QUE voltou
+	/// e o que nao podia voltar, campo a campo, e prova que a medida dispara.
+	/// ======================================================================================
+	///
+	/// O "JOGAR" E O CAMINHO DO RELOGIO: o dia marcado chega e o `TickDoTorneio` de producao abre as
+	/// inscricoes -- e ele quem marca o seguinte, agenda o do Outro Mundo e grava o arquivo. A unica
+	/// coisa escrita no campo e a faixa de lugares dos convidados, e o porque esta na linha dela.
+	///
+	/// TRES LIMPEZAS, e cada uma responde uma pergunta:
+	///   * 11, pelo `ExecutarLimpeza`: a memoria volta ao primeiro boot (nada em disputa, so o primeiro
+	///     Torneio da Terra marcado, contado DA LIMPEZA), e o arquivo que o servidor escreve depois nao
+	///     lembra do torneio do mundo velho.
+	///   * 11, pelo VERB INTEIRO (previa + codigo certo): o mundo novo sai com a agenda dele NO DISCO, e
+	///     um reinicio nao empurra o primeiro torneio. E o unico trecho desta bancada que atravessa o
+	///     `AdminLimparServidor` ate o fim -- a 3b so mede as recusas.
+	///   * 11b, o DEFEITO INJETADO (`Zerar` mudo, como a 6b e a 10b): o disco fica limpo do mesmo jeito,
+	///     a memoria nao, e o arquivo RESSUSCITA com a agenda velha -- o defeito de antes, inteiro.
+	/// </summary>
+	private void SecaoDosTorneios()
+	{
+		GD.Print("[wipe] -- 11. os torneios: o calendario do mundo velho nao atravessa a limpeza --");
+
+		SistemaDoMundo? inscrito = _sistemasDoMundo.Find(s => s.Arquivos.Contains("torneio.json"));
+		if (inscrito == null)
+		{
+			AfirmarWt("achei o inscrito dos torneios", false,
+					  "o sistema saiu do registro -- e isso e a secao 2 quem reprova");
+			return;
+		}
+
+		// O RELOGIO DE PAREDE ANDA NESTA SECAO, pela manivela das bancadas (`AdiantoDoRelogioDeTeste`): a
+		// agenda e em dias de tempo real, e esperar o dia marcado e o unico jeito de o torneio abrir
+		// sozinho. Cada caixa devolve o relogio (e a escuta de avisos) no `finally` dela.
+		long relogioDeAntes = AdiantoDoRelogioDeTeste;
+		List<string>? escutaDeAntes = EscutaDeAvisos;
+
+		NaCaixa("torneioteste", _ =>
+		{
+			try
+			{
+				// ------------------------------------------------------ o primeiro boot, e a referencia
+				long nasceu = NowMs();
+				SemearPrimeiroBoot();
+				AfirmarWt("no primeiro boot a agenda so tem o PRIMEIRO Torneio da Terra, e nada em disputa",
+						  _torneio == null && AgendaDeMundoNovo(nasceu, NowMs()) && inscrito.Contar() == 0,
+						  AgendaEmTexto());
+
+				// ------------------------------------------------------ jogar: o dia marcado chega
+				string marca = AbrirOTorneioDoDia();
+				AfirmarWt("no dia marcado, o TIQUE de producao abre as inscricoes do Torneio da Terra",
+						  marca.Length > 0, AgendaEmTexto());
+				if (marca.Length == 0) return;
+
+				AfirmarWt("...e o torneio que comeca marca o seguinte e agenda o do Outro Mundo",
+						  _agenda.ProximoDaTerraMs > _agenda.UltimoDaTerraMs
+						  && _agenda.ProximoDoAlemMs > _agenda.UltimoDaTerraMs, AgendaEmTexto());
+
+				// A FAIXA DE LUGARES ANDA NA MAO, e so ela: os convidados so nascem quando as inscricoes
+				// fecham com um JOGADOR dentro (`FecharInscricoes`), e jogador exige `NetPeer` -- a parede
+				// que a secao 7 documenta. Sem isto o "voltou ao comeco" de baixo seria verde por nunca ter
+				// saido de la.
+				_lugarDoTorneio += 3;
+
+				// O ARQUIVO JA ESTA LA SEM NINGUEM FORCAR: quem gravou foi o `Reagendar`, no gesto.
+				AfirmarWt("ANTES: o torneio.json do DISCO carrega o torneio que o jogo abriu",
+						  LerOuVazio(CaminhoDaAgenda).Contains(marca, StringComparison.Ordinal));
+				AfirmarWt("ANTES: o inscrito conta o que ha pra apagar", inscrito.Contar() == 1,
+						  $"{inscrito.Contar()}");
+
+				// ------------------------------------------------------ **A LIMPEZA**
+				long limpou = NowMs();
+				ResultadoDaLimpeza r = ExecutarLimpeza(null);
+				AfirmarWt("a limpeza nao deu erro de disco", r.Erros.Count == 0, string.Join("; ", r.Erros));
+
+				AfirmarWt("DISCO: nao ha torneio.json depois da limpeza",
+						  !System.IO.File.Exists(CaminhoDaAgenda));
+
+				// E ESTA E A METADE QUE O DISCO ESCONDE: a linha de cima fica verde com o `Zerar`
+				// arrancado (a vassoura varre a pasta inteira); estas nao.
+				AfirmarWt("MEMORIA: nenhum torneio em disputa", _torneio == null, AgendaEmTexto());
+				AfirmarWt("MEMORIA: a agenda e a de um mundo que nasceu AGORA (so o primeiro da Terra, contado da limpeza)",
+						  AgendaDeMundoNovo(limpou, NowMs()), AgendaEmTexto());
+				AfirmarWt("MEMORIA: a faixa de lugares dos convidados voltou ao comeco",
+						  _lugarDoTorneio == PrimeiroLugarDoTorneio, $"{_lugarDoTorneio}");
+				AfirmarWt("MEMORIA: o inscrito conta ZERO", inscrito.Contar() == 0, $"{inscrito.Contar()}");
+
+				// ------------------------------------------------------ **O ARQUIVO NAO RESSUSCITA**
+				// A pergunta nao e "o arquivo sumiu" (ele some pela vassoura de qualquer jeito): e o que o
+				// servidor escreve na PROXIMA gravacao.
+				ForcarGravacaoDeTudo();
+				string voltou = LerOuVazio(CaminhoDaAgenda);
+				AfirmarWt("o torneio.json VOLTA na primeira gravacao (senao a leitura de baixo nao diz nada)",
+						  voltou.Length > 0);
+				AfirmarWt("...e o arquivo que voltou NAO lembra do torneio do mundo velho",
+						  !voltou.Contains(marca, StringComparison.Ordinal), $"{voltou.Length} b");
+
+				// ------------------------------------------------------ E O SISTEMA CONTINUA VIVO
+				// Um `Zerar` que so esvaziasse a agenda deixaria a data em zero, e o tique nao abre torneio
+				// sem data: o mundo limpo ficaria sem Torneio da Terra ate o proximo reinicio. Entao o dia
+				// do PRIMEIRO torneio do mundo novo chega, e ele tem que abrir.
+				string marcaNova = AbrirOTorneioDoDia();
+				AfirmarWt("o mundo limpo abre o PRIMEIRO torneio dele no dia marcado (o sistema continua vivo)",
+						  marcaNova.Length > 0, AgendaEmTexto());
+				if (marcaNova.Length == 0) return;
+
+				// ------------------------------------------------------ **O VERB INTEIRO** (previa + codigo)
+				// ============================ A UNICA PASSAGEM DESTA BANCADA PELO FIM DO VERB ============================
+				// A secao 3b so mede as recusas, e todas as outras chamam o `ExecutarLimpeza` direto. Ficava
+				// sem medida o que o `AdminLimparServidor` faz DEPOIS da vassoura -- e e la que a agenda do
+				// mundo novo vai pro disco. Sem aquela linha o `Zerar` continua certo e a pasta fica sem
+				// `torneio.json`: o primeiro reinicio le "sem agenda = primeiro boot" e remarca o torneio a
+				// contar DELE. O contra-exemplo do fim e essa pasta, montada.
+				//
+				// O mundo que o verb limpa e o que a metade de cima deixou: um torneio aberto, agenda andada.
+				// ==========================================================================================================
+				GD.Print("[wipe] -- 11 (o verb inteiro): previa, codigo certo, e o que fica no disco --");
+				var adm = new ServerPlayer
+				{
+					Id = -910_010, Peer = null, Name = "AdminDoTorneio",
+					Conta = "adm_do_torneio", Slot = 0,
+					Ficha = new Fighter { Name = "AdminDoTorneio", BP = 1 },
+				};
+
+				AfirmarWt("a PREVIA do admin avisa que ha um calendario de torneios pra apagar",
+						  InventarioDaLimpeza().Any(l => l.Contains(inscrito.Nome, StringComparison.Ordinal)));
+
+				EscutaDeAvisos = [];
+				AdminPrepararLimpeza(adm);
+				long confirmou = NowMs();
+				AdminLimparServidor(adm, _limpezaCodigo);
+				string disse = string.Join(" | ", EscutaDeAvisos);
+
+				AfirmarWt("pelo VERB (previa + codigo certo), a memoria tambem volta ao primeiro boot",
+						  _torneio == null && AgendaDeMundoNovo(confirmou, NowMs()),
+						  $"{AgendaEmTexto()} -- o servidor disse: {disse}");
+
+				long marcado = _agenda.ProximoDaTerraMs;
+				string noDisco = LerOuVazio(CaminhoDaAgenda);
+				AfirmarWt("...e o mundo novo sai com a agenda dele NO DISCO, sem o torneio do mundo velho",
+						  noDisco.Contains(CarimboEmTexto(marcado), StringComparison.Ordinal)
+						  && !noDisco.Contains(marcaNova, StringComparison.Ordinal), $"{noDisco.Length} b");
+
+				// UM REINICIO, UMA HORA DEPOIS. A agenda zerada e o processo novo; `CarregarAgenda` e a
+				// leitura que o boot faz.
+				const long umaHora = 3_600_000;
+				AdiantoDoRelogioDeTeste += umaHora;
+				_agenda = new AgendaDeTorneios();
+				CarregarAgenda();
+				AfirmarWt("um REINICIO uma hora depois le a MESMA data (o primeiro torneio nao e empurrado)",
+						  _agenda.ProximoDaTerraMs == marcado, AgendaEmTexto());
+
+				System.IO.File.Delete(CaminhoDaAgenda);
+				_agenda = new AgendaDeTorneios();
+				CarregarAgenda();
+				AfirmarWt("CONTRA-EXEMPLO: sem o arquivo, o mesmo reinicio REMARCA o torneio uma hora adiante",
+						  _agenda.ProximoDaTerraMs >= marcado + umaHora, AgendaEmTexto());
+			}
+			finally
+			{
+				AdiantoDoRelogioDeTeste = relogioDeAntes;
+				EscutaDeAvisos = escutaDeAntes;
+			}
+		});
+
+		// ---------------------------------------------------------- 11b. o defeito injetado
+		// NO PROPRIO INSCRITO (`Zerar = () => { }`), como a 6b e a 10b: e a forma que sobrevive a qualquer
+		// reescrita do `ZerarTorneio`.
+		GD.Print("[wipe] -- 11b. o defeito injetado: o `Zerar` dos torneios mudo --");
+		NaCaixa("torneiomudo", _ =>
+		{
+			try
+			{
+				SemearPrimeiroBoot();
+				string marca = AbrirOTorneioDoDia();
+				if (marca.Length == 0)
+				{
+					AfirmarWt("o torneio da injecao abriu", false, AgendaEmTexto());
+					return;
+				}
+
+				Action zerarDeVerdade = inscrito.Zerar;
+				inscrito.Zerar = () => { };   // inscrito, contado, e mudo
+				try
+				{
+					ExecutarLimpeza(null);
+
+					AfirmarWt("COM O `Zerar` MUDO, o DISCO fica limpo DO MESMO JEITO",
+							  !System.IO.File.Exists(CaminhoDaAgenda),
+							  "a vassoura varre a pasta inteira -- se ate isto falhar, a injecao nao "
+							+ "esta medindo o que devia");
+					AfirmarWt("...mas a MEMORIA acusa: o torneio do mundo velho continua de pe, com a agenda dele",
+							  _torneio != null && inscrito.Contar() == 1
+							  && CarimboEmTexto(_agenda.UltimoDaTerraMs) == marca, AgendaEmTexto());
+
+					// E ESTE E O DEFEITO INTEIRO, NUMA LINHA: o mundo "novo" volta a escrever o calendario
+					// do antigo.
+					ForcarGravacaoDeTudo();
+					AfirmarWt("...e o torneio.json RESSUSCITA com a agenda velha na primeira gravacao",
+							  LerOuVazio(CaminhoDaAgenda).Contains(marca, StringComparison.Ordinal),
+							  "e o 'disco limpo com cache sujo' que a limpeza inteira existe pra evitar");
+				}
+				finally { inscrito.Zerar = zerarDeVerdade; }
+			}
+			finally { AdiantoDoRelogioDeTeste = relogioDeAntes; }
+		});
+	}
+
+	// =====================================================================
+	// AS FERRAMENTAS DA SECAO 11
+	// =====================================================================
+	/// <summary>
+	/// O DIA DO PROXIMO TORNEIO DA TERRA CHEGA, e o tique de producao abre as inscricoes: `TickDoTorneio`
+	/// -> `ComecarTorneio` -> `Reagendar`, que marca o seguinte, agenda o do Outro Mundo e grava. Nada e
+	/// escrito no campo -- quem anda e o relogio. Devolve a marca que o jogo deixou na agenda (o
+	/// `UltimoDaTerraMs`, por extenso: e ela que se procura no arquivo cru), ou vazio se nao abriu.
+	/// </summary>
+	private string AbrirOTorneioDoDia()
+	{
+		AdiantoDoRelogioDeTeste += Math.Max(0, _agenda.ProximoDaTerraMs - NowMs()) + 1000;
+		TickDoTorneio(Jandirus.Net.Protocol.TickSeconds);
+		return _torneio != null && _agenda.UltimoDaTerraMs != 0 ? CarimboEmTexto(_agenda.UltimoDaTerraMs) : "";
+	}
+
+	/// <summary>
+	/// A AGENDA E A DE UM MUNDO QUE NASCEU ENTRE `de` E `ate` (ms)? So o primeiro Torneio da Terra
+	/// marcado, a `primeiroEmDias` do nascimento -- e nao a `intervaloDias` de um torneio que ja houve,
+	/// que e o que uma agenda herdada teria ali. Os dois limites sao lidos do relogio em volta do gesto,
+	/// entao nao ha tolerancia chutada.
+	/// </summary>
+	private bool AgendaDeMundoNovo(long de, long ate)
+	{
+		long primeiroEm = (long)(_torneioCfg.PrimeiroDaTerraDias * MsPorDia);
+		return _agenda.UltimoDaTerraMs == 0 && _agenda.ProximoDoAlemMs == 0
+			&& _agenda.ProximoDaTerraMs >= de + primeiroEm && _agenda.ProximoDaTerraMs <= ate + primeiroEm;
+	}
+
+	/// <summary>A agenda e o torneio de pe, por extenso: o detalhe das afirmacoes da secao 11.</summary>
+	private string AgendaEmTexto() =>
+		$"em disputa: {_torneio?.Fase.ToString() ?? "nada"} | ultimo {_agenda.UltimoDaTerraMs} | "
+	  + $"Terra {Daqui(_agenda.ProximoDaTerraMs)} | Outro Mundo {Daqui(_agenda.ProximoDoAlemMs)}";
+
+	/// <summary>Um carimbo em ms como o `torneio.json` o escreve: decimal, sem separador de milhar.</summary>
+	private static string CarimboEmTexto(long ms) => ms.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+	// =====================================================================
+	// 12. ZERAR E RELER NAO ESCREVEM -- a caixa nasce vazia e a pasta de fora fica como estava
+	// =====================================================================
+	/// <summary>
+	/// **AS DUAS PROMESSAS DAS FERRAMENTAS DESTA BANCADA, medidas**: o <see cref="ZerarSoAMemoria"/> nao toca
+	/// no disco, e a pasta de onde o <see cref="NaCaixa"/> saiu volta como estava.
+	///
+	/// As duas sao o chao das secoes 5 a 11, e nenhuma delas tinha medida: valiam enquanto nenhum `Zerar`
+	/// gravasse e nenhum `Carregar*` escrevesse outra coisa que nao o que acabou de ler. E quem as quebra nao
+	/// deixa nenhuma secao vermelha -- zero regravado por cima de zero nao muda retrato, e a pasta desta
+	/// bancada nasce sem relogio de titulo.
+	///
+	/// A "PASTA DE FORA" DESTA SECAO E UMA CAIXA, e nao a pasta de verdade: e nela que se poe um mundo com
+	/// relogio de titulo correndo, e e de dentro dela que sai a segunda caixa. A conta e a mesma -- o
+	/// `finally` da caixa de dentro devolve o `_store` pra de fora, zera a memoria e rele --, e os defeitos
+	/// injetados da 12b e da 12c rodam sem encostar na pasta do dono: os dois sao desfeitos ANTES de o
+	/// `finally` da caixa de fora voltar pra ela.
+	/// </summary>
+	private void SecaoDoZerarQueNaoGrava()
+	{
+		GD.Print("[wipe] -- 12. zerar a memoria e reler o disco NAO escrevem: a caixa e a pasta de fora --");
+
+		SistemaDoMundo? inscrito = _sistemasDoMundo.Find(s => s.Arquivos.Contains("titulo.txt"));
+		if (inscrito == null)
+		{
+			AfirmarWt("achei o inscrito do relogio do titulo", false,
+					  "o sistema saiu do registro -- e isso e a secao 2 quem reprova");
+			return;
+		}
+
+		// ---------------------------------------------------------- o codigo de producao, como ele e
+		if (MedirACaixaEAPastaDeFora("pastadefora", () => { }, () => { }) is { } m)
+		{
+			AfirmarWt("zerar a memoria de TODOS os inscritos nao poe arquivo nenhum numa pasta vazia",
+					  m.EscritosPeloZerar.Count == 0, "apareceu: " + string.Join(", ", m.EscritosPeloZerar));
+			AfirmarWt("...e o primeiro boot dessa caixa e de MUNDO NOVO (semente sorteada)", m.SementeSorteada,
+					  "adotou a semente legada: a caixa foi lida como save antigo");
+			AfirmarWt("a pasta de onde a caixa saiu volta byte a byte como estava",
+					  m.MudouNaPastaDeFora.Count == 0, string.Join(" | ", m.MudouNaPastaDeFora.Take(8)));
+			AfirmarWt("...e o relogio do titulo daquele mundo volta pra memoria (a posse e as falhas)",
+					  m.PosseAntes != 0 && m.PosseDepois == m.PosseAntes && m.FalhasDepois == m.FalhasAntes,
+					  $"posse {m.PosseAntes} -> {m.PosseDepois}, falhas {m.FalhasAntes} -> {m.FalhasDepois}");
+		}
+
+		// ---------------------------------------------------------- 12b. o `Zerar` que grava
+		// NO PROPRIO INSCRITO, como a 6b, a 10b e a 11b -- e o que entra no lugar e o `LimparEstadoDoTitulo`
+		// de producao, que zera E GRAVA: certo pra quando o titulo vaga em jogo, errado como `Zerar`.
+		GD.Print("[wipe] -- 12b. o defeito injetado: o `Zerar` do titulo que GRAVA --");
+		Action zerarDeVerdade = inscrito.Zerar;
+		if (MedirACaixaEAPastaDeFora("zerargrava", () => inscrito.Zerar = LimparEstadoDoTitulo,
+									 () => inscrito.Zerar = zerarDeVerdade) is { } z)
+		{
+			AfirmarWt("COM O `Zerar` QUE GRAVA, a pasta vazia ganha um titulo.txt",
+					  z.EscritosPeloZerar.Contains("titulo.txt"), "apareceu: " + string.Join(", ", z.EscritosPeloZerar));
+			AfirmarWt("...o 'primeiro boot' da caixa e lido como save antigo e adota a semente LEGADA",
+					  !z.SementeSorteada);
+			AfirmarWt("...e a pasta de fora perde o relogio do titulo, no disco e na memoria",
+					  z.MudouNaPastaDeFora.Any(l => l.Contains("titulo.txt", StringComparison.Ordinal))
+					  && z.PosseDepois == 0 && z.FalhasDepois == 0,
+					  $"posse {z.PosseAntes} -> {z.PosseDepois}, falhas {z.FalhasAntes} -> {z.FalhasDepois} | "
+					+ string.Join(" | ", z.MudouNaPastaDeFora.Take(8)));
+		}
+
+		// ---------------------------------------------------------- 12c. o carregador que grava
+		// A outra metade, sozinha: com o `Zerar` certo, e a RELEITURA que apaga o que ia ler.
+		GD.Print("[wipe] -- 12c. o defeito injetado: o carregador do titulo que GRAVA antes de ler --");
+		if (MedirACaixaEAPastaDeFora("carregargrava", () => TituloGravadoAoCarregarDeTeste = true,
+									 () => TituloGravadoAoCarregarDeTeste = false) is { } c)
+		{
+			AfirmarWt("COM O CARREGADOR QUE GRAVA, a pasta de fora tambem perde o relogio do titulo",
+					  c.MudouNaPastaDeFora.Any(l => l.Contains("titulo.txt", StringComparison.Ordinal))
+					  && c.PosseDepois == 0 && c.FalhasDepois == 0,
+					  $"posse {c.PosseAntes} -> {c.PosseDepois}, falhas {c.FalhasAntes} -> {c.FalhasDepois} | "
+					+ string.Join(" | ", c.MudouNaPastaDeFora.Take(8)));
+		}
+	}
+
+	/// <summary>O que a <see cref="MedirACaixaEAPastaDeFora"/> viu -- pra as tres rodadas da secao 12 afirmarem sobre o mesmo.</summary>
+	private readonly record struct MedidaDaCaixa(
+		List<string> EscritosPeloZerar, bool SementeSorteada, List<string> MudouNaPastaDeFora,
+		long PosseAntes, long PosseDepois, int FalhasAntes, int FalhasDepois);
+
+	/// <summary>
+	/// UMA CAIXA DENTRO DE OUTRA, e o que sobra em cada uma. A de fora faz o papel da pasta de verdade: um
+	/// mundo que ja reiniciou uma vez, com um relogio de titulo correndo. A de dentro nasce vazia, como toda
+	/// caixa.
+	///
+	/// `injetar` roda depois de a pasta de fora estar montada e `desfazer` antes de esta funcao devolver o
+	/// corpo ao <see cref="NaCaixa"/> de fora -- ou seja, o defeito so existe enquanto o `_store` esta numa
+	/// das duas caixas. Nulo se a caixa de fora nao rodou inteira (o `NaCaixa` ja contou a falha).
+	/// </summary>
+	private MedidaDaCaixa? MedirACaixaEAPastaDeFora(string etiqueta, Action injetar, Action desfazer)
+	{
+		MedidaDaCaixa? medida = null;
+		NaCaixa(etiqueta, fora =>
+		{
+			// A PASTA DE FORA JA REINICIOU UMA VEZ, e isso e parte da medida. Um mundo que nunca ticou ainda tem
+			// no `esferas.json` a espera de NASCIMENTO do set eterno (0,4 ano): quem a corta pra 0,1 e grava e o
+			// zelador (`ManterOSetEterno`) -- em jogo no primeiro tique, um segundo depois do boot; aqui, onde
+			// nao ha tique, nesta primeira releitura. Dali em diante reler nao muda mais nada -- e e contra esse
+			// mundo assentado que a caixa e julgada: ela nao pode fazer com a pasta de fora mais do que outro
+			// reinicio faria.
+			SemearPrimeiroBoot();
+			ForcarGravacaoDeTudo();
+			ZerarSoAMemoria();
+			RecarregarMundoDoDisco();
+
+			// E TEM UM RELOGIO DE TITULO CORRENDO, com duas falhas na ficha: no campo, como o do
+			// `SemearMundoJogado`, e gravado pelos escritores de producao.
+			long posse = NowMs();
+			const int falhas = 2;
+			_duelo.TituloDesde = posse;
+			_tarefaFalhas = falhas;
+			ForcarGravacaoDeTudo();
+			List<string> antes = ImpressaoDaPasta();
+
+			var escritos = new List<string>();
+			bool sorteou = false;
+			injetar();
+			try
+			{
+				NaCaixa(etiqueta + "-dentro", dentro =>
+				{
+					// A PASTA ESTA VAZIA: o que aparecer nela depois de zerar a memoria foi um `Zerar` quem pos.
+					ZerarSoAMemoria();
+					foreach (string f in _store!.TodosOsArquivos()) escritos.Add(System.IO.Path.GetFileName(f));
+
+					// E O PRIMEIRO BOOT DELA, pela ferramenta que todas as secoes usam.
+					SemearPrimeiroBoot();
+					sorteou = SeedDoUniverso != SementeLegada;
+				});
+			}
+			finally { desfazer(); }
+
+			// AQUI O `finally` DA CAIXA DE DENTRO JA RODOU: o `_store` voltou pra pasta de fora, a memoria foi
+			// zerada e o mundo dela relido -- e a passada que toda secao faz em cima da pasta de verdade.
+			medida = new MedidaDaCaixa(escritos, sorteou, Diferenca(antes, ImpressaoDaPasta()),
+									   posse, _duelo.TituloDesde, falhas, _tarefaFalhas);
+		});
+		return medida;
+	}
+
+	/// <summary>
+	/// A PASTA DO `_store`, ARQUIVO A ARQUIVO, PELO CONTEUDO. Irma do <see cref="RetratoDoMundo"/>, que olha
+	/// o TAMANHO -- e tamanho nao serve aqui: um carimbo de 13 digitos trocado por outro pesa o mesmo.
+	///
+	/// PELO CONTEUDO E NAO PELA HORA DE GRAVACAO, de proposito: tres carregadores regravam o proprio arquivo
+	/// ao ler (`CarregarEsferas`, `CarregarSupers`, `CarregarConquista`), e regravar o que acabou de ler nao
+	/// e mexer no mundo de ninguem. O que esta impressao acusa e arquivo que ganhou OUTRO conteudo, nasceu
+	/// ou sumiu.
+	/// </summary>
+	private List<string> ImpressaoDaPasta()
+	{
+		var linhas = new List<string>();
+		foreach (string caminho in _store!.TodosOsArquivos())
+		{
+			string marca;
+			try
+			{
+				marca = Convert.ToHexString(
+					System.Security.Cryptography.SHA1.HashData(System.IO.File.ReadAllBytes(caminho)));
+			}
+			catch (Exception e) { marca = $"ILEGIVEL({e.GetType().Name})"; }
+			linhas.Add($"{System.IO.Path.GetFileName(caminho)} {marca}");
+		}
+		linhas.Sort(StringComparer.Ordinal);
+		return linhas;
+	}
+
+	// =====================================================================
+	// 13. O PORUNGA DO MUNDO NOVO -- a espera dele conta da LIMPEZA, e nao do proximo reinicio
+	// =====================================================================
+	/// <summary>
+	/// **O QUE A LIMPEZA DEIXA NO DISCO SOBRE O PORUNGA, E O QUE O REINICIO SEGUINTE LE.**
+	///
+	/// A vassoura leva o `esferas.json` e o `SalvarEsferas` fica calado enquanto a limpeza corre (o portao),
+	/// entao o Porunga que o <see cref="RemontarOMundoNovo"/> ergue existe so na memoria. Quem devolve o arquivo
+	/// e o primeiro tique do mundo novo: o zelador corta a espera de nascimento (0,4 ano) pro teto dele (0,1) e
+	/// GRAVA o que mudou.
+	///
+	/// Sem a gravacao o arquivo so voltava no primeiro gesto de alguem com uma esfera, e um reinicio antes disso
+	/// lia a pasta sem `esferas.json`: nascia OUTRO Porunga, com a espera contada do reinicio. E o mesmo
+	/// defeito que o `SalvarAgenda` do verb fecha pro primeiro torneio (ver a secao 11) -- aqui a porta e o
+	/// tique, e por isso a medida passa por ele.
+	///
+	/// O REINICIO E O CARREGADOR DAS ESFERAS, sozinho, uma hora de relogio depois: e a ferramenta da
+	/// `--esferateste` (<see cref="TicarEReiniciarOEterno"/>), e o resto do mundo nao entra nesta conta.
+	///
+	/// **13b** e ela provada disparando, com o zelador que corta e nao grava.
+	/// </summary>
+	private void SecaoDoEternoDepoisDaLimpeza()
+	{
+		GD.Print("[wipe] -- 13. o Porunga do mundo novo: a espera conta da limpeza, e nao do proximo reinicio --");
+
+		const double hora = 3600;
+		double nascer = Jandirus.Core.Magic.Esferas.SegundosDe(Jandirus.Core.Magic.Esferas.EsperaDeNascimento);
+		double teto = Jandirus.Core.Magic.Esferas.SegundosDe(Jandirus.Core.Magic.Esferas.TetoDeEsperaEterna);
+
+		if (MedirOEternoDepoisDaLimpeza("eternolimpo", zeladorMudo: false) is { } m)
+		{
+			// AS DUAS DA FRENTE NAO SAO O CONSERTO: sao o que faz as duas de baixo terem o que medir. Com um
+			// arquivo sobrando da limpeza, ou com um Porunga que ja nascesse dentro do teto, "o tique devolveu
+			// o arquivo" seria verdade sem tique nenhum ter gravado nada.
+			AfirmarWt("a limpeza leva o esferas.json e deixa o Porunga do mundo novo de pe so na memoria, "
+					+ $"apagado por {nascer / hora:0.#} h",
+					  !m.ArquivoAntesDoTique && Math.Abs(m.Nascido - nascer) <= 5,
+					  $"arquivo depois da limpeza: {m.ArquivoAntesDoTique}, nasceu faltando {m.Nascido:0} s");
+			AfirmarWt($"o primeiro tique do mundo novo corta a espera dele pra {teto / hora:0.#} h",
+					  Math.Abs(m.Cortado - teto) <= 5, $"depois do tique faltam {m.Cortado:0} s");
+
+			AfirmarWt("...e DEVOLVE o esferas.json, com o prazo que a memoria tem",
+					  m.NoArquivo > 0 && m.NoArquivo == m.NaMemoria,
+					  m.NoArquivo < 0 ? "o tique nao gravou: a pasta continua sem esferas.json"
+									  : $"arquivo {m.NoArquivo:0}, memoria {m.NaMemoria:0}");
+			AfirmarWt("um reinicio 1 h depois le ESSE Porunga: faltam as horas que faltavam com o servidor de pe",
+					  Math.Abs(m.FaltaDepois - m.FaltavaAntes) <= 5,
+					  $"faltavam {m.FaltavaAntes / hora:0.00} h, depois do reinicio faltam {m.FaltaDepois / hora:0.00} h");
+		}
+
+		GD.Print("[wipe] -- 13b. o defeito injetado: o zelador que corta e NAO grava --");
+		if (MedirOEternoDepoisDaLimpeza("eternomudo", zeladorMudo: true) is { } z)
+		{
+			AfirmarWt("COM O ZELADOR QUE NAO GRAVA, o tique nao devolve o esferas.json",
+					  z.NoArquivo < 0, $"arquivo {z.NoArquivo:0}, memoria {z.NaMemoria:0}");
+			AfirmarWt($"...e o reinicio 1 h depois ergue OUTRO Porunga: a espera volta pras {nascer / hora:0.#} h do nascimento",
+					  Math.Abs(z.FaltaDepois - nascer) <= 5,
+					  $"faltavam {z.FaltavaAntes / hora:0.00} h, depois do reinicio faltam {z.FaltaDepois / hora:0.00} h");
+		}
+	}
+
+	/// <summary>
+	/// PRIMEIRO BOOT -> A LIMPEZA DE PRODUCAO -> O PRIMEIRO TIQUE -> O REINICIO, numa caixa. Nulo se a caixa
+	/// nao rodou inteira (o <see cref="NaCaixa"/> ja contou a falha).
+	///
+	/// O defeito so fica ligado em volta do tique e do reinicio, e e desligado antes de o corpo voltar pro
+	/// `NaCaixa`: o `finally` dele rele a pasta de onde a caixa saiu, e isso nao roda com defeito injetado.
+	/// </summary>
+	private ReinicioDoEterno? MedirOEternoDepoisDaLimpeza(string etiqueta, bool zeladorMudo)
+	{
+		ReinicioDoEterno? medida = null;
+		NaCaixa(etiqueta, _ =>
+		{
+			SemearPrimeiroBoot();
+			ExecutarLimpeza(null);
+
+			double ceuAntes = _adiantoDoCeu;
+			ZeladorSoNaMemoriaDeTeste = zeladorMudo;
+			try { medida = TicarEReiniciarOEterno(1); }
+			finally
+			{
+				ZeladorSoNaMemoriaDeTeste = false;
+				_adiantoDoCeu = ceuAntes;
+			}
+		});
+		return medida;
+	}
+
+	// =====================================================================
 	// 9. O CONTEUDO DO JOGO SOBREVIVEU -- o contra-exemplo
 	// =====================================================================
 	/// <summary>
@@ -1994,8 +2571,8 @@ public partial class GameServer
 	/// o outro lado.
 	///
 	/// O retrato do conteudo e tirado ANTES de qualquer limpeza (ver `RodarBancadaDaLimpeza`) e
-	/// conferido no fim de todas elas: OITO chamadas do `ExecutarLimpeza` de producao rodaram no meio
-	/// (secoes 4, 5, 6, 6b, 7, 8, 10 e 10b).
+	/// conferido no fim de todas elas: TREZE chamadas do `ExecutarLimpeza` de producao rodaram no meio
+	/// (secoes 4, 5, 6, 6b, 7, 8, 10, 10b, duas na 11, a 11b, a 13 e a 13b).
 	/// </summary>
 	private void SecaoDoConteudoDoJogo(List<string> antes)
 	{
@@ -2011,7 +2588,7 @@ public partial class GameServer
 		List<string> depois = RetratoDoConteudo();
 		List<string> d = Diferenca(antes, depois);
 		foreach (string l in d.Take(20)) GD.PrintErr($"[wipe]         {l}");
-		AfirmarWt("o conteudo do jogo esta intacto depois de OITO limpezas", d.Count == 0,
+		AfirmarWt("o conteudo do jogo esta intacto depois de TREZE limpezas", d.Count == 0,
 				  $"{d.Count} diferenca(s)");
 	}
 

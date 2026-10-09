@@ -385,15 +385,18 @@ public partial class RoboDeBocaDeCano : Node
 		srv.LimparOsTirosDaBoca(cli.LocalId);
 
 		(_, Facing olhar, _, _) = srv.CorpoDaBoca(cli.LocalId);
-		srv.BolaDaBoca(cli.LocalId, MeleeArea.Frente(olhar));
+		srv.BolaDaBoca(cli.LocalId, MeleeArea.Frente(olhar), parada: true);
 		Virar(6);
 	}
 
 	private Image? _fotoBoa;
 	private Medida _medidaBoa;
 
-	/// <summary>O obturador da bola dispara QUASE no nascimento -- ver o cabecalho da cena.</summary>
-	private const double TilesDaBola = 0.05;
+	/// <summary>
+	/// O obturador da bola dispara NO nascimento: a bola desta cena nao anda (`parada`, ver
+	/// `GameServer.BolaDaBoca`), entao nao ha distancia a esperar -- so o node existir na tela.
+	/// </summary>
+	private const double TilesDaBola = 0;
 
 	private void B_Boa(World mundo, Jandirus.Server.GameServer srv, GameClient cli)
 	{
@@ -423,7 +426,7 @@ public partial class RoboDeBocaDeCano : Node
 
 			(_, Facing olhar, _, _) = srv.CorpoDaBoca(cli.LocalId);
 			srv.BolaDaBoca(cli.LocalId, MeleeArea.Frente(olhar),
-						   Jandirus.Server.GameServer.DefeitoDaBoca.NoUmbigo);
+						   Jandirus.Server.GameServer.DefeitoDaBoca.NoUmbigo, parada: true);
 			_t = 0;
 			return;
 		}
@@ -603,7 +606,11 @@ public partial class RoboDeBocaDeCano : Node
 				$"...e ela levantou voo pelo funil de producao ({AlturaDaVitimaDaCamada:0} px: o primeiro andar, o raio passa por baixo)");
 
 			srv.ApontarNaBoca(cli.LocalId, Facing.North);
-			srv.RaioDaBoca(cli.LocalId, norte, alcanceTiles: 10);
+			// TRINTA TILES DE ALCANCE, e nao os dez de antes: o que se fotografa e o TRONCO em cima do sprite, e ele
+			// so existe enquanto a cabeca voa e a cauda nao a alcancou. A 20 tiles por segundo (dono, 2026-10-08) um
+			// raio de dez tiles vive UM segundo ao todo, e o obturador -- que dispara aos 4 tiles e leva meia duzia
+			// de quadros -- fotografava o chao vazio ("0 px de tinta"). Com trinta sobram tres segundos de tronco.
+			srv.RaioDaBoca(cli.LocalId, norte, alcanceTiles: 30);
 			_t = 0;
 			return;
 		}
@@ -874,7 +881,7 @@ public partial class RoboDeBocaDeCano : Node
 
 				// ============================ O NODE TEM QUE EXISTIR, E NAO SO O TIRO ============================
 				// A primeira rodada da cena B saiu com `NENHUMA tinta no recorte`: a bola dispara o
-				// obturador com 0,05 tile andado, ou seja no primeiro tique -- ANTES de o anuncio de
+				// obturador assim que nasce (ela nem precisa andar), ou seja no primeiro tique -- ANTES de o anuncio de
 				// nascimento atravessar o fio e o `AoNascerTiro` criar o node. Sem node nao ha o que
 				// esconder, as tres fotos saem identicas e a mascara nasce vazia. Com o raio isso nunca
 				// apareceu porque ele leva 1,8 s de carga antes de existir.

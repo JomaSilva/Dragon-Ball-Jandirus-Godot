@@ -44,7 +44,7 @@ public partial class ZonePicker : Control
         _destaque = Camada(null);
         AddChild(_destaque);
 
-        _quadros = ResourceLoader.Load<SpriteFrames>($"{Arte}zone_sel.tres");
+        _quadros = FolhasPresas.Carregar($"{Arte}zone_sel.tres");
         if (_quadros == null) GD.PushWarning("[hud] zone_sel.tres ausente");
 
         // COMECA SEM MIRA, igual ao servidor (`ZonaMirada = 0`). Destacar "peito" de saida
@@ -72,7 +72,7 @@ public partial class ZonePicker : Control
 
     private static Texture2D? Quadro(string arquivo, string estado)
     {
-        var f = ResourceLoader.Load<SpriteFrames>($"{Arte}{arquivo}.tres");
+        var f = FolhasPresas.Carregar($"{Arte}{arquivo}.tres");
         if (f == null || !f.HasAnimation(estado) || f.GetFrameCount(estado) == 0)
         {
             GD.PushWarning($"[hud] quadro ausente: {arquivo}:{estado}");

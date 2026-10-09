@@ -221,10 +221,16 @@ public sealed partial class GameServer
 	/// ela e o corpo de prova certo pra o `deOnde`. Fotografada nos primeiros quadros de vida, uma bola
 	/// nascida em `pl.Pos` e literalmente a foto do dono -- o quadro carimbado por cima do personagem.
 	///
-	/// `Velocidade` e a mesma dos blasts da `--projetilteste` (o `max(1, round(4-speed))` do DM); quem
-	/// garante que a foto sai cedo e o obturador da bancada, que dispara com 0,05 tile andado.
+	/// `Velocidade` e a mesma dos blasts da `--projetilteste` (o `speed = 1` da bola comum).
 	/// ================================================================================================
 	/// </summary>
+	/// <param name="parada">
+	/// A bola NAO ANDA: fica onde nasceu (`Projetil.Inerte`, o estado da Death Ball crescendo). E a cena do
+	/// NASCIMENTO que pede isto -- ela mede onde o quadro da bola nasce, com dez pixels de tolerancia, e a
+	/// bola comum anda 17 px por tique desde 2026-10-08: fotografada um a tres tiques depois de nascer, a
+	/// medida passava ou reprovava conforme o tique em que o obturador caia. Antes eram 3,6 px por tique e
+	/// "os primeiros quadros de vida" ainda eram o nascimento.
+	/// </param>
 	/// <param name="piercer">
 	/// ATRAVESSA quem ela acerta. Ligado nas cenas de FOTO por um motivo medido: este berco e um
 	/// planeta povoado, e uma bola que morre no primeiro corpo que encosta pode nao chegar viva ao
@@ -232,7 +238,7 @@ public sealed partial class GameServer
 	/// passou na frente. Na cena da COLISAO ele fica desligado, que e onde morrer no alvo E a medida.
 	/// </param>
 	internal int BolaDaBoca(int id, Vec2 rumo, DefeitoDaBoca defeito = DefeitoDaBoca.Nenhum,
-							bool piercer = true, double baseDano = 0.001)
+							bool piercer = true, double baseDano = 0.001, bool parada = false)
 	{
 		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return 0;
 
@@ -250,6 +256,7 @@ public sealed partial class GameServer
 			Tipo = TipoDeProjetil.Blast, BaseDano = baseDano, Velocidade = 1,
 			AlcanceTiles = 8, Deflectivel = false, Piercer = piercer, Nome = "Bola de Ki",
 		}, rumoDado: rumo, deOnde: deOnde);
+		if (parada) p.Inerte = true;
 
 		_bocaTiro = p.Id;
 		_bocaDono = id;

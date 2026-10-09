@@ -127,6 +127,11 @@ public partial class RoboDeKi : Node
 	private int _acertosNoBoneco;
 	private double _danoNoBoneco;
 
+	/// <summary>Cada um desses golpes, na ordem -- so pro placar: a soma esconde se um doeu mais que o outro.</summary>
+	private readonly List<double> _cadaGolpeNoBoneco = [];
+
+	private string GolpesNoBoneco() => string.Join(" + ", _cadaGolpeNoBoneco.Select(d => d.ToString("0.##")));
+
 	/// <summary>
 	/// OS MEUS TIROS: quantos NASCERAM desde o ultimo `Limpar` e quais ainda estao no ar. Vem do
 	/// `S2C` de nascimento e de morte de projetil, e responde duas perguntas que o relato de golpe
@@ -283,6 +288,7 @@ public partial class RoboDeKi : Node
 		if (h.Alvo != _idDoBoneco || !h.TemDano || h.Dano <= 0) return;
 		_acertosNoBoneco++;
 		_danoNoBoneco += h.Dano;
+		_cadaGolpeNoBoneco.Add(h.Dano);
 	}
 
 	private void AoNascerTiro(NascimentoDeProjetil n)
@@ -310,6 +316,7 @@ public partial class RoboDeKi : Node
 		_avisos.Clear();
 		_golpesMeus = _acertosNoBoneco = _tirosNascidos = _correcoes = 0;
 		_danoNoBoneco = 0;
+		_cadaGolpeNoBoneco.Clear();
 	}
 
 	// =====================================================================
@@ -520,8 +527,11 @@ public partial class RoboDeKi : Node
 			// servidor a re-encher o tanque na volta, e com isso a esconder o que o save faz com o Ki.
 			//
 			// Dois aqui e dois depois do relogin cabem no tanque com folga, e bastam: quem confirma o
-			// dano e o `S2C.Hit`, com o numero. O segundo existe so pra um tiro defletido (com poder
-			// igual a chance e pequena, mas e sorteio) nao reprovar a familia pelo dado.
+			// dano e o `S2C.Hit`, com o numero. O segundo existe so pra um tiro defletido (a chance e
+			// pequena, mas e sorteio) nao reprovar a familia pelo dado. O boneco NAO e um igual de
+			// proposito: o tiro desta tecnica num igual fica abaixo do corte dos fracos e nao fere --
+			// o servidor acerta o poder dele pra este tiro tirar 18 de tanque cheio (ver o
+			// `DanoDoTiroHonestoDaPonta` e o `ArmarAMetadeViva`).
 			// ====================================================================================
 			case 8:
 			case 9:
@@ -533,7 +543,7 @@ public partial class RoboDeKi : Node
 				Conferir(_acertosNoBoneco > 0 && _danoNoBoneco > 0,
 						 "o tiro HONESTO acerta -- e quem confirmou foi o servidor (`S2C.Hit`)",
 						 $"{_acertosNoBoneco} acerto(s) no boneco de {_tirosNascidos} tiro(s), "
-					   + $"{_danoNoBoneco:0.##} de dano somado");
+					   + $"{_danoNoBoneco:0.##} de dano somado ({GolpesNoBoneco()})");
 				Conferir(_poseDoBoneco != Protocol.Pose.Nocauteado,
 						 "...e o boneco continua DE PE -- a vida dele nao viaja mais (ver `_poseDoBoneco`), "
 					   + "o que o cliente ve de fora e a pose e as feridas",
@@ -760,7 +770,7 @@ public partial class RoboDeKi : Node
 				Conferir(_acertosNoBoneco > 0 && _danoNoBoneco > 0 && _poseDoBoneco != Protocol.Pose.Nocauteado,
 						 "...e o boneco, que continuou de pe do outro lado do relogin, levou de novo "
 					   + "(o dano quem confirma e o `S2C.Hit`, nao mais a vida no snapshot)",
-						 $"{_acertosNoBoneco} acerto(s), {_danoNoBoneco:0.##} de dano | pose {_poseDoBoneco} "
+						 $"{_acertosNoBoneco} acerto(s), {_danoNoBoneco:0.##} de dano ({GolpesNoBoneco()}) | pose {_poseDoBoneco} "
 					   + $"| ferida {FeridaDoBoneco(cli)} | eu em {_minhaPos}, ele em {_posDoBoneco}");
 				break;
 
@@ -866,10 +876,11 @@ public partial class RoboDeKi : Node
 	/// AS FERIDAS DO BONECO, em texto -- pro placar, nao pra checagem.
 	///
 	/// NOTA E NAO `Conferir`: a mascara so sai da zona morta quando um MEMBRO passa de 15% de dano
-	/// (ver `Feridas.HematomaComeca`), e os tiros emparelhados desta bancada tiram uns dez por
-	/// acerto, espalhados pelo corpo -- exigir que ela mude aqui seria uma checagem que reprova por
-	/// motivo errado. Ela vai no relatorio porque e o canal que SUBSTITUIU a vida no fio: quem
-	/// quebrar o envio de feridas ve isso ficar "limpa" com o boneco levando tiro.
+	/// (ver `Feridas.HematomaComeca`), e os tiros desta bancada ficam na beira dela -- uns dezoito
+	/// por acerto de tanque cheio, uns doze depois do relogin, cada um num membro sorteado. Exigir
+	/// que ela mude aqui seria uma checagem que reprova pelo dado. Ela vai no relatorio porque e o
+	/// canal que SUBSTITUIU a vida no fio: quem quebrar o envio de feridas ve isso ficar "limpa" com
+	/// o boneco levando tiro.
 	/// </summary>
 	private string FeridaDoBoneco(GameClient cli) =>
 		cli.Feridas.TryGetValue(_idDoBoneco, out Jandirus.Core.Combat.MascaraDeFeridas m)

@@ -21,6 +21,11 @@ z_index = -1
 collision_enabled = false
 tile_set = ExtResource("1_ts")
 
+[node name="Decor2" type="TileMapLayer" parent="."]
+z_index = -1
+collision_enabled = false
+tile_set = ExtResource("1_ts")
+
 [node name="Objetos" type="TileMapLayer" parent="."]
 y_sort_enabled = true
 collision_enabled = false

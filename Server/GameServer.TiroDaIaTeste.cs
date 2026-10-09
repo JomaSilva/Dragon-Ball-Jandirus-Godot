@@ -269,7 +269,7 @@ public partial class GameServer
 		// E O TIRO ACERTA. O funil de dano e o de sempre (`Acertar` -> `DanoDeKi` -> `AplicarDanoPronto`).
 		//
 		// ============================ SEM O DADO DA DEFLEXAO, PELO MESMO MOTIVO DE SEMPRE ============================
-		// O `Acertar` sorteia deflexao em todo impacto contra quem esta de pe
+		// O `Acertar` sorteia deflexao em todo impacto acima do corte dos fracos contra quem esta de pe
 		// (`GameServer.Projeteis.cs:1190-1240`), e a chance e a razao entre as duas forcas
 		// (`DanoDeKi.ChanceDeDeflexao`, `objects.dm:333`). MEDIDO com os corpos daqui -- dois de 50.000
 		// e o feixe do `Ki_Wave` de `base_damage` 1 --: **1% por impacto**. E uma medicao de "o funil
@@ -287,14 +287,38 @@ public partial class GameServer
 		// sempre maior que zero -- a chance nunca e nula.
 		// ============================================================================================================
 		double vidaAntes = alvo.Combate.Corpo.Vida();
+		// O QUE FOI FEITO DE CADA TIRO, pra a reprovacao dizer DE QUE ele morreu e pra onde ia -- sem isso "vida 100
+		// contra 100" manda quem le adivinhar entre errar, bater no cenario e nao ferir.
+		//
+		// ============================ E SEM O CORTE DOS FRACOS, PELA MESMA RAZAO (2026-10-09) ============================
+		// Desde 2026-10-08 o tiro de dano final abaixo de `DanoDeKi.CorteDoFraco` BATE SEM FERIR. MEDIDO com os corpos
+		// daqui: o `Ki_Wave` do NPC de 50.000 contra o alvo de 50.000 da dano final 6,00 -- abaixo do corte de 10. O
+		// raio chegava ao alvo, plantava a cabeca na frente dele e nao tirava vida nenhuma; esta linha so passava nas
+		// rodadas em que a IA sorteava outra tecnica nos 8 s (reprovou em 8 de 11 rodadas com a mira no marcado e em 1
+		// de 2 sem ela, `--semmiradeki`, sempre com esta assinatura: nao e a direcao do tiro; e ja reprovava 2 em 4 na
+		// noite em que o corte nasceu). Quem mede o corte e a `--projetilteste` (familia do corte dos
+		// fracos); aqui se mede "o funil chegou ao fim", entao o tiro que ja esta no ar e erguido acima do corte pelo
+		// mesmo ajudante de la (`CravarDanoFinal`, que so escala o `ModsBase` do tiro).
+		// ====================================================================================================================
+		var vistos = new Dictionary<int, Projetil>();
 		for (int i = 0; i < 30 * 8 && alvo.Combate.Corpo.Vida() >= vidaAntes; i++)
 		{
-			foreach (Projetil no in ProjeteisDaZona(atirador.Zone.Hash)) no.Deflectivel = false;
+			foreach (Projetil no in ProjeteisDaZona(atirador.Zone.Hash))
+			{
+				no.Deflectivel = false;
+				if (no.Dono == atirador.Id && DanoDeKi.FracoDemais(DanoFinalDe(no, alvo))) CravarDanoFinal(no, alvo, DanoQueFereDoCorte);
+				vistos[no.Id] = no;
+			}
 			TiqueDeMundo();
 		}
+		string tiros = string.Join("; ", vistos.Values.Select(v =>
+			$"{v.Tipo} rumo ({v.Rumo.X:0.00},{v.Rumo.Y:0.00}) fim {v.Fim}{(v.Vivo ? " (vivo)" : "")} a "
+			+ $"{Vec2.Distance(v.Pos, alvo.Pos) / ZoneCollision.TileSize:0.0} tiles do alvo, andou {v.AndouTiles:0.0}, "
+			+ $"dano final {DanoFinalDe(v, alvo):0.00} (o corte dos fracos e {DanoDeKi.CorteDoFraco:0})"));
 		AfirmarTi("...e alguem levou dano no fim da linha (o funil de ki de producao)",
 				  alvo.Combate.Corpo.Vida() < vidaAntes,
-				  $"vida {alvo.Combate.Corpo.Vida():0.###} contra {vidaAntes:0.###}");
+				  $"vida {alvo.Combate.Corpo.Vida():0.###} contra {vidaAntes:0.###} | atirador em {atirador.Pos} olhando "
+				  + $"{atirador.Facing}, alvo em {alvo.Pos} | {vistos.Count} tiro(s): {tiros}");
 
 		LimparEmbatesDaBancada();
 	}

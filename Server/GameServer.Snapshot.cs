@@ -143,10 +143,29 @@ public partial class GameServer
 		}
 	}
 
+	/// <summary>
+	/// Ha alguem CONECTADO entre estes corpos? Por indice, e nao por `foreach`: a lista chega como
+	/// `IReadOnlyList`, e o `foreach` de interface encaixota o enumerador a cada volta.
+	/// </summary>
+	private static bool TemPlateia(IReadOnlyList<ServerPlayer> destinatarios)
+	{
+		for (int i = 0; i < destinatarios.Count; i++)
+			if (destinatarios[i].Peer != null) return true;
+		return false;
+	}
+
 	/// <summary>Monta as partes pros destinatarios e manda todas, na ordem, pelo canal de estado.</summary>
 	private void MandarSnapshot(IReadOnlyList<ServerPlayer> destinatarios, IReadOnlyList<ServerPlayer> corpos,
 								IEnumerable<ProjetilState> tiros, long agora, uint carimbo)
 	{
+		// ZONA SEM NINGUEM CONECTADO NAO MONTA PACOTE. O snapshot so MANDA bytes, e o envio pula quem nao tem
+		// `Peer`: montar as partes de um planeta so de NPCs era serializar quarenta corpos trinta vezes por segundo
+		// pra ninguem -- 5 das 6 zonas povoadas, 0,2 MB/s de `byte[]` jogado fora (medido em 2026-10-08,
+		// `--diagcoletor`). Isto NAO e porta de plateia do MUNDO: o `EstadoDe` so LE o corpo (a unica coisa que ele
+		// escreve e o dicionario VAZIO que o `BuffsDe` cria na primeira consulta, e vazio nao muda regra nenhuma),
+		// entao nada do que acontece no planeta passa por aqui -- so o que se conta a quem olha.
+		if (!TemPlateia(destinatarios)) return;
+
 		int orcamento = OrcamentoDoSnapshot(destinatarios);
 		List<NetDataWriter> partes = PartesDoSnapshot(corpos, tiros, agora, carimbo, orcamento);
 
@@ -184,6 +203,12 @@ public partial class GameServer
 				Arrasta = p.Arrastando,
 				// A DISPUTA SE VE NO FEIXE, e por todo mundo: ver `ProjetilState.Prensado`.
 				Prensado = p.EmEmbate,
+				// O TRECHO DESVIADO DIZ DE QUEM ELE E A CONTINUACAO, enquanto o desvio dura: ver `ProjetilState.Dobra`.
+				Dobra = p.AlimentadoPor,
+				// O RAIO QUE ENGROSSOU (ou murchou de volta) DIZ O TAMANHO DE AGORA: ver `ProjetilState.Escala`. Comparado
+				// NO BYTE, que e o que o cliente recebeu no `Nasceu` -- meio degrau de 1/20 nao e mudanca nenhuma.
+				Escala = Protocol.EscalaDeProjetilEmByte(p.EscalaVisual) != Protocol.EscalaDeProjetilEmByte(p.EscalaDeNascenca)
+					? (float)p.EscalaVisual : 0f,
 			};
 		}
 	}

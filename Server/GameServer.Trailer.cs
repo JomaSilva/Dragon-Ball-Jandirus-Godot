@@ -146,6 +146,20 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
+	/// UMA PECA DE ROUPA NA MOCHILA de um corpo de cena -- pra a cena da roupa ter com o que TROCAR: o
+	/// personagem de linha de comando so tem o figurino que a cena veste nele. Entra pelo `Guardar` de
+	/// producao, como o item que e (`RoupaGuardada`). A cor vem em "R,G,B"; vazia = a peca crua.
+	/// </summary>
+	/// <returns>o id do item guardado, ou vazio se a folha nao existe no catalogo ou a mochila esta cheia.</returns>
+	internal string GuardarRoupaNoTrailer(int id, string nome, string cor)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl) || _visual?.Peca(nome) is not { } caminho) return "";
+		Rgb? tinta = LerCor(cor, out Rgb c) ? c : null;
+		string item = Jandirus.Core.Items.RoupaGuardada.De(new PecaDeRoupa(caminho, tinta)).Id;
+		return Guardar(pl, item) ? item : "";
+	}
+
+	/// <summary>
 	/// UM NPC DE VERDADE AO LADO DO JOGADOR -- pelo `NascerNpc` de producao, com cerebro, perfil e ficha
 	/// sorteados do molde. Chefe entra no degrau pedido pelo mesmo par de linhas da saga e da lembranca
 	/// (`Sagas.Pinar` + `EntrarNoDegrau`, ver `ChamarChefe`).

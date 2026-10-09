@@ -605,6 +605,42 @@ public partial class NebulosaDaForma : Node2D
 		SetProcess(false);
 	}
 
+	/// <summary>A paleta da nuvem do ensaio. Nao importa qual: cor e VALOR, e nao muda shader nem pipeline.</summary>
+	private static readonly Jandirus.Core.Forms.PaletaDeNebulosa PaletaDoEnsaio = new("241a3d", "6f5fae", "d8e8ff", "ffffff");
+
+	/// <summary>
+	/// O ENSAIO DO LOBBY (ver `Aquecimento.AtosDaNebulosa`): uma nuvem de verdade -- o mesmo node, o mesmo
+	/// <see cref="_Ready"/>, o mesmo <see cref="Definir"/> -- ACESA num palco fora da tela, pra a pipeline do
+	/// `NebulosaDaForma.gdshader` ser montada ALI, e nao no quadro em que o primeiro Ultra Instinto do processo acende.
+	///
+	/// O QUAD NASCE INVISIVEL COM CADA CORPO, e era isso que escondia a conta: o shader esta na fila de carga do
+	/// aquecimento desde que nasceu, o material dele e criado na entrada, e a pipeline so era montada no primeiro
+	/// DESENHO -- o instante em que a forma assume.
+	///
+	/// MEDIDO em 2026-10-09 pela `--diagestouro --avulsos`, o quadro em que a primeira nuvem do processo acende, com uma
+	/// pipeline montada nele: 15 a 17 ms com o cache de shader do DRIVER de video quente (1,3 de tela), e 74 a 81 com ele frio
+	/// (60 a 65 de tela: e o shader mais comprido do jogo, 55 KB) -- a tela parada no instante em que o Ultra Instinto
+	/// assume. DEPOIS: nenhuma pipeline nasce no quadro, e a tela dele custa 0,3 a 0,5 ms, quente ou frio.
+	///
+	/// O QUE O ATO NAO PAGA: o quadro continua custando 14 a 18 ms, e sao 13 a 17 de SCRIPT -- o campo de distancia da
+	/// silhueta construido pela primeira vez (<see cref="Modelar"/>: as folhas do corpo lidas de volta e a transformada).
+	/// Nao e shader, e o palco nao tem boneco pra ele medir.
+	///
+	/// A GEMEA ILUMINADA DESTE SHADER SAI DE GRACA (0,5 ms de tela com o driver frio, montada depois da sem luz): ele e
+	/// `unshaded`, e sem codigo de luz as duas pipelines sao o mesmo codigo pro driver. O ato monta as duas mesmo assim,
+	/// que e o feitio de todos e nao custa nada.
+	///
+	/// SEM BONECO: o palco nao tem um irmao `Visual` pra a nuvem vestir, e ela fica com a geometria de nascimento (o quad
+	/// de 42 px, a silhueta vazia). Silhueta e VALOR -- uma textura do material --, e nao muda shader nem pipeline. Morre
+	/// com o palco do aquecimento.
+	/// </summary>
+	public static void Ensaiar(Node2D pai, Vector2 onde)
+	{
+		var nuvem = new NebulosaDaForma { Name = "NebulosaDoEnsaio", Position = onde };
+		pai.AddChild(nuvem);   // o `_Ready` de producao: o quad e o material nascem nele, apagados
+		nuvem.Definir(PaletaDoEnsaio);
+	}
+
 	/// <summary>
 	/// ============================ MASCARA DE POSE PARADA DESCOLA ANDANDO ============================
 	/// A elipse podia ser medida UMA VEZ POR TRANSFORMACAO, e era: ela era grande, mole e centrada, e um

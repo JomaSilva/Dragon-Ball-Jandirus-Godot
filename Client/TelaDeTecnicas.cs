@@ -621,7 +621,7 @@ public partial class TelaDeTecnicas : CanvasLayer
 			{
 				(TipoDeProjetil.Beam, "Raio"),
 				(TipoDeProjetil.Blast, "Bola"),
-				(TipoDeProjetil.Guided, "Teleguiado"),
+				(TipoDeProjetil.Guided, "Bola teleguiada"),
 			})
 			{
 				TipoDeProjetil alvo = t;
@@ -636,6 +636,23 @@ public partial class TelaDeTecnicas : CanvasLayer
 		{
 			_corpo.AddChild(Nota($"Tipo: {NomeDoTipo(m.Tipo)} (não muda depois de pronta).",
 										 Tema.TextoFraco, 12));
+		}
+
+		// O RAIO TELEGUIADO (dono, 2026-10-09), JUNTO DO TIPO: e ali que se procura "este ataque e teleguiado?" -- a
+		// bola teleguiada e um dos tres botoes de cima. La embaixo, com as outras compras de raio, ele caia fora da
+		// tela numa janela de 720. A regra inteira vai escrita porque e ela que o jogador esta comprando: todo ataque
+		// ja sai NO marcado; o que este botao vende e a curva depois. E compra, nao tipo: muda tambem depois de pronta.
+		if (m.Tipo == TipoDeProjetil.Beam)
+		{
+			Interruptor($"Teleguiado: o raio acompanha quem você marcou ({TecnicaCustomizada.PrecoDoTeleguiado} pontos)",
+						m.Teleguiado, null,
+						() => GameClient.Instance?.SendVerbo("ca_comprar",
+							m.Teleguiado ? nameof(Compra.TeleguiadoDesligar) : nameof(Compra.TeleguiadoLigar)));
+			_corpo.AddChild(Nota(
+				"Todo ataque de ki já sai na direção de quem está marcado — e depois NÃO faz curva. O teleguiado "
+				+ $"gira de leve atrás do alvo, e só até {Teleguiado.DesvioMaximoEmGraus:0}° do rumo em que saiu: "
+				+ "quem sai muito da frente escapa. Sem ninguém marcado, ele sai reto.",
+				Tema.TextoFraco, 11));
 		}
 
 		// ---------------------------------------------------------------- textos
@@ -838,7 +855,8 @@ public partial class TelaDeTecnicas : CanvasLayer
 		TipoDeProjetil.Blast =>
 			"Sai na hora, não prende você, e morre em quem acertar. É o tiro de todo dia.",
 		_ =>
-			"Persegue o alvo marcado até acertá-lo ou se apagar. Não adianta sair da frente.",
+			"Sai na hora e faz curva atrás do alvo marcado — de leve, e só até "
+			+ $"{Teleguiado.DesvioMaximoEmGraus:0}° do rumo em que saiu. Quem sai muito da frente escapa.",
 	};
 
 	private static string Resumo(TecnicaCustomizada t)
@@ -849,6 +867,7 @@ public partial class TelaDeTecnicas : CanvasLayer
 		{
 			s += $" · carga {t.CargaMinima:0.#}s";
 			if (t.Instantaneo) s += " · sai sozinho";
+			if (t.Teleguiado) s += " · teleguiado";
 			if (Math.Abs(t.DistanciaMod - 1) > 1e-6) s += $" · {t.DistanciaMod:0.0}×/tile";
 		}
 		if (t.UsaStamina) s += $" · {t.CustoStamina:0} de fôlego";

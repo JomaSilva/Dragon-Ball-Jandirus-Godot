@@ -170,7 +170,42 @@ public static class Protocol
         /// <see cref="Core.Social.VozLocal.Torneira"/>).
         /// </summary>
         Voz = 24,
+
+        /// <summary>
+        /// ERGUER OU DESMANCHAR UM BLOCO (parede, piso, porta): `byte acao` (<see cref="BlocoErguer"/> ou
+        /// <see cref="BlocoDesmanchar"/>), `ushort cx`, `ushort cy`, `ushort numero` (a posicao no
+        /// `blocos.json`, que as duas pontas leem) e `string senha` (so vale pra porta; vazia = sem senha).
+        ///
+        /// PACOTE PROPRIO, e nao o canal de verbos: arrastar o mouse manda uma duzia destes por segundo, e
+        /// o canal de tecnologia responde a cada comando reenviando o catalogo inteiro.
+        ///
+        /// SO A CELULA VIAJA. De onde o corpo esta, se ele alcanca, se o chao aceita e de quem e o que ja
+        /// esta la sao perguntas do servidor (`GameServer.Blocos.cs`) -- o fantasma do cliente faz as
+        /// mesmas (`RegrasDeBloco`) so pra o jogador nao clicar as cegas.
+        /// </summary>
+        Bloco = 25,
     }
+
+    /// <summary>As duas acoes do <see cref="C2S.Bloco"/>.</summary>
+    public const byte BlocoErguer = 0, BlocoDesmanchar = 1;
+
+    /// <summary>
+    /// OS QUATRO MODOS DO <see cref="S2C.Blocos"/>, no primeiro byte depois do opcode.
+    ///
+    /// `Retrato`: todos os blocos de uma zona, pra quem chega nela (`ulong zona`, `int n`, n x bloco).
+    ///            E estado: o cliente o guarda com a zona e so o aplica quando o chao dela estiver montado.
+    /// `Posto`:   um bloco subiu (ou trocou) -- um bloco.
+    /// `Tirado`:  um bloco saiu (`ushort cx, cy`, `bool derrubado`): desmanchado pelo dono, ou derrubado.
+    /// `Porta`:   uma porta erguida abriu, fechou ou trocou de senha -- um bloco.
+    ///
+    /// UM BLOCO NO FIO: `ushort cx`, `ushort cy`, `ushort numero`, `byte marcas`. As MARCAS SAO DE QUEM
+    /// RECEBE (<see cref="BlocoMeu"/> e <see cref="BlocoSeiASenha"/> mudam de jogador pra jogador), e
+    /// por isso o pacote e montado por destinatario. A SENHA NUNCA VIAJA pro cliente.
+    /// </summary>
+    public const byte BlocosRetrato = 0, BlocosPosto = 1, BlocosTirado = 2, BlocosPorta = 3;
+
+    /// <summary>As marcas de um bloco no fio. Ver <see cref="BlocosRetrato"/>.</summary>
+    public const byte BlocoMeu = 1, BlocoTrancado = 2, BlocoAberto = 4, BlocoSeiASenha = 8;
 
     /// <summary>
     /// QUANTO CABE NO ARGUMENTO DE UM VERB.
@@ -590,6 +625,28 @@ public static class Protocol
         /// canto pra quem espera ou nao participa. Ver `GameServer.Torneio.cs:MandarChave`.
         /// </summary>
         Chave = 57,
+
+        /// <summary>
+        /// OS BLOCOS ERGUIDOS (parede, piso, porta) da zona em que estou, em quatro modos -- ver
+        /// <see cref="BlocosRetrato"/>. O retrato pra quem chega; depois, so o que muda.
+        /// </summary>
+        Blocos = 58,
+
+        /// <summary>
+        /// O SERVIDOR VIROU O MEU CORPO: `byte olhar` (<see cref="Jandirus.Core.World.Facing"/>). So pro dono --
+        /// os outros veem pelo snapshot. Hoje quem vira e o ataque de ki com alguem marcado
+        /// (`GameServer.CravarOlhar`): o corpo local desenha a propria direcao e a manda de volta no pacote de
+        /// movimento, entao sem este aviso ele se veria de costas pro proprio tiro -- e desviraria o corpo no
+        /// servidor no pacote seguinte.
+        /// </summary>
+        Olhar = 59,
+
+        /// <summary>
+        /// QUEM ESTA DENTRO DESTE MAJIN: `byte n` + n x (`int numero`, `string nome`, `bool devorado`). So pro
+        /// dono, e a lista INTEIRA a cada mudanca -- cada entrada vira um botao de expelir no menu dele, e o
+        /// caminho de volta e a habilidade `expelir:numero`. Ver `GameServer.MandarAbsorvidosDoMajin`.
+        /// </summary>
+        AbsorvidosDoMajin = 60,
 
         /// <summary>
         /// CAIU UM RAIO, e ele caiu NUM LUGAR: posicao no mundo + a semente do desenho.
@@ -1998,7 +2055,14 @@ public static class Protocol
     /// nao vale a pena um pacote de delta: mandar a lista toda quando ela muda e mais simples e nao
     /// tem o modo de falha do delta, que e ficar dessincronizado sem ninguem perceber.
     /// </summary>
-    public static void PutInventario(this NetDataWriter w, Jandirus.Core.Items.Inventario inv)
+    /// <param name="vestindo">
+    /// AS PECAS QUE O DONO VESTE AGORA, no fim do pacote -- a fileira "vestindo" da mochila (dono, 2026-10-08).
+    /// Elas viajam AQUI, e nao sao lidas do `PeerLook` do proprio corpo, porque o `PeerLook` leva a aparencia que
+    /// o MUNDO ve (`GameServer.VisualVisivel`): fundido ou disfarcado, o que ele mostra nao e o guarda-roupa de
+    /// quem joga. O formato de cada peca e o do `PutAppearance` (caminho + cor).
+    /// </param>
+    public static void PutInventario(this NetDataWriter w, Jandirus.Core.Items.Inventario inv,
+                                     IReadOnlyList<PecaDeRoupa> vestindo)
     {
         w.Put((byte)Math.Min(inv.Pilhas.Count, Jandirus.Core.Items.Inventario.Slots));
         for (int i = 0; i < inv.Pilhas.Count && i < Jandirus.Core.Items.Inventario.Slots; i++)
@@ -2006,9 +2070,16 @@ public static class Protocol
             w.Put(inv.Pilhas[i].Id);
             w.Put((ushort)Math.Clamp(inv.Pilhas[i].Quantidade, 0, ushort.MaxValue));
         }
+
+        w.Put((byte)Math.Min(vestindo.Count, Appearance.MaxRoupa));
+        for (int i = 0; i < vestindo.Count && i < Appearance.MaxRoupa; i++)
+        {
+            w.Put(vestindo[i].Caminho);
+            w.PutRgb(vestindo[i].Cor);
+        }
     }
 
-    public static Jandirus.Core.Items.Inventario GetInventario(this NetDataReader r)
+    public static Jandirus.Core.Items.Inventario GetInventario(this NetDataReader r, List<PecaDeRoupa> vestindo)
     {
         var inv = new Jandirus.Core.Items.Inventario();
         int n = Math.Min((int)r.GetByte(), Jandirus.Core.Items.Inventario.Slots);
@@ -2022,6 +2093,17 @@ public static class Protocol
             string id = r.GetString(64);
             int q = r.GetUShort();
             if (id.Length > 0 && q > 0) inv.Pilhas.Add(new Jandirus.Core.Items.Pilha(id, q));
+        }
+
+        // AS PECAS VESTIDAS -- o mesmo teto e a mesma disciplina do `GetAppearance`: a cor e lida SEMPRE, mesmo
+        // com o caminho descartado, senao um caminho comprido demais desalinharia o que vem depois.
+        vestindo.Clear();
+        int nv = Math.Min((int)r.GetByte(), Appearance.MaxRoupa);
+        for (int i = 0; i < nv; i++)
+        {
+            string caminho = r.GetString(120);
+            Rgb? cor = r.GetRgb();
+            if (caminho.Length > 0) vestindo.Add(new PecaDeRoupa(caminho, cor));
         }
         return inv;
     }
@@ -2982,11 +3064,47 @@ public struct ProjetilState
     /// </summary>
     public bool Prensado;
 
+    /// <summary>
+    /// ESTE RAIO E A CONTINUACAO DE OUTRO (0 = nao e): o id do raio que o alimenta -- o trecho que sai de um
+    /// raio DESVIADO pelo parry, enquanto o desvio dura (`Projetil.AlimentadoPor`).
+    ///
+    /// ============================ POR QUE O CLIENTE PRECISA SABER ============================
+    /// No servidor um raio desviado sao DOIS objetos (o feixe e um segmento reto, e um raio torto sao dois
+    /// segmentos). Desenhados como dois, o segundo saia com mao propria -- uma boca de disparo no meio do ar
+    /// -- e o dono viu um feixe novo nascendo atras de quem desviou (2026-10-08): *"o beam dar curva pro lado
+    /// e nao criar um novo beam"*. Com este id o cliente desenha os dois como UMA fita, da mao de quem atirou
+    /// ate a ponta do trecho desviado, fazendo a curva na dobra (`ProjetilDesenhado.DesenharDobrado`).
+    ///
+    /// ESTADO E NAO EVENTO: o desvio acaba a qualquer tique (a guarda caiu, o atirador soltou), e nesse
+    /// instante os dois voltam a ser dois raios. Quatro bytes, so nos raios e so enquanto ha desvio -- o mesmo
+    /// preco e a mesma forma do <see cref="Arrasta"/>.
+    /// =========================================================================================
+    /// </summary>
+    public int Dobra;
+
+    /// <summary>
+    /// A ESCALA DE AGORA DESTE RAIO, quando ela ja nao e a de nascenca (0 = e a de nascenca, a do `Nasceu`).
+    ///
+    /// ============================ O RAIO CRESCE COM O PODER DE QUEM O SEGURA (dono, 2026-10-08) ============================
+    /// A escala viajava UMA vez, no nascimento, porque nao mudava. Agora um raio engrossa quando o dono se
+    /// transforma ou acende um aumento de poder no meio dele (`Core.Combat.Projetil.CrescerComOPoder`), e o
+    /// servidor ja encosta, disputa e corta pelo tamanho novo -- o desenho tem que acompanhar.
+    ///
+    /// ESTADO E NAO EVENTO, pelo motivo do <see cref="Dobra"/>: o tamanho sobe em rampa e desce quando o poder
+    /// escorre, tique a tique. Um byte (a mesma escala de 1/20 do `Nasceu`,
+    /// <see cref="Protocol.EscalaDeProjetilEmByte"/>), so nos raios e so enquanto ele esta fora do tamanho com
+    /// que nasceu: um mundo sem ninguem crescendo no meio de um raio nao paga nada.
+    /// ====================================================================================================================
+    /// </summary>
+    public float Escala;
+
     private const byte MascaraDoTipo = 0x03;
     private const byte BitTemCauda = 0x04;
     private const byte BitSolto = 0x08;
     private const byte BitArrasta = 0x10;
     private const byte BitPrensado = 0x20;
+    private const byte BitDobra = 0x40;
+    private const byte BitEscala = 0x80;
 
     public void Write(NetDataWriter w)
     {
@@ -2994,9 +3112,12 @@ public struct ProjetilState
         w.PutVec(Pos);
         bool cauda = (Tipo & MascaraDoTipo) == (byte)Jandirus.Core.Combat.TipoDeProjetil.Beam;
         w.Put((byte)((Tipo & MascaraDoTipo) | (cauda ? BitTemCauda : 0) | (cauda && Solto ? BitSolto : 0)
-                     | (cauda && Arrasta != 0 ? BitArrasta : 0) | (cauda && Prensado ? BitPrensado : 0)));
+                     | (cauda && Arrasta != 0 ? BitArrasta : 0) | (cauda && Prensado ? BitPrensado : 0)
+                     | (cauda && Dobra != 0 ? BitDobra : 0) | (cauda && Escala > 0f ? BitEscala : 0)));
         if (cauda) w.PutVec(Cauda);
         if (cauda && Arrasta != 0) w.Put(Arrasta);
+        if (cauda && Dobra != 0) w.Put(Dobra);
+        if (cauda && Escala > 0f) w.Put(Protocol.EscalaDeProjetilEmByte(Escala));
     }
 
     public static ProjetilState Read(NetDataReader r)
@@ -3008,6 +3129,8 @@ public struct ProjetilState
         p.Solto = (flags & BitSolto) != 0;
         p.Arrasta = (flags & BitArrasta) != 0 ? r.GetInt() : 0;
         p.Prensado = (flags & BitPrensado) != 0;
+        p.Dobra = (flags & BitDobra) != 0 ? r.GetInt() : 0;
+        p.Escala = (flags & BitEscala) != 0 ? Protocol.DeEscalaDeProjetil(r.GetByte()) : 0f;
         return p;
     }
 }
@@ -3079,6 +3202,7 @@ public static class CustomWire
     private const byte BitCarregavel = 1 << 3;
     private const byte BitInstantaneo = 1 << 4;
     private const byte BitCriada = 1 << 5;
+    private const byte BitTeleguiado = 1 << 6;
 
     public const int MaxNome = 32;
     public const int MaxDesc = 160;
@@ -3097,7 +3221,8 @@ public static class CustomWire
                    | (t.UsaStamina ? BitUsaStamina : 0)
                    | (t.Carregavel ? BitCarregavel : 0)
                    | (t.Instantaneo ? BitInstantaneo : 0)
-                   | (t.Criada ? BitCriada : 0)));
+                   | (t.Criada ? BitCriada : 0)
+                   | (t.Teleguiado ? BitTeleguiado : 0)));
         w.Put((float)t.BaseDano);
         w.Put((float)t.CargaMinima);
         w.Put((float)t.CustoKi);
@@ -3135,6 +3260,7 @@ public static class CustomWire
         t.Carregavel = (f & BitCarregavel) != 0;
         t.Instantaneo = (f & BitInstantaneo) != 0;
         t.Criada = (f & BitCriada) != 0;
+        t.Teleguiado = (f & BitTeleguiado) != 0;
         t.BaseDano = r.GetFloat();
         t.CargaMinima = r.GetFloat();
         t.CustoKi = r.GetFloat();

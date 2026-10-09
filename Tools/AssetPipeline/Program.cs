@@ -220,6 +220,34 @@ if (args.Length >= 4 && args[0] == "duro")
     return 0;
 }
 
+if (args.Length >= 3 && args[0] == "dentro")
+{
+    // dentro <pastaMaps.dmm> <pastaDestino> : grava SO os `.dentro` -- o que nasce SOB TETO, a area
+    // `Inside` do original (ver Tools/AssetPipeline/Interiores.cs e Core/World/CelulaInterna.cs).
+    //
+    // Comando proprio pelo MESMO motivo do `agua` e do `duro`: a conversao cheia reescreve tileset,
+    // tiles.json, os 40 .tscn/.pedacos e o indice de sprites. O dado que falta aqui e NOVO e nao
+    // toca em arquivo nenhum que ja existe.
+    //
+    // NAO LEVA A PASTA DO CODIGO, ao contrario dos irmaos: a regra so le o nome da area e o prefixo
+    // do turf, e os dois estao no proprio `.dmm`.
+    //
+    //   dotnet run --project Tools/AssetPipeline -- dentro <BYOND>/Maps Assets/Maps
+    MapConverter.ConverterInteriores(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]));
+    return 0;
+}
+
+if (args.Length >= 2 && args[0] == "dentro-prova")
+{
+    // dentro-prova <pastaMaps.dmm> [pastaMaps] : a bancada do SOB TETO (ver DentroBench.cs).
+    //
+    // O nome segue o `agua-prova` e o `nuvem-prova`: `dentro` e o CONVERSOR e isto e o JUIZ. Ela
+    // pede os mapas de ORIGEM porque uma das perguntas dela e "cada celula do plano tem a fonte que
+    // a lista diz?", e a unica testemunha disso e o `.dmm`.
+    string mapsD = args.Length > 2 ? args[2] : Path.Combine("Assets", "Maps");
+    return DentroBench.Run(Path.GetFullPath(args[1]), Path.GetFullPath(mapsD));
+}
+
 if (args.Length >= 1 && args[0] == "carga")
 {
     // carga [races.json] : a tecla C segurada -- as duas chaves, os tempos, o BP e o preco
@@ -261,7 +289,12 @@ if (args.Length >= 4 && args[0] == "cidade")
     //   pastaDmm   os mapas de ORIGEM: a unica testemunha de quem TINHA desenho antes da conversao,
     //              e sem ela nao da pra separar "o port perdeu a arte" de "o BYOND tambem nao
     //              desenhava nada ali". Ver o cabecalho de `CidadeBench.Fonte`.
-    return CidadeBench.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Path.GetFullPath(args[3]));
+    //
+    // E UM QUARTO, OPCIONAL: a pasta de rascunho do comando `repintar`. Os arquivos de zona que
+    // existirem nela sao lidos POR CIMA dos publicados -- a bancada julga o disco como ele ficaria
+    // com o rascunho aplicado, antes de alguem aplicar.
+    return CidadeBench.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Path.GetFullPath(args[3]),
+                           args.Length > 4 ? Path.GetFullPath(args[4]) : null);
 }
 
 if (args.Length >= 4 && args[0] == "censo")
@@ -276,8 +309,12 @@ if (args.Length >= 4 && args[0] == "censo")
     // `--semduro` no fim e o CONTROLE NEGATIVO: manda ignorar o `.duro` e o censo TEM que reprovar.
     // Ver a nota no `CensoMudoBench.Run` -- provar que uma guarda pega o defeito nao pode depender de
     // alguem apagar arquivo do disco e lembrar de repor.
+    //
+    // Um quarto caminho, opcional, e a pasta de rascunho do `repintar`, lida POR CIMA do publicado
+    // (a mesma chave da `cidade`).
     return CensoMudoBench.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Path.GetFullPath(args[3]),
-                              Array.IndexOf(args, "--semduro") >= 0);
+                              Array.IndexOf(args, "--semduro") >= 0,
+                              args.Length > 4 && !args[4].StartsWith("--", StringComparison.Ordinal) ? Path.GetFullPath(args[4]) : null);
 }
 
 if (args.Length >= 1 && args[0] == "gravidade")
@@ -673,6 +710,36 @@ if (args.Length >= 2 && args[0] == "motivos")
     foreach (var (porque, n) in tally.OrderByDescending(kv => kv.Value))
         Console.WriteLine($"  {n,4}  {porque}");
     Console.WriteLine($"\n  {defsM.Count} entrada(s) do extrator (o arquivo do repo tem mais -- ver o comando `pessoal`)");
+    return 0;
+}
+
+if (args.Length >= 2 && args[0] == "blocos")
+{
+    // blocos <pastaCode> [saida.json] [pastaSprites] : o catalogo do que um jogador ERGUE (parede, piso
+    // e porta), tirado do `/turf/build/*` do DM. So le: nao toca em tileset, cena nem sprite. Ver
+    // `BlocosScanner`.
+    string pastaB = Path.GetFullPath(args[1]);
+    string saidaB = args.Length >= 3 ? args[2] : Path.Combine("Assets", "Data", "blocos.json");
+    string spritesB = Path.GetFullPath(args.Length >= 4 ? args[3] : Path.Combine("Assets", "Sprites"));
+
+    // A RAIZ DO PROJETO pelo `project.godot`, e nao pelo diretorio de trabalho: os `res://` do arquivo
+    // nao podem depender de qual pasta o comando foi chamado (a mesma nota do conversor de mapa).
+    string? raizB = null;
+    for (var d = new DirectoryInfo(spritesB); d != null; d = d.Parent)
+        if (File.Exists(Path.Combine(d.FullName, "project.godot"))) { raizB = d.FullName; break; }
+    if (raizB == null) { Console.WriteLine("ERRO: nao achei o project.godot subindo de " + spritesB); return 1; }
+
+    BlocosScanner.Resultado rb = BlocosScanner.Extrair(DmTurfScanner.Scan(pastaB), spritesB, raizB);
+    BlocosScanner.Escrever(saidaB, rb.Linhas);
+
+    Console.WriteLine($"blocos: {rb.Linhas.Count} no catalogo "
+                      + $"({rb.Linhas.Count(l => l.Classe == "parede")} paredes, "
+                      + $"{rb.Linhas.Count(l => l.Classe == "piso")} pisos, "
+                      + $"{rb.Linhas.Count(l => l.Classe == "porta")} portas) em "
+                      + $"{rb.Linhas.Select(l => l.Folha).Distinct().Count()} folhas -> {saidaB}");
+    Console.WriteLine($"de fora: {rb.Fora.Count}");
+    foreach (IGrouping<string, (string Id, string Motivo)> g in rb.Fora.GroupBy(f => f.Motivo).OrderByDescending(g => g.Count()))
+        Console.WriteLine($"   {g.Count(),3}  {g.Key}: {string.Join(", ", g.Select(f => f.Id))}");
     return 0;
 }
 
@@ -1228,6 +1295,80 @@ if (args.Length >= 5 && args[0] == "fisica")
     MapConverter.Convert(Path.GetFullPath(args[1]), Path.GetFullPath(args[3]), Path.GetFullPath(args[4]), turfsFisica,
                          soFisica: true);
     return 0;
+}
+
+if (args.Length >= 7 && args[0] == "repintar")
+{
+    // repintar <z> <pastaMaps.dmm> <pastaCode> <pastaSprites> <Assets/Maps> <pastaRascunho> : UM ANDAR SO,
+    // com as fontes PRESAS as do tileset do disco, escrito numa pasta de rascunho.
+    //
+    // E o caminho pra consertar o DESENHO de um planeta sem a conversao cheia: os ids de fonte saem do
+    // `Assets/Data/tiles.json` (e nao de um contador por ordem de descoberta), entao o `.pedacos` novo
+    // fala a mesma lingua do `tileset.tres` e dos outros 39 andares, que ficam como estao. Se o andar
+    // pedir folha ou quadro que o tileset do disco nao declara, a lista sai no console, NADA e gravado
+    // e o comando devolve 1. Ver `MapConverter.RepintarAndar`.
+    //
+    // O rascunho e pra revisar e copiar por cima do `Assets/Maps` a mao: ele traz o `.pedacos`, os planos
+    // (`.col`, `.vis`, `.agua`, `.duro`, `.dentro`), as listas (`.portas`, `.objetos`, `.passagens`), o
+    // `.luz` e o `.tscn` do andar. Tileset, tiles.json, manifesto e `.scn` nao saem.
+    //
+    //   dotnet run --project Tools/AssetPipeline -- repintar 3 <BYOND>/Maps <BYOND>/Code Assets/Sprites Assets/Maps <rascunho>
+    if (!int.TryParse(args[1], out int zRepintar))
+    {
+        Console.Error.WriteLine($"repintar: '{args[1]}' nao e o numero de um andar (o z do jogo: Vegeta e 3)");
+        return 1;
+    }
+    string mapsDoDisco = Path.GetFullPath(args[5]);
+
+    // O CATALOGO DE CONSTRUCOES E O QUE MORA AO LADO DO TILESET PRESO, e sem ele o comando para: as
+    // maquinas do andar (banco, bancadas) sairiam pintadas como tile e fora do `.objetos`, e isso e
+    // outro mapa, nao um rascunho do mesmo.
+    string cjRepintar = Path.Combine(Path.GetDirectoryName(mapsDoDisco.TrimEnd('\\', '/'))!, "Data", "construcoes.json");
+    if (!File.Exists(cjRepintar))
+    {
+        Console.Error.WriteLine($"repintar: sem {cjRepintar} -- rode o comando 'tech' antes. Nada foi gravado.");
+        return 1;
+    }
+    Console.WriteLine("lendo a arvore de tipos DM...");
+    Dictionary<string, TurfDef> turfsRepintar = DmTurfScanner.Scan(Path.GetFullPath(args[3]));
+    MapConverter.UsarPlanetas(Jandirus.Core.World.CatalogoDePlanetas.Parse(
+        Jandirus.Tools.DmPlanetScanner.ParaJson(Jandirus.Tools.DmPlanetScanner.Scan(Path.GetFullPath(args[3])))));
+    MapConverter.UsarObras(Jandirus.Core.Tech.CatalogoDeObras.Parse(File.ReadAllText(cjRepintar)));
+    return MapConverter.RepintarAndar(Path.GetFullPath(args[2]), Path.GetFullPath(args[4]), mapsDoDisco,
+                                      Path.GetFullPath(args[6]), turfsRepintar, zRepintar);
+}
+
+if (args.Length >= 6 && args[0] == "acrescentar")
+{
+    // acrescentar <pastaMaps.dmm> <pastaCode> <pastaSprites> <Assets/Maps> <raizDoRascunho> : OS 40 ANDARES,
+    // com as fontes presas as do tileset do disco E as que faltavam acrescentadas -- a folha do jogo no
+    // lugar da homonima da arvore `DU/`, a arte que nunca foi copiada, o desenho que o BYOND nao centra.
+    //
+    // O rascunho ESPELHA o repo: `<raiz>/Assets/Maps/tileset.tres` (o do disco com as fontes novas a mais,
+    // e so isso -- nenhuma fonte que existe muda de id, de textura ou de tile), `<raiz>/Assets/Data/
+    // tiles.json`, os arquivos de cada andar em `<raiz>/Assets/Maps/` e, pra arte que nao estava em
+    // `Assets/Sprites`, o PNG em `<raiz>/Assets/Sprites/...` (importar no Godot e de quem aplica). Ver
+    // `MapConverter.AcrescentarAndares`.
+    //
+    // A ORDEM DE APLICAR IMPORTA: o `.pedacos` de um andar que usa fonte nova so pode ir depois do
+    // `tileset.tres` (e o PNG novo, importado, antes do tileset) -- senao a celula aponta pra um `id` que
+    // o tileset do disco nao declara, e o Godot simplesmente nao a desenha.
+    //
+    //   dotnet run --project Tools/AssetPipeline -- acrescentar <BYOND>/Maps <BYOND>/Code Assets/Sprites Assets/Maps <rascunho>
+    string mapsVivos = Path.GetFullPath(args[4]);
+    string cjAcrescentar = Path.Combine(Path.GetDirectoryName(mapsVivos.TrimEnd('\\', '/'))!, "Data", "construcoes.json");
+    if (!File.Exists(cjAcrescentar))
+    {
+        Console.Error.WriteLine($"acrescentar: sem {cjAcrescentar} -- rode o comando 'tech' antes. Nada foi gravado.");
+        return 1;
+    }
+    Console.WriteLine("lendo a arvore de tipos DM...");
+    Dictionary<string, TurfDef> turfsAcrescentar = DmTurfScanner.Scan(Path.GetFullPath(args[2]));
+    MapConverter.UsarPlanetas(Jandirus.Core.World.CatalogoDePlanetas.Parse(
+        Jandirus.Tools.DmPlanetScanner.ParaJson(Jandirus.Tools.DmPlanetScanner.Scan(Path.GetFullPath(args[2])))));
+    MapConverter.UsarObras(Jandirus.Core.Tech.CatalogoDeObras.Parse(File.ReadAllText(cjAcrescentar)));
+    return MapConverter.AcrescentarAndares(Path.GetFullPath(args[1]), Path.GetFullPath(args[3]), mapsVivos,
+                                           Path.GetFullPath(args[5]), turfsAcrescentar);
 }
 
 if (args.Length >= 4 && args[0] == "subsolo")

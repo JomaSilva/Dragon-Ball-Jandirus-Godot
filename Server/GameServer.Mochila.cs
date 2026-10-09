@@ -23,12 +23,15 @@ public sealed partial class GameServer
 	/// </summary>
 	private static void MandarMochila(ServerPlayer pl, bool forcar = false)
 	{
-		string sig = string.Join(';', pl.Mochila.Pilhas.Select(p => $"{p.Id}x{p.Quantidade}"));
+		// O QUE SE VESTE VAI NA ASSINATURA E NO PACOTE: a mochila mostra a fileira "vestindo" (ver
+		// `RoupaGuardada`), e tirar uma peca com a mochila ja igual a de antes nao pode ser um pacote engolido.
+		string sig = string.Join(';', pl.Mochila.Pilhas.Select(p => $"{p.Id}x{p.Quantidade}"))
+					 + "|" + string.Join(';', pl.Visual.Roupa.Select(p => $"{p.Caminho}#{p.Cor}"));
 		if (!forcar && sig == pl.SigMochila) return;
 		pl.SigMochila = sig;
 
 		var w = Protocol.Begin(Protocol.S2C.Inventario);
-		w.PutInventario(pl.Mochila);
+		w.PutInventario(pl.Mochila, pl.Visual.Roupa);
 		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
@@ -69,6 +72,11 @@ public sealed partial class GameServer
 		string arg2 = barra >= 0 ? arg[(barra + 1)..] : "";
 		if (barra >= 0) arg = arg[..barra];
 
+		// TIRAR UMA PECA DO CORPO sai ANTES das duas conferencias de baixo: a peca vestida nao esta na mochila
+		// (ver `RoupaGuardada`), entao "voce nao tem" seria a resposta errada pra quem a esta vestindo. Quem
+		// confere se ela esta mesmo no corpo e o proprio `TirarRoupa`.
+		if (acao == RoupaGuardada.AcaoTirar) { TirarRoupa(pl, arg); return true; }
+
 		ItemDef? def = CatalogoDeItens.Get(arg);
 
 		if (def == null) { Avisar(pl, "isso não existe."); return true; }
@@ -97,6 +105,9 @@ public sealed partial class GameServer
 			// O LIVRO DE ENSINAMENTOS -- `Study_Book` (`KiStatsModule.dm:190-203`). Ver o lote G13.
 			case "ler": LerOsEnsinamentosG13(pl, def); break;
 
+			// A PECA DE ROUPA GUARDADA volta pro corpo. Ver `VestirRoupa`.
+			case RoupaGuardada.AcaoVestir: VestirRoupa(pl, def); break;
+
 			// OS BRINCOS POTARA: o clique NAO funde -- ele OFERECE. Ver `OferecerOsBrincos`, e la
 			// esta escrito por que o `checkEarringDist()` do DM (que funde a forca, sem perguntar)
 			// nao foi portado.
@@ -117,6 +128,68 @@ public sealed partial class GameServer
 			default: Avisar(pl, $"'{acao}' ainda não faz nada."); break;
 		}
 		return true;
+	}
+
+	// =====================================================================
+	// ROUPA -- o que se veste e o que se guarda (dono, 2026-10-08)
+	// =====================================================================
+	/// <summary>
+	/// DA PRA MEXER NA ROUPA AGORA? Nao enquanto o que o mundo ve nao e o guarda-roupa de quem joga: fundido, o
+	/// corpo veste a roupa DA FUSAO (`LookDeFusao`); disfarcado, a de quem ele imita (`Disfarce`). Trocar a peca
+	/// de verdade por baixo disso seria um clique que nao muda nada na tela -- e que so apareceria na separacao.
+	/// </summary>
+	private static bool PodeMexerNaRoupa(ServerPlayer pl, out string porque)
+	{
+		porque = pl.LookDeFusao != null ? "fundido, o corpo veste a roupa da fusão -- espere a fusão acabar."
+			: pl.Disfarce != null ? "disfarçado, o que você veste é a roupa de quem você imita."
+			: "";
+		return porque.Length == 0;
+	}
+
+	/// <summary>
+	/// A PECA SAI DA MOCHILA E VAI PRO CORPO. As recusas, na ordem em que o jogador as entenderia: a arte nao
+	/// existe mais, o corpo nao e o dele agora, ele ja veste a mesma folha, ou as quatro vagas estao ocupadas
+	/// (`Appearance.MaxRoupa`, o `WARDROBE_MAX` do `Wardrobe.dm:15`).
+	/// </summary>
+	private void VestirRoupa(ServerPlayer pl, ItemDef def)
+	{
+		if (RoupaGuardada.Ler(def.Id)?.Peca(_visual) is not { } peca) { Avisar(pl, $"não dá pra vestir {def.Nome}."); return; }
+		if (!PodeMexerNaRoupa(pl, out string porque)) { Avisar(pl, porque); return; }
+
+		// UMA FOLHA SO UMA VEZ NO CORPO: duas camadas do mesmo desenho, uma por cima da outra, sao uma peca so na
+		// tela -- e o `VisualCatalog.Sanear` do proximo login jogaria a segunda fora, calado, com a cor dela junto.
+		if (pl.Visual.Roupa.Any(p => p.Caminho == peca.Caminho))
+		{ Avisar(pl, $"você já veste {def.Nome}: tire a que está no corpo antes."); return; }
+		if (pl.Visual.Roupa.Count >= Jandirus.Core.Appearance.Appearance.MaxRoupa)
+		{ Avisar(pl, $"você já veste {Jandirus.Core.Appearance.Appearance.MaxRoupa} peças: tire uma antes."); return; }
+
+		if (pl.Mochila.Tirar(def.Id) <= 0) return;
+		pl.Visual.Roupa.Add(peca);
+		ReapresentarAparencia(pl);
+		MandarMochila(pl);
+		Avisar(pl, $"você veste {def.Nome}.");
+	}
+
+	/// <summary>
+	/// A PECA SAI DO CORPO E VAI PRA MOCHILA -- o `id` e o de <see cref="RoupaGuardada"/> (a folha e a cor), que e
+	/// como a tela aponta qual das pecas vestidas e. Mochila cheia recusa ANTES de despir: a peca nao tem pra onde
+	/// ir, e roupa que some ao tirar e o defeito que este metodo existe pra nao ter.
+	/// </summary>
+	private void TirarRoupa(ServerPlayer pl, string id)
+	{
+		int i = pl.Visual.Roupa.FindIndex(p => RoupaGuardada.De(p).Id == id);
+		if (i < 0) { Avisar(pl, "você não está vestindo isso."); return; }
+		if (!PodeMexerNaRoupa(pl, out string porque)) { Avisar(pl, porque); return; }
+
+		// GUARDA PRIMEIRO, DESPE DEPOIS: se a peca nao coube (mochila cheia) ela continua no corpo.
+		if (!RoupaGuardada.TiradaSomeDeTeste && pl.Mochila.Guardar(id) > 0)
+		{ Avisar(pl, $"sua mochila está cheia ({Inventario.Slots} espaços): não há onde guardar a peça."); return; }
+
+		string nome = RoupaGuardada.De(pl.Visual.Roupa[i]).Nome;
+		pl.Visual.Roupa.RemoveAt(i);
+		ReapresentarAparencia(pl);
+		MandarMochila(pl);
+		Avisar(pl, $"você tira {nome} e guarda na mochila.");
 	}
 
 	// =====================================================================

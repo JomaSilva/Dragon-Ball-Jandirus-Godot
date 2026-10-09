@@ -988,12 +988,16 @@ public partial class RoboDoTrailer
 			string resposta = S?.TecnicaNoTrailer(atira, verbo) ?? "";
 			Marca($"rebate {verbo}: DISPAROU" + (resposta.Length > 0 ? $" -- \"{resposta}\"" : ""));
 
-			// a guarda sobe quando o tiro esta a um corpo de distancia (a bola) ou a dois (a cabeca do raio)
+			// A GUARDA SOBE UM TEMPO ANTES DO CONTATO, no meio da janela do parry (`MeleeResolver.JanelaContra`). Era
+			// uma DISTANCIA fixa -- um corpo pra bola, dois pra cabeca do raio --, calibrada no passo antigo dos tiros:
+			// a 16 tiles por segundo (dono, 2026-10-08) a bola anda meio tile por tique e cruzava o "um corpo" ja
+			// encostando, com a guarda subindo depois do impacto. A distancia agora sai da velocidade do proprio tiro.
 			bool chegou = false;
-			float perto = verbo == "Basic_Blast" ? 40 : 72;
+			float contato = verbo == "Basic_Blast" ? 36 : 56;
 			for (double t = 0; t < 8 && !chegou; t += 0.016)
 			{
 				var tiro = S?.TiroDaVariedade(atira) ?? default;
+				float perto = contato + (S?.VelocidadeDoTiroNoTrailer(atira) ?? 0) * (float)OptN("antes", 0.12);
 				chegou = tiro.Achou && (tiro.Pos - deQuemRebate).Length <= perto;
 				if (!chegou) yield return 0.016;
 			}
@@ -1154,6 +1158,59 @@ public partial class RoboDoTrailer
 		Zoom((int)OptN("zoomfinal", 2));
 		Marca("base: PRONTA");
 		yield return OptN("depois", 6);
+	}
+
+	/// <summary>
+	/// A ROUPA NA MOCHILA: o heroi abre a mochila, TIRA uma peca do corpo (ela cai na grade), veste OUTRA
+	/// que ja estava guardada e depois poe a primeira de volta -- pelos mesmos dois verbos que os botoes da
+	/// tela mandam (`item_despir`, `item_vestir`). `cada=` segundos em cada estado; `outra=` a peca guardada.
+	/// </summary>
+	private IEnumerable<double> ARoupaNaMochila()
+	{
+		Tela(hud: true, chat: true);
+		(string zona, float cx, float cy) = Lugar("Earth,233,269");
+		foreach (double s in Viajar(zona, cx, cy)) yield return s;
+		LuzDaCena();
+		Zoom((int)OptN("zoom", 3));
+		VestirOHeroi();
+		yield return 1.5;
+
+		if (C is not { } cli || GetTree().Root.FindChild("Inventario", true, false) is not TelaDeInventario mochila)
+		{ Nota("sem cliente ou sem a tela da mochila"); yield break; }
+		string Estado() => $"vestindo {cli.Vestindo.Count}: "
+			+ string.Join(" + ", cli.Vestindo.Select(p => Jandirus.Core.Items.RoupaGuardada.De(p).Nome))
+			+ $" | mochila {cli.Mochila.Ocupados}: " + string.Join(", ", cli.Mochila.Pilhas.Select(p => p.Id));
+
+		// a peca que ja esta guardada, pra haver com o que TROCAR
+		string outra = S?.GuardarRoupaNoTrailer(_eu, Opt("outra", "Clothes_Cape"), Opt("coroutra", "170,30,30")) ?? "";
+		yield return 0.6;
+
+		mochila.Abrir();
+		Marca($"roupa: a MOCHILA aberta -- {Estado()}");
+		yield return OptN("cada", 2.5);
+		if (cli.Vestindo.Count == 0) { Nota("o heroi nao veste nada: nada a tirar"); yield break; }
+
+		string tirada = Jandirus.Core.Items.RoupaGuardada.De(cli.Vestindo[0]).Id;
+		cli.SendVerbo($"item_{Jandirus.Core.Items.RoupaGuardada.AcaoTirar}", tirada);
+		yield return 0.8;
+		Marca($"roupa: TIROU a primeira peca -- {Estado()}");
+		yield return OptN("cada", 2.5);
+
+		if (outra.Length > 0)
+		{
+			cli.SendVerbo($"item_{Jandirus.Core.Items.RoupaGuardada.AcaoVestir}", outra);
+			yield return 0.8;
+			Marca($"roupa: VESTIU a outra -- {Estado()}");
+			yield return OptN("cada", 2.5);
+		}
+
+		cli.SendVerbo($"item_{Jandirus.Core.Items.RoupaGuardada.AcaoVestir}", tirada);
+		yield return 0.8;
+		Marca($"roupa: VESTIU a primeira de volta -- {Estado()}");
+		yield return OptN("cada", 2.5);
+
+		mochila.Fechar();
+		yield return 1.0;
 	}
 
 	/// <summary>

@@ -31,6 +31,12 @@ namespace Jandirus.Client;
 ///
 /// `--horateste 0.5` crava meio-dia: a hora do mundo e sorteada, e uma foto de duelo as 3 da manha
 /// mostra dois vultos. As fotos saem em `user://embateki-*.png`.
+///
+/// O CEU A BANCADA CRAVA SOZINHA (2026-10-08): o `--horateste` so mexe na hora, e o clima natural muda de
+/// bloco a cada seis minutos e de sorteio a cada dia do jogo -- a mesma linha de comando fotografava
+/// tempestade numa hora e ceu aberto na outra. Antes da primeira cena ela pede ceu limpo ao servidor
+/// (`EmbateDeFoto_CeuLimpo`), e a cena 3 confere que foi atendida. So um `--climateste` explicito passa por
+/// cima, e e esse o contra-exemplo do palco: com `--climateste Tempestade` a cena 3 volta a reprovar.
 /// </summary>
 public partial class RoboDeFotoDoEmbateDeKi : Node
 {
@@ -63,6 +69,13 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 	}
 
 	private void Nota(string oque) => _passos.Add("  --     " + oque);
+
+	public override void _Ready()
+	{
+		// A ARVORE E PAUSADA PRA FOTOGRAFAR A ESTRELA (ver `Obturador`). Sem isto a propria bancada
+		// congelaria junto e a pausa seria eterna.
+		ProcessMode = ProcessModeEnum.Always;
+	}
 
 	public override void _Process(double delta)
 	{
@@ -102,6 +115,9 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 	/// <summary>Uma cena nova entrou no mundo e a camera ainda nao foi ate ela.</summary>
 	private bool _enquadrar;
 
+	/// <summary>O pedido de ceu limpo ja foi feito ao servidor (uma vez, antes da primeira cena).</summary>
+	private bool _ceuCravado;
+
 	// =====================================================================
 	// CENA 1: OS FEIXES SE EMPURRANDO
 	// =====================================================================
@@ -114,7 +130,11 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 	/// </summary>
 	private void MontarOEmpurrao(Jandirus.Server.GameServer srv, GameClient cli)
 	{
-		if (_t < 3) return;   // deixa o mundo assentar e a camera achar o corpo
+		// O CEU E CRAVADO ANTES DE TUDO -- o `--horateste` so crava a hora, e a mesma linha de comando
+		// fotografava tempestade num dia do jogo e ceu aberto no outro (ver `EmbateDeFoto_CeuLimpo`).
+		if (!_ceuCravado) { srv.EmbateDeFoto_CeuLimpo(cli.LocalId); _ceuCravado = true; }
+
+		if (_t < 3) return;   // deixa o mundo assentar, a camera achar o corpo e a chuva que ja caia sair da tela
 
 		(_duelistaA, _duelistaB) = srv.EmbateDeFoto_Montar(
 			cli.LocalId, tiles: 5, bpDeA: 7_500, bpDeB: 5_000, tecladoEmA: true, tilesAbaixo: 3);
@@ -134,6 +154,16 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 	/// </summary>
 	private void EsperarOEncontro(Jandirus.Server.GameServer srv, World mundo)
 	{
+		// A FOTO JA SAIU: falta ler as duas pontas no pixel, com a arvore pausada enquanto as chapas saem.
+		if (_encontroFotografado)
+		{
+			if (!ObturadorDasPontas(mundo, comDefeito: false)) return;
+			AfirmarAsPontas("CENA 1", $"folga de {_folgaDosCampos:0.0} px entre os dois nodes");
+			GuardarAsPontas("CENA 1", "user://embateki-1-pontas", naTira: false);
+			Virar(2);
+			return;
+		}
+
 		(bool existe, double medidor, Vec2 ponto, _, _, float fa, float fb) = srv.EmbateDeFoto_Estado();
 		if (!existe)
 		{
@@ -169,21 +199,30 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 				   $"CENA 1: as duas cabecas se encontram (medidor {medidor:0}, feixes de "
 				   + $"{cabecaDeA:0} e {cabecaDeB:0} px na tela)", NaTela(ponto));
 		Conferir(MathF.Abs(folga) <= ToleranciaDoEncontro,
-			$"CENA 1: as cabecas DESENHADAS se tocam na foto do encontro -- nem grama entre elas, nem uma dentro da "
-			+ $"outra (folga {folga:0.0} px; negativo e sobreposicao)");
-		Virar(2);
+			$"CENA 1: pelos CAMPOS as duas cabecas ja se encostaram na hora da foto -- a distancia entre os dois nodes "
+			+ $"menos as duas frentes do Core (folga {folga:0.0} px; negativo e sobreposicao). Quem le a FOTO sao as "
+			+ "linhas das pontas, logo abaixo");
+		_folgaDosCampos = folga;
+		_encontroFotografado = true;
 	}
 
 	/// <summary>O instante (no relogio da bancada) em que o gatilho juntou as cabecas da cena 1.</summary>
 	private double _encontroEm = -1;
 
+	/// <summary>A foto do encontro da cena 1 ja saiu, e o que os campos diziam da folga naquele quadro.</summary>
+	private bool _encontroFotografado;
+	private float _folgaDosCampos;
+
 	/// <summary>Quanto a folga desenhada pode passar de zero: meio pixel de arredondamento de cada lado e um de sobra.</summary>
 	private const float ToleranciaDoEncontro = 2f;
 
 	/// <summary>
-	/// A DISTANCIA ENTRE AS FRENTES DAS DUAS CABECAS DESENHADAS perto do encontro: positiva e vao, negativa e
-	/// uma dentro da outra. A frente de cada uma e a do Core (`Feixe.AlcanceDaCabeca`) -- a cena 3 e que
-	/// confere a tabela contra a arte. Sem exatamente duas cabecas por perto, a folga e infinita.
+	/// A FOLGA DOS CAMPOS: a distancia entre os NODES das duas cabecas perto do encontro, menos a frente de
+	/// cada uma pelo Core (`Feixe.AlcanceDaCabeca`). Positiva e vao, negativa e uma dentro da outra. Sem
+	/// exatamente duas cabecas por perto, e infinita.
+	///
+	/// ELA ESCOLHE O INSTANTE DA FOTO (o desenho de cada cabeca chega um pacote depois do gatilho) e nao diz
+	/// onde a tinta acaba: quem le a foto e o <see cref="LerAsPontas"/>.
 	/// </summary>
 	private static float FolgaEntreAsCabecasDesenhadas(World mundo, Vec2 ponto)
 	{
@@ -411,9 +450,11 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 	/// O que continua sendo medido e a MESMA pergunta do dono (*"as cabecas ainda estao se sobrepondo as
 	/// vezes"*, 2026-09-23), agora no que o cliente de fato desenha:
 	///
-	///   * as duas PONTAS DESENHADAS caem no mesmo ponto (nem um vao entre elas, nem uma dentro da outra);
+	///   * as duas CABECAS se encontram frente com frente NA FOTO (nem chao entre elas, nem uma dentro da
+	///     outra), e a tinta de cada uma acaba na ponta que o node anuncia -- ver <see cref="ObturadorDasPontas"/>;
 	///   * os dois feixes estao PRENSADOS -- o bit chegou pelo fio (e por ele que o cliente poe a estrela);
-	///   * ha UMA estrela de embate no encontro, e ela esta ACESA NA FOTO (pixel, e nao "o node existe").
+	///   * ha UMA estrela de embate no encontro, e ela esta ACESA NA FOTO (pixel, e nao "o node existe") --
+	///     ver <see cref="MedirAEstrela"/>.
 	///
 	/// A CONFERENCIA DA TABELA DO CORE CONTRA O DESENHO, arte por arte, saiu daqui: ela mede o desenho
 	/// de um raio SOLTO num fundo liso, e isso e assunto da `--diagartedeki` (familia 6), que tem o
@@ -435,12 +476,27 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 		if (_disputaDoFinalFlashEm < 0) _disputaDoFinalFlashEm = _vida;
 		if (_vida - _disputaDoFinalFlashEm < 0.6) return;
 
+		// AS QUATRO CHAPAS DO MESMO INSTANTE. A arvore fica PAUSADA daqui ate o fim da medida (ver `Obturador`):
+		// tudo o que se le abaixo -- pontas, estrela, camera -- e o que as chapas mostram, e nao um quadro depois.
+		if (!Obturador(mundo)) return;
+		// ...E AS CHAPAS DAS PONTAS, do mesmo instante: cada cabeca sozinha na tela (ver `ObturadorDasPontas`).
+		if (!ObturadorDasPontas(mundo, comDefeito: true)) return;
+
 		var raios = new List<(Vector2 Ponta, float Frente, bool Prensado)>();
 		foreach ((int _, Vector2 ponta, float frente, bool prensado) in mundo.RaiosDesenhadosDeTeste())
 			raios.Add((ponta, frente, prensado));
 
-		Image? foto = Fotografar("user://embateki-6-final-flash.png",
-								 $"CENA 3: dois Final Flash se encontram ({raios.Count} raios desenhados)", NaTela(ponto));
+		// A TIRA DA ESTRELA comeca aqui, na ordem das outras bancadas: a esquerda o defeito injetado, depois a
+		// producao -- e a mascara, que o `MedirAEstrela` guarda por ultimo.
+		int tiraDaEstrela = _tira.Count;
+		if (_chapaSemPintura != null)
+			Guardar(_chapaSemPintura, "user://embateki-6-estrela-sem-pintura.png",
+					"CENA 3, COM O DEFEITO INJETADO (`ChoqueDeKi.SemPinturaDeTeste`): a estrela esta na arvore e nao pinta",
+					NaTela(ponto));
+		if (_chapaCom != null)
+			Guardar(_chapaCom, "user://embateki-6-final-flash.png",
+					$"CENA 3: dois Final Flash se encontram ({raios.Count} raios desenhados)", NaTela(ponto));
+		else Nota("CENA 3: sem foto (headless nao renderiza)");
 
 		Conferir(raios.Count == 2, $"CENA 3: os dois raios estao desenhados ({raios.Count})");
 		if (raios.Count == 2)
@@ -449,41 +505,728 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 			Conferir(frentes > 100f,
 				$"CENA 3: a cabeca do Final Flash e GRANDE mesmo -- a soma das duas frentes desenhadas e {frentes:0} px");
 
+			// O ENCONTRO E LIDO NA FOTO. O campo fica como testemunha: ele dizia "0,0 px entre elas" com uma
+			// cabeca desenhada dentro da outra (ver `ObturadorDasPontas`).
 			float vao = raios[0].Ponta.DistanceTo(raios[1].Ponta);
-			Conferir(vao <= 3f,
-				$"CENA 3: as PONTAS DESENHADAS se encontram no mesmo ponto, sem vao e sem uma entrar na outra "
-				+ $"({vao:0.0} px entre elas)");
+			AfirmarAsPontas("CENA 3", $"as duas `PontaDesenhada` estao a {vao:0.0} px uma da outra");
 
 			Conferir(raios[0].Prensado && raios[1].Prensado,
 				"CENA 3: os dois feixes estao PRENSADOS -- o bit chegou pelo fio, e e por ele que o cliente "
 				+ "sabe onde por a estrela do choque");
 		}
 
-		// ============================ A ESTRELA DO EMBATE, NO PIXEL ============================
-		// "Ha um node `ChoqueDeKi`" e uma afirmacao sobre a ARVORE; o dono pediu um efeito NA TELA. O
-		// miolo da estrela e branco e cobre (alfa 1): no centro dela a foto tem que estar clara, seja qual
-		// for o chao que esta por baixo. A contraprova e a mesma foto, um raio e meio pro lado
-		// PERPENDICULAR ao embate nao serve (la ha ponta e halo) -- serve a foto ANTES da disputa, que a
-		// cena 1 ja tirou do mesmo corredor: la esse ponto era chao.
-		// ====================================================================================
+		// A ESTRELA: primeiro o que a ARVORE diz (ha uma, e ela esta no encontro), depois o que a FOTO diz.
 		var bolas = new List<(Vector2 Onde, float Raio)>(mundo.ChoquesDeKiDesenhados());
-		Conferir(bolas.Count == 1, $"CENA 3: ha UMA estrela de embate acesa no encontro ({bolas.Count})");
-		if (bolas.Count == 1 && foto != null)
+		Conferir(bolas.Count == 1, $"CENA 3: ha UMA estrela de embate no encontro -- um node na arvore ({bolas.Count})");
+		if (bolas.Count == 1)
 		{
-			Vector2 naFoto = NaFoto(bolas[0].Onde);
-			var px = new Vector2I((int)naFoto.X, (int)naFoto.Y);
-			bool dentro = px.X >= 0 && px.Y >= 0 && px.X < foto.GetWidth() && px.Y < foto.GetHeight();
-			float luz = dentro ? foto.GetPixel(px.X, px.Y).Luminance : -1f;
-			Conferir(dentro && luz > 0.85f,
-				$"CENA 3: o MIOLO da estrela esta aceso na FOTO -- luminancia {luz:0.00} no centro dela "
-				+ $"(corpo de {bolas[0].Raio:0} px), e nao so o node na arvore");
-
 			float longe = raios.Count == 2 ? bolas[0].Onde.DistanceTo((raios[0].Ponta + raios[1].Ponta) * 0.5f) : 999f;
 			Conferir(longe <= 3f, $"CENA 3: a estrela esta EM CIMA do encontro das pontas ({longe:0.0} px dele)");
+
+			if (_chapaCom is { } com && _chapaSem is { } sem && _chapaSemPintura is { } semPintura && _chapaSem2 is { } sem2)
+			{
+				MedirAEstrela(mundo, bolas[0].Onde, bolas[0].Raio, NaTela(ponto), com, sem, semPintura, sem2);
+				Nota("a tira da estrela, da esquerda pra direita: o defeito injetado (o node na arvore, sem pintar), "
+				   + "a producao, e a mascara do que a estrela pintou");
+				// A ALTURA INTEIRA da foto, e nao o corte deitado das outras tiras: o que a estrela mostra entre
+				// duas cabecas deste tamanho sao as pontas que saem por cima e por baixo.
+				Colar("user://embateki-tira-da-estrela.png", desde: tiraDaEstrela, larguraDoCorte: 420, alturaDoCorte: 720, escala: 1);
+			}
+			else Nota("CENA 3: a estrela NAO foi medida no pixel -- faltou chapa (headless nao renderiza)");
 		}
 
+		// DEPOIS da tira da estrela, pra as duas tiras nao se misturarem: cada uma e um trecho seguido da lista.
+		GuardarAsPontas("CENA 3", "user://embateki-6-pontas", naTira: true);
+
+		SoltarOObturador();
 		srv.EmbateDeFoto_Limpar();
 		Fechar();
+	}
+
+	// =====================================================================
+	// A ESTRELA DO EMBATE, NO PIXEL
+	// =====================================================================
+	/// <summary>
+	/// O PISO DA TINTA DA ESTRELA, em pixel de foto (1280x720, 3 px de foto por px de mundo).
+	///
+	/// Medido de ceu limpo em cinco rodadas (2026-10-08, com as cabecas ja frente com frente): escondido o
+	/// node, mudam de 45 a 51 mil px -- o encontro das duas cabecas e o clarao em volta dele, que a lente
+	/// branca tapa, e as pontas que saem por cima e por baixo (a estrela e sorteada, dai a faixa). Com o
+	/// defeito injetado (o node na arvore, sem pintar) mudam de 38 a 174: as faiscas, que sao filhas dele. O
+	/// piso fica 11 vezes acima do pior defeito e 22 vezes abaixo da menor producao.
+	///
+	/// (Com uma cabeca desenhada dentro da outra -- ver <see cref="ObturadorDasPontas"/> -- eram de 16 a 29
+	/// mil: as duas ja pintavam de branco quase tudo o que a lente cobre.)
+	/// </summary>
+	private const int PisoDaTinta = 2000;
+
+	/// <summary>
+	/// QUAO BRANCO O MIOLO TEM QUE SAIR NA FOTO. De ceu aberto ele le 1,00 cravado -- (255,255,255) --, e o
+	/// veu de qualquer clima, na espessura media dele, tira dali de 8% (neve) a 17% (tempestade).
+	/// </summary>
+	private const float BrancoDoMiolo = 0.95f;
+
+	/// <summary>
+	/// O DISCO DO MIOLO, em fracao do corpo da estrela: o branco e lido na MEDIANA da luminancia dentro dele.
+	///
+	/// Um quinto do corpo cabe com folga no branco -- o `R_miolo` do `ChoqueDeKi.gdshader` nunca e menor que
+	/// 0,66 do corpo vezes o pulso minimo (0,95), e nesta cena a lente e redonda (o teto de 56 px vale pros
+	/// dois eixos). E e maior que a maior pedra do embate (13 px): as que sobem do lado de ca passam NA FRENTE
+	/// do clarao, por desenho (`ChoqueDeKi.LevantarUmaPedra`), e lendo um pixel so uma delas viraria a leitura.
+	/// </summary>
+	private const float DiscoDoMiolo = 0.2f;
+
+	/// <summary>
+	/// A ESTRELA ESTA ACESA NA FOTO? -- "ha um node `ChoqueDeKi`" e uma afirmacao sobre a ARVORE, e o dono
+	/// pediu um efeito NA TELA.
+	///
+	/// ============================ A REGUA VELHA NAO MEDIA A ESTRELA (2026-10-08) ============================
+	/// Ela lia UM pixel -- a luminancia no centro da estrela -- e pedia mais que 0,85, com o argumento de que
+	/// o miolo e branco e cobre. Reprovou com 0,83 quatro rodadas seguidas, e o que ela media eram duas
+	/// coisas que nao sao a estrela:
+	///
+	///   * O CEU. O 0,83 e branco puro por baixo do veu da tempestade (a hora era cravada e o clima nao: ver
+	///     `EmbateDeFoto_CeuLimpo`, no servidor). De ceu aberto o mesmo pixel le 1,00.
+	///   * AS CABECAS DOS FEIXES. Nesta cena o centro e branco COM a estrela, com o node dela ESCONDIDO e com
+	///     ela na arvore SEM PINTAR: (255,255,255) nas tres chapas de ceu aberto, (210,211,211) nas tres de
+	///     tempestade. As duas cabecas do Final Flash ja sao brancas ali -- a regua nao tinha como ficar
+	///     vermelha por falta de estrela, so por excesso de nuvem.
+	///
+	/// ============================ O QUE SE MEDE AGORA: A TINTA ============================
+	/// A receita da `--diagboca`: com a arvore PAUSADA, a mesma tela e fotografada com a estrela e com o node
+	/// dela escondido. Nada mais mudou entre as chapas -- nem os feixes, nem o chao, nem a camera --, entao o
+	/// que difere e, por construcao, O QUE A ESTRELA PINTOU. Aqui isso e o encontro das duas cabecas (elas se
+	/// tocam num ponto so, e a lente branca tapa a cunha de clarao que sobra em cima e embaixo dele) e as
+	/// pontas que saem por cima e por baixo.
+	///
+	/// O CONTRA-EXEMPLO e o `ChoqueDeKi.SemPinturaDeTeste`: o node fica na arvore -- a contagem continua 1 --
+	/// e nao pinta. A tinta cai pra umas dezenas de px (as faiscas, que sao filhas do node) e a regua
+	/// reprova, com o centro ainda em 1,00.
+	///
+	/// O BRANCO DO MIOLO continua sendo lido, pelo que ele de fato responde: que NADA escurece o ki entre o
+	/// desenho e a tela -- nem o ambiente (o material e `unshaded`), nem o ceu. E a leitura que volta a
+	/// reprovar com `--climateste Tempestade`, o contra-exemplo do palco.
+	/// ======================================================================================================
+	/// </summary>
+	/// <param name="onde">O centro da estrela, em px de mundo.</param>
+	/// <param name="corpo">O semi-eixo de traves do corpo dela, em px de mundo.</param>
+	/// <param name="centroDaTira">Em volta de que ponto da tela a tira da estrela e recortada.</param>
+	private void MedirAEstrela(World mundo, Vector2 onde, float corpo, Vector2 centroDaTira,
+							   Image com, Image sem, Image semPintura, Image sem2)
+	{
+		// ---- o palco: de ceu aberto, e sem luz pendurada ----
+		// Nao e so pelo branco. Com a cena escura a `LuzDeKi` da estrela acende o chao em volta, a luz some
+		// junto com o node e a mascara passa a contar LUZ como tinta: debaixo de tempestade o defeito injetado
+		// "pinta" quase 20 mil px. E o mesmo aviso da `--diagboca`.
+		string ceu = mundo.TempoQueFaz is { Ativo: true } tq
+			? $"{Jandirus.Core.World.Clima.Nome(tq.Tipo)} a {tq.Forca:P0}" : "ceu limpo";
+		Conferir(mundo.TempoQueFaz is not { Ativo: true },
+			$"CENA 3: o ceu DESENHADO esta limpo na hora da foto ({ceu}) -- a bancada pede ceu aberto ao "
+			+ "servidor, e so um `--climateste` na linha de comando passa por cima dele");
+		if (_obtNo != null && IsInstanceValid(_obtNo) && _obtNo.GetNodeOrNull<Node2D>(LuzDeKi.NomeDoNode) != null)
+			Nota("ATENCAO: a estrela tem LUZ pendurada (a cena esta escura) -- ela some junto com o node, e a "
+			   + "mascara mede tinta E luz");
+
+		int largura = com.GetWidth(), altura = com.GetHeight();
+		byte[] bCom = Rgba(com), bSem = Rgba(sem), bSemPintura = Rgba(semPintura), bSem2 = Rgba(sem2);
+		if (bSem.Length != bCom.Length || bSemPintura.Length != bCom.Length || bSem2.Length != bCom.Length)
+		{
+			Conferir(false, "CENA 3: as quatro chapas da estrela sairam do mesmo tamanho (a janela mudou no meio da medida)");
+			return;
+		}
+
+		// ---- a tinta: o que muda quando o node e escondido ----
+		byte[] marcada = (byte[])bCom.Clone();
+		int tinta = Tinta(bCom, bSem, bSem2, marcada);
+		int tintaSemPintura = Tinta(bSemPintura, bSem, bSem2, null);
+		Guardar(Image.CreateFromData(largura, altura, false, Image.Format.Rgba8, marcada),
+				"user://embateki-6-estrela-mascara.png",
+				$"CENA 3: A MASCARA da estrela (magenta = os {tinta} px que ela pintou)", centroDaTira);
+
+		Conferir(tinta >= PisoDaTinta,
+			$"CENA 3: a ESTRELA esta acesa NA FOTO, e nao so o node na arvore -- escondido o node dela, {tinta} px "
+			+ $"da tela mudam (o piso e {PisoDaTinta}): o encontro das duas cabecas, que ela tapa, e as pontas");
+		Conferir(_nodesSemPintura == 1 && tintaSemPintura < PisoDaTinta,
+			$"[injecao] CENA 3: com `ChoqueDeKi.SemPinturaDeTeste` a arvore continua com {_nodesSemPintura} estrela e a "
+			+ $"regua da tinta REPROVA -- {tintaSemPintura} px mudam, contra o piso de {PisoDaTinta}");
+
+		// ---- o branco do miolo: nada entre o desenho e a tela ----
+		Vector2 centro = NaFoto(onde);
+		float escala = NaFoto(onde + Vector2.Right).DistanceTo(centro);
+		float disco = corpo * DiscoDoMiolo * escala;
+		float branco = MedianaDeLuz(bCom, largura, altura, centro, disco);
+		float brancoSemEla = MedianaDeLuz(bSem, largura, altura, centro, disco);
+		Conferir(branco >= BrancoDoMiolo,
+			$"CENA 3: o MIOLO da estrela sai BRANCO na foto -- luminancia {branco:0.00} (mediana de um disco de "
+			+ $"{corpo * DiscoDoMiolo:0} px no centro dela, corpo de {corpo:0} px): nada escurece o ki entre o "
+			+ "desenho e a tela, nem o ambiente nem o ceu");
+		if (MathF.Abs(branco - brancoSemEla) < 0.02f)
+			Nota($"...e esse branco, sozinho, NAO prova a estrela: com o node dela escondido o mesmo disco le "
+			   + $"{brancoSemEla:0.00} -- nesta cena as duas cabecas do Final Flash ja cobrem o centro. Quem prova a "
+			   + "estrela e a tinta.");
+	}
+
+	/// <summary>
+	/// DIFERENCA DE CANAL a partir da qual dois pixels contam como DIFERENTES, em 255 avos -- o 0,12 das
+	/// bancadas irmas (`--diagboca`, `--diagvariedade`): abaixo disso e ruido do viewport.
+	/// </summary>
+	private const int Epsilon = 30;
+
+	private static bool Difere(byte[] p, byte[] q, int i)
+		=> Math.Abs(p[i] - q[i]) > Epsilon || Math.Abs(p[i + 1] - q[i + 1]) > Epsilon || Math.Abs(p[i + 2] - q[i + 2]) > Epsilon;
+
+	/// <summary>
+	/// QUANTOS PIXELS ESTA CHAPA TEM QUE AS DUAS CHAPAS SEM ESTRELA NAO TEM -- a regra das tres fotos da
+	/// `--diagboca`, igual: so conta o pixel que difere das DUAS chapas sem o node, e so onde essas duas
+	/// concordam entre si (onde o fundo se mexeu sozinho nao da pra dizer de quem e a tinta). `marcar`, se
+	/// vier, sai com esses pixels em magenta: uma sonda que conta pixels tem que mostrar QUAIS ela contou.
+	/// </summary>
+	private static int Tinta(byte[] chapa, byte[] sem, byte[] sem2, byte[]? marcar)
+	{
+		int n = 0;
+		for (int i = 0; i + 3 < chapa.Length; i += 4)
+		{
+			if (!PintouAqui(chapa, sem, sem2, i)) continue;
+			n++;
+			if (marcar != null) { marcar[i] = 255; marcar[i + 1] = 0; marcar[i + 2] = 255; }
+		}
+		return n;
+	}
+
+	/// <summary>A regra das tres fotos, num pixel: ver <see cref="Tinta"/>.</summary>
+	private static bool PintouAqui(byte[] chapa, byte[] sem, byte[] sem2, int i)
+		=> !Difere(sem, sem2, i) && Difere(chapa, sem, i) && Difere(chapa, sem2, i);
+
+	/// <summary>A luminancia MEDIANA de um disco da chapa (centro e raio em pixel de foto), ou -1 se ele caiu fora dela.</summary>
+	private static float MedianaDeLuz(byte[] chapa, int largura, int altura, Vector2 centro, float raio)
+	{
+		var luzes = new List<float>();
+		int r = Mathf.CeilToInt(raio);
+		for (int dy = -r; dy <= r; dy++)
+			for (int dx = -r; dx <= r; dx++)
+			{
+				if (dx * dx + dy * dy > raio * raio) continue;
+				int x = (int)centro.X + dx, y = (int)centro.Y + dy;
+				if (x < 0 || y < 0 || x >= largura || y >= altura) continue;
+				int i = 4 * (y * largura + x);
+				luzes.Add((0.2126f * chapa[i] + 0.7152f * chapa[i + 1] + 0.0722f * chapa[i + 2]) / 255f);
+			}
+		if (luzes.Count == 0) return -1f;
+		luzes.Sort();
+		return luzes[luzes.Count / 2];
+	}
+
+	/// <summary>
+	/// A chapa em bytes RGBA, quatro por pixel. Pelo vetor, e nao pelo `GetPixel`: sao quatro chapas de 900 mil
+	/// pixels, e uma chamada por pixel e um engasgo de segundos com a arvore parada.
+	/// </summary>
+	private static byte[] Rgba(Image img)
+	{
+		var copia = (Image)img.Duplicate();
+		copia.Convert(Image.Format.Rgba8);
+		return copia.GetData();
+	}
+
+	// =====================================================================
+	// O OBTURADOR -- quatro chapas do mesmo instante
+	// =====================================================================
+	private int _obtFase, _obtQuadros;
+	private Image? _chapaCom, _chapaSem, _chapaSemPintura, _chapaSem2;
+	private ChoqueDeKi? _obtNo;
+
+	/// <summary>Quantas estrelas a ARVORE tinha na chapa do defeito injetado -- contar nodes nao ve aquele defeito.</summary>
+	private int _nodesSemPintura;
+
+	/// <summary>
+	/// TIRA AS QUATRO CHAPAS, e devolve verdadeiro quando acabou (ate la, quem chama volta no quadro seguinte):
+	///
+	///   1. COM          -- a producao, como esta na tela;
+	///   2. SEM          -- o node da estrela escondido (`Visible = false`);
+	///   3. SEM PINTURA  -- o node de volta, com o defeito injetado (`ChoqueDeKi.SemPinturaDeTeste`);
+	///   4. SEM de novo  -- a peneira do fundo que se mexe sozinho, como na `--diagboca`.
+	///
+	/// ============================ A ARVORE FICA PAUSADA ============================
+	/// O encontro anda (um lado empurra o outro), a estrela troca de desenho doze vezes por segundo e as
+	/// pedras sobem: sem pausar, a diferenca entre duas chapas seria o MOVIMENTO, e nao a estrela. Pausada, o
+	/// que muda de uma pra outra e so o que este metodo mexe. Ela so e solta no `SoltarOObturador`, depois de
+	/// quem chamou ler o que precisava -- e e por isso que este robo roda em `ProcessModeEnum.Always`.
+	///
+	/// DOIS QUADROS DE FOLGA A CADA TROCA: `GetImage` devolve o ULTIMO quadro renderizado, e um pedido feito
+	/// no mesmo quadro da mudanca fotografa o estado de ANTES dela.
+	/// ===========================================================================
+	/// </summary>
+	private bool Obturador(World mundo)
+	{
+		switch (_obtFase)
+		{
+			case 0:
+				GetTree().Paused = true;
+				_obtNo = NoDaEstrela(mundo);
+				break;
+
+			case 1:
+				if (_obtQuadros++ < 2) return false;
+				_chapaCom = Tela();
+				MostrarAEstrela(false);
+				break;
+
+			case 2:
+				if (_obtQuadros++ < 2) return false;
+				_chapaSem = Tela();
+				ChoqueDeKi.SemPinturaDeTeste = true;
+				MostrarAEstrela(true);
+				break;
+
+			case 3:
+				if (_obtQuadros++ < 2) return false;
+				_chapaSemPintura = Tela();
+				_nodesSemPintura = mundo.ChoquesDeKiDesenhados().Count();
+				MostrarAEstrela(false);
+				ChoqueDeKi.SemPinturaDeTeste = false;
+				break;
+
+			case 4:
+				if (_obtQuadros++ < 2) return false;
+				_chapaSem2 = Tela();
+				MostrarAEstrela(true);
+				break;
+
+			default:
+				return true;
+		}
+
+		_obtFase++;
+		_obtQuadros = 0;
+		return _obtFase > 4;
+	}
+
+	/// <summary>
+	/// Esconde ou devolve o node da estrela. Ao devolver pede o redesenho: e nele que o `_Draw` le o
+	/// `SemPinturaDeTeste` de novo. (Um node que volta a ser visivel ja se redesenha sozinho; o pedido e
+	/// pra a troca do defeito nao depender disso.)
+	/// </summary>
+	private void MostrarAEstrela(bool visivel)
+	{
+		if (_obtNo == null || !IsInstanceValid(_obtNo)) return;
+		_obtNo.Visible = visivel;
+		if (visivel) _obtNo.QueueRedraw();
+	}
+
+	/// <summary>
+	/// Desfaz tudo o que o obturador mexe: o defeito, o node escondido e a pausa. O `Fechar` tambem passa
+	/// por aqui, pra uma saida no meio da medida nao deixar a arvore parada.
+	/// </summary>
+	private void SoltarOObturador()
+	{
+		ChoqueDeKi.SemPinturaDeTeste = false;
+		MostrarAEstrela(true);
+		_obtNo = null;
+		if (GetTree() is { Paused: true } arvore) arvore.Paused = false;
+	}
+
+	/// <summary>
+	/// O NODE DA ESTRELA, achado na ARVORE pelo nome que o `World.TickDosChoquesDeKi` da a ele (`Choque` + o
+	/// id do feixe) -- pela razao escrita no `NoDoTiro` da `--diagboca`: um acessador novo no `World` so pra
+	/// isto seria uma porta de bancada dentro do jogo. As que ja estao apagando, de uma cena anterior, nao servem.
+	/// </summary>
+	private static ChoqueDeKi? NoDaEstrela(World mundo)
+	{
+		foreach (Node n in mundo.FindChildren("Choque*", "", true, false))
+			if (n is ChoqueDeKi { SaindoDeTeste: false } estrela) return estrela;
+		return null;
+	}
+
+	// =====================================================================
+	// AS PONTAS, NO PIXEL -- cada cabeca sozinha na chapa (2026-10-08)
+	// =====================================================================
+	private int _ptFase, _ptQuadros;
+	private bool _ptPausou;
+	private ProjetilDesenhado? _ptA, _ptB;
+	private Variant _ptHaloDeA, _ptHaloDeB;
+	private readonly List<Node2D> _ptLuzes = [];
+	private ChoqueDeKi? _ptEstrela;
+	private Image? _ptNada, _ptSoA, _ptSoB, _ptSoAComDefeito, _ptSoBComDefeito, _ptNada2;
+
+	/// <summary>O que o <see cref="AfirmarAsPontas"/> deixa pro <see cref="GuardarAsPontas"/> gravar.</summary>
+	private Image? _ptRetrato, _ptRetratoComDefeito;
+	private Vector2 _ptEncontroNaFoto;
+	private float _ptMeioRecorte;
+
+	/// <summary>
+	/// TIRA AS CHAPAS DAS PONTAS, e devolve verdadeiro quando acabou (ate la, quem chama volta no quadro
+	/// seguinte): a tela sem raio nenhum, so com um, so com o outro, e sem nenhum de novo.
+	///
+	/// ============================ A PONTA QUE SE LIA ERA UM CAMPO ============================
+	/// "As pontas desenhadas se encontram no mesmo ponto" saia do `ProjetilDesenhado.PontaDesenhada` --
+	/// `Position + rumo * Frente`, a ponta que o node ANUNCIA. Dois raios numa disputa anunciam a mesma ponta
+	/// por construcao (o servidor os planta frente com frente), entao a linha ficava verde com QUALQUER
+	/// desenho.
+	///
+	/// E FICOU: em 2026-10-08 ela dizia "0,0 px entre elas" com cada cabeca do Final Flash a 4x pintada de 7 a
+	/// 20 px alem da propria ponta -- uma de 22 a 38 px DENTRO da outra, debaixo da estrela. Era a bola da
+	/// MAO, que nao cabia no feixe de 208 px desta cena e alcancava o plano da ponta (o conserto e a conta
+	/// estao no `FeixeDeKi.gdshader`). O Ki Wave da cena 1, com 64 px de feixe e 7 de bola, nunca passou de
+	/// 0,2 px.
+	///
+	/// ============================ O QUE SE LE AGORA: A TINTA DE CADA CABECA ============================
+	/// A receita das tres fotos da estrela (ver <see cref="Tinta"/>), um raio de cada vez: com a arvore
+	/// PAUSADA, o que a chapa de um raio tem que as duas chapas vazias nao tem e, por construcao, O QUE
+	/// AQUELE RAIO PINTOU. Dali saem as duas leituras do <see cref="LerAsPontas"/>.
+	///
+	/// ============================ SEM A ESTRELA E SEM O HALO ============================
+	/// A estrela fica escondida -- ela tapa justamente o encontro. E o halo dos dois raios e apagado no
+	/// material enquanto as chapas saem, a mesma escrita da `--diagartedeki` (familia 7): ele e luz somada,
+	/// passa da ponta por desenho (`PintorDeKi.FolgaNaPonta`) e nao encosta em ninguem. O que sobra e a tinta
+	/// OPACA -- o corpo, o leque e as fitas --, e e essa que nao pode passar da ponta.
+	///
+	/// E SEM AS LUZES DOS DOIS RAIOS, que so existem com a cena escura (`LuzDeKi`): elas sao filhas do node e
+	/// somem com ele, e a chapa "so com um raio" contaria como tinta dele o chao que a luz dele clareia. Com
+	/// `--climateste Tempestade` a primeira versao leu a cabeca do Ki Wave 46 px alem da ponta -- era o clarao
+	/// no capim. Apagadas nas quatro chapas, o que muda de uma pra outra volta a ser so o desenho.
+	///
+	/// `comDefeito` tira mais duas chapas com o <see cref="ProjetilDesenhado.DefeitoDoFeixe.PontaAdiante"/>
+	/// ligado: e o contra-exemplo, e a arvore ja esta parada pra ele sair do mesmo instante.
+	///
+	/// SE A ARVORE JA ESTAVA PAUSADA (a cena 3, que vem do <see cref="Obturador"/>), ela continua: quem
+	/// pausou e quem solta.
+	/// =====================================================================================================
+	/// </summary>
+	private bool ObturadorDasPontas(World mundo, bool comDefeito)
+	{
+		switch (_ptFase)
+		{
+			case 0:
+				(_ptA, _ptB) = OsDoisRaios(mundo);
+				if (_ptA == null || _ptB == null) { _ptFase = 7; return true; }
+				if (!GetTree().Paused) { GetTree().Paused = true; _ptPausou = true; }
+				_ptEstrela = NoDaEstrela(mundo);
+				if (_ptEstrela != null) _ptEstrela.Visible = false;
+				_ptHaloDeA = ApagarOHalo(_ptA);
+				_ptHaloDeB = ApagarOHalo(_ptB);
+				ApagarAsLuzes(_ptA);
+				ApagarAsLuzes(_ptB);
+				MostrarORaio(_ptA, false);
+				MostrarORaio(_ptB, false);
+				break;
+
+			case 1:
+				if (_ptQuadros++ < 2) return false;
+				_ptNada = Tela();
+				MostrarORaio(_ptA, true);
+				break;
+
+			case 2:
+				if (_ptQuadros++ < 2) return false;
+				_ptSoA = Tela();
+				MostrarORaio(_ptA, false);
+				MostrarORaio(_ptB, true);
+				break;
+
+			case 3:
+				if (_ptQuadros++ < 2) return false;
+				_ptSoB = Tela();
+				MostrarORaio(_ptB, false);
+				if (!comDefeito) { _ptFase = 5; break; }   // direto pra segunda chapa vazia
+				ProjetilDesenhado.DefeitoDeTeste = ProjetilDesenhado.DefeitoDoFeixe.PontaAdiante;
+				MostrarORaio(_ptA, true);
+				break;
+
+			case 4:
+				if (_ptQuadros++ < 2) return false;
+				_ptSoAComDefeito = Tela();
+				MostrarORaio(_ptA, false);
+				MostrarORaio(_ptB, true);
+				break;
+
+			case 5:
+				if (_ptQuadros++ < 2) return false;
+				_ptSoBComDefeito = Tela();
+				MostrarORaio(_ptB, false);
+				ProjetilDesenhado.DefeitoDeTeste = ProjetilDesenhado.DefeitoDoFeixe.Nenhum;
+				break;
+
+			case 6:
+				if (_ptQuadros++ < 2) return false;
+				_ptNada2 = Tela();
+				SoltarAsPontas();
+				break;
+
+			default:
+				return true;
+		}
+
+		_ptFase++;
+		_ptQuadros = 0;
+		return _ptFase > 6;
+	}
+
+	/// <summary>
+	/// OS DOIS RAIOS DA CENA, achados na ARVORE pelo nome que o `World.AoNascerTiro` da a eles (`Tiro` + o
+	/// id) -- pela mesma razao do <see cref="NoDaEstrela"/>. O primeiro e o que aponta pro leste: a cabeca
+	/// da ESQUERDA na foto. Sem exatamente dois, nenhum: a leitura e de um par.
+	/// </summary>
+	private static (ProjetilDesenhado? A, ProjetilDesenhado? B) OsDoisRaios(World mundo)
+	{
+		var raios = new List<ProjetilDesenhado>();
+		foreach (Node n in mundo.FindChildren("Tiro*", "", true, false))
+			if (n is ProjetilDesenhado { Tipo: Jandirus.Core.Combat.TipoDeProjetil.Beam, Visible: true } raio)
+				raios.Add(raio);
+		if (raios.Count != 2) return (null, null);
+		return raios[0].Rumo.X >= raios[1].Rumo.X ? (raios[0], raios[1]) : (raios[1], raios[0]);
+	}
+
+	/// <summary>
+	/// Esconde ou devolve um raio. Ao devolver pede o redesenho: e no `_Draw` que ele le o
+	/// `ProjetilDesenhado.DefeitoDeTeste` de novo, e com a arvore pausada ninguem mais pede.
+	/// </summary>
+	private static void MostrarORaio(ProjetilDesenhado? no, bool visivel)
+	{
+		if (no == null || !IsInstanceValid(no)) return;
+		no.Visible = visivel;
+		if (visivel) no.QueueRedraw();
+	}
+
+	/// <summary>Apaga o halo deste raio no material dele e devolve o que estava escrito, pra o <see cref="AcenderOHalo"/>.</summary>
+	private static Variant ApagarOHalo(ProjetilDesenhado no)
+	{
+		if (no.Material is not ShaderMaterial m) return default;
+		Variant antes = m.GetShaderParameter("alcance_do_halo");
+		// (0,001 e nao zero: o shader divide a distancia por ele)
+		m.SetShaderParameter("alcance_do_halo", 0.001f);
+		return antes;
+	}
+
+	private static void AcenderOHalo(ProjetilDesenhado? no, Variant antes)
+	{
+		if (no != null && IsInstanceValid(no) && no.Material is ShaderMaterial m && antes.VariantType != Variant.Type.Nil)
+			m.SetShaderParameter("alcance_do_halo", antes);
+	}
+
+	/// <summary>
+	/// Esconde as luzes acesas deste raio (a da cabeca e a do tronco) e as anota pro <see cref="SoltarAsPontas"/>
+	/// devolver. So as que estavam visiveis: a do tronco nasce escondida, e quem a mostra e o proprio raio.
+	/// </summary>
+	private void ApagarAsLuzes(ProjetilDesenhado no)
+	{
+		foreach (string nome in new[] { LuzDeKi.NomeDoNode, LuzDeKi.NomeDoTronco })
+			if (no.GetNodeOrNull<Node2D>(nome) is { Visible: true } luz)
+			{
+				luz.Visible = false;
+				_ptLuzes.Add(luz);
+			}
+	}
+
+	/// <summary>
+	/// Desfaz tudo o que o obturador das pontas mexe: o defeito, o halo, as luzes, os raios escondidos, a estrela
+	/// e -- se foi ele que pausou -- a pausa. As chapas e os dois nodes ficam, pra quem chamou ler. O `Fechar`
+	/// tambem passa por aqui.
+	/// </summary>
+	private void SoltarAsPontas()
+	{
+		ProjetilDesenhado.DefeitoDeTeste = ProjetilDesenhado.DefeitoDoFeixe.Nenhum;
+		AcenderOHalo(_ptA, _ptHaloDeA);
+		AcenderOHalo(_ptB, _ptHaloDeB);
+		_ptHaloDeA = _ptHaloDeB = default;
+		foreach (Node2D luz in _ptLuzes) if (IsInstanceValid(luz)) luz.Visible = true;
+		_ptLuzes.Clear();
+		MostrarORaio(_ptA, true);
+		MostrarORaio(_ptB, true);
+		if (_ptEstrela != null && IsInstanceValid(_ptEstrela)) { _ptEstrela.Visible = true; _ptEstrela.QueueRedraw(); }
+		_ptEstrela = null;
+		if (_ptPausou && GetTree() is { Paused: true } arvore) arvore.Paused = false;
+		_ptPausou = false;
+	}
+
+	private void ZerarAsPontas()
+	{
+		_ptFase = _ptQuadros = 0;
+		_ptA = _ptB = null;
+		_ptNada = _ptSoA = _ptSoB = _ptSoAComDefeito = _ptSoBComDefeito = _ptNada2 = null;
+		_ptRetrato = _ptRetratoComDefeito = null;
+	}
+
+	/// <summary>O que as chapas disseram das duas pontas, em px de mundo. Ver <see cref="LerAsPontas"/>.</summary>
+	private readonly record struct Pontas(float Folga, float PassaA, float PassaB, int Sobrepostos);
+
+	/// <summary>
+	/// QUANTOS PIXELS FAZEM UMA FRENTE. A frente de uma mancha de tinta e a maior projecao no eixo que tem
+	/// pelo menos este tanto de pixels nela ou adiante dela: a ponta de um desenho e uma fileira, e um pixel
+	/// sozinho que a peneira das tres fotos deixasse passar viraria a medida inteira. Numa cabeca redonda de
+	/// 7 px de raio (a menor daqui), quatro pixels da fileira da frente ficam a menos de um decimo de pixel
+	/// de foto do mais adiantado.
+	/// </summary>
+	private const int PixelsDeFrente = 4;
+
+	/// <summary>
+	/// Quanto a tinta de um raio pode acabar antes ou depois da ponta que ele anuncia: um pixel de MUNDO, que
+	/// nesta foto sao tres. O que a regua tem que engolir e a grade da foto e o arredondamento dos vertices
+	/// (`snap_2d_vertices_to_pixel`), ate um pixel de FOTO cada. Medido: de -0,2 a +0,2 px, em sete rodadas do Ki
+	/// Wave da cena 1 e cinco do Final Flash da cena 3 -- e de +7 a +20 no Final Flash de antes do conserto.
+	/// </summary>
+	private const float ToleranciaDaPonta = 1f;
+
+	private static float[] NovaFrente()
+	{
+		var maiores = new float[PixelsDeFrente];
+		Array.Fill(maiores, float.NegativeInfinity);
+		return maiores;
+	}
+
+	/// <summary>Mais um pixel de tinta, nesta projecao. `maiores` guarda os <see cref="PixelsDeFrente"/> maiores, do maior pro menor.</summary>
+	private static void Ver(float[] maiores, float s)
+	{
+		if (s <= maiores[^1]) return;
+		int k = maiores.Length - 1;
+		while (k > 0 && maiores[k - 1] < s) { maiores[k] = maiores[k - 1]; k--; }
+		maiores[k] = s;
+	}
+
+	/// <summary>
+	/// AS DUAS LEITURAS, das quatro chapas:
+	///
+	///   * a FOLGA NA FOTO -- da frente da tinta de uma cabeca a frente da tinta da outra, pelo eixo da
+	///     primeira. Positiva e chao entre as duas; negativa e uma desenhada dentro da outra. E a pergunta
+	///     do dono (*"as cabecas ainda estao se sobrepondo as vezes"*), sem campo nenhum no meio alem do
+	///     rumo;
+	///   * quanto cada cabeca PASSA DA PONTA QUE ANUNCIA (`PontaDesenhada`). A ponta e regra do servidor --
+	///     ele encosta as coisas nela -- e e onde o `World` poe a estrela: se a tinta nao acaba ali, quem
+	///     mente e o campo.
+	///
+	/// E devolve o RETRATO: o fundo, a tinta de cada raio como ela e, e em MAGENTA o que os dois pintaram.
+	/// Uma sonda que conta pixels tem que mostrar quais.
+	///
+	/// Nulo = nao deu pra ler: as chapas sairam de tamanhos diferentes, ou um dos raios nao deixou tinta.
+	/// </summary>
+	private Pontas? LerAsPontas(Image nada, Image soA, Image soB, Image nada2, out Image? retrato)
+	{
+		retrato = null;
+		if (_ptA is not { } a || _ptB is not { } b) return null;
+
+		int largura = nada.GetWidth(), altura = nada.GetHeight();
+		byte[] bNada = Rgba(nada), bA = Rgba(soA), bB = Rgba(soB), bNada2 = Rgba(nada2);
+		if (bA.Length != bNada.Length || bB.Length != bNada.Length || bNada2.Length != bNada.Length) return null;
+
+		// DE PIXEL DE FOTO PRA PIXEL DE MUNDO: o inverso do `NaFoto`.
+		Viewport? v = GetViewport();
+		Transform2D doMundo = v == null ? Transform2D.Identity : (v.GetFinalTransform() * v.CanvasTransform).AffineInverse();
+
+		Vector2 pontaDeA = a.PontaDesenhada, rumoDeA = a.Rumo, pontaDeB = b.PontaDesenhada, rumoDeB = b.Rumo;
+		float[] frenteDeA = NovaFrente(), frenteDeB = NovaFrente(), deBContraA = NovaFrente();
+		int sobrepostos = 0;
+		byte[] pintado = (byte[])bNada.Clone();
+
+		for (int y = 0, i = 0; y < altura; y++)
+			for (int x = 0; x < largura; x++, i += 4)
+			{
+				bool deA = PintouAqui(bA, bNada, bNada2, i), deB = PintouAqui(bB, bNada, bNada2, i);
+				if (!deA && !deB) continue;
+
+				Vector2 noMundo = doMundo * new Vector2(x + 0.5f, y + 0.5f);
+				if (deA) Ver(frenteDeA, (noMundo - pontaDeA).Dot(rumoDeA));
+				if (deB)
+				{
+					Ver(frenteDeB, (noMundo - pontaDeB).Dot(rumoDeB));
+					// a frente de B vista do eixo de A: B vem de frente, entao e a MENOR projecao dela
+					Ver(deBContraA, -(noMundo - pontaDeA).Dot(rumoDeA));
+				}
+
+				if (deA && deB) { sobrepostos++; pintado[i] = 255; pintado[i + 1] = 0; pintado[i + 2] = 255; continue; }
+				byte[] de = deA ? bA : bB;
+				pintado[i] = de[i];
+				pintado[i + 1] = de[i + 1];
+				pintado[i + 2] = de[i + 2];
+			}
+
+		float passaA = frenteDeA[^1], passaB = frenteDeB[^1];
+		if (float.IsNegativeInfinity(passaA) || float.IsNegativeInfinity(passaB)) return null;
+
+		retrato = Image.CreateFromData(largura, altura, false, Image.Format.Rgba8, pintado);
+		return new Pontas(-deBContraA[^1] - passaA, passaA, passaB, sobrepostos);
+	}
+
+	/// <summary>
+	/// LE AS CHAPAS E AFIRMA. `oCampoDiz` entra no rotulo como testemunha: e o que a leitura de antes dizia
+	/// deste mesmo quadro.
+	/// </summary>
+	private void AfirmarAsPontas(string cena, string oCampoDiz)
+	{
+		if (_ptA is not { } a || _ptB is not { } b || !IsInstanceValid(a) || !IsInstanceValid(b))
+		{
+			Conferir(false, $"{cena}: ha exatamente DOIS raios desenhados pra ler as pontas no pixel");
+			return;
+		}
+		if (_ptNada is not { } nada || _ptSoA is not { } soA || _ptSoB is not { } soB || _ptNada2 is not { } nada2)
+		{
+			Nota($"{cena}: as pontas NAO foram medidas no pixel -- faltou chapa (headless nao renderiza)");
+			return;
+		}
+		if (LerAsPontas(nada, soA, soB, nada2, out _ptRetrato) is not { } p)
+		{
+			Conferir(false, $"{cena}: as quatro chapas das pontas sairam do mesmo tamanho, e cada raio deixou tinta na dele");
+			return;
+		}
+
+		Vector2 encontro = (a.PontaDesenhada + b.PontaDesenhada) * 0.5f;
+		_ptEncontroNaFoto = NaFoto(encontro);
+		_ptMeioRecorte = ((a.Medidas.Frente + b.Medidas.Frente) * 0.75f + 24f) * NaFoto(encontro + Vector2.Right).DistanceTo(_ptEncontroNaFoto);
+
+		Conferir(MathF.Abs(p.Folga) <= ToleranciaDoEncontro,
+			$"{cena}: NA FOTO as duas cabecas se encontram frente com frente, sem chao entre elas e sem uma dentro da "
+			+ $"outra -- folga de {p.Folga:0.0} px da tinta de uma a tinta da outra (negativo e sobreposicao; "
+			+ $"{p.Sobrepostos} px de foto pintados pelas duas). Os campos, deste mesmo quadro: {oCampoDiz}");
+		Conferir(MathF.Abs(p.PassaA) <= ToleranciaDaPonta && MathF.Abs(p.PassaB) <= ToleranciaDaPonta,
+			$"{cena}: a tinta de cada raio ACABA NA PONTA QUE ELE ANUNCIA (`PontaDesenhada`: onde o servidor encosta as "
+			+ $"coisas, e onde o `World` poe a estrela) -- a cabeca da esquerda passa {p.PassaA:+0.0;-0.0;0.0} px dela e a "
+			+ $"da direita {p.PassaB:+0.0;-0.0;0.0}");
+
+		if (_ptSoAComDefeito is not { } soAComDefeito || _ptSoBComDefeito is not { } soBComDefeito) return;
+
+		// O CONTRA-EXEMPLO: as duas cabecas pintadas adiante da ponta que anunciam. O campo e o mesmo (nenhum
+		// node se mexeu); a folga na foto tem que cair o tanto do defeito, uma vez de cada lado.
+		float defeito = 2f * ProjetilDesenhado.PixelsDaPontaAdiante;
+		Pontas? comDefeito = LerAsPontas(nada, soAComDefeito, soBComDefeito, nada2, out _ptRetratoComDefeito);
+		Conferir(comDefeito is { } d && d.Folga < -ToleranciaDoEncontro && MathF.Abs(p.Folga - d.Folga - defeito) <= ToleranciaDoEncontro,
+			$"[injecao] {cena}: com `DefeitoDoFeixe.PontaAdiante` (cada cabeca pintada "
+			+ $"{ProjetilDesenhado.PixelsDaPontaAdiante:0} px adiante da ponta que anuncia) os campos dizem o mesmo e a regua "
+			+ (comDefeito is { } dd
+				? $"da foto REPROVA -- a folga cai de {p.Folga:0.0} pra {dd.Folga:0.0} px, os {defeito:0} px do defeito "
+				  + $"(as cabecas passam {dd.PassaA:+0.0;-0.0;0.0} e {dd.PassaB:+0.0;-0.0;0.0} px da ponta)"
+				: "da foto nao conseguiu ler as chapas"));
+	}
+
+	/// <summary>
+	/// GRAVA OS RETRATOS que o <see cref="AfirmarAsPontas"/> deixou, e esquece as chapas. Na tira (a cena 3)
+	/// eles vao inteiros, como as outras chapas dela, e saem colados na ordem das outras bancadas: a esquerda
+	/// o defeito injetado, depois a producao. Fora dela (a cena 1, de cabecas de 7 px) vai um recorte ampliado
+	/// em volta do encontro -- inteira, a foto mostraria uma manchinha.
+	/// </summary>
+	private void GuardarAsPontas(string cena, string destino, bool naTira)
+	{
+		const string Legenda = "cada cabeca sozinha, sem estrela e sem halo -- em MAGENTA, o que as DUAS pintaram";
+		int desde = _tira.Count;
+		if (_ptRetratoComDefeito is { } comDefeito)
+			Guardar(Enquadrar(comDefeito, naTira), destino + "-com-defeito.png",
+					$"{cena}, AS PONTAS COM O DEFEITO INJETADO (`DefeitoDoFeixe.PontaAdiante`): {Legenda}", _ptEncontroNaFoto, naTira);
+		if (_ptRetrato is { } retrato)
+			Guardar(Enquadrar(retrato, naTira), destino + ".png", $"{cena}, AS PONTAS: {Legenda}", _ptEncontroNaFoto, naTira);
+		if (naTira && _tira.Count > desde)
+			Colar("user://embateki-tira-das-pontas.png", desde, larguraDoCorte: 420, alturaDoCorte: 720, escala: 1);
+		ZerarAsPontas();
+	}
+
+	/// <summary>O retrato inteiro, ou um recorte deitado em volta do encontro, ampliado tres vezes.</summary>
+	private Image Enquadrar(Image retrato, bool inteiro)
+	{
+		if (inteiro) return retrato;
+
+		int meia = Mathf.CeilToInt(_ptMeioRecorte);
+		var r = new Rect2I((int)_ptEncontroNaFoto.X - meia, (int)_ptEncontroNaFoto.Y - meia / 2, 2 * meia, meia)
+			.Intersection(new Rect2I(0, 0, retrato.GetWidth(), retrato.GetHeight()));
+		if (r.Size.X < 16 || r.Size.Y < 16) return retrato;
+
+		Image pedaco = retrato.GetRegion(r);
+		pedaco.Resize(pedaco.GetWidth() * 3, pedaco.GetHeight() * 3, Image.Interpolation.Nearest);
+		return pedaco;
 	}
 
 	// =====================================================================
@@ -539,20 +1282,33 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 	// =====================================================================
 	// A FOTO
 	// =====================================================================
-	/// <returns>A foto tirada, pra quem quer LER um pixel dela -- ou nulo, sem janela.</returns>
-	private Image? Fotografar(string destino, string rotulo, Vector2 centro)
+	private void Fotografar(string destino, string rotulo, Vector2 centro)
+	{
+		if (Tela() is { } img) Guardar(img, destino, rotulo, centro);
+		else Nota($"{rotulo}: sem foto (headless nao renderiza)");
+	}
+
+	/// <summary>A tela como esta agora -- o ULTIMO quadro renderizado --, ou nulo sem janela.</summary>
+	private Image? Tela()
 	{
 		Image? img = GetViewport()?.GetTexture()?.GetImage();
-		if (img == null || img.IsEmpty()) { Nota($"{rotulo}: sem foto (headless nao renderiza)"); return null; }
+		return img == null || img.IsEmpty() ? null : img;
+	}
+
+	/// <summary>
+	/// Grava uma chapa ja tirada e a guarda pra a tira. `naTira` falso = so grava: a cena 1 conta as chapas
+	/// da tira dela pra saber qual foto falta, e um recorte a mais ali trocaria a foto do empurrao de lugar.
+	/// </summary>
+	private void Guardar(Image img, string destino, string rotulo, Vector2 centro, bool naTira = true)
+	{
 		try
 		{
 			string caminho = ProjectSettings.GlobalizePath(destino);
 			img.SavePng(caminho);
 			_passos.Add($"  ok     {rotulo}: {caminho}");
-			_tira.Add((img, centro));
+			if (naTira) _tira.Add((img, centro));
 		}
 		catch (Exception e) { Nota($"{rotulo}: sem foto: {e.Message}"); }
-		return img;
 	}
 
 	/// <summary>
@@ -623,6 +1379,8 @@ public partial class RoboDeFotoDoEmbateDeKi : Node
 	private void Fechar()
 	{
 		_acabou = true;
+		SoltarAsPontas();
+		SoltarOObturador();
 		S?.EmbateDeFoto_Limpar();
 		if (World.Instancia is { } mundo) mundo.FocoDeTeste = null;
 		GD.Print("\n[embatekifoto] ===== AS FOTOS DA COLISAO DE KI =====");

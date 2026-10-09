@@ -41,8 +41,9 @@ REM    * "nenhum quadro chapado" -- o pedido do dono, literal;
 REM    * "a cobertura ja estava no PRIMEIRO quadro depois do clique" -- a borda
 REM      de ENTRADA;
 REM    * "no primeiro quadro SEM cobertura o corpo ja esta desenhado" -- a borda
-REM      de SAIDA, medida no PIXEL DO CORPO: a bancada esconde e mostra o corpo
-REM      em dois quadros seguidos, e os pixels que mudam SAO o corpo;
+REM      de SAIDA, medida no PIXEL DO CORPO: com a arvore PAUSADA (a neve e a
+REM      chuva paradas no ar) a bancada esconde, mostra e esconde de novo o
+REM      corpo, e os pixels que mudam SAO o corpo;
 REM    * as duas series de tempo de QUADRO (CPU e relogio de parede), porque um
 REM      total que encolhe pode ser trabalho remanejado em vez de evitado;
 REM    * e o mesmo pro LOGIN de personagem que ja existe.
@@ -169,7 +170,8 @@ echo.
 echo  Encerrado. Leia as linhas "=====" no fim de cada rodada.
 echo  As fotos estao em "%APPDATA%\Godot\app_userdata\Dragon ball Jandirus":
 echo     tira-criacao-q00..qNN-*.png   TODO quadro entre o clique e o corpo
-echo     corpo-criacao-A/B/C-*.png     as tres fotos da prova do corpo
+echo     corpo-criacao-A/B/C/D-*.png   as quatro fotos da prova do corpo
+echo     corpo-criacao-M-mascara.png   os pixels que a prova contou como corpo
 echo     tira-semcobertura-*.png       os mesmos quadros com o defeito na frente
 echo     queda-queda-o-que-sobrou.png  a tela depois de o servidor morrer
 echo.

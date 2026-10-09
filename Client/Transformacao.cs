@@ -474,6 +474,28 @@ public partial class Transformacao : Node2D
 	public int BeatsDeTeste { get; private set; }
 
 	/// <summary>
+	/// ESPIA DE BANCADA -- nula em jogo. Recebe (pedaco, ms) de cada pedaco do `_Process` de uma cena, na ordem em
+	/// que eles correm: os efeitos de cada beat que dispara (a cratera, a fumaca, o `Vestir` partido em corpo, cabelo
+	/// e coladas, o anel, o clarao, o som...) e depois as pedras, a tempestade, a piscada, o rumor e a chama.
+	///
+	/// E O QUE DA DONO A UM QUADRO CARO DA CENA. A rodada `--diagestouro --temas --cenas` media o quadro de cada beat,
+	/// e parava ai: o beat que ASSUME custava 25 ms na primeira cena do processo e ninguem sabia dizer quanto era a
+	/// cratera, quanto a fumaca e quanto o cabelo. Com a espia nula cada marca e uma comparacao e mais nada.
+	/// </summary>
+	public static Action<string, double>? EspiaoDePedaco;
+
+	private static ulong _marcaDoPedaco;
+
+	/// <summary>O que passou desde a marca anterior foi este pedaco. Ver <see cref="EspiaoDePedaco"/>.</summary>
+	private static void Pedaco(string qual)
+	{
+		if (EspiaoDePedaco is not { } espia) return;
+		espia(qual, (Time.GetTicksUsec() - _marcaDoPedaco) / 1000.0);
+		// (a marca nova sai DEPOIS da espia: o tempo que ela gasta anotando nao e de pedaco nenhum)
+		_marcaDoPedaco = Time.GetTicksUsec();
+	}
+
+	/// <summary>
 	/// COMO ESTA CENA TERMINOU -- e ele e o GUARDA do <see cref="_Process"/>, nao so uma sonda.
 	///
 	/// ============================ "ACABOU" E "ACABOU BEM" NAO SAO A MESMA PERGUNTA ============================
@@ -495,6 +517,13 @@ public partial class Transformacao : Node2D
 
 		/// <summary>O corpo sumiu no meio (morreu, mudou de zona, deslogou).</summary>
 		AlvoSumiu = 3,
+
+		/// <summary>
+		/// NAO E CENA DE JOGO: nasceu pelo <see cref="Ensaiar"/> do aquecimento, fora da tela, so pra o processo
+		/// pagar no lobby o primeiro uso da cinematica. O guarda do <see cref="_Process"/> e este campo, entao ela
+		/// nunca conta o tempo e nenhum beat dispara -- e quem varre a arvore atras de "uma cena rodando" nao a acha.
+		/// </summary>
+		Ensaio = 4,
 	}
 
 	private FimDaCena _fim;
@@ -579,6 +608,65 @@ public partial class Transformacao : Node2D
 		return t;
 	}
 
+	/// <summary>
+	/// O ENSAIO DO LOBBY (ver `Aquecimento.AtosDaCena`): NASCE uma cena de verdade -- o mesmo <see cref="Rodar"/>, o
+	/// mesmo `_Ready` -- em volta de um corpo que nao e de ninguem, num palco fora da tela, so pra o processo pagar
+	/// ALI, e nao no quadro em que a primeira transformacao comeca, o primeiro uso da cinematica.
+	///
+	/// ============================ O QUE O PRIMEIRO NASCIMENTO CUSTAVA ============================
+	/// Medido em 2026-10-08 pela `--diagestouro --temas` (com o cache de shader em disco vazio): o quadro em que a
+	/// primeira cena do processo nascia custava 41 a 43 ms de trabalho contra 4 das seguintes -- tela parada no
+	/// instante em que a transformacao comeca. Partido pela rodada `--cenas --cenapartida`, na ordem de tamanho:
+	///
+	///   * 21 a 24 ms com a thread principal ESPERANDO O SHADER DA CHAMA (`Aura.gdshader`), no preparo do desenho
+	///     do quadro. O Godot comeca a compilar o shader, em segundo plano, quando o primeiro material dele nasce;
+	///     quem nasce e e desenhado no MESMO quadro espera a compilacao inteira. Com um quadro de antecedencia nao
+	///     ha espera: o mesmo primeiro desenho custou 1 ms. (E a parcela de quem abre o jogo pela primeira vez: com
+	///     o cache de shader em disco cheio ela some, e o quadro custava 18 ms, todos de script);
+	///   * 9 ms de codigo rodando pela primeira vez: o .NET compilando o caminho inteiro, do pacote no `World` ate
+	///     o `_Ready` daqui;
+	///   * 3 a 4 ms lendo do disco a folha da chama da forma (`SpriteDeAura.Montar`);
+	///   * 2 ms montando o material e o sprite da chama.
+	///
+	/// DEPOIS: 6,2 a 7,2 ms, script 5,7 a 6,8 e desenho 0,4 -- dentro de uma volta do monitor. Os 2 a 3 ms que a
+	/// primeira cena ainda tem a mais que as seguintes sao a parte do codigo de primeira vez que mora no `World`
+	/// (o `AoMudarForma` e o que ele chama), onde este ensaio nao chega.
+	///
+	/// O SHADER NAO E SO DA CENA: e o da chama de todo corpo (`SpriteDeAura`), e a espera por ele cai em quem
+	/// acender uma aura primeiro no processo -- esta cena, ou uma carga de ki.
+	///
+	/// (O QUE ESTE ENSAIO NAO TIRAVA, porque nao e de primeira vez: o Godot carregava este arquivo como script em toda
+	/// `new Transformacao()` que nascia sem outra cena viva. Medido depois, em 2026-10-09, por esta mesma porta: eram
+	/// 1,4 a 1,5 dos 1,6 a 1,8 ms que um nascimento custava. Hoje o aquecimento segura o script, e o nascimento custa
+	/// 0,3 ms: ver `Aquecimento.NodesDeVidaCurta`.)
+	///
+	/// ============================ SO O NASCIMENTO: A CENA DO ENSAIO NAO RODA ============================
+	/// Ela nasce com <see cref="FimDaCena.Ensaio"/>, e o guarda do <see cref="_Process"/> a deixa parada: nenhum beat
+	/// dispara. Beat mexe no MUNDO -- treme a camera, planta cratera, toca som --, e o ensaio cai nos primeiros
+	/// quadros do mundo quando o login foi mais rapido que ele: nao pode ser visto nem ouvido. O que fica
+	/// desenhado no palco e a chama da cena com forca zero, que e como toda cena nasce (ver o `_Ready`).
+	///
+	/// A ENCURTADA DO PRIMEIRO DEGRAU, e a escolha tem motivo: ela nao tem tema (o `_Ready` de uma estreia pediria
+	/// a musica dela a maquina de som, no lobby) e, com `souEu` falso e um corpo sem boneco, nao prende nem trava
+	/// ninguem. QUAL forma nao importa pro que se paga aqui -- o shader e o codigo sao os mesmos de todas --, e a
+	/// folha da chama de cada linha de forma o aquecimento carrega por fora (`Aquecimento.FolhasDeChama`).
+	/// ================================================================================================
+	/// </summary>
+	public static void Ensaiar(Node2D pai, Vector2 onde)
+	{
+		if (Jandirus.Core.Forms.Catalogo.Def(Jandirus.Core.Forms.Catalogo.IdSsj1) is not { } forma
+			|| Cinematicas.NoDegrau(forma, DegrauDeCena.Curta) is not { } cena) return;
+
+		var corpo = new Node2D { Name = "CorpoDoEnsaio", Position = onde };
+		pai.AddChild(corpo);
+
+		Transformacao t = Rodar(pai, corpo, forma, cena, souEu: false);
+		t._fim = FimDaCena.Ensaio;
+		// QUEM POE A CENA EM CIMA DO CORPO E O `_Process`, que aqui nao roda. Sem esta linha as duas cenas do ensaio
+		// ficariam empilhadas na origem do palco, e nenhuma debaixo da luz dele.
+		t.Position = onde;
+	}
+
 	public override void _Ready()
 	{
 		ZIndex = 90;
@@ -657,7 +745,7 @@ public partial class Transformacao : Node2D
 		// bancada -- ver a checagem deste mesmo caminho em `--diagforma`.
 		// ==========================================================================================
 		if (ResourceLoader.Exists(CaminhoDasPedras))
-			_framesDaPedra = ResourceLoader.Load<SpriteFrames>(CaminhoDasPedras);
+			_framesDaPedra = FolhasPresas.Carregar(CaminhoDasPedras);
 		else
 			GD.PushWarning($"[cena] `{CaminhoDasPedras}` nao resolve -- o Godot nao importou a folha. "
 						 + "A cinematica vai rodar sem as pedras subindo.");
@@ -749,6 +837,11 @@ public partial class Transformacao : Node2D
 		// cinematica (o DM tambem nao: la a faixa dura os `durationDs` dela, muito alem da cena). A
 		// camada `Transformacao` e a mais alta do `AudioDirector`, entao ela abafa a de combate pelo
 		// periodo -- que e o `duck_battle_music` do original.
+		//
+		// O PEDIDO SAI NESTE QUADRO; O SOM ENTRA QUANDO O ARQUIVO CHEGA. O tema de uma cena so se conhece
+		// aqui, e os maiores tem 10 MB: lido na hora pela thread principal, o mp3 parava a tela por 10 a
+		// 32 ms no primeiro quadro da cinematica. Hoje o `AudioDirector.Cruzar` o pede a thread de carga e
+		// liga o tocador quando ela o entrega -- 1 a 3 quadros depois, debaixo de um cruzamento de 1,2 s.
 		//
 		// E QUANDO O ARQUIVO ACABA, ESTA CENA NAO PEDE MAIS NADA. Nao ha `repetir` pra passar: a
 		// camada ja diz que este pedido e passageiro, e quem decide o que vem depois e o
@@ -1237,6 +1330,7 @@ public partial class Transformacao : Node2D
 
 		GlobalPosition = _alvo.GlobalPosition;
 		_t += delta;
+		if (EspiaoDePedaco != null) _marcaDoPedaco = Time.GetTicksUsec();
 
 		// SOLTA O CORPO NA HORA MARCADA, e nao no fim da cena. O congelamento sai junto: nao faz
 		// sentido o corpo voltar a andar e continuar sem animacao.
@@ -1272,6 +1366,8 @@ public partial class Transformacao : Node2D
 			_alvo.GetNodeOrNull<CharacterVisual>("Visual")?.TravarPose(false);
 		}
 		// --- dispara os beats que venceram ---
+		Pedaco("antes dos beats");
+		int beatsAntes = _proximo;
 		while (_proximo < _cena.Beats.Length && _cena.Beats[_proximo].Em <= _t)
 			Disparar(_cena.Beats[_proximo++]);
 
@@ -1279,17 +1375,20 @@ public partial class Transformacao : Node2D
 		// `Nasce` vencido (o sorteio permite atraso zero), e faze-la esperar o quadro seguinte pra
 		// aparecer seria um quadro de nada no comeco do efeito.
 		TocarPedras();
+		Pedaco("as pedras");
 
 		// A LUZ DA FUSAO, DEPOIS DOS BEATS PELO MESMO MOTIVO: o beat que a ACENDE tem que poder
 		// pinta-la no proprio quadro em que ele vence. Ela sai de graca nas 39 cenas que nao a acendem
 		// -- a primeira linha do metodo e um `if` contra nulo, e nada mais.
 		TocarALuzDaFusao(delta);
+		Pedaco("a luz da fusao");
 
 		// DEPOIS DOS BEATS TAMBEM, e o motivo aqui e o inverso do das pedras: o beat que ASSUME acende
 		// o `ClaraoDeTela`, e um raio caindo no MESMO quadro tem que somar clarao POR CIMA dele em vez
 		// de ser lavado por ele. Rodando antes, o unico instante da cena que o dono chama de climax
 		// seria o unico em que a tempestade nao aparece.
 		TocarTempestade();
+		Pedaco("a tempestade");
 
 		// ============================ O CABELO PISCANDO, ATE A FORMA FICAR ============================
 		// DEPOIS dos beats pelo mesmo motivo das pedras: o beat que ARMA o piscar tem que poder trocar o
@@ -1315,6 +1414,12 @@ public partial class Transformacao : Node2D
 			_proximaPiscada = _t + Cinematicas.PiscadaMinima
 							+ GD.Randf() * (Cinematicas.PiscadaMaxima - Cinematicas.PiscadaMinima);
 		}
+		Pedaco("a piscada do cabelo");
+
+		// AS FOLHAS DA FORMA, PEDIDAS ANTES DE ALGUEM PRECISAR DELAS -- ver `AdiantarAsFolhasDaForma`. No primeiro
+		// quadro em que nenhum beat disparou: o do nascimento e o do beat zero ja tem o que fazer.
+		AdiantarAsFolhasDaForma(quadroCalmo: _proximo == beatsAntes);
+		Pedaco("as folhas da forma adiantadas");
 
 
 		// ============================ O TREMOR CONTINUO -- A CENA INTEIRA ============================
@@ -1348,6 +1453,7 @@ public partial class Transformacao : Node2D
 		if (pesoDoRumor > 0f)
 			Mundo()?.Sacudir(Cinematicas.RumorDaCena, peso: pesoDoRumor,
 							 queda: Cinematicas.QuedaDoTremor, cadencia: Cinematicas.CadenciaDoTremor);
+		Pedaco("o rumor");
 
 		// --- a chama da cena cresce e apaga ---
 		if (_auraT >= 0)
@@ -1383,6 +1489,7 @@ public partial class Transformacao : Node2D
 			// engoliria a tela. Ela cresce nos primeiros 3 s e fica.
 			_auraPivo.Scale = Vector2.One * (float)(1.0 + Mathf.Min(_auraT, 3.0) * 0.12);
 		}
+		Pedaco("a chama da cena");
 
 		if (_proximo >= _cena.Beats.Length && _t > _cena.Segundos)
 		{
@@ -1772,7 +1879,7 @@ public partial class Transformacao : Node2D
 			return;
 		}
 
-		var frames = ResourceLoader.Load<SpriteFrames>(CaminhoDaLuzDaFusao);
+		var frames = FolhasPresas.Carregar(CaminhoDaLuzDaFusao);
 		if (frames == null || frames.GetAnimationNames().Length == 0)
 		{
 			GD.PushWarning($"[cena] `{CaminhoDaLuzDaFusao}` carregou sem animacao nenhuma.");
@@ -2029,6 +2136,7 @@ public partial class Transformacao : Node2D
 		if (b.Faz.HasFlag(Efeito.Tremor))
 			Mundo()?.Sacudir(Cinematicas.ForcaDoTremor, peso: PesoDoTremor(),
 							 queda: Cinematicas.QuedaDoTremor, cadencia: Cinematicas.CadenciaDoTremor);
+		Pedaco("o tremor");
 
 		// A CHAMA DA CENA ACENDE. Zerar o relogio ja e o suficiente -- o `_Process` cuida da subida, e
 		// ele so olha pra ela quando `_auraT >= 0` (ver o campo).
@@ -2062,6 +2170,8 @@ public partial class Transformacao : Node2D
 		// AQUI HAVIA `Efeito.PedrasSubindo` -> `SoltarPedras()`. A pedra deixou de ser um beat: ela
 		// corre por baixo da cena inteira agora, no `TocarPedras`. Ver o bloco do CHAO SOLTO.
 
+		Pedaco("a chama, a aura base, a luz e a silhueta acesas");
+
 		if (b.Faz.HasFlag(Efeito.Cratera))
 		{
 			// QUEM VEM DA RAIVA ABRE O CHAO. A escolha sai de `Catalogo.NasceDaRaiva` -- a mesma
@@ -2069,7 +2179,9 @@ public partial class Transformacao : Node2D
 			// aqui: um degrau novo de Legendary ja nasce com a cratera certa.
 			Plantar(Jandirus.Core.Forms.Catalogo.NasceDaRaiva(_forma)
 					? Protocol.Decal.CrateraGrande : Protocol.Decal.Cratera, 0);
+			Pedaco("a cratera");
 			Plantar(Protocol.Decal.Fumaca, 0);
+			Pedaco("a fumaca da cratera");
 		}
 		// ============================ POEIRA E FUMACA, NAO CICATRIZ ============================
 		// Eu tinha ligado o `Efeito.Poeira` ao `ChaoDanificado` -- o decalque PERMANENTE de terra
@@ -2086,6 +2198,7 @@ public partial class Transformacao : Node2D
 		// ==================================================================================
 		if (b.Faz.HasFlag(Efeito.Poeira))
 			for (int i = 0; i < 3; i++) Plantar(Protocol.Decal.Fumaca, 26);
+		Pedaco("a poeira (tres fumacas)");
 
 		// ============================ VESTIR VEM ANTES DOS EFEITOS, E AGORA ISSO IMPORTA ============================
 		// O DEGRAU DE BAIXO, VESTIDO POR UM INSTANTE. Ver `Efeito.VesteDegrau`.
@@ -2096,6 +2209,7 @@ public partial class Transformacao : Node2D
 		// ESTADO, o beat de efeito e o ACONTECIMENTO, e acontecimento se desenha por cima de estado.
 		// ==========================================================================================================
 		if (b.Faz.HasFlag(Efeito.VesteDegrau)) VestirODegrauSeguinte();
+		Pedaco("o degrau vestido");
 
 		// OS RAIOS DA CENA sao os MESMOS do estado transformado (`RaiosDaForma`), disparados a mao.
 		// Ter dois sistemas de raio no jogo seria ter dois lugares pra consertar o mesmo defeito.
@@ -2108,8 +2222,10 @@ public partial class Transformacao : Node2D
 			r.Definir(true, _corRaios, Math.Max(1, _forma.Raios));
 			r.DispararDeTeste();
 		}
+		Pedaco("os raios");
 
 		if (b.Faz.HasFlag(Efeito.FeixesNoChao)) Feixes();
+		Pedaco("os feixes no chao");
 
 		// ============================ OS TRES DO ENCHIMENTO ============================
 		// Nenhum deles inventa engine: o anel e o `CombatFx.Onda` do combate, a descarga e o
@@ -2124,10 +2240,13 @@ public partial class Transformacao : Node2D
 		// continua inteira e em uso no combate; o que morreu foi a chamada daqui.
 		// ============================================================================
 		if (b.Faz.HasFlag(Efeito.AnelDeChoque)) Anel();
+		Pedaco("o anel de choque");
 
 		if (b.Faz.HasFlag(Efeito.DescargaNoCeu)) Descarga();
+		Pedaco("a descarga no ceu");
 
 		if (b.Faz.HasFlag(Efeito.ClaraoDeTela)) Clarao();
+		Pedaco("o clarao de tela");
 
 		// ============================ O BANHO DE COR -- `animate(src, color=rgb(...))` ============================
 		// A COR SAI DA FORMA e nao do beat: `Aura.CorDaChamaDe` e a MESMA funcao que pinta a chama da
@@ -2205,6 +2324,8 @@ public partial class Transformacao : Node2D
 			_proximaPiscada = _t;   // a primeira troca sai no MESMO quadro do beat, e nao um sorteio depois
 		}
 
+		Pedaco("o banho de cor, a silhueta branca e o piscar armado");
+
 		// O INSTANTE EM QUE A FORMA FICA. Ver o cabecalho da classe.
 		if (b.Faz.HasFlag(Efeito.Assumir))
 		{
@@ -2226,9 +2347,11 @@ public partial class Transformacao : Node2D
 			// ======================================================================================================
 			TerminarOEstouroDaLuz();
 			Assumir();
+			Pedaco("a virada (o que esperava a cena acabar)");
 		}
 
 		if (b.Som.Length > 0) Som(b.Som);
+		Pedaco("o som");
 
 		// ============================ AS FALAS SAO DE QUEM ESTA PERTO -- A DIVIDA FOI PAGA ============================
 		// Aqui morava um `if (!_souEu) return`, justificado assim: *"o cliente nao tem mapa de
@@ -2252,6 +2375,7 @@ public partial class Transformacao : Node2D
 			else if (_nome.Length > 0) Chat.Sistema($"{_nome}: {b.Fala}");
 		}
 		if (b.Narra.Length > 0) Chat.Sistema($"* {b.Narra}");
+		Pedaco("a fala e a narracao");
 	}
 
 	/// <summary>
@@ -2367,6 +2491,7 @@ public partial class Transformacao : Node2D
 		// As duas linhas de cima FICAM valendo mesmo sem forma, e de proposito: se um roteiro futuro de
 		// cena sem forma acender a aura base ou o piscar, quem os apaga continua sendo a virada.
 		// ======================================================================================================
+		Pedaco("a aura base, o piscar e a silhueta devolvidos");
 		if (_forma != null) Vestir(_forma);
 
 		// ============================ E QUEM ESPERAVA A CENA ACABAR ENTRA AQUI, POR ULTIMO ============================
@@ -2545,13 +2670,17 @@ public partial class Transformacao : Node2D
 		// PRIMEIRO AS CAMADAS: `CorpoDaForma` cria a camada da pelagem do SSJ4 com material novo, e
 		// uniform novo nasce zerado -- escrevendo o contorno antes, a pelagem estreava sem ele.
 		// Mesma ordem do `World.AoMudarForma`.
+		Pedaco("o vestir: antes das camadas");
 		vis?.CorpoDaForma(d);
+		Pedaco("o vestir: o corpo proprio da forma");
 		// UMA CHAMADA, e a ordem entre sprite, tinta e rabo mora dentro dela -- ver
 		// `CharacterVisual.VestirCabeloDaForma` e o bloco de cima sobre a ordem contra o `CorpoDaForma`.
 		vis?.VestirCabeloDaForma(d);
+		Pedaco("o vestir: o cabelo");
 		// O OVERLAY COLADO NO CORPO. Junto das outras duas e pelo mesmo motivo de ordem: as tres
 		// mexem em CAMADAS, e o contorno/faisca daqui pra baixo escreve nos materiais delas.
 		vis?.ColadasDaForma(d);
+		Pedaco("o vestir: as coladas");
 
 		// ============================ A FAISCA, E ELA E DOS DOIS CORPOS ============================
 		// `Raios > 0` E NAO "tem forma": o SSJ1 e o SSJ4 tem `Raios = 0` e ligar o node pra emitir zero
@@ -2563,6 +2692,7 @@ public partial class Transformacao : Node2D
 		// morreu junto com o contorno daqui -- ver o bloco no fim deste metodo.)
 		if (_alvo.GetNodeOrNull<RaiosDaForma>("Raios") is { } raios)
 			raios.Definir(d.Raios > 0, new Color(Jandirus.Core.Forms.Catalogo.CorDosRaios(d)), d.Raios);
+		Pedaco("o vestir: a faisca");
 
 		// ============================ A NEBULOSA, PELO MESMO MOTIVO DA FAISCA ============================
 		// Ela e da FORMA e nao do Ki, entao vale nos dois corpos sem perguntar de quem eles sao --
@@ -2580,6 +2710,7 @@ public partial class Transformacao : Node2D
 		// ==============================================================================================
 		if (_alvo.GetNodeOrNull<NebulosaDaForma>("Nebulosa") is { } nebulosa)
 			nebulosa.Definir(Jandirus.Core.Forms.Catalogo.PaletaDaNebulosa(d));
+		Pedaco("o vestir: a nebulosa");
 
 		// ============================ A AURA E A CARGA: A COR E A FOLHA, NAO O ACENDER ============================
 		// PREPARA, NAO ACENDE -- nem na estreia. A cinematica tem os proprios efeitos (a aura GRANDE,
@@ -2617,6 +2748,7 @@ public partial class Transformacao : Node2D
 			aura.Preparar(d, !ehBase);
 		}
 		_alvo.GetNodeOrNull<CargaVisual>("Carga")?.Folha(Jandirus.Core.Forms.Catalogo.Folha(d));
+		Pedaco("o vestir: a aura e a carga");
 
 		// ============================ E A CHAMA DA CENA VESTE O MESMO DEGRAU ============================
 		// O terceiro desenho da mesma arte -- ver `ChamaDoDegrau`. Ele entra AQUI, junto dos outros dois,
@@ -2628,6 +2760,7 @@ public partial class Transformacao : Node2D
 		// sai -- a mesma divisao "prepara, mas nao acende" do node `Aura` logo acima.
 		// ==========================================================================================
 		ChamaDoDegrau(d);
+		Pedaco("o vestir: a chama da cena");
 
 		// ============================ O CONTORNO NAO SAI DAQUI, E NEM DO CORPO ALHEIO ============================
 		// Aqui morava um `if (_souEu) return;` seguido de um `vis.AuraDaForma(CorDoContorno(d),
@@ -2656,13 +2789,77 @@ public partial class Transformacao : Node2D
 	/// </summary>
 	public void VestirDeTeste(FormaDef d) => Vestir(d);
 
+	/// <summary>As folhas da forma ja foram pedidas a thread de carga? Ver <see cref="AdiantarAsFolhasDaForma"/>.</summary>
+	private bool _folhasPedidas;
+
+	/// <summary>
+	/// ============================ AS FOLHAS DA FORMA CHEGAM ANTES DO BEAT QUE AS VESTE ============================
+	/// O penteado, o corpo proprio e as coladas da forma eram lidos do disco, pela thread principal, no quadro em que
+	/// eram vestidos pela primeira vez -- e esse quadro e o do beat que ASSUME, o instante mais visto da cena (ou o da
+	/// primeira piscada de cabelo, nas tres cenas que piscam). MEDIDO em 2026-10-08 pela `--diagestouro --temas
+	/// --cenas`, cada folha no pedaco dela: o penteado 6,5 a 9,4 ms, o corpo do SSJ4 7,0, a colada do Blue 9,9.
+	///
+	/// A CENA SABE A FORMA DESDE QUE NASCE, e o corpo sabe que folhas ela lhe pede (`CharacterVisual.FolhasDaForma`:
+	/// a resposta depende do penteado, da pele e da ficha de quem se transforma -- por isso isto nao e do lobby).
+	/// Entao a cena as pede a thread de carga logo no comeco, pela porta das folhas (`FolhasPresas.Adiantar`), e as
+	/// recolhe conforme chegam: quando o beat for vestir, elas ja estao presas.
+	///
+	/// NO PRIMEIRO QUADRO CALMO, e nao no `_Ready`: achar o penteado da forma varre a pasta atras da variante
+	/// (`CabelosDeForma.De`, uma vez por penteado e sufixo), e o quadro em que a cena nasce e o do beat zero ja tem
+	/// a conta deles pra pagar. O primeiro beat que veste alguma coisa esta a um quarto de segundo dali, no minimo.
+	///
+	/// QUEM NAO CHEGAR A TEMPO NAO QUEBRA NADA: o `FolhasPresas.Carregar` do beat espera a leitura que ja comecou --
+	/// no pior caso, o que ele esperava antes.
+	/// ==============================================================================================================
+	/// </summary>
+	private void AdiantarAsFolhasDaForma(bool quadroCalmo)
+	{
+		if (!_folhasPedidas && quadroCalmo)
+		{
+			_folhasPedidas = true;
+			if (!Aquecimento.SemAdiantarACenaDeTeste && _forma != null
+				&& _alvo.GetNodeOrNull<CharacterVisual>("Visual") is { } vis)
+			{
+				// OS DEGRAUS QUE A CENA VESTE NO CAMINHO (so a do SSJ3, hoje) e, por ultimo, a forma.
+				if (Array.Exists(_cena.Beats, b => b.Faz.HasFlag(Efeito.VesteDegrau)))
+					foreach (FormaDef degrau in Cinematicas.EscadaDaCena(_forma))
+						foreach (string folha in vis.FolhasDaForma(degrau)) FolhasPresas.Adiantar(folha);
+				foreach (string folha in vis.FolhasDaForma(_forma)) FolhasPresas.Adiantar(folha);
+			}
+		}
+
+		// O QUE A THREAD JA ENTREGOU PASSA A ESTAR PRESO, um ou dois quadros depois do pedido.
+		FolhasPresas.RecolherAsAdiantadas();
+	}
+
+	/// <summary>Os oito feixes de chao DESTA cena, na cor dos raios dela. Ver <see cref="MontarOsFeixes"/>.</summary>
+	private void Feixes() => MontarOsFeixes(this, _corRaios);
+
+	/// <summary>
+	/// O ENSAIO DO LOBBY (ver `Aquecimento.AtosDosRaios`): os oito feixes de chao, pela receita de producao
+	/// (<see cref="MontarOsFeixes"/>), em volta de um ponto do palco fora da tela -- pra a pipeline do raio desenhado
+	/// por SPRITE ser montada ALI, e nao no quadro do primeiro beat de feixes do processo (aos 6 s da primeira
+	/// cinematica de quase toda forma). Sem cena: os feixes nao precisam de nada dela alem da cor, e uma cena de
+	/// ensaio nao dispara beat nenhum (ver <see cref="Ensaiar"/>). Morrem sozinhos em 0,75 s, ou antes, com o palco.
+	/// </summary>
+	public static void EnsaiarOsFeixes(Node2D pai, Vector2 onde)
+	{
+		var chao = new Node2D { Name = "FeixesDoEnsaio", Position = onde };
+		pai.AddChild(chao);
+		MontarOsFeixes(chao, Colors.White);
+	}
+
 	/// <summary>
 	/// OS OITO FEIXES DE CHAO -- `Electricgroundbeam.dmi` saindo nas 8 direcoes.
 	///
 	/// Reaproveita o shader do raio: um feixe e um raio esticado, apontado pra fora. Fazer um
 	/// segundo shader quase igual seria pagar duas vezes pelo mesmo desenho.
+	///
+	/// ESTATICO, com o pai e a cor vindos de fora: a cena os pendura em si mesma (<see cref="Feixes"/>) e o ensaio do
+	/// aquecimento num node do palco (<see cref="EnsaiarOsFeixes"/>). A receita e UMA, e e isso que faz a pipeline
+	/// montada no ensaio ser a que a cena acha pronta.
 	/// </summary>
-	private void Feixes()
+	private static void MontarOsFeixes(Node2D pai, Color cor)
 	{
 		var sh = ResourceLoader.Load<Shader>("res://Assets/Shaders/RaioDaForma.gdshader");
 		if (sh == null) return;
@@ -2677,7 +2874,7 @@ public partial class Transformacao : Node2D
 			// O FEIXE E RAIO, e nao aura: ele reusa o `RaioDaForma.gdshader` logo acima e desenha a
 			// mesma eletricidade deitada no chao. Entao ele segue a cor dos RAIOS -- no SSJ2 e no
 			// SSJ3 os oito feixes saem azuis junto com a faisca, e nao dourados por conta propria.
-			m.SetShaderParameter("cor", _corRaios);
+			m.SetShaderParameter("cor", cor);
 			m.SetShaderParameter("zigue", 0.16f);
 			m.SetShaderParameter("grossura", 0.07f);
 			m.SetShaderParameter("halo", 1.4f);
@@ -2706,10 +2903,10 @@ public partial class Transformacao : Node2D
 				ZIndex = 4,
 				ZAsRelative = false,
 			};
-			AddChild(s);
+			pai.AddChild(s);
 
 			// O FEIXE VIAJA PRA FORA e apaga. `spawn walk(A, dir, 2)` + `spawn(50) del(A)` no DM.
-			Tween tw = CreateTween().SetParallel();
+			Tween tw = pai.CreateTween().SetParallel();
 			tw.TweenProperty(s, "position", s.Position * 3.4f, 0.75);
 			tw.TweenProperty(s, "modulate:a", 0f, 0.75);
 			tw.Chain().TweenCallback(Callable.From(s.QueueFree));
@@ -3095,6 +3292,30 @@ public partial class Transformacao : Node2D
 
 		_ => null,
 	};
+
+	/// <summary>
+	/// OS ARQUIVOS DE SOM QUE AS CENAS TOCAM: o `Beat.Som` de cada beat de cada roteiro, ja resolvido pelo
+	/// <see cref="CaminhoDoSom"/>, sem repeticao. E o que o `Aquecimento` carrega no lobby, numa thread, e SEGURA.
+	///
+	/// LIDO NA HORA pelo <see cref="Som"/> (`AudioDirector.EfeitoNoLugar` carrega o arquivo a cada toque), cada som
+	/// parava a thread principal por 2,5 a 5,6 ms no quadro do beat dele -- medido em 2026-10-08 pela `--diagestouro
+	/// --temas --cenas` --, e ninguem o segurava: o tocador acaba, o coletor do .NET passa, e a cena seguinte le o
+	/// mesmo arquivo de novo.
+	///
+	/// A LISTA SAI DOS ROTEIROS, e nao de uma segunda tabela ao lado do `CaminhoDoSom`: som novo num beat ja entra
+	/// aqui. (As cenas avulsas -- a furia, a fusao e as tres do bio-androide -- nao estao em `Cinematicas.Todas`, e
+	/// por isso vem nomeadas.)
+	/// </summary>
+	public static IEnumerable<string> SonsDasCenas()
+	{
+		var vistos = new HashSet<string>(StringComparer.Ordinal);
+		Cinematica[] cenas = [.. Cinematicas.Todas, Cinematicas.Furia, Cinematicas.Fusao,
+							  Cinematicas.BioSemiPerfeito, Cinematicas.BioPerfeito, Cinematicas.BioSsj2];
+		foreach (Cinematica cena in cenas)
+			foreach (Beat beat in cena.Beats)
+				if (beat.Som.Length > 0 && CaminhoDoSom(beat.Som) is { Length: > 0 } caminho && vistos.Add(caminho))
+					yield return caminho;
+	}
 
 	private void Som(string nome)
 	{

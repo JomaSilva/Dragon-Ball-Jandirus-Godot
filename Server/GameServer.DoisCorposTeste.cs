@@ -1935,10 +1935,15 @@ public sealed partial class GameServer
 		//   3. E A PORTA "RESISTIA" a forca 20 -- defeito de producao, consertado no `DerrubarOQueBarraOsPes`
 		//      (`GameServer.Empurrao.cs`) e medido na familia 11 da `--kbteste`.
 		// Agora quem leva e o colo: quem carrega VOA pelo `AplicarComando` (o mesmo atuador do cerebro e do
-		// passeio da familia 5) e o corpo vem junto pelo `LevarNoColo`. No ar nao ha mapa
-		// (`AtravessandoCenario`), entao a viagem nao depende de parede nenhuma -- e ela termina DENTRO do palco,
-		// o unico chao desta bancada que foi medido. O arremesso de baixo sai de um lugar garantido, e nao da
-		// geografia de onde a conta nasceu.
+		// passeio da familia 5) e o corpo vem junto pelo `LevarNoColo`. No ar o cenario passa por baixo
+		// (`Voo.ModoNaAltura`), entao DO LADO DE FORA a viagem nao depende de parede nenhuma -- e ela termina
+		// DENTRO do palco, o unico chao desta bancada que foi medido. O arremesso de baixo sai de um lugar
+		// garantido, e nao da geografia de onde a conta nasceu.
+		//
+		// MAS A CASA DO BERCO NAO SE ATRAVESSA MAIS VOANDO (2026-10-08): a parede de PREDIO barra quem voa
+		// (`ClasseDePredio` -- "voar por cima de parede de base de player n deveria ser possivel"), e esta viagem,
+		// que saia por cima da parede sul, passou a parar encostada nela, a dois tiles de onde o corpo caiu. Quem
+		// carrega sai agora por onde se sai: as PORTAS (`VoarPeloCaminho`, logo abaixo).
 		//
 		// A CHEGADA E EM DUAS PERNAS de proposito: a `origem` do palco e depois `destino`, no rumo `d`. O passo do
 		// voo nao pousa no pixel (para a ate meio tile do alvo), e chegando PELO rumo do palco o erro fica ao longo
@@ -1953,6 +1958,65 @@ public sealed partial class GameServer
 		{
 			for (int i = 0; i < 900 && (alvo - a.Pos).Length > T / 2; i++)
 				TiqueDoMundo(() => AplicarComando(a, new Comando { Rumo = alvo - a.Pos }, Protocol.TickSeconds));
+		}
+
+		// ============================ O CAMINHO QUE EXISTE: PELAS PORTAS, E POR FORA DOS PREDIOS ============================
+		// A linha reta bastava enquanto no ar nao havia mapa. Agora a parede de predio barra quem voa, e o corpo cai
+		// DENTRO de um: a casa do berco da Terra (uma sala, uma porta) ou o castelo de Vegeta (varias salas), conforme
+		// onde a conta acordou. Entao quem carrega faz o que um jogador faz -- sai pelas portas e contorna a casa:
+		// uma busca em largura, de celula em celula, pelo que NAO barra quem voa (`Bloqueia(..., PorCima)`), com a
+		// porta do mapa contando como passagem. Cada porta do caminho e aberta pelo `AbrirPorta` de producao, que e o
+		// que o `TickDasPortas` faz por quem anda contra ela (esta bancada nao roda esse tique).
+		//
+		// A rodada de 2026-10-08 mediu as duas falhas que isto fecha: a viagem em linha reta parada na parede sul da
+		// casa (o corpo a 2,2 tiles de onde caiu) e, saindo so pela porta mais proxima, parada dentro do castelo.
+		// ====================================================================================================================
+		void VoarPeloCaminho(Vec2 alvo)
+		{
+			if (MapaDaZonaOuCatalogo(a.Zone) is not { } chao) return;
+			var portas = new HashSet<(int, int)>();
+			if (_portasDoMapa.TryGetValue(a.Zone.Name, out List<PortaDoMapa>? lista))
+				foreach (PortaDoMapa p in lista) portas.Add((p.X, p.Y));
+
+			int w = chao.Width, h = chao.Height;
+			(int X, int Y) Celula(Vec2 v) => ((int)MathF.Floor(v.X / T), (int)MathF.Floor((v.Y + MoveRules.FeetOffsetY) / T));
+			(int X, int Y) de = Celula(a.Pos), ate = Celula(alvo);
+			if (de.X < 0 || de.Y < 0 || de.X >= w || de.Y >= h || ate.X < 0 || ate.Y < 0 || ate.X >= w || ate.Y >= h) return;
+
+			var veioDe = new int[w * h];
+			Array.Fill(veioDe, -1);
+			var fila = new Queue<int>();
+			int partida = de.Y * w + de.X, chegada = ate.Y * w + ate.X;
+			veioDe[partida] = partida;
+			fila.Enqueue(partida);
+			while (fila.Count > 0 && veioDe[chegada] < 0)
+			{
+				int i = fila.Dequeue();
+				int cx = i % w, cy = i / w;
+				foreach ((int dx, int dy) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+				{
+					int nx = cx + dx, ny = cy + dy;
+					if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+					int j = ny * w + nx;
+					if (veioDe[j] >= 0) continue;
+					if (chao.Bloqueia(nx, ny, ModoDeTravessia.PorCima) && !portas.Contains((nx, ny))) continue;
+					veioDe[j] = i;
+					fila.Enqueue(j);
+				}
+			}
+			if (veioDe[chegada] < 0) return;   // nao ha caminho: a afirmacao de baixo reprova, com as celulas na frase
+
+			var caminho = new List<(int X, int Y)>();
+			for (int i = chegada; i != partida; i = veioDe[i]) caminho.Add((i % w, i / w));
+			caminho.Reverse();
+			foreach ((int X, int Y) cel in caminho)
+			{
+				if (portas.Contains(cel)) AbrirPorta(a.Zone.Name, cel.X, cel.Y, NowMs());
+				// o centro do SPRITE fica acima do centro da celula: sao os pes que andam de celula em celula
+				var ponto = new Vec2((cel.X + 0.5f) * T, (cel.Y + 0.5f) * T - MoveRules.FeetOffsetY);
+				for (int k = 0; k < 120 && (ponto - a.Pos).Length > T / 4; k++)
+					TiqueDoMundo(() => AplicarComando(a, new Comando { Rumo = ponto - a.Pos }, Protocol.TickSeconds));
+			}
 		}
 
 		// ============================ O DEFEITO INJETADO #7b ============================
@@ -1977,6 +2041,7 @@ public sealed partial class GameServer
 				{
 					VoarAte(ondeCaiu);
 					Vec2 partida = c.Pos;
+					VoarPeloCaminho(origem);
 					VoarAte(origem);
 					VoarAte(destino);
 					return a.AgarrandoId == c.Id && c.AgarradoPorId == a.Id
@@ -1995,7 +2060,9 @@ public sealed partial class GameServer
 					LevantarVoo(a);
 				});
 		AfirmarDc($"...e o corpo ficou LONGE de onde caiu ({(c.Pos - ondeCaiu).Length / T:0.0} tiles), em cima do "
-				+ "palco -- a viagem foi do COLO, antes de qualquer arremesso",
+				+ "palco -- a viagem foi do COLO, antes de qualquer arremesso "
+				+ $"(o corpo na celula {c.Pos.X / T:0.0},{c.Pos.Y / T:0.0}; o palco em {destino.X / T:0.0},{destino.Y / T:0.0}; "
+				+ $"caiu em {ondeCaiu.X / T:0.0},{ondeCaiu.Y / T:0.0})",
 				  (c.Pos - ondeCaiu).Length > T && (c.Pos - destino).Length <= T / 2);
 
 		// ---- LARGADO EM CIMA DO PALCO, E ARREMESSADO ----

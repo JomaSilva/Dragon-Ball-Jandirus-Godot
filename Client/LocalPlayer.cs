@@ -64,6 +64,10 @@ public partial class LocalPlayer : Node2D
 
 	private CharacterVisual _visual = null!;
 
+	// O IRMAO QUE O `_Process` PROCURA EM TODO QUADRO. O caminho fica guardado: a `string` entregue ao
+	// `GetNodeOrNull` fabrica um `NodePath` por chamada, lixo com finalizador (ver o compasso do `CharacterVisual`).
+	private static readonly NodePath CaminhoDoRastro = "Rastro";
+
 	/// <summary>
 	/// ============================ DERIVADO, PORQUE 40 JA FICOU VELHO ============================
 	/// Segundos que o corpo pode ficar sem poder ANDAR antes de o cliente destravar sozinho. E uma
@@ -180,12 +184,6 @@ public partial class LocalPlayer : Node2D
 	/// </summary>
 	public float Altitude => _altitudeNaTela;
 
-	/// <summary>
-	/// Estou acima do cenario? Pergunta de REGRA, entao usa o valor CRU do servidor -- e a MESMA
-	/// pergunta que ele faz, pelo mesmo numero. Suavizar aqui poria as duas pontas em desacordo.
-	/// </summary>
-	public bool AtravessandoCenario => Voo.AtravessaCenario(_altitude);
-
 	/// <summary>O servidor mandou a minha altura. Ver o laco de snapshot em <c>World</c>.</summary>
 	public void ReceberAltura(bool voando, float altitude)
 		=> _altitude = voando ? altitude : 0f;
@@ -205,6 +203,39 @@ public partial class LocalPlayer : Node2D
 
 	/// <summary>Ha um canal de ki de pe neste corpo -- carregando OU atirando. Ver `Protocol.Pose.Canalizando`.</summary>
 	private bool _canalDeKi;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): o corpo local ignora o olhar que o servidor cravou -- quem atira em alguem
+	/// marcado se ve de costas pro proprio tiro, e o pacote de movimento seguinte manda o olhar velho de volta.
+	/// E o jogo sem a metade de ca do `S2C.Olhar`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool OlharDoServidorIgnoradoDeTeste;
+
+	/// <summary>
+	/// O SERVIDOR VIROU O MEU CORPO (`S2C.Olhar`). Hoje e o ataque de ki com alguem marcado: o tiro sai no alvo
+	/// e o corpo encara o tiro (dono, 2026-10-09 -- a regra esta em `MiraDeKi`).
+	///
+	/// ============================ POR QUE NAO BASTA O SERVIDOR VIRAR ============================
+	/// A direcao que ele calcula so viaja pros OUTROS, no snapshot. O meu sprite e desenhado por mim, com a
+	/// direcao que saiu do MEU movimento -- e e essa que o pacote de input leva de volta. Sem esta metade eu me
+	/// veria de costas pro proprio tiro. E a mesma frase do soco no marcado, la embaixo no `LerAcoes`; a diferenca
+	/// e que o soco eu sei de antemao que vou dar, e o tiro quem decide que SAIU (Ki, recarga, carga do raio que
+	/// fechou) e o servidor.
+	///
+	/// E O OLHAR FICA CRAVADO PELO MESMO PRAZO DE LA (`MiraDeKi.OlharDoTiroMs`): quem atira andando teria o
+	/// olhar reescrito pelo passo no quadro seguinte, e as duas pontas voltariam a discordar -- o servidor
+	/// segurando o corpo virado pro alvo e a minha tela nao.
+	/// ============================================================================================
+	/// </summary>
+	public void ReceberOlhar(Facing olhar)
+	{
+		if (OlharDoServidorIgnoradoDeTeste) return;
+		_facing = olhar;
+		_olharCravadoPor = Jandirus.Core.Combat.MiraDeKi.OlharDoTiroMs / 1000.0;
+	}
+
+	/// <summary>Quantos segundos o olhar ainda e do servidor. Ver <see cref="ReceberOlhar"/>.</summary>
+	private double _olharCravadoPor;
 
 	/// <summary>
 	/// O raio JA ESTA SAINDO da mao (o `beaming` do DM), e nao so sendo reunido.
@@ -324,6 +355,10 @@ public partial class LocalPlayer : Node2D
 		AddChild(_sombra);
 		_pos = new Vec2(Position.X, Position.Y);   // o World ja nasceu com o spawn no construtor
 		Desenhar();
+
+		// O FILHO QUE NASCER DAQUI PRA FRENTE COM O CORPO NO AR sobe na hora -- ver `SubirComOVoo.AoNascer`.
+		// Sinal do proprio node: morre com ele, nao ha o que cancelar.
+		ChildEnteredTree += LevantarFilhoNovo;
 
 		if (GameClient.Instance is not { } cli) return;
 
@@ -598,7 +633,7 @@ public partial class LocalPlayer : Node2D
 			// O rastro e o borrao de corrida sao do DONO correndo. Possessao pode durar um minuto, e
 			// um rastro pendurado nesse tempo todo e um efeito que ninguem sabe de onde veio.
 			_visual.Correr(false, Vector2.Zero);
-			if (GetNodeOrNull<RastroDeCorrida>("Rastro") is { } rastroParado) rastroParado.Definir(false);
+			if (GetNodeOrNull<RastroDeCorrida>(CaminhoDoRastro) is { } rastroParado) rastroParado.Definir(false);
 
 			// A ALTURA CONTINUA ANDANDO. Ela e do servidor tambem, mas quem a DESENHA e este quadro --
 			// pular estas duas linhas congelaria a sombra e o zoom de quem foi possuido no ar.
@@ -670,8 +705,8 @@ public partial class LocalPlayer : Node2D
 		var input = PorQueNaoAnda.Length > 0
 			? Vector2.Zero   // no chao nao se anda: ver OnSheet
 			: new Vector2(
-				Godot.Input.GetActionStrength("move_right") - Godot.Input.GetActionStrength("move_left"),
-				Godot.Input.GetActionStrength("move_down") - Godot.Input.GetActionStrength("move_up"));
+				Godot.Input.GetActionStrength(Teclas.NomeNoMotor("move_right")) - Godot.Input.GetActionStrength(Teclas.NomeNoMotor("move_left")),
+				Godot.Input.GetActionStrength(Teclas.NomeNoMotor("move_down")) - Godot.Input.GetActionStrength(Teclas.NomeNoMotor("move_up")));
 
 		var dir = new Vec2(input.X, input.Y);
 		bool tentandoAndar = dir.LengthSquared > 1e-6f;
@@ -715,7 +750,7 @@ public partial class LocalPlayer : Node2D
 		//   * socando, ele e o modificador do golpe PESADO / investida longa.
 		// Se as duas dependessem de estar andando, segurar SHIFT parado e apertar espaco
 		// daria um soco leve -- e o dono pediu justamente SHIFT+ESPACO como o golpe forte.
-		_shift = !_caido && Godot.Input.IsActionPressed("run");
+		_shift = !_caido && Godot.Input.IsActionPressed(Teclas.NomeNoMotor("run"));
 
 		// O C TEM PRIORIDADE SOBRE O SHIFT.
 		//
@@ -775,10 +810,11 @@ public partial class LocalPlayer : Node2D
 		}
 
 		Vec2 antes = _pos;
-		// VOANDO ALTO, NAO HA MAPA -- e o `isflying` do original, e a MESMA linha que o servidor
-		// escreve em `GameServer.Input`. As duas pontas decidem pelo mesmo numero e pela mesma
-		// funcao, entao nao existe a faixa de altura em que uma passa e a outra recusa (que e o
-		// que viraria correcao de posicao em jogo honesto -- o personagem tremendo na parede).
+		// VOANDO ALTO, O CENARIO PASSA POR BAIXO -- e o `isflying` do original, e a MESMA escolha que o
+		// servidor faz em `GameServer.Input` (`Voo.ModoNaAltura`). As duas pontas decidem pelo mesmo
+		// numero e pela mesma funcao, entao nao existe a faixa de altura em que uma passa e a outra
+		// recusa (que e o que viraria correcao de posicao em jogo honesto -- o personagem tremendo na
+		// parede).
 		// ...E ABAIXO DELA, A AGUA: quem esta baixo consulta o mapa, e o `modo` diz se a agua o para.
 		// A funcao e a MESMA do servidor (ver `ModoDoCorpo`).
 		// ============================ ...E OS CORPOS, NO MESMO `Advance` ============================
@@ -795,8 +831,12 @@ public partial class LocalPlayer : Node2D
 		var vizinhos = new Jandirus.Core.World.Vizinhanca(
 			_corpos, GameClient.Instance?.LocalId ?? 0, Jandirus.Core.World.Voo.Andar(_altitude));
 
+		// ACIMA DO CENARIO O MAPA CONTINUA VALENDO, com o modo `PorCima` -- e so a parede de predio para
+		// (`ClasseDePredio`). A altura e a CRUA do servidor (`_altitude`, e nao a suavizada do desenho):
+		// e a mesma pergunta que ele faz no `Input`, pelo mesmo numero, e suavizar aqui poria as duas
+		// pontas em desacordo.
 		_pos = MoveRules.Advance(_pos, dir, (float)delta, SpeedStat,
-			AtravessandoCenario ? null : Mapa, out _, _correndo, ModoDoCorpo, vizinhos);
+			Mapa, out _, _correndo, Voo.ModoNaAltura(_altitude, ModoDoCorpo), vizinhos);
 		Desenhar();
 
 		// ANDANDO = saiu do lugar, nao = apertou a tecla. Empurrando a parede o personagem
@@ -834,7 +874,9 @@ public partial class LocalPlayer : Node2D
 		}
 		else
 		{
-			if (tentandoAndar) _facing = MoveRules.FacingFrom(dir, _facing);
+			// O OLHAR QUE O SERVIDOR CRAVOU (o tiro no marcado) NAO E REESCRITO PELO PASSO ate o prazo vencer.
+			if (_olharCravadoPor > 0) _olharCravadoPor -= delta;
+			else if (tentandoAndar) _facing = MoveRules.FacingFrom(dir, _facing);
 			_visual.SetMotion(_facing, andando);
 		}
 
@@ -857,7 +899,7 @@ public partial class LocalPlayer : Node2D
 
 		// O RASTRO segue o deslocamento REAL: parado empurrando parede nao deixa rastro, porque
 		// rastro e do corpo que passou por um lugar.
-		if (GetNodeOrNull<RastroDeCorrida>("Rastro") is { } rastro) rastro.Definir(_correndo && andando);
+		if (GetNodeOrNull<RastroDeCorrida>(CaminhoDoRastro) is { } rastro) rastro.Definir(_correndo && andando);
 
 		LerAcoes(tentandoAndar, delta);
 
@@ -878,17 +920,17 @@ public partial class LocalPlayer : Node2D
 		// quem segura um feixe com as maos -- calar a leitura seria PERDER a disputa de ki pelo portao)
 		// e o SOCO (o espaco nao e letra, e o corpo ja esta preso pelo `Stun`).
 		// ==================================================================================================================
-		bool subir = !Foco.AtalhosMudos && !PresoNoTorneio && Godot.Input.IsActionPressed("subir");
-		bool descer = !Foco.AtalhosMudos && !PresoNoTorneio && Godot.Input.IsActionPressed("descer");
+		bool subir = !Foco.AtalhosMudos && !PresoNoTorneio && Godot.Input.IsActionPressed(Teclas.NomeNoMotor("subir"));
+		bool descer = !Foco.AtalhosMudos && !PresoNoTorneio && Godot.Input.IsActionPressed(Teclas.NomeNoMotor("descer"));
 
 		// V ALTERNA O VOO. Vai pelo canal de habilidade -- e o MESMO caminho do verb do menu, pra
 		// que a tecla e o botao nao virem duas regras que precisam concordar.
-		if (!Foco.AtalhosMudos && !PresoNoTorneio && Godot.Input.IsActionJustPressed("voar"))
+		if (!Foco.AtalhosMudos && !PresoNoTorneio && Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("voar")))
 			GameClient.Instance?.SendHabilidade("voar");
 
 		// N ALTERNA O NADO, pelo MESMO canal do voo e do botao do menu. Quem decide se liga (tem agua
 		// aqui? esta de pe?) e o servidor -- o cliente so pede, e recebe a resposta na ficha.
-		if (!Foco.AtalhosMudos && !PresoNoTorneio && Godot.Input.IsActionJustPressed("nadar"))
+		if (!Foco.AtalhosMudos && !PresoNoTorneio && Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("nadar")))
 			GameClient.Instance?.SendHabilidade("nadar");
 
 		// Q CICLA O AGARRAO -- pegar, levantar no colo, soltar. Pelo MESMO canal do voo e do nado, e
@@ -898,7 +940,7 @@ public partial class LocalPlayer : Node2D
 		// **NAO HA TECLA DE ARREMESSAR**: segurando alguem, o primeiro passo o joga (`Throw.dm:1-3`),
 		// e quem ve isso e o `TickDoAgarrao` do servidor lendo o `Moving` que este mesmo laco ja
 		// manda. Uma tecla a mais aqui seria um gesto que o original nao tem.
-		if (!Foco.AtalhosMudos && Godot.Input.IsActionJustPressed("agarrar"))
+		if (!Foco.AtalhosMudos && Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("agarrar")))
 			GameClient.Instance?.SendHabilidade("agarrar");
 
 		SeguirAltura(delta);
@@ -956,6 +998,13 @@ public partial class LocalPlayer : Node2D
 	/// nasce sem nome); agora e so mais um filho `Node2D` e cai no caso normal da varredura.
 	/// ========================================================================================================
 	/// </summary>
+	/// <summary>
+	/// A altura que os filhos JA TEM (a da ultima varredura) vai pro filho que acabou de nascer. Antes da
+	/// primeira varredura ela e -1 e nao ha o que dar: o corpo ainda nao foi desenhado em altura nenhuma.
+	/// </summary>
+	private void LevantarFilhoNovo(Node filho)
+		=> SubirComOVoo.AoNascer(filho, new Vector2(0, -Mathf.Max(_altitudeDesenhada, 0f) * Voo.EscalaNaTela));
+
 	private void AplicarAltura()
 	{
 		if (Mathf.IsEqualApprox(_altitudeNaTela, _altitudeDesenhada)) return;
@@ -1069,7 +1118,7 @@ public partial class LocalPlayer : Node2D
 
 		// GUARDA. Segurar ALT ergue o braco; erguer a guarda no instante do golpe vira
 		// contra-ataque, e por isso ela e um estado continuo e nao um toque.
-		bool guardaAgora = Godot.Input.IsActionPressed("guard") && !andando && !Foco.Digitando;
+		bool guardaAgora = Godot.Input.IsActionPressed(Teclas.NomeNoMotor("guard")) && !andando && !Foco.Digitando;
 		if (guardaAgora != _guarda)
 		{
 			_guarda = guardaAgora;
@@ -1081,13 +1130,13 @@ public partial class LocalPlayer : Node2D
 		if (!Foco.AtalhosMudos) LerTeclaC(delta);
 		else if (_carregando) { _carregando = false; GameClient.Instance?.SendCarregar(false); }
 
-		if (!Foco.AtalhosMudos && Godot.Input.IsActionJustPressed("reverter"))
+		if (!Foco.AtalhosMudos && Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("reverter")))
 			GameClient.Instance?.SendTransformar(false);
 
 		// UM soco por vez. Sem esta trava, martelar o espaco re-armava o cronometro a cada
 		// tecla e o personagem ficava preso na pose de soco pra sempre -- e como todo estado
 		// do .dmi tem loop, o ciclo se repetia sem nunca voltar a ficar de pe.
-		if (!Foco.Digitando && Godot.Input.IsActionJustPressed("attack") && _ataqueAte <= 0)
+		if (!Foco.Digitando && Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("attack")) && _ataqueAte <= 0)
 		{
 			// SHIFT + ESPACO = GOLPE PESADO, e com ele a investida longa. So ESPACO = golpe
 			// leve, com um passo curto pra fechar o meio metro que falta. Nao ha tecla
@@ -1235,9 +1284,9 @@ public partial class LocalPlayer : Node2D
 		// "treinar" e "meditar" sao T e M -- no meio de uma frase, nao; e no meio de um embate tambem
 		// nao, que as duas estao entre as 22 letras sorteadas. Ver `Foco.AtalhosMudos`.
 		if (Foco.AtalhosMudos) { }
-		else if (!soASaida && Godot.Input.IsActionJustPressed("train"))
+		else if (!soASaida && Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("train")))
 			nova = _atividade == Protocol.Activity.Treinando ? Protocol.Activity.Parado : Protocol.Activity.Treinando;
-		else if (Godot.Input.IsActionJustPressed("meditate"))
+		else if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("meditate")))
 		{
 			// ============================ O M PERGUNTA ANTES DE MEDITAR ============================
 			// *"faca q ao MEDITAR uma TELINHA vai abrir e perguntar se vc quer so MEDITAR NORMAL ou ir
@@ -1352,7 +1401,7 @@ public partial class LocalPlayer : Node2D
 	{
 		if (_duploAte > 0) _duploAte -= delta;
 
-		if (Godot.Input.IsActionJustPressed("transformar"))
+		if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("transformar")))
 		{
 			if (_duploAte > 0) { _duploAte = 0; GameClient.Instance?.SendTransformar(true); }
 			else _duploAte = JanelaDoDuplo;
@@ -1360,7 +1409,7 @@ public partial class LocalPlayer : Node2D
 
 		// SEGURAR. Caido nao carrega -- o servidor recusa de qualquer jeito, e mandar mesmo assim
 		// seria um pacote por quadro pra ouvir nao.
-		bool quer = !_caido && Godot.Input.IsActionPressed("transformar");
+		bool quer = !_caido && Godot.Input.IsActionPressed(Teclas.NomeNoMotor("transformar"));
 		if (quer == _carregando) return;
 
 		_carregando = quer;
@@ -1449,7 +1498,7 @@ public partial class LocalPlayer : Node2D
 	/// </summary>
 	public void BorrarArranque(Vector2 doServidor)
 	{
-		if (GetNodeOrNull<RastroDeCorrida>("Rastro") is { } rastro) rastro.Arranque(OrigemDoSalto(doServidor));
+		if (GetNodeOrNull<RastroDeCorrida>(CaminhoDoRastro) is { } rastro) rastro.Arranque(OrigemDoSalto(doServidor));
 	}
 
 	/// <summary>
@@ -1484,15 +1533,15 @@ public partial class LocalPlayer : Node2D
 		if (GameClient.Instance is not { } cli) return;
 
 		byte? zona = null;
-		if (Godot.Input.IsActionJustPressed("aim_none")) zona = 0;
-		else if (Godot.Input.IsActionJustPressed("aim_head")) zona = 1;
-		else if (Godot.Input.IsActionJustPressed("aim_torso")) zona = 2;
-		else if (Godot.Input.IsActionJustPressed("aim_abdomen")) zona = 3;
-		else if (Godot.Input.IsActionJustPressed("aim_arms")) zona = 4;
-		else if (Godot.Input.IsActionJustPressed("aim_legs")) zona = 5;
+		if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("aim_none"))) zona = 0;
+		else if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("aim_head"))) zona = 1;
+		else if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("aim_torso"))) zona = 2;
+		else if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("aim_abdomen"))) zona = 3;
+		else if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("aim_arms"))) zona = 4;
+		else if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("aim_legs"))) zona = 5;
 		if (zona.HasValue) cli.SendAim(zona.Value);
 
-		if (Godot.Input.IsActionJustPressed("lethal")) cli.SendLethal(!cli.Letal);
+		if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("lethal"))) cli.SendLethal(!cli.Letal);
 	}
 
 	/// <summary>

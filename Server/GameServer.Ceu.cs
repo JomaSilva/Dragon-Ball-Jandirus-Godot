@@ -288,8 +288,9 @@ public sealed partial class GameServer
 	///
 	/// As duas coisas são regra NOVA, a pedido do dono, e estão marcadas aqui pra ninguém procurar em
 	/// `Oozaru.dm` a linha que justifica esta função. O que É fiel: a fase da lua ser a única que serve
-	/// (`currentMoonlight == 5`), o interior não valer (lá `current_area.name != "Inside"`, aqui zona de
-	/// interior devolve `SemCeu`), e o rabo mandar em tudo.
+	/// (`currentMoonlight == 5`), o interior não valer (lá `current_area.name != "Inside"`; aqui zona de
+	/// interior devolve `SemCeu` e, num mapa com casas, a guarda 7 pergunta se o corpo esta sob teto),
+	/// e o rabo mandar em tudo.
 	/// ======================================================================================================
 	///
 	/// ============================ A ORDEM DAS GUARDAS É O CUSTO ============================
@@ -367,6 +368,12 @@ public sealed partial class GameServer
 		EstadoDoCeu ceu = Ceu.De(RelogioDaZona(npc.Zone), agora);
 		if (!ceu.Cheia || !ceu.LuaNoCeu) return;
 
+		//    ...E O TETO, que NAO sai de graca: a zona `SemCeu` cobre a nave, e nao a casa de um mapa
+		//    que tem ceu. O Banco da Terra e uma area `Inside` no DM, e de dentro dele o Saiyajin nao
+		//    ve a lua que esta no ceu da zona (`Weather.dm:201`). Por ultimo de proposito: custa uma
+		//    busca de mapa e uma de conjunto, e so chega aqui quem ja passou por todas as outras.
+		if (SobTeto(npc)) return;
+
 		// ============================ E ENTRA PELO FUNIL DO JOGADOR ============================
 		// `Apeshit` é declarado funil único desde que foi escrito ("a lua artificial e as ondas de Blutz,
 		// quando vierem, entram por ele"), e nada dentro dele lê `Peer`: as recusas faladas terminam em
@@ -388,6 +395,24 @@ public sealed partial class GameServer
 	/// </summary>
 	private void OlharProCeu(ServerPlayer pl, EstadoDoCeu ceu)
 	{
+		// ============================ SOB TETO NAO HA LUA PRA ANUNCIAR ============================
+		// No DM o mob le a area em que pisa a cada tique (`Stats.dm:158`), e a area interna tem
+		// `daylightcycle` e `mooncycle` ZERADOS (`Weather.dm:76-80`): dentro de casa o `CheckTime`
+		// nao tem o que dizer. E quando o mob SAI, a hora da area de fora e diferente da que ele
+		// guardava (`previousTime`, `Weather.dm:182`) e as falas saem na hora.
+		//
+		// Aqui o mesmo desfecho vem da memoria da lua: sob teto ela e ZERADA em silencio -- sem o
+		// "a lua cheia se poe" que o ramo de baixo diria, porque ela nao se pos, foi o teto --, e e
+		// isso que faz o primeiro tique ao ar livre enxergar a lua como recem-chegada e anunciar. E a
+		// mesma jogada do `MoveToZone`, que zera a memoria pra a lua do planeta novo se apresentar.
+		// ==========================================================================================
+		if (SobTeto(pl))
+		{
+			pl.LuaEstavaNoCeu = false;
+			pl.LuaVista = 0;
+			return;
+		}
+
 		bool noCeu = ceu.LuaNoCeu;
 		bool mudou = noCeu != pl.LuaEstavaNoCeu || (noCeu && ceu.Fase != pl.LuaVista);
 
@@ -430,7 +455,8 @@ public sealed partial class GameServer
 	///
 	/// O QUE JÁ EXISTE NO PORT: o passo 1 (aqui), o rabo do passo 2 (<see cref="TemRaboInteiro"/>)
 	/// e o passo 3 -- interior é zona sem céu, então a lua nunca chega a nascer lá dentro
-	/// (`Ceu.RelogioDaZona`).
+	/// (`Ceu.RelogioDaZona`); e DENTRO DE UMA CASA de um mapa que tem ceu, quem barra e o teto: o
+	/// `OlharProCeu` nao anuncia e o `OlharParaALua` recusa (`GameServer.Teto.cs`).
 	///
 	/// ============================ O OOZARU FOI PORTADO ============================
 	/// Este bloco dizia *"o que falta é a forma em si: `Osetting`, `Apeshit` e o buff"* e prometia
@@ -449,8 +475,14 @@ public sealed partial class GameServer
 	/// </summary>
 	private void LuaCheiaNasceu(ServerPlayer pl, EstadoDoCeu ceu)
 	{
-		_ = ceu;
-		Avisar(pl, "a lua cheia se ergue no horizonte.");
+		// DUAS FALAS, porque ha dois jeitos de dar com a lua cheia: ve-la NASCER, ou sair de baixo de
+		// um teto (ou chegar no planeta) com ela ja no alto. O DM separa as duas pelo estagio da noite
+		// (`Weather.dm:197-199`: "is rising" nas duas primeiras das nove horas de noite, "is out"
+		// depois), e a fracao e a mesma aqui. A terceira de la ("is setting") nao tem par: neste port
+		// o fim da lua e o "se poe" do `OlharProCeu`, dito quando ela SAI do ceu.
+		Avisar(pl, Ceu.ProgressoDaNoite(ceu.Hora) < 2.0 / 9
+			? "a lua cheia se ergue no horizonte."
+			: "a lua cheia esta no ceu.");
 
 		if (!TemRaboInteiro(pl)) return;
 

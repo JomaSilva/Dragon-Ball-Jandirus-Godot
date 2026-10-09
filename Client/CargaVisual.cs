@@ -57,6 +57,11 @@ public partial class CargaVisual : Node2D
 	private SpriteDeAura _desenho = null!;
 	private AudioStreamPlayer2D? _laco;
 
+	// OS DOIS IRMAOS QUE O `Pintar` PROCURA -- e ele roda por corpo a cada snapshot (o `Definir` o chama mesmo
+	// quando nada mudou). O caminho fica guardado: a `string` entregue ao `GetNodeOrNull` fabrica um `NodePath`
+	// por chamada, lixo com finalizador (ver o compasso do `CharacterVisual`).
+	private static readonly NodePath CaminhoDaAura = "Aura", CaminhoDaNebulosa = "Nebulosa";
+
 	private bool _ligado, _excesso;
 	private double _fase;
 
@@ -229,7 +234,7 @@ public partial class CargaVisual : Node2D
 	/// </summary>
 	private void LigarLaco()
 	{
-		var fluxo = ResourceLoader.Load<AudioStream>(Trilha.CargaLaco);
+		AudioStream? fluxo = SonsPresos.Carregar(Trilha.CargaLaco);
 		if (fluxo == null) { GD.PushWarning($"[carga] som ausente: {Trilha.CargaLaco}"); return; }
 
 		if (fluxo is AudioStreamWav wav && wav.LoopMode == AudioStreamWav.LoopModeEnum.Disabled)
@@ -305,7 +310,7 @@ public partial class CargaVisual : Node2D
 		// node so responde POR QUANTO a chama esta forte, nunca por que cor ela tem. UMA busca por
 		// pintada e nao duas -- as duas escritas abaixo (desenho e luz) tem que sair do mesmo node,
 		// senao voltam a poder discordar.
-		Aura? aura = GetParent()?.GetNodeOrNull<Aura>("Aura");
+		Aura? aura = GetParent()?.GetNodeOrNull<Aura>(CaminhoDaAura);
 
 		// ============================ E EM ULTRA INSTINTO (E NO ULTRA EGO) QUEM DESENHA A CARGA E A NUVEM ============================
 		// Ordem do dono: *"a aura/carga do ultra instinto deveria ser essa aura em shaders, e nao o icone
@@ -320,7 +325,7 @@ public partial class CargaVisual : Node2D
 		// PELO IRMAO, como a `Aura` logo acima, e com o mesmo cuidado: um corpo remoto montado pela
 		// metade nao tem o node ainda, e travar aqui faria a carga do Ultra Instinto sumir CALADA num
 		// corpo que chegou fora de ordem. (Em jogo os tres nascem juntos, `World.cs:1358-1372`.)
-		NebulosaDaForma? nuvem = GetParent()?.GetNodeOrNull<NebulosaDaForma>("Nebulosa");
+		NebulosaDaForma? nuvem = GetParent()?.GetNodeOrNull<NebulosaDaForma>(CaminhoDaNebulosa);
 		// SEM IRMA `Aura` nao ha luz nem cor guardada; o padrao e o MESMO campo que ela usa, pra os
 		// dois nao poderem divergir num corpo montado pela metade. (Em jogo nunca acontece: os dois
 		// nodes nascem juntos, `World.cs:1241-1242`.)

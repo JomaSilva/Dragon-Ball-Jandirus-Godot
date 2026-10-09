@@ -150,14 +150,8 @@ public static class PintorDeKi
 		if (ResourceLoader.Load<Shader>(ShaderDoFeixe) is not { } sh) return null;
 
 		EstiloDeFeixe e = EstiloDoFeixe(arte);
-		MedidasDoFeixe m = Medir(arte, escala);
 		var mat = new ShaderMaterial { Shader = sh };
-		mat.SetShaderParameter("raio", m.Raio);
-		mat.SetShaderParameter("raio_cabeca", m.Cabeca);
-		mat.SetShaderParameter("raio_boca", m.Boca);
-		mat.SetShaderParameter("alcance", m.Alcance);
-		mat.SetShaderParameter("alcance_do_halo", m.Halo);
-		mat.SetShaderParameter("labareda", Labareda(e, m));
+		EscalarFeixe(mat, e, Medir(arte, escala));
 		mat.SetShaderParameter("onda", e.Onda);
 		mat.SetShaderParameter("ponta", e.Ponta);
 		mat.SetShaderParameter("coroa", e.Coroa);
@@ -171,6 +165,22 @@ public static class PintorDeKi
 		mat.SetShaderParameter("semente", Semente());
 		TingirFeixe(mat, e.Tons, cor);
 		return mat;
+	}
+
+	/// <summary>
+	/// ESCREVE AS MEDIDAS DE UM RAIO NO MATERIAL DELE -- tudo o que, no shader, depende do TAMANHO. E a parte do
+	/// <see cref="MaterialDeFeixe"/> que o raio vivo repete quando engrossa com o poder de quem o segura (dono,
+	/// 2026-10-08; `ProjetilDesenhado.Reescalar`): o material, a semente do ruido e as cores continuam os mesmos,
+	/// e por isso o raio CRESCE em vez de piscar pra um desenho novo.
+	/// </summary>
+	public static void EscalarFeixe(ShaderMaterial mat, EstiloDeFeixe e, MedidasDoFeixe m)
+	{
+		mat.SetShaderParameter("raio", m.Raio);
+		mat.SetShaderParameter("raio_cabeca", m.Cabeca);
+		mat.SetShaderParameter("raio_boca", m.Boca);
+		mat.SetShaderParameter("alcance", m.Alcance);
+		mat.SetShaderParameter("alcance_do_halo", m.Halo);
+		mat.SetShaderParameter("labareda", Labareda(e, m));
 	}
 
 	/// <summary>O MATERIAL DE UMA BOLA deste estilo. `raio` ja vem na escala do tiro.</summary>

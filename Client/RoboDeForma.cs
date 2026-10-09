@@ -16196,8 +16196,16 @@ public partial class RoboDeForma : Node
 	/// O QUE ELE NAO PEGA, dito: escrita que nao passe por um node pego com `GetNodeOrNull<T>` (um
 	/// campo `_visual` guardado na classe, por exemplo) -- ai o dono do canal fica invisivel pra o
 	/// extrator; e a contagem da 5, que e por NOME curto e por isso so vale nos canais marcados. As
-	/// bancadas (`RoboDe*.cs`) ficam de fora da varredura da 5 de proposito: elas dirigem o visual na
-	/// mao, que e o trabalho delas -- e isso inclui ESTE arquivo, entao a tabela aqui nao se acusa.
+	/// bancadas (os robos, `EhDeRobo`) ficam de fora da varredura da 5 de proposito: elas dirigem o
+	/// visual na mao, que e o trabalho delas -- e isso inclui ESTE arquivo, entao a tabela aqui nao se
+	/// acusa.
+	///
+	/// ============================ E A 5 CONTA UM JOGO, NAO UM DISCO ============================
+	/// "No jogo inteiro" e o que o compilador compila. As COPIAS do repositorio que as sessoes de
+	/// trabalho abrem em `.claude/worktrees/` moram debaixo do `res://`, e a 5 passou dias reprovando
+	/// por conta-las (7, 15, 17 escritores -- o numero subia com a quantidade de copias). Tres coisas
+	/// seguram isso agora: a poda do `ArquivosDoJogo`, a linha de "UM jogo so" (que acusa copia em
+	/// QUALQUER pasta, com o caminho escrito) e o palco do `AVarreduraNoPalco`, com o defeito religado.
 	/// ============================================================================================
 	/// </summary>
 	private void CadaCanalDaFormaTemUmDono()
@@ -16366,31 +16374,86 @@ public partial class RoboDeForma : Node
 		Conferir(producao.Count > 50,
 				 $"a varredura enxerga o codigo de producao ({producao.Count} arquivo(s) .cs fora das bancadas)");
 
-		List<string> repetidos = [];
-		foreach ((string canal, string dono, bool soDele, string _) in donoProprio)
-		{
-			if (!soDele) continue;
-			string curto = canal[(canal.IndexOf('.') + 1)..];
-			var rx = new System.Text.RegularExpressions.Regex(
-				@"\??\.\s*" + System.Text.RegularExpressions.Regex.Escape(curto) + @"\s*\(");
+		// ============================ E O "JOGO INTEIRO" TEM QUE SER UM JOGO SO ============================
+		// MEDIDO, e custou tres logs ate alguem desconfiar: a afirmacao de baixo reprovou com *"7
+		// escritor(es), o primeiro em World.cs"*, depois com 15, depois com 17 -- e ninguem tinha tocado
+		// nos dois canais. Eram as COPIAS do repositorio que as sessoes de trabalho abrem em
+		// `.claude/worktrees/<nome>/`: cada uma traz o seu `Client/World.cs`, com a escrita legitima, e a
+		// varredura contava todas (2026-10-09: 17 copias + o jogo = 18; no jogo ha UM escritor por canal).
+		//
+		// Quem tira as copias da conta e a poda do `ArquivosDoJogo`. ESTA linha e a que teria dito a
+		// causa ja no primeiro log, e ela nao depende de ONDE a copia mora: o arquivo do dono tem que
+		// aparecer na varredura UMA vez. Uma copia em pasta que a poda nao conhece -- um `copia_de_ontem/`
+		// sem ponto no nome -- cai aqui, com o caminho escrito, em vez de virar "18 escritores".
+		// ================================================================================================
+		const string ArquivoDoDono = "Client/World.cs";
+		string[] osDoDono = [.. producao.Select(p => p.Arquivo).Where(a => EhOArquivo(a, ArquivoDoDono))];
+		Conferir(osDoDono.Length == 1,
+				 $"e ela le UM jogo so: `{ArquivoDoDono}` aparece uma vez na varredura ({osDoDono.Length})"
+			   + (osDoDono.Length > 1 ? $" -- ha copia do projeto debaixo de `res://`: {EmQuais(osDoDono)}" : ""));
 
-			int quantos = 0;
-			string onde = "";
-			foreach ((string arquivo, string texto) in producao)
+		// A CONTA, numa funcao so: ela roda no jogo, nas duas sondas daqui e no palco do
+		// `AVarreduraNoPalco` -- e tem que ser a MESMA nos quatro, senao a sonda provaria outra conta.
+		List<string> Repetidos(List<(string Arquivo, string Texto)> fontes)
+		{
+			List<string> achados = [];
+			foreach ((string canal, string dono, bool soDele, string _) in donoProprio)
 			{
-				int q = rx.Matches(texto).Count;
-				quantos += q;
-				if (q > 0 && onde.Length == 0) onde = arquivo.GetFile();
+				if (!soDele) continue;
+				string curto = canal[(canal.IndexOf('.') + 1)..];
+				var rx = new System.Text.RegularExpressions.Regex(
+					@"\??\.\s*" + System.Text.RegularExpressions.Regex.Escape(curto) + @"\s*\(");
+
+				int quantos = 0;
+				List<string> onde = [];
+				foreach ((string arquivo, string texto) in fontes)
+				{
+					int q = rx.Matches(texto).Count;
+					quantos += q;
+					if (q > 0) onde.Add(arquivo);
+				}
+				if (quantos != 1)
+					achados.Add($"{canal}: {quantos} escritor(es)"
+							  + (onde.Count > 0 ? $", em {EmQuais(onde)}" : $" (dono seria {dono})"));
 			}
-			if (quantos != 1)
-				repetidos.Add($"{canal}: {quantos} escritor(es)"
-							+ (onde.Length > 0 ? $", o primeiro em {onde}" : $" (dono seria {dono})"));
+			return achados;
 		}
 
+		List<string> repetidos = Repetidos(producao);
 		Conferir(repetidos.Count == 0,
 				 $"e quem tem dono EXCLUSIVO tem um escritor so no jogo inteiro "
 			   + $"({donoProprio.Count(t => t.SoDele)} canal(is) marcado(s))"
 			   + (repetidos.Count > 0 ? $" -- {string.Join("; ", repetidos)}" : ""));
+
+		// ============================ AS DUAS SONDAS DA 5, COM O CANAL DA PROPRIA TABELA ============================
+		// Como a sonda da 4: nenhum nome escrito aqui, o canal sai da primeira linha `SoDele` da tabela.
+		//
+		// A PRIMEIRA e o defeito de origem -- um SEGUNDO escritor de verdade, num arquivo do jogo. Ela
+		// cobra DOIS, exato, e nao "diferente de um": com as copias na conta a base ja era 18, e "19 e
+		// diferente de 1" passaria sem a checagem saber contar ate dois.
+		//
+		// A SEGUNDA e o avesso, e e o sentido que as copias ESCONDIAM: sem o fonte do dono a conta tem
+		// que dar ZERO. Com uma copia do projeto no disco esse zero virava um -- a linha de cima ficaria
+		// verde com o contorno sem escritor nenhum no jogo, que e o defeito que a afirmacao 3 chama de
+		// "sumiu".
+		// ==========================================================================================================
+		string canalDaSonda = donoProprio.First(t => t.SoDele).Canal;
+		string curtoDaSonda = canalDaSonda[(canalDaSonda.IndexOf('.') + 1)..];
+
+		List<(string Arquivo, string Texto)> comIntruso =
+			[.. producao, ("Client/UmSegundoEscritorDeTeste.cs", $" vis.{curtoDaSonda}(0);")];
+		Conferir(Repetidos(comIntruso).Any(r => r.StartsWith($"{canalDaSonda}: 2 escritor(es)", StringComparison.Ordinal)),
+				 $"e a sonda ENXERGA: um segundo `{canalDaSonda}` em outro arquivo do jogo faz a linha de cima "
+			   + "cair, contando DOIS");
+
+		List<(string Arquivo, string Texto)> semODono = [.. producao.Where(p => p.Arquivo != ArquivoDoDono)];
+		Conferir(Repetidos(semODono).Any(r => r.StartsWith($"{canalDaSonda}: 0 escritor(es)", StringComparison.Ordinal)),
+				 "-- e o avesso tambem: sem o fonte do dono a conta da ZERO e a linha cai (com uma copia do "
+			   + "projeto no disco esse zero virava um)");
+
+		// E A PODA, MEDIDA NUM PALCO: as linhas de cima olham o repositorio de verdade, e nele so ha o que
+		// ha -- num dia sem copia aberta elas passariam sem exercitar a poda. Ver o cabecalho de la.
+		AVarreduraNoPalco([.. donoProprio.Where(t => t.SoDele).Select(t => t.Canal)], Repetidos);
 	}
 
 	// =====================================================================
@@ -16449,29 +16512,16 @@ public partial class RoboDeForma : Node
 		// arte, nao de um consumidor dela.
 		string[] extensoes = [".cs", ".tscn", ".tres", ".gdshader"];
 
-		List<string> Fontes()
-		{
-			var l = new List<string>();
-			string raiz = ProjectSettings.GlobalizePath("res://");
-			if (!System.IO.Directory.Exists(raiz)) return l;
+		// O QUE NAO E JOGO FICA DE FORA, e quem decide isso e o `ArquivosDoJogo` -- o mesmo caminhador da
+		// varredura do `FontesDeProducao`. O cache do motor (`.godot/`, que guarda uma copia importada de
+		// TODA arte do projeto) e as copias do repositorio que as sessoes de trabalho abrem em
+		// `.claude/worktrees/` saem juntos, por serem pasta que comeca com ponto: varre-los acusaria a
+		// existencia do arquivo, ou a arte ainda viva no ramo de outra sessao, como se fosse um dono.
+		string raiz = ProjectSettings.GlobalizePath("res://");
 
-			foreach (string f in System.IO.Directory.GetFiles(raiz, "*.*",
-					 System.IO.SearchOption.AllDirectories))
-			{
-				// O CACHE DO GODOT E O BUILD FICAM DE FORA: o `.godot/` guarda uma copia importada de TODA
-				// arte do projeto, entao varre-lo acusaria a existencia do arquivo como se fosse um dono.
-				string rel = f[raiz.Length..].Replace('\\', '/');
-				if (rel.StartsWith(".godot/") || rel.StartsWith("obj/") || rel.StartsWith("bin/")) continue;
-				if (!extensoes.Contains(System.IO.Path.GetExtension(f))) continue;
-				// A PROPRIA ARTE NAO CONTA COMO DONO -- ver o cabecalho.
-				if (System.IO.Path.GetFileName(f).StartsWith(Aposentada, StringComparison.Ordinal))
-					continue;
-				l.Add(f);
-			}
-			return l;
-		}
-
-		List<string> fontes = Fontes();
+		// A PROPRIA ARTE NAO CONTA COMO DONO -- ver o cabecalho.
+		List<string> fontes = [.. ArquivosDoJogo(raiz, extensoes)
+			.Where(a => !System.IO.Path.GetFileName(a).StartsWith(Aposentada, StringComparison.Ordinal))];
 
 		// O ZERO NAO PODE SER VAZIO: uma varredura que nao achasse arquivo nenhum (caminho errado, projeto
 		// exportado, filtro trocado) daria as duas linhas de baixo em verde pra sempre.
@@ -16479,14 +16529,23 @@ public partial class RoboDeForma : Node
 				 $"a varredura enxerga o repositorio ({fontes.Count} arquivo(s) de codigo, cena e recurso)");
 		if (fontes.Count == 0) return;
 
+		// E ELA LE UM JOGO SO -- a irma da linha de mesmo nome na afirmacao 5 do `CadaCanalDaFormaTemUmDono`,
+		// onde a historia esta contada. Aqui as copias mentiam pros DOIS lados: a arte aposentada ainda
+		// viva no ramo de uma sessao reprovaria um jogo limpo, e a folha de controle achada so nas copias
+		// manteria a ultima linha verde com ela fora do jogo.
+		string[] osMundos = [.. fontes.Where(a => EhOArquivo(a, "Client/World.cs"))];
+		Conferir(osMundos.Length == 1,
+				 $"e esta varredura tambem le UM jogo so: `Client/World.cs` aparece uma vez nela ({osMundos.Length})"
+			   + (osMundos.Length > 1 ? $" -- ha copia do projeto debaixo de `res://`: {EmQuais(osMundos)}" : ""));
+
 		// OS DOIS NOMES NA MESMA PASSADA, e nao uma varredura por nome: sao ~3700 arquivos, e ler o
 		// repositorio duas vezes pra responder duas perguntas sobre a mesma linha e pagar o dobro por nada.
 		int velha = 0, nova = 0;
 		string ondeVelha = "", ondeNova = "";
-		foreach (string f in fontes)
+		foreach (string rel in fontes)
 		{
 			int linha = 0;
-			foreach (string l in System.IO.File.ReadAllLines(f))
+			foreach (string l in System.IO.File.ReadAllLines(System.IO.Path.Combine(raiz, rel)))
 			{
 				linha++;
 				// O FILTRO DE COMENTARIO do `OGpuParticlesNaoVoltouAoFonte` -- ver o cabecalho: sem ele o
@@ -16497,12 +16556,12 @@ public partial class RoboDeForma : Node
 				if (l.Contains(Aposentada, StringComparison.Ordinal))
 				{
 					velha++;
-					if (ondeVelha.Length == 0) ondeVelha = $"{f.GetFile()}:{linha}";
+					if (ondeVelha.Length == 0) ondeVelha = $"{rel}:{linha}";
 				}
 				if (l.Contains(EmUso, StringComparison.Ordinal))
 				{
 					nova++;
-					if (ondeNova.Length == 0) ondeNova = $"{f.GetFile()}:{linha}";
+					if (ondeNova.Length == 0) ondeNova = $"{rel}:{linha}";
 				}
 			}
 		}
@@ -16633,30 +16692,267 @@ public partial class RoboDeForma : Node
 	}
 
 	/// <summary>
-	/// TODO `.cs` DE PRODUCAO, ja sem comentario -- o par (caminho, texto).
+	/// ESTE CAMINHO E O ARQUIVO <paramref name="arquivo"/> -- ele mesmo, ou uma COPIA dele noutra pasta?
+	/// E a pergunta das linhas de "UM jogo so": `Client/World.cs` e `.claude/worktrees/x/Client/World.cs`
+	/// respondem sim, `Client/OutroWorld.cs` responde nao.
+	/// </summary>
+	private static bool EhOArquivo(string caminho, string arquivo) =>
+		caminho == arquivo || caminho.EndsWith("/" + arquivo, StringComparison.Ordinal);
+
+	/// <summary>
+	/// Ate tres caminhos por extenso e a conta do resto -- pra a linha de falha dizer ONDE sem virar uma
+	/// parede. O caminho vai INTEIRO (relativo ao `res://`), e isso e licao: a falha das copias dizia so
+	/// *"17 escritor(es), o primeiro em World.cs"*, e com os tres primeiros caminhos escritos ela teria
+	/// dito a causa sozinha, no primeiro log.
+	/// </summary>
+	private static string EmQuais(IReadOnlyList<string> caminhos) =>
+		string.Join(", ", caminhos.Take(3)) + (caminhos.Count > 3 ? $" e mais {caminhos.Count - 3}" : "");
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): a varredura de fonte volta a ENTRAR em pasta que comeca com ponto, que
+	/// e onde moram as copias do repositorio (`.claude/worktrees/NOME/`). Lido pela propria linha da
+	/// poda, no <see cref="ArquivosDoJogo"/>; quem o liga e so o <see cref="AVarreduraNoPalco"/>, entre
+	/// `try/finally` e em cima do palco dele.
+	/// </summary>
+	private static bool _entrarEmPastaPontoDeTeste;
+
+	/// <summary>
+	/// OS ARQUIVOS DO JOGO debaixo de <paramref name="raiz"/> com uma das <paramref name="extensoes"/>,
+	/// em caminho relativo a ela e com barra normal -- SEM ENTRAR em pasta que nao e jogo.
 	///
-	/// AS BANCADAS FICAM DE FORA (`RoboDe*.cs`) e isso e desenho: elas dirigem o visual na mao, que e
-	/// o trabalho delas -- um robo que veste um contorno pra medi-lo nao e um segundo dono do
+	/// ============================ O QUE FICA DE FORA, E A REGRA E A DO COMPILADOR ============================
+	///   * PASTA QUE COMECA COM PONTO, em qualquer altura: `.godot/` (o cache do motor, com uma copia
+	///     importada de toda arte), `.git/`, `.idea/` -- e `.claude/`, onde cada sessao de trabalho abre
+	///     uma COPIA INTEIRA do repositorio (`.claude/worktrees/NOME/`). Nao e uma lista de nomes: e a
+	///     regra pela qual o build deste projeto nao compila essas copias (o SDK do .NET tira `**/.*/**`
+	///     dos fontes, `DefaultExcludesInProjectFolder`) -- se compilasse, cada classe do jogo existiria
+	///     dezoito vezes e nada fecharia. O que o compilador nao le nao e codigo do jogo.
+	///   * `obj/` E `bin/` AO LADO DE UM `.csproj`: a saida do build do `Core/` e do `Tools/AssetPipeline/`,
+	///     que guarda copias geradas do proprio codigo. So ao lado de um projeto, e nao pelo nome: `obj`
+	///     e nome de tipo no BYOND, e uma pasta de arte chamada assim tem que continuar na varredura.
+	///
+	/// ============================ MEDIDO EM 2026-10-09, COM 17 COPIAS ABERTAS ============================
+	/// Duas rodadas da `--diagforma` a sete minutos uma da outra, com as mesmas linhas de checagem: a
+	/// primeira com a busca crua de antes por baixo (`GetFiles` com `AllDirectories` e um filtro de
+	/// prefixo), a segunda com este caminhador.
+	///
+	///   `.cs` "de producao" ....................  10.869  ->    578
+	///   arquivos na varredura da arte ..........  75.545  ->  4.203
+	///   escritores de cada canal exclusivo .....      18  ->      1
+	///
+	/// A falha *"17 escritor(es), o primeiro em World.cs"* que a `--diagforma` carregou por dias era so
+	/// isso, e o numero dela subia com a quantidade de copias (7, 15, 17, 18). E NAO ENTRAR e diferente de
+	/// filtrar depois: a busca crua listava perto de 380 mil arquivos debaixo do `res://`, copias e `.git/`
+	/// inclusive, so pra jogar quase tudo fora. (Os 578 ja sao sem os robos que o filtro antigo deixava
+	/// passar -- ver <see cref="EhDeRobo"/>.)
+	///
+	/// O PERIGO ERA NOS DOIS SENTIDOS, e o segundo e o pior: copia que faz REPROVAR um jogo certo (o caso
+	/// medido), e copia que faz PASSAR um jogo errado -- com o contorno sem escritor nenhum no jogo e uma
+	/// copia no disco, a conta daria o "1" que a afirmacao 5 cobra.
+	///
+	/// A ORDEM E ESTAVEL (em largura, nomes em ordem): quem imprime "a primeira em ..." diz o mesmo
+	/// arquivo em toda corrida. A PROVA esta no <see cref="AVarreduraNoPalco"/>, com o defeito religado.
+	/// ====================================================================================================
+	/// </summary>
+	private static List<string> ArquivosDoJogo(string raiz, params string[] extensoes)
+	{
+		var achados = new List<string>();
+		if (!System.IO.Directory.Exists(raiz)) return achados;
+		string prefixo = raiz.Replace('\\', '/').TrimEnd('/') + "/";
+
+		var pendentes = new Queue<string>();
+		pendentes.Enqueue(raiz);
+		while (pendentes.Count > 0)
+		{
+			string pasta = pendentes.Dequeue();
+
+			string[] arquivos = System.IO.Directory.GetFiles(pasta);
+			Array.Sort(arquivos, StringComparer.Ordinal);
+			bool temProjeto = false;
+			foreach (string a in arquivos)
+			{
+				string ext = System.IO.Path.GetExtension(a);
+				if (ext.Equals(".csproj", StringComparison.OrdinalIgnoreCase)) temProjeto = true;
+				if (extensoes.Contains(ext, StringComparer.OrdinalIgnoreCase))
+					achados.Add(a.Replace('\\', '/')[prefixo.Length..]);
+			}
+
+			string[] subpastas = System.IO.Directory.GetDirectories(pasta);
+			Array.Sort(subpastas, StringComparer.Ordinal);
+			foreach (string sub in subpastas)
+			{
+				string nome = System.IO.Path.GetFileName(sub);
+				// A PODA -- ver o cabecalho. O knob e o defeito injetado do palco: com ele ligado a
+				// varredura volta a entrar nas copias, que e o comportamento que reprovava.
+				if (nome.StartsWith('.') && !_entrarEmPastaPontoDeTeste) continue;
+				if (temProjeto && (nome.Equals("obj", StringComparison.OrdinalIgnoreCase)
+								|| nome.Equals("bin", StringComparison.OrdinalIgnoreCase))) continue;
+				pendentes.Enqueue(sub);
+			}
+		}
+		return achados;
+	}
+
+	/// <summary>
+	/// O ARQUIVO E DE UM ROBO? `RoboDeForma.cs`, `RoboDaChama.cs`, `RoboDoTrailer.Cenas.cs`, `RoboDasAbas.Ki.cs`.
+	///
+	/// O filtro antigo era `StartsWith("RoboDe")`, com o cabecalho dizendo "as bancadas ficam de fora".
+	/// MEDIDO em 2026-10-09: 43 dos 118 robos do `Client/` se chamam `RoboDa...`, `RoboDo...` ou
+	/// `RoboDas...`, e entravam na varredura como PRODUCAO. Nenhum deles escreve canal exclusivo hoje,
+	/// entao nada reprovava -- mas o primeiro que vestisse um contorno pra medi-lo viraria "2
+	/// escritores", com a regra dizendo que robo pode.
+	///
+	/// A preposicao e a maiuscula depois dela ficam na conta pra um arquivo de JOGO que so comece com
+	/// `Robo` (um `Robotica.cs`) nao sumir da varredura por engano.
+	/// </summary>
+	private static bool EhDeRobo(string nomeDoArquivo) =>
+		System.Text.RegularExpressions.Regex.IsMatch(nomeDoArquivo, @"^RoboD(e|a|o|as|os)[A-Z]");
+
+	/// <summary>
+	/// TODO `.cs` DE PRODUCAO, ja sem comentario -- o par (caminho relativo a raiz, texto).
+	///
+	/// AS BANCADAS FICAM DE FORA (os robos, <see cref="EhDeRobo"/>) e isso e desenho: elas dirigem o visual
+	/// na mao, que e o trabalho delas -- um robo que veste um contorno pra medi-lo nao e um segundo dono do
 	/// contorno. Isso inclui ESTE arquivo, e por isso a tabela de donos escrita aqui nao se acusa.
 	///
-	/// O `.godot/`, o `obj/` e o `bin/` saem pelo mesmo motivo do <see cref="AArteVelhaNaoTemDono"/>:
-	/// sao copias geradas, e varre-las contaria o mesmo codigo duas vezes.
+	/// O QUE NAO E JOGO -- o cache do motor, a saida de build e as COPIAS do repositorio que as sessoes de
+	/// trabalho abrem -- nem chega aqui: quem anda pelas pastas e o <see cref="ArquivosDoJogo"/>, o mesmo
+	/// caminhador do <see cref="AArteVelhaNaoTemDono"/>.
+	///
+	/// A <paramref name="raiz"/> so e passada pelo <see cref="AVarreduraNoPalco"/>; sem ela e o `res://`.
 	/// </summary>
-	private static List<(string Arquivo, string Texto)> FontesDeProducao()
+	private static List<(string Arquivo, string Texto)> FontesDeProducao(string? raiz = null)
 	{
 		var l = new List<(string, string)>();
-		string raiz = ProjectSettings.GlobalizePath("res://");
-		if (!System.IO.Directory.Exists(raiz)) return l;
+		raiz ??= ProjectSettings.GlobalizePath("res://");
 
-		foreach (string f in System.IO.Directory.GetFiles(raiz, "*.cs", System.IO.SearchOption.AllDirectories))
+		foreach (string rel in ArquivosDoJogo(raiz, ".cs"))
 		{
-			string rel = f[raiz.Length..].Replace('\\', '/');
-			if (rel.StartsWith(".godot/") || rel.StartsWith("obj/") || rel.StartsWith("bin/")) continue;
-			if (rel.Contains("/obj/") || rel.Contains("/bin/")) continue;
-			if (System.IO.Path.GetFileName(f).StartsWith("RoboDe", StringComparison.Ordinal)) continue;
-			l.Add((f, SemComentario(System.IO.File.ReadAllText(f))));
+			if (EhDeRobo(System.IO.Path.GetFileName(rel))) continue;
+			l.Add((rel, SemComentario(System.IO.File.ReadAllText(System.IO.Path.Combine(raiz, rel)))));
 		}
 		return l;
+	}
+
+	// =====================================================================
+	// 11-quater. A VARREDURA DE FONTE, NUM PALCO COM UMA COPIA DENTRO
+	// =====================================================================
+	/// <summary>
+	/// A VARREDURA NAO ENTRA EM COPIA DO PROJETO -- medido num repositorio de mentira, escrito em disco.
+	///
+	/// ============================ POR QUE UM PALCO, E NAO O REPOSITORIO DE VERDADE ============================
+	/// As linhas de "UM jogo so" olham o repositorio de verdade, e nele so ha o que ha: num dia sem
+	/// nenhuma copia aberta elas passam sem exercitar a poda, e um caminhador que voltasse a entrar em
+	/// tudo ficaria verde ate a proxima copia aparecer. Foi assim que o defeito viveu -- 7, 15 e 17
+	/// escritores em tres logs, e o numero so mudava porque as sessoes abriam mais copias.
+	///
+	/// Entao aqui a bancada MONTA o caso: um projeto de oito arquivos com tudo o que ja enganou (ou
+	/// podia enganar) a varredura, cobrado por lista exata. Nada do repositorio e tocado -- o palco
+	/// nasce na pasta temporaria do sistema, FORA do `res://`, e e apagado no `finally`.
+	///
+	/// POR QUE NAO NO `user://`, que e onde esta bancada escreve as fotos: toda bancada roda com o
+	/// `APPDATA` desviado pra `Trailer/bruto/appdata/`, que fica DEBAIXO do `res://`. Um palco esquecido
+	/// la por uma corrida morta no meio viraria, ele mesmo, uma copia que a varredura de verdade le.
+	///
+	/// ============================ OS OITO ARQUIVOS, E O QUE CADA UM PROVA ============================
+	///   Client/World.cs                                 o jogo: o UNICO escritor legitimo
+	///   .claude/worktrees/copia/Client/World.cs         a COPIA de uma sessao de trabalho -- o defeito medido
+	///   .godot/Cache.cs                                 o cache do motor: pasta-ponto, como a de cima
+	///   Core/Jandirus.Core.csproj, Core/obj/Gerado.cs   saida de build: um `obj` AO LADO de um `.csproj`
+	///   Assets/obj/Arte.tres                            ARTE numa pasta que so se CHAMA `obj` -- fica DENTRO
+	///   Client/RoboDeTeste.cs, Client/RoboDoTeste.cs    dois robos: bancada nao e escritor do jogo
+	///
+	/// O `Assets/obj/` esta ali pelo sentido contrario: `obj` e nome de tipo no BYOND, e uma pasta de
+	/// arte com esse nome nao pode sumir da varredura da arte aposentada so por se chamar como a saida
+	/// do compilador -- seria um ponto cego novo, aberto pelo proprio conserto.
+	///
+	/// ============================ E O CONTROLE E O DEFEITO DE VERDADE ============================
+	/// A ultima linha religa o comportamento antigo (<see cref="_entrarEmPastaPontoDeTeste"/>) e cobra que
+	/// a conta da afirmacao 5 -- a MESMA funcao, recebida por parametro -- volte a ver dois escritores
+	/// e diga o caminho da copia. Sem ela, um palco em que a copia nao contasse por outro motivo (o
+	/// arquivo escrito no lugar errado, a escrita num feitio que a regex nao casa) daria tudo verde.
+	/// ==========================================================================================
+	/// </summary>
+	private void AVarreduraNoPalco(
+		string[] canais, Func<List<(string Arquivo, string Texto)>, List<string>> repetidos)
+	{
+		const string DoJogo = "Client/World.cs";
+		const string DaCopia = ".claude/worktrees/copia/Client/World.cs";
+		const string DaArte = "Assets/obj/Arte.tres";
+		const string DoRoboDe = "Client/RoboDeTeste.cs";
+		const string DoRoboDo = "Client/RoboDoTeste.cs";
+
+		// UMA ESCRITA DE CADA CANAL EXCLUSIVO, no feitio em que o jogo escreve (`vis.Canal(...)`): a conta
+		// recebida cobra TODOS os canais marcados, e um palco que escrevesse so um deles reprovaria pelos
+		// outros ("0 escritor(es)") sem ter nada a ver com copia.
+		string escrita = string.Concat(canais.Select(c => $" vis.{c[(c.IndexOf('.') + 1)..]}(0);")) + "\n";
+
+		System.IO.DirectoryInfo? palco = null;
+		try
+		{
+			palco = System.IO.Directory.CreateTempSubdirectory("jandirus_palco_da_varredura_");
+			string raiz = palco.FullName;
+
+			void Por(string rel, string conteudo)
+			{
+				string caminho = System.IO.Path.Combine(raiz, rel);
+				System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(caminho)!);
+				System.IO.File.WriteAllText(caminho, conteudo);
+			}
+
+			Por(DoJogo, escrita);
+			Por(DaCopia, escrita);
+			Por(".godot/Cache.cs", "// o cache do motor\n");
+			Por("Core/Jandirus.Core.csproj", "<Project />\n");
+			Por("Core/obj/Gerado.cs", "// saida de build\n");
+			Por(DaArte, "[gd_resource]\n");
+			Por(DoRoboDe, escrita);
+			Por(DoRoboDo, escrita);
+
+			// --- o caminhador, por lista exata ---
+			string[] doJogo = [DaArte, DoRoboDe, DoRoboDo, DoJogo];
+			List<string> vistos = ArquivosDoJogo(raiz, ".cs", ".tres");
+			Conferir(vistos.Order(StringComparer.Ordinal).SequenceEqual(doJogo.Order(StringComparer.Ordinal)),
+					 "no PALCO (oito arquivos, uma copia do projeto dentro) o caminhador devolve so os quatro do "
+				   + "jogo: nao entra na copia, nem no cache, nem na saida de build -- e a pasta de arte chamada "
+				   + $"`obj` continua dentro (viu {vistos.Count}: {string.Join(", ", vistos)})");
+
+			// --- a producao: o que sobra depois de tirar os robos ---
+			List<(string Arquivo, string Texto)> producao = FontesDeProducao(raiz);
+			Conferir(producao.Count == 1 && producao[0].Arquivo == DoJogo,
+					 "e a varredura de PRODUCAO fica so com o fonte do jogo -- os dois robos saem, o `RoboDe` e o "
+				   + $"`RoboDo` (viu {producao.Count}: {string.Join(", ", producao.Select(p => p.Arquivo))})");
+
+			// --- a conta da afirmacao 5, a mesma funcao ---
+			List<string> noPalco = repetidos(producao);
+			Conferir(noPalco.Count == 0,
+					 "-- e a conta da afirmacao 5 ve UM escritor de cada canal no palco"
+				   + (noPalco.Count > 0 ? $" ({string.Join("; ", noPalco)})" : ""));
+
+			// --- o controle: o comportamento antigo, religado ---
+			List<string> comACopia;
+			_entrarEmPastaPontoDeTeste = true;
+			try { comACopia = repetidos(FontesDeProducao(raiz)); }
+			finally { _entrarEmPastaPontoDeTeste = false; }
+			Conferir(comACopia.Count == canais.Length
+				  && comACopia.All(r => r.Contains(": 2 escritor(es)", StringComparison.Ordinal)
+									 && r.Contains(DaCopia, StringComparison.Ordinal)),
+					 "(defeito injetado: a varredura entrando em pasta que comeca com ponto) a copia volta a "
+				   + "contar como SEGUNDO escritor de cada canal e a mesma conta REPROVA, dizendo onde"
+				   + $" -- {string.Join("; ", comACopia)}");
+		}
+		catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException)
+		{
+			// DISCO E AMBIENTE, NAO JOGO: uma pasta temporaria que nao se deixa escrever nao pode derrubar
+			// o passo inteiro da bancada (as afirmacoes de depois nao rodariam) -- vira uma linha vermelha
+			// que diz o que houve.
+			Conferir(false, $"o palco da varredura foi montado e lido ({e.GetType().Name}: {e.Message})");
+		}
+		finally
+		{
+			try { palco?.Delete(true); }
+			catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException) { }
+		}
 	}
 
 	/// <summary>

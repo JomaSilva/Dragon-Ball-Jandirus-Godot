@@ -190,6 +190,16 @@ public sealed partial class GameServer
 			Zerar = ZerarConstrucoes,
 		});
 
+		// ---------------------------------------------------------- bases
+		_sistemasDoMundo.Add(new SistemaDoMundo
+		{
+			Nome = "bases erguidas por jogador (paredes, pisos e portas)",
+			Arquivos = ["bases.json"],
+			Unidade = "bloco(s) de pe",
+			Contar = () => _bases.Values.Sum(z => z.Celulas.Count),
+			Zerar = ZerarBases,
+		});
+
 		// ---------------------------------------------------------- naves
 		_sistemasDoMundo.Add(new SistemaDoMundo
 		{
@@ -336,13 +346,40 @@ public sealed partial class GameServer
 
 		// ---------------------------------------------------------- titulo do Deus da Destruicao
 		// A CONTAGEM E BINARIA porque o estado e um so: ou ha um relogio de titulo correndo, ou nao ha.
+		//
+		// O `Zerar` E O QUE SO MEXE NA MEMORIA, e nao o `LimparEstadoDoTitulo` do titulo que vaga em jogo, que
+		// tambem grava. No passo 3 daqui a gravacao era so inutil -- a vassoura do passo 4 apaga. Na bancada
+		// ela caia em dois lugares errados: na caixa, antes de o `CarregarSemente` olhar a pasta (o "primeiro
+		// boot" era lido como save antigo), e na pasta de verdade, no `finally` do `NaCaixa`. E o motivo do
+		// `ZerarSemente` e do `ZerarTorneio`; quem mede e a secao 12 da `--wipeteste`.
 		_sistemasDoMundo.Add(new SistemaDoMundo
 		{
 			Nome = "relogio do titulo de Deus da Destruicao",
 			Arquivos = ["titulo.txt"],
 			Unidade = "titulo em disputa",
 			Contar = () => _duelo.TituloDesde != 0 || _tarefaAlvo.Length > 0 || _tarefaFalhas > 0 ? 1 : 0,
-			Zerar = LimparEstadoDoTitulo,
+			Zerar = ZerarEstadoDoTitulo,
+		});
+
+		// ---------------------------------------------------------- torneios
+		// ============================ SEM ESTA INSCRICAO, O MUNDO NOVO SEGUE O CALENDARIO DO VELHO ============================
+		// A agenda dos torneios (`torneio.json`, ver `GameServer.Torneio.cs`) nasceu depois deste registro
+		// e ficou fora dele. A bancada `--wipeteste` reprovava o arquivo como orfao, e em jogo era o modo de
+		// falha do cabecalho, sem tirar nem por: a vassoura apagava o arquivo, a memoria da agenda ficava,
+		// e a primeira mudanca regravava no mundo "novo" as datas contadas a partir de um torneio que ele
+		// nunca teve. O inventario do que sobrevivia esta no `ZerarTorneio`.
+		//
+		// A CONTAGEM E BINARIA, como a do titulo: o estado e um calendario so. Zero e a agenda de um
+		// primeiro boot (so o primeiro Torneio da Terra marcado); um e qualquer coisa alem disso -- um
+		// torneio ja aberto alguma vez, o do Outro Mundo a caminho, ou uma chave em disputa agora.
+		// ====================================================================================================================
+		_sistemasDoMundo.Add(new SistemaDoMundo
+		{
+			Nome = "torneios de artes marciais (a agenda da Terra e do Outro Mundo, e o que estiver em disputa)",
+			Arquivos = ["torneio.json"],
+			Unidade = "calendario de torneios em curso",
+			Contar = () => CalendarioDeTorneiosAndou ? 1 : 0,
+			Zerar = ZerarTorneio,
 		});
 
 		// ---------------------------------------------------------- o relogio do mundo
@@ -735,10 +772,19 @@ public sealed partial class GameServer
 		// pra zonas de um universo que deixou de existir. E o mesmo motivo pelo qual a semente mora no
 		// disco em primeiro lugar.
 		//
-		// A BANCADA NAO PASSA POR AQUI de proposito: ela chama o `ExecutarLimpeza` direto, e afirma
-		// que a pasta fica so com o `admin.log` depois dele. Esta linha e do caminho de producao.
+		// AS SECOES 4 A 10 DA BANCADA NAO PASSAM POR AQUI de proposito: elas chamam o `ExecutarLimpeza`
+		// direto, e afirmam que a pasta fica so com o `admin.log` depois dele. Quem atravessa o verb
+		// inteiro, com o codigo certo, e a secao 11 (`SecaoDosTorneios`).
 		SalvarSemente();
 		GD.Print($"[limpeza] o mundo novo tem endereco proprio: semente {SeedDoUniverso}");
+
+		// ---------------------------------------------------------- o calendario do mundo novo
+		// O MESMO ARGUMENTO, com um custo menor. O `ZerarTorneio` (passo 3) ja marcou o primeiro Torneio
+		// da Terra do mundo novo NA MEMORIA, e dali em diante a agenda so vai pro disco quando um torneio
+		// comeca ou um admin a remarca. Sem o arquivo, o primeiro reinicio leria "sem agenda = primeiro
+		// boot" e remarcaria o torneio a contar DELE, e nao da limpeza. Um primeiro boot de verdade grava
+		// a agenda na hora (`CarregarAgenda`); a limpeza, que promete o mesmo estado, tambem.
+		SalvarAgenda();
 
 		// A ULTIMA LINHA DO LOG e a que fecha a historia -- e ela cabe porque o `admin.log`
 		// sobrevive. Escrita pelo mesmo funil das outras, com a pasta ja recriada.

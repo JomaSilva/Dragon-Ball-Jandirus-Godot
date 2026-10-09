@@ -1370,11 +1370,22 @@ public sealed partial class GameServer
 		}
 
 		int n = caidas.Count;
-		// So a colisao: o mapa do que CEGA e do cliente (o servidor nem o carrega), e e o proprio
-		// cliente que o refecha ao receber a limpeza.
-		if (_catalogo?.Get(adm.Zone)?.Mapa is { } mapa)
-			foreach ((int x, int y) in caidas) mapa.Fechar(x, y);
+		// OS DOIS MAPAS DO SERVIDOR, como na queda (`AbrirACelulaCaida`): o que barra o corpo e o que
+		// barra a vista. O do cliente e ele mesmo que refecha, ao receber a limpeza. E pelo funil de
+		// qualquer zona -- o catalogo so conhece mapa de arquivo, e o estrago de um mundo sorteado
+		// ficava aberto depois do "refeito".
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(adm.Zone), vista = MapaDaVista(adm.Zone);
+		foreach ((int x, int y) in caidas)
+		{
+			mapa?.Fechar(x, y);
+			vista?.Fechar(x, y);
+		}
 		caidas.Clear();
+
+		// A MOBILIA DO MAPA QUE CAIU VOLTA JUNTO. A celula dela estava nesta lista (`ACelulaDaObraCaiu`) e acabou de
+		// ser refechada -- sem a obra de volta, ficaria uma parede sem desenho ate o proximo boot.
+		int repostas = _catalogo?.Get(adm.Zone) is { } entrada ? PorMobiliaDoMapa(entrada, soAQueFalta: true).Postas : 0;
+		if (repostas > 0) MandarObras(adm.Zone);
 
 		MandarLimpezaDeCenario(adm.Zone);
 
@@ -1388,7 +1399,8 @@ public sealed partial class GameServer
 			MandarPortas(p);
 			Avisar(p, "o chao se refaz sob os seus pes.");
 		}
-		Avisar(adm, $"{n} celula(s) de cenario restauradas.");
+		Avisar(adm, $"{n} celula(s) de cenario restauradas."
+					+ (repostas > 0 ? $" {repostas} peca(s) da mobilia do mapa voltaram ao lugar." : ""));
 	}
 
 	private void AdminSalvarTudo(ServerPlayer adm)
@@ -1396,6 +1408,7 @@ public sealed partial class GameServer
 		int n = 0;
 		foreach (ServerPlayer p in Jogadores.ToList()) { Persistir(p); n++; }
 		GravarMundo();
+		GravarBasesSeMudou();
 		SalvarCargos();
 		Avisar(adm, $"{n} personagem(ns), o mundo e os cargos foram gravados.");
 		Registrar(adm, "forcou o save de tudo");

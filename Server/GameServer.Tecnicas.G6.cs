@@ -268,14 +268,36 @@ public sealed partial class GameServer
 			? 15 / (2 * Math.Max(pl.Ficha.Ekiskill, 1))
 			: kireq * r.MultDeCusto;
 
+		// ============================ O DEATH BEAM NAO E "MAIS UM RAIO" (dono, 2026-10-08) ============================
+		// *"death beam deveria ser mt rapido, e ao se chocar ele diferente dos outros beams ele explode igual um
+		// blast causando 1 hit apenas"*. Duas coisas, e as duas sao campo da receita:
+		//   * RAPIDO: o `beamspeed = 0.3` dele lido como o ATRASO que e (`Projetil.VelocidadeDeBeamspeed`, onde a
+		//     historia esta contada inteira): 66,7 tiles por segundo, contra os 6 de antes. A pressa que ele
+		//     declara e o que mantem a Precognicao, os sopros de Kiai e o faro do NPC com o TEMPO de aviso que
+		//     tinham contra um raio do original (`Projetil.PressaSobreORaioDoDm`).
+		//   * ESTOURA: um golpe no primeiro corpo, e o raio acaba ali (`ReceitaDeProjetil.EstouraNoImpacto`).
+		// O alcance continua o do verb, dez tiles -- ele chega la em um sexto de segundo.
+		//
+		// OS OUTROS CINCO SAO NIVELADOS (dono, no mesmo dia: *"pode nivelar entre 24 e 30"*): pelo `beamspeed` de
+		// cada um, de 24 a 30 tiles por segundo -- um pouco acima do raio comum, na ordem do verb
+		// (`Projetil.VelocidadeDeRaioNomeado`). Antes o `beamspeed` ia direto pra `Velocidade`, que e `speed`, e o
+		// Kamehameha voava a 8. Os seis declaram a pressa que tem sobre um raio do original, pelo mesmo motivo.
+		// ================================================================================================================
+		bool deathBeam = id == "Death_Beam";
+		double velocidade = deathBeam
+			? Projetil.VelocidadeDeBeamspeed(r.Velocidade)
+			: Projetil.VelocidadeDeRaioNomeado(r.Velocidade);
+
 		Canalizar(pl, id, kireq, new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Beam,
 			BaseDano = r.Potencia,        // `powmod`
-			Velocidade = r.Velocidade,    // `beamspeed`
+			Velocidade = velocidade,      // `beamspeed` -- ver o bloco acima sobre a unidade dele
 			AlcanceTiles = r.Alcance,     // `maxdistance`
 			MultDeOnda = r.Onda,          // `wavemult`
 			Piercer = true,               // `bypass = 1` nos seis
+			EstouraNoImpacto = deathBeam,
+			PressaSobreODm = Projetil.BeamspeedLidoComoSpeedDeTeste ? 0 : Projetil.PressaSobreORaioDoDm(velocidade),
 			CargaMinima = CargaDoRaioG6(id),
 			Nome = r.Nome,
 		}, custoPorTiro: porTiro);
@@ -667,7 +689,9 @@ public sealed partial class GameServer
 		foreach (Projetil p in ProjeteisDaZona(pl.Zone.Hash).ToList())
 		{
 			if (!p.Vivo || p.Dono == pl.Id) continue;
-			if ((p.Pos - pl.Pos).Length > umTile * 2) continue;
+			// A DOIS TILES -- ou vindo pra cima de mim dentro do aviso que dois tiles davam no DM
+			// (`Projetil.AoAlcanceDe`, dono 2026-10-08: o tiro ficou mais rapido, o tempo de soprar nao encolheu).
+			if (!p.AoAlcanceDe(pl.Pos, umTile * 2)) continue;
 			if (CombatMath.BpModulus(pl.Ficha.expressedBP, p.Bp) < 1
 				&& poder < p.ModsBase + p.BaseDano) continue;
 
@@ -707,7 +731,8 @@ public sealed partial class GameServer
 		foreach (Projetil p in ProjeteisDaZona(pl.Zone.Hash).ToList())
 		{
 			if (!p.Vivo || p.Dono == pl.Id) continue;
-			if ((p.Pos - pl.Pos).Length > ZoneCollision.TileSize * 2) continue;
+			// o arco de dois tiles -- ou o tiro que vem pra cima dentro do aviso deles (`Projetil.AoAlcanceDe`)
+			if (!p.AoAlcanceDe(pl.Pos, ZoneCollision.TileSize * 2)) continue;
 			if (!Tecnicas.EstaOlhandoPra(pl.Pos, pl.Facing, p.Pos)) continue;
 
 			double forca = meu / Math.Max(p.Bp * p.ModsBase, 0.0001);
@@ -718,6 +743,17 @@ public sealed partial class GameServer
 			if (!_players.TryGetValue(p.Dono, out ServerPlayer? atirador)) continue;
 
 			Devolver(p, pl, atirador);
+
+			// O PASSO DE VOLTA E O DO DM, e nao o do empurrao de uma disputa (que e o que o `Devolver` deixa no
+			// tiro): `walk(M, get_opposite_dir(M))` (`Kiai.dm:104`) nao escreve atraso -- o tiro volta a um tile
+			// por tique, o passo da bola mais rapida. No passo do empurrao ele voltava mais DEVAGAR do que veio
+			// (10 tiles por segundo contra os 16 a 20 de uma bola, dono 2026-10-08) e perdia de quem atirou e
+			// saiu correndo: uma deflexao da qual se foge a pe.
+			if (!Projetil.DeflexaoNoPassoDoEmpurraoDeTeste)
+			{
+				p.SegundosPorTile = Projetil.AtrasoDeBolaPorLag(1);
+				p.Pressa = Projetil.PressaDeBolaPorLag(1);
+			}
 			devolvidos++;
 		}
 
@@ -805,7 +841,7 @@ public sealed partial class GameServer
 					   + (pl.Ficha.kieffusionskill + pl.Ficha.kiaiskill / 10) * 2;
 		foreach (Projetil p in ProjeteisDaZona(pl.Zone.Hash).ToList())
 		{
-			if (!p.Vivo || p.Dono == pl.Id || (p.Pos - pl.Pos).Length > raio) continue;
+			if (!p.Vivo || p.Dono == pl.Id || !p.AoAlcanceDe(pl.Pos, raio)) continue;   // o raio da carga, ou vindo pra cima no aviso dele
 			if (CombatMath.BpModulus(pl.Ficha.expressedBP, p.Bp) < 1
 				&& poder < p.ModsBase + p.BaseDano) continue;
 			Matar(p, FimDeProjetil.Apagou);

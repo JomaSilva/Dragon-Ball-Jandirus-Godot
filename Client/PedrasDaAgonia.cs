@@ -116,7 +116,7 @@ public partial class PedrasDaAgonia : Node2D
 		// EXISTIR NA PASTA NAO E ESTAR IMPORTADO -- mesma guarda da cinematica: um `.tres` sem o
 		// `.png` importado carrega NULO e o efeito some calado.
 		if (ResourceLoader.Exists(Transformacao.CaminhoDasPedras))
-			_folha = ResourceLoader.Load<SpriteFrames>(Transformacao.CaminhoDasPedras);
+			_folha = FolhasPresas.Carregar(Transformacao.CaminhoDasPedras);
 		else if (!_avisou)
 		{
 			_avisou = true;

@@ -34,6 +34,17 @@ public partial class TelaDeInventario : CanvasLayer
 	private GridContainer _grade = null!;
 	private Label _contagem = null!;
 
+	/// <summary>
+	/// A FILEIRA "VESTINDO": as pecas que estao no corpo agora, uma por vaga (dono, 2026-10-08: *"a roupa q vc
+	/// escolhe ao criar deveria aparecer no inventario pra ter a opcao de tirar ela e trocar por outro"*).
+	///
+	/// ELA NAO E PARTE DA GRADE DE 30, e de proposito: a peca vestida nao ocupa espaco da mochila -- ela mora
+	/// na aparencia (ver `RoupaGuardada`). Clicar numa oferece TIRAR, e a peca tirada cai na grade de baixo
+	/// como um item comum, com VESTIR. As vagas sao sempre as quatro (`Appearance.MaxRoupa`), cheias ou nao,
+	/// pelo mesmo motivo dos 30 slots: a tela nao pode dancar a cada troca.
+	/// </summary>
+	private HBoxContainer _vestindo = null!;
+
 	/// <summary>O painel de acoes do item clicado. Nulo = nenhum item aberto.</summary>
 	private PanelContainer? _acoes;
 
@@ -80,6 +91,16 @@ public partial class TelaDeInventario : CanvasLayer
 		caixa.AddChild(_contagem);
 		caixa.AddChild(new HSeparator());
 
+		var vestindo = new Label { Text = "VESTINDO", HorizontalAlignment = HorizontalAlignment.Center };
+		vestindo.AddThemeColorOverride("font_color", Tema.TextoFraco);
+		vestindo.AddThemeFontSizeOverride("font_size", 12);
+		caixa.AddChild(vestindo);
+
+		_vestindo = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+		_vestindo.AddThemeConstantOverride("separation", 6);
+		caixa.AddChild(_vestindo);
+		caixa.AddChild(new HSeparator());
+
 		_grade = new GridContainer { Columns = Colunas };
 		_grade.AddThemeConstantOverride("h_separation", 6);
 		_grade.AddThemeConstantOverride("v_separation", 6);
@@ -113,9 +134,10 @@ public partial class TelaDeInventario : CanvasLayer
 		GetViewport().SetInputAsHandled();
 	}
 
-	private void Abrir() { _raiz.Visible = true; Redesenhar(); }
+	/// <summary>Abre a mochila. Publico pro robo diretor (`RoboDoTrailer`), que nao aperta tecla.</summary>
+	public void Abrir() { _raiz.Visible = true; Redesenhar(); }
 
-	private void Fechar()
+	public void Fechar()
 	{
 		FecharAcoes();
 		FecharTeclado();
@@ -126,9 +148,18 @@ public partial class TelaDeInventario : CanvasLayer
 	{
 		FecharAcoes();
 		foreach (Node n in _grade.GetChildren()) n.QueueFree();
+		foreach (Node n in _vestindo.GetChildren()) n.QueueFree();
 
 		Inventario inv = GameClient.Instance?.Mochila ?? new Inventario();
 		_contagem.Text = $"{inv.Ocupados} de {Inventario.Slots} espaços";
+
+		// A FILEIRA DO QUE ESTA NO CORPO -- ver `_vestindo`. A lista vem no MESMO pacote da mochila.
+		IReadOnlyList<Jandirus.Core.Appearance.PecaDeRoupa> noCorpo = GameClient.Instance?.Vestindo ?? [];
+		for (int i = 0; i < Jandirus.Core.Appearance.Appearance.MaxRoupa; i++)
+		{
+			if (i < noCorpo.Count) _vestindo.AddChild(SlotVestido(RoupaGuardada.De(noCorpo[i])));
+			else _vestindo.AddChild(SlotVazio());
+		}
 
 		// A GRADE TEM SEMPRE OS 30 SLOTS, cheios ou nao. Desenhar so o que existe faria a caixa
 		// mudar de tamanho a cada maca colhida, e a tela inteira dancaria embaixo do mouse.
@@ -164,9 +195,7 @@ public partial class TelaDeInventario : CanvasLayer
 			IconAlignment = HorizontalAlignment.Center,
 		};
 
-		Texture2D? icone = def == null ? null : Miniatura(def);
-		if (icone != null) botao.Icon = icone;
-		else botao.Text = def?.Nome[..Math.Min(4, def.Nome.Length)] ?? "?";
+		PorIcone(botao, def, RoupaGuardada.Ler(pilha.Id)?.Cor);
 
 		botao.Pressed += () => AbrirAcoes(pilha, botao);
 
@@ -200,6 +229,80 @@ public partial class TelaDeInventario : CanvasLayer
 
 	/// <summary>O icone do item: o carregador unico (<see cref="Miniaturas"/>), o mesmo das abas Equip e Tech.</summary>
 	private static Texture2D? Miniatura(ItemDef def) => Miniaturas.DoItem(def);
+
+	/// <summary>
+	/// POE O DESENHO DO ITEM NO BOTAO DO SLOT -- e, se ele for uma peca de roupa TINGIDA, na cor dela.
+	///
+	/// A peca com cor nao pode usar o `Icon` do botao: o material que a tinge (`CharacterVisual.MaterialDeRoupa`,
+	/// o mesmo shader do boneco) pintaria o botao INTEIRO, fundo e borda juntos. Ela vai num retangulo proprio
+	/// por cima, que so desenha a folha. Sem desenho nenhum, sobram as quatro primeiras letras do nome.
+	/// </summary>
+	private static void PorIcone(Button botao, ItemDef? def, Jandirus.Core.Appearance.Rgb? corDaPeca)
+	{
+		Texture2D? icone = def == null ? null : Miniatura(def);
+		if (icone == null) { botao.Text = def?.Nome[..Math.Min(4, def.Nome.Length)] ?? "?"; return; }
+		if (CharacterVisual.MaterialDeRoupa(corDaPeca) is not { } tinta) { botao.Icon = icone; return; }
+
+		botao.AddChild(new TextureRect
+		{
+			Texture = icone,
+			Material = tinta,
+			AnchorRight = 1, AnchorBottom = 1,
+			OffsetLeft = 4, OffsetTop = 4, OffsetRight = -4, OffsetBottom = -4,
+			ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+			StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+			TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
+			MouseFilter = Control.MouseFilterEnum.Ignore,
+		});
+	}
+
+	/// <summary>
+	/// UMA VAGA DA FILEIRA "VESTINDO" COM PECA: o mesmo slot da grade, com a borda de destaque de quem esta em
+	/// uso. Clicar abre o painel com a unica coisa que se faz com roupa no corpo -- tirar.
+	/// </summary>
+	private Control SlotVestido(RoupaGuardada roupa)
+	{
+		ItemDef? def = roupa.Ficha(CatalogoDeItens.Visual);
+		var botao = new Button
+		{
+			CustomMinimumSize = new Vector2(LadoDoSlot, LadoDoSlot),
+			TooltipText = $"{roupa.Nome}\nNo corpo. Clique para tirar e guardar na mochila.",
+			ExpandIcon = true,
+			IconAlignment = HorizontalAlignment.Center,
+		};
+		botao.AddThemeStyleboxOverride("normal", Tema.Caixa(Tema.PainelClaro, Tema.Destaque, 4));
+		PorIcone(botao, def, roupa.Cor);
+		// A IDENTIDADE VAI EM METADADO (o id da peca), como nas linhas da aba Equip: e por ele que a bancada
+		// acha a vaga e confere o que a tela diz que o corpo veste.
+		botao.SetMeta("vestida", roupa.Id);
+		botao.Pressed += () => AbrirAcoesDeVestida(roupa, botao);
+		return botao;
+	}
+
+	/// <summary>O painel de uma peca VESTIDA: o nome e o botao de tirar. O verbo leva o id da peca (folha + cor).</summary>
+	private void AbrirAcoesDeVestida(RoupaGuardada roupa, Control perto)
+	{
+		FecharAcoes();
+
+		_acoes = Tema.Painel1(8);
+		var caixa = new VBoxContainer { CustomMinimumSize = new Vector2(150, 0) };
+		caixa.AddThemeConstantOverride("separation", 4);
+		_acoes.AddChild(caixa);
+
+		caixa.AddChild(new Label { Text = roupa.Nome, HorizontalAlignment = HorizontalAlignment.Center });
+		caixa.AddChild(new HSeparator());
+
+		var b = new Button { Text = Rotulo(RoupaGuardada.AcaoTirar) };
+		b.Pressed += () =>
+		{
+			GameClient.Instance?.SendVerbo($"item_{RoupaGuardada.AcaoTirar}", roupa.Id);
+			FecharAcoes();
+		};
+		caixa.AddChild(b);
+
+		_raiz.AddChild(_acoes);
+		_acoes.GlobalPosition = perto.GlobalPosition + new Vector2(LadoDoSlot + 6, 0);
+	}
 
 	/// <summary>
 	/// AS OPCOES DO ITEM, num painel flutuante ao lado do slot.
@@ -297,6 +400,9 @@ public partial class TelaDeInventario : CanvasLayer
 		// capitaliza --, mas o botao precisa dizer que o livro SE GASTA, e isso nao cabe no verbo.
 		"ler" => "Ler (gasta o livro)",
 		"jogar" => "Jogar no alvo marcado",
+		// A ROUPA: a guardada VESTE, a que esta no corpo SAI e vai pra mochila. Ver `RoupaGuardada`.
+		RoupaGuardada.AcaoVestir => "Vestir",
+		RoupaGuardada.AcaoTirar => "Tirar e guardar",
 		// A PALAVRA E A DO DONO ("clicar em instalar"), e ela e a MESMA na frase que o servidor manda
 		// depois de fabricar -- ver `GameServer.Construir`. Duas palavras pro mesmo botao fariam o
 		// jogador procurar um segundo botao que nao existe.

@@ -191,6 +191,15 @@ public partial class RoboDeVariedadeDeKi : Node
 	private CanvasLayer? _mosaico;
 	private int _quadrosDoMosaico;
 
+	/// <summary>Ha quantos quadros a arvore esta PARADA pra a foto do tiro. -1 = correndo. Ver `EsperarOTiro`.</summary>
+	private int _quadrosCongelados = -1;
+
+	/// <summary>O que o servidor dizia do tiro no quadro do gatilho -- parado, o tiro de la continua andando.</summary>
+	private (int Id, ArteDeKi Arte, TipoDeProjetil Tipo, double Andou, float Escala) _noGatilho;
+
+	/// <summary>A bancada continua rodando com a arvore parada: e ela quem para e quem solta.</summary>
+	public override void _Ready() => ProcessMode = ProcessModeEnum.Always;
+
 	private void Conferir(bool ok, string oque)
 	{
 		_linhas.Add((ok ? "  ok   " : "  FALHA") + "  " + oque);
@@ -454,11 +463,16 @@ public partial class RoboDeVariedadeDeKi : Node
 		{
 			Conferir(false, $"{_emCurso?.Rotulo}: o tiro saiu e andou {TilesDoObturador:0} tiles "
 						  + $"(achou={achou}, andou={andou:0.0})");
+			GetTree().Paused = false;
+			_quadrosCongelados = -1;
 			Adiante(srv, cli);
 			return;
 		}
 
-		if (!achou || andou < TilesDoObturador) return;
+		// PARADA PRA FOTO, o tiro em julgamento e o do GATILHO (o do servidor continuou andando, e pode ate ter
+		// acabado): ver "A ARVORE PARA ANTES DA FOTO" logo abaixo.
+		if (_quadrosCongelados >= 0) (idDoTiro, arte, tipo, andou, escala) = _noGatilho;
+		else if (!achou || andou < TilesDoObturador) return;
 
 		// O NODE TEM QUE EXISTIR NA TELA -- e nao basta o servidor achar que mandou. Este e o elo que a
 		// `--diagartedeki` nao atravessa: um `ushort` perdido no anuncio de nascimento cairia
@@ -487,9 +501,29 @@ public partial class RoboDeVariedadeDeKi : Node
 
 		// UM QUADRO DE FOLGA pro node nascer: o anuncio chega pelo canal confiavel e o `AoNascerTiro`
 		// roda na leitura do pacote, que pode cair depois do `_Process` desta bancada.
-		if (!desenhado && _tDoTiro < PacienciaPorTiro - 1) return;
+		if (_quadrosCongelados < 0 && !desenhado && _tDoTiro < PacienciaPorTiro - 1) return;
+
+		// ============================ A ARVORE PARA ANTES DA FOTO (2026-10-08) ============================
+		// `Tela()` devolve o ULTIMO quadro renderizado, e a posicao da cabeca lida aqui em cima e a DESTE
+		// quadro: entre as duas ha um quadro de voo. Enquanto o tiro andava 5 px por quadro isso era ruido;
+		// a 20 tiles por segundo sao 11 px de mundo -- e DEPENDE DA VELOCIDADE: o Kamehameha (8 tiles/s) e a
+		// tecnica inventada com a MESMA folha (20 tiles/s) saiam recortados em pontos diferentes do mesmo
+		// desenho e "discordavam" em 64%, mais do que duas folhas diferentes. Parado, o que a foto mostra e
+		// o que a posicao diz; os dois quadros de espera sao os do `GetImage` (ver `RoboDeBocaDeCano.Obturador`).
+		// O gatilho continua sendo a DISTANCIA, medida com o jogo correndo.
+		// ====================================================================================================
+		if (_quadrosCongelados < 0)
+		{
+			_noGatilho = (idDoTiro, arte, tipo, andou, escala);
+			GetTree().Paused = true;
+			_quadrosCongelados = 0;
+			return;
+		}
+		if (_quadrosCongelados++ < 2) return;
 
 		Image? tela = Tela();
+		GetTree().Paused = false;
+		_quadrosCongelados = -1;
 		if (tela == null) { Conferir(false, "a janela renderiza"); Fechar(); return; }
 
 		// ============================ O RECORTE E CENTRADO NA CABECA DO TIRO ============================

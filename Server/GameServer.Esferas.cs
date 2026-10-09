@@ -88,6 +88,18 @@ public sealed class SetDeEsferas
 	public bool Inerte;
 
 	/// <summary>
+	/// **O ULTIMO TIQUE VIU ESTE SET ACORDADO** -- o `IsInactive` do DM (`Dragonballs.dm:166`), ao contrario, e
+	/// pra uma coisa so: achar a VIRADA de apagado pra acordado, que e o instante em que quem esta no planeta
+	/// precisa de um `S2C.Esferas` novo. Quem escreve e quem le e o item 1 do `TickDasEsferas`, e mais ninguem.
+	///
+	/// NAO VAI PRO DISCO, pela conta do <see cref="Esfera.Portador"/>: e estado de SESSAO. O que ele separa e
+	/// "as telas ligadas agora ja receberam este set aceso" de "ainda nao", e depois de um reinicio nao ha tela
+	/// que tenha recebido nada. Falso de nascenca serve aos dois casos: o set recem-erguido esta apagado mesmo, e
+	/// o que volta do disco ja acordado custa UM pacote no primeiro tique -- pra uma zona que no boot esta vazia.
+	/// </summary>
+	[JsonIgnore] public bool VistoAcordado;
+
+	/// <summary>
 	/// **O DESEJO SUPREMO FOI GRAVADO NESTAS ESFERAS** -- `HasStrongestWish` (`Dragonballs.dm:44`).
 	///
 	/// Comprado na CRIACAO da estatua por `SW_WISH_PRICE` = 2.000.000 zeni (`namekian.dm:101-109`), e
@@ -248,6 +260,20 @@ public sealed partial class GameServer
 	/// <summary>O que as esferas disseram -- ligada so pela bancada, como a `EscutaDaConquista`.</summary>
 	internal static List<string>? EscutaDasEsferas;
 
+	/// <summary>
+	/// O `S2C.Esferas` QUE SAIU, por destinatario: pra quem (o id) e o fio. Nulo fora da bancada -- o mesmo molde
+	/// do `EscutaDeBlocos`. Ver a linha de escuta no <see cref="MandarEsferas"/>.
+	///
+	/// A <see cref="EscutaDasEsferas"/> de cima guarda o que o sistema DISSE ao mundo; esta guarda o que a TELA de
+	/// cada um recebeu, e e so isso que decide se a esfera se desenha apagada ou acesa (`EsferaDesenhada`). O
+	/// "acordado" do servidor e conta de relogio (<see cref="SetAtivo"/>) e muda sem ninguem mandar nada: um set
+	/// pode estar acordado no `db_ver` e apagado na tela, e so o fio mostra a diferenca.
+	///
+	/// OS BYTES E NAO OS CAMPOS, pelo motivo da `EscutaDeDecalques`: campo copiado repetiria a decisao de quem
+	/// escreveu, e os dois concordariam por construcao.
+	/// </summary>
+	internal static List<(int Para, byte[] Fio)>? EscutaDoFioDasEsferas;
+
 	private string CaminhoDasEsferas =>
 		System.IO.Path.Combine(_store?.Pasta ?? ".", "esferas.json");
 
@@ -346,9 +372,10 @@ public sealed partial class GameServer
 	/// veio medir. E o mesmo acidente que custou o `saves/planetas-mortos.json` uma vez neste projeto.
 	///
 	/// E nao ha nada a recuperar depois: com a memoria de fato zerada, o arquivo volta certo na proxima
-	/// gravacao -- e um servidor que reinicie antes disso le a pasta sem `esferas.json` e ergue o mesmo
-	/// Porunga do zero. E exatamente o argumento que o `AdminLimparServidor` ja escreveu pro
-	/// `ZerarSemente`.
+	/// gravacao -- que e o PRIMEIRO TIQUE: o Porunga re-erguido nasce com a espera de nascimento, e o
+	/// zelador grava o corte que faz nela (ver <see cref="ManterOSetEterno"/>). E ela nao pode demorar: um
+	/// servidor que reinicie sem o arquivo ergue OUTRO Porunga, com a espera contada do reinicio e nao da
+	/// limpeza (a `--wipeteste`, secao 13, mede as duas metades).
 	/// ================================================================================================================================
 	/// </summary>
 	private void SalvarEsferas()
@@ -497,6 +524,13 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--esferateste` e `--wipeteste`): o que o zelador muda fica so na memoria --
+	/// o `esferas.json` continua com a espera de nascimento (0,4 ano) e o proximo reinicio rearma a espera do
+	/// Porunga. Falso em jogo, sempre.
+	/// </summary>
+	public static bool ZeladorSoNaMemoriaDeTeste;
+
+	/// <summary>
 	/// O ZELADOR DO SET ETERNO -- `eternal_maintain()` (:400-419).
 	///
 	/// Cura save antigo (poder e numero de desejos de volta aos defines), levanta o set que alguem
@@ -514,21 +548,51 @@ public sealed partial class GameServer
 	/// <see cref="TickDasEsferas"/>, que enterra ANTES de manter -- ao contrario, este laco recriaria
 	/// as sete de um Porunga ancorado num cadaver, uma vez por segundo.
 	/// ================================================================================================
+	///
+	/// ============================ O QUE ELE MUDA VAI PRO DISCO, E E ELE QUEM GRAVA ============================
+	/// No DM o que o zelador escreve mora na ESTATUA, e a estatua vai inteira pro disco no `SaveWorld`
+	/// seguinte (`SaveItems`, `MapSave.dm:108-114`), ao lado do `Year` (`World.dm:41`). La o reinicio le o
+	/// prazo ja cortado, contado num relogio que nao andou com o servidor parado: a espera do eterno e
+	/// 0,1 `Year` a partir da primeira manutencao (`:398` e `:404`, 65 s depois do `New()`), e reiniciar
+	/// nao a rearma.
+	///
+	/// Aqui o corte do tique ficava SO NA MEMORIA (o `mexeu` de la nao sabia dele), e o `esferas.json`
+	/// continuava com a espera de NASCIMENTO (0,4 ano, que o <see cref="RefazerAsEsferas"/> grava ao
+	/// espalhar). Medido em 2026-10-09 com boot de verdade numa pasta vazia: o arquivo saiu com
+	/// nascimento + 44,8 h e nao mudou em 12 s de tiques; o boot seguinte o regravou com REINICIO + 11,2 h.
+	/// A espera do Porunga recomecava no primeiro reinicio de todo mundo recem-nascido -- e com o arquivo
+	/// de um nascimento de 34 h atras o reinicio nem cortava: as esferas, que na memoria estavam
+	/// acordadas desde a hora 11,2, voltavam apagadas por mais 10,8 h.
+	///
+	/// A GRAVACAO MORA AQUI, e nao em quem chama. Sao tres chamadores (o tique, a carga do disco e a
+	/// restauracao de planeta, os dois ultimos pelo <see cref="ErguerOSetEterno"/>) e so a carga gravava
+	/// depois, por gravar sempre: regra posta num chamador e a que o outro esquece. O portao da limpeza
+	/// continua valendo -- quem o consulta e o `SalvarEsferas`.
+	///
+	/// E ELA SO ACONTECE QUANDO ALGO MUDOU -- senao seria um arquivo regravado por segundo, pra sempre.
+	/// Depois do corte o teto anda com o relogio e o prazo fica pra tras dele: o zelador volta a nao ter
+	/// o que fazer, e nao grava.
+	/// ====================================================================================================
 	/// </summary>
 	private void ManterOSetEterno()
 	{
+		bool mudou = false;
 		foreach (SetDeEsferas s in _sets.Where(x => x.Eterno))
 		{
+			double teto = PrazoEmSegundos(Esferas.SegundosDe(Esferas.TetoDeEsperaEterna));
+			mudou |= s.Inerte || s.Poder != Esferas.PoderDoEterno || s.Desejos != Esferas.DesejosDoEterno
+				  || s.OffTime != Esferas.OffTimeEterno || s.AtivoEm > teto;
+
 			s.Inerte = false;
 			s.Poder = Esferas.PoderDoEterno;
 			s.Desejos = Esferas.DesejosDoEterno;
 			s.OffTime = Esferas.OffTimeEterno;
-
-			double teto = PrazoEmSegundos(Esferas.SegundosDe(Esferas.TetoDeEsperaEterna));
 			if (s.AtivoEm > teto) s.AtivoEm = teto;
 
 			if (_esferas.Count(e => e.Set == s.Id) < Esferas.Total) RefazerAsEsferas(s);
 		}
+
+		if (mudou && !ZeladorSoNaMemoriaDeTeste) SalvarEsferas();
 	}
 
 	// =====================================================================
@@ -758,6 +822,13 @@ public sealed partial class GameServer
 	// O TIQUE -- a policia de planeta, a reativacao e a queda
 	// =====================================================================
 	/// <summary>
+	/// DEFEITO INJETADO (bancada `--esferateste`): o set que acorda so avisa a zona se tiver pedido gasto pra
+	/// zerar. O recem-nascido (contagem em zero) acorda calado, e quem esta parado no planeta continua com a
+	/// estatua e as sete apagadas na tela -- o que este port fez ate 2026-10-09. Falso em jogo, sempre.
+	/// </summary>
+	public static bool AcordarCaladoDeTeste;
+
+	/// <summary>
 	/// UMA VEZ POR SEGUNDO. Cinco coisas, todas baratas -- a lista tem sete itens por set.
 	///
 	/// A PRIMEIRA E O ENTERRO (`-1`) e ela vem antes do zelador do eterno, e nao por gosto de ordem:
@@ -788,6 +859,7 @@ public sealed partial class GameServer
 		// ==========================================================================================
 		EnterrarSetsDeMundosMortos();
 
+		// O ZELADOR GRAVA SOZINHO o que ele muda, e por isso nao passa pelo `mexeu` deste tique. Ver nele.
 		ManterOSetEterno();
 
 		// ---------------------------------------------------------- 0. a divida do "Mais Forte do Universo"
@@ -816,6 +888,27 @@ public sealed partial class GameServer
 		// ---------------------------------------------------------- 1. o set volta a valer
 		foreach (SetDeEsferas s in _sets)
 		{
+			// ============================ A VIRADA TEM TRINCO PROPRIO, E ELE E O `IsInactive` DO DM ============================
+			// No original cada esfera guarda `IsInactive` (`Dragonballs.dm:166`) e o `Tick()` dela troca o
+			// `icon_state` sozinho quando `ActiveYear <= Year` (`:282-286`): quem esta olhando ve acender. Aqui o
+			// "acordado" e conta de relogio (`SetAtivo`) e a tela so muda quando sai um `S2C.Esferas` novo -- alguem
+			// tem que notar a VIRADA e avisar a zona.
+			//
+			// Quem notava era so o `Pedidos != 0` de baixo, e ele enxerga apenas o set que GASTOU pedido. O set
+			// recem-nascido tem a contagem em zero (`RefazerAsEsferas`) e acordava calado. Medido em 2026-10-09 na
+			// `--esferateste`, lendo o fio de quem ficou parado no planeta, nas quatro portas de nascimento (erguer,
+			// refazer, o Porunga de um mundo novo, o eterno refeito pelo zelador): passada a espera o `db_ver`
+			// respondia ACORDADAS e o radar achava as sete, nenhum pacote saia, e a tela continuava com a estatua e
+			// as sete apagadas. Sair do planeta e voltar acendia: a troca de zona reenvia o pacote.
+			//
+			// O TRINCO E O QUE O ULTIMO TIQUE VIU (`VistoAcordado`), reescrito a cada tique: o aviso sai no tique em
+			// que o set aparece acordado pela primeira vez, e so nele. Sem trinco seria um pacote por segundo pra
+			// todo set acordado do mundo, pra sempre.
+			// ================================================================================================================
+			bool acordado = !s.Inerte && agora >= s.AtivoEm;
+			if (acordado && !s.VistoAcordado && !AcordarCaladoDeTeste) zonasPraAvisar.Add(s.Zona.Hash);
+			s.VistoAcordado = acordado;
+
 			// `WishCount = 0` NA REATIVACAO (:286). O comentario do DM explica que sem isso o SEGUNDO
 			// uso do mesmo set falhava pra sempre -- o contador nunca voltava a zero.
 			//
@@ -1454,7 +1547,15 @@ public sealed partial class GameServer
 		}
 
 		foreach (ServerPlayer pl in _players.Values)
-			if (pl.Zone.Hash == zona.Hash) pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		{
+			if (pl.Zone.Hash != zona.Hash || pl.Peer is not { } tela) continue;
+
+			// A BANCADA LE O FIO AQUI, por destinatario e so de quem tem dono na tela: o que se quer saber e o
+			// que CHEGOU pra alguem, e um corpo sem `Peer` nao recebe nada. `CopyData` porque o writer e o mesmo
+			// pra zona inteira. Nula em jogo: uma comparacao contra null por envio.
+			EscutaDoFioDasEsferas?.Add((pl.Id, w.CopyData()));
+			tela.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		}
 	}
 
 	/// <summary>

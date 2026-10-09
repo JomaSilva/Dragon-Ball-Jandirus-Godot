@@ -115,6 +115,14 @@ public partial class ChoqueDeKi : Node2D
 	/// </summary>
 	public bool NoChao = true;
 
+	/// <summary>
+	/// SEM LUZ PROPRIA: a estrela nao pendura a <see cref="LuzDeKi"/> dela. So o ensaio do `Aquecimento` a pede assim,
+	/// como pede ao tiro (`ProjetilDesenhado.SemLuz`): no palco dele quem ilumina e a luz do palco, e de um lado so.
+	/// A luz de ki nasce quando o MUNDO esta escuro, e o ensaio pode cair nos primeiros quadros de um mundo escuro --
+	/// a da estrela acendia o lado que tinha de ficar no escuro. Ver `Aquecimento.PorAEstrela`.
+	/// </summary>
+	public bool SemLuz;
+
 	/// <summary>O semi-eixo de traves do corpo agora, em px. Pra bancada.</summary>
 	public float RaioDeTeste => _raio;
 
@@ -186,7 +194,7 @@ public partial class ChoqueDeKi : Node2D
 
 		// A ESTRELA TAMBEM ACENDE O CHAO, pela mesma regra do tiro: energia que nao ilumina nada em volta
 		// le como adesivo (ver `ProjetilDesenhado._Ready`). De dia a `LuzDeKi` nao cria nada.
-		LuzDeKi.Pendurar(this, _corA.Lerp(_corB, 0.5f), 3f);
+		if (!SemLuz) LuzDeKi.Pendurar(this, _corA.Lerp(_corB, 0.5f), 3f);
 	}
 
 	/// <summary>
@@ -250,9 +258,17 @@ public partial class ChoqueDeKi : Node2D
 		_mat.SetShaderParameter("tranco", _tranco);
 	}
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagembateki`): o node continua na arvore -- anda com o encontro, solta
+	/// faisca, levanta pedra -- e NAO pinta a estrela. E o defeito que contar nodes nao ve ("ha UMA estrela
+	/// no encontro" continua verde) e que a foto tem que reprovar. Sempre falso em jogo. Quem liga ou desliga
+	/// pede um `QueueRedraw` no node: o `_Draw` so roda quando alguem pede.
+	/// </summary>
+	public static bool SemPinturaDeTeste;
+
 	public override void _Draw()
 	{
-		if (_mat != null) PintorDeKi.Quadro(this, Vector2.Zero, _eixo, MeioQuadro);
+		if (_mat != null && !SemPinturaDeTeste) PintorDeKi.Quadro(this, Vector2.Zero, _eixo, MeioQuadro);
 	}
 
 	private void EscreverNoShader()

@@ -61,7 +61,7 @@ public partial class NaveDesenhada : Node2D
 		if (Grande) Arte = ArteDaNaveGrande;
 
 		if (!ResourceLoader.Exists(Arte)) { GD.PushWarning($"[nave] sem arte em {Arte}"); return; }
-		if (ResourceLoader.Load<SpriteFrames>(Arte) is not { } folha) return;
+		if (FolhasPresas.Carregar(Arte) is not { } folha) return;
 
 		string anim = folha.HasAnimation("default")
 			? "default"

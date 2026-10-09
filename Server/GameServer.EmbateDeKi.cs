@@ -58,6 +58,12 @@ public sealed partial class GameServer
 		/// <summary>O feixe deste lado. NULO = ele esta segurando com as maos.</summary>
 		public Projetil? Feixe;
 
+		/// <summary>
+		/// O FEIXE QUE ESTAS MAOS SEGURAM -- o do outro lado. So existe em quem esta de maos (<see cref="DeMaos"/>): e
+		/// contra ELE que o poder delas se mede (`EmbateDeKi.PoderDeSegurar`: o dano que este feixe faria nelas).
+		/// </summary>
+		public Projetil? Segura;
+
 		/// <summary>A letra que ele tem que apertar agora.</summary>
 		public char Letra;
 
@@ -264,12 +270,15 @@ public sealed partial class GameServer
 	/// O pedido do dono foi *"feixe contra feixe, mas tambem feixe contra quem bloqueia"*, e a imagem
 	/// e conhecida: as duas maos seguram o raio, os pes cavam o chao, e ou ele engole voce ou voce
 	/// joga aquilo de volta. Entao o mesmo cabo de guerra roda com um lado sem feixe -- e o poder das
-	/// maos NAO e inventado: e o numerador da chance de deflexao que o jogo ja calculava
-	/// (`EmbateDeKi.PoderDeSegurar`), que e a unica conta do DM que ja comparava um corpo com um tiro.
+	/// maos se mede pelo DANO (dono, 2026-10-08; `EmbateDeKi.PoderDeSegurar`): elas empatam com o raio
+	/// que faria `EmbateDeKi.DanoQueAsMaosEmpatam` atraves da guarda, pela mesma cadeia de ki que o
+	/// `Acertar` acabou de rodar. Ate aquele dia valiam o numerador da chance de deflexao do DM, e com
+	/// ele quem segurava perdia sempre -- a historia e os numeros estao la.
 	///
-	/// O SORTEIO DE DEFLEXAO CONTINUA VINDO ANTES (ver `Acertar`): quem tem sorte defende de graca,
-	/// como sempre teve. Isto aqui e o que acontece com quem NAO defletiu e mesmo assim nao vai
-	/// abaixar a guarda.
+	/// O CORTE DOS FRACOS E O SORTEIO DE DEFLEXAO CONTINUAM VINDO ANTES (ver `Acertar`, passos 3a-bis e 3):
+	/// o raio que nao feriria quem segura nao abre disputa nenhuma -- so ha embate quando ha o que perder
+	/// --, e quem tem sorte defende de graca, como sempre teve. Isto aqui e o que acontece com quem NAO
+	/// defletiu um raio que fere, e mesmo assim nao vai abaixar a guarda.
 	/// ====================================================================================================
 	/// </summary>
 	private bool TentarEmbateDeGuarda(Projetil p, ServerPlayer alvo)
@@ -288,7 +297,7 @@ public sealed partial class GameServer
 		if (alvo.TiquesDeVoo > 0 || alvo.ArrastoRestante > 0) return false;
 
 		Comecar(new LadoDeKi { Quem = dono, Feixe = p },
-				new LadoDeKi { Quem = alvo, Feixe = null },
+				new LadoDeKi { Quem = alvo, Feixe = null, Segura = p },
 				Protocol.TipoDeEmbate.FeixeContraGuarda);
 		return true;
 	}
@@ -467,11 +476,11 @@ public sealed partial class GameServer
 
 	/// <summary>
 	/// O PODER DE UM LADO: o do FEIXE se ele tem um, o das MAOS se nao tem. Ver os dois metodos em
-	/// <see cref="EmbateDeKi"/> -- o primeiro e do DM, o segundo e o numerador da deflexao do DM.
+	/// <see cref="EmbateDeKi"/> -- o primeiro e do DM; o segundo e deste port, e se mede contra o feixe que as
+	/// maos seguram (<see cref="LadoDeKi.Segura"/>): o dano que ele faria nelas.
 	/// </summary>
 	private static double PoderDoLado(LadoDeKi l)
-		=> l.Feixe?.PoderDeEmbate()
-		   ?? EmbateDeKi.PoderDeSegurar(l.Quem.Ficha, l.Quem.Combate?.Bloqueando ?? false);
+		=> l.Feixe?.PoderDeEmbate() ?? EmbateDeKi.PoderDeSegurar(l.Segura!, l.Quem.Combate);
 
 	/// <summary>
 	/// ============================ A DISPUTA LE O PODER DE AGORA ============================
@@ -490,7 +499,8 @@ public sealed partial class GameServer
 	/// O QUE SE RELE: o BP. O feixe guarda `expressedBP * wavemult` de quando saiu da mao
 	/// (`Projetil.Bp`), e aqui a mesma conta e refeita com o `expressedBP` deste tique. Os `mods` e o
 	/// `baseDano` ficam os do tiro -- sao a tecnica, e ela nao muda (ver `EmbateDeKi.PoderDoFeixe`). O
-	/// lado das MAOS nunca precisou disto: o `PoderDeSegurar` ja le a ficha.
+	/// lado das MAOS e relido junto e DEPOIS do feixe que elas seguram: o poder delas e o dano que esse
+	/// feixe faria nelas AGORA (`EmbateDeKi.PoderDeSegurar`), com o poder dos dois deste tique.
 	///
 	/// A FORMA NOVA CUSTA O QUE ELA CUSTA: transformar-se drena Ki, e sem Ki o lado cai (`LadoOk`). O
 	/// salto de poder nao e de graca -- e uma aposta, como no original.
@@ -945,6 +955,9 @@ public sealed partial class GameServer
 		p.Rumo = p.Rumo * -1f;   // `Vec2` nao tem menos unario
 		Vec2 ate = alvo.Pos - p.Pos;
 		if (ate.LengthSquared > 1e-4f) p.Rumo = ate.Normalized();
+		// A VOLTA E UM DISPARO NOVO: o leque do teleguiado (`Teleguiado.DesvioMaximoEmGraus`) passa a contar
+		// deste rumo -- preso ao da ida, a bola devolvida nem conseguiria virar pra quem a atirou.
+		p.RumoDaSaida = p.Rumo;
 
 		// QUEM DEVOLVE E O AGRESSOR: sem esta linha, matar alguem com o proprio ataque dele nao
 		// contaria como briga entre os dois.
@@ -955,8 +968,8 @@ public sealed partial class GameServer
 	/// O FEIXE VENCEDOR VAI CUMPRIR O EMPURRAO -- velocidade, alcance e PRAZO renovados.
 	///
 	/// ============================ AS TRES SAO A MESMA IDEIA ============================
-	/// A velocidade e o `BCL_PUSH_STEP` (0,2 s por tile: mais lento que o voo normal do raio, e e o
-	/// que faz a cena durar). O alcance e o `BCL_PUSH_MAX`, com a linha do DM junto -- *"alcance
+	/// A velocidade e o `BCL_PUSH_STEP` (0,2 s por tile no DM: a METADE do voo normal de um raio, e e o
+	/// que faz a cena durar -- aqui, a metade do voo de ca). O alcance e o `BCL_PUSH_MAX`, com a linha do DM junto -- *"alcance
 	/// renovado: o empurrao nao morre por distancia no meio"* (`BeamClash.dm:308`).
 	///
 	/// E O PRAZO PELO MESMO ARGUMENTO. O `Burnout` sao 5 s desde o disparo; um feixe que passou 18 s
@@ -967,7 +980,11 @@ public sealed partial class GameServer
 	/// </summary>
 	private static void RenovarParaOEmpurrao(Projetil p)
 	{
-		p.SegundosPorTile = EmbateDeKi.SegundosPorTileDoEmpurrao;
+		// NA PRESSA DOS RAIOS (dono, 2026-10-08): o `BCL_PUSH_STEP` e o DOBRO do passo de um raio comum no DM
+		// (0,2 s por tile contra 0,1), e continua sendo o dobro aqui -- o empurrao nao pode ter ficado pra tras
+		// enquanto o raio que o alimenta dobrava de velocidade.
+		p.SegundosPorTile = EmbateDeKi.SegundosPorTileDoEmpurrao / Projetil.PressaDeRaio;
+		p.Pressa = Projetil.PressaDeRaio;
 		p.Distancia = Math.Max(p.Distancia, EmbateDeKi.TilesDoEmpurrao);
 		p.MaxDistancia = Math.Max(p.MaxDistancia, p.Distancia);
 		p.VidaRestante = Math.Max(p.VidaRestante, Projetil.SegundosDeBurnout);
@@ -1226,7 +1243,11 @@ public sealed partial class GameServer
 
 			Vec2 ateMim = npc.Pos - k.Pos;
 			float dist = ateMim.Length;
-			if (dist > faro || dist < 1e-3f) continue;
+			// O FARO E TEMPO DE AVISO, e por isso anda com a pressa do raio (`Projetil.AvisoDe`): os 7 tiles do
+			// DM eram 0,7 s antes de o raio chegar, e e nesse tempo que o NPC carrega a resposta. Com o raio no
+			// dobro da velocidade e o faro parado, o contra-feixe sairia sempre depois do impacto -- e o
+			// impacto derruba o raio de quem carrega (`AoLevarGolpeComRaioNaMao`): Ki pago, recarga gasta, nada.
+			if (dist > k.AvisoDe(faro) || dist < 1e-3f) continue;
 
 			Vec2 u = ateMim.Normalized();
 			if (k.Rumo.X * u.X + k.Rumo.Y * u.Y < 0.7f) continue;   // nao vem pra ca

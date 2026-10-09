@@ -72,6 +72,19 @@ public partial class CargaDeRaioVisual : Node2D
 	/// </summary>
 	private const float DistanciaDaMao = 9f;
 
+	/// <summary>
+	/// ONDE A BOLA SE JUNTA, contado do centro do corpo DESENHADO: <see cref="DistanciaDaMao"/> a frente dele e
+	/// 4 px pra baixo -- o mesmo 4 da nave, e pelo mesmo motivo: o centro do node do corpo fica
+	/// `MoveRules.FeetOffsetY` acima dos pes, e sem o ajuste o brilho sai na altura da testa.
+	///
+	/// PUBLICA porque a bancada do voo (`--diagcargavoo`) confere o pixel contra ESTA conta, e nao contra uma copia.
+	/// </summary>
+	public static Vector2 Mao(Facing dir)
+	{
+		Vec2 frente = MeleeArea.Frente(dir);
+		return new Vector2(frente.X, frente.Y) * DistanciaDaMao + new Vector2(0, 4);
+	}
+
 	/// <summary>Em quanto tempo a bola enche, e de que fracao do tamanho ela parte.</summary>
 	private const float SegundosPraEncher = 0.5f, TamanhoDeNascenca = 0.4f;
 
@@ -173,12 +186,7 @@ public partial class CargaDeRaioVisual : Node2D
 		float t = Mathf.Clamp((float)_idade / SegundosPraEncher, 0f, 1f);
 		float tamanho = Mathf.Lerp(TamanhoDeNascenca, 1f, 1f - (1f - t) * (1f - t));
 
-		// O MESMO 4 PRA BAIXO DA NAVE, e pelo mesmo motivo: o centro do node do corpo fica
-		// `MoveRules.FeetOffsetY` acima dos pes, e sem o ajuste o brilho sai na altura da testa.
-		Vec2 frente = MeleeArea.Frente(Direcao);
-		var mao = new Vector2(frente.X, frente.Y) * DistanciaDaMao + new Vector2(0, 4);
-
-		DrawSetTransform(mao, 0f, Vector2.One * tamanho);
+		DrawSetTransform(Mao(Direcao), 0f, Vector2.One * tamanho);
 		PintorDeKi.Quadro(this, Vector2.Zero, Vector2.Right, PintorDeKi.MeiaDaBola(_estilo, _estilo.Raio));
 	}
 }

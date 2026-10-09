@@ -351,6 +351,9 @@ public partial class GameServer
 			: pl.Combate is { Stun: > 0 } ? "voce ainda esta atordoado."
 			: pl.Ficha.med || pl.Ficha.train ? "voce precisa parar de treinar pra se concentrar nisto."
 			: NaMente(pl) ? "primeiro saia do transe."
+			// DE DENTRO DE UM MAJIN NAO SE SALTA: a saida e vencer a imagem dele. (No DM a pergunta nao
+			// e feita -- divergencia declarada no cabecalho do `GameServer.AbsorcaoMajin.cs`.)
+			: DentroDeUmMajin(pl) ? "daqui de dentro nao: a saida e vencer a imagem de quem absorveu voce."
 			: Agarrado(pl) ? "preso num agarrao voce nao se concentra."
 			: pl.Selo.Preso ? "daqui de dentro nao."
 			: _canais.ContainsKey(pl.Id) ? "com um raio na mao nao da pra se concentrar nisto."

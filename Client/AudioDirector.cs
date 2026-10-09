@@ -387,6 +387,11 @@ public partial class AudioDirector : Node
     {
         _pedidos[(int)camada] = caminho;
         Reavaliar(motivo: motivo);
+
+        // O SACO DESTA CAMADA ANDOU: quem pede faixa de combate ou de menu acabou de sortear uma. A que passou a
+        // ser a proxima comeca a ser lida agora, com a luta inteira (ou o painel aberto) de prazo -- ver
+        // `Adiantar`. Camada sem saco de sorteio nao tem "proxima", e pra ela isto nao faz nada.
+        Adiantar(camada);
     }
 
     /// <summary>Esta camada nao quer mais nada. Se era a que tocava, a maquina reavalia.</summary>
@@ -449,7 +454,7 @@ public partial class AudioDirector : Node
         Anotar(topo, faixa, motivo);
 
         if (faixa.Length == 0) { Calar(); return; }
-        Cruzar(faixa, EmLaco(topo));
+        Cruzar(faixa, topo);
     }
 
     /// <summary>
@@ -488,6 +493,7 @@ public partial class AudioDirector : Node
         _musicaA.Stop();
         _musicaB.Stop();
         _fade = 1;   // nao ha cruzamento pendente pra mexer em volume de ninguem
+        _esperada = "";   // nem faixa a caminho pra entrar depois: quem a esperava desistiu dela
     }
 
     /// <summary>
@@ -548,12 +554,19 @@ public partial class AudioDirector : Node
         // sobra de cruzamento: a faixa VELHA terminando enquanto a nova ja esta no ar nao decide nada
         if (quem != Atual()) return;
 
+        // E A VELHA TERMINANDO ENQUANTO A NOVA AINDA VEM TAMBEM NAO. A maquina ja decidiu outra faixa, que so nao
+        // entrou porque o arquivo dela esta na thread de carga (ver `_esperada`), e `_camadaAtual` ja e a camada
+        // DELA: lida aqui embaixo, a faixa de combate que acabasse nesses quadros passaria pelo tema de
+        // transformacao que a interrompeu, e o `for` do fim apagaria o pedido de um tema que nem tocou.
+        if (_esperada.Length > 0) return;
+
         Camada acabou = _camadaAtual;
 
         if (acabou == Camada.Combate)
         {
             _pedidos[(int)Camada.Combate] = Trilha.Combate();
             Reavaliar(forcar: true, motivo: "faixa de COMBATE acabou com a tag de pe -> encadeia outra");
+            Adiantar(Camada.Combate);   // o saco andou de novo: a seguinte ja vem vindo
             return;
         }
 
@@ -579,6 +592,10 @@ public partial class AudioDirector : Node
     /// </summary>
     public bool AdiantarParaOFimDeTeste(double faltando = 0.4)
     {
+        // A FAIXA DECIDIDA AINDA NAO ENTROU (ver `_esperada`): o que esta tocando e a de antes, e adiantar a de
+        // antes pro fim nao mede o fim de quem a bancada pediu.
+        if (_esperada.Length > 0) return false;
+
         AudioStreamPlayer p = Atual();
         if (!p.Playing || p.Stream == null) return false;
 
@@ -596,25 +613,230 @@ public partial class AudioDirector : Node
     ///
     /// ============================ MP3 NAO SE CARREGA DUAS VEZES ============================
     /// O importador do Godot le o arquivo INTEIRO pra memoria, de forma sincrona, na thread
-    /// principal. As faixas de batalha tem 0,9 a 1,9 MB e a maior do menu tem 14,2 MB -- e o
+    /// principal. As faixas de batalha tem 0,5 a 3,3 MB e a maior do menu tem 14,2 MB -- e o
     /// carregamento acontecia no PRIMEIRO SOCO de cada briga e a cada abertura do menu de pause.
     /// Um engasgo de quadro inteiro, no pior instante, toda vez.
     ///
-    /// O cache troca isso por um custo unico. Ele so cresce com o que a sessao de fato tocou.
+    /// O cache troca isso por um custo unico POR FAIXA, e so isso. As de combate sao 38, sorteadas sem
+    /// repetir: quase toda luta abre com uma que a sessao ainda nao leu, e o custo "unico" continuava
+    /// caindo no primeiro golpe de cada uma -- como o das seis de menu caia nas seis primeiras aberturas do
+    /// ESC, e o de cada tema de transformacao no primeiro quadro da cinematica dele. Quem tira a leitura da
+    /// thread principal sao dois: o <see cref="Adiantar"/>, que enche este cache ANTES da hora nas camadas em
+    /// que a proxima faixa se conhece, e o <see cref="Cruzar"/>, que nas outras espera a thread de carga
+    /// sem parar a tela.
     /// =====================================================================================
     /// </summary>
     private readonly Dictionary<string, AudioStream> _faixas = [];
 
-    private void Cruzar(string caminho, bool repetir)
+    /// <summary>
+    /// AS FAIXAS PEDIDAS A THREAD DE CARGA que ainda nao foram recolhidas pro <see cref="_faixas"/>. Quase
+    /// sempre vazia: o <see cref="_Process"/> recolhe cada uma no quadro em que a leitura dela acaba.
+    /// </summary>
+    private readonly List<string> _vindo = [];
+
+    /// <summary>
+    /// A FAIXA QUE A MAQUINA JA DECIDIU TOCAR E QUE AINDA NAO ENTROU NO AR, porque o arquivo dela esta na thread
+    /// de carga. Vazio = nao ha nenhuma: o que foi decidido esta tocando, ou e o silencio.
+    ///
+    /// ENQUANTO ELA NAO CHEGA NADA MUDA NO AR: quem tocava continua tocando, quem estava calado continua calado.
+    /// A decisao ja foi anotada no instante em que foi tomada (camada, faixa, diario); o que espera e so o som.
+    /// Quem a escreve e o <see cref="Cruzar"/>, e quem a poe no ar e o <see cref="RecolherAsAdiantadas"/>.
+    /// </summary>
+    private string _esperada = "";
+
+    /// <summary>
+    /// DEFEITO INJETADO (bancada `--diagestouro`): a musica NAO usa a thread de carga -- o jogo de antes, em que
+    /// o mp3 de cada faixa era lido do disco pela thread principal no quadro em que ela entrava no ar: o da
+    /// musica de combate no primeiro golpe de cada luta, o do tema de menu no quadro em que o ESC abria, o do
+    /// tema de uma transformacao no primeiro quadro da cinematica. Sempre falso em jogo.
+    /// </summary>
+    public static bool SemThreadDeCargaDeTeste;
+
+    /// <summary>
+    /// QUEM ESPIA O SACO DE SORTEIO DESTA CAMADA -- a faixa que ele vai entregar em seguida, sem tira-la de la.
+    /// Nulo = a camada nao tem saco.
+    ///
+    /// SO DUAS TEM: o tema de MENU e a musica de COMBATE saem cada um de uma pasta embaralhada (ver `Trilha`), e
+    /// por isso a faixa seguinte ja esta escolhida antes de alguem a pedir. O tema de um LUGAR, o da RAIVA e o de
+    /// uma TRANSFORMACAO so se conhecem no instante em que sao pedidos.
+    ///
+    /// E ESSA DIFERENCA QUE DECIDE COMO O ARQUIVO CHEGA, nos dois lugares que perguntam: quem tem saco tem a
+    /// proxima faixa lida ANTES da hora (<see cref="Adiantar"/>); quem nao tem pede na hora, e a faixa ENTRA
+    /// QUANDO CHEGA (<see cref="Cruzar"/>). Uma tabela so, pra as duas respostas nao discordarem sobre uma camada.
+    /// </summary>
+    private static Func<string>? SacoDe(Camada camada) => camada switch
     {
+        Camada.Menu => Trilha.ProximaDeMenu,
+        Camada.Combate => Trilha.ProximaDeCombate,
+        _ => null,
+    };
+
+    /// <summary>
+    /// PEDE A THREAD DE CARGA A FAIXA QUE O SACO DESTA CAMADA VAI ENTREGAR A SEGUIR -- a que o proximo
+    /// `Trilha.Combate()` ou `Trilha.Menu()` vai devolver -- pra que ela ja esteja na memoria quando a luta
+    /// comecar ou o ESC abrir. Camada sem saco (ver <see cref="SacoDe"/>) nao tem "a seguir": pra ela isto nao
+    /// faz nada, e quem tira a leitura da thread principal e o <see cref="Cruzar"/>.
+    ///
+    /// ============================ O NUMERO ============================
+    /// Medido com janela pela `--diagestouro` (2026-10-08), com um cronometro em volta do <see cref="Cruzar"/>.
+    /// Lidas uma a uma pela thread principal, as 38 faixas da pasta de COMBATE custaram de 1,9 a 12,8 ms (uma,
+    /// 23,8) na primeira leitura e de 2,0 a 5,9 com o arquivo ja no cache do Windows -- e essa leitura caia no
+    /// quadro do primeiro golpe de cada luta: o `World.AoGolpe` dele levava 5,3 a 6,1 ms, contra 1,0 a 1,3 de um
+    /// golpe qualquer. Pedida a thread de carga, a mesma faixa fica pronta em 6 a 19 ms de relogio com a
+    /// thread principal livre: pedir custa 0,02 ms, e recolher outro tanto. O primeiro golpe de uma luta
+    /// passou a custar o que custa um golpe.
+    ///
+    /// As seis de MENU sao maiores (1,6 a 14,2 MB), e a leitura caia no quadro em que o ESC abria. Na rodada
+    /// `--temas` da mesma bancada, no mesmo dia: 3,6 a 5,7 ms pelas de 2,5 a 4,4 MB com o arquivo no cache do
+    /// Windows (10,4 a 11,5 pela `.ogg` de 2,5 MB, 14,7 a 21,5 pela de 14,2 MB), e na primeira leitura do dia
+    /// 14,0 a 18,8 pelas de 2,5 a 4,2 MB e 45,3 pela de 14,2. Pedida antes, o ESC abre esperando 0,0.
+    ///
+    /// ============================ QUEM CHAMA ============================
+    ///   * o `World._Ready`, na entrada no mundo, pras duas camadas: a faixa da primeira luta e a do primeiro
+    ///     ESC sao lidas enquanto o mundo monta;
+    ///   * este arquivo, toda vez que um saco de sorteio ANDA -- o <see cref="Musica"/> de um pedido de combate
+    ///     ou de menu (o primeiro golpe de uma luta, o ESC abrindo, a tela de login) e o <see cref="AoTerminar"/>
+    ///     que encadeia. A faixa que acabou de sair do saco ja estava aqui; a que passou a ser a proxima comeca
+    ///     a ser lida na hora, com a luta inteira -- ou o painel aberto -- de prazo.
+    ///
+    /// ============================ A ARMADILHA DO `Aquecimento` VALE AQUI ============================
+    /// Um `ResourceLoader.Load` de um caminho que ainda esta na thread de carga TRAVA a thread principal
+    /// (medido la: 240 s de log mudo). Por isso todo pedido fica anotado no <see cref="_vindo"/> ate ser
+    /// recolhido, e o <see cref="Cruzar"/> pergunta a ele antes de carregar: faixa que ainda esta vindo e
+    /// entregue pelo `LoadThreadedGet`, que ESPERA a leitura em andamento em vez de competir com ela.
+    ///
+    /// ISTO E UMA ANTECIPACAO, E NAO UMA GARANTIA. Se o saco for mexido por fora (uma bancada que sorteia a
+    /// esmo), a faixa pedida nao e a que sai -- e a que sai e lida na hora, como sempre foi. Mais lento, e
+    /// certo.
+    /// ===============================================================================================
+    /// </summary>
+    public void Adiantar(Camada camada)
+    {
+        if (SemThreadDeCargaDeTeste || SacoDe(camada) is not { } espiar) return;
+
+        // ARQUIVO RUIM NAO DERRUBA NADA: isto e uma antecipacao. Sem o pedido a faixa e lida na hora, como
+        // sempre foi, e o `Cruzar` avisa se ela nao existir.
+        Pedir(espiar());
+    }
+
+    /// <summary>
+    /// PEDE UMA FAIXA A THREAD DE CARGA, se ela ainda nao esta na memoria nem vindo. Devolve verdadeiro quando a
+    /// faixa VAI estar no <see cref="_faixas"/> (ja esta, ou esta a caminho) e falso quando nao ha o que esperar:
+    /// caminho vazio, arquivo que nao resolve, pedido recusado.
+    ///
+    /// TODO PEDIDO FICA ANOTADO NO <see cref="_vindo"/> ate ser recolhido: e o que guarda este arquivo da
+    /// armadilha do `Aquecimento` (ver <see cref="Adiantar"/>).
+    /// </summary>
+    private bool Pedir(string caminho)
+    {
+        if (caminho.Length == 0) return false;
+        if (_faixas.ContainsKey(caminho) || _vindo.Contains(caminho)) return true;
+        if (!ResourceLoader.Exists(caminho) || ResourceLoader.LoadThreadedRequest(caminho) != Error.Ok) return false;
+        _vindo.Add(caminho);
+        return true;
+    }
+
+    /// <summary>
+    /// RECOLHE AS FAIXAS QUE A THREAD DE CARGA JA ENTREGOU -- as pedidas antes da hora e a que a maquina esta
+    /// esperando -- e, se a esperada chegou, POE-NA NO AR. Nada aqui bloqueia: `LoadThreadedGetStatus` e uma
+    /// consulta, e o `LoadThreadedGet` de uma carga que ja acabou e uma entrega -- o mesmo desenho do
+    /// `Aquecimento.RecolherAFila`.
+    /// </summary>
+    private void RecolherAsAdiantadas()
+    {
+        for (int i = _vindo.Count - 1; i >= 0; i--)
+        {
+            string caminho = _vindo[i];
+            ResourceLoader.ThreadLoadStatus estado = ResourceLoader.LoadThreadedGetStatus(caminho);
+            if (estado == ResourceLoader.ThreadLoadStatus.InProgress) continue;
+
+            _vindo.RemoveAt(i);
+            if (estado == ResourceLoader.ThreadLoadStatus.Loaded && ResourceLoader.LoadThreadedGet(caminho) is AudioStream fluxo)
+                _faixas[caminho] = fluxo;
+        }
+
+        // A FAIXA QUE A MAQUINA ESPERAVA SAIU DA THREAD DE CARGA: entra no ar agora, pela mesma porta de sempre --
+        // o `Cruzar` a acha na memoria. `_camadaAtual` e a camada DELA: enquanto ha faixa esperada a decisao nao
+        // mudou (uma decisao nova passa pelo `Cruzar` ou pelo `Calar`, e os dois a esquecem). Se a leitura
+        // falhou, fica o aviso de sempre e o ar como estava.
+        if (_esperada.Length == 0 || _vindo.Contains(_esperada)) return;
+
+        string chegou = _esperada;
+        _esperada = "";
+        if (_faixas.ContainsKey(chegou)) Cruzar(chegou, _camadaAtual);
+        else GD.PushWarning($"[audio] faixa ausente: {chegou}");
+    }
+
+    /// <summary>
+    /// QUANTO A THREAD PRINCIPAL GASTOU PRA POR A ULTIMA FAIXA NO AR, em ms e em duas partes: ESPERANDO o
+    /// arquivo (zero quando ele ja estava na memoria) e LIGANDO o tocador. So a bancada le.
+    ///
+    /// E um cronometro em volta do <see cref="Cruzar"/>, e nao uma bandeira "veio do cache": a pergunta da
+    /// `--diagestouro` e quanto do quadro do primeiro golpe e a musica, e o quadro dela tambem toca duas
+    /// amostras e monta a faisca. Tempo de quadro sozinho nao separa uma coisa da outra.
+    /// </summary>
+    public (string Faixa, double Espera, double Tocador) UltimaEntradaDeTeste { get; private set; }
+
+    /// <summary>
+    /// POE A FAIXA NO AR, cruzando com a que estiver tocando -- ou, se o arquivo dela ainda nao esta na memoria e
+    /// ninguem podia te-lo lido antes, PEDE-O A THREAD DE CARGA E ESPERA: a faixa entra quando chegar.
+    ///
+    /// ============================ A FAIXA SEM SACO ENTRA QUANDO CHEGA ============================
+    /// O tema de uma TRANSFORMACAO so se conhece no quadro em que a cinematica nasce: o pacote da forma chega, o
+    /// `World.AoMudarForma` escolhe a cena e o `Transformacao._Ready` pede o tema, tudo no mesmo quadro. O da
+    /// RAIVA, idem; o de um LUGAR, no quadro em que a zona chega. Nao ha saco pra espiar nem antecedencia pra
+    /// aproveitar, e o mp3 era lido ali mesmo, pela thread principal -- medido pela `--diagestouro --temas`
+    /// (2026-10-08): 10,2 a 10,9 ms (uma vez 16,1) pelos temas de 9,8 e 10,0 MB com o arquivo no cache do Windows
+    /// e 31,1 a 32,4 na primeira leitura do dia, no primeiro quadro da cinematica de estreia; 4,9 a 6,5 e 17,1
+    /// pelo de 4,2 MB; e 22,3 pelo `Demon World`, 7,1 MB, na chegada ao Inferno.
+    ///
+    /// PEDIR ANTES "OS TEMAS QUE ESTE PERSONAGEM PODE ALCANCAR" NAO FECHA A CONTA, por duas razoes. Quem sabe o
+    /// proximo degrau e o servidor: o cliente nao recebe a porta de BP nem a lista de estreias vistas (a aba
+    /// Forms mostra so o que ja despertou, de proposito), e uma copia da escada no cliente seria a que envelhece
+    /// calada. E o tema toca pro planeta inteiro -- a estreia que se ouve e muitas vezes a de OUTRA pessoa.
+    ///
+    /// ENTAO QUEM ESPERA E O SOM, E NAO A TELA. A faixa e pedida a thread de carga aqui e fica anotada em
+    /// <see cref="_esperada"/>; a decisao ja esta de pe (camada, faixa e diario foram escritos no
+    /// <see cref="Reavaliar"/>), e o tocador so liga quando o <see cref="RecolherAsAdiantadas"/> a recebe. Ate la
+    /// o que tocava continua tocando. Medido pela mesma rodada: a thread principal espera 0,0 ms, e o tema entra
+    /// no ar 1 a 3 quadros depois de pedido (8 a 26 ms num monitor de 120 Hz, com o arquivo no cache do Windows;
+    /// numa primeira leitura do dia sao os 32 ms de antes, so que fora da thread principal). O cruzamento sobe
+    /// de -60 dB em 1,2 s: os primeiros 40 ms dele ficam abaixo de -29 dB, e um comeco atrasado por esse tanto
+    /// nao se ouve.
+    ///
+    /// AS CAMADAS COM SACO NAO ESPERAM AQUI: a faixa delas ja foi pedida antes da hora (<see cref="Adiantar"/>), e
+    /// o que sobra pra elas e o caso raro do ramo de baixo -- o saco mexido por fora, ou a faixa tocada enquanto
+    /// o arquivo ainda vem.
+    /// ==============================================================================================
+    /// </summary>
+    private void Cruzar(string caminho, Camada camada)
+    {
+        ulong chegou = Time.GetTicksUsec();
+        _esperada = "";   // o que se esperava deixou de ser a decisao: quem manda agora e esta chamada
         if (!_faixas.TryGetValue(caminho, out AudioStream? fluxo))
         {
-            fluxo = ResourceLoader.Load<AudioStream>(caminho);
+            // (falso do `Pedir` = arquivo que nao resolve: segue pro ramo de baixo, que avisa da faixa ausente)
+            if (SacoDe(camada) == null && !SemThreadDeCargaDeTeste && Pedir(caminho))
+            {
+                _esperada = caminho;
+                return;
+            }
+
+            // AINDA NA THREAD DE CARGA? Entao quem entrega e o `LoadThreadedGet`, que ESPERA a leitura que ja
+            // comecou. Um `Load` cru do mesmo caminho bateria de frente com ela e travaria a thread principal
+            // -- a armadilha do cabecalho do `Aquecimento`. So acontece se a faixa for tocada enquanto o arquivo
+            // dela ainda esta sendo lido: 6 a 19 ms numa hora calma, 86 medidos no quadro da entrada no mundo
+            // (a `--diagtrilha`, roteiro 0c, passa por aqui de proposito).
+            fluxo = _vindo.Remove(caminho)
+                ? ResourceLoader.LoadThreadedGet(caminho) as AudioStream
+                : ResourceLoader.Load<AudioStream>(caminho);
             if (fluxo != null) _faixas[caminho] = fluxo;
         }
         if (fluxo == null) { GD.PushWarning($"[audio] faixa ausente: {caminho}"); return; }
+        ulong naMao = Time.GetTicksUsec();
 
         // o .import do Godot ja resolve o loop de ogg/mp3; wav depende do arquivo
+        bool repetir = EmLaco(camada);
         if (fluxo is AudioStreamOggVorbis ogg) ogg.Loop = repetir;
         else if (fluxo is AudioStreamMP3 mp3) mp3.Loop = repetir;
 
@@ -625,10 +847,12 @@ public partial class AudioDirector : Node
 
         _usandoA = !_usandoA;
         _fade = 0;
+        UltimaEntradaDeTeste = (caminho, (naMao - chegou) / 1000.0, (Time.GetTicksUsec() - naMao) / 1000.0);
     }
 
     public override void _Process(double delta)
     {
+        RecolherAsAdiantadas();
         if (_fade >= 1) return;
 
         _fade = Math.Min(_fade + delta / DuracaoFade, 1);
@@ -647,7 +871,7 @@ public partial class AudioDirector : Node
     {
         if (string.IsNullOrEmpty(caminho)) { _ambiente.Stop(); return; }
 
-        var fluxo = ResourceLoader.Load<AudioStream>(caminho);
+        AudioStream? fluxo = SonsPresos.Carregar(caminho);
         if (fluxo == null) { GD.PushWarning($"[audio] ambiente ausente: {caminho}"); return; }
         if (_ambiente.Stream == fluxo && _ambiente.Playing) return;
 
@@ -663,11 +887,12 @@ public partial class AudioDirector : Node
     // =====================================================================
     /// <summary>
     /// Um som pontual sem posicao (interface, aviso). Cria e descarta o player: som de UI e
-    /// raro e nao vale um pool.
+    /// raro e nao vale um pool. (O FLUXO vem da porta `SonsPresos`, que o segura: descartar o
+    /// player nao solta o arquivo -- vale pros tres funis daqui pra baixo e pro ambiente.)
     /// </summary>
     public void Efeito(string caminho, float volume = 1f)
     {
-        var fluxo = ResourceLoader.Load<AudioStream>(caminho);
+        AudioStream? fluxo = SonsPresos.Carregar(caminho);
         if (fluxo == null) return;
 
         var p = new AudioStreamPlayer
@@ -699,7 +924,7 @@ public partial class AudioDirector : Node
     public static void EfeitoNoLugar(Node2D onde, string caminho, float volume = 1f, float alcance = 480f)
     {
         if (string.IsNullOrEmpty(caminho)) return;
-        var fluxo = ResourceLoader.Load<AudioStream>(caminho);
+        AudioStream? fluxo = SonsPresos.Carregar(caminho);
         if (fluxo == null) { GD.PushWarning($"[audio] efeito ausente: {caminho}"); return; }
         Espiao?.Invoke(caminho, volume);
 

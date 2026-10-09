@@ -510,6 +510,20 @@ public sealed partial class GameServer
 	internal bool TemRaioNoTrailer(int id) => _canais.GetValueOrDefault(id)?.Raio is { Vivo: true };
 
 	/// <summary>
+	/// A VELOCIDADE, em pixels por segundo, do tiro mais novo deste dono (zero sem tiro). A cena do ki rebatido
+	/// ergue a guarda um TEMPO antes do contato -- e pra virar esse tempo em distancia ela precisa saber quanto
+	/// o tiro anda, que e de cada tecnica.
+	/// </summary>
+	internal float VelocidadeDoTiroNoTrailer(int dono)
+	{
+		if (!_players.TryGetValue(dono, out ServerPlayer? pl)) return 0;
+		Projetil? novo = null;
+		foreach (Projetil p in ProjeteisDaZona(pl.Zone.Hash))
+			if (p.Dono == dono && p.Vivo && (novo == null || p.Id > novo.Id)) novo = p;
+		return novo == null ? 0 : (float)(ZoneCollision.TileSize / novo.SegundosPorTile);
+	}
+
+	/// <summary>
 	/// A COR DO KI DE UM CORPO DE CENA ("R,G,B") -- a `Blast_Color` de producao (`Appearance.CorKi`), que a
 	/// tela de criacao deixa escolher. O personagem de linha de comando nasce com um ki quase branco, e
 	/// uma Genkidama branca num piso claro some; a do roteiro e azul.
@@ -542,6 +556,12 @@ public sealed partial class GameServer
 		if (pa <= 0 || pb <= 0) return 0;
 
 		ExpressoNoTrailer(lb.Quem.Id, lb.Quem.Ficha.expressedBP * razao * pa / pb);
+		// A ARRUMACAO DO PALCO NAO E UM AUMENTO DE PODER. O raio de B ja saiu da mao, e o poder dele acabou de ser
+		// posto no numero do roteiro: a regua do tamanho do raio (`Projetil.PoderDeReferencia`, 2026-10-08) recomeca
+		// daqui -- senao o raio de quem o roteiro fez dominar ENGROSSARIA no primeiro segundo do encontro, sem
+		// ninguem ter se transformado. A virada (`ViradaDoEmbateNoTrailer`) nao faz isto, e de proposito: la o
+		// salto de poder E a cena, e o raio crescendo com ele e o que o dono pediu pra ver.
+		if (lb.Feixe != null) lb.Feixe.PoderDeReferencia = lb.Quem.Ficha.expressedBP;
 		LerOPoderDeAgora(d.A, d.B);
 		return la.Vantagem;
 	}

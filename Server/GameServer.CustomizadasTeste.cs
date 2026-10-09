@@ -512,7 +512,7 @@ public sealed partial class GameServer
 		// dois estados diferentes parecerem iguais e a varredura pularia o caminho que importa.
 		static string Chave(TecnicaCustomizada t) =>
 			$"{t.Tipo}|{t.BaseDano:0.####}|{t.CargaMinima:0.####}|{t.CustoKi:0.####}|{t.CustoStamina:0.####}"
-			+ $"|{(t.UsaStamina ? 1 : 0)}{(t.Carregavel ? 1 : 0)}{(t.Instantaneo ? 1 : 0)}"
+			+ $"|{(t.UsaStamina ? 1 : 0)}{(t.Carregavel ? 1 : 0)}{(t.Instantaneo ? 1 : 0)}{(t.Teleguiado ? 1 : 0)}"
 			+ $"|{t.Velocidade:0.####}|{t.Alcance:0.####}|{t.DistanciaMod:0.####}|{t.Gasto}";
 
 		int estourou = 0, afundou = 0, vistos = 0, maiorGasto = 0, cortouPorTeto = 0;
@@ -880,12 +880,12 @@ public sealed partial class GameServer
 		//     / (BP_do_tiro * mods * basedamage)                            (`objects.dm:333`)
 		//
 		// em PORCENTO, sorteada DUAS vezes por impacto: `prob(chance/2)` e a deflexao barata (o corpo
-		// sai da linha e o tiro segue) e `prob(chance)` e a cara, que MATA o tiro com
-		// `FimDeProjetil.Defletido`. Ela dispara em todo impacto contra quem NAO esta nocauteado nem
+		// sai da linha: a bola acaba ali sem dano, `Apagou`) e `prob(chance)` e a cara, que MATA o tiro com
+		// `FimDeProjetil.Defletido`. Ela dispara em todo impacto acima do corte dos fracos contra quem NAO esta nocauteado nem
 		// atordoado e tem 5 de Ki -- ou seja, contra a vitima desta prova, que e um corpo inteiro de pe.
 		// MEDIDO com os corpos exatos daqui (atirador 5.000, vitima 500, `base_damage` 1,0): 0,0999%
-		// por impacto, e o laco de sub-passos do `AndarProjetil` testa a colisao umas seis vezes na
-		// janela de 16 px -- da meio por cento por rodada, que e exatamente a frequencia observada.
+		// por impacto. (Em 2026-09-02 o raspao ainda fazia o laco de sub-passos do `AndarProjetil` sortear
+		// de novo dentro da janela de 16 px; desde 2026-10-08 e um sorteio por encontro -- `--projetilteste` 15.)
 		//
 		// ---- POR QUE DESLIGAR ASSIM, E NAO DE OUTRO JEITO ----
 		// O precedente e o `RaioDaBancada` (`GameServer.ProjeteisTeste.cs:2167`): a receita da bancada

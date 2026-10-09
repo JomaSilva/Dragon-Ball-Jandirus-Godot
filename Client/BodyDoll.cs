@@ -153,7 +153,7 @@ public partial class BodyDoll : Control
     /// </summary>
     private static Texture2D? Quadro(string arquivo, string? estado = null)
     {
-        var f = ResourceLoader.Load<SpriteFrames>($"{Arte}{arquivo}.tres");
+        var f = FolhasPresas.Carregar($"{Arte}{arquivo}.tres");
         if (f == null) { GD.PushWarning($"[hud] arte ausente: {arquivo}"); return null; }
 
         // ARMADILHA DE CAIXA: no .dmi o estado se chama "Slightly Injured", com espaco e

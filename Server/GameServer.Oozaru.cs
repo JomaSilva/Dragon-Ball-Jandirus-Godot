@@ -28,7 +28,8 @@ public partial class GameServer
 	/// ============================ OLHAR PRA LUA E UMA ESCOLHA ============================
 	/// O botao vermelho embaixo da lua pede; QUEM DECIDE E AQUI. O cliente calcula a fase por
 	/// funcao pura do mesmo instante, mas quem digita o id no fio e ele -- nada impede mandar
-	/// `oozaru_olhar` ao meio-dia, ou de dentro de uma caverna, ou sem rabo.
+	/// `oozaru_olhar` ao meio-dia, ou de dentro de uma caverna, ou sem rabo. As tres recusas estao
+	/// aqui embaixo.
 	///
 	/// Toda recusa FALA o motivo. Recusa muda e o mesmo que travar: o jogador aperta, nada
 	/// acontece, e ele nao tem como saber se e regra ou defeito.
@@ -44,6 +45,17 @@ public partial class GameServer
 			// O RABO E A CONDICAO, no DM tambem (`Oozaru.dm:39`): sem ele a lua nao diz nada ao
 			// corpo. Cortar o rabo e como se sai da forma -- e como se evita entrar nela.
 			Avisar(pl, "sem rabo, a lua é só uma pedra bonita no céu.");
+			return;
+		}
+
+		// SOB TETO NAO SE OLHA PRA LUA. E o `if(current_area.name!="Inside")` do DM
+		// (`Weather.dm:201`), que la nem chega a rodar: dentro de casa o mob le lua 0
+		// (`Weather.dm:76-80` zera o `mooncycle` da area interna). Vem ANTES da pergunta ao ceu pra
+		// a recusa dizer o motivo certo -- a lua cheia ESTA la, e o teto que esta no caminho.
+		// Ver `GameServer.Teto.cs`.
+		if (SobTeto(pl))
+		{
+			Avisar(pl, "daqui de dentro não se vê o céu.");
 			return;
 		}
 

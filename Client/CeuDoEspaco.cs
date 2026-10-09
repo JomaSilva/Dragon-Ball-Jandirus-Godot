@@ -69,7 +69,7 @@ public partial class CeuDoEspaco : Node2D
 		colunas = 1;
 		var ts = new TileSet { TileSize = new Vector2I(Lado, Lado) };
 
-		var frames = ResourceLoader.Load<SpriteFrames>(Folha);
+		var frames = FolhasPresas.Carregar(Folha);
 		Texture2D? tex = frames != null && frames.HasAnimation("0") && frames.GetFrameCount("0") > 0
 						 && frames.GetFrameTexture("0", 0) is AtlasTexture at
 			? at.Atlas
@@ -187,21 +187,8 @@ public partial class PlanetaDesenhado : Node2D
 	{
 		ZIndex = -60;   // atras dos corpos, na frente do ceu
 
-		Texture2D? quadro = Quadro(EstadoDoIcone());
-
-		_icone = new Sprite2D
-		{
-			Name = "Icone",
-			Texture = quadro,
-			// ESCALA PELO DIAMETRO. O raio vem do servidor em pixels de mundo e e ele que decide a
-			// que distancia o pouso acontece; se o desenho nao casar com esse raio, o jogador
-			// pousa "no vazio" ao lado de um planeta que parecia estar longe.
-			Scale = Vector2.One * (Raio * 2f / LadoDoIcone),
-			TextureFilter = TextureFilterEnum.Nearest,
-		};
+		(_icone, _agonia) = NovoIcone(Quadro(EstadoDoIcone()), Raio, Seed);
 		AddChild(_icone);
-
-		MontarAgonia(quadro);
 
 		// O NOME NAO E ESCRITO EM CIMA DO DISCO. Havia um rotulo aqui ("Earth", "Namek"...), e o dono
 		// mandou tirar: *"n precisa ter 'earth', 'namek' em cima dos planetas, o jogador ja vai saber
@@ -230,9 +217,24 @@ public partial class PlanetaDesenhado : Node2D
 	/// mesmo helper que o borrao de corrida e a miragem do Zanzoken usam depois de o projeto ter
 	/// levado esse tombo duas vezes.
 	/// ========================================================================================
+	///
+	/// O DISCO E O MATERIAL DELE SAEM JUNTOS DAQUI, e a receita e UMA pra duas casas: a do espaco (<see cref="_Ready"/>)
+	/// e a do palco do ensaio (<see cref="Ensaiar"/>). E isso que faz a pipeline montada no ensaio ser a que o primeiro
+	/// planeta acha pronta.
 	/// </summary>
-	private void MontarAgonia(Texture2D? quadro)
+	private static (Sprite2D Icone, ShaderMaterial Agonia) NovoIcone(Texture2D? quadro, float raio, ulong seed)
 	{
+		var icone = new Sprite2D
+		{
+			Name = "Icone",
+			Texture = quadro,
+			// ESCALA PELO DIAMETRO. O raio vem do servidor em pixels de mundo e e ele que decide a
+			// que distancia o pouso acontece; se o desenho nao casar com esse raio, o jogador
+			// pousa "no vazio" ao lado de um planeta que parecia estar longe.
+			Scale = Vector2.One * (raio * 2f / LadoDoIcone),
+			TextureFilter = TextureFilterEnum.Nearest,
+		};
+
 		var mat = new ShaderMaterial { Shader = ShaderDaAgonia };
 		(Vector2 min, Vector2 max) = BorraoDirecional.Caixa(quadro);
 		mat.SetShaderParameter("quadro_min", min);
@@ -241,20 +243,124 @@ public partial class PlanetaDesenhado : Node2D
 		// A SEMENTE E A DO PROPRIO PLANETA -- pre-feito tem seed derivada do nome (`Espaco.Fixo`),
 		// gerado tem a dele. O `% 997` e o mesmo empacotamento da semente das feridas: um `ulong`
 		// grande vira `float` com perda, e o que se quer aqui e so um numero pequeno e estavel.
-		mat.SetShaderParameter("semente", (Seed % 997) * 0.37f);
+		mat.SetShaderParameter("semente", (seed % 997) * 0.37f);
 		mat.SetShaderParameter("agonia", 0f);
 
-		_icone.Material = mat;
-		_agonia = mat;
+		icone.Material = mat;
+		return (icone, mat);
 	}
 
+	/// <summary>Os arquivos dos dois shaders do planeta. Publicos pra o `Aquecimento` po-los na fila de carga do lobby -- ver <see cref="Ensaiar"/>.</summary>
+	public const string CaminhoDaAgonia = "res://Assets/Shaders/PlanetaMorrendo.gdshader",
+						CaminhoDoEstouro = "res://Assets/Shaders/EstouroDePlaneta.gdshader";
+
 	private static Shader? _shAgonia;
-	private static Shader ShaderDaAgonia =>
-		_shAgonia ??= ResourceLoader.Load<Shader>("res://Assets/Shaders/PlanetaMorrendo.gdshader");
+	private static Shader ShaderDaAgonia => _shAgonia ??= ResourceLoader.Load<Shader>(CaminhoDaAgonia);
 
 	private static Shader? _shEstouro;
-	private static Shader ShaderDoEstouro =>
-		_shEstouro ??= ResourceLoader.Load<Shader>("res://Assets/Shaders/EstouroDePlaneta.gdshader");
+	private static Shader ShaderDoEstouro => _shEstouro ??= ResourceLoader.Load<Shader>(CaminhoDoEstouro);
+
+	/// <summary>O raio do planeta do ensaio e o lado do estouro dele, em pixels do palco: a pipeline e do shader e do jeito de desenhar, e nao do tamanho.</summary>
+	private const float RaioDoEnsaio = 16f, EstouroDoEnsaio = 48f;
+
+	/// <summary>
+	/// O ENSAIO DO LOBBY (ver `Aquecimento.AtosDoPlaneta`): o disco de um planeta, pela receita de producao
+	/// (<see cref="NovoIcone"/>), num palco fora da tela -- pra o `PlanetaMorrendo.gdshader` ser compilado e a pipeline
+	/// dele montada ALI, e nao no quadro em que o primeiro planeta do processo e desenhado.
+	///
+	/// TODO DISCO VISTO DO ESPACO CARREGA ESTE MATERIAL, vivo ou morrendo: o primeiro uso e a primeira chegada ao espaco,
+	/// e nao a primeira agonia. O shader nem na fila de carga do aquecimento estava: era lido do disco, compilado e
+	/// desenhado quando o primeiro disco nascia.
+	///
+	/// MEDIDO em 2026-10-09 pela `--diagestouro --avulsos`, que leva o corpo pro espaco em cima da Terra. O quadro em que o
+	/// primeiro disco aparece e o da chegada na zona, e custa 54 a 59 ms com tudo quente (a zona montando, e 15 a 20
+	/// esperando o shader); com o driver de video FRIO, 76 a 82 -- a pipeline, 30 a 32 ms de tela. Em onze corridas de
+	/// dezoito a cobertura de carregamento ainda estava no ar nesse quadro; em sete, nao. E A GEMEA ILUMINADA, quando uma
+	/// luz alcanca o disco, 73 a 79 ms de tela com o driver frio, no meio do voo: no espaco ha luz de efeito (a zona fica
+	/// no crepusculo parado: forca da noite 0,66), e a aura de uma forma ou um tiro de ki perto de um planeta bastam.
+	/// DEPOIS: nenhuma pipeline nasce em nenhum dos dois quadros; o da chegada custa 12 a 30 ms (a zona), e o da luz 8.
+	///
+	/// UM QUADRO RECORTADO DE UMA TEXTURA GERADA (a radial das luzes, que o palco do ensaio ja usa), e nao a folha dos
+	/// planetas: a pipeline e do shader e do jeito de desenhar, e nao da textura -- e a folha so interessa a quem vai ao
+	/// espaco. A MEIA AGONIA, e sem relogio: quem anda a agonia e o <see cref="_Process"/> de um planeta vivo, e aqui nao
+	/// ha um. Morre com o palco do aquecimento.
+	/// </summary>
+	public static void Ensaiar(Node2D pai, Vector2 onde)
+	{
+		var quadro = new AtlasTexture { Atlas = Fogo.Radial(LuzDeKi.RaioDaTextura), Region = new Rect2(64, 64, 64, 64) };
+		(Sprite2D icone, ShaderMaterial agonia) = NovoIcone(quadro, RaioDoEnsaio, 0);
+		icone.Name = "PlanetaDoEnsaio";
+		icone.Position = onde;
+		agonia.SetShaderParameter("agonia", 0.5f);
+		pai.AddChild(icone);
+	}
+
+	/// <summary>
+	/// O ENSAIO DO LOBBY (ver `Aquecimento.AtosDoPlaneta`): o quad do estouro, pela receita de producao
+	/// (<see cref="NovoEstouro"/>), num palco fora da tela -- pra o `EstouroDePlaneta.gdshader` ser compilado e a pipeline
+	/// dele montada ALI, e nao no quadro do primeiro estouro do processo.
+	///
+	/// O PRIMEIRO ESTOURO QUASE NUNCA E O DE UM PLANETA: o `World.EstouroNoMundo` desenha o mesmo shader, num quad do
+	/// mesmo feitio, pra Final Explosion, pra Aura da Destruicao e pro tremor de um mundo que morre -- no meio de uma
+	/// luta. (Que as duas casas usam as mesmas pipelines e conferido pela rodada dos avulsos da `--diagestouro`: com o
+	/// estouro no mundo ja desenhado, nenhuma nasce no do espaco.) E o shader nem na fila de carga do aquecimento estava:
+	/// era lido do disco, compilado e desenhado no quadro do estouro.
+	///
+	/// MEDIDO em 2026-10-09 pela `--diagestouro --avulsos`, o quadro do primeiro estouro no mundo, em relogio:
+	///
+	///     com o driver de video FRIO .......... 54 a 57 ms   script 7 a 8, a espera pelo shader 24 a 26, a pipeline 21 a 23
+	///     com o driver quente ................. 35 a 39 ms   so a espera: e o cache de shader do Godot vazio, o de quem abre
+	///                                                        o jogo pela primeira vez
+	///     a gemea ILUMINADA, driver frio ...... 68 a 75 ms   63 a 67 deles a pipeline do item COM luz, montada depois da sem luz
+	///
+	/// (A gemea e a do estouro de noite, com uma aura, um tiro de ki ou uma fogueira ao alcance do quad -- e ele tem 660 px
+	/// de lado na Final Explosion.) DEPOIS: nenhuma pipeline nasce no quadro do estouro, com luz ou sem ela, e ele custa
+	/// 8 a 9 ms -- uma volta do monitor --, com o driver quente ou frio.
+	///
+	/// NO COMECO DA ONDA (`t` 0,3) e sem relogio: quem anda o `t` e o tween de um estouro de verdade. Morre com o palco.
+	/// </summary>
+	public static void EnsaiarOEstouro(Node2D pai, Vector2 onde)
+	{
+		(ColorRect quad, ShaderMaterial tinta) = NovoEstouro(EstouroDoEnsaio, 0);
+		quad.Name = "EstouroDoEnsaio";
+		quad.Position += onde;   // (a receita o centra na origem do pai: no espaco, o planeta)
+		tinta.SetShaderParameter("t", 0.3f);
+		pai.AddChild(quad);
+	}
+
+	/// <summary>
+	/// O QUAD DO ESTOURO e o material dele, centrado na origem de quem o recebe. UMA receita pra duas casas, a do planeta
+	/// que estoura (<see cref="Estourar"/>) e a do palco do ensaio (<see cref="EnsaiarOEstouro"/>).
+	/// </summary>
+	private static (ColorRect Quad, ShaderMaterial Tinta) NovoEstouro(float lado, ulong seed)
+	{
+		var mat = new ShaderMaterial { Shader = ShaderDoEstouro };
+		mat.SetShaderParameter("t", 0f);
+		mat.SetShaderParameter("semente", (seed % 997) * 0.37f);
+
+		var quad = new ColorRect
+		{
+			Name = "Estouro",
+			Size = new Vector2(lado, lado),
+			Position = new Vector2(-lado / 2, -lado / 2),
+			Color = Colors.White,
+			Material = mat,
+			// ============================ O `ZIndex` AQUI E **RELATIVO**, E ISSO CUSTOU UMA FOTO ============================
+			// `ZAsRelative` nasce VERDADEIRO no Godot, entao este numero soma ao do pai -- e o pai
+			// (`PlanetaDesenhado`) e `ZIndex = -60`. A primeira versao escreveu -55 aqui querendo dizer
+			// "logo acima do disco", e o que saiu foi **-115**: abaixo do proprio planeta e abaixo do
+			// fundo. A bancada ficou verde nas tres checagens de codigo (o node existe, o material
+			// existe, o `t` do tween anda) e a FOTO mostrou um planeta apagando sozinho, sem explosao
+			// nenhuma. E o cego que este projeto chama de "uniform escrito nao e pixel desenhado".
+			//
+			// +5 RELATIVO diz o que se quis dizer: cinco degraus acima do disco, e o conjunto inteiro
+			// continua atras dos corpos e na frente do ceu de estrelas.
+			// ==========================================================================================================
+			ZIndex = 5,
+			MouseFilter = Control.MouseFilterEnum.Ignore,
+		};
+		return (quad, mat);
+	}
 
 	private ShaderMaterial? _agonia;
 
@@ -352,33 +458,7 @@ public partial class PlanetaDesenhado : Node2D
 	/// </summary>
 	private void Estourar()
 	{
-		float lado = Raio * 5.2f;
-
-		var mat = new ShaderMaterial { Shader = ShaderDoEstouro };
-		mat.SetShaderParameter("t", 0f);
-		mat.SetShaderParameter("semente", (Seed % 997) * 0.37f);
-
-		var quad = new ColorRect
-		{
-			Name = "Estouro",
-			Size = new Vector2(lado, lado),
-			Position = new Vector2(-lado / 2, -lado / 2),
-			Color = Colors.White,
-			Material = mat,
-			// ============================ O `ZIndex` AQUI E **RELATIVO**, E ISSO CUSTOU UMA FOTO ============================
-			// `ZAsRelative` nasce VERDADEIRO no Godot, entao este numero soma ao do pai -- e o pai
-			// (`PlanetaDesenhado`) e `ZIndex = -60`. A primeira versao escreveu -55 aqui querendo dizer
-			// "logo acima do disco", e o que saiu foi **-115**: abaixo do proprio planeta e abaixo do
-			// fundo. A bancada ficou verde nas tres checagens de codigo (o node existe, o material
-			// existe, o `t` do tween anda) e a FOTO mostrou um planeta apagando sozinho, sem explosao
-			// nenhuma. E o cego que este projeto chama de "uniform escrito nao e pixel desenhado".
-			//
-			// +5 RELATIVO diz o que se quis dizer: cinco degraus acima do disco, e o conjunto inteiro
-			// continua atras dos corpos e na frente do ceu de estrelas.
-			// ==========================================================================================================
-			ZIndex = 5,
-			MouseFilter = Control.MouseFilterEnum.Ignore,
-		};
+		(ColorRect quad, ShaderMaterial mat) = NovoEstouro(Raio * 5.2f, Seed);
 		AddChild(quad);
 
 		// O DISCO SOME POR BAIXO DO CLARAO: ele desaparece durante o estouro, e nao depois dele.
@@ -470,7 +550,7 @@ public partial class PlanetaDesenhado : Node2D
 
 	private static Texture2D? Quadro(string estado)
 	{
-		var frames = ResourceLoader.Load<SpriteFrames>(Folha);
+		var frames = FolhasPresas.Carregar(Folha);
 		if (frames == null) { GD.PushWarning("[planeta] sem Planets.tres"); return null; }
 		if (frames.HasAnimation(estado) && frames.GetFrameCount(estado) > 0)
 			return frames.GetFrameTexture(estado, 0);

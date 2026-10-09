@@ -51,6 +51,7 @@ public partial class RoboDoTrailer
 		["gente"] = AGente,
 		["danca"] = ADancaDaFusao,
 		["bio"] = OBioAndroide,
+		["roupa"] = ARoupaNaMochila,
 	};
 
 	private IEnumerable<double>? Escolher() => Cenas.TryGetValue(Cena, out Func<IEnumerable<double>>? f) ? f() : null;
@@ -428,8 +429,17 @@ public partial class RoboDoTrailer
 			if (Crescem.Contains(verbo))
 			{
 				yield return OptN("crescer", 6.6);
-				resposta = S?.TecnicaNoTrailer(_eu, verbo) ?? "";
-				Marca($"ki {verbo}: LARGOU" + (resposta.Length > 0 ? $" -- \"{resposta}\"" : ""));
+
+				// SO APERTA DE NOVO SE AINDA HA BOLA NO AR. A Death Ball sai sozinha no quarto estagio, guiada -- e a
+				// 20 tiles por segundo (dono, 2026-10-08) ela ja estourou no alvo quando a espera acaba: o segundo
+				// aperto nao largava guia nenhuma, COMECAVA outra bola, que ficava crescendo em cima do heroi durante
+				// a tecnica seguinte. A Genkidama continua precisando dele: ela so voa no segundo aperto.
+				if ((S?.TiroDaVariedade(_eu) ?? default).Achou)
+				{
+					resposta = S?.TecnicaNoTrailer(_eu, verbo) ?? "";
+					Marca($"ki {verbo}: LARGOU" + (resposta.Length > 0 ? $" -- \"{resposta}\"" : ""));
+				}
+				else Marca($"ki {verbo}: ja ESTOUROU (nada a largar)");
 			}
 			yield return espera;
 		}

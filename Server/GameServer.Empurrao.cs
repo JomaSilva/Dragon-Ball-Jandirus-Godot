@@ -280,10 +280,11 @@ public sealed partial class GameServer
 			//
 			// O QUE NAO SE REUSOU e o deslocamento, e nao havia como: o arremesso anda `TilesPorTique`
 			// (dois tiles a cada 0,1 s = 20 tiles/s, o numero do `/effect/knockback`), e o arrasto tem
-			// que andar EXATAMENTE o que a cabeca do feixe andou -- que e 10 tiles/s num raio de
-			// `speed` 1 e 5 tiles/s num de 0,5. Empurrar a vitima pelo funil do arremesso a faria sair
-			// da frente do proprio feixe a duas a quatro vezes a velocidade dele, e o raio nunca mais a
-			// alcancaria: o pedido do dono (*"conforme o beam vai indo"*) e literalmente irrealizavel
+			// que andar EXATAMENTE o que a cabeca do feixe andou -- que e 20 tiles/s num raio de
+			// `speed` 1 e 10 tiles/s num de 0,5 (o dobro do DM, dono 2026-10-08). Empurrar a vitima
+			// pelo funil do arremesso a faria andar na velocidade DELE e nao na do feixe -- o dobro da
+			// de um raio pesado, que nunca mais a alcancaria; com o raio comum os dois numeros so
+			// coincidem hoje, e o pedido do dono (*"conforme o beam vai indo"*) continua irrealizavel
 			// por esse caminho. Mexer no `TilesPorTique` pra encaixar mudaria TODO knockback do jogo.
 			//
 			// OS DOIS NUNCA VALEM JUNTOS: `PodeSerLevadoPeloFeixe` recusa quem esta com
@@ -327,11 +328,17 @@ public sealed partial class GameServer
 			// sorteado, interior de nave, mente e selo o `Get` devolvia nulo, e o corpo arremessado
 			// atravessava tudo sem derrubar parede nenhuma -- enquanto o soco na mesma parede
 			// (`SocarCenario`, que ja perguntava ao funil) a derrubava. Ver `MapaDaZonaOuCatalogo`.
-			// NO AR NAO HA CENARIO: acima de `Voo.AlturaQueAtravessa` o corpo arremessado passa por cima do
-			// que se voa por cima -- sem parar no muro e sem derruba-lo (dono, 2026-09-07: *"isso conta
-			// pra paredes que dao pra voar por cima"*). Rente ao chao (altura menor que um tile) o muro
-			// para e cai como sempre. E a MESMA pergunta do passo (`AtravessandoCenario`).
-			ZoneCollision? mapa = AtravessandoCenario(pl) ? null : MapaDaZonaOuCatalogo(pl.Zone);
+			// NO AR SO HA O QUE NAO SE VOA POR CIMA: acima de `Voo.AlturaQueAtravessa` o corpo arremessado
+			// passa por cima do que se voa por cima -- sem parar no muro e sem derruba-lo (dono,
+			// 2026-09-07: *"isso conta pra paredes que dao pra voar por cima"*). Rente ao chao (altura
+			// menor que um tile) o muro para e cai como sempre.
+			//
+			// E A PAREDE DE PREDIO NAO DA PRA VOAR POR CIMA (dono, 2026-10-08) -- entao, pela mesma frase,
+			// ela para o arremessado la em cima tambem, e cai se a forca vencer. E a MESMA pergunta do
+			// passo (`Voo.ModoNaAltura`): o mapa vai sempre, e `geometria` diz com que modo perguntar a ele.
+			ZoneCollision? mapa = MapaDaZonaOuCatalogo(pl.Zone);
+			bool porCima = AtravessandoCenario(pl);
+			ModoDeTravessia geometria = porCima ? ModoDeTravessia.PorCima : ModoDeTravessia.Arremessado;
 			Vec2 passo = pl.RumoDoVoo * (float)(Empurrao.TilesPorTique * ZoneCollision.TileSize * fatia);
 			Vec2 destino = pl.Pos + passo;
 
@@ -429,7 +436,7 @@ public sealed partial class GameServer
 					// A PRIMEIRA AMOSTRA DO ARREMESSO: o `Arremessar` crava os dois contadores iguais e zera a fracao, e so
 					// o fim de um tique cheio os separa. Ver o `comecoDoVoo` do `EstragarObrasNoCaminho`.
 					bool comecoDoVoo = i == 1 && pl.TiquesDeVoo == pl.TiquesIniciaisDoVoo && pl.VooNoTique == 0;
-					if (mapa != null) EstragarObrasNoCaminho(pl, andado, p, comecoDoVoo);   // no ar nao se derruba obra
+					if (mapa != null && !porCima) EstragarObrasNoCaminho(pl, andado, p, comecoDoVoo);   // no ar nao se derruba obra
 
 					// ============================ QUEM E ARREMESSADO ATRAVESSA A AGUA ============================
 					// E literal do original: o `testWaters()` deixa passar `M.KB`
@@ -440,12 +447,12 @@ public sealed partial class GameServer
 					//
 					// PAREDE CONTINUA PARANDO (e sendo derrubada logo abaixo): o modo muda a
 					// resposta da AGUA e so dela. Ver `ClasseDeAgua.Bloqueia`.
-					if (mapa == null || !MoveRules.Occupied(mapa, p, ModoDeTravessia.Arremessado))
+					if (mapa == null || !MoveRules.Occupied(mapa, p, geometria))
 					{ andado = p; continue; }
 
 					// O QUE SE PERGUNTA SE CAI E O QUE BARROU A CAIXA -- as quinas, e nao o ponto dos pes. Com o ponto
 					// so, um muro de resistencia 20 "resistia" a um arremesso de forca 20: ver `DerrubarOQueBarraOsPes`.
-					if (pl.ForcaDoVoo >= Empurrao.ResistenciaPadrao && DerrubarOQueBarraOsPes(pl.Zone, mapa, p))
+					if (pl.ForcaDoVoo >= Empurrao.ResistenciaPadrao && DerrubarOQueBarraOsPes(pl.Zone, mapa, p, pl.ForcaDoVoo, geometria))
 					{
 						andado = p;   // a parede caiu: o corpo passa por cima do escombro
 						continue;
@@ -772,7 +779,18 @@ public sealed partial class GameServer
 	/// ordem do soco (`SocarCenario`: obra, nave, e so entao o turf), pelo mesmo motivo.
 	/// =====================================================================================================
 	/// </summary>
-	private bool DerrubarOQueBarraOsPes(ZoneKey zona, ZoneCollision mapa, Vec2 p)
+	/// <param name="forca">
+	/// A FORCA DO VOO (`pow`). O cenario do mapa cai pelo limiar de sempre, que quem chama ja conferiu; o
+	/// BLOCO ERGUIDO tem a resistencia de quem o ergueu, e e contra ela que esta forca e medida
+	/// (`pow &gt;= T.Resistance`, `Movement Effects.dm:66`). O que resiste fica de pe e para o corpo.
+	/// </param>
+	/// <param name="geometria">
+	/// COM QUE MODO ESTE CORPO PERGUNTA AO MAPA: `Arremessado` rente ao chao, `PorCima` acima do cenario
+	/// (ver o comeco do `TickDoEmpurrao`). So cai o que BARROU -- la em cima, a parede de predio; o muro
+	/// solto que a caixa tambem toca passa por baixo do corpo e fica de pe.
+	/// </param>
+	private bool DerrubarOQueBarraOsPes(ZoneKey zona, ZoneCollision mapa, Vec2 p, double forca,
+										ModoDeTravessia geometria = ModoDeTravessia.Arremessado)
 	{
 		(int x0, int y0, int x1, int y1) = CelulasDaCaixa(p);
 		for (int cy = y0; cy <= y1; cy++)
@@ -780,9 +798,11 @@ public sealed partial class GameServer
 			{
 				if (!mapa.BlockedCell(cx, cy) || ObraNaCelula(zona, cx, cy) != null || NaveNaCelula(zona, cx, cy) != null)
 					continue;   // chao livre, ou uma obra/nave em cima do chao -- ver o cabecalho
-				DerrubarCenarioNaCelula(zona, cx, cy);
+				if (!mapa.Bloqueia(cx, cy, geometria)) continue;   // nao foi esta que barrou
+				if (BlocoQueBarra(zona, cx, cy) is { } bloco) DerrubarBlocoSeAguenta(bloco, forca, null);
+				else DerrubarCenarioNaCelula(zona, cx, cy);
 			}
-		return !MoveRules.Occupied(mapa, p, ModoDeTravessia.Arremessado);
+		return !MoveRules.Occupied(mapa, p, geometria);
 	}
 
 	/// <summary>
@@ -867,6 +887,19 @@ public sealed partial class GameServer
 		ZoneCollision? mapa = MapaDaZonaOuCatalogo(zona);
 		if (mapa == null) return false;
 
+		// ============================ O QUE ESTA DE PE EM CIMA SEGURA A CELULA ============================
+		// O BLOCO ERGUIDO nao cai por aqui: ele tem dono e resistencia propria, e os caminhos que o
+		// derrubam medem a forca contra ELA (`SocarBloco`, `DerrubarBlocoSeAguenta`). E a mesma recusa do
+		// DM pro chao que racha e pro planeta que morre: `!T.proprietor` (`attack cmn.dm:49`,
+		// `Area_Death.dm:70-74`).
+		//
+		// E A MOBILIA QUE O MAPA TROUXE barra pelo bit do arquivo (ver `ACelulaDaObraCaiu`). Um golpe
+		// pesado ao lado de uma macieira rachava o chao DEBAIXO dela: o bit abria e a arvore ficava de
+		// pe, desenhada e atravessavel. Quem a derruba e quem bate nela (`Estragar`).
+		// ==================================================================================================
+		if (BlocoEm(zona, cx, cy) != null) return false;
+		if (mapa.BloqueadaNoArquivo(cx, cy) && ObraNaCelula(zona, cx, cy) != null) return false;
+
 		// ============================ O QUE NAO SE QUEBRA, E ERA A QUEIXA ============================
 		// `destroyable = 0` (`Turfs.dm:72,81,89,102`, `NewTurfs.dm:24,29,36,193,202,254,261,268`,
 		// `ProceduralSpace.dm:543,567`, `MajinSaga.dm:54,62`, `MindMeditate.dm:29,37`). O grosso e o
@@ -902,10 +935,28 @@ public sealed partial class GameServer
 
 		// O MAPA MUDA PROS DOIS LADOS: aqui, e no cliente pelo pacote abaixo. A celula deixa de
 		// bloquear e deixa de cegar -- ela virou chao.
-		mapa.Abrir(cx, cy);
+		AbrirACelulaCaida(zona, cx, cy);
 
 		MandarCelulaCaida(zona, cx, cy);
 		return true;
+	}
+
+	/// <summary>
+	/// A CELULA CAIDA SE ABRE NOS DOIS MAPAS DO SERVIDOR -- o que barra o corpo e o que barra a vista --,
+	/// e se era uma PORTA do mapa, a porta acaba.
+	///
+	/// A vista ficava de fora: o comentario do `Restaurar` do admin dizia que "o servidor nem carrega"
+	/// o mapa do que cega, e ele carrega desde que a voz local passou a perguntar se ha parede entre
+	/// duas pessoas (`MapaDaVista`). A parede derrubada continuava abafando a voz dos dois lados.
+	///
+	/// Tres caminhos chegam aqui, e sao os tres por onde uma celula cai: o cenario (`DerrubarCelula`), a
+	/// obra (`ACelulaDaObraCaiu`) e o bloco erguido (`DerrubarBloco`, pela mesma `ACelulaDaObraCaiu`).
+	/// </summary>
+	private void AbrirACelulaCaida(ZoneKey zona, int cx, int cy)
+	{
+		MapaDaZonaOuCatalogo(zona)?.Abrir(cx, cy);
+		MapaDaVista(zona)?.Abrir(cx, cy);
+		APortaDoMapaCaiu(zona, cx, cy);
 	}
 
 	/// <summary>
@@ -936,7 +987,13 @@ public sealed partial class GameServer
 	/// Devolve quantas celulas cairam.
 	/// ==================================================================================
 	/// </summary>
-	private int RacharChao(ZoneKey zona, Vec2 centro, double bp, int raio = 1, double chance = 0.40)
+	/// <param name="levaBlocos">
+	/// O BLOCO ERGUIDO TAMBEM CAI, se a forca alcancar a resistencia dele. Falso no chao que racha num
+	/// impacto, que no DM pula o que tem dono (`attack cmn.dm:49`: `!T.proprietor`); verdadeiro nas duas
+	/// tecnicas do Berserker, que varrem tudo o que `expressedBP &gt;= T.Resistance`
+	/// (`Beserker Skills.dm:73-76`, `:137-140`).
+	/// </param>
+	private int RacharChao(ZoneKey zona, Vec2 centro, double bp, int raio = 1, double chance = 0.40, bool levaBlocos = false)
 	{
 		if (bp < Empurrao.ResistenciaPadrao) return 0;
 		if (MapaDaZonaOuCatalogo(zona) is not { } mapa) return 0;
@@ -965,6 +1022,11 @@ public sealed partial class GameServer
 				// exatamente como o soco e o arremesso. A unica coisa que e do rachar e o sorteio e o
 				// `view(1)` -- e essas duas ficaram aqui.
 				// ==================================================================================================
+				if (BlocoEm(zona, cx, cy) is { } bloco)
+				{
+					if (levaBlocos && DerrubarBlocoSeAguenta(bloco, bp, null)) cairam++;
+					continue;
+				}
 				if (DerrubarCelula(zona, cx, cy)) cairam++;
 			}
 		return cairam;

@@ -4,7 +4,7 @@ using Jandirus.Core.World;
 namespace Jandirus.Tools;
 
 /// <summary>
-/// BANCADA DA CIDADE E DAS PAREDES INVISIVEIS -- `cidade &lt;pastaMaps&gt; &lt;pastaCode&gt;`.
+/// BANCADA DA CIDADE E DAS PAREDES INVISIVEIS -- `cidade &lt;pastaMaps&gt; &lt;pastaCode&gt; &lt;pastaDmm&gt; [pastaPorCima]`.
 ///
 /// ============================ A QUEIXA QUE A TROUXE ============================
 /// "percebi q ta faltando itens como BANCO etc no planeta VEGETA, e ainda tem uma PAREDE INVISIVEL
@@ -28,9 +28,14 @@ namespace Jandirus.Tools;
 /// Esta bancada le OS ARQUIVOS QUE O JOGO LE, e nao o `.dmm`. Ela responde "o que esta publicado
 /// hoje tem parede invisivel?", que e uma pergunta diferente de "a conversao de hoje produziria
 /// uma?".
+///
+/// A `pastaPorCima` E O PUBLICADO DE AMANHA: o comando `repintar` escreve um andar numa pasta de
+/// rascunho, e quem o aplica e o dono, depois de revisar. Com ela, cada arquivo que existir la e
+/// lido no lugar do de `pastaMaps` -- a bancada julga o disco COMO FICARIA com o rascunho copiado
+/// por cima, antes de alguem copiar. Sem ela, julga o disco como esta.
 /// ================================================================================================
 ///
-/// ============================ AS SEIS FAMILIAS ============================
+/// ============================ AS SETE FAMILIAS ============================
 ///  1. NADA SOLIDO SEM DESENHO -- a queixa, palavra por palavra. Varre TODA zona: celula que
 ///     bloqueia e que ninguem desenha, descontada a borda do mundo (ver `Fantasmas`).
 ///  2. A RECIPROCA -- nada desenhado como predio que se atravesse. Maquina densa tem que bloquear,
@@ -46,6 +51,11 @@ namespace Jandirus.Tools;
 ///  6. O ALARME DA CARGA -- construcao que bloqueia e nao tem arte tem que APARECER, e nao virar
 ///     parede fantasma. A pergunta e a do Core (`CatalogoDeObras.SemDesenho`), a mesma que o
 ///     servidor faz no boot.
+///  7. OS ICONES CORTADOS DA CIDADE -- "la tem varios icones cortados", a queixa seguinte do dono.
+///     Tres pecas, tres causas: a janela que era so o arco de cima, a mesa redonda que nao tinha
+///     quadro pra pintar (e por isso nem corpo), e o computador pintado com o estado de nome quase
+///     igual. Cada cobranca tem uma ancora ESCRITA AQUI (o nome do estado certo, lido da folha pela
+///     propria bancada) e o seu contra-exemplo, ligado na linha do conserto.
 /// ==========================================================================
 ///
 /// ============================ CADA FAMILIA REPROVA -- E ISSO E MEDIDO AQUI DENTRO ============================
@@ -61,7 +71,10 @@ namespace Jandirus.Tools;
 /// =========================================================================================================
 ///
 /// ============================ COMO CADA FAMILIA REPROVA -- MEDIDO, NAO SUPOSTO ============================
-/// O placar limpo e **56 OK, 0 FALHAS**. Os seis defeitos abaixo foram postos um por vez -- quatro
+/// O placar limpo ERA **56 OK, 0 FALHAS** quando as seis primeiras familias foram medidas, e os
+/// placares abaixo sao os daquela medicao. Com a setima ele passou a **66 OK, 0 FALHAS** (medido com
+/// o rascunho de Vegeta por cima do disco; a tabela trocou as duas afirmacoes da mesa sem arte por
+/// uma, e a familia 7 trouxe onze). Os seis defeitos abaixo foram postos um por vez -- quatro
 /// nos ARQUIVOS (numa copia de Assets/Maps) e dois no CODIGO DE PRODUCAO -- e o placar e o que a
 /// bancada imprimiu. Repare que cada um derruba uma familia DIFERENTE: e isso que diz que as seis
 /// nao sao a mesma pergunta escrita seis vezes.
@@ -92,6 +105,13 @@ namespace Jandirus.Tools;
 ///    "[injecao] uma construcao densa e sem arte no catalogo REPROVA: 0 acusadas". So a familia 6
 ///    cai, e cai pela INJECAO -- o catalogo de verdade nao tem nenhuma, entao a afirmacao positiva
 ///    continuaria verde para sempre com a regra morta. E a razao de a injecao existir.
+///
+///  * **OS ICONES CORTADOS, NO DISCO DE VERDADE** (o `Assets/Maps` de 14/08, sem o rascunho por
+///    cima) -> **58 OK, 8 FALHAS**: as tres linhas da tabela (janela 0/32, mesa redonda 0/12,
+///    computador 0/8) e as cinco medidas de mapa da familia 7. Este nao precisou ser posto por
+///    ninguem -- e o defeito publicado, e e contra ele que a setima familia foi escrita. Os tres
+///    contra-exemplos de dentro dela (as chaves `...DeTeste`) continuam verdes nos dois placares:
+///    eles medem a REGRA do conversor, e nao o mapa.
 ///
 /// UMA NOTA SOBRE O QUE **NAO** DERRUBOU NADA, porque foi a lição mais cara desta rodada: acender o
 /// bit de colisao SEM apagar o desenho (a primeira versao do primeiro defeito) deixou a bancada
@@ -127,10 +147,36 @@ public static class CidadeBench
 	/// </summary>
 	private static readonly Vec2 Nascimento = new(249 * 32 + 16, 250 * 32 + 16);
 
-	public static int Run(string pastaMaps, string pastaCode, string pastaDmm)
+	/// <summary>
+	/// A pasta de rascunho lida POR CIMA da publicada (ver o cabecalho), ou nula. So os arquivos de
+	/// zona passam por ela -- o manifesto, o tileset e os catalogos sao sempre os publicados, que e
+	/// tambem o que o `repintar` usa pra escrever o rascunho.
+	/// </summary>
+	private static string? _porCima;
+
+	/// <summary>A raiz do projeto Godot: e de la que o `res://` de cada folha do `tiles.json` se resolve.</summary>
+	private static string _raiz = "";
+
+	public static int Run(string pastaMaps, string pastaCode, string pastaDmm, string? pastaPorCima = null)
 	{
 		_ok = 0; _falhou = 0;
+		_porCima = pastaPorCima;
+		_raiz = Path.GetDirectoryName(Path.GetDirectoryName(pastaMaps.TrimEnd('/', '\\'))!) ?? "";
 		Console.WriteLine("=== A CIDADE DE VEGETA E AS PAREDES INVISIVEIS ===\n");
+		if (_porCima != null)
+		{
+			string[] sobrepostos = Directory.Exists(_porCima)
+				? [.. Directory.GetFiles(_porCima).Select(f => Path.GetFileName(f))
+					.Where(n => File.Exists(Path.Combine(pastaMaps, n))).OrderBy(n => n, StringComparer.Ordinal)]
+				: [];
+			Console.WriteLine($"JULGANDO O DISCO COM O RASCUNHO POR CIMA: {_porCima}");
+			Console.WriteLine($"   {sobrepostos.Length} arquivo(s) de zona lidos de la: {string.Join(", ", sobrepostos)}\n");
+			if (sobrepostos.Length == 0)
+			{
+				Console.WriteLine("   a pasta nao tem nenhum arquivo com nome de zona publicada -- nao ha rascunho pra julgar.");
+				return 1;
+			}
+		}
 
 		string manifesto = Path.Combine(pastaMaps, "manifest.json");
 		if (!File.Exists(manifesto))
@@ -175,6 +221,7 @@ public static class CidadeBench
 		else Familia5(terra, obras);
 
 		Familia6(cjTexto, obras);
+		if (vegeta != null) Familia7(vegeta, tiles, turfs);
 
 		Console.WriteLine($"\n[cidade] ===== {_ok} OK, {_falhou} FALHA(S) =====\n");
 		return _falhou == 0 ? 0 : 1;
@@ -257,8 +304,15 @@ public static class CidadeBench
 		return z;
 	}
 
-	private static string Local(string pastaMaps, string res) =>
-		res.Length == 0 ? "" : Path.Combine(pastaMaps, Path.GetFileName(res));
+	/// <summary>O arquivo de zona que o jogo leria: o do rascunho por cima, quando ha um, senao o publicado.</summary>
+	private static string Local(string pastaMaps, string res)
+	{
+		if (res.Length == 0) return "";
+		string nome = Path.GetFileName(res);
+		return _porCima != null && File.Exists(Path.Combine(_porCima, nome))
+			? Path.Combine(_porCima, nome)
+			: Path.Combine(pastaMaps, nome);
+	}
 
 	// =====================================================================
 	// FAMILIA 1: NADA SOLIDO SEM DESENHO
@@ -712,8 +766,14 @@ public static class CidadeBench
 	///
 	/// E o `.pedacos` nao guarda typepath: ele guarda `(fonte, x, y)` do atlas. Entao a conferencia
 	/// aqui e a volta inteira do caminho -- typepath -> `icon`/`icon_state` (a arvore do DM) ->
-	/// `(fonte, x, y)` (o `tiles.json`) -> a celula. Conferir so "tem ALGUMA coisa desenhada aqui"
-	/// passaria verde com a casa inteira pintada de grama.
+	/// `(fonte, x, y)` -> a celula. Conferir so "tem ALGUMA coisa desenhada aqui" passaria verde com a
+	/// casa inteira pintada de grama.
+	///
+	/// O `(fonte, x, y)` SAI DA FOLHA, PELA CONTA DO CONVERSOR (<see cref="QuadroDoConversor"/>), e nao
+	/// do `tiles.json`: o indice so guarda o primeiro de cada nome sem olhar a caixa, e por ele o
+	/// `Computer2` dos laboratorios e o `computer2` (um pedaco de outra maquina). A tabela dizia "ok"
+	/// pra oito computadores pintados errado -- a bancada concordava com o defeito. A leitura que NAO
+	/// passa pelo conversor mora na familia 7.
 	///
 	/// A TIRA ANIMADA CONTA COMO A MESMA PECA: quando um estado tem mais de um quadro, o conversor
 	/// reaponta a celula pro atlas companheiro `X__anim`. E o mesmo desenho, noutra folha.
@@ -757,8 +817,8 @@ public static class CidadeBench
 
 			turfs.TryGetValue(bp, out TurfDef? td);
 			string icone = td?.Icon == null ? "" : td.Icon;
-			string estado = td?.IconState ?? "";
-			(int Fonte, int X, int Y)? alvo = icone.Length == 0 ? null : tiles.Achar(icone, estado);
+			string estado = MapConverter.EstadoDoMapa(bp, td?.IconState) ?? "";
+			(int Fonte, int X, int Y)? alvo = QuadroDoConversor(tiles, icone, estado);
 			string tira = icone.Length == 0 ? "" : Path.GetFileNameWithoutExtension(icone) + "__anim";
 
 			int achadas = 0;
@@ -804,9 +864,10 @@ public static class CidadeBench
 			else
 			{
 				semArteEsperadas++;
-				// PECA RECUSADA NAO PODE TER DEIXADO A COLISAO PRA TRAS. E o caso do `rtable`, que
-				// no DM tem `density = 1`: carimba-la sem desenho seria fabricar a propria parede
-				// invisivel que esta bancada existe pra impedir.
+				// PECA RECUSADA NAO PODE TER DEIXADO A COLISAO PRA TRAS. Hoje nenhuma cai aqui (a mesa
+				// redonda, que caia, ganhou o estado certo -- ver `MapConverter.EstadoDoMapa`), mas a
+				// regra fica pra proxima peca densa cujo estado a folha nao tiver: carimba-la sem
+				// desenho seria fabricar a propria parede invisivel que esta bancada existe pra impedir.
 				int bloqueando = minhas.Count(p =>
 				{
 					(int x, int y) = CidadeDeVegeta.NoPort(p, z.H);
@@ -821,6 +882,43 @@ public static class CidadeBench
 		Injecoes.PecaSumida(z, obras, tiles, turfs, nomePorFonte);
 		Console.WriteLine();
 	}
+
+	/// <summary>O `.png` de uma folha do `tiles.json`, no disco.</summary>
+	private static string FolhaNoDisco(AtlasDeTiles a) =>
+		Path.Combine(_raiz, a.ResPath["res://".Length..].Replace('/', Path.DirectorySeparatorChar));
+
+	/// <summary>
+	/// O QUADRO EM QUE O CONVERSOR PINTA `(icone, estado)`: a fonte e a do `tiles.json`, e a
+	/// coordenada sai da conta de PRODUCAO (<see cref="MapConverter.QuadroNaFolha"/>, que e o
+	/// `Fonte.Achar` do mapa). Nulo quando a folha nao esta no tileset ou nao tem o estado.
+	/// </summary>
+	private static (int Fonte, int X, int Y)? QuadroDoConversor(CatalogoDeTiles tiles, string icone, string estado) =>
+		icone.Length > 0 && tiles.Atlas(icone) is { } a && MapConverter.QuadroNaFolha(FolhaNoDisco(a), estado) is { } c
+			? (a.Fonte, c.X, c.Y)
+			: null;
+
+	/// <summary>
+	/// O MESMO QUADRO LIDO SEM O CONVERSOR: o estado cujo nome e EXATAMENTE este, contado na folha
+	/// pela propria bancada. E a ancora da familia 7 -- se as duas leituras passassem pela mesma
+	/// funcao, um erro nela deixaria as duas de acordo.
+	/// </summary>
+	private static (int Fonte, int X, int Y)? QuadroExato(CatalogoDeTiles tiles, string icone, string estado)
+	{
+		if (tiles.Atlas(icone) is not { } a || DmiFile.Read(FolhaNoDisco(a)) is not { } folha) return null;
+		int indice = 0;
+		foreach (DmiState st in folha.States)
+		{
+			if (string.Equals(st.Name, estado, StringComparison.Ordinal))
+				return (a.Fonte, indice % a.Colunas, indice / a.Colunas);
+			indice += Math.Max(1, st.Dirs) * Math.Max(1, st.Frames);
+		}
+		return null;
+	}
+
+	/// <summary>Alguma camada desta celula pinta exatamente este quadro?</summary>
+	private static bool Pinta(Zona z, int x, int y, (int Fonte, int X, int Y)? alvo) =>
+		alvo is { } q && z.Quadros != null && z.Quadros.TryGetValue(z.K(x, y), out List<(int F, int X, int Y)>? l)
+		&& l.Contains((q.Fonte, q.X, q.Y));
 
 	/// <summary>Esta celula desenha ESTE quadro (ou a tira animada dele)?</summary>
 	private static bool Desenha(Zona z, Dictionary<int, string> nomePorFonte, int x, int y,
@@ -982,6 +1080,172 @@ public static class CidadeBench
 		Console.WriteLine($"        {obras.Total} no catalogo | {densas} bloqueiam | {comArte} tem arte");
 
 		Injecoes.ConstrucaoMuda(cjTexto);
+		Console.WriteLine();
+	}
+
+	// =====================================================================
+	// FAMILIA 7: OS ICONES CORTADOS DA CIDADE
+	// =====================================================================
+
+	/// <summary>A folha das paredes de castelo e os dois estados de janela dela (`Turfs.dm:493-498`).</summary>
+	private const string FolhaDeParede = "castle_wall", EstadoDaJanela = "window", EstadoDaMeiaJanela = "window top";
+
+	/// <summary>A folha da mobilia de casa -- onde a mesa redonda chama `round table`.</summary>
+	private const string FolhaDeMobilia = "!!!  house furniture", EstadoDaMesaRedonda = "round table";
+
+	/// <summary>O computador dos laboratorios (`buildobjects.dm:265-268`) e o estado de nome quase igual.</summary>
+	private const string Computador = "/obj/buildables/Computer2", EstadoDoComputador = "Computer2", EstadoQuaseIgual = "computer2";
+
+	/// <summary>
+	/// QUANTAS JANELAS A PLANTA TEM, contadas na planta do DM (`VegetaCity.dm:74-97`): 4 por predio,
+	/// dois laboratorios e seis casas. Escrito aqui, e nao tirado do `Planta()`, pra a cobranca nao
+	/// ficar verde com uma planta que perdeu as janelas.
+	/// </summary>
+	private const int JanelasDaPlanta = 32;
+
+	/// <summary>
+	/// QUANTAS PAREDES DA CIDADE SAO MEIA-JANELA: as que a planta PROMETE como tal, mais as que o mapa
+	/// PINTA com o arco solto (`window top`) seja qual for a promessa. Tem que dar zero dos dois lados.
+	/// </summary>
+	private static int MeiasJanelas(Zona z, CatalogoDeTiles tiles)
+	{
+		(int Fonte, int X, int Y)? arco = QuadroExato(tiles, FolhaDeParede, EstadoDaMeiaJanela);
+		int n = 0;
+		foreach (CidadeDeVegeta.Peca p in CidadeDeVegeta.Planta())
+		{
+			if (!CidadeDeVegeta.EhParede(p.Turf)) continue;
+			(int x, int y) = CidadeDeVegeta.NoPort(p, z.H);
+			if (p.Turf == CidadeDeVegeta.MeiaJanela || Pinta(z, x, y, arco)) n++;
+		}
+		return n;
+	}
+
+	/// <summary>Quantas janelas prometidas INTEIRAS pintam o estado `window` -- a grade com o peitoril.</summary>
+	private static int JanelasInteiras(Zona z, CatalogoDeTiles tiles)
+	{
+		(int Fonte, int X, int Y)? grade = QuadroExato(tiles, FolhaDeParede, EstadoDaJanela);
+		return CidadeDeVegeta.Planta().Count(p =>
+		{
+			(int x, int y) = CidadeDeVegeta.NoPort(p, z.H);
+			return p.Turf == CidadeDeVegeta.JanelaInteira && Pinta(z, x, y, grade);
+		});
+	}
+
+	/// <summary>
+	/// AS MESAS REDONDAS DA PLANTA: quantas sao, quantas o mapa pinta com o quadro que o CONVERSOR
+	/// escolhe pro tipo, e quantas bloqueiam. `NoQuadroCerto` diz se esse quadro e o `round table` que
+	/// a bancada le sozinha da folha.
+	/// </summary>
+	private static (int Total, int Pintadas, int Bloqueiam, bool NoQuadroCerto) Mesas(
+		Zona z, CatalogoDeTiles tiles, Dictionary<string, TurfDef> turfs)
+	{
+		turfs.TryGetValue(MapConverter.MesaRedonda, out TurfDef? td);
+		(int Fonte, int X, int Y)? doConversor = QuadroDoConversor(
+			tiles, td?.Icon ?? "", MapConverter.EstadoDoMapa(MapConverter.MesaRedonda, td?.IconState) ?? "");
+		(int Fonte, int X, int Y)? certo = QuadroExato(tiles, FolhaDeMobilia, EstadoDaMesaRedonda);
+
+		int total = 0, pintadas = 0, bloqueiam = 0;
+		foreach (CidadeDeVegeta.Peca p in CidadeDeVegeta.Planta())
+		{
+			if (p.Obj != MapConverter.MesaRedonda) continue;
+			(int x, int y) = CidadeDeVegeta.NoPort(p, z.H);
+			total++;
+			if (Pinta(z, x, y, doConversor)) pintadas++;
+			if (z.Col.BlockedCell(x, y)) bloqueiam++;
+		}
+		return (total, pintadas, bloqueiam, certo != null && doConversor == certo);
+	}
+
+	/// <summary>
+	/// OS COMPUTADORES DA PLANTA: quantos sao e quantos o mapa pinta com o estado de nome EXATO
+	/// `Computer2` (lido pela bancada). `ConversorNoExato` diz se o conversor aponta pra esse mesmo
+	/// quadro; `HaQuaseIgual`, se a folha ainda tem o `computer2` noutro quadro -- sem ele a cobranca
+	/// nao distingue nada, e isso tem que aparecer.
+	/// </summary>
+	private static (int Total, int NoExato, bool ConversorNoExato, bool HaQuaseIgual) Computadores(
+		Zona z, CatalogoDeTiles tiles, Dictionary<string, TurfDef> turfs)
+	{
+		turfs.TryGetValue(Computador, out TurfDef? td);
+		string icone = td?.Icon ?? "";
+		(int Fonte, int X, int Y)? exato = QuadroExato(tiles, icone, EstadoDoComputador);
+		(int Fonte, int X, int Y)? quaseIgual = QuadroExato(tiles, icone, EstadoQuaseIgual);
+		(int Fonte, int X, int Y)? doConversor = QuadroDoConversor(
+			tiles, icone, MapConverter.EstadoDoMapa(Computador, td?.IconState) ?? "");
+
+		int total = 0, noExato = 0;
+		foreach (CidadeDeVegeta.Peca p in CidadeDeVegeta.Planta())
+		{
+			if (p.Obj != Computador) continue;
+			(int x, int y) = CidadeDeVegeta.NoPort(p, z.H);
+			total++;
+			if (Pinta(z, x, y, exato)) noExato++;
+		}
+		return (total, noExato, exato != null && doConversor == exato, quaseIgual != null && quaseIgual != exato);
+	}
+
+	/// <summary>
+	/// "LA TEM VARIOS ICONES CORTADOS" -- as tres pecas da cidade que saiam erradas, cada uma com a
+	/// cobranca dela e o contra-exemplo ligado na propria linha do conserto.
+	///
+	/// A FORMA E SEMPRE A MESMA: a afirmacao de cima mede o MAPA (o que o jogo carrega) contra um nome
+	/// de estado escrito aqui; a de baixo liga o defeito no codigo de producao e refaz a MESMA medida,
+	/// que tem que mudar de resposta. Se a de baixo ficar verde com a regra desligada, a de cima nao
+	/// estava medindo o conserto.
+	/// </summary>
+	private static void Familia7(Zona z, CatalogoDeTiles tiles, Dictionary<string, TurfDef> turfs)
+	{
+		Console.WriteLine("--- 7. OS ICONES CORTADOS DA CIDADE: a janela, a mesa redonda e o computador ---");
+
+		// ---- A JANELA: inteira, de um tile (divergencia declarada do DM -- ver `CidadeDeVegeta.Parede`) ----
+		int meias = MeiasJanelas(z, tiles), inteiras = JanelasInteiras(z, tiles);
+		Afirmar($"nenhuma parede da cidade e meia-janela: nem prometida, nem pintada com o arco solto (`{EstadoDaMeiaJanela}`)",
+				meias == 0, $"{meias} meia(s)-janela(s)");
+		Afirmar($"as {JanelasDaPlanta} janelas da planta pintam a janela inteira (`{EstadoDaJanela}`)",
+				inteiras == JanelasDaPlanta, $"{inteiras} de {JanelasDaPlanta}");
+
+		CidadeDeVegeta.MeiaJanelaDeTeste = true;
+		try
+		{
+			int meiasInj = MeiasJanelas(z, tiles), inteirasInj = JanelasInteiras(z, tiles);
+			Afirmar("(defeito injetado: a planta volta a pedir a meia-janela do DM) as duas cobrancas da janela reprovam",
+					meiasInj == JanelasDaPlanta && inteirasInj == 0, $"{meiasInj} meias, {inteirasInj} inteiras");
+		}
+		finally { CidadeDeVegeta.MeiaJanelaDeTeste = false; }
+
+		// ---- A MESA REDONDA: desenhada e densa (divergencia declarada -- ver `MapConverter.EstadoDoMapa`) ----
+		(int totalM, int pintadas, int bloqueiam, bool noQuadroCerto) = Mesas(z, tiles, turfs);
+		Afirmar($"o conversor pinta a mesa redonda com o `{EstadoDaMesaRedonda}` da folha de mobilia",
+				noQuadroCerto, "o quadro do conversor nao e o que a bancada le na folha");
+		Afirmar($"as {totalM} mesas redondas da planta estao DESENHADAS no mapa", totalM > 0 && pintadas == totalM,
+				$"{pintadas} de {totalM}");
+		Afirmar("...e BLOQUEIAM, como a `density=1` dela manda (buildobjects.dm:315)", totalM > 0 && bloqueiam == totalM,
+				$"{bloqueiam} de {totalM}");
+
+		MapConverter.MesaComEstadoDoDmDeTeste = true;
+		try
+		{
+			(_, int pintadasInj, _, bool certoInj) = Mesas(z, tiles, turfs);
+			Afirmar("(defeito injetado: a mesa volta a pedir o estado `rtable` do DM) nao ha quadro pra pinta-la -- a cobranca reprova",
+					!certoInj && pintadasInj == 0, $"quadro certo={certoInj}, {pintadasInj} pintadas");
+		}
+		finally { MapConverter.MesaComEstadoDoDmDeTeste = false; }
+
+		// ---- O COMPUTADOR: o estado de nome EXATO (ver `MapConverter.Fonte.Achar`) ----
+		(int totalC, int noExato, bool conversorNoExato, bool haQuaseIgual) = Computadores(z, tiles, turfs);
+		Afirmar($"a folha tem `{EstadoDoComputador}` E `{EstadoQuaseIgual}` em quadros diferentes (senao esta cobranca nao distingue nada)",
+				haQuaseIgual);
+		Afirmar($"o conversor aponta o computador pro estado de nome exato `{EstadoDoComputador}`", conversorNoExato);
+		Afirmar($"os {totalC} computadores da planta pintam esse quadro", totalC > 0 && noExato == totalC, $"{noExato} de {totalC}");
+
+		MapConverter.EstadoSemCaixaDeTeste = true;
+		try
+		{
+			(_, _, bool conversorInj, _) = Computadores(z, tiles, turfs);
+			Afirmar($"(defeito injetado: o estado e procurado sem olhar a caixa) o conversor cai no `{EstadoQuaseIgual}` -- a cobranca reprova",
+					!conversorInj);
+		}
+		finally { MapConverter.EstadoSemCaixaDeTeste = false; }
+
 		Console.WriteLine();
 	}
 

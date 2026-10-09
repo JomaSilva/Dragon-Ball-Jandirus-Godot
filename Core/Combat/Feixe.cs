@@ -70,6 +70,60 @@ public static class Feixe
 	/// </summary>
 	public static bool AtravessaDeFrenteDeTeste;
 
+	/// <summary>
+	/// DEFEITO INJETADO: o trecho desviado de um raio nasce ALEM de quem o desviou, no rumo do desvio -- o
+	/// codigo de antes de 2026-10-08, e a foto do dono: um feixe novo saindo das costas do personagem.
+	/// </summary>
+	public static bool RamoNasceAlemDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO: o trecho desviado enxerga quem o desviou -- a cabeca dele o acerta e o corpo dele
+	/// corta o tronco. Com a dobra na FRENTE do corpo (ver <see cref="DobraDoDesvio"/>) essa cegueira deixou
+	/// de ser geometria e passou a ser regra.
+	/// </summary>
+	public static bool RamoPegaQuemDesviouDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO: o trecho desviado morre quando a ponta dele chega ao fim do alcance, com o desvio ainda
+	/// de pe -- a curva some no meio do parry e o raio fica batendo em quem desviou sem sair nada dali. Era o
+	/// jogo ate 2026-10-08 (com o raio a 20 tiles por segundo, a curva durava um segundo).
+	/// </summary>
+	public static bool RamoMorreDeAlcanceDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): a cabeca que bate sem ferir (`Projetil.BatendoSemFerir`) nao recua na frente de
+	/// quem anda contra ela -- o corpo entra no raio e a cabeca fica desenhada em cima dele ate a batida seguinte,
+	/// e quem anda depressa passa por ela e corta o tronco, soltando um toco de feixe pelas costas.
+	/// </summary>
+	public static bool CabecaNaoRecuaDeTeste;
+
+	// =====================================================================
+	// A DOBRA DE UM RAIO DESVIADO (dono, 2026-10-08)
+	// =====================================================================
+	/// <summary>
+	/// ONDE UM RAIO DESVIADO PELO PARRY DOBRA: na cabeca plantada dele, que fica NA FRENTE de quem desviou
+	/// (<see cref="CabecaNaFrenteDe"/>). E dali que o trecho desviado sai -- a cauda dele mora neste ponto
+	/// enquanto o desvio durar.
+	///
+	/// ============================ O PEDIDO, E A FOTO ============================
+	/// *"o deflect ele deveria ao bater no jogador e o jogador dar o deflect o beam dar curva pro lado e
+	/// nao criar um novo beam atras do jogador como a imagem mostra"*. A versao anterior punha a cauda do
+	/// trecho desviado ALEM do corpo de quem desviou, no rumo do desvio: o raio batia nele pela frente e a
+	/// energia reaparecia nas costas, como um segundo disparo. Agora o raio DOBRA onde bate.
+	///
+	/// ============================ NUNCA MAIS PERTO QUE UM RAIO DE IMPACTO ============================
+	/// A cabeca plantada fica a `frente desenhada + meio corpo` do centro dele, e ha artes de frente ZERO
+	/// (a broca do Makkankosappo): a dobra cairia na beirada do corpo e o trecho desviado seria desenhado
+	/// por cima de quem desviou. O piso e o raio de impacto -- meio tile, a meia largura do sprite.
+	///
+	/// E NUNCA ATRAS DA MAO de quem atira (a queima-roupa), pela mesma razao da cabeca plantada.
+	/// </summary>
+	public static Vec2 DobraDoDesvio(Projetil pai)
+	{
+		float recuo = MathF.Max(0f, Projetil.RaioDeImpacto - AlcanceDaCabeca(pai));
+		return NaoAtrasDaCauda(pai.Pos - pai.Rumo * recuo, pai);
+	}
+
 	// =====================================================================
 	// A CABECA NA FRENTE
 	// =====================================================================
@@ -343,5 +397,38 @@ public static class Feixe
 
 		projecao = cauda + eixo * t;
 		return (ponto - projecao).LengthSquared <= raio * raio;
+	}
+
+	// =====================================================================
+	// EM CIMA DO TIRO -- ate quando vale o raspao (2026-10-08)
+	// =====================================================================
+	/// <summary>
+	/// ESTE CORPO AINDA ESTA EM CIMA DESTE TIRO? E a pergunta que decide ate quando quem raspou fica fora da linha
+	/// dele (<see cref="Projetil.ForaDaLinha"/>): enquanto a resposta for sim, e o MESMO encontro e nao ha sorteio
+	/// novo; no primeiro nao, o tiro volta a enxerga-lo, e encostar de novo e outro encontro.
+	///
+	/// ============================ E A SOMA DE TUDO QUE O TIRO PODE TOCAR, SEM VAO ============================
+	///   * a BOLA: o circulo dela -- o mesmo raio do `Colidiu`;
+	///   * o RAIO: a faixa da CABECA (<see cref="EncostaNoCorpo"/>, a regua do `Colidiu`) mais a do TRONCO, da cauda
+	///     ate o centro da cabeca, na beirada do corte (`CortarOndeEncostaram`).
+	/// A faixa do tronco vai ATE A CABECA de proposito: o <see cref="Tronco"/> para um raio de impacto antes da
+	/// faixa da cabeca, e nesses 16 px o corpo nao encosta em nada. Um corpo parado por quem a cabeca passa cruza
+	/// esse vao -- lido como "saiu", ele seria esquecido ali e CORTARIA o tronco no tique seguinte, com sorteio novo.
+	///
+	/// A ALTURA CONTA: quem sobe (ou desce) pra fora do alcance vertical do tiro saiu de cima dele, mesmo sem andar.
+	/// =========================================================================================================
+	/// </summary>
+	public static bool EmCimaDoTiro(Projetil p, Vec2 corpo, float alturaDoCorpo)
+	{
+		if (!Voo.PodeAcertar(Voo.Andar(p.Altitude), Voo.Andar(alturaDoCorpo))) return false;
+		if (p.Tipo != TipoDeProjetil.Beam)
+			return (corpo - p.Pos).LengthSquared <= Projetil.RaioDeImpacto * Projetil.RaioDeImpacto;
+		if (EncostaNoCorpo(p, corpo, alturaDoCorpo)) return true;
+
+		float beirada = MathF.Max(Projetil.RaioDeImpacto, MeiaEspessuraDoTronco(p) + MeioCorpo);
+		Vec2 ate = corpo - p.Cauda, eixo = p.Pos - p.Cauda;
+		float frente = ate.X * p.Rumo.X + ate.Y * p.Rumo.Y;
+		float lado = MathF.Abs(ate.X * p.Rumo.Y - ate.Y * p.Rumo.X);
+		return lado <= beirada && frente >= 0f && frente <= eixo.X * p.Rumo.X + eixo.Y * p.Rumo.Y;
 	}
 }

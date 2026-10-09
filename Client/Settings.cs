@@ -51,6 +51,12 @@ public sealed class Settings
     public List<LigacaoDeTecla> LigacoesDeTecla = [];
     public List<AtalhoGravado> AtalhosDeTecla = [];
 
+    /// <summary>
+    /// A BARRA DO MODO DE CONSTRUIR: o id do bloco de cada uma das nove casas ("" = casa vazia). Vazia =
+    /// a barra padrao. Ids e nao numeros, pelo motivo do `BlocoDef.Numero`: o catalogo pode mudar de ordem.
+    /// </summary>
+    public List<string> BarraDeBlocos = [];
+
     // --- video ---
     //
     // ============================ O QUE A RESOLUCAO SIGNIFICA (leia antes de mexer) ============================

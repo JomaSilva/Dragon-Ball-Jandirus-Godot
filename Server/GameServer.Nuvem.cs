@@ -106,8 +106,11 @@ public partial class GameServer
 		long agora = NowMs();
 
 		// A LISTA E COPIADA porque cair MEXE em `_players` por dentro (o `MoveToZone` troca a lista
-		// da zona), e iterar uma colecao que muda no meio estoura. Mesma razao do `TickDasPassagens`.
-		foreach (ServerPlayer pl in _players.Values.ToList())
+		// da zona), e iterar uma colecao que muda no meio estoura. Mesma razao do `TickDasPassagens`
+		// -- e o mesmo buffer reusado dele, em vez de um `ToList()` novo por tique.
+		_copiaDosCorpos.Clear();
+		_copiaDosCorpos.AddRange(_players.Values);
+		foreach (ServerPlayer pl in _copiaDosCorpos)
 		{
 			// ============================ O NOCAUTEADO NAO CAI, E ISSO E UMA ESCOLHA ============================
 			// O `Enter()` do DM nao pergunta por nocaute -- la um corpo KO nao anda, entao a situacao

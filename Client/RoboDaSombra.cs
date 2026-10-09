@@ -22,8 +22,19 @@ namespace Jandirus.Client;
 ///      e dentro da tela. E prova o contra-exemplo: com o olho de antes (o corpo na area de espera)
 ///      e a tela da camera, o leque dobra -- e o que o dono viu.
 ///
-/// COMO RODAR (janela no segundo monitor):
-///     Godot --path . --position 1920,0 --host --rede 7935 --diagsombra --semfoco --raca Human --conta &lt;NOVA&gt; --nome RoboDaSombra
+///   3. (2026-10-08) "a sombra deveria ser totalmente escura vendo de fora pra dentro de uma casa" --
+///      o robo para dois tiles ao sul da porta do Banco da Terra, poe um corpo la dentro e mede o
+///      PIXEL do piso do Banco na foto: preto, parado e PAIRANDO (era pairando que o veu inteiro
+///      sumia). O corpo de dentro e o balcao nao sao desenhados; a fachada continua clara e a sombra
+///      do campo aberto continua penumbra. O contra-exemplo e o veu de antes
+///      (`Visao.InteriorSemBreuDeTeste`), nas duas fotos: o piso volta a aparecer.
+///      A `--diagvisao` prova a mesma regra no byte da mascara; aqui e a cor que chega na tela.
+///      E, ainda pairando, a CEGUEIRA: a cortina do Solar Flare sumia com a altura pelo mesmo caminho
+///      que abria a sombra. O chao que a foto anterior mostra claro tem que sair preto com ela ligada,
+///      e voltar sozinho quando o prazo acaba, com o corpo parado.
+///
+/// COMO RODAR (janela no segundo monitor; `--vooteste` e o que da a skill de voo ao corpo da bancada):
+///     Godot --path . --position 1920,0 --host --rede 7935 --vooteste --diagsombra --semfoco --raca Human --conta &lt;NOVA&gt; --nome RoboDaSombra
 /// </summary>
 public partial class RoboDaSombra : Node
 {
@@ -111,12 +122,168 @@ public partial class RoboDaSombra : Node
 				Conferir(facesErradas == 0, $"o veu e um raio direto concordam sobre que parede esta clara ({facesErradas} faces erradas)");
 				Conferir(veu.OlhoEmprestado == null && veu.OlhoDeTeste.DistanceTo((mundo.PosicaoLocalDeTeste ?? Vector2.Zero) + new Vector2(0, MoveRules.FeetOffsetY)) < 1f,
 						 "sem espectador o olho do veu sao os pes do corpo");
-				GD.Print("[diagsombra] ===== O ESPECTADOR DO TORNEIO =====");
-				// O TORNEIO DA TERRA CONVIDA QUEM ESTA NA TERRA (e vivo): o corpo volta pra arena antes.
-				servidor.MoveToZone(cli.LocalId, ZoneKey.Premade("Earth"), new Vec2(Arena.X, Arena.Y));
+				_passo = 20;   // o Banco visto de fora; de la a bancada segue pro torneio (passo 3)
+				_t = 0;
+				break;
+			}
+			// =====================================================================
+			// O BANCO VISTO DE FORA (2026-10-08) -- passos 20 a 29, e de volta pro 3
+			// =====================================================================
+			case 20:
+				GD.Print("[diagsombra] ===== O BANCO VISTO DE FORA =====");
+				_destino = Meio(PortaX, PortaY + 2);
+				servidor.MoveToZone(cli.LocalId, ZoneKey.Premade("Earth"), new Vec2(_destino.X, _destino.Y));
+				// CEU ABERTO: o veu do clima e uma camada de tela por cima de tudo, e a neblina poria cinza
+				// em cima do preto que esta foto mede.
+				servidor.EmbateDeFoto_CeuLimpo(cli.LocalId);
+				Passar();
+				break;
+			case 21:
+			{
+				Vector2 eu = mundo.PosicaoLocalDeTeste ?? Vector2.Zero;
+				if ((eu.DistanceTo(_destino) > 48f || veu.Mapa == null || _t < 2.5) && _t < 15) return;
+				_piso = PisoDoBanco(mundo, veu);
+				Conferir(eu.DistanceTo(_destino) <= 48f && _piso.Count == 30,
+						 $"em {_t:0.0}s o corpo esta dois tiles ao sul da porta do Banco, e o Banco tem 30 celulas de piso sob teto ({_piso.Count})");
+				// UM CORPO LA DENTRO, no meio do piso -- o que o dono nao quer que se veja de fora.
+				_deDentro = servidor.ForjarCorpoDeFoto(cli.LocalId, new Vec2(-1 * T, -4 * T), "DeDentro", 1000, comEscada: false);
+				// O HUD E UMA CAMADA DE TELA: fica fora das fotos que medem cor.
+				hud.Visible = false;
 				Passar();
 				break;
 			}
+			case 22:
+			{
+				if (_t < 1.2) return;
+				Image? foto = Fotografar("sombra-3-banco-de-fora");
+				if (foto == null || _piso.Count == 0)
+				{
+					Conferir(false, "a bancada do Banco precisa de JANELA (pra medir a cor) e do piso do Banco no mapa");
+					_passo = 29;
+					_t = 0;
+					return;
+				}
+
+				int piso = _piso.Max(c => Brilho(foto, c.X, c.Y));
+				Conferir(piso <= PretoAte, $"de FORA, parado: o piso do Banco e PRETO na tela (o maior canal das 30 celulas e {piso} de 255; preto e ate {PretoAte})");
+
+				int fachada = 0;
+				for (int cx = BancoX0; cx <= BancoX1; cx++)
+					if (veu.ParedeIluminada(cx, PortaY)) fachada = Math.Max(fachada, Brilho(foto, cx, PortaY));
+				Conferir(fachada > ClaroDesde, $"...a fachada que da pro olho continua CLARA ({fachada} de 255)");
+
+				_naPenumbra = CelulaNaPenumbra(mundo, veu, foto);
+				_penumbra = _naPenumbra.X < 0 ? -1 : Brilho(foto, _naPenumbra.X, _naPenumbra.Y);
+				Conferir(_penumbra > PretoAte, $"...e a sombra do campo aberto continua PENUMBRA, nao preto ({_penumbra} de 255 em {_naPenumbra.X},{_naPenumbra.Y})");
+
+				Node2D? corpo = mundo.CorpoDeTeste(_deDentro);
+				Conferir(corpo != null && !corpo.Visible, $"o corpo que esta dentro do Banco NAO e desenhado (existe {corpo != null}, visivel {corpo?.Visible})");
+				(int sobTeto, int escondidas) = mundo.ObrasNoBreuDeTeste;
+				Conferir(sobTeto > 0 && escondidas == sobTeto, $"...nem a mobilia de la de dentro ({escondidas} de {sobTeto} construcoes sob teto escondidas)");
+
+				Visao.InteriorSemBreuDeTeste = true;
+				veu.InvalidarOComodo();
+				Passar();
+				break;
+			}
+			case 23:
+			{
+				if (_t < 0.8) return;
+				Image? foto = Fotografar("sombra-3b-banco-de-fora-DEFEITO");
+				int piso = foto == null ? -1 : _piso.Max(c => Brilho(foto, c.X, c.Y));
+				Node2D? corpo = mundo.CorpoDeTeste(_deDentro);
+				bool corpoVisivel = corpo != null && corpo.Visible;
+				Visao.InteriorSemBreuDeTeste = false;
+				veu.InvalidarOComodo();
+				Conferir(piso > PretoAte && corpoVisivel,
+						 $"(defeito injetado: o interior que nao se ve nao e breu) o piso do Banco volta a aparecer ({piso} de 255) e o corpo la dentro volta a ser desenhado ({corpoVisivel})");
+				cli.SendHabilidade("voar");
+				Passar();
+				break;
+			}
+			case 24:
+			{
+				bool noAr = mundo.AlturaDeTeste >= Voo.AlturaQueAtravessa && veu.Abertura >= 0.99f;
+				if (!noAr && _t < 8) return;
+				// um segundo depois de chegar la em cima: o veu redesenha e a camera assenta antes da foto
+				if (noAr && _noArDesde <= 0) _noArDesde = _t;
+				if (noAr && _t < _noArDesde + 1.0) return;
+				Conferir(noAr, $"o corpo esta PAIRANDO acima do cenario ({mundo.AlturaDeTeste:0} px; o cenario passa por baixo a partir de {Voo.AlturaQueAtravessa:0}) e o veu abriu (abertura {veu.Abertura:0.00})");
+				Image? foto = Fotografar("sombra-4-banco-pairando");
+				if (foto != null)
+				{
+					int piso = _piso.Max(c => Brilho(foto, c.X, c.Y));
+					Conferir(piso <= PretoAte, $"de FORA, PAIRANDO: o piso do Banco continua PRETO na tela ({piso} de 255; preto e ate {PretoAte})");
+					int aberta = _naPenumbra.X < 0 ? -1 : Brilho(foto, _naPenumbra.X, _naPenumbra.Y);
+					Conferir(aberta > _penumbra + 20, $"...e a sombra do campo aberto ABRIU com a altura, como sempre abriu ({_penumbra} -> {aberta} de 255)");
+					_chaoClaro = Brilho(foto, PortaX, PortaY + 4);
+				}
+				// A CEGUEIRA, PAIRANDO. A cortina do Solar Flare e deste mesmo veu, e sumia com a altura pelo mesmo
+				// `Modulate` que abria a sombra: quem pairava nao ficava cego. O controle e a foto de cima -- o chao a
+				// vista, claro, com o corpo no ar -- e a medida e a mesma celula com a cegueira ligada.
+				veu.CegoAte = Time.GetTicksMsec() + MsDeCegueira;
+				Passar();
+				break;
+			}
+			case 25:
+			{
+				if (_t < 0.3) return;
+				Image? foto = Fotografar("sombra-5-cego-pairando");
+				int cego = foto == null ? -1 : Brilho(foto, PortaX, PortaY + 4);
+				Conferir(_chaoClaro > ClaroDesde && cego >= 0 && cego <= PretoAte,
+						 $"CEGO e pairando, a tela e PRETA: o chao que estava claro ({_chaoClaro} de 255) saiu {cego} -- a altura nao abre a cortina da cegueira");
+				Passar();
+				break;
+			}
+			case 26:
+			{
+				// passado o prazo, SEM o corpo se mexer: a cortina tem que sair sozinha
+				if (_t < MsDeCegueira / 1000.0 + 0.4) return;
+				Image? foto = Fotografar("sombra-5b-depois-da-cegueira");
+				int depois = foto == null ? -1 : Brilho(foto, PortaX, PortaY + 4);
+				Conferir(depois > ClaroDesde, $"...e acabado o prazo a tela VOLTA com o corpo parado no ar ({depois} de 255)");
+				// o contra-exemplo: a mesma cegueira, sem ninguem mandar redesenhar no fim dela
+				Visao.CortinaDaCegueiraFicaDeTeste = true;
+				veu.CegoAte = Time.GetTicksMsec() + MsDeCegueira;
+				Passar();
+				break;
+			}
+			case 27:
+			{
+				if (_t < MsDeCegueira / 1000.0 + 0.7) return;
+				Image? foto = Fotografar("sombra-5c-depois-da-cegueira-DEFEITO");
+				int presa = foto == null ? -1 : Brilho(foto, PortaX, PortaY + 4);
+				Visao.CortinaDaCegueiraFicaDeTeste = false;
+				veu.Invalidar();
+				Conferir(presa >= 0 && presa <= PretoAte,
+						 $"(defeito injetado: acabada a cegueira ninguem manda redesenhar) a tela continua PRETA com o corpo parado ({presa} de 255)");
+				Visao.InteriorSemBreuDeTeste = true;
+				veu.InvalidarOComodo();
+				Passar();
+				break;
+			}
+			case 28:
+			{
+				if (_t < 0.8) return;
+				Image? foto = Fotografar("sombra-4b-banco-pairando-DEFEITO");
+				int piso = foto == null ? -1 : _piso.Max(c => Brilho(foto, c.X, c.Y));
+				Visao.InteriorSemBreuDeTeste = false;
+				veu.InvalidarOComodo();
+				Conferir(piso > ClaroDesde, $"(defeito injetado: o interior que nao se ve nao e breu) PAIRANDO se ve o piso do Banco inteiro ({piso} de 255) -- era o que bastava pra olhar dentro de qualquer casa");
+				cli.SendHabilidade("voar");   // o mesmo botao, desligando
+				Passar();
+				break;
+			}
+			case 29:
+				if (mundo.AlturaDeTeste > 0.01f && _t < 8) return;
+				hud.Visible = true;
+				servidor.LimparAFoto();
+				GD.Print("[diagsombra] ===== O ESPECTADOR DO TORNEIO =====");
+				// O TORNEIO DA TERRA CONVIDA QUEM ESTA NA TERRA (e vivo): o corpo volta pra arena antes.
+				servidor.MoveToZone(cli.LocalId, ZoneKey.Premade("Earth"), new Vec2(Arena.X, Arena.Y));
+				_passo = 3;
+				_t = 0;
+				break;
 			case 3:
 				if ((mundo.PosicaoLocalDeTeste ?? Vector2.Zero).DistanceTo(Arena) > 48f && _t < 15) return;
 				Conferir((mundo.PosicaoLocalDeTeste ?? Vector2.Zero).DistanceTo(Arena) <= 48f, $"em {_t:0.0}s o corpo esta na arena da Terra");
@@ -258,18 +425,109 @@ public partial class RoboDaSombra : Node
 		return (paredes, claras, cunhas, facesErradas);
 	}
 
-	private void Fotografar(string nome)
+	private Image? Fotografar(string nome)
 	{
 		Image? img = GetViewport()?.GetTexture()?.GetImage();
-		if (img == null || img.IsEmpty()) { Nota("sem foto (headless nao renderiza): rode com janela"); return; }
+		if (img == null || img.IsEmpty()) { Nota("sem foto (headless nao renderiza): rode com janela"); return null; }
 		string caminho = ProjectSettings.GlobalizePath($"user://{nome}.png");
 		img.SavePng(caminho);
 		Nota($"foto {caminho} ({img.GetWidth()}x{img.GetHeight()})");
+		return img;
+	}
+
+	// =====================================================================
+	// O BANCO DA TERRA, e a cor dele na foto
+	// =====================================================================
+	private const int T = ZoneCollision.TileSize;
+
+	/// <summary>O retangulo do Banco e a porta dele, em celulas -- os mesmos da `--diagvisao`.</summary>
+	private const int BancoX0 = 67, BancoX1 = 78, BancoY0 = 257, BancoY1 = 262, PortaX = 73, PortaY = 262;
+
+	/// <summary>
+	/// "PRETO" NA FOTO: o maior dos tres canais, de 0 a 255. Nao e zero porque a nevoa de altitude e
+	/// uma camada de tela por cima de tudo (uns poucos pontos quando se paira) -- e esta longe do que
+	/// o veu de antes deixava passar, que e o que o defeito injetado mostra na mesma bancada.
+	/// </summary>
+	private const int PretoAte = 12;
+
+	/// <summary>"CLARO" na foto: a parede iluminada, o piso a vista.</summary>
+	private const int ClaroDesde = 40;
+
+	private List<(int X, int Y)> _piso = [];
+	private (int X, int Y) _naPenumbra = (-1, -1);
+	private int _penumbra, _deDentro, _chaoClaro;
+	private double _noArDesde;
+
+	/// <summary>Quanto dura a cegueira que a bancada liga (o mesmo campo que o efeito do Solar Flare escreve).</summary>
+	private const ulong MsDeCegueira = 900;
+
+	private static Vector2 Meio(int cx, int cy) => new((cx + 0.5f) * T, (cy + 0.5f) * T);
+
+	/// <summary>O piso do Banco: sob teto e sem cegar -- contado no mapa que o cliente carregou.</summary>
+	private static List<(int X, int Y)> PisoDoBanco(World mundo, Visao veu)
+	{
+		var piso = new List<(int X, int Y)>();
+		if (veu.Mapa is not { } vis) return piso;
+		for (int cy = BancoY0; cy <= BancoY1; cy++)
+			for (int cx = BancoX0; cx <= BancoX1; cx++)
+				if (mundo.CelulaSobTeto(cx, cy) && !vis.BlockedCell(cx, cy)) piso.Add((cx, cy));
+		return piso;
+	}
+
+	/// <summary>
+	/// A COR DE UMA CELULA NA FOTO: o maior canal entre nove amostras dela (a 1/4, 1/2 e 3/4 de cada
+	/// lado), de 0 a 255; -1 se a celula esta fora da foto. Nove e nao uma porque a pergunta e "ha
+	/// ALGUMA coisa aparecendo aqui?", e um pixel so pode cair numa junta escura do piso.
+	///
+	/// A foto sai no tamanho da JANELA, e no modo `canvas_items` do projeto o caminho do mundo ate o
+	/// pixel passa pelas duas transformacoes do viewport -- a mesma conta da foto do embate.
+	/// </summary>
+	private int Brilho(Image foto, int cx, int cy)
+	{
+		Viewport? v = GetViewport();
+		if (v == null) return -1;
+		int maior = -1;
+		for (int iy = 1; iy <= 3; iy++)
+			for (int ix = 1; ix <= 3; ix++)
+			{
+				var noMundo = new Vector2((cx + ix / 4f) * T, (cy + iy / 4f) * T);
+				Vector2 p = v.GetFinalTransform() * (v.CanvasTransform * noMundo);
+				int x = (int)p.X, y = (int)p.Y;
+				if (x < 0 || y < 0 || x >= foto.GetWidth() || y >= foto.GetHeight()) continue;
+				Color c = foto.GetPixel(x, y);
+				maior = Math.Max(maior, (int)MathF.Round(MathF.Max(c.R, MathF.Max(c.G, c.B)) * 255f));
+			}
+		return maior;
+	}
+
+	/// <summary>
+	/// UMA CELULA DE CHAO NA SOMBRA COMUM, dentro da foto: ao ar livre, sem cegar, fora do leque -- e
+	/// com as oito vizinhas no mesmo estado, pra nenhuma das nove amostras cair na borda da sombra.
+	/// </summary>
+	private (int X, int Y) CelulaNaPenumbra(World mundo, Visao veu, Image foto)
+	{
+		if (veu.Mapa is not { } vis) return (-1, -1);
+		Rect2 tela = veu.TelaDeTeste;
+		int cx0 = (int)MathF.Floor(tela.Position.X / T), cy0 = (int)MathF.Floor(tela.Position.Y / T);
+		int cx1 = (int)MathF.Floor(tela.End.X / T), cy1 = (int)MathF.Floor(tela.End.Y / T);
+		for (int cy = cy0 + 1; cy < cy1; cy++)
+			for (int cx = cx0 + 1; cx < cx1; cx++)
+			{
+				bool serve = Brilho(foto, cx, cy) >= 0;
+				for (int dy = -1; dy <= 1 && serve; dy++)
+					for (int dx = -1; dx <= 1 && serve; dx++)
+						serve = !mundo.CelulaSobTeto(cx + dx, cy + dy) && !vis.BlockedCell(cx + dx, cy + dy)
+								&& !veu.Ve(Meio(cx + dx, cy + dy));
+				if (serve) return (cx, cy);
+			}
+		return (-1, -1);
 	}
 
 	private void Fechar()
 	{
 		_acabou = true;
+		Visao.InteriorSemBreuDeTeste = false;   // os defeitos nao sobrevivem a uma bancada que parou no meio
+		Visao.CortinaDaCegueiraFicaDeTeste = false;
 		foreach (string p in _passos) GD.Print("[diagsombra] " + p);
 		GD.Print(_falhas.Count == 0 ? "[diagsombra] ===== TUDO OK =====" : $"[diagsombra] ===== {_falhas.Count} FALHA(S) =====");
 		foreach (string f in _falhas) GD.Print("[diagsombra]   - " + f);

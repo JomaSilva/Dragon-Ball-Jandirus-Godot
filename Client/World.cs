@@ -167,6 +167,45 @@ public partial class World : Node2D
 	/// </summary>
 	private readonly Dictionary<int, ProjetilDesenhado> _tiros = [];
 	private Iluminacao _luzDoMundo = null!;
+
+	/// <summary>
+	/// O QUE ESTA SOB TETO NESTA ZONA, AGORA -- a area `Inside` do DM, menos o que caiu. Um dono so, e
+	/// dois lugares que escrevem: a carga da zona e o `AplicarEstrago`. Ver <see cref="TetoDaZona"/>.
+	/// </summary>
+	private readonly TetoDaZona _teto = new();
+
+	/// <summary>O teto desta zona, pra quem desenha por celula (o clima, a luz, o veu de visao).</summary>
+	public TetoDaZona Teto => _teto;
+
+	/// <summary>Esta celula esta sob teto agora? O plano do mapa, ja descontado o que caiu.</summary>
+	public bool CelulaSobTeto(int cx, int cy) => _teto.SobTeto(cx, cy);
+
+	/// <summary>
+	/// O CORPO LOCAL ESTA SOB TETO AGORA? A celula e a dos PES, a mesma que o servidor pergunta
+	/// (`CelulaInterna.CelulaDoCorpo`): quem esta na soleira nao pode estar dentro pra um e fora pro outro.
+	/// </summary>
+	public bool EuEstouSobTeto
+	{
+		get
+		{
+			if (PosicaoLocal is not { } p) return false;
+			(int cx, int cy) = Jandirus.Core.World.CelulaInterna.CelulaDoCorpo(new Jandirus.Core.World.Vec2(p.X, p.Y));
+			return _teto.SobTeto(cx, cy);
+		}
+	}
+
+	/// <summary>
+	/// REMONTA O TETO do plano e do estrago (bancada). E como um defeito ligado no Core no meio da
+	/// rodada passa a valer no desenho -- em jogo o teto so e montado na carga da zona.
+	/// </summary>
+	public void RemontarOTetoDeTeste()
+	{
+		_teto.Montar(_colisao);
+		if (GameClient.Instance is { } cli && ORetratoEDesteChao())
+			foreach ((int cx, int cy) in cli.CenarioCaido) _teto.Destelhar(cx, cy);
+		_teto.Assentar();
+	}
+
 	private ZoneCatalog? _catalogo;
 	private ZoneCollision? _colisao;
 	private Node2D? _zonaAtual;
@@ -252,6 +291,13 @@ public partial class World : Node2D
 	public override void _Ready()
 	{
 		Instancia = this;
+
+		// A FAIXA DA PRIMEIRA LUTA E A DO PRIMEIRO ESC COMECAM A SER LIDAS AQUI, numa thread de carga, enquanto o
+		// resto deste metodo monta o mundo. O mp3 era lido pela thread principal no quadro do primeiro golpe e no
+		// quadro em que o menu de pause abria -- ver `AudioDirector.Adiantar`.
+		AudioDirector.Instance?.Adiantar(AudioDirector.Camada.Combate);
+		AudioDirector.Instance?.Adiantar(AudioDirector.Camada.Menu);
+
 		const string dados = "res://Assets/Data/visual.json";
 		if (Godot.FileAccess.FileExists(dados))
 			_visual = Jandirus.Core.Appearance.VisualCatalog.Parse(Godot.FileAccess.GetFileAsString(dados));
@@ -269,6 +315,19 @@ public partial class World : Node2D
 
 		MontarCenario();
 
+		// OS BLOCOS ERGUIDOS, logo depois do cenario na arvore e na mesma altura do `Decor` (-1): o Godot
+		// desempata por ordem de arvore, entao eles saem POR CIMA do chao e da decoracao do mapa e POR
+		// BAIXO dos objetos e dos corpos (z 0) -- o lugar do turf no BYOND. Ver `_blocosTiles`.
+		_blocosTiles = new TileMapLayer
+		{
+			Name = "Blocos",
+			TileSet = BlocosNoCliente.Tiles,
+			ZIndex = -1,
+			CollisionEnabled = false,
+			NavigationEnabled = false,
+		};
+		AddChild(_blocosTiles);
+
 		_atores = new Node2D { Name = "Atores", YSortEnabled = true };
 		AddChild(_atores);
 
@@ -280,6 +339,10 @@ public partial class World : Node2D
 
 		_veu = new Visao { Name = "Visao" };
 		AddChild(_veu);
+		// O INTERIOR QUE NAO SE VE E BREU (ver o cabecalho do `Visao`): o veu pergunta ao teto da zona, e
+		// refaz o leque quando ele muda -- outra zona, ou uma celula interna que caiu. Zona sem teto
+		// nenhum entrega nulo, que e "nao ha o que esconder".
+		_teto.Mudou += () => _veu.SobTeto = _teto.Largura > 0 ? CelulaSobTeto : null;
 		MontarDecalques();
 
 		// ============================ A VOZ VIVE E MORRE COM O MUNDO ============================
@@ -315,6 +378,7 @@ public partial class World : Node2D
 			cli.VozRecebida += AoOuvirVoz;
 			cli.Golpe += AoGolpe;
 			cli.GestoDoCorpo += AoGesto;
+			cli.OlharCravado += AoCravarOlhar;
 			cli.FormaMudou += AoMudarForma;
 			cli.OozaruMudou += AoVirarOozaru;
 			// METODO NOMEADO, como os vizinhos: ver a nota logo abaixo sobre as lambdas orfas.
@@ -334,6 +398,7 @@ public partial class World : Node2D
 			cli.TiroNasceu += AoNascerTiro;
 			cli.TiroMorreu += AoMorrerTiro;
 			ProjetilDesenhado.OndeEstaOCorpo = OndeEstaONo;
+			ProjetilDesenhado.OndeEstaOTiro = OndeEstaOTiro;
 			ChoqueDeKi.ChaoSoltoEm = ChaoSoltoEm;
 			cli.TiroCortado += AoCortarTiro;
 			cli.TirosNoAr += AoMoverTiros;
@@ -367,6 +432,9 @@ public partial class World : Node2D
 			cli.CenarioCaiu += AoCairCenario;
 			cli.CenarioChegou += AoChegarCenario;
 			cli.CenarioRefeito += AoRefazerCenario;
+			cli.BlocosChegaram += ReaplicarBlocos;
+			cli.BlocoMudou += AoMudarBloco;
+			cli.BlocoSaiu += AoSairBloco;
 			cli.FeridasMudaram += AoMudarFeridas;
 			cli.AureolaMudou += AoMudarAureola;
 			// O Boot instancia o World DENTRO do callback de Joined, ou seja, este _Ready
@@ -401,6 +469,7 @@ public partial class World : Node2D
 			cli.VozRecebida -= AoOuvirVoz;
 			cli.Golpe -= AoGolpe;
 			cli.GestoDoCorpo -= AoGesto;
+			cli.OlharCravado -= AoCravarOlhar;
 			cli.FormaMudou -= AoMudarForma;
 			// METODO NOMEADO E `-=`, e nao lambda: ver a nota do `_Ready`. O `GameClient` sobrevive
 			// ao logout, entao assinatura que nao se cancela vira ouvinte orfao na sessao seguinte.
@@ -416,6 +485,7 @@ public partial class World : Node2D
 			cli.TiroNasceu -= AoNascerTiro;
 			cli.TiroMorreu -= AoMorrerTiro;
 			if (ProjetilDesenhado.OndeEstaOCorpo == OndeEstaONo) ProjetilDesenhado.OndeEstaOCorpo = null;
+			if (ProjetilDesenhado.OndeEstaOTiro == OndeEstaOTiro) ProjetilDesenhado.OndeEstaOTiro = null;
 			if (ChoqueDeKi.ChaoSoltoEm == ChaoSoltoEm) ChoqueDeKi.ChaoSoltoEm = null;
 			cli.TiroCortado -= AoCortarTiro;
 			cli.TirosNoAr -= AoMoverTiros;
@@ -423,6 +493,9 @@ public partial class World : Node2D
 			cli.CenarioCaiu -= AoCairCenario;
 			cli.CenarioChegou -= AoChegarCenario;
 			cli.CenarioRefeito -= AoRefazerCenario;
+			cli.BlocosChegaram -= ReaplicarBlocos;
+			cli.BlocoMudou -= AoMudarBloco;
+			cli.BlocoSaiu -= AoSairBloco;
 			cli.FeridasMudaram -= AoMudarFeridas;
 			cli.AureolaMudou -= AoMudarAureola;
 			// Os sete que faltavam -- ver a nota no `_Ready`. O `ZoneChanged` e o mais grave: um
@@ -908,6 +981,72 @@ public partial class World : Node2D
 	/// </summary>
 	private void AoMorrerTiro(int id, byte fim, Vec2 onde)
 	{
+		var ponto = new Vector2(onde.X, onde.Y);
+
+		// ============================ A BOLA CHEGA ANTES DE ESTOURAR (2026-10-08) ============================
+		// O ponto que vem aqui e o do SERVIDOR, e o node desenhado ainda esta atras dele: pelo atraso do
+		// `Lerp` MAIS o ultimo tique inteiro, porque o tiro morto nem viaja no snapshot do tique em que morre.
+		// Recolhida na chegada do pacote, a bola comum sumia um tile antes de onde o estouro nascia (medido na
+		// `--diagraio`, cena F: 31,6 px). Entao ela voa o ultimo trecho (`ProjetilDesenhado.VoarAteOFim`) e so
+		// e recolhida quando chega -- o `TickDosTirosNoFim` solta o efeito no MESMO ponto de sempre.
+		//
+		// SO A BOLA E O TELEGUIADO. O raio morre de outro jeito (a cabeca PARA e o rastro e engolido antes de
+		// o pacote sair), e raio morto desenhado a mais ja foi defeito: o que perde a disputa ficava no encontro
+		// com a cabeca do vencedor passando por cima dele (ver `GameServer.TirosDaZona`).
+		//
+		// E O RAIO QUE ESTOUROU NUM CORPO, que acaba como bola (o Death Beam; `Projetil.EstouraComoBola`). Ele some
+		// NO TIQUE do impacto, sem esvaziar, e a 66 tiles por segundo a cabeca desenhada ainda esta a tiles do alvo
+		// quando o pacote chega: recolhido ali, o fio pararia no meio do caminho e o estouro nasceria longe da ponta
+		// dele. Quem o separa dos outros raios e o motivo: um raio comum nunca morre de `Acertou` (ele fica plantado
+		// em quem acerta) -- a nao ser no EMPATE de uma disputa (`GameServer.Empatar`), e la a cabeca ja esta parada
+		// no ponto do encontro: voar ate ele nao anda nada.
+		//
+		// O RELATO DO GOLPE NAO ESPERA, e fica dito: o clarao e a faisca em quem apanha saem do `AoGolpe`, na
+		// chegada do pacote DELE -- o mesmo tique da morte. Com a bola voando o ultimo trecho, eles passam a vir
+		// 1 / Suavizacao (45 ms) ANTES do estouro. Amarrar um ao outro pede saber de QUAL tiro e cada relato, e
+		// o relato nao leva o id do tiro.
+		// ======================================================================================================
+		if (!ProjetilDesenhado.AnuncioSemEsperaDeTeste
+			&& _tiros.TryGetValue(id, out ProjetilDesenhado? voando)
+			&& (voando.Tipo != Jandirus.Core.Combat.TipoDeProjetil.Beam
+				|| (Jandirus.Core.Combat.FimDeProjetil)fim == Jandirus.Core.Combat.FimDeProjetil.Acertou))
+		{
+			voando.VoarAteOFim(ponto);
+			if (!voando.ChegouAoFim) { _tirosNoFim.Add((id, fim, ponto)); return; }
+		}
+
+		RecolherTiro(id, fim, ponto);
+	}
+
+	/// <summary>
+	/// AS BOLAS QUE O SERVIDOR JA DEU POR ACABADAS e que ainda voam o ultimo trecho na tela: o id, o motivo e o
+	/// ponto da morte, guardados ate o node chegar la. Ver <see cref="AoMorrerTiro"/>.
+	///
+	/// O NODE CONTINUA NO <see cref="_tiros"/> ENQUANTO ISSO, de proposito: ele ainda esta DESENHADO, e quem
+	/// pergunta pelos tiros na tela (a onda da agua, as bancadas) tem que continuar achando.
+	/// </summary>
+	private readonly List<(int Id, byte Fim, Vector2 Onde)> _tirosNoFim = [];
+
+	/// <summary>RECOLHE AS BOLAS QUE CHEGARAM ao ponto em que acabaram, na ordem em que morreram.</summary>
+	private void TickDosTirosNoFim()
+	{
+		for (int i = 0; i < _tirosNoFim.Count;)
+		{
+			(int id, byte fim, Vector2 onde) = _tirosNoFim[i];
+			// SEM NODE NAO HA O QUE ESPERAR (uma bancada o tirou da zona): o efeito sai agora.
+			if (_tiros.TryGetValue(id, out ProjetilDesenhado? no) && !no.ChegouAoFim) { i++; continue; }
+
+			_tirosNoFim.RemoveAt(i);
+			RecolherTiro(id, fim, onde);
+		}
+	}
+
+	/// <summary>
+	/// TIRA O NODE DA TELA E SOLTA O EFEITO DA MORTE, no ponto que o servidor mandou. O raio passa por aqui na
+	/// chegada do pacote; a bola, na chegada do DESENHO (<see cref="AoMorrerTiro"/>).
+	/// </summary>
+	private void RecolherTiro(int id, byte fim, Vector2 onde)
+	{
 		Color cor = Aura.CorDoKiCru;
 		float altitude = 0f;
 		// O ESTOURO E DO TAMANHO E DA COR DO QUE ESTOUROU -- lidos do node ANTES de ele ser recolhido. Sem
@@ -1005,6 +1144,8 @@ public partial class World : Node2D
 				no.Solto = t.Solto;
 				no.ArrastaId = t.Arrasta;
 				no.Prensado = t.Prensado;
+				no.ContinuaDe = t.Dobra;
+				no.EscalaDoServidor = t.Escala;
 			}
 	}
 
@@ -1013,6 +1154,12 @@ public partial class World : Node2D
 	/// cabeca que leva alguem -- ver `ProjetilDesenhado.ArrastaId`.
 	/// </summary>
 	private Vector2? OndeEstaONo(int id) => Corpo(id)?.Position;
+
+	/// <summary>
+	/// O NO DO TIRO `id`, ou nulo. E por ele que o trecho desviado de um raio acha o raio de que e a
+	/// continuacao -- ver `ProjetilDesenhado.ContinuaDe`.
+	/// </summary>
+	private ProjetilDesenhado? OndeEstaOTiro(int id) => _tiros.GetValueOrDefault(id);
 
 	/// <summary>
 	/// BANCADA: poe (ou move) um tiro na zona pelos MESMOS dois caminhos do servidor -- o anuncio de
@@ -1110,6 +1257,8 @@ public partial class World : Node2D
 	{
 		foreach (ProjetilDesenhado no in _tiros.Values) no.QueueFree();
 		_tiros.Clear();
+		// E AS QUE VOAVAM O ULTIMO TRECHO NAO ESTOURAM NO PLANETA NOVO: o efeito da morte delas ficou la atras.
+		_tirosNoFim.Clear();
 
 		// AS BOLAS DE EMBATE VAO JUNTO, e de uma vez (sem o apagar suave): sao da zona que ficou pra tras.
 		foreach (ChoqueDeKi c in _choques.Values) if (IsInstanceValid(c)) c.QueueFree();
@@ -1259,6 +1408,17 @@ public partial class World : Node2D
 				yield return (id, no.PontaDesenhada, no.Medidas.Frente, no.Prensado);
 	}
 
+	/// <summary>
+	/// BANCADA: OS ESTOUROS DE KI QUE ESTAO NA TELA AGORA, pelo NODE que o `EstouroDeKi.Soltar` pos e onde ele
+	/// o pos -- a `--diagraio` (cena F) confere que a bola foi desenhada ATE ali antes de ele nascer.
+	/// </summary>
+	public IEnumerable<(ulong No, Vector2 Onde)> EstourosDeKiDesenhados()
+	{
+		foreach (Node n in _atores.GetChildren())
+			if (n is EstouroDeKi e && IsInstanceValid(e))
+				yield return (e.GetInstanceId(), e.Position);
+	}
+
 	/// <summary>BANCADA: quantas estrelas de embate estao acesas agora (as que ja estao apagando nao contam).</summary>
 	public int ChoquesDeKiDeTeste => _choques.Count;
 
@@ -1345,6 +1505,17 @@ public partial class World : Node2D
 	private bool SobrecargaLocal =>
 		GameClient.Instance is { } c && _sobrecarregados.Contains(c.LocalId);
 
+	// ============================ OS FILHOS QUE O SNAPSHOT PROCURA EM CADA CORPO, 30x/s ============================
+	// Os bits do snapshot abaixo "so trabalham quando viram" -- mas pra saber se viraram cada um procura o
+	// node filho pelo NOME, por corpo, por pacote. E uma `string` entregue ao `GetNodeOrNull` fabrica um
+	// `NodePath` a cada chamada, que e lixo do mesmo tipo do `StringName` (tabela de descartaveis + finalizador;
+	// ver o compasso do `CharacterVisual`). Medido em 2026-10-08, 40 corpos na tela: 8 mil `NodePath` por
+	// segundo, 0,69 MB/s. Com o caminho guardado a busca e a mesma e nao sobra nada pro coletor.
+	// ================================================================================================================
+	private static readonly NodePath
+		CaminhoDaAura = "Aura", CaminhoDaCarga = "Carga",
+		CaminhoDaNave = NaveDesenhada.NomeDoNode, CaminhoDaCargaDeRaio = CargaDeRaioVisual.NomeDoNode;
+
 	/// <summary>
 	/// O KI DE ALGUEM PASSOU (ou voltou) DOS 100% -- o FUNIL UNICO dos dois caminhos.
 	///
@@ -1383,7 +1554,7 @@ public partial class World : Node2D
 	private void MarcarKaioken(int id, bool ligado)
 	{
 		if (id == 0 || Corpo(id) is not { } corpo) return;
-		if (corpo.GetNodeOrNull<Aura>("Aura") is not { } aura || aura.NoKaioken == ligado) return;
+		if (corpo.GetNodeOrNull<Aura>(CaminhoDaAura) is not { } aura || aura.NoKaioken == ligado) return;
 
 		aura.Kaioken(ligado);
 		corpo.GetNodeOrNull<CargaVisual>("Carga")?.Kaioken(ligado);
@@ -1410,7 +1581,7 @@ public partial class World : Node2D
 		if (id == 0) return;
 		if (Corpo(id) is not { } corpo) return;
 
-		Node? ja = corpo.GetNodeOrNull(NaveDesenhada.NomeDoNode);
+		Node? ja = corpo.GetNodeOrNull(CaminhoDaNave);
 
 		// TROCAR DE NAVE TAMBEM E UMA VIRADA. O atalho antigo era `dentro == (ja != null)`, e ele
 		// bastava enquanto so havia um desenho possivel. Com dois, um jogador que saisse de um pod e
@@ -1452,7 +1623,7 @@ public partial class World : Node2D
 		if (Corpo(id) is not { } corpo) return;
 
 		bool acesa = e.Pose == Protocol.Pose.Canalizando && !e.CanalAtirando;
-		var ja = corpo.GetNodeOrNull<CargaDeRaioVisual>(CargaDeRaioVisual.NomeDoNode);
+		var ja = corpo.GetNodeOrNull<CargaDeRaioVisual>(CaminhoDaCargaDeRaio);
 
 		if (!acesa) { ja?.QueueFree(); return; }
 
@@ -1537,11 +1708,45 @@ public partial class World : Node2D
 		// branco puro (sem margem entre luz e sombra, parede nao esconde nada).
 		_luzDoMundo = new Iluminacao { Name = "Iluminacao" };
 		AddChild(_luzDoMundo);
+
+		// O TETO E DO MUNDO, e quem desenha o clima precisa dele: chuva, neve e a massa da nevoa nao
+		// caem sobre celula sob teto (a area `Inside` do DM). Depois do `AddChild`, porque o
+		// `ClimaNaTela` que o recebe so existe quando a iluminacao entra na arvore.
+		_luzDoMundo.UsarTeto(_teto);
 	}
 
 	// ---------------------------------------------------------------------
 	// rede -> cena
 	// ---------------------------------------------------------------------
+	/// <summary>
+	/// O SOM DO LUGAR EM QUE O CORPO ACABOU DE CHEGAR: o ambiente (vento, mar, cidade -- ou nada) e o TEMA da
+	/// zona, que pra quase todas e nenhum (`Trilha.MusicaDe`).
+	///
+	/// ============================ TODO RAMO DO `CarregarZona` PASSA POR AQUI ============================
+	/// O pedido de tema era escrito so no fim do ramo do planeta PRE-FEITO. Os outros quatro -- o espaco, o
+	/// interior da nave, a mente e o planeta gerado -- saem antes, e so calavam o ambiente: o pedido da camada
+	/// `Lugar` ficava como a zona anterior o deixou. Quem mergulhava na propria mente no Inferno levava o
+	/// `Demon World` la pra dentro (e pro espaco, e pra nave), em laco, e a `--diagtrilha --raca Demon`
+	/// reprovava por isso desde que a mente ganhou ramo proprio.
+	///
+	/// "O lugar novo NAO tem musica" tambem e um pedido, e precisa ser escrito: caminho vazio apaga o da camada
+	/// (ver `AudioDirector.Musica`). Um funil so, pra o proximo ramo novo nao esquecer metade do som -- foi um
+	/// ramo esquecido que gerou o defeito do `ReaplicarEstrago` contado la embaixo.
+	/// ================================================================================================
+	/// </summary>
+	private static void SomDoLugar(string? ambiente, string zona)
+	{
+		AudioDirector.Instance?.Ambiente(ambiente);
+		AudioDirector.Instance?.Musica(Trilha.MusicaDe(zona), AudioDirector.Camada.Lugar, $"cheguei em `{zona}`");
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): o cliente nao conhece o interior de um Majin -- o estado de antes do port
+	/// da absorcao. A zona cai no chao provisorio (sem cenario, sem parede), e as reguas do lugar da
+	/// `--diagmajin` tem de reprovar. Lida pela propria linha do ramo, no <see cref="CarregarZona"/>.
+	/// </summary>
+	public static bool InteriorDoMajinSemPlantaDeTeste;
+
 	/// <summary>
 	/// Instancia a cena do planeta (decisao do dono: cada pre-feito e uma cena propria).
 	/// Trocar de zona descarrega a anterior -- e o que impede carregar Namek pra quem esta
@@ -1572,6 +1777,16 @@ public partial class World : Node2D
 			: Planetas.Relogio(zona);
 		_luzDoMundo.ClimaDaqui = Planetas.Clima(zona);
 		_luzDoMundo.SalDoClima = Jandirus.Core.World.Clima.SalDaZona(zona);
+
+		// O TETO TAMBEM E DO LUGAR, e zera aqui pelo mesmo motivo do ceu: dos cinco caminhos desta
+		// funcao so o do mapa pre-feito tem plano, e os outros quatro ficariam com o do planeta
+		// ANTERIOR -- um retangulo sem chuva no meio do espaco. O ramo pre-feito o remonta la embaixo.
+		_teto.Montar(null);
+
+		// OS BLOCOS ERGUIDOS TAMBEM SAO DO LUGAR, e saem aqui pelo mesmo motivo: o desenho deles nao mora
+		// na cena da zona, e as camadas que eles escreveram no mapa de colisao (que e CACHEADO por sessao)
+		// voltariam junto na proxima visita. Quem os repoe e o `ReaplicarBlocos`, no fim de cada ramo.
+		LimparBlocosDaCena();
 
 		_catalogo ??= Godot.FileAccess.FileExists(Manifesto)
 			? ZoneCatalog.Parse(Godot.FileAccess.GetFileAsString(Manifesto))
@@ -1606,7 +1821,7 @@ public partial class World : Node2D
 			if (_local != null) _local.Mapa = null;
 			_zonaDoAtual = zona;   // ver o comentario no ramo pre-feito
 			DesenharPlanetas();
-			AudioDirector.Instance?.Ambiente("");
+			SomDoLugar("", zona.Name);
 			GD.Print("[world] zona: ESPACO (gerado por chunk)");
 			Chat.Sistema("voce esta no espaco. Encoste num planeta pra pousar.");
 			return;
@@ -1659,7 +1874,8 @@ public partial class World : Node2D
 			DesenharObras();
 			DesenharEsferas();
 			ReaplicarEstrago();
-			AudioDirector.Instance?.Ambiente("");
+			ReaplicarBlocos();
+			SomDoLugar("", zona.Name);
 			GD.Print($"[world] zona: INTERIOR da nave #{idDaNave} "
 					 + $"({Jandirus.Core.Tech.NaveGrande.Lado}x{Jandirus.Core.Tech.NaveGrande.Lado})");
 			Chat.Sistema("você está dentro da nave. A ponte fica no canto superior esquerdo; "
@@ -1713,7 +1929,8 @@ public partial class World : Node2D
 			DesenharObras();
 			DesenharEsferas();
 			ReaplicarEstrago();
-			AudioDirector.Instance?.Ambiente("");
+			ReaplicarBlocos();
+			SomDoLugar("", zona.Name);
 			// A CHAPA E SO A ORIGEM: dali pra fora o branco continua pra sempre, pintado por pedaco
 			// pelo modo sem beirada da `FonteDoTerreno`. O log conta os dois numeros de proposito --
 			// "100x100" sozinho voltaria a soar como o tamanho do lugar, que e o que ele deixou de ser.
@@ -1721,6 +1938,46 @@ public partial class World : Node2D
 					 + $"{Jandirus.Core.World.DimensaoMental.Lado}x{Jandirus.Core.World.DimensaoMental.Lado} na origem)");
 			Chat.Sistema("tudo é branco aqui dentro, e não acaba em lugar nenhum. "
 					   + "Só existe o que a sua mente puser aqui.");
+			return;
+		}
+
+		// ============================ O INTERIOR DE UM MAJIN ============================
+		// O TERCEIRO do mesmo ramo (a nave, a mente), e pela mesma razao: nao e arquivo, e uma PLANTA do
+		// Core (`InteriorDoMajin.Planta`, o `build_majin_pocket` do DM) -- a mesma de que o servidor tira a
+		// colisao. Antes da consulta ao catalogo, que nao tem entrada com este nome: sem este ramo o
+		// absorvido cairia no chao provisorio, sem parede e sem desenho.
+		if (!InteriorDoMajinSemPlantaDeTeste && Jandirus.Core.World.InteriorDoMajin.EhOInterior(zona))
+		{
+			var bolsao = new PlanetaProcedural
+			{
+				Name = "InteriorDoMajin",
+				TerrenoPronto = Jandirus.Core.World.InteriorDoMajin.Planta(),
+				NomeDoPlaneta = Jandirus.Core.World.InteriorDoMajin.Zona,
+			};
+			_zonaAtual = bolsao;
+			_zonaDoAtual = zona;
+			AddChild(bolsao);
+			MoveChild(bolsao, 0);
+
+			bolsao.CentroInicial = centro;
+			bolsao.Entrar(zona.Seed);   // a seed aqui e o ID DO MAJIN: identidade, nao geracao
+
+			_colisao = bolsao.Colisao;
+			_veu.Mapa = bolsao.Sombra ?? bolsao.Colisao;
+			_veu.Colisao = bolsao.Colisao;
+			_camadas = CamadasDoCenario(bolsao);
+			// O GANCHO DO PEDACO ENTRA DEPOIS DAS CAMADAS -- ver o mesmo par no ramo da nave.
+			bolsao.PedacoPintado -= ReaplicarEstragoNoPedaco;
+			bolsao.PedacoPintado += ReaplicarEstragoNoPedaco;
+			if (_local != null) _local.Mapa = _colisao;
+			DesenharObras();
+			DesenharEsferas();
+			ReaplicarEstrago();
+			ReaplicarBlocos();
+			SomDoLugar("", zona.Name);
+			GD.Print($"[world] zona: INTERIOR do Majin #{zona.Seed} "
+					 + $"({Jandirus.Core.World.InteriorDoMajin.Lado}x{Jandirus.Core.World.InteriorDoMajin.Lado})");
+			Chat.Sistema("você está DENTRO de quem te absorveu. Vença a imagem dele pra sair.");
 			return;
 		}
 
@@ -1760,7 +2017,8 @@ public partial class World : Node2D
 			DesenharObras();
 			DesenharEsferas();
 			ReaplicarEstrago();
-			AudioDirector.Instance?.Ambiente("");
+			ReaplicarBlocos();
+			SomDoLugar("", zona.Name);
 			GD.Print($"[world] zona GERADA: {gerado.Ficha()}");
 			Chat.Sistema(gerado.Ficha());
 			return;
@@ -1848,10 +2106,14 @@ public partial class World : Node2D
 
 		// A MESMA colisao que o servidor usa. Sem ela o cliente atravessa parede, o servidor
 		// recusa e devolve correcao -- e e ESSA briga que faz o personagem tremer no muro.
-		_colisao = MapaCacheado(e.Colisao, e.Zona, e.CaminhoDaAgua, e.CaminhoDaNuvem);
+		_colisao = MapaCacheado(e.Colisao, e.Zona, e.CaminhoDaAgua, e.CaminhoDaNuvem, e.CaminhoDoDentro);
 		if (_colisao == null) GD.PushWarning($"[world] zona '{zona}' sem colisao: da pra atravessar parede");
 		LacrarPassagens(e, _colisao);
 		if (_local != null) _local.Mapa = _colisao;
+
+		// O TETO DESTA ZONA, do plano que acabou de ser lido. ANTES do `ReaplicarEstrago` la embaixo:
+		// e ele que desconta, celula a celula, o que ja tinha caido.
+		_teto.Montar(_colisao);
 
 		// O QUE CEGA e outro mapa: parede e porta cegam, arvore e cerca nao (ver MapConverter).
 		_veu.Mapa = MapaCacheado(e.Visao, e.Zona);
@@ -1893,14 +2155,17 @@ public partial class World : Node2D
 		// O sintoma e o desync de mapa que o dono fotografou: o servidor tem buraco onde o cliente
 		// desenha parede, os dois discordam sobre onde da pra andar, e o corpo treme no muro.
 		ReaplicarEstrago();
+		ReaplicarBlocos();
+		// A CENA QUE VOLTA DO CACHE JA ESTA PINTADA e nao dispara `PedacoPintado`: os tiles altos dela sao
+		// anotados aqui, de uma vez (so as celulas que o mapa trouxe sob teto sao visitadas).
+		AnotarAltosSobTeto(null);
 
 		GD.Print($"[world] zona carregada: {e.Zona} (z{e.Z}, {e.W}x{e.H})"
 				 + (_colisao != null ? " com colisao" : " SEM colisao"));
 		Chat.Sistema($"voce esta em {e.Zona}.");
 
-		// o som do LUGAR: vento, mar, cidade. Troca junto com o planeta.
-		AudioDirector.Instance?.Ambiente(Trilha.AmbienteDe(e.Zona));
-		AudioDirector.Instance?.Musica(Trilha.MusicaDe(e.Zona), AudioDirector.Camada.Lugar, $"cheguei em `{e.Zona}`");
+		// o som do LUGAR: vento, mar, cidade, e o tema da zona. Troca junto com o planeta -- ver `SomDoLugar`.
+		SomDoLugar(Trilha.AmbienteDe(e.Zona), e.Zona);
 
 		ulong tLuz = Time.GetTicksUsec();
 		// fogueiras, tochas e lava do planeta novo (as do anterior somem junto com ele)
@@ -1920,6 +2185,15 @@ public partial class World : Node2D
 	}
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancada): a zona que sai SOBRESCREVE no cache a que ja estava sob a mesma chave,
+	/// sem libera-la -- o estado de antes de 2026-10-09. Cada segunda saida da MESMA zona gerada (nave,
+	/// mente, interior do Majin, planeta sorteado) abandona um `PlanetaProcedural` escondido na arvore, e
+	/// a conta de orfaos da `--diagcachezona` tem de crescer um por volta. Lida pela propria linha do
+	/// conserto, no <see cref="GuardarZonaAtual"/>.
+	/// </summary>
+	public static bool ZonaRepetidaSemSoltarDeTeste;
+
+	/// <summary>
 	/// SAI DA ZONA ATUAL guardando-a viva, se couber no cache.
 	///
 	/// `RemoveChild` e nao `QueueFree`: fora da arvore o node nao processa nada (a SceneTree so
@@ -1932,6 +2206,10 @@ public partial class World : Node2D
 	/// </summary>
 	private void GuardarZonaAtual()
 	{
+		// OS TILES ALTOS QUE O BREU ESCONDEU VOLTAM ANTES DE A CENA IR PRO CACHE: ela e a MESMA instancia
+		// que volta na proxima visita, e guardada com a cama apagada voltaria sem a cama.
+		SoltarAltosSobTeto();
+
 		if (_zonaAtual == null) return;
 
 		ulong tSai = Time.GetTicksUsec();
@@ -1958,6 +2236,37 @@ public partial class World : Node2D
 		// ====================================================================================================
 		saindo.Visible = false;
 		saindo.ProcessMode = ProcessModeEnum.Disabled;
+
+		// ============================ A CHAVE JA TINHA UM NODE? ELE SAI AGORA ============================
+		// So o ramo da cena PRE-FEITA tira o guardado do dicionario ao entrar -- ele o REUSA. Os quatro ramos
+		// que montam um `PlanetaProcedural` (nave, mente, interior do Majin, mundo sorteado) criam um node
+		// NOVO a cada entrada e deixam o guardado da visita anterior onde estava. Na segunda saida da mesma
+		// zona a linha de baixo trocava a referencia, e o antigo perdia o unico dono que tinha: seguia filho
+		// do `World`, escondido e sem processar, ate o mundo inteiro morrer -- fora da fila do teto, da
+		// varredura do `_ExitTree` e do cenario refeito, que so alcancam o que esta no dicionario.
+		//
+		// MEDIDO (`--diagcachezona`, 2026-10-09): cinco idas e voltas a mente deixavam os `PlanetaProcedural`
+		// filhos do World em 1, 2, 3, 4, 5 -- quatro orfaos, 6,0 MB de memoria nativa cada um -- e cada
+		// pouso repetido no mesmo mundo sorteado deixava mais um (7,2 MB com janela, num mundo de 223x223).
+		// Com esta linha a conta fica parada em 1 e a memoria tambem (+0,3 MB em quatro voltas). O PRECO e
+		// soltar o node velho na saida seguinte: 6 a 10 ms, por baixo da tela de carregamento.
+		//
+		// AQUI, E NAO NOS QUATRO RAMOS: esta e a unica linha por onde TODA zona passa ao sair, entao o quinto
+		// ramo gerado que nascer ja esta coberto -- foi um ramo esquecido que fez o defeito do
+		// `ReaplicarEstrago`. A outra saida era os ramos gerados REUSAREM o guardado, e ela e a mudanca
+		// maior: o `PlanetaProcedural` le o `SemBorda` e o `CentroInicial` no nascimento, e um node
+		// reaproveitado voltaria com os pedacos pintados em volta do ponto da visita anterior.
+		//
+		// A CENA PRE-FEITA NAO MUDA: a chave dela sai do dicionario na ENTRADA (`CarregarZona`), entao aqui
+		// nao ha nada sob ela -- e, se houvesse, seria o MESMO node, que o `!= saindo` poupa.
+		// ====================================================================================================
+		if (!ZonaRepetidaSemSoltarDeTeste
+			&& _zonasVivas.TryGetValue(chave, out Node2D? repetida) && repetida != saindo
+			&& GodotObject.IsInstanceValid(repetida))
+		{
+			SoltarDaArvore(repetida);
+			repetida.Free();
+		}
 
 		_zonasVivas[chave] = saindo;
 		_ordemDoCache.Remove(chave);
@@ -2026,7 +2335,7 @@ public partial class World : Node2D
 	}
 
 	private ZoneCollision? MapaCacheado(string caminho, string zona = "", string agua = "",
-										string nuvem = "")
+										string nuvem = "", string dentro = "")
 	{
 		if (_mapas.TryGetValue(caminho, out ZoneCollision? m)) return m;
 		m = Godot.FileAccess.FileExists(caminho)
@@ -2049,6 +2358,14 @@ public partial class World : Node2D
 		// pontas leem o mesmo arquivo e derivam a mesma regra, que e a unica forma de nao discordarem.
 		if (m != null && nuvem.Length > 0 && Godot.FileAccess.FileExists(nuvem))
 			m.CarregarNuvem(Godot.FileAccess.GetFileAsBytes(nuvem), zona);
+
+		// ZONA SEM `.dentro` E ZONA SEM INTERIOR -- a verdade em metade dos andares. E o que nasce
+		// SOB TETO (a area `Inside` do DM), e entra aqui pelo motivo da agua e da nuvem: o mapa e
+		// cacheado por sessao, e uma copia lida sem o plano ficaria guardada sem ele pra sempre. O
+		// servidor le o MESMO arquivo em `CarregarZonas` pra regra (a lua, o raio); aqui ele serve o
+		// desenho -- ver `TetoDaZona`.
+		if (m != null && dentro.Length > 0 && Godot.FileAccess.FileExists(dentro))
+			m.CarregarDentro(Godot.FileAccess.GetFileAsBytes(dentro));
 
 		// ZONA SEM BEIRADA: fora do bitset e chao, e nao o fim do mundo (ver `ZoneCollision.SemBorda`).
 		// O bit e ligado AQUI, junto da leitura, e nao no chamador -- o mapa e cacheado por sessao,
@@ -2079,6 +2396,7 @@ public partial class World : Node2D
 
 		_colisao?.FecharTudo();
 		_veu.Mapa?.FecharTudo();
+		_veu.InvalidarOComodo();
 
 		if (e.Portas.Length == 0 || !Godot.FileAccess.FileExists(e.Portas)) return;
 
@@ -2110,14 +2428,23 @@ public partial class World : Node2D
 
 		foreach ((int x, int y, bool aberta) in portas)
 		{
+			// A PORTA DERRUBADA NAO SE FECHA: a celula dela esta aberta pelo estrago, na mesma camada.
 			if (aberta) { _colisao?.Abrir(x, y); _veu.Mapa?.Abrir(x, y); }
-			else { _colisao?.Fechar(x, y); _veu.Mapa?.Fechar(x, y); }
+			else if (GameClient.Instance?.CenarioCaido.Contains((x, y)) != true) { _colisao?.Fechar(x, y); _veu.Mapa?.Fechar(x, y); }
 
 			// SEM ANIMACAO no pacote completo: uma porta que ja estava aberta antes de eu chegar
 			// nao deve abrir de novo na minha frente.
 			if (_portasPorCelula.TryGetValue((x, y), out Porta? porta) && GodotObject.IsInstanceValid(porta))
 				porta.Definir(aberta, animar: !completo);
 		}
+
+		// A SOMBRA E DO MAPA, E O MAPA ACABOU DE MUDAR. O leque so e refeito quando o olho ou a tela se
+		// mexem, entao quem estava PARADO olhando pra dentro de uma casa continuava com o cone de luz
+		// aceso depois de a porta fechar -- ate dar um passo. Com o interior virando breu, esse resto de
+		// leque era uma janela aberta pra dentro. (O cenario que cai ja fazia isto: `AplicarEstrago`.)
+		//
+		// E O COMODO DO OLHO VAI JUNTO: a porta aberta liga dois comodos, e a que fecha os separa.
+		_veu.InvalidarOComodo();
 	}
 
 	/// <summary>
@@ -2208,7 +2535,7 @@ public partial class World : Node2D
 	/// A COLISAO E OUTRA HISTORIA e nao precisa de recarga: a queda nunca escreveu no dado do disco,
 	/// so pos a celula numa camada por cima (`ZoneCollision.Abrir`). Um `Fechar` por celula desfaz.
 	/// Precisa acontecer ANTES do `CenarioCaido.Clear()` do cliente -- por isso o evento sai com a
-	/// lista ainda cheia.
+	/// lista ainda cheia, e quem a esvazia pro chao que esta montado e este metodo, antes de recarregar.
 	/// ====================================================================================================
 	/// </summary>
 	private void AoRefazerCenario(ulong zonaLimpa)
@@ -2237,6 +2564,20 @@ public partial class World : Node2D
 			_colisao?.Fechar(cx, cy);
 			_veu.Mapa?.Fechar(cx, cy);
 		}
+
+		// ============================ E A LISTA ESVAZIA AQUI, ANTES DA RECARGA ============================
+		// O `GameClient` so a esvazia DEPOIS deste evento (ele sai com a lista cheia pra o laco de cima
+		// saber o que refechar), e a recarga la embaixo termina em `ReaplicarEstrago()`. Com a lista
+		// ainda cheia, ele refazia celula por celula o estrago que o admin tinha acabado de consertar:
+		// apagava os tiles da cena recem-lida, reabria a colisao e a vista que o laco de cima fechou e
+		// destelhava a celula de novo. So pra quem estava NA zona -- quem chegava depois recebia o
+		// retrato vazio do servidor e via o cenario inteiro.
+		//
+		// A bancada do admin conferia que a lista ZERAVA, e depois do evento ela zera. Quem olhou o
+		// chao foi a `--diagteto` (2026-10-08): com o piso do Banco "refeito" o cliente seguia com
+		// terra batida no lugar, sem teto, e nevando em cima (625 px de floco nas 8 celulas).
+		// ==================================================================================================
+		cli.CenarioCaido.Clear();
 
 		// A CENA CACHEADA TAMBEM ESTA SUJA. Ela e a MESMA instancia que vai voltar quando alguem
 		// reentrar na zona -- guardar sem limpar seria refazer o cenario pra quem esta aqui e
@@ -2279,7 +2620,11 @@ public partial class World : Node2D
 	private void ReaplicarEstrago() => ReaplicarEstrago(null);
 
 	/// <summary>UM PEDACO ACABOU DE SER PINTADO: so o estrago DENTRO dele e reaplicado.</summary>
-	private void ReaplicarEstragoNoPedaco(Rect2I pedaco) => ReaplicarEstrago(pedaco);
+	private void ReaplicarEstragoNoPedaco(Rect2I pedaco)
+	{
+		ReaplicarEstrago(pedaco);
+		AnotarAltosSobTeto(pedaco);
+	}
 
 	/// <summary>
 	/// ============================ POR PEDACO, SEM POEIRA, E UMA VEZ CADA COISA ============================
@@ -2307,6 +2652,7 @@ public partial class World : Node2D
 			feitas++;
 		}
 		if (feitas > 0) _veu.Invalidar();
+		_teto.Assentar();
 		ReaplicacoesDeTeste++;
 		UltimaReaplicacaoDeTeste = feitas;
 	}
@@ -2337,6 +2683,174 @@ public partial class World : Node2D
 		return null;
 	}
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): a porta do mapa derrubada continua desenhada, fechada, em cima da
+	/// terra batida. E o mundo de antes do conserto. Falso em jogo, sempre.
+	/// </summary>
+	public static bool PortaCaidaFicaDesenhadaDeTeste;
+
+	/// <summary>A porta do mapa desenhada nesta celula, se ha uma -- so pras bancadas.</summary>
+	public Porta? PortaDoMapaDeTeste(int cx, int cy) =>
+		_portasPorCelula.TryGetValue((cx, cy), out Porta? p) && IsInstanceValid(p) ? p : null;
+
+	// =====================================================================
+	// OS BLOCOS ERGUIDOS (parede, piso, porta) -- ver `GameServer.Blocos.cs`
+	// =====================================================================
+	/// <summary>
+	/// A CAMADA DOS BLOCOS: os tiles que os jogadores ergueram nesta zona.
+	///
+	/// ============================ POR QUE ELA NAO MORA NA CENA DA ZONA ============================
+	/// A cena e CACHEADA entre visitas e pintada aos pedacos de 64x64 conforme a camera anda: um tile
+	/// escrito nela teria de ser reescrito a cada pedaco repintado, e sobreviveria a saida do planeta.
+	/// O bloco tem dono, senha e estado, e quem diz o que esta de pe e sempre o servidor -- como a
+	/// porta, que mora fora da cena pelo mesmo motivo (`_portas`). Esta camada e limpa a cada entrada
+	/// em zona e refeita da lista que o servidor mandou.
+	/// ================================================================================================
+	///
+	/// A PORTA ERGUIDA nao e tile: e o mesmo node `Porta` das portas do mapa, numa lista a parte.
+	/// </summary>
+	private TileMapLayer _blocosTiles = null!;
+	private readonly Dictionary<(int X, int Y), Porta> _portasErguidas = [];
+
+	/// <summary>As celulas com porta erguida nesta zona -- o menu da tecla E procura alvo aqui.</summary>
+	public IReadOnlyCollection<(int X, int Y)> PortasErguidas => _portasErguidas.Keys;
+
+	/// <summary>O tile de bloco desenhado nesta celula (fonte e coordenada), ou nulo -- so pras bancadas.</summary>
+	public (int Fonte, Vector2I Coord)? BlocoDesenhadoDeTeste(int cx, int cy)
+	{
+		var c = new Vector2I(cx, cy);
+		int fonte = _blocosTiles.GetCellSourceId(c);
+		return fonte < 0 ? null : (fonte, _blocosTiles.GetCellAtlasCoords(c));
+	}
+
+	/// <summary>A porta erguida desenhada nesta celula, se ha uma -- so pras bancadas.</summary>
+	public Porta? PortaErguidaDeTeste(int cx, int cy) =>
+		_portasErguidas.TryGetValue((cx, cy), out Porta? p) && IsInstanceValid(p) ? p : null;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): a parede erguida e so desenho -- nao entra no mapa de colisao nem no de
+	/// visao do cliente. O corpo preveria o passo pra dentro dela e levaria correcao do servidor, e a
+	/// sombra passaria por ela. Falso em jogo, sempre.
+	/// </summary>
+	public static bool BlocoSoDesenhaDeTeste;
+
+	/// <summary>A lista de blocos do cliente e do chao que esta montado aqui? Irma do <see cref="ORetratoEDesteChao"/>.</summary>
+	private bool OsBlocosSaoDesteChao() =>
+		GameClient.Instance is { } cli && !string.IsNullOrEmpty(_zonaDoAtual.Name)
+		&& cli.BlocosDaZona == _zonaDoAtual.Hash;
+
+	/// <summary>O CENARIO desta celula caiu? So pesa onde o mapa a trouxe sob teto -- e so ali se pergunta.</summary>
+	private bool OCenarioCaiuEm(int cx, int cy) =>
+		_colisao?.NasceuDentro(cx, cy) == true && GameClient.Instance?.CenarioCaido.Contains((cx, cy)) == true;
+
+	/// <summary>
+	/// NENHUM BLOCO NA CENA: os tiles, as portas e as tres camadas que eles escrevem nos dois mapas
+	/// (erguida e coberta no de colisao, erguida no de visao). Nao mexe no teto -- quem chama no meio
+	/// de uma zona montada reconta (<see cref="ReaplicarBlocos"/>).
+	/// </summary>
+	private void LimparBlocosDaCena()
+	{
+		_blocosTiles.Clear();
+		foreach (Porta p in _portasErguidas.Values)
+			if (IsInstanceValid(p)) p.QueueFree();
+		_portasErguidas.Clear();
+
+		_colisao?.BaixarTudo();
+		_colisao?.DescobrirTudo();
+		_veu.Mapa?.BaixarTudo();
+	}
+
+	/// <summary>
+	/// REPOE OS BLOCOS DESTA ZONA, da lista que o servidor mandou. Dois chamadores: o fim de cada ramo do
+	/// `CarregarZona` (o chao acabou de montar) e o retrato que chega com o chao ja montado. So aplica
+	/// se a lista e DESTE chao -- entre o `ZoneChanged` e o retrato da zona nova ela nao e de zona nenhuma.
+	/// </summary>
+	private void ReaplicarBlocos()
+	{
+		// O QUE ESTAVA COBERTO PRECISA SER RECONTADO depois da limpeza, senao o teto guardaria a base de
+		// antes (o retrato pode chegar com a zona montada e blocos ja aplicados).
+		List<(int X, int Y)>? cobertas = null;
+		_colisao?.ParaCadaCelulaCoberta((x, y) => (cobertas ??= []).Add((x, y)));
+		LimparBlocosDaCena();
+		if (cobertas != null)
+			foreach ((int x, int y) in cobertas) _teto.Recontar(x, y, OCenarioCaiuEm(x, y));
+
+		if (GameClient.Instance is { } cli && OsBlocosSaoDesteChao())
+			foreach (((int x, int y), GameClient.BlocoInfo b) in cli.Blocos)
+				AssentarBloco(x, y, b, animar: false);
+
+		_teto.Assentar();
+		_veu.InvalidarOComodo();
+	}
+
+	/// <summary>
+	/// UM BLOCO NA CENA: as camadas dos dois mapas, o teto e o desenho. E o funil do cliente -- o retrato,
+	/// o bloco que sobe e a porta que abre passam todos por aqui, pra colisao, vista, teto e desenho nao
+	/// poderem discordar da mesma celula.
+	/// </summary>
+	private void AssentarBloco(int cx, int cy, GameClient.BlocoInfo b, bool animar)
+	{
+		if (BlocosNoCliente.Catalogo.PorNumero(b.Numero) is not { } def) return;
+
+		bool porta = def.Classe == ClasseDeBloco.Porta;
+		bool barra = (def.Classe == ClasseDeBloco.Parede || (porta && !b.Aberto)) && !BlocoSoDesenhaDeTeste;
+
+		_colisao?.Cobrir(cx, cy);
+		if (barra) { _colisao?.Erguer(cx, cy); _veu.Mapa?.Erguer(cx, cy); }
+		else { _colisao?.Baixar(cx, cy); _veu.Mapa?.Baixar(cx, cy); }
+		_teto.Recontar(cx, cy, caiu: false);
+
+		var celula = new Vector2I(cx, cy);
+		if (!porta)
+		{
+			if (_portasErguidas.Remove((cx, cy), out Porta? trocada) && IsInstanceValid(trocada)) trocada.QueueFree();
+			if (BlocosNoCliente.TileDe(def) is { } t) _blocosTiles.SetCell(celula, t.Fonte, t.Coord);
+			return;
+		}
+
+		_blocosTiles.EraseCell(celula);
+		if (!_portasErguidas.TryGetValue((cx, cy), out Porta? no) || !IsInstanceValid(no) || no.Arte != def.Arte)
+		{
+			if (no != null && IsInstanceValid(no)) no.QueueFree();
+			no = Porta.Criar(new PortaDoMapa(cx, cy, def.Arte));
+			_portas.AddChild(no);
+			_portasErguidas[(cx, cy)] = no;
+		}
+		no.Definir(b.Aberto, animar);
+	}
+
+	/// <summary>O servidor disse que um bloco subiu, trocou, ou que uma porta erguida mudou.</summary>
+	private void AoMudarBloco(int cx, int cy, bool ePorta)
+	{
+		if (GameClient.Instance is not { } cli || !OsBlocosSaoDesteChao()) return;   // a montagem aplica
+		if (!cli.Blocos.TryGetValue((cx, cy), out GameClient.BlocoInfo b)) return;
+
+		AssentarBloco(cx, cy, b, animar: ePorta);
+		_teto.Assentar();
+		// PAREDE NOVA SEPARA COMODOS, PORTA ABERTA OS LIGA: o comodo do olho e a sombra se refazem.
+		_veu.InvalidarOComodo();
+	}
+
+	/// <summary>
+	/// O servidor disse que um bloco saiu. O chao do mapa que estava embaixo reaparece sozinho (ele nunca
+	/// foi apagado); se o bloco foi DERRUBADO, a poeira e a terra batida chegam logo atras, pelo pacote
+	/// de cenario (`AplicarEstrago`).
+	/// </summary>
+	private void AoSairBloco(int cx, int cy, bool derrubado)
+	{
+		if (!OsBlocosSaoDesteChao()) return;
+
+		_colisao?.Descobrir(cx, cy);
+		_colisao?.Baixar(cx, cy);
+		_veu.Mapa?.Baixar(cx, cy);
+		_teto.Recontar(cx, cy, OCenarioCaiuEm(cx, cy));
+		_teto.Assentar();
+
+		_blocosTiles.EraseCell(new Vector2I(cx, cy));
+		if (_portasErguidas.Remove((cx, cy), out Porta? p) && IsInstanceValid(p)) p.QueueFree();
+		_veu.InvalidarOComodo();
+	}
+
 	/// <param name="poeira">Falso ao REAPLICAR o que ja tinha caido: o estrago e velho, o efeito nao.</param>
 	/// <param name="invalidar">Refaz o leque de visao agora. Falso no lote: quem chama refaz uma vez no fim.</param>
 	private void AplicarEstrago(int cx, int cy, bool poeira, bool invalidar)
@@ -2363,12 +2877,29 @@ public partial class World : Node2D
 		// projetada no chao ate o jogador dar um passo. Ver `Visao.Invalidar`.
 		if (invalidar) _veu.Invalidar();
 
+		// E A CELULA PERDEU O TETO, se tinha um: no DM o turf destruido volta pra area de fora
+		// (`NewTurfs.dm:13-17`), e a chuva passa a cair no buraco. No lote (`invalidar` falso) quem
+		// fecha a conta e o `ReaplicarEstrago`, uma vez so -- ver `TetoDaZona.Destelhar`.
+		_teto.Destelhar(cx, cy);
+		if (invalidar) _teto.Assentar();
+
+		// E SE ERA UMA PORTA DO MAPA, ELA ACABA: o desenho sai com a celula. A porta e um node, e nao um
+		// tile -- o `EraseCell` la embaixo nao a alcanca, e ela ficava fechada na tela em cima da terra
+		// batida. Vale pra queda ao vivo e pra reaplicacao (o `MontarPortas` roda antes do estrago).
+		if (!PortaCaidaFicaDesenhadaDeTeste && _portasPorCelula.Remove((cx, cy), out Porta? portaCaida)
+			&& IsInstanceValid(portaCaida))
+			portaCaida.QueueFree();
+
 		var celula = new Vector2I(cx, cy);
 
 		// A COR DO QUE VAI CAIR, LIDA ANTES DE CAIR. Depois do `EraseCell` a celula esta vazia e nao
 		// ha mais de que tirar cor -- e poeira de pedra cinza saindo marrom entrega que o efeito e
 		// generico. Ver `CorDoEstrago`.
 		Color? corDoTile = poeira ? CorDoEstrago(celula) : null;
+
+		// O TILE ALTO DESTA CELULA SAI DA LISTA DO BREU: ele caiu, e nao pode ser reposto quando o olho entrar.
+		_altosSobTeto.Remove(celula);
+		_altosEscondidos.Remove(celula);
 
 		// TODAS AS CAMADAS SAEM, E O CHAO E REPOSTO.
 		//
@@ -2779,7 +3310,7 @@ public partial class World : Node2D
 			// EntityState.Carregando): quem esta lutando precisa ver o adversario juntando poder.
 			// OS DOIS BITS, CRUS: e a `CargaVisual` quem decide que "C ou excesso" acende -- a mesma
 			// decisao do corpo local. Ver a nota em `CargaVisual.Definir` (o relato de 2026-09-04).
-			if (r.GetNodeOrNull<CargaVisual>("Carga") is { } cg)
+			if (r.GetNodeOrNull<CargaVisual>(CaminhoDaCarga) is { } cg)
 			{
 				cg.Definir(e.Carregando, e.Sobrecarregado);
 				// ...E O SOM TAMBEM. Quem esta do lado ouve o zumbido de quem junta energia, como
@@ -2810,12 +3341,159 @@ public partial class World : Node2D
 			bool escondidoPelaAltura = !Jandirus.Core.World.Voo.Enxerga(
 							andarDeQuemOlha: Jandirus.Core.World.Voo.Andar(_local?.Altitude ?? 0f),
 							andarDeQuemEVisto: Jandirus.Core.World.Voo.Andar(e.Altitude));
-			r.Visible = !e.Oculto && !escondidoPelaAltura;
+			// E QUEM ESTA NUM INTERIOR QUE EU NAO VEJO NAO E DESENHADO (2026-10-08) -- ver `Visao.Esconde`.
+			// Pelos PES, e pela posicao do NO (a desenhada, que anda atras do retrato): quem atravessa a
+			// porta some e aparece junto com o sprite, e nao um passo antes dele. E a mesma escolha do
+			// `Oculto` logo acima, pelo mesmo motivo: o no continua vivo e recebendo posicao.
+			bool noBreu = _veu.Esconde(r.GlobalPosition + new Vector2(0, Jandirus.Core.World.MoveRules.FeetOffsetY));
+			r.Visible = !e.Oculto && !escondidoPelaAltura && !noBreu;
 			// QUEM SOME POR ALTURA DEIXA A SOMBRA NO CHAO (dono, 2026-09-07). O node inteiro fica escondido
 			// (e o que a bancada da vista mede, e o que esconde o balao junto), entao a sombra e um node a
 			// PARTE, do mundo, que segue o chao dele enquanto ele estiver alto demais pra ser visto. Quem
 			// some por INVISIBILIDADE (a tecnica, `Oculto`) nao ganha sombra -- sumir e o ponto dela.
 			SombraDeQuemVoaAlto(e.Id, r, mostrar: !e.Oculto && escondidoPelaAltura);
+		}
+
+		EsconderObrasNoBreu();
+		EsconderAltosNoBreu();
+	}
+
+	// =====================================================================
+	// O TILE ALTO NO BREU -- a cama que aparecia por cima da parede
+	// =====================================================================
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): o tile alto de um interior que nao se ve continua pintado -- a metade de
+	/// cima da cama aparece por cima da parede, vista de fora. E o mundo de antes do conserto. Falso em
+	/// jogo, sempre.
+	/// </summary>
+	public static bool AltoNoBreuFicaDeTeste;
+
+	/// <summary>
+	/// OS TILES ALTOS (mais de um tile de altura) DA CAMADA DE OBJETOS QUE ESTAO SOB TETO, por celula: em
+	/// que camada, e qual tile -- o bastante pra apagar e repor.
+	///
+	/// ============================ A FATIA DE CAMA POR CIMA DA PAREDE ============================
+	/// O dono (2026-10-09): *"principalmente na cidade do planeta vegeta onde tem as casas, la tem varios
+	/// icones cortados"*. Um deles nao era do conversor: a cama e a estante das casas tem 32x64, e a
+	/// metade de cima do desenho invade a celula de CIMA -- que, encostada na parede, e a parede. De
+	/// dentro isso e o certo (a cabeceira na frente da parede). De fora, a parede e clara (e um furo no
+	/// veu, ver `Visao`) e o interior e breu: sobrava a metade da cama pintada em cima da fachada.
+	///
+	/// No BYOND o objeto mora num turf, e turf que o olho nao ve nao e desenhado -- com tudo o que esta
+	/// nele. E a regra que o corpo e a maquina ja seguem aqui (`Visao.Esconde`, logo acima); faltava o
+	/// TILE. Ele nao e node: some apagando a celula, e volta sendo reescrito -- por isso a lista guarda
+	/// qual tile era.
+	/// ==============================================================================================
+	///
+	/// A LISTA E DE QUEM ESTA PINTADO: o cenario chega aos pedacos de 64x64, e cada pedaco pintado anota
+	/// os dele (<see cref="AnotarAltosSobTeto"/>). Sao dezenas -- as casas tem duas camas e duas estantes.
+	/// </summary>
+	private readonly Dictionary<Vector2I, (TileMapLayer Camada, int Fonte, Vector2I Atlas)> _altosSobTeto = [];
+	private readonly HashSet<Vector2I> _altosEscondidos = [];
+
+	/// <param name="pedaco">O pedaco que acabou de ser pintado; nulo = a zona inteira (a cena que voltou do cache ja pintada).</param>
+	private void AnotarAltosSobTeto(Rect2I? pedaco)
+	{
+		if (_teto.Largura == 0) return;   // zona sem interior: nao ha o que esconder
+
+		foreach (TileMapLayer camada in _camadas)
+		{
+			// SO A CAMADA DE OBJETOS (a que ordena por Y): chao e decoracao sao tiles de um tile so.
+			if (!IsInstanceValid(camada) || !camada.YSortEnabled || camada.TileSet is not { } ts) continue;
+
+			if (pedaco is { } r)
+			{
+				for (int y = r.Position.Y; y < r.End.Y; y++)
+					for (int x = r.Position.X; x < r.End.X; x++)
+						AnotarAlto(camada, ts, x, y);
+			}
+			else _colisao?.ParaCadaCelulaQueNasceuDentro((x, y) => AnotarAlto(camada, ts, x, y));
+		}
+	}
+
+	private void AnotarAlto(TileMapLayer camada, TileSet ts, int x, int y)
+	{
+		if (!CelulaSobTeto(x, y)) return;
+		var c = new Vector2I(x, y);
+		int fonte = camada.GetCellSourceId(c);
+		if (fonte < 0 || ts.GetSource(fonte) is not TileSetAtlasSource atlas
+			|| atlas.TextureRegionSize.Y <= ZoneCollision.TileSize) return;
+
+		// O TILE ESTA PINTADO AGORA (o pedaco acabou de chegar, ou a cena voltou inteira do cache).
+		_altosSobTeto[c] = (camada, fonte, camada.GetCellAtlasCoords(c));
+		_altosEscondidos.Remove(c);
+	}
+
+	/// <summary>No ritmo do retrato, como o corpo e a maquina: apaga o tile alto que entrou no breu e repoe o que saiu.</summary>
+	private void EsconderAltosNoBreu()
+	{
+		if (_altosSobTeto.Count == 0) return;
+
+		const int t = ZoneCollision.TileSize;
+		foreach ((Vector2I c, (TileMapLayer camada, int fonte, Vector2I atlas)) in _altosSobTeto)
+		{
+			bool esconder = !AltoNoBreuFicaDeTeste && _veu.Esconde(new Vector2((c.X + 0.5f) * t, (c.Y + 0.5f) * t));
+			if (esconder == _altosEscondidos.Contains(c) || !IsInstanceValid(camada)) continue;
+
+			if (esconder) { camada.EraseCell(c); _altosEscondidos.Add(c); }
+			else { camada.SetCell(c, fonte, atlas); _altosEscondidos.Remove(c); }
+		}
+	}
+
+	/// <summary>Repoe tudo o que o breu apagou e esquece a lista: a cena vai pro cache, ou vai embora.</summary>
+	private void SoltarAltosSobTeto()
+	{
+		foreach (Vector2I c in _altosEscondidos)
+			if (_altosSobTeto.TryGetValue(c, out (TileMapLayer Camada, int Fonte, Vector2I Atlas) a) && IsInstanceValid(a.Camada))
+				a.Camada.SetCell(c, a.Fonte, a.Atlas);
+		_altosEscondidos.Clear();
+		_altosSobTeto.Clear();
+	}
+
+	/// <summary>Quantos tiles altos sob teto estao anotados, e se o desta celula esta apagado pelo breu -- so pras bancadas.</summary>
+	public int AltosSobTetoDeTeste => _altosSobTeto.Count;
+	public bool AltoEscondidoDeTeste(int cx, int cy) => _altosEscondidos.Contains(new Vector2I(cx, cy));
+
+	/// <summary>
+	/// A MAQUINA QUE ESTA NUM INTERIOR QUE EU NAO VEJO NAO E DESENHADA -- a mesma regra do corpo, logo
+	/// acima, e no mesmo ritmo (o do retrato). O veu ja cobre a celula dela; o que ele nao cobre e o
+	/// que SOBRA da celula: a bancada de pesquisa tem 96 px de largura e 64 de altura, e encostada na
+	/// parede ela aparecia pelo furo da fachada.
+	///
+	/// A lista e a que o <see cref="DesenharObras"/> acabou de plantar -- sem varrer os atores a cada
+	/// retrato atras de construcao.
+	/// </summary>
+	private void EsconderObrasNoBreu()
+	{
+		const int t = ZoneCollision.TileSize;
+		foreach (ObraDesenhada o in _obrasNaCena)
+			if (IsInstanceValid(o))
+				// o no fica na BASE da celula (canto de baixo, a esquerda); o meio dela e meio tile pra dentro
+				o.Visible = !_veu.Esconde(o.GlobalPosition + new Vector2(t / 2, -t / 2));
+	}
+
+	/// <summary>As construcoes plantadas na cena agora. Ver <see cref="EsconderObrasNoBreu"/>.</summary>
+	private readonly List<ObraDesenhada> _obrasNaCena = [];
+
+	/// <summary>
+	/// BANCADA: das construcoes que estao SOB TETO nesta cena, quantas ha e quantas o veu escondeu.
+	/// (`--diagsombra` -- o balcao do Banco visto de fora.)
+	/// </summary>
+	public (int SobTeto, int Escondidas) ObrasNoBreuDeTeste
+	{
+		get
+		{
+			const int t = ZoneCollision.TileSize;
+			int n = 0, escondidas = 0;
+			foreach (ObraDesenhada o in _obrasNaCena)
+			{
+				if (!IsInstanceValid(o)) continue;
+				Vector2 meio = o.GlobalPosition + new Vector2(t / 2, -t / 2);
+				if (!CelulaSobTeto((int)MathF.Floor(meio.X / t), (int)MathF.Floor(meio.Y / t))) continue;
+				n++;
+				if (!o.Visible) escondidas++;
+			}
+			return (n, escondidas);
 		}
 	}
 
@@ -2957,6 +3635,22 @@ public partial class World : Node2D
 	public bool NaLuta => _lutaAte > 0;
 
 	/// <summary>
+	/// BANCADA: adianta a QUEDA da tag de combate deste cliente, deixando <paramref name="faltando"/> segundos.
+	/// Devolve falso se ela nao estava de pe.
+	///
+	/// So o relogio anda: quem derruba a tag continua sendo o `_Process`, com o `PararCamada` e o motivo de
+	/// sempre. E a irma da `AudioDirector.AdiantarParaOFimDeTeste`, e pelo mesmo motivo -- a tag dura 90 s, e a
+	/// `--diagestouro` precisa de tres LUTAS no mesmo processo (o primeiro golpe de cada uma sorteia e poe no ar
+	/// uma faixa nova).
+	/// </summary>
+	public bool AdiantarAQuedaDaTagDeTeste(double faltando = 0.2)
+	{
+		if (_lutaAte <= 0) return false;
+		_lutaAte = Math.Min(_lutaAte, faltando);
+		return true;
+	}
+
+	/// <summary>
 	/// O relato de um golpe, vindo do servidor. Aqui NAO se calcula nada -- o resultado ja
 	/// veio decidido. O que este metodo faz e traduzir o desfecho no que o jogador sente:
 	/// piscada, som e a musica de combate entrando.
@@ -2988,6 +3682,9 @@ public partial class World : Node2D
 		if (gesto == (byte)Protocol.GestoDoCorpo.KiaiComLamina)
 			AudioDirector.EfeitoNoLugar(corpo, Trilha.LaminaDeAr, 0.7f);
 	}
+
+	/// <summary>O servidor virou o MEU corpo (`S2C.Olhar`): o ataque de ki em alguem marcado. Ver `LocalPlayer.ReceberOlhar`.</summary>
+	private void AoCravarOlhar(Jandirus.Core.World.Facing olhar) => _local?.ReceberOlhar(olhar);
 
 	private void AoGolpe(Protocol.HitEvent h)
 	{
@@ -3246,7 +3943,8 @@ public partial class World : Node2D
 		// SOCO NO AR NAO E LUTA. Sem esta guarda, treinar sozinho num canto do mapa poria a
 		// trilha de batalha no ar -- e o jogador ficaria ouvindo tema de briga socando o vento.
 		if (!souEu || h.Alvo == 0) return;
-		// uma faixa DIFERENTE a cada briga -- sao 39 na pasta `battle ost`
+		// uma faixa DIFERENTE a cada briga, e ela ja esta na memoria: o `AudioDirector` le a proxima do saco numa
+		// thread de carga antes de a luta comecar (`AudioDirector.Adiantar`), em vez de aqui, no quadro do golpe
 		if (_lutaAte <= 0) AudioDirector.Instance?.Musica(Trilha.Combate(), AudioDirector.Camada.Combate,
 														 "1o golpe que me envolve: tag de combate SUBIU");
 		_lutaAte = SegundosDeLuta;
@@ -3303,6 +4001,7 @@ public partial class World : Node2D
 
 		EfeitosDaAltura();
 		TickDosDecalques(delta);
+		TickDosTirosNoFim();
 		TickDosChoquesDeKi();
 
 		if (_lutaAte <= 0) return;
@@ -3386,11 +4085,12 @@ public partial class World : Node2D
 		// O VEU. Ele desenha a sombra que as PAREDES fazem -- e quem esta por cima das paredes nao
 		// tem sombra nenhuma pra receber. Some junto com a colisao, no MESMO limiar, porque as duas
 		// respondem a mesma pergunta: "este corpo ainda esta no meio do cenario?".
-		float opacidade = 1f - Mathf.Clamp(
-			_local.Altitude / Jandirus.Core.World.Voo.AlturaQueAtravessa, 0f, 1f);
-		if (!Mathf.IsEqualApprox(_veu.Modulate.A, opacidade))
-			_veu.Modulate = new Color(1, 1, 1, opacidade);
-		_veu.Visible = opacidade > 0.01f;
+		//
+		// MENOS O INTERIOR QUE NAO SE VE (2026-10-08): a altura abre a sombra COMUM, e o comodo fechado
+		// continua breu la de cima. Por isso o numero vai pro veu como abertura, e nao mais como o
+		// `Modulate` do no -- que multiplicava a malha inteira, e bastava pairar do lado de fora pra ver
+		// dentro de qualquer casa. Ver o cabecalho do `Visao`.
+		_veu.Abertura = _local.Altitude / Jandirus.Core.World.Voo.AlturaQueAtravessa;
 
 		// ============================ A CAMERA AFASTA UM DEGRAU, E SO UM ============================
 		// A primeira versao descia dois (3x -> 2x -> 1x, ou 2x -> 1x -> 1x). O dono: "voando alto
@@ -3509,6 +4209,42 @@ public partial class World : Node2D
 	};
 
 	/// <summary>
+	/// O CENSO DAS ZONAS DESTE MUNDO. So pras bancadas (`--diagcachezona`).
+	///
+	/// ============================ O QUE ELE CONTA, E POR QUE NODE A NODE ============================
+	/// Todo node de zona e filho DIRETO do `World` e e um <see cref="Planeta"/>: a cena pre-feita traz o
+	/// `PlanetaPreFeito` na raiz, e a nave, a mente, o interior do Majin e o planeta sorteado sao
+	/// `PlanetaProcedural`. Dos que estao na arvore, so dois tem dono: o ATUAL (<see cref="_zonaAtual"/>)
+	/// e os GUARDADOS (<see cref="_zonasVivas"/>). Qualquer outro e ORFAO -- escondido, sem processar e
+	/// fora de todo `Free()` deste arquivo ate o mundo inteiro morrer.
+	///
+	/// A orfandade e perguntada NODE A NODE e nao por subtracao (`na arvore - guardados - atual`): a
+	/// subtracao fecharia igual, por acidente, no dia em que o dicionario guardasse a referencia de um
+	/// node ja liberado -- o guardado que nao esta na arvore pagaria pelo orfao que esta.
+	///
+	/// `Zona` e a que este MUNDO ja montou, e nao a da rede: o `ZoneChanged` chega dois quadros antes de o
+	/// `CarregarZona` rodar (a tela de carregamento sobe primeiro -- ver <see cref="AoMudarZona"/>), e uma
+	/// bancada que contasse nesse vao contaria a zona anterior.
+	///
+	/// `Atual` e a IDENTIDADE do node da zona atual (0 = nenhuma, como no espaco). E o que deixa a bancada
+	/// cobrar a outra metade do cache: a cena PRE-FEITA tem de voltar como o MESMO node, reacendido, e
+	/// nao como uma copia relida do disco.
+	/// ================================================================================================
+	/// </summary>
+	public (ZoneKey Zona, ulong Atual, int NaArvore, int Geradas, int Guardadas, int Orfas, int Teto) CensoDeZonasDeTeste()
+	{
+		int naArvore = 0, geradas = 0, orfas = 0;
+		foreach (Node filho in GetChildren())
+		{
+			if (filho is not Planeta zona) continue;
+			naArvore++;
+			if (zona is PlanetaProcedural) geradas++;
+			if (zona != _zonaAtual && !_zonasVivas.ContainsValue(zona)) orfas++;
+		}
+		return (_zonaDoAtual, _zonaAtual?.GetInstanceId() ?? 0, naArvore, geradas, _zonasVivas.Count, orfas, TetoDoCache);
+	}
+
+	/// <summary>
 	/// ESTA CELULA DESENHA ALGUMA COISA? So pras bancadas -- e e a pergunta do dono, na letra.
 	///
 	/// ============================ POR QUE ELA MORA NO CLIENTE ============================
@@ -3599,7 +4335,12 @@ public partial class World : Node2D
 	/// ele passa a mentir nos dois sentidos. Mirar resolve na raiz.
 	/// ========================================================================================
 	/// </summary>
-	public Vector2? ParedeMaisPertoDeTeste(Vector2 de, int raioEmCelulas = 40)
+	/// <param name="sobTeto">
+	/// QUE PAREDE: nulo = qualquer uma; falso = so o muro SOLTO (o que se voa por cima); verdadeiro = so
+	/// a parede de PREDIO (a que barra quem voa, `ClasseDePredio`). A bancada do voo precisa das duas, e
+	/// "a mais proxima" do berco da Terra e a do Banco.
+	/// </param>
+	public Vector2? ParedeMaisPertoDeTeste(Vector2 de, int raioEmCelulas = 40, bool? sobTeto = null)
 	{
 		if (_colisao == null) return null;
 		int t = Jandirus.Core.World.ZoneCollision.TileSize;
@@ -3615,7 +4356,9 @@ public partial class World : Node2D
 				// A BORDA DO MUNDO NAO SERVE: ela e indestrutivel E da a volta no planeta, entao
 				// voar contra ela testaria o `DarAVolta` e nao a colisao.
 				if (_colisao.NaBorda(x, y, 4)) continue;
-				if (_colisao.BlockedCell(x, y)) return new Vector2((x + 0.5f) * t, (y + 0.5f) * t);
+				if (!_colisao.BlockedCell(x, y)) continue;
+				if (sobTeto is { } quer && CelulaSobTeto(x, y) != quer) continue;
+				return new Vector2((x + 0.5f) * t, (y + 0.5f) * t);
 			}
 		return null;
 	}
@@ -4996,7 +5739,7 @@ public partial class World : Node2D
 		if (SilhuetasDeCena.CaminhoDa(Jandirus.Core.Forms.FolhaDeSilhueta.Rompimento)
 				is not { } folha) return;
 
-		var frames = ResourceLoader.Load<SpriteFrames>(folha);
+		var frames = FolhasPresas.Carregar(folha);
 		if (frames == null) { GD.PushWarning($"[cena] o clarao da larva nao carregou: {folha}"); return; }
 
 		vis.SilhuetaDeCena(folha);
@@ -5046,6 +5789,7 @@ public partial class World : Node2D
 	{
 		foreach (Node n in _atores.GetChildren())
 			if (n is ObraDesenhada) n.QueueFree();
+		_obrasNaCena.Clear();
 		if (GameClient.Instance is not { } cli) return;
 
 		// AS CONSTRUCOES SAO PAREDE, e a lista e refeita inteira -- entao a camada de bloqueio
@@ -5060,7 +5804,7 @@ public partial class World : Node2D
 			(int cx, int cy) = Jandirus.Core.Tech.CatalogoDeObras.Celula(o.Pos.X, o.Pos.Y);
 			const int t = ZoneCollision.TileSize;
 
-			_atores.AddChild(new ObraDesenhada
+			var obra = new ObraDesenhada
 			{
 				Name = "Obra" + o.Id,
 				Position = new Vector2(cx * t, (cy + 1) * t),
@@ -5071,7 +5815,9 @@ public partial class World : Node2D
 				Arte = o.Arte,
 				Estado = o.Estado,
 				Pixel = o.Pixel,
-			});
+			};
+			_atores.AddChild(obra);
+			_obrasNaCena.Add(obra);
 
 			// QUEM DIZ QUE BLOQUEIA E O SERVIDOR, no proprio pacote. O cliente NAO pergunta ao
 			// catalogo local: aquele so tem o que ELE pode comprar, e a bancada de outra pessoa tem
@@ -5462,6 +6208,10 @@ public partial class World : Node2D
 
 	/// <summary>Onde o meu corpo esta desenhado, no mundo. Só bancada.</summary>
 	public Vector2? PosicaoLocalDeTeste => _local != null && IsInstanceValid(_local) ? _local.GlobalPosition : null;
+
+	/// <summary>Pra que lado o MEU corpo esta virado na minha tela. Só bancada.</summary>
+	public Jandirus.Core.World.Facing OlharLocalDeTeste =>
+		_local != null && IsInstanceValid(_local) ? _local.OlharDeTeste : Jandirus.Core.World.Facing.South;
 
 	/// <summary>Poe (ou tira) o anel de mira aos pes de quem foi escolhido.</summary>
 	private void MarcarNaCena(int id)

@@ -473,7 +473,7 @@ public partial class Hud : CanvasLayer
 				txt += " · " + Jandirus.Core.World.Clima.Nome(tq.Tipo);
 			_hora.Text = txt;
 
-			_lua.Aplicar(ceu, World.Instancia.TempoQueFaz?.Encobre ?? 0);
+			_lua.Aplicar(ceu, World.Instancia.TempoQueFaz?.Encobre ?? 0, World.Instancia.EuEstouSobTeto);
 		}
 	}
 

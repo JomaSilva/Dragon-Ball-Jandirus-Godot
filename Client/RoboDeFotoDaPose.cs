@@ -101,19 +101,18 @@ public partial class RoboDeFotoDaPose : Node
 	///
 	/// Tem que ser MUITO maior que o `Protocol.AttackPoseMs` (240 ms), senao "a pose ficou" seria so
 	/// "o prazo do soco ainda nao venceu" -- e e justamente essa a confusao que o pedido do dono
-	/// desfaz ("so voltaria ao IDLE quando ele PARASSE de usar o beam"). Dezenove vezes o prazo.
+	/// desfaz ("so voltaria ao IDLE quando ele PARASSE de usar o beam"). Dez vezes o prazo.
 	///
-	/// E tem que ser MENOR que a vida do feixe: quando a cabeca morre de alcance o canal cai junto
+	/// E tem que ser MENOR que a vida do feixe: quando o raio acaba de alcance o canal cai junto
 	/// (`TickDosCanaisDeKi`), e a bancada estaria medindo o alcance em vez da pose.
 	///
-	/// QUATRO E MARGEM MEDIDA, E NAO UM NUMERO BONITO. A linha do feixe deste relatorio sai
-	/// `andou 30,0 tiles` -- o `AlcanceTiles` cheio do Ki Wave -- tanto aos 4,5 s quanto aos 4,0 s:
-	/// a cabeca chega no fim do alcance ANTES das duas marcas, e o canal continua de pe nas duas
-	/// (foi medido verde nas duas rodadas). Ou seja o teto verdadeiro nao e o alcance da cabeca, e a
-	/// margem esta aqui por prudencia e nao por diagnostico -- se um dia esta linha ficar vermelha
-	/// com "o canal chegou vivo", e este o numero a baixar.
+	/// A VIDA DE UM KI WAVE SEGURADO NO VAZIO SAO TRES SEGUNDOS: a cabeca anda os 30 tiles do alcance em
+	/// 1,5 s (20 tiles por segundo, dono 2026-10-08) e o tronco leva outro 1,5 s pra ser engolido ate ela --
+	/// e so entao o canal cai. Eram QUATRO segundos aqui enquanto o raio andava 10 tiles por segundo (3 s de
+	/// voo, e o prazo de 5 s cortava o resto): a linha "o canal chegou vivo" ficou vermelha na primeira
+	/// rodada depois da mudanca, que era o aviso que este comentario ja deixava escrito.
 	/// </summary>
-	private const double SegurarOCanal = 4.0;
+	private const double SegurarOCanal = 2.5;
 
 	/// <summary>
 	/// QUANTO A CENA E ESPERA A POEIRA DO POUSO BAIXAR antes de fotografar o idle. Ver `E_Depois`.
@@ -553,7 +552,7 @@ public partial class RoboDeFotoDaPose : Node
 		if (_t < SegurarOCanal && canal) return;
 
 		// ============================ ONDE O FEIXE ESTA, PRA A FOTO NAO PARECER MENTIRA ============================
-		// A cabeca do Ki Wave anda ~3,3 tiles/s. Aos quatro segundos e meio ela ja saiu do recorte de
+		// A cabeca do Ki Wave anda 20 tiles/s. Em meio segundo ela ja saiu do recorte de
 		// 192 px (seis tiles), entao a foto B2 mostra o corpo NA POSE e nenhum feixe ao lado dele --
 		// que lida sem contexto parece um corpo posando por nada.
 		//

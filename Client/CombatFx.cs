@@ -35,7 +35,7 @@ public static class CombatFx
     /// </summary>
     public static void Impacto(Node2D pai, Vector2 onde, float escala, Color cor)
     {
-        var f = ResourceLoader.Load<SpriteFrames>(Faisca);
+        var f = FolhasPresas.Carregar(Faisca);
         if (f == null) return;
 
         string[] nomes = f.GetAnimationNames();
@@ -200,7 +200,7 @@ public static class CombatFx
     /// </summary>
     public static void JatoDeSangue(Node2D pai, Node2D corpo)
     {
-        var f = ResourceLoader.Load<SpriteFrames>(Jato);
+        var f = FolhasPresas.Carregar(Jato);
         if (f == null || !f.HasAnimation("default")) return;
 
         // SO PRA BANCADA, e contado DEPOIS da arte carregar: o modo de falhar deste efeito e o

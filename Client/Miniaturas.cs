@@ -54,7 +54,7 @@ public static class Miniaturas
 	public static bool TemEstado(string arte, string estado)
 	{
 		if (arte.Length == 0 || !ResourceLoader.Exists(arte)) return false;
-		if (ResourceLoader.Load<SpriteFrames>(arte) is not { } f) return false;
+		if (FolhasPresas.Carregar(arte) is not { } f) return false;
 		string anim = NomeDaAnimacao(estado);
 		return f.HasAnimation(anim) && f.GetFrameCount(anim) > 0;
 	}
@@ -62,7 +62,7 @@ public static class Miniaturas
 	private static Texture2D? Carregar(string arte, string estado)
 	{
 		if (arte.Length == 0 || !ResourceLoader.Exists(arte)) return null;
-		if (ResourceLoader.Load<SpriteFrames>(arte) is not { } f) return null;
+		if (FolhasPresas.Carregar(arte) is not { } f) return null;
 
 		// O NOME DO ESTADO PASSA PELO MESMO SANEAMENTO DO CONVERSOR -- "Radar" e "radar" sao a mesma
 		// animacao, e um `.dmi` sem estado vira "default".

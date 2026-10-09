@@ -58,6 +58,26 @@ uniform float manchado : hint_range(0.0, 1.0) = 1.0;
 /// risco em si. Aqui e so a luz que ele joga na cena inteira.
 uniform float clarao : hint_range(0.0, 1.0) = 0.0;
 
+// ============================ SOB TETO NAO HA MASSA NEM CLARAO ============================
+// A celula sob teto e a area `Inside` do original, onde o icone do clima nunca e desenhado (ver
+// `Core/World/CelulaInterna.cs`). O veu e de TELA, entao quem sabe se um pixel dele cai sobre uma
+// celula interna e este shader: o plano chega como textura, um texel por celula.
+//
+// SAO UNIFORMES PROPRIOS, e nao o `origem`/`tamanho` do ruido, por duas razoes: aqui a posicao e
+// a do CHAO, sem paralaxe (a nuvem pode parecer alta; o teto esta onde a parede esta), e ela e
+// escrita no ultimo instante antes do quadro (`FramePreDraw`), porque um quadro de atraso da
+// camera aqui e a mascara escorregando sobre o predio. Os mesmos cinco estao no `Queda.gdshader`.
+// ============================================================================================
+uniform sampler2D teto : filter_nearest, repeat_disable;
+uniform vec2 teto_celulas = vec2(1.0);
+uniform vec2 teto_origem = vec2(0.0);
+uniform vec2 teto_tamanho = vec2(1280.0, 720.0);
+/// 1 = recorta. 0 = nao ha teto nesta zona, ou o clima de agora nao respeita teto (a destruicao).
+uniform float teto_recorta = 0.0;
+
+/// O lado de uma celula em pixels de mundo -- o `ZoneCollision.TileSize`.
+const float CELULA = 32.0;
+
 // ---- ruido de valor + fbm ----
 // Feito a mao em vez de textura de ruido importada: sao quatro linhas, roda em qualquer maquina, e
 // nao adiciona um asset que teria de ser reimportado a cada `--import`.
@@ -119,6 +139,10 @@ void fragment()
 		// tela lava de branco mesmo nas beiradas onde a nuvem esta fina.
 		rgb = mix(rgb, vec3(1.0), clarao * 0.9);
 		alfa = clamp(alfa + clarao * 0.55, 0.0, 1.0);
+
+		// O TETO VEM POR ULTIMO, depois do clarao: dentro de casa o raio tambem nao lava a sala.
+		vec2 chao = teto_origem + UV * teto_tamanho;
+		alfa *= 1.0 - texture(teto, chao / (teto_celulas * CELULA)).r * teto_recorta;
 
 		COLOR = vec4(rgb, alfa);
 	}

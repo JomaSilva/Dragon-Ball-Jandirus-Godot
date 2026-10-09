@@ -18,6 +18,11 @@ namespace Jandirus.Tools;
 ///      cobra do <see cref="Assentamento.DoLugar"/> as cinco recusas. E a funcao que o servidor e o
 ///      fantasma chamam JUNTOS, entao um erro aqui aparece nos dois lados de uma vez.
 ///
+/// E UMA TERCEIRA, que nao e do pedido do instalar mas e sobre o mesmo arquivo que ela ja abre:
+///
+///   A3) **ONDE A MACIEIRA E DESENHADA.** O `px` dela no catalogo contra a conta que o `New()` do DM
+///       faz em runtime e contra o que o extrator calcula -- ver <see cref="Macieira"/>.
+///
 /// ============================ POR QUE ELA NAO E "SO CONTAR" ============================
 /// Contar quantos itens sao instalaveis fica verde com a regra invertida (os numeros so trocam de
 /// lado). Entao toda familia aqui afirma os DOIS sentidos, e as afirmacoes por NOME sao os itens que
@@ -218,6 +223,7 @@ public static class InstalarBench
 
 		Catalogo(cat);
 		CatalogoInteiro(cat);
+		Macieira(cat, pastaAssets);
 		Lugar();
 
 		Console.WriteLine("\n--- injecao: as regras sabem reprovar? ---");
@@ -363,6 +369,92 @@ public static class InstalarBench
 		Checa("A2.fim o gabarito tem os dois lados",
 			  chaoNoGabarito >= 20 && Gabarito.Length - chaoNoGabarito >= 20,
 			  $"{chaoNoGabarito} de chao, {Gabarito.Length - chaoNoGabarito} pessoais");
+	}
+
+	// =====================================================================
+	// A3) ONDE A ARVORE E DESENHADA
+	// =====================================================================
+	/// <summary>
+	/// A ANCORA, escrita aqui e nao derivada: a folha da macieira (`DecTrees.dmi`) tem 61 px de largura, e
+	/// o `New()` de `/obj/Trees` (`Modules/Turfs/Plants.dm:31-35`) escreve `pixel_x = 16 - 61/2`.
+	/// </summary>
+	private const int LarguraDaMacieira = 61;
+	private const double PxDaMacieira = -14.5;
+
+	/// <summary>
+	/// ============================ A MACIEIRA E CENTRADA, E ISSO NAO ESTA NA ARVORE DE TIPOS ============================
+	/// O `pixel_x` de uma `/obj/Trees` nao e declarado: o `New()` da base o calcula da largura do icone. O
+	/// extrator so lia o declarado, e toda macieira (as dos mapas e a que nasce da semente) saia com
+	/// `px = 0` -- 14,5 px a direita de onde o BYOND a poe. O cliente desloca a obra pelo `px` DESTE catalogo
+	/// (`Client/ObraDesenhada.cs`), entao o numero errado aqui e o desenho errado na tela.
+	///
+	/// A MEDIDA TEM TRES PONTAS, e a cobranca so fecha se as tres batem com a ancora:
+	///   * a LARGURA, lida da folha pela propria bancada (o `.png` ao lado do `.tres` que o catalogo aponta);
+	///   * o `px` do catalogo PUBLICADO -- o jogo nao roda o extrator, ele le o arquivo;
+	///   * o `px` que o extrator calcula pra mesma folha (`DmTechScanner.PixelXDeArvore`, a linha do conserto).
+	///
+	/// O contra-exemplo liga o defeito no extrator e refaz a MESMA medida: a ponta do extrator tem que mudar
+	/// de resposta. Se ficasse igual, a cobranca de cima nao estaria medindo o conserto.
+	/// =================================================================================================================
+	/// </summary>
+	private static void Macieira(CatalogoDeObras cat, string pastaAssets)
+	{
+		Console.WriteLine("\n--- A3: a macieira e centrada no tile (o `pixel_x` que o `New()` do DM escreve) ---");
+
+		Construcao? achada = cat.Get("AppleTree");
+		string? caminho = achada == null ? null : NoDisco(pastaAssets, Path.ChangeExtension(achada.Arte, ".png"));
+		if (achada is not { } arv || caminho is not { } folha || !File.Exists(folha))
+		{
+			Checa("A3 a macieira esta no catalogo e a folha dela esta no disco", false,
+				  achada == null ? "sem `AppleTree` no construcoes.json"
+								 : $"arte '{achada.Arte}' -> {caminho ?? "(arte sem `res://`, ou nenhum project.godot acima da pasta)"}");
+			return;
+		}
+
+		(int Largura, double DoCatalogo, double? DoExtrator) Medir() =>
+			(DmiFile.Read(folha)?.IconWidth ?? 0, arv.PixelX, DmTechScanner.PixelXDeArvore(arv.Tipo, folha));
+
+		static bool Centrada((int Largura, double DoCatalogo, double? DoExtrator) m) =>
+			m.Largura == LarguraDaMacieira && 16 - m.Largura / 2.0 == PxDaMacieira
+			&& m.DoCatalogo == PxDaMacieira && m.DoExtrator == PxDaMacieira;
+
+		static string Laudo((int Largura, double DoCatalogo, double? DoExtrator) m) =>
+			$"folha de {m.Largura} px | catalogo px={N(m.DoCatalogo)} | "
+			+ $"extrator px={(m.DoExtrator is { } e ? N(e) : "nulo (fica o declarado)")}";
+
+		var medida = Medir();
+		Checa($"A3 a macieira e centrada (px = 16 - largura/2 = {N(PxDaMacieira)}, folha de {LarguraDaMacieira} px): "
+			  + "no catalogo publicado e no extrator", Centrada(medida), Laudo(medida));
+
+		DmTechScanner.ArvoreSemCentroDeTeste = true;
+		try
+		{
+			var comDefeito = Medir();
+			Checa("(defeito injetado: a arvore volta ao `pixel_x` declarado do tipo) o extrator deixa de centrar "
+				  + "a macieira -- a cobranca A3 acusa",
+				  medida.DoExtrator == PxDaMacieira && comDefeito.DoExtrator != PxDaMacieira && !Centrada(comDefeito),
+				  Laudo(comDefeito));
+		}
+		finally { DmTechScanner.ArvoreSemCentroDeTeste = false; }
+	}
+
+	/// <summary>O numero como o `construcoes.json` o escreve (ponto decimal, sem zero sobrando).</summary>
+	private static string N(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+	/// <summary>
+	/// `res://Assets/Sprites/x.png` -> o arquivo de verdade. A raiz do `res://` e a pasta do `project.godot`,
+	/// achada SUBINDO de <paramref name="pastaAssets"/> -- e nao "a pasta acima dela": assim a mesma bancada
+	/// julga o catalogo de uma pasta de rascunho (que so traz o `Data/`) contra as folhas do projeto em que
+	/// o rascunho mora.
+	/// </summary>
+	private static string? NoDisco(string pastaAssets, string res)
+	{
+		const string prefixo = "res://";
+		if (!res.StartsWith(prefixo, StringComparison.Ordinal)) return null;
+		for (var d = new DirectoryInfo(Path.GetFullPath(pastaAssets)); d != null; d = d.Parent)
+			if (File.Exists(Path.Combine(d.FullName, "project.godot")))
+				return Path.Combine(d.FullName, res[prefixo.Length..].Replace('/', Path.DirectorySeparatorChar));
+		return null;
 	}
 
 	// =====================================================================

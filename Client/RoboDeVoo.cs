@@ -14,6 +14,10 @@ namespace Jandirus.Client;
 ///   * o teto RECUSA quem nao tem os portoes do Space_Flight? (teto que nunca recusa = teto nenhum)
 ///   * ficar sem Ki DERRUBA, ou o corpo fica pairando de graca?
 ///   * o veu, a nevoa e o zoom respondem a altura, ou ficaram escritos e nunca ligados?
+///   * (2026-10-08) e a parede de PREDIO, barra quem voa? -- "voar por cima de parede de base de
+///     player n deveria ser possivel". O muro solto continua passando por baixo (a parede que o
+///     teste do meio atravessa), e no fim a bancada voa contra a parede do Banco da Terra: para
+///     nela, sem o servidor corrigir nada, e com o defeito injetado (`ClasseDePredio`) entra.
 /// ==================================================================================
 ///
 /// COMO RODAR (uma janela so; o servidor sobe junto pelo `--host`):
@@ -43,6 +47,17 @@ public partial class RoboDeVoo : Node
 	private ZoneKey _zonaDoTeto;
 	private bool _avisoDoTeto;
 
+	// ---- a fase do predio (ver os passos 23 a 31)
+	/// <summary>A parede sul do Banco da Terra, numa coluna sem porta: (76,262). O chao ao sul dela, (76,263..266), e livre.</summary>
+	private const int ColunaDoBanco = 76, ParedeSulDoBanco = 262;
+	private Vector2 _palco;
+	private bool _contando, _pisouNoPredio;
+	private int _correcoes;
+
+	/// <summary>O palco do muro solto: quatro celulas ao sul do muro do portao da Terra (248,122).</summary>
+	private static readonly Vector2 MuroSolto = new(248.5f * ZoneCollision.TileSize, 122.5f * ZoneCollision.TileSize);
+	private int _idaAoMuro;
+
 	/// <summary>
 	/// O MENOR Ki QUE APARECEU, lido todo quadro.
 	///
@@ -70,7 +85,11 @@ public partial class RoboDeVoo : Node
 		Conferir(!Voo.PodeAcertar(0, 1), "...e quem esta no chao NAO alcanca de volta (a regra e assimetrica)");
 		Conferir(!Voo.PodeAcertar(2, 0) && !Voo.PodeAcertar(3, 0), "de alto demais nao se alcanca o chao");
 		Conferir(Voo.PodeAcertar(2, 2), "dois no MESMO andar se alcancam");
-		Conferir(!Voo.PodeAcertar(2, 3) && !Voo.PodeAcertar(3, 2), "dois voando em andares DIFERENTES nao");
+		// ERA "dois voando em andares DIFERENTES nao", e essa linha ficou vermelha desde que o dono mudou a
+		// regra (2026-09-07: "se ambos estiverem voando com no maximo 1 de altura de diferenca ambos
+		// podem se acertar") -- a bancada continuou afirmando a regra velha. Ver `Voo.PodeAcertar`.
+		Conferir(Voo.PodeAcertar(2, 3) && Voo.PodeAcertar(3, 2), "dois voando com UM andar de diferenca se alcancam, nos dois sentidos");
+		Conferir(!Voo.PodeAcertar(1, 3) && !Voo.PodeAcertar(3, 1), "...e com DOIS andares de diferenca nao");
 
 		// ============================ A VISTA E ASSIMETRICA, E A PROVA TEM QUE SER POR DIRECAO ============================
 		// A prova antiga era `Enxerga(0,1) && Enxerga(1,0)` numa linha so -- ela perguntava "nos nos
@@ -236,12 +255,39 @@ public partial class RoboDeVoo : Node
 		// O AVISO DO TETO E UMA LINHA DE CHAT, e e a unica prova de que o portao RECUSOU (em vez de
 		// simplesmente nao ter chegado la em cima). Escutar o canal de sistema e o jeito de a
 		// bancada ver o mesmo que o jogador ve.
-		if (GameClient.Instance is { } cli) cli.Falou += AoOuvir;
+		if (GameClient.Instance is { } cli) { cli.Falou += AoOuvir; cli.Corrected += AoSerCorrigido; }
 	}
 
 	public override void _ExitTree()
 	{
-		if (GameClient.Instance is { } cli) cli.Falou -= AoOuvir;
+		if (GameClient.Instance is { } cli) { cli.Falou -= AoOuvir; cli.Corrected -= AoSerCorrigido; }
+	}
+
+	/// <summary>
+	/// O SERVIDOR RECUSOU UM PASSO MEU. E o sintoma de as duas pontas discordarem sobre onde ha parede
+	/// -- o corpo tremendo --, e por isso a fase do predio conta: voando contra a parede do Banco o
+	/// cliente tem que parar SOZINHO, pela mesma funcao que o servidor usa pra conferir.
+	/// </summary>
+	private void AoSerCorrigido(Vec2 onde) { if (_contando) _correcoes++; }
+
+	/// <summary>
+	/// A CAIXA DOS PES TOCA PAREDE DE PREDIO? -- as quatro quinas do `MoveRules.Occupied`, perguntadas
+	/// aqui pela DEFINICAO (barra e esta sob teto) e nao pelo `ClasseDePredio`: com o defeito injetado
+	/// aquele responde "nao" pra tudo, e e justamente ai que a bancada precisa ver o corpo entrar.
+	/// </summary>
+	private static bool PisaNoPredio(World mundo, Vector2 centro)
+	{
+		if (mundo.Colisao is not { } col) return false;
+		const int T = ZoneCollision.TileSize;
+		float y = centro.Y + MoveRules.FeetOffsetY;
+		for (int q = 0; q < 4; q++)
+		{
+			float qx = (q & 1) == 0 ? centro.X - MoveRules.BodyHalfW : centro.X + MoveRules.BodyHalfW;
+			float qy = q < 2 ? y - MoveRules.BodyHalfH : y + MoveRules.BodyHalfH;
+			int cx = (int)MathF.Floor(qx / T), cy = (int)MathF.Floor(qy / T);
+			if (col.BlockedCell(cx, cy) && mundo.CelulaSobTeto(cx, cy)) return true;
+		}
+		return false;
 	}
 
 	private void AoOuvir(Jandirus.Net.Protocol.Fala canal, string quem, string texto)
@@ -267,6 +313,7 @@ public partial class RoboDeVoo : Node
 			if (_passo <= 7) _entrouNoChao = true;
 			else if (_passo <= 13) _entrouVoando = true;
 		}
+		if (_contando && mundo.PosicaoLocal is { } agoraEstou && PisaNoPredio(mundo, agoraEstou)) _pisouNoPredio = true;
 
 		_t += delta;
 		if (_t < 1.0) return;
@@ -277,7 +324,23 @@ public partial class RoboDeVoo : Node
 		{
 			case 0:
 			{
+				// ---------- o palco ----------
+				// O BERCO DA TERRA E DENTRO DO BANCO, e de dentro de um predio nao se sai voando (2026-10-08):
+				// a parede dele barra quem voa. A comparacao chao/ar desta bancada precisa de um muro SOLTO com
+				// chao dos dois lados, entao ela comeca indo ate um -- o portao da Terra, o mesmo da
+				// `--diagsombra`, quatro celulas ao sul do muro. (Este passo se repete duas vezes: a viagem,
+				// e um segundo pra zona assentar.)
+				if (_idaAoMuro < 2 && Jandirus.Server.GameServer.Instance is { } servidorDoPalco)
+				{
+					if (_idaAoMuro++ == 0)
+						servidorDoPalco.MoveToZone(cli.LocalId, ZoneKey.Premade("Earth"), new Vec2(MuroSolto.X, MuroSolto.Y));
+					_passo = 0;
+					break;
+				}
+
 				// ---------- no chao ----------
+				Conferir((mundo.PosicaoLocal ?? Vector2.Zero).DistanceTo(MuroSolto) < 24f && !mundo.DentroDeParedeDeTeste,
+					$"PRECONDICAO: o corpo esta no palco do muro solto, ao ar livre ({mundo.PosicaoLocal})");
 				Conferir(mundo.AlturaDeTeste == 0f, "comeca no chao (altura 0)");
 				Conferir(mundo.NevoaDeTeste < 0.01f, "sem nevoa no chao");
 				Conferir(Vao(mundo, cli) < 1f,
@@ -292,12 +355,14 @@ public partial class RoboDeVoo : Node
 				//
 				// Entao primeiro ele anda contra a parede andando, e o esperado e BATER nela.
 				// ============================================================================
+				// O MURO SOLTO, e nao "a parede mais proxima": do berco da Terra a mais proxima e a do Banco,
+				// e parede de predio nao se atravessa voando (2026-10-08) -- essa e a ultima fase desta bancada.
 				_ondeSubiu = mundo.PosicaoLocal ?? Vector2.Zero;
-				_paredeAlvo = mundo.ParedeMaisPertoDeTeste(_ondeSubiu);
+				_paredeAlvo = mundo.ParedeMaisPertoDeTeste(_ondeSubiu, sobTeto: false);
 				Conferir(_paredeAlvo != null,
 					_paredeAlvo is { } pa
-						? $"achou uma parede pra atravessar, a {pa.DistanceTo(_ondeSubiu):0} px"
-						: "achou uma parede pra atravessar");
+						? $"achou um muro solto (fora de predio) pra atravessar, a {pa.DistanceTo(_ondeSubiu):0} px"
+						: "achou um muro solto (fora de predio) pra atravessar");
 				_rumoDaParede = ((_paredeAlvo ?? _ondeSubiu + Vector2.Right * 100f) - _ondeSubiu).Normalized();
 				_deOndeAndou = _ondeSubiu;
 				mundo.AndarDeTeste(_rumoDaParede);
@@ -384,7 +449,7 @@ public partial class RoboDeVoo : Node
 				_kiNoInicioDaMedida = cli.Sheet.Ki;
 				_segundosDeMedida = 0;
 				_ondeSubiu = mundo.PosicaoLocal ?? _ondeSubiu;
-				_paredeAlvo = mundo.ParedeMaisPertoDeTeste(_ondeSubiu);
+				_paredeAlvo = mundo.ParedeMaisPertoDeTeste(_ondeSubiu, sobTeto: false);
 				_rumoDaParede = ((_paredeAlvo ?? _ondeSubiu + Vector2.Right * 100f) - _ondeSubiu).Normalized();
 				mundo.AndarDeTeste(_rumoDaParede);
 				break;
@@ -426,7 +491,7 @@ public partial class RoboDeVoo : Node
 				Conferir(agora.DistanceTo(_ondeSubiu) > 64f,
 					$"andou {agora.DistanceTo(_ondeSubiu):0} px voando");
 				Conferir(_entrouVoando,
-					"VOANDO a mesma parede NAO barra: o corpo chegou a ficar DENTRO de celula bloqueada");
+					"VOANDO o muro solto NAO barra: o corpo chegou a ficar DENTRO de celula bloqueada");
 
 				// ---------- sobe ate o teto ----------
 				LocalPlayer.QuadrosDeAltura = LocalPlayer.QuadrosParadosDeAltura = 0;
@@ -518,8 +583,94 @@ public partial class RoboDeVoo : Node
 				Conferir(mundo.NevoaDeTeste < 0.15f, "a nevoa foi embora junto com a altura");
 				break;
 
+			// =====================================================================
+			// O PREDIO BARRA QUEM VOA (2026-10-08) -- passos 23 a 31
+			// =====================================================================
+			case 23:
+			{
+				if (Jandirus.Server.GameServer.Instance is not { } servidor)
+				{
+					Conferir(false, "a fase do predio precisa do servidor neste processo (`--host`)");
+					_passo = 32;
+					break;
+				}
+				// A FASE ANTERIOR TORROU O KI DE PROPOSITO -- e com a tecla de correr apertada, que no ar e o
+				// Superflight (seis vezes o dreno). Voar de novo custa Ki, e nao pode ser nesse ritmo.
+				Godot.Input.ActionRelease("run");
+				Godot.Input.ActionRelease("subir");
+				Godot.Input.ActionRelease("descer");
+				servidor.RegarOKiDaVariedade(cli.LocalId);
+				// QUATRO CELULAS AO SUL DA PAREDE DO BANCO, numa coluna SEM porta: a porta abre pra quem anda
+				// contra ela (voando tambem), e passar por um vao aberto nao e atravessar parede.
+				_palco = new Vector2((ColunaDoBanco + 0.5f) * ZoneCollision.TileSize, (ParedeSulDoBanco + 4.5f) * ZoneCollision.TileSize);
+				servidor.MoveToZone(cli.LocalId, ZoneKey.Premade("Earth"), new Vec2(_palco.X, _palco.Y));
+				break;
+			}
+
+			case 24:
+				break;   // chegando
+
+			case 25:
+			{
+				Vector2 eu = mundo.PosicaoLocal ?? Vector2.Zero;
+				bool parede = mundo.Colisao is { } col && col.BlockedCell(ColunaDoBanco, ParedeSulDoBanco)
+							  && mundo.CelulaSobTeto(ColunaDoBanco, ParedeSulDoBanco);
+				Conferir(eu.DistanceTo(_palco) < 24f && parede && !mundo.DentroDeParedeDeTeste,
+					$"PRECONDICAO: o corpo esta ao ar livre, quatro celulas ao sul da parede do Banco ({ColunaDoBanco},{ParedeSulDoBanco}) -- que barra e esta sob teto");
+				cli.SendHabilidade("voar");
+				break;
+			}
+
+			case 26:
+				Conferir(Voo.AtravessaCenario(mundo.AlturaDeTeste),
+					$"o corpo esta acima do cenario ({mundo.AlturaDeTeste:0} px; o limiar e {Voo.AlturaQueAtravessa:0})");
+				_deOndeAndou = mundo.PosicaoLocal ?? _palco;
+				_pisouNoPredio = false;
+				_correcoes = 0;
+				_contando = true;
+				mundo.AndarDeTeste(Vector2.Up);   // pro norte, de frente pra parede
+				break;
+
+			case 27:
+				break;   // empurrando a parede, voando
+
+			case 28:
+			{
+				mundo.PararDeTeste();
+				_contando = false;
+				Vector2 parou = mundo.PosicaoLocal ?? _deOndeAndou;
+				float andou = _deOndeAndou.Y - parou.Y;
+				Conferir(!_pisouNoPredio,
+					$"VOANDO acima do cenario, a parede de PREDIO barra: andou {andou:0} px pro norte e a caixa dos pes NUNCA tocou parede sob teto");
+				Conferir(andou > 64f, $"...e ele chegou ate ela -- nao parou antes, por outro motivo ({andou:0} px de 3 celulas livres)");
+				Conferir(_correcoes == 0,
+					$"...sem o servidor corrigir nada: o cliente previu a parada e o servidor concordou ({_correcoes} correcoes em 2 s empurrando)");
+
+				// O CONTRA-EXEMPLO: o mundo de antes, nas duas pontas (o knob e do Core, e o servidor esta neste processo).
+				ClasseDePredio.QuemVoaAtravessaDeTeste = true;
+				_contando = true;
+				mundo.AndarDeTeste(Vector2.Up);
+				break;
+			}
+
+			case 29:
+				break;   // com o defeito, entrando
+
+			case 30:
+				mundo.PararDeTeste();
+				_contando = false;
+				ClasseDePredio.QuemVoaAtravessaDeTeste = false;
+				Conferir(_pisouNoPredio,
+					"(defeito injetado: parede de predio nao para quem voa) o corpo entra VOANDO no Banco, por cima da parede");
+				cli.SendHabilidade("voar");   // o mesmo botao, desligando: o pouso acha chao livre sozinho
+				break;
+
+			case 31:
+				break;   // pousando
+
 			default:
 				_acabou = true;
+				ClasseDePredio.QuemVoaAtravessaDeTeste = false;
 				Godot.Input.ActionRelease("subir");
 				Godot.Input.ActionRelease("descer");
 				Godot.Input.ActionRelease("run");

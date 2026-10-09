@@ -61,25 +61,82 @@ public partial class GotaNaTela : CanvasLayer
 	/// </summary>
 	public float FaseNaTela { get; private set; }
 
+	/// <summary>O arquivo do shader. Publico pra o `Aquecimento` po-lo na fila de carga do lobby -- ver <see cref="Ensaiar"/>.</summary>
+	public const string CaminhoDoShader = "res://Assets/Shaders/Gota.gdshader";
+
 	public override void _Ready()
 	{
 		Layer = Camada;
 
-		var sh = GD.Load<Shader>("res://Assets/Shaders/Gota.gdshader");
-		if (sh == null) { GD.PushWarning("[gota] Gota.gdshader nao carregou"); return; }
+		if (NovoPano() is not { } novo) return;
+		(_pano, _mat) = novo;
+		_pano.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+		AddChild(_pano);
+	}
 
-		_mat = new ShaderMaterial { Shader = sh };
-		_pano = new ColorRect
+	/// <summary>
+	/// O PANO DA GOTA: o retangulo e o material dele, como a tela os usa -- invisivel ate a primeira onda. UMA receita pra
+	/// duas casas, a da tela (<see cref="_Ready"/>) e a do palco do ensaio (<see cref="Ensaiar"/>): e isso que faz a
+	/// pipeline montada no ensaio ser a que a primeira gota acha pronta. Nulo se o shader nao carregou.
+	/// </summary>
+	private static (ColorRect Pano, ShaderMaterial Tinta)? NovoPano()
+	{
+		var sh = GD.Load<Shader>(CaminhoDoShader);
+		if (sh == null) { GD.PushWarning("[gota] Gota.gdshader nao carregou"); return null; }
+
+		var tinta = new ShaderMaterial { Shader = sh };
+		var pano = new ColorRect
 		{
 			Name = "Gota",
-			Material = _mat,
+			Material = tinta,
 			Visible = false,
 			// ELE NAO PODE ROUBAR O CLIQUE -- o mesmo cuidado (e o mesmo motivo) da nevoa: o
 			// retangulo cobre a tela inteira, e mirar com o mouse tem que continuar funcionando.
 			MouseFilter = Control.MouseFilterEnum.Ignore,
 		};
-		_pano.SetAnchorsPreset(Control.LayoutPreset.FullRect);
-		AddChild(_pano);
+		return (pano, tinta);
+	}
+
+	/// <summary>O lado do pano do ensaio, em pixels do palco: a pipeline e do shader e do jeito de desenhar, e nao do tamanho.</summary>
+	private const float PanoDoEnsaio = 32f;
+
+	/// <summary>
+	/// O ENSAIO DO LOBBY (ver `Aquecimento.AtosDaGota`): o pano da gota, pela receita de producao (<see cref="NovoPano"/>),
+	/// ACESO num palco fora da tela -- pra o shader ser compilado e a pipeline dele montada ALI, e nao no quadro em que a
+	/// primeira onda do processo comeca.
+	///
+	/// ============================ O QUE ISTO TIRA DA ENTRADA NO TRANSE ============================
+	/// Esta classe so nasce na primeira onda do processo (`World.AoCairEfeito`), e o shader dela nem na fila de carga do
+	/// aquecimento estava: era lido do disco, compilado e desenhado no mesmo quadro -- o da entrada na meditacao profunda.
+	/// MEDIDO em 2026-10-09 pela `--diagestouro --avulsos`, o quadro da primeira onda, em relogio:
+	///
+	///     com o driver de video FRIO .......... 52 a 59 ms   script 8 a 11, a espera pelo shader 21 a 24, a pipeline 19 a 28
+	///     com o driver quente ................. 34 a 35 ms   so a espera: e o cache de shader do Godot vazio, o de quem abre
+	///                                                        o jogo pela primeira vez
+	///     a gemea ILUMINADA, driver frio ...... 61 a 64 ms   58 a 61 deles a pipeline do item COM luz, montada depois da sem luz
+	///
+	/// A GEMEA EXISTE PORQUE O PANO E ALCANCADO PELAS LUZES DO MUNDO: ele mora numa `CanvasLayer` de camada 0, que e a faixa
+	/// de camadas das luzes -- basta a aura de uma forma, um tiro de ki ou uma fogueira na tela, de noite. Quem meditava
+	/// de dia pagava o primeiro quadro; na primeira onda com uma luz na tela, pagava o outro, maior.
+	///
+	/// DEPOIS: nenhuma pipeline nasce na primeira onda, com luz ou sem ela, e o quadro custa 9 a 10 ms (8 a 10 o da gemea),
+	/// com o driver quente ou frio. O QUE O ATO NAO PAGA: os 7 ms de script da `GotaNaTela` nascendo e do codigo dela
+	/// rodando pela primeira vez -- o palco tem o pano, e nao o node.
+	/// =============================================================================================
+	///
+	/// NO MEIO DA ONDA (`fase` 0,3) e SEM RELOGIO: quem anda a fase e o <see cref="_Process"/> de uma `GotaNaTela` viva, e
+	/// aqui nao ha uma. Morre com o palco do aquecimento.
+	/// </summary>
+	public static void Ensaiar(Node2D pai, Vector2 onde)
+	{
+		if (NovoPano() is not { } novo) return;
+		(ColorRect pano, ShaderMaterial tinta) = novo;
+		pano.Name = "GotaDoEnsaio";
+		pano.Size = new Vector2(PanoDoEnsaio, PanoDoEnsaio);
+		pano.Position = onde - pano.Size * 0.5f;
+		pano.Visible = true;
+		tinta.SetShaderParameter("fase", 0.3f);
+		pai.AddChild(pano);
 	}
 
 	/// <summary>

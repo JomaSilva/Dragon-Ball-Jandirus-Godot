@@ -63,7 +63,8 @@ public static class ClasseDeCorpo
 	///
 	/// ============================ E QUEM VOA ATRAVESSA O QUE ESTA **LIVRE**, E SO ISSO ============================
 	/// Quem voa atravessar parede e agua e coerente com o que o port ja faz: acima de
-	/// <see cref="Voo.AlturaQueAtravessa"/> o chamador manda `mapa = null` (o `isflying` do original).
+	/// <see cref="Voo.AlturaQueAtravessa"/> o corpo pergunta ao mapa com o modo `PorCima` (o `isflying` do
+	/// original; so a parede de predio o para, ver <see cref="ClasseDePredio"/>).
 	/// Atravessar GENTE era a mesma linha, e ela virou o buraco por onde o pedido novo do dono escapava:
 	///
 	///   *"ao estar lutando e andando, vc consgue empurrar o inimigo... faca com q n de pra empurar npcs
@@ -96,7 +97,7 @@ public static class ClasseDeCorpo
 	/// <param name="modo">Como QUEM ANDA esta atravessando o mundo.</param>
 	/// <param name="ocupacao">O que O OUTRO CORPO esta fazendo. Ver <see cref="Ocupacao"/>.</param>
 	public static bool Bloqueia(ModoDeTravessia modo, Ocupacao ocupacao)
-		=> CorpoOcupado.Ocupado(ocupacao) || modo != ModoDeTravessia.Voando;
+		=> CorpoOcupado.Ocupado(ocupacao) || !Voo.Voa(modo);
 
 	/// <summary>
 	/// ============================ ANDARES DIFERENTES NAO SE ESBARRAM ============================

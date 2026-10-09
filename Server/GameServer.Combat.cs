@@ -1440,6 +1440,10 @@ public partial class GameServer
 		// que o vizinho: ele mexe nas listas de duas zonas.
 		TickDaOndaDaMente();
 
+		// AS BORDAS DA ABSORCAO DO MAJIN, aqui pelo mesmo motivo dos dois de cima: soltar um absorvido
+		// mexe nas listas de duas zonas e tira a imagem dele do `_players`. Ver `TickDoMajin`.
+		TickDoMajin(dt);
+
 		if (_npcsPraTirar.Count == 0) return;
 		foreach (ServerPlayer morto in _npcsPraTirar)
 		{

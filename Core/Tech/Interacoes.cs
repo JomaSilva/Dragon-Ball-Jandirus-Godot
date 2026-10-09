@@ -399,6 +399,46 @@ public static class Interacoes
 				 Forma.Texto, Max: Jandirus.Core.World.Cadaver.MaxEpitafio),
 	];
 
+	// =====================================================================
+	// A PORTA ERGUIDA
+	// =====================================================================
+	/// <summary>
+	/// ============================ AS ACOES DE UMA PORTA ERGUIDA -- a QUARTA fonte de alvo da tecla E ============================
+	/// O cabecalho deste catalogo diz que PORTA FICA DE FORA, e continua dizendo a verdade pra toda porta
+	/// que abre por encostar. A que tem SENHA nao abre: o dono a descreveu como *"basicamente uma parede q
+	/// ao chegar perto vc pode por a senha pra ela abrir"* (2026-10-09), e "por a senha" e uma pergunta --
+	/// que e o que este menu sabe fazer.
+	///
+	/// No DM a pergunta e um `input(M,"What's the password?")` que salta em quem ENCOSTA na porta
+	/// (`buildturfs.dm:479`), e bater e o `Click()` de quem nao tem a chave (`:503-506`). Aqui os dois sao
+	/// botoes do mesmo menu; trocar a senha e o verb `Set_Password_On_Door` da Key (`Tier 1.dm:233-237`).
+	///
+	/// A TABELA DEPENDE DE QUEM OLHA, e por isso e funcao e nao linha do <see cref="De"/>: o dono ve
+	/// "trocar a senha"; quem nao sabe a senha ve "digitar" e "bater"; quem ja a digitou nao ve nada --
+	/// pra ele a porta abre por encostar, como toda porta. Vazio = a tecla E nem a oferece.
+	///
+	/// QUEM CONFERE E O SERVIDOR (`GameServer.Blocos.cs`): ele acha a porta mais perto que aceita o verbo,
+	/// com as mesmas tres perguntas, e o que o cliente desenhou nao e permissao.
+	/// =====================================================================================================================
+	/// </summary>
+	public static Acao[] DaPorta(bool minha, bool trancada, bool seiASenha)
+	{
+		const int teto = Jandirus.Core.World.RegrasDeBloco.MaxSenha;
+		if (minha)
+			return
+			[
+				new Acao(trancada ? "Trocar a senha" : "Pôr uma senha", "porta_trocar", "",
+						 "em branco, a porta fica sem senha e abre pra qualquer um", Forma.Texto, Max: teto),
+			];
+		if (trancada && !seiASenha)
+			return
+			[
+				new Acao("Digitar a senha", "porta_senha", "", "acertando uma vez, a porta lembra de você", Forma.Texto, Max: teto),
+				new Acao("Bater na porta", "porta_bater", "", "quem estiver por perto fica sabendo que você bateu"),
+			];
+		return Nenhuma;
+	}
+
 	/// <summary>
 	/// O VALOR INICIAL DA CAIXA DE TEXTO de uma acao -- o terceiro argumento do `input()` do DM. A lapide
 	/// e a unica hoje: o `"Here lies [name]"` do `Corpse.dm:20`, com o nome tirado do titulo do menu
@@ -503,7 +543,15 @@ public static class Interacoes
 	/// DA PRA MEXER NISTO? Serve ao cliente pra decidir se acende a dica de "aperte E" e ao
 	/// servidor pra recusar um menu forjado.
 	/// </summary>
-	public static bool Interativo(string tipo) => De(tipo).Length > 0;
+	//
+	// A RESPOSTA FICA GUARDADA POR TIPO. O cliente pergunta isto por obra da zona, POR QUADRO (e a dica do
+	// "[E]" do `MenuDeInteracao`), e `De(tipo)` monta a lista inteira de acoes a cada chamada: medido em
+	// 2026-10-08 (`--diagcoletor`), mil listas por segundo, 130 KB/s -- o maior alocador que sobrava na cena
+	// depois do conserto do relogio de animacao. A tabela do `De` e constante, entao a resposta de um tipo
+	// nunca muda.
+	public static bool Interativo(string tipo) => _interativo.GetOrAdd(tipo, static t => De(t).Length > 0);
+
+	private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _interativo = new();
 
 	/// <summary>
 	/// ESTE VERBO PERTENCE A ESTE TIPO?

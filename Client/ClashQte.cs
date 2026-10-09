@@ -145,19 +145,66 @@ public partial class ClashQte : CanvasLayer
 
 	private void Baque(Jandirus.Core.World.Vec2 _, float __) => _baque = SegundosDeBaque;
 
+	private const string CaminhoDoShader = "res://Assets/Shaders/Embate.gdshader";
+
 	private void MontarFundo()
 	{
-		var sh = ResourceLoader.Load<Shader>("res://Assets/Shaders/Embate.gdshader");
-		_tinta = new ShaderMaterial { Shader = sh };
+		(_fundo, _tinta) = NovoFundo();
+		_fundo.AnchorRight = 1;
+		_fundo.AnchorBottom = 1;
+		_raiz.AddChild(_fundo);
+	}
 
-		_fundo = new ColorRect
+	/// <summary>
+	/// O FUNDO DO EMBATE: o retangulo e o material dele, como a tela os usa. UMA receita pra duas casas, a da tela
+	/// (<see cref="MontarFundo"/>) e a do palco do ensaio (<see cref="Ensaiar"/>): e isso que faz a pipeline montada no
+	/// ensaio ser a que o primeiro embate acha pronta.
+	/// </summary>
+	private static (ColorRect Fundo, ShaderMaterial Tinta) NovoFundo()
+	{
+		var tinta = new ShaderMaterial { Shader = ResourceLoader.Load<Shader>(CaminhoDoShader) };
+		var fundo = new ColorRect
 		{
-			AnchorRight = 1, AnchorBottom = 1,
 			Color = Colors.White,
-			Material = _tinta,
+			Material = tinta,
 			MouseFilter = Control.MouseFilterEnum.Ignore,
 		};
-		_raiz.AddChild(_fundo);
+		return (fundo, tinta);
+	}
+
+	/// <summary>O lado do fundo do ensaio, em pixels do palco: a pipeline e do shader e do jeito de desenhar, e nao do tamanho.</summary>
+	private const float FundoDoEnsaio = 32f;
+
+	/// <summary>
+	/// O ENSAIO DO LOBBY (ver `Aquecimento.AtosDoEmbate`): o fundo da tela do embate, pela receita de producao
+	/// (<see cref="NovoFundo"/>), num palco fora da tela -- pra a pipeline do `Embate.gdshader` ser montada ALI, e nao no
+	/// quadro em que o primeiro embate do processo comeca.
+	///
+	/// A TELA NASCE INVISIVEL COM O MUNDO, e era isso que escondia a conta: o shader esta na fila de carga do aquecimento
+	/// desde que nasceu, o material dele e criado na entrada, e a pipeline so era montada no primeiro DESENHO -- o quadro
+	/// em que o pacote do comeco de um ZanzoClash (ou de uma disputa de ki) chega.
+	///
+	/// MEDIDO em 2026-10-09 pela `--diagestouro --avulsos`, o quadro em que o primeiro embate do processo comeca, com uma
+	/// pipeline montada nele: 8 a 10 ms com o cache de shader do DRIVER de video quente (1 ms de tela), e 23 a 31 com ele frio
+	/// (14 a 21 de tela: 14 na primeira vez que esta maquina a desenhou, 20 a 21 com o sal do `--driverfrio Embate`) -- duas
+	/// ou tres voltas do monitor paradas no instante em que o quick time event abre. DEPOIS: nenhuma pipeline nasce no
+	/// quadro, e ele custa 9 a 15 ms com o driver quente e com ele frio (0,4 a 0,9 de tela).
+	///
+	/// SO DO LADO ESCURO DO PALCO (quem escolhe e o `Aquecimento.AtosDoEmbate`): esta tela mora na camada 5, e as luzes do
+	/// mundo so alcancam a camada 0 -- a gemea iluminada da pipeline nunca e usada, e monta-la custaria ao lobby o que
+	/// custam as gemeas dos outros (60 ms e mais, com o driver frio) pra ninguem.
+	///
+	/// A FORCA CHEIA (`forca` 1) e SEM RELOGIO: quem anda o tempo do shader e o <see cref="_Process"/> de uma tela viva, e
+	/// aqui nao ha uma. Morre com o palco do aquecimento.
+	/// </summary>
+	public static void Ensaiar(Node2D pai, Vector2 onde)
+	{
+		(ColorRect fundo, ShaderMaterial tinta) = NovoFundo();
+		fundo.Name = "EmbateDoEnsaio";
+		fundo.Size = new Vector2(FundoDoEnsaio, FundoDoEnsaio);
+		fundo.Position = onde - fundo.Size * 0.5f;
+		tinta.SetShaderParameter("forca", 1f);
+		pai.AddChild(fundo);
 	}
 
 	private void MontarPlacar()

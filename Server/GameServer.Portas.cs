@@ -30,10 +30,23 @@ namespace Jandirus.Server;
 /// exatamente o certo.
 /// ================================================================================
 ///
-/// SENHA FICA PRA DEPOIS, e de proposito: no original so a porta CONSTRUIDA
-/// (`/turf/build/Door` + `Set_Password_On_Door`) tem senha, e construcao ainda nao ergue porta.
-/// Toda porta que sai do mapa tem `password` nulo, ou seja, abre pra qualquer um -- que e o que
-/// esta implementado aqui.
+/// A SENHA E DA PORTA ERGUIDA, e mora com ela (`GameServer.Blocos.cs`): no original so a porta
+/// CONSTRUIDA (`/turf/build/Door` + `Set_Password_On_Door`) tem senha. Toda porta que sai do mapa tem
+/// `password` nulo, ou seja, abre pra qualquer um -- que e o que esta implementado aqui.
+///
+/// ============================ A PORTA CAI, E AI ELA ACABA ============================
+/// O dono (2026-10-09): *"outra coisa q falta no jogo e a possibilidade de destruir portas"*. No DM a
+/// porta e um turf como outro qualquer (`destroyable = 1`, `Resistance = 20`): fechada, cai por soco e
+/// por corpo arremessado, e vira `Ground8` (`NewTurfs.dm:2-17`).
+///
+/// AQUI ELA "CAIA" E VOLTAVA. A celula da porta e parede no `.col`, e o estrago a abria pela MESMA
+/// camada que a porta usa pra abrir (`ZoneCollision.Abrir`). O relogio daqui nao ficava sabendo: o
+/// proximo que andasse contra ela a "abria" de novo e, cinco segundos depois, o `Fechar` tirava a
+/// celula da camada -- a porta derrubada voltava a barrar nas duas pontas, com o desenho dela ainda
+/// na tela, e nunca mais caia (a lista de estrago ja a tinha). Agora a porta caida sai do relogio
+/// (<see cref="APortaDoMapaCaiu"/>, <see cref="PortaCaiu"/>) e o cliente tira o desenho
+/// (`World.AplicarEstrago`). Ela volta com o cenario: no `Restaurar` do admin, ou no proximo boot.
+/// ====================================================================================
 /// </summary>
 public sealed partial class GameServer
 {
@@ -46,6 +59,28 @@ public sealed partial class GameServer
 
 	/// <summary>`--portateste`: todo mundo nasce colado numa porta. Ver <see cref="NascerNaPorta"/>.</summary>
 	private bool _portaDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): a porta derrubada continua no relogio das portas -- abre pra quem
+	/// encosta e, cinco segundos depois, tranca de novo a celula que tinha caido. E o mundo de antes do
+	/// conserto. Falso em jogo, sempre.
+	/// </summary>
+	public static bool PortaCaidaTrancaDeNovoDeTeste;
+
+	/// <summary>Esta porta do mapa foi derrubada? Quem sabe e a lista de estrago da zona.</summary>
+	private bool PortaCaiu(string zona, int cx, int cy) =>
+		!PortaCaidaTrancaDeNovoDeTeste
+		&& _cenarioCaido.TryGetValue(zona, out HashSet<(int X, int Y)>? caidas) && caidas.Contains((cx, cy));
+
+	/// <summary>
+	/// UMA CELULA CAIU: se era uma porta do mapa, ela sai do relogio. Sem isto o prazo de uma porta que
+	/// estava ABERTA na hora da queda venceria e o `Fechar` trancaria a celula caida.
+	/// </summary>
+	private void APortaDoMapaCaiu(ZoneKey zona, int cx, int cy)
+	{
+		if (PortaCaidaTrancaDeNovoDeTeste) return;
+		if (_portasAbertas.TryGetValue(zona.Name, out Dictionary<(int X, int Y), long>? abertas)) abertas.Remove((cx, cy));
+	}
 
 	/// <summary>
 	/// Poe o jogador DUAS celulas ao sul da primeira porta da zona dele, olhando pro norte.
@@ -144,6 +179,7 @@ public sealed partial class GameServer
 			foreach (PortaDoMapa p in portas)
 				if (PortasDaZona.VaiEntrar(pl.Pos, pl.Facing, p.X, p.Y))
 				{
+					if (PortaCaiu(pl.Zone.Name, p.X, p.Y)) continue;   // derrubada: nao ha o que abrir
 					if (!APortaDoOutroMundoAbrePara(pl, agora)) break;
 					AbrirPorta(pl.Zone.Name, p.X, p.Y, agora);
 				}

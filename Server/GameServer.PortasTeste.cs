@@ -20,12 +20,14 @@ namespace Jandirus.Server;
 /// `RankDef.Concede` passou meses declarando trinta kits que **nenhuma linha de codigo lia**.
 /// ==============================================================================
 ///
-/// AS CINCO SECOES:
+/// AS SEIS SECOES:
 ///  1. A DADIVA E COERENTE -- toda chave existe, todo typepath existe, e o que sai e so o que entrou.
 ///  2. NOMEACAO -- inclusive o convite que ENVELHECE (o nomeador perde o cargo antes da resposta).
 ///  3. SUCESSAO -- as tres saidas do `Murder.dm`, e o NOCAUTE que NAO pode transferir trono.
 ///  4. O DUELO PURO -- os prazos que ninguem consegue esperar e a escada de quem vence.
 ///  5. O DUELO VIVO -- desafiar, aceitar, nocautear, e o titulo trocando de mao com o relogio zerado.
+///  6. O TITULO ATRAVESSA O REINICIO -- o relogio do Deus (posse, adiamentos, tarefa, falhas) gravado e
+///     relido pelo carregador do boot, e o que a pessoa LE e CONSEGUE FAZER depois. Com o defeito injetado.
 ///
 /// ============================ O ESTADO DE VERDADE E FOTOGRAFADO ============================
 /// Esta bancada mexe em TRES arquivos do mundo (`cargos.txt`, `herdeiros.txt`, `titulo.txt`) --
@@ -113,6 +115,7 @@ public partial class GameServer
 			ASucessaoPorMorte(rei, saiya, humano, herdeiro);
 			ODueloEhPuro();
 			ODueloAoVivo(deus, desafiante);
+			OTituloAtravessaOReinicio(deus, desafiante, humano);
 		}
 		catch (Exception e) { AfirmarPrt($"a bancada rodou inteira (estourou: {e.Message})", false, e.StackTrace ?? ""); }
 		finally
@@ -778,5 +781,196 @@ public partial class GameServer
 
 		ReconciliarDadiva(deus);
 		ReconciliarDadiva(desafiante);
+	}
+
+	// =====================================================================
+	// 6. O TITULO ATRAVESSA O REINICIO
+	// =====================================================================
+	/// <summary>
+	/// O RELOGIO DO TITULO, GRAVADO E RELIDO PELO CARREGADOR DO BOOT.
+	///
+	/// ============================ O QUE AS CINCO SECOES DE CIMA NAO VEEM ============================
+	/// Elas medem o titulo na MEMORIA: nenhuma grava e rele. E o `titulo.txt` existe pra uma coisa so --
+	/// o Deus de hoje continuar sendo o mesmo Deus depois de o servidor reiniciar, com a posse, os
+	/// adiamentos da semana, a tarefa e as falhas dele. Um carregador que devolvesse o relogio zerado a
+	/// cada boot deixaria as cinco verdes.
+	///
+	/// Foi assim que o `CarregarTitulo` regravou o arquivo com zeros ANTES de le-lo desde que nasceu (ele
+	/// comecava pelo `LimparEstadoDoTitulo`, que zera e grava): a cada reinicio a carencia de 7 dias
+	/// recomecava, os adiamentos da semana e as falhas sumiam e a tarefa em curso era esquecida.
+	/// ================================================================================================
+	///
+	/// O "REINICIO" DESTA SECAO e o que um processo novo faz com o titulo (ver `ReiniciarOTitulo`). Os doze
+	/// dias de trono sao postos no campo, como na secao 5 -- ninguem espera uma carencia de sete dias numa
+	/// bancada --; os adiamentos e as falhas saem dos caminhos de producao, que gravam sozinhos.
+	///
+	/// E O QUE SE AFIRMA DEPOIS e o que a pessoa le e consegue fazer, e nao so o campo: o painel do titulo
+	/// diz o mesmo, o desafio que cabia continua cabendo, e o terceiro adiamento da semana ainda custa o
+	/// trono.
+	/// </summary>
+	private void OTituloAtravessaOReinicio(ServerPlayer deus, ServerPlayer desafiante, ServerPlayer ameaca)
+	{
+		const long dia = 24L * 60 * 60 * 1000;
+		static string EmUmaLinha(string arquivo) =>
+			arquivo.Replace("\r", "").TrimEnd('\n').Replace("\n", "; ").Replace("\t", "=");
+
+		List<string>? escutaReal = EscutaDeAvisos;
+		try
+		{
+			// ---- ANTES: um Deus com doze dias de trono ----
+			_tronos.Clear();
+			LimparEstadoDoTitulo();
+			_tronos[CargoEmDisputa] = deus.Conta;
+			ReconciliarDadiva(deus);
+			deus.Ficha.KO = desafiante.Ficha.KO = false;
+			desafiante.Ficha.godki = new GodKiState { awakened = true, mastery = 70 };
+
+			long agora = NowMs();
+			long posse = agora - 12 * dia;   // a carencia de 7 dias venceu faz tempo
+			_duelo.TituloDesde = posse;
+
+			// DUAS TAREFAS DE AMEACA QUE VENCERAM SEM SEREM CUMPRIDAS: o alvo esta vivo e o prazo passou. Quem
+			// cobra e o tique de producao (`FalharTarefaDoDeus`, que grava) -- uma falha a menos do que destitui.
+			for (int i = 0; i < FalhasQueDestituem - 1; i++)
+			{
+				_tarefaAlvo = ameaca.Conta;
+				_tarefaNomeDoAlvo = ameaca.Name;
+				_tarefaPrazo = agora - 1;
+				TickDaTarefaDoDeus(agora);
+			}
+
+			// OS DOIS ADIAMENTOS DA SEMANA, pelos verbs (o `Adiar` grava). Adiar fecha o intervalo de 2
+			// dias, entao ele e reaberto no campo antes de cada desafio, como na secao 5.
+			for (int i = 0; i < Duelo.AdiamentosPermitidos; i++)
+			{
+				_duelo.UltimoDuelo = NowMs() - Duelo.Intervalo - 1;
+				VerboDesafiar(desafiante);
+				VerboResponderDesafio(deus, aceitou: false);
+			}
+			_duelo.UltimoDuelo = NowMs() - Duelo.Intervalo - 1;   // e o ultimo deles ja tem dois dias
+
+			// A TAREFA EM CURSO E A DE MUNDO, no campo, como o `SortearTarefaDoDeus` a escreve. A de mundo
+			// porque e a que um reinicio de verdade tem de preservar: no boot ninguem esta online, e a de
+			// AMEACA o proprio tique anula ("a ameaca fugiu do plano fisico"), com arquivo certo ou errado.
+			// No campo porque o sorteio depende do setor em que o Deus esta, que muda com a semente.
+			PlanetaNoEspaco mundo = Espaco.PreFeitos().First(p => !PlanetaMorto(p));
+			_tarefaPlanetaChave = ChaveDePlaneta.De(mundo).Texto;
+			_tarefaPlanetaNome = mundo.Nome;
+			_tarefaPrazo = agora + dia + dia / 2;
+			SalvarTitulo();
+
+			string relogioAntes = RelogioDoTituloEmTexto();
+			string discoAntes = LerOuVazio(ArquivoDoTitulo);
+			List<string> painelAntes = PainelDoTitulo(deus);
+
+			// SEM ESTAS DUAS, "voltou igual" seria verdade de graca num trono que nunca teve relogio.
+			AfirmarPrt("ANTES do reinicio: Deus ha 12 dias, 2 adiamentos na semana, 2 tarefas falhadas e um mundo a destruir",
+				_duelo.TituloDesde == posse && _duelo.Adiamentos == Duelo.AdiamentosPermitidos
+				&& _tarefaFalhas == FalhasQueDestituem - 1 && _tarefaPlanetaChave.Length > 0, relogioAntes);
+			AfirmarPrt("...e o titulo.txt do DISCO carrega esse relogio",
+				discoAntes.Contains($"desde\t{posse}") && discoAntes.Contains($"adiamentos\t{_duelo.Adiamentos}")
+				&& discoAntes.Contains($"falhas\t{_tarefaFalhas}")
+				&& discoAntes.Contains($"tarefa_planeta\t{_tarefaPlanetaChave}"),
+				EmUmaLinha(discoAntes));
+
+			// ---- O REINICIO ----
+			ReiniciarOTitulo();
+
+			string relogioDepois = RelogioDoTituloEmTexto();
+			AfirmarPrt("DEPOIS do reinicio o relogio do titulo e o MESMO (posse, ultimo desafio, adiamentos, tarefa, prazo, falhas)",
+				relogioDepois == relogioAntes, $"era [{relogioAntes}], voltou [{relogioDepois}]");
+			AfirmarPrt("...e o titulo.txt continua byte a byte o de antes (carregar nao escreve)",
+				LerOuVazio(ArquivoDoTitulo) == discoAntes, EmUmaLinha(LerOuVazio(ArquivoDoTitulo)));
+
+			List<string> painelDepois = PainelDoTitulo(deus);
+			AfirmarPrt("...e o painel do titulo (`cargo_titulo`) diz ao Deus o MESMO de antes",
+				painelDepois.SequenceEqual(painelAntes),
+				$"dizia [{string.Join(" | ", painelAntes)}], diz [{string.Join(" | ", painelDepois)}]");
+
+			// O DESAFIO QUE CABIA ANTES CONTINUA CABENDO: com a posse relida, a carencia de 7 dias nao
+			// recomeca no boot.
+			EscutaDeAvisos = [];
+			VerboDesafiar(desafiante);
+			AfirmarPrt("...e o desafio que cabia antes do reinicio CONTINUA cabendo (a carencia nao recomeca no boot)",
+				string.Equals(_desafianteEsperando, desafiante.Conta, StringComparison.OrdinalIgnoreCase),
+				$"o servidor disse: {string.Join(" | ", EscutaDeAvisos)}");
+
+			// E OS DOIS ADIAMENTOS DE ANTES CONTAM: o terceiro da mesma semana e covardia.
+			EscutaDeAvisos = [];
+			VerboResponderDesafio(deus, aceitou: false);
+			AfirmarPrt("...e o 3o adiamento da MESMA semana ainda custa o trono (os dois de antes do reinicio contam)",
+				!_tronos.ContainsKey(CargoEmDisputa),
+				$"{_duelo.Adiamentos} adiamento(s) na conta -- o servidor disse: {string.Join(" | ", EscutaDeAvisos)}");
+
+			// ---- SEM ARQUIVO: o primeiro boot ----
+			// Pasta sem `titulo.txt` e mundo sem relogio: o que estiver na memoria sai, e o carregador nao
+			// cria o arquivo -- quem grava o titulo sao os gestos do jogo, e nao a leitura.
+			System.IO.File.Delete(ArquivoDoTitulo);
+			_duelo.TituloDesde = posse;
+			_tarefaFalhas = 1;
+			CarregarTitulo();
+			AfirmarPrt("sem titulo.txt (o primeiro boot), carregar esvazia a memoria e NAO cria o arquivo",
+				_duelo.TituloDesde == 0 && _tarefaFalhas == 0 && !System.IO.File.Exists(ArquivoDoTitulo),
+				$"{RelogioDoTituloEmTexto()} | arquivo {(System.IO.File.Exists(ArquivoDoTitulo) ? "CRIADO" : "ausente")}");
+
+			// ---- O DEFEITO INJETADO: o carregador que zera GRAVANDO antes de ler ----
+			_tronos[CargoEmDisputa] = deus.Conta;
+			_duelo.TituloDesde = posse;
+			_tarefaFalhas = FalhasQueDestituem - 1;
+			SalvarTitulo();
+			TituloGravadoAoCarregarDeTeste = true;
+			try
+			{
+				ReiniciarOTitulo();
+				AfirmarPrt("(defeito injetado: o carregador zera GRAVANDO antes de ler) o reinicio apaga o relogio -- as falhas somem e a carencia de 7 dias recomeca no boot",
+					_tarefaFalhas == 0 && _duelo.TituloDesde != posse
+					&& Duelo.PodeDesafiar(_duelo, NowMs(), true, false, true, true, true) == RecusaDeDuelo.Carencia
+					&& !LerOuVazio(ArquivoDoTitulo).Contains($"desde\t{posse}"),
+					RelogioDoTituloEmTexto());
+			}
+			finally { TituloGravadoAoCarregarDeTeste = false; }
+		}
+		finally { EscutaDeAvisos = escutaReal; }
+
+		_tronos.Clear();
+		ReconciliarDadiva(deus);
+		ReconciliarDadiva(desafiante);
+	}
+
+	/// <summary>
+	/// O QUE UM REINICIO DO SERVIDOR FAZ COM O TITULO: a memoria nasce vazia (processo novo), o boot chama o
+	/// `CarregarTitulo`, e o primeiro tique do titulo passa -- em jogo, menos de um segundo depois.
+	///
+	/// Os campos sao esvaziados AQUI, um a um, e nao por um zerador de producao: o "antes" da leitura nao
+	/// pode depender do codigo que a secao esta medindo.
+	/// </summary>
+	private void ReiniciarOTitulo()
+	{
+		_duelo.TituloDesde = _duelo.UltimoDuelo = _duelo.SemanaDosAdiamentos = 0;
+		_duelo.Adiamentos = _tarefaFalhas = 0;
+		_duelo.EmDuelo = false;
+		_desafianteEsperando = _dueloDono = _dueloDesafiante = "";
+		_tarefaAlvo = _tarefaNomeDoAlvo = _tarefaPlanetaChave = _tarefaPlanetaNome = "";
+		_tarefaPrazo = _tarefaProxima = 0;
+
+		CarregarTitulo();
+		TickDoDuelo();
+	}
+
+	/// <summary>O relogio do titulo por extenso, na ordem do `titulo.txt`: e o que se compara antes e depois.</summary>
+	private string RelogioDoTituloEmTexto() =>
+		$"desde {_duelo.TituloDesde} | ultimo {_duelo.UltimoDuelo} | adiamentos {_duelo.Adiamentos} | "
+	  + $"semana {_duelo.SemanaDosAdiamentos} | tarefa '{_tarefaAlvo}' ({_tarefaNomeDoAlvo}) | prazo {_tarefaPrazo} | "
+	  + $"proxima {_tarefaProxima} | falhas {_tarefaFalhas} | mundo '{_tarefaPlanetaChave}' ({_tarefaPlanetaNome})";
+
+	/// <summary>O que o painel do titulo (`cargo_titulo`) diz a esta pessoa agora, linha a linha.</summary>
+	private List<string> PainelDoTitulo(ServerPlayer pl)
+	{
+		List<string> linhas = [];
+		List<string>? antes = EscutaDeAvisos;
+		EscutaDeAvisos = linhas;
+		try { VerboStatusDoTitulo(pl); }
+		finally { EscutaDeAvisos = antes; }
+		return linhas;
 	}
 }

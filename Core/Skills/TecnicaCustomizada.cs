@@ -26,6 +26,12 @@ public enum Compra : byte
 
 	/// <summary>`rangemodifier`. Pede argumento. Cada 0,1 e um ponto -- ver a nota da tabela.</summary>
 	DistanciaMod,
+
+	/// <summary>
+	/// O raio TELEGUIADO (dono, 2026-10-09) -- ver <see cref="TecnicaCustomizada.Teleguiado"/>. No FIM da lista:
+	/// os numeros das compras de cima nao mudam de lugar.
+	/// </summary>
+	TeleguiadoLigar, TeleguiadoDesligar,
 }
 
 /// <summary>
@@ -107,6 +113,13 @@ public sealed class TecnicaCustomizada
 	public const int PrecoDaEstamina = 2;
 
 	/// <summary>
+	/// O RAIO TELEGUIADO CUSTA 2 -- o preco que o painel ANTIGO de bolas do DM anuncia pra mesma coisa
+	/// (*"Enable guiding? ... Costs 2"*, `blasts/GenericBlastCustomization.dm:122`), e o do instantaneo. La a
+	/// conta nem fecha (confere 2, cobra 1 e estorna 2, `:129-137`); aqui cobra e estorna o que anuncia.
+	/// </summary>
+	public const int PrecoDoTeleguiado = 2;
+
+	/// <summary>
 	/// QUANTOS PONTOS UM SEGUNDO DE CARGA VALE, na conta do proprio DM: o estorno de desligar a
 	/// carga e `(chargetime - 1) * 2.5` (`:922`), e como cada passo e de 0,4 s, `0,4 * 2,5 = 1`.
 	/// Ou seja o numero magico 2,5 do original E o inverso do passo -- e por isso ele mora aqui
@@ -145,6 +158,25 @@ public sealed class TecnicaCustomizada
 	public double Alcance = AlcancePadrao;
 	public double DistanciaMod = DistModPadrao;
 	public bool Instantaneo;                     // `instantattack = 0`
+
+	/// <summary>
+	/// ESTE RAIO E TELEGUIADO: nasce perseguindo quem estiver marcado, dentro da curva do
+	/// <see cref="Combat.Teleguiado"/>. So existe no Beam -- a bola teleguiada e o TIPO
+	/// <see cref="TipoDeProjetil.Guided"/>, que ja vinha do DM.
+	///
+	/// ============================ NAO E PORTE: E PEDIDO DO DONO (2026-10-09) ============================
+	/// *"se o inimigo estiver na sua diagonal, vc vai soltar o beam nessa diagonal, mas se ele se mover o beam
+	/// continua indo na mesma direcao, a nao ser q seja teleguiado q ele pode dar curvas"*; *"na criacao de
+	/// tecnica o usuario coloque q o ataque e teleguiado"*. O painel do DM (`customattacks.dm`) nao tem este
+	/// botao: la o raio persegue ou nao pela PERICIA de quem atira (`beams.dm:162`), sem escolha de ninguem.
+	///
+	/// CUSTA PONTO (<see cref="PrecoDoTeleguiado"/>) porque e vantagem pura: de graca, todo raio inventado
+	/// seria teleguiado e o "a nao ser" do pedido nao separaria nada.
+	///
+	/// CAMPO NOVO E ADITIVO, como a <see cref="Arte"/>: o save antigo volta com falso, que e o raio de antes.
+	/// ====================================================================================================
+	/// </summary>
+	public bool Teleguiado;
 
 	/// <summary>
 	/// A ARTE QUE O JOGADOR ESCOLHEU PRA ESTA TECNICA -- `attackicon` (`customattacks.dm:67`).
@@ -268,6 +300,7 @@ public sealed class TecnicaCustomizada
 		RangeMod = DistanciaMod,
 		CargaMinima = CargaMinima,
 		Instantaneo = Instantaneo,
+		Teleguiado = Tipo == TipoDeProjetil.Beam && Teleguiado,
 		Nome = Nome,
 		// A ESCOLHA DO JOGADOR, OU O PADRAO DO TIPO -- os dois ramos do `if (S.attackicon != null)`
 		// do DM (`customattacks.dm:437-440` pro raio, `:497-501` pra bola). A receita sai daqui
@@ -294,6 +327,7 @@ public sealed class TecnicaCustomizada
 		CustoKi = m.CustoKi; CustoStamina = m.CustoStamina; UsaStamina = m.UsaStamina;
 		Carregavel = m.Carregavel; Velocidade = m.Velocidade;
 		Alcance = m.Alcance; DistanciaMod = m.DistanciaMod; Instantaneo = m.Instantaneo;
+		Teleguiado = m.Teleguiado;
 		// `S.attackicon = S.customattack_attackicon` (`customattacks.dm:1225`): a sombra so vira arte
 		// de verdade no "Done", como todo o resto. Sem esta linha a escolha do jogador seria perdida
 		// exatamente no ato de salvar -- que e a familia de defeito que o proprio DM tem aqui
@@ -315,6 +349,10 @@ public sealed class TecnicaCustomizada
 	{
 		Tipo = t;
 		Carregavel = t == TipoDeProjetil.Beam;
+		// O TELEGUIADO E MODIFICADOR DE RAIO: fora do Beam o campo nao quer dizer nada (a bola que persegue e
+		// outro TIPO). Os pontos dele ja foram devolvidos por quem troca o tipo -- o `DesfazerModificadoresDeRaio`
+		// do servidor, que passa pelo funil.
+		if (t != TipoDeProjetil.Beam) Teleguiado = false;
 
 		// A ARTE CAI FORA QUANDO O TIPO MUDA, e isto e obrigatorio: o catalogo de arte e RECORTADO
 		// pelo tipo (`custom_icon_folders`, `customattacks.dm:558-562`), entao uma folha de raio
@@ -484,6 +522,21 @@ public sealed class TecnicaCustomizada
 				if (!Instantaneo) { porque = "essa tecnica ja espera o dedo soltar."; return false; }
 				if (!Cobrar(-PrecoDoInstantaneo, out porque)) return false;
 				Instantaneo = false;
+				return true;
+
+			// ---------------------------------------------------------- teleguiado (dono, 2026-10-09)
+			case Compra.TeleguiadoLigar:
+				if (!AceitaModificadoresDeRaio)
+				{ porque = "isso e do raio -- a bola que persegue e o tipo teleguiado."; return false; }
+				if (Teleguiado) { porque = "esse raio ja persegue quem voce marcar."; return false; }
+				if (!Cobrar(PrecoDoTeleguiado, out porque)) return false;
+				Teleguiado = true;
+				return true;
+
+			case Compra.TeleguiadoDesligar:
+				if (!Teleguiado) { porque = "esse raio ja sai reto."; return false; }
+				if (!Cobrar(-PrecoDoTeleguiado, out porque)) return false;
+				Teleguiado = false;
 				return true;
 
 			// ---------------------------------------------------------- carrega ou nao (`:918`)

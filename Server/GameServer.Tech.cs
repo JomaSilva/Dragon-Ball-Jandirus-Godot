@@ -470,43 +470,63 @@ public partial class GameServer
 		int n = 0, semArte = 0;
 		foreach (ZoneEntry e in _catalogo.Todas)
 		{
-			if (e.Objetos.Length == 0 || !Godot.FileAccess.FileExists(e.Objetos)) continue;
-
-			foreach (ObjetoDoMapa o in ObjetosDoMapa.Parse(Godot.FileAccess.GetFileAsString(e.Objetos)))
-			{
-				if (_obras?.Get(o.Id) == null) { semArte++; continue; }
-
-				// A CELULA VIRA PIXEL NO MEIO DELA. O conversor grava a celula; a obra guarda a
-				// posicao do CORPO que a ergueu, e `CatalogoDeObras.Celula` desfaz isso somando o
-				// deslocamento dos pes. Aqui a conta e a inversa, e tem que ser a mesma -- senao a
-				// maquina desenha uma celula acima de onde ela esta no mapa.
-				const int t = ZoneCollision.TileSize;
-				var maquina = new Obra
-				{
-					Id = _proximaObraId++,
-					Tipo = o.Id,
-					X = o.X * t + t / 2f,
-					Y = o.Y * t + t / 2f - MoveRules.FeetOffsetY,
-					DonoNome = "",
-					Aparafusada = true,
-					DoMapa = true,
-					ErguidaEm = 0,
-				};
-
-				// PRE-FEITA POR CONSTRUCAO: o `ZoneEntry` e uma zona de ARQUIVO (convertida de .dmm).
-				// Nao ha `.objetos` de mundo sorteado -- o gerador nao escreve maquina nenhuma.
-				maquina.PorZona(ZoneKey.Premade(e.Zona));
-				_noChao.Add(maquina);
-				n++;
-			}
-
-			AplicarColisaoDasObras(ZoneKey.Premade(e.Zona));
+			(int postas, int mudas) = PorMobiliaDoMapa(e, soAQueFalta: false);
+			n += postas;
+			semArte += mudas;
 		}
 
 		if (n > 0) GD.Print($"[server] maquinas do mapa: {n} viraram construcoes de pe");
 		if (semArte > 0)
 			GD.PushWarning($"[server] {semArte} maquina(s) do mapa sem entrada no catalogo -- "
 						   + "rode o AssetPipeline ('tech' e depois 'maps')");
+	}
+
+	/// <summary>
+	/// A MOBILIA DE UMA ZONA DE ARQUIVO, posta de pe a partir do `.objetos` dela. Devolve quantas pos e quantas o
+	/// catalogo nao conhece.
+	///
+	/// DOIS CHAMADORES: o boot (todas, de todas as zonas) e o `Restaurar` do admin, que so repoe
+	/// <paramref name="soAQueFalta"/> -- a macieira, o banco e a bancada que cairam na porrada. Sem a segunda volta,
+	/// refazer o cenario refechava a celula delas (o bit do `.col`, ver `ACelulaDaObraCaiu`) e a obra so voltava no
+	/// boot seguinte: uma parede sem desenho no lugar de cada uma.
+	/// </summary>
+	private (int Postas, int SemCatalogo) PorMobiliaDoMapa(ZoneEntry e, bool soAQueFalta)
+	{
+		if (e.Objetos.Length == 0 || !Godot.FileAccess.FileExists(e.Objetos)) return (0, 0);
+
+		// PRE-FEITA POR CONSTRUCAO: o `ZoneEntry` e uma zona de ARQUIVO (convertida de .dmm).
+		// Nao ha `.objetos` de mundo sorteado -- o gerador nao escreve maquina nenhuma.
+		ZoneKey zona = ZoneKey.Premade(e.Zona);
+		int postas = 0, semCatalogo = 0;
+
+		foreach (ObjetoDoMapa o in ObjetosDoMapa.Parse(Godot.FileAccess.GetFileAsString(e.Objetos)))
+		{
+			if (_obras?.Get(o.Id) == null) { semCatalogo++; continue; }
+			if (soAQueFalta && ObraNaCelula(zona, o.X, o.Y) != null) continue;   // de pe, ou a celula ja tem outra obra
+
+			// A CELULA VIRA PIXEL NO MEIO DELA. O conversor grava a celula; a obra guarda a
+			// posicao do CORPO que a ergueu, e `CatalogoDeObras.Celula` desfaz isso somando o
+			// deslocamento dos pes. Aqui a conta e a inversa, e tem que ser a mesma -- senao a
+			// maquina desenha uma celula acima de onde ela esta no mapa.
+			const int t = ZoneCollision.TileSize;
+			var maquina = new Obra
+			{
+				Id = _proximaObraId++,
+				Tipo = o.Id,
+				X = o.X * t + t / 2f,
+				Y = o.Y * t + t / 2f - MoveRules.FeetOffsetY,
+				DonoNome = "",
+				Aparafusada = true,
+				DoMapa = true,
+				ErguidaEm = 0,
+			};
+			maquina.PorZona(zona);
+			_noChao.Add(maquina);
+			postas++;
+		}
+
+		if (postas > 0 || !soAQueFalta) AplicarColisaoDasObras(zona);
+		return (postas, semCatalogo);
 	}
 
 	/// <summary>

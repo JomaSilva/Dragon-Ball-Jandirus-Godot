@@ -353,6 +353,102 @@ public sealed class ZoneCollision
 		return (_duro[i >> 3] & (1 << (i & 7))) != 0;
 	}
 
+	// =====================================================================
+	// O QUE FICA SOB TETO -- a area `Inside` do original. Ver CelulaInterna.
+	// =====================================================================
+
+	/// <summary>
+	/// O PLANO DO QUE NASCEU SOB TETO -- 1 bit por celula, ou nulo se esta zona nao tiver interior.
+	///
+	/// E a area `/area/X/Inside` do DM, celula a celula: o que la decide se um turf recebe o icone
+	/// do clima e o da noite. A regra inteira, com as linhas do original, esta em
+	/// <see cref="CelulaInterna"/>.
+	///
+	/// PLANO PROPRIO pelo motivo de sempre nesta classe: "esta sob teto" nao muda NENHUMA das
+	/// perguntas que o `_bits` ja responde. O Banco da Terra tem piso (livre), parede e telhado
+	/// (densos) e porta (abre e fecha), e os tres sao internos do mesmo jeito.
+	///
+	/// DE ONDE VEM: do arquivo `.dentro` gravado ao lado do `.col` pelo comando `dentro` do pipeline.
+	/// Ausente quer dizer "nenhuma celula interna nesta zona", que e a verdade nos mundos gerados
+	/// por semente e em metade dos andares pre-feitos.
+	/// </summary>
+	private byte[]? _dentro;
+
+	/// <summary>
+	/// Le o `.dentro` -- MESMO cabecalho do `.col`, do `.agua` e do `.duro` ("JCOL" + largura +
+	/// altura + bitset), e pelo mesmo motivo: e o mesmo formato respondendo outra pergunta.
+	///
+	/// Devolve false (e nao lanca) quando o arquivo nao existe, nao e JCOL, ou descreve um mapa de
+	/// outro tamanho -- os tres casos em que a resposta honesta e "esta zona nao tem interior marcado".
+	/// </summary>
+	public bool CarregarDentro(byte[]? data)
+	{
+		if (data == null || data.Length < 8) return false;
+		if (data[0] != 'J' || data[1] != 'C' || data[2] != 'O' || data[3] != 'L') return false;
+		int w = data[4] | (data[5] << 8);
+		int h = data[6] | (data[7] << 8);
+		if (w != Width || h != Height) return false;
+
+		int precisa = (w * h + 7) / 8;
+		if (data.Length < 8 + precisa) return false;
+
+		var bits = new byte[precisa];
+		Array.Copy(data, 8, bits, 0, precisa);
+		_dentro = bits;
+		return true;
+	}
+
+	/// <summary>Esta zona tem alguma celula marcada como interna?</summary>
+	public bool TemDentro => _dentro != null;
+
+	/// <summary>
+	/// ESTA CELULA NASCEU SOB TETO? -- o bit cru do mapa, e so ele.
+	///
+	/// NAO E A PERGUNTA QUE O JOGO FAZ. A do jogo e "esta sob teto AGORA?", e ela desconta a celula
+	/// que caiu (no DM o turf destruido volta pra area de fora, `NewTurfs.dm:13-17`). Quem responde
+	/// e o <see cref="CelulaInterna.SobTeto"/>, com a lista de estrago que cada ponta ja guarda --
+	/// e por isso este metodo tem um nome que nao convida ninguem a usa-lo no lugar daquele.
+	///
+	/// FORA DO MAPA NAO E INTERIOR, pelo mesmo motivo do <see cref="EhAgua"/>: quem responde pelo
+	/// vazio e o <see cref="BlockedCell"/>.
+	/// </summary>
+	public bool NasceuDentro(int cx, int cy)
+	{
+		if (_dentro == null) return false;
+		if (cx < 0 || cy < 0 || cx >= Width || cy >= Height) return false;
+		int i = cy * Width + cx;
+		return (_dentro[i >> 3] & (1 << (i & 7))) != 0;
+	}
+
+	/// <summary>
+	/// VISITA AS CELULAS QUE NASCERAM SOB TETO, na ordem do mapa (linha a linha).
+	///
+	/// EXISTE PRA QUEM MONTA ALGO DO PLANO INTEIRO -- o teto do cliente (`TetoDaZona.Montar`), a cada
+	/// carga de zona. Perguntar <see cref="NasceuDentro"/> das 250 mil celulas da Terra pra achar as
+	/// 1.164 internas custava ~5 ms por carga (medido na `--diagteto`). Aqui o byte zerado do plano e
+	/// pulado inteiro, oito celulas de uma vez, e num mapa de superficie quase todos sao.
+	///
+	/// DEVOLVE O BIT CRU, como o <see cref="NasceuDentro"/>: quem quer "esta sob teto AGORA" ainda
+	/// passa cada celula visitada pelo <see cref="CelulaInterna.SobTeto"/>.
+	/// </summary>
+	public void ParaCadaCelulaQueNasceuDentro(Action<int, int> visita)
+	{
+		if (_dentro == null) return;
+		int total = Width * Height;
+		for (int b = 0; b < _dentro.Length; b++)
+		{
+			int v = _dentro[b];
+			if (v == 0) continue;
+			for (int bit = 0; bit < 8; bit++)
+			{
+				if ((v & (1 << bit)) == 0) continue;
+				int i = (b << 3) | bit;
+				if (i >= total) return;   // os bits de enchimento do ultimo byte nao sao celula
+				visita(i % Width, i / Width);
+			}
+		}
+	}
+
 	/// <summary>
 	/// ESTA CELULA PARA ESTE CORPO? -- parede E agua, na mesma pergunta.
 	///
@@ -373,11 +469,17 @@ public sealed class ZoneCollision
 	/// Entao o Ceu e o Reino dos Deuses ganham parede de nuvem (que e o `Enter()` deles) e o Caminho
 	/// da Serpente e o Templo ficam abertos (que e o `Enter()` deles). Uma linha, os dois desfechos.
 	/// ======================================================================================================
+	///
+	/// E QUEM VOA POR CIMA DO CENARIO (<see cref="ModoDeTravessia.PorCima"/>) so para na parede de
+	/// predio -- ver <see cref="ClasseDePredio"/>. E um ramo a parte, e nao um quarto termo do OU, porque
+	/// pra ele o `BlockedCell` sozinho NAO responde: a montanha barra quem anda e passa por baixo dele.
 	/// </summary>
 	public bool Bloqueia(int cx, int cy, ModoDeTravessia modo) =>
-		BlockedCell(cx, cy)
-		|| (ClasseDeAgua.Bloqueia(modo) && EhAgua(cx, cy))
-		|| (ClasseDeNuvem.Bloqueia(modo, _nuvemDerruba) && EhNuvem(cx, cy));
+		modo == ModoDeTravessia.PorCima
+			? ClasseDePredio.BarraQuemVoa(this, cx, cy)
+			: BlockedCell(cx, cy)
+			  || (ClasseDeAgua.Bloqueia(modo) && EhAgua(cx, cy))
+			  || (ClasseDeNuvem.Bloqueia(modo, _nuvemDerruba) && EhNuvem(cx, cy));
 
 	/// <summary>A mesma pergunta, em pixels.</summary>
 	public bool BloqueiaEm(Vec2 pos, ModoDeTravessia modo) =>
@@ -473,6 +575,97 @@ public sealed class ZoneCollision
 	public void LimparObras() => _obras = null;
 
 	/// <summary>
+	/// CELULAS ERGUIDAS POR JOGADOR -- a parede e a porta FECHADA da construcao de base (ver `Blocos`).
+	///
+	/// ============================ POR QUE NAO E A CAMADA DAS OBRAS ============================
+	/// As duas dizem "bloqueia, mesmo que o arquivo diga chao", e a das obras ja existia. So que ela e
+	/// refeita INTEIRA a cada mudanca (`LimparObras` + `Bloquear`, nas duas pontas), por quem so conhece
+	/// obra: uma parede posta ali sumiria na primeira bancada erguida na zona. E ela so e consultada em
+	/// celula que o ARQUIVO dizia ser chao -- a parede que alguem ergue no lugar de um muro que caiu
+	/// (bit do arquivo ligado, celula aberta pelo estrago) ficaria aberta.
+	///
+	/// ESTA VENCE AS OUTRAS: erguida bloqueia, nao importa o que o arquivo diz nem o que o estrago abriu.
+	/// E a precedencia do DM, onde construir SUBSTITUI o turf (`buildable.dm`, `new buildpath(location)`).
+	/// A porta erguida abre e fecha saindo e voltando pra ca (<see cref="Baixar"/>/<see cref="Erguer"/>),
+	/// e nao pela camada das aberturas, que fala do arquivo.
+	/// ==========================================================================================
+	///
+	/// Vale pros dois mapas, como as aberturas: no de colisao barra o corpo, no de visao cega. O custo
+	/// no caminho comum e um teste de nulo a mais por consulta.
+	/// </summary>
+	private HashSet<int>? _erguidas;
+
+	/// <summary>Esta celula passa a bloquear (e a cegar, se este for o mapa de visao), por cima de tudo.</summary>
+	public void Erguer(int cx, int cy)
+	{
+		if (cx < 0 || cy < 0 || cx >= Width || cy >= Height) return;
+		(_erguidas ??= []).Add(cy * Width + cx);
+	}
+
+	/// <summary>A celula erguida deixa de ser: volta a valer o arquivo, com as aberturas e as obras.</summary>
+	public void Baixar(int cx, int cy)
+	{
+		if (_erguidas == null || cx < 0 || cy < 0 || cx >= Width || cy >= Height) return;
+		_erguidas.Remove(cy * Width + cx);
+	}
+
+	/// <summary>Nenhuma celula erguida: e o que o cliente chama ao entrar na zona, antes da lista do servidor.</summary>
+	public void BaixarTudo() => _erguidas = null;
+
+	/// <summary>Esta celula esta erguida agora?</summary>
+	public bool Erguida(int cx, int cy) =>
+		_erguidas != null && cx >= 0 && cy >= 0 && cx < Width && cy < Height
+		&& _erguidas.Contains(cy * Width + cx);
+
+	/// <summary>
+	/// CELULAS QUE GANHARAM TETO EM RUNTIME -- o tile erguido por jogador.
+	///
+	/// No DM todo `/turf/build` se muda pra area interna do planeta um tique depois de nascer
+	/// (`buildturfs.dm:4-22`: o `New()` chama `addtoinside()`), e e por isso que nao chove dentro de uma
+	/// base. O plano do arquivo (<see cref="NasceuDentro"/>) so sabe do que o MAPA trouxe; o que alguem
+	/// ergue depois do boot mora aqui, numa camada por cima, pelo motivo de sempre nesta classe.
+	///
+	/// QUEM RESPONDE "ESTA SOB TETO AGORA?" continua sendo o <see cref="CelulaInterna.SobTeto"/>, que
+	/// junta as duas fontes -- este metodo e so a metade dele que muda em jogo.
+	/// </summary>
+	private HashSet<int>? _cobertas;
+
+	/// <summary>Esta celula passa a estar sob teto.</summary>
+	public void Cobrir(int cx, int cy)
+	{
+		if (cx < 0 || cy < 0 || cx >= Width || cy >= Height) return;
+		(_cobertas ??= []).Add(cy * Width + cx);
+	}
+
+	/// <summary>O teto erguido sai desta celula: volta a valer o plano do arquivo.</summary>
+	public void Descobrir(int cx, int cy)
+	{
+		if (_cobertas == null || cx < 0 || cy < 0 || cx >= Width || cy >= Height) return;
+		_cobertas.Remove(cy * Width + cx);
+	}
+
+	/// <summary>Nenhum teto erguido. Ver <see cref="BaixarTudo"/>.</summary>
+	public void DescobrirTudo() => _cobertas = null;
+
+	/// <summary>Esta celula ganhou teto de alguem que construiu nela?</summary>
+	public bool Coberta(int cx, int cy) =>
+		_cobertas != null && cx >= 0 && cy >= 0 && cx < Width && cy < Height
+		&& _cobertas.Contains(cy * Width + cx);
+
+	/// <summary>
+	/// ESTA ZONA TEM ALGUMA CELULA SOB TETO, do arquivo ou erguida? E a saida rapida de quem pergunta por
+	/// celula: mundo gerado sem base nenhuma, espaco e metade dos andares pre-feitos respondem nao.
+	/// </summary>
+	public bool TemInterior => _dentro != null || _cobertas is { Count: > 0 };
+
+	/// <summary>Visita as celulas que ganharam teto em runtime. Irma do <see cref="ParaCadaCelulaQueNasceuDentro"/>.</summary>
+	public void ParaCadaCelulaCoberta(Action<int, int> visita)
+	{
+		if (_cobertas == null) return;
+		foreach (int i in _cobertas) visita(i % Width, i / Width);
+	}
+
+	/// <summary>
 	/// AS BOCAS DAS PASSAGENS, LACRADAS -- a caverna, a escada do Templo, a porta do Inferno.
 	///
 	/// ============================ NO BYOND NINGUEM PISA NA BOCA DA CAVERNA ============================
@@ -553,8 +746,12 @@ public sealed class ZoneCollision
 			return false;
 
 		int i = cy * Width + cx;
+
+		// A CELULA ERGUIDA VENCE O ARQUIVO E O ESTRAGO -- ver `_erguidas`.
+		if (_erguidas != null && _erguidas.Contains(i)) return true;
+
 		// O CAMINHO COMUM NAO PAGA QUASE NADA: em chao livre e sem construcao nenhuma na zona, isto
-		// e um teste de bit e uma comparacao com nulo. O campo de visao chama este metodo centenas
+		// e um teste de bit e duas comparacoes com nulo. O campo de visao chama este metodo centenas
 		// de milhares de vezes por quadro.
 		if ((_bits[i >> 3] & (1 << (i & 7))) == 0)
 			return (_obras != null && _obras.Contains(i)) || (_seladas != null && _seladas.Contains(i));

@@ -284,6 +284,19 @@ void fragment() {
 	float rb = raio_boca * (1.0 - solto)
 			 * (1.0 + 0.06 * sin(tempo * 43.0 + semente) + 0.05 * sin(tempo * 71.0) + 0.40 * nasce);
 
+	// A BOLA DA MAO, ASSENTADA, CABE NO RAIO. Ela encosta na mao (o centro fica um raio a frente dela), entao a
+	// frente dela cai a DOIS raios da mao -- e num feixe mais curto que isso ela atravessava o plano da PONTA, que
+	// e regra do servidor: alem dele esta quem o raio empurra, ou a cabeca do raio que vem de frente. E o caso do
+	// feixe-parede, e nele nao e raro: o Final Flash a 4x tem 108 px de bola, e numa disputa a menos de quinze
+	// tiles cada feixe tem menos que os 216 que ela pede. A `--diagembateki` (cena 3: dois deles a 14 tiles) mediu
+	// na FOTO a tinta de cada cabeca de 7 a 20 px alem da ponta que o node anuncia -- uma cabeca de 22 a 38 px
+	// dentro da outra, com as duas pontas anunciadas no mesmo ponto.
+	//
+	// ENCOLHE, e nao e cortada no plano: o corte deixaria uma parede reta na frente do feixe.
+	// O CLARAO DO DISPARO FICA DE FORA (o `nasce`): ele e maior que o feixe de proposito e dura um decimo de
+	// segundo -- a bola passa a caber conforme ele apaga.
+	rb = mix(min(rb, L * 0.5), rb, nasce);
+
 	float xc = L - rc;                                  // o centro da cabeca
 	float xb = rb;                                      // o centro da boca: a bola ENCOSTA na mao, nao a engole
 
@@ -364,8 +377,14 @@ void fragment() {
 
 	// ================= a BOCA =================
 	if (rb > 0.01) {
-		d = smin(d, max(length(vec2(u - xb, v)) - rb, -u), liga);
-		d_eixo = smin(d_eixo, max(abs(u - xb) - rb, -u), liga);
+		// E A EMENDA DELA NAO ESTUFA A PONTA. O minimo suave engorda a silhueta ate um quarto de `liga` onde as
+		// duas formas quase coincidem, e num feixe curto a bola da mao chega junto da frente da cabeca: com os
+		// 54 px de `liga` do Final Flash a 4x eram ate 13 px a mais, ALEM da ponta (a conta fecha com a foto em
+		// 0,1 px). A emenda nunca e maior que o que falta pra bola da mao chegar ao plano da ponta -- e ali quem
+		// desenha a frente e so a cabeca.
+		float liga_da_boca = min(liga, max(L - 2.0 * rb, 0.001));
+		d = smin(d, max(length(vec2(u - xb, v)) - rb, -u), liga_da_boca);
+		d_eixo = smin(d_eixo, max(abs(u - xb) - rb, -u), liga_da_boca);
 	}
 
 	// ================= a COR do corpo: faixas CHAPADAS =================

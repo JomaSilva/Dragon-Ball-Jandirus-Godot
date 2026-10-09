@@ -405,7 +405,7 @@ public partial class Microfone : Node
 		if (!Boot.Config.VozLigada) return false;
 		if (GameClient.Instance is not { Connected: true, LocalId: not 0 }) return false;
 		if (Foco.AtalhosMudos) return false;
-		return !Boot.Config.VozApertarParaFalar || Godot.Input.IsActionPressed("falar_voz");
+		return !Boot.Config.VozApertarParaFalar || Godot.Input.IsActionPressed(Teclas.NomeNoMotor("falar_voz"));
 	}
 
 	// =====================================================================

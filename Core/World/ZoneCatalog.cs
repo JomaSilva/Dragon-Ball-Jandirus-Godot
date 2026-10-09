@@ -54,6 +54,16 @@ public sealed class ZoneEntry
 	/// </summary>
 	public string Nuvem = "";
 
+	/// <summary>
+	/// res:// do bitset do que NASCEU SOB TETO -- a area `Inside` do original
+	/// (ver <see cref="CelulaInterna"/>).
+	///
+	/// TEM PADRAO DERIVADO DO <see cref="Colisao"/> pelo mesmo motivo que os outros tres planos: o
+	/// `.dentro` sai do comando `dentro` do pipeline, que NAO reescreve o manifesto. Sem o padrao,
+	/// gerar os arquivos e continuar vendo neve dentro do Banco seria o desfecho calado.
+	/// </summary>
+	public string Dentro = "";
+
 	public string Luzes = "";     // res:// das fontes de luz do cenario (fogueira, tocha, lava)
 
 	/// <summary>res:// das PORTAS da zona -- elas nao sao tile, sao entidade (ver MapConverter.EhPorta).</summary>
@@ -97,6 +107,12 @@ public sealed class ZoneEntry
 	public string CaminhoDaNuvem =>
 		Nuvem.Length > 0 ? Nuvem
 		: Colisao.EndsWith(".col", StringComparison.Ordinal) ? Colisao[..^4] + ".nuvem"
+		: "";
+
+	/// <summary>O caminho do `.dentro`, pela mesma regra do <see cref="CaminhoDaAgua"/>. Ver <see cref="Dentro"/>.</summary>
+	public string CaminhoDoDentro =>
+		Dentro.Length > 0 ? Dentro
+		: Colisao.EndsWith(".col", StringComparison.Ordinal) ? Colisao[..^4] + ".dentro"
 		: "";
 
 	public int W, H;
@@ -208,6 +224,7 @@ public sealed class ZoneCatalog
 				Agua = Str(bloco, "agua"),
 				Duro = Str(bloco, "duro"),
 				Nuvem = Str(bloco, "nuvem"),
+				Dentro = Str(bloco, "dentro"),
 				Luzes = Str(bloco, "luzes"),
 				Portas = Str(bloco, "portas"),
 				Objetos = Str(bloco, "objetos"),

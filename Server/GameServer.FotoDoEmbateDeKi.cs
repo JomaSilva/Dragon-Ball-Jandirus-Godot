@@ -40,6 +40,39 @@ public sealed partial class GameServer
 	private int _fotoEkA, _fotoEkB;
 
 	/// <summary>
+	/// CEU LIMPO NA ZONA DA FOTO, pela hora que a bancada dura. Chamado uma vez, antes da primeira cena.
+	///
+	/// ============================ A HORA ERA CRAVADA, E O CLIMA NAO (2026-10-08) ============================
+	/// O `--horateste` crava a HORA DO DIA, e so ela. O clima natural e funcao pura do tempo do mundo em
+	/// blocos de seis minutos (`Clima.TipoDoBloco`), e o bloco em que a bancada cai muda a cada dia da Terra
+	/// -- 24 minutos de relogio de parede. Entao a mesma linha de comando fotografava ceu aberto numa hora e
+	/// tempestade na outra, e rodadas seguidas, dentro do mesmo dia do jogo, concordavam entre si: a cena 3
+	/// reprovou "o miolo da estrela esta aceso" quatro vezes com 0,83, e passou com 1,00 oito horas depois
+	/// sem uma linha de codigo mudada.
+	///
+	/// O 0,83 NAO ERA A ESTRELA: era o VEU do clima. Ele e um quad de tela numa `CanvasLayer` acima do
+	/// mundo (`ClimaNaTela`), mistura a cena com uma cor quase preta e por isso cobre tambem o que e
+	/// `unshaded` -- e desenho, a nuvem fica ENTRE quem olha e tudo. Na tempestade a opacidade e
+	/// `0,34 x massa`, e com a massa em ~0,5 o branco puro sai `1 - 0,17 = 0,83`: o pixel media
+	/// (210,211,211) com a tempestade forcada (`--climateste Tempestade`) e (255,255,255) de ceu aberto.
+	/// A chuva (camada 70) ainda risca por cima da estrela e dos feixes, que e o assunto da foto.
+	///
+	/// OS DOIS PASSOS sao os do `CravarMeioDiaDaVariedade`: o `Limpo` de prazo zero derruba o que estiver
+	/// forcado (no `ForcarClima` o mais forte vence, e um `--climateste` entra com forca 1), e o segundo
+	/// segura o ceu aberto. A forca baixa e pra qualquer clima forcado de verdade passar por cima dele.
+	/// ====================================================================================================
+	/// </summary>
+	internal void EmbateDeFoto_CeuLimpo(int idDono)
+	{
+		// QUEM PEDIU CLIMA NA LINHA DE COMANDO QUER VE-LO, e e esse o contra-exemplo deste palco: com
+		// `--climateste Tempestade` o ceu de antes volta e a cena 3 torna a reprovar.
+		if (_climaDeTeste != TipoDeClima.Limpo) return;
+		if (!_players.TryGetValue(idDono, out ServerPlayer? dono)) return;
+		ForcarClima(dono.Zone, TipoDeClima.Limpo, 0);
+		ForcarClima(dono.Zone, TipoDeClima.Limpo, 3600, 0.02, "bancada");
+	}
+
+	/// <summary>
 	/// MONTA A CENA: dois corpos de frente, cada um com um raio, num corredor de chao de verdade.
 	///
 	/// O `bpDeA` diferente do `bpDeB` nao e enfeite: com forcas exatamente parelhas a deriva e zero e

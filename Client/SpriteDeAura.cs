@@ -468,7 +468,7 @@ public partial class SpriteDeAura : Node2D
 	{
 		if (_s != null) return;
 
-		var frames = ResourceLoader.Load<SpriteFrames>(_folha);
+		var frames = FolhasPresas.Carregar(_folha);
 		// O AVISO CITAVA `colorablebigaura`, que nao e a folha que esta linha carrega. Aviso que
 		// aponta pro arquivo errado e como nao ter aviso -- foi exatamente a confusao entre essas
 		// duas folhas que custou quatro rodadas nesta sessao.

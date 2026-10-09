@@ -105,6 +105,13 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semfoco") >= 0)
 			DisplayServer.WindowSetFlag(DisplayServer.WindowFlags.NoFocus, true);
 
+		// `--diagcoletor [s]`: O COLETOR DO .NET, MEDIDO DE DENTRO -- quantas pausas, de quem e por que. Nasce
+		// AQUI, antes da porta do servidor dedicado, porque a pergunta "de quem e a pausa" so se responde
+		// rodando a MESMA bancada nos tres tipos de processo (host, cliente puro e servidor sem janela), e as
+		// outras bancadas nascem depois do `return` de baixo. Ver RoboDoColetor.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcoletor") >= 0)
+			AddChild(new RoboDoColetor { Name = "RoboDoColetor" });
+
 		// processo servidor nao abre janela de login
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--server") >= 0)
 		{
@@ -181,6 +188,16 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtinta") >= 0)
 		{
 			AddChild(new RoboDeTinta { Name = "RoboDeTinta" });
+			return;
+		}
+
+		// `--diaginvolucro`: O "Handle is not initialized" QUE O MOTOR LOGA AO VESTIR UM CORPO. Mora aqui em cima
+		// com as bancadas sem mundo porque ela nao precisa de rede, de zona nem de login: so da `CreationScreen`
+		// de verdade (montada e solta como o lobby faz), do catalogo e de `CharacterVisual` novos. PRECISA de
+		// janela pras fotos; sem ela os erros sao contados e a conta de pixel diz que nao mediu. Ver RoboDoInvolucro.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaginvolucro") >= 0)
+		{
+			AddChild(new RoboDoInvolucro { Name = "RoboDoInvolucro" });
 			return;
 		}
 
@@ -321,6 +338,150 @@ public partial class Boot : Node2D
 		// `--semaquecimento` e o irmao do `--semcobertura`: ele desliga o pre-carregamento pra que a
 		// bancada possa medir o ANTES e o DEPOIS no mesmo binario, sem apagar arquivo nenhum. Ver
 		// `RoboDeCarga` -- e ele que responde quantos dos ~1,4 s o aquecimento tirou da frente.
+		//
+		// `--semensaio` e o mais novo dos tres, e o mais estreito: os recursos carregam como sempre e so o
+		// ENSAIO dos efeitos de ki nao roda -- o jogo de antes dele, em que o primeiro tiro que acertava
+		// compilava os shaders na hora. Liga o defeito de bancada `Aquecimento.SemEnsaioDeTeste`, que a
+		// `--diagestouro` desliga de volta no `finally` dela. Ver `RoboDoPrimeiroEstouro`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semensaio") >= 0)
+		{
+			Aquecimento.SemEnsaioDeTeste = true;
+			GD.Print("[aquece] SEM O ENSAIO dos efeitos de ki, por --semensaio (o defeito injetado da --diagestouro)");
+		}
+
+		// `--semensaiodacena` e o irmao dele pra CINEMATICA de transformacao, e mais estreito ainda: o resto do
+		// aquecimento roda inteiro, e so as folhas e o ensaio da cena ficam de fora -- o jogo de antes, em que o
+		// quadro da primeira transformacao com cena de cada processo travava a tela. Liga o defeito de bancada
+		// `Aquecimento.SemEnsaioDaCenaDeTeste`, que a `--diagestouro --temas` desliga de volta no `finally` dela.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semensaiodacena") >= 0)
+		{
+			Aquecimento.SemEnsaioDaCenaDeTeste = true;
+			GD.Print("[aquece] SEM O ENSAIO DA CINEMATICA, por --semensaiodacena (o defeito injetado da --diagestouro --temas)");
+		}
+
+		// `--semadiantaracena` e o terceiro da familia, e o da cena DEPOIS de nascer: o aquecimento roda inteiro, com o
+		// ensaio, e so fica de fora o que a cinematica usa do segundo quadro em diante -- a cratera, a fumaca e os
+		// sons dos beats, e o penteado da forma. Liga o defeito de bancada `Aquecimento.SemAdiantarACenaDeTeste`, que
+		// a `--diagestouro --temas` desliga de volta no `finally` dela.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semadiantaracena") >= 0)
+		{
+			Aquecimento.SemAdiantarACenaDeTeste = true;
+			GD.Print("[aquece] SEM ADIANTAR O QUE A CINEMATICA USA, por --semadiantaracena (o defeito injetado da --diagestouro --temas)");
+		}
+
+		// `--semensaiodoborrao` e o do BORRAO do rastro (a investida, a corrida): o aquecimento roda inteiro, menos o
+		// shader dele na fila de carga e o ato que o desenha no lobby -- o jogo de antes, em que o primeiro borrao do
+		// processo lia o `Borrao.gdshader` do disco e o compilava no meio da luta. Liga o defeito de bancada
+		// `Aquecimento.SemEnsaioDoBorraoDeTeste`, que a `--diagestouro --pecas` desliga de volta no `finally` dela.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semensaiodoborrao") >= 0)
+		{
+			Aquecimento.SemEnsaioDoBorraoDeTeste = true;
+			GD.Print("[aquece] SEM O SHADER E SEM O ENSAIO DO BORRAO, por --semensaiodoborrao (o defeito injetado da --diagestouro --pecas)");
+		}
+
+		// `--semensaiodamiragem` e o da MIRAGEM do Zanzoken (o vulto de quem tem a Afterimage): o aquecimento roda inteiro,
+		// menos o shader dela na fila de carga e o ato que a desenha no lobby -- o jogo de antes, em que a primeira miragem
+		// do processo lia o `Zanzoken.gdshader` do disco e o compilava no meio da luta. Liga o defeito de bancada
+		// `Aquecimento.SemEnsaioDaMiragemDeTeste`, que a `--diagestouro --pecas` desliga de volta no `finally` dela.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semensaiodamiragem") >= 0)
+		{
+			Aquecimento.SemEnsaioDaMiragemDeTeste = true;
+			GD.Print("[aquece] SEM O SHADER E SEM O ENSAIO DA MIRAGEM, por --semensaiodamiragem (o defeito injetado da --diagestouro --pecas)");
+		}
+
+		// `--semensaiodosraios` e o quarto da familia, e o dos RAIOS DA FORMA: o aquecimento roda inteiro, menos os dois
+		// atos que desenham no lobby um raio de corpo e os feixes de chao -- o jogo de antes, em que a pipeline do
+		// `RaioDaForma.gdshader` era montada no quadro em que cada um aparecia pela primeira vez. Liga o defeito de
+		// bancada `Aquecimento.SemEnsaioDosRaiosDeTeste`, que a `--diagestouro --temas` desliga de volta no `finally` dela.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semensaiodosraios") >= 0)
+		{
+			Aquecimento.SemEnsaioDosRaiosDeTeste = true;
+			GD.Print("[aquece] SEM O ENSAIO DOS RAIOS DA FORMA, por --semensaiodosraios (o defeito injetado da --diagestouro --temas)");
+		}
+
+		// `--estrelacomluz` e o do LADO ESCURO do palco do ensaio: a estrela do embate volta a nascer la com a luz de ki
+		// dela, que so existe quando o mundo esta escuro -- o jogo de antes, em que o ensaio que caia numa noite ou
+		// numa tempestade deixava de montar as pipelines "de dia" dos atos seguintes. Liga o defeito de bancada
+		// `Aquecimento.EstrelaComLuzDeTeste`, que a `--diagestouro --temas` desliga de volta no `finally` dela.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--estrelacomluz") >= 0)
+		{
+			Aquecimento.EstrelaComLuzDeTeste = true;
+			GD.Print("[aquece] A ESTRELA DO ENSAIO COM LUZ PROPRIA, por --estrelacomluz (o defeito injetado da --diagestouro --temas)");
+		}
+
+		// `--semensaiodorelampago`, `--semensaiodachuva` e `--semensaiodocorpo` sao os tres dos PRIMEIROS DESENHOS que o
+		// ensaio nao fazia: cada um tira do aquecimento so o ato dele -- o risco do raio, a chuva, o boneco debaixo de uma
+		// luz -- e devolve o jogo de antes, em que a pipeline de cada um era montada no quadro do primeiro uso. Ligam os
+		// defeitos de bancada `Aquecimento.SemEnsaioDoRelampagoDeTeste`, `SemEnsaioDaChuvaDeTeste` e
+		// `SemEnsaioDoCorpoDeTeste`, que a `--diagestouro` desliga de volta no `finally` dela.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semensaiodorelampago") >= 0)
+		{
+			Aquecimento.SemEnsaioDoRelampagoDeTeste = true;
+			GD.Print("[aquece] SEM O ENSAIO DO RELAMPAGO, por --semensaiodorelampago (o defeito injetado da --diagestouro --temas)");
+		}
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semensaiodachuva") >= 0)
+		{
+			Aquecimento.SemEnsaioDaChuvaDeTeste = true;
+			GD.Print("[aquece] SEM O ENSAIO DA CHUVA, por --semensaiodachuva (o defeito injetado da --diagestouro --temas --ceu)");
+		}
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semensaiodocorpo") >= 0)
+		{
+			Aquecimento.SemEnsaioDoCorpoDeTeste = true;
+			GD.Print("[aquece] SEM O ENSAIO DO CORPO, por --semensaiodocorpo (o defeito injetado da --diagestouro)");
+		}
+
+		// `--semensaiodagota`, `--semensaiodanevoa`, `--semensaiodanebulosa`, `--semensaiodoembate` e `--semensaiodoplaneta`
+		// sao os cinco dos PRIMEIROS USOS AVULSOS -- a gota do transe, a nevoa de altitude, a nebulosa do Ultra Instinto, a
+		// tela do embate, e o planeta visto do espaco com o estouro dele: cada um tira do aquecimento so o ato dele (e, dos
+		// que o jogo lia do disco na hora, o shader da fila de carga) e devolve o jogo de antes, em que o shader era
+		// compilado e a pipeline montada no quadro do primeiro uso. Ligam os defeitos de bancada
+		// `Aquecimento.SemEnsaioDaGotaDeTeste`, `SemEnsaioDaNevoaDeTeste`, `SemEnsaioDaNebulosaDeTeste`,
+		// `SemEnsaioDoEmbateDeTeste` e `SemEnsaioDoPlanetaDeTeste`, que a `--diagestouro --avulsos` desliga de volta no
+		// `finally` dela.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semensaiodagota") >= 0)
+		{
+			Aquecimento.SemEnsaioDaGotaDeTeste = true;
+			GD.Print("[aquece] SEM O SHADER E SEM O ENSAIO DA GOTA, por --semensaiodagota (o defeito injetado da --diagestouro --avulsos)");
+		}
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semensaiodanevoa") >= 0)
+		{
+			Aquecimento.SemEnsaioDaNevoaDeTeste = true;
+			GD.Print("[aquece] SEM O SHADER E SEM O ENSAIO DA NEVOA DE ALTITUDE, por --semensaiodanevoa (o defeito injetado da --diagestouro --avulsos)");
+		}
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semensaiodanebulosa") >= 0)
+		{
+			Aquecimento.SemEnsaioDaNebulosaDeTeste = true;
+			GD.Print("[aquece] SEM O ENSAIO DA NEBULOSA, por --semensaiodanebulosa (o defeito injetado da --diagestouro --avulsos)");
+		}
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semensaiodoembate") >= 0)
+		{
+			Aquecimento.SemEnsaioDoEmbateDeTeste = true;
+			GD.Print("[aquece] SEM O ENSAIO DA TELA DO EMBATE, por --semensaiodoembate (o defeito injetado da --diagestouro --avulsos)");
+		}
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semensaiodoplaneta") >= 0)
+		{
+			Aquecimento.SemEnsaioDoPlanetaDeTeste = true;
+			GD.Print("[aquece] SEM OS SHADERS E SEM O ENSAIO DO PLANETA, por --semensaiodoplaneta (o defeito injetado da --diagestouro --avulsos)");
+		}
+
+		// `--semsegurarossons` e o dos SONS DE EFEITO, e nao e do aquecimento so: liga o defeito de bancada
+		// `SonsPresos.SemSegurarDeTeste`, que a `--diagestouro --sons` desliga de volta no `finally` dela. Fica aqui
+		// porque tem que valer ANTES de o aquecimento nascer -- ver `RoboDoPrimeiroEstouro.Sons.cs`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semsegurarossons") >= 0)
+		{
+			SonsPresos.SemSegurarDeTeste = true;
+			GD.Print("[aquece] SEM SEGURAR OS SONS DE EFEITO, por --semsegurarossons (o defeito injetado da --diagestouro --sons)");
+		}
+
+		// `--semsegurarosscripts` e o dos SCRIPTS DE NODE: liga o defeito de bancada `Aquecimento.SemSegurarOsScriptsDeTeste`,
+		// que a `--diagestouro --scripts` desliga de volta no `finally` dela -- o jogo de antes, em que o motor carregava de
+		// novo o script de uma classe C# a cada nascimento sem outra instancia viva. Ver `RoboDoPrimeiroEstouro.Scripts.cs`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semsegurarosscripts") >= 0)
+		{
+			Aquecimento.SemSegurarOsScriptsDeTeste = true;
+			GD.Print("[aquece] SEM SEGURAR OS SCRIPTS DE NODE, por --semsegurarosscripts (o defeito injetado da --diagestouro --scripts)");
+		}
+
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semaquecimento") < 0)
 			AddChild(_aquece = new Aquecimento { Name = "Aquecimento" });
 		else GD.Print("[aquece] DESLIGADO por --semaquecimento (medindo o processo frio)");
@@ -374,7 +535,24 @@ public partial class Boot : Node2D
 			};
 		}
 
-		AutoConectar();
+		// `--lobbyteste <s>`: o robo fica <s> segundos no lobby antes de discar -- o login de GENTE. O `--host`
+		// cru entra em milissegundos e fecha o aquecimento no `Concluir`; quem digita conta e senha da a ele
+		// os quadros do lobby, e sao dois caminhos diferentes do mesmo codigo (ver `Aquecimento`, o ensaio).
+		// O temporizador e da arvore e de um tiro so: nao ha o que desassinar.
+		if (double.TryParse(Arg(OS.GetCmdlineArgs(), "--lobbyteste"), System.Globalization.NumberStyles.Float,
+							System.Globalization.CultureInfo.InvariantCulture, out double noLobby) && noLobby > 0)
+			GetTree().CreateTimer(noLobby).Timeout += AutoConectar;
+		else AutoConectar();
+
+		// `--diagestouro`: O PRIMEIRO ESTOURO DE KI DO PROCESSO, cronometrado quadro a quadro. O primeiro
+		// tiro que acertava travava a tela (0,33 s + 0,08 s): os shaders do efeito eram compilados na hora.
+		// A bancada dispara bolas de producao num alvo e cobra que o quadro do primeiro estouro custe um
+		// quadro normal. NASCE AQUI, NO LOBBY, e nao com o mundo: a rodada `--semensaio` liga o defeito
+		// (`Aquecimento.SemEnsaioDeTeste`) antes de o aquecimento chegar a hora do ensaio, e os quadros do
+		// lobby entram no relatorio -- e pra la que o custo foi. Precisa de `--host` e de JANELA (no
+		// headless nao ha desenho, e a travada nao existe). Ver RoboDoPrimeiroEstouro.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagestouro") >= 0)
+			AddChild(new RoboDoPrimeiroEstouro { Name = "RoboDoPrimeiroEstouro" });
 
 		// ============================ `--diagopcoes`: A BANCADA QUE NASCE **DEPOIS** DO LOBBY ============================
 		// Ela e a unica que entra aqui embaixo, e nao la em cima com as outras, e o motivo e o
@@ -829,6 +1007,11 @@ public partial class Boot : Node2D
 			Jandirus.Core.Items.CatalogoDeItens.Obras =
 				Jandirus.Core.Tech.CatalogoDeObras.Parse(Godot.FileAccess.GetFileAsString(cjObras));
 
+		// E O DE APARENCIA, PELO MESMO MOTIVO: a peca de roupa guardada na mochila e um item cuja ficha (nome e
+		// arte) sai do `visual.json` -- ver `RoupaGuardada`. Sem ele a peca que eu tirei do corpo seria um slot
+		// sem desenho. E o mesmo catalogo, ja lido uma vez, que veste os retratos (`VistosDeGente.Catalogo`).
+		Jandirus.Core.Items.CatalogoDeItens.Visual ??= VistosDeGente.Catalogo;
+
 		// A TECLA E: uma porta so pra tudo com que se pode mexer no mundo. Ver `MenuDeInteracao`.
 		AddChild(new MenuDeInteracao { Name = "Interacao" });
 		// A TECLA I: a mochila.
@@ -838,6 +1021,8 @@ public partial class Boot : Node2D
 		AddChild(new TelaDeMeditacao { Name = "Meditacao" });
 		// A GRADE DA BANCADA e o fantasma de assentar construcao.
 		AddChild(new TelaDeConstrucao { Name = "Construcao" });
+		// A TECLA B: o modo de construir base (paredes, pisos e portas). Ver `ModoDeConstruir`.
+		AddChild(new ModoDeConstruir { Name = "ModoDeConstruir" });
 		// A MESA ONDE O JOGADOR DESENHA AS PROPRIAS TECNICAS. Sem tecla propria de proposito: ela
 		// abre pelo verb "Inventar tecnicas de ki", na aba Learning -- que e onde o
 		// `Create_Attack`/`Customize_Attack` do original moram (`set category = "Learning"`).
@@ -928,6 +1113,40 @@ public partial class Boot : Node2D
 		// RoboDeEmbarque.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagembarque") >= 0)
 			AddChild(new RoboDeEmbarque { Name = "RoboDeEmbarque" });
+
+		// --diagconstruir: O MODO DE CONSTRUIR (a tecla B) andado inteiro -- barra, fantasma, clique, arrasto,
+		// paleta, a pergunta da senha, a tecla E na porta, desmanchar, e a porta do mapa que cai. Precisa do
+		// modo host (le o servidor do mesmo processo) e do `--campoteste`. Ver RoboDeConstruir.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagconstruir") >= 0)
+			AddChild(new RoboDeConstruir { Name = "RoboDeConstruir" });
+
+		// --fotovegeta: as pecas da cidade de Vegeta que saiam cortadas, lidas e fotografadas no jogo. Ver
+		// RoboDeFotoDeVegeta.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--fotovegeta") >= 0)
+			AddChild(new RoboDeFotoDeVegeta { Name = "RoboDeFotoDeVegeta" });
+
+		// --diagmira: A MIRA DO KI NA TELA -- o tiro sai no marcado, o meu boneco vira, o raio comum nao acompanha
+		// e o teleguiado (comprado no botao da mesa) gira atras do alvo. Modo host + `--campoteste`. Ver
+		// RoboDaMiraDeKi.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmira") >= 0)
+			AddChild(new RoboDaMiraDeKi { Name = "RoboDaMiraDeKi" });
+
+		// --diagcargavoo: A CARGA E O RAIO DE QUEM VOA, em tres alturas (pairando, no meio da subida e no teto). A
+		// bola da carga nascia no plano do chao -- o corpo so levanta os filhos quando a altura MUDA, e com um
+		// ataque de ki na mao ela nao muda. Modo host + `--vooteste` + JANELA. Ver RoboDaCargaNoVoo.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcargavoo") >= 0)
+			AddChild(new RoboDaCargaNoVoo { Name = "RoboDaCargaNoVoo" });
+
+		// --diagmajin: A ABSORCAO DO MAJIN NA TELA, dos dois lados -- com `--raca Human` o corpo local e
+		// absorvido, luta com a imagem do Majin la dentro e sai; com `--raca Majin` ele absorve e expele pelos
+		// botoes do menu. Modo host + JANELA. Ver RoboDaAbsorcaoMajin.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmajin") >= 0)
+			AddChild(new RoboDaAbsorcaoMajin { Name = "RoboDaAbsorcaoMajin" });
+
+		// --fotoplanetas: os lugares repintados dos OUTROS planetas pre-feitos (o penhasco da Terra, o mar de
+		// Namek, a costa de Icer...), visitados e fotografados no jogo. Modo host. Ver RoboDeFotoDosPlanetas.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--fotoplanetas") >= 0)
+			AddChild(new RoboDeFotoDosPlanetas { Name = "RoboDeFotoDosPlanetas" });
 
 		// --diaginstalar: o CICLO fabricar -> mochila -> instalar, andado inteiro. Vizinha da
 		// `--diagembarque` porque as duas medem um GESTO e nao um numero, e porque as duas passam
@@ -1134,6 +1353,12 @@ public partial class Boot : Node2D
 			if (Arg(OS.GetCmdlineArgs(), "--sombralugar") is { } lugar) rs.Lugar = lugar;
 			AddChild(rs);
 		}
+
+		// --diagteto: o CLIMA NAO ENTRA EM CASA -- a neve e a massa medidas no pixel, de dentro e de
+		// fora do Banco da Terra, contra o que o SERVIDOR diz que esta sob teto (a area `Inside` do
+		// DM). Roda com `--host` e janela. Ver RoboDoTeto.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagteto") >= 0)
+			AddChild(new RoboDoTeto { Name = "RoboDoTeto" });
 
 		// --diagtecla: bancada das TECLAS CONFIGURAVEIS. Ela mede uma afirmacao ("a tecla faz
 		// exatamente o que o botao faz") comparando os BYTES que chegaram no servidor pelos dois
@@ -1357,6 +1582,24 @@ public partial class Boot : Node2D
 			_ = int.TryParse(Arg(OS.GetCmdlineArgs(), "--mergulhofamilia"), out int familiaDoMergulho);
 			AddChild(new RoboDoMergulho { Name = "RoboDoMergulho", SoAFamilia = familiaDoMergulho });
 		}
+
+		// --diagcachezona: O CACHE DE ZONAS NAO ACUMULA PLANETA. Entra e sai da MESMA zona gerada varias
+		// vezes -- a mente pelos dois pacotes da telinha, e um mundo sorteado pousando e decolando -- e
+		// conta, a cada volta, quantos nodes de zona sao filhos do `World` e quantos deles ninguem mais
+		// guarda (`World.CensoDeZonasDeTeste`). Fecha com o defeito de antes injetado de volta
+		// (`World.ZonaRepetidaSemSoltarDeTeste`): um planeta orfao a mais por volta. Precisa de `--host`
+		// (quem poe o corpo na orbita de um mundo sorteado e a autoridade) e NAO precisa de janela: o que
+		// ela conta e node e memoria, nao pixel. Ver RoboDoCacheDeZona.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcachezona") >= 0)
+			AddChild(new RoboDoCacheDeZona { Name = "RoboDoCacheDeZona" });
+
+		// --diagreflexo: A FICHA DO CORPO ERGUIDO. O reflexo da mente e a copia do Splitform nascem pelo
+		// pacote do jogador e a bancada cobra a aparencia deles do fio ate o pixel -- com o segundo
+		// escritor do `PeerLook` (o defeito de 2026-10-08) injetado de volta como contra-exemplo. Precisa
+		// de `--host` (quem diz qual corpo foi erguido e a autoridade) e de JANELA pro olho do pixel.
+		// Ver RoboDoReflexo.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagreflexo") >= 0)
+			AddChild(new RoboDoReflexo { Name = "RoboDoReflexo" });
 
 		// --diagvolta: bancada da VOLTA DO PLANETA. Anda ate a beirada e confere que sai pela outra.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvolta") >= 0)

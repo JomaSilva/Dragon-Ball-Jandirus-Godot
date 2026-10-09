@@ -27,6 +27,17 @@ namespace Jandirus.Client;
 /// andando depois -- e o rastro de posicao aparece nas tres.
 /// =====================================================================================================
 ///
+/// ============================ E DUAS CENAS DO DESENHO QUE ANDA ATRAS (2026-10-08) ============================
+/// O node do tiro e desenhado um tempo atras do servidor, e duas coisas que o servidor ANUNCIA chegavam antes
+/// de o desenho chegar la (ver `ProjetilDesenhado.AnuncioSemEsperaDeTeste`):
+///
+///   E. a marca no chao nasce debaixo da cabeca que se VE, e nao a frente da ponta do raio;
+///   F. a bola e desenhada ATE o ponto em que estoura, em vez de sumir quase um tile antes.
+///
+/// Cada uma voa DUAS vezes -- a segunda com o defeito injetado, a mesma regua reprovando -- e as fotos dos
+/// dois voos saem lado a lado.
+/// =============================================================================================================
+///
 /// ============================ O RASTRO DE POSICAO E DESENHADO, E E LIDO DO DESENHO ============================
 /// O ponto que ele marca nao e o `Pos` do servidor: e o <see cref="World.PosicaoDesenhadaDe"/> -- a
 /// posicao em que o corpo FOI DESENHADO naquele quadro, depois da interpolacao do cliente. E de
@@ -88,6 +99,24 @@ public partial class RoboDeFotoDoRaio : Node
 
 	private void Nota(string oque) => _passos.Add("  --     " + oque);
 
+	public override void _Ready()
+	{
+		// A REGUA DAS CENAS E E F LE NO FIM DO QUADRO -- ver `FimDoQuadro`.
+		AddChild(new FimDoQuadro { Name = "FimDoQuadro", Agora = NoFimDoQuadro });
+		if (C is { } cli) cli.Golpe += AoGolpeNoAlvoDaBola;
+	}
+
+	/// <summary>
+	/// O DEFEITO INJETADO NAO SOBREVIVE A BANCADA: e um campo ESTATICO de producao, e se este node sair da
+	/// arvore no meio de um voo injetado (janela fechada na mao, excecao num passo) o jogo seguinte neste
+	/// processo plantaria todo sulco adiantado.
+	/// </summary>
+	public override void _ExitTree()
+	{
+		ProjetilDesenhado.AnuncioSemEsperaDeTeste = false;
+		if (C is { } cli) cli.Golpe -= AoGolpeNoAlvoDaBola;
+	}
+
 	public override void _Process(double delta)
 	{
 		if (_acabou) return;
@@ -112,6 +141,10 @@ public partial class RoboDeFotoDoRaio : Node
 			case 7: CenaC_TresQuadros(mundo, srv, cli); break;
 			case 8: CenaD_Plantar(mundo, srv, cli); break;
 			case 9: CenaD_Fotografar(mundo, srv, cli); break;
+			case 10: CenaE_Plantar(mundo, srv, cli); break;
+			case 11: CenaE_Voar(srv, cli); break;
+			case 12: CenaF_Plantar(mundo, srv, cli); break;
+			case 13: CenaF_Voar(srv); break;
 			default: Fechar(); break;
 		}
 	}
@@ -375,6 +408,15 @@ public partial class RoboDeFotoDoRaio : Node
 	// =====================================================================
 	// 6) CENA C: o corpo levado pelo feixe
 	// =====================================================================
+	/// <summary>
+	/// O DANO FINAL DE CADA TIRO QUE PRECISA SER GOLPE, em vida de membro: pouco acima do corte dos fracos
+	/// (`DanoDeKi.CorteDoFraco`, 10). Abaixo dele o tiro encosta sem ferir -- o raio planta na frente do corpo e
+	/// nao leva ninguem, a bola estoura sem relato de golpe (`GameServer.EstourarSemFerir`) --, e as cenas C e F
+	/// medem justamente o arrasto e o relato. As outras medem geometria e continuam atirando de cocegas.
+	/// Um golpe destes nao marca o sprite: a ferida so aparece com 15% do membro, que tem 100 de vida.
+	/// </summary>
+	private const double DanoQueFere = 12;
+
 	private void CenaC_Plantar(World mundo, Jandirus.Server.GameServer srv, GameClient cli)
 	{
 		if (_t < 0.5) return;   // deixa o raio da cena B sumir do snapshot
@@ -391,7 +433,7 @@ public partial class RoboDeFotoDoRaio : Node
 		Conferir(_vitima != 0, "o corpo da cena C entrou no mundo");
 		if (_vitima == 0) { Fechar(); return; }
 
-		int id = srv.RaioDeFoto(cli.LocalId, new Vec2(rumo.X, rumo.Y), alcanceTiles: 20, baseDano: 0.002);
+		int id = srv.RaioDeFotoQueFere(cli.LocalId, _vitima, new Vec2(rumo.X, rumo.Y), alcanceTiles: 20, danoFinal: DanoQueFere);
 		Conferir(id != 0, "o raio da cena C saiu pelo `Disparar` de producao");
 		Virar(7);
 	}
@@ -411,7 +453,7 @@ public partial class RoboDeFotoDoRaio : Node
 			{
 				if (!vivo || _t > 10)
 				{
-					Conferir(false, $"o feixe da cena C PEGOU o corpo (arrastando={arrastando}, vivo={vivo})");
+					Conferir(false, $"o feixe da cena C PEGOU o corpo (arrastando={arrastando}, vivo={vivo}; o raio {srv.FimDoRaioDaFoto()})");
 					Fechar();
 				}
 				return;
@@ -548,7 +590,345 @@ public partial class RoboDeFotoDoRaio : Node
 				 "...e a parte de LA esta desenhada adiante, seguindo viagem");
 
 		srv.LimparAFoto();
+		Virar(10);
+	}
+
+	// =====================================================================
+	// 10) CENA E: a marca no chao nasce debaixo da cabeca QUE SE VE (dono, 2026-10-08)
+	// =====================================================================
+	/// <summary>
+	/// O SEGUNDO VOO DE CADA CENA NOVA E O DO DEFEITO INJETADO (`ProjetilDesenhado.AnuncioSemEsperaDeTeste`):
+	/// o mesmo corredor, o mesmo tiro, a mesma regua -- e ela tem que reprovar.
+	/// </summary>
+	private bool _comDefeito;
+
+	/// <summary>Quantos tiles o raio da cena E estica: o corredor seco em que as cenas C e D ja voam.</summary>
+	private const double TilesDoSulco = 10;
+
+	/// <summary>Com menos marcas medidas que isto a cena E nao afirma nada.</summary>
+	private const int MarcasQueBastam = 4;
+
+	/// <summary>Quanto um anuncio pode aparecer adiantado, em px: o meio pixel da regra e outro de arredondamento.</summary>
+	private const float FolgaDoAnuncio = 1f;
+
+	private int _raioDaCenaE, _fotosDoSulco;
+	private double _voouAte = -1;
+	private readonly HashSet<ulong> _marcasVistas = [];
+	private int _marcasMedidas;
+
+	/// <summary>Quanto a marca mais adiantada nasceu ADIANTE da cabeca desenhada, em px pelo eixo do tiro. Negativo e atras.</summary>
+	private float _maiorAvanco;
+
+	/// <summary>A marca cuja foto se quer (o quadro em que ela nasceu), e a pior ja fotografada deste voo.</summary>
+	private (float Avanco, Vector2 Cabeca)? _fotoDaMarca;
+	private (Image Foto, Vector2 Centro, float Avanco)? _piorMarca;
+
+	/// <summary>
+	/// O desenho do raio anda atras do servidor, e o sulco e carimbado debaixo da cabeca do SERVIDOR: plantada
+	/// na chegada do pacote, a terra revirada aparecia A FRENTE da ponta enquanto o raio esticava (a foto do
+	/// dono). Agora a marca espera a cabeca desenhada -- ver `ProjetilDesenhado.AnuncioSemEsperaDeTeste`.
+	///
+	/// ============================ A REGUA E DO QUADRO EM QUE A MARCA NASCE ============================
+	/// Pra cada marca nova no corredor do raio, mede-se no MESMO quadro (ver <see cref="FimDoQuadro"/>) quanto
+	/// ela esta adiante da cabeca desenhada, pelo eixo do tiro. O servidor a carimbou com a cabeca dele EM
+	/// CIMA dela; o certo na tela e zero ou menos, e qualquer coisa acima disso e chao revirado onde o raio
+	/// ainda nao chegou.
+	///
+	/// O RAIO E O DAS OUTRAS CENAS (`RaioDeFoto`, pelo `Disparar` de producao) e o corredor e o SECO, o oposto
+	/// do lago: e o que as cenas C e D ja provaram que tem chao livre.
+	/// ================================================================================================
+	/// </summary>
+	private void CenaE_Plantar(World mundo, Jandirus.Server.GameServer srv, GameClient cli)
+	{
+		if (_t < 0.6) return;   // o feixe de antes some do snapshot, e a fila de marcas dele esvazia
+		if (mundo.PosicaoLocal is null) { Nota("cena E: sem corpo local"); Fechar(); return; }
+
+		ProjetilDesenhado.AnuncioSemEsperaDeTeste = _comDefeito;
+		dec_limpar();
+		_rastro?.Limpar();   // o rastro de posicao da cena C nao e desta foto
+
+		// OS BONECOS DAS CENAS C E D CONTINUAM CONGELADOS NA TELA: o `LimparAFoto` os tira das listas do servidor
+		// sem avisar a zona, e o cliente nunca os recolhe. O da cena D fica a 4 tiles da mao, no MEIO deste
+		// corredor -- nas fotos das cenas E e F ele aparecia parado no caminho do tiro, e a bola parecia sumir em
+		// cima dele. Eles saem da foto por aqui, do lado do cliente: no servidor ja nao existem.
+		foreach (int id in (int[])[_vitima, _pisou])
+			if (mundo.CorpoDeTeste(id) is { } fantasma) fantasma.Visible = false;
+
+		_marcasVistas.Clear();
+		_marcasMedidas = 0;
+		_maiorAvanco = float.NegativeInfinity;
+		_fotoDaMarca = null;
+		_piorMarca = null;
+		_voouAte = -1;
+
+		Vector2 rumo = -_rumoDaAgua;
+		_raioDaCenaE = srv.RaioDeFoto(cli.LocalId, new Vec2(rumo.X, rumo.Y), alcanceTiles: TilesDoSulco, baseDano: 0.001);
+		Conferir(_raioDaCenaE != 0,
+			$"o raio da cena E saiu pelo `Disparar` de producao{(_comDefeito ? " (segundo voo: com o defeito injetado)" : "")}");
+		if (_raioDaCenaE == 0) { Fechar(); return; }
+		Virar(11);
+	}
+
+	/// <summary>
+	/// A REGUA DA CENA E, no fim de cada quadro do voo: toda marca que acabou de nascer, contra a cabeca
+	/// desenhada NESTE quadro.
+	/// </summary>
+	private void MedirOSulco(World mundo)
+	{
+		// A FOTO PEDIDA NO QUADRO PASSADO sai agora: `GetImage` devolve o ULTIMO quadro renderizado, e o
+		// ultimo e justamente aquele em que a marca nasceu. So a PIOR de cada voo fica.
+		if (_fotoDaMarca is { } pedida)
+		{
+			_fotoDaMarca = null;
+			if ((_piorMarca is not { } pior || pedida.Avanco > pior.Avanco) && Tela() is { } foto)
+				_piorMarca = (foto, NaTela(pedida.Cabeca), pedida.Avanco);
+		}
+
+		if (Decalques.Instancia is not { } dec) return;
+
+		Vector2? cabeca = null;
+		foreach ((int id, Jandirus.Core.Combat.ArteDeKi _, Jandirus.Core.Combat.TipoDeProjetil _, Vector2 onde, float _) in mundo.TirosDesenhados())
+			if (id == _raioDaCenaE) { cabeca = onde; break; }
+
+		Vector2 rumo = -_rumoDaAgua;
+		for (int i = 0; i < dec.GetChildCount(); i++)
+		{
+			if (dec.GetChild(i) is not AnimatedSprite2D a
+				|| !a.Animation.ToString().StartsWith("crater", StringComparison.Ordinal)
+				|| !_marcasVistas.Add(a.GetInstanceId())) continue;
+
+			// SEM RAIO NA TELA NAO HA CABECA COM QUE COMPARAR (as ultimas marcas, soltas quando ele e recolhido).
+			// E a marca fora do corredor e de outro: o berco e a Terra de verdade, e um arremesso alheio risca o chao.
+			if (cabeca is not { } c) continue;
+			Vector2 daCabeca = a.Position - c;
+			if (Mathf.Abs(daCabeca.Cross(rumo)) > ZoneCollision.TileSize / 2f) continue;
+
+			float avanco = daCabeca.Dot(rumo);
+			_marcasMedidas++;
+			_maiorAvanco = Mathf.Max(_maiorAvanco, avanco);
+
+			// AS DUAS PRIMEIRAS NAO SE FOTOGRAFAM: nascem junto da mao, com o raio ainda sem tronco -- uma bola e
+			// outra bola, e nao a ponta de um feixe esticando. E fora da tela nao ha foto.
+			if (_marcasMedidas >= 3 && CabeNaFoto(c) && (_fotoDaMarca is not { } f || avanco > f.Avanco))
+				_fotoDaMarca = (avanco, c);
+		}
+	}
+
+	private void CenaE_Voar(Jandirus.Server.GameServer srv, GameClient cli)
+	{
+		(bool vivo, _, _, double andou) = srv.RaioDaFoto(cli.LocalId);
+
+		// O VOO ACABA quando a cabeca chega ao alcance (ou morre antes, num muro). E a cena espera mais um pouco:
+		// a ultima marca ainda esta na fila ate a cabeca DESENHADA chegar nela, e a foto pedida sai um quadro depois.
+		if (vivo && andou < TilesDoSulco - 0.25 && _t < 6) return;
+		if (_voouAte < 0) _voouAte = _t;
+		if (_t - _voouAte < 0.4 || _fotoDaMarca != null) return;
+
+		bool defeito = _comDefeito;
+		string medida = $"{_marcasMedidas} marcas; a mais adiantada nasceu a {_maiorAvanco:0.0} px da cabeca desenhada, e negativo e ATRAS dela";
+		try
+		{
+			if (defeito)
+				Conferir(_marcasMedidas >= MarcasQueBastam && _maiorAvanco > FolgaDoAnuncio,
+					$"(defeito injetado: o sulco plantado na CHEGADA do pacote) a mesma regua REPROVA ({medida})");
+			else
+				Conferir(_marcasMedidas >= MarcasQueBastam && _maiorAvanco <= FolgaDoAnuncio,
+					$"CENA E: nenhuma marca do raio nasce A FRENTE da cabeca que se ve ({medida})");
+		}
+		finally { ProjetilDesenhado.AnuncioSemEsperaDeTeste = false; }
+
+		if (_piorMarca is { } pior)
+		{
+			Guardar(pior.Foto, defeito ? "user://raio-5b-sulco-com-defeito.png" : "user://raio-5a-sulco.png",
+					$"CENA E{(defeito ? " (DEFEITO INJETADO)" : "")}: o quadro em que a marca mais adiantada nasceu ({pior.Avanco:0.0} px da cabeca)",
+					pior.Centro);
+			_fotosDoSulco++;
+		}
+
+		srv.LimparAFoto();
+		if (!defeito) { _comDefeito = true; Virar(10); return; }
+
+		_comDefeito = false;
+		// A TIRA: a esquerda a regra, a direita o defeito -- os dois em volta da cabeca do raio.
+		if (_fotosDoSulco == 2) Montar("user://raio-5-sulco-dois.png", desde: _quadros.Count - 2, lado: 384, escala: 2);
+		Virar(12);
+	}
+
+	// =====================================================================
+	// 12) CENA F: a bola chega ao ponto em que estoura (dono, 2026-10-08)
+	// =====================================================================
+	private int _alvoDaBola, _bolaDaCenaF, _fotosDaBola;
+	private readonly HashSet<ulong> _estourosVistos = [];
+
+	/// <summary>Onde a bola foi desenhada pela ultima vez, e a que distancia disso o estouro nasceu (nulo = ainda nao nasceu).</summary>
+	private Vector2? _ultimaBola;
+	private float? _faltouPraBola;
+	private Vector2 _ondeEstourou;
+
+	/// <summary>Os dois quadros seguidos da cena: o ultimo com a bola e o primeiro com o estouro.</summary>
+	private Image? _quadroDaBola, _quadroDoEstouro;
+	private bool _fotoDoEstouroPendente;
+
+	/// <summary>
+	/// Em que quadro o relato do golpe chegou e em que quadro o estouro nasceu -- a nota do fim da cena. O
+	/// tempo e o de JOGO no COMECO de cada um dos dois quadros (a soma dos `delta`), e nao o relogio de
+	/// parede: o primeiro estouro do processo engasga o quadro em que nasce (material, particulas), e esse
+	/// engasgo entraria na conta como se fosse espera.
+	/// </summary>
+	private long _quadroDoGolpe = -1, _quadroDoEstouroNascido = -1;
+	private double _tempoDeJogo, _tempoDoGolpe, _tempoDoEstouroNascido;
+
+	/// <summary>
+	/// A outra metade do mesmo defeito: o pacote de morte traz o ponto de verdade em que a bola acabou, e o
+	/// node ainda estava desenhado quase um tile antes dele -- a bola sumia no ar e o estouro nascia adiante.
+	/// Agora ela voa o ultimo trecho e so entao e recolhida (`ProjetilDesenhado.VoarAteOFim`).
+	///
+	/// A REGUA: a distancia entre a ULTIMA posicao em que a bola foi desenhada e o ponto em que o node do
+	/// estouro nasceu, as duas lidas no fim do quadro (ver <see cref="FimDoQuadro"/>). Zero e a bola chegando.
+	/// As duas fotos sao esses dois quadros seguidos.
+	///
+	/// A BOLA E A COMUM (`BolaDeFoto`, 16 tiles por segundo) e o alvo e um corpo parado no corredor seco. Ele
+	/// fica DENTRO da tela: o zoom mostra 6,6 tiles pros lados e 3,7 pra cima e pra baixo.
+	/// </summary>
+	private void CenaF_Plantar(World mundo, Jandirus.Server.GameServer srv, GameClient cli)
+	{
+		if (_t < 0.6) return;   // o que a cena de antes deixou no ar some do snapshot
+		if (mundo.PosicaoLocal is null) { Nota("cena F: sem corpo local"); Fechar(); return; }
+
+		Vector2 rumo = -_rumoDaAgua;
+		if (_alvoDaBola == 0)
+		{
+			int tiles = Mathf.Abs(rumo.X) > 0.5f ? 5 : 3;
+			_alvoDaBola = srv.ForjarCorpoDeFoto(
+				cli.LocalId, new Vec2(rumo.X * tiles * ZoneCollision.TileSize, rumo.Y * tiles * ZoneCollision.TileSize),
+				"Foto: o alvo da bola", 200_000, comEscada: false);
+			Conferir(_alvoDaBola != 0, $"o corpo da cena F entrou no mundo, a {tiles} tiles da mao");
+			if (_alvoDaBola == 0) { Fechar(); return; }
+			_t = 0;   // e mais uma espera, pro sprite dele nascer na tela
+			return;
+		}
+		if (mundo.CorpoDeTeste(_alvoDaBola) == null)
+		{
+			if (_t > 5) { Conferir(false, "o alvo da cena F tem SPRITE na tela"); Fechar(); }
+			return;
+		}
+
+		ProjetilDesenhado.AnuncioSemEsperaDeTeste = _comDefeito;
+		dec_limpar();   // a fileira de sulcos da cena E sai da foto: a bola voa sobre grama limpa
+		_ultimaBola = null;
+		_faltouPraBola = null;
+		_quadroDaBola = _quadroDoEstouro = null;
+		_fotoDoEstouroPendente = false;
+		_quadroDoGolpe = _quadroDoEstouroNascido = -1;
+		// OS ESTOUROS QUE JA ESTAVAM NA TELA nao sao desta bola.
+		foreach ((ulong no, Vector2 _) in mundo.EstourosDeKiDesenhados()) _estourosVistos.Add(no);
+
+		_bolaDaCenaF = srv.BolaDeFoto(cli.LocalId, new Vec2(rumo.X, rumo.Y), alcanceTiles: 12, baseDano: 0.002);
+		Conferir(_bolaDaCenaF != 0,
+			$"a bola da cena F saiu pelo `Disparar` de producao{(_comDefeito ? " (segundo voo: com o defeito injetado)" : "")}");
+		if (_bolaDaCenaF == 0) { Fechar(); return; }
+		Virar(13);
+	}
+
+	/// <summary>
+	/// A REGUA DA CENA F, no fim de cada quadro: onde a bola esta desenhada e, no quadro em que o estouro
+	/// nasce, a que distancia ele nasceu do ultimo lugar em que ela foi vista.
+	/// </summary>
+	private void MedirABola(World mundo)
+	{
+		// O QUADRO DO ESTOURO sai um quadro depois de ele nascer, pelo motivo de sempre (`GetImage` e o anterior).
+		if (_fotoDoEstouroPendente)
+		{
+			_fotoDoEstouroPendente = false;
+			_quadroDoEstouro = Tela();
+		}
+		if (_faltouPraBola != null) return;
+
+		foreach ((int id, Jandirus.Core.Combat.ArteDeKi _, Jandirus.Core.Combat.TipoDeProjetil _, Vector2 onde, float _) in mundo.TirosDesenhados())
+			if (id == _bolaDaCenaF) { _ultimaBola = onde; break; }
+
+		foreach ((ulong no, Vector2 onde) in mundo.EstourosDeKiDesenhados())
+		{
+			if (!_estourosVistos.Add(no)) continue;
+
+			// SO O ESTOURO EM CIMA DO ALVO DESTA CENA: o berco e a Terra de verdade, e tiro alheio tambem estoura.
+			if (_ultimaBola is not { } bola || mundo.PosicaoDesenhadaDe(_alvoDaBola) is not { } alvo
+				|| onde.DistanceTo(alvo) > 2 * ZoneCollision.TileSize) continue;
+
+			_faltouPraBola = bola.DistanceTo(onde);
+			_ondeEstourou = onde;
+			_quadroDoEstouroNascido = (long)Engine.GetProcessFrames();
+			_tempoDoEstouroNascido = _tempoDeJogo - GetProcessDeltaTime();   // o comeco DESTE quadro
+			_quadroDaBola = Tela();   // o ULTIMO quadro renderizado: o ultimo em que a bola foi desenhada
+			_fotoDoEstouroPendente = true;
+			break;
+		}
+	}
+
+	/// <summary>O RELATO DO GOLPE DA BOLA chegou neste quadro -- so pra nota do fim da cena F (o clarao em quem apanha sai dele).</summary>
+	private void AoGolpeNoAlvoDaBola(Protocol.HitEvent h)
+	{
+		if (_passo != 13 || !h.TemPonto || h.Alvo != _alvoDaBola || _quadroDoGolpe >= 0) return;
+		_quadroDoGolpe = (long)Engine.GetProcessFrames();
+		_tempoDoGolpe = _tempoDeJogo;   // a rede e lida antes do fim do quadro: a soma ainda e a do comeco deste
+	}
+
+	private void CenaF_Voar(Jandirus.Server.GameServer srv)
+	{
+		// A REGUA FECHA SOZINHA (o estouro nasceu e as duas fotos sairam) -- ou o prazo vence e ela reprova.
+		if ((_faltouPraBola == null || _fotoDoEstouroPendente) && _t < 5) return;
+
+		bool defeito = _comDefeito;
+		string medida = _faltouPraBola is { } falta
+			? $"a bola foi desenhada pela ultima vez a {falta:0.0} px de onde o estouro nasceu"
+			: "nenhum estouro nasceu em cima do alvo";
+		try
+		{
+			if (defeito)
+				Conferir(_faltouPraBola is > FolgaDoAnuncio,
+					$"(defeito injetado: a bola recolhida na CHEGADA do pacote de morte) a mesma regua REPROVA ({medida})");
+			else
+				Conferir(_faltouPraBola is <= FolgaDoAnuncio, $"CENA F: a bola CHEGA ao ponto em que estoura ({medida})");
+		}
+		finally { ProjetilDesenhado.AnuncioSemEsperaDeTeste = false; }
+
+		// O QUE O CONSERTO NAO MEXEU, dito em numero: o relato do golpe (o clarao e a faisca em quem apanha) continua
+		// saindo na chegada do pacote. Com a bola voando o ultimo trecho, ele passa a vir ANTES do estouro.
+		if (_quadroDoGolpe >= 0 && _quadroDoEstouroNascido >= 0)
+			Nota($"cena F{(defeito ? " (defeito injetado)" : "")}: o relato do golpe chegou "
+				 + $"{_quadroDoEstouroNascido - _quadroDoGolpe} quadro(s) ({(_tempoDoEstouroNascido - _tempoDoGolpe) * 1000:0} ms de jogo) "
+				 + "antes de o estouro nascer");
+
+		if (_quadroDaBola != null && _quadroDoEstouro != null)
+		{
+			string qual = defeito ? " (DEFEITO INJETADO)" : "";
+			Vector2 centro = NaTela(_ondeEstourou);
+			Guardar(_quadroDaBola, defeito ? "user://raio-6c-bola-com-defeito.png" : "user://raio-6a-bola.png",
+					$"CENA F{qual}: o ULTIMO quadro com a bola", centro);
+			Guardar(_quadroDoEstouro, defeito ? "user://raio-6d-estouro-com-defeito.png" : "user://raio-6b-estouro.png",
+					$"CENA F{qual}: o quadro seguinte, com o estouro", centro);
+			_fotosDaBola += 2;
+		}
+
+		if (!defeito) { _comDefeito = true; Virar(12); return; }
+
+		_comDefeito = false;
+		// A TIRA: bola e estouro com a regra, bola e estouro com o defeito -- os quatro em volta do ponto do estouro.
+		if (_fotosDaBola == 4) Montar("user://raio-6-bola-quatro.png", desde: _quadros.Count - 4, lado: 320, escala: 2);
+		srv.LimparAFoto();
 		Fechar();
+	}
+
+	/// <summary>O que a regua do fim do quadro mede em cada passo. Ver <see cref="FimDoQuadro"/>.</summary>
+	private void NoFimDoQuadro()
+	{
+		_tempoDeJogo += GetProcessDeltaTime();
+		if (_acabou || World.Instancia is not { } mundo) return;
+		switch (_passo)
+		{
+			case 11: MedirOSulco(mundo); break;
+			case 13: MedirABola(mundo); break;
+		}
 	}
 
 	// =====================================================================
@@ -647,23 +1027,40 @@ public partial class RoboDeFotoDoRaio : Node
 
 	private void Fotografar(string destino, string rotulo, Vector2? centro = null)
 	{
-		Image? img = GetViewport()?.GetTexture()?.GetImage();
-		if (img == null || img.IsEmpty()) { Nota($"{rotulo}: sem foto (headless nao renderiza)"); return; }
+		if (Tela() is not { } img) { Nota($"{rotulo}: sem foto (headless nao renderiza)"); return; }
+		Guardar(img, destino, rotulo, centro ?? new Vector2(img.GetWidth() / 2f, img.GetHeight() / 2f));
+	}
+
+	/// <summary>O ULTIMO QUADRO RENDERIZADO, ou nulo sem janela. E o quadro ANTERIOR ao que esta sendo processado.</summary>
+	private Image? Tela() => GetViewport()?.GetTexture()?.GetImage() is { } img && !img.IsEmpty() ? img : null;
+
+	/// <summary>Grava a foto e a guarda pras tiras (<see cref="Montar"/>), com o ponto da tela em que a cena estava.</summary>
+	private void Guardar(Image img, string destino, string rotulo, Vector2 centro)
+	{
 		try
 		{
 			string caminho = ProjectSettings.GlobalizePath(destino);
 			img.SavePng(caminho);
 			_passos.Add($"  ok     {rotulo}: {caminho}");
-			_quadros.Add((destino, img, centro ?? new Vector2(img.GetWidth() / 2f, img.GetHeight() / 2f)));
+			_quadros.Add((destino, img, centro));
 		}
 		catch (Exception e) { Nota($"{rotulo}: sem foto: {e.Message}"); }
 	}
 
 	/// <summary>ONDE, NA TELA, ESTE CORPO ESTA -- a posicao do mundo passada pela camera.</summary>
 	private Vector2 NaTela(World mundo, int id)
+		=> mundo.PosicaoDesenhadaDe(id) is { } p ? NaTela(p) : Vector2.Zero;
+
+	/// <summary>Onde, na tela, este ponto do mundo esta.</summary>
+	private Vector2 NaTela(Vector2 ponto) => (GetViewport()?.CanvasTransform ?? Transform2D.Identity) * ponto;
+
+	/// <summary>Este ponto do mundo aparece na foto, com folga pra um recorte em volta dele?</summary>
+	private bool CabeNaFoto(Vector2 ponto)
 	{
-		if (mundo.PosicaoDesenhadaDe(id) is not { } p) return Vector2.Zero;
-		return (GetViewport()?.CanvasTransform ?? Transform2D.Identity) * p;
+		const float Margem = 96f;
+		Vector2 naTela = NaTela(ponto);
+		Vector2 tela = GetViewport()?.GetVisibleRect().Size ?? Vector2.Zero;
+		return naTela.X > Margem && naTela.Y > Margem && naTela.X < tela.X - Margem && naTela.Y < tela.Y - Margem;
 	}
 
 	/// <summary>
@@ -731,6 +1128,27 @@ public partial class RoboDeFotoDoRaio : Node
 			: $"[raio] ===== {_falhas.Count} FALHA(S) =====\n[raio]   " + string.Join("\n[raio]   ", _falhas));
 		GetTree().Quit();
 	}
+}
+
+/// <summary>
+/// O FIM DO QUADRO: um node que roda DEPOIS de todos os outros (`ProcessPriority` alto) e avisa.
+///
+/// ============================ POR QUE A REGUA NAO MORA NO `_Process` DO ROBO ============================
+/// As cenas E e F comparam duas coisas no quadro em que uma delas NASCE -- a marca com a cabeca do raio,
+/// o estouro com a ultima posicao da bola. O robo e filho do `Boot` e roda ANTES do `World` e dos tiros:
+/// no quadro em que um pacote chega (o `GameClient` e autoload, le a rede primeiro) ele veria o efeito
+/// ja plantado e a cabeca ainda na posicao do quadro ANTERIOR -- um passo de `Lerp` de erro a favor do
+/// defeito, e um passo desses (8 a 13 px) e do tamanho do que se mede. Lido no fim do quadro, o par e
+/// o que a tela vai mostrar.
+/// =======================================================================================================
+/// </summary>
+public partial class FimDoQuadro : Node
+{
+	public Action? Agora;
+
+	public FimDoQuadro() => ProcessPriority = 1000;
+
+	public override void _Process(double delta) => Agora?.Invoke();
 }
 
 /// <summary>

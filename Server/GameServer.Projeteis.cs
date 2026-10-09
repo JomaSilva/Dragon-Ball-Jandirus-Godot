@@ -482,7 +482,9 @@ public sealed partial class GameServer
 	private Projetil Disparar(ServerPlayer pl, ReceitaDeProjetil r,
 							  Vec2? rumoDado = null, Vec2? deOnde = null, string verbo = "")
 	{
-		Vec2 rumo = rumoDado ?? MeleeArea.Frente(pl.Facing);
+		// COM ALGUEM MARCADO, O TIRO SAI NELE (dono, 2026-10-09) -- e o corpo vira junto. Ver `RumoDoTiro`.
+		// Quem ja traz o rumo pronto (a rajada sorteada, a mina que nasce em volta do alvo) nao e mexido.
+		Vec2 rumo = rumoDado ?? RumoDoTiro(pl);
 
 		// ============================ O TIRO NASCE A FRENTE DO CORPO, NUNCA EM CIMA DELE ============================
 		// `A.loc = src.loc` e, no mesmo tique, `step(A, A.dir)` (`beams.dm:177-185`). Ver
@@ -525,6 +527,10 @@ public sealed partial class GameServer
 			Pos = berco,
 			Cauda = berco,
 			Rumo = rumo,
+			RumoDaSaida = rumo,
+			// O RAIO DE RECEITA TELEGUIADA ja nasce com quem perseguir (a bola `Guided` recebe o alvo de quem a
+			// atira, logo depois deste metodo). Ninguem marcado = zero = voa reto.
+			Alvo = r.Teleguiado ? (AlvoDeTeleguiado(pl)?.Id ?? 0) : 0,
 			Distancia = r.AlcanceTiles,
 			MaxDistancia = r.AlcanceTiles,
 			RangeMod = r.RangeMod,
@@ -538,6 +544,12 @@ public sealed partial class GameServer
 			Letal = pl.Combate?.Letal ?? false,
 			Deflectivel = r.Deflectivel,
 			Piercer = r.Piercer,
+			// O RAIO QUE ESTOURA COMO BOLA (campo da receita), e o que cresce com o poder de quem o segura -- todo
+			// raio, menos o do verbo que o dono excluiu (dono, 2026-10-08; ver `Projetil.CrescerComOPoder`). A
+			// regua do crescimento comeca no poder deste instante.
+			EstouraNoImpacto = r.EstouraNoImpacto,
+			CresceComOPoder = r.Tipo == TipoDeProjetil.Beam && verbo != Projetil.VerboQueNaoCresce,
+			PoderDeReferencia = pl.Ficha.expressedBP,
 			Fisico = r.Fisico,
 			Paralisia = r.Paralisia,
 			Empurra = r.Empurra,
@@ -564,6 +576,12 @@ public sealed partial class GameServer
 			SegundosPorTile = r.Tipo == TipoDeProjetil.Beam
 				? Projetil.AtrasoDeRaio(r.Velocidade)
 				: Projetil.AtrasoDeBola(r.Velocidade),
+			// QUANTO MAIS RAPIDO QUE NO DM (dono, 2026-10-08) -- as distancias de aviso do original andam com ela.
+			// A tecnica posta fora da regra do tipo declara a dela (`ReceitaDeProjetil.PressaSobreODm`).
+			Pressa = r.PressaSobreODm > 0 ? r.PressaSobreODm
+				: r.Tipo == TipoDeProjetil.Beam
+					? Projetil.PressaDeRaio
+					: Projetil.PressaDeBolaPorLag(Projetil.LagDeBolaNoDm(r.Velocidade)),
 		};
 
 		// O TETO DE NOVO, AGORA COMO ULTIMA PORTA. `PodeAtirar` ja recusou, mas quem chama `Disparar`
@@ -581,6 +599,113 @@ public sealed partial class GameServer
 		_projeteisVivos++;
 		AnunciarProjetil(pl.Zone.Hash, Protocol.ProjetilSub.Nasceu, p);
 		return p;
+	}
+
+	// =====================================================================
+	// A MIRA
+	// =====================================================================
+	/// <summary>
+	/// PRA ONDE ESTE CORPO ATIRA AGORA -- e ele VIRA pra la.
+	///
+	/// ============================ COM ALGUEM MARCADO, O TIRO SAI NELE (dono, 2026-10-09) ============================
+	/// *"ao ter um target e vc usar um ataque de ki o seu personagem ai virar pra direcao do seu target e usar o
+	/// ataque de ki na direcao do target"*. A regra e a conta moram no `Core` (<see cref="MiraDeKi"/>, com o que
+	/// diverge do DM); aqui e so a costura: o alvo e o MARCADO do combate (<see cref="Marcado"/> -- o mesmo pro qual
+	/// o soco ja virava o corpo, e que a IA escreve pra quem enfrenta), e o olhar e cravado por
+	/// <see cref="CravarOlhar"/>.
+	///
+	/// E A PORTA UNICA: o `Disparar` pergunta aqui quando ninguem lhe deu rumo, o `Canalizar` pergunta ao comecar a
+	/// carga, e as tecnicas que montam o proprio leque (Buster Shell, as barragens, as balas continuas, a Death
+	/// Ball e a Genkidama ao partir) perguntam no lugar do `MeleeArea.Frente(pl.Facing)` que usavam. Quem NAO
+	/// pergunta e quem sorteia o rumo de proposito (Buster Barrage, Spin Blast) ou nasce parado em volta do alvo.
+	///
+	/// SEM NINGUEM MARCADO nada muda: o tiro sai pra onde o corpo olha, e o olhar continua do teclado.
+	/// ==============================================================================================================
+	/// </summary>
+	private Vec2 RumoDoTiro(ServerPlayer pl)
+	{
+		if (Marcado(pl) is { } alvo && alvo != pl
+			&& MiraDeKi.NoAlvo(pl.Pos, alvo.Pos, pl.Facing, out Vec2 rumo, out Facing olhar))
+		{
+			CravarOlhar(pl, olhar);
+			return rumo;
+		}
+		return MeleeArea.Frente(pl.Facing);
+	}
+
+	/// <summary>
+	/// O SERVIDOR VIRA ESTE CORPO, e por <see cref="MiraDeKi.OlharDoTiroMs"/> o olhar e dele e nao do teclado.
+	///
+	/// ============================ AS TRES TELAS TEM QUE CONTAR A MESMA HISTORIA ============================
+	/// O `Facing` do servidor so viaja pros OUTROS, no snapshot: o corpo local desenha a propria direcao, e manda
+	/// ela de volta a cada pacote de movimento (`pl.Facing = facing`, no fim do `Input`). Virar so aqui dava duas
+	/// mentiras -- quem atirou se via de costas pro proprio tiro, e quem assistia via o atirador virar num snapshot
+	/// e desvirar no seguinte, quando chegava o pacote que ja estava a caminho com o olhar de antes. E o defeito
+	/// que o Zanzoken ja teve, contado em `GameServer.Zanzoken.cs`.
+	///
+	/// Entao sao duas metades: o dono recebe o olhar (`S2C.Olhar`, e o `LocalPlayer` o segura pelo mesmo prazo), e
+	/// ate ele chegar la o `Input` nao deixa o olhar velho passar (`ServerPlayer.OlharCravadoAte`).
+	/// ======================================================================================================
+	/// </summary>
+	private void CravarOlhar(ServerPlayer pl, Facing olhar)
+	{
+		pl.Facing = olhar;
+		pl.OlharCravado = olhar;
+		pl.OlharCravadoAte = NowMs() + MiraDeKi.OlharDoTiroMs;
+		if (pl.Peer == null) return;   // NPC e corpo de bancada: nao ha tela pra avisar
+
+		NetDataWriter w = Protocol.Begin(Protocol.S2C.Olhar);
+		w.Put((byte)olhar);
+		pl.Peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	/// <summary>
+	/// O OLHAR QUE VALE NUM PACOTE DE MOVIMENTO: o que o cliente mandou -- menos enquanto o servidor tem o olhar
+	/// deste corpo cravado (<see cref="CravarOlhar"/>). O pacote pode ter saido do cliente ANTES de ele saber que
+	/// o tiro o virou, e traz o olhar velho: escreve-lo desviraria o corpo um snapshot depois de ele virar.
+	/// </summary>
+	private Facing OlharDoPacote(ServerPlayer pl, Facing doCliente)
+		=> !MiraDeKi.OlharSoltoDeTeste && NowMs() < pl.OlharCravadoAte ? pl.OlharCravado : doCliente;
+
+	/// <summary>
+	/// QUEM UM TIRO TELEGUIADO DESTE CORPO PERSEGUE: o marcado, se estiver vivo e aqui -- a tripla do
+	/// `CustomGuidedFire` (`if(T &amp;&amp; !T.dead &amp;&amp; T.z == z &amp;&amp; T != src)`, `customattacks.dm:533`).
+	/// </summary>
+	private ServerPlayer? AlvoDeTeleguiado(ServerPlayer pl)
+		=> Marcado(pl) is { } a && a != pl && !a.Ficha.dead && a.Zone.Equals(pl.Zone) ? a : null;
+
+	/// <summary>
+	/// O RAIO TELEGUIADO GIRA ATRAS DO ALVO -- reto, em torno da cauda. A regra (quanto, e ate onde) e do
+	/// <see cref="Teleguiado"/>; aqui mora o que e do mundo:
+	///   * A CABECA OCUPADA NAO PROCURA NINGUEM: plantada num corpo (moendo) ou levando alguem, ela e daquele corpo
+	///     ate o ciclo vencer -- girar ali arrancaria a cabeca de quem ela esta empurrando;
+	///   * A MAO ANDA COM O RUMO: a boca do cano e um tile projetado nele (<see cref="BocaDeCano"/>), entao o feixe
+	///     alimentado continua saindo da mao em qualquer angulo;
+	///   * A PAREDE SEGURA O RAIO: se o feixe girado atravessaria cenario, ele nao gira -- senao o tronco varreria
+	///     por dentro de um muro pra alcancar quem se escondeu atras dele (a cabeca so confere parede ANDANDO);
+	///   * O CORPO ACOMPANHA O FEIXE: quem o alimenta vira junto, pela mesma porta do disparo.
+	/// </summary>
+	private void GirarRaioTeleguiado(Projetil p, ServerPlayer mira, ServerPlayer? dono, ZoneCollision? mapa, float andaNoTique)
+	{
+		if (p.Encostado || p.Arrastando != 0) return;
+
+		float comprimento = (p.Pos - p.Cauda).Length;
+		Vec2 novo = Teleguiado.Virar(p.Rumo, mira.Pos - p.Cauda, p.RumoDaSaida,
+									 Teleguiado.GiroDoRaio(andaNoTique, comprimento));
+		if ((novo - p.Rumo).LengthSquared < 1e-10f) return;
+
+		ServerPlayer? mao = p.Canalizando ? dono : null;
+		Vec2 cauda = mao != null ? BocaDeCano.De(mao.Pos, novo) : p.Cauda;
+		Vec2 cabeca = cauda + novo * comprimento;
+		if (!Teleguiado.VarreParedeDeTeste && mapa != null && !Voo.AtravessaCenario(p.Altitude)
+			&& mapa.PathBlocked(cauda, cabeca)) return;
+
+		p.Rumo = novo;
+		p.Cauda = cauda;
+		p.Pos = cabeca;
+
+		if (mao != null && MoveRules.FacingFrom(novo, mao.Facing) is var olhar && olhar != mao.Facing)
+			CravarOlhar(mao, olhar);
 	}
 
 	/// <summary>
@@ -618,6 +743,11 @@ public sealed partial class GameServer
 		if (!PodeAtirar(pl, custo, out string porque)) { Avisar(pl, porque); return; }
 
 		pl.Ficha.Ki -= custo;
+
+		// O CORPO JA VIRA PRO MARCADO AO COMECAR A CARGA (dono, 2026-10-09): quem reune energia encara em quem
+		// vai atirar. O RUMO do raio nao se decide aqui -- so quando a cabeca nasce (`Disparar`, no fim da carga),
+		// com o alvo onde ele estiver naquela hora. O corpo plantado nao gira pelo teclado, entao o olhar fica.
+		RumoDoTiro(pl);
 
 		double carga = r.Instantaneo ? 0 : Projetil.SegundosDeCarga(r.CargaMinima, pl.Ficha);
 
@@ -824,7 +954,7 @@ public sealed partial class GameServer
 
 					// O ENCONTRO DE DOIS FEIXES (a disputa) e o cruzamento sao testados DENTRO do avanco,
 					// sub-passo a sub-passo -- ver o passo 6-pre do `AndarProjetil`. Ja moraram aqui, uma
-					// vez por tique: a cabeca anda ate 53 px por tique e a outra tambem, e as duas se
+					// vez por tique: a cabeca anda ate 107 px por tique e a outra tambem, e as duas se
 					// ATRAVESSAVAM entre dois tiques sem o gatilho de 32 px ver nada -- "os beams tao se
 					// sobrepondo as vezes" (dono, 2026-09-07). A poda continua a mesma (so cabeca de raio
 					// canalizada testa disputa), entao o custo de uma zona cheia de bolas nao mudou.
@@ -865,6 +995,16 @@ public sealed partial class GameServer
 	{
 		ServerPlayer? dono = _players.GetValueOrDefault(p.Dono);
 		p.Esperando = false;
+
+		// 0-ante) O RAIO ENGROSSA COM O PODER DE QUEM O SEGURA (dono, 2026-10-08) -- ver `Projetil.CrescerComOPoder`.
+		//         Antes de tudo, porque vale tambem pra cabeca presa numa disputa (o passo 1 sai cedo), e esse e o
+		//         caso do pedido: o salto de poder no meio da colisao. So enquanto uma mao o alimenta -- o raio solto
+		//         leva o tamanho que tinha quando a mao abriu.
+		if (p.Canalizando && dono != null) p.CrescerComOPoder(dono.Ficha.expressedBP, dt);
+
+		// 0-pre) QUEM RASPOU E JA SAIU DE CIMA DO TIRO VOLTA A SER ALVO. Antes de tudo, e pra todo estado do tiro
+		//        (parado, em disputa, esvaziando): o que se confere e onde o CORPO esta, e ele anda fora deste tique.
+		if (p.ForaDaLinha != null) ReverQuemSaiuDaLinha(p, corpos);
 
 		// 0) AINDA SENDO FORMADA (`Projetil.Inerte`, lote G12): nao anda, nao colide, nao gasta alcance.
 		//    So o prazo corre -- e o alvo de treino do Ki Targets, que vive 5 s, e quem precisa disso.
@@ -911,6 +1051,17 @@ public sealed partial class GameServer
 		p.VidaRestante -= dt;
 		if (p.VidaRestante <= 0) { Matar(p, FimDeProjetil.Apagou); return; }
 
+		// ============================ O RAMO ALIMENTADO PARA NO FIM DO ALCANCE, E NAO MORRE NELE ============================
+		// O trecho desviado por um parry (`GameServer.ParryDeKi.cs`) herda o alcance que o raio ainda tinha. Como
+		// qualquer raio, ele se apagava quando a ponta gastava esse alcance -- so que o desvio CONTINUAVA: quem
+		// segurava a guarda continuava desviando um raio do qual nao saia mais nada, e a tela mostrava o feixe
+		// batendo nele e parando ali. Com o raio a 20 tiles por segundo (dono, 2026-10-08) a curva que o dono pediu
+		// durava um segundo. Enquanto o pai o alimenta, o ramo nao acaba: a ponta para onde o alcance termina e o
+		// tronco fica -- e a energia que continua chegando. Solto (o desvio acabou), ele volta a ser um raio comum
+		// e se apaga no proprio tique, com o alcance ja gasto.
+		// ======================================================================================================================
+		bool seguraNoAlcance = false;
+
 		// 3) O RASTRO DO RAIO, e ele tem TRES estados -- ver `Projetil.Esvaziando`.
 		if (p.Tipo == TipoDeProjetil.Beam)
 		{
@@ -926,11 +1077,17 @@ public sealed partial class GameServer
 			//     o olhar (`PodeMexerOCorpo` so recusa o passo), e uma mao que anda em volta do corpo
 			//     enquanto a cabeca segue reta desenharia um feixe TORTO.
 			//
-			// (a') O RAMO DE UM RAIO DESVIADO PELO PARRY: a cauda e o PONTO DO DESVIO, e nao uma mao -- e o pai
+			// (a') O RAMO DE UM RAIO DESVIADO PELO PARRY: a cauda e a DOBRA, e nao uma mao -- e o pai
 			//     que o alimenta, plantado em quem desviou. Enquanto o laco estiver de pe o ramo CRESCE como um
-			//     raio canalizado; desfeito (ver `RamoAlimentado`), ele cai no (c) e voa solto. Ver
+			//     raio canalizado; desfeito (ver `PaiQueAlimenta`), ele cai no (c) e voa solto. Ver
 			//     `GameServer.ParryDeKi.cs`.
-			if (p.AlimentadoPor != 0 && RamoAlimentado(p, lista)) p.Cauda = p.PontoDoDesvio;
+			if (p.AlimentadoPor != 0 && PaiQueAlimenta(p, lista) is { } pai)
+			{
+				PrenderNaDobra(p, pai);
+				seguraNoAlcance = !Feixe.RamoMorreDeAlcanceDeTeste;
+				// O TRECHO DESVIADO E O MESMO RAIO (uma fita so na tela): engrossa junto com o pai, que e quem tem mao.
+				p.EscalaVisual = pai.EscalaVisual;
+			}
 			else if (p.Canalizando && dono != null) p.Cauda = BocaDeCano.De(dono.Pos, p.Rumo);
 
 			// (b) A CABECA PAROU: o rastro e engolido pra dentro do ponto onde ela parou, e SO ENTAO
@@ -955,8 +1112,9 @@ public sealed partial class GameServer
 			}
 		}
 
-		// 4) O RAIO ENCOSTADO MOI a cada ciclo de 0,2 s (o `sleep(2)` do `ShootBeam`) -- `Bump` nao
-		//    apaga a cabeca de um `WaveAttack`.
+		// 4) O RAIO ENCOSTADO QUE FERE MOI a cada ciclo de 0,2 s (`Projetil.SegundosPorCicloDeBeam`, o ciclo do
+		//    `ShootBeam`) -- `Bump` nao apaga a cabeca de um `WaveAttack`. No DM ele bate a cada TIQUE, 12 vezes
+		//    por segundo: divergencia declarada na constante.
 		//
 		//    ============================ E ENTRE UM CICLO E OUTRO ELE ANDA, SE ESTIVER CARREGANDO ============================
 		//    Ate aqui "encostado" queria dizer PARADO: a cabeca ficava fincada no corpo e o relogio de
@@ -978,21 +1136,37 @@ public sealed partial class GameServer
 			{
 				p.AteMoerDeNovo = Projetil.SegundosPorCicloDeBeam;
 				p.Encostado = false;   // volta a testar: se o alvo saiu, a cabeca segue viagem
+				p.BatendoSemFerir = 0; // ...e quem ela so segurava sem ferir e testado de novo, como qualquer um
 			}
-			else if (p.Arrastando == 0) return;   // sem ninguem pra levar, a cabeca fica onde esta
+			else if (p.Arrastando == 0)
+			{
+				// 4-bis) SEM NINGUEM PRA LEVAR, A CABECA FICA ONDE ESTA -- a nao ser que o corpo em que ela bate SEM
+				//        FERIR ande contra ela: ai ela recua e continua na frente dele (`RecuarNaFrenteDeQuemAvanca`,
+				//        o "walk through beams" de `objects.dm:451`). So a cabeca do ramo do corte entra ali.
+				RecuarNaFrenteDeQuemAvanca(p, corpos);
+				return;
+			}
 		}
 
-		// 5) A PERSEGUICAO. `walk_towards` do DM: o teleguiado corrige o rumo TODO tique, sem limite
-		//    de angulo -- e por isso ele nao e um beam com `homeTarget` (aquele so aceita +-45 graus).
+		// 5) A PERSEGUICAO -- SO ATE ONDE A CURVA DEIXA (dono, 2026-10-09; a regra e os numeros sao do `Teleguiado`).
+		//    O `walk_towards` do DM corrigia o rumo TODO passo, sem limite, e o tiro dava a volta em quem perseguia.
+		//    Agora ele vira uns graus por tile que anda e nunca aponta a mais de 45 do rumo em que saiu: quem sai
+		//    muito da frente dele e perdido. Vale pra bola (o tipo `Guided`) e pro raio de receita teleguiada.
 		//
 		//    A ESPERA VEM ANTES: enquanto ela corre a bola nao caca e (com o rumo nulo com que a
 		//    Hellzone a pare) nao anda. E o `spawn(10)` do `blasts.dm:517` -- ver `Projetil.EsperaDeCaca`.
 		if (p.EsperaDeCaca > 0) p.EsperaDeCaca -= dt;
-		else if (p.Tipo == TipoDeProjetil.Guided && p.Alvo != 0
+		else if (p.Alvo != 0 && p.Tipo != TipoDeProjetil.Blast
 			&& _players.TryGetValue(p.Alvo, out ServerPlayer? mira) && !mira.Ficha.dead)
 		{
-			Vec2 d = mira.Pos - p.Pos;
-			if (d.LengthSquared > 1e-4f) p.Rumo = d.Normalized();
+			float andaNoTique = (float)(ZoneCollision.TileSize / p.SegundosPorTile * dt);
+			if (p.Tipo == TipoDeProjetil.Beam) GirarRaioTeleguiado(p, mira, dono, mapa, andaNoTique);
+			else
+			{
+				p.Rumo = Teleguiado.Virar(p.Rumo, mira.Pos - p.Pos, p.RumoDaSaida, Teleguiado.GiroDaBola(andaNoTique));
+				// A BOLA QUE NASCEU PARADA (o cerco da Hellzone) SAI AGORA: e deste rumo que o leque dela conta.
+				if (p.RumoDaSaida.LengthSquared < 1e-6f) p.RumoDaSaida = p.Rumo;
+			}
 		}
 
 		// 5b) A BOLA QUE NAO ANDA -- a MINA. `Ki_Bomb` cria as bolas em volta do alvo e NUNCA chama
@@ -1015,6 +1189,14 @@ public sealed partial class GameServer
 		//    (ver `TickDoEmpurrao`). Aqui a velocidade total e a mesma e o caminho e percorrido.
 		float restante = (float)(ZoneCollision.TileSize / p.SegundosPorTile * dt);
 		float andado = 0;
+
+		// O RAMO ALIMENTADO SO ANDA O ALCANCE QUE SOBROU (ver `seguraNoAlcance`). No fim dele a ponta fica parada --
+		// e continua sendo uma cabeca de raio: quem entrar nela e acertado, um teste por tique, como a mina (5b).
+		if (seguraNoAlcance)
+		{
+			restante = MathF.Min(restante, (float)(Math.Max(p.Distancia, 0) * ZoneCollision.TileSize));
+			if (restante <= 0.001f) { Colidiu(p, corpos); return; }
+		}
 
 		// QUEM ESTA SENDO LEVADO, resolvido UMA VEZ POR TIQUE e nao por sub-passo.
 		//
@@ -1089,7 +1271,7 @@ public sealed partial class GameServer
 			// pessoa, e nao ha duas nocoes de acertar um mundo.
 			//
 			// ---- DENTRO DO LACO, E NAO NO FIM DO TIQUE ----
-			// Pela mesma razao que o 6a e o sulco do chao estao aqui: um tiro rapido anda ate 53 px por
+			// Pela mesma razao que o 6a e o sulco do chao estao aqui: um tiro rapido anda ate 107 px por
 			// tique e um disco de planeta tem 220 a 440 px de diametro -- testar so no fim deixaria o
 			// tiro entrar e sair pela borda de um mundo pequeno sem tocar nele.
 			//
@@ -1134,7 +1316,7 @@ public sealed partial class GameServer
 
 			// 6a-bis) O CHAO POR ONDE ELE PASSOU. Dentro do laco e nao no fim do tique de proposito:
 			//     e a mesma disciplina do arremesso (`TickDoEmpurrao` chama por FATIA) -- um raio
-			//     rapido anda ate 53 px por tique, e carimbar so no fim deixaria buraco de uma celula
+			//     rapido anda ate 107 px por tique, e carimbar so no fim deixaria buraco de tres celulas
 			//     no rastro. Quem faz a marca sair UMA VEZ por tile andado e a guarda de DISTANCIA do
 			//     `CarimbarSulco`, e nao a cadencia da chamada.
 			MarcarSulcoDoTiro(zona, p, temChao, mapa);
@@ -1142,6 +1324,7 @@ public sealed partial class GameServer
 			// 6b) OS CORPOS. Uma varredura da lista da zona por sub-passo -- e o custo que o teto
 			//     mede.
 			if (Colidiu(p, corpos)) return;
+			if (p.Arrastando == 0) levado = null;   // quem ia sendo levado raspou e saiu da linha: a cabeca segue sem ele
 		}
 
 		// 6c) O DESVIO ACABOU SE A CABECA PASSOU: vencido o ciclo, ela andou e nao voltou a encostar em quem a
@@ -1152,7 +1335,7 @@ public sealed partial class GameServer
 		// 7) O ALCANCE, contado em TILES como no DM (`distance--` a cada tile andado). E ele que
 		//    tambem alimenta o `mods` por distancia e a forca do empurrao de perto.
 		p.Distancia -= andado / ZoneCollision.TileSize;
-		if (p.Distancia <= 0) Matar(p, FimDeProjetil.Apagou);
+		if (p.Distancia <= 0 && !seguraNoAlcance) Matar(p, FimDeProjetil.Apagou);
 	}
 
 	/// <summary>
@@ -1168,12 +1351,21 @@ public sealed partial class GameServer
 			// O CADAVER TAMBEM LEVA O TIRO (dono, 2026-09-05: "corpos mortos ainda sao corpos de personagem").
 			if (o.Id == p.Dono || o.Combate == null || o.Combate.Intocavel) continue;
 
+			// QUEM DESVIOU NAO E ALVO DO TRECHO QUE ELE MESMO DESVIOU -- ver `Projetil.Desviador`: o ramo nasce
+			// na dobra, a um contato exato do corpo dele, e sem esta linha o parry certo levava o proprio desvio.
+			if (p.Desviador != 0 && o.Id == p.Desviador && !Feixe.RamoPegaQuemDesviouDeTeste) continue;
+
+			// QUEM RASPOU NESTE TIRO SAIU DA LINHA DELE, e nao e testado de novo enquanto nao sair de cima e voltar
+			// -- um encontro, um sorteio. Ver `EncerrarOEncontroNoRaspao`.
+			if (p.EstaForaDaLinha(o.Id)) continue;
+
 			// QUEM JA ESTA SENDO LEVADO NAO E TESTADO DE NOVO ATE O CICLO VENCER.
 			//
 			// A cabeca que carrega alguem anda ENCOSTADA nele -- e a distancia entre os dois e menor
 			// que o raio de impacto por construcao. Sem esta linha, cada sub-passo seria um `Acertar`:
-			// o dano de um feixe encostado passaria dos 5 tiques por segundo do `sleep(2)` do DM pros
-			// ~30 do tique do servidor, ou seja seis vezes o dano combinado com nada avisando.
+			// o dano de um feixe encostado passaria das 5 batidas por segundo deste port
+			// (`Projetil.SegundosPorCicloDeBeam`; no DM sao 12, divergencia declarada la) pros ~30 do tique do
+			// servidor, ou seja seis vezes o dano combinado com nada avisando.
             //
 			// `Encostado` e o relogio: ele cai quando o ciclo de 0,2 s vence (ver `AndarProjetil`
 			// passo 4), e ai a vitima volta a ser vista, leva o tique de dano e o arrasto e regado.
@@ -1212,8 +1404,9 @@ public sealed partial class GameServer
 	// O IMPACTO -- e ele e decidido AQUI, nunca no cliente
 	// =====================================================================
 	/// <summary>
-	/// O `Bump(mob)` do DM (`objects.dm:283-455`), na ordem dele: credito e tag de combate, treino
-	/// dos dois lados, esquiva, dano, deflexao/reflexao/absorcao, membro, empurrao.
+	/// O `Bump(mob)` do DM (`objects.dm:283-503`), na ordem dele: credito e tag de combate, treino
+	/// dos dois lados, esquiva, dano, paralisia, o corte dos fracos (`:355-357`),
+	/// deflexao/reflexao/absorcao, membro, empurrao.
 	///
 	/// Devolve verdadeiro quando o projetil acabou neste corpo.
 	/// </summary>
@@ -1271,8 +1464,9 @@ public sealed partial class GameServer
 		double mods = p.ModsAgora();
 		double dano = DanoDeKi.Final(mods, p.BaseDano, p.MaxDano, p.Bp, cd, cd.Bloqueando, p.Fisico);
 
-		// 3) A DEFLEXAO. Metade da chance e a BARATA (o alvo so anda de lado e o tiro segue),
-		//    metade e a cara (deflete de vez, ou o Android ABSORVE). Nocauteado nao defende nada.
+		// 3) A DEFLEXAO. Metade da chance e a BARATA (o alvo sai da linha: a bola acaba ali sem dano, o
+		//    raio segue viagem -- ver `EncerrarOEncontroNoRaspao`), metade e a cara (deflete de vez, ou o
+		//    Android ABSORVE). Nocauteado nao defende nada.
 		double chance = DanoDeKi.ChanceDeDeflexao(alvo.Ficha, p.Bp, mods, p.BaseDano,
 												  cd.Bloqueando, p.Fisico);
 		if (!p.Deflectivel || alvo.Ficha.KO || cd.Stun > 0) chance = 0;
@@ -1296,6 +1490,30 @@ public sealed partial class GameServer
 			Avisar(dono, $"{alvo.Name} fica paralisado.");
 		}
 
+		// 3a-bis) O CORTE DOS FRACOS (`objects.dm:355-357`), e a posicao dele e a do DM: DEPOIS de tudo que o `Bump`
+		//         faz a qualquer tiro que encosta -- o credito e a tag (1), o treino dos dois lados (2), a paralisia
+		//         (3a) -- e ANTES dos dois sorteios (`:358` e `:364`) e do ramo do dano (`:420-503`). O impacto com dano
+		//         final abaixo do `DanoDeKi.CorteDoFraco` nao e golpe: nao fere, nao e sorteado, nao empurra, nao
+		//         atordoa, nao abre embate de guarda (3b) e nao derruba o raio de quem leva. Ver `EstourarSemFerir`; o
+		//         que foi medido no BYOND esta no `DanoDeKi.CorteDoFraco`.
+		//
+		//         O EMBATE DE GUARDA, que e deste port (o DM nao tem), FICA DEPOIS DO CORTE -- decisao do dono
+		//         (2026-10-08): so ha disputa quando ha o que perder, e o raio que nao feriria quem segura para na
+		//         frente dele como para na frente de qualquer um. O que mudou naquele dia foi a ESCALA das maos
+		//         (`EmbateDeKi.PoderDeSegurar`): elas se medem pelo MESMO `dano` da linha de baixo, sobre
+		//         `EmbateDeKi.DanoQueAsMaosEmpatam`. O raio que passa do corte por pouco encontra maos com o dobro da
+		//         forca dele, e "segurar e devolver" deixou de ser cena de bancada (a `--embatekiteste` 13 mede a escada).
+		//         A alternativa que ficou de fora -- `TentarEmbateDeGuarda` AQUI, antes do `EstourarSemFerir`, pra quem
+		//         segura devolver tambem o raio fraco -- abriria disputa sem aposta: quem a perdesse nao levaria nada,
+		//         porque o raio continuaria sem ferir.
+		if (DanoDeKi.FracoDemais(dano)) return EstourarSemFerir(p, alvo, dono);
+
+		// O BOTAO DE DESLIGAR A DEFLEXAO NAO EXISTE AQUI -- divergencia declarada (dono, 2026-10-08) do `&&M.DRenabled`
+		// que fecha os dois sorteios do DM (`objects.dm:358` e `:364`; o verb e o `DeflectionSetting` de
+		// `User Interface/Settings.dm:341-348`, e a variavel nasce ligada em `Skills/Buffs/globals/Body Expansion.dm:2`).
+		// MEDIDO no BYOND 516: com ela em 0, os 200 raspoes certos de 200 bolas viraram 0 e 161 delas feriram. Aqui a
+		// deflexao esta sempre ligada -- e, com o corte logo acima, ela so e sorteada com dano >= 10, onde a chance
+		// nao passa de ~1% pra uma ficha nova (a conta esta no `DanoDeKi.CorteDoFraco`).
 		if (Sorteio(chance / 2) && alvo.Ficha.Ki >= 5)
 		{
 			// `M.kidefensecounter += 4` (`objects.dm:359`) -- aparar de raspao e o que mais treina
@@ -1308,7 +1526,7 @@ public sealed partial class GameServer
 			// (`objects.dm:358-363`), o corpo SAINDO da linha. A fala era a unica coisa que o contava aqui.
 			AnunciarGolpe(dono, alvo, new GolpeResultado { Desfecho = Desfecho.Esquivou, Membro = "" }, nivel: 1,
 						  ponto: Feixe.PontoDoImpacto(p, alvo.Pos));
-			return false;   // o tiro CONTINUA: foi o corpo que saiu da linha
+			return EncerrarOEncontroNoRaspao(p, alvo);
 		}
 
 		if (Sorteio(chance) && alvo.Ficha.Ki >= 5)
@@ -1334,12 +1552,15 @@ public sealed partial class GameServer
 
 		// 3b) ELE NAO DEFLETIU E NAO VAI ABAIXAR A GUARDA: o feixe encontra as MAOS dele, e isso e um
 		//     EMBATE e nao um tique de dano. **Novo** -- ver `TentarEmbateDeGuarda`, que conta o que a
-		//     guarda fazia contra ki ate aqui e por que o poder das maos nao e um numero inventado.
+		//     guarda fazia contra ki ate aqui, e `EmbateDeKi.PoderDeSegurar`: as maos se medem pelo `dano` ali de cima.
 		//
 		//     DEPOIS DO SORTEIO DE DEFLEXAO, de proposito: quem teve sorte defende de graca, como
 		//     sempre teve. E so pra RAIO -- uma bola nao da tempo de agarrar nada, e no DM a disputa
 		//     tambem e privilegio do `WaveAttack`.
-		if (p.Tipo == TipoDeProjetil.Beam && TentarEmbateDeGuarda(p, alvo)) return true;
+		//
+		//     O RAIO QUE ESTOURA COMO BOLA (o Death Beam) FICA DE FORA, e pelo motivo da bola: ele nao para nas maos
+		//     de ninguem. A guarda so divide o dano dele -- o `cd.Bloqueando` do `DanoDeKi.Final`, ali em cima.
+		if (p.Tipo == TipoDeProjetil.Beam && !p.EstouraComoBola && TentarEmbateDeGuarda(p, alvo)) return true;
 
 		// 4) O DANO NO CORPO, pelo MESMO caminho do soco depois do numero pronto.
 		//
@@ -1352,6 +1573,10 @@ public sealed partial class GameServer
 		//
 		// Achado pela bancada `--kideponta`, que compara as duas chamadas em vez de contar em qual
 		// membro o dado caiu -- o membro e SORTEADO, entao teste de comportamento mediria o dado.
+		//
+		// DIVERGENCIA DECLARADA (dono, 2026-10-08): no DM o tiro de ki NAO mira. O `selectzone` do `DamageLimb` de
+		// `objects.dm:439` e o do OBJETO (`:35`), que nenhum verb de ki preenche -- e o sorteio de la pode nao achar
+		// membro nenhum. A historia e os numeros estao em `MeleeResolver.AplicarDanoPronto`.
 		// ==================================================================================================
 		GolpeResultado r = MeleeResolver.AplicarDanoPronto(cd, dano, p.Letal, _rng,
 														   dono.Combate?.ZonaMirada);
@@ -1398,9 +1623,22 @@ public sealed partial class GameServer
 		else if (p.PodeArrastar() && PodeSerLevadoPeloFeixe(alvo)) ComecarArrasto(p, alvo);
 
 		// 6) O RAIO NAO MORRE EM QUEM ACERTA: ele EMPURRA. No DM o `Bump` de um `WaveAttack` nao
-		//    apaga a cabeca -- ela fica presa contra o corpo e, a cada ciclo de 0,2 s, o segmento
-		//    seguinte bate de novo (mais o `MiniStun`). E o que faz segurar um Kamehameha em cima de
-		//    alguem ser diferente de acertar uma bola nele.
+		//    apaga a cabeca -- ela fica presa contra o corpo e bate de novo a cada passo do `walk`
+		//    (`objects.dm:241`), com `MiniStun`. E o que faz segurar um Kamehameha em cima de
+		//    alguem ser diferente de acertar uma bola nele. (La e uma batida por tique; aqui, uma a cada
+		//    0,2 s e sem o `MiniStun` -- divergencia declarada em `Projetil.SegundosPorCicloDeBeam`.)
+		//
+		//    MENOS O RAIO QUE ESTOURA (dono, 2026-10-08, sobre o Death Beam: *"ao se chocar ele diferente dos outros
+		//    beams ele explode igual um blast causando 1 hit apenas"*). O golpe ja foi dado ali em cima, UMA vez; o
+		//    raio acaba aqui, inteiro e na hora (ver `Matar`), e a mao de quem atirou fica livre no mesmo tique -- o
+		//    canal fecha junto e calado: nao sobrou raio pra segurar nem aluguel pra cobrar.
+		if (p.EstouraComoBola)
+		{
+			Matar(p, FimDeProjetil.Acertou);
+			if (_canais.TryGetValue(dono.Id, out CanalDeKi? canal) && canal.Raio == p) FecharCanal(dono.Id, canal, null);
+			return true;
+		}
+
 		if (p.Tipo == TipoDeProjetil.Beam)
 		{
 			// NA FRENTE DELE, e nao em cima (dono, 2026-09-07) -- ver `PlantarACabecaNaFrenteDe`.
@@ -1415,6 +1653,176 @@ public sealed partial class GameServer
 
 		Matar(p, FimDeProjetil.Acertou);
 		return true;
+	}
+
+	// =====================================================================
+	// O RASPAO -- um encontro, um sorteio
+	// =====================================================================
+	/// <summary>
+	/// O CORPO SAIU DA LINHA DO TIRO (o raspao, `objects.dm:358-363`). Devolve verdadeiro quando o tiro acabou aqui.
+	///
+	/// ============================ O QUE ESTAVA ERRADO (medido em 2026-10-08) ============================
+	/// O raspao devolvia falso ("o tiro continua") sem mais nada. Como o corpo deste port NAO sai do lugar (dono,
+	/// 2026-09-25: a esquiva e desenhada), a bola continuava a menos de 16 px dele no sub-passo seguinte e o
+	/// `Acertar` rodava de novo -- credito, treino e os DOIS sorteios outra vez. Medido com o raspao certo: 4
+	/// `Acertar` por bola a 16 tiles/s (9 na velocidade do DM), 60 numa teleguiada, um por tique numa bola parada, 15
+	/// em 18 tiques de um raio (que ainda era picotado: o corpo "esquivado" cortava o tronco que passava por ele).
+	/// Com a chance de deflexao em 20%, de 815 tiros que rasparam 658 acertaram e 156 foram defletidos logo depois;
+	/// um saiu ileso. Quem "esquivava" mostrava as listras e levava o tiro 16 px adiante.
+	///
+	/// ============================ A REGRA: A DO DM, MEDIDA NO BYOND ============================
+	/// Ver o bloco "O RASPAO ENCERRA O ENCONTRO" em `Projetil` -- um `Bump`, um sorteio, e:
+	///   * a bola que ANDA acaba aqui, sem dano e sem estouro. `Apagou` e o nome que o proprio DM da a isso: o
+	///     ramo do `Move()` que a tira do mundo diz *"act like distance ran out"* (`objects.dm:94`);
+	///   * o raio SEGUE, e a bola parada FICA -- e nenhum dos dois enxerga este corpo de novo enquanto ele continuar
+	///     em cima do tiro (`Projetil.ForaDaLinha`, esvaziada pelo <see cref="ReverQuemSaiuDaLinha"/>).
+	/// A cabeca que vinha LEVANDO este corpo o solta: quem saiu da linha nao e carregado.
+	/// ==========================================================================================
+	/// </summary>
+	private static bool EncerrarOEncontroNoRaspao(Projetil p, ServerPlayer alvo)
+	{
+		if (Projetil.RaspaoSorteiaDeNovoDeTeste) return false;
+
+		if (p.AcabaNoRaspao)
+		{
+			Matar(p, FimDeProjetil.Apagou);
+			return true;
+		}
+
+		p.TirarDaLinha(alvo.Id);
+		if (p.Arrastando == alvo.Id) p.Arrastando = 0;
+		return false;
+	}
+
+	/// <summary>
+	/// QUEM RASPOU E JA NAO ESTA EM CIMA DO TIRO VOLTA A SER ALVO DELE -- encostar de novo e outro encontro, com
+	/// outro sorteio. A regua e a <see cref="Feixe.EmCimaDoTiro"/>; quem sumiu da zona sai da lista junto.
+	///
+	/// A BOLA QUE PASSOU A ANDAR ESQUECE TODO MUNDO: a memoria e de quem esbarrou nela PARADA (a espera da Hellzone,
+	/// a mina). Quando ela parte, o passo e dela -- e no DM esse `Bump` e novo e a tira do mundo (`objects.dm:92-99`).
+	///
+	/// CUSTO: so roda pro tiro que tem alguem na lista, e a lista so nasce num raspao.
+	/// </summary>
+	private static void ReverQuemSaiuDaLinha(Projetil p, List<ServerPlayer> corpos)
+	{
+		List<int> fora = p.ForaDaLinha!;
+		for (int i = fora.Count - 1; i >= 0; i--)
+		{
+			ServerPlayer? corpo = null;
+			foreach (ServerPlayer o in corpos)
+				if (o.Id == fora[i]) { corpo = o; break; }
+
+			if (corpo == null || p.AcabaNoRaspao || !Feixe.EmCimaDoTiro(p, corpo.Pos, corpo.Altitude)) fora.RemoveAt(i);
+		}
+		if (fora.Count == 0) p.ForaDaLinha = null;
+	}
+
+	// =====================================================================
+	// O CORTE DOS FRACOS -- o impacto que nao e golpe
+	// =====================================================================
+	/// <summary>
+	/// O TIRO ENCOSTOU E NAO TEM FORCA PRA FERIR (`objects.dm:355-357`; o limiar e o `DanoDeKi.CorteDoFraco`). Devolve
+	/// verdadeiro: o tiro acabou, ou parou, neste corpo.
+	///
+	/// ============================ O QUE O DM FAZ, MEDIDO NO BYOND 516 (2026-10-08) ============================
+	///   * A BOLA sai do mundo no proprio `Bump`: `explodeme = 1` e, no fim dele, `if(!WaveAttack) if(explodeme)
+	///     explode()` (`:565-566`). Andando, parada ou `piercer`, tanto faz -- o `density = 0` que deixa a perfurante
+	///     passar mora DENTRO do ramo do dano (`:479-481`), e este tiro nao chega la. (Medido tambem com o corpo
+	///     andando pra cima de uma bola parada: `mobBump.dm:57-58` chama o `Bump` dela, e ela some.)
+	///   * A CABECA DO RAIO fica: o `stoopme = 1` a tira do mundo no `Move()` seguinte (`:149-154`), o segmento de
+	///     tras vira cabeca no `KHH()` (`:230-241`), anda e bate de novo. Visto de fora, o raio continua PARADO NA
+	///     FRENTE do corpo, batendo sem ferir, e o corpo anda raio adentro se quiser.
+	///   * E MAIS NADA: sem `DamageLimb`, sem `Knockback`, sem `MiniStun`, sem `Add_Anger`, sem sorteio.
+	/// ===========================================================================================================
+	///
+	/// ============================ COMO ISSO FICA NUM FEIXE QUE E UM OBJETO SO ============================
+	/// A cabeca e PLANTADA na frente do corpo, como no golpe (`PlantarACabecaNaFrenteDe`), e o relogio do `Encostado`
+	/// passa a contar a cadencia medida da batida que nao fere (`Projetil.SegundosPorBatidaSemFerir`): vencido o
+	/// ciclo ela testa de novo -- se o corpo saiu, segue viagem; se continua ali, outra batida. Entre uma batida e
+	/// outra ela lembra em quem esta batendo (`Projetil.BatendoSemFerir`) e RECUA na frente dele se ele avancar
+	/// (ver `RecuarNaFrenteDeQuemAvanca`).
+	///
+	/// QUEM VINHA SENDO LEVADO E SOLTO: o arrasto e a metade "longe" do empurrao (`objects.dm:450-457` e o DU), e
+	/// sem golpe nao ha empurrao -- o raio que enfraqueceu no caminho (`rangemod`), ou o corpo que cresceu no meio
+	/// dele, para de ser carregado na batida em que o dano cai abaixo do corte.
+	///
+	/// O RAIO QUE ESTOURA COMO BOLA (o Death Beam, `Projetil.EstouraComoBola`) estoura: e a regra dele em todo
+	/// impacto, e o canal fecha junto, calado, como no golpe.
+	/// =======================================================================================================
+	///
+	/// ============================ O DESENHO: ESTOURA, E O CORPO NAO REAGE ============================
+	/// O motivo da morte e `Acertou` -- o estouro de sempre, no ponto do impacto -- e NAO sai relato de golpe
+	/// (`AnunciarGolpe`): sem clarao, sem faisca e sem ferida em quem levou. E a intencao escrita do DM
+	/// (`explodeme`). La, medido, nem o estouro aparece (o `explode()` chama `spawnExplosion` com a `loc` ja nula),
+	/// e isso vale pra tiro nenhum, forte ou fraco; aqui todo tiro que encosta num corpo estoura, e este tambem.
+	/// ====================================================================================================
+	/// </summary>
+	private bool EstourarSemFerir(Projetil p, ServerPlayer alvo, ServerPlayer dono)
+	{
+		if (p.Arrastando == alvo.Id) p.Arrastando = 0;
+
+		if (p.EstouraComoBola)
+		{
+			Matar(p, FimDeProjetil.Acertou);
+			if (_canais.TryGetValue(dono.Id, out CanalDeKi? canal) && canal.Raio == p) FecharCanal(dono.Id, canal, null);
+			return true;
+		}
+
+		if (p.Tipo == TipoDeProjetil.Beam)
+		{
+			PlantarACabecaNaFrenteDe(p, alvo);
+			p.Encostado = true;
+			p.AteMoerDeNovo = Projetil.SegundosPorBatidaSemFerir;
+			p.BatendoSemFerir = alvo.Id;
+			return true;   // a cabeca para aqui neste tique; ela nao morreu
+		}
+
+		Matar(p, FimDeProjetil.Acertou);
+		return true;
+	}
+
+	/// <summary>
+	/// O CORPO QUE O RAIO NAO FERE ANDOU CONTRA ELE: a cabeca recua e continua NA FRENTE do corpo.
+	///
+	/// ============================ POR QUE ISTO PRECISA EXISTIR ============================
+	/// Uma cabeca `Encostado` fica parada ate o ciclo vencer (passo 4 do `AndarProjetil`). No golpe isso nunca
+	/// incomodou: quem leva o raio e arremessado, levado ou atordoado, e nao anda contra ele. No ramo do corte
+	/// (`EstourarSemFerir`) andar contra o raio E a cena -- *"they should be able to walk through beams"*
+	/// (`objects.dm:451`) --, e o ciclo e mais longo (`Projetil.SegundosPorBatidaSemFerir`): sem este passo o corpo
+	/// entrava ate 48 px na cabeca parada (a foto que o dono reprovou em 2026-09-07, a cabeca EM CIMA de quem ela
+	/// acerta), e quem andasse mais depressa passava dela, cortava o tronco e soltava um toco de feixe pelas costas.
+	///
+	/// NO DM a cabeca e sempre o segmento COLADO no corpo: cada passo dele contra a cabeca densa e um `Bump` que a
+	/// tira do mundo (`mobBump.dm:57-58`), cada passo sobre um segmento de tronco o apaga e promove o de tras
+	/// (`Crossed`, `objects.dm:156-171`). Medido: quatro tiles raio adentro em ~20 tiques, ileso.
+	/// DIVERGENCIA DECLARADA: la cada um desses passos e mais uma batida (e mais um `kidefensecounter`: 12 batidas
+	/// em 40 tiques andando, contra 7 parado); aqui o corpo anda em pixels e a batida continua sendo a do ciclo.
+	/// ====================================================================================
+	///
+	/// SO RECUA, e so pra quem continua na faixa da cabeca (`Feixe.EncostaNoCorpo`): quem saiu de lado, voou pra
+	/// fora ou se afastou e assunto do ciclo, que solta a cabeca pra andar; quem pulou pra dentro do tronco e
+	/// assunto do corte (`CortarOndeEncostaram`). O ALCANCE DEVOLVE o que a cabeca recuou, como no corte:
+	/// `AndouTiles` e "a que distancia da mao a cabeca esta", e e ele que decide o `mods` de quem tem `rangemod`.
+	/// </summary>
+	private static void RecuarNaFrenteDeQuemAvanca(Projetil p, List<ServerPlayer> corpos)
+	{
+		if (p.BatendoSemFerir == 0 || Feixe.CabecaNaoRecuaDeTeste) return;
+
+		ServerPlayer? corpo = null;
+		foreach (ServerPlayer o in corpos)
+			if (o.Id == p.BatendoSemFerir) { corpo = o; break; }
+		if (corpo == null) { p.BatendoSemFerir = 0; return; }
+
+		if (!Voo.PodeAcertar(Voo.Andar(p.Altitude), Voo.Andar(corpo.Altitude))) return;
+		if (!Feixe.EncostaNoCorpo(p, corpo.Pos, corpo.Altitude)) return;
+
+		Vec2 naFrente = Feixe.CabecaNaFrenteDe(corpo.Pos, corpo.Altitude, p);
+		Vec2 recuo = p.Pos - naFrente;
+		float quanto = recuo.X * p.Rumo.X + recuo.Y * p.Rumo.Y;
+		if (quanto <= 0.01f) return;
+
+		p.Pos = naFrente;
+		p.Distancia += quanto / ZoneCollision.TileSize;
 	}
 
 	/// <summary>
@@ -1555,8 +1963,9 @@ public sealed partial class GameServer
 	/// KB=0`), enquanto no Finale ele passa. Ficou a regra do Finale pro arremesso (que ja estava) e a
 	/// do `Enter()` pro arrasto (que e a que o arrasto usa nas duas fontes).
 	///
-	/// E acima do limiar de voo nao ha mapa nenhum a consultar -- `AtravessandoCenario`, a mesma linha
-	/// que o `Input` escreve. Um feixe disparado por cima do muro leva a vitima por cima do muro.
+	/// E acima do limiar de voo o modo e `PorCima` -- `Voo.ModoNaAltura`, a mesma linha que o `Input`
+	/// escreve. Um feixe disparado por cima do muro leva a vitima por cima do muro; contra a parede de
+	/// PREDIO ela fica prensada (2026-10-08: nao se voa por cima de predio, ver `ClasseDePredio`).
 	/// ==============================================================================================
 	/// </summary>
 	private bool ArrastarComOFeixe(Projetil p, ServerPlayer alvo, Vec2 delta,
@@ -1587,9 +1996,10 @@ public sealed partial class GameServer
 
 		Vec2 destino = alvo.Pos + delta;
 
-		// PAREDE E AGUA -- ver a decisao 2 e a 3 no cabecalho.
-		ZoneCollision? chao = AtravessandoCenario(alvo) ? null : mapa;
-		if (chao != null && MoveRules.Occupied(chao, destino, ModoDeTravessiaDe(alvo))) return false;
+		// PAREDE E AGUA -- ver a decisao 2 e a 3 no cabecalho. Acima do cenario o modo vira `PorCima`
+		// (`Voo.ModoNaAltura`, a mesma linha do passo): o corpo arrastado passa por cima do muro solto e
+		// para na parede de predio.
+		if (mapa != null && MoveRules.Occupied(mapa, destino, Voo.ModoNaAltura(alvo.Altitude, ModoDeTravessiaDe(alvo)))) return false;
 
 		alvo.Pos = destino;
 
@@ -1644,7 +2054,7 @@ public sealed partial class GameServer
 		// plano de agua do `.col` (`ClasseDeAgua`). Custa um bit por marca, e so pra raio rasteiro.
 		// ==============================================================================================
 		// A AGUA NAO RECEBE TERRA REVIRADA -- e a pergunta e feita MARCA A MARCA, e nao so na cabeca do
-		// raio: as marcas nascem interpoladas sobre a reta (`CarimbarSulco`), e um sub-passo de 53 px
+		// raio: as marcas nascem interpoladas sobre a reta (`CarimbarSulco`), e um tique de 107 px
 		// pode entrar e sair de um lago sem a cabeca parar dentro dele.
 		bool naAgua = mapa != null && mapa.EhAguaEm(p.Pos);
 
@@ -1688,12 +2098,18 @@ public sealed partial class GameServer
 	/// <summary>
 	/// O TIRO ACABOU. Pra bola e imediato; pro raio, a cabeca PARA e o rastro e engolido primeiro
 	/// (ver <see cref="Projetil.Esvaziando"/>) -- um raio de vinte tiles nao pode sumir num quadro.
+	///
+	/// O RAIO QUE ESTOUROU NUM CORPO SOME DE UMA VEZ (<see cref="Projetil.EstouraComoBola"/>, o Death Beam): o
+	/// estouro tem que nascer NO IMPACTO, e quem o leva pra tela e o `Morreu` -- que so sai quando o tiro deixa a
+	/// lista. Engolindo o rastro primeiro, a explosao apareceria depois de o fio ja ter sumido. Pelos outros
+	/// motivos (parede, alcance, a mao que soltou) ele se esvazia como qualquer raio.
 	/// </summary>
 	private static void Matar(Projetil p, FimDeProjetil porque)
 	{
 		if (!p.Vivo) return;
 
-		if (p.Tipo == TipoDeProjetil.Beam && !p.Esvaziando && p.Comprimento > Projetil.RaioDeImpacto)
+		bool estourou = porque == FimDeProjetil.Acertou && p.EstouraComoBola;
+		if (p.Tipo == TipoDeProjetil.Beam && !estourou && !p.Esvaziando && p.Comprimento > Projetil.RaioDeImpacto)
 		{
 			p.Esvaziando = true;
 			p.Canalizando = false;
@@ -1729,6 +2145,10 @@ public sealed partial class GameServer
 			w.Put((byte)p.Tipo);
 			w.Put((ushort)p.Arte);
 			w.Put(Protocol.EscalaDeProjetilEmByte(p.EscalaVisual));
+			// A ESCALA DE NASCENCA E ESTA, a que acabou de viajar -- escrita AQUI, e nao por cada um que faz um
+			// tiro (o disparo, o corte, o desvio), pra o servidor e o cliente nunca discordarem do ponto de
+			// partida: dali em diante o snapshot so carrega a escala de quem saiu dela (`ProjetilState.Escala`).
+			p.EscalaDeNascenca = p.EscalaVisual;
 
 			// A ALTURA, UM BYTE, UMA VEZ -- e a mesma escala do corpo (`Voo.ParaByte`, ~2,5 px por
 			// degrau). Ela nao muda depois do nascimento (o `Altitude` do projetil e copiado do dono
@@ -1834,7 +2254,7 @@ public sealed partial class GameServer
 	/// uma, monta os planetas de cada orbita que alcanca e **devolve uma lista nova**. Chamar isso
 	/// por sub-passo de cada tiro seria a mesma armadilha que o proprio `TickDosProjeteis` ja
 	/// documenta pro `Espaco.EhPlaneta` ("milhares de alocacoes por tique"), so que pior: um tiro
-	/// rapido tem quatro sub-passos, e o teto da zona sao 256 tiros.
+	/// rapido tem sete sub-passos, e o teto da zona sao 256 tiros.
 	///
 	/// A resposta nao muda dentro de um tique (o universo e funcao pura da seed) e os tiros do espaco
 	/// se amontoam em volta de quem atirou -- entao a memoria e tipicamente **uma entrada**, e ela e

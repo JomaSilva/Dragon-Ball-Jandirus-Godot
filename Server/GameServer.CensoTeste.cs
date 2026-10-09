@@ -99,6 +99,7 @@ public partial class GameServer
 			OsCanaisDeclaradosExistem();
 			OCatalogoConheceOsDezenove();
 			OsSeisRaiosNomeados();
+			ODeathBeamERapidoEEstoura();
 			OsQuatroBuffs();
 			OSopro();
 			OsDoisPunhos();
@@ -243,7 +244,9 @@ public partial class GameServer
 		};
 		var comVerboCatalogado = new Skill
 		{
-			Path = "/datum/skill/bancada/Catalogada", Nome = "Catalogada", Verbos = ["Buu_Absorb"],
+			// ERA O `Buu_Absorb`, e ele foi portado (o selo do Majin, `GameServer.AbsorcaoMajin.cs`). O exemplo
+			// agora e o Bodyswap, que continua esperando o mesmo sistema.
+			Path = "/datum/skill/bancada/Catalogada", Nome = "Catalogada", Verbos = ["BodyswapOBJ"],
 		};
 		var comVerboDesconhecido = new Skill
 		{
@@ -822,6 +825,61 @@ public partial class GameServer
 		AfirmarCen("a Onda de Choque APAGA o tiro do mais fraco que estava chegando", !bola.Vivo);
 		AfirmarCen("...e arremessa o dono dele junto", inimigo.TiquesDeVoo > 0);
 
+		// ============================ O AVISO DO SOPRO ANDA COM A PRESSA DO TIRO ============================
+		// "A dois tiles" era TEMPO: 0,6 s antes de a bola comum do DM chegar. Com a bola quase cinco vezes mais
+		// rapida (dono, 2026-10-08) os mesmos dois tiles seriam um oitavo de segundo -- ninguem sopra um tiro
+		// nesse tempo. Entao o sopro pega tambem o tiro que VEM PRA CIMA dentro do aviso de antes
+		// (`Projetil.AoAlcanceDe`), e so esse: a largura da regra continua a do DM.
+		// ====================================================================================================
+		const int T = ZoneCollision.TileSize;
+		ServerPlayer longe = Forjar("AtiradorDeLonge", chao + new Vec2(7 * T, 0), bp: 10);
+		longe.Facing = Facing.West;
+		Projetil BolaDeLonge() => Disparar(longe, new ReceitaDeProjetil
+		{
+			Tipo = TipoDeProjetil.Blast, BaseDano = 1, Velocidade = 1, AlcanceTiles = 10,
+		});
+
+		_soproPronto.Remove(pl.Id);
+		pl.Ficha.Ki = pl.Ficha.MaxKi;
+		Projetil vindo = BolaDeLonge();
+		Projetil deLado = BolaDeLonge();
+		deLado.Pos += new Vec2(0, 3 * T);   // a mesma bola, na mesma direcao, passando tres tiles ao lado
+		float distancia = (vindo.Pos - pl.Pos).Length;
+		AfirmarCen("(preparo) a bola de longe esta ALEM dos dois tiles do DM e dentro do aviso que eles davam, na pressa dela",
+				   vindo.Vivo && distancia > 2 * T && distancia <= 2 * T * vindo.Pressa,
+				   $"{distancia / T:0.#} tiles; pressa {vindo.Pressa:0.#}");
+		UsarHabilidade(pl, "Shockwave");
+		AfirmarCen("a Onda de Choque apaga o tiro que VEM PRA CIMA dentro do aviso que dois tiles davam no DM", !vindo.Vivo);
+		AfirmarCen("...e NAO o que passa tres tiles ao lado (a largura da regra e a do DM: so o aviso esticou)", deLado.Vivo);
+		Matar(deLado, FimDeProjetil.Apagou);
+
+		_soproPronto.Remove(pl.Id);
+		pl.Ficha.Ki = pl.Ficha.MaxKi;
+		Projetil devolvidaDeLonge = BolaDeLonge();
+		UsarHabilidade(pl, "Deflection");
+		AfirmarCen("a Deflexao devolve o tiro que vem pra cima dentro do mesmo aviso",
+				   devolvidaDeLonge.Vivo && devolvidaDeLonge.Dono == pl.Id, $"dono {devolvidaDeLonge.Dono} vs {pl.Id}");
+		Matar(devolvidaDeLonge, FimDeProjetil.Apagou);
+
+		Projetil.AvisoSemPressaDeTeste = true;
+		try
+		{
+			_soproPronto.Remove(pl.Id);
+			pl.Ficha.Ki = pl.Ficha.MaxKi;
+			Projetil semAviso = BolaDeLonge();
+			UsarHabilidade(pl, "Shockwave");
+			bool aOndaDeixou = semAviso.Vivo;
+			_soproPronto.Remove(pl.Id);
+			pl.Ficha.Ki = pl.Ficha.MaxKi;
+			UsarHabilidade(pl, "Deflection");
+			AfirmarCen("(defeito injetado: o aviso parado nos dois tiles do DM) o mesmo tiro, a seis tiles e vindo, passa pela Onda e pela Deflexao",
+					   aOndaDeixou && semAviso.Vivo && semAviso.Dono == longe.Id,
+					   $"vivo apos a onda: {aOndaDeixou}; dono {semAviso.Dono} vs {longe.Id}");
+			Matar(semAviso, FimDeProjetil.Apagou);
+		}
+		finally { Projetil.AvisoSemPressaDeTeste = false; }
+		longe.Pos = chao + new Vec2(40 * T, 0);   // fora de toda cena que vem depois
+
 		// A DEFLEXAO TROCA O DONO -- sem isso, o tiro devolvido atravessa quem atirou (defeito do DM).
 		_soproPronto.Remove(pl.Id);
 		inimigo.TiquesDeVoo = 0;
@@ -833,6 +891,28 @@ public partial class GameServer
 		UsarHabilidade(pl, "Deflection");
 		AfirmarCen("a Deflexao devolve o tiro fraco E TROCA O DONO",
 				   segunda.Vivo && segunda.Dono == pl.Id, $"dono {segunda.Dono} vs {pl.Id}");
+
+		// E ELE VOLTA NO PASSO DO DM: `walk(M, get_opposite_dir(M))` sem atraso, o da bola mais rapida.
+		float correndo = MoveRules.SpeedPx(1f, correndo: true) / ZoneCollision.TileSize;
+		AfirmarCen("...e o tiro devolvido volta a um tile por tique do DM (o passo da bola mais rapida): ganha de quem atirou e saiu correndo",
+				   Math.Abs(segunda.SegundosPorTile - Projetil.AtrasoDeBolaPorLag(1)) < 1e-9 && 1 / segunda.SegundosPorTile > correndo,
+				   $"{1 / segunda.SegundosPorTile:0.#} tiles/s contra {correndo:0.#} correndo");
+
+		Projetil.DeflexaoNoPassoDoEmpurraoDeTeste = true;
+		try
+		{
+			_soproPronto.Remove(pl.Id);
+			Projetil lenta = Disparar(inimigo, new ReceitaDeProjetil
+			{
+				Tipo = TipoDeProjetil.Blast, BaseDano = 1, Velocidade = 1, AlcanceTiles = 10,
+			});
+			UsarHabilidade(pl, "Deflection");
+			AfirmarCen("(defeito injetado: o passo do empurrao de uma disputa) o tiro devolvido volta mais DEVAGAR do que quem corre",
+					   lenta.Dono == pl.Id && 1 / lenta.SegundosPorTile < correndo,
+					   $"dono {lenta.Dono}; {1 / lenta.SegundosPorTile:0.#} tiles/s contra {correndo:0.#} correndo");
+			Matar(lenta, FimDeProjetil.Apagou);
+		}
+		finally { Projetil.DeflexaoNoPassoDoEmpurraoDeTeste = false; }
 
 		// E O TIRO FORTE DEMAIS NAO VOLTA: `strength > 1` e a porta.
 		_soproPronto.Remove(pl.Id);
@@ -872,9 +952,23 @@ public partial class GameServer
 		AfirmarCen("...e a carga anda no tique de 1 Hz", CargaDoRugido(pl, out int carga) && carga >= 3,
 				   PorQueSemCarga(carga));
 
+		// UM TIRO VINDO DE LONGE, fora do raio da carga e dentro do aviso dele (o mesmo `Projetil.AoAlcanceDe` da
+		// Onda de Choque -- a regra do Rugido e a dela, com o raio da carga no lugar dos dois tiles).
+		ServerPlayer atiradorDoRugido = Forjar("AtiradorDoRugido", pl.Pos + new Vec2(7 * T, 0), bp: 10);
+		atiradorDoRugido.Facing = Facing.West;
+		Projetil noRugido = Disparar(atiradorDoRugido, new ReceitaDeProjetil
+		{
+			Tipo = TipoDeProjetil.Blast, BaseDano = 1, Velocidade = 1, AlcanceTiles = 10,
+		});
+		float raioDaCarga = Math.Max(Math.Min(carga, CargaUtilDoRugido) - 1, 1) * T;
+		float ateOTiro = (noRugido.Pos - pl.Pos).Length;
+
 		UsarHabilidade(pl, "Explosive_Roar");
 		AfirmarCen("o segundo aperto solta o rugido e ele arremessa quem esta no raio",
 				   !_rugindo.ContainsKey(pl.Id) && perto.TiquesDeVoo > 0, $"{perto.TiquesDeVoo}");
+		AfirmarCen("...e apaga o tiro que vinha pra cima de FORA do raio da carga, dentro do aviso que esse raio dava no DM",
+				   ateOTiro > raioDaCarga && !noRugido.Vivo,
+				   $"tiro a {ateOTiro / T:0.#} tiles, raio da carga {raioDaCarga / T:0.#}; vivo: {noRugido.Vivo}");
 
 		LimparTudoDaBancada();
 	}

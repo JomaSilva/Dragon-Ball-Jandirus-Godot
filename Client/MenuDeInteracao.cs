@@ -21,8 +21,9 @@ namespace Jandirus.Client;
 /// botao manda o MESMO verbo que ja existia. Este arquivo e uma porta, nao um sistema: se ele
 /// sumisse, os comandos continuariam funcionando pela busca do menu.
 ///
-/// E NAO ALCANCA PORTA. Elas abrem por encostar, e trocar isso por um menu de duas opcoes seria
-/// piorar um gesto que ja esta bom.
+/// E NAO ALCANCA PORTA QUE ABRE POR ENCOSTAR: trocar isso por um menu de duas opcoes seria piorar um
+/// gesto que ja esta bom. A excecao e a porta ERGUIDA com senha (e a porta de quem a ergueu) -- ver
+/// `Interacoes.DaPorta`.
 /// ===========================================================================
 /// </summary>
 public partial class MenuDeInteracao : CanvasLayer
@@ -128,9 +129,67 @@ public partial class MenuDeInteracao : CanvasLayer
 			return;
 		}
 
+		// A PORTA ERGUIDA disputa pela mesma regra: a mais perto ganha. Ver `PortaGanha`.
+		if (PortaGanha(perto) is { } porta)
+		{
+			_dica.Visible = true;
+			_dica.Text = $"[E] {NomeDaPorta(porta)}";
+			return;
+		}
+
 		_dica.Visible = perto != null;
 		if (perto is { } o) _dica.Text = $"[E] {NomeDe(o)}";
 	}
+
+	// =====================================================================
+	// A PORTA ERGUIDA -- o quarto tipo de alvo da tecla E
+	// =====================================================================
+	/// <summary>
+	/// A PORTA ERGUIDA MAIS PERTO QUE TEM ALGO A OFERECER a este jogador, com a distancia ao quadrado.
+	///
+	/// Entra pela mesma porta do veiculo e do cadaver, e pelo mesmo motivo: ela nao esta em `cli.Obras`.
+	/// E um bloco (`cli.Blocos`), e o `World` sabe quais deles sao porta. O que ela oferece depende de
+	/// quem olha (`Interacoes.DaPorta`): pra quem ela abre por encostar, ela nem e alvo.
+	///
+	/// O CORTE E POR EIXO, contra o centro da celula -- a conta do servidor (`PortaErguidaPerto`).
+	/// </summary>
+	private static (GameClient.BlocoInfo Bloco, float Dist2)? PortaPerto()
+	{
+		if (GameClient.Instance is not { } cli || World.Instancia is not { } mundo) return null;
+		if (mundo.PosicaoDesenhadaDe(cli.LocalId) is not { } eu) return null;
+
+		const float T = Jandirus.Core.World.ZoneCollision.TileSize;
+		(GameClient.BlocoInfo Bloco, float Dist2)? melhor = null;
+		foreach ((int x, int y) in mundo.PortasErguidas)
+		{
+			if (!cli.Blocos.TryGetValue((x, y), out GameClient.BlocoInfo b)) continue;
+			if (Interacoes.DaPorta(b.Meu, b.Trancado, b.SeiASenha).Length == 0) continue;
+
+			var centro = new Vector2(x * T + T / 2f, y * T + T / 2f);
+			if (Math.Abs(centro.X - eu.X) > Alcance || Math.Abs(centro.Y - eu.Y) > Alcance) continue;
+
+			float d = eu.DistanceSquaredTo(centro);
+			if (melhor is { } m && d >= m.Dist2) continue;
+			melhor = (b, d);
+		}
+		return melhor;
+	}
+
+	/// <summary>A porta erguida ganha da mobilia por perto? Pela distancia, como o cadaver (`CadaverGanha`).</summary>
+	private static GameClient.BlocoInfo? PortaGanha(GameClient.ObraInfo? obra)
+	{
+		if (PortaPerto() is not { } p) return null;
+		if (obra is { } o && GameClient.Instance is { } cli
+			&& World.Instancia?.PosicaoDesenhadaDe(cli.LocalId) is { } eu && eu.DistanceSquaredTo(o.Pos) <= p.Dist2)
+			return null;
+		return p.Bloco;
+	}
+
+	private static string NomeDaPorta(GameClient.BlocoInfo b) => b.Meu ? "Sua porta" : "Porta trancada";
+
+	/// <summary>O menu aberto e o de uma PORTA erguida, e estas sao as acoes dela (fixadas ao abrir).</summary>
+	private bool _naPorta;
+	private Interacoes.Acao[] _acoesDaPorta = [];
 
 	/// <summary>
 	/// ============================ O CORPO AOS MEUS PES -- o terceiro tipo de alvo da tecla E ============================
@@ -306,6 +365,8 @@ public partial class MenuDeInteracao : CanvasLayer
 	{
 		_pagina = "";
 
+		_naPorta = false;
+
 		if (VeiculoMontado() is { Length: > 0 } v)
 		{
 			_noVeiculo = true;
@@ -327,6 +388,19 @@ public partial class MenuDeInteracao : CanvasLayer
 			_noCadaver = true;
 			_tipoDoAlvo = "";
 			_nomeDoAlvo = NomeDoCadaver();
+			Desenhar("");
+			_raiz.Visible = true;
+			return;
+		}
+
+		if (PortaGanha(perto) is { } porta)
+		{
+			_noVeiculo = false;
+			_noCadaver = false;
+			_naPorta = true;
+			_acoesDaPorta = Interacoes.DaPorta(porta.Meu, porta.Trancado, porta.SeiASenha);
+			_tipoDoAlvo = "";
+			_nomeDoAlvo = NomeDaPorta(porta);
 			Desenhar("");
 			_raiz.Visible = true;
 			return;
@@ -371,9 +445,11 @@ public partial class MenuDeInteracao : CanvasLayer
 		// declara `Forma.Submenu`. Se um dia declarar, a chave composta ja esta montada acima.
 		// O CADAVER E A TERCEIRA TABELA, e ele nao tem submenu nem tipo: as acoes de um corpo no chao
 		// sao as mesmas para todo corpo (ver `Interacoes.DoCadaver`, que explica por que e uma so).
-		foreach (Interacoes.Acao a in _noCadaver ? Interacoes.DoCadaver()
-											     : _noVeiculo ? Interacoes.DoVeiculo(tipo)
-														      : Interacoes.De(chave))
+		// A PORTA ERGUIDA E A QUARTA, e a tabela dela depende de quem olha (ver `Interacoes.DaPorta`).
+		foreach (Interacoes.Acao a in _naPorta ? _acoesDaPorta
+									 : _noCadaver ? Interacoes.DoCadaver()
+									 : _noVeiculo ? Interacoes.DoVeiculo(tipo)
+									 : Interacoes.De(chave))
 		{
 			Interacoes.Acao acao = a;
 			var b = new Button { Text = a.Rotulo, TooltipText = a.Dica };
@@ -471,6 +547,7 @@ public partial class MenuDeInteracao : CanvasLayer
 		_nomeDoAlvo = "";
 		_noVeiculo = false;
 		_noCadaver = false;
+		_naPorta = false;
 	}
 
 	// =====================================================================

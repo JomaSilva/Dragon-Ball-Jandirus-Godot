@@ -187,6 +187,166 @@ public partial class Iluminacao : Node2D
     public override void _ExitTree()
     {
         if (GameClient.Instance is { } cli) cli.HoraDoMundo -= AcertarRelogio;
+        if (_teto != null) _teto.Mudou -= AoMudarOTeto;
+    }
+
+    // =====================================================================
+    // SOB TETO -- a area `Inside` do original
+    // =====================================================================
+    private TetoDaZona? _teto;
+
+    /// <summary>
+    /// O TETO DA ZONA, que mora no `World`: o que o clima recorta (<see cref="ClimaNaTela.UsarTeto"/>)
+    /// e o que a luz de dentro de casa consulta. Chamado uma vez, com este node ja na arvore.
+    /// </summary>
+    public void UsarTeto(TetoDaZona teto)
+    {
+        if (_teto != null) _teto.Mudou -= AoMudarOTeto;
+        _teto = teto;
+        _teto.Mudou += AoMudarOTeto;
+        _clima.UsarTeto(teto);
+        AoMudarOTeto();
+    }
+
+    // =====================================================================
+    // A LUZ DE DENTRO DE CASA
+    // =====================================================================
+    /// <summary>
+    /// ============================ SOB TETO NAO ESCURECE -- PRA QUEM ESTA SOB TETO ============================
+    /// No DM a noite e o mesmo icone de area que o clima, e a area interna nao recebe nenhum (ver
+    /// `Core/World/CelulaInterna.cs`): dentro de casa e de caverna nao escurece de noite nem na
+    /// tempestade. Aqui a noite e um <see cref="CanvasModulate"/> da cena inteira, e quem tira a casa
+    /// de baixo dele sao DUAS LUZES COM A FORMA DO PLANO DO TETO (a textura do `TetoDaZona`: um texel
+    /// por celula, esticado pelo lado da celula). Uma devolve a cada celula sob teto o que falta pro
+    /// tom de dia; a outra tira o que passa dele (num canal o ambiente passa, no amanhecer
+    /// alaranjado e no clarao da nevasca).
+    ///
+    /// SOMAR E TIRAR, e nao MISTURAR. O modo `Mix` de uma `Light2D` daria o tom de dia exato numa luz
+    /// so -- e apagaria o que as outras luzes puseram ali (a fogueira dentro da casa), porque a ordem
+    /// em que o motor aplica as luzes de um item nao e garantida. Soma e subtracao comutam.
+    ///
+    /// ============================ DIVERGENCIA DECLARADA: SO DE DENTRO ============================
+    /// No DM a celula interna fica clara pra TODO MUNDO, inclusive pra quem a ve da rua. Aqui as duas
+    /// luzes so acendem enquanto o corpo LOCAL esta sob teto. Escolha do dono, por foto (2026-10-08):
+    /// la a noite e uma chapa a 49% e o predio claro mal se nota; aqui o ambiente multiplica ate
+    /// quase preto, e a porta e a parede do Banco viravam um retangulo aceso no meio do breu. Da rua,
+    /// o predio escurece com a rua.
+    ///
+    /// De brinde, na rua as duas ficam apagadas DE VERDADE (`Visible = false`): uma luz do tamanho do
+    /// mapa entra na lista de todo item da zona, e a lista tem 16 lugares.
+    ///
+    /// ============================ ELAS SAO FILHAS DO AMBIENTE ============================
+    /// E nao deste node. Elas so existem pra corrigir o <see cref="_ambiente"/>, e ha bancada de foto
+    /// que ESCONDE o ambiente pra julgar cor (`RoboDeTintaNoMundo`, `RoboDeVestido`): com as luzes
+    /// penduradas aqui, a foto "sem ambiente" de um corpo dentro do Banco sairia com o que falta pro
+    /// dia SOMADO por cima do branco -- estourada. Filhas dele, somem junto.
+    /// =====================================================================================
+    /// </summary>
+    private PointLight2D? _luzDoTeto, _sombraDoTeto;
+
+    /// <summary>De 0 a 1: o quanto a luz de dentro ja acendeu. A rampa e o que evita o estalo na soleira.</summary>
+    private float _luzDeDentro;
+
+    private const float SegundosPraAcenderALuzDeDentro = 0.25f;
+
+    /// <summary>
+    /// DEFEITO INJETADO (bancada): a luz de dentro nunca acende. E o jogo de ANTES no mesmo binario --
+    /// a sala escurece com a rua. Falso em jogo, sempre.
+    /// </summary>
+    public static bool SemLuzDeDentroDeTeste;
+
+    /// <summary>
+    /// DEFEITO INJETADO (bancada): a luz de dentro acende mesmo com o corpo local na RUA. E o desenho
+    /// do DM, que o dono viu em foto e recusou. Falso em jogo, sempre.
+    /// </summary>
+    public static bool LuzDeDentroAcesaDaRuaDeTeste;
+
+    /// <summary>A zona carregou, ou uma celula interna caiu: as duas luzes recebem o plano de agora.</summary>
+    private void AoMudarOTeto()
+    {
+        if (_luzDoTeto != null) AssentarNoPlano(_luzDoTeto);
+        if (_sombraDoTeto != null) AssentarNoPlano(_sombraDoTeto);
+    }
+
+    /// <summary>
+    /// A textura do plano tem um texel por celula; esticada pelo lado da celula e centrada no meio
+    /// do mapa, cada texel cai em cima da celula dele.
+    /// </summary>
+    private void AssentarNoPlano(PointLight2D luz)
+    {
+        luz.Texture = _teto?.Textura;
+        luz.Position = new Vector2((_teto?.Largura ?? 0) * ZoneCollision.TileSize / 2f,
+                                   (_teto?.Altura ?? 0) * ZoneCollision.TileSize / 2f);
+    }
+
+    /// <summary>
+    /// ACERTA AS DUAS LUZES pro ambiente deste quadro, e devolve O AMBIENTE DE ONDE O JOGADOR ESTA: o
+    /// da rua, ou o tom de dia quando ele esta sob teto com a luz acesa.
+    ///
+    /// E esse segundo que a <see cref="Escuridao"/> anota. A aura e a luz de ki perguntam a ela se e
+    /// noite pra decidir o quanto brilham -- e somar luz por cima de uma sala que ja esta no tom de
+    /// dia e exatamente o borrao estourado que a curva delas existe pra evitar.
+    /// </summary>
+    private Color ALuzDeDentro(Color ambiente, double delta)
+    {
+        bool haTeto = _teto?.Textura != null;
+        bool acende = haTeto && !SemLuzDeDentroDeTeste
+                      && (LuzDeDentroAcesaDaRuaDeTeste || (World.Instancia?.EuEstouSobTeto ?? false));
+
+        // ZONA SEM TETO NAO TEM RAMPA: a textura sumiu com a zona, e luz sem textura nao tem o que descer.
+        _luzDeDentro = haTeto
+            ? Mathf.MoveToward(_luzDeDentro, acende ? 1f : 0f, (float)delta / SegundosPraAcenderALuzDeDentro)
+            : 0f;
+
+        float r = _luzDeDentro;
+        AcertarLuzMascara(ref _luzDoTeto, "LuzDoTeto", Light2D.BlendModeEnum.Add, new Color(
+            Mathf.Max(0, AmbienteDia.R - ambiente.R) * r,
+            Mathf.Max(0, AmbienteDia.G - ambiente.G) * r,
+            Mathf.Max(0, AmbienteDia.B - ambiente.B) * r));
+        AcertarLuzMascara(ref _sombraDoTeto, "SombraDoTeto", Light2D.BlendModeEnum.Sub, new Color(
+            Mathf.Max(0, ambiente.R - AmbienteDia.R) * r,
+            Mathf.Max(0, ambiente.G - AmbienteDia.G) * r,
+            Mathf.Max(0, ambiente.B - AmbienteDia.B) * r));
+
+        return r <= 0 ? ambiente : ambiente.Lerp(AmbienteDia, r);
+    }
+
+    /// <summary>
+    /// Apaga as duas na hora, sem rampa. E pros ramos do `Recalcular` em que nao ha noite nenhuma pra
+    /// tirar: antes de o servidor mandar a hora, a zona de luz propria, e a trava de meio-dia das bancadas.
+    /// </summary>
+    private void ApagarALuzDeDentro()
+    {
+        _luzDeDentro = 0;
+        if (_luzDoTeto is { Visible: true }) _luzDoTeto.Visible = false;
+        if (_sombraDoTeto is { Visible: true }) _sombraDoTeto.Visible = false;
+    }
+
+    private void AcertarLuzMascara(ref PointLight2D? luz, string nome, Light2D.BlendModeEnum modo, Color cor)
+    {
+        // APAGADA NAO E "COR PRETA": uma luz visivel entra na lista de todo item da zona mesmo sem
+        // somar nada. E e por isso tambem que ela so NASCE no primeiro quadro em que tem o que somar.
+        if (cor.R + cor.G + cor.B < 0.004f)
+        {
+            if (luz is { Visible: true }) luz.Visible = false;
+            return;
+        }
+
+        if (luz == null)
+        {
+            luz = new PointLight2D
+            {
+                Name = nome,
+                BlendMode = modo,
+                Energy = 1f,
+                ShadowEnabled = false,
+                TextureScale = ZoneCollision.TileSize,
+            };
+            _ambiente.AddChild(luz);
+            AssentarNoPlano(luz);
+        }
+        if (!luz.Visible) luz.Visible = true;
+        luz.Color = cor;
     }
 
     /// <summary>
@@ -286,6 +446,7 @@ public partial class Iluminacao : Node2D
         {
             _ambiente.Color = AmbienteDia;
             AnotarEscuridao(AmbienteDia);
+            ApagarALuzDeDentro();
             _clima.Aplicar(default, delta, AmbienteDia);
             return;
         }
@@ -296,6 +457,7 @@ public partial class Iluminacao : Node2D
         {
             _ambiente.Color = AmbienteDia;
             AnotarEscuridao(AmbienteDia);
+            ApagarALuzDeDentro();
             _clima.Aplicar(default, delta, AmbienteDia);
             return;
         }
@@ -314,13 +476,18 @@ public partial class Iluminacao : Node2D
         {
             _ambiente.Color = Colors.White;
             AnotarEscuridao(Colors.White);
+            ApagarALuzDeDentro();
             _clima.Aplicar(default, delta, Colors.White);
             return;
         }
 
         Color cor = CorDoCeu(Estado, TempoQueFaz);
+
         _ambiente.Color = cor;
-        AnotarEscuridao(cor);
+        // SOB TETO NAO ESCURECE (ver `ALuzDeDentro`). O AMBIENTE NAO MUDA -- la fora continua a hora
+        // que e, e o veu do clima logo abaixo recebe a cor da RUA. O que muda e a escuridao anotada:
+        // ela e a de onde o jogador esta.
+        AnotarEscuridao(ALuzDeDentro(cor, delta));
         // A COR DO AMBIENTE VAI JUNTO: o veu do clima e de tela e escapa do `CanvasModulate`, entao
         // e ele que tem que se escurecer. Sem isto, neblina branca brilharia a meia-noite.
         //

@@ -175,13 +175,19 @@ public static class Voo
 	/// `tall == 0`, entao barreira ALTA continua barrando quem voa.
 	///
 	/// So que aqui nao ha esse dado. A colisao da zona e UM bitset de 1 bit por celula
-	/// (<see cref="ZoneCollision"/>): nao ha altura por tile, nao ha `tall`, e as construcoes de
-	/// jogador tambem deixam passar quem voa (`buildturfs.dm:880`). Duas faixas seriam o MESMO
-	/// numero com dois nomes -- e um limite que nunca separa nada e indistinguivel de limite nenhum.
+	/// (<see cref="ZoneCollision"/>): nao ha altura por tile, nao ha `tall`. Duas faixas seriam o
+	/// MESMO numero com dois nomes -- e um limite que nunca separa nada e indistinguivel de limite
+	/// nenhum.
 	///
 	/// Fica uma faixa, honesta. Se um dia o conversor exportar altura por tile, e aqui que a
 	/// segunda entra.
 	/// ========================================================================================
+	///
+	/// ATRAVESSAR O CENARIO NAO E ATRAVESSAR TUDO (2026-10-08): a parede de PREDIO continua barrando
+	/// la de cima -- o dono: "voar por cima de parede de base de player n deveria ser possivel". Quem
+	/// separa as duas coisas nao e uma segunda altura (que herdaria o atraso de um tique com que a
+	/// altura chega ao cliente): e o plano do que esta sob teto. Ver <see cref="ClasseDePredio"/> e
+	/// <see cref="ModoNaAltura"/>.
 	/// </summary>
 	public const float AlturaQueAtravessa = 1f * ZoneCollision.TileSize;
 
@@ -197,8 +203,35 @@ public static class Voo
 	/// </summary>
 	public const float QuedaPorSegundo = 16f * ZoneCollision.TileSize;
 
-	/// <summary>Este corpo passa por cima de parede agora?</summary>
+	/// <summary>Este corpo passa por cima do cenario agora? (Da parede de predio, nao: <see cref="ClasseDePredio"/>.)</summary>
 	public static bool AtravessaCenario(float altura) => altura >= AlturaQueAtravessa;
+
+	/// <summary>
+	/// COM QUE MODO ESTE CORPO PERGUNTA AO MAPA, na altura em que esta: acima do cenario,
+	/// <see cref="ModoDeTravessia.PorCima"/>; abaixo dele, o modo que o corpo ja tinha.
+	///
+	/// ============================ POR QUE UMA FUNCAO, E QUEM A CHAMA ============================
+	/// Ate 2026-10-08 esta escolha era um `AtravessandoCenario ? null : mapa` escrito em cinco lugares
+	/// -- o passo previsto pelo cliente (`LocalPlayer`), a validacao do servidor (`GameServer.Input`),
+	/// o passo da IA, o arremesso e o arrasto do feixe. Mapa nulo era "a geometria nao pergunta nada",
+	/// e por isso se voava por cima de casa.
+	///
+	/// Agora os cinco entregam o MAPA e este modo, e a pergunta chega ao
+	/// <see cref="ZoneCollision.Bloqueia"/> como todas as outras. As duas pontas continuam fazendo a
+	/// mesma escolha pelo mesmo numero (a altura crua do servidor), que e a condicao pra nao haver
+	/// faixa em que uma passa e a outra recusa.
+	/// ========================================================================================
+	/// </summary>
+	public static ModoDeTravessia ModoNaAltura(float altura, ModoDeTravessia doCorpo)
+		=> AtravessaCenario(altura) ? ModoDeTravessia.PorCima : doCorpo;
+
+	/// <summary>
+	/// ESTE MODO E DE QUEM VOA? -- no meio do cenario (<see cref="ModoDeTravessia.Voando"/>) ou por
+	/// cima dele (<see cref="ModoDeTravessia.PorCima"/>). E a pergunta que o corpo alheio e a nuvem
+	/// fazem: pros dois, quem voa alto e quem voa, e ponto.
+	/// </summary>
+	public static bool Voa(ModoDeTravessia modo)
+		=> modo is ModoDeTravessia.Voando or ModoDeTravessia.PorCima;
 
 	/// <summary>De 0 (chao) a 1 (teto). E o parametro de todo efeito visual de altura.</summary>
 	public static float Fracao(float altura)

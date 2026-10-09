@@ -976,7 +976,7 @@ public partial class CreationScreen : CanvasLayer
 	/// </summary>
 	private static Texture2D? IconeDePlaneta(string planeta)
 	{
-		var f = ResourceLoader.Load<SpriteFrames>("res://Assets/Sprites/Misc/Planets.tres");
+		var f = FolhasPresas.Carregar("res://Assets/Sprites/Misc/Planets.tres");
 		if (f == null) return null;
 		string estado = planeta.ToLowerInvariant();
 		return f.HasAnimation(estado) && f.GetFrameCount(estado) > 0 ? f.GetFrameTexture(estado, 0) : null;
@@ -1011,10 +1011,15 @@ public partial class CreationScreen : CanvasLayer
 	/// <summary>
 	/// O primeiro quadro de um SpriteFrames, virado textura -- e o icone do botao.
 	/// Barato: o AtlasTexture aponta pro mesmo PNG ja carregado, nao copia pixel nenhum.
+	///
+	/// A FOLHA VEM DA PORTA (`FolhasPresas`), e aqui isso e o conserto inteiro: esta funcao fica com UM quadro e
+	/// larga a folha. Solta, a folha morria na coleta seguinte e o quadro sobrevivia so pelo botao -- e, quando a
+	/// tela saia, so pelo involucro C#. Era o estado de 225 das 227 miniaturas desta tela na entrada no mundo,
+	/// bem na hora em que os habitantes sao vestidos com as mesmas folhas.
 	/// </summary>
 	private static Texture2D? Miniatura(string caminho)
 	{
-		var f = ResourceLoader.Load<SpriteFrames>(caminho);
+		var f = FolhasPresas.Carregar(caminho);
 		if (f == null) return null;
 
 		// A ordem importa: a pose PARADA de frente e o melhor retrato. Mas nem toda peca tem

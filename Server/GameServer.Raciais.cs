@@ -208,7 +208,15 @@ public partial class GameServer
 			// `bioabsorb` concede (`obj/Bio_Absorb`, `Race Trees/bioandroid.dm:21-23`) -- o mesmo
 			// desenho do Oozaru duas linhas acima, que tambem e do corpo e nao do livro. O gate de
 			// quem PODE fica no proprio `AbsorverBio` e no registro de verb do cliente.
-			case "absorver": AbsorverBio(pl); break;
+			//
+			// E O MAJIN ENTRA PELO MESMO VERB, bifurcado pela raca como no DM (`Absorption.dm:83`): o bio
+			// CONSOME, o Majin SELA -- a vitima vai viva pro interior dele. Ver `GameServer.AbsorcaoMajin.cs`.
+			case "absorver":
+				if (CorpoDeMajin(pl)) AbsorverMajin(pl); else AbsorverBio(pl);
+				break;
+			// O `Expel` do mesmo objeto (`Absorption.dm:104-107`): todos de uma vez. Um so chega la embaixo,
+			// como `expelir:<numero>`.
+			case "expelir": ExpelirDoMajin(pl, ""); break;
 			// A POSTURA DO ANDROIDE DE ABSORCAO. Mesmo cano, mesma razao: no DM ela e um
 			// `mob/keyable/verb` concedido pela CONVERSAO (`assignverb`, `DNALabs.dm:220`) e nao uma
 			// skill do livro -- entao o `UsarTecnica` nunca a acharia.
@@ -223,6 +231,9 @@ public partial class GameServer
 				// Ver `GameServer.Mente.cs`.
 				if (id.StartsWith("mente_chefe:", StringComparison.Ordinal))
 				{ ChamarChefe(pl, id["mente_chefe:".Length..]); break; }
+				// EXPELIR UM SO de dentro do Majin: um botao por absorvido, no mesmo molde do de cima.
+				if (id.StartsWith("expelir:", StringComparison.Ordinal))
+				{ ExpelirDoMajin(pl, id["expelir:".Length..]); break; }
 				// AS DISCIPLINAS DIVINAS entram antes das tecnicas de skill: elas nao SAO skills
 				// (nao se compram com marco), e por isso nao estao no livro que o UsarTecnica varre.
 				if (UsarDisciplina(pl, id)) break;

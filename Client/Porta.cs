@@ -27,6 +27,9 @@ public partial class Porta : AnimatedSprite2D
 	/// <summary>A celula do mapa. E a chave que o pacote do servidor usa.</summary>
 	public int Cx, Cy;
 
+	/// <summary>A folha que a desenha. A porta ERGUIDA pode ser trocada por outra na mesma celula; quem compara e o `World`.</summary>
+	public string Arte = "";
+
 	private bool _aberta;
 
 	/// <summary>Nomes de animacao do `.dmi` convertido -- os `icon_state` do original, em minuscula.</summary>
@@ -38,13 +41,14 @@ public partial class Porta : AnimatedSprite2D
 		{
 			Cx = d.X,
 			Cy = d.Y,
+			Arte = d.Arte,
 			// O CENTRO DA CELULA. O tile que ela substitui ordenava pelo centro (o conversor deixa
 			// `y_sort_origin` em 0 de proposito -- ver o comentario dele), e o personagem tambem:
 			// os pes ficam 16 px abaixo do no. Nascer no mesmo ponto e o que faz o Y-sort comparar
 			// a porta e quem passa por ela na mesma referencia.
 			Position = new Vector2(d.X * ZoneCollision.TileSize + ZoneCollision.TileSize / 2f,
 								   d.Y * ZoneCollision.TileSize + ZoneCollision.TileSize / 2f),
-			SpriteFrames = ResourceLoader.Load<SpriteFrames>(d.Arte),
+			SpriteFrames = FolhasPresas.Carregar(d.Arte),
 		};
 		return p;
 	}

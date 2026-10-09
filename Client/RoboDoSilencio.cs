@@ -42,6 +42,16 @@ namespace Jandirus.Client;
 /// termina de volta num planeta, e nao no vacuo -- a ultima parada e a que ninguem lembra de testar.
 /// ========================================================================================================
 ///
+/// ============================ O PALCO DO ESPACO E O PONTO DE DECOLAGEM ============================
+/// A rota manda o corpo pro espaco com o `MoveToZone` do servidor, e o ONDE importa: la em cima
+/// encostar num disco e pousar (`GameServer.TickDoEspaco`). A chegada e a de toda subida de producao
+/// -- `Espaco.PontoDeDecolagem` do planeta de casa, 90 px fora da borda do disco, o ponto do
+/// `GameServer.Decolar`. Ver <see cref="IrProEspaco"/>, que conta o que acontecia fora dele.
+///
+/// CONTRA-EXEMPLO: `--palconodisco` poe a chegada no CENTRO do disco (<see cref="PalcoNoDiscoDeTeste"/>,
+/// o palco de antes) e a rodada fecha em SEM MEDIDA dizendo a rota que o servidor mandou.
+/// ==================================================================================================
+///
 /// Roda com `--host` e **serve no `--headless`**: aqui nao ha pixel, ha barramento.
 ///
 ///     Godot --headless --path . --host --rede 7904 --diagsilencio \
@@ -71,6 +81,40 @@ public partial class RoboDoSilencio : Node
 
 	/// <summary>Quantos efeitos POSICIONADOS foram pedidos desde o ultimo zero. Ver o `Espiao`.</summary>
 	private int _pedidos;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada, `--palconodisco`): o palco de ANTES -- a chegada no espaco cai no CENTRO
+	/// do disco do planeta de casa, em vez de no ponto de decolagem dele. Era o `new Vec2(0, 0)` que esta
+	/// bancada mandava, e `(0, 0)` e o centro da Terra. Sempre falso sem a chave. Ver <see cref="IrProEspaco"/>.
+	/// </summary>
+	private static readonly bool PalcoNoDiscoDeTeste =
+		Array.IndexOf(OS.GetCmdlineArgs(), "--palconodisco") >= 0;
+
+	/// <summary>Onde o corpo foi posto no espaco. Ver <see cref="IrProEspaco"/>.</summary>
+	private Vec2 _chegada;
+
+	/// <summary>
+	/// O QUE O SERVIDOR DISSE DA MINHA ZONA DESDE O PEDIDO DO ESPACO: um nome por `ZoneChanged`, na
+	/// ordem. E a palavra dele, pacote a pacote -- olhar `cli.Zone` uma vez por quadro perderia a ida e
+	/// a volta que chegam na mesma leva de rede.
+	/// </summary>
+	private readonly List<string> _rota = [];
+
+	/// <summary>De quem a rota esta sendo ouvida agora (nulo = de ninguem). Ver <see cref="OuvirARota"/>.</summary>
+	private GameClient? _ouvido;
+
+	// (metodo NOMEADO e `-=`, nunca lambda: lambda nao se cancela)
+	private void AnotarARota(ZoneKey z, Vec2 onde) => _rota.Add(z.Name);
+
+	/// <summary>Passa a ouvir os `ZoneChanged` deste cliente -- ou para de ouvir, com nulo.</summary>
+	private void OuvirARota(GameClient? cli)
+	{
+		if (_ouvido != null && IsInstanceValid(_ouvido)) _ouvido.ZoneChanged -= AnotarARota;
+		_ouvido = cli;
+		if (cli != null) cli.ZoneChanged += AnotarARota;
+	}
+
+	public override void _ExitTree() => OuvirARota(null);
 
 	private void Conferir(bool ok, string oque)
 	{
@@ -139,10 +183,13 @@ public partial class RoboDoSilencio : Node
 	private void Assentar(GameClient cli)
 	{
 		if (_t < 3) return;
-		if (World.Instancia?.PosicaoDesenhadaDe(cli.LocalId) is not { } _) return;
+		if (World.Instancia?.PosicaoLocal is not { } pe) return;
 
+		// O PONTO E O DO CORPO, e nao `(0, 0)`: a volta pra casa pousa onde o jogo o pos ao nascer (chao
+		// que o berco ja conferiu), e nao na quina do mapa. Ver `IrProEspaco`, onde o outro `(0, 0)`
+		// desta bancada custou a rodada inteira.
 		_casa = cli.Zone;
-		_ondeEmCasa = new Vec2(0, 0);
+		_ondeEmCasa = new Vec2(pe.X, pe.Y);
 		_temCasa = true;
 
 		// A CASA NAO PODE SER O ESPACO -- se o berco nascesse no vacuo, a primeira parada (que afirma
@@ -184,24 +231,80 @@ public partial class RoboDoSilencio : Node
 	// =====================================================================
 	// 2) IR PRO ESPACO -- pelo servidor, e nao chamando `Vacuo`
 	// =====================================================================
+	/// <summary>
+	/// ============================ O PONTO DE CHEGADA E O DA DECOLAGEM, E NAO `(0, 0)` ============================
+	/// Esta parada mandava o corpo pra `new Vec2(0, 0)`, e `(0, 0)` do espaco nao e um ponto qualquer do
+	/// vazio: e o CENTRO DO DISCO DA TERRA (`Espaco.PreFeitos`, raio 220). La em cima encostar num disco
+	/// e pousar -- `GameServer.TickDoEspaco` pergunta `Espaco.PlanetaSob` a 30 Hz --, entao o servidor
+	/// descia o corpo de volta pra `Earth` no tique seguinte. MEDIDO em 2026-10-09 (duas rodadas): o log
+	/// do servidor diz `Silencio pousou em Earth` antes de o cliente terminar de carregar o espaco, e a
+	/// rodada fechava com 3 das 17 provas e "o cliente nunca chegou no espaco".
+	///
+	/// O jogo nao poe ninguem ali. Toda subida de producao chega em `Espaco.PontoDeDecolagem` -- o
+	/// `GameServer.Decolar` (romper a atmosfera voando, a habilidade `decolar`, a nave com piloto), a nave
+	/// que sobe sozinha e a evacuacao de um mundo que morre --, e ele fica 90 px ACIMA da borda do disco,
+	/// *"fora do raio de proposito"*: o comentario de la descreve este mesmo defeito. A bancada chega pelo
+	/// mesmo ponto, com o mesmo `MoveToZone`.
+	///
+	/// ============================ E SE O SERVIDOR ME TIRAR DE LA, ELA DIZ ============================
+	/// "Nunca chegou" era falso: o corpo chegava e era tirado. A parada escuta os `ZoneChanged` desde o
+	/// pedido (<see cref="_rota"/>) e, se a ultima palavra do servidor nao for o espaco, fecha na hora com
+	/// a rota que ele mandou e com a resposta do Core pra "esse ponto esta em cima de um disco?" -- a
+	/// MESMA pergunta do tique. O contra-exemplo e <see cref="PalcoNoDiscoDeTeste"/>.
+	/// ===============================================================================================
+	/// </summary>
 	private void IrProEspaco(GameClient cli, Jandirus.Server.GameServer srv)
 	{
 		if (!_pediuEspaco)
 		{
 			_pediuEspaco = true;
-			srv.MoveToZone(cli.LocalId, srv.ZonaDoEspaco, new Vec2(0, 0));
-			Nota("o SERVIDOR me mandou pro espaco (`MoveToZone`) -- ninguem chamou `Vacuo`");
+
+			if (srv.CorpoDaZona(_casa) is not { } planeta)
+			{
+				NaoMediu($"`{_casa.Name}` nao esta na carta estelar -- nao ha ponto de decolagem pra chegar no espaco");
+				Fechar();
+				return;
+			}
+
+			_chegada = PalcoNoDiscoDeTeste ? planeta.Pos : Espaco.PontoDeDecolagem(planeta);
+			string onde = PalcoNoDiscoDeTeste
+				? "(defeito injetado: palco em cima do disco) no CENTRO do disco"
+				: "no ponto de decolagem";
+
+			OuvirARota(cli);
+			srv.MoveToZone(cli.LocalId, srv.ZonaDoEspaco, _chegada);
+			Nota($"o SERVIDOR me mandou pro espaco (`MoveToZone`), {onde} de `{planeta.Nome}` "
+			   + $"({_chegada.X:0}; {_chegada.Y:0}) -- ninguem chamou `Vacuo`");
 			return;
 		}
 
-		if (!Espaco.EhEspaco(cli.Zone))
+		if (Espaco.EhEspaco(cli.Zone))
 		{
-			if (_t > 15) { NaoMediu("o cliente nunca chegou no espaco"); Fechar(); }
+			if (_t < 1) return;   // um quadro de folga pro `CarregarZona` terminar
+			OuvirARota(null);
+			Virar(3);
 			return;
 		}
 
-		if (_t < 1) return;   // um quadro de folga pro `CarregarZona` terminar
-		Virar(3);
+		// O SERVIDOR JA FALOU DE ZONA DEPOIS DO PEDIDO, E A ULTIMA PALAVRA NAO E O ESPACO: ele me tirou
+		// de la. Nao ha o que esperar -- e os 15 s de antes terminavam sem dizer o porque.
+		if (_rota.Count > 0)
+		{
+			string porque = Espaco.PlanetaSob(srv.SeedDoUniverso, _chegada) is { } disco
+				? $"o ponto de chegada ({_chegada.X:0}; {_chegada.Y:0}) esta DENTRO do disco de `{disco.Nome}` "
+				  + $"(raio {disco.Raio:0}), e la em cima encostar e pousar (`TickDoEspaco`)"
+				: $"o ponto de chegada ({_chegada.X:0}; {_chegada.Y:0}) e espaco aberto -- quem tirou o corpo "
+				  + "de la foi outra regra do servidor (veja o log dele)";
+			NaoMediu($"o servidor me tirou do espaco em {_t:0.00} s (rota: {string.Join(" -> ", _rota)}): {porque}");
+			Fechar();
+			return;
+		}
+
+		if (_t > 15)
+		{
+			NaoMediu($"o `ZoneChanged` do espaco nunca chegou -- o cliente segue em `{cli.Zone.Name}`");
+			Fechar();
+		}
 	}
 
 	private bool _pediuEspaco;
@@ -389,6 +492,7 @@ public partial class RoboDoSilencio : Node
 	{
 		if (_acabou) return;
 		_acabou = true;
+		OuvirARota(null);
 
 		GD.Print("[silencio] ================ O SILENCIO DO ESPACO, ANDADO ================");
 		foreach (string p in _passos) GD.Print("[silencio] " + p);

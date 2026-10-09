@@ -107,8 +107,9 @@ public static class MoveRules
 	/// <param name="modo">
 	/// COMO este corpo esta atravessando (ver <see cref="ModoDeTravessia"/>). Muda DUAS coisas: se a
 	/// agua para ou nao, e se um CORPO alheio para ou nao (<see cref="ClasseDeCorpo.Bloqueia"/>).
-	/// Parede para em todos os modos -- quem voa alto nem chega aqui, porque o chamador manda
-	/// `mapa = null` (e o `isflying` do original, ver `Voo.AtravessaCenario`).
+	/// Parede para em todos os modos MENOS em <see cref="ModoDeTravessia.PorCima"/> (quem voa acima
+	/// do cenario, ver `Voo.ModoNaAltura`): pra esse so a parede de predio para
+	/// (<see cref="ClasseDePredio"/>).
 	/// </param>
 	/// <param name="vizinhos">
 	/// ============================ OS CORPOS DA ZONA -- **o segundo plano da MESMA pergunta** ============================
@@ -136,9 +137,10 @@ public static class MoveRules
 		Vec2 alvo = pos + step;
 
 		// ============================ O MAPA PODE FALTAR; OS CORPOS, NAO ============================
-		// `mapa == null` quer dizer duas coisas diferentes -- "voando alto" e "zona sem colisao
-		// carregada" -- e nenhuma das duas e "nao ha gente aqui". Por isso o `return` antigo virou este
-		// ramo: sem mapa a geometria nao pergunta nada, e os corpos continuam perguntando.
+		// `mapa == null` quer dizer "zona sem colisao carregada" (ate 2026-10-08 queria dizer tambem
+		// "voando alto"; quem voa alto agora traz o mapa e o modo `PorCima`), e isso nao e "nao ha gente
+		// aqui". Por isso o `return` antigo virou este ramo: sem mapa a geometria nao pergunta nada, e
+		// os corpos continuam perguntando.
 		// (Voando, quem devolve zero e o proprio `Vizinhanca.Barra`, pelo modo. Nao ha `if` duplicado.)
 		// ==========================================================================================
 		if (mapa == null)

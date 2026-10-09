@@ -1,2 +1,8 @@
 [
+  { "x": 174, "y": 4, "raio": 96, "cor": "ffe8c0", "forca": 0.95, "tremula": false },
+  { "x": 265, "y": 139, "raio": 96, "cor": "ffe8c0", "forca": 0.95, "tremula": false },
+  { "x": 39, "y": 154, "raio": 96, "cor": "ffe8c0", "forca": 0.95, "tremula": false },
+  { "x": 468, "y": 202, "raio": 96, "cor": "ffe8c0", "forca": 0.95, "tremula": false },
+  { "x": 174, "y": 367, "raio": 96, "cor": "ffe8c0", "forca": 0.95, "tremula": false },
+  { "x": 327, "y": 456, "raio": 96, "cor": "ffe8c0", "forca": 0.95, "tremula": false }
 ]

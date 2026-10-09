@@ -4,7 +4,7 @@ using Jandirus.Core.World;
 namespace Jandirus.Tools;
 
 /// <summary>
-/// O CENSO DO QUE BLOQUEIA E NAO APARECE -- `censo &lt;pastaMaps&gt; &lt;pastaCode&gt; &lt;pastaDmm&gt;`.
+/// O CENSO DO QUE BLOQUEIA E NAO APARECE -- `censo &lt;pastaMaps&gt; &lt;pastaCode&gt; &lt;pastaDmm&gt; [pastaPorCima]`.
 ///
 /// ============================ A QUEIXA QUE A TROUXE ============================
 /// *"em VARIOS MAPAS PRE-FEITOS tem VARIOS TILES INVISIVEIS COM COLISAO, onde era pra ser MESA, ou
@@ -121,20 +121,43 @@ public static class CensoMudoBench
 	/// antes do conserto sem tocar em arquivo nenhum.
 	/// ==========================================================================================================
 	/// </summary>
-	public static int Run(string pastaMaps, string pastaCode, string pastaDmm, bool semDuro = false)
+	/// <param name="pastaPorCima">
+	/// A pasta de rascunho do comando `repintar`, ou nula. Os arquivos de zona que existirem nela sao
+	/// lidos no lugar dos publicados: o censo julga o disco COMO FICARIA com o rascunho aplicado. E a
+	/// mesma chave da `CidadeBench`, pelo mesmo motivo -- um rascunho que deixa esta bancada vermelha
+	/// tem que ser visto antes de ir pro `Assets/Maps`, e nao depois.
+	/// </param>
+	public static int Run(string pastaMaps, string pastaCode, string pastaDmm, bool semDuro = false,
+						  string? pastaPorCima = null)
 	{
+		_porCima = pastaPorCima;
 		Console.WriteLine("=== CENSO: O QUE BLOQUEIA E NAO APARECE ===\n");
 		if (semDuro)
 			Console.WriteLine("!! `--semduro`: o plano do indestrutivel NAO sera lido. Este e o CONTROLE\n"
 							+ "!! NEGATIVO -- o censo TEM que reprovar aqui. Se ele passar, a guarda morreu.\n");
+		if (_porCima != null)
+			Console.WriteLine($"JULGANDO O DISCO COM O RASCUNHO POR CIMA: {_porCima}\n");
 
 		string manifesto = Path.Combine(pastaMaps, "manifest.json");
 		if (!File.Exists(manifesto)) { Console.WriteLine($"sem {manifesto}"); return 1; }
 		ZoneCatalog cat = ZoneCatalog.Parse(File.ReadAllText(manifesto));
 
+		// O RASCUNHO QUE ESPELHA O REPO traz o indice e o catalogo DELE na pasta `Data` ao lado da de mapas
+		// (o comando `acrescentar` acrescenta fontes ao tileset): um `.pedacos` do rascunho so se julga
+		// com o indice que conhece as fontes dele.
 		string dataDir = Path.Combine(Path.GetDirectoryName(pastaMaps.TrimEnd('/', '\\'))!, "Data");
-		CatalogoDeObras obras = CatalogoDeObras.Parse(File.ReadAllText(Path.Combine(dataDir, "construcoes.json")));
-		CatalogoDeTiles tiles = CatalogoDeTiles.Parse(File.ReadAllText(Path.Combine(dataDir, "tiles.json")));
+		string Dado(string nome)
+		{
+			string doRascunho = _porCima == null ? "" : Path.GetFullPath(Path.Combine(_porCima, "..", "Data", nome));
+			if (doRascunho.Length > 0 && File.Exists(doRascunho))
+			{
+				Console.WriteLine($"   {nome}: o do rascunho ({doRascunho})");
+				return doRascunho;
+			}
+			return Path.Combine(dataDir, nome);
+		}
+		CatalogoDeObras obras = CatalogoDeObras.Parse(File.ReadAllText(Dado("construcoes.json")));
+		CatalogoDeTiles tiles = CatalogoDeTiles.Parse(File.ReadAllText(Dado("tiles.json")));
 
 		Console.WriteLine("lendo a arvore de tipos do DM...");
 		Dictionary<string, TurfDef> turfs = DmTurfScanner.Scan(Path.GetFullPath(pastaCode));
@@ -157,6 +180,8 @@ public static class CensoMudoBench
 		var disfarcados = new List<Achado>();   // bloqueia e desenha o QUADRO ERRADO (ver Motivo.QuadroErrado)
 		var bordas = new List<Achado>();        // o vazio deliberado do mapeador (Blank e barreira)
 		var vazioQuebravel = new List<Achado>();// ...e o que dele CEDE a um soco, que e o defeito
+		var atrasDaBarreira = new List<Achado>();// a aresta aparece e o corpo denso da mesma celula nao
+		CelulaDeExemplo? arestaAntesDoCorpo = null;
 
 		/// ============================ A LISTA QUE O DONO PRECISA DECIDIR ============================
 		// O vazio invisivel e HERANCA: o BYOND tambem nao desenhava nada ali, e la ele bloqueia
@@ -280,7 +305,7 @@ public static class CensoMudoBench
 					// BASTA UM APARECER. Se qualquer coisa densa da celula desenha, o jogador ve
 					// no que esbarrou -- e nao ha queixa.
 					Achado? pior = null;
-					bool alguemDesenha = false;
+					string? quemDesenha = null;
 					foreach (string bp in travas)
 					{
 						(Motivo m, string det) = Julgar(bp, x, y, lv, turfs, tiles, obras,
@@ -292,14 +317,32 @@ public static class CensoMudoBench
 						// quadro por acaso e o chao, o jogador ve exatamente o que o dono descreveu.
 						if (m == Motivo.QuadroErrado)
 						{
-							alguemDesenha = true;
+							quemDesenha = bp;
 							disfarcados.Add(new Achado(rot, x, y, bp, m, det));
 							break;
 						}
-						if (m == Motivo.Desenha) { alguemDesenha = true; break; }
+						if (m == Motivo.Desenha) { quemDesenha = bp; break; }
 						pior ??= new Achado(rot, x, y, bp, m, det);
 					}
-					if (alguemDesenha) continue;
+
+					// a primeira celula do censo em que o mapa lista a aresta ANTES de um corpo denso com
+					// arte: e a composicao do contra-exemplo la embaixo
+					arestaAntesDoCorpo ??= ArestaAntesDoCorpo(rot, x, y, lv, turfs, tiles, obras);
+
+					if (quemDesenha != null)
+					{
+						// ============================ A BARREIRA QUE APARECE NAO DESCULPA O CORPO ============================
+						// "Basta um aparecer" vale entre iguais. Uma aresta de penhasco e um risco no chao: ela
+						// desenhar nao conta ao jogador que ha um PINHEIRO naquela celula. Em Icer o mapa lista a
+						// aresta antes da arvore em nove celulas, o conversor dava a camada de objetos ao primeiro
+						// `/obj` da lista, e este censo fechava verde com nove arvores densas sem pintura.
+						// ====================================================================================================
+						if (EhBarreira(quemDesenha)
+							&& CorpoMudo(rot, travas, x, y, lv, turfs, tiles, obras, pintado.GetValueOrDefault(k),
+										 maquinas.GetValueOrDefault(k), portas.GetValueOrDefault(k), raizProjeto) is { } mudo)
+							atrasDaBarreira.Add(mudo);
+						continue;
+					}
 
 					invisivel++;
 					if (pior!.Porque == Motivo.SemIconeNoDM && EhVazio(pior.Tipo))
@@ -398,6 +441,19 @@ public static class CensoMudoBench
 							  + $"   ex.: {string.Join(" ", g.Take(4).Select(a => $"{a.Zona}({a.X},{a.Y})"))}");
 		if (disfarcados.Count == 0) Console.WriteLine("    (nenhuma)");
 
+		// =====================================================================
+		// O CORPO ATRAS DA BARREIRA: a aresta aparece, a arvore densa da mesma celula nao
+		// =====================================================================
+		Console.WriteLine($"\n=== O CORPO ATRAS DA BARREIRA: {atrasDaBarreira.Count} celula(s) em que a aresta aparece "
+						  + "e o corpo denso NAO ===");
+		Console.WriteLine("    (a celula bloqueia e mostra so o risco do penhasco; o que para o corpo esta no `.dmm` e nao");
+		Console.WriteLine("     e pintado. Conserto: o comando `repintar` -- ver `MapConverter.DoisDaCelula`.)");
+		foreach (var g in atrasDaBarreira.GroupBy(a => (a.Zona, a.Tipo)).OrderByDescending(g => g.Count()))
+			Console.WriteLine($"{g.Count(),9}  {g.Key.Zona,-24} {g.Key.Tipo,-34} "
+							  + $"ex.: {string.Join(" ", g.Take(4).Select(a => $"({a.X},{a.Y})"))}");
+		if (atrasDaBarreira.Count == 0) Console.WriteLine("    (nenhuma)");
+		int cobrancaCega = ContraExemploDoCorpo(arestaAntesDoCorpo, turfs, tiles, obras, raizProjeto);
+
 		Console.WriteLine($"\n=== O VAZIO DELIBERADO: {bordas.Count} celula(s), por typepath ===");
 		foreach (var g in bordas.GroupBy(a => a.Tipo).OrderByDescending(g => g.Count()))
 			Console.WriteLine($"{g.Count(),9}  {g.Key,-34} {string.Join(", ", g.Select(a => a.Zona).Distinct().Take(8))}");
@@ -465,13 +521,374 @@ public static class CensoMudoBench
 		// outro -- ele CAIA no soco --, e quem responde por isso agora e o `.duro`
 		// (`Duros.cs` + `ZoneCollision.Indestrutivel`), medido pelo comando `duro` do pipeline.
 		// ==============================================================================================
-		int reprovas = achados.Count + ruins + vazioQuebravel.Count;
+		int fontesErradas = FontesAcrescentadas(cat, pastaMaps, pastaDmm, tiles, raizProjeto)
+							+ Pilhas(cat, pastaMaps, tiles, obras, turfs, porZ);
+
+		int reprovas = achados.Count + ruins + vazioQuebravel.Count + atrasDaBarreira.Count + cobrancaCega + fontesErradas;
 		Console.WriteLine(reprovas == 0
 			? "\n=== VEREDITO: nada bloqueia sem aparecer, e o vazio que e invisivel de origem NAO CEDE "
 			  + "a soco nenhum. ==="
 			: $"\n=== VEREDITO: REPROVADO -- {achados.Count} celula(s) mudas, {ruins} construcao(oes) "
-			  + $"densa(s) sem arte e {vazioQuebravel.Count} celula(s) de vazio que ainda quebram. ===");
+			  + $"densa(s) sem arte, {vazioQuebravel.Count} celula(s) de vazio que ainda quebram, "
+			  + $"{atrasDaBarreira.Count} corpo(s) sem pintura atras de uma barreira"
+			  + (fontesErradas > 0 ? $", {fontesErradas} afirmacao(oes) das fontes novas e das pilhas" : "")
+			  + (cobrancaCega > 0 ? $" e {cobrancaCega} afirmacao(oes) do contra-exemplo que nao fecharam" : "") + ". ===");
 		return reprovas == 0 ? 0 : 1;
+	}
+
+	// =====================================================================
+	/// <summary>
+	/// AS CELULAS EM QUE O NOME DA FOLHA NAO BASTA PRA SABER A FONTE -- uma por caso, com a textura e a
+	/// ancora ESCRITAS AQUI (medidas no `.dmi` do original e no `.dmm`, nao perguntadas ao conversor):
+	///   K     a folha do JOGO, e nao a homonima da arvore `DU/` (`White rock.dmi` do minerio e 32x32; a
+	///         `DU/Map/white rock.png` e uma rocha de 250x250. O `ATM` da `Lab.dmi` tem outro desenho la);
+	///   N     o desenho que o BYOND nao centra: a estatua de 98x164 (`-(98-32)/2`, `(164-32)/2`) e a
+	///         fonte de sangue de 145x112 do Inferno;
+	///   arte  a folha que nunca tinha sido copiada: as arvores `jungletree3.png` de Hera.
+	/// </summary>
+	private static readonly (int Z, int X, int Y, string Tipo, string Icone, string Estado, string Textura, string Ancora, string Familia)[] FontesCobradas =
+	[
+		(4, 439, 376, "/obj/Raw_Material/Quartz", "White rock.dmi", "", "res://Assets/Sprites/Misc/Objects/Materials/Ores/White rock.png", "", "K"),
+		(10, 88, 6, "/obj/buildables/ATM", "Lab.dmi", "ATM", "res://Assets/Sprites/Misc/Objects/Technology/Lab.png", "", "K"),
+		(9, 56, 119, "/turf/decor/HellStatue1", "Hell Statue.dmi", "", "res://Assets/Sprites/Turfs/Hell Statue.png", "@-33,66", "N"),
+		(9, 50, 31, "/turf/decor/PondBlood", "Pond Blood.dmi", "", "res://Assets/Sprites/Turfs/Pond Blood.png", "@-56,40", "N"),
+		(11, 200, 73, "/obj/Trees/JungleTree2", "jungletree3.png", "", "res://Assets/Sprites/Trees/jungletree3.png", "", "arte"),
+	];
+
+	/// <summary>
+	/// COBRA AS FONTES ACRESCENTADAS nas celulas da tabela, e prova com defeito injetado que a cobranca
+	/// nao e cega: a escolha de folha (`MapConverter.FolhaDoTipoParaBancada`) e a de ancora
+	/// (`MapConverter.AncoraDoTipo`) sao chamadas do jeito certo e com o defeito ligado, e o resultado
+	/// com defeito tem que ser exatamente o que a cobranca recusa.
+	/// </summary>
+	/// <returns>Quantas afirmacoes nao fecharam.</returns>
+	private static int FontesAcrescentadas(ZoneCatalog cat, string pastaMaps, string pastaDmm, CatalogoDeTiles tiles,
+										   string raizProjeto)
+	{
+		Console.WriteLine("\n=== A FONTE QUE O NOME DA FOLHA NAO DA: a folha do jogo (K), a ancora do BYOND (N), a arte que faltava ===");
+		int falhas = 0;
+		void Afirmar(string nome, bool ok)
+		{
+			Console.WriteLine($"    {(ok ? "ok   " : "FALHA")}  {nome}");
+			if (!ok) falhas++;
+		}
+		bool Serve(AtlasDeTiles a, string textura, string ancora) =>
+			a.ResPath == textura && (ancora.Length == 0 ? !a.Nome.Contains('@') : a.Nome.EndsWith(ancora, StringComparison.Ordinal));
+
+		var icones = new IconesDoDm(pastaDmm);
+		string sprites = Path.Combine(raizProjeto, "Assets", "Sprites");
+		string rascunho = _porCima == null ? raizProjeto : Path.GetFullPath(Path.Combine(_porCima, "..", ".."));
+		string Arquivo(string res) => Path.GetFullPath(Path.Combine(raizProjeto, res["res://".Length..].Replace('/', Path.DirectorySeparatorChar)));
+
+		foreach ((int z, int x, int y, string tipo, string icone, string estado, string textura, string ancora, string familia) in FontesCobradas)
+		{
+			ZoneEntry? e = cat.Entradas.FirstOrDefault(q => q.Z == z);
+			string arq = e == null ? "" : Local(pastaMaps, e.Pedacos);
+			var pintadas = new List<AtlasDeTiles>();
+			if (File.Exists(arq) && PedacosDoMapa.Ler(File.ReadAllBytes(arq)) is { } ped)
+				for (int c = 0; c < ped.Camadas.Length; c++)
+				{
+					if (!ped.Achar(x / ped.Lado, y / ped.Lado, c, out int ini, out int q)) continue;
+					for (int i = 0; i < q; i++)
+					{
+						CelulaDePedaco cel = ped.Celula(ini, i);
+						if (cel.X == x && cel.Y == y && tiles.Todos.FirstOrDefault(a => a.Fonte == cel.Fonte) is { } atlas) pintadas.Add(atlas);
+					}
+				}
+			Afirmar($"{familia,-4} {e?.Zona}(z{z}) ({x},{y}) {tipo}: pintado com {textura["res://Assets/Sprites/".Length..]}"
+					+ (ancora.Length > 0 ? $", ancora {ancora}" : "")
+					+ (pintadas.Count == 0 ? " -- NADA pintado" : $" -- pintado: {string.Join(" + ", pintadas.Select(a => a.Nome))}"),
+					pintadas.Any(a => Serve(a, textura, ancora)));
+
+			// O CONTRA-EXEMPLO: a mesma pergunta feita ao conversor, sem e com o defeito
+			string folhaPresa = Path.GetFileNameWithoutExtension(icone);
+			AtlasDeTiles? presa = tiles.Atlas(folhaPresa);
+			string? pngDaPresa = presa == null || presa.ResPath == textura ? null : Arquivo(presa.ResPath);
+			(string Folha, string Sufixo) Escolha()
+			{
+				string png = MapConverter.FolhaDoTipoParaBancada(icones, sprites, rascunho, icone, estado, pngDaPresa);
+				// o tamanho do icone sai da folha escolhida; da arte que ainda nao foi copiada, do original
+				string? legivel = File.Exists(png) ? png : icones.Resolver(icone, estado);
+				DmiFile.Result? m = png.Length == 0 || legivel == null ? null : DmiFile.Read(legivel);
+				(int X, int Y)? o = m == null ? null : MapConverter.AncoraDoTipo(tipo, 0, 0, m.IconWidth, m.IconHeight);
+				return (png, o is { } a ? $"@{a.X},{a.Y}" : "");
+			}
+			bool Certa((string Folha, string Sufixo) r) =>
+				r.Folha.Replace('\\', '/').EndsWith(textura["res://".Length..], StringComparison.OrdinalIgnoreCase) && r.Sufixo == ancora;
+
+			(string Folha, string Sufixo) semDefeito = Escolha();
+			Afirmar($"     ...o conversor escolhe essa fonte ({Path.GetFileName(semDefeito.Folha)}{semDefeito.Sufixo})", Certa(semDefeito));
+
+			MapConverter.FolhaPeloNomeDeTeste = familia != "N";
+			MapConverter.TudoCentradoDeTeste = familia == "N";
+			try
+			{
+				(string Folha, string Sufixo) comDefeito = Escolha();
+				Afirmar($"     (defeito injetado: {(familia == "N" ? "todo desenho centrado" : "a folha achada so pelo nome")}) "
+						+ $"sairia {(comDefeito.Folha.Length == 0 ? "SEM folha" : Path.GetRelativePath(sprites, comDefeito.Folha).Replace('\\', '/'))}"
+						+ $"{comDefeito.Sufixo} -- e a cobranca de cima acusa", !Certa(comDefeito));
+			}
+			finally
+			{
+				MapConverter.FolhaPeloNomeDeTeste = false;
+				MapConverter.TudoCentradoDeTeste = false;
+			}
+		}
+		return falhas;
+	}
+
+	/// <summary>
+	/// AS CELULAS QUE NAO CABEM EM "CHAO, DECORACAO E OBJETOS", uma por jeito de nao caber, com o numero de
+	/// desenhos ESCRITO AQUI (contado no `.dmm`):
+	///   Namek (69,222)     a quina da ponte: `N025`, `decor/bridgeW` e `Bridge/Edges/bridgeS` -- 3;
+	///   Terra (164,7)      tres arestas (`Edge5E`, `Edge5N`, `Edge5W`) sobre o gelo -- 4;
+	///   Lookout (332,462)  o piso, a faca `o3` e a mesa `/turf/decor/Table4` por cima dela -- 3, e a faca
+	///                      numa camada ABAIXO da mesa (`layer` 3 contra 4);
+	///   estacao (92,28)    o vidro: cinco turfs empilhados -- 5.
+	/// </summary>
+	private static readonly (int Z, int X, int Y, int Desenhos, string Baixo, string Cima, string Oque)[] PilhasCobradas =
+	[
+		(2, 69, 222, 3, "", "", "a quina da ponte de Namek"),
+		(1, 164, 7, 4, "", "", "as tres arestas sobre o gelo"),
+		(12, 332, 462, 3, "/obj/buildables/o3", "/turf/decor/Table4", "a mesa por cima da faca"),
+		(27, 92, 28, 5, "", "", "o vidro da estacao"),
+	];
+
+	/// <summary>Os tiles pintados numa celula do andar: a camada (pela ordem do `.pedacos`) e a fonte de cada um.</summary>
+	private static List<(int Camada, AtlasDeTiles Atlas, int X, int Y)> PintadoNaCelula(ZoneCatalog cat, string pastaMaps,
+																				 CatalogoDeTiles tiles, int z, int x, int y)
+	{
+		var saida = new List<(int, AtlasDeTiles, int, int)>();
+		ZoneEntry? e = cat.Entradas.FirstOrDefault(q => q.Z == z);
+		string arq = e == null ? "" : Local(pastaMaps, e.Pedacos);
+		if (!File.Exists(arq) || PedacosDoMapa.Ler(File.ReadAllBytes(arq)) is not { } ped) return saida;
+
+		for (int c = 0; c < ped.Camadas.Length; c++)
+		{
+			if (!ped.Achar(x / ped.Lado, y / ped.Lado, c, out int ini, out int q)) continue;
+			for (int i = 0; i < q; i++)
+			{
+				CelulaDePedaco cel = ped.Celula(ini, i);
+				if (cel.X == x && cel.Y == y && tiles.Todos.FirstOrDefault(a => a.Fonte == cel.Fonte) is { } atlas)
+					saida.Add((c, atlas, cel.Ax, cel.Ay));
+			}
+		}
+		return saida;
+	}
+
+	/// <summary>
+	/// COBRA AS PILHAS da tabela e prova, com o defeito injetado (`MapConverter.SoTresDesenhosDeTeste`),
+	/// que a cobranca acusa quando a celula volta a guardar so tres desenhos. A lista de desenhos da
+	/// celula e montada AQUI, do `.dmm` (turfs sem repeticao, objetos soltos com arte).
+	/// </summary>
+	/// <returns>Quantas afirmacoes nao fecharam.</returns>
+	private static int Pilhas(ZoneCatalog cat, string pastaMaps, CatalogoDeTiles tiles, CatalogoDeObras obras,
+							  Dictionary<string, TurfDef> turfs, Dictionary<int, (DmmMap.Result D, DmmLevel N)> porZ)
+	{
+		Console.WriteLine("\n=== A CELULA QUE NAO CABE EM TRES DESENHOS: turf do meio, terceira aresta, turf por cima de objeto ===");
+		int falhas = 0;
+		void Afirmar(string nome, bool ok)
+		{
+			Console.WriteLine($"    {(ok ? "ok   " : "FALHA")}  {nome}");
+			if (!ok) falhas++;
+		}
+		bool Tinta(string tp, out AtlasDeTiles? a)
+		{
+			a = turfs.TryGetValue(DmmMap.BasePath(tp), out TurfDef? td) && td.Icon != null
+				? tiles.Atlas(Path.GetFileNameWithoutExtension(td.Icon)) : null;
+			return a != null;
+		}
+
+		foreach ((int z, int x, int y, int esperados, string baixo, string cima, string oque) in PilhasCobradas)
+		{
+			if (!porZ.TryGetValue(z, out (DmmMap.Result D, DmmLevel N) lv)) { Afirmar($"z{z}: sem `.dmm`", false); continue; }
+			List<(int Camada, AtlasDeTiles Atlas, int X, int Y)> pintado = PintadoNaCelula(cat, pastaMaps, tiles, z, x, y);
+			Afirmar($"z{z} ({x},{y}) {oque}: {esperados} desenhos na celula -- pintados {pintado.Count} "
+					+ $"({string.Join(", ", pintado.Select(p => $"camada {p.Camada}: {p.Atlas.Nome}"))})", pintado.Count == esperados);
+
+			// os desenhos da celula, do `.dmm`: os turfs (vale a ultima vez de cada um) e os objetos soltos
+			string[] tipos = lv.D.Keys[lv.N.Cells[x, y]!];
+			var daCelula = new List<string>();
+			foreach (string tp in tipos.Where(t => DmmMap.BasePath(t).StartsWith("/turf", StringComparison.Ordinal)))
+			{
+				daCelula.Remove(tp);
+				daCelula.Add(tp);
+			}
+			var desenhos = new List<MapConverter.Desenho>();
+			foreach (string tp in daCelula)
+				if (Tinta(tp, out _))
+					desenhos.Add(new MapConverter.Desenho(tp, Turf: true, Real: tp == daCelula[^1], CabeNumTile: true, turfs[DmmMap.BasePath(tp)].Camada));
+			foreach (string tp in Soltos(lv, x, y, obras))
+				if (Tinta(tp, out AtlasDeTiles? a))
+					desenhos.Add(new MapConverter.Desenho(tp, Turf: false, Real: false, a is { LarguraDoIcone: 32, AlturaDoIcone: 32 },
+														  turfs[DmmMap.BasePath(tp)].Camada));
+
+			int Conta()
+			{
+				(List<MapConverter.Desenho> chatos, MapConverter.Desenho? noObjetos) = MapConverter.PilhaDaCelula(desenhos);
+				return chatos.Count + (noObjetos == null ? 0 : 1);
+			}
+			Afirmar($"     ...a pilha do conversor tem os {esperados} (precisa de pilha: {MapConverter.PrecisaDePilha(desenhos)})",
+					MapConverter.PrecisaDePilha(desenhos) && Conta() == esperados);
+
+			if (baixo.Length > 0)
+			{
+				(List<MapConverter.Desenho> chatos, _) = MapConverter.PilhaDaCelula(desenhos);
+				int iBaixo = chatos.FindIndex(d => DmmMap.BasePath(d.Tipo) == baixo), iCima = chatos.FindIndex(d => DmmMap.BasePath(d.Tipo) == cima);
+				// ...e no `.pedacos` a folha de um esta numa camada de numero MENOR que a do outro
+				Tinta(baixo, out AtlasDeTiles? folhaDeBaixo);
+				Tinta(cima, out AtlasDeTiles? folhaDeCima);
+				int camadaDeBaixo = pintado.FindIndex(p => p.Atlas == folhaDeBaixo), camadaDeCima = pintado.FindIndex(p => p.Atlas == folhaDeCima);
+				Afirmar($"     ...e nela `{baixo}` fica ABAIXO de `{cima}` (posicoes {iBaixo} e {iCima}); no `.pedacos`: "
+						+ string.Join(" < ", pintado.OrderBy(p => p.Camada).Select(p => p.Atlas.Nome)),
+						iBaixo >= 0 && iCima > iBaixo && camadaDeBaixo >= 0 && camadaDeCima >= 0
+						&& pintado[camadaDeBaixo].Camada < pintado[camadaDeCima].Camada);
+			}
+
+			MapConverter.SoTresDesenhosDeTeste = true;
+			try
+			{
+				Afirmar($"     (defeito injetado: so tres desenhos por celula) a pilha ficaria com {Conta()} -- e a cobranca de cima acusa",
+						Conta() != esperados);
+			}
+			finally { MapConverter.SoTresDesenhosDeTeste = false; }
+		}
+		return falhas;
+	}
+
+	/// <summary>Uma celula real do `.dmm` em que o mapa lista a aresta antes de um corpo denso com arte.</summary>
+	private sealed record CelulaDeExemplo(string Zona, int X, int Y, (DmmMap.Result D, DmmLevel N) Lv,
+										  List<string> Soltos, string Corpo);
+
+	/// <summary>Barreira do original: para o corpo sem ser densa (`barrier.dm:61-62`) e se desenha rente ao chao.</summary>
+	private static bool EhBarreira(string bp) => bp.StartsWith("/obj/barrier/", StringComparison.Ordinal);
+
+	/// <summary>
+	/// O CORPO DENSO QUE NAO E PINTADO NUMA CELULA EM QUE A BARREIRA E -- ou nulo, se algum corpo dela
+	/// aparece (entre corpos, basta um) ou se ela nao tem corpo nenhum.
+	///
+	/// So acusa o que o conversor PODERIA ter pintado (`Motivo.NaoPintado`): arte que nunca entrou no
+	/// tileset e outro conserto, e o que nao tem `icon` no DM nao aparecia la tambem.
+	/// </summary>
+	private static Achado? CorpoMudo(string rot, List<string> travas, int x, int y,
+									 in (DmmMap.Result D, DmmLevel N) lv, Dictionary<string, TurfDef> turfs,
+									 CatalogoDeTiles tiles, CatalogoDeObras obras,
+									 List<(int F, int X, int Y)>? pintado, string? maquinaAqui, string? portaAqui,
+									 string raiz)
+	{
+		Achado? mudo = null;
+		foreach (string bp in travas)
+		{
+			if (!bp.StartsWith("/obj/", StringComparison.Ordinal) || EhBarreira(bp)) continue;
+			(Motivo m, string det) = Julgar(bp, x, y, lv, turfs, tiles, obras, pintado, maquinaAqui, portaAqui, raiz);
+			if (m is Motivo.Desenha or Motivo.QuadroErrado) return null;
+			if (m == Motivo.NaoPintado) mudo ??= new Achado(rot, x, y, bp, m, det);
+		}
+		return mudo;
+	}
+
+	/// <summary>
+	/// Os `/obj` soltos da celula, na ordem do mapa e sem repeticao -- a lista que o conversor entrega
+	/// ao `MapConverter.DoisDaCelula`. Reescrita aqui de proposito (ver a nota do <see cref="Travas"/>).
+	/// </summary>
+	private static List<string> Soltos(in (DmmMap.Result D, DmmLevel N) lv, int x, int y, CatalogoDeObras obras)
+	{
+		var saida = new List<string>();
+		if (x >= lv.N.Width || y >= lv.N.Height) return saida;
+		string? k = lv.N.Cells[x, y];
+		if (k == null || !lv.D.Keys.TryGetValue(k, out string[]? tipos)) return saida;
+
+		foreach (string tp in tipos)
+		{
+			string bp = DmmMap.BasePath(tp);
+			if (!bp.StartsWith("/obj", StringComparison.Ordinal) || bp == "/obj/Tornado" || Passagens.Eh(bp)
+				|| obras.PorTypepath(bp) != null) continue;
+			if (!saida.Contains(tp)) saida.Add(tp);
+		}
+		return saida;
+	}
+
+	private static MapConverter.Solto FichaDoSolto(string tp, Dictionary<string, TurfDef> turfs, CatalogoDeTiles tiles)
+	{
+		string bp = DmmMap.BasePath(tp);
+		turfs.TryGetValue(bp, out TurfDef? td);
+		AtlasDeTiles? a = td?.Icon == null ? null : tiles.Atlas(Path.GetFileNameWithoutExtension(td.Icon));
+		return new MapConverter.Solto(a != null, a is { LarguraDoIcone: 32, AlturaDoIcone: 32 },
+									  MapConverter.EhAresta(bp), td?.Camada ?? 3);
+	}
+
+	/// <summary>O primeiro quadro que o tileset tem pra este typepath, ou nulo.</summary>
+	private static (int F, int X, int Y)? Tinta(string? tp, Dictionary<string, TurfDef> turfs, CatalogoDeTiles tiles)
+	{
+		if (tp == null || !turfs.TryGetValue(DmmMap.BasePath(tp), out TurfDef? td) || td.Icon == null) return null;
+		return tiles.Achar(Path.GetFileNameWithoutExtension(td.Icon), td.IconState ?? "");
+	}
+
+	/// <summary>Esta celula lista uma aresta com arte ANTES de um corpo denso com arte? Devolve-a pro contra-exemplo.</summary>
+	private static CelulaDeExemplo? ArestaAntesDoCorpo(string rot, int x, int y, in (DmmMap.Result D, DmmLevel N) lv,
+													   Dictionary<string, TurfDef> turfs, CatalogoDeTiles tiles,
+													   CatalogoDeObras obras)
+	{
+		List<string> soltos = Soltos(lv, x, y, obras);
+		bool aresta = false;
+		foreach (string tp in soltos)
+		{
+			string bp = DmmMap.BasePath(tp);
+			if (Tinta(tp, turfs, tiles) == null) continue;
+			if (MapConverter.EhAresta(bp)) aresta = true;
+			else if (aresta && !EhBarreira(bp) && turfs[bp].Density) return new CelulaDeExemplo(rot, x, y, lv, soltos, tp);
+		}
+		return null;
+	}
+
+	/// <summary>
+	/// O CONTRA-EXEMPLO da cobranca do corpo atras da barreira, numa celula REAL do mapa.
+	///
+	/// A cobranca le o `.pedacos`, e um `.pedacos` consertado nunca a faria falar -- "esta verde" ficaria
+	/// igual a "nao esta olhando". Entao a celula e pintada DE CONTA duas vezes, com o que a escolha do
+	/// conversor (`MapConverter.DoisDaCelula`) manda pintar: do jeito certo a cobranca cala; com o
+	/// defeito injetado (`PrimeiroObjetoVenceDeTeste`) a aresta fica com a camada, o corpo fica sem
+	/// nenhuma, e ela TEM que acusar.
+	/// </summary>
+	/// <returns>Quantas afirmacoes nao fecharam.</returns>
+	private static int ContraExemploDoCorpo(CelulaDeExemplo? exemplo, Dictionary<string, TurfDef> turfs,
+											CatalogoDeTiles tiles, CatalogoDeObras obras, string raiz)
+	{
+		if (exemplo is not { } c)
+		{
+			Console.WriteLine("    FALHA  nenhuma celula que bloqueia lista uma aresta antes de um corpo denso: "
+							  + "o contra-exemplo ficou sem onde rodar");
+			return 1;
+		}
+
+		int falhas = 0;
+		void Afirmar(string nome, bool ok)
+		{
+			Console.WriteLine($"    {(ok ? "ok   " : "FALHA")}  {nome}");
+			if (!ok) falhas++;
+		}
+
+		List<string> travas = Travas(c.Lv, c.X, c.Y, turfs);
+		Achado? Cobrar()
+		{
+			(string? objeto, string? embaixo, _) = MapConverter.DoisDaCelula(c.Soltos, tp => FichaDoSolto(tp, turfs, tiles));
+			var tinta = new List<(int F, int X, int Y)>();
+			if (Tinta(objeto, turfs, tiles) is { } t1) tinta.Add(t1);
+			if (Tinta(embaixo, turfs, tiles) is { } t2) tinta.Add(t2);
+			return CorpoMudo(c.Zona, travas, c.X, c.Y, c.Lv, turfs, tiles, obras, tinta, null, null, raiz);
+		}
+
+		string onde = $"{c.Zona}({c.X},{c.Y}) [{string.Join(", ", c.Soltos.Select(DmmMap.BasePath))}]";
+		Afirmar($"contra-exemplo em {onde}: com a escolha do conversor o corpo e pintado e a cobranca cala", Cobrar() == null);
+
+		MapConverter.PrimeiroObjetoVenceDeTeste = true;
+		try
+		{
+			Afirmar("(defeito injetado: o primeiro objeto da lista fica com a camada) a cobranca ACUSA "
+					+ $"{DmmMap.BasePath(c.Corpo)}", Cobrar() is { } a && a.Tipo == DmmMap.BasePath(c.Corpo));
+		}
+		finally { MapConverter.PrimeiroObjetoVenceDeTeste = false; }
+		return falhas;
 	}
 
 	// =====================================================================
@@ -539,17 +956,46 @@ public static class CensoMudoBench
 			return (Motivo.SemIconeNoDM, td?.Icon == null ? "sem `icon` na arvore do DM" : "");
 
 		string atlas = Path.GetFileNameWithoutExtension(td.Icon);
-		AtlasDeTiles? a = tiles.Atlas(atlas);
-		if (a == null) return (Motivo.AtlasForaDoTileset, $"`{td.Icon}` nao virou atlas");
-
 		string estado = td.IconState ?? "";
 
+		// A FOLHA DO NOME E AS FONTES ACRESCENTADAS QUE DIVIDEM O NOME COM ELA. O tileset pode ter mais de
+		// uma fonte pra mesma folha -- a variante com a ancora do BYOND (`Hell Statue@-33,66`) e a folha do
+		// jogo no lugar da homonima (`White rock~Misc.Objects.Materials.Ores`); ver
+		// `MapConverter.FonteDoTipo`. A pergunta daqui e "o tipo aparece?", e ele aparece pintado por
+		// qualquer uma delas. Vale o veredito da primeira que disser que sim; senao, o da folha do nome.
+		(Motivo, string)? daPrimeira = null;
+		foreach (AtlasDeTiles folha in tiles.Todos.Where(t => NomeDaFolha(t.Nome).Equals(atlas, StringComparison.OrdinalIgnoreCase))
+											 .OrderBy(t => t.Fonte))
+		{
+			(Motivo m, string det) v = NaFolha(folha);
+			if (v.m is Motivo.Desenha or Motivo.QuadroErrado) return v;
+			daPrimeira ??= v;
+		}
+		return daPrimeira ?? (Motivo.AtlasForaDoTileset, $"`{td.Icon}` nao virou atlas");
+
+		(Motivo, string) NaFolha(AtlasDeTiles a)
+		{
 		// A PROVA E POR TYPEPATH, E NAO POR CELULA. "A celula tem alguma tinta" e exatamente a
 		// leitura que deixou a queixa do dono passar: o piso pinta, a mesa nao, e a celula parece
 		// desenhada. O que vale e a celula apontar pra ESTA folha.
-		if (tiles.Achar(atlas, estado) is { } trio)
+		if (a.Estados.TryGetValue(estado, out (int X, int Y) quadro))
 		{
+			(int Fonte, int X, int Y) trio = (a.Fonte, quadro.X, quadro.Y);
 			if (pintado != null && pintado.Contains((trio.Fonte, trio.X, trio.Y))) return (Motivo.Desenha, "");
+
+			// OUTRA DIRECAO DO MESMO ESTADO E O MESMO TIPO APARECENDO. O conversor pinta o quadro da
+			// direcao do tipo (`dir`, `barrier.dm:92-211`: as arestas viradas pro norte, leste e oeste
+			// moram 1, 2 e 3 quadros depois do sul), e o indice so guarda o primeiro. A pergunta daqui
+			// e "ele aparece?", e nao "pra onde ele olha": vale qualquer quadro DENTRO do estado.
+			if (pintado != null)
+			{
+				int primeiro = trio.Y * a.Colunas + trio.X, quadros = QuadrosDoEstado(a, trio, raiz);
+				foreach ((int f, int px, int py) in pintado)
+				{
+					int adiante = py * a.Colunas + px - primeiro;
+					if (f == trio.Fonte && adiante > 0 && adiante < quadros) return (Motivo.Desenha, "");
+				}
+			}
 
 			// TILE HD: o `icon_state` e montado por coordenada em runtime (`autofill`), entao o
 			// quadro certo varia de celula pra celula. Aqui basta a folha bater.
@@ -563,6 +1009,14 @@ public static class CensoMudoBench
 		if (pintado != null && pintado.Any(p => p.F == a.Fonte))
 			return (Motivo.QuadroErrado, $"`{atlas}` nao tem \"{estado}\" -- pintou o quadro 0");
 		return (Motivo.EstadoForaDoAtlas, $"`{atlas}` nao tem o estado \"{estado}\"");
+		}
+	}
+
+	/// <summary>O nome da FOLHA numa entrada do indice: o que vem antes da pasta (`~`) e da ancora (`@`) de uma fonte acrescentada.</summary>
+	private static string NomeDaFolha(string nomeNoIndice)
+	{
+		int corte = nomeNoIndice.IndexOfAny(['~', '@']);
+		return corte < 0 ? nomeNoIndice : nomeNoIndice[..corte];
 	}
 
 	/// <summary>A arte de uma construcao do catalogo, ate o import do PNG.</summary>
@@ -596,6 +1050,44 @@ public static class CensoMudoBench
 		return (Motivo.Desenha, "");
 	}
 
-	private static string Local(string pastaMaps, string res) =>
-		res.Length == 0 ? "" : Path.Combine(pastaMaps, Path.GetFileName(res));
+	/// <summary>A pasta lida por cima da publicada (ver o <c>pastaPorCima</c> do <see cref="Run"/>), ou nula.</summary>
+	private static string? _porCima;
+
+	/// <summary>O arquivo de zona que o jogo leria: o do rascunho por cima, quando ha um, senao o publicado.</summary>
+	private static string Local(string pastaMaps, string res)
+	{
+		if (res.Length == 0) return "";
+		string nome = Path.GetFileName(res);
+		return _porCima != null && File.Exists(Path.Combine(_porCima, nome))
+			? Path.Combine(_porCima, nome)
+			: Path.Combine(pastaMaps, nome);
+	}
+
+	private static readonly Dictionary<string, DmiFile.Result?> _folhas = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// QUANTOS QUADROS O ESTADO QUE COMECA NESTE QUADRO OCUPA NA FOLHA (direcoes x quadros), lido do
+	/// proprio `.png`. 1 quando a folha nao abre ou nenhum estado comeca ali.
+	///
+	/// E a leitura DA BANCADA, e nao a do conversor (`MapConverter.Coord`): o indice de tiles so guarda
+	/// o primeiro quadro de cada estado, e pra saber ate onde o estado vai e preciso a folha.
+	/// </summary>
+	private static int QuadrosDoEstado(AtlasDeTiles a, (int Fonte, int X, int Y) primeiro, string raiz)
+	{
+		if (!_folhas.TryGetValue(a.ResPath, out DmiFile.Result? folha))
+		{
+			string png = Path.Combine(raiz, a.ResPath.Replace("res://", "").Replace('/', Path.DirectorySeparatorChar));
+			_folhas[a.ResPath] = folha = File.Exists(png) ? DmiFile.Read(png) : null;
+		}
+		if (folha == null) return 1;
+
+		int alvo = primeiro.Y * a.Colunas + primeiro.X, indice = 0;
+		foreach (DmiState st in folha.States)
+		{
+			int tamanho = Math.Max(1, st.Dirs) * Math.Max(1, st.Frames);
+			if (indice == alvo) return tamanho;
+			indice += tamanho;
+		}
+		return 1;
+	}
 }

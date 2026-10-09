@@ -138,6 +138,9 @@ public static class DmTechScanner
 		//
 		// Entrando aqui, ela ganha de graca tudo o que o banco ja tem: sai do tilemap e vira node,
 		// bloqueia passagem, aparece pra todo mundo pelo mesmo pacote, e o alcance de uso a alcanca.
+		//
+		// O `pixel_x` DELA NAO VEM DA ARVORE DE TIPOS: quem centra uma `/obj/Trees` e o `New()`, em
+		// runtime, e o `Resolver` refaz a conta com a largura da folha -- ver `PixelXDeArvore`.
 		// =======================================================================================
 		new()
 		{
@@ -376,11 +379,97 @@ public static class DmTechScanner
 				d.CreateType.Length > 0 ? d.CreateType : d.TipoDoClick, verbos);
 
 			d.Arte = DmAppearanceScanner.Resolver(sprites, d.Icone) ?? "";
+
+			// A ARVORE GANHA O `pixel_x` QUE O `New()` DELA ESCREVE EM RUNTIME; pros outros tipos a conta
+			// devolve nulo e fica o declarado, que veio da arvore de tipos ali em cima. Mora DEPOIS da
+			// arte porque a largura sai da folha que o catalogo aponta. Ver `PixelXDeArvore`.
+			d.PixelX = PixelXDeArvore(d.CreateType, FolhaDaArte(d.Arte)) ?? d.PixelX;
+
 			if (d.Arte.Length > 0) ok++;
 			else faltando.Add($"{d.Id} -> {d.Icone ?? "(sem icone)"}");
 		}
 		return (ok, faltando);
 	}
+
+	/// <summary>A raiz das arvores do original (`Modules/Turfs/Plants.dm:15`).</summary>
+	private const string BaseDasArvores = "/obj/Trees";
+
+	/// <summary>A unica arvore que REESCREVE o `pixel_x` no proprio `New()` (`Plants.dm:182-190`).</summary>
+	private const string PalmeiraDaEsquerda = "/obj/Trees/PalmTreeLeft";
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): a arvore volta a sair com o `pixel_x` DECLARADO do tipo (zero), sem a
+	/// conta que o `New()` do DM faz em runtime. Falso na extracao, sempre.
+	/// </summary>
+	public static bool ArvoreSemCentroDeTeste;
+
+	/// <summary>
+	/// O `pixel_x` QUE O `New()` DE UMA ARVORE ESCREVE EM RUNTIME, ou nulo quando o tipo nao e arvore
+	/// (ai vale o `pixel_x` DECLARADO, que o <see cref="DmTurfScanner"/> ja leu) ou nao ha folha pra medir.
+	///
+	/// ============================ O DESLOCAMENTO QUE NAO ESTA NA ARVORE DE TIPOS ============================
+	/// Toda `/obj/Trees` e CENTRADA no tile pelo `New()` da base (`Modules/Turfs/Plants.dm:31-35`):
+	///
+	///     var/icon/I = icon(icon,icon_state)
+	///     trees_pixelx_cache[ck] = 16 - I.Width()/2
+	///     pixel_x = trees_pixelx_cache[ck]
+	///
+	/// Isso mora num CORPO DE PROC, e o leitor da arvore de tipos pula corpo de proc de proposito (o
+	/// `New()` costuma escrever valor dinamico, que nao e a aparencia do tipo). So que aqui o valor e
+	/// funcao pura da largura do icone -- e sem ele a macieira (`AppleTree`, folha de 61 px) saia com
+	/// `px = 0`: o canto esquerdo do desenho colado no canto esquerdo do tile, 14,5 px a DIREITA de onde
+	/// o BYOND a poe. E o desenho de TODA macieira do jogo, as dos mapas inclusive: o cliente as desloca
+	/// pelo `px` deste catalogo.
+	///
+	/// A CONTA E TRANSCRITA, e nao extraida: sao duas linhas do DM, e acha-las lendo corpo de proc seria
+	/// um segundo interpretador de DM pra duas contas. Conferido em 2026-10-09: debaixo de `obj/Trees` o
+	/// `pixel_x` do proprio objeto so e escrito nesses dois `New()` (`Plants.dm:35` e `:189`); os outros
+	/// `New()` da familia (AppleTree, SmallPine, BigHousePlant, Oak, RoundTree, Tree, TallBush) chamam o
+	/// `..()` e so penduram overlay.
+	///
+	/// QUEM REESCREVE O `New()` COM OUTRA CONTA: a `PalmTreeLeft` (`Plants.dm:186-190`) chama o `..()` e
+	/// depois escreve `pixel_x = I.Width()/2 - 16` -- o sinal trocado. A conta DELA vence a da base.
+	///
+	/// O 16 e o meio do tile de 32, escrito como numero no DM. O MEIO PIXEL FICA: `/` no DM e divisao de
+	/// ponto flutuante, e 61/2 da 30,5. Arredondar aqui seria decidir por quem desenha.
+	///
+	/// A LARGURA SAI DA FOLHA QUE O CATALOGO APONTA (<paramref name="folha"/>: o `.png` ao lado do `.tres`,
+	/// que traz o `width` do icone no chunk `Description` do `.dmi`). DIVERGENCIA DECLARADA: o DM mede o
+	/// `.dmi` DELE. Da no mesmo enquanto a folha for a copia desse `.dmi` -- e o caso da `DecTrees`, que nao
+	/// tem homonima em `Assets/Sprites`. Se um dia a arte resolvida for a de outra pasta com o mesmo nome
+	/// (`DmAppearanceScanner.IndiceDeSprites` fica com a primeira), a arvore sai centrada pelo desenho que
+	/// o cliente MOSTRA, que e o que "centrada" quer dizer na tela.
+	///
+	/// FORA DAQUI, de proposito -- contas parecidas em tipo que nao e `/obj/Trees` e nao esta no catalogo:
+	/// `/obj/Reincarnation_Tree` (`Modules/Magic/ReincarnationTree.dm:9-12`, a mesma `16 - largura/2`),
+	/// `/obj/Raw_Material/Lumber_Tree` (`Modules/Crafting/Woodcutting.dm:23-24`, `round((32 - largura)/2,1)`)
+	/// e o efeito `mshenshin` (`Modules/DLC/MasterS.dm:101-104`, idem, num `EffectStart()`). Quem puser um
+	/// deles em <see cref="MobiliaDeMapa"/> traz a conta dele pra ca.
+	/// =========================================================================================================
+	/// </summary>
+	public static double? PixelXDeArvore(string tipo, string folha)
+	{
+		if (ArvoreSemCentroDeTeste || !EhOuDescende(tipo, BaseDasArvores)) return null;
+		if (!File.Exists(folha) || DmiFile.Read(folha) is not { } dmi) return null;
+		return EhOuDescende(tipo, PalmeiraDaEsquerda) ? dmi.IconWidth / 2.0 - 16 : 16 - dmi.IconWidth / 2.0;
+	}
+
+	/// <summary>
+	/// O tipo E a raiz, ou mora debaixo dela? Por SEGMENTO do typepath, que e como o DM herda o `New()`:
+	/// `/obj/Trees2` nao mora em `/obj/Trees`.
+	/// </summary>
+	private static bool EhOuDescende(string tipo, string raiz) =>
+		tipo == raiz || tipo.StartsWith(raiz + "/", StringComparison.Ordinal);
+
+	/// <summary>
+	/// `res://Assets/Sprites/Trees/DecTrees.tres` -> o `.png` da mesma folha. O `res://` do indice de
+	/// sprites e o caminho RELATIVO A PASTA DE TRABALHO (`DmAppearanceScanner.IndiceDeSprites`), entao
+	/// sem o prefixo ele e um caminho que este mesmo processo abre. Arte vazia = sem folha.
+	/// </summary>
+	private static string FolhaDaArte(string arte) =>
+		arte.StartsWith("res://", StringComparison.Ordinal)
+			? Path.ChangeExtension(arte["res://".Length..], ".png")
+			: "";
 
 	public static string ParaJson(IEnumerable<ConstrucaoDef> defs)
 	{

@@ -297,6 +297,13 @@ public static class CatalogoDeItens
 	public static Tech.CatalogoDeObras? Obras;
 
 	/// <summary>
+	/// O CATALOGO DE APARENCIA, quando alguem o ligou -- e quem diz se uma peca de roupa EXISTE e onde
+	/// mora a arte dela. Ver <see cref="RoupaGuardada"/>. Referencia e nao copia, pela mesma razao do
+	/// <see cref="Obras"/>: servidor e cliente ja tem o `visual.json` lido.
+	/// </summary>
+	public static Appearance.VisualCatalog? Visual;
+
+	/// <summary>
 	/// A FICHA DE UM ITEM -- do catalogo escrito a mao, ou derivada de uma CONSTRUCAO.
 	///
 	/// ============================ TODA CONSTRUCAO E UM ITEM ============================
@@ -330,6 +337,7 @@ public static class CatalogoDeItens
 	{
 		if (Tudo.TryGetValue(id, out ItemDef? mao)) return mao;
 		if (LivroDeEnsinamentos.Ler(id) is { } livro) return livro.Ficha;
+		if (RoupaGuardada.Ler(id) is { } roupa) return roupa.Ficha(Visual);
 
 		Tech.Construcao? c = Obras?.Get(id);
 		if (c == null) return null;
@@ -482,6 +490,101 @@ public sealed class Inventario
 	{
 		Pilhas.RemoveAll(p => CatalogoDeItens.Get(p.Id) == null || p.Quantidade <= 0);
 		if (Pilhas.Count > Slots) Pilhas.RemoveRange(Slots, Pilhas.Count - Slots);
+	}
+}
+
+/// <summary>
+/// UMA PECA DE ROUPA FORA DO CORPO -- guardada na mochila (dono, 2026-10-08).
+///
+/// O pedido: *"a roupa q vc escolhe ao criar deveria aparecer no inventario pra ter a opcao de tirar ela e
+/// trocar por outro caso queira"*.
+///
+/// ============================ VESTIDA E APARENCIA, GUARDADA E ITEM -- E NUNCA AS DUAS ============================
+/// O que esta no corpo mora em `Appearance.Roupa` (ate <see cref="Appearance.Appearance.MaxRoupa"/> pecas): e o
+/// que o mundo ve, o que o `PeerLook` leva e o que o save ja grava. Tirar uma peca a move de la pra mochila, como
+/// ESTE item; vestir faz o caminho de volta. Uma peca so existe num dos dois lugares -- uma marca de "equipada"
+/// num slot da mochila seria a segunda resposta pra "o que este corpo veste", e a primeira vez que as duas
+/// discordassem o boneco estaria de camisa com a camisa na mochila.
+///
+/// DIVERGENCIA DECLARADA DO DM: la o guarda-roupa (`Wardrobe.dm`) e uma tela que oferece as 223 folhas da pasta
+/// a qualquer hora, de graca -- a roupa nao e de ninguem. Aqui a peca e uma coisa que se TEM: a da criacao e sua,
+/// e trocar e por outra que voce tambem tenha.
+///
+/// ============================ O DADO VAI NO ID, COMO NO LIVRO ============================
+/// A mochila guarda `(id, quantidade)` e mais nada (ver <see cref="LivroDeEnsinamentos"/>, que conta por que).
+/// Uma peca tem dois dados proprios -- QUAL folha e de que COR o jogador a tingiu --, e os dois cabem no id:
+/// `Roupa|Clothes_GiTop|2A2A33` (sem cor: `Roupa|Clothes_GiTop|`).
+///
+/// O NOME DO ARQUIVO, E NAO O CAMINHO: quem resolve o nome e o <see cref="Appearance.VisualCatalog.Peca"/> (a
+/// mesma porta da roupa de NPC), entao mover a pasta de arte nao estraga a mochila de ninguem -- e o id fica sem
+/// BARRA, que o canal de itens do servidor usa pra separar o argumento numerico (`GameServer.ComandoDeItem`). O
+/// nome mais comprido do catalogo tem 32 letras: o id inteiro cabe com folga nas 64 do pacote da mochila.
+/// ==========================================================================================================
+/// </summary>
+public sealed record RoupaGuardada(string Nome, Appearance.Rgb? Cor)
+{
+	/// <summary>O prefixo do id. Uma constante porque ela e um contrato entre o catalogo, o servidor e a tela.</summary>
+	public const string Prefixo = "Roupa|";
+
+	/// <summary>A acao de por a peca no corpo -- o botao da mochila e o `case` do servidor leem daqui.</summary>
+	public const string AcaoVestir = "vestir";
+
+	/// <summary>
+	/// A acao de tirar a peca do corpo. Ela NAO esta na ficha do item: quem a oferece e a fileira "vestindo" da
+	/// tela, porque a peca vestida nao e um item da mochila (ver o cabecalho).
+	/// </summary>
+	public const string AcaoTirar = "despir";
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): tirar a roupa so a apaga do corpo -- a peca nao vai pra mochila. E o jogo em
+	/// que a roupa nao e coisa que se tem: quem tirasse a peca da criacao a perderia pra sempre. Sempre falso em jogo.
+	/// </summary>
+	public static bool TiradaSomeDeTeste;
+
+	public string Id => $"{Prefixo}{Nome}|{(Cor is { } c ? $"{c.R:X2}{c.G:X2}{c.B:X2}" : "")}";
+
+	/// <summary>A peca vestida, vista como item: o nome do arquivo dela e a cor.</summary>
+	public static RoupaGuardada De(Appearance.PecaDeRoupa peca) => new(NomeDoArquivo(peca.Caminho), peca.Cor);
+
+	/// <summary>A peca pronta pra vestir, ou nula quando a folha nao existe mais no catalogo.</summary>
+	public Appearance.PecaDeRoupa? Peca(Appearance.VisualCatalog? cat) =>
+		cat?.Peca(Nome) is { } caminho ? new Appearance.PecaDeRoupa(caminho, Cor) : null;
+
+	/// <summary>
+	/// A ficha que a mochila e a tela leem -- NULA sem catalogo ou com a folha fora dele. Nula de proposito: e o
+	/// que faz o `Inventario.Sanear` varrer uma peca cuja arte sumiu, em vez de deixar um slot que nao desenha.
+	/// </summary>
+	public ItemDef? Ficha(Appearance.VisualCatalog? cat) =>
+		cat?.Peca(Nome) is { } caminho
+			? new ItemDef(Id, Nome,
+						  "Uma peça de roupa. Vista por cima do que você já usa -- o corpo leva até "
+						  + $"{Appearance.Appearance.MaxRoupa} peças de uma vez.",
+						  caminho, "walk_south", Empilhavel: false, Acoes: [AcaoVestir])
+			: null;
+
+	/// <summary>Desmonta um id de roupa. Nulo pra qualquer outro id -- e a porta do <see cref="CatalogoDeItens.Get"/>.</summary>
+	public static RoupaGuardada? Ler(string id)
+	{
+		if (!id.StartsWith(Prefixo, StringComparison.Ordinal)) return null;
+		int barra = id.LastIndexOf('|');
+		if (barra <= Prefixo.Length - 1) return null;
+		string nome = id[Prefixo.Length..barra];
+		string cor = id[(barra + 1)..];
+		if (nome.Length == 0) return null;
+		if (cor.Length == 0) return new RoupaGuardada(nome, null);
+		// A COR E SEIS DIGITOS HEXA OU NAO E COR: um id adulterado nao vira uma peca de cor inventada pela metade.
+		if (cor.Length != 6 || !int.TryParse(cor, System.Globalization.NumberStyles.HexNumber,
+											 System.Globalization.CultureInfo.InvariantCulture, out int rgb)) return null;
+		return new RoupaGuardada(nome, new Appearance.Rgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb));
+	}
+
+	/// <summary>O nome do arquivo de um caminho de folha, sem pasta e sem extensao.</summary>
+	private static string NomeDoArquivo(string caminho)
+	{
+		int barra = caminho.LastIndexOf('/');
+		string nome = barra >= 0 ? caminho[(barra + 1)..] : caminho;
+		int ponto = nome.LastIndexOf('.');
+		return ponto > 0 ? nome[..ponto] : nome;
 	}
 }
 

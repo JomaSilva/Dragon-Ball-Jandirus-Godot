@@ -132,4 +132,41 @@ public static class DmmMap
         int i = tp.IndexOf('{');
         return (i < 0 ? tp : tp[..i]).Trim();
     }
+
+    private static readonly Dictionary<string, string> SemVariaveis = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// O QUE A INSTANCIA TROCA NO TIPO: o bloco `{gotox = 208; icon = 'Icons/Turfs/Turf 57.dmi'}` de um
+    /// typepath do mapa, como nome -> valor CRU (as aspas vao junto). Vazio quando nao ha bloco.
+    ///
+    /// O `;` DE DENTRO DE UM TEXTO NAO SEPARA: ha placa no mapa com a frase inteira em `Message = "..."`.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> Variaveis(string tp)
+    {
+        int abre = tp.IndexOf('{');
+        int fecha = tp.LastIndexOf('}');
+        if (abre < 0 || fecha <= abre) return SemVariaveis;
+
+        var vars = new Dictionary<string, string>(StringComparer.Ordinal);
+        char aspa = '\0';
+        int ini = abre + 1;
+        for (int i = abre + 1; i <= fecha; i++)
+        {
+            char c = tp[i];
+            if (aspa != '\0')
+            {
+                if (c == '\\') i++;                 // o caractere escapado nao fecha o texto
+                else if (c == aspa) aspa = '\0';
+                continue;
+            }
+            if (c is '"' or '\'') { aspa = c; continue; }
+            if (c != ';' && i != fecha) continue;
+
+            string parte = tp[ini..i];
+            ini = i + 1;
+            int igual = parte.IndexOf('=');
+            if (igual > 0) vars[parte[..igual].Trim()] = parte[(igual + 1)..].Trim();
+        }
+        return vars;
+    }
 }

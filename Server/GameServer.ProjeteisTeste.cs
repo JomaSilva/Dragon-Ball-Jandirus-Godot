@@ -164,6 +164,8 @@ public partial class GameServer
 			OTroncoSeCortaOndeAlguemEncosta();
 			ApanharDerrubaORaio();
 			AFaiscaEstouraNaCabeca();
+			UmEncontroUmSorteio();
+			OCorteDosFracos();
 			ABancadaSeCobra();
 		}
 		finally
@@ -194,17 +196,20 @@ public partial class GameServer
 		atirador.Facing = Facing.East;
 
 		// `Deflectivel = false` PELO MESMO MOTIVO DO `RaioDaBancada`: esta familia mede "a bola anda,
-		// encosta e machuca", e o `Acertar` sorteia deflexao em todo impacto contra quem esta de pe
-		// (`GameServer.Projeteis.cs:1190-1240`). Com o par desta bancada -- atirador 5.000, vitima 500,
-		// `base_damage` 1 -- a chance MEDIDA e 0,0999% por impacto, e o laco de sub-passos testa a
-		// colisao umas seis vezes na janela de 16 px: meio por cento de rodadas em que o placar ficaria
-		// vermelho com `fim = Defletido` sem nada errado no jogo. E o defeito que a bancada da tecnica
-		// customizada pegou em 2026-09-02, e ele mora aqui igual.
+		// encosta e machuca", e o `Acertar` sorteia deflexao em todo impacto que passa do corte dos fracos
+		// (`DanoDeKi.CorteDoFraco`) contra quem esta de pe. Com o par desta bancada -- atirador 5.000, vitima 500,
+		// `base_damage` 1 -- a chance MEDIDA e 0,0999% por impacto: uma rodada em mil terminaria com
+		// `fim = Defletido` (ou, no raspao, `Apagou`) sem nada errado no jogo. E o defeito que a bancada da
+		// tecnica customizada pegou em 2026-09-02, e ele mora aqui igual. (Ate 2026-10-08 o raspao ainda
+		// fazia o laco de sub-passos sortear de novo dentro do raio -- ver a familia 15, que mede o dado.)
 		Projetil p = Disparar(atirador, new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Blast, BaseDano = 1, Velocidade = 1, AlcanceTiles = 20,
 			Deflectivel = false,
 		});
+		AfirmarPj("PREPARO: o voo medido mais o trecho ate a vitima cabem no alcance da bola (senao ela se apaga antes de chegar)",
+				  0.5 / p.SegundosPorTile + 200.0 / ZoneCollision.TileSize + 1 < p.MaxDistancia,
+				  $"{0.5 / p.SegundosPorTile:0.#} + {200.0 / ZoneCollision.TileSize:0.#} tiles de {p.MaxDistancia:0}");
 
 		// A BOCA DO CANO, E NAO O UMBIGO. Ate aqui esta linha cobrava `p.Pos == atirador.Pos`, e era
 		// ela que ficava verde com o defeito que o dono fotografou: o quadro de 32x32 da cabeca,
@@ -215,17 +220,19 @@ public partial class GameServer
 				  $"{p.Pos} vs corpo em {atirador.Pos}");
 
 		double esperadoPorTile = Projetil.AtrasoDeBola(1);
-		AfirmarPj("o atraso por tile e o do DM (`max(1, round(4-speed))` tiques)",
+		AfirmarPj("o atraso por tile e o da regra (`Projetil.AtrasoDeBola`: o `lag` do DM, na pressa que o dono pediu)",
 				  Math.Abs(p.SegundosPorTile - esperadoPorTile) < 1e-9,
 				  $"{p.SegundosPorTile:0.###} vs {esperadoPorTile:0.###}");
 
-		// UM SEGUNDO DE VOO. A distancia esperada sai da MESMA constante, nunca de um literal.
+		// MEIO SEGUNDO DE VOO. A distancia esperada sai da MESMA constante, nunca de um literal. (Era um segundo
+		// inteiro, quando a bola andava 3,3 tiles por segundo; a 16, um segundo de voo mais os 200 px ate a vitima
+		// passavam dos 20 tiles de alcance, e a bola se apagava no ar antes de encostar em alguem.)
 		float antes = p.Pos.X;
-		for (int i = 0; i < 30; i++) TickDosProjeteis(Protocol.TickSeconds);
+		for (int i = 0; i < 15; i++) TickDosProjeteis(Protocol.TickSeconds);
 		float andou = p.Pos.X - antes;
-		float previsto = (float)(ZoneCollision.TileSize / p.SegundosPorTile);
+		float previsto = (float)(ZoneCollision.TileSize / p.SegundosPorTile * 0.5);
 
-		AfirmarPj("em 1 s ela anda o que a formula do DM manda",
+		AfirmarPj("em meio segundo ela anda o que a regra manda",
 				  Math.Abs(andou - previsto) < 2f, $"{andou:0.#} px vs {previsto:0.#} px");
 		AfirmarPj("e ela andou SO no eixo do olhar (nada de deriva)",
 				  Math.Abs(p.Pos.Y - chao.Y) < 0.01f, $"y = {p.Pos.Y:0.##}");
@@ -454,9 +461,10 @@ public partial class GameServer
 	// 2) O TELEGUIADO
 	// =====================================================================
 	/// <summary>
-	/// GUIDED: `walk_towards` -- corrige o rumo TODO tique, sem limite de angulo. A prova nao pode
-	/// ser "acertou um alvo parado" (uma bola reta faria isso): o alvo TEM que sair da linha, e o
-	/// tiro tem que virar atras dele.
+	/// GUIDED: persegue o alvo -- com a curva do `Core.Combat.Teleguiado` (dono, 2026-10-09; era o
+	/// `walk_towards` do DM, sem limite de angulo). A prova nao pode ser "acertou um alvo parado" (uma
+	/// bola reta faria isso): o alvo TEM que sair da linha, e o tiro tem que virar atras dele. Os limites
+	/// da curva (quem corre escapa, quem vai pras costas e perdido) sao da `--miradekiteste`.
 	/// </summary>
 	private void OTeleguiadoPerseguemQuemFoge()
 	{
@@ -1434,7 +1442,7 @@ public partial class GameServer
 	/// a zona povoada (a marca varre a `ZoneList` pra mandar o pacote). Metade das chamadas carimba e
 	/// metade e recusada pela guarda de celula, que e a mistura do jogo. O TETO do tique sai de
 	/// aritmetica do proprio sistema, e nao de chute: no maximo `MaxProjeteisPorZona` tiros na zona, e
-	/// no maximo 4 sub-passos por tiro por tique (o raio mais rapido do jogo anda ~53 px por tique e o
+	/// no maximo 7 sub-passos por tiro por tique (o raio mais rapido do jogo anda ~107 px por tique e o
 	/// sub-passo e de 16 px).
 	///
 	/// O QUE O NUMERO NAO COBRE: o `Peer.Send` de verdade -- os corpos da bancada nao tem peer. Cobre o
@@ -1492,8 +1500,11 @@ public partial class GameServer
 		int marcas = (EscutaDeDecalques ?? []).Count(d => d.Tipo == Protocol.Decal.Sulco);
 		EscutaDeDecalques = null;
 
-		// O TETO, por aritmetica do sistema: teto de tiros da zona x sub-passos por tique.
-		const int SubPassosPorTique = 4;   // ~53 px de passo maximo / 16 px de sub-passo
+		// O TETO, por aritmetica do sistema: teto de tiros da zona x sub-passos por tique. O tiro mais rapido do
+		// jogo e o raio customizado no teto de `speed` (`TecnicaCustomizada.VelocidadeTeto`), e o sub-passo e o
+		// raio de impacto. Era um "4" escrito a mao (53 px / 16 px); a conta acompanha a velocidade sozinha.
+		double passoMaximo = ZoneCollision.TileSize / Projetil.AtrasoDeRaio(Jandirus.Core.Skills.TecnicaCustomizada.VelocidadeTeto) * Protocol.TickSeconds;
+		int SubPassosPorTique = (int)Math.Ceiling(passoMaximo / Projetil.RaioDeImpacto);
 		double pior = usPorPasso * MaxProjeteisPorZona * SubPassosPorTique;
 
 		GD.Print($"[projetil]      rastro: {usPorPasso * 1000:0} ns por sub-passo,"
@@ -1670,7 +1681,12 @@ public partial class GameServer
 		// SEIS TILES: alem dos 4 do arremesso (`FatorDeEmpurrao`) e dentro dos 10 do arrasto.
 		ServerPlayer vitima = Forjar("Levado", raia + new Vec2(6 * T, 0), bp: 200_000);
 
-		Projetil raio = RaioDaBancada(atira, baseDano: 0.002);
+		// O RAIO DESTA FAMILIA E O PESADO (`speed` 0,5, a do Massive Beam: 10 tiles por segundo). As duas medidas
+		// que decidem aqui precisam dele: a VELOCIDADE (o corpo vai na do feixe, e a do feixe tem que ser OUTRA que
+		// a do arremesso pra a medida separar os dois funis -- e o raio comum, a 20 tiles por segundo desde
+		// 2026-10-08, empata com os 640 px/s do arremesso) e a TAXA de moida (dos 6 aos 10 tiles o raio comum
+		// leva um quinto de segundo: um ciclo so, e de um ciclo nao se tira taxa).
+		Projetil raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira), velocidade: 0.5);
 
 		int t = 0;
 		while (raio.Vivo && raio.Arrastando == 0 && t++ < 300) UmTiqueDeArrasto();
@@ -1733,7 +1749,7 @@ public partial class GameServer
 		}
 
 		double taxa = rodou > 0 ? ciclos / (rodou * Protocol.TickSeconds) : 0;
-		double esperada = 1.0 / Projetil.SegundosPorCicloDeBeam;          // 5 Hz -- o `sleep(2)` do DM
+		double esperada = 1.0 / Projetil.SegundosPorCicloDeBeam;          // 5 Hz -- o ciclo deste port (o DM bate 12)
 		double porSubPasso = 1.0 / Protocol.TickSeconds;                  // ~30 Hz -- o defeito que se teme
 		// OS NUMEROS MEDIDOS SAIEM SEMPRE, e nao so no detalhe de uma falha -- o mesmo habito da
 		// familia 7. Uma bancada que so mostra a conta quando reprova obriga a quebrar o codigo pra
@@ -1741,12 +1757,12 @@ public partial class GameServer
 		GD.Print($"[projetil]      arrasto: corpo {dCorpo:0.0} px x cabeca {dCabeca:0.0} px em 6 tiques; "
 				 + $"{vFeixe:0} px/s (o arremesso seria {vArremesso:0}); "
 				 + $"{taxa:0.0} moidas/s em {rodou * Protocol.TickSeconds:0.00}s "
-				 + $"(DM {esperada:0}; por sub-passo ~{porSubPasso:0})");
+				 + $"(o port manda {esperada:0}; por sub-passo ~{porSubPasso:0})");
 
-		AfirmarPj("...e mesmo ANDANDO encostado ele moi na cadencia do DM (o `sleep(2)`), e nao por sub-passo",
+		AfirmarPj("...e mesmo ANDANDO encostado ele moi na cadencia do port (o ciclo de 0,2 s; o DM bate 12 por segundo), e nao por sub-passo",
 				  rodou > 5 && taxa >= esperada * 0.6 && taxa <= esperada * 1.4,
 				  $"{taxa:0.0} moidas/s em {rodou * Protocol.TickSeconds:0.00}s "
-				  + $"(o DM manda {esperada:0}; por sub-passo seriam ~{porSubPasso:0})");
+				  + $"(o port manda {esperada:0}; por sub-passo seriam ~{porSubPasso:0})");
 
 		// ---------- O FIM DA CORDA: DEZ TILES ----------
 		while (raio.Vivo && raio.Arrastando != 0 && t++ < 900) UmTiqueDeArrasto();
@@ -1823,7 +1839,7 @@ public partial class GameServer
 		atira.Facing = Facing.East;
 		ServerPlayer preso = Forjar("Prensado", new Vec2((cx - 1) * T + T / 2f, cy * T + T / 2f), bp: 300_000);
 
-		Projetil raio = RaioDaBancada(atira, baseDano: 0.002);
+		Projetil raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
 		for (int i = 0; i < 300 && raio.Vivo && raio.Arrastando == 0; i++) UmTiqueDeArrasto();
 
 		AfirmarPj("o feixe pegou o corpo que esta com o muro nas costas", raio.Arrastando == preso.Id,
@@ -1880,7 +1896,7 @@ public partial class GameServer
 									   bp: 300_000);
 			alvo.Nadando = nadando;
 
-			Projetil raio = RaioDaBancada(atira, baseDano: 0.002);
+			Projetil raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
 			for (int i = 0; i < 300 && raio.Vivo && raio.Arrastando == 0; i++) UmTiqueDeArrasto();
 			if (raio.Arrastando != alvo.Id)
 			{
@@ -1921,7 +1937,7 @@ public partial class GameServer
 		// E ASSIM QUE UM BONECO EXISTE: na zona (ele ocupa lugar e apanha) e fora do `_players`.
 		_players.Remove(boneco.Id);
 
-		Projetil raio = RaioDaBancada(atira, baseDano: 0.002);
+		Projetil raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
 		Vec2 onde = boneco.Pos;
 		for (int i = 0; i < 300 && raio.Vivo; i++) UmTiqueDeArrasto();
 
@@ -1949,7 +1965,7 @@ public partial class GameServer
 		atira.Facing = Facing.East;
 		ServerPlayer alvo = Forjar("Disputado", raia + new Vec2(6 * T, 0), bp: 200_000);
 
-		Projetil raio = RaioDaBancada(atira, baseDano: 0.002);
+		Projetil raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
 		for (int i = 0; i < 300 && raio.Vivo && raio.Arrastando == 0; i++) UmTiqueDeArrasto();
 		if (raio.Arrastando != alvo.Id)
 		{
@@ -2086,7 +2102,7 @@ public partial class GameServer
 		atira.Facing = Facing.East;
 		ServerPlayer vitima = Forjar("Levado da injecao", raia + new Vec2(6 * T, 0), bp: 200_000);
 
-		Projetil raio = RaioDaBancada(atira, baseDano: 0.002);
+		Projetil raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
 		for (int i = 0; i < 300 && raio.Vivo && raio.Arrastando == 0; i++) UmTiqueDeArrasto();
 
 		if (raio.Arrastando != vitima.Id)
@@ -2117,7 +2133,7 @@ public partial class GameServer
 		atira2.Facing = Facing.East;
 		ServerPlayer morto = Forjar("Recusado", outra + new Vec2(6 * T, 0), bp: 200_000);
 
-		Projetil raio2 = RaioDaBancada(atira2, baseDano: 0.002);
+		Projetil raio2 = RaioDaBancada(atira2, baseDano: BaseQueFereUmIgual(atira2));
 		for (int i = 0; i < 300 && raio2.Vivo && raio2.Arrastando == 0; i++) UmTiqueDeArrasto();
 
 		if (raio2.Arrastando != morto.Id)
@@ -2164,11 +2180,12 @@ public partial class GameServer
 	/// sem o bit, o passo 3(c) do `AndarProjetil` o mata de `Cessou` no primeiro tique, antes de ele
 	/// chegar em ninguem. E `Deflectivel = false` porque um sorteio no meio da medicao mediria o dado.
 	/// </summary>
-	private Projetil RaioDaBancada(ServerPlayer pl, double baseDano)
+	/// <param name="velocidade">O `speed` do raio: 1 = o raio comum; 0,5 = o raio PESADO (a do Massive Beam).</param>
+	private Projetil RaioDaBancada(ServerPlayer pl, double baseDano, double velocidade = 1)
 	{
 		Projetil raio = Disparar(pl, new ReceitaDeProjetil
 		{
-			Tipo = TipoDeProjetil.Beam, BaseDano = baseDano, Velocidade = 1,
+			Tipo = TipoDeProjetil.Beam, BaseDano = baseDano, Velocidade = velocidade,
 			AlcanceTiles = 40, Deflectivel = false, Nome = "Onda de Ki",
 		});
 		raio.Canalizando = true;
@@ -2237,7 +2254,7 @@ public partial class GameServer
 		ServerPlayer atira = Forjar("Feixe", raia, bp: 200_000);
 		atira.Facing = Facing.East;
 		ServerPlayer vitima = Forjar("Levado", raia + new Vec2(6 * T, 0), bp: 200_000);
-		Projetil raio = RaioDaBancada(atira, baseDano: 0.002);
+		Projetil raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
 		int t = 0;
 		while (raio.Vivo && raio.Arrastando == 0 && t++ < 300) UmTiqueDeArrasto();
 		float NaFrente() => (vitima.Pos.X - raio.Pos.X) * raio.Rumo.X + (vitima.Pos.Y - raio.Pos.Y) * raio.Rumo.Y;
@@ -2260,7 +2277,7 @@ public partial class GameServer
 		atira = Forjar("Feixe2", raia, bp: 200_000);
 		atira.Facing = Facing.East;
 		vitima = Forjar("Batido", raia + new Vec2(2 * T, 0), bp: 200_000);
-		raio = RaioDaBancada(atira, baseDano: 0.002);
+		raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
 		t = 0;
 		while (raio.Vivo && !raio.Encostado && t++ < 60) UmTiqueDeArrasto();
 		AfirmarPj("no impacto de perto tambem: a cabeca para na frente do corpo",
@@ -2274,7 +2291,7 @@ public partial class GameServer
 		atira = Forjar("Feixe3", raia, bp: 200_000);
 		atira.Facing = Facing.East;
 		vitima = Forjar("Coberto", raia + new Vec2(6 * T, 0), bp: 200_000);
-		raio = RaioDaBancada(atira, baseDano: 0.002);
+		raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
 		t = 0;
 		while (raio.Vivo && raio.Arrastando == 0 && t++ < 300) UmTiqueDeArrasto();
 		float emCima = NaFrente();
@@ -2305,7 +2322,7 @@ public partial class GameServer
 		Vec2 raia = CorredorSeco(40);
 		ServerPlayer atira = Forjar("Feixe", raia, bp: 200_000);
 		atira.Facing = Facing.East;
-		Projetil raio = RaioDaBancada(atira, baseDano: 0.002);
+		Projetil raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
 		for (int i = 0; i < 25; i++) UmTiqueDeArrasto();
 		List<Projetil> lista = ProjeteisDaZona(atira.Zone.Hash);
 		float cabecaAntes = raio.Pos.X;
@@ -2357,7 +2374,7 @@ public partial class GameServer
 		raia = CorredorSeco(40);
 		atira = Forjar("Feixe2", raia, bp: 200_000);
 		atira.Facing = Facing.East;
-		raio = RaioDaBancada(atira, baseDano: 0.002);
+		raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
 		for (int i = 0; i < 25; i++) UmTiqueDeArrasto();
 		lista = ProjeteisDaZona(atira.Zone.Hash);
 		ServerPlayer y = Forjar("NaCabeca", raio.Pos + raio.Rumo * (Feixe.DistanciaDeContato + 4f), bp: 200_000);
@@ -2370,7 +2387,7 @@ public partial class GameServer
 		raia = CorredorSeco(40);
 		atira = Forjar("Feixe3", raia, bp: 200_000);
 		atira.Facing = Facing.East;
-		raio = RaioDaBancada(atira, baseDano: 0.002);
+		raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
 		for (int i = 0; i < 25; i++) UmTiqueDeArrasto();
 		lista = ProjeteisDaZona(atira.Zone.Hash);
 		raio.Canalizando = false;                       // solto: a cauda deixa de ser a mao
@@ -2400,7 +2417,7 @@ public partial class GameServer
 		raia = CorredorSeco(40);
 		atira = Forjar("Feixe4", raia, bp: 200_000);
 		atira.Facing = Facing.East;
-		raio = RaioDaBancada(atira, baseDano: 0.002);
+		raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
 		for (int i = 0; i < 25; i++) UmTiqueDeArrasto();
 		lista = ProjeteisDaZona(atira.Zone.Hash);
 		Forjar("PisouEmVao", raia + new Vec2(4 * T, 0), bp: 200_000);
@@ -2440,7 +2457,7 @@ public partial class GameServer
 
 		Projetil bola = Disparar(atirador, new ReceitaDeProjetil
 		{
-			Tipo = TipoDeProjetil.Blast, BaseDano = 0.002, Deflectivel = false, Nome = "bola de bancada",
+			Tipo = TipoDeProjetil.Blast, BaseDano = BaseQueFereUmIgual(atirador, TipoDeProjetil.Blast), Deflectivel = false, Nome = "bola de bancada",
 		});
 		int t = 0;
 		bool vivoAoCair = false;

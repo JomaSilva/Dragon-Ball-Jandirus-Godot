@@ -688,9 +688,9 @@ public partial class GameServer
 
 		// O LIVRO ATRAVESSA O FIO: o id carrega os dados dele, e o protocolo tem que caber.
 		var w = new LiteNetLib.Utils.NetDataWriter();
-		w.PutInventario(adiantado.Mochila);
+		w.PutInventario(adiantado.Mochila, adiantado.Visual.Roupa);
 		var r = new LiteNetLib.Utils.NetDataReader(w.CopyData());
-		Inventario lido = r.GetInventario();
+		Inventario lido = r.GetInventario([]);
 		AfirmarMn("o livro atravessa o pacote de inventario INTEIRO (o id dele passa de 32 letras)",
 				  lido.Quantos(idDoLivro) == 1, string.Join(",", lido.Pilhas.Select(p => p.Id)));
 	}

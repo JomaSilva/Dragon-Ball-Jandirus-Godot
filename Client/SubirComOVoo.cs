@@ -66,42 +66,82 @@ public static class SubirComOVoo
 	public static void Aplicar(Node2D corpo, Vector2 deslocamento)
 	{
 		deslocamento = LocalPlayer.NoPontoDaGrade(deslocamento, World.GradeDeDesenho);
-		foreach (Node filho in corpo.GetChildren())
+		foreach (Node filho in corpo.GetChildren()) Levantar(filho, deslocamento);
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): o filho que nasce com o corpo JA parado no ar nao e levantado -- fica na
+	/// altura do chao ate a altura do corpo mudar, como era antes de 2026-10-09. Falso em jogo, sempre.
+	/// </summary>
+	public static bool FilhoNovoFicaNoChaoDeTeste;
+
+	/// <summary>
+	/// UM FILHO NASCEU COM O CORPO JA NO AR: ele sobe AGORA, pelo mesmo vetor que os irmaos ja tem.
+	///
+	/// ============================ A VARREDURA SO RODA QUANDO A ALTURA MUDA ============================
+	/// E e o certo pra ela (`LocalPlayer.AplicarAltura` e `RemotePlayer.Altura` saem cedo quando a altura e
+	/// a mesma do quadro anterior: reescrever a posicao de dez nodes por quadro pra dizer o que ja estava
+	/// dito). So que isso deixa um buraco do tamanho de um node: o filho pendurado DEPOIS da ultima mudanca
+	/// nasce em `Position` zero -- no plano do chao -- e fica la ate o corpo subir ou descer de novo.
+	///
+	/// Foi a queixa do dono (2026-10-09): *"o efeito de carregar o beam e soltar ele, deve acompanhar o
+	/// personagem n importa a altura q ele esteja voando"*. A bola da carga (`CargaDeRaioVisual`) e o caso
+	/// em que o buraco NUNCA fecha sozinho: ela nasce quando o canal abre, e com um ataque de ki na mao a
+	/// altura do corpo fica presa (`GameServer.AlturaPresaPeloKi`). Pairando a 20 tiles o brilho se juntava
+	/// 160 px abaixo das maos, fora da tela. O jato de sangue de um membro arrancado no ar (o elo do
+	/// `CombatFx.JatoDeSangue`) e a capsula de quem embarca voando caiam no mesmo buraco.
+	///
+	/// A `EsquivaZanzoken` ja tinha tapado o dela copiando a posicao do `Visual` no nascimento. E a QUINTA
+	/// vez que um filho do corpo fica no chao (ver o cabecalho), e de novo por o conserto morar em quem
+	/// lembra: aqui ele passa a morar no corpo, que avisa esta funcao de todo filho que entra
+	/// (`Node.ChildEnteredTree`). O node futuro entra na conta sozinho, como na varredura.
+	///
+	/// NO CHAO NAO SE ESCREVE NADA, de proposito: com deslocamento zero o filho fica com a posicao em que
+	/// nasceu, que e o que sempre aconteceu -- a varredura so a reescreve no dia em que o corpo decola.
+	/// ==================================================================================================
+	/// </summary>
+	public static void AoNascer(Node filho, Vector2 deslocamento)
+	{
+		if (FilhoNovoFicaNoChaoDeTeste || deslocamento == Vector2.Zero) return;
+		Levantar(filho, LocalPlayer.NoPontoDaGrade(deslocamento, World.GradeDeDesenho));
+	}
+
+	/// <summary>UM FILHO, um deslocamento ja na grade de desenho. E a regra inteira de quem sobe, e como.</summary>
+	private static void Levantar(Node filho, Vector2 deslocamento)
+	{
+		// QUEM DECLAROU QUE FICA, FICA. Ver `IFicaNoChao` pra a lista dos dois casos legitimos
+		// e pro motivo de cada um.
+		if (filho is IFicaNoChao) return;
+
+		switch (filho)
 		{
-			// QUEM DECLAROU QUE FICA, FICA. Ver `IFicaNoChao` pra a lista dos dois casos legitimos
-			// e pro motivo de cada um.
-			if (filho is IFicaNoChao) continue;
+			// O CANAL PROPRIO VEM PRIMEIRO. Node com altura propria sobre a cabeca (hoje so o
+			// balao de fala) SOMA o deslocamento a ela; escrever `Position` cru apagava a
+			// `AlturaBase` e derrubava o desenho da cabeca pro umbigo assim que a pessoa subia.
+			// Isso nunca aparecia parado no chao, onde o deslocamento e zero e a conta da no mesmo
+			// por acidente. Ver `ISobeComOCorpo`.
+			case ISobeComOCorpo proprio:
+				proprio.Deslocamento = deslocamento;
+				break;
 
-			switch (filho)
-			{
-				// O CANAL PROPRIO VEM PRIMEIRO. Node com altura propria sobre a cabeca (hoje so o
-				// balao de fala) SOMA o deslocamento a ela; escrever `Position` cru apagava a
-				// `AlturaBase` e derrubava o desenho da cabeca pro umbigo assim que a pessoa subia.
-				// Isso nunca aparecia parado no chao, onde o deslocamento e zero e a conta da no mesmo
-				// por acidente. Ver `ISobeComOCorpo`.
-				case ISobeComOCorpo proprio:
-					proprio.Deslocamento = deslocamento;
-					break;
+			// O CASO NORMAL, e ele cobre tipos que nem sao nossos: a `Camera2D` do corpo local cai
+			// aqui. Ela PRECISA subir -- ela e filha do node, que fica na altura do chao, e sem
+			// isso subir empurrava o personagem pra borda de cima da tela e depois pra fora dela
+			// (o que ficava centralizado era a SOMBRA). Antes havia uma linha so pra ela, achando-a
+			// por tipo; agora ela e so mais um filho, e nao ha linha nenhuma.
+			//
+			// Move-se a POSICAO da camera, e nao o `Offset`: o tremor de impacto ja escreve o
+			// Offset todo quadro (ver `World._Process`), e dois donos pro mesmo campo e briga.
+			case Node2D no2d:
+				no2d.Position = deslocamento;
+				break;
 
-				// O CASO NORMAL, e ele cobre tipos que nem sao nossos: a `Camera2D` do corpo local cai
-				// aqui. Ela PRECISA subir -- ela e filha do node, que fica na altura do chao, e sem
-				// isso subir empurrava o personagem pra borda de cima da tela e depois pra fora dela
-				// (o que ficava centralizado era a SOMBRA). Antes havia uma linha so pra ela, achando-a
-				// por tipo; agora ela e so mais um filho, e nao ha linha nenhuma.
-				//
-				// Move-se a POSICAO da camera, e nao o `Offset`: o tremor de impacto ja escreve o
-				// Offset todo quadro (ver `World._Process`), e dois donos pro mesmo campo e briga.
-				case Node2D no2d:
-					no2d.Position = deslocamento;
-					break;
-
-				// UM `Control` FILHO DE `Node2D` tambem desenha no espaco do pai, entao ele sobe pela
-				// mesma razao. Nenhum existe hoje; a linha esta aqui porque o custo dela e zero e o
-				// custo de descobrir que faltava seria mais um defeito na tela.
-				case Control ctrl:
-					ctrl.Position = deslocamento;
-					break;
-			}
+			// UM `Control` FILHO DE `Node2D` tambem desenha no espaco do pai, entao ele sobe pela
+			// mesma razao. Nenhum existe hoje; a linha esta aqui porque o custo dela e zero e o
+			// custo de descobrir que faltava seria mais um defeito na tela.
+			case Control ctrl:
+				ctrl.Position = deslocamento;
+				break;
 		}
 	}
 }

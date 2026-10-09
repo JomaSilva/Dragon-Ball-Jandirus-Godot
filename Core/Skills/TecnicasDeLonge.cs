@@ -95,15 +95,21 @@ public static class TecnicasDeLonge
 	///   unico numero aqui que e escolha -- esta anotado como tal.
 	/// * LINHA LIVRE: os tres precisam. Sao tiros retos que morrem no cenario (`BlockedAt`), e um
 	///   NPC que atira num muro e o defeito que qualquer jogador nota em dez segundos.
-	/// * PRECISAO: o teleguiado nao erra quem esta marcado (`walk_towards` corrige o rumo TODO tique,
-	///   sem limite de angulo -- 0,95); o raio e rapido e comprido (0,78); a bola e o tiro lento do
-	///   jogo, 107 px/s, mais devagar que alguem correndo (0,55).
+	/// * PRECISAO: o teleguiado e o que mais acerta quem esta marcado -- ele faz curva atras do alvo
+	///   (0,95). O numero e de quando a curva nao tinha limite (`walk_towards`); desde 2026-10-09 ela
+	///   tem (`Core.Combat.Teleguiado`: de leve, e so ate 45 graus do rumo da saida), e quem corre de lado
+	///   escapa -- o peso fica, porque contra quem anda ele continua sendo o tiro que nao se desvia. O raio
+	///   e rapido e comprido (0,78); a bola e um PONTO, e nao uma linha -- quem sai de lado a tempo a ve
+	///   passar (0,70). Os tres agora saem NO marcado em qualquer angulo (`MiraDeKi`), e nao so em fileira.
+	///   (Ela era 0,55 enquanto foi o tiro lento do jogo -- 107 px/s, mais devagar que alguem ANDANDO.
+	///   Desde 2026-10-08 ela voa a 512 px/s, mais que uma corrida: ver `Projetil.AtrasoDeBola`. O que
+	///   ainda a separa do raio e so a forma.)
 	/// ================================================================================================
 	/// </summary>
 	private static readonly Dictionary<string, Linha> Tudo = new(StringComparer.OrdinalIgnoreCase)
 	{
 		["Ki_Wave"] = new("Ki_Wave", 4f, 18f, 0.7, CustoDeRaio, true, 0.78),
-		["Basic_Blast"] = new("Basic_Blast", 3f, 14f, 0, CustoDeBola, true, 0.55),
+		["Basic_Blast"] = new("Basic_Blast", 3f, 14f, 0, CustoDeBola, true, 0.70),
 		["Guided_Ball"] = new("Guided_Ball", 3f, 16f, 0.5, CustoDeTeleguiado, true, 0.95),
 
 		// ============================ A QUARTA, E ELA E A PRIMEIRA QUE NAO PRECISA DE LINHA LIVRE ============================

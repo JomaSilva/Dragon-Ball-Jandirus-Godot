@@ -92,7 +92,7 @@ public partial class EsferaDesenhada : Node2D
 		(string arte, string estado) = FolhaDe(Tipo, Folha, Numero, Inerte);
 
 		if (!ResourceLoader.Exists(arte)) { Reclamar(arte, estado, "o .tres nao existe no disco"); return; }
-		if (ResourceLoader.Load<SpriteFrames>(arte) is not { } folha)
+		if (FolhasPresas.Carregar(arte) is not { } folha)
 		{ Reclamar(arte, estado, "o .tres nao carregou como SpriteFrames"); return; }
 
 		string anim = estado.Length > 0 ? Sanear(estado) : "default";
