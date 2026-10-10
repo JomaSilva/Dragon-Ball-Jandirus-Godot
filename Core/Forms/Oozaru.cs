@@ -163,26 +163,27 @@ public static class Oozaru
 	/// </summary>
 	public const double SegundosDeGraca = 6;
 
+	// ============================ AQUI MORAVA O FREIO DA MEDITACAO, E ELE FOI DELETADO ============================
+	// `angertick = 1000` (`Oozaru.dm:103`) e `if(container.med) angertick--` (`:165-166`): no DM, meditando,
+	// a forma cai sozinha -- e o porte tinha isso como `SegundosMeditandoAteCair`, com o `C2S.Activity`
+	// passando de proposito por cima da posse ("meditar e a saida da fera").
+	//
+	// O CONTADOR NAO E PRAZO: ele cai uma vez por `Loop()` do buff, e o `Loop()` roda no `BuffLoop()` do
+	// `GlobalStats()`, que dorme `sleep(3)`. 1000 x 0,3 s = 300 s -- EXATAMENTE o que a forma dura
+	// (`SegundosRegular`); o Dourado dura 100. O freio nunca freou ninguem. O que ele deixava era o que o
+	// dono viu e relatou como defeito (2026-10-09): *"ta dando pre meditar na forma de oozaru ai ele fica
+	// andando meditando tomado pela IA"* -- o `med` ligado num corpo que a IA dirige.
+	//
+	// DIVERGENCIA DECLARADA: aqui a fera nao medita. Ver `GameServer.DefinirAtividade` e
+	// `GameServer.ComandoDeCorpo`.
+	// ============================================================================================================
+
 	/// <summary>
-	/// MEDITAR E O FREIO. `angertick = 1000` (`Oozaru.dm:103`) e `if(container.med) angertick--`
-	/// (`:165-166`) -- meditando, a forma cai sozinha.
-	///
-	/// ============================ ISTO NAO E UM `sleep`, E UM CONTADOR ============================
-	/// Aqui estava `1000 / 12.0` (83 s), e o erro nao era so o doze: `angertick` nao e prazo nenhum,
-	/// e um CONTADOR decrementado uma vez por `Loop()` do buff -- e todo `Loop()` roda dentro do
-	/// `BuffLoop()` do `GlobalStats()`, que dorme `sleep(3)`. Logo o passo e 0,3 s e nao um tique:
-	/// 1000 x 0,3 = **300 s**. Ver <see cref="TempoDoDm.SegundosDoLacoGlobalStats"/>.
-	///
-	/// E ISSO DEIXA O FREIO SEM FREAR: 300 s e exatamente o <see cref="SegundosRegular"/>. No DM,
-	/// meditar nao encurta o Oozaru comum -- ele so antecipa a queda do Dourado (100 s). Nao mexo
-	/// nisso: e o que o original faz, e mudar seria decisao do dono e nao conserto de unidade.
-	/// ==========================================================================================
-	///
-	/// E a unica saida de quem esta descontrolado, e por isso ela existe: sem ela, `ctrlParalysis`
-	/// seria uma punicao sem resposta.
+	/// DEFEITO INJETADO (bancada): a fera volta a aceitar a meditacao do dono -- o estado de antes de
+	/// 2026-10-09, com o `C2S.Activity` passando mesmo sem as redeas e o macaco andando pela IA em pose de
+	/// meditar. Lido pelas duas linhas da regra: `GameServer.ComandoDeCorpo` e `GameServer.DefinirAtividade`.
 	/// </summary>
-	public const double SegundosMeditandoAteCair =
-		1000 * TempoDoDm.TiquesDoLacoGlobalStats / TempoDoDm.TiquesPorSegundo;
+	public static bool FeraMeditaDeTeste;
 
 	// ==================================================================================
 	// AS PORTAS

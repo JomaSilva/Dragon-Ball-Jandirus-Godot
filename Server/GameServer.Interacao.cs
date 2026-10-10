@@ -121,7 +121,7 @@ public sealed partial class GameServer
 			case "porta_trocar":
 				return ComandoDePortaErguida(pl, cmd, arg);
 
-			default: return ComandoDeGravidade(pl, cmd, arg);
+			default: return ComandoDeRegenerador(pl, cmd, arg) || ComandoDeGravidade(pl, cmd, arg);
 		}
 	}
 
@@ -164,6 +164,7 @@ public sealed partial class GameServer
 		return 1;
 	}
 
+	/// <summary>O "ver estado" do CAMPO BIO -- o do regenerador e o `regen_info`, em `GameServer.Regenerador.cs`.</summary>
 	private void InfoDaMaquina(ServerPlayer pl)
 	{
 		Obra? m = ObraQueAceita(pl, "maq_info");
@@ -173,148 +174,44 @@ public sealed partial class GameServer
 		Avisar(pl, m.Aparafusada
 			? "  aparafusada: está trabalhando."
 			: "  solta: aparafuse pra ela funcionar.");
-		Avisar(pl, m.Tipo == "Bio_Field"
-			? $"  cura quem estiver a até {RaioDoCampoBio / 32} tiles."
-			: "  cura quem ficar em cima dela.");
+		Avisar(pl, $"  cura quem estiver a até {RaioDoCampoBio / 32} tiles.");
 	}
 
 	// =====================================================================
-	// CURA PASSIVA -- Regenerador e Campo Bio
+	// CURA PASSIVA -- o Campo Bio
 	// =====================================================================
-	/// <summary>O regenerador cura quem esta EM CIMA: um tile de tolerancia.</summary>
-	private const float RaioDoRegenerador = 32f;
-
 	/// <summary>O campo bio cura num raio largo -- e uma torre, nao uma cama.</summary>
 	private const float RaioDoCampoBio = 20 * 32f;
 
-	private const double CuraDoRegeneradorPorSegundo = 3;
 	private const double CuraDoCampoPorSegundo = 0.6;
 
 	/// <summary>
-	/// ============================ QUANTO O REGENERADOR LEVA PRA DEVOLVER UM MEMBRO ============================
-	/// **E O UNICO CAMINHO DE VOLTA DE QUEM NAO TEM RACA PRA ISSO**, e ele nao existia no port: o
-	/// `Body.Curar` que a maquina usa pula membro decepado (`Body.cs`, `if (p.Decepado) continue`),
-	/// entao um Humano ou um Saiyajin que perdesse um braco **nao tinha saida nenhuma** -- nem passiva,
-	/// nem maquina, nem item. Era morrer (`Body.Restaurar`) ou ficar manco pra sempre.
+	/// O CAMPO BIO TRABALHA SOZINHO -- ninguem o "usa".
 	///
-	/// O DM tem a saida e ela e esta maquina: `Tier 1.5.dm:90-105` -- com o upgrade `injuryheal`
-	/// comprado, a cada volta do `Ticker()` ha `prob(min(max(efficiency,1),100))` de sortear um membro
-	/// da lista dos que estao feridos OU decepados, e `if(choice.lopped) choice.RegrowLimb()`. Repare
-	/// que ali **nao ha `canheallopped`**: a maquina devolve membro a qualquer um, e e por isso que
-	/// ela e a resposta certa pra pergunta do dono.
+	/// ELE NAO CURA EM COMBATE, pela mesma razao da regeneracao passiva e dos remedios: uma torre que
+	/// cura no meio da briga faz a briga nao acabar.
 	///
-	/// O NUMERO: a volta do `Ticker` e `sleep(10)` + `spawn(20) Ticker()` = **3 s**, e no nivel base
-	/// (`efficiency = 1`) o sorteio sai com `prob(1)`. Cem voltas de 3 s = **300 s**. Sao cinco minutos
-	/// deitado no tanque por membro -- caro o bastante pra perder um braco continuar sendo perder um
-	/// braco, e barato o bastante pra nao ser permanente.
-	///
-	/// **SEM `efficiency` NEM `injuryheal`**, que sao upgrades de zeni (`:169-198`) e nao existem neste
-	/// port -- ver o `CuraDoRegeneradorPorSegundo` logo acima, que ja e o nivel base achatado. O dia em
-	/// que os niveis entrarem, os dois numeros saem do mesmo lugar.
-	/// =====================================================================================================
+	/// O REGENERADOR MORAVA NESTE MESMO LACO, achatado (3 de vida por segundo a um tile, e um membro de
+	/// volta a cada 300 s). Saiu daqui em 2026-10-09 e virou a maquina do original, com interruptor,
+	/// bateria e pulso -- `GameServer.Regenerador.cs`.
 	/// </summary>
-	private const double SegundosDoRegeneradorPorMembro = 300;
-
-	/// <summary>
-	/// AS MAQUINAS DE CURA TRABALHAM SOZINHAS -- ninguem as "usa".
-	///
-	/// ELAS NAO CURAM EM COMBATE, pela mesma razao da regeneracao passiva e dos remedios: uma
-	/// torre que cura no meio da briga faz a briga nao acabar. No original o regenerador tambem
-	/// so pega quem esta parado em cima dele.
-	/// </summary>
-	private void TickDasMaquinasDeCura(double dt)
+	private void TickDoCampoBio(double dt)
 	{
 		foreach (ServerPlayer pl in _players.Values)
 		{
 			if (pl.Ficha.dead || pl.Combate is not { } c) continue;
-
-			// ============================ TODA SAIDA DAQUI PRA BAIXO ZERA O RELOGIO DO TANQUE ============================
-			// **UM VAZAMENTO MEU, ACHADO RELENDO**: o `pl.TanqueDeMembro = 0` estava no `else` la
-			// embaixo, DEPOIS de tres `continue`. Quem passasse 299 s deitado, se levantasse e voltasse
-			// no dia seguinte completaria os 300 no primeiro segundo -- o relogio virava deposito, e
-			// cinco minutos de espera viravam um. Zerar ANTES de qualquer recusa e a unica forma de a
-			// conta significar "cinco minutos SEGUIDOS".
-			// =======================================================================================================
-			if (c.EmCombate > 0) { pl.TanqueDeMembro = 0; continue; }
-
-			// O CORPO INTEIRO AINDA PODE PRECISAR DA MAQUINA: o `HP >= 99.99` que estava aqui media a
-			// MEDIA do corpo, e a media de quem perdeu um braco e alta (o decepado sai do denominador
-			// -- ver `Body.Vida`). Ou seja: o maior candidato ao tanque era justamente quem ele
-			// recusava. Agora a saida so vale pra quem esta inteiro DE VERDADE.
-			//
-			// LACO A MAO E NAO `Any(...)`: isto roda 30x por segundo para os 151 habitantes, e a
-			// pergunta so precisa ser feita quando a media ja diz "inteiro" (regra 0.4).
-			bool faltaMembro = false;
-			if (pl.Ficha.HP >= 99.99)
-			{
-				foreach (BodyPart p in c.Corpo.Partes)
-					if (p.Decepado) { faltaMembro = true; break; }
-				if (!faltaMembro) { pl.TanqueDeMembro = 0; continue; }
-			}
-			else
-				foreach (BodyPart p in c.Corpo.Partes)
-					if (p.Decepado) { faltaMembro = true; break; }
+			if (c.EmCombate > 0 || pl.Ficha.HP >= 99.99) continue;
 
 			double cura = 0;
-			bool devolveMembro = false;
 			foreach (Obra o in _noChao)
 			{
-				if (!o.Zona.Equals(pl.Zone) || !o.Aparafusada) continue;
-
-				(float raio, double porSegundo) = o.Tipo switch
-				{
-					"Regenerator" => (RaioDoRegenerador, CuraDoRegeneradorPorSegundo),
-					"Bio_Field" => (RaioDoCampoBio, CuraDoCampoPorSegundo),
-					_ => (0f, 0d),
-				};
-				if (raio <= 0) continue;
-
-				if (Math.Abs(o.X - pl.Pos.X) > raio || Math.Abs(o.Y - pl.Pos.Y) > raio) continue;
-				cura += porSegundo;
-
-				// SO O TANQUE DEVOLVE MEMBRO, e nao o campo bio: no DM o `injuryheal` e um upgrade DO
-				// regenerador (`Tier 1.5.dm:171`), e o campo nao tem nada parecido. Uma torre que
-				// devolvesse bracos num raio de vinte tiles seria outro jogo.
-				if (o.Tipo == "Regenerator") devolveMembro = true;
+				if (o.Tipo != "Bio_Field" || !o.Aparafusada || !o.Zona.Equals(pl.Zone)) continue;
+				if (Math.Abs(o.X - pl.Pos.X) > RaioDoCampoBio || Math.Abs(o.Y - pl.Pos.Y) > RaioDoCampoBio) continue;
+				cura += CuraDoCampoPorSegundo;
 			}
 
-			if (cura <= 0) { pl.TanqueDeMembro = 0; continue; }   // longe de qualquer maquina
+			if (cura <= 0) continue;   // longe de qualquer torre
 			c.Corpo.Curar(cura * dt);
-
-			// ---- E O MEMBRO PERDIDO, que e o que so a maquina faz ----------
-			if (devolveMembro && faltaMembro)
-			{
-				pl.TanqueDeMembro += dt;
-				if (pl.TanqueDeMembro >= SegundosDoRegeneradorPorMembro)
-				{
-					pl.TanqueDeMembro = 0;
-					// O `pick()` do DM sorteia entre feridos E decepados, e so o decepado rende algo
-					// (`Tier 1.5.dm:100-105`). Aqui o custo do tempo ja foi pago inteiro, entao o
-					// sorteio e so entre os DECEPADOS -- cinco minutos por um dado que pode nao dar
-					// nada seria a maquina deixando de ser a saida que o dono pediu.
-					// `Caiu` e o mesmo helper da skill ativa do Namek (`GameServer.Raciais.cs`): nao
-					// devolve a mao antes do braco, senao a vez e desperdicada num membro que voltaria
-					// junto com a raiz de qualquer jeito.
-					//
-					// LACO A MAO, e este e o que mais importa do metodo: o `FirstOrDefault(p => ... c.Corpo ...)` que
-					// estava aqui CAPTURAVA o `c`, e o compilador monta o fecho de uma variavel capturada na ENTRADA
-					// do escopo dela -- ou seja em cada volta do laco de fora, por corpo, por tique, mesmo sem a
-					// execucao nunca chegar a esta linha. Medido em 2026-10-08 (`--diagcoletor`): 3,5 mil fechos por
-					// segundo, o maior alocador que sobrava no tique.
-					BodyPart? volta = null;
-					foreach (BodyPart p in c.Corpo.Partes)
-						if (p.Decepado && !Caiu(c.Corpo, p.Dono)) { volta = p; break; }
-					if (volta != null && c.Corpo.Regenerar(volta))
-					{
-						AjustarGanhoDoRabo(pl);
-						pl.CorpoEnviado = "";
-						Avisar(pl, $"o tanque refaz o seu {volta.Nome}.");
-						GD.Print($"[server] o regenerador devolveu o {volta.Nome} de {pl.Name}");
-					}
-				}
-			}
-			else pl.TanqueDeMembro = 0;   // saiu de cima do tanque: a conta recomeca
-
 			c.SincronizarVida();
 		}
 	}

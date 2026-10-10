@@ -1143,6 +1143,12 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmajin") >= 0)
 			AddChild(new RoboDaAbsorcaoMajin { Name = "RoboDaAbsorcaoMajin" });
 
+		// --diagmaquinas: O REGENERADOR E A MAQUINA DE GRAVIDADE NA TELA -- o tanque ligado pelo menu da tecla E
+		// (a campanula, a vida subindo), a gravidade ajustada no teclado numerico, e a tinta do campo com a forma
+		// da sala. Modo host + `--campoteste` + JANELA. Ver RoboDasMaquinas.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmaquinas") >= 0)
+			AddChild(new RoboDasMaquinas { Name = "RoboDasMaquinas" });
+
 		// --fotoplanetas: os lugares repintados dos OUTROS planetas pre-feitos (o penhasco da Terra, o mar de
 		// Namek, a costa de Icer...), visitados e fotografados no jogo. Modo host. Ver RoboDeFotoDosPlanetas.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--fotoplanetas") >= 0)

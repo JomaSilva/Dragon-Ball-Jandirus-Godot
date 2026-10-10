@@ -39,7 +39,7 @@ namespace Jandirus.Client;
 ///     `Interacoes.Interativo` (a dica do "[E]") . 0,13 MB/s       -> resposta guardada por tipo
 ///     o servidor: 64,6 KB por tique ............. 1,9 MB/s        -> 8,7 KB por tique: as perguntas de nave e
 ///         o `Body.Achar` do snapshot sem fecho, o snapshot so pras zonas com gente, o fecho por corpo do
-///         `TickDasMaquinasDeCura`, a copia de `_players` das passagens e da nuvem
+///         `TickDasMaquinasDeCura` (hoje `TickDoCampoBio`), a copia de `_players` das passagens e da nuvem
 ///
 /// DEPOIS (o mesmo cenario, a mesma regua):
 ///

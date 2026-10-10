@@ -384,6 +384,39 @@ public sealed class Body
 	}
 
 	/// <summary>
+	/// O `SpreadHeal(quanto, FocusVitals = 1)` INTEIRO (`Injuries.dm:89-126`), com os DOIS ramos:
+	///
+	///   * havendo vital abaixo de 70%, a cura vai SO pra esses (<see cref="CurarVitais"/>) -- e por isso
+	///     que um tanque nao desquebra braco de quem esta com a cabeca rachada: primeiro o que mata;
+	///   * nao havendo, vai pra todo membro ferido que se pode MIRAR (`targetable`). Cerebro e orgaos
+	///     ficam de fora (`mobparts.dm:152` e `:209`, `targetable = 0`): acima dos 70% eles so se
+	///     costuram sozinhos.
+	///
+	/// Cada membro recebe <paramref name="quanto"/> INTEIRO -- o `pick` de la sorteia a ORDEM, nao a
+	/// partilha (o laco roda ate esvaziar a lista).
+	///
+	/// DOIS CHAMADORES, e os dois sao `SpreadHeal(x, 1)` no original: o pulso do regenerador
+	/// (`Tier 1.5.dm:80`) e a cura do Majin que absorve (`MajinSaga.dm:141`).
+	/// </summary>
+	public void CurarComFocoNosVitais(double quanto)
+	{
+		if (quanto == 0) return;   // `if(HealAmount == 0) return` (`:91`)
+
+		foreach (BodyPart p in Partes)
+			if (!p.Decepado && p.Papel != Vitalidade.Membro && p.Vida <= p.VidaMax * 0.70)
+			{
+				CurarVitais(quanto);
+				return;
+			}
+
+		foreach (BodyPart p in Partes)
+		{
+			if (p.Decepado || p.Papel == Vitalidade.Interno) continue;
+			p.Vida = Math.Min(p.Vida + quanto, p.VidaMax);
+		}
+	}
+
+	/// <summary>
 	/// Devolve um membro perdido, com parte da vida -- e o que a regeneracao faz.
 	///
 	/// ============================ A CASCATA E O IRMAO DA DO <see cref="Decepar"/> ============================

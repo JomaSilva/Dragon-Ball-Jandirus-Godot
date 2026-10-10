@@ -297,6 +297,7 @@ public partial class LocalPlayer : Node2D
 			_alvoDaPosse = pos;               // comeca perseguindo de onde estou: nada de salto inicial
 			_guarda = false;
 			_correndo = false;
+			LargarAAtividade();               // o servidor desligou o treino e a meditacao (`LargarOInput`)
 			if (Destino != null) { Destino = null; Chat.Sistema("piloto automatico desligado."); }
 			Chat.Sistema("o seu corpo nao te obedece.");
 		}
@@ -640,10 +641,10 @@ public partial class LocalPlayer : Node2D
 			SeguirAltura(delta);
 			AplicarAltura();
 
-			// A UNICA TECLA QUE CONTINUA VALENDO: M. Meditar e a saida da fera (o `angertick` do DM),
-			// e o servidor deixa esse pacote passar justamente pra que a paralisia tenha resposta.
-			// Sem esta linha o dono ficaria com a saida bloqueada pelo proprio cliente.
-			LerAtividade(andando: false, soASaida: true);
+			// NENHUMA TECLA VALE AQUI -- NEM O M. Ele valia ("meditar e a saida da fera", o `angertick` do
+			// DM) e o resultado era o que o dono relatou em 2026-10-09: o macaco andando pela IA em pose de
+			// meditar. A saida nunca chegou antes do prazo da forma; ver `LerAtividade`.
+			if (Jandirus.Core.Forms.Oozaru.FeraMeditaDeTeste) LerAtividade(andando: false);
 			return;
 		}
 
@@ -1266,25 +1267,37 @@ public partial class LocalPlayer : Node2D
 	/// <summary>
 	/// T TREINA, M MEDITA.
 	///
-	/// ============================ POR QUE ISTO SAIU DO `LerAcoes` ============================
-	/// Porque MEDITAR E A SAIDA DA FERA. O `TickDoOozaru` derruba a forma pela raiva de quem esta
-	/// meditando -- e a unica resposta de quem perdeu o controle sem ter pericia --, e o servidor
-	/// deixa o pacote de atividade passar de proposito. Se a unica porta desse teclado ficasse
-	/// dentro do `LerAcoes` (que a possessao pula inteiro), a saida existiria no servidor e seria
-	/// inalcancavel pelo jogador: uma regra escrita e desligada, que e a falha assinatura deste port.
+	/// ============================ A FERA NAO MEDITA (dono, 2026-10-09) ============================
+	/// *"ta dando pre meditar na forma de oozaru ai ele fica andando meditando tomado pela IA"*.
 	///
-	/// <paramref name="soASaida"/> corta o TREINO e deixa so a meditacao: treinar com uma fera
-	/// dirigindo o seu corpo nao e um estado que o jogo deva aceitar, e o servidor renderia BP por
-	/// ele.
-	/// ====================================================================================
+	/// Este metodo saiu do `LerAcoes` no dia em que o M virou "a saida da fera": o ramo da posse do
+	/// `_Process` o chamava sozinho, com um parametro que cortava o treino e deixava a meditacao. A saida
+	/// nunca funcionou (300 s de meditacao pra uma forma de 300 s -- ver o bloco do freio em
+	/// `Core/Forms/Oozaru.cs`) e o que ela produzia era o defeito acima. O parametro e a chamada sairam, e
+	/// ficou o que e daqui:
+	///
+	///   * possuido, nenhuma tecla e lida (o ramo `_semRedeas` do `_Process` nem chega neste metodo), e a
+	///     atividade que estava ligada cai no instante da posse (<see cref="ReceberPosse"/>);
+	///   * virado em fera e ainda dirigindo, o M e recusado AQUI. O servidor tambem recusa
+	///     (`GameServer.DefinirAtividade`), mas sem esta guarda o `_atividade` local ficaria dizendo
+	///     "meditando" pra pose e pro HUD de um corpo que o servidor sabe que nao esta.
+	/// ==========================================================================================
 	/// </summary>
-	private void LerAtividade(bool andando, bool soASaida = false)
+	private void LerAtividade(bool andando)
 	{
+		bool fera = !Jandirus.Core.Forms.Oozaru.FeraMeditaDeTeste
+					&& GameClient.Instance is { MeuOozaru: not Jandirus.Core.Forms.FormaOozaru.Nao };
+
+		// VIREI FERA AGORA: o servidor desligou o treino e a meditacao na transformacao (o `train=0; med=0`
+		// do `Buff()` do DM), e a pose e o HUD daqui acompanham.
+		if (fera && !_eraFera) LargarAAtividade();
+		_eraFera = fera;
+
 		Protocol.Activity nova = _atividade;
 		// "treinar" e "meditar" sao T e M -- no meio de uma frase, nao; e no meio de um embate tambem
 		// nao, que as duas estao entre as 22 letras sorteadas. Ver `Foco.AtalhosMudos`.
 		if (Foco.AtalhosMudos) { }
-		else if (!soASaida && Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("train")))
+		else if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("train")))
 			nova = _atividade == Protocol.Activity.Treinando ? Protocol.Activity.Parado : Protocol.Activity.Treinando;
 		else if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("meditate")))
 		{
@@ -1302,16 +1315,15 @@ public partial class LocalPlayer : Node2D
 			// ANDANDO NAO ABRE: o `if (andando)` logo abaixo derrubaria o pedido de qualquer jeito, e
 			// uma telinha que aparece pra ser ignorada e pior do que nao aparecer.
 			//
-			// POSSUIDO NAO ABRE, e esta e a linha que precisa de cuidado: com a fera no comando o M e a
-			// UNICA saida (`soASaida`), e a profunda nem existe la (o canal de habilidade recusa quem
-			// esta sem as redeas). Uma pergunta no meio da posse poria uma tela entre o jogador e a
-			// unica resposta que a paralisia tem.
+			// A FERA NAO ABRE, e nao medita: quem virou macaco e ainda dirige o corpo aperta M e ouve por que
+			// (a recusa do servidor chegaria pelo chat de qualquer jeito; esta e a que evita a telinha).
 			//
 			// SEM A TELINHA MONTADA (mundo ainda subindo, bancada sem interface), o M volta a meditar
 			// direto. Uma tecla que nao responde porque um node nao nasceu seria a pior das falhas.
 			// ==================================================================================
 			if (_atividade == Protocol.Activity.Meditando) nova = Protocol.Activity.Parado;
-			else if (!andando && !soASaida && TelaDeMeditacao.Instancia is { } pergunta)
+			else if (fera) { Chat.Sistema("a fera não medita."); return; }
+			else if (!andando && TelaDeMeditacao.Instancia is { } pergunta)
 			{
 				// O M FECHA O QUE O M ABRIU -- a mesma toc-toc do menu da tecla E.
 				if (pergunta.NaTela) pergunta.Fechar();
@@ -1356,14 +1368,26 @@ public partial class LocalPlayer : Node2D
 		if (profunda) GameClient.Instance?.SendHabilidade("mente");
 	}
 
+	/// <summary>Eu era fera no quadro passado? A virada e o que derruba a atividade -- ver <see cref="LerAtividade"/>.</summary>
+	private bool _eraFera;
+
+	/// <summary>
+	/// A ATIVIDADE CAI SEM PACOTE: o servidor ja a desligou por conta propria (a fera assumiu o corpo, ou o
+	/// corpo acabou de virar fera) e nao esta esperando ouvir nada. O que se acerta aqui e a metade DESTA
+	/// ponta -- a pose do proprio corpo e o HUD --, que so sabem do `_atividade`.
+	/// </summary>
+	private void LargarAAtividade()
+	{
+		if (_atividade == Protocol.Activity.Parado) return;
+		_atividade = Protocol.Activity.Parado;
+		GameClient.Instance?.AtividadeCaiu();
+	}
+
 	/// <summary>
 	/// O QUE ESTE CORPO ESTA FAZENDO (parado, treinando, meditando). SO PRA BANCADA (`--diagforma`).
 	///
-	/// Existe por causa de UMA linha: o `LerAtividade(soASaida: true)` la em cima, dentro do `return`
-	/// da posse. Ela e a saida da fera do lado do cliente, e o jeito dela sumir e o pior possivel --
-	/// ninguem ve falta de uma tecla que so importa enquanto o corpo nao responde a nenhuma outra.
-	/// Sem esta propriedade a bancada teria que perguntar ao `GameClient` se um pacote saiu, e o
-	/// `SendActivity` some no fio igual ao `Avisar` do servidor.
+	/// Existe pra a bancada poder cobrar que, possuido, NENHUMA das duas teclas muda isto -- a regra do
+	/// lado do cliente e a ausencia de uma leitura, e ausencia nao deixa pacote pra espiar.
 	/// </summary>
 	public Protocol.Activity AtividadeDeTeste => _atividade;
 

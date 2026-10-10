@@ -249,11 +249,12 @@ public sealed partial class GameServer
 					if (adm.Oozaru == quer) chegou++;
 					else if (exChegou.Length == 0) exChegou = $"{d.Id}: virou {adm.Oozaru}";
 
-					// O FUNIL DA FERA E O `VirarFera`, e ele deixa TRES marcas que uma atribuicao a mao
-					// nao deixaria: o pacote de fera, o prazo da forma e a raiva que a meditacao gasta.
-					if (feras.Any(f => f.Forma == quer) && adm.OozaruAte > NowMs() && adm.RaivaDoOozaru > 0) funil++;
+					// O FUNIL DA FERA E O `VirarFera`, e ele deixa DUAS marcas que uma atribuicao a mao
+					// nao deixaria: o pacote de fera e o prazo da forma. (Eram tres: a terceira era a raiva
+					// que a meditacao gastava, e ela saiu com a meditacao da fera em 2026-10-09.)
+					if (feras.Any(f => f.Forma == quer) && adm.OozaruAte > NowMs()) funil++;
 					else if (exFunil.Length == 0)
-						exFunil = $"{d.Id}: {feras.Count} pacote(s), ate={adm.OozaruAte - NowMs()}ms, raiva={adm.RaivaDoOozaru:0.#}";
+						exFunil = $"{d.Id}: {feras.Count} pacote(s), ate={adm.OozaruAte - NowMs()}ms";
 
 					// O DOURADO ESCREVE NO `ssjBuff` E ZERA O `giantFormbuff` (senao 1,5 x 18 = 27); o
 					// regular faz o contrario. Sao os dois campos que o `AplicarOozaru` toca.
@@ -584,9 +585,8 @@ public sealed partial class GameServer
 			Checa("...e NAO pela escada: `Forma.Atual` continua na base e nenhum `S2C.Forma` fala em macaco",
 				  adm.Forma.NaBase && !escadaO.Any(a => a.Para == Oozaru.IdRegular),
 				  $"forma={adm.Forma.Atual} | {string.Join(" ", escadaO.Select(a => a.Para))}");
-			Checa("...e o prazo e a raiva foram armados (o `VirarFera` rodou inteiro, nao meia dúzia de campos)",
-				  adm.OozaruAte > NowMs() && adm.RaivaDoOozaru > 0,
-				  $"ate={adm.OozaruAte - NowMs()}ms, raiva={adm.RaivaDoOozaru:0.#}");
+			Checa("...e o prazo foi armado (o `VirarFera` rodou inteiro, nao meia dúzia de campos)",
+				  adm.OozaruAte > NowMs(), $"ate={adm.OozaruAte - NowMs()}ms");
 
 			var (_, escadaD, ferasD) = Mandar("admin_forma", Oozaru.IdDourado);
 			Checa("forcar `oozaru_dourado` TROCA a fera (desfaz a anterior antes), e nao empilha",

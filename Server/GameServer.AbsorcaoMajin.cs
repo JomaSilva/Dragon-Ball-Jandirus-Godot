@@ -292,13 +292,9 @@ public partial class GameServer
 	/// <summary>`SpreadHeal(100, 1, 0)`, `Ki = MaxKi` e `overcharge = 1` (`MajinSaga.dm:141-142` e `:220-222`).</summary>
 	private static void CurarOMajinQueAbsorveu(ServerPlayer pl)
 	{
-		// O `SpreadHeal` DE FOCO NOS VITAIS (`Injuries.dm:89-126`): havendo vital abaixo de 70%, cura SO esses;
-		// nao havendo, cura todo membro ferido. (O terceiro argumento, zero, deixa de fora o membro
-		// artificial -- que este port nao tem.)
-		Body corpo = pl.Combate.Corpo;
-		bool vitalFerido = corpo.Partes.Any(p => !p.Decepado && p.Papel != Vitalidade.Membro && p.Vida <= p.VidaMax * 0.7);
-		if (vitalFerido) corpo.CurarVitais(AbsorcaoMajin.CuraDoMajin);
-		else corpo.Curar(AbsorcaoMajin.CuraDoMajin);
+		// O `SpreadHeal` DE FOCO NOS VITAIS -- ver `Body.CurarComFocoNosVitais`. (O terceiro argumento,
+		// zero, deixa de fora o membro artificial -- que este port nao tem.)
+		pl.Combate.Corpo.CurarComFocoNosVitais(AbsorcaoMajin.CuraDoMajin);
 		pl.Combate.SincronizarVida();
 
 		// O `Math.Max` e o mesmo da absorcao do bio: la o `Ki = MaxKi` cru DERRUBAVA quem estivesse

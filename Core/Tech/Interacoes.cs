@@ -149,7 +149,11 @@ public static class Interacoes
 					 Forma.Numero, 0, TetoDeGravidade),
 			new Acao("Melhorar...", "grav_upgrades", "upgrades", "gasta zeni pra empurrar os limites",
 					 Forma.Submenu),
-			new Acao("Ver estado", "grav_info", "", "força, bateria, alcance"),
+			new Acao("Ver estado", "grav_info", "", "força, bateria, alcance e a área que o campo cobre agora"),
+			// O PARAFUSO FALTAVA NESTE MENU, e a maquina nao liga solta (`Gravity.dm:281-283`, "The machine
+			// has to be bolted"): quem a assentava e apertava E lia "aparafuse a máquina antes de usá-la"
+			// num menu que nao tinha onde aparafusar -- so o verb Bolt do menu P chegava la.
+			new Acao("Aparafusar / soltar", "aparafusar", "", "ela só liga aparafusada"),
 			new Acao("Pegar", "pegar", "", "recolhe a máquina pra mochila (só a sua)"),
 		],
 
@@ -162,7 +166,7 @@ public static class Interacoes
 		[
 			new Acao("Força do campo", "grav_up", "forca", "multiplica por 1,2 o teto desta máquina"),
 			new Acao("Bateria", "grav_up", "bateria", "dobra a carga e enche na hora"),
-			new Acao("Alcance", "grav_up", "alcance", "mais um tile de raio (o teto é 10)"),
+			new Acao("Alcance", "grav_up", "alcance", "o campo cresce um tile de lado (o teto é 10) -- sem alcance ela não pega ninguém"),
 			new Acao("Estabilização", "grav_up", "estabilidade", "uma vez só, e cara"),
 			new Acao("Regeneração de nanites", "grav_up", "nanites", "recarrega sozinha quando desligada"),
 		],
@@ -199,16 +203,44 @@ public static class Interacoes
 			new Acao("Androide de Energia Infinita", "androide_infinito", "", "nunca cansa nem come"),
 		],
 
-		// ============================ AS MAQUINAS QUE SO PRECISAM DE UM BOTAO ============================
-		// Regenerador e campo bio trabalham SOZINHOS -- no original o regenerador cura quem esta em
-		// cima dele, e o campo cura tudo num raio. Nenhum dos dois tem verb de "usar": eles so
-		// precisam estar ligados e aparafusados.
+		// ============================ O REGENERADOR ============================
+		// No DM ele nao tem verb de "usar": aparafusado, cura sozinho quem pisa no tile dele
+		// (`Tier 1.5.dm:65-141`). Aqui ele tem INTERRUPTOR, e e o pedido do dono (2026-10-09): *"pra ligar
+		// vc tem q apertar E e abrir o menu de interaçoes e apertar pra ligar, curando todos q estiverem no
+		// mesmo tile da maquina"*. O `Upgrade` e o `Info` sao os verbs de la (`:151-218`).
 		//
-		// Por isso a unica acao deles e o aparafusar, e o "ver estado" -- que existe pra a maquina
-		// poder DIZER que esta funcionando. Uma maquina que cura em silencio e uma maquina que o
-		// jogador acha quebrada.
-		// =================================================================================================
-		"Regenerator" or "Bio_Field" =>
+		// QUALQUER UM LIGA E DESLIGA, como qualquer um se cura nele: no original nenhum dos verbs da
+		// maquina confere dono -- so o de soltar o parafuso.
+		//
+		// OS PRECOS NAO ESTAO AQUI, pelo mesmo motivo da maquina de gravidade: dependem do estado desta
+		// maquina, e quem os escreve e o servidor, no `regen_info`.
+		// =======================================================================
+		"Regenerator" =>
+		[
+			new Acao("Ligar / desligar", "regen_ligar", "", "ligado, cura quem estiver no mesmo tile dele"),
+			new Acao("Melhorar...", "regen_upgrades", "upgrades", "bateria, velocidade, ferimentos e nanites",
+					 Forma.Submenu),
+			new Acao("Ver estado", "regen_info", "", "ligado ou não, bateria, a cura de cada pulso e os preços"),
+			new Acao("Aparafusar / soltar", "aparafusar", "", "ele só liga aparafusado"),
+		],
+
+		// A lista do `verb/Upgrade` (`Tier 1.5.dm:159-218`), menos a `Durability` -- ver o cabecalho de
+		// `Regenerador`: la ela custa zeni e nao muda nada.
+		"Regenerator/upgrades" =>
+		[
+			new Acao("Recarregar a bateria", "regen_up", "recarga", "enche a bateria que já existe"),
+			new Acao("Bateria maior", "regen_up", "bateria", "mais uma carga no teto, e enche na hora"),
+			new Acao("Velocidade de cura", "regen_up", "velocidade", "mais vida e mais Ki por pulso -- e mais bateria gasta"),
+			new Acao("Tratar ferimentos", "regen_up", "ferimentos", "uma vez só: o tanque passa a refazer membro perdido"),
+			new Acao("Regeneração de nanites", "regen_up", "nanites", "a bateria quase vazia pode se recarregar sozinha"),
+		],
+
+		// ============================ O CAMPO BIO ============================
+		// Este trabalha SOZINHO: uma torre que cura tudo num raio, sem verb de "usar". Por isso a unica
+		// acao dele e o parafuso, e o "ver estado" -- que existe pra a maquina poder DIZER que esta
+		// funcionando. Uma maquina que cura em silencio e uma maquina que o jogador acha quebrada.
+		// =====================================================================
+		"Bio_Field" =>
 		[
 			new Acao("Aparafusar / soltar", "aparafusar", "", "só funciona aparafusada"),
 			new Acao("Ver estado", "maq_info", ""),

@@ -2298,17 +2298,10 @@ public partial class RoboDeForma : Node
 		Crava(Jandirus.Core.Forms.Oozaru.SegundosRegular, 300.0, "o Oozaru comum dura o `spawn(3000)`");
 		Crava(Jandirus.Core.Forms.Oozaru.SegundosDourado, 100.0, "e o Dourado, o `spawn(1000)`");
 
-		// ============================ 3-bis. E MEDITAR NAO ENCURTA O COMUM ============================
-		// Isto NAO e um erro corrigido pela metade -- e o DM. O `angertick` do `BuffLoop()` e contador de
-		// ciclos de `GlobalStats` (0,3 s), entao 1000 ciclos sao 300 s, que e exatamente a duracao do
-		// Oozaru comum: meditar so antecipa a queda do DOURADO (100 s). Portado como esta escrito.
-		//
-		// A linha existe pra a coincidencia ficar AFIRMADA. Sem ela, a proxima pessoa que notar os dois
-		// 300 vai concluir "um deles esta errado" e mexer -- e a igualdade e o porte fiel.
-		// ==========================================================================================
-		Crava(Jandirus.Core.Forms.Oozaru.SegundosMeditandoAteCair,
-			  Jandirus.Core.Forms.Oozaru.SegundosRegular,
-			  "e meditar leva os mesmos 300 s do Oozaru comum (o DM: so o Dourado encurta)");
+		// (Aqui morava o "3-bis": a regua cravava que meditar levava os MESMOS 300 s do Oozaru comum -- o
+		// `angertick` do DM, 1000 ciclos de 0,3 s. A coincidencia era o porte fiel, e era tambem o motivo de
+		// o freio nunca frear: a meditacao da fera saiu em 2026-10-09, com a constante. Ver o bloco do freio
+		// em `Core/Forms/Oozaru.cs`.)
 
 		// --- 4. OS DOIS QUE ERAM CADENCIA, E NAO UNIDADE ---------------------
 		// Estes tres nao teriam sido consertados por uma varredura de x1,2: o fator deles e 1,5 (o voo,
@@ -12442,21 +12435,16 @@ public partial class RoboDeForma : Node
 		Conferir(vis.PoseDeTeste.EndsWith("east"),
 				 $"nem vira o sprite pro lado que ele pediu (pose `{vis.PoseDeTeste}`)");
 
-		// --- 4b. A UNICA TECLA QUE CONTINUA VALENDO ----------------------------------
-		// ============================ A SAIDA TEM QUE EXISTIR DOS DOIS LADOS ============================
-		// O servidor deixa `C2S.Activity` passar de proposito (`ComandoDeCorpo` nao o lista): meditar e o
-		// `angertick` do DM e a UNICA resposta de quem perdeu o controle sem ter pericia. So que o pacote
-		// nasce no CLIENTE, e o ramo `_semRedeas` do `_Process` pula todas as 15 leituras de tecla deste
-		// arquivo -- inclusive essa. Sem a linha `LerAtividade(soASaida: true)` a saida existiria no
-		// servidor e seria inalcancavel pelo jogador: regra escrita e desligada, a falha assinatura deste
-		// port. E ela some sem barulho: ninguem estranha a falta de uma tecla num corpo que ja nao responde
-		// a nenhuma outra.
+		// --- 4b. NENHUMA TECLA VALE, NEM O M ------------------------------------------
+		// ============================ A FERA NAO MEDITA (dono, 2026-10-09) ============================
+		// *"ta dando pre meditar na forma de oozaru ai ele fica andando meditando tomado pela IA"*. Esta
+		// secao cobrava o CONTRARIO -- que o M continuasse valendo com o corpo possuido, porque meditar era
+		// "a saida da fera" (o `angertick` do DM). A saida nunca chegou antes do prazo da forma, e o que a
+		// tecla produzia era o macaco andando pela IA em pose de meditar.
 		//
-		// O T FICA DE FORA, e essa e a outra metade do `soASaida`: treinar com uma fera dirigindo o corpo
-		// nao e um estado que o jogo deva aceitar, e o servidor renderia BP por ele.
-		//
-		// COMO REPROVA SE A REGRA SUMIR: apague o `LerAtividade` do ramo `_semRedeas` e a segunda linha
-		// cai; troque `soASaida: true` por `false` e cai a primeira.
+		// A REGRA DESTE LADO E UMA AUSENCIA: o ramo `_semRedeas` do `_Process` nao le tecla nenhuma. Por
+		// isso o defeito injetado e a propria leitura de volta (`Oozaru.FeraMeditaDeTeste`, lida pela linha
+		// do ramo), e a regua tem que reprovar com ela ligada.
 		// ============================================================================================
 		Godot.Input.ActionPress("train");
 		Quadros(1);
@@ -12467,13 +12455,42 @@ public partial class RoboDeForma : Node
 		Godot.Input.ActionPress("meditate");
 		Quadros(1);
 		Godot.Input.ActionRelease("meditate");
-		Conferir(corpo.AtividadeDeTeste == Jandirus.Net.Protocol.Activity.Meditando,
-				 $"...mas a de MEDITAR sim -- e a saida da fera (atividade `{corpo.AtividadeDeTeste}`)");
+		Conferir(corpo.AtividadeDeTeste == Jandirus.Net.Protocol.Activity.Parado,
+				 $"...e a de MEDITAR tambem nao: a fera nao medita (atividade `{corpo.AtividadeDeTeste}`)");
 
-		// desliga a meditacao pra o resto da bancada nao herdar a pose
-		Godot.Input.ActionPress("meditate");
-		Quadros(1);
-		Godot.Input.ActionRelease("meditate");
+		try
+		{
+			Jandirus.Core.Forms.Oozaru.FeraMeditaDeTeste = true;
+			Godot.Input.ActionPress("meditate");
+			Quadros(1);
+			Godot.Input.ActionRelease("meditate");
+
+			// LIDO DE NOVO, o ramo da posse faz o que as teclas fazem com qualquer corpo -- e a regua e a MESMA
+			// das duas linhas acima: "a atividade continua parada".
+			//
+			// QUAL DAS DUAS TECLAS ELE VE NAO E PROMESSA, e a primeira versao desta linha prometeu: esperava
+			// `Meditando` (ou a telinha), e saiu vermelha com o defeito ligado. O `IsActionJustPressed` do Godot
+			// vale o QUADRO INTEIRO em que a tecla desceu, mesmo ja solta, e esta bancada aperta as duas no mesmo
+			// quadro -- entao o T de la de cima ainda "acabou de ser apertado" aqui, e ele vem antes do M na
+			// leitura. O que o defeito produz e a tecla VALENDO; qual delas, depende do relogio do motor.
+			bool telinha = TelaDeMeditacao.Instancia is { NaTela: true };
+			Conferir(corpo.AtividadeDeTeste != Jandirus.Net.Protocol.Activity.Parado || telinha,
+					 $"(defeito injetado: o ramo da posse volta a ler as teclas de atividade) a mesma regua REPROVA -- "
+					 + $"possuido, a tecla volta a valer (atividade `{corpo.AtividadeDeTeste}`, telinha de meditacao "
+					 + $"{(telinha ? "ABERTA" : "fechada")})");
+
+			// e desfaz, pra o resto da bancada nao herdar nem a atividade nem a tela -- pela mesma tecla que a
+			// ligou, que alterna (tres voltas cobrem o pior caso: o T ainda "recem-apertado" trocando uma pela outra)
+			if (telinha) TelaDeMeditacao.Instancia?.Fechar();
+			for (int i = 0; i < 3 && corpo.AtividadeDeTeste != Jandirus.Net.Protocol.Activity.Parado; i++)
+			{
+				string tecla = corpo.AtividadeDeTeste == Jandirus.Net.Protocol.Activity.Treinando ? "train" : "meditate";
+				Godot.Input.ActionPress(tecla);
+				Quadros(1);
+				Godot.Input.ActionRelease(tecla);
+			}
+		}
+		finally { Jandirus.Core.Forms.Oozaru.FeraMeditaDeTeste = false; }
 
 		// --- 5. E AS REDEAS VOLTAM ---------------------------------------------------
 		// NINGUEM FICA PRESO PRA SEMPRE. Este projeto ja travou um jogador com um portao de input

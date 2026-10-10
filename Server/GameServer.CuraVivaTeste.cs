@@ -54,8 +54,8 @@ namespace Jandirus.Server;
 ///    -- 70% do Ki gastos e o corpo continua manco. E o desperdicio que o DM evita por ordem de
 ///    busca, e ele nao aparece em nenhuma medicao de "a ativa cura?".
 ///
-///  * (no vizinho `--cidadeteste`, a outra metade da frase do dono) **`SegundosDoRegeneradorPorMembro
-///    = 30`** -> **27 OK, 2 FALHAS**; **a maquina parando de devolver membro** -> **27 OK, 2 FALHAS**.
+///  * (a outra metade da frase do dono, a MAQUINA de regeneracao, e medida na familia 5 do vizinho
+///    `--cidadeteste` e na `--maquinasteste`, cada uma com os seus contra-exemplos.)
 ///
 ///  * E os dois do Core (`cura`), que esta bancada NAO pega e nem deveria: apagar o ramo do
 ///    Namekuseijin em `PerfilDeRegen.De` -> aqui **39 OK, 4 FALHAS**; tirar o `!emCombate ||` do

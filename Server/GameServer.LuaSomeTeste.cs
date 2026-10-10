@@ -79,43 +79,36 @@ public sealed partial class GameServer
 
 			// ============================ E O LACO CONTA O TEMPO DA FERA UMA VEZ SO ============================
 			// Derrubar no prazo NAO distingue uma chamada de duas: o prazo e `NowMs()` contra `OozaruAte`,
-			// relogio absoluto, e vence igual. O que distingue e o que o `TickDoOozaru` INTEGRA por `dt` --
-			// a raiva de quem medita e a maestria da fera. N tiques do laco tem que mover as duas por
-			// exatamente N*dt: 2N*dt e o relogio chamado duas vezes (o que 1523cd2 deixou no laco), zero e
-			// o relogio fora dele.
+			// relogio absoluto, e vence igual. O que distingue e o que o `TickDoOozaru` INTEGRA por `dt` -- a
+			// maestria da fera. N tiques do laco tem que move-la por exatamente N*dt: 2N*dt e o relogio
+			// chamado duas vezes (o que 1523cd2 deixou no laco), zero e o relogio fora dele.
+			//
+			// (Eram DUAS grandezas integradas: a segunda era a raiva de quem medita, o `angertick` do DM. Ela
+			// saiu em 2026-10-09 junto com a meditacao da fera -- ver `GameServer.DefinirAtividade`.)
 			//
 			// A MAESTRIA COMECA EM ZERO na mao, porque o NPC a sorteia pela semente (`SortearAMaestriaDaFera`)
-			// e o `Subir` para em 100 -- um sorteio perto do teto esconderia o ganho. E o `med` vem DEPOIS
-			// do `Apeshit`, que o zera (`train=0; med=0` no DM): a raiva so corre meditando.
+			// e o `Subir` para em 100 -- um sorteio perto do teto esconderia o ganho.
 			// ==========================================================================================
 			ServerPlayer? g = ForjarSaiyajin(palco, mapa, forjados);
-			ServerPlayer? h = ForjarSaiyajin(palco, mapa, forjados);
-			if (g == null || h == null) { Checa("PRECONDICAO: nasceram os dois Saiyajins do relogio", false); return; }
+			if (g == null) { Checa("PRECONDICAO: nasceu o Saiyajin do relogio", false); return; }
 			g.Forma.Maestria.Por(Oozaru.IdRegular, 0);
-			Apeshit(g); Apeshit(h);
-			Checa("PRECONDICAO: os dois viraram a fera regular", g.Oozaru == FormaOozaru.Regular && h.Oozaru == FormaOozaru.Regular,
-				  $"{g.Oozaru}, {h.Oozaru}");
+			Apeshit(g);
+			Checa("PRECONDICAO: ele virou a fera regular", g.Oozaru == FormaOozaru.Regular, $"{g.Oozaru}");
 			Checa("PRECONDICAO: a Terra nao acelera maestria (`zoneMasteryMult` = 1)", g.Ficha.zoneMasteryMult == 1,
 				  $"{g.Ficha.zoneMasteryMult}");
-			g.Ficha.med = true;
 
 			const int tiques = 30;
 			double dt = Protocol.TickSeconds;
-			double raivaG = g.RaivaDoOozaru, raivaH = h.RaivaDoOozaru, maestriaG = g.MaestriaDaFera;
+			double maestriaG = g.MaestriaDaFera;
 			for (int i = 0; i < tiques; i++) TickDosRelogiosDoCorpo(dt);
-			double gastou = raivaG - g.RaivaDoOozaru, ganhou = g.MaestriaDaFera - maestriaG;
-			double umaVez = tiques * dt, maestriaUmaVez = tiques * dt * Oozaru.MaestriaPorSegundo;
+			double ganhou = g.MaestriaDaFera - maestriaG;
+			double maestriaUmaVez = tiques * dt * Oozaru.MaestriaPorSegundo;
 
-			Checa("PRECONDICAO: a fera que medita segue de pe (senao a conta pararia no meio)",
-				  g.Oozaru != FormaOozaru.Nao && g.Ficha.med, $"{g.Oozaru}, med {g.Ficha.med}");
-			Checa($"{tiques} tiques do laco gastam EXATAMENTE {tiques}*dt de raiva de quem medita",
-				  Math.Abs(gastou - umaVez) < 1e-9,
-				  $"gastou {gastou:0.######} s; uma vez = {umaVez:0.######}, em dobro = {2 * umaVez:0.######}");
-			Checa($"...e sobem EXATAMENTE {tiques}*dt*MaestriaPorSegundo de maestria da fera",
+			Checa("PRECONDICAO: a fera segue de pe (senao a conta pararia no meio)",
+				  g.Oozaru != FormaOozaru.Nao, $"{g.Oozaru}");
+			Checa($"{tiques} tiques do laco sobem EXATAMENTE {tiques}*dt*MaestriaPorSegundo de maestria da fera",
 				  Math.Abs(ganhou - maestriaUmaVez) < 1e-9,
 				  $"ganhou {ganhou:0.########}%; uma vez = {maestriaUmaVez:0.########}, em dobro = {2 * maestriaUmaVez:0.########}");
-			Checa("contra-exemplo: a fera que NAO medita, no mesmo laco, nao gasta raiva nenhuma",
-				  h.RaivaDoOozaru == raivaH, $"{raivaH} -> {h.RaivaDoOozaru}");
 
 			// =====================================================================
 			// 2) A LUA SE FOI: amanheceu

@@ -202,11 +202,6 @@ public sealed class ServerPlayer
 	/// <summary>Quando a forma cai sozinha (relogio real, ms). O `spawn(3000)`/`spawn(1000)` do DM.</summary>
 	public long OozaruAte;
 
-	/// <summary>
-	/// O `angertick`: quanto falta de meditacao pra a raiva passar. Reiniciado a cada transformacao.
-	/// </summary>
-	public double RaivaDoOozaru;
-
 	// ======================= A FURIA LENDARIA (ver GameServer.FuriaLendaria.cs) =======================
 
 	/// <summary>
@@ -615,14 +610,11 @@ public sealed class ServerPlayer
 	public long RegenLivreEm;
 
 	/// <summary>
-	/// SEGUNDOS SEGUIDOS deitado no tanque de regeneracao com um membro faltando -- ver
-	/// `SegundosDoRegeneradorPorMembro`. Zera ao sair de cima da maquina, de proposito: no DM o
-	/// sorteio e uma volta do `Ticker()` e nao um deposito, entao entrar e sair nao acumula.
-	///
-	/// **NAO VAI PRO SAVE.** Cinco minutos deitado e uma sessao, nao patrimonio; e o membro que
-	/// voltou (esse sim) ja e gravado pelo `save.Membros`.
+	/// ATE QUANDO O REGENERADOR ME SEGURA (relogio real, ms) -- o `inregen` do DM: ligado em cada pulso
+	/// que me cura, e lido pelo portao do golpe (`attack cmn.dm:98`, `!inregen`). Ver
+	/// `GameServer.PulsoDosTanques` e `Regenerador.SegundosSemGolpear`.
 	/// </summary>
-	public double TanqueDeMembro;
+	public long NoTanqueAte;
 
 	/// <summary>
 	/// A FASE DA LUA QUE ESTE JOGADOR JA VIU ANUNCIADA neste ceu, e se ela estava no alto.
@@ -3053,6 +3045,15 @@ public partial class GameServer : Node
 			// `--obrateste`, que e a irma de disco dela. Ver `GameServer.CidadeTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--cidadeteste") >= 0) RodarBancadaDaCidade();
 
+			// `--maquinasteste`: O REGENERADOR E A MAQUINA DE GRAVIDADE, pelo funil de producao.
+			//
+			// COLADA NA `--cidadeteste` porque a familia 5 dela mede o tanque QUE O MAPA TRAZ, e esta mede
+			// a maquina em si -- o interruptor, o pulso, a bateria, as melhorias -- e o campo de gravidade
+			// (os cinco segundos, quem entra e quem sai, e a sala que o represa). No boot pelo mesmo motivo
+			// da vizinha: os corpos sao forjados, e o que ela precisa (zonas com colisao, catalogo de obras e
+			// de blocos) ja carregou nesta sequencia. Ver `GameServer.MaquinasTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--maquinasteste") >= 0) RodarBancadaDasMaquinas();
+
 			// `--curaviva`: A ATIVA DO NAMEKUSEIJIN e a passiva PELO FUNIL DO SERVIDOR.
 			//
 			// COLADA NA `--cidadeteste` porque as duas sao as duas metades da mesma frase do dono: a
@@ -3598,10 +3599,7 @@ public partial class GameServer : Node
 			case Protocol.C2S.Activity:
 			{
 				if (!_byPeer.TryGetValue(peer, out ServerPlayer? a)) break;
-				var q = (Protocol.Activity)reader.GetByte();
-				a.Ficha.train = q == Protocol.Activity.Treinando;
-				a.Ficha.med = q == Protocol.Activity.Meditando;
-				GD.Print($"[server] {a.Name}: {q} (BP {a.Ficha.BP:0.0})");
+				DefinirAtividade(a, (Protocol.Activity)reader.GetByte());
 				break;
 			}
 			case Protocol.C2S.Action:
@@ -4528,6 +4526,7 @@ public partial class GameServer : Node
 		// OS BLOCOS ERGUIDOS DEPOIS DO CENARIO: o cliente aplica os dois quando o chao da zona monta, e
 		// nessa ordem (o bloco assentado em cima de chao rachado esta de pe).
 		MandarBlocos(pl);
+		MandarCampos(pl.Zone, pl);   // os campos de gravidade ligados aqui -- ver GameServer.Gravidade.cs
 		if (_cenarioDeTeste && pl.Peer != null) AgendarViagemDoCenario(pl);
 		// AS PECAS DE CORPO NO CHAO, pelo mesmo argumento do cenario derrubado: o `S2C.Decalque` que as
 		// plantou saiu uma vez, pra quem estava la -- e quem loga no meio dos 600 s de uma peca precisa
@@ -5546,12 +5545,13 @@ public partial class GameServer : Node
 		TickDasGeracoes();
 
 		TickDasArvores();     // as macas brotam de volta -- ver GameServer.Interacao.cs
-		TickDaGravidade();    // a bateria das maquinas drena -- ver GameServer.Gravidade.cs
+		TickDaGravidade();    // a bateria drena, e quem esta no campo e relido -- ver GameServer.Gravidade.cs
+		TickDosRegeneradores();   // o pulso de dois segundos dos tanques -- ver GameServer.Regenerador.cs
 
-		// A CURA DAS MAQUINAS VARRE OS JOGADORES POR DENTRO, entao ela roda UMA vez por tique e nao
+		// A CURA DO CAMPO BIO VARRE OS JOGADORES POR DENTRO, entao ela roda UMA vez por tique e nao
 		// uma vez por jogador -- chamada de dentro do laco de combate, ela curaria todo mundo tantas
-		// vezes quantos jogadores houvesse online, e o regenerador ficaria mais forte com a lotacao.
-		TickDasMaquinasDeCura(Protocol.TickSeconds);
+		// vezes quantos jogadores houvesse online, e a torre ficaria mais forte com a lotacao.
+		TickDoCampoBio(Protocol.TickSeconds);
 
 		// no espaco: troca de chunk e pouso por encostar. A copia que este laco precisa passou a ser
 		// do tamanho de quem esta MESMO la em cima (quase sempre zero) e nao do servidor inteiro --
@@ -5965,6 +5965,7 @@ public partial class GameServer : Node
 		MandarPortas(pl);
 		MandarCenario(pl);
 		MandarBlocos(pl);   // ...e a base que alguem ergueu la, pelo mesmo motivo das portas
+		MandarCampos(pl.Zone, pl);   // ...e os campos de gravidade: sem pacote, os da zona de onde vim ficariam na tela
 		// ...e as PECAS DE CORPO no chao da zona nova, pelo mesmo motivo do cenario: sem esta linha,
 		// quem volta do Outro Mundo pra onde perdeu o braco nao ve o braco. Ver `GameServer.Pecas.cs`.
 		MandarPecas(pl);

@@ -172,7 +172,6 @@ public partial class GameServer
 		bool primeira = pl.Forma.EstreiaVista.Add(Catalogo.Rede(Oozaru.Id(vai)));
 
 		pl.OozaruAte = NowMs() + (long)(Oozaru.Duracao(vai) * 1000);
-		pl.RaivaDoOozaru = Oozaru.SegundosMeditandoAteCair;
 		AplicarOozaru(pl, primeira);
 
 		// QUANTO TEMPO ELE VAI DIRIGIR. Dito na hora da transformacao e nao so quando o controle
@@ -407,9 +406,10 @@ public partial class GameServer
 	/// <summary>
 	/// O TIQUE DA FORMA -- `obj/buff/Oozaru/Loop()`.
 	///
-	/// Quatro coisas do DM, e a ordem importa: o rabo derruba na hora, o prazo derruba sozinho,
-	/// meditar derruba pela raiva, e a maestria sobe so enquanto se esta transformado. A quinta e
-	/// nova e e do dono: o prazo de CONTROLE vencendo entrega o corpo ao servidor.
+	/// Tres coisas do DM, e a ordem importa: o rabo derruba na hora, o prazo derruba sozinho, e a
+	/// maestria sobe so enquanto se esta transformado. A quarta e nova e e do dono: o prazo de CONTROLE
+	/// vencendo entrega o corpo ao servidor. (A quinta do DM -- meditar derruba pela raiva -- saiu: ver
+	/// o bloco do freio em `Core/Forms/Oozaru.cs`.)
 	/// </summary>
 	private void TickDoOozaru(ServerPlayer pl, double dt)
 	{
@@ -421,27 +421,14 @@ public partial class GameServer
 		if (!AFonteDaFera(pl)) { DesfazerOozaru(pl, "a lua se foi, e com ela a besta."); return; }
 		if (pl.Ficha.dead) { DesfazerOozaru(pl, "o corpo cede."); return; }
 
-		// 2. MEDITAR E O FREIO. `angertick = 1000` caindo de um em um enquanto `med` -- e a unica
-		//    saida de quem nao tem pericia, e por isso ela precisa existir: sem ela, a paralisia
-		//    seria punicao sem resposta.
-		if (pl.Ficha.med)
-		{
-			pl.RaivaDoOozaru -= dt;
-			if (pl.RaivaDoOozaru <= 0)
-			{
-				DesfazerOozaru(pl, "voce respira fundo e recobra a razao.");
-				return;
-			}
-		}
-
-		// 3. O PRAZO. `spawn(3000)` / `spawn(1000)`.
+		// 2. O PRAZO. `spawn(3000)` / `spawn(1000)`.
 		if (NowMs() >= pl.OozaruAte)
 		{
 			DesfazerOozaru(pl, "a fera se cansa e voce volta a si.");
 			return;
 		}
 
-		// 4. A MAESTRIA SOBE SO TRANSFORMADO, e so acordado (`if(!KO && ticker > 5)`). E o unico
+		// 3. A MAESTRIA SOBE SO TRANSFORMADO, e so acordado (`if(!KO && ticker > 5)`). E o unico
 		//    jeito de ganha-la -- e ela usa o MESMO livro e o MESMO `Subir` das formas da escada,
 		//    inclusive o aviso de marco ("forma DOMINADA"), que aqui e o aviso mais importante do
 		//    sistema: e a hora em que a fera para de ser um acidente.
@@ -456,7 +443,7 @@ public partial class GameServer
 			GD.Print($"[server] {pl.Name}: {Oozaru.Id(pl.Oozaru)} -> {marco}");
 		}
 
-		// 5. O PRAZO DE CONTROLE. E o `ctrlParalysis` do DM virado numa rampa -- ver
+		// 4. O PRAZO DE CONTROLE. E o `ctrlParalysis` do DM virado numa rampa -- ver
 		//    `Oozaru.SegundosDeControle` pra curva e o porque dela.
 		//
 		//    A CONDICAO E `CerebroDaPosse == null`, e ela E o registro de "ainda nao perdi o controle":
@@ -565,24 +552,58 @@ public partial class GameServer
 			Inteligencia = 0,
 		});
 
-		// ============================ A PUNICAO TEM QUE DIZER A SAIDA ============================
-		// "VOCE PERDE O CONTROLE" sozinho e a metade ruim do aviso: ele conta o que aconteceu e nao o
-		// que fazer. O corpo para de responder a TODAS as teclas de corpo (ver `ComandoDeCorpo`), e um
-		// jogador que aperta tudo e nao ve nada acontecer conclui a mesma coisa que o dono concluiu
-		// hoje sobre outra coisa -- que o jogo travou. A saida existe, esta desbloqueada de proposito e
-		// e a UNICA: era invisivel.
+		// ============================ A PUNICAO TEM QUE DIZER O QUE A ENCERRA ============================
+		// "VOCE PERDE O CONTROLE" sozinho e a metade ruim do aviso: ele conta o que aconteceu e nao o que
+		// esperar. O corpo para de responder a TODAS as teclas de corpo (ver `ComandoDeCorpo`), e um
+		// jogador que aperta tudo e nao ve nada acontecer conclui que o jogo travou.
 		//
-		// O PRAZO E LIDO, e nao escrito como constante: `RaivaDoOozaru` e o `angertick` do DM caindo
-		// enquanto se medita, e quem ja meditou um pouco antes de perder as redeas tem menos a pagar.
-		// Repetir `SegundosMeditandoAteCair` aqui seria mentir pra esse jogador -- e seria a mesma
-		// verdade escrita em dois lugares, que e como uma delas fica velha.
-		// ====================================================================================
+		// ELE DIZIA "MEDITE (tecla M)", e a meditacao saiu (ver `DefinirAtividade`): o que encerra a fera sao
+		// as tres coisas que o tique confere -- o cansaco dela, o rabo e a lua.
+		//
+		// O PRAZO E LIDO do `OozaruAte` vivo, e nao escrito como constante: quem perde as redeas no meio da
+		// forma tem menos a esperar do que a forma inteira, e repetir `Oozaru.Duracao` aqui mentiria pra
+		// ele.
+		// ============================================================================================
 		Avisar(pl, "VOCE PERDE O CONTROLE. A fera nao te ouve mais.");
-		Avisar(pl, $"MEDITE (tecla M) e aguente cerca de {pl.RaivaDoOozaru:0} s: respirar fundo e o "
-				 + "unico jeito de recobrar a razao antes da hora.");
+		Avisar(pl, $"ela so para quando se cansar (cerca de {Math.Max((pl.OozaruAte - NowMs()) / 1000.0, 0):0} s), "
+				 + "quando perder o rabo ou quando a lua sair do ceu.");
 
 		GD.Print($"[server] {pl.Name}: o servidor assumiu o Oozaru "
 				 + $"(maestria {pl.MaestriaDaFera:0.0})");
+	}
+
+	// =====================================================================
+	// A FERA NAO MEDITA
+	// =====================================================================
+	/// <summary>
+	/// T E M -- o que o dono declara que o corpo esta fazendo (`C2S.Activity`).
+	///
+	/// ============================ A FERA NAO MEDITA (dono, 2026-10-09) ============================
+	/// *"ta dando pre meditar na forma de oozaru ai ele fica andando meditando tomado pela IA"*.
+	///
+	/// SAO DUAS PORTAS, e esta e a segunda: quem ja perdeu as redeas nem chega aqui (o despacho recusa o
+	/// pacote -- `ComandoDeCorpo`); aqui se recusa a MEDITACAO de quem ainda dirige o macaco (os segundos de
+	/// controle, ou a fera domada). Sem ela o corpo entraria meditando na posse, e a faxina do
+	/// `LargarOInput` seria a unica coisa entre o jogador e o macaco andando em pose de meditar.
+	///
+	/// DIVERGENCIA DECLARADA: no DM o `Meditate` nao pergunta pela forma (`Meditate.dm:22`) e o buff derruba
+	/// a fera depois de 1000 voltas meditando (`Oozaru.dm:164-166`) -- 300 s, que e o que a forma dura. O
+	/// freio nunca freou; saiu junto (ver `Core/Forms/Oozaru.cs`).
+	///
+	/// TREINAR CONTINUA VALENDO pra quem dirige a fera: o dono falou de meditar, e o DM deixa.
+	/// ==========================================================================================
+	/// </summary>
+	private void DefinirAtividade(ServerPlayer a, Protocol.Activity q)
+	{
+		if (q == Protocol.Activity.Meditando && a.Oozaru != FormaOozaru.Nao && !Oozaru.FeraMeditaDeTeste)
+		{
+			Avisar(a, "a fera nao medita.");
+			q = Protocol.Activity.Parado;
+		}
+
+		a.Ficha.train = q == Protocol.Activity.Treinando;
+		a.Ficha.med = q == Protocol.Activity.Meditando;
+		GD.Print($"[server] {a.Name}: {q} (BP {a.Ficha.BP:0.0})");
 	}
 
 	// O `DevolverAsRedeas` MORAVA AQUI e foi pra `GameServer.Clone.cs`, junto do `SemAsRedeas` e do

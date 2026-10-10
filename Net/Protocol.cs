@@ -649,6 +649,15 @@ public static class Protocol
         AbsorvidosDoMajin = 60,
 
         /// <summary>
+        /// OS CAMPOS DE GRAVIDADE LIGADOS NA MINHA ZONA, a lista INTEIRA a cada mudanca: `byte n` + n x
+        /// (`short cx`, `short cy` da maquina, `byte alcance`, `ushort k` + k x (`sbyte dx`, `sbyte dy`)). Os
+        /// `k` tiles sao os que o campo alcancou escorrendo da maquina sem atravessar parede, e o alcance
+        /// e a caixa que os apara -- as duas metades de `CampoDeGravidade.Alcanca`. So desenho: quem decide
+        /// quem pesa e o servidor. Ver `GameServer.MandarCampos`.
+        /// </summary>
+        CamposDeGravidade = 61,
+
+        /// <summary>
         /// CAIU UM RAIO, e ele caiu NUM LUGAR: posicao no mundo + a semente do desenho.
         ///
         /// ============================ POR QUE O RAIO E DO SERVIDOR ============================

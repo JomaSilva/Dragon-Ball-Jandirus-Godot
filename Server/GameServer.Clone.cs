@@ -1227,10 +1227,17 @@ public partial class GameServer
 		pl.QuerDescer = false;
 		pl.Combate.Guardar(false);
 		PararCarga(pl);
+
+		// O TREINO E A MEDITACAO TAMBEM SAO DO DONO (2026-10-09: *"ele fica andando meditando tomado pela
+		// IA"*). E do `Ficha.med` que sai a POSE que todo mundo ve (`ServerPlayer.Pose`) e o ganho de quem
+		// medita; num corpo que a IA dirige os dois ficavam ligados ate o dono apertar M de novo -- e o
+		// pacote dele agora nem chega (`ComandoDeCorpo`).
+		pl.Ficha.train = false;
+		pl.Ficha.med = false;
 	}
 
 	/// <summary>
-	/// DEVOLVE O CORPO AO DONO. Fim de prazo, rabo cortado, morte, meditacao (a fera) ou a furia
+	/// DEVOLVE O CORPO AO DONO. Fim de prazo, rabo cortado, a lua que se foi, morte (a fera) ou a furia
 	/// passando (o Legendary) -- em todos, a posse acabando E o unico jeito de recuperar as redeas.
 	///
 	/// So mexe em corpo POSSUIDO POR POSSESSAO (`DonoDoClone == 0`): tirar o cerebro de um clone o
@@ -1311,15 +1318,26 @@ public partial class GameServer
 	/// `LocalPlayer`), mas isso e cortesia -- pra o dono nao ver a animacao de um golpe que nao vai
 	/// acontecer.
 	///
+	/// ============================ O `Activity` (T/M) ENTROU NA LISTA EM 2026-10-09 ============================
+	/// Ele ficava de fora de proposito: no DM o `Meditate` passa com o `ctrlParalysis` ligado e o
+	/// `angertick` do buff conta (`Oozaru.dm:164-166`) -- "meditar e a saida da fera". So que a saida
+	/// nunca chegou antes do prazo (o bloco do freio em `Core/Forms/Oozaru.cs` faz a conta), e o que
+	/// sobrava era o que o dono viu e relatou como defeito: *"ta dando pre meditar na forma de oozaru ai
+	/// ele fica andando meditando tomado pela IA"* -- o `Ficha.med` ligado num corpo que a IA dirige, a
+	/// pose de meditar andando pelo mapa e o ganho de meditacao correndo junto.
+	///
+	/// Quem perdeu as redeas nao medita nem treina. As outras duas pontas da regra: o `LargarOInput`
+	/// (o que ja estava ligado desliga na hora da posse) e o `DefinirAtividade` (a fera que o dono ainda
+	/// dirige tambem nao medita).
+	/// ==========================================================================================================
+	///
 	/// O QUE NAO ESTA NA LISTA, E POR QUE:
-	///   * `Activity` (T/M) -- MEDITAR E A SAIDA. E o `angertick` do DM: quem nao tem pericia so
-	///     recobra a razao respirando fundo (ver `TickDoOozaru`, passo 2). Barrar isto transformaria
-	///     a paralisia em punicao sem resposta, que e exatamente o que o desenho evita;
 	///   * falar, menus, ficha, aba de cargo -- nada disso e o corpo. Perder as redeas nao e perder
 	///     a boca nem a interface.
 	/// ================================================================================================
 	/// </summary>
 	private static bool ComandoDeCorpo(Protocol.C2S id) => id is Protocol.C2S.Action
 		or Protocol.C2S.Guard or Protocol.C2S.Carregar or Protocol.C2S.Habilidade
-		or Protocol.C2S.Transformar or Protocol.C2S.Zanzoken;
+		or Protocol.C2S.Transformar or Protocol.C2S.Zanzoken
+		|| (id == Protocol.C2S.Activity && !Jandirus.Core.Forms.Oozaru.FeraMeditaDeTeste);
 }

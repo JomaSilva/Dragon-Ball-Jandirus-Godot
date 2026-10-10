@@ -388,6 +388,18 @@ public partial class GameClient : Node
 	public event Action<Protocol.Activity>? ActivityChanged;
 
 	/// <summary>
+	/// O SERVIDOR DESLIGOU A MINHA ATIVIDADE SOZINHO (a fera assumiu o corpo, ou o corpo acabou de virar
+	/// fera -- ver `LocalPlayer.LargarAAtividade`): o estado daqui acompanha e quem escuta (o HUD) fica
+	/// sabendo. SEM PACOTE: nao ha o que pedir, e com o corpo possuido o servidor nem o leria.
+	/// </summary>
+	public void AtividadeCaiu()
+	{
+		if (Atividade == Protocol.Activity.Parado) return;
+		Atividade = Protocol.Activity.Parado;
+		ActivityChanged?.Invoke(Atividade);
+	}
+
+	/// <summary>
 	/// GOLPEAR. So um PEDIDO: quem escolhe o alvo, rola a pontaria e calcula o dano e o
 	/// servidor -- este cliente nem sabe o BP de quem esta na frente. A animacao roda na hora
 	/// pra o controle nao ter atraso, mas ela nao promete acerto nenhum.
@@ -703,6 +715,21 @@ public partial class GameClient : Node
 	/// de volta; DEVORADO e o NPC que virou so poder emprestado. Ver `Protocol.S2C.AbsorvidosDoMajin`.
 	/// </summary>
 	public readonly record struct AbsorvidoDoMajin(int Numero, string Nome, bool Devorado);
+
+	/// <summary>
+	/// UM CAMPO DE GRAVIDADE LIGADO NA MINHA ZONA: o tile da maquina, o alcance dela e os tiles que o campo
+	/// alcancou escorrendo sem atravessar parede. Ver `Protocol.S2C.CamposDeGravidade`. So desenho -- quem
+	/// decide quem pesa e o servidor.
+	/// </summary>
+	public sealed record CampoDeGravidadeVisto(Vector2I Maquina, int Alcance, Vector2I[] Tiles);
+
+	public List<CampoDeGravidadeVisto> CamposDeGravidade { get; private set; } = [];
+
+	/// <summary>
+	/// Sobe a cada lista que chega. Quem pinta os campos (`CamposDeGravidadeNaTela`) compara este numero em
+	/// vez de assinar um evento: e um node so, que vive o tempo todo, e assim nao ha assinatura pra vazar.
+	/// </summary>
+	public int VersaoDosCampos { get; private set; }
 
 	public List<AbsorvidoDoMajin> AbsorvidosDoMajin { get; private set; } = [];
 	public event Action? AbsorvidosDoMajinMudaram;
@@ -1902,6 +1929,26 @@ public partial class GameClient : Node
 				// de "o rascunho e o primeiro da lista". Ver `S2C.Customizadas`.
 				Mesa = reader.GetBool() ? Jandirus.Net.CustomWire.Ler(reader) : null;
 				CustomizadasMudaram?.Invoke();
+				break;
+			}
+
+			// OS CAMPOS DE GRAVIDADE DA ZONA. Lista inteira, vazia quando nenhuma maquina esta ligada -- e e por
+			// chegar a cada entrada em zona que os da zona anterior nao ficam na tela.
+			case Protocol.S2C.CamposDeGravidade:
+			{
+				int n = reader.GetByte();
+				var l = new List<CampoDeGravidadeVisto>(n);
+				for (int i = 0; i < n; i++)
+				{
+					var maquina = new Vector2I(reader.GetShort(), reader.GetShort());
+					int alcance = reader.GetByte();
+					var tiles = new Vector2I[reader.GetUShort()];
+					for (int k = 0; k < tiles.Length; k++)
+						tiles[k] = maquina + new Vector2I(reader.GetSByte(), reader.GetSByte());
+					l.Add(new CampoDeGravidadeVisto(maquina, alcance, tiles));
+				}
+				CamposDeGravidade = l;
+				VersaoDosCampos++;
 				break;
 			}
 

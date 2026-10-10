@@ -58,9 +58,28 @@ public partial class ObraDesenhada : Node2D
 		// corpo de um personagem: quem esta abaixo dele passa na frente, quem esta acima fica atras.
 		// ==================================================================================================
 		YSortEnabled = false;
-		ZIndex = AcimaDoJogador(Tipo) ? 1 : 0;
+		ZIndex = Plano(Tipo, Estado);
 		MontarSprite();
 	}
+
+	/// <summary>
+	/// EM QUE PLANO ESTA CONSTRUCAO DESENHA: 0 e o do Y-sort (o movel comum), 1 e por cima de todo corpo,
+	/// -1 e por baixo de todo corpo.
+	///
+	/// ============================ O REGENERADOR TEM DOIS, E TROCA ============================
+	/// E o `plane` do original, que ele mexe a cada pulso (`Tier 1.5.dm:127-133`): com alguem dentro,
+	/// `plane = 6` -- acima do corpo, do cabelo e da roupa (`BODY_LAYER` 2 a `HAT_LAYER` 5) -- e a campanula
+	/// por cima; vazio, `plane = 0`, abaixo de todo mundo. O tanque FECHADO esconde quem esta nele; o tanque
+	/// aberto e um disco no chao em que se pisa.
+	///
+	/// Aqui quem troca e o INTERRUPTOR (a campanula aparece com o tanque ligado -- ver `Regenerador`), e
+	/// o plano vai junto com ela. Sem o -1 o disco desligado cobria quem pisasse nele: a base e mais alta
+	/// que um tile, e pelo Y-sort ela sempre fica na frente de quem esta na propria celula.
+	/// =========================================================================================
+	/// </summary>
+	private static int Plano(string tipo, string estado) =>
+		tipo == Jandirus.Core.Tech.Regenerador.Tipo ? (estado == Jandirus.Core.Tech.Regenerador.ArteLigado ? 1 : -1)
+		: AcimaDoJogador(tipo) ? 1 : 0;
 
 	/// <summary>
 	/// ESTA CONSTRUCAO DESENHA POR CIMA DE QUEM PASSA POR BAIXO?
@@ -119,31 +138,50 @@ public partial class ObraDesenhada : Node2D
 		if (FolhasPresas.Carregar(Arte) is not { } folha)
 		{ Reclamar("o .tres nao carregou como SpriteFrames"); return; }
 
-		string anim = Estado.Length > 0 ? Sanear(Estado) : "default";
-		if (!folha.HasAnimation(anim))
+		// ============================ O ESTADO PODE SER UMA PILHA ============================
+		// "base+tank" e o estado `base` com o `tank` por cima -- o `overlays += podlayer` do regenerador
+		// (`Tier 1.5.dm:129`). O servidor manda a pilha pronta, e o `+` nunca aparece no nome de um estado
+		// (o `Sanear` o trocaria por `_`). A PRIMEIRA camada e a que da o tamanho e o contorno de "solta".
+		// =====================================================================================
+		foreach (string camada in Estado.Split('+'))
 		{
-			// o .dmi pode nomear o estado de um jeito que o conversor saneou diferente; sem o
-			// estado certo, o primeiro serve mais do que nada
-			string[] nomes = [.. folha.GetAnimationNames()];
-			if (nomes.Length == 0) { Reclamar("o SpriteFrames nao tem animacao nenhuma"); return; }
-			anim = nomes[0];
+			string anim = camada.Length > 0 ? Sanear(camada) : "default";
+			if (!folha.HasAnimation(anim))
+			{
+				// A CAMADA DE CIMA QUE FALTA so deixa de aparecer: a base ja esta de pe.
+				if (_sprite != null) { Reclamar($"a camada '{camada}' nao existe na folha"); continue; }
+
+				// o .dmi pode nomear o estado de um jeito que o conversor saneou diferente; sem o
+				// estado certo, o primeiro serve mais do que nada
+				string[] nomes = [.. folha.GetAnimationNames()];
+				if (nomes.Length == 0) { Reclamar("o SpriteFrames nao tem animacao nenhuma"); return; }
+				anim = nomes[0];
+			}
+
+			if (folha.GetFrameTexture(anim, 0) is not { } quadro)
+			{
+				Reclamar($"a animacao '{anim}' nao tem quadro 0");
+				if (_sprite == null) return;
+				continue;
+			}
+			Vector2 tam = quadro.GetSize();
+
+			var sprite = new AnimatedSprite2D
+			{
+				SpriteFrames = folha,
+				Animation = anim,
+				Centered = false,
+				// da ancora (a base da celula) pro canto superior esquerdo do desenho
+				Position = new Vector2(Pixel.X, -tam.Y - Pixel.Y),
+			};
+			AddChild(sprite);
+			sprite.Play();
+			_sprite ??= sprite;
 		}
-
-		if (folha.GetFrameTexture(anim, 0) is not { } quadro)
-		{ Reclamar($"a animacao '{anim}' nao tem quadro 0"); return; }
-		Vector2 tam = quadro.GetSize();
-
-		_sprite = new AnimatedSprite2D
-		{
-			SpriteFrames = folha,
-			Animation = anim,
-			Centered = false,
-			// da ancora (a base da celula) pro canto superior esquerdo do desenho
-			Position = new Vector2(Pixel.X, -tam.Y - Pixel.Y),
-		};
-		AddChild(_sprite);
-		_sprite.Play();
 	}
+
+	/// <summary>Quantas camadas de desenho esta obra tem agora. So pra bancada (`--diagmaquinas`).</summary>
+	public int CamadasDeTeste => GetChildren().Count(n => n is AnimatedSprite2D);
 
 	/// <summary>Mesmo saneamento de nome que o `SpriteFramesWriter` aplicou ao converter.</summary>
 	private static string Sanear(string s)

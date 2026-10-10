@@ -263,6 +263,11 @@ public partial class World : Node2D
 	/// ===============================================================================
 	/// </summary>
 	private static TileSet? _tilesetVivo;
+	private CamposDeGravidadeNaTela _campos = null!;
+
+	/// <summary>O node que pinta os campos de gravidade. So pra bancada (`--diagmaquinas`).</summary>
+	public CamposDeGravidadeNaTela CamposDeTeste => _campos;
+
 	private Node2D _atores = null!;
 
 	/// <summary>
@@ -327,6 +332,11 @@ public partial class World : Node2D
 			NavigationEnabled = false,
 		};
 		AddChild(_blocosTiles);
+
+		// OS CAMPOS DE GRAVIDADE: um filtro vermelho POR CIMA do chao, da mobilia e dos corpos -- o
+		// `Gravity Field.dmi` do original, que mora no plano de cima dos mobs. Ver `CamposDeGravidadeNaTela`.
+		_campos = new CamposDeGravidadeNaTela { Name = "CamposDeGravidade", ZIndex = CamposDeGravidadeNaTela.Plano };
+		AddChild(_campos);
 
 		_atores = new Node2D { Name = "Atores", YSortEnabled = true };
 		AddChild(_atores);

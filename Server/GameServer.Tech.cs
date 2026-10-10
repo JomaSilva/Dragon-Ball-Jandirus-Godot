@@ -126,6 +126,13 @@ public sealed class Obra
 	public GravidadeDaObra? Gravidade;
 
 	/// <summary>
+	/// O ESTADO DO REGENERADOR, quando esta obra e um. Nulo em todo o resto -- e mora aqui pelo motivo
+	/// escrito no <see cref="Gravidade"/> logo acima: nasce e morre com a obra, e vai pro `mundo.json` de
+	/// graca. Ver `GameServer.Regenerador.cs`.
+	/// </summary>
+	public RegeneradorDaObra? Regenerador;
+
+	/// <summary>
 	/// QUE LABORATORIO FOI INSTALADO no mainframe: 0 nenhum, 1 Android Lab, 2 Bio-Android Lab.
 	///
 	/// E assim no original e vale manter: nao se CONSTROI um laboratorio, se constroi o
@@ -1711,7 +1718,7 @@ public partial class GameServer
 			// bancada de outra pessoa tem que aparecer do mesmo jeito. Mandar o caminho aqui evita
 			// que "ver" dependa de "poder construir".
 			w.Put(c?.Arte ?? "");
-			w.Put(c?.Estado ?? "");
+			w.Put(EstadoDaArte(o, c));   // o do catalogo -- menos o tanque LIGADO, que ganha a campanula
 			w.Put((float)(c?.PixelX ?? 0));
 			w.Put((float)(c?.PixelY ?? 0));
 			// ...e a DENSIDADE pelo mesmo motivo: o cliente tem que barrar o corpo no que o

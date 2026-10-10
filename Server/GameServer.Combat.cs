@@ -354,6 +354,10 @@ public partial class GameServer
 		if (!ca.PodeAtacar()) { ExplicarPorQueNaoSai(a); return; }   // morto, caido, atordoado, arremessado ou em recarga
 		// A AREA DE ESPERA DO TORNEIO (`canfight = 0` do `apply_hold`): quem aguarda a vez nao bate.
 		if (PresoNoTorneio(a.Id)) { Avisar(a, "voce esta na area de espera do torneio: sem golpes ate a sua vez."); return; }
+		// O REGENERADOR SEGURA O PACIENTE -- o `!inregen` do portao do soco (`attack cmn.dm:98`): cada pulso
+		// que cura prende os golpes por um segundo (`Regenerador.SegundosSemGolpear`). Quem quer brigar sai
+		// do tanque -- ou o desliga.
+		if (NowMs() < a.NoTanqueAte) { Avisar(a, "o regenerador está trabalhando em você: sem golpes até o pulso passar."); return; }
 
 		// ============================ COM ALGUEM NA MAO, O SOCO VIRA ESTRANGULAMENTO ============================
 		// `attack_bck.dm:43-57`: no original o `Attack()` com um `grabbee` de pe **nao soca** -- ele

@@ -482,17 +482,32 @@ public sealed partial class GameServer
 	/// existe. Montar um `new Obra` aqui mediria o meu proprio objeto; assim se mede a maquina que o
 	/// jogador encontra.
 	///
-	/// **E O TIQUE E O DE PRODUCAO** (`TickDasMaquinasDeCura`), varrendo `_players` inteiro: chamar a
-	/// conta na mao provaria que a formula existe, e nao que o laco alcanca o corpo deitado no tanque.
-	/// O `dt` e grande de proposito -- e argumento, nao relogio de parede.
+	/// **E O PULSO E O DE PRODUCAO** (`PulsoDosTanques`), varrendo quem esta na zona: chamar a conta na
+	/// mao provaria que a formula existe, e nao que o laco alcanca o corpo que esta no tanque.
+	///
+	/// ============================ O QUE MUDOU EM 2026-10-09 ============================
+	/// O tanque era um achatado sempre ligado que devolvia um membro a cada 300 s seguidos. Virou a
+	/// maquina do original (`Tier 1.5.dm:55-218`) com o interruptor que o dono pediu -- *"pra ligar vc tem
+	/// q apertar E e abrir o menu de interaçoes e apertar pra ligar"* --, e o membro perdido volta pelo
+	/// sorteio do `injuryheal`, que o tanque da cidade ja traz comprado (`VegetaCity.dm:103-115`). Os
+	/// numeros de um pulso, as melhorias e os contra-exemplos moram na `--maquinasteste`; aqui fica o
+	/// que e DESTE tanque: ele nasce turbinado, nasce desligado, e e a saida de quem perdeu um braco.
+	/// ===================================================================================
 	/// ==============================================================================================================
 	/// </summary>
 	private void CidRegenerador()
 	{
 		GD.Print("--- 5. O REGENERADOR devolve o membro perdido (a saida de quem nao regenera) ---");
 
-		Obra? tanque = _noChao.FirstOrDefault(o => o.Zona.Equals(ZonaDaCidade) && o.Tipo == "Regenerator");
+		Obra? tanque = _noChao.FirstOrDefault(o => o.Zona.Equals(ZonaDaCidade) && o.Tipo == Regenerador.Tipo);
 		if (tanque == null) { AfirmarCidade("ha um regenerador de pe em Vegeta", false); return; }
+
+		RegeneradorDaObra r = EstadoDoTanque(tanque);
+		AfirmarCidade("o tanque da cidade nasce com TODAS as melhorias (velocidade 10, bateria 1000, nanites 10, trata ferimentos)",
+					  r is { Eficiencia: Regenerador.EficienciaDaCidade, EnergiaMax: Regenerador.BateriaDaCidade,
+							 Nanites: Regenerador.NanitesDaCidade, CuraFerimentos: true },
+					  $"velocidade {r.Eficiencia}, bateria {r.EnergiaMax * 100:0}, nanites {r.Nanites}, ferimentos {r.CuraFerimentos}");
+		AfirmarCidade("...e nasce DESLIGADO: quem liga e quem chega (a tecla E)", !r.Ligado && tanque.Aparafusada);
 
 		var corpo = new ServerPlayer
 		{
@@ -522,47 +537,48 @@ public sealed partial class GameServer
 			AfirmarCidade("PRECONDICAO: o corpo esta sem o braco (e a mao foi junto)",
 						  braco.Decepado && corpo.Combate.Corpo.Achar("Mao esquerda")!.Decepado);
 
-			// --- LONGE DO TANQUE: dez tiles. Nao pode acontecer nada, nem depois de meia hora. ---
+			// --- DESLIGADO: em cima dele, e nada acontece. Dez minutos de pulso. ---
+			for (int i = 0; i < 300; i++) PulsoDosTanques();
+			AfirmarCidade("em cima do tanque DESLIGADO o braco nao volta, nem em dez minutos de pulso -- e a bateria nao e tocada",
+						  braco.Decepado && r.Energia == r.EnergiaMax, $"bateria {r.Energia:0.###}");
+
+			// --- LIGADO PELO MENU: o verbo da tecla E, pelo despacho de producao. ---
+			ComandoDeInteracao(corpo, "regen_ligar", "");
+			AfirmarCidade("\"Ligar / desligar\" pelo menu da tecla E liga o tanque da cidade (ele nao e de ninguem: qualquer um liga)",
+						  r.Ligado);
+
+			// --- LONGE DELE: dez tiles. Nao pode acontecer nada, por mais que pulse. ---
 			corpo.Pos = new Vec2(tanque.X, tanque.Y + 10 * ZoneCollision.TileSize);
-			for (int i = 0; i < 60; i++) TickDasMaquinasDeCura(30);   // 30 min
-			AfirmarCidade("longe do tanque o braco NAO volta, nem em meia hora", braco.Decepado);
+			for (int i = 0; i < 300; i++) PulsoDosTanques();
+			AfirmarCidade("longe do tanque LIGADO o braco NAO volta", braco.Decepado);
 
 			// --- EM CIMA DELE ---
+			// A chance e de 10% por pulso (velocidade 10). Trezentos pulsos sem sair e 0,9^300: nao acontece.
 			corpo.Pos = new Vec2(tanque.X, tanque.Y);
-
-			// ANTES DA HORA: 4 minutos nao bastam. Sem esta metade, um tanque instantaneo passaria.
-			for (int i = 0; i < 24; i++) TickDasMaquinasDeCura(10);   // 240 s
-			AfirmarCidade($"em cima do tanque, 240 s AINDA nao bastam (o preco e {SegundosDoRegeneradorPorMembro:0} s)",
-						  braco.Decepado, $"voltou cedo demais");
-
-			// E AGORA SIM: passa dos 300 s seguidos.
-			for (int i = 0; i < 12; i++) TickDasMaquinasDeCura(10);   // +120 s
-			AfirmarCidade("passados os 300 s deitado, o TANQUE devolve o braco",
-						  !braco.Decepado, $"ainda decepado apos 360 s");
+			int pulsos = 0;
+			while (braco.Decepado && pulsos < 300) { PulsoDosTanques(); pulsos++; }
+			AfirmarCidade("no tile do tanque LIGADO o braco VOLTA (o sorteio do `injuryheal`, 10% por pulso na velocidade 10)",
+						  !braco.Decepado, $"ainda decepado apos {pulsos} pulsos");
 			AfirmarCidade("...e a MAO volta junto com ele (a cascata do `RegrowLimb`)",
 						  !corpo.Combate.Corpo.Achar("Mao esquerda")!.Decepado);
+			AfirmarCidade("...e cada pulso que trabalhou gastou bateria (0,02 por pulso na velocidade 10)",
+						  r.Energia < r.EnergiaMax && r.Energia > 0, $"bateria {r.Energia:0.###} de {r.EnergiaMax:0}");
 
-			// ============================ E A CONTA NAO E UM DEPOSITO ============================
-			// O defeito que esta linha existe pra pegar ja aconteceu neste arquivo: o relogio do
-			// tanque era zerado num `else` que ficava DEPOIS de tres `continue`, entao sair de cima
-			// nao zerava nada -- 299 s hoje mais 1 s amanha davam um membro. Aqui o corpo acumula
-			// quase tudo, SAI, e volta: se o relogio fosse deposito, o membro voltaria na hora.
-			// =================================================================================
+			// --- SEM A MELHORIA, o mesmo tanque nao devolve membro: e ela que separa as duas coisas. ---
 			Jandirus.Core.Combat.BodyPart perna = corpo.Combate.Corpo.Achar("Perna direita")!;
+			corpo.Combate.Corpo.Restaurar();
 			corpo.Combate.Corpo.Decepar(perna);
 			corpo.Combate.SincronizarVida();
-
-			for (int i = 0; i < 29; i++) TickDasMaquinasDeCura(10);   // 290 s em cima
-			corpo.Pos = new Vec2(tanque.X, tanque.Y + 10 * ZoneCollision.TileSize);
-			TickDasMaquinasDeCura(1);                                 // levantou e saiu
-			corpo.Pos = new Vec2(tanque.X, tanque.Y);
-			for (int i = 0; i < 3; i++) TickDasMaquinasDeCura(10);    // 30 s de volta
-
-			AfirmarCidade("sair do tanque ZERA a conta -- 290 s + saida + 30 s NAO devolvem a perna",
-						  perna.Decepado, "a espera virou deposito");
+			r.CuraFerimentos = false;
+			for (int i = 0; i < 300; i++) PulsoDosTanques();
+			AfirmarCidade("sem a melhoria de ferimentos, o MESMO tanque ligado nao devolve a perna em 300 pulsos",
+						  perna.Decepado);
 		}
 		finally
 		{
+			// O TANQUE VOLTA COMO O MAPA O TROUXE: ele nao vai pro disco, mas o servidor desta bancada
+			// continua de pe.
+			tanque.Regenerador = null;
 			_players.Remove(corpo.Id);
 			ZoneList(corpo.Zone.Hash).Remove(corpo);
 		}

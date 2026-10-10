@@ -835,69 +835,95 @@ public partial class GameServer
 			Checa("vencido o prazo, o SERVIDOR assume o corpo", pl.Cerebro != null);
 			Checa("...e o input do dono passa a ser recusado", SemAsRedeas(pl));
 
-			// ============================ A PUNICAO TEM QUE FALAR, E TEM QUE DIZER A SAIDA ============================
-			// Este e o buraco que a fase anterior fechou, e ele e invisivel por natureza: o corpo para de
-			// responder a TODAS as teclas de corpo e a unica resposta possivel (meditar) nao aparece em lugar
-			// nenhum da tela. Quem aperta tudo e nao ve nada acontecer conclui que o jogo travou -- e um
-			// jogador que acha que achou um bug nao aprende a regra, ele reporta.
+			// ============================ A PUNICAO TEM QUE FALAR, E TEM QUE DIZER O QUE A ENCERRA ============================
+			// O corpo para de responder a TODAS as teclas de corpo, e quem aperta tudo e nao ve nada acontecer
+			// conclui que o jogo travou -- um jogador que acha que achou um bug nao aprende a regra, ele reporta.
 			//
-			// COMO REPROVA SE A REGRA SUMIR: apague o primeiro `Avisar` do `TomarAsRedeas` e a linha 1 cai;
-			// apague o segundo (o que ensina o M) e caem as linhas 2 e 3 -- e sao elas que separam "avisou"
-			// de "avisou o que fazer", que e a diferenca que custou a sessao passada.
+			// O AVISO MANDAVA MEDITAR ("MEDITE (tecla M)"), e a meditacao da fera saiu em 2026-10-09 (ver
+			// `DefinirAtividade`). O que ele diz agora sao as tres coisas que o tique confere: o cansaco, o rabo
+			// e a lua.
 			//
-			// A LINHA 3 E A MAIS ESPECIFICA: o prazo dito e LIDO do `RaivaDoOozaru` vivo, nao da constante.
-			// Trocar `pl.RaivaDoOozaru` por `Oozaru.SegundosMeditandoAteCair` naquela frase daria o mesmo
-			// numero HOJE (a raiva nasce cheia) e mentiria pra quem ja meditou um pouco antes de perder as
-			// redeas. Por isso a bancada gasta metade da raiva ANTES de conferir: o valor esperado deixa de
-			// coincidir com a constante, e so a leitura certa passa.
-			// ======================================================================================================
+			// A LINHA 3 E A MAIS ESPECIFICA: o prazo dito e LIDO do `OozaruAte` vivo, e nao da duracao da forma.
+			// Por isso a bancada envelhece a forma dois minutos ANTES de conferir: o que falta deixa de coincidir
+			// com a constante, e so a leitura certa passa.
+			// ==================================================================================================================
 			Checa("perder o controle AVISA o dono",
 				  aoPerder.Any(a => a.Contains("PERDE O CONTROLE")), string.Join(" | ", aoPerder));
-			Checa("...e o aviso ensina a SAIDA (a tecla M), que e a unica que ainda funciona",
-				  aoPerder.Any(a => a.Contains("MEDITE")), string.Join(" | ", aoPerder));
+			Checa("...e o aviso diz o que ENCERRA a fera (o cansaco, o rabo, a lua) -- e nao manda mais meditar",
+				  aoPerder.Any(a => a.Contains("se cansar") && a.Contains("rabo") && a.Contains("lua"))
+				  && !aoPerder.Any(a => a.Contains("MEDITE", StringComparison.OrdinalIgnoreCase)),
+				  string.Join(" | ", aoPerder));
 
-			DesfazerOozaru(pl, "bancada: recomecar pra medir a raiva parcial");
+			DesfazerOozaru(pl, "bancada: recomecar pra medir o prazo dito");
 			pl.Forma.Maestria.Por(Oozaru.IdRegular, 0);
 			Apeshit(pl);
-			pl.RaivaDoOozaru *= 0.5;   // ele meditou um pouco ANTES de perder as redeas
-			double raivaQueFalta = pl.RaivaDoOozaru;
 			EscutaDeAvisos = [];
-			pl.OozaruAte -= (long)(Oozaru.SegundosDeGraca * 1000) + 500;
+			pl.OozaruAte -= 120_000;   // dois minutos de forma ja se foram quando as redeas escapam
+			double falta = Math.Round((pl.OozaruAte - NowMs()) / 1000.0);
 			TickDoOozaru(pl, 0.1);
 			aoPerder = Ouvido();
-			Checa($"...e o prazo de meditacao dito e o que FALTA, nao a constante ({raivaQueFalta:0} s)",
-				  aoPerder.Any(a => a.Contains($"{raivaQueFalta:0} s")), string.Join(" | ", aoPerder));
+			Checa($"...e o prazo dito e o que FALTA da forma (~{falta:0} s), nao a duracao inteira ({Oozaru.SegundosRegular:0} s)",
+				  SemAsRedeas(pl) && aoPerder.Any(a => a.Contains($"{falta:0} s") || a.Contains($"{falta - 1:0} s")),
+				  string.Join(" | ", aoPerder));
 
-			// ============================ MEDITAR DEVOLVE O CONTROLE ============================
-			// A saida existe no servidor (passo 2 do `TickDoOozaru`), esta desbloqueada no despacho
-			// (`ComandoDeCorpo` nao lista `Activity`) e e a UNICA -- e as tres coisas so valem se a
-			// terceira acontecer de verdade.
+			// ============================ A FERA NAO MEDITA (dono, 2026-10-09) ============================
+			// *"ta dando pre meditar na forma de oozaru ai ele fica andando meditando tomado pela IA"*.
 			//
-			// O `OozaruAte` E EMPURRADO PRA LONGE de proposito. Sem isso, "a forma caiu" nao distinguiria
-			// "ele meditou" de "o prazo da forma venceu sozinho" -- e o prazo VENCE, sempre, em 300 s. Com
-			// dez minutos de forma pela frente, a unica coisa que pode derrubar a fera aqui e a raiva.
+			// TRES PONTAS, e cada uma tem a sua linha:
+			//   1. o DESPACHO recusa o pacote de atividade de quem perdeu as redeas (`ComandoDeCorpo`);
+			//   2. o que ja estava ligado DESLIGA na hora da posse (`LargarOInput`);
+			//   3. a fera que o dono ainda dirige tambem nao medita (`DefinirAtividade`) -- treinar, pode.
 			//
-			// COMO REPROVA SE A REGRA SUMIR: apague o bloco `if (pl.Ficha.med)` do `TickDoOozaru` e o laco
-			// roda os 4000 tiques inteiros sem soltar o corpo; tire o `DevolverAsRedeas` do
-			// `DesfazerOozaru` e a forma cai com o cerebro ainda pendurado (o jogador em forma base
-			// assistindo o proprio boneco andar sozinho, sem nada a fazer alem de deslogar).
-			// ==================================================================================
-			pl.OozaruAte = NowMs() + 600_000;
-			pl.Ficha.med = true;
-			double meditou = 0;
-			for (int t = 0; t < 4000 && pl.Oozaru != FormaOozaru.Nao; t++)
-			{
-				TickDoOozaru(pl, 0.1);
-				meditou += 0.1;
-			}
-			pl.Ficha.med = false;
-			Checa("meditando, a fera se desfaz mesmo com a forma longe de acabar",
-				  pl.Oozaru == FormaOozaru.Nao, $"parou em {pl.Oozaru} apos {meditou:0.#}s");
-			Checa("...e no prazo do `angertick`, nao antes nem 'em algum momento'",
-				  Math.Abs(meditou - raivaQueFalta) < 1.0,
-				  $"{meditou:0.#}s contra os {raivaQueFalta:0.#}s que faltavam");
-			Checa("...e as redeas voltam pra mao do dono",
+			// O DEFEITO INJETADO (`Oozaru.FeraMeditaDeTeste`) devolve o estado de antes nas pontas 1 e 3, e a
+			// bancada cobra o sintoma que o dono descreveu, com as tres partes dele: o `med` ligado, a POSE de
+			// meditar no fio e o corpo ANDANDO pela mao de quem dirige.
+			// ==========================================================================================
+			Checa("sem as redeas, o despacho RECUSA o pacote de atividade (T e M) do dono",
+				  SemAsRedeas(pl) && ComandoDeCorpo(Protocol.C2S.Activity));
+
+			DesfazerOozaru(pl, "bancada: a fera que o dono ainda dirige");
+			Checa("a forma caindo devolve as redeas ao dono",
 				  pl.Cerebro == null && !SemAsRedeas(pl) && !EstadoDe(pl, NowMs()).SemRedeas);
+
+			pl.Forma.Maestria.Por(Oozaru.IdRegular, 0);
+			Apeshit(pl);
+			DefinirAtividade(pl, Protocol.Activity.Treinando);
+			Checa("a fera que o dono AINDA dirige pode treinar (o DM deixa, e o dono falou de meditar)",
+				  !SemAsRedeas(pl) && pl.Ficha.train && !pl.Ficha.med);
+			EscutaDeAvisos = [];
+			DefinirAtividade(pl, Protocol.Activity.Meditando);
+			List<string> aoMeditar = Ouvido();
+			Checa("...mas NAO medita: o pedido e recusado, e o dono ouve por que",
+				  !pl.Ficha.med && aoMeditar.Any(a => a.Contains("fera nao medita")), string.Join(" | ", aoMeditar));
+			Checa("...e a pose que o fio leva nao e a de meditar",
+				  EstadoDe(pl, NowMs()).Pose != Protocol.Pose.Meditando, EstadoDe(pl, NowMs()).Pose.ToString());
+
+			DefinirAtividade(pl, Protocol.Activity.Treinando);
+			pl.OozaruAte -= (long)(Oozaru.SegundosDeGraca * 1000) + 500;
+			TickDoOozaru(pl, 0.1);
+			Checa("a posse DERRUBA o treino que estava ligado (`LargarOInput`)",
+				  SemAsRedeas(pl) && !pl.Ficha.train && !pl.Ficha.med, $"train={pl.Ficha.train}, med={pl.Ficha.med}");
+
+			try
+			{
+				Oozaru.FeraMeditaDeTeste = true;
+				bool passa = !ComandoDeCorpo(Protocol.C2S.Activity);
+				DefinirAtividade(pl, Protocol.Activity.Meditando);   // o que o `case Activity` faz com o pacote que passou
+				pl.Moving = true;                                     // ...e a IA andando com o corpo
+				Protocol.Pose noFio = EstadoDe(pl, NowMs()).Pose;
+				Checa("(defeito injetado: a fera volta a meditar) o pacote passa, o `med` liga num corpo SEM redeas e o fio "
+					  + "leva a POSE DE MEDITAR com ele ANDANDO -- o macaco que o dono viu",
+					  passa && SemAsRedeas(pl) && pl.Ficha.med && pl.Moving && noFio == Protocol.Pose.Meditando,
+					  $"passa={passa}, med={pl.Ficha.med}, andando={pl.Moving}, pose={noFio}");
+			}
+			finally
+			{
+				Oozaru.FeraMeditaDeTeste = false;
+				pl.Ficha.med = false;
+				pl.Moving = false;
+			}
+
+			DesfazerOozaru(pl, "bancada: de volta ao comeco");
 
 			// e de volta ao estado que o resto deste bloco espera: fera crua, sem controle
 			pl.Forma.Maestria.Por(Oozaru.IdRegular, 0);
@@ -938,12 +964,15 @@ public partial class GameServer
 				  && ComandoDeCorpo(Protocol.C2S.Action) && ComandoDeCorpo(Protocol.C2S.Guard)
 				  && ComandoDeCorpo(Protocol.C2S.Carregar) && ComandoDeCorpo(Protocol.C2S.Habilidade)
 				  && ComandoDeCorpo(Protocol.C2S.Transformar) && ComandoDeCorpo(Protocol.C2S.Zanzoken));
-			// ...E O QUE **NAO** PODE SER RECUSADO. Meditar e a UNICA saida de quem nao tem pericia
-			// (`TickDoOozaru`, passo 2): barrar `Activity` transformaria a paralisia em punicao sem
-			// resposta. Esta linha reprova no dia em que alguem "fechar tudo" por seguranca.
-			Checa("...mas NAO tira a saida: meditar, falar e os menus continuam passando",
-				  !ComandoDeCorpo(Protocol.C2S.Activity) && !ComandoDeCorpo(Protocol.C2S.Chat)
-				  && !ComandoDeCorpo(Protocol.C2S.Verbo));
+			// ...E O QUE **NAO** PODE SER RECUSADO: a boca e a interface. Esta linha reprova no dia em que
+			// alguem "fechar tudo" por seguranca.
+			//
+			// (Ela cobrava tambem o `Activity`, com o motivo "meditar e a UNICA saida de quem nao tem
+			// pericia". A saida nunca chegou antes do prazo da forma, e o que o pacote produzia era o
+			// macaco andando pela IA em pose de meditar -- ele mudou de lado em 2026-10-09, e quem o cobra
+			// e a familia "A FERA NAO MEDITA", logo acima.)
+			Checa("...mas NAO tira a boca nem a interface: falar e os menus continuam passando",
+				  !ComandoDeCorpo(Protocol.C2S.Chat) && !ComandoDeCorpo(Protocol.C2S.Verbo));
 
 			// A FERA ANDA PELO MESMO LACO DO CLONE. Sem esta checagem, "reusei a IA" seria uma
 			// afirmacao do comentario e nao do codigo.
@@ -1992,14 +2021,16 @@ public partial class GameServer
 	/// O <see cref="AFuriaLendariaNoCorpo"/> prova que a posse ACONTECE e que ela passa. Ele confere o
 	/// bloqueio com duas linhas -- `ComandoDeCorpo(Action)` e `ComandoDeCorpo(Transformar)` --, e duas
 	/// linhas nao distinguem "estes comandos param" de "TUDO para". Um `ComandoDeCorpo` reescrito como
-	/// `=> true` passaria nas duas e mataria o unico jeito de sair da posse: **meditar**.
+	/// `=> true` passaria nas duas e calaria o jogador: sem chat e sem menu nenhum.
 	///
 	/// ============================ POR QUE ISSO E O DEFEITO MAIS CARO DESTE SISTEMA ============================
 	/// A furia lendaria nao tem saida por gesto -- nao da nem pra reverter a forma. Quem perde as
-	/// redeas so as recupera pelo relogio... ou, no caso da fera, MEDITANDO (`Activity`). Barrar o
-	/// `Activity` junto com o resto transforma a paralisia em punicao sem resposta, e o jogador nao
-	/// tem como saber que o que ele esta tentando nunca ia funcionar. Falar e abrir menu caem na mesma
-	/// conta por outro motivo: *"perder as redeas nao e perder a boca nem a interface"*.
+	/// redeas so as recupera pelo relogio, e enquanto espera so lhe restam a boca e a interface:
+	/// *"perder as redeas nao e perder a boca nem a interface"*. Barrar isso junto com o resto
+	/// transforma a espera em tela travada.
+	///
+	/// (O `Activity` -- treinar e meditar -- ja esteve do lado de quem passa, como "a saida da fera". Em
+	/// 2026-10-09 ele foi pro lado de quem para: ver `GameServer.ComandoDeCorpo`.)
 	///
 	/// Por isso a varredura e do ENUM INTEIRO e a lista esperada esta escrita a mao. Um comando novo
 	/// no protocolo (o proximo `C2S`) cai numa das duas listas por decisao de quem o escreveu, e nao
@@ -2030,16 +2061,17 @@ public partial class GameServer
 		try
 		{
 			// ============================ 1. O BLOQUEIO E UMA LISTA, E ELA E ESTA ============================
-			// Os SEIS comandos que mexem no corpo. Escritos a mao e nao lidos do `ComandoDeCorpo`: uma
-			// lista que se conferisse com ela mesma passaria em qualquer valor.
+			// Os SETE comandos que mexem no corpo. Escritos a mao e nao lidos do `ComandoDeCorpo`: uma
+			// lista que se conferisse com ela mesma passaria em qualquer valor. (Eram seis ate 2026-10-09:
+			// o setimo e a ATIVIDADE -- o corpo que a IA dirige nao treina nem medita por pedido do dono.)
 			Protocol.C2S[] devemParar =
 			[
 				Protocol.C2S.Action, Protocol.C2S.Guard, Protocol.C2S.Carregar,
 				Protocol.C2S.Habilidade, Protocol.C2S.Transformar, Protocol.C2S.Zanzoken,
+				Protocol.C2S.Activity,
 			];
 
 			// E O QUE TEM QUE CONTINUAR PASSANDO -- cada um com o motivo dele:
-			//   * `Activity` e a SAIDA (meditar). E o unico que, barrado, tranca o jogador pra sempre;
 			//   * `Chat` e a boca; `Verbo`, `Cargo`, `Aprender`, `Estilo` e `Tech` sao a interface;
 			//   * `InputState` **passa de proposito** e nao e esquecimento: quem recusa movimento e o
 			//     portao la embaixo do `Input`, que alem de recusar PRESERVA o `Moving` que a IA
@@ -2047,7 +2079,7 @@ public partial class GameServer
 			//     possuido sem correcao de posicao na tela do dono.
 			Protocol.C2S[] devemPassar =
 			[
-				Protocol.C2S.Activity, Protocol.C2S.Chat, Protocol.C2S.Verbo, Protocol.C2S.Cargo,
+				Protocol.C2S.Chat, Protocol.C2S.Verbo, Protocol.C2S.Cargo,
 				Protocol.C2S.Aprender, Protocol.C2S.Estilo, Protocol.C2S.Tech, Protocol.C2S.Alvo,
 				Protocol.C2S.Aim, Protocol.C2S.Lethal, Protocol.C2S.InputState, Protocol.C2S.Ping,
 				Protocol.C2S.Login, Protocol.C2S.PickSlot, Protocol.C2S.CreateChar,
@@ -2072,16 +2104,16 @@ public partial class GameServer
 
 			var passouQuemDevia = todos.Where(c => devemParar.Contains(c) && !ComandoDeCorpo(c)).ToArray();
 			var parouQuemNaoDevia = todos.Where(c => devemPassar.Contains(c) && ComandoDeCorpo(c)).ToArray();
-			Checa("os SEIS comandos de corpo sao recusados durante a posse",
+			Checa("os SETE comandos de corpo sao recusados durante a posse",
 				  passouQuemDevia.Length == 0, string.Join(", ", passouQuemDevia));
 			Checa("...e NENHUM outro e -- o bloqueio e uma lista, nao um portao geral",
 				  parouQuemNaoDevia.Length == 0, string.Join(", ", parouQuemNaoDevia));
 
-			// A LINHA QUE O DONO LERIA. Ela ja esta coberta pela varredura acima, e existe separada
-			// porque e a que conta a regra: meditar e a saida, e uma bancada que so diga "17 comandos
-			// passam" nao deixa ninguem saber qual deles nao pode faltar.
-			Checa("-- e MEDITAR (`Activity`) continua passando: e a unica saida da posse",
-				  !ComandoDeCorpo(Protocol.C2S.Activity), "");
+			// AS LINHAS QUE O DONO LERIA. Elas ja estao cobertas pela varredura acima, e existem separadas
+			// porque sao as que contam a regra: uma bancada que so diga "18 comandos passam" nao deixa
+			// ninguem saber qual deles nao pode faltar -- nem qual nao pode voltar.
+			Checa("-- e a ATIVIDADE (`Activity`: treinar e meditar) e um deles: o corpo possuido nao medita",
+				  ComandoDeCorpo(Protocol.C2S.Activity), "");
 			Checa("-- e FALAR tambem: perder as redeas nao e perder a boca",
 				  !ComandoDeCorpo(Protocol.C2S.Chat) && !ComandoDeCorpo(Protocol.C2S.Verbo), "");
 
