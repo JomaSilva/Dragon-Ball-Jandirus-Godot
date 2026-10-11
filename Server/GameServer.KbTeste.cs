@@ -1229,7 +1229,7 @@ public sealed partial class GameServer
 				  && CelulaDoPonto(aSexta) != (muro.Cx, muro.Cy));
 
 		HashSet<(int X, int Y)> caidasAntes =
-			_cenarioCaido.TryGetValue(d.Zone.Name, out HashSet<(int X, int Y)>? jaCaidas) ? [.. jaCaidas] : [];
+			_cenarioCaido.TryGetValue(ChaveDeEstado(d.Zone), out HashSet<(int X, int Y)>? jaCaidas) ? [.. jaCaidas] : [];
 
 		void Jogar(double forca)
 		{
@@ -1268,7 +1268,7 @@ public sealed partial class GameServer
 			// O MURO VOLTA. O `_cenarioCaido` vive so em memoria (o mapa volta ao normal quando o servidor
 			// reinicia), mas esta bancada roda no servidor de verdade e esta Terra e a de todo mundo: sem isto o
 			// buraco ficaria no mapa da sessao inteira -- e no retrato mandado a quem entrar na Terra depois.
-			if (_cenarioCaido.TryGetValue(d.Zone.Name, out HashSet<(int X, int Y)>? caidas))
+			if (_cenarioCaido.TryGetValue(ChaveDeEstado(d.Zone), out HashSet<(int X, int Y)>? caidas))
 				foreach ((int X, int Y) cel in caidas.Where(c => !caidasAntes.Contains(c)).ToList())
 				{
 					caidas.Remove(cel);
@@ -1504,7 +1504,7 @@ public sealed partial class GameServer
 		var origem = new Vec2(Coluna * T + T / 2f, (Parede + 4) * T + T / 2f);
 		float baseDaParede = (Parede + 1) * T;
 		HashSet<(int X, int Y)> caidasAntes =
-			_cenarioCaido.TryGetValue(d.Zone.Name, out HashSet<(int X, int Y)>? jaCaidas) ? [.. jaCaidas] : [];
+			_cenarioCaido.TryGetValue(ChaveDeEstado(d.Zone), out HashSet<(int X, int Y)>? jaCaidas) ? [.. jaCaidas] : [];
 
 		void Jogar(double forca)
 		{
@@ -1553,7 +1553,7 @@ public sealed partial class GameServer
 		finally
 		{
 			// A PAREDE VOLTA -- esta Terra e a de todo mundo (o mesmo `finally` da familia 11).
-			if (_cenarioCaido.TryGetValue(d.Zone.Name, out HashSet<(int X, int Y)>? caidas))
+			if (_cenarioCaido.TryGetValue(ChaveDeEstado(d.Zone), out HashSet<(int X, int Y)>? caidas))
 				foreach ((int X, int Y) cel in caidas.Where(c => !caidasAntes.Contains(c)).ToList())
 				{
 					caidas.Remove(cel);

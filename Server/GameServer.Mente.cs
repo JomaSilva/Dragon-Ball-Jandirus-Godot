@@ -117,8 +117,8 @@ public partial class GameServer
 	/// destruir o dado pra medir.
 	///
 	/// A chave desliga as DUAS linhas do conserto de uma vez, que e como o defeito existia:
-	///   * a planta sai do funil (`MapaDaMente` devolve nulo), e o catalogo volta a casar
-	///     "Interdimension" com o z24 do BYOND, pelo NOME;
+	///   * a planta sai do funil (o tipo "mente" de `TiposDeInterior` deixa de responder, em
+	///     `GameServer.Interiores.cs`), e o catalogo volta a casar "Interdimension" com o z24 do BYOND, pelo NOME;
 	///   * o nascimento volta ao literal (250,250) em pixel cru -- o meio daquele mapa, bem na emenda
 	///     entre o mosaico azul-petroleo e a nebulosa roxa.
 	///
@@ -130,17 +130,6 @@ public partial class GameServer
 	/// ================================================================================================
 	/// </summary>
 	public static bool MenteAntiga;
-
-	/// <summary>
-	/// A COLISAO DA MENTE -- a mesma pra toda mente, como a da nave.
-	///
-	/// Chamada pelo <see cref="MapaDaZonaOuCatalogo"/>, o funil unico de "onde ha parede nesta zona".
-	/// Sem esta linha a mente cairia no `_catalogo?.Get(zona)?.Mapa`, que resolve pelo NOME e
-	/// devolveria a colisao do z24 -- 500x500 de um mapa que ninguem mais desenha. O corpo esbarraria
-	/// em paredes invisiveis e passaria pelas de verdade.
-	/// </summary>
-	private static ZoneCollision? MapaDaMente(ZoneKey zona) =>
-		!MenteAntiga && DimensaoMental.EhAMente(zona) ? DimensaoMental.Planta().Colisao : null;
 
 	/// <summary>
 	/// A que distancia o OPONENTE aparece. Perto o bastante pra a luta comecar sozinha.

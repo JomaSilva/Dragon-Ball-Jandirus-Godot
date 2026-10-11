@@ -540,7 +540,7 @@
       "ascendePorDecisao": false,
       "inteligencia": 90, "agressividade": 80, "coragem": 100, "furia": 85,
       "estagios": [ { "bp": 150000000000 } ],
-      "_nota": "BILLS, o Deus da Destruicao (dono, 2026-10-11; NAO existe no DM). As regras e os numeros estao em Core/Npc/BillsEWhis.cs e quem o poe no mundo e o GameServer.Bills.cs -- nunca o povoamento nem a cadeia de sagas. Ele existe enquanto o cargo 'godofdestruction' estiver VAGO. O 'bp' do degrau e o poder com que ele luta NA TERRA (15% de um trilhao); no treino e no desafio o servidor crava outro por cima (o triplo de quem treina; o trilhao inteiro, mais a forma Fury). A 'raca' Hakaishin nao esta no races.json de proposito: a ficha sai neutra, e e por ela que as duas pontas desenham a folha dele (VisualCatalog.CorpoSprite). Tipo 'chefe' porque tem poder de ficha (e chefe nao e embaralhado quando o planeta esfria); ele NAO caca ninguem: parado nao tem mente, e a presa dele e sempre imposta pelo servidor."
+      "_nota": "BILLS, o Deus da Destruicao (dono, 2026-10-11; NAO existe no DM). As regras e os numeros estao em Core/Npc/BillsEWhis.cs e quem o poe no mundo e o GameServer.Bills.cs -- nunca o povoamento nem a cadeia de sagas. Ele existe enquanto o cargo 'godofdestruction' estiver VAGO. O 'bp' do degrau e o poder com que ele luta NA TERRA (15% de um trilhao); no treino e no desafio o servidor crava outro por cima (o triplo de quem treina; o trilhao inteiro, mais a forma Fury). Acordado na Terra (sem a Fury) e no desafio ele carrega o kit do Deus da Destruicao, e quem decide cada habilidade e o cerebro de todo NPC (Core/Ai/Cerebro.Kit.cs); no treino, nao. A 'raca' Hakaishin nao esta no races.json de proposito: a ficha sai neutra, e e por ela que as duas pontas desenham a folha dele (VisualCatalog.CorpoSprite). Tipo 'chefe' porque tem poder de ficha (e chefe nao e embaralhado quando o planeta esfria); ele NAO caca ninguem: parado nao tem mente, e a presa dele e sempre imposta pelo servidor."
     },
 
     {
@@ -557,7 +557,7 @@
       "ascendePorDecisao": false,
       "inteligencia": 100, "agressividade": 40, "coragem": 100, "furia": 20,
       "estagios": [ { "bp": 1000000000000 } ],
-      "_nota": "WHIS, o Anjo que acompanha o Bills (dono, 2026-10-11; NAO existe no DM). Existe enquanto o cargo 'angel' estiver VAGO, e fica sempre ao lado do Bills. Ninguem o enfrenta por conta propria: fora do treino ele e intocavel. O 'bp' do degrau e so o poder de repouso -- no treino o servidor crava o TRIPLO do poder de quem o chamou, a cada tique, e liga o Ultra Instinto dele a 100% sem queda e sem forma (Core/Npc/BillsEWhis.cs, GameServer.BillsTreino.cs). Sem 'roupa': a folha dele ja vem vestida, e chefe sem roupa cravada nao entra no sorteio racial."
+      "_nota": "WHIS, o Anjo que acompanha o Bills (dono, 2026-10-11; NAO existe no DM). Existe enquanto o cargo 'angel' estiver VAGO. Fora de luta fica ao lado do Bills (e anda com ele); quando o Bills luta, assiste de longe, comentando comida (GameServer.GuiarOWhis). Ninguem o enfrenta por conta propria: fora da aula dele ele e intocavel. O 'bp' do degrau e so o poder de repouso -- no treino o servidor crava o TRIPLO do poder de quem o chamou, a cada tique, e liga o Ultra Instinto dele a 100% sem queda e sem forma (Core/Npc/BillsEWhis.cs, GameServer.BillsTreino.cs). Sem 'roupa': a folha dele ja vem vestida, e chefe sem roupa cravada nao entra no sorteio racial."
     }
   ]
 }

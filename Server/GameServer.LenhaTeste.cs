@@ -1052,7 +1052,7 @@ public sealed partial class GameServer
 			if (mundo is { } mg)
 			{
 				DesfazerALenhaDeTeste(mg);
-				_cenarioCaido.Remove(mg.Name);
+				_cenarioCaido.Remove(ChaveDeEstado(mg));
 			}
 
 			pl.Zone = terra;

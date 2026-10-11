@@ -102,12 +102,42 @@ public static class FioDaVersao
 	/// o servidor de antes a procura (`AcceptIfKey`), e trocar a ordem faria o cliente novo ser recusado por um
 	/// servidor antigo sem explicacao -- em vez de aceito, com o aviso de "servidor sem versao".
 	/// </summary>
-	public static NetDataWriter PedidoDeConexao(IdentidadeDeBuild cliente)
+	/// <param name="provaDeAnfitriao">
+	/// So o cliente do MESMO PROCESSO que esta hospedando manda isto: a prova que o servidor dele lhe entregou por
+	/// dentro do processo (`GameServer.ProvaDoAnfitriaoPara`). Vai DEPOIS do bloco da versao -- um servidor de
+	/// antes nem olha pra la, e o de agora trata a falta (ou uma prova errada) como "e um jogador comum".
+	/// </param>
+	public static NetDataWriter PedidoDeConexao(IdentidadeDeBuild cliente, byte[]? provaDeAnfitriao = null)
 	{
 		var w = new NetDataWriter();
 		w.Put(Protocol.ConnectionKey);
 		EscreverBloco(w, cliente);
+		if (provaDeAnfitriao != null)
+		{
+			w.Put(MarcaDoAnfitriao);
+			w.Put(provaDeAnfitriao);
+		}
 		return w;
+	}
+
+	/// <summary>"HOST" -- abre o trecho da prova de anfitriao no pedido de conexao.</summary>
+	public const uint MarcaDoAnfitriao = 0x54534F48;
+
+	/// <summary>O tamanho da prova de anfitriao: 32 bytes sorteados pelo servidor a cada hospedagem.</summary>
+	public const int BytesDaProvaDeAnfitriao = 32;
+
+	/// <summary>
+	/// A PROVA DE ANFITRIAO que sobrou no pedido, DEPOIS de <see cref="JulgarPedido"/> ter lido a senha e a versao
+	/// -- ou nulo se nao veio, veio pela metade, veio com sobra ou sem a marca. Nunca lanca. Quem decide se ela
+	/// VALE e o servidor (`GameServer.Anfitriao.cs`): aqui so se le.
+	/// </summary>
+	public static byte[]? LerProvaDeAnfitriao(NetDataReader? r)
+	{
+		if (r == null || r.IsNull || r.AvailableBytes != sizeof(uint) + BytesDaProvaDeAnfitriao) return null;
+		if (r.GetUInt() != MarcaDoAnfitriao) return null;
+		var prova = new byte[BytesDaProvaDeAnfitriao];
+		r.GetBytes(prova, BytesDaProvaDeAnfitriao);
+		return prova;
 	}
 
 	/// <summary>

@@ -388,7 +388,10 @@ public static class Ceu
 		// ISTO E O INTERIOR QUE E UMA ZONA INTEIRA (a nave). A casa DENTRO de um mapa que tem ceu --
 		// o Banco da Terra, as cavernas -- nao passa por aqui: la o teto e por CELULA, e quem o
 		// conhece e o `CelulaInterna`.
-		if (zona.Kind == ZoneKey.KindInterior) return SemCeu;
+		//
+		// MENOS A SALA DO TEMPO DE UM MUNDO SORTEADO: ela e interior e e o MESMO lugar da Sala da Terra, com o
+		// relogio da mesma ficha de planeta (segue pro catalogo, pelo nome). Ver `SalaDoTempo.EhDePlaneta`.
+		if (zona.Kind == ZoneKey.KindInterior && !SalaDoTempo.EhDePlaneta(zona)) return SemCeu;
 
 		if (zona.Kind == ZoneKey.KindProcedural) return DaSeed(zona.Seed);
 

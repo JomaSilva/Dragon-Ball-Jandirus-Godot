@@ -127,7 +127,7 @@ public partial class GameServer
 			{
 				_zonasGeradas.Remove(z.Hash);
 				ArrancarPomar(z.Hash);
-				_cenarioCaido.Remove(z.Name);
+				_cenarioCaido.Remove(ChaveDeEstado(z));
 			}
 			if (_noChao.RemoveAll(o => !reais.Contains(o)) > 0) GravarMundo();
 

@@ -57,7 +57,7 @@ public sealed partial class GameServer
 	{
 		if (MapaDaZonaOuCatalogo(zona) is not { TemInterior: true } mapa) return false;
 
-		bool caiu = _cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? caidas)
+		bool caiu = _cenarioCaido.TryGetValue(ChaveDeEstado(zona), out HashSet<(int X, int Y)>? caidas)
 					&& caidas.Contains((cx, cy));
 		return CelulaInterna.SobTeto(mapa, cx, cy, caiu);
 	}

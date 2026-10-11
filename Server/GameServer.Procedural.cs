@@ -209,6 +209,10 @@ public partial class GameServer
 			// `MandarObras` do `MoveToZone` as leva no primeiro pacote. Ver `GameServer.Pomar.cs`.
 			PlantarPomar(ZoneKey.Procedural(g.Ficha.Nome, g.Ficha.Seed), t.Macieiras);
 
+			// A PORTA DA SALA DO TEMPO, no mundo que tem uma (um em 400): tambem mobilia do mapa, tambem da seed,
+			// e posta AQUI pelo motivo do pomar. Ver `GameServer.SalasDePlaneta.cs`.
+			AbrirAPortaDaSala(ZoneKey.Procedural(g.Ficha.Nome, g.Ficha.Seed), t);
+
 			// AS ARVORES DESTE MUNDO sao anotadas agora (o `TerrenoGerado` e solto logo abaixo), e o estrago e as
 			// rebrotas de uma visita anterior voltam a valer no mapa novo. DEPOIS do pomar: a arvore que rebrota
 			// noutro chao pergunta o que ja ocupa cada celula. Ver `GameServer.Lenha.cs`.
@@ -247,12 +251,20 @@ public partial class GameServer
 			if (!_zones.TryGetValue(hash, out List<ServerPlayer>? gente) || gente.Count == 0)
 				mortas.Add(hash);
 
-		foreach (ulong hash in mortas)
-		{
-			_zonasGeradas.Remove(hash);
-			ArrancarPomar(hash);   // as macieiras do mundo saem com ele, e renascem com ele -- ver `GameServer.Pomar.cs`
-		}
+		foreach (ulong hash in mortas) DescarregarOMundoGerado(hash);
 		if (mortas.Count > 0) GD.Print($"[server] {mortas.Count} mundo(s) gerado(s) descarregado(s)");
+	}
+
+	/// <summary>
+	/// UM MUNDO GERADO SAI DA MEMORIA, com o que nasce e morre com ele. Dois chamadores, a mesma saida: a poda
+	/// (o mundo vazio que passou do teto) e a PARADA do servidor, que solta todos -- depois dela nenhum mundo esta
+	/// carregado, como no boot (ver `EsquecerOEstragoDaSessao`, em `GameServer.Parada.cs`).
+	/// </summary>
+	private void DescarregarOMundoGerado(ulong hash)
+	{
+		_zonasGeradas.Remove(hash);
+		ArrancarPomar(hash);   // as macieiras do mundo saem com ele, e renascem com ele -- ver `GameServer.Pomar.cs`
+		FecharAPortaDaSala(hash);   // ...e a porta da Sala do Tempo dele tambem -- ver `GameServer.SalasDePlaneta.cs`
 	}
 
 	/// <summary>

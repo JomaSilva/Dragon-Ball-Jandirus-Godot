@@ -159,6 +159,8 @@ public partial class MenuJogo
 
 		// A ATMOSFERA DIVINA e do LUGAR, como a lua: a linha so nasce no mundo que a tem. Ver `MenuJogo.KiDivino.cs`.
 		if (GameClient.Instance is { } daqui) LinhaDaAtmosfera(daqui, corpo);
+		// ...E A SALA DO TEMPO de um mundo sorteado tambem e do lugar: a pista so nasce no mundo que guarda uma. Ver `MenuJogo.SalaDoTempo.cs`.
+		if (GameClient.Instance is { } nesteMundo) LinhaDaSalaDoTempo(nesteMundo, corpo);
 
 		// NA TERRA A FRASE ERA UM ABSURDO ("o ceu daqui nao e o da Terra" -- lido na Terra). A regra e a
 		// mesma nos dois casos: cada mundo tem o proprio relogio; o que muda e de onde se olha.

@@ -477,7 +477,7 @@ public partial class GameServer
 		// de producao que o `DerrubarCelula` alimenta e que o cliente espelha. Um campo proprio aqui
 		// mediria a bancada.
 		int CelulasCaidas() =>
-			_cenarioCaido.TryGetValue(Cobaia.Name, out HashSet<(int X, int Y)>? h) ? h.Count : 0;
+			_cenarioCaido.TryGetValue(ChaveDeEstado(Cobaia), out HashSet<(int X, int Y)>? h) ? h.Count : 0;
 
 		double ultimoTremor = 0;
 
@@ -563,7 +563,7 @@ public partial class GameServer
 			// O CENARIO DERRUBADO VOLTA JUNTO: esta familia abre dezenas de buracos no chao de Arlia,
 			// e `_cenarioCaido` e persistido com o mundo. Sem esta linha, rodar a bancada uma vez
 			// deixaria o planeta esburacado pra sempre.
-			_cenarioCaido.Remove(Cobaia.Name);
+			_cenarioCaido.Remove(ChaveDeEstado(Cobaia));
 
 			_mortos.Limpar();
 			_proximoTremor.Clear();

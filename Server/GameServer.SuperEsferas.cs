@@ -360,7 +360,14 @@ public sealed partial class GameServer
 		GD.Print($"[super] {quem.Name} tomou a #{alvo.Numero}"
 			   + (exNome.Length > 0 ? $" de {exNome}" : " (livre)"));
 
-		MandarSupers(quem);
+		// ============================ A POSSE MUDOU: QUEM ESTA OLHANDO FICA SABENDO ============================
+		// O pacote saia so pra quem tomou. O ex-dono continuava com o placar antigo na aba World (7/7 tendo
+		// seis), e quem estava ao lado da esfera -- que agora e DESENHADA, com o nome do dono embaixo --
+		// continuava lendo o dono de antes ate cruzar uma chunk. E um evento raro (dez segundos de canal, ou
+		// cinco minutos) e sao sete linhas de pacote: vai pra todo mundo, como no `ConsumirAsSupers`.
+		// ========================================================================================================
+		if (PosseDaSuperSoPraQuemTomouDeTeste) MandarSupers(quem);
+		else foreach (ServerPlayer p in Jogadores) MandarSupers(p);
 	}
 
 	// =====================================================================
@@ -573,6 +580,22 @@ public sealed partial class GameServer
 
 	/// <summary>Cada pacote das Super que SAIU no fio: (pra quem, a frase do radar que ele levou). Ligada so pela bancada.</summary>
 	internal static List<(int Quem, string Sinal)>? EscutaDoSinalDourado;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--diagdesejos` e `--menudodragaoteste`): a troca de dono de uma Super Esfera so
+	/// e contada a quem a tomou (ou a quem emprestou e a quem recebeu a guarda) -- quem perdeu fica com o placar
+	/// velho, e quem olha pra esfera continua lendo o dono de antes. O que este servidor fez ate 2026-10-11.
+	/// Falso em jogo, sempre.
+	/// </summary>
+	internal bool PosseDaSuperSoPraQuemTomouDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagdesejos`): a lista das Super Esferas nao acompanha a troca de zona -- so
+	/// sai quando o corpo cruza uma chunk no espaco. Quem decola ao lado de uma nao a ve (a chunk de chegada ja
+	/// nasce carimbada), e quem pousa leva a lista do espaco pro planeta. O que este servidor fez ate 2026-10-11.
+	/// Falso em jogo, sempre.
+	/// </summary>
+	internal bool SupersNaoAcompanhamAZonaDeTeste;
 
 	/// <summary>
 	/// O PACOTE DAS SUPER, separado do envio pra a bancada desmonta-lo com o leitor do cliente (mesmo

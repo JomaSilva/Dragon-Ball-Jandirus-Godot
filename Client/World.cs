@@ -411,6 +411,7 @@ public partial class World : Node2D
 			cli.ObrasMudaram += DesenharObras;
 			// AS ESFERAS SEGUEM AS CONSTRUCOES: mesmo evento, mesma camada, mesmo Y-sort.
 			cli.EsferasMudaram += DesenharEsferas;
+			cli.SupersMudaram += DesenharSupers;   // ...e as SUPER, no espaco: ver `World.SuperEsferas.cs`
 			cli.EfeitoCaiu += AoCairEfeito;
 			cli.Piscou += AoPiscar;
 			cli.ClashBaque += AoBaqueDeEmbate;
@@ -503,6 +504,7 @@ public partial class World : Node2D
 			cli.VizinhancaMudou -= DesenharPlanetas;
 			cli.ObrasMudaram -= DesenharObras;
 			cli.EsferasMudaram -= DesenharEsferas;
+			cli.SupersMudaram -= DesenharSupers;
 			cli.EfeitoCaiu -= AoCairEfeito;
 			cli.Piscou -= AoPiscar;
 			cli.TiroNasceu -= AoNascerTiro;
@@ -1881,6 +1883,9 @@ public partial class World : Node2D
 
 		_ceu.Visible = espaco;
 		_ceu.Seed = GameClient.Instance?.SeedDoUniverso ?? 0;
+		// AS SUPER ESFERAS SO EXISTEM NO ESPACO: chegando la, as da lista aparecem; saindo, somem. Antes do
+		// `if` pelo motivo do vacuo ali em cima -- os outros caminhos desta funcao nao passariam por aqui.
+		DesenharSupers();
 		if (espaco)
 		{
 			_colisao = null;

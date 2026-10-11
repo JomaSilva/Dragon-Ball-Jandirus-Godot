@@ -779,11 +779,11 @@ public partial class Boot : Node2D
 			return;
 		}
 
-		// QUEM HOSPEDA E ADMIN, e o cliente nao precisa avisar nada disso: o servidor reconhece a
-		// conexao pelo ENDERECO (ver `GameServer.EhHost`). Antes havia uma marca aqui, e ela
-		// tornava o admin dependente de o jogo ter subido o servidor -- quem usava o `servidor.bat`
-		// e entrava pelo IP da propria rede nunca era reconhecido, sendo a mesma maquina.
-		if (!srv.Running && !srv.Start(PortaDaRede()))
+		// QUEM HOSPEDA E ADMIN, E SO ELE (dono, 2026-10-11: "faca o adm ser so pra quem clicou em
+		// hospedar"). O `SubirComAnfitriao` sorteia a prova desta hospedagem, e o `GameClient` deste
+		// processo a leva no aperto de mao -- nenhum endereco da admin a ninguem. Ver
+		// `GameServer.Anfitriao.cs`. (Quem usa o `servidor.bat` nomeia o admin com `--admin <conta>`.)
+		if (!srv.Running && !srv.SubirComAnfitriao(PortaDaRede()))
 		{
 			_status.Text = $"nao consegui abrir a porta {PortaDaRede()}";
 			return;
@@ -1156,6 +1156,17 @@ public partial class Boot : Node2D
 		// a arvore do menu. Anda junto da `--godkiteste` do servidor. Ver RoboDoGodKi.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaggodki") >= 0)
 			AddChild(new RoboDoGodKi { Name = "RoboDoGodKi" });
+
+		// --diagpoder: POWER UP E POWER DOWN NA TELA -- a faixa "Poder em uso" da aba Ki (o deslizador, relaxar, esconder),
+		// a linha do HUD em cada estado, e o botao da aba Skills que abre o controle. Modo host; com janela, fotografa.
+		// Anda junto da `--poderteste` do servidor. Ver RoboDoPoder.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagpoder") >= 0)
+			AddChild(new RoboDoPoder { Name = "RoboDoPoder" });
+
+		// --diagsalas: AS SALAS DO TEMPO DE PLANETA NA TELA -- a porta na montanha, a pista da aba World, as regras
+		// com a dilatacao, o interior, a expulsao e a recarga. Modo host; com janela, fotografa. Ver RoboDasSalas.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagsalas") >= 0)
+			AddChild(new RoboDasSalas { Name = "RoboDasSalas" });
 
 		// --diagconhecidos: A ABA PEOPLE REDESENHADA (2026-10-10: so convivio e declaracao), andada e
 		// fotografada -- a lista chega pelo fio, o clique na regua declara no servidor, o portao recusa o
@@ -2100,9 +2111,10 @@ public partial class Boot : Node2D
 		// ==========================================================================================
 		int porta = PortaDaRede();   // o mesmo numero do "Entrar" da tela -- ver `PortaDaRede`
 
-		// `--host` sobe o servidor e conecta em 127.0.0.1 logo abaixo -- e o endereco que faz o
-		// servidor reconhecer o dono como admin, sem marca nenhuma daqui.
-		if (hospedando && Jandirus.Server.GameServer.Instance is { } srvAuto) srvAuto.Start(porta);
+		// `--host` sobe o servidor COMO ANFITRIAO (o mesmo gesto do botao "Hospedar partida") e conecta em
+		// 127.0.0.1 logo abaixo: e a prova desta hospedagem, levada pelo cliente deste processo, que faz o
+		// servidor reconhece-lo como admin. Ver `GameServer.Anfitriao.cs`.
+		if (hospedando && Jandirus.Server.GameServer.Instance is { } srvAuto) srvAuto.SubirComAnfitriao(porta);
 
 		int i = Array.IndexOf(args, "--connect");
 		string alvo = i >= 0 && i + 1 < args.Length ? args[i + 1] : (hospedando ? "127.0.0.1" : "");

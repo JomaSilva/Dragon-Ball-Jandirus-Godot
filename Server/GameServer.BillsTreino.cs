@@ -31,6 +31,10 @@ namespace Jandirus.Server;
 ///     entram inteiros, contagem de cinco segundos, dez minutos de teto, nocaute decide (`Duelo.Passo`, a mesma
 ///     regra pura), e quem desafia precisa do ki divino desperto. O que nao vale contra um NPC e a carencia de
 ///     sete dias e o intervalo de dois: no lugar deles, quem PERDE espera um dia in-game.
+///   * NO DESAFIO O BILLS CARREGA O KIT DO DEUS DA DESTRUICAO INTEIRO, com a Fury por cima (dono, 2026-10-11) -- e
+///     o Hakai conforme a chave do desafio (<see cref="BillsEWhis.HakaiNoDesafio"/>). Com ela ligada o duelo PODE
+///     MATAR: o desafiante que cai no ponto do Hakai e apagado em vez de so perder (o juiz espera a execucao por
+///     <see cref="BillsEWhis.SegundosPraExecutar"/> segundos). O TREINO nao tem kit nenhum.
 /// =============================================================================================================
 ///
 /// O adversario de poder calculado nao e um terceiro jeito de fazer isso: e o corpo de molde de todo chefe
@@ -44,6 +48,9 @@ public partial class GameServer
 	private enum FimDaSessao : byte
 	{
 		ParceiroCaiu, MestreCaiu, Tempo, ParceiroParou, ParceiroSaiu, Intrometido, MestreSumiu,
+
+		/// <summary>O desafiante MORREU no duelo (o Hakai): perdeu o desafio e a vida.</summary>
+		ParceiroMorreu,
 	}
 
 	/// <summary>Uma luta da casa em curso: quem pediu, se e o duelo pelo titulo, e os prazos (relogio do sistema).</summary>
@@ -62,6 +69,12 @@ public partial class GameServer
 
 		public int ContagemDita = int.MaxValue;
 		public double ProximaFrase;
+
+		/// <summary>
+		/// No desafio: ate quando o juiz espera o Bills executar o desafiante que caiu no ponto do Hakai (relogio do
+		/// sistema; zero = ninguem caiu assim). Quem caiu e chegou a esperar ja perdeu o duelo, mesmo que se levante.
+		/// </summary>
+		public double ExecutaAte;
 	}
 
 	/// <summary>Quem perdeu um desafio, e o dia in-game em que pode tentar de novo (pela assinatura do personagem). So memoria.</summary>
@@ -304,6 +317,7 @@ public partial class GameServer
 
 		RestaurarODivino(npc);
 		ParOuDespertar(c, ModoDivino.NaSessao);
+		if (BillsEWhis.KitNoTreinoDeTeste && c == _bills) ConsagrarPraLuta(npc, comHakai: true);
 		npc.Papel!.PresaDoRoteiro = pl.Id;
 		npc.UltimoAgressor = pl.Id;
 		VestirADisciplina(c, ligada: true);
@@ -432,15 +446,17 @@ public partial class GameServer
 	private static bool FuryNoCatalogo => Catalogo.Def(BillsEWhis.IdDaFury) != null;
 
 	/// <summary>
-	/// ============================ A UNICA FUNCAO QUE USA A FURY ============================
+	/// ============================ A FURY E DO DESAFIO, E ENTRA POR AQUI ============================
 	/// A forma e do kit do Deus da Destruicao (`GameServer.KitDoDeus.cs`, porte de `GodOfDestruction.dm:388-419`: 72x,
 	/// aura roxa colada), e a porta dela e uma so, pra jogador e pra corpo sem dono: `EntrarNaFury`. Ela cobra o
 	/// TITULO -- e o do Bills nao mora em conta nenhuma (o trono esta vago, e por isso que ele existe). O kit ja
 	/// previu o caso: `ConsagrarDeusSemDono` faz deste corpo o Deus da Destruicao sem escrever no trono.
 	///
-	/// A CONSAGRACAO DURA O DESAFIO, e nao a vida dele: e no desafio que o dono o quer inteiro ("100% do poder +
-	/// forma fury"). Na Terra e no treino ele luta com o poder cravado e sem o resto do kit (o surto do God's
-	/// Temper mexeria nos 15% e no triplo). Quem desfaz e a <see cref="EncerrarASessao"/>.
+	/// A CONSAGRACAO DURA A LUTA, e nao a vida dele. No desafio o dono o quer inteiro ("100% do poder + forma
+	/// fury"): o kit todo, com o Hakai conforme a chave do desafio (<see cref="BillsEWhis.HakaiNoDesafio"/>), e a
+	/// Fury por cima. Na Terra ele carrega o mesmo kit SEM a Fury (`ArmarOKitNaTerra`); no treino, nada -- ali
+	/// ninguem morre, e o poder dele e o triplo de quem treina, sem surto por cima. Quem desfaz e a
+	/// <see cref="EncerrarASessao"/>.
 	///
 	/// SEM A CENA DA ESTREIA (2,5 s com o corpo preso): a contagem do duelo ja e a pausa, e quem ve recebe a
 	/// forma, a aura e a frase do proprio kit. Devolve se ele esta na Fury ao sair daqui.
@@ -448,7 +464,7 @@ public partial class GameServer
 	/// </summary>
 	private bool BillsVesteAFury(ServerPlayer bills)
 	{
-		ConsagrarDeusSemDono(bills);
+		ConsagrarPraLuta(bills, comHakai: BillsEWhis.OBillsExecuta(noDesafio: true));
 		return BillsEWhis.DesafioSemFuryDeTeste || EntrarNaFury(bills, semCena: true);
 	}
 
@@ -514,10 +530,11 @@ public partial class GameServer
 		if (c.Sessao is not { } s || c.Corpo is not { } npc) return;
 		ServerPlayer p = s.Parceiro;
 
-		// O PARCEIRO AINDA E O MESMO CORPO DO MUNDO, e esta aqui? (Deslogar, morrer ou trocar de mundo larga a luta.)
-		if (!_players.TryGetValue(p.Id, out ServerPlayer? vivo) || !ReferenceEquals(vivo, p)
-			|| p.Zone.Hash != npc.Zone.Hash || p.Ficha.dead)
-		{ EncerrarASessao(c, FimDaSessao.ParceiroSaiu); return; }
+		// O PARCEIRO AINDA E O MESMO CORPO DO MUNDO, e esta aqui? (Deslogar ou trocar de mundo larga a luta. MORRER no
+		// desafio e perde-lo: ali quem mata e o Hakai, e ele tem a fala dele.)
+		bool aqui = _players.TryGetValue(p.Id, out ServerPlayer? vivo) && ReferenceEquals(vivo, p) && p.Zone.Hash == npc.Zone.Hash;
+		if (!aqui || p.Ficha.dead)
+		{ EncerrarASessao(c, aqui && s.Desafio ? FimDaSessao.ParceiroMorreu : FimDaSessao.ParceiroSaiu); return; }
 
 		// ---- a contagem do desafio ----
 		if (!s.Lutando)
@@ -541,14 +558,23 @@ public partial class GameServer
 		// ---- quem caiu, quem saiu, o prazo ----
 		if (s.Desafio)
 		{
+			// (quem caiu e chegou a esperar a execucao ja perdeu, mesmo que se levante antes de o Bills chegar)
+			bool caiu = p.Ficha.KO || s.ExecutaAte > 0;
 			FimDeDuelo fim = Duelo.Passo(donoSumiu: false, desafianteSumiu: false,
-				donoCaido: npc.Ficha.KO, desafianteCaido: p.Ficha.KO,
+				donoCaido: npc.Ficha.KO, desafianteCaido: caiu,
 				vidaDoDono: npc.Ficha.HP, vidaDoDesafiante: p.Ficha.HP,
 				prazoEstourou: _relogioDivino >= s.Acaba);
 
 			if (fim == FimDeDuelo.Desafiante) { EncerrarASessao(c, FimDaSessao.MestreCaiu); return; }
 			if (fim == FimDeDuelo.Dono)
-			{ EncerrarASessao(c, p.Ficha.KO ? FimDaSessao.ParceiroCaiu : FimDaSessao.Tempo); return; }
+			{
+				// O KIT: o desafiante esta no chao, NO PONTO DO HAKAI, e o Hakai vale neste duelo -- o juiz espera uns
+				// segundos o Bills chegar nele (`Cerebro.Execucao`). Apagado, o duelo acaba pela morte (la em cima);
+				// vencido o prazo, ou se o criterio deixar de valer, acaba do jeito de sempre: os dois inteiros.
+				if (p.Ficha.KO && EsperaAExecucao(npc, s)) { ManterOMestre(c, s); return; }
+				EncerrarASessao(c, caiu ? FimDaSessao.ParceiroCaiu : FimDaSessao.Tempo);
+				return;
+			}
 		}
 		else
 		{
@@ -562,6 +588,18 @@ public partial class GameServer
 
 		ManterOMestre(c, s);
 		FalarNoTreino(c, s);
+	}
+
+	/// <summary>
+	/// O JUIZ ESPERA A EXECUCAO? So enquanto o Hakai PEGA o desafiante caido (a pergunta do proprio verb, que ja
+	/// responde nao com o Hakai desligado pra este duelo) e o prazo de <see cref="BillsEWhis.SegundosPraExecutar"/>
+	/// nao venceu. O prazo comeca na primeira vez que a resposta e sim.
+	/// </summary>
+	private bool EsperaAExecucao(ServerPlayer bills, SessaoDivina s)
+	{
+		if (!OHakaiPega(bills, s.Parceiro)) return false;
+		if (s.ExecutaAte <= 0) s.ExecutaAte = _relogioDivino + BillsEWhis.SegundosPraExecutar;
+		return _relogioDivino < s.ExecutaAte;
 	}
 
 	/// <summary>De vez em quando o mestre comenta a luta de treino -- o Whis, quando desvia; o Bills, por implicancia.</summary>
@@ -601,8 +639,8 @@ public partial class GameServer
 
 		if (c.Corpo is { } npc)
 		{
-			// A CONSAGRACAO ERA DO DESAFIO: sem ela a Fury cai na hora, pela regra do proprio kit (ver `BillsVesteAFury`).
-			if (s.Desafio) ConsagrarDeusSemDono(npc, consagrado: false);
+			// O KIT ERA DA LUTA: sem ele a Fury cai na hora, pela regra do proprio kit (ver `BillsVesteAFury`).
+			if (EhDeusDaDestruicao(npc)) DesconsagrarDaLuta(npc);
 			if (npc.Forma.Atual != Catalogo.IdDoPiso(Perfil(npc))) Reverter(npc, "");
 			VestirADisciplina(c, ligada: false);
 			VoltarAoPosto(c);
@@ -667,6 +705,7 @@ public partial class GameServer
 				{
 					FimDaSessao.Tempo => BillsEWhis.BillsAcabouOPrazo,
 					FimDaSessao.ParceiroCaiu => BillsEWhis.BillsVenceuODesafio,
+					FimDaSessao.ParceiroMorreu => BillsEWhis.BillsApagouODesafiante,
 					_ => BillsEWhis.BillsDesafianteSumiu,
 				});
 				AnunciarNoMundo(BillsEWhis.Preencher(BillsEWhis.AvisoDoTituloDefendido, nome: nome));

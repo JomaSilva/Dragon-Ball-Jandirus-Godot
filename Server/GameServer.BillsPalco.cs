@@ -11,7 +11,8 @@ namespace Jandirus.Server;
 /// servidor (`--billsteste`); o robo mede a TELA, e fotografa.
 ///
 /// O QUE O PALCO FAZ E SO PULAR A ESPERA E A VIAGEM: o mes in-game (a fase vai "a caminho" com a chegada marcada
-/// pra hoje -- quem pousa os dois e o passo de calendario de producao), o soco que derruba o Bills (a queda e
+/// pra hoje -- quem pousa os dois e o passo de calendario de producao), o soco que ACORDA o Bills (com poder de
+/// sobra no host e sem o Hakai: a foto da briga precisa dos dois de pe), o soco que derruba o Bills (a queda e
 /// marcada em nome do host -- o roteiro da derrota, as coordenadas e a partida sao os de producao) e a viagem ate
 /// a casa (o pouso de producao, com a maestria de gravidade que aquele mundo pede: a foto nao e a do
 /// esmagamento). O resto do roteiro e do jogador: a tecla E, os botoes do menu, a luta.
@@ -56,6 +57,64 @@ public partial class GameServer
 		if (pl.Zone.Equals(TerraDaVisita)) CravarPosicao(pl, aoLado);
 		else MoveToZone(pl.Id, TerraDaVisita, aoLado);
 		return (b.Id, w.Id);
+	}
+
+	/// <summary>O poder do host antes de o palco mexer nele (a foto da briga precisa dos dois de pe) -- devolvido quando a briga acaba.</summary>
+	private double? _poderDoHostAntesDoPalco;
+
+	/// <summary>
+	/// CENA 1b -- A BRIGA NA TERRA. O host "bate" no Bills (a agressao que o soco registra), com poder de sobra pra
+	/// continuar de pe (o dobro do Bills da Terra) -- e com o Hakai desta briga DESLIGADO: a regra do Hakai e medida
+	/// pela bancada do servidor, e um fotografo apagado nao fotografa nada. Dali em diante e producao: ele acorda,
+	/// arma o kit, luta, e o Whis se afasta. Devolve se o Bills estava la pra acordar.
+	/// </summary>
+	internal bool AcordarOBillsNaTerraDeTeste(int idDoHost)
+	{
+		if (_visita.Fase != FaseDaVisita.NaTerra || _bills.Corpo is not { } b || !_players.TryGetValue(idDoHost, out ServerPlayer? pl)) return false;
+
+		_poderDoHostAntesDoPalco ??= pl.Ficha.BP;
+		pl.Ficha.BP = BillsEWhis.PoderNaTerra * 2;
+		pl.Ficha.Statify();
+		pl.Ficha.PowerLevel();
+		pl.SigAtributos = "";
+
+		BillsEWhis.HakaiDesligadoDeTeste = true;
+		MarcarAgressao(b, pl);
+		return true;
+	}
+
+	/// <summary>
+	/// O host LARGA a briga da Terra (sai da lista de quem bateu): o Bills fica sem ninguem pra enfrentar, desiste e
+	/// volta pro cochilo -- pela regra de producao. O poder do host e a chave do Hakai voltam ao que eram.
+	/// </summary>
+	internal void LargarABrigaNaTerraDeTeste(int idDoHost)
+	{
+		_desafiantesNaTerra.Remove(idDoHost);
+		_caidosNaTerra.Remove(idDoHost);
+		if (_bills.Corpo is { } b && b.UltimoAgressor == idDoHost) b.UltimoAgressor = 0;
+		DevolverOQueOPalcoMexeu(idDoHost);
+	}
+
+	private void DevolverOQueOPalcoMexeu(int idDoHost)
+	{
+		BillsEWhis.HakaiDesligadoDeTeste = false;
+		if (_poderDoHostAntesDoPalco is not { } antes || !_players.TryGetValue(idDoHost, out ServerPlayer? pl)) return;
+		_poderDoHostAntesDoPalco = null;
+		pl.Ficha.BP = antes;
+		pl.Ficha.Statify();
+		pl.Ficha.PowerLevel();
+		pl.SigAtributos = "";
+	}
+
+	/// <summary>
+	/// O retrato do Whis fora da aula dele, NO SERVIDOR: se assiste a uma luta do Bills, a quantos tiles do Bills
+	/// esta (-1 sem o Bills por perto), se pode ser atingido e o modo. O robo compara com o que a TELA mostra.
+	/// </summary>
+	internal (bool Assiste, float TilesDoBills, bool Intocavel, string Modo)? WhisDeTeste()
+	{
+		if (_whis.Corpo is not { } w) return null;
+		float tiles = _bills.Corpo is { } b && b.Zone.Hash == w.Zone.Hash ? (w.Pos - b.Pos).Length / ZoneCollision.TileSize : -1;
+		return (_whisAssiste, tiles, w.Combate.Intocavel, _whis.Modo.ToString());
 	}
 
 	/// <summary>
@@ -147,8 +206,9 @@ public partial class GameServer
 	}
 
 	/// <summary>A historia volta a dormir e os dois saem do mundo: o robo deixa o palco como achou.</summary>
-	internal void RecolherOPalcoDoBillsDeTeste()
+	internal void RecolherOPalcoDoBillsDeTeste(int idDoHost = 0)
 	{
+		DevolverOQueOPalcoMexeu(idDoHost);
 		ZerarBills();
 		SalvarBills();
 	}

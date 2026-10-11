@@ -417,7 +417,11 @@ public static class Clima
 	/// </summary>
 	public static ClimaDoPlaneta DaZona(ZoneKey zona, CatalogoDePlanetas? catalogo)
 	{
-		if (Espaco.EhEspaco(zona) || zona.Kind == ZoneKey.KindInterior) return ClimaDoPlaneta.Nenhum;
+		// A SALA DO TEMPO DE UM MUNDO SORTEADO E INTERIOR E TEM CLIMA: e o mesmo quarto da Terra, com a mesma ficha
+		// de planeta (dono, 2026-10-11: "todas elas tem gravidade 10x e o clima caotico"). Ela segue pro ramo do
+		// catalogo la embaixo, pelo nome -- ver `SalaDoTempo.EhDePlaneta`.
+		if (Espaco.EhEspaco(zona) || (zona.Kind == ZoneKey.KindInterior && !SalaDoTempo.EhDePlaneta(zona)))
+			return ClimaDoPlaneta.Nenhum;
 
 		if (zona.Kind == ZoneKey.KindProcedural)
 			return ClimaDoPlaneta.DoBioma(MundoProcedural.DaSeed(zona.Seed, zona.Name).Bioma, zona.Seed);

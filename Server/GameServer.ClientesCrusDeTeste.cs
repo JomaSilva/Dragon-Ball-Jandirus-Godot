@@ -48,6 +48,13 @@ public partial class GameServer
 		public uint PoderesJaVistos { get; private set; }
 		public int PortaLocal => Rede.LocalPort;
 
+		/// <summary>
+		/// A PROVA DE ANFITRIAO que este cliente manda no pedido de conexao, perguntada A CADA discagem -- ou nulo
+		/// (o padrao: um cliente de fora, que nao manda prova nenhuma). O cliente "do mesmo processo" pergunta ao
+		/// servidor, como o `GameClient`; quem forja devolve os bytes que quiser.
+		/// </summary>
+		public Func<byte[]?>? ProvaAoDiscar;
+
 		public ClienteCruDeTeste()
 		{
 			Rede = new NetManager(_ouvinte) { AutoRecycle = true, UpdateTime = 5, ChannelsCount = Protocol.TotalDeCanais };
@@ -92,7 +99,7 @@ public partial class GameServer
 			Slots = null;
 			FichasLentas = 0;
 			UltimosPoderes = PoderesJaVistos = 0;
-			_par = Rede.Connect("127.0.0.1", porta, FioDaVersao.PedidoDeConexao(versao));
+			_par = Rede.Connect("127.0.0.1", porta, FioDaVersao.PedidoDeConexao(versao, ProvaAoDiscar?.Invoke()));
 		}
 
 		public void Login(string conta, string senha = "teste")

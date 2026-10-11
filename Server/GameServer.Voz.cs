@@ -160,9 +160,9 @@ public partial class GameServer
 	/// mais comuns do jogo -- e faria a voz e a vista discordarem sobre o que e parede, que e o defeito
 	/// que este projeto mais evita: duas verdades sobre a mesma coisa.
 	///
-	/// NULO E UMA RESPOSTA LEGITIMA: zona sem mapa de vista (o espaco, a dimensao mental) nao esconde
-	/// nada -- e ali o olho do cliente tambem nao esconde nada (`World`: `_veu.Mapa = null`). O sistema
-	/// degrada pro MESMO lugar em que a vista degrada, e nao pra um lugar proprio.
+	/// NULO E UMA RESPOSTA LEGITIMA: zona sem mapa de vista (o espaco) nao esconde nada -- e ali o olho do
+	/// cliente tambem nao esconde nada (`World`: `_veu.Mapa = null`). O sistema degrada pro MESMO lugar em
+	/// que a vista degrada, e nao pra um lugar proprio.
 	/// ======================================================================================
 	/// </summary>
 	private ZoneCollision? MapaDaVista(ZoneKey zona) =>
@@ -171,11 +171,9 @@ public partial class GameServer
 			// gerado: a montanha cega, a arvore nao. Assado na thread de geracao (ver `ZonaGerada.Vista`)
 			ZoneKey.KindProcedural =>
 				_zonasGeradas.TryGetValue(zona.Hash, out ZonaGerada? v) ? v.Vista : null,
-			// o interior da nave: o casco e as paredes da sala, pela MESMA planta que o cliente desenha
-			ZoneKey.KindInterior =>
-				Jandirus.Core.Tech.NaveGrande.EhInterior(zona, out _)
-					? Jandirus.Core.Tech.NaveGrande.Planta().QueEsconde
-					: _catalogo?.Get(zona)?.Vista,
+			// TODO INTERIOR: o mapa que cega e o da INSTANCIA, tirado da MESMA planta que o cliente desenha (o
+			// casco da nave, a borda do bolsao do Majin, nada na mente). Ver `GameServer.Interiores.cs`.
+			ZoneKey.KindInterior => VistaDoInterior(zona),
 			_ => _catalogo?.Get(zona)?.Vista,
 		};
 

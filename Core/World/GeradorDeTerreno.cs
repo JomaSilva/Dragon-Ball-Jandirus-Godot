@@ -285,6 +285,14 @@ public sealed class TerrenoGerado
 	/// </summary>
 	public IReadOnlyList<(int X, int Y)> Macieiras { get; init; } = [];
 
+	/// <summary>
+	/// A PORTA DA SALA DO TEMPO DESTE MUNDO: a celula de montanha em que ela fica, ou nulo -- o caso de quase todo
+	/// mundo (um em <see cref="SalaDePlaneta.UmEm"/> tem sala). Funcao pura do terreno e da seed, como as
+	/// <see cref="Macieiras"/>: o servidor poe a porta de pe nesta celula, e o cliente sabe onde ela esta sem
+	/// receber um byte. Ver <see cref="SalaDePlaneta.AbrirAPorta"/>.
+	/// </summary>
+	public PortaNoTerreno? PortaDaSala { get; init; }
+
 	/// <summary>O ponto de pouso em PIXELS, no centro da celula. E o que vai pro `MoveToZone`.</summary>
 	public Vec2 Spawn => new(
 		(SpawnCelX + 0.5f) * ZoneCollision.TileSize,
@@ -931,6 +939,11 @@ public static class GeradorDeTerreno
 		// blob tem de sair com ela aberta, pelo mesmo motivo da clareira. Ver `Pomar.Plantar`.
 		(int X, int Y)[] macieiras = Pomar.Plantar(w, h, chao, cobertura, bits, agua, sx, sy, p.Seed);
 
+		// A PORTA DA SALA DO TEMPO, pra o mundo que tem uma (um em 400): DEPOIS do pomar (a macieira e obra densa,
+		// e o caminho a pe ate a porta desvia dela) e ANTES do blob, pelo motivo dele -- no ultimo recurso ela
+		// ergue um rochedo, que tem de sair fechado. No resto dos mundos nao le nem escreve nada.
+		PortaNoTerreno? portaDaSala = SalaDePlaneta.AbrirAPorta(w, h, chao, cobertura, bits, agua, sx, sy, p.Seed, macieiras);
+
 		// o blob e montado DEPOIS da clareira -- montar antes congelaria os bits que a escavacao
 		// ainda ia apagar, e o servidor acharia parede exatamente no ponto de pouso
 		byte[] jcol = MontarJcol(w, h, bits);
@@ -964,6 +977,7 @@ public static class GeradorDeTerreno
 			SpawnCelY = sy,
 			ClareiraEscavada = escavou,
 			Macieiras = macieiras,
+			PortaDaSala = portaDaSala,
 		};
 	}
 

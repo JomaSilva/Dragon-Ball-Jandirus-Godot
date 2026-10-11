@@ -198,8 +198,10 @@ public sealed partial class GameServer
 	{
 		switch (cmd)
 		{
-			case "sala_entrar": EntrarNaSala(pl); return true;
-			case "sala_regras": RegrasDaPorta(pl); return true;
+			// A PORTA NUM MUNDO SORTEADO E A DA SALA DELE (dono, 2026-10-11): os mesmos dois botoes, outra regra.
+			// Quem decide qual das duas e o lugar em que o corpo esta -- ver `GameServer.SalasDePlaneta.cs`.
+			case "sala_entrar": if (!EntrarNaSalaDePlaneta(pl)) EntrarNaSala(pl); return true;
+			case "sala_regras": if (!RegrasDaSalaDePlaneta(pl)) RegrasDaPorta(pl); return true;
 			case "sala_comer": ComerNaSala(pl); return true;
 			case "sala_autorizar": AutorizarEntrada(pl, arg); return true;
 			case "sala_soltar": SoltarDaSala(pl, arg, porAdmin: false); return true;
@@ -264,9 +266,12 @@ public sealed partial class GameServer
 			return;
 		}
 
+		// UM RELOGIO SO, PRA TODA SALA (dono, 2026-10-11: "ate o cooldown sair vc n pode entrar em nenhuma sala do
+		// tempo"): quem entrou na sala de um mundo sorteado tambem espera aqui, pelo tempo daquela -- 24 h vezes
+		// a dilatacao dela. Ver `FimDaRecargaDasSalas`.
 		long agora = NowMs();
-		long falta = pl.SalaUltimaEntrada + MsDeRecargaDaSala - agora;
-		if (pl.SalaUltimaEntrada > 0 && falta > 0)
+		long falta = FimDaRecargaDasSalas(pl) - agora;
+		if (falta > 0)
 		{
 			// O DM mostra horas e minutos, e isso importa: "ainda não" faria o jogador voltar de
 			// dez em dez minutos pra descobrir quando.
@@ -290,6 +295,11 @@ public sealed partial class GameServer
 		// reentrada de graca pra quem entrasse e saisse no mesmo minuto.
 		pl.SalaAutorizada = false;
 		pl.SalaUltimaEntrada = agora;
+		// ...COM A DILATACAO DESTA SALA (1 ano por dia): e o par que faz a recarga ser uma so pra todas.
+		pl.SalaDilatacao = SalaDePlaneta.DilatacaoDaTerra;
+		// ...E A MARCA DA SESSAO ABERTA: e ela -- e nao a lista de vagas -- que diz quem o tique conta e quem o funil
+		// paga. Ver `GameServer.SalaPresenca.cs`.
+		pl.SalaPlaneta = SalaDoTempo.PortaDaTerra;
 
 		// SESSAO NOVA COMECA A CONTA DO ZERO -- o `htc_session_years = 0` do DM, na mesma linha em
 		// que ele arma a recarga. E aqui, e nao no tique: e a ENTRADA que abre uma sessao, e um
@@ -353,7 +363,8 @@ public sealed partial class GameServer
 		Avisar(pl, "  o chão puxa 10x mais forte, e um dia lá dentro vale um ano de treino.");
 		Avisar(pl, $"  cabem {LotacaoDaSala} pessoas por vez, e o Guardião da Terra precisa autorizar "
 				   + "a sua entrada.");
-		Avisar(pl, "  depois de entrar, seu corpo leva 24 horas REAIS pra aguentar de novo.");
+		Avisar(pl, "  depois de entrar, seu corpo leva 24 horas REAIS pra aguentar de novo -- esta ou qualquer outra");
+		Avisar(pl, "  Sala do Tempo (as dos outros mundos contam, e cada uma cobra pelo quanto dilata).");
 		Avisar(pl, "  a sessão rende por 2 dias in-game (~48 min). Depois disso a comida some, os");
 		Avisar(pl, "  bônus acabam, e VOCÊ TEM 2 MINUTOS PRA SAIR PELA PORTA.");
 		Avisar(pl, "  ATENÇÃO: passando disso a porta deixa de aceitar você. Você fica PRESO, e só");
@@ -567,8 +578,15 @@ public sealed partial class GameServer
 
 			// sem corpo no mundo = deslogado la dentro: a vaga continua dele
 			if (corpo == null) continue;
-			if (string.Equals(corpo.Zone.Name, ZonaDaSala, StringComparison.OrdinalIgnoreCase)) continue;
 
+			// "ESTA NO z13?" E PERGUNTADO AO CORPO DE VERDADE, e nao a zona do `ServerPlayer` (2026-10-11): quem
+			// mergulha na mente, vira passageiro de uma fusao ou e absorvido por um Majin LA DENTRO troca de zona
+			// sem sair da Sala. A vaga saia com a zona, e quem voltava ficava la sem sessao -- rendendo 280x sem a
+			// conta andar. Ver `GameServer.SalaPresenca.cs`.
+			if (NaSalaDaTerraDeVerdade(corpo)) continue;
+
+			// SAIU DE VERDADE: a vaga volta, e a sessao dele fecha (a marca da porta sai do personagem).
+			if (TemASessaoDaTerra(corpo)) corpo.SalaPlaneta = "";
 			_naSala.Remove(assinatura);
 			GD.Print($"[server] sala do tempo: {corpo.Name} saiu ({_naSala.Count}/{LotacaoDaSala} dentro)");
 		}
@@ -582,8 +600,17 @@ public sealed partial class GameServer
 	/// </summary>
 	private void SalaDoTempoNoLogin(ServerPlayer pl)
 	{
-		if (!string.Equals(pl.Zone.Name, ZonaDaSala, StringComparison.OrdinalIgnoreCase)) return;
+		// QUEM NAO ESTA NA DA TERRA PODE ESTAR NA DE UM MUNDO SORTEADO -- e la a regra e outra (nao ha vaga de quem
+		// caiu, e o mundo de fora tem de comecar a nascer). Ver `SalaDePlanetaNoLogin`.
+		if (!NaSala(pl)) { SalaDePlanetaNoLogin(pl); return; }
 		if (pl.Assinatura.Length == 0) return;
+
+		// SO QUEM ATRAVESSOU A PORTA (2026-10-11). A vaga era dada a QUALQUER UM que acordasse no z13 -- e quem tinha
+		// entrado de carona (o passageiro de quem tinha a chave) relogava e ganhava uma sessao inteira, sem chave e
+		// sem recarga. A marca da porta esta no save do personagem; sem ela, ele acorda la dentro como entrou: sem
+		// sessao, sem vaga, rendendo 1x. (O save de antes da marca existir tambem: perde o resto da sessao.)
+		if (LoginDaVagaSemPortaDeTeste) pl.SalaPlaneta = SalaDoTempo.PortaDaTerra;
+		if (!TemASessaoDaTerra(pl)) return;
 		_naSala.TryAdd(pl.Assinatura, pl.SalaUltimaEntrada > 0 ? pl.SalaUltimaEntrada : NowMs());
 
 		// ============================ A MESA SE POE DE NOVO NO LOGIN ============================

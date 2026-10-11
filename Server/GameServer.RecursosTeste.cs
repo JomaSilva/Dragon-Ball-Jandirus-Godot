@@ -23,7 +23,7 @@ namespace Jandirus.Server;
 /// producao -- minerar e o `DefinirAtividade` que o `C2S.Activity` chama, o segundo de quem minera e o
 /// `TickDaMineracao`, a reserva cresce pelo `TickDosRecursos`, e fabricar e o `ComandoDeTech` da aba.
 ///
-/// SETE PERGUNTAS:
+/// NOVE PERGUNTAS:
 ///   1. A REGRA (Core): o dobro, o teto pelo tamanho, a ordem mao &lt; pa &lt; furadeira, a regeneracao.
 ///   2. A RESERVA: quem tem e quem nao tem (Lookout, espaco, interior, planeta MORTO), o tamanho, o tique que a
 ///      faz crescer, e o DISCO -- o que vai, o que nao vai, e o reinicio horas depois.
@@ -37,6 +37,11 @@ namespace Jandirus.Server;
 ///   7. O QUE PASSOU A ACEITAR RECURSOS (decisao do dono): as melhorias da maquina de gravidade, do regenerador
 ///      e da nave, a conversao em androide e a estatua suprema -- em zeni o preco, em recursos o dobro, o
 ///      mesmo efeito, e nunca uma moeda completando a outra. E o Enma, que continua SO em zeni.
+///   8. A RESERVA EM LADO^2 x 10 (dono, 2026-10-11): o teto novo nos planetas que existem, o que isso faz com a
+///      regeneracao, e o `reservas.json` de um servidor de antes carregando sem corte e sem pular pra cheia.
+///   9. AS CAVERNAS (dono, 2026-10-11): o que se tira dentro da caverna de um planeta sai da reserva DELE -- o
+///      verb Minerar e a Drill; e a unica excecao de interior. No mapa do planeta, debaixo de teto nao se
+///      minera. A rocha de minerio continua so a ceu aberto.
 ///
 /// Cada regra tem o seu defeito injetado, lido pela propria linha dela; a cobranca tem de reprovar com ele.
 ///
@@ -86,6 +91,13 @@ public partial class GameServer
 			RcDoCatalogo();
 			LimparTudoDaBancada();
 			RcDoQuePassouAAceitarRecursos();
+			LimparTudoDaBancada();
+			RcDoTetoNovo();
+			RcDoSaveDeAntes();
+			LimparTudoDaBancada();
+			RcDasCavernas();
+			LimparTudoDaBancada();
+			RcDaDrillEDaRochaNaCaverna();
 		}
 		catch (Exception e) { AfirmarRc("a bancada correu ate o fim sem excecao", false, e.ToString()); }
 		finally
@@ -95,6 +107,8 @@ public partial class GameServer
 			MortoTemReservaDeTeste = ReservasSoNaMemoriaDeTeste = CarteiraMudaDeTeste = CobraSemSaldoDeTeste = false;
 			MineraAndandoDeTeste = MineraDoNadaDeTeste = false;
 			CarteiraSoPeloFunilDeTeste = SemPortaoDoEsmagamentoDeTeste = SoZeniPagaDeTeste = false;
+			Recurso.CelulaGuardaODeAntesDeTeste = Recurso.MineraSobTetoDeTeste = Cavernas.InteriorComumDeTeste = false;
+			CavernaComReservaPropriaDeTeste = DrillDaCavernaContaAParteDeTeste = false;
 			CatalogoDeItens.FerramentaVoltaACavarDeTeste = false;
 			LimparTudoDaBancada();
 
@@ -124,8 +138,9 @@ public partial class GameServer
 		finally { Recurso.SemDobroDeTeste = false; }
 
 		// ---- o teto pelo tamanho
-		AfirmarRc("a reserva maxima sai da AREA: lado 192 guarda 73.728, lado 500 guarda 500.000, lado 1000 guarda 2.000.000",
-				  Recurso.MaximoDoPlaneta(192) == 73_728 && Recurso.MaximoDoPlaneta(500) == 500_000 && Recurso.MaximoDoPlaneta(1000) == 2_000_000,
+		// (os numeros sao os do teto de 2026-10-11, lado^2 x 10; a secao 8 conta a troca e o defeito dela)
+		AfirmarRc("a reserva maxima sai da AREA: lado 192 guarda 368.640, lado 500 guarda 2.500.000, lado 1000 guarda 10.000.000",
+				  Recurso.MaximoDoPlaneta(192) == 368_640 && Recurso.MaximoDoPlaneta(500) == 2_500_000 && Recurso.MaximoDoPlaneta(1000) == 10_000_000,
 				  $"{Recurso.MaximoDoPlaneta(192):N0} / {Recurso.MaximoDoPlaneta(500):N0} / {Recurso.MaximoDoPlaneta(1000):N0}");
 		AfirmarRc("...e planeta sem tamanho (lado 0 ou negativo) nao tem reserva", Recurso.MaximoDoPlaneta(0) == 0 && Recurso.MaximoDoPlaneta(-3) == 0);
 
@@ -552,7 +567,7 @@ public partial class GameServer
 		ZerarReservas();
 		ReservaDePlaneta reserva = ReservaDe(terra)!;
 
-		ServerPlayer pl = Forjar("Mineiro", CorredorLivre(6), 1000);
+		ServerPlayer pl = Forjar("Mineiro", CorredorACeuAberto(6), 1000);   // debaixo de teto nao se minera: secao 9
 		pl.Ficha.Recursos = 0;
 		pl.Ficha.Zeni = 123;
 
@@ -1423,5 +1438,500 @@ public partial class GameServer
 					  !morto.Ficha.dead && morto.Ficha.Zeni == 0 && morto.Ficha.Recursos == 100 * milhao, Ultimos(falas));
 		}
 		finally { tirarDoChao(); }
+	}
+
+	// =====================================================================
+	// 8) A RESERVA EM LADO^2 x 10 -- e o save de antes
+	// =====================================================================
+	/// <summary>
+	/// O dono (2026-10-11): *"Reserva do planeta troque o lado^2 x 2 por lado^2 x 10"*. O teto novo, nos planetas
+	/// que existem -- os pre-feitos em que se pousa e os gerados --, e o que ele arrasta: como o tempo de encher
+	/// nao mudou, o que o chao devolve por segundo quintuplicou junto.
+	/// </summary>
+	private void RcDoTetoNovo()
+	{
+		GD.Print("[recursos] -- 8) a reserva do planeta em lado^2 x 10 (dono, 2026-10-11) --");
+
+		ZoneKey terra = ZonaDaBancadaDeProjetil;
+		ZerarReservas();
+
+		static bool Novo() => Recurso.MaximoDoPlaneta(192) == 368_640 && Recurso.MaximoDoPlaneta(500) == 2_500_000
+							  && Recurso.MaximoDoPlaneta(1000) == 10_000_000;
+		AfirmarRc("\"troque o lado^2 x 2 por lado^2 x 10\": lado 192 (o menor mundo gerado) guarda 368.640, lado 500 guarda 2.500.000, lado 1000 (o maior) guarda 10.000.000",
+				  Novo() && Recurso.RecursosPorCelula == 10);
+
+		// ---- os planetas que EXISTEM: os pre-feitos em que se pousa...
+		List<ZoneKey> preFeitos = [.. Espaco.PreFeitos().Select(Espaco.ZonaDe)];
+		var fora = new List<string>();
+		foreach (ZoneKey z in preFeitos)
+		{
+			double lado = MedidasDoPlaneta(z).Lado;
+			if (ReservaDe(z) is not { Cheia: true } r || r.Maximo != lado * lado * 10)
+				fora.Add($"{z.Name}: lado {lado:0}, reserva {ReservaDe(z)?.Maximo:N0}");
+		}
+		AfirmarRc($"os {preFeitos.Count} planetas pre-feitos em que se pousa nascem cheios, com lado^2 x 10 -- a Terra (500 x 500): 2.500.000",
+				  preFeitos.Count >= 5 && fora.Count == 0 && ReservaDe(terra) is { Maximo: 2_500_000 },
+				  fora.Count > 0 ? string.Join("; ", fora) : string.Join(", ", preFeitos.Select(z => $"{z.Name} {ReservaDe(z)?.Maximo:N0}")));
+
+		// ---- ...e os gerados
+		if (DoisMundosGerados() is { } par)
+		{
+			double ladoMenor = MundoProcedural.DaSeed(par.Menor.Seed, par.Menor.Name).Lado,
+				   ladoMaior = MundoProcedural.DaSeed(par.Maior.Seed, par.Maior.Name).Lado;
+			AfirmarRc("...e os mundos GERADOS tambem (o menor e o maior da vizinhanca da origem)",
+					  ReservaDe(par.Menor) is { } menor && menor.Maximo == ladoMenor * ladoMenor * 10
+					  && ReservaDe(par.Maior) is { } maior && maior.Maximo == ladoMaior * ladoMaior * 10,
+					  $"{par.Menor.Name} lado {ladoMenor:0} = {ReservaDe(par.Menor)?.Maximo:N0}; {par.Maior.Name} lado {ladoMaior:0} = {ReservaDe(par.Maior)?.Maximo:N0}");
+		}
+		else AfirmarRc("achei dois mundos gerados de tamanhos diferentes na vizinhanca da origem", false, "a varredura do universo nao achou");
+
+		// ---- a regeneracao: o TEMPO e o mesmo, entao a taxa quintuplicou
+		double porSegundo = ReservaDe(terra)!.Maximo / (Recurso.HorasPraEncher * 3600);
+		AfirmarRc($"o TEMPO de encher nao mudou ({Recurso.HorasPraEncher:0} h): a Terra passa a devolver {porSegundo:0.0} por segundo, cinco vezes os 5,8 de antes "
+				  + "(declarado: e o que sai de trocar o x2 pelo x10 sem mexer nas horas)",
+				  Recurso.HorasPraEncher == 24 && Math.Abs(porSegundo - 28.935) < 0.01, $"{porSegundo:0.000}/s");
+
+		// ---- CONTRA-EXEMPLO: a celula de antes
+		Recurso.CelulaGuardaODeAntesDeTeste = true;
+		try
+		{
+			ZerarReservas();
+			AfirmarRc("(defeito injetado: a celula guarda o de antes, lado^2 x 2) lado 500 volta a guardar 500.000 e a Terra nasce com isso -- a cobranca acusa",
+					  !Novo() && Recurso.MaximoDoPlaneta(500) == 500_000 && ReservaDe(terra) is { Maximo: 500_000 },
+					  $"{ReservaDe(terra)?.Maximo:N0}");
+		}
+		finally
+		{
+			Recurso.CelulaGuardaODeAntesDeTeste = false;
+			ZerarReservas();
+		}
+	}
+
+	/// <summary>
+	/// O `reservas.json` DE UM SERVIDOR DE ANTES, escrito a mao como aquele servidor o gravava (o formato nao
+	/// mudou; o que mudou foi o teto contra o qual o `Atual` e lido).
+	///
+	/// O QUE SE DECIDIU: o `Atual` gravado continua valendo como ESTA -- nao e esticado pro teto novo (seria
+	/// recurso de presente na hora da troca, e o arquivo nao diz com que teto foi gravado) nem cortado (o teto
+	/// so cresceu). A fracao cai (250 mil eram 50% e viram 10%) e a reserva vai enchendo pela taxa nova. O
+	/// planeta que estava CHEIO nao esta no arquivo -- cheia e ausencia -- e por isso nasce cheio no teto novo.
+	/// </summary>
+	private void RcDoSaveDeAntes()
+	{
+		GD.Print("[recursos] -- 8b) o `reservas.json` de um servidor de antes (teto lado^2 x 2) carrega no teto novo --");
+
+		ZoneKey terra = ZonaDaBancadaDeProjetil, namek = ZoneKey.Premade("Namek"), vegeta = ZoneKey.Premade("Vegeta");
+		ZerarReservas();
+		_proximaGravacaoDasReservas = 0;
+
+		// A Terra pela METADE do teto de entao (250 mil de 500 mil); Namek a UM recurso de cheia naquele teto; e
+		// Vegeta, mexida seis horas atras.
+		long agora = NowMs();
+		string deAntes = System.Text.Json.JsonSerializer.Serialize(
+			new List<ReservaGravada>
+			{
+				new() { Chave = "Earth", Nome = "Earth", Atual = 250_000, Em = agora },
+				new() { Chave = "Namek", Nome = "Namek", Atual = 499_999, Em = agora },
+				new() { Chave = "Vegeta", Nome = "Vegeta", Atual = 100_000, Em = agora - 6 * 3_600_000 },
+			},
+			new System.Text.Json.JsonSerializerOptions { IncludeFields = true, WriteIndented = true });
+		System.IO.File.WriteAllText(CaminhoDasReservas, deAntes);
+		byte[] noDisco = System.IO.File.ReadAllBytes(CaminhoDasReservas);
+
+		CarregarReservas();
+		ReservaDePlaneta? t = ReservaDe(terra), n = ReservaDe(namek), v = ReservaDe(vegeta);
+		AfirmarRc("**O SAVE DE ANTES CARREGA**: a Terra gravada com 250.000 volta com 250.000 -- nem cortada, nem esticada, nem cheia -- num teto que agora e 2.500.000 (eram 50%, sao 10%)",
+				  t is { Maximo: 2_500_000, Cheia: false } && Math.Abs(t.Atual - 250_000) < 1 && Math.Abs(t.Fracao - 0.10) < 0.001,
+				  $"{t?.Atual:N0} de {t?.Maximo:N0}");
+		AfirmarRc("...Namek, que estava a UM recurso de cheia no teto de antes (499.999 de 500.000), volta com os mesmos 499.999: 20% do teto novo, e NAO \"cheia\"",
+				  n is { Cheia: false } && Math.Abs(n.Atual - 499_999) < 1 && Math.Abs(n.Fracao - 0.20) < 0.001,
+				  $"{n?.Atual:N0} de {n?.Maximo:N0}");
+		double comAsHoras = 100_000 + 2_500_000.0 * 6 / Recurso.HorasPraEncher;
+		AfirmarRc("...e Vegeta, gravada ha 6 h, volta com o que tinha MAIS seis horas de regeneracao pela taxa de AGORA (declarado: o tempo desligado enche pelo teto novo)",
+				  v != null && Math.Abs(v.Atual - comAsHoras) < 2_500, $"{v?.Atual:N0}, esperado {comAsHoras:N0}");
+		AfirmarRc("...e o carregador nao regravou o arquivo", noDisco.AsSpan().SequenceEqual(System.IO.File.ReadAllBytes(CaminhoDasReservas)));
+
+		ZoneKey? intocado = Espaco.PreFeitos().Select(Espaco.ZonaDe)
+			.Where(z => !z.Equals(terra) && !z.Equals(namek) && !z.Equals(vegeta)).Cast<ZoneKey?>().FirstOrDefault();
+		AfirmarRc("o planeta que NAO estava no arquivo (estava cheio: cheia e ausencia) nasce cheio NO TETO NOVO -- declarado",
+				  intocado is { } zi && ReservaDe(zi) is { Cheia: true } ri && ri.Maximo == Recurso.MaximoDoPlaneta(MedidasDoPlaneta(zi).Lado),
+				  $"{intocado?.Name ?? "(nenhum)"}: {(intocado is { } zj ? ReservaDe(zj)?.Maximo : null):N0}");
+
+		// ---- dali ela vai ENCHENDO, pelo tique de producao
+		if (t != null)
+		{
+			UmaVoltaDosRecursos(1);
+			double antes = t.Atual;
+			UmaVoltaDosRecursos(6 * 3600);
+			double umQuarto = t.Maximo * 6 / Recurso.HorasPraEncher;
+			AfirmarRc("...e dali a reserva VAI ENCHENDO: seis horas de tique devolvem um quarto do teto novo (625.000), sem pular pra cheia",
+					  Math.Abs(t.Atual - antes - umQuarto) < t.Maximo * 0.001 && !t.Cheia, $"+{t.Atual - antes:N0} (esperado {umQuarto:N0}); {t.Fracao * 100:0}%");
+		}
+
+		// ---- CONTRAPROVA: a regua distingue "carregou" de "nasceu cheia"
+		System.IO.File.WriteAllText(CaminhoDasReservas, deAntes.Replace("\"Earth\"", "\"Mundo_Que_Nao_Existe\""));
+		CarregarReservas();
+		AfirmarRc("(contraprova) o mesmo arquivo com a chave da Terra trocada pela de um mundo que nao existe: o registro e descartado e a Terra nasce CHEIA (2.500.000) -- a regua de cima sabe a diferenca",
+				  ReservaDe(terra) is { Cheia: true, Maximo: 2_500_000 } && ReservaDe(namek) is { Cheia: false });
+
+		try { System.IO.File.Delete(CaminhoDasReservas); } catch { /* a caixa e temporaria */ }
+		ZerarReservas();
+	}
+
+	// =====================================================================
+	// 9) AS CAVERNAS -- e o teto
+	// =====================================================================
+	/// <summary>Um corredor de chao da Terra que NAO esta debaixo de teto: e la fora que se minera.</summary>
+	private Vec2 CorredorACeuAberto(int tiles)
+	{
+		for (int tentativa = 0; tentativa < 40; tentativa++)
+		{
+			Vec2 c = CorredorLivre(tiles);
+			if (!SobTeto(ZonaDaBancadaDeProjetil, c)) return c;
+		}
+		AfirmarRc("achei um corredor da Terra a ceu aberto", false, "quarenta corredores seguidos debaixo de teto");
+		return CorredorLivre(tiles);
+	}
+
+	/// <summary>
+	/// O PRIMEIRO CHAO de uma zona do catalogo que passa no crivo, longe dos pontos ja usados -- devolvido como o
+	/// centro de um corpo com os pes no meio da celula. Nulo = a zona nao tem (ou nao tem mapa).
+	/// </summary>
+	private Vec2? ChaoDaZonaQue(ZoneKey zona, Func<ZoneCollision, int, int, bool> crivo, List<Vec2>? usados = null)
+	{
+		const float longe = 8 * ZoneCollision.TileSize;
+		if (MapaDaZonaOuCatalogo(zona) is not { } mapa) return null;
+
+		for (int y = 3; y < mapa.Height - 3; y++)
+			for (int x = 3; x < mapa.Width - 3; x++)
+			{
+				if (!mapa.ServeDeChao(x, y) || !crivo(mapa, x, y)) continue;
+				Vec2 ponto = RochaDeMinerio.Ponto(x, y);
+				if (usados != null && usados.Exists(u => Math.Abs(u.X - ponto.X) < longe && Math.Abs(u.Y - ponto.Y) < longe)) continue;
+				usados?.Add(ponto);
+				return ponto;
+			}
+		return null;
+	}
+
+	/// <summary>A celula e as oito em volta sao chao livre: cabe um corpo, e uma maquina ao lado dele.</summary>
+	private static bool PracaDeTresPorTres(ZoneCollision mapa, int cx, int cy)
+	{
+		for (int dy = -1; dy <= 1; dy++)
+			for (int dx = -1; dx <= 1; dx++)
+				if (!mapa.ServeDeChao(cx + dx, cy + dy)) return false;
+		return true;
+	}
+
+	/// <summary>
+	/// O dono (2026-10-11): *"permita q de pra pegar recursos dentro dos mapas "caves" do planeta, essa e a unica
+	/// excessao de mapa de interior q da pra tirar recurso de um planeta"*.
+	///
+	/// Pelo funil de producao: o corpo e levado pra caverna pelo `MoveToZone`, minerar e o `DefinirAtividade` do
+	/// `C2S.Activity`, e o segundo de quem minera e o `TickDaMineracao`. O que se cobra: a caverna responde com a
+	/// reserva do PLANETA-MAE (o mesmo objeto), quem minera la dentro e quem minera la fora descem o mesmo numero,
+	/// e os outros interiores continuam sem nada. E a regra que saiu junto: no mapa do planeta, debaixo de teto nao
+	/// se minera -- a caverna, que e teto inteira, e a excecao.
+	/// </summary>
+	private void RcDasCavernas()
+	{
+		GD.Print("[recursos] -- 9) as cavernas: o que se tira la dentro sai da reserva do PLANETA-MAE -- e debaixo de teto nao se minera --");
+
+		ZoneKey terra = ZonaDaBancadaDeProjetil, vegeta = ZoneKey.Premade("Vegeta");
+		ZoneKey daTerraCaverna = ZoneKey.Premade("Earth_Cave"), deVegetaCaverna = ZoneKey.Premade("Vegeta_Cave");
+		ZoneKey mirante = ZoneKey.Premade("Lookout");
+		ZerarReservas();
+
+		// ------------------------------------------------------------ a relacao, no Core
+		ZoneKey[] interiores =
+		[
+			mirante, ZoneKey.Premade(SalaDoTempo.Zona), ZoneKey.Premade("Small_Space_Station"), ZoneKey.Premade("Large_Space_Station"),
+			ZoneKey.Premade("Afterlife"), ZoneKey.Premade("Hell"), NaveGrande.ZonaDoInterior(7), InteriorDoMajin.De(3), DimensaoMental.De(5),
+		];
+		AfirmarRc("A RELACAO E DO CORE, num lugar so: a `Earth_Cave` e caverna da Terra e a `Vegeta_Cave` de Vegeta -- e so essas duas zonas sao caverna de alguem",
+				  Cavernas.PlanetaMae(daTerraCaverna) is { } maeT && maeT.Equals(terra)
+				  && Cavernas.PlanetaMae(deVegetaCaverna) is { } maeV && maeV.Equals(vegeta) && Cavernas.Todas().Count() == 2
+				  && Cavernas.PlanetaMae(terra) == null && Cavernas.PlanetaMae(Espaco.Zona(SeedDoUniverso)) == null
+				  && interiores.All(z => Cavernas.PlanetaMae(z) == null));
+		AfirmarRc("...por TIPO de zona, e nao por nome: um mundo gerado ou um interior que se chamasse \"Earth_Cave\" nao e caverna de ninguem",
+				  !Cavernas.EhCaverna(ZoneKey.Procedural("Earth_Cave", 123)) && !Cavernas.EhCaverna(ZoneKey.Interior("Earth_Cave", 1))
+				  && Recurso.PlanetaDaReserva(ZoneKey.Interior("Earth_Cave", 1)) == null);
+
+		// ------------------------------------------------------------ a reserva
+		ReservaDePlaneta daTerra = ReservaDe(terra)!, deVegeta = ReservaDe(vegeta)!;
+		AfirmarRc("**A CAVERNA RESPONDE COM A RESERVA DO PLANETA** -- o MESMO objeto, e nenhum registro a parte pra ela",
+				  ReferenceEquals(ReservaDe(daTerraCaverna), daTerra) && ReferenceEquals(ReservaDe(deVegetaCaverna), deVegeta)
+				  && !_reservas.ContainsKey(daTerraCaverna.Hash) && !_reservas.ContainsKey(deVegetaCaverna.Hash));
+		AfirmarRc("...e E A UNICA EXCECAO de interior: o Mirante, a Sala do Tempo, as estacoes, o alem, o interior de uma nave, o de um Majin e a mente continuam sem reserva",
+				  interiores.All(z => ReservaDe(z) == null && Recurso.PlanetaDaReserva(z) == null));
+
+		// ------------------------------------------------------------ os corpos
+		var usados = new List<Vec2>();
+		ServerPlayer Em(ZoneKey zona, string nome)
+		{
+			ServerPlayer p = Forjar(nome, CorredorACeuAberto(6), 1000);
+			p.Ficha.Recursos = 0;
+			if (!zona.Equals(terra) && ChaoDaZonaQue(zona, PracaDeTresPorTres, usados) is { } chao) MoveToZone(p.Id, zona, chao);
+			return p;
+		}
+
+		ServerPlayer naCaverna = Em(daTerraCaverna, "rc: na caverna da Terra"), laFora = Em(terra, "rc: na superficie da Terra");
+		AfirmarRc("(montagem) um corpo DENTRO da caverna da Terra -- que e teto inteira -- e outro na superficie, a ceu aberto",
+				  naCaverna.Zone.Equals(daTerraCaverna) && SobTeto(naCaverna) && laFora.Zone.Equals(terra) && !SobTeto(laFora),
+				  $"{naCaverna.Zone.Name} teto={SobTeto(naCaverna)} | {laFora.Zone.Name} teto={SobTeto(laFora)}");
+
+		// ------------------------------------------------------------ minerar na caverna
+		daTerra.Tirar(daTerra.Atual - 100_000);   // 100 mil no chao da Terra: 4% do teto
+		string nomeDaTerra = NomeDaReserva(terra);
+		List<string> falas = Ouvir(() => DefinirAtividade(naCaverna, Protocol.Activity.Minerando));
+		AfirmarRc($"**NA CAVERNA DA TERRA O VERB MINERA**, e a frase diz de quem e o chao: \"Esta caverna tira da reserva de {nomeDaTerra}\", com a fracao DELA (4%)",
+				  naCaverna.Mineracao != null && Disse(falas, $"Esta caverna tira da reserva de {nomeDaTerra}: 4%")
+				  && Disse(falas, $"+{Recurso.PorSegundoNaMao:0} recursos por segundo"), Ultimos(falas));
+
+		DefinirAtividade(laFora, Protocol.Activity.Minerando);
+		double antes = daTerra.Atual, cadaUm = 5 * Recurso.PorSegundoNaMao;
+		for (int i = 0; i < 5; i++) TickDaMineracao();
+		AfirmarRc($"**OS DOIS DESCEM O MESMO NUMERO**: em cinco segundos entram {cadaUm:0} no bolso de cada um e a reserva da Terra desce {2 * cadaUm:0} -- vista da superficie ou de dentro da caverna",
+				  naCaverna.Ficha.Recursos == cadaUm && laFora.Ficha.Recursos == cadaUm && antes - daTerra.Atual == 2 * cadaUm
+				  && ReservaAtualDeTeste(naCaverna.Id) == daTerra.Atual && ReservaAtualDeTeste(laFora.Id) == daTerra.Atual,
+				  $"bolsos {naCaverna.Ficha.Recursos:0} e {laFora.Ficha.Recursos:0}, reserva -{antes - daTerra.Atual:0}");
+		DefinirAtividade(laFora, Protocol.Activity.Parado);
+
+		// ---- o planeta esgotado esgota a caverna
+		daTerra.Tirar(daTerra.Atual - (Recurso.PorSegundoNaMao - 1));
+		falas = Ouvir(TickDaMineracao);
+		AfirmarRc("...e o planeta ESGOTADO la fora esgota a caverna: quem minera la dentro para, com a frase do planeta",
+				  naCaverna.Mineracao == null && Disse(falas, "esgotado"), Ultimos(falas));
+		daTerra.Regenerar(Recurso.HorasPraEncher * 3600);
+
+		// ---- a de Vegeta tira de Vegeta
+		ServerPlayer emVegeta = Em(deVegetaCaverna, "rc: na caverna de Vegeta");
+		double terraAntes = daTerra.Atual, vegetaAntes = deVegeta.Atual;
+		falas = Ouvir(() => DefinirAtividade(emVegeta, Protocol.Activity.Minerando));
+		for (int i = 0; i < 3; i++) TickDaMineracao();
+		AfirmarRc("na `Vegeta_Cave` o que sai e da reserva de VEGETA, e a da Terra nem se mexe",
+				  emVegeta.Zone.Equals(deVegetaCaverna) && emVegeta.Ficha.Recursos == 3 * Recurso.PorSegundoNaMao
+				  && vegetaAntes - deVegeta.Atual == 3 * Recurso.PorSegundoNaMao && daTerra.Atual == terraAntes
+				  && Disse(falas, $"Esta caverna tira da reserva de {NomeDaReserva(vegeta)}"), Ultimos(falas));
+		DefinirAtividade(emVegeta, Protocol.Activity.Parado);
+
+		// ---- planeta destruido: a caverna fica, a reserva nao
+		using (PalcoDeMortesDeBancada())
+		{
+			_mortos.Por(new EstadoDaMorte { Chave = "Vegeta", Nome = "Vegeta", Fase = FaseDaMorte.Destruido, Motivo = "bancada dos recursos" });
+			falas = Ouvir(() => DefinirAtividade(emVegeta, Protocol.Activity.Minerando));
+			AfirmarRc("planeta DESTRUIDO: a caverna dele continua de pe (e um interior), mas nao ha mais de onde tirar -- \"não há o que minerar aqui\"",
+					  emVegeta.Mineracao == null && ReservaDe(deVegetaCaverna) == null && Disse(falas, "não há o que minerar aqui"), Ultimos(falas));
+			_mortos.Tirar(new ChaveDePlaneta(true, "Vegeta", 0));
+		}
+
+		// ---- CONTRA-EXEMPLO 1: a caverna como um interior qualquer
+		Cavernas.InteriorComumDeTeste = true;
+		try
+		{
+			falas = Ouvir(() => DefinirAtividade(naCaverna, Protocol.Activity.Minerando));
+			AfirmarRc("(defeito injetado: caverna e um interior como os outros -- o jogo de antes) o verb responde \"não há o que minerar aqui\" e nada comeca -- a cobranca acusa",
+					  naCaverna.Mineracao == null && ReservaDe(daTerraCaverna) == null && Disse(falas, "não há o que minerar aqui"), Ultimos(falas));
+		}
+		finally { Cavernas.InteriorComumDeTeste = false; }
+
+		// ---- CONTRA-EXEMPLO 2: a caverna com reserva propria
+		CavernaComReservaPropriaDeTeste = true;
+		try
+		{
+			naCaverna.Ficha.Recursos = 0;
+			terraAntes = daTerra.Atual;
+			DefinirAtividade(naCaverna, Protocol.Activity.Minerando);
+			for (int i = 0; i < 5; i++) TickDaMineracao();
+			AfirmarRc("(defeito injetado: a caverna tem reserva PROPRIA) cinco segundos pagam os mesmos recursos e a reserva da Terra NAO desce -- a cobranca acusa",
+					  naCaverna.Ficha.Recursos == cadaUm && daTerra.Atual == terraAntes && !ReferenceEquals(ReservaDe(daTerraCaverna), daTerra),
+					  $"bolso {naCaverna.Ficha.Recursos:0}, reserva da Terra -{terraAntes - daTerra.Atual:0}");
+		}
+		finally
+		{
+			CavernaComReservaPropriaDeTeste = false;
+			DefinirAtividade(naCaverna, Protocol.Activity.Parado);
+		}
+
+		// ------------------------------------------------------------ o teto, no mapa do planeta
+		Vec2? sobTeto = ChaoDaZonaQue(terra, (_, x, y) => CelulaSobTeto(terra, x, y));
+		ServerPlayer noPredio = Em(terra, "rc: dentro de um predio da Terra");
+		Vec2 aCeuAberto = noPredio.Pos;
+		if (sobTeto is { } dentro) noPredio.Pos = dentro;
+		falas = Ouvir(() => DefinirAtividade(noPredio, Protocol.Activity.Minerando));
+		AfirmarRc("**DEBAIXO DE TETO NAO SE MINERA**: dentro de um predio da Terra ha reserva (o chao e do planeta) e o verb recusa, com a frase do teto",
+				  sobTeto != null && SobTeto(noPredio) && ReservaDe(noPredio.Zone) != null && noPredio.Mineracao == null
+				  && Disse(falas, Recurso.NaoSeMineraSobTeto), Ultimos(falas));
+
+		Recurso.MineraSobTetoDeTeste = true;
+		try
+		{
+			DefinirAtividade(noPredio, Protocol.Activity.Minerando);
+			AfirmarRc("(defeito injetado: debaixo de teto tambem se minera -- o jogo de antes) o mesmo corpo, no mesmo predio, comeca a minerar -- a cobranca acusa",
+					  noPredio.Mineracao != null);
+		}
+		finally
+		{
+			Recurso.MineraSobTetoDeTeste = false;
+			DefinirAtividade(noPredio, Protocol.Activity.Parado);
+		}
+
+		noPredio.Pos = aCeuAberto;
+		DefinirAtividade(noPredio, Protocol.Activity.Minerando);
+		AfirmarRc("...e o MESMO corpo, a ceu aberto, minera", !SobTeto(noPredio) && noPredio.Mineracao != null);
+
+		// QUEM MINERA E GANHA UM TETO EM CIMA (alguem ergueu um piso de base ali) PARA: a pergunta e a mesma a cada segundo.
+		ZoneCollision? mapaDaTerra = MapaDaZonaOuCatalogo(terra);
+		(int px, int py) = CelulaInterna.CelulaDoCorpo(noPredio.Pos);
+		mapaDaTerra?.Cobrir(px, py);
+		try
+		{
+			falas = Ouvir(TickDaMineracao);
+			AfirmarRc("...e quem esta minerando e ganha um teto em cima (um piso de base erguido ali) PARA, ouvindo a frase do teto",
+					  noPredio.Mineracao == null && Disse(falas, Recurso.NaoSeMineraSobTeto), Ultimos(falas));
+		}
+		finally { mapaDaTerra?.Descobrir(px, py); }
+
+		// NO MIRANTE A FRASE E A OUTRA: la o que falta nao e ceu, e reserva.
+		ZoneKey casa = noPredio.Zone;
+		noPredio.Zone = mirante;
+		falas = Ouvir(() => DefinirAtividade(noPredio, Protocol.Activity.Minerando));
+		AfirmarRc("no Mirante (um interior que NAO e caverna) a recusa continua sendo \"não há o que minerar aqui\" -- e nao a do teto",
+				  noPredio.Mineracao == null && Disse(falas, "não há o que minerar aqui") && !Disse(falas, "teto"), Ultimos(falas));
+		noPredio.Zone = casa;
+
+		ZerarReservas();
+	}
+
+	/// <summary>
+	/// O QUE MAIS TIRA DA RESERVA, DENTRO DA CAVERNA -- e o que se decidiu de cada um:
+	///
+	///   * A DRILL trabalha la, tirando da reserva do planeta, e e contada JUNTO com as da superficie: a reserva
+	///     e uma, e num planeta quase seco o que ha e rateado entre todas (a regra da Drill; sem juntar, o grupo
+	///     contado primeiro levaria tudo).
+	///   * A ROCHA DE MINERIO nao nasce la. A regra dela e a ceu aberto (`RochaDeMinerio.ChaoServe`), o original
+	///     nao tem no de minerio nos andares das cavernas (`Maps/1to26.dmm`: os `matspawners/Ore` estao em 12
+	///     andares, e nenhum e o z22 nem o z23), e o dono nao pediu rocha nova -- pediu poder tirar recurso.
+	/// </summary>
+	private void RcDaDrillEDaRochaNaCaverna()
+	{
+		GD.Print("[recursos] -- 9b) na caverna: a Drill extrai (contada junto com as da superficie), e a rocha de minerio nao nasce --");
+
+		ZoneKey terra = ZonaDaBancadaDeProjetil, caverna = ZoneKey.Premade("Earth_Cave");
+		ZerarReservas();
+		ReservaDePlaneta daTerra = ReservaDe(terra)!;
+		var minhas = new List<Obra>();
+		var usados = new List<Vec2>();
+
+		// A DONA E A DRILL DELA: o corpo no meio de uma praca 3x3, a maquina na celula ao lado, pelo `posicionar`.
+		(ServerPlayer Dona, Obra? Drill) Assentar(ZoneKey zona, string nome, string conta)
+		{
+			ServerPlayer dona = Forjar(nome, CorredorACeuAberto(6), 1000);
+			dona.Conta = conta;
+			Vec2? praca = ChaoDaZonaQue(zona, (m, x, y) => PracaDeTresPorTres(m, x, y) && !CelulaSobTetoForaDaCaverna(zona, x, y), usados);
+			if (praca is { } p) MoveToZone(dona.Id, zona, p);
+			(int cx, int cy) = CelulaInterna.CelulaDoCorpo(dona.Pos);
+			Obra? drill = AssentarDeTeste(dona, Drill.Tipo, cx + 1, cy);
+			if (drill != null) minhas.Add(drill);
+			return (dona, drill);
+		}
+		bool CelulaSobTetoForaDaCaverna(ZoneKey zona, int x, int y) => !Cavernas.EhCaverna(zona) && CelulaSobTeto(zona, x, y);
+
+		try
+		{
+			(ServerPlayer donaDeDentro, Obra? deDentro) = Assentar(caverna, "rc: a dona da Drill da caverna", "bancada_recursos_drill_a");
+			List<string> falas = Ouvir(TickDasDrills);
+			AfirmarRc("**A DRILL ASSENTADA NA CAVERNA EXTRAI**: nasce com estado e a dona ouve de quem e o chao (\"que esta caverna divide com a superfície\"), e nao \"aqui não há o que extrair\"",
+					  deDentro is { Drill: { Nivel: 1 } } && deDentro.Zona.Equals(caverna)
+					  && Disse(falas, "começa a extrair") && Disse(falas, "que esta caverna divide com a superfície") && !Disse(falas, "NÃO HÁ O QUE EXTRAIR"),
+					  Ultimos(falas));
+			if (deDentro?.Drill is not { } d1) return;
+
+			// ---- um minuto de relogio: o estoque sobe o que a reserva da Terra desce
+			double reservaAntes = daTerra.Atual, estoqueAntes = d1.Estoque;
+			AdiantoDoRelogioDeTeste += 60_000;
+			PorTodasAsDrillsEmDia(NowMs());
+			double subiu = d1.Estoque - estoqueAntes, desceu = reservaAntes - daTerra.Atual;
+			AfirmarRc($"...um minuto de relogio: o estoque dela sobe a taxa do nivel ({60 * Drill.Taxa(1):0}) e a reserva DA TERRA desce exatamente isso",
+					  Math.Abs(subiu - 60 * Drill.Taxa(1)) < 1.5 && Math.Abs(subiu - desceu) < 1e-6 && subiu > 0, $"estoque +{subiu:0.###}, reserva -{desceu:0.###}");
+
+			falas = Ouvir(() => Verbo(donaDeDentro, Drill.VerboInfo, ""));
+			AfirmarRc("...e o \"Ver estado\" dela, de dentro da caverna, mostra a reserva do planeta em porcento",
+					  falas.Exists(l => l.Contains("Reserva do planeta:") && l.TrimEnd().EndsWith('%')) && !Disse(falas, "NÃO HÁ O QUE EXTRAIR"), Ultimos(falas));
+			AfirmarRc("(contraste) no Mirante, que e interior e NAO e caverna, uma Drill continua sem ter o que extrair",
+					  ReservaDe(ZoneKey.Premade("Lookout")) == null
+					  && Drill.Situacao(new DrillDaObra(), ReservaDe(ZoneKey.Premade("Lookout"))) == SituacaoDaDrill.SemReserva
+					  && Drill.Descrever(EstadoDeDrill.Nenhuma).Exists(l => l.Contains("numa caverna dele")));
+
+			// ---- a da superficie e a da caverna dividem o que ha
+			(_, Obra? deFora) = Assentar(terra, "rc: a dona da Drill da superficie", "bancada_recursos_drill_b");
+			TickDasDrills();
+			if (deFora?.Drill is not { } d2) { AfirmarRc("(montagem) a segunda Drill assentou na superficie da Terra", false); return; }
+
+			(double Dentro, double Fora) UmMinutoComPouco(double oQueHa)
+			{
+				daTerra.Regenerar(Recurso.HorasPraEncher * 3600);
+				daTerra.Tirar(daTerra.Atual - oQueHa);
+				d1.Estoque = d2.Estoque = 0;
+				d1.ContadoAteMs = d2.ContadoAteMs = NowMs();
+				AdiantoDoRelogioDeTeste += 60_000;
+				PorTodasAsDrillsEmDia(NowMs());
+				return (d1.Estoque, d2.Estoque);
+			}
+
+			var juntas = UmMinutoComPouco(30);
+			AfirmarRc("**AS DRILLS DO PLANETA E AS DA CAVERNA DELE SAO CONTADAS JUNTAS**: com 30 no chao e as duas pedindo 60, cada uma leva 15 -- e a reserva zera",
+					  deFora.Zona.Equals(terra) && Math.Abs(juntas.Dentro - 15) < 1e-6 && Math.Abs(juntas.Fora - 15) < 1e-6 && daTerra.Atual < 1e-6,
+					  $"caverna {juntas.Dentro:0.###}, superficie {juntas.Fora:0.###}, reserva {daTerra.Atual:0.###}");
+
+			DrillDaCavernaContaAParteDeTeste = true;
+			try
+			{
+				var aParte = UmMinutoComPouco(30);
+				AfirmarRc("(defeito injetado: as Drills da caverna sao contadas a parte) quem e contada primeiro leva os 30 e a outra fica sem nada -- a cobranca acusa",
+						  Math.Abs(aParte.Dentro - aParte.Fora) > 29 && Math.Abs(aParte.Dentro + aParte.Fora - 30) < 1e-6,
+						  $"caverna {aParte.Dentro:0.###}, superficie {aParte.Fora:0.###}");
+			}
+			finally { DrillDaCavernaContaAParteDeTeste = false; }
+
+			// ------------------------------------------------------------ a rocha de minerio
+			ServerPlayer tela = Forjar("rc: uma tela que ve rochas", CorredorACeuAberto(6), 1000);
+			tela.Conta = ContaDaBancadaDeRochas;
+			if (ChaoDaZonaQue(caverna, PracaDeTresPorTres, usados) is { } naCaverna) MoveToZone(tela.Id, caverna, naCaverna);
+
+			var fios = new List<(int Para, byte[] Fio)>();
+			EscutaDeRochas = fios;
+			try
+			{
+				daTerra.Regenerar(Recurso.HorasPraEncher * 3600);   // planeta cheio: se fosse nascer rocha, nasceria
+				TickDasRochas();
+				byte[]? retrato = fios.FindLast(f => f.Para == tela.Id && f.Fio.Length >= 12 && f.Fio[1] == Protocol.RochasRetrato).Fio;
+				AfirmarRc("A ROCHA DE MINERIO NAO NASCE NA CAVERNA (decisao: a regra dela e a ceu aberto, e o original nao tem no de minerio la): quem chega recebe o retrato VAZIO, com o planeta cheio",
+						  tela.Zone.Equals(caverna) && RochasDeTeste(caverna).Count == 0 && TetoDeRochasDeTeste(caverna) == 0
+						  && retrato != null && BitConverter.ToUInt64(retrato, 2) == caverna.Hash && BitConverter.ToUInt16(retrato, 10) == 0,
+						  $"{RochasDeTeste(caverna).Count} rochas; retrato {(retrato == null ? "nenhum" : $"{BitConverter.ToUInt16(retrato, 10)} celulas")}");
+				falas = Ouvir(() => Verbo(tela, RochaDeMinerio.Verbo, ""));
+				AfirmarRc("...e o verbo de colher, mandado de la, nao acha rocha nenhuma", Disse(falas, "não há rocha de minério por perto"), Ultimos(falas));
+
+				// O CONTRASTE: a mesma tela, na superficie.
+				fios.Clear();
+				MoveToZone(tela.Id, terra, CorredorACeuAberto(6));
+				TickDasRochas();
+				AfirmarRc("(contraste) a MESMA tela, levada pra superficie da Terra, recebe as rochas do planeta -- la fora elas nascem",
+						  RochasDeTeste(terra).Count > 0 && TetoDeRochasDeTeste(terra) > 0, $"{RochasDeTeste(terra).Count} de {TetoDeRochasDeTeste(terra)}");
+			}
+			finally
+			{
+				EscutaDeRochas = null;
+				EsquecerRochasDeTeste(terra);
+				EsquecerRochasDeTeste(caverna);
+			}
+		}
+		finally
+		{
+			DrillDaCavernaContaAParteDeTeste = false;
+			_noChao.RemoveAll(minhas.Contains);
+			ZerarReservas();
+		}
 	}
 }

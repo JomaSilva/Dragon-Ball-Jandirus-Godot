@@ -63,6 +63,13 @@ public sealed partial class GameServer
 	/// </summary>
 	internal bool DrillRecolhidaPerdeTudoDeTeste;
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada --recursosteste): as Drills da caverna sao contadas A PARTE das da superficie,
+	/// cada grupo indo sozinho a reserva -- num planeta quase seco, o primeiro grupo leva tudo. Lido pela propria
+	/// linha que junta os dois, em <see cref="OndeEstaAReservaDa"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal bool DrillDaCavernaContaAParteDeTeste;
+
 	/// <summary>ESPIA DE BANCADA -- nulo em jogo. Recebe (quem perguntou, o estado) de cada `S2C.Drill` montado.</summary>
 	internal Action<int, EstadoDeDrill>? EscutaDeDrill;
 
@@ -144,23 +151,34 @@ public sealed partial class GameServer
 	{
 		_zonasComDrill.Clear();
 		foreach (Obra o in _noChao)
-			if (o.Tipo == Drill.Tipo) _zonasComDrill.Add(o.Zona);
+			if (o.Tipo == Drill.Tipo) _zonasComDrill.Add(OndeEstaAReservaDa(o.Zona));
 		foreach (ZoneKey zona in _zonasComDrill) PorAsDrillsEmDia(zona, agora);
 	}
 
 	/// <summary>
-	/// POE EM DIA AS DRILLS DE UMA ZONA, todas juntas, e devolve a reserva dela (nulo onde nao ha).
+	/// A ZONA DONA DA RESERVA de onde uma Drill desta zona tira: o planeta, pra superficie e pra CAVERNA dele
+	/// (<see cref="Recurso.PlanetaDaReserva"/>); a propria zona, onde nao ha reserva (o Mirante, uma estacao).
+	/// E a chave do "todas juntas": Drill na Terra e Drill na caverna da Terra dividem o mesmo numero, entao
+	/// entram na mesma conta.
+	/// </summary>
+	private ZoneKey OndeEstaAReservaDa(ZoneKey zona) =>
+		DrillDaCavernaContaAParteDeTeste ? zona : Recurso.PlanetaDaReserva(zona) ?? zona;
+
+	/// <summary>
+	/// POE EM DIA AS DRILLS QUE TIRAM DA RESERVA DESTA ZONA, todas juntas, e devolve a reserva (nulo onde nao ha).
 	///
 	/// TODAS JUNTAS mesmo quando quem pergunta mexe numa so: a reserva e uma, e contar so a Drill de quem
-	/// abriu o menu a deixaria passar na frente das outras num planeta quase seco.
+	/// abriu o menu a deixaria passar na frente das outras num planeta quase seco. "Todas" inclui as da caverna
+	/// do planeta (e, perguntado pela caverna, as da superficie): ver <see cref="OndeEstaAReservaDa"/>.
 	/// </summary>
 	private ReservaDePlaneta? PorAsDrillsEmDia(ZoneKey zona, long agora)
 	{
+		zona = OndeEstaAReservaDa(zona);
 		ReservaDePlaneta? reserva = ReservaDe(zona);
 
 		_drillsDaVez.Clear();
 		foreach (Obra o in _noChao)
-			if (o.Tipo == Drill.Tipo && o.Zona.Equals(zona)) _drillsDaVez.Add(EstadoDaDrill(o, agora));
+			if (o.Tipo == Drill.Tipo && OndeEstaAReservaDa(o.Zona).Equals(zona)) _drillsDaVez.Add(EstadoDaDrill(o, agora));
 		if (_drillsDaVez.Count == 0) return reserva;
 
 		if (reserva == null)
@@ -209,11 +227,13 @@ public sealed partial class GameServer
 		}
 
 		ReservaDePlaneta? reserva = ReservaDe(o.Zona);
+		// NA CAVERNA A FALA DIZ DE QUEM E O CHAO, como a de quem comeca a minerar: o numero que desce e o do planeta.
+		string deOnde = Cavernas.EhCaverna(o.Zona) ? $"da reserva de {NomeDaReserva(o.Zona)}, que esta caverna divide com a superfície" : "dos recursos deste planeta";
 		Avisar(dono, reserva == null
-			? "a Drill está instalada, mas AQUI NÃO HÁ O QUE EXTRAIR: ela só trabalha na superfície de um planeta."
+			? "a Drill está instalada, mas AQUI NÃO HÁ O QUE EXTRAIR: ela só trabalha num planeta -- na superfície, ou numa caverna dele."
 			: reserva.Atual <= Drill.Folga
 				? "a Drill está instalada, mas este planeta está ESGOTADO: ela só vai extrair o que a reserva regenerar."
-				: $"a Drill começa a extrair: {Drill.Taxa(d.Nivel):0.#} por segundo dos recursos deste planeta "
+				: $"a Drill começa a extrair: {Drill.Taxa(d.Nivel):0.#} por segundo {deOnde} "
 				  + $"(reserva em {reserva.Fracao * 100:0}%). Aperte E nela pra coletar ou melhorar.");
 		return d;
 	}

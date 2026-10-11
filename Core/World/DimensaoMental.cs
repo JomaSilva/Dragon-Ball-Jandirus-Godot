@@ -326,9 +326,9 @@ public static class DimensaoMental
 		// protege a beirada de um mapa que aqui nao tem beirada.
 		//
 		// **ELA NAO PRECISA DE ENCANAMENTO NENHUM NAS DUAS PONTAS, E ESSA E A ESCOLHA.** O bit e uma
-		// propriedade DESTE objeto, e este objeto e literalmente o mesmo nos dois lados: o servidor o
-		// pega em `GameServer.Mente.MapaDaMente` e o cliente em `PlanetaProcedural.Colisao =>
-		// Terreno?.Colisao`, os dois chamando `Planta()`. A alternativa era a da Sala do Tempo -- uma
+		// propriedade DESTE objeto, e os dois lados tiram dele a copia de cada mente
+		// (`ZoneCollision.Instanciar`, que leva o bit junto): o servidor em `GameServer.Interiores.cs`,
+		// o cliente em `PlanetaProcedural`, os dois chamando `Planta()`. A alternativa era a da Sala do Tempo -- uma
 		// pergunta por NOME de zona (`SalaDoTempo.SemBorda`) respondida em dois carregadores diferentes
 		// --, e ela existe la porque a Sala vem de ARQUIVO e cada ponta le o arquivo por conta propria.
 		// A mente nao vem de arquivo: ela e esta funcao. Repetir o criterio por nome aqui seria criar a

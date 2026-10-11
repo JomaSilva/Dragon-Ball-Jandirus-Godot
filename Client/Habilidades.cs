@@ -105,6 +105,18 @@ public static class Habilidades
 			+ "ficar sem Ki também (aí você é levado pra margem).",
 			() => GameClient.Instance?.SendHabilidade("nadar")) { Chave = "hab:nadar" });
 
+		// RELAXAR / FICAR PRONTO -- o `Toggle Readiness` do original (`mob/default/verb/ReadyUp`, `set
+		// category="Skills"`, `Power Control.dm:39-52`). De TODO corpo, como la: nao pede o controle de ki que
+		// baixar pra uma porcentagem e esconder o poder pedem, e por isso nao tem linha na tabela de requisitos.
+		// E um verb (e nao so o botao da faixa da aba Ki) pra poder ganhar uma TECLA na tela de teclas.
+		Verbos.Registrar(new Verbo(
+			"Relaxar / ficar pronto",
+			Verbos.Skills,
+			"Com o poder inteiro: relaxa, e o seu poder cai a 1% (quem é fraco some do Sense dos outros; "
+			+ "furioso você não consegue). Em qualquer ponto abaixo de 100%: fica pronto, e o poder volta "
+			+ "inteiro na hora.\n\nO estado aparece no painel de status e na aba Ki.",
+			() => GameClient.Instance?.SendHabilidade(MenuJogo.VerboDaProntidao)) { Chave = "hab:prontidao" });
+
 		// ============================ O VOO NAO TEM VERB, E NAO DEVE TER ============================
 		// Eu tinha posto dois botoes aqui -- "Voar" e "Velocidade de voo" -- atras da skill
 		// `/datum/skill/flying`. O dono cortou os dois:
@@ -802,7 +814,8 @@ public static class Habilidades
 				pronta ? t.Nome : $"{t.Nome} (nao portada)",
 				t.Aba,
 				t.Desc,
-				() => GameClient.Instance?.SendHabilidade(idLocal),
+				// (o `Power_Control` nao viaja sem numero: o botao dele ABRE a faixa da aba Ki, onde o numero se escolhe)
+				() => { if (!MenuJogo.AbrirOControleDe(idLocal)) GameClient.Instance?.SendHabilidade(idLocal); },
 				pronta ? null : () => false) { Chave = $"hab:{idLocal}" });
 		}
 

@@ -279,10 +279,11 @@ public static partial class Tecnicas
 		+ "quem estiver por perto e sela quem cair dentro -- sem pote, sem quebrar: só sai "
 		+ "quem ficar 25% mais forte do que você era na hora. Custa quase toda a sua energia.",
 		aba: "Outros");
-		Por("Conceal_Power", "Ocultar o Poder", Modo.Sustentada, "Esconde o seu poder de quem olha: o scouter dos outros passa a ler quase nada. Liga e desliga, com cinco segundos de espera entre um e outro.");
+		Por("Conceal_Power", "Ocultar o Poder", Modo.Sustentada, "Esconde o seu poder: ninguém mais sente a sua energia (Sense, telepatia, Transmissão) e o scouter não lista você. Enquanto durar o seu poder fica travado no mínimo -- você bate e apanha como quem não tem poder -- e o Ki se recupera pela metade. Liga e desliga, com cinco segundos de espera entre um e outro.");
 		Por("Power_Control", "Controle de Poder", Modo.Sustentada,
-		"Segura o seu próprio poder numa porcentagem, de 1 a 100. Só serve pra BAIXAR -- pra "
-		+ "voltar a subir é carregando (tecla C). Use Power_Control:40.", aba: "Skills");
+		"Segura o seu próprio poder numa porcentagem, de 1 a 100 -- o controle fica na aba Ki do menu, e "
+		+ "este botão abre lá. Só serve pra BAIXAR, e baixa na hora: pra voltar a subir é carregando "
+		+ "(segure a tecla C) ou ficando pronto.", aba: "Skills");
 
 		// ---- lote G10: OS GOLPES DO MOLDE DO G7 QUE O CENSO ACHOU MUDOS, e a Trindade ----
 		// Dezenove verbos que a arvore ja concedia (dezesseis por DEGRAU) e o servidor nao atendia,

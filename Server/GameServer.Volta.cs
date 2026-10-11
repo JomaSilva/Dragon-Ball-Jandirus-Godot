@@ -183,20 +183,11 @@ public sealed partial class GameServer
 		zona.Kind switch
 		{
 			ZoneKey.KindProcedural => MapaDaZona(zona),
-			// DUAS PLANTAS ANTES DO CATALOGO, e a ordem e o que importa: o catalogo resolve zona pelo
-			// NOME, entao `Interior("Interdimension", id)` casaria com o z24 do BYOND e a mente andaria
-			// contra a parede de um mapa que ela nao desenha mais. Ver `DimensaoMental.Planta`.
-			// O SELO DA FUSAO ENTRA JUNTO DA MENTE, e nao por acaso: ele **e** o mesmo quarto branco
-			// vazio, e por isso empresta a mesma planta. Ver `GameServer.Fusao.ZonaDoSelo` -- e ele vem
-			// antes do catalogo pelo mesmo motivo que a mente vem: o catalogo resolve pelo NOME, e
-			// "Selado" nao tem entrada nenhuma la, entao sem esta linha o passageiro cairia num bolso
-			// sem colisao (chao infinito, sem parede) em vez de num quarto.
-			// E O INTERIOR DE UM MAJIN, que tambem e uma planta do Core (`InteriorDoMajin.Planta`) e tambem
-			// nao tem entrada no catalogo: sem esta linha o absorvido cairia num bolso sem parede nenhuma.
-			ZoneKey.KindInterior => MapaDaMente(zona)
-									?? (EhOSelo(zona) ? DimensaoMental.Planta().Colisao : null)
-									?? (InteriorDoMajin.EhOInterior(zona) ? InteriorDoMajin.Planta().Colisao : null)
-									?? MapaDoInterior(zona) ?? _catalogo?.Get(zona)?.Mapa,
+			// TODO INTERIOR TEM O MAPA DA **INSTANCIA** DELE, e nunca a planta: a nave, a mente, o bolso da fusao e o
+			// selo, o interior de um Majin, a Sala do Tempo de um mundo. A planta e uma so (a funcao do Core, ou o
+			// mapa de arquivo que o catalogo acha pelo NOME) e o nome e de todas as instancias -- o que muda em jogo
+			// e de cada uma. De que planta sai cada tipo, e por que nesta ordem: `GameServer.Interiores.cs`.
+			ZoneKey.KindInterior => ColisaoDoInterior(zona),
 			_ => _catalogo?.Get(zona)?.Mapa,
 		};
 }

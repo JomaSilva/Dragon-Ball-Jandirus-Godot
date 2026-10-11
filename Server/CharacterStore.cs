@@ -392,6 +392,25 @@ public sealed class CharacterSave
     /// </summary>
     public double SalaDiasDaSessao;
 
+    // ============================ AS SALAS DE PLANETA (dono, 2026-10-11) ============================
+    // Dois campos NOVOS, na forma segura das `Customizadas`: valor e anulavel, e o que um save antigo traz
+    // (0 e nulo) e a resposta certa -- "a ultima sala em que ele entrou foi a da Terra" (a unica que existia) e
+    // "ele nao esta em sessao numa sala de planeta". Nao ha ramo de migracao. Os dois sao GRAVADOS em `DeJogador`.
+
+    /// <summary>
+    /// Quantos anos por dia dilatava a sala da ULTIMA entrada (0 = save antigo = a da Terra, 1). Com o
+    /// <see cref="SalaUltimaEntrada"/> ele e o relogio UNICO da recarga: `entrada + 24 h x dilatacao`.
+    /// </summary>
+    public double SalaDilatacao;
+
+    /// <summary>
+    /// A PORTA por onde ele entrou numa Sala do Tempo, enquanto a sessao esta aberta (nulo ou vazio = nenhuma): o nome
+    /// do MUNDO numa sala de planeta (e pra la que ela o devolve; a seed e a da zona em que ele esta), ou
+    /// `SalaDoTempo.PortaDaTerra` na do Templo. Save de antes de 2026-10-11 gravado DENTRO da Sala da Terra nao a tem:
+    /// acorda la sem sessao (rende 1x, livre pra sair).
+    /// </summary>
+    public string? SalaPlaneta;
+
     /// <summary>
     /// A TECLA C DESTE PERSONAGEM PASSA PELOS GRADES DO SSJ1? Ver
     /// <see cref="Jandirus.Core.Forms.EstadoDeForma.GradesLigados"/> e o verb `graus`.
@@ -809,6 +828,8 @@ public sealed class AccountStore(string pasta)
         SalaAutorizada = pl.SalaAutorizada,
         SalaPreso = pl.SalaPreso,
         SalaDiasDaSessao = pl.SalaDiasDaSessao,
+        SalaDilatacao = pl.SalaDilatacao,
+        SalaPlaneta = pl.SalaPlaneta.Length > 0 ? pl.SalaPlaneta : null,
 
         // O SELO. Escrito aqui pelo mesmo motivo das tres de cima: este metodo monta o save do ZERO,
         // e campo nao escrito e campo apagado. So vai ao disco quando ha selo -- gravar um objeto
@@ -1003,6 +1024,8 @@ public sealed class AccountStore(string pasta)
         pl.SalaAutorizada = s.SalaAutorizada;
         pl.SalaPreso = s.SalaPreso;
         pl.SalaDiasDaSessao = s.SalaDiasDaSessao;
+        pl.SalaDilatacao = s.SalaDilatacao;
+        pl.SalaPlaneta = s.SalaPlaneta ?? "";
 
         // O SELO, com o mesmo padrao de migracao das tres de cima: ausente = solto. O objeto vazio
         // (e nao `null`) porque o tique pergunta `pl.Selo.Preso` por corpo, sem `?.` -- ver o campo

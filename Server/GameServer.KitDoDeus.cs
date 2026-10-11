@@ -408,18 +408,28 @@ public partial class GameServer
 	/// </summary>
 	internal bool TentarHakai(ServerPlayer deus, ServerPlayer alvo)
 	{
-		if (!EhDeusDaDestruicao(deus)) return false;                                                   // `:183`
-		if (alvo == deus || alvo.Ficha.dead || alvo.Combate is not { Intocavel: false } c) return false;   // `:184`
-
-		if (!HakaiSemCriterioDeTeste)
-		{
-			if (c.Corpo.Achar("Torso") is not { Decepado: false } torso) return false;                 // `:186-189`
-			if (!KitDoDeus.HakaiPega(torso.Vida, torso.VidaMax, alvo.Ficha.expressedBP, deus.Ficha.expressedBP))
-				return false;                                                                              // `:190-192`
-		}
-
+		if (!OHakaiPega(deus, alvo)) return false;
 		ExecutarHakai(deus, alvo);
 		return true;
+	}
+
+	/// <summary>
+	/// A PERGUNTA DO HAKAI, SEM O GESTO: este Deus apagaria este alvo AGORA? Sao as linhas `:183-192` do
+	/// `god_hakai_try`, numa funcao so porque sao dois os que perguntam: quem EXECUTA (<see cref="TentarHakai"/>) e a
+	/// IA de um corpo sem dono consagrado, que precisa saber ANTES de pedir o verb (`LerPercepcao`,
+	/// `GameServer.Ia.cs`). Uma segunda copia dos criterios envelheceria no dia em que o dono mexesse num deles.
+	///
+	/// O corpo sem dono cujo Hakai foi desligado pra luta em que esta (<see cref="SemHakai"/>) responde NAO a tudo:
+	/// nem o verb nem a esfera dele apagam ninguem.
+	/// </summary>
+	internal bool OHakaiPega(ServerPlayer deus, ServerPlayer alvo)
+	{
+		if (!EhDeusDaDestruicao(deus) || SemHakai(deus)) return false;                                 // `:183`
+		if (alvo == deus || alvo.Ficha.dead || alvo.Combate is not { Intocavel: false } c) return false;   // `:184`
+		if (HakaiSemCriterioDeTeste) return true;
+
+		if (c.Corpo.Achar("Torso") is not { Decepado: false } torso) return false;                     // `:186-189`
+		return KitDoDeus.HakaiPega(torso.Vida, torso.VidaMax, alvo.Ficha.expressedBP, deus.Ficha.expressedBP);   // `:190-192`
 	}
 
 	/// <summary>
@@ -552,7 +562,7 @@ public partial class GameServer
 		if (!EhDeusDaDestruicao(pl)) { Avisar(pl, SoODeusDaDestruicao); return; }
 
 		bool esfera = qual == DomDeProjetil.Hakai;
-		double custo = (esfera ? KitDoDeus.EsferaKi : KitDoDeus.FuriaKi) * pl.Ficha.BaseDrain();
+		double custo = KitDoDeus.CustoDoTiro(esfera, pl.Ficha);
 		if (!PodeAtirar(pl, custo, out string porque)) { Avisar(pl, porque); return; }
 
 		pl.Ficha.Ki -= custo;
@@ -696,14 +706,10 @@ public partial class GameServer
 			return;
 		}
 
-		float alcance = KitDoDeus.AnulacaoTiles * ZoneCollision.TileSize;
 		int anulados = 0;
 		foreach (Projetil p in ProjeteisDaZona(pl.Zone.Hash).ToList())
 		{
-			if (!p.Vivo || p.Dono == pl.Id || p.BaseDano <= 0) continue;   // `if(A.proprietor == usr) continue` (`:345`)
-			if (Fusao.DistanciaEmTilesDoDm(pl.Pos, p.Pos, ZoneCollision.TileSize) > KitDoDeus.AnulacaoTiles
-				&& !p.VemPraCimaDe(pl.Pos, alcance)) continue;
-			if (!AnulacaoApagaOsFortesDeTeste && !KitDoDeus.Anula(p.Bp, pl.Ficha.expressedBP)) continue;
+			if (!AAnulacaoPega(pl, p)) continue;
 
 			Matar(p, FimDeProjetil.Apagou);   // `A.loc = null` (`:347-349`): some, sem estouro
 			anulados++;
@@ -721,6 +727,19 @@ public partial class GameServer
 		GestoDoKit(pl);   // `usr.emit_Sound('scouterexplode.ogg')` (`:354`)
 		AvisarPertoG3(pl, RaioDaVista,
 			$"{NomeVisivel(pl)} ergue a mão -- {anulados} ataque(s) de ki simplesmente DEIXAM DE EXISTIR.");   // `:355`
+	}
+
+	/// <summary>
+	/// ESTE ATAQUE SOME SE ESTE DEUS ANULAR AGORA? As tres perguntas do laco do verb (`:343-349`: nao e meu, esta ao
+	/// alcance, carrega menos poder que eu), numa funcao so porque sao dois os que perguntam: o verb, que apaga, e a
+	/// IA do corpo sem dono, que so quer saber se ha o que apagar antes de gastar o gesto (`HaKiPraAnular`).
+	/// </summary>
+	private bool AAnulacaoPega(ServerPlayer pl, Projetil p)
+	{
+		if (!p.Vivo || p.Dono == pl.Id || p.BaseDano <= 0) return false;   // `if(A.proprietor == usr) continue` (`:345`)
+		if (Fusao.DistanciaEmTilesDoDm(pl.Pos, p.Pos, ZoneCollision.TileSize) > KitDoDeus.AnulacaoTiles
+			&& !p.VemPraCimaDe(pl.Pos, KitDoDeus.AnulacaoTiles * ZoneCollision.TileSize)) return false;
+		return AnulacaoApagaOsFortesDeTeste || KitDoDeus.Anula(p.Bp, pl.Ficha.expressedBP);
 	}
 
 	// =====================================================================

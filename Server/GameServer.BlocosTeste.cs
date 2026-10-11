@@ -386,8 +386,8 @@ public sealed partial class GameServer
 
 		void Repor()
 		{
-			if (_cenarioCaido.TryGetValue(terra.Name, out HashSet<(int X, int Y)>? c)) c.Remove((d.X, d.Y));
-			if (_portasAbertas.TryGetValue(terra.Name, out Dictionary<(int X, int Y), long>? ab)) ab.Remove((d.X, d.Y));
+			if (_cenarioCaido.TryGetValue(ChaveDeEstado(terra), out HashSet<(int X, int Y)>? c)) c.Remove((d.X, d.Y));
+			if (_portasAbertas.TryGetValue(ChaveDeEstado(terra), out Dictionary<(int X, int Y), long>? ab)) ab.Remove((d.X, d.Y));
 			mapa.Fechar(d.X, d.Y);
 			vista?.Fechar(d.X, d.Y);
 		}
@@ -451,7 +451,7 @@ public sealed partial class GameServer
 
 		void Repor()
 		{
-			if (_cenarioCaido.TryGetValue(terra.Name, out HashSet<(int X, int Y)>? c)) c.Remove((cx, cy));
+			if (_cenarioCaido.TryGetValue(ChaveDeEstado(terra), out HashSet<(int X, int Y)>? c)) c.Remove((cx, cy));
 			mapa.Fechar(cx, cy);
 			MapaDaVista(terra)?.Fechar(cx, cy);
 		}
@@ -493,12 +493,12 @@ public sealed partial class GameServer
 	private BlocoDef? Bloco(ClasseDeBloco classe) => _blocos?.Todos.FirstOrDefault(b => b.Classe == classe);
 
 	private bool Caiu(ZoneKey zona, int cx, int cy) =>
-		_cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? c) && c.Contains((cx, cy));
+		_cenarioCaido.TryGetValue(ChaveDeEstado(zona), out HashSet<(int X, int Y)>? c) && c.Contains((cx, cy));
 
 	/// <summary>Tira uma celula do estrago da zona (a bancada devolve o chao que ela mesma rachou).</summary>
 	private void DesfazerQueda(ZoneKey zona, int cx, int cy)
 	{
-		if (_cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? c)) c.Remove((cx, cy));
+		if (_cenarioCaido.TryGetValue(ChaveDeEstado(zona), out HashSet<(int X, int Y)>? c)) c.Remove((cx, cy));
 		MapaDaZonaOuCatalogo(zona)?.Fechar(cx, cy);
 		MapaDaVista(zona)?.Fechar(cx, cy);
 	}

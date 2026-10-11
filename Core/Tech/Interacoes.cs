@@ -386,7 +386,9 @@ public static class Interacoes
 		// e a metade "aviso claro" da decisao sobre esse risco -- ver `GameServer.SalaDoTempo.cs`.
 		"Time_Chamber_Door" =>
 		[
-			new Acao("Entrar", "sala_entrar", "", "precisa da chave do Guardião da Terra"),
+			// A DICA VALE PRAS DUAS PORTAS (2026-10-11): a do Templo pede a chave do Guardiao, e a da rocha de um
+			// mundo sorteado nao tem guardiao nenhum -- quem diz o que cada uma cobra e a segunda acao.
+			new Acao("Entrar", "sala_entrar", "", "cada porta cobra o seu preço -- leia as regras dela antes"),
 			new Acao("Ler as regras da porta", "sala_regras", "",
 					 "o que a sala cobra, e o que acontece se você demorar pra sair"),
 		],

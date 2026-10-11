@@ -1592,12 +1592,19 @@ public partial class LocalPlayer : Node2D
 	/// Por que este corpo nao pode comecar a minerar, pelo que o cliente sabe -- vazio = pode pedir. Na ordem do
 	/// servidor. Morto nao minera nem de pe no Outro Mundo: e a ficha que se le aqui, e nao o
 	/// <see cref="_caido"/> (que e "deitado").
+	///
+	/// O LUGAR SAO AS DUAS PERGUNTAS DO CORE, as mesmas do servidor: ha planeta de onde tirar (a superficie, ou
+	/// uma CAVERNA dele -- `Recurso.PlanetaDaReserva`), e o teto nao barra (`Recurso.OTetoBarra`: no mapa do
+	/// planeta so a ceu aberto; na caverna, em qualquer lugar). O teto e o que ESTA tela ve (`World.EuEstouSobTeto`).
 	/// </summary>
 	private static string PorQueNaoMinero(GameClient cli) =>
 		  cli.Sheet.KO || cli.Sheet.Morto                              ? Jandirus.Core.Economia.Recurso.SemCondicoesDeMinerar
 		: cli.MeuOozaru != Jandirus.Core.Forms.FormaOozaru.Nao         ? Jandirus.Core.Economia.Recurso.AFeraNaoMinera
 		: PresoNoTorneio || cli.Sheet.Empurrado                        ? Jandirus.Core.Economia.Recurso.NaoDaPraMinerarAgora
-		: !Jandirus.Core.World.Espaco.EhPlaneta(cli.Zone)              ? Jandirus.Core.Economia.Recurso.NaoHaOQueMinerar
+		: Jandirus.Core.Economia.Recurso.PlanetaDaReserva(cli.Zone) == null
+																	   ? Jandirus.Core.Economia.Recurso.NaoHaOQueMinerar
+		: Jandirus.Core.Economia.Recurso.OTetoBarra(cli.Zone, World.Instancia?.EuEstouSobTeto ?? false)
+																	   ? Jandirus.Core.Economia.Recurso.NaoSeMineraSobTeto
 		: "";
 
 	/// <summary>Ha um pedido de minerar ainda valido? Ler GASTA o pedido -- ele e um clique, nao um estado.</summary>

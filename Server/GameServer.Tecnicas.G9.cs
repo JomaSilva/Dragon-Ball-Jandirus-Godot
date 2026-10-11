@@ -47,10 +47,14 @@ namespace Jandirus.Server;
 /// `Conceal_Power` e `Power_Control` estavam no `Esperando` como *"sigilo de poder pelo lado de quem
 /// ESCONDE (o port so tem o de quem LE)"* -- e a etiqueta estava CERTA, o que e raro o bastante pra
 /// valer nota. Tudo do lado de quem le ja existia: `Fighter.isconcealed` trava o BP expresso em 5
-/// (`Fighter.Power.cs:86`) e troca a defesa (`Fighter.Statify.cs:42`), e o `powerMod` ja entra na
-/// conta do BP (`Fighter.Power.cs:127`). O que nao existia era **um botao do jogador que escrevesse
+/// (`Fighter.Power.cs`), corta a regeneracao de Ki pela metade e folga o dreno passivo de vigor
+/// (`concealeddeBuff` 0,5 e `concealedBuff` 1,5, `Fighter.Statify.cs:42` -- NAO e defesa: `master.dm:72-73`),
+/// e o `powerMod` ja entra na conta do BP. O que nao existia era **um botao do jogador que escrevesse
 /// esses dois campos**: hoje quem escreve `isconcealed` e a invisibilidade, o admin e o ZanzoClash,
 /// e `powerMod` nao era baixado por NADA no port inteiro.
+///
+/// O RESTO DO SISTEMA (relaxar / ficar pronto, o retrato do estado pra tela, o login, o sigilo que nao cai com
+/// outra tecnica, e o controle na aba Ki) veio depois e mora em `GameServer.PoderEmUso.cs` (2026-10-11).
 ///
 /// E ISSO DEIXAVA UM ESTAGIO INTEIRO DA TECLA C INALCANCAVEL: `EstagioDaCarga.Retomando`
 /// (`CargaDeKi.cs:14`, `:205-209`) existe pra trazer o `powerMod` de volta a 1 -- e como nada o
@@ -212,7 +216,11 @@ public sealed partial class GameServer
 	private readonly Dictionary<int, long> _sigiloPronto = [];
 
 	/// <summary>QUEM SAIU LEVA O ESTADO DELE JUNTO -- inscrito no `EsquecerTecnicas`, porque id se reusa.</summary>
-	private void EsquecerG9(int id) => _sigiloPronto.Remove(id);
+	private void EsquecerG9(int id)
+	{
+		_sigiloPronto.Remove(id);
+		EsquecerOPoderEmUso(id);   // ...e o sigilo ligado de proposito, com o retrato que a tela recebeu -- ver GameServer.PoderEmUso.cs
+	}
 
 	/// <summary>
 	/// `sleep(50)` (`Power Control.dm:76` e `:81`) -- CINCO segundos entre ligar e desligar.
@@ -230,24 +238,33 @@ public sealed partial class GameServer
 	/// O `if(canconceal)` do DM e uma trava de UMA ponta: ela e checada antes de qualquer troca e
 	/// re-armada 5 s depois, valendo pros dois sentidos. Aqui e um instante por jogador, que da o
 	/// mesmo comportamento sem prender uma linha de execucao dormindo.
+	///
+	/// O QUE SE ALTERNA E A VONTADE DE QUEM JOGA (`_escondendoOPoder`), E NAO O CAMPO DA FICHA: o
+	/// `isconcealed` tem outros escritores neste port (a invisibilidade, o Sneak, o embate de Zanzoken, todos
+	/// pelo `_invisiveis`), e inverter o campo MOSTRAVA o poder de quem apertasse isto ja sumido. O campo fica
+	/// ligado enquanto qualquer um dos dois o quiser -- ver `GameServer.PoderEmUso.cs`.
 	/// </summary>
 	private void OcultarPoderG9(ServerPlayer pl)
 	{
+		// (caido nao mexe no proprio poder -- e a recusa vem ANTES de gastar a trava de 5 s)
+		if (PorQueNaoMexeNoPoder(pl) is { Length: > 0 } nao) { Avisar(pl, nao); return; }
+
 		// `else to_chat(src, "You can't do that yet.")` (`:83`)
-		if (EmEspera(pl, _sigiloPronto, "ainda nao da")) return;
+		if (EmEspera(pl, _sigiloPronto, "ainda não dá")) return;
 		long agora = NowMs();
 
 		_sigiloPronto[pl.Id] = agora + EsperaDoSigiloMs;
-		pl.Ficha.isconcealed = !pl.Ficha.isconcealed;
+		bool esconde = !_escondendoOPoder.Remove(pl.Id);
+		if (esconde) _escondendoOPoder.Add(pl.Id);
+		pl.Ficha.isconcealed = esconde || _invisiveis.Contains(pl.Id);
 
-		Avisar(pl, pl.Ficha.isconcealed
-			? "voce esconde o seu poder. Leva cinco segundos pra voltar a mostra-lo."
-			: "voce deixa de esconder o seu poder. Leva cinco segundos pra esconde-lo de novo.");
+		Avisar(pl, esconde
+			? "você esconde o seu poder: ninguém mais sente a sua energia, e ele fica travado no mínimo. Leva cinco segundos pra voltar a mostrá-lo."
+			: "você deixa de esconder o seu poder. Leva cinco segundos pra escondê-lo de novo.");
 
-		// A FICHA VAI JUNTO: `isconcealed` muda o BP que o mundo LE (`Fighter.Power.cs:86`) e a
-		// defesa (`Fighter.Statify.cs:42`). Sem o reenvio o proprio dono continuaria vendo o numero
-		// velho ate a proxima ficha lenta.
-		MandarFicha(pl);
+		// O PODER, A FICHA E O RETRATO VAO JUNTO, NA HORA: `isconcealed` muda o BP que o mundo LE
+		// (`Fighter.Power.cs`), a regeneracao de Ki e o dreno de vigor (`Fighter.Statify.cs`, `Nutricao.cs`).
+		AoMexerNoPoder(pl);
 	}
 
 	// =====================================================================
@@ -275,7 +292,13 @@ public sealed partial class GameServer
 	/// ============================================================================================
 	///
 	/// `numb = min(numb,100)` e `max(1,numb)` (`:179-180`): a caixa aceita qualquer numero e a
-	/// faixa util e 1..100. So BAIXA -- pedir mais do que se tem agora nao levanta nada (`:182`).
+	/// faixa util e 1..100. So BAIXA -- e isto e DIVERGENCIA DECLARADA de `:185`: la a ultima linha escreve
+	/// `numb` de qualquer jeito, e pedir mais do que se expressa SOBE na hora, contra a propria caixa (*"You can
+	/// only use this to set your power lower than it is"*). Aqui vale a caixa. A conta mora em
+	/// `Core.Stats.PoderEmUso` (<see cref="Jandirus.Core.Stats.PoderEmUso.Baixar"/>).
+	///
+	/// O VERBO SEM NUMERO (o botao da aba Skills, uma tecla ligada a ele) nao mexe em nada: o numero se escolhe
+	/// na faixa "Poder em uso" da aba Ki (`Client/MenuJogo.PoderEmUso.cs`), e a resposta diz isso.
 	/// </summary>
 	private void ControleDePoderG9(ServerPlayer pl, string arg)
 	{
@@ -283,24 +306,27 @@ public sealed partial class GameServer
 							 System.Globalization.CultureInfo.InvariantCulture, out double pedido)
 			|| !NumeroFinito(pedido))   // `Power_Control:NaN` escrevia `powerMod = NaN`: ver `NumeroFinito`
 		{
-			Avisar(pl, $"seu poder esta em {pl.Ficha.powerMod * 100:0}%. Use Power_Control:<1 a 100>.");
+			Avisar(pl, $"você está usando {Jandirus.Core.Stats.PoderEmUso.Porcento(pl.Ficha)}% do seu poder. "
+					 + "Pra escolher quanto usar, abra a aba Ki do menu.");
 			return;
 		}
 
-		double alvo = Math.Max(1, Math.Min(pedido, 100)) / 100;
+		// (caido nao mexe no proprio poder -- ver `PorQueNaoMexeNoPoder`)
+		if (PorQueNaoMexeNoPoder(pl) is { Length: > 0 } nao) { Avisar(pl, nao); return; }
 
-		// `while(... usr.powerMod > numb ...)` (`:181`): pedir MAIS do que se expressa agora nao faz
-		// nada. Quem quer subir carrega -- e a segunda etapa do power-up.
-		if (alvo >= pl.Ficha.powerMod)
+		double alvo = Jandirus.Core.Stats.PoderEmUso.FracaoDoPedido(pedido);
+
+		// Pedir MAIS do que se expressa agora nao faz nada. Quem quer subir carrega -- e a segunda etapa do
+		// power-up -- ou fica pronto (`AlternarProntidao`).
+		if (!Jandirus.Core.Stats.PoderEmUso.Baixar(pl.Ficha, alvo))
 		{
-			Avisar(pl, $"isso nao BAIXA nada: voce ja expressa {pl.Ficha.powerMod * 100:0}%. "
-					 + "Pra subir, carregue (tecla C).");
+			Avisar(pl, $"isso não BAIXA nada: você já usa {Jandirus.Core.Stats.PoderEmUso.Porcento(pl.Ficha)}% do seu poder. "
+					 + "Pra subir, carregue (tecla C) -- ou fique pronto.");
 			return;
 		}
 
-		pl.Ficha.powerMod = alvo;
-		Avisar(pl, $"voce segura o proprio poder em {alvo * 100:0}%.");
-		MandarFicha(pl);
+		Avisar(pl, $"você segura o próprio poder em {alvo * 100:0}%.");
+		AoMexerNoPoder(pl);   // o poder expresso, a ficha e o retrato acompanham NA HORA
 		GD.Print($"[server] {pl.Name} baixou o powerMod pra {alvo:0.##}");
 	}
 }

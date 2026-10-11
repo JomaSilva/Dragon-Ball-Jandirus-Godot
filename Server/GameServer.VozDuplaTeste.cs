@@ -172,7 +172,7 @@ public partial class GameServer
 
 		foreach (ServerPlayer p in gente) MoveToZone(p.Id, _vvZona, _vvOuve);
 
-		PorOAdminDePe();
+		ConferirQuemEAdminNaVozDupla();
 
 		EspiaoDaVoz = ContarEntregaDupla;
 
@@ -180,55 +180,30 @@ public partial class GameServer
 		_vdViraEm = NowMs();
 	}
 
-	/// <summary>A bancada promoveu a conta do ouvinte? Entao ela TEM que rebaixa-la no fim.</summary>
-	private bool _vdPromoveu;
-
 	/// <summary>
-	/// ============================ O ADMIN, E POR QUE ELE NAO E DE GRACA AQUI ============================
+	/// ============================ QUEM E ADMIN AQUI, E O CONTRA-EXEMPLO DE F7 ============================
 	/// F7 diz *"o admin consegue calar"*, e quem confere isso e o funil do verb (`EhAdmin`, em
-	/// `GameServer.Verbos.cs`). So que **esta bancada desarma o admin do proprio anfitriao, de proposito
-	/// e por uma regra que este servidor tem**: duas contas chegando por endereco local desligam o "admin
-	/// por endereco" na hora (ver `ConferirAmbiguidadeDeHost`) -- porque atras de um tunel *todo mundo*
-	/// e local, e continuar dando admin por endereco seria dar admin a estranhos. Dois processos na mesma
-	/// maquina sao exatamente esse caso.
+	/// `GameServer.Verbos.cs`). O admin desta bancada e o OUVINTE, e ela nao faz nada pra isso: e ele quem
+	/// HOSPEDA, e quem hospeda entra administrador pela prova do anfitriao (`GameServer.Anfitriao.cs`). O
+	/// FALANTE discou de outro processo da MESMA maquina e nao e admin -- endereco local nao prova nada.
 	///
-	/// Entao a bancada faz o que o proprio aviso do servidor manda fazer: **promove a conta**, que poe a
-	/// marca no DISCO e vale de qualquer endereco. Pelo `AdminPromover`, que e a funcao do painel -- e
-	/// nao escrevendo `PoderesConcedidos` na mao, que provaria um bit e nao um caminho.
-	///
-	/// E ANTES DE PROMOVER ela tenta calar SEM ser admin. E o contra-exemplo de F7, e ele so existe nesta
-	/// janela: sem ele, "o admin cala" ficaria verde num servidor que deixasse qualquer um calar.
+	/// Entao o contra-exemplo e do falante: antes de qualquer mute de verdade ele tenta calar o ouvinte, e
+	/// o funil recusa antes do verb. Sem isto, "o admin cala" ficaria verde num servidor que deixasse
+	/// qualquer um calar -- ou num que desse admin a quem chega de 127.0.0.1.
 	/// ==================================================================================================
 	/// </summary>
-	private void PorOAdminDePe()
+	private void ConferirQuemEAdminNaVozDupla()
 	{
-		if (!EhAdmin(_vdOuvinte!))
-		{
-			Verbo(_vdOuvinte!, "admin_calar", _vdFalante!.Name);
-			ChecaVd("F7 (contra-exemplo) quem NAO e admin nao cala ninguem -- o funil recusa antes do verb",
-				!EstaCalado(_vdFalante), _vdFalante.Conta);
-
-			AdminPromover(_vdOuvinte!, _vdOuvinte!.Conta, virar: true);
-			_vdPromoveu = true;
-		}
+		Verbo(_vdFalante!, "admin_calar", _vdOuvinte!.Name);
+		bool calou = EstaCalado(_vdOuvinte);
+		ChecaVd("F7 (contra-exemplo) quem NAO e admin nao cala ninguem -- o funil recusa antes do verb",
+			!EhAdmin(_vdFalante!) && !calou, $"{_vdFalante!.Conta}: admin {EhAdmin(_vdFalante)}, calou {calou}");
+		// SE ATRAVESSOU, DESFAZ: o `admin_calar` grava no DISCO, e a conta do ouvinte comecaria muda a
+		// rodada seguinte.
+		if (calou) Verbo(_vdOuvinte, "admin_calar", _vdOuvinte.Name);
 
 		ChecaVd("F7 o ouvinte e admin -- e quem cala tem que ser admin de verdade",
-			EhAdmin(_vdOuvinte!), _vdOuvinte!.Conta);
-	}
-
-	/// <summary>
-	/// DEVOLVE A CONTA COMO ELA ESTAVA. Quem rebaixa e o FALANTE e nao o proprio ouvinte: `AdminPromover`
-	/// recusa que o unico administrador marcado se rebaixe sozinho (um servidor sem admin nenhum e um
-	/// servidor que so se conserta mexendo no JSON com o jogo fechado), e essa recusa deixaria a conta da
-	/// bancada administradora pra sempre.
-	/// </summary>
-	private void TirarOAdminDePe()
-	{
-		if (!_vdPromoveu) return;
-		_vdPromoveu = false;
-		AdminPromover(_vdFalante!, _vdOuvinte!.Conta, virar: false);
-		ChecaVd("(volta) a conta do ouvinte deixou de ser administradora",
-			!EhAdmin(_vdOuvinte), _vdOuvinte.Conta);
+			EhAdmin(_vdOuvinte), _vdOuvinte.Conta);
 	}
 
 	// =====================================================================
@@ -427,7 +402,6 @@ public partial class GameServer
 				Verbo(_vdOuvinte, "admin_calar", _vdFalante.Name);
 				ChecaVd("F7 (volta) solto o mute, a marca sai do funil",
 					!EstaCalado(_vdFalante));
-				TirarOAdminDePe();
 
 				AnunciarFaseDupla("fim", 0, false, false);
 				CorteQuebradoDeTeste = null;

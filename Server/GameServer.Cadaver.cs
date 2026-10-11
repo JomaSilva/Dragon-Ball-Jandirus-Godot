@@ -527,6 +527,15 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool ErguerALapide(ServerPlayer quemCava, ServerPlayer corpo, string epitafio)
 	{
+		// A LAPIDE E OBRA GRAVADA, e onde nao se constroi nao se abre cova: a nave, a mente, o bolso da fusao, o selo
+		// e o interior de um Majin acabam com quem os sustenta, e a lapide ficaria gravada num lugar onde ninguem
+		// mais entra (ou apareceria na mente de outra pessoa). A mesma pergunta do `Posicionar`: `LugarDeObra`.
+		if (!Jandirus.Core.World.LugarDeObra.Aceita(corpo.Zone))
+		{
+			Avisar(quemCava, "não dá pra abrir uma cova aqui: este lugar não fica, e a lápide se perderia com ele.");
+			return false;
+		}
+
 		// NAO EMPILHA -- a mesma guarda do `Assentar`, e ela e a que faz um cemiterio ser um cemiterio
 		// em vez de cinco lapides no mesmo pixel. Meio tile de folga, como la.
 		if (_noChao.Any(o => o.Zona.Equals(corpo.Zone)

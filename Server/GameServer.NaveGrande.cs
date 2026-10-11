@@ -40,17 +40,8 @@ public partial class GameServer
 	// =====================================================================
 	// O INTERIOR
 	// =====================================================================
-	/// <summary>
-	/// A COLISAO DO INTERIOR -- a mesma pra toda nave. Ver o cabecalho de <see cref="NaveGrande"/>
-	/// pro porque compartilhar uma instancia mutavel e seguro aqui, e pra lista do que conferir no
-	/// dia em que deixar de ser.
-	///
-	/// Chamado pelo <see cref="MapaDaZonaOuCatalogo"/>, que e o funil unico de "onde ha parede
-	/// nesta zona". Sem esta linha o interior seria uma zona SEM colisao: o `ValidateStep` aprovaria
-	/// qualquer passo e daria pra sair da nave andando pelo vazio.
-	/// </summary>
-	private static ZoneCollision? MapaDoInterior(ZoneKey zona) =>
-		NaveGrande.EhInterior(zona, out _) ? NaveGrande.Planta().Colisao : null;
+	// A COLISAO DO INTERIOR e a da INSTANCIA de cada nave, tirada da planta unica (`NaveGrande.Planta`) pelo
+	// funil de todo interior -- o tipo "nave" de `TiposDeInterior`, em `GameServer.Interiores.cs`.
 
 	/// <summary>A nave em cujo interior este corpo esta, ou nula.</summary>
 	private Nave? NaveDesteInterior(ServerPlayer pl) =>

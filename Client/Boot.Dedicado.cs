@@ -18,7 +18,8 @@ namespace Jandirus.Client;
 /// ============================ O CRITERIO: SO ARGUMENTOS DE PRODUCAO ============================
 /// Um processo e um servidor dedicado de PRODUCAO quando foi aberto com `--server` e NADA na linha de comando
 /// foge da lista de producao: o que o `servidor.bat` passa (`--headless --path . --server --port N`), o
-/// `--sem-admin-local`, e um punhado de opcoes do motor que nao mexem no mundo (onde a janela abre, o log).
+/// `--admin <conta>` (quem liga o servidor nomeia o administrador: `GameServer.Anfitriao.cs`), e um punhado
+/// de opcoes do motor que nao mexem no mundo (onde a janela abre, o log).
 ///
 /// Toda bancada deste projeto se liga por um argumento proprio (`--paradateste`, `--diagqueda`, `--bercovivo`,
 /// `--mundoprova`...), e nenhum deles esta na lista -- entao qualquer argumento DESCONHECIDO faz do processo
@@ -35,14 +36,14 @@ public partial class Boot
 	/// <summary>Os argumentos de producao que valem sozinhos: os do jogo e os do motor que nao mexem no mundo.</summary>
 	private static readonly HashSet<string> ArgumentosDeProducao = new(StringComparer.Ordinal)
 	{
-		"--server", "--sem-admin-local",
+		"--server",
 		"--headless", "--verbose", "-v", "--quiet", "-q", "--windowed", "-w", "--minimized",
 	};
 
 	/// <summary>Os argumentos de producao que levam um valor logo depois (a porta, a pasta do projeto, onde a janela abre...).</summary>
 	private static readonly HashSet<string> ArgumentosDeProducaoComValor = new(StringComparer.Ordinal)
 	{
-		"--port",
+		"--port", Jandirus.Server.GameServer.FlagDoAdmin,
 		"--path", "--position", "--resolution", "--audio-driver", "--display-driver", "--rendering-driver", "--log-file",
 	};
 

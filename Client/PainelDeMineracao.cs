@@ -176,7 +176,11 @@ public partial class PainelDeMineracao : CanvasLayer
 		_saldo.Text = $"você tem {cli.Recursos:N0}";
 		// "DO PLANETA", SEM O NOME: o nome que o cliente tem (o da zona, "Earth") nao e o que o servidor fala no
 		// chat ao comecar ("Reserva de Terra: 100%") -- seriam dois nomes pro mesmo chao na mesma tela.
-		_reserva.Text = m.Ativa ? $"reserva do planeta: {TextoDaReserva(m.Reserva)}" : "";
+		//
+		// NA CAVERNA ELA DIZ QUE O CHAO E DO PLANETA (dono, 2026-10-11): o numero que desce e o da reserva dele, a
+		// mesma de quem minera la fora, e sem a frase a barra pareceria ser "a reserva da caverna".
+		string deQuem = Jandirus.Core.World.Cavernas.EhCaverna(cli.Zone) ? "reserva do planeta (esta caverna tira dela)" : "reserva do planeta";
+		_reserva.Text = m.Ativa ? $"{deQuem}: {TextoDaReserva(m.Reserva)}" : "";
 		_barra.Visible = m.Ativa;
 		_barra.Value = Math.Clamp(m.Reserva, 0, 1);
 		_cheio.BgColor = m.Reserva > 0.5f ? Tema.Bom : m.Reserva > 0.15f ? Tema.Destaque : Tema.Perigo;
@@ -184,7 +188,8 @@ public partial class PainelDeMineracao : CanvasLayer
 
 	/// <summary>
 	/// A RESERVA EM PORCENTO, arredondada PRA BAIXO e com uma casa: "100%" so com ela cheia de verdade. Num
-	/// planeta de meio milhao um minuto de furadeira tira 0,1%, e "100%" na tela diria que minerar nao gasta o chao.
+	/// planeta de dois milhoes e meio um minuto de furadeira tira 0,03%, e "100%" na tela diria que minerar nao
+	/// gasta o chao.
 	/// </summary>
 	internal static string TextoDaReserva(float fracao) =>
 		fracao >= 1f ? "100%" : $"{Math.Floor(Math.Max(fracao, 0f) * 1000) / 10:0.0}%";

@@ -164,7 +164,7 @@ public partial class GameServer
 	private static bool Perto(double a, double b, double folga = 0.01) => Math.Abs(a - b) <= folga;
 
 	private int CelulasCaidasG10(ZoneKey zona)
-		=> _cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? c) ? c.Count : 0;
+		=> _cenarioCaido.TryGetValue(ChaveDeEstado(zona), out HashSet<(int X, int Y)>? c) ? c.Count : 0;
 
 	// =====================================================================
 	// 1) O CATALOGO E A FRONTEIRA

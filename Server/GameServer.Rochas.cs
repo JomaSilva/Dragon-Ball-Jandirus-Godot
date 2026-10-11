@@ -166,6 +166,13 @@ public sealed partial class GameServer
 	///
 	/// FORA DE PLANETA O RETRATO SAI VAZIO, e sai sempre: e ele quem diz a tela "aqui nao ha rocha nenhuma",
 	/// em vez de ela ficar com a lista do planeta de onde veio.
+	///
+	/// A CAVERNA DE UM PLANETA TAMBEM SAI VAZIA, e de proposito (2026-10-11, quando ela passou a ter reserva --
+	/// a do planeta-mae, ver `Cavernas`): la dentro se minera e se assenta Drill, e ROCHA NAO NASCE. A regra da
+	/// rocha e a ceu aberto (`RochaDeMinerio.ChaoServe`) e a caverna e teto inteira; e o original nao tem no de
+	/// minerio nos andares das cavernas (`Maps/1to26.dmm`: os `matspawners/Ore` estao em doze andares, e
+	/// nenhum e o z22 nem o z23). Por isso o crivo daqui e "e planeta?" (<see cref="Espaco.EhPlaneta"/>), e
+	/// NAO "tem reserva?" -- trocar um pelo outro poria um campo de rochas em cada caverna.
 	/// </summary>
 	private bool ReceberNoPlaneta(ServerPlayer pl, long agora)
 	{
@@ -189,8 +196,9 @@ public sealed partial class GameServer
 
 	/// <summary>
 	/// O CAMPO DE ROCHAS DE UM PLANETA, criado na primeira vez que alguem pisa nele. Nulo onde nao ha reserva
-	/// -- e a reserva e quem diz o que e planeta (<see cref="ReservaDe"/>): o Mirante, o alem, a Sala do
-	/// Tempo, interior de nave e o espaco ficam de fora por ela.
+	/// (<see cref="ReservaDe"/>): o Mirante, o alem, a Sala do Tempo, interior de nave e o espaco ficam de fora
+	/// por ela. A CAVERNA tem reserva -- a do planeta-mae -- e nao chega aqui: quem chama
+	/// (<see cref="ReceberNoPlaneta"/>) so pergunta por zona que e PLANETA.
 	/// </summary>
 	private CampoDeRochas? CampoDe(ZoneKey zona, ZoneCollision mapa)
 	{

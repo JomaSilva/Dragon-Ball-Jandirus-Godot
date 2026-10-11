@@ -1,7 +1,4 @@
-﻿using System.Net;
-using System.Net.NetworkInformation;
-using System.Net.Sockets;
-using Godot;
+﻿using Godot;
 using Jandirus.Core.Forms;
 using Jandirus.Core.World;
 using Jandirus.Net;
@@ -14,12 +11,12 @@ namespace Jandirus.Server;
 /// ADMINISTRACAO: quem pode, e o que pode.
 ///
 /// ============================ AS DUAS PORTAS DE ENTRADA ============================
-/// 1. O HOST. Quem conecta da MESMA MAQUINA em que o servidor roda entra administrador. E o
-///    pedido do dono, dito com estas palavras: "o server detecta que o ip do player que conectou
-///    e do server sao os mesmos, logo ele ta conectando por ip local, logo e o host, logo e adm".
-///    Faz sentido e o original ja fazia por outro caminho (o `Login.dm` dava nivel 6 a quem
-///    subia o mundo): quem tem o processo na propria maquina ja pode desligar tudo e editar o
-///    disco -- negar-lhe os verbs seria teatro.
+/// 1. O ANFITRIAO. Quem clicou em "Hospedar partida" entra administrador -- e SO ele. O dono
+///    (2026-10-11): "faca o adm ser so pra quem clicou em hospedar". Quem o reconhece e uma prova
+///    sorteada a cada hospedagem e entregue por dentro do processo, e nao o endereco da conexao
+///    (era: "mesmo IP = mesma maquina = host", e atras de um tunel todo jogador chega como
+///    127.0.0.1). Ver `GameServer.Anfitriao.cs`. Num servidor dedicado nao ha anfitriao: o primeiro
+///    admin vem do `--admin <conta>` de quem liga o servidor.
 ///
 /// 2. A CONTA MARCADA. Um admin pode promover OUTRA pessoa, e a marca fica no arquivo da conta
 ///    dela (<see cref="AccountSave.Admin"/>), do lado do hash da senha. E o modelo do original,
@@ -42,178 +39,6 @@ namespace Jandirus.Server;
 /// </summary>
 public sealed partial class GameServer
 {
-	// =====================================================================
-	// QUEM E O HOST
-	// =====================================================================
-	/// <summary>
-	/// OS ENDERECOS DESTA MAQUINA, calculados uma vez.
-	///
-	/// Nao basta olhar o loopback. Quem hospeda pelo botao conecta em `127.0.0.1`, mas quem sobe o
-	/// `servidor.bat` e depois abre o jogo costuma digitar o IP da propria rede ("192.168.0.10") --
-	/// e a conexao chega com ESSE endereco, nao com o loopback. Sao a mesma maquina, e a regra
-	/// pedida foi de maquina, nao de string.
-	///
-	/// Calculado uma vez e guardado: varrer as interfaces de rede a cada login seria uma chamada
-	/// de sistema por conexao pra uma resposta que so muda quando o cabo muda.
-	/// </summary>
-	private static readonly HashSet<string> EnderecosLocais = LevantarEnderecosLocais();
-
-	private static HashSet<string> LevantarEnderecosLocais()
-	{
-		var s = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-		try
-		{
-			foreach (NetworkInterface ni in NetworkInterface.GetAllNetworkInterfaces())
-			{
-				if (ni.OperationalStatus != OperationalStatus.Up) continue;
-				foreach (UnicastIPAddressInformation ip in ni.GetIPProperties().UnicastAddresses)
-					s.Add(Normalizar(ip.Address));
-			}
-		}
-		catch (Exception e)
-		{
-			// SEM AS INTERFACES O JOGO CONTINUA: o loopback sozinho ainda cobre quem hospeda pelo
-			// botao, que e o caso comum. Falhar aqui nao pode impedir o servidor de subir.
-			GD.PushWarning($"[server] nao consegui listar os enderecos desta maquina: {e.Message}");
-		}
-		return s;
-	}
-
-	/// <summary>
-	/// Um endereco em forma comparavel.
-	///
-	/// O socket do servidor e dual-stack, entao uma conexao IPv4 chega MAPEADA em IPv6
-	/// ("::ffff:192.168.0.10"). Comparar sem desmapear faria o mesmo micro parecer duas maquinas.
-	/// O escopo do IPv6 local ("%15" no fim) tambem sai: e o indice da placa, nao o endereco.
-	/// </summary>
-	private static string Normalizar(IPAddress a)
-	{
-		if (a.IsIPv4MappedToIPv6) a = a.MapToIPv4();
-		if (a.AddressFamily == AddressFamily.InterNetworkV6 && a.ScopeId != 0)
-			a = new IPAddress(a.GetAddressBytes());
-		return a.ToString();
-	}
-
-	/// <summary>
-	/// HOSPEDOU, E ADMIN: a conexao vem da mesma maquina em que este servidor roda.
-	///
-	/// Vale pros DOIS jeitos de subir o servidor -- pelo botao "Hospedar" e pelo `servidor.bat`.
-	/// A versao anterior exigia o botao, e por isso quem rodava o `.bat` e entrava pelo IP da
-	/// propria rede nunca era reconhecido.
-	/// </summary>
-	private bool EhHost(NetPeer? peer)
-	{
-		if (peer == null || !AdminPorEndereco) return false;
-		IPAddress a = peer.Address;
-		if (IPAddress.IsLoopback(a)) return true;
-		return EnderecosLocais.Contains(Normalizar(a));
-	}
-
-	/// <summary>
-	/// O ENDERECO AINDA PROVA ALGUMA COISA?
-	///
-	/// ============================ POR QUE ISTO PODE SER DESLIGADO ============================
-	/// A regra pedida foi "mesmo IP = mesma maquina = host = admin", e ela vale num PC de dono
-	/// unico. Mas o endereco so identifica maquina enquanto ninguem estiver traduzindo endereco no
-	/// meio do caminho -- e hospedar jogo pra amigos quase sempre passa por isso:
-	///
-	///   * um tunel (playit.gg, ngrok, um `socat`) entrega TODO jogador como 127.0.0.1;
-	///   * o proxy de userland do Docker entrega todo mundo como o gateway da bridge;
-	///   * numa maquina compartilhada, qualquer outra pessoa logada ja e "local".
-	///
-	/// Nesses casos o mundo inteiro entraria administrador. Por isso duas coisas: a chave abaixo,
-	/// e o desarme automatico do <see cref="ConferirAmbiguidadeDeHost"/> -- se DUAS contas
-	/// diferentes chegam por endereco local ao mesmo tempo, o endereco deixou de distinguir
-	/// qualquer coisa e para de valer na hora.
-	/// =========================================================================================
-	///
-	/// Desligada por `--sem-admin-local`. Quem hospeda atras de tunel deve ligar isso e promover a
-	/// propria conta uma vez (a marca fica no disco e vale de qualquer endereco).
-	/// </summary>
-	public bool AdminPorEndereco { get; private set; } = true;
-
-	public void DesligarAdminPorEndereco() => AdminPorEndereco = false;
-
-	/// <summary>
-	/// O DESARME AUTOMATICO JA ACONTECEU NESTA SESSAO. E o que separa "a chave caiu pela ambiguidade" (da sessao:
-	/// some quando o servidor para, ver `GameServer.Parada.cs`) de "a chave foi desligada pelo
-	/// `--sem-admin-local`" (do processo: fica).
-	/// </summary>
-	private bool _enderecoAmbiguo;
-
-	/// <summary>
-	/// DEFEITO INJETADO (bancada `--adminlocalteste`): a ordem de antes de 2026-10-11 -- o login CONCEDE o admin
-	/// pelo endereco e so depois confere a ambiguidade, e quem DISPARA o desarme sai administrador (o laco que
-	/// tira o bit so ve quem ja esta no mundo). Lido pela propria linha do conserto, em <see cref="ConcederPoderes"/>.
-	/// </summary>
-	internal bool AdminConcedeAntesDeConferirDeTeste;
-
-	/// <summary>
-	/// DEFEITO INJETADO (bancada `--adminlocalteste`): o caderno de antes, que nao esquecia -- esta conta, que ja
-	/// SAIU do jogo, continua contando como "outra conta local", e contas em SEQUENCIA desarmam a chave. Lido
-	/// pela propria linha do conserto, em <see cref="ConferirAmbiguidadeDeHost"/>.
-	/// </summary>
-	internal string? AdminLembraDeQuemSaiuDeTeste;
-
-	/// <summary>
-	/// ESTA ENTRADA VALE COMO A DO DONO DA MAQUINA? Conferido ANTES de conceder qualquer coisa -- e e aqui que
-	/// a regra de endereco se DESARMA quando deixa de distinguir alguem.
-	///
-	/// Uma maquina de dono unico produz exatamente UMA conta local de cada vez. Duas contas diferentes vindo
-	/// de endereco local ao mesmo tempo so acontece em dois mundos: alguem tem tunel/proxy na
-	/// frente (e entao "local" e todo mundo) ou a maquina e compartilhada. Nos dois, continuar
-	/// dando admin por endereco e dar admin a estranhos.
-	///
-	/// ============================ AS TRES REGRAS ============================
-	///   1. "AO MESMO TEMPO" E LITERAL. Quem responde "ha outra conta local?" e o `_contas` -- as contas que
-	///      estao EM JOGO agora, e que o `Drop` tira na saida. Nao ha caderno a parte pra alguem esquecer de
-	///      apagar: havia (`_contasLocais`), ele nunca esquecia, e o dono que jogava com uma conta e depois com
-	///      outra na propria maquina desarmava a propria chave.
-	///   2. O DESARME VALE PRA TODOS, INCLUSIVE PRA QUEM O DISPARA. A ordem antiga concedia o bit e SO ENTAO
-	///      conferia -- e o laco que tira o bit varre `_players`, onde quem esta entrando ainda nao esta. O
-	///      resultado era o contrario do que a regra existe pra fazer: atras de um tunel, o primeiro de fora
-	///      entrava ADMINISTRADOR e o dono perdia (MEDIDO na `--paradateste`, 2026-10-11).
-	///   3. DESARMOU, FICA DESARMADO ATE O SERVIDOR PARAR. A segunda conta sair nao rearma: o que a ambiguidade
-	///      provou (ha mais gente chegando "de dentro") continua verdade, e rearmar daria o admin ao proximo
-	///      que entrasse sozinho. Quem e o dono de verdade continua admin pela MARCA NA CONTA
-	///      (<see cref="AccountSave.Admin"/>, que ele mesmo pode dar a propria conta pelo painel enquanto esta
-	///      sozinho) -- e quem hospeda atras de tunel deve usar o `--sem-admin-local`.
-	/// =======================================================================
-	///
-	/// Quem ja tinha recebido pelo endereco PERDE na hora -- inclusive quem estava jogando. E incomodo, e e
-	/// menos incomodo que descobrir depois que o servidor inteiro pode banir o dono.
-	/// </summary>
-	private bool ConferirAmbiguidadeDeHost(NetPeer peer, AccountSave acc)
-	{
-		if (!EhHost(peer)) return false;   // a chave esta desligada, ou a conexao vem de fora
-
-		string? outra = _contas.Where(kv => EhHost(kv.Key) && !string.Equals(kv.Value.Conta, acc.Conta, StringComparison.OrdinalIgnoreCase))
-							   .Select(kv => kv.Value.Conta).FirstOrDefault();
-		if (outra == null && AdminLembraDeQuemSaiuDeTeste is { } saiu && !string.Equals(saiu, acc.Conta, StringComparison.OrdinalIgnoreCase))
-			outra = saiu;
-		if (outra == null) return true;
-
-		AdminPorEndereco = false;
-		_enderecoAmbiguo = true;
-		GD.PushWarning($"[server] DUAS contas por endereco local ao mesmo tempo ('{outra}' ja estava em jogo, '{acc.Conta}' chegou) -- "
-					 + "o endereco nao identifica mais a maquina do dono (tunel? proxy? maquina compartilhada?). "
-					 + "Admin por endereco DESLIGADO ate o servidor reiniciar, inclusive pra quem acabou de chegar. "
-					 + "Promova a conta do dono pelo painel, que a marca vai pro disco.");
-
-		foreach (ServerPlayer p in _players.Values.ToList())
-		{
-			// quem tem a marca NA CONTA nao perde nada: o admin dele nao vinha do endereco
-			bool porConta = _contas.Values.Any(
-				c => string.Equals(c.Conta, p.Conta, StringComparison.OrdinalIgnoreCase) && c.Admin);
-			if (porConta || !EhAdmin(p)) continue;
-			p.PoderesConcedidos &= ~Protocol.Poder.Admin;
-			AplicarPoderes(p);
-			Avisar(p, "o admin por endereço foi desligado: outra conta entrou desta mesma máquina. Ele só volta quando o "
-					+ "servidor reiniciar -- uma conta promovida pelo painel continua admin de qualquer endereço.");
-		}
-		return false;
-	}
-
 	private static bool EhAdmin(ServerPlayer pl) => (pl.Poderes & Protocol.Poder.Admin) != 0;
 
 	// =====================================================================
@@ -258,14 +83,12 @@ public sealed partial class GameServer
 	/// </summary>
 	private void ConcederPoderes(ServerPlayer pl, NetPeer peer, AccountSave acc)
 	{
-		// PRIMEIRO CONFERE, DEPOIS CONCEDE: o endereco so vale enquanto distinguir alguem, e quem chega junto com
-		// outra conta local nunca recebe o bit -- nem por um pacote. Ver `ConferirAmbiguidadeDeHost`. (A resposta
-		// de ANTES da conferencia so existe pro defeito injetado da bancada: e a ordem antiga.)
-		bool chegouDeDentro = EhHost(peer);
-		if (ConferirAmbiguidadeDeHost(peer, acc) || (AdminConcedeAntesDeConferirDeTeste && chegouDeDentro))
+		// O ADMIN AUTOMATICO E SO DA CONEXAO DE QUEM HOSPEDA -- a que provou, no aperto de mao, ser a do cliente
+		// do mesmo processo. Nenhum endereco da admin a ninguem. Ver `EhHost` (GameServer.Anfitriao.cs).
+		if (EhHost(peer))
 		{
 			pl.PoderesConcedidos |= Protocol.Poder.Admin;
-			GD.Print($"[server] {pl.Name} conectou de {peer.Address} -- e a maquina do servidor: entra como ADMIN");
+			GD.Print($"[server] {pl.Name} e quem hospeda esta partida: entra como ADMIN");
 		}
 		else if (acc.Admin)
 		{
@@ -494,8 +317,8 @@ public sealed partial class GameServer
 
 		// NAO SE BANE ADMINISTRADOR -- e a pergunta e pelo PODER, nao pela marca no arquivo.
 		//
-		// A guarda antiga olhava so `a.Admin`, e o host nao tem essa marca: o admin dele vem do
-		// endereco. Ou seja, um amigo recem-promovido podia banir o DONO do servidor, que era
+		// A guarda antiga olhava so `a.Admin`, e o host nao tem essa marca: o admin dele vem de
+		// ele hospedar. Ou seja, um amigo recem-promovido podia banir o DONO do servidor, que era
 		// derrubado na hora e barrado no `Login` seguinte -- antes de qualquer linha de
 		// "o host nunca perde" ter chance de rodar.
 		if (banir && (a.Admin || EstaOnlineComoAdmin(a.Conta)))
@@ -622,6 +445,8 @@ public sealed partial class GameServer
 			case "admin_estrela": AdminIrParaAEstrela(pl); break;
 			// "me poe em orbita do mundo de atmosfera divina mais proximo" -- ver GameServer.GodKi.cs.
 			case "admin_mundo_divino": AdminIrParaOMundoDivino(pl); break;
+			// "me poe em orbita do mundo com Sala do Tempo mais proximo" (ou lista, no chao) -- ver GameServer.SalasDePlaneta.cs.
+			case "admin_sala_do_tempo": AdminIrParaASalaDoTempo(pl, arg); break;
 
 			// ---------------------------------------------------------- sobre mim
 			case "admin_invisivel": AdminInvisivel(pl); break;
@@ -1413,7 +1238,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void AdminConsertarCenario(ServerPlayer adm)
 	{
-		if (!_cenarioCaido.TryGetValue(adm.Zone.Name, out HashSet<(int X, int Y)>? caidas) || caidas.Count == 0)
+		if (!_cenarioCaido.TryGetValue(ChaveDeEstado(adm.Zone), out HashSet<(int X, int Y)>? caidas) || caidas.Count == 0)
 		{
 			Avisar(adm, "esta zona nao tem cenario quebrado.");
 			return;

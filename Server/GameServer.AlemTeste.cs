@@ -1139,7 +1139,7 @@ public partial class GameServer
 		if (cx < 0) return;
 
 		bool caiu = DerrubarCelula(alem, cx, cy);
-		bool anotada = _cenarioCaido.TryGetValue(alem.Name, out HashSet<(int X, int Y)>? h) && h.Contains((cx, cy));
+		bool anotada = _cenarioCaido.TryGetValue(ChaveDeEstado(alem), out HashSet<(int X, int Y)>? h) && h.Contains((cx, cy));
 		AfirmarAlem("NO OUTRO MUNDO A PAREDE NAO CAI: `DerrubarCelula` recusa pela ZONA (arremesso, raio e terremoto "
 					+ "passam por ela) -- a barreira do Enma fica de pe",
 					!caiu && mapa.BlockedCell(cx, cy) && !anotada, $"caiu={caiu} bloqueada={mapa.BlockedCell(cx, cy)} anotada={anotada}");
@@ -1152,7 +1152,7 @@ public partial class GameServer
 			for (int y = 8; y < mapaT.Height - 8 && tx < 0; y++)
 				for (int x = 8; x < mapaT.Width - 8 && tx < 0; x++)
 					if (mapaT.BlockedCell(x, y) && !mapaT.NaBorda(x, y) && !mapaT.Indestrutivel(x, y)
-						&& !(_cenarioCaido.TryGetValue(terra.Name, out HashSet<(int X, int Y)>? hc) && hc.Contains((x, y))))
+						&& !(_cenarioCaido.TryGetValue(ChaveDeEstado(terra), out HashSet<(int X, int Y)>? hc) && hc.Contains((x, y))))
 						(tx, ty) = (x, y);
 		bool caiuNaTerra = tx >= 0 && DerrubarCelula(terra, tx, ty);
 		AfirmarAlem("...e a MESMA funcao, numa parede da Terra, derruba: a recusa e do LUGAR, nao um `return false` geral",
@@ -1160,7 +1160,7 @@ public partial class GameServer
 		if (caiuNaTerra)
 		{
 			mapaT!.Fechar(tx, ty);
-			_cenarioCaido[terra.Name].Remove((tx, ty));
+			_cenarioCaido[ChaveDeEstado(terra)].Remove((tx, ty));
 		}
 	}
 
@@ -1197,8 +1197,8 @@ public partial class GameServer
 			MoveToZone(pl.Id, alem, new Vec2(porta.X * T + T / 2f, (porta.Y + 1) * T + T / 2f - MoveRules.FeetOffsetY));
 			pl.Facing = Facing.North;
 			pl.Moving = true;
-			bool Aberta() => _portasAbertas.TryGetValue(alem.Name, out Dictionary<(int X, int Y), long>? a) && a.ContainsKey((porta.X, porta.Y));
-			void Fechar() { if (_portasAbertas.TryGetValue(alem.Name, out Dictionary<(int X, int Y), long>? a)) a.Remove((porta.X, porta.Y)); }
+			bool Aberta() => _portasAbertas.TryGetValue(ChaveDeEstado(alem), out Dictionary<(int X, int Y), long>? a) && a.ContainsKey((porta.X, porta.Y));
+			void Fechar() { if (_portasAbertas.TryGetValue(ChaveDeEstado(alem), out Dictionary<(int X, int Y), long>? a)) a.Remove((porta.X, porta.Y)); }
 
 			Fechar();
 			pl.Karma = Karma.Neutro; pl.Ficha.hell_lockout_until = 0;

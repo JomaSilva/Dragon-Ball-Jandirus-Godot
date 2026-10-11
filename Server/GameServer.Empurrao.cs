@@ -715,6 +715,10 @@ public sealed partial class GameServer
 	/// AS CELULAS QUE JA CAIRAM, por zona. Vive em memoria e nao no `.col`: o arquivo e imutavel e
 	/// compartilhado (ver `ZoneCollision`), e o mapa tem que voltar ao normal quando o servidor
 	/// reinicia -- o original tambem nao salvava turf destruido fora do `MapSave`.
+	///
+	/// A CHAVE E A <see cref="ChaveDeEstado"/> DA ZONA, E NUNCA `zona.Name`: o nome e o mesmo pra toda instancia
+	/// de um interior (toda nave e "Nave", toda Sala do Tempo e "Hyperbolic_Time_Chamber") e pra mundos sorteados
+	/// homonimos -- por nome, a parede derrubada numa nave caia em todas. Ver `GameServer.Interiores.cs`.
 	/// </summary>
 	private readonly Dictionary<string, HashSet<(int X, int Y)>> _cenarioCaido =
 		new(StringComparer.OrdinalIgnoreCase);
@@ -933,10 +937,10 @@ public sealed partial class GameServer
 		// esta linha o arremesso e o chao que racha parariam numa arvore que nada derruba. Ver `GameServer.Lenha.cs`.
 		if (ARebrotaCaiNoLugarDaCelula(zona, cx, cy)) return true;
 
-		if (!_cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? caidas))
+		if (!_cenarioCaido.TryGetValue(ChaveDeEstado(zona), out HashSet<(int X, int Y)>? caidas))
 		{
 			caidas = [];
-			_cenarioCaido[zona.Name] = caidas;
+			_cenarioCaido[ChaveDeEstado(zona)] = caidas;
 		}
 		if (!caidas.Add((cx, cy))) return false;
 
@@ -1055,7 +1059,7 @@ public sealed partial class GameServer
 	private void QuebrarCenarioDeTeste(ServerPlayer pl)
 	{
 		const int T = ZoneCollision.TileSize;
-		_cenarioCaido.TryGetValue(pl.Zone.Name, out HashSet<(int X, int Y)>? antes);
+		_cenarioCaido.TryGetValue(ChaveDeEstado(pl.Zone), out HashSet<(int X, int Y)>? antes);
 		int alvo = (antes?.Count ?? 0) + _quebrarDeTeste;
 
 		for (int anel = 0; anel < 12; anel++)
@@ -1066,11 +1070,11 @@ public sealed partial class GameServer
 					if (Math.Abs(dx) != anel && Math.Abs(dy) != anel) continue;   // so a casca
 					RacharChao(pl.Zone, pl.Pos + new Vec2(dx * T, dy * T), 1_000_000);
 				}
-			if (_cenarioCaido.TryGetValue(pl.Zone.Name, out HashSet<(int X, int Y)>? agora)
+			if (_cenarioCaido.TryGetValue(ChaveDeEstado(pl.Zone), out HashSet<(int X, int Y)>? agora)
 				&& agora.Count >= alvo) break;
 		}
 
-		int quantas = _cenarioCaido.TryGetValue(pl.Zone.Name, out HashSet<(int X, int Y)>? fim) ? fim.Count : 0;
+		int quantas = _cenarioCaido.TryGetValue(ChaveDeEstado(pl.Zone), out HashSet<(int X, int Y)>? fim) ? fim.Count : 0;
 		Godot.GD.Print($"[server] BANCADA: {quantas} celula(s) de cenario quebradas em {pl.Zone.Name}");
 
 		MartelarABorda(pl.Zone);
@@ -1095,7 +1099,7 @@ public sealed partial class GameServer
 		if (MapaDaZonaOuCatalogo(zona) is not { } mapa) return;
 		const int T = ZoneCollision.TileSize;
 
-		_cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? antes);
+		_cenarioCaido.TryGetValue(ChaveDeEstado(zona), out HashSet<(int X, int Y)>? antes);
 		int comecou = antes?.Count ?? 0;
 
 		foreach ((int cx, int cy) in new[]
@@ -1110,7 +1114,7 @@ public sealed partial class GameServer
 			DerrubarCenario(zona, onde);
 		}
 
-		int agora = _cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? fim2) ? fim2.Count : 0;
+		int agora = _cenarioCaido.TryGetValue(ChaveDeEstado(zona), out HashSet<(int X, int Y)>? fim2) ? fim2.Count : 0;
 		// O RELATO NAO FALA EM "AGUENTAR". A borda nao tem resistencia nem contador: a destruicao
 		// RECUSA antes de olhar forca (ver `NaBorda` em `RacharChao` e `DerrubarCenario`). As oito
 		// marteladas sao do TESTE, e nao um limite -- oitocentas dariam o mesmo zero.
@@ -1160,7 +1164,7 @@ public sealed partial class GameServer
 	{
 		NetDataWriter w = ComecarCenario(Protocol.CenarioRetrato);
 		w.Put(zona.Hash);
-		HashSet<(int X, int Y)>? caidas = _cenarioCaido.GetValueOrDefault(zona.Name);
+		HashSet<(int X, int Y)>? caidas = _cenarioCaido.GetValueOrDefault(ChaveDeEstado(zona));
 		w.Put(caidas?.Count ?? 0);
 		if (caidas != null)
 			foreach ((int cx, int cy) in caidas) { w.Put((ushort)cx); w.Put((ushort)cy); }

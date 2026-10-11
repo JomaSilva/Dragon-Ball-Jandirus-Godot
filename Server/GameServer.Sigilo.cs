@@ -172,6 +172,12 @@ public partial class GameServer
 		{
 			s.BP = SemLeitura;
 			s.ExpressedBP = SemLeitura;
+
+			// ...E O MULTIPLICADOR DE QUEM ESTA ESCONDIDO NAO VIAJA. A licenca das duas razoes (o bloco acima) vale
+			// enquanto falta "o outro lado das duas fracoes" -- e escondido ele nao falta: o poder expresso e 5
+			// (`Fighter.Power.cs`, `base.dm:114-115`), uma constante que qualquer jogador conhece, e `5 / MultTotal`
+			// e o BP base. Vai zero, que e o que a aba Forms ja escrevia arredondando. Ver `GameServer.PoderEmUso.cs`.
+			if (pl.Ficha.isconcealed && !MultiplicadorEntregaOBpDeTeste) s.MultTotal = 0;
 		}
 		s.Class = "";
 		return s;

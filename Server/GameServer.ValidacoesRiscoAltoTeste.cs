@@ -623,7 +623,7 @@ public sealed partial class GameServer
 
 		ValCheca("(montagem) uma zona sem mapa de arquivo (a planta do interior de um Majin): o catalogo nao a conhece, o funil de "
 				+ "colisao sim, e a celula (0,50) e a parede dela",
-				_catalogo?.Get(bolso)?.Mapa == null && ReferenceEquals(MapaDaZonaOuCatalogo(bolso), planta)
+				_catalogo?.Get(bolso)?.Mapa == null && MapaDaZonaOuCatalogo(bolso)?.SaiuDe(planta) == true
 				&& planta.BlockedCell(0, 50) && !planta.BlockedCell(1, 50) && !planta.BlockedCell(2, 50) && !planta.BlockedCell(3, 50));
 
 		// ---- a piscada

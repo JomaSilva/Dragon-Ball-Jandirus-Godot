@@ -209,6 +209,52 @@ public static class BillsEWhis
 	public static double PoderNoDesafio(double multDaFury) =>
 		AFuryMultiplicaOTotal || multDaFury <= 0 ? PoderTotal : PoderTotal / multDaFury;
 
+	// ---- o kit do Deus da Destruicao nas lutas dele (dono, 2026-10-11) ----
+
+	/// <summary>
+	/// O HAKAI VALE NA LUTA DA TERRA? O dono: "faca o bills usar o kit completo na primeira luta (15% do poder
+	/// total) menos o fury" -- e o kit completo tem o Hakai e a Destroyer Sphere, que APAGAM (a morte de verdade, e o
+	/// Enma cobra em dobro) quem estiver com o torso em 15% ou menos e for ao menos 25% mais fraco que ele.
+	///
+	/// ============================ UMA LINHA PRA DESLIGAR ============================
+	/// Com `true`, a luta da Terra PODE MATAR: quem cai no ponto do Hakai e executado em vez de so ficar no chao.
+	/// Com `false`, o Bills da Terra usa o resto do kit (o Fury de longe, o peteleco, a anulacao e o surto) e NAO
+	/// executa ninguem: o verb do Hakai recusa, e a Destroyer Sphere -- que e o Hakai a distancia -- nem e largada.
+	/// ================================================================================
+	/// </summary>
+	public const bool HakaiNaTerra = true;
+
+	/// <summary>
+	/// O HAKAI VALE NO DESAFIO PELO TITULO? A mesma chave, pra a outra luta em que ele carrega o kit (la, com a Fury
+	/// por cima). Com `true`, o desafiante que cai no ponto do Hakai e apagado em vez de so perder o duelo.
+	/// </summary>
+	public const bool HakaiNoDesafio = true;
+
+	/// <summary>
+	/// A BANCADA VIRA AS DUAS CHAVES DE CIMA pra `false` (elas sao constantes: e esta flag que prova que cada uma
+	/// desliga o que diz). Lida pelo <see cref="OBillsExecuta"/>. Falsa em jogo, sempre.
+	/// </summary>
+	public static bool HakaiDesligadoDeTeste;
+
+	/// <summary>O Hakai do Bills vale na luta em que ele esta entrando? -- a Terra ou o desafio, cada uma com a sua chave.</summary>
+	public static bool OBillsExecuta(bool noDesafio) => (noDesafio ? HakaiNoDesafio : HakaiNaTerra) && !HakaiDesligadoDeTeste;
+
+	/// <summary>DEFEITO INJETADO (bancada): o Bills acorda na Terra SEM o kit -- so o soco e o que ele sabe de livro, como era antes. Falso em jogo, sempre.</summary>
+	public static bool SemKitNaTerraDeTeste;
+
+	/// <summary>DEFEITO INJETADO (bancada): na Terra ele TAMBEM entra na Fury -- o "menos o fury" do dono ignorado. Falso em jogo, sempre.</summary>
+	public static bool FuryNaTerraDeTeste;
+
+	/// <summary>DEFEITO INJETADO (bancada): o TREINO com o Bills tambem arma o kit -- e treino deixaria de ser "ninguem morre aqui". Falso em jogo, sempre.</summary>
+	public static bool KitNoTreinoDeTeste;
+
+	/// <summary>
+	/// NO DESAFIO, quanto tempo o juiz espera o Bills executar o desafiante que caiu NO PONTO DO HAKAI antes de dar o
+	/// duelo por encerrado do jeito de sempre (os dois inteiros). Sem esta espera o Hakai do desafio nao existiria: o
+	/// juiz encerra no nocaute, e e no chao que o criterio se cumpre.
+	/// </summary>
+	public const double SegundosPraExecutar = 6;
+
 	// =====================================================================
 	// 3. A LINHA DO TEMPO
 	// =====================================================================
@@ -296,6 +342,79 @@ public static class BillsEWhis
 
 	/// <summary>O intervalo entre duas linhas de um roteiro falado, em segundos (da tempo de ler).</summary>
 	public const double SegundosEntreFalas = 3.6;
+
+	// ---- o Whis: ao lado dele fora da luta, de longe na luta (dono, 2026-10-11) ----
+
+	/// <summary>
+	/// "o whis so segue o bills fora de combate, ao comecar uma luta o whis fica vendo de longe": a quantos tiles do
+	/// MEIO DA LUTA (entre o Bills e quem ele enfrenta) ele vai se por pra assistir. Sem chao a essa distancia do lado
+	/// em que ele esta, ele assiste de um pouco mais perto -- nunca de menos que <see cref="TilesPertoDemais"/> mais um.
+	/// </summary>
+	public const float TilesDoMirante = 9;
+
+	/// <summary>A luta chegou a menos disto (em tiles) de onde ele assiste -- o Bills ou quem o enfrenta: ele escolhe outro lugar.</summary>
+	public const float TilesPertoDemais = 6;
+
+	/// <summary>A luta foi pra mais longe do que isto (em tiles) de onde ele assiste: ele se reaproxima, pra continuar vendo.</summary>
+	public const float TilesLongeDemais = 15;
+
+	/// <summary>
+	/// Quanto tempo de luta antes do primeiro comentario dele, e de quanto em quanto tempo vem o seguinte (mais uma
+	/// folga sorteada): espacado pra nao entupir o chat de quem luta.
+	/// </summary>
+	public const double SegundosAteOPrimeiroPalpite = 5, SegundosEntrePalpites = 18, FolgaEntrePalpites = 10;
+
+	/// <summary>Acima desta distancia (em tiles) do lugar pra onde vai, um dos dois corre; abaixo, anda.</summary>
+	public const float TilesPraCorrer = 6;
+
+	/// <summary>
+	/// Um dos dois ANDANDO pra um lugar e sem chegar mais perto por este tempo esta empacado (o passo de quem o
+	/// servidor dirige nao contorna obstaculo): ele aparece no lugar. Deus preso atras de um pinheiro e pior do que
+	/// deus que pisca.
+	/// </summary>
+	public const double SegundosEmpacado = 1.5;
+
+	/// <summary>...e sem chegar mais perto por este tempo (bem menor) ele primeiro tenta sair de lado: e o que contorna um corpo no caminho.</summary>
+	public const double SegundosAteDesviar = 0.2;
+
+	/// <summary>DEFEITO INJETADO (bancada): com o Bills lutando, o Whis continua colado nele (a dois tiles), como era antes. Falso em jogo, sempre.</summary>
+	public static bool WhisColadoNaLutaDeTeste;
+
+	/// <summary>DEFEITO INJETADO (bancada): acabada a luta, o Whis fica onde estava assistindo -- nao volta pro lado do Bills. Falso em jogo, sempre.</summary>
+	public static bool WhisNaoVoltaDeTeste;
+
+	/// <summary>DEFEITO INJETADO (bancada): assistindo, o Whis pode ser atingido. Falso em jogo, sempre.</summary>
+	public static bool WhisTocavelNaLutaDeTeste;
+
+	/// <summary>DEFEITO INJETADO (bancada): o Whis assiste calado. Falso em jogo, sempre.</summary>
+	public static bool WhisCaladoDeTeste;
+
+	/// <summary>DEFEITO INJETADO (bancada): o Whis repete o MESMO comentario toda vez. Falso em jogo, sempre.</summary>
+	public static bool WhisRepeteDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada): desistindo da briga, o Bills aparece no posto num passo so (o teleporte de antes)
+	/// -- e nao ha caminhada pro Whis acompanhar. Falso em jogo, sempre.
+	/// </summary>
+	public static bool BillsVoltaNumPassoDeTeste;
+
+	/// <summary>
+	/// A ORDEM EM QUE OS COMENTARIOS SAEM: todos os indices de 0 a `quantos - 1` embaralhados -- cada comentario sai
+	/// uma vez antes de qualquer um repetir --, com o que sai PRIMEIRO (o ultimo da lista: quem usa tira do fim)
+	/// diferente do `ultimo` dito, pra a emenda de uma rodada na outra tambem nao repetir.
+	/// </summary>
+	public static int[] SacolaDePalpites(int quantos, int ultimo, Random rng)
+	{
+		int[] ordem = new int[Math.Max(quantos, 0)];
+		for (int i = 0; i < ordem.Length; i++) ordem[i] = i;
+		for (int i = ordem.Length - 1; i > 0; i--)
+		{
+			int j = rng.Next(i + 1);
+			(ordem[i], ordem[j]) = (ordem[j], ordem[i]);
+		}
+		if (ordem.Length > 1 && ordem[^1] == ultimo) (ordem[0], ordem[^1]) = (ordem[^1], ordem[0]);
+		return ordem;
+	}
 
 	// =====================================================================
 	// 5. A CASA -- "um planeta procedural aleatorio de gravidade altissima"
@@ -525,6 +644,33 @@ public static class BillsEWhis
 	/// <summary>Quando nao sobra ninguem de pe e ele volta a dormir.</summary>
 	public const string FalaDeVoltarACochilar = "Acabou? Então boa noite.";
 
+	/// <summary>Depois de apagar alguem com o Hakai na Terra (uma das duas, sorteada).</summary>
+	public static readonly string[] FalasDeApagar =
+	[
+		"Eu avisei que acordo de mau humor.",
+		"Menos um barulho. Onde eu estava? Ah, sim: dormindo.",
+	];
+
+	/// <summary>
+	/// O QUE O WHIS COMENTA ENQUANTO O BILLS LUTA (dono: "fica vendo de longe e comentando sobre comidas"). Um por
+	/// vez, na ordem da <see cref="SacolaDePalpites"/>. Nenhum fala de poder nem da luta: so de comida.
+	/// </summary>
+	public static readonly string[] PalpitesDeComida =
+	[
+		"Ohoho... não demore, senhor Bills: o lámen esfria, e macarrão frio é um pecado sem perdão.",
+		"Pudim. É nisso que eu estou pensando agora. Pudim com bastante calda.",
+		"Se terminar logo, ainda pegamos o sushi fresco. Peixe não espera por ninguém.",
+		"Lutar de estômago vazio é falta de educação. Depois disso, um bom churrasco.",
+		"Morango com creme... ou uma torta inteira? Decisões difíceis, essas.",
+		"Não se apresse por minha causa. Estou só contando quantos pratos de curry cabem numa tarde.",
+		"Dizem que existe uma pizza com queijo que estica. Que conceito fascinante.",
+		"Um chá quentinho e uns biscoitos cairiam muito bem assistindo a isso.",
+		"Cuidado com a poeira, senhor Bills: poeira estraga o tempero de qualquer coisa.",
+		"Quando isso acabar, eu quero um parfait. Daqueles altos, com fruta até a borda.",
+		"Sorvete... já provaram sorvete? Gelado e doce ao mesmo tempo. Uma invenção notável.",
+		"Hum, takoyaki. Bolinhos quentes, recheados... só de lembrar já vale a espera.",
+	];
+
 	/// <summary>A DERROTA NA TERRA: e aqui que ele diz as coordenadas (o dono: "ele fala as coordenadas galaticas no momento").</summary>
 	public static readonly Fala[] FalasDaDerrota =
 	[
@@ -651,6 +797,7 @@ public static class BillsEWhis
 	public const string BillsVenceuODesafio = "Volte quando doer menos.";
 	public const string BillsAcabouOPrazo = "O tempo acabou e eu continuo de pé. O título fica onde está.";
 	public const string BillsDesafianteSumiu = "Sumiu. Nem pra perder direito.";
+	public const string BillsApagouODesafiante = "Quis o meu título e apostou a própria existência. Perdeu os dois.";
 	public const string BillsDesafioAnulado = "Trapaça no meu duelo? Fora daqui, os dois.";
 	public const string AvisoDoDesafioAnulado = "O duelo de {nome} contra Bills foi ANULADO: alguém se meteu no meio.";
 	public const string AvisoDoTituloDefendido = "O GOD OF DESTRUCTION defendeu seu título contra {nome}.";

@@ -144,7 +144,13 @@ public partial class GameServer
 		// ACEITO -- e a versao daqui e o PRIMEIRO pacote que este par recebe, escrito no mesmo tratador do aceite:
 		// o `Accept` ja devolve o par conectado, entao nada do jogo consegue passar na frente no canal confiavel.
 		// E a metade "o cliente checa a versao do servidor": ele so manda o login depois de conferir isto.
+		//
+		// A PROVA DE ANFITRIAO, se veio, esta no que sobrou do pedido (lida ANTES do aceite, que e quem ainda tem o
+		// pedido na mao): e ela -- e nao o endereco -- que carimba esta conexao como a de quem hospeda. Ver
+		// `GameServer.Anfitriao.cs`.
+		byte[]? prova = FioDaVersao.LerProvaDeAnfitriao(req.Data);
 		if (req.Accept() is not { } par) return;
+		CarimbarSeForOAnfitriao(par, prova);
 		NetDataWriter w = Protocol.Begin(Protocol.S2C.Versao);
 		FioDaVersao.EscreverBloco(w, minha);
 		par.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
@@ -235,13 +241,17 @@ public partial class GameServer
 			GD.Print("[server] BANCADA (--servidoraceitatudo): este servidor NAO compara a versao de quem entra (quem tem de barrar e o cliente)");
 		}
 
+		// `--admin <conta>`: quem LIGA o servidor marca uma conta como administradora. A cada subida, e antes das
+		// bancadas desta porta. Ver `GameServer.Anfitriao.cs`.
+		PromoverAContaDaLinhaDeComando(args);
+
 		if (Array.IndexOf(args, "--versaoteste") >= 0 && !_paradaRodando) RodarBancadaDaVersao(porta);
 		// `--paradateste`: o servidor que para e sobe de novo no mesmo processo. Ver `GameServer.ParadaTeste.cs`
 		// (o trinco de reentrada e dela: esta linha e alcancada de novo a cada subida que ela faz).
 		if (Array.IndexOf(args, "--paradateste") >= 0) RodarBancadaDaParada(porta);
 		// `--saidaembateteste`: sair do jogo no meio de um ZanzoClash. Ver `GameServer.SaidaDoEmbateTeste.cs`.
 		if (Array.IndexOf(args, "--saidaembateteste") >= 0) RodarBancadaDaSaidaDoEmbate(porta);
-		// `--adminlocalteste`: o admin por endereco e o desarme dele. Ver `GameServer.AdminLocalTeste.cs`.
+		// `--adminlocalteste`: o admin de quem HOSPEDA (a prova do anfitriao) e o `--admin`. Ver `GameServer.AdminLocalTeste.cs`.
 		if (Array.IndexOf(args, "--adminlocalteste") >= 0) RodarBancadaDoAdminLocal(porta);
 	}
 

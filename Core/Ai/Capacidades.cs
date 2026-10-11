@@ -148,6 +148,21 @@ public readonly struct Capacidades
 	public double KiParaNadar { get; init; }
 
 	/// <summary>
+	/// ESTE CORPO CARREGA O KIT DO DEUS DA DESTRUICAO? -- a resposta do MESMO `EhDeusDaDestruicao` que abre cada
+	/// verb do kit (`GameServer.KitDoDeus.cs`), perguntada no relogio de 1 Hz, e so pra corpo SEM DONO consagrado
+	/// (`GameServer.KitNaMaoDaIa`).
+	///
+	/// ============================ UM BOOL, E OS VERBS CONTINUAM RECUSANDO ============================
+	/// Ele e PODA, como tudo neste arquivo: sem ele o cerebro de todo NPC do mundo perguntaria "seguro alguem? ha
+	/// ki pra anular?" contra portas que nunca abrem. Com ele verdadeiro o cerebro passa a PEDIR os verbs do kit
+	/// pelo `Comando.Habilidade` (o agarrao e o peteleco, o Hakai, a anulacao -- ver `Cerebro.Kit.cs`); os dois
+	/// tiros nem passam por aqui: entram no <see cref="DeLonge"/> como qualquer tecnica que voa. Quem recusa de
+	/// verdade -- sem titulo, sem Ki, em recarga, sem ninguem nos bracos -- continua sendo o verb.
+	/// ================================================================================================
+	/// </summary>
+	public bool KitDoDeus { get; init; }
+
+	/// <summary>
 	/// DA PRA SUBIR UM DEGRAU AGORA, sem nenhuma pendencia? Derivado -- um campo ao lado seria a
 	/// mesma verdade duas vezes.
 	/// </summary>

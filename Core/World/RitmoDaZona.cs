@@ -33,7 +33,7 @@ public static class RitmoDaZona
 		// PRIMEIRO, e ele e quem escreve o NEUTRO: fora da Sala, `zoneGainMult` volta a 1 e
 		// `zoneMasteryMult` tambem. Sem esta chamada em primeiro lugar, sair da mente nunca limparia
 		// o 0,25.
-		SalaDoTempo.AplicarRitmo(f, zona.Name, sessaoDaSalaValendo);
+		SalaDoTempo.AplicarRitmo(f, zona, sessaoDaSalaValendo);
 
 		// E A MENTE E A EXCECAO QUE ESCREVE POR CIMA. So o ganho de BP: a MAESTRIA de forma nao muda
 		// la dentro, e isso e deliberado -- o original nao mexe nela (`mind_gain_mult` entra nos

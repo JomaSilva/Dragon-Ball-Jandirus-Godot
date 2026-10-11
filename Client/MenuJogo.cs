@@ -113,6 +113,7 @@ public partial class MenuJogo : CanvasLayer
 			cli.SkillsMudaram += AoSkills;
 			cli.CargosMudaram += AoCargos;
 			cli.FatosMudaram += AoPosse;
+			cli.PoderEmUsoMudou += AoPoderEmUso;   // o retrato do poder em uso: a faixa da aba Ki e a linha da Stats (`MenuJogo.PoderEmUso.cs`)
 			cli.KiDivinoMudou += AoPosse;   // o medidor do despertar e a maestria divina: o cartao da aba World (`MenuJogo.KiDivino.cs`)
 			cli.MochilaMudou += AoPosse;
 			cli.EsferasMudaram += AoPosse;
@@ -150,6 +151,7 @@ public partial class MenuJogo : CanvasLayer
 			cli.SkillsMudaram -= AoSkills;
 			cli.CargosMudaram -= AoCargos;
 			cli.FatosMudaram -= AoPosse;
+			cli.PoderEmUsoMudou -= AoPoderEmUso;
 			cli.KiDivinoMudou -= AoPosse;
 			cli.MochilaMudou -= AoPosse;
 			cli.EsferasMudaram -= AoPosse;
@@ -470,6 +472,7 @@ public partial class MenuJogo : CanvasLayer
 		// A FAIXA DE MARCOS: fixa, FORA da rolagem, e so na aba de aprendizado -- ver
 		// `MontarFaixaDeMarcos` no arquivo da aba.
 		MontarFaixaDeMarcos(coluna);
+		MontarOPoderEmUso(coluna);   // a faixa "Poder em uso" da aba Ki, fixa pelo mesmo motivo -- ver `MenuJogo.PoderEmUso.cs`
 
 		// --- conteudo ---
 		var rolagem = new ScrollContainer
@@ -816,6 +819,7 @@ public partial class MenuJogo : CanvasLayer
 		// visibilidade se decide AQUI, antes do desvio de cache logo abaixo: trocar de aba com a
 		// pagina ja montada nao remonta nada, e a faixa tem que sumir mesmo assim.
 		_faixaDeMarcos.Visible = _aba == "Learning" && _busca.Text.Trim().Length == 0;
+		MostrarOPoderEmUsoNaAba();   // ...e a do poder em uso, so na aba Ki
 
 		// NADA MUDOU? Entao a pagina que ja esta ai continua certa. E o que corta as cinco
 		// remontagens por segundo que o pacote de ficha provocava com o menu aberto.

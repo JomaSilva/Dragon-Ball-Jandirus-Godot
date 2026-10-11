@@ -42,6 +42,7 @@ namespace Jandirus.Server;
 ///   G. `MenuSaiTodoTiqueDeTeste`        -> um menu por tique, mudando ou nao.
 ///   H. `ListaNaOrdemDaTabelaDeTeste`    -> a lista abre em "Nada" e numa "Calcinha" apagada, antes do que da pra pedir.
 ///   I. `GestoDeOutroMundoDeTeste`       -> "Pedidos por invocação" aparece em outro mundo, onde mexeria na estatua errada.
+///   J. `PosseDaSuperSoPraQuemTomouDeTeste` -> a guarda aceita so avisa os dois: quem olha uma Super Esfera le o dono de antes.
 /// ========================================================================================
 ///
 ///     Godot --headless --path . --host --rede 8180 --conta bancada_menudragao --senha teste
@@ -757,6 +758,36 @@ public partial class GameServer
 			ConferirALingua(falante);
 			mudo.Race = "Human"; mudo.Ficha.ParentRace = ""; mudo.Ficha.godtongue = false;
 
+			// ---- familia J: as sete que trocam de mao avisam TODO MUNDO
+			// O testador nao empresta nem recebe: e o terceiro, o que esta olhando uma Super Esfera desenhada com o
+			// nome do dono embaixo. O pacote das Super tem de chegar a ele quando a guarda e aceita.
+			bool AGuardaAceitaAvisaATodos()
+			{
+				DarSupers(falante, 0);
+				DarSupers(mudo, SuperEsferas.Total);
+				Verbo(mudo, "sdb_transferir", "#" + falante.Id);
+
+				var saiu = new List<(int Quem, string Sinal)>();
+				EscutaDoSinalDourado = saiu;
+				try { Verbo(falante, "sdb_guarda_aceitar", ""); }
+				finally { EscutaDoSinalDourado = null; }
+				bool passou = QuantasSupersTem(falante.Assinatura) == SuperEsferas.Total && saiu.Exists(x => x.Quem == pl.Id);
+
+				// (o palco volta: as sete de ninguem, sem procuracao, sem janela aberta)
+				foreach (SuperEsfera s in _supers) { s.Dono = ""; s.DonoNome = ""; }
+				_benefSig = _benefNome = _pedidoDoBenef = _alvoDoPedido = "";
+				_ofertasDeGuarda.Clear();
+				_olhandoODragao.Clear();
+				return passou;
+			}
+
+			MutacaoDeDesejo(Checa,
+				"a guarda ACEITA passa as sete adiante e TODO jogador recebe o pacote das Super -- o terceiro, que nao emprestou nem recebeu, inclusive",
+				"a troca de dono so e contada a quem emprestou e a quem recebeu (quem olha uma esfera continua lendo o dono de antes)",
+				AGuardaAceitaAvisaATodos,
+				() => PosseDaSuperSoPraQuemTomouDeTeste = true,
+				() => PosseDaSuperSoPraQuemTomouDeTeste = false);
+
 			DarSupers(mudo, 3);
 			Checa("com 3 de 7 a janela do Super Shenron mostra a lista apagada e quantas faltam",
 				  MenuDe(mudo, QualDragao.Super) is { Dragao: QualDragao.Super, DePe: false } tres && tres.Estado.Contains("3 de 7", StringComparison.Ordinal)
@@ -903,7 +934,7 @@ public partial class GameServer
 		finally
 		{
 			DragaoSobeSemJanelaDeTeste = MenuNaoApagaNadaDeTeste = DragaoSomeCaladoDeTeste = MenuSaiTodoTiqueDeTeste = false;
-			AlvoForaDaListaDeTeste = ListaNaOrdemDaTabelaDeTeste = GestoDeOutroMundoDeTeste = false;
+			AlvoForaDaListaDeTeste = ListaNaOrdemDaTabelaDeTeste = GestoDeOutroMundoDeTeste = PosseDaSuperSoPraQuemTomouDeTeste = false;
 			ContagemZeraTodoTiqueDeTeste = DragaoNaoRenovaAEsperaDeTeste = false;
 			SuperShenronDeQualquerLugarDeTeste = false;   // o palco da secao 8
 

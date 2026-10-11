@@ -2119,6 +2119,7 @@ public partial class GameClient : Node
 			// Quem le os dois e `GameClient.GodKi.cs`.
 			case Protocol.S2C.GodKi: LerGodKi(reader); break;
 			case Protocol.S2C.GodKiDespertou: LerGodKiDespertou(reader); break;
+			case Protocol.S2C.PoderEmUso: LerPoderEmUso(reader); break;   // quanto do proprio poder o meu corpo usa, e se o esconde -- ver `GameClient.PoderEmUso.cs`
 
 			// O BILLS E O WHIS: onde eles moram (so depois de revelado) e qual dos dois a minha tecla E alcanca.
 			// Quem le os dois e `GameClient.Bills.cs`.

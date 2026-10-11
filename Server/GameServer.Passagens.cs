@@ -26,7 +26,13 @@ namespace Jandirus.Server;
 /// </summary>
 public sealed partial class GameServer
 {
-	/// <summary>As passagens de cada zona, por nome de zona. Lidas no boot.</summary>
+	/// <summary>
+	/// As passagens de cada zona, por nome de zona. Lidas no boot.
+	///
+	/// POR NOME DE PROPOSITO: e dado do ARQUIVO (o `.passagens`), a planta -- nada aqui muda em jogo. Um interior
+	/// feito deste mapa (a Sala do Tempo de um mundo e o z13) herda as bocas E O DESTINO delas, que e o da planta:
+	/// quem fabrica o interior decide pra onde a saida dele leva (ver `ASalaDePlanetaTemOutraSaida`).
+	/// </summary>
 	private readonly Dictionary<string, List<Passagem>> _passagens =
 		new(StringComparer.OrdinalIgnoreCase);
 
@@ -179,6 +185,11 @@ public sealed partial class GameServer
 			if (OInfernoNaoDeixaSair(pl, boca)) continue;
 
 			if (OAlemNaoDeixaSair(pl, boca)) continue;
+
+			// A SALA DO TEMPO DE UM MUNDO SORTEADO usa o MAPA da Sala da Terra, e a saida dele esta cravada pro
+			// Templo Sagrado. La a mesma celula devolve o corpo a porta do mundo dela -- ver
+			// `GameServer.SalasDePlaneta.cs`.
+			if (ASalaDePlanetaTemOutraSaida(pl)) continue;
 
 			Atravessar(pl, boca);
 		}

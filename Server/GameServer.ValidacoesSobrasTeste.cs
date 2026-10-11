@@ -383,7 +383,8 @@ public sealed partial class GameServer
 			Convidar(livre, preso, TipoDeFusao.Potara);
 			ResponderAoConvite(preso, aceitou: true);
 			CenaDeFusao? cena = _emCenaDeFusao.GetValueOrDefault(livre.Id);
-			_naSala[preso.Assinatura] = NowMs();                                   // (palco) ele atravessou a porta: tem sessao
+			_naSala[preso.Assinatura] = NowMs();                                   // (palco) ele atravessou a porta: tem vaga
+			preso.SalaPlaneta = Jandirus.Core.World.SalaDoTempo.PortaDaTerra;         // ...e a sessao (a marca que a porta deixa)
 			preso.SalaDiasDaSessao = Jandirus.Core.World.SalaDoTempo.SessaoEmDias;    // ...ela acabou
 			preso.SalaJanelaAte = NowMs() - 1;                                        // ...e os dois minutos da janela tambem
 			TickDaSessaoDaSala(1.0);
@@ -425,6 +426,7 @@ public sealed partial class GameServer
 			}
 			finally { CargaPresaSaiDeTeste = false; }
 			_naSala.Remove(preso.Assinatura);
+			preso.SalaPlaneta = "";
 			preso.SalaPreso = false;
 			preso.SalaJanelaAte = 0;
 			preso.SalaDiasDaSessao = 0;
@@ -531,6 +533,7 @@ public sealed partial class GameServer
 				_acabouDeAtravessar.Remove(p.Id);
 				_naBocaDaPassagem.Remove(p.Id);
 				if (p.Assinatura.Length > 0) _naSala.Remove(p.Assinatura);
+				p.SalaPlaneta = "";
 				p.SalaPreso = false;
 				p.Moving = false;
 			}

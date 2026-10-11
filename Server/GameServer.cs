@@ -606,6 +606,18 @@ public sealed class ServerPlayer
 	public double SalaDiasDaSessao;
 
 	/// <summary>
+	/// QUANTOS ANOS POR DIA DILATAVA A SALA DA ULTIMA ENTRADA (0 = save antigo = a da Terra). Com o
+	/// <see cref="SalaUltimaEntrada"/> e o relogio UNICO da recarga de todas as salas. Vai pro save. Ver `GameServer.SalasDePlaneta.cs`.
+	/// </summary>
+	public double SalaDilatacao;
+
+	/// <summary>
+	/// A PORTA POR ONDE ELE ENTROU NUMA SALA DO TEMPO, enquanto a sessao esta aberta ("" = nenhuma): o nome do MUNDO numa
+	/// sala de planeta, `SalaDoTempo.PortaDaTerra` na do Templo. E a marca que diz quem a sessao conta. Vai pro save.
+	/// </summary>
+	public string SalaPlaneta = "";
+
+	/// <summary>
 	/// QUANDO A JANELA DE SAIDA DA SALA FECHA (`NowMs()`; 0 = janela nao armada). RECONSTRUIDO;
 	/// tipo pinado por `GameServer.SalaSessao.cs:190` (`pl.SalaJanelaAte - NowMs()`).
 	///
@@ -2117,16 +2129,6 @@ public partial class GameServer : Node
 		_feridaDeTeste = Array.IndexOf(args, "--feridateste") >= 0;
 		if (_feridaDeTeste) GD.Print("[server] BANCADA: todo mundo nasce com uma escada de ferimentos");
 
-		// `--sem-admin-local`: ninguem vira admin so por conectar da propria maquina.
-		// E o que quem hospeda ATRAS DE TUNEL (playit.gg, ngrok, Docker) precisa ligar: por la
-		// TODO jogador chega com endereco local, e sem isto o servidor inteiro entraria admin.
-		// Ver `AdminPorEndereco` -- ha tambem um desarme automatico quando a ambiguidade aparece.
-		if (Array.IndexOf(args, "--sem-admin-local") >= 0)
-		{
-			DesligarAdminPorEndereco();
-			GD.Print("[server] admin por endereco DESLIGADO (--sem-admin-local): so a marca na conta vale");
-		}
-
 		// `--quebrarteste N`: derruba N celulas de cenario em volta do ponto de nascimento assim
 		// que alguem entra. Existe pelo verb de admin que REFAZ o cenario: o estrago so acontece
 		// quando um corpo e arremessado contra parede por outro jogador -- ou seja, um teste
@@ -3127,6 +3129,7 @@ public partial class GameServer : Node
 			// (Basic 100 -> Advanced 100 -> Perfect). Ver `GameServer.MenteSkillsTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--menteskills") >= 0) RodarBancadaDasSkillsDaMente();
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--sentidosteste") >= 0) RodarBancadaDosSentidos();   // `--sentidosteste`: a aba Sense/Scan -- alcances, identidade, sigilo do BP no fio e reenvio so na mudanca; vizinha da mente porque os alcances acendem pelo contador dela. Ver `GameServer.SentidosTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--poderteste") >= 0) RodarBancadaDoPoder();   // `--poderteste`: POWER UP E POWER DOWN -- baixar, subir com C, relaxar, esconder (e o que o Sense, o scouter e a IA dos outros leem); vizinha dos sentidos porque usa os corpos e a leitura dela. Ver `GameServer.PoderTeste.cs`.
 
 			// `--arvoreteste`: O TIER DE VITRINE E O `enabled` LIDO COMO O DM LE -- pelo FUNIL do
 			// servidor (comprar -> efeitos -> contadores -> growbranches -> pacote), e o pacote
@@ -3181,6 +3184,8 @@ public partial class GameServer : Node
 			// colisao, o catalogo de obras) ja carregou nesta sequencia. Ver `GameServer.MacieiraTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--macieirateste") >= 0) RodarBancadaDaMacieira();
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--pomarteste") >= 0) RodarBancadaDoPomar();   // `--pomarteste`: a macieira que todo mundo SORTEADO tem -- pousa de verdade em nove deles. Ver `GameServer.PomarTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--salasteste") >= 0) RodarBancadaDasSalasDePlaneta(antes: Array.IndexOf(OS.GetCmdlineArgs(), "--salasantes") >= 0);   // `--salasteste`: as Salas do Tempo dos mundos sorteados (`--salasantes` = o jogo de antes, sem nenhuma). Ver `GameServer.SalasDePlanetaTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--interioresteste") >= 0) RodarAVigiaDosInteriores();   // `--interioresteste`: duas instancias do mesmo interior nao dividem o que muda em jogo. Ver `GameServer.InterioresTeste.cs`.
 
 			// `--recursosteste`: A ECONOMIA DE RECURSOS (dono, 2026-10-10) -- a reserva de cada planeta (tamanho,
 			// regeneracao, disco, planeta morto), o verb Minerar e pagar tecnologia com recursos ao dobro. No boot
@@ -3288,7 +3293,7 @@ public partial class GameServer : Node
 		_players.Clear();
 		_byPeer.Clear();
 		_zones.Clear();
-		EsquecerASessaoQueAcabou();   // quem estava logado, o relogio do povoamento, o admin por endereco e as vagas da Sala do Tempo: nada disso passa pra proxima subida -- ver GameServer.Parada.cs
+		EsquecerASessaoQueAcabou();   // quem estava logado, o relogio do povoamento, a prova de quem hospedava, as vagas da Sala do Tempo e o torneio: nada disso passa pra proxima subida -- ver GameServer.Parada.cs
 		GD.Print("[server] parado");
 	}
 
@@ -4315,6 +4320,7 @@ public partial class GameServer : Node
 		// ...E QUEM FICOU DENTRO DE UM MAJIN quando o servidor caiu: o bolsao nao atravessa a sessao.
 		AcordarSemAbsorcao(pl);
 		AcordarVisivel(pl);   // ...nem o OCULTO (de um embate, de uma tecnica): gravado, ele relogava a vista de todos com o poder preso em 5 -- ver GameServer.SaidaDoEmbate.cs
+		AcordarComOPoderInteiro(pl);   // ...nem o PODER CONTIDO (`powerMod` e `tmp` no DM): quem saiu relaxado relogava a 1% do poder, sem nada na tela que dissesse -- ver GameServer.PoderEmUso.cs
 
 		// POSICAO ZERADA (save antigo, ou canto do mapa) cai no ponto de chegada da zona em que o
 		// corpo esta -- e nao no berco: quem deslogou em Namek tem que acordar em Namek.
@@ -5666,6 +5672,7 @@ public partial class GameServer : Node
 		// O combate anda no tick CHEIO (30 Hz): recarga de golpe e atordoamento sao contados
 		// em fracao de segundo, e a ficha so roda a 5 Hz.
 		TickCombate(Protocol.TickSeconds);
+		TickDoPoderEmUso();   // O PODER EM USO (power up / power down): quem esconde o poder de proposito continua escondido (30 Hz, ANTES do tique de ficha, que e quem refaz a conta de poder), e a 5 Hz a raiva de quem relaxou e o retrato pra tela -- ver GameServer.PoderEmUso.cs
 
 		// OS DEZ RELOGIOS DO CORPO -- forma, carga, voo, nado, Oozaru, Frost, furia e as tres
 		// disciplinas divinas. Eram dez `foreach` soltos aqui; viraram um bloco com NOME em
@@ -5721,6 +5728,8 @@ public partial class GameServer : Node
 		// comida, que e do lugar, some no mesmo quadro em que a sala esvazia. Ver
 		// `GameServer.SalaSessao.cs`.
 		TickDaSessaoDaSala(Protocol.TickSeconds);
+		TickDasSalasDePlaneta(Protocol.TickSeconds);   // ...e a das salas dos mundos sorteados, que EXPULSAM no fim -- ver GameServer.SalasDePlaneta.cs
+		TickDosInteriores();   // a copia do mapa de um interior sem ninguem dentro e solta -- ver GameServer.Interiores.cs
 
 		// O SELO -- os QUATRO relogios dele (fuga a 0,3 s, pote a 5 s, fita do Mafuba a 0,2 s,
 		// portal da Dead Zone a 0,1 s), cada um com a cadencia que tem no DM. Anda no tique cheio
@@ -6236,6 +6245,10 @@ public partial class GameServer : Node
 		// continuaria vendo as sete desenhadas no chao da Terra -- e o inverso: quem chega em Namek
 		// nao veria nenhuma ate a proxima vez que alguem mexesse numa delas.
 		MandarEsferas(destino);
+		// ...e as SUPER ESFERAS, que so existem no espaco. Elas saiam so quando o tique via o corpo cruzar uma
+		// chunk -- e quem DECOLA chega com a chunk ja carimbada: a esfera ao lado do ponto de chegada nao vinha
+		// (e agora ela e desenhada). Na volta vale o inverso: a lista de quem pousou era a do espaco.
+		if (!SupersNaoAcompanhamAZonaDeTeste) MandarSupers(pl);
 		// ...e as PORTAS pelo mesmo motivo: quem chega tem que ver as que estao abertas agora, e o
 		// `.col` do cliente tem que casar com o do servidor (ver MandarPortas).
 		MandarPortas(pl);

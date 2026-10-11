@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Godot;
+using Jandirus.Core.Ai;
 using Jandirus.Core.Combat;
 using Jandirus.Core.Forms;
 using Jandirus.Core.Items;
@@ -38,6 +39,19 @@ namespace Jandirus.Server;
 /// nao os alcancam. A unica hora em que da pra bater no Bills sem pedir e a visita a Terra -- e pra isso que ele
 /// foi.
 /// ====================================================================================
+///
+/// ============================ O KIT E DA LUTA, E O WHIS ASSISTE DE LONGE (2026-10-11) ============================
+/// O dono, respondendo as perguntas da primeira entrega: *"faca o bills usar o kit completo na primeira luta (15%
+/// do poder total) menos o fury"* e *"o whis so segue o bills fora de combate, ao comecar uma luta o whis fica
+/// vendo de longe e comentando sobre comidas, e ele e intocavel nesses casos"*.
+///
+///   * O BILLS carrega o kit do Deus da Destruicao (`GameServer.KitDoDeus.cs`) enquanto LUTA: acordado na Terra
+///     (sem a Fury) e no desafio (com ela). Quem decide cada habilidade e o cerebro de todo NPC
+///     (`Core/Ai/Cerebro.Kit.cs`); aqui se arma e se desarma o kit, e se decide o que e da historia -- quem cai no
+///     ponto do Hakai continua sendo presa (<see cref="CondenadoNaTerra"/>).
+///   * O WHIS, fora da aula dele, e levado por este tique (<see cref="GuiarOWhis"/>): ao lado do Bills fora de
+///     luta, num mirante durante ela.
+/// ==================================================================================================================
 /// </summary>
 public partial class GameServer
 {
@@ -76,6 +90,9 @@ public partial class GameServer
 
 		/// <summary>Numa luta 1 contra 1 da casa. Ver `GameServer.BillsTreino.cs`.</summary>
 		NaSessao,
+
+		/// <summary>O Bills na Terra, desistindo da briga: anda de volta pro cochilo, sem mente (quem o leva e o tique) -- e da pra bater.</summary>
+		Voltando,
 	}
 
 	/// <summary>Um dos dois: quem e, o corpo dele no mundo (se houver) e onde fica o posto dele.</summary>
@@ -92,6 +109,11 @@ public partial class GameServer
 
 		/// <summary>Quando ele pode falar sozinho de novo com a visita (relogio do sistema, em segundos).</summary>
 		public double ProximaRecepcao;
+
+		/// <summary>A caminhada dele (<see cref="AndarODivino"/>): pra onde vai, o mais perto que ja chegou e ha quanto tempo nao chega mais perto.</summary>
+		public Vec2 IndoPara;
+		public float MaisPerto = float.MaxValue;
+		public double EmpacadoHa;
 	}
 
 	private readonly CorpoDivino _bills = new(QuemFala.Bills, BillsEWhis.MoldeDoBills, BillsEWhis.CargoDoBills);
@@ -114,6 +136,9 @@ public partial class GameServer
 
 	/// <summary>Quem bateu no Bills na Terra e ainda nao foi derrubado por ele.</summary>
 	private readonly HashSet<int> _desafiantesNaTerra = [];
+
+	/// <summary>Quem estava na briga da Terra e CAIU, enquanto estiver no chao: e entre eles que o Hakai escolhe (<see cref="CondenadoNaTerra"/>).</summary>
+	private readonly HashSet<int> _caidosNaTerra = [];
 
 	private double _semPresaNaTerra, _proximaFalaDeDerrubar;
 
@@ -218,7 +243,12 @@ public partial class GameServer
 		_roteiroDivino.Clear();
 		_cenaDivina = false;
 		_desafiantesNaTerra.Clear();
+		_caidosNaTerra.Clear();
 		_semPresaNaTerra = 0;
+		_whisAssiste = false;
+		_ladoDoBills = null;
+		_sacolaDePalpites.Clear();
+		_ultimoPalpite = -1;
 	}
 
 	/// <summary>
@@ -272,6 +302,7 @@ public partial class GameServer
 			TocarORoteiroDivino();
 			GuiarOBillsNaTerra(dt);
 			GuiarAsSessoesDivinas(dt);
+			GuiarOWhis(dt);
 
 			if (_tiquesDivinos % TicksEntreFatos == 0) ApontarODivinoPerto();
 		}
@@ -548,7 +579,8 @@ public partial class GameServer
 		if (c.Sessao != null) EncerrarASessao(c, FimDaSessao.MestreSumiu);
 		c.Corpo = null;
 		c.Modo = ModoDivino.Parado;
-		if (c == _bills) { _desafiantesNaTerra.Clear(); _semPresaNaTerra = 0; }
+		if (c == _bills) { _desafiantesNaTerra.Clear(); _caidosNaTerra.Clear(); _semPresaNaTerra = 0; }
+		if (EhDeusDaDestruicao(npc)) DesconsagrarDaLuta(npc);
 		RemoverNpc(npc);
 		GD.Print($"[server] {npc.Name} saiu de {c.Zona}");
 	}
@@ -558,11 +590,14 @@ public partial class GameServer
 		p == null ? null : ReferenceEquals(_bills.Corpo, p) ? _bills : ReferenceEquals(_whis.Corpo, p) ? _whis : null;
 
 	/// <summary>
-	/// ESTE CORPO NAO PODE SER ATINGIDO AGORA? Parado ou falando, nunca. O Bills que cochila na Terra PODE (e o
-	/// convite); quem luta, pode; e o desafiado so depois da contagem.
+	/// ESTE CORPO NAO PODE SER ATINGIDO AGORA? Parado ou falando, nunca -- e "parado" e o modo do Whis tambem quando
+	/// ele anda ao lado do Bills ou assiste a uma luta dele de longe (<see cref="GuiarOWhis"/>). O Bills que cochila
+	/// na Terra PODE (e o convite), e o que volta andando pro cochilo tambem; quem luta, pode; e o desafiado so
+	/// depois da contagem.
 	/// </summary>
-	private static bool DivinoIntocavel(CorpoDivino c) => c.Modo switch
+	private bool DivinoIntocavel(CorpoDivino c) => c.Modo switch
 	{
+		ModoDivino.Parado when BillsEWhis.WhisTocavelNaLutaDeTeste && c == _whis && _whisAssiste => false,
 		ModoDivino.Parado or ModoDivino.EmCena => true,
 		ModoDivino.NaSessao => c.Sessao is not { Lutando: true },
 		_ => false,
@@ -597,6 +632,14 @@ public partial class GameServer
 			npc.Cerebro = null;
 			npc.Moving = false;
 			if (npc.Papel != null) npc.Papel.PresaDoRoteiro = 0;
+
+			// O KIT E DA LUTA: fora dela o Bills nao carrega o titulo no corpo -- nem o surto, nem a anulacao, nem a
+			// Fury (que cai junto, pela regra do proprio kit). E a unica porta de saida, pra nenhum caminho esquecer.
+			if (c == _bills && EhDeusDaDestruicao(npc)) DesconsagrarDaLuta(npc);
+
+			// ...e quem ele ainda tinha nos bracos e SOLTO (pela porta unica do agarrao): sem mente ninguem daria o
+			// peteleco, e o primeiro passo de quem segura arremessa.
+			if (npc.AgarrandoId != 0) Soltar(npc, MotivoDaSoltura.Tecla);
 		}
 		else if (npc.Cerebro == null && npc.Papel != null) npc.Cerebro = CerebroDeNascimento(npc.Papel);
 	}
@@ -636,7 +679,10 @@ public partial class GameServer
 		npc.SigAtributos = "";
 	}
 
-	/// <summary>De volta ao posto (num passo so: deus nao anda de volta pra casa), virado pra frente.</summary>
+	/// <summary>
+	/// No posto, virado pra frente -- num passo so. E o fim de toda luta da casa (o mestre reaparece no lugar dele) e
+	/// o ultimo passo da caminhada de volta pro cochilo, na Terra (<see cref="VoltarAndandoAoCochilo"/>).
+	/// </summary>
 	private static void VoltarAoPosto(CorpoDivino c)
 	{
 		if (c.Corpo is not { } npc) return;
@@ -705,8 +751,14 @@ public partial class GameServer
 	// =====================================================================
 
 	/// <summary>
-	/// O BILLS NA TERRA: dorme ate apanhar, luta com quem bateu (e so com quem bateu), e volta a dormir inteiro
-	/// quando nao sobra ninguem de pe por perto. Cair e a derrota.
+	/// O BILLS NA TERRA: dorme ate apanhar, luta com quem bateu (e so com quem bateu) com o KIT INTEIRO do Deus da
+	/// Destruicao menos a Fury, e quando nao sobra ninguem de pe por perto volta andando pro cochilo. Cair e a derrota.
+	///
+	/// O KIT E DA LUTA (dono, 2026-10-11: "faca o bills usar o kit completo na primeira luta (15% do poder total)
+	/// menos o fury"): ao acordar ele e consagrado (<see cref="ArmarOKitNaTerra"/>), e ao desistir, cair ou sair do
+	/// mundo deixa de ser (<see cref="ParOuDespertar"/>). Quem decide cada habilidade e o cerebro de todo NPC
+	/// (`Core/Ai/Cerebro.Kit.cs`); o que este arquivo decide e so o que e da HISTORIA -- a Fury fica de fora, e quem
+	/// cai no ponto do Hakai continua sendo presa ate ser apagado ou se levantar (<see cref="CondenadoNaTerra"/>).
 	///
 	/// QUEM ELE ENFRENTA E IMPOSTO DAQUI (`PapelDeNpc.PresaDoRoteiro`, o mesmo canal do torneio e do Cell), e nao
 	/// deixado pra caca de chefe: um chefe solto caca qualquer jogador a vinte tiles, e a Terra e onde os novatos
@@ -716,7 +768,7 @@ public partial class GameServer
 	private void GuiarOBillsNaTerra(double dt)
 	{
 		if (_visita.Fase != FaseDaVisita.NaTerra || _bills.Corpo is not { } b) return;
-		if (_bills.Modo is not (ModoDivino.Cochilando or ModoDivino.Lutando)) return;
+		if (_bills.Modo is not (ModoDivino.Cochilando or ModoDivino.Lutando or ModoDivino.Voltando)) return;
 
 		if (b.Ficha.KO) { DerrotaNaTerra(); return; }
 
@@ -729,14 +781,24 @@ public partial class GameServer
 
 		ServerPlayer? presa = PresaNaTerra(b);
 
-		if (_bills.Modo == ModoDivino.Cochilando)
+		if (_bills.Modo != ModoDivino.Lutando)
 		{
-			if (presa == null) return;
+			if (presa == null)
+			{
+				if (_bills.Modo == ModoDivino.Voltando) VoltarAndandoAoCochilo(b, dt);
+				return;
+			}
+
+			bool dormia = _bills.Modo == ModoDivino.Cochilando;
 			ParOuDespertar(_bills, ModoDivino.Lutando);
+			ArmarOKitNaTerra(b);
 			_semPresaNaTerra = 0;
-			CalarORoteiro();   // acordado no meio da fala de chegada: o resto dela nao sai por cima da briga
-			DizerDivino(QuemFala.Bills, Sortear(BillsEWhis.FalasDeAcordar));
-			GD.Print($"[server] BILLS acordou: {presa.Name} bateu nele");
+			if (dormia)
+			{
+				CalarORoteiro();   // acordado no meio da fala de chegada: o resto dela nao sai por cima da briga
+				DizerDivino(QuemFala.Bills, Sortear(BillsEWhis.FalasDeAcordar));
+			}
+			GD.Print($"[server] BILLS {(dormia ? "acordou" : "voltou pra briga no meio do caminho")}: {presa.Name} bateu nele");
 		}
 
 		if (presa != null)
@@ -747,20 +809,47 @@ public partial class GameServer
 			return;
 		}
 
-		// NINGUEM DE PE NO TERRITORIO: ele para onde esta, e depois de uns segundos volta a dormir INTEIRO.
+		// NINGUEM DE PE (NEM CONDENADO) NO TERRITORIO: ele para onde esta e, depois de uns segundos, desiste da briga --
+		// larga o kit e VOLTA ANDANDO pro cochilo, com o Whis de volta ao lado dele (`GuiarOWhis`).
 		b.Papel!.PresaDoRoteiro = 0;
 		b.Cerebro = null;
 		b.Moving = false;
+		if (b.AgarrandoId != 0) Soltar(b, MotivoDaSoltura.Tecla);   // (sem mente ninguem daria o peteleco: quem estava nos bracos e solto)
 		_semPresaNaTerra += dt;
 		if (_semPresaNaTerra < BillsEWhis.SegundosAteVoltarACochilar) return;
 
 		_desafiantesNaTerra.Clear();
+		_caidosNaTerra.Clear();
 		_semPresaNaTerra = 0;
+		ParOuDespertar(_bills, ModoDivino.Voltando);
+		GD.Print("[server] BILLS desistiu da briga (ninguem de pe no territorio): volta andando pro cochilo");
+	}
+
+	/// <summary>
+	/// O KIT DA LUTA DA TERRA: o titulo no corpo (sem escrever no trono), com o Hakai ligado ou nao conforme a chave
+	/// do dono (<see cref="BillsEWhis.HakaiNaTerra"/>) -- e SEM a Fury ("menos o fury"): o poder continua cravado nos
+	/// 15%, e o que o kit soma por conta propria (o surto do God's Temper) e do kit.
+	/// </summary>
+	private void ArmarOKitNaTerra(ServerPlayer bills)
+	{
+		if (BillsEWhis.SemKitNaTerraDeTeste) return;
+		ConsagrarPraLuta(bills, comHakai: BillsEWhis.OBillsExecuta(noDesafio: false));
+		if (BillsEWhis.FuryNaTerraDeTeste) EntrarNaFury(bills, semCena: true);
+	}
+
+	/// <summary>
+	/// A VOLTA PRO COCHILO, A PE: ele anda ate o posto (o Whis vem ao lado: <see cref="GuiarOWhis"/>) e so la se deita
+	/// -- inteiro, como sempre. Quem bater nele no caminho o traz de volta pra briga (<see cref="GuiarOBillsNaTerra"/>).
+	/// </summary>
+	private void VoltarAndandoAoCochilo(ServerPlayer b, double dt)
+	{
+		if (!BillsEWhis.BillsVoltaNumPassoDeTeste && !AndarODivino(_bills, _bills.Posto, dt)) return;
+
 		VoltarAoPosto(_bills);
 		RestaurarODivino(b);
 		ParOuDespertar(_bills, ModoDivino.Cochilando);
 		DizerDivino(QuemFala.Bills, BillsEWhis.FalaDeVoltarACochilar);
-		GD.Print("[server] BILLS voltou a cochilar (ninguem de pe no territorio)");
+		GD.Print("[server] BILLS voltou a cochilar");
 	}
 
 	/// <summary>DEFEITO INJETADO (bancada `--billsteste`): qualquer corpo do mundo que o acerte entra na briga -- um bicho, um vilao. Falso em jogo, sempre.</summary>
@@ -775,6 +864,8 @@ public partial class GameServer
 	/// QUEM ELE ENFRENTA AGORA: o ultimo que bateu, se ainda vale; senao o mais perto dos que ja bateram. Quem ele
 	/// DERRUBA sai da briga (so volta batendo de novo) -- sem isso, levantar do nocaute ao lado dele seria cair de
 	/// novo, sem conseguir ir embora.
+	///
+	/// E SEM NINGUEM DE PE, O CONDENADO: quem caiu na briga e esta no ponto do Hakai (<see cref="CondenadoNaTerra"/>).
 	/// </summary>
 	private ServerPlayer? PresaNaTerra(ServerPlayer b)
 	{
@@ -790,20 +881,70 @@ public partial class GameServer
 			if (p.Ficha.KO)
 			{
 				(fora ??= []).Add(id);
+				_caidosNaTerra.Add(id);
 				if (b.UltimoAgressor == id) b.UltimoAgressor = 0;
 				AoDerrubarNaTerra(p);
 				continue;
 			}
 
 			if (!ValeNaTerra(p)) continue;
-			if (id == b.UltimoAgressor) return p;
+
+			// O ULTIMO QUE BATEU ganha de quem esta mais perto -- e o laco SEGUE (era um `return` aqui: quem tinha caido
+			// nesta mesma volta nunca saia da lista enquanto o ultimo agressor estivesse de pe, e era "derrubado" de
+			// novo a cada tique, com a fala do Bills repetindo de seis em seis segundos).
+			if (id == b.UltimoAgressor) { perto = -1; melhor = p; continue; }
 
 			float d = (p.Pos - b.Pos).LengthSquared;
 			if (d < perto) { perto = d; melhor = p; }
 		}
 
 		if (fora != null) foreach (int id in fora) _desafiantesNaTerra.Remove(id);
+		return melhor ?? CondenadoNaTerra(b);
+	}
+
+	/// <summary>
+	/// QUEM CAIU NA BRIGA E ESTA NO PONTO DO HAKAI -- o mais perto, dentro do territorio. So e perguntado sem ninguem
+	/// DE PE na briga: quem ainda luta segura o Bills longe de quem caiu, e e o que da a um grupo a chance de salvar
+	/// o companheiro. O criterio e o do proprio verb (`OHakaiPega`: so responde sim com o kit armado e o Hakai
+	/// ligado pra esta luta), medido a cada tique -- o torso de quem caiu ainda pode ceder depois (o corpo
+	/// arremessado que so entao bate no chao).
+	///
+	/// Sai da lista quem se levantou, morreu ou foi embora; quem continua no chao fora do criterio fica nela, sem
+	/// ser presa -- e so derrubado, como sempre foi.
+	/// </summary>
+	private ServerPlayer? CondenadoNaTerra(ServerPlayer b)
+	{
+		if (_caidosNaTerra.Count == 0) return null;
+
+		ServerPlayer? melhor = null;
+		float perto = float.MaxValue;
+		List<int>? fora = null;
+
+		foreach (int id in _caidosNaTerra)
+		{
+			if (!_players.TryGetValue(id, out ServerPlayer? p) || p.Zone.Hash != _bills.Zona.Hash || p.Ficha.dead || !p.Ficha.KO)
+			{
+				(fora ??= []).Add(id);
+				if (p is { Ficha: { dead: true, hakai_mark: true } }) AoApagarNaTerra(p);
+				continue;
+			}
+
+			if (!OHakaiPega(b, p)) continue;
+			if ((p.Pos - _bills.Posto).Length > BillsEWhis.TerritorioTiles * ZoneCollision.TileSize) continue;
+
+			float d = (p.Pos - b.Pos).LengthSquared;
+			if (d < perto) { perto = d; melhor = p; }
+		}
+
+		if (fora != null) foreach (int id in fora) _caidosNaTerra.Remove(id);
 		return melhor;
+	}
+
+	/// <summary>Ele apagou alguem com o Hakai, na Terra: um resmungo, um instante depois.</summary>
+	private void AoApagarNaTerra(ServerPlayer apagado)
+	{
+		GD.Print($"[server] BILLS apagou {apagado.Name} com o Hakai, na Terra");
+		Agendar(1.5, () => DizerDivino(QuemFala.Bills, Sortear(BillsEWhis.FalasDeApagar)));
 	}
 
 	private void AoDerrubarNaTerra(ServerPlayer caido)
@@ -813,6 +954,241 @@ public partial class GameServer
 		_proximaFalaDeDerrubar = _relogioDivino + 6;
 		DizerDivino(QuemFala.Bills, Sortear(BillsEWhis.FalasDeDerrubar));
 		if (_rng.Next(3) == 0) Agendar(2.2, () => DizerDivino(QuemFala.Whis, BillsEWhis.WhisTranquiliza));
+	}
+
+	// =====================================================================
+	// 6b. O WHIS: AO LADO DELE FORA DA LUTA, DE LONGE NA LUTA
+	// =====================================================================
+
+	/// <summary>
+	/// O BILLS ESTA NUMA LUTA AGORA? Pelo estado que ele ja tinha: ACORDADO na Terra (de quando alguem bate nele ate
+	/// ele desistir da briga ou cair) ou numa luta da casa -- o treino, e o desafio desde a contagem. Cochilando,
+	/// voltando pro cochilo, parado em casa ou falando um roteiro, nao.
+	/// </summary>
+	private bool BillsEmLuta => _bills.Corpo != null && _bills.Modo is ModoDivino.Lutando or ModoDivino.NaSessao;
+
+	/// <summary>O Whis esta assistindo a uma luta do Bills. A borda de subida escolhe o mirante e marca o primeiro comentario.</summary>
+	private bool _whisAssiste;
+
+	/// <summary>De onde ele assiste, e quando olha de novo se a luta chegou perto (ou foi longe) demais.</summary>
+	private Vec2 _miranteDoWhis;
+	private double _proximaOlhadaDoWhis;
+
+	/// <summary>O lado do Bills pra onde ele volta, lembrado enquanto o Bills nao sai do lugar (achar chao e uma varredura).</summary>
+	private (Vec2 Bills, Vec2 Lado)? _ladoDoBills;
+
+	/// <summary>Os comentarios: quando sai o proximo, o ultimo que ele disse e os que faltam nesta rodada.</summary>
+	private double _proximoPalpite;
+	private int _ultimoPalpite = -1;
+	private readonly List<int> _sacolaDePalpites = [];
+
+	/// <summary>
+	/// De 45 em 45 graus a partir do rumo "pra fora da luta", e SO ATE DE LADO: o primeiro que tiver chao serve de
+	/// mirante. Os rumos de tras (135 e 180 graus) nao entram -- pra chegar la ele atravessaria a briga.
+	/// </summary>
+	private static readonly float[] GirosDoMirante = [0f, 45f, -45f, 90f, -90f];
+
+	/// <summary>
+	/// O WHIS FORA DA AULA DELE (dono, 2026-10-11: "o whis so segue o bills fora de combate, ao comecar uma luta o
+	/// whis fica vendo de longe e comentando sobre comidas, e ele e intocavel nesses casos").
+	///
+	///   * FORA DE LUTA ele fica a <see cref="BillsEWhis.TilesEntreOsDois"/> tiles do Bills, do lado de sempre: no
+	///     posto dele quando o Bills esta no posto, e ANDANDO junto quando o Bills anda (a volta pro cochilo, na
+	///     Terra) ou esta fora do lugar (caido, se levantando pra se despedir).
+	///   * COM O BILLS LUTANDO (<see cref="BillsEmLuta"/>) ele se afasta pra um mirante a
+	///     <see cref="BillsEWhis.TilesDoMirante"/> tiles do meio da luta, fica virado pra ela e comenta comida. Se a
+	///     luta chega a menos de <see cref="BillsEWhis.TilesPertoDemais"/> do mirante, ou vai a mais de
+	///     <see cref="BillsEWhis.TilesLongeDemais"/>, ele escolhe outro.
+	///   * INTOCAVEL nos dois casos: o modo dele continua `Parado` (<see cref="DivinoIntocavel"/>). So se bate no
+	///     Whis na aula DELE.
+	///
+	/// QUANDO E O WHIS QUEM ESTA DANDO AULA, nada daqui roda (ele e de quem treina com ele) -- e o Bills fica como
+	/// esta: no posto, sem assistir e sem comentar.
+	///
+	/// ELE ANDA, e nao aparece: pelo passo de todo corpo dirigido (<see cref="AndarODivino"/>). Sem mente -- quem o
+	/// leva e este tique, como leva o Bills de volta pro cochilo.
+	/// </summary>
+	private void GuiarOWhis(double dt)
+	{
+		if (_whis.Corpo is not { } w || _whis.Modo != ModoDivino.Parado || _whis.Sessao != null)
+		{
+			_whisAssiste = false;
+			return;
+		}
+		if (w.Ficha.dead) return;
+
+		// INTOCAVEL TAMBEM PRO QUE NAO E GOLPE: o corpo arremessado que bate em outro corpo fere os dois
+		// (`TickDoEmpurrao`), e essa conta nao pergunta se da pra tocar. Fora da aula dele o Whis nao guarda ferida
+		// nenhuma -- nem fica no chao por causa de uma.
+		if (w.Ficha.KO || w.Ficha.HP < 99.999) RestaurarODivino(w);
+
+		ServerPlayer? b = _bills.Corpo is { } corpo && corpo.Zone.Hash == w.Zone.Hash ? corpo : null;
+		bool assiste = b != null && BillsEmLuta && !BillsEWhis.WhisColadoNaLutaDeTeste;
+
+		if (assiste != _whisAssiste)
+		{
+			_whisAssiste = assiste;
+			if (assiste)
+			{
+				_miranteDoWhis = EscolherOMirante(w, b!);
+				_proximaOlhadaDoWhis = _relogioDivino + 1;
+				_proximoPalpite = _relogioDivino + BillsEWhis.SegundosAteOPrimeiroPalpite;
+			}
+		}
+
+		if (!assiste)
+		{
+			if (BillsEWhis.WhisNaoVoltaDeTeste) return;
+			if (AndarODivino(_whis, LadoDoBills(b), dt)) w.Facing = Jandirus.Core.World.Facing.South;
+			return;
+		}
+
+		if (_relogioDivino >= _proximaOlhadaDoWhis)
+		{
+			_proximaOlhadaDoWhis = _relogioDivino + 1;
+			if (MiranteVencido(b!)) _miranteDoWhis = EscolherOMirante(w, b!);
+		}
+
+		if (AndarODivino(_whis, _miranteDoWhis, dt)) w.Facing = MoveRules.FacingFrom(b!.Pos - w.Pos, w.Facing);
+		PalpitarSobreComida();
+	}
+
+	/// <summary>
+	/// O LADO DO BILLS: o posto do Whis enquanto o Bills esta no dele; com o Bills fora do lugar, o mesmo deslocamento
+	/// a partir de onde ele esta -- em chao firme (o ponto livre mais perto).
+	/// </summary>
+	private Vec2 LadoDoBills(ServerPlayer? b)
+	{
+		if (b == null || (b.Pos - _bills.Posto).LengthSquared <= 4f) return _whis.Posto;
+		if (_ladoDoBills is { } ja && (ja.Bills - b.Pos).LengthSquared <= 64f) return ja.Lado;
+
+		Vec2 lado = b.Pos + (_whis.Posto - _bills.Posto);
+		if (MapaDaZonaOuCatalogo(b.Zone) is { } mapa) lado = mapa.PontoLivrePerto(lado);
+		_ladoDoBills = (b.Pos, lado);
+		return lado;
+	}
+
+	/// <summary>Com quem o Bills esta lutando agora (a presa imposta ao corpo dele), se esta neste mundo.</summary>
+	private ServerPlayer? QuemOBillsEnfrenta(ServerPlayer b) =>
+		b.Papel is { PresaDoRoteiro: not 0 } papel && _players.TryGetValue(papel.PresaDoRoteiro, out ServerPlayer? presa)
+		&& presa.Zone.Hash == b.Zone.Hash ? presa : null;
+
+	/// <summary>
+	/// DE ONDE ELE ASSISTE: a <see cref="BillsEWhis.TilesDoMirante"/> tiles do meio da luta, PRA FORA dela pelo lado em
+	/// que ele ja esta -- ele recua; nao atravessa a briga pra ver do outro lado (medido na `--billsteste`: com o chao
+	/// do lado dele ocupado por agua, o mirante caia do lado oposto, ele cruzava a luta andando e o corpo arremessado
+	/// pelo peteleco parava nele). Se la nao ha chao, o rumo gira de 45 em 45 graus, ate de lado; se nem assim, ele
+	/// assiste de um pouco mais perto (nunca de menos que <see cref="BillsEWhis.TilesPertoDemais"/> mais um); e so
+	/// sem chao NENHUM do lado dele vale o ponto livre mais perto do pedido.
+	/// </summary>
+	private Vec2 EscolherOMirante(ServerPlayer w, ServerPlayer b)
+	{
+		const float T = ZoneCollision.TileSize;
+		Vec2 centro = QuemOBillsEnfrenta(b) is { } presa ? (b.Pos + presa.Pos) * 0.5f : b.Pos;
+
+		Vec2 fora = w.Pos - centro;
+		if (fora.LengthSquared < 1f) fora = _whis.Posto - _bills.Posto;
+		if (fora.LengthSquared < 1f) fora = new Vec2(1, 0);
+		fora = fora.Normalized();
+
+		Vec2 pedido = centro + fora * (BillsEWhis.TilesDoMirante * T);
+		if (MapaDaZonaOuCatalogo(w.Zone) is not { } mapa) return pedido;
+
+		for (float tiles = BillsEWhis.TilesDoMirante; tiles >= BillsEWhis.TilesPertoDemais + 1; tiles -= 1)
+			foreach (float graus in GirosDoMirante)
+			{
+				float rad = graus * MathF.PI / 180f, cos = MathF.Cos(rad), sin = MathF.Sin(rad);
+				Vec2 ponto = centro + new Vec2(fora.X * cos - fora.Y * sin, fora.X * sin + fora.Y * cos) * (tiles * T);
+				int cx = (int)MathF.Floor(ponto.X / T), cy = (int)MathF.Floor(ponto.Y / T);
+				if (mapa.ServeDeChao(cx, cy)) return mapa.CentroDaCelula(cx, cy);
+			}
+		return mapa.PontoLivrePerto(pedido);
+	}
+
+	/// <summary>O mirante deixou de servir: a luta (o Bills, ou quem ele enfrenta) chegou perto demais dele, ou o Bills foi longe demais.</summary>
+	private bool MiranteVencido(ServerPlayer b)
+	{
+		const float T = ZoneCollision.TileSize;
+		float perto = BillsEWhis.TilesPertoDemais * T;
+		float doBills = (b.Pos - _miranteDoWhis).Length;
+		if (doBills < perto || doBills > BillsEWhis.TilesLongeDemais * T) return true;
+		return QuemOBillsEnfrenta(b) is { } presa && (presa.Pos - _miranteDoWhis).Length < perto;
+	}
+
+	/// <summary>
+	/// "...e comentando sobre comidas": de tempos em tempos (<see cref="BillsEWhis.SegundosEntrePalpites"/> mais uma
+	/// folga), um comentario da lista -- todos saem uma vez antes de qualquer um repetir, e a emenda de uma rodada na
+	/// outra tambem nao repete (<see cref="BillsEWhis.SacolaDePalpites"/>). Pela boca dele, como toda fala dos dois.
+	/// </summary>
+	private void PalpitarSobreComida()
+	{
+		if (_relogioDivino < _proximoPalpite || BillsEWhis.WhisCaladoDeTeste) return;
+		_proximoPalpite = _relogioDivino + BillsEWhis.SegundosEntrePalpites + _rng.NextDouble() * BillsEWhis.FolgaEntrePalpites;
+
+		int qual;
+		if (BillsEWhis.WhisRepeteDeTeste && _ultimoPalpite >= 0) qual = _ultimoPalpite;
+		else
+		{
+			if (_sacolaDePalpites.Count == 0)
+				_sacolaDePalpites.AddRange(BillsEWhis.SacolaDePalpites(BillsEWhis.PalpitesDeComida.Length, _ultimoPalpite, _rng));
+			qual = _sacolaDePalpites[^1];
+			_sacolaDePalpites.RemoveAt(_sacolaDePalpites.Count - 1);
+		}
+
+		_ultimoPalpite = qual;
+		DizerDivino(QuemFala.Whis, BillsEWhis.PalpitesDeComida[qual]);
+	}
+
+	/// <summary>
+	/// LEVA UM DOS DOIS ATE UM PONTO, A PE -- pelo passo de todo corpo que o servidor dirige (`AplicarComando`: a
+	/// colisao, a agua, o corpo alheio, a corrida paga em Ki). Devolve se ele CHEGOU (e ai esta exatamente no ponto).
+	///
+	/// QUEM EMPACA, DESVIA; E SE NAO ADIANTA, APARECE. O passo dirigido nao contorna obstaculo: sem chegar mais perto
+	/// por <see cref="BillsEWhis.SegundosAteDesviar"/> ele sai de lado (da pra contornar um corpo; uma parede, nao), e
+	/// sem chegar mais perto por <see cref="BillsEWhis.SegundosEmpacado"/> ele aparece no lugar -- um deus preso atras
+	/// de um pinheiro seria pior do que um deus que pisca. Vale pra um destino que nao mudou de lugar (quem segue
+	/// alguem que anda nao esta empacado).
+	/// </summary>
+	private bool AndarODivino(CorpoDivino c, Vec2 destino, double dt)
+	{
+		if (c.Corpo is not { } npc) return false;
+		const float T = ZoneCollision.TileSize;
+
+		Vec2 falta = destino - npc.Pos;
+		float dist = falta.Length;
+		bool correndo = dist > BillsEWhis.TilesPraCorrer * T;
+		float passo = MoveRules.SpeedPx(npc.SpeedStat, correndo) * (float)dt;
+
+		if ((destino - c.IndoPara).LengthSquared > T * T)
+		{
+			c.IndoPara = destino;
+			c.MaisPerto = float.MaxValue;
+			c.EmpacadoHa = 0;
+		}
+		if (dist < c.MaisPerto - 2f) { c.MaisPerto = dist; c.EmpacadoHa = 0; }
+		else c.EmpacadoHa += dt;
+
+		if (dist <= MathF.Max(passo, 2f) || c.EmpacadoHa >= BillsEWhis.SegundosEmpacado)
+		{
+			if (dist > 0.01f) npc.Pos = destino;
+			npc.Moving = false;
+			npc.Correndo = false;
+			npc.Ficha.dashing = false;
+			c.MaisPerto = float.MaxValue;
+			c.EmpacadoHa = 0;
+			return true;
+		}
+
+		Vec2 rumo = falta * (1f / dist);
+
+		// UM CORPO NO CAMINHO: o passo dirigido nao contorna (ele desliza no eixo livre e para). Parado ha um instante,
+		// ele sai de lado -- o rumo ganha uma perna perpendicular ate voltar a chegar mais perto. Cada um desvia pra um
+		// lado, pra os dois nao se espelharem um no outro.
+		if (c.EmpacadoHa > BillsEWhis.SegundosAteDesviar)
+			rumo = (rumo + new Vec2(-rumo.Y, rumo.X) * (c.Quem == QuemFala.Whis ? 1.5f : -1.5f)).Normalized();
+
+		AplicarComando(npc, new Comando { Rumo = rumo, Olhar = rumo, Correndo = correndo }, dt);
+		return false;
 	}
 
 	/// <summary>
@@ -835,6 +1211,7 @@ public partial class GameServer
 		CalarORoteiro();   // o que ele ainda ia dizer (a chegada, um comentario do Whis) da lugar a despedida
 		_cenaDivina = true;
 		_desafiantesNaTerra.Clear();
+		_caidosNaTerra.Clear();
 		ParOuDespertar(_bills, ModoDivino.EmCena);
 		GD.Print($"[server] BILLS FOI DERRUBADO NA TERRA" + (heroi.Length > 0 ? $" por {heroi}" : "") + " -- a casa dele esta aberta");
 
@@ -1034,6 +1411,7 @@ public partial class GameServer
 		void Receber(CorpoDivino c)
 		{
 			if (c.Corpo is not { } npc || c.Modo != ModoDivino.Parado || _relogioDivino < c.ProximaRecepcao) return;
+			if (c == _whis && _whisAssiste) return;   // assistindo a uma luta do Bills ele ja esta falando -- de comida
 
 			float raio = BillsEWhis.TilesDaRecepcao * ZoneCollision.TileSize;
 			bool temVisita = false;

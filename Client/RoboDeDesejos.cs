@@ -27,6 +27,11 @@ namespace Jandirus.Client;
 /// mora embaixo do HUD (nao por cima do boneco do corpo), e a do Super Shenron so acende os desejos AO LADO de uma
 /// Super Esfera (o passo 10 a mede dos dois lados do portao: de pe na Terra, e no espaco diante da esfera).
 ///
+/// E, JA QUE O PASSO 10 VAI ATE UMA SUPER ESFERA, ele mede tambem que ela APARECE (dono, 2026-10-11: *"faça as
+/// super esferas aparecerem"*): longe nao ha nada; ao lado ela esta no pixel que o servidor diz, com a arte, as
+/// estrelas e o dono; a posse que troca de mao troca a legenda; e as sete que se espalham somem da tela. Tres
+/// contra-exemplos: o desenho desligado, a lista que nao acompanha a troca de zona, e a posse contada so a quem tomou.
+///
 /// Rode com janela (no segundo monitor) -- as fotos precisam de desenho -- e num campo aberto (o berco da Terra
 /// e dentro do Banco, e debaixo de teto o dragao some no breu):
 ///   --host --rede 8181 --horateste 0.5 --campoteste 8 --diagdesejos --raca Human --conta bancada_ddesejos --nome Goku
@@ -78,8 +83,10 @@ public partial class RoboDeDesejos : Node
 		_acabou = true;
 		MenuDeDesejos.FicaAbertaSemDragaoDeTeste = false;
 		MenuDeDesejos.CobreOHudDeTeste = false;
-		// (o roteiro desliga os dois de baixo no proprio passo; aqui e pra uma excecao no meio dele nao os deixar ligados.)
-		if (S is { } servidor) servidor.SuperShenronDeQualquerLugarDeTeste = false;
+		// (o roteiro desliga os de baixo no proprio passo; aqui e pra uma excecao no meio dele nao os deixar ligados.)
+		World.SuperEsferasSemDesenhoDeTeste = SuperEsferaDesenhada.SobOAmbienteDeTeste = false;
+		if (S is { } servidor)
+			servidor.SuperShenronDeQualquerLugarDeTeste = servidor.SupersNaoAcompanhamAZonaDeTeste = servidor.PosseDaSuperSoPraQuemTomouDeTeste = false;
 		GameServer.EscutaDeAvisos = null;
 		S?.DesfazerOPalcoDosDesejosDeTeste();
 		foreach (string f in _fotos) Nota("foto  " + f);
@@ -109,15 +116,54 @@ public partial class RoboDeDesejos : Node
 		return true;
 	}
 
-	private Image? Fotografar(string nome)
+	/// <summary>O que esta na tela agora, sem gravar em disco. Nulo sem janela (headless nao renderiza).</summary>
+	private Image? Capturar()
 	{
 		Image? img = GetViewport()?.GetTexture()?.GetImage();
-		if (img == null || img.IsEmpty()) { Nota($"sem foto pra {nome} (headless nao renderiza): rode com janela"); return null; }
+		return img == null || img.IsEmpty() ? null : img;
+	}
+
+	private Image? Fotografar(string nome)
+	{
+		Image? img = Capturar();
+		if (img == null) { Nota($"sem foto pra {nome} (headless nao renderiza): rode com janela"); return null; }
 		string caminho = ProjectSettings.GlobalizePath($"user://{nome}.png");
 		img.SavePng(caminho);
 		_fotos.Add(caminho);
 		Nota($"foto {caminho} ({img.GetWidth()}x{img.GetHeight()})");
 		return img;
+	}
+
+	/// <summary>
+	/// QUANTO DE UM DISCO DA FOTO E LARANJA -- a cor da Super Esfera -- e onde cai o centro da mancha. E a regua
+	/// de "ela esta DESENHADA ali": um node na arvore com a posicao certa nao e pixel na tela (ja se pagou por
+	/// essa diferenca neste projeto), e o ceu do espaco, preto com estrelas miudas, nao tem laranja nenhum.
+	/// O centro e o raio sao em pixels da foto.
+	/// </summary>
+	private static (float Fracao, Vector2 Centro) LaranjaNoDisco(Image? foto, Vector2 centro, float raio)
+	{
+		if (foto == null) return (0, default);
+
+		int x0 = Math.Max(0, (int)(centro.X - raio)), x1 = Math.Min(foto.GetWidth() - 1, (int)(centro.X + raio));
+		int y0 = Math.Max(0, (int)(centro.Y - raio)), y1 = Math.Min(foto.GetHeight() - 1, (int)(centro.Y + raio));
+		long noDisco = 0, laranjas = 0;
+		double somaX = 0, somaY = 0;
+		for (int y = y0; y <= y1; y++)
+			for (int x = x0; x <= x1; x++)
+			{
+				float dx = x - centro.X, dy = y - centro.Y;
+				if (dx * dx + dy * dy > raio * raio) continue;
+				noDisco++;
+
+				Color c = foto.GetPixel(x, y);
+				if (!(c.R > 0.55f && c.G > 0.18f && c.G < 0.78f && c.B < 0.40f && c.R > c.G + 0.08f)) continue;
+				laranjas++;
+				somaX += x;
+				somaY += y;
+			}
+
+		return noDisco == 0 ? (0, default)
+			: (laranjas / (float)noDisco, laranjas == 0 ? default : new Vector2((float)(somaX / laranjas), (float)(somaY / laranjas)));
 	}
 
 	// =====================================================================
@@ -462,25 +508,216 @@ public partial class RoboDeDesejos : Node
 				&& srv.CicloDasSupersAgoraDeTeste == ciclo + 1,
 				$"zeni {zeniNaTerra:N0} -> {srv.CorpoDosDesejosDeTeste(eu)?.Zeni:N0}, ciclo {ciclo} -> {srv.CicloDasSupersAgoraDeTeste}");
 
-		// ------------------------------------------------------------ 10b) ao lado de uma Super Esfera
-		Nota("-- 10b) o Super Shenron, AO LADO de uma Super Esfera (no espaco): os desejos acendem e o pedido entra --");
+		// ------------------------------------------------------------ 10b) as Super Esferas na tela
+		// "faça as super esferas aparecerem" (dono, 2026-10-11). O servidor ja mandava as que estao no recorte de
+		// chunk do corpo e o cliente nao desenhava nenhuma: o jogador era mandado pra "ao lado" de uma coisa que nao
+		// existia na tela. Daqui pra baixo o robo vai ao espaco e mede o que se VE -- e so entao pede o desejo.
+		Nota("-- 10b) as SUPER ESFERAS NA TELA: longe nao ha nada; ao lado, ela esta no pixel que o servidor diz --");
+		World mundo = M!;
 		ciclo = srv.SupersNaMaoDeTeste(eu);   // as sete de novo (o defeito de cima as consumiu), nas posicoes do ciclo novo
 
 		// ATE LA PELO CAMINHO DAS OUTRAS BANCADAS: a roupa espacial entra pela mochila (um humano sufoca em 20 s no
-		// vacuo -- a `--diagnav` ja pagou por isso) e o corpo vai pelo `MoveToZone` do servidor ate a Super Esfera 1,
-		// como na `--avessoteste` e na `--esferateste`. A UM TILE dela, e nao em cima: "ao lado" e estar dentro do
-		// alcance (2 tiles), e e isso que se mede. (Na foto so ha espaco em volta do corpo: o cliente recebe a
-		// posicao das Super Esferas por perto -- `GameClient.Supers` -- e hoje ninguem as desenha.)
+		// vacuo -- a `--diagnav` ja pagou por isso) e o corpo vai pelo `MoveToZone` do servidor, como na
+		// `--avessoteste` e na `--esferateste`.
 		bool traje = srv.TrajeNaMochilaDeTeste(eu);
 		Vec2 esfera = srv.OndeEstaASuper(1);
-		srv.MoveToZone(eu, srv.ZonaDoEspaco, esfera + new Vec2(SuperEsferas.AlcanceDeInvocar * 0.5f, 0));
+		var esferaNoMundo = new Vector2(esfera.X, esfera.Y);
+		// A UM TILE DELA, e nao em cima: "ao lado" e estar dentro do alcance (2 tiles), e e isso que se mede.
+		Vec2 aoLadoDela = esfera + new Vec2(SuperEsferas.AlcanceDeInvocar * 0.5f, 0);
+		Vec2 longeDeTodas = srv.LongeDasSupersDeTeste(1);
+
+		// ---- LONGE: fora do que o servidor manda nao se desenha nada
+		srv.MoveToZone(eu, srv.ZonaDoEspaco, longeDeTodas);
 		for (double t = 0; t < 10 && !Espaco.EhEspaco(cli.Zone); t += 0.1) yield return 0.1;
 		yield return 2.5;   // a tela de carregamento sai e o corpo assenta
-		float ateAEsfera = M?.PosicaoLocal is { } corpo ? corpo.DistanceTo(new Vector2(esfera.X, esfera.Y)) : float.MaxValue;
-		Afirmar("(montagem) o corpo esta no ESPACO, de roupa espacial, a menos de `AlcanceDeInvocar` (2 tiles) da Super Esfera 1 -- e continua com as sete",
-				traje && Espaco.EhEspaco(cli.Zone) && ateAEsfera <= SuperEsferas.AlcanceDeInvocar && cli.MinhasSupers == SuperEsferas.Total,
-				$"traje {traje}, zona '{cli.Zone.Name}', a {ateAEsfera:0} px da esfera (alcance {SuperEsferas.AlcanceDeInvocar:0}), supers {cli.MinhasSupers}");
+		Afirmar("(montagem) o corpo esta no ESPACO, de roupa espacial, num ponto FORA do recorte de chunk de todas as sete",
+				traje && Espaco.EhEspaco(cli.Zone) && (longeDeTodas - esfera).Length > Espaco.ChunkPx * 2,
+				$"traje {traje}, zona '{cli.Zone.Name}', a {(longeDeTodas - esfera).Length:0} px da Super Esfera 1");
+		Afirmar("LONGE de todas, a lista do servidor vem VAZIA e nao ha Super Esfera nenhuma desenhada (o cliente nao sabe onde elas estao)",
+				cli.Supers.Count == 0 && mundo.SuperEsferasDesenhadasDeTeste().Count == 0,
+				$"{cli.Supers.Count} na lista, {mundo.SuperEsferasDesenhadasDeTeste().Count} desenhada(s)");
 
+		// ---- AO LADO, CHEGANDO COMO QUEM DECOLA: a lista acompanha a troca de zona
+		// O contra-exemplo vem primeiro, porque so se ve em quem chega com a lista vazia: sem o pacote na troca de
+		// zona, o corpo pousa ao lado da esfera com a chunk ja carimbada e fica sem ve-la ate cruzar outra.
+		srv.SupersNaoAcompanhamAZonaDeTeste = true;
+		srv.ChegarAoEspacoComoQuemDecolaDeTeste(eu, aoLadoDela);
+		yield return 2.5;
+		Afirmar("(defeito injetado: a lista das Super so sai quando o corpo cruza uma chunk) quem chega como quem decola, AO LADO de uma, "
+				+ "nao a recebe nem a ve -- o que o servidor fazia ate 2026-10-11",
+				cli.Supers.Count == 0 && mundo.SuperEsferasDesenhadasDeTeste().Count == 0,
+				$"{cli.Supers.Count} na lista, {mundo.SuperEsferasDesenhadasDeTeste().Count} desenhada(s)");
+		srv.SupersNaoAcompanhamAZonaDeTeste = false;
+		srv.ChegarAoEspacoComoQuemDecolaDeTeste(eu, aoLadoDela);
+		for (double t = 0; t < 4 && !mundo.SuperEsferasDesenhadasDeTeste().Exists(e => e.Numero == 1); t += 0.1) yield return 0.1;
+		yield return 2.5;   // o corpo assenta, e a camera com ele, antes de medir pixel
+
+		float ateAEsfera = mundo.PosicaoLocal is { } corpo ? corpo.DistanceTo(esferaNoMundo) : float.MaxValue;
+		Afirmar("(montagem) agora AO LADO: no espaco, a menos de `AlcanceDeInvocar` (2 tiles) da Super Esfera 1, com as sete",
+				Espaco.EhEspaco(cli.Zone) && ateAEsfera <= SuperEsferas.AlcanceDeInvocar && cli.MinhasSupers == SuperEsferas.Total,
+				$"zona '{cli.Zone.Name}', a {ateAEsfera:0} px da esfera (alcance {SuperEsferas.AlcanceDeInvocar:0}), supers {cli.MinhasSupers}");
+
+		// ---- ELA ESTA NA TELA: o node, a arte, o tamanho, a legenda -- e o PIXEL
+		List<(int Numero, Vector2 NoMundo, Vector2 NaTela, float Diametro, int Estrelas, string Legenda)> naTela = mundo.SuperEsferasDesenhadasDeTeste();
+		(int Numero, Vector2 NoMundo, Vector2 NaTela, float Diametro, int Estrelas, string Legenda) uma = naTela.Find(e => e.Numero == 1);
+		Afirmar("AO LADO de uma Super Esfera, chegando como quem decola, ela esta DESENHADA: uma por linha do pacote, cada uma no lugar que o "
+				+ "pacote trouxe -- e a de 1 estrela exatamente onde o servidor a tem",
+				naTela.Count > 0 && naTela.Count == cli.Supers.Count
+				&& naTela.All(e => cli.Supers.Exists(s => s.Numero == e.Numero && s.Pos.DistanceTo(e.NoMundo) < 0.5f))
+				&& uma.Numero == 1 && uma.NoMundo.DistanceTo(esferaNoMundo) < 0.5f,
+				$"{naTela.Count} desenhada(s) de {cli.Supers.Count} na lista; a #1 em {uma.NoMundo}, servidor {esferaNoMundo}");
+		Afirmar("...com a ARTE do original e as estrelas DELA (o quadro de 1 estrela do `SuperDragonball.dmi`), do tamanho do alcance: "
+				+ "128 px de mundo de diametro, 4 tiles",
+				uma.Estrelas == 1 && Math.Abs(uma.Diametro - 2 * SuperEsferas.AlcanceDeReivindicar) < 0.5f && Math.Abs(uma.Diametro - 128f) < 0.5f,
+				$"quadro de {uma.Estrelas} estrela(s), diametro {uma.Diametro:0.#} px");
+		Afirmar("...e a legenda diz as estrelas e o dono: '1 estrela · SUA'",
+				uma.Legenda == "1 estrela · SUA" && uma.Legenda == SuperEsferaDesenhada.Legenda(1, cli.LocalName, true), uma.Legenda);
+
+		Image? daEsfera = Fotografar("desejos-07-a-super-esfera");
+		float zoom = mundo.ZoomDaCameraDeTeste;
+		Vector2 pixelDoServidor = GetViewport().GetCanvasTransform() * esferaNoMundo;   // onde o servidor diz, pela camera
+		float raioNaTela = SuperEsferaDesenhada.Raio * zoom;
+		(float laranja, Vector2 centroDaMancha) = LaranjaNoDisco(daEsfera, pixelDoServidor, raioNaTela);
+		Afirmar("...NA TELA: o node esta no pixel que a posicao do servidor da pela camera, dentro do quadro -- e na FOTO ha um disco laranja ali "
+				+ "(mais da metade do disco, com o centro da mancha no centro dele)",
+				uma.NaTela.DistanceTo(pixelDoServidor) < 1.5f && GetViewport().GetVisibleRect().HasPoint(pixelDoServidor)
+				&& daEsfera != null && laranja > 0.5f && centroDaMancha.DistanceTo(pixelDoServidor) < raioNaTela * 0.2f,
+				$"node {uma.NaTela}, servidor {pixelDoServidor}, zoom {zoom}; laranja em {laranja:P0} do disco, centro da mancha {centroDaMancha}");
+
+		// O CONTRA-EXEMPLO DO DESENHO: o cliente de antes. A lista chega igual, e a tela fica vazia.
+		World.SuperEsferasSemDesenhoDeTeste = true;
+		mundo.RedesenharSupersDeTeste();
+		yield return 0.3;
+		(float semDesenho, _) = LaranjaNoDisco(Capturar(), pixelDoServidor, raioNaTela);
+		Afirmar("(defeito injetado: o desenho desligado -- o cliente ate 2026-10-11) a lista do servidor continua la e NADA aparece: "
+				+ "nenhum node, e nenhum laranja naquele disco da tela",
+				cli.Supers.Exists(s => s.Numero == 1) && mundo.SuperEsferasDesenhadasDeTeste().Count == 0 && semDesenho < 0.05f,
+				$"{cli.Supers.Count} na lista, {mundo.SuperEsferasDesenhadasDeTeste().Count} desenhada(s), laranja em {semDesenho:P0} do disco");
+		World.SuperEsferasSemDesenhoDeTeste = false;
+		mundo.RedesenharSupersDeTeste();
+		yield return 0.2;
+		Afirmar("...e desfeito o defeito ela volta pra tela", mundo.SuperEsferasDesenhadasDeTeste().Exists(e => e.Numero == 1));
+
+		// O CONTRA-EXEMPLO DA LUZ PROPRIA: sob o ambiente do espaco (um crepusculo parado) o node esta la, no
+		// lugar certo -- e o laranja nao chega a tela. A foto fica, pro dono comparar as duas.
+		SuperEsferaDesenhada.SobOAmbienteDeTeste = true;
+		mundo.RedesenharSupersDeTeste();
+		yield return 0.3;
+		(float apagada, _) = LaranjaNoDisco(Fotografar("desejos-07-sem-luz-propria"), pixelDoServidor, raioNaTela);
+		Afirmar("(defeito injetado: a esfera sob o ambiente do espaco, como os planetas) o node continua desenhado no lugar e a MESMA regua "
+				+ "de pixel reprova: o crepusculo parado leva o laranja pra marrom",
+				mundo.SuperEsferasDesenhadasDeTeste().Exists(e => e.Numero == 1 && e.NoMundo.DistanceTo(esferaNoMundo) < 0.5f) && apagada < 0.05f,
+				$"laranja em {apagada:P0} do disco (com luz propria: {laranja:P0})");
+		SuperEsferaDesenhada.SobOAmbienteDeTeste = false;
+		mundo.RedesenharSupersDeTeste();
+		yield return 0.2;
+
+		// ---- O CUSTO: a lista se refaz por PACOTE, nunca por quadro
+		// (o corpo nao tem o Dragon Radar: no tique de segundo do servidor nao sai pacote nenhum pra ele.)
+		ulong[] nodes = mundo.NodesDasSupersDeTeste();
+		yield return 1.0;
+		bool osMesmos = nodes.Length > 0 && nodes.SequenceEqual(mundo.NodesDasSupersDeTeste());
+		mundo.RedesenharSupersDeTeste();
+		bool aReguaVeUmRemonte = !nodes.SequenceEqual(mundo.NodesDasSupersDeTeste());
+		Afirmar("um segundo parado (dezenas de quadros, nenhum pacote) e os nodes desenhados sao OS MESMOS: nada se remonta por quadro -- "
+				+ "e a regua ve um remonte quando ha um (o redesenho forcado troca todos)",
+				osMesmos && aReguaVeUmRemonte, $"{nodes.Length} node(s); os mesmos {osMesmos}, a regua ve {aReguaVeUmRemonte}");
+
+		// ---- O RADAR E A TELA DIZEM O MESMO LUGAR
+		// O Dragon Radar entra so agora: com ele o tique de segundo do servidor manda a lista de novo sempre que a
+		// frase muda, e as cenas de cima (o pacote que acompanha a troca de zona) deixariam de medir a troca de zona.
+		bool semAparelhoSemFrase = cli.SinalDourado.Length == 0;
+		srv.RadarNaMochilaDeTeste(eu, true);
+		for (double t = 0; t < 4 && cli.SinalDourado.Length == 0; t += 0.1) yield return 0.1;
+		yield return 0.2;
+		string frase = cli.SinalDourado;
+		naTela = mundo.SuperEsferasDesenhadasDeTeste();
+		// A FRASE FALA NA UNIDADE DA ABA WORLD: o ponto vem como a linha "Coordenadas" o escreveria (tiles), e nao em
+		// pixels do mundo -- senao quem segue a frase olhando a propria posicao na aba procura no lugar errado.
+		static string NaAba(Vector2 p) => Jandirus.Core.World.MapaDoLugar.Coordenadas(new Jandirus.Core.World.Vec2(p.X, p.Y));
+		bool AFraseDaOLugarDaAba(string f) => naTela.Exists(e => f.Contains("perto de " + NaAba(e.NoMundo), StringComparison.Ordinal));
+		Afirmar("sem o Dragon Radar a frase do radar dourado nao vem (a bola na tela nao faz o papel do aparelho); COM ele, ao lado da "
+				+ "esfera, a frase diz 'NESTA célula' e da o MESMO ponto em que ela esta desenhada, nas coordenadas da aba World",
+				semAparelhoSemFrase && frase.Contains("NESTA célula", StringComparison.Ordinal) && AFraseDaOLugarDaAba(frase),
+				$"sem aparelho: {(semAparelhoSemFrase ? "sem frase" : "COM frase")}; com ele: '{frase}'; desenhada(s) em "
+				+ string.Join(" ", naTela.Select(e => $"#{e.Numero}[{NaAba(e.NoMundo)}]")));
+		try
+		{
+			Jandirus.Core.Magic.SuperEsferas.RadarEmPixelsDeTeste = true;
+			for (double t = 0; t < 4 && cli.SinalDourado == frase; t += 0.1) yield return 0.1;
+			string emPixels = cli.SinalDourado;
+			Afirmar("(defeito injetado: a frase do radar em PIXELS) o ponto da frase deixa de ser o da aba World, e a checagem de cima REPROVA",
+					emPixels != frase && emPixels.Contains("NESTA célula", StringComparison.Ordinal) && !AFraseDaOLugarDaAba(emPixels), $"'{emPixels}'");
+		}
+		finally { Jandirus.Core.Magic.SuperEsferas.RadarEmPixelsDeTeste = false; }
+		for (double t = 0; t < 4 && cli.SinalDourado != frase; t += 0.1) yield return 0.1;
+		srv.RadarNaMochilaDeTeste(eu, false);
+		for (double t = 0; t < 4 && cli.SinalDourado.Length > 0; t += 0.1) yield return 0.1;
+
+		// ---- DE LONGE: fora do anel ela ja esta inteira na tela -- e dali o dragao ainda nao atende
+		// O corpo vai pra cima e pra esquerda dela, pra a bola cair embaixo e a direita do meio da tela: e o pedaco
+		// sem HUD (a caixa de fala mora embaixo a esquerda, o boneco de vida em cima a direita), e a regua de pixel
+		// mede o disco sem nada na frente.
+		Vec2 deLonge = esfera + new Vec2(-100, -40);
+		srv.MoveToZone(eu, srv.ZonaDoEspaco, deLonge);
+		yield return 2.5;
+		for (double t = 0; t < 3 && !mundo.SuperEsferasDesenhadasDeTeste().Exists(e => e.Numero == 1); t += 0.1) yield return 0.1;
+		yield return 0.5;
+		uma = mundo.SuperEsferasDesenhadasDeTeste().Find(e => e.Numero == 1);
+		float deQuantoLonge = mundo.PosicaoLocal is { } corpoLa ? corpoLa.DistanceTo(esferaNoMundo) : 0f;
+		Image? fotoDeLonge = Fotografar("desejos-08-de-longe");
+		Vector2 pixelDeLonge = GetViewport().GetCanvasTransform() * esferaNoMundo;
+		(float laranjaDeLonge, Vector2 manchaDeLonge) = LaranjaNoDisco(fotoDeLonge, pixelDeLonge, raioNaTela);
+		Afirmar("DE LONGE (a mais de 3 tiles: fora do alcance) ela esta INTEIRA na tela, no pixel que o servidor diz -- e sem nada na frente "
+				+ "o disco e laranja em mais de 3/4, com o centro da mancha no centro dele",
+				deQuantoLonge > SuperEsferas.AlcanceDeInvocar * 1.5f && uma.Numero == 1 && uma.NaTela.DistanceTo(pixelDeLonge) < 1.5f
+				&& GetViewport().GetVisibleRect().Grow(-raioNaTela).HasPoint(pixelDeLonge)
+				&& fotoDeLonge != null && laranjaDeLonge > 0.75f && manchaDeLonge.DistanceTo(pixelDeLonge) < raioNaTela * 0.12f,
+				$"a {deQuantoLonge:0} px dela; node {uma.NaTela}, servidor {pixelDeLonge}; laranja em {laranjaDeLonge:P0} do disco, "
+				+ $"centro da mancha {manchaDeLonge}");
+
+		// DALI O DRAGAO AINDA NAO ATENDE: a bola esta na tela e o corpo esta FORA do anel dela -- o anel e o alcance.
+		const string recusaNoEspaco = "ao seu alcance";
+		List<string> ouvidoDeLonge = [];
+		GameServer.EscutaDeAvisos = ouvidoDeLonge;
+		cli.SendVerbo("sdb_invocar", "sdb_riqueza");
+		for (double t = 0; t < 3 && !ouvidoDeLonge.Exists(f => f.Contains(recusaNoEspaco, StringComparison.Ordinal)); t += 0.1) yield return 0.1;
+		yield return 0.3;
+		GameServer.EscutaDeAvisos = null;
+		Afirmar("...e de la, FORA do anel, o pedido e recusado (\"não há Super Esfera ao seu alcance\"): as sete continuam com ele e o ciclo "
+				+ "nao anda -- DENTRO do anel ele entra (o 10c)",
+				ouvidoDeLonge.Exists(f => f.Contains(recusaNoEspaco, StringComparison.Ordinal))
+				&& cli.MinhasSupers == SuperEsferas.Total && srv.CicloDasSupersAgoraDeTeste == ciclo,
+				$"supers {cli.MinhasSupers}, ciclo {ciclo} -> {srv.CicloDasSupersAgoraDeTeste}, ouviu: {string.Join(" | ", ouvidoDeLonge)}");
+
+		// ...e de volta pro lado dela.
+		srv.MoveToZone(eu, srv.ZonaDoEspaco, aoLadoDela);
+		yield return 2.5;
+		for (double t = 0; t < 3 && !mundo.SuperEsferasDesenhadasDeTeste().Exists(e => e.Numero == 1); t += 0.1) yield return 0.1;
+
+		// ---- DE QUEM ELA E: a posse troca de mao com alguem olhando
+		string LegendaDaUm() => mundo.SuperEsferasDesenhadasDeTeste().Find(e => e.Numero == 1).Legenda ?? "";
+		srv.PosseDaSuperSoPraQuemTomouDeTeste = true;
+		string ladrao = srv.OutroTomaASuperDeTeste(1);
+		yield return 1.5;
+		Afirmar("(defeito injetado: a troca de dono so e contada a quem tomou) outro toma a esfera na frente do jogador e a tela continua "
+				+ "dizendo SUA, com o placar em 7 -- o que o servidor fazia ate 2026-10-11",
+				ladrao.Length > 0 && LegendaDaUm() == "1 estrela · SUA" && cli.MinhasSupers == SuperEsferas.Total,
+				$"legenda '{LegendaDaUm()}', placar {cli.MinhasSupers}");
+		srv.PosseDaSuperSoPraQuemTomouDeTeste = false;
+		srv.SupersNaMaoDeTeste(eu);   // as sete de volta (e o pacote que acerta a tela)
+		yield return 0.5;
+		ladrao = srv.OutroTomaASuperDeTeste(1);
+		for (double t = 0; t < 3 && LegendaDaUm() == "1 estrela · SUA"; t += 0.1) yield return 0.1;
+		Afirmar("OUTRO toma a esfera com o jogador olhando: a legenda troca pra 'de Freeza' NA HORA e o placar dele cai pra 6, sem o corpo "
+				+ "sair do lugar",
+				LegendaDaUm() == $"1 estrela · de {ladrao}" && cli.MinhasSupers == SuperEsferas.Total - 1,
+				$"legenda '{LegendaDaUm()}', placar {cli.MinhasSupers}");
+		ciclo = srv.SupersNaMaoDeTeste(eu);   // ...e as sete de novo com ele, pro pedido
+		for (double t = 0; t < 3 && cli.MinhasSupers != SuperEsferas.Total; t += 0.1) yield return 0.1;
+
+		// ---- e, com a esfera na tela, o Super Shenron
+		Nota("-- 10c) o Super Shenron, AO LADO da Super Esfera: os desejos acendem e o pedido entra --");
 		menu.Abrir();
 		menu.IrPara("World");
 		yield return 0.6;
@@ -513,5 +750,16 @@ public partial class RoboDeDesejos : Node
 				Math.Abs((srv.CorpoDosDesejosDeTeste(eu)?.Zeni ?? 0) - (zeniAntes + Desejos.ZeniDoSuperDesejo)) < 1
 				&& srv.CicloDasSupersAgoraDeTeste == ciclo + 1 && !janela.NaTela,
 				$"zeni {zeniAntes:N0} -> {srv.CorpoDosDesejosDeTeste(eu)?.Zeni:N0}, ciclo {ciclo} -> {srv.CicloDasSupersAgoraDeTeste}, naTela {janela.NaTela}");
+
+		// ---- AS SETE SE ESPALHARAM: a desenhada vai junto
+		for (double t = 0; t < 3 && mundo.SuperEsferasDesenhadasDeTeste().Exists(e => e.NoMundo.DistanceTo(esferaNoMundo) < 1f); t += 0.1) yield return 0.1;
+		naTela = mundo.SuperEsferasDesenhadasDeTeste();
+		Vec2 nova = srv.OndeEstaASuper(1);
+		Afirmar("as sete se espalharam com o desejo: a esfera desenhada SOME do lugar antigo junto, e o que fica na tela e so o que o servidor "
+				+ "manda agora, nos lugares novos",
+				!naTela.Exists(e => e.NoMundo.DistanceTo(esferaNoMundo) < 1f) && (nova - esfera).Length > 1000
+				&& naTela.Count == cli.Supers.Count
+				&& naTela.All(e => { Vec2 p = srv.OndeEstaASuper(e.Numero); return e.NoMundo.DistanceTo(new Vector2(p.X, p.Y)) < 0.5f; }),
+				$"{naTela.Count} desenhada(s) de {cli.Supers.Count} na lista; a #1 foi de {esferaNoMundo} pra ({nova.X:0}, {nova.Y:0})");
 	}
 }

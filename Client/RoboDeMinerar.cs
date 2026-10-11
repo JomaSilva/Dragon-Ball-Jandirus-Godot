@@ -14,6 +14,10 @@ namespace Jandirus.Client;
 /// ferramenta rende, o que derruba) esta na `--recursosteste`; aqui se prova o que so existe DESTE lado e PELO
 /// FIO:
 ///
+///   0. DEBAIXO DE TETO NAO SE MINERA (dono, 2026-10-11): o berco fica dentro de um predio, e ali o verb e
+///      recusado NESTA ponta, com a frase, sem o corpo vestir a pose -- e o servidor recusa igual quem mande a
+///      atividade por fora. Contraprova: o jogo de antes, em que so a zona contava. Dali o corpo vai pra ceu
+///      aberto, onde o resto do roteiro acontece.
 ///   1. O verb esta na aba Other pra todo mundo, e o BOTAO dele poe o corpo local na atividade (a pose de
 ///      treino), acende o "MINERANDO" do HUD e a faixa (logo acima do chat) -- com o que o servidor contou:
 ///      ferramenta, taxa e reserva.
@@ -36,6 +40,10 @@ namespace Jandirus.Client;
 ///   9. O "CAVAR" SAIU (dono: *"tire a opcao de cavar da pa e furadeira pq e redundante"*): na mochila, o painel
 ///      da pa so tem "Jogar fora"; a dica dela (no slot e no card da aba Tech) diz o que ela faz agora; e o
 ///      comando antigo, mandado a mao, e recusado sem render nada. Contraprova: o botao que volta.
+///  10. NA CAVERNA DO PLANETA SE MINERA (dono, 2026-10-11: *"essa e a unica excessao de mapa de interior"*): o
+///      corpo viaja pra `Earth_Cave`, o verb comeca, o chat e a faixa dizem que o chao e do PLANETA, e o que
+///      entra no bolso sai da reserva da Terra -- o mesmo numero, visto de volta na superficie. Contraprova: a
+///      caverna tratada como um interior qualquer.
 ///
 /// O servidor mora neste processo (`--host`): a carteira, a ferramenta e a reserva sao postas por ele, pelas
 /// portas de bancada do `GameServer.Recursos.cs`. As teclas de andar e de guarda sao as de verdade
@@ -210,6 +218,8 @@ public partial class RoboDeMinerar : Node
 		(GetTree().Root.FindChild("Inventario", true, false) as TelaDeInventario)?.Fechar();
 		Recurso.FerramentaNaoContaDeTeste = false;
 		Recurso.ReservaNaoRegeneraDeTeste = false;
+		Recurso.MineraSobTetoDeTeste = false;
+		Jandirus.Core.World.Cavernas.InteriorComumDeTeste = false;
 		Tecla("move_right", false);
 		Tecla("guard", false);
 		MenuJogo.Instancia?.Fechar();
@@ -257,6 +267,15 @@ public partial class RoboDeMinerar : Node
 			"(montagem) o personagem nasceu num planeta, e o planeta tem reserva", $"{cli.Zone.Name}: {cheia:N0}");
 		Conferir(cli.Recursos == 0, "(montagem) a carteira do cliente chegou zerada pelo fio", $"{cli.Recursos:0}");
 
+		await F0_DebaixoDeTetoNaoSeMinera(cli, srv, corpo, faixa);
+
+		// A CEU ABERTO: o berco e dentro de um predio, e o resto do roteiro precisa de um chao em que se minere.
+		bool posto = srv.AssentarNaPracaDasMaquinas(_eu, 2);
+		bool aoArLivre = await Ate(() => World.Instancia is { EuEstouSobTeto: false }, 6);
+		await Segundos(1.0);   // a correcao de posicao atravessa o fio, e o corpo assenta
+		Conferir(posto && aoArLivre, "(montagem) o corpo foi posto A CEU ABERTO, num quadrado de chao comum (e la que se minera)",
+			$"posto={posto}, sob teto={World.Instancia?.EuEstouSobTeto}");
+
 		await F1_OVerbPoeOCorpoMinerando(cli, srv, corpo, faixa);
 		await F2_OsRecursosChegam(cli, srv, faixa);
 		await F3_AFerramentaMudaATaxa(cli, srv, faixa);
@@ -266,6 +285,157 @@ public partial class RoboDeMinerar : Node
 		await F7_AsDuasPontasConcordam(cli, srv, corpo);
 		await F8_AReservaSeca(cli, srv, corpo, faixa);
 		await F9_APaNaoCavaMais(cli, srv);
+		await F10_NaCavernaSeMinera(cli, srv, faixa);
+	}
+
+	// ---------------------------------------------------------------------- o chat, como o jogador le
+	/// <summary>
+	/// O QUE ESTA ESCRITO NO PAINEL DO CHAT AGORA. As frases do servidor chegam pelo `Falou` (o <see cref="_ouvido"/>);
+	/// as recusas que nascem NESTA ponta (`Chat.Sistema`, sem pacote) so existem aqui.
+	/// </summary>
+	private static string NoChat() =>
+		Chat.Instancia is { } chat ? string.Concat(Todos(chat).OfType<RichTextLabel>().Select(r => r.GetParsedText() + "\n")) : "";
+
+	private static int Vezes(string texto, string frase)
+	{
+		int n = 0;
+		for (int i = texto.IndexOf(frase, StringComparison.Ordinal); i >= 0; i = texto.IndexOf(frase, i + frase.Length, StringComparison.Ordinal)) n++;
+		return n;
+	}
+
+	// ---------------------------------------------------------------------- 0. debaixo de teto
+	private async System.Threading.Tasks.Task F0_DebaixoDeTetoNaoSeMinera(
+		GameClient cli, Jandirus.Server.GameServer srv, LocalPlayer corpo, PainelDeMineracao faixa)
+	{
+		Nota("--- 0: debaixo de teto nao se minera (o berco fica dentro de um predio) ---");
+		bool sobTeto = await Ate(() => World.Instancia is { EuEstouSobTeto: true }, 5);
+		if (!sobTeto)
+		{
+			Nota("  --     NAO MEDIDO: o berco desta rodada fica a ceu aberto (com `--campoteste`, por exemplo) -- a recusa do teto e medida na `--recursosteste`");
+			return;
+		}
+		Conferir(Jandirus.Core.World.Espaco.EhPlaneta(cli.Zone), "(montagem) o berco fica DEBAIXO DE TETO, no mapa de um planeta", cli.Zone.Name);
+
+		int recusas = Vezes(NoChat(), Recurso.NaoSeMineraSobTeto);
+		ApertarOVerb();
+		await Segundos(0.6);
+		Conferir(corpo.AtividadeDeTeste == Protocol.Activity.Parado && cli.Atividade == Protocol.Activity.Parado
+				 && !faixa.NaTela && !HudDizMinerando() && !srv.MinerandoDeTeste(_eu),
+			"**DEBAIXO DE TETO O VERB NAO COMECA**: o corpo local nem veste a pose, a faixa e o \"MINERANDO\" nao aparecem, e o servidor nao e incomodado",
+			$"corpo {corpo.AtividadeDeTeste}, servidor {srv.MinerandoDeTeste(_eu)}");
+		Conferir(Vezes(NoChat(), Recurso.NaoSeMineraSobTeto) == recusas + 1,
+			"...e o chat diz por que, com a saida: \"só a céu aberto, ou dentro de uma caverna\"", Recurso.NaoSeMineraSobTeto);
+
+		// QUEM MANDA A ATIVIDADE POR FORA (um cliente de antes, sem a pergunta do teto) ouve a mesma frase DO SERVIDOR.
+		_ouvido.Clear();
+		cli.SendActivity(Protocol.Activity.Minerando);
+		await Ate(() => Ouvi(Recurso.NaoSeMineraSobTeto), 3);
+		Conferir(Ouvi(Recurso.NaoSeMineraSobTeto) && !srv.MinerandoDeTeste(_eu),
+			"...e o SERVIDOR recusa igual quem mande a atividade por fora do verb (um cliente de antes): a mesma frase, e nada comeca",
+			_ouvido.LastOrDefault() ?? "(nada)");
+		cli.SendActivity(Protocol.Activity.Parado);
+
+		// CONTRAPROVA: o jogo de antes, em que so a zona contava.
+		Recurso.MineraSobTetoDeTeste = true;
+		try
+		{
+			ApertarOVerb();
+			bool comecou = await Ate(() => srv.MinerandoDeTeste(_eu) && corpo.AtividadeDeTeste == Protocol.Activity.Minerando, 3);
+			Conferir(comecou,
+				"(defeito injetado: debaixo de teto tambem se minera -- o jogo de antes) dentro do predio o verb COMECA, nas duas pontas -- a regua sabe reprovar",
+				$"corpo {corpo.AtividadeDeTeste}, servidor {srv.MinerandoDeTeste(_eu)}");
+			ApertarOVerb();   // parar nunca e recusado
+			await Ate(() => !srv.MinerandoDeTeste(_eu) && corpo.AtividadeDeTeste == Protocol.Activity.Parado, 3);
+		}
+		finally { Recurso.MineraSobTetoDeTeste = false; }
+
+		// O QUE A CONTRAPROVA MINEROU VOLTA: o resto do roteiro comeca do bolso vazio e do planeta cheio.
+		srv.EconomiaDeTeste(_eu, _zeniAntes, 0);
+		srv.ReservaDeTeste(_eu, double.PositiveInfinity);
+		await Ate(() => cli.Recursos == 0, 3);
+	}
+
+	// ---------------------------------------------------------------------- 10. a caverna
+	/// <summary>
+	/// O CORPO TROCA DE ZONA DUAS VEZES AQUI (pra caverna e de volta), e o node do corpo local pode ser outro depois
+	/// de cada carga: por isso esta familia le o <see cref="Corpo"/> na hora, e nao o que o roteiro guardou.
+	/// </summary>
+	private async System.Threading.Tasks.Task F10_NaCavernaSeMinera(GameClient cli, Jandirus.Server.GameServer srv, PainelDeMineracao faixa)
+	{
+		Nota("--- 10: na caverna do planeta se minera, da reserva DO PLANETA ---");
+		Jandirus.Core.World.ZoneKey planeta = cli.Zone;
+		Jandirus.Core.World.ZoneKey caverna = Jandirus.Core.World.Cavernas.Todas()
+			.Where(c => c.Planeta.Equals(planeta)).Select(c => c.Caverna).FirstOrDefault();
+		if (string.IsNullOrEmpty(caverna.Name))
+		{
+			Nota($"  --     NAO MEDIDO: {planeta.Name} nao tem caverna no catalogo -- a regra e medida na `--recursosteste`");
+			return;
+		}
+		Protocol.Activity Atividade() => Corpo?.AtividadeDeTeste ?? Protocol.Activity.Parado;
+
+		// A MONTAGEM: 5.000 no chao do planeta, sem regenerar (pra conta fechar), medido DA SUPERFICIE.
+		const double noChao = 5000;
+		Recurso.ReservaNaoRegeneraDeTeste = true;
+		srv.FerramentaDeTeste(_eu, Ferramenta.Mao);
+		double daSuperficie = srv.ReservaDeTeste(_eu, noChao);
+		Conferir(daSuperficie == noChao, $"(montagem) na superficie de {planeta.Name}, a reserva foi posta em {noChao:N0}", $"{daSuperficie:0.###}");
+
+		srv.ViajarDeTeste(_eu, caverna);
+		bool chegou = await Ate(() => cli.Zone.Equals(caverna) && Corpo != null && World.Instancia is { EuEstouSobTeto: true }, 45);
+		await Segundos(1.5);   // a zona nova assenta: a cena, o teto e a primeira posicao pelo fio
+		Conferir(chegou, $"(montagem) o corpo esta dentro da {caverna.Name}, que e interior inteira (debaixo de teto)",
+			$"zona {cli.Zone.Name}, sob teto {World.Instancia?.EuEstouSobTeto}");
+		if (!chegou) return;
+		Conferir(srv.ReservaAtualDeTeste(_eu) == noChao,
+			"**DE DENTRO DA CAVERNA, A RESERVA E A DO PLANETA**: o servidor responde os mesmos 5.000 que respondia la fora",
+			$"{srv.ReservaAtualDeTeste(_eu):0.###}");
+
+		// CONTRAPROVA primeiro: a caverna como um interior qualquer -- a recusa e desta ponta, e nem vira pacote.
+		Jandirus.Core.World.Cavernas.InteriorComumDeTeste = true;
+		try
+		{
+			int recusas = Vezes(NoChat(), Recurso.NaoHaOQueMinerar);
+			ApertarOVerb();
+			await Segundos(0.6);
+			Conferir(Atividade() == Protocol.Activity.Parado && !srv.MinerandoDeTeste(_eu) && !faixa.NaTela
+					 && Vezes(NoChat(), Recurso.NaoHaOQueMinerar) == recusas + 1,
+				"(defeito injetado: caverna e um interior como os outros -- o jogo de antes) o verb e recusado na hora, com \"não há o que minerar aqui\" -- a regua de baixo sabe reprovar",
+				$"corpo {Atividade()}, servidor {srv.MinerandoDeTeste(_eu)}");
+		}
+		finally { Jandirus.Core.World.Cavernas.InteriorComumDeTeste = false; }
+
+		_ouvido.Clear();
+		double bolso = srv.RecursosDeTeste(_eu);   // a conta fecha no SERVIDOR; o cliente e conferido contra ele no fim
+		ApertarOVerb();
+		bool comecou = await Ate(() => srv.MinerandoDeTeste(_eu) && cli.Mineracao.Ativa && faixa.NaTela, 4);
+		Conferir(comecou && Atividade() == Protocol.Activity.Minerando && HudDizMinerando(),
+			"**NA CAVERNA O VERB MINERA**: debaixo de teto, e mesmo assim o corpo veste a pose, o HUD diz \"MINERANDO\" e o servidor confirma",
+			$"corpo {Atividade()}, servidor {srv.MinerandoDeTeste(_eu)}, faixa {faixa.NaTela}");
+		await Ate(() => Ouvi("Esta caverna tira da reserva de"), 2);
+		Conferir(Ouvi("Esta caverna tira da reserva de"), "...o chat diz de que PLANETA e a reserva (a frase do servidor)", _ouvido.LastOrDefault() ?? "(nada)");
+		await Quadros(3);
+		Conferir(faixa.TextoDeTeste.Contains("reserva do planeta (esta caverna tira dela): ") && faixa.TextoDeTeste.EndsWith('%'),
+			"...e a faixa tambem: \"reserva do planeta (esta caverna tira dela)\", em porcento", faixa.TextoDeTeste);
+		await Fotografar("minerar-4-na-caverna");
+
+		await Ate(() => srv.RecursosDeTeste(_eu) - bolso >= 2 * Recurso.PorSegundoNaMao, 6);
+		ApertarOVerb();
+		await Ate(() => !srv.MinerandoDeTeste(_eu) && Atividade() == Protocol.Activity.Parado, 3);
+		double tirado = srv.RecursosDeTeste(_eu) - bolso;
+		Conferir(tirado >= 2 * Recurso.PorSegundoNaMao && srv.ReservaAtualDeTeste(_eu) == noChao - tirado,
+			"**O QUE ENTROU NO BOLSO SAIU DA RESERVA DO PLANETA**: a caverna nao tem chao proprio",
+			$"+{tirado:0} no bolso, reserva {srv.ReservaAtualDeTeste(_eu):0.###} (era {noChao:N0})");
+		await Ate(() => cli.Recursos == srv.RecursosDeTeste(_eu), 2);
+		Conferir(cli.Recursos == srv.RecursosDeTeste(_eu), "...e a carteira do cliente mostra o mesmo saldo",
+			$"cliente {cli.Recursos:0}, servidor {srv.RecursosDeTeste(_eu):0}");
+
+		// DE VOLTA A SUPERFICIE: o mesmo numero.
+		srv.ViajarDeTeste(_eu, planeta);
+		bool voltou = await Ate(() => cli.Zone.Equals(planeta) && Corpo != null, 45);
+		await Segundos(1.0);
+		Conferir(voltou && srv.ReservaAtualDeTeste(_eu) == noChao - tirado,
+			$"...e de volta a superficie de {planeta.Name} o numero e o MESMO: os 5.000, menos o que a caverna tirou",
+			$"zona {cli.Zone.Name}, reserva {srv.ReservaAtualDeTeste(_eu):0.###}");
 	}
 
 	// ---------------------------------------------------------------------- 1. o verb, a pose, o HUD, a faixa
@@ -277,10 +447,12 @@ public partial class RoboDeMinerar : Node
 		// (o `Verbo.Mostrar` virou `Verbo.Requisito` + a tabela `RequisitosDosVerbos`: "sem requisito" e nao ter nenhum dos dois)
 		Conferir(verb is { Requisito: null, Disponivel: null, Acionar: not null } && Verbos.RequisitoDe(verb).Livre,
 			"o verb \"Minerar\" esta na aba Other, pra todo mundo e sem requisito (sem `Requisito`, sem linha na tabela, sem `Disponivel`)");
-		Conferir(verb != null && verb.Descricao.Contains($"+{Recurso.PorSegundoNaMao:0} com as mãos")
-				 && verb.Descricao.Contains($"+{Recurso.PorSegundoComPa:0} com uma pá")
-				 && verb.Descricao.Contains($"+{Recurso.PorSegundoComFuradeira:0} com uma furadeira"),
+		Conferir(verb != null && verb.Descricao.Contains($"+{Recurso.PorSegundoNaMao:0}/s com as mãos")
+				 && verb.Descricao.Contains($"+{Recurso.PorSegundoComPa:0} com pá")
+				 && verb.Descricao.Contains($"+{Recurso.PorSegundoComFuradeira:0} com furadeira"),
 			"...e a frase dele diz as tres taxas, lidas das constantes do Core", verb?.Descricao ?? "");
+		Conferir(verb != null && verb.Descricao.Contains("a céu aberto ou em caverna"),
+			"...e diz ONDE se minera: a ceu aberto, ou em caverna (dono, 2026-10-11)", verb?.Descricao ?? "");
 		Conferir(!faixa.NaTela && !HudDizMinerando() && corpo.AtividadeDeTeste == Protocol.Activity.Parado,
 			"antes de minerar nao ha faixa nem \"MINERANDO\" na tela");
 

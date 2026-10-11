@@ -95,6 +95,12 @@ public enum Plano
 	/// (<see cref="Cerebro.TempoMinimoNoPlano"/>) existe pra evitar, so que dentro de uma receita.
 	/// </summary>
 	Circular,
+
+	/// <summary>
+	/// EXECUTAR -- o Hakai do Deus da Destruicao. So existe pra quem carrega o kit (`Capacidades.KitDoDeus`), e so
+	/// quando o Hakai PEGA o alvo; e a unica receita que age sobre quem ja esta no chao. Ver `Cerebro.Kit.cs`.
+	/// </summary>
+	Executar,
 }
 
 /// <summary>
@@ -146,7 +152,7 @@ public enum Plano
 /// marcados como tal onde aparecem.
 /// ============================================================================================
 /// </summary>
-public sealed class Cerebro
+public sealed partial class Cerebro
 {
 	// =====================================================================
 	// AS QUATRO MANIVELAS ANTIGAS -- o Oozaru e a furia escrevem estas
@@ -894,6 +900,7 @@ public sealed class Cerebro
 		if (_carenciaDeVooDeArena > 0) _carenciaDeVooDeArena -= dt;
 		if (_carenciaDeAgua > 0) _carenciaDeAgua -= dt;
 		if (Atual == Plano.Recuperar) _carregandoHa += dt;
+		TicarOKit(p, dt);
 
 		// A FRASE E DESTE TIQUE E DE MAIS NENHUM. Zerada aqui, no topo, antes de qualquer ponto de
 		// fala poder escrever: sem isto uma frase recusada pelo `Comando` (um corpo caido, por
@@ -1170,6 +1177,7 @@ public sealed class Cerebro
 	private bool Interrompe(in Percepcao p, Plano novo) =>
 		!p.TemAlvo || p.AlvoCaido                                        // o alvo saiu de cena
 		|| novo == Plano.Nada
+		|| novo == Plano.Executar || Atual == Plano.Executar             // o kit: o alvo entrou no (ou saiu do) ponto do Hakai
 		|| novo == Plano.Fugir                                           // quase morto: nao se "termina o plano" primeiro
 		|| (Atual == Plano.Fugir && p.VidaFrac > VidaQueFazFugir)        // `if(src.HP > 25) chaseState` (NPCAI.dm:650)
 		|| (Atual == Plano.Recuperar && p.Distancia < DistanciaSegura * 0.6f)   // ele chegou perto
@@ -1191,6 +1199,12 @@ public sealed class Cerebro
 		// `TemAlvo` falso (ver `LerPercepcao`), e ele nunca e alcancado, porque e recalculado a
 		// partir da posicao ATUAL: e o que a faz ANDAR na direcao em vez de parar num destino.
 		if (!p.TemAlvo) { _finalizando = false; Porque = "vagar"; return Plano.Vagar; }
+
+		// ---- O KIT DO DEUS: QUEM O HAKAI PEGA NAO E MAIS UMA LUTA, E UMA EXECUCAO ----
+		// Antes do "alvo no chao" de proposito: e no chao que o criterio costuma se cumprir (o torso em 15% ja
+		// derrubou o corpo), e sem esta linha o Deus deixaria deitado justamente quem o Hakai existe pra apagar.
+		// Ver `Cerebro.Kit.cs`.
+		if (ExecutaOAlvo(p)) { _finalizando = false; Porque = "executar: o Hakai pega o alvo"; return Plano.Executar; }
 
 		// ---- O ALVO CAIU: a fala da vitoria, e ela sai UMA vez ----
 		// `if(target && (target.KO || target.HP <= 0) && IsInFight)` no fim do `attackState`
@@ -1640,7 +1654,10 @@ public sealed class Cerebro
 	{
 		bool guarda = _guardaAte > 0 && _reacaoDaGuarda <= 0;
 
-		Comando gesto = _hesitaAte > 0
+		// O KIT DO DEUS VEM ANTES DO PLANO quando ha alguem nos bracos: andar segurando arremessa e socar segurando
+		// estrangula, entao com a presa na mao o gesto e um so -- o peteleco (ou o Hakai). Ver `Cerebro.Kit.cs`.
+		Comando gesto = ComAPresaNaMao(p) is { } naMao ? naMao
+			: _hesitaAte > 0
 			// HESITANDO: recua guardando e nao ataca. Curto -- ver `Sustos`.
 			? new Comando { Rumo = p.Direcao * -1f, Guardar = guarda, QuerDescer = false }
 			: Atual switch
@@ -1653,6 +1670,7 @@ public sealed class Cerebro
 				Plano.Fugir => Fuga(p),
 				Plano.Pressionar => Pressao(p, guarda, rng),
 				Plano.Circular => Circulo(p, guarda),
+				Plano.Executar => Execucao(p, guarda, rng),
 
 				// VAGAR: so o rumo. Sem soco (o ponto nao e ninguem) e sem guarda (nao ha de quem se
 				// defender) -- e exatamente o que o cerebro antigo fazia quando `posAlvo` era um ponto.
@@ -1660,6 +1678,9 @@ public sealed class Cerebro
 
 				_ => new Comando { Guardar = guarda },
 			};
+
+		// ...e a ANULACAO do kit vai POR CIMA do gesto do plano: o corpo nao para pra apagar o ki que vem.
+		gesto = AnularOQueVem(p, gesto);
 
 		// ============================ O OLHAR, E ELE E DECIDIDO **UMA VEZ SO** ============================
 		// **Havendo com quem lutar, o corpo encara.** Uma linha, fora do `switch`, e de proposito: a
@@ -1731,10 +1752,14 @@ public sealed class Cerebro
 		// `checkState`, que rodam EM PARALELO ao estado -- nao dentro dele. Quem esta correndo pra
 		// salvar a pele ainda diz que esta sem folego.
 		// ========================================================================================================
+		//
+		// (O KIT: quem EXECUTA encara e marca o alvo mesmo CAIDO -- o Hakai e a esfera saem no marcado, e sem a
+		// marca o gesto buscaria o corpo em pe mais perto. E a unica receita que age sobre quem esta no chao.)
+		bool encara = p.TemAlvo && (!p.AlvoCaido || Atual == Plano.Executar);
 		return gesto with
 		{
-			Olhar = p.TemAlvo && !p.AlvoCaido && Atual != Plano.Fugir ? p.Direcao : Vec2.Zero,
-			Marcar = p.TemAlvo && !p.AlvoCaido ? p.IdDoAlvo : 0,
+			Olhar = encara && Atual != Plano.Fugir ? p.Direcao : Vec2.Zero,
+			Marcar = encara ? p.IdDoAlvo : 0,
 			Falar = _fala,
 		};
 	}
@@ -1937,6 +1962,9 @@ public sealed class Cerebro
 		// virar rotina -- sem ele, todo corpo com pouco Ki soltaria um sopro a cada dois segundos.
 		if (p.Atordoado && p.KiFrac <= KiQuePedeSopro && SoproAbreEspaco(p, DistanciaDoSopro))
 			return Soprar(guarda, rng);
+
+		// ---- O KIT DO DEUS: de tempos em tempos, colado, ele AGARRA -- o peteleco vem do `ComAPresaNaMao` ----
+		if (QuerAgarrar(p, guarda)) return Agarrar(p, rng);
 
 		Vec2 rumo = Vec2.Zero;
 		if (p.Distancia > DistanciaIdeal * 1.4f) rumo = p.Direcao;

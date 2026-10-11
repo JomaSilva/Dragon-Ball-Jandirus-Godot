@@ -170,7 +170,12 @@ public static class Nutricao
 		if (!SemPisoDeVigorDeTeste && TemPisoDeVigor(f.Race) && f.stamina < f.maxstamina / 2)
 			f.stamina = f.maxstamina / 2;
 
-		double resistencia = Math.Max(200 * f.Ewillpower * f.Estaminamod, 0.01);
+		// QUEM ESCONDE O PODER CANSA MAIS DEVAGAR PARADO: `max(200*Ewillpower*concealedBuff*Estaminamod,0.01)`
+		// (`StaminaDrain.dm:30`), com o `concealedBuff` em 1,5 enquanto o sigilo esta ligado (`master.dm:136-141`).
+		// O `Statify` ja calculava o campo e NINGUEM O LIA -- o mesmo defeito do `KIregen` e do `splitformdeBuff`.
+		// So o primeiro termo o leva, como la: a parcela de luta, logo abaixo, nao.
+		double folgaDoSigilo = PoderEmUso.SigiloNaoPoupaVigorDeTeste ? 1 : f.concealedBuff;
+		double resistencia = Math.Max(200 * f.Ewillpower * folgaDoSigilo * f.Estaminamod, 0.01);
 		double gasto = 1.5 * f.dashingMod * dreno * (Math.Max(f.Metabolism, 0.1) / 2) / resistencia;
 
 		// LUTAR CANSA MAIS, e por um caminho proprio: a conta do DM soma um segundo termo em vez de

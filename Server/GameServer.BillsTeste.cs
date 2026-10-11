@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Godot;
+using Jandirus.Core.Ai;
 using Jandirus.Core.Combat;
 using Jandirus.Core.Forms;
 using Jandirus.Core.Items;
@@ -197,6 +198,10 @@ public partial class GameServer
 		var tronosGuardados = new Dictionary<string, string>(_tronos, StringComparer.OrdinalIgnoreCase);
 		byte[]? tituloGuardado = System.IO.File.Exists(ArquivoDoTitulo) ? System.IO.File.ReadAllBytes(ArquivoDoTitulo) : null;
 		double ceuGuardado = _adiantoDoCeu, relogioGuardado = _relogioDivino;
+		long paredeGuardada = AdiantoDoRelogioDeTeste;
+		_bwRelogioBase = paredeGuardada;
+		_bwAndado = 0;
+		_bwCorredor = null;
 		int esperaGuardada = BillsEWhis.EsperaDeTeste;
 		EstadoDoElo? boo = _sagas.Do(BillsEWhis.SagaQueOAcorda);
 		FaseDaSaga booGuardado = boo?.Fase ?? FaseDaSaga.Adormecida;
@@ -228,8 +233,11 @@ public partial class GameServer
 			boo.Fase = FaseDaSaga.EmCurso;
 
 			BwAsContasPuras();
+			BwOKitNoCerebro(pl);
 			BwALinhaDoTempo(pl, boo);
 			BwALutaNaTerra(pl, forjados);
+			BwOKitNaTerra(forjados);
+			BwOWhisNaTerra(forjados);
 			CasaDeBills? casa = BwADerrota(pl);
 			if (casa is not { } c) return;
 
@@ -246,6 +254,7 @@ public partial class GameServer
 			BwOTreinoComOWhis(pl, zona, forjados);
 			BwAMaestria(pl, zona);
 			BwOTreinoComOBills(pl, zona);
+			BwOKitEmCasa(pl, zona, forjados);
 			BwODesafio(pl, zona, forjados);
 			BwNenhumPoderNoFio(pl, zona);
 			BwALimpezaEAMaoDoAdmin(pl);
@@ -267,6 +276,10 @@ public partial class GameServer
 			TrajeTodaVezDeTeste = false;
 			RoteiroNaoSeCalaDeTeste = PostoDoWhisPeloPontoLivreDeTeste = PostoSemClareiraDeTeste = SemRumoAoChegarDeTeste = false;
 			SaidaSoDePertoDeTeste = BichoAcordaOBillsDeTeste = BillsEWhis.FimSemFolegoDeTeste = false;
+			BillsEWhis.HakaiDesligadoDeTeste = BillsEWhis.SemKitNaTerraDeTeste = BillsEWhis.FuryNaTerraDeTeste = BillsEWhis.KitNoTreinoDeTeste = false;
+			BillsEWhis.WhisColadoNaLutaDeTeste = BillsEWhis.WhisNaoVoltaDeTeste = BillsEWhis.WhisTocavelNaLutaDeTeste = false;
+			BillsEWhis.WhisCaladoDeTeste = BillsEWhis.WhisRepeteDeTeste = BillsEWhis.BillsVoltaNumPassoDeTeste = false;
+			AdiantoDoRelogioDeTeste = paredeGuardada;
 			EscutaDeBills = escutaAntes;
 			EscutaDasSagas = sagasAntes;
 			EscutaDeAvisos = avisosAntes;
@@ -483,6 +496,9 @@ public partial class GameServer
 			BillsEWhis.AvisoDoTituloDefendido, BillsEWhis.BillsSemKiDivino, BillsEWhis.BillsDesafioCedo, BillsEWhis.BillsFundido,
 			BillsEWhis.ViaDoTitulo, BillsEWhis.RumoNaTerra, BillsEWhis.RumoDosDois, BillsEWhis.RumoDoBills, BillsEWhis.RumoDoWhis,
 		};
+		todas.Add(BillsEWhis.BillsApagouODesafiante);
+		todas.AddRange(BillsEWhis.FalasDeApagar);
+		todas.AddRange(BillsEWhis.PalpitesDeComida);
 		todas.AddRange(BillsEWhis.FalasDeAcordar);
 		todas.AddRange(BillsEWhis.FalasDeDerrubar);
 		todas.AddRange(BillsEWhis.WhisRecebe);
@@ -498,6 +514,143 @@ public partial class GameServer
 				  comNumero == null, comNumero ?? "");
 		AfirmarBw("...e nenhuma fala passa do que cabe numa linha de chat",
 				  todas.All(t => t.Length <= Protocol.MaxFala));
+	}
+
+	// =====================================================================
+	// 0b) O KIT NO CEREBRO -- a escolha de cada habilidade, com a percepcao na mao (sem mundo nenhum)
+	// =====================================================================
+	private void BwOKitNoCerebro(ServerPlayer pl)
+	{
+		GD.Print("[bills] ---- 0b) o kit do Deus da Destruicao no cerebro: QUANDO ele pede cada habilidade (percepcao sintetica, sem mundo)");
+		const float T = ZoneCollision.TileSize;
+		const double dt = 1.0 / 30;
+		Fighter f = pl.Ficha;
+
+		// ---- as chaves do dono, uma por luta ----
+		AfirmarBw("as duas chaves do Hakai estao LIGADAS (o kit completo): a da luta da Terra e a do desafio, cada uma com o seu nome",
+				  BillsEWhis.OBillsExecuta(noDesafio: false) && BillsEWhis.OBillsExecuta(noDesafio: true));
+		BillsEWhis.HakaiDesligadoDeTeste = true;
+		AfirmarBw("(as chaves viradas) com o Hakai desligado nenhuma das duas lutas executa",
+				  !BillsEWhis.OBillsExecuta(noDesafio: false) && !BillsEWhis.OBillsExecuta(noDesafio: true));
+		BillsEWhis.HakaiDesligadoDeTeste = false;
+
+		// ---- os dois tiros, do jeito que a IA os le ----
+		AfirmarBw("o PRECO que a IA le dos dois tiros e a conta do proprio verb: 40 x BaseDrain o Fury, 60 x BaseDrain a esfera",
+				  f.BaseDrain() > 0 && Math.Abs(KitDoDeusNaIa.Furia.CustoDeKi(f) - KitDoDeus.FuriaKi * f.BaseDrain()) < 1e-9
+				  && Math.Abs(KitDoDeusNaIa.Esfera.CustoDeKi(f) - KitDoDeus.EsferaKi * f.BaseDrain()) < 1e-9,
+				  $"BaseDrain {f.BaseDrain():0.###}: {KitDoDeusNaIa.Furia.CustoDeKi(f):0.##} / {KitDoDeusNaIa.Esfera.CustoDeKi(f):0.##}");
+		AfirmarBw("...os ids sao os dos verbs do kit, a janela da esfera e mais curta que a do Fury (ela so sai de perto), e nenhuma passa do alcance fisico dos tiros",
+				  KitDoDeusNaIa.Furia.Id == KitDoDeus.VerbFuria && KitDoDeusNaIa.Esfera.Id == KitDoDeus.VerbEsfera
+				  && KitDoDeusNaIa.Esfera.AlcanceMaxTiles < KitDoDeusNaIa.Furia.AlcanceMaxTiles
+				  && KitDoDeusNaIa.Furia.AlcanceMaxTiles <= KitDoDeus.AlcanceDosTiros);
+
+		var osDois = new Arsenal([Resolvido(KitDoDeusNaIa.Furia, f), Resolvido(KitDoDeusNaIa.Esfera, f)]);
+		var soOFury = new Arsenal([Resolvido(KitDoDeusNaIa.Furia, f)]);
+		Cerebro Novo(bool kit, Arsenal tiros) =>
+			new() { Inteligencia = 0.9, Poderes = new Capacidades { KitDoDeus = kit, DeLonge = tiros, TemComQueAparar = true } };
+		Percepcao Ver(float tiles, bool caido = false, bool hakai = false, int seguro = 0, bool vindo = false, bool andando = false, double ki = 1e9) => new()
+		{
+			DoAlvo = new Vec2(tiles * T, 0), TemAlvo = true, IdDoAlvo = 77, AlvoCaido = caido, AlvoSeMovendo = andando,
+			VidaFrac = 1, KiFrac = ki > 0 ? 1 : 0, Ki = ki, FolegoFrac = 1, MeuPoder = 100, PoderDoAlvo = 50, VidaDoAlvo = 1, LinhaLivre = true,
+			HakaiPegaOAlvo = hakai, Segurando = seguro, HaKiPraAnular = vindo,
+		};
+		// O QUE O CEREBRO PEDE, tique a tique, vendo a mesma cena por `segundos`: (quando, o comando).
+		List<(double Em, Comando C)> Ver30(Cerebro c, Percepcao p, double segundos)
+		{
+			var rng = new Random(11);
+			var visto = new List<(double, Comando)>();
+			for (double t = 0; t < segundos; t += dt) visto.Add((t, c.Pensar(p, dt, rng)));
+			return visto;
+		}
+		List<string> Pedidos(Cerebro c, Percepcao p, double segundos) =>
+			[.. Ver30(c, p, segundos).Where(x => x.C.Habilidade is { Length: > 0 }).Select(x => x.C.Habilidade!)];
+
+		// ---- QUANDO ATIRA: a escolha e a de todo NPC que atira, entre as duas linhas do kit ----
+		List<string> longe = Pedidos(Novo(true, osDois), Ver(12), 3);
+		AfirmarBw("QUANDO ATIRA -- alvo de pe a doze tiles: o Destruction God's Fury (a esfera nao alcanca a janela dela)",
+				  longe.Count > 0 && longe.TrueForAll(h => h == KitDoDeus.VerbFuria), string.Join(",", longe));
+		List<string> perto = Pedidos(Novo(true, osDois), Ver(5), 3);
+		AfirmarBw("...alvo PARADO a cinco tiles: a Destroyer Sphere (cabe na metade de dentro da janela, e e o tiro maior)",
+				  perto.Count > 0 && perto[0] == KitDoDeus.VerbEsfera, string.Join(",", perto));
+		List<string> correndo = Pedidos(Novo(true, osDois), Ver(5, andando: true), 3);
+		AfirmarBw("...o MESMO alvo a cinco tiles, mas ANDANDO: o Fury (a esfera e lenta de mirar; o risco dela passa da tolerancia)",
+				  correndo.Count > 0 && correndo.TrueForAll(h => h == KitDoDeus.VerbFuria), string.Join(",", correndo));
+		List<string> semEsfera = Pedidos(Novo(true, soOFury), Ver(5), 3);
+		AfirmarBw("...e com a esfera FORA do arsenal (o Hakai desligado pra luta) o tiro e o Fury, mesmo de perto",
+				  semEsfera.Count > 0 && semEsfera.TrueForAll(h => h == KitDoDeus.VerbFuria), string.Join(",", semEsfera));
+
+		// ---- QUANDO ANULA ----
+		List<string> anula = Pedidos(Novo(true, Arsenal.Vazio), Ver(12, vindo: true), 1.2);
+		AfirmarBw("QUANDO ANULA -- ha ki alheio vindo que a anulacao apagaria: o pedido sai no PRIMEIRO tique, e de novo a cada meio segundo enquanto a percepcao disser sim (a recarga de verdade e do verb)",
+				  anula.Count is 2 or 3 && anula.TrueForAll(h => h == KitDoDeus.VerbAnular), string.Join(",", anula));
+		AfirmarBw("...e sem ki vindo ele nao gasta o gesto", !Pedidos(Novo(true, Arsenal.Vazio), Ver(12), 1.2).Contains(KitDoDeus.VerbAnular));
+		AfirmarBw("(controle: um cerebro SEM o kit) a mesma percepcao nao pede anulacao nenhuma",
+				  !Pedidos(Novo(false, Arsenal.Vazio), Ver(12, vindo: true), 1.2).Contains(KitDoDeus.VerbAnular));
+
+		// ---- QUANDO AGARRA E PETELECA ----
+		List<(double Em, Comando C)> colado = Ver30(Novo(true, Arsenal.Vazio), Ver(1, ki: 0), 7);
+		(double Em, Comando C) bote = colado.Find(x => x.C.Habilidade == KitDoDeusNaIa.VerbAgarrar);
+		AfirmarBw("QUANDO AGARRA -- colado num alvo de pe: UM pedido do `agarrar` do jogador, e so depois dos primeiros segundos de soco",
+				  colado.Count(x => x.C.Habilidade == KitDoDeusNaIa.VerbAgarrar) == 1 && bote.Em >= Cerebro.SegundosAteOPrimeiroPeteleco - 0.1
+				  && colado.Exists(x => x.Em < bote.Em && (x.C.Leve || x.C.Pesado)), $"agarrou aos {bote.Em:0.00} s");
+		AfirmarBw("(controle: sem o kit) sete segundos colado e nenhum agarrao", !Ver30(Novo(false, Arsenal.Vazio), Ver(1, ki: 0), 7).Exists(x => x.C.Habilidade == KitDoDeusNaIa.VerbAgarrar));
+		List<(double Em, Comando C)> quaseNaMao = Ver30(Novo(true, Arsenal.Vazio), Ver(1.5f, ki: 0), 7);
+		AfirmarBw("...a um tile e meio (onde o soco, que tem arranque, ja alcanca e a MAO ainda nao): na hora do bote ele da o passo que falta em vez de pedir um agarrao que nao pegaria ninguem",
+				  !quaseNaMao.Exists(x => x.C.Habilidade == KitDoDeusNaIa.VerbAgarrar)
+				  && quaseNaMao.Exists(x => x.Em > Cerebro.SegundosAteOPrimeiroPeteleco && x.C.Rumo.X > 0.9f && !x.C.Leve && !x.C.Pesado));
+
+		List<(double Em, Comando C)> naMao = Ver30(Novo(true, Arsenal.Vazio), Ver(0.5f, seguro: 77), 1.2);
+		(double Em, Comando C) flick = naMao.Find(x => x.C.Habilidade is { Length: > 0 });
+		AfirmarBw("...e PETELECA -- com alguem nos bracos o corpo PARA (sem passo, que arremessaria; sem soco, que estrangularia) e, depois do instante de se ver o agarrao, pede o POWER FLICK",
+				  flick.C.Habilidade == KitDoDeus.VerbFlick && flick.Em >= Cerebro.SegundosComAPresaNaMao - 0.05
+				  && naMao.TrueForAll(x => x.C.Rumo.LengthSquared < 1e-6f && !x.C.Leve && !x.C.Pesado), $"aos {flick.Em:0.00} s");
+		AfirmarBw("...quem esta nos bracos E O ALVO e o Hakai o pega: em vez do peteleco, o HAKAI (ele e um movimento de agarrao)",
+				  Pedidos(Novo(true, Arsenal.Vazio), Ver(0.5f, seguro: 77, hakai: true), 1.2).FirstOrDefault() == KitDoDeus.VerbHakai);
+		List<string> boteErrado = Pedidos(Novo(true, Arsenal.Vazio), Ver(0.5f, seguro: 55), 1.2);
+		AfirmarBw("...o bote pegou OUTRO corpo (nao e quem ele enfrenta): nada de peteleco -- ele pede o `agarrar` de novo, duas vezes (o segundo toque levanta, o terceiro SOLTA)",
+				  boteErrado.Count == 2 && boteErrado.TrueForAll(h => h == KitDoDeusNaIa.VerbAgarrar), string.Join(",", boteErrado));
+		AfirmarBw("...e nem o alvo no ponto do Hakai muda isso: com OUTRO nos bracos, ninguem e executado pela mao errada",
+				  Pedidos(Novo(true, Arsenal.Vazio), Ver(0.5f, seguro: 55, caido: true, hakai: true), 1.2).TrueForAll(h => h == KitDoDeusNaIa.VerbAgarrar));
+		List<(double Em, Comando C)> preso = Ver30(Novo(true, Arsenal.Vazio), Ver(0.5f, seguro: 77, ki: 0), Cerebro.PrazoComAPresaNaMao + 2);
+		AfirmarBw("...e se o gesto nunca sai (o verb recusando), ele larga de mao: passado o prazo o plano volta -- e o primeiro passo arremessa quem ele segurava",
+				  preso.Exists(x => x.Em > Cerebro.PrazoComAPresaNaMao && (x.C.Rumo.LengthSquared > 1e-6f || x.C.Leve || x.C.Pesado)));
+		AfirmarBw("(controle: sem o kit) alguem nos bracos nao tira pedido de peteleco",
+				  !Pedidos(Novo(false, Arsenal.Vazio), Ver(0.5f, seguro: 77), 1.2).Contains(KitDoDeus.VerbFlick));
+
+		// ---- QUANDO EXECUTA ----
+		Cerebro juiz = Novo(true, osDois);
+		List<string> naMaoDele = Pedidos(juiz, Ver(1, caido: true, hakai: true), 1.2);
+		AfirmarBw("QUANDO EXECUTA -- o alvo CAIDO, no ponto do Hakai e ao alcance da mao: o plano vira EXECUTAR e o pedido e o HAKAI",
+				  juiz.Atual == Plano.Executar && naMaoDele.Count > 0 && naMaoDele.TrueForAll(h => h == KitDoDeus.VerbHakai), string.Join(",", naMaoDele));
+		List<string> deLonge = Pedidos(Novo(true, osDois), Ver(6, caido: true, hakai: true), 1.2);
+		AfirmarBw("...o mesmo alvo a seis tiles, com a esfera no arsenal: a DESTROYER SPHERE (o Hakai a distancia)",
+				  deLonge.Count > 0 && deLonge.TrueForAll(h => h == KitDoDeus.VerbEsfera), string.Join(",", deLonge));
+		List<(double Em, Comando C)> foraDaMao = Ver30(Novo(true, osDois), Ver(1.5f, caido: true, hakai: true), 1.2);
+		AfirmarBw("...o caido a um tile e meio (fora da mao, e perto demais pra esfera): ele ANDA ate la em vez de pedir um Hakai que nao acharia ninguem",
+				  foraDaMao.TrueForAll(x => x.C.Habilidade is not { Length: > 0 }) && foraDaMao.Exists(x => x.C.Rumo.X > 0.9f));
+		List<(double Em, Comando C)> andando = Ver30(Novo(true, soOFury), Ver(6, caido: true, hakai: true), 1.2);
+		AfirmarBw("...e sem a esfera ele ANDA ate o caido (nenhum pedido, o rumo e o do alvo)",
+				  andando.TrueForAll(x => x.C.Habilidade is not { Length: > 0 }) && andando.Exists(x => x.C.Rumo.X > 0.9f));
+		Cerebro manso = Novo(true, osDois);
+		AfirmarBw("(controle) caido FORA do ponto do Hakai: nada -- o plano e o de sempre (alvo no chao, a luta acabou)",
+				  Pedidos(manso, Ver(1, caido: true), 1.2).Count == 0 && manso.Atual == Plano.Nada);
+		Cerebro semKit = Novo(false, osDois);
+		AfirmarBw("(controle: sem o kit) o MESMO alvo no ponto do Hakai nao vira execucao",
+				  Pedidos(semKit, Ver(1, caido: true, hakai: true), 1.2).Count == 0 && semKit.Atual == Plano.Nada);
+
+		// ---- os comentarios do Whis: a ordem em que saem ----
+		var sorte = new Random(3);
+		int n = BillsEWhis.PalpitesDeComida.Length, ultimo = -1;
+		bool rodadaInteira = true, emendaLimpa = true;
+		for (int rodada = 0; rodada < 40; rodada++)
+		{
+			int[] ordem = BillsEWhis.SacolaDePalpites(n, ultimo, sorte);
+			rodadaInteira &= ordem.Length == n && ordem.Distinct().Count() == n && ordem.All(i => i >= 0 && i < n);
+			emendaLimpa &= ordem[^1] != ultimo;
+			ultimo = ordem[0];   // (quem usa tira do FIM: o ultimo dito de uma rodada e o primeiro da lista)
+		}
+		AfirmarBw($"os comentarios do Whis saem em RODADAS: os {n} uma vez cada antes de qualquer um repetir, e a emenda de uma rodada na outra tambem nao repete (40 rodadas)",
+				  n >= 8 && rodadaInteira && emendaLimpa && BillsEWhis.PalpitesDeComida.Distinct().Count() == n);
 	}
 
 	// =====================================================================
@@ -749,8 +902,11 @@ public partial class GameServer
 		BwPassar(BillsEWhis.SegundosAteVoltarACochilar - 1);
 		AfirmarBw("sem ninguem de pe ele ESPERA uns segundos antes de desistir da briga (ainda nao voltou)",
 				  _bills.Modo == ModoDivino.Lutando && b.Cerebro == null);
-		BwPassar(2);
-		AfirmarBw("...e entao volta a cochilar: no posto, inteiro e sem mente",
+		BwPassar(1.1);
+		AfirmarBw("...e entao DESISTE da briga: larga o kit e VOLTA ANDANDO pro cochilo (ou ja chegou, se o caminho era curto)",
+				  _bills.Modo is ModoDivino.Voltando or ModoDivino.Cochilando && b.Cerebro == null && !EhDeusDaDestruicao(b), $"{_bills.Modo}");
+		for (int i = 0; i < 30 * 14 && _bills.Modo != ModoDivino.Cochilando; i++) TickDeBills(Protocol.TickSeconds);
+		AfirmarBw("...e chegando la volta a cochilar: no posto, inteiro e sem mente",
 				  _bills.Modo == ModoDivino.Cochilando && (b.Pos - _bills.Posto).Length < 1 && b.Ficha.HP >= 99.9 && b.Cerebro == null,
 				  $"{_bills.Modo}, HP {b.Ficha.HP:0.0}, a {(b.Pos - _bills.Posto).Length:0} px do posto");
 		AfirmarBw("...e quem levantar ao lado dele NAO e atacado de novo (so volta a briga quem bater de novo)",
@@ -764,6 +920,663 @@ public partial class GameServer
 				  !morreu && !b.Ficha.dead && b.Ficha.KO, $"morreu={morreu} dead={b.Ficha.dead} KO={b.Ficha.KO}");
 		b.Combate.Levantar();
 		RestaurarODivino(b);
+	}
+
+	// =====================================================================
+	// AS FERRAMENTAS DAS LUTAS DE VERDADE (o kit e o Whis): o MUNDO anda, e nao so o tique deles
+	// =====================================================================
+
+	/// <summary>O relogio de parede da bancada (as cargas, as recargas e os gestos do kit sao em milissegundos).</summary>
+	private long _bwRelogioBase;
+	private double _bwAndado;
+
+	/// <summary>A faixa de chao firme das cenas da Terra, achada uma vez.</summary>
+	private Vec2? _bwCorredor;
+
+	/// <summary>Em algum tique das lutas da Terra o Bills esteve na Fury?</summary>
+	private bool _bwViuAFury;
+
+	/// <summary>
+	/// Tantos segundos de MUNDO pelos tiques de producao, na ordem do `Tick()`: as grades, o combate, o tique deles,
+	/// AS MENTES (`TickDosCorposSemDono` -- e daqui que sai TODA decisao do Bills: a bancada nunca aperta um verb do
+	/// kit por ele), o arremesso, o agarrao, os tiros e o pulso que solta os tiros do kit. Para no tique em que
+	/// `ateQue` responde sim, e devolve se respondeu.
+	/// </summary>
+	private bool BwLutar(double segundos, Func<bool>? ateQue = null)
+	{
+		int n = Math.Max(1, (int)Math.Round(segundos / Protocol.TickSeconds));
+		for (int i = 0; i < n; i++)
+		{
+			_bwAndado += Protocol.TickSeconds * 1000.0;
+			AdiantoDoRelogioDeTeste = _bwRelogioBase + (long)_bwAndado;
+			MontarAsGrades();
+			TickCombate(Protocol.TickSeconds);
+			TickDeBills(Protocol.TickSeconds);
+			TickDosCorposSemDono(Protocol.TickSeconds);
+			TickDoEmpurrao();
+			TickDoAgarrao(Protocol.TickSeconds);
+			TickDosProjeteis(Protocol.TickSeconds);
+			PulsoDoKitDoDeus();
+			if (_visita.Fase == FaseDaVisita.NaTerra && _bills.Corpo is { } b && b.Forma.Atual == BillsEWhis.IdDaFury) _bwViuAFury = true;
+			if (ateQue != null && ateQue()) return true;
+		}
+		return false;
+	}
+
+	/// <summary>Os tiros VIVOS deste dono, na zona dele, com este dom (o do Fury derruba a guarda; o da esfera e o Hakai).</summary>
+	private int BwTiros(ServerPlayer dono, DomDeProjetil dom) =>
+		ProjeteisDaZona(dono.Zone.Hash).Count(p => p.Vivo && p.Dono == dono.Id && p.Dom == dom);
+
+	private void BwLimparOsTiros(ZoneKey zona)
+	{
+		foreach (Projetil p in ProjeteisDaZona(zona.Hash).ToList())
+			if (p.Vivo) Matar(p, FimDeProjetil.Apagou);
+		TickDosProjeteis(Protocol.TickSeconds);
+	}
+
+	/// <summary>O que este corpo pode atirar de longe AGORA, do jeito que o cerebro dele le (os ids, na ordem).</summary>
+	private string BwArsenal(ServerPlayer npc)
+	{
+		Arsenal a = LerCapacidades(npc).DeLonge;
+		return string.Join(", ", Enumerable.Range(0, a.Quantas).Select(i => a[i].Id));
+	}
+
+	/// <summary>
+	/// A PONTA OESTE de uma faixa de chao firme na Terra, o mais perto do cochilo dele: tres fileiras, tres celulas pra
+	/// oeste dela e `tiles` pra leste. As cenas de tiro precisam de linha livre, e o posto de verdade so garante a clareira.
+	/// </summary>
+	private Vec2? BwCorredorNaTerra(int tiles)
+	{
+		if (MapaDaZonaOuCatalogo(TerraDaVisita) is not { } mapa) return null;
+		const float T = ZoneCollision.TileSize;
+		int cx0 = (int)MathF.Floor(_bills.Posto.X / T), cy0 = (int)MathF.Floor(_bills.Posto.Y / T);
+		for (int r = 0; r <= 70; r++)
+			for (int dy = -r; dy <= r; dy++)
+				for (int dx = -r; dx <= r; dx++)
+				{
+					if (Math.Max(Math.Abs(dx), Math.Abs(dy)) != r) continue;
+					bool livre = true;
+					for (int i = -3; i <= tiles && livre; i++)
+						for (int j = -1; j <= 1 && livre; j++)
+							livre = mapa.ServeDeChao(cx0 + dx + i, cy0 + dy + j);
+					if (livre) return mapa.CentroDaCelula(cx0 + dx, cy0 + dy);
+				}
+		return null;
+	}
+
+	/// <summary>
+	/// A CENA DA TERRA, do zero: os tiros somem, os dois renascem (o Bills cochilando), e os POSTOS vao pra faixa de
+	/// chao firme -- o do Bills NO MEIO dela (doze tiles livres a oeste, catorze a leste: quem a cena poe a leste dele
+	/// tem linha livre, e o Whis, que recua pro lado em que esta, tem chao pra recuar sem atravessar a luta), o do
+	/// Whis a `whisEm` tiles dele na mesma fileira. Nulo se nao montou.
+	/// </summary>
+	private (ServerPlayer B, ServerPlayer W, Vec2 Ponta)? BwCenaNaTerra(float whisEm = -1)
+	{
+		const float T = ZoneCollision.TileSize;
+		BwLimparOsTiros(TerraDaVisita);
+		CarregarBills();
+		BwPassar(1);
+		if (_bills.Corpo is not { } b || _whis.Corpo is not { } w) return null;
+		_bwCorredor ??= BwCorredorNaTerra(26);
+		if (_bwCorredor is not { } oeste) return null;
+		Vec2 ponta = oeste + new Vec2(12 * T, 0);
+
+		_bills.Posto = ponta;
+		b.Pos = ponta;
+		_whis.Posto = ponta + new Vec2(whisEm * T, 0);
+		w.Pos = _whis.Posto;
+		_ladoDoBills = null;
+		return (b, w, ponta);
+	}
+
+	// =====================================================================
+	// 2b) O KIT NA TERRA -- cada habilidade, pedida pelo CEREBRO dele e cumprida pelos verbs do kit
+	// =====================================================================
+	private void BwOKitNaTerra(List<ServerPlayer> forjados)
+	{
+		GD.Print("[bills] ---- 2b) o kit do Deus da Destruicao na luta da Terra (15%, sem a Fury): cada habilidade pelo caminho da IA");
+		const float T = ZoneCollision.TileSize;
+		var cena = new List<ServerPlayer>();
+		ServerPlayer b = null!, w = null!;
+		Vec2 ponta = default;
+		List<string> avisos = [];
+		List<string>? avisosDeAntes = EscutaDeAvisos;
+
+		ServerPlayer Por(string nome, Vec2 onde, double bp)
+		{
+			ServerPlayer c = BwForjar(nome, "Human", TerraDaVisita, onde, bp, forjados);
+			cena.Add(c);
+			return c;
+		}
+		bool Cena()
+		{
+			foreach (ServerPlayer c in cena) { BwRecolher(c); forjados.Remove(c); }
+			cena.Clear();
+			avisos = [];
+			EscutaDeAvisos = avisos;
+			if (BwCenaNaTerra() is not { } nova) { AfirmarBw("(montagem) a cena da Terra: os dois renascidos, e uma faixa de chao firme perto do cochilo", false); return false; }
+			(b, w, ponta) = nova;
+			return true;
+		}
+		void SemKi() => b.Ficha.Ki = 0;
+		void DePe(ServerPlayer c) { if (c.Ficha.HP < 70 && !c.Ficha.KO && !c.Ficha.dead) c.Combate.Curar(); }
+
+		_bwViuAFury = false;
+		try
+		{
+			// ---------------------------------------------------------------- (a) acordado: o kit armado, sem a Fury
+			if (!Cena()) return;
+			AfirmarBw("(controle) COCHILANDO ele nao carrega o kit: o corpo nao responde como o Deus, e o arsenal so tem o que ele sabe de livro",
+					  _bills.Modo == ModoDivino.Cochilando && !EhDeusDaDestruicao(b) && !LerCapacidades(b).KitDoDeus && !BwArsenal(b).Contains(KitDoDeus.VerbFuria),
+					  BwArsenal(b));
+
+			ServerPlayer saco = Por("Saco", ponta + new Vec2(12 * T, 0), 100e9);
+			MarcarAgressao(b, saco);
+			BwLutar(0.1);
+			string arsenal = BwArsenal(b);
+			AfirmarBw("ACORDADO NA TERRA ele carrega o KIT do Deus da Destruicao: o corpo responde como o Deus (sem escrever no trono), o cerebro sabe do kit, e os DOIS tiros entram no arsenal ao lado do que ele sabe de livro",
+					  _bills.Modo == ModoDivino.Lutando && EhDeusDaDestruicao(b) && TronoVago(BillsEWhis.CargoDoBills) && LerCapacidades(b).KitDoDeus
+					  && arsenal.Contains(KitDoDeus.VerbFuria) && arsenal.Contains(KitDoDeus.VerbEsfera) && !SemHakai(b), arsenal);
+			AfirmarBw("...e SEM A FURY (\"menos o fury\"): a forma e a de repouso, e o poder continua cravado nos 15% -- o base e o expresso",
+					  b.Forma.Atual == Catalogo.IdDoPiso(Perfil(b)) && Math.Abs(b.Ficha.BP - 150e9) < 1 && Math.Abs(b.Ficha.expressedBP - 150e9) <= 150e9 * 0.03,
+					  $"forma '{b.Forma.Atual}', base {b.Ficha.BP:N0}, expresso {b.Ficha.expressedBP:N0}");
+
+			// ---------------------------------------------------------------- (b) quando atira: o Fury
+			double ki0 = b.Ficha.Ki;
+			bool viuEsfera = false;
+			bool atirou = BwLutar(8, () => { viuEsfera |= BwTiros(b, DomDeProjetil.Hakai) > 0; return BwTiros(b, DomDeProjetil.DerrubaAGuarda) > 0; });
+			AfirmarBw("QUANDO ATIRA -- alvo de pe a doze tiles (na janela do Fury, fora da da esfera), linha livre: o cerebro pede o DESTRUCTION GOD'S FURY, o verb cobra o Ki e a bola nasce com o dom de derrubar a guarda",
+					  atirou && !viuEsfera && b.Ficha.Ki < ki0, $"plano {b.Cerebro?.Atual}, ki {ki0:0.#} -> {b.Ficha.Ki:0.#} de {b.Ficha.MaxKi:0.#}, arsenal [{arsenal}]");
+
+			// ---------------------------------------------------------------- (c) quando atira: a esfera
+			if (!Cena()) return;
+			ServerPlayer parado = Por("Parado", ponta + new Vec2(5 * T, 0), 100e9);
+			MarcarAgressao(b, parado);
+			bool esfera = BwLutar(8, () => BwTiros(b, DomDeProjetil.Hakai) > 0);
+			AfirmarBw("...e com o alvo PARADO a cinco tiles (a metade de dentro da janela dela) o tiro escolhido e a DESTROYER SPHERE: a bola nasce com o dom do HAKAI",
+					  esfera, $"plano {b.Cerebro?.Atual}, ki {b.Ficha.Ki:0.#} de {b.Ficha.MaxKi:0.#}, arsenal [{BwArsenal(b)}]");
+
+			BillsEWhis.HakaiDesligadoDeTeste = true;
+			try
+			{
+				if (!Cena()) return;
+				parado = Por("Parado", ponta + new Vec2(5 * T, 0), 100e9);
+				MarcarAgressao(b, parado);
+				viuEsfera = false;
+				bool fury = BwLutar(8, () => { viuEsfera |= BwTiros(b, DomDeProjetil.Hakai) > 0; return BwTiros(b, DomDeProjetil.DerrubaAGuarda) > 0; });
+				BwLutar(3, () => { viuEsfera |= BwTiros(b, DomDeProjetil.Hakai) > 0; return false; });
+				AfirmarBw("(a chave `HakaiNaTerra` virada) a MESMA cena sem o Hakai: a esfera sai do arsenal (ela E o Hakai a distancia) e o tiro que nasce e o Fury -- nenhuma esfera em onze segundos",
+						  fury && !viuEsfera && SemHakai(b) && !BwArsenal(b).Contains(KitDoDeus.VerbEsfera) && BwArsenal(b).Contains(KitDoDeus.VerbFuria), BwArsenal(b));
+			}
+			finally { BillsEWhis.HakaiDesligadoDeTeste = false; }
+
+			// ---------------------------------------------------------------- (d) quando anula
+			if (!Cena()) return;
+			saco = Por("Saco", ponta + new Vec2(14 * T, 0), 100e9);
+			MarcarAgressao(b, saco);
+			BwLutar(1.2, () => { SemKi(); return false; });   // (sem Ki ele nao atira: nenhum tiro dele no caminho do que vem)
+			ServerPlayer fraco = Por("AtiradorFraco", ponta + new Vec2(9 * T, T), 50e9);
+			ServerPlayer forte = Por("AtiradorForte", ponta + new Vec2(9 * T, -T), 300e9);
+			var bola = new ReceitaDeProjetil { Tipo = TipoDeProjetil.Blast, BaseDano = 0.05, Velocidade = 1, AlcanceTiles = 60, Deflectivel = false };
+			double hp0 = b.Ficha.HP;
+			Projetil doFraco = Disparar(fraco, bola, rumoDado: new Vec2(-1, 0), deOnde: b.Pos + new Vec2(6 * T, 0));
+			BwLutar(1.5, () => { SemKi(); return !doFraco.Vivo; });
+			bool recarga = _kitDoDeus.TryGetValue(b.Id, out EstadoDoKit? kit) && kit.AnulacaoProntaEmMs > NowMs();
+			AfirmarBw("QUANDO ANULA -- um ataque de ki MAIS FRACO vindo pra cima dele: o cerebro pede a ENERGY NULLIFICATION, o tiro deixa de existir antes de encostar e a recarga de cinco minutos arma",
+					  doFraco is { Vivo: false, Fim: FimDeProjetil.Apagou } && recarga && Disse(avisos, "DEIXAM DE EXISTIR") && b.Ficha.HP >= hp0 - 1e-6,
+					  $"fim {doFraco.Fim}, recarga {recarga}, HP {hp0:0.0} -> {b.Ficha.HP:0.0} | {Ultimos(avisos)}");
+
+			// (a recarga agora esta armada: pra a segunda prova o relogio do kit volta -- o que se mede e o CRITERIO, nao a recarga)
+			if (kit != null) kit.AnulacaoProntaEmMs = 0;
+			Projetil doForte = Disparar(forte, bola, rumoDado: new Vec2(-1, 0), deOnde: b.Pos + new Vec2(6 * T, 0));
+			BwLutar(1.5, () => { SemKi(); return !doForte.Vivo; });
+			AfirmarBw("...e o ataque que carrega MAIS poder que ele NAO e anulado (o criterio do verb): o cerebro nem gasta o gesto, e a recarga nao arma",
+					  (doForte.Vivo || doForte.Fim != FimDeProjetil.Apagou) && kit is { AnulacaoProntaEmMs: 0 }, $"vivo {doForte.Vivo}, fim {doForte.Fim}");
+
+			// ---------------------------------------------------------------- (e) quando agarra e peteleca
+			if (!Cena()) return;
+			ServerPlayer parrudo = Por("Parrudo", ponta + new Vec2(T, 0), 900e9);
+			MarcarAgressao(b, parrudo);
+			b.Knockback = false;   // (os socos dele nao arremessam nesta cena: o alvo fica onde esta ate o peteleco)
+			bool agarrou = false, soltou = false;
+			double inicio = _bwAndado, agarrouAos = -1;
+			Vec2 noBote = default, doBills = default;
+			BwLutar(18, () =>
+			{
+				SemKi();   // (sem Ki ele nao atira: a cena e a do corpo a corpo)
+				DePe(parrudo);
+				if (!agarrou && parrudo.AgarradoPorId == b.Id)
+				{
+					agarrou = true;
+					agarrouAos = (_bwAndado - inicio) / 1000;
+					noBote = parrudo.Pos;
+					doBills = b.Pos;
+				}
+				soltou |= agarrou && parrudo.AgarradoPorId == 0;
+				return soltou;
+			});
+			int tiquesDoVoo = parrudo.TiquesIniciaisDoVoo, noAr = parrudo.TiquesDeVoo;
+			double forcaDoVoo = parrudo.ForcaDoVoo;
+			string naFrente = string.Join(",", ZoneList(TerraDaVisita.Hash).Where(o => o != parrudo && o != b && (o.Pos - noBote).Length < 4 * T).Select(o => o.Name));
+			float voou = 0;
+			BwLutar(1.2, () => { SemKi(); voou = Math.Max(voou, (parrudo.Pos - noBote).Length); return false; });
+			AfirmarBw("QUANDO AGARRA E PETELECA -- colado num alvo de pe (e sem Ki pra atirar): depois de uns segundos de soco o cerebro pede o AGARRAR do jogador e, com a presa nos bracos, o POWER FLICK -- ela e solta e ARREMESSADA com os numeros do kit (nove tiques, a forca e o poder dele)",
+					  agarrou && soltou && Disse(avisos, "PETELECO") && agarrouAos >= Cerebro.SegundosAteOPrimeiroPeteleco - 0.6
+					  && tiquesDoVoo == KitDoDeus.FlickTiquesDeVoo && Math.Abs(forcaDoVoo - b.Ficha.expressedBP) <= b.Ficha.expressedBP * 0.05 && voou > 2 * T,
+					  $"agarrou aos {agarrouAos:0.0} s (Bills em {doBills.X:0},{doBills.Y:0}; presa em {noBote.X:0},{noBote.Y:0}; por perto: [{naFrente}]), voo de {tiquesDoVoo} tiques (no ar: {noAr}), forca {forcaDoVoo:N0}, voou {voou / T:0.0} tiles, plano {b.Cerebro?.Atual} | {Ultimos(avisos.Where(t => t.Contains("PETELECO") || t.Contains("agarra")).ToList())}");
+
+			// ---------------------------------------------------------------- (e2) o bote que pega OUTRO corpo
+			if (!Cena()) return;
+			parrudo = Por("Parrudo", ponta + new Vec2(1.1f * T, 0), 900e9);
+			ServerPlayer curioso = Por("Curioso", ponta + new Vec2(0.7f * T, 0), 900e9);   // (nunca bateu nele: esta so no caminho)
+			MarcarAgressao(b, parrudo);
+			b.Knockback = false;
+			bool pegouOCurioso = false, largou = false;
+			BwLutar(18, () =>
+			{
+				SemKi();
+				DePe(parrudo);
+				pegouOCurioso |= curioso.AgarradoPorId == b.Id;
+				largou |= pegouOCurioso && curioso.AgarradoPorId == 0;
+				return largou;
+			});
+			BwLutar(1, () => { SemKi(); return false; });
+			AfirmarBw("...e o peteleco e SO de quem ele enfrenta: se o bote pega OUTRO corpo que estava na frente (um curioso que nunca bateu nele), ele o LARGA pelo proprio verb -- sem peteleco, sem arremesso e sem ferida",
+					  pegouOCurioso && largou && curioso.TiquesIniciaisDoVoo == 0 && curioso.Ficha.HP >= 99.9 && !Disse(avisos, "PETELECO") && !_desafiantesNaTerra.Contains(curioso.Id),
+					  $"pegou={pegouOCurioso}, largou={largou}, voo armado {curioso.TiquesIniciaisDoVoo}, HP {curioso.Ficha.HP:0.0} | {Ultimos(avisos.Where(t => t.Contains("PETELECO") || t.Contains("solta") || t.Contains("levanta")).ToList())}");
+
+			// ---------------------------------------------------------------- (f) quando executa: o Hakai, pela mao
+			// ---------------------------------------------------------------- (f) quando executa: o Hakai, pela mao
+			if (!Cena()) return;
+			ServerPlayer cond = Por("Condenado", ponta + new Vec2(T, 0), 100e9);
+			MarcarAgressao(b, cond);
+			BwLutar(0.1);
+			TorsoEm(cond, 0.10);
+			cond.Combate.Nocautear(30);
+			EscutaDeFalas!.Clear();
+			bool virouPresa = false;
+			bool apagou = BwLutar(8, () => { SemKi(); virouPresa |= cond.Ficha.KO && b.Papel!.PresaDoRoteiro == cond.Id; return cond.Ficha.dead; });
+			AfirmarBw("QUANDO EXECUTA -- quem cai na briga NO PONTO DO HAKAI (o torso em 10%, o poder abaixo de tres quartos do dele) CONTINUA sendo presa: o cerebro troca o plano pra executar, pede o HAKAI e o alvo e APAGADO -- a morte de verdade",
+					  virouPresa && apagou && cond.Ficha.dead && Disse(avisos, "HAKAI!"),
+					  $"presa={virouPresa}, morto={cond.Ficha.dead}, torso {FracaoDoTorso(cond):0.00}, plano {b.Cerebro?.Atual} | {Ultimos(avisos.Where(t => t.Contains("HAKAI")).ToList())}");
+			AfirmarBw("...com a MARCA do Hakai na alma: o Enma cobra o DOBRO pra traze-la de volta",
+					  cond.Ficha.hakai_mark && Math.Abs(PrecoDoEnmaPara(cond) - Alem.PrecoDoReviveDoEnma * KitDoDeus.HakaiPrecoDoRevive) < 1e-6, $"preco {PrecoDoEnmaPara(cond):N0}");
+			BwLutar(2.5);
+			AfirmarBw("...e o Bills resmunga depois de apagar (uma das falas de apagar, na boca dele)",
+					  EscutaDeFalas.Any(e => e.Quem == b.Id && BillsEWhis.FalasDeApagar.Contains(e.Texto)));
+
+			// ---------------------------------------------------------------- (g) quando executa: a esfera, de longe
+			if (!Cena()) return;
+			ServerPlayer distante = Por("CondenadoDeLonge", ponta + new Vec2(6 * T, 0), 100e9);
+			MarcarAgressao(b, distante);
+			BwLutar(0.1);
+			TorsoEm(distante, 0.10);
+			distante.Combate.Nocautear(30);
+			viuEsfera = false;
+			BwLutar(12, () => { viuEsfera |= BwTiros(b, DomDeProjetil.Hakai) > 0; return distante.Ficha.dead || FracaoDoTorso(distante) > 0.16; });
+			AfirmarBw("...o MESMO caido a seis tiles: o pedido e a DESTROYER SPHERE (o Hakai a distancia) -- e ou ela o apaga, com a marca, ou o impacto levanta o torso acima do criterio (a regra do kit: mede-se DEPOIS do dano)",
+					  viuEsfera && (distante.Ficha.dead ? distante.Ficha.hakai_mark : FracaoDoTorso(distante) > 0.15),
+					  $"esfera={viuEsfera}, morto={distante.Ficha.dead}, torso {FracaoDoTorso(distante):0.00}");
+
+			// ---------------------------------------------------------------- (h) a chave do dono desliga
+			BillsEWhis.HakaiDesligadoDeTeste = true;
+			try
+			{
+				if (!Cena()) return;
+				cond = Por("Poupado", ponta + new Vec2(T, 0), 100e9);
+				MarcarAgressao(b, cond);
+				BwLutar(0.1);
+				TorsoEm(cond, 0.10);
+				cond.Combate.Nocautear(30);
+				virouPresa = false;
+				BwLutar(4, () => { SemKi(); virouPresa |= cond.Ficha.KO && b.Papel!.PresaDoRoteiro == cond.Id; return cond.Ficha.dead; });
+				AfirmarBw("(a chave `HakaiNaTerra` virada) a MESMA queda sem o Hakai: quem caiu so caiu -- nao vira presa, nao e apagado, e o Bills fica parado esperando alguem de pe (a afirmacao do Hakai reprova)",
+						  !cond.Ficha.dead && !virouPresa && !OHakaiPega(b, cond) && b.Cerebro == null && EhDeusDaDestruicao(b), $"morto={cond.Ficha.dead}, presa={virouPresa}");
+			}
+			finally { BillsEWhis.HakaiDesligadoDeTeste = false; }
+
+			// ---------------------------------------------------------------- (i) os dois criterios sao os do kit
+			if (!Cena()) return;
+			ServerPlayer inteiro = Por("TorsoInteiro", ponta + new Vec2(T, 0), 100e9);
+			ServerPlayer gigante = Por("ForteDemais", ponta + new Vec2(T, T), 20e12);
+			MarcarAgressao(b, inteiro);
+			BwLutar(0.1);
+			MarcarAgressao(b, gigante);
+			BwLutar(0.1);
+			TorsoEm(inteiro, 0.60);
+			inteiro.Combate.Nocautear(30);
+			TorsoEm(gigante, 0.10);
+			gigante.Combate.Nocautear(30);
+			BwLutar(4, () => { SemKi(); return inteiro.Ficha.dead || gigante.Ficha.dead; });
+			AfirmarBw("os DOIS criterios sao os do kit: caido com o torso em 60% nao e executado, e caido com o torso em 10% mas com mais de tres quartos do poder dele tambem nao",
+					  !inteiro.Ficha.dead && !gigante.Ficha.dead && b.Papel!.PresaDoRoteiro == 0 && gigante.Ficha.expressedBP > b.Ficha.expressedBP * KitDoDeus.HakaiFracaoDeBp,
+					  $"expresso do forte {gigante.Ficha.expressedBP:N0} contra {b.Ficha.expressedBP:N0}");
+
+			// ---------------------------------------------------------------- (j) quem esta de pe vem antes
+			if (!Cena()) return;
+			ServerPlayer dePe = Por("AindaDePe", ponta + new Vec2(9 * T, 0), 20e12);
+			ServerPlayer caido = Por("Caido", ponta + new Vec2(T, T), 100e9);
+			MarcarAgressao(b, caido);
+			BwLutar(0.1);
+			MarcarAgressao(b, dePe);
+			BwLutar(0.1);
+			TorsoEm(caido, 0.10);
+			caido.Combate.Nocautear(40);
+			bool caidoFoiPresa = false;
+			BwLutar(3, () => { SemKi(); DePe(dePe); caidoFoiPresa |= b.Papel!.PresaDoRoteiro == caido.Id; return false; });
+			AfirmarBw("ENQUANTO HA ALGUEM DE PE NA BRIGA, quem caiu no ponto do Hakai NAO e a presa: quem ainda luta segura o Bills longe do companheiro",
+					  !caido.Ficha.dead && !caidoFoiPresa && b.Papel!.PresaDoRoteiro == dePe.Id, $"presa {b.Papel!.PresaDoRoteiro} (de pe {dePe.Id}, caido {caido.Id})");
+			AfirmarBw("...e quem caiu SAI da lista de quem esta na briga na hora, mesmo com o ultimo agressor de pe (era \"derrubado\" de novo a cada tique)",
+					  !_desafiantesNaTerra.Contains(caido.Id) && _caidosNaTerra.Contains(caido.Id) && _desafiantesNaTerra.Contains(dePe.Id));
+			dePe.Pos = new Vec2(_bills.Posto.X + (BillsEWhis.TerritorioTiles + 5) * T, _bills.Posto.Y);
+			bool depois = BwLutar(14, () => { SemKi(); return caido.Ficha.dead; });
+			AfirmarBw("...e quando nao sobra ninguem de pe no territorio, o Bills VOLTA ate o caido e o apaga",
+					  depois && caido.Ficha.hakai_mark, $"morto={caido.Ficha.dead}, a {(caido.Pos - b.Pos).Length / T:0.0} tiles dele");
+
+			// ---------------------------------------------------------------- (k) o God's Temper (a passiva)
+			if (!Cena()) return;
+			saco = Por("Saco", ponta + new Vec2(14 * T, 0), 100e9);
+			for (int i = 0; i < 12; i++) FerirUmMembroG10(b, saco, 0.01, letal: false);
+			AfirmarBw("(controle) COCHILANDO, doze danos sem guarda nao disparam surto nenhum: o God's Temper e do kit, e o kit e da luta",
+					  !TemBuff(b, KitDoDeus.IdDoTemper));
+			MarcarAgressao(b, saco);
+			BwLutar(0.2, () => { SemKi(); return false; });
+			double off0 = b.Ficha.Tphysoff;
+			for (int tentativa = 0; tentativa < 10 && !TemBuff(b, KitDoDeus.IdDoTemper); tentativa++)
+			{
+				if (b.Combate.Bloqueando) { BwLutar(0.3, () => { SemKi(); return false; }); continue; }
+				for (int i = 0; i < KitDoDeus.TemperGolpes; i++) FerirUmMembroG10(b, saco, 0.01, letal: false);
+			}
+			AfirmarBw("O GOD'S TEMPER (a passiva) -- ACORDADO, dez danos seguidos sem guarda e a ira transborda: o surto de ataque e defesa do kit entra no corpo dele",
+					  _bills.Modo == ModoDivino.Lutando && TemBuff(b, KitDoDeus.IdDoTemper) && b.Ficha.Tphysoff > off0 && Disse(avisos, "ira do Deus"),
+					  $"Tphysoff {off0:0.###} -> {b.Ficha.Tphysoff:0.###} | {Ultimos(avisos.Where(t => t.Contains("ira")).ToList())}");
+			AfirmarBw("...e o surto NAO mexe no poder: o base continua nos 15% (o que sobe e o ataque e a defesa fisica, por dez segundos)",
+					  Math.Abs(b.Ficha.BP - 150e9) < 1, $"{b.Ficha.BP:N0}");
+
+			// ---------------------------------------------------------------- (l) nunca a Fury
+			AfirmarBw("em NENHUM tique das lutas da Terra desta bancada o Bills esteve na Fury (\"menos o fury\")", !_bwViuAFury);
+			BillsEWhis.FuryNaTerraDeTeste = true;
+			try
+			{
+				if (!Cena()) return;
+				saco = Por("Saco", ponta + new Vec2(12 * T, 0), 100e9);
+				MarcarAgressao(b, saco);
+				BwLutar(0.2);
+				AfirmarBw("(defeito injetado: a luta da Terra TAMBEM veste a Fury) a forma dele vira a Fury e o poder expresso salta dos 15% -- as duas afirmacoes do \"menos o fury\" reprovam",
+						  b.Forma.Atual == BillsEWhis.IdDaFury && _bwViuAFury && b.Ficha.expressedBP > 150e9 * 2, $"forma '{b.Forma.Atual}', expresso {b.Ficha.expressedBP:N0}");
+			}
+			finally { BillsEWhis.FuryNaTerraDeTeste = false; _bwViuAFury = false; }
+
+			// ---------------------------------------------------------------- (m) sem o kit, nada disso acontece
+			BillsEWhis.SemKitNaTerraDeTeste = true;
+			try
+			{
+				if (!Cena()) return;
+				saco = Por("Saco", ponta + new Vec2(12 * T, 0), 100e9);
+				MarcarAgressao(b, saco);
+				bool doKit = BwLutar(8, () => BwTiros(b, DomDeProjetil.DerrubaAGuarda) + BwTiros(b, DomDeProjetil.Hakai) > 0);
+				AfirmarBw("(defeito injetado: ele acorda SEM o kit) oito segundos com o alvo na janela e nenhum tiro do kit: o corpo nao e o Deus, o cerebro nao sabe de kit e o arsenal nao tem os dois -- as afirmacoes de tiro reprovam",
+						  !doKit && _bills.Modo == ModoDivino.Lutando && !EhDeusDaDestruicao(b) && !LerCapacidades(b).KitDoDeus && !BwArsenal(b).Contains(KitDoDeus.VerbFuria), BwArsenal(b));
+
+				doFraco = Disparar(Por("AtiradorFraco", ponta + new Vec2(9 * T, T), 50e9), bola, rumoDado: new Vec2(-1, 0), deOnde: b.Pos + new Vec2(6 * T, 0));
+				BwLutar(1.5, () => { SemKi(); return !doFraco.Vivo; });
+				AfirmarBw("(o mesmo defeito) o ataque fraco que vinha NAO e anulado: ele chega (ou passa), e nenhuma recarga arma",
+						  !(doFraco is { Vivo: false, Fim: FimDeProjetil.Apagou }) && !_kitDoDeus.ContainsKey(b.Id), $"vivo {doFraco.Vivo}, fim {doFraco.Fim}");
+
+				if (!Cena()) return;
+				parrudo = Por("Parrudo", ponta + new Vec2(T, 0), 900e9);
+				MarcarAgressao(b, parrudo);
+				b.Knockback = false;
+				agarrou = false;
+				BwLutar(10, () => { SemKi(); DePe(parrudo); agarrou |= parrudo.AgarradoPorId == b.Id; return agarrou; });
+				AfirmarBw("(o mesmo defeito) dez segundos colado num alvo de pe e nenhum agarrao: sem o kit nao ha peteleco pra dar",
+						  !agarrou);
+
+				cond = Por("Condenado", ponta + new Vec2(T, T), 100e9);
+				MarcarAgressao(b, cond);
+				BwLutar(0.1);
+				TorsoEm(cond, 0.10);
+				cond.Combate.Nocautear(30);
+				parrudo.Pos = new Vec2(_bills.Posto.X + (BillsEWhis.TerritorioTiles + 5) * T, _bills.Posto.Y);
+				BwLutar(4, () => { SemKi(); return cond.Ficha.dead; });
+				AfirmarBw("(o mesmo defeito) quem cai no ponto do Hakai so cai: ninguem o executa",
+						  !cond.Ficha.dead && b.Papel!.PresaDoRoteiro == 0);
+			}
+			finally { BillsEWhis.SemKitNaTerraDeTeste = false; }
+		}
+		finally
+		{
+			BillsEWhis.HakaiDesligadoDeTeste = BillsEWhis.SemKitNaTerraDeTeste = BillsEWhis.FuryNaTerraDeTeste = false;
+			EscutaDeAvisos = avisosDeAntes;
+			foreach (ServerPlayer c in cena) { BwRecolher(c); forjados.Remove(c); }
+			BwLimparOsTiros(TerraDaVisita);
+		}
+	}
+
+	// =====================================================================
+	// 2c) O WHIS NA TERRA -- ao lado fora da luta; de longe, intocavel e falando de comida durante ela
+	// =====================================================================
+	private void BwOWhisNaTerra(List<ServerPlayer> forjados)
+	{
+		GD.Print("[bills] ---- 2c) o Whis: segue o Bills fora da luta, assiste de longe (intocavel, comentando comida) durante ela, e volta no fim");
+		const float T = ZoneCollision.TileSize;
+		var cena = new List<ServerPlayer>();
+		ServerPlayer b = null!, w = null!;
+		Vec2 ponta = default;
+
+		ServerPlayer Por(string nome, Vec2 onde, double bp)
+		{
+			ServerPlayer c = BwForjar(nome, "Human", TerraDaVisita, onde, bp, forjados);
+			cena.Add(c);
+			return c;
+		}
+		// (o Whis a OESTE do Bills quando o Bills vai andar pra leste, e a LESTE quando a briga e a oeste: nos dois casos
+		// o caminho dele nao passa por dentro de ninguem, e o que se mede e a caminhada)
+		bool Cena(float whisEm)
+		{
+			foreach (ServerPlayer c in cena) { BwRecolher(c); forjados.Remove(c); }
+			cena.Clear();
+			if (BwCenaNaTerra(whisEm) is not { } nova) { AfirmarBw("(montagem) a cena da Terra pro Whis", false); return false; }
+			(b, w, ponta) = nova;
+			return true;
+		}
+		float Tiles(Vec2 x, Vec2 y) => (x - y).Length / T;
+		void DePe(ServerPlayer c) { if (c.Ficha.HP < 70 && !c.Ficha.KO && !c.Ficha.dead) c.Combate.Curar(); }
+
+		// OS PASSOS DE UM CORPO, tique a tique: andou? qual foi o maior passo? (um salto de varios tiles e teleporte, nao caminhada)
+		bool andouW = false, andouB = false, tocavel = false;
+		float maiorPassoW = 0, maiorPassoB = 0;
+		Vec2 antesW = default, antesB = default;
+		void Zerar() { andouW = andouB = tocavel = false; maiorPassoW = maiorPassoB = 0; antesW = w.Pos; antesB = b.Pos; }
+		void Olhar()
+		{
+			andouW |= w.Moving;
+			andouB |= b.Moving;
+			tocavel |= !w.Combate.Intocavel;
+			maiorPassoW = Math.Max(maiorPassoW, (w.Pos - antesW).Length);
+			maiorPassoB = Math.Max(maiorPassoB, (b.Pos - antesB).Length);
+			antesW = w.Pos;
+			antesB = b.Pos;
+		}
+
+		// O QUE O WHIS DISSE, com a hora (o relogio do sistema deles) em que a bancada ouviu.
+		var ditas = new List<(double Em, string Texto)>();
+		int ouvidas = 0;
+		void Colher()
+		{
+			for (; ouvidas < EscutaDeFalas!.Count; ouvidas++)
+				if (EscutaDeFalas[ouvidas].Quem == w.Id) ditas.Add((_relogioDivino, EscutaDeFalas[ouvidas].Texto));
+		}
+		void Assistir(double segundos, Func<bool>? ate = null)
+		{
+			int n = (int)Math.Round(segundos / Protocol.TickSeconds);
+			for (int i = 0; i < n; i++)
+			{
+				TickDeBills(Protocol.TickSeconds);
+				Colher();
+				if (ate != null && ate()) return;
+			}
+		}
+
+		try
+		{
+			if (!Cena(-BillsEWhis.TilesEntreOsDois)) return;
+			AfirmarBw("(montagem) parados, o Whis esta a dois tiles do Bills -- sem mente, intocavel e no modo de objeto",
+					  Math.Abs(Tiles(w.Pos, b.Pos) - BillsEWhis.TilesEntreOsDois) < 0.1f && _whis.Modo == ModoDivino.Parado && w.Cerebro == null && w.Combate.Intocavel);
+
+			// ---------------------------------------------------------------- 1) fora de luta, ele SEGUE
+			b.Pos = ponta + new Vec2(9 * T, 0);   // (o Bills, ainda cochilando, aparece nove tiles adiante)
+			Zerar();
+			bool aoLado = BwLutar(14, () => { Olhar(); return !w.Moving && Math.Abs(Tiles(w.Pos, b.Pos) - BillsEWhis.TilesEntreOsDois) < 0.6f; });
+			AfirmarBw("FORA DE LUTA ELE SEGUE: com o Bills nove tiles adiante, o Whis VAI ANDANDO ate o lado dele e para a dois tiles -- sem mente, e intocavel o caminho inteiro",
+					  aoLado && andouW && maiorPassoW < 1.5f * T && !tocavel && w.Cerebro == null && _whis.Modo == ModoDivino.Parado && !_whisAssiste,
+					  $"a {Tiles(w.Pos, b.Pos):0.0} tiles, andou={andouW}, maior passo {maiorPassoW:0.0} px");
+
+			BillsEWhis.WhisNaoVoltaDeTeste = true;
+			b.Pos = ponta;
+			BwLutar(4);
+			AfirmarBw("(defeito injetado: o Whis nao vai pro lado do Bills) o Bills volta ao posto e o Whis fica onde estava, a nove tiles -- a afirmacao de cima reprova",
+					  Tiles(w.Pos, b.Pos) > 6, $"a {Tiles(w.Pos, b.Pos):0.0} tiles");
+			BillsEWhis.WhisNaoVoltaDeTeste = false;
+			bool noPosto = BwLutar(14, () => !w.Moving && (w.Pos - _whis.Posto).Length < 1);
+			AfirmarBw("(sem o defeito) ele volta andando pro lado do Bills, que esta no posto: o posto dele", noPosto, $"a {(w.Pos - _whis.Posto).Length:0.0} px do posto");
+
+			// ---------------------------------------------------------------- 2) a luta comeca: de longe
+			if (!Cena(BillsEWhis.TilesEntreOsDois)) return;
+			ServerPlayer rival = Por("Rival", ponta + new Vec2(-T, 0), 20e12);
+			EscutaDeFalas!.Clear();
+			ouvidas = 0;
+			MarcarAgressao(b, rival);
+			b.Knockback = false;   // (os socos dele nao arremessam nesta cena: a luta fica no lugar, e o mirante tambem)
+			double inicioDaLuta = _relogioDivino;
+			Zerar();
+			bool deLonge = BwLutar(16, () =>
+			{
+				b.Ficha.Ki = 0;
+				DePe(rival);
+				Olhar();
+				Colher();
+				return _whisAssiste && !w.Moving && (w.Pos - _miranteDoWhis).Length < 1
+					   && Tiles(w.Pos, b.Pos) >= BillsEWhis.TilesPertoDemais && Tiles(w.Pos, rival.Pos) >= BillsEWhis.TilesPertoDemais;
+			});
+			Jandirus.Core.World.Facing praLuta = MoveRules.FacingFrom(b.Pos - w.Pos, w.Facing);
+			AfirmarBw("COMECOU A LUTA (alguem bateu no Bills): o Whis SE AFASTA andando e fica vendo de longe -- a pelo menos seis tiles do Bills e de quem o enfrenta (o mirante e a nove do meio da luta), virado pra ela",
+					  deLonge && andouW && maiorPassoW < 1.5f * T && w.Facing == praLuta,
+					  $"chegou={deLonge}, a {Tiles(w.Pos, b.Pos):0.0} tiles do Bills e {Tiles(w.Pos, rival.Pos):0.0} do rival, a {(w.Pos - _miranteDoWhis).Length:0.0} px do mirante, andando={w.Moving}, andou={andouW}, maior passo {maiorPassoW:0.0} px, virado pra {w.Facing} (a luta fica a {praLuta})");
+			AfirmarBw("...INTOCAVEL do primeiro passo ao mirante: o modo dele continua o de objeto, sem mente",
+					  !tocavel && _whis.Modo == ModoDivino.Parado && w.Cerebro == null && w.Combate.Intocavel);
+
+			// ---------------------------------------------------------------- 3) ninguem o alcanca
+			ServerPlayer abusado = Por("Abusado", w.Pos + new Vec2(-0.8f * T, 0), 20e12);
+			abusado.Facing = Jandirus.Core.World.Facing.East;
+			double hpW = w.Ficha.HP;
+			bool naMira = ReferenceEquals(AlvoNaFrente(abusado), w), noBote = ReferenceEquals(CorpoNaFrente(abusado), w);
+			// (o defeito e medido ANTES do soco, com os dois onde a cena os pos: o soco que nao acha ninguem na frente
+			// ainda pode arrancar atras de outro corpo, e ai quem bate ja nao esta mais colado no Whis)
+			BillsEWhis.WhisTocavelNaLutaDeTeste = true;
+			bool comODefeito = !w.Combate.Intocavel && ReferenceEquals(AlvoNaFrente(abusado), w);
+			BillsEWhis.WhisTocavelNaLutaDeTeste = false;
+			Atacar(abusado, Protocol.Golpe.Leve);
+			Assistir(0.2);
+			AfirmarBw("...e ninguem o alcanca: colado nele e de frente, o golpe nao o acha, o agarrao nao o pega e o soco nao tira vida dele",
+					  !naMira && !noBote && w.Ficha.HP >= hpW && w.UltimoAgressor != abusado.Id, $"mira={naMira}, bote={noBote}, HP {w.Ficha.HP:0.0}");
+			AfirmarBw("(defeito injetado: assistindo, ele pode ser atingido) o MESMO golpe passa a acha-lo -- a afirmacao de cima reprova",
+					  comODefeito);
+			BwRecolher(abusado);
+			cena.Remove(abusado);
+			forjados.Remove(abusado);
+
+			// ---------------------------------------------------------------- 4) ...comentando comida
+			// (daqui em diante so o tique DELES anda: ninguem bate em ninguem, e a luta fica de pe o tempo que for)
+			if (rival.Ficha.KO) rival.Combate.Levantar();
+			rival.Combate.Curar();
+			rival.Pos = ponta + new Vec2(-T, 0);
+			Assistir(0.1);
+			AfirmarBw("(montagem) a luta continua de pe pra medir os comentarios: o Bills acordado, o rival de pe, o Whis assistindo",
+					  _bills.Modo == ModoDivino.Lutando && b.Papel!.PresaDoRoteiro == rival.Id && _whisAssiste, $"{_bills.Modo}");
+			int n = BillsEWhis.PalpitesDeComida.Length;
+			Assistir(60 * 8, () => ditas.Count > n);
+			List<string> textos = [.. ditas.Select(d => d.Texto)];
+			AfirmarBw($"ELE COMENTA COMIDA: {n + 1} comentarios seguidos, todos da lista dele -- e nenhuma outra fala saiu da boca dele durante a luta",
+					  ditas.Count == n + 1 && textos.TrueForAll(t => BillsEWhis.PalpitesDeComida.Contains(t)), $"{ditas.Count} fala(s): {string.Join(" | ", textos.Take(3))}");
+			AfirmarBw($"...SEM REPETIR em sequencia: os {n} primeiros sao os {n} da lista, cada um uma vez, e o seguinte nao e o que acabou de ser dito",
+					  ditas.Count > n && textos.Take(n).Distinct().Count() == n && textos[n] != textos[n - 1]);
+			double menor = double.MaxValue, maior = 0;
+			for (int i = 1; i < ditas.Count; i++)
+			{
+				menor = Math.Min(menor, ditas[i].Em - ditas[i - 1].Em);
+				maior = Math.Max(maior, ditas[i].Em - ditas[i - 1].Em);
+			}
+			AfirmarBw("...ESPACADOS: o primeiro uns cinco segundos depois de a luta comecar, e entre um e o seguinte nunca menos de dezoito segundos (nem mais de vinte e oito)",
+					  ditas.Count > 1 && ditas[0].Em - inicioDaLuta is > 4.5 and < 6.5 && menor >= BillsEWhis.SegundosEntrePalpites - 0.1
+					  && maior <= BillsEWhis.SegundosEntrePalpites + BillsEWhis.FolgaEntrePalpites + 0.2,
+					  $"primeiro aos {(ditas.Count > 0 ? ditas[0].Em - inicioDaLuta : -1):0.0} s; intervalos de {menor:0.0} a {maior:0.0} s");
+			AfirmarBw("...e nenhum comentario tem um algarismo: ele fala de comida, nao de poder",
+					  textos.TrueForAll(t => !t.Any(char.IsDigit)));
+
+			BillsEWhis.WhisRepeteDeTeste = true;
+			int antesDoDefeito = ditas.Count;
+			Assistir(70, () => ditas.Count >= antesDoDefeito + 2);
+			AfirmarBw("(defeito injetado: ele repete o mesmo comentario) os dois seguintes saem IGUAIS ao ultimo -- a afirmacao do \"sem repetir\" reprova",
+					  ditas.Count >= antesDoDefeito + 2 && ditas[^1].Texto == ditas[^2].Texto && ditas[^2].Texto == ditas[antesDoDefeito - 1].Texto);
+			BillsEWhis.WhisRepeteDeTeste = false;
+			BillsEWhis.WhisCaladoDeTeste = true;
+			int antesDoSilencio = ditas.Count;
+			Assistir(45);
+			AfirmarBw("(defeito injetado: ele assiste calado) quarenta e cinco segundos de luta e nenhum comentario -- a afirmacao de cima reprova",
+					  ditas.Count == antesDoSilencio);
+			BillsEWhis.WhisCaladoDeTeste = false;
+
+			// ---------------------------------------------------------------- 5) a luta acaba: os dois voltam, a pe
+			b.Pos = ponta + new Vec2(5 * T, 0);   // (a briga levou o Bills pra cinco tiles do cochilo)
+			rival.Pos = new Vec2(_bills.Posto.X + (BillsEWhis.TerritorioTiles + 5) * T, _bills.Posto.Y);
+			BwLutar(BillsEWhis.SegundosAteVoltarACochilar - 1);
+			AfirmarBw("sem ninguem de pe no territorio o Bills ESPERA: ainda acordado, ainda com o kit -- e o Whis ainda de longe",
+					  _bills.Modo == ModoDivino.Lutando && EhDeusDaDestruicao(b) && _whisAssiste);
+			bool desistiu = BwLutar(3, () => _bills.Modo == ModoDivino.Voltando);
+			AfirmarBw("...e entao DESISTE da briga: larga o kit na hora (o corpo deixa de ser o Deus, o cerebro some) e fica no modo de quem volta, ainda a cinco tiles do cochilo -- e ainda da pra bater nele",
+					  desistiu && !EhDeusDaDestruicao(b) && b.Cerebro == null && !LerCapacidades(b).KitDoDeus && !BwArsenal(b).Contains(KitDoDeus.VerbFuria)
+					  && Tiles(b.Pos, _bills.Posto) > 4 && !b.Combate.Intocavel, $"{_bills.Modo}, a {Tiles(b.Pos, _bills.Posto):0.0} tiles do posto");
+			Zerar();
+			bool emCasa = BwLutar(18, () => { Olhar(); return _bills.Modo == ModoDivino.Cochilando && !w.Moving && (w.Pos - _whis.Posto).Length < 1; });
+			AfirmarBw("O BILLS VOLTA A PE pro cochilo e O WHIS VOLTA PRO LADO DELE: os dois andaram (nenhum salto), o Bills dorme inteiro no posto e o Whis para a dois tiles, virado pra frente, intocavel",
+					  emCasa && andouB && andouW && maiorPassoB < 1.5f * T && maiorPassoW < 1.5f * T && (b.Pos - _bills.Posto).Length < 1 && b.Ficha.HP >= 99.9
+					  && !_whisAssiste && w.Facing == Jandirus.Core.World.Facing.South && !tocavel,
+					  $"Bills: {_bills.Modo}, andou={andouB}, maior passo {maiorPassoB:0.0} px | Whis: a {(w.Pos - _whis.Posto).Length:0.0} px do posto, andou={andouW}, maior passo {maiorPassoW:0.0} px");
+
+			// ---------------------------------------------------------------- 6) os contra-exemplos da volta e do mirante
+			BillsEWhis.BillsVoltaNumPassoDeTeste = true;
+			rival.Pos = ponta + new Vec2(-T, 0);
+			MarcarAgressao(b, rival);
+			BwLutar(0.3);
+			b.Pos = ponta + new Vec2(5 * T, 0);
+			rival.Pos = new Vec2(_bills.Posto.X + (BillsEWhis.TerritorioTiles + 5) * T, _bills.Posto.Y);
+			Zerar();
+			bool dormiu = BwLutar(BillsEWhis.SegundosAteVoltarACochilar + 6, () => { Olhar(); return _bills.Modo == ModoDivino.Cochilando; });
+			AfirmarBw("(defeito injetado: ele volta num passo so, como era) o Bills APARECE no posto sem andar -- um salto de cinco tiles, e a afirmacao da volta a pe reprova",
+					  dormiu && !andouB && maiorPassoB > 3 * T, $"andou={andouB}, maior passo {maiorPassoB:0.0} px");
+			BillsEWhis.BillsVoltaNumPassoDeTeste = false;
+			BwLutar(14, () => !w.Moving && (w.Pos - _whis.Posto).Length < 1);
+
+			BillsEWhis.WhisColadoNaLutaDeTeste = true;
+			rival.Pos = ponta + new Vec2(-T, 0);
+			MarcarAgressao(b, rival);
+			BwLutar(8, () => { b.Ficha.Ki = 0; DePe(rival); return false; });
+			AfirmarBw("(defeito injetado: o Whis continua colado no Bills durante a luta) oito segundos de briga e ele esta a menos de seis tiles dos dois -- a afirmacao do \"de longe\" reprova",
+					  _bills.Modo == ModoDivino.Lutando && !_whisAssiste && Tiles(w.Pos, b.Pos) < BillsEWhis.TilesPertoDemais, $"a {Tiles(w.Pos, b.Pos):0.0} tiles");
+			BillsEWhis.WhisColadoNaLutaDeTeste = false;
+		}
+		finally
+		{
+			BillsEWhis.WhisColadoNaLutaDeTeste = BillsEWhis.WhisNaoVoltaDeTeste = BillsEWhis.WhisTocavelNaLutaDeTeste = false;
+			BillsEWhis.WhisCaladoDeTeste = BillsEWhis.WhisRepeteDeTeste = BillsEWhis.BillsVoltaNumPassoDeTeste = false;
+			foreach (ServerPlayer c in cena) { BwRecolher(c); forjados.Remove(c); }
+			BwLimparOsTiros(TerraDaVisita);
+
+			// A HISTORIA SEGUE DA TERRA, com os dois nos postos DE VERDADE (os da cena eram da faixa de chao firme).
+			CarregarBills();
+			BwPassar(1);
+		}
 	}
 
 	// =====================================================================
@@ -1526,6 +2339,169 @@ public partial class GameServer
 	}
 
 	// =====================================================================
+	// 9b) EM CASA -- o treino sem kit, o desafio com o kit inteiro e a Fury, e o Whis assistindo as lutas do Bills
+	// =====================================================================
+	private void BwOKitEmCasa(ServerPlayer pl, ZoneKey zona, List<ServerPlayer> forjados)
+	{
+		GD.Print("[bills] ---- 9b) em casa: o treino continua sem kit, o desafio e com o kit INTEIRO e a Fury, e o Whis assiste as lutas do Bills");
+		if (_bills.Corpo is not { } b || _whis.Corpo is not { } w) { AfirmarBw("(montagem) os dois estao em casa", false); return; }
+		const float T = ZoneCollision.TileSize;
+		var cena = new List<ServerPlayer>();
+		List<string> avisos = [];
+		List<string>? avisosDeAntes = EscutaDeAvisos;
+		float Tiles(Vec2 x, Vec2 y) => (x - y).Length / T;
+		ServerPlayer Desafiante(string nome)
+		{
+			ServerPlayer c = BwForjar(nome, "Human", zona, new Vec2(b.Pos.X, b.Pos.Y + 40), 5e15, forjados);
+			c.Ficha.GravMastered = 500;
+			c.Ficha.godki = new GodKiState { awakened = true, mastery = 100 };
+			cena.Add(c);
+			return c;
+		}
+		void Enfraquecer(ServerPlayer c)
+		{
+			c.Ficha.BP = 5e9;
+			c.Ficha.Statify();
+			c.Ficha.PowerLevel();
+		}
+		void DePe(ServerPlayer c) { if (c.Ficha.HP < 70 && !c.Ficha.KO && !c.Ficha.dead) c.Combate.Curar(); }
+
+		try
+		{
+			EscutaDeAvisos = avisos;
+			// (a secao de cima acabou uma aula do Bills neste mesmo instante: o Whis ainda esta voltando do mirante)
+			for (int i = 0; i < 30 * 16 && (_whisAssiste || w.Moving || (w.Pos - _whis.Posto).Length >= 1); i++) TickDeBills(Protocol.TickSeconds);
+			AfirmarBw("(montagem) parados em casa: os dois nos postos, sem luta, e o Whis nao esta assistindo nada",
+					  _bills.Modo == ModoDivino.Parado && _whis.Modo == ModoDivino.Parado && (b.Pos - _bills.Posto).Length < 1 && (w.Pos - _whis.Posto).Length < 1 && !_whisAssiste);
+
+			// ---------------------------------------------------------------- 1) o treino com o Bills: nada mudou
+			pl.Pos = new Vec2(b.Pos.X, b.Pos.Y + 40);
+			EscutaDeFalas!.Clear();
+			ComandoDeInteracao(pl, BillsEWhis.VerboTreinarComBills, "");
+			BwPassar(0.3);
+			AfirmarBw("O TREINO COM O BILLS NAO MUDOU: sem kit (o corpo nao e o Deus, o cerebro nao sabe de kit, o arsenal so tem o que ele sabe de livro) e sem Fury",
+					  _bills.Sessao is { Desafio: false } && !EhDeusDaDestruicao(b) && !LerCapacidades(b).KitDoDeus && !BwArsenal(b).Contains(KitDoDeus.VerbFuria)
+					  && !BwArsenal(b).Contains(KitDoDeus.VerbEsfera) && b.Forma.Atual == Catalogo.IdDoPiso(Perfil(b)), BwArsenal(b));
+
+			bool tocavel = false;
+			for (int i = 0; i < 30 * 10; i++) { TickDeBills(Protocol.TickSeconds); tocavel |= !w.Combate.Intocavel; }
+			AfirmarBw("O WHIS ASSISTE AO TREINO DO BILLS DE LONGE: fora do posto, a pelo menos seis tiles do Bills e de quem treina, intocavel o tempo todo -- e ja comentou comida",
+					  _whisAssiste && _whis.Modo == ModoDivino.Parado && !tocavel && Tiles(w.Pos, b.Pos) >= BillsEWhis.TilesPertoDemais && Tiles(w.Pos, pl.Pos) >= BillsEWhis.TilesPertoDemais
+					  && EscutaDeFalas.Any(e => e.Quem == w.Id && BillsEWhis.PalpitesDeComida.Contains(e.Texto)),
+					  $"a {Tiles(w.Pos, b.Pos):0.0} tiles do Bills, {Tiles(w.Pos, _whis.Posto):0.0} do posto");
+
+			TorsoEm(pl, 0.10);
+			pl.Combate.Nocautear(30);
+			BwPassar(0.1);
+			AfirmarBw("...e NINGUEM MORRE NO TREINO: quem cai com o torso em 10% (o ponto do Hakai) so perde a aula -- vivo, de pe, inteiro e sem marca nenhuma",
+					  _bills.Sessao == null && !pl.Ficha.dead && !pl.Ficha.KO && pl.Ficha.HP >= 99 && !pl.Ficha.hakai_mark, $"HP {pl.Ficha.HP:0.0}");
+			bool voltou = false;
+			for (int i = 0; i < 30 * 14 && !voltou; i++) { TickDeBills(Protocol.TickSeconds); voltou = !w.Moving && (w.Pos - _whis.Posto).Length < 1; }
+			AfirmarBw("...acabada a aula o Whis VOLTA pro lado do Bills: no posto dele, sem assistir a mais nada",
+					  voltou && !_whisAssiste && _whis.Modo == ModoDivino.Parado && w.Combate.Intocavel, $"a {(w.Pos - _whis.Posto).Length:0.0} px do posto");
+
+			BillsEWhis.KitNoTreinoDeTeste = true;
+			try
+			{
+				ComandoDeInteracao(pl, BillsEWhis.VerboTreinarComBills, "");
+				BwPassar(0.1);
+				AfirmarBw("(defeito injetado: o treino tambem arma o kit) o corpo dele passa a responder como o Deus no meio de uma aula -- a afirmacao do \"treino nao mudou\" reprova",
+						  _bills.Sessao != null && EhDeusDaDestruicao(b));
+				EncerrarASessao(_bills, FimDaSessao.ParceiroParou);
+			}
+			finally { BillsEWhis.KitNoTreinoDeTeste = false; }
+			AfirmarBw("(sem o defeito, e com a aula encerrada) ele nao carrega kit nenhum", !EhDeusDaDestruicao(b) && _bills.Modo == ModoDivino.Parado);
+			for (int i = 0; i < 30 * 14 && (w.Moving || (w.Pos - _whis.Posto).Length >= 1); i++) TickDeBills(Protocol.TickSeconds);
+
+			// ---------------------------------------------------------------- 2) quando e o Whis quem da aula, o Bills fica como esta
+			pl.Pos = new Vec2(w.Pos.X, w.Pos.Y + 40);
+			EscutaDeFalas.Clear();
+			ComandoDeInteracao(pl, BillsEWhis.VerboTreinarComWhis, "");
+			BwPassar(8);
+			AfirmarBw("QUANDO E O WHIS QUEM DA AULA, o Bills fica como esta: no posto, objeto intocavel -- nao assiste, nao anda e ninguem comenta comida",
+					  _whis.Sessao != null && !_whisAssiste && _bills.Modo == ModoDivino.Parado && (b.Pos - _bills.Posto).Length < 1 && b.Combate.Intocavel && b.Cerebro == null
+					  && !EscutaDeFalas.Any(e => BillsEWhis.PalpitesDeComida.Contains(e.Texto)));
+			EncerrarASessao(_whis, FimDaSessao.ParceiroParou);
+			BwPassar(0.2);
+
+			// ---------------------------------------------------------------- 3) o desafio: o kit inteiro, com a Fury
+			ServerPlayer d1 = Desafiante("Desafiante");
+			List<string> pedido = Ouvir(() => ComandoDeInteracao(d1, BillsEWhis.VerboDesafiar, ""));
+			EscutaDeAvisos = avisos;
+			AfirmarBw("(montagem) um desafiante de bancada, com o ki divino desperto, abriu o desafio pelo titulo",
+					  _bills.Sessao is { Desafio: true } aberta && ReferenceEquals(aberta.Parceiro, d1), Ultimos(pedido));
+			if (_bills.Sessao == null) return;
+			BwLutar(Duelo.Contagem / 1000.0 + 0.5, () => _bills.Sessao is { Lutando: true });
+			BwLutar(1.3, () => { b.Ficha.Ki = 0; DePe(d1); return false; });
+			string arsenal = BwArsenal(b);
+			AfirmarBw("NO DESAFIO ELE CARREGA O KIT INTEIRO, COM A FURY POR CIMA: o corpo e o Deus, a forma e a Fury, o cerebro sabe do kit, os dois tiros estao no arsenal e o Hakai deste duelo esta ligado",
+					  _bills.Sessao is { Lutando: true } && EhDeusDaDestruicao(b) && b.Forma.Atual == BillsEWhis.IdDaFury && b.Cerebro is { Poderes.KitDoDeus: true }
+					  && !SemHakai(b) && arsenal.Contains(KitDoDeus.VerbFuria) && arsenal.Contains(KitDoDeus.VerbEsfera), $"forma '{b.Forma.Atual}', arsenal [{arsenal}]");
+			AfirmarBw("...e o Whis ASSISTE AO DESAFIO: fora do posto e intocavel", _whisAssiste && w.Combate.Intocavel && (w.Pos - _whis.Posto).Length > T);
+
+			ServerPlayer mirim = BwForjar("AtiradorMirim", "Human", zona, b.Pos + new Vec2(3 * T, 0), 1e9, forjados);
+			cena.Add(mirim);
+			var bola = new ReceitaDeProjetil { Tipo = TipoDeProjetil.Blast, BaseDano = 0.05, Velocidade = 1, AlcanceTiles = 60, Deflectivel = false };
+			Projetil vindo = Disparar(mirim, bola, rumoDado: new Vec2(-1, 0), deOnde: b.Pos + new Vec2(2.5f * T, 0));
+			BwLutar(1, () => { b.Ficha.Ki = 0; DePe(d1); return !vindo.Vivo; });
+			AfirmarBw("...e ele o USA, pelo cerebro: um ataque de ki fraco vindo pra cima dele no meio do duelo e ANULADO (a Energy Nullification), sem ninguem ter apertado nada por ele",
+					  vindo is { Vivo: false, Fim: FimDeProjetil.Apagou } && Disse(avisos, "DEIXAM DE EXISTIR") && _bills.Sessao is { Lutando: true },
+					  $"fim {vindo.Fim} | {Ultimos(avisos.Where(t => t.Contains("EXISTIR")).ToList())}");
+
+			// ---------------------------------------------------------------- 4) o desafio pode matar: o Hakai
+			Enfraquecer(d1);
+			d1.Pos = b.Pos + new Vec2(T, 0);
+			TorsoEm(d1, 0.10);
+			d1.Combate.Nocautear(30);
+			EscutaDeFalas.Clear();
+			EscutaDasSagas!.Clear();
+			bool esperou = false;
+			BwLutar(BillsEWhis.SegundosPraExecutar + 3, () => { b.Ficha.Ki = 0; esperou |= _bills.Sessao is { ExecutaAte: > 0 }; return _bills.Sessao == null; });
+			AfirmarBw("NO DESAFIO, QUEM CAI NO PONTO DO HAKAI E APAGADO: o juiz espera, o cerebro do Bills pede o HAKAI, o desafiante MORRE com a marca -- e o duelo acaba pela morte, com a fala dele e o titulo defendido",
+					  esperou && _bills.Sessao == null && d1.Ficha.dead && d1.Ficha.hakai_mark && Disse(avisos, "HAKAI!")
+					  && EscutaDeFalas.Any(e => e.Quem == b.Id && e.Texto == BillsEWhis.BillsApagouODesafiante) && EscutaDasSagas.Any(t => t.Contains("defendeu")),
+					  $"esperou={esperou}, morto={d1.Ficha.dead}, marca={d1.Ficha.hakai_mark} | {string.Join(" | ", EscutaDeFalas.Where(e => e.Quem == b.Id).Select(e => e.Texto))}");
+			AfirmarBw("...o trono continua vago, e o Bills volta a ser objeto: sem Fury, sem kit, no posto",
+					  TronoVago(BillsEWhis.CargoDoBills) && _bills.Modo == ModoDivino.Parado && !EhDeusDaDestruicao(b) && b.Forma.Atual != BillsEWhis.IdDaFury && (b.Pos - _bills.Posto).Length < 1);
+
+			BillsEWhis.HakaiDesligadoDeTeste = true;
+			try
+			{
+				ServerPlayer d2 = Desafiante("Desafiante2");
+				ComandoDeInteracao(d2, BillsEWhis.VerboDesafiar, "");
+				BwLutar(Duelo.Contagem / 1000.0 + 0.5, () => _bills.Sessao is { Lutando: true });
+				bool semHakai = SemHakai(b);
+				string semEsfera = BwArsenal(b);
+				Enfraquecer(d2);
+				TorsoEm(d2, 0.10);
+				d2.Combate.Nocautear(30);
+				EscutaDeFalas.Clear();
+				BwLutar(0.3, () => _bills.Sessao == null);
+				AfirmarBw("(a chave `HakaiNoDesafio` virada) a MESMA queda sem o Hakai: o duelo acaba no nocaute, do jeito de sempre -- o desafiante perde, e sai VIVO e inteiro; a esfera nem estava no arsenal",
+						  semHakai && !semEsfera.Contains(KitDoDeus.VerbEsfera) && semEsfera.Contains(KitDoDeus.VerbFuria) && _bills.Sessao == null
+						  && !d2.Ficha.dead && !d2.Ficha.KO && d2.Ficha.HP >= 99 && !d2.Ficha.hakai_mark
+						  && EscutaDeFalas.Any(e => e.Quem == b.Id && e.Texto == BillsEWhis.BillsVenceuODesafio),
+						  $"morto={d2.Ficha.dead}, HP {d2.Ficha.HP:0.0}, arsenal [{semEsfera}]");
+			}
+			finally { BillsEWhis.HakaiDesligadoDeTeste = false; }
+		}
+		finally
+		{
+			BillsEWhis.HakaiDesligadoDeTeste = BillsEWhis.KitNoTreinoDeTeste = false;
+			EscutaDeAvisos = avisosDeAntes;
+			if (_bills.Sessao != null) EncerrarASessao(_bills, FimDaSessao.MestreSumiu);
+			if (_whis.Sessao != null) EncerrarASessao(_whis, FimDaSessao.MestreSumiu);
+			foreach (ServerPlayer c in cena) { _desafiosPerdidos.Remove(c.Assinatura); BwRecolher(c); forjados.Remove(c); }
+			BwLimparOsTiros(zona);
+
+			// OS DOIS NOS POSTOS, pro resto da bancada (o Whis volta andando; se empacou, a caminhada dele mesma o poe la).
+			for (int i = 0; i < 30 * 16 && _whis.Corpo is { } de && (de.Moving || (de.Pos - _whis.Posto).Length >= 1); i++) TickDeBills(Protocol.TickSeconds);
+			pl.Combate.Curar();
+			pl.Combate.SincronizarVida();
+		}
+	}
+
+	// =====================================================================
 	// 10) O DESAFIO -- 100%, a Fury, o titulo, o Bills some, o traje
 	// =====================================================================
 	private void BwODesafio(ServerPlayer pl, ZoneKey zona, List<ServerPlayer> forjados)
@@ -1620,7 +2596,7 @@ public partial class GameServer
 		AfirmarBw("o desafiante CAI: o Bills defende o titulo (anunciado), sai da Fury e volta a ser objeto; o trono continua vago",
 				  _bills.Sessao == null && TronoVago(BillsEWhis.CargoDoBills) && b.Forma.Atual != BillsEWhis.IdDaFury && _bills.Modo == ModoDivino.Parado
 				  && EscutaDasSagas.Any(t => t.Contains("defendeu") && t.Contains(pl.Name)), string.Join(" | ", EscutaDasSagas));
-		AfirmarBw("...e fora do desafio ele NAO carrega o kit (a consagracao durou o duelo): na Terra e no treino o poder e o cravado, sem o surto do God's Temper",
+		AfirmarBw("...e fora do desafio ele NAO carrega o kit (a consagracao durou o duelo): parado em casa ele e objeto, e no treino o poder e o cravado, sem o surto do God's Temper",
 				  !EhDeusDaDestruicao(b));
 		List<string> cedo = Pedir();
 		AfirmarBw("...e quem perdeu so desafia de novo depois de um dia in-game", _bills.Sessao == null && Disse(cedo, "dia"), Ultimos(cedo));

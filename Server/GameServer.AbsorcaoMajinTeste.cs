@@ -224,8 +224,11 @@ public partial class GameServer
 
 		ZoneKey a = InteriorDoMajin.De(7), b = InteriorDoMajin.De(8);
 		AfirmarMj("a zona carrega o Majin: `De(7)` e interior, e o anfitriao e o 7", InteriorDoMajin.EhOInterior(a) && InteriorDoMajin.Anfitriao(a) == 7);
-		AfirmarMj("dois Majins, dois bolsoes (hashes diferentes) com a MESMA planta", a.Hash != b.Hash
-				  && ReferenceEquals(MapaDaZonaOuCatalogo(a), MapaDaZonaOuCatalogo(b)) && ReferenceEquals(MapaDaZonaOuCatalogo(a), col));
+		AfirmarMj("dois Majins, dois bolsoes (hashes diferentes) da MESMA planta -- e cada um com a COPIA dele do mapa (a planta nao e de ninguem)",
+				  a.Hash != b.Hash
+				  && MapaDaZonaOuCatalogo(a) is { } mapaDoA && MapaDaZonaOuCatalogo(b) is { } mapaDoB
+				  && mapaDoA.SaiuDe(col) && mapaDoB.SaiuDe(col)
+				  && !ReferenceEquals(mapaDoA, mapaDoB) && !ReferenceEquals(mapaDoA, col));
 		AfirmarMj("zona que nao e interior nao tem anfitriao", InteriorDoMajin.Anfitriao(ZonaDaBancadaDoMajin) == 0 && !InteriorDoMajin.EhOInterior(DimensaoMental.De(7)));
 
 		var rng = new Random(1234);
@@ -705,7 +708,7 @@ public partial class GameServer
 
 		// voando alto, o passo contra a parede e recusado pela mesma pergunta que o servidor faz
 		ZoneCollision col = MapaDaZonaOuCatalogo(vitima.Zone)!;
-		AfirmarMj("a zona do prisioneiro resolve pra planta do bolsao no funil da colisao", ReferenceEquals(col, InteriorDoMajin.Planta().Colisao));
+		AfirmarMj("a zona do prisioneiro resolve pra planta do bolsao no funil da colisao (a copia deste Majin, tirada dela)", col.SaiuDe(InteriorDoMajin.Planta().Colisao));
 		AfirmarMj("voando acima do cenario, a parede do bolsao continua parede", col.Bloqueia(0, 10, Voo.ModoNaAltura(Voo.AlturaMaxima, ModoDeTravessia.Voando)));
 
 		// o Majin que esta dentro de OUTRO Majin cospe no meio da Terra (`majin_safe_release_turf`)

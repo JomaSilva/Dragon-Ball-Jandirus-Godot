@@ -323,12 +323,15 @@ public static class VerbosDoJogo
 		// A FRASE E CURTA DE PROPOSITO (tres linhas no cartao, como as vizinhas): a primeira tinha cinco e
 		// esticava a fileira inteira. O que saiu dela ja esta escrito onde se le na hora -- o dobro do preco
 		// no topo da aba Tech, a reserva do planeta na faixa e na fala de quem comeca a minerar.
+		//
+		// ELA DIZ ONDE (dono, 2026-10-11: a ceu aberto, ou numa caverna do planeta), no mesmo tamanho de antes: o
+		// "por segundo" virou o "/s" do primeiro numero, e os dois "uma" sairam.
 		// =====================================================================================
 		Verbos.Registrar(new Verbo("Minerar", Verbos.Outros,
-			"Tira recursos do chão do planeta, por segundo: "
-			+ $"+{Jandirus.Core.Economia.Recurso.PorSegundoNaMao:0} com as mãos, "
-			+ $"+{Jandirus.Core.Economia.Recurso.PorSegundoComPa:0} com uma pá (Shovel) na mochila, "
-			+ $"+{Jandirus.Core.Economia.Recurso.PorSegundoComFuradeira:0} com uma furadeira (Hand Drill). "
+			"Tira recursos do chão, a céu aberto ou em caverna: "
+			+ $"+{Jandirus.Core.Economia.Recurso.PorSegundoNaMao:0}/s com as mãos, "
+			+ $"+{Jandirus.Core.Economia.Recurso.PorSegundoComPa:0} com pá (Shovel) na mochila, "
+			+ $"+{Jandirus.Core.Economia.Recurso.PorSegundoComFuradeira:0} com furadeira (Hand Drill). "
 			+ "Andar ou agir interrompe; acionar de novo para.",
 			LocalPlayer.PedirMineracao) { Chave = "minerar" });
 
@@ -502,6 +505,12 @@ public static class VerbosDoJogo
 		Verbos.Registrar(new Verbo("Ir Para O Mundo Divino", Verbos.Admin,
 			"Salta pra orbita de um mundo de atmosfera divina (o mais perto que o seu corpo aguenta). So no espaco; encoste nele pra pousar.",
 			() => C?.SendVerbo("admin_mundo_divino")));
+
+		// NAO TEM ORIGINAL: as Salas do Tempo dos mundos sorteados sao do port (dono, 2026-10-11), e um mundo em 400
+		// tem uma. No chao o verb so LISTA as das celulas em volta; do espaco ele salta pra orbita da mais perto.
+		Verbos.Registrar(new Verbo("Ir Para A Sala Do Tempo", Verbos.Admin,
+			"Lista os mundos com Sala do Tempo por perto (a dilatacao de cada uma) e, do espaco, salta pra orbita do mais proximo. Encoste nele pra pousar: a porta fica na montanha mais perto do pouso.",
+			() => C?.SendVerbo("admin_sala_do_tempo")));
 
 		// ---------------------------------------------------------- punir
 		// `Boot()` (Admin.dm:450)

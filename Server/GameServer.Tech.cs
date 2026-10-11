@@ -316,6 +316,12 @@ public partial class GameServer
 {
 	private CatalogoDeObras? _obras;
 	private readonly List<Obra> _noChao = [];
+
+	/// <summary>
+	/// AS OBRAS QUE O `mundo.json` TROUXE DE UM LUGAR EM QUE NAO SE CONSTROI (`LugarDeObra`): fora do mundo -- ninguem
+	/// as ve, elas nao barram, nao contam em lista nenhuma -- e regravadas como vieram. So a limpeza total as leva.
+	/// </summary>
+	private readonly List<Obra> _obrasSemLugar = [];
 	private int _proximaObraId = 1;
 
 	/// <summary>
@@ -622,6 +628,21 @@ public partial class GameServer
 				System.IO.File.ReadAllText(caminho), new JsonSerializerOptions { IncludeFields = true });
 			if (l != null) _noChao.AddRange(l);
 			_proximaObraId = _noChao.Count > 0 ? _noChao.Max(o => o.Id) + 1 : 1;
+
+			// A OBRA GRAVADA NUM LUGAR EM QUE NAO SE CONSTROI (mente, bolso da fusao, selo, interior de Majin, nave --
+			// `LugarDeObra`) e de antes da recusa. Ela NAO VOLTA PRO MUNDO: a chave desses lugares e um id de sessao,
+			// e de pe ela apareceria -- desenhada e barrando -- na mente de quem tivesse aquele numero agora. E NAO
+			// SAI DO ARQUIVO: fica guardada a parte e e regravada como veio (`GravarMundoEm`). O id dela continua
+			// contando pro proximo id livre, que foi calculado na linha de cima.
+			List<Obra> semLugar = _noChao.Where(o => !LugarDeObra.Aceita(o.Zona)).ToList();
+			if (semLugar.Count > 0)
+			{
+				_noChao.RemoveAll(o => !LugarDeObra.Aceita(o.Zona));
+				_obrasSemLugar.AddRange(semLugar);
+				GD.Print($"[server] mundo: {semLugar.Count} construcao(oes) gravada(s) num lugar em que nao se constroi mais "
+						 + $"({string.Join(", ", semLugar.Select(o => $"{o.Tipo} em {o.Zona}").Take(6))}{(semLugar.Count > 6 ? ", ..." : "")}). "
+						 + "Ficam FORA do mundo e continuam no arquivo, como estavam.");
+			}
 			GD.Print($"[server] mundo: {_noChao.Count} construcoes de pe");
 
 			// A MIGRACAO SE ANUNCIA (ver `Obra.ZonaDoDiscoAntigo`). Converter em silencio seria
@@ -644,8 +665,10 @@ public partial class GameServer
 		{
 			// SO O QUE ALGUEM ERGUEU. A mobilia do mapa nasce do `.objetos` a cada boot; grava-la
 			// aqui duplicaria cada bancada a cada reinicio. Ver `Obra.DoMapa`.
+			// ...MAIS O QUE FICOU FORA DO MUNDO AO CARREGAR (`_obrasSemLugar`): o servidor nao apaga do arquivo o
+			// que ele so deixou de por de pe.
 			System.IO.File.WriteAllText(caminho,
-				JsonSerializer.Serialize(_noChao.Where(o => !o.DoMapa).ToList(),
+				JsonSerializer.Serialize(_noChao.Where(o => !o.DoMapa).Concat(_obrasSemLugar).ToList(),
 										 new JsonSerializerOptions { IncludeFields = true, WriteIndented = true }));
 		}
 		catch (Exception e) { GD.PushWarning($"[server] nao gravei o mundo: {e.Message}"); }
@@ -800,22 +823,22 @@ public partial class GameServer
 		RecusaDeAssento rl = Assentamento.DoLugar(MapaDaZonaOuCatalogo(pl.Zone), pl.Pos, cx, cy);
 		if (rl != RecusaDeAssento.Pode) { Avisar(pl, Assentamento.Motivo(rl, item.Nome)); return; }
 
-		// ============================ NAO SE CONSTROI DENTRO DE UMA NAVE -- E O MOTIVO MUDOU ============================
-		// A recusa NASCEU de um defeito da chave: a `Obra` guardava a zona como nome puro, o interior de
-		// toda nave se chama "Nave", e uma bancada erguida na #7 apareceria dentro da #8 e de todas as
-		// outras. **Esse defeito acabou** -- o interior e `ZoneKey.Interior("Nave", id da nave)` e agora
-		// a obra guarda tipo, nome e seed, entao a #7 e a #8 sao zonas distintas.
+		// ============================ ONDE NAO SE CONSTROI -- POR TIPO DE ZONA, NUM LUGAR SO ============================
+		// A recusa da NAVE nasceu de um defeito da chave (a `Obra` guardava a zona como nome puro, e a bancada
+		// erguida na nave #7 apareceria na #8) e ficou por outra razao, a do CICLO DE VIDA: o interior existe
+		// enquanto a nave existe, e o `mundo.json` nao sabe quando ela acaba -- a obra ficaria de pe pra sempre
+		// numa zona onde ninguem mais entra.
 		//
-		// A RECUSA FICA POR OUTRA RAZAO, e ela e do CICLO DE VIDA e nao da chave: o interior existe
-		// enquanto a nave existe. Uma nave se recolhe pra mochila e se destroi (`GameServer.Estrago`),
-		// e o `mundo.json` nao sabe disso -- a bancada ficaria de pe pra sempre numa zona onde ninguem
-		// mais entra, ocupando id e lista, sem nenhum caminho pra recolhe-la. Guardar obra dentro de
-		// coisa que morre pede que a morte da nave leve as obras junto, e isso e trabalho da nave.
+		// A MESMA RAZAO VALE PRA MENTE, PRO BOLSO DA FUSAO, PRO SELO E PRO INTERIOR DE UM MAJIN (dono, 2026-10-11:
+		// *"n deveria ser possivel contruir nada dentro desses interiores"*), e neles e pior: a chave e o id de
+		// SESSAO de alguem, entao a maquina gravada na "mente #5" apareceria na mente de quem fosse o #5 depois de
+		// um reinicio. A Sala do Tempo ACEITA -- a chave dela e a seed do mundo, e a obra fica gravada so naquela
+		// Sala. Quem responde, com a frase de cada lugar, e o Core: `LugarDeObra`. Vem antes de tirar o item da
+		// mochila, e vale pra tudo o que este verbo assenta: maquina, semente e NAVE.
 		// =============================================================================================================
-		if (Jandirus.Core.Tech.NaveGrande.EhInterior(pl.Zone, out _))
+		if (LugarDeObra.PorQueNaoSeConstroi(pl.Zone) is { } aquiNao)
 		{
-			Avisar(pl, "não dá pra construir dentro de uma nave: se ela for destruída, o que estiver "
-					   + "aqui dentro fica preso num lugar onde ninguém mais entra.");
+			Avisar(pl, aquiNao);
 			return;
 		}
 

@@ -219,6 +219,10 @@ public partial class GameServer
 			// O `Swim` do DM (`Swim.dm:5`). Entra pelo MESMO cano do voo -- uma linha aqui e uma no
 			// registro de verbs do cliente, que e o preco que este canal cobra por acao nova.
 			case "nadar": AlternarNado(pl); break;
+			// O `Toggle Readiness` do DM (`Power Control.dm:39-52`): relaxar (1% do poder) e ficar pronto (100%).
+			// Mesmo cano do voo e do nado, e pela mesma razao -- e `mob/default/verb`, de todo corpo, e nao uma
+			// tecnica do livro. Ver `GameServer.PoderEmUso.cs`.
+			case "prontidao": AlternarProntidao(pl); break;
 			// O `Grab` do DM (`Grabbing.dm:48`). Mesmo cano do voo e do nado, e pela mesma razao: e um
 			// verb do CORPO e nao uma tecnica do livro, entao o `UsarTecnica` nunca o acharia. Uma
 			// tecla so cicla os tres estados (pegar / levantar no colo / soltar) -- ver

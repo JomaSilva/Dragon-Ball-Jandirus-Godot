@@ -1081,6 +1081,14 @@ public partial class RoboDeJanelas : Node
 			assistir.MostrarDeTeste(true);
 		}
 
+		// A CEU ABERTO, PRA PODER MINERAR: o berco fica dentro de um predio, e debaixo de teto o verb e recusado
+		// (dono, 2026-10-11). Daqui pra frente esta bancada nao usa mais nada do lugar do berco.
+		if (World.Instancia is { EuEstouSobTeto: true } && S is { } quemPoe && quemPoe.AssentarNaPracaDasMaquinas(cli.LocalId, 2))
+		{
+			for (int i = 0; i < 50 && World.Instancia is { EuEstouSobTeto: true }; i++) yield return 0.1;
+			yield return 1.0;   // a correcao de posicao atravessa o fio, e o corpo assenta
+		}
+
 		// a faixa da mineracao na tela: o verb de verdade
 		Verbos.PorChave("minerar")?.Acionar?.Invoke();
 		for (int i = 0; i < 30 && faixa is not { NaTela: true }; i++) yield return 0.1;

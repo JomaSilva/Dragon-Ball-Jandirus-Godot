@@ -1401,6 +1401,15 @@ public static class Protocol
         GodKiDespertou = 95,
 
         /// <summary>
+        /// O PODER EM USO DE QUEM JOGA: `byte porcento` (1 a 100: quanto do PROPRIO poder o corpo esta usando)
+        /// + `byte bits` (<see cref="BitsDoPoderEmUso"/>: escondido, por vontade, a espera do sigilo, relaxado).
+        /// Pessoal, e so sai quando muda (na hora em que o jogador mexe; 5 Hz no maximo pelo tique). E o que o
+        /// HUD e a aba Ki leem pra dizer "usando 40% do poder", "relaxado", "escondendo o poder". Nao leva
+        /// numero de poder. O corpo do pacote e o <see cref="PoderEmUsoState"/>; ver `GameServer.PoderEmUso.cs`.
+        /// </summary>
+        PoderEmUso = 117,
+
+        /// <summary>
         /// AS PECAS DE CORPO NO CHAO DA ZONA -- o RETRATO, pra quem chega: zona (hash) + n +
         /// n x (recorte, X, Y, quanto falta em ms).
         ///

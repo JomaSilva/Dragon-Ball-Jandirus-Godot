@@ -30,7 +30,7 @@ namespace Jandirus.Server;
 ///   PARTE I -- o caminho de quem hospeda, SEM defeito nenhum (tres `SalvarEParar` seguidos):
 ///     1. dois FUNDIDOS na parada: os dois vao pro disco como pessoas, e NINGUEM PAGA A RECARGA;
 ///     2. o mundo da subida seguinte nasce POVOADO, com os mesmos habitantes do boot; quem hospeda sozinho e
-///        ADMIN pelo endereco, mesmo depois de uma sessao em que a chave desarmou; a mesma conta loga de novo;
+///        ADMIN pela prova desta hospedagem (e so ele), e a prova morre na parada; a mesma conta loga de novo;
 ///        e o CONTROLE da fusao: no logout normal a recarga continua sendo cobrada, e o resto do que vai pro
 ///        disco e igual ao que a parada grava;
 ///     3. alguem na SALA DO TEMPO e um TORNEIO em disputa na parada: a subida seguinte comeca com a sala vazia
@@ -38,6 +38,9 @@ namespace Jandirus.Server;
 ///        acorda la, livre;
 ///     4. dois num ZANZOCLASH na parada: ninguem e recolocado, ninguem apanha, ninguem e gravado oculto;
 ///     e A REGUA GERAL: o retrato do servidor que subiu do zero contra o de depois das tres paradas.
+///     7b. O ESTRAGO DA SESSAO (fica depois da parte 7): parede, arvore, rocha e mobilia derrubadas na Terra, uma porta
+///        aberta, uma montanha num mundo sorteado e uma parede no interior de uma nave -- depois da parada o mapa
+///        volta inteiro, a lista zera e o cliente que entra nao recebe buraco. Contra-exemplo: a parada que lembra.
 ///     4b. O SERVIDOR DEDICADO: o criterio "producao x bancada" (a linha de comando), fechar pela porta de saida
 ///        do processo grava tudo (o X da janela, e o pedido que vem de outra thread, como o do console) -- e
 ///        os contra-exemplos: `Saida.DedicadoNaoGravaDeTeste`, e a corrida de bancada, que continua sem gravar;
@@ -45,8 +48,8 @@ namespace Jandirus.Server;
 ///     5. `ParadaNaoDerrubaDeTeste`: os fundidos nao vao pro disco;
 ///     6. `ParadaCobraAFusaoDeTeste`: a parada cobra a recarga da fusao que ela mesma desfez;
 ///     7. `ParadaLembraDaSessaoDeTeste`, com o `Stop` SOZINHO: a conta que nao loga mais (muda), o mundo
-///        vazio, a sala ocupada por quem nao esta, o torneio que sobrevive e decide luta por AUSENCIA, o admin
-///        de quem hospeda desligado -- e o `Stop` sozinho, com e sem defeito, nao grava ninguem (de proposito);
+///        vazio, a sala ocupada por quem nao esta, o torneio que sobrevive e decide luta por AUSENCIA, a prova
+///        da hospedagem anterior ainda valendo -- e o `Stop` sozinho, com e sem defeito, nao grava ninguem (de proposito);
 ///     9. `SaidaDoEmbateDeAntesDeTeste`, na ultima parada: o primeiro a sair do embate vai pro disco oculto.
 ///
 /// ELA RODA COM A PORTA ABERTA, como a `--versaoteste`, e bombeia a rede ela mesma (a arvore ainda nao esta
@@ -114,6 +117,145 @@ public partial class GameServer
 		return retrato;
 	}
 
+	// =====================================================================
+	// O ESTRAGO DA SESSAO (parte 7b do roteiro)
+	// =====================================================================
+
+	/// <summary>O PALCO DO ESTRAGO: o que a bancada derrubou, abriu e pos de pe antes da parada -- e onde.</summary>
+	private sealed record EstragoDaParada(
+		ZoneKey Terra, (int X, int Y) Parede, (int X, int Y) Arvore, (int X, int Y) Rocha, (int X, int Y) Mobilia,
+		string ZonaDaPorta, (int X, int Y) Porta,
+		PlanetaNoEspaco Planeta, ZoneKey Mundo, (int X, int Y) Montanha,
+		ZoneKey Interior, (int X, int Y) ParedeDoInterior);
+
+	/// <summary>O QUE HA DO ESTRAGO AGORA, lido de onde ele mora: as listas, os mapas e o retrato que vai pro cliente.</summary>
+	private sealed record SobraDaParada(
+		int Caidas, bool ParedeAberta, bool VistaAberta, bool ArvoreDePe, int Tocos, int Rochas, bool RochaNoMapa, bool MobiliaDePe,
+		int PortasAbertas, bool PortaAbertaNoMapa, bool MundoCarregado, bool MontanhaAberta, int Copias, bool InteriorAberto, int NoRetrato)
+	{
+		/// <summary>Tudo o que a bancada fez esta la.</summary>
+		public bool Tudo => Caidas >= 5 && ParedeAberta && VistaAberta && !ArvoreDePe && Tocos >= 1 && Rochas >= 1 && RochaNoMapa && !MobiliaDePe
+							&& PortasAbertas >= 1 && PortaAbertaNoMapa && MundoCarregado && MontanhaAberta && Copias >= 1 && InteriorAberto && NoRetrato >= 3;
+
+		/// <summary>O servidor esta como o boot deixa.</summary>
+		public bool Nada => Caidas == 0 && !ParedeAberta && !VistaAberta && ArvoreDePe && Tocos == 0 && Rochas == 0 && !RochaNoMapa && MobiliaDePe
+							&& PortasAbertas == 0 && !PortaAbertaNoMapa && !MundoCarregado && !MontanhaAberta && Copias == 0 && !InteriorAberto && NoRetrato == 0;
+
+		public string Texto =>
+			$"{Caidas} celula(s) na lista; na Terra a parede {(ParedeAberta ? "ABERTA" : "de pe")} no mapa que barra e {(VistaAberta ? "ABERTA" : "de pe")} no que cega, "
+			+ $"a arvore {(ArvoreDePe ? "de pe" : "CAIDA")}, {Tocos} toco(s), {Rochas} rocha(s){(RochaNoMapa ? " (barrando no mapa)" : "")}, a mobilia {(MobiliaDePe ? "de pe" : "CAIDA")}, "
+			+ $"{NoRetrato} buraco(s) no retrato de quem entra; {PortasAbertas} porta(s) aberta(s){(PortaAbertaNoMapa ? " (aberta no mapa)" : "")}; "
+			+ $"o mundo sorteado {(MundoCarregado ? "CARREGADO" : "fora da memoria")}{(MontanhaAberta ? " com a montanha ABERTA" : "")}; "
+			+ $"{Copias} copia(s) de interior{(InteriorAberto ? " (a da nave com a parede ABERTA)" : "")}";
+	}
+
+	/// <summary>Derruba, pelo `DerrubarCelula`, a primeira parede desta zona que pode cair e que <paramref name="serve"/> aprova.</summary>
+	private (int X, int Y)? DerrubarUmaDaParada(ZoneKey zona, ZoneCollision mapa, Func<int, int, bool> serve)
+	{
+		for (int y = 0; y < mapa.Height; y++)
+			for (int x = 0; x < mapa.Width; x++)
+				if (mapa.BloqueadaNoArquivo(x, y) && !mapa.Indestrutivel(x, y) && !mapa.NaBorda(x, y) && serve(x, y) && DerrubarCelula(zona, x, y))
+					return (x, y);
+		return null;
+	}
+
+	/// <summary>
+	/// MONTA O ESTRAGO pelos caminhos de producao: na TERRA (zona de arquivo) uma parede, uma arvore (que deixa toco),
+	/// uma rocha de minerio de pe e uma mobilia do mapa derrubada; uma PORTA aberta numa zona de arquivo; uma
+	/// montanha derrubada num MUNDO SORTEADO (gerado de verdade); e uma parede derrubada no INTERIOR de uma nave.
+	/// </summary>
+	private EstragoDaParada? MontarOEstragoDaParada(ZoneKey terra, out string porQue)
+	{
+		porQue = "";
+		if (MapaDaZonaOuCatalogo(terra) is not { } mapa) { porQue = "a Terra nao tem mapa"; return null; }
+		HashSet<(int, int)> portasDaTerra = _portasDoMapa.TryGetValue(terra.Name, out List<PortaDoMapa>? daqui) ? [.. daqui.Select(p => (p.X, p.Y))] : [];
+
+		(int X, int Y)? arvore = DerrubarUmaDaParada(terra, mapa, (x, y) => ArvoreDoMapaDePe(terra, mapa, x, y));
+		(int X, int Y)? parede = DerrubarUmaDaParada(terra, mapa, (x, y) => !ArvoreDoMapaDePe(terra, mapa, x, y) && !portasDaTerra.Contains((x, y))
+																			 && ObraNaCelula(terra, x, y) == null);
+
+		(int X, int Y)? rocha = null;
+		if (CampoDe(terra, mapa) is { } campo && (campo.DePe.Count > 0 || NascerRocha(campo, anunciar: false))) rocha = campo.DePe.First();
+
+		(int X, int Y)? mobilia = null;
+		Obra? movel = _noChao.FirstOrDefault(o => o.DoMapa && o.Zona.Equals(terra) && o.Tipo != TipoDaComida && _obras?.Get(o.Tipo) is { Densa: true });
+		if (movel != null)
+		{
+			(int X, int Y) celula = Jandirus.Core.Tech.CatalogoDeObras.Celula(movel.X, movel.Y);
+			Estragar(movel, 1e18, null);
+			if (!_noChao.Contains(movel)) mobilia = celula;
+		}
+
+		(string? zonaDaPorta, PortaDoMapa porta) = _portasDoMapa
+			.Where(kv => kv.Value.Count > 0 && _catalogo?.Get(kv.Key)?.Mapa != null)
+			.OrderBy(kv => kv.Key, StringComparer.Ordinal)
+			.Select(kv => ((string?)kv.Key, kv.Value[0])).FirstOrDefault();
+		// o prazo da porta vai longe de proposito: ela nao pode fechar pelo relogio no meio da medicao
+		if (zonaDaPorta != null) AbrirPorta(zonaDaPorta, porta.X, porta.Y, NowMs() + 3_600_000);
+
+		// O MUNDO SORTEADO: o menor dos que ficam perto da Terra, gerado pelo caminho de producao.
+		PlanetaNoEspaco? menor = null;
+		int lado = int.MaxValue;
+		for (int sy = -6; sy <= 6; sy++)
+			for (int sx = -6; sx <= 6; sx++)
+			{
+				if (Sistemas.Do(SeedDoUniverso, sx, sy) is not { } s) continue;
+				for (int k = 0; k < s.Orbitas; k++)
+				{
+					if (k == s.OrbitaPreFeita) continue;
+					PlanetaNoEspaco p = s.Planeta(k);
+					int l = MundoProcedural.DaSeed(p.Seed, p.Nome).Lado;
+					if (l < lado) { lado = l; menor = p; }
+				}
+			}
+		(int X, int Y)? montanha = null;
+		ZoneKey mundo = default;
+		if (menor is { } planeta && SlAcordar(planeta) is { } viva)
+		{
+			mundo = Espaco.ZonaDe(planeta);
+			montanha = DerrubarUmaDaParada(mundo, viva.Colisao, (_, _) => true);
+		}
+
+		ZoneKey interior = Jandirus.Core.Tech.NaveGrande.ZonaDoInterior(IdBaseDaVigia + 500);
+		(int X, int Y)? doInterior = MapaDaZonaOuCatalogo(interior) is { } daNave ? DerrubarUmaDaParada(interior, daNave, (_, _) => true) : null;
+
+		if (arvore is not { } a || parede is not { } pa || rocha is not { } r || mobilia is not { } m || zonaDaPorta == null
+			|| menor is not { } pl || montanha is not { } mo || doInterior is not { } di)
+		{
+			porQue = $"arvore {arvore}, parede {parede}, rocha {rocha}, mobilia {mobilia}, porta em {zonaDaPorta ?? "nenhuma"}, "
+					 + $"mundo {(menor == null ? "nenhum" : "achado")}, montanha {montanha}, interior {doInterior}";
+			return null;
+		}
+		return new EstragoDaParada(terra, pa, a, r, m, zonaDaPorta, (porta.X, porta.Y), pl, mundo, mo, interior, di);
+	}
+
+	/// <summary>Le o que ha do estrago agora -- SEM criar nada (nao pergunta pelo mapa do interior nem acorda o mundo).</summary>
+	private SobraDaParada MedirOEstragoDaParada(EstragoDaParada p)
+	{
+		int copias = _interiores.Count;
+		bool interiorAberto = _interiores.TryGetValue(p.Interior.Hash, out InteriorVivo? viva) && viva.Colisao is { } daNave
+							  && !daNave.BlockedCell(p.ParedeDoInterior.X, p.ParedeDoInterior.Y);
+		bool mundoCarregado = _zonasGeradas.TryGetValue(p.Mundo.Hash, out ZonaGerada? gerada);
+		bool montanhaAberta = gerada != null && !gerada.Colisao.BlockedCell(p.Montanha.X, p.Montanha.Y);
+		ZoneCollision? mapa = _catalogo?.Get(p.Terra)?.Mapa, vista = _catalogo?.Get(p.Terra)?.Vista;
+		return new SobraDaParada(
+			Caidas: _cenarioCaido.Values.Sum(c => c.Count),
+			ParedeAberta: mapa != null && !mapa.BlockedCell(p.Parede.X, p.Parede.Y),
+			VistaAberta: vista != null && vista.Aberta(p.Parede.X, p.Parede.Y),
+			ArvoreDePe: mapa != null && ArvoreDoMapaDePe(p.Terra, mapa, p.Arvore.X, p.Arvore.Y),
+			Tocos: _lenha.Values.Sum(z => z.Tocos.Count),
+			Rochas: _rochas.Values.Sum(c => c.DePe.Count),
+			RochaNoMapa: mapa != null && mapa.TemRocha(p.Rocha.X, p.Rocha.Y),
+			MobiliaDePe: ObraNaCelula(p.Terra, p.Mobilia.X, p.Mobilia.Y) != null,
+			PortasAbertas: _portasAbertas.Values.Sum(d => d.Count),
+			PortaAbertaNoMapa: _catalogo?.Get(p.ZonaDaPorta)?.Mapa is { } daPorta && !daPorta.BlockedCell(p.Porta.X, p.Porta.Y),
+			MundoCarregado: mundoCarregado,
+			MontanhaAberta: montanhaAberta,
+			Copias: copias,
+			InteriorAberto: interiorAberto,
+			NoRetrato: LerPacoteDeCenario(PacoteDeRetratoDeCenario(p.Terra).CopyData()).Celulas.Count);
+	}
+
 	public void RodarBancadaDaParada(int porta)
 	{
 		_paradaChamadas++;
@@ -140,22 +282,26 @@ public partial class GameServer
 			GD.Print("[parada] ATENCAO (--paradaantiga): a PARTE I roda com os DEFEITOS ligados -- este e o placar de ANTES dos consertos, e ele tem de sair VERMELHO");
 
 		// ---------------------------------------------------------------- as pecas do roteiro
-		void Defeito(bool naoDerruba = false, bool cobraAFusao = false, bool saidaDeAntes = false, bool lembra = false)
+		void Defeito(bool naoDerruba = false, bool cobraAFusao = false, bool saidaDeAntes = false, bool lembra = false, bool lembraDoEstrago = false)
 		{
 			ParadaNaoDerrubaDeTeste = naoDerruba || antiga;
 			ParadaCobraAFusaoDeTeste = cobraAFusao || antiga;
 			SaidaDoEmbateDeAntesDeTeste = saidaDeAntes || antiga;
 			ParadaLembraDaSessaoDeTeste = lembra || antiga;
+			ParadaLembraDoEstragoDeTeste = lembraDoEstrago || antiga;
 		}
-		bool Sobe()
+		// `comoAnfitriao`: a subida de quem clicou em "Hospedar partida" (sorteia a prova desta hospedagem); sem
+		// ele, a de um servidor dedicado -- que e tambem a do boot deste processo, e por isso a que a regua compara.
+		bool Sobe(bool comoAnfitriao = false)
 		{
 			subidas++;
-			return Start(porta);
+			return comoAnfitriao ? SubirComAnfitriao(porta) : Start(porta);
 		}
 		float Tiles(Vec2 de, Vec2 ate) => Vec2.Distance(de, ate) / T;
 		Vec2 LugarNoDisco(CharacterSave s) => new(s.X, s.Y);
 		bool Perto(double valor, double esperado) => Math.Abs(valor - esperado) <= 1e-6 * Math.Max(1, Math.Abs(esperado));
-		bool AdminPeloEndereco(ClienteCruDeTeste cli, ServerPlayer? corpo) => corpo != null && AdminPorEndereco && !_enderecoAmbiguo && EhHost(mesa.ParDe(cli)) && EhAdmin(corpo);
+		bool Anfitriao(ClienteCruDeTeste cli, ServerPlayer? corpo) => corpo != null && EhHost(mesa.ParDe(cli)) && EhAdmin(corpo);
+		b.ProvaAoDiscar = () => ProvaDoAnfitriaoPara("127.0.0.1", porta);   // B e o cliente "do mesmo processo": pergunta a prova ao servidor a cada discagem
 
 		// O POVOAMENTO DE PRODUCAO, tique a tique, ate a fila de nascimento secar. Devolve quantos habitantes ha e
 		// a digital de QUEM eles sao (planeta, molde e nome de cada um).
@@ -197,12 +343,15 @@ public partial class GameServer
 			Comecar(corpoB, corpoC, NowMs());
 			return _emEmbate.ContainsKey(corpoB.Id) && _emEmbate.ContainsKey(corpoC.Id) && corpoB.Ficha.isconcealed && corpoC.Ficha.isconcealed;
 		}
-		// Quem acorda DENTRO da sala ocupa vaga pelo `SalaDoTempoNoLogin` de producao; a bancada so o leva ate la.
+		// Quem acorda DENTRO da sala ocupa vaga pelo `SalaDoTempoNoLogin` de producao; a bancada so o leva ate la --
+		// e deixa nele a MARCA que a porta deixa (`SalaPlaneta`): sem ela o login nao da vaga a quem nunca entrou
+		// pela porta (ver `GameServer.SalaPresenca.cs`).
 		bool PoeNaSala(ServerPlayer? corpo)
 		{
 			var sala = ZoneKey.Premade(ZonaDaSala);
 			if (corpo == null || _catalogo?.Get(sala) is not { } ficha) return false;
 			MoveToZone(corpo.Id, sala, new Vec2((EntradaByondX - 1) * T + T / 2f, (ficha.H - EntradaByondY) * T + T / 2f));
+			corpo.SalaPlaneta = Jandirus.Core.World.SalaDoTempo.PortaDaTerra;
 			SalaDoTempoNoLogin(corpo);
 			return string.Equals(corpo.Zone.Name, ZonaDaSala, StringComparison.OrdinalIgnoreCase) && _naSala.ContainsKey(corpo.Assinatura);
 		}
@@ -229,13 +378,17 @@ public partial class GameServer
 		}
 
 		// OS CAMPOS QUE A PARADA PROMETE DEIXAR COMO O BOOT DEIXA -- as cinco colecoes de sessao, os estados que o
-		// `Stop` rearma, e o que a saida de cada um desfaz (fusoes e embates).
+		// `Stop` rearma, o que a saida de cada um desfaz (fusoes e embates), e o ESTRAGO da sessao: o cenario caido,
+		// as portas abertas, a lenha (tocos e rebrotas), as rochas de pe, as pecas no chao, a comida da Sala, os
+		// mundos sorteados carregados e as copias de interior.
 		string[] daSessao =
 		[
 			"_players", "_byPeer", "_logados", "_contas", "_zones",
 			"_filaDoPovoamento", "_lugaresDoPovoamento", "_proximaManutencao", "_relogioDoPovoamento",
-			"<AdminPorEndereco>k__BackingField", "_enderecoAmbiguo", "_naSala", "_torneio",
+			"_provaDoAnfitriao", "_naSala", "_torneio",
 			"_fusoes", "_fundidos", "_embates", "_emEmbate",
+			"_cenarioCaido", "_portasAbertas", "_lenha", "_arvoresDoMundo", "_rochas", "_rochasVistas", "_pecasNoChao", "_pecasContadas",
+			"_comidaPosta", "_zonasGeradas", "_interiores", "_interioresPorChave", "_chavesDeMundoSorteado",
 		];
 		string DiferencasDaSessao(SortedDictionary<string, string> doZero, SortedDictionary<string, string> agora) =>
 			string.Join("; ", daSessao.Where(campo => !doZero.TryGetValue(campo, out string? antes) || !agora.TryGetValue(campo, out string? depois) || antes != depois)
@@ -252,9 +405,9 @@ public partial class GameServer
 			// =====================================================================================================
 			GD.Print("[parada] -- 1) a primeira subida (a do boot): o mundo se povoa, um na SELECAO, dois no MUNDO, FUNDIDOS na parada --");
 			SortedDictionary<string, string> retratoDoZero = RetratoDoServidorDeTeste();
-			AfirmarPd("(montagem) a porta esta aberta e este servidor acabou de subir: ninguem logado, nenhum corpo, a sala vazia, nenhum torneio, o admin por endereco valendo",
+			AfirmarPd("(montagem) a porta esta aberta e este servidor acabou de subir: ninguem logado, nenhum corpo, a sala vazia, nenhum torneio, nenhuma prova de anfitriao (ninguem hospedou: e a subida do `--server`)",
 					  Running && _logados.Count == 0 && _contas.Count == 0 && _players.Count == 0 && QuantosNaSala() == 0 && !TorneioAtivo
-					  && AdminPorEndereco && !_enderecoAmbiguo,
+					  && _provaDoAnfitriao == null,
 					  $"{_players.Count} corpo(s), {_logados.Count} na selecao, {_contas.Count} no mundo");
 			(int vivosDoZero, ulong quemDoZero) = Povoa();
 			AfirmarPd("(montagem) a primeira volta do tique POVOA o mundo -- no boot ninguem espera manutencao nenhuma",
@@ -265,12 +418,11 @@ public partial class GameServer
 					  aEntrou && a.Slots != null && a.Recusa == null && _logados.Values.Count(v => v.Conta == contaA) == 1, a.Recusa ?? "");
 
 			ServerPlayer? corpoC = mesa.EntraNoMundo(c, contaC, nomeC);
-			AfirmarPd("C cria um personagem e entra no MUNDO, sozinho e da maquina do servidor: e ADMIN pelo endereco",
-					  AdminPeloEndereco(c, corpoC) && _contas.Values.Count(v => v.Conta == contaC) == 1, c.Recusa ?? "");
+			AfirmarPd("C cria um personagem e entra no MUNDO, sozinho e da maquina do servidor -- e num servidor que ninguem hospedou isso nao da admin a ninguem",
+					  corpoC != null && !EhAdmin(corpoC) && _contas.Values.Count(v => v.Conta == contaC) == 1, c.Recusa ?? "");
 			ServerPlayer? corpoB = mesa.EntraNoMundo(b, contaB, nomeB);
-			AfirmarPd("(montagem) B entra tambem: duas contas locais AO MESMO TEMPO desarmam o admin por endereco -- ninguem fica com ele, nem quem chegou",
-					  corpoB != null && corpoC != null && !AdminPorEndereco && _enderecoAmbiguo && !EhAdmin(corpoB) && !EhAdmin(corpoC)
-					  && Jogadores.Count() == 2 && _logados.Count == 1, b.Recusa ?? "");
+			AfirmarPd("(montagem) B entra tambem: dois no mundo, um na selecao",
+					  corpoB != null && corpoC != null && !EhAdmin(corpoB) && Jogadores.Count() == 2 && _logados.Count == 1, b.Recusa ?? "");
 			ClienteCruDeTeste[] quatro = [a, b, c, d];
 			AfirmarPd("(montagem) os quatro clientes discam de soquetes diferentes (portas locais distintas)",
 					  quatro.Select(cli => cli.PortaLocal).Distinct().Count() == quatro.Length, string.Join(", ", quatro.Select(cli => cli.PortaLocal)));
@@ -313,12 +465,12 @@ public partial class GameServer
 					  $"A: {a.Caiu ?? "nada"}, B: {b.Caiu ?? "nada"}, C: {c.Caiu ?? "nada"}");
 
 			// ---------------------------------------------------------------- 2. a subida seguinte
-			GD.Print("[parada] -- 2) a subida seguinte: o retrato, o mundo povoado, a mesma conta de novo, o admin de quem hospeda sozinho; o CONTROLE da fusao; B na SALA DO TEMPO e C num TORNEIO --");
+			GD.Print("[parada] -- 2) a subida seguinte: o retrato, o mundo povoado, a mesma conta de novo, o CONTROLE da fusao; B na SALA DO TEMPO e C num TORNEIO --");
 			AfirmarPd("(montagem) a subida de producao abre a porta de novo, no MESMO processo", Sobe() && Running);
 			AfirmarPd("A REENTRADA: a segunda subida releu a linha de comando, chegou nesta bancada e foi mandada embora (ela nao roda dentro de si mesma)",
 					  _paradaChamadas == subidas, $"{_paradaChamadas} chamada(s) em {subidas} subida(s)");
 			string diferencas = DiferencasDaSessao(retratoDoZero, RetratoDoServidorDeTeste());
-			AfirmarPd("**A REGUA**: parar e subir deixa a sessao como o boot deixa -- as cinco colecoes de sessao, o povoamento, o admin por endereco, a sala, o torneio, as fusoes e os embates batem com o retrato de quem subiu do zero",
+			AfirmarPd("**A REGUA**: parar e subir deixa a sessao como o boot deixa -- as cinco colecoes de sessao, o povoamento, a prova de anfitriao, a sala, o torneio, as fusoes e os embates batem com o retrato de quem subiu do zero",
 					  diferencas.Length == 0, diferencas);
 			(int vivos2, ulong quem2) = Povoa();
 			AfirmarPd("**1. O MUNDO DA SUBIDA SEGUINTE NASCE POVOADO**: na primeira volta do tique, sem esperar a manutencao de cinco minutos -- e com os MESMOS habitantes do boot",
@@ -335,8 +487,6 @@ public partial class GameServer
 					  dTentou && d.Slots == null && d.Recusa == jaConectada, d.Recusa ?? "(sem resposta)");
 
 			corpoB = mesa.EntraNoMundo(b, contaB, nomeB);
-			AfirmarPd("**2. QUEM HOSPEDA SOZINHO E ADMIN PELO ENDERECO**, mesmo depois de uma sessao em que duas contas locais desarmaram a chave: ela volta armada na subida seguinte",
-					  AdminPeloEndereco(b, corpoB), b.Recusa ?? "");
 			AfirmarPd("...e B achou o personagem GRAVADO pela parada: uma copia viva da conta, a desta sessao (a que o `Persistir` vai gravar)",
 					  corpoB != null && mesa.ParDe(b) is { } parDeB && _contas.TryGetValue(parDeB, out AccountSave? viva) && ReferenceEquals(ContaViva(contaB), viva)
 					  && !EstaFundido(corpoB.Id) && Perto(corpoB.Ficha.BP, paradaB?.Ficha.BP ?? -1));
@@ -379,14 +529,14 @@ public partial class GameServer
 					  $"torneio na memoria: {FaseDoTorneioDeTeste}; lutas decididas: {torneio?.LutasDisputadas}; C no disco em {noPalco?.Zona ?? "nada"}");
 
 			// ---------------------------------------------------------------- 3. a sala, o torneio e o admin; o embate
-			GD.Print("[parada] -- 3) a terceira subida: a sala vazia, sem torneio, o admin de OUTRA conta hospedando; B e C num ZANZOCLASH na parada --");
-			AfirmarPd("(montagem) a porta sobe de novo", Sobe() && Running);
+			GD.Print("[parada] -- 3) a terceira subida, HOSPEDADA: a sala vazia, sem torneio, quem hospeda e admin pela prova; B e C num ZANZOCLASH na parada --");
+			AfirmarPd("(montagem) a porta sobe de novo, desta vez pela chamada de quem clica em \"Hospedar partida\"", Sobe(comoAnfitriao: true) && Running);
+			byte[]? provaDaTerceira = ProvaDoAnfitriaoPara("127.0.0.1", porta)?.ToArray();
 			AfirmarPd("**3. A SUBIDA SEGUINTE COMECA COM A SALA DO TEMPO VAZIA**: ninguem conectado, nenhuma vaga ocupada", QuantosNaSala() == 0, $"{QuantosNaSala()} na sala");
 			TicaOTorneio(400);
 			AfirmarPd("**...E SEM TORNEIO**: o tique do torneio roda e nao ha nada em disputa nem luta decidida por ausencia (o proximo e o da agenda, que foi marcada quando aquele comecou)",
 					  !TorneioAtivo, FaseDoTorneioDeTeste);
 			corpoC = mesa.EntraNoMundo(c, contaC, nomeC);
-			AfirmarPd("**2. HOSPEDOU COM UMA CONTA, PAROU, HOSPEDA COM OUTRA**: C entra sozinho e o admin por endereco vale pra ele", AdminPeloEndereco(c, corpoC), c.Recusa ?? "");
 			AfirmarPd("...e NADA DO TORNEIO VEIO DO SAVE: C acorda no palco, onde estava, LIVRE -- sem a trava da area de espera e podendo ser tocado",
 					  corpoC != null && !PresoNoTorneio(corpoC.Id) && corpoC.Combate.Carencia < CarenciaDeEspera && Tiles(corpoC.Pos, lugarNaEspera) < 0.05f,
 					  corpoC == null ? "sem corpo" : $"carencia {corpoC.Combate.Carencia:0.##}");
@@ -394,6 +544,8 @@ public partial class GameServer
 			AfirmarPd("...e a vaga de quem estava na sala VOLTA SOZINHA NO LOGIN: B acorda la dentro e ocupa uma (o `SalaDoTempoNoLogin` de producao)",
 					  corpoB != null && string.Equals(corpoB.Zone.Name, ZonaDaSala, StringComparison.OrdinalIgnoreCase) && QuantosNaSala() == 1,
 					  $"B em {corpoB?.Zone.Name ?? "nada"}; {QuantosNaSala()} na sala");
+			AfirmarPd("**2. QUEM HOSPEDA E ADMIN, E SO ELE**: B, o cliente do mesmo processo, levou a prova desta hospedagem no aperto de mao; C, que entrou antes e do mesmo computador, e um jogador comum",
+					  provaDaTerceira != null && Anfitriao(b, corpoB) && corpoC != null && !EhAdmin(corpoC) && !EhHost(mesa.ParDe(c)));
 
 			palco = Posiciona(corpoB, corpoC);
 			bool emEmbate = Embate(corpoB, corpoC);
@@ -418,7 +570,7 @@ public partial class GameServer
 			AfirmarPd("(montagem) a porta sobe de novo", Sobe() && Running);
 			SortedDictionary<string, string> retratoDepois = RetratoDoServidorDeTeste();
 			diferencas = DiferencasDaSessao(retratoDoZero, retratoDepois);
-			AfirmarPd("**A REGUA, DEPOIS DE TRES PARADAS** (fundidos, sala, torneio, embate, mundo povoado, admin desarmado e rearmado): a sessao continua batendo com o retrato de quem subiu do zero",
+			AfirmarPd("**A REGUA, DEPOIS DE TRES PARADAS** (fundidos, sala, torneio, embate, mundo povoado, uma hospedagem com anfitriao): a sessao continua batendo com o retrato de quem subiu do zero",
 					  diferencas.Length == 0, diferencas);
 			// O QUE AINDA DIFERE do boot, fora da sessao: so INFORMACAO pro relatorio -- nao e afirmacao, e a lista e a
 			// deste roteiro (o que ele nao exercita nao aparece).
@@ -428,14 +580,25 @@ public partial class GameServer
 			GD.Print($"[parada]   SOBROU (informacao, nao afirmacao): {sobras.Count} de {retratoDepois.Count} campo(s) do servidor diferem do retrato do boot depois de tres paradas");
 			foreach (string sobra in sobras.Take(TetoDeSobrasNoLogDaParada)) GD.Print($"[parada]   SOBROU   {sobra}");
 
+			c.ProvaAoDiscar = () => provaDaTerceira;   // quem guardou a prova da hospedagem que acabou
+			corpoC = mesa.EntraNoMundo(c, contaC, nomeC);
+			corpoB = mesa.EntraNoMundo(b, contaB, nomeB);
+			AfirmarPd("**2. A PROVA DE QUEM HOSPEDAVA MORREU COM A PARADA**: o servidor subiu de novo sem anfitriao, nao entrega prova a ninguem, e nem quem guardou a da hospedagem anterior (C), nem quem hospedava (B), e admin",
+					  provaDaTerceira != null && _provaDoAnfitriao == null && ProvaDoAnfitriaoPara("127.0.0.1", porta) == null
+					  && corpoC != null && !EhAdmin(corpoC) && !EhHost(mesa.ParDe(c)) && corpoB != null && !EhAdmin(corpoB) && !EhHost(mesa.ParDe(b)));
+			c.ProvaAoDiscar = null;
+			bool sairamDaQuarta = mesa.SaiDoJogo(b, contaB) && mesa.SaiDoJogo(c, contaC);
+			AfirmarPd("(montagem) os dois saem", sairamDaQuarta);
+
 			// ---------------------------------------------------------------- 4b. o servidor dedicado
 			GD.Print("[parada] -- 4b) o SERVIDOR DEDICADO: fechar a janela (ou o console) GRAVA tudo; a corrida de bancada, nao --");
 			string[] doServidorBat = ["--headless", "--path", ".", "--server", "--port", "7777"];   // a linha do `servidor.bat`
 			bool estaEBancada = !Jandirus.Client.Boot.EhDedicadoDeProducao(OS.GetCmdlineArgs(), out string porQueEsta);
-			AfirmarPd("**O CRITERIO \"DEDICADO DE PRODUCAO x BANCADA\"**: a linha do `servidor.bat` e de producao (com ou sem `--sem-admin-local`); ESTA corrida, as bancadas de servidor, o anfitriao-robo e um processo sem `--server` nao sao",
+			AfirmarPd("**O CRITERIO \"DEDICADO DE PRODUCAO x BANCADA\"**: a linha do `servidor.bat` e de producao (com ou sem `--admin <conta>`); ESTA corrida, as bancadas de servidor, o anfitriao-robo e um processo sem `--server` nao sao",
 					  Jandirus.Client.Boot.EhDedicadoDeProducao(doServidorBat, out _)
 					  && Jandirus.Client.Boot.EhDedicadoDeProducao(["--server"], out _)
-					  && Jandirus.Client.Boot.EhDedicadoDeProducao([.. doServidorBat, "--sem-admin-local"], out _)
+					  && Jandirus.Client.Boot.EhDedicadoDeProducao([.. doServidorBat, FlagDoAdmin, "conta_do_dono"], out _)
+					  && !Jandirus.Client.Boot.EhDedicadoDeProducao([.. doServidorBat, "--sem-admin-local"], out _)   // a flag aposentada virou argumento desconhecido
 					  && estaEBancada
 					  && !Jandirus.Client.Boot.EhDedicadoDeProducao(["--headless", "--path", ".", "--server", "--port", "7910", "--embatekiteste"], out _)
 					  && !Jandirus.Client.Boot.EhDedicadoDeProducao(["--headless", "--path", ".", "--server", "--diagberco", "--bercovivo"], out _)
@@ -547,12 +710,11 @@ public partial class GameServer
 					  cobradaB == null ? "sem save" : $"recarga do dono vence em {(cobradaB.Ficha.fusion_cooldown_until - NowMs()) / 60000.0:0.#} min");
 
 			GD.Print("[parada] -- 7) com o DEFEITO INJETADO: o `Stop` SOZINHO que nao esquece a sessao (o de antes de 2026-10-11) --");
-			AfirmarPd("(montagem) a porta sobe de novo", Sobe() && Running);
+			AfirmarPd("(montagem) a porta sobe de novo, HOSPEDADA", Sobe(comoAnfitriao: true) && Running);
 			(int vivos7, ulong quem7) = Povoa();
 			bool aNaSelecao = mesa.Entra(a) && mesa.Loga(a, contaA);
 			NetPeer? parVelhoDeA = _logados.FirstOrDefault(kv => kv.Value.Conta == contaA).Key;
 			corpoC = mesa.EntraNoMundo(c, contaC, nomeC);
-			bool cEraAdmin = AdminPeloEndereco(c, corpoC);
 			const double moedaDeC = 777, moedaDeB = 555;
 			double zeniDeC = corpoC?.Ficha.Zeni ?? 0;
 			if (corpoC != null) corpoC.Ficha.Zeni += moedaDeC;
@@ -560,8 +722,8 @@ public partial class GameServer
 			corpoB = mesa.EntraNoMundo(b, contaB, nomeB);
 			if (corpoB != null && corpoB.Zone.Hash != terra.Hash) MoveToZone(corpoB.Id, terra, ancora);
 			torneio = AbreTorneioCom(corpoB);
-			AfirmarPd("(montagem) o palco do `Stop` sozinho: o mundo povoado, A na selecao, C (que entrou sozinho, admin) dentro da sala e com zeni que ainda nao foi pro disco, e B num torneio em disputa",
-					  vivos7 == vivosDoZero && quem7 == quemDoZero && aNaSelecao && parVelhoDeA != null && cEraAdmin
+			AfirmarPd("(montagem) o palco do `Stop` sozinho: o mundo povoado, A na selecao, C dentro da sala e com zeni que ainda nao foi pro disco, e B -- que hospeda, admin pela prova -- num torneio em disputa",
+					  vivos7 == vivosDoZero && quem7 == quemDoZero && aNaSelecao && parVelhoDeA != null && Anfitriao(b, corpoB)
 					  && naSala && QuantosNaSala() == 1 && torneio != null && TorneioAtivo, $"{vivos7} habitante(s), {QuantosNaSala()} na sala, torneio em {FaseDoTorneioDeTeste}");
 
 			Defeito(lembra: true);
@@ -601,19 +763,105 @@ public partial class GameServer
 					  dRespondeu && d.Slots == null && d.Recusa == jaConectada, d.Recusa ?? "(sem resposta)");
 
 			corpoB = mesa.EntraNoMundo(b, contaB, nomeB);
-			AfirmarPd("(defeito injetado) **2. QUEM HOSPEDA SOZINHO NA SUBIDA SEGUINTE FICA SEM ADMIN**: o desarme da sessao passada (e as contas dela, que o servidor ainda acha que estao em jogo) atravessou a parada. A regua sabe reprovar",
-					  corpoB != null && !AdminPorEndereco && !EhHost(mesa.ParDe(b)) && !EhAdmin(corpoB), b.Recusa ?? "");
+			AfirmarPd("(defeito injetado) **2. A PROVA DA HOSPEDAGEM ANTERIOR ATRAVESSA A PARADA**: o servidor subiu de novo SEM anfitriao, e quem tem a prova velha ainda e carimbado como quem hospeda e entra ADMIN. A regua sabe reprovar",
+					  corpoB != null && _provaDoAnfitriao != null && EhHost(mesa.ParDe(b)) && EhAdmin(corpoB), b.Recusa ?? "");
 			double zeniDeB = corpoB?.Ficha.Zeni ?? 0;
 			if (corpoB != null) corpoB.Ficha.Zeni += moedaDeB;
 
 			Defeito();
 			Stop();
-			AfirmarPd("**O `Stop` SOZINHO ESQUECE A SESSAO** (inclusive o que o `Stop` com defeito tinha deixado): ninguem logado, nenhum corpo, a sala vazia, o torneio cancelado e a chave do admin armada de novo",
+			AfirmarPd("**O `Stop` SOZINHO ESQUECE A SESSAO** (inclusive o que o `Stop` com defeito tinha deixado): ninguem logado, nenhum corpo, a sala vazia, o torneio cancelado e a prova de quem hospedava esquecida",
 					  !Running && _logados.Count == 0 && _contas.Count == 0 && _players.Count == 0 && _byPeer.Count == 0 && QuantosNaSala() == 0 && !TorneioAtivo
-					  && AdminPorEndereco && !_enderecoAmbiguo && ContaViva(contaA) == null && ContaViva(contaB) == null && ContaViva(contaC) == null,
+					  && _provaDoAnfitriao == null && ContaViva(contaA) == null && ContaViva(contaB) == null && ContaViva(contaC) == null,
 					  $"{_logados.Count} na selecao, {_contas.Count} no mundo, {QuantosNaSala()} na sala, torneio {FaseDoTorneioDeTeste}");
 			AfirmarPd("...e continua sem gravar ninguem: o zeni novo de B nao foi pro disco", mesa.NoDisco(contaB) is { } semZeni && Perto(semZeni.Ficha.Zeni, zeniDeB),
 					  $"zeni no disco {mesa.NoDisco(contaB)?.Ficha.Zeni:0.##}");
+
+			// ---------------------------------------------------------------- 7b. o estrago da sessao
+			GD.Print("[parada] -- 7b) O ESTRAGO DA SESSAO NAO ATRAVESSA A PARADA: parede, arvore, rocha e mobilia na Terra; porta aberta; montanha num mundo sorteado; parede no interior de uma nave --");
+			AfirmarPd("(montagem) a porta sobe de novo", Sobe() && Running);
+			corpoB = mesa.EntraNoMundo(b, contaB, nomeB);
+			if (corpoB != null && corpoB.Zone.Hash != terra.Hash) MoveToZone(corpoB.Id, terra, ancora);
+			EstragoDaParada? estrago = MontarOEstragoDaParada(terra, out string semPalco);
+			AfirmarPd("(montagem) o palco do estrago, pelos caminhos de producao (`DerrubarCelula`, `Estragar`, `AbrirPorta`, `NascerRocha`, a geracao de um mundo)",
+					  corpoB != null && estrago != null, semPalco);
+			if (estrago != null)
+			{
+				// o retrato de cenario que o cliente recebe AO ENTRAR na Terra (o login, ou a troca de zona logo depois)
+				int BuracosPraQuemEntra()
+				{
+					List<(int Para, byte[] Fio)> escuta = [];
+					EscutaDeCenario = escuta;
+					try
+					{
+						corpoB = mesa.EntraNoMundo(b, contaB, nomeB);
+						if (corpoB is not { } quemEntrou) return -1;
+						if (quemEntrou.Zone.Hash != terra.Hash) MoveToZone(quemEntrou.Id, terra, ancora);
+						return escuta.Where(r => r.Para == quemEntrou.Id).Select(r => LerPacoteDeCenario(r.Fio))
+									 .Where(r => r.Modo == Protocol.CenarioRetrato && r.Zona == terra.Hash)
+									 .Select(r => r.Celulas.Count).DefaultIfEmpty(-1).Last();
+					}
+					finally { EscutaDeCenario = null; }
+				}
+
+				// A OBRA DA SALA DO TEMPO E DADO DE DISCO, e nao estrago de sessao: a maquina assentada na Sala de um mundo
+				// atravessa a parada (dono, 2026-10-11: "construcoes dentro da sala do tempo devem continuar la").
+				ZoneKey salaDoMundo = SalaDePlaneta.Interior((ulong)(IdBaseDaVigia + 611));
+				(int X, int Y)? chaoDaSala = MapaDaZonaOuCatalogo(salaDoMundo) is { } mapaDaSala ? IntrChaoLivre(mapaDaSala, null) : null;
+				Obra? maquinaDaSala = chaoDaSala is { } ondeAssentou ? IntrAssentar(salaDoMundo, ondeAssentou).Posta : null;
+				AfirmarPd("(montagem) uma maquina assentada na Sala do Tempo de um mundo, pelo `Posicionar`", maquinaDaSala != null && maquinaDaSala.Zona.Equals(salaDoMundo));
+
+				SobraDaParada antesDaParada = MedirOEstragoDaParada(estrago);
+				AfirmarPd("(montagem) na hora da parada o estrago esta todo la: na lista, nos mapas (o que barra e o que cega) e no retrato de quem entra",
+						  antesDaParada.Tudo, antesDaParada.Texto);
+
+				// O ESTADO DE ANTES: a parada que lembra do estrago.
+				Defeito(lembraDoEstrago: true);
+				SalvarEParar();
+				AfirmarPd("(montagem) a porta sobe de novo", Sobe() && Running);
+				SobraDaParada sobrou = MedirOEstragoDaParada(estrago);
+				string reguaComDefeito = DiferencasDaSessao(retratoDoZero, RetratoDoServidorDeTeste());
+				int buracosComDefeito = BuracosPraQuemEntra();
+				GD.Print($"[parada]   MEDIDO (o que SOBRAVA depois de parar e subir): {sobrou.Texto}");
+				AfirmarPd("(defeito injetado: a parada lembra do estrago) **O ESTADO DE ANTES**: depois de parar e subir, a parede continua caida -- na lista, no mapa que barra, no que cega e no "
+						  + "retrato de quem entra --, o toco continua toco, a rocha e a porta continuam onde estavam, a mobilia continua caida, o mundo sorteado continua carregado com o buraco dele "
+						  + "e a copia do interior continua viva. A regua sabe reprovar",
+						  sobrou.Tudo && buracosComDefeito >= 3 && reguaComDefeito.Length > 0, $"{buracosComDefeito} buraco(s) pro cliente que entrou; regua: {reguaComDefeito}");
+
+				// A PARADA DE PRODUCAO.
+				Defeito();
+				SalvarEParar();
+				SobraDaParada parado = MedirOEstragoDaParada(estrago);
+				AfirmarPd("**A PARADA ESQUECE O ESTRAGO DA SESSAO** (inclusive o que a parada com defeito tinha deixado), e O MAPA VOLTA INTEIRO JUNTO COM A LISTA: nada na lista, a parede e a "
+						  + "arvore de pe no mapa que barra e no que cega, nenhum toco, nenhuma rocha, a mobilia de volta, a porta fechada, nenhum mundo sorteado na memoria, nenhuma copia de interior",
+						  !Running && parado.Nada, parado.Texto);
+
+				AfirmarPd("(montagem) a porta sobe de novo", Sobe() && Running);
+				string reguaDoEstrago = DiferencasDaSessao(retratoDoZero, RetratoDoServidorDeTeste());
+				AfirmarPd("**A REGUA, COM CENARIO QUEBRADO ANTES DA PARADA**: a subida seguinte bate com o retrato de quem subiu do zero -- o cenario caido, as portas, a lenha, as rochas, as pecas, "
+						  + "a comida da Sala, os mundos sorteados e as copias de interior", reguaDoEstrago.Length == 0, reguaDoEstrago);
+				int buracos = BuracosPraQuemEntra();
+				AfirmarPd("**O CLIENTE QUE ENTRA NAO RECEBE BURACO**: o retrato de cenario da Terra chega vazio (pelo login de producao)", buracos == 0, $"{buracos} buraco(s)");
+
+				// o mundo sorteado renasce da seed, e o interior da planta: sem o buraco, e sem nada na lista deles
+				ZonaGerada? renascido = SlAcordar(estrago.Planeta);
+				ZoneCollision? daNave = MapaDaZonaOuCatalogo(estrago.Interior);
+				AfirmarPd("**O MUNDO SORTEADO E O INTERIOR RENASCEM INTEIROS**: a montanha de pe no mundo gerado de novo, a parede de pe na copia nova da nave, e nenhum dos dois na lista do estrago",
+						  renascido != null && renascido.Colisao.BlockedCell(estrago.Montanha.X, estrago.Montanha.Y)
+						  && daNave != null && daNave.BlockedCell(estrago.ParedeDoInterior.X, estrago.ParedeDoInterior.Y)
+						  && !_cenarioCaido.ContainsKey(ChaveDeEstado(estrago.Mundo)) && !_cenarioCaido.ContainsKey(ChaveDeEstado(estrago.Interior))
+						  && LerPacoteDeCenario(PacoteDeRetratoDeCenario(estrago.Mundo).CopyData()).Celulas.Count == 0
+						  && LerPacoteDeCenario(PacoteDeRetratoDeCenario(estrago.Interior).CopyData()).Celulas.Count == 0,
+						  $"mundo {(renascido == null ? "nao nasceu" : "nasceu")}; {_cenarioCaido.Count} zona(s) na lista");
+				AfirmarPd("**A OBRA DA SALA DO TEMPO ATRAVESSA AS DUAS PARADAS**: ela e dado de disco, nao estrago de sessao -- continua na lista, na Sala DELA, barra na copia "
+						  + "que renasce, e nao barra na Sala da Terra",
+						  maquinaDaSala != null && chaoDaSala is { } ondeEstava && _noChao.Contains(maquinaDaSala)
+						  && MapaDaZonaOuCatalogo(salaDoMundo) is { } copiaNova && copiaNova.BlockedCell(ondeEstava.X, ondeEstava.Y)
+						  && MapaDaZonaOuCatalogo(ZoneKey.Premade(ZonaDaSala)) is { } daTerra && !daTerra.BlockedCell(ondeEstava.X, ondeEstava.Y));
+				if (maquinaDaSala != null) IntrTirarObra(maquinaDaSala);
+				Stop();   // a parte 8 comeca de um `Stop` sozinho de producao
+			}
+			else Stop();
 
 			GD.Print("[parada] -- 8) a ultima subida, depois do `Stop` sozinho de producao --");
 			AfirmarPd("(montagem) a porta sobe de novo", Sobe() && Running);
@@ -623,11 +871,11 @@ public partial class GameServer
 			bool aDeNovo = mesa.Entra(a) && mesa.Loga(a, contaA);
 			AfirmarPd("...a mesma conta loga de novo e e aceita", aDeNovo && a.Slots != null && a.Recusa == null, a.Recusa ?? "");
 			corpoC = mesa.EntraNoMundo(c, contaC, nomeC);
-			AfirmarPd("...e quem hospeda sozinho e admin pelo endereco, fora da sala (o `Stop` sozinho nao o gravou la), com a sala vazia e sem torneio",
-					  AdminPeloEndereco(c, corpoC) && QuantosNaSala() == 0 && !TorneioAtivo
+			AfirmarPd("...e C entra, sozinho, num servidor que ninguem hospedou: jogador comum, fora da sala (o `Stop` sozinho nao o gravou la), com a sala vazia e sem torneio",
+					  corpoC != null && !EhAdmin(corpoC) && _provaDoAnfitriao == null && QuantosNaSala() == 0 && !TorneioAtivo
 					  && corpoC != null && !string.Equals(corpoC.Zone.Name, ZonaDaSala, StringComparison.OrdinalIgnoreCase), $"C em {corpoC?.Zone.Name ?? "nada"}; {QuantosNaSala()} na sala");
-			AfirmarPd("a bancada fez doze subidas e rodou uma vez so (a reentrada mandou as outras onze embora)",
-					  subidas == 12 && _paradaChamadas == 12, $"{subidas} subida(s), {_paradaChamadas} chamada(s)");
+			AfirmarPd("a bancada fez quinze subidas e rodou uma vez so (a reentrada mandou as outras catorze embora)",
+					  subidas == 15 && _paradaChamadas == 15, $"{subidas} subida(s), {_paradaChamadas} chamada(s)");
 
 			// O ULTIMO, DE PROPOSITO: este defeito poe um golpe de verdade em cima de um dos dois corpos da bancada.
 			GD.Print("[parada] -- 9) com o DEFEITO INJETADO, na ultima parada: a saida do embate de antes (grava antes de soltar, e solta com a cena de fecho) --");
@@ -648,6 +896,8 @@ public partial class GameServer
 		finally
 		{
 			ParadaNaoDerrubaDeTeste = ParadaCobraAFusaoDeTeste = SaidaDoEmbateDeAntesDeTeste = ParadaLembraDaSessaoDeTeste = false;
+			ParadaLembraDoEstragoDeTeste = false;
+			EscutaDeCenario = null;
 			(_torneioCfg.WoSegundos, _torneioCfg.ContagemSegundos, _torneioCfg.IntervaloSegundos) = relogiosDoTorneio;
 			mesa.Fecha();
 			_paradaRodando = false;

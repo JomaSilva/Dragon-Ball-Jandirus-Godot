@@ -346,8 +346,8 @@ public partial class GameServer
 	{
 		if (!ObraCaidaSoAvisaDeTeste)
 		{
-			if (!_cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? caidas))
-				_cenarioCaido[zona.Name] = caidas = [];
+			if (!_cenarioCaido.TryGetValue(ChaveDeEstado(zona), out HashSet<(int X, int Y)>? caidas))
+				_cenarioCaido[ChaveDeEstado(zona)] = caidas = [];
 			caidas.Add((cx, cy));
 			AbrirACelulaCaida(zona, cx, cy);
 		}

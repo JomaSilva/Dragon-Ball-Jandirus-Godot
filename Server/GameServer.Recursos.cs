@@ -37,7 +37,8 @@ public sealed class Mineracao
 /// ============================ O QUE MORA AQUI ============================
 ///   * AS RESERVAS (`reservas.json`): uma por planeta em que alguem ja mexeu. Cheia e a resposta padrao e nao
 ///     vai pro disco; a mexida vai com a hora, e o que cresceu desde entao se deriva dela -- com o servidor
-///     ligado (<see cref="TickDosRecursos"/>) ou desligado (<see cref="ReservaDePlaneta.DoDisco"/>).
+///     ligado (<see cref="TickDosRecursos"/>) ou desligado (<see cref="ReservaDePlaneta.DoDisco"/>). A CAVERNA
+///     de um planeta nao tem a dela: tira da do planeta (<see cref="ReservaDe"/>).
 ///   * A CARTEIRA (`S2C.Carteira`): zeni e recursos do jogador, mandados toda vez que um dos dois muda por
 ///     aqui. E o que faz a aba Tech, a Stats e a faixa da mineracao andarem sem reenviar o catalogo.
 ///   * MINERAR: a terceira atividade do corpo, ao lado de treinar e meditar (`C2S.Activity`). Rende por
@@ -68,11 +69,23 @@ public sealed partial class GameServer
 	internal bool ReservasSoNaMemoriaDeTeste;
 
 	/// <summary>
-	/// A RESERVA DESTE PLANETA -- ou NULO onde nao ha o que minerar.
+	/// DEFEITO INJETADO (bancada `--recursosteste`): a caverna tem reserva PROPRIA, do tamanho do mapa dela e
+	/// sempre cheia -- quem minera la dentro recebe, e o numero do planeta nao desce. Lido pela propria linha que
+	/// a manda pro planeta, em <see cref="ReservaDe"/>.
+	/// </summary>
+	internal bool CavernaComReservaPropriaDeTeste;
+
+	/// <summary>
+	/// A RESERVA DE ONDE SE TIRA NESTA ZONA -- ou NULO onde nao ha o que minerar.
 	///
 	/// "PLANETA" E O DO <see cref="Espaco.EhPlaneta"/>: mundo sorteado, ou pre-feito em que se pousa (Terra,
 	/// Namek, Vegeta...). O Lookout, o alem, a Sala do Tempo, o interior de nave, o espaco: nulo -- e o pedido do
 	/// dono (*"menos em locais como lookout"*).
+	///
+	/// A CAVERNA DE UM PLANETA DEVOLVE A RESERVA DELE -- o MESMO objeto, e nao uma copia nem uma segunda reserva
+	/// (*"essa e a unica excessao de mapa de interior q da pra tirar recurso de um planeta"*, 2026-10-11). Quem
+	/// diz qual zona e caverna de quem e o Core (<see cref="Cavernas.PlanetaMae"/>). Com o planeta-mae destruido
+	/// a resposta e a dele: nulo.
 	///
 	/// PLANETA DESTRUIDO NAO TEM RESERVA: nulo enquanto ele estiver morto, e o registro some junto. Restaurado,
 	/// ele volta CHEIO -- quem o traz de volta traz um mundo inteiro (e o que o `RessuscitarPlaneta` anuncia:
@@ -84,6 +97,11 @@ public sealed partial class GameServer
 	/// </summary>
 	internal ReservaDePlaneta? ReservaDe(ZoneKey zona)
 	{
+		if (Cavernas.PlanetaMae(zona) is { } mae)
+			return CavernaComReservaPropriaDeTeste
+				? new ReservaDePlaneta(Recurso.MaximoDoPlaneta(MedidasDoPlaneta(zona).Lado))
+				: ReservaDe(mae);
+
 		if (_reservas.TryGetValue(zona.Hash, out ReservaDePlaneta? ja))
 		{
 			if (!ODonoMorreu(ja)) return ja;
@@ -477,6 +495,9 @@ public sealed partial class GameServer
 	/// (bater ou apanhar acende o relogio de luta, <see cref="Jandirus.Core.Combat.CombatState.LutandoDeVerdade"/>),
 	/// ser esmagado pela gravidade ou pelo peso e carregar Ki derrubam; os comandos de corpo (soco, guarda,
 	/// tecnica, transformar) derrubam na chegada do pacote -- ver <see cref="AgirInterrompeAMineracao"/>.
+	///
+	/// E O LUGAR: tem de haver reserva (a superficie de um planeta vivo, ou uma caverna dele), e no mapa do
+	/// planeta so a ceu aberto -- ver <see cref="Recurso.PlanetaDaReserva"/> e <see cref="Recurso.OTetoBarra"/>.
 	/// </summary>
 	private string PorQueNaoMinera(ServerPlayer pl, Mineracao? emCurso)
 	{
@@ -520,6 +541,12 @@ public sealed partial class GameServer
 		}
 
 		if (ReservaDe(pl.Zone) is not { } reserva) return Recurso.NaoHaOQueMinerar;
+
+		// SO A CEU ABERTO, OU NA CAVERNA (dono, 2026-10-11): dentro de predio ou de base erguida ha reserva -- o
+		// chao e do planeta -- e nao se minera. A pergunta e do Core, com o teto que o servidor ve (o plano do
+		// mapa, menos o que caiu, mais o que alguem ergueu): a mesma que o cliente faz antes de pedir.
+		if (Recurso.OTetoBarra(pl.Zone, SobTeto(pl))) return Recurso.NaoSeMineraSobTeto;
+
 		if (reserva.Atual < Recurso.PorSegundoNaMao)
 			return "este planeta está esgotado: não sobrou o que tirar. A reserva volta devagar com o tempo.";
 
@@ -553,8 +580,12 @@ public sealed partial class GameServer
 		Ferramenta f = Recurso.MelhorFerramenta(pl.Mochila);
 		pl.Mineracao = new Mineracao { Zona = pl.Zone.Hash, Onde = pl.Pos, Ferramenta = f };
 
+		// NA CAVERNA A FRASE DIZ DE QUEM E O CHAO: o numero que desce e o do planeta, e o jogador so ve a caverna.
+		string deQuem = Cavernas.EhCaverna(pl.Zone)
+			? $"Esta caverna tira da reserva de {NomeDaReserva(pl.Zone)}"
+			: $"Reserva de {NomeDaReserva(pl.Zone)}";
 		Avisar(pl, $"você começa a minerar {Recurso.ComQue(f)}: +{Recurso.PorSegundo(f):0} recursos por segundo. "
-				 + $"Reserva de {NomeDaReserva(pl.Zone)}: {reserva.Fracao * 100:0}%. Andar ou agir interrompe.");
+				 + $"{deQuem}: {reserva.Fracao * 100:0}%. Andar ou agir interrompe.");
 		GD.Print($"[server] {pl.Name} comecou a minerar em {pl.Zone.Name} ({f}, reserva {reserva.Fracao * 100:0}%)");
 		MandarMineracao(pl);
 	}
@@ -642,9 +673,15 @@ public sealed partial class GameServer
 		pl.Peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
-	/// <summary>Como a reserva deste planeta se chama numa frase: o nome batizado, ou o que o jogador ouve ("Terra").</summary>
-	private string NomeDaReserva(ZoneKey zona) =>
-		ChaveDePlaneta.Da(zona) is { } chave ? NomeFaladoDe(zona, chave) : zona.Name;
+	/// <summary>
+	/// Como a reserva de onde se tira nesta zona se chama numa frase: o nome batizado do planeta, ou o que o
+	/// jogador ouve ("Terra"). Numa caverna, o nome do PLANETA-MAE -- a reserva e dele.
+	/// </summary>
+	private string NomeDaReserva(ZoneKey zona)
+	{
+		ZoneKey planeta = Recurso.PlanetaDaReserva(zona) ?? zona;
+		return ChaveDePlaneta.Da(planeta) is { } chave ? NomeFaladoDe(planeta, chave) : planeta.Name;
+	}
 
 	// =====================================================================
 	// O QUE AS BANCADAS DE CLIENTE PEDEM

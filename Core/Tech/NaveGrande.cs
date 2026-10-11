@@ -46,25 +46,23 @@ public readonly record struct PecaDoInterior(string Tipo, (int X, int Y) Cel, st
 /// aqui o mundo e uma funcao.
 /// ====================================================================================
 ///
-/// ============================ UMA PLANTA SO, COMPARTILHADA -- E POR QUE ISSO E SEGURO ============================
+/// ============================ UMA PLANTA SO -- E CADA NAVE ESCREVE NA COPIA DELA ============================
 /// Todas as naves tem o MESMO interior (o DM tambem: `build_interior` nao le nada da nave), entao
 /// <see cref="Planta"/> devolve sempre a mesma instancia. O que separa a nave A da nave B e a
 /// <see cref="ZoneKey"/> -- `Interior("Nave", id)` --, e o hash dela ja e o corte de interesse.
 ///
-/// Compartilhar um <see cref="ZoneCollision"/> so e seguro porque ele e MUTAVEL em tres lugares e
-/// nenhum dos tres alcanca este mapa:
-///   * `Bloquear`/`LimparObras` (a camada das construcoes) -- construir DENTRO da nave e recusado
-///     pelo `Posicionar`, justamente porque a `Obra` nao sabe distinguir dois interiores;
-///   * `Abrir`/`Fechar` (as portas) -- a entrada da ponte e um VAO, e nao uma porta. O DM chegou a
-///     por uma `turf/Door/Door2` la (:169), e o comentario dele diz que antes era so um vao. Aqui
-///     ela volta a ser vao de proposito: uma porta e ESTADO por zona, e estado por zona num mapa
-///     compartilhado seria a porta da nave A abrindo a da nave B;
-///   * a densidade do console, que NAO entra pela camada de obras -- ela e assada no bitset da
-///     propria planta, la embaixo.
+/// A PLANTA E IMUTAVEL: NINGUEM ESCREVE NELA. Este cabecalho dizia que partilhar o
+/// <see cref="ZoneCollision"/> entre as naves era seguro, e listava as tres escritas que nao o
+/// alcancavam (a camada das construcoes -- construir dentro da nave e recusado pelo `Posicionar`; as
+/// portas -- a entrada da ponte e um VAO de proposito; e o console, assado no bitset). Faltava a
+/// QUARTA: a celula que cai. As paredes da sala de controle nao sao duras, o `DerrubarCelula` as
+/// abria na planta, e a parede derrubada na nave A abria na B e em todas (dono, 2026-10-11: *"pras
+/// naves tb q tem isso de compartilhado"*).
 ///
-/// O dia em que uma nave precisar de interior PROPRIO (mobilia posta pelo dono, tamanho por
-/// upgrade), esta funcao passa a receber o id e a devolver instancia por nave -- e as tres linhas
-/// acima sao a lista do que conferir.
+/// Agora o servidor entrega a cada nave a COPIA dela (`ZoneCollision.Instanciar`, pelo funil de todo
+/// interior: `Server/GameServer.Interiores.cs`), e o cliente tira a dele a cada visita
+/// (`Client/PlanetaProcedural.cs`). O console continua assado no bitset -- e da planta, igual em toda
+/// nave --, e a entrada da ponte continua um vao.
 /// ==========================================================================================================
 /// </summary>
 public static class NaveGrande

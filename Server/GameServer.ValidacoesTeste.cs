@@ -1210,11 +1210,12 @@ public sealed partial class GameServer
 	private static readonly Dictionary<string, int> QuemPodeLerOMapaDeArquivo = new(StringComparer.OrdinalIgnoreCase)
 	{
 		["GameServer.cs"] = 8,               // o CARREGADOR das zonas de arquivo: e ele que enche o campo (colisao, agua, nuvem, duro, dentro)
-		["GameServer.Volta.cs"] = 2,         // o FUNIL: `MapaDaZonaOuCatalogo`
+		["GameServer.Volta.cs"] = 1,         // o FUNIL: `MapaDaZonaOuCatalogo` (a metade do planeta de arquivo)
+		["GameServer.Interiores.cs"] = 2,    // a metade INTERIOR do funil: a PLANTA de um interior feito de mapa de arquivo (copiada por instancia), e os mapas de quem so tem a chave de estado na mao -- e por ali que a porta abre e fecha, na zona de arquivo e na instancia
 		["GameServer.Procedural.cs"] = 1,    // `MapaDaZona`, a metade "arquivo ou gerado" do mesmo funil
 		["GameServer.Validacoes.cs"] = 1,    // `MapaDoSalto` com o defeito injetado ligado (a prova de que a vigia faz falta)
 		["GameServer.Passagens.cs"] = 2,     // passagem so existe em zona de arquivo: lacra a celula dela e le a altura do mapa
-		["GameServer.Portas.cs"] = 2,        // porta de zona de arquivo: abre e fecha a celula no mapa E na vista dela
+		["GameServer.Parada.cs"] = 3,        // a PARADA devolve cada mapa de arquivo ao arquivo (o que caiu fecha, a rebrota tomba, a rocha sai): nao e pergunta de parede, e mundo sorteado e interior nao passam por ali (um e descarregado, o outro renasce da planta)
 		["GameServer.Nuvem.cs"] = 1,         // a Nuvem Voadora pousa em zona de arquivo: a chegada e uma entrada do catalogo
 		["GameServer.Lenha.cs"] = 1,         // `LerArvoresDoArquivo`: as arvores que o ARQUIVO da zona traz (nao e pergunta de parede)
 		["GameServer.FotoDaMuda.cs"] = 3,    // bancada de foto (o nome nao diz "Teste"): o palco dela e uma zona de arquivo

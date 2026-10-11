@@ -268,7 +268,9 @@ public partial class GameServer
 		{
 			Nome = nome, Assinatura = sig,
 			Alcance = alcance,
-			PoderRelativo = Porcento(o.Ficha.expressedBP, eu.Ficha.expressedBP),
+			// CONTRA O PODER QUE QUEM LE COMPARA -- o proprio expresso, menos quando ele esta escondido (travado em 5,
+			// uma constante: a razao contra ela seria o BP do outro com outra unidade). Ver `PoderQueSeCompara`.
+			PoderRelativo = Porcento(o.Ficha.expressedBP, PoderQueSeCompara(eu)),
 			// O SIGILO MORA NESTA LINHA: no modo Sense o BP absoluto NAO existe no pacote.
 			Bp = SemLeitura,
 			// `round(D.HP)` de um argumento e PISO no DM (ver a nota do `MandarCorpo`)

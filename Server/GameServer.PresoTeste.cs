@@ -741,8 +741,10 @@ public partial class GameServer
 					 !r.Planta().Colisao.TemAgua);
 
 		// ---- A PLANTA E UMA SO, E O QUE SEPARA AS MENTES E A CHAVE.
-		AfirmarPreso("duas mentes diferentes compartilham a MESMA planta (o bolso e a `ZoneKey`)",
-					 ReferenceEquals(MapaDaMente(DimensaoMental.De(1)), MapaDaMente(DimensaoMental.De(2)))
+		AfirmarPreso("duas mentes diferentes saem da MESMA planta (o bolso e a `ZoneKey`) -- e cada uma tem a COPIA dela do mapa, que e onde se escreve",
+					 MapaDaZonaOuCatalogo(DimensaoMental.De(1)) is { } mapaDaUm && MapaDaZonaOuCatalogo(DimensaoMental.De(2)) is { } mapaDaDois
+					 && mapaDaUm.SaiuDe(DimensaoMental.Planta().Colisao) && mapaDaDois.SaiuDe(DimensaoMental.Planta().Colisao)
+					 && !ReferenceEquals(mapaDaUm, mapaDaDois) && !ReferenceEquals(mapaDaUm, DimensaoMental.Planta().Colisao)
 					 && DimensaoMental.De(1).Hash != DimensaoMental.De(2).Hash);
 
 		SemParedeQuemSeguraEAColeira(forjados, mente);

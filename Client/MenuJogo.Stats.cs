@@ -276,6 +276,9 @@ public partial class MenuJogo
 		LinhaComPilula("Condição", f.Morto ? "MORTO" : f.KO ? "NOCAUTEADO" : "de pé",
 			f.Morto || f.KO ? Tema.Perigo : Tema.Bom, c);
 		LinhaComPilula("Golpe", f.Letal ? "LETAL" : "não-letal", f.Letal ? Tema.Perigo : Tema.Texto, c);
+		// O `relaxedstate` do original, no lugar onde ele o escreve (`[Emotion] / [relaxedstate]`, HtmlUI.dm:221):
+		// "usando todo o poder", "usando parte do poder (40%)", "relaxado", "escondendo o poder". Ver `MenuJogo.PoderEmUso.cs`.
+		LinhaDoPoderEmUso(c);
 
 		Linha("Cadência do soco", $"{f.SocoMs} ms", null, c);
 
@@ -342,6 +345,6 @@ public partial class MenuJogo
 		return $"{_atributos.Tem(Protocol.Poder.Scouter)}|{f.BP:0}|{f.TetoKi:0.##}|{f.VigorMax:0}|{f.NutricaoMax:0}"
 			 + $"|{_atributos.KiDef:0.##}|{_atributos.Technique:0.##}|{_atributos.KiSkill:0.##}|{_atributos.Esoteric:0.##}"
 			 + $"|{_atributos.Willpower:0.##}|{_atributos.ZonaMult:0.##}|{_atributos.SalaFase}|{_atributos.SalaMinutos:0.#}"
-			 + $"|{_atributos.Raca}|{f.SocoMs}|{c?.EstiloAtual}|{_livro.MarcosLivres}/{_livro.MarcosTotais}|{c?.Zeni:0}|{c?.Recursos:0}|{c?.NomeDoLugar}";
+			 + $"|{_atributos.Raca}|{f.SocoMs}|{c?.EstiloAtual}|{_livro.MarcosLivres}/{_livro.MarcosTotais}|{c?.Zeni:0}|{c?.Recursos:0}|{c?.NomeDoLugar}|{AssinaturaDoPoderEmUso()}";
 	}
 }

@@ -44,12 +44,18 @@ public enum Ferramenta : byte
 ///   * a MAO DE QUEM MINERA (<see cref="PorSegundo"/>): 3, 6 e 12 por segundo. Uma hora de furadeira sao
 ///     43 mil recursos -- 21,6 mil zeni, mais ou menos o triplo do que o "cavar" do item rendia e bem acima
 ///     do tributo de um planeta dominado (1.000 zeni/h). A nave de 100 mil zeni sai em ~4,6 h de furadeira.
-///   * a RESERVA do planeta (<see cref="MaximoDoPlaneta"/>): a Terra (500 x 500) guarda 500 mil e devolve
-///     5,8 por segundo -- uma pessoa de pa quase nao a mexe, uma de furadeira a seca em 22 h, cinco em 2,6 h.
-///     Um mundo pequeno (lado 192) guarda 74 mil e uma furadeira so o seca em menos de duas horas.
+///   * a RESERVA do planeta (<see cref="MaximoDoPlaneta"/>): a Terra (500 x 500) guarda 2,5 milhoes e devolve
+///     28,9 por segundo -- uma furadeira (12/s) nem a faz descer; tres juntas (36/s) a secam em uns quatro
+///     dias, cinco em 22 h. Um mundo pequeno (lado 192) guarda 369 mil, devolve 4,3 por segundo, e uma
+///     furadeira sozinha o seca em umas 13 h.
 ///
-/// Ou seja: minerar paga o comeco e o meio do catalogo, o planeta SENTE quando muita gente tira dele, e as
-/// coisas de milhoes pedem varios planetas (ou o Drill, que e de outro arquivo).
+/// Ou seja: minerar paga o comeco e o meio do catalogo, um planeta grande so SENTE quando muita gente (ou muita
+/// Drill) tira dele ao mesmo tempo, e um pequeno sente uma pessoa so.
+///
+/// ESTES NUMEROS SAO OS DE 2026-10-11, quando o dono quintuplicou a reserva (*"troque o lado^2 x 2 por
+/// lado^2 x 10"*). Com o teto de antes a Terra guardava 500 mil, devolvia 5,8 por segundo e UMA furadeira a
+/// secava em 22 h. O tempo de encher nao mudou (<see cref="HorasPraEncher"/>), entao o que o chao devolve por
+/// segundo quintuplicou junto com o teto.
 /// ====================================================================================
 /// </summary>
 public static class Recurso
@@ -67,21 +73,40 @@ public static class Recurso
 	public static double CustoEmRecursos(double custoEmZeni) =>
 		Math.Max(0, custoEmZeni) * (SemDobroDeTeste ? 1.0 : RecursosPorZeni);
 
-	/// <summary>Quanto de recurso cabe em cada celula do mapa de um planeta -- ver <see cref="MaximoDoPlaneta"/>.</summary>
-	public const double RecursosPorCelula = 2.0;
+	/// <summary>
+	/// Quanto de recurso cabe em cada celula do mapa de um planeta -- ver <see cref="MaximoDoPlaneta"/>. O dono
+	/// (2026-10-11): *"Reserva do planeta troque o lado^2 x 2 por lado^2 x 10"*.
+	/// </summary>
+	public const double RecursosPorCelula = 10.0;
+
+	/// <summary>O que cabia por celula ate 2026-10-11. So o defeito injetado o le.</summary>
+	private const double RecursosPorCelulaDeAntes = 2.0;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--recursosteste`): a celula guarda o de antes -- a reserva volta a ser
+	/// lado^2 x 2. Lido pela propria conta, em <see cref="MaximoDoPlaneta"/>.
+	/// </summary>
+	public static bool CelulaGuardaODeAntesDeTeste;
 
 	/// <summary>
 	/// A RESERVA MAXIMA PELO TAMANHO: *"cada planeta tem um resource maximo ao qual e baseado em seu tamanho"*.
-	/// Pela AREA (lado ao quadrado): um planeta de lado 192 guarda 73 mil, um de 500 guarda 500 mil, um de 1000
-	/// guarda 2 milhoes.
+	/// Pela AREA (lado ao quadrado, vezes <see cref="RecursosPorCelula"/>): um planeta de lado 192 guarda 368.640,
+	/// um de 500 guarda 2,5 milhoes, um de 1000 guarda 10 milhoes.
 	/// </summary>
 	public static double MaximoDoPlaneta(int ladoEmTiles)
 	{
 		double lado = Math.Max(0, ladoEmTiles);
-		return lado * lado * RecursosPorCelula;
+		return lado * lado * (CelulaGuardaODeAntesDeTeste ? RecursosPorCelulaDeAntes : RecursosPorCelula);
 	}
 
-	/// <summary>*"ele regenera lentamente com o tempo"*: horas de relogio pra uma reserva ZERADA voltar a cheia.</summary>
+	/// <summary>
+	/// *"ele regenera lentamente com o tempo"*: horas de relogio pra uma reserva ZERADA voltar a cheia.
+	///
+	/// E UM TEMPO, E NAO UMA TAXA: o que o chao devolve por segundo e o teto dividido por estas horas. Quando o
+	/// teto quintuplicou (2026-10-11) este numero ficou como estava -- e a Terra passou de 5,8 pra 28,9 por
+	/// segundo. E o que sai de "trocar o x2 pelo x10" sem mexer aqui; quem quiser a taxa de antes com o teto novo
+	/// poe 120 horas.
+	/// </summary>
 	public const double HorasPraEncher = 24.0;
 
 	/// <summary>
@@ -89,6 +114,48 @@ public static class Recurso
 	/// de o tique existir (ela nascia cheia e so descia). Lido pela propria <see cref="ReservaDePlaneta.Regenerar"/>.
 	/// </summary>
 	public static bool ReservaNaoRegeneraDeTeste;
+
+	// =====================================================================
+	// ONDE SE TIRA RECURSO -- a pergunta de lugar, uma copia so pras duas pontas
+	// =====================================================================
+	/// <summary>
+	/// DE QUE PLANETA SAI O RECURSO QUE SE TIRA NESTA ZONA -- nulo = de nenhum: aqui nao ha o que tirar.
+	///
+	/// DUAS RESPOSTAS QUE NAO SAO NULO, e so elas:
+	///   * a SUPERFICIE de um planeta (<see cref="Espaco.EhPlaneta"/>): o proprio;
+	///   * a CAVERNA de um planeta (<see cref="Cavernas.PlanetaMae"/>): o planeta-mae. A caverna nao tem reserva
+	///     dela -- quem tira la dentro e quem tira la fora dividem o MESMO numero. E a unica excecao de interior
+	///     (dono, 2026-10-11).
+	/// O Mirante, o alem, a Sala do Tempo, uma estacao, o interior de uma nave ou de um Majin e o espaco: nulo.
+	///
+	/// QUEM PERGUNTA: o servidor, pra achar a reserva (`GameServer.ReservaDe`) e pra contar juntas as Drills que
+	/// tiram do mesmo chao; e o cliente, pra nao acender "MINERANDO" de um pedido que vai ser negado. Planeta
+	/// DESTRUIDO e conta do servidor (a zona continua sendo planeta; a reserva e que some).
+	/// </summary>
+	public static ZoneKey? PlanetaDaReserva(ZoneKey zona) =>
+		Espaco.EhPlaneta(zona) ? zona : Cavernas.PlanetaMae(zona);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--recursosteste` e `--diagminerar`): debaixo de teto tambem se minera -- o jogo
+	/// de antes de 2026-10-11, em que so a ZONA contava. Lido pela propria pergunta, em <see cref="OTetoBarra"/>.
+	/// </summary>
+	public static bool MineraSobTetoDeTeste;
+
+	/// <summary>
+	/// O TETO BARRA O VERB MINERAR AQUI? No mapa do planeta, sim: so se minera a ceu aberto -- dentro de predio
+	/// ou de base erguida (a area interna, `CelulaInterna.SobTeto`) nao. NA CAVERNA NAO BARRA: ela e interior
+	/// inteira, e e justamente a excecao.
+	///
+	/// E a resposta do dono a "minerar dentro de predio vale?": *"essa e a unica excessao de mapa de interior q
+	/// da pra tirar recurso de um planeta"* (2026-10-11) -- interior nao da recurso, menos a caverna.
+	///
+	/// SO O VERB: a Drill assentada trabalha em qualquer celula do mapa do planeta, com teto ou sem (e uma
+	/// maquina do chao do planeta, e e dentro de base que se guarda maquina); a rocha de minerio ja nao nascia
+	/// sob teto (`RochaDeMinerio.ChaoServe`).
+	/// </summary>
+	/// <param name="sobTeto">O corpo esta com os pes numa celula sob teto? Cada ponta responde com o mapa dela.</param>
+	public static bool OTetoBarra(ZoneKey zona, bool sobTeto) =>
+		sobTeto && !MineraSobTetoDeTeste && !Cavernas.EhCaverna(zona);
 
 	// =====================================================================
 	// MINERAR A MAO -- o verb "Minerar"
@@ -217,8 +284,14 @@ public static class Recurso
 	// (`LocalPlayer.PedirMineracao`), pra a tela nao dizer "MINERANDO" de um pedido que vai ser negado. As duas
 	// pontas dizem a MESMA frase porque leem a mesma constante.
 	// =====================================================================
-	/// <summary>Zona que nao e planeta (o espaco, um interior, uma mente) ou planeta destruido: nao ha reserva.</summary>
+	/// <summary>
+	/// Zona de onde nao se tira recurso de planeta nenhum (o espaco, um interior que nao e caverna, uma mente), ou
+	/// planeta destruido -- e a caverna dele junto: nao ha reserva. Ver <see cref="PlanetaDaReserva"/>.
+	/// </summary>
 	public const string NaoHaOQueMinerar = "não há o que minerar aqui.";
+
+	/// <summary>Debaixo de teto, no mapa de um planeta. Ver <see cref="OTetoBarra"/>.</summary>
+	public const string NaoSeMineraSobTeto = "não dá pra minerar debaixo de teto: só a céu aberto, ou dentro de uma caverna.";
 
 	/// <summary>Nocauteado ou morto.</summary>
 	public const string SemCondicoesDeMinerar = "você não está em condições de minerar.";
@@ -259,6 +332,9 @@ public sealed class ReservaGravada
 ///
 /// <see cref="Tirar"/> e a UNICA porta de saida -- a mineracao a mao, o Drill e a rocha de minerio passam todos
 /// por ela, e e por isso que um Drill que seca o planeta faz as rochas pararem de nascer.
+///
+/// A CAVERNA DO PLANETA TIRA DESTA MESMA (<see cref="Recurso.PlanetaDaReserva"/>): nao ha uma segunda reserva
+/// pra ela, nem no disco. Quem minera la dentro e quem minera la fora descem o mesmo numero.
 ///
 /// NAO GUARDE O OBJETO: pergunte de novo ao servidor (`ReservaDe(zona)`) a cada uso. A limpeza total, a morte e
 /// a volta de um planeta TROCAM o objeto, e quem tivesse guardado o antigo tiraria de uma reserva que ninguem

@@ -21,9 +21,10 @@ namespace Jandirus.Client;
 /// se afirma e lido de DOIS lados -- o servidor do mesmo processo (modo host) e a tela. O palco
 /// (`Server/GameServer.BillsPalco.cs`) so pula o que e ESPERA: o mes, o soco que derruba e a viagem ate a casa.
 ///
-/// AS FOTOS saem em `user://bills-NN-*.png`: a visita (o Bills de traje com o Whis ao lado), a derrota (a fala
-/// do endereco), a carta estelar com a casa marcada, os dois parados no planeta, o menu de cada um, o treino, o
-/// menu no meio do treino e o desafio com a Fury de pe.
+/// AS FOTOS saem em `user://bills-NN-*.png`: a visita (o Bills de traje com o Whis ao lado), a briga na Terra (o
+/// Bills acordado, sem a Fury, e o Whis assistindo de longe), a derrota (a fala do endereco), a carta estelar com a
+/// casa marcada, os dois parados no planeta, o menu de cada um, o treino, o menu no meio do treino e o desafio com
+/// a Fury de pe.
 ///
 /// Rode com janela (no segundo monitor), no modo host, com um Humano (ele nasce na Terra, que e onde a visita e):
 ///   --host --rede 8331 --horateste 0.5 --diagbills --raca Human --conta bancada_bills_d --nome Fotografo
@@ -90,7 +91,7 @@ public partial class RoboDeBills : Node
 	{
 		_acabou = true;
 		MenuDeInteracao.EscSoDepoisDaPausaDeTeste = false;
-		S?.RecolherOPalcoDoBillsDeTeste();
+		S?.RecolherOPalcoDoBillsDeTeste(C?.LocalId ?? 0);
 		GD.Print($"\n[dbills] ===== {_ok} OK, {_falhou} FALHA(S) =====");
 		if (_falhou > 0) GD.PrintErr("[dbills] vermelhas: " + string.Join(" | ", _vermelhas));
 		Nota("fim.");
@@ -192,6 +193,62 @@ public partial class RoboDeBills : Node
 		Afirmar("os dois FALAM ao chegar: as quatro linhas da chegada chegaram no chat de quem esta perto",
 				BillsEWhis.FalasDaChegada.All(f => Disse(f.Texto)), Ultimas());
 		Fotografar("bills-01-a-visita-o-bills-de-traje-e-o-whis");
+
+		// =====================================================================
+		// 1b) A BRIGA NA TERRA: O KIT SEM A FURY, E O WHIS DE LONGE
+		// =====================================================================
+		// (a regra inteira -- cada habilidade do kit, o Hakai e a chave dele, a ordem dos comentarios -- e da bancada
+		// do servidor. Aqui se ve o que so a tela tem: o Bills lutando SEM aura de forma, o Whis saindo do lado dele,
+		// a fala de comida chegando no chat, e os dois de volta no fim.)
+		Nota("-- 1b) a briga na Terra: o Bills acordado com o kit (sem a Fury), o Whis assistindo de longe e falando de comida --");
+		_falas.Clear();
+		Afirmar("(montagem) o host bateu no Bills -- com poder de sobra pra a foto ter os dois de pe, e sem o Hakai (a regra dele e da bancada do servidor)",
+				srv.AcordarOBillsNaTerraDeTeste(eu));
+		bool comida = false, fury = false, formaNaTela = false;
+		float maisLonge = 0;
+		for (int i = 0; i < 72 && !(comida && maisLonge >= BillsEWhis.TilesPertoDemais * Tile); i++)
+		{
+			yield return 0.25;
+			srv.ManterOHostDePeDeTeste(eu);
+			Vector2 b0 = mundo.PosicaoDesenhadaDe(naTerra.Bills) ?? Vector2.Zero, w0 = mundo.PosicaoDesenhadaDe(naTerra.Whis) ?? b0;
+			maisLonge = Math.Max(maisLonge, b0.DistanceTo(w0));
+			comida |= BillsEWhis.PalpitesDeComida.Any(Disse);
+			fury |= srv.DivinoDeTeste(whis: false) is { } agora && agora.Forma == BillsEWhis.IdDaFury;
+			formaNaTela |= VisualDe(naTerra.Bills) is { } corpoDele && TemEfeitoDeForma(corpoDele);
+		}
+		var naBriga = srv.DivinoDeTeste(whis: false);
+		Afirmar("**ACORDADO NA TERRA O BILLS LUTA COM O KIT, SEM A FURY**: no servidor ele esta na briga, com o corpo consagrado e na forma de repouso -- e na tela nao houve aura de forma no corpo dele em momento nenhum",
+				naBriga is { Modo: "Lutando", Consagrado: true } nb && nb.Forma != BillsEWhis.IdDaFury && !fury && !formaNaTela,
+				naBriga is { } nb2 ? $"modo {nb2.Modo}, forma '{nb2.Forma}', consagrado={nb2.Consagrado}, forma na tela={formaNaTela}" : "o Bills sumiu");
+		var assistindo = srv.WhisDeTeste();
+		Afirmar("**O WHIS ASSISTE DE LONGE**: na tela ele saiu do lado do Bills (seis tiles ou mais), e no servidor continua no modo de objeto, intocavel",
+				maisLonge >= BillsEWhis.TilesPertoDemais * Tile && assistindo is { Assiste: true, Intocavel: true, Modo: "Parado" },
+				$"{maisLonge / Tile:0.0} tiles na tela; servidor: {assistindo}");
+		Afirmar("**...COMENTANDO COMIDA**: uma das falas dele chegou no chat de quem luta", comida, Ultimas());
+		string comPoderNaBriga = _falas.Find(TemNumeroDePoder) ?? "";
+		// (a foto: o host de volta pra perto do Bills -- a briga ja o arremessou pra longe --, pra o quadro ter a luta
+		// e, na beira dele, o Whis assistindo)
+		srv.AoLadoDoDivinoDeTeste(eu, whis: false, tiles: 2.5f);
+		srv.ManterOHostDePeDeTeste(eu);
+		yield return 0.7;
+		Fotografar("bills-01b-a-briga-o-whis-de-longe");
+
+		srv.LargarABrigaNaTerraDeTeste(eu);
+		bool voltaram = false;
+		float ladoALado = float.MaxValue;
+		for (int i = 0; i < 140 && !voltaram; i++)
+		{
+			yield return 0.25;
+			Vector2 b1 = mundo.PosicaoDesenhadaDe(naTerra.Bills) ?? Vector2.Zero, w1 = mundo.PosicaoDesenhadaDe(naTerra.Whis) ?? Vector2.Inf;
+			ladoALado = b1.DistanceTo(w1);
+			voltaram = srv.DivinoDeTeste(whis: false) is { Modo: "Cochilando", Consagrado: false } && srv.WhisDeTeste() is { Assiste: false }
+					   && ladoALado <= (BillsEWhis.TilesEntreOsDois + 1.5f) * Tile;
+		}
+		Afirmar("**ACABADA A BRIGA OS DOIS VOLTAM**: o Bills cochila de novo (sem o kit) e o Whis esta outra vez ao lado dele, na tela",
+				voltaram, $"{ladoALado / Tile:0.0} tiles; Bills {srv.DivinoDeTeste(whis: false)?.Modo}");
+		Afirmar("nenhuma fala da briga escreve um numero de poder", comPoderNaBriga.Length == 0, comPoderNaBriga);
+		srv.AoLadoDoDivinoDeTeste(eu, whis: false);
+		yield return 1.0;
 
 		// =====================================================================
 		// 2) A DERROTA: ELE FALA O ENDERECO
@@ -435,6 +492,9 @@ public partial class RoboDeBills : Node
 				vb != null && TemEfeitoDeForma(vb),
 				vb == null ? "sem corpo" : $"corpo de forma={vb.CorpoDaFormaVisivelDeTeste}, coladas={vb.ColadasDeTeste}, contorno={vb.AuraDaFormaDeTeste:0.00}");
 		Afirmar("o desafio e ANUNCIADO, e os dois falam antes da luta", Disse("DUELO PELO TÍTULO") && Disse(BillsEWhis.FalasDoDesafio[0].Texto), Ultimas());
+		Afirmar("no desafio o Whis tambem sai do lado dele pra assistir: no servidor ele assiste, intocavel, e na tela ja deixou o posto",
+				srv.WhisDeTeste() is { Assiste: true, Intocavel: true } && (mundo.PosicaoDesenhadaDe(ids.Whis) ?? postoDoWhis).DistanceTo(postoDoWhis) > 4f,
+				$"{(mundo.PosicaoDesenhadaDe(ids.Whis) ?? postoDoWhis).DistanceTo(postoDoWhis):0.0} px do posto; servidor: {srv.WhisDeTeste()}");
 		Fotografar("bills-09-o-desafio-o-bills-na-fury");
 
 		Tecla(Key.E);
@@ -449,5 +509,13 @@ public partial class RoboDeBills : Node
 				srv.DivinoDeTeste(whis: false) is { Modo: "Parado", Parceiro: 0, Consagrado: false } fim && fim.Forma != BillsEWhis.IdDaFury
 				&& vb != null && !TemEfeitoDeForma(vb),
 				srv.DivinoDeTeste(whis: false) is { } f2 ? $"modo {f2.Modo}, forma '{f2.Forma}'" : "o Bills sumiu");
+		bool whisVoltou = false;
+		for (int i = 0; i < 80 && !whisVoltou; i++)
+		{
+			yield return 0.25;
+			whisVoltou = srv.WhisDeTeste() is { Assiste: false } && (mundo.PosicaoDesenhadaDe(ids.Whis) ?? Vector2.Inf).DistanceTo(postoDoWhis) < 2f;
+		}
+		Afirmar("...e o Whis VOLTA pro lado do Bills: na tela ele esta de novo no posto dele",
+				whisVoltou, $"{(mundo.PosicaoDesenhadaDe(ids.Whis) ?? Vector2.Inf).DistanceTo(postoDoWhis):0.0} px do posto");
 	}
 }

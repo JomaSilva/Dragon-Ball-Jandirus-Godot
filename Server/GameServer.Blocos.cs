@@ -442,7 +442,7 @@ public sealed partial class GameServer
 	private RecusaDeBloco RecusaDeErguer(ServerPlayer pl, BlocoDef def, int cx, int cy)
 	{
 		ZoneCollision? mapa = _bases.TryGetValue(pl.Zone.Hash, out BaseDaZona? z) ? AssentarBase(z) : MapaDaZonaOuCatalogo(pl.Zone);
-		bool caiu = _cenarioCaido.TryGetValue(pl.Zone.Name, out HashSet<(int X, int Y)>? caidas) && caidas.Contains((cx, cy));
+		bool caiu = _cenarioCaido.TryGetValue(ChaveDeEstado(pl.Zone), out HashSet<(int X, int Y)>? caidas) && caidas.Contains((cx, cy));
 
 		RecusaDeBloco r = RegrasDeBloco.DoTerreno(mapa, pl.Pos, cx, cy, caiu);
 		if (r != RecusaDeBloco.Pode) return r;

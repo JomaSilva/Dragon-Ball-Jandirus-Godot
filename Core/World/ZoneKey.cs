@@ -38,6 +38,22 @@ public readonly struct ZoneKey : IEquatable<ZoneKey>
 
 	public static ZoneKey Premade(string name) => new(KindPremade, name);
 	public static ZoneKey Procedural(string name, ulong seed) => new(KindProcedural, name, seed);
+
+	/// <summary>
+	/// UMA INSTANCIA de um interior: o NOME diz a PLANTA (que mapa e) e o <paramref name="id"/> diz QUAL instancia --
+	/// a nave #7, a mente do jogador #12, a Sala do Tempo do mundo de seed X.
+	///
+	/// ============================ REGRA DA CASA (dono, 2026-10-11) ============================
+	/// **ESTADO QUE MUDA DURANTE O JOGO NUNCA E DIVIDIDO ENTRE DUAS INSTANCIAS.** O nome e de TODAS; o que muda
+	/// (o mapa que barra, o que cega, a celula caida, a porta aberta) se guarda pela chave INTEIRA -- o
+	/// <see cref="Hash"/>, ou a `ChaveDeEstado` do servidor --, nunca por <see cref="Name"/>. E o mapa de quem
+	/// escreve e uma COPIA da planta (`ZoneCollision.Instanciar`), nunca a planta.
+	///
+	/// INTERIOR NOVO: um tipo em `GameServer.TiposDeInterior` (`Server/GameServer.Interiores.cs`, o funil unico) e
+	/// uma linha na vigia `--interioresteste` (`Server/GameServer.InterioresTeste.cs`), que roda duas instancias,
+	/// muda uma e confere a outra. Fabrica de interior fora da lista da vigia e VERMELHO.
+	/// ==========================================================================================
+	/// </summary>
 	public static ZoneKey Interior(string name, ulong id) => new(KindInterior, name, id);
 
 	/// <summary>

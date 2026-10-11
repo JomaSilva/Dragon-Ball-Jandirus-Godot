@@ -123,7 +123,11 @@ public sealed partial class GameServer
 	/// <summary>As arvores de cada mundo sorteado VIVO, anotadas na colheita dele (<see cref="AoColherOMundo"/>).</summary>
 	private readonly Dictionary<ulong, ArvoresDoMapa> _arvoresDoMundo = [];
 
-	/// <summary>As arvores de cada planeta pre-feito, lidas do `.pedacos` na primeira pergunta. Nulo = nao deu pra ler.</summary>
+	/// <summary>
+	/// As arvores de cada planeta pre-feito, lidas do `.pedacos` na primeira pergunta. Nulo = nao deu pra ler.
+	/// POR NOME DE PROPOSITO: e dado do ARQUIVO e so de planeta de arquivo, que e uma zona por nome (interior e mundo
+	/// sorteado nao chegam aqui: ver <see cref="ArvoresDa"/>). O que MUDA -- o que caiu, o que rebrotou -- e por zona.
+	/// </summary>
 	private readonly Dictionary<string, ArvoresDoMapa?> _arvoresDoArquivo = new(StringComparer.OrdinalIgnoreCase);
 
 	private CatalogoDeTiles? _tilesDaLenha;
@@ -268,7 +272,7 @@ public sealed partial class GameServer
 	}
 
 	private bool CenarioJaCaiu(ZoneKey zona, int cx, int cy) =>
-		_cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? caidas) && caidas.Contains((cx, cy));
+		_cenarioCaido.TryGetValue(ChaveDeEstado(zona), out HashSet<(int X, int Y)>? caidas) && caidas.Contains((cx, cy));
 
 	/// <summary>A ARVORE QUE O MAPA TROUXE nesta celula esta de pe? (E arvore, e parede do arquivo, e nao caiu.)</summary>
 	private bool ArvoreDoMapaDePe(ZoneKey zona, ZoneCollision mapa, int cx, int cy) =>
@@ -536,7 +540,7 @@ public sealed partial class GameServer
 	{
 		if (z.Tocos.Count == 0 && z.Rebrotas.Count == 0) return;
 
-		_cenarioCaido.TryGetValue(z.Zona.Name, out HashSet<(int X, int Y)>? caidas);
+		_cenarioCaido.TryGetValue(ChaveDeEstado(z.Zona), out HashSet<(int X, int Y)>? caidas);
 		bool DePeNoMapa((int X, int Y) origem) => caidas == null || !caidas.Contains(origem);
 
 		// SEM ALOCAR NO CAMINHO COMUM: a passada roda todo segundo, e quase nunca ha o que tirar.
@@ -717,7 +721,7 @@ public sealed partial class GameServer
 	///
 	/// 2. O ESTRAGO QUE JA ESTAVA ANOTADO VOLTA A VALER. Um mundo vazio e descartado quando o cache passa do teto
 	///    (`PodarZonasVazias`) e nasce de novo, da seed, quando alguem volta -- com TODA parede de pe na colisao nova,
-	///    enquanto o `_cenarioCaido` (que e por nome e nao foi descartado) continua mandando o cliente abrir as
+	///    enquanto o `_cenarioCaido` (que e por chave de estado -- `ChaveDeEstado` -- e nao foi descartado) continua mandando o cliente abrir as
 	///    celulas caidas. O corpo andava na tela por onde o servidor via parede. Antes da lenha era raro (so com oito
 	///    mundos vivos); com arvore caindo a toda hora em planeta sorteado, deixaria um toco que nunca mais abre.
 	///
@@ -729,7 +733,7 @@ public sealed partial class GameServer
 		ZoneKey zona = ZoneKey.Procedural(ficha.Nome, ficha.Seed);
 		_arvoresDoMundo[zona.Hash] = ArvoresDoMapa.DoTerreno(t, TilesDaLenha());
 
-		if (!MundoRenasceSemOEstragoDeTeste && _cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? caidas))
+		if (!MundoRenasceSemOEstragoDeTeste && _cenarioCaido.TryGetValue(ChaveDeEstado(zona), out HashSet<(int X, int Y)>? caidas))
 			foreach ((int cx, int cy) in caidas) AbrirACelulaCaida(zona, cx, cy);
 
 		if (!_lenha.TryGetValue(zona.Hash, out LenhaDaZona? z)) return;
@@ -951,7 +955,7 @@ public sealed partial class GameServer
 		if (!_lenha.Remove(zona.Hash, out LenhaDaZona? z)) return;
 
 		ZoneCollision? mapa = MapaDaZonaOuCatalogo(zona), vista = MapaDaVista(zona);
-		_cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? caidas);
+		_cenarioCaido.TryGetValue(ChaveDeEstado(zona), out HashSet<(int X, int Y)>? caidas);
 
 		foreach ((int X, int Y) onde in z.Rebrotas.Keys) mapa?.Tombar(onde.X, onde.Y);
 		foreach ((int X, int Y) origem in z.Tocos.Keys.Concat(z.Rebrotas.Values.Select(r => r.Origem)))

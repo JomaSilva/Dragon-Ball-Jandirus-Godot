@@ -143,8 +143,9 @@ public static class Drill
 
 	/// <summary>
 	/// RECURSOS POR SEGUNDO, POR NIVEL: a de fabrica tira 1 por segundo, a de nivel 10 tira 10. Pra medir: um
-	/// planeta pre-feito (500x500) guarda 500 mil e regenera 5,8 por segundo -- uma Drill do nivel 6 pra cima
-	/// ja tira mais do que ele repoe.
+	/// planeta pre-feito (500x500) guarda 2,5 milhoes e regenera 28,9 por segundo (os numeros de 2026-10-11,
+	/// com a reserva em lado^2 x 10; antes eram 500 mil e 5,8) -- so tres Drills do nivel 10 juntas tiram mais
+	/// do que ele repoe. Num mundo gerado pequeno (lado 192: 369 mil, 4,3 por segundo) uma do nivel 5 ja tira.
 	/// </summary>
 	public const double TaxaPorNivel = 1.0;
 
@@ -308,7 +309,7 @@ public static class Drill
 		switch (e.Situacao)
 		{
 			case SituacaoDaDrill.SemReserva:
-				l.Add("AQUI NÃO HÁ O QUE EXTRAIR: a Drill só trabalha na superfície de um planeta.");
+				l.Add("AQUI NÃO HÁ O QUE EXTRAIR: a Drill só trabalha num planeta -- na superfície, ou numa caverna dele.");
 				break;
 			case SituacaoDaDrill.PlanetaEsgotado:
 				l.Add("PLANETA ESGOTADO: ela só extrai o que a reserva regenerar.");

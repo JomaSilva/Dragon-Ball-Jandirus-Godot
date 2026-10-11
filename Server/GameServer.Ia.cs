@@ -524,6 +524,9 @@ public partial class GameServer
 
 			// O NADO: o folego que o verb `nadar` exige pra comecar (`AlternarNado`), pela MESMA funcao.
 			KiParaNadar = Nado.KiParaComecar(pl.Ficha.MaxKi, pl.Ficha.KiMod, pl.Ficha.swimmastery),
+
+			// O KIT DO DEUS DA DESTRUICAO, so pra corpo sem dono consagrado -- ver `GameServer.KitDoDeusNaIa.cs`.
+			KitDoDeus = KitNaMaoDaIa(pl),
 		};
 	}
 
@@ -547,7 +550,12 @@ public partial class GameServer
 	/// </summary>
 	private Arsenal ArsenalDeLonge(ServerPlayer pl)
 	{
-		if (!TecnicasDeLonge.Alguma || _skills == null) return Arsenal.Vazio;
+		// O KIT DO DEUS DA DESTRUICAO (corpo sem dono consagrado): os dois tiros dele NAO sao skill de livro -- sao do
+		// titulo --, entao o `SabeTecnica` nunca os acharia. Entram na MESMA lista, depois das tecnicas que o corpo
+		// sabe, e dai pra frente sao escolhidos como qualquer outro tiro. Zero pra todo o resto do mundo.
+		int doKit = TirosDoKitNaIa(pl);
+		bool temLivro = TecnicasDeLonge.Alguma && _skills != null;
+		if (!temLivro && doKit == 0) return Arsenal.Vazio;
 
 		// ============================ DUAS PASSADAS, E O UNICO OBJETO E A RESPOSTA ============================
 		// A versao anterior montava uma `List<Tiro>` (32 B, mais o `Tiro[4]` do primeiro `Add`, 216 B) pra no fim
@@ -570,35 +578,40 @@ public partial class GameServer
 			// que monta a lista COMPLETA de habilidades do corpo pra depois filtrar tres. Num
 			// personagem com muitas skills isso e uma lista de centenas de strings por segundo, e a
 			// bancada de alocacao da IA reprovou na hora em que a tabela deixou de estar vazia.
-			sabe[i] = SabeTecnica(pl, linha.Id);
+			sabe[i] = temLivro && SabeTecnica(pl, linha.Id);
 			if (sabe[i++]) quantas++;
 		}
-		if (quantas == 0) return Arsenal.Vazio;
+		if (quantas + doKit == 0) return Arsenal.Vazio;
 
-		var tiros = new Tiro[quantas];
+		var tiros = new Tiro[quantas + doKit];
 		int k = 0;
 		i = 0;
 		foreach (TecnicasDeLonge.Linha linha in TecnicasDeLonge.Todas)
 		{
 			if (!sabe[i++]) continue;
-			tiros[k++] = new Tiro
-			{
-				Id = linha.Id,
-				AlcanceMin = linha.AlcanceMinTiles * ZoneCollision.TileSize,
-				AlcanceMax = linha.AlcanceMaxTiles * ZoneCollision.TileSize,
-				TempoDeConjuracao = linha.TempoDeConjuracao,
-
-				// O PRECO SAI DA FUNCAO DA PROPRIA TECNICA -- ver o cabecalho de `TecnicasDeLonge`.
-				// Nenhum numero de preco e escrito aqui, e essa e a unica forma de a IA nao decidir
-				// com uma tabela de custos paralela que envelhece.
-				CustoDeKi = linha.CustoDeKi(pl.Ficha),
-
-				PrecisaDeLinhaLivre = linha.PrecisaDeLinhaLivre,
-				Precisao = linha.Precisao,
-			};
+			tiros[k++] = Resolvido(linha, pl.Ficha);
 		}
+		if (doKit >= 1) tiros[k++] = Resolvido(KitDoDeusNaIa.Furia, pl.Ficha);
+		if (doKit >= 2) tiros[k] = Resolvido(KitDoDeusNaIa.Esfera, pl.Ficha);
 		return new Arsenal(tiros);
 	}
+
+	/// <summary>UMA LINHA DE TIRO RESOLVIDA PRA ESTE CORPO: os tiles viram pixels e o preco vira numero.</summary>
+	private static Tiro Resolvido(in TecnicasDeLonge.Linha linha, Fighter f) => new()
+	{
+		Id = linha.Id,
+		AlcanceMin = linha.AlcanceMinTiles * ZoneCollision.TileSize,
+		AlcanceMax = linha.AlcanceMaxTiles * ZoneCollision.TileSize,
+		TempoDeConjuracao = linha.TempoDeConjuracao,
+
+		// O PRECO SAI DA FUNCAO DA PROPRIA TECNICA -- ver o cabecalho de `TecnicasDeLonge`.
+		// Nenhum numero de preco e escrito aqui, e essa e a unica forma de a IA nao decidir
+		// com uma tabela de custos paralela que envelhece.
+		CustoDeKi = linha.CustoDeKi(f),
+
+		PrecisaDeLinhaLivre = linha.PrecisaDeLinhaLivre,
+		Precisao = linha.Precisao,
+	};
 
 	/// <summary>
 	/// SOBROU BRACO OU PERNA PRA APARAR? A MESMA pergunta que o `MeleeResolver.EscolherGuarda` faz
@@ -628,9 +641,16 @@ public partial class GameServer
 	{
 		Fighter f = npc.Ficha;
 		bool temAlvo = alvo != null;
+		bool comOKit = KitNaMaoDaIa(npc);
 
 		return new Percepcao
 		{
+			// O KIT DO DEUS DA DESTRUICAO, so pra quem o carrega: quem ele segura e campo velho do proprio corpo, e as
+			// outras duas sao as perguntas dos PROPRIOS verbs (`OHakaiPega`, `HaKiPraAnular`). Ver `Percepcao`.
+			Segurando = npc.AgarrandoId,
+			HakaiPegaOAlvo = comOKit && alvo != null && OHakaiPega(npc, alvo),
+			HaKiPraAnular = comOKit && HaKiPraAnular(npc),
+
 			IdDoAlvo = alvo?.Id ?? 0,
 			AlvoSeMovendo = alvo?.Moving ?? false,
 			LinhaLivre = quemAtira && alvo != null && LinhaDeVisaoLivre(npc, alvo),

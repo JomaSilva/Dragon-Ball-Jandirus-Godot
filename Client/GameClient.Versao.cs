@@ -104,12 +104,18 @@ public partial class GameClient
 	/// <summary>
 	/// DISCA, com a senha de entrada e a MINHA VERSAO no pedido de conexao. E o que o servidor julga antes de
 	/// existir conexao -- ver `FioDaVersao.PedidoDeConexao`.
+	///
+	/// E COM A PROVA DE ANFITRIAO, quando o alvo e o servidor que ESTE processo esta hospedando: quem a entrega e
+	/// o proprio servidor, por dentro do processo, e ele so a entrega pra esse alvo (nulo pra qualquer outro --
+	/// a prova nunca vai pro servidor de outra pessoa). E ela que faz de quem clicou em "Hospedar partida" o
+	/// admin. Ver `GameServer.Anfitriao.cs`.
 	/// </summary>
 	private NetPeer Discar(string host, int port)
 	{
 		_aperto = Aperto.Discando;
 		_avisoDeVersao = null;
-		return _net.Connect(host, port, FioDaVersao.PedidoDeConexao(MinhaVersao));
+		byte[]? provaDeAnfitriao = Jandirus.Server.GameServer.Instance?.ProvaDoAnfitriaoPara(host, port);
+		return _net.Connect(host, port, FioDaVersao.PedidoDeConexao(MinhaVersao, provaDeAnfitriao));
 	}
 
 	/// <summary>

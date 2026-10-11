@@ -154,6 +154,13 @@ public static class KitDoDeus
 	/// </summary>
 	public static double TiquesDeCarga(double eactspeed) => Math.Max(Stats.DmMath.Round(eactspeed / 3), 1);
 
+	/// <summary>
+	/// O QUE UM DOS DOIS TIROS COBRA DESTE CORPO, em Ki: `GOD_FURYBEAM_KI * usr.BaseDrain` (`:263-264`) ou
+	/// `GOD_SPHERE_KI * usr.BaseDrain` (`:306-307`). E a conta do VERB (`GameServer.AtirarDoKit`) e a que a IA le pra
+	/// decidir (`Ai.KitDoDeusNaIa`): uma expressao so, pra o preco que se decide ser o preco que se paga.
+	/// </summary>
+	public static double CustoDoTiro(bool esfera, Stats.Fighter f) => (esfera ? EsferaKi : FuriaKi) * f.BaseDrain();
+
 	// =====================================================================
 	// O POWER FLICK -- `God_Power_Flick` (`:225-245`)
 	// =====================================================================

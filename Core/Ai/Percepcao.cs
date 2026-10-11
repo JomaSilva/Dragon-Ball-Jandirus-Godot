@@ -153,6 +153,34 @@ public readonly struct Percepcao
 	public Vec2 RumoDaMargem { get; init; }
 
 	// =====================================================================
+	// O KIT DO DEUS DA DESTRUICAO -- so preenchido pra quem o carrega (`Capacidades.KitDoDeus`)
+	// =====================================================================
+
+	/// <summary>
+	/// QUEM ESTE CORPO TEM NOS BRACOS (o id; zero = ninguem). E o `AgarrandoId`, campo velho do PROPRIO corpo --
+	/// custo zero, e nada de clarividencia: quem agarra sabe que agarrou.
+	/// </summary>
+	public int Segurando { get; init; }
+
+	/// <summary>
+	/// O HAKAI PEGARIA O ALVO AGORA? -- a resposta da MESMA pergunta que o verb faz antes de apagar alguem (o torso
+	/// em 15% ou menos e o poder ao menos 25% abaixo, `KitDoDeus.HakaiPega`). Falso pra quem nao carrega o kit, e
+	/// pra o corpo cujo Hakai foi desligado nesta luta.
+	///
+	/// NAO E CLARIVIDENCIA, pela mesma regua do <see cref="PoderDoAlvo"/>: o torso em frangalhos e o que a tela
+	/// mostra (a ferida no sprite, o corpo no chao), e o poder do outro o cerebro ja lia.
+	/// </summary>
+	public bool HakaiPegaOAlvo { get; init; }
+
+	/// <summary>
+	/// HA KI ALHEIO VINDO PRA CIMA DE MIM QUE A ENERGY NULLIFICATION APAGARIA AGORA? -- as perguntas do proprio verb
+	/// (recarga vencida, ataque de outro dono, ao alcance, com menos poder que o meu), mais o rumo: so conta o tiro
+	/// que vem pra ca. E a unica varredura deste bloco, e ela e paga so por quem carrega o kit -- um punhado de
+	/// corpos no mundo inteiro.
+	/// </summary>
+	public bool HaKiPraAnular { get; init; }
+
+	// =====================================================================
 	// DERIVADOS -- funcoes puras dos campos acima, e por isso nao sao campos
 	// =====================================================================
 

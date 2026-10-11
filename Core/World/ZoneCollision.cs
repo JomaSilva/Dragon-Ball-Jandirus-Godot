@@ -135,6 +135,45 @@ public sealed class ZoneCollision
 	/// <summary>Monta em MEMORIA (o planeta procedural nao tem arquivo).</summary>
 	public static ZoneCollision Montar(int w, int h, byte[] bits) => new(w, h, bits);
 
+	/// <summary>
+	/// UMA COPIA DESTE MAPA PRA UMA INSTANCIA -- a nave #7, a mente de um jogador, a Sala do Tempo de um mundo.
+	///
+	/// ============================ A REGRA QUE ISTO SERVE (dono, 2026-10-11) ============================
+	/// **ESTADO QUE MUDA DURANTE O JOGO NUNCA E DIVIDIDO ENTRE DUAS INSTANCIAS DE UM INTERIOR.** A planta (a
+	/// funcao do Core, o `.col` do catalogo) e uma so; quem ESCREVE -- a celula que cai, a porta que abre, a
+	/// maquina que assenta -- escreve na copia da instancia dele. Devolver a propria planta a duas instancias era
+	/// a parede derrubada na nave A abrindo na nave B. O funil do servidor e `GameServer.Interiores.cs`; no
+	/// cliente, a copia e por visita (`PlanetaProcedural`).
+	/// ================================================================================================
+	///
+	/// O QUE E DA PLANTA E FICA O MESMO OBJETO: os planos do arquivo (parede, agua, duro, nuvem, teto). Nenhum e
+	/// escrito no lugar depois de carregado (as funcoes `Carregar*`/`Definir*` trocam o vetor inteiro), entao
+	/// partilha-los nao partilha nada que mude -- e a copia custa um objeto, nao 31 KB de bitset.
+	/// O QUE E DA COPIA: as camadas que mudam em jogo (<see cref="_abertas"/>, <see cref="_obras"/>,
+	/// <see cref="_erguidas"/>, <see cref="_rochas"/>, <see cref="_cobertas"/>, <see cref="_rebrotadas"/>) nascem
+	/// VAZIAS -- a instancia nao herda o estrago de ninguem. As bocas lacradas (<see cref="_seladas"/>) e o
+	/// <see cref="SemBorda"/> sao da planta e vem junto, num conjunto proprio.
+	/// </summary>
+	public ZoneCollision Instanciar()
+	{
+		var copia = (ZoneCollision)MemberwiseClone();
+		copia._abertas = copia._obras = copia._erguidas = copia._rochas = copia._cobertas = copia._rebrotadas = null;
+		copia._seladas = _seladas == null ? null : new HashSet<int>(_seladas);
+		return copia;
+	}
+
+	/// <summary>Esta copia saiu DAQUELA planta? Os planos do arquivo sao o mesmo objeto (a planta responde sim de si mesma).</summary>
+	public bool SaiuDe(ZoneCollision planta) => ReferenceEquals(_bits, planta._bits);
+
+	/// <summary>
+	/// Quantas celulas esta copia mudou em relacao a planta: as abertas, as bloqueadas por obra, as erguidas, as
+	/// rochas, as cobertas e as rebrotadas. Zero = igual ao arquivo. Pra bancada conferir que uma instancia ficou
+	/// intacta enquanto a vizinha mudava.
+	/// </summary>
+	public int CelulasMudadas =>
+		(_abertas?.Count ?? 0) + (_obras?.Count ?? 0) + (_erguidas?.Count ?? 0)
+		+ (_rochas?.Count ?? 0) + (_cobertas?.Count ?? 0) + (_rebrotadas?.Count ?? 0);
+
 	// =====================================================================
 	// A AGUA -- a terceira classe de celula. Ver ClasseDeAgua.
 	// =====================================================================

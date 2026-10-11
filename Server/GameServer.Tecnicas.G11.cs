@@ -581,7 +581,8 @@ public sealed partial class GameServer
 			Avisar(pl, "assinaturas de Ki ao alcance:");
 			foreach ((ServerPlayer q, string rotulo, bool conhecido) in lista)
 			{
-				double razao = q.Ficha.expressedBP / Math.Max(f.expressedBP, 1e-9);
+				// (contra o poder que quem le COMPARA: escondido, o expresso dele e a constante 5 -- ver `PoderQueSeCompara`)
+				double razao = q.Ficha.expressedBP / Math.Max(PoderQueSeCompara(pl), 1e-9);
 				if (!conhecido) razao *= _rng.Next(100, 1001) / 500.0;   // `(rand(100,1000)/500)` -- "a bit random for unfamiliarity"
 				Avisar(pl, $"  {rotulo}: parece ter {razao:0.##}x o seu poder");
 			}

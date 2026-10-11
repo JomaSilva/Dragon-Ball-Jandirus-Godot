@@ -585,11 +585,18 @@ public sealed partial class GameServer
 		{
 			Avisar(doador, $"{pl.Name} aceitou a guarda. Agora DIGA o seu pedido na janela de desejos -- "
 						 + "só você escolhe, e ele não pode trocá-lo.");
-			MandarSupers(doador);
 			// A JANELA DE QUEM EMPRESTOU ABRE NA LISTA: e a vez dele de escolher o que o porta-voz vai dizer.
 			MandarOMenuDoDragao(doador, abrir: true, qual: QualDragao.Super);
 		}
-		MandarSupers(pl);
+
+		// AS SETE TROCARAM DE MAO: o placar dos dois e a legenda de cada esfera desenhada, pra quem estiver
+		// olhando uma. Saia so pros dois -- o mesmo defeito, e o mesmo botao, do `FecharADisputa`.
+		if (PosseDaSuperSoPraQuemTomouDeTeste)
+		{
+			if (doador != null) MandarSupers(doador);
+			MandarSupers(pl);
+		}
+		else foreach (ServerPlayer p in Jogadores) MandarSupers(p);
 		GD.Print($"[super] {o.DeNome} transferiu as sete a {pl.Name} (beneficiario: {o.DeNome})");
 	}
 

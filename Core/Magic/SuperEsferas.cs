@@ -215,7 +215,24 @@ public static class SuperEsferas
 
 		string plural = quantasSentidas > 1 ? $"{quantasSentidas} sinais dourados" : "um sinal dourado";
 		return celulas <= 0
-			? $"RADAR: {plural} -- NESTA célula, perto de ({ondeEla.X:0}, {ondeEla.Y:0})!"
+			? $"RADAR: {plural} -- NESTA célula, perto de {OndeNaFrase(ondeEla)}!"
 			: $"RADAR: {plural} a {celulas} célula{(celulas > 1 ? "s" : "")} daqui.";
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagdesejos`): a frase do radar volta a dar o ponto em PIXELS do mundo -- o
+	/// estado de antes de 2026-10-11, 32 vezes o numero que a aba World escreve. Lido pelo <see cref="OndeNaFrase"/>.
+	/// </summary>
+	public static bool RadarEmPixelsDeTeste;
+
+	/// <summary>
+	/// O PONTO DA ESFERA, NA UNIDADE EM QUE O JOGADOR LE A PROPRIA POSICAO: as coordenadas da aba World
+	/// (<see cref="MapaDoLugar.Coordenadas"/>, em TILES).
+	///
+	/// A frase dava o `(x, y)` em PIXELS. No DM o `(x,y)` do setor e em tiles, que la e a unica unidade; aqui a
+	/// posicao do mundo e em pixels, e a aba World (feita em 2026-10-10) escreve tiles -- 32 vezes menos. Quem
+	/// seguisse a frase olhando a linha "Coordenadas" procurava a esfera no lugar errado. Uma funcao so pros dois.
+	/// </summary>
+	private static string OndeNaFrase(Vec2 ondeEla) =>
+		RadarEmPixelsDeTeste ? $"({ondeEla.X:0}, {ondeEla.Y:0})" : MapaDoLugar.Coordenadas(ondeEla);
 }

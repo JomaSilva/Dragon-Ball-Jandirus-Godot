@@ -34,12 +34,51 @@ public static class SalaDoTempo
 	/// <summary>O nome da zona (a area do `.dmm` do z13).</summary>
 	public const string Zona = "Hyperbolic_Time_Chamber";
 
+	/// <summary>
+	/// A MARCA DA SESSAO ABERTA NA SALA DA TERRA, no campo em que o personagem guarda "a porta por onde entrei"
+	/// (`ServerPlayer.SalaPlaneta`, no save): numa sala de planeta o campo leva o nome do mundo; na da Terra leva
+	/// isto -- o lugar em que a porta dela fica. Nome de mundo sorteado nenhum tem espaco, entao os dois nunca se
+	/// confundem. Quem le e o servidor (`GameServer.SalaPresenca.cs`): a sessao e do personagem, e nao de uma lista.
+	/// </summary>
+	public const string PortaDaTerra = "Templo Sagrado";
+
 	/// <summary>Esta zona e a Sala do Tempo?</summary>
 	public static bool EhASala(string nomeDaZona) =>
 		string.Equals(nomeDaZona, Zona, StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>A mesma pergunta com a chave de zona -- so `Premade` pode ser a Sala.</summary>
 	public static bool EhASala(ZoneKey z) => z.Kind == ZoneKey.KindPremade && EhASala(z.Name);
+
+	// =====================================================================
+	// AS SALAS DE PLANETA (dono, 2026-10-11) -- A SEPARACAO MORA AQUI, E SO AQUI
+	// =====================================================================
+	// Cada mundo sorteado que tem uma Sala do Tempo (`SalaDePlaneta`) ganha uma INSTANCIA deste mesmo mapa: a zona
+	// e `ZoneKey.Interior(Zona, seed do mundo)` -- o MESMO nome, outro tipo. Tudo o que pergunta pelo NOME (a
+	// colisao sem borda, a cena, as passagens, a ficha de planeta com a gravidade 10x e os climas) responde pelas
+	// duas de graca. O que pergunta pela CHAVE tem de escolher, e sao tres perguntas diferentes:
+	//
+	//   EhASala(z)      a DA TERRA, e so ela: a chave do Guardiao, a lotacao por assinatura, a janela de dois
+	//                   minutos, a PRISAO, o `sala_soltar`, a comida;
+	//   EhDePlaneta(z)  uma das de planeta: sem guardiao, EXPULSA no fim da sessao, dilatacao sorteada;
+	//   EhUmaSala(z)    qualquer uma -- o que e do LUGAR: o ritmo do treino, o envelhecimento, o ceu e o clima, o
+	//                   cronometro da tela, a recarga (UM relogio por personagem, pra todas).
+	//
+	// Quem escrever uma regra nova da Sala escolhe uma das tres. Comparar o nome da zona a mao volta a responder
+	// pelas duas sem ninguem ter decidido.
+
+	/// <summary>Esta zona e a Sala do Tempo de um MUNDO SORTEADO? So `Interior` com o nome da Sala pode ser.</summary>
+	public static bool EhDePlaneta(ZoneKey z) => z.Kind == ZoneKey.KindInterior && EhASala(z.Name);
+
+	/// <summary>Esta zona e uma Sala do Tempo -- a da Terra ou a de um mundo sorteado?</summary>
+	public static bool EhUmaSala(ZoneKey z) => EhASala(z) || EhDePlaneta(z);
+
+	/// <summary>
+	/// QUANTOS ANOS PASSAM NESTA ZONA POR DIA IN-GAME: 1 na Sala da Terra, o sorteio da seed numa sala de planeta
+	/// (<see cref="SalaDePlaneta.Dilatacao"/>, de 3 meses a 5 anos), e ZERO em todo o resto do universo -- o zero
+	/// e a resposta a "isto e uma Sala?" sem exigir duas perguntas.
+	/// </summary>
+	public static double Dilatacao(ZoneKey z) =>
+		EhASala(z) ? SalaDePlaneta.DilatacaoDaTerra : EhDePlaneta(z) ? SalaDePlaneta.Dilatacao(z.Seed) : 0;
 
 	/// <summary>
 	/// ESTA ZONA NAO TEM BEIRADA: fora do mapa desenhado ha chao, e nao o fim do mundo.
@@ -106,12 +145,37 @@ public static class SalaDoTempo
 	/// dono e que a sala **nao expulsa**, ela prende -- 13.6c). Sem este segundo argumento, quem
 	/// ficasse preso treinaria a 280x pra sempre, e a prisao viraria premio.
 	/// </param>
-	public static void AplicarRitmo(Stats.Fighter f, string nomeDaZona, bool sessaoValendo = true)
+	/// <remarks>
+	/// ============================ O GANHO ESCALA COM A DILATACAO; A MAESTRIA NAO ============================
+	/// *"na terra 1 dia fora é 1 ano la dentro (multiplicador de ganhos do jogo considera isso)"* (dono,
+	/// 2026-10-11): os 280x SAO a dilatacao de 1 ano por dia. Numa sala de planeta o mesmo numero anda com a
+	/// dilatacao DELA -- 70x na de 3 meses, 1400x na de 5 anos (<see cref="GanhoDeBp"/>).
+	///
+	/// A MAESTRIA FICA EM 4x EM TODA SALA. DECISAO DESTA CAMADA, e ela sai da frase que ja esta escrita em
+	/// <see cref="MaestriaMult"/>: maestria *"e costume, nao tempo"* -- o 4 foi separado do 280 justamente pra
+	/// nao andar com o tempo comprimido. Escala-la pela dilatacao a amarraria de volta (20x na sala de 5 anos, e
+	/// NENHUM bonus na de 3 meses).
+	/// ======================================================================================================
+	/// </remarks>
+	public static void AplicarRitmo(Stats.Fighter f, ZoneKey zona, bool sessaoValendo = true)
 	{
-		bool dentro = EhASala(nomeDaZona) && sessaoValendo;
-		f.zoneGainMult = dentro ? Stats.GainKnobs.TimeChamberMult : 1;
-		f.zoneMasteryMult = dentro ? MaestriaMult : 1;
+		double dilatacao = sessaoValendo ? Dilatacao(zona) : 0;
+		f.zoneGainMult = dilatacao > 0 ? GanhoDeBp(dilatacao) : 1;
+		f.zoneMasteryMult = dilatacao > 0 ? MaestriaMult : 1;
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada --salasteste): a sala de planeta rende os 280x da Terra, seja qual for a
+	/// dilatacao dela. Lido pela propria regra, em <see cref="GanhoDeBp"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool GanhoSemDilatacaoDeTeste;
+
+	/// <summary>
+	/// O MULTIPLICADOR DE GANHO DE BP de uma sala que dilata tantos anos por dia: os 280 da Terra
+	/// (<see cref="Stats.GainKnobs.TimeChamberMult"/>, "um dia la dentro vale um ano de treino") vezes a dilatacao.
+	/// </summary>
+	public static double GanhoDeBp(double anosPorDia) =>
+		Stats.GainKnobs.TimeChamberMult * (GanhoSemDilatacaoDeTeste ? 1 : anosPorDia);
 
 	// =====================================================================
 	// A SESSAO -- quanto tempo a sala rende, e em que unidade isso se conta
@@ -139,6 +203,30 @@ public static class SalaDoTempo
 	/// envelhece exatamente 2 anos, que e o que ela paga em treino.
 	/// </summary>
 	public const double AnosPorDia = 1;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada --salasteste): a sala de planeta envelhece um ano por dia in-game, como a da
+	/// Terra -- a de 5 anos sairia de graca. Lido pela propria regra, em <see cref="AnosFechados"/>. Falso em jogo.
+	/// </summary>
+	public static bool IdadeSemDilatacaoDeTeste;
+
+	/// <summary>
+	/// QUANTOS ANOS DE IDADE FECHARAM entre dois instantes da sessao (em dias in-game), numa sala que dilata
+	/// <paramref name="anosPorDia"/>. *"Envelhece 5 anos mt rapidamente"*: a idade anda com a dilatacao -- na sala de
+	/// 5 anos, um ano a cada 4,8 minutos reais, dez na sessao inteira.
+	///
+	/// O ANO ENTRA QUANDO FECHA, como sempre foi na Sala da Terra (a idade do port e inteira): o que sobra de uma
+	/// sessao nao vira idade. Na da Terra isso so custa a quem sai no meio de um dia; na sala de 3 meses a sessao
+	/// INTEIRA soma meio ano -- e portanto ela nao envelhece ninguem. Declarado, e listado pro dono.
+	/// </summary>
+	public static int AnosFechados(double diasAntes, double diasDepois, double anosPorDia)
+	{
+		double taxa = AnosPorDia * (IdadeSemDilatacaoDeTeste ? 1 : anosPorDia);
+		return (int)Math.Floor(diasDepois * taxa + 1e-9) - (int)Math.Floor(diasAntes * taxa + 1e-9);
+	}
+
+	/// <summary>Quantos anos passam la dentro na sessao inteira de uma sala: `SessaoEmDias` x a dilatacao dela.</summary>
+	public static double AnosDaSessao(double anosPorDia) => SessaoEmDias * AnosPorDia * anosPorDia;
 
 	/// <summary>
 	/// A JANELA PRA SAIR, EM MINUTOS REAIS (regra do dono 13.6c). Dois minutos entre o fim dos

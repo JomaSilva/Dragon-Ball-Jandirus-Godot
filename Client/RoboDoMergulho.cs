@@ -639,11 +639,12 @@ public partial class RoboDoMergulho : Node2D
 
 		// ---- DEFEITO da familia 6: o quarto fechado de volta.
 		//
-		// A INJECAO E NA PLANTA E ELA VALE PRAS DUAS PONTAS de uma vez, porque a planta e literalmente
-		// o mesmo objeto nos dois lados (o servidor a pega em `MapaDaMente`, o cliente em
-		// `PlanetaProcedural.Colisao`). E ela e feita ANTES de reentrar na mente de proposito: o pintor
-		// do cliente le o `SemBorda` no NASCIMENTO da zona, entao entrar depois da injecao devolve
-		// tambem a metade DESENHADA do defeito (fora da chapa nao se pinta nada).
+		// A INJECAO E NA PLANTA, de onde as duas pontas tiram a copia de cada mente (o servidor em
+		// `GameServer.Interiores.cs`, por instancia; o cliente em `PlanetaProcedural`, por visita). E ela e
+		// feita ANTES de reentrar na mente de proposito: o cliente tira a copia dele -- e o pintor le o
+		// `SemBorda` -- no NASCIMENTO da zona, entao entrar depois da injecao devolve o defeito inteiro deste
+		// lado: o corpo para na beirada (quem preve o passo e o cliente) e fora da chapa nao se pinta nada.
+		// A copia do SERVIDOR pode ser a da visita anterior (ela so e solta com a mente vazia ha um minuto).
 		await SairDaMenteSeEstiver();
 		TerrenoGerado planta = DimensaoMental.Planta();
 		planta.Colisao.SemBorda = false;

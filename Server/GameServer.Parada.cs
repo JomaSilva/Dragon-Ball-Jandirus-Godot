@@ -83,11 +83,19 @@ public partial class GameServer
 
 	/// <summary>
 	/// DEFEITO INJETADO (bancada `--paradateste`): o `Stop` volta a NAO esquecer a sessao -- o de antes de
-	/// 2026-10-11, que deixava pra proxima subida quem estava logado, o relogio do povoamento, o desarme do
-	/// admin por endereco, as vagas da Sala do Tempo e o torneio em disputa. Lido pela propria linha do
+	/// 2026-10-11, que deixava pra proxima subida quem estava logado, o relogio do povoamento, a prova de
+	/// quem hospedava, as vagas da Sala do Tempo e o torneio em disputa. Lido pela propria linha do
 	/// conserto, em <see cref="EsquecerASessaoQueAcabou"/>.
 	/// </summary>
 	internal bool ParadaLembraDaSessaoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--paradateste`): a parada volta a NAO esquecer o estrago da sessao -- a de antes,
+	/// em que a parede derrubada, a porta aberta, o toco, a rocha colhida, o mundo sorteado carregado e a copia de
+	/// cada interior passavam pra subida seguinte. Lido pela propria linha do conserto, em
+	/// <see cref="EsquecerASessaoQueAcabou"/>.
+	/// </summary>
+	internal bool ParadaLembraDoEstragoDeTeste;
 
 	/// <summary>
 	/// A PARADA ESTA DERRUBANDO OS JOGADORES. Quem le e o que a parada PERDOA em quem ela derruba: hoje, a
@@ -139,8 +147,8 @@ public partial class GameServer
 	/// O SERVIDOR PAROU: O QUE ERA DA SESSAO NAO PASSA PRA PROXIMA SUBIDA. Chamado pelo `Stop()`, depois de a
 	/// rede fechar e junto das tres colecoes que ele ja esvaziava (`_players`, `_byPeer`, `_zones`).
 	///
-	/// Sao cinco estados que so existem em memoria e que o boot encontra zerados. Nenhum `Drop` os desfaz: o
-	/// primeiro so e consequencia dele no `SalvarEParar`, e os outros quatro sao do MUNDO, nao de um jogador.
+	/// Sao seis estados que so existem em memoria e que o boot encontra zerados. Nenhum `Drop` os desfaz: o
+	/// primeiro so e consequencia dele no `SalvarEParar`, e os outros cinco sao do MUNDO, nao de um jogador.
 	/// </summary>
 	private void EsquecerASessaoQueAcabou()
 	{
@@ -164,14 +172,10 @@ public partial class GameServer
 		_proximaManutencao = 0;
 		_relogioDoPovoamento = 0;
 
-		// 3. O ADMIN POR ENDERECO. O desarme automatico (duas contas locais ao mesmo tempo) e da SESSAO que as
-		// viu e se desfaz com ela: a subida seguinte comeca com a chave armada, como o boot. O `--sem-admin-local`
-		// e do processo e FICA -- quem separa os dois e o `_enderecoAmbiguo` (`GameServer.Admin.cs`).
-		if (_enderecoAmbiguo)
-		{
-			AdminPorEndereco = true;
-			_enderecoAmbiguo = false;
-		}
+		// 3. A PROVA DE QUEM HOSPEDAVA. Ela e desta hospedagem e morre com ela: quem hospedar de novo recebe
+		// outra, e a antiga nao abre mais nada -- inclusive se o servidor subir de novo SEM anfitriao. Ver
+		// `GameServer.Anfitriao.cs`.
+		EsquecerOAnfitriao();
 
 		// 4. AS VAGAS DA SALA DO TEMPO. O `_naSala` guarda a vaga de quem caiu la dentro e so existe em memoria:
 		// a propria sala escreve que "um reinicio de servidor esvazia a sala" e que a vaga volta no login
@@ -187,5 +191,70 @@ public partial class GameServer
 		// personagem (a trava da espera e o "nao letal" sao da sessao): quem estava na arena e gravado onde
 		// estava, livre.
 		if (_torneio != null) EncerrarTorneio(_torneio);
+
+		// 6. O ESTRAGO DA SESSAO. O cenario derrubado, as portas abertas, os tocos e as rebrotas, as rochas de
+		// minerio de pe, as pecas no chao, a comida da Sala, os mundos sorteados carregados e as copias de cada
+		// interior so existem em memoria -- e a subida no mesmo processo nao rele mapa nenhum (`Start` carrega uma
+		// vez so). Sem isto a parede derrubada antes da parada continuava no chao pra sempre.
+		if (!ParadaLembraDoEstragoDeTeste) EsquecerOEstragoDaSessao();
+	}
+
+	/// <summary>
+	/// O ESTRAGO DA SESSAO NAO ATRAVESSA A PARADA -- e o MAPA volta inteiro junto com a LISTA.
+	///
+	/// ============================ O QUE SOBRAVA (medido pela `--paradateste`, 2026-10-11) ============================
+	/// O cenario derrubado vive so na memoria (`_cenarioCaido`: *"o mapa tem que voltar ao normal quando o servidor
+	/// reinicia"*), e reiniciar o PROCESSO o zera porque os mapas sao relidos do disco. Parar e subir no mesmo
+	/// processo nao rele nada: a parede derrubada continuava caida -- na lista, no mapa que barra, no que cega e no
+	/// retrato de quem entrava --, a porta aberta continuava no relogio, o toco continuava toco, a rocha de minerio
+	/// continuava onde estava, o mundo sorteado continuava carregado com o buraco dele, e a copia de cada interior
+	/// continuava viva. Lista e mapa nao discordavam um do outro; os dois discordavam do BOOT.
+	///
+	/// ============================ A REGUA ============================
+	/// O que um reinicio de processo zeraria, a parada zera; o que esta gravado em disco FICA (as construcoes do
+	/// `mundo.json`, as bases, a reserva de minerio de cada planeta, os saves). Tudo aqui e do MUNDO, e nenhum `Drop`
+	/// desfaz. Um ponto so: quem inventar outro estrago de sessao poe a linha dele AQUI.
+	///
+	/// A ORDEM IMPORTA NUM PONTO: a mobilia do mapa volta DEPOIS de as celulas fecharem. A celula de uma mobilia
+	/// densa barra pelo bit do arquivo (`ACelulaDaObraCaiu`), e refecha-la sem a obra de volta deixaria uma parede
+	/// sem desenho -- e o mesmo par do `Restaurar` do admin (`AdminConsertarCenario`).
+	/// </summary>
+	private void EsquecerOEstragoDaSessao()
+	{
+		// AS LISTAS: o que caiu, o que esta aberto, o que virou toco ou rebrotou, as rochas de pe, as pecas no chao.
+		_cenarioCaido.Clear();
+		_portasAbertas.Clear();
+		_lenha.Clear();
+		_arvoresDoMundo.Clear();
+		_rochas.Clear();
+		_rochasVistas.Clear();
+		_pecasNoChao.Clear();
+		_pecasContadas.Clear();
+
+		// A COMIDA DA SALA DO TEMPO e da sessao (porcao e obra `DoMapa`, fora do disco): a mesa sai com quem comia.
+		if (_comidaPosta) RecolherComidaDaSala();
+
+		// OS MUNDOS SORTEADOS SAEM DA MEMORIA, como no boot (nenhum carregado): cada um renasce da seed -- sem buraco,
+		// com o pomar e a porta da Sala dele --, pela mesma saida da poda.
+		foreach (ulong hash in _zonasGeradas.Keys.ToList()) DescarregarOMundoGerado(hash);
+
+		// AS COPIAS DE INTERIOR (`GameServer.Interiores.cs`): renascem da planta na primeira pergunta, e as listas
+		// de que elas se vestem acabaram de ser zeradas.
+		_interiores.Clear();
+		_interioresPorChave.Clear();
+		_chavesDeMundoSorteado.Clear();
+
+		// OS MAPAS DE ARQUIVO VOLTAM AO ARQUIVO: o que estava aberto (parede caida, porta) fecha, a arvore que
+		// rebrotou tomba, a rocha sai -- no mapa que barra e no que cega. As camadas do que esta em DISCO ficam
+		// (as construcoes e as bases), e as bocas lacradas tambem. E a mobilia do mapa que caiu volta de pe.
+		if (_catalogo == null) return;
+		foreach (Jandirus.Core.World.ZoneEntry e in _catalogo.Todas)
+		{
+			e.Mapa?.FecharTudo();
+			e.Mapa?.TombarTudo();
+			e.Mapa?.LimparRochas();
+			e.Vista?.FecharTudo();
+			PorMobiliaDoMapa(e, soAQueFalta: true);
+		}
 	}
 }

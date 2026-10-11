@@ -91,6 +91,7 @@ public partial class MenuJogo
 		["Release From Time Chamber"] = "Ir e trazer",
 		["Ir Para A Estrela"] = "Ir e trazer",
 		["Ir Para O Mundo Divino"] = "Ir e trazer",
+		["Ir Para A Sala Do Tempo"] = "Ir e trazer",
 
 		["Assess Target"] = "Enxergar",
 		["Assess All"] = "Enxergar",

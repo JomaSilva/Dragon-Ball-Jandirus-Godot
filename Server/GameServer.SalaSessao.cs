@@ -117,9 +117,15 @@ public sealed partial class GameServer
 	// =====================================================================
 	// A PERGUNTA QUE O RESTO DO SERVIDOR FAZ
 	// =====================================================================
-	/// <summary>Este corpo esta dentro da Sala do Tempo?</summary>
-	private static bool NaSala(ServerPlayer pl) =>
-		string.Equals(pl.Zone.Name, ZonaDaSala, StringComparison.OrdinalIgnoreCase);
+	/// <summary>
+	/// Este corpo esta dentro da Sala do Tempo -- A DA TERRA?
+	///
+	/// PELA CHAVE, E NAO PELO NOME DA ZONA (2026-10-11): a sala de um mundo sorteado e uma instancia do mesmo mapa,
+	/// com o MESMO nome e outro tipo (`SalaDoTempo.EhDePlaneta`). Tudo o que esta funcao guarda -- a lotacao, a
+	/// janela, a PRISAO, a comida -- e so da Terra; quem pergunta pelas de planeta e o `NaSalaDePlaneta`
+	/// (`GameServer.SalasDePlaneta.cs`). A separacao esta escrita em `Core/World/SalaDoTempo.cs`.
+	/// </summary>
+	private static bool NaSala(ServerPlayer pl) => Jandirus.Core.World.SalaDoTempo.EhASala(pl.Zone);
 
 	/// <summary>
 	/// ESTE CORPO ESTA NA SALA **COM SESSAO ABERTA**?
@@ -131,9 +137,17 @@ public sealed partial class GameServer
 	/// dono manteria "alguem rendendo" pra sempre e a comida nunca sumiria; pior, ele envelheceria
 	/// um ano por dia in-game sem nunca ter pedido nada.
 	/// ==============================================================================
+	///
+	/// ============================ A SESSAO E A MARCA NO PERSONAGEM, E NAO A LISTA (2026-10-11) ============================
+	/// Esta pergunta lia o `_naSala`, e dava pra sair dele SEM SAIR DA SALA: a vaga saia com a zona do corpo, e o
+	/// transe, a fusao e a absorcao trocam a zona de quem continua la dentro. Quem voltava nao era mais contado -- e
+	/// seguia rendendo 280x, porque o funil de ritmo so perguntava pelos dias (medido: tres dias in-game sem a conta
+	/// andar). Agora a sessao e de quem ATRAVESSOU A PORTA e nao saiu de verdade: a marca esta no proprio personagem
+	/// (`SalaDoTempo.PortaDaTerra` em `ServerPlayer.SalaPlaneta`, no save). O `_naSala` continua sendo so a LOTACAO.
+	/// Ver `GameServer.SalaPresenca.cs`.
+	/// ====================================================================================================================
 	/// </summary>
-	private bool TemSessaoNaSala(ServerPlayer pl) =>
-		NaSala(pl) && pl.Assinatura.Length > 0 && _naSala.ContainsKey(pl.Assinatura);
+	private static bool TemSessaoNaSala(ServerPlayer pl) => NaSala(pl) && TemASessaoDaTerra(pl);
 
 	/// <summary>
 	/// A SESSAO DESTE CORPO AINDA PAGA? E a pergunta que o funil de gravidade
@@ -142,9 +156,21 @@ public sealed partial class GameServer
 	/// FORA DA SALA A RESPOSTA E `true` E ELA NAO SIGNIFICA NADA: quem le isto ja perguntou se a
 	/// zona e a Sala (o `AplicarRitmo` faz as duas perguntas). Devolver `false` aqui fora seria
 	/// dizer "a sessao dele acabou" de todo mundo que nunca entrou.
+	///
+	/// NUMA SALA DE PLANETA so paga quem tem SESSAO ABERTA nela -- quem atravessou a porta (`TemSessaoNaSalaDePlaneta`).
+	/// La nao ha chave nem guardiao, entao o corpo que chega de carona (o passageiro de uma fusao que se separa la
+	/// dentro) ganharia a sala inteira sem armar a recarga. Ver `GameServer.SalasDePlaneta.cs`.
 	/// </summary>
 	private static bool SessaoDaSalaValendo(ServerPlayer pl) =>
-		!NaSala(pl) || Jandirus.Core.World.SalaDoTempo.SessaoValendo(pl.SalaDiasDaSessao);
+		NaSalaDePlaneta(pl)
+			? (TemSessaoNaSalaDePlaneta(pl) || SemSessaoTambemRendeDeTeste)
+			  && Jandirus.Core.World.SalaDoTempo.SessaoValendo(pl.SalaDiasDaSessao)
+			// NA DA TERRA TAMBEM (2026-10-11): estar no z13 com dias sobrando nao basta -- so paga quem tem a sessao
+			// ABERTA (atravessou a porta e nao saiu de verdade). Era aqui que a carona e quem voltava de um bolso
+			// rendiam 280x sem a conta andar. Ver `GameServer.SalaPresenca.cs`.
+			: !NaSala(pl)
+			  || ((TemASessaoDaTerra(pl) || SemSessaoTambemRendeDeTeste)
+				  && Jandirus.Core.World.SalaDoTempo.SessaoValendo(pl.SalaDiasDaSessao));
 
 	// =====================================================================
 	// O QUE A TELA MOSTRA (ver `Protocol.AtributosState.SalaFase`)
@@ -164,8 +190,11 @@ public sealed partial class GameServer
 	/// </summary>
 	private static byte FaseDaSalaPraTela(ServerPlayer pl)
 	{
+		// A SALA DE PLANETA SO TEM UMA FASE: rendendo. Ela nao tem janela nem prisao -- quando a sessao acaba, expulsa.
+		if (NaSalaDePlaneta(pl)) return SessaoDaSalaValendo(pl) ? (byte)1 : (byte)0;
 		if (!NaSala(pl)) return 0;
 		if (pl.SalaPreso) return 3;
+		if (!TemASessaoDaTerra(pl)) return 0;   // la dentro sem ter atravessado a porta: nao ha sessao pra mostrar
 		return Jandirus.Core.World.SalaDoTempo.SessaoValendo(pl.SalaDiasDaSessao) ? (byte)1 : (byte)2;
 	}
 
@@ -178,7 +207,11 @@ public sealed partial class GameServer
 	/// </summary>
 	private static double MinutosDaSalaPraTela(ServerPlayer pl)
 	{
-		if (!NaSala(pl) || pl.SalaPreso) return 0;
+		if (NaSalaDePlaneta(pl))
+			return SessaoDaSalaValendo(pl)
+				? Math.Max(Jandirus.Core.World.SalaDoTempo.MinutosQueFaltam(pl.SalaDiasDaSessao), 0)
+				: 0;
+		if (!NaSala(pl) || pl.SalaPreso || !TemASessaoDaTerra(pl)) return 0;
 
 		double faltam = Jandirus.Core.World.SalaDoTempo.MinutosQueFaltam(pl.SalaDiasDaSessao);
 		if (faltam > 0) return faltam;
@@ -204,14 +237,32 @@ public sealed partial class GameServer
 		// A COMIDA ENTRA NA CONDICAO DE PARADA, e nao so a lotacao: a ultima pessoa some de
 		// `_naSala` no mesmo tique em que sai da zona (`TickDaSalaDoTempo`), e um `return` que
 		// olhasse so a lotacao deixaria as porcoes postas na sala vazia pra sempre.
-		if (_naSala.Count == 0 && !_comidaPosta) return;
+		//
+		// ...E QUEM ESTA DE PE NA ZONA TAMBEM: a sessao e a marca no personagem, e nao a lista (ver `TemSessaoNaSala`).
+		if (_naSala.Count == 0 && !_comidaPosta
+			&& _zones.GetValueOrDefault(ZoneKey.Premade(ZonaDaSala).Hash) is not { Count: > 0 }) return;
 
 		long agora = NowMs();
 		bool alguemRendendo = false;
 
 		foreach (ServerPlayer pl in _players.Values)
 		{
-			if (!NaSala(pl)) continue;
+			if (!NaSala(pl))
+			{
+				// ============================ NUM BOLSO DENTRO DA SALA ============================
+				// Em transe, passageiro de quem esta la, absorvido por quem esta la: ele NAO saiu (a vaga continua
+				// dele -- `TickDaSalaDoTempo`), mas tambem nao esta treinando: a conta de dias e a idade PARAM, e
+				// continuam de onde pararam quando ele voltar a ficar de pe la dentro.
+				//
+				// A JANELA E A TRANCA NAO PARAM. Elas sao relogio de parede (a regra do dono: dois minutos, e a
+				// porta tranca), e paradas aqui eram a fuga: fundia-se na janela e a tranca nunca fechava. Preso
+				// dentro do outro, quem o carrega nao sai (`PresoQueEsteCorpoCarrega`).
+				// ================================================================================
+				if (TemASessaoDaTerra(pl) && !TrancaNaoFechaNoBolsoDeTeste
+					&& !Jandirus.Core.World.SalaDoTempo.SessaoValendo(pl.SalaDiasDaSessao) && NaSalaDaTerraDeVerdade(pl))
+					JanelaOuTranca(pl, agora);
+				continue;
+			}
 
 			if (!TemSessaoNaSala(pl)) continue;
 
@@ -259,8 +310,17 @@ public sealed partial class GameServer
 		// `HTC_AGE_PER_GAME_DAY = 1`. A idade do port e INTEIRA (`ServerPlayer.Idade`), entao o ano
 		// entra quando o dia FECHA -- e o gatilho e a travessia do piso do numero que ja persiste,
 		// e nao um segundo acumulador que pudesse discordar dele depois de um relog.
-		int diasFechados = (int)Math.Floor(pl.SalaDiasDaSessao) - (int)Math.Floor(antes);
-		for (int i = 0; i < diasFechados; i++) EnvelhecerNaSala(pl);
+		//
+		// VEZES A DILATACAO DA SALA (dono, 2026-10-11: a de 5 anos "envelhece 5 anos mt rapidamente"): na da Terra
+		// ela e 1 e a conta e a de sempre; numa sala de planeta os anos fecham D vezes mais depressa -- ou, na de 3
+		// meses, nao chegam a fechar. Ver `SalaDoTempo.AnosFechados`.
+		int anosFechados = Jandirus.Core.World.SalaDoTempo.AnosFechados(
+			antes, pl.SalaDiasDaSessao, Jandirus.Core.World.SalaDoTempo.Dilatacao(pl.Zone));
+		for (int i = 0; i < anosFechados && !pl.Ficha.dead; i++) EnvelhecerNaSala(pl);
+
+		// O ANO QUE FECHOU PODE TER MATADO DE VELHICE (`ConferirMorteDeVelhice`): o corpo ja esta a caminho do
+		// alem, e o resto deste passo falaria de uma sala em que ele nao esta mais.
+		if (!EmAlgumaSala(pl)) return;
 
 		// ============================ OS AVISOS 10/5/1 ============================
 		// Os mesmos do DM (`TimeChamber.dm:110-116`). Sem eles a sessao acaba do nada, e a janela
@@ -283,8 +343,10 @@ public sealed partial class GameServer
 		// sessao e a saida pela porta apagam o bonus pelo MESMO caminho.
 		AplicarGravidade(pl);
 		MandarAtributos(pl);
-		Avisar(pl, "seus dois dias na Sala do Tempo se completam. Os ganhos voltam ao normal e a "
-				   + "comida some.");
+		// SO NA DA TERRA: a de planeta nao tem comida, e a frase do fim dela e a da expulsao (`DevolverAoMundo`).
+		if (NaSala(pl))
+			Avisar(pl, "seus dois dias na Sala do Tempo se completam. Os ganhos voltam ao normal e a "
+					   + "comida some.");
 		GD.Print($"[server] sala do tempo: a sessao de {pl.Name} acabou ({pl.SalaDiasDaSessao:0.##} dias)");
 	}
 
@@ -541,5 +603,6 @@ public sealed partial class GameServer
 	{
 		_avisoDaSala.Remove(id);
 		_avisoDePrisao.Remove(id);
+		EsquecerASalaDePlaneta(id);   // ...e o ruido das salas de planeta (a saida pendente), pelo mesmo motivo
 	}
 }

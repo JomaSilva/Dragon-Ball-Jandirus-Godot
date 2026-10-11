@@ -125,6 +125,7 @@ public partial class Hud : CanvasLayer
 			cli.ConviteDeTorneioFechou += AoFecharConviteDeTorneio;
 			cli.ChaveDeTorneio += AoChaveDeTorneio;
 			cli.SheetUpdated += Mostrar;
+			cli.PoderEmUsoMudou += MostrarOPoderEmUso;
 			cli.AtributosRecebidos += MostrarPoderes;
 			cli.ActivityChanged += MostrarAtividade;
 			cli.MiraMudou += AoMudarMira;
@@ -143,6 +144,7 @@ public partial class Hud : CanvasLayer
 		SoltarAsEscalas();
 		if (GameClient.Instance is not { } cli) return;
 		cli.SheetUpdated -= Mostrar;
+		cli.PoderEmUsoMudou -= MostrarOPoderEmUso;
 		cli.AtributosRecebidos -= MostrarPoderes;
 		cli.ActivityChanged -= MostrarAtividade;
 		// ESTES DOIS FALTAVAM, e faltavam por serem lambdas: `-=` precisa do mesmo delegate, e
@@ -231,6 +233,7 @@ public partial class Hud : CanvasLayer
 		var linhaBp = new HBoxContainer();
 		linhaBp.AddThemeConstantOverride("separation", 8);
 		v.AddChild(linhaBp);
+		MontarOPoderEmUso(v);   // a linha "USANDO 40% DO PODER" / "PODER ESCONDIDO", logo abaixo do BP -- so aparece fora do padrao. Ver `Hud.PoderEmUso.cs`
 
 		_bp = new Label { Text = "" };
 		_bp.AddThemeFontSizeOverride("font_size", 13);

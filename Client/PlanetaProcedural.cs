@@ -69,7 +69,17 @@ public partial class PlanetaProcedural : Planeta
 	/// A colisao -- a MESMA que o servidor gerou, a partir da mesma seed. E o que o
 	/// <see cref="LocalPlayer"/> usa pra colidir e o que impede a briga cliente-servidor.
 	/// </summary>
-	public ZoneCollision? Colisao => Terreno?.Colisao;
+	public ZoneCollision? Colisao => _colisaoDaVisita ?? Terreno?.Colisao;
+
+	/// <summary>
+	/// A COPIA DESTA VISITA, quando o terreno e uma PLANTA do Core (<see cref="TerrenoPronto"/>: a nave, a mente, o
+	/// interior do Majin). A planta e UMA SO no processo -- de todas as naves, de todas as visitas, e do SERVIDOR
+	/// quando este cliente hospeda -- e o `World` escreve no mapa da zona (a celula que cai, a porta, a maquina).
+	/// Escrevendo na planta, o buraco da nave em que estive ontem valia na de hoje ate o retrato do servidor chegar.
+	/// Cada visita tira a copia dela (`ZoneCollision.Instanciar`); o mundo sorteado ja gera o terreno dele a cada
+	/// entrada, e nao precisa. A regra e a do servidor: ver `GameServer.Interiores.cs`.
+	/// </summary>
+	private ZoneCollision? _colisaoDaVisita;
 
 	/// <summary>
 	/// O QUE ESCONDE, que nao e o mesmo que o que BLOQUEIA -- a mesma separacao que o
@@ -178,6 +188,7 @@ public partial class PlanetaProcedural : Planeta
 		{
 			ulong tp = Time.GetTicksUsec();
 			Terreno = feito;
+			_colisaoDaVisita = feito.Colisao.Instanciar();   // a planta e de todos: esta visita escreve na copia dela
 			Gravidade = 1;
 			Tipo = TipoDoBioma(feito.Bioma);
 			Largura = feito.Largura;
@@ -204,7 +215,7 @@ public partial class PlanetaProcedural : Planeta
 		}
 
 		PontoDeChegada = new Vector2(Terreno.Spawn.X, Terreno.Spawn.Y);
-		Sombra = Terreno.QueEsconde;
+		Sombra = TerrenoPronto != null ? Terreno.QueEsconde.Instanciar() : Terreno.QueEsconde;
 
 		MontarCamadas(Terreno);
 

@@ -158,7 +158,7 @@ public sealed partial class GameServer
 			// O QUE ZERA AQUI E SO O CACHE DE PUNICAO: as contas em si sao arquivos, e quem as
 			// carregava (`_contas`/`_logados`) ja esvaziou quando todo mundo caiu. O conjunto dos
 			// calados sobreviveria ao wipe e calaria o proximo dono do nome de conta.
-			Zerar = () => { _calados.Clear(); },   // (o caderno de contas locais do admin por endereco deixou de existir: quem responde e o `_contas`)
+			Zerar = () => { _calados.Clear(); },
 		});
 
 		// ---------------------------------------------------------- a semente do universo
@@ -534,6 +534,7 @@ public sealed partial class GameServer
 		foreach (Nave n in _naves) _zonasPorRecolidir.Add(n.Zona);
 
 		_noChao.RemoveAll(o => !o.DoMapa);
+		_obrasSemLugar.Clear();   // a limpeza total leva tambem o que o carregamento tinha deixado fora do mundo (`CarregarMundoDeDisco`)
 		_proximaObraId = _noChao.Count > 0 ? _noChao.Max(o => o.Id) + 1 : 1;
 
 		// JA SE REFAZ O QUE DA AQUI, pra quem chamar este `Zerar` sozinho (a bancada) ver o efeito

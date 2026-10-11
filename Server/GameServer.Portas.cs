@@ -79,7 +79,7 @@ public sealed partial class GameServer
 	private void APortaDoMapaCaiu(ZoneKey zona, int cx, int cy)
 	{
 		if (PortaCaidaTrancaDeNovoDeTeste) return;
-		if (_portasAbertas.TryGetValue(zona.Name, out Dictionary<(int X, int Y), long>? abertas)) abertas.Remove((cx, cy));
+		if (_portasAbertas.TryGetValue(ChaveDeEstado(zona), out Dictionary<(int X, int Y), long>? abertas)) abertas.Remove((cx, cy));
 	}
 
 	/// <summary>
@@ -100,7 +100,12 @@ public sealed partial class GameServer
 		Godot.GD.Print($"[server] BANCADA: {pl.Name} nasce em ({pl.Pos.X:0},{pl.Pos.Y:0}), porta na celula ({p.X},{p.Y})");
 	}
 
-	/// <summary>Onde estao as portas de cada zona (o `.portas` do pipeline). So leitura.</summary>
+	/// <summary>
+	/// Onde estao as portas de cada zona (o `.portas` do pipeline). So leitura.
+	///
+	/// POR NOME DE PROPOSITO: e dado do ARQUIVO, a planta -- o mesmo pra toda instancia de um interior feito deste
+	/// mapa. O que MUDA em jogo (quais estao abertas) e o dicionario de baixo, e esse e por instancia.
+	/// </summary>
 	private readonly Dictionary<string, List<PortaDoMapa>> _portasDoMapa = new(StringComparer.OrdinalIgnoreCase);
 
 	/// <summary>
@@ -108,6 +113,11 @@ public sealed partial class GameServer
 	///
 	/// So as abertas ficam no dicionario. Uma zona sem ninguem dentro nao aparece aqui, e as 99
 	/// portas do jogo inteiro custam nada -- nao ha varredura de porta fechada em lugar nenhum.
+	///
+	/// A CHAVE E A <see cref="ChaveDeEstado"/>, e nao o nome da zona: duas instancias do mesmo interior tem o mesmo
+	/// nome, e a porta aberta numa nao abre na outra. Era por nome; nenhum interior de hoje tem porta (o `.portas` do
+	/// z13 e do z24 e vazio, e as plantas do Core nao tem nenhuma), entao nada vazava -- mas o primeiro interior feito
+	/// de um mapa com porta vazaria. Ver `GameServer.Interiores.cs`.
 	/// </summary>
 	private readonly Dictionary<string, Dictionary<(int X, int Y), long>> _portasAbertas =
 		new(StringComparer.OrdinalIgnoreCase);
@@ -179,9 +189,11 @@ public sealed partial class GameServer
 			foreach (PortaDoMapa p in portas)
 				if (PortasDaZona.VaiEntrar(pl.Pos, pl.Facing, p.X, p.Y))
 				{
-					if (PortaCaiu(pl.Zone.Name, p.X, p.Y)) continue;   // derrubada: nao ha o que abrir
+					// A PORTA E DESTA INSTANCIA: onde elas ficam vem do arquivo (por nome), quais estao abertas nao.
+					string estado = ChaveDeEstado(pl.Zone);
+					if (PortaCaiu(estado, p.X, p.Y)) continue;   // derrubada: nao ha o que abrir
 					if (!APortaDoOutroMundoAbrePara(pl, agora)) break;
-					AbrirPorta(pl.Zone.Name, p.X, p.Y, agora);
+					AbrirPorta(estado, p.X, p.Y, agora);
 				}
 		}
 	}
@@ -228,18 +240,20 @@ public sealed partial class GameServer
 	/// </summary>
 	private void MexerNaPorta(string zona, int cx, int cy, bool abrir)
 	{
-		if (_catalogo?.Get(zona) is not { } e) return;
-		if (abrir) { e.Mapa?.Abrir(cx, cy); e.Vista?.Abrir(cx, cy); }
-		else { e.Mapa?.Fechar(cx, cy); e.Vista?.Fechar(cx, cy); }
+		// OS MAPAS DE QUEM TEM ESTA CHAVE DE ESTADO: os do catalogo pro planeta de arquivo, os da INSTANCIA pro
+		// interior (ver `MapasDoEstado`). Era `_catalogo.Get(zona)` cru -- a planta, que e de todas as instancias.
+		(ZoneCollision? mapa, ZoneCollision? vista) = MapasDoEstado(zona);
+		if (abrir) { mapa?.Abrir(cx, cy); vista?.Abrir(cx, cy); }
+		else { mapa?.Fechar(cx, cy); vista?.Fechar(cx, cy); }
 	}
 
-	/// <summary>Uma porta mudou: quem estiver na zona precisa ver.</summary>
+	/// <summary>Uma porta mudou: quem estiver na zona -- nesta INSTANCIA dela -- precisa ver.</summary>
 	private void AnunciarPorta(string zona, int cx, int cy, bool aberta)
 	{
 		var w = Protocol.Begin(Protocol.S2C.Porta);
 		w.PutPortas(completo: false, [(cx, cy, aberta)]);
 		foreach (ServerPlayer pl in _players.Values)
-			if (string.Equals(pl.Zone.Name, zona, StringComparison.OrdinalIgnoreCase))
+			if (string.Equals(ChaveDeEstado(pl.Zone), zona, StringComparison.OrdinalIgnoreCase))
 				pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
@@ -253,7 +267,7 @@ public sealed partial class GameServer
 	private void MandarPortas(ServerPlayer pl)
 	{
 		var lista = new List<(int, int, bool)>();
-		if (_portasAbertas.TryGetValue(pl.Zone.Name, out Dictionary<(int X, int Y), long>? abertas))
+		if (_portasAbertas.TryGetValue(ChaveDeEstado(pl.Zone), out Dictionary<(int X, int Y), long>? abertas))
 			foreach (((int X, int Y) celula, _) in abertas) lista.Add((celula.X, celula.Y, true));
 
 		var w = Protocol.Begin(Protocol.S2C.Porta);
