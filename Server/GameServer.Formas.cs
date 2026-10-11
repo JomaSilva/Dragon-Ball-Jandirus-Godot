@@ -92,7 +92,8 @@ public partial class GameServer
 	///
 	/// A ORDEM DOS DOIS `if` E A REGRA: a furia extrema vem primeiro porque ela SATISFAZ a lendaria
 	/// (ver <see cref="NivelDeRaiva"/>). Invertidos, um corpo com as duas acesas se anunciaria
-	/// `Lendaria` e o SSJ1 seria recusado a quem acabou de ver um amigo morrer.
+	/// `Lendaria` -- e quem acabou de ver um amigo morrer pagaria o agio da raiva comum pelo SSJ1, e
+	/// ficaria sem o Beast.
 	/// </summary>
 	private static NivelDeRaiva NivelDaRaivaDe(ServerPlayer pl)
 	{
@@ -133,9 +134,9 @@ public partial class GameServer
 	///      "vi um amigo cair" e "vi um amigo morrer" e a FONTE, nao a intensidade. Derivar o degrau
 	///      de um limiar (`Anger >= X` = Extrema) seria reintroduzir a regua de cinco degraus do
 	///      `Emotion` (`Stats.dm:445-449`), que e justamente o que o <see cref="NivelDeRaiva"/>
-	///      substituiu a pedido do dono (o Legendary compra o dele mais barato, ver
-	///      <see cref="Catalogo.RaivaExigida"/>). Ou seja: derivar pro outro lado nao unificaria
-	///      nada -- desfaria uma decisao ja tomada.
+	///      substituiu a pedido do dono (dois degraus em vez de cinco humores, e cada forma cobra de
+	///      cada um o seu preco -- ver <see cref="Catalogo.RaivaExigida"/>). Ou seja: derivar pro outro
+	///      lado nao unificaria nada -- desfaria uma decisao ja tomada.
 	///
 	///   2. **O `Fighter` NAO TEM RELOGIO.** O Core nao conhece `NowMs()` nem o `ServerPlayer`. Um
 	///      `Anger` autoritativo teria que ser BAIXADO por alguem, e esse alguem seria um tique --
@@ -151,27 +152,43 @@ public partial class GameServer
 	/// o mesmo numero. Um decaimento por acumulacao (`Anger -= passo`) mudaria de velocidade com a
 	/// cadencia de quem chama -- e este port ja pagou esse preco uma vez (ver a nota de unidade de
 	/// tempo do `sleep(N)`).
+	///
+	/// ============================ E CADA JANELA VALE O NUMERO DO DEGRAU DELA (dono, 2026-10-11) ============================
+	/// A seta continua apontando daqui pro numero; o que mudou e que os dois degraus deixaram de valer o
+	/// mesmo. O dono: *"amigo quando e nocauteado vc n fica com o mais alto nivel de raiva, vc fica angry
+	/// apenas, o very angry e so em morte e absorcao"*. A janela do nocaute rende o "Angry" do DM e a do
+	/// luto rende o topo -- os dois numeros, e a divergencia declarada, moram em
+	/// `Core.Combat.RaivaEmDegraus.Topo`. Daqui sai so o relogio.
 	/// ==================================================================================================================
 	/// </summary>
 	private static double RaivaComoNumero(ServerPlayer pl)
 	{
 		long agora = NowMs();
 
-		// A MAIOR DAS DUAS JANELAS, pelo mesmo motivo do `NivelDaRaivaDe`: um nocaute chegando no
-		// meio de um luto nao pode encurtar o luto, e a raiva que vale e a que ainda corre.
-		long ate = Math.Max(pl.FuriaExtremaAte, pl.RaivaLendariaAte);
-
-		// PRAZO VENCIDO = CALMA SECA, e nao um decaimento suave ate la. E literalmente
-		// `Stats.dm:438-441`: `rageExpire = 0; Anger = 100`. O corte e do DM, e ele e o que impede
-		// que "ver um amigo morrer" vire 2x de BP permanente -- o motivo pelo qual este sistema
-		// ficou parado.
-		if (ate <= agora) return 100;
-
-		// E O GOTEJAMENTO POR CIMA (`Stats.dm:443`). A folga e `MaxAnger - 100` porque 100 e o piso
-		// (`Stats.dm:444`) e tambem o "1,0x" do `angerBuff` -- raiva nenhuma nao e zero, e 100.
+		// A folga e `MaxAnger - 100` porque 100 e o piso (`Stats.dm:444`) e tambem o "1,0x" do
+		// `angerBuff` -- raiva nenhuma nao e zero, e 100.
 		double folga = Math.Max(0, pl.Ficha.MaxAnger - 100);
-		double decorrido = Math.Max(0, SegundosDeRaiva - (ate - agora) / 1000.0);
-		return Math.Max(100, pl.Ficha.MaxAnger - folga * decorrido / SegundosDeGotejamento);
+
+		double DaJanela(NivelDeRaiva grau, long ate)
+		{
+			// PRAZO VENCIDO = CALMA SECA, e nao um decaimento suave ate la. E literalmente
+			// `Stats.dm:438-441`: `rageExpire = 0; Anger = 100`. O corte e do DM, e ele e o que impede
+			// que "ver um amigo morrer" vire 2x de BP permanente -- o motivo pelo qual este sistema
+			// ficou parado.
+			if (ate <= agora) return 100;
+
+			// E O GOTEJAMENTO POR CIMA (`Stats.dm:443`), contado do instante em que ESTA janela acendeu
+			// e na mesma taxa pros dois degraus (la a queda e `(MaxAnger-100)/8000` por volta, seja qual
+			// for o `Anger`).
+			double decorrido = Math.Max(0, SegundosDeRaiva - (ate - agora) / 1000.0);
+			double topo = Jandirus.Core.Combat.RaivaEmDegraus.Topo(grau, pl.Ficha.MaxAnger);
+			return Math.Max(100, topo - folga * decorrido / SegundosDeGotejamento);
+		}
+
+		// A MAIOR DAS DUAS, pelo mesmo motivo do `NivelDaRaivaDe`: um nocaute chegando no meio de um
+		// luto nao pode ENCURTAR nem REBAIXAR o luto, e a raiva que vale e a mais alta que ainda corre.
+		return Math.Max(DaJanela(NivelDeRaiva.Extrema, pl.FuriaExtremaAte),
+						DaJanela(NivelDeRaiva.Lendaria, pl.RaivaLendariaAte));
 	}
 
 	/// <summary>
@@ -313,16 +330,22 @@ public partial class GameServer
 	///     EXTREMELY enraged"*);
 	///   * um jogador foi NOCAUTEADO: <see cref="NivelDeRaiva.Lendaria"/>. No DM e `KO.dm:29-41`.
 	///
+	/// **OS DOIS DEGRAUS NAO VALEM O MESMO (dono, 2026-10-11).** O do nocaute e a raiva COMUM ("angry"): um
+	/// numero menor, sem cinematica, sem tema e sem mexer no Ki. O da morte e o mais alto ("very angry" =
+	/// furia extrema): o topo do numero, a cena, o tema e -- pra quem tem controle de ki -- o Ki no teto de
+	/// carga. A regra e os numeros moram em `Core.Combat.RaivaEmDegraus`; o que e do servidor, em
+	/// `GameServer.Raiva.cs`.
+	///
 	/// E A TERCEIRA, que este cabecalho esperava: o `MajinSaga.dm:173` (ver um amigo ser ABSORVIDO
 	/// vale o mesmo que ve-lo morrer). Quem chama e o `LutoPelaAbsorcao`
 	/// (`GameServer.AbsorcaoMajin.cs`), com `Extrema` -- e por fora do `LutoNaVizinhanca`, porque as
 	/// condicoes dela sao outras (esta escrito la).
 	///
-	/// Quem responde "e amigo?" e o `Core.Social.Convivio` (`is_friend()`, `FRIEND_REQ = 50`). **E a
-	/// PORTA DESTE GANCHO MUDOU DE PRECO a pedido do dono**: o `ACQUAINTANCE_CAP = 49` do DM nao foi
-	/// portado, entao hoje a convivencia sozinha atravessa o 50 -- **25 minutos ao lado de alguem
-	/// bastam pra que a morte dele possa acender o SSJ1**, sem pedido nenhum. Ver o cabecalho do
-	/// `Convivio`, onde a divergencia esta escrita com o que se ganha e o que se perde.
+	/// Quem responde "e amigo?" e o `Core.Social.Convivio`, e desde 2026-10-10 (pedido do dono) a
+	/// resposta e a DECLARACAO de quem assiste: amigo e quem o jogador DISSE que e amigo, na aba People.
+	/// **O PRECO DA PORTA CONTINUA O MESMO** -- a declaracao pede 50 de convivio, e 25 minutos ao lado de
+	/// alguem rendem os 50 --, mas a convivencia sozinha nao acende mais nada: sem o clique do jogador, a
+	/// morte de quem conviveu com ele nao o enfurece. Ver o cabecalho do `Convivio`.
 	///
 	/// ============================ E O QUE **NAO** DISPARA ISTO ============================
 	/// Morte sem algoz. O DM so enfurece com um `deathKiller` de combate na mao (`Death.dm:75`,
@@ -375,20 +398,20 @@ public partial class GameServer
 		if (grau == NivelDeRaiva.Nenhuma) return false;
 
 		long agora = NowMs();
-		bool jaEstava = NivelDaRaivaDe(enlutado) >= grau;
+		NivelDeRaiva antes = NivelDaRaivaDe(enlutado);
+		bool jaEstava = antes >= grau;
 
 		// ============================ O `wasRaging` DO DM E OUTRA PERGUNTA -- E ELA E DA CENA ============================
 		// `jaEstava` logo acima e "ja estava neste GRAU" e serve ao valor de retorno (erupcao deste
-		// grau x prolongamento dele). O `wasRaging` de `Murder.dm:111` e mais largo: `rageExpire >
-		// world.time`, ou seja **qualquer** raiva aberta -- e e ele, e nao o outro, que decide a
-		// cinematica na linha `:119`.
+		// grau x prolongamento dele). A cena pergunta outra coisa: "ja estava no degrau que ELA mostra?".
 		//
-		// A diferenca aparece num caso real e comum: um amigo cai (janela lendaria abre, sem cena) e
-		// dez segundos depois outro morre. `jaEstava` da falso -- e uma erupcao EXTREMA de verdade, o
-		// grau subiu --, mas o corpo ja estava enfurecido e o DM nao toca a cena de novo. Sao dois
-		// conceitos e por isso sao duas leituras, as duas do mesmo estado e nenhuma guardada.
+		// No DM essa pergunta e `wasRaging` (`Murder.dm:111`: `rageExpire > world.time`, QUALQUER raiva
+		// aberta), e ate 2026-10-11 era assim aqui. Deixou de ser -- e a divergencia esta declarada, com
+		// o caso que a decide (o amigo que CAI e so depois morre), em `JaEstavaNaFuriaDaCena`
+		// (`GameServer.Raiva.cs`). As duas leituras saem do mesmo estado, tirado ANTES de a janela ser
+		// escrita, e nenhuma e guardada.
 		// =========================================================================================================
-		bool estavaEmFuria = NivelDaRaivaDe(enlutado) != NivelDeRaiva.Nenhuma;
+		bool jaNaFuriaDaCena = JaEstavaNaFuriaDaCena(antes);
 
 		// `=` E NAO `max(...)`: o prazo REINICIA a cada evento, e nunca soma. Somar era a anomalia
 		// do 20x que o DM ja pagou uma vez (`Murder.dm:112`, *"never stack, sum, or multiply"*).
@@ -408,13 +431,20 @@ public partial class GameServer
 		// A CENA, DEPOIS DO AVISO -- a ordem e a do DM (`Murder.dm:119` vem depois das tres escritas
 		// de `:112-114`), e ela importa por um motivo so: a `AFuriaVaiVirarForma` la dentro le a raiva
 		// que acabou de ser escrita, exatamente como o `anger_will_transform()` do original.
-		TalvezACenaDaFuria(enlutado, grau, estavaEmFuria, agora);
+		TalvezACenaDaFuria(enlutado, grau, jaNaFuriaDaCena, agora);
+
+		// E O KI, que so o degrau mais alto mexe (dono, 2026-10-11): quem tem controle salta pro teto de
+		// carga dele. Fora da cena de proposito -- a furia que cede o momento a uma transformacao salta
+		// do mesmo jeito. Ver `SaltoDeKiDaFuria` (`GameServer.Raiva.cs`).
+		SaltoDeKiDaFuria(enlutado, grau);
 
 		return !jaEstava;
 	}
 
 	/// <summary>
-	/// ACENDE A JANELA DE RAIVA. **E O UNICO LUGAR DO SERVIDOR QUE ESCREVE ESSES DOIS PRAZOS.**
+	/// ACENDE A JANELA DE RAIVA. **E O UNICO LUGAR DO SERVIDOR QUE ACENDE ESSES DOIS PRAZOS** -- e quem os
+	/// apaga antes da hora e a irma logo abaixo (<see cref="AcalmarPelaMeditacao"/>). Fora das duas, ninguem
+	/// escreve os campos (a bancada `raiva` [8] varre os fontes atras disso).
 	///
 	/// ============================ POR QUE ISTO VIROU FUNCAO ============================
 	/// Ate aqui as duas linhas moravam soltas dentro do <see cref="AmigoAbatido"/>, e isso bastava
@@ -447,19 +477,76 @@ public partial class GameServer
 	}
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancada `--raivateste`): meditar nao acalma ninguem -- o port ate 2026-10-11, em que
+	/// a raiva so acabava pelo prazo de 120 s. Lido pela <see cref="AcalmarPelaMeditacao"/>.
+	/// </summary>
+	internal bool MeditarNaoAcalmaDeTeste;
+
+	/// <summary>
+	/// ============================ MEDITAR ACALMA -- `Meditate.dm:27-31` ============================
+	/// *"Meditating immediately clears any rage, returning you to a calm 1x"*:
+	/// `if(Anger &gt; 100 || rageExpire) { Anger = 100; rageExpire = 0; "You center yourself; your rage melts
+	/// away." }`. O port nao tinha (aqui a raiva so acabava pelo prazo), e o dono confirmou em 2026-10-11:
+	/// *"sim meditar deveria acalmar aqui tb"*.
+	///
+	/// OS DOIS DEGRAUS DE UMA VEZ, porque la a raiva e um numero so: fechar so a janela extrema deixaria a
+	/// comum (a que um nocaute anterior acendeu) valendo por baixo, e "se acalmou" viraria "desceu um degrau".
+	///
+	/// QUEM CHAMA E O `DefinirAtividade` (`GameServer.Oozaru.cs`), no instante em que uma meditacao ACEITA
+	/// comeca -- o `if(!med)` de la, e DEPOIS da conferencia do servidor (`AceitarTreinoOuMeditacao`).
+	/// Meditacao recusada (voando, nadando, no meio de uma briga, caido) nao acalma ninguem; e quem a fera ou
+	/// a furia lendaria esta dirigindo nem chega a pedir.
+	///
+	/// A MAO E ESTA, ao lado da que acende, pelo mesmo contrato das janelas. E o `Anger = 100` e escrito aqui
+	/// (e o piso: apagar pode em qualquer lugar) pra a frase ser a da MEDITACAO, e nao a do prazo vencido que
+	/// o <see cref="ProjetarRaiva"/> diz na borda.
+	///
+	/// ============================ O QUE ELA **NAO** DESFAZ, E OS QUATRO SAO DO ORIGINAL ============================
+	///   * o KI que a furia extrema deu (o salto pro teto de carga): a energia fica, e vaza devagar como todo
+	///     excesso. La o `Meditate` nao toca em `Ki`;
+	///   * a FORMA em que ele esta -- inclusive a que a raiva acabou de despertar. Despertou, e dele (`hasssj`);
+	///   * o TEMA da raiva que estiver tocando. No DM so duas coisas calam o canal dele: um tema de
+	///     transformacao (`BattleMusic.dm:138`) e outra furia (`:151`). Meditando, a faixa toca ate o fim;
+	///   * a RECARGA da cena (`rageCinematicCD`, `Murder.dm:139-140`): acalmar e se enfurecer de novo dentro
+	///     dos 60 s nao repete a cinematica.
+	/// ======================================================================================================
+	/// </summary>
+	/// <returns>TRUE se havia raiva e ela acabou aqui.</returns>
+	private bool AcalmarPelaMeditacao(ServerPlayer pl)
+	{
+		if (MeditarNaoAcalmaDeTeste) return false;
+		if (NivelDaRaivaDe(pl) == NivelDeRaiva.Nenhuma && pl.Ficha.Anger <= 100) return false;
+
+		pl.FuriaExtremaAte = 0;
+		pl.RaivaLendariaAte = 0;
+		pl.Ficha.Anger = 100;
+
+		// O PODER CAI JA (o buff da raiva saiu da conta), e a ficha do dono mostra na hora -- sem isto o
+		// "efetivo" do HUD so desceria no proximo tique de ficha.
+		RepercutirPoder(pl);
+		MandarFicha(pl);
+		Avisar(pl, "você se centra, e a raiva se desfaz.");
+		GD.Print($"[server] {pl.Name}: a meditacao desfez a raiva");
+		return true;
+	}
+
+	/// <summary>
 	/// ============================ A CINEMATICA DA FURIA EXTREMA -- `AngerCinematic()`, `Murder.dm:136` ============================
-	/// Quatro condicoes, e as quatro sao literais do DM (`Murder.dm:119`):
+	/// Quatro condicoes, as do DM (`Murder.dm:119`):
 	/// `if(extreme &amp;&amp; !wasRaging &amp;&amp; client &amp;&amp; !anger_will_transform()) AngerCinematic()`, mais a recarga
-	/// que o proprio proc guarda (`:139-140`).
+	/// que o proprio proc guarda (`:139-140`). A segunda e a quarta foram ESTREITADAS pelo dono em 2026-10-11,
+	/// e cada uma declara a divergencia onde mora.
 	///
 	///   1. **GRAU EXTREMO.** Ver um amigo CAIR aplica o buff e nao toca cena nenhuma; o original diz
 	///      isso no comentario do `Do_Anger_Stuff` -- *"A friend simply going down ('very angry')
 	///      applies the rage buff but plays NO cinematic/music (extreme=0)"*.
-	///   2. **NAO ESTAVA JA ENFURECIDO** (o `wasRaging`, ver o bloco no <see cref="AmigoAbatido"/>):
-	///      uma briga em grupo com quatro amigos caindo nao vale quatro cenas.
+	///   2. **NAO ESTAVA JA NA FURIA EXTREMA** (o `wasRaging`, estreitado em 2026-10-11 -- ver
+	///      `JaEstavaNaFuriaDaCena`): uma briga em grupo com quatro amigos MORRENDO nao vale quatro
+	///      cenas, mas a morte que vem depois do nocaute vale a dela.
 	///   3. **NAO E CORPO SEM DONO.** O `client` do DM -- NPC nao assiste a cinematica. Aqui a
 	///      pergunta e o `Peer` nulo, que e a mesma coisa neste port (ver o cabecalho do clone).
-	///   4. **A RAIVA NAO VAI VIRAR TRANSFORMACAO** -- ver <see cref="AFuriaVaiVirarForma"/>.
+	///   4. **A RAIVA NAO VAI VIRAR TRANSFORMACAO** -- e so a ESTREIA de uma forma nova conta; a forma que ja
+	///      e do personagem nao cala a cena. Ver <see cref="AFuriaVaiVirarForma"/>.
 	///
 	/// ============================ E POR QUE ELA MORA AQUI, E NAO NO CHAMADOR ============================
 	/// O cabecalho do <see cref="AmigoAbatido"/> dizia *"quem ligar a cena que leia isto"*, apontando o
@@ -474,10 +561,10 @@ public partial class GameServer
 	/// escrita com a pergunta errada (ver o bloco do `wasRaging`).
 	/// ============================================================================================
 	/// </summary>
-	private void TalvezACenaDaFuria(ServerPlayer enlutado, NivelDeRaiva grau, bool estavaEmFuria,
+	private void TalvezACenaDaFuria(ServerPlayer enlutado, NivelDeRaiva grau, bool jaNaFuriaDaCena,
 									long agora)
 	{
-		if (grau != NivelDeRaiva.Extrema || estavaEmFuria || enlutado.Peer == null) return;
+		if (grau != NivelDeRaiva.Extrema || jaNaFuriaDaCena || enlutado.Peer == null) return;
 
 		// A RECARGA (`rageCinematicCD`). O prazo mora no Core porque e prazo de CENA -- ver
 		// `Cinematicas.SegundosEntreFurias`, que explica por que ele nao e o `SegundosDeRaiva`.
@@ -487,15 +574,18 @@ public partial class GameServer
 
 		enlutado.FuriaCenaAte = agora + (long)(Cinematicas.SegundosEntreFurias * 1000);
 
-		// PRA ZONA INTEIRA, como o anuncio de forma -- as ondas de choque, o tremor e a musica sao do
-		// MUNDO e nao do enlutado (no DM: `to_chat(view(src))`, `emit_RageMusic` pra cada `mob` do
-		// `view`, e os `createShockwavemisc` sao objetos no chao). Ver `Protocol.S2C.Furia`.
+		// PRA QUEM ESTA VENDO, e nao so pro enlutado: as ondas de choque, o tremor e a musica sao do
+		// MUNDO em volta dele (no DM: `to_chat(view(src))`, `emit_RageMusic` pra cada `mob` do `view`, e
+		// os `createShockwavemisc` sao objetos no chao). O alcance e o da vista dele, e nao a zona
+		// inteira -- ver `QuemVeAFuria` (`GameServer.Raiva.cs`) e `Protocol.S2C.Furia`.
+		List<ServerPlayer> quemVe = QuemVeAFuria(enlutado);
 		var w = Protocol.Begin(Protocol.S2C.Furia);
 		w.Put(enlutado.Id);
-		foreach (ServerPlayer o in ZoneList(enlutado.Zone.Hash))
+		foreach (ServerPlayer o in quemVe)
 			o.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 
 		EscutaDeFurias?.Add(enlutado.Id);
+		EscutaDeQuemViuAFuria?.Add((enlutado.Id, [.. quemVe.Select(o => o.Id)]));
 		GD.Print($"[server] {enlutado.Name}: CINEMATICA DE FURIA");
 	}
 
@@ -506,25 +596,167 @@ public partial class GameServer
 	/// transformation owns the moment"*. E o mesmo instante disputado por duas cinematicas, e o
 	/// original decide pela mais rara.
 	///
-	/// ============================ E AQUI ELA E DERIVADA, ENQUANTO LA E UMA LISTA ============================
-	/// O DM enumera: Heran ou Saiyajin, `ssj==0 &amp;&amp; BP&gt;=ssjat &amp;&amp; hasssj`, `ssj==1 &amp;&amp; BP&gt;=ssj2at/6
-	/// &amp;&amp; hasssj2`. Sao dois degraus escritos a mao, e um terceiro (o Beast, que tambem nasce de
-	/// raiva) ja ficava de fora daquela lista.
+	/// ============================ A PERGUNTA E UMA SO: HA FORMA **NOVA** A ESTREAR? ============================
+	/// A RAIVA ACABOU DE PAGAR UMA FORMA QUE ELE NUNCA DESPERTOU? Entao ele vai se transformar SOZINHO, ja
+	/// (`DespertarPelaRaiva`, `GameServer.Raiva.cs` -- dono, 2026-10-11), e a cena e a da estreia. A pergunta e
+	/// feita ao MESMO plano que o despertar executa (`PlanoDaRaiva`), e nao ao `Proxima`: aquele e o seletor
+	/// da TECLA (com os grades ligados oferece o Grade 2 antes do SSJ2), e perguntar a ele deixaria as duas
+	/// cenas tocarem juntas nesse caso. Nenhum id digitado -- um degrau novo de Legendary, o Beast e o Heran
+	/// entram sozinhos (o DM enumera dois degraus a mao, `Murder.dm:129-130`).
 	///
-	/// Aqui a pergunta ja tem dono: <see cref="EstadoDeForma.Proxima"/> devolve o degrau que este
-	/// corpo pode assumir AGORA -- com a raiva ja escrita, ou seja com o passo 9 do `Avaliar` (o
-	/// `RecusaForma.SemFuria`) ja satisfeito --, e `Catalogo.NasceDaRaiva` responde se aquele degrau e
-	/// dos que a raiva abre. Duas funcoes que ja existem, nenhum id digitado, e um degrau novo de
-	/// Legendary (ou o Beast) entra sozinho.
+	/// ============================ DIVERGENCIA DECLARADA: A FORMA QUE JA E DELE NAO CALA A CENA ============================
+	/// No DM a pergunta tem uma segunda metade: `if(ssj==0 &amp;&amp; BP&gt;=ssjat &amp;&amp; (hasssj || heran)) return TRUE`
+	/// (`Murder.dm:129`, e o `hasssj2 ||` da `:130`) -- com a forma JA desbloqueada a cena da raiva tambem e
+	/// calada, a espera de uma transformacao que la e MANUAL (`supersaiyan.dm:88`). Era assim aqui ate
+	/// 2026-10-11, e o resultado era o pior dos dois mundos: quem ja tinha o Super Saiyajin via o amigo morrer
+	/// sem cinematica de raiva, sem tema e sem transformacao nenhuma.
 	///
-	/// ============================ NAO CONFUNDIR COM "VAI TRANSFORMAR AGORA" ============================
-	/// Nem no DM nem aqui a raiva transforma ninguem sozinha: quem aperta a tecla e o jogador. Isto e
-	/// uma PREVISAO -- "o proximo gesto dele vai ser uma transformacao, e ela merece o momento" --, e e
-	/// por isso que ela pode errar sem custo: no maximo o jogador fica sem uma cena de 5 s.
+	/// O dono (2026-10-11): *"se o personagem ja despertou a transformacao toca a cinematica da raiva
+	/// normal"*. Entao a forma que ja e dele nao disputa o momento: sem forma NOVA a estrear, a cena e a da
+	/// raiva, e o corpo fica na forma em que esta (a transformacao forcada e so a da ESTREIA).
 	/// ====================================================================================================
 	/// </summary>
-	private static bool AFuriaVaiVirarForma(ServerPlayer pl) =>
-		Catalogo.NasceDaRaiva(pl.Forma.Proxima(pl.Ficha.BP, Perfil(pl)));
+	private bool AFuriaVaiVirarForma(ServerPlayer pl) =>
+		!FuriaNaoCedeACenaDeTeste
+		&& (PlanoDaRaiva(pl) != null
+			|| (FuriaCedeAoGestoDeTeste && Catalogo.NasceDaRaiva(pl.Forma.Proxima(pl.Ficha.BP, Perfil(pl)))));
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--alemteste`): a escada de formas volta a tratar TODO morto como caido -- o
+	/// estado de antes de 2026-10-10, em que o fantasma de pe no Outro Mundo apertava C e lia "nao da,
+	/// caido". Lido pela propria regra, em <see cref="CaidoPraForma"/>.
+	/// </summary>
+	internal bool MortoNaoTransformaDeTeste;
+
+	/// <summary>
+	/// ============================ CAIDO, PRA ESCADA DE FORMAS ============================
+	/// O nocauteado e o CADAVER (`EhCadaver`: o corpo dos 2 s no chao dos vivos). **O FANTASMA DE PE NO
+	/// OUTRO MUNDO NAO** -- o dono (2026-10-10): *"dps de morrer n da pra apertar C, diz q to caido mesmo n
+	/// estando"*.
+	///
+	/// As quatro perguntas da escada (o toque duplo no C, a tecla de forma, a lista da aba Forms e o tique
+	/// que desfaz a forma de quem caiu) liam `Ficha.dead` cru. E o mesmo defeito que a CARGA do C tinha e
+	/// perdeu em 2026-09-04 (`Carregar`), e que a cura passiva tinha antes dela (`RegenerarPassivo`): morto
+	/// de pe e um corpo que anda, soca e apanha -- `Death()` nao olha `dead`.
+	///
+	/// NO DM O MORTO TRANSFORMA, e com vantagem: a condicao de sustento do Super Saiyajin e
+	/// `stamina >= maxstamina*ssjdrain || container.dead` (`supersaiyanbuff.dm:96-127`) -- morto, a forma
+	/// nem cobra o vigor.
+	///
+	/// UMA FUNCAO PRAS QUATRO, de proposito: eram quatro copias da mesma pergunta, e a que ficasse pra
+	/// tras seria a que ninguem ia achar (o tique desfazendo em silencio a forma que a tecla deixou subir).
+	/// =====================================================================================
+	/// </summary>
+	private bool CaidoPraForma(ServerPlayer pl) =>
+		pl.Ficha.KO || (MortoNaoTransformaDeTeste ? pl.Ficha.dead : EhCadaver(pl));
+
+	// =====================================================================
+	// A TECLA DE REVERTER / LIBERAR -- item 8 do playtest de 2026-10-10
+	// =====================================================================
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--reverterteste`): a tecla de reverter volta a so mexer na forma, com o Ki
+	/// acima de 100% ou nao -- o estado de antes de 2026-10-10. Lido pela propria
+	/// <see cref="ReverterOuLiberar"/>.
+	/// </summary>
+	internal bool ReverterNaoLiberaDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--reverterteste`): a tecla recua direto ao piso da escada, como antes
+	/// (o <see cref="ParaOndeSeRecua"/> sozinho). Lido pela propria <see cref="EstagioAnterior"/>.
+	/// </summary>
+	internal bool ReverterVaiAoPisoDeTeste;
+
+	/// <summary>
+	/// A TECLA X -- "reverter / liberar". TRES RESPOSTAS, nesta ordem, e elas sao o pedido, literal:
+	///
+	///   1. **Ki acima de 100%** -- libera o excedente e o Ki volta pra 100%. *"Tem prioridade, mesmo se
+	///      estiver transformado"*: neste toque a forma nao se mexe.
+	///   2. **Ki em 100% ou menos, e transformado** -- volta pro ESTAGIO ANTERIOR da linha (SSJ2 -> SSJ); sem
+	///      estagio anterior, pra base. Ver <see cref="EstagioAnterior"/>.
+	///   3. **Ki em 100% ou menos, na base** -- nada.
+	///
+	/// E O `Power_Revert` DO ORIGINAL (`Power Control.dm:53-69`), com as duas metades afinadas pelo dono: la
+	/// o primeiro ramo "shunta" um pedaco por toque (`Ki -= (Ki/MaxKi)*10*(MaxKi/100)`) e aqui o tanque volta
+	/// a 100% de uma vez; la o segundo e o `Revert(2)` -- o `downbuff`, UM degrau --, que este port tinha
+	/// achatado num salto direto ao piso.
+	///
+	/// SO A TECLA PASSA POR AQUI. Escolher "base" na aba de formas e o `DescerForma` da IA continuam indo ao
+	/// piso pelo <see cref="Transformar"/>: la o pedido e outro ("voltar ao normal"), e nao "um passo atras".
+	/// </summary>
+	private void ReverterOuLiberar(ServerPlayer pl)
+	{
+		Jandirus.Core.Stats.Fighter ficha = pl.Ficha;
+		if (!ReverterNaoLiberaDeTeste && ficha.Ki > ficha.MaxKi)
+		{
+			ficha.Ki = ficha.MaxKi;
+			// O TROCO DA CARGA VAI JUNTO: o `RegenDeKi.Passo` o devolveria como Ki ACIMA do teto nos segundos
+			// seguintes, e o jogador veria o tanque subir sozinho depois de ter liberado.
+			ficha.extracharge = 0;
+			Avisar(pl, "você libera a energia que excedia: o Ki volta a 100%.");
+			return;
+		}
+
+		if (!TemEscada(pl))
+		{
+			Avisar(pl, "sua raca nao tem essa escada de transformacao.");
+			return;
+		}
+
+		RecuarPara(pl, EstagioAnterior(pl.Forma, Perfil(pl)));
+	}
+
+	/// <summary>
+	/// ============================ O ESTAGIO ANTERIOR DA LINHA -- OU A BASE ============================
+	/// *"volta para o estagio anterior da linha de transformacao (ex.: SSJ2 -> SSJ). Se a forma nao tiver
+	/// estagio anterior (e a primeira da linha ou nao pertence a uma), volta para a base."*
+	///
+	/// O RECUO DE SEMPRE VEM PRIMEIRO (<see cref="ParaOndeSeRecua"/>): ele ja responde o unico caso em que
+	/// "um degrau" tinha regra propria -- as cascas do Frost Demon -- e pra todo o resto devolve o PISO. So
+	/// quando ele diria "piso" e que se procura um degrau no meio do caminho.
+	///
+	/// O DEGRAU E O PRIMEIRO, DESCENDO O TRONCO DA LINHA, **EM QUE ESTE CORPO JA ESTEVE**
+	/// (<see cref="EstadoDeForma.JaViuAEstreia"/>), e as duas metades da frase importam:
+	///
+	///   * o TRONCO (<see cref="Catalogo.Anterior"/>) -- "de onde se sobe pra ca". Os grades do SSJ1 sao ramo
+	///     lateral: do Grade 3 volta-se ao SSJ1, nao ao Grade 2;
+	///   * JA ESTEVE -- recuar nao pode ser um jeito de GANHAR forma. O SSJ4 vem do Oozaru Dourado, e quem
+	///     chega nele sem nunca ter sido SSJ3 nao aprende o SSJ3 apertando X: desce ate o degrau que conhece,
+	///     ou ate a base. (E `Entrar` numa forma inedita tocaria a estreia dela -- uma cinematica de subida no
+	///     meio de uma descida.)
+	///
+	/// O Oozaru nao e degrau de ninguem (<see cref="Catalogo.NaoSeSobePraEla"/>): do Dourado desce-se como
+	/// sempre se desceu.
+	/// ==================================================================================================
+	/// </summary>
+	private string EstagioAnterior(EstadoDeForma est, PerfilDeFormas perfil)
+	{
+		string piso = Catalogo.IdDoPiso(perfil);
+		string recuo = ParaOndeSeRecua(est, perfil);
+		if (ReverterVaiAoPisoDeTeste || recuo != piso || est.Def is not { } agora) return recuo;
+
+		for (FormaDef? d = Catalogo.Anterior(agora); d != null && d.Id != Catalogo.IdBase; d = Catalogo.Anterior(d))
+			if (!Catalogo.NaoSeSobePraEla(d) && est.JaViuAEstreia(d.Id)) return d.Id;
+		return piso;
+	}
+
+	/// <summary>
+	/// O RECUO EM SI, pros dois gestos que descem: o "voltar ao normal" (<see cref="Transformar"/> com
+	/// `subir: false` -- a aba de formas, a IA) e a tecla de reverter (<see cref="ReverterOuLiberar"/>). Quem
+	/// escolhe o DESTINO e quem chama; o que acontece ao chegar la e uma coisa so.
+	/// </summary>
+	private void RecuarPara(ServerPlayer pl, string recuo)
+	{
+		EstadoDeForma est = pl.Forma;
+		string antes = est.Atual;
+		if (recuo == antes) return;
+
+		bool estreou = est.Entrar(recuo);
+		AplicarForma(pl);
+		Avisar(pl, recuo == Catalogo.IdBase
+			? "voce volta ao normal."
+			: $"voce recua para {Catalogo.NomeDe(Catalogo.Def(recuo), Dominou(pl, recuo))}.");
+		AnunciarForma(pl, antes, recuo, estreou);
+	}
 
 	/// <summary>
 	/// "Quero subir" (ou descer). O cliente NAO escolhe a forma -- ele pede a direcao e o servidor
@@ -544,20 +776,11 @@ public partial class GameServer
 
 		if (!subir)
 		{
-			string antes = est.Atual;
-			string recuo = ParaOndeSeRecua(est, perfil);
-			if (recuo == antes) return;
-
-			bool estreou = est.Entrar(recuo);
-			AplicarForma(pl);
-			Avisar(pl, recuo == Catalogo.IdBase
-				? "voce volta ao normal."
-				: $"voce recua para {Catalogo.NomeDe(Catalogo.Def(recuo), Dominou(pl, recuo))}.");
-			AnunciarForma(pl, antes, recuo, estreou);
+			RecuarPara(pl, ParaOndeSeRecua(est, perfil));
 			return;
 		}
 
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "nao da, caido."); return; }
+		if (CaidoPraForma(pl)) { Avisar(pl, "nao da, caido."); return; }
 
 		// ============================ O CHEFE TEM A FORMA E NAO A USA ============================
 		// Vale so pra corpo com ficha ROTEIRIZADA (`ServerPlayer.Papel`): jogador nao tem papel e
@@ -594,9 +817,9 @@ public partial class GameServer
 	/// alternativas sao piores, e cada uma quebra uma regra que ja esta escrita neste arquivo:
 	///
 	///   * **cair pro SSJ1** seria uma transformacao que ninguem pediu. Quem transforma e o jogador
-	///     apertando a tecla (`AFuriaVaiVirarForma` diz isso em voz alta: nem a raiva transforma
-	///     sozinha), e alem disso o recuo tem regra propria -- `ParaOndeSeRecua` --, entao um
-	///     `Entrar` escrito aqui seria a segunda copia dela;
+	///     apertando a tecla (a unica transformacao que vem sozinha e o DESPERTAR pela raiva,
+	///     `DespertarPelaRaiva`, e ele so sobe), e alem disso o recuo tem regra propria --
+	///     `ParaOndeSeRecua` --, entao um `Entrar` escrito aqui seria a segunda copia dela;
 	///   * **subir pro SSJ2** seria pior ainda: a subida cobra gate (porta de BP, maestria, Ki), e um
 	///     botao de preferencia que atropela isso e exatamente o "atalho que pula o portao" que o
 	///     `TransformarPara` recusou ser. Sem contar que o SSJ2 pode nem estar aberto.
@@ -677,7 +900,7 @@ public partial class GameServer
 		if (id == Catalogo.IdBase) { Transformar(pl, subir: false); return; }
 
 		if (Catalogo.Def(id) is not { } d) { Avisar(pl, "essa forma nao existe."); return; }
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "nao da, caido."); return; }
+		if (CaidoPraForma(pl)) { Avisar(pl, "nao da, caido."); return; }
 		if (!AscendePorDecisao(pl)) return;
 
 		EstadoDeForma est = pl.Forma;
@@ -755,12 +978,22 @@ public partial class GameServer
 	/// despertar assistido sem cena e sem aura -- e ninguem ligaria o defeito ao mestre.
 	/// ======================================================================================
 	/// </summary>
-	private void EntrarNaForma(ServerPlayer pl, FormaDef alvo)
+	/// <param name="semCena">
+	/// Este degrau e so PASSAGEM: a raiva subindo sozinha pelas formas que ja sao do personagem ate a que ela
+	/// estreia (`DespertarPelaRaiva`, `GameServer.Raiva.cs`). Tudo o mais acontece igual -- o buff, o Ki levado
+	/// na razao, a frase, o anuncio que veste o corpo na tela de todo mundo --, menos a cinematica: a do
+	/// instante e a da forma nova, que entra logo em seguida por este mesmo metodo.
+	/// </param>
+	private void EntrarNaForma(ServerPlayer pl, FormaDef alvo, bool semCena = false)
 	{
 		EstadoDeForma est = pl.Forma;
 		string anterior = est.Atual;
 		bool primeira = est.Entrar(alvo.Id);
 		AplicarForma(pl);
+
+		// A FORMA DE DISCIPLINA RENOVA A ENERGIA ATUAL (80 na primeira, 100 na segunda -- `UltraInstinct.dm:466`,
+		// `UltraEgo.dm:540`). Pra toda outra forma a chamada sai na primeira linha. Ver `RenovarEnergiaNaForma`.
+		RenovarEnergiaNaForma(pl, alvo.Id);
 
 		// KI CHEIO AO DESPERTAR. E o que o original faz nas primeiras vezes e o que transforma a
 		// cena: a forma nova nao pode nascer sem folego pra ser usada.
@@ -813,7 +1046,7 @@ public partial class GameServer
 			? $"VOCE DESPERTA: {nome}!"
 			: $"{nome} (x{mostrado:0.##}).");
 
-		AnunciarForma(pl, anterior, alvo.Id, primeira);
+		AnunciarForma(pl, anterior, alvo.Id, primeira, semCena);
 	}
 
 	/// <summary>A mensagem que explica o que falta. Ver o comentario de `Avaliar`.</summary>
@@ -837,7 +1070,7 @@ public partial class GameServer
 
 			RecusaForma r = est.Avaliar(d.Id, pl.Ficha.BP,
 										pl.Ficha.MaxKi > 0 ? pl.Ficha.Ki / pl.Ficha.MaxKi : 1,
-										pl.Ficha.KO || pl.Ficha.dead, perfil);
+										CaidoPraForma(pl), perfil);
 			// LinhaFechada NAO E RECUSA A MOSTRAR: aquela escada nao e desta pessoa, e dizer "voce
 			// precisa ser Legendary Primal" pra um Saiyajin comum e contar de um jogo que nao e o
 			// dele. ForaDeOrdem tambem sai -- e so "voce ainda nao chegou ali".
@@ -923,15 +1156,23 @@ public partial class GameServer
 			// que a forma nao se alcanca querendo e o que o despertar e no original.
 			// Ela NAO e filtrada como a `NaoConcedida`: aqui o jogador ja sabe que a forma existe.
 			//
-			// SAO DUAS FRASES PORQUE SAO DOIS PRECOS (ver `Catalogo.RaivaExigida`), e uma frase so
-			// mentiria pra metade de quem a ouve: mandar o Legendary esperar a morte de um amigo
-			// esconde dele que basta uma luta em que alguem seu caia. E a diferenca e invisivel na
-			// tela -- nao ha numero, nao ha barra --, entao ou ela esta na frase ou nao existe.
+			// SAO DUAS FRASES PORQUE SAO DUAS PORTAS (ver `Catalogo.RaivaExigida`), e uma frase so
+			// mentiria pra metade de quem a ouve. A do Beast e a da dor que nao se busca: so a furia
+			// extrema o abre. A das outras formas de raiva diz as DUAS coisas que o jogador nao tem
+			// como ver na tela -- que basta alguem seu CAIR, e que a dor maior cobra menos poder (o
+			// agio da raiva comum, `FormaDef.AgioNaRaivaComum`). Sem numero nenhum: o limiar e o agio
+			// sao do personagem, e dize-los entregaria o BP que so o scouter mostra.
 			RecusaForma.SemFuria => Catalogo.RaivaExigida(candidato) == NivelDeRaiva.Extrema
 				? $"{nome} nao se alcanca querendo -- ele sai de uma dor que voce ainda "
 				+ "nao teve."
 				: $"{nome} nao vem de treino -- ele vem de ver alguem seu cair na sua "
-				+ "frente e nao chegar a tempo.",
+				+ "frente. E quanto maior a dor, menos poder ele pede.",
+			// A RAIVA ESTA ACESA E A PORTA ESTA PAGA: o que falta e a diferenca entre as duas raivas
+			// (passo 9b do `Avaliar`). A frase diz as duas saidas -- mais poder, ou uma dor maior -- e
+			// nao diz quanto.
+			RecusaForma.SemPoderPraRaivaComum =>
+				$"{nome} quase vem -- mas a raiva que voce sente pede mais poder do que voce tem. "
+				+ "So uma dor maior o traria agora.",
 			RecusaForma.SemEnergia => $"{nome} pede mais energia de Ultra Ego.",
 
 			// ============================ A UNICA RECUSA QUE SE RESOLVE NA LOJA ============================
@@ -1003,6 +1244,14 @@ public partial class GameServer
 		}
 		return melhor?.Nome;
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--formasteste`, a secao dos grades): o mod de OFENSIVA da forma vaza pro
+	/// multiplicador de poder -- o Grade 3 "que soca mais forte" passaria a marcar mais BP, que e exatamente o
+	/// que o canal de stats existe pra NAO fazer (stat de forma e `statify`, nao `powerlevel`). Lido pela propria
+	/// <see cref="AplicarForma"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal bool ModDeFormaVazaProPoderDeTeste;
 
 	/// <summary>
 	/// Escreve o multiplicador na ficha. E o unico lugar que mexe no `ssjBuff`.
@@ -1082,6 +1331,7 @@ public partial class GameServer
 		pl.Ficha.formaTecnica = m.Tecnica;
 		pl.Ficha.formaSpeed = m.Speed;
 		pl.Ficha.formaCadencia = m.Cadencia;
+		if (ModDeFormaVazaProPoderDeTeste) pl.Ficha.ssjBuff *= m.Physoff;   // (bancada) ver o campo
 
 		pl.Ficha.Statify();   // `MaxKi` e derivado: sem isto o teto novo so valeria no proximo tique
 
@@ -1242,13 +1492,22 @@ public partial class GameServer
 		// congelado ate o fim da sessao -- o congelamento nunca acabaria por nao ser contado.
 		if (pl.CenaSegundos > 0) pl.CenaSegundos = Math.Max(0, pl.CenaSegundos - dt);
 
+		// A RAIVA ACESA DESPERTA SOZINHA A FORMA QUE ELA ABRIU (dono, 2026-10-11), e e aqui -- ANTES do
+		// `NaBase` -- porque o primeiro Super Saiyajin nasce da base. Pra quem esta calmo isto e uma
+		// comparacao de prazo e mais nada. Ver `DespertarPelaRaiva` (`GameServer.Raiva.cs`).
+		DespertarPelaRaiva(pl);
+
 		if (est.NaBase) return;
 
 		// O NOCAUTE VEM ANTES DO CONGELAMENTO, e a ordem E a regra do item 4: cair no meio da
 		// cinematica desfaz a forma como sempre desfez. O `Reverter` sai pelo `AnunciarForma`, que
 		// marca a cena da BASE (zero) -- ou seja o congelamento cai junto com a forma, no mesmo gesto,
 		// sem uma segunda linha pra alguem esquecer.
-		if (pl.Ficha.KO || pl.Ficha.dead) { Reverter(pl, "voce cai, e a forma se desfaz."); return; }
+		// (MENOS A FURY do Deus da Destruicao, que no DM atravessa o nocaute e a morte -- ver `FuryAtravessaAQueda`.)
+		if (CaidoPraForma(pl) && !FuryAtravessaAQueda(pl)) { Reverter(pl, "voce cai, e a forma se desfaz."); return; }
+
+		// SSJ4 SEM RABO SE DESFAZ (`supersaiyanbuff.dm:135-162`, os tres degraus) -- ver `Ssj4SemRabo`, `GameServer.Membros.cs`.
+		if (Ssj4SemRabo(pl)) { Reverter(pl, "seu rabo se foi, e o Super Saiyajin 4 se desfaz com ele."); return; }
 
 		// ============================ EM CENA O TANQUE NAO SE MEXE SOZINHO ============================
 		// O dono: *"o ki continua caindo em cinematica, faça o ki ficar parado enquanto esta na
@@ -1270,7 +1529,7 @@ public partial class GameServer
 		double dreno = est.DrenoPorSegundo() * pl.Ficha.MaxKi * dt;
 		pl.Ficha.Ki -= dreno;
 
-		if (pl.Ficha.Ki <= 0)
+		if (pl.Ficha.Ki <= 0 && !FuryAtravessaAQueda(pl))   // a Fury nao cobra Ki, entao nao cai por falta dele
 		{
 			pl.Ficha.Ki = 0;
 			Reverter(pl, "o Ki acaba e a forma se desfaz.");
@@ -1384,11 +1643,14 @@ public partial class GameServer
 	/// </summary>
 	/// <param name="estreia">O retorno do <see cref="EstadoDeForma.Entrar"/> -- a ESTREIA desta forma.</param>
 	/// <param name="semCena">
-	/// FORCA a transformacao a ser instantanea, ignorando maestria. Existe por UM caminho: sair do
+	/// FORCA a transformacao a ser instantanea, ignorando maestria. Nasceu por UM caminho: sair do
 	/// Oozaru Dourado dominado cai em SSJ4 sem cena nenhuma, e isso e pedido do dono ("n tem
 	/// cinematica, apenas o ozaru e desfeito e o player cai no estagio de ssj4"). Nao e a porta dos
 	/// fundos da regra: quem passar `true` aqui esta dizendo "esta mudanca de forma nao e um gesto do
-	/// jogador", e hoje so existe uma dessas.
+	/// jogador". Hoje sao tres, e as tres dizem isso: aquela queda do Oozaru Dourado, o Super Saiyajin 2
+	/// que o bio-androide ganha ao morrer (`GameServer.Absorcao.cs`, a cena dele e outra) e os degraus
+	/// ja despertados que a RAIVA atravessa sozinha a caminho da forma que ela estreia
+	/// (`DespertarPelaRaiva`, pelo `EntrarNaForma(..., semCena: true)`).
 	/// </param>
 	private void AnunciarForma(ServerPlayer pl, string de, string para, bool estreia,
 							   bool semCena = false)

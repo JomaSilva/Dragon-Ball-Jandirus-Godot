@@ -557,10 +557,12 @@ public sealed class ZoneCollision
 	/// depois do boot nao existe nele. Fica numa camada por cima e some com <see cref="LimparObras"/>,
 	/// que e o que o cliente chama ao entrar na zona antes de aplicar a lista do servidor.
 	///
-	/// AS DUAS CAMADAS NAO SE CRUZAM, e por construcao: a abertura so e consultada em celula que o
-	/// ARQUIVO ja dizia ser parede, e a construcao so em celula que o arquivo dizia ser chao. Uma
-	/// obra sobre uma porta nao existe -- pra erguer algo e preciso ESTAR no lugar, e no lugar de
-	/// uma porta fechada nao se esta. Cada consulta paga um teste so.
+	/// ONDE AS DUAS CAMADAS SE CRUZAM: a abertura so e consultada em celula que o ARQUIVO dizia ser parede; a
+	/// construcao, em toda celula que e CHAO agora -- a que o arquivo dizia chao, e a parede do arquivo que foi
+	/// ABERTA (o cenario caido: a parede derrubada, o toco de uma arvore). A primeira versao so olhava a obra
+	/// onde o arquivo dizia chao ("uma obra sobre uma porta nao existe"), e a maquina assentada em cima de
+	/// cenario caido nao barrava ninguem -- ver o <see cref="BlockedCell"/>. A parede de pe continua pagando
+	/// um teste so.
 	/// </summary>
 	private HashSet<int>? _obras;
 
@@ -616,6 +618,47 @@ public sealed class ZoneCollision
 	public bool Erguida(int cx, int cy) =>
 		_erguidas != null && cx >= 0 && cy >= 0 && cx < Width && cy < Height
 		&& _erguidas.Contains(cy * Width + cx);
+
+	/// <summary>
+	/// AS ROCHAS DE MINERIO DE PE -- nascem e somem em jogo (ver `Core/Economia/RochaDeMinerio.cs`).
+	///
+	/// ============================ POR QUE NAO E A CAMADA DAS OBRAS ============================
+	/// Pelo motivo que ja fez o bloco erguido ganhar a dele: a camada das obras e refeita INTEIRA a cada
+	/// construcao que sobe ou cai (`LimparObras` + `Bloquear`, nas duas pontas), por quem so conhece obra.
+	/// Uma rocha posta ali deixaria de barrar na primeira bancada erguida no planeta -- e sao centenas de
+	/// rochas por planeta, que mudam uma de cada vez: refazer a lista delas a cada mudanca e o custo que
+	/// este sistema existe pra nao pagar.
+	///
+	/// A ROCHA VENCE O ARQUIVO E O ESTRAGO, como a celula erguida: ela so nasce em chao livre, mas o chao em
+	/// que ela esta pode rachar depois (o estrago abre a celula), e uma rocha de pe barra do mesmo jeito.
+	/// ==========================================================================================
+	///
+	/// SO NO MAPA DE COLISAO: a rocha de minerio para o corpo e nao cega (tem a altura de uma pessoa). Quem
+	/// escreve aqui sao as duas pontas, da lista do servidor; o cliente limpa a camada ao trocar de chao.
+	/// </summary>
+	private HashSet<int>? _rochas;
+
+	/// <summary>Uma rocha de minerio nasceu nesta celula: ela passa a barrar.</summary>
+	public void PorRocha(int cx, int cy)
+	{
+		if (cx < 0 || cy < 0 || cx >= Width || cy >= Height) return;
+		(_rochas ??= []).Add(cy * Width + cx);
+	}
+
+	/// <summary>A rocha desta celula foi colhida: volta a valer o que o resto do mapa diz dela.</summary>
+	public void TirarRocha(int cx, int cy)
+	{
+		if (_rochas == null || cx < 0 || cy < 0 || cx >= Width || cy >= Height) return;
+		_rochas.Remove(cy * Width + cx);
+	}
+
+	/// <summary>Nenhuma rocha de minerio neste mapa. Ver <see cref="BaixarTudo"/>.</summary>
+	public void LimparRochas() => _rochas = null;
+
+	/// <summary>Ha uma rocha de minerio de pe nesta celula?</summary>
+	public bool TemRocha(int cx, int cy) =>
+		_rochas != null && cx >= 0 && cy >= 0 && cx < Width && cy < Height
+		&& _rochas.Contains(cy * Width + cx);
 
 	/// <summary>
 	/// CELULAS QUE GANHARAM TETO EM RUNTIME -- o tile erguido por jogador.
@@ -704,6 +747,54 @@ public sealed class ZoneCollision
 		&& _seladas.Contains(cy * Width + cx);
 
 	/// <summary>
+	/// AS ARVORES QUE REBROTARAM -- a celula em que uma arvore voltou a ficar de pe (ver
+	/// <see cref="Jandirus.Core.Economia.Lenha"/> e `GameServer.Lenha.cs`).
+	///
+	/// ============================ POR QUE NAO E NENHUMA DAS OUTRAS CAMADAS ============================
+	/// A arvore derrubada e cenario caido: a celula dela fica ABERTA (<see cref="_abertas"/>) e anotada no estrago
+	/// da zona ate o servidor reiniciar, como toda parede que cai. A que rebrota e uma arvore NOVA, posta por cima --
+	/// no mesmo lugar, ou noutro chao livre se o lugar foi tomado -- e nenhuma camada que ja existia a segura:
+	///
+	///   * fechar a abertura devolveria a parede do arquivo, e o estrago a reabriria na proxima vez que o cliente
+	///     reaplicasse a lista dele (cada pedaco de mapa pintado faz isso);
+	///   * a das obras e refeita inteira a cada construcao erguida na zona, e so vale em celula que o arquivo dizia
+	///     ser chao -- a rebrota no lugar de origem (bit do arquivo ligado, celula aberta) nao barraria;
+	///   * a das erguidas e dos blocos: o cliente a esvazia a cada retrato de base, e "ha um bloco aqui?" passaria a
+	///     responder sim numa arvore.
+	///
+	/// ESTA VENCE O ARQUIVO E O ESTRAGO, como a erguida: rebrotada bloqueia. So o mapa de COLISAO a recebe -- arvore
+	/// para o corpo e nao cega (o `.vis` nunca teve arvore).
+	///
+	/// QUEM ESCREVE SAO AS DUAS PONTAS, da mesma lista: o servidor quando a arvore volta, o cliente quando o pacote
+	/// chega (<see cref="TombarTudo"/> ao entrar na zona, antes de aplicar o retrato). O custo no caminho comum e um
+	/// teste de nulo a mais por consulta.
+	/// ==================================================================================================
+	/// </summary>
+	private HashSet<int>? _rebrotadas;
+
+	/// <summary>Uma arvore voltou a ficar de pe nesta celula: ela passa a bloquear, por cima do arquivo e do estrago.</summary>
+	public void Rebrotar(int cx, int cy)
+	{
+		if (cx < 0 || cy < 0 || cx >= Width || cy >= Height) return;
+		(_rebrotadas ??= []).Add(cy * Width + cx);
+	}
+
+	/// <summary>A arvore que tinha rebrotado aqui caiu: volta a valer o arquivo, com as aberturas e as obras.</summary>
+	public void Tombar(int cx, int cy)
+	{
+		if (_rebrotadas == null || cx < 0 || cy < 0 || cx >= Width || cy >= Height) return;
+		_rebrotadas.Remove(cy * Width + cx);
+	}
+
+	/// <summary>Nenhuma arvore rebrotada: e o que o cliente chama ao entrar na zona, antes da lista do servidor.</summary>
+	public void TombarTudo() => _rebrotadas = null;
+
+	/// <summary>Ha uma arvore rebrotada nesta celula agora?</summary>
+	public bool Rebrotada(int cx, int cy) =>
+		_rebrotadas != null && cx >= 0 && cy >= 0 && cx < Width && cy < Height
+		&& _rebrotadas.Contains(cy * Width + cx);
+
+	/// <summary>
 	/// O BIT CRU DO ARQUIVO: esta celula NASCEU parede? Nao olha abertura, obra nem lacre. So pras
 	/// bancadas, que precisam distinguir "chao que caiu" de "parede que caiu" -- `Aberta` nao
 	/// distingue, porque o estrago abre toda celula caida, inclusive a que ja era chao.
@@ -750,13 +841,40 @@ public sealed class ZoneCollision
 		// A CELULA ERGUIDA VENCE O ARQUIVO E O ESTRAGO -- ver `_erguidas`.
 		if (_erguidas != null && _erguidas.Contains(i)) return true;
 
+		// E A ROCHA DE MINERIO TAMBEM -- ver `_rochas`. No mapa de visao a camada e sempre nula.
+		if (_rochas != null && _rochas.Contains(i)) return true;
+
+		// ...E A ARVORE QUE REBROTOU -- ver `_rebrotadas`. Tambem so no mapa de colisao.
+		if (_rebrotadas != null && _rebrotadas.Contains(i)) return true;
+
 		// O CAMINHO COMUM NAO PAGA QUASE NADA: em chao livre e sem construcao nenhuma na zona, isto
-		// e um teste de bit e duas comparacoes com nulo. O campo de visao chama este metodo centenas
+		// e um teste de bit e quatro comparacoes com nulo. O campo de visao chama este metodo centenas
 		// de milhares de vezes por quadro.
-		if ((_bits[i >> 3] & (1 << (i & 7))) == 0)
-			return (_obras != null && _obras.Contains(i)) || (_seladas != null && _seladas.Contains(i));
-		return _abertas == null || !_abertas.Contains(i);
+		if ((_bits[i >> 3] & (1 << (i & 7))) != 0)
+		{
+			// PAREDE DO ARQUIVO QUE NINGUEM ABRIU: barra, e a pergunta acaba aqui (o caminho de sempre).
+			if (_abertas == null || !_abertas.Contains(i)) return true;
+
+			// ============================ A CELULA ABERTA E CHAO, E CHAO TEM OBRA ============================
+			// Ate 2026-10-10 a resposta daqui era "livre", sem olhar mais nada -- e a camada das obras so era
+			// consultada onde o ARQUIVO dizia chao. Valia enquanto so porta abria celula. Desde que o cenario
+			// CAI (a parede derrubada, a arvore que vira toco) a celula aberta e chao como outro qualquer:
+			// assenta-se maquina nela. E a maquina assentada ali nao barrava ninguem, nas duas pontas -- o
+			// corpo atravessava o desenho. Com arvore caindo a toda hora, deixou de ser raro.
+			//
+			// Agora a celula aberta cai na MESMA pergunta do chao (obra? boca lacrada?). O custo e so dela.
+			if (CelulaAbertaIgnoraObraDeTeste) return false;
+		}
+		return (_obras != null && _obras.Contains(i)) || (_seladas != null && _seladas.Contains(i));
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--lenhateste`): a celula ABERTA do arquivo responde "livre" sem olhar obra nem
+	/// lacre -- o estado de antes de 2026-10-10, em que a maquina assentada em cima de cenario caido (o toco de uma
+	/// arvore, a parede derrubada) nao barrava o corpo. Lido pela propria linha do conserto, em
+	/// <see cref="BlockedCell"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool CelulaAbertaIgnoraObraDeTeste;
 
 	public bool BlockedAt(Vec2 pos) =>
 		BlockedCell((int)MathF.Floor(pos.X / TileSize), (int)MathF.Floor(pos.Y / TileSize));

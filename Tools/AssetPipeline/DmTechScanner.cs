@@ -34,23 +34,13 @@ public sealed class ConstrucaoDef
 	/// <summary>res:// do SpriteFrames convertido. Vazio = o .dmi nao existe no port.</summary>
 	public string Arte = "";
 
-	/// <summary>
-	/// O TYPEPATH QUE O `Click()` CRIA, quando a entrada NAO tem `create_type`.
-	///
-	/// ============================ SETE ENTRADAS ESCREVEM ISSO DE OUTRO JEITO ============================
-	/// As sete armas de `Modules/Tech/Weapons.dm` (Axe, Staff, Spear, Club, Hammer, Cross) e o
-	/// `Central_Computer` de `Tierless.dm` nao declaram `create_type`: elas cobram o zeni no proprio
-	/// `Click()` e fazem `new/obj/items/Weapons/Axe(locate(...))`. A informacao e a MESMA -- "o que
-	/// aparece quando isto e comprado" --, so esta escrita noutra forma, e o extrator so via uma.
-	///
-	/// ELE NAO VAI PRO JSON, de proposito. O campo `tipo` do catalogo tem um segundo consumidor -- o
-	/// conversor de mapa, que casa `create_type` com as celulas dos `.dmm` (ver
-	/// `CatalogoDeObras.PorTypepath`) -- e escrever um typepath deduzido ali mudaria o CENARIO por
-	/// causa de uma pergunta de inventario. Aqui ele serve pra uma coisa so: dizer se o objeto e de
-	/// uso pessoal (ver <see cref="Pessoal"/>).
-	/// ================================================================================================
-	/// </summary>
-	public string TipoDoClick = "";
+	// ============================ AQUI MORAVA UM `TipoDoClick`, E ELE FOI DELETADO ============================
+	// Era o typepath deduzido do `new/obj/items/Weapons/Axe(...)` que o `Click()` de sete entradas escreve no
+	// lugar do `create_type`: as seis armas de `Modules/Tech/Weapons.dm` e o `Central_Computer` de `Tierless.dm`.
+	// AS SETE ESTAO DENTRO DE `/* */` NO ORIGINAL -- o campo so existia pra classificar codigo que o jogo nao
+	// compila. Com o leitor entendendo comentario de bloco (`DmFonte`), toda entrada viva tem `create_type`
+	// (conferido contra a arvore de objetos do `dm.exe -o`: 91 de 91), e ele ficou sem leitor.
+	// =========================================================================================================
 
 	/// <summary>
 	/// ISTO E DE USO PESSOAL (se carrega/veste) em vez de coisa que se assenta no chao?
@@ -77,6 +67,20 @@ public sealed class ConstrucaoDef
 /// os blocos sao aninhados por indentacao SEM typepath (`Research_Station` solto, com as
 /// propriedades embaixo). Nao da pra procurar por `/obj/Creatables/...`; o que marca o comeco de
 /// uma entrada e "identificador sozinho na linha, um nivel dentro de um bloco Creatables".
+///
+/// ============================ O QUE ELE LE E O QUE O COMPILADOR LE (2026-10-10) ============================
+/// Tres defeitos da mesma familia -- o extrator via codigo que o jogo original nao tem, ou via metade dele --,
+/// achados comparando o catalogo com a arvore de objetos que o `dm.exe -o` imprime:
+///
+///   * COMENTARIO DE BLOCO. O leitor so pulava `//`, e o que esta dentro de `/* */` saia: seis armas a venda
+///     que o original desativou, e os precos de dois itens vivos trocados pelos do bloco morto logo abaixo
+///     deles. Quem le agora e o <see cref="DmFonte"/> (as regras estao la, medidas no compilador).
+///   * O MESMO TIPO EM DOIS ARQUIVOS. No DM isso e UM tipo, e a propriedade escrita nos dois fica com o valor
+///     do arquivo incluido depois. O extrator emitia DUAS entradas (o `PDA` repetido do `construcoes.json`) --
+///     e o jogo ficava com a ultima do arquivo ordenado por tech e custo, que so por sorte era a certa.
+///   * A FORMA DE UMA LINHA. `obj/Creatables/DNA_Container` (`Tech/DNALabs.dm:271`) nem era lida, e e ela que
+///     vale: 50.000 zeni, tech 50, so Humano. O catalogo vendia a de `Cloning Machine.dm:170` (100.000, tech 60).
+/// ===========================================================================================================
 /// </summary>
 public static class DmTechScanner
 {
@@ -86,16 +90,69 @@ public static class DmTechScanner
 	/// <summary>No DM o .dmi vai entre ASPAS SIMPLES (`icon = 'ResearchBench.dmi'`).</summary>
 	private static readonly Regex RxIcone = new("'(?<s>[^']*)'", RegexOptions.Compiled);
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `instalar-prova`): o extrator volta a emitir o que pede tecnologia acima do
+	/// teto do DM -- o estado de antes de 2026-10-10, que punha o `Spacepod_Placed` de tech 999 na aba Tech.
+	/// Falso na extracao, sempre. Lido pela propria linha do conserto, em <see cref="Scan"/>.
+	/// </summary>
+	public static bool AcimaDoTetoEntraDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `instalar-prova`): o extrator volta a emitir o `desc` do DM pra pa e pra
+	/// furadeira ("Allows you to dig...") -- o que uma regeneracao do `construcoes.json` traria de volta. Falso na
+	/// extracao, sempre. Lido pela propria linha do conserto, em <see cref="Scan"/>.
+	/// </summary>
+	public static bool DescDoDmNasFerramentasDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `instalar-prova`): o tipo declarado em dois lugares volta a ser dois -- a segunda
+	/// declaracao em bloco sai como entrada REPETIDA (o `PDA` duplicado do `construcoes.json` de antes de
+	/// 2026-10-10) e a de uma linha so (`obj/Creatables/X`) volta a nao ser lida. Lido pelas duas linhas do
+	/// conserto, em <see cref="Ler"/>.
+	/// </summary>
+	public static bool DuasDeclaracoesNaoSeFundemDeTeste;
+
 	public static List<ConstrucaoDef> Scan(string pastaCode)
 	{
+		// SO O QUE O `.dme` INCLUI, E NA ORDEM DELE: a ordem decide qual declaracao vence quando o mesmo tipo
+		// esta em dois arquivos. Ver `DmFonte.Arquivos`.
 		var todas = new List<ConstrucaoDef>();
-		foreach (string arq in Directory.GetFiles(pastaCode, "*.dm", SearchOption.AllDirectories))
+		foreach (string arq in DmFonte.Arquivos(pastaCode))
 			Ler(arq, todas);
 
 		// SO INTERESSA O QUE TEM PRECO OU REQUISITO. `obj/Creatables` tambem e usado como base
 		// abstrata e por blocos que so declaram icone; sem preco nem requisito nao ha o que vender.
-		var lista = todas.Where(c => c.Custo > 0 || c.TechNecessario > 0).ToList();
+		//
+		// ============================ E O QUE O DM DEIXA ALGUEM COMPRAR ============================
+		// A janela de tecnologia do original APAGA o que o jogador nao alcanca (`TechWindow.dm:48`:
+		// `if(techskill<A.neededtech ...) deleteflag=1`) e o `techskill` para em 100 (`TechSupport.dm:27`).
+		// Entao um `neededtech` acima disso e a forma de o DM dizer "isto nunca entra na janela": os dois
+		// `*_Placed` de tech 999 (`Tier3.dm:16-29`, `Tier 1.5.dm:44-52`) sao balcoes que o mapa traz -- o
+		// `/obj/Creatables/Boat_Placed` esta posto na agua de Arconia, `1to26.dmm:1369`, e vende UMA vez por
+		// clique nele --, e nao linhas do catalogo. O port mostra a lista inteira com o motivo de cada nao,
+		// entao la a marca virava um card que ninguem nunca destrava: o "Space Pod de tech 999" que o dono
+		// mandou tirar (2026-10-10). O teto e o do Core (`CatalogoDeObras.TechMaximoDoDm`), que o jogo tambem le.
+		//
+		// O `Central_Computer` de tech 200 (`Tierless.dm:19-33`) cairia junto, e la o DM diz duas vezes: alem do
+		// teto, o bloco inteiro esta dentro de um `/* */` -- hoje ele nem chega aqui, como as seis armas de
+		// `Weapons.dm:2-113` (dono, 2026-10-10: *"o catalogo pode tirar essas armas comentadas"*). Ver `Ler`.
+		// ===========================================================================================
+		var lista = todas.Where(c => c.Custo > 0 || c.TechNecessario > 0)
+						 .Where(c => AcimaDoTetoEntraDeTeste || c.TechNecessario <= Jandirus.Core.Tech.CatalogoDeObras.TechMaximoDoDm)
+						 .ToList();
 		lista.AddRange(MobiliaDeMapa());
+
+		// ============================ A PA E A FURADEIRA NAO CAVAM MAIS ============================
+		// O `desc` do DM diz "Allows you to dig. Slowly..." e "Allows you to dig a bit faster." -- e era isso que
+		// elas faziam la (`Tier 1.dm:254-331`). O port tirou o cavar (dono, 2026-10-10: *"tire a opcao de cavar
+		// da pa e furadeira pq e redundante"*): na mochila, elas so aceleram o verb Minerar. O texto que vai pro
+		// catalogo e o do Core (`Recurso.DescricaoDeFerramenta`), o MESMO que o item da mochila mostra -- e esta
+		// volta existe pra uma regeneracao do `construcoes.json` nao trazer o ingles do DM de volta.
+		// ==========================================================================================
+		if (!DescDoDmNasFerramentasDeTeste)
+			foreach (ConstrucaoDef c in lista)
+				if (Jandirus.Core.Economia.Recurso.DescricaoDeFerramenta(c.Id) is { } doPort) c.Desc = doPort;
+
 		return lista;
 	}
 
@@ -199,14 +256,51 @@ public static class DmTechScanner
 				 + "e o corpo so aguenta uma visita por dia.",
 			Custo = -1, TechNecessario = -1,
 		},
+
+		// A AGUA ULTRA DIVINA DO MIRANTE -- `/obj/Sacred_Water` (`Modules/Ranks/ordered/EarthRanks.dm:181-231`),
+		// um jarro so, na celula 142,62 do z 12. O `.objetos` do Mirante e a linha do `construcoes.json` foram
+		// postos a mao em 2026-10-10 (rodar o conversor inteiro mexeria em todos os mapas por causa de um
+		// jarro); esta entrada existe pra a proxima rodada dele gerar os dois de novo, iguais.
+		new()
+		{
+			Id = "Sacred_Water", Nome = "Água Ultra Divina",
+			CreateType = "/obj/Sacred_Water",
+			Desc = "O jarro do Mirante. Aumenta o poder de luta e o vigor de quem aguenta -- e mata quem nao "
+				 + "tem o corpo pra ela. So funciona uma vez na vida.",
+			Custo = -1, TechNecessario = -1,
+		},
 	];
 
 	private static void Ler(string arq, List<ConstrucaoDef> saida)
 	{
-		string[] linhas = File.ReadAllLines(arq);
+		// O ARQUIVO COMO O COMPILADOR O VE: sem comentario de linha NEM de bloco. Era aqui que morava um
+		// `StartsWith("//")` sozinho, e por ele as seis armas de `Weapons.dm:2-113` entravam no catalogo.
+		string[] linhas = DmFonte.Linhas(arq);
+		string nomeDoArquivo = Path.GetFileName(arq);
 		int indRaiz = -1;                 // indentacao da linha `obj/Creatables`
 		ConstrucaoDef? atual = null;
 		int indAtual = -1;
+		bool solta = false;               // a entrada aberta veio na forma de UMA linha (`obj/Creatables/X`)
+		bool iconeLido = false, estadoLido = false;   // o primeiro `icon`/`icon_state` DESTA declaracao e o que vale
+
+		// ============================ O MESMO TIPO DECLARADO DE NOVO E O MESMO TIPO ============================
+		// Medido no BYOND 516.1684: `obj/Creatables/PDA` escrito em dois arquivos da UM tipo, e a propriedade que
+		// os dois escrevem fica com o valor do que foi compilado DEPOIS (a que so um escreve fica como esta). Entao
+		// a segunda declaracao REABRE a entrada em vez de criar outra, e cada atribuicao dela passa por cima.
+		// ======================================================================================================
+		ConstrucaoDef Abrir(string id)
+		{
+			iconeLido = estadoLido = false;
+			ConstrucaoDef? ja = DuasDeclaracoesNaoSeFundemDeTeste ? null : saida.Find(c => c.Id == id);
+			if (ja != null)
+			{
+				if (!ja.Arquivo.Split(" + ").Contains(nomeDoArquivo)) ja.Arquivo += " + " + nomeDoArquivo;
+				return ja;
+			}
+			var nova = new ConstrucaoDef { Id = id, Nome = id.Replace('_', ' '), Arquivo = nomeDoArquivo };
+			saida.Add(nova);
+			return nova;
+		}
 
 		for (int i = 0; i < linhas.Length; i++)
 		{
@@ -216,20 +310,36 @@ public static class DmTechScanner
 			int ind = 0;
 			while (ind < linha.Length && linha[ind] == '\t') ind++;
 			string corpo = linha[ind..];
-			if (corpo.StartsWith("//", StringComparison.Ordinal)) continue;
+
+			// a entrada de uma linha so acaba na primeira linha que volta ao nivel dela
+			if (solta && ind <= indAtual) { solta = false; atual = null; }
 
 			// abriu um bloco de construiveis?
-			if (corpo is "obj/Creatables" or "/obj/Creatables") { indRaiz = ind; atual = null; continue; }
-			if (indRaiz < 0) continue;
-			if (ind <= indRaiz) { indRaiz = -1; atual = null; continue; }
+			if (corpo is "obj/Creatables" or "/obj/Creatables") { indRaiz = ind; atual = null; solta = false; continue; }
 
-			// uma entrada nova: identificador sozinho, um nivel dentro do bloco
-			if (ind == indRaiz + 1 && corpo.All(ch => char.IsLetterOrDigit(ch) || ch == '_'))
+			// A FORMA DE UMA LINHA: `obj/Creatables/DNA_Container`, com as propriedades embaixo. E a mesma
+			// entrada, escrita com o caminho inteiro -- e o extrator so via a outra forma.
+			if (IdDeUmaLinha(corpo) is { } idSolto && !DuasDeclaracoesNaoSeFundemDeTeste)
 			{
-				atual = new ConstrucaoDef { Id = corpo, Nome = corpo.Replace('_', ' '), Arquivo = Path.GetFileName(arq) };
-				saida.Add(atual);
+				indRaiz = -1;
+				solta = true;
+				atual = Abrir(idSolto);
 				indAtual = ind;
 				continue;
+			}
+
+			if (!solta)
+			{
+				if (indRaiz < 0) continue;
+				if (ind <= indRaiz) { indRaiz = -1; atual = null; continue; }
+
+				// uma entrada nova: identificador sozinho, um nivel dentro do bloco
+				if (ind == indRaiz + 1 && EhIdentificador(corpo))
+				{
+					atual = Abrir(corpo);
+					indAtual = ind;
+					continue;
+				}
 			}
 
 			if (atual == null || ind <= indAtual) continue;
@@ -238,19 +348,6 @@ public static class DmTechScanner
 			if (igual <= 0) continue;
 			string chave = corpo[..igual].Trim();
 			string valor = corpo[(igual + 1)..].Trim();
-			int comentario = valor.IndexOf("//", StringComparison.Ordinal);
-			if (comentario >= 0) valor = valor[..comentario].Trim();
-
-			// `var/obj/A = new/obj/items/Weapons/Axe(locate(...))` -- a outra forma de dizer
-			// `create_type`. So a PRIMEIRA vale: um `Click()` pode criar mais de um objeto (efeito,
-			// som), e o que interessa e a coisa comprada. Ver `ConstrucaoDef.TipoDoClick`.
-			if (atual.TipoDoClick.Length == 0
-				&& valor.StartsWith("new/obj/", StringComparison.Ordinal))
-			{
-				// TIRA SO O `new` -- a barra faz parte do typepath (`new/obj/x` -> `/obj/x`).
-				int fim = valor.IndexOf('(');
-				atual.TipoDoClick = (fim > 3 ? valor[3..fim] : valor[3..]).Trim();
-			}
 
 			switch (chave)
 			{
@@ -262,19 +359,35 @@ public static class DmTechScanner
 					if (RxStr.Match(valor) is { Success: true } mn) atual.Nome = mn.Groups["s"].Value; break;
 				case "desc":
 					if (RxStr.Match(valor) is { Success: true } md) atual.Desc = md.Groups["s"].Value; break;
+				// a lista e ATRIBUIDA, nao somada: a segunda declaracao do tipo troca a da primeira
 				case "allowedRaces":
-					foreach (Match m in RxStr.Matches(valor)) atual.Racas.Add(m.Groups["s"].Value); break;
+					atual.Racas = [.. RxStr.Matches(valor).Select(m => m.Groups["s"].Value)]; break;
 				// o typepath do que vai pro chao. Sem aspas no DM: `create_type = /obj/Technology/X`
 				case "create_type":
 					atual.CreateType = valor.Trim(); break;
 				// o icone do PROPRIO Creatable serve de reserva: nem toda entrada tem create_type
-				// (varias sao `/obj/buildables`, que se ergue como si mesmo).
+				// (varias sao `/obj/buildables`, que se ergue como si mesmo). O PRIMEIRO de cada declaracao
+				// e o que vale -- os de baixo podem ser de corpo de proc (`icon_state = "Open"` num verb).
 				case "icon":
-					if (RxIcone.Match(valor) is { Success: true } mi) atual.Icone ??= mi.Groups["s"].Value; break;
+					if (!iconeLido && RxIcone.Match(valor) is { Success: true } mi) { atual.Icone = mi.Groups["s"].Value; iconeLido = true; }
+					break;
 				case "icon_state":
-					if (RxStr.Match(valor) is { Success: true } mis) atual.Estado ??= mis.Groups["s"].Value; break;
+					if (!estadoLido && RxStr.Match(valor) is { Success: true } mis) { atual.Estado = mis.Groups["s"].Value; estadoLido = true; }
+					break;
 			}
 		}
+	}
+
+	private static bool EhIdentificador(string s) => s.Length > 0 && s.All(ch => char.IsLetterOrDigit(ch) || ch == '_');
+
+	/// <summary>`obj/Creatables/DNA_Container` (com ou sem a barra da frente) -> `DNA_Container`. Nulo pra qualquer outra linha.</summary>
+	private static string? IdDeUmaLinha(string corpo)
+	{
+		const string raiz = "obj/Creatables/";
+		string s = corpo.StartsWith('/') ? corpo[1..] : corpo;
+		if (!s.StartsWith(raiz, StringComparison.Ordinal)) return null;
+		string id = s[raiz.Length..];
+		return EhIdentificador(id) ? id : null;
 	}
 
 	/// <summary>
@@ -373,10 +486,7 @@ public static class DmTechScanner
 				d.PixelY = proprio.PixelY;
 			}
 
-			// O `create_type` MANDA; o typepath deduzido do `Click()` so entra quando ele falta.
-			// Ver `ConstrucaoDef.TipoDoClick`.
-			(d.Pessoal, d.PorQue) = Classificar(
-				d.CreateType.Length > 0 ? d.CreateType : d.TipoDoClick, verbos);
+			(d.Pessoal, d.PorQue) = Classificar(d.CreateType, verbos);
 
 			d.Arte = DmAppearanceScanner.Resolver(sprites, d.Icone) ?? "";
 

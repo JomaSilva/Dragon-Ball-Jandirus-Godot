@@ -877,6 +877,9 @@ public partial class GameServer
 			// A BOCA: texto e quadros de Opus. A voz nao tem nem campo de destino (ver o cabecalho dela
 			// em `Net/Protocol.cs`) -- nao ha numero ali que chegue perto de um tiro
 			Protocol.C2S.Chat, Protocol.C2S.Voz,
+			// O RADIO DO SCOUTER (2026-10-10): o MESMO quadro de Opus do `Voz`, por outra rota -- sequencia, tamanho
+			// e audio, sem destino e sem frequencia (quem le a frequencia da ficha e o servidor, `GameServer.Radio.cs`)
+			Protocol.C2S.VozDeRadio,
 			// A OBRA (2026-10-09): "erga / desmanche um bloco NESTA celula" -- a celula, o numero do
 			// catalogo e a senha da porta. Alcance, terreno, dono e teto quem confere e o servidor
 			// (`GameServer.RecusaDeErguer`), e bloco nao fere ninguem

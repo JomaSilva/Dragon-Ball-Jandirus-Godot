@@ -1214,7 +1214,7 @@ public partial class RoboDoTrailer
 	}
 
 	/// <summary>
-	/// AS PESSOAS: a aba People com amigos, rivais e inimigos. O convivio de verdade leva dezenas de
+	/// AS PESSOAS: a aba People com quem o heroi chama de amigo, rival e inimigo. O convivio de verdade leva dezenas de
 	/// minutos ao lado de outro JOGADOR (NPC nao entra na lista de ninguem), entao os conhecidos desta
 	/// tomada sao PLANTADOS pelo mesmo evento que o fio dispara (`ConhecidosDeTeste`), com o retrato de
 	/// cada um na memoria de "como eu vi da ultima vez" -- a aba que os desenha e a do jogo.
@@ -1246,11 +1246,13 @@ public partial class RoboDoTrailer
 		VistosDeGente.AnotarDeTeste("Raditz", "Saiyan", "Male", Retrato("Raditz", "RaditzArmorTobiUchiha"));
 		VistosDeGente.AnotarDeTeste("Yamcha", "Human", "Male", Retrato("Yamcha", "Clothes_GiTop+Clothes_GiBottom"));
 		cli.ConhecidosDeTeste([
-			new GameClient.ConhecidoInfo("trailer-kuririn", "Kuririn", "Human", "Normal", 240, (byte)Relacao.MuitoBom, 96f, 0f, false),
-			new GameClient.ConhecidoInfo("trailer-gohan", "Gohan", "Halfbreed", "Normal", 300, (byte)Relacao.Amor, 100f, 0f, false),
-			new GameClient.ConhecidoInfo("trailer-vegeta", "Vegeta", "Saiyan", "Elite", 150, (byte)Relacao.RivalBom, 48f, 30f, true),
-			new GameClient.ConhecidoInfo("trailer-yamcha", "Yamcha", "Human", "Normal", 60, (byte)Relacao.Bom, 35f, 0f, false),
-			new GameClient.ConhecidoInfo("trailer-raditz", "Raditz", "Saiyan", "Low-Class", 40, (byte)Relacao.Odio, 0f, 92f, false),
+			// (convivio, declaracao) -- a afinidade automatica saiu da aba em 2026-10-10; o Raditz tem os 50 que o
+			// "inimigo mortal" pede.
+			new GameClient.ConhecidoInfo("trailer-gohan", "Gohan", "Halfbreed", 300, (byte)Relacao.Amor),
+			new GameClient.ConhecidoInfo("trailer-kuririn", "Kuririn", "Human", 240, (byte)Relacao.MuitoBom),
+			new GameClient.ConhecidoInfo("trailer-yamcha", "Yamcha", "Human", 60, (byte)Relacao.Bom),
+			new GameClient.ConhecidoInfo("trailer-vegeta", "Vegeta", "Saiyan", 150, (byte)Relacao.RivalBom),
+			new GameClient.ConhecidoInfo("trailer-raditz", "Raditz", "Saiyan", 60, (byte)Relacao.Odio),
 		]);
 
 		menu.Abrir();

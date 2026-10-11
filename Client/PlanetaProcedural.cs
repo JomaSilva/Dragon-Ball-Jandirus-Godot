@@ -102,7 +102,7 @@ public partial class PlanetaProcedural : Planeta
 	/// <see cref="PaletaDeBioma"/> dizendo com que tile cada classe se desenha.
 	///
 	/// Uma `InteriorDeNaveDesenhado : Planeta` teria que copiar as duzentas linhas que vem depois
-	/// daqui -- montar camadas por tinta, resolver os dez pinceis contra o `tileset.tres`, criar o
+	/// daqui -- montar camadas por tinta, resolver os nove pinceis contra o `tileset.tres`, criar o
 	/// `PintorDePedacos` e ceder orcamento por quadro. Duzentas linhas duplicadas e a receita
 	/// conhecida de duas coisas que divergem: a primeira a ficar pra tras seria a entrega por
 	/// pedaco, e o sintoma seria a nave engasgando na entrada enquanto o planeta nao.
@@ -122,7 +122,7 @@ public partial class PlanetaProcedural : Planeta
 		public readonly bool Vale => Camada != null;
 	}
 
-	// indexados pelo valor de ClasseDeTerreno (0-4) e CoberturaDeTerreno (0-5)
+	// indexados pelo valor de ClasseDeTerreno (0-4) e CoberturaDeTerreno (0-5; o 4 esta vago)
 	private readonly Pincel[] _chao = new Pincel[5];
 	private readonly Pincel[] _cobertura = new Pincel[6];
 
@@ -272,21 +272,25 @@ public partial class PlanetaProcedural : Planeta
 		}
 
 		PaletaDeBioma p = t.Paleta;
-		Armar(ref _chao[(int)ClasseDeTerreno.Agua], conjunto, p.Agua, cobre: false);
-		Armar(ref _chao[(int)ClasseDeTerreno.Praia], conjunto, p.Praia, cobre: false);
-		Armar(ref _chao[(int)ClasseDeTerreno.Planicie], conjunto, p.Planicie, cobre: false);
-		Armar(ref _chao[(int)ClasseDeTerreno.Colina], conjunto, p.Colina, cobre: false);
-		Armar(ref _chao[(int)ClasseDeTerreno.Montanha], conjunto, p.Montanha, cobre: false);
+
+		// O CHAO PERGUNTA AO TERRENO, e nao a paleta direto: `VisualDaClasse` e a mesma resposta que a
+		// bancada `procedural` confere pixel a pixel contra a arte do DM (a montanha ja foi pintada com a
+		// janela das casas -- ver `GeradorDeTerreno.Rocha`). Duas leituras da paleta seriam uma tela
+		// e uma bancada que podem discordar.
+		foreach (ClasseDeTerreno classe in Enum.GetValues<ClasseDeTerreno>())
+			Armar(ref _chao[(int)classe], conjunto, t.VisualDaClasse(classe), cobre: false);
 
 		Armar(ref _cobertura[(int)CoberturaDeTerreno.Arvore], conjunto, p.Arvore, cobre: true);
 		Armar(ref _cobertura[(int)CoberturaDeTerreno.ArvoreAcento], conjunto, p.ArvoreAcento, cobre: true);
 		Armar(ref _cobertura[(int)CoberturaDeTerreno.Planta], conjunto, p.Planta, cobre: true);
-		Armar(ref _cobertura[(int)CoberturaDeTerreno.Minerio], conjunto, p.Minerio, cobre: true);
-		Armar(ref _cobertura[(int)CoberturaDeTerreno.Gema], conjunto, p.Gema, cobre: true);
+		// A ROCHA GRANDE TEM CAMADA PROPRIA, descida: ver <see cref="Camada"/>. (O minerio parado que era
+		// armado aqui saiu do gerador -- a rocha de minerio e do servidor, e quem a pinta e o `RochasNaTela`.)
+		Armar(ref _cobertura[(int)CoberturaDeTerreno.RochaGrande], conjunto, p.RochaGrande, cobre: true,
+			  rochaGrande: p.RochaGrande.Atlas == RochaGrande.Atlas);
 	}
 
 	/// <summary>Resolve UM visual do Core em pincel, criando a camada da tinta dele se preciso.</summary>
-	private void Armar(ref Pincel pincel, TileSet conjunto, TileVisual visual, bool cobre)
+	private void Armar(ref Pincel pincel, TileSet conjunto, TileVisual visual, bool cobre, bool rochaGrande = false)
 	{
 		if (!Resolver(visual, out int fonte, out Vector2I quadro))
 		{
@@ -300,13 +304,22 @@ public partial class PlanetaProcedural : Planeta
 
 		pincel.Fonte = fonte;
 		pincel.Quadro = quadro;
-		pincel.Camada = Camada(conjunto, cobre, visual.Tinta);
+		pincel.Camada = Camada(conjunto, cobre, visual.Tinta, rochaGrande);
 	}
 
-	/// <summary>A camada de uma (cobertura?, tinta). Cria na primeira vez que alguem pede.</summary>
-	private TileMapLayer Camada(TileSet conjunto, bool cobre, string? tinta)
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagrochas --rochagrandeantiga`): a rocha grande volta pra camada comum da
+	/// cobertura -- o desenho sobe dois tiles e a ordem volta a ser a da celula da ancora. E a tela de antes do
+	/// conserto: a pedra desenhada duas fileiras acima da celula que a carrega, com a pegada barrando no chao
+	/// vazio embaixo dela. Falso em jogo, sempre.
+	/// </summary>
+	public static bool RochaGrandeNaCamadaComumDeTeste;
+
+	/// <summary>A camada de uma (cobertura?, tinta, rocha grande?). Cria na primeira vez que alguem pede.</summary>
+	private TileMapLayer Camada(TileSet conjunto, bool cobre, string? tinta, bool rochaGrande = false)
 	{
-		string chave = (cobre ? "cob:" : "chao:") + (tinta ?? "");
+		rochaGrande &= !RochaGrandeNaCamadaComumDeTeste;
+		string chave = (cobre ? "cob:" : "chao:") + (rochaGrande ? "rocha:" : "") + (tinta ?? "");
 		if (_camadas.TryGetValue(chave, out TileMapLayer? achada)) return achada;
 
 		var camada = new TileMapLayer
@@ -321,6 +334,23 @@ public partial class PlanetaProcedural : Planeta
 			// acima dela e NA FRENTE quando esta abaixo. `z_index` fixo mataria isso -- dentro de
 			// um mesmo z quem decide e o Y; entre z diferentes quem decide e sempre o z.
 			camada.YSortEnabled = true;
+
+			// ============================ A ROCHA GRANDE DESCE DOIS TILES, E ORDENA PELA BASE ============================
+			// O atlas dela tem 65 px vazios embaixo, e o tileset poe o PE DO ATLAS no pe da celula: a pedra
+			// ficava duas fileiras acima da celula que a carrega, ordenada por uma linha que nao era a base
+			// dela. A camada inteira desce (`Position`) e a ordem sobe de volta ate a linha de cima da
+			// fileira da ancora (`YSortOrigin`): e ai que a pegada do Core comeca a deixar o corpo parar,
+			// entao quem esta na frente da pedra aparece na frente e quem passa por tras some atras.
+			//
+			// E NA CAMADA, e nao no `texture_origin` do tile: o `tileset.tres` e gerado pelo conversor de
+			// mapas e compartilhado com os planetas desenhados a mao. Os dois numeros sao do Core
+			// (`RochaGrande`), ao lado da pegada que depende deles.
+			// ============================================================================================================
+			if (rochaGrande)
+			{
+				camada.Position = new Vector2(0, RochaGrande.DescidaPx);
+				camada.YSortOrigin = RochaGrande.OrdemPx;
+			}
 		}
 		else
 		{

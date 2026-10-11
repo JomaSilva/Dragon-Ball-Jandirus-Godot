@@ -990,7 +990,7 @@ public partial class RoboDeFotoDeFusao : Node
 		// =====================================================================================================================
 		// ============================ E AS TRES ESPERAM O **CLARAO DE TELA** ESCOAR ============================
 		// O beat da virada acende um `ColorRect` de tela cheia na cor da AURA lerpada pra branco
-		// (`Transformacao.Clarao`), e a fusao **nao tem forma**: a cor cai no `?? Cinematicas.CorDaFuria`,
+		// (`Transformacao.Clarao`), e a fusao **nao tem forma**: a cor cai na `Cinematicas.CorDaCenaSemForma`,
 		// ou seja VERMELHO. Medir "o corpo esta branco" com meia tela de vermelho por cima mede o
 		// clarao e nao a lavagem -- e foi exatamente o que aconteceu: a A2 saiu com a lavagem em 0,99 e
 		// **0,0% de branco no pixel**, com o boneco rosa sobre um chao verde-oliva.

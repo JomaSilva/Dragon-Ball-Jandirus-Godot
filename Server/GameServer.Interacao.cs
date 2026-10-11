@@ -30,6 +30,10 @@ public sealed partial class GameServer
 		{
 			case "colher": Colher(pl); return true;
 
+			// A ROCHA DE MINERIO (`GameServer.Rochas.cs`). Como o cadaver e a porta erguida, ela nao passa pelo
+			// `ObraQueAceita` -- nao e uma obra --, e o alcance e conferido la dentro, contra a celula dela.
+			case Jandirus.Core.Economia.RochaDeMinerio.Verbo: ColetarRocha(pl); return true;
+
 			// O ENMA DAIOH (ver `GameServer.Alem.cs`, secao 5): a fala e a volta paga.
 			case "enma_ouvir": EnmaOuvir(pl); return true;
 			case "enma_reviver": EnmaReviverPorZeni(pl); return true;
@@ -74,6 +78,14 @@ public sealed partial class GameServer
 
 			case "treinar_saco": TreinarNoSaco(pl); return true;
 			case "maq_info": InfoDaMaquina(pl); return true;
+
+			// A DRILL (`GameServer.Drill.cs`): o painel pergunta o estado, e o dono coleta e melhora. Como as
+			// outras maquinas, o alcance e conferido la dentro, pelo `ObraQueAceita`.
+			case Drill.VerboVer:
+			case Drill.VerboInfo:
+			case Drill.VerboColetar:
+			case Drill.VerboMelhorar:
+				return ComandoDeDrill(pl, cmd, arg);
 
 			// A NAVE. Prefixo `nave_` e arquivo proprio (`GameServer.Nave.cs`) pela mesma razao do
 			// banco: e um sistema com registro proprio (a nave NAO e uma `Obra` -- ver o cabecalho
@@ -120,6 +132,20 @@ public sealed partial class GameServer
 			case "porta_bater":
 			case "porta_trocar":
 				return ComandoDePortaErguida(pl, cmd, arg);
+
+			// A AGUA ULTRA DIVINA DO MIRANTE (`GameServer.AguaSagrada.cs`). Mobilia de mapa, como a porta da Sala
+			// do Tempo -- e o alcance e conferido la dentro, pelo `ObraQueAceita`.
+			case AguaSagrada.VerboBeber:
+			case AguaSagrada.VerboSobre:
+				return ComandoDaAguaSagrada(pl, cmd);
+
+			// BILLS E WHIS, parados na casa deles (`GameServer.BillsTreino.cs`): treinar, desafiar pelo titulo, parar.
+			// Sao CORPOS e nao obras -- o alcance, o lugar e o estado de quem pede sao conferidos la dentro.
+			case Jandirus.Core.Npc.BillsEWhis.VerboTreinarComWhis:
+			case Jandirus.Core.Npc.BillsEWhis.VerboTreinarComBills:
+			case Jandirus.Core.Npc.BillsEWhis.VerboDesafiar:
+			case Jandirus.Core.Npc.BillsEWhis.VerboParar:
+				return ComandoDeBills(pl, cmd, arg);
 
 			default: return ComandoDeRegenerador(pl, cmd, arg) || ComandoDeGravidade(pl, cmd, arg);
 		}

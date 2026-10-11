@@ -626,32 +626,94 @@ public partial class GameServer
 			// ==========================================================================================
 			FormaDef? defG3 = Catalogo.Def("grade3");
 			ModsDeForma? modsG3 = defG3?.Mods;
+
+			// ============================ AS DUAS LEITURAS SAO FEITAS EM PAZ, E ISSO E A REGUA ============================
+			// A primeira checagem daqui compara dois `expressedBP` com folga ABSOLUTA de 1e-6 sobre um numero de
+			// 6e13 -- ou seja, exige as duas leituras IDENTICAS. So que este corpo chega aqui em FURIA (o
+			// `AmigoAbatido` do `RodarBancadaDeFormas`, reaceso antes da escada do SSJ4), e a raiva e funcao pura
+			// do RELOGIO: ela goteja `folga * decorrido / 1600 s` (`RaivaComoNumero`, `Stats.dm:443`), e cada
+			// `TickDaForma` a reprojeta. Com MaxAnger 150 sao 2,08e-7 do poder POR MILISSEGUNDO.
+			//
+			// Enquanto as duas leituras caiam no mesmo milissegundo, passava; quando caiam em dois, reprovava --
+			// sem defeito nenhum no jogo (previa de regressao de 2026-10-11: `66512978233725 -> 66512964376563`,
+			// exatamente 1 ms de gotejamento, numa corrida em varias). Era a regua comparando dois instantes de
+			// uma grandeza que anda sozinha.
+			//
+			// A SAIDA NAO E AFROUXAR A FOLGA: uma folga que engolisse o gotejamento passaria a medir o
+			// gotejamento. E tirar do corpo a unica coisa da conta de poder que depende do relogio. As duas
+			// janelas fecham aqui e voltam no `finally` com o MESMO prazo -- pras secoes de baixo o corpo continua
+			// tao enfurecido quanto estava. As formas desta secao foram LIBERADAS a mao no preparo, entao nenhuma
+			// precisa da raiva pra se sustentar.
+			//
+			// E AS DUAS LEITURAS DE CADA PAR CAEM EM MILISSEGUNDOS DIFERENTES **DE PROPOSITO** (`passoMs`: o
+			// relogio da bancada anda entre elas). Em paz isso nao pode mudar nada, e deixou de ser sorte; em
+			// furia e o que reproduz a oscilacao -- ver o segundo contra-exemplo.
+			// ==============================================================================================================
+			long extremaGuardada = pl.FuriaExtremaAte, comumGuardada = pl.RaivaLendariaAte;
+			const long PassoDoRelogioMs = 7;
+
+			// UMA LEITURA: poe os mods pedidos na entrada VIVA do catalogo, tiqueia a forma (o `AplicarForma` os
+			// afirma no corpo e reprojeta a raiva do relogio) e le o corpo.
+			(double Poder, double Speed, double Pct) Ler(ModsDeForma? mods, long passoMs)
+			{
+				if (defG3 != null) defG3.Mods = mods;
+				AdiantoDoRelogioDeTeste += passoMs;
+				f.Ki = f.MaxKi;
+				TickDaForma(pl, 0.1);
+				Medir(pl);
+				return (f.expressedBP, f.Espeed, f.Inteireza);
+			}
+
 			try
 			{
 				Verbo(pl, "forma", "grade3");
 				PassarACena(pl);
-				f.Ki = f.MaxKi;
-				TickDaForma(pl, 0.1);
-				Medir(pl);
-				double comMods = f.expressedBP, speedComMods = f.Espeed, pctComMods = f.Inteireza;
 
-				if (defG3 != null) defG3.Mods = Catalogo.SemMods;
-				f.Ki = f.MaxKi;
-				TickDaForma(pl, 0.1);
-				Medir(pl);
-				double semMods = f.expressedBP, speedSemMods = f.Espeed, pctSemMods = f.Inteireza;
+				pl.FuriaExtremaAte = 0;
+				pl.RaivaLendariaAte = 0;
+				var comMods = Ler(modsG3, 0);
+				Checa("[grades] (preparo) o corpo e lido EM PAZ: a raiva anda com o relogio, e o poder andaria junto",
+					  NivelDaRaivaDe(pl) == NivelDeRaiva.Nenhuma && Math.Abs(f.Anger - 100) < 1e-9,
+					  $"raiva {NivelDaRaivaDe(pl)}, Anger {f.Anger:0.######}");
+				var semMods = Ler(Catalogo.SemMods, PassoDoRelogioMs);
 
 				Checa("[grades] apagar os mods do Grade 3 NAO mexe no poder (stat e statify, nao powerlevel)",
-					  Math.Abs(comMods - semMods) < 1e-6, $"{comMods:0} -> {semMods:0}");
-				Checa("[grades] ...nem na % de BP efetivo", Math.Abs(pctComMods - pctSemMods) < 1e-12,
-					  $"{pctComMods:0.######} -> {pctSemMods:0.######}");
+					  Math.Abs(comMods.Poder - semMods.Poder) < 1e-6, $"{comMods.Poder:0} -> {semMods.Poder:0}");
+				Checa("[grades] ...nem na % de BP efetivo", Math.Abs(comMods.Pct - semMods.Pct) < 1e-12,
+					  $"{comMods.Pct:0.######} -> {semMods.Pct:0.######}");
 				Checa("[grades] ...mas MEXE no Espeed -- prova de que a bancada leu o catalogo de verdade",
-					  Math.Abs(speedComMods - speedSemMods) > 1e-9,
-					  $"{speedComMods:0.####} -> {speedSemMods:0.####}");
+					  Math.Abs(comMods.Speed - semMods.Speed) > 1e-9,
+					  $"{comMods.Speed:0.####} -> {semMods.Speed:0.####}");
+
+				// ---- CONTRA-EXEMPLO 1: o defeito que esta regua existe pra pegar. Com o mod de ofensiva do grade
+				// entrando no multiplicador de poder (`AplicarForma`), o MESMO par de leituras tem que divergir.
+				ModDeFormaVazaProPoderDeTeste = true;
+				try
+				{
+					var vazaCom = Ler(modsG3, 0);
+					var vazaSem = Ler(Catalogo.SemMods, PassoDoRelogioMs);
+					Checa("[grades] (defeito injetado: o mod de ofensiva da forma vaza pro poder) a MESMA regua REPROVA",
+						  !(Math.Abs(vazaCom.Poder - vazaSem.Poder) < 1e-6),
+						  $"{vazaCom.Poder:0} -> {vazaSem.Poder:0}");
+				}
+				finally { ModDeFormaVazaProPoderDeTeste = false; }
+
+				// ---- CONTRA-EXEMPLO 2: por que EM PAZ. Com a furia acesa, o mesmo corpo com os MESMOS mods, lido
+				// duas vezes a 7 ms uma da outra, ja da dois poderes -- e a oscilacao de 2026-10-11, de proposito.
+				pl.FuriaExtremaAte = NowMs() + (long)(SegundosDeRaiva * 1000);
+				var emFuria = Ler(modsG3, 0);
+				var emFuriaLogoDepois = Ler(modsG3, PassoDoRelogioMs);
+				Checa("[grades] (a oscilacao reproduzida: as duas leituras em FURIA, sem trocar mod nenhum) a MESMA regua REPROVA "
+					+ "-- era o relogio, e por isso ela mede em paz",
+					  f.Anger > 100 && !(Math.Abs(emFuria.Poder - emFuriaLogoDepois.Poder) < 1e-6),
+					  $"Anger {f.Anger:0.####}; {emFuria.Poder:0} -> {emFuriaLogoDepois.Poder:0}");
 			}
 			finally
 			{
+				ModDeFormaVazaProPoderDeTeste = false;
 				if (defG3 != null) defG3.Mods = modsG3;
+				pl.FuriaExtremaAte = extremaGuardada;
+				pl.RaivaLendariaAte = comumGuardada;
 				TickDaForma(pl, 0.1);
 			}
 

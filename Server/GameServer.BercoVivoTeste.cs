@@ -123,7 +123,7 @@ public partial class GameServer
 	// =====================================================================
 	/// <summary>
 	/// A varredura e do CONJUNTO, e o conjunto vem de duas fontes independentes: o `races.json`
-	/// (extraido do DM pelo AssetPipeline -- 24 racas, e ele conhece a "Dog", que nenhuma lista
+	/// (extraido do DM pelo AssetPipeline -- 23 racas, e ele conhece as que nenhuma lista
 	/// escrita a mao lembraria) e o menu de criacao (`CharacterDraft.RacasDoPlaneta`, os gates `can*`
 	/// do BYOND). A uniao das duas e o que o jogo pode entregar; qualquer raca que entre amanha em
 	/// qualquer uma das duas cai nesta bancada sozinha.
@@ -228,7 +228,7 @@ public partial class GameServer
 	///
 	/// `races.json` e o que o AssetPipeline extraiu do DM (e o que o `Birth.Nascer` consulta);
 	/// `RacasDoPlaneta` e o que a tela de criacao oferece. As duas podem divergir -- e divergem: o
-	/// Halfbreed e o Android nao estao no menu, a "Dog" nao esta em lugar nenhum da tela --, e e a
+	/// Halfbreed e o Android nao estao no menu --, e e a
 	/// uniao que responde "o que o jogo pode entregar".
 	/// </summary>
 	private List<string> ConjuntoDeRacas()

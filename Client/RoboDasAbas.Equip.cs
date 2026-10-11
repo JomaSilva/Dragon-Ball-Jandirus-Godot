@@ -12,6 +12,8 @@ namespace Jandirus.Client;
 ///   * os quatro cartoes existem e o aviso "vem com o sistema de itens" morreu;
 ///   * a pilula do scouter diz o que o BIT e a MOCHILA dizem ("não tem" nesta bancada, que nasce sem
 ///     item), "LIGADO" nao aparece com o bit apagado, e o botao de ligar existe APAGADO;
+///   * o cartao do scouter traz o RADIO: a pilula da frequencia que o servidor mandou, o botao de trocar
+///     (apagado sem o item) e a nota com a tecla do registro. A troca em si, pelo fio, e da `--radiovivo`;
 ///   * as cinco linhas de aparelhos existem, com o nome do CATALOGO, o icone carregado e a pilula que
 ///     a mochila manda; "Tirar os pesos" so existe com pesos vestidos;
 ///   * o cartao de combate le a ficha (cadencia, letal, guarda) e NAO inventa os numeros que o cliente
@@ -71,6 +73,18 @@ public partial class RoboDasAbas
 			  bLigar != null && bLigar.Text == (ligado ? "Desligar o scouter" : "Ligar o scouter"), bLigar?.Text ?? "(nulo)");
 		Checa("o icone do scouter carregou (o mesmo sprite da mochila: um TextureRect 'Icone' com textura)",
 			  cScouter != null && Todos(cScouter).OfType<TextureRect>().Any(t => t.Name == "Icone" && t.Texture != null));
+
+		// ---- o radio do scouter: mora no MESMO cartao (ver `MenuJogo.Radio.cs`) ----
+		string freq = $"freq. {cli.FrequenciaDoRadio}";
+		Checa($"o cartao do scouter traz o RADIO: a pilula '{freq}' e a frequencia que o servidor mandou",
+			  pilScouter.Contains(freq), string.Join(",", pilScouter));
+		Button? bFreq = Botao(pg, "Trocar a frequência");
+		Checa("o botao 'Trocar a frequência' EXISTE e segue o item, como o de ligar (apagado sem scouter na mochila)",
+			  bFreq != null && bFreq.Disabled == !temScouter, bFreq == null ? "botao ausente" : bFreq.Disabled ? "(apagado)" : "(aceso)");
+		string teclaDoRadio = Teclas.NomeDaAcao("falar_radio");
+		Checa("a nota do radio ensina a tecla do registro (a de falar no radio, e nao '-- sem tecla --')",
+			  teclaDoRadio != "-- sem tecla --" && cScouter != null
+			  && Rotulos(cScouter).Any(l => l.Text.Contains("rádio") && l.Text.Contains(teclaDoRadio)), teclaDoRadio);
 
 		// ---- os pesos ----
 		bool vestidos = cli.Atributos.PesoMult > 1.001;

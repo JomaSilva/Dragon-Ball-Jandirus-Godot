@@ -100,6 +100,20 @@ public partial class MenuJogo
 			b.Pressed += () => fazer();
 			barra.AddChild(b);
 		}
+
+		// A CASA DO BILLS, pra quem ja ouviu o endereco (`S2C.CasaDeBills`): a carta vai ate la e seleciona o mundo.
+		// So existe depois da revelacao -- antes dela a barra e a de sempre. Ver `MenuJogo.Bills.cs`.
+		if (MundoDaCasaDeBills() != null)
+		{
+			var irACasa = new Button
+			{
+				Text = "casa de Bills",
+				TooltipText = "leva a carta até o mundo que o Bills contou, e o seleciona",
+			};
+			irACasa.AddThemeColorOverride("font_color", RoxoDeBills);
+			irACasa.Pressed += () => { if (MundoDaCasaDeBills() is { } casa) _mapa.VerOMundo(casa); };
+			barra.AddChild(irACasa);
+		}
 		cartaoDaCarta.AddChild(barra);
 		_conteudo.AddChild(_mapa);
 
@@ -163,6 +177,11 @@ public partial class MenuJogo
 			 + "sistema -- estrela no centro, os mundos nos aneis de orbita. Arraste pra mover, roda pra zoom.", legenda);
 		Nota("A cor do ponto e a classe da estrela, medida na propria arte dela. Aproximando, os mundos "
 			 + "aparecem: o laranja tem mapa proprio, o azul-acinzentado e gerado. Duplo clique num MUNDO viaja.", legenda);
+		Nota("O anel DOURADO em volta de um mundo gerado marca uma ATMOSFERA DIVINA: são raros, e quem tem poder de "
+			 + "base pra isso desperta o ki divino ficando neles.", legenda);
+		if (cli.CasaDeBills.Revelada)
+			Nota("O anel ROXO marca o mundo onde o Bills mora: a gravidade de lá esmaga quem pousa sem preparo. "
+				 + "O botão \"casa de Bills\" da barra leva a carta até ele.", legenda);
 		Nota("A viagem leva o tempo que diz: o piloto anda no passo normal, nao teleporta. "
 			 + "Terra a Namek sao 7 dias in-game, como no anime.", legenda);
 
@@ -244,7 +263,9 @@ public partial class MenuJogo
 		// Pousado, a coordenada do corpo e de superficie e o "X dias daqui" sairia de um ponto
 		// que nao existe no mapa.
 		Vector2? eu = MapaEstelar.MinhaPosicaoNaGalaxia();
-		var titulo = new Label { Text = p.Nome };
+		// O NOME E O QUE SE MOSTRA: o batizado, se alguem batizou (ver `GameClient.NomeDoPlaneta`).
+		string nomeVisto = GameClient.Instance?.NomeDoPlaneta(p) ?? p.Nome;
+		var titulo = new Label { Text = nomeVisto };
 		titulo.AddThemeColorOverride("font_color", Tema.Destaque);
 		painel.AddChild(titulo);
 
@@ -264,7 +285,7 @@ public partial class MenuJogo
 		var linha = new HBoxContainer();
 		var viajar = new Button
 		{
-			Text = $"Viajar para {p.Nome}",
+			Text = $"Viajar para {nomeVisto}",
 			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
 			// SO NO ESPACO. Viajar e voar entre mundos: em terra firme o piloto automatico andaria
 			// contra a parede do planeta. Continua APARECENDO, apagado, porque saber que o destino
@@ -322,7 +343,10 @@ public partial class MenuJogo
 		if (!p.Premade)
 		{
 			Jandirus.Core.World.MundoProcedural m = Jandirus.Core.World.MundoProcedural.DaSeed(p.Seed, p.Nome);
-			return $"mundo gerado · {m.Bioma} · gravidade {m.Gravidade:0.##}x · {ceu}";
+			// A ATMOSFERA DIVINA entra na ficha como a gravidade: e do mundo, sai da seed, e se sabe antes de ir.
+			return $"mundo gerado · {m.Bioma} · gravidade {m.Gravidade:0.##}x · {ceu}"
+				 + (MundoDivino(p) ? " · ATMOSFERA DIVINA" : "")
+				 + (CasaDeBills(p) ? " · CASA DE BILLS" : "");
 		}
 		double g = Planetas.Catalogo?.De(p.Nome).Gravidade ?? 1;
 		return $"mundo com superficie -- da pra pousar · gravidade {g:0.##}x · {ceu}";
@@ -343,7 +367,7 @@ public partial class MenuJogo
 	{
 		if (!noEspaco) { Chat.Sistema("voce precisa estar no espaco pra viajar."); return; }
 		World.Instancia?.Pilotar(new Vector2(p.Pos.X, p.Pos.Y));
-		Chat.Sistema($"rumo a {p.Nome}. Qualquer tecla de movimento desliga o piloto.");
+		Chat.Sistema($"rumo a {GameClient.Instance?.NomeDoPlaneta(p) ?? p.Nome}. Qualquer tecla de movimento desliga o piloto.");
 		Fechar();
 	}
 

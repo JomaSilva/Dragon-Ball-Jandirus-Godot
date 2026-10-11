@@ -152,7 +152,10 @@ public static class Teclas
 		// sobem a escada. Ver `LocalPlayer.LerTeclaC`.
 		new("transformar", "carregar Ki (segurar) e subir a escada (dois toques)",
 			GrupoDeTecla.Acao, [Key.C]),
-		new("reverter", "voltar ao normal", GrupoDeTecla.Acao, [Key.X]),
+		// REVERTER / LIBERAR (item 8 do playtest de 2026-10-10). Quem decide o que o toque faz e o servidor
+		// (`GameServer.ReverterOuLiberar`): com o Ki acima de 100% ele volta a 100%; senao, a forma recua um
+		// estagio; na base, nada.
+		new("reverter", "liberar o Ki acima de 100% / recuar um estágio da forma", GrupoDeTecla.Acao, [Key.X]),
 		new("train", "treinar", GrupoDeTecla.Acao, [Key.T]),
 		new("meditate", "meditar", GrupoDeTecla.Acao, [Key.M]),
 
@@ -164,6 +167,16 @@ public static class Teclas
 		// NO `InputMap` como as outras de jogo: e o `Microfone` que le, com `IsActionPressed`, e e
 		// assim que a bancada consegue apertar a tecla de verdade em vez de chamar a funcao na mao.
 		new("falar_voz", "falar por voz (segurar)", GrupoDeTecla.Acao, [Key.V]),
+
+		// O RADIO DO SCOUTER (dono, 2026-10-10): segurando ESTA a voz vai pela frequencia do scouter, e nao pela
+		// proximidade; as duas seguradas mandam pelos dois caminhos (`RadioDoScouter.ParaOndeVai`). Sem scouter
+		// ligado ela nao faz nada, e quem aperta e avisado uma vez (`RadioOuvido`).
+		//
+		// O **O** E A LETRA QUE NAO PISA EM NINGUEM: das livres (H, J, L, O, U, Y, Z), o Z, o J, o Y, o U e o H
+		// sao as "teclas livres" das bancadas de tecla e de voz (`RoboDeTecla`, `RoboDeVoz`, `RoboDeVozDupla`), e
+		// o L e vizinho do K -- o golpe LETAL, a um dedo de distancia de uma tecla que se segura. O O fica entre
+		// o I (mochila) e o P (menu), onde um escorregao so abre uma tela.
+		new("falar_radio", "falar no rádio do scouter (segurar)", GrupoDeTecla.Acao, [Key.O]),
 
 		// ---------------------------------------------------------- interface
 		// FORA DO `InputMap`: quem le sao as proprias telas, evento a evento (ver `NoInputMap`).
@@ -531,7 +544,8 @@ public static class Teclas
 			(U("lethal"), "alternar golpe letal"),
 			($"{U("train")} / {U("meditate")}", "treinar / meditar"),
 			(U("transformar"), "segurar = Ki  ·  dois toques = subir"),
-			(U("falar_voz"), "falar por voz (segurar)"),
+			// NA MESMA LINHA que a voz de perto: o painel cabe uma duzia de linhas, e as duas sao o mesmo gesto.
+			($"{U("falar_voz")} / {U("falar_radio")}", "falar por voz / no rádio do scouter (segurar)"),
 			(P("ui_ajuda"), "esconder esta lista"),
 			(P("ui_menu"), "menu do jogo"),
 			(P("fixa_sair"), "pausa (e a tela de teclas)"),

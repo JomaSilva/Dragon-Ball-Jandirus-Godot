@@ -341,7 +341,10 @@ public partial class TelaDeInventario : CanvasLayer
 
 				// POSICIONAR NAO MANDA VERBO: ela poe a construcao na MAO e fecha o inventario. O
 				// verbo sai depois, quando o jogador clicar no chao -- ver `TelaDeConstrucao`.
-				if (a == Jandirus.Core.Items.CatalogoDeItens.AcaoPosicionar)
+				// PLANTAR E A MESMA COISA com outra palavra: a semente vai pra mao e o clique no chao
+				// escolhe onde a arvore nasce.
+				if (a == Jandirus.Core.Items.CatalogoDeItens.AcaoPosicionar
+					|| a == Jandirus.Core.Items.CatalogoDeItens.AcaoPlantar)
 				{
 					Fechar();
 					TelaDeConstrucao.Instancia?.Segurar(def.Id);
@@ -395,7 +398,6 @@ public partial class TelaDeInventario : CanvasLayer
 		"ajustar" => "Ajustar o peso",
 		"tirar" => "Tirar os pesos",
 		"usar" => "Usar",
-		"cavar" => "Cavar aqui",
 		// O LIVRO DE ENSINAMENTOS (lote G13). "Ler" sozinho serviria -- o `_` la embaixo ja
 		// capitaliza --, mas o botao precisa dizer que o livro SE GASTA, e isso nao cabe no verbo.
 		"ler" => "Ler (gasta o livro)",
@@ -407,6 +409,7 @@ public partial class TelaDeInventario : CanvasLayer
 		// depois de fabricar -- ver `GameServer.Construir`. Duas palavras pro mesmo botao fariam o
 		// jogador procurar um segundo botao que nao existe.
 		Jandirus.Core.Items.CatalogoDeItens.AcaoPosicionar => "Instalar no chão",
+		Jandirus.Core.Items.CatalogoDeItens.AcaoPlantar => "Plantar",
 		"largar" => "Jogar fora",
 		_ => char.ToUpperInvariant(acao[0]) + acao[1..],
 	};

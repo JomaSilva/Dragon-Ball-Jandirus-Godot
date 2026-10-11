@@ -36,8 +36,10 @@ public partial class MenuJogo
 	{
 		base._Notification(what);
 		if (GameClient.Instance is not { } cli) return;
-		if (what == NotificationReady) cli.SentidosMudaram += AoSentidos;
-		else if (what == NotificationExitTree) cli.SentidosMudaram -= AoSentidos;
+		// A FREQUENCIA DO RADIO entra pelo mesmo gancho e pelo mesmo motivo (ver `MenuJogo.Radio.cs`): ela chega
+		// num pacote proprio, e parado na aba Equip nenhum pacote de ficha a traria pra tela.
+		if (what == NotificationReady) { cli.SentidosMudaram += AoSentidos; cli.RadioMudou += AoRadio; }
+		else if (what == NotificationExitTree) { cli.SentidosMudaram -= AoSentidos; cli.RadioMudou -= AoRadio; }
 	}
 
 	/// <summary>Mesma regra do `AoConhecidos`: so remonta se a aba aberta e a que desenha isto.</summary>
@@ -83,13 +85,7 @@ public partial class MenuJogo
 		// aqui so se respeita a ausencia).
 		if (!double.IsNaN(p.Bp)) Linha("Battle Power", $"{p.Bp:N0}", Tema.Destaque, c);
 
-		// O PODER RELATIVO: acima de 100% o outro e mais forte que eu -- a barra enche e fica vermelha.
-		if (!float.IsNaN(p.PoderRelativo))
-		{
-			Color cor = p.PoderRelativo > 100 ? Tema.Perigo : Tema.Ki;
-			LinhaComBarra("poder relativo", $"{p.PoderRelativo:0}%", Math.Min(p.PoderRelativo / 100.0, 1), cor, c,
-						  p.PoderRelativo > 100 ? Tema.Perigo : null);
-		}
+		if (!float.IsNaN(p.PoderRelativo)) LinhaDoPoderRelativo(p.PoderRelativo, c);
 
 		if (p.Distancia != Protocol.DistanciaDesconhecida)
 			Linha("distância", $"{p.Distancia} tiles · direção {Protocol.NomeDoRumo(p.Rumo)}", null, c);
@@ -98,6 +94,24 @@ public partial class MenuJogo
 
 		// o `(?,?,z[D.z])` do DM: so o lugar, sem coordenada
 		if (p.Zona.Length > 0) Linha("onde", $"(?, ?, {p.Zona})", null, c);
+	}
+
+	/// <summary>O rotulo da linha do poder relativo. As bancadas a procuram por aqui (e pelo metadado `linha`).</summary>
+	internal const string RotuloDoPoderRelativo = "poder relativo";
+
+	/// <summary>
+	/// A LINHA DO PODER RELATIVO -- "quanto essa pessoa tem do meu poder", a unica leitura de forca alheia de quem nao
+	/// usa scouter: acima de 100% o outro e mais forte que eu, e a barra enche e fica vermelha.
+	///
+	/// UMA FUNCAO PRAS DUAS TELAS que a desenham: o cartao de presenca desta aba e o cartao de mestre/aluno da aba do
+	/// discipulado (`MenuJogo.Alunos.cs`), que rele a MESMA lista do sentido de Ki. Duas copias desta linha seriam
+	/// duas leituras de forca no jogo -- e a regra e que haja uma so.
+	/// </summary>
+	private static void LinhaDoPoderRelativo(float porcento, Control pai)
+	{
+		Color cor = porcento > 100 ? Tema.Perigo : Tema.Ki;
+		LinhaComBarra(RotuloDoPoderRelativo, $"{porcento:0}%", Math.Min(porcento / 100.0, 1), cor, pai,
+					  porcento > 100 ? Tema.Perigo : null);
 	}
 
 	/// <summary>

@@ -57,6 +57,20 @@ public sealed class Settings
     /// </summary>
     public List<string> BarraDeBlocos = [];
 
+    /// <summary>
+    /// COM O QUE SE PAGA A OBRA DE BASE: "zeni" ou "recursos" (as chaves de `PrecoDeBloco.Chave`). E a escolha
+    /// do seletor "Pagar com" do modo de construir, que FICA ate o jogador trocar -- ao sair e voltar pro modo
+    /// e de uma sessao pra outra. Texto e nao o numero do enum, pelo motivo das teclas logo acima.
+    /// </summary>
+    public string PagarObraCom = "zeni";
+
+    /// <summary>
+    /// O ARRANJO DA INTERFACE: onde o jogador pos e de que tamanho deixou o menu P, o chat e os dois paineis do
+    /// topo (e se o menu P abre numa janela separada). Ver <see cref="ArranjoDaInterface"/> -- de fabrica, tudo no
+    /// lugar de sempre. Quem prende estes numeros na tela e o <see cref="Janelas"/>, a cada aplicacao.
+    /// </summary>
+    public ArranjoDaInterface Arranjo = new();
+
     // --- video ---
     //
     // ============================ O QUE A RESOLUCAO SIGNIFICA (leia antes de mexer) ============================
@@ -104,6 +118,13 @@ public sealed class Settings
     public int LarguraJanela = 1280;
     public int AlturaJanela = 720;
     public bool TelaCheia;
+
+    /// <summary>
+    /// A ABERTURA ANIMADA ao abrir o jogo (o titulo cai na tela como no trailer e sobe pro alto do menu: ver
+    /// `AberturaDoJogo`). Ligada de fabrica; desligada, o jogo abre direto no menu, com o titulo ja no alto. E a caixa
+    /// "abertura animada ao abrir o jogo" das opcoes -- e `--semabertura` na linha de comando faz o mesmo por uma vez.
+    /// </summary>
+    public bool AberturaAnimada = true;
 
     /// <summary>
     /// Ampliacao da camera. INTEIRO de proposito: em arte de pixel um zoom quebrado mapeia
@@ -266,6 +287,10 @@ public sealed class Settings
     public void Aplicar()
     {
         Zoom = Math.Clamp(Zoom, ZoomMin, ZoomMax);
+
+        // O ARRANJO DA INTERFACE SEM O QUE NAO E NUMERO (um arquivo editado a mao, um `"Arranjo": null`): daqui
+        // pra frente as telas podem le-lo sem conferir. Prender na tela e outra etapa -- ver `Janelas`.
+        Arranjo = ArranjoDaInterface.Saneado(Arranjo);
 
         // O ORCAMENTO DE LUZ DE KI. Aqui e nao na `AplicarQualidade` porque este e o caminho que o
         // boot E o menu ja percorrem -- ver `PauseMenu`, que chama `AplicarEGravar` ao trocar a

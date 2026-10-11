@@ -1789,6 +1789,10 @@ public partial class RoboDeForma : Node
 		// sem classificar o prazo dela trocaria uma acusacao pela outra.
 		// ==========================================================================================================
 		("super_perfect",                   "`Cell4()` nao tem um `sleep` -- o `animate(time=7)` e flash"),
+
+		// A FURY DO DEUS DA DESTRUICAO (2026-10-11), pelo mesmo motivo das de cima: o `Buff()` do `GodFury`
+		// (`GodOfDestruction.dm:396-401`) veste a aura, toca `1aura.wav` e escreve uma linha -- sem espera nenhuma.
+		("god_fury",                        "o `Buff()` do `GodFury` nao tem um `sleep` -- a forma fica no mesmo tique"),
 	];
 
 	/// <summary>
@@ -3920,16 +3924,17 @@ public partial class RoboDeForma : Node
 				 $"sao {esperadas.Length} formas por raiva (deu {deuRaiva.Count})");
 
 		// ============================ SAO DOIS PRECOS, E A CRATERA E UMA SO ============================
-		// O gate cobra DOIS degraus de raiva (`Catalogo.RaivaExigida`): a furia do luto pro tronco
-		// Saiyajin e pro Beast, e o desconto da `legendary anger` pra linha Legendary. O DESENHO nao
-		// se divide -- toda forma que nasce de raiva abre a cratera grande, porque quem esta olhando
-		// nao sabe (nem tem como saber) de que dor ela veio.
+		// O gate cobra DOIS degraus de raiva (`Catalogo.RaivaExigida`): a furia do luto, que e a unica
+		// que abre o Beast, e a raiva comum, que desde 2026-10-11 abre todas as outras formas de raiva
+		// por um preco de BP maior (`FormaDef.AgioNaRaivaComum`). O DESENHO nao se divide -- toda forma
+		// que nasce de raiva abre a cratera grande, porque quem esta olhando nao sabe (nem tem como
+		// saber) de que dor ela veio.
 		//
 		// A CHECAGEM E DAQUI E NAO DO CORE porque a consequencia e daqui: o unico consumidor de
 		// producao do `NasceDaRaiva` e o `Transformacao.cs`, escolhendo `CrateraGrande` contra
 		// `Cratera`. Trocar aquela pergunta por "pede furia extrema?" -- a "correcao" plausivel,
-		// agora que existem dois niveis -- faria as SEIS formas Legendary estrearem com a cratera
-		// pequena. Nada quebraria, nada apareceria no log: so um chao que racha menos.
+		// agora que existem dois niveis -- faria todas as formas de raiva menos o Beast estrearem com
+		// a cratera pequena. Nada quebraria, nada apareceria no log: so um chao que racha menos.
 		// ================================================================================
 		int extremas = 0, lendarias = 0;
 		foreach (Jandirus.Core.Forms.FormaDef d in Jandirus.Core.Forms.Catalogo.Todas)
@@ -3947,7 +3952,7 @@ public partial class RoboDeForma : Node
 				 $"os DOIS degraus existem no catalogo ({extremas} por luto, {lendarias} por queda)");
 		Conferir(extremas + lendarias == deuRaiva.Count,
 				 $"e os dois somam a lista da cratera ({extremas}+{lendarias} contra {deuRaiva.Count})");
-		_passos.Add($"  --     por LUTO: {extremas} formas; pelo desconto Legendary: {lendarias}");
+		_passos.Add($"  --     so com a furia do LUTO: {extremas} forma(s); tambem com a raiva comum (mais caro): {lendarias}");
 
 		// AS QUE MAIS PODEM ESCORREGAR, ditas com o motivo -- sao os tres jeitos de sair do tronco.
 		Conferir(!Jandirus.Core.Forms.Catalogo.NasceDaRaiva(Jandirus.Core.Forms.Catalogo.Def("grade2")),
@@ -6402,7 +6407,9 @@ public partial class RoboDeForma : Node
 	/// </summary>
 	private void AsColadasNoCatalogoInteiro()
 	{
-		const string Verde = "6eff8c", Rosa = "ff7ac6";
+		// (o roxo da Fury e o `rgb(190, 80, 255)` do `god_fury_aura`, `GodOfDestruction.dm:390` -- escrito aqui
+		// por extenso, e nao pela constante do Core, pelo mesmo motivo do corte divino logo abaixo.)
+		const string Verde = "6eff8c", Rosa = "ff7ac6", RoxoDaFury = "be50ff";
 
 		// ============================ A ESPERADA E RECALCULADA, E DE PROPOSITO POR EXTENSO ============================
 		// Mesma disciplina da varredura da folha de aura: perguntar ao `Catalogo.Coladas` e conferir a
@@ -6422,6 +6429,8 @@ public partial class RoboDeForma : Node
 					? [new(FolhaColada.DeusAzul)] : [new(FolhaColada.Deus)],
 				LinhaDeForma.GodKiRose => d.Ordem >= 20
 					? [new(FolhaColada.Ameacadora, Rosa)] : [new(FolhaColada.Deus)],
+				// A FURY do Deus da Destruicao (2026-10-11): a aura dela no DM E a `god - grey` roxa colada.
+				LinhaDeForma.DeusDaDestruicao => [new(FolhaColada.Ameacadora, RoxoDaFury)],
 				_ => [],
 			};
 
@@ -6487,13 +6496,14 @@ public partial class RoboDeForma : Node
 		Conferir(erradas == 0,
 				 $"em TODO o catalogo, so a `god - grey` leva tinta e ela NUNCA fica sem ({erradas} fora da regra)");
 
-		// E AS DUAS CORES SAO AS DUAS, e nao uma. O verde e literal do DM (`EffectLayer.dm:31-32`); o
-		// rosa nao existe la e e divergencia declarada (ver `Catalogo.Coladas`).
+		// E AS TRES CORES SAO AS TRES, e nao uma. O verde e literal do DM (`EffectLayer.dm:31-32`); o
+		// rosa nao existe la e e divergencia declarada (ver `Catalogo.Coladas`); o roxo entrou com a Fury
+		// do Deus da Destruicao (2026-10-11) e tambem e literal (`GodOfDestruction.dm:390`).
 		string[] tintas = [.. Jandirus.Core.Forms.Catalogo.Todas
 			.SelectMany(d => Jandirus.Core.Forms.Catalogo.Coladas(d))
 			.Where(c => c.Tinta != null).Select(c => c.Tinta!).Distinct().Order()];
-		Conferir(tintas.Length == 2 && tintas.Contains(Verde) && tintas.Contains(Rosa),
-				 $"e as tintas coladas do jogo sao DUAS -- #{Verde} (Legendary) e #{Rosa} (Rose) "
+		Conferir(tintas.Length == 3 && tintas.Contains(Verde) && tintas.Contains(Rosa) && tintas.Contains(RoxoDaFury),
+				 $"e as tintas coladas do jogo sao TRES -- #{Verde} (Legendary), #{Rosa} (Rose) e #{RoxoDaFury} (Fury) "
 			   + $"({string.Join(", ", tintas.Select(t => "#" + t))})");
 
 		// --- A ARTE: importada, carregando, e do TIPO que a regra da tinta pressupoe ---
@@ -6766,8 +6776,10 @@ public partial class RoboDeForma : Node
 					pintadas++;
 					bool lendaria = d.Linha is LinhaDeForma.Legendary or LinhaDeForma.LegendaryPrimal;
 					bool rose = d.Linha == LinhaDeForma.GodKiRose;
-					Conferir(lendaria || rose,
-							 $"`{d.Id}`: quem usa a folha cinza e linha Legendary ou Rose (deu {d.Linha})");
+					// (e a Fury do Deus da Destruicao, desde 2026-10-11: a aura dela no DM E a folha cinza roxa)
+					bool fury = d.Linha == LinhaDeForma.DeusDaDestruicao;
+					Conferir(lendaria || rose || fury,
+							 $"`{d.Id}`: quem usa a folha cinza e linha Legendary, Rose ou a Fury (deu {d.Linha})");
 
 					Conferir(!tem[i].Tinta.IsEqualApprox(Colors.White),
 							 $"`{d.Id}`: a folha cinza CHEGOU TINGIDA na camada "
@@ -9727,6 +9739,10 @@ public partial class RoboDeForma : Node
 		// caso do Heran e do Namekuseijin logo acima, palavra por palavra.
 		// ==================================================================================================
 		("super_perfect",                   ModoCabelo.Base,             null,     null),
+
+		// A FURY DO DEUS DA DESTRUICAO (2026-10-11): o `Buff()` dela so escreve o multiplicador e veste a aura colada
+		// (`GodOfDestruction.dm:396-401`) -- nao ha `RemoveHair`/`AddHair`, overlay de olho nem tinta de rabo.
+		("god_fury",                        ModoCabelo.Base,             null,     null),
 	];
 
 	/// <summary>
@@ -11720,9 +11736,13 @@ public partial class RoboDeForma : Node
 	///      SSJ3 e tem que sair em SSJ3 -- se esta checagem cair, quem perder um amigo em SSJ3 volta
 	///      ao normal sozinho.
 	///   3. **ELA TERMINA.** Roda os 8 beats, morre `Sozinha` e nao encosta no teto.
-	///   4. **A CHAMA E VERMELHA.** Sem forma, `Aura.CorDaChamaDe(null)` daria o branco do ki cru; o DM
-	///      pinta a `Aurabigcombined` de `#ff2a2a` (`Murder.dm:149`). A cor e lida do MATERIAL, e nao do
-	///      campo que a pediu -- mesma regra do resto deste arquivo.
+	///   4. **ELA NAO ACENDE CHAMA NENHUMA, E NADA NELA E VERMELHO** (dono, 2026-10-11: *"a raiva extrema n
+	///      deveria colocar uma aura vermelha aqui"* -- a divergencia do `Murder.dm:146-150` esta declarada
+	///      em `Cinematicas.Furia`). A chama da cena fica com forca ZERO do primeiro ao ultimo quadro, lida do
+	///      MATERIAL e nao do campo que a pediu (mesma regra do resto deste arquivo), e os aneis de choque
+	///      saem na cor da aura do PROPRIO corpo. Cada metade tem o contra-exemplo ao lado: a mesma medida
+	///      numa cena de sonda que escreve o beat da chama le forca acima de zero, e com a cor do corpo
+	///      ignorada a cena volta ao vermelho das cenas sem forma.
 	///   5. **A PEDRA APARECE.** `OChaoSeSolta` e verdadeiro pra ela por derivacao (forma nula ->
 	///      `NaoSeSobePraEla` falso), e "por derivacao" e exatamente o tipo de verdade que merece uma
 	///      medida: um `Def(null)` que um dia devolvesse a base mataria o efeito sem erro nenhum.
@@ -11771,31 +11791,86 @@ public partial class RoboDeForma : Node
 				 "...e nao trava a pose (um corpo que anda em pose parada desliza pelo chao)");
 
 		int pedrasMax = 0;
-		Color? corDaChama = null;
+		Color corDosAneis = t.CorDosAneisDeTeste;
+		float chamaMax = 0f;
+		int quadrosDeChama = 0;
+		bool chamaSemMaterial = false;
 		double ateQuando = furia.Segundos + Transformacao.FolgaDoTeto + 1.0;
 		for (double k = 0; k < ateQuando && IsInstanceValid(t); k += 0.1)
 		{
 			t._Process(0.1);
 			pedrasMax = Math.Max(pedrasMax, t.PedrasVivasDeTeste);
 
-			// A CHAMA MEDIDA NO MEIO DA CENA e nao no instante zero: ela nasce com forca 0 (ver o
-			// `_Ready` do tocador) e o `_Process` e quem a acende. Aos ~1,5 s ela esta cheia.
-			if (Math.Abs(k - 1.5) < 0.051) corDaChama = t.ChamaDaCenaDeTeste.CorNoMaterialDeTeste;
+			// A CHAMA E LIDA EM TODO QUADRO, e nao num instante: o que se afirma agora e que ela NUNCA acende.
+			// (Antes a cor era amostrada aos 1,5 s, com a chama cheia -- era a cena que tinha a aura vermelha.)
+			if (t.ChamaDaCenaDeTeste.ForcaNoMaterialDeTeste is { } forca)
+			{
+				chamaMax = Math.Max(chamaMax, forca);
+				quadrosDeChama++;
+			}
+			else chamaSemMaterial = true;
 		}
 
-		// ============================ A COR SAI DO MATERIAL, E A LEITURA E COBRADA ============================
-		// `CorNoMaterialDeTeste` e um `Color?`: sem material ele e nulo. Um `if (... is { } cor)` dentro
-		// do laco faria a checagem SUMIR nesse caso em vez de reprovar -- que e o modo de falha que este
-		// arquivo inteiro persegue (bancada que mede nada e verde). Entao o nulo e uma reprova propria.
-		Conferir(corDaChama != null, "a chama da furia tem material pra medir");
-		if (corDaChama is { } cor)
+		// ============================ 4. NENHUMA CHAMA, E NADA VERMELHO ============================
+		// A LEITURA E COBRADA: `ForcaNoMaterialDeTeste` e nulo sem material, e um laco que so medisse quando
+		// ha o que medir ficaria verde por ausencia -- o modo de falha que este arquivo inteiro persegue.
+		Conferir(!chamaSemMaterial && quadrosDeChama > 10,
+				 $"a chama da cena da furia tem material pra medir em todo quadro ({quadrosDeChama} leituras)");
+		Conferir(!chamaSemMaterial && chamaMax <= 0f,
+				 $"a furia NAO acende a chama da cena em quadro nenhum (forca maxima {chamaMax:0.###}) -- "
+			   + "a aura vermelha do `Murder.dm:146-150` saiu por pedido do dono");
+
+		static bool MesmaCor(Color a, Color b) =>
+			Mathf.Abs(a.R - b.R) < 0.02f && Mathf.Abs(a.G - b.G) < 0.02f && Mathf.Abs(a.B - b.B) < 0.02f;
+		Color auraDoCorpo = corpo.GetNodeOrNull<Aura>("Aura")?.CorDaChama ?? Aura.CorDoKiCru;
+		var semForma = new Color(Jandirus.Core.Forms.Cinematicas.CorDaCenaSemForma);
+		Conferir(MesmaCor(corDosAneis, auraDoCorpo) && !MesmaCor(corDosAneis, semForma),
+				 $"os aneis de choque da furia saem na cor da aura do PROPRIO corpo ({corDosAneis.ToHtml(false)}; "
+			   + $"aura {auraDoCorpo.ToHtml(false)}), e nao no vermelho das cenas sem forma ({semForma.ToHtml(false)})");
+
+		// ---- contra-exemplo da cor: a MESMA funcao que o `Rodar` chama, com o defeito injetado ----
+		Transformacao.CorDoCorpoIgnoradaDeTeste = true;
+		try
 		{
-			var esperada = new Color(Jandirus.Core.Forms.Cinematicas.CorDaFuria);
-			Conferir(Mathf.Abs(cor.R - esperada.R) < 0.02f && Mathf.Abs(cor.G - esperada.G) < 0.02f
-					 && Mathf.Abs(cor.B - esperada.B) < 0.02f,
-					 $"a chama da furia chega VERMELHA no material ({cor.ToHtml(false)}, "
-				   + $"esperado {Jandirus.Core.Forms.Cinematicas.CorDaFuria})");
+			Color comDefeito = Transformacao.CorSemForma(corpo, furia);
+			Conferir(MesmaCor(comDefeito, semForma) && !MesmaCor(comDefeito, auraDoCorpo),
+					 "(defeito injetado: a furia volta a cair na cor das cenas sem forma) a cor dos aneis sai VERMELHA "
+				   + $"({comDefeito.ToHtml(false)}) -- a checagem de cima REPROVA");
 		}
+		finally { Transformacao.CorDoCorpoIgnoradaDeTeste = false; }
+
+		// ---- contra-exemplo da chama: a mesma medida, numa cena que ESCREVE o beat da chama ----
+		// Uma cena de sonda sem forma, parada antes da virada (ela nao chega a abrir cratera nem a tocar som):
+		// a medida de cima tem que saber ler "acendeu". E o que acende, sem forma, e a chama do PROPRIO corpo --
+		// o `if (d == null)` vermelho do `ChamaDoDegrau` saiu junto.
+		var sonda = new Jandirus.Core.Forms.Cinematica
+		{
+			Forma = "",
+			SegundosPreso = 0,
+			Beats =
+			[
+				new(0.0, Jandirus.Core.Forms.Efeito.AuraGrande),
+				new(2.0, Jandirus.Core.Forms.Efeito.Assumir),
+				new(3.0, Jandirus.Core.Forms.Efeito.Poeira),
+			],
+		};
+		var acesa = Transformacao.Rodar(corpo.GetParent(), corpo, forma: null, sonda, souEu: false);
+		acesa.SetProcess(false);
+		float chamaDaSonda = 0f;
+		for (int q = 0; q < 8; q++)
+		{
+			acesa._Process(0.1);
+			chamaDaSonda = Math.Max(chamaDaSonda, acesa.ChamaDaCenaDeTeste.ForcaNoMaterialDeTeste ?? 0f);
+		}
+		Color? corDaSonda = acesa.ChamaDaCenaDeTeste.CorNoMaterialDeTeste;
+		Color pessoal = corpo.GetNodeOrNull<Aura>("Aura")?.CorPessoal ?? Aura.CorDoKiCru;
+		acesa.QueueFree();
+		Conferir(chamaDaSonda > 0.1f,
+				 $"(contra-exemplo) a MESMA medida, numa cena sem forma que escreve o beat da chama, le forca acima de "
+			   + $"zero ({chamaDaSonda:0.###}) -- a checagem 'nao acende' sabe reprovar");
+		Conferir(corDaSonda is { } cs && MesmaCor(cs, pessoal) && !MesmaCor(cs, semForma),
+				 $"...e a chama que uma cena sem forma acende e a do PROPRIO corpo ({corDaSonda?.ToHtml(false) ?? "sem material"}; "
+			   + $"pessoal {pessoal.ToHtml(false)}), nao uma vermelha");
 
 		// ---- 3. ela termina sozinha ----
 		Conferir(t.BeatsDeTeste == furia.Beats.Length,
@@ -13985,10 +14060,13 @@ public partial class RoboDeForma : Node
 				 {
 					 Jandirus.Core.Forms.Catalogo.IdBase,
 					 "frost1", "frost2", "frost3", "frost4", "frost5", "frost6", "frost7",
+					 // A FURY DO DEUS DA DESTRUICAO (2026-10-11), por porte: o buff dela so veste a aura COLADA
+					 // (`GodOfDestruction.dm:399`) e nao troca a chama grande de ninguem.
+					 "god_fury",
 					 Jandirus.Core.Forms.Catalogo.IdMistico,
 				 }),
-				 "a chama do JOGADOR e de NOVE formas -- a `base`, o `mistico` e os sete degraus do "
-			   + $"Frost Demon ([{string.Join(", ", doJogador)}])");
+				 "a chama do JOGADOR e de DEZ formas -- a `base`, o `mistico`, os sete degraus do "
+			   + $"Frost Demon e a Fury ([{string.Join(", ", doJogador)}])");
 
 		// ============================ 4. E A CHAMA DE TODAS AS OUTRAS E A COR QUE ELAS DECLARAM ============================
 		// Este e o "as 33 outras nao se moveram" desta passada. A afirmacao NAO e "a funcao concorda com

@@ -87,20 +87,28 @@ public sealed partial class GameServer
 
 		if (ComandoDeInteracao(pl, cmd, arg)) return;
 		if (ComandoDeItem(pl, cmd, arg)) return;
+		if (ComandoDeRadio(pl, cmd, arg)) return;   // a frequencia do radio do scouter -- ver GameServer.Radio.cs
 
 		// O CONVIVIO: conhecidos, amizade, rivais e relacoes. Arquivo proprio pelo mesmo motivo do
 		// banco -- e um sistema inteiro com regras proprias, e nao meia duzia de `case`.
 		if (ComandoDeConvivio(pl, cmd, arg)) return;
+		if (ComandoDeAlunos(pl, cmd, arg)) return;   // a aba Alunos/Mestre: o pedido do painel e os dois gestos do cartao de um aluno -- ver GameServer.Alunos.cs
 
 		// A CRIACAO DE TECNICAS DE KI. Arquivo proprio, e prefixo `ca_` proprio, pela mesma razao do
 		// banco: sao dez comandos com um estado compartilhado (a mesa aberta) -- ver
 		// `GameServer.Customizadas.cs`.
 		if (ComandoDeTecnicaCustomizada(pl, cmd, arg)) return;
+		if (ComandoDeMoedaDeObra(pl, cmd, arg)) return;   // com o que se paga a obra de base -- ver GameServer.CustoDeObra.cs
 
 		// A CONQUISTA DE PLANETAS: prefixo `conq_`, dois arquivos proprios (o livro dos dominios e a
 		// invasao). Mesma razao do banco e das tecnicas -- e um sistema com estado compartilhado
 		// (dominios vivos, invasoes em andamento, canais de arranque) e nao meia duzia de `case`.
 		if (ComandoDeConquista(pl, cmd, arg)) return;
+
+		// O BATISMO DE PLANETAS: prefixo `planeta_`. Logo depois da conquista porque le o livro dela (quem
+		// domina e quem da o nome) -- ver `GameServer.Batismo.cs`.
+		if (ComandoDeBatismo(pl, cmd, arg)) return;
+		if (ComandoDeSaque(pl, cmd, arg)) return;
 
 		// O REFUGIO: para onde vai quem ficou sem planeta natal, e a escolha entre o dominio
 		// conquistado e a vizinhanca de casa. Vem LOGO DEPOIS da conquista porque escreve no mesmo
@@ -129,6 +137,14 @@ public sealed partial class GameServer
 			case "sessao_nova": VerboSessao(pl, nova: true); break;
 			case "sessao_ver": VerboSessao(pl, nova: false); break;
 			case "quem": VerboQuem(pl); break;
+
+			// ACORDAR DA MEDITACAO PROFUNDA -- o botao do HUD e a tecla de meditar dentro da mente. Por AQUI
+			// e nao pelo canal de habilidades: aquele e barrado pro corpo possuido e pra espera do torneio,
+			// e esta saida tem que funcionar sempre. Ver `SairDoTranse`.
+			case "mente_sair": SairDoTranse(pl); break;
+
+			// O PROGRESSO DAS SKILLS -- o `Check_Skill_Stats` do original. Ver `VerProgressoDasSkills`.
+			case "skills_progresso": VerProgressoDasSkills(pl); break;
 
 			// LIMPAR BUFFS -- o `Clear_Buffs` do original. Existe porque buff preso e um estado que
 			// o jogador nao tem como desfazer sozinho, e o motor de buffs ja sabe derrubar tudo.
@@ -183,7 +199,8 @@ public sealed partial class GameServer
 			// outra coisa -- ele ignora os requisitos, porque serve pra testar as formas trancadas
 			// (`GameServer.Admin.cs`). Uma tecla que caisse nele seria um atalho que pula o portao.
 			// ==========================================================================================
-			case "forma": TransformarPara(pl, arg); break;
+			// (o possuido nao passa: `RecusarFormaSemAsRedeas`, `GameServer.Validacoes.cs`)
+			case "forma": if (!RecusarFormaSemAsRedeas(pl)) TransformarPara(pl, arg); break;
 
 			// OS GRAUS DO SSJ NO CAMINHO DA TECLA C -- liga, desliga e conta em que pe ficou. Mora
 			// junto do `knockback` la embaixo por parentesco: os dois sao preferencia de JOGADOR

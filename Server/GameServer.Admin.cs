@@ -134,29 +134,71 @@ public sealed partial class GameServer
 
 	public void DesligarAdminPorEndereco() => AdminPorEndereco = false;
 
-	/// <summary>As contas que ja entraram por endereco local nesta sessao.</summary>
-	private readonly HashSet<string> _contasLocais = new(StringComparer.OrdinalIgnoreCase);
+	/// <summary>
+	/// O DESARME AUTOMATICO JA ACONTECEU NESTA SESSAO. E o que separa "a chave caiu pela ambiguidade" (da sessao:
+	/// some quando o servidor para, ver `GameServer.Parada.cs`) de "a chave foi desligada pelo
+	/// `--sem-admin-local`" (do processo: fica).
+	/// </summary>
+	private bool _enderecoAmbiguo;
 
 	/// <summary>
-	/// DESARMA a regra de endereco quando ela deixa de distinguir alguem.
+	/// DEFEITO INJETADO (bancada `--adminlocalteste`): a ordem de antes de 2026-10-11 -- o login CONCEDE o admin
+	/// pelo endereco e so depois confere a ambiguidade, e quem DISPARA o desarme sai administrador (o laco que
+	/// tira o bit so ve quem ja esta no mundo). Lido pela propria linha do conserto, em <see cref="ConcederPoderes"/>.
+	/// </summary>
+	internal bool AdminConcedeAntesDeConferirDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--adminlocalteste`): o caderno de antes, que nao esquecia -- esta conta, que ja
+	/// SAIU do jogo, continua contando como "outra conta local", e contas em SEQUENCIA desarmam a chave. Lido
+	/// pela propria linha do conserto, em <see cref="ConferirAmbiguidadeDeHost"/>.
+	/// </summary>
+	internal string? AdminLembraDeQuemSaiuDeTeste;
+
+	/// <summary>
+	/// ESTA ENTRADA VALE COMO A DO DONO DA MAQUINA? Conferido ANTES de conceder qualquer coisa -- e e aqui que
+	/// a regra de endereco se DESARMA quando deixa de distinguir alguem.
 	///
-	/// Uma maquina de dono unico produz exatamente UMA conta local. Duas contas diferentes vindo
+	/// Uma maquina de dono unico produz exatamente UMA conta local de cada vez. Duas contas diferentes vindo
 	/// de endereco local ao mesmo tempo so acontece em dois mundos: alguem tem tunel/proxy na
 	/// frente (e entao "local" e todo mundo) ou a maquina e compartilhada. Nos dois, continuar
 	/// dando admin por endereco e dar admin a estranhos.
 	///
-	/// Quem ja recebeu PERDE na hora -- inclusive quem estava jogando. E incomodo, e e menos
-	/// incomodo que descobrir depois que o servidor inteiro pode banir o dono.
+	/// ============================ AS TRES REGRAS ============================
+	///   1. "AO MESMO TEMPO" E LITERAL. Quem responde "ha outra conta local?" e o `_contas` -- as contas que
+	///      estao EM JOGO agora, e que o `Drop` tira na saida. Nao ha caderno a parte pra alguem esquecer de
+	///      apagar: havia (`_contasLocais`), ele nunca esquecia, e o dono que jogava com uma conta e depois com
+	///      outra na propria maquina desarmava a propria chave.
+	///   2. O DESARME VALE PRA TODOS, INCLUSIVE PRA QUEM O DISPARA. A ordem antiga concedia o bit e SO ENTAO
+	///      conferia -- e o laco que tira o bit varre `_players`, onde quem esta entrando ainda nao esta. O
+	///      resultado era o contrario do que a regra existe pra fazer: atras de um tunel, o primeiro de fora
+	///      entrava ADMINISTRADOR e o dono perdia (MEDIDO na `--paradateste`, 2026-10-11).
+	///   3. DESARMOU, FICA DESARMADO ATE O SERVIDOR PARAR. A segunda conta sair nao rearma: o que a ambiguidade
+	///      provou (ha mais gente chegando "de dentro") continua verdade, e rearmar daria o admin ao proximo
+	///      que entrasse sozinho. Quem e o dono de verdade continua admin pela MARCA NA CONTA
+	///      (<see cref="AccountSave.Admin"/>, que ele mesmo pode dar a propria conta pelo painel enquanto esta
+	///      sozinho) -- e quem hospeda atras de tunel deve usar o `--sem-admin-local`.
+	/// =======================================================================
+	///
+	/// Quem ja tinha recebido pelo endereco PERDE na hora -- inclusive quem estava jogando. E incomodo, e e
+	/// menos incomodo que descobrir depois que o servidor inteiro pode banir o dono.
 	/// </summary>
-	private void ConferirAmbiguidadeDeHost(ServerPlayer pl)
+	private bool ConferirAmbiguidadeDeHost(NetPeer peer, AccountSave acc)
 	{
-		if (!AdminPorEndereco || pl.Conta.Length == 0) return;
-		if (!_contasLocais.Add(pl.Conta) || _contasLocais.Count < 2) return;
+		if (!EhHost(peer)) return false;   // a chave esta desligada, ou a conexao vem de fora
+
+		string? outra = _contas.Where(kv => EhHost(kv.Key) && !string.Equals(kv.Value.Conta, acc.Conta, StringComparison.OrdinalIgnoreCase))
+							   .Select(kv => kv.Value.Conta).FirstOrDefault();
+		if (outra == null && AdminLembraDeQuemSaiuDeTeste is { } saiu && !string.Equals(saiu, acc.Conta, StringComparison.OrdinalIgnoreCase))
+			outra = saiu;
+		if (outra == null) return true;
 
 		AdminPorEndereco = false;
-		GD.PushWarning($"[server] DUAS contas chegaram por endereco local ({string.Join(", ", _contasLocais)}) -- "
+		_enderecoAmbiguo = true;
+		GD.PushWarning($"[server] DUAS contas por endereco local ao mesmo tempo ('{outra}' ja estava em jogo, '{acc.Conta}' chegou) -- "
 					 + "o endereco nao identifica mais a maquina do dono (tunel? proxy? maquina compartilhada?). "
-					 + "Admin por endereco DESLIGADO. Promova a conta do dono pelo painel, que a marca vai pro disco.");
+					 + "Admin por endereco DESLIGADO ate o servidor reiniciar, inclusive pra quem acabou de chegar. "
+					 + "Promova a conta do dono pelo painel, que a marca vai pro disco.");
 
 		foreach (ServerPlayer p in _players.Values.ToList())
 		{
@@ -166,8 +208,10 @@ public sealed partial class GameServer
 			if (porConta || !EhAdmin(p)) continue;
 			p.PoderesConcedidos &= ~Protocol.Poder.Admin;
 			AplicarPoderes(p);
-			Avisar(p, "o administrador por endereco foi desligado neste servidor.");
+			Avisar(p, "o admin por endereço foi desligado: outra conta entrou desta mesma máquina. Ele só volta quando o "
+					+ "servidor reiniciar -- uma conta promovida pelo painel continua admin de qualquer endereço.");
 		}
+		return false;
 	}
 
 	private static bool EhAdmin(ServerPlayer pl) => (pl.Poderes & Protocol.Poder.Admin) != 0;
@@ -214,12 +258,14 @@ public sealed partial class GameServer
 	/// </summary>
 	private void ConcederPoderes(ServerPlayer pl, NetPeer peer, AccountSave acc)
 	{
-		if (EhHost(peer))
+		// PRIMEIRO CONFERE, DEPOIS CONCEDE: o endereco so vale enquanto distinguir alguem, e quem chega junto com
+		// outra conta local nunca recebe o bit -- nem por um pacote. Ver `ConferirAmbiguidadeDeHost`. (A resposta
+		// de ANTES da conferencia so existe pro defeito injetado da bancada: e a ordem antiga.)
+		bool chegouDeDentro = EhHost(peer);
+		if (ConferirAmbiguidadeDeHost(peer, acc) || (AdminConcedeAntesDeConferirDeTeste && chegouDeDentro))
 		{
 			pl.PoderesConcedidos |= Protocol.Poder.Admin;
 			GD.Print($"[server] {pl.Name} conectou de {peer.Address} -- e a maquina do servidor: entra como ADMIN");
-			// ...mas o endereco so vale enquanto distinguir alguem. Ver `ConferirAmbiguidadeDeHost`.
-			ConferirAmbiguidadeDeHost(pl);
 		}
 		else if (acc.Admin)
 		{
@@ -528,6 +574,8 @@ public sealed partial class GameServer
 			// FERRAMENTAS DE TESTE: forcam o que o jogo cobra caro. Ver `AdminForcarForma`.
 			case "admin_forma": AdminForcarForma(pl, arg); break;
 			case "admin_liberar_ki": AdminLiberarKi(pl, arg); break;
+			case "admin_godki": AdminDespertarOGodKi(pl, arg); break;   // o "Force God Ki" do DM -- ver `GameServer.GodKi.cs`
+			case "admin_bills": AdminBills(pl, arg); break;             // a historia do Bills sem esperar um mes -- ver `GameServer.Bills.cs`
 			case "admin_skill_dar": AdminSkill(pl, arg, dar: true); break;
 			case "admin_skill_tirar": AdminSkill(pl, arg, dar: false); break;
 			case "admin_cargo_dar": AdminOutorgarCargo(pl, arg); break;
@@ -562,7 +610,7 @@ public sealed partial class GameServer
 			case "admin_morte_lenta": AdminMorteLenta(pl); break;
 			case "admin_destruir_planeta": AdminDestruirPlaneta(pl); break;
 			case "admin_abortar_morte": AdminAbortarMorte(pl); break;
-			case "admin_restaurar_planeta": AdminRestaurarPlaneta(pl); break;
+			case "admin_restaurar_planeta": AdminRestaurarPlaneta(pl, arg); break;
 
 			// ---------------------------------------------------------- informacao
 			case "admin_quem": VerboQuem(pl); break;
@@ -572,6 +620,8 @@ public sealed partial class GameServer
 			case "admin_galaxia": AdminGalaxia(pl); break;
 			// "me poe dentro da estrela mais proxima" -- ver GameServer.Universo.cs.
 			case "admin_estrela": AdminIrParaAEstrela(pl); break;
+			// "me poe em orbita do mundo de atmosfera divina mais proximo" -- ver GameServer.GodKi.cs.
+			case "admin_mundo_divino": AdminIrParaOMundoDivino(pl); break;
 
 			// ---------------------------------------------------------- sobre mim
 			case "admin_invisivel": AdminInvisivel(pl); break;
@@ -1461,6 +1511,10 @@ public sealed partial class GameServer
 						 .Where(m => m.V > 0)
 						 .Select(m => $"{(Catalogo.Def(m.Id) is { } md ? Catalogo.NomeDe(md, p.Forma.Maestria) : m.Id)} {m.V:0}%"))
 					 : ""));
+		// O KI DIVINO: o requisito PESSOAL (que o jogador nunca ve em numero), o medidor e a maestria -- ver `GameServer.GodKi.cs`.
+		Avisar(adm, LinhaDoKiDivinoPraAdmin(p));
+		// O GANHO DE PODER: o multiplicador dos marcos e as etiquetas ja pagas -- ver `GameServer.MarcosDeForma.cs`.
+		Avisar(adm, LinhaDoGanhoPraAdmin(p));
 		Avisar(adm, $"  skills {p.Livro.Aprendidas.Count} · marcos {p.Livro.MarcosLivres}/{p.Livro.MarcosTotais}");
 		Avisar(adm, $"  tech {p.Ficha.techskill:0.#} · zeni {p.Ficha.Zeni:N0}");
 		Avisar(adm, $"  em {p.Zone.Name} ({p.Pos.X / ZoneCollision.TileSize:0},{p.Pos.Y / ZoneCollision.TileSize:0})"

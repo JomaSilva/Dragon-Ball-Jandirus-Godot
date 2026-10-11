@@ -56,7 +56,11 @@ public sealed class VisualCatalog
     private static readonly string[] SemCabelo =
         ["Namekian", "Majin", "Shapeshifter", "Saibaman", "Icer", "BioAndroid"];
 
-    public static bool TemCabelo(string raca) => Array.IndexOf(SemCabelo, raca) < 0;
+    // (O BICHO tambem nao tem cabelo, e nao esta na lista de cima porque nao e raca do jogo: o corpo dele e
+    // UMA folha de sprite inteira -- ver `Npc.Animais`.)
+    // (E o BILLS e o WHIS pelo mesmo motivo: a folha de cada um ja traz a cabeca desenhada -- ver `Npc.BillsEWhis`.)
+    public static bool TemCabelo(string raca) =>
+        Array.IndexOf(SemCabelo, raca) < 0 && !Npc.Animais.EhAnimal(raca) && !Npc.BillsEWhis.EhRacaDivina(raca);
 
     /// <summary>
     /// Saiyajin nao escolhe cor de cabelo: o cabelo dele JA e preto no sprite, com os realces
@@ -196,7 +200,11 @@ public sealed class VisualCatalog
         // 0" ao virar `Race = "Android"`); aqui ele seria pior, porque apagaria PROGRESSAO e nao
         // gosto.
         // =========================================================================================================
-        int quantos = Races.BioAndroids.EhBio(raca) ? Races.BioAndroids.Corpos.Length : lista.Count;
+        // O BICHO pelo mesmo argumento, com a lista dele: o indice e a ESPECIE (`Npc.Animais.Folhas`), e zera-lo
+        // aqui transformaria toda vaca em lobo.
+        int quantos = Races.BioAndroids.EhBio(raca) ? Races.BioAndroids.Corpos.Length
+                    : Npc.Animais.EhAnimal(raca) ? Npc.Animais.Folhas.Length
+                    : lista.Count;
         if (ap.Corpo < 0 || ap.Corpo >= quantos)
         {
             if (ap.Corpo != 0) erros.Add("corpo fora da lista da raca");
@@ -285,6 +293,19 @@ public sealed class VisualCatalog
             return Races.BioAndroids.Corpos[
                 Math.Clamp(ap.Corpo, 0, Races.BioAndroids.Corpos.Length - 1)];
 
+        // ============================ E O BICHO, QUE E UMA FOLHA SO ============================
+        // O corpo de um animal (lobo, vaca, galinha -- `Npc.Animais`) nao e o boneco em camadas: e a folha
+        // inteira da especie, e o indice dela viaja em `ap.Corpo` como o degrau do bio logo acima. Sem cabelo,
+        // sem roupa e sem olhos por cima (ver `TemCabelo` e `CorpoTemRosto`).
+        // =======================================================================================
+        if (Npc.Animais.EhAnimal(raca)) return Npc.Animais.CaminhoDaFolha(ap.Corpo);
+
+        // ============================ E O BILLS E O WHIS, UMA FOLHA POR PERSONAGEM ============================
+        // A "raca" de cada um (fora do `races.json`, como a do bicho) E a chave da folha dele. A diferenca pro bicho
+        // e so a de cima: a do Bills vem sem roupa, e ele VESTE a peca dele pela camada de roupa de todo corpo.
+        // =======================================================================================================
+        if (Npc.BillsEWhis.FolhaDoCorpo(raca) is { } folhaDivina) return folhaDivina;
+
         List<string> lista = CorposDe(raca).Para(genero);
         if (lista.Count == 0) return genero == "Female" ? CorpoPadraoF : CorpoPadraoM;
 
@@ -318,7 +339,11 @@ public sealed class VisualCatalog
     /// ==================================================================================
     /// </summary>
     public static bool CorpoTemRosto(Appearance ap, string raca) =>
-        !Races.BioAndroids.EhBio(raca) || Races.BioAndroids.CorpoTemRosto(ap.Corpo);
+        // O BICHO e o segundo que responde "nao": a folha dele ja traz a cara desenhada, e os olhos de gente
+        // ficariam flutuando em cima do lobo -- o mesmo defeito da larva.
+        // (o BILLS e o WHIS sao o terceiro e o quarto, pela mesma razao do bicho -- ver `Npc.BillsEWhis`.)
+        !Npc.Animais.EhAnimal(raca) && !Npc.BillsEWhis.EhRacaDivina(raca)
+        && (!Races.BioAndroids.EhBio(raca) || Races.BioAndroids.CorpoTemRosto(ap.Corpo));
 
     /// <summary>
     /// Como tingir o corpo. Duas coisas diferentes:

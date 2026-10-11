@@ -55,12 +55,61 @@ public partial class MenuDeInteracao : CanvasLayer
 		Layer = 4;   // acima do menu do jogo (3), abaixo do quick time event (5)
 		Instancia = this;
 		Montar();
+		if (GameClient.Instance is { } cli) cli.SaqueAberto += AoAbrirSaque;
 	}
 
 	public override void _ExitTree()
 	{
 		if (Instancia == this) Instancia = null;
+		// O `-=` DO PAR: o menu morre no relog e o `GameClient` nao -- sem isto a lista de saque seguinte
+		// chamaria um menu que ja foi liberado.
+		if (GameClient.Instance is { } cli) cli.SaqueAberto -= AoAbrirSaque;
 	}
+
+	// =====================================================================
+	// O CAIDO -- a QUINTA fonte de alvo da tecla E (o saque, item 9b do playtest de 2026-10-10)
+	// =====================================================================
+	private bool _noSaque;
+	private Interacoes.Acao[] _acoesDoSaque = [];
+
+	/// <summary>
+	/// O NOCAUTEADO AO ALCANCE, se ele for o alvo: o cadaver apontado pelo servidor fica de fora (ele tem o
+	/// menu dele) e uma obra MAIS PERTO ganha, como ganha do cadaver. Quem sabe quem esta caido e o `World`,
+	/// pelo snapshot -- nao ha pacote pra isso.
+	/// </summary>
+	private static (int Id, string Nome)? CaidoGanha(GameClient.ObraInfo? obra)
+	{
+		if (GameClient.Instance is not { } cli || World.Instancia is not { } mundo) return null;
+		if (mundo.PosicaoDesenhadaDe(cli.LocalId) is not { } eu) return null;
+		if (mundo.CaidoPerto(eu, Alcance, cli.CadaverPerto) is not { } caido) return null;
+		if (obra is { } o && eu.DistanceSquaredTo(o.Pos) <= eu.DistanceSquaredTo(caido.Onde)) return null;
+		return (caido.Id, caido.Nome);
+	}
+
+	/// <summary>
+	/// A LISTA CHEGOU: o menu abre NELA. Cada item e um botao que manda o MESMO verbo com o id dele -- e o
+	/// servidor responde com a lista nova depois de cada item levado, entao o menu se redesenha sozinho sem
+	/// guardar foto nenhuma da mochila alheia.
+	/// </summary>
+	private void AoAbrirSaque(int caido, string nome, List<Jandirus.Core.Items.Pilha> leva)
+	{
+		FecharTeclado();
+		_pagina = "";
+		_tipoDoAlvo = "";
+		_noVeiculo = false;
+		_noCadaver = false;
+		_naPorta = false;
+		_noSaque = true;
+		_nomeDoAlvo = leva.Count == 0 ? $"{nome}: nada que dê pra levar" : $"Revistar {nome}";
+		_acoesDoSaque = [.. leva.Select(p => new Interacoes.Acao(
+			$"Pegar {Jandirus.Core.Items.CatalogoDeItens.Get(p.Id)?.Nome ?? p.Id}{(p.Quantidade > 1 ? $"  (tem {p.Quantidade})" : "")}",
+			Jandirus.Core.Items.Saque.Verbo, p.Id, "leva UM pra sua mochila -- quem estiver por perto vê"))];
+		Desenhar("");
+		_raiz.Visible = true;
+	}
+
+	/// <summary>O menu esta aberto na lista de saque, e com quantos itens. SO PRA BANCADA.</summary>
+	public (bool Aberto, int Itens, string Titulo) SaqueDeTeste => (_raiz.Visible && _noSaque, _acoesDoSaque.Length, _titulo.Text);
 
 	private void Montar()
 	{
@@ -105,10 +154,31 @@ public partial class MenuDeInteracao : CanvasLayer
 		AddChild(_dica);
 	}
 
+	/// <summary>DEFEITO INJETADO (bancada --diagconstruir): a dica "[E] ..." volta a aparecer no modo de construir.</summary>
+	public static bool DicaNoModoDeConstruirDeTeste;
+
+	/// <summary>DEFEITO INJETADO (bancada --diagjanelas): a dica "[E] ..." volta a ser desenhada por cima do menu P embutido.</summary>
+	public static bool DicaPorCimaDoMenuDeTeste;
+
+	/// <summary>
+	/// O MENU P EMBUTIDO ESTA EM CIMA DE ONDE A DICA APARECE? Esta camada desenha por cima da dele, e a dica caia em
+	/// cima do rodape do menu ("P FECHA · ESC FECHA · [E] Bank"). E pelo RETANGULO do menu na tela, e nao por "o
+	/// menu esta aberto": ele e uma janela que o jogador arrasta e encolhe -- fora do caminho, a dica continua; e
+	/// DESTACADO noutra janela do sistema ele nao tapa nada (`MenuJogo.RetanguloNaTela` e nulo).
+	/// </summary>
+	private bool OMenuCobreADica() =>
+		!DicaPorCimaDoMenuDeTeste && MenuJogo.RetanguloNaTela is { } menu && menu.Intersects(_dica.GetGlobalRect());
+
+	/// <summary>Onde a dica "[E] ..." e desenhada, em px da tela (esteja ela na tela ou nao). So a bancada le.</summary>
+	public Rect2 RetanguloDaDicaDeTeste => _dica.GetGlobalRect();
+
 	public override void _Process(double delta)
 	{
 		// A DICA SEGUE O QUE ESTA POR PERTO, e some quando o menu abre (o menu ja e a resposta).
-		if (_raiz.Visible) { _dica.Visible = false; return; }
+		// SOME TAMBEM NO MODO DE CONSTRUIR: ali a tecla E abre a paleta de blocos, entao "[E] Sua porta" mentiria
+		// -- e a dica da porta ou da maquina vizinha caia em cima da linha de motivo da barra de construir.
+		// E SOME EMBAIXO DO MENU P: ver `OMenuCobreADica`.
+		if (_raiz.Visible || (ModoDeConstruir.Ligado && !DicaNoModoDeConstruirDeTeste) || OMenuCobreADica()) { _dica.Visible = false; return; }
 
 		// O VEICULO VEM PRIMEIRO -- ver `Abrir`.
 		if (VeiculoMontado().Length > 0)
@@ -126,6 +196,13 @@ public partial class MenuDeInteracao : CanvasLayer
 		{
 			_dica.Visible = true;
 			_dica.Text = $"[E] {NomeDoCadaver()}";
+			return;
+		}
+
+		if (CaidoGanha(perto) is { } caido)
+		{
+			_dica.Visible = true;
+			_dica.Text = $"[E] revistar {caido.Nome}";
 			return;
 		}
 
@@ -271,18 +348,54 @@ public partial class MenuDeInteracao : CanvasLayer
 		return cli.NomeDoVeiculo.Length > 0 ? cli.NomeDoVeiculo : cli.VeiculoMontado.Replace('_', ' ');
 	}
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada --diagbills): o Esc do menu aberto deixa de ser ouvido no `_Input` -- ele segue pro
+	/// `_UnhandledInput`, onde o menu de pausa o recebe ANTES deste node e abre por cima do menu. Lido pela propria
+	/// linha do <see cref="_Input"/>.
+	/// </summary>
+	public static bool EscSoDepoisDaPausaDeTeste;
+
+	/// <summary>
+	/// ============================ O ESC COM O MENU ABERTO E DO MENU ============================
+	/// Ele e ouvido AQUI, no `_Input`, e nao no `_UnhandledInput` junto da tecla E. Morava la, e la o menu de pausa
+	/// escuta a mesma tecla (`PauseMenu._UnhandledInput`) e a recebia ANTES deste node: com o menu de um objeto
+	/// aberto, o Esc abria a PAUSA por cima dele e o menu continuava aberto atras -- o botao "Fechar (Esc)" mentia.
+	/// MEDIDO na `--diagbills` (2026-10-11), que fotografou a pausa em cima do menu do Bills.
+	///
+	/// E o conserto que as outras telas ja tinham, pelo motivo que elas escrevem (`MenuDeDesejos`,
+	/// `ModoDeConstruir`, o menu P): o `_Input` roda antes, entao a coisa mais na frente da tela responde primeiro,
+	/// e a pausa so abre quando nao ha mais nada pra fechar.
+	///
+	/// UMA CAMADA POR VEZ: com o teclado numerico por cima, o Esc fecha o TECLADO e o menu fica (ele nao ouvia o
+	/// Esc, e a tecla caia na pausa).
+	///
+	/// QUEM ESTA DIGITANDO E DONO DO ESC (`Foco.Digitando`, a mesma porta do `MenuDeDesejos`): a frase do chat
+	/// desiste por ele, e a caixa de texto deste proprio menu (a lapide) se cancela sozinha -- ver `CaixaDeTexto`.
+	///
+	/// A PAUSA ABERTA E DELA: se ela ja esta na tela, e ela que esta na frente -- o Esc segue e a fecha.
+	///
+	/// SEM O PORTAO DO EMBATE (`EmClash`), de proposito: aquele portao cala o que ABRE coisa por cima da disputa.
+	/// Fechar nunca e bloqueado (a mesma regra escrita no `PauseMenu`).
+	/// ===========================================================================================
+	/// </summary>
+	public override void _Input(InputEvent evento)
+	{
+		if (EscSoDepoisDaPausaDeTeste || !NaTela || Foco.Digitando) return;
+		if (evento is not InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape }) return;
+		if (PauseMenu.Instancia is { Aberto: true }) return;
+
+		if (_teclado != null && IsInstanceValid(_teclado)) FecharTeclado();
+		else Fechar();
+		GetViewport().SetInputAsHandled();
+	}
+
 	public override void _UnhandledInput(InputEvent evento)
 	{
 		// O "E" E UMA DAS LETRAS QUE O EMBATE SORTEIA -- ver `Foco.AtalhosMudos`.
 		if (Foco.AtalhosMudos) return;
 		if (evento is not InputEventKey { Pressed: true, Echo: false } k) return;
 
-		if (_raiz.Visible && k.Keycode == Key.Escape)
-		{
-			Fechar();
-			GetViewport().SetInputAsHandled();
-			return;
-		}
+		// (O ESC do menu aberto nao e daqui: ele e ouvido no `_Input`, antes do menu de pausa. Ver acima.)
 
 		// PELO REGISTRO, e nao por `Key.E` escrito aqui. Duas coisas dependem disso: a tecla e
 		// religavel como qualquer outra, e a pergunta "essa tecla esta livre?" enxerga esta linha --
@@ -320,6 +433,11 @@ public partial class MenuDeInteracao : CanvasLayer
 			melhorDist = d;
 			melhor = o;
 		}
+
+		// A ROCHA DE MINERIO ao alcance disputa pela mesma regra -- ela nao esta em `cli.Obras` (ver `RochasNaTela`).
+		RochasNaTela.Disputar(eu, ref melhor, ref melhorDist);
+		// O BILLS OU O WHIS ao alcance tambem: sao corpos, e quem diz qual deles tem menu e o servidor (ver `DivinosNaTela`).
+		DivinosNaTela.Disputar(eu, ref melhor, ref melhorDist);
 		return melhor;
 	}
 
@@ -393,6 +511,14 @@ public partial class MenuDeInteracao : CanvasLayer
 			return;
 		}
 
+		// O CAIDO: o menu NAO abre aqui. Quem sabe o que ele carrega e o servidor -- o E PERGUNTA (o verbo
+		// `saquear` sem argumento), e o menu abre quando a lista chegar (`AoAbrirSaque`).
+		if (CaidoGanha(perto) is not null)
+		{
+			GameClient.Instance?.SendVerbo(Jandirus.Core.Items.Saque.Verbo);
+			return;
+		}
+
 		if (PortaGanha(perto) is { } porta)
 		{
 			_noVeiculo = false;
@@ -419,6 +545,18 @@ public partial class MenuDeInteracao : CanvasLayer
 	private bool _noCadaver;
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancada --diagmaquinas): o "Voltar" de antes de 2026-10-10 -- sempre a raiz, mesmo de uma
+	/// pagina aberta DENTRO de outra (a das duas formas de pagar uma melhoria). Lido pela propria linha do botao.
+	/// </summary>
+	public static bool VoltarVaiPraRaizDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada --diagmaquinas): a lista de melhorias abre CALADA, sem pedir os precos ao
+	/// servidor -- o menu de antes de 2026-10-10. Lido pela propria linha que pergunta, em <see cref="Escolher"/>.
+	/// </summary>
+	public static bool AbreSemPerguntarDeTeste;
+
+	/// <summary>
 	/// Desenha a pagina atual do objeto. A raiz e `tipo`; um submenu e `tipo/chave`.
 	/// </summary>
 	private void Desenhar(string tipo)
@@ -428,12 +566,22 @@ public partial class MenuDeInteracao : CanvasLayer
 
 		foreach (Node n in _lista.GetChildren()) n.QueueFree();
 
+		// A DRILL DIZ COMO ESTA em cima dos botoes (nivel, taxa, estoque, a reserva do planeta e o preco da
+		// proxima melhoria): o painel pergunta ao servidor e se atualiza sozinho. Ver `EstadoDaDrillNoMenu`.
+		if (tipo == Drill.Tipo) _lista.AddChild(new EstadoDaDrillNoMenu());
+
 		// VOLTAR SO EXISTE DENTRO DE UM SUBMENU. Na raiz ele seria o mesmo que Fechar, e dois
 		// botoes pra sair da mesma tela e uma escolha que o jogador nao devia ter que fazer.
 		if (_pagina.Length > 0)
 		{
 			var voltar = new Button { Text = "< Voltar" };
-			voltar.Pressed += () => { _pagina = ""; Desenhar(tipo); };
+			// UMA PAGINA PRA CIMA, e nao a raiz: a melhoria de uma maquina abre a pagina das duas formas de pagar
+			// ("upgrades/forca"), e de la o Voltar tem de cair na lista de melhorias.
+			voltar.Pressed += () =>
+			{
+				_pagina = !VoltarVaiPraRaizDeTeste && _pagina.Contains('/') ? _pagina[.._pagina.LastIndexOf('/')] : "";
+				Desenhar(tipo);
+			};
 			_lista.AddChild(voltar);
 		}
 
@@ -446,11 +594,16 @@ public partial class MenuDeInteracao : CanvasLayer
 		// O CADAVER E A TERCEIRA TABELA, e ele nao tem submenu nem tipo: as acoes de um corpo no chao
 		// sao as mesmas para todo corpo (ver `Interacoes.DoCadaver`, que explica por que e uma so).
 		// A PORTA ERGUIDA E A QUARTA, e a tabela dela depende de quem olha (ver `Interacoes.DaPorta`).
-		foreach (Interacoes.Acao a in _naPorta ? _acoesDaPorta
+		foreach (Interacoes.Acao a in _noSaque ? _acoesDoSaque
+									 : _naPorta ? _acoesDaPorta
 									 : _noCadaver ? Interacoes.DoCadaver()
 									 : _noVeiculo ? Interacoes.DoVeiculo(tipo)
 									 : Interacoes.De(chave))
 		{
+			// O MESMO CRIVO DO MENU P (`RequisitosDosVerbos`): acao que este personagem nao tem como usar -- o
+			// laboratorio e de humano -- nao aparece. Acao fora da tabela nao tem requisito, e aparece.
+			if (!Jandirus.Core.Verbos.RequisitosDosVerbos.DoVerbo(a.Verbo, a.Arg).Atende(PosseDoCliente.Atual)) continue;
+
 			Interacoes.Acao acao = a;
 			var b = new Button { Text = a.Rotulo, TooltipText = a.Dica };
 			b.Pressed += () => Escolher(tipo, acao);
@@ -464,6 +617,10 @@ public partial class MenuDeInteracao : CanvasLayer
 		{
 			case Interacoes.Forma.Submenu:
 				_pagina = acao.Arg;
+				// A LISTA DE MELHORIAS PEDE OS PRECOS (nas duas moedas) e o saldo: eles sao do estado desta maquina,
+				// e a tabela dos botoes nao os tem. A resposta vem pelo chat. Ver `Interacoes.PerguntaAoAbrir`.
+				if (!AbreSemPerguntarDeTeste && Interacoes.PerguntaAoAbrir(tipo, _pagina) is { Length: > 0 } pergunta)
+					GameClient.Instance?.SendVerbo(pergunta);
 				Desenhar(tipo);
 				break;
 
@@ -548,6 +705,7 @@ public partial class MenuDeInteracao : CanvasLayer
 		_noVeiculo = false;
 		_noCadaver = false;
 		_naPorta = false;
+		_noSaque = false;
 	}
 
 	// =====================================================================

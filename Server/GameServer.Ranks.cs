@@ -109,6 +109,17 @@ public partial class GameServer
 		RankDef? r = Cargos.Get(chave);
 		if (r == null) { Avisar(pl, "esse cargo nao existe."); return; }
 
+		// `if(!usr.client || !usr.signature || usr.KO) return` (`RankQuests.dm:272`), e o morto so reivindica cargo
+		// do Outro Mundo: `if(usr.dead && !(key in RQ_SKY))` (`:299`, `:320` -- o `RQ_SKY` e o `DoOutroMundo`
+		// daqui). O port nao perguntava nenhum dos dois: nocauteado no chao, ou fantasma no Alem, o cliente mandava
+		// o pacote e saia Guardiao da Terra, com o kit na hora.
+		if (!CaidoAgeDeTeste)
+		{
+			if (pl.Ficha.KO) { Avisar(pl, "nao da pra reivindicar cargo nenhum caido."); return; }
+			if (pl.Ficha.dead && !r.DoOutroMundo)
+			{ Avisar(pl, $"um morto so reivindica cargo do Outro Mundo -- {r.Nome} e do mundo dos vivos."); return; }
+		}
+
 		if (_tronos.TryGetValue(r.Chave, out string? dono) && dono.Length > 0)
 		{
 			Avisar(pl, string.Equals(dono, pl.Conta, StringComparison.OrdinalIgnoreCase)

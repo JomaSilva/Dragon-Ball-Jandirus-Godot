@@ -37,7 +37,7 @@ public partial class GameServer
 		var liberadasAntes = new HashSet<int>(pl.Forma.Liberadas);
 		var estreiasAntes = new HashSet<int>(pl.Forma.EstreiaVista);
 		long extremaAntes = pl.FuriaExtremaAte, lendariaAntes = pl.RaivaLendariaAte;
-		double kiAntes = pl.Ficha.Ki;
+		double kiAntes = pl.Ficha.Ki, bpAntes = pl.Ficha.BP;
 		double raivaAntes = pl.Ficha.Anger, baseRaivaAntes = pl.Ficha.baseAnger;
 		double lendarioAntes = pl.Ficha.legendaryAngerBonus;
 
@@ -95,9 +95,12 @@ public partial class GameServer
 			ACinematicaDaFuriaAoVivo(pl, Checa);
 
 			// ============================ 2. A TECLA C NUM SAIYAJIN COMUM ============================
-			// O tronco pede a furia do LUTO. Com o desconto da linha Legendary aceso e mais nada, o
-			// C nao pode sair da base -- e essa e a checagem que separa "dois degraus" de "um degrau
-			// com dois nomes".
+			// OS DOIS DEGRAUS ABREM O TRONCO, E CADA UM COBRA O SEU PRECO (dono, 2026-10-11): a furia do
+			// LUTO entra pela porta de BP, e a raiva comum so com a porta vezes o agio
+			// (`FormaDef.AgioNaRaivaComum`, o `if("Angry")` do `supersaiyan.dm:112`). O corpo fica ENTRE
+			// os dois precos: com a raiva comum acesa e mais nada o C nao pode sair da base -- e essa e a
+			// checagem que separa "dois degraus" de "um degrau com dois nomes". (Ate ali a raiva comum
+			// nao abria o tronco com poder NENHUM, e esta secao rodava com o 1e13 da bancada.)
 			pl.Ficha.Class = "Normal";
 			pl.Forma.Entrar(Catalogo.IdBase);
 
@@ -122,33 +125,58 @@ public partial class GameServer
 			pl.Forma.EstreiaVista.Clear();
 			pl.FuriaExtremaAte = 0;
 			pl.RaivaLendariaAte = 0;
+			double portaDoSsj1 = PortaDeTeste(pl, "ssj1");
+			pl.Ficha.BP = portaDoSsj1 * (1 + Catalogo.AgioComumDoSaiyajin) / 2;
+			pl.Ficha.Statify();
 			pl.Ficha.Ki = pl.Ficha.MaxKi;
 			AplicarForma(pl);
 
 			AmigoAbatido(pl, "Krillin", NivelDeRaiva.Lendaria);
 			EscutaDeAvisos = [];
 			SubirAteParar(pl);
-			List<string> comDesconto = EscutaDeAvisos ?? [];
+			List<string> comARaivaComum = EscutaDeAvisos ?? [];
 			EscutaDeAvisos = null;
 
-			Checa("Saiyajin comum com raiva LENDARIA: a tecla C nao sai da base",
+			Checa("Saiyajin comum com a raiva COMUM e o poder entre os dois precos: a tecla C nao sai da base",
 				  pl.Forma.NaBase, "chegou em " + pl.Forma.Atual);
-			Checa("...e a recusa fala da DOR que ele ainda nao teve",
-				  comDesconto.Any(a => a.Contains("dor", StringComparison.OrdinalIgnoreCase)),
-				  string.Join(" | ", comDesconto));
+			Checa("...e a recusa diz que a raiva dele pede mais PODER -- ou uma DOR maior --, sem numero nenhum",
+				  comARaivaComum.Any(a => a.Contains("pede mais poder", StringComparison.OrdinalIgnoreCase)
+										  && a.Contains("dor", StringComparison.OrdinalIgnoreCase)
+										  && !a.Any(char.IsDigit)),
+				  string.Join(" | ", comARaivaComum));
 
 			AmigoAbatido(pl, "Krillin", NivelDeRaiva.Extrema);
 			pl.Ficha.Ki = pl.Ficha.MaxKi;
 			SubirAteParar(pl);
-			Checa("acesa a furia do LUTO, o MESMO C sobe a escada Saiyajin",
+			Checa("acesa a furia do LUTO, o MESMO C sobe a escada Saiyajin -- com o MESMO poder",
 				  !pl.Forma.NaBase, pl.Forma.Atual);
 			Checa("...e o corpo recebe o multiplicador da forma em que parou",
 				  pl.Ficha.ssjBuff > 1.5, $"ssjBuff {pl.Ficha.ssjBuff:0.###}");
 
+			// E A RAIVA COMUM TAMBEM SOBE, com o poder que ELA cobra -- a outra metade da regra nova.
+			pl.Forma.Entrar(Catalogo.IdBase);
+			pl.Forma.Liberadas.Clear();
+			pl.Forma.EstreiaVista.Clear();
+			pl.FuriaExtremaAte = 0;
+			pl.RaivaLendariaAte = 0;
+			pl.CenaSegundos = 0;
+			pl.Ficha.BP = portaDoSsj1 * Catalogo.AgioComumDoSaiyajin * 1.05;
+			pl.Ficha.Statify();
+			pl.Ficha.Ki = pl.Ficha.MaxKi;
+			AplicarForma(pl);
+			AmigoAbatido(pl, "Krillin", NivelDeRaiva.Lendaria);
+			SubirAteParar(pl);
+			Checa("**e com o poder que a raiva comum cobra (1,2x a porta), um amigo NOCAUTEADO tambem leva ao Super Saiyajin**",
+				  pl.Forma.Atual == "ssj1", pl.Forma.Atual);
+			pl.Ficha.BP = bpAntes;
+			pl.Ficha.Statify();
+
 			// ============================ 3. A TECLA C NUM LEGENDARY ============================
-			// O desconto do dono, medido: o MESMO nocaute que nao move um Saiyajin comum move a
-			// linha Legendary inteira. Sem esta metade, "a raiva lendaria existe" seria uma frase
-			// sobre um enum -- ela so vira regra quando alguem sobe com ela e o vizinho nao sobe.
+			// A linha Legendary sobe INTEIRA com um nocaute, com poder de sobra (o 1e13 da bancada paga
+			// o agio de 1,5x de cada degrau dela -- o preco exato esta na bancada `raiva` [13] e na
+			// `--raivateste`). Ate 2026-10-11 esta secao media o DESCONTO do Legendary: o nocaute que
+			// nao movia o Saiyajin comum movia a linha dele; hoje o nocaute move os dois, cada um pelo
+			// seu preco.
 			pl.Forma.Entrar(Catalogo.IdBase);
 			pl.Forma.Liberadas.Clear();
 			pl.Forma.EstreiaVista.Clear();
@@ -171,7 +199,7 @@ public partial class GameServer
 			AmigoAbatido(pl, "Krillin", NivelDeRaiva.Lendaria);
 			pl.Ficha.Ki = pl.Ficha.MaxKi;
 			SubirAteParar(pl);
-			Checa("com o MESMO nocaute que nao moveu o Saiyajin comum, o Legendary sobe",
+			Checa("com um nocaute so (e poder de sobra), o Legendary sobe",
 				  !pl.Forma.NaBase, pl.Forma.Atual);
 			Checa("...e o degrau que saiu e da linha Legendary",
 				  pl.Forma.Def?.Linha == LinhaDeForma.Legendary, pl.Forma.Def?.Linha.ToString() ?? "?");
@@ -199,6 +227,7 @@ public partial class GameServer
 			pl.FuriaExtremaAte = extremaAntes;
 			pl.RaivaLendariaAte = lendariaAntes;
 			pl.Ficha.Ki = kiAntes;
+			pl.Ficha.BP = bpAntes;
 			pl.Ficha.baseAnger = baseRaivaAntes;
 			pl.Ficha.legendaryAngerBonus = lendarioAntes;
 			pl.Ficha.Statify();
@@ -441,10 +470,14 @@ public partial class GameServer
 	/// duas pessoas e reparar numa cena de cinco segundos.
 	///
 	/// ============================ O BP MANDA MAIS QUE A RAIVA AQUI, E ISSO E O ITEM 4 ============================
-	/// O corpo desta bancada e um Saiyajin com BP de sobra: enfurecer um Saiyajin com BP de SSJ1 **nao**
-	/// toca a cena da furia, porque a transformacao fica com o momento. Entao os cenarios que querem
-	/// VER a cena baixam o BP -- e o cenario que quer ver a cena NAO tocar o levanta de volta. E o
-	/// unico jeito de medir os dois lados da condicao 4 no mesmo corpo.
+	/// O corpo desta bancada e um Saiyajin com BP de sobra: enfurecer um Saiyajin com BP de SSJ1 que NUNCA
+	/// despertou a forma **nao** toca a cena da furia, porque a transformacao fica com o momento. Entao os
+	/// cenarios que querem VER a cena baixam o BP -- e o cenario que quer ver a cena NAO tocar o levanta de
+	/// volta. E o unico jeito de medir os dois lados da condicao 4 no mesmo corpo.
+	///
+	/// E A CONDICAO 4 E SO DA FORMA **NOVA** (dono, 2026-10-11): com tudo o que a raiva abriria ja despertado, a
+	/// cena da furia TOCA -- era o contrario ate aquele dia (o `hasssj ||` de `Murder.dm:129`). As formas do
+	/// corpo sao postas a mao em cada cenario, e repostas no `finally`.
 	/// ==================================================================================================================
 	/// </summary>
 	private void ACinematicaDaFuriaAoVivo(ServerPlayer pl, Action<string, bool, string> Checa)
@@ -452,6 +485,8 @@ public partial class GameServer
 		double bpAntes = pl.Ficha.BP;
 		long cenaAntes = pl.FuriaCenaAte;
 		LiteNetLib.NetPeer? peerAntes = pl.Peer;
+		var liberadasAntes = new HashSet<int>(pl.Forma.Liberadas);
+		var estreiasAntes = new HashSet<int>(pl.Forma.EstreiaVista);
 
 		// A ESCUTA E LOCAL A ESTE BLOCO: ela nasce aqui e morre no `finally`, como as outras deste
 		// arquivo. Em jogo o campo e nulo e a linha de producao e uma comparacao contra null.
@@ -472,18 +507,54 @@ public partial class GameServer
 		try
 		{
 			// ============================ CONDICAO 4: A TRANSFORMACAO FICA COM O MOMENTO ============================
-			// Com o BP de sobra, o proximo degrau deste Saiyajin e o SSJ1 -- que NASCE DA RAIVA. O DM
-			// pula a cena da furia exatamente aqui: *"the transformation owns the moment"*.
+			// Com o BP de sobra e a escada NUNCA despertada, a raiva paga o SSJ1 -- uma forma NOVA, que ele
+			// vai estrear sozinho. O DM pula a cena da furia exatamente aqui: *"the transformation owns the
+			// moment"*.
 			EmPaz();
 			pl.Ficha.BP = bpAntes;
 			pl.Forma.Entrar(Catalogo.IdBase);
+			pl.Forma.Liberadas.Clear();
+			pl.Forma.EstreiaVista.Clear();
 			AmigoAbatido(pl, "Krillin", NivelDeRaiva.Extrema);
 			Checa("furia que VAI virar transformacao nao toca a cena de raiva (o DM cede o momento)",
 				  Furias() == 0, $"{Furias()} cena(s)");
 
-			// ...E O AVESSO, no mesmo corpo. Sem BP pra degrau nenhum, `Proxima` devolve nulo e a
-			// previsao da falso -- a cena e da furia. Se as duas metades nao discordassem, esta secao
-			// estaria medindo "o pacote nunca sai", que passa verde com o gatilho apagado.
+			// E A FORMA NOVA PODE ESTAR UM DEGRAU ACIMA: com o SSJ1 ja estreado, na base, o BP de sobra paga o
+			// SSJ2 -- ele vai subir pelo 1 e estrear o 2 (`SubidaPelaRaiva`), entao a cena continua cedida.
+			EmPaz();
+			pl.Forma.Entrar("ssj1");
+			pl.Forma.Entrar(Catalogo.IdBase);
+			AmigoAbatido(pl, "Krillin", NivelDeRaiva.Extrema);
+			Checa("...nem quando a forma nova fica um degrau acima da base (o SSJ1 ja e dele, a raiva paga o 2)",
+				  Furias() == 0 && !pl.Forma.Despertou("ssj2"), $"{Furias()} cena(s)");
+
+			// ============================ ...E SO A FORMA **NOVA** FICA COM ELE (dono, 2026-10-11) ============================
+			// *"se o personagem ja despertou a transformacao toca a cinematica da raiva normal"*. Com o 1 e o 2
+			// ja estreados nao sobra forma de raiva pra este corpo despertar (o SSJ3 vem do treino): a cena e a
+			// da furia. Ate 2026-10-11 ela ficava calada aqui tambem -- o `hasssj ||` de `Murder.dm:129`, que
+			// cedia o momento a uma tecla C que podia nem vir.
+			EmPaz();
+			pl.Forma.Entrar("ssj2");
+			pl.Forma.Entrar(Catalogo.IdBase);
+			AmigoAbatido(pl, "Krillin", NivelDeRaiva.Extrema);
+			Checa("com as formas de raiva JA despertadas (nada novo a estrear), a furia TOCA a cena de raiva",
+				  Furias() == 1, $"{Furias()} cena(s)");
+
+			EmPaz();
+			FuriaCedeAoGestoDeTeste = true;
+			try
+			{
+				AmigoAbatido(pl, "Krillin", NivelDeRaiva.Extrema);
+				Checa("(defeito injetado: a cena cede o momento ao proximo C, como no DM) ela fica calada -- a checagem de cima REPROVA",
+					  Furias() == 0, $"{Furias()} cena(s)");
+			}
+			finally { FuriaCedeAoGestoDeTeste = false; }
+			pl.Forma.Liberadas.Clear();
+			pl.Forma.EstreiaVista.Clear();
+
+			// ...E O AVESSO, no mesmo corpo. Sem BP pra degrau nenhum a raiva nao paga forma nenhuma -- a cena
+			// e da furia. Se as duas metades nao discordassem, esta secao estaria medindo "o pacote nunca
+			// sai", que passa verde com o gatilho apagado.
 			EmPaz();
 			pl.Ficha.BP = 1;
 			AmigoAbatido(pl, "Krillin", NivelDeRaiva.Extrema);
@@ -524,18 +595,18 @@ public partial class GameServer
 			Checa("prolongar uma furia ja acesa nao toca a cena de novo (o `wasRaging`)",
 				  Furias() == 0, $"{Furias()} cena(s)");
 
-			// E O `wasRaging` E MAIS LARGO QUE O RETORNO DO GANCHO -- esta e a checagem que separa os
-			// dois conceitos. Um nocaute abre a janela LENDARIA sem cena; a morte que vem em seguida e
-			// erupcao EXTREMA de verdade (o gancho devolve TRUE), e mesmo assim o DM nao toca a cena,
-			// porque o corpo ja estava enfurecido. Se alguem trocar `estavaEmFuria` pelo `!jaEstava`,
-			// so esta linha cai.
+			// E A MORTE QUE VEM DEPOIS DO NOCAUTE **TOCA** -- esta checagem dizia o contrario ate 2026-10-11,
+			// com o `wasRaging` literal do DM (qualquer raiva aberta cala a cena). O dono separou os dois
+			// degraus: o nocaute e raiva comum, sem cena; a morte e o degrau mais alto, e a cena e DELE --
+			// e neste jogo o amigo sempre CAI antes de morrer. A divergencia esta declarada em
+			// `JaEstavaNaFuriaDaCena` (`GameServer.Raiva.cs`), e o contra-exemplo mora na `--raivateste`.
 			EmPaz();
 			AmigoAbatido(pl, "Krillin", NivelDeRaiva.Lendaria);
 			Checa("ver um amigo CAIR nao toca cena nenhuma (o `extreme = 0` do DM)", Furias() == 0,
 				  $"{Furias()} cena(s)");
 			bool erupcao = AmigoAbatido(pl, "Krillin", NivelDeRaiva.Extrema);
 			Checa("...e a morte que vem DEPOIS dele e erupcao de grau novo", erupcao, "");
-			Checa("...mas ainda assim nao toca cena: o corpo ja estava enfurecido", Furias() == 0,
+			Checa("...e ela TOCA a cena: subir da raiva comum pra extrema e furia nova", Furias() == 1,
 				  $"{Furias()} cena(s)");
 
 			// ============================ CONDICAO 3: CORPO SEM DONO ============================
@@ -550,9 +621,15 @@ public partial class GameServer
 		finally
 		{
 			EscutaDeFurias = null;
+			FuriaCedeAoGestoDeTeste = false;
 			pl.Peer = peerAntes;
 			pl.Ficha.BP = bpAntes;
 			pl.FuriaCenaAte = cenaAntes;
+			pl.Forma.Entrar(Catalogo.IdBase);
+			pl.Forma.Liberadas.Clear();
+			pl.Forma.Liberadas.UnionWith(liberadasAntes);
+			pl.Forma.EstreiaVista.Clear();
+			pl.Forma.EstreiaVista.UnionWith(estreiasAntes);
 			pl.FuriaExtremaAte = 0;
 			pl.RaivaLendariaAte = 0;
 			ProjetarRaiva(pl);

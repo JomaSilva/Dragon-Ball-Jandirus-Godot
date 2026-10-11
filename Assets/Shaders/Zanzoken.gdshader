@@ -30,6 +30,10 @@ uniform vec2 quadro_max = vec2(1.0);
 uniform vec2 corpo_origem = vec2(0.0);
 uniform vec2 corpo_tamanho = vec2(32.0, 32.0);
 
+uniform vec3 tinta = vec3(0.0);
+uniform int  tinta_modo = 0;
+uniform vec3 brilho = vec3(1.0);
+
 varying vec2 local;
 
 // RUIDO BARATO E SEM TEXTURA. Nao vale a pena carregar um NoiseTexture2D pra um efeito de
@@ -61,6 +65,18 @@ void fragment() {
 	uv = clamp(uv, quadro_min, quadro_max);
 
 	vec4 c = texture(TEXTURE, uv);
+
+	// A COR QUE O CORPO TEM AGORA -- as duas formulas de tinta do `Personagem.gdshader` e o modulate
+	// da camada, pelo mesmo motivo do `Borrao.gdshader` (ver la): este material ENTRA NO LUGAR do
+	// que pinta o corpo, e sem eles a miragem de um Majin azul nascia rosa e a de um Super Saiyajin
+	// God, de cabelo preto. De fabrica (tinta zero, soma, brilho um) nada muda.
+	if (tinta_modo == 1) {
+		float luz = dot(c.rgb, vec3(0.299, 0.587, 0.114));
+		c.rgb = clamp(tinta * (luz * 2.0), 0.0, 1.0);
+	} else {
+		c.rgb = clamp(c.rgb + tinta, 0.0, 1.0);
+	}
+	c.rgb *= brilho;
 
 	// ============================ DE BAIXO PRA CIMA, E AGORA DE VERDADE ============================
 	// Os pes se desfazem primeiro e a cabeca por ultimo. Some tudo junto le como fade; em ordem le

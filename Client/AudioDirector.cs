@@ -182,6 +182,13 @@ public partial class AudioDirector : Node
     /// </summary>
     public bool TocandoDeTeste => _musicaA.Playing || _musicaB.Playing;
 
+    /// <summary>
+    /// QUANTOS TOCADORES DE MUSICA ESTAO NO AR AGORA: 0, 1 ou -- so no meio de um cruzamento -- 2. So a bancada
+    /// le (`--diagraiva`). "Dois temas nunca se sobrepoem" e uma afirmacao sobre o AR, e nao sobre a decisao:
+    /// passado o cruzamento de <see cref="DuracaoFade"/> segundos tem que sobrar UM.
+    /// </summary>
+    public int TocadoresNoArDeTeste => (_musicaA.Playing ? 1 : 0) + (_musicaB.Playing ? 1 : 0);
+
     public override void _Ready()
     {
         Instance = this;

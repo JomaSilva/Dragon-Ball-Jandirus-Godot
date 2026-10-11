@@ -67,7 +67,14 @@ public static class InstalarBench
 		CatalogoDeItens.PodeAssentarNoChao(id) == OfereceInstalar(id);
 
 	/// <summary>
-	/// ============================ O GABARITO: AS 97 COMPRAVEIS, UMA POR LINHA ============================
+	/// ============================ O GABARITO: AS 89 COMPRAVEIS, UMA POR LINHA ============================
+	/// (Eram 97. Em 2026-10-10 sairam do catalogo as tres que pediam tecnologia acima do teto do DM e por isso
+	/// nunca estiveram a venda la: `Boat_Placed` e `Spacepod_Placed`, de tech 999, e o `Central_Computer`, de
+	/// tech 200 e comentado no original. Ver a familia A0 e `Construcao.AcimaDoTeto`. E, no mesmo dia, as cinco
+	/// armas que so existiam dentro de um `/* */` do original -- `Axe`, `Club`, `Cross`, `Hammer` e `Spear`. A
+	/// sexta, o `Staff`, dividia o id com o cajado magico de `Magitech.dm`, que e codigo vivo: a linha dele
+	/// FICA, e agora fala do cajado. Ver a familia A0c.)
+	///
 	/// A fase 1 afirmava 48 nomes escolhidos a dedo e CONTAVA o resto. Contar fica verde com a regra
 	/// invertida em um item so -- e este projeto ja pagou por amostra: dez racas nasciam no planeta
 	/// errado com a bancada inteira verde, porque a prova olhava tres racas.
@@ -80,8 +87,8 @@ public static class InstalarBench
 	///   `oview`   verb com `set src in oview(1)` -- `oview` EXCLUI o proprio, entao so alcanca no chao;
 	///   `usr`     verb com `set src in usr` -- so alcanca de dentro da mochila;
 	///   `palpite` o item nao tem verb nenhum e herdou o lugar dele na arvore do DM. **Nao e prova**,
-	///             e por isso esta escrito: 29 das 103 entradas do extrator cairam aqui (21 dentro de
-	///             `/obj/items` -> pessoal, 8 fora -> chao). Rode `AssetPipeline motivos <Code>` pra ver
+	///             e por isso esta escrito: 25 das 94 entradas do extrator caem aqui (19 dentro de
+	///             `/obj/items` -> pessoal, 6 fora -> chao). Rode `AssetPipeline motivos <Code>` pra ver
 	///             a lista atual;
 	///   `tabela a mao` o id esta no `CatalogoDeItens.Tudo` e a ficha escrita a mao VENCE o catalogo de
 	///             construcoes -- a classificacao do DM vai entre parenteses so pra conferir que as duas
@@ -95,9 +102,7 @@ public static class InstalarBench
 		("Base_Camp",                  true ),   // oview
 		("Bio_Field",                  true ),   // Bolt
 		("Boat",                       true ),   // palpite: fora de /obj/items
-		("Boat_Placed",                true ),   // palpite: fora de /obj/items
 		("Capital_Ship",               true ),   // palpite: fora de /obj/items
-		("Central_Computer",           true ),   // palpite: fora de /obj/items
 		("Clone_Machine",              true ),   // oview
 		("Crafting_Bench",             true ),   // Bolt
 		("Crate",                      true ),   // palpite: fora de /obj/items
@@ -119,7 +124,6 @@ public static class InstalarBench
 		("Rocket_Ship",                true ),   // oview
 		("Simulator",                  true ),   // Bolt
 		("Spacepod",                   true ),   // oview
-		("Spacepod_Placed",            true ),   // oview
 		("Super_Computer",             true ),   // oview
 		("Telepad",                    true ),   // Bolt
 		("Virus_Synth",                true ),   // Bolt
@@ -127,7 +131,6 @@ public static class InstalarBench
 		("Wall_Upgrader",              true ),   // Bolt
 		("Ammo",                       false),   // palpite: /obj/items
 		("Armor",                      false),   // usr
-		("Axe",                        false),   // usr
 		("Bandages",                   false),   // tabela a mao (usr)
 		("Blaster",                    false),   // usr
 		("Blood_Bag",                  false),   // palpite: /obj/items
@@ -136,10 +139,8 @@ public static class InstalarBench
 		("Camera",                     false),   // palpite: /obj/items
 		("Camera_Computer",            false),   // palpite: /obj/items
 		("Chalk",                      false),   // usr
-		("Club",                       false),   // usr
 		("Communicator",               false),   // palpite: /obj/items
-		("Cross",                      false),   // usr
-		("DNA_Container",              false),   // palpite: /obj/items
+		("DNA_Container",              false),   // usr (o `Extract_DNA` de `DNALabs.dm`; era palpite enquanto o extrator lia o tipo errado)
 		("Destructor",                 false),   // palpite: /obj/items
 		("Detonator",                  false),   // usr
 		("Doll_Core",                  false),   // usr
@@ -152,7 +153,6 @@ public static class InstalarBench
 		("Fishing_Pole",               false),   // usr
 		("Forcefield",                 false),   // usr
 		("G_Blaster",                  false),   // usr
-		("Hammer",                     false),   // usr
 		("Hand_Drill",                 false),   // tabela a mao (usr)
 		("Handgun",                    false),   // usr
 		("Intercepter_Core",           false),   // usr
@@ -180,8 +180,7 @@ public static class InstalarBench
 		("Shovel",                     false),   // tabela a mao (usr)
 		("Smoke_Bomb",                 false),   // usr
 		("Spacesuit",                  false),   // tabela a mao (usr)
-		("Spear",                      false),   // usr
-		("Staff",                      false),   // usr
+		("Staff",                      false),   // usr (o cajado magico de `Magitech.dm`: `Mana_Control`)
 		("Stungun",                    false),   // usr
 		("Teleport_Nullifier",         false),   // palpite: /obj/items
 		("Toxic_Waste",                false),   // palpite: /obj/items
@@ -190,10 +189,13 @@ public static class InstalarBench
 	];
 
 	/// <summary>
-	/// AS 11 QUE NINGUEM COMPRA -- mobilia que ja esta nos `.dmm` (custo negativo, ver
+	/// AS 12 QUE NINGUEM COMPRA -- mobilia que ja esta nos `.dmm` (custo negativo, ver
 	/// <see cref="Construcao.Construivel"/>). A classificacao delas nao governa nada, porque elas nunca
 	/// chegam a uma mochila; a bancada as afirma mesmo assim, com a segunda metade junto: que o servidor
 	/// nao as vende. Sem essa segunda metade, "e mobilia" seria uma desculpa e nao um fato.
+	///
+	/// (O `Sacred_Water` entrou no `construcoes.json` a mao em 2026-10-10, com o jarro do Mirante, e ficou
+	/// sem linha aqui: as duas cobrancas de fecho da A2 estavam vermelhas por ele.)
 	/// </summary>
 	private static readonly (string Id, bool Chao)[] MobiliaDeMapa =
 	[
@@ -205,6 +207,7 @@ public static class InstalarBench
 		("Grave_3",           true ),   // --
 		("Grave_4",           true ),   // --
 		("Grave_5",           true ),   // --
+		("Sacred_Water",      true ),   // oview (`EarthRanks.dm:181-231`: o jarro se usa de perto, no chao)
 		("Ship_Control",      true ),   // --
 		("Ship_Pad",          true ),   // --
 		("Time_Chamber_Door", true ),   // palpite: fora de /obj/items
@@ -221,6 +224,9 @@ public static class InstalarBench
 		CatalogoDeObras cat = CatalogoDeObras.Parse(File.ReadAllText(arq));
 		CatalogoDeItens.Obras = cat;
 
+		NadaAcimaDoTeto(cat);
+		AsFerramentasNaoCavam(cat);
+		SoOQueOOriginalCompila(cat);
 		Catalogo(cat);
 		CatalogoInteiro(cat);
 		Macieira(cat, pastaAssets);
@@ -232,6 +238,119 @@ public static class InstalarBench
 		Console.WriteLine($"\n===== {_ok} OK, {_falhou} FALHA(S) =====");
 		if (_falhou > 0) Console.WriteLine("vermelhas: " + string.Join(" | ", Vermelhas));
 		return _falhou > 0 ? 1 : 0;
+	}
+
+	// =====================================================================
+	// A0) NADA A VENDA ACIMA DO TETO DE TECNOLOGIA -- o "Space Pod de tech 999"
+	// =====================================================================
+	/// <summary>
+	/// ============================ O QUE O DONO VIU, E DE ONDE VINHA ============================
+	/// *"remover space pod de tech 999 q aparece na aba tech"* (2026-10-10). O `Spacepod_Placed` e o `Boat_Placed`
+	/// do DM sao balcoes postos no mapa, com `neededtech=999` justamente pra NUNCA entrarem na janela de
+	/// tecnologia (ela apaga o que o jogador nao alcanca, e o teto de la e 100). O extrator os emitia como
+	/// qualquer `Creatable`, e a aba do port -- que lista tudo com o motivo de cada nao -- os mostrava.
+	///
+	/// TRES PONTAS, e as tres tem de concordar:
+	///   * o ARQUIVO publicado nao tem nenhuma compravel acima do teto (e os tres ids sumiram dele);
+	///   * o JOGO nao oferece uma dessas mesmo que o arquivo a traga (`CatalogoDeObras.Ofertas` / `Permitida`);
+	///   * o EXTRATOR nao a emite -- medido numa arvore DM de mentira com o defeito exato dentro (um
+	///     `X_Placed` de tech 999 ao lado do `X` de verdade), e com o defeito religado (o extrator de antes).
+	/// ==========================================================================================
+	/// </summary>
+	private static void NadaAcimaDoTeto(CatalogoDeObras cat)
+	{
+		Console.WriteLine("--- A0: nada a venda acima do teto de tecnologia do DM (o \"Space Pod de tech 999\") ---");
+
+		// ---- o arquivo
+		List<string> acima = [.. cat.AcimaDoTeto().Select(c => $"{c.Id} (tech {c.Tech:0})")];
+		Checa($"A0.1 nenhuma compravel do construcoes.json pede tecnologia acima de {CatalogoDeObras.TechMaximoDoDm:0}",
+			  acima.Count == 0, string.Join(", ", acima));
+		foreach (string id in new[] { "Spacepod_Placed", "Boat_Placed", "Central_Computer" })
+			Checa($"A0.2 {id} saiu do catalogo", cat.Get(id) == null);
+		foreach ((string id, double tech) in new[] { ("Spacepod", 40.0), ("Personal_Spacepod", 35.0), ("Boat", 20.0) })
+			Checa($"A0.3 {id} (a de verdade, tech {tech:0}) continua a venda",
+				  cat.Get(id) is { Construivel: true } c && c.Tech == tech, $"tech {cat.Get(id)?.Tech}");
+		Checa("A0.4 a nave pousada e o barco do MAPA continuam achando a entrada deles (`/obj/Spacepod`, `/obj/Boat`)",
+			  cat.PorTypepath("/obj/Spacepod")?.Id == "Personal_Spacepod" && cat.PorTypepath("/obj/Boat")?.Id == "Boat",
+			  $"{cat.PorTypepath("/obj/Spacepod")?.Id}, {cat.PorTypepath("/obj/Boat")?.Id}");
+
+		// ---- o jogo, com um arquivo que TRAGA a marca de volta
+		const string comAMarca =
+			"""
+			[
+			  { "id": "Coisa", "nome": "Coisa", "custo": 100, "tech": 40, "racas": [], "tipo": "/obj/Coisa" },
+			  { "id": "Coisa_Placed", "nome": "Coisa Placed", "custo": 100, "tech": 999, "racas": [], "tipo": "/obj/Coisa" }
+			]
+			""";
+		CatalogoDeObras sujo = CatalogoDeObras.Parse(comAMarca);
+		var sabio = new Jandirus.Core.Stats.Fighter { techskill = 100, Zeni = 1_000_000 };
+		List<string> Oferecidas() => [.. sujo.Ofertas(sabio, "Human").Select(o => o.Obra.Id)];
+
+		Checa("A0.5 um catalogo que traga a marca: a de tech 999 NAO vira oferta, e a de verdade vira",
+			  Oferecidas().SequenceEqual(["Coisa"]) && sujo.AcimaDoTeto().Select(c => c.Id).SequenceEqual(["Coisa_Placed"]),
+			  string.Join(", ", Oferecidas()));
+		Checa("A0.6 ...e pedir pra fabrica-la direto e recusado como coisa que nao existe (esconder nao e permissao)",
+			  CatalogoDeObras.Permitida(sujo.Get("Coisa_Placed")!, sabio, "Human") == RecusaObra.NaoExiste);
+
+		CatalogoDeObras.AcimaDoTetoViraOfertaDeTeste = true;
+		try
+		{
+			Checa("(defeito injetado: o que pede tecnologia acima do teto volta a ser oferta) a de tech 999 reaparece "
+				  + "na lista -- a cobranca A0.5 acusa", Oferecidas().Contains("Coisa_Placed"), string.Join(", ", Oferecidas()));
+		}
+		finally { CatalogoDeObras.AcimaDoTetoViraOfertaDeTeste = false; }
+
+		// ---- o extrator, numa arvore DM de mentira
+		string dm = Path.Combine(Path.GetTempPath(), "jandirus-techprova-" + Guid.NewGuid().ToString("N"));
+		try
+		{
+			Directory.CreateDirectory(dm);
+			// O MESMO FORMATO DO ORIGINAL (`Tier3.dm:9-29`): tabs, o `Creatable` de verdade e o balcao de mapa.
+			File.WriteAllText(Path.Combine(dm, "Tier3.dm"), string.Join("\n", new[]
+			{
+				"obj/Creatables",
+				"\tCoisa",
+				"\t\ticon='Coisa.dmi'",
+				"\t\tcost=100000",
+				"\t\tneededtech=40 //Deletes itself from contents if the usr doesnt have the needed tech",
+				"\t\tcreate_type = /obj/Coisa",
+				"\tCoisa_Placed",
+				"\t\ticon='Coisa.dmi'",
+				"\t\tcost=100000",
+				"\t\tneededtech=999 //Deletes itself from contents if the usr doesnt have the needed tech",
+				"\t\tvar/count=0",
+				"\t\tSaveItem=0",
+				"\t\tcreate_type = /obj/Coisa",
+				"\tCoisa_No_Teto",
+				"\t\tcost=5000000",
+				"\t\tneededtech=100",
+				"\t\tcreate_type = /obj/Coisa_No_Teto",
+				"",
+			}));
+
+			List<string> Extraidas() => [.. DmTechScanner.Scan(dm).Where(d => d.Custo >= 0).Select(d => d.Id).Order(StringComparer.Ordinal)];
+
+			List<string> hoje = Extraidas();
+			Checa("A0.7 o extrator NAO emite o `Coisa_Placed` de tech 999, e emite a `Coisa` e a que esta NO teto (tech 100)",
+				  hoje.SequenceEqual(["Coisa", "Coisa_No_Teto"]), string.Join(", ", hoje));
+
+			DmTechScanner.AcimaDoTetoEntraDeTeste = true;
+			try
+			{
+				List<string> antes = Extraidas();
+				Checa("(defeito injetado: o extrator de antes do conserto) o `Coisa_Placed` volta a sair -- a cobranca A0.7 acusa",
+					  antes.Contains("Coisa_Placed") && !antes.SequenceEqual(hoje), string.Join(", ", antes));
+			}
+			finally { DmTechScanner.AcimaDoTetoEntraDeTeste = false; }
+		}
+		catch (Exception e) { Checa("A0.7 montei a arvore DM de mentira do extrator", false, e.Message); }
+		finally
+		{
+			DmTechScanner.AcimaDoTetoEntraDeTeste = false;
+			try { Directory.Delete(dm, recursive: true); } catch { /* temporario */ }
+		}
+
+		Console.WriteLine();
 	}
 
 	// =====================================================================
@@ -270,7 +389,6 @@ public static class InstalarBench
 			"G_Blaster", "Nuke", "Nav_System", "Spacesuit", "Rebreather",
 			"Energy_Drain_Gloves", "Energy_Drain_Boots", "Smoke_Bomb", "Sealing_Jar",
 			"Shovel", "Hand_Drill", "Bandages", "First_Aid_Kit", "Dragon_Radar",
-			"Axe", "Hammer", "Spear", "Club",
 		})
 			Checa($"A.4 {id} NAO oferece instalar", !OfereceInstalar(id),
 				  Acoes(id));
@@ -303,6 +421,475 @@ public static class InstalarBench
 
 	private static string Acoes(string id) =>
 		"acoes: [" + string.Join(", ", CatalogoDeItens.Get(id)?.AcoesDoItem ?? []) + "]";
+
+	// =====================================================================
+	// A0b) A PA E A FURADEIRA NAO CAVAM MAIS -- na mochila, so aceleram o Minerar
+	// =====================================================================
+	/// <summary>
+	/// *"tire a opcao de cavar da pa e furadeira pq e redundante"* (dono, 2026-10-10). O "cavar" era a acao das
+	/// duas na mochila (zeni e uma chance de XP de tecnologia por cavada, o `Dig` de `Tier 1.dm:254-331`); o verb
+	/// Minerar tomou o lugar, e elas ficaram sem acao nenhuma -- o que fazem e render mais por estarem na mochila.
+	///
+	/// O QUE SE COBRA AQUI E O QUE O JOGADOR VE E LE:
+	///   * nenhuma das duas declara acao (a tela da mochila desenha um botao por acao declarada, e o servidor so
+	///     aceita a acao que o item declara -- os dois leem `ItemDef.AcoesDoItem`);
+	///   * a frase delas e UMA, em tres lugares: o item (`CatalogoDeItens`, que e tambem a dica do card na aba
+	///     Tech), o `construcoes.json` publicado e o extrator que o regeneraria. A do DM ("Allows you to dig")
+	///     nao pode voltar por nenhum dos tres.
+	/// A recusa do comando antigo pelo fio e a aceleracao do minerar sao da `--recursosteste`.
+	/// </summary>
+	private static void AsFerramentasNaoCavam(CatalogoDeObras cat)
+	{
+		Console.WriteLine("--- A0b: a pa e a furadeira nao cavam mais (na mochila, aceleram o verb Minerar) ---");
+		string[] ferramentas = [CatalogoDeItens.Pa, CatalogoDeItens.Furadeira];
+
+		// ---- sem acao
+		List<string> ComAcao() => [.. ferramentas.Where(id => CatalogoDeItens.Get(id) is not { AcoesDoItem.Length: 0 }).Select(id => $"{id} {Acoes(id)}")];
+		Checa("A0b.1 a pa e a furadeira nao declaram acao NENHUMA (nem 'cavar'): o painel delas na mochila so tem o 'jogar fora' de todo item",
+			  ComAcao().Count == 0, string.Join(" | ", ComAcao()));
+		Checa("A0b.2 ...e continuam no catalogo, fabricaveis e de uso pessoal (nao se assentam no chao)",
+			  ferramentas.All(id => cat.Get(id) is { Construivel: true, Pessoal: true } && !CatalogoDeItens.PodeAssentarNoChao(id)),
+			  string.Join(", ", ferramentas.Select(id => $"{id}: construivel {cat.Get(id)?.Construivel}, pessoal {cat.Get(id)?.Pessoal}")));
+
+		CatalogoDeItens.FerramentaVoltaACavarDeTeste = true;
+		try
+		{
+			Checa("(defeito injetado: a pa e a furadeira voltam a declarar 'cavar' -- o botao volta) a cobranca A0b.1 acusa as DUAS",
+				  ComAcao().Count == 2 && ComAcao().All(l => l.Contains("cavar")), string.Join(" | ", ComAcao()));
+		}
+		finally { CatalogoDeItens.FerramentaVoltaACavarDeTeste = false; }
+
+		// ---- a frase: o item, o arquivo, e o que ela diz
+		static bool FalaDeCavar(string s) =>
+			s.Contains("cavar", StringComparison.OrdinalIgnoreCase) || s.Contains("cava ", StringComparison.OrdinalIgnoreCase)
+			|| s.Contains("dig", StringComparison.OrdinalIgnoreCase);
+		foreach (string id in ferramentas)
+		{
+			string doCore = Jandirus.Core.Economia.Recurso.DescricaoDeFerramenta(id) ?? "";
+			Checa($"A0b.3 {id}: o Core tem a frase dela, e ela fala de MINERAR e do caminho do verb -- nao de cavar",
+				  doCore.Contains("minerar mais rápido") && doCore.Contains("menu P > Other > Minerar") && !FalaDeCavar(doCore), doCore);
+			Checa($"A0b.4 {id}: a descricao do ITEM (a dica do slot na mochila e do card na aba Tech) e essa frase",
+				  CatalogoDeItens.Get(id)?.Descricao == doCore, CatalogoDeItens.Get(id)?.Descricao ?? "(sem item)");
+			Checa($"A0b.5 {id}: o `desc` do construcoes.json publicado e a MESMA frase (e nao o \"Allows you to dig\" do DM)",
+				  cat.Get(id)?.Desc == doCore, cat.Get(id)?.Desc ?? "(fora do catalogo)");
+		}
+		string daPa = Jandirus.Core.Economia.Recurso.DescricaoDeFerramenta(CatalogoDeItens.Pa) ?? "";
+		string daFuradeira = Jandirus.Core.Economia.Recurso.DescricaoDeFerramenta(CatalogoDeItens.Furadeira) ?? "";
+		Checa("A0b.6 os numeros da frase sao as taxas que o servidor paga: a pa diz a dela e a da mao, a furadeira a dela",
+			  daPa.Contains($"+{Jandirus.Core.Economia.Recurso.PorSegundoComPa:0} recursos por segundo")
+			  && daPa.Contains($"+{Jandirus.Core.Economia.Recurso.PorSegundoNaMao:0} com as mãos")
+			  && daFuradeira.Contains($"+{Jandirus.Core.Economia.Recurso.PorSegundoComFuradeira:0} recursos por segundo"),
+			  $"{daPa} | {daFuradeira}");
+		Checa("A0b.7 so as duas tem frase de ferramenta: o Scouter, a maca e um id qualquer nao",
+			  Jandirus.Core.Economia.Recurso.DescricaoDeFerramenta("Scouter") == null
+			  && Jandirus.Core.Economia.Recurso.DescricaoDeFerramenta(CatalogoDeItens.Maca) == null
+			  && Jandirus.Core.Economia.Recurso.DescricaoDeFerramenta("Nao_Existe_Isso") == null);
+
+		// ---- o extrator, numa arvore DM de mentira com o `desc` de la
+		string dm = Path.Combine(Path.GetTempPath(), "jandirus-ferramentaprova-" + Guid.NewGuid().ToString("N"));
+		try
+		{
+			Directory.CreateDirectory(dm);
+			// O MESMO FORMATO DO ORIGINAL (`Tier 1.dm`): o `Creatable`, o preco, o requisito e o `desc` em ingles.
+			File.WriteAllText(Path.Combine(dm, "Tier 1.dm"), string.Join("\n", new[]
+			{
+				"obj/Creatables",
+				"\tShovel",
+				"\t\ticon='Shovel.dmi'",
+				"\t\tcost=15",
+				"\t\tneededtech=3",
+				"\t\tdesc = \"Allows you to dig. Slowly...\"",
+				"\t\tcreate_type = /obj/items/Shovel",
+				"\tHand_Drill",
+				"\t\ticon='Drill Hand.dmi'",
+				"\t\tcost=250",
+				"\t\tneededtech=15",
+				"\t\tdesc = \"Allows you to dig a bit faster.\"",
+				"\t\tcreate_type = /obj/items/Hand_Drill",
+				"\tCoisa",
+				"\t\tcost=100",
+				"\t\tneededtech=5",
+				"\t\tdesc = \"Uma coisa qualquer.\"",
+				"\t\tcreate_type = /obj/Coisa",
+				"",
+			}));
+
+			Dictionary<string, string> Descs() => DmTechScanner.Scan(dm).Where(d => d.Custo >= 0).ToDictionary(d => d.Id, d => d.Desc);
+
+			Dictionary<string, string> hoje = Descs();
+			Checa("A0b.8 o EXTRATOR emite a frase do port pra pa e pra furadeira (regenerar o json nao traz o ingles de volta), e deixa em paz o `desc` de quem nao e ferramenta",
+				  hoje.GetValueOrDefault("Shovel") == daPa && hoje.GetValueOrDefault("Hand_Drill") == daFuradeira
+				  && hoje.GetValueOrDefault("Coisa") == "Uma coisa qualquer.",
+				  string.Join(" | ", hoje.Select(kv => $"{kv.Key}: {kv.Value}")));
+
+			DmTechScanner.DescDoDmNasFerramentasDeTeste = true;
+			try
+			{
+				Dictionary<string, string> antes = Descs();
+				Checa("(defeito injetado: o extrator emite o `desc` do DM nas ferramentas) \"Allows you to dig\" volta a sair -- a cobranca A0b.8 acusa",
+					  FalaDeCavar(antes.GetValueOrDefault("Shovel") ?? "") && FalaDeCavar(antes.GetValueOrDefault("Hand_Drill") ?? ""),
+					  string.Join(" | ", antes.Select(kv => $"{kv.Key}: {kv.Value}")));
+			}
+			finally { DmTechScanner.DescDoDmNasFerramentasDeTeste = false; }
+		}
+		catch (Exception e) { Checa("A0b.8 montei a arvore DM de mentira das ferramentas", false, e.Message); }
+		finally
+		{
+			DmTechScanner.DescDoDmNasFerramentasDeTeste = false;
+			try { Directory.Delete(dm, recursive: true); } catch { /* temporario */ }
+		}
+
+		Console.WriteLine();
+	}
+
+	// =====================================================================
+	// A0c) SO O QUE O ORIGINAL COMPILA -- as seis armas comentadas, o id repetido e o arquivo fora do .dme
+	// =====================================================================
+	/// <summary>
+	/// *"o catalogo pode tirar essas armas comentadas"* (dono, 2026-10-10). Axe, Staff, Spear, Club, Hammer e Cross
+	/// estavam na aba Tech sem existir no jogo original: o bloco delas (`Modules/Tech/Weapons.dm:2-113`) esta
+	/// dentro de um `/* */`, e o extrator so pulava `//`.
+	///
+	/// QUATRO PONTAS, e as quatro tem de concordar:
+	///   * o LEITOR (<see cref="DmFonte"/>) segue as regras de comentario que o `dm.exe` segue -- cada uma medida
+	///     no BYOND 516.1684 e escrita aqui como uma linha de entrada e a saida esperada;
+	///   * o EXTRATOR, numa arvore DM de mentira com os mesmos formatos do original, emite so o que o compilador
+	///     veria: nada de dentro do bloco, cada tipo UMA vez (com a declaracao incluida por ultimo vencendo) e
+	///     nada do arquivo que o `.dme` nao inclui -- com um botao de defeito por regra;
+	///   * o ARQUIVO publicado nao tem as cinco armas, nem id repetido, e os quatro valores que vinham de codigo
+	///     morto sao os do DM;
+	///   * a LISTA do Core (<see cref="ItensAposentados"/>, a que tira o item da mochila no login e diz por que --
+	///     sem zeni de volta: dono, 2026-10-11) fala dos mesmos ids.
+	/// O que acontece com quem ja tinha uma das seis na mochila e da `--aposentadosteste` (servidor).
+	/// </summary>
+	private static void SoOQueOOriginalCompila(CatalogoDeObras cat)
+	{
+		Console.WriteLine("--- A0c: so o que o original COMPILA (as armas comentadas, o id repetido, o arquivo fora do .dme) ---");
+
+		// ---- o leitor: as regras do compilador, uma por linha
+		(string Regra, string[] Entra, string[] Sai)[] regras =
+		[
+			("o `//` mata o resto da linha, e so ele",
+				["\tcost=10 // nota", "\tneededtech=5"], ["\tcost=10 ", "\tneededtech=5"]),
+			("`/* */` atravessa linhas, e a linha que era so comentario sai vazia",
+				["\t/*Sword", "\t\tcost=1000", "\t\tusr<<\"texto\"*/", "obj/var/weapon = 0"], ["\t", "", "", "obj/var/weapon = 0"]),
+			("`/* */` ANINHA: so fecha no segundo `*/`",
+				["/* a /* b */ c", "Morta", "*/ Viva"], ["", "", " Viva"]),
+			("DENTRO do bloco o `//` esconde o resto da linha -- o `*/` inclusive",
+				["/* x // y */", "Ainda_Morta", "*/", "Viva"], ["", "", "", "Viva"]),
+			("...e um `/*` depois desse `//` tambem nao conta (a profundidade continua 1)",
+				["/* a // /* b", "Morta", "*/", "Viva"], ["", "", "", "Viva"]),
+			("STRING protege: `//` e `/*` dentro de aspas sao texto",
+				["\tdesc=\"veja http://x /* y */ z\" // fim"], ["\tdesc=\"veja http://x /* y */ z\" "]),
+			("...inclusive com aspa escapada no meio",
+				["\tdesc=\"a \\\" // b\" // fim"], ["\tdesc=\"a \\\" // b\" "]),
+			("a expressao embutida abre OUTRA string dentro da primeira",
+				["\treturn \"a[x ? \"//\" : \"/*\"]b\" // fim"], ["\treturn \"a[x ? \"//\" : \"/*\"]b\" "]),
+			("o documento `{\"...\"}` atravessa linhas, com aspas e barras dentro",
+				["\tnotes={\"<a href=\"http://x\"> // nao e comentario", "/* nem isto", "fim\"} // agora sim"],
+				["\tnotes={\"<a href=\"http://x\"> // nao e comentario", "/* nem isto", "fim\"} "]),
+			("a string crua `@\"...\"` nao tem escape: a `\\` antes da aspa nao a segura aberta",
+				["\tp = @\"c:\\dir\\\" // fim"], ["\tp = @\"c:\\dir\\\" "]),
+			("DENTRO de comentario, aspa e apostrofo nao abrem nada",
+				["/* it\"s don't", "Morta */ Viva"], ["", " Viva"]),
+			("o `//` que acaba em `\\` engole a linha de baixo",
+				["// nota \\", "Engolida", "Viva"], ["", "", "Viva"]),
+			("o `/*/typepath` do DM e so um bloco que abre",
+				["/*/obj/Creatables/Morta", "\tcost=2", "*/", "obj/Creatables/Viva"], ["", "", "", "obj/Creatables/Viva"]),
+			("um `//` que traz `/*` nao abre bloco nenhum",
+				["\t// nota /* isto nao abre", "\tViva"], ["\t", "\tViva"]),
+		];
+		foreach ((string regra, string[] entra, string[] sai) in regras)
+		{
+			string[] veio = DmFonte.SemComentarios(entra);
+			Checa($"A0c.1 leitor: {regra}", veio.SequenceEqual(sai),
+				  $"veio [{string.Join(" | ", veio)}], esperado [{string.Join(" | ", sai)}]");
+		}
+
+		// ---- o extrator, numa arvore DM de mentira com os formatos do original
+		string raiz = Path.Combine(Path.GetTempPath(), "jandirus-comentadoprova-" + Guid.NewGuid().ToString("N"));
+		string code = Path.Combine(raiz, "Code");
+		try
+		{
+			Directory.CreateDirectory(Path.Combine(code, "Tech"));
+
+			// `Modules/Tech/Weapons.dm:1-114`: o bloco abre COLADO no primeiro nome (`/*Sword`) e fecha depois de
+			// uma string, na ultima linha do ultimo item.
+			File.WriteAllText(Path.Combine(code, "Tech", "Weapons.dm"), string.Join("\n", new[]
+			{
+				"obj/Creatables",
+				"\t/*Sword",
+				"\t\ticon='Sword_Trunks.dmi'",
+				"\t\tcost=1000",
+				"\t\tneededtech=11 //Deletes itself from contents if the usr doesnt have the needed tech",
+				"\t\tClick()",
+				"\t\t\tif(usr.zenni>=cost)",
+				"\t\t\t\tusr.zenni-=cost",
+				"\t\t\t\tvar/obj/A=new/obj/items/Weapons/Sword(locate(usr.x,usr.y,usr.z))",
+				"\t\t\telse to_chat(usr, \"You dont have enough money\")",
+				"\tAxe",
+				"\t\ticon='Axe.dmi'",
+				"\t\ticon_state=\"Attack\"",
+				"\t\tcost=1000",
+				"\t\tneededtech=11 //Deletes itself from contents if the usr doesnt have the needed tech",
+				"\t\tverb/Description()",
+				"\t\t\tset category =null",
+				"\t\t\tusr<<\"A weapon will commonly increase your attack while decreasing a stat in another area.\"*/",
+				"obj/var/weapon = 0",
+				"",
+			}));
+
+			// `Modules/Tech/Tier 1.dm:45-66`: um item vivo com um bloco comentado LOGO ABAIXO dele (o `Books` e o
+			// `Saibaman_Seed`), mais os dois casos que o original nao tem e o compilador aceita.
+			File.WriteAllText(Path.Combine(code, "Tech", "Tier 1.dm"), string.Join("\n", new[]
+			{
+				"obj/Creatables",
+				"\tLivro",
+				"\t\ticon='Books.dmi'",
+				"\t\tcost=10",
+				"\t\tneededtech=10 //Deletes itself from contents if the usr doesnt have the needed tech",
+				"\t\tdesc=\"Livros: veja http://exemplo.com/livros /* isto e texto */ e leia.\"",
+				"\t\tcreate_type = /obj/items/Livro",
+				"",
+				"\t/*Semente",
+				"\t\ticon='Saiba Seed.dmi'",
+				"\t\tcost=100",
+				"\t\tneededtech=12 //Deletes itself from contents if the usr doesnt have the needed tech",
+				"\t\tverb/Description()",
+				"\t\t\tset category =null",
+				"\t\t\tusr<<\"What's not to love?\"*/",
+				"\tAgenda",
+				"\t\tname=\"Agenda de Bolso\"",
+				"\t\ticon='PDA.dmi'",
+				"\t\tcost=400",
+				"\t\tneededtech=15",
+				"\t\tdesc=\"a de Tier 1\"",
+				"\t\tcreate_type = /obj/items/Agenda",
+				"\t/* um bloco com outro dentro /* aninhado */ que so fecha no segundo fecho",
+				"\tMorta_No_Aninhado",
+				"\t\tcost=7",
+				"\t\tneededtech=7",
+				"\t*/",
+				"\tViva_Depois_Do_Aninhado",
+				"\t\tcost=8",
+				"\t\tneededtech=8",
+				"\t\tcreate_type = /obj/items/Viva",
+				"\t/* dentro do bloco o barra-barra esconde o fecho: // */",
+				"\tMorta_Atras_Do_Fecho_Escondido",
+				"\t\tcost=9",
+				"\t\tneededtech=9",
+				"\t*/",
+				"\tViva_No_Fim",
+				"\t\tcost=11",
+				"\t\tneededtech=11",
+				"\t\tcreate_type = /obj/items/Fim",
+				"",
+			}));
+
+			// `Modules/Tech/Camera.dm:16-22`: o MESMO tipo declarado de novo (o `PDA`). No disco este arquivo vem
+			// ANTES do `Tier 1.dm`; o `.dme` de baixo o inclui DEPOIS, e e a ordem do `.dme` que decide quem vence.
+			File.WriteAllText(Path.Combine(code, "Tech", "Camera.dm"), string.Join("\n", new[]
+			{
+				"obj/Creatables",
+				"\tAgenda",
+				"\t\ticon='PDA.dmi'",
+				"\t\tcost=400",
+				"\t\tneededtech=15 //Deletes itself from contents if the usr doesnt have the needed tech",
+				"\t\tdesc = \"a de Camera\"",
+				"\t\tcreate_type = /obj/items/Agenda",
+				"",
+			}));
+
+			// `Cloning Machine.dm:169-175` e `Modules/Tech/DNALabs.dm:271-286`: a primeira declaracao em bloco, a
+			// segunda na forma de UMA linha -- seguida de um tipo que nao e Creatable e tem `cost` proprio.
+			File.WriteAllText(Path.Combine(code, "Cloning Machine.dm"), string.Join("\n", new[]
+			{
+				"obj/Creatables",
+				"\tRecipiente",
+				"\t\tdesc=\"o velho\"",
+				"\t\tcost=100000",
+				"\t\tcreate_type = /obj/items/recipiente_velho",
+				"\t\tneededtech=60",
+				"",
+			}));
+			File.WriteAllText(Path.Combine(code, "Tech", "DNALabs.dm"), string.Join("\n", new[]
+			{
+				"obj/Creatables/Recipiente",
+				"\ticon = 'props.dmi'",
+				"\ticon_state = \"Closed\"",
+				"\tcost = 50000",
+				"\tneededtech = 50",
+				"\tallowedRaces = list(\"Human\") //so HUMANOS veem na janela de tech",
+				"\tdesc = \"Recipiente criogenico.\"",
+				"\tcreate_type = /obj/items/Recipiente",
+				"",
+				"obj/items/Recipiente",
+				"\tname = \"Recipiente\"",
+				"\tcost = 1",
+				"",
+			}));
+
+			// um `.dm` que nenhum `#include` cita: codigo que o jogo nao compila
+			File.WriteAllText(Path.Combine(code, "Morto.dm"), string.Join("\n", new[]
+			{
+				"obj/Creatables",
+				"\tFantasma_Fora_Do_Dme",
+				"\t\tcost=5",
+				"\t\tneededtech=5",
+				"",
+			}));
+
+			File.WriteAllText(Path.Combine(raiz, "jogo.dme"), string.Join("\n", new[]
+			{
+				"// DM Environment file for jogo.dme.",
+				"// BEGIN_INCLUDE",
+				"#include \"Code\\Cloning Machine.dm\"",
+				"#include \"Code\\Tech\\DNALabs.dm\"",
+				"#include \"Code\\Tech\\Tier 1.dm\"",
+				"#include \"Code\\Tech\\Camera.dm\"",
+				"#include \"Code\\Tech\\Weapons.dm\"",
+				"// END_INCLUDE",
+				"",
+			}));
+
+			List<ConstrucaoDef> Extrair() => [.. DmTechScanner.Scan(code).Where(d => d.Custo >= 0)];
+			static string Ids(List<ConstrucaoDef> l) => string.Join(", ", l.Select(d => d.Id).Order(StringComparer.Ordinal));
+			static string Ficha(ConstrucaoDef? d) =>
+				d == null ? "(nao saiu)" : $"{d.Id}: {d.Custo:0} zeni, tech {d.TechNecessario:0}, racas [{string.Join(",", d.Racas)}], tipo '{d.CreateType}', desc '{d.Desc}'";
+			const string vivos = "Agenda, Livro, Recipiente, Viva_Depois_Do_Aninhado, Viva_No_Fim";
+			const string descDoLivro = "Livros: veja http://exemplo.com/livros /* isto e texto */ e leia.";
+
+			List<ConstrucaoDef> hoje = Extrair();
+			ConstrucaoDef? De(List<ConstrucaoDef> l, string id) => l.Find(d => d.Id == id);
+
+			bool SoOsVivos(List<ConstrucaoDef> l) => Ids(l) == vivos;
+			bool LivroCerto(List<ConstrucaoDef> l) => De(l, "Livro") is { Custo: 10, TechNecessario: 10, CreateType: "/obj/items/Livro" } d && d.Desc == descDoLivro;
+			bool AgendaCerta(List<ConstrucaoDef> l) =>
+				l.Count(d => d.Id == "Agenda") == 1
+				&& De(l, "Agenda") is { Custo: 400, TechNecessario: 15, Desc: "a de Camera", CreateType: "/obj/items/Agenda", Nome: "Agenda de Bolso" };
+			bool RecipienteCerto(List<ConstrucaoDef> l) =>
+				l.Count(d => d.Id == "Recipiente") == 1
+				&& De(l, "Recipiente") is { Custo: 50000, TechNecessario: 50, Desc: "Recipiente criogenico.", CreateType: "/obj/items/Recipiente", Icone: "props.dmi", Estado: "Closed" } r
+				&& r.Racas.SequenceEqual(["Human"]);
+
+			Checa("A0c.2 extrator: emite SO o que o compilador ve -- nada de dentro dos tres blocos comentados, nada do arquivo fora do .dme",
+				  SoOsVivos(hoje), Ids(hoje));
+			Checa("A0c.3 extrator: o item vivo ACIMA de um bloco comentado fica com o preco e o requisito DELE (10 e 10, nao os 100 e 12 do bloco), e o `desc` com `//` e `/*` dentro sai inteiro",
+				  LivroCerto(hoje), Ficha(De(hoje, "Livro")));
+			Checa("A0c.4 extrator: o tipo declarado em dois arquivos sai UMA vez, com o valor do arquivo que o .dme inclui por ULTIMO (e o que so um escreve fica como esta)",
+				  AgendaCerta(hoje), Ficha(De(hoje, "Agenda")));
+			Checa("A0c.5 extrator: a declaracao de UMA linha (`obj/Creatables/X`) e lida e vence a de bloco incluida antes -- e o `cost` do tipo seguinte nao vaza pra ela",
+				  RecipienteCerto(hoje), Ficha(De(hoje, "Recipiente")));
+
+			DmFonte.BlocoNaoEComentarioDeTeste = true;
+			try
+			{
+				List<ConstrucaoDef> antes = Extrair();
+				Checa("(defeito injetado: `/*` volta a ser texto -- o leitor de antes) o Axe e as duas mortas VOLTAM a sair e o Livro fica com o preco do bloco de baixo -- as cobrancas A0c.2 e A0c.3 acusam",
+					  !SoOsVivos(antes) && !LivroCerto(antes) && De(antes, "Axe") != null && De(antes, "Morta_No_Aninhado") != null
+					  && De(antes, "Morta_Atras_Do_Fecho_Escondido") != null && De(antes, "Livro") is { Custo: 100, TechNecessario: 12 },
+					  $"{Ids(antes)} | {Ficha(De(antes, "Livro"))}");
+			}
+			finally { DmFonte.BlocoNaoEComentarioDeTeste = false; }
+
+			DmTechScanner.DuasDeclaracoesNaoSeFundemDeTeste = true;
+			try
+			{
+				List<ConstrucaoDef> antes = Extrair();
+				Checa("(defeito injetado: o tipo declarado duas vezes volta a ser dois) a Agenda sai REPETIDA e o Recipiente fica na declaracao velha -- as cobrancas A0c.4 e A0c.5 acusam",
+					  !AgendaCerta(antes) && antes.Count(d => d.Id == "Agenda") == 2 && !RecipienteCerto(antes)
+					  && De(antes, "Recipiente") is { Custo: 100000, TechNecessario: 60 },
+					  $"{Ids(antes)} | {Ficha(De(antes, "Recipiente"))}");
+			}
+			finally { DmTechScanner.DuasDeclaracoesNaoSeFundemDeTeste = false; }
+
+			DmFonte.SemDmeDeTeste = true;
+			try
+			{
+				List<ConstrucaoDef> antes = Extrair();
+				Checa("(defeito injetado: o .dme deixa de mandar) o arquivo que ninguem inclui volta a ser lido e a ordem do DISCO troca o vencedor da Agenda -- as cobrancas A0c.2 e A0c.4 acusam",
+					  !SoOsVivos(antes) && De(antes, "Fantasma_Fora_Do_Dme") != null && !AgendaCerta(antes) && De(antes, "Agenda")?.Desc == "a de Tier 1",
+					  $"{Ids(antes)} | {Ficha(De(antes, "Agenda"))}");
+			}
+			finally { DmFonte.SemDmeDeTeste = false; }
+		}
+		catch (Exception e) { Checa("A0c.2 montei a arvore DM de mentira do bloco comentado", false, e.Message); }
+		finally
+		{
+			DmFonte.BlocoNaoEComentarioDeTeste = false;
+			DmTechScanner.DuasDeclaracoesNaoSeFundemDeTeste = false;
+			DmFonte.SemDmeDeTeste = false;
+			try { Directory.Delete(raiz, recursive: true); } catch { /* temporario */ }
+		}
+
+		// ---- o arquivo publicado
+		string[] cinco = ["Axe", "Spear", "Club", "Hammer", "Cross"];
+		List<string> aindaLa = [.. cinco.Where(id => cat.Get(id) != null || CatalogoDeItens.Get(id) != null)];
+		Checa("A0c.6 catalogo: Axe, Spear, Club, Hammer e Cross sairam do construcoes.json, e nenhum deles vira item",
+			  aindaLa.Count == 0, string.Join(", ", aindaLa));
+
+		Construcao? cajado = cat.Get("Staff");
+		Checa("A0c.7 catalogo: o `Staff` que ficou e o cajado magico de `Magitech.dm:21-28` (tech 1, 1.000 zeni, com descricao e tipo) -- e nao a arma comentada (tech 11, sem tipo)",
+			  cajado is { Tech: 1, Custo: 1000, Tipo: "/obj/items/Equipment/Weapon/Staff/Magic_Staff", Pessoal: true }
+			  && cajado.Desc.Contains("magical tool") && cajado.Arte.EndsWith("magic_items.tres", StringComparison.Ordinal),
+			  cajado == null ? "fora do catalogo" : $"tech {cajado.Tech:0}, custo {cajado.Custo:0}, tipo '{cajado.Tipo}', arte '{cajado.Arte}'");
+
+		Checa("A0c.8 catalogo: nenhum id repetido no arquivo (duas linhas com o mesmo id viram UMA construcao, a ultima, e a outra some calada)",
+			  cat.Repetidos.Count == 0, string.Join(", ", cat.Repetidos));
+		const string comRepetido =
+			"""
+			[
+			  { "id": "Coisa", "nome": "Coisa", "custo": 400, "tech": 15, "racas": [], "tipo": "/obj/Coisa" },
+			  { "id": "Outra", "nome": "Outra", "custo": 1, "tech": 1, "racas": [], "tipo": "/obj/Outra" },
+			  { "id": "coisa", "nome": "Coisa de novo", "custo": 400, "tech": 15, "racas": [], "tipo": "/obj/Coisa" }
+			]
+			""";
+		CatalogoDeObras sujo = CatalogoDeObras.Parse(comRepetido);
+		Checa("(defeito injetado: um arquivo com o mesmo id em duas linhas, uma delas com outra caixa) a cobranca A0c.8 acusa o id, e o catalogo fica com DUAS construcoes",
+			  sujo.Repetidos.SequenceEqual(["coisa"]) && sujo.Total == 2 && sujo.Get("Coisa")?.Nome == "Coisa de novo",
+			  $"repetidos [{string.Join(", ", sujo.Repetidos)}], total {sujo.Total}");
+
+		// OS QUATRO VALORES QUE VINHAM DE CODIGO MORTO. As ancoras sao as do DM, escritas aqui e nao derivadas.
+		Construcao? livros = cat.Get("Books"), furadeira = cat.Get(CatalogoDeItens.Furadeira), pda = cat.Get("PDA"), dna = cat.Get("DNA_Container");
+		Checa("A0c.9 catalogo: o `Books` custa 10 zeni e pede tech 10 (`Tier 1.dm:45-50`) -- e nao os 100 e 12 do `Saibaman_Seed` comentado logo abaixo dele",
+			  livros is { Custo: 10, Tech: 10 }, $"custo {livros?.Custo}, tech {livros?.Tech}");
+		Checa("A0c.10 catalogo: a `Hand_Drill` pede tech 10 (`Tier 1.dm:26-31`, 250 zeni) -- e nao os 15 do `Shuriken` comentado logo abaixo dela",
+			  furadeira is { Custo: 250, Tech: 10 }, $"custo {furadeira?.Custo}, tech {furadeira?.Tech}");
+		Checa("A0c.11 catalogo: o `PDA` e UM, com o texto da declaracao que o DM compila por ultimo (`Tier 1.dm:66-72`, sem a frase das cameras de `Camera.dm:21`)",
+			  pda is { Custo: 400, Tech: 15, Tipo: "/obj/items/PDA" } && pda.Desc.EndsWith("if you upgrade it.", StringComparison.Ordinal),
+			  pda?.Desc ?? "(fora do catalogo)");
+		Checa("A0c.12 catalogo: o `DNA_Container` e o de `DNALabs.dm:271-278` (50.000 zeni, tech 50, so Humano, `/obj/items/DNA_Container`) -- e nao o de `Cloning Machine.dm:170` (100.000, tech 60)",
+			  dna is { Custo: 50000, Tech: 50, Tipo: "/obj/items/DNA_Container", Pessoal: true } && dna.Racas.SequenceEqual(["Human"]),
+			  dna == null ? "fora do catalogo" : $"custo {dna.Custo:0}, tech {dna.Tech:0}, racas [{string.Join(",", dna.Racas)}], tipo '{dna.Tipo}'");
+
+		// ---- a lista do Core que limpa a mochila no login
+		// O QUE UMA LINHA DA LISTA TEM DE SER (nulo = esta certa; senao, o que ha de errado com ela).
+		string? Desencontro(ItensAposentados.Aposentado a)
+		{
+			Construcao? noCatalogo = cat.Get(a.Id);
+			// QUEM AINDA TEM LINHA NO CATALOGO so pode ser OUTRA coisa com o mesmo nome (o `Staff`): a arma
+			// aposentada nao tinha `create_type`, e a que ficou tem.
+			bool some = noCatalogo == null && CatalogoDeItens.Get(a.Id) == null;
+			bool virouOutroItem = noCatalogo is { Tipo.Length: > 0 } && a.Id == "Staff";
+			// O PORQUE E O QUE O JOGADOR LE, e nao promete dinheiro: item aposentado sai sem reembolso (dono, 2026-10-11).
+			bool prometeDinheiro = a.Porque.Contains("zeni", StringComparison.OrdinalIgnoreCase);
+			bool certa = (some || virouOutroItem) && a.Porque.Length > 0 && !prometeDinheiro
+						 && a.SaiuNaVersao >= 1 && a.SaiuNaVersao <= ItensAposentados.VersaoAtual;
+			return certa ? null : $"{a.Id} (versao {a.SaiuNaVersao}, porque '{a.Porque}', no catalogo: {(noCatalogo == null ? "nao" : $"sim, tipo '{noCatalogo.Tipo}'")})";
+		}
+		List<string> desencontros = [.. ItensAposentados.Todos.Select(Desencontro).OfType<string>()];
+		Checa("A0c.13 a lista do Core (`ItensAposentados`) sao as SEIS, cada uma com o porque (que nao fala em zeni): cinco fora do catalogo, e o `Staff` la como OUTRO item",
+			  ItensAposentados.Todos.Length == 6 && desencontros.Count == 0
+			  && cinco.Append("Staff").All(id => ItensAposentados.Todos.Any(a => a.Id == id)),
+			  string.Join(" | ", desencontros));
+		Checa("A0c.13 (contra-exemplos da linha) um porque que promete zeni, um id que continua a venda e uma versao do futuro sao ACUSADOS",
+			  Desencontro(new("Axe", "Axe", 1, "os 1.000 zeni que ele custava voltaram")) != null
+			  && Desencontro(new("PDA", "PDA", 1, "saiu")) != null
+			  && Desencontro(new("Axe", "Axe", ItensAposentados.VersaoAtual + 1, "saiu")) != null
+			  && Desencontro(new("Axe", "Axe", 1, "saiu")) == null);
+
+		Console.WriteLine();
+	}
 
 	// =====================================================================
 	// A2) O CATALOGO INTEIRO, ITEM POR ITEM

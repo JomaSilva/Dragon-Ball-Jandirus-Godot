@@ -645,6 +645,24 @@ public partial class GameServer
 
 		UsarHabilidade(majin, "expelir");
 		AfirmarMj("expelir abre mao do poder dos devorados (nao ha quem devolver)", majin.Ficha.majin_absorb_bp == 0 && AbsorvidosPor(majin.Id).Count == 0);
+
+		// ---- O MULTIPLICADOR DO NPC (item 9c do playtest de 2026-10-10): o botao que segura o farm
+		AfirmarMj("de fabrica o NPC rende o MESMO que um jogador (multiplicador 1)",
+				  AbsorcaoMajin.MultiplicadorDeNpc == 1.0 && AbsorcaoMajin.BonusDeBpDeNpc(60_000) == AbsorcaoMajin.BonusDeBp(60_000));
+		double deFabrica = AbsorcaoMajin.MultiplicadorDeNpc;
+		AbsorcaoMajin.MultiplicadorDeNpc = 0.5;
+		try
+		{
+			ServerPlayer barato = ForjarMj("bancada: o NPC que rende a metade", praca + new Vec2(-ZoneCollision.TileSize, 0), 60_000, pessoa: false);
+			DerrubarMj(barato);
+			ApertarAbsorver(majin);
+			AfirmarMj("**O MULTIPLICADOR DO NPC E SEPARADO**: em 0,5 o NPC de 60 mil rende 3 mil, e nao 6 mil",
+					  barato.Ficha.dead && Math.Abs(majin.Ficha.majin_absorb_bp - 3_000) < 0.5, $"{majin.Ficha.majin_absorb_bp}");
+			AfirmarMj("...e o que um JOGADOR absorvido rende nao muda com ele (os 10% inteiros)",
+					  AbsorcaoMajin.BonusDeBp(60_000) == 6_000);
+			UsarHabilidade(majin, "expelir");
+		}
+		finally { AbsorcaoMajin.MultiplicadorDeNpc = deFabrica; }
 	}
 
 	// =====================================================================
@@ -656,17 +674,21 @@ public partial class GameServer
 		(ServerPlayer majin, ServerPlayer vitima) = CenaMj("luto");
 		ServerPlayer amigo = ForjarMj("bancada: o amigo", vitima.Pos + new Vec2(3 * ZoneCollision.TileSize, 0), 200_000);
 		ServerPlayer estranho = ForjarMj("bancada: o estranho", vitima.Pos + new Vec2(0, 3 * ZoneCollision.TileSize), 200_000);
-		amigo.Social.Amizade[vitima.Assinatura] = Jandirus.Core.Social.Convivio.ExigenciaDeAmigo;
-		// O MAJIN TAMBEM E AMIGO DA VITIMA, e mesmo assim nao se enfurece com o proprio gesto (`A == src`)
-		majin.Social.Amizade[vitima.Assinatura] = Jandirus.Core.Social.Convivio.ExigenciaDeAmigo;
+		// AMIGO E QUEM DECLAROU (a afinidade automatica saiu em 2026-10-10): ver `DeclararDeTeste`.
+		DeclararDeTeste(amigo, vitima, Jandirus.Core.Social.Relacao.Bom);
+		// O MAJIN TAMBEM DECLAROU A VITIMA AMIGA, e mesmo assim nao se enfurece com o proprio gesto (`A == src`)
+		DeclararDeTeste(majin, vitima, Jandirus.Core.Social.Relacao.Bom);
+		// O ESTRANHO CONHECE A VITIMA E NAO DISSE NADA DELA: conhecer nao e gostar, e so a declaracao enfurece
+		DeclararDeTeste(estranho, vitima, Jandirus.Core.Social.Relacao.Nenhuma);
 
 		long agora = NowMs();
 		ApertarAbsorver(majin);
 		AfirmarMj("o AMIGO que viu entra em furia extrema (`Do_Anger_Stuff(1)`)", amigo.FuriaExtremaAte > agora);
 		AfirmarMj("...o estranho, nao", estranho.FuriaExtremaAte <= agora);
 		AfirmarMj("...e o Majin tambem nao (quem absorve nao se enfurece com o proprio gesto)", majin.FuriaExtremaAte <= agora);
-		AfirmarMj("a lista de afeto e a da absorcao: amigo ou `Good`/`Very Good` (sem `Love`, sem `Rival/Good`)",
-				  amigo.Social.LutoPorAbsorcao(vitima.Assinatura) && !estranho.Social.LutoPorAbsorcao(vitima.Assinatura));
+		AfirmarMj("a lista de afeto e a da absorcao: quem DECLAROU a vitima amiga (`Good`/`Very Good`/`Love`; sem `Rival/Good`)",
+				  amigo.Social.LutoPorAbsorcao(vitima.Assinatura) && !estranho.Social.LutoPorAbsorcao(vitima.Assinatura)
+				  && !Jandirus.Core.Social.Convivio.EnfurecePorAbsorcao(Jandirus.Core.Social.Relacao.RivalBom));
 	}
 
 	// =====================================================================

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Godot;
 using Jandirus.Core.Combat;
+using Jandirus.Core.Economia;
 using Jandirus.Core.Stats;
 using Jandirus.Core.Tech;
 using Jandirus.Core.World;
@@ -36,6 +37,14 @@ public sealed class BlocoDePe
 	/// (`buildable.dm:405`, `:453`). E uma foto -- so muda quando o dono ergue de novo por cima.
 	/// </summary>
 	public double Resistencia;
+
+	/// <summary>
+	/// O QUE ESTA PECA CUSTOU a quem a ergueu, e de qual bolso saiu (<see cref="Moeda"/>). Zero no
+	/// bloco de antes de haver preco -- ele nao foi cobrado, e nao e cobrado depois. Quem le isto e so o
+	/// reembolso do desmanche (`PrecoDeBloco.DevolveAoDesmanchar`, desligado): ver `GameServer.CustoDeObra.cs`.
+	/// </summary>
+	public double Pago;
+	public byte PagoEm;
 
 	/// <summary>So porta: a senha (o `seccode`, `buildturfs.dm:456`). Vazia = abre pra quem encostar.</summary>
 	public string Senha = "";
@@ -87,7 +96,7 @@ public sealed class BlocoDePe
 /// =============================================================================
 ///
 /// ============================ O QUE FICOU IGUAL ============================
-///   * tres familias saidas do mesmo catalogo (`/turf/build/*`), de graca, na hora, sem requisito;
+///   * tres familias saidas do mesmo catalogo (`/turf/build/*`), na hora, sem requisito de tecnologia;
 ///   * posse por CONTA, e so o dono constroi por cima do que e dele;
 ///   * a resistencia e a foto do `intBPcap` de quem ergueu (<see cref="TetoDeTecnologia"/>);
 ///   * o soco derruba com 34% por golpe a partir da resistencia; o arremesso, na hora;
@@ -100,6 +109,9 @@ public sealed class BlocoDePe
 ///
 /// ============================ DIVERGENCIAS DECLARADAS ============================
 /// As regras de LUGAR estao no cabecalho de <see cref="RegrasDeBloco"/>. As daqui:
+///   * CADA PECA CUSTA, em zeni ou em recursos (pedido do dono de 2026-10-10; no DM e de graca). O preco esta
+///     em <see cref="PrecoDeBloco"/>, e a cobranca, a escolha da moeda e o saldo que o cliente ve estao em
+///     `GameServer.CustoDeObra.cs`.
 ///   * A SENHA E PERGUNTADA AO CONSTRUIR (pedido do dono). A Key do DM nao entra na conta.
 ///   * O DONO PASSA SEM DIGITAR, e quem acertou a senha uma vez tambem (<see cref="BlocoDePe.Sabem"/>).
 ///     No DM nem o dono tem passe; quem nao quer o `input()` a cada encostada carrega a Key.
@@ -402,8 +414,13 @@ public sealed partial class GameServer
 	/// <summary>O pacote `C2S.Bloco`: erguer ou desmanchar UMA celula.</summary>
 	private void ComandoDeBloco(ServerPlayer pl, byte acao, int cx, int cy, int numero, string senha)
 	{
-		if (acao == Protocol.BlocoDesmanchar) DesmancharBloco(pl, cx, cy);
-		else ErguerBloco(pl, numero, cx, cy, senha);
+		if (acao == Protocol.BlocoDesmanchar) { DesmancharBloco(pl, cx, cy); return; }
+
+		bool subiu = ErguerBloco(pl, numero, cx, cy, senha);
+
+		// UMA RESPOSTA POR PEDIDO DE ERGUER, tenha a peca subido ou nao: o cliente conta as pecas que mandou e
+		// ainda nao foram respondidas, e as desconta do saldo que mostra. Ver `GameServer.CustoDeObra.cs`.
+		if (subiu || !SaldoSoQuandoSobeDeTeste) MandarSaldoDeObra(pl, deUmaPeca: true);
 	}
 
 	/// <summary>
@@ -447,13 +464,24 @@ public sealed partial class GameServer
 	private static bool EDonoDoBloco(BlocoDePe b, ServerPlayer pl) =>
 		pl.Conta.Length > 0 && string.Equals(b.DonoConta, pl.Conta, StringComparison.OrdinalIgnoreCase);
 
-	private void ErguerBloco(ServerPlayer pl, int numero, int cx, int cy, string senhaCrua)
+	/// <summary>Ergue (ou troca) o bloco desta celula. Devolve se ele SUBIU.</summary>
+	private bool ErguerBloco(ServerPlayer pl, int numero, int cx, int cy, string senhaCrua)
 	{
-		if (PorQueNaoConstroi(pl) is { Length: > 0 } nao) { Avisar(pl, nao); return; }
-		if (_blocos!.PorNumero(numero) is not { } def) { Avisar(pl, "esse bloco não existe."); return; }
+		if (PorQueNaoConstroi(pl) is { Length: > 0 } nao) { Avisar(pl, nao); return false; }
+		if (_blocos!.PorNumero(numero) is not { } def) { Avisar(pl, "esse bloco não existe."); return false; }
 
 		RecusaDeBloco r = RecusaDeErguer(pl, def, cx, cy);
-		if (r != RecusaDeBloco.Pode) { Avisar(pl, RegrasDeBloco.Motivo(r)); return; }
+		if (r != RecusaDeBloco.Pode) { Avisar(pl, RegrasDeBloco.Motivo(r)); return false; }
+
+		// JA ESTA LA, IGUAL E DELE: nada a erguer, e nada a cobrar. O cliente nem manda este pedido (ele pula o
+		// bloco igual que ja e seu) -- menos na janela em que o anuncio da peca ainda nao chegou nele: arrastar
+		// o mouse de volta por cima da parede que acabou de pedir manda a mesma celula duas vezes, e sem esta
+		// linha a mesma parede sairia do bolso duas vezes.
+		if (!MesmaPecaCobraDeNovoDeTeste && BlocoEm(pl.Zone, cx, cy) is { } igual && igual.Def.Numero == def.Numero) return true;
+
+		// A COBRANCA E A ULTIMA PERGUNTA, depois de todas as de lugar: so se paga pelo que SOBE. Sem saldo na
+		// moeda escolhida a peca nao sobe (e o `PagarAPeca` ja disse por que).
+		if (!PagarAPeca(pl, def, out Moeda moeda, out double pago)) return false;
 
 		Fighter f = pl.Ficha;
 		var b = new BlocoDePe
@@ -470,6 +498,8 @@ public sealed partial class GameServer
 
 			// A FOTO DO `intBPcap` (`buildable.dm:405`, `:453`), com o piso de todo turf (20).
 			Resistencia = Math.Max(Empurrao.ResistenciaPadrao, TetoDeTecnologia.De(f.relBPmax, f.techskill, f.techmod)),
+			Pago = pago,
+			PagoEm = (byte)moeda,
 			Senha = def.Classe == ClasseDeBloco.Porta ? RegrasDeBloco.SenhaLimpa(senhaCrua) : "",
 		};
 
@@ -478,11 +508,15 @@ public sealed partial class GameServer
 		RefazerNoMapa(z, b);
 		_basesSujas = true;
 		AnunciarBloco(z, b);
+		return true;
 	}
 
 	/// <summary>
 	/// O DONO DESMANCHA O QUE E DELE -- e o chao que estava la volta, sem marca. O admin desmancha o de
 	/// qualquer um: e a ferramenta dele contra quem ergue parede pra atrapalhar os outros.
+	///
+	/// O QUE A PECA CUSTOU NAO VOLTA (decisao deste port; a constante do reembolso esta desligada -- ver
+	/// <see cref="DevolverAoDesmanchar"/>).
 	/// </summary>
 	private void DesmancharBloco(ServerPlayer pl, int cx, int cy)
 	{
@@ -496,6 +530,7 @@ public sealed partial class GameServer
 
 		TirarBloco(z, b);
 		AnunciarBlocoTirado(z, cx, cy, derrubado: false);
+		if (DevolverAoDesmanchar(pl, b)) MandarSaldoDeObra(pl, deUmaPeca: false);
 	}
 
 	// =====================================================================

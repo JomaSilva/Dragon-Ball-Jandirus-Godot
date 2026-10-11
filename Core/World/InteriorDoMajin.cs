@@ -87,8 +87,8 @@ public static class InteriorDoMajin
 	/// <summary>
 	/// A PALETA -- montada a mao, como a do casco da nave e a da mente, e pelo mesmo motivo: reusar o
 	/// `TerrenoGerado` inteiro (o pintor por pedaco do cliente, a colisao do servidor). As dez entradas
-	/// apontam pra mesma carne porque o `PlanetaProcedural.MontarCamadas` resolve os dez pinceis no
-	/// nascimento, e um `TileVisual` vazio faria dez avisos a cada absorcao.
+	/// apontam pra mesma carne porque o `PlanetaProcedural.MontarCamadas` resolve os nove pinceis no
+	/// nascimento, e um `TileVisual` vazio faria nove avisos a cada absorcao.
 	/// </summary>
 	private static readonly PaletaDeBioma PaletaDaCarne = new()
 	{
@@ -97,7 +97,7 @@ public static class InteriorDoMajin
 		LimiarAgua = 0, LimiarPraia = 0, LimiarColina = 1, LimiarMontanha = 1,
 		VegetacaoPct = 0, PlantaPct = 0, MinerioPct = 0,
 		Agua = Carne, Praia = Carne, Planicie = Carne, Colina = Carne, Montanha = Carne,
-		Arvore = Carne, ArvoreAcento = Carne, Planta = Carne, Minerio = Carne, Gema = Carne,
+		Arvore = Carne, ArvoreAcento = Carne, Planta = Carne, RochaGrande = Carne,
 	};
 
 	private static TerrenoGerado? _planta;

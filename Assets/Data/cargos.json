@@ -206,7 +206,7 @@
       "degraus": [],
       "requisitos": [],
       "aquisicao": ["Modules/Admin/Rewards.dm:310 -- dado por ADMIN (verb Give Rank)"],
-      "concede": { "arvore": "Space", "skills": ["/datum/skill/rank/KillDriver", "/datum/skill/rank/GuidedBall", "/datum/skill/style/AlienStyle"], "verbs": [], "notas": [] }
+      "concede": { "arvore": "Space", "skills": ["/datum/skill/rank/KillDriver", "/datum/skill/style/AlienStyle"], "verbs": [], "notas": [] }
     },
     {
       "chave": "korin", "chave_inventada": false,

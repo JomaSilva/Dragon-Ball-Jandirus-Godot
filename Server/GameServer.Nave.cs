@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Godot;
+using Jandirus.Core.Economia;
 using Jandirus.Core.Tech;
 using Jandirus.Core.World;
 using Jandirus.Net;
@@ -355,8 +356,11 @@ public partial class GameServer
 	/// </remarks>
 	private void RecalcularVelocidade(ServerPlayer pl)
 	{
+		// O CORPO FERIDO ANDA DEVAGAR (`mobTime *= HP/100`, `movement handler.dm:55`) -- o terceiro dono da
+		// velocidade do corpo, e ele entra por DENTRO do `FatorDePasso` porque no DM a linha vem antes do peso.
+		// Ver `FatorDeVidaNoPasso`, `GameServer.Membros.cs`.
 		pl.SpeedStat = MoveRules.SpeedStatFrom(pl.Ficha.Espeed)
-					 * (float)Jandirus.Core.Stats.Esmagamento.FatorDePasso(pl.Ficha);
+					 * (float)Jandirus.Core.Stats.Esmagamento.FatorDePasso(pl.Ficha, FatorDeVidaNoPasso(pl));
 
 		// NADAR E MAIS DEVAGAR QUE ANDAR -- `mobTime -= 0.3` (`movement handler.dm:66`). Entra AQUI
 		// e nao no tique do nado pelo motivo que este metodo inteiro existe: velocidade tem um dono
@@ -598,7 +602,7 @@ public partial class GameServer
 	/// razao que `MelhorarNave` pede -- gastar 100 mil zeni no equipamento de outra pessoa e um jeito
 	/// de errar que nao tem desfazer.
 	/// </summary>
-	private void RecondicionarNave(ServerPlayer pl)
+	private void RecondicionarNave(ServerPlayer pl, string pedido)
 	{
 		Nave? n = MinhaNaveOuPerto(pl);
 		if (n == null) { Avisar(pl, "não há nenhum foguete por perto."); return; }
@@ -607,17 +611,15 @@ public partial class GameServer
 		{ Avisar(pl, $"{NomeDaNave(n)} é de {n.DonoNome}."); return; }
 		if (!n.Usada) { Avisar(pl, $"{NomeDaNave(n)} ainda está inteiro -- não há o que recondicionar."); return; }
 
-		if (pl.Ficha.Zeni < Naves.CustoDeRecondicionar)
-		{
-			Avisar(pl, $"recondicionar custa {Naves.CustoDeRecondicionar:N0} zeni -- você tem {pl.Ficha.Zeni:N0}.");
-			return;
-		}
+		// EM ZENI OU, PELO DOBRO, EM RECURSOS (dono, 2026-10-10): a moeda vem no pedido -- ver `CobrarOuExplicar`.
+		Moeda moeda = Recurso.LerPedidoPago(pedido).Moeda;
+		if (!CobrarOuExplicar(pl, Naves.CustoDeRecondicionar, moeda, "recondicionar")) return;
 
-		pl.Ficha.Zeni -= Naves.CustoDeRecondicionar;
 		n.Usada = false;
 		GravarNaves();
 		MandarFicha(pl);
-		Avisar(pl, $"a cápsula é montada num casco novo. {NomeDaNave(n)} voa de novo.");
+		Avisar(pl, $"a cápsula é montada num casco novo por {Recurso.PrecoEscrito(Naves.CustoDeRecondicionar, moeda)}. "
+				   + $"{NomeDaNave(n)} voa de novo.");
 		GD.Print($"[server] {pl.Name} recondicionou o foguete #{n.Id}");
 	}
 
@@ -818,7 +820,7 @@ public partial class GameServer
 	// =====================================================================
 	// UPGRADE E INFO -- `verb/Upgrade` (:190) e `verb/Info` (:185)
 	// =====================================================================
-	private void MelhorarNave(ServerPlayer pl)
+	private void MelhorarNave(ServerPlayer pl, string pedido)
 	{
 		// ============================ A NAVE GRANDE SE MELHORA DA PONTE ============================
 		// `MinhaNaveOuPerto` procura no CHAO da zona em que o corpo esta, e quem esta dentro da Capital
@@ -843,11 +845,11 @@ public partial class GameServer
 		if (n.Velocidade >= Naves.VelocidadeMaxima)
 		{ Avisar(pl, $"{NomeDaNave(n)} já está no limite ({Naves.VelocidadeMaxima}x)."); return; }
 
+		// EM ZENI OU, PELO DOBRO, EM RECURSOS (dono, 2026-10-10): a moeda vem no pedido -- ver `CobrarOuExplicar`.
 		double custo = Naves.CustoDoUpgrade(n.Velocidade);
-		if (pl.Ficha.Zeni < custo)
-		{ Avisar(pl, $"o próximo degrau custa {custo:N0} zeni -- você tem {pl.Ficha.Zeni:N0}."); return; }
+		Moeda moeda = Recurso.LerPedidoPago(pedido).Moeda;
+		if (!CobrarOuExplicar(pl, custo, moeda, "o próximo degrau")) return;
 
-		pl.Ficha.Zeni -= custo;
 		n.Velocidade++;
 		GravarNaves();
 
@@ -855,7 +857,7 @@ public partial class GameServer
 		// `RecalcularVelocidade` -- a velocidade nao dispara reenvio de ficha sozinha.
 		if (n.PilotoId == pl.Id) { RecalcularVelocidade(pl); MandarFicha(pl); }
 
-		Avisar(pl, $"velocidade agora é {n.Velocidade}x ({custo:N0}z). "
+		Avisar(pl, $"velocidade agora é {n.Velocidade}x ({Recurso.PrecoEscrito(custo, moeda)}). "
 				   + $"Terra→Namek: {Naves.SegundosDeViagem(Espaco.DistanciaTerraNamek, n.Velocidade) / 60:0.#} min.");
 		GD.Print($"[server] {pl.Name} melhorou a nave #{n.Id} pra velocidade {n.Velocidade}");
 	}
@@ -876,7 +878,7 @@ public partial class GameServer
 		Avisar(pl, $"  espera do lançamento: {SegundosDeLancamentoDe(n):0.#} s");
 		Avisar(pl, n.Velocidade >= Naves.VelocidadeMaxima
 			? "  no limite: não há mais degrau."
-			: $"  próximo degrau: {Naves.CustoDoUpgrade(n.Velocidade):N0} zeni");
+			: $"  próximo degrau: {Recurso.DoisPrecos(Naves.CustoDoUpgrade(n.Velocidade))}");
 
 		// O CASCO SO APARECE EM QUEM TEM CASCO. Escrever "0%" numa Spacepod diria que ela esta
 		// destruida, quando o certo e que ela nao participa daquele sistema.
@@ -886,9 +888,13 @@ public partial class GameServer
 			Avisar(pl, n.Senha.Length > 0 ? "  trancada: só quem sabe a senha embarca." : "  destrancada.");
 		if (Naves.EhFoguete(n.Tipo))
 			Avisar(pl, n.Usada
-				? $"  JÁ USADO: recondicionar custa {Naves.CustoDeRecondicionar:N0} zeni."
+				? $"  JÁ USADO: recondicionar custa {Recurso.DoisPrecos(Naves.CustoDeRecondicionar)}."
 				: "  inteiro: pode lançar uma vez.");
 		if (n.VoltaEm > 0) Avisar(pl, $"  em órbita: desce em {(n.VoltaEm - NowMs()) / 1000.0:0} s.");
+
+		// O SALDO AO LADO DOS PRECOS (quando ha o que pagar nela): e com ele que se escolhe a moeda.
+		if (n.Velocidade < Naves.VelocidadeMaxima || (Naves.EhFoguete(n.Tipo) && n.Usada))
+			Avisar(pl, $"  você tem {CarteiraEscrita(pl)}.");
 
 		Avisar(pl, $"  onde: {n.Zona}");
 		if (n.PilotoId == pl.Id) Avisar(pl, "  você está pilotando.");
@@ -917,10 +923,10 @@ public partial class GameServer
 		{
 			case "nave_usar": UsarNave(pl); return true;
 			case "nave_lancar": LancarNave(pl); return true;
-			case "nave_melhorar": MelhorarNave(pl); return true;
+			case "nave_melhorar": MelhorarNave(pl, arg); return true;
 			case "nave_info": InfoDaNave(pl); return true;
 			case "nave_pegar": PegarNave(pl); return true;
-			case "nave_recondicionar": RecondicionarNave(pl); return true;
+			case "nave_recondicionar": RecondicionarNave(pl, arg); return true;
 
 			// A CAMADA 2 -- arquivo proprio (`GameServer.NaveGrande.cs`) pela mesma razao que a
 			// camada 1 nao mora no `GameServer.Tech.cs`: interior, ponte e ejecao sao um sistema, e

@@ -494,6 +494,12 @@ public partial class GameServer
 	{
 		_convitesDeAnciao.Clear();
 
+		// (palco) OS DOIS CONVIDADOS NO TILE VIZINHO do Grande Anciao: nomear e presencial (`in view(1)`,
+		// `NamekRanks.dm:56`), e os corpos desta bancada nascem a tres tiles um do outro. A recusa por distancia
+		// e medida na `--validacoesteste`; aqui o assunto e quem PODE ser nomeado.
+		novico.Pos = anciao.Pos + new Vec2(ZoneCollision.TileSize, 0);
+		humano.Pos = anciao.Pos + new Vec2(0, ZoneCollision.TileSize);
+
 		// QUEM NAO E GRANDE ANCIAO NAO NOMEIA -- a primeira pergunta do Core.
 		AfirmarPrt("sem o cargo de Grande Anciao, nao se nomeia",
 			Nomeacao.PorQueNao("", "northelder", "Namekian", "Namekian", "") != null);

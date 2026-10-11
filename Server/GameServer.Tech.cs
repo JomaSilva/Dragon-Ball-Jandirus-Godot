@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using Godot;
+using Jandirus.Core.Economia;
 using Jandirus.Core.Stats;
 using Jandirus.Core.Tech;
 using Jandirus.Core.World;
@@ -133,6 +134,14 @@ public sealed class Obra
 	public RegeneradorDaObra? Regenerador;
 
 	/// <summary>
+	/// O ESTADO DA DRILL (nivel, estoque e ate quando ela ja foi contada), quando esta obra e uma. Nulo em
+	/// todo o resto -- e mora aqui pelo motivo escrito no <see cref="Gravidade"/>: nasce e morre com a obra, e
+	/// vai pro `mundo.json` de graca, que e o que faz a Drill trabalhar atraves do reinicio. Ver
+	/// `GameServer.Drill.cs`.
+	/// </summary>
+	public DrillDaObra? Drill;
+
+	/// <summary>
 	/// QUE LABORATORIO FOI INSTALADO no mainframe: 0 nenhum, 1 Android Lab, 2 Bio-Android Lab.
 	///
 	/// E assim no original e vale manter: nao se CONSTROI um laboratorio, se constroi o
@@ -218,6 +227,13 @@ public sealed class Gestacao
 
 	public long PrometidaEm;             // ms reais em que a gestacao termina
 	public string DonoConta = "";
+
+	/// <summary>
+	/// O `creator_sig` do DM (`DNALabs.dm:441`): a ASSINATURA do personagem que fechou o tanque -- e e ele, e nao
+	/// outro personagem da mesma conta, que a criatura mata ao nascer (`P.signature == creator_sig`, `:364`).
+	/// Vazia em fornada gravada antes de 2026-10-11 (e em corpo sem slot): ai vale a conta, como era.
+	/// </summary>
+	public string DonoAssinatura = "";
 
 	// =====================================================================
 	// O QUE A FORNADA CONSOLIDOU (so depois de `GestarBio`)
@@ -394,6 +410,13 @@ public partial class GameServer
 			// bancada `--cidadeteste` cobra a MESMA lista, e duas copias da regra divergiriam no
 			// primeiro campo que alguem acrescentasse. Ver o cabecalho daquele metodo.
 			AvisarDasMudas(_obras);
+
+			// E A IRMA DELA PRO "TECH 999": o que pede tecnologia acima do teto do original nao e oferta, e
+			// nao devia nem estar no arquivo. Ver `Construcao.AcimaDoTeto`.
+			AvisarDasAcimaDoTeto(_obras);
+
+			// E A TERCEIRA: o id que o arquivo traz duas vezes (o `Staff` e o `PDA` de antes de 2026-10-10).
+			AvisarDosRepetidos(_obras);
 		}
 		else GD.PushWarning("[server] sem construcoes.json -- rode o AssetPipeline (comando 'tech')");
 
@@ -453,6 +476,40 @@ public partial class GameServer
 	}
 
 	/// <summary>
+	/// GRITA POR CADA ENTRADA DO CATALOGO QUE PEDE TECNOLOGIA ACIMA DO TETO DO ORIGINAL -- o "Space Pod de tech
+	/// 999" que o dono viu na aba Tech (2026-10-10). Devolve quantas eram, pelo motivo do
+	/// <see cref="AvisarDasMudas"/>: e o numero que a bancada `--recursosteste` le.
+	///
+	/// Com o `construcoes.json` saido do extrator de hoje a resposta e ZERO. Se um arquivo antigo (ou uma linha
+	/// posta a mao) trouxer uma de volta, a aba nao a mostra (`CatalogoDeObras.Ofertas`) e este aviso diz por que.
+	/// </summary>
+	private int AvisarDasAcimaDoTeto(CatalogoDeObras cat)
+	{
+		int n = 0;
+		foreach (Construcao c in cat.AcimaDoTeto())
+		{
+			n++;
+			GD.PushWarning($"[server] construcao '{c.Id}' pede tecnologia {c.Tech:0} (o teto do original e "
+						 + $"{CatalogoDeObras.TechMaximoDoDm:0}): no DM isso e um balcao posto no mapa, nao uma oferta. "
+						 + "Ela fica fora da aba Tech; rode o AssetPipeline ('tech') pra tira-la do construcoes.json.");
+		}
+		return n;
+	}
+
+	/// <summary>
+	/// GRITA POR CADA ID QUE O `construcoes.json` TRAZ MAIS DE UMA VEZ -- so a ultima linha vira construcao, e a
+	/// outra some calada (`CatalogoDeObras.Repetidos`). Devolve quantos eram, pelo motivo do
+	/// <see cref="AvisarDasMudas"/>: e o numero que a bancada `--aposentadosteste` le.
+	/// </summary>
+	private int AvisarDosRepetidos(CatalogoDeObras cat)
+	{
+		foreach (string id in cat.Repetidos)
+			GD.PushWarning($"[server] o construcoes.json traz '{id}' mais de uma vez: so a ULTIMA linha vale, e a outra "
+						 + "some. No DM o mesmo tipo declarado em dois arquivos e UM tipo -- tire a linha que sobra.");
+		return cat.Repetidos.Count;
+	}
+
+	/// <summary>
 	/// AS MAQUINAS QUE O MAPA JA TRAZ viram construcoes de pe.
 	///
 	/// ============================ O QUE ISTO CONSERTA ============================
@@ -502,7 +559,7 @@ public partial class GameServer
 		if (e.Objetos.Length == 0 || !Godot.FileAccess.FileExists(e.Objetos)) return (0, 0);
 
 		// PRE-FEITA POR CONSTRUCAO: o `ZoneEntry` e uma zona de ARQUIVO (convertida de .dmm).
-		// Nao ha `.objetos` de mundo sorteado -- o gerador nao escreve maquina nenhuma.
+		// Nao ha `.objetos` de mundo sorteado -- la a mobilia sai da seed (o pomar, `GameServer.Pomar.cs`).
 		ZoneKey zona = ZoneKey.Premade(e.Zona);
 		int postas = 0, semCatalogo = 0;
 
@@ -511,29 +568,42 @@ public partial class GameServer
 			if (_obras?.Get(o.Id) == null) { semCatalogo++; continue; }
 			if (soAQueFalta && ObraNaCelula(zona, o.X, o.Y) != null) continue;   // de pe, ou a celula ja tem outra obra
 
-			// A CELULA VIRA PIXEL NO MEIO DELA. O conversor grava a celula; a obra guarda a
-			// posicao do CORPO que a ergueu, e `CatalogoDeObras.Celula` desfaz isso somando o
-			// deslocamento dos pes. Aqui a conta e a inversa, e tem que ser a mesma -- senao a
-			// maquina desenha uma celula acima de onde ela esta no mapa.
-			const int t = ZoneCollision.TileSize;
-			var maquina = new Obra
-			{
-				Id = _proximaObraId++,
-				Tipo = o.Id,
-				X = o.X * t + t / 2f,
-				Y = o.Y * t + t / 2f - MoveRules.FeetOffsetY,
-				DonoNome = "",
-				Aparafusada = true,
-				DoMapa = true,
-				ErguidaEm = 0,
-			};
-			maquina.PorZona(zona);
-			_noChao.Add(maquina);
+			PorMobiliaDePe(zona, o.Id, o.X, o.Y);
 			postas++;
 		}
 
 		if (postas > 0 || !soAQueFalta) AplicarColisaoDasObras(zona);
 		return (postas, semCatalogo);
+	}
+
+	/// <summary>
+	/// UMA MOBILIA DO MAPA, posta de pe numa celula: sem dono, aparafusada e fora do disco (<see cref="Obra.DoMapa"/>).
+	///
+	/// DUAS FONTES, a mesma obra: o `.objetos` das zonas de arquivo (logo acima) e o pomar dos mundos sorteados
+	/// (`GameServer.Pomar.cs`), cuja lista sai da seed. Quem a poe nao aplica a colisao -- isso e de quem sabe
+	/// quando a leva acabou.
+	/// </summary>
+	private Obra PorMobiliaDePe(ZoneKey zona, string tipo, int cx, int cy)
+	{
+		// A CELULA VIRA PIXEL NO MEIO DELA. O conversor grava a celula; a obra guarda a
+		// posicao do CORPO que a ergueu, e `CatalogoDeObras.Celula` desfaz isso somando o
+		// deslocamento dos pes. Aqui a conta e a inversa, e tem que ser a mesma -- senao a
+		// maquina desenha uma celula acima de onde ela esta no mapa.
+		const int t = ZoneCollision.TileSize;
+		var maquina = new Obra
+		{
+			Id = _proximaObraId++,
+			Tipo = tipo,
+			X = cx * t + t / 2f,
+			Y = cy * t + t / 2f - MoveRules.FeetOffsetY,
+			DonoNome = "",
+			Aparafusada = true,
+			DoMapa = true,
+			ErguidaEm = 0,
+		};
+		maquina.PorZona(zona);
+		_noChao.Add(maquina);
+		return maquina;
 	}
 
 	/// <summary>
@@ -592,14 +662,22 @@ public partial class GameServer
 	/// E o que este metodo faz, e a guarda de mochila cheia vem ANTES da cobranca: tirar o zeni pra
 	/// descobrir depois que nao coube seria vender um item que nao foi entregue.
 	/// ===========================================================================
+	///
+	/// ============================ COM ZENI OU COM RECURSOS (dono, 2026-10-10) ============================
+	/// *"toda tech tem seu custo dobrado em recursos em realacao ao zenni, entao se algo custo 1000 zennis pra
+	/// fazer vc pode fazer com 2000 resources"*. A moeda vem do botao que o jogador apertou (`construir` ou
+	/// `construir_recursos`), e vale por inteiro: a pergunta "pode?" e a cobranca sao feitas NELA
+	/// (`Permitida` e <see cref="Cobrar(ServerPlayer, double, Moeda)"/>), e saldo curto numa nao se completa
+	/// com a outra.
+	/// ======================================================================================================
 	/// </summary>
-	private void Construir(ServerPlayer pl, string tipo)
+	private void Construir(ServerPlayer pl, string tipo, Moeda moeda = Moeda.Zeni)
 	{
 		if (_obras == null) { Avisar(pl, "o servidor esta sem catalogo de construcoes."); return; }
 		Construcao? c = _obras.Get(tipo);
 		if (c == null) { Avisar(pl, "isso nao existe."); return; }
 
-		RecusaObra r = CatalogoDeObras.Permitida(c, pl.Ficha, pl.Race);
+		RecusaObra r = CatalogoDeObras.Permitida(c, pl.Ficha, pl.Race, moeda);
 		if (r != RecusaObra.Pode) { Avisar(pl, MotivoObra(r, c, pl)); return; }
 
 		// ============================ FABRICAR NAO E ERGUER -- E AQUI O PORT DIVERGE DO DM DE PROPOSITO ============================
@@ -622,16 +700,26 @@ public partial class GameServer
 			return;
 		}
 
-		pl.Ficha.Zeni -= c.Custo;
+		// A PORTA UNICA DA COBRANCA. O `Permitida` de cima ja conferiu o saldo NESTA moeda, entao a recusa
+		// daqui so dispara se as duas contas divergirem -- e nesse caso nada foi cobrado e nada e entregue.
+		if (!Cobrar(pl, c.Custo, moeda))
+		{
+			Avisar(pl, MotivoObra(moeda == Moeda.Recursos ? RecusaObra.SemRecursos : RecusaObra.SemZeni, c, pl));
+			return;
+		}
 		Guardar(pl, c.Id);
-		GD.Print($"[server] {pl.Name} fabricou {c.Nome} ({c.Custo:N0}z)");
+
+		string preco = moeda == Moeda.Recursos
+			? $"{Recurso.CustoEmRecursos(c.Custo):N0} recursos"
+			: $"{c.Custo:N0} zeni";
+		GD.Print($"[server] {pl.Name} fabricou {c.Nome} ({preco})");
 		// A FRASE PERGUNTA A MESMA COISA QUE O MENU E O `Posicionar` -- ver
 		// `CatalogoDeItens.PodeAssentarNoChao`. Prometer "assente no chao" pra uma armadura era o
 		// sintoma visivel de a classificacao estar errada, e agora a promessa e a acao sao a mesma
 		// pergunta.
 		Avisar(pl, Jandirus.Core.Items.CatalogoDeItens.PodeAssentarNoChao(c.Id)
-			? $"você fabrica {c.Nome}. Está na mochila -- use \"Instalar no chão\" pra escolher o lugar."
-			: $"você fabrica {c.Nome}. Está na sua mochila.");
+			? $"você fabrica {c.Nome} por {preco}. Está na mochila -- use \"Instalar no chão\" pra escolher o lugar."
+			: $"você fabrica {c.Nome} por {preco}. Está na sua mochila.");
 		MandarCatalogoDeObras(pl);
 	}
 
@@ -668,12 +756,19 @@ public partial class GameServer
 	{
 		// "<id>/<x>/<y>" -- o canal de verbos tem um argumento so.
 		string[] p = arg.Split('/');
-		if (p.Length < 3 || !float.TryParse(p[1], out float x) || !float.TryParse(p[2], out float y))
+		if (p.Length < 3 || !float.TryParse(p[1], out float x) || !float.TryParse(p[2], out float y)
+			|| !NumeroFinito(x) || !NumeroFinito(y))   // "NaN" passa no `TryParse`: ver `NumeroFinito`
 		{ Avisar(pl, "ponto inválido."); return; }
 
-		Construcao? c = _obras?.Get(p[0]);
-		if (c == null) { Avisar(pl, "isso não existe."); return; }
-		if (pl.Mochila.Quantos(c.Id) <= 0) { Avisar(pl, $"você não tem {c.Nome}."); return; }
+		// O ITEM NA MAO E O QUE ELE VIRA NO CHAO sao quase sempre a mesma coisa (a bancada e a bancada). A
+		// SEMENTE e a excecao: sai a semente da mochila, e o que se ergue e a arvore -- o `Plant()` de
+		// `Plants.dm:949-953`. Quem diz o que vira o que e o Core (`OQueAssenta`), a mesma casa que o
+		// fantasma do cliente consulta.
+		Jandirus.Core.Items.ItemDef? item = Jandirus.Core.Items.CatalogoDeItens.Get(p[0]);
+		Construcao? c = _obras?.Get(Jandirus.Core.Items.CatalogoDeItens.OQueAssenta(p[0]));
+		if (c == null || item == null) { Avisar(pl, "isso não existe."); return; }
+		if (pl.Mochila.Quantos(item.Id) <= 0) { Avisar(pl, $"você não tem {item.Nome}."); return; }
+		bool plantio = !string.Equals(item.Id, c.Id, StringComparison.OrdinalIgnoreCase);
 
 		// ============================ A REGRA 2, DO LADO DO SERVIDOR ============================
 		// *"item de uso pessoal (scouter, armaduras, pesos) NAO ganha [instalar] -- ele e equipavel."*
@@ -685,9 +780,9 @@ public partial class GameServer
 		// no outro e a armadilha que este projeto ja pagou mais vezes; aqui as duas pontas fazem a
 		// MESMA pergunta (`CatalogoDeItens.PodeAssentarNoChao`), que le a MESMA lista de acoes.
 		// =====================================================================================
-		if (!Jandirus.Core.Items.CatalogoDeItens.PodeAssentarNoChao(c.Id))
+		if (!Jandirus.Core.Items.CatalogoDeItens.PodeAssentarNoChao(item.Id))
 		{
-			Avisar(pl, Assentamento.Motivo(RecusaDeAssento.NaoEDoChao, c.Nome));
+			Avisar(pl, Assentamento.Motivo(RecusaDeAssento.NaoEDoChao, item.Nome));
 			return;
 		}
 
@@ -703,7 +798,7 @@ public partial class GameServer
 		// ======================================================================================================
 		(int cx, int cy) = CatalogoDeObras.Celula(x, y);
 		RecusaDeAssento rl = Assentamento.DoLugar(MapaDaZonaOuCatalogo(pl.Zone), pl.Pos, cx, cy);
-		if (rl != RecusaDeAssento.Pode) { Avisar(pl, Assentamento.Motivo(rl, c.Nome)); return; }
+		if (rl != RecusaDeAssento.Pode) { Avisar(pl, Assentamento.Motivo(rl, item.Nome)); return; }
 
 		// ============================ NAO SE CONSTROI DENTRO DE UMA NAVE -- E O MOTIVO MUDOU ============================
 		// A recusa NASCEU de um defeito da chave: a `Obra` guardava a zona como nome puro, o interior de
@@ -738,9 +833,9 @@ public partial class GameServer
 				_noChao.Where(o => o.Zona.Equals(pl.Zone)).Select(o => new Vec2((float)o.X, (float)o.Y))
 					   .Concat(NavesParadasEm(pl.Zone).Select(n => new Vec2(n.X, n.Y))),
 				new Vec2(x, y)))
-		{ Avisar(pl, Assentamento.Motivo(RecusaDeAssento.LugarOcupado, c.Nome)); return; }
+		{ Avisar(pl, Assentamento.Motivo(RecusaDeAssento.LugarOcupado, item.Nome)); return; }
 
-		pl.Mochila.Tirar(c.Id);
+		pl.Mochila.Tirar(item.Id);
 		MandarMochila(pl);
 
 		// ============================ A NAVE SEGUE POR OUTRA PORTA ============================
@@ -776,8 +871,10 @@ public partial class GameServer
 		_noChao.Add(obra);
 		GravarMundo();
 
-		GD.Print($"[server] {pl.Name} assentou {c.Nome} (#{obra.Id}) em {obra.Zona} @ ({x:0},{y:0})");
-		Avisar(pl, $"você assenta {c.Nome} no chão.");
+		GD.Print($"[server] {pl.Name} {(plantio ? "plantou" : "assentou")} {c.Nome} (#{obra.Id}) em {obra.Zona} @ ({x:0},{y:0})");
+		Avisar(pl, plantio
+			? "você planta a semente. Uma macieira nasce ali -- já dá pra colher."
+			: $"você assenta {c.Nome} no chão.");
 		MandarObras(pl.Zone);
 	}
 
@@ -809,6 +906,10 @@ public partial class GameServer
 		{ Avisar(pl, $"{NomeDaObra(o)} é de {o.DonoNome}."); return; }
 		if (pl.Mochila.Cheio) { Avisar(pl, "sua mochila está cheia."); return; }
 
+		// A DRILL NAO PERDE NADA AO SER RECOLHIDA: o estoque vai pro saldo e o nivel fica com quem a recolhe.
+		// Ver `GameServer.Drill.AoRecolherADrill`.
+		if (o.Tipo == Drill.Tipo) AoRecolherADrill(pl, o);
+
 		_noChao.Remove(o);
 		GravarMundo();
 		Guardar(pl, o.Tipo);
@@ -825,6 +926,7 @@ public partial class GameServer
 	{
 		RecusaObra.SemTech => $"{c.Nome} pede {c.Tech:0} de tecnologia -- voce tem {pl.Ficha.techskill:0}.",
 		RecusaObra.SemZeni => $"{c.Nome} custa {c.Custo:N0} zeni -- voce tem {pl.Ficha.Zeni:N0}.",
+		RecusaObra.SemRecursos => $"{c.Nome} custa {Recurso.CustoEmRecursos(c.Custo):N0} recursos -- voce tem {pl.Ficha.Recursos:N0}.",
 		RecusaObra.RacaErrada => $"{c.Nome} nao e coisa de {Jandirus.Core.Races.NomeDaRaca.Bonito(pl.Race)}.",
 		_ => "nao deu pra construir.",
 	};
@@ -928,7 +1030,7 @@ public partial class GameServer
 	/// quem ja passou GANHA o valor por cima. Sem essa segunda regra, um humano forte ficaria mais
 	/// fraco ao se tornar androide, e ninguem faria isso depois de treinar.
 	/// </summary>
-	private void VirarAndroide(ServerPlayer pl, bool infinito)
+	private void VirarAndroide(ServerPlayer pl, bool infinito, Moeda moeda)
 	{
 		if (ObraPerto(pl) is not { Aparafusada: true, Lab: 1 })
 		{ Avisar(pl, "voce precisa estar dentro de um Android Lab."); return; }
@@ -939,11 +1041,11 @@ public partial class GameServer
 			return;
 		}
 
+		// EM ZENI OU, PELO DOBRO, EM RECURSOS (dono, 2026-10-10): a moeda vem no pedido -- ver `CobrarOuExplicar`.
 		double custo = infinito ? CustoAndroideInfinito : CustoAndroideAbsorcao;
-		if (pl.Ficha.Zeni < custo) { Avisar(pl, $"a conversao custa {custo:N0} zeni."); return; }
+		if (!CobrarOuExplicar(pl, custo, moeda, "a conversão")) return;
 
 		double piso = infinito ? BpAndroideInfinito : BpAndroideAbsorcao;
-		pl.Ficha.Zeni -= custo;
 		pl.Ficha.BP = pl.Ficha.BP < piso ? piso : pl.Ficha.BP + piso;
 		pl.Race = "Android";
 		pl.Ficha.AndroideInfinito = infinito;
@@ -979,6 +1081,7 @@ public partial class GameServer
 	{
 		Obra? lab = LabDeBio(pl);
 		if (lab == null) { Avisar(pl, "voce precisa de um Bio-Android Lab aparafusado por perto."); return; }
+		if (LabTrancadoPra(pl, lab)) return;
 
 		ServerPlayer? vitima = _players.Values
 			.Where(o => o != pl && EhJogador(o) && o.Zone.Equals(pl.Zone) && (o.Ficha.KO || o.Ficha.dead))
@@ -1043,6 +1146,7 @@ public partial class GameServer
 	private void GestarBio(ServerPlayer pl)
 	{
 		Obra? lab = LabDeBio(pl);
+		if (lab != null && LabTrancadoPra(pl, lab)) return;
 		if (lab?.Fornada == null || lab.Fornada.Amostras.Count == 0)
 		{ Avisar(pl, "o tanque esta vazio -- colha DNA primeiro."); return; }
 		if (lab.Fornada.PrometidaEm > 0)
@@ -1079,6 +1183,11 @@ public partial class GameServer
 		//    tecnica dao uma tecnica, nao quatro.
 		g.Tecnicas = [.. g.Amostras.SelectMany(a => a.Skills).Distinct(StringComparer.OrdinalIgnoreCase)];
 
+		// O CRIADOR E QUEM FECHA O TANQUE -- `creator_sig = usr.signature` (`DNALabs.dm:441`), o personagem e nao
+		// so a conta: ver `Gestacao.DonoAssinatura`.
+		g.DonoConta = pl.Conta;
+		g.DonoAssinatura = pl.Assinatura;
+
 		g.PrometidaEm = NowMs() + (long)(GestacaoSegundosReais * 1000);
 		GravarMundo();
 
@@ -1108,6 +1217,33 @@ public partial class GameServer
 		Obra? o = ObraPerto(pl);
 		return o is { Aparafusada: true, Lab: 2 } ? o : null;
 	}
+
+	/// <summary>
+	/// O PAINEL DO BIO-ANDROID LAB E DE QUEM O ERGUEU -- `if(usr.signature != owner_sig) "O painel esta trancado
+	/// no DNA de [owner_name]."` no `Click()` (`DNALabs.dm:371-373`) e de novo no `Topic()` (`:414`). Devolve se
+	/// recusou (e ja disse por que).
+	///
+	/// AS DUAS PORTAS DO TANQUE (colher e gestar) estavam abertas a quem chegasse perto, e o tanque decide QUEM A
+	/// CRIATURA MATA: a primeira agulha de um estranho fazia dele o criador no laboratorio alheio, e qualquer
+	/// passante fechava o tanque de outra pessoa -- na hora dele, com o DNA dele, e era o DONO da fornada que
+	/// perdia o personagem.
+	/// </summary>
+	private bool LabTrancadoPra(ServerPlayer pl, Obra lab)
+	{
+		if (LabSemDonoDeTeste || string.Equals(lab.DonoConta, pl.Conta, StringComparison.OrdinalIgnoreCase)) return false;
+		Avisar(pl, $"o painel está trancado no DNA de {(lab.DonoNome.Length > 0 ? lab.DonoNome : "outra pessoa")}.");
+		return true;
+	}
+
+	/// <summary>
+	/// ESTE CORPO E O CRIADOR DESTA FORNADA -- o que a criatura mata ao nascer? `P.signature == creator_sig`
+	/// (`DNALabs.dm:364`): o PERSONAGEM que fechou o tanque. So pela conta (como era), outro personagem do mesmo
+	/// jogador -- outro slot -- logado na hora do parto era quem virava o bio. Fornada sem assinatura (gravada
+	/// antes de 2026-10-11, ou fechada por corpo sem slot) continua valendo pela conta.
+	/// </summary>
+	private bool EhOCriadorDaFornada(Gestacao g, ServerPlayer p) =>
+		p.Conta == g.DonoConta
+		&& (LabSemDonoDeTeste || g.DonoAssinatura.Length == 0 || p.Assinatura == g.DonoAssinatura);
 
 	/// <summary>
 	/// ============================ O PULMAO DA FORNADA -- QUAL DOADOR RESPIRA NO VACUO ============================
@@ -1198,8 +1334,7 @@ public partial class GameServer
 		{
 			if (lab.Fornada is not { PrometidaEm: > 0 } g || agora < g.PrometidaEm) continue;
 
-			ServerPlayer? criador = _players.Values.FirstOrDefault(
-				p => p.Conta == g.DonoConta && p.Peer != null);
+			ServerPlayer? criador = _players.Values.FirstOrDefault(p => p.Peer != null && EhOCriadorDaFornada(g, p));
 
 			// ELE PRECISA ESTAR ONLINE **E VIVO**. Morto tambem espera: no original o nascimento e o
 			// instante em que a criatura o mata, e nao da pra matar quem ja esta morto -- o parto
@@ -1806,6 +1941,10 @@ public partial class GameServer
 			w.Put(c.Estado);
 		}
 		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+
+		// A CARTEIRA VAI ATRAS DE TODO CATALOGO: e por ela que os RECURSOS chegam (o `S2C.Tech` so traz o zeni),
+		// e assim o login e todo comando de tecnologia ja a entregam sem uma linha a mais em cada chamador.
+		MandarCarteira(pl);
 	}
 
 	/// <summary>O canal unico de tecnologia, do mesmo jeito que o de habilidade.</summary>
@@ -1815,6 +1954,9 @@ public partial class GameServer
 		{
 			case "lista": MandarCatalogoDeObras(pl); break;
 			case "construir": Construir(pl, arg); break;
+			// O MESMO FABRICAR, PAGO COM RECURSOS (o dobro). Comando a parte, e nao um sufixo no argumento: o
+			// argumento e o id do catalogo, e a moeda nao e parte dele.
+			case "construir_recursos": Construir(pl, arg, Moeda.Recursos); break;
 			case "posicionar": Posicionar(pl, arg); break;
 			case "pegar": PegarObra(pl); break;
 			case "aparafusar": Aparafusar(pl); break;
@@ -1822,8 +1964,9 @@ public partial class GameServer
 				pl.Estudando = !pl.Estudando;
 				Avisar(pl, pl.Estudando ? "voce se debruca sobre a bancada." : "voce para de estudar.");
 				break;
-			case "androide_absorcao": VirarAndroide(pl, infinito: false); break;
-			case "androide_infinito": VirarAndroide(pl, infinito: true); break;
+			// A MOEDA E O ARGUMENTO (vazio = zeni, o de sempre; "recursos" = o dobro em recursos).
+			case "androide_absorcao": VirarAndroide(pl, infinito: false, Recurso.LerPedidoPago(arg).Moeda); break;
+			case "androide_infinito": VirarAndroide(pl, infinito: true, Recurso.LerPedidoPago(arg).Moeda); break;
 			case "lab_androide": InstalarLab(pl, 1); break;
 			case "lab_bio": InstalarLab(pl, 2); break;
 			case "colher_dna": ColherDna(pl); break;

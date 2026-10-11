@@ -29,7 +29,7 @@ namespace Jandirus.Server;
 ///     teleporte com carona       Devil_Bringer, Kai_Kai, Instant_Transmission `MoveToZone` + carona (G8)
 ///     campo + uma condicao       Flip, Perfect_Metabolism, Stretchy_Arms,     agarrao, estomago, G3
 ///                                Self_Destruct
-///     ganho no tique de combate  Heran_Power, Saiyan_Power                    `Fighter.AttackGain`
+///     ganho no tique de combate  Heran_Power                                  `Fighter.AttackGain`
 ///     paralisia                  Psycho_Thread, Freeze                        `_paralisadoAte` (G5)
 ///     camera                     Observe                                      o molde do `nave_observar`
 ///     funcao pura                Unlock_Potential, Time_Store, Give_Power,    `CapCheck`, `Ceu`, o Heal
@@ -65,7 +65,7 @@ public sealed partial class GameServer
 	/// OS CATORZE VERBS DESTE LOTE. As linhas-espelho estao em `Core/Skills/Tecnicas.Portadas.cs`
 	/// (a `--catalogoteste` compara as duas bocas nas duas direcoes).
 	///
-	/// AS DEZ SKILLS SEM VERB (Sun, Moon, Above_All, Heran_Power, Saiyan_Power, Perfect_Metabolism,
+	/// AS NOVE SKILLS SEM VERB (Sun, Moon, Above_All, Heran_Power, Perfect_Metabolism,
 	/// Stretchy_Arms, Time_Store, brainpower, meditatepower) nao entram aqui de proposito: elas sao
 	/// `effector()`/`after_learn()` e nao botao -- o efeito delas mora no <see cref="TickDoEfetorG11"/>
 	/// e nos ganchos do agarrao. Registra-las como tecnica inflaria o "portadas" sem botao nenhum.
@@ -96,7 +96,6 @@ public sealed partial class GameServer
 	private const string SkillMoonG11 = "/datum/skill/makyo/Moon";
 	private const string SkillAboveAllG11 = "/datum/skill/makyo/Above_All";
 	private const string SkillHeranPowerG11 = "/datum/skill/heran/Heran_Power";
-	private const string SkillSaiyanPowerG11 = "/datum/skill/saiyan/Saiyan_Power";
 	private const string SkillTimeStoreG11 = "/datum/skill/kanassajin/Time_Store";
 	private const string SkillBrainPowerG11 = "/datum/skill/gray/brainpower";
 	private const string SkillMeditatePowerG11 = "/datum/skill/gray/meditatepower";
@@ -142,8 +141,8 @@ public sealed partial class GameServer
 	/// <summary>Ofertas de Unlock Potential: conta do alvo -> (conta de quem ofereceu, prazo).</summary>
 	private readonly Dictionary<string, (string Quem, long Ate)> _ofertasDePotencialG11 = new(StringComparer.Ordinal);
 
-	/// <summary>`ki_boost_buffer` (`heran.dm:65`) e `gains_boost_buffer` (`saiyan.dm:186`), por jogador.</summary>
-	private readonly Dictionary<int, double> _bufferHeranG11 = [], _bufferSaiyanG11 = [];
+	/// <summary>`ki_boost_buffer` (`heran.dm:65`), por jogador.</summary>
+	private readonly Dictionary<int, double> _bufferHeranG11 = [];
 
 	/// <summary>O fator de forma que o astro esta aplicando agora, por (jogador, buff). Ver <see cref="AplicarAstroG11"/>.</summary>
 	private readonly Dictionary<(int, string), double> _astroFatorG11 = [];
@@ -564,6 +563,10 @@ public sealed partial class GameServer
 			Avisar(pl, "voce nao consegue fazer isso agora.");
 			return;
 		}
+		// DE ONDE NAO SE SAI, NAO SE SAI PELA TRANSMISSAO: a pergunta de todo teleporte (`PorQueNaoSaiDaqui`,
+		// `GameServer.Validacoes.cs`). A linha de cima so sabia da mente e do selo -- o preso da Sala do Tempo, o
+		// absorvido e o passageiro de uma fusao iam embora por aqui.
+		if (PorQueNaoSaiDaqui(pl) is { Length: > 0 } preso) { Avisar(pl, preso); return; }
 		if (_transmissaoG11.ContainsKey(pl.Id)) { Avisar(pl, "voce ja esta se concentrando -- nao se mexa."); return; }
 
 		List<(ServerPlayer Quem, string Rotulo, bool Conhecido)> lista = ListaDeAssinaturasG11(pl);
@@ -644,6 +647,17 @@ public sealed partial class GameServer
 		if (!_players.TryGetValue(t.Alvo, out ServerPlayer? alvo) || alvo.Ficha.dead)
 		{
 			Avisar(pl, "a assinatura que voce seguia se apagou.");
+			return;
+		}
+
+		// A CHEGADA E SEGUNDOS DEPOIS DO PEDIDO, e as duas perguntas se refazem aqui, ANTES de cobrar: quem se
+		// concentrava pode ter ficado preso no meio (a janela da Sala do Tempo fecha sozinha), e a assinatura pode
+		// ter entrado onde nao se chega por teleporte -- a lista (`ListaDeAssinaturasG11`) so tira quem ja estava
+		// na Sala ou selado na hora de LISTAR.
+		if (PorQueNaoSaiDaqui(pl) is { Length: > 0 } preso) { Avisar(pl, preso); return; }
+		if (alvo.Zone.Hash != pl.Zone.Hash && ZonaFechadaAoTeleporte(alvo.Zone))
+		{
+			Avisar(pl, "a assinatura que voce seguia entrou num lugar onde nao se chega assim.");
 			return;
 		}
 
@@ -1298,72 +1312,51 @@ public sealed partial class GameServer
 	}
 
 	// ---------------------------------------------------------------
-	// 16a. HERAN POWER / SAIYAN POWER -- `heran.dm:66-80`, `saiyan.dm:187-200`
+	// 16a. HERAN POWER -- `heran.dm:66-80`
 	// ---------------------------------------------------------------
 	/// <summary>
-	/// O ZENKAI EM COMBATE: UMA funcao, dois parametros. Em luta e com alguem mais forte a vista, um
-	/// contador sobe por tique; quando passa de `10*level`, `Attack_Gain(level + X)` -- X = 0,05 no
-	/// Heran (`heran.dm:79`, que ainda ganha `Ki += 10*BaseDrain`, `:80`) e X = 2 no Saiyajin
-	/// (`saiyan.dm:200`). O Heran compara o BP EXPRESSO com o maior expresso em luta a vista
-	/// (`highestebp`); o Saiyajin compara o BP BASE com o maior base (`highestbp`).
+	/// O ZENKAI EM COMBATE DO HERAN. Em luta e com alguem mais forte a vista, um contador sobe por tique;
+	/// quando passa de `10*level`, `Attack_Gain(level + 0,05)` (`heran.dm:79`) e `Ki += 10*BaseDrain`
+	/// (`:80`). Ele compara o BP EXPRESSO com o maior expresso em luta a vista (`highestebp`).
 	///
-	/// `highestebp`/`highestbp` sao lidos no DM no instante do ataque, entre os `IsInFight` em
-	/// `view()` (`UpdateFightingList.dm:35-41`); aqui sao lidos por tique entre os corpos em combate
-	/// a vista -- a mesma pergunta, feita mais vezes. A exp da skill (`exp++` por tique na condicao e
-	/// `exp += SparMod ** level` por surto) e creditada no motor de niveis, que e quem sobe o nivel.
+	/// `highestebp` e lido no DM no instante do ataque, entre os `IsInFight` em `view()`
+	/// (`UpdateFightingList.dm:35-41`); aqui e lido por tique entre os corpos em combate a vista -- a mesma
+	/// pergunta, feita mais vezes. A exp da skill (`exp++` por tique na condicao e `exp += SparMod ** level`
+	/// por surto) e creditada no motor de niveis, que e quem sobe o nivel.
+	///
+	/// (ESTA FUNCAO TINHA UMA SEGUNDA METADE: a `Saiyan Power`, o mesmo contador com `Attack_Gain(level+2)`
+	/// contra o BP base. O dono a tirou do jogo em 2026-10-10 -- ver `SkillsAposentadas`.)
 	/// </summary>
 	private void ZenkaiEmCombateG11(ServerPlayer pl, Fighter f)
 	{
-		if (!f.IsInFight) return;
+		if (!f.IsInFight || !pl.Livro.Sabe(SkillHeranPowerG11)) return;
 
-		if (pl.Livro.Sabe(SkillHeranPowerG11))
+		int level = Math.Max(1, pl.Niveis.Nivel(SkillHeranPowerG11));
+		double buf = _bufferHeranG11.GetValueOrDefault(pl.Id);
+		if (f.expressedBP < MaiorPoderEmLutaAVistaG11(pl))
 		{
-			int level = Math.Max(1, pl.Niveis.Nivel(SkillHeranPowerG11));
-			double buf = _bufferHeranG11.GetValueOrDefault(pl.Id);
-			if (f.expressedBP < MaiorPoderEmLutaAVistaG11(pl, expresso: true))
-			{
-				buf++;
-				pl.Niveis.Creditar(SkillHeranPowerG11, 1);
-			}
-			if (buf > 10 * level)
-			{
-				buf -= 10 * level;
-				pl.Niveis.Creditar(SkillHeranPowerG11, Math.Pow(f.SparMod, level));
-				f.AttackGain(_rng, level + 0.05);
-				f.Ki += 10 * f.BaseDrain();
-			}
-			_bufferHeranG11[pl.Id] = buf;
+			buf++;
+			pl.Niveis.Creditar(SkillHeranPowerG11, 1);
 		}
-
-		if (pl.Livro.Sabe(SkillSaiyanPowerG11))
+		if (buf > 10 * level)
 		{
-			int level = Math.Max(1, pl.Niveis.Nivel(SkillSaiyanPowerG11));
-			double buf = _bufferSaiyanG11.GetValueOrDefault(pl.Id);
-			if (f.BP < MaiorPoderEmLutaAVistaG11(pl, expresso: false))
-			{
-				buf++;
-				pl.Niveis.Creditar(SkillSaiyanPowerG11, 1);
-			}
-			if (buf > 10 * level)
-			{
-				buf -= 10 * level;
-				pl.Niveis.Creditar(SkillSaiyanPowerG11, Math.Pow(f.SparMod, level));
-				f.AttackGain(_rng, level + 2);
-			}
-			_bufferSaiyanG11[pl.Id] = buf;
+			buf -= 10 * level;
+			pl.Niveis.Creditar(SkillHeranPowerG11, Math.Pow(f.SparMod, level));
+			f.AttackGain(_rng, level + 0.05);
+			f.Ki += 10 * f.BaseDrain();
 		}
+		_bufferHeranG11[pl.Id] = buf;
 	}
 
-	/// <summary>O maior BP (expresso ou base) entre os OUTROS corpos em combate a vista. Zero se nao houver.</summary>
-	private double MaiorPoderEmLutaAVistaG11(ServerPlayer pl, bool expresso)
+	/// <summary>O maior BP EXPRESSO entre os OUTROS corpos em combate a vista. Zero se nao houver.</summary>
+	private double MaiorPoderEmLutaAVistaG11(ServerPlayer pl)
 	{
 		double maior = 0;
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
 		{
 			if (o == pl || o.Ficha.dead || !o.Ficha.IsInFight) continue;
 			if (Vec2.Distance(o.Pos, pl.Pos) > RaioDaVista) continue;
-			double v = expresso ? o.Ficha.expressedBP : o.Ficha.BP;
-			if (v > maior) maior = v;
+			if (o.Ficha.expressedBP > maior) maior = o.Ficha.expressedBP;
 		}
 		return maior;
 	}
@@ -1736,7 +1729,6 @@ public sealed partial class GameServer
 		_doacaoG11.Remove(id);
 		_poderDadoAteG11.Remove(id);
 		_bufferHeranG11.Remove(id);
-		_bufferSaiyanG11.Remove(id);
 		_relogioDaAguaG11.Remove(id);
 		_relogioDoExpandG11.Remove(id);
 		_diaDoTimeStoreG11.Remove(id);

@@ -17,6 +17,9 @@ namespace Jandirus.Server;
 ///   * *"a possibilidade de destruir portas"* -- a porta do MAPA que cai e nao tranca de novo;
 ///   * a macieira: *"ao elas serem destruidas elas criam um bloco de terra q tem colisao"*.
 ///
+/// E o de 2026-10-10 -- *"construir paredes etc tem custo em zenni/ recursos"* --, que e a familia 11 e mora em
+/// arquivo proprio (`GameServer.CustoDeObraTeste.cs`).
+///
 /// No boot, como as outras de servidor: precisa das zonas com colisao e de ninguem logado -- os corpos sao
 /// forjados (sem `Peer`) e o que sairia no fio e lido pela <see cref="EscutaDeBlocos"/>. A metade do CLIENTE
 /// (a barra, o fantasma, a pergunta da senha, o desenho) e o robo `--diagconstruir`.
@@ -60,6 +63,7 @@ public sealed partial class GameServer
 
 			ServerPlayer dono = Forjar("bl: o dono", No(px + 3, py + 4), 1_000);
 			dono.Conta = "bancada_dono";
+			dono.Ficha.Zeni = 1_000_000;   // erguer custa (familia 11): nas dez primeiras o bolso nao e o assunto
 			ServerPlayer outro = Forjar("bl: o estranho", No(px + 5, py + 4), 1_000);
 			outro.Conta = "bancada_estranho";
 
@@ -340,6 +344,9 @@ public sealed partial class GameServer
 
 			// ------------------------------------------------------------ 10) A MACIEIRA
 			AMacieiraQueCai(terra, mapa);
+
+			// ------------------------------------------------------------ 11) O CUSTO DA OBRA
+			OCustoDaObra(terra, mapa, px, py, No);
 		}
 		finally
 		{

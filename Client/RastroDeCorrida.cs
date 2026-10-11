@@ -289,6 +289,13 @@ public partial class RastroDeCorrida : Node2D, IFicaNoChao
 		}
 	}
 
+	/// <summary>
+	/// UMA COPIA SO, pela mesma <see cref="Largar"/> do jogo -- pra bancada `--diagcorrastro`, que precisa de uma
+	/// copia parada onde o corpo esta pra comparar as duas pixel a pixel. Rumo zero e borrao nenhum: as sete
+	/// amostras do shader caem no mesmo texel.
+	/// </summary>
+	public void LargarDeTeste(Vector2 onde, Vector2 rumo, float alfa, double vida) => Largar(onde, rumo, alfa, vida);
+
 	// =====================================================================
 	// A FOTO -- o unico lugar que cria uma copia do corpo
 	// =====================================================================
@@ -309,12 +316,6 @@ public partial class RastroDeCorrida : Node2D, IFicaNoChao
 		// borrao grudado, que e de novo o efeito errado.
 		if (_corpo.GetParent() is not { } palco) return;
 
-		// SEM TINTA: cada camada desta foto recebe o material de BORRAO tres linhas abaixo. Pedir a
-		// tinta aqui seria criar um `ShaderMaterial` por camada pra descarta-lo no mesmo quadro --
-		// 120 por segundo, por corpo correndo.
-		Node2D foto = _visual.Fotografar(comTinta: false);
-		foto.GlobalPosition = onde;
-
 		// CADA COPIA VAI BORRADA no rumo do movimento. E o que faltava: copia NITIDA le como
 		// copia, por mais transparente que seja. Borrada, ela nao tem borda pra o olho fixar --
 		// e tres delas sobrepostas viram um rastro so, que e o que "motion blur" quer dizer.
@@ -322,8 +323,13 @@ public partial class RastroDeCorrida : Node2D, IFicaNoChao
 		// O borrao mora na COPIA e nao no corpo vivo de proposito: a copia congela o quadro em que
 		// nasceu, entao trocar de quadro de animacao nao muda nada do que ja foi desenhado. Foi
 		// exatamente isso que fez a primeira versao (borrao no corpo) estroboscopar.
-		foreach (Node n in foto.GetChildren())
-			if (n is Sprite2D sp) BorraoDirecional.Aplicar(sp, rumo, 1f);
+		//
+		// QUEM POE O BORRAO E A PROPRIA FOTO (`FotografarBorrado`), e nao um laco daqui: o material de
+		// borrao entra NO LUGAR do que pinta o corpo, e so o `CharacterVisual` sabe a cor de cada camada
+		// pra leva-la junto. Posto por aqui, o rastro saia na cor crua da folha -- o item 6 do playtest de
+		// 2026-10-10. Continua sendo um material por camada por foto, o mesmo de antes.
+		Node2D foto = _visual.FotografarBorrado(rumo, 1f);
+		foto.GlobalPosition = onde;
 		foto.ZIndex = _corpo.ZIndex - 1;   // atras do corpo: o rastro nao pode tapar o personagem
 		foto.Modulate = new Color(1, 1, 1, alfa);
 

@@ -1,4 +1,6 @@
-﻿namespace Jandirus.Client;
+﻿using Jandirus.Core.Verbos;
+
+namespace Jandirus.Client;
 
 /// <summary>
 /// OS VERBS QUE TODO PERSONAGEM TEM -- as abas "Other" e "Admin" do menu.
@@ -36,24 +38,20 @@ public static class VerbosDoJogo
 	/// <summary>Ha alguem marcado? E o que os verbs de admin exigem.</summary>
 	private static bool TemAlvo() => (C?.AlvoId ?? 0) != 0;
 
-	// ============================ QUEM VE O QUE (`Verbo.Mostrar`) ============================
-	// O pedido do dono: *"verbos de namek ... e alguns de rank deveriam aparecer somente se eu fosse
-	// namek ou tivesse o rank em questao"*. No original os verbs de cargo entram em `verbs` quando o
-	// cargo e dado e saem quando ele se perde; aqui o catalogo e um so e quem filtra e a tela. A
-	// PERMISSAO CONTINUA NO SERVIDOR: isto e so o que aparece. As chaves sao as de `Core/Ranks/Ranks.cs`
-	// ("elder", "kov", "president", "guardian", "godofdestruction"); o dono de um cargo chega pelo NOME
-	// na lista de cargos (`CargoInfo.Dono`), que o servidor manda no login e a cada outorga.
-	// ==========================================================================================
-	private static bool SouDaRaca(string raca) =>
-		string.Equals(C?.Atributos.Raca, raca, StringComparison.OrdinalIgnoreCase);
-	private static bool SouNamek() => SouDaRaca("Namekian");
-	private static bool TenhoCargo(string chave) =>
-		C is { } c && c.LocalName.Length > 0
-		&& c.Cargos.Any(k => string.Equals(k.Chave, chave, StringComparison.OrdinalIgnoreCase)
-						  && string.Equals(k.Dono, c.LocalName, StringComparison.Ordinal));
-	private static bool TenhoAlgumCargo() =>
-		C is { } c && c.LocalName.Length > 0
-		&& c.Cargos.Any(k => k.Dono.Length > 0 && string.Equals(k.Dono, c.LocalName, StringComparison.Ordinal));
+	// ============================ QUEM VE O QUE (`Verbo.Requisito`) ============================
+	// Os dois pedidos do dono: *"verbos de namek ... e alguns de rank deveriam aparecer somente se eu fosse
+	// namek ou tivesse o rank em questao"* (2026-09-03) e *"dar uma limpa em verbs q sao exclusivas de raças
+	// e deveriam so aparecer se o player tem os requisitos ... como esses verbs de clan dragao, split form
+	// (coisa q n tenho mas tem os verbs), verb de fusao namek"* (2026-10-10). No original o verb entra em
+	// `verbs` junto com o que o concede (o cargo, a skill, o objeto) e sai com ele; aqui o catalogo e um so e
+	// quem filtra e a tela.
+	//
+	// O REQUISITO NAO SE ESCREVE AQUI: ele e a linha do COMANDO na tabela unica
+	// (`Core/Verbos/RequisitosDosVerbos.cs`), que serve este menu, a busca, as teclas, os botoes da aba World
+	// e a bancada que confere a tabela contra o que o servidor recusa. Verb sem linha la nao tem requisito e
+	// aparece pra todo mundo. A PERMISSAO CONTINUA NO SERVIDOR: isto e so o que aparece.
+	// ============================================================================================
+	private static Requisito Do(string comando) => RequisitosDosVerbos.DoVerbo(comando);
 
 	private static void NoAlvo(string cmd)
 	{
@@ -134,7 +132,7 @@ public static class VerbosDoJogo
 		Verbos.Registrar(new Verbo("Toggle SSJ Grades", Verbos.Outros,
 			"Liga e desliga os graus do Super Saiyajin no caminho do C: ligados, o SSJ1 sobe pelo "
 			+ "Grade 2 e pelo Grade 3 antes do SSJ2; desligados, vai direto pro SSJ2.",
-			() => C?.SendVerbo("graus")));
+			() => C?.SendVerbo("graus")) { Requisito = Do("graus") });
 
 		// ============================ O `Goto Spawn` MUDOU DE ABA -- DECISAO DO DONO ============================
 		// Ele ficava aqui, em "Other", pra todo mundo. Saiu por ordem do dono (*"tire o verb
@@ -174,15 +172,15 @@ public static class VerbosDoJogo
 		// porque falar exige texto e botao nao carrega texto.
 		Verbos.Registrar(new Verbo("Appoint Elder", Verbos.Outros,
 			"So o Grande Anciao de Namek: oferece a quem esta marcado um assento de Anciao cardeal.",
-			() => NoAlvo("cargo_nomear")) { Mostrar = () => TenhoCargo("elder") });
+			() => NoAlvo("cargo_nomear")) { Requisito = Do("cargo_nomear") });
 
 		Verbos.Registrar(new Verbo("Accept Elder Seat", Verbos.Outros,
 			"Aceita o assento de Anciao que te ofereceram.",
-			() => C?.SendVerbo("cargo_nomear_aceitar")) { Mostrar = SouNamek });
+			() => C?.SendVerbo("cargo_nomear_aceitar")) { Requisito = Do("cargo_nomear_aceitar") });
 
 		Verbos.Registrar(new Verbo("Decline Elder Seat", Verbos.Outros,
 			"Recusa o assento de Anciao.",
-			() => C?.SendVerbo("cargo_nomear_recusar")) { Mostrar = SouNamek });
+			() => C?.SendVerbo("cargo_nomear_recusar")) { Requisito = Do("cargo_nomear_recusar") });
 
 		// ============================ A RESPOSTA A OFERTA DE JUVENTUDE ============================
 		// O `Restore_Youth` do Grand Kai e do Demon Lord (lote G8) abre uma OFERTA, porque no DM o
@@ -194,22 +192,22 @@ public static class VerbosDoJogo
 		// na aba de todo mundo, e nao no painel de habilidades.
 		Verbos.Registrar(new Verbo("Accept Youth", Verbos.Outros,
 			"Aceita a oferta de voltar a ser jovem que te fizeram.",
-			() => C?.SendVerbo("juventude_aceitar")));
+			() => C?.SendVerbo("juventude_aceitar")) { Requisito = Do("juventude_aceitar") });
 
 		Verbos.Registrar(new Verbo("Decline Youth", Verbos.Outros,
 			"Recusa a oferta de voltar a ser jovem.",
-			() => C?.SendVerbo("juventude_recusar")));
+			() => C?.SendVerbo("juventude_recusar")) { Requisito = Do("juventude_recusar") });
 
 		// A RESPOSTA A OFERTA DE DESPERTAR O POTENCIAL (`Unlock_Potential`, lote G11): no DM o verb
 		// pergunta AO ALVO "Do you want to do this?" (`UnlockPotential.dm:13`) e so entao desperta.
 		// Mesmo molde da juventude: os dois botoes sao de quem RECEBE, na aba de todo mundo.
 		Verbos.Registrar(new Verbo("Accept Potential", Verbos.Outros,
 			"Aceita que despertem o seu potencial adormecido (uma vez na vida).",
-			() => C?.SendVerbo("potencial_aceitar")));
+			() => C?.SendVerbo("potencial_aceitar")) { Requisito = Do("potencial_aceitar") });
 
 		Verbos.Registrar(new Verbo("Decline Potential", Verbos.Outros,
 			"Recusa a oferta de despertar o seu potencial.",
-			() => C?.SendVerbo("potencial_recusar")));
+			() => C?.SendVerbo("potencial_recusar")) { Requisito = Do("potencial_recusar") });
 
 		// ============================ AS ORDENS DAS COPIAS DO SPLIT FORM (lote G12) ============================
 		// No DM cada copia tem um `Click()` com o menu Follow / Stop / Attack Target / Attack Nearest /
@@ -217,53 +215,53 @@ public static class VerbosDoJogo
 		// de quem e o DONO, e cada ordem vale pra TODAS as copias dele de uma vez.
 		Verbos.Registrar(new Verbo("Split Form: Follow", Verbos.Outros,
 			"Suas copias passam a seguir voce (param a dois tiles).",
-			() => C?.SendVerbo("splitform_seguir")));
+			() => C?.SendVerbo("splitform_seguir")) { Requisito = Do("splitform_seguir") });
 		Verbos.Registrar(new Verbo("Split Form: Stop", Verbos.Outros,
 			"Suas copias param onde estao.",
-			() => C?.SendVerbo("splitform_parar")));
+			() => C?.SendVerbo("splitform_parar")) { Requisito = Do("splitform_parar") });
 		Verbos.Registrar(new Verbo("Split Form: Attack Target", Verbos.Outros,
 			"Suas copias atacam quem voce marcou (duplo clique).",
-			() => C?.SendVerbo("splitform_alvo")));
+			() => C?.SendVerbo("splitform_alvo")) { Requisito = Do("splitform_alvo") });
 		Verbos.Registrar(new Verbo("Split Form: Attack Nearest", Verbos.Outros,
 			"Suas copias atacam quem estiver mais perto delas (menos voce).",
-			() => C?.SendVerbo("splitform_perto")));
+			() => C?.SendVerbo("splitform_perto")) { Requisito = Do("splitform_perto") });
 		Verbos.Registrar(new Verbo("Split Form: Destroy", Verbos.Outros,
 			"Desfaz todas as suas copias.",
-			() => C?.SendVerbo("splitform_destruir")));
+			() => C?.SendVerbo("splitform_destruir")) { Requisito = Do("splitform_destruir") });
 
 		// ============================ A RESPOSTA A GENKIDAMA (lote G12) ============================
 		// `alert("Give power? It'll drain 10% of your Ki.")` em quem MEDITA (`SpiritBomb.dm:81`): os dois
 		// botoes sao de quem recebe o pedido, pelo mesmo desenho da oferta de juventude acima.
 		Verbos.Registrar(new Verbo("Give Power to Spirit Bomb", Verbos.Outros,
 			"Doa um decimo do seu Ki a Genkidama que alguem esta formando neste mundo (so meditando).",
-			() => C?.SendVerbo("genkidama_doar")));
+			() => C?.SendVerbo("genkidama_doar")) { Requisito = Do("genkidama_doar") });
 		Verbos.Registrar(new Verbo("Refuse Spirit Bomb", Verbos.Outros,
 			"Guarda a sua energia.",
-			() => C?.SendVerbo("genkidama_negar")));
+			() => C?.SendVerbo("genkidama_negar")) { Requisito = Do("genkidama_negar") });
 
 		Verbos.Registrar(new Verbo("Name Heir", Verbos.Outros,
 			"So o Rei de Vegeta: poe quem esta marcado na linha de sucessao do trono.",
-			() => NoAlvo("cargo_herdeiro")) { Mostrar = () => TenhoCargo("kov") });
+			() => NoAlvo("cargo_herdeiro")) { Requisito = Do("cargo_herdeiro") });
 
 		Verbos.Registrar(new Verbo("Remove Heir", Verbos.Outros,
 			"Tira quem esta marcado da linha de sucessao de Vegeta.",
-			() => NoAlvo("cargo_herdeiro_tirar")) { Mostrar = () => TenhoCargo("kov") });
+			() => NoAlvo("cargo_herdeiro_tirar")) { Requisito = Do("cargo_herdeiro_tirar") });
 
 		Verbos.Registrar(new Verbo("Line of Succession", Verbos.Outros,
 			"Quem herda o trono de Vegeta, na ordem.",
-			() => C?.SendVerbo("cargo_herdeiros")) { Mostrar = () => TenhoCargo("kov") || SouDaRaca("Saiyan") });
+			() => C?.SendVerbo("cargo_herdeiros")) { Requisito = Do("cargo_herdeiros") });
 
 		Verbos.Registrar(new Verbo("Challenge God of Destruction", Verbos.Outros,
 			"Desafia FORMALMENTE o portador do titulo. Exige God Ki desperto; nocaute decide.",
-			() => C?.SendVerbo("cargo_desafiar")));
+			() => C?.SendVerbo("cargo_desafiar")) { Requisito = Do("cargo_desafiar") });
 
 		Verbos.Registrar(new Verbo("Accept Challenge", Verbos.Outros,
 			"Aceita agora o duelo pelo titulo.",
-			() => C?.SendVerbo("cargo_duelo_aceitar")) { Mostrar = () => TenhoCargo("godofdestruction") });
+			() => C?.SendVerbo("cargo_duelo_aceitar")) { Requisito = Do("cargo_duelo_aceitar") });
 
 		Verbos.Registrar(new Verbo("Postpone Challenge", Verbos.Outros,
 			"Adia o duelo. O terceiro adiamento na mesma semana e covardia e custa o titulo.",
-			() => C?.SendVerbo("cargo_duelo_adiar")) { Mostrar = () => TenhoCargo("godofdestruction") });
+			() => C?.SendVerbo("cargo_duelo_adiar")) { Requisito = Do("cargo_duelo_adiar") });
 
 		Verbos.Registrar(new Verbo("Title Status", Verbos.Outros,
 			"O titulo de God of Destruction: quem carrega, a tarefa em aberto, falhas e prazos.",
@@ -275,11 +273,11 @@ public static class VerbosDoJogo
 		// `GameServer.CargoMissoes.cs`.
 		Verbos.Registrar(new Verbo("Rank Duty", Verbos.Outros,
 			"Os deveres do seu cargo: a tarefa em aberto, o prazo em dias in-game, as falhas e o renome.",
-			() => C?.SendVerbo("cargo_deveres")) { Mostrar = TenhoAlgumCargo });
+			() => C?.SendVerbo("cargo_deveres")) { Requisito = Do("cargo_deveres") });
 
 		Verbos.Registrar(new Verbo("Fund Earth", Verbos.Outros,
 			"So o Presidente da Terra, e so com a tarefa de verba aberta: deposita a verba no cofre da Terra.",
-			() => C?.SendVerbo("cargo_verba")) { Mostrar = () => TenhoCargo("president") });
+			() => C?.SendVerbo("cargo_verba")) { Requisito = Do("cargo_verba") });
 
 		// =====================================================================
 		// A SALA DO TEMPO -- os dois verbs do GUARDIAO DA TERRA
@@ -288,16 +286,20 @@ public static class VerbosDoJogo
 		// ja descrevia o Guardiao como quem "faz chaves da Sala do Tempo e autoriza a entrada", e
 		// nenhum dos dois verbos existia -- era promessa escrita e nao ligada.
 		//
-		// SO O GUARDIAO OS VE (2026-09-03). Eles apareciam pra todo mundo "pra ensinar que a Sala tem
+		// SO QUEM PODE OS VE (2026-09-03). Eles apareciam pra todo mundo "pra ensinar que a Sala tem
 		// dono"; o dono do jogo achou isso ruido -- e a Sala continua tendo dono na descricao do cargo,
 		// na aba Cargos. A permissao e do servidor de qualquer jeito (ver `GameServer.SalaDoTempo.cs`).
+		//
+		// A CHAVE E DE QUEM SABE FAZE-LA, e nao so do trono: o servidor cobra a skill `Permission`, que o
+		// kit do Guardiao da e o do Mestre Korin tambem. O botao era so do Guardiao, e o Korin ficava com a
+		// skill, com o servidor aceitando, e sem ter onde apertar. SOLTAR continua sendo so do Guardiao.
 		Verbos.Registrar(new Verbo("Time Chamber: Authorize", Verbos.Outros,
-			"So o Guardiao da Terra. Da ao alvo marcado UMA entrada na Sala do Tempo.",
-			() => NoAlvo("sala_autorizar")) { Mostrar = () => TenhoCargo("guardian") });
+			"So quem sabe fazer a chave (o Guardiao da Terra e o Mestre Korin). Da ao alvo marcado UMA entrada na Sala do Tempo.",
+			() => NoAlvo("sala_autorizar")) { Requisito = Do("sala_autorizar") });
 
 		Verbos.Registrar(new Verbo("Time Chamber: Release", Verbos.Outros,
 			"So o Guardiao da Terra. Destranca a porta pra quem ficou preso la dentro.",
-			() => NoAlvo("sala_soltar")) { Mostrar = () => TenhoCargo("guardian") });
+			() => NoAlvo("sala_soltar")) { Requisito = Do("sala_soltar") });
 
 		Verbos.Registrar(new Verbo("Tech Catalog", Verbos.Outros,
 			"O catalogo de construcoes, com o custo e o motivo de cada nao.",
@@ -311,37 +313,46 @@ public static class VerbosDoJogo
 			"Debruca-se sobre a bancada de pesquisa. E o unico jeito de ganhar tecnologia.",
 			() => C?.SendTech("estudar")));
 
+		// ============================ MINERAR (dono, 2026-10-10) ============================
+		// *"adicionando um verb chamado mineirar ao qual vc comeca a pegar resource por segundo"*. PRA TODO
+		// MUNDO (sem `Mostrar`): nao pede raca, cargo nem item -- a pa e a furadeira so aceleram. NAO E UM
+		// `SendVerbo`: minerar e uma ATIVIDADE do corpo, como treinar e meditar, e quem a declara e o
+		// `LocalPlayer` (a pose e o HUD sao dele). Os numeros da dica saem das constantes do Core, que sao
+		// as que o servidor paga.
+		//
+		// A FRASE E CURTA DE PROPOSITO (tres linhas no cartao, como as vizinhas): a primeira tinha cinco e
+		// esticava a fileira inteira. O que saiu dela ja esta escrito onde se le na hora -- o dobro do preco
+		// no topo da aba Tech, a reserva do planeta na faixa e na fala de quem comeca a minerar.
+		// =====================================================================================
+		Verbos.Registrar(new Verbo("Minerar", Verbos.Outros,
+			"Tira recursos do chão do planeta, por segundo: "
+			+ $"+{Jandirus.Core.Economia.Recurso.PorSegundoNaMao:0} com as mãos, "
+			+ $"+{Jandirus.Core.Economia.Recurso.PorSegundoComPa:0} com uma pá (Shovel) na mochila, "
+			+ $"+{Jandirus.Core.Economia.Recurso.PorSegundoComFuradeira:0} com uma furadeira (Hand Drill). "
+			+ "Andar ou agir interrompe; acionar de novo para.",
+			LocalPlayer.PedirMineracao) { Chave = "minerar" });
+
 		Verbos.Registrar(new Verbo("Who", Verbos.Outros,
 			"Quem esta no mundo agora, e onde.",
 			() => C?.SendVerbo("quem")));
 
 		// =====================================================================
-		// O CONVIVIO -- os verbs de `Contacts.dm` e `Friendship.dm`
+		// O CONVIVIO -- os verbs de `Contacts.dm`
 		//
-		// OS TRES QUE PEDEM ALGUEM AGEM SOBRE O ALVO MARCADO, e nao sobre um nome digitado. No
-		// BYOND eles eram `set src in oview(N)` -- "aquele ali, o que eu estou vendo" --, e o gesto
-		// equivalente aqui e o duplo clique que o jogador ja usa pra tudo. O ALCANCE de cada um
-		// continua sendo o de la, conferido no servidor: 3 tiles pra pedir amizade, 5 pra declarar
-		// rival, 10 pra anotar alguem.
+		// O QUE PEDE ALGUEM AGE SOBRE O ALVO MARCADO, e nao sobre um nome digitado. No BYOND ele era
+		// `set src in view(10)` -- "aquele ali, o que eu estou vendo" --, e o gesto equivalente aqui e
+		// o duplo clique que o jogador ja usa pra tudo. O ALCANCE continua sendo o de la, conferido no
+		// servidor: 10 tiles pra anotar alguem.
 		//
-		// A DECLARACAO DE RELACAO NAO ESTA AQUI de proposito: ela nao pede presenca (no original
-		// mora no proprio Contact, que e seu e funciona com a pessoa offline) e precisa escolher
-		// ENTRE NOVE opcoes com custo diferente. Isso e uma tela, nao um botao -- ela vive na aba
-		// People, ao lado da pessoa a que se refere.
+		// DIZER O QUE ALGUEM E PRA VOCE (amigo, rival, inimigo...) NAO ESTA AQUI de proposito: nao pede
+		// presenca (no original mora no proprio Contact, que e seu e funciona com a pessoa offline) e
+		// e uma escolha ENTRE NOVE opcoes com custo diferente. Isso e uma tela, nao um botao -- ela
+		// vive na aba People, ao lado da pessoa a que se refere. (O "Request Friendship" e o "Declare
+		// Rival" sairam em 2026-10-10 com a afinidade automatica: amigo e rival sao declaracoes de la.)
 		// =====================================================================
 		Verbos.Registrar(new Verbo("Remember Person", Verbos.Outros,
 			"Guarda o rosto de quem voce marcou. Ele passa a aparecer na aba People.",
 			() => NoAlvo("conhecer"), TemAlvo));
-
-		Verbos.Registrar(new Verbo("Request Friendship", Verbos.Outros,
-			"Pede amizade a quem voce marcou. Conviver aproxima ate certo ponto -- so um pedido "
-			+ "aceito faz de alguem um amigo de verdade.",
-			() => NoAlvo("amizade_pedir"), TemAlvo));
-
-		Verbos.Registrar(new Verbo("Declare Rival", Verbos.Outros,
-			"Declara (ou desfaz) rivalidade com quem voce marcou. Os golpes dele em voce e nos seus "
-			+ "amigos passam a alimentar odio.",
-			() => NoAlvo("rival"), TemAlvo));
 
 		Verbos.Registrar(new Verbo("Known People", Verbos.Outros,
 			"Pede ao servidor a lista de quem voce conhece.",
@@ -486,6 +497,12 @@ public static class VerbosDoJogo
 			"Salta pro centro da estrela mais proxima. So no espaco -- e ela QUEIMA.",
 			() => C?.SendVerbo("admin_estrela")));
 
+		// NAO TEM ORIGINAL: a atmosfera divina e do port. Existe pelo motivo do verb de cima -- o mundo divino mais
+		// perto do nascimento fica a varios minutos de voo, e conferir o despertar sem isto custaria a viagem.
+		Verbos.Registrar(new Verbo("Ir Para O Mundo Divino", Verbos.Admin,
+			"Salta pra orbita de um mundo de atmosfera divina (o mais perto que o seu corpo aguenta). So no espaco; encoste nele pra pousar.",
+			() => C?.SendVerbo("admin_mundo_divino")));
+
 		// ---------------------------------------------------------- punir
 		// `Boot()` (Admin.dm:450)
 		Verbos.Registrar(new Verbo("Boot Target", Verbos.Admin,
@@ -518,6 +535,11 @@ public static class VerbosDoJogo
 		Verbos.Registrar(new Verbo("Master Current Form", Verbos.Admin,
 			"Poe em 100% a maestria da forma em que o alvo esta AGORA.",
 			() => C?.SendVerbo("admin_dominar", (C?.AlvoId ?? 0).ToString())));
+
+		// O "Force God Ki" do `Godki_Settings()` (godkiattain.dm:76-77): desperta sem requisito e sem medidor.
+		Verbos.Registrar(new Verbo("Awaken God Ki", Verbos.Admin,
+			"Desperta o ki divino do alvo marcado, ignorando o requisito de BP. Sem alvo, o seu.",
+			() => C?.SendVerbo("admin_godki", (C?.AlvoId ?? 0).ToString())));
 
 		// ---------------------------------------------------------- mundo e servidor
 		// `Invisible()` (Admin.dm:332) -- usa a mesma invisibilidade da tecnica, sem segundo caminho
@@ -578,8 +600,8 @@ public static class VerbosDoJogo
 			() => C?.SendVerbo("admin_abortar_morte")));
 
 		Verbos.Registrar(new Verbo("Restore Planet", Verbos.Admin,
-			"Tira este planeta da lista de mortos -- ele volta a existir, a se povoar e a receber "
-			+ "pouso. E a unica volta que existe: nao ha desejo de Dragon Ball neste port.",
+			"Tira ESTE planeta (ou o que esta sob voce, no espaco) da lista de mortos -- ele volta a "
+			+ "existir, a se povoar e a receber pouso. De longe, use o cartao \"Planetas destruidos\" desta aba.",
 			() => C?.SendVerbo("admin_restaurar_planeta")));
 
 		// ---------------------------------------------------------- torneio
@@ -620,6 +642,34 @@ public static class VerbosDoJogo
 		Verbos.Registrar(new Verbo("Torneio: Cancelar", Verbos.Admin,
 			"Cancela o torneio em andamento: solta todo mundo, remove os NPCs, ninguem e premiado.",
 			() => C?.SendVerbo("trn_cancelar")));
+
+		// ---------------------------------------------------------- bills e whis
+		// NAO TEM ORIGINAL: o Bills e o Whis sao do port (dono, 2026-10-11). A historia deles espera a saga de Boo e
+		// depois um MES in-game -- estes cinco existem pra conferi-la sem esperar. Todos caem no mesmo
+		// `GameServer.AdminBills`. O que RECOMECA e o ultimo de proposito: a `--diagadmin` dispara todos em ordem.
+		Verbos.Registrar(new Verbo("Bills: Estado", Verbos.Admin,
+			"Em que pe a historia do Bills esta (dormindo, a caminho e em que dia pousa, na Terra, em casa), se ele e "
+			+ "o Whis existem agora, e o endereco da casa.",
+			() => C?.SendVerbo("admin_bills", "estado")));
+
+		Verbos.Registrar(new Verbo("Bills: Avancar A Historia", Verbos.Admin,
+			"Empurra UM passo: dormindo -> a caminho (como se Boo tivesse caido) -> pousa na Terra (como se o mes "
+			+ "tivesse passado) -> derrubado (ele conta onde mora e vai pra casa). Aperte de novo a cada passo.",
+			() => C?.SendVerbo("admin_bills", "avancar")));
+
+		Verbos.Registrar(new Verbo("Bills: Ir Para A Casa", Verbos.Admin,
+			"Salta pra orbita do mundo onde o Bills mora. So no espaco; encoste nele pra pousar. A gravidade de la e "
+			+ "altissima -- use \"Bills: Aguentar A Casa\" antes.",
+			() => C?.SendVerbo("admin_bills", "casa")));
+
+		Verbos.Registrar(new Verbo("Bills: Aguentar A Casa", Verbos.Admin,
+			"Sobe a SUA maestria de gravidade ate a do mundo do Bills (nunca desce), pra voce pousar la sem ser esmagado.",
+			() => C?.SendVerbo("admin_bills", "aclimatar")));
+
+		Verbos.Registrar(new Verbo("Bills: Recomecar A Historia", Verbos.Admin,
+			"A historia do Bills volta a dormir e os dois saem de onde estiverem. Se a saga de Boo ja foi vencida, ele "
+			+ "desperta de novo sozinho. Nao mexe no titulo de ninguem.",
+			() => C?.SendVerbo("admin_bills", "reiniciar")));
 	}
 
 	/// <summary>Zera o registro -- o personagem trocou (volta ao menu de slots).</summary>

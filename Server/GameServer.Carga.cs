@@ -104,6 +104,13 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancada `--alemteste`): o tique volta a derrubar a carga de QUALQUER morto, pelo
+	/// `dead` cru -- inclusive a do fantasma de pe, que o `Carregar` acabou de aceitar. Lido pela propria linha
+	/// do conserto, em <see cref="TickDaCarga"/>.
+	/// </summary>
+	internal bool CargaDoMortoCaiNoTiqueDeTeste;
+
+	/// <summary>
 	/// O TIQUE. Roda pra todo mundo -- inclusive pra quem NAO esta carregando, porque o preco de
 	/// ter passado dos 100% continua sendo cobrado depois que a tecla e solta. Foi isso que fez a
 	/// funcao ter duas metades: uma so pra quem segura C, outra pra quem tem Ki demais.
@@ -144,7 +151,13 @@ public sealed partial class GameServer
 		{
 			// O NOCAUTE CONTINUA SENDO OUVIDO EM CENA -- ele fica FORA do `emCena` de proposito: cair
 			// no meio da cinematica solta a tecla como sempre soltou.
-			if (f.KO || f.dead) PararCarga(pl);
+			//
+			// SO O CADAVER PARA, e nao todo morto: o fantasma de pe no Outro Mundo reune energia como um
+			// vivo (o `Carregar` ja o aceita desde 2026-09-04), e o `dead` cru que morava aqui derrubava a
+			// carga dele no tique SEGUINTE -- a tecla C do morto acendia e apagava em 33 ms, com o Ki
+			// parado. E a metade que faltava do relato do dono de 2026-10-10: *"dps de morrer n da pra
+			// apertar C"*.
+			if (f.KO || (CargaDoMortoCaiNoTiqueDeTeste ? f.dead : EhCadaver(pl))) PararCarga(pl);
 			else if (!emCena)
 			{
 				EstagioDaCarga e = CargaDeKi.Passo(f, dt, pl.Moving);

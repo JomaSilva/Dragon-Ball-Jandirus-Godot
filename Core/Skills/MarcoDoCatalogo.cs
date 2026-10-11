@@ -84,6 +84,24 @@ public static class MarcoDoCatalogo
 		// tirou 1 degrau dos 134. Perder codigo morto e ganho, mas ele passa aqui de qualquer jeito.
 		["/datum/skill/tree/Focused"] =
 			"arvore inteiramente comentada no DM; sumiu quando a guarda de /* */ passou a funcionar",
+
+		// Esta nao e perda de extracao: e DECISAO. O dono tirou a skill do jogo, e o extrator passou a
+		// corta-la de proposito -- a lista, o motivo e o reembolso de quem a tinha moram em
+		// `SkillsAposentadas`. Ela passa aqui pelo mesmo motivo da de cima: sumir do catalogo e perda
+		// ate alguem dizer de quem e.
+		["/datum/skill/saiyan/Saiyan_Power"] =
+			"aposentada pelo dono em 2026-10-10 (ver SkillsAposentadas): o zenkai em combate dela ficou sem funcao",
+
+		// AS TRES DO SISTEMA VELHO DE ATAQUES CUSTOMIZADOS (dono, 2026-10-11: *"pode tirar"*). Vinham de `.dm` que o
+		// `.dme` nao inclui -- o jogo original nao as compila --, e sumiram quando o extrator passou a ler so o que o
+		// compilador le (`DmFonte.Arquivos`). As duas folhas tambem estao em `SkillsAposentadas` (o livro de quem as
+		// tiver e limpo no login); a arvore nunca foi concedida a ninguem. Nenhuma tinha regra de nivel: tres linhas.
+		["/datum/skill/CustomAttacks/ki/beam/Beam"] =
+			"vinha de um arquivo fora do .dme (o DM nao a compila); tirada em 2026-10-11 (ver SkillsAposentadas)",
+		["/datum/skill/CustomAttacks/ki/blast/Blast"] =
+			"vinha de um arquivo fora do .dme (o DM nao a compila); tirada em 2026-10-11 (ver SkillsAposentadas)",
+		["/datum/skill/tree/Custom_Attacks"] =
+			"arvore de um arquivo fora do .dme (o DM nao a compila) e que nunca foi concedida; tirada em 2026-10-11",
 	};
 
 	/// <summary>

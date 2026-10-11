@@ -158,9 +158,11 @@ public static class ArvoresBench
 		Conferir("Spirit Doll tem os 6 (perdia 3)",
 				 cat.Get("/datum/skill/tree/spiritdoll")?.Galhos.Length == 6,
 				 $"{cat.Get("/datum/skill/tree/spiritdoll")?.Galhos.Length}");
-		Conferir("Custom Attacks tem os 10 distintos (perdia 8)",
-				 cat.Get("/datum/skill/tree/Custom_Attacks")?.Galhos.Distinct(StringComparer.OrdinalIgnoreCase).Count() == 10,
-				 $"{cat.Get("/datum/skill/tree/Custom_Attacks")?.Galhos.Distinct().Count()}");
+		// (A terceira arvore que declarava os galhos assim era a `Custom_Attacks`, de `CustomAttacks/physical/basic.dm`.
+		// O arquivo NAO esta no `.dme` -- o jogo original nao o compila --, e a arvore saiu do catalogo em 2026-10-11.)
+		Conferir("a arvore `Custom_Attacks` NAO esta no catalogo (vinha de um arquivo que o .dme nao inclui)",
+				 cat.Get("/datum/skill/tree/Custom_Attacks") == null
+				 && cat.Get("/datum/skill/CustomAttacks/ki/beam/Beam") == null && cat.Get("/datum/skill/CustomAttacks/ki/blast/Blast") == null);
 		Conferir("`/datum/skill/Tree_Mastery` e FOLHA, nao arvore (casava com o prefixo `/datum/skill/tree`)",
 				 cat.Get("/datum/skill/Tree_Mastery") is { Arvore: false });
 		Conferir("...e ela continua pendurada na Weapons Expert",
@@ -519,7 +521,7 @@ public static class ArvoresBench
 			if (cliente.PodeAprender(cat, s.Path, "Saiyan", "None", false) != servidor.PodeAprender(cat, s.Path, "Saiyan", "None", false))
 			{ iguais = false; Console.WriteLine($"         diverge: {s.Path}"); }
 		Conferir("um livro que so RECEBEU o estado (o cliente) da o mesmo veredito que o que CALCULOU (o servidor), "
-				 + "pras 317 folhas -- inclusive a Martial Arts, que so abre por contador",
+				 + $"pras {cat.Todas.Count(s => !s.Arvore)} folhas -- inclusive a Martial Arts, que so abre por contador",
 				 iguais && cliente.PodeAprender(cat, MartialArts, "Saiyan", "None", false) == Recusa.Pode);
 	}
 
@@ -534,7 +536,9 @@ public static class ArvoresBench
 					  + r.AcendedorForaDoPort.Count + r.TrancadasSoPorEnsino + r.SemAcendedor.Count;
 		int ligada0 = cat.Todas.Count(s => !s.Arvore && !s.Ligada);
 		Conferir($"o censo classifica TODAS as {ligada0} folhas `ligada: 0` (nenhuma some)", trancadas == ligada0, $"{trancadas}");
-		Conferir("43 delas um pre-requisito acende", r.TrancadasPorPreReq == 43, $"{r.TrancadasPorPreReq}");
+		// (Eram 43: a 43a era a `CustomAttacks/ki/beam/Beam`, de um arquivo que o `.dme` nao inclui -- saiu do catalogo
+		// em 2026-10-11 com as outras duas do sistema velho de ataques customizados.)
+		Conferir("42 delas um pre-requisito acende", r.TrancadasPorPreReq == 42, $"{r.TrancadasPorPreReq}");
 		Conferir("a Basic Buff Mastery esta nomeada como SEM ACENDEDOR", r.SemAcendedor.Contains("Basic Buff Mastery"),
 				 string.Join(", ", r.SemAcendedor.Take(12)));
 		Conferir("a Golden Form esta como acendedor FORA DO ALCANCE (le `godki_at`, `KOcount`, `Age`)",

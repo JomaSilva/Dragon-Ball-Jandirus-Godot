@@ -326,7 +326,7 @@ public partial class GameServer
 		// TODOS PASSAM PELO FUNIL DE VERDADE, e nao por um `_vozes[id] = new()` na mao: e o `RecebiVoz`
 		// que registra quem esta falando, e testar o teto sem passar por ele provaria o teto de uma
 		// tabela que ninguem escreve em jogo.
-		foreach (ServerPlayer f in falantes) RecebiVoz(f, QuadroFalso, QuadroFalso.Length, calado: false);
+		foreach (ServerPlayer f in falantes) RecebiVoz(f, 0, QuadroFalso, QuadroFalso.Length, calado: false);
 
 		var ouviu = new List<ServerPlayer>();
 		foreach (ServerPlayer f in falantes)
@@ -401,7 +401,7 @@ public partial class GameServer
 		ZoneKey zona = ZonaLimpaParaVoz();
 		ServerPlayer torneira = forjar(80, "bancada: a torneira", zona,
 											  new Vec2(250 * ZoneCollision.TileSize, 250 * ZoneCollision.TileSize));
-		for (int i = 0; i < 200; i++) RecebiVoz(torneira, QuadroFalso, QuadroFalso.Length, calado: false);
+		for (int i = 0; i < 200; i++) RecebiVoz(torneira, (ushort)i, QuadroFalso, QuadroFalso.Length, calado: false);
 		int recusados = QuadrosDeVozRecusadosDeTeste(torneira.Id);
 		AfirmarVoz("200 quadros de uma vez pelo caminho de verdade: a maioria e jogada fora",
 			recusados >= 200 - (int)VozLocal.RajadaDeQuadros - 1, $"recusados {recusados}");
@@ -415,14 +415,53 @@ public partial class GameServer
 		// ==========================================================================================================
 		ServerPlayer honestoNoFio = forjar(81, "bancada: rajada de 10", zona,
 												  new Vec2(250 * ZoneCollision.TileSize, 250 * ZoneCollision.TileSize));
-		for (int i = 0; i < 10; i++) RecebiVoz(honestoNoFio, QuadroFalso, QuadroFalso.Length, calado: false);
+		for (int i = 0; i < 10; i++) RecebiVoz(honestoNoFio, (ushort)i, QuadroFalso, QuadroFalso.Length, calado: false);
 		AfirmarVoz("uma rajada de 10 quadros (dois drenos juntos) passa SEM recusa",
 			QuadrosDeVozRecusadosDeTeste(honestoNoFio.Id) == 0,
 			$"recusados {QuadrosDeVozRecusadosDeTeste(honestoNoFio.Id)}");
 
 		ServerPlayer desonestoNoFio = forjar(82, "bancada: rajada de 30", zona,
 													new Vec2(250 * ZoneCollision.TileSize, 250 * ZoneCollision.TileSize));
-		for (int i = 0; i < 30; i++) RecebiVoz(desonestoNoFio, QuadroFalso, QuadroFalso.Length, calado: false);
+		for (int i = 0; i < 30; i++) RecebiVoz(desonestoNoFio, (ushort)i, QuadroFalso, QuadroFalso.Length, calado: false);
+
+		// ============================ A SEQUENCIA DO FALANTE ATRAVESSA O RELAY (2026-10-10) ============================
+		// O relay numerava por conta propria, e a perda da SUBIDA nao deixava buraco pra quem ouve. Pelo caminho
+		// de verdade: o falante manda 500, 501 e 503 (o 502 morreu antes de chegar aqui) -- o que sai tem que
+		// andar 0, 1 e TRES. O saneamento no mesmo corpo: um quadro atrasado nao anda a conta, e um salto de
+		// quem mente (ou relogou) anda UM.
+		// ===============================================================================================================
+		ServerPlayer comBuraco = forjar(83, "bancada: a subida com perda", zona,
+											   new Vec2(250 * ZoneCollision.TileSize, 250 * ZoneCollision.TileSize));
+		var carimbos = new List<int>();
+		foreach (ushort doFalante in new ushort[] { 500, 501, 503 })
+		{
+			RecebiVoz(comBuraco, doFalante, QuadroFalso, QuadroFalso.Length, calado: false);
+			carimbos.Add(UltimaSequenciaDeVozDeTeste(comBuraco.Id));
+		}
+		AfirmarVoz("**A PERDA DA SUBIDA DEIXA BURACO PRA QUEM OUVE**: o falante manda 500, 501, 503 e o relay carimba 0, 1, 3",
+			carimbos.SequenceEqual([0, 1, 3]), string.Join(",", carimbos));
+		RecebiVoz(comBuraco, 502, QuadroFalso, QuadroFalso.Length, calado: false);
+		AfirmarVoz("...o atrasado (o 502, depois do 503) nao anda a conta: ele sai na vaga dele",
+			UltimaSequenciaDeVozDeTeste(comBuraco.Id) == 3, $"{UltimaSequenciaDeVozDeTeste(comBuraco.Id)}");
+		RecebiVoz(comBuraco, 40_000, QuadroFalso, QuadroFalso.Length, calado: false);
+		AfirmarVoz("...e o salto de quem mente (ou relogou) anda UM, e nao o que o cliente disser",
+			UltimaSequenciaDeVozDeTeste(comBuraco.Id) == 4, $"{UltimaSequenciaDeVozDeTeste(comBuraco.Id)}");
+
+		VozLocal.NumeradorDoRelay.RenumeraDeTeste = true;
+		try
+		{
+			ServerPlayer renumerado = forjar(84, "bancada: o relay de antes", zona,
+													new Vec2(250 * ZoneCollision.TileSize, 250 * ZoneCollision.TileSize));
+			carimbos.Clear();
+			foreach (ushort doFalante in new ushort[] { 500, 501, 503 })
+			{
+				RecebiVoz(renumerado, doFalante, QuadroFalso, QuadroFalso.Length, calado: false);
+				carimbos.Add(UltimaSequenciaDeVozDeTeste(renumerado.Id));
+			}
+			AfirmarVoz("(defeito injetado: o servidor numera por conta propria) 500, 501, 503 saem 0, 1, 2 -- o buraco some, e a regua sabe reprovar",
+				carimbos.SequenceEqual([0, 1, 2]), string.Join(",", carimbos));
+		}
+		finally { VozLocal.NumeradorDoRelay.RenumeraDeTeste = false; }
 		AfirmarVoz($"uma rajada de 30 tem exatamente {30 - (int)VozLocal.RajadaDeQuadros} recusados (o balde e {VozLocal.RajadaDeQuadros})",
 			QuadrosDeVozRecusadosDeTeste(desonestoNoFio.Id) == 30 - (int)VozLocal.RajadaDeQuadros,
 			$"recusados {QuadrosDeVozRecusadosDeTeste(desonestoNoFio.Id)}");
@@ -474,7 +513,7 @@ public partial class GameServer
 		// ==========================================================================================
 		int avisosAntes = EscutaDeAvisos?.Count ?? 0;
 		bool tinhaSeq = TemSequenciaDeVozDeTeste(mudo.Id);
-		RecebiVoz(mudo, QuadroFalso, QuadroFalso.Length, calado: true);
+		RecebiVoz(mudo, 0, QuadroFalso, QuadroFalso.Length, calado: true);
 		AfirmarVoz("o quadro de quem esta calado morre ANTES do leque",
 			!tinhaSeq && !TemSequenciaDeVozDeTeste(mudo.Id),
 			"a sequencia so avanca depois do portao do mute");
@@ -493,7 +532,7 @@ public partial class GameServer
 		// passaria no teste acima e calaria o servidor inteiro.
 		_calados.Remove(mudo.Conta);
 		EsquecerVoz(mudo.Id);
-		RecebiVoz(mudo, QuadroFalso, QuadroFalso.Length, calado: false);
+		RecebiVoz(mudo, 0, QuadroFalso, QuadroFalso.Length, calado: false);
 		AfirmarVoz("solto o mute, o mesmo quadro atravessa e chega em quem esta perto",
 			TemSequenciaDeVozDeTeste(mudo.Id) && Ouviu(Leque(mudo), perto));
 	}

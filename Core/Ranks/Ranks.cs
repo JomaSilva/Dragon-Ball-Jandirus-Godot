@@ -566,7 +566,16 @@ public static class Cargos
 				"God's Temper (10 danos seguidos sem bloquear = +10% de ataque/defesa física por 10s)", // :22-24
 				"não envelhece e respira no vácuo enquanto portar o título",             // :105
 				"o Power of Destruction desperta (ou, no caminho do Instinto, o kit emprestado a 25%)", // :95-102
-				"aura e cabelo púrpura (godki.dm:280, HairObject.dm:68) e a Língua dos Deuses (WishTable.dm:33)",
+				"a Língua dos Deuses (WishTable.dm:33)",
+			],
+			// O QUE O KIT AINDA NAO ENTREGA, por escrito (a conferencia de 2026-10-11 portou o resto: `Ranks/KitDoDeus.cs`,
+			// `GameServer.KitDoDeus.cs` e a bancada `--godkitteste`).
+			Pendencias =
+			[
+				"aura e cabelo púrpura pelo RANK no ki divino (godki.dm:280, AuraObject.dm:182, HairObject.dm:68): "
+				+ "o ki divino do Deus ainda sai com a cor de todo mundo",
+				"as cores fixas dos dois tiros (amarelo e roxo, GodOfDestruction.dm:273 e :317): saem na cor do ki de quem atira",
+				"o pulso da Hakai Infusion no embate de raios (UltraEgo.dm:615-632)",
 			],
 			// ============================ A LISTA ZEROU, E CADA LINHA DELA MORREU POR UM MOTIVO ============================
 			// Eram TRÊS. O **duelo formal** ficou ligado inteiro (`Core/Ranks/PortasDeCargo.cs` +

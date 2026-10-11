@@ -569,6 +569,19 @@ public partial class SpriteDeAura : Node2D
 			? new Color(v.AsVector3().X, v.AsVector3().Y, v.AsVector3().Z)
 			: null;
 
+	/// <summary>
+	/// A FORCA COMO O SHADER A VE -- irma da <see cref="CorNoMaterialDeTeste"/>, e pelo mesmo motivo: o campo diz
+	/// o que o ultimo `Definir` PEDIU, isto diz o que a chama recebeu.
+	///
+	/// O `Aura.gdshader` termina em `c.a * forca`, entao forca ZERO e chama INVISIVEL. E assim que uma bancada
+	/// afirma "esta chama nao acendeu" (a da cena da furia, desde 2026-10-11) sem confundir com "esta chama nao
+	/// existe": nulo enquanto nao ha material, e quem le trata o nulo como "nao ha o que medir".
+	/// </summary>
+	public float? ForcaNoMaterialDeTeste => _mat?.GetShaderParameter("forca") is { } v
+		&& v.VariantType == Variant.Type.Float
+			? v.AsSingle()
+			: null;
+
 	private Texture2D? Quadro() =>
 		_s?.SpriteFrames is { } f ? f.GetFrameTexture(_s.Animation, 0) : null;
 

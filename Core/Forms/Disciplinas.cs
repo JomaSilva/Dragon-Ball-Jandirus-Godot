@@ -60,6 +60,27 @@ public sealed class DisciplinaDef
 	/// <summary>Energia ATUAL com que cada forma comeca. Transformar RENOVA a precisao.</summary>
 	public double AtualAoEntrarNaPrimeiraForma = 80, AtualAoEntrarNaSegundaForma = 100;
 
+	/// <summary>
+	/// A ENERGIA ATUAL COM QUE SE ENTRA NESTA FORMA, ou nulo se a forma nao e desta disciplina. A PRIMEIRA forma
+	/// da escada devolve 80, a segunda 100 -- e a ordem e a do array de faixas.
+	///
+	/// E ATRIBUICAO, como no DM (`ui_prof = (stage == 2) ? UI_PROF_PERF_START : UI_PROF_SIGN_START`,
+	/// `UltraInstinct.dm:466`; `UltraEgo.dm:540`): nao olha a maestria REAL (quem domina 25% entra no Sign com 80
+	/// de precisao, e o excesso escoa depois -- ver <see cref="EstadoDeDisciplina.TickAtual"/>) nem a energia que
+	/// havia (quem entra no Sign com 95 sai com 80).
+	/// </summary>
+	public double? AtualAoEntrar(string idDaForma)
+	{
+		bool primeira = true;
+		foreach (Degrau d in Degraus)
+		{
+			if (d.Forma.Length == 0) continue;
+			if (d.Forma == idDaForma) return primeira ? AtualAoEntrarNaPrimeiraForma : AtualAoEntrarNaSegundaForma;
+			primeira = false;
+		}
+		return null;
+	}
+
 	/// <summary>O maior degrau que esta maestria REAL destravou. Nulo = nenhum.</summary>
 	public Degrau? Maior(double real)
 	{
@@ -165,6 +186,26 @@ public static class Disciplinas
 		Math.Clamp(precisaoAtual, 0, 100) * (contraKi ? EsquivaKi : EsquivaMelee);
 
 	/// <summary>
+	/// O CORPO PODE DESVIAR SOZINHO AGORA? Os portoes do `ui_try_evade` (`UltraInstinct.dm:166-172`), na ordem de la,
+	/// menos o da guarda (que cada funil de golpe pergunta do seu jeito -- o soco so chega na esquiva quando a guarda
+	/// CEDEU, o tiro pergunta se ela esta erguida):
+	///
+	///     if(!M || !M.ui_learned) return 0
+	///     if(M.KO || M.dead) return 0
+	///     if(!M.ui_active &amp;&amp; !M.ui_form) return 0          // passiva desligada e fora de forma: nada
+	///     if(M.med || M.train) return 0
+	///     if((M.charging || M.beaming) &amp;&amp; M.ui_prof_real &lt; UI_UNLOCK_ACCEL) return 0   // ACCELERATED BATTLE
+	/// </summary>
+	/// <param name="emUso">A passiva esta ligada OU o corpo esta numa das duas formas do Instinto.</param>
+	/// <param name="carregandoKi">Esta carregando ou segurando um ataque de ki (`charging || beaming`).</param>
+	public static bool InstintoDesvia(bool aprendeu, bool emUso, bool caido, bool meditandoOuTreinando,
+									  bool carregandoKi, double maestriaReal) =>
+		aprendeu && !caido && emUso && !meditandoOuTreinando && (!carregandoKi || maestriaReal >= UiAccel);
+
+	/// <summary>`ui_evade_msg_cd = world.time + 30` (`:202`): de quanto em quanto a zona le que o corpo desviou sozinho de um tiro.</summary>
+	public const double AvisoDaEsquivaSegundos = 3;
+
+	/// <summary>
 	/// O BONUS POS-ESQUIVA: +5% de ataque fisico e de velocidade por 5s, ate 5 pilhas.
 	/// `UI_EVADE_BONUS` / `UI_EVADE_BUFF_TICKS` / `UI_EVADE_STACK_MAX`.
 	///
@@ -178,6 +219,9 @@ public static class Disciplinas
 	public const int GdGolpes = 10;
 	public const double GdDanoPorGolpe = 0.5, GdBloqueioMult = 0.35;
 	public const double GdCustoKiPct = 8, GdCustoPrecisao = 10;
+
+	/// <summary>`get_dist(U, V) &lt;= 15` (`UltraInstinct.dm:529`): ate onde o segundo toque alcanca um marcado.</summary>
+	public const int GdAlcanceDoSegundoToque = 15;
 
 	// ==================================================================================
 	// PODER DA DESTRUICAO -- a escola do Deus da Destruicao
@@ -219,6 +263,13 @@ public static class Disciplinas
 	public const double UeDestroyer = 20, UeEgo = 40, UeUltra = 60, UeHakai = 80;
 
 	/// <summary>
+	/// O DRENO DE KI PERMANENTE DAS FORMAS, em fracao do Ki maximo por segundo -- `UI_KI_DRAIN_SIGN 0.35` /
+	/// `UI_KI_DRAIN_PERF 0.5` e os gemeos `UE_KI_DRAIN_D` / `UE_KI_DRAIN_U` (em % la). A primeira forma de cada
+	/// disciplina esvazia um tanque cheio em 4 min 46 s; a segunda, em 3 min 20 s.
+	/// </summary>
+	public const double KiPorSegundoNaPrimeiraForma = 0.0035, KiPorSegundoNaSegundaForma = 0.005;
+
+	/// <summary>
 	/// ============================ O TITULO AMPLIFICA O CAMINHO: +25% ============================
 	/// `GOD_PATH_BOOST 0.25` (`1A Defines.dm:47`): *"GoD que trilha a DESTRUICAO: todos os beneficios
 	/// do Power of Destruction x (1 + isto)"*. Quem porta o trono E trilhou a disciplina tem as duas
@@ -237,10 +288,10 @@ public static class Disciplinas
 	/// perguntas.
 	/// ================================================================================================
 	///
-	/// FICA DE FORA, E ESTA ANOTADO: o `ue_kit_factor()` (`UltraEgo.dm:190-191`) espalha o MESMO 0,25
-	/// por todo o resto do kit (recuo, ki devorado, reducao, explosao, Unbound Ego, Hakai) e ainda da
-	/// `GOD_PATH_BORROW` a um Deus da Destruicao que trilhou o Ultra Instinct. Isso e sistema proprio e
-	/// nao veio nesta passada -- o que veio e o multiplicador das duas FORMAS, que era o buraco medido.
+	/// O RESTO DO KIT LEVA O MESMO FATOR: o `ue_kit_factor()` (`UltraEgo.dm:188-192`) espalha este 0,25 pelo recuo,
+	/// pelo ki devorado, pela reducao, pela explosao, pelo Unbound Ego e pela Hakai Infusion, e da
+	/// `GOD_PATH_BORROW` ao Deus da Destruicao que trilhou o Ultra Instinct. A conta e o
+	/// <see cref="Ranks.KitDoDeus.FatorDoKit"/>; quem a aplica e o `GameServer.Disciplinas.cs`.
 	/// </summary>
 	public const double AmpliacaoDoCargo = 0.25;
 
@@ -278,6 +329,22 @@ public static class Disciplinas
 	public static double PelaEnergia(double baseValor, double porEnergia, double energia) =>
 		baseValor + porEnergia * Math.Clamp(energia, 0, 100);
 
+	/// <summary>
+	/// O QUE SOBRA DE UM DANO depois de um corte de <paramref name="pct"/> por cento vezes o fator do kit -- a forma
+	/// de todo desconto da aura no DM: `dmg *= max(1 - (BASE + energia * POR_EN) * f / 100, 0.1)`
+	/// (`UltraEgo.dm:217`, `:232-233`). O piso e do original: a aura nunca tira mais de 90% de um golpe.
+	/// </summary>
+	public static double SobraDoDano(double pct, double fatorDoKit) => Math.Max(1 - pct * fatorDoKit / 100, 0.1);
+
+	/// <summary>
+	/// `UE_REAL_PER_PROC * 0.25` (`UltraEgo.dm:219`): *"apanhar com a aura tambem ensina (fracao)"* -- a fracao do
+	/// gatilho que um golpe de corpo aparado pela aura rende de maestria REAL.
+	/// </summary>
+	public const double FracaoDoGatilhoAoApanhar = 0.25;
+
+	/// <summary>`ue_proc_msg_cd = world.time + 50` (`:237`, `:250`): de quanto em quanto a aura fala que devorou ou queimou.</summary>
+	public const double AvisoDaAuraSegundos = 5;
+
 	public static double Recuo(double energia) => PelaEnergia(RecuoBase, RecuoPorEnergia, energia);
 	public static double KiDevorado(double energia) => PelaEnergia(KiDevoradoBase, KiDevoradoPorEnergia, energia);
 	public static double ReducaoDeDano(double energia) => PelaEnergia(ReducaoBase, ReducaoPorEnergia, energia);
@@ -295,37 +362,51 @@ public static class Disciplinas
 	public const double EgoTodosBonus = 20, EgoRestaura = 25;
 
 	/// <summary>
-	/// O MULTIPLICADOR DO UNBOUND EGO a partir das fracoes de vida de cada membro.
+	/// O MULTIPLICADOR DO UNBOUND EGO a partir das fracoes de vida de cada membro -- o `ue_ego_update()` do DM
+	/// (`UltraEgo.dm:296-316`), linha por linha:
 	///
-	/// ============================ POR QUE MEMBRO QUEBRADO NAO CONTA ============================
-	/// O bonus cresce conforme o membro se aproxima de quebrar e some quando ele quebra. Parece
-	/// perverso e e o ponto: o Ultra Ego premia quem esta APANHANDO E DE PE, nao quem esta em
-	/// pedacos. Quebrar o braco do inimigo deixa de ser so dano -- e tirar o combustivel dele.
+	///     for(var/datum/Body/B in body)                      // (a cauda fica de fora: quem chama a tira)
+	///         parts++
+	///         if(B.lopped || B.health &lt;= 0) continue          // zerado/decepado: o bonus daquele membro se perde
+	///         var/missing = 1 - B.health / max(B.maxhealth, 1)
+	///         mult += min(missing / UE_EGO_PEAK_MISSING, 1) * UE_EGO_PART_MAX / 100
+	///         if(missing &gt;= UE_EGO_PEAK_MISSING) peaks++
+	///     if(parts &amp;&amp; peaks &gt;= parts) mult += UE_EGO_ALL_BONUS / 100   // TODOS no pico (e nenhum perdido)
+	///     ue_ego_mult = 1 + mult * f
+	///
+	/// ============================ O QUE ESTAVA DIFERENTE AQUI ============================
+	///   * O bonus do membro e CHEIO a partir de 90% de vida perdida (`min(missing / 0.9, 1)`); a conta daqui era
+	///     linear ate 100%, e o membro no pico rendia 4,5% em vez de 5%.
+	///   * QUEM SAI DA CONTA e o membro ZERADO ou decepado. Aqui saia o "quebrado" deste port (abaixo de 20% de
+	///     vida), que e exatamente a faixa em que o bonus e maior -- o pico era inalcancavel.
+	///   * UM MEMBRO PERDIDO DERRUBA O "TODOS NO PICO": ele continua contando em `parts`. Aqui os que sobravam
+	///     bastavam.
+	///   * O FATOR DO KIT multiplica o bonus inteiro (<see cref="Ranks.KitDoDeus.FatorDoKit"/>).
 	/// =====================================================================================
 	/// </summary>
-	/// <param name="fracoes">Fracao de vida de cada membro (0-1).</param>
-	/// <param name="quebrados">Se cada membro esta quebrado ou decepado (nao rende bonus).</param>
-	/// <param name="todosNoPico">Sai true quando TODOS os membros vivos estao no pico.</param>
-	public static double UnboundEgo(IReadOnlyList<double> fracoes, IReadOnlyList<bool> quebrados,
-									out bool todosNoPico)
+	/// <param name="fracoes">Fracao de vida de cada membro (0-1), sem a cauda.</param>
+	/// <param name="perdidos">Se cada membro esta zerado ou decepado (nao rende bonus, e impede o pico geral).</param>
+	/// <param name="fatorDoKit">1,25 pro Deus que trilha a Destruicao, 1 pra quem a trilha, 0,25 no kit emprestado.</param>
+	/// <param name="todosNoPico">Sai true quando TODOS os membros estao no pico, sem nenhum perdido.</param>
+	public static double UnboundEgo(IReadOnlyList<double> fracoes, IReadOnlyList<bool> perdidos,
+									double fatorDoKit, out bool todosNoPico)
 	{
 		double bonus = 0;
-		int vivos = 0, noPico = 0;
+		int membros = 0, noPico = 0;
 
 		for (int i = 0; i < fracoes.Count; i++)
 		{
-			if (i < quebrados.Count && quebrados[i]) continue;
-			vivos++;
+			membros++;
+			if (i < perdidos.Count && perdidos[i]) continue;
 
-			// "perdeu" e o quanto falta pra vida cheia. O bonus e proporcional a isso, ate o teto.
 			double perdeu = Math.Clamp(1 - fracoes[i], 0, 1);
-			bonus += EgoPorMembro * perdeu;
+			bonus += Math.Min(perdeu / EgoPico, 1) * EgoPorMembro;
 			if (perdeu >= EgoPico) noPico++;
 		}
 
-		todosNoPico = vivos > 0 && noPico == vivos;
+		todosNoPico = membros > 0 && noPico >= membros;
 		if (todosNoPico) bonus += EgoTodosBonus;
-		return 1 + bonus / 100.0;
+		return 1 + bonus / 100.0 * fatorDoKit;
 	}
 
 	/// <summary>A Hakai Infusion. `UE_HKI_*`.</summary>
@@ -441,23 +522,43 @@ public sealed class EstadoDeDisciplina
 	}
 
 	/// <summary>
-	/// O TIQUE DA ENERGIA ATUAL: drena com uso, recupera parada.
+	/// O TIQUE DA ENERGIA ATUAL: drena com uso, recupera parada -- os passos 1 e 3 do `ui_instinct_tick` / `ue_tick`
+	/// (`UltraInstinct.dm:211-220`, `UltraEgo.dm:323-338`).
 	///
 	/// A REGENERACAO NAO ACONTECE EM COMBATE, e isso e do DM. Sem essa trava a disciplina viraria
 	/// um recurso que se recarrega no meio da briga -- e o cansaco, que e a mecanica inteira,
 	/// deixaria de existir.
 	///
-	/// E o teto da recuperacao e a maestria REAL: quem domina 40% nunca passa de 40% de precisao.
+	/// E o teto da recuperacao e a maestria REAL: quem domina 40% nunca passa de 40% de precisao PARADO.
 	/// E o que faz treinar valer a pena mesmo depois de todas as faixas abertas.
+	///
+	/// ============================ O EXCESSO DA FORMA ESCOA, E NAO E CORTADO ============================
+	/// Transformar poe a energia em 80 ou 100 seja qual for a maestria (<see cref="DisciplinaDef.AtualAoEntrar"/>),
+	/// entao ela pode estar ACIMA da real. O DM nao a corta: fora de combate e com tudo desligado ela desce de volta
+	/// ao teto no mesmo passo em que subiria (`else if(ui_prof &gt; ui_prof_real) ui_prof = max(ui_prof -
+	/// UI_REGEN_PROF * UI_TICKSECS, ui_prof_real)`, `:220`). Este metodo cortava na hora (`Clamp(Atual, 0, Real)`
+	/// a cada tique), e a renovacao da forma nao sobrevivia a um quadro.
+	/// ================================================================================================
 	/// </summary>
-	public void TickAtual(DisciplinaDef def, double dt, bool emForma, bool emCombate)
+	/// <param name="drenoDeFora">
+	/// Energia por segundo que OUTRA coisa esta drenando desta barra: a Aura of Destruction emprestada do Deus que
+	/// trilha o Instinto drena a PRECISAO dele (`ui_prof -= UE_DRAIN_ACTIVE`, `UltraEgo.dm:327-328`), por cima do
+	/// dreno do proprio Instinto -- e, enquanto ligada, trava a regeneracao (`&amp;&amp; !ue_active`, `UltraInstinct.dm:218`).
+	/// </param>
+	public void TickAtual(DisciplinaDef def, double dt, bool emForma, bool emCombate, double drenoDeFora = 0)
 	{
 		if (!Aprendida) return;
 
-		if (emForma) Atual -= def.DrenoNaForma * dt;
-		else if (Ligada) Atual -= def.DrenoLigado * dt;
-		else if (!emCombate) Atual += def.Regen * dt;
+		if (emForma) Atual = Math.Max(Atual - def.DrenoNaForma * dt, 0);
+		else if (Ligada) Atual = Math.Max(Atual - def.DrenoLigado * dt, 0);
+		if (drenoDeFora > 0) Atual = Math.Max(Atual - drenoDeFora * dt, 0);
 
-		Atual = Math.Clamp(Atual, 0, Real);
+		if (!emCombate && !emForma && !Ligada && drenoDeFora <= 0)
+		{
+			if (Atual < Real) Atual = Math.Min(Atual + def.Regen * dt, Real);
+			else if (Atual > Real) Atual = Math.Max(Atual - def.Regen * dt, Real);
+		}
+
+		Atual = Math.Clamp(Atual, 0, 100);
 	}
 }

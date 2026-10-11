@@ -151,6 +151,7 @@ public partial class RoboDasAbas : Node
 		await F14_Tech(menu, cli);
 		await F15_Skills(menu, cli);
 		await F16_Admin(menu, cli);
+		await F17_Alunos(menu, cli);
 		F99_ATiraAntesXDepois();
 
 		menu.Fechar();

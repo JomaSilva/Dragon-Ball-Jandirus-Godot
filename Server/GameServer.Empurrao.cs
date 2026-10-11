@@ -899,6 +899,9 @@ public sealed partial class GameServer
 		// ==================================================================================================
 		if (BlocoEm(zona, cx, cy) != null) return false;
 		if (mapa.BloqueadaNoArquivo(cx, cy) && ObraNaCelula(zona, cx, cy) != null) return false;
+		// E A ROCHA DE MINERIO, pelo mesmo motivo: o chao debaixo dela nao racha nem cai com ela de pe -- o
+		// raio e o corpo arremessado param nela como numa parede que nao cede. Ver `GameServer.Rochas.cs`.
+		if (RochaNaCelula(zona, cx, cy)) return false;
 
 		// ============================ O QUE NAO SE QUEBRA, E ERA A QUEIXA ============================
 		// `destroyable = 0` (`Turfs.dm:72,81,89,102`, `NewTurfs.dm:24,29,36,193,202,254,261,268`,
@@ -926,6 +929,10 @@ public sealed partial class GameServer
 		// ==================================================================================
 		if (Alem.EhOAlem(zona.Name)) return false;
 
+		// A ARVORE QUE REBROTOU CAI NO LUGAR DA CELULA: ela e uma camada por cima do arquivo e do estrago, e sem
+		// esta linha o arremesso e o chao que racha parariam numa arvore que nada derruba. Ver `GameServer.Lenha.cs`.
+		if (ARebrotaCaiNoLugarDaCelula(zona, cx, cy)) return true;
+
 		if (!_cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? caidas))
 		{
 			caidas = [];
@@ -938,6 +945,9 @@ public sealed partial class GameServer
 		AbrirACelulaCaida(zona, cx, cy);
 
 		MandarCelulaCaida(zona, cx, cy);
+
+		// E SE ERA ARVORE, ELA VIRA TOCO E REBROTA DEPOIS -- caia pelo soco, pelo arremesso ou pela rajada.
+		AArvoreDoMapaCaiu(zona, cx, cy);
 		return true;
 	}
 
@@ -1082,7 +1092,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void MartelarABorda(ZoneKey zona)
 	{
-		if (_catalogo?.Get(zona)?.Mapa is not { } mapa) return;
+		if (MapaDaZonaOuCatalogo(zona) is not { } mapa) return;
 		const int T = ZoneCollision.TileSize;
 
 		_cenarioCaido.TryGetValue(zona.Name, out HashSet<(int X, int Y)>? antes);
@@ -1136,6 +1146,10 @@ public sealed partial class GameServer
 		NetDataWriter w = PacoteDeRetratoDeCenario(pl.Zone);
 		EscutaDeCenario?.Add((pl.Id, w.CopyData()));
 		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+
+		// ...E AS ARVORES QUE REBROTARAM NESTE CHAO: a outra metade do mesmo estado -- o que caiu, e o que voltou.
+		// Pacote proprio (`S2C.Lenha`), no mesmo instante. Ver `GameServer.Lenha.cs`.
+		MandarLenha(pl);
 	}
 
 	/// <summary>

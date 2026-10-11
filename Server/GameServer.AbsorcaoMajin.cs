@@ -145,6 +145,11 @@ public partial class GameServer
 		if (alvo == null)
 		{ Avisar(pl, "o alvo precisa estar NOCAUTEADO, vivo, e ao seu lado."); return; }
 
+		// O PRESO DA SALA DO TEMPO NAO SAI DELA DENTRO DE UM MAJIN: selado, ele iria pro interior e seria cuspido ao
+		// lado do Majin, onde o Majin estivesse -- la fora. So o ALVO importa: o Majin preso que absorve continua
+		// na Sala. Ver `PorQueOPresoNaoFunde`.
+		if (PorQueNaoLevaOPreso(alvo) is { Length: > 0 } prisao) { Avisar(pl, prisao); return; }
+
 		if (EhPessoa(alvo)) SelarNoMajin(pl, alvo);
 		else DevorarPeloMajin(pl, alvo);
 	}
@@ -171,7 +176,9 @@ public partial class GameServer
 			Numero = ++_proximoAbsorvido,
 			Nome = NomeVisivel(npc),
 			Quem = 0,   // `nrec.who = null`: devorado, nao ha o que devolver
-			BonusDeBp = AbsorcaoMajin.BonusDeBp(npc.Ficha.BP),
+			// O MULTIPLICADOR DO NPC, e so aqui: o jogador selado (`SelarNoMajin`) continua rendendo os 10%
+			// inteiros. Ver `AbsorcaoMajin.MultiplicadorDeNpc`.
+			BonusDeBp = AbsorcaoMajin.BonusDeBpDeNpc(npc.Ficha.BP),
 		};
 		pl.Ficha.majin_absorb_bp += rec.BonusDeBp;
 		RegistrosDoMajin(pl.Id).Add(rec);
@@ -363,8 +370,9 @@ public partial class GameServer
 	///
 	/// E o gancho que o cabecalho do <see cref="AmigoAbatido"/> esperava (*"o dia em que a saga vier ela
 	/// chama isto com `Extrema`"*). NAO PASSA PELO <see cref="LutoNaVizinhanca"/> porque as condicoes sao
-	/// outras, e as duas diferencas sao do DM: a lista de afeto e mais curta que a da morte (`Good` e `Very
-	/// Good`, sem `Love` nem `Rival/Good`) e ninguem pergunta se o algoz era inimigo da vitima -- ser
+	/// outras, e as duas diferencas sao do DM: a lista de afeto e mais curta que a da morte (quem DECLAROU a
+	/// vitima amiga -- `Good`, `Very Good`, e o `Love` pela metade `is_friend` --, sem o `Rival/Good`; ver
+	/// `Convivio.EnfurecePorAbsorcao`) e ninguem pergunta se o algoz era inimigo da vitima -- ser
 	/// engolido nao e duelo entre amigos.
 	/// </summary>
 	private void LutoPelaAbsorcao(ServerPlayer vitima, ServerPlayer majin)

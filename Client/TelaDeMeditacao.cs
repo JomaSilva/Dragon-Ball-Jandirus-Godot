@@ -118,6 +118,7 @@ public partial class TelaDeMeditacao : CanvasLayer
 				+ "Lá dentro nada é real: ferimentos NÃO voltam com você, não há Zenkai, e o treino "
 				+ "rende só um quarto do normal. Seu corpo fica meditando onde estava -- quem bater "
 				+ "nele te acorda na hora.\n\n"
+				+ "Pra acordar por conta própria: a tecla de meditar de novo, ou o botão no alto da tela.\n\n"
 				+ "Se você meditar COLADO em alguém que já está em transe, você entra na mente DELE "
 				+ "(e o reflexo dele se desfaz: lá dentro ficam só vocês dois).",
 		};

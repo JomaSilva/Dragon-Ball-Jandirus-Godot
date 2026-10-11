@@ -24,6 +24,11 @@ namespace Jandirus.Client;
 ///   1. O TANQUE. Assentado ao lado, aparafusado PELO MENU; eu, ferido, subo nele: desligado, nada acontece.
 ///      Ligo PELO MENU: a campanula aparece por cima de mim, a vida sobe ate encher, a bateria gasta. Desligo
 ///      pelo menu e me firo de novo: a vida para -- a contraprova das mesmas reguas.
+///      E PAGO UMA MELHORIA COM RECURSOS, pelo menu (dono, 2026-10-10: *"as melhorias [...] mude pra aceitarem
+///      resource"*): "Melhorar..." -> a melhoria -> a pagina das duas formas de pagar. Ao abrir a lista o chat
+///      diz o preco de cada melhoria nas duas moedas e o saldo (o defeito `AbreSemPerguntarDeTeste` a abre
+///      calada); o "Voltar" da pagina de pagar cai na lista de melhorias (o defeito `VoltarVaiPraRaizDeTeste` o
+///      joga na raiz); e o que sai do bolso e o dobro do preco, em recursos -- o zeni nao mexe.
 ///   2. A GRAVIDADE. Maquina assentada, aparafusada pelo menu (o botao que faltava), alcance no teto e uma
 ///      sala 4x4 erguida em volta. Ajusto pra 10x no TECLADO: ela espera os cinco segundos, o campo enche a
 ///      sala e so a sala -- e a sala fica VERMELHA, chao, maquina e eu (o filtro e medido no pixel, dentro e
@@ -80,12 +85,17 @@ public partial class RoboDasMaquinas : Node
 		ProcessMode = ProcessModeEnum.Always;
 	}
 
-	public override void _ExitTree() => CampoDeGravidade.AtravessaParedeDeTeste = false;
+	public override void _ExitTree()
+	{
+		CampoDeGravidade.AtravessaParedeDeTeste = false;
+		MenuDeInteracao.VoltarVaiPraRaizDeTeste = MenuDeInteracao.AbreSemPerguntarDeTeste = false;
+		if (C is { } cli) cli.Falou -= AoOuvir;
+	}
 
 	private const int PAssentar = 0,
 					  // o ato do TANQUE
 					  TIrAoLado = 1, TPlantar = 2, TParafuso = 3, TSubir = 4, TDesligado = 5, TLigar = 6, TLigado = 7,
-					  TCurar = 8, TContraprova = 9, TVoltar = 10,
+					  TCurar = 8, TContraprova = 9, TVoltar = 10, TPagar = 11,
 					  // o ato da GRAVIDADE
 					  GPlantar = 20, GParafuso = 21, GSala = 22, GTeclado = 23, GEspera = 24, GCampo = 25, GSair = 26,
 					  GDefeito = 27;
@@ -117,6 +127,7 @@ public partial class RoboDasMaquinas : Node
 			case TLigado: Ligado(mundo, srv, cli); break;
 			case TCurar: Curar(mundo, srv, cli); break;
 			case TContraprova: Contraprova(mundo, srv, cli); break;
+			case TPagar: PagarAMelhoriaPeloMenu(srv, cli); break;
 			case TVoltar: VoltarProCentro(mundo, srv, cli); break;
 
 			case GPlantar: PlantarAMaquina(mundo, srv, cli); break;
@@ -437,8 +448,168 @@ public partial class RoboDasMaquinas : Node
 				if (_t < 4.6) return;
 				Conferir(_vidaFerido < 90 && cli.Sheet.HP - _vidaFerido < SubidaDeUmPulso / 2,
 					$"CONTRAPROVA: desligado de novo e ferido de novo, a mesma regua da vida nao ve pulso nenhum ({_vidaFerido:0.##} -> {cli.Sheet.HP:0.##})");
+				Ir(TPagar);
+				return;
+		}
+	}
+
+	// ---------------------------------------------------------------------
+	// PAGAR UMA MELHORIA COM RECURSOS, PELO MENU
+	// ---------------------------------------------------------------------
+	private static readonly string[] RaizDoTanque = ["Ligar / desligar", "Melhorar...", "Ver estado", "Aparafusar / soltar"];
+
+	private static readonly string[] MelhoriasDoTanque =
+		["< Voltar", "Recarregar a bateria", "Bateria maior", "Velocidade de cura", "Tratar ferimentos", "Regeneração de nanites"];
+
+	private const string AMelhoria = "Velocidade de cura";
+
+	private static readonly string[] FormasDePagar = ["< Voltar", $"{AMelhoria}: pagar com zeni", $"{AMelhoria}: pagar com recursos"];
+
+	/// <summary>O zeni que a cena deixa no bolso (nao paga nada), e o troco que sobra dos recursos depois da compra.</summary>
+	private const double ZeniDaCena = 777, TrocoDaCena = 5;
+
+	private int _eficienciaAntes;
+	private double _precoDaMelhoria;
+
+	/// <summary>O que o servidor disse no chat desde a ultima limpeza (as falas de sistema).</summary>
+	private readonly List<string> _ouvido = [];
+
+	private void AoOuvir(Jandirus.Net.Protocol.Fala canal, string autor, string texto)
+	{
+		if (canal == Jandirus.Net.Protocol.Fala.Sistema) _ouvido.Add(texto);
+	}
+
+	private bool Ouvi(string trecho) => _ouvido.Exists(t => t.Contains(trecho, StringComparison.OrdinalIgnoreCase));
+
+	/// <summary>O que o menu aberto mostra, numa linha -- o rodape de toda conferencia dele.</summary>
+	private static string NoMenu() => E is { NaTela: true } ? string.Join(" | ", E.BotoesDesenhados()) : "(menu fechado)";
+
+	private static bool OMenuMostra(string[] botoes) => E is { NaTela: true } && E.BotoesDesenhados().SequenceEqual(botoes);
+
+	/// <summary>
+	/// O CAMINHO DO DEDO: "Melhorar..." -> a melhoria -> como pagar. Um aperto por passo, e a leitura so no passo
+	/// seguinte -- o menu troca os botoes no fim do quadro (`QueueFree`), e ler no mesmo quadro veria os dois.
+	/// </summary>
+	private void PagarAMelhoriaPeloMenu(Jandirus.Server.GameServer srv, GameClient cli)
+	{
+		const double UmQuadroDeMenu = 0.25;
+		if (_sub > 0 && _t < UmQuadroDeMenu) return;
+
+		double dobro = Jandirus.Core.Economia.Recurso.CustoEmRecursos(_precoDaMelhoria);
+		string aLinhaDoPreco = $"velocidade de cura: {Jandirus.Core.Economia.Recurso.DoisPrecos(_precoDaMelhoria)}";
+		string aLinhaDoSaldo = $"você tem {ZeniDaCena:N0} zeni e {dobro + TrocoDaCena:N0} recursos";
+
+		switch (_sub)
+		{
+			case 0:
+				_eficienciaAntes = srv.TanqueNaFoto(_tanque).Eficiencia;
+				_precoDaMelhoria = Regenerador.CustoDeVelocidade(_eficienciaAntes);
+				dobro = Jandirus.Core.Economia.Recurso.CustoEmRecursos(_precoDaMelhoria);
+				Conferir(srv.EconomiaDeTeste(cli.LocalId, ZeniDaCena, dobro + TrocoDaCena),
+					$"(a cena) no bolso: {ZeniDaCena:N0} zeni -- que nao pagam os {_precoDaMelhoria:N0} da melhoria -- e {dobro + TrocoDaCena:N0} recursos");
+				cli.Falou += AoOuvir;
+				ApertarE();
+				Sub(1);
+				return;
+
+			case 1:
+				if (!(E is { NaTela: true } && cli.Zeni == ZeniDaCena) && _t < 3) return;
+				Conferir(OMenuMostra(RaizDoTanque), $"de cima do tanque, a tecla E abre o menu dele: {NoMenu()}");
+
+				// A CONTRAPROVA DOS PRECOS primeiro: com o defeito, a lista abre calada.
+				MenuDeInteracao.AbreSemPerguntarDeTeste = true;
+				_ouvido.Clear();
+				Conferir(Apertar("Melhorar..."), "(defeito injetado) apertei \"Melhorar...\"");
+				Sub(2);
+				return;
+
+			case 2:
+				if (_t < 1.2) return;   // o tempo de uma resposta do servidor chegar, se ele tivesse sido perguntado
+				MenuDeInteracao.AbreSemPerguntarDeTeste = false;
+				Conferir(OMenuMostra(MelhoriasDoTanque) && !Ouvi("-- melhorias"),
+					$"(defeito injetado: a lista abre sem perguntar -- o menu de antes) as cinco melhorias estao la e NENHUM preco chega ao chat -- a regua de baixo reprova [{string.Join(" | ", _ouvido)}]");
+				Conferir(Apertar("< Voltar"), "sem o defeito: voltei pra raiz");
+				Sub(3);
+				return;
+
+			case 3:
+				_ouvido.Clear();
+				Conferir(OMenuMostra(RaizDoTanque) && Apertar("Melhorar..."), "...e apertei \"Melhorar...\" de novo");
+				Sub(4);
+				return;
+
+			case 4:
+				if (!(Ouvi(aLinhaDoPreco) && Ouvi(aLinhaDoSaldo)) && _t < 3) return;
+				Conferir(OMenuMostra(MelhoriasDoTanque), $"\"Melhorar...\" lista as cinco melhorias: {NoMenu()}");
+				Conferir(Ouvi(aLinhaDoPreco) && Ouvi(aLinhaDoSaldo),
+					$"**AO ABRIR A LISTA, O CHAT DIZ O PRECO DE CADA MELHORIA NAS DUAS MOEDAS, E O SALDO** (\"{aLinhaDoPreco}\", \"{aLinhaDoSaldo}\") "
+					+ $"[{string.Join(" | ", _ouvido)}]");
+				Conferir(Apertar(AMelhoria), $"apertei \"{AMelhoria}\"");
+				Sub(5);
+				return;
+
+			case 5:
+				Conferir(OMenuMostra(FormasDePagar),
+					$"**A MELHORIA PERGUNTA COMO PAGAR**: zeni, ou recursos -- e nao compra sozinha: {NoMenu()}");
+				Conferir(srv.TanqueNaFoto(_tanque).Eficiencia == _eficienciaAntes && cli.Zeni == ZeniDaCena && cli.Recursos == dobro + TrocoDaCena,
+					"...e ate aqui nada foi cobrado nem melhorado");
+				GuardarATela("dmaquinas-3b-como-pagar.png", "3b. a melhoria: pagar com zeni ou com recursos (os precos, no chat)");
+
+				// A CONTRAPROVA DO "VOLTAR": com o defeito, ele joga na raiz.
+				MenuDeInteracao.VoltarVaiPraRaizDeTeste = true;
+				Conferir(Apertar("< Voltar"), "(defeito injetado) apertei \"< Voltar\" na pagina de pagar");
+				Sub(6);
+				return;
+
+			case 6:
+				MenuDeInteracao.VoltarVaiPraRaizDeTeste = false;
+				Conferir(OMenuMostra(RaizDoTanque),
+					$"(defeito injetado: o Voltar de antes, sempre a raiz) da pagina de pagar ele cai no MENU DO TANQUE -- a regua de baixo reprova: {NoMenu()}");
+				Conferir(Apertar("Melhorar..."), "sem o defeito: \"Melhorar...\"");
+				Sub(7);
+				return;
+
+			case 7:
+				Conferir(Apertar(AMelhoria), $"...e \"{AMelhoria}\"");
+				Sub(8);
+				return;
+
+			case 8:
+			{
+				string naPagina = NoMenu();   // lido ANTES do aperto: no mesmo quadro o menu teria os botoes das duas paginas
+				Conferir(OMenuMostra(FormasDePagar) && Apertar("< Voltar"), $"na pagina de pagar ({naPagina}), apertei \"< Voltar\"");
+				Sub(9);
+				return;
+			}
+
+			case 9:
+				Conferir(OMenuMostra(MelhoriasDoTanque), $"**O VOLTAR SOBE UMA PAGINA**: da de pagar pra lista de melhorias, e nao pra raiz: {NoMenu()}");
+				Conferir(Apertar(AMelhoria), $"\"{AMelhoria}\" outra vez");
+				Sub(10);
+				return;
+
+			case 10:
+				_ouvido.Clear();
+				Conferir(Apertar($"{AMelhoria}: pagar com recursos"), $"apertei \"{AMelhoria}: pagar com recursos\"");
+				Sub(11);
+				return;
+
+			default:
+			{
+				bool pagou = srv.TanqueNaFoto(_tanque).Eficiencia == _eficienciaAntes + 1 && cli.Recursos == TrocoDaCena && Ouvi("você melhora o regenerador");
+				if (!pagou && _t < 4) return;
+				Conferir(srv.TanqueNaFoto(_tanque).Eficiencia == _eficienciaAntes + 1,
+					$"**PAGA COM RECURSOS, PELO MENU, A MELHORIA ACONTECE**: a velocidade do tanque foi de {_eficienciaAntes} pra {srv.TanqueNaFoto(_tanque).Eficiencia}");
+				Conferir(cli.Recursos == TrocoDaCena && cli.Zeni == ZeniDaCena,
+					$"...sairam {dobro:N0} recursos (o DOBRO dos {_precoDaMelhoria:N0} zeni) e o zeni nao mexeu -- na carteira que o cliente mostra: "
+					+ $"{cli.Zeni:N0} zeni, {cli.Recursos:N0} recursos");
+				Conferir(Ouvi($"por {dobro:N0} recursos") && Ouvi($"Restam {ZeniDaCena:N0} zeni e {TrocoDaCena:N0} recursos"),
+					$"...e o chat diz o que foi pago e o que sobrou nos dois bolsos [{string.Join(" | ", _ouvido)}]");
+				Conferir(E is not { NaTela: true }, "...e o menu fechou, como em toda acao direta");
+				cli.Falou -= AoOuvir;
 				Ir(TVoltar);
 				return;
+			}
 		}
 	}
 
@@ -1015,6 +1186,7 @@ public partial class RoboDasMaquinas : Node
 		_acabou = true;
 
 		CampoDeGravidade.AtravessaParedeDeTeste = false;
+		MenuDeInteracao.VoltarVaiPraRaizDeTeste = MenuDeInteracao.AbreSemPerguntarDeTeste = false;
 		if (GetTree() is { } t) t.Paused = false;
 		Mostrar(true);
 		World.Instancia?.PararDeTeste();

@@ -75,20 +75,17 @@ public partial class GameServer
 	private readonly Dictionary<int, VozLocal.Torneira> _vozes = [];
 
 	/// <summary>
-	/// A ULTIMA SEQUENCIA que cada falante mandou -- o que vai NO PACOTE pra o decodificador saber
-	/// que perdeu quadro.
+	/// O NUMERADOR DE CADA FALANTE -- o que decide a sequencia que vai NO PACOTE repassado, pra o
+	/// decodificador de quem ouve saber que vaga ficou vazia.
 	///
-	/// ============================ POR QUE O SERVIDOR NUMERA E NAO REPASSA ============================
-	/// O cliente manda a sequencia DELE, e ela e util pra nada aqui: o que o ouvinte precisa saber e
-	/// quantos quadros faltaram **no caminho ate ele**, e esse caminho e o do servidor pra ele. Repassar
-	/// o numero do falante misturaria as duas perdas -- e um cliente modificado que mandasse sequencias
-	/// aleatorias faria o decodificador alheio inventar silencio a esmo.
+	/// E A SEQUENCIA DO FALANTE, SANEADA, e nao um contador daqui: a regra, o porque e o que o saneamento
+	/// segura estao no <see cref="VozLocal.NumeradorDoRelay"/>. (Aqui morava um `ushort` por falante que o
+	/// servidor incrementava por quadro aceito -- e que escondia de quem ouve toda perda da SUBIDA.)
 	///
-	/// O contador e do SERVIDOR, cresce um por quadro ACEITO (depois da torneira), e por isso um
-	/// buraco nele quer dizer exatamente uma coisa: perda de rede entre nos dois.
-	/// ============================================================================================
+	/// DEPOIS DA TORNEIRA E DO MUTE, como antes: o quadro que o servidor recusa nao e carimbado, e o buraco
+	/// que ele deixa na sequencia do falante chega a quem ouve como o que ele e -- um quadro que faltou.
 	/// </summary>
-	private readonly Dictionary<int, ushort> _seqDeVoz = [];
+	private readonly Dictionary<int, VozLocal.NumeradorDoRelay> _seqDeVoz = [];
 
 	/// <summary>Buffer de leitura reusado -- um quadro por vez, e alocar 50x por segundo e lixo.</summary>
 	private readonly byte[] _quadroDeVoz = new byte[VozLocal.MaxBytesDeQuadro];
@@ -216,6 +213,7 @@ public partial class GameServer
 	/// </summary>
 	private void TickDaVoz()
 	{
+		EscoarARedeRuimDaVoz();
 		if (_paredeDaVoz.Count < 64) return;
 
 		long agora = RelogioDaVoz();
@@ -231,6 +229,7 @@ public partial class GameServer
 	{
 		_vozes.Remove(id);
 		_seqDeVoz.Remove(id);
+		EsquecerRadio(id);   // a torneira e a transmissao do RADIO do scouter saem pela mesma porta -- ver GameServer.Radio.cs
 
 		// O CACHE E POR PAR, entao a saida de um id deixa entradas mortas com o id do outro. Elas
 		// vencem sozinhas em 100 ms -- mas um id REUSADO dentro dessa janela herdaria a resposta de
@@ -241,6 +240,112 @@ public partial class GameServer
 			if ((int)(chave >> 32) == id || (int)(chave & 0xFFFFFFFF) == id) (mortas ??= []).Add(chave);
 		if (mortas == null) return;
 		foreach (long k in mortas) _paredeDaVoz.Remove(k);
+	}
+
+	// =====================================================================
+	// A REDE RUIM DE MENTIRA, SO PRA VOZ -- `--vozrede <ms por perna> <perda %>`
+	// =====================================================================
+	/// <summary>
+	/// O TESTE DE ACEITE DO PLAYTEST DE 2026-10-10, NA MAO DO DONO: *"conversa continua entre 2+ jogadores com
+	/// ~100 ms de latencia e 2% de perda simulados"*. O pedido lembra que *"o LiteNetLib tem opcoes de
+	/// simulacao"* -- tem (`SimulatePacketLoss`, `SimulateLatency`), mas as duas so existem no binario de DEBUG
+	/// da biblioteca, e o jogo carrega o de release: ligadas, nao fazem nada. Entao a simulacao mora aqui, e
+	/// SO NO CANAL DE VOZ (o resto do jogo continua na rede de verdade):
+	///
+	///   * a SUBIDA: o quadro que chega do falante e sorteado contra a perda e, se passar, espera o atraso
+	///     antes de entrar no <see cref="RecebiVoz"/>;
+	///   * a DESCIDA: cada repasse e sorteado de novo e espera o mesmo atraso antes do `Send`.
+	///
+	/// O atraso e POR PERNA (50 = os ~100 ms do pedido), com ate 40% dele de jitter por cima. Quem escoa as
+	/// duas filas e o tique do servidor, entao a granularidade e a dele (33 ms) -- que e jitter tambem, e
+	/// do tipo que a rede de verdade tem.
+	///
+	/// DESLIGADA EM JOGO: sem a flag as duas filas nunca recebem nada e o repasse e o `Send` direto.
+	/// </summary>
+	private bool _vozRedeLigada;
+	private double _vozRedeMs, _vozRedePerda;
+	private readonly Random _vozRedeRng = new(2026);
+	private readonly List<(long Quando, int Falante, ushort Seq, byte[] Dados, bool PeloRadio)> _vozSubindo = [];
+	private readonly List<(long Quando, NetPeer Peer, byte[] Pacote)> _vozDescendo = [];
+
+	/// <summary>Quantos quadros a rede ruim comeu em cada perna. Vai pro log a cada dez segundos de fala.</summary>
+	private int _vozComidosNaSubida, _vozComidosNaDescida, _vozPassados;
+	private long _vozProximoRelato;
+
+	internal void LigarRedeRuimDaVoz(double msPorPerna, double perdaPct)
+	{
+		_vozRedeMs = Math.Clamp(msPorPerna, 0, 1000);
+		_vozRedePerda = Math.Clamp(perdaPct, 0, 90) / 100.0;
+		_vozRedeLigada = _vozRedeMs > 0 || _vozRedePerda > 0;
+		if (_vozRedeLigada)
+			GD.Print($"[server] REDE RUIM DA VOZ (so o canal de voz): {_vozRedeMs:0} ms por perna (+ ate 40% de jitter) "
+				   + $"e {_vozRedePerda * 100:0.#}% de perda em cada perna");
+	}
+
+	private long AtrasoDaRedeRuim() => (long)(_vozRedeMs * (1 + _vozRedeRng.NextDouble() * 0.4));
+
+	/// <summary>
+	/// A SUBIDA pela rede ruim: o quadro some, ou espera. Chamado pelo dispatch no lugar do <see cref="RecebiVoz"/>
+	/// -- e no lugar do `RecebiVozDeRadio` quando o quadro veio <paramref name="peloRadio"/> do scouter: o radio e
+	/// voz, e a rede ruim de bancada pega os dois.
+	/// </summary>
+	private void VozPelaRedeRuim(ServerPlayer a, ushort seqDoFalante, byte[] dados, int tam, bool peloRadio = false)
+	{
+		if (_vozRedeRng.NextDouble() < _vozRedePerda) { _vozComidosNaSubida++; return; }
+		_vozSubindo.Add((RelogioDaVoz() + AtrasoDaRedeRuim(), a.Id, seqDoFalante, dados.AsSpan(0, tam).ToArray(), peloRadio));
+	}
+
+	/// <summary>A DESCIDA pela rede ruim: o repasse some, ou espera.</summary>
+	private void MandarPelaRedeRuim(NetPeer peer, LiteNetLib.Utils.NetDataWriter w)
+	{
+		if (_vozRedeRng.NextDouble() < _vozRedePerda) { _vozComidosNaDescida++; return; }
+		_vozDescendo.Add((RelogioDaVoz() + AtrasoDaRedeRuim(), peer, w.CopyData()));
+	}
+
+	private void EscoarARedeRuimDaVoz()
+	{
+		if (!_vozRedeLigada) return;
+		long agora = RelogioDaVoz();
+
+		// NA ORDEM EM QUE VENCEM, e nao na em que entraram: com o jitter um quadro pode passar na frente do
+		// anterior -- e e assim que a rede de verdade entrega fora de ordem.
+		if (_vozSubindo.Count > 0)
+		{
+			_vozSubindo.Sort((x, y) => x.Quando.CompareTo(y.Quando));
+			int n = 0;
+			while (n < _vozSubindo.Count && _vozSubindo[n].Quando <= agora) n++;
+			for (int i = 0; i < n; i++)
+			{
+				(_, int falante, ushort seq, byte[] dados, bool peloRadio) = _vozSubindo[i];
+				if (!_players.TryGetValue(falante, out ServerPlayer? quem) || quem.Peer == null) continue;
+				if (peloRadio) RecebiVozDeRadio(quem, seq, dados, dados.Length, EstaCalado(quem), agora);
+				else RecebiVoz(quem, seq, dados, dados.Length, EstaCalado(quem));
+			}
+			_vozSubindo.RemoveRange(0, n);
+		}
+
+		if (_vozDescendo.Count > 0)
+		{
+			_vozDescendo.Sort((x, y) => x.Quando.CompareTo(y.Quando));
+			int n = 0;
+			while (n < _vozDescendo.Count && _vozDescendo[n].Quando <= agora) n++;
+			for (int i = 0; i < n; i++)
+			{
+				(_, NetPeer peer, byte[] pacote) = _vozDescendo[i];
+				if (peer.ConnectionState == ConnectionState.Connected)
+				{
+					peer.Send(pacote, Protocol.ChannelVoz, DeliveryMethod.Unreliable);
+					_vozPassados++;
+				}
+			}
+			_vozDescendo.RemoveRange(0, n);
+		}
+
+		if (agora < _vozProximoRelato || _vozPassados + _vozComidosNaSubida + _vozComidosNaDescida == 0) return;
+		_vozProximoRelato = agora + 10_000;
+		GD.Print($"[server] rede ruim da voz: {_vozPassados} repasses entregues, {_vozComidosNaSubida} quadros comidos na subida, "
+			   + $"{_vozComidosNaDescida} repasses comidos na descida");
+		_vozPassados = _vozComidosNaSubida = _vozComidosNaDescida = 0;
 	}
 
 	// =====================================================================
@@ -257,7 +362,7 @@ public partial class GameServer
 	/// A pessoa esta silenciada por admin. **Vem de fora, do mesmo lugar que o texto pergunta** --
 	/// ver o `case Protocol.C2S.Voz` no dispatch, colado no `case Protocol.C2S.Chat`.
 	/// </param>
-	private void RecebiVoz(ServerPlayer a, byte[] dados, int tam, bool calado)
+	private void RecebiVoz(ServerPlayer a, ushort seqDoFalante, byte[] dados, int tam, bool calado)
 	{
 		long agora = RelogioDaVoz();
 
@@ -283,8 +388,9 @@ public partial class GameServer
 		// ==============================================================================================
 		if (calado) return;
 
-		ushort seq = _seqDeVoz.TryGetValue(a.Id, out ushort s) ? (ushort)(s + 1) : (ushort)0;
-		_seqDeVoz[a.Id] = seq;
+		if (!_seqDeVoz.TryGetValue(a.Id, out VozLocal.NumeradorDoRelay? numerador))
+			_seqDeVoz[a.Id] = numerador = new VozLocal.NumeradorDoRelay();
+		ushort seq = numerador.Carimbar(seqDoFalante);
 
 		_ouvintes.Clear();
 		// ============================ O CORTE, OU O DEFEITO QUE A BANCADA POE NO LUGAR DELE ============================
@@ -336,7 +442,8 @@ public partial class GameServer
 			// um estalo de 20 ms. E o exato oposto do chat de TEXTO, que e confiavel porque uma frase
 			// faltando vira "ele me ignorou" (ver `GameServer.Chat.Mandar`). O `Send` COPIA o buffer,
 			// e por isso o mesmo escritor serve pro ouvinte seguinte.
-			o.Peer.Send(w, Protocol.ChannelVoz, DeliveryMethod.Unreliable);
+			if (_vozRedeLigada) MandarPelaRedeRuim(o.Peer, w);
+			else o.Peer.Send(w, Protocol.ChannelVoz, DeliveryMethod.Unreliable);
 
 			// ============================ O QUE O SERVIDOR ENTREGOU -- SO BANCADA ============================
 			// Nula em jogo. (quem falou, pra quem foi, quantos bytes de audio).
@@ -488,4 +595,7 @@ public partial class GameServer
 	/// ========================================================================================
 	/// </summary>
 	public bool TemSequenciaDeVozDeTeste(int id) => _seqDeVoz.ContainsKey(id);
+
+	/// <summary>A ultima sequencia que o relay carimbou pra este falante (-1 = nunca falou). SO PRA BANCADA.</summary>
+	public int UltimaSequenciaDeVozDeTeste(int id) => _seqDeVoz.TryGetValue(id, out VozLocal.NumeradorDoRelay? n) ? n.Saida : -1;
 }

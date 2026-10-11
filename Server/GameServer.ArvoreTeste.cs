@@ -62,6 +62,8 @@ public partial class GameServer
 			OPacote(pl);
 			OEsquecimento(pl);
 			ODegrauQueAcendeEConcede();
+			OsMarcosDoBp();
+			AMeditacaoEAsSkillsDeKi();
 		}
 		catch (Exception e)
 		{
@@ -71,6 +73,8 @@ public partial class GameServer
 		finally
 		{
 			EscutaDeAvisos = escutaAnterior;
+			MarcosDeBp.BpNaoDaMarcoDeTeste = false;
+			Jandirus.Core.Stats.GainKnobs.MeditacaoNasSkillsDeKi = 1;
 			LimparTudoDaBancada();
 		}
 
@@ -150,13 +154,15 @@ public partial class GameServer
 		int n = r.GetUShort();
 		var aprendidas = new List<string>();
 		for (int i = 0; i < n; i++) aprendidas.Add(r.GetString(96));
-		(List<string> destravadas, List<EstadoDeArvore> arvores, List<string> verbosNoFio) = Protocol.LerEstadoDeSkills(r);
+		(List<string> destravadas, List<EstadoDeArvore> arvores, List<string> verbosNoFio, List<string> semReembolso) = Protocol.LerEstadoDeSkills(r);
 
 		AfirmarArv("o opcode e S2C.Skills e a cabeca antiga (marcos, vilao, lista) continua no lugar",
 				   opcode == (byte)Protocol.S2C.Skills && totais == pl.Livro.MarcosTotais && livres == pl.Livro.MarcosLivres
 				   && !vilao && aprendidas.Count == pl.Livro.Aprendidas.Count);
 		AfirmarArv("o pacote acabou exatamente onde o leitor parou (nenhum byte sobrando ou faltando)",
 				   r.EndOfData, $"{r.AvailableBytes} bytes sobrando");
+		AfirmarArv("a cauda fecha com as que NAO devolvem marco: nenhuma aqui, as cinco foram compradas pelo funil",
+				   semReembolso.Count == 0 && aprendidas.TrueForAll(pl.Livro.FoiComprada), string.Join(",", semReembolso));
 		AfirmarArv("a cauda traz as arvores destravadas (Martial Skill)",
 				   destravadas.Contains("/datum/skill/tree/MartialSkill"), string.Join(",", destravadas));
 		AfirmarArv("...e o estado de cada arvore possuida, com tier, investido e proximo degrau",
@@ -304,5 +310,183 @@ public partial class GameServer
 		TicarNiveisDe(pl);
 		AfirmarArv("Ki Unlocked no 30: a skill `flying` NAO entra no livro (o dado a traz; o dono cortou -- Voo.cs)",
 				   pl.Niveis.Nivel(ArvKiUnlocked) == 30 && !pl.Livro.Sabe(SkillDoVoo), $"{pl.Niveis.Nivel(ArvKiUnlocked)} sabe={pl.Livro.Sabe(SkillDoVoo)}");
+	}
+
+	// =====================================================================
+	// 5) OS MARCOS DO BP -- o `processpoints()` de `Stats/Level/scaling.dm`
+	// =====================================================================
+	/// <summary>
+	/// O item 3 do playtest (dono, 2026-10-10): *"jogadores foram de 10 a 1000 de BP sem ganhar nenhum marco"*.
+	/// A regra pura (os limiares do DM, a raca, o teto), o funil de producao (`TicarNiveisDe`, o mesmo tique que
+	/// o laco dos jogadores chama), o salto, o retroativo, a contraprova e o disco.
+	/// </summary>
+	private void OsMarcosDoBp()
+	{
+		GD.Print("[arvores] -- 5) os marcos do BP (o `processpoints` de scaling.dm) --");
+
+		int[] doDm = [3, 5, 7, 10, 15, 21, 31, 46, 67, 99, 144, 212, 310, 455, 667, 978];
+		int[] daqui = [.. Enumerable.Range(MarcosDeBp.JaNoNascimento, doDm.Length).Select(n => (int)MarcosDeBp.Limiar(n, 1))];
+		AfirmarArv("OS LIMIARES SAO OS DO ORIGINAL (1,466^n, arredondado): 3, 5, 7, 10, 15, 21, 31, 46, 67, 99, 144, 212, 310, 455, 667, 978",
+				   daqui.SequenceEqual(doDm), string.Join(",", daqui));
+		AfirmarArv("...a RACA divide o limiar (o `skillpointMod`): com 100 de BP o Humano (1,5) ja cruzou mais limiares que o mod 1, e o Gray (0,5) menos",
+				   MarcosDeBp.Limiar(10, 1.5) < MarcosDeBp.Limiar(10, 1) && MarcosDeBp.Limiar(10, 0.5) > MarcosDeBp.Limiar(10, 1)
+				   && MarcosDeBp.Devidos(100, 0, 1.5) > MarcosDeBp.Devidos(100, 0, 1)
+				   && MarcosDeBp.Devidos(100, 0, 0.5) < MarcosDeBp.Devidos(100, 0, 1),
+				   $"1,5: {MarcosDeBp.Devidos(100, 0, 1.5)}; 1: {MarcosDeBp.Devidos(100, 0, 1)}; 0,5: {MarcosDeBp.Devidos(100, 0, 0.5)}");
+		AfirmarArv("...e o teto e o `spcap` (40 + 10 x mod): 50 marcos naturais pra mod 1, 55 pro Humano",
+				   MarcosDeBp.Teto(1) == 50 && MarcosDeBp.Teto(1.5) == 55);
+		int aos10 = MarcosDeBp.Devidos(10, 0, 1);
+		AfirmarArv("A CONTA DO PLAYTEST: de 10 a 1000 de BP sao DOZE marcos (7 no total aos 10 e 19 aos 1000 -- os numeros do DM)",
+				   aos10 == 4 && MarcosDeBp.Devidos(1000, aos10, 1) == 12
+				   && MarcosDeBp.JaNoNascimento + MarcosDeBp.Devidos(1000, 0, 1) == 19,
+				   $"aos 10: {aos10}; de 10 a 1000: {MarcosDeBp.Devidos(1000, aos10, 1)}");
+
+		// ---- PELO TIQUE DE PRODUCAO ----
+		ServerPlayer pl = Forjar("Marcado", CorredorLivre(4), bp: 10);
+		pl.Livro.Conceder(MarcosIniciais);   // um recem-nascido: os tres do berco
+		EscutaDeAvisos = [];
+		TicarNiveisDe(pl);
+		AfirmarArv("**O BP DA MARCO**: um recem-nascido com 10 de BP recebe os 4 limiares que ja cruzou (3 + 4 = 7, todos livres)",
+				   pl.Livro.MarcosTotais == 7 && pl.Livro.MarcosLivres == 7 && pl.Livro.MarcosPorBp == 4,
+				   $"{pl.Livro.MarcosLivres} livres / {pl.Livro.MarcosTotais} na vida / {pl.Livro.MarcosPorBp} por BP");
+		AfirmarArv("...e ele e AVISADO, numa frase so pros quatro (e sem o numero do poder dele)",
+				   EscutaDeAvisos!.Count(f => f.Contains("MARCO", StringComparison.Ordinal)) == 1
+				   && EscutaDeAvisos.Contains("MARCOS! O seu poder cruzou 4 limiares: +4 marcos pra gastar (menu P > Learning)."),
+				   string.Join(" | ", EscutaDeAvisos));
+
+		EscutaDeAvisos = [];
+		for (int i = 0; i < 20; i++) TicarNiveisDe(pl);
+		AfirmarArv("...UMA VEZ: vinte tiques depois, com o mesmo BP, nenhum marco a mais e nenhum aviso",
+				   pl.Livro.MarcosTotais == 7 && !EscutaDeAvisos!.Exists(f => f.Contains("MARCO", StringComparison.Ordinal)));
+
+		pl.Ficha.BP = 14.9;
+		TicarNiveisDe(pl);
+		bool antesDoLimiar = pl.Livro.MarcosTotais == 7;
+		pl.Ficha.BP = 15;
+		EscutaDeAvisos = [];
+		TicarNiveisDe(pl);
+		AfirmarArv("O LIMIAR E `>=`: com 14,9 de BP nada; com 15 exatos, +1 marco",
+				   antesDoLimiar && pl.Livro.MarcosTotais == 8 && EscutaDeAvisos!.Exists(f => f.Contains("+1 marco pra gastar")),
+				   $"{pl.Livro.MarcosTotais} na vida | {string.Join(" | ", EscutaDeAvisos!)}");
+
+		pl.Ficha.BP = 1000;
+		TicarNiveisDe(pl);
+		AfirmarArv("**O SALTO**: de 15 pra 1000 de BP num tique so, TODOS os limiares pulados sao pagos (19 na vida, como no DM)",
+				   pl.Livro.MarcosTotais == 19 && pl.Livro.MarcosLivres == 19, $"{pl.Livro.MarcosTotais} na vida");
+
+		// ---- O RETROATIVO ----
+		ServerPlayer velho = Forjar("Veterano", CorredorLivre(4), bp: 50_000);
+		velho.Livro.MarcosTotais = 3;   // save de antes de 2026-10-10: os tres do berco ja gastos, e o cursor em zero
+		velho.Livro.MarcosLivres = 0;
+		int esperados = MarcosDeBp.Devidos(50_000, 0, 1);
+		TicarNiveisDe(velho);
+		AfirmarArv("**RETROATIVO**: o personagem antigo, ja com 50.000 de BP e o cursor zerado, recebe de uma vez o que o BP dele ja valia",
+				   esperados > 20 && velho.Livro.MarcosLivres == esperados && velho.Livro.MarcosTotais == 3 + esperados,
+				   $"esperados {esperados}; {velho.Livro.MarcosLivres} livres / {velho.Livro.MarcosTotais} na vida");
+
+		// ---- O TETO ----
+		velho.Ficha.BP = 1e15;
+		TicarNiveisDe(velho);
+		int noTeto = velho.Livro.MarcosTotais;
+		velho.Ficha.BP = 1e18;
+		TicarNiveisDe(velho);
+		AfirmarArv("O TETO: os naturais param no `spcap` (50 pra mod 1), por mais que o BP suba",
+				   noTeto == MarcosDeBp.Teto(1) && velho.Livro.MarcosTotais == noTeto, $"{noTeto} e depois {velho.Livro.MarcosTotais}");
+
+		// ---- A RACA, PELO FUNIL ----
+		ServerPlayer humano = Forjar("Humano de Bancada", CorredorLivre(4), bp: 100);
+		humano.Livro.Conceder(MarcosIniciais);
+		humano.ModDeMarcos = 1.5;
+		ServerPlayer gray = Forjar("Gray de Bancada", CorredorLivre(4), bp: 100);
+		gray.Livro.Conceder(MarcosIniciais);
+		gray.ModDeMarcos = 0.5;
+		TicarNiveisDe(humano);
+		TicarNiveisDe(gray);
+		AfirmarArv("com os MESMOS 100 de BP o Humano (mod 1,5) tem mais marcos que o Gray (mod 0,5): o mod do CORPO e lido pelo funil",
+				   humano.Livro.MarcosTotais > gray.Livro.MarcosTotais
+				   && humano.Livro.MarcosPorBp == MarcosDeBp.Devidos(100, 0, 1.5) && gray.Livro.MarcosPorBp == MarcosDeBp.Devidos(100, 0, 0.5),
+				   $"humano {humano.Livro.MarcosTotais}, gray {gray.Livro.MarcosTotais}");
+
+		// ---- A CONTRAPROVA ----
+		ServerPlayer mudo = Forjar("Sem Marco", CorredorLivre(4), bp: 1000);
+		mudo.Livro.Conceder(MarcosIniciais);
+		MarcosDeBp.BpNaoDaMarcoDeTeste = true;
+		try { TicarNiveisDe(mudo); }
+		finally { MarcosDeBp.BpNaoDaMarcoDeTeste = false; }
+		AfirmarArv("(defeito injetado: o BP nao da marco) o mesmo corpo de 1000 de BP fica com os 3 do berco -- o relato do playtest, reproduzido",
+				   mudo.Livro.MarcosTotais == 3 && mudo.Livro.MarcosPorBp == 0, $"{mudo.Livro.MarcosTotais} na vida");
+
+		// ---- O DISCO: o cursor vai e volta, e o relog nao paga de novo ----
+		CharacterSave save = AccountStore.DeJogador(pl, NowMs());
+		ServerPlayer voltou = Forjar("Marcado de Volta", CorredorLivre(4), bp: 1000);
+		PrepararSkills(voltou, save);
+		int totalNaVolta = voltou.Livro.MarcosTotais;
+		TicarNiveisDe(voltou);
+		AfirmarArv("O RELOG NAO PAGA DE NOVO: o cursor vai pro save e volta, e o mesmo BP nao rende os mesmos marcos outra vez",
+				   save.MarcosPorBp == 16 && voltou.Livro.MarcosPorBp == 16 && totalNaVolta == 19 && voltou.Livro.MarcosTotais == 19,
+				   $"save {save.MarcosPorBp}; de volta {voltou.Livro.MarcosPorBp} por BP, {voltou.Livro.MarcosTotais} na vida");
+	}
+
+	// =====================================================================
+	// 6) MEDITAR E AS SKILLS DE KI -- a MEDICAO do item 4 do playtest
+	// =====================================================================
+	/// <summary>
+	/// *"Meditar deveria fazer Ki Unlocked e outras skills de ki subirem mais rapido; medir XP/min meditando vs
+	/// nao."* Mede pelo tique de producao (`TicarNiveisDe`), um minuto de jogo por medida (300 tiques a 5 Hz),
+	/// nos dois regimes da curva do original: o recem-nascido (Ki maximo 100, onde o ganho e multiplicado por
+	/// Ki maximo / 3000) e o corpo ja formado (Ki maximo 1000).
+	/// </summary>
+	private void AMeditacaoEAsSkillsDeKi()
+	{
+		GD.Print("[arvores] -- 6) meditar e as skills de Ki: a medicao --");
+		if (RegrasDeNivel.Get(ArvKiUnlocked) is not { } regra) { AfirmarArv("o Ki Unlocked tem regra de nivel", false); return; }
+
+		double Medir(double kiMaximo, bool meditando, double peso = 1, int tiques = 300)
+		{
+			ServerPlayer c = Forjar("Medido", CorredorLivre(4), bp: 1000);
+			c.Livro.Dar(ArvKiUnlocked);
+			c.Niveis.Por(ArvKiUnlocked, 1);
+			c.Ficha.MaxKi = kiMaximo;
+			c.Ficha.med = meditando;
+			Jandirus.Core.Stats.GainKnobs.MeditacaoNasSkillsDeKi = peso;
+			try { for (int i = 0; i < tiques; i++) TicarNiveisDe(c); }
+			finally { Jandirus.Core.Stats.GainKnobs.MeditacaoNasSkillsDeKi = 1; }
+			return c.Niveis.Nivel(ArvKiUnlocked) == 1 ? c.Niveis.Exp(ArvKiUnlocked) : double.NaN;
+		}
+
+		double barreira = regra.BarreiraEm(1);
+		double paradoNovo = Medir(100, false), meditaNovo = Medir(100, true);
+		double paradoFormado = Medir(1000, false), meditaFormado = Medir(1000, true);
+		GD.Print($"[arvores]         MEDIDO (Ki Unlocked nivel 1, barreira {barreira:N0} de exp, 1 minuto de jogo):");
+		GD.Print($"[arvores]           recem-nascido (Ki max 100):  parado {paradoNovo:0.#} exp/min | meditando {meditaNovo:0.#} exp/min "
+			   + $"({meditaNovo / Math.Max(paradoNovo, 1e-9):0.#}x) -> {barreira / Math.Max(meditaNovo, 1e-9):0} min meditando ate o nivel 2");
+		GD.Print($"[arvores]           corpo formado  (Ki max 1000): parado {paradoFormado:0.#} exp/min | meditando {meditaFormado:0.#} exp/min "
+			   + $"({meditaFormado / Math.Max(paradoFormado, 1e-9):0.#}x) -> {barreira / Math.Max(meditaFormado, 1e-9):0.#} min meditando ate o nivel 2");
+
+		AfirmarArv("**MEDITAR RENDE MAIS EXP DE KI QUE FICAR PARADO**, nos dois regimes: pelo menos o dobro (os 2 contra 1 do `Mind.dm:126-131`, mais o exp adiantado de quem medita)",
+				   meditaNovo >= paradoNovo * 1.9 && meditaFormado >= paradoFormado * 1.9 && paradoNovo > 0,
+				   $"novo {paradoNovo:0.#} -> {meditaNovo:0.#}; formado {paradoFormado:0.#} -> {meditaFormado:0.#}");
+		AfirmarArv("...e o que faz o comeco parecer parado e a CURVA do original, nao a falta do bonus: com Ki maximo 100 o mesmo minuto rende perto de um trigesimo (Ki max / 3000)",
+				   paradoFormado / paradoNovo is > 20 and < 45, $"formado/novo parado = {paradoFormado / paradoNovo:0.#}x");
+
+		// 100 TIQUES (20 s) E NAO O MINUTO: com o peso em 3 o corpo formado PASSA DA BARREIRA dentro do minuto
+		// (2.428 x 3 contra 5.150), e a regua de cima so sabe ler exp dentro de um nivel -- ela devolvia NaN.
+		double semPeso = Medir(1000, true, tiques: 100), comPeso = Medir(1000, true, peso: 3, tiques: 100);
+		AfirmarArv("**O PESO E AJUSTAVEL** (`GainKnobs.MeditacaoNasSkillsDeKi`): em 3, meditar rende perto do triplo -- e parado nao muda nada",
+				   comPeso / semPeso is > 2.2 and < 3.8 && Math.Abs(Medir(1000, false, peso: 3) - paradoFormado) < paradoFormado * 0.25,
+				   $"20 s meditando: {semPeso:0.#} de exp com peso 1, {comPeso:0.#} com peso 3 ({comPeso / semPeso:0.##}x)");
+
+		// ---- O PROGRESSO, A VISTA ----
+		ServerPlayer leitor = Forjar("Leitor", CorredorLivre(4), bp: 1000);
+		EscutaDeAvisos = [];
+		VerProgressoDasSkills(leitor);
+		bool semSkill = EscutaDeAvisos!.Exists(f => f.Contains("nenhuma skill sua sobe de nível", StringComparison.Ordinal));
+		leitor.Livro.Dar(ArvKiUnlocked);
+		leitor.Niveis.Por(ArvKiUnlocked, 3, 1234);
+		EscutaDeAvisos = [];
+		Verbo(leitor, "skills_progresso", "");
+		AfirmarArv("**O PROGRESSO APARECE** (o `Check_Skill_Stats` do original, pelo verbo do menu): nivel, exp e barreira do Ki Unlocked -- e quem nao tem skill que sobe ouve qual e a primeira",
+				   semSkill && EscutaDeAvisos!.Exists(f => f.Contains("Ki Unlocked: nível 3/100", StringComparison.Ordinal) && f.Contains("1.234 de", StringComparison.Ordinal)),
+				   string.Join(" | ", EscutaDeAvisos!));
 	}
 }

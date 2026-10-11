@@ -7,7 +7,8 @@ namespace Jandirus.Client;
 
 /// <summary>
 /// A ABA ADMIN -- os verbs de administracao, mais o que eles nao dao conta de fazer sozinhos:
-/// aviso ao servidor, clima, forcar formas, contas, o alvo marcado, e a zona de perigo.
+/// aviso ao servidor, clima, forcar formas, contas, os planetas destruidos, o alvo marcado, e a zona
+/// de perigo.
 ///
 /// ============================ CADA SECAO E UM CARTAO, E A ULTIMA E VERMELHA ============================
 /// Redesenhada em 2026-09-03 na mesma lingua da Learning (ver MenuJogo.Pecas.cs): cada secao virou
@@ -69,7 +70,7 @@ public partial class MenuJogo
 	/// </summary>
 	private static readonly string[] OrdemDosGruposDeAdmin =
 	[
-		"Corpo do alvo", "Ir e trazer", "Enxergar", "Punir", "Dar", "Mundo e servidor", "Planeta", "Torneio", Diversos,
+		"Corpo do alvo", "Ir e trazer", "Enxergar", "Punir", "Dar", "Mundo e servidor", "Planeta", "Torneio", "Bills e Whis", Diversos,
 	];
 
 	/// <summary>VERB DE ADMIN -> TEMA, pelo nome (os literais de `VerbosDoJogo.Registrar`).</summary>
@@ -89,6 +90,7 @@ public partial class MenuJogo
 		["Goto Spawn"] = "Ir e trazer",
 		["Release From Time Chamber"] = "Ir e trazer",
 		["Ir Para A Estrela"] = "Ir e trazer",
+		["Ir Para O Mundo Divino"] = "Ir e trazer",
 
 		["Assess Target"] = "Enxergar",
 		["Assess All"] = "Enxergar",
@@ -104,6 +106,7 @@ public partial class MenuJogo
 		["Give Milestone"] = "Dar",
 		["Give Milestone to Everyone"] = "Dar",
 		["Master Current Form"] = "Dar",
+		["Awaken God Ki"] = "Dar",
 
 		["Toggle Invisible"] = "Mundo e servidor",
 		["Restore Scenery"] = "Mundo e servidor",
@@ -125,6 +128,12 @@ public partial class MenuJogo
 		["Torneio: Terra Em 1 Min"] = "Torneio",
 		["Torneio: Outro Mundo Em 1 Min"] = "Torneio",
 		["Torneio: Cancelar"] = "Torneio",
+
+		["Bills: Estado"] = "Bills e Whis",
+		["Bills: Avancar A Historia"] = "Bills e Whis",
+		["Bills: Ir Para A Casa"] = "Bills e Whis",
+		["Bills: Aguentar A Casa"] = "Bills e Whis",
+		["Bills: Recomecar A Historia"] = "Bills e Whis",
 	};
 
 	private static string GrupoDeAdmin(Verbo v) =>
@@ -520,6 +529,9 @@ public partial class MenuJogo
 		// ------------------------------------------------- contas
 		PainelDeContas(cli);
 
+		// ------------------------------------------------- os planetas destruidos
+		PainelDosPlanetasDestruidos(cli);
+
 		// ------------------------------------------------- o que precisa de alvo E de texto
 		PainelDoAlvo(cli);
 
@@ -686,6 +698,78 @@ public partial class MenuJogo
 		var atualizar = new Button { Text = "atualizar lista", Alignment = HorizontalAlignment.Left };
 		atualizar.Pressed += () => cli.SendVerbo("admin_contas");
 		corpo.AddChild(atualizar);
+	}
+
+	/// <summary>
+	/// OS DESTRUIDOS DA LISTA DE MORTOS, em ordem de nome. SO OS DESTRUIDOS: quem ainda esta morrendo nao
+	/// se "restaura" -- isso e o Abort Planet Death, que tambem desfaz o ceu da explosao --, e o servidor
+	/// recusaria de qualquer jeito.
+	///
+	/// Estatica e publica: e a regra do cartao sem o cartao, e a bancada pergunta por ela.
+	/// </summary>
+	public static List<Jandirus.Core.World.EstadoDaMorte> PlanetasDestruidos(Jandirus.Core.World.RegistroDeMortos mortos) =>
+		[.. mortos.Todos
+			.Where(e => Jandirus.Core.World.MortePlanetaria.EstaMorto(e.Fase))
+			.OrderBy(e => e.Nome, StringComparer.OrdinalIgnoreCase)
+			.ThenBy(e => e.Chave, StringComparer.Ordinal)];
+
+	/// <summary>
+	/// OS PLANETAS DESTRUIDOS, cada um com o seu botao de restaurar. O dono (2026-10-10): *"queria q fosse
+	/// possivel eu ver a lista de planetas destruidos e selecionar os q quero restaurar"*.
+	///
+	/// E o `input(usr, "Restaurar qual planeta?") in PlanetDisableList` do original (`Planets.dm:254-280`),
+	/// sem travar a tela e SEM IR ATE LA: o verb "Restore Planet" age sobre o lugar em que o admin esta (ou
+	/// o disco sob ele, no espaco), e planeta morto recusa pouso. A lista ja estava no cliente -- o
+	/// `S2C.Mortos` vai pra todo mundo, por causa da carta estelar --, entao este cartao nao pede nada ao
+	/// servidor: ele desenha o que chegou e devolve a CHAVE do escolhido.
+	/// </summary>
+	private void PainelDosPlanetasDestruidos(GameClient cli)
+	{
+		List<Jandirus.Core.World.EstadoDaMorte> destruidos = PlanetasDestruidos(cli.Mortos);
+		VBoxContainer corpo = Cartao("Planetas destruídos", destaque: destruidos.Count > 0);
+		if (destruidos.Count == 0)
+		{
+			Nota("Nenhum planeta destruído agora. Quando um morrer, ele aparece aqui com o botão de "
+			   + "restaurar -- de onde você estiver.", corpo);
+			return;
+		}
+		Nota($"{destruidos.Count} na lista de mortos. Restaurar funciona de onde você estiver, sem ir até a órbita: "
+		   + "o planeta volta a aceitar pouso, e o povo volta na próxima manutenção.", corpo);
+
+		foreach (Jandirus.Core.World.EstadoDaMorte e in destruidos)
+		{
+			var h = new HBoxContainer();
+			h.AddThemeConstantOverride("separation", 6);
+
+			// O GERADO LEVA A MARCA, e a chave vai na dica: dois mundos gerados podem ter o MESMO nome (o
+			// que os separa e a seed), e duas linhas iguais nao diriam qual e qual.
+			bool gerado = e.Chave.StartsWith('#');
+			var nome = new Label
+			{
+				Text = gerado ? $"{e.Nome}   [gerado]" : e.Nome,
+				SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+				VerticalAlignment = VerticalAlignment.Center,
+				TooltipText = gerado ? $"mundo gerado, seed {e.Chave[1..]}" : "planeta do mapa",
+				MouseFilter = Control.MouseFilterEnum.Stop,
+			};
+			nome.AddThemeColorOverride("font_color", Tema.Texto);
+			nome.AddThemeFontSizeOverride("font_size", 13);
+			h.AddChild(nome);
+
+			string chave = e.Chave;
+			var b = new Button
+			{
+				Text = "restaurar",
+				TooltipText = $"o `Restaurar_Planeta` do original: {e.Nome} volta a existir",
+			};
+			// A CHAVE VAI EM METADADO: o texto e o mesmo em todas as linhas, e a bancada acha o botao
+			// DESTE planeta por ela.
+			b.SetMeta("restaurar_planeta", chave);
+			b.Pressed += () => cli.SendVerbo("admin_restaurar_planeta", chave);
+			h.AddChild(b);
+
+			corpo.AddChild(h);
+		}
 	}
 
 	/// <summary>
@@ -909,6 +993,10 @@ public partial class MenuJogo
 	/// </summary>
 	// O PEDIDO DE ALVO E A LISTA DE ONLINE ENTRAM NA ASSINATURA: sem isto o cartao de escolha nao aparecia (o
 	// resto da ficha nao mudou) e a lista chegava do servidor sem redesenhar.
+	//
+	// E OS PLANETAS DESTRUIDOS TAMBEM, pela mesma razao: o `S2C.Mortos` chega sem mexer em mais nada desta
+	// assinatura, e o cartao continuaria oferecendo um planeta que ja voltou (ou nao mostraria o que morreu).
 	private string ExtraDaAssinaturaDeAdmin(SheetState f) =>
-		$"{_alvoPedido?.Cmd ?? ""}|{string.Join(",", (GameClient.Instance?.Online ?? []).Select(o => o.Id))}";
+		$"{_alvoPedido?.Cmd ?? ""}|{string.Join(",", (GameClient.Instance?.Online ?? []).Select(o => o.Id))}"
+		+ $"|{(GameClient.Instance is { } c ? string.Join(",", PlanetasDestruidos(c.Mortos).Select(e => e.Chave)) : "")}";
 }

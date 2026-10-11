@@ -38,6 +38,13 @@ public sealed class EstiloDef
 /// </summary>
 public static class DmStyleScanner
 {
+	// ============================ O `Default` NAO SAI, E ISSO ESTA PENDENTE COM O DONO ============================
+	// O `$` desta expressao recusa a linha do tipo que traz comentario: `/datum/style/Default //used when
+	// currentStyle = ...` (`Style.dm:58`) e codigo VIVO no original -- o estilo em branco pra onde se volta -- e nunca
+	// entrou no `estilos.json`. Medido em 2026-10-10 (este leitor sobre o fonte sem comentario emite um nono estilo,
+	// vazio). O dono foi perguntado e NAO mandou acrescentar: fica como esta. Quem trocar este leitor pelo
+	// `DmFonte.Linhas` tem de cortar o `Default` de proposito, ou perguntar de novo.
+	// ===========================================================================================================
 	private static readonly Regex RxEstilo = new(@"^/?datum/style/(?<id>[A-Za-z0-9_]+)\s*$", RegexOptions.Compiled);
 	private static readonly Regex RxProp = new(@"^\s*(?<k>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?<v>.+?)\s*$", RegexOptions.Compiled);
 	private static readonly Regex RxStr = new("\"(?<s>[^\"]*)\"", RegexOptions.Compiled);

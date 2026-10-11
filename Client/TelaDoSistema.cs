@@ -485,6 +485,12 @@ public partial class TelaDoSistema : Control
 		// terreno sorteado, e essa e a diferenca que muda o que o jogador encontra ao pousar.
 		if (p.Premade) DrawArc(c, r + 3.5f, 0, Mathf.Tau, 28, new Color(Tema.Destaque, 0.9f), 1.5f);
 
+		// O ANEL DOURADO: atmosfera divina, o mesmo da carta (`MapaEstelar.DesenharPlaneta`).
+		if (MenuJogo.MundoDivino(p)) DrawArc(c, r + 3.5f, 0, Mathf.Tau, 28, new Color(MenuJogo.OuroDivino, 0.95f), 1.5f);
+
+		// O ANEL ROXO: a casa do Bills, o mesmo da carta.
+		if (MenuJogo.CasaDeBills(p)) DrawArc(c, r + 5.3f, 0, Mathf.Tau, 28, new Color(MenuJogo.RoxoDeBills, 0.95f), 1.3f);
+
 		if (_alvo == k)
 		{
 			DrawArc(c, r + 7, 0, Mathf.Tau, 32, Tema.Bom, 2f);
@@ -494,8 +500,9 @@ public partial class TelaDoSistema : Control
 		if (!_rotulos) return;
 		Font f = ThemeDB.FallbackFont;
 		const int tam = 11;
-		Vector2 medida = f.GetStringSize(p.Nome, HorizontalAlignment.Left, -1, tam);
-		DrawString(f, c + new Vector2(-medida.X / 2f, r + tam + 3), p.Nome,
+		string nomeVisto = GameClient.Instance?.NomeDoPlaneta(p) ?? p.Nome;   // o batizado, se houver
+		Vector2 medida = f.GetStringSize(nomeVisto, HorizontalAlignment.Left, -1, tam);
+		DrawString(f, c + new Vector2(-medida.X / 2f, r + tam + 3), nomeVisto,
 				   HorizontalAlignment.Left, -1, tam, p.Premade ? Tema.Texto : Tema.TextoFraco);
 	}
 
@@ -675,7 +682,7 @@ public partial class TelaDoSistema : Control
 							  Action<string, string> Linha, Action<string> Nota)
 	{
 		PlanetaNoEspaco p = _sis.Planeta(k);
-		Titulo(p.Nome);
+		Titulo(GameClient.Instance?.NomeDoPlaneta(p) ?? p.Nome);
 
 		Bloco("ORBITA");
 		Linha("estrela", ArteDeEstrela.NomeDaClasse(_sis.Estrela.Classe));
@@ -710,6 +717,8 @@ public partial class TelaDoSistema : Control
 		Linha("clima", !c.Existe || c.Permitidos.Length == 0
 			? "sempre limpo"
 			: string.Join(", ", c.Permitidos.Select(Clima.Nome)));
+		if (MenuJogo.MundoDivino(p)) Linha("atmosfera", "DIVINA");
+		if (MenuJogo.CasaDeBills(p)) Linha("morador", "BILLS");
 
 		if (MapaEstelar.MinhaPosicaoNaGalaxia() is { } eu)
 		{

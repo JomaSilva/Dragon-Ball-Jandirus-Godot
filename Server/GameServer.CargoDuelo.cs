@@ -208,6 +208,15 @@ public partial class GameServer
 
 		if (r != RecusaDeDuelo.Pode) { Avisar(pl, MotivoDaRecusa(r, agora)); return; }
 
+		// O ACEITE LEVA O DESAFIANTE ATE O DEUS, e o fim do duelo devolve os dois ao berco: quem nao pode ser
+		// tirado de onde esta (`PorQueNaoSaiDaqui` -- o preso da Sala do Tempo, o absorvido, o passageiro de uma
+		// fusao, quem esta em transe) nao desafia. Sem esta linha o desafio era a chave da prisao.
+		if (PorQueNaoSaiDaqui(pl) is { Length: > 0 } preso)
+		{
+			Avisar(pl, $"daqui o seu desafio não chega ao Deus: {preso}");
+			return;
+		}
+
 		_duelo.EmDuelo = true;                 // `god_duel_busy = 1`
 		_desafianteEsperando = pl.Conta;
 		_prazoDaResposta = agora + PrazoDeResposta;
@@ -256,8 +265,44 @@ public partial class GameServer
 			return;
 		}
 
+		if (aceitou && !OsDoisPodemIrAoDuelo(pl, desafiante)) return;
 		if (aceitou) { ComecarDuelo(pl, desafiante); return; }
 		Adiar(pl, desafiante.Name);
+	}
+
+	/// <summary>
+	/// O DUELO TIRA OS DOIS DE ONDE ESTAO -- o desafiante vem ate o Deus (<see cref="ComecarDuelo"/>) e o fim
+	/// devolve os dois ao berco (<see cref="TerminarDuelo"/>). O aceite teleportava sem reconferir nada, e entre o
+	/// desafio e a resposta passa ate um minuto: a pergunta de todo teleporte (`PorQueNaoSaiDaqui`,
+	/// `GameServer.Validacoes.cs`) se faz aqui, pros dois, ANTES de curar ou mover alguem.
+	///
+	///   * O DEUS que nao pode sair NAO ACEITA. O desafio continua de pe: ele ainda pode adiar, ou sair de onde
+	///     esta (acordar do transe) e aceitar -- e o prazo sem resposta continua contando como adiar.
+	///   * O DESAFIANTE que ficou preso depois de desafiar desfaz o desafio, sem cobrar adiamento de ninguem --
+	///     o mesmo desfecho do desafiante que sumiu (`if(!god_is_god(G) || usr.dead)`, `GodOfDestruction.dm:457`).
+	/// </summary>
+	private bool OsDoisPodemIrAoDuelo(ServerPlayer deus, ServerPlayer desafiante)
+	{
+		if (PorQueNaoSaiDaqui(deus) is { Length: > 0 } doDeus)
+		{
+			Avisar(deus, $"daqui você não aceita duelo: {doDeus}");
+			return false;
+		}
+		// ...e o desafiante nao e trazido pra onde nao se chega por teleporte (o Deus em sessao na Sala do Tempo).
+		if (desafiante.Zone.Hash != deus.Zone.Hash && ZonaFechadaAoTeleporte(deus.Zone))
+		{
+			Avisar(deus, "daqui você não aceita duelo: o desafiante não pode ser trazido pra onde você está. Saia primeiro.");
+			return false;
+		}
+		if (PorQueNaoSaiDaqui(desafiante) is { Length: > 0 } doDesafiante)
+		{
+			_desafianteEsperando = "";
+			_duelo.EmDuelo = false;
+			Avisar(deus, $"{desafiante.Name} não pode ser trazido até você. O desafio se desfaz.");
+			Avisar(desafiante, $"o Deus aceitou, mas você não pode ser levado até ele: {doDesafiante} O desafio se desfaz.");
+			return false;
+		}
+		return true;
 	}
 
 	/// <summary>
@@ -442,7 +487,8 @@ public partial class GameServer
 		{
 			if (p == null) continue;
 			Restaurar(p);
-			MandarProBerco(p);
+			// ...menos quem, no meio do duelo, foi parar onde nao se sai (selado, absorvido): esse e curado e fica.
+			if (PorQueNaoSaiDaqui(p).Length == 0) MandarProBerco(p);
 		}
 	}
 

@@ -255,17 +255,17 @@ public static class Bercos
 	///   Halfbreed                         -- nasce de gravidez ou de ovo e HERDA o `spawnPlanet`
 	///                                        do pai/mae (SpawnPoints.dm:141), e essa heranca vence
 	///                                        a tabela (CreationUI.dm:305-309: nem se escolhe);
-	///   Dog                               -- **nao e uma raca do jogo**: e a "Example prototype
-	///                                        race" do `Genetic_Prototype.dm:66`, um bloco de
-	///                                        documentacao que o extrator leu junto com as de
-	///                                        verdade e despejou no `races.json`. Ela nao aparece em
-	///                                        nenhuma tela e chega na Terra pelo recuo.
 	///
-	/// Sem estas quatro linhas, o primeiro povoamento da Terra teria sorteado androides orfaos e
-	/// cachorros, e o defeito seria plausivel o bastante pra ninguem investigar.
+	/// (Havia uma terceira, a `Dog`: a "Example prototype race" de `Genetic_Prototype.dm:65`, um bloco de
+	/// documentacao dentro de `/* */` que o extrator de racas lia como codigo e despejava no `races.json`. Ela
+	/// saiu de la em 2026-10-11 -- o extrator passou a ler sem comentario, `Tools/AssetPipeline/DmFonte` --, e o
+	/// remendo que a tirava daqui saiu junto.)
+	///
+	/// Sem estas linhas, o primeiro povoamento da Terra teria sorteado androides orfaos, e o defeito seria
+	/// plausivel o bastante pra ninguem investigar.
 	/// </summary>
 	public static bool PovoaUmPlaneta(string raca) =>
-		raca is not ("Android" or "BioAndroid" or "SpiritDoll" or "Halfbreed" or "Dog");
+		raca is not ("Android" or "BioAndroid" or "SpiritDoll" or "Halfbreed");
 
 	// =====================================================================
 	// 1.c O POVO DE UM PLANETA -- os tres mundos que o DM povoa A MAO
@@ -348,7 +348,7 @@ public static class Bercos
 	///
 	/// Sao tres jeitos de discordar, e os tres viram um planeta despovoado:
 	///   * o povo nao existe no `races.json` (raca renomeada, arquivo cortado);
-	///   * o povo e uma raca que <see cref="PovoaUmPlaneta"/> exclui (androide, mestico, o `Dog`);
+	///   * o povo e uma raca que <see cref="PovoaUmPlaneta"/> exclui (androide, mestico);
 	///   * o berco do povo nao e este planeta -- alguem mexeu na <see cref="PlanetaNatal"/>.
 	///
 	/// O terceiro e o unico que da pra causar sem querer, e e o mais caro: `PlanetaNatal("Human")`

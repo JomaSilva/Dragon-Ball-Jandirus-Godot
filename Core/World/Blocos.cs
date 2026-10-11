@@ -151,6 +151,9 @@ public enum RecusaDeBloco : byte
 	Zona,
 	Nada,
 	Cheio,
+
+	/// <summary>O lugar aceita, mas o bolso nao paga a peca na moeda escolhida. Ver <see cref="PrecoDeBloco"/>.</summary>
+	SemSaldo,
 }
 
 /// <summary>
@@ -171,7 +174,7 @@ public enum RecusaDeBloco : byte
 /// ==================================================================================
 ///
 /// ============================ O QUE FICOU IGUAL ============================
-///   * de graca, na hora, sem requisito;
+///   * na hora, sem tempo de obra e sem requisito de tecnologia;
 ///   * so em celula que pode cair: o `T.destroyable` e o plano `.duro` (`Indestrutivel`), a beirada
 ///     do mapa, e a agua (`turf/Water/*` tem `destroyable = 0`, `Turfs.dm:1602-1605`);
 ///   * a boca de passagem nao aceita (`turf/Teleporters`, `destroyable = 0`, `Turfs.dm:101-103`);
@@ -182,6 +185,9 @@ public enum RecusaDeBloco : byte
 /// ===========================================================================
 ///
 /// ============================ DIVERGENCIAS DECLARADAS ============================
+///   * CADA PECA CUSTA (pedido do dono de 2026-10-10), em zeni ou em recursos, a escolha de quem ergue. No
+///     DM e de graca. O preco e a conta estao em <see cref="PrecoDeBloco"/>; quem cobra e o servidor, DEPOIS
+///     de todas as perguntas de lugar daqui -- so se paga pelo que sobe.
 ///   * O ALCANCE E 4 CELULAS, e nao 2. O dono pediu *"um estilo minecraft"*, e la se constroi a
 ///     distancia de braco esticado; com 2 a parede so sobe colada no corpo, e arrastar o mouse pra
 ///     pintar uma fileira para a cada passo.
@@ -266,6 +272,16 @@ public static class RegrasDeBloco
 		// CENARIO DE PE: o bit do arquivo, que nao caiu. Cobre o muro, a arvore que e tile, a porta do
 		// mapa (aberta ou fechada -- ela nao esta na lista de estrago) e a mobilia que o mapa trouxe.
 		if (mapa.BloqueadaNoArquivo(cx, cy) && !caiu) return RecusaDeBloco.Cenario;
+
+		// ...E A ARVORE QUE REBROTOU: ela esta de pe por cima do estrago (a celula de origem continua na lista do
+		// que caiu) ou num chao que o arquivo nunca marcou -- as duas passariam pela linha de cima. A camada e a
+		// mesma nas duas pontas (`ZoneCollision.Rebrotar`), entao o fantasma e o servidor dizem a mesma frase.
+		if (mapa.Rebrotada(cx, cy)) return RecusaDeBloco.Cenario;
+
+		// ...E A ROCHA DE MINERIO, pelo mesmo motivo: ela esta de pe num chao que o arquivo diz livre
+		// (`ZoneCollision.PorRocha`, a mesma camada nas duas pontas). Quem quer construir ali colhe a rocha
+		// primeiro -- a frase do "derrube primeiro" serve pras duas.
+		if (mapa.TemRocha(cx, cy)) return RecusaDeBloco.Cenario;
 		return RecusaDeBloco.Pode;
 	}
 
@@ -295,6 +311,10 @@ public static class RegrasDeBloco
 		RecusaDeBloco.Zona => "aqui não se constrói.",
 		RecusaDeBloco.Nada => "não há nada seu aqui pra desmanchar.",
 		RecusaDeBloco.Cheio => $"você já ergueu {TetoPorConta} blocos, que é o teto. Desmanche algum pra continuar.",
+
+		// A frase COM os numeros (o preco, a moeda e o saldo) e a do `PrecoDeBloco.FaltaSaldo`: e ela que as
+		// duas pontas dizem. Esta e a de quem so tem a recusa na mao.
+		RecusaDeBloco.SemSaldo => "falta saldo pra pagar esta peça.",
 		_ => "",
 	};
 

@@ -78,8 +78,9 @@ public partial class Transformacao : Node2D
 	///
 	/// Os onze usos deste campo passaram a perguntar, e cada um responde o que o DM responde:
 	///
-	///   * a CHAMA da cena (`ChamaDoDegrau`) -- sem forma ela e o vermelho da raiva, que e o unico
-	///     lugar do port onde a `Aurabigcombined` mantem cor propria (ver `Cinematicas.CorDaFuria`);
+	///   * a CHAMA da cena (`ChamaDoDegrau`) -- sem forma ela e a do proprio corpo (a folha base na cor do ki
+	///     dele). Era o vermelho da raiva (`Murder.dm:146-150`) ate o dono tira-lo, em 2026-10-11, e hoje
+	///     nenhuma cena sem forma a acende -- ver `Cinematicas.Furia`;
 	///   * a CRATERA (`Catalogo.NasceDaRaiva`) -- ja aceitava nulo, e devolve a cratera PEQUENA, que e
 	///     o `createCrater(loc,2)` da furia contra o `(loc,3)` do SSJ1;
 	///   * `Assumir`, `VesteDegrau`, `PiscaCabelo`, `Raios` e `BanhoDeCor` -- **nao existem na cena da
@@ -213,24 +214,18 @@ public partial class Transformacao : Node2D
 	/// </summary>
 	private void ChamaDoDegrau(FormaDef? d)
 	{
-		// ============================ A CENA SEM FORMA TEM CHAMA PROPRIA, E E A UNICA ============================
-		// A furia nao veste ninguem, entao nao ha `FormaDef.Aura` de onde tirar a cor -- e o DM escreve
-		// o hexa na mao (`Murder.dm:146-150`: `Aurabigcombined.dmi` tingida de `#ff2a2a`, `plane = 7`).
-		// Este `if` e a unica excecao viva a regra "a chama e a aura da forma"; ver `Cinematicas.CorDaFuria`.
+		// ============================ A CENA SEM FORMA NAO TEM CHAMA PROPRIA ============================
+		// AQUI MORAVA A UNICA EXCECAO a regra "a chama e a aura da forma": um `if (d == null)` que vestia a
+		// folha base tingida do `#ff2a2a` de `Murder.dm:146-150` -- a aura de raiva do `AngerCinematic()`. O
+		// dono a tirou em 2026-10-11 (*"a raiva extrema n deveria colocar uma aura vermelha aqui, sem
+		// necessidade, apenas a aura normal por conta do ki acima de 100%"*), e a furia perdeu o beat que a
+		// acendia (`Cinematicas.Furia`, onde a divergencia do DM esta declarada).
 		//
-		// A FOLHA E A BASE (`Catalogo.Folha(null)` ja devolve `FolhaDeAura.Base`), que e a
-		// `colorablebigaura` -- a folha COLORIVEL, que e o que um vermelho escrito precisa. A `AuraSSjBig`
-		// da escada Saiyajin nao se tinge (ver `SpriteDeAura.SemTinta`) e sairia dourada.
-		//
-		// FORCA 1: a mesma que `Aura.ForcaDaChamaDe` da pra quem nao esta transformado. A furia nao tem
-		// `Intensidade` porque nao tem entrada no catalogo, e inventar um numero aqui seria a chama da
-		// raiva ser mais densa (ou menos) que a de qualquer forma, sem nada que justificasse.
-		if (d == null)
-		{
-			_auraGrande.DefinirFolha(Jandirus.Core.Forms.FolhaDeAura.Base);
-			_chamaDaCena = (new Color(Cinematicas.CorDaFuria), 1f);
-			return;
-		}
+		// Sem o `if`, o nulo cai no caminho de todo mundo, e as tres contas de baixo ja sabiam responder por
+		// ele: `Catalogo.Folha(null)` e a folha base, `Aura.CorDaChamaDe(null, ...)` e a chama PESSOAL do
+		// corpo e `Aura.ForcaDaChamaDe(null)` e 1. Ou seja: se um roteiro sem forma voltar a escrever o beat
+		// `Efeito.AuraGrande`, o que acende e a aura normal de quem esta na cena -- e nao uma cor inventada.
+		// ====================================================================================================
 
 		// A FOLHA ANTES DA COR, a mesma ordem do resto do jogo: trocar a folha REMONTA o sprite (a
 		// ancora depende da altura do quadro), e remontar repinta com o que estiver guardado.
@@ -594,19 +589,45 @@ public partial class Transformacao : Node2D
 			_alvoIrmao = irmao,
 			_cena = cena,
 			_forma = forma,
-			// SEM FORMA A CENA E VERMELHA, e as duas cores caem no mesmo lugar: o vermelho da furia
-			// (`Murder.dm:149`). `CorDosRaios(null)` ja devolvia um neutro proprio, mas ele existe pra
-			// "forma desconhecida" e nao pra "cena sem forma" -- e nenhuma cena de furia acende raio.
-			_corAura = new Color(forma?.Aura ?? Cinematicas.CorDaFuria),
-			_corRaios = new Color(forma == null
-									  ? Cinematicas.CorDaFuria
-									  : Jandirus.Core.Forms.Catalogo.CorDosRaios(forma)),
+			// SEM FORMA NAO HA `FormaDef.Aura` DE ONDE TIRAR A COR, e as duas caem no mesmo lugar: a cor que
+			// a CENA declara -- ver `CorSemForma`. (`CorDosRaios(null)` ja devolvia um neutro proprio, mas ele
+			// existe pra "forma desconhecida" e nao pra "cena sem forma".)
+			_corAura = forma != null ? new Color(forma.Aura) : CorSemForma(alvo, cena),
+			_corRaios = forma != null
+							? new Color(Jandirus.Core.Forms.Catalogo.CorDosRaios(forma))
+							: CorSemForma(alvo, cena),
 			_souEu = souEu,
 			_nome = nome,
 		};
 		pai.AddChild(t);
 		return t;
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagraiva`): a cena que pede a cor do corpo (`Cinematica.NaCorDoCorpo` -- a
+	/// furia) volta a cair na cor das cenas sem forma: os aneis de choque VERMELHOS do port ate 2026-10-11. Lido
+	/// pela <see cref="CorSemForma"/>.
+	/// </summary>
+	internal static bool CorDoCorpoIgnoradaDeTeste;
+
+	/// <summary>
+	/// A COR DE UMA CENA QUE NAO CONTA FORMA NENHUMA -- o anel de choque, o clarao de tela e os feixes de chao.
+	///
+	/// DUAS RESPOSTAS, e quem escolhe e a cena (`Cinematica.NaCorDoCorpo`):
+	///
+	///   * A DO KI DE QUEM ELA ACONTECE -- a furia. O dono tirou o vermelho dela em 2026-10-11, e o anel "e da
+	///     cor do PODER" (ver <see cref="Anel"/>): numa raiva o poder que empurra o ar e o do proprio corpo, na
+	///     cor da chama que ele tem AGORA -- a pessoal na base, a da forma em que ele estiver. Lida do node
+	///     `Aura` do alvo (<see cref="Aura.CorDaChama"/>), que e quem ja responde isso pra carga de Ki; o
+	///     fallback e o dos outros leitores (corpo montado pela metade);
+	///   * A DAS CENAS SEM FORMA (<see cref="Cinematicas.CorDaCenaSemForma"/>) -- a fusao e as tres do bio, que
+	///     nao declararam cor nenhuma e ficaram com a cara que tinham.
+	/// </summary>
+	/// <remarks>`internal` pra bancada perguntar a MESMA funcao que o `Rodar` chama, com e sem o defeito injetado.</remarks>
+	internal static Color CorSemForma(Node2D alvo, Cinematica cena) =>
+		cena.NaCorDoCorpo && !CorDoCorpoIgnoradaDeTeste
+			? alvo.GetNodeOrNull<Aura>("Aura")?.CorDaChama ?? Aura.CorDoKiCru
+			: new Color(Cinematicas.CorDaCenaSemForma);
 
 	/// <summary>
 	/// O ENSAIO DO LOBBY (ver `Aquecimento.AtosDaCena`): NASCE uma cena de verdade -- o mesmo <see cref="Rodar"/>, o
@@ -3210,7 +3231,7 @@ public partial class Transformacao : Node2D
 	/// esta coberto NESTE quadro. Sao perguntas diferentes e a segunda so passou a existir quando a
 	/// bancada de FOTO precisou dela: o clarao e um `ColorRect` de tela cheia na cor da AURA
 	/// (`_corAura.Lerp(White, 0,7)`) e a fusao nao tem forma, entao ele sai na cor da
-	/// <see cref="Cinematicas.CorDaFuria"/> -- **vermelho**. Medir "o corpo esta branco" com meia tela
+	/// <see cref="Cinematicas.CorDaCenaSemForma"/> -- **vermelho**. Medir "o corpo esta branco" com meia tela
 	/// de vermelho por cima mede o clarao, e nao a lavagem: a `--diagfotofusao` leu 0,0% de branco num
 	/// quadro em que o boneco estava com a lavagem em 0,99.
 	///
@@ -3222,6 +3243,12 @@ public partial class Transformacao : Node2D
 
 	/// <summary>Quantas vezes cada efeito novo disparou nesta cena. Pra bancada.</summary>
 	public int AneisDeTeste { get; private set; }
+
+	/// <summary>
+	/// A cor com que esta cena pinta os aneis de choque (e o clarao de tela). Pra bancada -- e ela diz o que foi
+	/// PEDIDO ao `CombatFx.Onda`; o que chega na tela, a `--diagraiva` mede no pixel.
+	/// </summary>
+	public Color CorDosAneisDeTeste => _corAura;
 
 	/// <inheritdoc cref="AneisDeTeste"/>
 	public int DescargasDeTeste { get; private set; }

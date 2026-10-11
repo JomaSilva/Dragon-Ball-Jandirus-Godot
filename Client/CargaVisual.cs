@@ -153,7 +153,6 @@ public partial class CargaVisual : Node2D
 	/// </summary>
 	public void Som(bool ligado, bool retrato = false)
 	{
-		if (ligado == _comSom) return;
 		// QUEM EU ENCONTRO JA CARREGANDO NAO COMECOU AGORA. O estalo de inicio e do INSTANTE em que a
 		// carga comeca; o primeiro snapshot de um corpo que acabou de entrar no meu campo de visao nao e
 		// esse instante -- e so a primeira vez que EU olho. Sem esta guarda quem entrava numa zona ouvia
@@ -161,15 +160,65 @@ public partial class CargaVisual : Node2D
 		// um estado que li, nao uma transicao que vi" (o snapshot); o canal de efeito do corpo local so
 		// fala em transicoes e nao passa por aqui. E o irmao de `RemotePlayer.OuvirODecolar`.
 		bool estreia = !_jaSoube;
+
+		// ============================ O PRIMEIRO RELATO JA E SABER, MUDE ELE ALGUMA COISA OU NAO ============================
+		// O `_jaSoube` so era marcado DEPOIS da comparacao da linha de baixo -- ou seja so quando o estado
+		// MUDAVA. O corpo que chega parado (o caso de quase todos) dizia "nao estou carregando" trinta vezes
+		// por segundo sem nunca ser dado por conhecido, e a primeira vez que ele carregava NA MINHA FRENTE
+		// era tratada como estreia de retrato: o zumbido entrava e o estalo de inicio era engolido. Uma vez
+		// por corpo, e justamente a transicao que o `retrato` existe pra deixar passar. (2026-10-10.)
+		// ==================================================================================================================
+		if (!EstaloEngolidoDeTeste) _jaSoube = true;
+		if (ligado == _comSom) return;
 		_jaSoube = true;
 		_comSom = ligado;
 
 		if (!ligado) { PararLaco(); return; }
-		if (!(retrato && estreia)) AudioDirector.EfeitoNoLugar(this, Trilha.CargaInicio, 0.55f);
+		if (!(retrato && estreia))
+		{
+			AudioDirector.EfeitoNoLugar(this, Trilha.CargaInicio, 0.55f);
+			EstalosDeTeste++;
+		}
 		LigarLaco();
 	}
 
 	private bool _comSom, _jaSoube;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagvizinho`): o corpo so e dado por conhecido quando o estado MUDA -- a
+	/// ordem de antes de 2026-10-10, que engolia o estalo da primeira carga de todo corpo alheio. Lido pela
+	/// propria linha do conserto, em <see cref="Som"/>.
+	/// </summary>
+	public static bool EstaloEngolidoDeTeste;
+
+	/// <summary>Quantos estalos de inicio de carga este corpo ja soltou. Pra bancada.</summary>
+	public int EstalosDeTeste { get; private set; }
+
+	/// <summary>O laco do zumbido esta de pe NESTE corpo. Pra bancada -- e o player, nao o pedido.</summary>
+	public bool ZumbindoDeTeste => _laco != null && IsInstanceValid(_laco);
+
+	// =====================================================================
+	// O RONCO DA CARGA ALTA -- item 5b do playtest de 2026-10-10
+	// =====================================================================
+	/// <summary>
+	/// O CHAO TREME EM VOLTA DESTE CORPO (o bit `EntityState.CargaAlta`: ele segura o C com o Ki acima de 120%).
+	///
+	/// O ESTADO MORA AQUI, e quem sacode e o `World`, quadro a quadro, enquanto este node estiver vivo e com o
+	/// estado ligado (<see cref="_Process"/>). Por isso nao ha tabela de "quem esta tremendo" pra limpar: o
+	/// corpo que sai de vista leva o node junto e o tremor cai sozinho -- o molde do Kaio-ken
+	/// (`World.MarcarKaioken`).
+	/// </summary>
+	public void TremerOChao(bool ligado)
+	{
+		if (ligado == _tremendo) return;
+		_tremendo = ligado;
+		SetProcess(_ligado || _tremendo);
+	}
+
+	/// <summary>O chao esta tremendo em volta deste corpo, pelo que o servidor disse. Pra bancada.</summary>
+	public bool TremendoDeTeste => _tremendo;
+
+	private bool _tremendo;
 
 	/// <summary>
 	/// O DESENHO da aura de carga. Chamado a cada snapshot, entao a primeira linha e a comparacao
@@ -269,7 +318,7 @@ public partial class CargaVisual : Node2D
 	/// </summary>
 	private void Apagar()
 	{
-		SetProcess(false);
+		SetProcess(_tremendo);   // o ronco da carga alta ainda precisa do quadro -- ver `TremerOChao`
 		Pintar();   // o ramo `!_ligado`: apaga o desenho E devolve a chama, com a luz, pra `Aura`
 	}
 
@@ -283,6 +332,12 @@ public partial class CargaVisual : Node2D
 
 	public override void _Process(double delta)
 	{
+		// O RONCO, REACESO A CADA QUADRO: o tremor do `World` so SOBE e cai sozinho, entao reacender e o que o
+		// faz continuo e parar de chamar e o que o deixa morrer. A distancia e medida ate o CHAO deste corpo
+		// (o pai), e nao ate este node -- em voo ele sobe com o desenho.
+		if (_tremendo) World.Instancia?.TremerPelaCarga((GetParent() as Node2D)?.GlobalPosition ?? GlobalPosition);
+		if (!_ligado) return;   // so o ronco mantinha este node acordado: nao ha chama pra pulsar
+
 		// PULSA. Desenho de intensidade fixa le como "estado"; o que respira le como ESFORCO em
 		// andamento, que e o que carregar e. Acima dos 100% pulsa mais rapido -- o corpo esta
 		// segurando mais do que cabe.

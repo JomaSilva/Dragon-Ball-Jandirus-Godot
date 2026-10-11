@@ -412,6 +412,12 @@ public partial class GameServer
 			// =====================================================================
 			GD.Print("  -- o Super Shenron --");
 
+			// (palco) O ELENCO DAQUI ESTA NA TERRA, e o dragao so e chamado ao lado de uma Super Esfera (`set src in
+			// oview(2)`, `ProceduralSpace.dm:1580`): quem mede o LUGAR e a `--validacoesteste`, e a corrente inteira,
+			// de esfera em esfera, e a `--avessoteste`. Daqui ate o fim esta bancada mede as sete, a lingua e a
+			// procuracao com o portao de lugar aberto -- e ele volta a fechar no `finally`.
+			SuperShenronDeQualquerLugarDeTeste = true;
+
 			ServerPlayer mudo = Forjar("bancada: o mudo", pl.Pos, terra, "bancada_desejo_i");
 			forjados.Add(mudo);
 			mudo.Race = "Human";
@@ -756,6 +762,7 @@ public partial class GameServer
 		finally
 		{
 			// ---- o mundo volta ----
+			SuperShenronDeQualquerLugarDeTeste = false;   // o palco da secao 10
 			foreach (ServerPlayer f in forjados)
 			{
 				_players.Remove(f.Id);

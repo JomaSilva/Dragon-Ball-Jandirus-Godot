@@ -116,9 +116,10 @@ public static class Esmagamento
 	///
 	/// ============================ A TRADUCAO DO `mobTime`, E O QUE ELA CUSTA ============================
 	/// O BYOND nao tem velocidade: ele tem um ACUMULADOR de tempo por tique (`mobTime`) e da um passo
-	/// quando ele enche. As duas regras que este metodo porta sao escritas nesse acumulador:
+	/// quando ele enche. As tres regras que este metodo porta sao escritas nesse acumulador:
 	///
 	///     mobTime += 0.3 + max(log(3.6, Epspeed), 0.1)          // o passo normal (:48-49)
+	///     if(HP>0&&!undelayed) mobTime *= HP/100                // o corpo FERIDO (:55) -- o `fatorDeVida`
 	///     if(weight > 1) mobTime -= weight * (1 / Espeed)       // o atraso do PESO (:56)
 	///     if(mvcrush > 1) mobTime /= 1 + (mvcrush-1)*GRAVCRUSH_SLOW  // o esmagamento (:63)
 	///     if(mobTime < 0.1) mobTime = 0.1                       // o piso (:70)
@@ -141,7 +142,8 @@ public static class Esmagamento
 	/// impede que o peso sozinho pare alguem: quem esta apenas carregado se ARRASTA. Parar de vez e
 	/// outra regra, com outro gatilho e outra porta -- ver <see cref="Prende"/>.
 	/// </summary>
-	public static double FatorDePasso(Fighter f) => AtrasoDoPeso(f) / Freio(f);
+	/// <param name="fatorDeVida">Quanto do acumulador sobra a um corpo ferido -- ver <see cref="AtrasoDoPeso"/>. 1 = inteiro.</param>
+	public static double FatorDePasso(Fighter f, double fatorDeVida = 1) => AtrasoDoPeso(f, fatorDeVida) / Freio(f);
 
 	/// <summary>
 	/// A fracao do passo que sobra depois do PESO -- `(base - weight/Espeed) / base`, com o piso
@@ -152,12 +154,19 @@ public static class Esmagamento
 	/// entao treinar velocidade e o que devolve o passo a quem quer carregar muito -- e isso e o
 	/// original, nao uma suavizada.
 	/// </summary>
-	public static double AtrasoDoPeso(Fighter f)
+	/// <param name="fatorDeVida">
+	/// O `mobTime *= HP/100` do corpo ferido (`movement handler.dm:55`), que no DM vem UMA LINHA ANTES do peso: e
+	/// o acumulador ja encolhido que perde `weight/Espeed`. 1 = corpo inteiro (ou raca que nao manca). Quem decide
+	/// o numero e o `DebuffsDeMembro.FatorDoPasso`; aqui ele so entra na ordem do original, e o piso de `0.1`
+	/// (`:70`) vale pros dois juntos -- e ele que impede um corpo quase morto de parar de vez.
+	/// </param>
+	public static double AtrasoDoPeso(Fighter f, double fatorDeVida = 1)
 	{
-		if (f.weight <= 1) return 1;
+		if (f.weight <= 1 && fatorDeVida >= 1) return 1;
 
 		double baseDoPasso = 0.3 + Math.Max(DmMath.Log(3.6, Math.Max(f.Epspeed, 1e-9)), 0.1);
-		double sobra = baseDoPasso - f.weight * (1 / Math.Max(f.Espeed, 0.1));
+		double sobra = baseDoPasso * Math.Clamp(fatorDeVida, 0, 1);
+		if (f.weight > 1) sobra -= f.weight * (1 / Math.Max(f.Espeed, 0.1));
 		double piso = 0.1;
 		return Math.Max(sobra, piso) / baseDoPasso;
 	}

@@ -30,7 +30,7 @@ namespace Jandirus.Server;
 /// `Handle` chama**:
 ///
 ///   C2S.Action      -> Comando.Leve / .Pesado    -> Atacar(npc, golpe)
-///   C2S.Guard       -> Comando.Guardar           -> npc.Combate.Guardar(bool)
+///   C2S.Guard       -> Comando.Guardar           -> ErguerAGuarda(npc, bool)
 ///   C2S.Carregar    -> Comando.Carregar          -> Carregar(npc, bool)
 ///   C2S.Transformar -> Comando.SubirForma/.Descer-> Transformar(npc, subir)
 ///   C2S.InputState  -> Comando.Rumo/.Olhar/.Correndo/
@@ -127,7 +127,25 @@ public partial class GameServer
 		// qualquer outra coisa -- pra a IA passar a ter contra-ataque perfeito 30 vezes por segundo,
 		// e ninguem ligaria o defeito a este arquivo.
 		// ==================================================================================
-		if (c.Guardar != npc.Combate.Bloqueando && !comKiNaMao) npc.Combate.Guardar(c.Guardar);
+		//
+		// ============================ E ELA SOBE PELA PORTA DO JOGADOR (2026-10-11) ============================
+		// `ErguerAGuarda` e a funcao que o `case Protocol.C2S.Guard` do `Handle` chama, e e nela que mora a recusa
+		// do `holdblock()`: sem braco nem perna inteiro nao ha o que erguer (`CombatMovement.dm:77-79`). No DM a IA
+		// ergue a guarda chamando o MESMO verb do ALT (`NPCAI.dm:191`, `:292` e `:527`) -- la a recusa sempre valeu
+		// pros dois.
+		//
+		// Aqui a chamada era o `Guardar` do `CombatState` direto, e enquanto a porta do jogador nao recusava nada
+		// dava na mesma. No dia em que ela ganhou a recusa, este atalho virou o defeito que o cabecalho deste
+		// arquivo descreve com todas as letras -- a copia da regra que discorda EM FAVOR DA IA: o NPC sem os quatro
+		// membros erguia uma guarda que o jogador nao ergue. Quem achou foi a varredura de fonte da `--kideponta`
+		// (familia 7, (a)): `Guardar` ficou sendo uma funcao que so o caminho da IA chamava.
+		//
+		// A TRANSICAO CONTINUA VALENDO, com uma diferenca: recusada, a guarda nao sobe e o `!=` segue verdadeiro --
+		// a chamada se repete ate o cerebro desistir (`Capacidades.TemComQueAparar`, relida a 1 Hz: no maximo um
+		// segundo). Cada repeticao e a recusa e mais nada (a frase so vai pro corpo que o DONO dirige), e o
+		// `ContraPronto` nao e rearmado por uma guarda que nao subiu.
+		// ====================================================================================================
+		if (c.Guardar != npc.Combate.Bloqueando && !comKiNaMao) ErguerAGuarda(npc, c.Guardar);
 
 		// --- 6. A MIRA, ANTES DE QUALQUER GOLPE ------------------------------
 		// `Mirar` e a MESMA funcao do `C2S.Alvo` (ver `GameServer.Combat.cs`), com a mesma validacao
@@ -440,6 +458,10 @@ public partial class GameServer
 		// guardado em `DebatendoSe`. Ver la, e o `LutaPraEscapar`.
 		&& !Agarrado(pl)
 		&& !PrensadoPelaGravidade(pl)
+		// SEM AS DUAS PERNAS, NO CHAO (`legsLost >= 2 && !flight`, `movement handler.dm:133` -- a linha logo abaixo
+		// do `gravParalysis` de cima). So o corpo que o DONO dirige: a IA nao passa pelo `unitimer` do DM, e um NPC
+		// sem pernas nao pode virar estatua. Ver `SemPernasNoChao`, `GameServer.Membros.cs`.
+		&& !SemPernasNoChao(pl)
 		// PLANTADO POR UMA TECNICA DO LOTE G12 (`usr.move = 0` da Death Ball e da Genkidama, `canmove = 0`
 		// das rajadas). Mesmo funil, pela mesma razao de tudo acima.
 		&& !PresoPeloG12(pl.Id)

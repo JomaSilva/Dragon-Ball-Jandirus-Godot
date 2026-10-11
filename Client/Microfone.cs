@@ -2,6 +2,7 @@ using Concentus;
 using Concentus.Enums;
 using Godot;
 using Jandirus.Core.Social;
+using Jandirus.Net;
 
 namespace Jandirus.Client;
 
@@ -326,8 +327,27 @@ public partial class Microfone : Node
 	/// <summary>A sequencia que este cliente carimba. O servidor nao a repassa -- ver `S2C.Voz`.</summary>
 	private ushort _seq;
 
+	/// <summary>
+	/// A sequencia dos quadros que saem pelo RADIO do scouter. Propria, e nao a <see cref="_seq"/>: cada caminho
+	/// conta so o que saiu por ele, e quem ouve um dos dois nao ve buraco quando a tecla do outro e solta.
+	/// </summary>
+	private ushort _seqDoRadio;
+
 	/// <summary>Estou transmitindo AGORA? E o que acende o sinal sobre a minha propria cabeca.</summary>
 	public static bool Falando { get; private set; }
+
+	/// <summary>
+	/// POR ONDE A MINHA VOZ ESTA SAINDO AGORA: pela proximidade, pelo radio do scouter, pelos dois ou por nenhum.
+	/// Decidido a cada quadro em <see cref="QuerFalar"/>; quem le e o <see cref="Mandar"/> (a rota de cada
+	/// quadro), o sinal sobre a minha cabeca e a faixa do radio.
+	/// </summary>
+	private static RadioDoScouter.Destino _porOnde;
+
+	/// <summary>Estou transmitindo pelo RADIO do scouter agora?</summary>
+	public static bool NoRadio => (_porOnde & RadioDoScouter.Destino.Radio) != 0;
+
+	/// <summary>Estou falando pela voz de PERTO agora?</summary>
+	public static bool PorPerto => (_porOnde & RadioDoScouter.Destino.Perto) != 0;
 
 	/// <summary>
 	/// ESPIA DE BANCADA -- nula em jogo. Recebe (bytes do quadro, amostras que entraram nele) de cada
@@ -365,7 +385,7 @@ public partial class Microfone : Node
 
 	public override void _Process(double delta)
 	{
-		bool quer = QuerFalar();
+		bool quer = QuerFalar(out _porOnde);
 
 		// A BANCADA NAO ABRE APARELHO NENHUM: ela nao passa pelo `Abrir`, entao nao ha
 		// `AudioStreamMicrophone`, nao ha dispositivo aberto e nao ha LED aceso na maquina de quem
@@ -385,7 +405,11 @@ public partial class Microfone : Node
 		if (_tocador != null) Drenar();
 	}
 
-	public override void _ExitTree() => Fechar();
+	public override void _ExitTree()
+	{
+		_porOnde = RadioDoScouter.Destino.Nenhum;
+		Fechar();
+	}
 
 	/// <summary>
 	/// A PERGUNTA INTEIRA: a opcao esta ligada, estou no mundo, nao estou escrevendo, e o gesto
@@ -399,13 +423,26 @@ public partial class Microfone : Node
 	/// com a letra V abria o microfone do jogador no meio da briga. Ver `Foco.AtalhosMudos` -- e repare
 	/// que este e um ponto de SONDA (`IsActionPressed`), o tipo que `SetInputAsHandled` nao alcanca:
 	/// aqui o bloqueio so pode ser no ponto de LEITURA.
+	///
+	/// ============================ E POR ONDE: A VOZ DE PERTO, O RADIO DO SCOUTER OU OS DOIS ============================
+	/// O gesto deixou de ser um so. A tecla de voz fala com quem esta perto; a do radio manda a voz pela
+	/// frequencia do scouter, e NAO pela proximidade; as duas seguradas mandam pelos dois caminhos. A regra
+	/// inteira (o microfone aberto, o scouter desligado) e a <see cref="RadioDoScouter.ParaOndeVai"/>, pura; daqui
+	/// saem so as duas teclas e o bit do scouter -- e as tres guardas de cima valem igual pras duas teclas.
+	/// ====================================================================================================================
 	/// </summary>
-	private static bool QuerFalar()
+	private static bool QuerFalar(out RadioDoScouter.Destino porOnde)
 	{
+		porOnde = RadioDoScouter.Destino.Nenhum;
 		if (!Boot.Config.VozLigada) return false;
-		if (GameClient.Instance is not { Connected: true, LocalId: not 0 }) return false;
+		if (GameClient.Instance is not { Connected: true, LocalId: not 0 } cli) return false;
 		if (Foco.AtalhosMudos) return false;
-		return !Boot.Config.VozApertarParaFalar || Godot.Input.IsActionPressed(Teclas.NomeNoMotor("falar_voz"));
+		porOnde = RadioDoScouter.ParaOndeVai(
+			Boot.Config.VozApertarParaFalar,
+			Godot.Input.IsActionPressed(Teclas.NomeNoMotor("falar_voz")),
+			Godot.Input.IsActionPressed(Teclas.NomeNoMotor("falar_radio")),
+			cli.Atributos.Tem(Protocol.Poder.Scouter));
+		return porOnde != RadioDoScouter.Destino.Nenhum;
 	}
 
 	// =====================================================================
@@ -575,6 +612,11 @@ public partial class Microfone : Node
 		if (n <= 2) return;
 
 		Espiao?.Invoke(n, VozLocal.AmostrasPorQuadro);
-		cli.MandarVoz(_seq++, _comprimido, n);
+
+		// UM QUADRO, CODIFICADO UMA VEZ, POR ATE DOIS CAMINHOS. O codificador tem memoria (cada quadro depende
+		// do anterior), entao nao ha "um Opus por rota": o mesmo pacote sai pela voz de perto, pelo radio do
+		// scouter ou pelos dois -- cada um com a propria sequencia.
+		if (PorPerto) cli.MandarVoz(_seq++, _comprimido, n);
+		if (NoRadio) cli.MandarVozDeRadio(_seqDoRadio++, _comprimido, n);
 	}
 }

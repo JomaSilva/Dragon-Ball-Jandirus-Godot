@@ -280,7 +280,8 @@ public sealed partial class GameServer
 	private void ControleDePoderG9(ServerPlayer pl, string arg)
 	{
 		if (!double.TryParse(arg, System.Globalization.NumberStyles.Float,
-							 System.Globalization.CultureInfo.InvariantCulture, out double pedido))
+							 System.Globalization.CultureInfo.InvariantCulture, out double pedido)
+			|| !NumeroFinito(pedido))   // `Power_Control:NaN` escrevia `powerMod = NaN`: ver `NumeroFinito`
 		{
 			Avisar(pl, $"seu poder esta em {pl.Ficha.powerMod * 100:0}%. Use Power_Control:<1 a 100>.");
 			return;

@@ -52,9 +52,11 @@ public partial class MenuJogo : CanvasLayer
 	/// nasce coberto, que e o defeito que este projeto mais repetiu.
 	/// ========================================================================================
 	/// </summary>
+	// O DONO DO FOCO sai do `DonoDoFoco` (MenuJogo.Janela.cs): com o menu DESTACADO numa janela do sistema o
+	// campo mora noutra tela, e so conta enquanto aquela janela tem o teclado.
 	public static bool Digitando =>
 		Instancia is { Visible: true } m
-		&& m.GetViewport()?.GuiGetFocusOwner() is LineEdit campo
+		&& m.DonoDoFoco() is LineEdit campo
 		&& m.IsAncestorOf(campo);
 
 	/// <summary>
@@ -110,16 +112,25 @@ public partial class MenuJogo : CanvasLayer
 			cli.CorpoAtualizado += AoCorpo;
 			cli.SkillsMudaram += AoSkills;
 			cli.CargosMudaram += AoCargos;
+			cli.FatosMudaram += AoPosse;
+			cli.KiDivinoMudou += AoPosse;   // o medidor do despertar e a maestria divina: o cartao da aba World (`MenuJogo.KiDivino.cs`)
+			cli.MochilaMudou += AoPosse;
+			cli.EsferasMudaram += AoPosse;
+			cli.SupersMudaram += AoPosse;
 			cli.ConhecidosMudaram += AoConhecidos;
+			cli.MestreEAlunosMudou += AoMestreEAlunos;   // o painel da aba Alunos/Mestre (`MenuJogo.Alunos.cs`)
 			cli.ContasMudaram += AoContas;
 			cli.OnlineMudou += AoOnline;
 			cli.LimpezaMudou += AoLimpeza;
 			cli.TechMudou += AoTech;
+			cli.CarteiraMudou += AoTech;   // zeni e recursos: a Stats e a Tech os escrevem (`GameClient.Economia.cs`)
 			cli.EstilosMudaram += AoEstilos;
 			cli.ChefesVistosMudaram += AoChefesVistos;
 			cli.AbsorvidosDoMajinMudaram += AoAbsorvidosDoMajin;
 			cli.CustomizadasMudaram += AoCustomizadas;
 			cli.ObrasMudaram += AoObras;
+			cli.MortosMudaram += AoMortos;
+			cli.NomesDosPlanetasMudaram += AoNomesDosPlanetas;
 			_atributos = cli.Atributos;
 			SincronizarLivro();
 		}
@@ -138,18 +149,28 @@ public partial class MenuJogo : CanvasLayer
 			cli.CorpoAtualizado -= AoCorpo;
 			cli.SkillsMudaram -= AoSkills;
 			cli.CargosMudaram -= AoCargos;
+			cli.FatosMudaram -= AoPosse;
+			cli.KiDivinoMudou -= AoPosse;
+			cli.MochilaMudou -= AoPosse;
+			cli.EsferasMudaram -= AoPosse;
+			cli.SupersMudaram -= AoPosse;
 			cli.ConhecidosMudaram -= AoConhecidos;
+			cli.MestreEAlunosMudou -= AoMestreEAlunos;
 			cli.ContasMudaram -= AoContas;
 			cli.OnlineMudou -= AoOnline;
 			cli.LimpezaMudou -= AoLimpeza;
 			cli.TechMudou -= AoTech;
+			cli.CarteiraMudou -= AoTech;
 			cli.EstilosMudaram -= AoEstilos;
 			cli.ChefesVistosMudaram -= AoChefesVistos;
 			cli.AbsorvidosDoMajinMudaram -= AoAbsorvidosDoMajin;
 			cli.CustomizadasMudaram -= AoCustomizadas;
 			cli.ObrasMudaram -= AoObras;
+			cli.MortosMudaram -= AoMortos;
+			cli.NomesDosPlanetasMudaram -= AoNomesDosPlanetas;
 		}
 		Verbos.Mudou -= AoMudarVerbos;
+		SoltarAJanela();   // as assinaturas de vida longa do arranjo (MenuJogo.Janela.cs)
 
 		if (Instancia == this) Instancia = null;
 		Aberto = false;
@@ -187,13 +208,36 @@ public partial class MenuJogo : CanvasLayer
 	private void AoCargos() { if (Visible) Redesenhar(); }
 
 	/// <summary>
+	/// O QUE EU TENHO MUDOU -- um fato chegou (`S2C.Fatos`: um convite na mesa, um aluno, um dominio), a
+	/// mochila mudou (o Dragon Radar), as esferas desta zona mudaram (nasceu ou caiu uma estatua) ou o
+	/// radar dourado falou. Cada um desses faz um botao NASCER ou SUMIR (`Verbos.Visivel`,
+	/// `BotaoDeVerbo`), e nenhum mexe na ficha: sem este ouvido o "Aceitar" de um convite recebido com o
+	/// menu aberto e o personagem parado so apareceria no proximo pacote de ficha -- que, parado, nao vem.
+	/// A assinatura de cada aba decide se ha o que refazer; isto so faz a pergunta.
+	/// </summary>
+	private void AoPosse() { if (Visible) Redesenhar(); }
+
+	/// <summary>
 	/// A LISTA DE CONHECIDOS MUDOU. So redesenha na aba People, como o `AoContas` faz com a de
-	/// admin: um pedido de amizade chegando no meio de uma luta nao pode remontar a aba de Stats
+	/// admin: um ponto de convivio chegando no meio de uma luta nao pode remontar a aba de Stats
 	/// que o jogador esta lendo.
 	/// </summary>
 	private void AoConhecidos() { if (Visible && _aba == "People") Redesenhar(); }
 	private void AoContas() { if (Visible && _aba == Verbos.Admin) Redesenhar(); }
 	private void AoOnline() { if (Visible && _aba == Verbos.Admin) Redesenhar(); }
+
+	/// <summary>
+	/// A LISTA DE PLANETAS MORTOS MUDOU. Neste menu quem a desenha e o cartao "Planetas destruidos" da aba
+	/// de admin -- mesma regra do `AoContas`: so remonta com ela aberta.
+	/// </summary>
+	private void AoMortos() { if (Visible && _aba == Verbos.Admin) Redesenhar(); }
+
+	/// <summary>
+	/// UM PLANETA FOI BATIZADO (ou o meu direito de batizar este chao mudou). Quem desenha isso sao a aba World
+	/// (a faixa do lugar e o cartao do nome) e a linha "Lugar" da Stats; a assinatura de cada uma decide se ha
+	/// o que refazer.
+	/// </summary>
+	private void AoNomesDosPlanetas() { if (Visible && (_aba == "World" || _aba == "Stats")) Redesenhar(); }
 
 	/// <summary>
 	/// A PREVIA DA LIMPEZA CHEGOU (ou foi consumida). Mesma regra do `AoContas`: so remonta na aba
@@ -303,18 +347,26 @@ public partial class MenuJogo : CanvasLayer
 
 		// ESC fecha o menu ANTES de o menu de pause ouvir a tecla (ele escuta em
 		// _UnhandledInput, que roda depois daqui)
-		if (Visible && k.Keycode == Key.Escape)
+		// DESTACADO, o ESC que cai na tela do JOGO nao e do menu (ele mora noutra janela, e nao tapa nada): segue
+		// pra pausa. O ESC da janela DELE chega pelo porteiro -- ver `TeclaNaJanela` (MenuJogo.Janela.cs).
+		if (Visible && !Destacado && k.Keycode == Key.Escape)
 		{
-			// ESC DESFAZ UMA CAMADA POR VEZ, da mais interna pra mais externa: primeiro a FICHA de
-			// skill (ela e um painel por cima da aba), depois a busca, depois a arvore aberta, e so
-			// entao o menu. Fechar tudo de uma vez faria quem entrou numa arvore por engano perder
-			// o painel inteiro pra corrigir o clique.
-			if (FecharFicha()) { }
-			else if (_busca.HasFocus() && _busca.Text.Length > 0) { _busca.Text = ""; Redesenhar(); }
-			else if (_aba == "Learning" && _arvoreAberta.Length > 0) { FecharArvore(); Redesenhar(); }
-			else Fechar();
+			DesfazerUmaCamada();
 			GetViewport().SetInputAsHandled();
 		}
+	}
+
+	/// <summary>
+	/// ESC DESFAZ UMA CAMADA POR VEZ, da mais interna pra mais externa: primeiro a FICHA de skill (ela e um painel
+	/// por cima da aba), depois a busca, depois a arvore aberta, e so entao o menu. Fechar tudo de uma vez faria
+	/// quem entrou numa arvore por engano perder o painel inteiro pra corrigir o clique.
+	/// </summary>
+	private void DesfazerUmaCamada()
+	{
+		if (FecharFicha()) { }
+		else if (_busca.HasFocus() && _busca.Text.Length > 0) { _busca.Text = ""; Redesenhar(); }
+		else if (_aba == "Learning" && _arvoreAberta.Length > 0) { FecharArvore(); Redesenhar(); }
+		else Fechar();
 	}
 
 	public void Alternar()
@@ -345,6 +397,7 @@ public partial class MenuJogo : CanvasLayer
 	{
 		Visible = true;
 		Aberto = true;
+		AbrirAJanela();   // destacado: e a janela do sistema que aparece (MenuJogo.Janela.cs)
 		Redesenhar();
 	}
 
@@ -354,6 +407,7 @@ public partial class MenuJogo : CanvasLayer
 		Visible = false;
 		Aberto = false;
 		_busca.ReleaseFocus();
+		FecharAJanela();
 	}
 
 	// =====================================================================
@@ -435,6 +489,10 @@ public partial class MenuJogo : CanvasLayer
 		var rodape = Tema.Rotulo("P fecha  ·  ESC fecha  ·  a busca vale pra todas as abas");
 		rodape.HorizontalAlignment = HorizontalAlignment.Center;
 		coluna.AddChild(rodape);
+
+		// O MENU COMO JANELA: a barra do titulo arrasta, as bordas redimensionam, o botao "Destacar" o leva pra
+		// uma janela do sistema. Por cima do que ja esta montado -- ver `MenuJogo.Janela.cs`.
+		MontarAJanela(topo);
 	}
 
 	// =====================================================================
@@ -447,6 +505,7 @@ public partial class MenuJogo : CanvasLayer
 	private List<string> Abas()
 	{
 		var abas = new List<string>(Fixas);
+		PorAAbaDoDiscipulado(abas);   // "Alunos" / "Mestre", logo depois da People: so pra quem tem o vinculo (`MenuJogo.Alunos.cs`)
 
 		if (_atributos.Tem(Protocol.Poder.Sense))
 			abas.Add(_atributos.Tem(Protocol.Poder.Scouter) ? "Scan" : "Sense");
@@ -529,6 +588,7 @@ public partial class MenuJogo : CanvasLayer
 		"Forms" => ExtraDaAssinaturaDeFormas(f),
 		"Ki" => ExtraDaAssinaturaDeKi(f),
 		"People" => ExtraDaAssinaturaDeGente(f),
+		AbaDeAlunos or AbaDeMestre => ExtraDaAssinaturaDeAlunos(f),
 		"World" => ExtraDaAssinaturaDeMundo(f),
 		"Cargos" => ExtraDaAssinaturaDeCargos(f),
 		"Nav" => ExtraDaAssinaturaDeNav(f),
@@ -558,7 +618,7 @@ public partial class MenuJogo : CanvasLayer
 					 + $"|{_atributos.GanhoDeTreino:0.##}|{_atributos.Gravidade:0.#}"
 					 + $"|{_atributos.GravEfetiva:0.#}|{_atributos.PesoMult:0.##}"
 					 + $"|{_atributos.ZonaMult:0.#}|{_atributos.Esmagamento:0.##}",
-			"Body" => $"{comum}|{string.Join(',', (c?.Corpo ?? []).Select(p => p.Nome + p.Vida + (p.Decepado ? "x" : "")))}",
+			"Body" => $"{comum}|{string.Join(',', CorpoDaAba().Select(p => p.Nome + p.Vida + (p.Decepado ? "x" : "")))}",
 			// AS DUAS ABAS DE SKILLS ASSINAM POR PECAS NOMEADAS (ver `AssinaturaDeSkills`). Foi uma
 			// variavel fora desta linha que produziu a gaveta que nao abria (o clique invertia a flag,
 			// a pagina era reaproveitada) -- e a bancada `--diagskills` tira uma peca por vez pra
@@ -620,19 +680,16 @@ public partial class MenuJogo : CanvasLayer
 			// de power-up, e nenhum dos outros campos desta linha se mexe quando isso acontece.
 			"Ki" => $"{comum}|{f.Ki:0}|{f.MaxKi:0}|{f.TetoKi:0.##}|{c?.SkillsAprendidas.Count}",
 			// PEOPLE PRECISA DE ASSINATURA DESDE QUE ELA TEM BOTAO. Ela caia no `_ => ""` (remonta
-			// sempre), que era inofensivo enquanto a aba era so texto -- agora ela tem os botoes de
-			// relacao e o aceitar/recusar do pedido de amizade, e uma pagina refeita 5x por segundo
-			// destroi o botao debaixo do dedo de quem clica. E a MESMA armadilha que o bloco do
-			// Admin acima descreve, e ela mordeu este projeto uma vez.
+			// sempre), que era inofensivo enquanto a aba era so texto -- agora cada cartao tem a regua
+			// de declaracoes, e uma pagina refeita 5x por segundo destroi o botao debaixo do dedo de quem
+			// clica. E a MESMA armadilha que o bloco do Admin acima descreve, e ela mordeu este projeto
+			// uma vez.
 			//
-			// Entram: os vinculos (que so mudam a cada 3 s, e devagar), o pedido pendente, e os
-			// NOMES visiveis -- que mudam quando alguem entra ou sai do campo de visao, e nao a
-			// cada quadro. Os pontos vao arredondados de proposito: 0,1 por passo remontaria a
-			// pagina toda vez sem nada visivel mudar.
-			"People" => $"{comum}|{c?.PedidoDeAmizade}|"
-					  + string.Join(',', (c?.Conhecidos ?? []).Select(
-							k => $"{k.Assinatura}{k.Amizade:0}{k.Familiaridade}{k.Relacao}{k.Rival}{k.Inimizade:0}"))
-					  + "|" + string.Join(',', World.Instancia?.NomesVisiveis() ?? []),
+			// ELA NAO PASSA PELO `comum`, pelo motivo escrito nas abas de skills: ele carrega `f.Estado`,
+			// cujos bits altos sao a direcao do corpo, e virar pra esquerda com a aba aberta remontaria a
+			// lista inteira debaixo do mouse. Daqui so entra a busca (que troca a pagina toda); o que a aba
+			// DESENHA -- os conhecidos e os nomes por perto -- mora no `ExtraDaAssinaturaDeGente`.
+			"People" => _busca.Text.Trim(),
 			// As abas fixas sem dado proprio (Equip, Other) sao texto parado: uma assinatura
 			// so ja basta pra elas nunca mais serem remontadas.
 			"Equip" or Verbos.Outros => comum,
@@ -662,8 +719,9 @@ public partial class MenuJogo : CanvasLayer
 	/// quando (e so quando) o texto na tela muda.
 	///
 	/// A FORCA DO CLIMA ENTRA COMO PORCENTAGEM INTEIRA e o relogio como decimo de hora, que e como
-	/// aparecem; o "quanto falta pra cheia" entra em segundos inteiros. O pior caso e uma remontagem
-	/// por segundo no ultimo minuto antes da lua cheia -- contra as cinco por segundo de antes.
+	/// aparecem; o "quanto falta pra cheia" entra como o TEXTO da linha (`CheiaNaAssinatura`): em minutos,
+	/// e em segundos so no ultimo minuto. O pior caso e uma remontagem por segundo nesse ultimo minuto --
+	/// ate 2026-10-11 ele entrava em segundos inteiros SEMPRE, e a pagina se refazia a cada segundo.
 	/// </summary>
 	private static string AssinaturaDoCeu()
 	{
@@ -671,7 +729,7 @@ public partial class MenuJogo : CanvasLayer
 											 ?? Jandirus.Core.World.RelogioDoPlaneta.Padrao;
 		string ceu = World.Instancia?.Ceu is { } c
 			? $"{c.Hora * 24:00.0}|{c.Fase}|{c.LuaNoCeu}|"
-			  + $"{Jandirus.Core.World.Ceu.SegundosAteACheia(r, World.Instancia.TempoDoMundo):0}"
+			  + CheiaNaAssinatura(Jandirus.Core.World.Ceu.SegundosAteACheia(r, World.Instancia.TempoDoMundo))
 			: "-";
 		string clima = World.Instancia?.TempoQueFaz is { } tq
 			? $"{tq.Ativo}|{tq.Tipo}|{tq.Forca:P0}|{tq.Forcado}"
@@ -792,6 +850,7 @@ public partial class MenuJogo : CanvasLayer
 			case "Body": Corpo(); break;
 			case "Ki": Ki(f); break;
 			case "People": Gente(); break;
+			case AbaDeAlunos or AbaDeMestre: AbaDoDiscipulado(); break;
 			case "World": Mundo(); break;
 			case "Learning": Aprendizado(); break;
 			case "Forms": AbaFormas(f); break;

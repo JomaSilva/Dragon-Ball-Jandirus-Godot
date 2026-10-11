@@ -133,10 +133,13 @@ public partial class PauseMenu : CanvasLayer
     ///      continua andando nas duas pontas. O que o menu fazia era **CEGAR**: um `ColorRect` preto de
     ///      alpha 0,72 na camada 20 por cima do quick time event, que mora na 5. A letra caia pra 28%
     ///      de brilho com o VBox de opcoes em cima dela.
-    ///   2. **E ATRAS DELE HA UM EXPLOIT DE VERDADE**: o botao "Desconectar" daqui. `Drop` chama
-    ///      `SoltarDoEmbate` -> `Terminar`, e o `Terminar` desiste em `if (!vivo) return;` ANTES do
-    ///      `GolpeDeSaida` -- ou seja, deslogar no meio de um ZanzoClash CANCELA a pancada que fecha o
-    ///      embate. Este menu era a unica porta de jogo pra chegar nesse botao.
+    ///   2. **E ATRAS DELE HA UM EXPLOIT DE VERDADE**: o botao "Desconectar" daqui. Deslogar no meio de um
+    ///      ZanzoClash CANCELA a pancada que fecha o embate: o `Drop` chama `SairDoEmbateAoSairDoJogo`,
+    ///      que desfaz o embate SEM vencedor (o `Terminar` com `semVencedor`, que sai antes do
+    ///      `GolpeDeSaida`) -- como no original, onde o laco para quando o rival some. Este menu era a
+    ///      unica porta de jogo pra chegar nesse botao. (CORRIGIDO em 2026-10-11: ate ali esta frase
+    ///      dizia isto e o codigo fazia o contrario -- o `if (!vivo) return;` nao disparava no logout, e
+    ///      o golpe de saida acontecia. MEDIDO na `--saidaembateteste`; ver `GameServer.SaidaDoEmbate.cs`.)
     ///   3. **O CUSTO TEM NUMERO E E PEQUENO.** O silencio se vence sozinho (ver
     ///      `Foco.AtalhosMudos`): ZanzoClash dura 3,0 a 6,3 s e a colisao de ki 15 s, mais 2 s de folga
     ///      -- o PIOR caso de tela de opcoes adiada e 17 s, e so na colisao de ki. Alt+F4 e fechar a
@@ -227,6 +230,7 @@ public partial class PauseMenu : CanvasLayer
             : "";
 
         RecarregarResolucoes();
+        AtualizarAInterface();   // a secao "Interface" mostra o arranjo de AGORA (PauseMenu.Interface.cs)
         AjustarAltura();
     }
 
@@ -295,6 +299,7 @@ public partial class PauseMenu : CanvasLayer
         };
         AddChild(fundo);
         _painel = fundo;
+        fundo.AddChild(SeloDeVersao.Novo());   // a versao do jogo na quina de baixo do veu -- o mesmo selo da primeira tela
 
         var centro = new CenterContainer
         {
@@ -418,6 +423,22 @@ public partial class PauseMenu : CanvasLayer
         };
         caixa.AddChild(Linha("Grafico", grafico));
 
+        // A ABERTURA DO JOGO (o titulo que cai na tela ao abrir -- ver `AberturaDoJogo`). So grava: ela e do
+        // arranque, e vale na proxima vez que o jogo abrir. Por isso nao passa pelo `Aplicar`, que mexe na janela.
+        var abertura = new CheckBox
+        {
+            Text = "abertura animada ao abrir o jogo",
+            ButtonPressed = _cfg.AberturaAnimada,
+            TooltipText = "o título do jogo cai na tela e sobe pro alto do menu; qualquer tecla pula",
+        };
+        abertura.Toggled += on => { _cfg.AberturaAnimada = on; _cfg.Gravar(); };
+        caixa.AddChild(abertura);
+
+        // --- interface ---
+        // O TAMANHO DE CADA PECA DA TELA (o menu P, o chat, os dois paineis do topo), o menu numa janela separada
+        // e o "Restaurar a interface padrao". Mora num arquivo so dela: ver `PauseMenu.Interface.cs`.
+        MontarAInterface(caixa);
+
         // --- teclas ---
         //
         // A TELA E OUTRA, e o botao daqui e a unica porta dela. Ela nao cabe nesta caixa: sao 27
@@ -477,7 +498,7 @@ public partial class PauseMenu : CanvasLayer
 
         var vozTecla = new Label();
         void Rotular() => vozTecla.Text =
-            $"tecla: {Teclas.NomeDaAcao("falar_voz")}  (muda em \"Configurar teclas\")";
+            $"tecla: {Teclas.NomeDaAcao("falar_voz")}  ·  rádio do scouter: {Teclas.NomeDaAcao("falar_radio")}  (mudam em \"Configurar teclas\")";
         Rotular();
         // A TELA DE TECLAS PODE MUDAR ISTO ENQUANTO ESTA CAIXA ESTA ABERTA (as duas convivem no
         // painel de pausa). Metodo NOMEADO e `-=` no `_ExitTree`: lambda nao se cancela, e `Mudou` e

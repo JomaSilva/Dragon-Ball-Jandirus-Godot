@@ -291,8 +291,17 @@ public static class DmEffectorScanner
 		var defs = new Dictionary<string, EffectorDef>(StringComparer.OrdinalIgnoreCase);
 		var props = new Dictionary<string, (int barreira, int maxnivel)>(StringComparer.OrdinalIgnoreCase);
 
-		foreach (string arq in Directory.GetFiles(pastaCode, "*.dm", SearchOption.AllDirectories))
+		// so o que o `.dme` inclui, como o `DmSkillScanner.Scan` (ver `DmFonte.Arquivos`)
+		foreach (string arq in DmFonte.Arquivos(pastaCode))
 			Ler(arq, pastaCode, defs, props);
+
+		// AS SKILLS QUE O DONO TIROU DO JOGO nao tem tique nem barreira: ver `SkillsAposentadas`, e o
+		// corte irmao no fim do `DmSkillScanner.Scan`.
+		foreach (Jandirus.Core.Skills.SkillsAposentadas.Aposentada fora in Jandirus.Core.Skills.SkillsAposentadas.Todas)
+		{
+			defs.Remove(fora.Path);
+			props.Remove(fora.Path);
+		}
 
 		// as propriedades sao lidas na MESMA passada, mas podem aparecer DEPOIS do effector: na
 		// forma de topo (`/datum/skill/x/effector()`) o bloco da skill fica linhas acima, e na

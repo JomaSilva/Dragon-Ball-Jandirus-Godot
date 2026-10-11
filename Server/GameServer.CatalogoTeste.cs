@@ -114,6 +114,7 @@ public partial class GameServer
 			ARextracaoNaoQuebrouNada();
 			CoberturaESemContradicao();
 			ORelogNaoHerda();
+			AAposentadaSaiu();
 		}
 		catch (Exception e)
 		{
@@ -1126,9 +1127,24 @@ public partial class GameServer
 		// TEM que aparecer aqui como perda explicada -- se parar de aparecer, ou o marco mudou ou a
 		// perda deixou de ser detectada, e nos dois casos alguem precisa olhar.
 		// ========================================================================================================
-		AfirmarCat("a unica perda desta re-extracao e a arvore comentada, e ela esta EXPLICADA",
-				   d.Explicadas.Count == 1
-				   && d.Explicadas[0].Contains("Focused", StringComparison.Ordinal),
+		//
+		// (A SEGUNDA nao e da extracao: e a `Saiyan Power`, que o dono tirou do jogo em 2026-10-10. Ela
+		// passa pela mesma tabela -- sumir do catalogo e perda ate alguem dizer de quem e -- e a familia 8
+		// cobra o resto: o reembolso de quem a tinha.)
+		//
+		// (A TERCEIRA e de 2026-10-11: as duas skills e a arvore do sistema VELHO de ataques customizados, que
+		// vinham de `.dm` que o `.dme` nao inclui -- o jogo original nao as compila. Sairam quando o extrator
+		// passou a ler so o que o compilador le; a familia 8 cobra o livro de quem tivesse uma.)
+		//
+		// SAO SEIS LINHAS DE TRES DONOS: a arvore comentada so tinha regra de nivel (uma linha), a skill
+		// aposentada sumiu do catalogo E perdeu as regras de nivel (duas), e as tres do arquivo fora do `.dme`
+		// so sumiram do catalogo (tres: nenhuma tinha regra de nivel).
+		AfirmarCat("as perdas contra o marco tem TRES donos e nenhum outro: a arvore comentada, a skill que o dono aposentou e as tres do arquivo fora do .dme",
+				   d.Explicadas.Count == 6
+				   && d.Explicadas.Count(e => e.Contains("Focused", StringComparison.Ordinal)) == 1
+				   && d.Explicadas.Count(e => e.Contains("Saiyan_Power", StringComparison.Ordinal)) == 2
+				   && d.Explicadas.Count(e => e.Contains("/CustomAttacks/ki/", StringComparison.Ordinal)) == 2
+				   && d.Explicadas.Count(e => e.Contains("/tree/Custom_Attacks", StringComparison.Ordinal)) == 1,
 				   string.Join(" | ", d.Explicadas));
 
 		// ...e a re-extracao TEM que ter trazido alguma coisa: um marco identico ao hoje nao prova
@@ -1285,5 +1301,114 @@ public partial class GameServer
 		}
 
 		LimparTudoDoCatalogo();
+	}
+
+	// =====================================================================
+	// 8) A SKILL QUE O DONO TIROU DO JOGO
+	// =====================================================================
+	/// <summary>
+	/// *"remova essa skill, pq ela n tem mais funçao no jogo, pode deletar ela completamente"* (dono,
+	/// 2026-10-10, sobre a `Saiyan Power`). O que "completamente" quer dizer, em quatro lugares:
+	///
+	///   1. o CATALOGO que o jogo carrega nao a tem, e nenhuma arvore a lista -- e isto e lido do
+	///      `skills.json` no DISCO, entao uma re-extracao que a trouxesse de volta reprova aqui;
+	///   2. ela nao tem regra de nivel (`niveis.json`);
+	///   3. o SAVE de quem a tinha: ela sai do livro e o marco volta -- so pra quem a COMPROU;
+	///   4. o efeito dela saiu do servidor (cobrado na `--g11teste`, familia 9).
+	///
+	/// O DEFEITO INJETADO (`SkillsAposentadas.NaoReembolsaDeTeste`) e o reembolso que nao acontece: sem
+	/// ele, tirar uma skill do jogo tiraria um marco de cada personagem que a escolheu, calado.
+	/// </summary>
+	private void AAposentadaSaiu()
+	{
+		GD.Print("[catalogo] -- 8) A SKILL QUE O DONO TIROU DO JOGO (Saiyan Power)");
+		if (_skills == null) { AfirmarCat("ha catalogo pra conferir", false); return; }
+
+		const string path = "/datum/skill/saiyan/Saiyan_Power";
+		const string dura = "/datum/skill/general/Hardened_Body", vontade = "/datum/skill/general/Willed";
+
+		AfirmarCat("a Saiyan Power esta na lista das aposentadas, com o custo que tinha (1 marco)",
+				   SkillsAposentadas.Saiu(path) && SkillsAposentadas.Todas.Any(a => a.Path == path && a.Custo == 1));
+		var quemCita = _skills.Todas.Where(s => s.Galhos.Contains(path, StringComparer.OrdinalIgnoreCase)
+												|| s.PreReqs.Contains(path, StringComparer.OrdinalIgnoreCase))
+									.Select(s => s.Path).ToList();
+		AfirmarCat("ela NAO esta no catalogo que o jogo carrega, e nenhuma arvore nem pre-requisito a cita",
+				   _skills.Get(path) == null && quemCita.Count == 0, string.Join(" | ", quemCita));
+		AfirmarCat("...e nao tem regra de nivel", RegrasDeNivel.Get(path) == null);
+		AfirmarCat("as vizinhas dela na arvore dos Saiyajins continuam la (a arvore perdeu UM galho, e nao a lista)",
+				   _skills.Get(dura) != null && _skills.Get(vontade) != null
+				   && _skills.Get("/datum/skill/tree/saiyan/SaiyanRacial") is { } arv
+				   && arv.Galhos.Contains(dura, StringComparer.OrdinalIgnoreCase) && arv.Galhos.Length == 4,
+				   $"{_skills.Get("/datum/skill/tree/saiyan/SaiyanRacial")?.Galhos.Length} galho(s)");
+
+		// O SAVE DE QUEM A COMPROU: tres marcos ganhos, nenhum livre, tres skills -- uma delas a aposentada.
+		ServerPlayer pl = Forjar("cat: o Saiyajin de save antigo", CorredorLivre(2), bp: 1_000);
+		CharacterSave Antigo() => new()
+		{
+			Skills = [dura, vontade, path],
+			MarcosTotais = 3,
+			MarcosLivres = 0,
+			Niveis = new NivelSave { Skills = { [path] = [2, 5] } },
+		};
+
+		PrepararSkills(pl, Antigo());
+		AfirmarCat("no login, quem a COMPROU a perde do livro e recebe o marco de volta (3 ganhos, 0 livres -> 1 livre)",
+				   !pl.Livro.Sabe(path) && pl.Livro.Sabe(dura) && pl.Livro.Sabe(vontade)
+				   && pl.Livro.MarcosLivres == 1 && pl.Livro.MarcosTotais == 3,
+				   $"sabe {pl.Livro.Sabe(path)}, livres {pl.Livro.MarcosLivres}, totais {pl.Livro.MarcosTotais}");
+
+		List<string> falas = Ouvir(() => AvisarDasAposentadas(pl));
+		AfirmarCat("...e e AVISADO, com o nome da skill e o marco que voltou -- uma vez so",
+				   Disse(falas, "Saiyan Power") && Disse(falas, "1 marco") && pl.SkillsQueSairam.Count == 0
+				   && Ouvir(() => AvisarDasAposentadas(pl)).Count == 0, string.Join(" | ", falas));
+
+		pl.Niveis.DoSave(Antigo().Niveis);
+		AfirmarCat("o nivel dela nao volta do save (sem regra, o progresso nem carrega)",
+				   pl.Niveis.Nivel(path) == 0 && pl.Niveis.Exp(path) == 0);
+
+		// A COPIA ENSINADA nao custou marco: sai do livro, e nao devolve nada.
+		CharacterSave ensinada = Antigo();
+		ensinada.SkillsEnsinadas = [path];
+		ensinada.MarcosLivres = 1;
+		PrepararSkills(pl, ensinada);
+		AfirmarCat("quem a tinha por ENSINO tambem a perde, e nao ganha marco por isso (1 livre continua 1)",
+				   !pl.Livro.Sabe(path) && !pl.Livro.FoiEnsinada(path) && pl.Livro.MarcosLivres == 1,
+				   $"livres {pl.Livro.MarcosLivres}");
+
+		// QUEM NUNCA A TEVE nao e tocado.
+		CharacterSave semEla = Antigo();
+		semEla.Skills = [dura];
+		semEla.MarcosLivres = 2;
+		PrepararSkills(pl, semEla);
+		AfirmarCat("quem nunca a teve nao e tocado (2 livres continuam 2, nada pra avisar)",
+				   pl.Livro.MarcosLivres == 2 && pl.SkillsQueSairam.Count == 0);
+
+		// AS TRES DO ARQUIVO FORA DO `.dme` (dono, 2026-10-11: *"pode tirar"*): duas skills e uma arvore do sistema
+		// VELHO de ataques customizados, que o jogo original nao compila. O catalogo que o jogo carrega nao as tem;
+		// as duas folhas estao na lista das aposentadas, e o save que tiver uma (so por admin: nenhuma arvore as
+		// oferecia) perde o path orfao e recebe o marco.
+		const string raio = "/datum/skill/CustomAttacks/ki/beam/Beam", bola = "/datum/skill/CustomAttacks/ki/blast/Blast",
+					 arvoreVelha = "/datum/skill/tree/Custom_Attacks";
+		AfirmarCat("as tres do sistema VELHO de ataques customizados (arquivo fora do .dme) NAO estao no catalogo, nada as cita, e as duas folhas estao entre as aposentadas",
+				   _skills.Get(raio) == null && _skills.Get(bola) == null && _skills.Get(arvoreVelha) == null
+				   && !_skills.Todas.Any(s => s.Galhos.Concat(s.PreReqs).Any(p => p is raio or bola or arvoreVelha))
+				   && SkillsAposentadas.Saiu(raio) && SkillsAposentadas.Saiu(bola));
+		CharacterSave comAsDuas = Antigo();
+		comAsDuas.Skills = [dura, raio, bola];
+		PrepararSkills(pl, comAsDuas);
+		List<string> falasDasDuas = Ouvir(() => AvisarDasAposentadas(pl));
+		AfirmarCat("quem as tivesse no livro as perde no login, com 1 marco de volta por cada (0 livres -> 2) e o recado das duas",
+				   !pl.Livro.Sabe(raio) && !pl.Livro.Sabe(bola) && pl.Livro.Sabe(dura) && pl.Livro.MarcosLivres == 2
+				   && Disse(falasDasDuas, "Beam") && Disse(falasDasDuas, "Blast"),
+				   $"livres {pl.Livro.MarcosLivres}; {string.Join(" | ", falasDasDuas)}");
+
+		try
+		{
+			SkillsAposentadas.NaoReembolsaDeTeste = true;
+			PrepararSkills(pl, Antigo());
+			AfirmarCat("(defeito injetado: a skill sai e o marco nao volta) a mesma regua REPROVA -- quem a comprou fica com 0 livres",
+					   !pl.Livro.Sabe(path) && pl.Livro.MarcosLivres == 0, $"livres {pl.Livro.MarcosLivres}");
+		}
+		finally { SkillsAposentadas.NaoReembolsaDeTeste = false; }
 	}
 }

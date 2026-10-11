@@ -96,6 +96,12 @@ public partial class Zanzoken : Node2D
 	/// A posicao vem de fora de proposito: o relato do servidor chega um RTT depois do golpe, e ate
 	/// la o corpo ja investiu. Fotografar "onde ele esta" poria a miragem em cima do alvo.
 	/// </summary>
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagcorrastro`): a miragem volta a nascer com a folha crua de cada camada --
+	/// o estado de antes de 2026-10-10. Lido pela propria <see cref="Deixar"/>.
+	/// </summary>
+	public static bool MiragemSemACorDoCorpoDeTeste;
+
 	public static void Deixar(Node palco, Node2D corpo, Vector2? onde = null,
 							  EstiloDeVulto estilo = EstiloDeVulto.Miragem)
 	{
@@ -141,8 +147,13 @@ public partial class Zanzoken : Node2D
 		var tamanho = new Vector2(Mathf.Max(corpo2.Size.X, 1), Mathf.Max(corpo2.Size.Y, 1));
 
 		// O SHADER VAI EM CADA CAMADA da foto. A `Fotografar` ja poe um material com a TINTA de
-		// cada uma; aqui ele e trocado pelo da miragem -- a tinta do cabelo de Super Saiyajin se
-		// perde, e vale a pena: o que importa no vulto e a silhueta se desfazendo.
+		// cada uma; aqui ele e trocado pelo da miragem -- E A TINTA VAI JUNTO, com o modulate da camada.
+		//
+		// Aqui estava escrito que a tinta "se perde, e vale a pena: o que importa no vulto e a silhueta
+		// se desfazendo". Vale pra o cabelo de um Super Saiyajin; nao vale pra um Majin azul, cuja miragem
+		// nascia no ROSA do arquivo -- outro personagem, e nao a silhueta dele. E a mesma causa do borrao
+		// da corrida (item 6 do playtest de 2026-10-10: *"veja se outros elementos visuais leem a cor base
+		// do mesmo jeito"*): um material que entra no lugar do que pinta o corpo e nao leva a cor.
 		foreach (Node n in foto.GetChildren())
 		{
 			if (n is not Sprite2D s) continue;
@@ -152,6 +163,16 @@ public partial class Zanzoken : Node2D
 			m.SetShaderParameter("quadro_max", max);
 			m.SetShaderParameter("corpo_origem", corpo2.Position - s.Position);
 			m.SetShaderParameter("corpo_tamanho", tamanho);
+			if (!MiragemSemACorDoCorpoDeTeste)
+			{
+				if (CharacterVisual.TintaDoMaterial(s.Material) is { } tinta)
+				{
+					m.SetShaderParameter("tinta", tinta.Cor);
+					m.SetShaderParameter("tinta_modo", tinta.Modo);
+				}
+				Color node = s.Modulate * s.SelfModulate;
+				if (node != Colors.White) m.SetShaderParameter("brilho", new Vector3(node.R, node.G, node.B));
+			}
 			s.Material = m;
 			v._mats.Add(m);
 		}

@@ -97,6 +97,49 @@ public static class Interacoes
 	/// </summary>
 	public const float Alcance = 64f;
 
+	// =====================================================================
+	// PAGAR EM ZENI OU EM RECURSOS (dono, 2026-10-10)
+	//
+	// *"as melhorias da maquina de gravidade, do regenerador e da nave; a conversao em androide; a estatua
+	// SUPREMA. mude pra aceitarem resource, o enma mantenha so zeni"*. O VERBO DE CADA UM CONTINUA O MESMO; a
+	// moeda vai no argumento (`Economia.Recurso.PedidoPago`), e sem ela o servidor cobra em zeni -- o que os
+	// clientes de antes mandam. Dois desenhos, os dois que ja existiam:
+	//
+	//   * a maquina que tem "Melhorar..." (gravidade, regenerador) termina onde a Drill termina: escolhida a
+	//     melhoria, a pagina seguinte e "pagar com zeni" / "pagar com recursos". Os precos (que sao do estado
+	//     da maquina) chegam pelo chat quando a lista abre -- ver `PerguntaAoAbrir`;
+	//   * a acao que e um botao so (a velocidade da nave, recondicionar o foguete) ganha a GEMEA ao lado,
+	//     "(com recursos)" -- o par "Construir" / "Com recursos" da aba Tech. A nave montada nao tem submenu.
+	//
+	// O Enma (`Enma_Daioh`) NAO esta nesta lista: ele continua so em zeni.
+	// =====================================================================
+	/// <summary>Uma melhoria da lista de "Melhorar...": abre a pagina das duas formas de paga-la.</summary>
+	private static Acao EscolherComoPagar(string rotulo, string id, string pagina, string dica) =>
+		new(rotulo, id, pagina, dica, Forma.Submenu);
+
+	/// <summary>
+	/// AS DUAS FORMAS DE PAGAR UMA MELHORIA. O rotulo repete o nome dela: a pagina so tem estes dois botoes, e
+	/// sem o nome nao da pra saber, olhando pra ela, o que se esta comprando.
+	/// </summary>
+	private static Acao[] DuasFormasDePagar(string nome, string verbo, string oQue) =>
+	[
+		new Acao($"{nome}: pagar com zeni", verbo, Economia.Recurso.PedidoPago(oQue, Economia.Moeda.Zeni),
+				 "pelo preço em zeni -- o chat mostrou os dois quando a lista abriu"),
+		new Acao($"{nome}: pagar com recursos", verbo, Economia.Recurso.PedidoPago(oQue, Economia.Moeda.Recursos),
+				 "a mesma melhoria, pelo dobro em recursos"),
+	];
+
+	private static readonly Acao MelhorarVelocidade =
+		new("Melhorar velocidade", "nave_melhorar", "", "cada degrau custa 1000 x a velocidade atual, em zeni");
+	private static readonly Acao MelhorarVelocidadeComRecursos =
+		new("Melhorar velocidade (com recursos)", "nave_melhorar", Economia.Recurso.PalavraDeRecursos,
+			"o mesmo degrau, por 2000 x a velocidade atual em recursos");
+	private static readonly Acao Recondicionar =
+		new("Recondicionar", "nave_recondicionar", "", "um foguete usado só voa de novo pagando 100.000 zeni");
+	private static readonly Acao RecondicionarComRecursos =
+		new("Recondicionar (com recursos)", "nave_recondicionar", Economia.Recurso.PalavraDeRecursos,
+			"o mesmo conserto, por 200.000 recursos");
+
 	/// <summary>
 	/// AS ACOES DE UM TIPO DE OBRA. O `tipo` e o id do catalogo, que e a folha do typepath do DM
 	/// ("Bank", "Research_Station", "AppleTree").
@@ -130,9 +173,44 @@ public static class Interacoes
 			new Acao("Voltar à vida (1.000.000 de zeni)", "enma_reviver", "", "o corpo volta fraco: BP a 25% por uma hora"),
 		],
 
+		// ============================ BILLS E WHIS, PARADOS NA CASA DELES ============================
+		// O dono (2026-10-11): "ele e o whis vao estar parados como um objeto q da pra interagir, ao interagir vai
+		// abrir um menu de opcoes". Eles nao sao obras -- sao CORPOS, e o servidor aponta a quem esta ao alcance
+		// qual dos tipos vale (`S2C.DivinoPerto`): o convite, ou a saida pra quem ja esta lutando com eles.
+		// Nenhum rotulo diz numero de poder. Ver `Npc.BillsEWhis` e `GameServer.BillsTreino.cs`.
+		Npc.BillsEWhis.TipoWhis =>
+		[
+			new Acao("Treinar com o Whis", Npc.BillsEWhis.VerboTreinarComWhis, "",
+					 "uma luta de treino, um contra um: ninguém morre, e ele acompanha o seu poder -- sempre à frente"),
+		],
+		Npc.BillsEWhis.TipoBills =>
+		[
+			new Acao("Treinar com o Bills", Npc.BillsEWhis.VerboTreinarComBills, "",
+					 "uma luta de treino, um contra um: ninguém morre, e ele acompanha o seu poder -- sempre à frente"),
+			new Acao("Desafiar pelo título", Npc.BillsEWhis.VerboDesafiar, "",
+					 "o duelo formal pelo título de Deus da Destruição: ele luta a sério, e nocaute decide"),
+		],
+		Npc.BillsEWhis.TipoEmTreino =>
+		[
+			new Acao("Parar o treino", Npc.BillsEWhis.VerboParar, "", "encerra a luta de treino"),
+		],
+		Npc.BillsEWhis.TipoEmDesafio =>
+		[
+			new Acao("Desistir do desafio", Npc.BillsEWhis.VerboParar, "", "entrega o duelo: o título fica com ele"),
+		],
+
 		"AppleTree" =>
 		[
 			new Acao("Colher uma maçã", "colher", "", "a árvore leva um tempo pra repor"),
+		],
+
+		// A ROCHA DE MINERIO (dono, 2026-10-10): *"ao interagir com eles vc pega uma quantidade aleatoria de
+		// recursos"*. Ela nao e uma obra -- sao centenas por planeta, e o servidor as guarda a parte
+		// (`GameServer.Rochas.cs`) --, mas a tecla E a enxerga por esta mesma tabela.
+		Jandirus.Core.Economia.RochaDeMinerio.Tipo =>
+		[
+			new Acao("Quebrar e coletar", Jandirus.Core.Economia.RochaDeMinerio.Verbo, "",
+					 "a rocha se desfaz e os recursos dela vão pra você -- o planeta dá o que ainda tem"),
 		],
 
 		// ============================ A MAQUINA DE GRAVIDADE ============================
@@ -147,7 +225,7 @@ public static class Interacoes
 		[
 			new Acao("Ajustar gravidade", "grav_definir", "", "afeta todo mundo dentro do campo",
 					 Forma.Numero, 0, TetoDeGravidade),
-			new Acao("Melhorar...", "grav_upgrades", "upgrades", "gasta zeni pra empurrar os limites",
+			new Acao("Melhorar...", "grav_upgrades", "upgrades", "gasta zeni ou recursos pra empurrar os limites",
 					 Forma.Submenu),
 			new Acao("Ver estado", "grav_info", "", "força, bateria, alcance e a área que o campo cobre agora"),
 			// O PARAFUSO FALTAVA NESTE MENU, e a maquina nao liga solta (`Gravity.dm:281-283`, "The machine
@@ -161,15 +239,24 @@ public static class Interacoes
 		//
 		// OS PRECOS NAO ESTAO AQUI de proposito: cada um depende do estado ATUAL da maquina
 		// (`5*Max`, `50*MaxEnergy`, `500*(Range+1)`), e o catalogo nao tem esse estado. Quem escreve
-		// o preco na tela e o servidor, no `grav_info`; aqui ficam so os nomes e o que cada um faz.
+		// o preco na tela e o servidor, no `grav_info` (nas duas moedas); aqui ficam so os nomes e o que
+		// cada um faz.
+		//
+		// CADA MELHORIA ABRE AS DUAS FORMAS DE PAGAR (dono, 2026-10-10: *"mude pra aceitarem resource"*): o
+		// fim do caminho e o mesmo da Drill -- "Pagar com zeni" / "Pagar com recursos". Ver `DuasFormasDePagar`.
 		"Gravity/upgrades" =>
 		[
-			new Acao("Força do campo", "grav_up", "forca", "multiplica por 1,2 o teto desta máquina"),
-			new Acao("Bateria", "grav_up", "bateria", "dobra a carga e enche na hora"),
-			new Acao("Alcance", "grav_up", "alcance", "o campo cresce um tile de lado (o teto é 10) -- sem alcance ela não pega ninguém"),
-			new Acao("Estabilização", "grav_up", "estabilidade", "uma vez só, e cara"),
-			new Acao("Regeneração de nanites", "grav_up", "nanites", "recarrega sozinha quando desligada"),
+			EscolherComoPagar("Força do campo", "grav_como", "upgrades/forca", "multiplica por 1,2 o teto desta máquina"),
+			EscolherComoPagar("Bateria", "grav_como", "upgrades/bateria", "dobra a carga e enche na hora"),
+			EscolherComoPagar("Alcance", "grav_como", "upgrades/alcance", "o campo cresce um tile de lado (o teto é 10) -- sem alcance ela não pega ninguém"),
+			EscolherComoPagar("Estabilização", "grav_como", "upgrades/estabilidade", "uma vez só, e cara"),
+			EscolherComoPagar("Regeneração de nanites", "grav_como", "upgrades/nanites", "recarrega sozinha quando desligada"),
 		],
+		"Gravity/upgrades/forca" => DuasFormasDePagar("Força do campo", "grav_up", "forca"),
+		"Gravity/upgrades/bateria" => DuasFormasDePagar("Bateria", "grav_up", "bateria"),
+		"Gravity/upgrades/alcance" => DuasFormasDePagar("Alcance", "grav_up", "alcance"),
+		"Gravity/upgrades/estabilidade" => DuasFormasDePagar("Estabilização", "grav_up", "estabilidade"),
+		"Gravity/upgrades/nanites" => DuasFormasDePagar("Regeneração de nanites", "grav_up", "nanites"),
 
 		// ============================ O MAINFRAME E OS DOIS LABORATORIOS ============================
 		// No original sao TRES objetos: o mainframe vira um `DNALab/Android` ou um `DNALab/Bio` na
@@ -197,10 +284,17 @@ public static class Interacoes
 			new Acao("Bio-Android Lab", "lab_bio", "", "cria um bio-androide a partir de DNAs"),
 		],
 
+		// CADA CONVERSAO NAS DUAS MOEDAS (dono, 2026-10-10): o preco e fixo, entao ele esta escrito no botao
+		// -- em zeni o de sempre (`GameServer.CustoAndroideAbsorcao`/`Infinito`), em recursos o dobro. A
+		// `--recursosteste` cobra que os numeros daqui sao os que o servidor tira.
 		"Android_Creation_Mainframe/androide" =>
 		[
-			new Acao("Androide de Absorção", "androide_absorcao", "", "suga ataques de ki"),
-			new Acao("Androide de Energia Infinita", "androide_infinito", "", "nunca cansa nem come"),
+			new Acao("Androide de Absorção (1.000.000 zeni)", "androide_absorcao", "", "suga ataques de ki"),
+			new Acao("Androide de Absorção (2.000.000 recursos)", "androide_absorcao", Economia.Recurso.PalavraDeRecursos,
+					 "a mesma conversão, paga em recursos (o dobro)"),
+			new Acao("Androide de Energia Infinita (2.000.000 zeni)", "androide_infinito", "", "nunca cansa nem come"),
+			new Acao("Androide de Energia Infinita (4.000.000 recursos)", "androide_infinito", Economia.Recurso.PalavraDeRecursos,
+					 "a mesma conversão, paga em recursos (o dobro)"),
 		],
 
 		// ============================ O REGENERADOR ============================
@@ -218,7 +312,7 @@ public static class Interacoes
 		"Regenerator" =>
 		[
 			new Acao("Ligar / desligar", "regen_ligar", "", "ligado, cura quem estiver no mesmo tile dele"),
-			new Acao("Melhorar...", "regen_upgrades", "upgrades", "bateria, velocidade, ferimentos e nanites",
+			new Acao("Melhorar...", "regen_upgrades", "upgrades", "bateria, velocidade, ferimentos e nanites -- em zeni ou em recursos",
 					 Forma.Submenu),
 			new Acao("Ver estado", "regen_info", "", "ligado ou não, bateria, a cura de cada pulso e os preços"),
 			new Acao("Aparafusar / soltar", "aparafusar", "", "ele só liga aparafusado"),
@@ -226,13 +320,47 @@ public static class Interacoes
 
 		// A lista do `verb/Upgrade` (`Tier 1.5.dm:159-218`), menos a `Durability` -- ver o cabecalho de
 		// `Regenerador`: la ela custa zeni e nao muda nada.
+		// Cada uma abre as duas formas de pagar, como as da maquina de gravidade.
 		"Regenerator/upgrades" =>
 		[
-			new Acao("Recarregar a bateria", "regen_up", "recarga", "enche a bateria que já existe"),
-			new Acao("Bateria maior", "regen_up", "bateria", "mais uma carga no teto, e enche na hora"),
-			new Acao("Velocidade de cura", "regen_up", "velocidade", "mais vida e mais Ki por pulso -- e mais bateria gasta"),
-			new Acao("Tratar ferimentos", "regen_up", "ferimentos", "uma vez só: o tanque passa a refazer membro perdido"),
-			new Acao("Regeneração de nanites", "regen_up", "nanites", "a bateria quase vazia pode se recarregar sozinha"),
+			EscolherComoPagar("Recarregar a bateria", "regen_como", "upgrades/recarga", "enche a bateria que já existe"),
+			EscolherComoPagar("Bateria maior", "regen_como", "upgrades/bateria", "mais uma carga no teto, e enche na hora"),
+			EscolherComoPagar("Velocidade de cura", "regen_como", "upgrades/velocidade", "mais vida e mais Ki por pulso -- e mais bateria gasta"),
+			EscolherComoPagar("Tratar ferimentos", "regen_como", "upgrades/ferimentos", "uma vez só: o tanque passa a refazer membro perdido"),
+			EscolherComoPagar("Regeneração de nanites", "regen_como", "upgrades/nanites", "a bateria quase vazia pode se recarregar sozinha"),
+		],
+		"Regenerator/upgrades/recarga" => DuasFormasDePagar("Recarregar a bateria", "regen_up", "recarga"),
+		"Regenerator/upgrades/bateria" => DuasFormasDePagar("Bateria maior", "regen_up", "bateria"),
+		"Regenerator/upgrades/velocidade" => DuasFormasDePagar("Velocidade de cura", "regen_up", "velocidade"),
+		"Regenerator/upgrades/ferimentos" => DuasFormasDePagar("Tratar ferimentos", "regen_up", "ferimentos"),
+		"Regenerator/upgrades/nanites" => DuasFormasDePagar("Regeneração de nanites", "regen_up", "nanites"),
+
+		// ============================ A DRILL ============================
+		// No DM o `Power_Drill` tem um `Click()` so, que abre a lista do que ela juntou (`Tier2.dm:457-470`).
+		// Aqui ela tira RECURSO do planeta sozinha, e o menu e o do pedido do dono (2026-10-10): *"vc pode
+		// investir mais recurso ou zenni no menu de interaçao pra deixar ela melhor e pegar mais recursos por
+		// segundo"*. O "Coletar" e o `Click()` de la.
+		//
+		// O ESTADO (nivel, taxa, estoque, a reserva do planeta) E O PRECO NAO ESTAO AQUI, pelo mesmo motivo da
+		// maquina de gravidade: sao desta maquina, e o catalogo e estatico. Quem os mostra e o painel que o
+		// menu desenha em cima dos botoes (`S2C.Drill`), e o "Ver estado" os escreve no chat.
+		//
+		// SEM PARAFUSO: assentada, ela trabalha -- o `Power_Drill` do original nao tem `Bolt`.
+		// =================================================================
+		Drill.Tipo =>
+		[
+			new Acao("Coletar", Drill.VerboColetar, "", "passa o estoque da Drill pro seu saldo de recursos (só o dono)"),
+			new Acao("Melhorar...", "drill_melhorias", Drill.PaginaDeMelhorias, "um nível a mais: mais recursos por segundo e mais estoque",
+					 Forma.Submenu),
+			new Acao("Ver estado", Drill.VerboInfo, "", "nível, taxa, estoque, a reserva do planeta e o preço da próxima melhoria"),
+			new Acao("Pegar", "pegar", "", "recolhe a Drill pra mochila: o estoque e as melhorias vêm com você (só a sua)"),
+		],
+
+		// AS DUAS FORMAS DE PAGAR o proximo nivel. O preco muda a cada nivel e esta no painel, logo acima.
+		Drill.ChaveDasMelhorias =>
+		[
+			new Acao("Pagar com zeni", Drill.VerboMelhorar, Drill.PagarComZeni, "sobe um nível pelo preço em zeni"),
+			new Acao("Pagar com recursos", Drill.VerboMelhorar, Drill.PagarComRecursos, "o mesmo nível, pelo dobro em recursos"),
 		],
 
 		// ============================ O CAMPO BIO ============================
@@ -261,6 +389,19 @@ public static class Interacoes
 			new Acao("Entrar", "sala_entrar", "", "precisa da chave do Guardião da Terra"),
 			new Acao("Ler as regras da porta", "sala_regras", "",
 					 "o que a sala cobra, e o que acontece se você demorar pra sair"),
+		],
+
+		// ============================ A AGUA ULTRA DIVINA DO MIRANTE ============================
+		// O `/obj/Sacred_Water` do original, com os dois verbs dele (`Drink` e `Description`,
+		// `EarthRanks.dm:187-231`). A regra e os numeros estao no `AguaSagrada`; o relogio das falas, no
+		// `GameServer.AguaSagrada.cs`.
+		//
+		// A SEGUNDA ACAO E O AVISO: a agua MATA quem nao tem o corpo pra ela, e um risco que so se descobre
+		// depois do gole e uma pegadinha -- o DM ja punha a descricao ao lado do verbo de beber.
+		AguaSagrada.Tipo =>
+		[
+			new Acao("Beber", AguaSagrada.VerboBeber, "", "uma vez na vida -- e quem não aguenta pode MORRER"),
+			new Acao("O que é esta água?", AguaSagrada.VerboSobre, "", "o que ela dá, e o que ela cobra"),
 		],
 
 		// ============================ A COMIDA DA SALA DO TEMPO ============================
@@ -298,7 +439,8 @@ public static class Interacoes
 		"Spacepod" or "Personal_Spacepod" =>
 		[
 			new Acao("Entrar", "nave_usar", "", "pilotando, a nave anda com você e atravessa água e lava"),
-			new Acao("Melhorar velocidade", "nave_melhorar", "", "cada degrau custa 1000 x a velocidade atual"),
+			MelhorarVelocidade,
+			MelhorarVelocidadeComRecursos,
 			new Acao("Ver estado", "nave_info", "", "velocidade, o quanto ela corta a viagem, e o próximo preço"),
 			new Acao("Pegar", "nave_pegar", "", "recolhe a nave pra mochila (só a sua)"),
 		],
@@ -317,7 +459,8 @@ public static class Interacoes
 		"Rocket_Ship" =>
 		[
 			new Acao("Entrar", "nave_usar", "", "o foguete anda com você enquanto estiver dentro"),
-			new Acao("Recondicionar", "nave_recondicionar", "", "um foguete usado só voa de novo pagando 100.000z"),
+			Recondicionar,
+			RecondicionarComRecursos,
 			new Acao("Ver estado", "nave_info", "", "se ele ainda está inteiro, e o que a viagem faz"),
 			new Acao("Pegar", "nave_pegar", "", "recolhe o foguete pra mochila (só o seu)"),
 		],
@@ -353,7 +496,8 @@ public static class Interacoes
 			new Acao("Pilotar", "nave_pilotar", "", "você assume o leme e a nave anda com você"),
 			new Acao("Lançar", "nave_lancar", "", "do chão de um planeta pro espaço, em 10 segundos"),
 			new Acao("Ver estado", "nave_info", "", "casco, dono e velocidade"),
-			new Acao("Melhorar velocidade", "nave_melhorar", "", "cada degrau custa 1000 x a velocidade atual"),
+			MelhorarVelocidade,
+			MelhorarVelocidadeComRecursos,
 		],
 
 		// ============================ A PLATAFORMA DE SAIDA ============================
@@ -533,7 +677,8 @@ public static class Interacoes
 			new Acao("Voltar à ponte", "nave_pilotar", "", "larga o leme e devolve você pra dentro, ao lado do console"),
 			new Acao("Lançar", "nave_lancar", "", "sobe ao espaço com a nave inteira e quem estiver dentro dela"),
 			new Acao("Ver estado", "nave_info", "", "casco, dono e velocidade"),
-			new Acao("Melhorar velocidade", "nave_melhorar", "", "cada degrau custa 1000 x a velocidade atual"),
+			MelhorarVelocidade,
+			MelhorarVelocidadeComRecursos,
 		],
 
 		// ============================ DENTRO DE UM POD ============================
@@ -544,7 +689,8 @@ public static class Interacoes
 		[
 			new Acao("Sair da nave", "nave_usar", "", "a nave fica pousada onde você estiver"),
 			new Acao("Lançar", "nave_lancar", "", "sobe ao espaço -- a espera encurta com a velocidade"),
-			new Acao("Melhorar velocidade", "nave_melhorar", "", "cada degrau custa 1000 x a velocidade atual"),
+			MelhorarVelocidade,
+			MelhorarVelocidadeComRecursos,
 			new Acao("Ver estado", "nave_info", "", "velocidade, o quanto ela corta a viagem, e o próximo preço"),
 		],
 
@@ -556,7 +702,8 @@ public static class Interacoes
 		[
 			new Acao("Sair do foguete", "nave_usar", "", "o foguete fica pousado onde você estiver"),
 			new Acao("Lançar", "nave_lancar", "", "sobe, dá 25 segundos de espaço, e volta sozinho"),
-			new Acao("Recondicionar", "nave_recondicionar", "", "um foguete usado só voa de novo pagando 100.000z"),
+			Recondicionar,
+			RecondicionarComRecursos,
 			new Acao("Ver estado", "nave_info", "", "se ele ainda está inteiro, e o que a viagem faz"),
 		],
 
@@ -585,6 +732,25 @@ public static class Interacoes
 
 	private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _interativo = new();
 
+	/// <summary>Os verbos que dizem, no chat, o preco de cada melhoria nas duas moedas e o saldo de quem pergunta.</summary>
+	public const string PrecosDaGravidade = "grav_precos", PrecosDoRegenerador = "regen_precos";
+
+	/// <summary>
+	/// O QUE O MENU PERGUNTA AO SERVIDOR AO ABRIR UMA PAGINA -- vazio = nada.
+	///
+	/// A lista de melhorias de uma maquina nao tem como escrever os precos: eles sao do estado DESTA maquina
+	/// (`5*Max`, `1000*velocidade`), e esta tabela e estatica. Entao, ao abrir "Melhorar...", o menu manda este
+	/// verbo e o servidor responde no chat com o preco de cada melhoria em zeni e em recursos, e o que ha nos
+	/// dois bolsos -- e com isso na tela que o jogador escolhe a moeda na pagina seguinte. E o que o painel da
+	/// Drill faz ao entrar na tela (`drill_ver`); la a resposta vira painel, aqui vira chat.
+	/// </summary>
+	public static string PerguntaAoAbrir(string tipo, string pagina) => (tipo, pagina) switch
+	{
+		("Gravity", "upgrades") => PrecosDaGravidade,
+		(Regenerador.Tipo, "upgrades") => PrecosDoRegenerador,
+		_ => "",
+	};
+
 	/// <summary>
 	/// ESTE VERBO PERTENCE A ESTE TIPO?
 	///
@@ -593,22 +759,24 @@ public static class Interacoes
 	/// regra e a mesma de sempre: a tela esconde por conveniencia, o servidor recusa por
 	/// permissao.
 	/// </summary>
-	public static bool Aceita(string tipo, string verbo)
+	public static bool Aceita(string tipo, string verbo) => AceitaNaPagina(tipo, tipo, verbo, 0);
+
+	/// <summary>
+	/// OS SUBMENUS CONTAM, EM QUALQUER FUNDURA. `grav_up` so existe dentro de "Melhorar..." -- e, desde que a
+	/// melhoria passou a perguntar como pagar, DUAS paginas abaixo da raiz. Sem descer o servidor recusaria a
+	/// propria melhoria que o menu acabou de oferecer.
+	///
+	/// A PAGINA DE UM SUBMENU E `raiz/Arg`, e nao `pagina/Arg`: e assim que o menu a abre (`MenuDeInteracao`
+	/// guarda o `Arg` inteiro como a pagina), e por isso o `Arg` de uma pagina de dentro carrega o caminho todo
+	/// ("upgrades/forca"). O teto de fundura e so contra uma tabela que um dia aponte pra si mesma.
+	/// </summary>
+	private static bool AceitaNaPagina(string raiz, string chave, string verbo, int fundura)
 	{
-		if (Aceita(De(tipo), verbo)) return true;
-
-		// OS SUBMENUS CONTAM. `grav_up` so existe dentro de "Melhorar...", e sem esta volta o
-		// servidor recusaria a propria melhoria que o menu acabou de oferecer.
-		foreach (Acao a in De(tipo))
-			if (a.Forma == Forma.Submenu && Aceita(De($"{tipo}/{a.Arg}"), verbo)) return true;
-
-		return false;
-	}
-
-	private static bool Aceita(Acao[] acoes, string verbo)
-	{
-		foreach (Acao a in acoes)
+		foreach (Acao a in De(chave))
+		{
 			if (a.Verbo == verbo) return true;
+			if (a.Forma == Forma.Submenu && fundura < 4 && AceitaNaPagina(raiz, $"{raiz}/{a.Arg}", verbo, fundura + 1)) return true;
+		}
 		return false;
 	}
 }

@@ -82,47 +82,31 @@ public sealed partial class GameServer
 	// O MENU
 	// =====================================================================
 	/// <summary>
-	/// **O PONTO DE PLUGUE DA FASE 1, AGORA LIGADO.** Chamado pelo `InvocarODragao` assim que o dragao
-	/// sobe -- e a lista que ele oferece.
+	/// **O DRAGAO SUBIU: A JANELA DE DESEJOS ABRE** pra quem o invocou. Chamado pelo `InvocarODragao` assim
+	/// que o dragao sobe, e pelo `db_desejar` sem argumento.
 	///
-	/// O CONTRATO DA FASE 1 FOI CUMPRIDO SEM REABRIR NADA: a entrada continua sendo `(pl, s)`, o gate
-	/// de poder sai de `s`, e quem concede chama <see cref="ContarUmDesejo"/>. A unica linha do arquivo
-	/// das esferas que mudou foi o corpo deste metodo.
+	/// ERA UMA LISTA NO CHAT -- uma linha por desejo, com o id entre colchetes -- e uma caixa de texto na aba
+	/// World pra devolver o id. O dono (2026-10-10): *"deveria aparecer um menu com varios desejos q vc pode
+	/// escolher e caso tenha um target o jogo vai perguntar se e pra vc ou pra outra pessoa q vc pode escolher
+	/// e nao ter q abrir um menu e colocar um id de pedido"*. A lista, o motivo de cada desejo apagado e quem
+	/// cada um alcanca viajam no `S2C.MenuDoDragao`: ver `GameServer.MenuDoDragao.cs`, que e tambem quem le o
+	/// <see cref="DesejoDef.Alvo"/> de cada linha (o campo que diz o que a segunda etapa pergunta).
+	///
+	/// O CONTRATO DA FASE 1 CONTINUA O MESMO: a entrada e `(pl, s)`, o gate de poder sai de `s`, e quem concede
+	/// chama <see cref="ContarUmDesejo"/>.
 	/// </summary>
 	private void AbrirOsDesejos(ServerPlayer pl, SetDeEsferas s)
 	{
-		double t = Desejos.PoderVerdadeiro(s.Poder, s.Desejos);
-
 		Avisar(pl, $"{s.NomeDoDragao} aguarda. Pedidos nesta ativação: "
 				 + $"{s.Desejos - s.Pedidos} de {s.Desejos}.");
-
-		foreach (DesejoDef d in MenuDaqui(pl, s))
-			Avisar(pl, $"  [{d.Id}] {d.Nome}"
-					 + PedeAlvo(d)
-					 + (d.Portado ? "" : "  -- AINDA NÃO PORTADO")
-					 + $"  ({d.Desc})");
-
-		Avisar(pl, $"-- peça com: db_desejar <id> [alvo] | poder do set {s.Poder:N0}, patamar {t:0.#}");
+		if (!DragaoSobeSemJanelaDeTeste) MandarOMenuDoDragao(pl, abrir: true);
 	}
 
 	/// <summary>
-	/// ESTE DESEJO PEDE UM ALVO? -- e o <see cref="DesejoDef.Alvo"/>, escrito na linha do menu.
-	///
-	/// ============================ ELE EXISTE PORQUE O CAMPO PRECISAVA DE UM LEITOR ============================
-	/// A primeira versao do `DesejoDef` tinha o `Alvo` preenchido nas vinte entradas e **nada o lia**:
-	/// cada efeito resolvia o proprio alvo, e o campo era decoracao. Esse e o defeito que este repo ja
-	/// pagou oito vezes -- dado escrito sem consumidor --, e a correcao certa nao e apagar o campo: e
-	/// que o jogador saiba, ANTES de digitar, que "matar" pede um nome e "riqueza" nao.
-	/// ====================================================================================================
+	/// DEFEITO INJETADO (bancada `--menudodragaoteste`): o dragao sobe e a janela de desejos de quem o invocou
+	/// nao abre -- o que este port fez ate 2026-10-10, quando a lista ia pro chat. Falso em jogo, sempre.
 	/// </summary>
-	private static string PedeAlvo(DesejoDef d) => d.Alvo switch
-	{
-		AlvoDoDesejo.Vivo => "  <alguém vivo, ao alcance do dragão>",
-		AlvoDoDesejo.Morto => "  <alguém morto>",
-		AlvoDoDesejo.Planeta => "  <um mundo destruído>",
-		AlvoDoDesejo.Saiyajin => "  <um Saiyajin vivo>",
-		_ => "",
-	};
+	internal bool DragaoSobeSemJanelaDeTeste;
 
 	/// <summary>
 	/// A LISTA QUE ESTE JOGADOR VE. So costura os cinco fatos e chama a funcao pura do Core -- a escada
@@ -185,7 +169,7 @@ public sealed partial class GameServer
 
 		if (d == null)
 		{
-			Avisar(pl, $"{s.NomeDoDragao} não conhece esse desejo. Use db_desejar sem argumento pra ver a lista.");
+			Avisar(pl, $"{s.NomeDoDragao} não conhece esse desejo. Escolha um da lista da janela de desejos.");
 			return;
 		}
 
@@ -221,10 +205,7 @@ public sealed partial class GameServer
 		// o mesmo resultado do original, ainda que la ele saia de um defeito (`blockid =
 		// Earth_Guardian`, uma signature, comparada contra `usr.key`: nunca casa).
 		// ==========================================================================
-		bool ehOCriador = s.CriadorSig.Length > 0
-					   && string.Equals(s.CriadorSig, pl.Assinatura, StringComparison.Ordinal);
-
-		if (ehOCriador && d.Id is "poder" or "supremo")
+		if (OCriadorNaoPede(pl, s, d))
 		{
 			Avisar(pl, $"{s.NomeDoDragao}: \"as esferas usam o SEU poder -- ele não pode amplificar a si "
 					 + "mesmo.\"");
@@ -238,6 +219,16 @@ public sealed partial class GameServer
 		if (!Conceder(pl, s, d, alvo)) return;   // recusa: nada consumido, o dragao continua de pe
 		ContarUmDesejo(s);
 	}
+
+	/// <summary>
+	/// ESTE PEDIDO E O DO CRIADOR SE AMPLIFICANDO? -- o bloqueio de cima, numa pergunta so. Quem pede
+	/// (<see cref="PedirDesejo"/>) e o menu do dragao, que apaga a linha com o motivo ANTES de o jogador gastar
+	/// a invocacao nela, perguntam aqui.
+	/// </summary>
+	private static bool OCriadorNaoPede(ServerPlayer pl, SetDeEsferas s, DesejoDef d) =>
+		d.Id is "poder" or "supremo"
+		&& s.CriadorSig.Length > 0
+		&& string.Equals(s.CriadorSig, pl.Assinatura, StringComparison.Ordinal);
 
 	/// <summary>
 	/// **O FUNIL DE TODOS OS EFEITOS.** Devolve `true` quando o desejo foi CONCEDIDO (e so entao ele e
@@ -310,7 +301,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool DesejoDeMarcos(ServerPlayer pl, SetDeEsferas s)
 	{
-		if (pl.Ficha.wishedpoints > 0)
+		if (JaPediuMarcos(pl))
 		{
 			Avisar(pl, "você já pediu Marcos ao dragão uma vez -- e é uma vez por vida. "
 					 + "Nenhum pedido foi gasto.");
@@ -326,6 +317,9 @@ public sealed partial class GameServer
 		Avisar(pl, $"você ganha {Desejos.MarcosDoDesejo} Marcos. Livres agora: {pl.Livro?.MarcosLivres ?? 0}.");
 		return true;
 	}
+
+	/// <summary>`if(originator.wishedpoints)` (`WishTable.dm:361`). Quem recusa e o menu do dragao perguntam aqui.</summary>
+	private static bool JaPediuMarcos(ServerPlayer pl) => pl.Ficha.wishedpoints > 0;
 
 	/// <summary>
 	/// "Technology" -- `WishTable.dm:376-382`.
@@ -432,8 +426,8 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool DesejoDeJuventudeAlheia(ServerPlayer pl, SetDeEsferas s, string nome)
 	{
-		ServerPlayer? alvo = AlvoDoDesejoPorNome(pl, nome, o => o != pl && !o.Ficha.dead,
-												 "quem você quer rejuvenescer");
+		ServerPlayer? alvo = EscolherAlvo(pl, VivosAoAlcanceDoDragao(pl), nome,
+										  "quem você quer rejuvenescer", RodapeDoAlcance);
 		if (alvo == null) return false;
 
 		PorIdade(alvo, Desejos.IdadeDaJuventude);
@@ -480,7 +474,8 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool DesejoDeReviver(ServerPlayer pl, SetDeEsferas s, string nome)
 	{
-		ServerPlayer? alvo = AlvoMortoPorNome(pl, nome);
+		ServerPlayer? alvo = EscolherAlvo(pl, MortosQueVoltam(), nome, "quem você quer trazer de volta",
+										  " -- e quem morreu de VELHICE não volta por nenhum desejo");
 		if (alvo == null) return false;
 
 		Ressuscitar(alvo, pl.Zone, new Vec2(pl.Pos.X, pl.Pos.Y + 2 * ZoneCollision.TileSize));
@@ -498,7 +493,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool DesejoDeReviverTodos(ServerPlayer pl, SetDeEsferas s)
 	{
-		List<ServerPlayer> mortos = [.. Pessoas.Where(o => o.Ficha.dead && !o.Ficha.aged_out)];
+		List<ServerPlayer> mortos = MortosQueVoltam();
 		if (mortos.Count == 0)
 		{ Avisar(pl, "não há ninguém para trazer de volta. Nenhum pedido foi gasto."); return false; }
 
@@ -556,8 +551,8 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool DesejoDeMatar(ServerPlayer pl, SetDeEsferas s, string nome)
 	{
-		ServerPlayer? alvo = AlvoDoDesejoPorNome(pl, nome, o => o != pl && !o.Ficha.dead,
-												 "quem você quer matar");
+		ServerPlayer? alvo = EscolherAlvo(pl, VivosAoAlcanceDoDragao(pl), nome,
+										  "quem você quer matar", RodapeDoAlcance);
 		if (alvo == null) return false;
 
 		AnunciarDesejo($"{pl.Name} pede a {s.NomeDoDragao} a MORTE de {alvo.Name}!");
@@ -590,13 +585,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool DesejoDeCurarPlaneta(ServerPlayer pl, SetDeEsferas s, string nome)
 	{
-		List<(string Nome, ZoneKey Zona)> mortos = [];
-		foreach (Jandirus.Core.World.EstadoDaMorte e in _mortos.Todos)
-		{
-			if (!Jandirus.Core.World.MortePlanetaria.EstaMorto(e.Fase)) continue;
-			if (!ChaveDePlaneta.Ler(e.Chave, e.Nome, out ChaveDePlaneta c)) continue;
-			mortos.Add((e.Nome, c.PreFeito ? ZoneKey.Premade(c.Nome) : ZoneKey.Procedural(c.Nome, c.Seed)));
-		}
+		List<(string Chave, string Nome, ZoneKey Zona)> mortos = MundosMortos();
 
 		if (mortos.Count == 0)
 		{ Avisar(pl, "nenhum mundo foi destruído. Nenhum pedido foi gasto."); return false; }
@@ -607,8 +596,13 @@ public sealed partial class GameServer
 			return false;
 		}
 
-		(string Nome, ZoneKey Zona) alvo = mortos.FirstOrDefault(
-			m => string.Equals(m.Nome, nome, StringComparison.OrdinalIgnoreCase));
+		// PELA CHAVE PRIMEIRO, pelo nome depois. A chave e a identidade do mundo no livro dos mortos
+		// (`EstadoDaMorte.Chave`: o nome do pre-feito, `#seed` do gerado) e e ela que a janela de desejos manda:
+		// dois mundos gerados podem ter o mesmo nome, e pelo nome o desejo curaria o primeiro da lista.
+		(string Chave, string Nome, ZoneKey Zona) alvo = mortos.FirstOrDefault(
+			m => string.Equals(m.Chave, nome, StringComparison.Ordinal));
+		if (alvo.Nome == null)
+			alvo = mortos.FirstOrDefault(m => string.Equals(m.Nome, nome, StringComparison.OrdinalIgnoreCase));
 
 		if (alvo.Nome == null)
 		{ Avisar(pl, $"'{nome}' não está na lista dos mundos mortos. Nenhum pedido foi gasto."); return false; }
@@ -756,8 +750,7 @@ public sealed partial class GameServer
 		if (!EhKaioshinDoCorpo(pl))
 		{ Avisar(pl, "o dragão não reconhece em você o direito divino a este desejo."); return false; }
 
-		ServerPlayer? molde = AlvoDoDesejoPorNome(pl, nome,
-			o => o != pl && !o.Ficha.dead && EhSaiyajin(o), "de qual Saiyajin", mundoInteiro: true);
+		ServerPlayer? molde = EscolherAlvo(pl, SaiyajinsDeMolde(pl), nome, "de qual Saiyajin", "");
 		if (molde == null) return false;
 
 		VestirCorpoSaiyajin(pl, molde);
@@ -875,45 +868,90 @@ public sealed partial class GameServer
 	// =====================================================================
 	// ESCOLHER ALVO
 	// =====================================================================
-	/// <summary>
-	/// O ALVO VIVO DE UM DESEJO -- sem nome, LISTA quem serve; com nome, acha.
-	///
-	/// O RECORTE PADRAO E O ALCANCE DO DRAGAO, e nao o mundo: o original varre `for(var/mob/M)` inteiro,
-	/// o que faz de "rejuvenescer" e "matar" armas de alcance global sem que a vitima saiba que ha um
-	/// dragao no mundo. Quem esta diante do dragao pelo menos ve o ceu escurecer.
-	/// (`mundoInteiro: true` so pro molde Saiyajin, que o DM tambem escolhe do `player_list` -- e ali o
-	/// desejo nao fere ninguem: o molde continua inteiro.)
-	/// </summary>
-	private ServerPlayer? AlvoDoDesejoPorNome(ServerPlayer pl, string nome, Func<ServerPlayer, bool> serve,
-											  string pergunta, bool mundoInteiro = false)
-	{
-		List<ServerPlayer> cands = [.. Pessoas.Where(o => serve(o)
-			&& (mundoInteiro
-				|| (o.Zone.Hash == pl.Zone.Hash
-					&& Math.Abs(o.Pos.X - pl.Pos.X) <= Esferas.AlcanceDaInvocacao
-					&& Math.Abs(o.Pos.Y - pl.Pos.Y) <= Esferas.AlcanceDaInvocacao)))];
+	// ============================ AS LISTAS SAO DE QUEM CONCEDE **E** DE QUEM OFERECE ============================
+	// Cada lista abaixo e, ao mesmo tempo, a que o EFEITO aceita (`EscolherAlvo` so acha quem esta nela) e a
+	// que o MENU DO DRAGAO desenha na segunda etapa ("Pra quem?", `GameServer.MenuDoDragao.cs`). Uma funcao
+	// pras duas pontas: a janela nunca oferece um nome que o desejo recusaria, nem esconde um que ele
+	// aceitaria -- e a bancada `--menudodragaoteste` cobra as duas metades.
+	// ==========================================================================================================
 
-		return EscolherAlvo(pl, cands, nome, pergunta,
-			mundoInteiro ? "" : " (ele precisa estar ao alcance do dragão)");
+	/// <summary>
+	/// OS VIVOS QUE UM DESEJO ALCANCA -- quem "rejuvenescer outro" e "matar" aceitam.
+	///
+	/// O RECORTE E O ALCANCE DO DRAGAO, e nao o mundo: o original varre `for(var/mob/M)` inteiro, o que faz
+	/// de "rejuvenescer" e "matar" armas de alcance global sem que a vitima saiba que ha um dragao no mundo.
+	/// Quem esta diante do dragao pelo menos ve o ceu escurecer.
+	/// </summary>
+	private List<ServerPlayer> VivosAoAlcanceDoDragao(ServerPlayer pl) =>
+		[.. Pessoas.Where(o => o != pl && !o.Ficha.dead
+			&& o.Zone.Hash == pl.Zone.Hash
+			&& Math.Abs(o.Pos.X - pl.Pos.X) <= Esferas.AlcanceDaInvocacao
+			&& Math.Abs(o.Pos.Y - pl.Pos.Y) <= Esferas.AlcanceDaInvocacao)];
+
+	/// <summary>O fecho da frase de quem nao achou ninguem ao alcance.</summary>
+	private const string RodapeDoAlcance = " (ele precisa estar ao alcance do dragão)";
+
+	/// <summary>
+	/// OS MORTOS QUE UM DESEJO TRAZ DE VOLTA -- `for(var/mob/M) if(M.dead)` (:220-224), **pulando quem morreu
+	/// de VELHICE**. E a lista do Shenron, do Revive-All e do Super Shenron (`ProceduralSpace.dm:1609`).
+	///
+	/// O mundo INTEIRO aqui, e nao o alcance: um morto esta no Outro Mundo por definicao, e exigir que ele
+	/// esteja ao lado tornaria o desejo impossivel. E o DM faz o mesmo.
+	/// </summary>
+	private List<ServerPlayer> MortosQueVoltam() =>
+		[.. Pessoas.Where(o => o.Ficha.dead && !o.Ficha.aged_out)];
+
+	/// <summary>
+	/// OS SAIYAJINS QUE SERVEM DE MOLDE ao desejo do Zamasu. O mundo inteiro, como no DM (`player_list`, :186):
+	/// ali o desejo nao fere ninguem -- o molde continua inteiro.
+	/// </summary>
+	private List<ServerPlayer> SaiyajinsDeMolde(ServerPlayer pl) =>
+		[.. Pessoas.Where(o => o != pl && !o.Ficha.dead && EhSaiyajin(o))];
+
+	/// <summary>
+	/// OS MUNDOS QUE "CURAR UM PLANETA" PODE TRAZER DE VOLTA: os mortos do livro (`planetas-mortos.json`), com
+	/// a chave (a identidade), o nome (o que se le) e a zona.
+	/// </summary>
+	private List<(string Chave, string Nome, ZoneKey Zona)> MundosMortos()
+	{
+		List<(string Chave, string Nome, ZoneKey Zona)> mortos = [];
+		foreach (Jandirus.Core.World.EstadoDaMorte e in _mortos.Todos)
+		{
+			if (!Jandirus.Core.World.MortePlanetaria.EstaMorto(e.Fase)) continue;
+			if (!ChaveDePlaneta.Ler(e.Chave, e.Nome, out ChaveDePlaneta c)) continue;
+			mortos.Add((e.Chave, e.Nome, c.PreFeito ? ZoneKey.Premade(c.Nome) : ZoneKey.Procedural(c.Nome, c.Seed)));
+		}
+		return mortos;
 	}
 
 	/// <summary>
-	/// O ALVO MORTO -- `for(var/mob/M) if(M.dead)` (:220-224), **pulando quem morreu de VELHICE**.
-	///
-	/// O mundo INTEIRO aqui, e nao o alcance: um morto esta no Outro Mundo por definicao, e exigir que
-	/// ele esteja ao lado tornaria o desejo impossivel. E o DM faz o mesmo.
+	/// DEFEITO INJETADO (bancada `--menudodragaoteste`): o alvo de um desejo e aceito pelo id mesmo estando FORA
+	/// da lista de quem o desejo alcanca -- o cliente escolheria qualquer corpo do mundo. Falso em jogo, sempre.
 	/// </summary>
-	private ServerPlayer? AlvoMortoPorNome(ServerPlayer pl, string nome)
+	internal bool AlvoForaDaListaDeTeste;
+
+	/// <summary>
+	/// ACHA NA LISTA o que a janela (ou quem digita o verbo) mandou. `#57` e o ID de sessao -- e o que a janela
+	/// manda, porque nome se repete e a lista dela ja tem o id de cada um. Qualquer outra coisa e o NOME, sem
+	/// distinguir maiusculas, e o empate entre dois iguais fica com o primeiro.
+	///
+	/// SO ACHA QUEM ESTA NA LISTA: o id que a janela devolve e conferido contra a mesma lista que a montou, e um
+	/// cliente mexido que mande o id de outro corpo qualquer leva "nao esta na lista".
+	/// </summary>
+	private static ServerPlayer? AcharNaLista(List<ServerPlayer> cands, string texto)
 	{
-		List<ServerPlayer> cands = [.. Pessoas.Where(o => o.Ficha.dead && !o.Ficha.aged_out)];
-		return EscolherAlvo(pl, cands, nome, "quem você quer trazer de volta",
-			" -- e quem morreu de VELHICE não volta por nenhum desejo");
+		texto = texto.Trim();
+		if (texto.Length > 1 && texto[0] == '#' && int.TryParse(texto.AsSpan(1), out int id))
+			return cands.Find(o => o.Id == id);
+		return cands.Find(o => string.Equals(o.Name, texto, StringComparison.OrdinalIgnoreCase));
 	}
 
-	/// <summary>Sem nome, lista; com nome, acha. Um lugar so, pras tres perguntas de alvo.</summary>
+	/// <summary>Sem nome, lista; com nome (ou `#id`), acha. Um lugar so, pras tres perguntas de alvo.</summary>
 	private ServerPlayer? EscolherAlvo(ServerPlayer pl, List<ServerPlayer> cands, string nome,
 									   string pergunta, string rodape)
 	{
+		if (AlvoForaDaListaDeTeste) cands = [.. _players.Values];
+
 		if (cands.Count == 0)
 		{ Avisar(pl, $"não há ninguém que sirva{rodape}. Nenhum pedido foi gasto."); return null; }
 
@@ -923,9 +961,13 @@ public sealed partial class GameServer
 			return null;
 		}
 
-		ServerPlayer? achado = cands.Find(o => string.Equals(o.Name, nome, StringComparison.OrdinalIgnoreCase));
+		ServerPlayer? achado = AcharNaLista(cands, nome);
 		if (achado == null)
-			Avisar(pl, $"'{nome}' não está na lista. Nenhum pedido foi gasto.");
+			// O `#id` e detalhe da janela, e nao coisa que o jogador leia: quem escolheu um nome na lista e
+			// perdeu a vez (ele saiu do alcance, voltou a vida) le isso, e nao um numero.
+			Avisar(pl, nome.StartsWith('#')
+				? $"quem você escolheu não está mais na lista{rodape}. Nenhum pedido foi gasto."
+				: $"'{nome}' não está na lista. Nenhum pedido foi gasto.");
 		return achado;
 	}
 

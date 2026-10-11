@@ -96,6 +96,24 @@ public partial class GameServer
 			return true;
 		}
 
+		// ---- 1d. UMA ROCHA DE MINERIO NA CELULA? ----
+		// Antes do turf pelo motivo de sempre: a rocha OCUPA a celula, e perguntar do chao antes racharia o
+		// piso debaixo dela e diria "o cenario cede" com a rocha de pe. Ela nao se quebra no soco -- o dono
+		// pediu a coleta pela tecla E (`GameServer.Rochas.cs`); no DM e o contrario, o no de minerio se
+		// colhe socando (`attack_proc.dm:26-45`). O punho bate, faz barulho, e o aviso diz o caminho.
+		if (RochaNaCelula(a.Zone, cx, cy))
+		{
+			Baque(a, nivel);
+			Avisar(a, "a rocha de minério aguenta o soco -- chegue perto e aperte E pra quebrar e coletar.");
+			return true;
+		}
+
+		// ---- 1e. UMA ARVORE? ----
+		// Ela e tile, e cairia pela regra do turf logo abaixo -- o limiar de 20 com 34% por golpe, que deixava o
+		// novato socando pra sempre. O tronco tem regra propria, paga recurso a quem derruba e rebrota: ver
+		// `GameServer.Lenha.cs`. Antes do turf pelo motivo dos quatro de cima: quem esta na celula responde por ela.
+		if (SocarArvore(a, cx, cy, nivel)) return true;
+
 		// ---- 2. UM TILE DENSO? ----
 		ZoneCollision? mapa = MapaDaZonaOuCatalogo(a.Zone);
 
@@ -419,6 +437,9 @@ public partial class GameServer
 					int cx = cx0 + dx, cy = cy0 + dy;
 					if (!mapa.BlockedCell(cx, cy) || mapa.NaBorda(cx, cy)
 						|| mapa.Indestrutivel(cx, cy)) continue;
+					// NEM ARVORE: ela bloqueia como parede e deixou de cair como parede (`SocarArvore`) -- esta
+					// bancada mede o LIMIAR do turf, e a arvore cede ate pra quem nao o alcanca.
+					if (ArvoreDePe(pl.Zone, cx, cy)) continue;
 
 					// UM TILE AO SUL DELA, OLHANDO PRO NORTE: e a unica combinacao em que a celula
 					// da frente (`MeleeArea.Frente`) cai exatamente na parede.

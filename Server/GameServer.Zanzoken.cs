@@ -181,7 +181,9 @@ public sealed partial class GameServer
 
 		// PAREDE MANDA MAIS QUE A TECNICA -- a mesma regra da investida do soco, e a divergencia declarada
 		// no cabecalho (ela faz o papel da vista do cliente, que o servidor nao tem).
-		ZoneCollision? mapa = _catalogo?.Get(pl.Zone)?.Mapa;
+		// O MAPA E O DA ZONA EM QUE O CORPO ESTA, de arquivo ou gerada (`MapaDoSalto`, `GameServer.Validacoes.cs`):
+		// perguntando so ao catalogo, a piscada atravessava parede e base em todo planeta sorteado.
+		ZoneCollision? mapa = MapaDoSalto(pl.Zone);
 		if (mapa != null && (MoveRules.Occupied(mapa, destino) || MoveRules.PathOccupied(mapa, de, destino)))
 			return;
 

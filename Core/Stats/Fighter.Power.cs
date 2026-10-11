@@ -128,10 +128,9 @@ public sealed partial class Fighter
 			// familia 2 -- somam na base
 			tempBP += AdditiveBoost(fusionBuff);
 			tempBP += AdditiveBoost(MysticPcnt);
-			// O UNBOUND EGO soma na BASE, como o Mistico -- `ue_ego_mult` e 1 quando nao ha bonus.
-			// Ver a taxonomia de buffs: multiplicar aqui em vez de somar faria o bonus por membro
-			// ferido compor com a forma divina de 66x e explodir a escala.
-			tempBP += AdditiveBoost(ue_ego_mult);
+			// (O UNBOUND EGO NAO ESTA NESTA FAMILIA: ele e fator do `formBuff`, la em cima -- `base.dm:82`,
+			// `... * HellstarBuff * max(ue_ego_mult,1)`. Ate 2026-10-11 ele entrava DUAS vezes, la e aqui como soma
+			// na base: um Unbound Ego de 1,2 rendia 1,2 x (1 + 0,2) em vez de 1,2.)
 			tempBP += AdditiveBoost(MajinPcnt);
 			tempBP += AdditiveBoost(gravBuff);
 			tempBP += AdditiveBoost(aurasBuff);

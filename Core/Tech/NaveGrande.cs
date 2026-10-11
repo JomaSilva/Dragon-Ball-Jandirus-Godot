@@ -209,8 +209,8 @@ public static class NaveGrande
 	/// colisao do servidor) sem inventar um sexto lugar que sabe desenhar chao.
 	///
 	/// AS ENTRADAS QUE NAO EXISTEM AQUI (agua, praia, colina, arvore, minerio...) apontam pro
-	/// convés de proposito, e nao pro vazio: o `PlanetaProcedural.MontarCamadas` resolve os DEZ
-	/// pinceis da paleta no nascimento, e um `TileVisual` vazio faria dez avisos amarelos no
+	/// convés de proposito, e nao pro vazio: o `PlanetaProcedural.MontarCamadas` resolve os NOVE
+	/// pinceis da paleta no nascimento, e um `TileVisual` vazio faria nove avisos amarelos no
 	/// console toda vez que alguem embarca. Aviso que sempre sai e aviso que ninguem le -- e a
 	/// regra 5 da casa (falhar alto) so vale enquanto o alto for raro.
 	/// </summary>
@@ -225,7 +225,7 @@ public static class NaveGrande
 		LimiarAgua = 0, LimiarPraia = 0, LimiarColina = 1, LimiarMontanha = 1,
 		VegetacaoPct = 0, PlantaPct = 0, MinerioPct = 0,
 		Agua = Conves, Praia = Conves, Planicie = Conves, Colina = Conves, Montanha = Casco,
-		Arvore = Conves, ArvoreAcento = Conves, Planta = Conves, Minerio = Conves, Gema = Conves,
+		Arvore = Conves, ArvoreAcento = Conves, Planta = Conves, RochaGrande = Conves,
 	};
 
 	private static TerrenoGerado? _planta;

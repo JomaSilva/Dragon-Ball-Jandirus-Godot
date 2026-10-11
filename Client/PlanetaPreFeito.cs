@@ -29,6 +29,13 @@ public partial class PlanetaPreFeito : Planeta
 {
 	private PintorDePedacos? _pintor;
 
+	/// <summary>
+	/// AS CELULAS DESTE MAPA, como o `.pedacos` as trouxe -- ja lidas, e imutaveis. Quem as le alem do pintor
+	/// e o mapa da aba World (`MapasDosLugares`), numa thread de trabalho: sem isto ele releria 2,5 MB do
+	/// disco pra ter o mesmo objeto. Nulo antes do <see cref="Semear"/>.
+	/// </summary>
+	public PedacosDoMapa? Pedacos { get; private set; }
+
 	public override void _Ready()
 	{
 		Procedural = false;   // e o que ele E; nao da pra marcar no inspetor e virar outra coisa
@@ -68,6 +75,7 @@ public partial class PlanetaPreFeito : Planeta
 				return;
 			}
 
+			Pedacos = dados;
 			var doArquivo = new FonteDoArquivo(dados, this);
 
 			// O VAZIO SO EXISTE ONDE ALGUEM PEDIU. Toda outra zona continua com a fonte de sempre,

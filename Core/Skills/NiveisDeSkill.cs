@@ -658,6 +658,9 @@ public sealed class NiveisDeSkill
 
 					if (Escala(g.Quando, corpo, gastouKi) is not { } escala) continue;
 					double ganho = g.Quanto * escala;
+					// O PESO DA MEDITACAO (`GainKnobs.MeditacaoNasSkillsDeKi`; 1 = o original): so no ganho de
+					// CURVA de skill da Mente, e so com o dono meditando -- ver o cabecalho do botao.
+					if (g.Curva && r.Mental && corpo.Meditando) ganho *= GainKnobs.MeditacaoNasSkillsDeKi;
 					pr.Exp += g.Curva ? GastarDoBuffer(ref pr, KiSkillGains(ganho, corpo.Ficha)) : ganho;
 					if (g.Cadeia != 0) jaRendeu = true;
 				}

@@ -86,7 +86,17 @@ public partial class PainelDoTorneio : PanelContainer
 		Mostrar();
 	}
 
-	private void Mostrar() => _prazo.Text = $"responda em {Math.Ceiling(_restante):0} s";
+	private void Mostrar()
+	{
+		_prazo.Text = $"responda em {Math.Ceiling(_restante):0} s";
+
+		// O DISCO DO DRAGON RADAR MORA NESTE MESMO CANTO (`RadarNaTela`): com ele na tela o convite encosta a
+		// esquerda dele, em vez de um tapar o outro. Sem radar a conta da os 14 px de sempre.
+		float direita = -14 - RadarNaTela.LarguraOcupada;
+		if (OffsetRight == direita) return;
+		OffsetLeft = direita - Largura;
+		OffsetRight = direita;
+	}
 
 	private void Participar()
 	{

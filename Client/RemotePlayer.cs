@@ -593,8 +593,55 @@ public partial class RemotePlayer : Node2D
 			// de qualquer corte fixo, deixando rastro de corrida sem apertar shift.
 			_visual.Correr(correndo, _rumoDoDesenho);
 			if (GetNodeOrNull<RastroDeCorrida>("Rastro") is { } rastro) rastro.Definir(correndo);
+			OuvirOArranque(correndo, estreia);
 		}
 	}
+
+	/// <summary>
+	/// ============================ O RASGO DE QUEM ARRANCA, OUVIDO POR QUEM ESTA PERTO ============================
+	/// Item 5a do playtest de 2026-10-10: *"os sons de ... dash (Shift) so tocam para o proprio jogador"*. O
+	/// `Trilha.Dash` do comeco de toda corrida era tocado num lugar so -- o `LocalPlayer`, na virada da propria
+	/// tecla --, e o corpo alheio recebia o MESMO fato pelo snapshot (`EntityState.Correndo`, que ja acende o
+	/// rastro dele) sem que ninguem o ouvisse.
+	///
+	/// NA VIRADA DO BIT **DESENHADO**, e nao na chegada do pacote: e o instante em que o rastro deste corpo
+	/// acende, entao o som e a imagem saem juntos. O corpo que eu encontro JA correndo nao "arrancou" agora
+	/// (<paramref name="estreia"/>) -- o irmao do <see cref="OuvirODecolar"/>.
+	///
+	/// POSICIONAL pelo `EfeitoNoLugar` (o player fica pendurado NESTE corpo): o volume cai com a distancia, e e
+	/// o mesmo arquivo e o mesmo volume que o dono do corpo ouve.
+	///
+	/// O RESPIRO existe porque aqui o bit nao vem de um dedo: `Correndo` no fio e "correndo E andando", e um
+	/// NPC que esbarra numa parede (ou um jogador segurando o Shift e picando o direcional) vira o bit varias
+	/// vezes por segundo. Um rasgo por arrancada, nao um por tique.
+	/// ==========================================================================================================
+	/// </summary>
+	private void OuvirOArranque(bool correndo, bool estreia)
+	{
+		if (!correndo || estreia || ArranqueAlheioMudoDeTeste) return;
+		ulong agora = Time.GetTicksMsec();
+		if (agora < _proximoArranqueOuvido) return;
+		_proximoArranqueOuvido = agora + RespiroDoArranqueMs;
+		AudioDirector.EfeitoNoLugar(this, Trilha.Dash, VolumeDoArranque);
+		ArrancadasOuvidasDeTeste++;
+	}
+
+	/// <summary>O volume do rasgo de toda arrancada -- o corpo local usa o mesmo (`LocalPlayer`, na virada do Shift).</summary>
+	public const float VolumeDoArranque = 0.5f;
+
+	/// <summary>Milissegundos entre dois rasgos do MESMO corpo. Ver <see cref="OuvirOArranque"/>.</summary>
+	private const ulong RespiroDoArranqueMs = 400;
+
+	private ulong _proximoArranqueOuvido;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagvizinho`): o corpo alheio arranca em silencio -- o estado de antes de
+	/// 2026-10-10. Lido pela propria <see cref="OuvirOArranque"/>.
+	/// </summary>
+	public static bool ArranqueAlheioMudoDeTeste;
+
+	/// <summary>Quantas arrancadas DESTE corpo este cliente ouviu. Pra bancada.</summary>
+	public int ArrancadasOuvidasDeTeste { get; private set; }
 
 	/// <summary>
 	/// PÕE O NO NA GRADE DE DESENHO -- a MESMA do corpo local (ver `LocalPlayer.NoPontoDaGrade`).

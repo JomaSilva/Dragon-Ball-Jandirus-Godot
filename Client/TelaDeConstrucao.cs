@@ -125,6 +125,12 @@ public partial class TelaDeConstrucao : CanvasLayer
 			return;
 		}
 
+		// O FANTASMA E O QUE VAI FICAR NO CHAO, e nao o que esta na mao: quem segura a semente escolhe o
+		// lugar da ARVORE. A casa e a mesma que o servidor consulta ao erguer (`OQueAssenta`).
+		Jandirus.Core.Items.ItemDef noChao =
+			Jandirus.Core.Items.CatalogoDeItens.Get(Jandirus.Core.Items.CatalogoDeItens.OQueAssenta(id)) ?? def;
+		bool plantio = !string.Equals(noChao.Id, def.Id, StringComparison.OrdinalIgnoreCase);
+
 		_naMao = id;
 		_fantasma = new Sprite2D
 		{
@@ -133,14 +139,14 @@ public partial class TelaDeConstrucao : CanvasLayer
 			// clicar em "Assentar no chão" fechava a mochila e nao acontecia mais nada -- sem
 			// fantasma, sem mensagem, sem erro. Um retangulo do tamanho do tile e feio e honesto:
 			// da pra escolher o lugar e o ciclo termina.
-			Texture = Miniaturas.De(def.Arte, def.Estado) ?? Vulto(),
+			Texture = Miniaturas.De(noChao.Arte, noChao.Estado) ?? Vulto(),
 			Centered = false,
 			// MEIO TRANSPARENTE, como o dono pediu: da pra ver o chao por baixo e julgar o encaixe.
 			Modulate = Livre,
 			ZIndex = 50,
 		};
 		World.Instancia?.AddChild(_fantasma);
-		Chat.Sistema($"{def.Nome}: clique onde quer instalar. Botão direito ou Esc cancela -- "
+		Chat.Sistema($"{def.Nome}: clique onde quer {(plantio ? "plantar" : "instalar")}. Botão direito ou Esc cancela -- "
 					 + "o item continua na mochila até o servidor aceitar o lugar.");
 	}
 

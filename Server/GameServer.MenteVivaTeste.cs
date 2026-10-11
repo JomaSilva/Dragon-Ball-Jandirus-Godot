@@ -1178,8 +1178,8 @@ public partial class GameServer
 			// Zenkai, save e conta) e quem ASSISTE (e portanto tem lista de amizade) -- sao A e B.
 			MoveToZone(carrasco.Id, a.Zone, a.Pos + new Vec2(48, 0));
 
-			// B E AMIGO DE A: sem o vinculo, `LutoPorQueda` recusa e a familia 6 mediria o nada.
-			b.Social.Amizade[a.Assinatura] = Convivio.ExigenciaDeAmigo;
+			// B DECLAROU A AMIGO: sem a declaracao, `LutoPorQueda` recusa e a familia 6 mediria o nada.
+			DeclararDeTeste(b, a, Relacao.Bom);
 			b.RaivaLendariaAte = b.FuriaExtremaAte = 0;
 			a.Ficha.zenkaiReady = 0;
 			double bpAntes = a.Ficha.BP;

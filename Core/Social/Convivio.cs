@@ -1,13 +1,20 @@
-﻿namespace Jandirus.Core.Social;
+﻿using System.Globalization;
+using System.Text;
+using System.Text.Json.Serialization;
+
+namespace Jandirus.Core.Social;
 
 /// <summary>
-/// QUE RELACAO EU DECLAREI TER COM ALGUEM -- o verb `Relation()` do DM (`Contacts.dm:115-151`).
+/// O QUE ESTA PESSOA E PRA MIM -- a DECLARACAO, o verb `Relation()` do DM (`Contacts.dm:115-151`).
 ///
 /// ============================ POR QUE OS NUMEROS SAO EXPLICITOS ============================
 /// Isto vai pro disco (o `Convivio` inteiro e serializado no save do personagem). Renumerar uma
 /// entrada nao quebra compilacao nenhuma e transforma silenciosamente o "Amor" de todo mundo em
-/// "Odio" na proxima carga. Numeros cravados, e nunca reordenar.
+/// "Inimigo mortal" na proxima carga. Numeros cravados, e nunca reordenar.
 /// ==========================================================================================
+///
+/// OS NOMES DO ENUM SAO OS DO DM ("Good", "Very Good", "Hate"...); o que o JOGADOR le sao os de
+/// <see cref="Convivio.NomeDaRelacao"/> (amigo, melhor amigo, inimigo mortal...).
 ///
 /// A ORDEM NAO E ESCALA: `Ruim` nao e "menos que `Bom`". Quem pergunta pergunta por conjunto
 /// (ver <see cref="Convivio.TemRelacao"/>), exatamente como o DM (`check_relation(M, list(...))`).
@@ -27,6 +34,18 @@ public enum Relacao : byte
 	Amor = 9,
 }
 
+/// <summary>O que aconteceu com um pedido de declaracao. Ver <see cref="Convivio.Declarar"/>.</summary>
+public enum Declaracao : byte
+{
+	Feita = 0,
+	/// <summary>Nao ha ficha dessa pessoa na minha lista.</summary>
+	NaoConhece = 1,
+	/// <summary>`Relacao.Nenhuma` (ou um nome que nao casa com nada): a ausencia nao se declara.</summary>
+	NaoSeDeclara = 2,
+	/// <summary>O convivio ainda nao paga esta declaracao (<see cref="Convivio.FamiliaridadeExigida"/>).</summary>
+	FaltaConvivio = 3,
+}
+
 /// <summary>
 /// UMA PESSOA QUE EU CONHECO -- o `/obj/Contact` do DM (`Contacts.dm:94-104`).
 ///
@@ -37,13 +56,18 @@ public enum Relacao : byte
 /// se transformou, o cargo ATUAL de quem foi promovido e o nome ATUAL de quem trocou de corpo --
 /// ou seja, saber quem alguem e sem estar perto dele. A memoria e velha de proposito.
 ///
-/// O RETRATO (os `overlays` achatados num icone) NAO FOI PORTADO. La ele existe porque o BYOND
-/// sabe achatar icone + overlays num `/icon` e mandar por `browse_rsc`; aqui a aparencia e um
-/// `Appearance` que o cliente monta em camadas, e "a foto de como ele estava" seria um segundo
-/// caminho de vestir alguem -- o mesmo tipo de duplicata que este port ja pagou caro (ver o
-/// `AoReceberAparencia` x `VestirCorpoInteiro`). Ficaram os campos de TEXTO da ficha, que sao o que a
-/// aba realmente le.
+/// O RETRATO (os `overlays` achatados num icone) mora no CLIENTE (`Client/VistosDeGente.cs`): e a
+/// aparencia que os olhos DESTE jogador viram por ultimo. Aqui ficam os campos de TEXTO da ficha.
 /// ==========================================================================================
+///
+/// ============================ A CLASSE NAO ENTRA NA FOTO -- DIVERGENCIA DECLARADA ============================
+/// O Contact do DM guarda `c_class` e a aba People de la o ESCREVE (`Statistics.dm:153`, `HtmlUI.dm:557`:
+/// *"[c_race] / [c_class]"*). Este port tem uma regra de jogo que diz o contrario -- *"a classe NUNCA aparece,
+/// em lugar nenhum"* (`GameServer.Sigilo.cs`, regra 2): cada um so recebe uma PISTA da propria classe, na
+/// criacao. Com a classe na lista de conhecidos a regra furava pelos dois lados: eu lia a classe de todo mundo
+/// que cruzasse comigo ("Saiyan / Legendary"), e descobria a minha perguntando a qualquer conhecido. Por isso a
+/// foto nao a guarda, o fio nao a manda e a aba nao a escreve. (Save antigo traz o campo; ele e ignorado.)
+/// ==============================================================================================================
 /// </summary>
 public sealed class Conhecido
 {
@@ -52,73 +76,104 @@ public sealed class Conhecido
 	/// <summary>`"[name] ([displaykey])"` no DM (`Contacts.dm:10`). Aqui: o nome do personagem.</summary>
 	public string Nome = "";
 
-	// o `c_race`/`c_class`/`c_gender`/`c_age` do Contact -- "?" e o valor de fabrica de la
+	// o `c_race`/`c_gender`/`c_age` do Contact -- "?" e o valor de fabrica de la. A raca vai na linha da
+	// lista; o genero e a idade so saem do servidor como DETALHES (ver `Convivio.ConvivioParaDetalhes`).
 	public string Raca = "?";
-	public string Classe = "?";
 	public string Genero = "?";
 	public int Idade;
 
 	/// <summary>
-	/// QUANTO EU CONVIVI COM ESTA PESSOA -- o `familiarity` do Contact.
+	/// O CONVIVIO -- quanto eu ja vivi com esta pessoa. E o `familiarity` do Contact, e e a UNICA medida
+	/// que o JOGO escreve sobre nos dois: ele nao conclui nada dela, so conta. Sobe por ficar perto, por
+	/// conversar e por lutar (ver as constantes do <see cref="Convivio"/>), nunca desce, e serve pra tres
+	/// coisas: paga as declaracoes (<see cref="Convivio.FamiliaridadeExigida"/>), diz se eu sei o nome de
+	/// alguem que sinto (`Sense2.0.dm:99`, `HtmlUI.dm:374`) e facilita o teleporte ate ele
+	/// (`yardrat.dm:178`, *"easier to teleport to people you know better"*).
 	///
-	/// NAO E AMIZADE, e as duas nem crescem pela mesma coisa: amizade cresce por ESTAR PERTO
-	/// (`accrue_friendship`, proximidade), familiaridade cresce por CONVERSAR (`TestListeners`,
-	/// `Talking.dm:218-219`, com `prob(1)` por mensagem ouvida, nos dois sentidos). E a
-	/// familiaridade que abre as declaracoes de relacao e que o resto do jogo consulta pra saber
-	/// se voce sabe o nome de alguem (`Sense2.0.dm:99`, `HtmlUI.dm:374`) ou consegue se teleportar
-	/// ate ele (`yardrat.dm:178`, *"easier to teleport to people you know better"*).
+	/// O NOME DO CAMPO FICOU O DO DM (e o do save): na tela ele se chama "convivio".
 	/// </summary>
 	public int Familiaridade;
 
-	/// <summary>O que EU declarei sentir por esta pessoa. Ver <see cref="Relacao"/>.</summary>
+	/// <summary>
+	/// Os passos de proximidade guardados desde o ultimo ponto de convivio (0 a
+	/// <see cref="Convivio.PassosPertoPorPonto"/> - 1). Vai pro save pra meio minuto ao lado de alguem
+	/// nao se perder num relog. Ver <see cref="Convivio.ConviverPerto"/>.
+	/// </summary>
+	public int PassosPerto;
+
+	/// <summary>O que EU disse que esta pessoa e pra mim. Ver <see cref="Relacao"/>.</summary>
 	public Relacao Relacao = Relacao.Nenhuma;
 
 	/// <summary>Quando a fotografia foi tirada (relogio real, ms) -- o `last_snap`.</summary>
 	public long VistoEm;
+
+	/// <summary>
+	/// Desde quando eu a conheco (relogio real, ms): a hora da PRIMEIRA fotografia. Zero em ficha de antes
+	/// deste campo (2026-10-10) -- "nao sei", e a tela nao escreve a linha.
+	/// </summary>
+	public long DesdeMs;
+
+	// =====================================================================
+	// OS DETALHES -- o que se aprende de alguem CONVIVENDO com ele. So sao escritos depois que o
+	// convivio passa do `Convivio.ConvivioParaDetalhes`, e so quando eu estou com a pessoa (sao parte
+	// da fotografia: o que eu sei e o que ela era da ultima vez que a vi).
+	// =====================================================================
+
+	/// <summary>
+	/// A HISTORIA que ela escreveu na criacao (`CharacterDraft.Backstory`), como eu a ouvi por ultimo e
+	/// ja limpa (<see cref="Convivio.HistoriaLegivel"/>). Vazia ate o convivio pagar.
+	/// </summary>
+	public string Historia = "";
+
+	/// <summary>O nome do cargo que ela carregava quando a vi por ultimo ("" = nenhum).</summary>
+	public string Titulo = "";
+
+	/// <summary>Quando os detalhes foram ouvidos por ultimo (relogio real, ms). Zero = nunca.</summary>
+	public long DetalhesEm;
 }
 
 /// <summary>
-/// ============================ O SUBSTRATO SOCIAL, PORTADO DO DM ============================
-/// Duas listas, dois arquivos la, e a separacao entre elas e DELIBERADA:
+/// ============================ O SUBSTRATO SOCIAL: CONVIVIO E DECLARACAO ============================
+/// Dois arquivos do DM moram aqui (`Contacts.dm` e `Friendship.dm`), e o que sobrou deles sao DUAS
+/// coisas, cada uma com um dono so:
 ///
-///   * `Contacts.dm`   -- `known_contact_list`: quem eu conheco, com a foto da ficha e a relacao
-///     que eu declarei. Entra-se nela por proximidade, por conversa ou pelo verb `Set_Contact`.
-///   * `Friendship.dm` -- `friendship`: quantos pontos de amizade eu tenho com cada um.
+///   * o **CONVIVIO** (<see cref="Conhecido.Familiaridade"/>) -- quem escreve e o JOGO, e ele so CONTA:
+///     tempo perto, conversa, luta. Nao tem rotulo, nao desce e nao conclui nada;
+///   * a **DECLARACAO** (<see cref="Conhecido.Relacao"/>) -- quem escreve e o JOGADOR, e so ele: e o que
+///     aquela pessoa e PRA ELE. O jogo nunca declara por ninguem e nunca desfaz uma declaracao.
 ///
-/// No DM **CONHECIDO NAO E AMIGO, E ISSO ESTA CRAVADO NUM NUMERO**: o teto da proximidade e o
-/// `ACQUAINTANCE_CAP = 49` (`Friendship.dm:23`) e a exigencia de amigo e
-/// <see cref="ExigenciaDeAmigo"/> = 50 (`:21`) -- **um ponto acima**. Conviver ao lado de alguem a
-/// vida inteira te deixava `Familiar` e nunca `Friend`: la amizade exige um PEDIDO ACEITO
-/// (`friend_request_resolve`, `:122-124`, que faz `max(..., FRIEND_REQ)` nas duas pontas).
-/// ==========================================================================================
+/// E a regra que as liga: o convivio PAGA as declaracoes (<see cref="FamiliaridadeExigida"/>), e sao as
+/// declaracoes -- e mais nada -- que respondem as perguntas da FURIA (<see cref="LutoPorMorte"/> e
+/// irmas), que e a porta do Super Saiyajin.
+/// ===================================================================================================
 ///
-/// ============================ A DIVERGENCIA DECLARADA: AQUI E CONVIVIO, NAO CONVITE ============================
-/// **A PEDIDO DO DONO**, e com as palavras dele: *"no byond tinha q CONVIDAR alguem pra ser seu
-/// amigo. AQUI PODERIA SER SOMENTE alguem q ficou BASTANTE TEMPO COM VC ate virar amigo"*.
+/// ============================ A AFINIDADE SAIU -- **PEDIDO DO DONO (2026-10-10)** ============================
+/// Ate esta data havia um TERCEIRO eixo, automatico: os pontos de amizade do `Friendship.dm` (de -200 a
+/// +200: subiam por proximidade, caiam quando um derrubava ou matava o outro), com o rotulo que o jogo
+/// deduzia deles (Ligado, Amigo, Familiar, ..., Inimigo mortal), mais o odio (`enmity`), a lista de
+/// rivais e o pedido de amizade. O dono, com as palavras dele: *"a galera n ta entendendo direito a
+/// diferenca de vc selecionar oq e aquela pessoa pra vc e oq o jogo diz com base nas acoes, seria melhor
+/// so deixar o player escolher oq aquela pessoa e pra ele e tirar isso de afinidade e so deixar convivio
+/// e declaracao"*.
 ///
-/// Entao o `ACQUAINTANCE_CAP` **nao foi portado**: a proximidade atravessa o 50 sozinha e vai ate o
-/// teto de 200. Amizade aqui e um RELOGIO -- <see cref="MinutosParaVirarAmigo"/> minutos ao lado da
-/// mesma pessoa. O pedido continua existindo, e ganhou um segundo emprego (ver
-/// <see cref="AceitarAmizade"/>): ele agora e o ATALHO e a RECONCILIACAO, nao mais a unica porta.
+/// O QUE CADA LEITOR DA AFINIDADE VIROU:
 ///
-///   * O QUE SE GANHA: o vinculo passa a existir sem que ninguem precise saber que ha um verb pra
-///     isso -- e como todo o resto do jogo (Zenkai, maestria, gravidade) ja mede tempo e nao gesto,
-///     a amizade deixa de ser o unico sistema que exige um clique. E, sobretudo, ela ganha PESO PRA
-///     PERDER: so faz sentido cobrar de quem mata (ver <see cref="Afastar"/>) se o laco tiver custado
-///     tempo. Um laco de um clique nao doi quando quebra.
-///   * O QUE SE PERDE: a amizade deixa de ser uma ESCOLHA. Quem treina 25 minutos ao lado de alguem
-///     que despreza vira amigo dele do mesmo jeito, e -- o que custa caro -- **passa a poder entrar
-///     em furia por ele** (o `LutoPorMorte` le exatamente este numero, e ele e a porta do SSJ1). No
-///     DM isso era impossivel de proposito. As duas defesas que sobraram sao: rival declarado nao
-///     rende amizade nenhuma (<see cref="Aproximar"/>), e quem te mata desce pro NEGATIVO e vira
-///     inimigo sozinho, sem volta por convivencia.
-/// ================================================================================================================
+///   * `is_friend()` (>= 50 pontos), a metade `|| M.is_friend(src)` das perguntas da furia -> le a
+///     DECLARACAO: amigo e quem eu declarei `Bom`, `MuitoBom` ou `Amor` (<see cref="EhAmigo"/>). O minimo
+///     que havia (50 pontos = 25 minutos lado a lado) continua valendo pelo CONVIVIO que essas declaracoes
+///     pedem (50), no mesmo relogio -- ver <see cref="PassosPertoPorPonto"/>;
+///   * a proximidade (`accrue_friendship`) -> rende CONVIVIO, na mesma taxa (<see cref="ConviverPerto"/>).
+///     Era pedido antigo do dono que conviver bastasse: *"AQUI PODERIA SER SOMENTE alguem q ficou BASTANTE
+///     TEMPO COM VC ate virar amigo"*. O tempo continua sendo o caminho; o que mudou e que no fim dele quem
+///     diz "amigo" e o jogador;
+///   * a queda dos pontos por nocaute/morte, o "inimigo automatico", a rivalidade declarada sozinha, o odio
+///     (`enmity`, so desenhado), o verb `Declare_Rival` e o pedido de amizade (`Request_Friendship`, que so
+///     escrevia pontos) -> SAIRAM. Rival e inimigo hoje sao declaracoes como as outras.
 ///
-/// ============================ POR QUE ISTO IMPORTA PRO SSJ1 ============================
-/// A porta do tronco Saiyajin nao e amizade: e RAIVA. Mas quem decide se a raiva acende sao estas
-/// duas listas, com um `||` entre elas -- `KO.dm:36` e `Death.dm:79`. Ver
-/// <see cref="LutoPorMorte"/> e <see cref="LutoPorQueda"/>, que sao esses dois `if` portados.
-/// ======================================================================================
+/// O SAVE ANTIGO traz as tres listas velhas. `Inimizade` e `Rivais` sao ignoradas na leitura; os pontos
+/// positivos de `Amizade` viram convivio UMA vez (<see cref="MigrarAfinidade"/>), porque eram, na mesma
+/// unidade, o tempo que os dois ja tinham passado juntos.
+/// ==============================================================================================================
 ///
 /// ============================ DOIS DESVIOS CONSCIENTES DO ORIGINAL ============================
 /// Os dois sao a MESMA raiz: no DM o `/obj/Contact` e um objeto GLOBAL, um por pessoa no mundo
@@ -136,7 +191,7 @@ public sealed class Conhecido
 ///      responde FALSE sempre, e o gate de familiaridade do proprio verb (`familiarity[usr.sig]`,
 ///      `:121`) tambem nunca passa -- so "Neutral" da pra escolher.
 ///
-/// Aqui as duas listas moram DENTRO do personagem que as tem, entao elas sao naturalmente por
+/// Aqui as duas moram DENTRO do personagem que as tem, entao elas sao naturalmente por
 /// observador e as chaves nao tem como divergir. Portar a troca de chaves seria portar um typo:
 /// os chamadores do DM (`check_relation(M, list("Good",...))`, a pergunta do verb *"What's your
 /// relation?"*) dizem, sem ambiguidade, que a intencao e "o que EU sinto por ELE".
@@ -145,85 +200,65 @@ public sealed class Conhecido
 public sealed class Convivio
 {
 	// =====================================================================
-	// OS NUMEROS DO `Friendship.dm` (linhas 19-27) -- todos, com o nome de la ao lado
+	// DE ONDE VEM O CONVIVIO -- as constantes que o dono ajusta
 	// =====================================================================
 
-	/// <summary>`FRIEND_RANGE = 6`: a quantos TILES dois jogadores estreitam lacos por estar perto.</summary>
+	/// <summary>`FRIEND_RANGE = 6` (`Friendship.dm:19`): a quantos TILES dois jogadores convivem por estar perto.</summary>
 	public const int AlcanceDeConvivioTiles = 6;
-
-	/// <summary>`FRIEND_RATE = 0.1`: quanto de amizade cada passo de proximidade rende.</summary>
-	public const double TaxaDeAmizade = 0.1;
-
-	/// <summary>`FRIEND_REQ = 50`: a partir daqui a pessoa E amiga, e e isso que a raiva le.</summary>
-	public const double ExigenciaDeAmigo = 50;
-
-	/// <summary>O teto de tudo (`min(cur + FRIEND_RATE, 200)`, `:39`) -- e o degrau `Bonded`.</summary>
-	public const double TetoDeAmizade = 200;
-
-	/// <summary>
-	/// ============================ O PISO, QUE NO DM NAO EXISTE ============================
-	/// *"podendo ficar NO NEGATIVO e se tornando INIMIGOS"*. E o espelho exato do
-	/// <see cref="TetoDeAmizade"/> e do <see cref="TetoDeInimizade"/>: a escala vai de -200 a +200 e
-	/// o zero e o ponto em que o afeto vira o contrario dele.
-	///
-	/// **NO DM A AMIZADE NUNCA DIMINUI** -- a varredura por decremento de `friendship[...]` em
-	/// `Code/` volta vazia. La, matar um amigo de alguem custa ODIO (`friend_harmed_by`), e so contra
-	/// quem ja tinha sido declarado rival. Perda, negativo e inimizade automatica sao invencao do
-	/// dono, nao porte.
-	/// =====================================================================================
-	/// </summary>
-	public const double PisoDeAmizade = -TetoDeAmizade;
-
-	/// <summary>
-	/// QUANTO TEMPO JUNTO CUSTA VIRAR AMIGO -- a resposta em minutos, derivada e nunca digitada.
-	///
-	/// 50 pontos / 0,1 por passo = 500 passos de 3 s = 1500 s = **25 minutos** de convivio a menos de
-	/// 6 tiles. E ela e uma CONTA e nao um numero escrito: quem mexer na taxa, no limiar ou na
-	/// cadencia ve o minuto mudar junto, em vez de deixar um comentario mentindo no arquivo.
-	/// (Ate o teto de 200 -- o degrau `Ligado` -- sao 100 minutos.)
-	/// </summary>
-	public static double MinutosParaVirarAmigo =>
-		ExigenciaDeAmigo / TaxaDeAmizade * SegundosEntreAproximacoes / 60.0;
 
 	/// <summary>
 	/// `FRIEND_THROTTLE = 10` voltas do `GlobalStats`, que dorme `sleep(3)` = 0,3 s
-	/// (`Stats.dm:66`). Dez voltas de 0,3 s = **3 segundos** entre um passo de aproximacao e o
+	/// (`Stats.dm:66`). Dez voltas de 0,3 s = **3 segundos** entre um passo de proximidade e o
 	/// seguinte. Guardado em segundos e nao em "voltas" porque o tique deste port nao e o de la --
 	/// copiar o numero 10 daria uma cadencia diferente calada.
 	/// </summary>
 	public const double SegundosEntreAproximacoes = 3;
 
-	/// <summary>`ENMITY_HIT = 1`: cada golpe de um rival declarado.</summary>
-	public const double InimizadePorGolpe = 1;
-
-	/// <summary>`ENMITY_FRIEND_KO = 25`: um rival declarado nocauteou um amigo meu.</summary>
-	public const double InimizadePorAmigoCaido = 25;
-
-	/// <summary>`ENMITY_FRIEND_KILL = 60`: um rival declarado MATOU um amigo meu.</summary>
-	public const double InimizadePorAmigoMorto = 60;
-
-	/// <summary>`ENMITY_MAX = 200`: o teto, espelhando o `Bonded` da amizade.</summary>
-	public const double TetoDeInimizade = 200;
+	/// <summary>
+	/// QUANTOS PASSOS DE PROXIMIDADE VALEM UM PONTO DE CONVIVIO -- o `FRIEND_RATE = 0.1` do DM
+	/// (`Friendship.dm:20`: 0,1 por passo) escrito ao contrario, em inteiros: 10 passos de 3 s = **um ponto
+	/// a cada 30 segundos** ao lado da mesma pessoa. Era a taxa da afinidade; hoje e a do convivio, e os
+	/// minutos que o dono conhecia continuam os mesmos (ver <see cref="MinutosJuntosPara"/>).
+	/// </summary>
+	public const int PassosPertoPorPonto = 10;
 
 	/// <summary>
-	/// ============================ O PRECO DE MATAR -- **PEDIDO DO DONO, NAO PORTE** ============================
-	/// *"pessoas q MATAM SEU AMIGO ou TE MATAM PERDEM PONTOS de amizade"*.
-	///
-	/// OS DOIS NUMEROS SAO OS MESMOS DO ODIO, e sao os mesmos DE PROPOSITO: matar o amigo de alguem ja
-	/// vale `ENMITY_FRIEND_KILL = 60` de odio no DM, e derruba-lo vale `ENMITY_FRIEND_KO = 25`. E o
-	/// MESMO evento, contado nos dois livros -- o quanto ele soma de odio e o quanto ele tira de
-	/// afeto. Um par proprio aqui seria uma segunda tabela pra manter, que um dia discorda desta.
-	///
-	/// A CONTA QUE ELES DESENHAM: quem nunca te viu na vida (0 pontos) e te mata cai pra **-60** e
-	/// vira inimigo no mesmo golpe; um amigo recem-feito (50, os 25 minutos) que te mata cai pra -10 e
-	/// **tambem** vira inimigo; e quem construiu um vinculo `Ligado` (200, uma hora e quarenta) pode
-	/// errar tres vezes antes de virar. E o que o numero quer dizer: tempo junto e credito de perdao.
-	/// ==========================================================================================================
+	/// ATE ONDE SO FICAR PERTO LEVA -- o `min(cur + FRIEND_RATE, 200)` de `Friendship.dm:39`, e nao por
+	/// acaso o preco da declaracao mais cara (<see cref="Relacao.Amor"/>). Conversa e luta nao tem teto,
+	/// como no DM (`add_familiarity` so soma).
 	/// </summary>
-	public const double PerdaPorMorte = InimizadePorAmigoMorto;
+	public const int TetoDoConvivioPorTempo = 200;
 
-	/// <inheritdoc cref="PerdaPorMorte"/>
-	public const double PerdaPorNocaute = InimizadePorAmigoCaido;
+	/// <summary>Quantos segundos lado a lado rendem um ponto. Derivado, nunca digitado.</summary>
+	public static double SegundosPertoPorPonto => PassosPertoPorPonto * SegundosEntreAproximacoes;
+
+	/// <summary>
+	/// QUANTO TEMPO JUNTO PAGA ESTA DECLARACAO, so de ficar perto -- a resposta em minutos, derivada.
+	/// `Bom` (amigo): 50 pontos x 30 s = **25 minutos**, o mesmo relogio que fazia "amigo" na afinidade.
+	/// `MuitoBom`: 50 min; `Amor`: 100 min. Quem mexer na taxa ou no preco ve o minuto mudar junto.
+	/// </summary>
+	public static double MinutosJuntosPara(Relacao r) => FamiliaridadeExigida(r) * SegundosPertoPorPonto / 60.0;
+
+	/// <summary>
+	/// `prob(1)` (`Talking.dm:218`): 1% por fala OUVIDA, nos dois sentidos. E devagar de proposito --
+	/// quem so conversa leva ~5000 falas pra chegar aos 50 do "amigo".
+	/// </summary>
+	public const double ChanceDeFamiliaridadePorFala = 0.01;
+
+	/// <summary>
+	/// ============================ CONVIVIO NA PORRADA -- PEDIDO DO DONO (2026-09-05), NAO PORTE ============================
+	/// No DM a familiaridade so sobe por FALA ouvida (`add_familiarity`, 1% por linha). O dono: *"fiz um
+	/// personagem apanhar muito ... mas ja que eu fiz isso em pouco tempo de jogo o convivio ainda era 0 e eu
+	/// so conseguia declarar ele como neutro ... ficou esquisito e confuso"*. Apanhar de alguem E conhece-lo:
+	/// cada golpe que encosta tem 10% de render 1 ponto (uma luta de 100 golpes ~ 10), cair vale 10 e morrer
+	/// vale 20 -- nos DOIS lados. Tres mortes (60) ja pagam o "inimigo mortal" (50).
+	/// ==================================================================================================================
+	/// </summary>
+	public const double ChanceDeFamiliaridadePorGolpe = 0.10;
+	/// <inheritdoc cref="ChanceDeFamiliaridadePorGolpe"/>
+	public const int FamiliaridadePorQueda = 10;
+	/// <inheritdoc cref="ChanceDeFamiliaridadePorGolpe"/>
+	public const int FamiliaridadePorMorte = 20;
 
 	/// <summary>
 	/// De quanto em quanto tempo a fotografia da ficha de alguem e refeita.
@@ -235,21 +270,27 @@ public sealed class Convivio
 	public const long IntervaloDoRetratoMs = 60_000;
 
 	/// <summary>
-	/// ============================ CONVIVIO NA PORRADA -- PEDIDO DO DONO (2026-09-05), NAO PORTE ============================
-	/// No DM a familiaridade so sobe por FALA ouvida (`add_familiarity`, 1% por linha). O dono: *"fiz um
-	/// personagem apanhar muito, fazendo ele ficar com o menor nivel possivel de amizade (inimigo mortal),
-	/// mas ja que eu fiz isso em pouco tempo de jogo o convivio ainda era 0 e eu so conseguia declarar ele
-	/// como neutro ... ficou esquisito e confuso"*. Apanhar de alguem E conhece-lo: cada golpe que encosta
-	/// tem 10% de render 1 ponto (uma luta de 100 golpes ~ 10, o que cinco mil falas dariam), cair vale 10 e
-	/// morrer vale 20 -- nos DOIS lados. Oito nocautes = 80: da pra declarar 'odio' (50) a quem o jogo ja
-	/// chama de inimigo mortal. Os 200 do 'amor' continuam sendo tempo.
-	/// ==================================================================================================================
+	/// ============================ O CONVIVIO QUE ABRE OS DETALHES -- PEDIDO DO DONO (2026-10-10) ============================
+	/// *"ao abrir na aba people e clicar em pessoas q vc conhece (tem q ter um certo nivel de convivio minimo) vc
+	/// pode ver mais detalhes da pessoa, como idade, a backstory dela etc"*.
+	///
+	/// VINTE: dez minutos lado a lado, ou uma luta que terminou em morte, ou duas quedas. E o mesmo preco do
+	/// "inimigo" (`MuitoRuim`) -- o ponto em que a regua ja admite que voces se conhecem de verdade --, e fica
+	/// bem antes do "amigo" (50): ler a historia de alguem e o que te faz QUERER declarar alguma coisa.
+	///
+	/// Abaixo dele a pessoa esta na lista (nome, raca, retrato) e mais nada dela sai do servidor: a idade e o
+	/// genero ficam na foto que o SERVIDOR guarda e nao sao mandados (`GameServer.VerboDetalhes`); a historia e
+	/// o cargo nem chegam a ser copiados pra ficha (<see cref="AprenderDetalhes"/>).
+	/// ======================================================================================================================
 	/// </summary>
-	public const double ChanceDeFamiliaridadePorGolpe = 0.10;
-	/// <inheritdoc cref="ChanceDeFamiliaridadePorGolpe"/>
-	public const int FamiliaridadePorQueda = 10;
-	/// <inheritdoc cref="ChanceDeFamiliaridadePorGolpe"/>
-	public const int FamiliaridadePorMorte = 20;
+	public const int ConvivioParaDetalhes = 20;
+
+	/// <summary>
+	/// Quantas quebras de linha a historia de alguem conserva quando OUTRO a le (as que passam viram espaco).
+	/// Quinhentos caracteres cabem em quinhentas linhas de uma letra: sem teto, uma historia "suja" esticaria
+	/// o cartao de quem a abre por telas inteiras.
+	/// </summary>
+	public const int MaxQuebrasDaHistoria = 12;
 
 	// =====================================================================
 	// O ESTADO -- campos publicos e mutaveis porque isto vai INTEIRO pro save
@@ -258,56 +299,31 @@ public sealed class Convivio
 	// disco, em silencio, e o personagem perde quem ele conhecia.
 	// =====================================================================
 
-	/// <summary>`known_contact_list`: assinatura -> a foto de quem eu conheco.</summary>
+	/// <summary>`known_contact_list`: assinatura -> a ficha de quem eu conheco (com o convivio e a declaracao).</summary>
 	public Dictionary<string, Conhecido> Conhecidos = [];
 
-	/// <summary>`friendship`: assinatura -> pontos acumulados.</summary>
-	public Dictionary<string, double> Amizade = [];
-
-	/// <summary>`enmity`: assinatura -> odio acumulado. So cresce contra RIVAL DECLARADO.</summary>
-	public Dictionary<string, double> Inimizade = [];
-
 	/// <summary>
-	/// `rivals`: quem eu declarei inimigo. Lista e nao conjunto pra o JSON ir e voltar sem
-	/// surpresa; as insercoes passam por <see cref="AlternarRival"/>, que nao duplica.
+	/// **SO PRA LER SAVE ANTIGO.** Os pontos de AFINIDADE de antes de 2026-10-10 (`friendship`:
+	/// assinatura -> pontos, de -200 a +200). Nulo em todo personagem novo e em todo personagem ja
+	/// migrado -- e nulo nao e gravado, entao o campo some do arquivo na primeira gravacao depois do
+	/// login. Quem o consome (uma vez) e o <see cref="MigrarAfinidade"/>; nenhuma REGRA le isto.
 	/// </summary>
-	public List<string> Rivais = [];
+	[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+	public Dictionary<string, double>? Amizade;
 
 	// =====================================================================
 	// PERGUNTAS
 	// =====================================================================
-	public double PontosDeAmizade(string sig) =>
-		sig.Length > 0 && Amizade.TryGetValue(sig, out double p) ? p : 0;
-
-	public double PontosDeInimizade(string sig) =>
-		sig.Length > 0 && Inimizade.TryGetValue(sig, out double p) ? p : 0;
-
-	/// <summary>`is_friend()` (`Friendship.dm:46-48`).</summary>
-	public bool EhAmigo(string sig) => PontosDeAmizade(sig) >= ExigenciaDeAmigo;
-
-	/// <summary>
-	/// A OUTRA PONTA, QUE NO DM NAO EXISTE: amizade abaixo de zero. Nao ha limiar nenhum aqui de
-	/// proposito -- **o zero E o limiar**, e e o mesmo zero do "nunca te vi": quem nunca te viu esta
-	/// exatamente na fronteira, e um unico golpe mortal decide de que lado ele fica.
-	///
-	/// Ela e o gatilho de tudo que "ser inimigo" faz: quem cruza pra ca vira RIVAL DECLARADO sozinho
-	/// (ver <see cref="Afastar"/>), e a partir dai o eixo que ja existia -- <see cref="Rivais"/> e
-	/// <see cref="Inimizade"/> -- passa a valer sem uma linha nova.
-	/// </summary>
-	public bool EhInimigo(string sig) => PontosDeAmizade(sig) < 0;
-
-	public bool EhRival(string sig) => sig.Length > 0 && Rivais.Contains(sig);
-
 	public bool Conhece(string sig) => sig.Length > 0 && Conhecidos.ContainsKey(sig);
 
 	public Conhecido? Ficha(string sig) =>
 		sig.Length > 0 && Conhecidos.TryGetValue(sig, out Conhecido? c) ? c : null;
 
-	/// <summary>`check_familiarity()` (`Contacts.dm:76-80`). Zero pra quem eu nao conheco.</summary>
+	/// <summary>`check_familiarity()` (`Contacts.dm:76-80`): o CONVIVIO. Zero pra quem eu nao conheco.</summary>
 	public int Familiaridade(string sig) => Ficha(sig)?.Familiaridade ?? 0;
 
 	/// <summary>
-	/// O QUE EU DECLAREI SENTIR por esta pessoa. <see cref="Relacao.Nenhuma"/> pra quem eu nao
+	/// O QUE EU DECLAREI que esta pessoa e pra mim. <see cref="Relacao.Nenhuma"/> pra quem eu nao
 	/// conheco -- e pra quem eu conheco e nunca declarei nada, que sao a mesma resposta.
 	/// </summary>
 	public Relacao RelacaoCom(string sig) => Ficha(sig)?.Relacao ?? Relacao.Nenhuma;
@@ -326,94 +342,113 @@ public sealed class Convivio
 		return r != Relacao.Nenhuma && Array.IndexOf(quais, r) >= 0;
 	}
 
-	// =====================================================================
-	// AS TRES PERGUNTAS DA RAIVA -- os `if` de `Death.dm` e `KO.dm`, portados
-	// =====================================================================
-
 	/// <summary>
-	/// ESTA PESSOA MORRENDO NA MINHA FRENTE ME ENFURECE?
-	///
-	/// `Death.dm:79` -- `M.check_relation(src, list("Good","Very Good","Love","Rival/Good")) ||
-	/// M.is_friend(src)`. A lista da MORTE e mais larga que a da queda: ver morrer alguem de quem
-	/// voce gostava basta, e ate o rival que voce respeitava (`Rival/Good`) conta.
+	/// DEFEITO INJETADO (bancadas `convivio` e `--conhecidosteste`, e o robo `--diagconhecidos`): os detalhes
+	/// de alguem saem com QUALQUER convivio -- a historia e a idade de quem acabou de aparecer na lista. Lido
+	/// pela propria linha do <see cref="PodeVerDetalhes"/>.
 	/// </summary>
-	public bool LutoPorMorte(string sig) =>
-		EhAmigo(sig)
-		|| TemRelacao(sig, Relacao.Bom, Relacao.MuitoBom, Relacao.Amor, Relacao.RivalBom);
+	public static bool DetalhesSemConvivioDeTeste;
 
 	/// <summary>
-	/// ESTA PESSOA CAINDO NA MINHA FRENTE ME ENFURECE?
-	///
-	/// `KO.dm:36` -- `M.check_relation(src, list("Very Good","Love")) || M.is_friend(src)`. So os
-	/// dois graus MAIS ALTOS de afeto, e essa estreita e a regra: um nocaute e menos que uma morte,
-	/// entao ele so move quem era muito proximo.
+	/// EU JA CONVIVI O BASTANTE COM ESTA PESSOA PRA SABER MAIS DELA? -- o portao dos detalhes
+	/// (<see cref="ConvivioParaDetalhes"/>). E UMA pergunta, e as duas pontas a fazem: quem GUARDA os
+	/// detalhes na ficha (<see cref="AprenderDetalhes"/>) e quem os MANDA (`GameServer.VerboDetalhes`).
+	/// </summary>
+	public bool PodeVerDetalhes(string sig) =>
+		Ficha(sig) is { } c && (c.Familiaridade >= ConvivioParaDetalhes || DetalhesSemConvivioDeTeste);
+
+	/// <summary>A ficha desta pessoa SE eu tenho direito de ler os detalhes dela; nulo caso contrario.</summary>
+	public Conhecido? Detalhes(string sig) => PodeVerDetalhes(sig) ? Ficha(sig) : null;
+
+	// =====================================================================
+	// O QUE CADA DECLARACAO FAZ -- as listas do DM, por DECLARACAO.
+	// Estaticas e sobre o enum de proposito: a aba People escreve "o que esta escolha faz"
+	// perguntando AQUI, entao a tela nao tem como dizer uma regra que o servidor nao cumpre.
+	// =====================================================================
+
+	/// <summary>
+	/// ESTA DECLARACAO FAZ DA PESSOA UM AMIGO? -- o que sobrou do `is_friend()` (`Friendship.dm:46-48`).
+	/// La era "50 pontos de amizade"; aqui e "eu DISSE que gosto dela": amigo, melhor amigo ou amor.
+	/// </summary>
+	public static bool DeclaraAmigo(Relacao r) => r is Relacao.Bom or Relacao.MuitoBom or Relacao.Amor;
+
+	/// <summary>
+	/// `Death.dm:79` -- `M.check_relation(src, list("Good","Very Good","Love","Rival/Good")) ||
+	/// M.is_friend(src)`. A lista da MORTE e a mais larga: ate o rival que voce respeitava conta.
+	/// </summary>
+	public static bool EnfurecePorMorte(Relacao r) =>
+		DeclaraAmigo(r) || r is Relacao.Bom or Relacao.MuitoBom or Relacao.Amor or Relacao.RivalBom;
+
+	/// <summary>
+	/// `KO.dm:36` -- `M.check_relation(src, list("Very Good","Love")) || M.is_friend(src)`. A lista
+	/// escrita so tem os dois graus mais altos; quem poe o `Bom` aqui dentro e a metade `is_friend`,
+	/// que hoje e a declaracao de amigo (ver <see cref="DeclaraAmigo"/>) -- como era com os 50 pontos.
 	///
 	/// (Ficou de fora o `StoredAnger += 20` da linha seguinte, `KO.dm:39`, pra quem tinha
-	/// `Good`/`Rival/Good`: ele alimenta o BUFF de raiva, que e outro sistema e continua nao
-	/// portado -- ver o cabecalho de `GameServer.AmigoAbatido`.)
+	/// `Good`/`Rival/Good`: ele alimenta o BUFF de raiva, que e outro sistema -- ver o cabecalho de
+	/// `GameServer.AmigoAbatido`.)
 	/// </summary>
-	public bool LutoPorQueda(string sig) =>
-		EhAmigo(sig) || TemRelacao(sig, Relacao.MuitoBom, Relacao.Amor);
+	public static bool EnfurecePorQueda(Relacao r) => DeclaraAmigo(r) || r is Relacao.MuitoBom or Relacao.Amor;
 
 	/// <summary>
-	/// ESTA PESSOA SENDO ABSORVIDA NA MINHA FRENTE ME ENFURECE?
-	///
-	/// `MajinSaga.dm:172` -- `A.check_relation(M, list("Good","Very Good")) == TRUE || A.is_friend(M)`. A
-	/// consequencia e a da MORTE (furia extrema), mas a lista e outra e mais curta: nem `Love`, nem
-	/// `Rival/Good`. E do original, e fica como esta.
+	/// `MajinSaga.dm:172` -- `A.check_relation(M, list("Good","Very Good")) == TRUE || A.is_friend(M)`.
+	/// A lista escrita nao tem `Love` nem `Rival/Good`; o `Amor` entra pela metade `is_friend`.
 	/// </summary>
-	public bool LutoPorAbsorcao(string sig) =>
-		EhAmigo(sig) || TemRelacao(sig, Relacao.Bom, Relacao.MuitoBom);
+	public static bool EnfurecePorAbsorcao(Relacao r) => DeclaraAmigo(r) || r is Relacao.Bom or Relacao.MuitoBom;
 
 	/// <summary>
-	/// QUEM ME DERRUBOU ERA INIMIGO? -- perguntado a VITIMA sobre o algoz.
-	///
-	/// `Death.dm:75` e `KO.dm:34`, a mesma linha nos dois: `!is_friend(foe) &amp;&amp;
-	/// !check_relation(foe, list("Very Good","Love","Good","Rival/Good"))`.
+	/// APANHAR DESTA PESSOA E TREINO? -- o avesso de `Death.dm:75` e `KO.dm:32`, a mesma linha nos dois:
+	/// `!is_friend(foe) &amp;&amp; !check_relation(foe, list("Very Good","Love","Good","Rival/Good"))`.
+	/// Perguntado a lista da VITIMA sobre o algoz: quem apanhou e quem sabe se aquilo era um duelo.
+	/// </summary>
+	public static bool LutaEhTreino(Relacao r) =>
+		DeclaraAmigo(r) || r is Relacao.MuitoBom or Relacao.Amor or Relacao.Bom or Relacao.RivalBom;
+
+	// =====================================================================
+	// AS PERGUNTAS DA RAIVA -- os `if` de `Death.dm`, `KO.dm` e `MajinSaga.dm`, portados
+	// =====================================================================
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `convivio` e `--conhecidosteste`): o jogo volta a CONCLUIR que alguem e
+	/// amigo so pelo convivio (50, o limiar antigo da afinidade), sem declaracao nenhuma. Lido pela
+	/// propria linha do <see cref="EhAmigo"/>.
+	/// </summary>
+	public static bool AmigoSoPeloConvivioDeTeste;
+
+	/// <summary>
+	/// ESTA PESSOA E MINHA AMIGA? -- `is_friend()`. **Quem responde e a minha declaracao, e so ela**: o
+	/// jogo nao deduz amizade de nada que aconteceu entre nos (pedido do dono, ver o cabecalho da classe).
+	/// </summary>
+	public bool EhAmigo(string sig) =>
+		DeclaraAmigo(RelacaoCom(sig))
+		|| (AmigoSoPeloConvivioDeTeste && Familiaridade(sig) >= FamiliaridadeExigida(Relacao.Bom));
+
+	/// <summary>ESTA PESSOA MORRENDO NA MINHA FRENTE ME ENFURECE? Ver <see cref="EnfurecePorMorte"/>.</summary>
+	public bool LutoPorMorte(string sig) => EhAmigo(sig) || EnfurecePorMorte(RelacaoCom(sig));
+
+	/// <summary>ESTA PESSOA CAINDO NA MINHA FRENTE ME ENFURECE? Ver <see cref="EnfurecePorQueda"/>.</summary>
+	public bool LutoPorQueda(string sig) => EhAmigo(sig) || EnfurecePorQueda(RelacaoCom(sig));
+
+	/// <summary>ESTA PESSOA SENDO ABSORVIDA NA MINHA FRENTE ME ENFURECE? Ver <see cref="EnfurecePorAbsorcao"/>.</summary>
+	public bool LutoPorAbsorcao(string sig) => EhAmigo(sig) || EnfurecePorAbsorcao(RelacaoCom(sig));
+
+	/// <summary>
+	/// QUEM ME DERRUBOU ERA INIMIGO? -- perguntado a VITIMA sobre o algoz (`Death.dm:75`, `KO.dm:34`).
 	///
 	/// **E ela que impede o treino de virar fabrica de Super Saiyajin.** Sem esta pergunta, dois
 	/// amigos sparrando enfureceriam a plateia a cada nocaute -- e o DM diz isso em voz alta no
 	/// comentario de `Death.dm:75`: *"no rage for friendly duels or environmental death"*.
-	/// </summary>
-	public bool AlgozEhInimigo(string sig) =>
-		!EhAmigo(sig)
-		&& !TemRelacao(sig, Relacao.MuitoBom, Relacao.Amor, Relacao.Bom, Relacao.RivalBom);
-
-	// =====================================================================
-	// ROTULOS
-	// =====================================================================
-	/// <summary>
-	/// `acquaintance_label()` (`Friendship.dm:51-57`). E o que a aba People escreve.
 	///
-	/// OS TRES DEGRAUS DE BAIXO SAO NOVOS -- no DM nao ha faixa negativa porque nao ha como descer.
-	/// Eles espelham os de cima na mesma escala (5 / 50 / 200), pra que o jogador leia a queda com a
-	/// mesma regua com que leu a subida: `Desafeto` e o espelho de `Conhecido`, `Inimigo` e o espelho
-	/// exato de `Amigo` (e o -50 e o mesmo modulo do +50), e `Inimigo mortal` o de `Ligado`.
+	/// INIMIGO E O PADRAO: quem eu nao declarei amigo (nem rival amigo) e inimigo aos olhos da furia,
+	/// conheca eu ou nao. Declarar alguem "inimigo" nao muda esta resposta -- ela ja era sim.
 	/// </summary>
-	public static string RotuloDeProximidade(double pts) => pts switch
-	{
-		>= TetoDeAmizade => "Ligado",              // "Bonded"
-		>= ExigenciaDeAmigo => "Amigo",            // "Friend"
-		>= 20 => "Familiar",                       // "Familiar"
-		>= 5 => "Conhecido",                       // "Acquaintance"
-		>= 0 => "Mal conhecido",                   // "Barely Known"
-		> -ExigenciaDeAmigo => "Desafeto",
-		> PisoDeAmizade => "Inimigo",
-		_ => "Inimigo mortal",
-	};
+	public bool AlgozEhInimigo(string sig) => !EhAmigo(sig) && !LutaEhTreino(RelacaoCom(sig));
 
-	/// <summary>`enmity_label()` (`Friendship.dm:64-70`). Vazio quando nao ha odio nenhum.</summary>
-	public static string RotuloDeInimizade(double pts) => pts switch
-	{
-		>= 150 => "Nemesis",
-		>= 75 => "Rival odiado",
-		>= 25 => "Rival",
-		>= 5 => "Antipatizado",
-		_ => "",
-	};
-
+	// =====================================================================
+	// AS DECLARACOES: PRECO, NOME E ORDEM
+	// =====================================================================
 	/// <summary>
-	/// QUANTA FAMILIARIDADE CADA DECLARACAO PEDE -- os numeros do `switch` do verb `Relation()`
+	/// QUANTO CONVIVIO CADA DECLARACAO PEDE -- os numeros do `switch` do verb `Relation()`
 	/// (`Contacts.dm:117-151`), que a propria pergunta do DM lista pro jogador.
 	///
 	/// `Neutro` pede zero: e a saida, o "esquece o que eu disse".
@@ -430,40 +465,75 @@ public sealed class Convivio
 		_ => int.MaxValue,   // `Nenhuma` nao se declara: ela e a ausencia de declaracao
 	};
 
-	/// <summary>O nome que o jogador digita/ve. Casa sem diferenciar maiuscula nem acento simples.</summary>
-	public static Relacao RelacaoPorNome(string nome) => nome.Trim().ToLowerInvariant() switch
-	{
-		"neutro" or "neutral" => Relacao.Neutro,
-		"bom" or "good" => Relacao.Bom,
-		"muito bom" or "very good" => Relacao.MuitoBom,
-		"amor" or "love" => Relacao.Amor,
-		"rival bom" or "rival/good" or "rival good" => Relacao.RivalBom,
-		"rival ruim" or "rival/bad" or "rival bad" => Relacao.RivalRuim,
-		"ruim" or "bad" => Relacao.Ruim,
-		"muito ruim" or "very bad" => Relacao.MuitoRuim,
-		"odio" or "ódio" or "hate" => Relacao.Odio,
-		_ => Relacao.Nenhuma,
-	};
-
+	/// <summary>
+	/// O NOME QUE O JOGADOR LE -- "essa pessoa e pra voce: ...". Substantivos, e nao os adjetivos do DM
+	/// ("Good", "Very Bad"): a pergunta da aba e o que a pessoa E, e "ela e muito bom" nao e resposta.
+	/// </summary>
 	public static string NomeDaRelacao(Relacao r) => r switch
 	{
-		Relacao.Neutro => "neutro",
-		Relacao.Bom => "bom",
-		Relacao.MuitoBom => "muito bom",
 		Relacao.Amor => "amor",
-		Relacao.RivalBom => "rival bom",
-		Relacao.RivalRuim => "rival ruim",
-		Relacao.Ruim => "ruim",
-		Relacao.MuitoRuim => "muito ruim",
-		Relacao.Odio => "ódio",
+		Relacao.MuitoBom => "melhor amigo",
+		Relacao.Bom => "amigo",
+		Relacao.RivalBom => "rival amigo",
+		Relacao.Neutro => "neutro",
+		Relacao.RivalRuim => "rival inimigo",
+		Relacao.Ruim => "desafeto",
+		Relacao.MuitoRuim => "inimigo",
+		Relacao.Odio => "inimigo mortal",
 		_ => "",
 	};
 
-	/// <summary>As declaracoes possiveis, na ordem em que o DM as lista no `input()`.</summary>
+	/// <summary>
+	/// De um nome pra declaracao. Casa o nome de hoje (<see cref="NomeDaRelacao"/>), o de antes de
+	/// 2026-10-10 ("muito bom", "odio" -- macros e bancadas antigas) e o do DM em ingles. Sem diferenciar
+	/// maiuscula.
+	/// </summary>
+	public static Relacao RelacaoPorNome(string nome) => nome.Trim().ToLowerInvariant() switch
+	{
+		"amor" or "love" => Relacao.Amor,
+		"melhor amigo" or "muito bom" or "very good" => Relacao.MuitoBom,
+		"amigo" or "bom" or "good" => Relacao.Bom,
+		"rival amigo" or "rival bom" or "rival/good" or "rival good" => Relacao.RivalBom,
+		"neutro" or "neutral" => Relacao.Neutro,
+		"rival inimigo" or "rival ruim" or "rival/bad" or "rival bad" => Relacao.RivalRuim,
+		"desafeto" or "ruim" or "bad" => Relacao.Ruim,
+		"inimigo" or "muito ruim" or "very bad" => Relacao.MuitoRuim,
+		"inimigo mortal" or "odio" or "ódio" or "hate" => Relacao.Odio,
+		_ => Relacao.Nenhuma,
+	};
+
+	/// <summary>
+	/// As nove declaracoes do `input()` do DM (`Contacts.dm:117`), na ordem em que a aba as desenha: do
+	/// afeto ao desafeto, com o neutro no meio -- uma regua, e a posicao na regua ja diz o tom.
+	/// </summary>
 	public static readonly Relacao[] Declaraveis =
 	[
 		Relacao.Amor, Relacao.MuitoBom, Relacao.Bom, Relacao.RivalBom,
-		Relacao.RivalRuim, Relacao.Neutro, Relacao.Ruim, Relacao.MuitoRuim, Relacao.Odio,
+		Relacao.Neutro,
+		Relacao.RivalRuim, Relacao.Ruim, Relacao.MuitoRuim, Relacao.Odio,
+	];
+
+	/// <summary>
+	/// O DEGRAU DO CONVIVIO: quantos precos diferentes (0, 10, 15, 20, 50, 100, 200) ele ja paga -- de 1
+	/// (so o neutro) a 7 (tudo). So pra ordenar a lista sem que ela dance: o numero muda a cada 30 s ao
+	/// lado de alguem, o degrau so seis vezes na vida de um par.
+	/// </summary>
+	public static int Degrau(int familiaridade) =>
+		Declaraveis.Select(FamiliaridadeExigida).Distinct().Count(preco => preco <= familiaridade);
+
+	/// <summary>
+	/// A ORDEM DA ABA: primeiro quem EU classifiquei (na ordem da regua, do amor ao inimigo mortal), depois
+	/// quem ainda e neutro pra mim, do maior degrau de convivio pro menor; nome e assinatura desempatam.
+	/// Nenhuma chave aqui muda sozinha a cada tique -- cartao que troca de lugar debaixo do mouse faz
+	/// errar o clique.
+	/// </summary>
+	public List<Conhecido> EmOrdem() =>
+	[
+		.. Conhecidos.Values
+			.OrderBy(c => c.Relacao is Relacao.Nenhuma or Relacao.Neutro ? int.MaxValue : Array.IndexOf(Declaraveis, c.Relacao))
+			.ThenByDescending(c => Degrau(c.Familiaridade))
+			.ThenBy(c => c.Nome, StringComparer.OrdinalIgnoreCase)
+			.ThenBy(c => c.Assinatura, StringComparer.Ordinal),
 	];
 
 	// =====================================================================
@@ -474,15 +544,13 @@ public sealed class Convivio
 	/// FOTOGRAFA A FICHA DE ALGUEM E ME FAZ CONHECE-LO -- o `update_my_contact()` mais o
 	/// `known_contact_list[sig] = ...` das duas pontas (`Friendship.dm:42-44`, `Contacts.dm:86`).
 	///
-	/// A familiaridade e a relacao SOBREVIVEM a refotografada: elas sao minhas, a foto e dele.
-	/// Sobrescrever tudo aqui era o jeito obvio de zerar a familiaridade de alguem sempre que ele
+	/// O convivio e a declaracao SOBREVIVEM a refotografada: eles sao meus, a foto e dele.
+	/// Sobrescrever tudo aqui era o jeito obvio de zerar o convivio de alguem sempre que ele
 	/// passasse na frente.
 	///
-	/// Devolve TRUE quando esta pessoa acabou de entrar na lista (primeiro encontro) -- e o que o
-	/// servidor usa pra dizer "voce vai lembrar desta pessoa" uma unica vez.
+	/// Devolve TRUE quando esta pessoa acabou de entrar na lista (primeiro encontro).
 	/// </summary>
-	public bool Fotografar(string sig, string nome, string raca, string classe,
-						   string genero, int idade, long agoraMs)
+	public bool Fotografar(string sig, string nome, string raca, string genero, int idade, long agoraMs)
 	{
 		if (sig.Length == 0) return false;
 
@@ -490,8 +558,8 @@ public sealed class Convivio
 		{
 			Conhecidos[sig] = new Conhecido
 			{
-				Assinatura = sig, Nome = nome, Raca = raca, Classe = classe,
-				Genero = genero, Idade = idade, VistoEm = agoraMs,
+				Assinatura = sig, Nome = nome, Raca = raca,
+				Genero = genero, Idade = idade, VistoEm = agoraMs, DesdeMs = agoraMs,
 			};
 			return true;
 		}
@@ -501,7 +569,6 @@ public sealed class Convivio
 
 		c.Nome = nome;
 		c.Raca = raca;
-		c.Classe = classe;
 		c.Genero = genero;
 		c.Idade = idade;
 		c.VistoEm = agoraMs;
@@ -509,167 +576,184 @@ public sealed class Convivio
 	}
 
 	/// <summary>
-	/// UM PASSO DE PROXIMIDADE -- o corpo do `accrue_friendship()` (`Friendship.dm:37-41`), **sem o
-	/// teto de 49**: aqui a convivencia sobe direto de 0 a 200 e cruza o 50 sozinha, que e o pedido do
-	/// dono (ver o cabecalho da classe). Devolve TRUE **no passo exato em que a pessoa virou amiga**,
-	/// pra que o servidor possa dizer isso uma unica vez.
+	/// O QUE SE APRENDE DE ALGUEM CONVIVENDO -- a historia que ele escreveu e o cargo que carrega entram na
+	/// MINHA ficha dele, e so se o convivio ja paga (<see cref="PodeVerDetalhes"/>). E parte da fotografia:
+	/// quem chama e o mesmo ponto que fotografa (estar perto, conversar, lutar), com o mesmo throttle de um
+	/// minuto -- o que eu sei de alguem e o que ele era da ultima vez que estive com ele, e nao o que ele e
+	/// agora do outro lado do mundo.
 	///
-	/// ============================ DUAS PORTAS FECHADAS, E AS DUAS IMPORTAM ============================
-	///   * RIVAL DECLARADO nao rende amizade nenhuma (`:36`, e agora e a defesa principal: sem o teto
-	///     de 49, ela e o unico jeito de nao virar amigo de quem voce nao quer);
-	///   * QUEM ESTA NO NEGATIVO tambem nao sobe -- e isso e consequencia da linha acima e nao uma
-	///     segunda regra: cair abaixo de zero DECLARA a rivalidade (<see cref="Afastar"/>). Ficar perto
-	///     de quem te matou nao te faz perdoa-lo; **desfazer a rivalidade e um gesto** (o verb `rival`,
-	///     ou um pedido de amizade aceito), e so depois dele o tempo volta a contar.
-	/// ==================================================================================================
-	///
-	/// ============================ POR QUE O `Math.Round` ============================
-	/// 0,1 nao existe em binario: somar 0,1 quinhentas vezes da 49,99999999999995, e o limiar de 50
-	/// cairia **um passo depois** do que este arquivo promete -- calado, e com a bancada reprovando por
-	/// um erro que ninguem consegue ver lendo o codigo. Arredondar a cada passo prende o valor na
-	/// grade de decimos em que ele foi escrito.
-	/// ==============================================================================
+	/// A PRIMEIRA VEZ NAO ESPERA O MINUTO: no instante em que o convivio atravessa o preco, a proxima
+	/// chamada ja guarda. Devolve TRUE quando guardou.
 	/// </summary>
-	public bool Aproximar(string sig)
+	public bool AprenderDetalhes(string sig, string historia, string titulo, long agoraMs)
 	{
-		if (sig.Length == 0 || EhRival(sig)) return false;
+		if (!PodeVerDetalhes(sig)) return false;
+		Conhecido c = Conhecidos[sig];
+		if (c.DetalhesEm != 0 && agoraMs < c.DetalhesEm + IntervaloDoRetratoMs) return false;
 
-		double antes = PontosDeAmizade(sig);
-		if (antes >= TetoDeAmizade) return false;
-
-		double depois = Math.Min(Math.Round(antes + TaxaDeAmizade, 3), TetoDeAmizade);
-		Amizade[sig] = depois;
-		return antes < ExigenciaDeAmigo && depois >= ExigenciaDeAmigo;
-	}
-
-	/// <summary>
-	/// ============================ A VIOLENCIA COBRA O LACO -- **PEDIDO DO DONO** ============================
-	/// *"pessoas q MATAM SEU AMIGO ou TE MATAM PERDEM PONTOS de amizade, podendo ficar NO NEGATIVO e se
-	/// tornando INIMIGOS"*. Nao ha nada disto no DM (ver <see cref="PerdaPorMorte"/>).
-	///
-	/// **QUEM CRUZA O ZERO PRA BAIXO VIRA RIVAL DECLARADO NA HORA**, e essa unica linha e o que faz
-	/// "ser inimigo" significar alguma coisa sem inventar sistema nenhum: a partir dela valem, de
-	/// graca, o `Rivais` (que ja bloqueia a amizade por proximidade), o <see cref="Inimizade"/> (que so
-	/// cresce contra rival declarado e agora tem uma fonte automatica), o `+1` por golpe dele, o
-	/// `+25/+60` quando ele derruba ou mata um amigo seu, e o rotulo RIVAL da aba People.
-	///
-	/// O ODIO SOBE NA MESMA MEDIDA em que o afeto desce -- e o mesmo evento nos dois livros. Como o
-	/// `SomarInimizade` exige rival declarado, a ordem aqui e obrigatoria: declara primeiro, soma
-	/// depois. Invertida, o primeiro (e maior) golpe de odio seria descartado calado.
-	///
-	/// Devolve TRUE **so no golpe que atravessou o zero** -- o resto e afundar mais, e o servidor nao
-	/// anuncia duas vezes que alguem virou seu inimigo.
-	/// ==========================================================================================================
-	/// </summary>
-	public bool Afastar(string sig, double quanto)
-	{
-		if (sig.Length == 0 || quanto <= 0) return false;
-
-		double antes = PontosDeAmizade(sig);
-		double depois = Math.Max(Math.Round(antes - quanto, 3), PisoDeAmizade);
-		Amizade[sig] = depois;
-
-		if (depois >= 0) return false;
-
-		TornarRival(sig);
-		SomarInimizade(sig, quanto);
-
-		// ============================ E A DECLARACAO DE AFETO CAI JUNTO ============================
-		// **ESTA LINHA FOI ACHADA PELA BANCADA AO VIVO, e ela nao e cosmetica.** A relacao declarada
-		// (`Relation()`) e o OUTRO eixo que responde as tres perguntas da raiva -- `LutoPorMorte` e
-		// `AlgozEhInimigo` leem `is_friend() || check_relation(...)`. Sem derrubar a declaracao, quem
-		// tivesse dito "muito bom" pro proprio assassino ficaria com a amizade em -60 e a relacao
-		// intacta, e o resultado seria absurdo nos dois sentidos: **ele entraria em furia pela morte do
-		// homem que o matou**, e -- pior -- o `AlgozEhInimigo` continuaria respondendo "nao e inimigo",
-		// entao da PROXIMA vez que esse sujeito o matasse, ninguem na plateia se enfureceria.
-		//
-		// SO AS DECLARACOES DE AFETO CAEM. `Ruim`, `MuitoRuim`, `Odio` e `RivalRuim` concordam com o
-		// estado novo -- apaga-las seria apagar o que a pessoa disse justamente quando ela se provou
-		// certa. E a queda e pra `Nenhuma` (o "nao declarei") e nao pra `Neutro`: o jogo nao pode
-		// declarar coisas na boca do jogador; o que ele perde e o afeto, nao o direito de falar.
-		// ==========================================================================================
-		if (Ficha(sig) is { } c
-			&& TemRelacao(sig, Relacao.Bom, Relacao.MuitoBom, Relacao.Amor, Relacao.RivalBom))
-			c.Relacao = Relacao.Nenhuma;
-
-		return antes >= 0;
-	}
-
-	/// <summary>
-	/// `add_familiarity()` (`Contacts.dm:82-89`), chamado de `Talking.dm:218` com `prob(1)`: e a
-	/// CONVERSA que aproxima de verdade, e ela conta nos dois sentidos.
-	///
-	/// Exige ja conhecer a pessoa -- no DM tambem (`if(isnull(contact_list[...])) return FALSE`),
-	/// e o servidor fotografa antes de somar.
-	/// </summary>
-	public void SomarFamiliaridade(string sig, int quanto = 1)
-	{
-		if (quanto > 0 && Conhecidos.TryGetValue(sig, out Conhecido? c)) c.Familiaridade += quanto;
-	}
-
-	/// <summary>
-	/// O PEDIDO DE AMIZADE ACEITO -- `friend_request_resolve` (`Friendship.dm:122`).
-	///
-	/// `Math.Max` e nao `=`: quem ja era `Bonded` (200) nao pode ser rebaixado pra 50 por aceitar
-	/// um pedido -- e o mesmo `max(...)` do original.
-	///
-	/// ============================ O SEGUNDO EMPREGO DELE: A RECONCILIACAO ============================
-	/// Com a convivencia atravessando o 50 sozinha (ver o cabecalho da classe), o pedido deixou de ser
-	/// a UNICA porta da amizade -- e passou a ser a unica porta de VOLTA. Quem esta no negativo e rival
-	/// declarado, e rival declarado nao rende amizade por proximidade: **sem isto, um inimigo seria
-	/// inimigo pra sempre**, e o dono nao pediu uma condenacao perpetua, pediu uma consequencia.
-	///
-	/// Por isso o `max` atravessa o negativo (de -60 pra 50 num gesto) e a rivalidade cai junto: ser
-	/// amigo e rival ao mesmo tempo e um estado que nenhuma pergunta deste arquivo sabe responder --
-	/// `Aproximar` recusaria crescer a amizade que acabou de nascer. O ODIO ACUMULADO FICA, como no
-	/// `Declare_Rival` do DM: fazer as pazes nao apaga o que aconteceu.
-	///
-	/// E ELE E CARO DE PROPOSITO NO OUTRO SENTIDO: precisa dos DOIS lados (um pede, o outro aceita), e
-	/// e por isso que um gesto pode desfazer 25 minutos de nada. Perdoar sozinho nao existe.
-	/// ==================================================================================================
-	/// </summary>
-	public void AceitarAmizade(string sig)
-	{
-		if (sig.Length == 0) return;
-		Amizade[sig] = Math.Max(PontosDeAmizade(sig), ExigenciaDeAmigo);
-		Rivais.Remove(sig);
-	}
-
-	/// <summary>
-	/// DECLARA (ou tira) UM RIVAL -- o verb `Declare_Rival` (`Friendship.dm:157-167`). Devolve se
-	/// ele PASSOU a ser rival.
-	/// </summary>
-	public bool AlternarRival(string sig)
-	{
-		if (sig.Length == 0) return false;
-		if (Rivais.Remove(sig)) return false;
-		return TornarRival(sig);
-	}
-
-	/// <summary>
-	/// DECLARA UM RIVAL SEM ALTERNAR -- e a metade do <see cref="AlternarRival"/> que o
-	/// <see cref="Afastar"/> precisa.
-	///
-	/// **ELA EXISTE POR CAUSA DE UM BUG QUE O ALTERNAR TERIA CAUSADO**: cair pro negativo chamando o
-	/// verb de alternancia TIRARIA a rivalidade de quem ja tinha declarado o sujeito rival antes --
-	/// ou seja, matar o cara que voce ja odiava o promoveria de volta a nao-rival, e o odio pararia de
-	/// crescer exatamente contra quem mais merece. Idempotente por isso.
-	/// </summary>
-	public bool TornarRival(string sig)
-	{
-		if (sig.Length == 0 || Rivais.Contains(sig)) return false;
-		Rivais.Add(sig);
+		c.Historia = HistoriaLegivel(historia);
+		c.Titulo = titulo;
+		c.DetalhesEm = Math.Max(agoraMs, 1);   // zero quer dizer "nunca", ate numa bancada que roda no instante 0
 		return true;
 	}
 
 	/// <summary>
-	/// `add_enmity()` (`Friendship.dm:72-75`). SO CRESCE CONTRA RIVAL DECLARADO -- e essa e a
-	/// assimetria que o proprio DM explica (`:59-62`): amizade nasce de estar perto, odio so nasce
-	/// de uma escolha.
+	/// A HISTORIA DE ALGUEM, DO JEITO QUE OUTRO JOGADOR PODE LE-LA: sem caractere de controle nem de formato
+	/// (o que apaga texto, inverte a direcao da linha ou nao desenha nada), com no maximo uma linha em branco
+	/// entre paragrafos, no maximo <see cref="MaxQuebrasDaHistoria"/> quebras de linha, e cortada no tamanho
+	/// que a criacao aceita (`CharacterDraft.BackstoryMax`).
+	///
+	/// A CRIACAO JA RECUSA o texto grande demais (`CharacterDraft.Validar`), mas so confere o tamanho -- e o
+	/// que esta no disco pode ter sido escrito por uma versao antiga, por um admin ou por um pacote forjado.
+	/// Aqui e a ULTIMA porta antes de o texto de um jogador aparecer na tela de outro, entao e aqui que ele e
+	/// limpo, sempre.
+	///
+	/// POR PONTO DE CODIGO (`Rune`), e nao por `char`: um caractere de formato fora do plano basico sao DOIS
+	/// `char`, e olhando um de cada vez ele passaria. E a metade solta de um par substituto -- que nao e
+	/// caractere nenhum -- chega aqui como U+FFFD e sai junto. Esta ultima nao e so higiene: o escritor do fio
+	/// (`NetDataWriter`, UTF-8 estrito) LANCA EXCECAO com ela, entao uma historia assim num save derrubaria o
+	/// verb de quem pedisse os detalhes.
+	///
+	/// O PRECO: os caracteres de formato incluem o "juntador" dos emojis compostos (familia, casal) e as
+	/// marcas de direcao do arabe e do hebraico -- o emoji composto vira as partes dele, e so.
 	/// </summary>
-	public void SomarInimizade(string sig, double quanto)
+	public static string HistoriaLegivel(string? bruta)
 	{
-		if (!EhRival(sig)) return;
-		Inimizade[sig] = Math.Min(PontosDeInimizade(sig) + quanto, TetoDeInimizade);
+		if (string.IsNullOrWhiteSpace(bruta)) return "";
+
+		// linha a linha: filtra, apara, e junta as linhas vazias seguidas numa so
+		var linhas = new List<string>();
+		foreach (string crua in bruta.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
+		{
+			var sb = new StringBuilder(crua.Length);
+			foreach (Rune r in crua.EnumerateRunes())
+			{
+				if (r.Value == '\t') { sb.Append(' '); continue; }
+				if (r == Rune.ReplacementChar || Rune.IsControl(r)) continue;
+				if (Rune.GetUnicodeCategory(r) is UnicodeCategory.Format or UnicodeCategory.PrivateUse
+					or UnicodeCategory.OtherNotAssigned or UnicodeCategory.LineSeparator
+					or UnicodeCategory.ParagraphSeparator) continue;
+				sb.Append(r.ToString());
+			}
+			string limpa = sb.ToString().Trim();
+			if (limpa.Length == 0 && (linhas.Count == 0 || linhas[^1].Length == 0)) continue;
+			linhas.Add(limpa);
+		}
+		while (linhas.Count > 0 && linhas[^1].Length == 0) linhas.RemoveAt(linhas.Count - 1);
+
+		// as primeiras quebras ficam; as que passam do teto viram espaco
+		var texto = new StringBuilder();
+		for (int i = 0; i < linhas.Count; i++)
+		{
+			if (i > 0) texto.Append(i <= MaxQuebrasDaHistoria ? '\n' : ' ');
+			texto.Append(linhas[i]);
+		}
+
+		int teto = Races.CharacterDraft.BackstoryMax;
+		if (texto.Length > teto)
+		{
+			// sem partir um par substituto (um emoji) no meio: metade dele e um caractere invalido
+			if (char.IsHighSurrogate(texto[teto - 1])) teto--;
+			texto.Length = teto;
+		}
+		return texto.ToString().Trim();
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `convivio` e `--conhecidosteste`): ficar perto nao rende convivio -- o
+	/// estado em que o sistema ficaria se a afinidade saisse sem que o tempo junto fosse pra lugar nenhum.
+	/// Lido pela propria linha do <see cref="ConviverPerto"/>.
+	/// </summary>
+	public static bool TempoJuntoNaoContaDeTeste;
+
+	/// <summary>
+	/// UM PASSO DE PROXIMIDADE -- o corpo do `accrue_friendship()` (`Friendship.dm:37-41`), rendendo
+	/// CONVIVIO onde rendia afinidade: a cada <see cref="PassosPertoPorPonto"/> passos, um ponto, ate o
+	/// <see cref="TetoDoConvivioPorTempo"/>. Exige ja conhecer a pessoa (o servidor fotografa antes).
+	///
+	/// Devolve TRUE no passo em que um PONTO entrou (e so nele o servidor refaz a aba);
+	/// <paramref name="abriuAPortaDeAmigo"/> sai TRUE no ponto exato que atravessou o preco do "amigo" --
+	/// e o que deixa o servidor dizer, uma unica vez, que ja da pra declarar.
+	/// </summary>
+	public bool ConviverPerto(string sig, out bool abriuAPortaDeAmigo)
+	{
+		abriuAPortaDeAmigo = false;
+		if (TempoJuntoNaoContaDeTeste) return false;
+		if (!Conhecidos.TryGetValue(sig, out Conhecido? c) || c.Familiaridade >= TetoDoConvivioPorTempo) return false;
+
+		if (++c.PassosPerto < PassosPertoPorPonto) return false;
+		c.PassosPerto = 0;
+		abriuAPortaDeAmigo = SomarFamiliaridade(sig);
+		return true;
+	}
+
+	/// <summary>
+	/// `add_familiarity()` (`Contacts.dm:82-89`): soma convivio. Chamado pela conversa (`Talking.dm:218`,
+	/// 1% por fala ouvida, nos dois sentidos), pela luta e pelo passo de proximidade.
+	///
+	/// Exige ja conhecer a pessoa -- no DM tambem (`if(isnull(contact_list[...])) return FALSE`),
+	/// e o servidor fotografa antes de somar.
+	///
+	/// Devolve TRUE **so na soma que atravessou o preco do "amigo"** (<see cref="Relacao.Bom"/>): e a
+	/// unica porta que o servidor anuncia, porque e a que muda regra (a furia) quando o jogador a usa.
+	/// </summary>
+	public bool SomarFamiliaridade(string sig, int quanto = 1)
+	{
+		if (quanto <= 0 || !Conhecidos.TryGetValue(sig, out Conhecido? c)) return false;
+		int porta = FamiliaridadeExigida(Relacao.Bom);
+		bool antes = c.Familiaridade >= porta;
+		c.Familiaridade += quanto;
+		return !antes && c.Familiaridade >= porta;
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `convivio` e `--conhecidosteste`): qualquer declaracao passa com convivio
+	/// zero -- "amor" a um clique de quem acabou de aparecer, e com ele a furia de graca. Lido pela propria
+	/// linha do <see cref="Declarar"/>.
+	/// </summary>
+	public static bool DeclararSemConvivioDeTeste;
+
+	/// <summary>
+	/// EU DIGO O QUE ESTA PESSOA E PRA MIM -- o verb `Relation()` (`Contacts.dm:115-151`), com o portao
+	/// de convivio dele. Mora aqui (e nao no servidor) pra bancada do Core poder cobrar o portao.
+	///
+	/// NAO HA OUTRO JEITO DE UMA DECLARACAO MUDAR: nada que aconteca entre os dois (apanhar, morrer,
+	/// passar um ano sem se ver) a escreve ou a apaga. Quem declarou "amigo" e foi morto por ele continua
+	/// tendo declarado amigo, ate dizer outra coisa.
+	/// </summary>
+	public Declaracao Declarar(string sig, Relacao r)
+	{
+		if (Ficha(sig) is not { } c) return Declaracao.NaoConhece;
+		if (r == Relacao.Nenhuma) return Declaracao.NaoSeDeclara;
+		if (c.Familiaridade < FamiliaridadeExigida(r) && !DeclararSemConvivioDeTeste) return Declaracao.FaltaConvivio;
+		c.Relacao = r;
+		return Declaracao.Feita;
+	}
+
+	/// <summary>
+	/// ============================ O SAVE DE ANTES DE 2026-10-10 ============================
+	/// A afinidade saiu do jogo, mas os pontos POSITIVOS dela eram tempo vivido: 0,1 a cada 3 s ao lado de
+	/// alguem -- a mesma taxa que hoje rende convivio. Jogar o numero fora faria dois amigos de meses
+	/// esperarem outros 25 minutos pra poder dizer "amigo". Entao, UMA vez por personagem, os pontos
+	/// positivos somam no convivio de quem ainda tem ficha (as duas medidas tinham fontes diferentes -- uma
+	/// o tempo, a outra a conversa e a luta --, por isso SOMA e nao maximo).
+	///
+	/// O NEGATIVO NAO VIRA NADA: era o jogo dizendo "inimigo", e isso agora e escolha do jogador. A
+	/// DECLARACAO NAO E TOCADA pelo mesmo motivo -- quem era "Amigo" pelos pontos ganha o convivio que
+	/// paga a declaracao, e declara se quiser.
+	///
+	/// Devolve TRUE quando havia afinidade antiga com alguem (o servidor avisa o jogador que a aba mudou).
+	/// O campo fica nulo no fim, e nulo nao e gravado: nao ha segunda migracao.
+	/// ========================================================================================
+	/// </summary>
+	public bool MigrarAfinidade()
+	{
+		if (Amizade is not { } velha) return false;
+		Amizade = null;
+
+		foreach ((string sig, double pontos) in velha)
+			if (pontos >= 1 && Conhecidos.TryGetValue(sig, out Conhecido? c))
+				c.Familiaridade += (int)Math.Min(pontos, TetoDoConvivioPorTempo);
+		return velha.Count > 0;
 	}
 }

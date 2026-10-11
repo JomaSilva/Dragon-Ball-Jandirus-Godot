@@ -70,7 +70,15 @@ public static class BorraoDirecional
 	/// 120 vezes por segundo por corpo correndo, e cada `new ShaderMaterial` e um recurso de
 	/// verdade com o custo de alocacao e de coleta que isso tem.
 	/// </summary>
-	public static void Aplicar(Sprite2D s, Vector2 rumo, float forca)
+	/// <param name="tinta">
+	/// A COR DA CAMADA que esta copia retrata -- os dois uniforms de tinta do `Personagem.gdshader`
+	/// (<paramref name="tinta"/> e <paramref name="tintaModo"/>) e o modulate dela (<paramref name="brilho"/>).
+	/// O material de borrao ENTRA NO LUGAR do que pinta o corpo, entao quem nao passa a cor adiante desenha
+	/// a folha crua: o rastro na "cor base" do item 6 do playtest de 2026-10-10. Os padroes sao a arte crua,
+	/// que e o que um sprite sem corpo por tras (o do ensaio do lobby) tem mesmo.
+	/// </param>
+	public static void Aplicar(Sprite2D s, Vector2 rumo, float forca,
+							   Vector3 tinta = default, int tintaModo = 0, Vector3? brilho = null)
 	{
 		ShaderMaterial m = s.Material is ShaderMaterial velho && velho.Shader == Sh
 			? velho
@@ -80,8 +88,29 @@ public static class BorraoDirecional
 		m.SetShaderParameter("forca", forca);
 		m.SetShaderParameter("quadro_min", min);
 		m.SetShaderParameter("quadro_max", max);
+		// SO QUANDO HA COR PRA LEVAR: a camada sem tinta nenhuma (a maioria) fica com os valores de fabrica do
+		// shader, que sao a arte crua -- tres chamadas a menos por camada por foto, e sao ~120 fotos de camada
+		// por segundo por corpo correndo.
+		bool comCor = !SemACorDoCorpoDeTeste && (tinta != Vector3.Zero || tintaModo != 0 || brilho is { } br && br != Vector3.One);
+		if (comCor)
+		{
+			m.SetShaderParameter(NomeDaTinta, tinta);
+			m.SetShaderParameter(NomeDoModo, tintaModo);
+			m.SetShaderParameter(NomeDoBrilho, brilho ?? Vector3.One);
+		}
 		s.Material = m;
 	}
+
+	// GUARDADOS: a `string` entregue ao `SetShaderParameter` fabrica um `StringName` por chamada, lixo com
+	// finalizador -- e este caminho roda por camada por foto (ver o compasso do `CharacterVisual`).
+	private static readonly StringName NomeDaTinta = "tinta", NomeDoModo = "tinta_modo", NomeDoBrilho = "brilho";
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagcorrastro`): a copia do rastro volta a sair com a folha crua -- o estado
+	/// de antes de 2026-10-10, em que o borrao de um Majin de outra cor era o rosa do arquivo. Lido pela propria
+	/// <see cref="Aplicar"/>.
+	/// </summary>
+	public static bool SemACorDoCorpoDeTeste;
 
 	/// <summary>
 	/// O ENSAIO DO LOBBY (ver `Aquecimento.AtosDoBorrao`): um sprite parado no palco, borrado pela MESMA chamada que o

@@ -1,5 +1,6 @@
 using Godot;
 using Jandirus.Core.Forms;
+using Jandirus.Core.Ranks;
 using Jandirus.Core.Social;
 using Jandirus.Net;
 using LiteNetLib;
@@ -8,36 +9,33 @@ namespace Jandirus.Server;
 
 /// <summary>
 /// ============================ O CONVIVIO -- O KNOWN-PEOPLE DO DM, PORTADO ============================
-/// Dois arquivos de la moram aqui: `Code/Contacts.dm` (quem eu conheco, a foto da ficha dele, a
-/// relacao que declarei) e `Code/Modules/Players/Friendship.dm` (pontos de amizade, o pedido, os
-/// rivais e o odio). As REGRAS moram no `Core.Social.Convivio`, que nao conhece rede nem Godot;
-/// aqui esta so o que e do servidor: quem esta perto de quem, quem ouviu quem, e o que isso causa.
+/// Dois arquivos de la moram aqui: `Code/Contacts.dm` (quem eu conheco, a foto da ficha dele, o que
+/// declarei que ele e pra mim) e o que sobrou de `Code/Modules/Players/Friendship.dm` (o passo de
+/// proximidade). As REGRAS moram no `Core.Social.Convivio`, que nao conhece rede nem Godot; aqui esta so
+/// o que e do servidor: quem esta perto de quem, quem ouviu quem, quem bateu em quem, e o que isso causa.
+/// ====================================================================================================
+///
+/// ============================ SAO DUAS COISAS, E CADA UMA TEM UM DONO SO ============================
+///   * o CONVIVIO -- o JOGO conta: ficar perto (um ponto a cada 30 s a menos de 6 tiles), conversar
+///     (1% por fala ouvida) e lutar (golpe, queda, morte). Ele nao tem rotulo e nao conclui nada;
+///   * a DECLARACAO -- o JOGADOR escolhe o que cada conhecido e pra ele (aba People), e o convivio paga.
+///
+/// A AFINIDADE (os pontos de amizade automaticos, o "inimigo" que o jogo declarava sozinho, o odio, os
+/// rivais e o pedido de amizade) SAIU em 2026-10-10, a pedido do dono -- ver o cabecalho do `Convivio`,
+/// onde esta escrito o que cada leitor dela virou.
 /// ====================================================================================================
 ///
 /// ============================ E ELE E O QUE DESTRAVA O SUPER SAIYAJIN ============================
 /// O tronco Saiyajin (SSJ1/SSJ2), a linha Legendary inteira e o Beast pedem RAIVA
 /// (<see cref="Catalogo.RaivaExigida"/>), e a raiva so acende por um gancho:
-/// <see cref="AmigoAbatido"/>. Ate esta sessao esse gancho **nao tinha nenhum chamador de
-/// producao** -- estava escrito, testado e mudo, e o unico jeito de virar Super Saiyajin era o verb
-/// de admin. O que faltava nao era a raiva: era alguem capaz de responder "quem e amigo de quem".
-///
-/// Quem responde e este arquivo, e o chamador e o <see cref="LutoNaVizinhanca"/>.
+/// <see cref="AmigoAbatido"/>. Quem responde "quem e amigo de quem" e este arquivo -- pela DECLARACAO de
+/// quem assiste --, e o chamador e o <see cref="LutoNaVizinhanca"/>.
 /// ==================================================================================================
-///
-/// ============================ AS QUATRO COISAS QUE FAZEM UM LACO CRESCER ============================
-///   * ESTAR PERTO   -> amizade (`accrue_friendship`, 6 tiles, +0,1 a cada 3 s, teto em 49);
-///   * CONVERSAR     -> familiaridade (`TestListeners`, 1% por fala ouvida, nos dois sentidos);
-///   * PEDIR E ACEITAR -> amizade de verdade (atravessa o teto de 49 e chega em 50);
-///   * DECLARAR      -> relacao (`Relation()`), que a familiaridade paga.
-///
-/// As duas primeiras sao passivas e a terceira e um GESTO -- e e por isso que o teto da proximidade
-/// e 49 e a exigencia de amigo e 50. Ver o cabecalho do `Convivio`.
-/// ====================================================================================================
 /// </summary>
 public partial class GameServer
 {
 	// =====================================================================
-	// 1. ESTAR PERTO -- o `accrue_friendship()` (Friendship.dm:29-44)
+	// 1. ESTAR PERTO -- o `accrue_friendship()` (Friendship.dm:29-44), rendendo CONVIVIO
 	// =====================================================================
 
 	/// <summary>Os 6 tiles do `FRIEND_RANGE`, em pixels.</summary>
@@ -52,7 +50,7 @@ public partial class GameServer
 	/// Ela esta ERRADA por dois lados:
 	///
 	///   * e FRACA demais como criterio: o que faz alguem lembravel nao e ter uma conexao aberta, e
-	///     ter IDENTIDADE -- e uma amizade nao acaba quando a pessoa desloga. O DM pergunta as duas
+	///     ter IDENTIDADE -- e um vinculo nao acaba quando a pessoa desloga. O DM pergunta as duas
 	///     coisas (`if(!client || isNPC || !signature)`) porque la o laco varre `view()` e pega
 	///     corpos que nem existem aqui;
 	///   * e o `!signature` de la ja cobre o caso que importa neste port: **corpo sem dono nao tem
@@ -69,9 +67,9 @@ public partial class GameServer
 	///
 	///   * ele nao TEM identidade: `Assinatura` sai de conta+slot (`GameServer.cs:1223`), e cidadao,
 	///     Rei, chefe de saga e clone nascem sem conta -- a primeira metade ja os corta;
-	///   * ele nao SOBREVIVE: o povoamento repoe habitante (`Povoamento`), entao a lista de amigos de
+	///   * ele nao SOBREVIVE: o povoamento repoe habitante (`Povoamento`), entao a lista de conhecidos de
 	///     um jogador viraria um cemiterio de gente que o mundo reciclou;
-	///   * e -- o que decide -- **amizade com NPC seria uma fabrica de Super Saiyajin**. O luto e a
+	///   * e -- o que decide -- **declarar amigo um NPC seria uma fabrica de Super Saiyajin**. O luto e a
 	///     porta do SSJ1, e ha cidadao infinito e barato de matar. Um jogador com dois amigos NPC no
 	///     quintal acenderia furia sempre que quisesse.
 	///
@@ -82,7 +80,7 @@ public partial class GameServer
 	/// admin cria sem querer. Ver o cabecalho de `Core/Npc/Gente.cs`.
 	///
 	/// (O `EhJogador` do mesmo arquivo **nao serve aqui**, e por escrito: ele exige dono na tela, e
-	/// amizade nao acaba quando a pessoa desloga -- ver o bloco acima.)
+	/// um vinculo nao acaba quando a pessoa desloga -- ver o bloco acima.)
 	/// ==========================================================================================================
 	/// </summary>
 	private static bool EhPessoa(ServerPlayer pl) =>
@@ -90,7 +88,9 @@ public partial class GameServer
 		&& !Jandirus.Core.Npc.Gente.EhNpcDoMundo(pl.Peer != null, pl.Papel);
 
 	/// <summary>
-	/// UM PASSO DE APROXIMACAO POR JOGADOR, a cada 3 segundos.
+	/// UM PASSO DE PROXIMIDADE POR JOGADOR, a cada 3 segundos: quem esta a menos de 6 tiles entra na
+	/// lista (a foto da ficha) e o par da um passo de convivio -- dez passos, um ponto
+	/// (`Convivio.ConviverPerto`).
 	///
 	/// ============================ POR QUE A CADENCIA E POR PESSOA ============================
 	/// No DM cada mob roda o proprio `GlobalStats` e o proprio `friend_tick`; aqui ha um laco so.
@@ -102,6 +102,10 @@ public partial class GameServer
 	/// varrer `_players` inteiro pra depois medir a distancia seria comparar quem esta em planetas
 	/// diferentes -- N^2 sobre o servidor todo por causa de um raio de 6 tiles.
 	/// =========================================================================================
+	///
+	/// A ABA SO E REFEITA QUANDO ALGO QUE ELA DESENHA MUDOU (alguem novo na lista, um ponto de convivio):
+	/// uma lista por passo seriam vinte pacotes por minuto pra cada jogador com alguem ao lado, e a pagina
+	/// da aba remontada debaixo do mouse a cada 3 s.
 	/// </summary>
 	private void TickDoConvivio()
 	{
@@ -111,12 +115,13 @@ public partial class GameServer
 		foreach (ServerPlayer pl in _players.Values)
 		{
 			// `if(!client || isNPC || !signature) return` -- `Friendship.dm:30`. Corpo sem dono
-			// (clone da meditacao, NPC, corpo forjado de bancada) nao faz amizade nem entra na
+			// (clone da meditacao, NPC, corpo forjado de bancada) nao convive nem entra na
 			// lista de ninguem: ele nao tem assinatura pra ser lembrado por.
 			if (!EhPessoa(pl)) continue;
 			if (agora < pl.ProximaAproximacao) continue;
 			pl.ProximaAproximacao = agora + (long)(Convivio.SegundosEntreAproximacoes * 1000);
 
+			bool mudou = false;
 			foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
 			{
 				if (o == pl || !EhPessoa(o)) continue;
@@ -124,50 +129,84 @@ public partial class GameServer
 				Jandirus.Core.World.Vec2 d = o.Pos - pl.Pos;
 				if (d.X * d.X + d.Y * d.Y > raio2) continue;
 
-				// A ORDEM IMPORTA: fotografar primeiro poe a pessoa na minha lista, e e a lista
-				// que a amizade e a familiaridade indexam. Invertido, o primeiro passo de amizade
-				// de cada dupla ficaria pendurado num nome que ainda nao existe na aba.
-				Fotografar(pl, o, agora);
+				// A ORDEM IMPORTA: fotografar primeiro poe a pessoa na minha lista, e e a FICHA que
+				// guarda o convivio. Invertido, o primeiro passo de cada dupla nao teria onde cair.
+				mudou |= Fotografar(pl, o, agora);
 
-				// ============================ **O PASSO QUE ATRAVESSA O 50** ============================
-				// E o pedido do dono: 25 minutos a menos de 6 tiles da mesma pessoa e voces sao amigos,
-				// sem verb nenhum. O `Aproximar` devolve TRUE **so no passo exato da travessia**, e e por
-				// isso que da pra anunciar aqui dentro de um laco que roda a cada 3 segundos.
-				//
-				// CADA LADO ATRAVESSA O SEU: o prazo (`ProximaAproximacao`) e por pessoa, entao os dois
-				// cruzam o limiar com segundos de diferenca e cada um le a propria frase. Anunciar pros
-				// dois aqui contaria a mesma noticia duas vezes pra quem ainda nao chegou la.
-				if (!pl.Social.Aproximar(o.Assinatura)) continue;
-				Avisar(pl, $"depois de tanto tempo ao lado de {o.Name}, você o considera um amigo.");
-				MandarConhecidos(pl);
+				// CADA LADO DA O SEU PASSO: o prazo (`ProximaAproximacao`) e por pessoa, entao os dois
+				// ganham o ponto com segundos de diferenca -- e cada um le a propria frase quando a porta
+				// do "amigo" abre pra ele.
+				if (!pl.Social.ConviverPerto(o.Assinatura, out bool abriu)) continue;
+				mudou = true;
+				if (abriu) AvisarAPortaDoAmigo(pl, o.Name);
+
+				// O PONTO QUE ACABOU DE ENTRAR PODE SER O QUE PAGA OS DETALHES: a foto de cima rodou com o
+				// convivio de antes, e sem isto quem abrisse o cartao nos 3 s seguintes leria "voce ainda nao
+				// ouviu a historia" de alguem que esta ao lado.
+				AprenderDetalhes(pl, o, agora);
 			}
+			if (mudou) MandarConhecidos(pl);
 		}
 	}
 
 	/// <summary>
-	/// A FOTOGRAFIA DA FICHA DE ALGUEM -- o `update_my_contact()` (`Contacts.dm:6-39`).
+	/// A FOTOGRAFIA DA FICHA DE ALGUEM -- o `update_my_contact()` (`Contacts.dm:6-39`). Devolve TRUE no
+	/// primeiro encontro (a pessoa acabou de entrar na lista).
 	///
 	/// Um so lugar monta o `Conhecido` porque a foto e o que a aba People le, e o defeito classico
 	/// aqui seria uma segunda copia que fotografa menos campos: a pessoa vista pela conversa
 	/// apareceria sem raca, e a vista pela proximidade com raca -- e nada acusaria.
+	///
+	/// E A FOTO LEVA OS DETALHES JUNTO (a historia, o cargo) pra quem o convivio ja paga -- ver
+	/// <see cref="AprenderDetalhes"/>.
 	/// </summary>
-	private static void Fotografar(ServerPlayer eu, ServerPlayer outro, long agora) =>
-		eu.Social.Fotografar(outro.Assinatura, outro.Name, outro.Race,
-							 outro.Ficha?.Class ?? outro.Class, outro.Genero, outro.Idade, agora);
+	private bool Fotografar(ServerPlayer eu, ServerPlayer outro, long agora)
+	{
+		// SEM A CLASSE, de proposito: ela nunca aparece pra ninguem (`GameServer.Sigilo.cs`, regra 2), e o que
+		// a foto nao guarda nao tem como vazar. Ver o cabecalho do `Conhecido`.
+		bool novo = eu.Social.Fotografar(outro.Assinatura, outro.Name, outro.Race, outro.Genero, outro.Idade, agora);
+		AprenderDetalhes(eu, outro, agora);
+		return novo;
+	}
+
+	/// <summary>
+	/// O QUE SE APRENDE DE ALGUEM ESTANDO COM ELE: a historia que ele escreveu na criacao e o cargo que
+	/// carrega entram na ficha que EU guardo dele -- e so se o meu convivio com ele ja paga os detalhes
+	/// (`Convivio.ConvivioParaDetalhes`; abaixo disso a historia de ninguem e copiada pra lugar nenhum).
+	///
+	/// E FOTOGRAFIA, como o resto da ficha: o que fica guardado e o que a pessoa ERA neste encontro. Os
+	/// detalhes que a aba mostra saem DAQUI (`VerboDetalhes`), e nao do corpo vivo dela -- senao abrir a aba
+	/// contaria, de qualquer lugar do mundo, que alguem foi promovido ou envelheceu.
+	///
+	/// O CARGO E PUBLICO (o painel de cargos ja diz o nome de quem ocupa cada um); o que NAO entra aqui e
+	/// tudo o que o `GameServer.Sigilo.cs` esconde: poder, atributos, classe, lugar, mochila.
+	/// </summary>
+	private void AprenderDetalhes(ServerPlayer eu, ServerPlayer outro, long agora)
+	{
+		if (!eu.Social.PodeVerDetalhes(outro.Assinatura)) return;
+		eu.Social.AprenderDetalhes(outro.Assinatura, outro.Historia,
+								   Cargos.Get(CargoDe(outro.Conta))?.Nome ?? "", agora);
+	}
+
+	/// <summary>
+	/// "JA DA PRA DIZER QUE ELE E SEU AMIGO" -- dito UMA vez por pessoa, no ponto de convivio que atravessa
+	/// o preco do "amigo" (o `Convivio` so devolve TRUE nessa travessia). E a frase que ocupa o lugar do
+	/// antigo *"voce o considera um amigo"*: o jogo nao considera mais nada, ele avisa que a escolha abriu.
+	///
+	/// So esta porta e anunciada (e nao as seis): e a que muda regra quando usada -- a furia. E o texto
+	/// fala das DUAS declaracoes que os 50 pagam, porque o convivio tambem sobe apanhando.
+	/// </summary>
+	private void AvisarAPortaDoAmigo(ServerPlayer pl, string nome) =>
+		Avisar(pl, $"você já conviveu com {nome} o bastante pra dizer o que ele é pra você -- amigo, "
+				   + "ou inimigo mortal. A escolha é sua, na aba People (tecla P).");
 
 	// =====================================================================
-	// 2. CONVERSAR -- o `TestListeners` (Talking.dm:210-219)
+	// 2. CONVERSAR E LUTAR -- as outras duas fontes do convivio
 	// =====================================================================
 
 	/// <summary>
-	/// `prob(1)`: 1% por fala OUVIDA. E devagar de proposito -- familiaridade 50 (o que a relacao
-	/// "Bom" pede) sao ~5000 falas trocadas por perto.
-	/// </summary>
-	private const double ChanceDeFamiliaridade = 0.01;
-
-	/// <summary>
-	/// ALGUEM ME OUVIU FALAR. Chamado do <see cref="Mandar"/> -- ou seja, do UNICO ponto por onde
-	/// uma fala de personagem chega a alguem.
+	/// ALGUEM ME OUVIU FALAR -- o `TestListeners` (`Talking.dm:210-219`). Chamado do <see cref="Mandar"/>,
+	/// ou seja, do UNICO ponto por onde uma fala de personagem chega a alguem.
 	///
 	/// ============================ POR QUE AQUI DENTRO, E NAO NO `Falar` ============================
 	/// O `Falar` tem quatro saidas (OOC, sussurro em dois raios, grito, e o resto), e este port ja
@@ -185,13 +224,50 @@ public partial class GameServer
 	private void Ouviu(ServerPlayer ouvinte, ServerPlayer falante)
 	{
 		if (ouvinte == falante || !EhPessoa(ouvinte) || !EhPessoa(falante)) return;
-		if (_rng.NextDouble() >= ChanceDeFamiliaridade) return;
+		if (_rng.NextDouble() >= Convivio.ChanceDeFamiliaridadePorFala) return;
+		ConhecerMelhor(ouvinte, falante, 1);
+	}
 
+	/// <summary>
+	/// TROCAR GOLPES TAMBEM E CONHECER (dono, 2026-09-05): 10% por golpe que encosta, nos dois lados --
+	/// ver `Convivio.ChanceDeFamiliaridadePorGolpe`. Chamado do desfecho do golpe (`GameServer.Combat.cs`).
+	/// </summary>
+	private void ConvivioPorGolpe(ServerPlayer vitima, ServerPlayer autor)
+	{
+		if (!EhPessoa(vitima) || !EhPessoa(autor) || vitima == autor) return;
+		if (_rng.NextDouble() >= Convivio.ChanceDeFamiliaridadePorGolpe) return;
+		ConhecerMelhor(vitima, autor, 1);
+	}
+
+	/// <summary>
+	/// CAIR PELA MAO DE ALGUEM E CONHECE-LO (dono, 2026-09-05): a queda vale 10 e a morte 20, nos dois
+	/// lados -- e vale igual entre amigos que treinam e entre inimigos, porque o convivio so conta o que
+	/// foi vivido. O que a pessoa E pra voce depois disso continua sendo escolha sua.
+	/// </summary>
+	private void ConvivioPorDerrota(ServerPlayer vitima, ServerPlayer algoz, bool morreu)
+	{
+		if (!EhPessoa(vitima) || !EhPessoa(algoz) || vitima == algoz) return;
+		ConhecerMelhor(vitima, algoz, morreu ? Convivio.FamiliaridadePorMorte : Convivio.FamiliaridadePorQueda);
+	}
+
+	/// <summary>
+	/// OS DOIS PASSAM A SE CONHECER MELHOR, nos dois sentidos: a foto da ficha (sem ela nao ha onde somar),
+	/// os pontos de convivio, o aviso da porta do amigo pra quem a atravessou -- e a aba People dos dois e
+	/// refeita. E o funil unico da conversa e da luta.
+	/// </summary>
+	private void ConhecerMelhor(ServerPlayer a, ServerPlayer b, int quanto)
+	{
 		long agora = NowMs();
-		Fotografar(ouvinte, falante, agora);
-		Fotografar(falante, ouvinte, agora);
-		ouvinte.Social.SomarFamiliaridade(falante.Assinatura);
-		falante.Social.SomarFamiliaridade(ouvinte.Assinatura);
+		Fotografar(a, b, agora);
+		Fotografar(b, a, agora);
+		if (a.Social.SomarFamiliaridade(b.Assinatura, quanto)) AvisarAPortaDoAmigo(a, b.Name);
+		if (b.Social.SomarFamiliaridade(a.Assinatura, quanto)) AvisarAPortaDoAmigo(b, a.Name);
+		// DE NOVO, DEPOIS DA SOMA: a foto de cima rodou com o convivio de ANTES, e uma queda pode ser o
+		// ponto que paga os detalhes -- os dois estao um na frente do outro agora.
+		AprenderDetalhes(a, b, agora);
+		AprenderDetalhes(b, a, agora);
+		MandarConhecidos(a);
+		MandarConhecidos(b);
 	}
 
 	// =====================================================================
@@ -217,15 +293,18 @@ public partial class GameServer
 
 	/// <summary>
 	/// ============================ ALGUEM CAIU, E QUEM GOSTAVA DELE ESTAVA VENDO ============================
-	/// Este metodo e o CHAMADOR que faltava. Ele porta dois lacos do DM que sao o mesmo laco com
-	/// listas diferentes:
+	/// Ele porta dois lacos do DM que sao o mesmo laco com listas diferentes:
 	///
 	///   * `Death.dm:73-85` -- o amigo MORREU: <see cref="NivelDeRaiva.Extrema"/>;
 	///   * `KO.dm:29-41`    -- o amigo CAIU:   <see cref="NivelDeRaiva.Lendaria"/>.
 	///
-	/// E os dois graus valem os dois, e nao so a morte: **so a linha Legendary se contenta com o
-	/// nocaute** (`Catalogo.RaivaExigida`). Ligar so a morte deixaria metade da regra do dono sem
-	/// chamador -- que e exatamente o defeito que este arquivo existe pra fechar.
+	/// E os dois graus valem os dois, e nao so a morte: **o nocaute abre as mesmas formas de raiva que a
+	/// morte, por um preco de BP maior** (`FormaDef.AgioNaRaivaComum`, dono 2026-10-11 -- ate ali so a
+	/// linha Legendary se contentava com ele). Ligar so a morte deixaria metade da regra do dono sem
+	/// chamador.
+	///
+	/// O QUE CADA GRAU VALE e outra regra do dono (2026-10-11): o do nocaute e a raiva COMUM, o da morte
+	/// e o mais alto -- so ele tem cinematica, tema e o salto de Ki. Ver `Core.Combat.RaivaEmDegraus`.
 	///
 	/// ============================ AS TRES CONDICOES, TODAS DO DM ============================
 	///   1. **O ALGOZ TEM QUE SER INIMIGO DA VITIMA** (`Death.dm:75`, `KO.dm:32-35`). Sem isto,
@@ -233,9 +312,16 @@ public partial class GameServer
 	///      enfureceria a plateia inteira. O proprio DM diz por que: *"no rage for friendly duels
 	///      or environmental death"*.
 	///   2. **QUEM DERRUBOU NAO SE ENFURECE COM O PROPRIO CRIME** (`Death.dm:78`, `KO.dm:35`) --
-	///      e a relacao pode ser de mao unica, entao nao adianta confiar na lista dele.
+	///      e a declaracao pode ser de mao unica, entao nao adianta confiar na lista dele.
 	///   3. **TEM QUE ESTAR VENDO** -- o <see cref="RaioDeTestemunha"/>, e na MESMA zona.
 	/// =========================================================================================
+	///
+	/// ============================ E QUEM RESPONDE E A DECLARACAO DE CADA UM ============================
+	/// "Era inimigo?" e perguntado a lista da VITIMA; "eu gostava dela?" a de quem ASSISTE. As duas
+	/// respostas saem do que cada jogador DECLAROU (`Convivio.AlgozEhInimigo`, `LutoPorMorte`,
+	/// `LutoPorQueda`): o jogo nao deduz amizade de nada -- quem nao disse que alguem e amigo nao entra em
+	/// furia por ele, nem que tenham passado o dia juntos.
+	/// ====================================================================================================
 	///
 	/// ============================ POR QUE ELE NAO PRECISA CONFERIR "ESTAVA EM COMBATE" ============================
 	/// O DM precisa: la o `KO()` e chamado tambem por gravidade, fome e desmaio, e o `lastDamager`
@@ -247,7 +333,7 @@ public partial class GameServer
 	/// </summary>
 	/// <param name="vitima">Quem caiu ou morreu.</param>
 	/// <param name="algoz">Quem a derrubou. Pode ser um corpo sem dono -- e ai ele e inimigo.</param>
-	/// <param name="morreu">TRUE = morte (furia extrema); FALSE = nocaute (raiva lendaria).</param>
+	/// <param name="morreu">TRUE = morte (furia extrema); FALSE = nocaute (a raiva comum, `NivelDeRaiva.Lendaria`).</param>
 	private void LutoNaVizinhanca(ServerPlayer vitima, ServerPlayer? algoz, bool morreu)
 	{
 		// SEM ALGOZ NAO HA LUTO: `deathKiller` nulo no DM quer dizer morte ambiental, e o
@@ -274,8 +360,8 @@ public partial class GameServer
 			Jandirus.Core.World.Vec2 d = o.Pos - vitima.Pos;      // (3)
 			if (d.X * d.X + d.Y * d.Y > raio2) continue;
 
-			// AS DUAS LISTAS, COM UM `||` -- e as duas sao do observador sobre a VITIMA. A da morte
-			// e mais larga que a da queda (ver `Convivio.LutoPorMorte` / `LutoPorQueda`).
+			// A DECLARACAO DO OBSERVADOR SOBRE A VITIMA. A lista da morte e mais larga que a da queda
+			// (ver `Convivio.EnfurecePorMorte` / `EnfurecePorQueda`).
 			bool sente = morreu
 				? o.Social.LutoPorMorte(vitima.Assinatura)
 				: o.Social.LutoPorQueda(vitima.Assinatura);
@@ -287,8 +373,9 @@ public partial class GameServer
 			// (`Murder.dm:111`), que existe pra a cena de raiva nao tocar duas vezes seguidas.
 			if (!AmigoAbatido(o, vitima.Name, grau)) continue;
 
-			// O QUE OS OUTROS VEEM. As duas frases do DM, com a mesma diferenca de intensidade:
-			// `Death.dm:83` ("EXTREMELY enraged") e `KO.dm:40` ("very angry").
+			// O QUE OS OUTROS VEEM. Uma frase por degrau -- as do DM sao `Death.dm:83` ("EXTREMELY
+			// enraged") e `KO.dm:38` ("very angry"), e a do nocaute desceu um tom com o degrau dele
+			// (ver `FraseDeQuemVeARaiva`, `GameServer.Raiva.cs`).
 			AnunciarRaiva(o, morreu);
 		}
 	}
@@ -306,9 +393,7 @@ public partial class GameServer
 	private void AnunciarRaiva(ServerPlayer enlutado, bool extrema)
 	{
 		float raio2 = RaioDeTestemunha * RaioDeTestemunha;
-		string frase = extrema
-			? $"você percebe que {enlutado.Name} ficou EXTREMAMENTE furioso!!!"
-			: $"você percebe que {enlutado.Name} ficou muito furioso!!!";
+		string frase = FraseDeQuemVeARaiva(enlutado.Name, extrema);
 
 		foreach (ServerPlayer o in ZoneList(enlutado.Zone.Hash).ToList())
 		{
@@ -321,18 +406,14 @@ public partial class GameServer
 
 	/// <summary>
 	/// ============================ O FUNIL UNICO DA DERROTA ============================
-	/// Perder uma luta tem DUAS consequencias no port, e ate agora so uma delas tinha dono:
+	/// Perder uma luta tem VARIAS consequencias no port (Zenkai, luto, convivio, sucessao, karma...), e
+	/// todas respondem a mesma pergunta ("fulano acabou de perder pra beltrano"), nos MESMOS quatro
+	/// pontos. Pendurar cada uma ao lado das outras, ponto a ponto, seria criar quatro lugares onde a
+	/// proxima pessoa pode ligar uma e esquecer a outra -- e esse e, literalmente, o modo de falha que
+	/// mais se repetiu neste port.
 	///
-	///   * o ZENKAI (`ZenkaiPorDerrota`, `GameServer.Raciais.cs`) -- ja existia, em quatro pontos;
-	///   * o LUTO de quem assistiu (<see cref="LutoNaVizinhanca"/>) -- nasce agora.
-	///
-	/// As duas respondem a mesma pergunta ("fulano acabou de perder pra beltrano"), e nos MESMOS
-	/// quatro pontos. Pendurar a segunda ao lado da primeira, uma a uma, seria criar quatro lugares
-	/// onde a proxima pessoa pode ligar uma e esquecer a outra -- e esse e, literalmente, o modo de
-	/// falha que mais se repetiu neste port.
-	///
-	/// Por isso os quatro pontos passaram a chamar ISTO, e nao o Zenkai direto. O dia em que a
-	/// derrota tiver uma terceira consequencia, ela entra aqui e chega nos quatro de graca.
+	/// Por isso os quatro pontos chamam ISTO. O dia em que a derrota tiver mais uma consequencia, ela
+	/// entra aqui e chega nos quatro de graca.
 	/// =================================================================================
 	/// </summary>
 	/// <param name="morreu">
@@ -344,7 +425,7 @@ public partial class GameServer
 	{
 		// ============================ NADA DISTO ACONTECE DENTRO DE UMA MENTE ============================
 		// *"la dentro os FERIMENTOS NAO SAO TRANSFERIDOS pro corpo real, NAO TEM COMO TER ZENKAI"* --
-		// e o pedido nomeia so o Zenkai, mas as OUTRAS TRES consequencias deste funil sao piores se
+		// e o pedido nomeia so o Zenkai, mas as OUTRAS consequencias deste funil sao piores se
 		// escaparem:
 		//
 		//   * o ZENKAI -- a regra 2 do pedido, cobrada exatamente aqui. Sem este corte, "perder de
@@ -353,17 +434,17 @@ public partial class GameServer
 		//   * o LUTO (`LutoNaVizinhanca`) -- **e este e o mais perigoso**. Um amigo "morrendo" numa luta
 		//     SIMULADA acenderia raiva de verdade, e raiva de verdade abre SSJ. Duas pessoas na mesma
 		//     mente poderiam fabricar a transformacao mais cara do jogo se matando de mentira;
-		//   * o ODIO (`AmigoFoiFerido`) -- inimizade permanente por um treino que nao aconteceu;
+		//   * o CONVIVIO (`ConvivioPorDerrota`) -- pontos de vida em comum por uma luta que nao aconteceu;
 		//   * a SUCESSAO (`SucessaoPorMorte`) -- o trono de Vegeta trocando de dono porque alguem
 		//     "morreu" dentro da propria cabeca. Este seria irreversivel.
 		//
-		// O CORTE E AQUI, NO FUNIL, e nao um `if` dentro de cada uma das quatro: e literalmente o
+		// O CORTE E AQUI, NO FUNIL, e nao um `if` dentro de cada uma: e literalmente o
 		// argumento que criou este metodo ("quatro lugares onde a proxima pessoa pode ligar uma e
-		// esquecer a outra"), e a quinta consequencia da derrota ja nasce cortada.
+		// esquecer a outra"), e a proxima consequencia da derrota ja nasce cortada.
 		//
 		// PELA ZONA DA VITIMA: o algoz de dentro da mente e sempre um corpo do mesmo bolso (o reflexo,
 		// a lembranca, ou a outra pessoa em transe), entao perguntar por um dos dois basta -- e a
-		// vitima e quem paga todas as quatro contas.
+		// vitima e quem paga todas as contas.
 		//
 		// **E O `ZenkaiPorDerrota` NAO GANHOU UM SEGUNDO GATE**, apesar de ter dois chamadores fora
 		// deste funil (`GameServer.Tecnicas.G3.cs:1209` e `:1216`). Os dois sao o caso `autor ==
@@ -373,7 +454,16 @@ public partial class GameServer
 		// ============================================================================================
 		if (NaMente(vitima)) return;
 
-		// ============================ A SEXTA CONSEQUENCIA: CAIR SEPARA A FUSAO ============================
+		// NEM NUM TREINO COM O BILLS OU O WHIS (dono, 2026-10-11): la o adversario tem sempre o triplo do poder de
+		// quem treina, e cair e a aula -- com as consequencias de derrota, apanhar de proposito viraria fabrica de
+		// Zenkai. Pelo mesmo argumento do corte de cima, ele mora no funil. Ver `GameServer.BillsTreino.cs`.
+		if (TreinoDivinoEntre(vitima, algoz)) return;
+
+		// O VILAO AVULSO QUE CAIU: nocauteado ou morto por um jogador, o karma vai pra esse jogador e o evento
+		// acaba. Sai na primeira linha quando a vitima nao e vilao de evento nenhum. Ver `GameServer.Viloes.cs`.
+		VilaoFoiDerrotado(vitima, algoz, morreu);
+
+		// ============================ CAIR SEPARA A FUSAO ============================
 		// `defuse_on_downed()` (`Fusion.dm:75`), chamado do `KO()` do original. Ela entra AQUI e nao
 		// num `if` no `ResolverDesfecho` pelo mesmo argumento que criou este funil -- e com um agravante
 		// proprio: nocaute e morte sao DOIS caminhos, e a fusao tem que se desfazer nos dois. Escrita
@@ -383,197 +473,42 @@ public partial class GameServer
 		// **o corpo fundido nao e a vitima**: sem separar primeiro, quem apanhou de uma fusao levaria
 		// o `(A+B)*2` como "o poder do inimigo" e o corpo que caiu ganharia Zenkai sobre um numero que
 		// deixou de existir no instante seguinte.
-		// ==============================================================================================
+		// ==============================================================================
 		FusaoAoCair(vitima, morreu ? "o corpo fundido tombou" : "o corpo fundido foi derrubado");
+
+		// COM BICHO NO MEIO A DERROTA ACABA AQUI (2026-10-10): apanhar de um lobo nao da Zenkai nem acende o
+		// luto de quem viu, e abater um bicho nao e matar ninguem -- sem karma, sem convivio, sem sucessao. A fusao
+		// que se desfaz na queda (acima) continua valendo. Ver `DerrotaComBicho` (`GameServer.Animais.cs`).
+		// E O BICHO QUE CAIU MORRE AQUI, no instante do nocaute -- ver `BichoCaiu`.
+		if (DerrotaComBicho(vitima, algoz))
+		{
+			if (!morreu) BichoCaiu(vitima);
+			return;
+		}
 
 		ZenkaiPorDerrota(vitima, algoz);
 		LutoNaVizinhanca(vitima, algoz, morreu);
 
-		// A SETIMA CONSEQUENCIA, e ela entrou exatamente onde este bloco previu que entraria: **O
-		// PRECO DO LACO** (`AmizadeQuebrada`), o pedido do dono. Ela e a razao pela qual este funil
-		// existe: "quem te mata perde pontos" e a MESMA pergunta que o Zenkai e o luto ja faziam nos
-		// mesmos quatro pontos, e escreve-la num quinto lugar era pedir pra um deles ficar de fora.
-		AmizadeQuebrada(vitima, algoz, morreu);
+		// O CONVIVIO DOS DOIS SOBE -- e so isso: a derrota nao muda o que um E pro outro (nao ha mais
+		// pontos de amizade pra cair nem inimigo declarado sozinho; ver o cabecalho do `Convivio`).
+		// DEPOIS DO LUTO de proposito: a furia desta queda e decidida pelo que ja estava declarado
+		// antes dela.
+		ConvivioPorDerrota(vitima, algoz, morreu);
 
-		// O ODIO DOS AMIGOS DA VITIMA -- `friend_harmed_by` (`KO.dm:42` e `Murder.dm:82`), com os
-		// dois valores do DM. Ja e travado por rival declarado la dentro. **E o mesmo laco cobra a
-		// amizade das testemunhas**, com a condicao dele (ver `AmigoFoiFerido`).
-		AmigoFoiFerido(vitima, algoz, morreu);
-
-		// A TERCEIRA CONSEQUENCIA, e ela entrou exatamente onde este bloco previu que entraria: a
-		// SUCESSAO. Matar quem carrega o trono de Vegeta ou o titulo de Lorde do Gelo troca o dono
+		// A SUCESSAO. Matar quem carrega o trono de Vegeta ou o titulo de Lorde do Gelo troca o dono
 		// do cargo (`Murder.dm:85-101`) -- e so a MORTE conta, nunca o nocaute, que e o que o DM faz
 		// ao pendurar a regra dentro do `killer_stuff`. Ver `GameServer.CargoPortas.cs`.
 		if (morreu) SucessaoPorMorte(vitima, algoz);
 
-		// A QUARTA, e ela vem do MESMO `killer_stuff` (`Murder.dm:83`): o KARMA. Matar um inocente
+		// E O KARMA, que vem do MESMO `killer_stuff` (`Murder.dm:83`). Matar um inocente
 		// suja a alma, matar um assassino a limpa -- e e este eixo que decide nove dos cargos
 		// reivindicaveis. So a MORTE conta, pelo mesmo motivo da sucessao. Ver `GameServer.Karma.cs`.
 		if (morreu) KarmaPorMatarJogador(vitima, algoz);
 	}
 
-	/// <summary>
-	/// `friend_harmed_by()` (`Friendship.dm:78-84`): quem estava vendo, e AMIGO da vitima, e tinha
-	/// declarado o agressor como rival, ganha odio. **E, novo, quem estava vendo e era amigo da
-	/// vitima PERDE AMIZADE com o agressor** -- *"pessoas q MATAM SEU AMIGO ... perdem pontos"*.
-	///
-	/// ============================ UM LACO SO, DUAS CONDICOES DIFERENTES ============================
-	/// A pergunta "quem viu o amigo de quem apanhar" e uma so, e responde-la duas vezes seria o
-	/// defeito favorito deste port: dois lacos que um dia discordam sobre quem estava presente. Mas as
-	/// consequencias NAO tem a mesma condicao, e a diferenca e o pedido do dono:
-	///
-	///   * ODIO: exige que a testemunha ja tivesse DECLARADO o agressor rival (`Friendship.dm:81`).
-	///     Amizade cresce sozinha, odio so cresce contra quem voce escolheu odiar -- sem isso, todo
-	///     servidor viraria uma teia de inimizades automaticas;
-	///   * PERDA DE AMIZADE: **nao exige declaracao nenhuma**. O dono foi literal ("pessoas que matam
-	///     seu amigo perdem pontos"), e a assimetria e proposital: voce nao precisa ter escolhido
-	///     odiar alguem pra deixar de gostar dele depois que ele matou seu amigo na sua frente.
-	/// ================================================================================================
-	/// </summary>
-	private void AmigoFoiFerido(ServerPlayer vitima, ServerPlayer agressor, bool morreu)
-	{
-		if (!EhPessoa(vitima) || !EhPessoa(agressor)) return;
-		double quanto = morreu ? Convivio.InimizadePorAmigoMorto : Convivio.InimizadePorAmigoCaido;
-
-		// A MESMA PERGUNTA DO PAR, DA MESMA FUNCAO (ver <see cref="ViolenciaCobraOLaco"/>): se o
-		// nocaute foi um treino entre amigos, a plateia tambem nao cobra nada. Sem isto o problema so
-		// mudaria de lugar -- em vez de dois amigos se afastarem treinando, seriam os AMIGOS DELES se
-		// afastando de quem treina.
-		bool cobra = ViolenciaCobraOLaco(vitima, agressor, morreu);
-		float raio2 = RaioDeTestemunha * RaioDeTestemunha;
-
-		foreach (ServerPlayer o in ZoneList(vitima.Zone.Hash).ToList())
-		{
-			if (o == vitima || o == agressor) continue;
-			Jandirus.Core.World.Vec2 d = o.Pos - vitima.Pos;
-			if (d.X * d.X + d.Y * d.Y > raio2) continue;
-			if (!o.Social.EhAmigo(vitima.Assinatura)) continue;
-
-			if (o.Social.EhRival(agressor.Assinatura))
-			{
-				o.Social.SomarInimizade(agressor.Assinatura, quanto);
-				Avisar(o, $"ver {vitima.Name} sofrer nas mãos de {agressor.Name} alimenta o seu ódio.");
-			}
-
-			// O MESMO NUMERO NO OUTRO LIVRO -- e `quanto` e literalmente o mesmo valor (ver
-			// `Convivio.PerdaPorMorte`), porque e o mesmo evento contado de dois jeitos.
-			if (!cobra) continue;
-			AfastarNosDoisLados(o, agressor, quanto,
-				morreu ? $"{agressor.Name} matou {vitima.Name} na sua frente"
-					   : $"{agressor.Name} derrubou {vitima.Name} na sua frente");
-		}
-	}
-
-	/// <summary>
-	/// ============================ ISTO FOI VIOLENCIA OU FOI TREINO? -- UMA PERGUNTA, UM LUGAR ============================
-	/// As duas metades da perda (o par vitima-algoz e as testemunhas) precisam da MESMA resposta, e ela
-	/// nao pode ser escrita duas vezes: no dia em que uma das duas mudar, treinar com o melhor amigo
-	/// voltaria a apagar amizade -- so que a dos vizinhos, e ninguem ligaria uma coisa a outra.
-	///
-	/// A resposta em si e emprestada do DM: `Convivio.AlgozEhInimigo` e a pergunta de `Death.dm:75`
-	/// (*"no rage for friendly duels"*), feita a lista da VITIMA -- **quem apanhou e quem sabe se
-	/// aquilo era um treino**. A MORTE nao pergunta (ver `AmizadeQuebrada`).
-	/// ====================================================================================================================
-	/// </summary>
-	private static bool ViolenciaCobraOLaco(ServerPlayer vitima, ServerPlayer algoz, bool morreu) =>
-		morreu || vitima.Social.AlgozEhInimigo(algoz.Assinatura);
-
-	/// <summary>
-	/// ============================ O QUE PERDER A LUTA CUSTA AO LACO -- **PEDIDO DO DONO** ============================
-	/// *"pessoas q MATAM SEU AMIGO ou TE MATAM PERDEM PONTOS de amizade"*. Esta metade e o "TE MATAM":
-	/// o par vitima-algoz. A outra (as testemunhas) mora no <see cref="AmigoFoiFerido"/>, junto do laco
-	/// que ja varria a zona pra distribuir odio.
-	///
-	/// ============================ POR QUE O NOCAUTE SO COBRA DE INIMIGO, E A MORTE COBRA SEMPRE ============================
-	/// **Sem esta distincao, treinar com o melhor amigo apagaria a amizade.** Um spar honesto termina em
-	/// nocaute varias vezes por hora; a 25 pontos cada, duas horas de treino levariam dois `Ligados`
-	/// (200) ao negativo -- e eles viveriam brigando por um sistema que era pra premiar convivencia.
-	///
-	/// A pergunta "isto foi um duelo entre amigos?" **ja existe e ja tem uma resposta so**:
-	/// `Convivio.AlgozEhInimigo` (`Death.dm:75`), a mesma que impede o treino de virar fabrica de Super
-	/// Saiyajin. Reaproveita-la aqui garante que as duas consequencias da derrota concordem pra sempre
-	/// sobre o que foi um treino -- escrever um segundo criterio seria pedir pro luto e pela amizade
-	/// discordarem no dia em que alguem mexer num dos dois.
-	///
-	/// **A MORTE NAO PERGUNTA NADA**, e essa e a regra: matar de verdade nao e treino, e amigo que mata
-	/// e o unico que consegue trair. E o caso que o dono nomeou primeiro.
-	/// ==============================================================================================================================
-	/// </summary>
-	private void AmizadeQuebrada(ServerPlayer vitima, ServerPlayer algoz, bool morreu)
-	{
-		if (!EhPessoa(vitima) || !EhPessoa(algoz) || vitima == algoz) return;
-		// CAIR PELA MAO DE ALGUEM E CONHECE-LO (dono, 2026-09-05) -- ANTES do laco, porque o convivio sobe
-		// mesmo entre amigos que treinam: ver `Convivio.FamiliaridadePorQueda`.
-		ConhecerPelaPorrada(vitima, algoz, morreu ? Convivio.FamiliaridadePorMorte : Convivio.FamiliaridadePorQueda);
-		if (!ViolenciaCobraOLaco(vitima, algoz, morreu)) return;
-
-		AfastarNosDoisLados(vitima, algoz,
-			morreu ? Convivio.PerdaPorMorte : Convivio.PerdaPorNocaute,
-			morreu ? $"{algoz.Name} te matou" : $"{algoz.Name} te derrubou");
-	}
-
-	/// <summary>
-	/// ============================ A PERDA E MUTUA, PORQUE AMIZADE E UMA RELACAO ============================
-	/// Cada personagem guarda o proprio dicionario (`Convivio.Amizade`), entao "a amizade entre A e B"
-	/// sao na verdade DOIS numeros, um em cada save. Cobrar so o lado de quem sofreu deixaria o assassino
-	/// com o morto ainda listado como `Ligado` na aba dele -- e, pior que feio, isso e MECANICO: o
-	/// `AlgozEhInimigo` le a lista da VITIMA e o luto le a de quem ASSISTE, entao um lado desatualizado
-	/// muda quem entra em furia na proxima morte.
-	///
-	/// Nao ha "aplicar dos dois lados" em lugar nenhum do Core de proposito: o `Convivio` nao conhece o
-	/// outro `Convivio`, e e isso que o mantem serializavel e testavel com dicionarios na mao. Quem tem
-	/// os dois objetos e o servidor -- entao a simetria e daqui, e de UM lugar so.
-	/// ==========================================================================================================
-	/// </summary>
-	private void AfastarNosDoisLados(ServerPlayer a, ServerPlayer b, double quanto, string porque)
-	{
-		bool aVirou = a.Social.Afastar(b.Assinatura, quanto);
-		bool bVirou = b.Social.Afastar(a.Assinatura, quanto);
-
-		if (aVirou) Avisar(a, $"{porque}: {b.Name} agora é seu INIMIGO.");
-		if (bVirou) Avisar(b, $"{a.Name} agora é seu INIMIGO.");
-		MandarConhecidos(a);
-		MandarConhecidos(b);
-	}
-
-	/// <summary>
-	/// `M.add_enmity(src, ENMITY_HIT)` (`CombatMovement.dm:225` e `:241`): um golpe de um rival
-	/// declarado alimenta o odio de quem apanhou. Um ponto por golpe.
-	/// </summary>
-	private void GolpeDeRival(ServerPlayer vitima, ServerPlayer autor)
-	{
-		if (!EhPessoa(vitima) || !EhPessoa(autor) || vitima == autor) return;
-		vitima.Social.SomarInimizade(autor.Assinatura, Convivio.InimizadePorGolpe);
-		// CONVIVIO NA PORRADA (dono, 2026-09-05): trocar golpes tambem e conhecer -- 10% por golpe que
-		// encosta, ver `Convivio.ChanceDeFamiliaridadePorGolpe`.
-		if (_rng.NextDouble() >= Convivio.ChanceDeFamiliaridadePorGolpe) return;
-		ConhecerPelaPorrada(vitima, autor, 1);
-	}
-
-	/// <summary>
-	/// OS DOIS PASSAM A SE CONHECER PELA LUTA, nos dois sentidos, como o `Ouviu` faz com a fala: a foto da
-	/// ficha (sem ela nao ha onde somar) e os pontos de convivio -- e a aba People dos dois e refeita.
-	/// </summary>
-	private void ConhecerPelaPorrada(ServerPlayer a, ServerPlayer b, int quanto)
-	{
-		long agora = NowMs();
-		Fotografar(a, b, agora);
-		Fotografar(b, a, agora);
-		a.Social.SomarFamiliaridade(b.Assinatura, quanto);
-		b.Social.SomarFamiliaridade(a.Assinatura, quanto);
-		MandarConhecidos(a);
-		MandarConhecidos(b);
-	}
-
 	// =====================================================================
 	// 4. OS VERBOS
 	// =====================================================================
-
-	/// <summary>Quantos tiles o pedido de amizade alcanca -- `set src in oview(3)` (`Friendship.dm:89`).</summary>
-	private const float AlcanceDoPedido = 3 * Jandirus.Core.World.ZoneCollision.TileSize;
-
-	/// <summary>`set src in oview(5)` -- a declaracao de rival (`Friendship.dm:160`).</summary>
-	private const float AlcanceDaRivalidade = 5 * Jandirus.Core.World.ZoneCollision.TileSize;
 
 	/// <summary>`set src in view(10)` -- o `Set_Contact` (`Contacts.dm:3`).</summary>
 	private const float AlcanceDeAnotar = 10 * Jandirus.Core.World.ZoneCollision.TileSize;
@@ -589,237 +524,190 @@ public partial class GameServer
 		{
 			case "conhecidos": MandarConhecidos(pl); return true;
 			case "conhecer": VerboAnotar(pl, arg); return true;
-			case "amizade_pedir": VerboPedirAmizade(pl, arg); return true;
-			case "amizade_aceitar": VerboResponderAmizade(pl, aceitou: true); return true;
-			case "amizade_recusar": VerboResponderAmizade(pl, aceitou: false); return true;
-			case "rival": VerboRival(pl, arg); return true;
 			case "relacao": VerboRelacao(pl, arg); return true;
+			case "detalhes": VerboDetalhes(pl, arg); return true;
 			case "esquecer": VerboEsquecer(pl, arg); return true;
 			default: return false;
 		}
 	}
 
 	/// <summary>
-	/// Quem esta marcado, se estiver perto o bastante. Nulo (com a recusa ja dita) caso contrario.
+	/// O `Set_Contact` (`Contacts.dm:1-4`): anota alguem na mao, sem esperar a convivencia.
 	///
 	/// O ALVO VEM POR ID e nao por nome digitado, como todo o resto do port: o jogador ja marca
-	/// gente com duplo clique, e nome se repete. E o equivalente honesto do `set src in oview(N)`
+	/// gente com duplo clique, e nome se repete. E o equivalente honesto do `set src in view(10)`
 	/// do BYOND, que tambem era "aquele ali, o que eu estou vendo".
 	/// </summary>
-	private ServerPlayer? AlvoSocial(ServerPlayer pl, string arg, float alcance, string oque)
-	{
-		ServerPlayer? o = PorNome(arg);
-		if (o == null || o == pl) { Avisar(pl, $"marque alguém antes (duplo clique nele) pra {oque}."); return null; }
-		if (!EhPessoa(o))
-		{
-			// corpo sem dono: nao tem assinatura, entao nao ha o que lembrar dele
-			Avisar(pl, "não há nada para lembrar dessa criatura.");
-			return null;
-		}
-		if (!EhPessoa(pl)) { Avisar(pl, "este corpo não tem identidade própria."); return null; }
-		if (o.Zone.Hash != pl.Zone.Hash || (o.Pos - pl.Pos).Length > alcance)
-		{
-			Avisar(pl, $"{o.Name} está longe demais.");
-			return null;
-		}
-		return o;
-	}
-
-	/// <summary>O `Set_Contact` (`Contacts.dm:1-4`): anota alguem na mao, sem esperar a convivencia.</summary>
 	private void VerboAnotar(ServerPlayer pl, string arg)
 	{
-		if (AlvoSocial(pl, arg, AlcanceDeAnotar, "anotar") is not { } o) return;
-		bool novo = pl.Social.Fotografar(o.Assinatura, o.Name, o.Race, o.Ficha?.Class ?? o.Class,
-										 o.Genero, o.Idade, NowMs());
+		ServerPlayer? o = PorNome(arg);
+		if (o == null || o == pl) { Avisar(pl, "marque alguém antes (duplo clique nele) pra anotar."); return; }
+		// corpo sem dono: nao tem assinatura, entao nao ha o que lembrar dele
+		if (!EhPessoa(o)) { Avisar(pl, "não há nada para lembrar dessa criatura."); return; }
+		if (!EhPessoa(pl)) { Avisar(pl, "este corpo não tem identidade própria."); return; }
+		if (o.Zone.Hash != pl.Zone.Hash || (o.Pos - pl.Pos).Length > AlcanceDeAnotar)
+		{
+			Avisar(pl, $"{o.Name} está longe demais.");
+			return;
+		}
+
+		bool novo = Fotografar(pl, o, NowMs());
 		Avisar(pl, novo ? $"você guarda o rosto de {o.Name}." : $"você já conhecia {o.Name}.");
 		MandarConhecidos(pl);
 	}
 
-	/// <summary>`Request_Friendship` (`Friendship.dm:86-99`).</summary>
-	private void VerboPedirAmizade(ServerPlayer pl, string arg)
-	{
-		if (AlvoSocial(pl, arg, AlcanceDoPedido, "pedir amizade") is not { } o) return;
-		if (pl.Social.EhAmigo(o.Assinatura)) { Avisar(pl, $"você já é amigo de {o.Name}."); return; }
-
-		long agora = NowMs();
-		Fotografar(pl, o, agora);
-		Fotografar(o, pl, agora);
-
-		o.PedidoDeAmizade = pl.Assinatura;
-		o.NomeDeQuemPediu = pl.Name;
-		Avisar(pl, $"você pede a {o.Name} que seja seu amigo.");
-		Avisar(o, $"{pl.Name} quer ser seu amigo! (aceite ou recuse na aba People)");
-	}
-
 	/// <summary>
-	/// `friend_request_resolve` (`Friendship.dm:112-129`).
-	///
-	/// A RESPOSTA VAI PELA ASSINATURA GUARDADA e nao por quem esta na frente: no DM tambem
-	/// (`for(var/mob/P in player_list) if(P.signature == asker_sig)`), e a razao esta escrita la --
-	/// *"o pedinte pode ter se afastado/relogado"*. Aceitar um pedido nao pode exigir que a pessoa
-	/// continue parada ao seu lado.
-	///
-	/// ============================ OS DOIS LADOS, OU NENHUM -- E AQUI EU DIVIRJO DO DM ============================
-	/// La o `if(asker)` da linha 123 escreve o lado de quem aceitou e, se o pedinte tiver saido,
-	/// **deixa o lado dele em 49**. O resultado e uma amizade de MAO UNICA: um ve "Amigo" na aba, o
-	/// outro ve "Familiar", e -- o que importa aqui -- a raiva de um funciona e a do outro nao.
-	///
-	/// Isso e exatamente o tipo de meia-verdade que vira *"o SSJ1 as vezes nao vem"* e que ninguem
-	/// consegue ligar a um pedido de amizade de tres dias atras. Entao: se o pedinte nao esta mais
-	/// no mundo, o pedido nao se resolve e os dois sao mandados pedir de novo quando se encontrarem.
-	/// Perder um pedido e barato; um vinculo pela metade nao.
-	///
-	/// **ESTA DIVERGENCIA FOI ACHADA PELA BANCADA**, e nao por leitura: a primeira versao filtrava o
-	/// pedinte por `Peer != null` (copiando o `P.client` do DM) e o `OConvivioAoVivo` reprovou com
-	/// `50 / 49` -- os dois numeros do defeito, lado a lado. Quem esta vivo neste servidor e quem
-	/// esta no `_players`; o socket nao acrescenta nada a essa pergunta e ainda esconde o corpo
-	/// forjado que a bancada usa pra fazer a pergunta.
-	/// ================================================================================================================
-	/// </summary>
-	private void VerboResponderAmizade(ServerPlayer pl, bool aceitou)
-	{
-		if (pl.PedidoDeAmizade.Length == 0) { Avisar(pl, "ninguém pediu sua amizade."); return; }
-
-		string sig = pl.PedidoDeAmizade, nome = pl.NomeDeQuemPediu;
-		ServerPlayer? pedinte = _players.Values.FirstOrDefault(
-			p => EhPessoa(p) && p.Assinatura == sig);
-
-		if (pedinte == null)
-		{
-			Avisar(pl, $"{nome} não está mais por aqui -- peçam de novo quando se encontrarem.");
-			return;
-		}
-
-		pl.PedidoDeAmizade = "";
-		pl.NomeDeQuemPediu = "";
-
-		if (!aceitou)
-		{
-			Avisar(pl, $"você recusa a oferta de amizade de {nome}.");
-			Avisar(pedinte, $"{pl.Name} recusou seu pedido de amizade.");
-			return;
-		}
-
-		pl.Social.AceitarAmizade(sig);
-		pedinte.Social.AceitarAmizade(pl.Assinatura);
-		Avisar(pl, $"você e {nome} agora são amigos.");
-		Avisar(pedinte, $"{pl.Name} aceitou sua amizade!");
-		MandarConhecidos(pedinte);
-		MandarConhecidos(pl);
-	}
-
-	/// <summary>`Declare_Rival` (`Friendship.dm:157-167`). Alterna: o mesmo verbo tira e poe.</summary>
-	private void VerboRival(ServerPlayer pl, string arg)
-	{
-		if (AlvoSocial(pl, arg, AlcanceDaRivalidade, "declarar rival") is not { } o) return;
-
-		Fotografar(pl, o, NowMs());
-		Avisar(pl, pl.Social.AlternarRival(o.Assinatura)
-			? $"você declara {o.Name} seu rival. Os golpes dele -- em você ou nos seus amigos -- vão alimentar o ódio."
-			: $"você não considera mais {o.Name} um rival.");
-		MandarConhecidos(pl);
-	}
-
-	/// <summary>
-	/// O verb `Relation()` (`Contacts.dm:115-151`): declaro o que sinto por alguem que eu conheco.
+	/// O verb `Relation()` (`Contacts.dm:115-151`): eu digo o que alguem que eu conheco e pra mim.
 	///
 	/// ============================ PELA ASSINATURA, E SEM EXIGIR PRESENCA ============================
 	/// No DM este verb mora no proprio `/obj/Contact`, que vive na SUA lista -- ou seja, ele
-	/// funciona com a pessoa do outro lado do mundo, ou offline. E faz sentido: a relacao e sobre a
+	/// funciona com a pessoa do outro lado do mundo, ou offline. E faz sentido: a declaracao e sobre a
 	/// sua memoria dela, nao sobre onde ela esta agora. Por isso o argumento aqui e a assinatura
 	/// (que a aba People ja tem em maos) e nao o id de rede de alguem marcado.
 	/// ================================================================================================
 	///
-	/// A FAMILIARIDADE E CONFERIDA AQUI, no servidor. O cliente ja apaga o que nao da pra escolher,
-	/// mas apagar botao nunca foi permissao -- e a familiaridade e a moeda cara deste sistema
-	/// (1% por fala): sem esta linha, "Amor" custaria um pacote na mao.
+	/// O CONVIVIO E CONFERIDO NO SERVIDOR (`Convivio.Declarar`). O cliente ja apaga o que nao da pra
+	/// escolher, mas apagar botao nunca foi permissao -- e o convivio e o que separa "amigo" de "alguem
+	/// que acabou de aparecer": sem o portao, a furia custaria um pacote na mao.
 	/// </summary>
 	private void VerboRelacao(ServerPlayer pl, string arg)
 	{
 		string[] p = arg.Split('|');
-		if (p.Length < 2) { Avisar(pl, "uso: relação <pessoa>|<relação>."); return; }
-
-		Conhecido? c = pl.Social.Ficha(p[0]);
-		if (c == null) { Avisar(pl, "você não conhece essa pessoa."); return; }
+		if (p.Length < 2) { Avisar(pl, "uso: relação <pessoa>|<o que ela é pra você>."); return; }
 
 		Relacao r = Convivio.RelacaoPorNome(p[1]);
-		if (r == Relacao.Nenhuma) { Avisar(pl, $"'{p[1]}' não é uma relação que dê pra declarar."); return; }
-
-		int pede = Convivio.FamiliaridadeExigida(r);
-		if (c.Familiaridade < pede)
+		Conhecido? c = pl.Social.Ficha(p[0]);
+		switch (pl.Social.Declarar(p[0], r))
 		{
-			Avisar(pl, $"você precisa de {pede} de familiaridade com {c.Nome} pra declarar"
-					   + $" '{Convivio.NomeDaRelacao(r)}' (você tem {c.Familiaridade}).");
-			return;
+			case Declaracao.NaoConhece:
+				Avisar(pl, "você não conhece essa pessoa.");
+				return;
+			case Declaracao.NaoSeDeclara:
+				Avisar(pl, $"'{p[1]}' não é algo que dê pra dizer de alguém.");
+				return;
+			case Declaracao.FaltaConvivio:
+				Avisar(pl, $"você ainda não conviveu o bastante com {c!.Nome} pra chamá-lo de "
+						   + $"'{Convivio.NomeDaRelacao(r)}': precisa de {Convivio.FamiliaridadeExigida(r)} "
+						   + $"de convívio (vocês têm {c.Familiaridade}).");
+				return;
 		}
 
-		c.Relacao = r;
-		Avisar(pl, $"a partir de agora {c.Nome} é '{Convivio.NomeDaRelacao(r)}' pra você.");
+		Avisar(pl, $"a partir de agora {c!.Nome} é '{Convivio.NomeDaRelacao(r)}' pra você.");
 		MandarConhecidos(pl);
 	}
 
-	/// <summary>O `Contact/verb/Delete()` (`Contacts.dm:112-114`): tira alguem da lista.</summary>
+	/// <summary>
+	/// O `Contact/verb/Delete()` (`Contacts.dm:112-114`): tira alguem da lista -- e com a ficha vao o
+	/// convivio e a declaracao, que moram nela. Esquecer e esquecer.
+	/// </summary>
 	private void VerboEsquecer(ServerPlayer pl, string arg)
 	{
 		if (!pl.Social.Conhecidos.Remove(arg)) { Avisar(pl, "você não conhece essa pessoa."); return; }
-
-		// A AMIZADE E O ODIO FICAM. No DM o `Delete()` so mexe no `known_contact_list` -- as listas
-		// `friendship`/`enmity` sao outras, e continuam. Esquecer o rosto nao desfaz o vinculo, e e
-		// por isso que a aba mostra quem tem pontos mesmo sem ficha (ver `MandarConhecidos`).
 		Avisar(pl, "você tira essa pessoa da sua lista.");
 		MandarConhecidos(pl);
 	}
+
+	/// <summary>
+	/// ============================ OS DETALHES DE UM CONHECIDO -- PEDIDO DO DONO (2026-10-10) ============================
+	/// *"ao abrir na aba people e clicar em pessoas q vc conhece (tem q ter um certo nivel de convivio minimo) vc
+	/// pode ver mais detalhes da pessoa, como idade, a backstory dela etc"*.
+	///
+	/// O CLIENTE PEDE (uma pessoa por vez, pela assinatura que a lista ja lhe deu) E O SERVIDOR CONFERE: abaixo
+	/// do `Convivio.ConvivioParaDetalhes` NAO SAI PACOTE NENHUM -- so a frase dizendo o que falta. A aba ja
+	/// tranca o botao por conta propria, mas apagar botao nunca foi permissao; e a lista de conhecidos, que vai
+	/// inteira a cada mudanca, nao carrega nada disto justamente pra nao mandar a quem nao pode ler.
+	///
+	/// O QUE SAI E A MINHA FICHA DA PESSOA (a fotografia), e nao o corpo vivo dela: funciona com ela offline, e
+	/// nao conta nada que eu nao tenha visto. O corpo do pacote e a lista do que e publico moram em
+	/// `Net/FioDosConhecidos.cs`.
+	/// ====================================================================================================================
+	/// </summary>
+	private void VerboDetalhes(ServerPlayer pl, string assinatura)
+	{
+		if (pl.Social.Detalhes(assinatura) is not { } c)
+		{
+			Conhecido? ficha = pl.Social.Ficha(assinatura);
+			Avisar(pl, ficha == null
+				? "você não conhece essa pessoa."
+				: $"você e {ficha.Nome} ainda não conviveram o bastante pra isso: precisa de "
+				  + $"{Convivio.ConvivioParaDetalhes} de convívio (vocês têm {ficha.Familiaridade}).");
+			return;
+		}
+
+		// A HISTORIA E LIMPA DE NOVO NA SAIDA. Ela ja entra limpa na ficha (`Convivio.AprenderDetalhes`), mas a
+		// ficha mora num save, e o que esta num arquivo pode ter sido escrito por outra mao: e o unico texto
+		// livre de OUTRO jogador neste pacote, e um caractere invalido nele faz o escritor do fio lancar excecao.
+		long agora = NowMs();
+		var w = Protocol.Begin(Protocol.S2C.DetalhesDeConhecido);
+		FioDosConhecidos.EscreverDetalhes(w, new DetalhesDeConhecido(
+			c.Assinatura, c.Genero, c.Idade, c.Titulo, c.DetalhesEm != 0, Convivio.HistoriaLegivel(c.Historia),
+			SegundosDesde(c.DesdeMs, agora), SegundosDesde(c.VistoEm, agora)));
+
+		// A BANCADA ESCUTA AQUI, e o lugar e o ponto todo: e ESTE writer que vira os bytes do fio -- o que ela
+		// confere e que o pacote acaba no ultimo campo publico, e que abaixo do convivio ele nem nasce. Nulo em
+		// jogo. Ver `GameServer.ConvivioTeste.cs`.
+		EscutaDeDetalhes?.Add((pl.Id, w.CopyData()));
+		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	/// <summary>Os pacotes de detalhes que sairam (pra quem, e os bytes). So a bancada liga. Ver <see cref="VerboDetalhes"/>.</summary>
+	internal static List<(int Para, byte[] Pacote)>? EscutaDeDetalhes;
+
+	/// <summary>Ha quantos segundos foi este instante (no minimo 1). Zero quer dizer "nao sei": o carimbo nunca foi escrito.</summary>
+	private static uint SegundosDesde(long quandoMs, long agoraMs) =>
+		quandoMs <= 0 ? 0u : (uint)Math.Clamp((agoraMs - quandoMs) / 1000, 1, uint.MaxValue);
 
 	// =====================================================================
 	// 5. A ABA
 	// =====================================================================
 
 	/// <summary>
+	/// A LISTA NO LOGIN -- e, pra quem vem de um save de antes de 2026-10-10, o instante em que a
+	/// afinidade antiga vira convivio (`Convivio.MigrarAfinidade`) e o jogador e avisado de que a aba
+	/// mudou: quem era "Amigo" pelos pontos do jogo deixou de ser ate ELE dizer que e.
+	///
+	/// AQUI e nao na carga do save (`AccountStore.ParaJogador`): so aqui ha um jogador com canal pra ler
+	/// o aviso, e o campo antigo continua intacto no disco pros personagens da conta que nao logaram.
+	/// </summary>
+	private void ConhecidosNoLogin(ServerPlayer pl)
+	{
+		if (pl.Social.MigrarAfinidade())
+			Avisar(pl, "a aba People mudou: o jogo não diz mais quem é seu amigo ou inimigo -- quem diz é "
+					   + "você. Abra o menu (tecla P), vá em People e escolha o que cada pessoa é pra você.");
+		MandarConhecidos(pl);
+	}
+
+	/// <summary>
 	/// A LISTA DE CONHECIDOS, pro dono dela. Ver <see cref="Protocol.S2C.Conhecidos"/>.
 	///
-	/// ============================ A UNIAO DAS TRES LISTAS, E NAO SO A DOS ROSTOS ============================
-	/// A aba do DM varre `known_contact_list` e busca os pontos em `friendship` (`HtmlUI.dm:549-553`).
-	/// So que as tres listas nao andam juntas: da pra ter pontos de amizade com quem voce apagou da
-	/// lista de rostos (o `Delete()` nao mexe na amizade), e da pra ter odio por um rival que voce
-	/// nunca anotou. Mandar so os rostos esconderia justamente essas pessoas -- e elas sao as que
-	/// mais importam, porque sao as que a raiva le.
-	/// ==========================================================================================================
+	/// POR PESSOA VAO O NOME E A RACA (a linha da lista) E AS DUAS COISAS QUE A ABA DESENHA: o convivio e a
+	/// declaracao. A ordem e a do `Convivio.EmOrdem` (quem eu classifiquei primeiro) e vem pronta daqui -- o
+	/// cliente desenha na ordem em que recebeu.
+	///
+	/// O QUE NAO VAI AQUI: a CLASSE (nunca aparece -- `GameServer.Sigilo.cs`, regra 2) e os DETALHES (idade,
+	/// genero, cargo, historia), que so saem pessoa a pessoa e pra quem conviveu o bastante
+	/// (<see cref="VerboDetalhes"/>). Esta lista vai inteira a cada mudanca: o que entrasse nela iria pra todo
+	/// mundo que cruzou com a pessoa uma vez.
 	///
 	/// SO PRO DONO -- e as assinaturas que ele carrega sao OPACAS de proposito (ver
-	/// `ServerPlayer.Assinatura`): elas aparecem na tela como `??? (assinatura)` pra quem ainda nao
-	/// se conhece, e um `conta#slot` ali entregaria o login de quem esta do outro lado.
+	/// `ServerPlayer.Assinatura`): e por elas que a aba pede uma declaracao de volta, e um `conta#slot`
+	/// ali entregaria o login de quem esta do outro lado.
 	/// </summary>
 	private void MandarConhecidos(ServerPlayer pl)
 	{
 		if (pl.Peer is not { } peer) return;
 
-		// a uniao das chaves das tres listas, na ordem de quem se e mais proximo
-		var sigs = new HashSet<string>(pl.Social.Conhecidos.Keys);
-		sigs.UnionWith(pl.Social.Amizade.Keys);
-		sigs.UnionWith(pl.Social.Inimizade.Keys);
-		sigs.UnionWith(pl.Social.Rivais);
-
-		List<string> ordem = [.. sigs.OrderByDescending(pl.Social.PontosDeAmizade)
-								 .ThenBy(s => pl.Social.Ficha(s)?.Nome ?? s, StringComparer.OrdinalIgnoreCase)];
+		List<Conhecido> ordem = pl.Social.EmOrdem();
 
 		var w = Protocol.Begin(Protocol.S2C.Conhecidos);
-		w.Put((ushort)ordem.Count);
-		w.Put(pl.NomeDeQuemPediu);   // "" = nenhum pedido pendente
-		foreach (string sig in ordem)
+		w.Put((ushort)Math.Min(ushort.MaxValue, ordem.Count));
+		foreach (Conhecido c in ordem.Take(ushort.MaxValue))
 		{
-			Conhecido? c = pl.Social.Ficha(sig);
-			w.Put(sig);
-			// SEM FICHA, O NOME E A PROPRIA ASSINATURA -- e o `??? ([signature])` do `HtmlUI.dm:374`,
-			// que e como o DM mostra quem voce nao conhece. Aqui isso so acontece com quem tem
-			// pontos e nao tem rosto (ver o bloco acima).
-			w.Put(c?.Nome ?? "");
-			w.Put(c?.Raca ?? "?");
-			w.Put(c?.Classe ?? "?");
-			w.Put((ushort)Math.Min(ushort.MaxValue, c?.Familiaridade ?? 0));
-			w.Put((byte)(c?.Relacao ?? Relacao.Nenhuma));
-			w.Put((float)pl.Social.PontosDeAmizade(sig));
-			w.Put((float)pl.Social.PontosDeInimizade(sig));
-			w.Put(pl.Social.EhRival(sig));
+			w.Put(c.Assinatura);
+			w.Put(c.Nome);
+			w.Put(c.Raca);
+			w.Put((ushort)Math.Clamp(c.Familiaridade, 0, ushort.MaxValue));
+			w.Put((byte)c.Relacao);
 		}
 		peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}

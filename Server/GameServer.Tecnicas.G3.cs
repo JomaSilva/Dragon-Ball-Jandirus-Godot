@@ -1159,7 +1159,9 @@ public partial class GameServer
 		CombatState? c = vitima.Combate;
 		if (c == null || dano <= 0 || vitima.Ficha.dead || c.Intocavel) return;
 
-		c.EntrarEmCombate();
+		// SEM ALGOZ (autor = vitima: o esmagamento, o vacuo, o preco de uma tecnica) a tag arma, e a BRIGA nao --
+		// ninguem trocou golpe com ninguem. Ver `CombatState.BrigandoComAlguem`.
+		c.EntrarEmCombate(comAlguem: autor != vitima);
 		if (autor != vitima) autor.Combate?.EntrarEmCombate();
 
 		foreach (BodyPart p in c.Corpo.Partes.ToList())
@@ -1194,6 +1196,9 @@ public partial class GameServer
 	private void ConsequenciaDoDano(ServerPlayer vitima, ServerPlayer autor, string relato)
 	{
 		if (vitima.Combate is not { } c) return;
+		// O GOD'S TEMPER conta tambem o dano DIRETO de outro corpo (explosao em area, tecnica de corpo) -- ver
+		// `ContarGolpeNoTemper`, em `GameServer.KitDoDeus.cs`. O preco que um corpo paga a si mesmo nao e golpe.
+		if (autor != vitima) ContarGolpeNoTemper(vitima);
 		if (c.Corpo.DeveMorrer() && !c.Corpo.RegeneraDecepado && c.Morrer())
 		{
 			if (autor != vitima) AoPerderALuta(vitima, autor, morreu: true);
@@ -1273,7 +1278,8 @@ public partial class GameServer
 		float andar = Math.Min(maxPx, dist - DistanciaDeParada);
 		Vec2 destino = a.Pos + d.Normalized() * andar;
 
-		ZoneCollision? mapa = _catalogo?.Get(a.Zone)?.Mapa;
+		// (o mapa da zona em que o corpo ESTA, gerada inclusive -- `MapaDoSalto`, `GameServer.Validacoes.cs`)
+		ZoneCollision? mapa = MapaDoSalto(a.Zone);
 		if (mapa != null && MoveRules.PathOccupied(mapa, a.Pos, destino)) return;
 
 		a.Facing = MoveRules.FacingFrom(d, a.Facing);

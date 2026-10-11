@@ -494,11 +494,17 @@ public sealed partial class GameServer
 	/// tirar, e o jogador sairia andando por cima da passagem como se nada fosse. E exatamente a
 	/// armadilha 1 da PARTE 3 do plano ("regra escrita nao e regra ligada").
 	/// =========================================================================================
+	///
+	/// E RECUSA QUEM CARREGA UM PRESO (2026-10-11): a tranca e do corpo que pisa na passagem, e o preso saia
+	/// dentro de outro -- passageiro de uma fusao, ou selado num Majin -- que nao estava preso. Ver
+	/// `GameServer.PresoQueEsteCorpoCarrega`.
 	/// </summary>
 	/// <returns>`true` quando a passagem foi RECUSADA.</returns>
 	private bool APrisaoRecusaASaida(ServerPlayer pl, Passagem p)
 	{
-		if (!pl.SalaPreso || !NaSala(pl)) return false;
+		if (!NaSala(pl)) return false;
+		ServerPlayer? carga = pl.SalaPreso ? null : PresoQueEsteCorpoCarrega(pl);
+		if (!pl.SalaPreso && carga == null) return false;
 		if (string.Equals(p.Zona, ZonaDaSala, StringComparison.OrdinalIgnoreCase)) return false;
 
 		// UMA VEZ A CADA POUCOS SEGUNDOS: o tique roda a 30 Hz e o corpo fica EM CIMA da celula --
@@ -508,7 +514,9 @@ public sealed partial class GameServer
 		_avisoDePrisao[pl.Id] = agora + 5_000;
 
 		string dono = DonoDoCargo("guardian");
-		Avisar(pl, "a porta não se abre: você passou do limite e está preso na Sala do Tempo. "
+		Avisar(pl, (carga != null
+						? $"a porta não se abre: {NomeVisivel(carga)} passou do limite, está preso na Sala do Tempo e está dentro de você. "
+						: "a porta não se abre: você passou do limite e está preso na Sala do Tempo. ")
 				   + (dono.Length > 0
 						? $"Só o Guardião da Terra ({dono}) -- ou um administrador -- solta."
 						: "Não há Guardião da Terra no momento: só um administrador solta."));

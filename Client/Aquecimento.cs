@@ -1240,7 +1240,11 @@ public partial class Aquecimento : Node
 	public override void _Process(double delta)
 	{
 		if (!Terminou) RecolherAFila();
-		AndarNoEnsaio(delta);
+
+		// A ABERTURA DO JOGO PEDE CALMA enquanto o titulo dela esta em movimento: um ato do ensaio para a tela (o da
+		// poeira, 0,4 s num jogo recem-instalado), e o ensaio caia no meio do anel e das faiscas. A FILA nao espera
+		// -- e de outra thread. Falso em toda corrida sem abertura (as bancadas, o trailer): ver `AberturaDoJogo.PedeCalma`.
+		if (!AberturaDoJogo.PedeCalma) AndarNoEnsaio(delta);
 
 		// SO PARA QUANDO OS DOIS ACABARAM, a fila e o ensaio: quem fecha a fila no `Concluir` (o login mais
 		// rapido que a thread) ainda tem o ensaio inteiro pela frente.

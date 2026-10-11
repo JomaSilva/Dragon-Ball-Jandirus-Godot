@@ -62,6 +62,7 @@ public partial class MenuJogo
 		["Study"] = "Treino e estudo",
 		["Bolt"] = "Treino e estudo",
 		["Tech Catalog"] = "Treino e estudo",
+		["Minerar"] = "Treino e estudo",   // e o que paga o catalogo de cima sem zeni
 
 		["Toggle Knockback"] = "Combate",
 		["Toggle SSJ Grades"] = "Combate",
@@ -73,8 +74,6 @@ public partial class MenuJogo
 		["Rank Duty"] = "Sociedade",
 		["Fund Earth"] = "Sociedade",
 		["Remember Person"] = "Sociedade",
-		["Request Friendship"] = "Sociedade",
-		["Declare Rival"] = "Sociedade",
 		["Known People"] = "Sociedade",
 
 		["Appoint Elder"] = "Namek",
@@ -201,7 +200,7 @@ public partial class MenuJogo
 	/// botao e pintado: sem isto o botao ficaria apagado ate outra coisa qualquer remontar a pagina.
 	/// </summary>
 	// O NOME ENTRA JUNTO DO SINAL: desde que os verbs de cargo e de raca so APARECEM pra quem os tem
-	// (`Verbo.Mostrar`), a LISTA muda quando um cargo chega -- e uma lista de outro tamanho, ou de
+	// (`Verbos.Visivel`, pela tabela de requisitos), a LISTA muda quando um cargo chega -- e uma lista de outro tamanho, ou de
 	// outros nomes com o mesmo tamanho, tem que remontar a pagina. So o sinal nao distinguiria
 	// "Fund Earth entrou" de "Study saiu".
 	private string ExtraDaAssinaturaDeOutros(SheetState f) =>

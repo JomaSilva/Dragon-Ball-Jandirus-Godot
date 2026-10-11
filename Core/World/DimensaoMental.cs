@@ -249,8 +249,8 @@ public static class DimensaoMental
 	/// servidor) sem inventar um sexto lugar que sabe desenhar chao.
 	///
 	/// AS DEZ ENTRADAS APONTAM PRO MESMO BRANCO de proposito, e nao pro vazio: o
-	/// `PlanetaProcedural.MontarCamadas` resolve os dez pinceis no nascimento, e um `TileVisual` vazio
-	/// faria dez avisos amarelos toda vez que alguem medita.
+	/// `PlanetaProcedural.MontarCamadas` resolve os nove pinceis no nascimento, e um `TileVisual` vazio
+	/// faria nove avisos amarelos toda vez que alguem medita.
 	/// </summary>
 	private static readonly PaletaDeBioma PaletaDaMente = new()
 	{
@@ -261,7 +261,7 @@ public static class DimensaoMental
 		LimiarAgua = 0, LimiarPraia = 0, LimiarColina = 1, LimiarMontanha = 1,
 		VegetacaoPct = 0, PlantaPct = 0, MinerioPct = 0,
 		Agua = Branco, Praia = Branco, Planicie = Branco, Colina = Branco, Montanha = Branco,
-		Arvore = Branco, ArvoreAcento = Branco, Planta = Branco, Minerio = Branco, Gema = Branco,
+		Arvore = Branco, ArvoreAcento = Branco, Planta = Branco, RochaGrande = Branco,
 	};
 
 	private static TerrenoGerado? _planta;

@@ -8,8 +8,9 @@ namespace Jandirus.Client;
 ///
 /// Cada habilidade aqui e um <see cref="Verbo"/> que manda um id pelo canal unico de habilidade
 /// (ver `GameServer.Raciais.cs`). O cliente NAO decide se pode: ele oferece, o servidor valida e
-/// responde pelo chat. Botao que aparece e e recusado com um motivo ensina o jogo; botao que nao
-/// aparece esconde o jogo.
+/// responde pelo chat. O botao de quem TEM a habilidade e so nao pode usa-la AGORA aparece e explica
+/// por que (falta Ki, falta alvo); o de quem nao a tem -- outra raca, skill que nao aprendeu, convite
+/// que ninguem fez -- nao aparece: ver o requisito de cada um em `Core/Verbos/RequisitosDosVerbos.cs`.
 ///
 /// COMO PLUGAR UMA TECNICA NOVA (e o caminho que as 319 skills vao usar):
 ///   1. um `case` no `UsarHabilidade` do servidor;
@@ -20,6 +21,15 @@ public static class Habilidades
 	/// <summary>
 	/// Refaz a lista a partir da raca e do que foi aprendido. Chamado quando a ficha lenta
 	/// chega -- e ela que traz a raca, e ela so chega depois de entrar no mundo.
+	///
+	/// ============================ QUEM VE CADA BOTAO NAO SE DECIDE AQUI ============================
+	/// Este arquivo REGISTRA; quem decide se o verb aparece e o requisito dele na tabela unica
+	/// (`Core/Verbos/RequisitosDosVerbos.cs`), achado pela `Chave` (`hab:fus_namek`, `hab:oozaru`...) e lido
+	/// pelo `Verbos.Visivel`. Era um `if (raca == ...)` em volta de cada registro -- e, onde nao havia `if`,
+	/// era "aparece pra todo mundo e o servidor recusa": a fusao Namekuseijin na tela de um Saiyajin, o
+	/// "Aceitar a fusao" de quem ninguem convidou. O dono (2026-10-10) chamou isso de poluido, e a regra
+	/// virou: sem o requisito, o botao nao existe. Os `if` que sobraram escolhem TEXTO, nao plateia.
+	/// ============================================================================================
 	/// </summary>
 	public static void Montar(string raca)
 	{
@@ -48,7 +58,16 @@ public static class Habilidades
 			"Sair da mente",
 			Verbos.Aprendizado,
 			"Abre os olhos e volta pro seu corpo -- exatamente como ele estava quando você entrou.",
-			() => GameClient.Instance?.SendHabilidade("sairdamente")) { Chave = "hab:sairdamente" });
+			SaidaDaMente.Pedir) { Chave = "hab:sairdamente" });
+
+		// O `Check_Skill_Stats` DO ORIGINAL: o nivel e o exp de cada skill que sobe sozinha, no chat. Sem ele o
+		// jogador meditava uma hora atras do primeiro nivel do Ki Unlocked sem saber se alguma coisa andava.
+		Verbos.Registrar(new Verbo(
+			"Progresso das skills",
+			Verbos.Aprendizado,
+			"Mostra no chat o nível de cada skill sua que sobe sozinha e quanto falta pro próximo. "
+			+ "Meditar faz as de Ki subirem mais rápido.",
+			() => GameClient.Instance?.SendVerbo("skills_progresso")) { Chave = "verbo:skills_progresso" });
 
 		DosChefesDaMente();
 
@@ -109,94 +128,79 @@ public static class Habilidades
 		// proposito: virar e um gesto que se faz OLHANDO pra lua, voltar e uma acao que se procura no
 		// menu. Um mesmo lugar que troca de significado ensinaria que os dois sao a mesma coisa.
 		//
-		// A raca decide quem VE (o mesmo par de `GameServer.Combat.cs:107` -- e o unico jeito de haver
-		// um rabo pra a lua morder), e o estado decide quem pode APERTAR. Apagado e visivel de novo
-		// pelo motivo de sempre: quem nunca virou macaco descobre pelo botao cinza que da pra virar.
-		if (raca is "Saiyan" or "Halfbreed")
-			Verbos.Registrar(new Verbo(
-				"Voltar ao normal",
-				Verbos.Skills,
-				"Domina o Oozaru e volta ao seu corpo. Exige dominio sobre a fera -- e o Oozaru "
-				+ "Dourado nao volta por vontade: ele se cansa, ou vira Super Saiyajin 4.",
-				() => GameClient.Instance?.SendHabilidade("oozaru"),
-				() => GameClient.Instance is { } c
-					  && c.MeuOozaru != Jandirus.Core.Forms.FormaOozaru.Nao) { Chave = "hab:oozaru" });
+		// A raca decide quem VE (o requisito de `hab:oozaru` na tabela: o mesmo par de
+		// `GameServer.Combat.cs:107` -- e o unico jeito de haver um rabo pra a lua morder), e o estado
+		// decide quem pode APERTAR. Apagado e visivel de novo pelo motivo de sempre: quem nunca virou
+		// macaco descobre pelo botao cinza que da pra virar.
+		Verbos.Registrar(new Verbo(
+			"Voltar ao normal",
+			Verbos.Skills,
+			"Domina o Oozaru e volta ao seu corpo. Exige dominio sobre a fera -- e o Oozaru "
+			+ "Dourado nao volta por vontade: ele se cansa, ou vira Super Saiyajin 4.",
+			() => GameClient.Instance?.SendHabilidade("oozaru"),
+			() => GameClient.Instance is { } c
+				  && c.MeuOozaru != Jandirus.Core.Forms.FormaOozaru.Nao) { Chave = "hab:oozaru" });
 
 		// ============================ OS COLETORES DO ANDROIDE DE ABSORCAO ============================
-		// PELA RACA e nao pela CLASSE de androide, e a razao e que a classe nao viaja: quem sabe se
-		// este corpo saiu do pod de absorcao ou do de energia infinita e o servidor
-		// (`Fighter.AndroideAbsorcao`), e a ficha lenta nao carrega esse bit. Por a classe no
-		// protocolo custaria um campo novo pra gatear UM botao.
+		// PELA CLASSE DE ANDROIDE, e nao mais pela raca. Quem sabe se este corpo saiu do pod de absorcao
+		// ou do de energia infinita e o servidor (`Fighter.AndroideAbsorcao`), e esse bit nao viajava:
+		// o botao era de TODO androide, e o de ENERGIA INFINITA apertava pra ouvir *"seu corpo nao tem
+		// coletores de energia"*. O bit viaja agora (`Fatos.AndroideDeAbsorcao`, no pacote dos fatos),
+		// e o androide que nao tem coletores nao tem o botao.
+		Verbos.Registrar(new Verbo(
+			"Abrir/fechar coletores",
+			Verbos.Skills,
+			"Só do androide de ABSORÇÃO. Finca os pés e abre os coletores: enquanto estiverem "
+			+ "abertos você NÃO ANDA, e todo ataque de ki que te acertar é engolido inteiro -- "
+			+ "sem dano, virando energia (6% do seu tanque por golpe, acumulando até o DOBRO da "
+			+ "sua capacidade).\n\nAperte de novo pra fechar e voltar a se mover. Cair "
+			+ "nocauteado fecha sozinho.",
+			() => GameClient.Instance?.SendHabilidade("absorver_ki")) { Chave = "hab:absorver_ki" });
+
+		// ============================ A ABSORCAO: UM VERB, DOIS CORPOS ============================
+		// O `absorver` e UM id de proposito: no original os dois sao o verb `Absorb`, e quem decide entre
+		// CONSUMIR (o bio-androide) e SELAR (o Majin) e a raca de quem aperta (`Absorption.dm:83`). Aqui
+		// a raca escolhe so o TEXTO; quem tem o botao e o requisito de `hab:absorver` na tabela:
 		//
-		// O CUSTO DISSO E UM BOTAO QUE RECUSA, e ele e o mesmo trato do "Nadar" logo acima: o
-		// androide de ENERGIA INFINITA aperta e ouve *"seu corpo nao tem coletores de energia --
-		// isso e do androide de ABSORCAO"*, que diz exatamente qual das duas conversoes ele fez. Um
-		// botao que explica vale mais que um botao ausente.
-		if (raca == "Android")
-			Verbos.Registrar(new Verbo(
-				"Abrir/fechar coletores",
-				Verbos.Skills,
-				"Só do androide de ABSORÇÃO. Finca os pés e abre os coletores: enquanto estiverem "
-				+ "abertos você NÃO ANDA, e todo ataque de ki que te acertar é engolido inteiro -- "
-				+ "sem dano, virando energia (6% do seu tanque por golpe, acumulando até o DOBRO da "
-				+ "sua capacidade).\n\nAperte de novo pra fechar e voltar a se mover. Cair "
-				+ "nocauteado fecha sozinho.",
-				() => GameClient.Instance?.SendHabilidade("absorver_ki")) { Chave = "hab:absorver_ki" });
-
-		// ============================ A ABSORCAO DO BIO-ANDROIDE ============================
-		// PELA RACA e nao pela skill, e a razao e a mesma do Oozaru logo acima: no DM ela e o verb de
-		// um OBJETO que a arvore racial concede (`obj/Bio_Absorb`), e a arvore racial e da raca. Um
-		// gate por skill aqui exigiria o cliente conhecer o typepath `bioandroid/bioabsorb` e a
-		// arvore inteira -- e o servidor recusa quem nao pode, que e onde a regra tem que morar.
+		//   * o BIO-ANDROIDE pela raca, LARVA INCLUSIVE. A larva que aperta ouve "sua carapaca ainda nao
+		//     desenvolveu os orgaos de absorcao" -- a frase do original, e e ela que ENSINA que a evolucao
+		//     existe e por onde vem. (O meio-sangue de pai bio o ganha comprando "Tail Absorb".)
+		//   * o MAJIN depois de comprar Buu Absorb na arvore dele (`Race Trees/majin.dm:38-40`): o servidor
+		//     so sela pra quem tem a skill, e botao de skill que ainda nao se tem nao aparece -- a arvore,
+		//     na aba Learning, e onde se descobre que ela existe.
 		//
-		// APARECE SEMPRE PRA ELE, INCLUSIVE LARVA. Uma larva que aperta ouve "sua carapaca ainda nao
-		// desenvolveu os orgaos de absorcao" -- que e a frase do original, e e ela que ENSINA que a
-		// evolucao existe e por onde ela vem. Um botao que some esconderia a escada inteira do
-		// jogador ate o dia em que ela ja estivesse disponivel.
-		if (Jandirus.Core.Races.BioAndroids.EhBio(raca))
-			Verbos.Registrar(new Verbo(
-				"Absorver",
-				Verbos.Skills,
-				"Consome por inteiro alguém NOCAUTEADO e vivo ao seu lado. A vítima MORRE -- nada "
-				+ "resta dela, e nada pode ser regurgitado depois.\n\n"
-				+ "Você cura por completo, enche o Ki e ganha o poder dela -- mas ele entra pela "
-				+ "MÉDIA com o seu, e não pela soma: absorver serve pra compensar, não pra treinar.\n\n"
-				+ "E é assim que você EVOLUI: 10 jogadores (NPC vale meio) OU 1 androide levam você "
-				+ "ao próximo degrau -- semi-perfeito, e depois a forma PERFEITA. A larva ainda não "
-				+ "tem os órgãos pra isso.",
-				() => GameClient.Instance?.SendHabilidade("absorver")) { Chave = "hab:absorver" });
+		// E O SERVIDOR PASSOU A CONFERIR QUEM APERTA: ate 2026-10-10 o galho do bio nao olhava a raca, e o
+		// unico portao era este registro. Ver `GameServer.TemOrgaosDeAbsorcao`.
+		// ==========================================================================================
+		Verbos.Registrar(new Verbo(
+			"Absorver",
+			Verbos.Skills,
+			raca == "Majin"
+				? "Puxa pra dentro de você alguém NOCAUTEADO e vivo ao seu lado.\n\n"
+				  + "Um JOGADOR não morre: ele vai VIVO pro interior do seu corpo, acorda inteiro e encara uma "
+				  + "IMAGEM sua, com metade do seu poder. Enquanto ele estiver lá dentro você usa 10% do poder "
+				  + "dele, as técnicas dele e veste as roupas dele.\n\n"
+				  + "Ele ESCAPA se vencer a imagem, se morrer lá dentro, se você for nocauteado ou se você o "
+				  + "expelir -- e você perde na hora o que tinha por causa dele.\n\n"
+				  + "Um NPC é devorado por inteiro: morre, e rende os mesmos 10% até você cair."
+				: "Consome por inteiro alguém NOCAUTEADO e vivo ao seu lado. A vítima MORRE -- nada "
+				  + "resta dela, e nada pode ser regurgitado depois.\n\n"
+				  + "Você cura por completo, enche o Ki e ganha o poder dela -- mas ele entra pela "
+				  + "MÉDIA com o seu, e não pela soma: absorver serve pra compensar, não pra treinar.\n\n"
+				  + "E é assim que você EVOLUI: 10 jogadores (NPC vale meio) OU 1 androide levam você "
+				  + "ao próximo degrau -- semi-perfeito, e depois a forma PERFEITA. A larva ainda não "
+				  + "tem os órgãos pra isso.",
+			() => GameClient.Instance?.SendHabilidade("absorver")) { Chave = "hab:absorver" });
 
-		// ============================ A ABSORCAO DO MAJIN ============================
-		// PELA RACA, como a do bio logo acima e pela mesma razao: no DM e o verb de um OBJETO que a arvore
-		// racial concede (`obj/Buu_Absorb`, `Race Trees/majin.dm:38-40`). Quem ainda nao comprou a skill
-		// aperta e ouve onde ela mora -- a recusa e do servidor, e ela ensina a arvore.
-		//
-		// O `absorver` e o MESMO id do bio de proposito: no original os dois sao o verb `Absorb`, e quem
-		// decide entre CONSUMIR e SELAR e a raca de quem aperta (`Absorption.dm:83`).
-		if (raca == "Majin")
-		{
-			Verbos.Registrar(new Verbo(
-				"Absorver",
-				Verbos.Skills,
-				"Puxa pra dentro de você alguém NOCAUTEADO e vivo ao seu lado.\n\n"
-				+ "Um JOGADOR não morre: ele vai VIVO pro interior do seu corpo, acorda inteiro e encara uma "
-				+ "IMAGEM sua, com metade do seu poder. Enquanto ele estiver lá dentro você usa 10% do poder "
-				+ "dele, as técnicas dele e veste as roupas dele.\n\n"
-				+ "Ele ESCAPA se vencer a imagem, se morrer lá dentro, se você for nocauteado ou se você o "
-				+ "expelir -- e você perde na hora o que tinha por causa dele.\n\n"
-				+ "Um NPC é devorado por inteiro: morre, e rende os mesmos 10% até você cair.",
-				() => GameClient.Instance?.SendHabilidade("absorver")) { Chave = "hab:absorver" });
+		Verbos.Registrar(new Verbo(
+			"Expelir todos",
+			Verbos.Skills,
+			"Cospe de volta todo mundo que está dentro de você, ao seu lado e de pé. Você perde o poder, "
+			+ "as técnicas e o que mais tinha por causa deles.",
+			() => GameClient.Instance?.SendHabilidade("expelir"),
+			() => GameClient.Instance is { AbsorvidosDoMajin.Count: > 0 }) { Chave = "hab:expelir" });
 
-			Verbos.Registrar(new Verbo(
-				"Expelir todos",
-				Verbos.Skills,
-				"Cospe de volta todo mundo que está dentro de você, ao seu lado e de pé. Você perde o poder, "
-				+ "as técnicas e o que mais tinha por causa deles.",
-				() => GameClient.Instance?.SendHabilidade("expelir"),
-				() => GameClient.Instance is { AbsorvidosDoMajin.Count: > 0 }) { Chave = "hab:expelir" });
-
-			DosAbsorvidosDoMajin();
-		}
+		DosAbsorvidosDoMajin();
 
 		// SO O NAMEKUSEIJIN. Era `"Namekian" or "Majin" or "BioAndroid" or "Shapeshifter"`, e as tres
 		// racas a mais nao vinham de desenho: vinham de reusar a lista do `canheallopped`, que responde
@@ -205,6 +209,11 @@ public static class Habilidades
 		//
 		// Quem COMPRA a skill `Regenerate` (arvores de Alien/Android/Demonio) continua com o botao pelo
 		// outro caminho: o registro por skill do `DasSkills()`, que le o livro e nao a raca.
+		//
+		// ESTE `if` FICA, E NAO E PRA ESCONDER: quem esconde e a tabela (`hab:regenerar`). Ele existe por
+		// causa do NOME. O botao da skill comprada tambem se chama "Regenerar", e o `Verbos.Registrar`
+		// deduplica por nome -- registrado pra todo mundo, este aqui chegaria primeiro, tomaria o nome e
+		// ficaria invisivel pra quem nao e de Namek: o Alien que comprou a skill perderia o botao dele.
 		if (raca is "Namekian")
 			Verbos.Registrar(new Verbo(
 				"Regenerar",
@@ -222,6 +231,7 @@ public static class Habilidades
 		DaFusao();
 		DoEnsinoDeSkill();
 		DoEstudoDaMente();
+		HabilidadesDoDeus.Registrar();
 		DasDisciplinas();
 		DasSkills();
 		DosEstilos();
@@ -289,17 +299,17 @@ public static class Habilidades
 	/// MESTRE E ALUNO -- os verbos da aba "Learning", que e onde eles moram no original
 	/// (`set category = "Learning"`, `MasterStudent.dm:423` e `:477`).
 	///
-	/// ============================ TODOS APARECEM SEMPRE, E NENHUM E CONDICIONADO ============================
-	/// Nao ha `Disponivel` em nenhum deles, e nao e descuido. As perguntas que decidiriam
-	/// ("tenho mestre?", "quantos alunos?", "ha convite pendente?") sao **estado do servidor**, e
-	/// hoje nada disso viaja pro cliente -- o dia em que viajar, e o dia de acender/apagar. Ate la
-	/// vale a regra da casa (ver `Verbo.Disponivel`): um verb que aparece e recusa com uma frase
-	/// ensina o jogo; um verb que nao existe esconde o jogo.
+	/// ============================ SO O CONVITE E DE TODO MUNDO; O RESTO E DE QUEM TEM ============================
+	/// As perguntas que decidem ("tenho mestre?", "tenho aluno?", "ha convite pendente?") sao estado do
+	/// servidor, e este cabecalho dizia: *"hoje nada disso viaja pro cliente -- o dia em que viajar, e o dia
+	/// de acender/apagar"*. Viajou (`S2C.Fatos`, 2026-10-10), e a tabela de requisitos faz o que ele pedia:
+	/// "Aceitar"/"Recusar" so existem com um convite (ou um ensinamento) na mesa, "Ajudar a transformar" e
+	/// "Dispensar aluno" so pra quem guia alguem, "Deixar meu mestre" so pra quem tem mestre.
 	///
-	/// E a recusa nunca e muda: cada uma delas tem mensagem propria em
-	/// `GameServer.Mestre.PorQueNaoVincula` -- inclusive "voce precisa ser 3x mais forte", que e a
-	/// unica maneira de o jogador descobrir o portao.
-	/// ==================================================================================================
+	/// "CONVIDAR ALUNO" CONTINUA DE TODO MUNDO, e a recusa dele continua ensinando: cada uma tem mensagem
+	/// propria em `GameServer.Mestre.PorQueNaoVincula` -- inclusive "voce precisa ser 3x mais forte", que e
+	/// a unica maneira de o jogador descobrir o portao.
+	/// ======================================================================================================
 	/// </summary>
 	private static void DoDiscipulado()
 	{
@@ -356,10 +366,12 @@ public static class Habilidades
 	/// `mst_aceitar` / `ens_licao_sim`) porque os tres pendentes coexistem -- alguem pode estar sendo
 	/// convidado pra fundir enquanto um terceiro lhe oferece um Kamehameha.
 	///
-	/// **NENHUM E CONDICIONADO**, e vale a mesma regra da casa do discipulado: o estado que decidiria
-	/// ("eu sei dancar?", "ha convite na mesa?") e do servidor e nao viaja. Um verb que aparece e
-	/// recusa com uma frase ensina o jogo -- e aqui as frases sao a UNICA maneira de o jogador
-	/// descobrir os dois portoes novos (mesma raca, poder proximo). Ver `GameServer.Fusao.PorQueNaoFunde`.
+	/// **CADA UM E DE QUEM O TEM** (dono, 2026-10-10: *"verb de fusao namek"* na tela de um Saiyajin era
+	/// poluicao). A Danca aparece pra quem a aprendeu, a Namekuseijin pra quem e de Namek, e os tres botoes
+	/// de resposta so com o convite na mesa -- o estado que decide ("ha convite?", "estou no volante?")
+	/// viaja agora nos fatos (`S2C.Fatos`). Os dois portoes de CIRCUNSTANCIA (mesma raca, poder proximo)
+	/// continuam sendo frase de recusa: quem sabe a Danca e convida a pessoa errada ouve por que. Ver
+	/// `GameServer.Fusao.PorQueNaoFunde`.
 	///
 	/// **A POTARA NAO TEM VERB**: ela e o ITEM. Clicar nos brincos na mochila e o gesto, e o menu de
 	/// acoes do inventario ja monta o botao sozinho a partir do `ItemDef.AcoesDoItem`.
@@ -387,9 +399,9 @@ public static class Habilidades
 
 		// ============================ A FUSAO NAMEKUSEIJIN -- `Namekian_Fusion` (`Fusion.dm:549-569`) ============================
 		// Ela existia no motor inteira e **nao tinha porta**: nenhum caminho de producao chamava
-		// `Convidar` com ela. Este botao e a porta, e ele segue a regra da casa deste arquivo -- **nao e
-		// condicionado**. Um verb que aparece e recusa com uma frase ("os DOIS precisam ser
-		// Namekuseijin") ensina o jogo; um verb escondido faz o jogador nunca descobrir que ela existe.
+		// `Convidar` com ela. Este botao e a porta -- e ele e SO DE NAMEKUSEIJIN (o requisito de
+		// `hab:fus_namek`): o servidor recusa qualquer outra raca, e um botao que nenhum Saiyajin jamais
+		// vai poder usar nao ensina nada a ele.
 		//
 		// **O TEXTO MUDOU COM O PEDIDO DO DONO**, e a mudanca e a coisa mais importante deste bloco: ela
 		// deixou de ser uma fusao e virou uma ABSORCAO -- *"o outro namek se for jogador, perde o
@@ -552,6 +564,13 @@ public static class Habilidades
 		GameClient? cli = GameClient.Instance;
 		if (cat == null || cli == null) return;
 
+		// UM BOTAO POR SKILL DA MENTE, mas so pra quem TEM o verb: o `Focus_Skill` nasce no nivel 10 da
+		// Basic Ki Awareness e o `Write_Teachings` vem do Ki Unlocked -- e o servidor recusa quem nao os tem
+		// ("voce nao sabe Focar Habilidade"). Quem tinha uma skill da Mente e nenhum dos dois via uma
+		// fileira de botoes que so sabia recusar. As duas linhas da tabela valem pra familia inteira.
+		Jandirus.Core.Verbos.Requisito foco = Jandirus.Core.Verbos.RequisitosDosVerbos.De("hab:Focus_Skill");
+		Jandirus.Core.Verbos.Requisito escrita = Jandirus.Core.Verbos.RequisitosDosVerbos.De("hab:Write_Teachings");
+
 		bool alguma = false;
 		foreach (string path in cli.SkillsAprendidas.OrderBy(p => p, StringComparer.Ordinal))
 		{
@@ -566,7 +585,7 @@ public static class Habilidades
 				$"Concentra o seu estudo em {nome}. Enquanto estiver estudando alguem, so ela adianta "
 				+ "-- e adianta DEZ VEZES mais do que o estudo espalhado.",
 				() => GameClient.Instance?.SendHabilidade($"Focus_Skill:{nome}"))
-				{ Chave = $"hab:Focus_Skill:{nome}" });
+				{ Chave = $"hab:Focus_Skill:{nome}", Requisito = foco });
 
 			Verbos.Registrar(new Verbo(
 				$"Escrever sobre: {nome}",
@@ -575,7 +594,7 @@ public static class Habilidades
 				+ "que voce tem nela. O livro fica na mochila e ensina quem ja saiba a habilidade e "
 				+ "esteja na METADE do seu nivel ou abaixo.",
 				() => GameClient.Instance?.SendHabilidade($"Write_Teachings:{nome}"))
-				{ Chave = $"hab:Write_Teachings:{nome}" });
+				{ Chave = $"hab:Write_Teachings:{nome}", Requisito = escrita });
 		}
 
 		if (!alguma) return;
@@ -585,13 +604,13 @@ public static class Habilidades
 			Verbos.Aprendizado,
 			"Solta o foco: o estudo volta a adiantar um pouco de TUDO que a pessoa estudada sabe mais "
 			+ "que voce, em vez de dez vezes numa so.",
-			() => GameClient.Instance?.SendHabilidade("Focus_Skill:nenhuma")) { Chave = "hab:Focus_Skill:nenhuma" });
+			() => GameClient.Instance?.SendHabilidade("Focus_Skill:nenhuma")) { Chave = "hab:Focus_Skill:nenhuma", Requisito = foco });
 
 		Verbos.Registrar(new Verbo(
 			"Parar de escrever",
 			Verbos.Aprendizado,
 			"Desiste do livro em obra. **Voce perde tudo que ja tinha escrito** -- e assim no original.",
-			() => GameClient.Instance?.SendHabilidade("Write_Teachings:parar")) { Chave = "hab:Write_Teachings:parar" });
+			() => GameClient.Instance?.SendHabilidade("Write_Teachings:parar")) { Chave = "hab:Write_Teachings:parar", Requisito = escrita });
 	}
 
 	/// <summary>

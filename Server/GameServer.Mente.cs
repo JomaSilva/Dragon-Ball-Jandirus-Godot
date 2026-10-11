@@ -22,6 +22,20 @@ public sealed class FotoDaMente
 
 	public double Ki, Vigor;
 	public bool KO, Morto;
+
+	/// <summary>
+	/// O MODO LETAL DA ENTRADA -- o `mind_prev_murder` do original (`MindMeditate.dm:375`), que la e guardado
+	/// e devolvido na saida. Quem liga o letal pra matar o reflexo nao sai da mente com ele ligado.
+	/// </summary>
+	public bool Letal;
+
+	/// <summary>
+	/// O QUE JA ESTAVA LIGADO ANTES DE ENTRAR: os buffs de pe e o Kaio-ken. Na saida cai o que NAO esta
+	/// aqui -- o que foi ligado la dentro e continuaria queimando o corpo de verdade. Ver
+	/// `GameServer.LimparOCombateDaMente`.
+	/// </summary>
+	public readonly HashSet<string> Buffs = new(StringComparer.Ordinal);
+	public bool Kaioken;
 }
 
 /// <summary>
@@ -241,6 +255,13 @@ public partial class GameServer
 		// foi preciso escrever "andar cancela": ja estava dito.
 		if (!pl.Ficha.med) return "e preciso estar MEDITANDO (tecla M) pra mergulhar na mente.";
 
+		// DENTRO DE UM MAJIN NAO SE MERGULHA. O `TickDoMajin` soltava o preso que saisse do interior (a zona
+		// dele deixa de ser a do Majin), apagando o registro e o guardiao SEM mover ninguem -- e ao acordar
+		// ele estava de volta num interior sem dono, de onde nem o teleporte tira. A recusa fecha a porta
+		// antes do estado impossivel.
+		if (InteriorDoMajin.EhOInterior(pl.Zone))
+			return "aqui dentro nao ha silencio pra mergulhar: voce esta dentro de outra criatura.";
+
 		return "";
 	}
 
@@ -287,7 +308,12 @@ public partial class GameServer
 		// O CORPO NAO VEM JUNTO -- o mecanismo unico da Camada 1 (`GameServer.CorpoLargado.cs`), o
 		// mesmo que o leme da nave grande usa. Ele deixa o corpo aqui, com a MESMA ficha (entao a pose
 		// de meditar sai sozinha), e so entao viaja. Falso = recusado, e ai nada aconteceu.
-		if (!LargarOCorpo(pl, mente, visitando ? PosMental + new Vec2(DistanciaDoOponente, 0) : PosMental))
+		//
+		// COM CORPO PROPRIO (2026-10-10): na meditacao o corpo largado ganha uma copia da ficha e um corpo so
+		// dele -- o que acontece aqui dentro nao encosta nele, e o que acontece la fora acontece nele. Ver
+		// `GameServer.Transe.cs`.
+		if (!LargarOCorpo(pl, mente, visitando ? PosMental + new Vec2(DistanciaDoOponente, 0) : PosMental,
+						  corpoProprio: true))
 			return;
 
 		// ============================ A FOTO DO CORPO, E ELA E A REGRA 1 ============================
@@ -325,7 +351,8 @@ public partial class GameServer
 				if (o != pl && o.Peer != null) Avisar(o, $"outra consciencia adentra a sua mente... e {pl.Name}.");
 
 			string deQuem = dono != null ? $"na mente de {dono.Name}" : "numa mente que nao e a sua";
-			Avisar(pl, $"voce mergulha {deQuem}. Aqui nada e real -- ferimentos nao voltam com voce.");
+			Avisar(pl, $"voce mergulha {deQuem}. Aqui nada e real -- ferimentos nao voltam com voce. "
+					 + "Pra acordar: a tecla de meditar de novo, ou o botao no alto da tela.");
 			GD.Print($"[server] {pl.Name} entrou {deQuem}");
 			return;
 		}
@@ -333,7 +360,8 @@ public partial class GameServer
 		ServerPlayer clone = CriarClone(pl, mente);
 		pl.CloneId = clone.Id;
 
-		Avisar(pl, "voce fecha os olhos. Diante de voce, VOCE -- e ele conhece cada golpe seu.");
+		Avisar(pl, "voce fecha os olhos. Diante de voce, VOCE -- e ele conhece cada golpe seu. "
+				 + "Pra acordar: a tecla de meditar de novo, ou o botao no alto da tela.");
 		GD.Print($"[server] {pl.Name} entrou na propria mente (clone id {clone.Id}, BP {clone.Ficha.BP:N0})");
 	}
 
@@ -617,10 +645,15 @@ public partial class GameServer
 	/// que ainda nao foi tomada, e nao um esquecimento.
 	/// ======================================================================================================
 	/// </summary>
-	private static void FotografarParaAMente(ServerPlayer pl)
+	private void FotografarParaAMente(ServerPlayer pl)
 	{
-		var f = new FotoDaMente { Ki = pl.Ficha.Ki, Vigor = pl.Ficha.stamina, KO = pl.Ficha.KO, Morto = pl.Ficha.dead };
+		var f = new FotoDaMente
+		{
+			Ki = pl.Ficha.Ki, Vigor = pl.Ficha.stamina, KO = pl.Ficha.KO, Morto = pl.Ficha.dead,
+			Letal = pl.Combate.Letal, Kaioken = _kaiokenAmtG2.ContainsKey(pl.Id),
+		};
 		foreach (BodyPart p in pl.Combate.Corpo.Partes) f.Membros[p.Nome] = (p.Vida, p.Decepado);
+		foreach (string id in BuffsDe(pl.Id).Keys) f.Buffs.Add(id);
 		pl.FotoDaMente = f;
 	}
 
@@ -640,23 +673,43 @@ public partial class GameServer
 	/// </summary>
 	private void RestaurarDaMente(ServerPlayer pl)
 	{
-		if (pl.FotoDaMente is not { } f) return;
+		FotoDaMente? f = pl.FotoDaMente;
 		pl.FotoDaMente = null;
 
-		foreach (BodyPart p in pl.Combate.Corpo.Partes)
+		// ============================ DE ONDE VEM O CORPO DE VERDADE ============================
+		// DO CORPO LARGADO, quando ele tem corpo proprio e ainda esta no mundo: e nele que o que aconteceu LA
+		// FORA ficou escrito (um golpe, um nocaute, uma morte), e tudo isso e real. DA FOTO, quando ele sumiu
+		// (a zona foi descarregada, um admin o apagou) -- ai o que se sabe do corpo e como ele entrou.
+		// Ver `GameServer.Transe.cs`.
+		// ======================================================================================
+		ServerPlayer? corpoDeFora = pl.BonecoLargado is { } b && TemCorpoProprio(b, pl)
+									&& ZoneList(b.Zone.Hash).Contains(b) ? b : null;
+
+		if (f != null || corpoDeFora != null)
 		{
-			if (!f.Membros.TryGetValue(p.Nome, out (double Vida, bool Decepado) antes)) continue;
-			p.Decepado = antes.Decepado;
-			p.Vida = Math.Clamp(antes.Vida, 0, p.VidaMax);
+			foreach (BodyPart p in pl.Combate.Corpo.Partes)
+			{
+				(double Vida, bool Decepado) antes;
+				if (corpoDeFora?.Combate.Corpo.Achar(p.Nome) is { } real) antes = (real.Vida, real.Decepado);
+				else if (f == null || !f.Membros.TryGetValue(p.Nome, out antes)) continue;
+				p.Decepado = antes.Decepado;
+				p.Vida = Math.Clamp(antes.Vida, 0, p.VidaMax);
+			}
+
+			pl.Ficha.dead = f?.Morto ?? false;
+			pl.Ficha.KO = f?.KO ?? false;
+			if (!pl.Ficha.KO) pl.Combate.NocauteRestante = 0;   // senao o cronometro do KO desfeito ainda correria
+			pl.Ficha.Ki = Math.Min(corpoDeFora?.Ficha.Ki ?? f!.Ki, pl.Ficha.MaxKi);
+			pl.Ficha.stamina = Math.Min(corpoDeFora?.Ficha.stamina ?? f!.Vigor, pl.Ficha.maxstamina);
 		}
 
-		pl.Ficha.dead = f.Morto;
-		pl.Ficha.KO = f.KO;
-		if (!f.KO) pl.Combate.NocauteRestante = 0;   // senao o cronometro do KO desfeito ainda correria
-		pl.Ficha.Ki = Math.Min(f.Ki, pl.Ficha.MaxKi);
-		pl.Ficha.stamina = Math.Min(f.Vigor, pl.Ficha.maxstamina);
+		// A FAXINA VALE COM OU SEM FOTO: o transe sem registro (o estado inconsistente) e justamente o caso em
+		// que nao ha o que devolver e ha o que desligar.
+		LimparOCombateDaMente(pl, f);
 
 		pl.Combate.SincronizarVida();
+		if (corpoDeFora != null) DecidirOQueOCorpoSofreu(pl, corpoDeFora);
+
 		AjustarGanhoDoRabo(pl);
 		MandarFicha(pl);   // 5 Hz seria tarde: a barra de vida ficaria vermelha por dois quadros
 	}
@@ -691,6 +744,11 @@ public partial class GameServer
 	{
 		if (chefe.Papel is not { Molde.Id.Length: > 0 } papel) return;
 		if (NaMente(chefe)) return;
+
+		// BILLS E WHIS NAO VIRAM LEMBRANCA: treinar com eles e na casa deles, pelas regras deles (o triplo do
+		// poder de quem pede, a disciplina ligada) -- uma copia na mente, com o poder do molde, seria um atalho
+		// pra um treino que o dono desenhou como premio. Ver `Core/Npc/BillsEWhis.cs`.
+		if (Jandirus.Core.Npc.BillsEWhis.EhMolde(papel.Molde.Id)) return;
 
 		float raio2 = RaioDaVista * RaioDaVista;
 		foreach (ServerPlayer o in ZoneList(chefe.Zone.Hash))

@@ -86,8 +86,15 @@ public partial class GameServer
 	}
 
 	/// <summary>"Earth" e o nome do MAPA; "Terra" e o nome que o jogador ouve. E o `(planet == "Earth") ? "Terra"` do DM.</summary>
-	private static string NomeDoPlaneta(string zona) =>
+	private static string NomeDeCatalogo(string zona) =>
 		string.Equals(zona, "Earth", StringComparison.OrdinalIgnoreCase) ? "Terra" : zona;
+
+	/// <summary>
+	/// O NOME QUE O JOGADOR LE pra um planeta DO MAPA: o batizado, se alguem batizou (`GameServer.Batismo.cs`), ou
+	/// o de catalogo. Recebe so o NOME, e por isso so resolve pre-feito -- a chave dele e o proprio nome. Um mundo
+	/// gerado se endereca pela seed: quem tem a zona (ou o corpo da carta) na mao usa o `NomeDoMundo`.
+	/// </summary>
+	private string NomeDoPlaneta(string zona) => _batismos.NomeVisto(zona, NomeDeCatalogo(zona));
 
 	// =====================================================================
 	// DISCO

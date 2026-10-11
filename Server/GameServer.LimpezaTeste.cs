@@ -649,6 +649,10 @@ public partial class GameServer
 		CarregarSagas();
 		CarregarReputacao();
 		CarregarPlanetasMortos();
+		// AS RESERVAS DE RECURSO, depois dos mortos como no boot (planeta destruido nao tem reserva). O leitor
+		// esvazia antes de ler e nao grava nada -- ver `CarregarReservas`.
+		CarregarReservas();
+		CarregarBills();   // a visita do Bills: o leitor zera antes de ler e nao grava nada -- ver `GameServer.Bills.cs`
 		CarregarConquista();
 
 		// AS ESFERAS DEPOIS DA CONQUISTA, como no boot (`CarregarVisual`): `ErguerEstatua` pergunta ao
@@ -770,14 +774,20 @@ public partial class GameServer
 		GravarBases();
 		GravarNaves();
 		SalvarSagas();
+		SalvarBills();     // a visita do Bills: em producao ela so vai pro disco quando a fase muda -- ver `GameServer.Bills.cs`
 		SalvarReputacao();
 		SalvarConquista();
 		SalvarPlanetasMortos();
+		SalvarBatismos();
+		// AS RESERVAS DE RECURSO. Em producao o livro vai pro disco de 30 em 30 s, e so quando alguem tirou
+		// alguma coisa; aqui e a mesma antecipacao dos outros.
+		SalvarReservas();
 		SalvarEsferas();
 		SalvarSupers();
 		SalvarMissoes();
 		SalvarCargos();
 		SalvarMestres();
+		SalvarDiarios();   // o diario do discipulado (o segundo arquivo do inscrito dos vinculos) -- ver `GameServer.Alunos.cs`
 		SalvarHerdeiros();
 		SalvarTitulo();
 		// A AGENDA DOS TORNEIOS. Em producao ela so vai pro disco quando um torneio comeca (ou um admin a
@@ -972,6 +982,19 @@ public partial class GameServer
 			Fase = Jandirus.Core.World.FaseDaMorte.Destruido, Motivo = "bancada da limpeza",
 		});
 
+		// ---------------------------------------------------------- 7b. um planeta batizado
+		_batismos.Por(new Jandirus.Core.World.NomeDePlaneta
+		{
+			Chave = "PlanetaDoWipe", Original = "PlanetaDoWipe", Nome = "Wipelandia",
+			PorQuem = "JogadorDoWipe", Descobridor = "JogadorDoWipe", AssinaturaDoDescobridor = "assinatura_do_wipe",
+		});
+
+		// ---------------------------------------------------------- 7c. um planeta MINERADO
+		// O `reservas.json` so guarda reserva MEXIDA (cheia e ausencia): sem tirar nada aqui o inscrito teria
+		// zero nos tres retratos e o `ZerarReservas` passaria sem ser medido. Pela porta de producao -- a
+		// reserva nasce na consulta e so `Tirar` a mexe.
+		(ReservaDe(zona) ?? ReservaDe(SpawnZone))?.Tirar(1234);
+
 		// ---------------------------------------------------------- 8. um dever de cargo em curso
 		_missoes["Guardian"] = new Jandirus.Core.Ranks.FichaDeMissao { Dono = "assinatura_do_wipe" };
 		_cofreDaTerra = 1234;
@@ -979,6 +1002,7 @@ public partial class GameServer
 		// ---------------------------------------------------------- 9 a 12. os quatro de texto
 		_tronos["Guardian"] = "assinatura_do_wipe";
 		_mestreDe["assinatura_do_aluno"] = "assinatura_do_wipe";
+		SemearDiarioDeTeste("assinatura_do_aluno", "assinatura_do_wipe");   // ...e o diario desse vinculo, com um ensinamento
 		_nomePorAssinatura["assinatura_do_wipe"] = "JogadorDoWipe";
 		_herdeirosDeVegeta.Add("assinatura_do_wipe");
 		_duelo.TituloDesde = NowMs();
@@ -1062,6 +1086,14 @@ public partial class GameServer
 		// mesmo conteudo nos tres retratos (so o primeiro torneio marcado) e o `ZerarTorneio` passaria sem
 		// ser medido. O torneio EM DISPUTA nao vai pro disco: quem o mede, pelo gesto, e a secao 11.
 		Reagendar(Jandirus.Core.Torneio.TipoDeTorneio.Terra, NowMs());
+
+		// ---------------------------------------------------------- 18. a VISITA DO BILLS no fim da historia
+		// Ja derrubado na Terra e de volta pra casa -- o estado mais longe do primeiro boot. Sem isto o arquivo
+		// teria o mesmo conteudo nos tres retratos e o `ZerarBills` passaria sem ser medido.
+		_visita = new Jandirus.Core.Npc.EstadoDaVisita
+		{
+			Fase = Jandirus.Core.Npc.FaseDaVisita.EmCasa, DerrubadoPor = "JogadorDoWipe",
+		};
 
 		ForcarGravacaoDeTudo();
 	}

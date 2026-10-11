@@ -454,6 +454,21 @@ public partial class MapaEstelar : Control
 		QueueRedraw();
 	}
 
+	/// <summary>
+	/// Poe ESTE MUNDO no meio, no zoom de vizinhanca do <see cref="VerMim"/> (em que os mundos gerados aparecem), e
+	/// o seleciona como o clique faria. E o botao "casa de Bills" da barra: um endereco falado ("Sistema 3:-2,
+	/// orbita #4") nao se acha arrastando a carta celula por celula.
+	/// </summary>
+	public void VerOMundo(PlanetaNoEspaco p)
+	{
+		_centro = new Vector2(p.Pos.X, p.Pos.Y);
+		_escala = Mathf.Clamp(0.02f, EscalaMin, EscalaMax);
+		Selecionado = p;
+		SistemaSelecionado = SistemaDe(p);
+		QueueRedraw();
+		SelecaoMudou?.Invoke();
+	}
+
 	// =====================================================================
 	// QUAIS PLANETAS ESTAO NA TELA
 	// =====================================================================
@@ -1006,7 +1021,15 @@ public partial class MapaEstelar : Control
 			DrawCircle(c, r, new Color(cor, 0.22f));            // a atmosfera
 			DrawCircle(c, r * 0.72f, cor);                       // o corpo
 			if (p.Premade) DrawArc(c, r + 2, 0, Mathf.Tau, 24, new Color(cor, 0.55f), 1.5f);
+			// O ANEL DOURADO: este mundo tem ATMOSFERA DIVINA (dono, 2026-10-10). A carta o sabe pela seed, como
+			// sabe a gravidade -- ver `Core.World.AtmosferaDivina`. Um mundo destruido nao o ganha (ramo de cima).
+			if (MenuJogo.MundoDivino(p)) DrawArc(c, r + 3.5f, 0, Mathf.Tau, 28, new Color(MenuJogo.OuroDivino, 0.95f), 1.5f);
 		}
+
+		// O ANEL ROXO: a CASA DO BILLS, depois de ele a contar (dono, 2026-10-11 -- ver `MenuJogo.Bills.cs`). Por
+		// fora do dourado, porque um mundo pode ter os dois. Se a casa for destruida o servidor aponta a seguinte.
+		bool casaDeBills = !morto && MenuJogo.CasaDeBills(p);
+		if (casaDeBills) DrawArc(c, r + 5.3f, 0, Mathf.Tau, 28, new Color(MenuJogo.RoxoDeBills, 0.95f), 1.3f);
 
 		if (ehSelecionado)
 		{
@@ -1015,8 +1038,9 @@ public partial class MapaEstelar : Control
 		}
 
 		// O NOME so quando ha espaco pra ele: num zoom aberto, trezentos rotulos empilhados viram
-		// uma mancha branca que esconde justamente os planetas.
-		if (!ehSelecionado && r < 5f && !p.Premade) return;
+		// uma mancha branca que esconde justamente os planetas. A casa do Bills leva o dela sempre: e um endereco
+		// que o jogo inteiro ouviu, e o que se procura na carta e ele.
+		if (!ehSelecionado && r < 5f && !p.Premade && !casaDeBills) return;
 
 		Font fonte = ThemeDB.FallbackFont;
 		int tam = p.Premade ? 13 : 11;
@@ -1024,11 +1048,13 @@ public partial class MapaEstelar : Control
 		// O ROTULO DIZ O QUE ACONTECEU. "Vegeta" desenhado em cinza ainda parece um planeta que
 		// existe -- e a diferenca entre "nao consigo pousar" e "nao ha onde pousar" e a coisa que o
 		// jogador precisa saber antes de sair voando pra la.
-		string rotulo = morto ? $"{p.Nome} (destruído)" : p.Nome;
+		// O NOME E O QUE SE MOSTRA: o batizado, se alguem batizou (ver `GameClient.NomeDoPlaneta`).
+		string nomeVisto = GameClient.Instance?.NomeDoPlaneta(p) ?? p.Nome;
+		string rotulo = morto ? $"{nomeVisto} (destruído)" : casaDeBills ? $"{nomeVisto} (casa de Bills)" : nomeVisto;
 		Vector2 medida = fonte.GetStringSize(rotulo, HorizontalAlignment.Left, -1, tam);
 		DrawString(fonte, c + new Vector2(-medida.X / 2f, r + tam + 2), rotulo,
 				   HorizontalAlignment.Left, -1, tam,
-				   morto ? new Color("8a6a6a") : p.Premade ? Tema.Texto : Tema.TextoFraco);
+				   morto ? new Color("8a6a6a") : casaDeBills ? MenuJogo.RoxoDeBills : p.Premade ? Tema.Texto : Tema.TextoFraco);
 
 		// "VOCE ESTA AQUI": estou dentro da area de pouso deste planeta.
 		if (eu is { } meu && meu.DistanceTo(new Vector2(p.Pos.X, p.Pos.Y)) <= p.Raio)

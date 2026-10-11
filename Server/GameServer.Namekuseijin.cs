@@ -192,6 +192,8 @@ public sealed partial class GameServer
 		CobrarARecargaDeFusao(dono, NowMs());
 
 		// ---- 7. O ABSORVIDO SOME --------------------------------------------------------------------
+		// E NINGUEM SE ENFURECE POR ISTO (dono, 2026-10-11: *"fusao namek n deveria dar o trigger na raiva"*): a
+		// fusao e consentida, e no DM tambem nao acende raiva (`Fusion.dm:301-310`). Ver `GameServer.Raiva.cs`.
 		string nomeDele = absorvido.Name;
 		if (ehJogador) ApagarOPersonagemParaSempre(absorvido, $"absorvido por {dono.Name}");
 		else RemoverNpc(absorvido);

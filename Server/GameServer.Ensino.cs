@@ -213,6 +213,7 @@ public partial class GameServer
 		}
 
 		if (!EnsinoDeSkill.Ensinar(aluno.Livro, s!)) return;
+		AnotarLicaoDoMestre(mestre, aluno, s!);   // so entra no diario do discipulado se quem ensinou e o MESTRE dele -- ver GameServer.Alunos.cs
 
 		// O RESTO E O MESMO DE QUEM COMPRA (ver `Aprender`): sem estas tres linhas a skill entra no
 		// livro e nao acontece nada -- sem botao, sem buff, sem bit de poder. A skill "entrou" e o

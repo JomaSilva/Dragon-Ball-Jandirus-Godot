@@ -47,6 +47,13 @@ public partial class RoboDeAdmin : Node
 	/// <summary>O verb que tem passo proprio e por isso fica de fora do disparo em massa.</summary>
 	private const string RefazerCenario = "Restore Scenery";
 
+	/// <summary>A chave do mundo de mentira que o palco destruiu. Ver os passos da restauracao pela lista.</summary>
+	private string _chaveDoMorto = "";
+
+	/// <summary>O nome que a bancada da ao planeta em que esta, e o que o lugar se chamava antes. Ver os passos do batismo.</summary>
+	private const string NomeDeBancada = "Mundo da Bancada";
+	private string _lugarAntes = "";
+
 	private static GameClient? C => GameClient.Instance;
 
 	private void Conferir(bool ok, string oque)
@@ -78,6 +85,11 @@ public partial class RoboDeAdmin : Node
 			case 1:
 				Conferir(Array.IndexOf(menu.AbasDeTeste, Verbos.Admin) >= 0,
 					"a aba \"Admin\" existe na lista de abas do menu");
+				// A PORTA DO LOGIN DO BATISMO: nenhum verbo saiu ainda e este corpo nao trocou de zona, entao o
+				// unico pacote que pode ter trazido o direito e o que o login manda (`AoPisarNoMundo`). Sem ele
+				// o admin so veria a caixa de texto do cartao depois de mudar de planeta.
+				Conferir(cli.DireitoDeBatismo == Jandirus.Core.World.Batismo.Direito.Admin,
+					$"o direito de batizar o chao em que estou chega NO LOGIN, antes de qualquer verbo (admin: {cli.DireitoDeBatismo})");
 				break;
 
 			// -------------------------------------------------------------- a aba desenha?
@@ -291,10 +303,139 @@ public partial class RoboDeAdmin : Node
 				break;
 			}
 
+			// -------------------------------------------------------------- restaurar planeta PELA LISTA
+			// O dono (2026-10-10): "queria q fosse possivel eu ver a lista de planetas destruidos e
+			// selecionar os q quero restaurar" -- sem ir ate o planeta. A REGRA do servidor esta na
+			// `--planetateste` (familia 16); aqui se prova o que so existe PELO FIO e NA TELA: o planeta
+			// destruido chega pelo `S2C.Mortos`, vira uma linha do cartao, o botao devolve a CHAVE certa, o
+			// servidor restaura um planeta em que o admin NAO esta, e o cartao esvazia sozinho.
+			//
+			// O PLANETA E DE MENTIRA (um gerado de seed escolhida a mao) e nasce dentro do `PalcoDeMortes`
+			// do servidor: nada disto encosta no `planetas-mortos.json` de quem roda a bancada.
+			case 23:
+			{
+				_esperas = 0;
+				if (Jandirus.Server.GameServer.Instance is not { } srv)
+				{
+					// O palco e montado NO SERVIDOR; discando pra outro processo nao ha como monta-lo daqui.
+					_passos.Add("  --     restaurar planeta pela lista: NAO TESTADO (rode hospedando: --host)");
+					_passo = 27;
+					break;
+				}
+				_chaveDoMorto = srv.DestruirPlanetaDeMentira();
+				break;
+			}
+
+			case 24:
+			{
+				Jandirus.Server.GameServer srv = Jandirus.Server.GameServer.Instance!;
+				bool chegou = cli.Mortos.Todos.Any(e => e.Chave == _chaveDoMorto);
+				if (!chegou && ++_esperas < 10) { _passo = 24; return; }
+
+				Conferir(chegou, "o planeta destruido chega ao cliente pelo S2C.Mortos");
+				Conferir(MenuJogo.PlanetasDestruidos(cli.Mortos).Count(e => e.Chave == _chaveDoMorto) == 1,
+					"REGRA PURA: a lista do cartao traz o destruido (uma vez)");
+				Button? restaurar = BotaoDeRestaurar(menu, _chaveDoMorto);
+				Conferir(restaurar != null,
+					"o cartao \"Planetas destruídos\" da aba Admin lista o planeta com o botao 'restaurar' -- e o admin esta em OUTRO lugar");
+
+				// A CONTRAPROVA PRIMEIRO: com o defeito injetado, o MESMO clique nao restaura nada.
+				srv.RestauraSoOndeEstaDeTeste = true;
+				restaurar?.EmitSignal(BaseButton.SignalName.Pressed);
+				break;
+			}
+
+			case 25:
+			{
+				Jandirus.Server.GameServer srv = Jandirus.Server.GameServer.Instance!;
+				Conferir(srv.PlanetaDeMentiraEstaMorto(),
+					"(defeito injetado: o servidor so restaura onde o admin esta) o clique na lista NAO restaura -- a regua sabe reprovar");
+				srv.RestauraSoOndeEstaDeTeste = false;
+
+				_esperas = 0;
+				BotaoDeRestaurar(menu, _chaveDoMorto)?.EmitSignal(BaseButton.SignalName.Pressed);
+				break;
+			}
+
+			case 26:
+			{
+				Jandirus.Server.GameServer srv = Jandirus.Server.GameServer.Instance!;
+				bool saiu = !cli.Mortos.Todos.Any(e => e.Chave == _chaveDoMorto);
+				if (!saiu && ++_esperas < 10) { _passo = 26; return; }
+
+				Conferir(!srv.PlanetaDeMentiraEstaMorto(),
+					"apertar 'restaurar' na lista RESTAURA o planeta no servidor -- de onde o admin esta");
+				Conferir(saiu, "...a lista do cliente esvazia (o S2C.Mortos voltou)");
+				Conferir(BotaoDeRestaurar(menu, _chaveDoMorto) == null,
+					"...e o cartao deixa de oferecer o planeta (a aba se redesenhou sozinha)");
+				break;
+			}
+
+			// -------------------------------------------------------------- o batismo, pelo FIO e na TELA
+			// O dono (2026-10-10): "adicione tb a opçao de nomear o planeta". As REGRAS (descobridor, dono,
+			// nomes que servem) estao na `--batismoteste`; aqui se prova o que so existe pelo fio: o admin
+			// batiza o planeta em que esta pelo verbo do cartao, o nome chega pelo `S2C.NomesDePlanetas`, a
+			// faixa "Lugar" da aba World passa a dize-lo, e tirar o nome desfaz tudo.
+			//
+			// SO NA MEMORIA: o palco do servidor impede que o `planetas-nomes.json` de quem roda seja escrito.
+			case 27:
+			{
+				if (Jandirus.Server.GameServer.Instance is not { } srv)
+				{
+					_passos.Add("  --     batismo pelo fio: NAO TESTADO (rode hospedando: --host)");
+					_passo = 31;
+					break;
+				}
+				srv.BatismosSoNaMemoriaDeTeste = true;
+				_lugarAntes = cli.NomeDoLugar;
+				_esperas = 0;
+				menu.IrPara("World");
+				cli.SendVerbo("planeta_nomear", NomeDeBancada);
+				break;
+			}
+
+			case 28:
+			{
+				if (cli.NomeDoLugar != NomeDeBancada && ++_esperas < 10) { _passo = 28; return; }
+				Conferir(cli.DireitoDeBatismo == Jandirus.Core.World.Batismo.Direito.Admin,
+					$"o DIREITO de batizar chega ao cliente no cabecalho do pacote (admin: {cli.DireitoDeBatismo})");
+				Conferir(cli.NomeDoLugar == NomeDeBancada && cli.Zone.Name != NomeDeBancada,
+					$"o planeta BATIZADO chega pelo S2C.NomesDePlanetas: '{_lugarAntes}' agora se mostra '{cli.NomeDoLugar}' (a zona continua '{cli.Zone.Name}' por dentro)");
+				string? faixa = menu.ValorDesenhado("World", "Lugar");
+				Conferir(faixa != null && faixa.StartsWith(NomeDeBancada, StringComparison.Ordinal),
+					$"...e a faixa \"Lugar\" da aba World se redesenhou sozinha com o nome novo ('{faixa}')");
+				_esperas = 0;
+				cli.SendVerbo("planeta_desnomear");
+				break;
+			}
+
+			case 29:
+			{
+				if (cli.NomeDoLugar == NomeDeBancada && ++_esperas < 10) { _passo = 29; return; }
+				string? faixa = menu.ValorDesenhado("World", "Lugar");
+				Conferir(cli.NomeDoLugar == _lugarAntes && faixa != null && faixa.StartsWith(_lugarAntes, StringComparison.Ordinal),
+					$"TIRAR O NOME desfaz: o lugar volta a se mostrar '{_lugarAntes}' no cliente e na faixa ('{faixa}')");
+				break;
+			}
+
+			case 30:
+				menu.IrPara(Verbos.Admin);
+				break;
+
 			// -------------------------------------------------------------- relatorio
 			default:
 				_acabou = true;
 				menu.Fechar();
+				if (Jandirus.Server.GameServer.Instance is { } servidorDoBatismo)
+					servidorDoBatismo.BatismosSoNaMemoriaDeTeste = false;
+
+				// O PALCO E O DEFEITO INJETADO NAO SOBREVIVEM A BANCADA, mesmo que um passo tenha quebrado
+				// no meio do caminho.
+				if (Jandirus.Server.GameServer.Instance is { } servidor)
+				{
+					servidor.RestauraSoOndeEstaDeTeste = false;
+					servidor.FecharOPalcoDaListaDeAdmin();
+				}
 				GD.Print("\n[admin] ===== BANCADA DE ADMIN =====");
 				foreach (string l in _passos) GD.Print("[admin] " + l);
 				GD.Print(_falhas.Count == 0
@@ -302,6 +443,29 @@ public partial class RoboDeAdmin : Node
 					: $"[admin] ===== {_falhas.Count} FALHA(S) =====\n[admin]   " + string.Join("\n[admin]   ", _falhas));
 				break;
 		}
+	}
+
+	/// <summary>
+	/// O botao "restaurar" DESTE planeta no cartao da aba Admin. Achado pelo metadado da chave -- o texto e
+	/// o mesmo em todas as linhas -- e so se estiver NA TELA (as paginas das outras abas continuam vivas e
+	/// escondidas, e uma pagina remontada deixa a antiga pra ser liberada no fim do quadro).
+	/// </summary>
+	private static Button? BotaoDeRestaurar(MenuJogo menu, string chave)
+	{
+		if (menu.PaginaDeTeste(Verbos.Admin) is not { } pagina) return null;
+
+		var fila = new Queue<Node>();
+		fila.Enqueue(pagina);
+		while (fila.Count > 0)
+		{
+			Node n = fila.Dequeue();
+			if (n.IsQueuedForDeletion()) continue;
+			if (n is Button b && b.IsVisibleInTree() && b.HasMeta("restaurar_planeta")
+				&& b.GetMeta("restaurar_planeta").AsString() == chave)
+				return b;
+			foreach (Node filho in n.GetChildren()) fila.Enqueue(filho);
+		}
+		return null;
 	}
 
 	/// <summary>

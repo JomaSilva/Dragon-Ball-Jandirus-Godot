@@ -424,11 +424,18 @@ public sealed partial class GameServer
 		if (pl.Combate == null) { porque = "seu corpo ainda nao esta pronto."; return false; }
 		if (pl.Ficha.dead) { porque = "voce esta morto."; return false; }
 		if (pl.Ficha.KO) { porque = "voce esta caido."; return false; }
+		// O `canfight` QUE TODO VERB DE KI DO DM PERGUNTA (`if(KO || med || train || !canfight || charging ||
+		// beaming) return 0`, `customattacks.dm:486`; `&&canfight` nos raios, `Kamehameha.dm:48`), e que aqui e o
+		// atordoamento (ver `ProntoPraGolpeG3`): faltava nesta porta, e quem acabava de levar o golpe atirava no
+		// meio dele. A mesma frase das tecnicas de corpo.
+		if (!AtiraAtordoadoDeTeste && pl.Combate.Stun > 0) { porque = "voce ainda esta atordoado."; return false; }
 		if (pl.Ficha.med) { porque = "nao da pra atirar meditando."; return false; }
 		if (pl.Ficha.train) { porque = "pare o treino antes de atirar."; return false; }
 		if (_canais.ContainsKey(pl.Id)) { porque = "voce ja esta com um raio na mao."; return false; }
 		// O `blasting` das tecnicas sustentadas do lote G12 (Death Ball, Buster Barrage, as rajadas, a Genkidama).
 		if (BlastingG12(pl.Id)) { porque = "voce ja esta com uma tecnica de ki no ar."; return false; }
+		// ...e o dos dois tiros do Deus da Destruicao, enquanto a carga deles corre (`GameServer.KitDoDeus.cs`).
+		if (CarregandoTiroDoKit(pl.Id)) { porque = "voce ja esta com uma tecnica de ki no ar."; return false; }
 		if (pl.Ficha.Ki < custo) { porque = $"isso pede pelo menos {custo:0} de energia."; return false; }
 
 		// O TETO, E ELE FALA. Um teto que recusa em silencio e indistinguivel de um tiro que sumiu.
@@ -557,6 +564,8 @@ public sealed partial class GameServer
 			Nome = r.Nome,
 			Arte = arte,
 			Invisivel = r.Invisivel,
+			ZonaCerta = r.ZonaCerta,
+			Dom = r.Dom,
 			// `A.transform *= wavemult` (`beams.dm:149`) -- a OUTRA metade do `wavemult`, a que
 			// engorda o sprite. Ver `Projetil.EscalaVisual` sobre por que ela nao mora no `Bp`.
 			//
@@ -1461,8 +1470,16 @@ public sealed partial class GameServer
 		if (p.DesviadoPor != 0 && SustentarDesvio(p, alvo)) return true;
 		if (TentarParryDeKi(p, alvo, dono)) return p.Tipo == TipoDeProjetil.Beam;
 
+		// 2d) O ULTRA INSTINTO DESVIA SOZINHO -- `if(ui_try_evade(M, "blast")) { ui_blast_evade_fx(M, src); return 1 }`
+		//     (`objects.dm:320-322`): depois do credito e do treino, antes de qualquer conta de dano. O encontro se
+		//     encerra como no raspao (a bola some, o raio segue). Ver `EsquivouDoTiroPorInstinto`.
+		if (EsquivouDoTiroPorInstinto(p, alvo, dono)) return EncerrarOEncontroNoRaspao(p, alvo);
+
 		double mods = p.ModsAgora();
 		double dano = DanoDeKi.Final(mods, p.BaseDano, p.MaxDano, p.Bp, cd, cd.Bloqueando, p.Fisico);
+		// 2e) O PODER DA DESTRUICAO -- `dmg = ue_blast_mitigate(M, src, dmg)` (`objects.dm:333`): a Hakai Infusion de
+		//     quem atirou penetra, e a Aura of Destruction de quem leva devora parte do ki e reduz o resto.
+		dano = DanoDeKiPelaDestruicao(alvo, dono, dano);
 
 		// 3) A DEFLEXAO. Metade da chance e a BARATA (o alvo sai da linha: a bola acaba ali sem dano, o
 		//    raio segue viagem -- ver `EncerrarOEncontroNoRaspao`), metade e a cara (deflete de vez, ou o
@@ -1470,6 +1487,8 @@ public sealed partial class GameServer
 		double chance = DanoDeKi.ChanceDeDeflexao(alvo.Ficha, p.Bp, mods, p.BaseDano,
 												  cd.Bloqueando, p.Fisico);
 		if (!p.Deflectivel || alvo.Ficha.KO || cd.Stun > 0) chance = 0;
+		// `deflectchance = ue_infuse_deflect(src, deflectchance)` (`objects.dm:346`): o tiro infundido de Hakai e dificil de defletir.
+		chance = DeflexaoContraAInfusao(dono, chance);
 
 		// 3a) A PARALISIA, e ela cai AQUI: entre a conta da chance de deflexao e os sorteios dela, na
 		//     mesma ordem do `Bump` (`objects.dm:347`, logo depois de `if(M.KO||M.stagger)
@@ -1578,9 +1597,14 @@ public sealed partial class GameServer
 		// `objects.dm:439` e o do OBJETO (`:35`), que nenhum verb de ki preenche -- e o sorteio de la pode nao achar
 		// membro nenhum. A historia e os numeros estao em `MeleeResolver.AplicarDanoPronto`.
 		// ==================================================================================================
+		// (O TIRO QUE TRAZ A PROPRIA ZONA -- o `A.selectzone` escrito pelo verb, `GodOfDestruction.dm:279` -- vence a
+		// mira de quem atira: ver `ReceitaDeProjetil.ZonaCerta`.)
 		GolpeResultado r = MeleeResolver.AplicarDanoPronto(cd, dano, p.Letal, _rng,
-														   dono.Combate?.ZonaMirada);
+														   p.ZonaCerta.Length > 0 ? p.ZonaCerta : dono.Combate?.ZonaMirada);
 		ResolverDesfecho(dono, alvo, r);
+		// O `OnSucCollWMob(M)` DO DM (`objects.dm:440`), logo depois do `DamageLimb` do impacto que feriu: o que este
+		// tiro faz A MAIS em quem acertou. Ver `DomDeProjetil`.
+		if (p.Dom != DomDeProjetil.Nenhum) AoFerirComTiroDoKit(p, dono, alvo);
 		// A FAISCA NA CABECA, E NAO NO MEIO DO FEIXE (dono, 2026-09-23). O relato do soco manda so quem bateu
 		// e quem apanhou, e o cliente estoura a faisca no MEIO dos dois -- num tiro, o meio do raio inteiro.
 		// O ponto do impacto viaja junto (ver `HitEvent.Ponto`).

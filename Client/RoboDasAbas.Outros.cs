@@ -84,19 +84,29 @@ public partial class RoboDasAbas
 		// e coisa de Saiyajin. O contra-exemplo e o cargo chegando: `admin_cargo_dar` em si mesmo poe o
 		// personagem na Presidencia, a lista de cargos volta do servidor, e "Fund Earth" nasce na aba
 		// sem reabrir nada -- e some de novo quando o trono e esvaziado.
+		//
+		// E OS DE QUEM TEM A TECNICA OU A OFERTA (2026-10-10, o terceiro relato: "split form (coisa q n tenho mas
+		// tem os verbs)"): as cinco ordens das copias so pra quem sabe dividir o corpo, as respostas so com a
+		// oferta na mesa, e o desafio ao Deus so com o God Ki desperto. O cliente sabe disso pela tabela de
+		// requisitos (`Core/Verbos/RequisitosDosVerbos.cs`); quem a prova linha a linha e a `--diagverbs`.
 		string[] escondidos = ["Appoint Elder", "Accept Elder Seat", "Decline Elder Seat", "Name Heir", "Remove Heir",
 							   "Accept Challenge", "Postpone Challenge", "Rank Duty", "Fund Earth",
-							   "Time Chamber: Authorize", "Time Chamber: Release", "Decolar"];
+							   "Time Chamber: Authorize", "Time Chamber: Release", "Decolar",
+							   "Split Form: Follow", "Split Form: Stop", "Split Form: Attack Target",
+							   "Split Form: Attack Nearest", "Split Form: Destroy",
+							   "Accept Youth", "Decline Youth", "Accept Potential", "Decline Potential",
+							   "Give Power to Spirit Bomb", "Refuse Spirit Bomb", "Challenge God of Destruction"];
 		List<string> vazaram = escondidos.Where(n => BotaoDeTextoExato(pg, n) != null).ToList();
-		Checa("QUEM VE O QUE: sem cargo e sem ser Namek, nenhum verb de cargo/Namek esta na aba -- nem 'Decolar', que morreu",
+		Checa("QUEM VE O QUE: sem cargo, sem ser Namek, sem Split Form, sem oferta na mesa e sem God Ki, nenhum desses verbs "
+			  + "esta na aba -- nem 'Decolar', que morreu",
 			  vazaram.Count == 0, vazaram.Count == 0 ? "" : string.Join(", ", vazaram));
 		Checa("...e nem na BUSCA (o mesmo filtro `Verbos.Visivel` vale pros dois balcoes)",
 			  !escondidos.Any(n => Verbos.Buscar(n).Any(v => v.Nome == n)));
 		Checa("CONTRA-EXEMPLO: 'Line of Succession' APARECE pra um Saiyajin (o trono de Vegeta e assunto dele)",
 			  string.Equals(cli.Atributos.Raca, "Saiyan", StringComparison.OrdinalIgnoreCase) && BotaoDeTextoExato(pg, "Line of Succession") != null,
 			  $"raca={cli.Atributos.Raca}");
-		Checa("CONTRA-EXEMPLO: 'Title Status' e 'Challenge God of Destruction' continuam pra todo mundo (sao de quem NAO tem o titulo)",
-			  BotaoDeTextoExato(pg, "Title Status") != null && BotaoDeTextoExato(pg, "Challenge God of Destruction") != null);
+		Checa("CONTRA-EXEMPLO: 'Title Status' continua pra todo mundo (e leitura), e 'Toggle SSJ Grades' APARECE pro Saiyajin (a escada e dele)",
+			  BotaoDeTextoExato(pg, "Title Status") != null && BotaoDeTextoExato(pg, "Toggle SSJ Grades") != null);
 
 		cli.SendVerbo("admin_cargo_dar", $"{cli.LocalId}|president");
 		bool virouPresidente = await Ate(() => cli.Cargos.Any(c => c.Chave == "president" && c.Dono == cli.LocalName), 8);

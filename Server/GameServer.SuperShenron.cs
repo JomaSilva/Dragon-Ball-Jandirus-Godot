@@ -125,6 +125,22 @@ public sealed partial class GameServer
 	/// <summary>Ha uma procuracao valendo?</summary>
 	private bool HaProcuracao => _benefSig.Length > 0;
 
+	/// <summary>
+	/// **ESTE CORPO ESTA DIANTE DE UMA SUPER ESFERA?** -- o `set src in oview(2)` do `Invocar_Super_Shenron`
+	/// (`ProceduralSpace.dm:1580`). Qualquer uma das sete serve (quem invoca tem todas), e elas so existem no
+	/// espaco. Uma pergunta pras duas pontas: o verbo (<see cref="ChamarOSuperShenron"/>) e a janela de desejos
+	/// (`MenuDoSuperShenron`), pra a janela nao oferecer o que o dragao recusaria.
+	/// </summary>
+	private bool DianteDeUmaSuper(ServerPlayer pl) =>
+		SuperShenronDeQualquerLugarDeTeste
+		|| (Espaco.EhEspaco(pl.Zone)
+			&& _supers.Exists(s => (pl.Pos - OndeEstaASuper(s.Numero)).Length <= SuperEsferas.AlcanceDeInvocar));
+
+	/// <summary>A recusa de quem chama o dragao longe delas: diz ONDE se chama.</summary>
+	private static string FraseDeLongeDasSupers(ServerPlayer pl) => Espaco.EhEspaco(pl.Zone)
+		? "não há Super Esfera ao seu alcance: o Super Shenron só é chamado ao lado de uma delas."
+		: "as Super Esferas ficam no espaço -- o Super Shenron só é chamado ao lado de uma delas.";
+
 	// =====================================================================
 	// A INVOCACAO -- `Invocar_Super_Shenron` (:1578-1644)
 	// =====================================================================
@@ -136,12 +152,22 @@ public sealed partial class GameServer
 	/// 3 de 7" e **nunca leria a recusa da lingua** -- que e a unica linha do jogo inteiro que ensina
 	/// que o procurador existe. A Fase 1 ja tinha escrito isso no contrato do plugue; aqui ele se cumpre.
 	/// ================================================================================================
+	///
+	/// ============================ E ANTES DAS DUAS VEM O LUGAR ============================
+	/// `set src in oview(2)` (`:1580`): no DM o verbo e DA ESFERA, e o motor so o oferece a quem esta a ate dois
+	/// tiles de uma -- *"use Invocar Super Shenron ao lado de qualquer uma"* (`:1514`). O port tinha o recorte
+	/// so no menu (o botao some fora do espaco), e esconder botao nao e permissao: com as sete e a lingua, um
+	/// cliente mexido chamava o dragao de dentro de um planeta. Ver <see cref="DianteDeUmaSuper"/>.
+	/// ====================================================================================
 	/// </summary>
 	private void ChamarOSuperShenron(ServerPlayer pl, string arg)
 	{
 		// `if(!U.client || U.dead || U.KO) return` (:1582)
 		if (pl.Ficha.dead || pl.Ficha.KO)
 		{ Avisar(pl, "você não está em condições de chamar coisa nenhuma."); return; }
+
+		// ---------------------------------------------------------- 0. o lugar
+		if (!DianteDeUmaSuper(pl)) { Avisar(pl, FraseDeLongeDasSupers(pl)); return; }
 
 		// ---------------------------------------------------------- 1. as sete
 		int minhas = QuantasSupersTem(pl.Assinatura);
@@ -205,21 +231,25 @@ public sealed partial class GameServer
 
 		if (procurando && id.Length == 0)
 		{
-			Avisar(pl, $"{_benefNome} ainda não disse o que pedir. Só ele escolhe -- peça que ele use "
-					 + "o verbo 'sdb_pedido'. Você apenas pronuncia.");
+			Avisar(pl, $"{_benefNome} ainda não disse o que pedir. Só ele escolhe -- e escolhe na janela "
+					 + "de desejos dele. Você apenas pronuncia.");
 			if (benef != null)
-				Avisar(benef, $"{pl.Name} está diante das esferas e espera o SEU pedido "
-							+ "(verbo sdb_pedido).");
+			{
+				Avisar(benef, $"{pl.Name} está diante das esferas e espera o SEU pedido.");
+				// A JANELA DELE ABRE NA LISTA: e a vez de quem emprestou escolher, e sem ela nao ha por onde.
+				MandarOMenuDoDragao(benef, abrir: true, qual: QualDragao.Super);
+			}
 			return;
 		}
 
 		List<DesejoDef> menu = [.. Desejos.MenuDoSuper(EhKaioshinDoCorpo(pl), procurando)];
 
+		// SEM PEDIDO NENHUM, O QUE SE QUER E A LISTA -- e a lista e a janela de desejos (era uma linha de chat
+		// por desejo, com o id pra digitar de volta). As sete e a lingua ja foram conferidas ai em cima: quem
+		// chega aqui pode pedir.
 		if (id.Length == 0)
 		{
-			Avisar(pl, "-- SUPER SHENRON atende UM desejo --");
-			foreach (DesejoDef d in menu) Avisar(pl, $"  [{d.Id}] {d.Nome}  ({d.Desc})");
-			Avisar(pl, "peça com: sdb_invocar <id> [alvo]");
+			MandarOMenuDoDragao(pl, abrir: true, qual: QualDragao.Super);
 			return;
 		}
 
@@ -229,7 +259,7 @@ public sealed partial class GameServer
 			Avisar(pl, procurando
 				? $"o pedido registrado ('{id}') não está entre os que o Super Shenron atende agora. "
 				  + $"{_benefNome} precisa registrar outro."
-				: "o Super Shenron não conhece esse desejo. Use sdb_invocar sem argumento pra ver a lista.");
+				: "o Super Shenron não conhece esse desejo. Escolha um da lista da janela de desejos.");
 			return;
 		}
 
@@ -240,6 +270,9 @@ public sealed partial class GameServer
 		ConsumirAsSupers();
 		AnunciarSupers("O desejo foi realizado... e as Super Esferas, drenadas, se espalharam "
 					 + "novamente pela galáxia.");
+
+		// AS SETE SE FORAM: a janela de quem olhava o Super Shenron fecha agora, e nao no proximo tique.
+		SincronizarOsMenusDoDragao();
 	}
 
 	/// <summary>
@@ -275,7 +308,7 @@ public sealed partial class GameServer
 				//
 				// **QUEM ESCOLHE O MORTO E O PEDINTE**, e nao o falante: o nome vem do pedido registrado.
 				// E o fechamento do buraco (B).
-				List<ServerPlayer> mortos = [.. Pessoas.Where(o => o.Ficha.dead && !o.Ficha.aged_out)];
+				List<ServerPlayer> mortos = MortosQueVoltam();
 				if (mortos.Count == 0)
 				{ Avisar(pl, "nenhum guerreiro caído que possa voltar."); return false; }
 
@@ -286,8 +319,16 @@ public sealed partial class GameServer
 					return false;
 				}
 
-				ServerPlayer? t = mortos.Find(o => string.Equals(o.Name, nome, StringComparison.OrdinalIgnoreCase));
-				if (t == null) { Avisar(pl, $"'{nome}' não está entre os que podem voltar."); return false; }
+				// PELO `#id` QUE A JANELA MANDA, ou pelo nome (o pedido REGISTRADO guarda o nome: ele vai pro
+				// disco, e id de sessao nao atravessa reinicio). Ver `AcharNaLista`.
+				ServerPlayer? t = AcharNaLista(mortos, nome);
+				if (t == null)
+				{
+					Avisar(pl, nome.StartsWith('#')
+						? "quem você escolheu não está mais entre os que podem voltar."
+						: $"'{nome}' não está entre os que podem voltar.");
+					return false;
+				}
 
 				AnunciarInvocacaoDoSuper(pl);
 				// `T.loc = locate(U.x + 1, U.y, U.z)` (:1617) -- ao lado de QUEM FALOU, e nao do pedinte:
@@ -312,15 +353,17 @@ public sealed partial class GameServer
 				// personagem inteiro. **Este e o unico desejo do jogo que mata quem o pede.**
 				//
 				// Sem modal, a confirmacao vira um segundo verbo (`sdb_aceito`) com o mesmo efeito, e a
-				// palavra literal do original ("ACEITO O PREÇO") vira o argumento -- uma frase dificil de
-				// digitar por acidente e parte do desenho. Ver `AceitarOPreco`.
+				// palavra literal do original ("ACEITO O PREÇO") e o argumento dele. QUEM A DIZ E UM BOTAO,
+				// como no DM: a janela de desejos de quem paga abre na pergunta, com "ACEITO O PREÇO" e
+				// "Recusar o preço" (era uma frase pra digitar numa caixa de texto). Ver `AceitarOPreco`.
 				// ============================================================================
 				_precoPendente = (alvo.Conta, pl.Id, NowMs() + PrazoDaOfertaDeGuardaMs);
 				Avisar(alvo, (alvo == pl ? "você está" : $"{pl.Name} está")
 						   + " prestes a pedir" + (alvo == pl ? "" : " em seu nome")
 						   + ": trocar TODO o seu tempo de vida por poder absoluto. Você viverá SÓ MAIS "
 						   + "UM ANO -- com o DOBRO do maior poder do jogo -- e dessa morte não há "
-						   + "revive, apenas reencarnação. Responda com: sdb_aceito ACEITO O PREÇO");
+						   + "revive, apenas reencarnação. A janela de desejos espera a sua palavra.");
+				MandarOMenuDoDragao(alvo, abrir: true, foco: AcoesDoDragao.Preco, qual: QualDragao.Super);
 				if (alvo != pl)
 					Avisar(pl, $"{alvo.Name} precisa aceitar o preço em pessoa. Nada foi consumido.");
 				return false;
@@ -347,8 +390,8 @@ public sealed partial class GameServer
 	/// **`sdb_aceito ACEITO O PRECO`** -- a resposta do `alert(alvo, ...)` do DM (`:1632-1635`).
 	///
 	/// A FRASE INTEIRA E O BOTAO. No original a opcao literalmente se chama "ACEITO O PRECO", e nao
-	/// "Sim": e um desejo que mata, e uma palavra dificil de digitar por acidente e parte do desenho.
-	/// Digitar qualquer outra coisa e recusar.
+	/// "Sim": e um desejo que mata, e uma palavra que nao se manda por acidente e parte do desenho.
+	/// Qualquer outro argumento e recusar -- e o que o botao "Recusar o preço" da janela manda.
 	/// </summary>
 	private void AceitarOPreco(ServerPlayer pl, string arg)
 	{
@@ -379,6 +422,7 @@ public sealed partial class GameServer
 		ConsumirAsSupers();
 		AnunciarSupers("O desejo foi realizado... e as Super Esferas, drenadas, se espalharam "
 					 + "novamente pela galáxia.");
+		// (as janelas de quem olhava o Super Shenron fecham pelo `ComandoDoSuperShenron`, que e quem chama.)
 	}
 
 	/// <summary>
@@ -435,10 +479,7 @@ public sealed partial class GameServer
 			return;
 		}
 
-		List<ServerPlayer> cands = [.. Pessoas.Where(o => o != pl && !o.Ficha.dead
-			&& o.Zone.Hash == pl.Zone.Hash
-			&& Math.Abs(o.Pos.X - pl.Pos.X) <= AlcanceDaProcuracao
-			&& Math.Abs(o.Pos.Y - pl.Pos.Y) <= AlcanceDaProcuracao)];
+		List<ServerPlayer> cands = QuemPodeGuardarAsSete(pl);
 
 		if (cands.Count == 0)
 		{ Avisar(pl, "chame o guardião escolhido para o seu lado (adjacente)."); return; }
@@ -446,8 +487,14 @@ public sealed partial class GameServer
 		if (nome.Length == 0)
 		{ Avisar(pl, "a quem? " + string.Join(", ", cands.Select(o => o.Name))); return; }
 
-		ServerPlayer? r = cands.Find(o => string.Equals(o.Name, nome, StringComparison.OrdinalIgnoreCase));
-		if (r == null) { Avisar(pl, $"'{nome}' não está ao seu lado."); return; }
+		// PELO `#id` QUE A JANELA MANDA, ou pelo nome -- ver `AcharNaLista`.
+		ServerPlayer? r = AcharNaLista(cands, nome);
+		if (r == null)
+		{
+			Avisar(pl, nome.StartsWith('#') ? "quem você escolheu não está mais ao seu lado."
+											: $"'{nome}' não está ao seu lado.");
+			return;
+		}
 
 		// `if(!R.godtongue_check(1))` (:1666) -- em modo QUIETO: so avisa o doador, sem ensinar a lingua
 		// a ninguem por engano. E um AVISO e nao uma recusa: o DM deixa transferir mesmo assim, e faz
@@ -468,8 +515,22 @@ public sealed partial class GameServer
 		Avisar(pl, $"você oferece a guarda das sete a {r.Name}. Agora é com {r.Name}.");
 		Avisar(r, $"{pl.Name} quer confiar as {SuperEsferas.Total} SUPER ESFERAS a você, para invocar o "
 				+ $"dragão EM NOME DELE(A) -- o pedido é de {pl.Name}, e você apenas pronuncia. "
-				+ $"(sdb_guarda_aceitar / sdb_guarda_recusar, em {PrazoDaOfertaDeGuardaMs / 1000}s)");
+				+ $"Responda na janela que abriu, em {PrazoDaOfertaDeGuardaMs / 1000}s.");
+
+		// O `alert(R, ...)` DO DM (`:1667`) abre na cara de quem recebe a oferta. Aqui e a janela de desejos
+		// dele, ja na linha de aceitar -- eram dois botoes da aba World que so ele sabia que precisava achar.
+		MandarOMenuDoDragao(r, abrir: true, foco: AcoesDoDragao.AceitarGuarda, qual: QualDragao.Super);
 	}
+
+	/// <summary>
+	/// QUEM PODE RECEBER A GUARDA DAS SETE: os vivos ADJACENTES a quem empresta (`oview(1)`, `:1659`). Um lugar
+	/// so pra <see cref="TransferirAGuarda"/> e pra janela de desejos, que oferece exatamente estes nomes.
+	/// </summary>
+	private List<ServerPlayer> QuemPodeGuardarAsSete(ServerPlayer pl) =>
+		[.. Pessoas.Where(o => o != pl && !o.Ficha.dead
+			&& o.Zone.Hash == pl.Zone.Hash
+			&& Math.Abs(o.Pos.X - pl.Pos.X) <= AlcanceDaProcuracao
+			&& Math.Abs(o.Pos.Y - pl.Pos.Y) <= AlcanceDaProcuracao)];
 
 	/// <summary>
 	/// A RESPOSTA DO ESCOLHIDO -- o `switch(alert(R, ...))` do DM (`:1667-1670`), do lado de quem recebe.
@@ -522,9 +583,11 @@ public sealed partial class GameServer
 				 + $"e o desejo será de {o.DeNome}, que é quem o escolhe.");
 		if (doador != null)
 		{
-			Avisar(doador, $"{pl.Name} aceitou a guarda. Agora DIGA o seu pedido (verbo sdb_pedido) -- "
+			Avisar(doador, $"{pl.Name} aceitou a guarda. Agora DIGA o seu pedido na janela de desejos -- "
 						 + "só você escolhe, e ele não pode trocá-lo.");
 			MandarSupers(doador);
+			// A JANELA DE QUEM EMPRESTOU ABRE NA LISTA: e a vez dele de escolher o que o porta-voz vai dizer.
+			MandarOMenuDoDragao(doador, abrir: true, qual: QualDragao.Super);
 		}
 		MandarSupers(pl);
 		GD.Print($"[super] {o.DeNome} transferiu as sete a {pl.Name} (beneficiario: {o.DeNome})");
@@ -584,19 +647,18 @@ public sealed partial class GameServer
 		if (!HaProcuracao || !string.Equals(_benefSig, pl.Assinatura, StringComparison.Ordinal))
 		{
 			Avisar(pl, "você não emprestou as sete a ninguém -- não há pedido a registrar. "
-					 + "(Quem tem as sete e fala a língua pede direto, com sdb_invocar.)");
+					 + "(Quem tem as sete e fala a língua pede direto ao Super Shenron.)");
 			return;
 		}
 
 		List<DesejoDef> menu = [.. Desejos.MenuDoSuper(ehKaioshin: false, haProcuracao: true)];
 
+		// SEM PEDIDO, O QUE SE QUER E A LISTA -- e a lista e a janela de desejos, que diz tambem qual esta
+		// registrado agora. (Era uma linha de chat por desejo, com o id pra digitar de volta.)
 		string[] p = arg.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
 		if (p.Length == 0)
 		{
-			Avisar(pl, "-- o que você quer pedir ao SUPER SHENRON? --");
-			foreach (DesejoDef d in menu) Avisar(pl, $"  [{d.Id}] {d.Nome}  ({d.Desc})");
-			Avisar(pl, "registre com: sdb_pedido <id> [alvo]"
-					 + (_pedidoDoBenef.Length > 0 ? $"  (agora: {_pedidoDoBenef} {_alvoDoPedido})" : ""));
+			MandarOMenuDoDragao(pl, abrir: true, qual: QualDragao.Super);
 			return;
 		}
 
@@ -616,7 +678,7 @@ public sealed partial class GameServer
 		if (falante != null)
 			Avisar(falante, $"{pl.Name} registrou o pedido dele(a): {d2.Nome}"
 						  + (_alvoDoPedido.Length > 0 ? $" ({_alvoDoPedido})" : "")
-						  + ". Você pode pronunciá-lo com sdb_invocar.");
+						  + ". Você pode pronunciá-lo: chame o Super Shenron.");
 	}
 
 	/// <summary>
@@ -658,13 +720,19 @@ public sealed partial class GameServer
 	{
 		switch (cmd)
 		{
-			case "sdb_transferir": TransferirAGuarda(pl, arg.Trim()); return true;
-			case "sdb_guarda_aceitar": ResponderAGuarda(pl, aceitou: true); return true;
-			case "sdb_guarda_recusar": ResponderAGuarda(pl, aceitou: false); return true;
-			case "sdb_revogar": RevogarAGuarda(pl); return true;
-			case "sdb_pedido": RegistrarPedido(pl, arg); return true;
-			case "sdb_aceito": AceitarOPreco(pl, arg); return true;
+			case "sdb_transferir": TransferirAGuarda(pl, arg.Trim()); break;
+			case "sdb_guarda_aceitar": ResponderAGuarda(pl, aceitou: true); break;
+			case "sdb_guarda_recusar": ResponderAGuarda(pl, aceitou: false); break;
+			case "sdb_revogar": RevogarAGuarda(pl); break;
+			case "sdb_pedido": RegistrarPedido(pl, arg); break;
+			case "sdb_aceito": AceitarOPreco(pl, arg); break;
 			default: return false;
 		}
+
+		// OS SEIS MEXEM NO QUE A JANELA DE DESEJOS DE MAIS DE UM JOGADOR MOSTRA (a oferta some de um, a guarda
+		// aparece no outro, o pedido registrado acende no porta-voz): as janelas abertas se acertam na hora,
+		// sem esperar o tique. So sai pacote pra quem a janela mudou -- ver `SincronizarOsMenusDoDragao`.
+		SincronizarOsMenusDoDragao();
+		return true;
 	}
 }

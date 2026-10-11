@@ -103,6 +103,59 @@ public partial class RoboDasAbas
 			ChecaNoPixel("o cartao 'Tronco' e pintado com a paleta do tema (moda de pixel do retangulo dele)",
 						 foto != null, NaPaleta(cor), $"moda {Hex(cor)} ({frac * 100:0}% do cartao)");
 		}
+
+		// ---- 8) o que os ferimentos custam: as linhas saem do `DebuffsDeMembro`, as mesmas funcoes que o servidor aplica ----
+		string raca = cli.Atributos.Raca ?? "";
+		static List<string> Efeitos(Node p) => Todos(p).OfType<Label>().Where(l => l.HasMeta("efeito")).Select(l => l.Text).ToList();
+		List<string> esperadas = MenuJogo.EfeitosDoCorpo(partes, cli.Sheet.HP, raca);
+		List<string> desenhadas = Efeitos(pg);
+		Checa("o cartao de efeitos escreve EXATAMENTE as linhas do DebuffsDeMembro pro corpo que veio do servidor (corpo inteiro e vida cheia: nenhuma, e o cartao nem nasce)",
+			  desenhadas.SequenceEqual(esperadas) && titulos.Contains("Efeitos dos ferimentos") == (esperadas.Count > 0),
+			  $"{desenhadas.Count} desenhadas, {esperadas.Count} esperadas");
+
+		// O CORPO FORJADO (gancho `MenuJogo.CorpoDeTeste`): sem o braco direito (a mao foi junto), sem a perna
+		// esquerda (o pe foi junto) e com a perna direita QUEBRADA -- a aba inteira remontada com ele.
+		List<Protocol.ParteState> mutilado = partes.Select(p => new Protocol.ParteState
+		{
+			Nome = p.Nome,
+			Vida = p.Nome == "Perna direita" ? (byte)10 : (byte)100,
+			Decepado = p.Nome is "Braco direito" or "Mao direita" or "Perna esquerda" or "Pe esquerdo",
+		}).ToList();
+		MenuJogo.CorpoDeTeste = mutilado;
+		try
+		{
+			menu.ForcarRedesenho();
+			await Quadros(4);
+			Control? pgM = menu.PaginaDeTeste("Body");
+			List<string> linhas = pgM == null ? [] : Efeitos(pgM);
+			Checa("corpo FORJADO sem um braco, sem uma perna e com a outra quebrada: o cartao 'Efeitos dos ferimentos' aparece com a pontaria (25%), a corrida e a guarda (75%)",
+				  linhas.Any(l => l.Contains("25% menos chance de acertar")) && linhas.Any(l => l.Contains("não corre"))
+				  && linhas.Any(l => l.Contains("guarda") && l.Contains("75%")), string.Join(" | ", linhas));
+			Checa("...e sao as linhas que o DebuffsDeMembro da pra esse corpo, na mesma ordem",
+				  linhas.Count > 0 && linhas.SequenceEqual(MenuJogo.EfeitosDoCorpo(mutilado, cli.Sheet.HP, raca)));
+			Dictionary<string, string> notas = pgM == null ? [] : Todos(pgM).OfType<Label>().Where(l => l.HasMeta("nota_do_membro"))
+				.ToDictionary(l => l.GetMeta("nota_do_membro").AsString(), l => l.Text);
+			string nb = notas.GetValueOrDefault("Braço direito", ""), ne = notas.GetValueOrDefault("Perna esquerda", ""),
+				   nd = notas.GetValueOrDefault("Perna direita", "");
+			Checa("a linha do Braço direito ganha a nota do que ele custa (25%, nao apara mais com ele)",
+				  nb.Contains("25%") && nb.Contains("não apara"), nb.Length > 0 ? nb : "(sem nota)");
+			Checa("a Perna esquerda (arrancada) diz que nao corre; a direita (10%, QUEBRADA) fala so da guarda; a Cabeça inteira nao ganha nota",
+				  ne.Contains("não corre") && nd.Contains("quebrada") && !nd.Contains("não corre") && !notas.ContainsKey("Cabeça"),
+				  string.Join(" | ", notas.Select(n => $"{n.Key}: {n.Value}")));
+			int pilulasM = pgM == null ? 0 : Todos(pgM).OfType<PanelContainer>().Count(x => x.HasMeta("pilula") && x.GetMeta("pilula").AsString() == "DECEPADO");
+			Checa("...e as quatro pilulas DECEPADO (braco, mao, perna, pe)", pilulasM == 4, $"{pilulasM}");
+			Checa("nenhuma linha nova traz nome cru do fio (Braco, Mao, Pe sem acento)",
+				  !linhas.Concat(notas.Values).Any(t => t.Contains("Braco") || t.Contains("Mao ") || t.Contains("Cabeca")));
+			Injeta("o corpo INTEIRO reprova a regua do cartao (nenhuma linha de efeito): ela mede o corpo, e nao a pagina",
+				   MenuJogo.EfeitosDoCorpo(partes.Select(p => new Protocol.ParteState { Nome = p.Nome, Vida = 100, Decepado = false }).ToList(), 100, raca).Count == 0);
+			await Guardar("corpo-02-mutilado", await Foto());
+		}
+		finally
+		{
+			MenuJogo.CorpoDeTeste = null;
+			menu.ForcarRedesenho();
+			await Quadros(2);
+		}
 	}
 
 	/// <summary>A REGRA DAS CORES, como funcao pura pra caber contra-exemplo: toda barra na cor da faixa da vida do membro.</summary>

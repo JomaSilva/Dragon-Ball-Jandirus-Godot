@@ -145,6 +145,11 @@ public partial class GameServer
 	{
 		if (!EhPessoa(pl) || pl.Livro == null) return;
 
+		// O KIT DO DEUS DA DESTRUICAO nao e skill de livro (ver `DadivaDeCargo`, que deixa o kit dele vazio de
+		// proposito): o que entra e o que sai com o titulo e reconciliado por `GameServer.KitDoDeus.cs`, aqui,
+		// pelo mesmo argumento do cabecalho deste metodo.
+		ReconciliarOKitDoDeus(pl);
+
 		string[] kit = DadivaDeCargo.De(CargoDe(pl.Conta));
 		bool mudou = false;
 
@@ -185,6 +190,10 @@ public partial class GameServer
 		// AQUI E A PORTA, e ela nao e "um evento de virou Kaioshin" pelo argumento do cabecalho
 		// desta funcao. Ver <see cref="ReconciliarODomDoMistico"/>.
 		ReconciliarODomDoMistico(pl);
+
+		// O TRAJE DO DEUS DA DESTRUICAO (dono, 2026-10-11): quem ganha o titulo -- por qualquer porta -- recebe a
+		// peca na mochila, uma vez por personagem. Ver `GameServer.Bills.ReconciliarOTrajeDoDeus`.
+		ReconciliarOTrajeDoDeus(pl);
 
 		// 3. AS INSIGNIAS -- o que o cargo entrega que nao e skill. Hoje sao os brincos Potara do
 		//    Kaioshin, e eles entram AQUI (e nao num evento de "virou Kaioshin") exatamente pelo
@@ -341,6 +350,8 @@ public partial class GameServer
 	/// </summary>
 	private void TickDosCargos()
 	{
+		if (ValidacoesDeTeste) DispararABancadaDasValidacoes();   // a bancada `--validacoesteste` (so com a flag) -- ver `GameServer.ValidacoesTeste.cs`
+
 		foreach (ServerPlayer pl in _players.Values)
 			if (EhJogador(pl)) ReconciliarDadiva(pl);
 
@@ -365,18 +376,29 @@ public partial class GameServer
 	private readonly Dictionary<string, (string Assento, string Nomeador)> _convitesDeAnciao =
 		new(StringComparer.OrdinalIgnoreCase);
 
+	/// <summary>`Appoint_Elder(var/mob/M in view(1))` (`ordered/NamekRanks.dm:56`): o convidado esta no tile vizinho.</summary>
+	private const int TilesDeNomear = 1;
+
+	/// <summary>`as mob in view(10)` do `Vegeta Managament` (`rankSkills/SpaceRankSkills.dm:52`): o Rei escolhe entre quem ele ve.</summary>
+	private const int TilesDeHerdeiro = 10;
+
 	/// <summary>
 	/// `Appoint_Elder` (`ordered/NamekRanks.dm:56`), com as duas correcoes que o Core documenta
 	/// (a chave e a CONTA; o alvo precisa de sangue de Namek e nao de ja ser Anciao).
 	///
 	/// O ALVO VEM MARCADO (duplo clique), como todo verb com alvo neste port -- e o equivalente
 	/// honesto do `in view(1)` do BYOND. O assento e opcional: sem ele, o primeiro vago.
+	///
+	/// E O `view(1)` E CONFERIDO AQUI (<see cref="AlvoAoAlcance"/>): o id da mira e so o que o cliente MANDA, e
+	/// ate 2026-10-10 o servidor o aceitava de qualquer planeta, pelo id ou pelo nome -- um cliente mexido
+	/// nomeava Anciao quem nunca viu o Grande Anciao. Nomear e um gesto presencial.
 	/// </summary>
 	private void VerboNomearAnciao(ServerPlayer pl, string arg)
 	{
 		string[] p = arg.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-		ServerPlayer? alvo = PorNome(p.Length > 0 ? p[0] : "");
-		if (alvo == null || alvo == pl || !EhPessoa(alvo))
+		ServerPlayer? alvo = AlvoAoAlcance(pl, p.Length > 0 ? p[0] : "", TilesDeNomear, out ServerPlayer? longe);
+		if (longe != null) { Avisar(pl, FraseDeLonge(longe)); return; }
+		if (alvo == null || !EhPessoa(alvo))
 		{
 			Avisar(pl, "marque o Namekuseijin que voce quer nomear (duplo clique nele).");
 			return;
@@ -478,7 +500,11 @@ public partial class GameServer
 		catch (Exception e) { GD.PushWarning($"[server] nao gravei os herdeiros: {e.Message}"); }
 	}
 
-	/// <summary>O Rei nomeia (ou dispensa) um herdeiro. So o Rei, e so sobre quem esta marcado.</summary>
+	/// <summary>
+	/// O Rei nomeia (ou dispensa) um herdeiro. So o Rei, e so sobre quem esta marcado -- e A VISTA dele: o
+	/// `Vegeta Managament` escolhe o mob `in view(10)` (`SpaceRankSkills.dm:52`), pra promover e pra rebaixar.
+	/// Ver <see cref="AlvoAoAlcance"/>.
+	/// </summary>
 	private void VerboHerdeiro(ServerPlayer pl, string arg, bool nomear)
 	{
 		if (!string.Equals(CargoDe(pl.Conta), Sucessao.ReiDeVegeta, StringComparison.OrdinalIgnoreCase))
@@ -486,8 +512,9 @@ public partial class GameServer
 			Avisar(pl, "so o Rei de Vegeta decide quem herda o trono.");
 			return;
 		}
-		ServerPlayer? alvo = PorNome(arg);
-		if (alvo == null || alvo == pl || !EhPessoa(alvo))
+		ServerPlayer? alvo = AlvoAoAlcance(pl, arg, TilesDeHerdeiro, out ServerPlayer? longe);
+		if (longe != null) { Avisar(pl, FraseDeLonge(longe)); return; }
+		if (alvo == null || !EhPessoa(alvo))
 		{
 			Avisar(pl, "marque alguem antes (duplo clique nele).");
 			return;
@@ -579,7 +606,24 @@ public partial class GameServer
 	private void VerboFalarAosCargos(ServerPlayer pl, string texto)
 	{
 		if (CargoDe(pl.Conta).Length == 0) { Avisar(pl, "esse canal e de quem carrega um cargo."); return; }
+
+		// E UMA FALA, E PASSA PELO QUE TODA FALA PASSA (`Falar`, `GameServer.Chat.cs`): o calado nao fala, o texto
+		// perde as quebras de linha (o `html_encode(msg)` do `RankChat`, `RankTree.dm:148-152` -- com "\n" dava
+		// pra desenhar linhas falsas de SISTEMA no chat de todo portador de cargo) e ha o mesmo intervalo entre
+		// duas falas (um pacote vira uma mensagem confiavel por portador: sem freio, e um megafone).
+		if (!CanalDosCargosCruDeTeste)
+		{
+			if (EstaCalado(pl)) { Avisar(pl, "voce esta calado."); return; }
+			texto = Limpar(texto);
+		}
 		if (texto.Trim().Length == 0) { Avisar(pl, "escreva a mensagem."); return; }
+		if (!CanalDosCargosCruDeTeste)
+		{
+			long agora = NowMs();
+			if (_ultimaFala.TryGetValue(pl.Id, out long antes) && agora - antes < MsEntreFalas) return;
+			_ultimaFala[pl.Id] = agora;
+		}
+		EscutaDeFalas?.Add((pl.Id, Protocol.Fala.Sistema, texto));   // o gancho de bancada de toda fala (nulo em jogo)
 
 		string meu = Cargos.Get(CargoDe(pl.Conta))?.Nome ?? "";
 		int ouviram = 0;

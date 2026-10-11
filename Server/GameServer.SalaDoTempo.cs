@@ -415,7 +415,11 @@ public sealed partial class GameServer
 			return;
 		}
 
-		ServerPlayer? o = PorNome(arg);
+		// `Permission(mob/M in view(6))` (`EarthRanks.dm:140`): a chave se entrega a quem esta A VISTA -- o proprio
+		// Guardiao inclusive (ele esta no `view` dele). O id da mira e so o que o cliente manda: ate 2026-10-10 o
+		// servidor fazia a chave pra qualquer um, em qualquer planeta, pelo id ou pelo nome.
+		ServerPlayer? o = AlvoAoAlcance(pl, arg, TilesDaChave, out ServerPlayer? longe, euMesmoConto: true);
+		if (longe != null) { Avisar(pl, FraseDeLonge(longe)); return; }
 		if (o == null || !EhPessoa(o))
 		{
 			Avisar(pl, "marque alguém antes (duplo clique nele) pra autorizar a entrada.");
@@ -429,6 +433,9 @@ public sealed partial class GameServer
 		Avisar(o, $"{pl.Name} autorizou a sua entrada na Sala do Tempo. A chave vale uma vez só.");
 	}
 
+	/// <summary>`Permission(mob/M in view(6))` (`ordered/EarthRanks.dm:140`): de quantos tiles se entrega a chave.</summary>
+	private const int TilesDaChave = 6;
+
 	/// <summary>
 	/// SOLTAR QUEM FICOU PRESO. Duas portas pro mesmo ato, e as duas sao a decisao do risco:
 	///
@@ -440,12 +447,26 @@ public sealed partial class GameServer
 	/// SOLTAR NAO E TELEPORTAR: ele so tira a tranca. Quem estava preso continua onde estava e sai
 	/// pela porta, andando -- e assim o resgate nao vira um teleporte de graca pra quem quisesse
 	/// usar a sala como atalho.
+	///
+	/// ============================ O GUARDIAO SOLTA DO TEMPLO (dono, 2026-10-11) ============================
+	/// *"o guardiao tem q estar no templo pra soltar"*. A porta da Sala fica no Templo Sagrado (o `Lookout`, z12),
+	/// e e de la que ele a destranca: ate aqui o verbo valia de qualquer planeta, e o preso era solto por alguem
+	/// que nem tinha ido ate a porta. O preso esta DENTRO da Sala (outra zona), entao a medida e o lugar do
+	/// Guardiao, e nao a distancia entre os dois. O admin continua soltando de onde estiver -- a valvula nao
+	/// depende de ninguem estar de pe no Templo.
+	/// ====================================================================================================
 	/// </summary>
 	private void SoltarDaSala(ServerPlayer pl, string arg, bool porAdmin)
 	{
 		if (!porAdmin && !EhGuardiao(pl))
 		{
 			Avisar(pl, "só o Guardião da Terra tira alguém da Sala do Tempo.");
+			return;
+		}
+		if (!porAdmin && !SoltaDeLongeDeTeste
+			&& !string.Equals(pl.Zone.Name, ClasseDeNuvem.ZonaDoTemplo, StringComparison.OrdinalIgnoreCase))
+		{
+			Avisar(pl, "a porta da Sala do Tempo fica no Templo Sagrado: é de lá que o Guardião a destranca. Vá até o Templo.");
 			return;
 		}
 

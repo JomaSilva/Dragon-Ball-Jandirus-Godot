@@ -53,7 +53,12 @@ public readonly struct ZoneKey : IEquatable<ZoneKey>
 			const ulong prime = 1099511628211UL;
 			ulong h = offset;
 			h = (h ^ Kind) * prime;
-			foreach (char c in Name)
+			// `Name ?? ""`: o `default(ZoneKey)` nao passa pelo construtor e tem o nome NULO -- e e ele que o cliente
+			// tem em `Zone` ate o `Welcome` chegar. Um pacote que compara hashes e chega antes disso (a limpeza de
+			// cenario do admin vai pra todo peer; hoje so uma bancada de 1o login a dispara nessa janela, a
+			// `--lenhateste`) estourava dentro do tratador. Agora a zona-nenhuma tem um hash, que nao e o de zona
+			// alguma (nenhuma tem nome vazio), e a comparacao responde "nao e esta".
+			foreach (char c in Name ?? "")
 			{
 				h = (h ^ (byte)(c & 0xFF)) * prime;
 				h = (h ^ (byte)(c >> 8)) * prime;

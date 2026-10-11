@@ -144,10 +144,39 @@ public static class DmRankScanner
 	private static readonly Regex RxVerbMais = new(@"^\s*verbs\s*\+=\s*(?<v>/mob/[A-Za-z0-9_/]+)\s*$", RegexOptions.Compiled);
 	private static readonly Regex RxStr = new("\"(?<s>[^\"]*)\"", RegexOptions.Compiled);
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `fonte-prova`): o leitor de cargos volta a tratar comentario como codigo -- o
+	/// extrator de antes de 2026-10-11, que dava `GuidedBall` ao Rei de Arconia por causa de uma linha
+	/// `//enableskill(...)`. Lido pela propria porta do conserto, <see cref="Codigo"/>.
+	/// </summary>
+	public static bool ComentarioViraCodigoDeTeste;
+
+	/// <summary>
+	/// O CODIGO de um `.dm`: as linhas sem comentario (<see cref="DmFonte"/>), com a mesma numeracao do arquivo.
+	///
+	/// ============================ TODO LEITOR DAQUI PROCURA CODIGO POR ESTA PORTA ============================
+	/// Cada um lia o arquivo cru, e uma linha comentada casava com a expressao como qualquer outra: o
+	/// `//enableskill(/datum/skill/rank/GuidedBall)` de `ordered/SpaceRanks.dm:32` punha no `cargos.json` uma
+	/// concessao que o original DESLIGOU (a skill nem existe no jogo compilado). Dono, 2026-10-11: *"pode tirar"*.
+	///
+	/// DOIS LEITORES TAMBEM ABREM O ARQUIVO CRU, DE PROPOSITO, porque o que eles colhem E o comentario: o bloco
+	/// `var` do `RankAssign.dm` (a `nota_dm` de cada cargo, em <see cref="LerGlobais"/>) e a frase ao lado de cada
+	/// consulta ao global (as `notas`, em <see cref="LerConsultas"/>). Neles o codigo decide QUAL linha vale, e o
+	/// texto cru da a nota.
+	/// =========================================================================================================
+	/// </summary>
+	private static string[] Codigo(string arq) =>
+		ComentarioViraCodigoDeTeste ? File.ReadAllLines(arq) : DmFonte.Linhas(arq);
+
 	public static VarreduraDeCargos Scan(string pastaCode)
 	{
 		var v = new VarreduraDeCargos();
-		string[] arquivos = Directory.GetFiles(pastaCode, "*.dm", SearchOption.AllDirectories);
+		// SO O QUE O `.dme` INCLUI (ver `DmFonte.Arquivos`), mas na ordem do DISCO, que e a que este extrator sempre
+		// seguiu: aqui a ordem dos arquivos nao decide vencedor nenhum, so a ordem em que as `notas` saem -- e
+		// troca-la mexeria no `cargos.json` sem mudar uma informacao.
+		var doDme = new HashSet<string>(DmFonte.Arquivos(pastaCode), StringComparer.OrdinalIgnoreCase);
+		string[] arquivos = [.. Directory.GetFiles(Path.GetFullPath(pastaCode), "*.dm", SearchOption.AllDirectories)
+									 .Where(doDme.Contains)];
 
 		string? Achar(string nome) => arquivos.FirstOrDefault(
 			a => string.Equals(Path.GetFileName(a), nome, StringComparison.OrdinalIgnoreCase));
@@ -202,7 +231,7 @@ public static class DmRankScanner
 	/// </summary>
 	private static void LerGlobais(string arq, string? quests, string raiz, Dictionary<string, CargoDm> saida, VarreduraDeCargos v)
 	{
-		string[] L = File.ReadAllLines(arq);
+		string[] L = Codigo(arq);
 		var salvos = new List<string>();
 		var limpos = new HashSet<string>(StringComparer.Ordinal);
 		var chaveSave = new Dictionary<string, List<string>>(StringComparer.Ordinal); // chave do savefile -> globais
@@ -242,7 +271,7 @@ public static class DmRankScanner
 		// os que so o RankQuests conhece (e a razao de o Frost Demon Lord existir de dia e sumir no reboot)
 		var doQuests = new List<string>();
 		if (quests != null)
-			foreach (string t in File.ReadAllLines(quests))
+			foreach (string t in Codigo(quests))
 				if (RxGetSig.Match(t) is { Success: true } mq) doQuests.Add(mq.Groups["g"].Value);
 
 		var todos = new List<string>(salvos);
@@ -253,9 +282,11 @@ public static class DmRankScanner
 		var notas = new Dictionary<string, (string nota, int linha)>(StringComparer.Ordinal);
 		bool emVar = false;
 		string ultimo = "";
-		for (int i = 0; i < L.Length; i++)
+		// ESTE LACO LE O ARQUIVO CRU, DE PROPOSITO: a nota do cargo E o comentario ao lado do var. Ver `Codigo`.
+		string[] cruas = File.ReadAllLines(arq);
+		for (int i = 0; i < cruas.Length; i++)
 		{
-			string t = L[i];
+			string t = cruas[i];
 			if (t.TrimEnd() == "var") { emVar = true; continue; }
 			if (!emVar) continue;
 			if (t.Length > 0 && !char.IsWhiteSpace(t[0])) { emVar = false; continue; }
@@ -300,7 +331,7 @@ public static class DmRankScanner
 	// --------------------------------------------------------------------------------------
 	private static void LerPainel(string arq, string raiz, Dictionary<string, CargoDm> alvo)
 	{
-		foreach (string t in File.ReadAllLines(arq))
+		foreach (string t in Codigo(arq))
 		{
 			Match m = RxPainel.Match(t.Trim());
 			if (!m.Success) continue;
@@ -315,7 +346,7 @@ public static class DmRankScanner
 	/// </summary>
 	private static void LerRankVerbAssign(string arq, string raiz, Dictionary<string, CargoDm> alvo)
 	{
-		string[] L = File.ReadAllLines(arq);
+		string[] L = Codigo(arq);
 		int ini = Array.FindIndex(L, s => s.StartsWith("mob/proc/Rank_Verb_Assign(", StringComparison.Ordinal));
 		if (ini < 0) return;
 
@@ -341,7 +372,7 @@ public static class DmRankScanner
 	// --------------------------------------------------------------------------------------
 	private static void LerChavesEQuests(string arq, string raiz, Dictionary<string, CargoDm> alvo, VarreduraDeCargos v)
 	{
-		string[] L = File.ReadAllLines(arq);
+		string[] L = Codigo(arq);
 		var porChave = new Dictionary<string, string>(StringComparer.Ordinal); // key -> global
 		var nomes = new Dictionary<string, string>(StringComparer.Ordinal);
 		var listas = new Dictionary<string, List<string>>(StringComparer.Ordinal);
@@ -391,7 +422,7 @@ public static class DmRankScanner
 	/// </summary>
 	private static void LerRequisitos(string arq, string raiz, Dictionary<string, CargoDm> alvo, VarreduraDeCargos v)
 	{
-		string[] L = File.ReadAllLines(arq);
+		string[] L = Codigo(arq);
 		int ini = Array.FindIndex(L, s => s.StartsWith("proc/rq_requirements(", StringComparison.Ordinal));
 		if (ini < 0) { v.Avisos.Add("rq_requirements nao encontrado -- nenhum cargo tera requisito"); return; }
 
@@ -440,7 +471,7 @@ public static class DmRankScanner
 	/// </summary>
 	private static void LerEscada(string arq, Dictionary<string, CargoDm> alvo)
 	{
-		string[] L = File.ReadAllLines(arq);
+		string[] L = Codigo(arq);
 		int ini = Array.FindIndex(L, s => s.StartsWith("proc/rq_promo_targets(", StringComparison.Ordinal));
 		if (ini < 0) return;
 
@@ -491,7 +522,7 @@ public static class DmRankScanner
 			bool ehOrdered = arq.Replace('\\', '/').Contains("/Ranks/ordered/", StringComparison.OrdinalIgnoreCase);
 			if (!ehTree && !ehOrdered) continue;
 
-			string[] L = File.ReadAllLines(arq);
+			string[] L = Codigo(arq);
 			int slotAtual = -1;
 			string rankAtual = "";
 			string arvoreDoArquivo = "";
@@ -554,7 +585,7 @@ public static class DmRankScanner
 			a => string.Equals(Path.GetFileName(a), "GodOfDestruction.dm", StringComparison.OrdinalIgnoreCase));
 		if (arq == null || !alvo.TryGetValue("God_Of_Destruction", out CargoDm? god)) return;
 
-		string[] L = File.ReadAllLines(arq);
+		string[] L = Codigo(arq);
 		int ini = Array.FindIndex(L, s => s.StartsWith("mob/proc/god_apply_powers(", StringComparison.Ordinal));
 		if (ini < 0) return;
 
@@ -591,7 +622,7 @@ public static class DmRankScanner
 			if (string.Equals(nome, "RankQuests.dm", StringComparison.OrdinalIgnoreCase)) continue;
 			if (string.Equals(nome, "RankAssign.dm", StringComparison.OrdinalIgnoreCase)) continue;
 
-			string[] L = File.ReadAllLines(arq);
+			string[] L = Codigo(arq);
 			for (int i = 0; i < L.Length; i++)
 			{
 				Match m = rx.Match(L[i].TrimEnd());
@@ -615,7 +646,7 @@ public static class DmRankScanner
 		string? god = arquivos.FirstOrDefault(a => Path.GetFileName(a) == "GodOfDestruction.dm");
 		if (god != null && alvo.TryGetValue("God_Of_Destruction", out CargoDm? g2))
 		{
-			string[] L = File.ReadAllLines(god);
+			string[] L = Codigo(god);
 			int d = Array.FindIndex(L, s => s.StartsWith("mob/verb/Desafiar_God_of_Destruction(", StringComparison.Ordinal));
 			if (d >= 0) g2.Aquisicao.Add($"{Fonte(raiz, god, d + 1)} -- DUELO FORMAL: o desafiante precisa de God Ki DESPERTO; "
 				+ "vitoria por nocaute/morte transfere o titulo");
@@ -634,7 +665,9 @@ public static class DmRankScanner
 			string nome = Path.GetFileName(arq);
 			if (nome is "RankAssign.dm" or "RankQuests.dm" or "Rewards.dm") continue;
 
-			string[] L = File.ReadAllLines(arq);
+			// O CODIGO decide se a linha consulta o global; o texto CRU da a nota (o comentario da propria linha).
+			string[] L = Codigo(arq);
+			string[] cruas = File.ReadAllLines(arq);
 			for (int i = 0; i < L.Length; i++)
 			{
 				string t = L[i];
@@ -646,8 +679,9 @@ public static class DmRankScanner
 					if (!Regex.IsMatch(t, $@"\b{Regex.Escape(c.Global)}\s*==|==\s*{Regex.Escape(c.Global)}\b")) continue;
 					if (c.Concede.Notas.Count >= 12) continue;
 
-					int cm = t.IndexOf("//", StringComparison.Ordinal);
-					string nota = cm >= 0 ? t[(cm + 2)..].Trim() : t.Trim();
+					string crua = cruas[i];
+					int cm = crua.IndexOf("//", StringComparison.Ordinal);
+					string nota = cm >= 0 ? crua[(cm + 2)..].Trim() : crua.Trim();
 					if (nota.Length > 150) nota = nota[..150] + "...";
 					c.Concede.Notas.Add($"{Fonte(raiz, arq, i + 1)} -- {nota}");
 				}
@@ -805,7 +839,7 @@ public static class DmRankScanner
 	private static void LerDefines(string[] arquivos, Dictionary<string, double> saida)
 	{
 		foreach (string arq in arquivos)
-			foreach (string t in File.ReadAllLines(arq))
+			foreach (string t in Codigo(arq))
 			{
 				Match m = RxDefine.Match(t);
 				if (m.Success) saida[m.Groups["n"].Value] =

@@ -368,6 +368,10 @@ public partial class LocalPlayer : Node2D
 		// concedeu so gera correcao, entao nao existe motivo pra divergir.
 		cli.SheetUpdated += OnSheet;
 		cli.ZoneChanged += OnZone;
+		cli.MineracaoMudou += OnMineracao;
+		cli.EfeitoCaiu += OnAtividadeCaiu;
+		cli.CorpoAtualizado += OnCorpo;
+		if (cli.Corpo.Count > 0) OnCorpo(cli.Corpo);
 		if (cli.Sheet.SpeedStat > 0) SpeedStat = cli.Sheet.SpeedStat;
 	}
 
@@ -377,6 +381,9 @@ public partial class LocalPlayer : Node2D
 		cli.Corrected -= OnCorrected;
 		cli.SheetUpdated -= OnSheet;
 		cli.ZoneChanged -= OnZone;
+		cli.MineracaoMudou -= OnMineracao;
+		cli.EfeitoCaiu -= OnAtividadeCaiu;
+		cli.CorpoAtualizado -= OnCorpo;
 	}
 
 	private void OnSheet(SheetState ficha)
@@ -457,7 +464,19 @@ public partial class LocalPlayer : Node2D
 	private void OnZone(ZoneKey zona, Vec2 onde)
 	{
 		if (_ultimaFicha is { } f) _caido = Caido(f);
+
+		// SAIU DE UMA MENTE: o corpo acorda PARADO. O servidor desliga o `med`/`train` na saida do transe
+		// (`GameServer.LimparOCombateDaMente`) sem mandar pacote, e sem esta linha a pose e o HUD daqui
+		// continuariam dizendo "MEDITANDO" de um corpo que o resto do mundo ve de pe -- e o M seguinte
+		// mandaria um "parado" que nao para nada.
+		bool saiuDaMente = Jandirus.Core.World.DimensaoMental.EhAMente(_zonaDeAntes)
+						   && !Jandirus.Core.World.DimensaoMental.EhAMente(zona);
+		_zonaDeAntes = zona;
+		if (saiuDaMente) LargarAAtividade();
 	}
+
+	/// <summary>A zona em que este corpo estava antes da ultima troca. Ver <see cref="OnZone"/>.</summary>
+	private ZoneKey _zonaDeAntes;
 
 	/// <summary>
 	/// O <see cref="ServerPlayer.Deitado"/> do lado de ca, menos o arremesso (que ja tem caminho
@@ -477,6 +496,48 @@ public partial class LocalPlayer : Node2D
 	private static bool Prensado =>
 		GameClient.Instance is { } c
 		&& c.Atributos.Esmagamento >= Jandirus.Core.Stats.Esmagamento.RazaoQuePrende;
+
+	/// <summary>
+	/// O QUE O MEU CORPO PERDEU -- a conta de bracos e pernas do `DebuffsDeMembro`, refeita a cada `S2C.Corpo`
+	/// (<see cref="OnCorpo"/>) e nao a cada quadro. E a MESMA conta que o servidor faz no `PodeMexerOCorpo` e na
+	/// corrida: as duas pontas decidem pelo mesmo corpo e pela mesma funcao, que e o que impede este cliente de
+	/// tentar o passo que la vai ser recusado (uma correcao por pacote -- o corpo tremendo).
+	/// </summary>
+	private Jandirus.Core.Combat.DebuffsDeMembro.Perdas _perdas;
+
+	private void OnCorpo(List<Protocol.ParteState> partes) => _perdas = MenuJogo.PerdasDe(partes);
+
+	/// <summary>Ao leme, a nave nao anda com as pernas do piloto: as duas regras de perna nao valem (como no servidor).</summary>
+	private static bool AoLeme => GameClient.Instance is { VeiculoMontado.Length: > 0 };
+
+	/// <summary>
+	/// SEM AS DUAS PERNAS, NO CHAO -- `legsLost >= 2 && !flight` (`movement handler.dm:133`): a pergunta do
+	/// `GameServer.SemPernasNoChao`, com a mesma altura (a crua, do snapshot). Levantar voo solta o corpo.
+	/// </summary>
+	private bool SemPernasNoChao =>
+		_altitude <= 0f && !Jandirus.Core.Combat.DebuffsDeMembro.AndaNoChao(_perdas) && !AoLeme;
+
+	/// <summary>SEM UMA PERNA NAO HA CORRIDA NO CHAO (`speedy.dm:36`) -- a pergunta do `GameServer.SemPernaPraCorrer`.</summary>
+	private bool SemPernaPraCorrer =>
+		_altitude <= 0f && !Jandirus.Core.Combat.DebuffsDeMembro.Corre(_perdas) && !AoLeme;
+
+	/// <summary>O motivo que o <see cref="PorQueNaoAnda"/> devolve pra quem perdeu as duas pernas.</summary>
+	private const string MotivoSemPernas = "sem as duas pernas (no chao, so voando)";
+
+	/// <summary>Quando a proxima frase de membro pode sair (relogio do motor, em ms): a tecla e SEGURADA, a frase nao.</summary>
+	private ulong _avisoDeMembroEm;
+
+	private void AvisarDoMembro(string frase)
+	{
+		ulong agora = Time.GetTicksMsec();
+		if (agora < _avisoDeMembroEm) return;
+		_avisoDeMembroEm = agora + 4000;
+		Chat.Sistema(frase);
+	}
+
+	private static bool TeclaDeAndarApertada() =>
+		Godot.Input.IsActionPressed(Teclas.NomeNoMotor("move_right")) || Godot.Input.IsActionPressed(Teclas.NomeNoMotor("move_left"))
+		|| Godot.Input.IsActionPressed(Teclas.NomeNoMotor("move_down")) || Godot.Input.IsActionPressed(Teclas.NomeNoMotor("move_up"));
 
 	/// <summary>Estou sendo ARREMESSADO -- quem move o corpo agora e o servidor.</summary>
 	private bool _empurrado;
@@ -525,6 +586,7 @@ public partial class LocalPlayer : Node2D
 		: Transformacao.PrendendoOCorpo           ? "preso pela cinematica de transformacao"
 		: Prensado                                ? "prensado pela gravidade (ou pelo peso)"
 		: PresoNoTorneio                          ? "na area de espera do torneio"
+		: SemPernasNoChao                         ? MotivoSemPernas
 		: "";
 
 	/// <summary>
@@ -703,7 +765,14 @@ public partial class LocalPlayer : Node2D
 		// A LISTA MORA NO `PorQueNaoAnda`, E SO LA. Ela estava escrita aqui como um `||` de sete
 		// termos; virou propriedade quando ficou claro que "o corpo nao saiu do lugar" precisa dizer
 		// QUAL dos sete foi -- e duas listas iguais em dois lugares e uma promessa de divergirem.
-		var input = PorQueNaoAnda.Length > 0
+		// SEM AS DUAS PERNAS o corpo so sai do lugar voando (`movement handler.dm:133`). O servidor recusa o passo
+		// pelo `PodeMexerOCorpo`, e aqui ele nem e tentado -- mas quem aperta uma direcao le o PORQUE (a frase e do
+		// Core, a mesma regra que o servidor aplica), em vez de achar que o teclado morreu.
+		string porQueNaoAnda = PorQueNaoAnda;
+		if (porQueNaoAnda == MotivoSemPernas && TeclaDeAndarApertada())
+			AvisarDoMembro(Jandirus.Core.Combat.DebuffsDeMembro.AvisoDeChao);
+
+		var input = porQueNaoAnda.Length > 0
 			? Vector2.Zero   // no chao nao se anda: ver OnSheet
 			: new Vector2(
 				Godot.Input.GetActionStrength(Teclas.NomeNoMotor("move_right")) - Godot.Input.GetActionStrength(Teclas.NomeNoMotor("move_left")),
@@ -727,7 +796,7 @@ public partial class LocalPlayer : Node2D
 		// O RAIO ENTROU AQUI JUNTO COM O `input` LA EM CIMA, e nao depois: as duas linhas dizem a
 		// MESMA frase ("este corpo nao anda") e uma sem a outra reproduz exatamente o defeito que
 		// este comentario ja conta -- foi assim que a carga de Ki o produziu da primeira vez.
-		if ((_caido || _carregando || _canalDeKi) && Destino != null)
+		if ((_caido || _carregando || _canalDeKi || SemPernasNoChao) && Destino != null)
 		{
 			Destino = null;
 			Chat.Sistema("piloto automatico desligado.");
@@ -767,9 +836,13 @@ public partial class LocalPlayer : Node2D
 		// no ar (ver `GameServer.Input`). Manter o teste de Ki da corrida aqui faria o borrao piscar
 		// no cliente enquanto o servidor continuava dando a velocidade -- as duas pontas contando
 		// historias diferentes do mesmo gesto.
+		// SEM UMA PERNA NAO HA CORRIDA NO CHAO (`speedy.dm:36`): o servidor nao a concede, entao este cliente nem a
+		// pede -- andar no passo de corrida sem ela seria uma correcao por pacote. Quem segura o SHIFT le o porque.
+		if (_shift && tentandoAndar && SemPernaPraCorrer)
+			AvisarDoMembro(Jandirus.Core.Combat.DebuffsDeMembro.AvisoDeCorrida);
 		bool querCorrer = _shift && tentandoAndar && !_carregando
-			&& (_altitude > 0f || _temKiPraCorrer);
-		if (querCorrer && !_correndo) AudioDirector.EfeitoNoLugar(this, Trilha.Dash, 0.5f);
+			&& (_altitude > 0f || (_temKiPraCorrer && !SemPernaPraCorrer));
+		if (querCorrer && !_correndo) AudioDirector.EfeitoNoLugar(this, Trilha.Dash, RemotePlayer.VolumeDoArranque);
 		_correndo = querCorrer;
 
 		// ARREMESSADO NAO DIRIGE. Enquanto o servidor esta jogando o corpo, o cliente para de
@@ -1260,6 +1333,9 @@ public partial class LocalPlayer : Node2D
 		{
 			Protocol.Activity.Treinando => "train",
 			Protocol.Activity.Meditando => "meditate",
+			// MINERAR NAO TEM FOLHA PROPRIA nos .dmi (ver acima o que o corpo tem): a de treino e a de "corpo
+			// ocupado trabalhando", e e a mesma que o servidor manda pros outros (`ServerPlayer.Pose`).
+			Protocol.Activity.Minerando => "train",
 			_ => "default",
 		});
 	}
@@ -1283,6 +1359,13 @@ public partial class LocalPlayer : Node2D
 	///     "meditando" pra pose e pro HUD de um corpo que o servidor sabe que nao esta.
 	/// ==========================================================================================
 	/// </summary>
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagtranse`): dentro da mente a tecla de meditar volta a so mexer na
+	/// atividade -- o estado de antes de 2026-10-10, em que nao havia gesto de saida. Lido pela propria linha da
+	/// saida, em <see cref="LerAtividade"/>.
+	/// </summary>
+	public static bool MNaoAcordaDeTeste;
+
 	private void LerAtividade(bool andando)
 	{
 		bool fera = !Jandirus.Core.Forms.Oozaru.FeraMeditaDeTeste
@@ -1294,9 +1377,24 @@ public partial class LocalPlayer : Node2D
 		_eraFera = fera;
 
 		Protocol.Activity nova = _atividade;
+		// "MINERAR" NAO TEM TECLA PROPRIA: o pedido vem do verb e do "Parar" da faixa (ver `PedirMineracao`). ANTES
+		// do portao dos atalhos, e de proposito: um clique num botao nao e uma letra que o chat esteja comendo.
+		// O mesmo toc-toc do T e do M -- pedir minerando PARA.
+		if (LerPedidoDeMineracao())
+		{
+			if (_atividade == Protocol.Activity.Minerando) nova = Protocol.Activity.Parado;
+			// ANDANDO NAO COMECA: o `if (andando)` logo abaixo derrubaria o pedido calado, e verb que nao
+			// responde e o pior dos defeitos deste menu.
+			else if (andando) Chat.Sistema(Jandirus.Core.Economia.Recurso.NaoSeMineraAndando);
+			else
+			{
+				nova = Protocol.Activity.Minerando;
+				GameClient.Instance?.EsquecerMineracao();   // a faixa nao abre com os numeros da leva anterior
+			}
+		}
 		// "treinar" e "meditar" sao T e M -- no meio de uma frase, nao; e no meio de um embate tambem
 		// nao, que as duas estao entre as 22 letras sorteadas. Ver `Foco.AtalhosMudos`.
-		if (Foco.AtalhosMudos) { }
+		else if (Foco.AtalhosMudos) { }
 		else if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("train")))
 			nova = _atividade == Protocol.Activity.Treinando ? Protocol.Activity.Parado : Protocol.Activity.Treinando;
 		else if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("meditate")))
@@ -1321,6 +1419,14 @@ public partial class LocalPlayer : Node2D
 			// SEM A TELINHA MONTADA (mundo ainda subindo, bancada sem interface), o M volta a meditar
 			// direto. Uma tecla que nao responde porque um node nao nasceu seria a pior das falhas.
 			// ==================================================================================
+			//
+			// DENTRO DA MENTE, O M ACORDA -- `if(mind_session) mind_exit()` (`Meditate.dm:20-21`), o gesto de
+			// saida do original que nao tinha sido portado: aqui o M so parava a atividade (ou reabria a
+			// telinha com o botao da profunda apagado), e a unica porta era um verb no fim do menu P. ANTES
+			// de tudo, e sem olhar a atividade: quem esta numa mente e aperta a tecla de meditar quer sair.
+			// O mesmo verbo do botao do alto da tela -- ver `SaidaDaMente`.
+			if (!MNaoAcordaDeTeste && SaidaDaMente.NaMente) { SaidaDaMente.Pedir(); return; }
+
 			if (_atividade == Protocol.Activity.Meditando) nova = Protocol.Activity.Parado;
 			else if (fera) { Chat.Sistema("a fera não medita."); return; }
 			else if (!andando && TelaDeMeditacao.Instancia is { } pergunta)
@@ -1384,12 +1490,150 @@ public partial class LocalPlayer : Node2D
 	}
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancada `--validacoesteste`, ponta do cliente): o corpo nao escuta o servidor derrubar o
+	/// treino ou a meditacao -- a pose e o "TREINANDO" do HUD continuam num corpo que ja nao ganha nada. Lido pela
+	/// propria escuta, em <see cref="OnAtividadeCaiu"/>.
+	/// </summary>
+	public static bool AtividadeNaoCaiDeTeste;
+
+	/// <summary>
+	/// O SERVIDOR DERRUBOU (OU RECUSOU) O MEU TREINO OU A MINHA MEDITACAO -- o efeito
+	/// <see cref="Jandirus.Core.Stats.TreinoEMeditacao.EfeitoDeQueCaiu"/>, a zero, pelo `GameClient.EfeitoCaiu`.
+	/// Quem decide se o corpo treina e ele (`GameServer.Atividade.cs`): voando, brigando, caido ou fora do lugar,
+	/// nao. A atividade daqui cai SEM PACOTE, como na posse e na mineracao -- foi ele quem parou.
+	///
+	/// SO AS DUAS: a mineracao tem o canal dela (<see cref="OnMineracao"/>), e um "caiu" atrasado nao pode
+	/// derrubar a picareta de quem acabou de trocar de atividade.
+	/// </summary>
+	private void OnAtividadeCaiu(string efeito, long ms)
+	{
+		if (AtividadeNaoCaiDeTeste || ms != 0 || efeito != Jandirus.Core.Stats.TreinoEMeditacao.EfeitoDeQueCaiu) return;
+		if (_atividade is Protocol.Activity.Treinando or Protocol.Activity.Meditando) LargarAAtividade();
+	}
+
+	/// <summary>
 	/// O QUE ESTE CORPO ESTA FAZENDO (parado, treinando, meditando). SO PRA BANCADA (`--diagforma`).
 	///
 	/// Existe pra a bancada poder cobrar que, possuido, NENHUMA das duas teclas muda isto -- a regra do
 	/// lado do cliente e a ausencia de uma leitura, e ausencia nao deixa pacote pra espiar.
 	/// </summary>
 	public Protocol.Activity AtividadeDeTeste => _atividade;
+
+	// =====================================================================
+	// MINERAR -- a terceira atividade (dono, 2026-10-10)
+	//
+	// *"adicionando um verb chamado mineirar ao qual vc comeca a pegar resource por segundo [...] ao estar
+	// mineirando e igual meditacao vc n pode se mover nem fazer nada"*. A regra (quanto rende, de onde sai, o
+	// que interrompe) e do servidor -- `GameServer.Recursos.cs`. Daqui sai a DECLARACAO, pelo mesmo
+	// `C2S.Activity` do treino e da meditacao, e a metade desta ponta: a pose do corpo e o que o HUD diz.
+	// =====================================================================
+	/// <summary>
+	/// HA UM PEDIDO DO VERB "MINERAR" ESPERANDO, e em que QUADRO ele foi feito (`Engine.GetProcessFrames`) e a que
+	/// horas (relogio do processo, so pro defeito injetado).
+	///
+	/// ESTATICO E COM PRAZO, e as duas coisas tem motivo. Estatico: quem pede e o verb do menu P e o "Parar" da
+	/// faixa (`PainelDeMineracao`), que nao tem o corpo na mao -- e a atividade e DESTE arquivo (ela e a pose do
+	/// proprio corpo; ver <see cref="EscolheuMeditar"/>). Com prazo: o pedido e lido no
+	/// <see cref="LerAtividade"/>, que nao roda com o corpo arremessado ou sem as redeas, e um pedido sem prazo
+	/// ficaria guardado ate o corpo voltar -- minerando sozinho um minuto depois do clique.
+	///
+	/// ============================ O PRAZO E EM QUADROS, E NAO EM MILISSEGUNDOS ============================
+	/// Era em milissegundos (400), e um QUADRO LONGO comia o clique calado: o botao era apertado, o quadro
+	/// seguinte demorava mais que o prazo (o servidor no mesmo processo nascendo a populacao do mundo, uma zona
+	/// carregando, uma pausa do coletor) e, quando o corpo enfim lia o pedido, ele ja tinha "vencido" -- sem
+	/// frase, sem nada. Foi a `--diagminerar` que pegou, numa rodada com o boot mais pesado. O que se quer do
+	/// prazo e "o corpo teve a chance de ler e nao leu", e isso se conta em quadros do corpo: um quadro longo e
+	/// UM quadro.
+	/// ==================================================================================================
+	/// </summary>
+	private static bool _haPedidoDeMineracao;
+	private static ulong _pedidoDeMineracaoNoQuadro;
+	private static long _pedidoDeMineracaoEm;
+
+	/// <summary>
+	/// Quantos quadros um pedido de minerar vale sem ser lido. Dois: o do proprio clique (o botao pode ser
+	/// apertado depois de o corpo ja ter rodado neste quadro) e o seguinte.
+	/// </summary>
+	private const ulong QuadrosDeValidadeDoPedidoDeMineracao = 2;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagminerar`): o pedido vence pelo RELOGIO (400 ms), como na primeira versao
+	/// -- e um quadro mais longo que isso come o clique. Lido pela propria leitura, em
+	/// <see cref="LerPedidoDeMineracao"/>.
+	/// </summary>
+	public static bool PedidoDeMineracaoVenceNoRelogioDeTeste;
+
+	/// <summary>
+	/// O VERB "MINERAR" (e o "Parar" da faixa): comeca se o corpo nao esta minerando, para se esta -- o mesmo
+	/// toc-toc do T e do M. So um PEDIDO: quem decide se ha o que tirar deste chao e o servidor.
+	///
+	/// O QUE ESTA PONTA JA SABE RECUSAR, RECUSA AQUI, COM A FRASE: sem isto o "MINERANDO" acenderia e apagaria
+	/// no HUD a cada pedido que o servidor fosse negar, e o pedido de um corpo caido (que nem le atividade)
+	/// morreria calado. As perguntas sao as do servidor (`PorQueNaoMinera`), pelas mesmas funcoes do Core, e as
+	/// frases sao as mesmas constantes -- e ele continua sendo quem decide: o que passar daqui e ele negar, cai
+	/// pelo <see cref="OnMineracao"/>.
+	/// </summary>
+	public static void PedirMineracao()
+	{
+		if (GameClient.Instance is not { Connected: true } cli) return;
+
+		// PARAR NUNCA E RECUSADO: quem esta minerando e pede, para.
+		if (cli.Atividade != Protocol.Activity.Minerando)
+		{
+			string porque = PorQueNaoMinero(cli);
+			if (porque.Length > 0) { Chat.Sistema(porque); return; }
+		}
+		_haPedidoDeMineracao = true;
+		_pedidoDeMineracaoNoQuadro = Engine.GetProcessFrames();
+		_pedidoDeMineracaoEm = System.Environment.TickCount64;
+	}
+
+	/// <summary>
+	/// Por que este corpo nao pode comecar a minerar, pelo que o cliente sabe -- vazio = pode pedir. Na ordem do
+	/// servidor. Morto nao minera nem de pe no Outro Mundo: e a ficha que se le aqui, e nao o
+	/// <see cref="_caido"/> (que e "deitado").
+	/// </summary>
+	private static string PorQueNaoMinero(GameClient cli) =>
+		  cli.Sheet.KO || cli.Sheet.Morto                              ? Jandirus.Core.Economia.Recurso.SemCondicoesDeMinerar
+		: cli.MeuOozaru != Jandirus.Core.Forms.FormaOozaru.Nao         ? Jandirus.Core.Economia.Recurso.AFeraNaoMinera
+		: PresoNoTorneio || cli.Sheet.Empurrado                        ? Jandirus.Core.Economia.Recurso.NaoDaPraMinerarAgora
+		: !Jandirus.Core.World.Espaco.EhPlaneta(cli.Zone)              ? Jandirus.Core.Economia.Recurso.NaoHaOQueMinerar
+		: "";
+
+	/// <summary>Ha um pedido de minerar ainda valido? Ler GASTA o pedido -- ele e um clique, nao um estado.</summary>
+	private static bool LerPedidoDeMineracao()
+	{
+		if (!_haPedidoDeMineracao) return false;
+		_haPedidoDeMineracao = false;
+		return PedidoDeMineracaoVenceNoRelogioDeTeste
+			? System.Environment.TickCount64 - _pedidoDeMineracaoEm <= 400
+			: Engine.GetProcessFrames() - _pedidoDeMineracaoNoQuadro <= QuadrosDeValidadeDoPedidoDeMineracao;
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagminerar`): o cliente nao escuta o servidor parar a mineracao -- a pose, o
+	/// "MINERANDO" do HUD e a faixa continuam de pe num corpo que ja nao tira nada. Lido pela propria escuta, em
+	/// <see cref="OnMineracao"/>.
+	/// </summary>
+	public static bool MineracaoNaoCaiDeTeste;
+
+	/// <summary>
+	/// O SERVIDOR CONTOU COMO ESTA A MINHA MINERACAO (`S2C.Mineracao`, pelo `GameClient.MineracaoMudou`).
+	///
+	/// PAROU (a reserva secou, eu soquei, o corpo foi tirado do lugar, o pedido foi negado): a atividade daqui
+	/// cai SEM PACOTE, como na posse -- foi ele quem parou, e nao ha o que declarar de volta.
+	///
+	/// ESTA DE PE E ESTA PONTA NAO ESTA MINERANDO: os dois lados se cruzaram no fio (um "parei" daqui e um
+	/// "comecou" de la). A atividade e DECLARADA por esta ponta, entao a resposta e redeclarar a que vale aqui:
+	/// o servidor para, e as duas pontas voltam a contar a mesma historia. Sem isto o corpo seguiria minerando
+	/// la -- recurso pingando, pose de treino na tela dos outros -- com este cliente dizendo que esta parado.
+	/// </summary>
+	private void OnMineracao(bool ativa)
+	{
+		if (MineracaoNaoCaiDeTeste) return;
+		if (!ativa) { if (_atividade == Protocol.Activity.Minerando) LargarAAtividade(); }
+		else if (_atividade != Protocol.Activity.Minerando) GameClient.Instance?.SendActivity(_atividade);
+	}
 
 	// =====================================================================
 	// A TECLA C

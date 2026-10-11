@@ -575,8 +575,9 @@ public partial class GameServer
 			Avisar(pl, "Enma Daioh: \"Sua ampulheta virou pela última vez -- morte de velhice não tem volta.\"");
 			return;
 		}
+		// O PRECO E O DESTA ALMA: quem foi apagado por Hakai le o dobro aqui, e nao so na recusa -- ver `PrecoDoEnmaPara`.
 		Avisar(pl, $"Enma Daioh lê a sua ficha: \"Uma alma equilibrada. Pode descansar no Outro Mundo -- ou voltar, por "
-				 + $"{Alem.PrecoDoReviveDoEnma:N0} zeni. Você tem {pl.Ficha.Zeni:N0}.\"");
+				 + $"{PrecoDoEnmaPara(pl):N0} zeni. Você tem {pl.Ficha.Zeni:N0}.\"" + FraseDoHakaiNoEnma(pl));
 	}
 
 	/// <summary>
@@ -660,8 +661,10 @@ public partial class GameServer
 	/// vida, membros, Ki e folego, que e o que `Revive()` faz la (`Death.dm:163-173`) e o `Renascer`
 	/// faz aqui.
 	///
-	/// NAO PORTADO (ainda): o dobro do preco pra quem foi apagado por Hakai (`hakai_mark`, campo que
-	/// nao existe aqui), a reencarnacao a 10% e o julgamento pro Inferno por karma negativo.
+	/// O DOBRO PRA QUEM FOI APAGADO POR HAKAI (`hakai_mark`, `:189`) sai do `PrecoDoEnmaPara`
+	/// (`GameServer.KitDoDeus.cs`), e a marca cai na volta a vida (`CombatState.Reviver`).
+	///
+	/// NAO PORTADO (ainda): a reencarnacao a 10%.
 	/// </summary>
 	private void EnmaReviverPorZeni(ServerPlayer pl)
 	{
@@ -673,10 +676,11 @@ public partial class GameServer
 			Avisar(pl, "Enma Daioh: \"Nem todo o zeni do universo compra mais um dia para quem já viveu todos os seus.\"");
 			return;
 		}
-		double custo = EnmaNaoCobraDeTeste ? 0 : Alem.PrecoDoReviveDoEnma;
+		double custo = EnmaNaoCobraDeTeste ? 0 : PrecoDoEnmaPara(pl);
 		if (pl.Ficha.Zeni < custo)
 		{
-			Avisar(pl, $"Enma Daioh: \"Você não tem como pagar a viagem de volta! Volte quando tiver {custo:N0} zeni.\"");
+			Avisar(pl, $"Enma Daioh: \"Você não tem como pagar a viagem de volta! Volte quando tiver {custo:N0} zeni.\""
+					 + FraseDoHakaiNoEnma(pl));
 			return;
 		}
 		pl.Ficha.Zeni -= custo;

@@ -160,6 +160,21 @@ public enum LinhaDeForma
 	/// ==============================================================================================
 	/// </summary>
 	Alien,
+
+	/// <summary>
+	/// ============================ A FURY -- `GodOfDestruction.dm:388-419` ============================
+	/// UMA entrada, e ela e a linha inteira: a forma do TITULO de Deus da Destruicao (72x, fixo).
+	///
+	/// ELA NAO E DEGRAU DE ESCADA NENHUMA, e isso e literal do DM: la a Fury e um buff ligado por um verb
+	/// proprio (`God_Fury`, `:411`), nao pela tecla de transformar, e o unico portao dela e
+	/// `god_is_god(usr)` -- carregar o titulo AGORA. Por isso o <see cref="EstadoDeForma.Avaliar"/> a
+	/// recusa pra todo mundo (ver <see cref="Catalogo.SoPeloTitulo"/>): quem a liga e o servidor, que e
+	/// quem sabe de quem e o trono (`GameServer.KitDoDeus.cs`).
+	///
+	/// NO FIM DO ENUM de proposito: os valores anteriores nao mudam de numero.
+	/// ================================================================================================
+	/// </summary>
+	DeusDaDestruicao,
 }
 
 /// <summary>
@@ -434,6 +449,27 @@ public sealed class FormaDef
 
 	/// <summary>Qual limiar pessoal manda nesta forma ("ssjat", "ssj2at"...). Vazio = usa o de fabrica.</summary>
 	public string ChaveDoLimiar = "";
+
+	/// <summary>
+	/// ============================ O PRECO DA RAIVA **COMUM** -- o ramo `if("Angry")` do DM ============================
+	/// POR QUANTO A PORTA DE BP E MULTIPLICADA quando quem DESPERTA esta forma esta so na raiva comum (viu um
+	/// amigo CAIR, <see cref="NivelDeRaiva.Lendaria"/>) e nao na furia extrema (viu morrer). ZERO = a raiva comum
+	/// nao abre esta forma: o Beast, e tudo o que nao nasce da raiva.
+	///
+	/// O dono (2026-10-11): *"o rage normal (ao ver um amigo ser nocauteado mas n morto) tb faz vc se transformar
+	/// da mesma forma q o extreme, porem o requisito de bp pro rage normal liberar sua proxima transformacao e
+	/// maior (no dm tem esses detalhes)"*. No DM cada despertar por raiva e um `switch(savant.Emotion)` com um
+	/// literal por humor -- `"Very Angry"` entra pela porta, `"Angry"` cobra a porta vezes este numero --, e o
+	/// literal muda de forma pra forma. Por isso e CAMPO da entrada e nao derivado da linha: cada entrada cita a
+	/// linha do DM dela, e os numeros tem nome (`Catalogo.AgioComumDoSaiyajin` e vizinhos).
+	///
+	/// SO VALE NO DESPERTAR (`!Despertou`), como a propria raiva: forma ja despertada reentra pela porta de sempre.
+	/// E NAO VALE NA TRANSFORMACAO ASSISTIDA por um mestre, que tem preco proprio (a metade): la o `mst_form_apply`
+	/// (`MasterStudent.dm:361`) chama a proc da forma direto, sem passar pelo `switch` do humor. Quem cobra e o
+	/// passo 9 do <see cref="EstadoDeForma.Avaliar"/>.
+	/// ==================================================================================================================
+	/// </summary>
+	public double AgioNaRaivaComum;
 
 	/// <summary>
 	/// ============================ A FORMA QUE SE **COMPRA** ANTES DE PODER TER ============================
@@ -762,6 +798,32 @@ public sealed class FormaDef
 	public double NumeroDm = -1;
 
 	/// <summary>
+	/// O MARCO DE GANHO QUE ESTA FORMA CONCEDE -- a etiqueta da `Stats.Milestones.Tabela`. Vazio = nenhum.
+	///
+	/// ============================ A FORMA DIZ O MARCO DELA, E MAIS NINGUEM ============================
+	/// No DM o marco e uma chamada escrita a mao dentro da proc de cada transformacao
+	/// (`bp_milestone_reach("ssj2")` logo depois do `ssj=2`), e foi assim que tres ficaram pelo caminho
+	/// la mesmo: a `frost_final` e a `lssj4` estao na tabela e nenhuma proc as chama, e o caminho comum
+	/// do `Restrained_SSj()` faz `lssj=1` sem o marco (`lssjbuff.dm:286`). Neste port NENHUMA era
+	/// concedida: a tabela veio e as chamadas nao.
+	///
+	/// Aqui a etiqueta e DADO da entrada, como o resto: quem confere e uma funcao so, por estado
+	/// (<see cref="MarcosDeForma"/>) -- "este corpo ja esteve nesta forma, ou esta nela agora?" --, e nao
+	/// um gancho em cada jeito de entrar numa forma. Forma nova com marco = este campo, e mais nada.
+	///
+	/// NAO EMPILHA (vale o maior: `Fighter.ReachMilestone`), entao irmas podem repetir a etiqueta: os
+	/// degraus do Legendary Primal usam as do Super Saiyajin, porque no DM eles SAO a mesma `mob/var/ssj`
+	/// e passam pelas mesmas procs; Blue, Evolution e os dois Rose dividem a `blue`.
+	///
+	/// QUEM NAO TEM, E POR QUE: o Super Saiyajin God (ki divino SEM SSJ -- o marco dele e o `godki` do
+	/// despertar), os dois Limit Breaker (`SSj4FPLB()`, `supersaiyanbuff.dm:827-849`: nenhuma chamada), o
+	/// Mistico e o Beast, as disciplinas divinas, o Oozaru, o Super Namekuseijin, o Heran, o Alien e a
+	/// Super Perfeita -- nenhuma das procs deles chama `bp_milestone_reach`.
+	/// ==================================================================================================
+	/// </summary>
+	public string Marco = "";
+
+	/// <summary>
 	/// MULTIPLICADOR ABSOLUTO: substitui a escada em vez de somar-se a ela.
 	///
 	/// As formas divinas do DM vivem em `god_form_mult`, e NAO em `ssjBuff` -- ha comentario
@@ -864,48 +926,71 @@ public sealed record CurvaDeGodKi(string[] Origens, double SemGodKi, double AoDe
 ///     IsInFight`, pra um `lastDamager` velho nao transformar um desmaio por gravidade em luta.
 ///   * <see cref="Extrema"/> -- `Do_Anger_Stuff(1)`, de `Death.dm:81` (amigo MORTO por um inimigo,
 ///     com o comentario *"friend was KILLED by an enemy -> EXTREMELY enraged"*) e de
-///     `MajinSaga.dm:173` (amigo ABSORVIDO -- ve-lo sumir vale o mesmo que ve-lo morrer). **O
-///     segundo continua sem chamador aqui**, e o motivo MUDOU -- ver o bloco logo abaixo.
+///     `MajinSaga.dm:173` (amigo ABSORVIDO -- ve-lo sumir vale o mesmo que ve-lo morrer).
 ///
-/// ============================ A ABSORCAO EXISTE; ABSORVER AMIGO E QUE NAO ============================
-/// Este texto dizia *"a absorcao do Majin nao existe neste port; quando a saga vier, ela chama o
-/// mesmo gancho"*. A saga VEIO (`Core/Npc/Sagas.cs` + `GameServer.Sagas.cs`) e trouxe absorcao
-/// junto: `AbsorverCompanheiroCaido` e o `cell_absorb_contact` do original, com o chefe subindo de
-/// degrau em cima do companheiro nocauteado.
+/// ============================ AS ABSORCOES QUE CHEGAM AO GANCHO ============================
+/// Duas, e as duas sao coisa que um INIMIGO faz com alguem: a do bio-androide (mata a vitima, e chega pelo
+/// funil da derrota) e a do Majin (`GameServer.LutoPelaAbsorcao`). A do chefe de saga
+/// (`AbsorverCompanheiroCaido`, o `cell_absorb_contact` do original) come outro CHEFE -- um NPC de roteiro,
+/// que nao esta na lista social de ninguem -- e continua de fora com razao.
 ///
-/// SO QUE ELA COME CHEFE, E NAO AMIGO. A presa e sempre outro `EstadoDoChefe` do mesmo elo -- um
-/// NPC de roteiro --, e o luto deste arquivo e entre PESSOAS que se conhecem (o convivio, por
-/// assinatura de conta). Ninguem nunca ve um amigo ser absorvido, entao o gancho continua mudo com
-/// razao, e nao por fiacao esquecida.
+/// **A FUSAO NAMEKUSEIJIN NAO ENFURECE NINGUEM** (dono, 2026-10-11: *"fusao namek n deveria dar o trigger na
+/// raiva"*). Ela apaga o personagem do absorvido, mas e CONSENTIDA -- convite e duas confirmacoes -- e no DM
+/// tambem nao chama o `Do_Anger_Stuff` (`Fusion.dm:301-310` so a torna definitiva). A bancada `--raivateste`
+/// mede a ausencia com a fusao de verdade, e a `raiva` [8] le o fonte dela.
 ///
-/// O DIA EM QUE A PRESA PUDER SER UM JOGADOR, a chamada e uma linha dentro do
-/// `AbsorverCompanheiroCaido`, com <see cref="Extrema"/> -- e a mesma porta do `AmigoAbatido` que a
-/// morte ja usa. Ate la, este comentario diz o que E, e nao o que falta.
+/// ============================ E O QUE CADA DEGRAU **VALE** (dono, 2026-10-11) ============================
+/// Este enum nasceu pra PORTA das formas. O que cada degrau rende em poder, e o que so o de cima faz
+/// (a cinematica, o tema, o Ki no teto de carga), mora em `Core.Combat.RaivaEmDegraus`: la o
+/// <see cref="Lendaria"/> e a raiva COMUM (o "angry" do dono) e o <see cref="Extrema"/> e o degrau
+/// mais alto.
 /// ================================================================================================
 ///
 /// Os dois filtram por INIMIGO e pulam o proprio autor (`Death.dm:75-77`, `KO.dm:30-35`): um spar
 /// entre amigos nao acende raiva nenhuma, e quem derrubou o amigo nao ganha forma por isso.
 ///
-/// ============================ POR QUE `Lendaria` E NAO `Comum` ============================
-/// Porque o desconto tem dono. Ordem do dono: *"o Legendary Saiyajin tem a skill `legendary anger`
-/// e por isso precisa de MENOS: basta ver um amigo ser NOCAUTEADO ou apanhar muito numa luta"*.
-/// Chamar este degrau de "comum" diria que ele e o padrao e que o luto e a excecao -- e a regra e
-/// o contrario: **o padrao e a furia extrema**, e a linha Legendary e a unica que compra barato.
+/// ============================ AS FORMAS DE RAIVA ABREM COM OS DOIS, E CADA UM TEM O SEU PRECO (dono, 2026-10-11) ============================
+/// O dono: *"no dm a raiva extrema faz vc se transformar mais facil nas formas q dependem de raiva (ssj1, ssj2,
+/// beast, formas de lendario etc), o rage normal (ao ver um amigo ser nocauteado mas n morto) tb faz vc se
+/// transformar da mesma forma q o extreme, porem o requisito de bp pro rage normal liberar sua proxima
+/// transformacao e maior"*.
 ///
-/// E o desconto e da LINHA e nao da skill, de proposito -- sem campo novo, como manda a casa. A
-/// `Legendary_Anger` so existe pra quem e Legendary, e as formas dela ja sao recusadas a todo
-/// mundo pelo `LinhasAbertas`; derivar do arco da linha diz a mesma coisa e ainda pega o degrau
-/// Legendary que alguem acrescentar amanha.
+/// E O `switch(savant.Emotion)` DO ORIGINAL, que roda igual em toda forma de raiva (`supersaiyan.dm:60-161`,
+/// `heran.dm:20-52`): `"Very Angry"` entra pela porta de BP, `"Angry"` cobra a porta vezes um literal. Os dois
+/// degraus daqui caem nesses dois humores (`Core.Combat.RaivaEmDegraus`: a extrema vale o topo da regua, a comum
+/// vale `100 + folga/1,30`, dentro da faixa "Angry" de `Stats.dm:448-449`), entao:
 ///
-/// ============================ ISTO DIVERGE DO DM DE PROPOSITO ============================
-/// Vale saber antes de "consertar": la o Legendary e MAIS estrito, nao menos. `supersaiyan.dm:60-74`
-/// cobra `ssjat * 1.5` no degrau "Angry" contra `ssjat * 1.2` do SSJ1 comum (`:105-118`), e sem a
-/// escapatoria por `prob(SSJInspired)` que o comum tem. E a `Legendary_Anger` (`saiyan.dm:38-51`)
-/// nao toca gatilho nenhum -- *"That's all it does- no sacrificed form, no drawbacks"* --: ela so
-/// escreve `legendaryAngerBonus = 100`, que e TETO DE PODER (`base.dm:88` leva o `angerBuff` de 2x
-/// pra 3x; `master.dm:180` leva o `MaxAnger` junto). O desconto de PERMISSAO e desenho novo,
-/// ditado pelo dono, e o DM nao tem opiniao sobre ele.
-/// ==================================================================================
+///   * <see cref="Extrema"/> abre toda forma de raiva pela PORTA dela;
+///   * <see cref="Lendaria"/> -- a COMUM -- abre as mesmas formas pela porta VEZES o agio da entrada
+///     (<see cref="FormaDef.AgioNaRaivaComum"/>: 1,2 no tronco Saiyajin, 1,3 no primeiro degrau do Heran, 1,5 na
+///     linha Legendary). So o Beast nao tem ramo `"Angry"` no DM (`supersaiyan.dm:166`): so a extrema o abre.
+///
+/// Nos dois casos a entrada e AUTOMATICA e e a ESTREIA da forma (`GameServer.DespertarPelaRaiva`): o DM chama
+/// `SSj()`, `SSj2()`, `Max_Power()`, `Restrained_SSj()`... de dentro do proprio `effector`. A raiva comum continua
+/// sem cinematica de raiva, sem tema e sem salto de Ki -- quando ela transforma, a cena e a da transformacao.
+///
+/// ============================ O QUE ISTO SUBSTITUIU, PRA QUEM FOR CONFERIR ============================
+/// Ate 2026-10-11 a regra era outra, tambem do dono: o tronco Saiyajin (e o Futuro, e o Heran) so abria com a
+/// furia EXTREMA, e a linha Legendary abria com a comum SEM agio -- *"o Legendary Saiyajin tem a skill
+/// `legendary anger` e por isso precisa de MENOS: basta ver um amigo ser NOCAUTEADO"*. O pedido novo vale por
+/// cima, e com os numeros do DM o Legendary deixou de pagar menos: na raiva comum ele paga 1,5x a porta, contra
+/// 1,2x do Saiyajin comum -- la o Legendary sempre foi o mais estrito (`supersaiyan.dm:67-70` contra `:111-114`).
+/// A `Legendary_Anger` (`saiyan.dm:38-51`) nunca tocou gatilho nenhum: ela e TETO DE PODER (`base.dm:88` leva o
+/// `angerBuff` de 2x pra 3x). O NOME `Lendaria` ficou daquela regra; hoje ele quer dizer "a raiva comum".
+///
+/// ============================ O QUE DO DM NAO ENTROU, E POR QUE ============================
+///   * `"Annoyed"` (x2,2) e `"Slightly Angry"`: a regua de cinco humores (`Stats.dm:445-449`) virou estes dois
+///     degraus a pedido do dono, e nenhum gatilho daqui cai nos outros tres. La eles vem do verb `Anger Me`
+///     (`Voting.dm:20-50`), das injecoes (`Injections.dm:171-186`) e do ritual (`Rituals_Manipulation.dm:255`);
+///   * A INSPIRACAO (`SSJInspired`, `Stats.dm:466-485`): quem passou tempo perto de um Super Saiyajin tem
+///     `prob(SSJInspired * 1.25)` por volta de despertar na raiva comum SEM o agio. E um sistema a parte
+///     (variavel salva, acumulo por convivencia), e nao um numero deste gate;
+///   * A PORTA DE BP continua sendo a BASE inteira (decisao de 2026-06-28, cabecalho do <see cref="Catalogo"/>):
+///     la o `"Very Angry"` aceita 80% do limiar no BP base desde que o BP EXPRESSO chegue ao limiar
+///     (`supersaiyan.dm:106`), e o SSJ2 tem um segundo ramo pelo expresso (`:136-148`);
+///   * O SSJ3 POR RAIVA (`supersaiyan.dm:149-161`, que so marca `ssj3able`): o dono ja tinha decidido que o SSJ3
+///     nao vem da raiva -- vem de 50% de maestria no SSJ2.
+/// ==================================================================================================================
 /// </summary>
 public enum NivelDeRaiva
 {
@@ -917,14 +1002,16 @@ public enum NivelDeRaiva
 	Nenhuma = 0,
 
 	/// <summary>
-	/// Ver um amigo CAIR numa luta. So a linha Legendary se abre com tao pouco -- e ela se abre
-	/// porque a `legendary anger` e dela.
+	/// A RAIVA COMUM: ver um amigo CAIR numa luta (o "Angry" do DM). Abre toda forma de raiva menos o Beast, pela
+	/// porta de BP VEZES o agio da entrada (<see cref="FormaDef.AgioNaRaivaComum"/>). O nome e o da regra
+	/// anterior -- ver o cabecalho.
 	/// </summary>
 	Lendaria = 1,
 
 	/// <summary>
-	/// Ver um amigo proximo MORRER na sua frente. E o que o tronco Saiyajin pede, e e o que o
-	/// Beast pede. Satisfaz a <see cref="Lendaria"/> por ser maior -- ver o cabecalho.
+	/// A FURIA EXTREMA: ver um amigo proximo MORRER (ou ser absorvido) na sua frente -- o "Very Angry" do DM. Abre
+	/// toda forma de raiva pela porta dela, e e a unica que abre o Beast. Satisfaz a <see cref="Lendaria"/> por
+	/// ser maior -- ver o cabecalho.
 	/// </summary>
 	Extrema = 2,
 }
@@ -1487,6 +1574,10 @@ public static class Catalogo
 		// ============================================================================================================
 		LinhaDeForma.FrostDemon => true,
 
+		// A FURY TAMBEM NAO TROCA DE CHAMA: o `Buff()` dela (`GodOfDestruction.dm:396-401`) so veste a aura
+		// COLADA (ver `Coladas`) e escreve o multiplicador. A chama grande continua sendo a do personagem.
+		LinhaDeForma.DeusDaDestruicao => true,
+
 		_ => d.Id == IdBase,
 	};
 
@@ -1564,6 +1655,11 @@ public static class Catalogo
 
 		LinhaDeForma.GodKiRose => d.Ordem >= OrdemDoKiSobreOSuperSaiyajin
 			? [new(FolhaColada.Ameacadora, RosaDaColada)] : [new(FolhaColada.Deus)],
+
+		// A FURY -- e este ramo e PORTE, nao escolha: `obj/overlay/effects/god_fury_aura` e a `god - grey.dmi`
+		// com `color = rgb(190, 80, 255)` (`GodOfDestruction.dm:388-391`), vestida no `Buff()` (`:399`) e tirada no
+		// `DeBuff()` (`:407`). O proprio DM a chama de *"a aura colada no corpo"*.
+		LinhaDeForma.DeusDaDestruicao => [new(FolhaColada.Ameacadora, Ranks.KitDoDeus.RoxoDaFury)],
 
 		_ => [],
 	};
@@ -2667,29 +2763,52 @@ public static class Catalogo
 	/// <summary>
 	/// ============================ E DE QUE RAIVA? -- A AUTORIDADE, E `NasceDaRaiva` E O RESUMO DELA ============================
 	/// <see cref="NasceDaRaiva"/> responde "esta forma vem da furia" (e e o que o cliente pergunta
-	/// pra escolher o tamanho da cratera); esta responde **de QUE furia**, que e o que o gate cobra.
-	/// Uma sai da outra de proposito: duas derivacoes separadas seriam duas verdades sobre a mesma
+	/// pra escolher o tamanho da cratera); esta responde **qual e a MENOR raiva que a abre**, que e o que o
+	/// gate cobra. Uma sai da outra de proposito: duas derivacoes separadas seriam duas verdades sobre a mesma
 	/// regra, e o dia em que divergissem o jogo abriria uma forma cuja cratera diz que ela nao existe.
 	///
-	/// ============================ A REGRA, DITADA PELO DONO, EM TRES FRASES ============================
-	///   1. *"as formas de RAIVA pedem RAIVA EXTREMA, que so vem quando um amigo proximo morre na
-	///      frente do personagem -- a mesma condicao do Beast"*;
-	///   2. *"o Legendary Saiyajin tem a skill `legendary anger` e por isso precisa de MENOS: basta
-	///      ver um amigo ser NOCAUTEADO ou apanhar muito"* -- vale pra linha inteira;
-	///   3. *"nenhuma forma divina libera por raiva"*, e o Beast e a unica excecao.
+	/// ============================ A REGRA, DITADA PELO DONO (2026-10-11) ============================
+	///   1. as formas de RAIVA abrem com a furia EXTREMA (um amigo proximo morre na sua frente) pela porta de BP
+	///      delas, e com a raiva COMUM (um amigo cai) por um preco de BP MAIOR -- *"o rage normal tb faz vc se
+	///      transformar da mesma forma q o extreme, porem o requisito de bp ... e maior"*. E o
+	///      `switch(savant.Emotion)` do DM; o preco mora em <see cref="FormaDef.AgioNaRaivaComum"/>;
+	///   2. *"nenhuma forma divina libera por raiva"*, e o Beast e a unica excecao -- e ele so abre com a extrema,
+	///      porque no original ele nao tem ramo `"Angry"` (`supersaiyan.dm:166`).
 	///
-	/// As tres estao aqui, e nas TRES o que decide e o ARCO DA LINHA -- nao uma lista de ids. Um
-	/// degrau Legendary novo nasce no desconto; um degrau Saiyajin novo nasce no luto; um degrau
-	/// divino novo nasce sem raiva. Era o ponto inteiro de refazer as formas por dado.
+	/// QUAIS formas nascem da raiva continua saindo do ARCO DA LINHA (<see cref="DespertaPelaRaiva"/>), e nao de
+	/// uma lista de ids: um degrau novo no tronco de uma escada de sangue nasce pedindo raiva. O que ele NAO herda
+	/// e o preco da raiva comum, que no original e um literal por forma: sem o campo, o degrau novo so abre com a
+	/// extrema -- o lado estrito --, e a bancada `raiva` [13] reprova ate alguem decidir o numero dele.
 	///
-	/// ============================ O `tronco` E O MESMO DE SEMPRE ============================
+	/// O QUE ESTA FUNCAO DIZIA ATE 2026-10-11 (e as bancadas mediam): `Extrema` pro tronco Saiyajin, Futuro e
+	/// Heran, e `Lendaria` -- sem agio -- pra linha Legendary, que era o desconto da `legendary anger`. Ver o
+	/// cabecalho de <see cref="NivelDeRaiva"/> pro que mudou e por que.
+	/// ========================================================================================================================
+	/// </summary>
+	public static NivelDeRaiva RaivaExigida(FormaDef? d)
+	{
+		if (d == null || !DespertaPelaRaiva(d)) return NivelDeRaiva.Nenhuma;
+		if (SoAFuriaAbreOTroncoDeTeste && d.Linha is LinhaDeForma.Saiyajin or LinhaDeForma.Futuro or LinhaDeForma.Heran)
+			return NivelDeRaiva.Extrema;
+		return d.AgioNaRaivaComum > 0 ? NivelDeRaiva.Lendaria : NivelDeRaiva.Extrema;
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `raiva` e `--raivateste`): a raiva COMUM volta a nao abrir o tronco Saiyajin, o
+	/// Futuro e o Heran -- o port ate 2026-10-11, em que so a furia extrema os despertava. Lido pela
+	/// <see cref="RaivaExigida"/>.
+	/// </summary>
+	public static bool SoAFuriaAbreOTroncoDeTeste;
+
+	/// <summary>
+	/// ============================ ESTA FORMA SE DESPERTA PELA RAIVA? -- derivado do arco da linha ============================
 	/// "A raiva abre o que NAO SE TREINA": os tres jeitos de sair do tronco continuam sendo os tres
 	/// campos que ja diziam isso -- `ForaDoTronco` (os grades), `PedeMaestria` (os Full Power, os
 	/// Limit Breaker e o SSJ3) e `PedeFormaDespertada` (o SSJ4, que vem da lua). E por isso que o
 	/// SSJ3 saiu da raiva **sozinho** quando ganhou os 50% de SSJ2: ninguem o citou pelo nome.
 	///
 	/// ============================ ELA TRANCA O SSJ1, E ISSO E A REGRA E NAO UM DEFEITO ============================
-	/// Sublinhado porque a versao anterior desta funcao existia justamente pra NAO trancar. Por um
+	/// Sublinhado porque uma versao antiga desta funcao existia justamente pra NAO trancar. Por um
 	/// tempo o preco disso foi alto e assumido: o port nao tinha sistema de amizade, ninguem acendia
 	/// raiva, e o tronco Saiyajin so saia por verb de admin.
 	///
@@ -2698,59 +2817,51 @@ public static class Catalogo
 	/// amigo cair ou morrer na sua frente, pelas maos de um inimigo. A bancada `raiva` [8] continua
 	/// vigiando os fontes -- agora pra garantir que o chamador NAO SUMA.
 	///
-	/// A alternativa, na epoca, era afrouxar a regra pra as formas ficarem testaveis -- e afrouxar a
-	/// regra e mentir sobre o jogo pra agradar o teste.
-	///
 	/// TETO CONHECIDO: um degrau novo que nasca da raiva **e** cobre ki divino cai no braco do
 	/// Mistico sozinho. Quem o acrescentar que decida de novo.
 	/// ========================================================================================================================
 	/// </summary>
-	public static NivelDeRaiva RaivaExigida(FormaDef? d)
+	private static bool DespertaPelaRaiva(FormaDef d)
 	{
-		if (d == null || d.Id == IdBase) return NivelDeRaiva.Nenhuma;
+		if (d.Id == IdBase) return false;
 
 		bool tronco = !d.ForaDoTronco && d.PedeMaestria <= 0 && d.PedeFormaDespertada.Length == 0;
 
 		return d.Linha switch
 		{
-			// O DESCONTO DA `legendary anger` -- e ele e da LINHA, nao da skill. Ver NivelDeRaiva.
-			LinhaDeForma.Legendary or LinhaDeForma.LegendaryPrimal
-				=> tronco ? NivelDeRaiva.Lendaria : NivelDeRaiva.Nenhuma,
-
 			// ============================ AS ESCADAS DE **SANGUE** -- e o Heran estava faltando ============================
-			// O enunciado do cabecalho e "a raiva abre o TRONCO das escadas de SANGUE", e ate aqui essa
-			// frase estava escrita no comentario e nao no codigo: o `switch` listava Saiyajin e Futuro, e
-			// tudo o mais caia no `_ => Nenhuma`.
+			// O enunciado e "a raiva abre o TRONCO das escadas de SANGUE", e por um tempo essa frase esteve
+			// escrita no comentario e nao no codigo: o `switch` listava Saiyajin e Futuro, e tudo o mais
+			// caia no `_`.
 			//
-			// **A LINHA HERAN PROVOU QUE ISSO ERA UM DEFEITO LATENTE, E O PROPRIO ARQUIVO JA O PREVIA E
-			// ERRAVA A PREVISAO.** O comentario logo acima (o do SSJ3 saindo da lista) dizia: *"A escada
-			// `Heran` ainda NAO existe no port; no dia em que vier, os degraus dela nascem no tronco e
-			// esta funcao os pega sozinha, que e o ponto de derivar."* Nao pegaria: uma linha nova cai no
-			// `_`, e o Heran teria acendido sem raiva nenhuma -- CALADO, que e o pior modo de falhar
-			// deste projeto. E ele PEDE raiva no original, duas vezes: `heran.dm:20-52` roda o mesmo
-			// `switch(savant.Emotion)` do Super Saiyajin nos dois degraus, e o `mst_form_needs_rage`
-			// (`MasterStudent.dm:246-249`) lista `heran1` e `heran2` junto com `ssj` e `ssj2`.
+			// **A LINHA HERAN PROVOU QUE ISSO ERA UM DEFEITO LATENTE.** O comentario do SSJ3 saindo da lista
+			// dizia: *"A escada `Heran` ainda NAO existe no port; no dia em que vier, os degraus dela nascem
+			// no tronco e esta funcao os pega sozinha"*. Nao pegaria: uma linha nova cai no `_`, e o Heran
+			// teria acendido sem raiva nenhuma -- CALADO, que e o pior modo de falhar deste projeto. E ele
+			// PEDE raiva no original, duas vezes: `heran.dm:20-52` roda o mesmo `switch(savant.Emotion)` do
+			// Super Saiyajin nos dois degraus, e o `mst_form_needs_rage` (`MasterStudent.dm:246-249`) lista
+			// `heran1` e `heran2` junto com `ssj` e `ssj2`.
 			//
-			// O CONSERTO E NA DERIVACAO E NAO NA ENTRADA: nenhuma das duas entradas Heran declara raiva.
-			// O que mudou foi o braco passar a nomear a FAMILIA que a frase sempre descreveu -- as
-			// escadas que vem do corpo com que a pessoa nasceu. As tres linhas nao-Saiyajin novas
-			// separam-se sozinhas por aqui, e as duas que NAO pedem raiva ficam de fora por serem o que
-			// sao: o Super Namekuseijin e as formas Alien se COMPRAM (`PedeFlag`), e o que se compra nao
-			// se desperta -- o `snamek()` e o `Alien_Trans()` nao olham `Emotion` uma unica vez.
+			// As linhas nao-Saiyajin que NAO pedem raiva ficam de fora por serem o que sao: o Super
+			// Namekuseijin e as formas Alien se COMPRAM (`PedeFlag`), e o que se compra nao se desperta --
+			// o `snamek()` e o `Alien_Trans()` nao olham `Emotion` uma unica vez.
 			//
 			// O FROST DEMON TAMBEM E DE SANGUE E TAMBEM FICA DE FORA, e por escolha do original: o
 			// `Frost_Demon_Forms` gateia por `fd_form_at` e maestria, nunca por furia. Ele esta no `_`
 			// junto com as divinas, e o comentario existe pra ninguem "consertar" isso depois.
+			//
+			// AS DUAS LINHAS LEGENDARY ESTAO NO MESMO BRACO desde 2026-10-11: enquanto a raiva comum era
+			// desconto so delas, elas tinham um braco proprio que respondia `Lendaria`. Hoje quem diz se a
+			// comum abre e o campo da entrada, pra todo mundo.
 			// ==========================================================================================================
 			LinhaDeForma.Saiyajin or LinhaDeForma.Futuro or LinhaDeForma.Heran
-				=> tronco ? NivelDeRaiva.Extrema : NivelDeRaiva.Nenhuma,
+				or LinhaDeForma.Legendary or LinhaDeForma.LegendaryPrimal => tronco,
 
 			// So o Beast. O `mistico` da mesma linha e `PedeGodKi = -1` e cai fora sem citar id.
-			LinhaDeForma.Mistico
-				=> d.PedeGodKi >= GodkiRoyalePct ? NivelDeRaiva.Extrema : NivelDeRaiva.Nenhuma,
+			LinhaDeForma.Mistico => d.PedeGodKi >= GodkiRoyalePct,
 
 			// AS DIVINAS, O OOZARU E O QUE VIER: forma divina e tecnica e de mente calma.
-			_ => NivelDeRaiva.Nenhuma,
+			_ => false,
 		};
 	}
 
@@ -2767,6 +2878,28 @@ public static class Catalogo
 	/// uma PERGUNTA e nao um `== LinhaDeForma.Oozaru` solto no meio do `Avaliar`.
 	/// </summary>
 	public static bool NaoSeSobePraEla(FormaDef? d) => d != null && d.Linha == LinhaDeForma.Oozaru;
+
+	/// <summary>
+	/// ============================ ESTA FORMA E DE UM TITULO, E SO O SERVIDOR A LIGA? ============================
+	/// Hoje e a Fury do Deus da Destruicao, e a pergunta e pela LINHA (um degrau novo dela ja nasce com a regra).
+	///
+	/// IRMA DO <see cref="NaoSeSobePraEla"/>, E NAO A MESMA PERGUNTA: o Oozaru nao tem gesto nenhum (existe a lua);
+	/// a Fury TEM gesto -- o verb do titulo (`God_Fury`, `GodOfDestruction.dm:411-419`) --, so que ele nao e a
+	/// tecla de transformar, e o portao dele (`god_is_god`) e um fato que o catalogo nao conhece: o cargo mora na
+	/// CONTA, no servidor. Juntar as duas faria a cena da Fury herdar o que e so do macaco (o chao que nao se solta,
+	/// `Cinematica.OChaoSeSolta`).
+	///
+	/// O QUE SAI DAQUI, e tudo e do DM:
+	///   * a `AbrirLinhas` nao abre a linha dela pra perfil nenhum, entao o <see cref="EstadoDeForma.Avaliar"/> a
+	///     recusa pra todo mundo -- a tecla C, a tecla de forma e o seletor (`Proxima`) nunca a oferecem; quem
+	///     entra nela e o `GameServer.KitDoDeus.EntrarNaFury`;
+	///   * ESTANDO NELA, nenhuma outra forma entra: a Fury ocupa o slot de forma (`slot = sFORM`, `:395`), e o
+	///     `startbuff` recusa um segundo buff no mesmo slot (`buffs.dm:110-113`);
+	///   * ela nao acumula maestria (<see cref="SustentarTreina"/>) e, depois da estreia, nao tem espera
+	///     (`Cinematicas.Degrau`).
+	/// ============================================================================================================
+	/// </summary>
+	public static bool SoPeloTitulo(FormaDef? d) => d != null && d.Linha == LinhaDeForma.DeusDaDestruicao;
 	// ==================================================================================
 	// OS `initial()` DA CONTA -- e NAO o limiar de ninguem (ver LimiaresPessoais)
 	// ==================================================================================
@@ -2800,6 +2933,25 @@ public static class Catalogo
 	public const double PortaSsj2 = Ssj2atInicial / Ssj1GateMult;
 	public const double PortaSsj3 = Ssj3atInicial / Ssj2GateMult;
 	public const double PortaSsj4 = RawSsj4atInicial;
+
+	// ============================ O AGIO DA RAIVA COMUM -- os literais do `if("Angry")` ============================
+	// Por quanto a porta de BP e multiplicada pra quem desperta a forma so com a raiva comum. Ver
+	// `FormaDef.AgioNaRaivaComum`. AJUSTE DO DONO: 1 = a raiva comum abre pelo mesmo preco da furia extrema.
+
+	/// <summary>O tronco Super Saiyajin: `(savant.ssjat)*1.2&lt;=savant.BP` (`supersaiyan.dm:112`) e `ssj2at*1.2/...` (`:129`).</summary>
+	public const double AgioComumDoSaiyajin = 1.2;
+
+	/// <summary>A linha Legendary: `ssjat*1.5` (`supersaiyan.dm:68`), `unrestssjat*1.5` (`:94`) e `lssjat*1.5` (`:102`).</summary>
+	public const double AgioComumDoLegendary = 1.5;
+
+	/// <summary>O primeiro degrau do Heran: `(savant.ssjat*1.3)&lt;=savant.BP` (`heran.dm:29`).</summary>
+	public const double AgioComumDoHeranNaEntrada = 1.3;
+
+	/// <summary>O segundo degrau do Heran: `(savant.ssj2at*1.2/50)&lt;=savant.BP` (`heran.dm:45`).</summary>
+	public const double AgioComumDoHeran2 = 1.2;
+
+	/// <summary>O degrau que usa o limiar do SSJ3: `(savant.ssj3at*1.3)&lt;=savant.expressedBP` (`supersaiyan.dm:155`).</summary>
+	public const double AgioComumNoLimiarDoSsj3 = 1.3;
 
 	/// <summary>
 	/// ============================ A PORTA DE PODER DO OOZARU DOURADO ============================
@@ -3665,10 +3817,12 @@ public static class Catalogo
 		// ---------------------------------------------------------------------------
 		new() { Id = "ssj1", IdRede = 10, Linha = LinhaDeForma.Saiyajin, Ordem = 10,
 				Nome = "Super Saiyajin", NumeroDm = 1, Intensidade = 1,
+				Marco = Stats.Milestones.Ssj,   // `SSj()`, `supersaiyanbuff.dm:341`
 				// `stepped_mastery_mult(2, 6)`: 2x ate 99%, 6x no 100%. Nao ha meio-termo.
 				Mult = [Ssj1Base, 6], MultDiluido = [Ssj1BaseDiluido, 6],
 				Dreno = [0.025, 0.015, 0],
 				PortaBp = PortaSsj1, ChaveDoLimiar = "ssjat",
+				AgioNaRaivaComum = AgioComumDoSaiyajin,   // o `"Angry"` do `supersaiyan.dm:112`
 				// SEM TINTA: a arte de Super Saiyajin JA e dourada. Ver `Catalogo.CorDoCabelo`.
 				Aura = "ffd24a", SufixoDoCabelo = "SSj",
 				Desc = "O cabelo se ergue e doura. 2x ate dominar; 6x aos 100% de maestria." },
@@ -3688,6 +3842,7 @@ public static class Catalogo
 		// =================================================================================
 		new() { Id = "grade2", IdRede = 15, Linha = LinhaDeForma.Saiyajin, Ordem = 15,
 				Nome = "Super Saiyajin Grade 2", NumeroDm = 1.5, Intensidade = 2,
+				Marco = Stats.Milestones.SsjGrau2,   // o `ussj` do `Ultra_SSj()` (`:404`), repartido pelo dono -- ver `Milestones.ValorDoGrau2`
 				Mult = [Ssj1Base * Grade2Fator], MultDiluido = [Ssj1BaseDiluido * Grade2Fator],
 				Dreno = [0.035], Mods = Grade2Mods,
 				PortaBp = PortaSsj1, ChaveDoLimiar = "ssjat", PedeMaestria = Grade2Pct, ForaDoTronco = true,
@@ -3697,6 +3852,7 @@ public static class Catalogo
 
 		new() { Id = "grade3", IdRede = 16, Linha = LinhaDeForma.Saiyajin, Ordem = 16,
 				Nome = "Super Saiyajin Grade 3", NumeroDm = 1.5, Intensidade = 2,
+				Marco = Stats.Milestones.SsjGrau3,   // idem: o topo dos graus vale o que o USSJ valia
 				Mult = [Ssj1Base * Grade3Fator], MultDiluido = [Ssj1BaseDiluido * Grade3Fator],
 				Dreno = [0.05], Mods = Grade3Mods,
 				PortaBp = PortaSsj1, ChaveDoLimiar = "ssjat", PedeMaestria = Grade3Pct, ForaDoTronco = true,
@@ -3708,8 +3864,10 @@ public static class Catalogo
 				// RAIOS = 1 (leve): o `if(2)` do DM acende UMA folha de eletricidade. O SSJ3 acende
 				// tres. Ver `FormaDef.Raios`.
 				Nome = "Super Saiyajin 2", NumeroDm = 2, Intensidade = 2, Raios = 1,
+				Marco = Stats.Milestones.Ssj2,   // `SSj2()`, `supersaiyanbuff.dm:460`
 				Mult = [4, 6, 8, 10], Dreno = [0.045, 0.03, 0.015], PisoSobreAnterior = 2,
 				PortaBp = PortaSsj2, ChaveDoLimiar = "ssj2at",
+				AgioNaRaivaComum = AgioComumDoSaiyajin,   // o `"Angry"` do `supersaiyan.dm:129`
 				// A UNICA ENTRADA DO CATALOGO COM ESTE CAMPO -- ver `FormaDef.NegadaAoBioDeLaboratorio`.
 				// O bio-androide de tanque tem `canSSJ`, e sem esta linha ele pegaria o SSJ2 pela
 				// RAIVA como qualquer Saiyajin -- pulando a forma perfeita, o SSJ1 dominado e a
@@ -3747,6 +3905,7 @@ public static class Catalogo
 		// ================================================================================================================
 		new() { Id = "ssj3", IdRede = 30, Linha = LinhaDeForma.Saiyajin, Ordem = 30,
 				Nome = "Super Saiyajin 3", NumeroDm = 3, Intensidade = 3, Raios = 2,
+				Marco = Stats.Milestones.Ssj3,   // `SSj3()`, `supersaiyanbuff.dm:523`
 				Mult = [16], Dreno = [0.075, 0.05, 0.03], PisoSobreAnterior = 2,
 				PortaBp = PortaSsj3, ChaveDoLimiar = "ssj3at",
 				PedeMaestriaDe = "ssj2", PedeMaestria = Ssj3PedeSsj2Pct,
@@ -3768,6 +3927,7 @@ public static class Catalogo
 		// =======================================================================================
 		new() { Id = "ssj4", IdRede = 40, Linha = LinhaDeForma.Saiyajin, Ordem = 40,
 				Nome = "Super Saiyajin 4", NumeroDm = 4, Intensidade = 4,
+				Marco = Stats.Milestones.Ssj4,   // `SSj4()`, `supersaiyanbuff.dm:792`
 				Como = Curva.Rampa, Mult = [20, 40], Dreno = [0.06], PisoSobreAnterior = 2,
 				PortaBp = PortaSsj4, ChaveDoLimiar = "rawssj4at",
 				PedeLinhagem = Oozaru.LinhagemPrimal, PedeFormaDespertada = "oozaru_dourado",
@@ -3777,6 +3937,7 @@ public static class Catalogo
 
 		new() { Id = "ssj4_full_power", IdRede = 41, Linha = LinhaDeForma.Saiyajin, Ordem = 41,
 				Nome = "Super Saiyajin 4 Full Power", NumeroDm = 5, Intensidade = 4,
+				Marco = Stats.Milestones.Ssj4FullPower,   // `SSj4FP()`, `supersaiyanbuff.dm:820`
 				Como = Curva.Rampa, Mult = [32, 50], Dreno = [0.07], PisoSobreAnterior = 2,
 				PortaBp = PortaSsj4, ChaveDoLimiar = "rawssj4at",
 				PedeLinhagem = Oozaru.LinhagemPrimal, PedeMaestria = 100,
@@ -3808,10 +3969,12 @@ public static class Catalogo
 		// o degrau k liga em (k-1)*10% -- e por isso os limiares comecam em 0 e nao em 10.
 		new() { Id = "future_ssj", IdRede = 11, Linha = LinhaDeForma.Futuro, Ordem = 10,
 				Nome = "Future Super Saiyajin", NumeroDm = 1, Intensidade = 2,
+				Marco = Stats.Milestones.Ssj,   // a linhagem do futuro vira pela MESMA `SSj()` (`:341`): os dez estagios sao maestria, nao marco
 				Mult = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
 				Limiares = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90],
 				Dreno = [0.025, 0.02, 0.015],
 				PortaBp = PortaSsj1, ChaveDoLimiar = "ssjat",
+				AgioNaRaivaComum = AgioComumDoSaiyajin,   // a linhagem do futuro desperta pela MESMA `SSj()`: `supersaiyan.dm:112`
 				// SEM TINTA: a arte de Super Saiyajin JA e dourada. Ver `Catalogo.CorDoCabelo`.
 				Aura = "ffd24a", SufixoDoCabelo = "SSj",
 				Desc = "A linhagem do futuro: 10 estagios de 2x a 20x, +2x a cada 10% de maestria." },
@@ -3824,9 +3987,11 @@ public static class Catalogo
 		// Legendary ser a linha da FURIA e nao a do treino.
 		new() { Id = IdWrathful, IdRede = 110, Linha = LinhaDeForma.Legendary, Ordem = 10,
 				Nome = "Wrathful", NumeroDm = 1, Intensidade = 2,
+				Marco = Stats.Milestones.Lssj1,   // `Restrained_SSj()`, `lssjbuff.dm:196` e `:210`
 				Como = Curva.Rampa, Mult = [1.5, 10], CombateSobeAoMaximo = true,
 				Dreno = [0.02, 0.015, 0.01],
 				PortaBp = LimiaresPessoais.RestSsjatInicial, ChaveDoLimiar = "restssjat",
+				AgioNaRaivaComum = AgioComumDoLegendary,   // o `"Angry"` do `supersaiyan.dm:68`
 				// ============================ O WRATHFUL NAO MEXE NO CABELO NEM NO RABO ============================
 				// SEM SUFIXO E SEM TINTA -- `ModoDoCabelo.Base`, e ele e o unico degrau transformado do
 				// jogo que fica assim. `HairObject.dm:208-210`, o caso `if(1)` do `switch(lssj)`:
@@ -3861,9 +4026,11 @@ public static class Catalogo
 
 		new() { Id = "c_type", IdRede = 120, Linha = LinhaDeForma.Legendary, Ordem = 20,
 				Nome = "Super Saiyajin C-Type", NumeroDm = 2, Intensidade = 3,
+				Marco = Stats.Milestones.Lssj2,   // `Unrestrained_SSj()`, `lssjbuff.dm:299`, `:313` e `:372`
 				Como = Curva.Rampa, Mult = [12, 20], CombateSobeAoMaximo = true, PisoSobreAnterior = 2,
 				Dreno = [0.04, 0.03, 0.02],
 				PortaBp = LimiaresPessoais.UnrestSsjatInicial, ChaveDoLimiar = "unrestssjat",
+				AgioNaRaivaComum = AgioComumDoLegendary,   // o `"Angry"` do `supersaiyan.dm:94`
 				// O C-TYPE E DOURADO, E ISSO NAO E DESCUIDO: `HairObject.dm:211-212` da a ele
 				// `updateOverlay(/obj/overlay/hairs/ssj/ssj1, ssjhair)` -- a folha de Super Saiyajin
 				// normal, SEM tinta -- e o rabo dele e o `rgb(218,218,38)` do `SaiyanObjects.dm:116`.
@@ -3932,9 +4099,11 @@ public static class Catalogo
 		// ================================================================================================================
 		new() { Id = "legendary", IdRede = 130, Linha = LinhaDeForma.Legendary, Ordem = 30,
 				Nome = "Super Saiyajin Full Power", NumeroDm = 3, Intensidade = 4,
+				Marco = Stats.Milestones.Lssj3,   // `LSSj()`, `lssjbuff.dm:395`, `:407` e `:430`
 				Como = Curva.Rampa, Mult = [25, 50], CombateSobeAoMaximo = true, PisoSobreAnterior = 2,
 				Dreno = [0.07, 0.05, 0.035],
 				PortaBp = LimiaresPessoais.LssjatInicial, ChaveDoLimiar = "lssjat",
+				AgioNaRaivaComum = AgioComumDoLegendary,   // o `"Angry"` do `supersaiyan.dm:102`
 				// ============================ AQUI O VERDE E DO CABELO, E NAO SO DA AURA ============================
 				// `HairObject.dm:215`: `updateOverlay(/obj/overlay/hairs/ssj/lssjhair, ussjhair, 0,100,0)`.
 				// Sao DUAS coisas na mesma chamada e o port so fazia uma:
@@ -3963,8 +4132,10 @@ public static class Catalogo
 		// combate de +20% POR CIMA do que a maestria deu -- outra mecanica que a do Legendary comum.
 		new() { Id = "primal_c_type", IdRede = 210, Linha = LinhaDeForma.LegendaryPrimal, Ordem = 10,
 				Nome = "Super Saiyajin C-Type (Z)", NumeroDm = 1, Intensidade = 2,
+				Marco = Stats.Milestones.Ssj,   // o Primal usa a `mob/var/ssj`: `ssj=1` pela `SSj()` (`supersaiyanbuff.dm:341`)
 				Mult = [3], BonusDeCombate = 0.2, Dreno = [0.025, 0.015, 0],
 				PortaBp = PortaSsj1, ChaveDoLimiar = "ssjat",
+				AgioNaRaivaComum = AgioComumDoSaiyajin,   // `Class` "Legendary Primal Saiyan" NAO e "Legendary": cai no bloco comum (`supersaiyan.dm:105`), pela `SSj()` (`:112`)
 				// DOURADO PURO, e e o unico degrau da linha Primal que nao tenta ser verde:
 				// `HairObject.dm:183` -- `updateOverlay(/obj/overlay/hairs/ssj/ssj1)`, sem argumento
 				// nenhum. E o rabo dele cai no `if(container.ssj)` e sai `dada26` por derivacao.
@@ -3986,9 +4157,11 @@ public static class Catalogo
 
 		new() { Id = "primal_legendary", IdRede = 220, Linha = LinhaDeForma.LegendaryPrimal, Ordem = 20,
 				Nome = "Legendary Super Saiyajin", NumeroDm = 2, Intensidade = 3,
+				Marco = Stats.Milestones.Ssj2,   // `ssj=2` pela `SSj2()` (`supersaiyanbuff.dm:427` e `:460`)
 				Como = Curva.Rampa, Mult = [6, 9], BonusDeCombate = 0.2, PisoSobreAnterior = 2,
 				Dreno = [0.045, 0.03, 0.015],
 				PortaBp = PortaSsj2, ChaveDoLimiar = "ssj2at",
+				AgioNaRaivaComum = AgioComumDoSaiyajin,   // idem, pela `SSj2()`: `supersaiyan.dm:129`
 				// SPRITE DE SSJ1 + VERDE. `HairObject.dm:184` passa o `ssjhair` -- a folha de SSJ1, e nao
 				// a de Legendary: a linha Primal reusa a var `ssj` do DM (1 = C-Type, 2 = LSSJ, 3 = LSSJ2)
 				// e por isso ela sobe pela arte da escada Saiyajin, pintada. Trocar pra `LSSj` aqui daria
@@ -4006,9 +4179,11 @@ public static class Catalogo
 				// A COR DELE MUDOU no acerto do dono: era VERDE (a faisca herdava a aura da linha) e
 				// hoje e o mesmo azul do SSJ2/SSJ3 -- ver `Catalogo.CorDosRaios`.
 				Nome = "Legendary Super Saiyajin 2", NumeroDm = 3, Intensidade = 3, Raios = 2,
+				Marco = Stats.Milestones.Ssj3,   // `ssj=3` pela `SSj3()` (`supersaiyanbuff.dm:523`)
 				Como = Curva.Rampa, Mult = [9, 12], BonusDeCombate = 0.2, PisoSobreAnterior = 2,
 				Dreno = [0.06, 0.045, 0.03],
 				PortaBp = PortaSsj3, ChaveDoLimiar = "ssj3at",
+				AgioNaRaivaComum = AgioComumNoLimiarDoSsj3,   // o `"Angry"` do `supersaiyan.dm:155`
 				// `HairObject.dm:185`: `/obj/overlay/hairs/ssj/ssj2` -- o cabelo de SSJ2, verde.
 				Aura = "4dff5a", Cabelo = VerdeDoCabeloLendario, SufixoDoCabelo = "SSj2",
 				Corpo = CorpoDeForma.Musculoso, Desc = "9x a 12x." },
@@ -4022,6 +4197,7 @@ public static class Catalogo
 				// chegaram a este galho.
 				Raios = 2,
 				Nome = "Legendary Super Saiyajin 3", NumeroDm = 3.5, Intensidade = 4,
+				Marco = Stats.Milestones.Ssj3,   // `LSSj3_Primal()`, `supersaiyanbuff.dm:555`: la o comentario diz que ele equivale ao SSJ3
 				Mult = [18], BonusDeCombate = 0.2, PisoSobreAnterior = 2, Dreno = [0.075, 0.05, 0.03],
 				PortaBp = PortaSsj3, ChaveDoLimiar = "ssj3at", PedeMaestria = 100,
 				// `HairObject.dm:186`: `/obj/overlay/hairs/ssj/ssj3` -- o cabelo LONGO de SSJ3, verde.
@@ -4030,6 +4206,7 @@ public static class Catalogo
 
 		new() { Id = "primal_legendary4", IdRede = 240, Linha = LinhaDeForma.LegendaryPrimal, Ordem = 40,
 				Nome = "Legendary Super Saiyajin 4", NumeroDm = 4, Intensidade = 4,
+				Marco = Stats.Milestones.Ssj4,   // `ssj=4` pela `SSj4()` (`supersaiyanbuff.dm:792`)
 				Como = Curva.Rampa, Mult = [22, 44], BonusDeCombate = 0.2, PisoSobreAnterior = 2,
 				Dreno = [0.06],
 				PortaBp = PortaSsj4, ChaveDoLimiar = "rawssj4at",
@@ -4044,6 +4221,7 @@ public static class Catalogo
 
 		new() { Id = "primal_legendary4_full_power", IdRede = 250, Linha = LinhaDeForma.LegendaryPrimal, Ordem = 50,
 				Nome = "Legendary Super Saiyajin 4 Full Power", NumeroDm = 5, Intensidade = 5,
+				Marco = Stats.Milestones.Ssj4FullPower,   // `ssj=5` pela `SSj4FP()` (`supersaiyanbuff.dm:820`)
 				Como = Curva.Rampa, Mult = [34, 52], BonusDeCombate = 0.2, PisoSobreAnterior = 2,
 				Dreno = [0.07],
 				PortaBp = PortaSsj4, ChaveDoLimiar = "rawssj4at",
@@ -4084,6 +4262,7 @@ public static class Catalogo
 
 		new() { Id = "blue", IdRede = 310, Linha = LinhaDeForma.GodKi, Ordem = 20,
 				Nome = "Super Saiyajin Blue", NumeroDm = -1, Intensidade = 4,
+				Marco = Stats.Milestones.Blue,   // a `SSj()` com o ki divino aceso (`supersaiyanbuff.dm:342`)
 				Mult = [32], Absoluta = true, Dreno = [0.045],
 				PedeGodKi = GodkiBluePct, PedeOrigemUmaDe = OrigemDoKiDivino,
 				PedeClasseUmaDe = ClassesDoKiDivino, ProibidoParaClasse = [ClasseRose],
@@ -4101,6 +4280,7 @@ public static class Catalogo
 		// ==================================================================================
 		new() { Id = "blue_evolution", IdRede = 320, Linha = LinhaDeForma.GodKi, Ordem = 30,
 				Nome = "Super Saiyajin Blue Evolution", NumeroDm = -1, Intensidade = 5,
+				Marco = Stats.Milestones.Blue,   // o grau com o ki divino aceso (`supersaiyanbuff.dm:405`)
 				Mult = [56], Absoluta = true, Dreno = [0.06],
 				// SO O ELITE, e SO A PARTIR DO GRADE. Regra do dono, e o DM ja dizia o mesmo:
 				// "Royale/Rose 2 56x (50%, so Elite/Kaio via USSJ)" -- o USSJ de la e o Grade daqui.
@@ -4137,6 +4317,7 @@ public static class Catalogo
 
 		new() { Id = "rose", IdRede = 311, Linha = LinhaDeForma.GodKiRose, Ordem = 20,
 				Nome = "Super Saiyajin Rose", NumeroDm = -1, Intensidade = 4,
+				Marco = Stats.Milestones.Blue,   // a mesma `SSj()` (`:342`): o Rose e a COR da classe, nao outra proc
 				Mult = [32], Absoluta = true, Dreno = [0.045],
 				PedeGodKi = GodkiBluePct, PedeClasseUmaDe = [ClasseRose], PedeFormaAtual = ["ssj1"],
 				// A MESMA RECEITA DO BLUE com o outro hexa -- `SaiyanObjects.dm:13-16`, o ramo
@@ -4146,6 +4327,7 @@ public static class Catalogo
 
 		new() { Id = "rose2", IdRede = 321, Linha = LinhaDeForma.GodKiRose, Ordem = 30,
 				Nome = "Super Saiyajin Rose 2", NumeroDm = -1, Intensidade = 5,
+				Marco = Stats.Milestones.Blue,   // idem, pelo grau (`:405`)
 				Mult = [56], Absoluta = true, Dreno = [0.06],
 				PedeGodKi = GodkiRoyalePct, PedeClasseUmaDe = [ClasseRose],
 				PedeFormaAtual = ["grade2", "grade3"],
@@ -4242,6 +4424,8 @@ public static class Catalogo
 				Nome = "Beast", NumeroDm = -1, Intensidade = 5,
 				Mult = [56], Absoluta = true, Dreno = [0.06],
 				PedeGodKi = GodkiRoyalePct, PedeClasseUmaDe = [ClasseProdigial],
+				// SEM `AgioNaRaivaComum`, e a ausencia e a regra: no DM o Beast so tem o ramo `"Very Angry"`
+				// (`supersaiyan.dm:166`). A raiva comum nao o abre por poder nenhum.
 				// ============================ AS DUAS CORES DA FERA ESTAVAM TROCADAS ============================
 				// No DM o BRANCO e o CABELO e o ROXO-AZUL e a AURA. O catalogo tinha `Aura = "e8e8e8"`
 				// (quase branco) e `Cabelo = "d9d9d9"` -- as duas para o mesmo lado, e nenhuma no lugar.
@@ -4274,8 +4458,11 @@ public static class Catalogo
 		// ---------------------------------------------------------------------------
 		new() { Id = "ui_sign", IdRede = 400, Linha = LinhaDeForma.UltraInstinct, Ordem = 10,
 				Nome = "Ultra Instinct -Sign-", NumeroDm = -1, Intensidade = 5,
-				Mult = [60], Absoluta = true, Dreno = [0.05],
-				PedeGodKi = GodkiUiUePct, PedeProficienciaUi = 1,
+				// `UI_KI_DRAIN_SIGN 0.35` (% do MaxKi por segundo) e `UI_UNLOCK_SIGN 20` -- a maestria REAL da faixa.
+				// O catalogo dizia 5 no dreno (1,6%/s: o tanque acabava em um minuto, e nao em quase cinco) e 1 na
+				// porta (o Sign abria com 1% de maestria, e a faixa so o anunciava aos 20).
+				Mult = [60], Absoluta = true, Dreno = [DrenoQueDa(Disciplinas.KiPorSegundoNaPrimeiraForma)],
+				PedeGodKi = GodkiUiUePct, PedeProficienciaUi = Disciplinas.UiSign,
 				// ============================ O SIGN SO TROCA O CABELO DE QUEM E GOKU ============================
 				// `ui_apply_hair()` (`UltraInstinct.dm:296-303`): estilo Goku recebe o
 				// `Hair_UltraInstinct.dmi`; **todos os outros ficam com o cabelo BASE, sem tinta nenhuma**
@@ -4289,8 +4476,10 @@ public static class Catalogo
 
 		new() { Id = "ui_perfected", IdRede = 410, Linha = LinhaDeForma.UltraInstinct, Ordem = 20,
 				Nome = "Perfected Ultra Instinct", NumeroDm = -1, Intensidade = 5,
-				Mult = [66], Absoluta = true, Dreno = [0.065], PisoSobreAnterior = 2,
-				PedeGodKi = GodkiUiUePct, PedeProficienciaUi = 100,
+				// `UI_KI_DRAIN_PERF 0.5` e `UI_UNLOCK_PERF 60`. A porta daqui pedia 100: a faixa anunciava o Perfected
+				// aos 60% e a forma continuava recusando ate o fim da maestria.
+				Mult = [66], Absoluta = true, Dreno = [DrenoQueDa(Disciplinas.KiPorSegundoNaSegundaForma)], PisoSobreAnterior = 2,
+				PedeGodKi = GodkiUiUePct, PedeProficienciaUi = Disciplinas.UiPerf,
 				// O UNICO `TrocarOuTingir` DO CATALOGO -- ver `ModoDoCabelo.TrocarOuTingir`. Goku ganha o
 				// `Hair_MasteredUltraInstinct.dmi` puro; os outros ganham o `/hairs/uisilver`, que e o
 				// cabelo base + `rgb(185,190,200)` (`UltraInstinct.dm:288-293`). Um OU o outro: a arte ja
@@ -4303,8 +4492,8 @@ public static class Catalogo
 		// ---------------------------------------------------------------------------
 		new() { Id = "destroyer", IdRede = 500, Linha = LinhaDeForma.UltraEgo, Ordem = 10,
 				Nome = "Destroyer Form", NumeroDm = -1, Intensidade = 5,
-				Mult = [60], Absoluta = true, Dreno = [0.05],
-				PedeGodKi = GodkiUiUePct, PedeEnergiaUe = 20,
+				Mult = [60], Absoluta = true, Dreno = [DrenoQueDa(Disciplinas.KiPorSegundoNaPrimeiraForma)],   // `UE_KI_DRAIN_D 0.35`
+				PedeGodKi = GodkiUiUePct, PedeEnergiaUe = Disciplinas.UeDestroyer,
 				// SEM CABELO PROPRIO E SEM TINTA, e o DM diz o porque na linha: "SO o ULTRA EGO pinta o
 				// cabelo de roxo -- a Destroyer Form mantem o cabelo base (a maior diferenca visual entre
 				// as duas formas)" (`UltraEgo.dm:395-396`, e o `else` do `ue_apply_hair` em `:400`).
@@ -4313,12 +4502,35 @@ public static class Catalogo
 
 		new() { Id = "ultra_ego", IdRede = 510, Linha = LinhaDeForma.UltraEgo, Ordem = 20,
 				Nome = "Ultra Ego", NumeroDm = -1, Intensidade = 5,
-				Mult = [66], Absoluta = true, Dreno = [0.065], PisoSobreAnterior = 2,
-				PedeGodKi = GodkiUiUePct, PedeEnergiaUe = 60,
+				Mult = [66], Absoluta = true, Dreno = [DrenoQueDa(Disciplinas.KiPorSegundoNaSegundaForma)], PisoSobreAnterior = 2,   // `UE_KI_DRAIN_U 0.5`
+				PedeGodKi = GodkiUiUePct, PedeEnergiaUe = Disciplinas.UeUltra,
 				// `rgb(140,50,190)` sobre o cabelo BASE -- `/obj/overlay/hairs/uepurple`,
 				// `UltraEgo.dm:387-392`. Sem sufixo: o Ultra Ego nao ergue o cabelo, so o pinta.
 				Aura = "b96bff", Cabelo = "8c32be",
 				Desc = "66x. O ego que se alimenta da propria dor." },
+
+		// ---------------------------------------------------------------------------
+		// FURY -- a forma do TITULO de Deus da Destruicao. `GodOfDestruction.dm:388-419`. ABSOLUTA.
+		//
+		// ============================ O QUE O DM ESCREVE, E O QUE ELE NAO ESCREVE ============================
+		// `obj/buff/GodFury` e curto, e a entrada e ele inteiro: `formsBuff = GOD_FURY_MULT` (72, `:398`), a aura
+		// colada roxa (`:399`, ver `Catalogo.Coladas`) e mais nada. NAO HA DRENO (o `Loop()` de `:402-404` so
+		// confere o titulo), nao ha custo de Ki pra entrar, nao ha maestria, o cabelo e o corpo nao mudam e nao
+		// ha cena. O 72 tambem NAO recebe o `GOD_PATH_BOOST`: o 1,25 do caminho da Destruicao e do kit do Poder
+		// da Destruicao (`ue_form_mult`, `UltraEgo.dm:544-547`), e a Fury escreve a constante crua.
+		//
+		// OS PORTOES NAO ESTAO NESTES CAMPOS porque nenhum deles e do catalogo: quem pode e quem carrega o titulo
+		// AGORA (`god_is_god`, `:414`), e isso mora na conta. Ver `Catalogo.SoPeloTitulo` e
+		// `GameServer.KitDoDeus.EntrarNaFury`, que e a unica porta.
+		//
+		// A `Aura` desta entrada so alimenta o CONTORNO (`ParDoContorno` cai no `_ => d.Aura`): a chama grande e a
+		// do personagem (`ChamaDoJogador`), como no DM.
+		// ====================================================================================================
+		new() { Id = Ranks.KitDoDeus.IdDaFury, IdRede = 520, Linha = LinhaDeForma.DeusDaDestruicao, Ordem = 10,
+				Nome = "Fury", NumeroDm = -1, Intensidade = 4,
+				Mult = [Ranks.KitDoDeus.FuryMult], Absoluta = true, Dreno = [0],
+				Aura = Ranks.KitDoDeus.RoxoDaFury,
+				Desc = "72x. A furia do Deus da Destruicao: so de quem carrega o titulo, e cai com ele." },
 
 		// ---------------------------------------------------------------------------
 		// OOZARU -- linha PARALELA (ver Oozaru.cs). Aqui so pelos dados.
@@ -4463,6 +4675,7 @@ public static class Catalogo
 
 		new() { Id = "frost7", IdRede = 760, Linha = LinhaDeForma.FrostDemon, Ordem = 7,
 				Nome = Races.FormasDeFrost.Nome(7), NumeroDm = 7, Intensidade = 5,
+				Marco = Stats.Milestones.FrostFinal,   // DIVERGENCIA DECLARADA: a etiqueta esta na tabela do DM (`LinearGain.dm:24`) e o `Frost_Demon_Forms()` nunca a chama
 				Mult = [Races.FormasDeFrost.Multiplicador(7)],
 				PortaBp = Races.FormasDeFrost.BpNecessario(7),
 				Corpo = CorpoDeForma.FrostEscolhido, Aura = "d8c0ff",
@@ -4550,6 +4763,7 @@ public static class Catalogo
 				Mult = CurvaDoHeran, BaseDaClasse = HeranBasePorClasse,
 				Dreno = HeranDreno1,
 				PortaBp = SsjatInicial, ChaveDoLimiar = "ssjat",
+				AgioNaRaivaComum = AgioComumDoHeranNaEntrada,   // o `"Angry"` do `heran.dm:29`
 				Aura = "ffd24a",
 				Desc = "O poder maximo do corpo de Hera. O multiplicador sai da CLASSE (Omega 1,30x, "
 					 + "Epsilon 2,4x, Low-Class 3x) e a maestria o leva a 2,016x do proprio." },
@@ -4559,6 +4773,7 @@ public static class Catalogo
 				Mult = CurvaDoHeran, BaseDaClasse = Heran2BasePorClasse,
 				Dreno = HeranDreno2,
 				PortaBp = Ssj2atInicial / HeranGateMult2, ChaveDoLimiar = "ssj2at_heran",
+				AgioNaRaivaComum = AgioComumDoHeran2,   // o `"Angry"` do `heran.dm:45`
 				// `Electric_Red.dmi` (`HeranBuff.dm:212`) -- a unica forma nao-Legendary do jogo cujas
 				// faiscas o DM pinta de VERMELHO. Como `CorDosRaios` cai no `d.Aura` desta linha, a cor
 				// da chama E a cor da faisca, e as duas tem que ser esta.
@@ -4928,6 +5143,9 @@ public static class Catalogo
 	/// </summary>
 	public static bool SustentarTreina(FormaDef? d) =>
 		d != null && d.Id != IdBase
+		// A FURY NAO SE TREINA: ela nao tem maestria no DM (`GodOfDestruction.dm:393-409` -- um numero fixo e mais
+		// nada), e uma barra enchendo aqui seria uma promessa de degrau que nao existe.
+		&& !SoPeloTitulo(d)
 		&& (d.Linha != LinhaDeForma.FrostDemon || d.Ordem >= Races.FormasDeFrost.Base);
 
 	/// <summary>
@@ -5350,15 +5568,24 @@ public static class Catalogo
 		FormaDef? d = Def(id);
 		if (d == null || d.Id == IdBase || d.Dreno.Length == 0) return 0;
 
-		const double porCiclo = 0.4, ciclosPorSeg = 0.8;
 		double maestria = m.De(d.Id);
 
 		int idx = 0;
 		for (int k = 1; k < d.Dreno.Length; k++)
 			if (maestria >= (k + 1) * 100.0 / d.Dreno.Length) idx = k;
 
-		return d.Dreno[idx] * porCiclo * ciclosPorSeg;
+		return d.Dreno[idx] * DrenoPorCiclo * CiclosPorSegundo;
 	}
+
+	/// <summary>O ciclo do BuffLoop do DM, que e a moeda do <see cref="FormaDef.Dreno"/>: 40% do numero por ciclo, 0,8 ciclo por segundo.</summary>
+	private const double DrenoPorCiclo = 0.4, CiclosPorSegundo = 0.8;
+
+	/// <summary>
+	/// O `Dreno` DE CATALOGO QUE COBRA ESTA FRACAO DO KI MAXIMO POR SEGUNDO. Pra forma cujo dreno o DM escreve ja
+	/// por segundo, fora do BuffLoop -- as quatro das disciplinas divinas (`Ki -= MaxKi * UI_KI_DRAIN_SIGN / 100 *
+	/// UI_TICKSECS`, `UltraInstinct.dm:223`; `UltraEgo.dm:341`).
+	/// </summary>
+	public static double DrenoQueDa(double fracaoPorSegundo) => fracaoPorSegundo / (DrenoPorCiclo * CiclosPorSegundo);
 }
 
 /// <summary>

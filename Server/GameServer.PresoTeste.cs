@@ -847,7 +847,7 @@ public partial class GameServer
 			Colina = t.Paleta.Colina,
 			Montanha = new TileVisual("Turfs 1", "rock"),   // <- a parede deixa de ser branca
 			Arvore = t.Paleta.Arvore, ArvoreAcento = t.Paleta.ArvoreAcento,
-			Planta = t.Paleta.Planta, Minerio = t.Paleta.Minerio, Gema = t.Paleta.Gema,
+			Planta = t.Paleta.Planta, RochaGrande = t.Paleta.RochaGrande,
 		};
 		return Copiar(t, paleta, t.BytesDeColisao);
 	}

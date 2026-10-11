@@ -135,6 +135,9 @@ public sealed partial class GameServer
 	private void JulgarG8(ServerPlayer pl, string destino)
 	{
 		if (pl.Ficha.KO) { Avisar(pl, "nao da, caido."); return; }
+		// O CARIMBO E UM TELEPORTE, e so perguntava pelo nocaute: o juiz preso na Sala do Tempo, absorvido ou
+		// de passageiro numa fusao saia de la por ele. A pergunta de todo teleporte (`PorQueNaoSaiDaqui`).
+		if (PorQueNaoSaiDaqui(pl) is { Length: > 0 } preso) { Avisar(pl, preso); return; }
 
 		string alvo = destino.Trim() switch
 		{
@@ -266,7 +269,11 @@ public sealed partial class GameServer
 	/// </summary>
 	private void ManterOCorpoG8(ServerPlayer pl)
 	{
-		ServerPlayer? alvo = PorNome(pl.AlvoId.ToString());
+		// `in view(src)`: o marcado tem que estar A VISTA agora. A mira e conferida so na hora de marcar
+		// (`Mirar`), e quem foi marcado e depois trocou de planeta continuava alcancavel por este verb -- ele
+		// lia o id cru, no mundo inteiro. Ver `AlvoAoAlcance`.
+		ServerPlayer? alvo = AlvoAoAlcance(pl, pl.AlvoId.ToString(), TilesDaTelaG8, out ServerPlayer? longe);
+		if (longe != null) { Avisar(pl, FraseDeLonge(longe)); return; }
 		if (alvo == null || !EhPessoa(alvo))
 		{
 			Avisar(pl, "marque alguem antes (duplo clique nele).");
@@ -307,6 +314,15 @@ public sealed partial class GameServer
 	/// </summary>
 	private const int IdadeMaximaDoDomG8 = 25;
 
+	/// <summary>`as null|mob in view(1)` (`OtherworldRankSkills.dm:165`): quem recebe a oferta esta no tile vizinho.</summary>
+	private const int TilesDaJuventudeG8 = 1;
+
+	/// <summary>
+	/// `Keep_Body(mob/M in view(src))` (`OtherworldRankSkills.dm:195`): a tela inteira -- os mesmos 22 tiles do
+	/// `view(screenx)` que a fala usa (<see cref="RaioDaVista"/>).
+	/// </summary>
+	private const int TilesDaTelaG8 = (int)(RaioDaVista / ZoneCollision.TileSize);
+
 	/// <summary>
 	/// OFERECE A JUVENTUDE A QUEM ESTA MARCADO.
 	///
@@ -327,8 +343,12 @@ public sealed partial class GameServer
 	/// </summary>
 	private void OferecerJuventudeG8(ServerPlayer pl, string arg)
 	{
-		ServerPlayer? alvo = PorNome(pl.AlvoId.ToString());
-		if (alvo == null || !EhPessoa(alvo) || alvo == pl)
+		// `input("Which mob?") as null|mob in view(1)` (`OtherworldRankSkills.dm:165`): o gesto e de quem esta
+		// COLADO. O id cru da mira valia de qualquer distancia -- e de outro planeta, se o marcado tivesse ido
+		// embora depois da marca. Ver `AlvoAoAlcance`.
+		ServerPlayer? alvo = AlvoAoAlcance(pl, pl.AlvoId.ToString(), TilesDaJuventudeG8, out ServerPlayer? longe);
+		if (longe != null) { Avisar(pl, FraseDeLonge(longe)); return; }
+		if (alvo == null || !EhPessoa(alvo))
 		{
 			Avisar(pl, "marque quem voce quer rejuvenescer (duplo clique nele).");
 			return;

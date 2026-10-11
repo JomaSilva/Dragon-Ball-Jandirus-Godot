@@ -387,6 +387,15 @@ public static class ArteDeProjetil
 
 		// `/obj/training_obj/Ki_Target { icon = '14.dmi' }` (`Stats/Training/Meditate.dm:26`).
 		["Ki_Targets"] = new(Fonte.Literal, ArteDeKi.Blast14),
+
+		// ---------------------------------------------------------------
+		// OS DOIS TIROS DO DEUS DA DESTRUICAO (`Ranks/GodOfDestruction.dm`)
+		// ---------------------------------------------------------------
+		// `A.icon = '12.dmi'` nos dois (`:272` e `:316`). A TINTA FIXA do DM -- `A.icon += rgb(255, 215, 0)` no
+		// feixe (`:273`), `rgb(160, 60, 220)` na esfera (`:317`) -- NAO veio: neste port o tiro leva a cor do ki
+		// de quem atira (ver `ReceitaDeProjetil.Nome`), e a folha e a mesma `12.dmi` cinza. Divergencia declarada.
+		[Ranks.KitDoDeus.TiroDaFuria] = new(Fonte.Literal, ArteDeKi.Blast12),
+		[Ranks.KitDoDeus.TiroDaEsfera] = new(Fonte.Literal, ArteDeKi.Blast12),
 	};
 
 	/// <summary>

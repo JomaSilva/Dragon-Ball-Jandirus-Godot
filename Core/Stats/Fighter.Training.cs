@@ -387,6 +387,10 @@ public sealed partial class Fighter
     {
         if (outro == null || ReferenceEquals(outro, this)) return 1;
 
+        // CONTRA BICHO NAO HA GAP A EXPLORAR (2026-10-10): socar um leao rende o que socar o ar rende.
+        // Ver `Npc.Animais.SemBonusDeLuta`.
+        if (Npc.Animais.SemBonusDeLuta(Race, outro.Race)) return 1;
+
         double meu = Math.Max(expressedBP, 1);
         double dele = Math.Max(outro.expressedBP, 1);
         double geral = Math.Min(Math.Max(dele / meu, 1), GainKnobs.FightGainCap);

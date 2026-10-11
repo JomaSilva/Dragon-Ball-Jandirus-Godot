@@ -16,6 +16,10 @@ namespace Jandirus.Server;
 /// O pedido do dono nao fala de um personagem: *"quando uma RACA fica sem planeta natal..."*. Entao a
 /// prova tem que ser **nominal, uma linha por raca, as 24** -- e nas DUAS metades:
 ///
+/// (HOJE SAO 23. A 24a era a `Dog`, a "Example prototype race" que o extrator de racas lia de dentro de um
+/// `/* */` do `Genetic_Prototype.dm` -- saiu do `races.json` em 2026-10-11, e a Terra passou de 10 racas a 9.
+/// Os comentarios daqui pra baixo que dizem "as 24" e "as 10 da Terra" foram escritos com ela na conta.)
+///
 ///   * com o planeta natal DE PE, **ninguem escolhe nada**: o corpo volta pra casa, e o verb do
 ///     refugio se RECUSA a escrever mesmo que a pessoa tenha territorio conquistado;
 ///   * com ele MORTO, **a escolha aparece e leva ao destino escolhido**: as duas saidas existem, o
@@ -82,7 +86,7 @@ public partial class GameServer
 	/// </summary>
 	private void AEscolhaRacaPorRaca()
 	{
-		GD.Print("[bercoprova] -- 8) A ESCOLHA, RACA POR RACA: as 24, com o natal DE PE e com ele MORTO");
+		GD.Print("[bercoprova] -- 8) A ESCOLHA, RACA POR RACA: as 23, com o natal DE PE e com ele MORTO");
 
 		var salvos = new List<Dominio>(_dominios);
 		try
@@ -98,7 +102,7 @@ public partial class GameServer
 			int total = porNatal.Values.Sum(l => l.Count);
 			Provar($"as {total} racas se dividem em {porNatal.Count} natais "
 				 + $"({string.Join(", ", porNatal.Select(k => $"{k.Key}={k.Value.Count}"))})",
-				   total >= 24 && porNatal.Count >= 5,
+				   total >= 23 && porNatal.Count >= 5,   // 23 desde 2026-10-11: a `Dog` (raca de exemplo) saiu do races.json
 				   "o conjunto de racas encolheu -- as linhas nominais abaixo cobrem menos do que dizem");
 
 			// ---- A METADE VIVA: NINGUEM ESCOLHE NADA -------------------------

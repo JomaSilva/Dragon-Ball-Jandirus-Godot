@@ -81,9 +81,39 @@ public partial class GameServer
 			: f.CapCheck(eficacia * (m.BP / modAlvo) / downscaler);
 	}
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--verbsteste`): a absorcao do bio nao pergunta quem aperta -- o que este port
+	/// fez ate 2026-10-10. Falso em jogo, sempre.
+	/// </summary>
+	internal bool AbsorcaoSemPortaoDeTeste;
+
+	/// <summary>O verb que a skill "Tail Absorb" (`/datum/skill/general/bioabsorb`) concede, como o extrator o chama.</summary>
+	private const string VerboDaAbsorcaoDoBio = "Bio_Absorb";
+
+	/// <summary>
+	/// ============================ QUEM TEM OS ORGAOS -- E ESTE PORTAO NAO EXISTIA ============================
+	/// No DM o verb mora num OBJETO (`obj/Bio_Absorb`, `Absorption.dm:108`) que so entra no inventario de
+	/// quem aprende a skill da arvore racial (`bioandroid.dm:21-23`): quem nao tem o objeto nao tem o que
+	/// chamar. O port trocou o objeto por um id no canal de habilidade (`absorver`) e a pergunta "quem
+	/// aperta?" ficou so no registro de botao do CLIENTE -- o `UsarHabilidade` manda todo corpo que nao e
+	/// Majin pra ca, e daqui pra baixo nada conferia a raca. Qualquer cliente mexido (ou qualquer tecla
+	/// ligada a mao) fazia um HUMANO consumir um nocauteado: a vitima morre furando ate o death-regen, e
+	/// o poder dela entra em quem apertou.
+	///
+	/// PELA RACA, que e a regra deste port (o botao sempre foi do bio, larva inclusive), **ou** pela skill
+	/// comprada -- o meio-sangue de pai bio-androide a tem na arvore (`Halfbreed.dm:46-47`).
+	/// ======================================================================================================
+	/// </summary>
+	private bool TemOrgaosDeAbsorcao(ServerPlayer pl) =>
+		AbsorcaoSemPortaoDeTeste
+		|| Jandirus.Core.Races.BioAndroids.EhBio(pl.Race)
+		|| SabeTecnica(pl, VerboDaAbsorcaoDoBio);
+
 	private void AbsorverBio(ServerPlayer pl)
 	{
 		Fighter f = pl.Ficha;
+
+		if (!TemOrgaosDeAbsorcao(pl)) { Avisar(pl, "seu corpo nao tem como absorver ninguem."); return; }
 
 		if (f.bio_lab_born && f.bio_stage <= Jandirus.Core.Races.BioAndroids.Larva)
 		{
@@ -92,6 +122,7 @@ public partial class GameServer
 			return;
 		}
 		if (f.KO || f.dead) { Avisar(pl, "nao da, caido."); return; }
+		if (RecusarAbsorcaoNaMente(pl)) return;
 
 		long agora = NowMs();
 		if (_prontoAbsorver.TryGetValue(pl.Id, out long pronto) && agora < pronto)
@@ -100,7 +131,12 @@ public partial class GameServer
 		// A VITIMA TEM QUE ESTAR NOCAUTEADA E VIVA -- `if(M.KO && !M.dead)`. Morto nao serve: nao ha
 		// biomassa viva pra reescrever. E o mesmo crivo da agulha do laboratorio, e pela mesma razao
 		// tematica: o preco do bio-androide e sempre DERRUBAR alguem primeiro.
-		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDaAbsorcao, o => o.Ficha.KO && !o.Ficha.dead);
+		//
+		// E TEM QUE SER OUTRO CORPO: o reflexo da mente e a copia do Split Form nao sao biomassa de ninguem
+		// (`CorpoDerivado`, `GameServer.Validacoes.cs`). No DM a absorcao que soma o BP inteiro pede `M.client`
+		// (`Absorption.dm:344`); aqui o `AbsorbBP += alvo.BP` caia em qualquer corpo nocauteado -- inclusive o
+		// reflexo, que e o proprio poder de quem absorve e se levanta de novo a cada 15 s.
+		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDaAbsorcao, o => o.Ficha.KO && !o.Ficha.dead && !CorpoDerivado(o));
 		if (alvo == null)
 		{ Avisar(pl, "o alvo precisa estar NOCAUTEADO, vivo, e ao seu lado."); return; }
 

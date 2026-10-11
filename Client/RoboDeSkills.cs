@@ -161,6 +161,7 @@ public partial class RoboDeSkills : Node
 		await F4b_OMouseEmCima(menu, cli, cat);
 		await F4c_TrancadaPorDegrau(menu, cli, cat);
 		await F5_Esquecer(menu, cli, cat);
+		await F5b_ADadaNaoPrometeMarco(menu, cli, cat);
 		await F6_ALinhaDoTierPersiste(menu, cli, cat);
 		await F7_ABuscaAchaSkill(menu, cli, cat);
 		await F8_AAbaSkills(menu, cli, cat);
@@ -273,8 +274,13 @@ public partial class RoboDeSkills : Node
 		// ---- os verbs de aprendizado (defeito D) ----
 		var verbos = Verbos.Da(Verbos.Aprendizado).ToList();
 		int naTela = verbos.Count(v => Botao(pg, v.Nome) != null);
-		Checa("os verbs de LEARNING tem lugar na aba (Convidar aluno, Danca da Fusao, Inventar tecnicas...)",
-			  naTela >= 10 && naTela == verbos.Count, $"{naTela} de {verbos.Count} na tela");
+		// O PISO ERA 10, do tempo em que a aba listava TODO verb de aprendizado pra todo mundo. Desde 2026-10-10 os
+		// de fusao, de mestre e de resposta a convite so nascem pra quem os TEM (`RequisitosDosVerbos`; quem prova
+		// e a `--diagverbs`), e um novato fica com os que sao de qualquer um -- que continuam tendo de estar todos.
+		Checa("os verbs de LEARNING que este personagem TEM estao todos na aba (Convidar aluno, Inventar tecnicas...)",
+			  naTela >= 3 && naTela == verbos.Count && Botao(pg, "Convidar aluno") != null, $"{naTela} de {verbos.Count} na tela");
+		Checa("...e a Danca da Fusao NAO esta: a bancada nao a aprendeu (verb com requisito so aparece pra quem o cumpre)",
+			  !cli.SkillsAprendidas.Contains("/datum/skill/rank/Fusion_Dance") && Botao(pg, "Dança da Fusão") == null);
 		Checa("CONTRA-EXEMPLO: eles NAO estao na pagina de Other", menu.PaginaDeTeste(Verbos.Outros) is not { } outra || Botao(outra, "Convidar aluno", soVisivel: false) == null);
 	}
 
@@ -729,6 +735,68 @@ public partial class RoboDeSkills : Node
 		Checa("o marco VOLTOU (numero absoluto)", cli.MarcosLivres == antes + 1, $"{antes} -> {cli.MarcosLivres}");
 		Checa("o card voltou a dizer o preco", EstadoDo(pg, "Basic Training") == "1 marco", EstadoDo(pg, "Basic Training"));
 		Checa("e Evasion Training voltou a pedir Basic Training", EstadoDo(pg, "Evasion Training") == "depois de Basic Training", EstadoDo(pg, "Evasion Training"));
+	}
+
+	// =====================================================================
+	// F5b -- O QUE NINGUEM COMPROU NAO PROMETE MARCO
+	// =====================================================================
+	/// <summary>
+	/// A MESMA SKILL DA F5, agora DADA por um admin (`admin_skill_dar`; o host e admin). O dono (2026-10-11) fechou
+	/// o reembolso de skill nao comprada: o servidor so devolve marco do que foi COMPRADO com marcos, e a ficha nao
+	/// pode prometer "reembolsa 1" por uma skill dada, herdada ou ensinada. Quem sabe quais sao e o servidor, e ele
+	/// conta na cauda do `S2C.Skills` (`GameClient.SkillsSemReembolso`).
+	///
+	/// A F5 E O CONTRA-EXEMPLO, na mesma skill e no mesmo personagem: comprada, a ficha promete e o marco volta.
+	/// Aqui, dada, a ficha nao promete e o marco nao vem -- e a skill sai do livro do mesmo jeito.
+	/// </summary>
+	private async System.Threading.Tasks.Task F5b_ADadaNaoPrometeMarco(MenuJogo menu, GameClient cli, SkillCatalog cat)
+	{
+		Nota("--- F5b: a skill que ninguem comprou se esquece sem prometer (nem pagar) marco ---");
+		Control? pg = menu.PaginaDeTeste("Learning");
+		if (pg == null) return;
+		Skill bt = cat.Todas.First(s => s.Nome == "Basic Training");
+		int MalLidos() => cli.PacotesMalLidos(Jandirus.Net.Protocol.S2C.Skills);
+
+		Checa("PRECONDICAO: a F5 deixou a Basic Training esquecida, e todo `S2C.Skills` ate aqui foi lido sem passar do fim",
+			  !cli.SkillsAprendidas.Contains(bt.Path) && MalLidos() == 0, $"mal lidos {MalLidos()}");
+		cli.SendVerbo("admin_skill_dar", $"{cli.LocalId}|{bt.Path}");
+		bool chegou = await Ate(() => cli.SkillsAprendidas.Contains(bt.Path), 5);
+		await Quadros(4);
+		Checa("um admin DEU a Basic Training: ela chegou ao livro, e o servidor a mandou entre as que NAO devolvem marco",
+			  chegou && cli.SkillsSemReembolso.Contains(bt.Path, StringComparer.OrdinalIgnoreCase), string.Join(",", cli.SkillsSemReembolso));
+		if (!chegou) return;
+
+		if (Cartao(pg, "Basic Training")?.GetChild(0) is not Button b) { Checa("achei o card da skill dada", false); return; }
+		int antes = cli.MarcosLivres;
+
+		// O DEFEITO INJETADO PRIMEIRO, na mesma ficha: a promessa de antes.
+		MenuJogo.EsquecerPrometeSempreDeTeste = true;
+		try
+		{
+			await Clicar(b);
+			Button? promete = menu.FichaDeTeste == null ? null : Botao(menu.FichaDeTeste, "Esquecer");
+			Checa("(defeito injetado: o botao promete sempre) a ficha da skill DADA diz 'reembolsa 1' -- a promessa que o servidor nao cumpre",
+				  promete != null && promete.Text.Contains("reembolsa 1"), promete?.Text ?? "");
+			if (menu.FichaDeTeste != null && Botao(menu.FichaDeTeste, "Cancelar") is { } cancelar) await Clicar(cancelar);
+		}
+		finally { MenuJogo.EsquecerPrometeSempreDeTeste = false; }
+
+		await Clicar(b);
+		PanelContainer? ficha = menu.FichaDeTeste;
+		Button? esquecer = ficha == null ? null : Botao(ficha, "Esquecer");
+		Checa("a ficha da skill DADA tem 'Esquecer · não devolve marco', e NAO promete reembolso",
+			  esquecer != null && esquecer.Text.Contains("não devolve marco") && !esquecer.Text.Contains("reembolsa"), esquecer?.Text ?? "");
+		if (esquecer == null) return;
+
+		await Clicar(esquecer);
+		await Quadros(2);
+		await Clicar(esquecer);
+		bool saiu = await Ate(() => !cli.SkillsAprendidas.Contains(bt.Path), 5);
+		await Quadros(4);
+		Checa("ela SE ESQUECE do mesmo jeito (dois cliques), e o servidor NAO pagou marco (numero absoluto)",
+			  saiu && cli.MarcosLivres == antes, $"{antes} -> {cli.MarcosLivres}");
+		Checa("o card voltou a dizer o preco, e nenhum `S2C.Skills` foi lido alem do fim",
+			  EstadoDo(pg, "Basic Training") == "1 marco" && MalLidos() == 0, $"{EstadoDo(pg, "Basic Training")}; mal lidos {MalLidos()}");
 	}
 
 	// =====================================================================

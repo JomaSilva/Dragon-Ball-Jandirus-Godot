@@ -51,8 +51,13 @@ public partial class CharacterSelect : CanvasLayer
 
         AddChild(new ColorRect { Color = Tema.Fundo, AnchorRight = 1, AnchorBottom = 1 });
 
+        // O TITULO DO JOGO NO ALTO, como no menu principal, e a tela se centra no que sobra -- ver `TituloDoJogo`.
+        // E filho desta camada: some com ela, e fica por baixo do veu do "excluir personagem".
+        AddChild(new TituloDoJogo());
+
         var centro = new CenterContainer
         {
+            AnchorTop = TituloDoJogo.FaixaDoTopo,
             AnchorRight = 1, AnchorBottom = 1,
             GrowHorizontal = Control.GrowDirection.Both,
             GrowVertical = Control.GrowDirection.Both,

@@ -36,6 +36,7 @@ public enum RecusaForma
 	SemEnergia,
 	FormaErrada,      // pede estar noutra forma AGORA (Blue = SSJ + ki divino)
 	SemFuria,         // o despertar pede RAIVA e a que este corpo tem nao chega la (ver NivelDeRaiva)
+	SemPoderPraRaivaComum,   // a raiva COMUM abre esta forma, mas cobra mais BP do que ele tem (FormaDef.AgioNaRaivaComum)
 	SemHabilidade,    // a forma se COMPRA antes de se ter (ver FormaDef.PedeFlag)
 }
 
@@ -327,6 +328,12 @@ public sealed class EstadoDeForma
 	}
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancadas `raiva` e `--raivateste`): a raiva COMUM abre as formas pelo MESMO preco da
+	/// furia extrema -- o passo 9 do <see cref="Avaliar"/> deixa de cobrar o agio.
+	/// </summary>
+	public static bool RaivaComumSemAgioDeTeste;
+
+	/// <summary>
 	/// DA PRA IR PRA ESTA FORMA AGORA?
 	///
 	/// ============================ A ORDEM DAS CHECAGENS E A MENSAGEM ============================
@@ -347,6 +354,13 @@ public sealed class EstadoDeForma
 	/// do cliente pintaria de cinza um degrau alcancavel. Uma casa so -- esta.
 	/// ====================================================================================
 	/// </param>
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--godkitteste`): quem esta na Fury volta a trocar de forma pela escada sem
+	/// recolhe-la -- a forma do titulo vira um degrau que qualquer outro atropela. Lido pelo passo 0a do
+	/// <see cref="Avaliar"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool SaiDaFuryPelaEscadaDeTeste;
+
 	public RecusaForma Avaliar(string alvo, double bpBase, double kiFracao, bool caido,
 							   PerfilDeFormas perfil, double fatorDaPorta = 1)
 	{
@@ -375,6 +389,16 @@ public sealed class EstadoDeForma
 		// que existe um jeito de subir. Nao existe -- existe a lua.
 		// ==================================================================================
 		if (Catalogo.NaoSeSobePraEla(d)) return RecusaForma.LinhaFechada;
+
+		// 0a. QUEM ESTA NUMA FORMA DE TITULO (a Fury) NAO TROCA DE FORMA SEM RECOLHE-LA. Ver
+		//     `Catalogo.SoPeloTitulo`: ela ocupa o slot de forma (`slot = sFORM`, `GodOfDestruction.dm:395`), e o
+		//     `startbuff` recusa um segundo buff no mesmo slot (`buffs.dm:110-113`). `FormaErrada` e a recusa que ja
+		//     quer dizer "o corpo nao esta no estado que essa forma pede".
+		//
+		//     A OUTRA METADE -- ninguem ENTRA na Fury por aqui -- nao precisa de linha: a `AbrirLinhas` nao abre a
+		//     linha dela pra perfil nenhum (o portao e o titulo, que o catalogo nao conhece), entao o passo 1 a
+		//     recusa por `LinhaFechada`. Quem a liga e o servidor (`GameServer.KitDoDeus.EntrarNaFury`).
+		if (!SaiDaFuryPelaEscadaDeTeste && Catalogo.SoPeloTitulo(Def)) return RecusaForma.FormaErrada;
 
 		// 0b. A FORMA CONCEDIDA. Ver `FormaDef.SoPorConcessao`.
 		//
@@ -542,9 +566,9 @@ public sealed class EstadoDeForma
 		// precedente ja estava escrito la em cima -- o `SoPorConcessao` do Mistico tambem so vale
 		// enquanto ninguem concedeu (passo 0b).
 		//
-		// `>=` E NAO `==`, e e a metade da regra: quem esta em furia EXTREMA abre o Wrathful tambem,
-		// porque quem viu um amigo morrer certamente viu um amigo cair. Com igualdade estrita o luto
-		// FECHARIA a linha Legendary -- o oposto do desconto que o dono pediu pra ela.
+		// `>=` E NAO `==`, e e a metade da regra: quem esta em furia EXTREMA abre tudo o que a raiva comum
+		// abre, porque quem viu um amigo morrer certamente viu um amigo cair. Com igualdade estrita o luto
+		// FECHARIA as formas de raiva justamente pra quem mais tem direito a elas.
 		//
 		// ============================ POR QUE ELA E A ULTIMA DE TODAS ============================
 		// Porque a ordem desta funcao E a mensagem (ver o cabecalho), e esta e a unica recusa da
@@ -559,10 +583,56 @@ public sealed class EstadoDeForma
 		// verdade em vez de promessa.
 		// ====================================================================================================
 		NivelDeRaiva pedeRaiva = Catalogo.RaivaExigida(d);
-		if (pedeRaiva != NivelDeRaiva.Nenhuma && !Despertou(d.Id) && perfil.Raiva < pedeRaiva)
-			return RecusaForma.SemFuria;
+		if (pedeRaiva != NivelDeRaiva.Nenhuma && !Despertou(d.Id))
+		{
+			if (perfil.Raiva < pedeRaiva) return RecusaForma.SemFuria;
+
+			// ============================ 9b. A RAIVA COMUM PAGA MAIS CARO -- o `if("Angry")` do DM ============================
+			// O dono (2026-10-11): *"o rage normal tb faz vc se transformar da mesma forma q o extreme, porem o
+			// requisito de bp pro rage normal liberar sua proxima transformacao e maior"*. No original e o
+			// `switch(savant.Emotion)` de cada despertar: `"Very Angry"` entra pela porta, `"Angry"` cobra a
+			// porta vezes um literal (`supersaiyan.dm:112`: `ssjat*1.2`; `:68`: `ssjat*1.5` no Legendary;
+			// `heran.dm:29`: `ssjat*1.3`). O literal de cada forma e o `FormaDef.AgioNaRaivaComum`.
+			//
+			// A PORTA E A DO PERSONAGEM (o limiar sorteado), e o agio vai por cima dela -- nunca por cima do
+			// corte de um mestre: `fatorDaPorta < 1` e a transformacao ASSISTIDA, que no DM chama a proc da
+			// forma direto (`mst_form_apply`, `MasterStudent.dm:361`) e nao passa por este `switch`. La o
+			// mestre acende justamente o "Angry" (`mst_ignite_anger`, `:405-409`) e o aluno entra pela metade.
+			//
+			// RECUSA PROPRIA, e nao `SemFuria` nem `SemPoder`: quem a ouve TEM a raiva que abre a forma e TEM
+			// a porta dela. O que falta e a diferenca entre as duas raivas, e a frase precisa dizer isso
+			// (`GameServer.FraseDaRecusa`) -- "falta poder" mandaria treinar quem esta a um luto de distancia,
+			// e "falta furia" diria a quem esta enfurecido que ele nao esta.
+			// ==========================================================================================================
+			if (perfil.Raiva < NivelDeRaiva.Extrema && fatorDaPorta >= 1 && !RaivaComumSemAgioDeTeste
+				&& d.PortaBp > 0 && bpBase < PortaDeBp(d) * d.AgioNaRaivaComum)
+				return RecusaForma.SemPoderPraRaivaComum;
+		}
 
 		return RecusaForma.Pode;
+	}
+
+	/// <summary>
+	/// "E SE ESTE CORPO ESTIVESSE EM <paramref name="emQual"/>?" -- o mesmo <see cref="Avaliar"/>, com a forma
+	/// atual trocada so pela duracao da pergunta.
+	///
+	/// QUEM PRECISA DISTO e a subida pela raiva (<see cref="SubidaPelaRaiva"/>): pra saber se a furia de agora paga
+	/// uma forma que so se alcanca de um degrau ACIMA de onde o corpo esta (o Super Saiyajin 2, pra quem esta na
+	/// base com o Super Saiyajin ja despertado), e preciso perguntar ao funil A PARTIR DE LA. Refazer as contas
+	/// do `Avaliar` com outro ponto de partida seria a segunda copia da regra; aqui a regra continua uma, e o que
+	/// muda e so de onde ela e perguntada.
+	///
+	/// NAO MUDA NADA NO CORPO: `Atual` volta no `finally`, e a pergunta nao libera forma, nao gasta estreia e nao
+	/// mexe em maestria (o `Avaliar` so le). O servidor resolve o jogo numa thread so, entao ninguem ve o estado
+	/// do meio.
+	/// </summary>
+	public RecusaForma AvaliarEstandoEm(string emQual, string alvo, double bpBase, double kiFracao, bool caido,
+										PerfilDeFormas perfil)
+	{
+		string deVerdade = Atual;
+		Atual = emQual;
+		try { return Avaliar(alvo, bpBase, kiFracao, caido, perfil); }
+		finally { Atual = deVerdade; }
 	}
 
 	/// <summary>

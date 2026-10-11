@@ -99,7 +99,7 @@ public static class RoupaDeNpc
 	///                  desenhado nele (`VisualCatalog.CorpoSprite` nem procura corpo pra essa raca).
 	///   Bio-Androide - uma casca: os quatro degraus sao arquivos inteiros (`Races.BioAndroids.Corpos`).
 	///   Saibaman ----- criatura vegetal criada pronta; o sprite e o bicho todo.
-	///   Dog / Boneca - idem, e nao ha peca desenhada que sirva nesses corpos.
+	///   Boneca ------- idem, e nao ha peca desenhada que sirva nesse corpo.
 	///
 	/// O DM concorda por OMISSAO, e da pra apontar onde: as fabricas dos chefes que sao destas racas
 	/// (Freeza, Cell, Boo -- BossEvents.dm) nao chamam `npc_wear_*` uma unica vez, enquanto as dos
@@ -117,7 +117,7 @@ public static class RoupaDeNpc
 	/// </summary>
 	public static bool OCorpoJaVeste(string raca) =>
 		Races.FormasDeFrost.EhFrost(raca) || Races.BioAndroids.EhBio(raca)
-		|| raca is "Saibaman" or "Dog" or "SpiritDoll";
+		|| raca is "Saibaman" or "SpiritDoll";
 
 	// =====================================================================
 	// A PORTA
@@ -259,7 +259,7 @@ public static class RoupaDeNpc
 				Armadura(pecas, cat, semente, ArmaduraComum, faltando);
 				break;
 
-			// (Saibaman, Dog e SpiritDoll nao chegam aqui: saem no `OCorpoJaVeste` la em cima.)
+			// (Saibaman e SpiritDoll nao chegam aqui: saem no `OCorpoJaVeste` la em cima.)
 
 			// TODO O RESTO: a roupa comum do DM (a mesma que o Humano ganha quando o Gi nao sai).
 			// E o "mais proximo" honesto pra Majin, Shapeshifter, Gray, Kanassa, Arlian, Meta e

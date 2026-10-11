@@ -347,6 +347,14 @@ public partial class World : Node2D
 		_portas = new Node2D { Name = "Portas", YSortEnabled = true };
 		AddChild(_portas);
 
+		// AS ROCHAS DE MINERIO: uma camada so, que ordena por Y com os corpos e se resolve sozinha (lista do
+		// servidor, colisao e troca de chao). Ver `RochasNaTela`.
+		AddChild(new RochasNaTela { Name = "RochasDeMinerio" });
+
+		// AS ARVORES QUE REBROTARAM: outra camada que ordena por Y e se resolve sozinha, pelo mesmo molde. A
+		// que caiu e estrago da cena (`AplicarEstrago`); a que volta e desenhada aqui. Ver `RebrotasNaTela`.
+		AddChild(new RebrotasNaTela { Name = "Rebrotas" });
+
 		_veu = new Visao { Name = "Visao" };
 		AddChild(_veu);
 		// O INTERIOR QUE NAO SE VE E BREU (ver o cabecalho do `Visao`): o veu pergunta ao teto da zona, e
@@ -362,6 +370,9 @@ public partial class World : Node2D
 		// deixado o microfone aberto na tela de titulo.
 		AddChild(new Microfone { Name = "Microfone" });
 		AddChild(new VozOuvida { Name = "VozOuvida" });
+		// O RADIO DO SCOUTER vive e morre com o mundo pelo mesmo motivo. O nome de quem fala sai dos `_nomes`
+		// daqui (o `PeerLook` de todo corpo da zona, perto ou longe). Ver `RadioOuvido`.
+		AddChild(new RadioOuvido { Name = "RadioOuvido", QuemE = NomeDe });
 
 		_ceu = new CeuDoEspaco { Name = "Ceu", Visible = false };
 		AddChild(_ceu);
@@ -388,6 +399,7 @@ public partial class World : Node2D
 			cli.VozRecebida += AoOuvirVoz;
 			cli.Golpe += AoGolpe;
 			cli.GestoDoCorpo += AoGesto;
+			cli.GodKiDespertou += AoDespertarDivino;   // o som e o anel de luz -- ver `World.KiDivino.cs`
 			cli.OlharCravado += AoCravarOlhar;
 			cli.FormaMudou += AoMudarForma;
 			cli.OozaruMudou += AoVirarOozaru;
@@ -479,6 +491,7 @@ public partial class World : Node2D
 			cli.VozRecebida -= AoOuvirVoz;
 			cli.Golpe -= AoGolpe;
 			cli.GestoDoCorpo -= AoGesto;
+			cli.GodKiDespertou -= AoDespertarDivino;
 			cli.OlharCravado -= AoCravarOlhar;
 			cli.FormaMudou -= AoMudarForma;
 			// METODO NOMEADO E `-=`, e nao lambda: ver a nota do `_Ready`. O `GameClient` sobrevive
@@ -778,6 +791,12 @@ public partial class World : Node2D
 			// =====================================================================================
 			case "explosao_final":
 				if (ligado && _local != null) EstouroNoMundo(_local.GlobalPosition, Math.Abs(ms));
+				break;
+
+			// O SERVIDOR DERRUBOU O TREINO OU A MEDITACAO: quem responde e o corpo (`LocalPlayer.OnAtividadeCaiu`,
+			// pela mesma `EfeitoCaiu`). Aqui nao ha o que desenhar -- o `case` existe pra o id nao cair no "sem
+			// desenho" logo abaixo, que e divida e este nao e.
+			case Jandirus.Core.Stats.TreinoEMeditacao.EfeitoDeQueCaiu:
 				break;
 
 			// ============================ O ID SEM DESENHO NAO PODE SER MUDO ============================
@@ -1552,6 +1571,47 @@ public partial class World : Node2D
 	}
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagvizinho`): o zumbido do corpo alheio volta a seguir o bit da AURA
+	/// (`EntityState.Carregando`) -- o estado de antes de 2026-10-10, em que quem carregava sem `canPower` era
+	/// mudo pra quem estava do lado. Lido pela propria linha do som, em <see cref="AoReceberSnapshot"/>.
+	/// </summary>
+	public static bool ZumbidoSegueAAuraDeTeste;
+
+	/// <summary>
+	/// O CHAO TREME EM VOLTA DE ALGUEM (OU PAROU) -- o bit `EntityState.CargaAlta`, que o servidor acende em
+	/// quem segura o C com o Ki acima de 120% (`CargaDeKi.TremeOChao`).
+	///
+	/// O estado mora no proprio node (a <see cref="CargaVisual"/> do corpo), pelo motivo do
+	/// <see cref="MarcarKaioken"/> logo abaixo: nao ha tabela pra limpar quando o corpo sai de vista -- o node
+	/// morre e o tremor cai sozinho. Vale pro meu corpo e pro dos outros pela MESMA linha: quem carrega tambem
+	/// sente o chao.
+	/// </summary>
+	private void MarcarCargaAlta(int id, bool ligada)
+	{
+		if (id == 0 || Corpo(id) is not { } corpo) return;
+		corpo.GetNodeOrNull<CargaVisual>(CaminhoDaCarga)?.TremerOChao(ligada);
+	}
+
+	/// <summary>
+	/// O RONCO DE UMA CARGA ALTA, visto DAQUI: sacode a camera pela distancia entre o meu corpo e
+	/// <paramref name="onde"/> (o chao de quem carrega). Chamado a cada quadro pela <see cref="CargaVisual"/>
+	/// de cada corpo com o estado ligado. Reacender por quadro e o que faz o tremor ser continuo -- o
+	/// `LevantarTremor` so SOBE, entao varios corpos carregando nao se somam (vence o mais forte) --, e parar
+	/// de chamar e o que o deixa cair pela `CargaDeKi.QuedaDoTremor`.
+	///
+	/// A CAMERA E A DO MEU CORPO, e por isso a distancia sai dele: tremor e de quem olha, nao do mundo (ver
+	/// <see cref="Sacudir"/>).
+	/// </summary>
+	internal void TremerPelaCarga(Vector2 onde)
+	{
+		if (_local == null) return;
+		float peso = Jandirus.Core.Combat.CargaDeKi.PesoDoTremor(_local.GlobalPosition.DistanceTo(onde));
+		if (peso <= 0f) return;
+		Sacudir(Jandirus.Core.Combat.CargaDeKi.ForcaDoTremor, peso,
+				Jandirus.Core.Combat.CargaDeKi.QuedaDoTremor, Jandirus.Core.Combat.CargaDeKi.CadenciaDoTremor);
+	}
+
+	/// <summary>
 	/// O KAIO-KEN DE ALGUEM ACENDEU (OU APAGOU) -- outro bit do snapshot que so trabalha quando VIRA.
 	///
 	/// O estado mora no proprio node (<see cref="Aura.NoKaioken"/>), pelo motivo que o
@@ -1996,7 +2056,13 @@ public partial class World : Node2D
 		// "sem cena" e o jogador pousa num chao provisorio em vez do planeta dele.
 		if (zona.Kind == Jandirus.Core.World.ZoneKey.KindProcedural)
 		{
-			var gerado = new PlanetaProcedural { Name = "Planeta" };
+			// O NOME DA FICHA E O QUE SE MOSTRA (o batizado, se houver): sem ele a linha de chegada dizia
+			// "Planeta" pra todo mundo gerado.
+			var gerado = new PlanetaProcedural
+			{
+				Name = "Planeta",
+				NomeDoPlaneta = GameClient.Instance?.NomeDaZona(zona) ?? zona.Name,
+			};
 			// MESMO LUGAR DA CENA PRE-FEITA (`_zonaAtual`): e o que garante que a proxima troca de
 			// zona derrube o planeta gerado junto, pelo caminho que ja existe. Pendurar num no
 			// paralelo deixaria o mundo antigo desenhado por baixo do novo.
@@ -2172,7 +2238,7 @@ public partial class World : Node2D
 
 		GD.Print($"[world] zona carregada: {e.Zona} (z{e.Z}, {e.W}x{e.H})"
 				 + (_colisao != null ? " com colisao" : " SEM colisao"));
-		Chat.Sistema($"voce esta em {e.Zona}.");
+		Chat.Sistema($"voce esta em {GameClient.Instance?.NomeDaZona(zona) ?? e.Zona}.");
 
 		// o som do LUGAR: vento, mar, cidade, e o tema da zona. Troca junto com o planeta -- ver `SomDoLugar`.
 		SomDoLugar(Trilha.AmbienteDe(e.Zona), e.Zona);
@@ -3224,6 +3290,9 @@ public partial class World : Node2D
 				MarcarNaNave(e.Id, e.Pilotando, e.NaveGrande);
 				// E O KAIO-KEN, pela mesma frase: a aura vermelha e do corpo, e o dono dela tem que ve-la.
 				MarcarKaioken(e.Id, e.Kaioken);
+				// E O CHAO TREMENDO: quem segura o C acima de 120% sente o proprio tremor pela MESMA linha
+				// que o faz tremer pros outros -- nao ha um "tremor local" escrito a parte.
+				MarcarCargaAlta(e.Id, e.CargaAlta);
 				// A PUPILA E DO CORPO E NAO DO CONTROLE, entao ela vale pro meu tambem: quem perde as
 				// redeas em furia lendaria PRECISA ver o proprio olho apagar, senao a unica pessoa que
 				// nao sabe o que aconteceu com aquele corpo e a dona dele.
@@ -3294,6 +3363,8 @@ public partial class World : Node2D
 			// =========================================================================================================
 			MarcarSobrecarga(e.Id, e.Sobrecarregado);
 			MarcarKaioken(e.Id, e.Kaioken);
+			// ...E O CHAO TREMENDO EM VOLTA DELE. Mesmo molde: bit do snapshot, estado no node do corpo.
+			MarcarCargaAlta(e.Id, e.CargaAlta);
 
 			// ============================ E QUEM ESTA DIRIGINDO AQUELE CORPO ============================
 			// Irmao exato da linha acima -- outro bit do snapshot que so trabalha quando MUDA, e que
@@ -3323,17 +3394,23 @@ public partial class World : Node2D
 			if (r.GetNodeOrNull<CargaVisual>(CaminhoDaCarga) is { } cg)
 			{
 				cg.Definir(e.Carregando, e.Sobrecarregado);
-				// ...E O SOM TAMBEM. Quem esta do lado ouve o zumbido de quem junta energia, como
-				// ouve o soco. Isto faltava: o `Som` so era chamado pro corpo LOCAL (pelo canal de
-				// `Efeito`, que e pessoal), entao carregar Ki era mudo pra todo mundo menos pra quem
-				// carregava -- e no BYOND o `emit_Sound` da carga sai no mundo como qualquer outro.
+				// ...E O SOM TAMBEM, E ELE SEGUE O **ESTADO** DA CARGA, NAO A AURA. Quem esta do lado ouve o
+				// zumbido de quem junta energia, como ouve o soco -- e ele e posicional (um
+				// `AudioStreamPlayer2D` pendurado no corpo), entao o volume cai com a distancia sem mais nada.
 				//
-				// O bit ja viajava: `EntityState.Carregando` esta no snapshot desde que a aura
-				// passou a ser visivel pros outros. Faltava CONSUMI-LO aqui. E o `EfeitoNoLugar` ja
-				// e posicional, entao o volume cai com a distancia sem mais nada.
+				// ============================ ERA O BIT DA AURA (item 5a do playtest de 2026-10-10) ============================
+				// Esta linha lia `e.Carregando`, que o servidor preenche com o VISUAL (`pl.AuraDaCarga`: so
+				// quem tem `canPower`, e so parado). O zumbido do PROPRIO corpo segue outra coisa -- o efeito
+				// `carregando`, que e o estado da tecla --, entao quem so tinha Ki Unlocked se ouvia
+				// carregando e era mudo pra todo mundo em volta: *"os sons de carregar ki so tocam para o
+				// proprio jogador"*. Agora as duas pontas seguem o MESMO campo do servidor (`pl.Carregando`):
+				// la pelo efeito, aqui pelo bit `EntityState.Reunindo`. E e o que o original faz -- o laco do
+				// `aurapowered.wav` toca pra quem tem a vista QUALQUER mob com `poweruprunning`
+				// (`Sound.dm:72-73`).
+				// ==============================================================================================================
 				// `retrato`: isto e o estado lido no snapshot, nao uma transicao vista -- quem ja estava
 				// carregando quando eu entrei nao "comecou" agora (ver `CargaVisual.Som`).
-				cg.Som(e.Carregando, retrato: true);
+				cg.Som(ZumbidoSegueAAuraDeTeste ? e.Carregando : e.Reunindo, retrato: true);
 			}
 
 			// INVISIVEL: some, mas o no CONTINUA VIVO e recebendo posicao. Apagar o corpo faria
@@ -4405,6 +4482,33 @@ public partial class World : Node2D
 	/// longe". Sem uma leitura do que esta na tela, nenhum numero prova o conserto.
 	/// </summary>
 	public Vector2? PosicaoDesenhadaDe(int id) => Corpo(id) is { } c ? Desenhado(c) : null;
+
+	/// <summary>
+	/// O CORPO NOCAUTEADO MAIS PERTO de <paramref name="eu"/>, dentro da caixa de <paramref name="alcance"/> --
+	/// o alvo do SAQUE na tecla E (`MenuDeInteracao`). Sai do que o snapshot ja diz de cada corpo
+	/// (`EntityState.Ocupacao`): nao ha pacote novo pra "tem alguem caido aqui".
+	///
+	/// <paramref name="menosEste"/> e o cadaver que o servidor apontou: morto no chao tambem viaja como
+	/// "nocauteado" na ocupacao, e o cadaver tem o menu dele (enterrar). Quem confere se o corpo esta mesmo
+	/// nocauteado e VIVO e o servidor, na hora do verbo -- isto so decide se a dica aparece.
+	/// </summary>
+	public (int Id, string Nome, Vector2 Onde)? CaidoPerto(Vector2 eu, float alcance, int menosEste)
+	{
+		(int, string, Vector2)? melhor = null;
+		float melhorDist = float.MaxValue;
+		foreach ((int id, RemotePlayer r) in _remotos)
+		{
+			if (id == menosEste || !r.Visible || r.Ocupacao != Jandirus.Core.World.Ocupacao.Nocauteado) continue;
+			Vector2 onde = Desenhado(r);
+			if (Math.Abs(onde.X - eu.X) > alcance || Math.Abs(onde.Y - eu.Y) > alcance) continue;
+
+			float d = eu.DistanceSquaredTo(onde);
+			if (d >= melhorDist) continue;
+			melhorDist = d;
+			melhor = (id, _nomes.GetValueOrDefault(id, "alguém"), onde);
+		}
+		return melhor;
+	}
 
 	/// <summary>
 	/// ONDE A ULTIMA FAISCA DE GOLPE FOI ESTOURADA, em coordenada do mundo desenhado, e EM QUEM -- a porta da
@@ -5933,6 +6037,8 @@ public partial class World : Node2D
 				Raio = p.Raio,
 				Seed = p.Seed,
 				Premade = p.Premade,
+				// O HALO DOURADO de um mundo de atmosfera divina -- ver `PlanetaDesenhado.Divino.cs`.
+				Divino = PlanetaDesenhado.TemAtmosferaDivina(p.Premade, p.Seed),
 				// O TIPO decide o icone do planeta GERADO (selva, deserto, gelo). Ele nao trafega:
 				// as duas pontas derivam da seed pela MESMA funcao do Core, que e o que ja faz o
 				// mundo inteiro nascer igual dos dois lados sem mandar um byte de mapa.

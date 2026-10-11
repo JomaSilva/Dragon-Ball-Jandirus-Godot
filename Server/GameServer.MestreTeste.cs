@@ -640,13 +640,18 @@ public partial class GameServer
 		AfirmarMst("...e a recarga comeca a correr NO GESTO, antes da resposta (o `:510` do DM)",
 				   mestre.RecargaDeEnsino > NowMs());
 
-		long raivaAntes = aluno.FuriaExtremaAte;
+		// A RAIVA QUE A PROVOCACAO ACENDE e a MENOR que abre o degrau (`Catalogo.RaivaExigida`). Desde
+		// 2026-10-11 ela e a COMUM pro Super Saiyajin -- o `mst_ignite_anger` do DM (`MasterStudent.dm:405-409`)
+		// tambem acende o "Angry" --, e a assistida nao paga o agio da raiva comum: o preco dela e a metade da
+		// porta (`EstadoDeForma.Avaliar`, passo 9b). Ate ali esta linha olhava a janela da furia EXTREMA.
+		long furiaAntes = aluno.FuriaExtremaAte, comumAntes = aluno.RaivaLendariaAte;
 		ResponderAoMestre(aluno, aceitou: true);
 
 		AfirmarMst("o aluno DESPERTA o SSJ1 com 60% da porta pessoal",
 				   aluno.Forma.Atual == "ssj1", $"{aluno.Forma.Atual}, BP {aluno.Ficha.BP:N0} de {porta:N0}");
-		AfirmarMst("...e a raiva foi acesa pela provocacao (a forma nasce dela)",
-				   aluno.FuriaExtremaAte > raivaAntes);
+		AfirmarMst("...e a raiva foi acesa pela provocacao (a forma nasce dela) -- a COMUM, que e a que o degrau pede",
+				   aluno.RaivaLendariaAte > comumAntes && aluno.FuriaExtremaAte == furiaAntes,
+				   $"comum {comumAntes} -> {aluno.RaivaLendariaAte}; extrema {furiaAntes} -> {aluno.FuriaExtremaAte}");
 		AfirmarMst("...e o corte ficou anotado", aluno.Forma.PortasCortadas.Contains(ssj1.IdRede));
 		AfirmarMst("...e a forma entrou pelo funil normal (liberada + estreia consumida)",
 				   aluno.Forma.Despertou("ssj1") && aluno.Forma.JaViuAEstreia("ssj1"));
@@ -790,7 +795,7 @@ public partial class GameServer
 		aluno.PedidoDoMestre = new PedidoDeMestre(false, sigMestre, mestre.Name, "",
 												  NowMs() + 60_000);
 		ResponderAoMestre(aluno, aceitou: true);
-		AfirmarMst("...e responder a um pedido de quem saiu nao resolve nada (o molde do PedidoDeAmizade)",
+		AfirmarMst("...e responder a um pedido de quem saiu nao resolve nada (os dois lados, ou nenhum)",
 				   aluno.PedidoDoMestre == null);
 		_players[mestre.Id] = mestre;
 

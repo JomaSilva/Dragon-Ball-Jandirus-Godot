@@ -257,6 +257,12 @@ public sealed partial class GameServer
 	/// </summary>
 	private const double SegundosDoDragaoDePe = 120;
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--menudodragaoteste`): o pedido concedido nao devolve a espera do dragao -- o
+	/// prazo conta so da invocacao, e o set de tres pedidos tem os mesmos 120 s do de um. Falso em jogo, sempre.
+	/// </summary>
+	public static bool DragaoNaoRenovaAEsperaDeTeste;
+
 	/// <summary>O que as esferas disseram -- ligada so pela bancada, como a `EscutaDaConquista`.</summary>
 	internal static List<string>? EscutaDasEsferas;
 
@@ -441,6 +447,10 @@ public sealed partial class GameServer
 		_sets.Clear();
 		_esferas.Clear();
 		_invocacoes.Clear();
+
+		// QUEM OLHAVA UM DRAGAO deixa de olhar: a lista e por id de SESSAO, como a das invocacoes, e pelo mesmo
+		// motivo nao pode atravessar a limpeza.
+		_olhandoODragao.Clear();
 	}
 
 	// =====================================================================
@@ -829,7 +839,14 @@ public sealed partial class GameServer
 	public static bool AcordarCaladoDeTeste;
 
 	/// <summary>
-	/// UMA VEZ POR SEGUNDO. Cinco coisas, todas baratas -- a lista tem sete itens por set.
+	/// DEFEITO INJETADO (bancada `--menudodragaoteste`): a contagem de pedidos volta a zero em TODO tique de set
+	/// acordado, e nao so quando ele acorda -- com o dragao de pe, cada segundo devolve os pedidos ja gastos. E o
+	/// que este port fez ate 2026-10-10. Falso em jogo, sempre.
+	/// </summary>
+	public static bool ContagemZeraTodoTiqueDeTeste;
+
+	/// <summary>
+	/// UMA VEZ POR SEGUNDO. Seis coisas, todas baratas -- a lista tem sete itens por set.
 	///
 	/// A PRIMEIRA E O ENTERRO (`-1`) e ela vem antes do zelador do eterno, e nao por gosto de ordem:
 	/// ver o bloco la embaixo e o cabecalho do <see cref="EnterrarSetsDeMundosMortos"/>.
@@ -906,16 +923,35 @@ public sealed partial class GameServer
 			// todo set acordado do mundo, pra sempre.
 			// ================================================================================================================
 			bool acordado = !s.Inerte && agora >= s.AtivoEm;
-			if (acordado && !s.VistoAcordado && !AcordarCaladoDeTeste) zonasPraAvisar.Add(s.Zona.Hash);
+			bool virou = acordado && !s.VistoAcordado;
+			if (virou && !AcordarCaladoDeTeste) zonasPraAvisar.Add(s.Zona.Hash);
 			s.VistoAcordado = acordado;
 
 			// `WishCount = 0` NA REATIVACAO (:286). O comentario do DM explica que sem isso o SEGUNDO
 			// uso do mesmo set falhava pra sempre -- o contador nunca voltava a zero.
+			if (!acordado || s.Pedidos == 0) continue;
+
+			// ============================ NA REATIVACAO, E SO NELA ============================
+			// O DM zera dentro do `if(IsInactive == 1)` (`:282-286`): so o set que DORMIA e acordou. Esta linha
+			// zerava todo set ACORDADO com contagem diferente de zero, a cada tique -- e o set de 2 ou 3 pedidos
+			// fica acordado ENTRE um pedido e o seguinte, com o dragao de pe. Medido em 2026-10-09 num Porunga
+			// (3 pedidos), um `db_desejar dinheiro` e um tique de cada vez: 7 concedidos em 7 tentativas, a
+			// contagem 1->0 sete vezes, set acordado e dragao de pe no fim. Desejo ilimitado pra todo set com
+			// mais de um pedido.
 			//
-			// O `Pedidos != 0` NAO E OTIMIZACAO: e ele que faz isto acontecer UMA vez, no instante da
-			// virada. Sem ele, este laco marcaria "mexeu" e reenviaria o pacote da zona a cada segundo
-			// pra todo set acordado do mundo, pra sempre.
-			if (s.Inerte || agora < s.AtivoEm || s.Pedidos == 0) continue;
+			// ZERA EM DOIS CASOS, e os dois sao "o set dormiu e voltou":
+			//   * A VIRADA (o trinco de cima), sem dragao de pe. O dragao de pe na virada so acontece a quem
+			//     invoca e pede no mesmo segundo em que o set acorda, antes deste tique: o pedido dele conta.
+			//     O primeiro tique depois de um reinicio tambem e virada (o trinco e de sessao), e a contagem
+			//     parcial volta a zero ali -- como no DM, onde o `WishCount` e `tmp` (`Dragonballs.dm:161`).
+			//   * A CONTAGEM ESGOTADA ACHADA ACORDADA: esgotar poe o set pra dormir na mesma chamada
+			//     (`ContarUmDesejo`), entao so se chega aqui depois da espera. Cobre o set que dormiu e acordou
+			//     sem tique nenhum no meio (o servidor desligado; a bancada que adianta o relogio).
+			// A contagem PARCIAL de um set que continua acordado fica: e o que resta desta ativacao, pra esta
+			// invocacao e pra proxima.
+			// ==================================================================================
+			bool reativou = virou && !_invocacoes.ContainsKey(s.Id);
+			if (!reativou && s.Pedidos < s.Desejos && !ContagemZeraTodoTiqueDeTeste) continue;
 
 			s.Pedidos = 0;
 			mexeu = true;
@@ -1012,11 +1048,23 @@ public sealed partial class GameServer
 		foreach (Invocacao inv in _invocacoes.Values.ToList())
 		{
 			if (agora < inv.ExpiraEm) continue;
-			FecharAInvocacao(inv.Set, "O dragão desaparece nas nuvens sem que ninguém tenha pedido nada.");
+			// A FRASE NAO PODE DIZER "ninguem pediu nada" de um dragao que ja atendeu um pedido e esperava o
+			// seguinte (o set de 2 ou 3 pedidos, com a espera renovada a cada um -- ver `ContarUmDesejo`).
+			FecharAInvocacao(inv.Set, SetPorId(inv.Set) is { Pedidos: > 0 }
+				? "O dragão cansa de esperar pelo próximo pedido e desaparece nas nuvens."
+				: "O dragão desaparece nas nuvens sem que ninguém tenha pedido nada.");
 		}
 
 		foreach (ulong h in zonasPraAvisar) MandarEsferasPorHash(h);
 		if (mexeu) SalvarEsferas();
+
+		// ---------------------------------------------------------- 6. a janela de quem olha um dragao
+		// DEPOIS DOS CINCO DE CIMA: sao eles que mudam o que ela mostra (o set acordou, o dragao foi embora, a
+		// contagem voltou a zero). Ver `GameServer.MenuDoDragao.cs`.
+		SincronizarOsMenusDoDragao();
+
+		// O DISCO DO DRAGON RADAR le o estado que este tique acabou de fechar. Ver `GameServer.RadarDeEsferas.cs`.
+		TickDoRadarDeEsferas();
 	}
 
 	// =====================================================================
@@ -1166,7 +1214,20 @@ public sealed partial class GameServer
 	private void ContarUmDesejo(SetDeEsferas s)
 	{
 		s.Pedidos++;
-		if (s.Pedidos < s.Desejos) { SalvarEsferas(); return; }
+		if (s.Pedidos < s.Desejos)
+		{
+			// ============================ O DRAGAO ESPERA O PROXIMO PEDIDO POR INTEIRO ============================
+			// O prazo (`SegundosDoDragaoDePe`) era contado uma vez, da invocacao: quem tem tres pedidos tinha
+			// os mesmos 120 s de quem tem um -- pra ler a lista, escolher o alvo e confirmar tres vezes. No DM
+			// nao ha prazo: o dragao vive enquanto a caixa de `input()` esta aberta, e ela reabre a cada pedido
+			// (`while(wishscount)`, `WishTable.dm:119`). Aqui cada pedido concedido devolve a espera cheia.
+			// Nao e porta pra segurar o dragao de pe: so renova quem GASTA pedido, e pedido acaba.
+			// =====================================================================================================
+			if (!DragaoNaoRenovaAEsperaDeTeste && _invocacoes.TryGetValue(s.Id, out Invocacao? dePe))
+				dePe.ExpiraEm = TempoDoMundo + SegundosDoDragaoDePe;
+			SalvarEsferas();
+			return;
+		}
 
 		s.AtivoEm = PrazoEmSegundos(
 			Esferas.SegundosDe(Esferas.EsperaDepoisDoDesejo(s.OffTime, s.Pedidos, s.Desejos)));
@@ -1214,7 +1275,10 @@ public sealed partial class GameServer
 			if (e.Zona.Hash != pl.Zone.Hash) continue;
 			if (SetPorId(e.Set) is not { } s || !SetAtivo(s)) continue;
 
-			double dx = e.X - pl.Pos.X, dy = e.Y - pl.Pos.Y;
+			// A ESFERA NA MAO DE ALGUEM ESTA ONDE A PESSOA ESTA (`OndeEstaAEsfera`): o verb media do ponto em que
+			// ela foi pega, e passou a discordar do disco do radar no dia em que o disco nasceu.
+			Vec2 onde = OndeEstaAEsfera(e);
+			double dx = onde.X - pl.Pos.X, dy = onde.Y - pl.Pos.Y;
 			achadas.Add((e, s, Math.Sqrt(dx * dx + dy * dy)));
 		}
 
@@ -1228,7 +1292,7 @@ public sealed partial class GameServer
 		Avisar(pl, $"-- radar: {achadas.Count} sinal(is) em {NomeDoPlaneta(pl.Zone.Name)} --");
 		foreach ((Esfera e, SetDeEsferas s, double d) in achadas.OrderBy(a => a.D))
 			Avisar(pl, $"  {Esferas.NomeDaEsfera(e.Numero)}: {d / ZoneCollision.TileSize:0} tiles "
-					 + $"a {Rumo(pl.Pos, new Vec2(e.X, e.Y))}"
+					 + $"a {Rumo(pl.Pos, OndeEstaAEsfera(e))}"
 					 + (e.Portador != 0 ? $" -- com {NomeDoCorpo(e.Portador)}" : "")
 					 + (s.Eterno ? " [Namek]" : ""));
 	}
@@ -1358,23 +1422,27 @@ public sealed partial class GameServer
 		// proposito: dois milhoes de zeni cobrados por um alerta que o jogador nao pediu seriam um
 		// pedagio, e o DM ao menos perguntava.
 		// ================================================================================================
-		if (string.Equals(arg.Trim(), "supremo", StringComparison.OrdinalIgnoreCase))
+		//
+		// EM ZENI OU, PELO DOBRO, EM RECURSOS (dono, 2026-10-10: *"a estatua SUPREMA [...] mude pra aceitarem
+		// resource"*): a moeda e a ultima palavra do argumento (`db_estatua supremo recursos`), e quem cobra e o
+		// contrato -- sem saldo NAQUELA moeda a estatua sobe sem o desejo, como sempre subiu.
+		(string oQue, Jandirus.Core.Economia.Moeda moeda) = Jandirus.Core.Economia.Recurso.LerPedidoPago(arg);
+		if (string.Equals(oQue, "supremo", StringComparison.OrdinalIgnoreCase))
 		{
-			if (pl.Ficha.Zeni >= Desejos.PrecoDoSupremo)
+			if (CobrarOuExplicar(pl, Desejos.PrecoDoSupremo, moeda, "gravar o desejo supremo"))
 			{
-				pl.Ficha.Zeni -= Desejos.PrecoDoSupremo;
 				s.TemSupremo = true;
 				Persistir(pl);
 				Avisar(pl, $"você grava o desejo O MAIS FORTE DO UNIVERSO nestas esferas por "
-						 + $"{Desejos.PrecoDoSupremo:N0} zeni.");
+						 + $"{Jandirus.Core.Economia.Recurso.PrecoEscrito(Desejos.PrecoDoSupremo, moeda)}.");
 			}
-			else Avisar(pl, $"gravar o desejo supremo custa {Desejos.PrecoDoSupremo:N0} zeni -- "
-						  + $"você tem {pl.Ficha.Zeni:N0}. A estátua sobe sem ele.");
+			else Avisar(pl, "A estátua sobe sem ele.");
 		}
-		else if (pl.Ficha.Zeni >= Desejos.PrecoDoSupremo)
-			Avisar(pl, $"você tem zeni pra gravar O MAIS FORTE DO UNIVERSO nestas esferas "
-					 + $"({Desejos.PrecoDoSupremo:N0}). Derrube a estátua e erga de novo com o "
-					 + "argumento 'supremo' se quiser.");
+		else if (pl.Ficha.Zeni >= Desejos.PrecoDoSupremo
+				 || pl.Ficha.Recursos >= Jandirus.Core.Economia.Recurso.CustoEmRecursos(Desejos.PrecoDoSupremo))
+			Avisar(pl, $"você tem como gravar O MAIS FORTE DO UNIVERSO nestas esferas "
+					 + $"({Jandirus.Core.Economia.Recurso.DoisPrecos(Desejos.PrecoDoSupremo)}). Derrube a estátua e "
+					 + "erga de novo gravando o SUPREMO se quiser.");
 
 		// ============================ **E AQUI ELE CRIA AS SETE** ============================
 		// O DM **nao faz isto** (namekian.dm:95-100 monta a estatua e para), e o resultado e que uma
@@ -1419,10 +1487,21 @@ public sealed partial class GameServer
 
 		if (!int.TryParse(arg.Trim(), out int quantos))
 		{
-			Avisar(pl, $"a estátua concede {s.Desejos} pedido(s) por invocação. Repita com 1, 2 ou 3 "
-					 + "pra mudar -- MAIS PEDIDOS DEIXA CADA UM MAIS FRACO.");
+			Avisar(pl, $"a estátua concede {s.Desejos} pedido(s) por invocação. Pra mudar, abra o menu do "
+					 + "dragão (aba World, \"Ver os desejos\") e escolha 1, 2 ou 3 -- MAIS PEDIDOS DEIXA CADA "
+					 + "UM MAIS FRACO.");
 			return;
 		}
+
+		// ============================ REFAZER COM O DRAGAO DE PE O MANDA EMBORA ============================
+		// `RecreateBalls()` APAGA as sete (`for(var/obj/DB/A) if(A.BallID == BallID) del(A)`, `Dragonballs.dm:103-106`),
+		// e a lista de desejos e um proc DA ESFERA (`obj/DB/proc/GenerateWishList`, `WishTable.dm:114-119`): apagada
+		// a esfera, a invocacao que rodava nela morre junto. Aqui o `RefazerAsEsferas` zera a conta de pedidos e a
+		// invocacao ficava de pe -- quem invocou voltava a pedir, o criador refazia de novo, e um unico dragao dava
+		// pedidos sem fim (50 milhoes de zeni de cada vez). Sem as esferas nao ha dragao.
+		// ===================================================================================================
+		if (!RefazerComODragaoDePeDeTeste && _invocacoes.ContainsKey(s.Id))
+			FecharAInvocacao(s.Id, $"as esferas foram refeitas, e {s.NomeDoDragao} some no céu.");
 
 		// `max(min(input,3),1)` (:65). Um a tres, e o teto e o que separa Shenron de Porunga.
 		s.Desejos = Math.Clamp(quantos, 1, 3);
@@ -1451,6 +1530,13 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
+	/// A ESTATUA DO DRAGAO AO ALCANCE DA MAO deste jogador, ou nula. Um lugar so pra quem derruba e pro menu
+	/// do dragao, que so oferece "Derrubar a estatua" a quem o verbo atenderia.
+	/// </summary>
+	private SetDeEsferas? EstatuaAoAlcance(ServerPlayer pl) => _sets.Find(x => x.Zona.Hash == pl.Zone.Hash
+		&& Math.Abs(x.Ex - pl.Pos.X) <= AlcanceDeUso && Math.Abs(x.Ey - pl.Pos.Y) <= AlcanceDeUso);
+
+	/// <summary>
 	/// `Destroy_Statue()` (:50-58) -- **QUALQUER UM em view(1)**, sem requisito de poder.
 	///
 	/// Isto e do original e o `desc` da estatua promete ("Anyone can destroy it.", :30). Fica como
@@ -1459,8 +1545,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void DerrubarAEstatua(ServerPlayer pl, string arg)
 	{
-		SetDeEsferas? s = _sets.Find(x => x.Zona.Hash == pl.Zone.Hash
-			&& Math.Abs(x.Ex - pl.Pos.X) <= AlcanceDeUso && Math.Abs(x.Ey - pl.Pos.Y) <= AlcanceDeUso);
+		SetDeEsferas? s = EstatuaAoAlcance(pl);
 
 		if (s == null) { Avisar(pl, "não há Estátua do Dragão ao seu alcance."); return; }
 		if (s.Eterno) { Avisar(pl, "uma proteção ancestral impede que a estátua seja destruída."); return; }
@@ -1468,7 +1553,7 @@ public sealed partial class GameServer
 		if (!string.Equals(arg.Trim(), "sim", StringComparison.OrdinalIgnoreCase))
 		{
 			Avisar(pl, "derrubar a estátua APAGA as sete esferas deste mundo, para sempre. "
-					 + "Repita com o argumento 'sim' pra confirmar.");
+					 + "Confirme no menu do dragão (aba World, \"Derrubar a estátua\").");
 			return;
 		}
 
@@ -1597,11 +1682,18 @@ public sealed partial class GameServer
 			case "db_pegar": PegarEsfera(pl); return true;
 			case "db_largar": LargarEsferas(pl); return true;
 			case "db_invocar": InvocarODragao(pl); return true;
-			case "db_desejar": PedirDesejo(pl, arg); return true;
+
+			// OS TRES QUE A JANELA DE DESEJOS MANDA acertam as janelas NA HORA, sem esperar o tique: quem
+			// pediu ve a contagem cair (ou a janela fechar, se o dragao foi embora) no mesmo instante. So
+			// sai pacote pra quem a janela mudou -- ver `SincronizarOsMenusDoDragao`.
+			case "db_desejar": PedirDesejo(pl, arg); SincronizarOsMenusDoDragao(); return true;
 			case "db_estatua": ErguerEstatua(pl, arg); return true;
-			case "db_refazer": RefazerOSet(pl, arg); return true;
+			case "db_refazer": RefazerOSet(pl, arg); SincronizarOsMenusDoDragao(); return true;
 			case "db_reviver": ReviverOSet(pl); return true;
-			case "db_derrubar": DerrubarAEstatua(pl, arg); return true;
+			case "db_derrubar": DerrubarAEstatua(pl, arg); SincronizarOsMenusDoDragao(); return true;
+
+			// A JANELA: abrir, abrir numa linha, e avisar que fechou. Ver `GameServer.MenuDoDragao.cs`.
+			case "db_menu": PedirOMenuDoDragao(pl, arg); return true;
 			default: return false;
 		}
 	}

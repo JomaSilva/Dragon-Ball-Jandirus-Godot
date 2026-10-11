@@ -1,4 +1,5 @@
 using Godot;
+using Jandirus.Core.Economia;
 using Jandirus.Core.World;
 using Jandirus.Net;
 
@@ -33,6 +34,8 @@ namespace Jandirus.Client;
 ///     linha acima da barra diz POR QUE -- as mesmas perguntas do servidor (`RegrasDeBloco`).
 ///   * CLICAR ERGUE, e segurar e arrastar pinta. BOTAO DIREITO desmancha o que e seu, do mesmo jeito.
 ///   * A PORTA SEMPRE PERGUNTA A SENHA antes de subir (o pedido do dono); em branco, sobe sem.
+///   * CADA PECA CUSTA (o pedido do dono de 2026-10-10), em zeni ou em recursos: o seletor "Pagar com" do
+///     canto inferior direito, com o preco e o saldo, mora em `ModoDeConstruir.Pagamento.cs`.
 /// =====================================================================
 ///
 /// QUEM DECIDE E O SERVIDOR (`GameServer.Blocos.cs`). Daqui so sai a celula e o numero do bloco; o
@@ -189,6 +192,9 @@ public partial class ModoDeConstruir : CanvasLayer
 		_gruposDaPaleta.AddThemeConstantOverride("separation", 6);
 		rolagem.AddChild(_gruposDaPaleta);
 
+		// ---- o canto inferior direito: com o que se paga, o preco e o saldo ----
+		MontarOPagamento();
+
 		PintarABarra();
 	}
 
@@ -204,16 +210,9 @@ public partial class ModoDeConstruir : CanvasLayer
 		}
 
 		_nome.Text = NaMao is { } m
-			? $"{m.Nome}  ·  {NomeDaClasse(m.Classe)}"
+			? $"{m.Nome}  ·  {PrecoDeBloco.NomeDaClasse(m.Classe)}"
 			: "casa vazia -- aperte E e escolha um bloco";
 	}
-
-	private static string NomeDaClasse(ClasseDeBloco c) => c switch
-	{
-		ClasseDeBloco.Parede => "parede",
-		ClasseDeBloco.Porta => "porta",
-		_ => "piso",
-	};
 
 	private void Escolher(int casa)
 	{
@@ -245,7 +244,10 @@ public partial class ModoDeConstruir : CanvasLayer
 			(ClasseDeBloco.Porta, "PORTAS -- ao erguer, o jogo pergunta a senha"),
 		})
 		{
-			_gruposDaPaleta.AddChild(Tema.Legenda(titulo, Tema.TextoFraco, 12));
+			// O PRECO DA CLASSE NAS DUAS MOEDAS, ao lado do titulo: aqui se escolhe o que erguer, e o preco entra
+			// na escolha. (O da peca que ja esta na mao, na moeda em uso, e o do seletor do canto.)
+			string preco = $"{PrecoDeBloco.Etiqueta(classe, Moeda.Zeni)} ou {PrecoDeBloco.Etiqueta(classe, Moeda.Recursos)} cada";
+			_gruposDaPaleta.AddChild(Tema.Legenda($"{titulo}  ·  {preco}", Tema.TextoFraco, 12));
 			var grade = new HFlowContainer();
 			grade.AddThemeConstantOverride("h_separation", 3);
 			grade.AddThemeConstantOverride("v_separation", 3);
@@ -291,12 +293,15 @@ public partial class ModoDeConstruir : CanvasLayer
 		_aviso.Text = "";
 		PintarABarra();
 		TrocarOFantasma();
+		AoLigarOPagamento();   // o servidor fica sabendo da moeda gravada, e responde com o saldo
 
 		// A LICAO SO NA PRIMEIRA VEZ DA SESSAO: quem liga e desliga o modo a cada parede nao precisa reler.
 		if (_jaEnsinou) return;
 		_jaEnsinou = true;
 		Chat.Sistema($"modo de construir: clique ergue (segure e arraste pra pintar), botão direito desmancha, "
 					 + $"a roda troca de bloco, E abre todos os blocos. {Teclas.Nome(TeclaDoModo())} ou Esc sai.");
+		Chat.Sistema("cada peça custa: no canto inferior direito você escolhe pagar com zeni ou com recursos "
+					 + "(em recursos sai o dobro). A escolha fica até você trocar.");
 	}
 
 	private static bool _jaEnsinou;
@@ -307,6 +312,7 @@ public partial class ModoDeConstruir : CanvasLayer
 		_erguendo = _desmanchando = false;
 		_ultimaCelula = null;
 		_mouse = null;
+		_conta.Limpar();
 		FecharPergunta();
 		if (IsInstanceValid(_raiz)) _raiz.Visible = false;
 		if (IsInstanceValid(_paleta)) _paleta.Visible = false;
@@ -339,6 +345,8 @@ public partial class ModoDeConstruir : CanvasLayer
 	///
 	/// DUAS COISAS O CLIENTE NAO SABE e o servidor responde: o chao que nao aceita construcao (o plano
 	/// `.duro` so e lido la) e os corpos dos outros em cima da celula.
+	///
+	/// O SALDO E A ULTIMA PERGUNTA, como la (`GameServer.ErguerBloco`): primeiro o lugar, depois o bolso.
 	/// </summary>
 	internal static RecusaDeBloco Recusa(BlocoDef def, int cx, int cy)
 	{
@@ -357,7 +365,7 @@ public partial class ModoDeConstruir : CanvasLayer
 				if (Jandirus.Core.Tech.CatalogoDeObras.Celula(o.Pos.X, o.Pos.Y) == (cx, cy)) return RecusaDeBloco.Coisa;
 			if (RegrasDeBloco.CorpoNaCelula(eu, cx, cy)) return RecusaDeBloco.Corpo;
 		}
-		return RecusaDeBloco.Pode;
+		return Instancia is { } modo && !modo.OBolsoPaga(def) ? RecusaDeBloco.SemSaldo : RecusaDeBloco.Pode;
 	}
 
 	/// <summary>A celula do mundo sob um ponto da tela.</summary>
@@ -379,6 +387,13 @@ public partial class ModoDeConstruir : CanvasLayer
 	/// </summary>
 	private Vector2? _mouse;
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada --diagjanelas): a alca de uma peca da tela (e o menu P) nao conta como interface --
+	/// com o modo ligado, o clique que pega a borda do chat tambem ergue um bloco na celula que esta por baixo.
+	/// Falso em jogo, sempre.
+	/// </summary>
+	public static bool AlcaNaoEInterfaceDeTeste;
+
 	/// <summary>A celula sob o mouse agora. A camera anda com o mouse parado, entao a conta e refeita a cada quadro.</summary>
 	private (int X, int Y)? CelulaDoMouse() => CelulaEm(_mouse ?? GetViewport().GetMousePosition());
 
@@ -386,15 +401,21 @@ public partial class ModoDeConstruir : CanvasLayer
 	/// O MOUSE ESTA EM CIMA DE ALGO QUE SE CLICA? Entao o clique e de la, e nao do mundo.
 	///
 	/// NAO E "HA UM CONTROLE SOB O MOUSE": o HUD tem paineis de tela inteira que nao sao botao de nada, e
-	/// com essa pergunta o modo nunca ergueria um bloco. Conta o que e DESTE modo (a barra, a paleta) e o
-	/// que e de clicar ou de digitar em qualquer tela (botao, campo de texto, lista, barra de rolagem).
+	/// com essa pergunta o modo nunca ergueria um bloco. Conta o que e DESTE modo (a barra, a paleta, o
+	/// seletor de moeda) e o que e de clicar ou de digitar em qualquer tela (botao, campo de texto, lista,
+	/// barra de rolagem).
+	///
+	/// E CONTA O QUE E DE ARRASTAR: a alca de uma peca da tela (a borda do chat, o canto de um painel do topo, a
+	/// barra e a moldura do menu P -- `AlcaDeJanela`) e o proprio menu P embutido. Este modo le o clique ANTES da
+	/// interface: sem isto, puxar a borda do chat com o modo ligado erguia um bloco embaixo dela.
 	/// </summary>
 	private bool MouseNaInterface()
 	{
 		if (GetViewport().GuiGetHoveredControl() is not { } c) return false;
 		if (c is BaseButton or LineEdit or TextEdit or ItemList or ScrollBar or Slider) return true;
+		if (!AlcaNaoEInterfaceDeTeste && (c is AlcaDeJanela || MenuJogo.EDoMenuNaTela(c))) return true;
 		for (Node? n = c; n != null; n = n.GetParent())
-			if (n == _paleta) return true;
+			if (n == _paleta || (n == _pagamento && !PagamentoNaoEInterfaceDeTeste)) return true;
 		return false;
 	}
 
@@ -404,6 +425,11 @@ public partial class ModoDeConstruir : CanvasLayer
 
 		// SAIU DE ONDE SE CONSTROI (embarcou, morreu, foi pro espaco): o modo se desliga sozinho.
 		if (GameClient.Instance is not { } cli || !RegrasDeBloco.ZonaAceita(cli.Zone)) { Desligar(); return; }
+
+		// ANTES DE TUDO O QUE PODE SAIR CEDO (mouse na interface, casa vazia): o seletor mostra o saldo e da
+		// baixa nas pecas respondidas com o mouse onde estiver.
+		AtualizarOPagamento(cli);
+
 		if (_fantasma == null || !IsInstanceValid(_fantasma)) TrocarOFantasma();
 		if (_fantasma == null) return;
 
@@ -426,7 +452,7 @@ public partial class ModoDeConstruir : CanvasLayer
 
 		RecusaDeBloco r = Recusa(d, c.X, c.Y);
 		_fantasma.Modulate = r == RecusaDeBloco.Pode ? Sobe : NaoSobe;
-		_aviso.Text = r == RecusaDeBloco.Pode ? "" : RegrasDeBloco.Motivo(r);
+		_aviso.Text = r == RecusaDeBloco.Pode ? "" : FraseDaRecusa(r);
 
 		// SEGURAR E ARRASTAR: uma tentativa por celula em que o mouse ENTRA (o `turf/MouseDrag` do DM,
 		// `click.dm:68-75`). O mouse rapido pula celulas de um quadro pro outro, e a parede sairia com
@@ -455,7 +481,8 @@ public partial class ModoDeConstruir : CanvasLayer
 		{
 			// NO CLIQUE A FRASE VAI PRO CHAT TAMBEM (a linha acima da barra some quando o mouse anda);
 			// no arrasto nao, senao pintar ao longo de um rio encheria o chat de "nao da pra construir na agua".
-			if (!noArrasto) Chat.Sistema(RegrasDeBloco.Motivo(r));
+			// (E e assim que o arrasto PARA na primeira peca que o bolso nao paga: calado, sem mandar nada.)
+			if (!noArrasto) Chat.Sistema(FraseDaRecusa(r));
 			return;
 		}
 
@@ -470,7 +497,9 @@ public partial class ModoDeConstruir : CanvasLayer
 			return;
 		}
 
+		if (!cli.Connected) return;
 		cli.SendBloco(Protocol.BlocoErguer, cx, cy, d.Numero);
+		AnotarPecaACaminho(cli, d);   // o servidor responde uma vez por pedido: ver `ModoDeConstruir.Pagamento.cs`
 	}
 
 	private void Desmanchar(int cx, int cy, bool noArrasto)
@@ -557,7 +586,11 @@ public partial class ModoDeConstruir : CanvasLayer
 			return;
 		}
 
-		GameClient.Instance?.SendBloco(Protocol.BlocoErguer, _celulaDaPorta.X, _celulaDaPorta.Y, _numeroDaPorta, senha);
+		if (GameClient.Instance is { Connected: true } cli)
+		{
+			cli.SendBloco(Protocol.BlocoErguer, _celulaDaPorta.X, _celulaDaPorta.Y, _numeroDaPorta, senha);
+			if (BlocosNoCliente.Catalogo.PorNumero(_numeroDaPorta) is { } porta) AnotarPecaACaminho(cli, porta);
+		}
 		FecharPergunta();
 	}
 

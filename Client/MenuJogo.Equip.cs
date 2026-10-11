@@ -76,6 +76,9 @@ public partial class MenuJogo
 			: "liga com um bipe: o poder de quem você olha vira número"));
 
 		Nota("Ligado, o Battle Power da aba Stats vira número e a aba Scan lê o poder de quem você olha. Ele acorda desligado a cada relog.", c);
+
+		// O RADIO E DO SCOUTER, e mora no cartao dele: a frequencia, o botao que a troca e a tecla. Ver `MenuJogo.Radio.cs`.
+		BlocoDoRadio(tem, ligado, c);
 	}
 
 	// =====================================================================
@@ -231,6 +234,8 @@ public partial class MenuJogo
 		GameClient? c = GameClient.Instance;
 		string mochila = c == null ? "" : string.Join(',', c.Mochila.Pilhas.Select(p => $"{p.Id}x{p.Quantidade}"));
 		return $"{_atributos.Poderes}|{_atributos.PesoMult:0.##}|{f.SocoMs}|{mochila}"
-			 + $"|{Teclas.NomeDaAcao("lethal")}|{Teclas.NomeDaAcao("guard")}";
+			 + $"|{Teclas.NomeDaAcao("lethal")}|{Teclas.NomeDaAcao("guard")}"
+			 // o bloco do radio: a frequencia que o servidor guarda e as duas teclas que a nota dele ensina
+			 + $"|{c?.FrequenciaDoRadio}|{Teclas.NomeDaAcao("falar_radio")}|{Teclas.NomeDaAcao("falar_voz")}";
 	}
 }

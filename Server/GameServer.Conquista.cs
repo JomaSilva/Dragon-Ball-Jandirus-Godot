@@ -382,7 +382,7 @@ public partial class GameServer
 	}
 
 	/// <summary>"Earth" e nome de mapa; "Terra" e o que o jogador le. Mesma funcao do `conq_pname` (:128).</summary>
-	private static string NomeVisivel(string zona) => NomeDoPlaneta(zona);
+	private string NomeVisivel(string zona) => NomeDoPlaneta(zona);
 
 	// =====================================================================
 	// O TIQUE: manter custa
@@ -480,6 +480,9 @@ public partial class GameServer
 	private void PerderDominio(Dominio d, string recado, string motivo, bool anunciar)
 	{
 		_dominios.Remove(d);
+		// O DIREITO DE BATIZAR ACOMPANHA O DOMINIO: quem perdeu o planeta perde a caixa de texto dele (e o
+		// descobridor, se houver, volta a ter a vez). Ver `GameServer.Batismo.cs`.
+		MandarBatismosPraTodos();
 		if (recado.Length > 0) RecadoAoDono(d.Assinatura, recado);
 
 		if (anunciar)
@@ -662,6 +665,7 @@ public partial class GameServer
 		};
 		_dominios.Add(d);
 		SalvarConquista();
+		MandarBatismosPraTodos();   // quem dominou ganha o direito de batizar -- ver `GameServer.Batismo.cs`
 		return d;
 	}
 

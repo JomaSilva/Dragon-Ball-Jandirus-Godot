@@ -118,10 +118,15 @@ public sealed partial class GameServer
 		AfirmarMq("o regenerador oferece LIGAR/DESLIGAR, melhorar, ver estado e aparafusar",
 				  doTanque.Contains("regen_ligar") && doTanque.Contains("regen_info") && doTanque.Contains("aparafusar")
 				  && Interacoes.De(Regenerador.Tipo).Any(a => a.Forma == Interacoes.Forma.Submenu), string.Join(",", doTanque));
-		AfirmarMq("...e o servidor aceita as melhorias dele (o verbo so existe dentro do submenu)",
+		// CADA MELHORIA ABRE AS DUAS FORMAS DE PAGAR (dono, 2026-10-10: zeni, ou o dobro em recursos): o verbo
+		// que viaja mora DUAS paginas abaixo da raiz, e a moeda e a ultima palavra do argumento.
+		string[] melhorias = ["recarga", "bateria", "velocidade", "ferimentos", "nanites"];
+		AfirmarMq("...e o servidor aceita as melhorias dele (o verbo so existe dentro do submenu): cinco, cada uma abrindo a pagina das duas formas de pagar",
 				  Interacoes.Aceita(Regenerador.Tipo, "regen_up")
-				  && Interacoes.De($"{Regenerador.Tipo}/upgrades").Select(a => a.Arg)
-							   .SequenceEqual(["recarga", "bateria", "velocidade", "ferimentos", "nanites"]));
+				  && Interacoes.De($"{Regenerador.Tipo}/upgrades").Select(a => (a.Forma, a.Arg))
+							   .SequenceEqual(melhorias.Select(m => (Interacoes.Forma.Submenu, $"upgrades/{m}")))
+				  && melhorias.All(m => Interacoes.De($"{Regenerador.Tipo}/upgrades/{m}").Select(a => (a.Verbo, a.Arg))
+											   .SequenceEqual([("regen_up", m), ("regen_up", $"{m} recursos")])));
 		AfirmarMq("o campo bio NAO ganhou interruptor (ele trabalha sozinho): so aparafusar e ver estado",
 				  !Interacoes.Aceita("Bio_Field", "regen_ligar") && Interacoes.Aceita("Bio_Field", "aparafusar")
 				  && Interacoes.Aceita("Bio_Field", "maq_info"));

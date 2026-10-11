@@ -357,7 +357,10 @@ public partial class GameServer
 			: Agarrado(pl) ? "preso num agarrao voce nao se concentra."
 			: pl.Selo.Preso ? "daqui de dentro nao."
 			: _canais.ContainsKey(pl.Id) ? "com um raio na mao nao da pra se concentrar nisto."
-			: "";
+			// E O RESTO DE ONDE NAO SE SAI -- a prisao da Sala do Tempo, o bolso da fusao, a espera do torneio: a
+			// pergunta de TODO teleporte (`PorQueNaoSaiDaqui`, `GameServer.Validacoes.cs`). As tres de cima ja
+			// estavam nesta lista; as outras nao estavam em nenhuma.
+			: PorQueNaoSaiDaqui(pl);
 		return porque.Length == 0;
 	}
 
@@ -394,12 +397,17 @@ public partial class GameServer
 	/// (`EhPessoa`) e passa a levar o que o DM leva (decisao do dono). Colhida ANTES do primeiro
 	/// `MoveToZone`: ele mexe na lista da zona, e varrer uma lista que esta sendo mexida e o
 	/// "Collection was modified" que o `_npcsPraTirar` deste projeto ja existe pra evitar.
+	///
+	/// QUEM NAO PODE SER TIRADO DE ONDE ESTA NAO VAI DE CARONA (<see cref="PorQueNaoSaiDaqui"/>): sem esta
+	/// pergunta o preso da Sala do Tempo saia dela encostado em quem saltasse, e quem espera a vez no torneio era
+	/// levado embora da area de espera. Ele fica, e quem salta vai sem ele.
 	/// </summary>
 	private List<ServerPlayer> LevarCaronas(ServerPlayer pl)
 	{
 		var caronas = new List<ServerPlayer>();
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
-			if (o != pl && !o.Ficha.dead && _players.ContainsKey(o.Id) && Vec2.Distance(o.Pos, pl.Pos) <= RaioDeUmTileG4)
+			if (o != pl && !o.Ficha.dead && _players.ContainsKey(o.Id) && Vec2.Distance(o.Pos, pl.Pos) <= RaioDeUmTileG4
+				&& PorQueNaoSaiDaqui(o).Length == 0)
 				caronas.Add(o);
 		return caronas;
 	}
@@ -500,8 +508,15 @@ public partial class GameServer
 	private void GatilhoCronicoG4(ServerPlayer pl)
 	{
 		// --- JA HA PONTO: volta pra ele e o apaga ---------------------------
-		if (_pontoCronoG4.Remove(pl.Id, out PontoCronoG4? cp))
+		if (_pontoCronoG4.TryGetValue(pl.Id, out PontoCronoG4? cp))
 		{
+			// VOLTAR NO TEMPO E UM TELEPORTE, e ele nao tinha portao nenhum (o verb do DM tambem nao tem,
+			// `kanassa-jin.dm:108-121` -- mas la nao ha prisao de onde fugir): o preso da Sala do Tempo cravava o
+			// ponto na Terra antes de entrar e saia por ele; o absorvido saia de dentro do Majin. A recusa vem ANTES
+			// de gastar o ponto, que continua cravado pra quando ele puder sair.
+			if (PorQueNaoSaiDaqui(pl) is { Length: > 0 } preso) { Avisar(pl, preso); return; }
+			_pontoCronoG4.Remove(pl.Id);
+
 			Falar(pl, Protocol.Fala.Emote, "volta no tempo!");
 
 			pl.Ficha.Ki = cp.Ki;
@@ -552,6 +567,14 @@ public partial class GameServer
 		}
 
 		// --- NAO HA PONTO: crava -------------------------------------------
+		// ONDE NAO SE CHEGA POR TELEPORTE NAO SE CRAVA PONTO: um ponto dentro da Sala do Tempo seria a chave
+		// permanente dela (sem Guardiao, sem lotacao, sem recarga), e um dentro de uma mente ou de um Majin
+		// devolveria o corpo a um bolso que ja nao e dele.
+		if (ZonaFechadaAoTeleporte(pl.Zone))
+		{
+			Avisar(pl, "aqui dentro o tempo não aceita âncora: o ponto não se crava.");
+			return;
+		}
 		Falar(pl, Protocol.Fala.Emote, "se concentra, e solta um pouco de tempo.");
 
 		_pontoCronoG4[pl.Id] = new PontoCronoG4
@@ -609,11 +632,14 @@ public partial class GameServer
 	private void SugarVidaG4(ServerPlayer pl)
 	{
 		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "não da, caido."); return; }
+		// O REFLEXO DA MENTE E A COPIA DO SPLIT FORM NAO TEM VIDA PROPRIA PRA DAR (`M.HasSoul`, `demon.dm:77-83`;
+		// `mob/npc` nasce com `HasSoul = 0`): ver `CorpoDerivado`, no filtro abaixo, e a recusa dentro da mente.
+		if (RecusarAbsorcaoNaMente(pl)) return;
 
 		if (EmEspera(pl, _prontoSuccaoG4, "você ainda está digerindo a ultima alma")) return;
 		long agora = NowMs();
 
-		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDeUmTileG4, o => o.Ficha.KO && !o.Ficha.dead);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDeUmTileG4, o => o.Ficha.KO && !o.Ficha.dead && !CorpoDerivado(o));
 		if (alvo == null)
 		{
 			Avisar(pl, "o alvo precisa estar NOCAUTEADO, vivo, e ao seu lado.");

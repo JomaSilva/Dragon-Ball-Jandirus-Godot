@@ -269,6 +269,33 @@ if (args.Length >= 1 && args[0] == "terreno")
     return 0;
 }
 
+if (args.Length >= 4 && args[0] == "cores")
+{
+    // cores <tiles.json> <raizDoProjeto> <saida.json> : a cor media de cada quadro de cada folha do tileset --
+    // o `tiles-cores.json` de que o mapa da aba World tira um pixel por tile. Ver `CoresDosTiles`. Refaz-se
+    // toda vez que o `tiles.json` mudar (devolve quantas folhas ficaram de fora).
+    return CoresDosTiles.Escrever(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Path.GetFullPath(args[3]));
+}
+
+if (args.Length >= 1 && args[0] == "mapa")
+{
+    // mapa [raizDoProjeto] [tiles-cores.json] : a bancada do mapa da aba World e do disco do radar -- a cor de
+    // cada celula, o marcador, as coordenadas, o sinal na borda do disco, e (com a raiz) todo mapa do jogo
+    // montado de verdade, com o custo de cada um. Devolve o numero de falhas.
+    return MapaBench.Run(args.Length > 1 ? Path.GetFullPath(args[1]) : null, args.Length > 2 ? Path.GetFullPath(args[2]) : null);
+}
+
+if (args.Length >= 1 && args[0] == "procedural")
+{
+    // procedural [mundos] [raizDoProjeto] : os planetas SORTEADOS, mundo a mundo -- a montanha tem o
+    // desenho do penhasco do DM (ela ja foi pintada com a janela das casas: os "blocos de madeira") e
+    // todo mundo tem macieira perto do pouso. Le o tiles.json, os PNGs e os .pedacos do disco: rode da
+    // raiz do projeto, ou passe a raiz. Devolve o numero de falhas. Ver ProceduralBench.cs.
+    int mundosP = args.Length > 1 && int.TryParse(args[1], out int np) ? np : 300;
+    string raizP = Path.GetFullPath(args.Length > 2 ? args[2] : Directory.GetCurrentDirectory());
+    return ProceduralBench.Run(mundosP, raizP);
+}
+
 if (args.Length >= 2 && args[0] == "portas")
 {
     // portas <pastaMaps> : as portas de verdade -- bloqueiam fechadas, abrem, e voltam a fechar
@@ -606,6 +633,13 @@ if (args.Length >= 1 && args[0] == "instalar-prova")
     return Jandirus.Tools.InstalarBench.Run(args.Length >= 2 ? args[1] : "Assets");
 }
 
+if (args.Length >= 1 && args[0] == "fonte-prova")
+{
+    // fonte-prova [pastaAssets] : os extratores de skills, cargos, racas e estilos leem o que o COMPILADOR le --
+    // nao o comentado, nem o `.dm` que o `.dme` nao inclui. Arvores DM de mentira + os json publicados. Ver `FonteBench`.
+    return Jandirus.Tools.FonteBench.Run(args.Length >= 2 ? args[1] : "Assets");
+}
+
 if (args.Length >= 2 && args[0] == "pessoal")
 {
     // ============================ POR QUE ISTO NAO E O COMANDO `tech` ============================
@@ -740,6 +774,34 @@ if (args.Length >= 2 && args[0] == "blocos")
     Console.WriteLine($"de fora: {rb.Fora.Count}");
     foreach (IGrouping<string, (string Id, string Motivo)> g in rb.Fora.GroupBy(f => f.Motivo).OrderByDescending(g => g.Count()))
         Console.WriteLine($"   {g.Count(),3}  {g.Key}: {string.Join(", ", g.Select(f => f.Id))}");
+    return 0;
+}
+
+if (args.Length >= 3 && args[0] == "espelho")
+{
+    // espelho <pastaCode> <destino> : escreve a pasta de codigo do DM COMO O COMPILADOR A VE -- so os arquivos
+    // do `.dme`, cada um sem comentario, mesmo caminho e mesmo numero de linhas. NAO toca no repo nem no original.
+    //
+    // E O MODO DE COMPARACAO DOS EXTRATORES (ver `DmFonte.Espelhar`): rode o mesmo comando duas vezes, com a
+    // saida numa pasta de rascunho, e compare os dois arquivos --
+    //     ... -- estilos <Code>     <rascunho>/antes.json
+    //     ... -- estilos <destino>  <rascunho>/depois.json
+    // O que diferir e o que aquele extrator tira de codigo que o jogo original nao compila.
+    string pastaE = Path.GetFullPath(args[1]);
+    string destinoE = Path.GetFullPath(args[2]);
+    if (Directory.Exists(destinoE) && Directory.EnumerateFileSystemEntries(destinoE).Any())
+    { Console.WriteLine($"ERRO: {destinoE} nao esta vazia -- o espelho so escreve em pasta nova."); return 1; }
+
+    (int escritos, int fora) = DmFonte.Espelhar(pastaE, destinoE);
+    Console.WriteLine($"espelho: {escritos} arquivo(s), sem comentario, em {destinoE}");
+    Console.WriteLine($"         {fora} .dm da pasta ficaram de fora -- nenhum #include do .dme ao lado os cita"
+                      + (fora == 0 ? " (ou nao ha um .dme unico ao lado da pasta: ai entra todo .dm, na ordem do disco)" : ":"));
+    foreach (string f in DmFonte.ForaDoDme(pastaE)) Console.WriteLine("           " + Path.GetRelativePath(pastaE, f));
+
+    var condicionais = DmFonte.Condicionais(pastaE);
+    Console.WriteLine($"         {condicionais.Count} diretiva(s) condicional(is) no fonte -- este leitor NAO as avalia:");
+    foreach ((string arq, int linha, string texto) in condicionais)
+        Console.WriteLine($"           {Path.GetRelativePath(pastaE, arq)}:{linha}  {texto}");
     return 0;
 }
 

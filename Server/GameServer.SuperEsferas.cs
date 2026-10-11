@@ -4,6 +4,7 @@ using Jandirus.Core.Magic;
 using Jandirus.Core.World;
 using Jandirus.Net;
 using LiteNetLib;
+using LiteNetLib.Utils;
 
 namespace Jandirus.Server;
 
@@ -264,6 +265,8 @@ public sealed partial class GameServer
 	/// </summary>
 	private void TickDasSuperEsferas()
 	{
+		ConferirOsRadares();
+
 		if (_disputasDeSuper.Count == 0) return;
 
 		foreach ((int id, DisputaDeSuper d) in _disputasDeSuper.ToList())
@@ -564,28 +567,29 @@ public sealed partial class GameServer
 	private void MandarSupers(ServerPlayer pl)
 	{
 		if (pl.Peer == null) return;
+		pl.Peer.Send(MontarPacoteDeSupers(pl), Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		EscutaDoSinalDourado?.Add((pl.Id, _sinalMandado.GetValueOrDefault(pl.Id, "")));
+	}
 
+	/// <summary>Cada pacote das Super que SAIU no fio: (pra quem, a frase do radar que ele levou). Ligada so pela bancada.</summary>
+	internal static List<(int Quem, string Sinal)>? EscutaDoSinalDourado;
+
+	/// <summary>
+	/// O PACOTE DAS SUPER, separado do envio pra a bancada desmonta-lo com o leitor do cliente (mesmo
+	/// desenho do `MontarPacoteDeSkills`): o que se quer provar do radar e o que VIAJA, e nao o que uma
+	/// funcao ao lado calcularia. Ele anota a frase que saiu -- e ela que o tique de segundo compara.
+	/// </summary>
+	private NetDataWriter MontarPacoteDeSupers(ServerPlayer pl)
+	{
 		var perto = new List<(SuperEsfera S, Vec2 P)>();
-		int maisProxima = int.MaxValue;
-		Vec2 ondeAMaisProxima = default;
-		int sentidas = 0;
-
 		foreach (SuperEsfera s in _supers)
 		{
 			Vec2 p = OndeEstaASuper(s.Numero);
 			if (Espaco.EhEspaco(pl.Zone) && Espaco.PertoDeMim(pl.Pos, p)) perto.Add((s, p));
-
-			// O RADAR MEDE DA POSICAO DO CORPO, esteja ele onde estiver: o painel Nav do DM e do
-			// piloto, e um radar que so funciona no vacuo seria inutil justamente pra quem pousou pra
-			// procurar. A distancia e em CELULAS -- ver `SuperEsferas.CelulasEntre`.
-			int celulas = SuperEsferas.CelulasEntre(pl.Pos, p);
-			if (celulas > SuperEsferas.CelulasDeSinal) continue;
-
-			sentidas++;
-			if (celulas >= maisProxima) continue;
-			maisProxima = celulas;
-			ondeAMaisProxima = p;
 		}
+
+		string sinal = SinalDouradoDe(pl);
+		_sinalMandado[pl.Id] = sinal;
 
 		var w = Protocol.Begin(Protocol.S2C.SuperEsferas);
 		w.Put((byte)perto.Count);
@@ -598,9 +602,93 @@ public sealed partial class GameServer
 			w.Put(string.Equals(s.Dono, pl.Assinatura, StringComparison.Ordinal));
 		}
 		w.Put((byte)QuantasSupersTem(pl.Assinatura));
-		w.Put(sentidas == 0 ? "" : SuperEsferas.SinalDoRadar(maisProxima, ondeAMaisProxima, sentidas));
+		w.Put(sinal);
+		return w;
+	}
 
-		pl.Peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--verbsteste`): o sinal dourado sai pra quem NAO tem o Dragon Radar -- o que
+	/// este port fez ate 2026-10-10 (o dono, com um Saiyajin sem radar: *"aparece em world falando q te um sinal
+	/// dourado 2 celulas dali mas nem tenho radar"*). Falso em jogo, sempre.
+	/// </summary>
+	internal bool SinalSemRadarDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--verbsteste`): o radar mede da posicao CRUA do corpo mesmo em terra firme --
+	/// ou seja, compara o pixel do MAPA do planeta com o pixel do ESPACO. Todo planeta vira a celula (0,0) do
+	/// universo, e quem pisa em Vegeta "sente" o que so se sente da Terra. Falso em jogo, sempre.
+	/// </summary>
+	internal bool RadarMedeDoChaoDeTeste;
+
+	/// <summary>A frase que cada jogador recebeu por ultimo. E o que faz o radar sair SO QUANDO MUDA.</summary>
+	private readonly Dictionary<int, string> _sinalMandado = [];
+
+	/// <summary>
+	/// **A FRASE DO RADAR DOURADO DESTE JOGADOR** -- vazia sem o aparelho, sem lugar no espaco ou sem sinal.
+	///
+	/// ============================ OS DOIS PORTOES QUE O PORT TINHA PERDIDO ============================
+	/// No DM a frase mora no cabecalho da aba Nav (`pspace_nav_header`, `ProceduralSpace.dm:1388-1407`), e a
+	/// aba desiste antes de chama-lo em dois casos (`HtmlUI.dm:339-345`): `if(!hasnav)` -- sem o aparelho nao
+	/// ha leitura -- e `if(Planet != "Space")`. Aqui a frase desceu pra aba World junto com as esferas (a Nav
+	/// ganhou portao de item e as esferas nao podiam ficar atras dele) e chegou la SEM aparelho nenhum: todo
+	/// mundo a lia, com a palavra RADAR na frente.
+	///
+	/// **O APARELHO E O DRAGON RADAR** (decisao do dono, 2026-10-10; divergencia declarada do `hasnav` do
+	/// `HtmlUI.dm:339`): e o item que o jogador chama de radar, e e a MESMA posse que o radar das esferas
+	/// comuns cobra (<see cref="UsarORadar"/>). Sem ele a frase nem e calculada -- o que nao viaja nao se le
+	/// com um cliente mexido, e a celula de uma Super Esfera e exatamente o mapa do tesouro.
+	///
+	/// ============================ E DE ONDE SE MEDE ============================
+	/// `pl.Pos` so e posicao de ESPACO pra quem esta no espaco. Em terra firme ele e o pixel do mapa do
+	/// planeta (0 a 32.000), e comparar isso com a posicao de uma Super Esfera punha TODO planeta na celula
+	/// (0,0) do universo: quem pisava em Vegeta -- a treze celulas da Terra -- lia o sinal que so a Terra
+	/// alcanca. Em terra firme mede-se de ONDE O PLANETA ESTA (a mesma conta do `SortearMundoParaDestruir`);
+	/// onde o corpo nao tem lugar no ceu (Outro Mundo, interior, a propria mente) nao ha leitura, que e o
+	/// `Sem sinal` do `HtmlUI.dm:343` no unico caso em que ele continua verdadeiro.
+	/// ==========================================================================
+	/// </summary>
+	private string SinalDouradoDe(ServerPlayer pl)
+	{
+		if (!SinalSemRadarDeTeste && pl.Mochila.Quantos(Jandirus.Core.Items.CatalogoDeItens.Radar) <= 0) return "";
+
+		Vec2? deOnde = RadarMedeDoChaoDeTeste || Espaco.EhEspaco(pl.Zone) ? pl.Pos : CorpoDaZona(pl.Zone)?.Pos;
+		if (deOnde is not { } eu) return "";
+
+		int maisProxima = int.MaxValue;
+		Vec2 ondeAMaisProxima = default;
+		int sentidas = 0;
+
+		foreach (SuperEsfera s in _supers)
+		{
+			Vec2 p = OndeEstaASuper(s.Numero);
+
+			// A distancia e em CELULAS -- ver `SuperEsferas.CelulasEntre`.
+			int celulas = SuperEsferas.CelulasEntre(eu, p);
+			if (celulas > SuperEsferas.CelulasDeSinal) continue;
+
+			sentidas++;
+			if (celulas >= maisProxima) continue;
+			maisProxima = celulas;
+			ondeAMaisProxima = p;
+		}
+
+		return sentidas == 0 ? "" : SuperEsferas.SinalDoRadar(maisProxima, ondeAMaisProxima, sentidas);
+	}
+
+	/// <summary>
+	/// O RADAR SE CONFERE UMA VEZ POR SEGUNDO, e sai so pra quem a frase mudou.
+	///
+	/// A frase muda por tres caminhos que nao passam pela troca de chunk do <see cref="TickDoEspaco"/>: o
+	/// aparelho entra ou sai da mochila (fabricar, largar, ser saqueado -- meia duzia de portas, e a proxima
+	/// que nascer nao vai lembrar de avisar), o corpo pousa ou decola (a medida troca de origem) e o ciclo
+	/// anda. Um ouvinte em cada porta seria a lista que envelhece; a comparacao custa sete posicoes por dono
+	/// de radar, e pra quem nao tem o aparelho ela e uma consulta a mochila.
+	/// </summary>
+	private void ConferirOsRadares()
+	{
+		foreach (ServerPlayer p in Jogadores)
+			if (!string.Equals(SinalDouradoDe(p), _sinalMandado.GetValueOrDefault(p.Id, ""), StringComparison.Ordinal))
+				MandarSupers(p);
 	}
 
 	/// <summary>Uma linha pra todo mundo. Mesmo canal do `AnunciarNoMundo`; a escuta e da bancada.</summary>

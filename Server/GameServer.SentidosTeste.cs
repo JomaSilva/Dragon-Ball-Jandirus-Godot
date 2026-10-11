@@ -145,7 +145,7 @@ public partial class GameServer
 		ServerPlayer diagonal = StCorpo("Diagonal", Em(c, -3, -3), 7_000);
 		ServerPlayer tita = StCorpoEm("Tita", "Namek", 6_000_000);
 		ServerPlayer forte = StCorpoEm("Forte", "Namek", 100_000);
-		eu.Social.Fotografar(amigo.Assinatura, amigo.Name, amigo.Race, "Normal", "Male", 25, NowMs());
+		eu.Social.Fotografar(amigo.Assinatura, amigo.Name, amigo.Race, "Male", 25, NowMs());
 
 		AfirmarSn("preparo: o Vidente tem `Poder.Sense` (a skill no livro acende o bit) e nao tem scouter",
 				  TemSense(eu) && !TemScouter(eu));

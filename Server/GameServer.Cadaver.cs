@@ -255,6 +255,10 @@ public sealed partial class GameServer
 
 		GD.Print($"[server] {morto.Name} deixou o corpo em {morto.Zone.Name} @ "
 			   + $"({morto.Pos.X:0},{morto.Pos.Y:0}) -- cadaver #{corpo.Id}");
+
+		// O CADAVER DE UM BICHO E UMA CARCACA (2026-10-10): leva a carne na mochila, se revista pela tecla E e
+		// tem prazo e teto proprios. Ver `AnimalVirouCarcaca` (`GameServer.Animais.cs`).
+		if (EhAnimal(morto)) AnimalVirouCarcaca(morto, corpo);
 		return corpo;
 	}
 
@@ -271,6 +275,7 @@ public sealed partial class GameServer
 	private void DesfazerOCadaver(ServerPlayer corpo)
 	{
 		if (!corpo.ECadaver) return;
+		_carcacas.Remove(corpo.Id);   // se era a carcaca de um bicho, o registro dela sai junto (`GameServer.Animais.cs`)
 
 		// ============================ SOLTA QUEM ESTIVER SEGURANDO ANTES DE SUMIR ============================
 		// Enterrar um corpo que alguem esta carregando e o caso que MAIS acontece (o pedido do dono e
@@ -326,6 +331,13 @@ public sealed partial class GameServer
 			foreach (ServerPlayer c in zona)
 			{
 				if (!c.ECadaver) continue;
+
+				// A CARCACA DE BICHO NAO E DAQUI (2026-10-10): ela tem prazo e teto proprios (`TickDosAnimais`).
+				//   * NAO SE DESFAZ POR DANO: o bicho tem de 10 a 100 de BP e quem caca tem milhares -- uma rajada
+				//     de ki letal zera o corpo inteiro, e a carcaca sumiria com a carne no mesmo instante em que
+				//     aparece ("ao matar eles vc pode lootear" valeria so pra quem cacasse no soco);
+				//   * NAO ENTRA NO TETO: contada junto, uma cacada empurraria pra fora o corpo de uma PESSOA.
+				if (EhCarcaca(c)) continue;
 
 				// ---- 1. DESTROCADO: o `Destroy()` do DM, pelo golpe ----
 				// A pergunta e a MESMA que decide o nocaute e a morte de todo mundo (`Corpo.Partes`), e
@@ -407,7 +419,8 @@ public sealed partial class GameServer
 
 		foreach (ServerPlayer c in ZoneList(pl.Zone.Hash))
 		{
-			if (!c.ECadaver) continue;
+			// A CARCACA DE BICHO NAO SE ENTERRA: o E nela e REVISTAR (a carne), pelo `saquear` -- ver `CaidoPerto`.
+			if (!c.ECadaver || EhCarcaca(c)) continue;
 			if (Math.Abs(c.Pos.X - pl.Pos.X) > Jandirus.Core.Tech.Interacoes.Alcance
 				|| Math.Abs(c.Pos.Y - pl.Pos.Y) > Jandirus.Core.Tech.Interacoes.Alcance) continue;
 

@@ -158,7 +158,7 @@ public sealed partial class GameServer
 			// O QUE ZERA AQUI E SO O CACHE DE PUNICAO: as contas em si sao arquivos, e quem as
 			// carregava (`_contas`/`_logados`) ja esvaziou quando todo mundo caiu. O conjunto dos
 			// calados sobreviveria ao wipe e calaria o proximo dono do nome de conta.
-			Zerar = () => { _calados.Clear(); _contasLocais.Clear(); },
+			Zerar = () => { _calados.Clear(); },   // (o caderno de contas locais do admin por endereco deixou de existir: quem responde e o `_contas`)
 		});
 
 		// ---------------------------------------------------------- a semente do universo
@@ -257,6 +257,34 @@ public sealed partial class GameServer
 			Zerar = () => { _mortos.Limpar(); _proximoTremor.Clear(); _cargaDoPlanetDestroy.Clear(); },
 		});
 
+		// ---------------------------------------------------------- nomes dados aos planetas (o batismo)
+		// A CONTAGEM E A DOS BATIZADOS, e nao a do livro inteiro: o registro de um mundo que so foi
+		// descoberto nao e coisa que o dono reconheca como "dado do servidor". O ZERAR leva os dois -- com
+		// o universo sorteado de novo, a seed de um mundo descoberto nao aponta mais pra lugar nenhum.
+		_sistemasDoMundo.Add(new SistemaDoMundo
+		{
+			Nome = "nomes dados a planetas (batismo)",
+			Arquivos = ["planetas-nomes.json"],
+			Unidade = "planeta(s) batizado(s)",
+			Contar = () => _batismos.Batizados.Count(),
+			Zerar = () => _batismos.Limpar(),
+		});
+
+		// ---------------------------------------------------------- reservas de recurso dos planetas
+		// SEM ESTA INSCRICAO O MUNDO NOVO NASCE JA MINERADO: a vassoura leva o `reservas.json`, a memoria fica,
+		// e a primeira pessoa que tirar um recurso regrava no mundo "novo" os buracos do velho -- chaveados por
+		// seed de um universo que nem existe mais. A CONTAGEM E A DAS MEXIDAS: reserva cheia e a resposta
+		// padrao, nao esta no arquivo e nao e coisa que alguem reconheca como "dado do servidor". O SALDO de
+		// cada jogador nao mora aqui: ele e da ficha, e some com a conta. Ver `GameServer.Recursos.cs`.
+		_sistemasDoMundo.Add(new SistemaDoMundo
+		{
+			Nome = "reservas de recurso dos planetas (o que ja foi minerado de cada um)",
+			Arquivos = ["reservas.json"],
+			Unidade = "planeta(s) com a reserva mexida",
+			Contar = ReservasMexidas,
+			Zerar = ZerarReservas,
+		});
+
 		// ---------------------------------------------------------- esferas do dragao
 		// ============================ A CONTAGEM E DE SET DE JOGADOR, E O ETERNO FICA DE FORA ============================
 		// Mesma disciplina (e mesmo motivo) da contagem das sagas: o Porunga de Namek e CONTEUDO -- ele
@@ -328,10 +356,11 @@ public sealed partial class GameServer
 		_sistemasDoMundo.Add(new SistemaDoMundo
 		{
 			Nome = "vinculos de mestre e aluno",
-			Arquivos = ["mestres.txt"],
+			// (o segundo arquivo e o DIARIO de cada vinculo -- o que a aba Alunos/Mestre mostra; nasce e morre com ele: ver `GameServer.Alunos.cs`)
+			Arquivos = ["mestres.txt", NomeDoArquivoDosDiarios],
 			Unidade = "discipulado(s)",
 			Contar = () => _mestreDe.Count,
-			Zerar = () => { _mestreDe.Clear(); _nomePorAssinatura.Clear(); },
+			Zerar = () => { _mestreDe.Clear(); _nomePorAssinatura.Clear(); ZerarDiarios(); },
 		});
 
 		// ---------------------------------------------------------- herdeiros
@@ -380,6 +409,20 @@ public sealed partial class GameServer
 			Unidade = "calendario de torneios em curso",
 			Contar = () => CalendarioDeTorneiosAndou ? 1 : 0,
 			Zerar = ZerarTorneio,
+		});
+
+		// ---------------------------------------------------------- a visita do Bills
+		// O arquivo guarda so a FASE da historia (dormindo, a caminho, na Terra, em casa): os corpos e a casa sao
+		// deduzidos -- a casa sai da semente do universo, que a limpeza troca, entao ela muda de lugar sozinha. Sem
+		// esta inscricao o mundo novo nasceria com o Bills ja "em casa" e as coordenadas do mundo velho na memoria.
+		// A CONTAGEM E BINARIA: zero e a historia adormecida de um primeiro boot.
+		_sistemasDoMundo.Add(new SistemaDoMundo
+		{
+			Nome = "a visita do Bills (em que pe a historia dele esta)",
+			Arquivos = [NomeDoArquivoDaVisita],
+			Unidade = "historia do Bills em andamento",
+			Contar = () => _visita.Fase != Jandirus.Core.Npc.FaseDaVisita.Dormindo ? 1 : 0,
+			Zerar = ZerarBills,
 		});
 
 		// ---------------------------------------------------------- o relogio do mundo

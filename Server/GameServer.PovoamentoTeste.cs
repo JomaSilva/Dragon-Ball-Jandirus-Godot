@@ -94,9 +94,9 @@ public partial class GameServer
 			Checa("...e o de Namek NAO inclui Arlian nem Makyo (a do menu inclui os dois)",
 				  !Bercos.RacasNascidasEm("Namek", todasAsRacas).Contains("Arlian")
 				  && CharacterDraft.RacasDoPlaneta("Namek").Contains("Arlian"));
-			Checa("...e o crivo tira quem so chega na Terra pelo RECUO (androide orfao, e o 'Dog' que "
-				+ "e a raca de EXEMPLO do Genetic_Prototype.dm)",
-				  !Bercos.RacasNascidasEm("Earth", todasAsRacas).Contains("Dog")
+			Checa("...e o crivo tira quem so chega na Terra pelo RECUO (o androide orfao); a 'Dog', a raca de EXEMPLO do "
+				+ "Genetic_Prototype.dm, nem esta mais no races.json",
+				  !todasAsRacas.Contains("Dog")
 				  && !Bercos.RacasNascidasEm("Earth", todasAsRacas).Contains("Android"));
 
 			// =====================================================================

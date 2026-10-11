@@ -263,9 +263,21 @@ public sealed class Body
 	public bool MuitoFerido(double fracao = 0.45)
 	{
 		if (Partes.Count == 0) return false;
+
+		// `if(lopcount >= 2) return TRUE //two or more limbs ripped clean off is brutal enough on its own`
+		// (`Injuries.dm:191`). Conta-se o membro de FORA: aqui o braco leva a mao junto (`Decepar`), e contar os
+		// dois faria de UM braco perdido "dois membros arrancados" -- no DM a mao nunca cai de carona.
+		int arrancados = 0;
+		foreach (BodyPart p in Partes)
+			if (p.Decepado && !(p.Aninhado && p.Dono != null && Achar(p.Dono) is { Decepado: true })) arrancados++;
+		if (arrancados >= ArrancadosQueBastam) return true;
+
 		int ruins = Partes.Count(p => p.Decepado || p.Quebrado);
 		return (double)ruins / Partes.Count >= fracao;
 	}
+
+	/// <summary>Quantos membros ARRANCADOS ja bastam, sozinhos, pro corpo contar como "extremamente ferido" (`Injuries.dm:191`).</summary>
+	public const int ArrancadosQueBastam = 2;
 
 	// =====================================================================
 	// DANO

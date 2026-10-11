@@ -254,6 +254,97 @@ public static class VozLocal
 	}
 
 	// =====================================================================
+	// A SEQUENCIA QUE O RELAY CARIMBA
+	// =====================================================================
+	/// <summary>
+	/// QUE NUMERO VAI NO QUADRO QUE O SERVIDOR REPASSA -- o do FALANTE, saneado. Um por falante.
+	///
+	/// ============================ ERA O SERVIDOR QUEM NUMERAVA, E ISSO ESCONDIA METADE DA PERDA ============================
+	/// O relay lia a sequencia do falante, jogava fora e carimbava um contador proprio, *"um por quadro
+	/// aceito"*. O argumento era que o ouvinte so precisava saber da perda "no caminho ate ele". Nao e
+	/// isso que ele precisa: ele precisa saber QUE VAGA DO TEMPO FICOU VAZIA, tenha o quadro morrido na
+	/// descida ou na SUBIDA (do falante ate o servidor) -- porque e a vaga que ele remenda.
+	///
+	/// Renumerado, o quadro perdido na subida nao deixava buraco nenhum. Pra a fila de jitter de quem
+	/// ouve aquilo nao era perda, era ENGASGO: o quadro seguinte "atrasou". Ela estica a fala com PLC,
+	/// conclui que a rede esta instavel e SOBE o alvo (mais atraso, mais remendo pra encher), e depois
+	/// solta quadros de verdade pra descer de novo. Medido na `--diagvoz` (familia 9, 30 s de fala, 100 ms
+	/// de latencia e 2% de perda em cada perna): o numero de quadros ESTICADOS era o das perdas da subida,
+	/// a copia FEC que o Opus manda no pacote seguinte nunca era usada pra elas, e o alvo ia ao teto. Foi
+	/// o *"voz picotando"* do playtest de 2026-10-10 -- em rede local, onde nao ha perda na subida, o
+	/// defeito nao existe, e por isso ele so apareceu com gente de verdade.
+	///
+	/// Com a sequencia do FALANTE atravessando o servidor, o buraco e um buraco pra todo mundo: o quadro
+	/// seguinte traz a copia do perdido (FEC), a fila toca a copia na vaga certa e o alvo nao se mexe.
+	/// ======================================================================================================================
+	///
+	/// ============================ O QUE O SANEAMENTO SEGURA ============================
+	/// O medo de quem escreveu a versao anterior era real: *"um cliente modificado que mandasse sequencias
+	/// aleatorias faria o decodificador alheio inventar silencio a esmo"*. Por isso o numero do falante nao
+	/// e repassado cru -- o que sai e a conta DO SERVIDOR, que anda pelo PASSO que o falante deu:
+	///
+	///   * um passo pra frente de 1 a <see cref="MaiorSaltoHonesto"/> e perda (ou e o proximo): a conta
+	///     anda o mesmo tanto, e o buraco fica;
+	///   * um passo pra tras dentro da mesma janela e um quadro fora de ordem ou repetido: ele sai na vaga
+	///     DELE, e a conta nao se mexe;
+	///   * qualquer outra coisa (relogou, mentiu, a conta dele deu a volta) e fala nova, colada na
+	///     anterior: a conta anda UM. Um mentiroso consegue no maximo o que a perda de rede ja consegue.
+	/// ===================================================================================
+	/// </summary>
+	public sealed class NumeradorDoRelay
+	{
+		/// <summary>
+		/// DEFEITO INJETADO (bancadas `--diagvoz` e `--vozteste`): o servidor volta a numerar por conta propria,
+		/// um por quadro aceito -- o estado de antes de 2026-10-10. Lido pela propria <see cref="Carimbar"/>.
+		/// </summary>
+		public static bool RenumeraDeTeste;
+
+		/// <summary>
+		/// Quantos quadros a sequencia do falante pode saltar e ainda ser "a mesma fala com perda": 100 = 2 s.
+		/// E bem mais que a janela de reordenacao de quem ouve (32 quadros): acima dela o ouvinte ja trata o
+		/// salto como fala nova sozinho, e este teto so existe pra a conta do servidor nao obedecer a um
+		/// numero qualquer.
+		/// </summary>
+		public const int MaiorSaltoHonesto = 100;
+
+		private bool _comecou;
+		private ushort _doFalante;
+
+		/// <summary>A ultima sequencia que saiu daqui andando a conta. Pra bancada.</summary>
+		public ushort Saida { get; private set; }
+
+		/// <summary>A sequencia que o quadro <paramref name="doFalante"/> leva no repasse.</summary>
+		public ushort Carimbar(ushort doFalante)
+		{
+			if (!_comecou)
+			{
+				_comecou = true;
+				_doFalante = doFalante;
+				Saida = 0;
+				return 0;
+			}
+
+			if (RenumeraDeTeste)
+			{
+				_doFalante = doFalante;
+				return ++Saida;
+			}
+
+			int passo = (short)(ushort)(doFalante - _doFalante);
+			if (passo >= 1 && passo <= MaiorSaltoHonesto)
+			{
+				_doFalante = doFalante;
+				Saida = (ushort)(Saida + passo);
+				return Saida;
+			}
+			if (passo <= 0 && passo > -MaiorSaltoHonesto) return (ushort)(Saida + passo);
+
+			_doFalante = doFalante;
+			return ++Saida;
+		}
+	}
+
+	// =====================================================================
 	// O QUE O OUVINTE RECEBE PRA DESENHAR O SOM
 	// =====================================================================
 	/// <summary>

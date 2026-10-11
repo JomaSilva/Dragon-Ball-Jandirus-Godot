@@ -235,9 +235,10 @@ public partial class GameServer
 			// Namek") sem nunca ver a CAUSA, e uma bancada chegou a escrever no proprio comentario que "no
 			// save vivo a Terra esta condenada" como se fosse paisagem (`GameServer.PovoamentoTeste.cs`).
 			//
-			// A `SpawnZone` nao e um planeta qualquer: e o lar de **10 das 24 racas** (contado pela
-			// `--bercoprova`: Alien, Android, BioAndroid, Demigod, Dog, Halfbreed, Human, Majin,
-			// Shapeshifter, SpiritDoll, mais todo Saiyajin de classe baixa). O "13" que esta nota
+			// A `SpawnZone` nao e um planeta qualquer: e o lar de **9 das 23 racas** (contado pela
+			// `--bercoprova`: Alien, Android, BioAndroid, Demigod, Halfbreed, Human, Majin,
+			// Shapeshifter, SpiritDoll, mais todo Saiyajin de classe baixa; eram 10 de 24 enquanto o
+			// `races.json` trazia a `Dog`, a raca de exemplo que saiu em 2026-10-11). O "13" que esta nota
 			// trazia era a contagem de LINHAS VERMELHAS da `--bercovivo` (10 racas + o classe-baixa +
 			// os dois perfis Human da familia 5), e nao de racas. Com ela morta o jogo continua
 			// rodando e mentindo baixinho.
@@ -1051,7 +1052,7 @@ public partial class GameServer
 			MandarEfeito(pl, "terremoto", 1800);
 		}
 
-		AnunciarNoMundo($"{zona.Name} está se despedaçando. Quem estiver lá tem minutos.");
+		AnunciarNoMundo($"{NomeDoMundo(zona)} está se despedaçando. Quem estiver lá tem minutos.");
 		GD.Print($"[server] DESTRUICAO de '{zona.Name}' comecou ({motivo}); BP do algoz fixado em "
 			   + $"{bpDoAlgoz:0}; {Agonia.SegundosDeExplosao:0}s ate o fim");
 		return true;
@@ -1202,7 +1203,7 @@ public partial class GameServer
 		// hash de zona morta seria estado orfao vivendo pra sempre em memoria.
 		ForcarClima(zona, TipoDeClima.Limpo, 0);
 
-		AnunciarNoMundo($"{zona.Name} NÃO EXISTE MAIS.");
+		AnunciarNoMundo($"{NomeDoMundo(zona)} NÃO EXISTE MAIS.");
 
 		// ============================ E AS ESFERAS DO DRAGAO DAQUI VAO JUNTO ============================
 		// **Depois** do anuncio de proposito: a ordem em que as duas linhas chegam ao chat e a ordem dos
@@ -1877,7 +1878,7 @@ public partial class GameServer
 		SalvarPlanetasMortos();
 		MandarMortosPraTodos();
 
-		AnunciarNoMundo($"{zona.Name} voltou a existir.");
+		AnunciarNoMundo($"{NomeDoMundo(zona)} voltou a existir.");
 
 		// ============================ E O PORUNGA VOLTA COM NAMEK ============================
 		// A outra metade do pedido do dono (*"so voltando quando o planeta e restaurado pelas esferas de
@@ -2021,16 +2022,64 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// O `Restaurar_Planeta` (`Planets.dm:254-280`) -- **a unica volta que existe neste port**.
-	///
-	/// Ele age sobre a zona em que o admin ESTA, e isso e uma diferenca do original de proposito:
-	/// la o verb pede o nome numa lista, e aqui o planeta destruido nao aceita pouso -- entao o
-	/// admin precisa de outra forma de chegar. Ele chega **em orbita** (o pouso e recusado) e o verb
-	/// atua na zona sob ele... o que nao funcionaria. Por isso este verb tambem aceita o planeta que
-	/// esta LOGO ABAIXO de quem esta no espaco.
+	/// DEFEITO INJETADO (bancada `--planetateste` e `--diagadmin`): o `admin_restaurar_planeta` volta a
+	/// ignorar o planeta ESCOLHIDO NA LISTA e age so sobre o lugar em que o admin esta -- o estado de antes
+	/// de 2026-10-10. Lido pela propria escolha do alvo, em <see cref="AdminRestaurarPlaneta"/>.
 	/// </summary>
-	private void AdminRestaurarPlaneta(ServerPlayer adm)
+	internal bool RestauraSoOndeEstaDeTeste;
+
+	/// <summary>
+	/// O `Restaurar_Planeta` (`Planets.dm:254-280`) -- a volta de admin de um planeta destruido.
+	///
+	/// ============================ DUAS FORMAS DE APONTAR O PLANETA ============================
+	/// **PELA LISTA** (`arg` = a chave do planeta). O dono (2026-10-10): *"atualmente so da pra restaurar
+	/// planetas q vc esta, caso eu esteja em outro planeta e queira reconstruir a terra n é possivel,
+	/// queria q fosse possivel eu ver a lista de planetas destruidos e selecionar os q quero restaurar"*.
+	/// E o `input(usr, "Restaurar qual planeta?") in PlanetDisableList` do original, sem travar a tela: o
+	/// cartao "Planetas destruidos" da aba Admin desenha o que o `S2C.Mortos` ja entrega a todo cliente, e
+	/// cada botao devolve a CHAVE que veio nele (`ChaveDePlaneta.Texto`).
+	///
+	/// A CHAVE, e nao o nome: um mundo gerado se endereca pelo par nome + seed, e dois deles podem ter o
+	/// mesmo nome. Quem resolve chave -> zona e o registro DESTE lado; o cliente so devolve o que recebeu.
+	///
+	/// **SEM ARGUMENTO** (o verb "Restore Planet" da lista de verbs): a zona em que o admin ESTA, ou o
+	/// disco LOGO ABAIXO de quem esta no espaco -- o planeta destruido recusa pouso, entao de perto so se
+	/// chega a ele em orbita. Era a unica forma ate 2026-10-10.
+	/// ====================================================================================
+	/// </summary>
+	private void AdminRestaurarPlaneta(ServerPlayer adm, string arg)
 	{
+		string pedida = RestauraSoOndeEstaDeTeste ? "" : arg.Trim();
+		if (pedida.Length > 0)
+		{
+			EstadoDaMorte? e = _mortos.Todos.FirstOrDefault(m => m.Chave == pedida);
+			if (e == null)
+			{
+				Avisar(adm, "esse planeta nao esta na lista de mortos (alguem ja o restaurou?).");
+				return;
+			}
+
+			// SO O DESTRUIDO SAI POR AQUI. Quem ainda esta MORRENDO tem a porta dele (`AbortarMorte`, que
+			// tambem desfaz o ceu de fim de mundo): tira-lo da lista por este caminho deixaria o planeta
+			// vivo debaixo do ceu da explosao. O cartao nem o oferece -- isto responde a quem mandar a
+			// chave por fora dele.
+			if (!MortePlanetaria.EstaMorto(e.Fase))
+			{
+				Avisar(adm, $"{e.Nome} ainda esta morrendo -- isso se interrompe la, com o Abort Planet Death.");
+				return;
+			}
+
+			// O NOME E LIDO ANTES: o `RessuscitarPlaneta` tira o registro, e o aviso fala de quem saiu.
+			string nome = e.Nome;
+			if (!RessuscitarPlaneta(e.Zona()))
+			{
+				Avisar(adm, $"{nome} nao esta na lista de mortos.");
+				return;
+			}
+			Avisar(adm, $"{nome} volta a existir. Da pra pousar, e o povo volta na proxima manutencao.");
+			return;
+		}
+
 		ZoneKey alvo = adm.Zone;
 
 		// NO ESPACO, o alvo e o disco sob o corpo -- senao um planeta morto seria inalcancavel: ele

@@ -467,9 +467,11 @@ public enum Efeito
 	/// pes de um dos dois -- ou seja, o oposto do pedido.
 	///
 	/// ============================ E POR QUE ELA NAO E A <see cref="AuraGrande"/> ============================
-	/// Aquela e a chama da FORMA (`Aura.CorDaChamaDe`), e esta cena nao tem forma: sem `FormaDef` a
-	/// chama cai na cor da furia e a fusao sairia envolta em VERMELHO SANGUE -- o mesmo motivo pelo
-	/// qual as cinematicas do bio-androide tambem nao a acendem (ver o bloco delas).
+	/// Aquela e a chama da FORMA (`Aura.CorDaChamaDe`), e esta cena nao tem forma. Quando isto foi escrito,
+	/// sem `FormaDef` a chama caia na cor da furia e a fusao sairia envolta em VERMELHO SANGUE -- o mesmo
+	/// motivo pelo qual as cinematicas do bio-androide tambem nao a acendem (ver o bloco delas). Desde
+	/// 2026-10-11 a chama sem forma e a do proprio corpo (o dono tirou o vermelho da furia), e a razao que
+	/// sobra e a de cima: o que esta cena mostra e um clarao que COBRE os dois, e nao a aura de um deles.
 	/// ==========================================================================================================
 	/// </summary>
 	LuzDaFusao = 262144,
@@ -626,6 +628,20 @@ public sealed class Cinematica
 	/// a bancada cobra o par (ver `RoboDeForma.ConferirRoteiro`).
 	/// </summary>
 	public FolhaDeSilhueta Silhueta = FolhaDeSilhueta.Nenhuma;
+
+	/// <summary>
+	/// ESTA CENA NAO TEM COR PROPRIA: o que ela pinta (o anel de choque, os feixes) sai na cor do KI DE QUEM ELA
+	/// ACONTECE -- a chama que o corpo tem agora, seja a pessoal, seja a da forma em que ele esta.
+	///
+	/// SO VALE PRA CENA SEM FORMA (a de forma tira a cor do <see cref="FormaDef.Aura"/>, sempre), e hoje so a
+	/// <see cref="Cinematicas.Furia"/> liga: o dono tirou o vermelho dela em 2026-10-11, e a raiva de alguem passou
+	/// a ter a cor do proprio alguem. As outras cenas sem forma (a fusao, as tres do bio) continuam na
+	/// <see cref="Cinematicas.CorDaCenaSemForma"/>, que e a cara com que foram aprovadas -- por isso isto e um campo
+	/// que a cena liga, e nao a regra de todas.
+	///
+	/// DA CENA E NAO DO BEAT pelo mesmo motivo da <see cref="Silhueta"/>: uma cena tem uma cor so.
+	/// </summary>
+	public bool NaCorDoCorpo { get; init; }
 
 	/// <summary>Duracao total da cena, em segundos.</summary>
 	public double Segundos => _beats.Length == 0 ? 0 : _beats[^1].Em + 1.0;
@@ -2666,25 +2682,40 @@ public static class Cinematicas
 		"E ainda tem mais.",
 		"o segundo e último degrau se fecha -- dobro do que ele já era.");
 
+	/// <summary>
+	/// FURY, a forma do Deus da Destruicao. No DM ela e MUDA e instantanea: o `Buff()`
+	/// (`GodOfDestruction.dm:396-401`) veste a aura, toca `1aura.wav` e escreve uma linha. Aqui ela ganha o surto
+	/// curto das outras formas instantaneas (a bancada exige que toda forma tenha cena propria) -- e so na
+	/// ESTREIA: sem maestria pra dispensar a encurtada, ela e instantanea da segunda vez em diante (ver
+	/// <see cref="Degrau"/>).
+	/// </summary>
+	public static readonly Cinematica GodFury = SurtoCurto(
+		Ranks.KitDoDeus.IdDaFury, "", SurtoInstantaneo,
+		"Hakai.",
+		// "[container] desperta a FURIA da Destruicao! Uma aura violeta densa envolve seu corpo!" (:401)
+		"a fúria da Destruição desperta: uma aura violeta, densa e colada ao corpo, o envolve.");
+
 	// ==================================================================================
 	// A FURIA EXTREMA -- `mob/proc/AngerCinematic()`, `Code/Modules/CombatMechanics/Murder.dm:136-163`
 	// ==================================================================================
 
 	/// <summary>
-	/// A COR DO CLARAO DE RAIVA -- `#ff2a2a`, literal de `Murder.dm:149`.
+	/// A COR DE UMA CENA QUE NAO CONTA FORMA NENHUMA -- o anel de choque, o clarao de tela e os feixes de chao
+	/// dela. Toda cena de FORMA tira essas cores do <see cref="FormaDef.Aura"/>; estas nao tem de onde tirar.
 	///
-	/// ============================ POR QUE ELA E ESCRITA E NAO DERIVADA ============================
-	/// Toda outra chama deste arquivo sai do <see cref="FormaDef.Aura"/> (ver <see cref="Efeito.AuraGrande"/>:
-	/// *"a aura da propria transformacao q vc ta virando"*). A furia **nao tem forma** -- ela e o
-	/// acontecimento que as vezes leva a uma --, entao nao ha de onde derivar: o DM escreve o hexa na
-	/// mao, uma vez, e este e o unico lugar do port que o repete.
+	/// ============================ ELA SE CHAMAVA `CorDaFuria`, E O NOME PASSOU A MENTIR ============================
+	/// O valor e o `#ff2a2a` de `Murder.dm:149` -- a tinta da aura que o `AngerCinematic()` veste --, e foi por ele
+	/// que a constante nasceu. As cenas sem forma que vieram depois (a fusao e as tres do bio-androide) cairam nela
+	/// por OMISSAO: e por isso que o clarao da fusao lava a tela de vermelho e os feixes do bio saem vermelhos (a
+	/// `--diagfotofusao` mede esse clarao; e a cara com que as duas foram vistas e aprovadas).
 	///
-	/// E ela e o ultimo uso vivo da `Aurabigcombined.dmi` COMO ARTE DE COR PROPRIA. Nas cinematicas de
-	/// transformacao o dono trocou aquela folha pela aura da forma; aqui nao havia troca possivel, e
-	/// e por isso que a excecao existe sem virar excecao de ninguem mais.
-	/// ========================================================================================
+	/// Em 2026-10-11 o dono tirou o vermelho da furia (ver <see cref="Furia"/>), e ela deixou de ler esta cor: a
+	/// cena da raiva acontece na cor do ki de quem se enfurece (<see cref="Cinematica.NaCorDoCorpo"/>). O que
+	/// sobrou e o que o nome novo diz -- a cor de quem nao declarou nenhuma. Trocar o valor muda a fusao e o bio,
+	/// e so eles.
+	/// ==================================================================================================================
 	/// </summary>
-	public const string CorDaFuria = "ff2a2a";
+	public const string CorDaCenaSemForma = "ff2a2a";
 
 	/// <summary>
 	/// QUANTO TEMPO ATE A CENA DE FURIA PODER TOCAR DE NOVO -- o `rageCinematicCD` do DM
@@ -2716,6 +2747,23 @@ public static class Cinematicas
 	///
 	/// O QUE ELA **NAO** USA e o que a distingue: nao ha forma, entao nao ha cabelo, nem degrau, nem
 	/// escada, nem clarao de tela. E, sobretudo, ela **nao prende o corpo**.
+	///
+	/// ============================ A AURA VERMELHA NAO ENTRA -- DIVERGENCIA DECLARADA (dono, 2026-10-11) ============================
+	/// O `AngerCinematic()` veste uma aura de raiva durante a cena: `image(icon='Aurabigcombined.dmi')` com
+	/// `I.color = "#ff2a2a"` e `plane = 7` (`Murder.dm:146-150`), tirada dois segundos depois da erupcao (`:162`).
+	/// O port a portou (o beat zero acendia a chama da cena em vermelho), e o dono mandou tirar depois de ver:
+	/// *"a raiva extrema n deveria colocar uma aura vermelha aqui, sem necessidade, apenas a aura normal por conta
+	/// do ki acima de 100% (se o personagem puder fazer isso) ja serve"*.
+	///
+	/// Entao esta cena NAO TEM o beat <see cref="Efeito.AuraGrande"/>, e nada nela e vermelho: a aura que se ve e a
+	/// do proprio corpo -- a que o Ki acima do tanque acende sozinha (`CargaDeKi.AuraAcesa`), e so pra quem tem o
+	/// controle de ki que faz a furia saltar (`RaivaEmDegraus.SaltarOKi`). Quem nao tem, nao ganha aura nenhuma.
+	///
+	/// E OS ANEIS DE CHOQUE SAEM NA COR DESSA MESMA AURA (<see cref="Cinematica.NaCorDoCorpo"/>), e nao no
+	/// `#ff2a2a`: no DM a onda e um sprite sem tinta (`createShockwavemisc`, `misc.dm:13-27`) -- o vermelho que os
+	/// aneis tinham aqui era herdado da aura que saiu. Ficam as ondas, a pedra solta, o tremor, a cratera, os dois
+	/// sons, o tema e a frase do chat.
+	/// ==================================================================================================================
 	///
 	/// ============================ O CORPO NAO PARA, E ISSO E DO DM ============================
 	/// `AngerCinematic()` abre com `set waitfor = 0` e o comentario do original diz o porque com todas
@@ -2783,16 +2831,20 @@ public static class Cinematicas
 		// ZERO. Ver o bloco do corpo la em cima -- `set waitfor = 0`, `Murder.dm:137`.
 		SegundosPreso = 0,
 
+		// SEM COR PROPRIA: os aneis saem na cor do ki de quem se enfureceu. Ver o bloco da aura la em cima.
+		NaCorDoCorpo = true,
+
 		Beats =
 		[
-			// `emit_Sound('chargeaura.wav')` (`:141`), a musica (`:144`), a linha vermelha do chat
-			// (`:145`) e o overlay de aura vermelha (`:146-150`), todos no instante zero. O primeiro
-			// dos seis `createShockwavemisc(loc, rand(2,4))` cai aqui tambem (`:152`).
+			// `emit_Sound('chargeaura.wav')` (`:141`), a musica (`:144`) e a linha do chat (`:145`), todos no
+			// instante zero. O primeiro dos seis `createShockwavemisc(loc, rand(2,4))` cai aqui tambem (`:152`).
+			// O overlay de aura vermelha (`:146-150`) tambem e deste instante no DM, e aqui NAO ENTRA -- pedido
+			// do dono, ver o bloco da aura no cabecalho.
 			//
 			// A NARRACAO E A DO DM, traduzida: *"[src]'s fury erupts, blasting shockwaves out in every
 			// direction!"*. Ela e narracao e nao fala -- ninguem DISSE isso --, entao vai pro chat e
 			// nao pro balao. Ver o `Disparar` do tocador.
-			new(0.0, Efeito.AuraGrande | Efeito.AnelDeChoque, Som: "chargeaura",
+			new(0.0, Efeito.AnelDeChoque, Som: "chargeaura",
 				Narra: "a fúria irrompe, e ondas de choque saem em todas as direções!"),
 
 			// OS SEIS CICLOS, `sleep(5)` = 0,5 s entre eles (`:151-157`). O `Quake()` sai nos ciclos
@@ -2811,10 +2863,10 @@ public static class Cinematicas
 			// poeira NAO estao escritas aqui -- o funil da `Cinematica.Beats` as poe, que e a regra.
 			new(3.0, Efeito.Assumir | Efeito.Tremor, Som: "powerup"),
 
-			// `sleep(20)` = 2,0 s ate o overlay sair (`:161-163`). Este e o UNICO beat de cauda, como
-			// em toda cena deste arquivo, e ele carrega a poeira baixando -- o que o funil deixa
+			// `sleep(20)` = 2,0 s ate o `AngerCinematic()` acabar (`:161-163`). Este e o UNICO beat de cauda,
+			// como em toda cena deste arquivo, e ele carrega a poeira baixando -- o que o funil deixa
 			// passar depois da virada. Com ele em 4,0 s a cena mede 5,0 (`Segundos` = ultimo + 1,0),
-			// que e exatamente o instante em que o DM tira a aura vermelha.
+			// que e o instante em que o original da a cena por encerrada.
 			new(4.0, Efeito.Poeira),
 		],
 	};
@@ -3039,9 +3091,10 @@ public static class Cinematicas
 	//
 	// So que aqui a substituta nao existe: um DEGRAU do bio (`bio_stage`) nao e uma entrada do
 	// <see cref="Catalogo"/> -- nao tem `FormaDef`, logo nao tem `Aura` de onde tirar cor. E
-	// <see cref="Efeito.AuraGrande"/> sem forma cai na cor da FURIA (ver `ChamaDoDegrau` no tocador),
-	// ou seja o casulo de luz do bio sairia VERMELHO SANGUE. Entao ele nao entra: quem carrega a fase
-	// 2 e o que o DM ja manda junto e o port ja sabe desenhar -- os oito feixes de chao
+	// <see cref="Efeito.AuraGrande"/> sem forma caia, quando isto foi decidido, na cor da FURIA -- o casulo
+	// de luz do bio sairia VERMELHO SANGUE. (Desde 2026-10-11 a chama sem forma e a do proprio corpo, ver
+	// `ChamaDoDegrau` no tocador; a decisao daqui nao foi revista por isso.) Entao ele nao entra: quem
+	// carrega a fase 2 e o que o DM ja manda junto e o port ja sabe desenhar -- os oito feixes de chao
 	// (`Electricgroundbeam2.dmi` -> <see cref="Efeito.FeixesNoChao"/>), o anel e o tremor.
 	//
 	// A silhueta continua acesa por baixo de tudo isso, que e o que o dono descreveu.
@@ -3340,6 +3393,9 @@ public static class Cinematicas
 
 		// as tres linhas raciais: uma entrada Namekuseijin, duas Heran, duas Alien
 		SuperNamek, Heran1, Heran2, Alien1, Alien2,
+
+		// a forma do titulo de Deus da Destruicao
+		GodFury,
 
 		// e o BIO-ANDROIDE, a unica forma do catalogo que estava sem cena nenhuma -- as tres cenas
 		// avulsas dele (os dois degraus e o SSJ2 pela morte) NAO entram aqui, pelo motivo escrito
@@ -3650,6 +3706,11 @@ public static class Cinematicas
 		// nasce com a regra certa. Uma lista de ids seria o terceiro lugar a esquecer.
 		// =======================================================================================
 		if (d.Linha == LinhaDeForma.Oozaru) return DegrauDeCena.Estreia;
+
+		// A FORMA DE TITULO NAO TEM O DEGRAU DO MEIO. A encurtada existe ate a maestria chegar a 50%, e a Fury nao
+		// tem maestria (`Catalogo.SustentarTreina`): sem esta linha ela prenderia o corpo na cena curta em TODA
+		// entrada, pra sempre -- e no DM ela nao prende nunca (`GodOfDestruction.dm:396-401`).
+		if (Catalogo.SoPeloTitulo(d)) return estreia ? DegrauDeCena.Estreia : DegrauDeCena.Nenhuma;
 
 		if (estreia) return DegrauDeCena.Estreia;
 		return maestriaDaForma >= MaestriaQueDispensaCena ? DegrauDeCena.Nenhuma : DegrauDeCena.Curta;

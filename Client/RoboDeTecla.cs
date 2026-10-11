@@ -583,9 +583,10 @@ public partial class RoboDeTecla : Node
 
 		// ---------------------------------------------------------------- 2a. VERB INDISPONIVEL
 		//
-		// "Declare Rival" pede alvo marcado (`Disponivel = TemAlvo`). Sem alvo, o botao existe e esta
+		// "Remember Person" pede alvo marcado (`Disponivel = TemAlvo`). Sem alvo, o botao existe e esta
 		// APAGADO -- que e a recusa do botao: ele nao manda nada. A tecla nao pode mandar tambem.
-		const string alvo = "Declare Rival";
+		// (Era o "Declare Rival", que saiu com a afinidade em 2026-10-10; este e o verb irmao dele.)
+		const string alvo = "Remember Person";
 		Verbo? v = Verbos.PorChave(alvo);
 		Checa("F2 o verb indisponivel existe no catalogo", v != null, alvo);
 		if (v == null) yield break;
@@ -617,7 +618,7 @@ public partial class RoboDeTecla : Node
 			  LinhaCom(tecla, alvo).Length > 0, PrimeiraLinha(tecla));
 
 		Injeta("F2 a regra de silencio pega um gesto que mandou (contra-exemplo dela mesma)",
-			   !RegraSilencio(new Gesto("forjado", [Referencia("rival", "0")], "")), "");
+			   !RegraSilencio(new Gesto("forjado", [Referencia("conhecer", "0")], "")), "");
 		Injeta("F2 a regra do 'a tecla fala' pega a tecla muda",
 			   !RegraFalou(new Gesto("mudo", [], ""), alvo), "");
 

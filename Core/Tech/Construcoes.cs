@@ -1,3 +1,4 @@
+using Jandirus.Core.Economia;
 using Jandirus.Core.Stats;
 
 namespace Jandirus.Core.Tech;
@@ -71,6 +72,26 @@ public sealed class Construcao
 	/// Custo negativo e a marca. Ver `Ofertas`, que o esconde da loja.
 	/// </summary>
 	public bool Construivel => Custo >= 0;
+
+	/// <summary>
+	/// ISTO NAO E OFERTA: pede mais tecnologia do que o original deixa alguem ter.
+	///
+	/// ============================ O "SPACE POD DE TECH 999" (dono, 2026-10-10) ============================
+	/// *"remover space pod de tech 999 q aparece na aba tech"*. No DM a janela de tecnologia APAGA o que o
+	/// jogador nao alcanca (`TechWindow.dm:48`: `if(techskill&lt;A.neededtech ...) deleteflag=1`), e o
+	/// `techskill` para de ganhar xp em 100 (`TechSupport.dm:27`; `TechMinigame.dm:42-43` escreve "Capped").
+	/// Entao `neededtech=999` e o jeito de o original dizer "isto NUNCA aparece na janela": o
+	/// `Spacepod_Placed` (`Tier3.dm:16-29`) e o `Boat_Placed` (`Tier 1.5.dm:44-52`) sao BALCOES que quem
+	/// desenhou o mapa pos no mundo (`/obj/Creatables/Boat_Placed` na agua de Arconia, `1to26.dmm:1369`) --
+	/// clica-se neles la, e cada um vende uma vez so (o `count` do `Click()`).
+	///
+	/// O port mostra a lista INTEIRA com o motivo de cada nao (ver `Ofertas`), e a marca virou um card:
+	/// "Spacepod Placed -- tech 999 -- falta tecnologia", pra sempre. O conserto na raiz e do extrator
+	/// (`DmTechScanner.Scan` deixou de emiti-las, e elas sairam do `construcoes.json`); esta pergunta e o
+	/// cinto do lado de ca -- um catalogo que voltar com uma delas nao chega a aba, e o servidor grita no boot.
+	/// ======================================================================================================
+	/// </summary>
+	public bool AcimaDoTeto => Construivel && Tech > CatalogoDeObras.TechMaximoDoDm;
 }
 
 /// <summary>Por que uma construcao foi recusada. Tipado pelo mesmo motivo das skills.</summary>
@@ -83,6 +104,13 @@ public enum RecusaObra
 	RacaErrada,
 	LugarOcupado,
 	ZonaProibida,
+
+	/// <summary>
+	/// O GEMEO DO <see cref="SemZeni"/> pra quem escolheu pagar com recursos (o dobro do preco -- ver
+	/// <see cref="Recurso.CustoEmRecursos"/>). NO FIM do enum de proposito: o valor viaja como byte no
+	/// `S2C.Tech`, e entrar no meio renumeraria os que ja estao no fio.
+	/// </summary>
+	SemRecursos,
 }
 
 /// <summary>
@@ -102,6 +130,21 @@ public sealed class CatalogoDeObras
 	public int Total => _porId.Count;
 	public IEnumerable<Construcao> Todas => _porId.Values;
 	public Construcao? Get(string id) => _porId.GetValueOrDefault(id);
+
+	/// <summary>
+	/// OS IDS QUE O ARQUIVO TRAZ MAIS DE UMA VEZ. Lista vazia e o unico resultado aceitavel.
+	///
+	/// ============================ O `Staff` E O `PDA` REPETIDOS (2026-10-10) ============================
+	/// O id e a chave: duas linhas com o mesmo viram UMA construcao -- a ultima do arquivo --, e a outra some
+	/// sem ninguem ser avisado. Foi assim que o `Staff` da aba Tech era uma arma que o original desativou (tech
+	/// 11) e nao o cajado magico de verdade (tech 1), que estava no arquivo e nunca chegou a tela.
+	///
+	/// O conserto e do extrator (`DmTechScanner`: o tipo declarado em dois arquivos e UM tipo); esta lista e o
+	/// cinto do lado de ca, lido por <see cref="Parse"/>: o servidor grita no boot e a bancada `instalar-prova`
+	/// reprova o arquivo.
+	/// ==================================================================================================
+	/// </summary>
+	public List<string> Repetidos { get; } = [];
 
 	/// <summary>
 	/// ENTRA UMA CONSTRUCAO QUE NAO VEIO DO DISCO -- o Enma Daioh (`Alem.TipoDoEnma`), que no DM e um MOB
@@ -147,6 +190,26 @@ public sealed class CatalogoDeObras
 		Todas.Where(c => c.Densa && c.Arte.Length == 0);
 
 	/// <summary>
+	/// O TETO DE TECNOLOGIA DO ORIGINAL: o `techskill` do DM so ganha xp ate 100 (`TechSupport.dm:27`,
+	/// `if(techskill&lt;=99)`). O que pede mais do que isto nunca esteve a venda -- ver
+	/// <see cref="Construcao.AcimaDoTeto"/>. (O estudo do port nao tem teto; a regra e sobre o CATALOGO.)
+	/// </summary>
+	public const double TechMaximoDoDm = 100;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--recursosteste`): o que pede tecnologia acima do teto volta a ser oferta --
+	/// o jogo de antes de 2026-10-10, em que o "Spacepod Placed" de tech 999 era um card da aba Tech. Lido
+	/// pelas duas linhas do conserto (<see cref="Ofertas"/> e <see cref="Permitida(Construcao, Fighter, string, Moeda)"/>).
+	/// </summary>
+	public static bool AcimaDoTetoViraOfertaDeTeste;
+
+	/// <summary>
+	/// AS QUE PEDEM TECNOLOGIA ACIMA DO TETO. Lista vazia e o unico resultado aceitavel num catalogo saido do
+	/// extrator de hoje; o servidor a le no boot e grita por cada uma. Ver <see cref="Construcao.AcimaDoTeto"/>.
+	/// </summary>
+	public IEnumerable<Construcao> AcimaDoTeto() => Todas.Where(c => c.AcimaDoTeto);
+
+	/// <summary>
 	/// O QUE ESTE PERSONAGEM CONSEGUE COMPRAR AGORA, e o motivo de cada nao.
 	///
 	/// Devolve TUDO que a raca permite, inclusive o que nao cabe no bolso -- ver a lista inteira
@@ -161,6 +224,8 @@ public sealed class CatalogoDeObras
 			// MOBILIA DE MAPA NAO E OFERTA. O banco existe no catalogo pra ter arte e densidade,
 			// nao pra ser vendido -- ver `Construcao.Construivel`.
 			if (!c.Construivel) continue;
+			// NEM O BALCAO DE MAPA DO ORIGINAL (o "tech 999") -- ver `Construcao.AcimaDoTeto`.
+			if (c.AcimaDoTeto && !AcimaDoTetoViraOfertaDeTeste) continue;
 			RecusaObra r = Permitida(c, f, raca);
 			if (r == RecusaObra.RacaErrada) continue;   // nem existe pra voce: nao vira linha
 			l.Add((c, r));
@@ -189,16 +254,46 @@ public sealed class CatalogoDeObras
 				(int)Math.Floor((y + Jandirus.Core.World.MoveRules.FeetOffsetY) / t));
 	}
 
-	public static RecusaObra Permitida(Construcao c, Fighter f, string raca)
+	/// <summary>Pagando em ZENI -- e a pergunta de sempre, e a que o catalogo que vai no fio responde.</summary>
+	public static RecusaObra Permitida(Construcao c, Fighter f, string raca) => Permitida(c, f, raca, Moeda.Zeni);
+
+	/// <summary>
+	/// ESTE PERSONAGEM PODE FABRICAR ISTO, PAGANDO NESTA MOEDA? Raca e tecnologia valem igual pras duas; so a
+	/// ultima pergunta -- a da carteira -- muda, e ela mora em <see cref="ComSaldo"/>.
+	/// </summary>
+	public static RecusaObra Permitida(Construcao c, Fighter f, string raca, Moeda moeda)
 	{
 		// NAO SE CONSTROI MOBILIA DE MAPA. A guarda mora aqui e nao so no `Ofertas` porque o
 		// pedido de construir chega do CLIENTE, e esconder da lista nunca foi permissao.
 		if (!c.Construivel) return RecusaObra.NaoExiste;
+		// ...NEM O QUE PEDE TECNOLOGIA ACIMA DO TETO, pela mesma razao -- ver `Construcao.AcimaDoTeto`.
+		if (c.AcimaDoTeto && !AcimaDoTetoViraOfertaDeTeste) return RecusaObra.NaoExiste;
 		if (c.Racas.Length > 0 && !c.Racas.Contains(raca, StringComparer.OrdinalIgnoreCase))
 			return RecusaObra.RacaErrada;
 		if (f.techskill < c.Tech) return RecusaObra.SemTech;
-		if (f.Zeni < c.Custo) return RecusaObra.SemZeni;
-		return RecusaObra.Pode;
+		return ComSaldo(RecusaObra.Pode, c.Custo, moeda == Moeda.Recursos ? f.Recursos : f.Zeni, moeda);
+	}
+
+	/// <summary>
+	/// O VEREDITO DE UMA OFERTA COM A CARTEIRA DE AGORA, nesta moeda.
+	///
+	/// ============================ POR QUE ISTO E UMA FUNCAO DO CORE ============================
+	/// O catalogo que vai no fio (`S2C.Tech`) traz o veredito do servidor em ZENI, tirado no instante do envio.
+	/// A carteira passou a mudar sozinha -- quem minera ganha recurso a cada segundo -- e reenviar cem ofertas
+	/// por segundo pra dizer "agora da" seria pagar o catalogo inteiro por um numero. Entao o servidor manda a
+	/// CARTEIRA (`S2C.Carteira`, dezessete bytes) e a aba refaz so esta ultima pergunta, com a MESMA funcao que
+	/// o servidor usa ao cobrar (<see cref="Permitida(Construcao, Fighter, string, Moeda)"/> termina aqui).
+	///
+	/// O QUE NAO DEPENDE DE CARTEIRA FICA COMO VEIO: raca, tecnologia e "isto nao se fabrica" o servidor ja
+	/// julgou, e nenhum saldo muda. So `Pode`, `SemZeni` e `SemRecursos` sao refeitos.
+	/// ==========================================================================================
+	/// </summary>
+	public static RecusaObra ComSaldo(RecusaObra doServidor, double custoEmZeni, double saldo, Moeda moeda)
+	{
+		if (doServidor is not (RecusaObra.Pode or RecusaObra.SemZeni or RecusaObra.SemRecursos)) return doServidor;
+		return moeda == Moeda.Recursos
+			? (saldo >= Recurso.CustoEmRecursos(custoEmZeni) ? RecusaObra.Pode : RecusaObra.SemRecursos)
+			: (saldo >= custoEmZeni ? RecusaObra.Pode : RecusaObra.SemZeni);
 	}
 
 	public static CatalogoDeObras Parse(string json)
@@ -227,6 +322,7 @@ public sealed class CatalogoDeObras
 				Pessoal = Num(bloco, "pessoal") > 0,
 			};
 			if (c.Id.Length == 0) continue;
+			if (cat._porId.ContainsKey(c.Id)) cat.Repetidos.Add(c.Id);
 			cat._porId[c.Id] = c;
 
 			// A PRIMEIRA VENCE. Duas entradas podem apontar pro mesmo `create_type` (o Creatable e

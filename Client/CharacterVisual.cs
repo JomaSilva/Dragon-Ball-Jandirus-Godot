@@ -681,10 +681,18 @@ public partial class CharacterVisual : Node2D
 	/// campo, sem `bool`, sem ordem de chamada pra acertar. Trocar de penteado ou de cor no guarda-roupa
 	/// dentro de uma transformacao passa a ser irrelevante: nao ha registro pra ficar velho.
 	///
-	/// O RABO ENTRA PELA MESMA PORTA e e por isso que ele aparece aqui: a ficha nao tem cor de rabo (o
-	/// <see cref="Vestir"/> nunca o tinge), entao a base dele e <see cref="Tinta.Nenhuma"/> -- o sprite
-	/// cru. Isso e uma DERIVACAO e nao um caso especial, e e o que torna a assimetria impossivel de
-	/// voltar: se um dia a ficha ganhar cor de rabo, muda-se esta linha e os dois lados andam juntos.
+	/// ============================ O RABO E PELO DO MESMO BICHO: METADE DA COR DO CABELO ============================
+	/// Ele entra pela MESMA PORTA, e a base dele tambem sai da ficha: `icon += rgb(HairR/2, HairG/2, HairB/2)`
+	/// e a primeira linha do `EffectStart` do `saiyantail` (`SaiyanObjects.dm:99`) -- metade da cor do cabelo,
+	/// SOMADA. Esta linha devolvia <see cref="Tinta.Nenhuma"/> ("a ficha nao tem cor de rabo"), e o rabo de
+	/// todo mestico saia no marrom do arquivo, fosse o cabelo dele roxo, loiro ou azul: o *"o rabo de saiyajin
+	/// tem o mesmo problema"* do item 6 do playtest de 2026-10-10. (No Saiyajin puro nada muda, e nao por
+	/// excecao: o cabelo dele e NATURAL, a ficha nao guarda cor, e metade de nada e nada -- que e o
+	/// `HairR = 0` do original.)
+	///
+	/// Por ser DERIVADA, trocar a cor do cabelo no guarda-roupa muda o rabo junto -- quem repinta e o
+	/// <see cref="Vestir"/>, na linha logo depois do `MontarRabo`.
+	/// ==============================================================================================================
 	///
 	/// (Sem ficha -- boneco de bancada montado sem `Vestir` -- a base e a arte crua, que e o que um
 	/// material recem-criado tem mesmo.)
@@ -697,8 +705,17 @@ public partial class CharacterVisual : Node2D
 		CamadaTingida.Cabelo => _ficha is { } f && !VisualCatalog.CabeloNatural(_racaDaFicha)
 			? Tinta.DaFicha(f.CorCabelo) : Tinta.Nenhuma,
 		CamadaTingida.Olho => _ficha is { } f2 ? Tinta.DaFicha(f2.CorOlho) : Tinta.Nenhuma,
+		CamadaTingida.Rabo => !RaboSemACorDoCabeloDeTeste && _ficha is { CorCabelo: { } cc }
+							  && !VisualCatalog.CabeloNatural(_racaDaFicha)
+			? Tinta.DaFicha(new Rgb((byte)(cc.R / 2), (byte)(cc.G / 2), (byte)(cc.B / 2))) : Tinta.Nenhuma,
 		_ => Tinta.Nenhuma,
 	};
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagcorrastro`): o rabo volta a ser o sprite cru, seja qual for a cor do
+	/// cabelo -- o estado de antes de 2026-10-10. Lido pela propria linha do rabo, em <see cref="BaseDaFicha"/>.
+	/// </summary>
+	public static bool RaboSemACorDoCabeloDeTeste;
 
 	/// <summary>
 	/// A ULTIMA FICHA VESTIDA, e a raca com que ela foi lida. So a <see cref="BaseDaFicha"/> usa.
@@ -984,7 +1001,25 @@ public partial class CharacterVisual : Node2D
 			m.SetShaderParameter("tinta_modo", Modo);
 			m.SetShaderParameter("tinta", Cor);
 		}
+
+		/// <summary>
+		/// A tinta que ESTA num material -- o par inteiro, lido pela mesma porta por onde entrou. E o que a foto
+		/// do corpo usa pra levar a cor de cada camada (<see cref="Fotografar(bool)"/>).
+		/// </summary>
+		public static Tinta Do(ShaderMaterial m) =>
+			new(m.GetShaderParameter(NomeDaTinta).AsVector3(), m.GetShaderParameter(NomeDoModo).AsInt32());
+
+		// Guardados pelo motivo de sempre: a `string` viraria um `StringName` novo por leitura, e a foto do
+		// rastro le uma tinta por camada por foto.
+		private static readonly StringName NomeDaTinta = "tinta", NomeDoModo = "tinta_modo";
 	}
+
+	/// <summary>
+	/// A tinta e o modo que estao no material de uma camada da FOTO DA MIRAGEM, pra `Zanzoken.Deixar` leva-los
+	/// ao material que entra no lugar. `null` = a camada nao tem material de tinta (a arte crua).
+	/// </summary>
+	public static (Vector3 Cor, int Modo)? TintaDoMaterial(Material? m) =>
+		m is ShaderMaterial sm && sm.Shader == ShaderTinta && Tinta.Do(sm) is var t ? (t.Cor, t.Modo) : null;
 
 	/// <summary>Pinta esta camada. <see cref="Tinta.Nenhuma"/> = a cor natural do sprite.</summary>
 	private static void Tingir(AnimatedSprite2D s, Tinta t)
@@ -1099,6 +1134,10 @@ public partial class CharacterVisual : Node2D
 		}
 
 		MontarRabo();
+		// O RABO SEGUE O CABELO DA FICHA (metade da cor -- ver `BaseDaFicha`), e a ficha acabou de mudar: o
+		// `MontarRabo` so veste o rabo que NASCE, e o que ja existia ficaria com a cor do cabelo de antes. A
+		// MESMA expressao do nascimento (`RevestirRaboRecemNascido`): a tinta da forma, se houver, vence.
+		PintarRabo(Jandirus.Core.Forms.Catalogo.CorDoRabo(_formaVestida) is { } corDoRabo ? new Color(corDoRabo) : null);
 
 		// A AUREOLA AO LADO DO RABO, e pelo mesmo motivo: as duas sao camadas de ESTADO (o servidor
 		// manda, e podem estar ligadas quando uma troca de aparencia chega). No-op quando nada
@@ -1540,22 +1579,58 @@ public partial class CharacterVisual : Node2D
 	/// pra baixo. Leste e oeste ja estavam certos, e e por isso que so metade da queixa existia.
 	/// ==================================================================================================
 	/// </summary>
-	public void DeitarPor(Facing olhando) => Girar(olhando switch
+	public void DeitarPor(Facing olhando)
 	{
-		Facing.East => 0f,
-		// ============================ O OESTE E O ESPELHO, NAO A VOLTA INTEIRA ============================
-		// Meia-volta no quadro deitado poe a cabeca pra direita, mas de ponta-cabeca: o queixo pra cima
-		// da tela, a juba pendurada pra baixo. Num corpo de 32 px visto de cima ninguem repara; no
-		// Oozaru o dono reparou (2026-09-06): "ta de cabeca pra baixo o oozaru desmaiado". A folha do
-		// macaco tem o quadro ESPELHADO (`ko_east`, cabeca pra direita, desenhado certo), entao quando
-		// o corpo da forma e a criatura inteira e tem os dois lados, o oeste entra com o espelho e SEM
-		// rotacao -- ver `DeitaPelosDoisLados` e a escolha do quadro em `Escolher`. As folhas de um
-		// quadro so continuam dando a meia-volta, que e o que sempre deram.
-		// ==================================================================================================
-		Facing.West => DeitaPelosDoisLados ? 0f : 180f,
-		Facing.South => -90f,
-		_ => 90f,
-	});
+		// ============================ A FOLHA QUE NAO TEM DESENHO DE NOCAUTE (o bicho) ============================
+		// A tabela abaixo supoe o quadro de `ko`, que ja e um desenho DEITADO com a cabeca pro leste. As folhas
+		// de animal (lobo, leao, vaca, galinha... -- `Npc.Animais`, dono em 2026-10-10) so tem caminhada: a
+		// escada do `Escolher` entrega o `walk_<dir>`, que e um desenho EM PE, e com a tabela de baixo a carcaca
+		// de um lobo que caiu olhando pro leste ficaria a zero grau -- um lobo de pe, parado, igual a um vivo.
+		// Quem nao tem o desenho deitado tomba de LADO: um quarto de volta, o focinho pra baixo da tela.
+		// ==========================================================================================================
+		if (SemDesenhoDeNocaute) { Girar(olhando == Facing.West ? -90f : 90f); return; }
+
+		Girar(olhando switch
+		{
+			Facing.East => 0f,
+			// ============================ O OESTE E O ESPELHO, NAO A VOLTA INTEIRA ============================
+			// Meia-volta no quadro deitado poe a cabeca pra direita, mas de ponta-cabeca: o queixo pra cima
+			// da tela, a juba pendurada pra baixo. Num corpo de 32 px visto de cima ninguem repara; no
+			// Oozaru o dono reparou (2026-09-06): "ta de cabeca pra baixo o oozaru desmaiado". A folha do
+			// macaco tem o quadro ESPELHADO (`ko_east`, cabeca pra direita, desenhado certo), entao quando
+			// o corpo da forma e a criatura inteira e tem os dois lados, o oeste entra com o espelho e SEM
+			// rotacao -- ver `DeitaPelosDoisLados` e a escolha do quadro em `Escolher`. As folhas de um
+			// quadro so continuam dando a meia-volta, que e o que sempre deram.
+			// ==================================================================================================
+			Facing.West => DeitaPelosDoisLados ? 0f : 180f,
+			Facing.South => -90f,
+			_ => 90f,
+		});
+	}
+
+	/// <summary>
+	/// A folha que este corpo veste NAO traz desenho de nocaute nenhum (`ko`, `ko_west`, `ko_east`)? E o caso
+	/// das folhas de animal. Conferido UMA vez por folha (o `DeitarPor` e chamado a cada snapshot de todo corpo
+	/// caido, e `HasAnimation` com texto cria um `StringName` por pergunta -- lixo pro coletor).
+	/// </summary>
+	private bool SemDesenhoDeNocaute
+	{
+		get
+		{
+			SpriteFrames? f = (_criatura ? _corpoDaForma?.SpriteFrames : null) ?? _corpo?.SpriteFrames;
+			if (f == null) return false;
+			if (!ReferenceEquals(f, _folhaConferidaDoNocaute))
+			{
+				_folhaConferidaDoNocaute = f;
+				_folhaSemNocaute = !f.HasAnimation(AnimKo) && !f.HasAnimation(AnimKoOeste) && !f.HasAnimation(AnimKoLeste);
+			}
+			return _folhaSemNocaute;
+		}
+	}
+
+	private SpriteFrames? _folhaConferidaDoNocaute;
+	private bool _folhaSemNocaute;
+	private static readonly StringName AnimKo = "ko", AnimKoOeste = "ko_west", AnimKoLeste = "ko_east";
 
 	/// <summary>
 	/// O corpo da forma e a criatura inteira (esconde o resto) e a folha dele deita pros DOIS lados
@@ -1815,7 +1890,26 @@ public partial class CharacterVisual : Node2D
 	/// Copiar tambem o material de tinta de cada camada. Quem vai TROCAR o material logo em
 	/// seguida (o rastro de corrida, que aplica o borrao) pede `false` -- ver o comentario dentro.
 	/// </param>
-	public Node2D Fotografar(bool comTinta = true)
+	public Node2D Fotografar(bool comTinta = true) => Fotografar(comTinta, borrar: false, default, 0f);
+
+	/// <summary>
+	/// A FOTO DO RASTRO: a mesma copia da pilha, ja BORRADA no <paramref name="rumo"/> e NA COR QUE O CORPO TEM
+	/// AGORA.
+	///
+	/// ============================ POR QUE O BORRAO E POSTO AQUI, E NAO POR QUEM PEDE A FOTO ============================
+	/// O rastro de corrida pedia a foto SEM tinta e punha o material de borrao por cima, camada a camada -- e
+	/// o material de borrao nao sabia a cor de camada nenhuma. A cor de um corpo nao esta na textura: esta nos
+	/// uniforms de tinta do material de cada camada e no modulate dela, e so esta classe os tem na mao. O dono
+	/// viu o resultado no playtest de 2026-10-10: *"o borrao do dash usa a cor base do personagem, entao em
+	/// Majins que mudaram de cor o efeito fica na cor antiga"*.
+	///
+	/// Continua sendo UM material por camada por foto (o de borrao, que ja era criado): a cor viaja como tres
+	/// uniforms dele, e so nas camadas que tem cor.
+	/// ==================================================================================================================
+	/// </summary>
+	public Node2D FotografarBorrado(Vector2 rumo, float forca) => Fotografar(comTinta: false, borrar: true, rumo, forca);
+
+	private Node2D Fotografar(bool comTinta, bool borrar, Vector2 rumo, float forca)
 	{
 		// A FOTO HERDA A ROTACAO. Sem isto, o vulto de quem esta voando (ou caido) nascia EM PE --
 		// o `Girar` escreve no proprio `CharacterVisual`, que e o PAI das camadas, e a copia so
@@ -1840,7 +1934,15 @@ public partial class CharacterVisual : Node2D
 				// (ver `ColadasDaForma`, onde a tinta multiplica em vez de somar). Sem esta linha o
 				// vulto de um Legendary sairia com a fagulha CINZA, que e a cor crua da folha -- o
 				// mesmo tombo que a tinta do cabelo ja levou aqui, num canal que nao existia na epoca.
-				Modulate = s.Modulate,
+				//
+				// E O `SelfModulate` TAMBEM: e nele que mora o tom do Namekuseijin (`Vestir`, o `Brilho` do
+				// `VisualCatalog.TintaDoCorpo`), e sem ele o vulto de um Namekuseijin claro ou escuro saia
+				// no verde do arquivo.
+				//
+				// NA FOTO BORRADA OS DOIS VIAJAM COMO UNIFORM (o `brilho`, la embaixo) e nao no node: o
+				// `Borrao.gdshader` escreve o `COLOR` sem le-lo, entao o modulate do node nao chega ao pixel.
+				Modulate = borrar ? Colors.White : s.Modulate,
+				SelfModulate = borrar ? Colors.White : s.SelfModulate,
 			};
 
 			// A ORDEM DA PILHA VAI JUNTO. E o unico jeito de saber, olhando so a foto, qual copia
@@ -1863,14 +1965,21 @@ public partial class CharacterVisual : Node2D
 			// Quem vai borrar avisa (`comTinta: false`) e economiza a criacao inteira. Quem quer o
 			// fantasma parado (a miragem do Zanzoken) continua pedindo a tinta.
 			// ===============================================================================
-			if (comTinta && s.Material is ShaderMaterial m)
+			if (borrar)
+			{
+				// A COR DESTA CAMADA, INTEIRA: a tinta (cor e modo, o par) e o modulate. Ver o cabecalho
+				// da `FotografarBorrado`.
+				Tinta t = s.Material is ShaderMaterial mb ? Tinta.Do(mb) : Tinta.Nenhuma;
+				Color node = s.Modulate * s.SelfModulate;
+				BorraoDirecional.Aplicar(q, rumo, forca, t.Cor, t.Modo, new Vector3(node.R, node.G, node.B));
+			}
+			else if (comTinta && s.Material is ShaderMaterial m)
 			{
 				// O PAR INTEIRO, e nao dois campos copiados a mao. Copiar so a cor deixaria o material
 				// novo no modo SOMA (o padrao) com a cor da roupa -- e copiar so o MODO pinta a peca de
 				// PRETO. Ler e escrever um `Tinta` nao deixa nenhuma das duas metades pra tras.
 				var mat = new ShaderMaterial { Shader = ShaderTinta };
-				new Tinta(m.GetShaderParameter("tinta").AsVector3(),
-						  m.GetShaderParameter("tinta_modo").AsInt32()).Escrever(mat);
+				Tinta.Do(m).Escrever(mat);
 				q.Material = mat;
 			}
 			copia.AddChild(q);

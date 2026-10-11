@@ -61,6 +61,7 @@ public partial class RoboDeVoz : Node
 		OEmissorNaoPicota();
 		ATorneiraAceitaARajadaHonesta();
 		OGanhoAutomaticoLevantaAVozBaixa();
+		OAceiteDoPlaytest();
 
 		// DOIS PLACARES, e os dois tem que fechar: as checagens (o sistema funciona) e as injecoes (a
 		// bancada enxerga quando ele nao funciona). Ver `Injetar`.

@@ -134,7 +134,8 @@ public sealed partial class GameServer
 			Atacando = agora < pl.AtaqueAte,
 			Guardando = pl.Combate?.Bloqueando == true,
 			Agarrando = pl.AgarrandoId != 0,
-			Treinando = pl.Ficha.train,
+			// QUEM MINERA OCUPA O CHAO COMO QUEM TREINA (a pose que ele veste e a mesma -- ver `ServerPlayer.Pose`).
+			Treinando = pl.Ficha.train || pl.Mineracao != null,
 			Meditando = pl.Ficha.med,
 		});
 

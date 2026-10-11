@@ -158,6 +158,18 @@ public static class MeleeResolver
 		// direto pro passo 2, onde a guarda ou segura ou cede e o golpe entra inteiro.
 		// =================================================================================================
 		double bhit = CombatMath.Pontaria(a.F, d.F, indefeso ? 0 : d.Deflexao, a.Precisao);
+
+		// ============================ BRACO PERDIDO ERRA MAIS -- `CombatMovement.dm:189` ============================
+		// `if(armsLost) bhit *= max(1 - armsLost * 0.25, 0.1)`, a linha logo abaixo da conta do `bhit` no `hitProc`:
+		// cada braco arrancado de QUEM BATE tira um quarto da chance de acertar. Multiplica a pontaria ja pronta
+		// (depois da deflexao e da precisao), como la. O alvo nocauteado continua levando tudo -- o `indefeso`
+		// pula o sorteio inteiro, que e o `if(M.KO) hit = 2` do DM (`:211`).
+		//
+		// VALE PRA TODO CORPO, NPC incluso: o `hitProc` e um so pros dois. A regra e os numeros moram no
+		// `DebuffsDeMembro`, que e de onde a aba Body tira a frase "N% menos chance de acertar".
+		// =============================================================================================================
+		if (!DebuffsDeMembro.DesligadosDeTeste) bhit *= DebuffsDeMembro.FatorDePontaria(DebuffsDeMembro.De(a.Corpo));
+
 		if (!indefeso && !d.Bloqueando && !Sorteou(rng, bhit))
 		{
 			r.Desfecho = Desfecho.Esquivou;
@@ -444,17 +456,23 @@ public static class MeleeResolver
 	/// </summary>
 	public static bool GuardaAguenta(Body corpo, double gapDoAtacante, Random rng)
 	{
-		int ruins = 0;
-		foreach (BodyPart p in corpo.Partes)
-			if (!p.Aninhado && (p.Zona == "bracos" || p.Zona == "pernas") && (p.Decepado || p.Quebrado))
-				ruins++;
+		// A CONTA DOS MEMBROS FORA DE COMBATE E A DO `DebuffsDeMembro.De` (o `block_limbs_down()`), e nao um laco
+		// daqui: a aba Body escreve "a guarda tem N% a mais de chance de ceder" a partir da MESMA conta e da MESMA
+		// constante, e duas contas iguais em dois arquivos sao uma promessa de divergirem.
+		int ruins = DebuffsDeMembro.De(corpo).ForaDaGuarda;
 
 		double falha = CombatKnobs.FalhaBaseGuarda
-					 + ruins * 25
+					 + ruins * FalhaDaGuardaPorMembro
 					 + Math.Max(0, gapDoAtacante - 1) * CombatKnobs.FalhaGuardaPorGap;
 
 		return rng.NextDouble() * 100 >= Math.Min(falha, 95);
 	}
+
+	/// <summary>
+	/// Quanto cada braco ou perna quebrado/perdido soma na chance de a guarda ceder, em pontos percentuais --
+	/// o `BLOCK_FAIL_PER_LIMB 25` de `BlockLimbs.dm:16`.
+	/// </summary>
+	public const double FalhaDaGuardaPorMembro = 25;
 
 	/// <summary>
 	/// Quanto do golpe a guarda deixa passar. Escala pela tecnica de QUEM BLOQUEIA -- no

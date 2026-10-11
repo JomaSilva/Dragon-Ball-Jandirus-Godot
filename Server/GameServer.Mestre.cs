@@ -10,8 +10,8 @@ namespace Jandirus.Server;
 /// O PEDIDO PENDENTE DE UM MESTRE -- o que o `alert()` bloqueante do BYOND era.
 ///
 /// No DM o `mst_ask_student` (`MasterStudent.dm:452`) e o `mst_ask_awaken` (`:515`) rodam com
-/// `waitfor = 0` e CONGELAM o aluno numa caixa de dialogo. Aqui nao ha caixa modal: o molde e o
-/// `PedidoDeAmizade` (`GameServer.Convivio.cs:426`) -- um pendente vivo, respondido por verb, com
+/// `waitfor = 0` e CONGELAM o aluno numa caixa de dialogo. Aqui nao ha caixa modal: o molde foi o
+/// pedido de amizade do convivio (que saiu em 2026-10-10) -- um pendente vivo, respondido por verb, com
 /// a resposta achando quem pediu **pela assinatura** e nao por quem esta na frente.
 /// </summary>
 /// <param name="Despertar">FALSE = convite pra virar aluno; TRUE = oferta de despertar assistido.</param>
@@ -157,6 +157,7 @@ public partial class GameServer
 		_nomePorAssinatura[aluno.Assinatura] = aluno.Name;
 		_nomePorAssinatura[mestre.Assinatura] = mestre.Name;
 		SalvarMestres();
+		AbrirDiarioDoAluno(mestre, aluno);   // o diario do vinculo (o que a aba Alunos/Mestre mostra) nasce com ele -- ver GameServer.Alunos.cs
 
 		GD.Print($"[server] discipulado: {aluno.Name} agora e aluno de {mestre.Name} "
 				 + $"({ContarAlunos(mestre.Assinatura)}/{Discipulado.MaxAlunos})");
@@ -440,6 +441,11 @@ public partial class GameServer
 	{
 		if (!EhPessoa(mestre)) { Avisar(mestre, "este corpo nao tem identidade propria."); return; }
 
+		// `if(dead || KO || !signature) return` -- a PRIMEIRA linha do `Ajudar_A_Transformar`
+		// (`MasterStudent.dm:480`), antes da recarga e de procurar o aluno. O port conferia o aluno caido e
+		// nao o mestre: nocauteado no chao (ou morto), ele provocava o aluno e gastava os 5 minutos.
+		if (!MestreCaidoEnsinaDeTeste && RecusarCaido(mestre, "nao da pra guiar ninguem caido.")) return;
+
 		long agora = NowMs();
 		if (mestre.RecargaDeEnsino > agora)
 		{
@@ -476,6 +482,7 @@ public partial class GameServer
 
 		// A RECARGA CORRE A PARTIR DAQUI. Ver o cabecalho.
 		mestre.RecargaDeEnsino = agora + (long)(Discipulado.RecargaDeEnsinoSegundos * 1000);
+		AnotarTentativaDeForma(mestre, aluno, alvo);   // a tentativa entra no diario do vinculo -- ver GameServer.Alunos.cs
 
 		bool porRaiva = Catalogo.RaivaExigida(alvo) != NivelDeRaiva.Nenhuma;
 		aluno.PedidoDoMestre = new PedidoDeMestre(true, mestre.Assinatura, mestre.Name, alvo.Id,
@@ -611,6 +618,7 @@ public partial class GameServer
 		//    mesmo motivo: quem seta forma por fora perde tudo o que o funil faz -- Ki cheio,
 		//    cinematica, clima, aviso na zona, cabelo nos outros clientes.
 		EntrarNaForma(aluno, d);
+		AnotarDespertarAssistido(mestre, aluno, d);   // o diario do vinculo guarda que foi COM o mestre -- ver GameServer.Alunos.cs
 		Avisar(mestre, $"{aluno.Name} DESPERTA {Catalogo.NomeDe(d, false)} na sua frente.");
 		GD.Print($"[server] despertar assistido: {mestre.Name} guiou {aluno.Name} ate {d.Id}");
 	}

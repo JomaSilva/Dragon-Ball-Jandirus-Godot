@@ -43,6 +43,11 @@ public partial class GameServer
 
 	private void Falar(ServerPlayer a, Protocol.Fala canal, string texto)
 	{
+		// SO OS SEIS CANAIS DE FALA. O byte do canal vem do cliente (`C2S.Chat`), e o `default` la embaixo
+		// repassava QUALQUER valor a quem estivesse a vista -- com 200 (`Fala.Sistema`, que "nunca sai na rede")
+		// o texto chegava sem autor, desenhado como recado do servidor: um aviso de administrador forjado.
+		if (!CanalDeFalaLivreDeTeste && canal is < Protocol.Fala.Ooc or > Protocol.Fala.Looc) return;
+
 		texto = Limpar(texto);
 		if (texto.Length == 0) return;
 

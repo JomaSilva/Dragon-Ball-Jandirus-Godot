@@ -227,15 +227,19 @@ public sealed partial class GameServer
 	/// `EspalharDanoG3` tambem nao os aplica, e dois caminhos de dano direto com regras diferentes de
 	/// armadura seria a divergencia que a casa proibe.
 	/// </summary>
-	private void FerirUmMembroG10(ServerPlayer vitima, ServerPlayer autor, double dano, bool letal)
+	/// <param name="zona">
+	/// A zona que o VERB escreve, quando ele escreve uma -- o `selectzone` do `damage_m(M, dmg, "torso", ...)`
+	/// (`calcs.dm:178`; o Power Flick, `GodOfDestruction.dm:241`). Nulo = a mira de quem bate, como no `damage_mob`.
+	/// </param>
+	private void FerirUmMembroG10(ServerPlayer vitima, ServerPlayer autor, double dano, bool letal, string? zona = null)
 	{
 		CombatState? c = vitima.Combate;
 		if (c == null || dano <= 0 || vitima.Ficha.dead || c.Intocavel) return;
 
-		BodyPart? membro = c.Corpo.Sortear(autor.Combate?.ZonaMirada, _rng);
+		BodyPart? membro = c.Corpo.Sortear(zona ?? autor.Combate?.ZonaMirada, _rng);
 		if (membro == null) return;
 
-		c.EntrarEmCombate();
+		c.EntrarEmCombate(comAlguem: autor != vitima);   // ferir a si mesmo nao e brigar: ver `EspalharDanoG3`
 		if (autor != vitima) autor.Combate?.EntrarEmCombate();
 		// O FUNIL ARRANCA: e o `DamageLimb` -> `DamageMe` -> `LopLimb` do DM inteiro numa chamada
 		// (ver `CombatState.Ferir`). O membro que zera por golpe letal cai, e a peca sai pelo

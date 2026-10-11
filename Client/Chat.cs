@@ -91,6 +91,7 @@ public partial class Chat : CanvasLayer
 		if (Instancia == this) Instancia = null;
 		Digitando = false;
 		if (GameClient.Instance is { } cli) cli.Falou -= Receber;
+		SoltarORedimensionar();   // as assinaturas de vida longa do arranjo (Chat.Tamanho.cs)
 	}
 
 	// =====================================================================
@@ -193,6 +194,9 @@ public partial class Chat : CanvasLayer
 		_rodape.AddChild(_entrada);
 
 		Opacidade(false);
+
+		// O CHAT REDIMENSIONAVEL: a borda de cima e a da direita se puxam, e o tamanho fica gravado. Ver `Chat.Tamanho.cs`.
+		MontarORedimensionar(raiz);
 	}
 
 	/// <summary>

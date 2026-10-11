@@ -56,10 +56,14 @@ public enum CoberturaDeTerreno : byte
 	ArvoreAcento = 2,
 	/// <summary>Planta colhivel (`ProceduralSpace.dm:1340-1344`).</summary>
 	Planta = 3,
-	/// <summary>Veio de minerio comum, so em colina (`ProceduralSpace.dm:1350-1353`).</summary>
-	Minerio = 4,
-	/// <summary>Gema: 1 em cada 4 veios (`ProceduralSpace.dm:1352`).</summary>
-	Gema = 5,
+	// O 4 ERA O VEIO DE MINERIO COMUM (`ProceduralSpace.dm:1350-1353`), um tile parado da colina. Saiu em
+	// 2026-10-10: a rocha de minerio passou a nascer e sumir em jogo, pela reserva do planeta, e quem a
+	// poe no mapa e o servidor (`Core/Economia/RochaDeMinerio.cs`). O numero fica vago.
+	/// <summary>
+	/// A ROCHA GRANDE: 1 em cada 4 veios das colinas (o sorteio da gema, `ProceduralSpace.dm:1352`). E a
+	/// unica cobertura maior que a celula dela na fisica -- ver <see cref="Jandirus.Core.World.RochaGrande"/>.
+	/// </summary>
+	RochaGrande = 5,
 }
 
 /// <summary>
@@ -131,6 +135,12 @@ public sealed class PaletaDeBioma
 	// ---- povoamento (chance em 100 por tile) ----
 	public int VegetacaoPct { get; init; }
 	public int PlantaPct { get; init; }
+
+	/// <summary>
+	/// A chance de VEIO numa celula de colina. Um em cada quatro veios carrega uma rocha grande
+	/// (<see cref="CoberturaDeTerreno.RochaGrande"/>); os outros tres ficam vazios -- eram o tile de minerio
+	/// parado, que deixou de existir (ver o enum).
+	/// </summary>
 	public int MinerioPct { get; init; }
 
 	/// <summary>O lago e LAVA. `ProceduralSpace.dm:1176` (`water_lava = 1` no Vulcanico).</summary>
@@ -145,8 +155,7 @@ public sealed class PaletaDeBioma
 	public TileVisual Arvore { get; init; }
 	public TileVisual ArvoreAcento { get; init; }
 	public TileVisual Planta { get; init; }
-	public TileVisual Minerio { get; init; }
-	public TileVisual Gema { get; init; }
+	public TileVisual RochaGrande { get; init; }
 }
 
 /// <summary>
@@ -267,6 +276,15 @@ public sealed class TerrenoGerado
 	/// </summary>
 	public required bool ClareiraEscavada { get; init; }
 
+	/// <summary>
+	/// AS MACIEIRAS DESTE MUNDO: as celulas em que o servidor poe uma arvore de maca de pe, com a da
+	/// CHEGADA na frente. Funcao pura do terreno (e portanto da seed) -- ver <see cref="Pomar"/>.
+	///
+	/// Vazia em tudo o que nao e planeta sorteado (o interior de nave, a mente, o interior do Majin
+	/// montam o proprio <see cref="TerrenoGerado"/> e nao passam pelo <see cref="GeradorDeTerreno.Gerar"/>).
+	/// </summary>
+	public IReadOnlyList<(int X, int Y)> Macieiras { get; init; } = [];
+
 	/// <summary>O ponto de pouso em PIXELS, no centro da celula. E o que vai pro `MoveToZone`.</summary>
 	public Vec2 Spawn => new(
 		(SpawnCelX + 0.5f) * ZoneCollision.TileSize,
@@ -280,15 +298,25 @@ public sealed class TerrenoGerado
 	public CoberturaDeTerreno CoberturaEm(int x, int y) =>
 		Dentro(x, y) ? (CoberturaDeTerreno)Cobertura[y * Largura + x] : CoberturaDeTerreno.Nada;
 
-	/// <summary>Como esta celula de CHAO se desenha.</summary>
-	public TileVisual VisualDoChao(int x, int y) => ClasseEm(x, y) switch
+	/// <summary>
+	/// Como uma CLASSE de chao se desenha neste mundo. E a pergunta que o cliente faz ao montar as
+	/// camadas (uma vez por classe, `PlanetaProcedural.MontarCamadas`) e a que o
+	/// <see cref="VisualDoChao"/> faz por celula -- uma casa so, pra a tela e a bancada nao poderem
+	/// discordar sobre com que tile a montanha e pintada.
+	/// </summary>
+	public TileVisual VisualDaClasse(ClasseDeTerreno classe) => classe switch
 	{
 		ClasseDeTerreno.Agua => Paleta.Agua,
 		ClasseDeTerreno.Praia => Paleta.Praia,
 		ClasseDeTerreno.Planicie => Paleta.Planicie,
 		ClasseDeTerreno.Colina => Paleta.Colina,
-		_ => Paleta.Montanha,
+		_ => GeradorDeTerreno.MontanhaDeJanelaDeTeste
+			? GeradorDeTerreno.ComoEraAMontanha(Paleta.Montanha)
+			: Paleta.Montanha,
 	};
+
+	/// <summary>Como esta celula de CHAO se desenha.</summary>
+	public TileVisual VisualDoChao(int x, int y) => VisualDaClasse(ClasseEm(x, y));
 
 	/// <summary>Como a COBERTURA desta celula se desenha. Nulo = nao ha cobertura.</summary>
 	public TileVisual? VisualDaCobertura(int x, int y) => CoberturaEm(x, y) switch
@@ -296,8 +324,7 @@ public sealed class TerrenoGerado
 		CoberturaDeTerreno.Arvore => Paleta.Arvore,
 		CoberturaDeTerreno.ArvoreAcento => Paleta.ArvoreAcento,
 		CoberturaDeTerreno.Planta => Paleta.Planta,
-		CoberturaDeTerreno.Minerio => Paleta.Minerio,
-		CoberturaDeTerreno.Gema => Paleta.Gema,
+		CoberturaDeTerreno.RochaGrande => Paleta.RochaGrande,
 		_ => null,
 	};
 
@@ -404,6 +431,53 @@ public static class GeradorDeTerreno
 	private const ulong SalCobertura = 0x7FEB352D9E374C4DUL;
 
 	// =====================================================================
+	// A ROCHA DA MONTANHA
+	// =====================================================================
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `procedural` do AssetPipeline, e a foto do "antes" da
+	/// `--fotoprocedural`): a montanha volta a ser pintada com o estado "Wall1" -- o jogo de antes de
+	/// 2026-10-10. Lido pela propria regra, em <see cref="TerrenoGerado.VisualDaClasse"/>. Falso em
+	/// jogo, sempre.
+	/// </summary>
+	public static bool MontanhaDeJanelaDeTeste;
+
+	/// <summary>
+	/// A ARTE DA MONTANHA de todo mundo gerado: `Walls.dmi`, estado "Wall13".
+	///
+	/// ============================ OS "BLOCOS DE MADEIRA" ERAM ISTO ============================
+	/// O dono (2026-10-10): *"planetas procedurais estao com esses blocos estranhos de madeira no
+	/// mapa"*. As seis paletas pintavam a classe Montanha com `("Walls", "Wall1")`, e o "Wall1" da
+	/// `Walls.dmi` nao e rocha: e a JANELA das casas -- o caixilho de madeira com quatro vidros, o
+	/// primeiro quadro da folha. Toda cordilheira de todo planeta sorteado saia como uma parede de
+	/// janelas, tingida pela cor do bioma.
+	///
+	/// O original pinta a montanha com `'JEFcliff.dmi'`, estado "" (`turf/pspace_mountain`,
+	/// `ProceduralSpace.dm:562-564`, e o anel de borda em `:1302`). Essa folha nao esta no
+	/// `tileset.tres`, e quem a trocou pela `Walls.dmi` ficou com o PRIMEIRO estado dela sem olhar o
+	/// desenho. O estado certo mora na mesma folha: o "Wall13" tem os MESMOS 1024 pixels do quadro ""
+	/// da `JEFcliff` (e a rocha das cavernas da Terra, z23: 4739 celulas). Nenhum mapa pre-feito usa
+	/// o "Wall1" em celula nenhuma, entao o defeito era so dos mundos sorteados.
+	///
+	/// QUEM CONFERE E A BANCADA, e nao o olho: `procedural` (Tools/AssetPipeline) resolve o tile da
+	/// montanha de cada planeta no `tiles.json` de verdade e compara os pixels com a `JEFcliff.png`.
+	/// ==========================================================================================
+	/// </summary>
+	private const string AtlasDaRocha = "Walls";
+	private const string EstadoDaRocha = "Wall13";
+
+	/// <summary>O que estava no lugar: a janela das casas. So o defeito injetado o usa.</summary>
+	private const string EstadoDaJanela = "Wall1";
+
+	private static TileVisual Rocha(string tinta) => new(AtlasDaRocha, EstadoDaRocha, tinta);
+
+	/// <summary>
+	/// A montanha como ela era ANTES do conserto. So troca o que e a rocha do gerador: o casco da
+	/// nave e a parede da mente tambem sao "Montanha" na paleta deles, e nao tem nada com isto.
+	/// </summary>
+	internal static TileVisual ComoEraAMontanha(TileVisual v) =>
+		v.Atlas == AtlasDaRocha && v.Estado == EstadoDaRocha ? v with { Estado = EstadoDaJanela } : v;
+
+	// =====================================================================
 	// AS PALETAS
 	// =====================================================================
 	/// <summary>A paleta de um bioma. A tabela e fixa e compartilhada: ninguem a modifica.</summary>
@@ -484,13 +558,13 @@ public static class GeradorDeTerreno
 			// Assets/Sprites/Turfs mas NAO esta no tileset.tres -- so entram no tileset os
 			// atlas que algum .dmm usa, e nenhum mapa pre-feito usa esse. 'Walls.dmi' e a
 			// parede dos mapas canonicos (/turf/Wall, Turfs.dm:1477-1484) e tem a MESMA
-			// semantica do pspace_mountain: density=1 e passagem liberada em voo.
-			Montanha = new TileVisual("Walls", "Wall1", "#9a9a8a"),   // tint = B[7] (:240)
+			// semantica do pspace_mountain: density=1 e passagem liberada em voo. O ESTADO
+			// dela que tem o desenho da JEFcliff esta em `Rocha` -- e nao e o primeiro da folha.
+			Montanha = Rocha("#9a9a8a"),   // tint = B[7] (:240)
 			Arvore = new TileVisual("Tree Good", "0"),          // GoodTree (Plants.dm:141-142)
 			ArvoreAcento = new TileVisual("Pine", "1"),         // PineTree (Plants.dm:143-144)
 			Planta = new TileVisual("carrot", "stage 1"),       // Orange (Plants.dm:602-604) + :525
-			Minerio = new TileVisual("Red Rock", ""),           // SUBSTITUICAO: ver nota do Ore
-			Gema = new TileVisual("White rock", ""),            // Quartz (Mining.dm:67-69)
+			RochaGrande = new TileVisual(RochaGrande.Atlas, ""),   // a pilha de pedras de 250 px (ver `RochaGrande`)
 		},
 
 		// -------------------------------------------------------------
@@ -516,12 +590,11 @@ public static class GeradorDeTerreno
 			Praia = new TileVisual("Ground", "Ground7", "#e0c070"),  // beach_tint (:1173)
 			Planicie = new TileVisual("Ground", "Ground2", "#e8cf7a"), // plains_tint (:1171)
 			Colina = new TileVisual("Ground", "Ground1", "#c8a858"),  // hill_tint (:1172)
-			Montanha = new TileVisual("Walls", "Wall1", "#b89848"),   // tint = B[7] (:242)
+			Montanha = Rocha("#b89848"),   // tint = B[7] (:242)
 			Arvore = new TileVisual("Palm", "3"),               // PalmTree1 (Plants.dm:196-198)
 			ArvoreAcento = new TileVisual("Palm", "1"),         // PalmTreeRight (Plants.dm:171-173)
 			Planta = new TileVisual("beetroot", "stage 1"),     // Opuntia (Plants.dm:610-612)
-			Minerio = new TileVisual("Red Rock", ""),
-			Gema = new TileVisual("White rock", ""),
+			RochaGrande = new TileVisual(RochaGrande.Atlas, ""),
 		},
 
 		// -------------------------------------------------------------
@@ -546,12 +619,11 @@ public static class GeradorDeTerreno
 			Praia = new TileVisual("Ground", "GroundIce2", "#cfe0ee"),// beach_tint (:1138)
 			Planicie = new TileVisual("Ground", "GroundSnow1"),       // gr_gelo (:1108)
 			Colina = new TileVisual("Ground", "GroundIce1", "#dfeaf5"),// hill_tint (:1139)
-			Montanha = new TileVisual("Walls", "Wall1", "#dfeaf5"),   // tint = B[7] (:241)
+			Montanha = Rocha("#dfeaf5"),   // tint = B[7] (:241)
 			Arvore = new TileVisual("Tree Snow", ""),           // SnowTree (Plants.dm:149-150)
 			ArvoreAcento = new TileVisual("Pine", "1"),         // PineTree (Plants.dm:143-144)
 			Planta = new TileVisual("carrot", "stage 1"),       // sem uso: PlantaPct = 0
-			Minerio = new TileVisual("Red Rock", ""),
-			Gema = new TileVisual("White rock", ""),
+			RochaGrande = new TileVisual(RochaGrande.Atlas, ""),
 		},
 
 		// -------------------------------------------------------------
@@ -581,15 +653,14 @@ public static class GeradorDeTerreno
 			Praia = new TileVisual("Ground", "Ground8"),
 			Planicie = new TileVisual("Ground", "Ground4", "#c0907a"),
 			Colina = new TileVisual("Ground", "Ground6", "#a87058"),
-			Montanha = new TileVisual("Walls", "Wall1", "#8a6a5a"),
+			Montanha = Rocha("#8a6a5a"),
 			// Oaktree (Plants.dm:76-78). O SmallTree do DM seria a escolha obvia, mas ele pede
 			// 'DecTrees.dmi' estado "1" (Plants.dm:113-114) e esse atlas so tem os estados "" e
 			// "apple" -- o estado "1" nao existe, e o pipeline cairia calado no quadro 0.
 			Arvore = new TileVisual("Oak", "1"),
 			ArvoreAcento = new TileVisual("Pine", "2"),
 			Planta = new TileVisual("carrot", "stage 1"),       // sem uso: PlantaPct = 0
-			Minerio = new TileVisual("Red Rock", ""),
-			Gema = new TileVisual("White rock", ""),
+			RochaGrande = new TileVisual(RochaGrande.Atlas, ""),
 		},
 
 		// -------------------------------------------------------------
@@ -616,12 +687,11 @@ public static class GeradorDeTerreno
 			Praia = new TileVisual("Turfs1", "dirt"),           // beach_states (:1184)
 			Planicie = new TileVisual("Turfs1", "ash"),         // plains_states (:1180)
 			Colina = new TileVisual("Turfs1", "hellground"),    // hill_states (:1182)
-			Montanha = new TileVisual("Walls", "Wall1", "#6a4038"),   // tint = B[7] (:243)
+			Montanha = Rocha("#6a4038"),   // tint = B[7] (:243)
 			Arvore = new TileVisual("RedTree", ""),             // AshTree (Plants.dm:170-172)
 			ArvoreAcento = new TileVisual("Tree Red", ""),      // CrimsonTree (Plants.dm:167-169)
 			Planta = new TileVisual("carrot", "stage 1"),       // sem uso: PlantaPct = 0
-			Minerio = new TileVisual("Red Rock", ""),
-			Gema = new TileVisual("White rock", ""),
+			RochaGrande = new TileVisual(RochaGrande.Atlas, ""),
 		},
 
 		// -------------------------------------------------------------
@@ -645,12 +715,11 @@ public static class GeradorDeTerreno
 			Praia = new TileVisual("Turfs1", "dirt"),           // beach_states (:1224)
 			Planicie = new TileVisual("Turfs1", "hellground"),  // plains_states (:1220)
 			Colina = new TileVisual("Turfs1", "ash"),           // hill_states (:1222)
-			Montanha = new TileVisual("Walls", "Wall1", "#4a5368"),   // tint = B[7] (:245)
+			Montanha = Rocha("#4a5368"),   // tint = B[7] (:245)
 			Arvore = new TileVisual("RedTree", ""),             // AshTree, do pool do Sombrio (:245)
 			ArvoreAcento = new TileVisual("Tree Red", ""),      // CrimsonTree, idem
 			Planta = new TileVisual("carrot", "stage 1"),       // sem uso: PlantaPct = 0
-			Minerio = new TileVisual("Red Rock", ""),
-			Gema = new TileVisual("White rock", ""),
+			RochaGrande = new TileVisual(RochaGrande.Atlas, ""),
 		},
 	];
 
@@ -824,9 +893,15 @@ public static class GeradorDeTerreno
 						break;
 
 					case ClasseDeTerreno.Colina:
-						// ProceduralSpace.dm:1350-1361 -- minerio tem prioridade; arvore o DOBRO da planicie
+						// ProceduralSpace.dm:1350-1361 -- o veio tem prioridade; arvore o DOBRO da planicie.
+						// UM EM CADA QUATRO VEIOS E UMA ROCHA GRANDE (o `R.next(4) == 1` da gema, :1352). Os
+						// outros tres eram o minerio parado e hoje ficam VAZIOS -- e continuam sem arvore,
+						// de proposito: o `else` de baixo nao os alcanca, entao tirar o minerio nao mudou a
+						// floresta de nenhuma semente.
 						if (d1 < pal.MinerioPct)
-							cob = d3 < 25 ? CoberturaDeTerreno.Gema : CoberturaDeTerreno.Minerio;
+						{
+							if (d3 < 25) cob = CoberturaDeTerreno.RochaGrande;
+						}
 						else if (d2 < pal.VegetacaoPct * 2)
 							cob = d3 < 85 ? CoberturaDeTerreno.Arvore : CoberturaDeTerreno.ArvoreAcento;
 						break;
@@ -840,6 +915,22 @@ public static class GeradorDeTerreno
 
 		(int sx, int sy, bool escavou) = AcharOuAbrirClareira(w, h, chao, cobertura, bits, agua);
 
+		// A PEGADA DAS ROCHAS GRANDES, DEPOIS DA CLAREIRA E ANTES DO BLOB. Depois da clareira porque e ela
+		// quem decide quais rochas ficam (as que tomariam o pouso saem do mapa, ver `LimparEmVolta`) e
+		// porque ela limpa bits em volta do pouso: carimbar antes deixaria pedra desenhada com a base
+		// aberta. Antes do blob pelo motivo da linha de baixo. O plano do que nao se quebra nasce junto,
+		// celula por celula -- ver `RochaGrande`.
+		//
+		// E ANTES DO POMAR: ele escolhe chao LIVRE lendo o `bits`, e o caminho a pe ate a macieira da chegada
+		// tambem -- com a pedra ainda fora do bitset ele plantaria debaixo dela, ou do outro lado dela.
+		var duro = new byte[bits.Length];
+		int rochasGrandes = RochaGrande.Carimbar(w, h, cobertura, bits, duro);
+
+		// O POMAR, DEPOIS da clareira e ANTES do blob: ele escolhe chao LIVRE em volta de um pouso que
+		// ja esta decidido e, no ultimo recurso (pouso numa celula isolada), abre UMA vizinha -- e o
+		// blob tem de sair com ela aberta, pelo mesmo motivo da clareira. Ver `Pomar.Plantar`.
+		(int X, int Y)[] macieiras = Pomar.Plantar(w, h, chao, cobertura, bits, agua, sx, sy, p.Seed);
+
 		// o blob e montado DEPOIS da clareira -- montar antes congelaria os bits que a escavacao
 		// ainda ia apagar, e o servidor acharia parede exatamente no ponto de pouso
 		byte[] jcol = MontarJcol(w, h, bits);
@@ -852,6 +943,9 @@ public static class GeradorDeTerreno
 		// novo em lugar nenhum.
 		ZoneCollision colisao = ZoneCollision.Load(jcol)!;
 		colisao.DefinirAgua(agua);
+		// O PLANO DO QUE NAO SE QUEBRA VIAJA PELO MESMO CAMINHO, e pelo mesmo motivo. Mundo sem rocha grande
+		// fica sem plano nenhum, que e "nada duro aqui" -- o que todo mundo gerado dizia ate 2026-10-10.
+		if (rochasGrandes > 0) colisao.DefinirDuro(duro);
 
 		return new TerrenoGerado
 		{
@@ -869,6 +963,7 @@ public static class GeradorDeTerreno
 			SpawnCelX = sx,
 			SpawnCelY = sy,
 			ClareiraEscavada = escavou,
+			Macieiras = macieiras,
 		};
 	}
 
@@ -880,9 +975,13 @@ public static class GeradorDeTerreno
 	/// uma regra de personagem (nadar/voar) e nao de geometria. Marcar agua como parede aqui
 	/// tornaria o lago intransponivel ate pra quem voa.
 	///
-	/// Minerio e planta ficam de fora porque sao coisas de PEGAR, e o `/obj/Raw_Material` do DM
-	/// nao declara densidade. **Isto precisa de conferencia** quando o sistema de mineracao for
-	/// portado: se no jogo final o veio for um obstaculo, e uma linha aqui.
+	/// A planta fica de fora porque e coisa de PEGAR.
+	///
+	/// A ROCHA GRANDE NAO ESTA AQUI, E BARRA: esta pergunta e por celula, e a pedra ocupa onze. Quem escreve
+	/// a pegada dela no bitset e o <see cref="RochaGrande.Carimbar"/>, depois da clareira do pouso. (A nota
+	/// que morava aqui dizia que o veio de minerio ficava de fora porque o `/obj/Raw_Material` do DM "nao
+	/// declara densidade" -- e ele declara, `Crafting Master.dm:344`. A rocha de minerio barra, e quem a poe
+	/// no mapa e o servidor: `Core/Economia/RochaDeMinerio.cs`.)
 	/// </summary>
 	public static bool Bloqueia(ClasseDeTerreno classe, CoberturaDeTerreno cobertura) =>
 		classe == ClasseDeTerreno.Montanha
@@ -957,6 +1056,10 @@ public static class GeradorDeTerreno
 				// aqui, senao o degrau 2 pousa o corpo dentro do lago. Ver `ClasseDeAgua.ServeDeChao`.
 				if (chao[i] == (byte)ClasseDeTerreno.Agua) return false;
 				if (cobertura[i] != (byte)CoberturaDeTerreno.Nada) return false;
+				// DEBAIXO DE UMA ROCHA GRANDE TAMBEM NAO: a pegada dela so entra no `bits` depois desta
+				// busca (ver `Gerar`), entao aqui a celula ainda parece livre -- e o pouso nao pode ser o
+				// motivo de uma pedra sumir quando ha chao limpo ao lado.
+				if (RochaGrande.Cobre(w, h, cobertura, x, y)) return false;
 				return exigente == 0 || chao[i] == (byte)ClasseDeTerreno.Planicie;
 			}
 
@@ -1007,6 +1110,10 @@ public static class GeradorDeTerreno
 
 				int i = y * w + x;
 				cobertura[i] = (byte)CoberturaDeTerreno.Nada;
+				// E A ROCHA GRANDE QUE ALCANCARIA ESTA CELULA SAI INTEIRA, de onde quer que esteja ancorada
+				// (ate tres colunas pro lado): o desenho dela e um tile so, e tirar meia pegada deixaria
+				// meia pedra atravessavel na chegada.
+				RochaGrande.TirarAsQueTocam(w, h, cobertura, x, y);
 				if (cavar && (chao[i] == (byte)ClasseDeTerreno.Montanha
 							  || chao[i] == (byte)ClasseDeTerreno.Agua))
 				{

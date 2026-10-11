@@ -42,13 +42,6 @@
     "spread": []
   },
   {
-    "nome": "Dog",
-    "stats": {"Physical Offense": 1, "Physical Defense": 1, "Ki Offense": 1, "Ki Defense": 1, "Ki Skill": 1, "Technique": 1, "Speed": 1, "Esoteric Skill": 1, "Skillpoint Mod": 1, "Energy Level": 1, "Battle Power": 1},
-    "misc": {"Lifespan": 1, "Potential": 1, "Regeneration": 1, "Breed Type": 1, "Ki Regeneration": 1, "Anger": 1, "Zanzoken Mod": 1, "Gravity Mod": 1, "Med Mod": 1, "Spar Mod": 1, "Train Mod": 1, "Space Breath": 1, "Starting BP": 1, "Tech Modifier": 1},
-    "classes": {"Omega": {"Anger": 2}, "Weak": {"Physical Offense": 0.8, "Physical Defense": 0.8}},
-    "spread": [["None", 95], ["Omega", 10], ["Weak", 25]]
-  },
-  {
     "nome": "Gray",
     "stats": {"Physical Offense": 2, "Physical Defense": 2, "Ki Offense": 1.3, "Ki Defense": 1.3, "Ki Skill": 1.5, "Technique": 1.5, "Speed": 2, "Esoteric Skill": 0.3, "Skillpoint Mod": 0.5, "Ascension Mod": 1.5, "Energy Level": 1, "Battle Power": 1},
     "misc": {"Lifespan": 1.5, "Potential": 2, "Regeneration": 8, "Breed Type": 1, "Zanzoken Mod": 3, "Gravity Mod": 1.5, "Med Mod": 3, "Spar Mod": 2, "Train Mod": 1.1, "Ki Regeneration": 1.8, "Anger": 1.2, "Space Breath": 0, "Starting BP": 25, "Tech Modifier": 1},

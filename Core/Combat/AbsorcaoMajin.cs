@@ -55,6 +55,20 @@ public static class AbsorcaoMajin
 	public static double BonusDeBp(double bpDaVitima) => DmMath.Round(Math.Max(bpDaVitima, 0) * 0.1);
 
 	/// <summary>
+	/// QUANTO DO GANHO VALE QUANDO O ABSORVIDO E UM NPC -- o botao do item 9c do playtest de 2026-10-10:
+	/// *"mesmos ganhos, com um multiplicador separado para NPC, para dar pra conter farm"*.
+	///
+	/// UM de fabrica: o NPC devorado rende os mesmos 10% de um jogador, que e o que o original faz
+	/// (`MajinSaga.dm:137`, a mesma conta da `:157`). Abaixar aqui (0,5 = metade, 0 = nada) segura quem sai
+	/// devorando vila inteira sem mexer no que um jogador absorvido rende.
+	/// </summary>
+	public static double MultiplicadorDeNpc = 1.0;
+
+	/// <summary>O ganho por um NPC devorado: o de <see cref="BonusDeBp"/>, vezes o <see cref="MultiplicadorDeNpc"/>.</summary>
+	public static double BonusDeBpDeNpc(double bpDaVitima) =>
+		DmMath.Round(BonusDeBp(bpDaVitima) * Math.Max(MultiplicadorDeNpc, 0));
+
+	/// <summary>
 	/// O PODER DO GUARDIAO: `guard_seed_bp = max(round(expressedBP / 2), 1)` (`MajinSaga.dm:367`) -- metade
 	/// do poder EXPRESSO do Majin no instante da absorcao (a forma dele inclusa), e PINADO dali em diante:
 	/// o `NPCTicker()` do guardiao so reescreve esse numero (`:314-318`) e ele nao tem surto de poder

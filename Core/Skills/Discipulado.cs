@@ -102,8 +102,8 @@ public static class Discipulado
 	/// QUANTO TEMPO UM CONVITE (ou uma oferta de despertar) FICA DE PE, em segundos.
 	///
 	/// NAO EXISTE NO DM, e nao existe porque la nao precisa: o `alert()` do BYOND CONGELA o aluno
-	/// ate ele responder. Aqui nao ha caixa modal -- o molde e o `PedidoDeAmizade`
-	/// (`GameServer.Convivio.cs`), um pendente vivo respondido por verb --, e um pendente sem prazo
+	/// ate ele responder. Aqui nao ha caixa modal -- o molde foi o pedido de amizade do convivio
+	/// (que saiu em 2026-10-10 com a afinidade), um pendente vivo respondido por verb --, e um pendente sem prazo
 	/// vira caixa de entrada: "aceitar" um convite de meia hora atras, do outro lado do mundo, nao
 	/// quer dizer nada. Um minuto e o tempo de olhar pra tela.
 	/// </summary>

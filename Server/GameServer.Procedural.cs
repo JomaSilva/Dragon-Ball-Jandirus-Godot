@@ -204,6 +204,21 @@ public partial class GameServer
 				Assinatura = assinatura,
 			};
 
+			// O POMAR: as macieiras que todo mundo sorteado tem, postas de pe como mobilia do mapa. AQUI,
+			// e nao no pouso: quem chega (pousando, nascendo, renascendo) ja as encontra, e o
+			// `MandarObras` do `MoveToZone` as leva no primeiro pacote. Ver `GameServer.Pomar.cs`.
+			PlantarPomar(ZoneKey.Procedural(g.Ficha.Nome, g.Ficha.Seed), t.Macieiras);
+
+			// AS ARVORES DESTE MUNDO sao anotadas agora (o `TerrenoGerado` e solto logo abaixo), e o estrago e as
+			// rebrotas de uma visita anterior voltam a valer no mapa novo. DEPOIS do pomar: a arvore que rebrota
+			// noutro chao pergunta o que ja ocupa cada celula. Ver `GameServer.Lenha.cs`.
+			AoColherOMundo(g.Ficha, t);
+
+			// E O MUNDO QUE NASCE COM GENTE JA DENTRO (quem logou nele depois de um reinicio) SE VESTE AQUI:
+			// a camada das construcoes e a das bases, que so a CHEGADA de um corpo escrevia no mapa. Ver
+			// `GameServer.MundoFrio.cs`.
+			VestirOMundoQueNasceu(ZoneKey.Procedural(g.Ficha.Nome, g.Ficha.Seed));
+
 			// A ASSINATURA VAI NO LOG DE PROPOSITO. E o unico jeito barato de descobrir que cliente e
 			// servidor divergiram: o numero daqui tem que bater com o que o cliente imprime ao entrar.
 			//
@@ -232,7 +247,11 @@ public partial class GameServer
 			if (!_zones.TryGetValue(hash, out List<ServerPlayer>? gente) || gente.Count == 0)
 				mortas.Add(hash);
 
-		foreach (ulong hash in mortas) _zonasGeradas.Remove(hash);
+		foreach (ulong hash in mortas)
+		{
+			_zonasGeradas.Remove(hash);
+			ArrancarPomar(hash);   // as macieiras do mundo saem com ele, e renascem com ele -- ver `GameServer.Pomar.cs`
+		}
 		if (mortas.Count > 0) GD.Print($"[server] {mortas.Count} mundo(s) gerado(s) descarregado(s)");
 	}
 
@@ -293,52 +312,18 @@ public partial class GameServer
 		}
 		_avisadosDeEspera.Remove(pl.Id);
 
+		// A GRAVIDADE JA VEIO NO `MoveToZone`: ele termina no `AplicarGravidade`, que desde 2026-10-10
+		// conhece o chao de um mundo sorteado (`FichaDoChao`). Aqui morava um `AplicarGravidadeGerada`
+		// que consertava DEPOIS o 1x que o funil acabara de cravar -- e este era o UNICO chamador que
+		// o fazia: toda outra porta de entrada num mundo gerado ficava em 1x. Ver
+		// `GameServer.GravidadeDoChao.cs`.
 		MoveToZone(pl.Id, zona, viva.Chegada);
 
-		// A GRAVIDADE DEPOIS do MoveToZone, e nao antes: ele termina chamando `AplicarGravidade`,
-		// que le o `planetas.json` -- e la nao ha entrada pra um mundo sorteado, entao ele acabou
-		// de cravar 1. Sem esta linha, treinar num planeta de 60x renderia igual a treinar na
-		// Terra e nada na tela diria isso.
-		AplicarGravidadeGerada(pl, viva.Ficha);
-
-		Avisar(pl, $"voce pousa em {destino.Nome} — {viva.Ficha.Descricao()}.");
+		Avisar(pl, $"voce pousa em {NomeDoMundo(destino)} — {viva.Ficha.Descricao()}.");
 		if (viva.ClareiraEscavada)
 			Avisar(pl, "nao havia campo aberto aqui: o pouso abriu um na rocha.");
 		GD.Print($"[server] {pl.Name} pousou em {destino.Nome} ({viva.Ficha.Descricao()})");
 		return true;
-	}
-
-	/// <summary>
-	/// Poe o peso do chao gerado na ficha. E o mesmo corpo do `AplicarGravidade`, so que lendo a
-	/// ficha do mundo em vez do catalogo -- e a duplicacao morre no dia em que o
-	/// `AplicarGravidade` consultar <see cref="GravidadeDaZonaGerada"/> (ver o relatorio).
-	/// </summary>
-	private void AplicarGravidadeGerada(ServerPlayer pl, MundoProcedural ficha)
-	{
-		if (Math.Abs(pl.Ficha.Planetgrav - ficha.Gravidade) < 1e-9) return;
-
-		// NINGUEM NASCE ESMAGADO, tambem nos mundos SORTEADOS -- e aqui a divida era mais visivel:
-		// o teto de 15g dos bercos procedurais (`Bercos.GravidadeMaximaDeBerco`) foi escolhido
-		// CITANDO esta regra ("o que salva o exilado de nascer esmagado"), e ela nunca rodava. Com o
-		// esmagamento ligado, um berco de 15g contra maestria 1 da razao 15 -- quase quatro vezes o
-		// que ja PRENDE o corpo. Ver `Birth.AclimatarAoBerco`.
-		if (string.Equals(pl.Zone.Name, pl.Berco.Planeta, StringComparison.OrdinalIgnoreCase))
-			Jandirus.Core.Races.Birth.AclimatarAoBerco(pl.Ficha, ficha.Gravidade);
-
-		pl.Ficha.Planetgrav = ficha.Gravidade;
-
-		// AS MESMAS TRES LINHAS DO `AplicarGravidade`, e pelo mesmo motivo: o `weight_ratio`
-		// multiplica a gravidade LOCAL, e o passo sai dele. Um mundo gerado de gravidade 40 tem que
-		// esmagar e frear no instante do pouso -- nao no proximo tique de ficha, com o corpo ja
-		// correndo na velocidade da orbita. (`Tick` e nao `Statify`: ver `AjustarPeso`.)
-		pl.Ficha.Tick(agoraMs: NowMs());
-		RecalcularVelocidade(pl);
-		MandarFicha(pl);
-
-		pl.SigAtributos = "";
-		if (ficha.Gravidade > 1)
-			Avisar(pl, $"o chão de {ficha.Nome} puxa {ficha.Gravidade:0.##} vezes mais forte. "
-					   + "Cada passo custa, e cada treino rende.");
 	}
 
 	/// <summary>

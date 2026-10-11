@@ -17,9 +17,9 @@ namespace Jandirus.Tools;
 /// ====================================================================================
 ///
 /// ============================ O QUE ELA COBRE, E A LINHA QUE CADA UMA TRANCA ============================
-///   [1] O NIVEL DE CADA UMA DAS 35 ENTRADAS -- quais pedem `Extrema`, quais pedem `Lendaria`,
-///       quais nao pedem nada. Tabela escrita a mao contra o catalogo inteiro, nos dois sentidos.
-///   [2] A LINHA LEGENDARY INTEIRA cai no desconto -- nenhum degrau dela pede a furia do luto.
+///   [1] O NIVEL DE CADA ENTRADA -- a MENOR raiva que abre cada forma: a comum (`Lendaria`) pra toda forma
+///       de raiva, a `Extrema` so pro Beast, nenhuma pro resto. Tabela escrita a mao, nos dois sentidos.
+///   [2] TODA FORMA DE RAIVA ABRE COM A COMUM, MENOS O BEAST -- a linha Legendary nao tem mais desconto proprio.
 ///   [3] O `Avaliar` COBRA o degrau, forma por forma: sem raiva recusa, no degrau exato abre, e o
 ///       degrau de cima tambem abre (o `>=` que faz o luto valer por um nocaute).
 ///   [4] QUEM NAO PEDE RAIVA NAO E COBRADO -- o avesso, sem o qual [3] passaria num mundo em que
@@ -33,6 +33,12 @@ namespace Jandirus.Tools;
 ///  [10] A CINEMATICA DA FURIA: o roteiro contra os `sleep()` do `AngerCinematic()`, as quatro
 ///       regras de cena que este projeto ja pagou caro, e a varredura dos fontes atras de quem
 ///       dispara o pacote (e de quem NAO pode dispara-lo).
+///  [11] OS DOIS DEGRAUS EM NUMERO E O SALTO DE KI (dono, 2026-10-11): o nocaute vale o "Angry" do DM,
+///       a morte vale o topo, e so a furia extrema leva ao teto de carga o Ki de quem tem controle.
+///  [12] A SUBIDA PELA RAIVA (dono, 2026-10-11): que forma NOVA a raiva estreia, e por quais degraus ja
+///       despertados o corpo sobe ate ela -- o plano do Core (`SubidaPelaRaiva`), com os dois defeitos injetados.
+///  [13] O PRECO DA RAIVA COMUM (dono, 2026-10-11): forma por forma, calmo nao entra, a furia extrema entra pela
+///       porta de BP e a raiva comum so entra pela porta VEZES o agio do DM -- com os dois defeitos injetados.
 /// ====================================================================================================
 ///
 ///     dotnet run --project Tools/AssetPipeline -- raiva     (da RAIZ do repo -- a secao [8] le os fontes)
@@ -52,7 +58,7 @@ public static class RaivaBench
 		Console.WriteLine("=== BANCADA DA RAIVA (de que furia cada forma nasce) ===\n");
 
 		OsNiveis();
-		ALinhaLegendary();
+		AComumAbreTodas();
 		OFunilCobra();
 		QuemNaoPedeNaoEhCobrado();
 		OSsj3();
@@ -61,6 +67,9 @@ public static class RaivaBench
 		OGanchoLigado();
 		Cobertura();
 		ACinematicaDaFuria();
+		OsDoisDegrausEOSaltoDeKi();
+		ASubidaPelaRaiva();
+		OPrecoDaRaivaComum();
 
 		Console.WriteLine($"\n=== {_ok} OK, {_falhou} FALHA ===");
 		return _falhou == 0 ? 0 : 1;
@@ -70,23 +79,26 @@ public static class RaivaBench
 	// A TABELA DE VERDADE -- escrita a mao, conferida contra o dono
 	// =====================================================================
 	/// <summary>
-	/// AS FORMAS QUE PEDEM RAIVA, E DE QUAL. **Escrita a mao de proposito**: se ela fosse gerada
-	/// pelo `Catalogo.RaivaExigida` o teste passaria por construcao e nao provaria nada -- e o
+	/// AS FORMAS QUE PEDEM RAIVA, E A MENOR QUE AS ABRE. **Escrita a mao de proposito**: se ela fosse
+	/// gerada pelo `Catalogo.RaivaExigida` o teste passaria por construcao e nao provaria nada -- e o
 	/// mesmo motivo pelo qual os multiplicadores da bancada `formas` estao a mao.
+	///
+	/// DESDE 2026-10-11 a raiva comum (`Lendaria`) abre toda forma de raiva menos o Beast -- por um preco de BP
+	/// maior, que e a secao [13]. Ate ali esta tabela dizia `Extrema` pro tronco Saiyajin, o Futuro e o Heran.
 	///
 	/// Quem nao esta aqui nao pede raiva nenhuma. Ver a secao [1] pros dois sentidos da conferencia.
 	/// </summary>
 	private static readonly (string Id, NivelDeRaiva Nivel)[] Esperado =
 	[
-		// O TRONCO DE SANGUE: "a mesma condicao do Beast" -- um amigo proximo morre na sua frente.
-		("ssj1",               NivelDeRaiva.Extrema),
-		("ssj2",               NivelDeRaiva.Extrema),
-		("future_ssj",         NivelDeRaiva.Extrema),
+		// O TRONCO DE SANGUE: basta ver um amigo CAIR (o `if("Angry")` do `supersaiyan.dm:111-114` e `:128-131`).
+		("ssj1",               NivelDeRaiva.Lendaria),
+		("ssj2",               NivelDeRaiva.Lendaria),
+		("future_ssj",         NivelDeRaiva.Lendaria),
 
-		// A FERA: a unica divina por raiva, e ela e do degrau de cima junto com o tronco.
+		// A FERA: a unica divina por raiva, e a unica que so a furia extrema abre (`supersaiyan.dm:166`).
 		("beast",              NivelDeRaiva.Extrema),
 
-		// A LINHA LEGENDARY INTEIRA: o desconto da skill `legendary anger` -- basta ver um amigo cair.
+		// A LINHA LEGENDARY INTEIRA: idem (`supersaiyan.dm:67-70`, `:93-94`, `:101-102`).
 		("wrathful",           NivelDeRaiva.Lendaria),
 		("c_type",             NivelDeRaiva.Lendaria),
 		("legendary",          NivelDeRaiva.Lendaria),
@@ -97,15 +109,15 @@ public static class RaivaBench
 		// O HERAN. Ele entra aqui pelo mesmo motivo do tronco Saiyajin -- `heran.dm:20-52` roda o
 		// MESMO `switch(savant.Emotion)` do `supersaiyan.dm` nos dois degraus, e o
 		// `mst_form_needs_rage` (`MasterStudent.dm:246-249`) lista `heran1` e `heran2` ao lado de
-		// `ssj` e `ssj2`. Ele nao ganha o desconto da `legendary anger`: aquela skill e da linha
-		// Legendary e de mais ninguem.
+		// `ssj` e `ssj2`. Os dois degraus tem ramo `"Angry"` la (`heran.dm:28-32` e `:44-48`), entao a raiva
+		// comum os abre tambem.
 		//
 		// **E ELE E A ENTRADA QUE PEGOU UM DEFEITO REAL NA DERIVACAO.** Antes desta sessao o
 		// `RaivaExigida` listava so `Saiyajin` e `Futuro`, com um comentario prometendo que a linha
 		// Heran seria pega sozinha quando viesse. Nao seria: linha nova cai no `_ => Nenhuma`, e as
 		// duas formas teriam nascido de graca, caladas.
-		("heran1",             NivelDeRaiva.Extrema),
-		("heran2",             NivelDeRaiva.Extrema),
+		("heran1",             NivelDeRaiva.Lendaria),
+		("heran2",             NivelDeRaiva.Lendaria),
 
 		// O SUPER NAMEKUSEIJIN E AS DUAS FORMAS ALIEN **NAO** ENTRAM, e a ausencia e medida: elas se
 		// COMPRAM (`FormaDef.PedeFlag`), e o `snamek()` / `Alien_Trans()` nao olham `Emotion` uma
@@ -170,51 +182,53 @@ public static class RaivaBench
 	}
 
 	// =====================================================================
-	// 2. A LINHA LEGENDARY INTEIRA CAI NO DESCONTO
+	// 2. TODA FORMA DE RAIVA ABRE COM A COMUM -- MENOS O BEAST
 	// =====================================================================
 	/// <summary>
-	/// A afirmacao do dono, dita como REGRA e nao como lista: *"vale pra `wrathful`, `c_type`,
-	/// `legendary`, `primal_legendary2` **e o resto da linha**"*. O "resto da linha" e o que esta
-	/// secao existe pra cobrir -- inclusive o degrau que ainda nao foi escrito.
+	/// A regra do dono de 2026-10-11, dita como REGRA e nao como lista: *"o rage normal (...) tb faz vc se
+	/// transformar da mesma forma q o extreme"*. Ate ali a raiva comum era desconto so da linha Legendary, e esta
+	/// secao media o contrario do que mede hoje ("nenhum degrau fora da linha Legendary pega o desconto").
 	///
-	/// COMO REPROVA SE A REGRA SUMIR: junte os quatro bracos de linha do `RaivaExigida` num so (a
-	/// "simplificacao" obvia, ja que os quatro compartilham a conta do `tronco`) e a linha Legendary
-	/// inteira passa a pedir a furia do luto -- o desconto some, e some CALADO, porque nao ha
-	/// numero nem barra na tela que o mostre. Estas tres linhas caem na hora.
+	/// COMO REPROVA SE A REGRA SUMIR: o defeito injetado (`Catalogo.SoAFuriaAbreOTroncoDeTeste`, a regra antiga)
+	/// faz o tronco Saiyajin, o Futuro e o Heran voltarem a pedir a furia do luto -- a lista de "so com a extrema"
+	/// cresce de uma forma pra seis, e a checagem cai dizendo quais. O PRECO da raiva comum e a secao [13].
 	/// </summary>
-	private static void ALinhaLegendary()
+	private static void AComumAbreTodas()
 	{
-		Console.WriteLine("[2] A LINHA LEGENDARY INTEIRA CAI NA RAIVA LENDARIA");
+		Console.WriteLine("[2] TODA FORMA DE RAIVA ABRE COM A RAIVA COMUM, MENOS O BEAST");
 
-		FormaDef[] daLinha = [.. Catalogo.Todas.Where(d => d.Linha is LinhaDeForma.Legendary
-														   or LinhaDeForma.LegendaryPrimal)];
-		Checa("a linha Legendary existe no catalogo (o teste nao rodou no vazio)",
-			  daLinha.Length >= 8, $"{daLinha.Length} entradas");
+		FormaDef[] deRaiva = [.. Catalogo.Todas.Where(d => Catalogo.NasceDaRaiva(d))];
+		Checa("ha formas de raiva no catalogo (o teste nao rodou no vazio)", deRaiva.Length >= 10, $"{deRaiva.Length} entradas");
 
-		string[] furiosos = [.. daLinha.Where(d => Catalogo.RaivaExigida(d) == NivelDeRaiva.Extrema)
-									   .Select(d => d.Id)];
-		Checa("NENHUM degrau Legendary pede a furia do luto",
-			  furiosos.Length == 0, string.Join(", ", furiosos));
+		string[] soExtrema = [.. deRaiva.Where(d => Catalogo.RaivaExigida(d) == NivelDeRaiva.Extrema).Select(d => d.Id)];
+		Checa("a UNICA forma que so a furia extrema abre e o Beast",
+			  soExtrema.Length == 1 && soExtrema[0] == "beast", string.Join(", ", soExtrema));
 
-		string[] descontados = [.. daLinha.Where(d => Catalogo.RaivaExigida(d) == NivelDeRaiva.Lendaria)
-										  .Select(d => d.Id)];
-		Checa($"e {descontados.Length} degraus dela abrem com a raiva lendaria",
-			  descontados.Length >= 6, string.Join(", ", descontados));
+		string[] comAComum = [.. deRaiva.Where(d => Catalogo.RaivaExigida(d) == NivelDeRaiva.Lendaria).Select(d => d.Id)];
+		LinhaDeForma[] deSangue = [LinhaDeForma.Saiyajin, LinhaDeForma.Futuro, LinhaDeForma.Heran,
+								   LinhaDeForma.Legendary, LinhaDeForma.LegendaryPrimal];
+		Checa($"e as outras {comAComum.Length} abrem com a raiva comum -- do tronco Saiyajin, do Futuro, do Heran e das duas linhas Legendary",
+			  comAComum.Length == deRaiva.Length - 1
+			  && deSangue.All(l => deRaiva.Any(d => d.Linha == l && Catalogo.RaivaExigida(d) == NivelDeRaiva.Lendaria)),
+			  string.Join(", ", comAComum));
 
-		// OS QUE NAO PEDEM RAIVA NENHUMA SAO OS QUE SAIRAM DO TRONCO, e nao "os que sobraram". Sem
-		// esta linha, um degrau Legendary que perdesse a raiva por engano se esconderia aqui dentro.
-		foreach (FormaDef d in daLinha.Where(d => Catalogo.RaivaExigida(d) == NivelDeRaiva.Nenhuma))
+		// OS QUE NAO PEDEM RAIVA NENHUMA SAO OS QUE SAIRAM DO TRONCO, e nao "os que sobraram". Sem esta linha, um
+		// degrau de sangue que perdesse a raiva por engano se esconderia aqui dentro.
+		foreach (FormaDef d in Catalogo.Todas.Where(d => deSangue.Contains(d.Linha) && d.Id != Catalogo.IdBase
+														  && Catalogo.RaivaExigida(d) == NivelDeRaiva.Nenhuma))
 			Checa($"`{d.Id}` nao pede raiva porque saiu do tronco (e treino)",
 				  d.ForaDoTronco || d.PedeMaestria > 0 || d.PedeFormaDespertada.Length > 0,
 				  "esta no tronco e mesmo assim nao pede raiva");
 
-		// E O TRONCO SAIYAJIN NAO PEGOU O DESCONTO -- o par da checagem de cima. Se alguem trocar os
-		// dois bracos de lugar, [1] reprova pelo nome e esta reprova pela regra.
-		string[] baratos = [.. Catalogo.Todas
-			.Where(d => d.Linha is LinhaDeForma.Saiyajin or LinhaDeForma.Futuro or LinhaDeForma.Mistico)
-			.Where(d => Catalogo.RaivaExigida(d) == NivelDeRaiva.Lendaria).Select(d => d.Id)];
-		Checa("nenhum degrau fora da linha Legendary pega o desconto",
-			  baratos.Length == 0, string.Join(", ", baratos));
+		// ---- contra-exemplo: a regra de antes ----
+		Catalogo.SoAFuriaAbreOTroncoDeTeste = true;
+		try
+		{
+			string[] antes = [.. Catalogo.Todas.Where(d => Catalogo.RaivaExigida(d) == NivelDeRaiva.Extrema).Select(d => d.Id)];
+			Checa("(defeito injetado: so a furia abre o tronco Saiyajin, o Futuro e o Heran -- a regra ate 2026-10-11) a lista 'so com a extrema' deixa de ser so o Beast: a checagem REPROVA",
+				  antes.Length > 1 && antes.Contains("ssj1") && antes.Contains("heran1"), string.Join(", ", antes));
+		}
+		finally { Catalogo.SoAFuriaAbreOTroncoDeTeste = false; }
 
 		Console.WriteLine();
 	}
@@ -371,7 +385,7 @@ public static class RaivaBench
 			{
 				(EstadoDeForma e2, PerfilDeFormas p2, _) = Preparado(d, NivelDeRaiva.Lendaria);
 				RecusaForma r2 = e2.Avaliar(d.Id, bp, 1, false, p2);
-				Checa($"`{d.Id}` com raiva LENDARIA so: ainda recusado (o desconto nao e dele)",
+				Checa($"`{d.Id}` com a raiva COMUM so, e poder sem fim: ainda recusado por furia (so a extrema o abre)",
 					  r2 == RecusaForma.SemFuria, r2.ToString());
 			}
 
@@ -724,14 +738,20 @@ public static class RaivaBench
 	/// nos comentarios do projeto meses depois de deixar de ser verdade.
 	///
 	/// **Ele disparou, e esta e a atualizacao.** Hoje o `Core.Social.Convivio` responde "quem e
-	/// amigo de quem", e o `GameServer.LutoNaVizinhanca` e o chamador. O que a secao mede agora e o
-	/// oposto e igualmente estrutural:
+	/// amigo de quem", e os chamadores sao dois: o `GameServer.LutoNaVizinhanca` (o amigo cai ou
+	/// morre) e o `GameServer.LutoPelaAbsorcao` (o amigo e absorvido por um Majin). A fusao
+	/// Namekuseijin NAO e um deles, por decisao do dono. O que a secao mede agora e o oposto e
+	/// igualmente estrutural:
 	///
 	///   * o gancho TEM chamador de producao -- se alguem apagar o convivio, o SSJ1 volta a so sair
 	///     por admin e ninguem perceberia, porque uma forma que nunca vem parece balanceamento;
-	///   * e o chamador e UM SO. As duas janelas de raiva continuam sendo escritas exclusivamente
-	///     pelo `AmigoAbatido` -- um segundo lugar que mexesse nelas na mao seria a porta dos fundos
-	///     que este projeto ja abriu varias vezes sem querer.
+	///   * e os chamadores sao SO ESSES DOIS. As duas janelas de raiva continuam sendo escritas
+	///     exclusivamente pelo `AmigoAbatido` -- um terceiro lugar que mexesse nelas na mao seria a
+	///     porta dos fundos que este projeto ja abriu varias vezes sem querer.
+	///
+	/// (A lista de chamadores esteve vermelha de 2026-10-09 a 2026-10-11: a absorcao do Majin e duas
+	/// bancadas novas passaram a chamar o gancho e esta bancada, que nao esta no lancador comum, nao
+	/// foi rodada. As bancadas agora entram pelo NOME do arquivo -- ver `EhBancada`.)
 	/// ==========================================================================================
 	/// </summary>
 	private static void OGanchoLigado()
@@ -759,9 +779,18 @@ public static class RaivaBench
 		// A `GameServer.Trailer2.cs` E PALCO, COMO AS BANCADAS: a cena do primeiro Super Saiyajin do
 		// trailer das sagas diz o que a lista social diria (o amigo que morre e um NPC que acabou de
 		// nascer, e NPC nao esta na lista de ninguem). Ela chama o gancho; nao escreve janela nenhuma.
-		string[] permitidos =
-			["GameServer.Formas.cs", "GameServer.FormasTeste.cs", "GameServer.RaivaTeste.cs",
-			 "GameServer.ConvivioTeste.cs", "GameServer.RaciaisTeste.cs", "GameServer.Trailer2.cs"];
+		//
+		// AS BANCADAS ENTRAM PELO NOME (`...Teste.cs`), e nao mais uma a uma (2026-10-11): a lista escrita a
+		// mao envelheceu calada -- duas bancadas novas (`DoisCorposTeste`, `EscudoTeste`) e a propria
+		// absorcao do Majin passaram a chamar o gancho, ninguem veio aqui, e esta secao ficou vermelha sem
+		// que o jogo tivesse defeito nenhum. Bancada e palco por definicao; o que se vigia e a PRODUCAO.
+		string[] permitidos = ["GameServer.Formas.cs", "GameServer.Trailer2.cs"];
+		static bool EhBancada(string arquivo) => arquivo.EndsWith("Teste.cs", StringComparison.Ordinal);
+
+		// OS DOIS CHAMADORES DE PRODUCAO, e cada um por um caminho do DM: o LUTO do funil da derrota
+		// (`Death.dm:73-85`, `KO.dm:29-41`) e a ABSORCAO do Majin (`MajinSaga.dm:169-175`). A do bio-androide
+		// MATA a vitima e chega pelo primeiro; a fusao Namekuseijin nao chega por nenhum (ver mais abaixo).
+		string[] chamadoresDeProducao = ["GameServer.Convivio.cs", "GameServer.AbsorcaoMajin.cs"];
 
 		// QUEM PODE ESCREVER NAS DUAS JANELAS: so quem as define (o `AmigoAbatido` mora la) e as
 		// bancadas, que as puxam pra tras pra nao esperar dois minutos de teste.
@@ -780,10 +809,7 @@ public static class RaivaBench
 		// verdade (`--mestrevivo`); o codigo de producao delas, o `GameServer.Mestre.cs`, continua
 		// fora desta lista.
 		// ================================================================================================================
-		string[] podemEscreverAJanela =
-			["GameServer.cs", "GameServer.Formas.cs", "GameServer.FormasTeste.cs",
-			 "GameServer.RaivaTeste.cs", "GameServer.ConvivioTeste.cs", "GameServer.MestreTeste.cs",
-			 "GameServer.MestreVivoTeste.cs", "GameServer.RaciaisTeste.cs"];
+		string[] podemEscreverAJanela = ["GameServer.cs", "GameServer.Formas.cs"];
 
 		// ============================ E QUEM PODE ESCREVER O `Anger` -- A OUTRA METADE DA MESMA REGRA ============================
 		// O `Fighter.Anger` e DERIVADO das duas janelas (`GameServer.RaivaComoNumero`), e a unica
@@ -816,13 +842,13 @@ public static class RaivaBench
 					if (l.Contains("AmigoAbatido("))
 					{
 						chamadas++;
-						if (Array.IndexOf(permitidos, nome) < 0) chamadores.Add($"{nome}:{i + 1}");
+						if (Array.IndexOf(permitidos, nome) < 0 && !EhBancada(nome)) chamadores.Add($"{nome}:{i + 1}");
 					}
 
 					// E AS DUAS JANELAS DIRETAMENTE: quem quiser burlar o gancho escreveria no campo.
 					bool escreve = (l.Contains("FuriaExtremaAte") || l.Contains("RaivaLendariaAte"))
 								   && l.Contains('=') && !l.Contains("==") && !l.Contains(">");
-					if (escreve && Array.IndexOf(podemEscreverAJanela, nome) < 0)
+					if (escreve && Array.IndexOf(podemEscreverAJanela, nome) < 0 && !EhBancada(nome))
 						escritoresDaJanela.Add($"{nome}:{i + 1}");
 
 					// E O `Anger` EM SI. `\bAnger\s*=[^=]` pega o campo e so ele: `MaxAnger`,
@@ -862,9 +888,90 @@ public static class RaivaBench
 		// O CORACAO DESTA SECAO. Se isto reprovar com zero, o SSJ1 voltou a ser um verb de admin.
 		Checa("o gancho TEM chamador de producao (o luto do convivio)", chamadores.Count > 0,
 			  "nenhum -- o SSJ1 voltou a so sair por admin");
-		Checa("e o chamador de producao e o `GameServer.Convivio.cs`, e so ele",
-			  chamadores.All(c => c.StartsWith("GameServer.Convivio.cs")),
+		Checa("os chamadores de producao sao o LUTO (`GameServer.Convivio.cs`) e a ABSORCAO (`GameServer.AbsorcaoMajin.cs`), e so eles",
+			  chamadores.All(c => chamadoresDeProducao.Any(p => c.StartsWith(p + ":")))
+			  && chamadoresDeProducao.All(p => chamadores.Any(c => c.StartsWith(p + ":"))),
 			  string.Join(" | ", chamadores));
+
+		// ============================ AS ABSORCOES QUE CHEGAM AO GANCHO -- E A QUE NAO CHEGA (dono, 2026-10-11) ============================
+		// *"ao ver um amigo morrer ou ser absorvido"*: a do bio mata a vitima pelo funil da derrota, e a do Majin
+		// chama o luto antes de levar a vitima pro bolsao. A FUSAO NAMEKUSEIJIN NAO: *"fusao namek n deveria dar o
+		// trigger na raiva"* -- ela e consentida, e no DM tambem nao acende raiva (`Fusion.dm:301-310`). Uma rodada
+		// deste trabalho ligou o luto dentro dela, e esta checagem cobrava isso; virou do avesso junto.
+		//
+		// A bancada ao vivo (`--raivateste`, secao 4) roda a fusao de verdade na frente de quem declarou o absorvido
+		// amigo. Aqui se le o CORPO DO METODO, que e onde uma chamada de luto voltaria a morar -- e a mesma
+		// varredura e passada no fonte do Majin pra provar que ela sabe achar uma.
+		static bool AcendeRaiva(IEnumerable<string> linhas) => linhas.Any(l =>
+		{
+			string s = l.Trim();
+			return !s.StartsWith("//")
+				   && (s.Contains("LutoPela") || s.Contains("LutoNaVizinhanca(") || s.Contains("AmigoAbatido(")
+					   || s.Contains("AoPerderALuta(") || s.Contains("AcenderJanelaDeRaiva("));
+		});
+		string[] namek = LerFonte(raiz, "Server", "GameServer.Namekuseijin.cs");
+		string[] corpoDaFusao = CorpoDoMetodo(namek, "private void AbsorverNamekuseijin(");
+		Checa("o corpo do `AbsorverNamekuseijin` foi extraido do fonte (a assinatura ainda bate, e e nele que o personagem e apagado)",
+			  corpoDaFusao.Length > 40 && corpoDaFusao.Any(l => l.Contains("ApagarOPersonagemParaSempre(absorvido")),
+			  $"{corpoDaFusao.Length} linhas");
+		Checa("a fusao Namekuseijin NAO acende raiva em ninguem: o corpo dela nao chama luto, gancho, funil da derrota nem janela",
+			  corpoDaFusao.Length > 40 && !AcendeRaiva(corpoDaFusao),
+			  string.Join(" | ", corpoDaFusao.Where(l => AcendeRaiva([l])).Select(l => l.Trim())));
+		string[] majinFonte = LerFonte(raiz, "Server", "GameServer.AbsorcaoMajin.cs");
+		Checa("(contra-exemplo) a MESMA varredura, no fonte da absorcao do Majin, ACHA o luto -- ela sabe reprovar",
+			  AcendeRaiva(majinFonte));
+		int lutoDoMajin = Array.FindIndex(majinFonte, l => l.Trim().StartsWith("LutoPelaAbsorcao(m, pl)"));
+		int viagem = Array.FindIndex(majinFonte, l => l.Contains("MoveToZone(m.Id, interior"));
+		Checa("a absorcao do Majin avisa quem viu ANTES de levar a vitima pro bolsao (`MajinSaga.dm:169`)",
+			  lutoDoMajin >= 0 && viagem > lutoDoMajin, $"luto na linha {lutoDoMajin + 1}, viagem na {viagem + 1}");
+		string[] bio = LerFonte(raiz, "Server", "GameServer.Absorcao.cs");
+		Checa("a absorcao do bio-androide mata a vitima pelo funil da derrota (`AoPerderALuta(alvo, pl, morreu: true)`)",
+			  bio.Any(l => l.Contains("AoPerderALuta(alvo, pl, morreu: true)")));
+
+		// E O SALTO DE KI TEM UMA MAO SO: definido uma vez, chamado do gancho (e de mais ninguem em producao).
+		string[] formasFonte = LerFonte(raiz, "Server", "GameServer.Formas.cs");
+		string[] raivaFonte = LerFonte(raiz, "Server", "GameServer.Raiva.cs");
+		Checa("o salto de Ki da furia e chamado DO GANCHO (`AmigoAbatido`), e definido num lugar so",
+			  formasFonte.Count(l => l.Trim().StartsWith("SaltoDeKiDaFuria(enlutado, grau)")) == 1
+			  && raivaFonte.Count(l => l.Contains("private void SaltoDeKiDaFuria(")) == 1,
+			  "esperado: 1 chamada em GameServer.Formas.cs, 1 definicao em GameServer.Raiva.cs");
+
+		// ============================ O DESPERTAR AUTOMATICO PASSA PELA ESTREIA DE SEMPRE (dono, 2026-10-11) ============================
+		// *"ao bater reqs de transformacao q precisam de raiva, o personagem se transforma AUTOMATICAMENTE"*. Sao
+		// afirmacoes sobre QUEM CHAMA O QUE, e nenhuma deixa rastro que uma bancada de servidor consiga distinguir
+		// de um atalho: o despertar anda no TIQUE da forma (e um estado, nao um instante); ele entra pelo
+		// `EntrarNaForma`, o mesmo caminho da tecla C -- e de la que saem a cinematica de estreia, o tema, o marco
+		// e o anuncio pra zona --, tanto a forma nova quanto os degraus que ja sao dele (esses sem cena, e ANTES);
+		// e a previsao que cala a cena da raiva pergunta pelo MESMO plano que ele vai executar (com os grades
+		// ligados o seletor da tecla aponta outro degrau, e as duas cenas tocariam).
+		Checa("o despertar pela raiva e chamado do TIQUE da forma (`TickDaForma`), e definido num lugar so",
+			  formasFonte.Count(l => l.Trim() == "DespertarPelaRaiva(pl);") == 1
+			  && raivaFonte.Count(l => l.Contains("private bool DespertarPelaRaiva(")) == 1,
+			  "esperado: 1 chamada em GameServer.Formas.cs, 1 definicao em GameServer.Raiva.cs");
+		int entraNoAlvo = Array.FindIndex(raivaFonte, l => l.Trim() == "EntrarNaForma(pl, plano.Alvo);");
+		int sobeOsDegraus = Array.FindIndex(raivaFonte, l => l.Trim() == "foreach (FormaDef degrau in plano.Degraus) EntrarNaForma(pl, degrau, semCena: true);");
+		Checa("...ele entra na forma pelo `EntrarNaForma` (o caminho da estreia), e nao escrevendo a forma na mao",
+			  entraNoAlvo >= 0 && !raivaFonte.Any(l => !l.TrimStart().StartsWith("//") && l.Contains("Forma.Entrar(")));
+		Checa("...os degraus que ja sao dele entram pelo MESMO caminho, SEM cena, e ANTES da forma que estreia",
+			  sobeOsDegraus >= 0 && entraNoAlvo > sobeOsDegraus, $"degraus na linha {sobeOsDegraus + 1}, estreia na {entraNoAlvo + 1}");
+		Checa("...a previsao que cala a cena da raiva pergunta pelo MESMO plano que o despertar executa (nunca as duas cenas)",
+			  formasFonte.Any(l => l.Contains("&& (PlanoDaRaiva(pl) != null"))
+			  && raivaFonte.Any(l => l.Contains("if (PlanoDaRaiva(pl) is not { } plano) return false;")));
+		Checa("...e o plano e o do Core, pedido num lugar so (`SubidaPelaRaiva.Planejar`)",
+			  raivaFonte.Count(l => !l.TrimStart().StartsWith("//") && l.Contains("SubidaPelaRaiva.Planejar(")) == 1);
+
+		// ============================ MEDITAR ACALMA, E SO PELA PORTA CONFERIDA (dono, 2026-10-11) ============================
+		// `Meditate.dm:27-31`. A ordem e a regra -- a raiva so some quando a meditacao foi ACEITA pelo servidor --, e
+		// a mao que apaga as janelas mora ao lado da que acende. A bancada ao vivo mede o resultado; isto mede quem
+		// chama o que, que e o que sobra quando alguem "simplifica" o `DefinirAtividade`.
+		string[] atividade = CorpoDoMetodo(LerFonte(raiz, "Server", "GameServer.Oozaru.cs"), "private void DefinirAtividade(");
+		int aceite = Array.FindIndex(atividade, l => l.Contains("!AceitarTreinoOuMeditacao("));
+		int calma = Array.FindIndex(atividade, l => l.Trim() == "if (comecaAMeditar) AcalmarPelaMeditacao(a);");
+		Checa("meditar acalma dentro do `DefinirAtividade`, DEPOIS da conferencia do servidor (`AceitarTreinoOuMeditacao`)",
+			  aceite >= 0 && calma > aceite, $"conferencia na linha {aceite + 1} do metodo, calma na {calma + 1}");
+		Checa("...e a mao que apaga as duas janelas e uma so, ao lado da que acende (`AcalmarPelaMeditacao`, `GameServer.Formas.cs`)",
+			  formasFonte.Count(l => l.Contains("private bool AcalmarPelaMeditacao(")) == 1
+			  && formasFonte.Count(l => l.Contains("private void AcenderJanelaDeRaiva(")) == 1);
 
 		Checa("ninguem escreve as duas janelas de raiva por fora do gancho",
 			  escritoresDaJanela.Count == 0, string.Join(" | ", escritoresDaJanela));
@@ -964,6 +1071,10 @@ public static class RaivaBench
 			if (d.PedeLinhagem.Length > 0 || d.PedeClasseUmaDe.Length > 0 || d.PedeOrigemUmaDe.Length > 0)
 				portas.Add("sangue");
 			if (Catalogo.NaoSeSobePraEla(d)) portas.Add("a lua (nao se sobe)");
+			// A FURY DO DEUS DA DESTRUICAO (a linha entrou no catalogo em 2026-10-11): a porta dela nao e campo
+			// nenhum da entrada -- e o TITULO, que mora na conta, e quem a liga e o servidor
+			// (`GameServer.KitDoDeus`). O funil recusa a escada inteira pra todo mundo, e a passada B confere.
+			if (Catalogo.SoPeloTitulo(d)) portas.Add("o titulo de Deus da Destruicao (nao se sobe)");
 
 			// ============================ E HA UM DEGRAU QUE NAO SE CONQUISTA: O REPOUSO ============================
 			// A forma BASE do Frost Demon nao cobra nada, e nao e um esquecimento: e onde o corpo dele
@@ -1174,6 +1285,17 @@ public static class RaivaBench
 								|| b.Faz.HasFlag(Efeito.Raios) || b.Faz.HasFlag(Efeito.BanhoDeCor)));
 		Checa("o ceu nao descarrega (isso e da estreia do SSJ1, e so dela)", !c.OCeuDescarrega);
 
+		// ---- SEM AURA VERMELHA (dono, 2026-10-11; a divergencia do `Murder.dm:146-150` esta em `Cinematicas.Furia`) ----
+		static bool AcendeAChama(Cinematica cena) => cena.Beats.Any(b => b.Faz.HasFlag(Efeito.AuraGrande));
+		Checa("nenhum beat da furia acende a chama da cena (a aura vermelha do DM saiu por pedido do dono)", !AcendeAChama(c));
+		Checa("(contra-exemplo) a MESMA pergunta, feita a cena de estreia do Super Saiyajin, responde SIM", AcendeAChama(Cinematicas.Ssj1));
+		Checa("...e os aneis continuam la: seis ondas de choque antes da virada (`Murder.dm:151-157`)",
+			  c.Beats.Count(b => b.Em < virada.Em && b.Faz.HasFlag(Efeito.AnelDeChoque)) == 6);
+		Checa("a furia acontece na cor do ki do PROPRIO corpo (`NaCorDoCorpo`) -- e a fusao, que tambem nao tem forma, nao mudou",
+			  c.NaCorDoCorpo && !Cinematicas.Fusao.NaCorDoCorpo);
+		Checa("a cor das cenas sem forma continua `ff2a2a` (e a cara da fusao e do bio, que este pedido nao tocou)",
+			  Cinematicas.CorDaCenaSemForma == "ff2a2a", Cinematicas.CorDaCenaSemForma);
+
 		// ---- ela nao e de forma nenhuma ----
 		Checa("ela nao pertence a forma nenhuma (o id e vazio)", c.Forma.Length == 0, c.Forma);
 		Checa("e nao esta na lista das cenas de forma (`Cinematicas.Todas`)",
@@ -1278,7 +1400,7 @@ public static class RaivaBench
 					if (l.Contains("AFuriaVaiVirarForma")) previsao++;
 					if (l.Contains("FuriaCenaAte")) recarga++;
 					if (l.Contains("enlutado.Peer == null")) semDono++;
-					if (l.Contains("estavaEmFuria")) wasRaging++;
+					if (l.Contains("jaNaFuriaDaCena")) wasRaging++;
 					if (l.Contains("grau != NivelDeRaiva.Extrema")) grauExtremo++;
 
 					if (l.Contains("Cinematicas.Furia")) tocadores.Add($"{nome}:{i + 1}");
@@ -1299,8 +1421,8 @@ public static class RaivaBench
 
 		// AS QUATRO CONDICOES DO `Murder.dm:119`, uma a uma.
 		Checa("condicao 1: so o grau EXTREMO toca a cena", grauExtremo >= 1);
-		Checa("condicao 2: o `wasRaging` e lido (nao toca duas vezes na mesma furia)", wasRaging >= 2,
-			  $"{wasRaging} usos -- ele nasce no gancho e e lido no gatilho");
+		Checa("condicao 2: o `wasRaging` e lido (nao toca duas vezes na mesma furia EXTREMA)", wasRaging >= 3,
+			  $"{wasRaging} usos de `jaNaFuriaDaCena` -- ele nasce no gancho, e passado e e lido no gatilho");
 		Checa("condicao 3: corpo SEM DONO nao assiste cinematica (o `client` do DM)", semDono >= 1);
 		Checa("condicao 4: a transformacao fica com o momento (`anger_will_transform`)", previsao >= 2,
 			  $"{previsao} usos -- a definicao e a chamada");
@@ -1313,5 +1435,427 @@ public static class RaivaBench
 
 		Checa("a cinematica NAO chama o sistema de estrago de cenario", !estragoNaCena,
 			  "a `PoeiraDeEstrago` voltou pro tocador -- ver `Efeito` 8192, aposentado");
+	}
+
+	/// <summary>Um fonte do repo, linha a linha (vazio se nao existir -- e a checagem que o le reprova).</summary>
+	private static string[] LerFonte(string raiz, string pasta, string arquivo)
+	{
+		string caminho = Path.Combine(raiz, pasta, arquivo);
+		return File.Exists(caminho) ? File.ReadAllLines(caminho) : [];
+	}
+
+	/// <summary>
+	/// AS LINHAS DE UM METODO: da assinatura ate o `}` que o fecha (o primeiro na mesma indentacao da assinatura).
+	/// Vazio se a assinatura nao for achada -- e quem le cobra o tamanho, pra uma assinatura renomeada reprovar em
+	/// vez de a varredura passar por nao ter o que olhar.
+	/// </summary>
+	private static string[] CorpoDoMetodo(string[] fonte, string assinatura)
+	{
+		int i = Array.FindIndex(fonte, l => l.Contains(assinatura));
+		if (i < 0) return [];
+		string recuo = fonte[i][..(fonte[i].Length - fonte[i].TrimStart().Length)];
+		int j = Array.FindIndex(fonte, i + 1, l => l.TrimEnd() == recuo + "}");
+		return j < 0 ? [] : fonte[i..(j + 1)];
+	}
+
+	// =====================================================================
+	// 11. OS DOIS DEGRAUS EM NUMERO E O SALTO DE KI
+	// =====================================================================
+	/// <summary>
+	/// ============================ A REGRA DO DONO DE 2026-10-11, SO NA CONTA ============================
+	/// *"amigo quando e nocauteado vc n fica com o mais alto nivel de raiva, vc fica angry apenas, o very angry e
+	/// so em morte e absorcao (...) caso o usuario ja tenha um certo nivel de ki control etc e ele fique com
+	/// extreme anger, instantaneamente o ki dele sobe pro maximo q ele pode carregar (...) raiva comum n acontece
+	/// isso"*.
+	///
+	/// As secoes de cima medem a PORTA de cada forma; esta mede o que cada degrau VALE
+	/// (`RaivaEmDegraus.Topo`) e a regra que so o de cima tem (`RaivaEmDegraus.SaltarOKi`), com os tres defeitos
+	/// injetados. A CORRENTE -- quem acende qual degrau, a cinematica, o que o jogador le -- e da bancada ao vivo
+	/// (`--raivateste`), e a tela e o som sao da `--diagraiva`.
+	/// ====================================================================================================
+	/// </summary>
+	private static void OsDoisDegrausEOSaltoDeKi()
+	{
+		Console.WriteLine("[11] OS DOIS DEGRAUS EM NUMERO E O SALTO DE KI (dono, 2026-10-11)");
+
+		// ---- o numero de cada degrau, em quatro tetos de raiva (o piso 120, um Saiyajin, o joelho do buff, um irascivel) ----
+		foreach (double maxAnger in new[] { 120.0, 150.0, 200.0, 340.0 })
+		{
+			double folga = maxAnger - 100;
+			double extrema = Jandirus.Core.Combat.RaivaEmDegraus.Topo(NivelDeRaiva.Extrema, maxAnger);
+			double comum = Jandirus.Core.Combat.RaivaEmDegraus.Topo(NivelDeRaiva.Lendaria, maxAnger);
+
+			Checa($"MaxAnger {maxAnger:0}: a furia EXTREMA vale o topo ({maxAnger:0}, `Murder.dm:112`)",
+				  Math.Abs(extrema - maxAnger) < 1e-9, $"{extrema:0.###}");
+			Checa($"MaxAnger {maxAnger:0}: a raiva COMUM vale 100 + folga/1,30 = {100 + folga / 1.30:0.##} (`Voting.dm:40`), abaixo do topo",
+				  Math.Abs(comum - (100 + folga / 1.30)) < 1e-9 && comum < extrema, $"{comum:0.###}");
+
+			// A FAIXA "Angry" DA REGUA DO DM (`Stats.dm:448-449`): de `100 + folga/1,66` ate antes de `100 + folga/1,25`.
+			double piso = 100 + folga / 1.66, teto = 100 + folga / 1.25;
+			Checa($"MaxAnger {maxAnger:0}: ela cai dentro do 'Angry' do DM (de {piso:0.##} ate {teto:0.##}), e nao no 'Very Angry'",
+				  comum >= piso && comum < teto, $"{comum:0.###}");
+			double noFim = comum - folga * 120 / 1600.0;
+			Checa($"MaxAnger {maxAnger:0}: ...e continua 'Angry' depois dos 120 s de gotejamento (`Stats.dm:443`)",
+				  noFim >= piso, $"{noFim:0.###} contra o piso {piso:0.###}");
+		}
+
+		Checa("calma vale 100 (o 1,0x), e sem folga os dois degraus tambem",
+			  Jandirus.Core.Combat.RaivaEmDegraus.Topo(NivelDeRaiva.Nenhuma, 150) == 100
+			  && Jandirus.Core.Combat.RaivaEmDegraus.Topo(NivelDeRaiva.Extrema, 100) == 100
+			  && Jandirus.Core.Combat.RaivaEmDegraus.Topo(NivelDeRaiva.Lendaria, 100) == 100
+			  && Jandirus.Core.Combat.RaivaEmDegraus.Topo(NivelDeRaiva.Extrema, 60) == 100);
+
+		Jandirus.Core.Combat.RaivaEmDegraus.NocauteNoTopoDeTeste = true;
+		try
+		{
+			Checa("(defeito injetado: o nocaute vale o topo) a checagem 'comum abaixo do topo' REPROVA",
+				  !(Jandirus.Core.Combat.RaivaEmDegraus.Topo(NivelDeRaiva.Lendaria, 150) < 150));
+		}
+		finally { Jandirus.Core.Combat.RaivaEmDegraus.NocauteNoTopoDeTeste = false; }
+
+		// ---- o salto de Ki ----
+		static Jandirus.Core.Stats.Fighter Corpo(double ki, double teto = 1.4, bool sabeReunir = true, bool controle = true)
+		{
+			var f = new Jandirus.Core.Stats.Fighter();
+			f.MaxKi = 1000;
+			f.Ki = ki;
+			f.powerupcap = teto;
+			f.MeditateGivesKiRegen = sabeReunir ? 1 : 0;
+			f.canPower = controle ? 1 : 0;
+			return f;
+		}
+		static bool Salta(Jandirus.Core.Stats.Fighter f, NivelDeRaiva grau) => Jandirus.Core.Combat.RaivaEmDegraus.SaltarOKi(grau, f);
+
+		Jandirus.Core.Stats.Fighter a = Corpo(50);
+		bool subiu = Salta(a, NivelDeRaiva.Extrema);
+		Checa("furia EXTREMA + controle de ki: o Ki vai de 5% pro teto de carga (140%), e o excesso nasce protegido",
+			  subiu && Math.Abs(a.Ki - 1400) < 1e-9 && a.overcharge, $"Ki {a.Ki:0}");
+		Checa("...e o teto do salto e o MESMO da tecla C (`CargaDeKi.TetoDeCarga`)",
+			  Math.Abs(Jandirus.Core.Combat.RaivaEmDegraus.KiDoSalto(a) - Jandirus.Core.Combat.CargaDeKi.TetoDeCarga(a)) < 1e-9);
+
+		foreach (double teto in new[] { 2.0, 3.8 })
+		{
+			Jandirus.Core.Stats.Fighter t = Corpo(1000, teto);
+			Salta(t, NivelDeRaiva.Extrema);
+			Checa($"com teto de {teto * 100:0}%: de 100% ele vai a {teto * 100:0}%", Math.Abs(t.Ki - 1000 * teto) < 1e-9, $"Ki {t.Ki:0}");
+		}
+
+		Jandirus.Core.Stats.Fighter b = Corpo(50);
+		Checa("raiva COMUM (o nocaute) NAO salta, com o mesmo controle na mao",
+			  !Salta(b, NivelDeRaiva.Lendaria) && b.Ki == 50 && !b.overcharge, $"Ki {b.Ki:0}");
+		Checa("...nem a calma", !Salta(b, NivelDeRaiva.Nenhuma) && b.Ki == 50);
+
+		Jandirus.Core.Stats.Fighter semControle = Corpo(50, controle: false);
+		Checa("SEM o controle (so Ki Unlocked) a furia extrema nao mexe no Ki",
+			  !Salta(semControle, NivelDeRaiva.Extrema) && semControle.Ki == 50, $"Ki {semControle.Ki:0}");
+		Jandirus.Core.Stats.Fighter semReunir = Corpo(50, sabeReunir: false);
+		Checa("...nem pra quem nao sabe reunir energia (sem Ki Unlocked)",
+			  !Salta(semReunir, NivelDeRaiva.Extrema) && semReunir.Ki == 50);
+		Jandirus.Core.Stats.Fighter travado = Corpo(50);
+		travado.fd_ki_locked = true;
+		Checa("...nem com o ki travado (`fd_ki_locked`: a tecla C esta morta, entao nao ha teto pra alcancar)",
+			  !Salta(travado, NivelDeRaiva.Extrema) && travado.Ki == 50);
+
+		Jandirus.Core.Stats.Fighter acima = Corpo(3000);
+		Checa("quem ja esta ACIMA do teto de carga fica onde esta (o salto nunca desce o Ki, nem liga protecao)",
+			  !Salta(acima, NivelDeRaiva.Extrema) && acima.Ki == 3000 && !acima.overcharge, $"Ki {acima.Ki:0}");
+		Jandirus.Core.Stats.Fighter noTeto = Corpo(1400);
+		Checa("...e quem esta exatamente nele nao 'salta' (nao ha o que avisar)", !Salta(noTeto, NivelDeRaiva.Extrema) && noTeto.Ki == 1400);
+
+		Jandirus.Core.Combat.RaivaEmDegraus.SemSaltoDeKiDeTeste = true;
+		try
+		{
+			Jandirus.Core.Stats.Fighter c = Corpo(50);
+			Checa("(defeito injetado: a furia extrema nao mexe no Ki) a checagem do salto REPROVA",
+				  !Salta(c, NivelDeRaiva.Extrema) && c.Ki == 50);
+		}
+		finally { Jandirus.Core.Combat.RaivaEmDegraus.SemSaltoDeKiDeTeste = false; }
+
+		Jandirus.Core.Combat.RaivaEmDegraus.SaltoNaRaivaComumDeTeste = true;
+		try
+		{
+			Jandirus.Core.Stats.Fighter c = Corpo(50);
+			Checa("(defeito injetado: a raiva comum tambem salta) a checagem 'o nocaute nao salta' REPROVA",
+				  Salta(c, NivelDeRaiva.Lendaria) && c.Ki > 50);
+		}
+		finally { Jandirus.Core.Combat.RaivaEmDegraus.SaltoNaRaivaComumDeTeste = false; }
+
+		Console.WriteLine("  -> nocaute de amigo = raiva comum ('Angry'); morte ou absorcao = furia extrema ('Very Angry'),");
+		Console.WriteLine("     e so nela o Ki de quem tem controle salta pro teto de carga.");
+		Console.WriteLine();
+	}
+
+	// =====================================================================
+	// 12. A SUBIDA PELA RAIVA -- que forma ela estreia, e por quais degraus
+	// =====================================================================
+	/// <summary>
+	/// ============================ A REGRA DO DONO DE 2026-10-11, SO NO PLANO ============================
+	/// *"se o personagem ja despertou a transformacao toca a cinematica da raiva normal, mas se ele tiver os reqs
+	/// por exemplo do ssj2 e ele estiver na base e ficar com raiva, ele vai pro ssj1 e comeca a cinematica do
+	/// ssj2"*.
+	///
+	/// Quem EXECUTA a subida e o servidor (a `--raivateste` mede: os dois anuncios, a cena, o marco); aqui se mede
+	/// a PERGUNTA -- `SubidaPelaRaiva.Planejar`, a funcao pura que o servidor chama: que forma nova, por quais
+	/// degraus, e os casos de borda (dupla estreia, grades, a linha Legendary, quem ja esta acima).
+	///
+	/// OS CORPOS SAEM DO <see cref="Preparado"/>, o mesmo das secoes de cima: tudo o que a forma pede esta pago
+	/// menos a raiva, e o corpo esta no degrau ANTERIOR (ja estreado). Dali eu o desco pra base, que e o caso do
+	/// dono. Toda checagem passa pelo `Avaliar` -- e o plano que o chama, de onde o corpo esta e de onde estara.
+	/// ====================================================================================================
+	/// </summary>
+	private static void ASubidaPelaRaiva()
+	{
+		Console.WriteLine("[12] A SUBIDA PELA RAIVA: A FORMA NOVA, E OS DEGRAUS JA DESPERTADOS ATE ELA (dono, 2026-10-11)");
+
+		FormaDef ssj1 = Catalogo.Def("ssj1")!, ssj2 = Catalogo.Def("ssj2")!;
+		static string Texto(PlanoDeSubida? p) =>
+			p == null ? "nenhum plano" : string.Join(" -> ", p.Degraus.Select(x => x.Id).Append($"[{p.Alvo.Id}]"));
+
+		// ---- (a) o exemplo do dono: na BASE, com o Super Saiyajin ja estreado e tudo do 2 pago ----
+		(EstadoDeForma e, PerfilDeFormas p, double bp) = Preparado(ssj2, NivelDeRaiva.Extrema);
+		e.Entrar(Catalogo.IdBase);
+		RecusaForma daBase = e.Avaliar("ssj2", bp, 1, false, p);
+		Checa("(montagem) na BASE, com o Super Saiyajin estreado e a furia acesa, o 2 e recusado por FORA DE ORDEM: so falta o degrau",
+			  e.NaBase && e.JaViuAEstreia("ssj1") && !e.Despertou("ssj2") && daBase == RecusaForma.ForaDeOrdem, daBase.ToString());
+		PlanoDeSubida? plano = SubidaPelaRaiva.Planejar(e, bp, p);
+		Checa("na BASE com os requisitos do Super Saiyajin 2: o plano e SUBIR PELO 1 e ESTREAR O 2",
+			  plano is { Alvo.Id: "ssj2", Degraus.Length: 1 } && plano.Degraus[0].Id == "ssj1", Texto(plano));
+		Checa("...e perguntar nao mexe no corpo: ele continua na base, o 2 continua por despertar, a estreia continua devendo",
+			  e.NaBase && !e.Despertou("ssj2") && !e.JaViuAEstreia("ssj2"), e.Atual);
+		Checa("...nem a pergunta 'e se eu estivesse no 1?' (`AvaliarEstandoEm`), que e a que acha o caminho",
+			  e.AvaliarEstandoEm("ssj1", "ssj2", bp, 1, false, p) == RecusaForma.Pode && e.NaBase, e.Atual);
+
+		// ---- (b) so a raiva que a forma pede ----
+		Checa("em CALMA nao ha plano nenhum", SubidaPelaRaiva.Planejar(e, bp, p with { Raiva = NivelDeRaiva.Nenhuma }) == null);
+		PlanoDeSubida? comAComum = SubidaPelaRaiva.Planejar(e, bp, p with { Raiva = NivelDeRaiva.Lendaria });
+		Checa("...e a raiva COMUM, com poder de sobra, faz o MESMO plano: ela abre as mesmas formas, por um preco maior (secao [13])",
+			  comAComum is { Alvo.Id: "ssj2", Degraus.Length: 1 } && comAComum.Degraus[0].Id == "ssj1", Texto(comAComum));
+
+		// ---- (c) sem o poder do 2 nao ha forma NOVA: nenhum plano (e a cinematica que toca e a da raiva) ----
+		double porta1 = e.PortaDeBp(ssj1), porta2 = e.PortaDeBp(ssj2);
+		PlanoDeSubida? semODois = SubidaPelaRaiva.Planejar(e, (porta1 + porta2) / 2, p);
+		Checa("com o poder do 1 e NAO o do 2: nenhum plano -- a forma que ja e dele nao vem sozinha, e nao ha nova pra estrear",
+			  porta2 > porta1 && semODois == null, $"portas {porta1:0} / {porta2:0}; {Texto(semODois)}");
+
+		// ---- (d) nenhum dos dois estreado: a estreia e do 1, e o 2 espera a cena dele ----
+		(EstadoDeForma e0, PerfilDeFormas p0, _) = Preparado(ssj1, NivelDeRaiva.Extrema);
+		PlanoDeSubida? primeiro = SubidaPelaRaiva.Planejar(e0, bp, p0);
+		Checa("nem o 1 nem o 2 estreados, poder pros dois: o plano e ESTREAR O 1, sem degrau (sao duas estreias, uma de cada vez)",
+			  e0.NaBase && primeiro is { Alvo.Id: "ssj1", Degraus.Length: 0 }, Texto(primeiro));
+
+		// ---- (e) liberado sem nunca ter sido vestido nao serve de degrau ----
+		e0.Liberar("ssj1");
+		PlanoDeSubida? soLiberado = SubidaPelaRaiva.Planejar(e0, bp, p0);
+		Checa("o 1 so LIBERADO (nunca vestido) nao serve de degrau: atravessa-lo calado queimaria a estreia dele",
+			  !e0.JaViuAEstreia("ssj1") && soLiberado == null, Texto(soLiberado));
+
+		// ---- (f) dentro do 1, e num grade: o 2 se alcanca dali, sem degrau ----
+		(EstadoDeForma e1, PerfilDeFormas p1, _) = Preparado(ssj2, NivelDeRaiva.Extrema);
+		PlanoDeSubida? deDentro = SubidaPelaRaiva.Planejar(e1, bp, p1);
+		Checa("DENTRO do Super Saiyajin: estreia o 2 dali mesmo, sem degrau",
+			  e1.Atual == "ssj1" && deDentro is { Alvo.Id: "ssj2", Degraus.Length: 0 }, Texto(deDentro));
+		e1.Entrar("grade2");
+		PlanoDeSubida? doGrade = SubidaPelaRaiva.Planejar(e1, bp, p1);
+		Checa("num GRADE (o ramo lateral do 1): estreia o 2 de onde esta -- os grades nunca sao degrau do caminho",
+			  e1.Atual == "grade2" && doGrade is { Alvo.Id: "ssj2", Degraus.Length: 0 }, Texto(doGrade));
+
+		// ---- (g) a subida e do CATALOGO: a linha Legendary, dois degraus, com a raiva COMUM ----
+		(EstadoDeForma el, PerfilDeFormas pl, _) = Preparado(Catalogo.Def("legendary")!, NivelDeRaiva.Lendaria);
+		el.Entrar(Catalogo.IdWrathful);
+		el.Entrar("c_type");
+		el.Entrar(Catalogo.IdBase);
+		PlanoDeSubida? lendario = SubidaPelaRaiva.Planejar(el, bp, pl);
+		Checa("a subida e do CATALOGO, nao do Super Saiyajin: Legendary na base, Wrathful e C-Type ja estreados, raiva COMUM -- sobe pelos DOIS e estreia o Full Power",
+			  lendario is { Alvo.Id: "legendary", Degraus.Length: 2 }
+			  && lendario.Degraus[0].Id == Catalogo.IdWrathful && lendario.Degraus[1].Id == "c_type", Texto(lendario));
+		el.EstreiaVista.Remove(Catalogo.Rede("c_type"));
+		PlanoDeSubida? comBuraco = SubidaPelaRaiva.Planejar(el, bp, pl);
+		Checa("...e com um degrau do MEIO nunca vestido a corrente nao fecha: nenhum plano (ninguem pula estreia)",
+			  comBuraco == null, Texto(comBuraco));
+
+		// ---- (h) so pra cima: numa forma mais forte que a que a raiva abriria ----
+		(EstadoDeForma ea, PerfilDeFormas pa, _) = Preparado(ssj2, NivelDeRaiva.Extrema);
+		ea.Entrar("ssj3");   // (palco) acima do 2 sem nunca te-lo despertado: o que se mede e a comparacao de forca
+		RecusaForma doisDeCima = ea.Avaliar("ssj2", bp, 1, false, pa);
+		PlanoDeSubida? praBaixo = SubidaPelaRaiva.Planejar(ea, bp, pa);
+		Checa("A RAIVA SO SOBE: no Super Saiyajin 3 (16x), o 2 (ate 10x) esta 'aberto' pro funil e mesmo assim nao ha plano",
+			  doisDeCima == RecusaForma.Pode && praBaixo == null, $"o 2 visto do 3: {doisDeCima}; {Texto(praBaixo)}");
+
+		// ---- os dois defeitos injetados ----
+		SubidaPelaRaiva.NaoSobeDegrausDeTeste = true;
+		try
+		{
+			Checa("(defeito injetado: a raiva so desperta o que se alcanca de onde o corpo esta -- o DM, supersaiyan.dm:122) o exemplo do dono fica SEM plano: a checagem REPROVA",
+				  SubidaPelaRaiva.Planejar(e, bp, p) == null);
+		}
+		finally { SubidaPelaRaiva.NaoSobeDegrausDeTeste = false; }
+
+		SubidaPelaRaiva.PraBaixoDeTeste = true;
+		try
+		{
+			PlanoDeSubida? caiu = SubidaPelaRaiva.Planejar(ea, bp, pa);
+			Checa("(defeito injetado: a raiva desperta a forma mesmo sendo mais fraca) o corpo CAIRIA do 3 pro 2: a checagem 'so sobe' REPROVA",
+				  caiu is { Alvo.Id: "ssj2" }, Texto(caiu));
+		}
+		finally { SubidaPelaRaiva.PraBaixoDeTeste = false; }
+
+		Console.WriteLine("  -> a raiva estreia a forma NOVA mais forte que tudo o mais ja pagou, subindo sem cena pelos degraus que");
+		Console.WriteLine("     ja sao do personagem; sem forma nova nao ha plano -- e a cinematica que toca e a da raiva.");
+		Console.WriteLine();
+	}
+
+	// =====================================================================
+	// 13. O PRECO DA RAIVA COMUM -- o `if("Angry")` do DM, forma por forma
+	// =====================================================================
+	/// <summary>
+	/// O AGIO DE CADA FORMA, **escrito a mao** pelo mesmo motivo da tabela da secao [1]: gerado do catalogo ele
+	/// passaria por construcao. Cada numero e o literal do ramo `if("Angry")` do `switch(savant.Emotion)` daquela
+	/// forma -- a linha do DM esta ao lado. Quem nao esta aqui nao se abre com a raiva comum (o Beast) ou nao nasce
+	/// da raiva.
+	/// </summary>
+	private static readonly (string Id, double Agio, string Dm)[] AgioEsperado =
+	[
+		("ssj1",              1.2, "supersaiyan.dm:112"),
+		("ssj2",              1.2, "supersaiyan.dm:129"),
+		("future_ssj",        1.2, "supersaiyan.dm:112, pela mesma SSj()"),
+		("heran1",            1.3, "heran.dm:29"),
+		("heran2",            1.2, "heran.dm:45"),
+		("wrathful",          1.5, "supersaiyan.dm:68"),
+		("c_type",            1.5, "supersaiyan.dm:94"),
+		("legendary",         1.5, "supersaiyan.dm:102"),
+		("primal_c_type",     1.2, "supersaiyan.dm:112 -- o Primal cai no bloco comum, :105"),
+		("primal_legendary",  1.2, "supersaiyan.dm:129"),
+		("primal_legendary2", 1.3, "supersaiyan.dm:155"),
+	];
+
+	/// <summary>
+	/// ============================ A SECAO DO PEDIDO DE 2026-10-11 ============================
+	/// O dono: *"no dm a raiva extrema faz vc se transformar mais facil nas formas q dependem de raiva (...), o rage
+	/// normal (...) tb faz vc se transformar da mesma forma q o extreme, porem o requisito de bp pro rage normal
+	/// liberar sua proxima transformacao e maior"*.
+	///
+	/// TRES CASOS POR FORMA, todos pelo `Avaliar`: calmo nao entra; a furia extrema entra com o BP MENOR (a porta);
+	/// a raiva comum entra so com o MAIOR (a porta vezes o agio). Mais a estreia AUTOMATICA pela comum (o plano do
+	/// `SubidaPelaRaiva`, que o servidor executa) e o preco proprio da assistida.
+	///
+	/// OS DOIS DEFEITOS INJETADOS sao os dois jeitos de a regra sumir calada: a comum pelo preco da extrema
+	/// (`EstadoDeForma.RaivaComumSemAgioDeTeste`) e a comum sem abrir o tronco -- a regra de antes
+	/// (`Catalogo.SoAFuriaAbreOTroncoDeTeste`).
+	/// =========================================================================================
+	/// </summary>
+	private static void OPrecoDaRaivaComum()
+	{
+		Console.WriteLine("[13] O PRECO DA RAIVA COMUM: CALMO NAO ENTRA, A FURIA ENTRA PELA PORTA, A COMUM PELA PORTA VEZES O AGIO (dono, 2026-10-11)");
+
+		// ---- a tabela, nos dois sentidos ----
+		foreach (FormaDef d in Catalogo.Todas)
+		{
+			double esperado = AgioEsperado.FirstOrDefault(a => a.Id == d.Id).Agio;   // 0 pra quem nao esta na tabela
+			Checa($"`{d.Id}`: agio da raiva comum {esperado:0.0#}", Math.Abs(d.AgioNaRaivaComum - esperado) < 1e-12,
+				  $"deu {d.AgioNaRaivaComum}");
+		}
+		foreach ((string id, _, _) in AgioEsperado)
+			Checa($"`{id}` existe no catalogo e nasce da raiva (a tabela nao aponta pro vazio)",
+				  Catalogo.Def(id) is { } x && Catalogo.NasceDaRaiva(x));
+		string[] soComAExtrema = [.. Catalogo.Todas.Where(d => Catalogo.NasceDaRaiva(d) && d.AgioNaRaivaComum <= 0).Select(d => d.Id)];
+		Checa("a UNICA forma de raiva que a comum nao abre e o Beast (`supersaiyan.dm:166`: so ha o ramo \"Very Angry\")",
+			  soComAExtrema.Length == 1 && soComAExtrema[0] == "beast", string.Join(", ", soComAExtrema));
+		string[] agioSemRaiva = [.. Catalogo.Todas.Where(d => !Catalogo.NasceDaRaiva(d) && d.AgioNaRaivaComum != 0).Select(d => d.Id)];
+		Checa("nenhuma forma que NAO nasce da raiva declara agio (seria dado morto)", agioSemRaiva.Length == 0,
+			  string.Join(", ", agioSemRaiva));
+		Checa("todo agio e MAIOR que 1: a raiva comum nunca sai mais barata que a furia",
+			  AgioEsperado.All(a => a.Agio > 1) && Catalogo.Todas.All(d => d.AgioNaRaivaComum == 0 || d.AgioNaRaivaComum > 1));
+
+		// ---- o funil, forma por forma: tres raivas, e o poder em volta dos dois precos ----
+		double metade = Jandirus.Core.Skills.Discipulado.FatorAssistido;
+		foreach ((string id, double agio, string dm) in AgioEsperado)
+		{
+			FormaDef d = Catalogo.Def(id)!;
+			(EstadoDeForma e, PerfilDeFormas emPaz, _) = Preparado(d, NivelDeRaiva.Nenhuma);
+			PerfilDeFormas comum = emPaz with { Raiva = NivelDeRaiva.Lendaria }, furia = emPaz with { Raiva = NivelDeRaiva.Extrema };
+			double porta = e.PortaDeBp(d), cara = porta * agio;
+			RecusaForma A(double bp, PerfilDeFormas p, double fator = 1) => e.Avaliar(id, bp, 1, false, p, fator);
+
+			Checa($"`{id}` (montagem) tem porta de BP, e o preco da raiva comum fica acima dela ({dm})",
+				  porta > 0 && cara > porta, $"porta {porta:0}, comum {cara:0}");
+
+			RecusaForma calmo = A(cara * 10, emPaz);
+			Checa($"`{id}` CALMO, com poder de sobra: NAO entra (falta a raiva, e so ela)", calmo == RecusaForma.SemFuria, calmo.ToString());
+
+			RecusaForma furiaNaPorta = A(porta, furia), furiaAbaixo = A(porta * 0.999, furia);
+			Checa($"`{id}` FURIA EXTREMA: entra com o BP MENOR -- a porta, e nem um fio abaixo dela",
+				  furiaNaPorta == RecusaForma.Pode && furiaAbaixo == RecusaForma.SemPoder, $"na porta {furiaNaPorta}, abaixo {furiaAbaixo}");
+
+			RecusaForma comumNaPorta = A(porta, comum), comumQuase = A(cara * 0.999, comum), comumNoPreco = A(cara, comum);
+			Checa($"`{id}` RAIVA COMUM: com o poder que basta a furia NAO entra, nem um fio abaixo do preco dela",
+				  comumNaPorta == RecusaForma.SemPoderPraRaivaComum && comumQuase == RecusaForma.SemPoderPraRaivaComum,
+				  $"na porta {comumNaPorta}, a 99,9% do preco {comumQuase}");
+			Checa($"`{id}` RAIVA COMUM: entra so com o BP MAIOR -- {agio:0.0#}x a porta", comumNoPreco == RecusaForma.Pode, comumNoPreco.ToString());
+
+			RecusaForma comumSemPorta = A(porta * 0.999, comum);
+			Checa($"`{id}` ...e abaixo da propria porta a recusa e por PODER, nao por raiva (a ordem do funil e a mensagem)",
+				  comumSemPorta == RecusaForma.SemPoder, comumSemPorta.ToString());
+
+			// a transformacao ASSISTIDA tem o preco dela (a metade), e o agio nao entra por cima
+			RecusaForma assistida = A(porta * metade, comum, metade);
+			Checa($"`{id}` ASSISTIDA por um mestre: a raiva comum entra pela METADE da porta, sem agio (`mst_form_apply`, MasterStudent.dm:361)",
+				  assistida == RecusaForma.Pode, assistida.ToString());
+
+			// o plano da raiva (a estreia AUTOMATICA) segue o mesmo preco: sem o poder da comum nao ha plano pra ela
+			PlanoDeSubida? semPreco = SubidaPelaRaiva.Planejar(e, cara * 0.999, comum), comPreco = SubidaPelaRaiva.Planejar(e, cara, comum);
+			Checa($"`{id}` a estreia AUTOMATICA pela raiva comum so existe com o preco pago",
+				  semPreco?.Alvo.Id != id && comPreco?.Alvo.Id == id,
+				  $"sem o preco: {semPreco?.Alvo.Id ?? "nenhum plano"}; com: {comPreco?.Alvo.Id ?? "nenhum plano"}");
+
+			// ---- defeito injetado: a comum pelo preco da extrema ----
+			EstadoDeForma.RaivaComumSemAgioDeTeste = true;
+			try
+			{
+				Checa($"`{id}` (defeito injetado: a comum pelo preco da extrema) ela entra NA PORTA -- a checagem do preco REPROVA",
+					  A(porta, comum) == RecusaForma.Pode && SubidaPelaRaiva.Planejar(e, porta, comum)?.Alvo.Id == id);
+			}
+			finally { EstadoDeForma.RaivaComumSemAgioDeTeste = false; }
+
+			// depois de despertada a forma reentra pela porta de sempre, sem raiva nenhuma (o `hasssj` do DM)
+			e.Liberar(id);
+			RecusaForma reentra = A(porta, emPaz);
+			Checa($"`{id}` JA DESPERTADA: reentra pela porta, sem raiva e sem agio", reentra == RecusaForma.Pode, reentra.ToString());
+		}
+
+		// ---- o Beast: a comum nao o abre por poder nenhum ----
+		FormaDef beast = Catalogo.Def("beast")!;
+		(EstadoDeForma eb, PerfilDeFormas pb, double muito) = Preparado(beast, NivelDeRaiva.Lendaria);
+		RecusaForma beastComum = eb.Avaliar("beast", muito, 1, false, pb);
+		RecusaForma beastFuria = eb.Avaliar("beast", muito, 1, false, pb with { Raiva = NivelDeRaiva.Extrema });
+		Checa("o BEAST com a raiva COMUM e poder sem fim: recusado por FURIA -- e com a extrema abre",
+			  beastComum == RecusaForma.SemFuria && beastFuria == RecusaForma.Pode, $"comum {beastComum}, extrema {beastFuria}");
+
+		// ---- o outro defeito: a regra de antes (a comum nao abre o tronco) ----
+		FormaDef ssj1 = Catalogo.Def("ssj1")!, wrathful = Catalogo.Def(Catalogo.IdWrathful)!;
+		(EstadoDeForma es, PerfilDeFormas ps, _) = Preparado(ssj1, NivelDeRaiva.Lendaria);
+		double caraDoSsj1 = es.PortaDeBp(ssj1) * ssj1.AgioNaRaivaComum;
+		Catalogo.SoAFuriaAbreOTroncoDeTeste = true;
+		try
+		{
+			RecusaForma antiga = es.Avaliar("ssj1", caraDoSsj1, 1, false, ps);
+			Checa("(defeito injetado: a comum NAO abre o tronco Saiyajin, a regra ate 2026-10-11) com o preco pago o SSJ1 e recusado por furia e nao ha plano -- a checagem 'entra com o BP maior' REPROVA",
+				  antiga == RecusaForma.SemFuria && SubidaPelaRaiva.Planejar(es, caraDoSsj1, ps) == null, antiga.ToString());
+		}
+		finally { Catalogo.SoAFuriaAbreOTroncoDeTeste = false; }
+
+		// ---- o que mudou pro Legendary, medido: a comum deixou de abrir pela porta ----
+		(EstadoDeForma ew, PerfilDeFormas pw, _) = Preparado(wrathful, NivelDeRaiva.Lendaria);
+		double portaW = ew.PortaDeBp(wrathful);
+		RecusaForma lendarioNaPorta = ew.Avaliar(Catalogo.IdWrathful, portaW, 1, false, pw);
+		RecusaForma lendarioNoPreco = ew.Avaliar(Catalogo.IdWrathful, portaW * Catalogo.AgioComumDoLegendary, 1, false, pw);
+		Checa("O LEGENDARY NAO TEM MAIS DESCONTO: com a raiva comum e o poder da porta o Wrathful NAO abre (ate 2026-10-11 abria) -- abre a 1,5x",
+			  lendarioNaPorta == RecusaForma.SemPoderPraRaivaComum && lendarioNoPreco == RecusaForma.Pode,
+			  $"na porta {lendarioNaPorta}, a 1,5x {lendarioNoPreco}");
+		Checa("...e na raiva comum o Legendary paga MAIS que o Saiyajin comum, como no DM (1,5x contra 1,2x)",
+			  Catalogo.AgioComumDoLegendary > Catalogo.AgioComumDoSaiyajin);
+
+		Console.WriteLine("  -> calmo ninguem desperta; a furia extrema abre pela porta; a raiva comum abre as mesmas formas (menos o");
+		Console.WriteLine("     Beast) pela porta vezes o literal do `if(\"Angry\")` de cada uma, e estreia sozinha do mesmo jeito.");
+		Console.WriteLine();
 	}
 }

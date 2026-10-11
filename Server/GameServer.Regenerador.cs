@@ -1,5 +1,6 @@
 using Godot;
 using Jandirus.Core.Combat;
+using Jandirus.Core.Economia;
 using Jandirus.Core.Tech;
 using Jandirus.Core.World;
 
@@ -75,6 +76,7 @@ public sealed partial class GameServer
 			case "regen_ligar": LigarORegenerador(pl); return true;
 			case "regen_info": InfoDoRegenerador(pl); return true;
 			case "regen_up": MelhorarORegenerador(pl, arg); return true;
+			case Interacoes.PrecosDoRegenerador: PrecosDoRegenerador(pl); return true;
 			default: return false;
 		}
 	}
@@ -124,7 +126,7 @@ public sealed partial class GameServer
 		if (!obra.Aparafusada) { Avisar(pl, "aparafuse o regenerador antes de ligá-lo."); return; }
 		if (r.Energia < Regenerador.BateriaMinima)
 		{
-			Avisar(pl, $"o regenerador está sem bateria. Recarregar custa {Regenerador.CustoDeRecarga(r.EnergiaMax):N0} zeni, em \"Melhorar...\".");
+			Avisar(pl, $"o regenerador está sem bateria. Recarregar custa {Recurso.DoisPrecos(Regenerador.CustoDeRecarga(r.EnergiaMax))}, em \"Melhorar...\".");
 			return;
 		}
 
@@ -161,21 +163,46 @@ public sealed partial class GameServer
 			: "  ferimentos: não trata (membro perdido não volta neste tanque)");
 		if (r.Nanites > 0) Avisar(pl, $"  nanites: {r.Nanites}");
 
-		// OS PRECOS SAO DO ESTADO ATUAL -- mudam a cada melhoria comprada, e por isso saem daqui e nao do
-		// catalogo de interacoes.
-		Avisar(pl, "-- melhorias --");
-		Avisar(pl, $"  recarregar a bateria: {Regenerador.CustoDeRecarga(r.EnergiaMax):N0} zeni");
-		Avisar(pl, $"  bateria maior: {Regenerador.CustoDeBateria(r.EnergiaMax):N0} zeni");
-		Avisar(pl, $"  velocidade de cura: {Regenerador.CustoDeVelocidade(r.Eficiencia):N0} zeni");
-		Avisar(pl, r.CuraFerimentos ? "  tratar ferimentos: já comprada" : $"  tratar ferimentos: {Regenerador.CustoDeFerimentos:N0} zeni");
-		Avisar(pl, $"  nanites: {Regenerador.CustoDeNanites(r.Nanites):N0} zeni (pede {Regenerador.TechDosNanites:0} de tecnologia)");
+		DizerOsPrecosDoRegenerador(pl, r);
 	}
 
-	private void MelhorarORegenerador(ServerPlayer pl, string qual)
+	/// <summary>
+	/// O QUE O MENU PEDE AO ABRIR "Melhorar..." (<see cref="Interacoes.PerguntaAoAbrir"/>): so os precos e o
+	/// saldo, sem o resto do estado -- e a pagina seguinte pergunta com que moeda pagar.
+	/// </summary>
+	private void PrecosDoRegenerador(ServerPlayer pl)
+	{
+		if (TanquePerto(pl, out _) is not { } r) { Avisar(pl, "não há regenerador por perto."); return; }
+		DizerOsPrecosDoRegenerador(pl, r);
+	}
+
+	/// <summary>
+	/// OS PRECOS SAO DO ESTADO ATUAL -- mudam a cada melhoria comprada, e por isso saem daqui e nao do catalogo
+	/// de interacoes. NAS DUAS MOEDAS (dono, 2026-10-10): cada melhoria se paga em zeni ou, pelo dobro, em
+	/// recursos; e o SALDO vai junto, que e com ele que se escolhe.
+	/// </summary>
+	private void DizerOsPrecosDoRegenerador(ServerPlayer pl, RegeneradorDaObra r)
+	{
+		Avisar(pl, "-- melhorias (em zeni, ou o dobro em recursos) --");
+		Avisar(pl, $"  recarregar a bateria: {Recurso.DoisPrecos(Regenerador.CustoDeRecarga(r.EnergiaMax))}");
+		Avisar(pl, $"  bateria maior: {Recurso.DoisPrecos(Regenerador.CustoDeBateria(r.EnergiaMax))}");
+		Avisar(pl, $"  velocidade de cura: {Recurso.DoisPrecos(Regenerador.CustoDeVelocidade(r.Eficiencia))}");
+		Avisar(pl, r.CuraFerimentos ? "  tratar ferimentos: já comprada" : $"  tratar ferimentos: {Recurso.DoisPrecos(Regenerador.CustoDeFerimentos)}");
+		Avisar(pl, $"  nanites: {Recurso.DoisPrecos(Regenerador.CustoDeNanites(r.Nanites))} (pede {Regenerador.TechDosNanites:0} de tecnologia)");
+		Avisar(pl, $"  você tem {CarteiraEscrita(pl)}.");
+	}
+
+	/// <summary>
+	/// O `verb/Upgrade` (`Tier 1.5.dm:159-218`). O pedido e a melhoria e, se for o caso, a moeda no fim
+	/// ("bateria", "bateria recursos" -- ver <see cref="Recurso.LerPedidoPago"/>): em zeni o preco de sempre, em
+	/// recursos o dobro. Quem cobra e o contrato (<see cref="CobrarOuExplicar"/>).
+	/// </summary>
+	private void MelhorarORegenerador(ServerPlayer pl, string pedido)
 	{
 		RegeneradorDaObra? r = TanquePerto(pl, out Obra? obra);
 		if (r == null || obra == null) { Avisar(pl, "não há regenerador por perto."); return; }
 
+		(string qual, Moeda moeda) = Recurso.LerPedidoPago(pedido);
 		double custo;
 		string feito;
 
@@ -186,14 +213,14 @@ public sealed partial class GameServer
 				// antes da cobranca: vender uma carga que nao cabe e tirar zeni por nada.
 				if (r.Energia >= r.EnergiaMax) { Avisar(pl, "a bateria já está cheia."); return; }
 				custo = Regenerador.CustoDeRecarga(r.EnergiaMax);
-				if (!Cobrar(pl, custo)) return;
+				if (!CobrarOuExplicar(pl, custo, moeda, "recarregar a bateria")) return;
 				r.Energia = r.EnergiaMax;
 				feito = "bateria recarregada";
 				break;
 
 			case "bateria":
 				custo = Regenerador.CustoDeBateria(r.EnergiaMax);
-				if (!Cobrar(pl, custo)) return;
+				if (!CobrarOuExplicar(pl, custo, moeda, "a bateria maior")) return;
 				r.EnergiaMax += 1;
 				r.Energia = r.EnergiaMax;   // a melhoria ENCHE (`:191`)
 				feito = $"a bateria guarda {r.EnergiaMax * 100:0} agora, e está cheia";
@@ -201,7 +228,7 @@ public sealed partial class GameServer
 
 			case "velocidade":
 				custo = Regenerador.CustoDeVelocidade(r.Eficiencia);
-				if (!Cobrar(pl, custo)) return;
+				if (!CobrarOuExplicar(pl, custo, moeda, "a velocidade de cura")) return;
 				r.Eficiencia += 1;
 				feito = $"cada pulso dá +{Regenerador.CuraPorPulso(r.Eficiencia):0} de vida e +{Regenerador.KiPorPulso(r.Eficiencia):0} de Ki";
 				break;
@@ -209,7 +236,7 @@ public sealed partial class GameServer
 			case "ferimentos":
 				if (r.CuraFerimentos) { Avisar(pl, "este regenerador já trata ferimentos."); return; }
 				custo = Regenerador.CustoDeFerimentos;
-				if (!Cobrar(pl, custo)) return;
+				if (!CobrarOuExplicar(pl, custo, moeda, "tratar ferimentos")) return;
 				r.CuraFerimentos = true;
 				feito = "o tanque passa a refazer membro perdido";
 				break;
@@ -221,7 +248,7 @@ public sealed partial class GameServer
 					return;
 				}
 				custo = Regenerador.CustoDeNanites(r.Nanites);
-				if (!Cobrar(pl, custo)) return;
+				if (!CobrarOuExplicar(pl, custo, moeda, "a regeneração de nanites")) return;
 				r.Nanites += 1;
 				feito = $"regeneração de nanites em {r.Nanites}";
 				break;
@@ -230,7 +257,7 @@ public sealed partial class GameServer
 		}
 
 		GravarMundo();
-		Avisar(pl, $"você melhora o regenerador por {custo:N0} zeni: {feito}. Restam {pl.Ficha.Zeni:N0}.");
+		Avisar(pl, $"você melhora o regenerador por {Recurso.PrecoEscrito(custo, moeda)}: {feito}. Restam {CarteiraEscrita(pl)}.");
 		// O TANQUE DO MAPA NAO VAI PRO DISCO (`Obra.DoMapa`): la tambem a cidade e refeita a cada boot.
 		if (obra.DoMapa) Avisar(pl, "(este tanque faz parte do lugar: a melhoria vale até o servidor reiniciar.)");
 	}

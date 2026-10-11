@@ -384,7 +384,8 @@ public partial class GameServer
 			// E o defeito que mais se repete neste port: ligar a regra num chamador e esquecer do
 			// outro (aqui, o funil normal da escada anunciava e o do macaco nao).
 			//
-			// ============================ E ESTA E A UNICA `semCena: true` DO JOGO ============================
+			// ============================ E ESTA FOI A PRIMEIRA `semCena: true` DO JOGO ============================
+			// (Hoje ha mais duas, pelo mesmo motivo de fundo escrito abaixo: ver o parametro no `AnunciarForma`.)
 			// Antes bastava `primeira: false`, porque "nao e a estreia" e "nao ha cena" eram a mesma
 			// coisa. Deixaram de ser: com os tres degraus, uma transformacao que nao e estreia AINDA
 			// GANHA a cena encurtada enquanto a maestria nao passa dos 50% -- e aqui o dono pediu
@@ -601,8 +602,26 @@ public partial class GameServer
 			q = Protocol.Activity.Parado;
 		}
 
+		// TREINAR E MEDITAR SAO PEDIDOS, E QUEM CONFERE E O SERVIDOR (dono, 2026-10-11) -- `GameServer.Atividade.cs`.
+		// Recusado, o corpo fica PARADO; e toda declaracao que nao e uma das duas solta a ancora delas.
+		if ((q is Protocol.Activity.Treinando or Protocol.Activity.Meditando)
+			&& !AceitarTreinoOuMeditacao(a, q == Protocol.Activity.Meditando))
+			q = Protocol.Activity.Parado;
+		if (q is not (Protocol.Activity.Treinando or Protocol.Activity.Meditando))
+			SoltarAAncoraDaAtividade(a, avisarOCliente: false);
+
+		bool comecaAMeditar = q == Protocol.Activity.Meditando && !a.Ficha.med;
 		a.Ficha.train = q == Protocol.Activity.Treinando;
 		a.Ficha.med = q == Protocol.Activity.Meditando;
+
+		// MEDITAR ACALMA (`Meditate.dm:27-31`; dono, 2026-10-11) -- no instante em que a meditacao COMECA (o
+		// `if(!med)` de la), e so a que passou pela conferencia acima. Ver `AcalmarPelaMeditacao`
+		// (`GameServer.Formas.cs`, ao lado de quem acende a raiva).
+		if (comecaAMeditar) AcalmarPelaMeditacao(a);
+		// A TERCEIRA ATIVIDADE (dono, 2026-10-10). Ela tambem pode ser RECUSADA (nao ha o que minerar aqui), pela
+		// porta dela, e qualquer outra declaracao -- parar, treinar, meditar -- a encerra. Ver
+		// `GameServer.Recursos.cs`.
+		DefinirMineracao(a, q == Protocol.Activity.Minerando);
 		GD.Print($"[server] {a.Name}: {q} (BP {a.Ficha.BP:0.0})");
 	}
 

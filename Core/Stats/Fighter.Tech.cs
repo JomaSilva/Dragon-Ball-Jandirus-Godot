@@ -64,6 +64,15 @@ public partial class Fighter
 	public double ZeniBanco;
 
 	/// <summary>
+	/// RECURSOS NO BOLSO -- a materia-prima que se tira dos planetas (minerando, com o Drill, das rochas de
+	/// minerio, derrubando arvore) e que paga obra no lugar do zeni, ao dobro do preco. Pedido do dono de
+	/// 2026-10-10; as contas estao em <see cref="Jandirus.Core.Economia.Recurso"/>.
+	///
+	/// Campo novo em `Fighter`, serializado INTEIRO no save: quem nunca minerou carrega zero.
+	/// </summary>
+	public double Recursos;
+
+	/// <summary>
 	/// XP acumulado rumo ao proximo ponto de tech. Guardado separado do nivel porque o nivel e
 	/// que abre porta: uma barra que anda e um nivel que trava sao coisas diferentes na tela.
 	/// </summary>

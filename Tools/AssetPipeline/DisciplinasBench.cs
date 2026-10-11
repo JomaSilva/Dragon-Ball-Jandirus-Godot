@@ -138,6 +138,36 @@ public static class DisciplinasBench
 			  Disciplinas.PoderDaDestruicao.RealPorGatilho, Disciplinas.UltraInstinct.RealPorGatilho / 2);
 
 		Perto("aprender pede 70% de maestria divina", Disciplinas.GodKiParaAprender, 70);
+
+		// OS PORTOES DA ESQUIVA (`ui_try_evade`, UltraInstinct.dm:166-172).
+		Checa("o corpo desvia com o Instinto em uso",
+			  Disciplinas.InstintoDesvia(true, emUso: true, caido: false, meditandoOuTreinando: false, carregandoKi: false, 0));
+		Checa("...e nao desvia sem ter aprendido, com a passiva desligada e fora de forma, caido, meditando ou treinando",
+			  !Disciplinas.InstintoDesvia(false, true, false, false, false, 100)
+			  && !Disciplinas.InstintoDesvia(true, false, false, false, false, 100)
+			  && !Disciplinas.InstintoDesvia(true, true, true, false, false, 100)
+			  && !Disciplinas.InstintoDesvia(true, true, false, true, false, 100));
+		Checa("ACCELERATED BATTLE: carregando ki so desvia quem tem 40% de maestria",
+			  !Disciplinas.InstintoDesvia(true, true, false, false, carregandoKi: true, 39.9)
+			  && Disciplinas.InstintoDesvia(true, true, false, false, carregandoKi: true, 40));
+
+		// O DESCONTO DA AURA: `max(1 - pct * f / 100, 0.1)` (UltraEgo.dm:217, :232-233).
+		Perto("25% de reducao com o kit inteiro deixa passar 75%", Disciplinas.SobraDoDano(25, 1), 0.75);
+		Perto("...com o kit do Deus que trilha a Destruicao (1,25), 68,75%", Disciplinas.SobraDoDano(25, 1.25), 0.6875);
+		Perto("...e com o emprestado (0,25), 93,75%", Disciplinas.SobraDoDano(25, 0.25), 0.9375);
+		Perto("o piso: a aura nunca tira mais de 90% de um golpe", Disciplinas.SobraDoDano(100, 1.25), 0.1);
+
+		// O FATOR DO KIT (`ue_kit_factor`, UltraEgo.dm:188-192).
+		Perto("quem trilha a Destruicao e porta o titulo: 1,25", Jandirus.Core.Ranks.KitDoDeus.FatorDoKit(true, false, true), 1.25);
+		Perto("quem trilha a Destruicao sem o titulo: 1", Jandirus.Core.Ranks.KitDoDeus.FatorDoKit(true, false, false), 1);
+		Perto("o Deus que trilha o Instinto: 0,25 (emprestado)", Jandirus.Core.Ranks.KitDoDeus.FatorDoKit(false, true, true), 0.25);
+		Perto("quem trilha o Instinto sem o titulo: nada", Jandirus.Core.Ranks.KitDoDeus.FatorDoKit(false, true, false), 0);
+		Perto("o titulo sem caminho nenhum: nada (ele DESPERTA a Destruicao, e ai vira 1,25)",
+			  Jandirus.Core.Ranks.KitDoDeus.FatorDoKit(false, false, true), 0);
+
+		// O DRENO DE KI DAS QUATRO FORMAS: 0,35% e 0,5% do Ki maximo por segundo (`UI_KI_DRAIN_*`, `UE_KI_DRAIN_*`).
+		foreach ((string id, double porSegundo) in new[] { ("ui_sign", 0.0035), ("ui_perfected", 0.005), ("destroyer", 0.0035), ("ultra_ego", 0.005) })
+			Perto($"{id} drena {porSegundo * 100:0.##}% do Ki maximo por segundo", Catalogo.DrenoPorSegundo(id, new Maestrias()), porSegundo, 1e-12);
 		Console.WriteLine();
 	}
 
@@ -195,6 +225,38 @@ public static class DisciplinasBench
 		m.SubirReal(def, 1000);
 		Perto("a maestria REAL para em 100", m.Real, 100);
 		Checa("a REAL nunca desce sozinha (o tick so mexe na ATUAL)", m.Real == 100);
+
+		// 9. TRANSFORMAR RENOVA, E NAO OLHA A MAESTRIA (`ui_prof = (stage == 2) ? 100 : 80`, UltraInstinct.dm:466).
+		Checa("entrar no Sign poe a precisao em 80, e no Perfected em 100",
+			  def.AtualAoEntrar("ui_sign") == 80 && def.AtualAoEntrar("ui_perfected") == 100,
+			  $"{def.AtualAoEntrar("ui_sign")} / {def.AtualAoEntrar("ui_perfected")}");
+		Checa("...na Destroyer em 80 e no Ultra Ego em 100",
+			  Disciplinas.PoderDaDestruicao.AtualAoEntrar("destroyer") == 80
+			  && Disciplinas.PoderDaDestruicao.AtualAoEntrar("ultra_ego") == 100);
+		Checa("...e uma forma que nao e da disciplina nao renova nada",
+			  def.AtualAoEntrar("ssj1") == null && def.AtualAoEntrar("destroyer") == null);
+
+		// 10. O EXCESSO DA FORMA ESCOA, E NAO E CORTADO (UltraInstinct.dm:220). Quem domina 40% e entra no Sign
+		//     fica com 80 -- e continua com 80 enquanto luta.
+		var acima = new EstadoDeDisciplina { Aprendida = true, Real = 40, Atual = 80 };
+		acima.TickAtual(def, 1, emForma: true, emCombate: true);
+		Perto("na forma, com 40% de maestria, a precisao de 80 so paga o dreno da forma", acima.Atual, 80 - 0.35);
+		acima.Atual = 80;
+		for (int i = 0; i < 30; i++) acima.TickAtual(def, 1, emForma: false, emCombate: true);
+		Perto("fora da forma, EM COMBATE, o excesso fica onde esta", acima.Atual, 80);
+		for (int i = 0; i < 10; i++) acima.TickAtual(def, 1, emForma: false, emCombate: false);
+		Perto("fora de combate ele escoa a 0,25/s", acima.Atual, 77.5);
+		for (int i = 0; i < 1000; i++) acima.TickAtual(def, 1, emForma: false, emCombate: false);
+		Perto("...ate o teto da REAL, e para", acima.Atual, 40);
+
+		// 11. A AURA EMPRESTADA DRENA A PRECISAO DO INSTINTO, por cima do dreno dele, e trava a regeneracao
+		//     (UltraEgo.dm:327-328, UltraInstinct.dm:218).
+		var emprestada = new EstadoDeDisciplina { Aprendida = true, Real = 100, Atual = 50, Ligada = true };
+		emprestada.TickAtual(def, 1, emForma: false, emCombate: false, drenoDeFora: 0.5);
+		Perto("o Instinto ligado e a aura emprestada ligada: 0,5 + 0,5 por segundo", emprestada.Atual, 49);
+		emprestada.Ligada = false;
+		emprestada.TickAtual(def, 1, emForma: false, emCombate: false, drenoDeFora: 0.5);
+		Perto("so a aura emprestada: 0,5 por segundo, e nada volta enquanto ela esta de pe", emprestada.Atual, 48.5);
 		Console.WriteLine();
 	}
 
@@ -205,34 +267,60 @@ public static class DisciplinasBench
 	{
 		Console.WriteLine("[4] UNBOUND EGO (o BP que vem de estar quebrado)");
 
+		// A CONTA E A DO `ue_ego_update()` (UltraEgo.dm:296-316): `min(perdido / 0,9, 1) * 5%` por membro, o membro
+		// zerado ou decepado nao rende e DERRUBA o "todos no pico", e o fator do kit multiplica o bonus inteiro.
 		bool[] inteiros = [false, false, false, false, false, false];
 
 		// CORPO INTEIRO: nenhum bonus. Este e o caso que separa "a passiva funciona" de "a passiva
 		// esta sempre ligada".
 		double[] cheios = [1, 1, 1, 1, 1, 1];
-		Perto("corpo intacto nao rende bonus", Disciplinas.UnboundEgo(cheios, inteiros, out _), 1);
+		Perto("corpo intacto nao rende bonus", Disciplinas.UnboundEgo(cheios, inteiros, 1, out _), 1);
 
-		// MEIO CORPO: 6 membros x 5% x 0,5 = 15%.
+		// MEIO CORPO: 6 membros x 5% x (0,5 / 0,9) = 16,67%.
 		double[] meio = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5];
-		Perto("todos a meia vida = +15%", Disciplinas.UnboundEgo(meio, inteiros, out _), 1.15);
+		Perto("todos a meia vida = +16,67% (o bonus satura em 90% de vida perdida, nao em 100%)",
+			  Disciplinas.UnboundEgo(meio, inteiros, 1, out _), 1 + 6 * 5 * (0.5 / 0.9) / 100);
 
-		// NO PICO (perdeu 90%+): 6 x 5% x 0,9 = 27%, mais os 20% de "todos no pico" = 47%.
+		// NO PICO (perdeu 90%+): 6 x 5% CHEIOS = 30%, mais os 20% de "todos no pico" = 50%.
 		double[] pico = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1];
-		double noPico = Disciplinas.UnboundEgo(pico, inteiros, out bool todos);
+		double noPico = Disciplinas.UnboundEgo(pico, inteiros, 1, out bool todos);
 		Checa("todos no pico e detectado", todos);
-		Perto("todos no pico = +47%", noPico, 1.47);
+		Perto("todos no pico = +50%", noPico, 1.50);
 
-		// UM MEMBRO QUEBRADO PERDE O BONUS DELE, e derruba o "todos no pico".
-		bool[] umQuebrado = [true, false, false, false, false, false];
-		double comQuebra = Disciplinas.UnboundEgo(pico, umQuebrado, out bool todos2);
-		Checa("o membro quebrado sai da conta", comQuebra < noPico, $"{comQuebra:0.###} vs {noPico:0.###}");
-		Checa("...mas os outros cinco continuam no pico", todos2);
-		Perto("cinco no pico = +42,5%", comQuebra, 1 + (5 * 5 * 0.9 + 20) / 100.0);
+		// O MEMBRO A 5% DE VIDA ESTA NO PICO E RENDE CHEIO -- era o que a conta velha jogava fora: ela tirava da
+		// conta o membro "quebrado" (abaixo de 20% de vida), que e a faixa em que o bonus e maior.
+		double[] porUmFio = [0.05, 0.05, 0.05, 0.05, 0.05, 0.05];
+		Perto("todos por um fio (5% de vida) = os mesmos +50%", Disciplinas.UnboundEgo(porUmFio, inteiros, 1, out bool fio), 1.50);
+		Checa("...e contam como pico", fio);
 
-		// E QUEBRAR TUDO ZERA: o Ultra Ego premia quem esta apanhando e DE PE.
-		bool[] tudoQuebrado = [true, true, true, true, true, true];
-		Perto("corpo todo quebrado nao rende nada", Disciplinas.UnboundEgo(pico, tudoQuebrado, out bool t3), 1);
-		Checa("...e 'todos no pico' nao dispara com o corpo todo quebrado", !t3);
+		// UM MEMBRO PERDIDO (zerado ou decepado) PERDE O BONUS DELE **E DERRUBA O "TODOS NO PICO"**
+		// (`if(parts && peaks >= parts)`: ele continua contando em `parts`).
+		bool[] umPerdido = [true, false, false, false, false, false];
+		double comPerda = Disciplinas.UnboundEgo(pico, umPerdido, 1, out bool todos2);
+		Checa("o membro perdido sai da conta", comPerda < noPico, $"{comPerda:0.###} vs {noPico:0.###}");
+		Checa("...e com ele fora NAO ha 'todos no pico'", !todos2);
+		Perto("cinco no pico e um perdido = +25%", comPerda, 1.25);
+
+		// E PERDER TUDO ZERA: o Ultra Ego premia quem esta apanhando e DE PE.
+		bool[] tudoPerdido = [true, true, true, true, true, true];
+		Perto("corpo todo perdido nao rende nada", Disciplinas.UnboundEgo(pico, tudoPerdido, 1, out bool t3), 1);
+		Checa("...e 'todos no pico' nao dispara com o corpo todo perdido", !t3);
+
+		// O FATOR DO KIT MULTIPLICA O BONUS (`ue_ego_mult = 1 + mult * f`).
+		Perto("no pico, o Deus que trilha a Destruicao (1,25) tem +62,5%", Disciplinas.UnboundEgo(pico, inteiros, 1.25, out _), 1.625);
+		Perto("...e o kit emprestado (0,25), +12,5%", Disciplinas.UnboundEgo(pico, inteiros, 0.25, out _), 1.125);
+
+		// E ELE ENTRA UMA VEZ NA CONTA DE PODER -- multiplicando, dentro do `formBuff` (`base.dm:82`). Ate 2026-10-11
+		// entrava duas (la e como soma na base): 1,5 rendia 1,5 x 1,5.
+		var semEgo = new Jandirus.Core.Stats.Fighter { Race = "Human", BP = 1_000_000 };
+		semEgo.Statify();
+		semEgo.Ki = semEgo.MaxKi;
+		semEgo.PowerLevel();
+		var comEgo = new Jandirus.Core.Stats.Fighter { Race = "Human", BP = 1_000_000, ue_ego_mult = 1.5 };
+		comEgo.Statify();
+		comEgo.Ki = comEgo.MaxKi;
+		comEgo.PowerLevel();
+		Perto("um Unbound Ego de 1,5 multiplica o poder expresso por 1,5 -- e so", comEgo.expressedBP / semEgo.expressedBP, 1.5, 0.01);
 		Console.WriteLine();
 	}
 
@@ -400,11 +488,16 @@ public static class DisciplinasBench
 		// A MAESTRIA REAL DA FAIXA E A MESMA QUE O CATALOGO COBRA. Se divergissem, a faixa
 		// anunciaria "Sign destravado" e a forma continuaria recusando -- o pior tipo de defeito,
 		// porque o jogador ve as duas coisas e nao tem como saber qual esta certa.
+		// (ate 2026-10-11 esta secao afirmava 1 pro Sign e 100 pro Perfected -- os numeros que o catalogo tinha, e
+		// nao os das faixas: o Sign abria com 1% de maestria e o Perfected so com 100%, com a faixa anunciando-o aos 60)
 		Perto("o Sign pede a mesma maestria na faixa e no catalogo",
-			  Catalogo.Def("ui_sign")!.PedeProficienciaUi, 1);
-		Checa("...e a faixa do Sign e 20%", Disciplinas.UiSign == 20);
-		Checa("o Perfected pede 100 de proficiencia no catalogo",
-			  Catalogo.Def("ui_perfected")!.PedeProficienciaUi == 100);
+			  Catalogo.Def("ui_sign")!.PedeProficienciaUi, Disciplinas.UiSign);
+		Checa("...e a faixa do Sign e 20% (`UI_UNLOCK_SIGN`)", Disciplinas.UiSign == 20);
+		Perto("o Perfected pede a mesma maestria na faixa e no catalogo",
+			  Catalogo.Def("ui_perfected")!.PedeProficienciaUi, Disciplinas.UiPerf);
+		Checa("...e a faixa do Perfected e 60% (`UI_UNLOCK_PERF`)", Disciplinas.UiPerf == 60);
+		Perto("a Destroyer pede a faixa dela (20%)", Catalogo.Def("destroyer")!.PedeEnergiaUe, Disciplinas.UeDestroyer);
+		Perto("o Ultra Ego pede a faixa dele (60%)", Catalogo.Def("ultra_ego")!.PedeEnergiaUe, Disciplinas.UeUltra);
 
 		// AS DUAS FORMAS DE CADA LINHA PEDEM O GOD KI DE APRENDER.
 		foreach (string id in new[] { "ui_sign", "ui_perfected", "destroyer", "ultra_ego" })

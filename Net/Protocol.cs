@@ -14,6 +14,11 @@ namespace Jandirus.Net;
 public static class Protocol
 {
     public const int DefaultPort = 7777;
+
+    /// <summary>
+    /// A SENHA DE ENTRADA: diz "sou um cliente deste jogo", e so isso. Ela e o PRIMEIRO campo do pedido de
+    /// conexao; logo depois vai a VERSAO do cliente, e e ela que o servidor compara -- ver `FioDaVersao`.
+    /// </summary>
     public const string ConnectionKey = "jandirus";
     public const int TickHz = 30;                 // passo do servidor
     public const float TickSeconds = 1f / TickHz;
@@ -172,6 +177,17 @@ public static class Protocol
         Voz = 24,
 
         /// <summary>
+        /// UM QUADRO DE VOZ SAINDO PELO RADIO DO SCOUTER: `ushort seq` + `byte n` + n bytes de Opus -- o mesmo
+        /// corpo do <see cref="Voz"/>, escrito e lido por <see cref="FioDoRadio"/>.
+        ///
+        /// OPCODE PROPRIO, e nao um byte de "canal" a mais no <see cref="Voz"/>: a rota e POR QUADRO (segurar a
+        /// tecla do radio, a de voz ou as duas), e cada rota tem a propria sequencia e a propria torneira no
+        /// servidor -- ver o cabecalho do `GameServer.Radio.cs`. Como la, NAO HA "PRA QUEM" nem "em que
+        /// frequencia" no pacote: o servidor le a frequencia da ficha de quem fala e decide quem ouve.
+        /// </summary>
+        VozDeRadio = 26,
+
+        /// <summary>
         /// ERGUER OU DESMANCHAR UM BLOCO (parede, piso, porta): `byte acao` (<see cref="BlocoErguer"/> ou
         /// <see cref="BlocoDesmanchar"/>), `ushort cx`, `ushort cy`, `ushort numero` (a posicao no
         /// `blocos.json`, que as duas pontas leem) e `string senha` (so vale pra porta; vazia = sem senha).
@@ -206,6 +222,17 @@ public static class Protocol
 
     /// <summary>As marcas de um bloco no fio. Ver <see cref="BlocosRetrato"/>.</summary>
     public const byte BlocoMeu = 1, BlocoTrancado = 2, BlocoAberto = 4, BlocoSeiASenha = 8;
+
+    /// <summary>
+    /// OS TRES MODOS DO <see cref="S2C.Rochas"/>, no primeiro byte depois do opcode. Os tres levam a ZONA
+    /// (`ulong`) logo em seguida: a tela so aplica o que e do chao que ela tem montado.
+    ///
+    /// `Retrato`: todas as rochas de minerio de pe numa zona, pra quem chega nela (`ushort n`, n x
+    ///            (`ushort cx`, `ushort cy`)). SUBSTITUI a lista, e sai sempre -- vazio fora de planeta.
+    /// `Nasceu`:  uma rocha brotou (`ushort cx`, `ushort cy`).
+    /// `Sumiu`:   uma rocha foi colhida (`ushort cx`, `ushort cy`).
+    /// </summary>
+    public const byte RochasRetrato = 0, RochasNasceu = 1, RochasSumiu = 2;
 
     /// <summary>
     /// QUANTO CABE NO ARGUMENTO DE UM VERB.
@@ -429,6 +456,26 @@ public static class Protocol
     public const byte CenarioCelula = 0, CenarioLimpar = 1, CenarioRetrato = 2;
 
     /// <summary>
+    /// OS CINCO MODOS DO <see cref="S2C.Lenha"/>, no primeiro byte depois do opcode.
+    ///
+    /// `Retrato`: a lenha de uma zona, pra quem chega nela (`ulong zona`; `int n`, n x arvore -- as que
+    ///            REBROTARAM; `int m`, m x arvore -- os TOCOS a vista). E estado, como o retrato do cenario: o
+    ///            cliente o guarda com a zona e so o aplica quando o chao dela estiver montado. Sai sempre, mesmo
+    ///            vazio.
+    /// `Brotou`:  uma arvore voltou a ficar de pe agora -- uma arvore.
+    /// `Caiu`:    a rebrota de uma celula saiu (`ushort cx, cy`, `bool derrubada`): derrubada (quem esta na zona
+    ///            ve a poeira), ou so deixou de existir (o admin refez o cenario).
+    /// `Toco`:    ficou um toco nesta celula -- uma arvore (a celula e o tile DA ARVORE QUE CAIU: e dele que o
+    ///            cliente tira o desenho do toco).
+    /// `SemToco`: o toco desta celula saiu (`ushort cx, cy`): a arvore rebrotou, ou construiram em cima.
+    ///
+    /// UMA ARVORE NO FIO: `ushort cx`, `ushort cy` e o tile com que ela se desenha -- `ushort fonte`,
+    /// `ushort ax`, `ushort ay` (<see cref="Jandirus.Core.World.TileDeArvore"/>): a fonte do `tileset.tres` e o
+    /// quadro do atlas, que sao os mesmos nas duas pontas. O cliente so repete o tile numa camada dele.
+    /// </summary>
+    public const byte LenhaRetrato = 0, LenhaBrotou = 1, LenhaCaiu = 2, LenhaToco = 3, LenhaSemToco = 4;
+
+    /// <summary>
     /// SUBIR e DESCER voando -- dois dos quatro bits que sobravam neste byte.
     ///
     /// Vem no INPUT e nao pelo canal de habilidade porque altitude e continua: e "estou segurando
@@ -449,14 +496,29 @@ public static class Protocol
     /// O que o personagem esta fazendo. O cliente so DECLARA; quem roda a conta de ganho e
     /// paga o BP e o servidor -- senao bastaria mandar "estou treinando" mil vezes por
     /// segundo pra ficar forte.
+    ///
+    /// `Minerando` (dono, 2026-10-10: *"ao estar mineirando e igual meditacao"*) entrou aqui por isso mesmo: e
+    /// a terceira coisa que o corpo faz PARADO, cai andando como as outras duas, e quem decide se ela comeca
+    /// (ha o que minerar aqui?) e quanto rende e o servidor -- ver `GameServer.Recursos.cs`.
     /// </summary>
-    public enum Activity : byte { Parado = 0, Treinando = 1, Meditando = 2 }
+    public enum Activity : byte { Parado = 0, Treinando = 1, Meditando = 2, Minerando = 3 }
 
     public enum S2C : byte
     {
         JoinAccepted = 1,  // id, zona (hash + descricao), seed pra geracao, ponto de spawn
         JoinRejected = 2,  // serve tambem pra recusar login e criacao de personagem
         SlotList = 10,     // os tres slots da conta, com o que a tela de selecao mostra
+
+        /// <summary>
+        /// A VERSAO DO SERVIDOR -- o PRIMEIRO pacote de toda conexao aceita, escrito no mesmo tratador do aceite
+        /// (`GameServer.AoPedirConexao`): o bloco do `FioDaVersao` (`uint marca`, `int numero`, `ulong digital`).
+        ///
+        /// E a metade "o cliente checa a versao do servidor" do aperto de mao: o cliente so manda o
+        /// <see cref="C2S.Login"/> depois de conferir isto (`GameClient.AoChegarAVersaoDoServidor`), e quem nunca
+        /// o recebe esta falando com um servidor de antes da checagem. O cliente de outra versao nem chega
+        /// aqui -- ele e recusado no pedido de conexao, com este mesmo bloco na carga da recusa.
+        /// </summary>
+        Versao = 97,
         Snapshot = 3,      // estado de quem esta na MESMA zona: servidorMs (uint) + corpos + projeteis (ver EntityState.IdadeMs)
         Correction = 4,    // "voce nao podia estar ai": posicao corrigida
         PeerLeft = 5,
@@ -503,6 +565,15 @@ public static class Protocol
         /// ==========================================================================================================================
         /// </summary>
         Cenario = 25,
+
+        /// <summary>
+        /// AS ARVORES QUE REBROTARAM e OS TOCOS das que cairam, na zona em que estou, em cinco modos -- ver
+        /// <see cref="LenhaRetrato"/>. O retrato pra quem chega (ao lado do <see cref="Cenario"/>, que traz as
+        /// celulas que cairam); depois, so o que muda. A arvore derrubada e cenario caido e vem pelo pacote de
+        /// cima; o TOCO que fica no lugar dela e a arvore que VOLTA sao coisas novas por cima do mundo. Ver
+        /// `GameServer.Lenha.cs`.
+        /// </summary>
+        Lenha = 76,
 
         /// <summary>
         /// AS CONTAS DO SERVIDOR, so pra quem e administrador.
@@ -633,6 +704,23 @@ public static class Protocol
         Blocos = 58,
 
         /// <summary>
+        /// O SALDO DE QUEM CONSTROI BASE, so pra ele: `double zeni`, `double recursos`, `byte moeda` (a
+        /// `Jandirus.Core.Economia.Moeda` com que o servidor esta cobrando as pecas dele) e `bool deUmaPeca`.
+        /// Sai em resposta ao verbo `obra_moeda` (a troca de moeda, e o cliente ligando o modo de construir) e
+        /// -- com `deUmaPeca` -- UMA vez por pedido de erguer (<see cref="C2S.Bloco"/>), tenha a peca subido ou
+        /// nao: e o que deixa o cliente descontar do saldo que mostra as pecas que ainda estao a caminho.
+        /// Ver `GameServer.CustoDeObra.cs`.
+        /// </summary>
+        SaldoDeObra = 87,
+
+        /// <summary>
+        /// AS ROCHAS DE MINERIO da zona em que estou, em tres modos -- ver <see cref="RochasRetrato"/>. O
+        /// retrato pra quem chega; depois, so a que nasce e a que e colhida. So a CELULA viaja: a arte e uma
+        /// so e o cliente ja a tem (`Core/Economia/RochaDeMinerio.cs`). Ver `GameServer.Rochas.cs`.
+        /// </summary>
+        Rochas = 73,
+
+        /// <summary>
         /// O SERVIDOR VIROU O MEU CORPO: `byte olhar` (<see cref="Jandirus.Core.World.Facing"/>). So pro dono --
         /// os outros veem pelo snapshot. Hoje quem vira e o ataque de ki com alguem marcado
         /// (`GameServer.CravarOlhar`): o corpo local desenha a propria direcao e a manda de volta no pacote de
@@ -656,6 +744,56 @@ public static class Protocol
         /// quem pesa e o servidor. Ver `GameServer.MandarCampos`.
         /// </summary>
         CamposDeGravidade = 61,
+
+        /// <summary>
+        /// COMO ESTA A DRILL AO MEU ALCANCE -- a resposta do verbo `drill_ver` (o painel do menu da tecla E
+        /// pergunta ao abrir) e o que volta depois de coletar ou melhorar. So pra quem perguntou. O corpo do
+        /// pacote e escrito e lido num lugar so, `Net/FioDaDrill.cs`: id da obra (0 = nenhuma ao alcance),
+        /// nivel, estoque, situacao, reserva do planeta, se e minha, o dono e os meus dois saldos. Ver
+        /// `GameServer.Drill.cs`.
+        /// </summary>
+        Drill = 71,
+
+        /// <summary>
+        /// OS NOMES DADOS AOS PLANETAS (o batismo): a lista INTEIRA dos batizados, igual pra todo mundo, mais
+        /// um cabecalho PESSOAL -- o direito de quem recebe de batizar o chao em que esta.
+        ///
+        /// `byte direito` (`Batismo.Direito`) + `string descobridor` (o do chao de quem recebe; vazio fora
+        /// de mundo gerado) + `ushort n`, e por entrada `string chave` (`ChaveDePlaneta.Texto`) +
+        /// `string nome` + `string porQuem`.
+        ///
+        /// SUBSTITUI, NAO ACRESCENTA, como o `Mortos`: e o que faz "tirar o nome" chegar sem um segundo
+        /// opcode. Vai no login, a cada troca de zona (o direito e do CHAO), a cada batismo e quando um
+        /// dominio muda de mao. Ver `GameServer.Batismo.cs`.
+        /// </summary>
+        NomesDePlanetas = 62,
+
+        /// <summary>
+        /// O QUE DA PRA LEVAR DE QUEM ESTA NOCAUTEADO AO MEU ALCANCE -- a resposta do verbo `saquear` (item 9b do
+        /// playtest de 2026-10-10; a regra esta em `Core/Items/Saque.cs`). So pra quem perguntou: id do caido
+        /// (int), nome dele (string) e a lista (byte n; n x (id do item, ushort quantidade)). Vazia quer dizer
+        /// "nada que de pra levar" -- e ela vai assim mesmo, pra o menu dizer isso em vez de nao abrir.
+        /// </summary>
+        Saque = 63,
+
+        /// <summary>
+        /// A MINHA CARTEIRA: `double zeni` + `double recursos` (a materia-prima que paga obra ao dobro do preco,
+        /// `Core/Economia/Recursos.cs`). So pro dono, e toda vez que um dos dois muda pelo funil da economia
+        /// (`GameServer.Recursos.cs`: minerar, cobrar, receber) -- e junto de cada <see cref="Tech"/>.
+        ///
+        /// POR QUE NAO VAI SO NO <see cref="Tech"/>: aquele pacote e o catalogo inteiro (cem ofertas com nome e
+        /// arte), e quem minera muda o saldo a cada segundo. Com a carteira a parte, a aba refaz a pergunta "cabe
+        /// no bolso?" de cada oferta (`CatalogoDeObras.ComSaldo`) sem o catalogo viajar de novo.
+        /// </summary>
+        Carteira = 67,
+
+        /// <summary>
+        /// A MINHA MINERACAO: `bool ativa` + `byte ferramenta` (`Core.Economia.Ferramenta`) + `float porSegundo`
+        /// (o que o ultimo segundo rendeu) + `float reserva` (a do planeta, de 0 a 1). So pro dono: uma vez por
+        /// segundo enquanto ele minera, e uma vez quando ela acaba ou e recusada -- `ativa` falso e o que faz o
+        /// corpo local largar a pose (o servidor para a mineracao sozinho quando o chao seca ou o corpo apanha).
+        /// </summary>
+        Mineracao = 68,
 
         /// <summary>
         /// CAIU UM RAIO, e ele caiu NUM LUGAR: posicao no mundo + a semente do desenho.
@@ -734,7 +872,7 @@ public static class Protocol
         ///
         /// ============================ POR QUE A LISTA INTEIRA, E NAO O DELTA ============================
         /// Ela e pequena (as pessoas com quem alguem realmente convive, com nome e ficha curta) e
-        /// muda devagar -- um passo de amizade a cada 3 s, e so quando ha alguem por perto. Um
+        /// muda devagar -- um ponto de convivio a cada 30 s, e so quando ha alguem por perto. Um
         /// protocolo de delta aqui teria mais estado pra sincronizar do que dados pra mandar, e o
         /// primeiro relog fora de sincronia deixaria a aba mentindo sem ninguem notar.
         ///
@@ -745,6 +883,42 @@ public static class Protocol
         /// ==============================================================================================
         /// </summary>
         Conhecidos = 35,
+
+        /// <summary>
+        /// OS DETALHES DE UM CONHECIDO (idade, genero, cargo, a historia que ele escreveu, desde quando eu o
+        /// conheco): a resposta ao verb `detalhes`, pessoal, UMA pessoa por pacote -- e so pra quem ja
+        /// conviveu o bastante com ela (`Convivio.ConvivioParaDetalhes`). Abaixo disso o servidor nao manda
+        /// nada. A lista de cima NAO carrega isto de proposito: ela vai inteira a cada mudanca, e mandar a
+        /// historia de todo mundo junto seria mandar a quem nao pode ler. O corpo do pacote (e a lista
+        /// fechada do que e publico) mora em `FioDosConhecidos`; a regra, em `GameServer.VerboDetalhes`.
+        /// </summary>
+        DetalhesDeConhecido = 80,
+
+        /// <summary>
+        /// **MESTRE E ALUNOS**: o painel de UM jogador -- o mestre dele com o que lhe ensinou (e os colegas que
+        /// receberam o mesmo) e os alunos que ele guia, cada um com o progresso no que ELE ensinou. E a resposta
+        /// ao verb `alunos`, pessoal, e so pra quem TEM o vinculo; com a tela aberta sai de novo so quando o
+        /// conteudo muda. Nao carrega poder de ninguem (`GameServer.Sigilo.cs`). O corpo do pacote (e a lista
+        /// fechada do que viaja) mora em `FioDosAlunos`; quem ve o que, em `Core.Skills.ProgressoDeAluno`.
+        /// </summary>
+        MestreEAlunos = 99,
+
+        /// <summary>
+        /// A CASA DO BILLS (dono, 2026-10-11; ver `Core.Npc.BillsEWhis` e `GameServer.Bills.cs`): `bool revelada`
+        /// e, so quando revelada, `int sx` + `int sy` (a celula do sistema) + `byte orbita` + `ulong semente do
+        /// mundo`. Pessoal, e so sai quando a resposta muda pra aquele jogador (no login, quando o Bills cai na
+        /// Terra, e se a casa mudar de lugar). E o que faz a carta estelar marcar o planeta pra quem nao estava
+        /// la. Antes da revelacao o pacote NAO leva endereco nenhum; e ele nunca leva numero de poder.
+        /// </summary>
+        CasaDeBills = 105,
+
+        /// <summary>
+        /// QUAL DOS DOIS (Bills, Whis) ESTA AO ALCANCE DA MINHA TECLA E: `int corpo` (0 = nenhum) + `string tipo`
+        /// (a chave do menu em `Core.Tech.Interacoes.De`) + `string nome`. Pessoal e por MUDANCA, pelo mesmo
+        /// motivo do <see cref="Cadaver"/>: o snapshot diz onde os corpos estao, e nao qual deles tem menu -- e
+        /// o menu de quem esta treinando (a saida) nao e o de quem chega (o convite).
+        /// </summary>
+        DivinoPerto = 106,
 
         /// <summary>
         /// A FURIA DE ALGUEM IRROMPEU: um id, e mais nada.
@@ -758,11 +932,15 @@ public static class Protocol
         /// O prazo tambem nao: a cena mede 5,0 s no Core (`Cinematicas.Furia`) e as duas pontas leem o
         /// mesmo arquivo. Mandar a duracao criaria uma segunda verdade sobre o relogio dela.
         ///
-        /// ============================ PRA ZONA INTEIRA, COMO O <see cref="Forma"/> E O <see cref="Oozaru"/> ============================
-        /// No DM a cena e do MUNDO: as ondas de choque sao objetos no chao, o `to_chat` vai pra
-        /// `view(src)` e o `emit_RageMusic` toca pra todo `mob` do `view`. Ver alguem explodir de raiva
+        /// ============================ PRA QUEM ESTA VENDO, E NAO SO PRO DONO ============================
+        /// No DM a cena e do MUNDO em volta dele: as ondas de choque sao objetos no chao, o `to_chat` vai
+        /// pra `view(src)` e o `emit_RageMusic` toca pra todo `mob` do `view`. Ver alguem explodir de raiva
         /// e informacao que quem esta em volta tem que ter -- e o mesmo argumento que ja tirou o Oozaru
         /// do caminho pessoal.
+        ///
+        /// O ALCANCE E O DA VISTA DO ENFURECIDO (`GameServer.QuemVeAFuria`), e nao a zona inteira como o
+        /// <see cref="Forma"/>: ate 2026-10-11 era a zona, e num planeta o tema de quatro minutos tocava
+        /// pra quem estava do outro lado do mapa.
         ///
         /// ============================ E POR QUE NAO E O <see cref="Efeito"/> ============================
         /// A tentacao era obvia: aquele pacote ja carrega "caiu um efeito em mim: id + por quantos ms".
@@ -965,6 +1143,21 @@ public static class Protocol
         Voz = 44,
 
         /// <summary>
+        /// UM QUADRO DE VOZ QUE CHEGOU PELO RADIO DO SCOUTER: `int falante` + `ushort seq` + `byte n` + n bytes
+        /// de Opus (<see cref="FioDoRadio"/>). Irmao do <see cref="Voz"/>, sem distancia e sem parede -- radio
+        /// nao tem perto nem longe -- e, como ele, **so sai pra quem tem direito de ouvir**: scouter ligado, a
+        /// mesma frequencia, o mesmo planeta (ou ate 500 tiles, no espaco). Ver `GameServer.Radio.cs`. Quem
+        /// recebe toca SO no ouvido esquerdo, com o efeito de radio (`Client/RadioOuvido.cs`).
+        /// </summary>
+        VozDeRadio = 64,
+
+        /// <summary>
+        /// O ESTADO DO MEU RADIO: `ushort frequencia` (<see cref="FioDoRadio"/>). Pessoal; sai no login e a cada
+        /// pedido de troca (o verbo `radio_frequencia`), inclusive quando o pedido e recusado.
+        /// </summary>
+        Radio = 65,
+
+        /// <summary>
         /// ESTE CORPO ESTA MORTO -- e o desenho disso e a AUREOLA sobre a cabeca.
         ///
         /// Formato: `int id` + `bool tem`. Dois campos, cinco bytes.
@@ -1009,7 +1202,7 @@ public static class Protocol
         /// carrega so o que aquele nao sabe dizer: que a cinematica que acompanha aquela forma nao e a
         /// do Super Saiyajin 2, e sim a curta do bio (o DM pula a saiyajin: `DNALabs.dm:697`).
         ///
-        /// ============================ PRA ZONA INTEIRA, COMO A <see cref="Furia"/> ============================
+        /// ============================ PRA ZONA INTEIRA, COMO O <see cref="Forma"/> ============================
         /// No DM os `to_chat` vao pra `view(src)`, o tremor e `Quake()` em todo mundo do planeta e os
         /// feixes de chao sao objetos que ANDAM pelo mapa. Ver alguem virar Cell e informacao que quem
         /// esta em volta tem que ter.
@@ -1120,6 +1313,27 @@ public static class Protocol
         SuperEsferas = 50,
 
         /// <summary>
+        /// **O MENU DO DRAGAO**: a janela de desejos de UM jogador -- as linhas que o dragao atende, o motivo
+        /// de cada linha apagada, e as respostas da segunda etapa ("Pra quem?": "Para mim" e a lista de quem o
+        /// desejo alcanca). E o `input() in WishList` e o `input() in deadlist` do DM (`WishTable.dm:150` e
+        /// `:225`) num pacote so. Ver `Core/Magic/MenuDoDragao.cs`.
+        ///
+        /// PESSOAL E SO QUANDO MUDA: sai pra quem invocou (com `abrir`), pra quem apertou "Ver os desejos", e
+        /// de novo so quando a assinatura do menu dele muda. Com `fechar`, o dragao que ele olhava foi embora.
+        ///
+        /// O FORMATO MORA NUM LUGAR SO, escrito e lido lado a lado: `Net/FioDoMenuDoDragao.cs`.
+        /// </summary>
+        MenuDoDragao = 82,
+
+        /// <summary>
+        /// O DISCO DO DRAGON RADAR: onde estao as esferas ACORDADAS deste mundo, em relacao a mim -- e so
+        /// pra quem tem o radar na mochila. Sem o aparelho nao sai pacote nenhum; perdeu, sai um
+        /// "desligado". Pessoal, e so quando o que o disco mostra muda (no maximo 1 Hz). O corpo do pacote
+        /// mora em `FioDoRadarDeEsferas`; a regra, em `GameServer.RadarDeEsferas.cs`.
+        /// </summary>
+        RadarDeEsferas = 91,
+
+        /// <summary>
         /// **O REFUGIO**: o planeta natal desta pessoa foi destruido, e estas sao as saidas.
         ///
         /// ============================ POR QUE UM PACOTE, E NAO CHAT ============================
@@ -1160,6 +1374,31 @@ public static class Protocol
         /// Formato: `bool scan` + `byte n` + n x <see cref="PresencaState"/>.
         /// </summary>
         Sentidos = 52,
+
+        /// <summary>
+        /// OS FATOS DE QUEM JOGA: um `uint` com os bits de `Core.Verbos.Fatos` -- o que so o servidor sabe
+        /// e que decide quais VERBS existem pra este personagem (tem coletores? ha um convite de fusao na
+        /// mesa? guia um aluno? a bandeira deste planeta e dele?). Raca, livro, mochila e cargos ja
+        /// viajavam; isto e o resto, e e o que deixa o menu parar de mostrar a todo mundo um botao que so
+        /// um punhado pode usar. Pessoal, e so sai quando muda (5 Hz no maximo). Ver `GameServer.Fatos.cs`.
+        /// </summary>
+        Fatos = 85,
+
+        /// <summary>
+        /// O KI DIVINO DE QUEM JOGA: `byte bits` (<see cref="BitsDoGodKi"/>) + `byte exposicao` (0 a 100, o
+        /// medidor do despertar) + `ushort maestria` (a maestria divina em DECIMOS de ponto, 0 a 1000; zero
+        /// pra quem nao despertou). Pessoal, e so sai quando muda (1 Hz no maximo). E o que a aba World
+        /// desenha no cartao "Ki divino" -- o lugar ser divino ou nao o cliente sabe sozinho, pela seed
+        /// (`Core.World.AtmosferaDivina`). Ver `GameServer.GodKi.cs`.
+        /// </summary>
+        GodKi = 94,
+
+        /// <summary>
+        /// O KI DIVINO DESPERTOU NUM CORPO: `int corpo`. Um ACONTECIMENTO, pra quem esta na zona e dentro
+        /// da vista: o som do ki divino chegando e um anel de luz em volta dele. Sai uma vez, no instante
+        /// do despertar -- quem chega depois nao tem o que ver. Ver `GameServer.GodKi.AnunciarODespertar`.
+        /// </summary>
+        GodKiDespertou = 95,
 
         /// <summary>
         /// AS PECAS DE CORPO NO CHAO DA ZONA -- o RETRATO, pra quem chega: zona (hash) + n +
@@ -1233,6 +1472,19 @@ public static class Protocol
         Kiai = 1,
         /// <summary>O sopro saiu no vazio e virou lamina: o mesmo, mais `fire_kiblast.wav` (`Kiai.dm:37`).</summary>
         KiaiComLamina = 2,
+    }
+
+    /// <summary>O primeiro byte do <see cref="S2C.GodKi"/>: como esta o ki divino deste personagem.</summary>
+    [Flags]
+    public enum BitsDoGodKi : byte
+    {
+        Nenhum = 0,
+        /// <summary>O ki divino ja despertou nele (`godki.awakened`).</summary>
+        Desperto = 1,
+        /// <summary>Ainda nao despertou, e o BP base ja alcanca o requisito PESSOAL: o medidor anda.</summary>
+        AlcancaORequisito = 2,
+        /// <summary>Esta num chao de atmosfera divina (a resposta do servidor; o cliente tira a mesma da seed).</summary>
+        NaAtmosfera = 4,
     }
 
     /// <summary>Os dois instantes de um ataque de ki. Ver <see cref="S2C.Projetil"/>.</summary>
@@ -2000,11 +2252,16 @@ public static class Protocol
         // A COR DA CHAMA DESTE CORPO, no fim de tudo. Quatro bytes (ver `PutRgb`), uma vez por
         // pessoa por zona -- o `PeerLook` nao repete.
         //
-        // SEM BUMP DE VERSAO e sem tolerancia, de proposito: `Protocol.ConnectionKey` e a unica
-        // porta e o `AcceptIfKey` nao olha build. Cliente e servidor sobem juntos (auto-host /
-        // `servidor.bat`), e o precedente e o proprio `FormasDeFrost` logo acima, anexado do mesmo
-        // jeito. O que isso EXIGE e que escrita e leitura andem no mesmo commit -- um dos dois
-        // sozinho desalinha o pacote inteiro, e o `SlotList` manda tres aparencias em fila.
+        // SEM TOLERANCIA A BUILD ANTIGO, de proposito -- e quem garante isso deixou de ser o costume
+        // ("cliente e servidor sobem juntos") e passou a ser a PORTA: o servidor recusa, no pedido de
+        // conexao, o cliente de outra versao (`Core/Versao.cs`, `FioDaVersao`,
+        // `GameServer.AoPedirConexao`), e o cliente confere a do servidor antes de mandar o login.
+        // Era este comentario que dizia "SEM BUMP DE VERSAO": com servidor dedicado e jogador com
+        // build de outro dia, o desencontrado entrava e lia este pacote torto. O precedente do campo
+        // anexado e o proprio `FormasDeFrost` logo acima. O que isso EXIGE e que escrita e leitura
+        // andem no mesmo commit -- um dos dois sozinho desalinha o pacote inteiro, e o `SlotList`
+        // manda tres aparencias em fila -- E QUE A VERSAO SUBA quando um layout destes mudar: campo
+        // novo escrito a mao dentro de um pacote a impressao digital do protocolo nao enxerga.
         w.PutRgb(a.CorAura);
 
         // E A COR DO TIRO logo depois -- o SEGUNDO sorteio do original (`CharacterCreation.dm:28`),
@@ -2152,6 +2409,16 @@ public static class Protocol
     ///         string path; u8 tier; u16 investido; u16 proximoInvestir; u8 proximoTier;
     ///         u16 nAcesas, string[]; u16 nApagadas, string[]
     ///     u16 nVerbos, string[]                       -- os verbs que este personagem pode acionar HOJE
+    ///     u16 nSemReembolso, string[]                 -- as aprendidas que NAO devolvem marco se esquecidas
+    ///
+    /// ============================ AS QUE NAO DEVOLVEM MARCO VIAJAM PELO MESMO MOTIVO ============================
+    /// O botao de esquecer da ficha prometia "reembolsa N" pra toda skill, e o servidor so paga pelo que foi
+    /// COMPRADO com marcos (`SkillBook.FoiComprada`): a herdada pela absorcao Namekuseijin, a que um admin deu, a
+    /// ensinada, a do kit do cargo e a emprestada pela fusao nao devolvem nada. Quem sabe e o servidor -- a compra
+    /// e do livro DELE, e o kit e a fusao sao estado de agora --, entao vai o RESULTADO da pergunta que o
+    /// `skill_esquecer` faz (`GameServer.DevolveMarcoAoEsquecer`), e a tela escreve o que ele vai fazer. Vai a
+    /// lista das que NAO devolvem porque ela e a curta: quase tudo num livro foi comprado.
+    /// ==========================================================================================================
     ///
     /// ============================ OS VERBS ATIVOS VIAJAM PELO MESMO MOTIVO ============================
     /// O cliente montava os botoes de tecnica so do CATALOGO (`Skill.Verbos` das aprendidas). Os verbs
@@ -2162,7 +2429,8 @@ public static class Protocol
     /// dela. Sem esta cauda, 16 golpes do lote G10 e 13 do G7 tinham corpo, porta e NENHUM botao.
     /// ================================================================================================
     /// </summary>
-    public static void PorEstadoDeSkills(NetDataWriter w, SkillBook livro, IReadOnlyList<string> verbos)
+    public static void PorEstadoDeSkills(NetDataWriter w, SkillBook livro, IReadOnlyList<string> verbos,
+                                         IReadOnlyList<string> semReembolso)
     {
         w.Put((ushort)livro.Destravadas.Count);
         foreach (string p in livro.Destravadas) w.Put(p);
@@ -2183,10 +2451,24 @@ public static class Protocol
 
         w.Put((ushort)Math.Min(verbos.Count, ushort.MaxValue));
         foreach (string v in verbos) w.Put(v);
+
+        w.Put((ushort)Math.Min(semReembolso.Count, ushort.MaxValue));
+        foreach (string p in semReembolso) w.Put(p);
     }
 
+    /// <summary>
+    /// A REVISAO DO LAYOUT DA CAUDA DO `S2C.Skills`. **NAO VIAJA NO FIO**: existe pra a impressao digital do
+    /// protocolo (`FioDaVersao.DigitalDoProtocolo`, que le toda `const` desta pasta) mudar junto com a cauda. Campo
+    /// escrito a mao dentro de um pacote ela nao enxerga, e sem isto um jogo de outro build entraria e leria a
+    /// cauda torta -- alem do fim do pacote, no caso do campo novo. QUEM MEXER NO LAYOUT DE
+    /// <see cref="PorEstadoDeSkills"/> SOBE ESTE NUMERO, e a porta recusa o desencontrado ("mesma versao, builds
+    /// diferentes"). 2 = a lista das que nao devolvem marco (2026-10-11).
+    /// </summary>
+    public const int RevisaoDaCaudaDeSkills = 2;
+
     /// <summary>O espelho de <see cref="PorEstadoDeSkills"/> -- o cliente e a bancada leem por aqui.</summary>
-    public static (List<string> Destravadas, List<EstadoDeArvore> Arvores, List<string> Verbos) LerEstadoDeSkills(NetDataReader r)
+    public static (List<string> Destravadas, List<EstadoDeArvore> Arvores, List<string> Verbos, List<string> SemReembolso)
+        LerEstadoDeSkills(NetDataReader r)
     {
         int nd = r.GetUShort();
         var destravadas = new List<string>(nd);
@@ -2214,7 +2496,11 @@ public static class Protocol
         int nv = r.GetUShort();
         var verbos = new List<string>(nv);
         for (int i = 0; i < nv; i++) verbos.Add(r.GetString(64));
-        return (destravadas, arvores, verbos);
+
+        int ns = r.GetUShort();
+        var semReembolso = new List<string>(ns);
+        for (int i = 0; i < ns; i++) semReembolso.Add(r.GetString(96));
+        return (destravadas, arvores, verbos, semReembolso);
     }
 }
 
@@ -2769,6 +3055,45 @@ public struct EntityState
 
     private const byte BitKaioken = 0x10;
 
+    /// <summary>
+    /// ESTE CORPO ESTA REUNINDO ENERGIA -- o ESTADO da tecla C (`ServerPlayer.Carregando`), no segundo dos 4
+    /// bits de cima do terceiro byte.
+    ///
+    /// ============================ NAO E O `Carregando`, E A DIFERENCA TEM CASO REAL ============================
+    /// Aquele e o VISUAL: a aura, que so acende em quem tem controle de ki (`canPower`) e apaga enquanto o
+    /// corpo anda. Este e o estado -- o mesmo campo que liga o zumbido de quem carrega (`MandarEfeito(pl,
+    /// "carregando", ...)`). O zumbido dos OUTROS era ligado no bit da aura, e por isso quem so tinha Ki
+    /// Unlocked (todo personagem novo) se ouvia carregando e era mudo pra todo mundo em volta: o item 5a do
+    /// playtest de 2026-10-10. No original o laco do `aurapowered.wav` segue o `poweruprunning` de QUALQUER
+    /// mob a vista (`Sound.dm:72-73`), e o `poweruprunning` fica fora do gate do `canPower`
+    /// (`Meditate.dm:193`).
+    ///
+    /// E POR QUE UM BIT, se a <see cref="Ocupacao"/> ja tem um `ReunindoKi` que sai do mesmo campo: aquela e
+    /// uma lista de PRIORIDADE (nocaute, embate, cinematica e canal de ki vencem), feita pra dizer o que barra
+    /// o passo. O zumbido de quem carrega NAO para numa cinematica; ligado na ocupacao, o dos outros pararia.
+    /// ==========================================================================================================
+    /// </summary>
+    public bool Reunindo;
+
+    private const byte BitReunindo = 0x20;
+
+    /// <summary>
+    /// O CHAO TREME EM VOLTA DESTE CORPO: ele segura o C com o Ki acima de 120% -- o terceiro dos 4 bits de
+    /// cima. Quem decide e o servidor (`CargaDeKi.TremeOChao`; o Ki alheio nao viaja), e cada cliente sacode a
+    /// PROPRIA camera pela distancia ate este corpo (`CargaDeKi.PesoDoTremor`). Vale pro corpo de quem carrega
+    /// tambem: e o unico caminho por onde ele sente o proprio tremor.
+    ///
+    /// ESTADO E NAO EVENTO, pelo motivo do <see cref="Kaioken"/>: quem chega no meio ja sente, e o tremor para
+    /// pra todo mundo no snapshot seguinte ao de ele soltar a tecla.
+    ///
+    /// SOBRA UM BIT NESTE BYTE (0x80), e ele e o ultimo do snapshot: o proximo estado de mundo que precisar
+    /// viajar deve gasta-lo como PORTA de um quarto byte (pago so por quem o usa, como a altitude), e nao como
+    /// mais um estado.
+    /// </summary>
+    public bool CargaAlta;
+
+    private const byte BitCargaAlta = 0x40;
+
     // =====================================================================
     // O CANAL DE KI -- um byte OPCIONAL, e so pra quem esta com um raio na mao
     // =====================================================================
@@ -2842,7 +3167,8 @@ public struct EntityState
                    | (NaveGrande ? BitNaveGrande : 0)));
         // O TERCEIRO BYTE: o que este corpo esta FAZENDO. Ver `Ocupacao` -- ele e o unico do pacote
         // que nao e opcional porque nao sobrou bit nenhum pra servir de porta.
-        w.Put((byte)(((byte)Ocupacao & MascaraDaOcupacao) | (Kaioken ? BitKaioken : 0)));
+        w.Put((byte)(((byte)Ocupacao & MascaraDaOcupacao) | (Kaioken ? BitKaioken : 0)
+                   | (Reunindo ? BitReunindo : 0) | (CargaAlta ? BitCargaAlta : 0)));
         if (Voando) w.Put(Jandirus.Core.World.Voo.ParaByte(Altitude));
         // O BYTE DO CANAL, e so pra quem esta canalizando -- ver `Canal`. A ORDEM importa e e a
         // mesma na leitura: altitude primeiro (ela e a mais antiga), canal depois.
@@ -2872,6 +3198,8 @@ public struct EntityState
         byte terceiro = r.GetByte();
         e.Ocupacao = Jandirus.Core.World.CorpoOcupado.DeByte((byte)(terceiro & MascaraDaOcupacao));
         e.Kaioken = (terceiro & BitKaioken) != 0;
+        e.Reunindo = (terceiro & BitReunindo) != 0;
+        e.CargaAlta = (terceiro & BitCargaAlta) != 0;
         if (e.Voando) e.Altitude = Jandirus.Core.World.Voo.DeByte(r.GetByte());
         if (e.Pose == Protocol.Pose.Canalizando) e.Canal = r.GetByte();
         return e;

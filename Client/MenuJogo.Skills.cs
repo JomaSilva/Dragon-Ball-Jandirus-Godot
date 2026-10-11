@@ -258,8 +258,13 @@ public partial class MenuJogo
 			// a raca chega na ficha lenta e e ela que diz quais arvores existem; a classe idem
 			("ficha", $"{_atributos.Raca}|{c?.Sheet.Class}"),
 		};
-		if (aba == "Learning")
-			pecas.Add(("verbos", string.Join(',', Verbos.Da(Verbos.Aprendizado).Select(v => v.Nome + (v.PodeAgora ? '+' : '-')))));
+		// OS VERBS QUE A ABA DESENHA, com o estado de cada botao. A aba Skills nao tinha esta peca, e nao
+		// sentia falta porque a lista dela so mudava junto das aprendidas. Com o requisito (`Verbos.Visivel`)
+		// a lista muda por outros caminhos -- o Majin que compra Buu Absorb, o androide que ganha coletores,
+		// a posse que chega no pacote dos fatos --, e sem assinar os NOMES o botao novo so nasceria quando
+		// outra coisa remontasse a pagina.
+		string categoria = aba == "Learning" ? Verbos.Aprendizado : Verbos.Skills;
+		pecas.Add(("verbos", string.Join(',', Verbos.Da(categoria).Select(v => v.Nome + (v.PodeAgora ? '+' : '-')))));
 		return pecas;
 	}
 
@@ -1021,6 +1026,12 @@ public partial class MenuJogo
 	}
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagskills`): o botao de esquecer volta a prometer "reembolsa N" pra toda
+	/// skill, comprada ou nao. Lido pela propria linha que escreve o botao. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool EsquecerPrometeSempreDeTeste;
+
+	/// <summary>
 	/// A FICHA DA SKILL: nome, descricao, efeitos, pre-requisitos nomeados, custo, e o botao certo.
 	///
 	/// POR QUE UM PASSO A MAIS: a compra e IRREVERSIVEL na pratica (o esquecimento devolve os marcos,
@@ -1182,7 +1193,16 @@ public partial class MenuJogo
 				// irreversable!"*. O botao troca de texto em vez de abrir outra caixa -- a confirmacao
 				// mora onde o dedo ja esta, e um "tem certeza?" que aparece embaixo do cursor e um
 				// "tem certeza?" que se clica sem ler. E o molde da `TelaDeTecnicas`.
-				var esquecer = new Button { Text = $"Esquecer  ·  reembolsa {custo}", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+				//
+				// O BOTAO SO PROMETE O QUE O SERVIDOR PAGA: so a skill COMPRADA com marcos devolve marco, e quem
+				// sabe quais sao e ele (`GameClient.SkillsSemReembolso`, a cauda do `S2C.Skills`). A herdada, a
+				// dada por admin, a ensinada, a do cargo e a da fusao saiam daqui com "reembolsa N" escrito.
+				bool devolve = EsquecerPrometeSempreDeTeste || !cli.SkillsSemReembolso.Contains(caminho, StringComparer.OrdinalIgnoreCase);
+				var esquecer = new Button
+				{
+					Text = devolve ? $"Esquecer  ·  reembolsa {custo}" : "Esquecer  ·  não devolve marco",
+					SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+				};
 				bool armado = false;
 				esquecer.Pressed += () =>
 				{

@@ -178,7 +178,6 @@ public partial class GameServer
 		("Icer",         []),
 		("BioAndroid",   []),
 		("Saibaman",     []),
-		("Dog",          []),
 		("SpiritDoll",   []),
 
 		// --- povos CIVIS sem arte propria no jogo: a camisa/regata do DM ---

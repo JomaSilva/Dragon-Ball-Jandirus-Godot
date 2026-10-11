@@ -116,6 +116,7 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--server") >= 0)
 		{
 			GD.Print("[boot] modo servidor: sem interface");
+			if (DecidirSeEDedicadoDeProducao(OS.GetCmdlineArgs())) AddChild(new VigiaDoConsole { Name = "VigiaDoConsole" });   // o dedicado de producao GRAVA ao fechar (o X e o console) -- ver Boot.Dedicado.cs
 			return;
 		}
 
@@ -131,6 +132,16 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagflick") >= 0)
 		{
 			AddChild(new RoboDoFlick { Name = "RoboDoFlick" });
+			return;
+		}
+
+		// A COR DO RASTRO, DA MIRAGEM E DO RABO: a copia que a corrida e o Zanzoken largam tem que sair na
+		// cor que o corpo TEM, e nao na da folha. Mora aqui em cima com as bancadas sem mundo -- ela so
+		// precisa do catalogo, das folhas e do `CharacterVisual` --, mas PRECISA de janela: o que ela mede e
+		// pixel. Ver `RoboDaCorDoRastro`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcorrastro") >= 0)
+		{
+			AddChild(new RoboDaCorDoRastro { Name = "RoboDaCorDoRastro" });
 			return;
 		}
 
@@ -273,6 +284,15 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvoz") >= 0)
 		{
 			AddChild(new RoboDeVoz { Name = "RoboDeVoz" });
+			return;
+		}
+
+		// O RADIO DO SCOUTER, no lado que se OUVE: o ouvido esquerdo e o efeito (banda, saturacao, chiado,
+		// estalos) medidos em amostras, a tecla e a regra das duas teclas. Irma da de cima e sem mundo pelo
+		// mesmo motivo. O corte e do servidor (`--radioteste`) e o fio e da `--radiovivo`. Ver RoboDeRadio.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagradio") >= 0)
+		{
+			AddChild(new RoboDeRadio { Name = "RoboDeRadio" });
 			return;
 		}
 
@@ -510,29 +530,9 @@ public partial class Boot : Node2D
 				_status.Text = $"recusado: {motivo}";
 			};
 
-			cli.Caiu += motivo =>
-			{
-				// ============================ A COBERTURA TAMBEM TEM QUE CAIR NA QUEDA ============================
-				// Irma da linha do `Rejected` acima e pela mesma razao, com uma diferenca que e justamente
-				// a pior: ali o servidor RESPONDEU que nao vai haver entrada; aqui ele simplesmente sumiu.
-				// A espera da cobertura nao tem fim proprio -- ela so acaba quando um quadro com o mundo e
-				// desenhado --, entao sem esta linha o jogador ficava trancado em "carregando...", sem ver
-				// o mundo, sem ver a lista e sem ver erro nenhum. Preso numa tela de carregamento e pior
-				// que os 1-2 s de tela vazia que a cobertura veio consertar.
-				//
-				// SO SE A COBERTURA ESTIVER NO AR, e isso e deliberado. Uma queda com o jogador ja DENTRO
-				// do mundo e outro assunto (hoje o mundo congela no lugar, e mexer nisso e outra tarefa);
-				// esta linha resolve exatamente o caso em que a tela de carregamento vira prisao.
-				//
-				// A ORDEM IMPORTA: `Soltar` antes de `VoltarAoLogin`. O `Soltar` espera um quadro
-				// desenhado antes de esconder, entao o lobby remontado aparece POR BAIXO da cobertura e
-				// so depois ela sai -- nao ha um quadro de nada no meio, que e a doenca original.
-				// ==================================================================================
-				if (_carga is not { NoAr: true }) return;
-				_carga.Soltar();
-				VoltarAoLogin();
-				_status.Text = $"a conexao caiu: {motivo}";
-			};
+			// A QUEDA DE CONEXAO NAO TEM ASSINANTE AQUI: o `_Process` do `Boot` pergunta ao cliente, a cada
+			// quadro, se ha uma queda pendente -- na tela de login, sob a tela de carregamento, na selecao ou
+			// dentro do mundo. Ver `Boot.Queda.cs`.
 		}
 
 		// `--lobbyteste <s>`: o robo fica <s> segundos no lobby antes de discar -- o login de GENTE. O `--host`
@@ -584,6 +584,10 @@ public partial class Boot : Node2D
 		// Nascer no lugar do lobby seria medir um lobby que nao e o do jogador. Ver RoboDeCarga.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcarga") >= 0)
 			AddChild(new RoboDeCarga { Name = "RoboDeCarga" });
+
+		// A ABERTURA DO JOGO: o titulo cai na tela como no trailer, sobe pro alto e o menu aparece -- so numa partida
+		// aberta por GENTE. Por ultimo, porque a decisao olha os robos que nasceram aqui em cima. Ver `Boot.Abertura.cs`.
+		AbrirComOTitulo();
 	}
 
 	/// <summary>
@@ -637,9 +641,12 @@ public partial class Boot : Node2D
 			MouseFilter = Control.MouseFilterEnum.Ignore,
 		};
 		camada.AddChild(fundo);
+		MostrarAVersao(camada);   // o selo "v0.1.0" na quina de baixo (por baixo do formulario) -- ver Boot.Versao.cs
 
+		// O TITULO DO JOGO FICA NO ALTO DA TELA, E O MENU SE CENTRA NO QUE SOBRA: o `AnchorTop` e a faixa do titulo.
 		var centro = new CenterContainer
 		{
+			AnchorTop = TituloDoJogo.FaixaDoTopo,
 			AnchorRight = 1, AnchorBottom = 1,
 			GrowHorizontal = Control.GrowDirection.Both,
 			GrowVertical = Control.GrowDirection.Both,
@@ -648,27 +655,22 @@ public partial class Boot : Node2D
 		camada.AddChild(centro);
 		_painel = centro;
 
+		// (o titulo some e volta COM o formulario -- quem esconde o `_painel` e a selecao chegando --: ver `TituloDoJogo`)
+		TituloDoJogo tituloDoAlto = _tituloDoMenu = new TituloDoJogo();
+		camada.AddChild(tituloDoAlto);
+		centro.VisibilityChanged += () => tituloDoAlto.Visible = centro.Visible;
+
 		var colunas = new HBoxContainer();
 		colunas.AddThemeConstantOverride("separation", 20);
 		centro.AddChild(colunas);
 
 		// --- formulario ---
+		// (o nome do jogo nao e mais escrito aqui dentro: e o logo do alto da tela)
 		PanelContainer moldura = Tema.Painel1(20);
 		colunas.AddChild(moldura);
 		var caixa = new VBoxContainer { CustomMinimumSize = new Vector2(320, 0) };
 		caixa.AddThemeConstantOverride("separation", 7);
 		moldura.AddChild(caixa);
-
-		var titulo = new Label { Text = "DRAGON BALL", HorizontalAlignment = HorizontalAlignment.Center };
-		titulo.AddThemeFontSizeOverride("font_size", 30);
-		titulo.AddThemeColorOverride("font_color", Tema.Texto);
-		caixa.AddChild(titulo);
-
-		var sub = new Label { Text = "J A N D I R U S", HorizontalAlignment = HorizontalAlignment.Center };
-		sub.AddThemeFontSizeOverride("font_size", 17);
-		sub.AddThemeColorOverride("font_color", Tema.Destaque);
-		caixa.AddChild(sub);
-		caixa.AddChild(new HSeparator());
 
 		caixa.AddChild(Tema.Rotulo("Servidor"));
 		_host = new LineEdit { Text = "127.0.0.1" };
@@ -1019,6 +1021,10 @@ public partial class Boot : Node2D
 		// A TECLA M: meditar normal ou mergulhar na propria mente. Ver `TelaDeMeditacao` -- ela vive
 		// montada e invisivel, e e o `LocalPlayer` que a abre (a atividade e dele).
 		AddChild(new TelaDeMeditacao { Name = "Meditacao" });
+		// A SAIDA DA MEDITACAO PROFUNDA: a faixa do alto da tela, que so aparece dentro de uma mente.
+		AddChild(new SaidaDaMente { Name = "SaidaDaMente" });
+		// A FAIXA DA MINERACAO: logo acima do chat, so enquanto o corpo minera (o verb "Minerar"). Ver `PainelDeMineracao`.
+		AddChild(new PainelDeMineracao { Name = "Mineracao" });
 		// A GRADE DA BANCADA e o fantasma de assentar construcao.
 		AddChild(new TelaDeConstrucao { Name = "Construcao" });
 		// A TECLA B: o modo de construir base (paredes, pisos e portas). Ver `ModoDeConstruir`.
@@ -1027,6 +1033,9 @@ public partial class Boot : Node2D
 		// abre pelo verb "Inventar tecnicas de ki", na aba Learning -- que e onde o
 		// `Create_Attack`/`Customize_Attack` do original moram (`set category = "Learning"`).
 		AddChild(new TelaDeTecnicas { Name = "Tecnicas" });
+		// A JANELA DE DESEJOS: abre sozinha quando o dragao sobe, pra quem o invocou. Vive montada e
+		// invisivel, como o refugio logo abaixo -- ela nasce de um pacote. Ver `MenuDeDesejos`.
+		AddChild(new MenuDeDesejos { Name = "Desejos" });
 		// (a TELA DE CARREGAMENTO nao nasce mais aqui: ela existe desde o lobby -- ver o campo
 		// `_carga`. Cria-la neste ponto era o que a impedia de cobrir a propria entrada no mundo,
 		// e uma segunda instancia roubaria a `TelaDeCarregamento.Instancia` da que ja esta no ar.)
@@ -1080,6 +1089,42 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagadmin") >= 0)
 			AddChild(new RoboDeAdmin { Name = "RoboDeAdmin" });
 
+		// --diagqueda: A QUEDA DE CONEXAO. O servidor derruba o proprio robo pelo fio, e ele confere que
+		// o jogo volta ao menu principal com o aviso -- e entra de novo. UM SO por processo: a reentrada
+		// passa outra vez por aqui. Ver RoboDeQueda.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagqueda") >= 0 && !RoboDeQueda.Vivo)
+			AddChild(new RoboDeQueda { Name = "RoboDeQueda" });
+
+		// --diagtranse: A SAIDA DA MEDITACAO PROFUNDA pelo cliente -- a faixa do alto da tela, o botao e a
+		// tecla de meditar acordando. Ver RoboDoTranse.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtranse") >= 0)
+			AddChild(new RoboDoTranse { Name = "RoboDoTranse" });
+
+		// --diagminerar: O VERB "MINERAR" pelo cliente -- a atividade, a pose, a faixa acima do chat, a
+		// ferramenta mudando a taxa, andar e agir derrubando, a reserva secando. Ver RoboDeMinerar.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagminerar") >= 0)
+			AddChild(new RoboDeMinerar { Name = "RoboDeMinerar" });
+
+		// --diagatividade: TREINAR E MEDITAR CONFERIDOS PELO SERVIDOR, pela ponta do cliente -- decolar e andar
+		// derrubam, pedir no ar e recusado, e o corpo local larga a pose. Ver RoboDeAtividade.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagatividade") >= 0)
+			AddChild(new RoboDeAtividade { Name = "RoboDeAtividade" });
+
+		// --diagvizinho: O QUE QUEM ESTA PERTO OUVE E SENTE -- o zumbido de quem reune Ki, o rasgo de quem
+		// arranca e o chao tremendo acima de 120%, tudo de um corpo ALHEIO e pelo fio. Ver RoboDosVizinhos.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvizinho") >= 0)
+			AddChild(new RoboDosVizinhos { Name = "RoboDosVizinhos" });
+
+		// --diagraiva: A RAIVA POR AMIGO NA TELA E NO SOM -- a cinematica da furia extrema, o tema dela, o Ki do
+		// dono saltando pro teto, e a transformacao cortando o tema (so com `--host`). Ver RoboDaRaiva.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagraiva") >= 0)
+			AddChild(new RoboDaRaiva { Name = "RoboDaRaiva" });
+
+		// --radiovivo: O RADIO DO SCOUTER PELO FIO -- os tres pacotes novos, o menu que troca a frequencia e as
+		// teclas, contra um segundo corpo forjado no servidor (so com `--host`). Ver RoboDoRadioVivo.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--radiovivo") >= 0)
+			AddChild(new RoboDoRadioVivo { Name = "RoboDoRadioVivo" });
+
 		// --diagskills: a bancada da ABA DE SKILLS do menu P (Learning, a ficha, a aba Skills e a
 		// busca). Precisa de JANELA: ela le a foto -- borda de card, icone apagado, cor do painel
 		// da ficha contra a paleta -- e sem foto essas linhas sao PULADAS, nao verdes. Vizinha da
@@ -1094,17 +1139,61 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagabas") >= 0)
 			AddChild(new RoboDasAbas { Name = "RoboDasAbas" });
 
+		// --diagjanelas: O ARRANJO DA TELA -- o menu P arrastado, redimensionado e destacado numa janela do sistema,
+		// o chat e os dois paineis do topo em outros tamanhos, e o que mora em volta acompanhando. Modo host e com
+		// JANELA (as fotos, e a janela do sistema de verdade). Ver RoboDeJanelas.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagjanelas") >= 0)
+			AddChild(new RoboDeJanelas { Name = "RoboDeJanelas" });
+
+		// --diagverbs: QUEM VE QUE VERB, na TELA -- o menu P (World, Other, Learning, Skills), a busca e o menu
+		// da tecla E desenhados pra personagens diferentes, e o radar dourado pelo fio. Modo host, sem janela:
+		// le a arvore de botoes. Anda junto da `--verbsteste` do servidor. Ver RoboDeVerbs.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagverbs") >= 0)
+			AddChild(new RoboDeVerbs { Name = "RoboDeVerbs" });
+
+		// --diaggodki: O KI DIVINO NA TELA -- o aviso ao pousar num mundo de atmosfera divina, a linha e o cartao da
+		// aba World, o medidor andando, o despertar e o botao do desafio nascendo. Modo host, sem janela: le o chat e
+		// a arvore do menu. Anda junto da `--godkiteste` do servidor. Ver RoboDoGodKi.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaggodki") >= 0)
+			AddChild(new RoboDoGodKi { Name = "RoboDoGodKi" });
+
+		// --diagconhecidos: A ABA PEOPLE REDESENHADA (2026-10-10: so convivio e declaracao), andada e
+		// fotografada -- a lista chega pelo fio, o clique na regua declara no servidor, o portao recusa o
+		// pacote forjado. Precisa do modo host (o elenco e plantado no servidor do mesmo processo) e de
+		// JANELA pras fotos. Ver RoboDeConhecidos.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagconhecidos") >= 0)
+			AddChild(new RoboDeConhecidos { Name = "RoboDeConhecidos" });
+
+		// --diagalunos: A ABA ALUNOS / MESTRE (o discipulado na tela), andada e fotografada -- quem guia ve os alunos
+		// e o progresso de cada um no que ensinou; quem e guiado ve o mestre e os colegas; nenhum numero de poder.
+		// Precisa do modo host (o elenco e plantado no servidor do mesmo processo) e de JANELA pras fotos. Anda
+		// junto da `--alunosteste` do servidor. Ver RoboDeAlunos.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagalunos") >= 0)
+			AddChild(new RoboDeAlunos { Name = "RoboDeAlunos" });
+
 		// --diagdegrau: O BOTAO DO VERB CONCEDIDO POR DEGRAU (e por CASA), num cliente que DISCA e sem
 		// janela. Irma da `--diagskills` pelo mesmo motivo dos dois processos: so um cliente que disca mede
 		// o que chega pelo FIO. Ver RoboDoDegrau -- e rode pelo `testar-o-degrau-no-cliente.bat`.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagdegrau") >= 0)
 			AddChild(new RoboDoDegrau { Name = "RoboDoDegrau" });
 
+		// --diagdesejos: A JANELA DE DESEJOS andada inteira -- o dragao sobe e ela abre sozinha, a lista, o
+		// "pra quem?", o confirmar, fechar e reabrir, e o dragao indo embora. Modo host (o palco e montado no
+		// servidor do mesmo processo) e com janela, pelas fotos das etapas. Ver RoboDeDesejos.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagdesejos") >= 0)
+			AddChild(new RoboDeDesejos { Name = "RoboDeDesejos" });
+
 		// --diagnav: bancada da CARTA ESTELAR. Um mapa desenhado nao devolve nada -- esta bancada
 		// mede o que o `_Draw` pinta: quantos planetas o enquadramento cobre, se os gerados entram
 		// ao aproximar, quanto custa a varredura, e se clicar e viajar fazem o que prometem.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagnav") >= 0)
 			AddChild(new RoboDeNav { Name = "RoboDeNav" });
+
+		// --diagmapa: O MAPA DA ABA WORLD E O DISCO DO DRAGON RADAR na tela -- o mundo desenhado num planeta feito
+		// a mao e num gerado de 1000x1000, o marcador, as coordenadas, o custo de quadro, e as bolinhas amarelas
+		// no canto inferior direito. Precisa do modo host e de janela. Ver RoboDoMapa.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmapa") >= 0)
+			AddChild(new RoboDoMapa { Name = "RoboDoMapa" });
 
 		// --diagembarque: a bancada da TECLA E NAS NAVES. Irma da `--diagnav` e o oposto dela: aquela
 		// mede o que SOBROU na aba (a carta), esta mede o que SAIU dela (os oito botoes de nave) e o
@@ -1120,10 +1209,28 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagconstruir") >= 0)
 			AddChild(new RoboDeConstruir { Name = "RoboDeConstruir" });
 
+		// --diagrochas: AS ROCHAS NA TELA -- a de minerio que aparece, barra, acende o [E] e some na coleta, e a
+		// rocha grande de um mundo sorteado, que barra na base e se ordena por ela. Precisa do modo host e do
+		// `--campoteste`; com `--rochagrandeantiga` o desenho da rocha grande volta pro lugar de antes (o
+		// contra-exemplo). Ver RoboDeRochas.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagrochas") >= 0)
+			AddChild(new RoboDeRochas { Name = "RoboDeRochas" });
+
 		// --fotovegeta: as pecas da cidade de Vegeta que saiam cortadas, lidas e fotografadas no jogo. Ver
 		// RoboDeFotoDeVegeta.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--fotovegeta") >= 0)
 			AddChild(new RoboDeFotoDeVegeta { Name = "RoboDeFotoDeVegeta" });
+
+		// --diaganimais: OS ANIMAIS NA TELA -- um de cada especie desenhado com a folha dele, andando, a carcaca
+		// tombada, a tecla E nela e o menu de revistar com a carne. Modo host + `--campoteste`. Ver RoboDeAnimais.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaganimais") >= 0)
+			AddChild(new RoboDeAnimais { Name = "RoboDeAnimais" });
+
+		// --diagbills: O BILLS E O WHIS NA TELA -- o Bills de traje com o Whis ao lado na Terra, a fala do endereco, a
+		// casa na carta estelar, os dois parados no planeta, a tecla E e o menu de cada um, o treino e a Fury. Modo
+		// host, com janela (fotos). Anda junto da `--billsteste` do servidor. Ver RoboDeBills.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagbills") >= 0)
+			AddChild(new RoboDeBills { Name = "RoboDeBills" });
 
 		// --diagmira: A MIRA DO KI NA TELA -- o tiro sai no marcado, o meu boneco vira, o raio comum nao acompanha
 		// e o teleguiado (comprado no botao da mesa) gira atras do alvo. Modo host + `--campoteste`. Ver
@@ -1149,10 +1256,22 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmaquinas") >= 0)
 			AddChild(new RoboDasMaquinas { Name = "RoboDasMaquinas" });
 
+		// --diagdrill: A DRILL NA TELA -- o menu da tecla E com o painel dela (nivel, taxa, estoque andando, a
+		// reserva do planeta e o preco da proxima melhoria), coletar e melhorar com as duas moedas. Modo host +
+		// `--campoteste` + JANELA. Ver RoboDaDrill.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagdrill") >= 0)
+			AddChild(new RoboDaDrill { Name = "RoboDaDrill" });
+
 		// --fotoplanetas: os lugares repintados dos OUTROS planetas pre-feitos (o penhasco da Terra, o mar de
 		// Namek, a costa de Icer...), visitados e fotografados no jogo. Modo host. Ver RoboDeFotoDosPlanetas.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--fotoplanetas") >= 0)
 			AddChild(new RoboDeFotoDosPlanetas { Name = "RoboDeFotoDosPlanetas" });
+
+		// --fotoprocedural: UM MUNDO SORTEADO NA TELA -- a montanha (que ja foi pintada com a janela das casas: os
+		// "blocos de madeira"), a macieira da chegada e a maca colhida pelo fio. `--montanhadejanela` tira a foto
+		// do "antes". Modo host + JANELA. Ver RoboDeFotoDoProcedural.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--fotoprocedural") >= 0)
+			AddChild(new RoboDeFotoDoProcedural { Name = "RoboDeFotoDoProcedural" });
 
 		// --diaginstalar: o CICLO fabricar -> mochila -> instalar, andado inteiro. Vizinha da
 		// `--diagembarque` porque as duas medem um GESTO e nao um numero, e porque as duas passam
@@ -1407,6 +1526,12 @@ public partial class Boot : Node2D
 		// duplicar, e a reaplicacao por pedaco. Ver RoboDeCenario.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcenario") >= 0)
 			AddChild(new RoboDeCenario { Name = "RoboDeCenario" });
+
+		// --diaglenha: a ARVORE QUE CAI A SOCO E REBROTA, do lado do cliente -- o soco de verdade, o tile da que
+		// volta (e a foto da copa, com janela), a colisao nas duas pontas, a ida e volta de planeta e a que nasce
+		// noutro chao. Precisa do modo host e do `--campoteste`. Ver RoboDeLenha.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaglenha") >= 0)
+			AddChild(new RoboDeLenha { Name = "RoboDeLenha" });
 
 		// --diagmobilia: bancada do MOVEL SOBRE A CADEIRA. Vem com `--mobiliateste` no servidor (o corpo
 		// nasce abaixo do banco do castelo de Vegeta) e, com janela, tira a foto. Ver RoboDeMobilia.

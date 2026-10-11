@@ -52,6 +52,10 @@ namespace Jandirus.Server;
 ///  11. **OS GATES TEM OS DOIS SENTIDOS?** Vilao, os 10 marcos, o Ki, o BP contra a gravidade e os
 ///      30 s -- cada um visto recusando E deixando passar. Aqui o verbo entra por `UsarTecnica`, que
 ///      e a porta do cliente: e por ela que o custo de 10 marcos vira consequencia.
+///  16. **O ADMIN RESTAURA PELA LISTA, DE OUTRO PLANETA?** O `admin_restaurar_planeta` com a CHAVE do
+///      planeta (o cartao "Planetas destruidos" da aba Admin): pre-feito e gerado, o que ainda esta
+///      morrendo recusado, a forma antiga (sem argumento) intacta. Mora em
+///      `GameServer.RestaurarPelaListaTeste.cs`.
 /// ================================================================================
 ///
 ///     Godot --headless -- --server --planetateste
@@ -156,6 +160,7 @@ public partial class GameServer
 			MedirOPlanetaVazio(Checa, pl);
 			MedirOProcedural(Checa, pl);
 			MedirOsConsumidores(Checa);
+			MedirARestauracaoPelaLista(Checa, pl);
 			MedirOVerb(Checa, pl);
 			MedirOsGates(Checa, pl);
 			MedirODerrubarComKi(Checa, pl);

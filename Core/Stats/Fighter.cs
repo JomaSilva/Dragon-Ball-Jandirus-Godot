@@ -488,8 +488,8 @@ public sealed partial class Fighter
 	/// ============================ ELE ESTAVA DECLARADO E ORFAO ============================
 	/// O campo nasceu no porte da ficha e NINGUEM o lia -- nem o `PowerLevel()`, nem o servidor.
 	/// Um multiplicador que nunca entra na conta e indistinguivel de multiplicador nenhum: o
-	/// Unbound Ego "existia" e valia exatamente 1x. Agora o `PowerLevel()` o soma na base, junto
-	/// do Mistico, e quem o escreve e o `TickDoUnboundEgo`.
+	/// Unbound Ego "existia" e valia exatamente 1x. Agora o `PowerLevel()` o multiplica dentro do
+	/// `formBuff` -- e so la, como no DM (`Stats/BP/base.dm:82`) --, e quem o escreve e o `TickDoUnboundEgo`.
 	/// ==================================================================================
 	///
 	/// Campo PROPRIO e nao um dos `*Pcnt` porque ele e reescrito por INTEIRO a cada tique (o corpo
@@ -824,6 +824,7 @@ public sealed partial class Fighter
 	public double stored_time;             // kanassa-jin.dm:50 -- a moeda do tempo guardado (1 por mes)
 	public double stuckage;                // kanassa-jin.dm:60 -- a idade em que o Time Store prendeu o corpo (0 = ainda nao)
 	public double unlockPotential;         // UnlockPotential.dm:5 -- 1 = ja despertou, UMA vez por vida
+	public double sacredwater;             // EarthRanks.dm:181 -- 1 = ja bebeu a Agua Ultra Divina do Mirante e aguentou (ver `Tech.AguaSagrada`)
 	public double expandlevel;             // Body Expansion.dm:9 -- o grau atual da expansao
 	public double observingnow;            // observe.dm:7/12 -- projetando a mente em alguem
 

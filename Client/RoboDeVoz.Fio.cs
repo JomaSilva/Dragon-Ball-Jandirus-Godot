@@ -159,13 +159,13 @@ public partial class RoboDeVoz
 	/// e a bancada nao precisa confiar no numero que a fila diz ter tocado -- ela ouve. Os dois tons
 	/// fecham ciclo inteiro em 20 ms (10 e 20 ciclos), entao nao ha degrau na emenda.
 	/// </summary>
-	private static List<Pacote> CodificarOFio()
+	private static List<Pacote> CodificarOFio(int quadros = QuadrosNoFio)
 	{
 		IOpusEncoder enc = Microfone.CriarCodificador();
 		var buf = new byte[VozLocal.MaxBytesDeQuadro];
 		var pcm = new short[VozLocal.AmostrasPorQuadro];
 		var pacotes = new List<Pacote>();
-		for (int k = 0; k < QuadrosNoFio; k++)
+		for (int k = 0; k < quadros; k++)
 		{
 			Array.Clear(pcm);
 			Somar(pcm, k % 2 == 0 ? HzPar : HzImpar, 0.4f);
@@ -173,6 +173,104 @@ public partial class RoboDeVoz
 			pacotes.Add(new Pacote { Seq = (ushort)k, Dados = buf[..n] });
 		}
 		return pacotes;
+	}
+
+	// =====================================================================
+	// 9. O ACEITE DO PLAYTEST: 100 ms E 2% DE PERDA, NAS DUAS PERNAS
+	// =====================================================================
+	/// <summary>
+	/// *"Aceite: conversa continua entre 2+ jogadores com ~100 ms de latencia e 2% de perda simulados, sem
+	/// cortes perceptiveis."* -- o item 10 do playtest de 2026-10-10, e o cenario que nenhuma das familias
+	/// de cima tinha: a perda na SUBIDA. Todas elas perdem pacote entre o servidor e quem ouve (a
+	/// sequencia chega com buraco); nenhuma perdia entre o falante e o servidor.
+	///
+	/// O CAMINHO INTEIRO, com as pecas de producao nas tres pontas: o codificador do microfone, o
+	/// <see cref="VozLocal.NumeradorDoRelay"/> (o que o servidor carimba em cada quadro que repassa) e a
+	/// <see cref="FilaDeJitter"/> de quem ouve, contra o gerador simulado. A rede e a do roteiro abaixo --
+	/// o LiteNetLib tem `SimulatePacketLoss`/`SimulateLatency`, mas os dois sao compilados FORA do binario
+	/// de release que o jogo carrega, entao a simulacao mora aqui, com semente fixa:
+	///
+	///   * 30 s de fala continua (1500 quadros);
+	///   * SUBIDA: 50 ms + 0 a 20 de jitter, 2% de perda. O servidor so le o fio no tique dele (33,3 ms), e
+	///     isso tambem entra: os quadros saem dele aos pares;
+	///   * DESCIDA: 50 ms + 0 a 20 de jitter, 2% de perda.
+	///
+	/// A MESMA REDE RODA DUAS VEZES -- com o relay de hoje e com o de antes (`RenumeraDeTeste`), que e a
+	/// injecao. O que se compara e o que sai no alto-falante de quem ouve.
+	/// </summary>
+	private void OAceiteDoPlaytest()
+	{
+		GD.Print("[diagvoz] --- 9. o aceite do playtest: 100 ms de latencia e 2% de perda em CADA perna, pelo relay ---");
+		const int Quadros = 1500;
+		const double Perna = 50, Jitter = 20, Perda = 0.02, TiqueDoServidor = 1000.0 / 30;
+		List<Pacote> fio = CodificarOFio(Quadros);
+
+		(Rodada R, int PerdidosNaSubida, int PerdidosNaDescida) Rodar(bool renumera)
+		{
+			VozLocal.NumeradorDoRelay.RenumeraDeTeste = renumera;
+			try
+			{
+				var rng = new Random(2026);
+				var relay = new VozLocal.NumeradorDoRelay();
+				int subida = 0, descida = 0;
+
+				var noServidor = new List<(double Quando, Pacote P)>();
+				foreach (Pacote p in fio)
+				{
+					double chega = 100 + 20.0 * p.Seq + Perna + rng.NextDouble() * Jitter;
+					if (rng.NextDouble() < Perda) { subida++; continue; }
+					noServidor.Add((chega, p));
+				}
+				noServidor.Sort((a, b) => a.Quando.CompareTo(b.Quando));
+
+				var chegadas = new List<Pacote>();
+				int ordem = 0;
+				foreach ((double quando, Pacote p) in noServidor)
+				{
+					double tique = Math.Ceiling(quando / TiqueDoServidor) * TiqueDoServidor;
+					ushort seq = relay.Carimbar(p.Seq);
+					double chega = tique + Perna + rng.NextDouble() * Jitter;
+					if (rng.NextDouble() < Perda) { descida++; continue; }
+					chegadas.Add(new Pacote { Seq = seq, Dados = p.Dados, ChegaMs = chega, Ordem = ordem++ });
+				}
+				chegadas.Sort((a, b) => a.ChegaMs != b.ChegaMs ? a.ChegaMs.CompareTo(b.ChegaMs) : a.Ordem.CompareTo(b.Ordem));
+				return (RodarOFio(chegadas), subida, descida);
+			}
+			finally { VozLocal.NumeradorDoRelay.RenumeraDeTeste = false; }
+		}
+
+		string Linha(string nome, Rodada r, out int esticados, out int fec, out double latencia)
+		{
+			FilaDeJitter f = r.Fila;
+			int normais = r.Tocados.Count(q => q.Tipo == FilaDeJitter.Tipo.Normal);
+			fec = r.Tocados.Count(q => q.Tipo == FilaDeJitter.Tipo.Fec);
+			int plc = r.Tocados.Count(q => q.Tipo == FilaDeJitter.Tipo.Plc);
+			esticados = r.Tocados.Count(q => q.Tipo == FilaDeJitter.Tipo.Esticado);
+			latencia = r.Tocados.Where(q => q.Tipo == FilaDeJitter.Tipo.Normal).Select(q => q.LatenciaMs).DefaultIfEmpty(0).Average();
+			return $"[diagvoz]   ...  {nome}: {normais} normais + {fec} FEC + {plc} PLC + {esticados} ESTICADOS | soltos {f.Soltos} | atrasados {f.Atrasados} | "
+				 + $"zeros {r.Gerador.Zeros} | alvo final {f.Alvo} quadros | espera media no ouvinte {latencia:0} ms";
+		}
+
+		(Rodada hoje, int subida, int descida) = Rodar(renumera: false);
+		(Rodada antes, _, _) = Rodar(renumera: true);
+		GD.Print($"[diagvoz]   ...  rede: {Quadros} quadros (30 s), {subida} perdidos na SUBIDA e {descida} na DESCIDA ({(subida + descida) * 100.0 / Quadros:0.0}% no total), a mesma nas duas rodadas");
+		GD.Print(Linha("relay de HOJE (a sequencia do falante atravessa)", hoje, out int esticadosHoje, out int fecHoje, out double latenciaHoje));
+		GD.Print(Linha("relay de ANTES (o servidor renumera)           ", antes, out int esticadosAntes, out int fecAntes, out double latenciaAntes));
+
+		Conferir(hoje.Gerador.Zeros == 0,
+			"(aceite) 30 s de fala com 100 ms e 2%+2% de perda: NENHUM zero no alto-falante com fala no ar", $"{hoje.Gerador.Zeros} amostras");
+		Conferir(fecHoje >= (subida + descida) * 0.7,
+			"(aceite) a perda das DUAS pernas e remendada pela copia FEC do quadro seguinte (o remendo que quase nao se ouve)",
+			$"{fecHoje} FEC pra {subida + descida} perdas");
+		Conferir(esticadosHoje <= subida / 3,
+			"(aceite) a perda da subida NAO vira engasgo: a fala quase nao e esticada", $"{esticadosHoje} esticados pra {subida} perdas na subida");
+		Conferir(hoje.Fila.Alvo <= FilaDeJitter.AlvoInicial + 3,
+			"(aceite) e o alvo da fila fica perto do de partida -- a conversa nao ganha atraso", $"alvo final {hoje.Fila.Alvo} quadros");
+
+		Injetar("com o servidor RENUMERANDO (o relay de antes) a perda da subida some da sequencia: a fila ESTICA em vez de remendar",
+			esticadosAntes >= subida / 2 && esticadosAntes > esticadosHoje * 3 && fecAntes < fecHoje,
+			$"{esticadosAntes} esticados e {fecAntes} FEC, contra {esticadosHoje} e {fecHoje} de hoje; alvo final {antes.Fila.Alvo} contra {hoje.Fila.Alvo}; "
+		  + $"espera {latenciaAntes:0} ms contra {latenciaHoje:0} ms");
 	}
 
 	/// <summary>

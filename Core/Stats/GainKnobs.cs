@@ -37,6 +37,22 @@ public static class GainKnobs
 	/// </summary>
 	public static double GlobalKiExpRate = 1;
 
+	/// <summary>
+	/// O PESO DA MEDITACAO NO EXP DAS SKILLS DE KI (a arvore da Mente). **1 = o original, sem tirar nem por.**
+	///
+	/// O item 4 do playtest de 2026-10-10: *"meditar deveria fazer Ki Unlocked e outras skills de ki subirem
+	/// mais rapido"*. O bonus EXISTE e e aplicado -- e do DM e esta nos dados (`niveis.json`): Ki Unlocked rende
+	/// 2 por tique meditando contra 1 parado (`Mind.dm:126-131`), as tres basicas rendem 2 nos primeiros niveis
+	/// (`:189-192`, `:242-247`, `:301-305`), e toda skill da Mente junta exp adiantado enquanto o dono medita
+	/// (`:41-48`). O que o jogador nao via era o PROGRESSO (o nivel e o exp nao aparecem em lugar nenhum) e o
+	/// tamanho da curva do recem-nascido (`KiSkillGains`: com Ki maximo ate 300 o ganho e multiplicado por
+	/// Ki maximo / 3000 -- trinta vezes mais lento com 100 de Ki, como no original).
+	///
+	/// Este numero multiplica o ganho de curva de uma skill da Mente ENQUANTO O DONO MEDITA, por cima do que o
+	/// dado ja diz. Deixado em 1 nada muda; e o botao que o dono pediu pra poder afinar.
+	/// </summary>
+	public static double MeditacaoNasSkillsDeKi = 1;
+
 	/// <summary>Quanto MAIS lento e o ganho por gravidade. Ganho por tick = gravidade/isto.</summary>
 	public static double GravGainDiv = 1500;
 

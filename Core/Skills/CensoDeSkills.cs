@@ -18,7 +18,7 @@ namespace Jandirus.Core.Skills;
 ///
 ///       1. PORTADO      -- <see cref="Tecnicas"/> conhece o id e o modo nao e `NaoPortada`;
 ///       2. OUTRO CANAL  -- o port atende por outro caminho (o `Fly` do DM e a tecla de voo
-///                          daqui; o `Create_Blast` e a mesa de tecnicas customizadas). A tabela
+///                          daqui; o `Kaioken_Settings` sao os sete botoes do Kaio-ken). A tabela
 ///                          guarda QUAL canal, e a bancada confere que o canal existe de verdade;
 ///       3. ESPERANDO    -- ainda nao ha efeito, e a tabela diz de que SISTEMA ele depende.
 ///
@@ -100,12 +100,10 @@ public static class CensoDeSkills
 		// pra uma string que a bancada nao consegue conferir.
 		["Kaioken_Settings"] = "Kaioken",
 
-		// A mesa de tecnicas customizadas (`GameServer.Customizadas.cs`) e o `Create_Blast` /
-		// `Create_Beam` do DM, com o mesmo orcamento de pontos e mais tela.
-		["Create_Blast"] = "ca_criar",
-		["Create_Beam"] = "ca_criar",
-		["Remove_Blast"] = "ca_esquecer",
-		["Remove_Beam"] = "ca_esquecer",
+		// (AQUI MORAVAM `Create_Blast`/`Create_Beam`/`Remove_Blast`/`Remove_Beam` -> `ca_criar`/`ca_esquecer`. Os quatro
+		// verbs so eram concedidos por duas skills de arquivos que o `.dme` nao inclui; elas sairam do `skills.json` em
+		// 2026-10-11 (`SkillsAposentadas`) e as linhas ficaram sem verb pra atender. A mesa de tecnicas customizadas e o
+		// porte do `customattacks.dm`, que nao passa por skill.)
 
 		// Os tres verbs de cargo que ja tem corpo, so que com outro nome (camada das portas).
 		["Appoint_Elder"] = "cargo_nomear",

@@ -250,7 +250,9 @@ public static class Desejos
 
 		new() { Id = "juventude", Dm = "Youth", Linha = "WishTable.dm:296-305",
 				Nome = "Juventude", Patamar = 3,
-				Desc = "Você volta aos 25 anos. Com o argumento 'extremo', aos 10 -- e 10 custa 9% do seu poder." },
+				// O "argumento 'extremo'" saiu do texto do jogador junto com a caixa de digitar: os 10 anos sao
+				// uma das respostas da segunda etapa da janela (`GameServer.MenuDoDragao.cs`).
+				Desc = "O corpo volta aos 25 anos, o auge. Só pra si mesmo dá pra escolher 10 -- e 10 custa 9% do poder." },
 
 		new() { Id = "poder", Dm = "Power", Linha = "WishTable.dm:205-213",
 				Nome = "Poder", Patamar = 3,
@@ -263,7 +265,8 @@ public static class Desejos
 		// -------------------------------------------------- TrueWishPower >= 4
 		new() { Id = "juventude_alheia", Dm = "Make Somebody Else Young", Linha = "WishTable.dm:275-295",
 				Nome = "Rejuvenescer outro", Patamar = 4, Alvo = AlvoDoDesejo.Vivo,
-				Desc = "Devolve alguém aos 25 anos -- o auge, nunca menos. Ver o porquê em Desejos.IdadeDaJuventudeExtrema." },
+				// (por que nunca menos: ver `IdadeDaJuventudeExtrema`)
+				Desc = "Devolve OUTRA pessoa aos 25 anos -- o auge, nunca menos." },
 
 		new() { Id = "alma", Dm = "Give Soul", Linha = "WishTable.dm:456-472",
 				Nome = "Dar uma alma", Patamar = 4, Alvo = AlvoDoDesejo.Vivo, Portado = false,

@@ -751,7 +751,7 @@ public sealed partial class GameServer
 		// original, os dois adjacentes e virados um pro outro. A briga atravessa o campo e deixa uma
 		// TRILHA de estrago, em vez de uma cratera so.
 		// ===================================================================================
-		ZoneCollision? mapa = _catalogo?.Get(e.A.Zone)?.Mapa;
+		ZoneCollision? mapa = MapaDoSalto(e.A.Zone);   // planeta gerado tambem tem parede: ver `MapaDoSalto`
 
 		// PAREDE MANDA MAIS QUE A TECNICA -- a mesma regra do Zanzoken e da investida do soco. Aqui
 		// vale em dobro: sao ate nove saltos seguidos, e um unico ponto dentro de uma casa fechada
@@ -931,7 +931,11 @@ public sealed partial class GameServer
 	// =====================================================================
 	// ACABAR
 	// =====================================================================
-	private void Terminar(Embate e)
+	/// <param name="semVencedor">
+	/// Um dos dois esta SAINDO DO JOGO (logout, queda, parada do servidor): os dois sao soltos e reaparecem, e a
+	/// cena de fecho nao acontece -- ninguem e recolocado e nao ha golpe de saida. Ver `GameServer.SaidaDoEmbate.cs`.
+	/// </param>
+	private void Terminar(Embate e, bool semVencedor = false)
 	{
 		_emEmbate.Remove(e.A.Id);
 		_emEmbate.Remove(e.B.Id);
@@ -988,12 +992,12 @@ public sealed partial class GameServer
 		Acabou(e.A, venc.Id, perd.Id);
 		Acabou(e.B, venc.Id, perd.Id);
 
-		if (!vivo) return;
+		if (!vivo || semVencedor) return;   // quem SAI DO JOGO desfaz o embate sem cena de fecho -- ver GameServer.SaidaDoEmbate.cs
 
 		// O VENCEDOR NASCE ATRAS DO PERDEDOR. E a imagem que fecha a cena: o outro ainda olhando
 		// pra frente enquanto o golpe vem das costas.
 		Vec2 atras = perd.Pos - MeleeArea.Frente(perd.Facing) * (ZoneCollision.TileSize * 0.9f);
-		ZoneCollision? mapa = _catalogo?.Get(perd.Zone)?.Mapa;
+		ZoneCollision? mapa = MapaDoSalto(perd.Zone);
 		// parede ou beirada do mundo: nasce em cima do perdedor mesmo, que e livre por construcao
 		if (mapa != null && (MoveRules.Occupied(mapa, atras) || mapa.NaBordaEm(atras))) atras = perd.Pos;
 		Recolocar(venc, atras);

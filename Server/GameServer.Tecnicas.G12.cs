@@ -1090,7 +1090,7 @@ public sealed partial class GameServer
 	{
 		if (!PodeAbsorverG12(pl, out string porque)) { Avisar(pl, porque); return; }
 
-		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDeUmTileG4, o => o.Ficha.KO && !o.Ficha.dead && AbsorvivelG12(o));
+		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDeUmTileG4, o => o.Ficha.KO && !o.Ficha.dead && AbsorvivelG12(o) && !CorpoDerivado(o));
 		if (alvo == null)
 		{
 			Avisar(pl, "o alvo precisa estar NOCAUTEADO, vivo, ao seu lado, e nao ter sido absorvido nos ultimos cinco minutos.");
@@ -1122,6 +1122,8 @@ public sealed partial class GameServer
 	{
 		porque = "";
 		if (Caido(pl)) { porque = "nao da, caido."; return false; }
+		// (o reflexo da mente e o visitante dela nao se absorvem: ver `RecusarAbsorcaoNaMente`, `GameServer.Validacoes.cs`)
+		if (!AbsorveCorpoDerivadoDeTeste && NaMente(pl)) { porque = "aqui dentro nada e real: nao ha quem absorver."; return false; }
 		if (_absorvendoAteG12.TryGetValue(pl.Id, out double ate) && _relogioG12 < ate) { porque = "seu corpo ainda esta absorvendo a ultima."; return false; }
 		if (_drenoG12.ContainsKey(pl.Id)) { porque = "voce ja esta drenando alguem."; return false; }
 		return true;
@@ -1143,7 +1145,7 @@ public sealed partial class GameServer
 		_absorvivelEmG12[alvo.Id] = _relogioG12 + 300.0;   // `spawn M.absorbproc()`
 		_mortesPendentesG12.Add((alvo.Id, pl.Id, _relogioG12 + 1.0));   // `spawn(10) M.Death()`
 
-		if (EhJogador(alvo) || alvo.Papel == null)
+		if (EhPessoa(alvo) || (AbsorveCorpoDerivadoDeTeste && alvo.Papel == null))
 		{
 			f.AbsorbBP += GanhoDeAbsorcao(f, m, eff, upscaler, downscaler);   // `Absorption.dm:383-386`
 			double piso = eff * (m.BP + m.AbsorbBP) * (m.Anger / 100);
@@ -1212,7 +1214,7 @@ public sealed partial class GameServer
 		}
 		if (!PodeAbsorverG12(pl, out string porque)) { Avisar(pl, porque); return; }
 
-		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDeUmTileG4, o => o.Ficha.KO && !o.Ficha.dead && AbsorvivelG12(o));
+		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDeUmTileG4, o => o.Ficha.KO && !o.Ficha.dead && AbsorvivelG12(o) && !CorpoDerivado(o));
 		if (alvo == null)
 		{
 			Avisar(pl, "o alvo precisa estar NOCAUTEADO, vivo, ao seu lado, e nao ter sido absorvido nos ultimos cinco minutos.");
@@ -1274,7 +1276,7 @@ public sealed partial class GameServer
 			double sugado = m.Ki * 0.1;
 			f.Ki = Math.Min(f.Ki + sugado, Math.Max(f.MaxKi, f.Ki));
 			m.Ki -= sugado;
-			if (EhJogador(alvo) || alvo.Papel == null)
+			if (EhPessoa(alvo) || (AbsorveCorpoDerivadoDeTeste && alvo.Papel == null))
 				f.AbsorbBP += m.BP / 50 + m.AbsorbBP * m.powerMod * (m.Anger / 100);   // `:51`
 			else
 				f.AbsorbBP += f.BpGainBase() * GainKnobs.BPTick / 250;                   // `:53`
@@ -1595,13 +1597,22 @@ public sealed partial class GameServer
 		RepercutirPoder(dono);
 	}
 
+	/// <summary>
+	/// A ORDEM PRAS COPIAS (`Click()` da copia, `Split Forms.dm:28-68`).
+	///
+	/// AS DUAS RECUSAS VEM ANTES DA ORDEM. Ela era gravada no primeiro laco e so depois vinha "marque um alvo
+	/// primeiro": o dono lia a recusa, e as copias ja estavam em Attack Target -- paradas, esperando, e partiam
+	/// pra cima de quem ele marcasse depois (o alvo e lido a cada tique, `GuiarSplitformG12`). Um pedido
+	/// recusado nao muda nada.
+	/// </summary>
 	private void OrdenarSplitformsG12(ServerPlayer pl, FuncaoDeSplitformG12 funcao)
 	{
-		int n = 0;
-		foreach (SplitformG12 sf in _splitformsG12.Values)
-			if (sf.Master == pl.Id) { sf.Funcao = funcao; n++; }
+		List<SplitformG12> minhas = [.. _splitformsG12.Values.Where(sf => sf.Master == pl.Id)];
+		if (OrdemAntesDaRecusaDeTeste) foreach (SplitformG12 sf in minhas) sf.Funcao = funcao;
+		int n = minhas.Count;
 		if (n == 0) { Avisar(pl, "voce nao tem nenhuma copia de pe."); return; }
 		if (funcao == FuncaoDeSplitformG12.AtacarAlvo && pl.AlvoId == 0) { Avisar(pl, "marque um alvo primeiro (duplo clique)."); return; }
+		foreach (SplitformG12 sf in minhas) sf.Funcao = funcao;
 		Avisar(pl, funcao switch
 		{
 			FuncaoDeSplitformG12.Seguir => $"sua(s) {n} copia(s) passa(m) a seguir voce.",

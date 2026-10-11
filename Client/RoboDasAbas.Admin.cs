@@ -73,7 +73,7 @@ public partial class RoboDasAbas
 		List<PanelContainer> cartoes = Todos(pg).OfType<PanelContainer>()
 			.Where(c => c.IsVisibleInTree() && c.HasMeta("cartao") && c.GetMeta("cartao").AsString() == "secao").ToList();
 		List<string> titulos = cartoes.Select(c => c.GetMeta("titulo").AsString()).ToList();
-		string[] esperados = ["Aviso ao servidor", "Clima deste planeta", "Forçar transformação", "Contas deste servidor", "Sobre o alvo marcado", "ZONA DE PERIGO"];
+		string[] esperados = ["Aviso ao servidor", "Clima deste planeta", "Forçar transformação", "Contas deste servidor", "Planetas destruídos", "Sobre o alvo marcado", "ZONA DE PERIGO"];
 		List<string> semCartao = esperados.Where(e => !titulos.Contains(e)).ToList();
 		Checa("cada secao da aba virou um cartao com titulo", semCartao.Count == 0, string.Join(", ", semCartao));
 		Checa("a ZONA DE PERIGO e o ULTIMO cartao da aba (e preciso rolar ate o fim pra achar o botao)",

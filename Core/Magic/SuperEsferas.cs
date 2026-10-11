@@ -46,7 +46,10 @@ public static class SuperEsferas
 	/// </summary>
 	public const int CelulasNoMinimo = 2;
 
-	/// <summary>`SDB_HINT_RANGE 2` (:42): a que distancia o radar do painel Nav sente o sinal dourado.</summary>
+	/// <summary>
+	/// `SDB_HINT_RANGE 2` (:42): a que distancia o radar sente o sinal dourado. No DM quem lia era o painel
+	/// Nav (`hasnav`, `HtmlUI.dm:339`); aqui e o DRAGON RADAR na mochila -- ver `GameServer.SinalDouradoDe`.
+	/// </summary>
 	public const int CelulasDeSinal = 2;
 
 	// =====================================================================
@@ -76,6 +79,13 @@ public static class SuperEsferas
 
 	/// <summary>O `get_dist(usr, src) &lt;= 2` do `Click()` (:1510): de onde da pra ABRIR o canal.</summary>
 	public const float AlcanceDeReivindicar = 2 * ZoneCollision.TileSize;
+
+	/// <summary>
+	/// O `set src in oview(2)` do `Invocar_Super_Shenron` (:1580): o verbo e DA ESFERA, e so existe pra quem
+	/// esta a ate dois tiles de uma -- de onde da pra CHAMAR o dragao. O mesmo numero do claim, por outra linha
+	/// do DM: quem acabou de reivindicar a setima esta no lugar certo pra pedir.
+	/// </summary>
+	public const float AlcanceDeInvocar = 2 * ZoneCollision.TileSize;
 
 	/// <summary>
 	/// De quanto em quanto tempo o ladrao ouve que a disputa anda -- `if(!(t % 600))` (:1563), 60 s.
@@ -192,8 +202,8 @@ public static class SuperEsferas
 	/// <summary>
 	/// A FRASE DO RADAR DOURADO -- `pspace_nav_header` (:1399-1405).
 	///
-	/// Vazia quando nao ha sinal: o painel Nav nao mostra linha nenhuma em vez de mostrar "nada por
-	/// perto", que e ruido em toda tela que o jogador abrir longe de uma esfera.
+	/// Vazia quando nao ha sinal: o cartao das esferas (aba World) nao mostra linha nenhuma em vez de
+	/// mostrar "nada por perto", que e ruido em toda tela que o jogador abrir longe de uma esfera.
 	///
 	/// NO ALCANCE ZERO A POSICAO SAI LITERAL, como no DM (*"NESTE setor, perto de (x,y)!"*): sem isso,
 	/// achar a celula certa deixaria o jogador varrendo 65.536 px de vazio com um sinal que nao afina.

@@ -167,7 +167,7 @@ public partial class GameServer
 		// ==============================================================================================
 		var zonaDoPouso = ZoneKey.Premade(destino.Nome);
 		MoveToZone(pl.Id, zonaDoPouso, PontoDeNascimento(zonaDoPouso));
-		Avisar(pl, $"voce pousa em {destino.Nome}.");
+		Avisar(pl, $"voce pousa em {NomeDoMundo(destino)}.");
 		GD.Print($"[server] {pl.Name} pousou em {destino.Nome}");
 	}
 

@@ -434,7 +434,11 @@ public static class DmSkillScanner
 		CorposDePoda.Clear();
 		DmGalhosScanner.NaoLidas.Clear();
 
-		foreach (string arq in Directory.GetFiles(pastaCode, "*.dm", SearchOption.AllDirectories))
+		// SO O QUE O `.dme` INCLUI, NA ORDEM DELE (ver `DmFonte.Arquivos`). Ha 19 `.dm` em `Code/` que nenhum `#include`
+		// cita, e tres entradas do `skills.json` vinham deles: `CustomAttacks/ki/beam/Beam`, `.../blast/Blast` e a arvore
+		// `Custom_Attacks` -- o sistema VELHO de ataques customizados, que o jogo original nao compila (o que ele compila
+		// e o `customattacks.dm`, portado em `GameServer.Customizadas.cs`). Dono, 2026-10-11: *"pode tirar"*.
+		foreach (string arq in DmFonte.Arquivos(pastaCode))
 			Ler(arq, defs);
 
 		// BANCADA: o mundo de ANTES do conserto -- o corpo de dono nao-lido vai pro lixo e o alarme
@@ -517,6 +521,22 @@ public static class DmSkillScanner
 				a.Regras.AddRange(DmGalhosScanner.Traduzir(arvore, cresce, a.TierMax));
 			if (CorposDePoda.TryGetValue(arvore, out List<(int, string)>? poda))
 				a.Regras.AddRange(DmGalhosScanner.Traduzir(arvore, poda, a.TierMax));
+		}
+
+		// AS SKILLS QUE O DONO TIROU DO JOGO SAEM POR ULTIMO (`SkillsAposentadas`): o DM ainda as declara
+		// -- ele e so a referencia --, e sem este corte a re-extracao as traria de volta caladas. Sai a
+		// skill, e sai o NOME dela de toda arvore, pre-requisito e regra de galho que a citava: uma arvore
+		// que lista um galho inexistente mostraria uma casa vazia na aba de aprendizado.
+		foreach (Jandirus.Core.Skills.SkillsAposentadas.Aposentada fora in Jandirus.Core.Skills.SkillsAposentadas.Todas)
+		{
+			defs.Remove(fora.Path);
+			foreach (SkillDef d in defs.Values)
+			{
+				d.Constituintes.RemoveAll(p => string.Equals(p, fora.Path, StringComparison.OrdinalIgnoreCase));
+				d.PreReqs.RemoveAll(p => string.Equals(p, fora.Path, StringComparison.OrdinalIgnoreCase));
+				d.Regras.RemoveAll(r => r.Split(';') is [_, string alvo, ..]
+										&& string.Equals(alvo, fora.Path, StringComparison.OrdinalIgnoreCase));
+			}
 		}
 
 		return defs;
@@ -999,7 +1019,7 @@ public static class DmSkillScanner
 			// ============================ A CONTINUACAO POR PARENTESE ABERTO ============================
 			// O DM tambem continua uma lista SEM a barra: basta o `(` do `list(` ainda estar aberto.
 			// Tres arvores declaram os galhos assim (`Cultivation.dm:8`, `spirit-doll.dm:10`,
-			// `CustomAttacks/physical/basic.dm:8`), e so ler a barra PERDIA 13 galhos calado -- a
+			// `CustomAttacks/physical/basic.dm:8` -- arquivo fora do `.dme`, que desde 2026-10-11 nem e lido), e so ler a barra PERDIA 13 galhos calado -- a
 			// Cultivation saia com 4 dos 7 (sem Ki_Shield, Shield_Bash e Sharpened_Ki), a Spirit Doll
 			// com 3 dos 6. Skill que nao pende de arvore nenhuma e skill que ninguem compra.
 			//

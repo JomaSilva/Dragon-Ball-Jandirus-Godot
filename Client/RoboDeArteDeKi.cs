@@ -232,6 +232,10 @@ public partial class RoboDeArteDeKi : Node2D
 		("Spin_Blast", ArteDeKi.Blast1, "blasts.dm:348 + tools/copypaste.dm:12-13"),
 		("Psycho_Thread", ArteDeKi.KiHead, "click.dm:18,26"),
 		("Ki_Targets", ArteDeKi.Blast14, "Stats/Training/Meditate.dm:26"),
+
+		// ---- os dois tiros do Deus da Destruicao (o kit do titulo, `GameServer.KitDoDeus.cs`)
+		("God_Fury_Beam", ArteDeKi.Blast12, "Ranks/GodOfDestruction.dm:272"),
+		("God_Destroyer_Sphere", ArteDeKi.Blast12, "Ranks/GodOfDestruction.dm:316"),
 	];
 
 	private void Familia1()

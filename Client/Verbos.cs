@@ -1,4 +1,5 @@
 ﻿using Godot;
+using Jandirus.Core.Verbos;
 
 namespace Jandirus.Client;
 
@@ -66,14 +67,24 @@ public sealed record Verbo(
 	public string ChaveOuNome => Chave.Length > 0 ? Chave : Nome;
 
 	/// <summary>
-	/// ESTE VERB APARECE PRA MIM? Nulo = sempre. E diferente de <see cref="Disponivel"/>: o
-	/// indisponivel aparece APAGADO ("existe, e falta Ki"); o que nao se mostra NAO EXISTE pra este
-	/// personagem -- o pedido do dono, literal: *"verbos de namek ... e alguns de rank deveriam
-	/// aparecer somente se eu fosse namek ou tivesse o rank em questao"*. No original e assim que os
-	/// verbs de cargo funcionam: eles entram em `verbs` quando o cargo e dado e saem quando ele se
-	/// perde; ninguem ve "Fund Earth" sem ser o Presidente. Quem le isto e <see cref="Verbos.Visivel"/>.
+	/// **O REQUISITO DESTE VERB** -- o que o personagem precisa TER pra o botao existir pra ele. Nulo = o da
+	/// tabela, achado pela <see cref="Chave"/> (`RequisitosDosVerbos.De`); e o verb que a tabela nao conhece
+	/// nao tem requisito nenhum e aparece pra todo mundo.
+	///
+	/// E diferente de <see cref="Disponivel"/>: o indisponivel aparece APAGADO ("existe, e falta Ki"); o que
+	/// nao cumpre o requisito NAO EXISTE pra este personagem. Os dois pedidos do dono, literais: *"verbos de
+	/// namek ... e alguns de rank deveriam aparecer somente se eu fosse namek ou tivesse o rank em questao"*
+	/// (2026-09-03) e *"dar uma limpa em verbs q sao exclusivas de raças e deveriam so aparecer se o player
+	/// tem os requisitos se nao fica mt poluido"* (2026-10-10). No original e assim que funciona: o verb entra
+	/// em `verbs` junto com a skill, o cargo ou o objeto que o concede, e sai com ele; ninguem ve "Fund Earth"
+	/// sem ser o Presidente.
+	///
+	/// ERA UMA LAMBDA (`Mostrar`), escrita verb a verb -- e so onze verbs tinham uma. Virou DADO, de uma
+	/// tabela so (`Core/Verbos/RequisitosDosVerbos.cs`): a mesma linha serve o menu, a busca, as teclas, os
+	/// botoes da aba World e a bancada que confere a tabela contra o que o servidor de fato recusa. Quem le
+	/// isto e <see cref="Verbos.Visivel"/>.
 	/// </summary>
-	public Func<bool>? Mostrar { get; init; }
+	public Requisito? Requisito { get; init; }
 }
 
 /// <summary>
@@ -154,8 +165,16 @@ public static class Verbos
 		Mudou?.Invoke();
 	}
 
-	/// <summary>Este verb pode sequer APARECER pra mim? Admin so pra admin; e o que o verb mesmo disser (<see cref="Verbo.Mostrar"/>).</summary>
-	public static bool Visivel(Verbo v) => (SouAdmin || v.Categoria != Admin) && (v.Mostrar?.Invoke() ?? true);
+	/// <summary>O requisito que vale pra este verb: o que ele declarou, ou o da tabela pela chave dele.</summary>
+	public static Requisito RequisitoDe(Verbo v) => v.Requisito ?? RequisitosDosVerbos.De(v.Chave);
+
+	/// <summary>
+	/// Este verb pode sequer APARECER pra mim? Admin so pra admin; e o <see cref="Verbo.Requisito"/> contra o
+	/// que este personagem tem (<see cref="PosseDoCliente"/>). E a UNICA pergunta de visibilidade do cliente:
+	/// as abas (<see cref="Da"/>), a busca, a tela de teclas e a tecla ligada (<see cref="PorChave"/>).
+	/// </summary>
+	public static bool Visivel(Verbo v) =>
+		(SouAdmin || v.Categoria != Admin) && RequisitoDe(v).Atende(PosseDoCliente.Atual);
 
 	/// <summary>
 	/// O verb que uma tecla guardou, ou nulo se este personagem nao o tem.
@@ -163,9 +182,13 @@ public static class Verbos
 	/// NULO E UM RESULTADO NORMAL e nao um erro: a ligacao e de MAQUINA (mora no `config.json`) e o
 	/// catalogo e do PERSONAGEM. O Namekuseijin que virou Saiyajin continua com a tecla do
 	/// "Regenerar" gravada -- e ela tem que dizer isso em vez de sumir. Ver `Atalhos.Disparar`.
+	///
+	/// "NAO O TEM" E O MESMO CRIVO DO MENU. O verb do Namekuseijin continua REGISTRADO no catalogo do
+	/// Saiyajin (quem o esconde e o requisito, e nao a falta de registro), entao sem o <see cref="Visivel"/>
+	/// aqui a tecla velha mandaria o pacote -- um por aperto, pra ouvir nao.
 	/// </summary>
 	public static Verbo? PorChave(string chave) =>
-		_todos.Find(v => string.Equals(v.ChaveOuNome, chave, StringComparison.Ordinal));
+		_todos.Find(v => string.Equals(v.ChaveOuNome, chave, StringComparison.Ordinal) && Visivel(v));
 
 	/// <summary>
 	/// Busca em TODAS as categorias. E o que o dono pediu ("barra de pesquisa pra procurar os

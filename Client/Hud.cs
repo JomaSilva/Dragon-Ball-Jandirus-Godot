@@ -105,6 +105,9 @@ public partial class Hud : CanvasLayer
 		// O CONVITE DO TORNEIO, no canto inferior direito (pedido do dono, 2026-09-06). Ver `PainelDoTorneio`.
 		_torneio = new PainelDoTorneio { Name = "Torneio" };
 		raiz.AddChild(_torneio);
+		// O DISCO DO DRAGON RADAR, no mesmo canto (dono, 2026-10-10): so aparece pra quem tem o aparelho, e o
+		// convite do torneio encosta a esquerda dele. Ver `RadarNaTela`.
+		raiz.AddChild(new RadarNaTela { Name = "RadarDeEsferas" });
 		// O CHAVEAMENTO (centro, abre sozinho quando a chave nasce) e o canto "Assistir torneio"
 		// (inferior esquerdo, pra quem espera a vez ou nao participa). Dono, 2026-09-07.
 		// O CHAVEAMENTO MORA NUMA CAMADA ACIMA DO CHAT (o chat e a camada 2, o HUD a 1): e uma janela, e
@@ -130,11 +133,14 @@ public partial class Hud : CanvasLayer
 			Mostrar(cli.Sheet);
 		}
 		MostrarCombate();
+		// OS DOIS PAINEIS DO TOPO EM ESCALA (o canto de cada um se arrasta; dono, 2026-10-10). Ver `Hud.Escala.cs`.
+		MontarAsEscalas(raiz);
 	}
 
 	public override void _ExitTree()
 	{
 		if (Instancia == this) Instancia = null;
+		SoltarAsEscalas();
 		if (GameClient.Instance is not { } cli) return;
 		cli.SheetUpdated -= Mostrar;
 		cli.AtributosRecebidos -= MostrarPoderes;
@@ -184,6 +190,7 @@ public partial class Hud : CanvasLayer
 		painel.CustomMinimumSize = new Vector2(268, 0);
 		painel.MouseFilter = Control.MouseFilterEnum.Ignore;
 		raiz.AddChild(painel);
+		_painelDeStatus = painel;
 
 		var v = new VBoxContainer();
 		v.AddThemeConstantOverride("separation", 6);
@@ -277,6 +284,7 @@ public partial class Hud : CanvasLayer
 		painel.OffsetTop = 14;
 		painel.MouseFilter = Control.MouseFilterEnum.Pass;   // o seletor precisa do clique
 		raiz.AddChild(painel);
+		_painelDoCorpo = painel;
 
 		var v = new VBoxContainer();
 		v.AddThemeConstantOverride("separation", 4);
@@ -389,6 +397,7 @@ public partial class Hud : CanvasLayer
 		{
 			Protocol.Activity.Treinando => "TREINANDO",
 			Protocol.Activity.Meditando => "MEDITANDO",
+			Protocol.Activity.Minerando => "MINERANDO",
 			_ => "",
 		};
 		_atividade.AddThemeColorOverride("font_color",

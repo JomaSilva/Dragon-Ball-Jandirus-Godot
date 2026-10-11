@@ -41,6 +41,13 @@ public static class Saida
     /// <summary>Já pediram pra sair? Lido pela bancada -- em teste ninguem deixa o processo morrer.</summary>
     public static bool SaindoDeTeste => _saindo;
 
+    /// <summary>
+    /// DEFEITO INJETADO (bancada `--paradateste`): fechar o servidor dedicado de producao volta a NAO gravar -- o
+    /// de antes de 2026-10-11, em que toda sessao sem jogador saia pelo `Stop` sozinho. Lido pela propria linha
+    /// do conserto, no <see cref="Encerrar"/>.
+    /// </summary>
+    public static bool DedicadoNaoGravaDeTeste;
+
     /// <param name="motivo">De qual porta veio, em uma frase. So vai pro log.</param>
     public static void Encerrar(SceneTree? arvore, string motivo)
     {
@@ -71,7 +78,12 @@ public static class Saida
                 // mexem no mundo em memoria de proposito, e o X apertado no meio de uma delas nao
                 // pode gravar esse estado por cima do mundo do dono. Sem sessao de jogador nao ha
                 // nada de jogador pra salvar -- e o servidor ainda assim desce limpo.
-                if (Boot.SessaoDeJogador) srv.SalvarEParar();
+                //
+                // ...OU SE ESTE PROCESSO E UM SERVIDOR DEDICADO DE PRODUCAO (dono, 2026-10-11: "clicar
+                // no x deveria salvar"): ele tambem e uma sessao sem jogador, e caia no `Stop` sozinho
+                // junto das bancadas -- fechar o dedicado levava ate dois minutos de todo mundo. Quem
+                // separa os dois e a linha de comando: ver `Boot.DedicadoDeProducao`.
+                if (Boot.SessaoDeJogador || (Boot.DedicadoDeProducao && !DedicadoNaoGravaDeTeste)) srv.SalvarEParar();
                 else srv.Stop();
             }
             GameClient.Instance?.Desconectar();

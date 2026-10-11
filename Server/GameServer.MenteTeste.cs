@@ -245,12 +245,12 @@ public partial class GameServer
 		ServerPlayer vitima = forjar(10, "bancada: quem perde na mente", mente, PosMental, 100_000);
 		ServerPlayer algoz = forjar(11, "bancada: o reflexo", mente, PosMental + new Vec2(64, 0), 5_000_000);
 
-		// A TESTEMUNHA fica colada na vitima: e ela que provaria a raiva se o gate falhasse. AMIGA
-		// dela (a queda so move quem era muito proximo -- `Convivio.LutoPorQueda`), e o algoz e
-		// inimigo por PADRAO (quem nao e amigo nem tem relacao declarada ja e "inimigo aos olhos da
-		// vitima"), entao nao ha nada a escrever daquele lado.
+		// A TESTEMUNHA fica colada na vitima: e ela que provaria a raiva se o gate falhasse. DECLAROU a
+		// vitima amiga (e a declaracao, e so ela, que a queda le -- `Convivio.LutoPorQueda`), e o algoz e
+		// inimigo por PADRAO (quem a vitima nao declarou amigo ja e "inimigo aos olhos dela"), entao nao
+		// ha nada a escrever daquele lado.
 		ServerPlayer plateia = forjar(12, "bancada: quem assiste", mente, PosMental + new Vec2(32, 0), 1_000);
-		plateia.Social.Amizade[vitima.Assinatura] = Jandirus.Core.Social.Convivio.ExigenciaDeAmigo;
+		DeclararDeTeste(plateia, vitima, Jandirus.Core.Social.Relacao.Bom);
 
 		vitima.Ficha.zenkaiReady = 0;
 		double bpAntes = vitima.Ficha.BP;

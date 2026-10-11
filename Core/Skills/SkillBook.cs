@@ -149,11 +149,48 @@ public sealed class SkillBook
 	/// </summary>
 	private readonly HashSet<string> _ensinadas = new(StringComparer.OrdinalIgnoreCase);
 
+	/// <summary>
+	/// O QUE EU COMPREI COM MARCOS (subconjunto de <see cref="_aprendidas"/>) -- o `investedskills` do DM, que so
+	/// o `fund()` da compra enche (`trees.dm:99-111`).
+	///
+	/// ============================ SO O QUE FOI COMPRADO DEVOLVE MARCO ============================
+	/// O livro so sabia "aprendida" e "ensinada", e por isso o reembolso pagava por tudo o que nao fosse ensinado:
+	/// a skill HERDADA pela absorcao Namekuseijin, a que um admin deu, a que um degrau de nivel concedeu, a que
+	/// sobrou de um cargo perdido. Nenhuma delas custou marco, e todas devolviam o `skillcost` ao ser esquecidas
+	/// -- marco impresso. No DM o modo FORGET so lista o que esta em `investedskills`
+	/// (`SkillTreesWindow.dm:33-35`) e o `treeshrink` so anda nela (`trees.dm:119-135`).
+	///
+	/// QUEM ENCHE: so o <see cref="Aprender"/> (a compra). O <see cref="Dar"/> e o <see cref="DarComoEnsinada"/>
+	/// nao tocam nela. QUEM ESVAZIA: o <see cref="Esquecer"/>. Vai pro save (<see cref="Compradas"/>) e volta por
+	/// <see cref="CarregarCompradas"/> -- que e onde mora a regra do save de ANTES desta lista.
+	///
+	/// O QUE ELA NAO MUDA: o <see cref="Investido"/> (a conta do tier continua a de antes, com as duas
+	/// divergencias que ela declara) e quem pode REPASSAR uma skill (isso e o <see cref="FoiEnsinada"/>: a
+	/// herdada da absorcao nao foi ensinada por ninguem, e continua podendo ser ensinada adiante).
+	/// ==========================================================================================
+	/// </summary>
+	private readonly HashSet<string> _compradas = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--validacoesteste`): o livro volta a nao saber o que foi COMPRADO -- toda skill
+	/// que ninguem ensinou devolve marco ao ser esquecida e cai, pagando, com a arvore que encolhe (a herdada pela
+	/// absorcao Namekuseijin, a dada por admin, a concedida por degrau, a emprestada pela fusao). Lido pela propria
+	/// <see cref="FoiComprada"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool TudoContaComoCompradoDeTeste;
+
 	/// <summary>Quantos marcos este personagem JA GANHOU na vida. So sobe.</summary>
 	public int MarcosTotais;
 
 	/// <summary>Quantos ainda estao pra gastar.</summary>
 	public int MarcosLivres;
+
+	/// <summary>
+	/// Quantos marcos o BP JA DEU a este personagem -- o cursor da escada de limiares (ver
+	/// <see cref="MarcosDeBp"/>). Nasce zero, inclusive em save de antes de 2026-10-10: e o que faz quem ja
+	/// passou dos limiares receber os marcos deles no primeiro tique.
+	/// </summary>
+	public int MarcosPorBp;
 
 	public IReadOnlyCollection<string> Aprendidas => _aprendidas;
 	public bool Sabe(string path) => _aprendidas.Contains(path);
@@ -208,11 +245,19 @@ public sealed class SkillBook
 	/// <summary>As que vieram de mestre. So o save le isto.</summary>
 	public IReadOnlyCollection<string> Ensinadas => _ensinadas;
 
+	/// <summary>Esta skill foi COMPRADA com marcos? (esta no `investedskills` do DM.) So ela devolve marco.</summary>
+	public bool FoiComprada(string path) =>
+		TudoContaComoCompradoDeTeste ? Sabe(path) && !FoiEnsinada(path) : _compradas.Contains(path);
+
+	/// <summary>As que foram compradas. So o save le isto.</summary>
+	public IReadOnlyCollection<string> Compradas => _compradas;
+
 	/// <summary>
-	/// ESQUECE. **Tira das duas listas** -- e a segunda linha nao e zelo: o DM DELETA o datum
+	/// ESQUECE. **Tira das tres listas** -- e a segunda linha nao e zelo: o DM DELETA o datum
 	/// (`skill.dm:79`), e com ele o `wastaught`. Deixar a marca pra tras faria a skill voltar
 	/// "ensinada" no dia em que a pessoa a comprasse de verdade com os proprios marcos, e ela
-	/// continuaria sem poder repassar uma coisa que ninguem lhe deu.
+	/// continuaria sem poder repassar uma coisa que ninguem lhe deu. A marca de COMPRADA sai pelo motivo
+	/// espelhado: ficando, a skill que um admin desse depois devolveria um marco que a compra antiga ja devolveu.
 	///
 	/// NAO REEMBOLSA e NAO encolhe a arvore: e a metade "apagar do livro". A outra metade -- o
 	/// `refund()` + `treeshrink()` do DM -- e <see cref="EsquecerEReembolsar"/>.
@@ -221,6 +266,7 @@ public sealed class SkillBook
 	{
 		_aprendidas.Remove(path);
 		_ensinadas.Remove(path);
+		_compradas.Remove(path);
 		// A CASA ESCOLHIDA MORRE JUNTO, pelo mesmo motivo do `wastaught`: guardar a escolha de uma
 		// skill esquecida faria os buffs dela voltarem sozinhos no dia em que alguem a comprasse
 		// de novo, sem passar pela pergunta.
@@ -313,6 +359,28 @@ public sealed class SkillBook
 		_ensinadas.Clear();
 		foreach (string p in paths) if (_aprendidas.Contains(p)) _ensinadas.Add(p);
 		_versao++;
+	}
+
+	/// <summary>
+	/// Le do save o que foi COMPRADO. **Chamada DEPOIS do <see cref="Carregar"/> e do
+	/// <see cref="CarregarEnsinadas"/>**: marca de skill que o livro nao tem e orfa, e copia ensinada nao e
+	/// compra.
+	///
+	/// ============================ O SAVE DE ANTES DA LISTA (`salvas` NULO) ============================
+	/// Save gravado antes de 2026-10-11 nao tem o campo. Nele, TUDO o que esta no livro e ninguem ensinou conta
+	/// como comprado -- que e exatamente a regra de reembolso que valia ate ali: ninguem perde, no dia da
+	/// mudanca, o marco de uma skill que comprou so porque o save nao sabia dizer que foi compra. A partir do
+	/// primeiro salvamento a lista existe e e mantida (<see cref="Aprender"/>, <see cref="Esquecer"/>).
+	///
+	/// LISTA VAZIA NAO E SAVE ANTIGO: e um personagem que nao comprou nada, e nada nele devolve marco. A diferenca
+	/// e o nulo, e quem chama tem de passar o campo do save como veio.
+	/// ==============================================================================================
+	/// </summary>
+	public void CarregarCompradas(IEnumerable<string>? salvas)
+	{
+		_compradas.Clear();
+		foreach (string p in salvas ?? _aprendidas)
+			if (_aprendidas.Contains(p) && !_ensinadas.Contains(p)) _compradas.Add(p);
 	}
 
 	// =====================================================================
@@ -465,9 +533,10 @@ public sealed class SkillBook
 	/// `skillcost` das `investedskills`).
 	///
 	/// O DM sabe por qual arvore cada skill foi COMPRADA (`fund()` poe em `investedskills`). Este
-	/// livro nao guarda isso, e guardar mudaria a forma do save -- entao a conta e: skill sua, que
-	/// pende desta arvore, e que ninguem te ensinou (o `Study` nao passa pelo `fund`,
-	/// `teachable.dm:53-56`). Duas divergencias, as duas pro lado de ABRIR mais:
+	/// livro sabe SE ela foi comprada (<see cref="FoiComprada"/>, pro reembolso), mas nao por qual arvore -- e
+	/// a conta do tier continua a de antes, de proposito (troca-la pela lista fecharia tier de quem ganhou skill
+	/// de presente): skill sua, que pende desta arvore, e que ninguem te ensinou (o `Study` nao passa pelo
+	/// `fund`, `teachable.dm:53-56`). Duas divergencias, as duas pro lado de ABRIR mais:
 	///   * skill pendurada em duas arvores suas conta nas duas;
 	///   * skill dada por admin (ou pelo Ki liberado da bancada) conta como comprada.
 	/// </summary>
@@ -719,6 +788,7 @@ public sealed class SkillBook
 		if (r != Recusa.Pode) return r;
 		MarcosLivres -= SkillCatalog.CustoDe(cat.Get(path)!);
 		_aprendidas.Add(path);
+		_compradas.Add(path);   // o `investedskills.Add(nS)` do `fund()` (`trees.dm:109`): so a compra marca
 		_versao++;
 		return Recusa.Pode;
 	}
@@ -731,16 +801,24 @@ public sealed class SkillBook
 	/// `S.forget()` devolve os `skillpoints`, e `treeshrink()`), e devolve o que a arvore encolhendo
 	/// levou junto.
 	///
-	/// So reembolsa o que foi COMPRADO: copia ensinada nao custou marco (`Study`, `teachable.dm:41`),
-	/// e devolver marco por ela seria uma impressora -- ver <see cref="EnsinoDeSkill.Esquecer"/>.
+	/// So reembolsa o que foi COMPRADO (<see cref="FoiComprada"/>): copia ensinada nao custou marco (`Study`,
+	/// `teachable.dm:41`) -- ver <see cref="EnsinoDeSkill.Esquecer"/> --, e a que entrou de presente (a herdada
+	/// pela absorcao Namekuseijin, a do admin, a do degrau de nivel) tambem nao. Devolver marco por elas e uma
+	/// impressora. A skill que nao foi comprada SE ESQUECE do mesmo jeito; so nao paga.
 	/// </summary>
-	public List<string> EsquecerEReembolsar(SkillCatalog cat, string path, string raca, string classe)
+	/// <param name="deGraca">
+	/// As skills que o livro tem como compradas e que quem chama sabe que NAO se vendem agora: o kit do cargo que
+	/// o corpo carrega (num save de antes da lista de compradas ele conta como comprado, e o tique dos cargos o
+	/// devolveria ao livro). Nao devolvem marco nem caem com a arvore. Nulo = so o que o livro sabe.
+	/// </param>
+	public List<string> EsquecerEReembolsar(SkillCatalog cat, string path, string raca, string classe,
+											Func<string, bool>? deGraca = null)
 	{
 		if (!Sabe(path)) return [];
-		bool comprada = !FoiEnsinada(path);
+		bool comprada = FoiComprada(path) && !FoiEnsinada(path) && deGraca?.Invoke(path) != true;
 		Esquecer(path);
 		if (comprada && cat.Get(path) is { Arvore: false } s) MarcosLivres += SkillCatalog.CustoDe(s);
-		return Encolher(cat, raca, classe);
+		return Encolher(cat, raca, classe, deGraca);
 	}
 
 	/// <summary>
@@ -752,10 +830,17 @@ public sealed class SkillBook
 	/// nunca cai (`Spirit Unleashed`, as formas). Copia ensinada nao cai por tier -- nao foi
 	/// investida em arvore nenhuma.
 	///
+	/// SO O QUE FOI COMPRADO CAI (e por isso so ele paga): o laco do tier do DM so alcanca o que esta em
+	/// `investedskills` (`if(locate(S.type) in investedskills && S.tier > allowedtier ...)`, `trees.dm:122`). A
+	/// skill que entrou de presente fica, como a ensinada. DIVERGENCIA DECLARADA: no DM o ramo do pre-requisito
+	/// (`nS.enabled == 0`, `:126-128`) leva qualquer skill da arvore, comprada ou nao, e o `forget()` devolve o
+	/// `skillcost` dela (`skill.dm:81`) -- marco por skill que ninguem comprou. Aqui o presente nao cai nem paga.
+	///
 	/// NAO RODA NO LOGIN, e isso e fiel: o DM so encolhe no `refund`. Um save antigo que comprou
 	/// Afterimage no primeiro milissegundo (o defeito que este arquivo conserta) fica com ele.
 	/// </summary>
-	public List<string> Encolher(SkillCatalog cat, string raca, string classe)
+	/// <param name="deGraca">O mesmo de <see cref="EsquecerEReembolsar"/>: quem esta nela nao cai (e por isso nao paga).</param>
+	public List<string> Encolher(SkillCatalog cat, string raca, string classe, Func<string, bool>? deGraca = null)
 	{
 		var cascata = new List<string>();
 		for (int volta = 0; volta < 64; volta++)
@@ -767,7 +852,7 @@ public sealed class SkillBook
 				if (cat.Get(e.Path) is not { } arv) continue;
 				foreach (string g in arv.Galhos)
 				{
-					if (!Sabe(g) || FoiEnsinada(g)) continue;
+					if (!Sabe(g) || !FoiComprada(g) || FoiEnsinada(g) || deGraca?.Invoke(g) == true) continue;
 					if (cat.Get(g) is not { Arvore: false, Esquecivel: true } s) continue;
 
 					bool algumaAdmite = false;

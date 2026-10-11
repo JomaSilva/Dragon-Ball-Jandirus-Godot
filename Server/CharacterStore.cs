@@ -7,6 +7,24 @@ using Jandirus.Core.World;
 
 namespace Jandirus.Server;
 
+/// <summary>
+/// O CORPO LARGADO de quem estava na meditacao profunda quando o save foi escrito: onde ele esta e como ele
+/// esta. Ver <see cref="CharacterSave.Transe"/>.
+/// </summary>
+public sealed class TranseSalvo
+{
+    public string Zona = "";
+    public byte ZonaTipo;
+    public ulong ZonaSeed;
+    public float X, Y;
+
+    /// <summary>Vida e "esta decepado" por membro, no formato do `CharacterSave.Membros`.</summary>
+    public Dictionary<string, double[]> Membros = [];
+
+    public double Ki, Vigor;
+    public bool Morto;
+}
+
 /// <summary>Tudo que sobrevive ao logout de um personagem.</summary>
 public sealed class CharacterSave
 {
@@ -32,6 +50,15 @@ public sealed class CharacterSave
     /// <summary>O que o personagem carregava ao sair. Ver `Core.Items.Inventario`.</summary>
     public Jandirus.Core.Items.Inventario Mochila = new();
 
+    /// <summary>
+    /// ATE QUE VERSAO DA LISTA DE ITENS APOSENTADOS ESTA MOCHILA JA FOI LIMPA (`ItensAposentados.VersaoAtual`).
+    /// Save de antes do campo chega com zero, e o login passa a limpeza inteira UMA vez (`ParaJogador`); dai em
+    /// diante ele sai gravado na versao atual. Existe por causa do `Staff`, cujo id continua no catalogo como
+    /// OUTRO item -- sem a versao, o cajado comprado depois seria confiscado a cada login. Mesmo padrao do
+    /// <see cref="RazaoVersao"/>.
+    /// </summary>
+    public int ItensVersao;
+
     public Appearance Visual = new();
 
     /// <summary>
@@ -50,6 +77,14 @@ public sealed class CharacterSave
     /// jogo. Vazio (save antigo, ou personagem novo) = corpo inteiro.
     /// </summary>
     public Dictionary<string, double[]> Membros = [];
+
+    /// <summary>
+    /// O CORPO DE VERDADE DE QUEM FOI GRAVADO EM TRANSE (nulo no caso normal). O autosave pega quem esta dentro
+    /// de uma mente, e os campos de cima descrevem o AVATAR -- a zona da mente, os membros feridos de mentira.
+    /// Este bloco leva o endereco e o estado do corpo largado, e o login o aplica antes de ler qualquer coisa
+    /// (`GameServer.TirarOSaveDoTranse`).
+    /// </summary>
+    public TranseSalvo? Transe;
 
     /// <summary>
     /// AS SKILLS APRENDIDAS, por typepath, e os marcos.
@@ -72,6 +107,23 @@ public sealed class CharacterSave
     /// save antigo chega com a lista vazia, que e a resposta certa: ninguem ainda foi ensinado.
     /// </summary>
     public List<string> SkillsEnsinadas = [];
+
+    /// <summary>
+    /// QUAIS DAS <see cref="Skills"/> ELE COMPROU COM MARCOS -- o `investedskills` do DM (`trees.dm:99-111`), que
+    /// la mora na arvore e viaja no savefile junto com ela. **So estas devolvem marco ao ser esquecidas**: a
+    /// herdada pela absorcao Namekuseijin, a que um admin deu e a que um degrau de nivel concedeu estao em
+    /// <see cref="Skills"/> e nao aqui.
+    ///
+    /// ============================ NULO E SAVE ANTIGO; VAZIO E "NAO COMPROU NADA" ============================
+    /// O campo nasceu em 2026-10-11. Save gravado antes disso chega com ele NULO, e o leitor
+    /// (<see cref="Jandirus.Core.Skills.SkillBook.CarregarCompradas"/>) trata o nulo como "tudo o que esta no
+    /// livro e ninguem ensinou foi comprado" -- a regra de reembolso que valia ate ali, pra ninguem perder o
+    /// marco de uma compra que o save nao sabia descrever. Por isso o inicializador NAO e `[]`, ao contrario das
+    /// irmas de cima: uma lista vazia aqui diria "este personagem nao comprou nada", e o save antigo perderia o
+    /// reembolso inteiro, calado. Todo salvamento grava a lista (`DeJogador`), vazia que seja.
+    /// ======================================================================================================
+    /// </summary>
+    public List<string>? SkillsCompradas;
 
     /// <summary>
     /// A CASA ESCOLHIDA nas skills de escolha unica (typepath -> 1, 2 ou 3). Uma skill no jogo
@@ -130,6 +182,9 @@ public sealed class CharacterSave
     /// </summary>
     public Jandirus.Core.Forms.LimiaresPessoais Limiares = new();
     public int MarcosTotais, MarcosLivres;
+
+    /// <summary>Quantos marcos o BP ja deu (`SkillBook.MarcosPorBp`). Zero em save antigo: a escada e retroativa.</summary>
+    public int MarcosPorBp;
 
     /// <summary>
     /// A FORMA e a MAESTRIA de cada uma (chave = o id numerico da forma).
@@ -702,11 +757,16 @@ public sealed class AccountStore(string pasta)
         Historia = pl.Historia,
         Porte = pl.Porte,
         Mochila = pl.Mochila,
+        // A MOCHILA DE QUEM ESTA EM JOGO JA PASSOU PELA LIMPEZA DO LOGIN (`ParaJogador`), entao sai gravada na
+        // versao de hoje -- e e isto que impede a limpeza de rodar de novo e levar o `Staff` comprado depois.
+        // Ver `CharacterSave.ItensVersao`.
+        ItensVersao = Jandirus.Core.Items.ItensAposentados.VersaoAtual,
         Visual = pl.Visual,
         Ficha = pl.Ficha,
         Membros = pl.Combate != null ? GameServer.FotografarCorpo(pl.Combate) : [],
         Skills = pl.Livro != null ? [.. pl.Livro.Aprendidas] : [],
         SkillsEnsinadas = pl.Livro != null ? [.. pl.Livro.Ensinadas] : [],
+        SkillsCompradas = pl.Livro != null ? [.. pl.Livro.Compradas] : [],
         SkillsEscolhas = pl.Livro != null ? new Dictionary<string, int>(pl.Livro.Escolhas) : [],
         SkillsGanhos = pl.Livro != null
             ? pl.Livro.GanhosNaCompra.ToDictionary(kv => kv.Key, kv => new Dictionary<string, double>(kv.Value))
@@ -771,9 +831,11 @@ public sealed class AccountStore(string pasta)
 
         MarcosTotais = pl.Livro?.MarcosTotais ?? 0,
         MarcosLivres = pl.Livro?.MarcosLivres ?? 0,
+        MarcosPorBp = pl.Livro?.MarcosPorBp ?? 0,
         Zona = pl.Zone.Name,
         ZonaTipo = pl.Zone.Kind,
         ZonaSeed = pl.Zone.Seed,
+        Transe = TranseDe(pl),
         // O BERCO VOLTA PRO DISCO tal como veio. `ParaJogador` ja resolveu o "zero = deriva", entao
         // o que sai daqui e sempre um numero de verdade -- inclusive pro personagem antigo, que
         // grava hoje o berco que ele sempre teve sem nunca ter tido o campo.
@@ -792,6 +854,28 @@ public sealed class AccountStore(string pasta)
         VistoEm = agora,
     };
 
+    /// <summary>O bloco <see cref="CharacterSave.Transe"/> deste corpo, ou nulo se ele nao esta numa mente.</summary>
+    private static TranseSalvo? TranseDe(ServerPlayer pl)
+    {
+        if (pl.BonecoLargado is not { } corpo || !Jandirus.Core.World.DimensaoMental.EhAMente(pl.Zone)) return null;
+
+        // O CORPO PROPRIO do corpo largado e o real. Se ele ainda divide o do dono (nao deveria: e o estado de
+        // antes de 2026-10-10), o que se sabe do corpo de verdade e a foto da entrada.
+        bool proprio = !ReferenceEquals(corpo.Combate, pl.Combate);
+        var t = new TranseSalvo
+        {
+            Zona = corpo.Zone.Name, ZonaTipo = corpo.Zone.Kind, ZonaSeed = corpo.Zone.Seed,
+            X = corpo.Pos.X, Y = corpo.Pos.Y,
+            Ki = proprio ? corpo.Ficha.Ki : pl.FotoDaMente?.Ki ?? pl.Ficha.Ki,
+            Vigor = proprio ? corpo.Ficha.stamina : pl.FotoDaMente?.Vigor ?? pl.Ficha.stamina,
+            Morto = proprio ? corpo.Ficha.dead : pl.FotoDaMente?.Morto ?? false,
+        };
+        if (proprio && corpo.Combate != null) t.Membros = GameServer.FotografarCorpo(corpo.Combate);
+        else if (pl.FotoDaMente is { } foto)
+            foreach ((string nome, (double vida, bool decepado)) in foto.Membros) t.Membros[nome] = [vida, decepado ? 1 : 0];
+        return t;
+    }
+
     public static void ParaJogador(CharacterSave s, ServerPlayer pl)
     {
         pl.Name = s.Nome;
@@ -807,6 +891,13 @@ public sealed class AccountStore(string pasta)
         // renomeado, item removido) vira um slot que a tela nao sabe desenhar e o menu nao sabe
         // usar -- ocupando espaco pra sempre. Ver `Inventario.Sanear`.
         pl.Mochila = s.Mochila ?? new();
+
+        // OS ITENS QUE SAIRAM DO JOGO saem da mochila AQUI -- e ANTES do `Sanear`, que jogaria fora calado os que
+        // o catalogo nao conhece mais e deixaria ficar o `Staff` de antes. So a mochila muda: nao ha zeni de volta
+        // (decisao do dono, 2026-10-11). O recado sai mais adiante no login, quando ja ha tela pra le-lo
+        // (`GameServer.AvisarDosItensAposentados`). Ver `ItensAposentados`.
+        pl.ItensQueSairam = Jandirus.Core.Items.ItensAposentados.Limpar(pl.Mochila, s.ItensVersao);
+
         pl.Mochila.Sanear();   // save antigo nao tem porte
 
         // SAVE ANTIGO NAO TEM CONVIVIO: o `?? new()` e o que separa "nunca conheceu ninguem" de

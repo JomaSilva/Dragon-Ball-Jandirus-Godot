@@ -238,7 +238,12 @@ public partial class GameServer
 		// todo funil de dano letal deste corpo (soco, raio, explosao, dano direto, calor da estrela,
 		// Kaio-ken que estoura). E ele que poe a peca no chao da zona e a guarda pelos 600 s do DM.
 		// Ver `GameServer.Pecas.cs` e `CombatState.AoDecepar`.
-		pl.Combate.AoDecepar = (_, caiu) => SoltarPecas(pl, caiu);
+		// (e a frase do chat no instante da perda: `AnunciarMembroPerdido`, `GameServer.Membros.cs`)
+		pl.Combate.AoDecepar = (_, caiu) => { SoltarPecas(pl, caiu); AnunciarMembroPerdido(pl, caiu); };
+
+		// E QUEM RESPONDE "COM QUE RITMO A RECARGA DO SOCO ESCORRE?" -- sem os dois bracos, a meio ritmo
+		// (`movement handler.dm:167`). So pro corpo que o DONO dirige: ver `GameServer.Membros.cs`.
+		pl.Combate.RitmoDaRecarga = () => RitmoDaRecargaDe(pl);
 
 		// E QUEM RESPONDE "ESTE CORPO ESTA EM CINEMATICA AGORA?" -- o escudo da transformacao.
 		//
@@ -536,7 +541,11 @@ public partial class GameServer
 
 		// O ESTILO ENTRA COMO DANO PLANO, nao como multiplicador -- e o `dmg += compareStyles(M)`
 		// do original. Teto de 10: estilo desempata luta parelha, nao vence luta perdida.
+		// (QUEM APANHA DE BICHO NAO ENTRA EM "LUTA DE VERDADE": o relogio dele e guardado aqui e devolvido logo
+		// abaixo -- ver `GolpeDeBichoNaoTreina`. A tag de combate, que e o que o jogador ve e ouve, fica.)
+		double lutaDoAlvo = cd.LutandoDeVerdade;
 		GolpeResultado r = MeleeResolver.Resolver(ca, cd, angulo, _rng, tipo, DanoDeEstilo(a, alvo));
+		if (GolpeDeBichoNaoTreina(a)) cd.LutandoDeVerdade = lutaDoAlvo;
 		MarcarAgressao(alvo, a);
 		if (_diagGolpe) ExplicarGolpe(a, alvo, r, angulo, investiu);
 
@@ -586,7 +595,8 @@ public partial class GameServer
 		// e o mais forte). E o desenho do DM -- o bonus e de quem esta aprendendo.
 		// ==============================================================================================
 		a.Ficha.AttackGain(_rng, a.Ficha.FightGainMult(alvo.Ficha, EhMeuMestre(a, alvo)));
-		if (r.Encostou) alvo.Ficha.AttackGain(_rng, alvo.Ficha.FightGainMult(a.Ficha, EhMeuMestre(alvo, a)));
+		// (MENOS QUEM APANHA DE BICHO: um lobo que nao cansa nao e parceiro de treino -- ver `GolpeDeBichoNaoTreina`.)
+		if (r.Encostou && !GolpeDeBichoNaoTreina(a)) alvo.Ficha.AttackGain(_rng, alvo.Ficha.FightGainMult(a.Ficha, EhMeuMestre(alvo, a)));
 
 		// O contra-ataque devolve o golpe: quem bloqueou na hora certa acerta de volta.
 		if (r.Desfecho == Desfecho.Contra)
@@ -629,13 +639,18 @@ public partial class GameServer
 			GD.Print($"[server] {a.Name} ARRANCOU O RABO de {d.Name}"
 					 + $" (ritmo de treino de {d.Name}: x{d.Ficha.tailgain})");
 
-		// O ODIO POR GOLPE (`ENMITY_HIT`, `CombatMovement.dm:225`): so cresce contra quem a vitima
-		// ja tinha declarado rival. Fica aqui, e nao no `Atacar`, porque este e o ponto que ja
+		// O CONVIVIO POR GOLPE (dono, 2026-09-05): trocar golpes tambem e conhecer -- ver
+		// `ConvivioPorGolpe`. Fica aqui, e nao no `Atacar`, porque este e o ponto que ja
 		// responde "este golpe teve consequencia".
-		// UM CADAVER NAO TEM VIDA SOCIAL NEM CAI: quem ja esta morto nao "e nocauteado", nao cobra odio e nao
-		// entra no luto de ninguem. O golpe feriu o corpo (ver `MeleeResolver`), e e so isso que ele faz.
+		// UM CADAVER NAO TEM VIDA SOCIAL NEM CAI: quem ja esta morto nao "e nocauteado", nao rende convivio e
+		// nao entra no luto de ninguem. O golpe feriu o corpo (ver `MeleeResolver`), e e so isso que ele faz.
 		if (EhCadaver(d)) return;
-		if (r.Encostou) GolpeDeRival(d, a);
+		// O GOD'S TEMPER conta o dano que ENCOSTOU no Deus da Destruicao (soco e tiro saem daqui) -- ver
+		// `ContarGolpeNoTemper`, em `GameServer.KitDoDeus.cs`.
+		if (r.Encostou) ContarGolpeNoTemper(d);
+		if (r.Encostou) ConvivioPorGolpe(d, a);
+		// E TROCAR GOLPES COM QUEM TEM KI DIVINO ACORDA O SEU (dono, 2026-10-10) -- ver `GameServer.GodKi.cs`.
+		if (r.Encostou) ExposicaoPorGolpe(a, d, r);
 
 		if (r.Nocauteou)
 		{
@@ -750,6 +765,12 @@ public partial class GameServer
 		// ================================================================================================
 		if (ParalisiaAtiva(a.Id) || !PodeMexerOCorpo(a)) return false;
 
+		// BICHO NAO INVESTE (dono, 2026-10-10: *"eles n teleportam nem nada, sao animais comuns"*). O arranque
+		// e um SALTO de posicao -- ate quinze tiles com o alvo marcado, e a IA marca quem enfrenta --, e num
+		// lobo isso e exatamente o teleporte que o pedido proibe. Recusado inteiro, o passo curto junto: ele
+		// chega andando (o cerebro dele ja encosta ate dentro do alcance do soco, `Animais.DistanciaDoBote`).
+		if (EhAnimal(a) && !Jandirus.Core.Npc.Animais.InvesteDeTeste) return false;
+
 		float alcance = longo ? AlcanceDoDash : AlcanceDoPasso;
 		// O MARCADO ESTICA O ARRANQUE LONGO ATE OS 15 TILES DO DM. Ver `AlcanceDoDashMarcado`.
 		ServerPlayer? alvo = AlvoParaArranque(a, alcance, longo ? AlcanceDoDashMarcado : alcance);
@@ -811,7 +832,7 @@ public partial class GameServer
 
 		// PAREDE MANDA MAIS QUE O ARRANQUE. Sem esta checagem, investir contra um muro com
 		// alguem do outro lado atravessaria a parede -- o unico jeito de andar por dentro dela.
-		ZoneCollision? mapa = _catalogo?.Get(a.Zone)?.Mapa;
+		ZoneCollision? mapa = MapaDoSalto(a.Zone);   // planeta gerado tambem tem parede: ver `MapaDoSalto`
 		if (mapa != null && MoveRules.PathOccupied(mapa, a.Pos, destino, ModoDeTravessiaDe(a))) return false;
 
 		a.Ficha.Ki -= custo;
@@ -842,7 +863,7 @@ public partial class GameServer
 	/// ignora quem esta ao lado.
 	/// </summary>
 	/// <summary>O mapa da zona de quem ataca. Atalho -- o `Aproximar` consulta duas vezes.</summary>
-	private ZoneCollision? mapaDoAtaque(ServerPlayer a) => _catalogo?.Get(a.Zone)?.Mapa;
+	private ZoneCollision? mapaDoAtaque(ServerPlayer a) => MapaDoSalto(a.Zone);
 
 	/// <param name="alcanceMarcado">
 	/// O alcance de quem foi MARCADO, que e maior (ver <see cref="AlcanceDoDashMarcado"/>). Separado do
@@ -1769,9 +1790,10 @@ public partial class GameServer
 	///   | o relogio da morte                    | zerado aqui                                   |
 	///
 	/// O QUE O DM FAZ E ESTE PORT AINDA NAO: `kaiTrainingAllowed = 0` (a licenca do Enma pra cruzar
-	/// a barreira espiritual), `hakai_mark = 0`, `pk_karma_taken = 0` e `pk_rep_taken = 0`. Os quatro
-	/// campos **nao existem aqui** -- eles nascem com o Enma e com o karma por PK, que sao a etapa
-	/// seguinte. Ficam listados pra a ausencia ser uma pendencia e nao um esquecimento.
+	/// a barreira espiritual), `pk_karma_taken = 0` e `pk_rep_taken = 0`. Os tres campos **nao existem
+	/// aqui** -- eles nascem com o Enma e com o karma por PK, que sao a etapa seguinte. Ficam listados
+	/// pra a ausencia ser uma pendencia e nao um esquecimento. (O `hakai_mark = 0` do mesmo `ReviveMe`,
+	/// `Death.dm:148`, mora na porta unica da volta a vida: `CombatState.Reviver`.)
 	///
 	/// **VIDA, MEMBROS, KI E FOLEGO INTEIROS** -- o `Revive()` do DM (`Death.dm:163-173`:
 	/// `SpreadHeal(100,1,1)`, `RegrowLimb` em todo membro, `Ki = MaxKi`, `stamina = maxstamina`).

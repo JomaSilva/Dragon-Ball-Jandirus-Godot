@@ -115,6 +115,28 @@ public sealed class CombatState
 	public double LutandoDeVerdade;
 
 	/// <summary>
+	/// A BRIGA COM ALGUEM: 90 s desde o ultimo golpe trocado com OUTRO corpo, dado ou levado. E a `combatTag` do DM
+	/// ao pe da letra -- la o `refresh_combat_tag()` so e chamado em golpe entre mobs (`attack cmn.dm:153-156`,
+	/// `objects.dm:304-305`, `BeamClash.dm:204-205`), e o `SpreadDamage` da gravidade (`Gravity.dm:56`, que cai no
+	/// `Injuries.dm:63-87`) nao o chama.
+	///
+	/// A <see cref="EmCombate"/> deste port e MAIS LARGA, e ha regra que conta com isso: o dano SEM ALGOZ (o
+	/// esmagamento da gravidade e do peso, o vacuo, o preco de uma tecnica no proprio corpo) tambem a arma, e e por
+	/// isso que quem sufoca nao regenera (ver `Vacuo.DanoPorSegundo`). Mas um corpo num chao mais pesado que ele --
+	/// ou treinando com peso acima do limite -- fica com a tag acesa o tempo INTEIRO, um dano por segundo, sem ter
+	/// trocado um golpe com ninguem. Quem precisa saber se o corpo esta BRIGANDO, e nao so apanhando do mundo, le
+	/// <see cref="EmBrigaComAlguem"/>. O primeiro leitor e a lenha (*"durante combate n conta"*, `GameServer.Lenha.cs`).
+	/// </summary>
+	public double BrigandoComAlguem;
+
+	/// <summary>
+	/// O corpo esta em combate COM ALGUEM? A tag esta de pe e foi um golpe trocado com outro corpo que a armou nos
+	/// ultimos 90 s. Pede as duas de proposito: quem zera a tag (a morte, a volta do transe) encerra a briga junto,
+	/// sem que cada um desses lugares precise conhecer este relogio.
+	/// </summary>
+	public bool EmBrigaComAlguem => EmCombate > 0 && BrigandoComAlguem > 0;
+
+	/// <summary>
 	/// ============================ O NOCAUTE E UM COMA COM TETO, E NAO UM CRONOMETRO ============================
 	/// **O DM NAO DA PRAZO AO NOCAUTE DE LUTA.** Ele nasce em `Injuries.dm:283` como `KO(-1)`, e em
 	/// `KO.dm:112-117` os dois ramos que agendariam o despertar sao `if(KOtimer>0)` e
@@ -230,6 +252,22 @@ public sealed class CombatState
 	public Func<bool>? SendoArremessado;
 
 	/// <summary>
+	/// ============================ COM QUE RITMO A RECARGA DO SOCO ESCORRE ============================
+	/// `if(hasTime) attacking = max(0, attacking - (armsLost>=2 ? 0.5 : 1))` (`movement handler.dm:167`): no DM a
+	/// espera do soco nao e um prazo, e um contador que DESCE por tique -- e sem os dois bracos ele desce a
+	/// metade. Portado como esta: o ritmo multiplica o `dt` do <see cref="Tick"/>, entao perder (ou recuperar) um
+	/// braco no meio da espera muda o resto dela na hora, como la.
+	///
+	/// **GANCHO E NAO CAMPO**, pelo motivo dos dois de cima: a regra e do corpo (`DebuffsDeMembro.RitmoDaRecarga`,
+	/// funcao pura dos membros de agora -- nao ha bit pra apagar quando o braco volta), mas QUEM a paga e do
+	/// servidor. No DM a linha mora no `unitimer()`, o laco do JOGADOR; o NPC tem relogio proprio e desce
+	/// `attacking-1` cru (`NPCAI.dm:892`). Quem sabe quem dirige o corpo e o `GameServer.RitmoDaRecargaDe`.
+	/// Nulo = ritmo cheio.
+	/// ================================================================================================
+	/// </summary>
+	public Func<double>? RitmoDaRecarga;
+
+	/// <summary>
 	/// Composicao do golpe por tipo, e o que o corpo resiste. Os defaults sao os do jogo:
 	/// soco = 2 de fisico + 1 de energia contra resistencias 1, o que da o 1,5x conhecido.
 	/// </summary>
@@ -301,13 +339,23 @@ public sealed class CombatState
 		// e morte, nao amputacao -- cabeca arrancada e coisa de tecnica, nao de troca de golpes), e o
 		// aninhado (mao, pe, cerebro, orgaos) nao cai sozinho: ele vai de carona no membro de fora.
 		//
-		// `SemArrancarDeTeste` e o DEFEITO INJETAVEL desta cauda -- ver o campo.
-		if (letal && !SemArrancarDeTeste && membro.Vida <= 0
+		// `SemArrancarDeTeste` e o DEFEITO INJETAVEL desta cauda -- ver o campo. `MembrosFirmes` e a regra do
+		// corpo que nao perde membro (o bicho) -- ver o campo.
+		if (letal && !SemArrancarDeTeste && !MembrosFirmes && membro.Vida <= 0
 			&& membro.Papel == Vitalidade.Membro && !membro.Aninhado)
 			Arrancar(membro);
 
 		return true;
 	}
+
+	/// <summary>
+	/// ESTE CORPO NAO PERDE MEMBRO. Ligado pelo servidor no corpo de um ANIMAL (`GameServer.Animais.cs`), e so
+	/// nele: todo corpo do jogo e o humanoide do <see cref="Body.Novo"/>, e a amputacao e desenhada como tal --
+	/// a peca que cai no chao e um braco de gente (`Body.PecaDe`) e a mascara apaga a coluna do braco no sprite
+	/// (`CharacterVisual.AplicarAmputacao`). Num lobo isso seria um braco humano no chao e um buraco no meio do
+	/// desenho. O membro dele ZERA como o de qualquer um (e o corpo cai e morre pela mesma conta); so nao sai.
+	/// </summary>
+	public bool MembrosFirmes;
 
 	/// <summary>
 	/// ============================ `LopLimb()` -- `mobparts_logic.dm:104-128` ============================
@@ -373,13 +421,15 @@ public sealed class CombatState
 	/// <summary>Passagem de tempo: cronometros, guarda, saida do nocaute.</summary>
 	public void Tick(double dt)
 	{
-		if (Recarga > 0) Recarga = Math.Max(0, Recarga - dt);
+		// A RECARGA ESCORRE NO RITMO DO CORPO: sem os dois bracos, a meio ritmo -- ver `RitmoDaRecarga`.
+		if (Recarga > 0) Recarga = Math.Max(0, Recarga - dt * (RitmoDaRecarga?.Invoke() ?? 1));
 		if (RecargaContra > 0) RecargaContra = Math.Max(0, RecargaContra - dt);
 		if (ComboAte > 0 && (ComboAte = Math.Max(0, ComboAte - dt)) == 0) Combo = 0;
 		if (Carencia > 0) Carencia = Math.Max(0, Carencia - dt);
 		if (Stun > 0) Stun = Math.Max(0, Stun - dt);
 		if (EmCombate > 0) EmCombate = Math.Max(0, EmCombate - dt);
 		if (LutandoDeVerdade > 0) LutandoDeVerdade = Math.Max(0, LutandoDeVerdade - dt);
+		if (BrigandoComAlguem > 0) BrigandoComAlguem = Math.Max(0, BrigandoComAlguem - dt);
 
 		TempoDeGuarda = Bloqueando ? TempoDeGuarda + dt : 0;
 
@@ -433,11 +483,23 @@ public sealed class CombatState
 	}
 
 	/// <summary>Marca o inicio (ou a renovacao) da luta pros dois lados.</summary>
-	public void EntrarEmCombate()
+	/// <param name="comAlguem">
+	/// Falso = o dano veio do MUNDO ou do proprio corpo (autor e vitima sao o mesmo: o esmagamento, o vacuo, o preco
+	/// de uma tecnica). A tag e a mecanica armam como sempre; a briga com alguem, nao. Ver <see cref="BrigandoComAlguem"/>.
+	/// </param>
+	public void EntrarEmCombate(bool comAlguem = true)
 	{
 		EmCombate = CombatKnobs.TagDeCombate;          // 90 s: a tag que o jogador VE e OUVE
 		LutandoDeVerdade = CombatKnobs.LutaDeVerdade;  // 10 s: o que a mecanica sente
+		if (comAlguem) BrigandoComAlguem = CombatKnobs.TagDeCombate;
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--reverterteste`): o nocaute nao mexe no Ki -- o estado de antes de
+	/// 2026-10-10, em que quem caia acima de 100% continuava acima de 100%. Lido pela propria linha do
+	/// conserto, em <see cref="Nocautear"/>.
+	/// </summary>
+	public static bool NocauteGuardaASobrecargaDeTeste;
 
 	/// <summary>
 	/// Cai. A guarda cai junto -- quem esta desmaiado nao bloqueia -- e o corpo fica um tempo
@@ -459,6 +521,28 @@ public sealed class CombatState
 	/// </param>
 	public void Nocautear(double segundos, bool porVital = false)
 	{
+		// ============================ O NOCAUTE DISPERSA A SOBRECARGA ============================
+		// *"Nocaute reseta o ki: ao ser nocauteado, se o ki estiver acima de 100%, ele volta para 100%. Com
+		// 100% ou menos, nada muda."* -- o item 7 do playtest de 2026-10-10.
+		//
+		// DESVIO DECLARADO DO ORIGINAL: no DM o excesso nunca cai de uma vez, so vaza (`CheckPowerMod`,
+		// `Power Control.dm:113-134`), e quem desmaia a 140% continua a 140% ate vazar. Como o `kiratio`
+		// entra no BP expresso (`Fighter.PowerLevel`), o corpo ficava deitado com o bonus de poder de quem
+		// ainda estava carregado.
+		//
+		// O `extracharge` VAI JUNTO, e nao e detalhe: e o "troco" da carga, que o `RegenDeKi.Passo` devolve
+		// como Ki nos segundos seguintes FORA do teto de 100% -- e ele paga mesmo nocauteado. Sem zera-lo, o
+		// corpo cairia em 100% e levantaria acima disso.
+		//
+		// AQUI E NAO NO SERVIDOR porque este e o funil unico do nocaute: soco, raio, dano em area, a propria
+		// sobrecarga, o verb de admin, o reflexo da mente -- todos passam por esta linha.
+		// ==========================================================================================
+		if (!NocauteGuardaASobrecargaDeTeste)
+		{
+			if (F.Ki > F.MaxKi) F.Ki = F.MaxKi;
+			F.extracharge = 0;
+		}
+
 		F.KO = true;
 		F.train = false;   // `KO.dm:57-58`: o nocaute desliga o treino e a meditacao
 		F.med = false;
@@ -616,6 +700,9 @@ public sealed class CombatState
 	{
 		F.dead = false;
 		F.KO = false;
+		// `hakai_mark = 0` (`Death.dm:148`, no `ReviveMe`): a marca do Hakai morre junto com a volta a vida, por
+		// QUALQUER porta -- o Enma, as esferas, a tecnica de reviver. Ver `Fighter.hakai_mark`.
+		F.hakai_mark = false;
 		Carencia = carencia;
 		Corpo.Restaurar();
 		if (fracaoDeVida < 1)

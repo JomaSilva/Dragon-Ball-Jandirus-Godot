@@ -30,9 +30,13 @@ public static class DmProtoScanner
     {
         var saida = new List<ProtoDef>();
 
-        foreach (string file in Directory.GetFiles(codeRoot, "*.dm", SearchOption.AllDirectories))
+        // O ARQUIVO COMO O COMPILADOR O VE (`DmFonte`): so o que o `.dme` inclui, e sem comentario. A raca `Dog` do
+        // `races.json` vinha daqui: e a "Example prototype race" de `Genetic_Prototype.dm:65`, um bloco `/* */` de
+        // documentacao que este leitor tratava como codigo (o port chegou a ganhar tres remendos por causa dela).
+        // Dono, 2026-10-11: *"pode tirar"*.
+        foreach (string file in DmFonte.Arquivos(codeRoot))
         {
-            string texto = File.ReadAllText(file);
+            string texto = string.Join('\n', DmFonte.Linhas(file));
             int i = 0;
             while (true)
             {

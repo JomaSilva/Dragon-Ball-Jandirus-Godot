@@ -1,4 +1,5 @@
 using Godot;
+using Jandirus.Core.Combat;
 using Jandirus.Net;
 
 namespace Jandirus.Client;
@@ -35,20 +36,38 @@ public partial class MenuJogo
 	];
 
 	/// <summary>O nome do fio (sem acento) -> o nome que a tela escreve. Quem nao esta no mapa sai como veio.</summary>
-	internal static string NomeBonitoDoMembro(string nome) => nome switch
+	// (A tabela mora no Core -- `DebuffsDeMembro.NomeNaTela` -- porque a frase do chat na hora da perda, que e o
+	// SERVIDOR quem escreve, precisa do mesmo nome com acento.)
+	internal static string NomeBonitoDoMembro(string nome) => DebuffsDeMembro.NomeNaTela(nome);
+
+	/// <summary>
+	/// GANCHO DE BANCADA (`--diagabas`, familia do Corpo): um corpo FORJADO no lugar do que veio do servidor, pra a
+	/// aba ser remontada, conferida e fotografada com membros arrancados sem ninguem ter de apanhar. Nulo em jogo,
+	/// sempre. (O BONECO da esquerda continua lendo o corpo de verdade: ele se assina sozinho no `CorpoAtualizado`.)
+	/// </summary>
+	internal static List<Protocol.ParteState>? CorpoDeTeste;
+
+	/// <summary>O corpo que a aba desenha (e assina no cache, `MenuJogo.AssinaturaBasica`): o do servidor, ou o forjado da bancada.</summary>
+	internal static List<Protocol.ParteState> CorpoDaAba() => CorpoDeTeste ?? GameClient.Instance?.Corpo ?? [];
+
+	/// <summary>
+	/// A CONTA DE BRACOS E PERNAS pelo que veio no fio (`S2C.Corpo`): a mesma do servidor (`DebuffsDeMembro.De`),
+	/// somada membro a membro. E dela que saem as frases desta aba E o que o corpo local deixa de tentar
+	/// (`LocalPlayer`: correr sem perna, andar sem as duas).
+	/// </summary>
+	internal static DebuffsDeMembro.Perdas PerdasDe(List<Protocol.ParteState> partes)
 	{
-		"Cabeca" => "Cabeça",
-		"Cerebro" => "Cérebro",
-		"Abdomen" => "Abdômen",
-		"Orgaos" => "Órgãos",
-		"Braco esquerdo" => "Braço esquerdo",
-		"Braco direito" => "Braço direito",
-		"Mao esquerda" => "Mão esquerda",
-		"Mao direita" => "Mão direita",
-		"Pe esquerdo" => "Pé esquerdo",
-		"Pe direito" => "Pé direito",
-		_ => nome,
-	};
+		var p = new DebuffsDeMembro.Perdas(0, 0, 0);
+		foreach (Protocol.ParteState m in partes) p = DebuffsDeMembro.Somar(p, m.Nome, m.Vida, m.Decepado);
+		return p;
+	}
+
+	/// <summary>
+	/// AS LINHAS DO CARTAO "EFEITOS DOS FERIMENTOS" -- o `DebuffsDeMembro.EmVigor`: montadas pelas MESMAS funcoes e
+	/// constantes que o servidor consulta pra aplicar cada pena, pra tela nao prometer o que ele nao cumpre.
+	/// </summary>
+	internal static List<string> EfeitosDoCorpo(List<Protocol.ParteState> partes, double hp, string raca) =>
+		DebuffsDeMembro.EmVigor(PerdasDe(partes), hp, raca);
 
 	/// <summary>
 	/// O `injury_word` do DM (`HtmlUI.dm:313-319`), em portugues. Os cortes sao os MESMOS do
@@ -66,7 +85,7 @@ public partial class MenuJogo
 
 	private void Corpo()
 	{
-		List<Protocol.ParteState> partes = GameClient.Instance?.Corpo ?? [];
+		List<Protocol.ParteState> partes = CorpoDaAba();
 		if (partes.Count == 0) { Aviso("O corpo ainda não chegou do servidor."); return; }
 		SheetState f = GameClient.Instance?.Sheet ?? default;
 
@@ -75,6 +94,16 @@ public partial class MenuJogo
 		int feridos = partes.Count(p => !p.Decepado && p.Vida < 100);
 		int decepados = partes.Count(p => p.Decepado);
 		Faixa("Vida", $"{f.HP:0}%", $"{feridos} membros feridos · {decepados} decepados", CorDaRazao(f.HP / 100));
+
+		// O QUE ISSO CUSTA, antes da lista: a pontaria sem braco, a recarga sem os dois, a corrida sem perna, o chao
+		// sem as duas, a guarda que cede, o passo e o poder do corpo ferido -- uma frase por pena EM VIGOR, vinda do
+		// `DebuffsDeMembro` (ver `EfeitosDoCorpo`). Corpo sem pena nenhuma nao ganha o cartao.
+		List<string> efeitos = EfeitosDoCorpo(partes, f.HP, _atributos.Raca ?? "");
+		if (efeitos.Count > 0)
+		{
+			VBoxContainer custo = Cartao("Efeitos dos ferimentos", destaque: true);
+			foreach (string e in efeitos) Nota(e, custo).SetMeta("efeito", e);
+		}
 
 		// DUAS COLUNAS DESIGUAIS: o boneco so precisa da largura dele; o resto e da lista. Um
 		// `Colunas()` dividiria ao meio e deixaria metade da pagina vazia em volta de um desenho de 192 px.
@@ -133,13 +162,22 @@ public partial class MenuJogo
 		return moldura;
 	}
 
-	/// <summary>Uma linha por membro: barra na cor da faixa, "NN%   ·   palavra"; o decepado vira pilula.</summary>
+	/// <summary>
+	/// Uma linha por membro: barra na cor da faixa, "NN%   ·   palavra"; o decepado vira pilula. E, logo abaixo, o
+	/// que o estado DELE custa (`DebuffsDeMembro.NotaDoMembro`) -- so pra quem custa alguma coisa.
+	/// </summary>
 	private static void LinhaDeMembro(Protocol.ParteState p, Control pai)
 	{
 		string nome = NomeBonitoDoMembro(p.Nome);
-		if (p.Decepado) { pai.AddChild(LinhaComPilula(nome, "DECEPADO", BodyDoll.CorDecepado)); return; }
-		Color cor = BodyDoll.Cor(p.Vida);
-		LinhaComBarra(nome, $"{p.Vida}%   ·   {PalavraDeFerimento(p.Vida)}", p.Vida / 100.0, cor, pai, corDoValor: cor);
+		if (p.Decepado) pai.AddChild(LinhaComPilula(nome, "DECEPADO", BodyDoll.CorDecepado));
+		else
+		{
+			Color cor = BodyDoll.Cor(p.Vida);
+			LinhaComBarra(nome, $"{p.Vida}%   ·   {PalavraDeFerimento(p.Vida)}", p.Vida / 100.0, cor, pai, corDoValor: cor);
+		}
+
+		if (DebuffsDeMembro.NotaDoMembro(p.Nome, p.Vida, p.Decepado) is { } nota)
+			Nota($"   · {nota}", pai).SetMeta("nota_do_membro", nome);
 	}
 
 	/// <summary>

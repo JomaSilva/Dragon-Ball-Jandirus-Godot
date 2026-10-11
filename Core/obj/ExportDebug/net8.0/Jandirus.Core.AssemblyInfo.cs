@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Jandirus.Core")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("ExportDebug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+75e1a3811010f8ab084f1753d91b97db4a0cac98")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+bac218a1906c0f7ef29efa3a505a650d94f2e9ab")]
 [assembly: System.Reflection.AssemblyProductAttribute("Jandirus.Core")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Jandirus.Core")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

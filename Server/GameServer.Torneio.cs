@@ -505,9 +505,20 @@ public sealed partial class GameServer
 		AnunciarTorneio(t, $"{pl.Name} se inscreveu! ({t.Inscritos.Count}/{_torneioCfg.Vagas})");
 	}
 
+	/// <summary>
+	/// RECUSAR O CONVITE, OU DESISTIR DA INSCRICAO -- e so enquanto as inscricoes estao ABERTAS, como o
+	/// <see cref="Inscrever"/>: no DM a resposta ao convite que chega depois ouve *"As inscricoes do torneio ja
+	/// fecharam."* (`Tournament.dm:378-380`), e la nem existe desistir depois de inscrito. Sem a fase, um
+	/// inscrito mandava `trn_recusar` com a chave montada: o mundo ouvia "desistiu da inscricao" e ele lia "voce
+	/// fica de fora", continuando na chave, travado na area de espera.
+	/// </summary>
 	private void Recusar(ServerPlayer pl)
 	{
-		if (_torneio is not { } t) { Avisar(pl, "nao ha torneio com inscricoes abertas."); return; }
+		if (_torneio is not { } t || (t.Fase != FaseDoTorneio.Inscricao && !RecusaEmQualquerFaseDeTeste))
+		{
+			Avisar(pl, _torneio == null ? "nao ha torneio com inscricoes abertas." : "as inscricoes do torneio ja fecharam.");
+			return;
+		}
 		string chave = pl.Assinatura;
 		if (t.Inscritos.Remove(chave)) AnunciarTorneio(t, $"{pl.Name} desistiu da inscricao. ({t.Inscritos.Count}/{_torneioCfg.Vagas})");
 		t.Convites.Remove(chave);

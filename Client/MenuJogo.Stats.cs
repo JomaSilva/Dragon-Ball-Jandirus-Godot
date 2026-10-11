@@ -287,9 +287,12 @@ public partial class MenuJogo
 		Linha("Marcos", $"{_livro.MarcosLivres} livres · {_livro.MarcosTotais} na vida", null, c);
 		double zeni = cli?.Zeni ?? 0;
 		Linha("Zeni", $"{zeni:N0}", null, c);
-		Linha("Lugar", cli?.Zone.Name ?? "", null, c);
+		// OS RECURSOS AO LADO DO ZENI: sao a outra carteira (a materia-prima que se minera e que paga
+		// tecnologia e base ao dobro do preco), e chegam no mesmo pacote que ele (`S2C.Carteira`).
+		Linha("Recursos", $"{cli?.Recursos ?? 0:N0}", null, c);
+		Linha("Lugar", cli?.NomeDoLugar ?? "", null, c);
 
-		Nota("Marcos são a moeda das habilidades (aba Learning). A classe não aparece: ela se descobre jogando.", c);
+		Nota("Marcos são a moeda das habilidades (aba Learning). Recursos se tiram dos planetas (o verb Minerar) e pagam tecnologia no lugar do zeni, pelo dobro. A classe não aparece: ela se descobre jogando.", c);
 	}
 
 	/// <summary>O nome do estilo de luta em uso, ou "nenhum". O id so sai se o catalogo nao o conhecer.</summary>
@@ -331,7 +334,7 @@ public partial class MenuJogo
 	/// que e desenhado. A basica ja tem BP expresso, Ki/MaxKi, vida, vigor, nutricao, quatro dos oito
 	/// atributos, idade, classe e a secao de treino; entram aqui o bit do scouter (o ramo da faixa),
 	/// o BP base, o trilho do Ki, os tanques, os outros quatro atributos, a vontade, a Sala, a raca,
-	/// a cadencia, o estilo, os marcos, o zeni e o lugar.
+	/// a cadencia, o estilo, os marcos, o zeni, os recursos e o lugar.
 	/// </summary>
 	private string ExtraDaAssinaturaDeStats(SheetState f)
 	{
@@ -339,6 +342,6 @@ public partial class MenuJogo
 		return $"{_atributos.Tem(Protocol.Poder.Scouter)}|{f.BP:0}|{f.TetoKi:0.##}|{f.VigorMax:0}|{f.NutricaoMax:0}"
 			 + $"|{_atributos.KiDef:0.##}|{_atributos.Technique:0.##}|{_atributos.KiSkill:0.##}|{_atributos.Esoteric:0.##}"
 			 + $"|{_atributos.Willpower:0.##}|{_atributos.ZonaMult:0.##}|{_atributos.SalaFase}|{_atributos.SalaMinutos:0.#}"
-			 + $"|{_atributos.Raca}|{f.SocoMs}|{c?.EstiloAtual}|{_livro.MarcosLivres}/{_livro.MarcosTotais}|{c?.Zeni:0}|{c?.Zone.Name}";
+			 + $"|{_atributos.Raca}|{f.SocoMs}|{c?.EstiloAtual}|{_livro.MarcosLivres}/{_livro.MarcosTotais}|{c?.Zeni:0}|{c?.Recursos:0}|{c?.NomeDoLugar}";
 	}
 }

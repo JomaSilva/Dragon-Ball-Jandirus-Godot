@@ -543,7 +543,7 @@ public sealed partial class GameServer
 				   $"concentrou {concentrou}, ki {yd.Ficha.Ki:0} de {yd.Ficha.MaxKi:0}, BaseDrain {yd.Ficha.BaseDrain():0.##}");
 
 		// conhecido pelo NOME
-		yd.Social.Fotografar(farol.Assinatura, farol.Name, "Human", "Normal", "Male", 25, NowMs());
+		yd.Social.Fotografar(farol.Assinatura, farol.Name, "Human", "Male", 25, NowMs());
 		yd.Social.SomarFamiliaridade(farol.Assinatura);
 		falas = ApertarEOuvir(yd, "Instant_Transmission");
 		AfirmarG11("conhecendo a pessoa, ela passa a aparecer pelo NOME", Disse(falas, "Farol:"), Ultimos(falas));
@@ -691,11 +691,11 @@ public sealed partial class GameServer
 	}
 
 	// =====================================================================
-	// 9) O ZENKAI EM COMBATE -- Heran Power e Saiyan Power
+	// 9) O ZENKAI EM COMBATE -- Heran Power
 	// =====================================================================
 	private void G11ZenkaiEmCombate()
 	{
-		GD.Print("[g11] -- 9) HERAN POWER E SAIYAN POWER: em luta com alguem mais forte, o corpo ganha a cada 10*level tiques");
+		GD.Print("[g11] -- 9) HERAN POWER: em luta com alguem mais forte, o corpo ganha a cada 10*level tiques");
 
 		Vec2 chao = CorredorLivre(12);
 		ServerPlayer heran = ForjarG11("Heran", chao, 1_000, SkillHeranPowerG11);
@@ -723,13 +723,17 @@ public sealed partial class GameServer
 		for (int i = 0; i < 12; i++) TickDoEfetorG11();
 		AfirmarG11("fora de luta nada acontece", Math.Abs(heran.Ficha.BP - bpDepois) < 1e-12);
 
-		ServerPlayer saiyan = ForjarG11("Saiyajin", chao, 1_000, SkillSaiyanPowerG11);
+		// A SAIYAN POWER MORAVA AQUI (o mesmo contador, com `Attack_Gain(level+2)`), e saiu do jogo em
+		// 2026-10-10 -- ver `SkillsAposentadas`. O que sobrou dela e uma checagem: um Saiyajin em luta com
+		// alguem um milhao de vezes mais forte NAO ganha nada deste tique.
+		ServerPlayer saiyan = Forjar("Saiyajin", chao, bp: 1_000);
+		saiyan.Livro.Dar("/datum/skill/saiyan/Saiyan_Power");   // um livro de save antigo, com o nome ainda la
 		saiyan.Ficha.IsInFight = true;
-		forte.Ficha.IsInFight = true;
-		double bpS = saiyan.Ficha.BP, kiS = saiyan.Ficha.Ki;
-		for (int i = 0; i < 12; i++) TickDoEfetorG11();
-		AfirmarG11("Saiyan Power: mesma funcao, `Attack_Gain(level+2)` e SEM o Ki extra",
-				   saiyan.Ficha.BP > bpS && Math.Abs(saiyan.Ficha.Ki - kiS) < 1e-9, $"{bpS:0.###} -> {saiyan.Ficha.BP:0.###}");
+		heran.Ficha.IsInFight = false;
+		double bpS = saiyan.Ficha.BP;
+		for (int i = 0; i < 24; i++) TickDoEfetorG11();
+		AfirmarG11("a Saiyan Power saiu do jogo: nem com o nome dela no livro o Saiyajin ganha BP por lutar com alguem mais forte",
+				   Math.Abs(saiyan.Ficha.BP - bpS) < 1e-12, $"{bpS:0.###} -> {saiyan.Ficha.BP:0.###}");
 
 		LimparG11();
 	}

@@ -309,6 +309,77 @@ public static class CargaDeKi
 		return dano * Eventos * dt;
 	}
 
+	// =====================================================================
+	// O CHAO TREME -- item 5b do playtest de 2026-10-10
+	// =====================================================================
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagvizinho`): o chao nunca treme -- o estado de antes de 2026-10-10, em
+	/// que o "e o chao comeca a tremer" do aviso de <see cref="EstagioDaCarga.Ultrapassando"/> era so texto.
+	/// Lido pela propria <see cref="TremeOChao"/>.
+	/// </summary>
+	public static bool ChaoNaoTremeDeTeste;
+
+	/// <summary>
+	/// A PARTIR DE QUANTO KI o chao treme, em razao sobre o tanque. O pedido do playtest diz o numero:
+	/// *"enquanto o jogador segura C com o ki acima de 120%"*.
+	///
+	/// DESVIO DECLARADO DO ORIGINAL: no DM o tremor nasce junto com o estagio 3 (qualquer coisa acima de 100%)
+	/// e e SORTEADO -- `prob(10)` por chamada do `Energy_Draw`, 3 s de `Quake()` de 8 px de cada vez
+	/// (`Power Control.dm:161-164`, `Ascension.dm:7-21`). Aqui ele e um ESTADO: vale enquanto a condicao vale e
+	/// para quando ela cai, que e o que o pedido descreve.
+	/// </summary>
+	public const double LimiarDoTremor = 1.2;
+
+	/// <summary>
+	/// ATE ONDE O TREMOR CHEGA, em tiles a partir de quem carrega. No DM e `range(screenx)` -- a tela de quem
+	/// carrega, sem queda nenhuma com a distancia (e o planeta INTEIRO acima de 100 mil de Ki). Aqui e um raio,
+	/// e a forca cai ate zero na borda dele (<see cref="PesoDoTremor"/>). Dezesseis tiles e mais ou menos ate
+	/// onde o zumbido da carga se ouve (`CargaVisual`, 560 px): sente-se o chao ate onde se ouve a energia.
+	/// </summary>
+	public const float RaioDoTremorEmTiles = 16f;
+
+	/// <summary>O mesmo raio em pixels de mundo -- a unidade em que o cliente mede a distancia.</summary>
+	public const float RaioDoTremor = RaioDoTremorEmTiles * Jandirus.Core.World.ZoneCollision.TileSize;
+
+	/// <summary>
+	/// A FORCA, em pixels de camera, na tela de quem carrega (distancia zero). Baixa de proposito: e um ronco
+	/// CONTINUO, que dura enquanto a tecla estiver em baixo. Os 8 px do `Quake()` do DM sao um solavanco de
+	/// 3 s; 8 px sem parar nao deixam ler a tela.
+	/// </summary>
+	public const float ForcaDoTremor = 3f;
+
+	/// <summary>
+	/// QUANTA FORCA SOME POR SEGUNDO depois que o estado cai -- e portanto em quanto tempo a tela para quando
+	/// ele solta o C (`ForcaDoTremor / QuedaDoTremor`: 0,375 s na tela de quem carrega, menos na de quem esta
+	/// longe).
+	/// </summary>
+	public const float QuedaDoTremor = 8f;
+
+	/// <summary>Segundos que a camera segura cada rumo -- a velocidade do ronco. A mesma da cinematica de transformacao.</summary>
+	public const float CadenciaDoTremor = 0.08f;
+
+	/// <summary>
+	/// ESTE CORPO ESTA FAZENDO O CHAO TREMER? Quem responde e o SERVIDOR (o Ki alheio nao viaja), e a resposta
+	/// vai no snapshot (`EntityState.CargaAlta`) -- ESTADO, e nao evento: quem chega depois ja sente, e o
+	/// tremor para pra todo mundo no tique em que a condicao cai.
+	///
+	/// AS TRES CONDICOES sao a frase do pedido, uma por termo: SEGURANDO o C (<paramref name="segurando"/>),
+	/// com a carga RENDENDO (andando ela fica suspensa, e a aura e o ronco apagam juntos -- ver
+	/// <see cref="EstagioDaCarga.Andando"/>) e ACIMA de <see cref="LimiarDoTremor"/>.
+	/// </summary>
+	public static bool TremeOChao(Fighter f, bool segurando, EstagioDaCarga estagio)
+		=> !ChaoNaoTremeDeTeste && segurando
+		   && (estagio is EstagioDaCarga.Ultrapassando or EstagioDaCarga.Retomando)
+		   && f.Ki > f.MaxKi * LimiarDoTremor;
+
+	/// <summary>
+	/// QUANTO DO TREMOR CHEGA a quem esta a <paramref name="distancia"/> pixels de quem carrega: inteiro em
+	/// cima dele, caindo em linha reta ate zero em <see cref="RaioDoTremor"/>. E o *"tremor mais fraco quanto
+	/// mais longe"* do pedido.
+	/// </summary>
+	public static float PesoDoTremor(float distancia)
+		=> distancia >= RaioDoTremor ? 0f : 1f - Math.Max(distancia, 0f) / RaioDoTremor;
+
 	/// <summary>
 	/// A AURA ACENDE em `kiratio > 1,1` e apaga em `kiratio <= 1` (`AuraCheck`, Power Control.dm:22-37).
 	///

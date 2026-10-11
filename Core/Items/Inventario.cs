@@ -45,6 +45,23 @@ public sealed record ItemDef(
 public static class CatalogoDeItens
 {
 	public const string Maca = "Apple";
+
+	/// <summary>
+	/// A CARNE -- o que se tira da carcaca de um bicho abatido (`Npc.Animais`; no DM, o `obj/items/food/corpse`
+	/// "[nome] Meat" de `mobDeath.dm:11-14`). So comida: alimenta bem mais que a maca.
+	/// </summary>
+	public const string Carne = "Meat";
+
+	/// <summary>
+	/// A SEMENTE DE MACIEIRA -- `obj/items/food/Seed` com `planttype = "Apple"` (`Turfs/Plants.dm:909-974`).
+	/// Sobra da maca comida com um quarto de chance (<see cref="Plantio"/>) e se PLANTA: o `Plant()` do
+	/// original ergue um `obj/Trees/AppleTree` (`:949-953`). Aqui ela se assenta pelo funil de toda
+	/// construcao, com a previa no mouse -- ver <see cref="OQueAssenta"/>.
+	/// </summary>
+	public const string SementeDeMaca = "Apple_Seed";
+
+	/// <summary>A macieira no catalogo de construcoes (`construcoes.json`): a mesma mobilia `AppleTree` do mapa.</summary>
+	public const string ArvoreDeMaca = "AppleTree";
 	public const string Scouter = "Scouter";
 	public const string Pesos = "Weights";
 	public const string Bandagem = "Bandages";
@@ -180,11 +197,29 @@ public static class CatalogoDeItens
 			"res://Assets/Sprites/Misc/Misc3.tres", "Apple",
 			Empilhavel: true, Nutricao: 6),
 
+		// A CARNE DE CACA (dono, 2026-10-10). A nutricao mora em `Npc.Animais.NutricaoDaCarne`, com a
+		// divergencia do DM declarada la (crua 10, cozida 30; aqui nao ha cozinha).
+		[Carne] = new ItemDef(
+			Carne, "Carne", "Carne de caça, tirada de um bicho abatido. Mata a fome de verdade -- bem mais que uma fruta.",
+			"res://Assets/Sprites/DU/Items/Food Meat Leg.tres", "",
+			Empilhavel: true, Nutricao: Npc.Animais.NutricaoDaCarne),
+
+		// `obj/items/food/Seed` (`Plants.dm:909-912`): a arte e o `Saiba Seed.dmi`, e ela E COMIDA no
+		// original -- herda de `food`, com a nutricao 2 do padrao (`Food.dm:193`) e o gosto que o DM
+		// escreveu. "plantar" vem PRIMEIRO na lista porque e pra isso que ela existe.
+		[SementeDeMaca] = new ItemDef(
+			SementeDeMaca, "Semente de Macieira",
+			"Plante onde quiser: nasce uma macieira, que dá dez maçãs por vez e repõe o que foi colhido. "
+			+ "Também dá pra comer -- com sal seria uma delícia; sem, é só estranho.",
+			"res://Assets/Sprites/Misc/Saiba Seed.tres", "",
+			Empilhavel: true, Nutricao: 2, Acoes: [AcaoPlantar, "comer"]),
+
 		// O SCOUTER ACENDE UM SISTEMA QUE JA EXISTIA INTEIRO E MORTO: o bit `Poder.Scouter`, o corte
 		// de BP no pacote de ficha e o "???" da tela estao no port desde sempre, com um comentario
 		// dizendo "hoje o bit nunca acende -- o port ainda nao tem o item scouter". Ele e o item.
 		[Scouter] = new ItemDef(
-			Scouter, "Scouter", "Lê o poder de luta de quem você olha. Sem ele, todo número é \"???\".",
+			Scouter, "Scouter", "Lê o poder de luta de quem você olha. Sem ele, todo número é \"???\". "
+			+ "Ligado, também é rádio: fala e ouve na frequência escolhida (menu do jogo, aba Equip).",
 			"res://Assets/Sprites/Misc/Objects/Technology/Scouter.tres", "",
 			Empilhavel: false, Acoes: ["equipar"]),
 
@@ -208,15 +243,18 @@ public static class CatalogoDeItens
 			"res://Assets/Sprites/Misc/Objects/Technology/FirstAid.tres", "",
 			Empilhavel: false, Acoes: ["usar"]),
 
+		// A PA E A FURADEIRA NAO TEM ACAO: o "cavar" saiu (dono, 2026-10-10: *"tire a opcao de cavar da pa e
+		// furadeira pq e redundante"*). Na mochila, elas aceleram o verb Minerar -- e a frase que diz isso e a
+		// do Core (`Recurso.DescricaoDeFerramenta`), a mesma do `construcoes.json`.
 		[Pa] = new ItemDef(
-			Pa, "Pá", "Dá pra cavar. Devagar...",
+			Pa, "Pá", Economia.Recurso.DescricaoDeFerramenta(Pa)!,
 			"res://Assets/Sprites/Misc/Shovel.tres", "",
-			Empilhavel: false, Acoes: ["cavar"]),
+			Empilhavel: false, Acoes: []),
 
 		[Furadeira] = new ItemDef(
-			Furadeira, "Furadeira Manual", "Cava bem mais rápido que uma pá.",
+			Furadeira, "Furadeira Manual", Economia.Recurso.DescricaoDeFerramenta(Furadeira)!,
 			"res://Assets/Sprites/Misc/Objects/Technology/tech.tres", "drill",
-			Empilhavel: false, Acoes: ["cavar"]),
+			Empilhavel: false, Acoes: []),
 
 		// `stackable = 1`, `nutrition = 10` (`Food.dm:21-28`). A arte e o `Senzu Bean.dmi` de `:24`.
 		[Senzu] = new ItemDef(
@@ -316,7 +354,7 @@ public static class CatalogoDeItens
 	/// entre a bancada e o momento de assenta-la no chao.
 	///
 	/// AS SETE ESCRITAS A MAO CONTINUAM VALENDO porque elas tem algo que a construcao nao tem:
-	/// nutricao, empilhamento, e acoes proprias (comer, equipar, cavar).
+	/// nutricao, empilhamento, e acoes proprias (comer, equipar, usar) -- ou o nome e a frase em portugues.
 	/// ===================================================================================
 	///
 	/// ============================ E AQUI MORA A REGRA 2 DO DONO, NUMA LINHA SO ============================
@@ -335,7 +373,8 @@ public static class CatalogoDeItens
 	/// </summary>
 	public static ItemDef? Get(string id)
 	{
-		if (Tudo.TryGetValue(id, out ItemDef? mao)) return mao;
+		if (Tudo.TryGetValue(id, out ItemDef? mao))
+			return FerramentaVoltaACavarDeTeste && id is Pa or Furadeira ? mao with { Acoes = ["cavar"] } : mao;
 		if (LivroDeEnsinamentos.Ler(id) is { } livro) return livro.Ficha;
 		if (RoupaGuardada.Ler(id) is { } roupa) return roupa.Ficha(Visual);
 
@@ -348,10 +387,17 @@ public static class CatalogoDeItens
 		// O ITEM PESSOAL FICA SEM ACAO NENHUMA, e isso e honesto: o port ainda nao tem o que a
 		// armadura ou a espingarda FAZEM, e um botao "Assentar no chao" nelas nao seria uma acao a
 		// mais -- seria a acao ERRADA. Quem ja tem mecanica portada esta na tabela la em cima com o
-		// verbo dela (equipar, ajustar, usar, cavar), e e por ali que as proximas entram.
+		// verbo dela (equipar, ajustar, usar), e e por ali que as proximas entram.
 		return new ItemDef(c.Id, c.Nome, c.Desc, c.Arte, c.Estado,
 						   Empilhavel: false, Acoes: c.Pessoal ? [] : [AcaoPosicionar]);
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `instalar-prova`, `--recursosteste` e `--diagminerar`): a pa e a furadeira
+	/// voltam a declarar a acao "cavar" -- o botao que o dono mandou tirar em 2026-10-10. Lido pela propria
+	/// porta do catalogo, em <see cref="Get"/>.
+	/// </summary>
+	public static bool FerramentaVoltaACavarDeTeste;
 
 	public static IEnumerable<ItemDef> Todos => Tudo.Values;
 
@@ -361,6 +407,24 @@ public static class CatalogoDeItens
 	/// servidor que a cobra antes de plantar qualquer coisa.
 	/// </summary>
 	public const string AcaoPosicionar = "posicionar";
+
+	/// <summary>
+	/// O NOME DA ACAO DE PLANTAR. E a mesma coisa que assentar -- abre a mesma previa no mouse e sai pelo
+	/// mesmo verbo do servidor --, com outra palavra no botao: ninguem "instala" uma semente.
+	/// </summary>
+	public const string AcaoPlantar = "plantar";
+
+	/// <summary>
+	/// ============================ O QUE ESTE ITEM VIRA NO CHAO ============================
+	/// Quase sempre ele mesmo: a bancada assentada e a bancada. A SEMENTE e a excecao -- o que fica no chao
+	/// e a ARVORE (`var/obj/Trees/AppleTree/A = new`, `Plants.dm:951`), e a semente se gasta.
+	///
+	/// UMA CASA SO PRAS DUAS PONTAS: o fantasma do cliente desenha isto, e o servidor ergue isto. Escrita
+	/// em dois lugares, a previa mostraria uma coisa e o chao receberia outra.
+	/// ====================================================================================
+	/// </summary>
+	public static string OQueAssenta(string idDoItem) =>
+		string.Equals(idDoItem, SementeDeMaca, StringComparison.OrdinalIgnoreCase) ? ArvoreDeMaca : idDoItem;
 
 	/// <summary>
 	/// DA PRA ASSENTAR ISTO NO CHAO?
@@ -377,7 +441,8 @@ public static class CatalogoDeItens
 	/// ==================================================================================================
 	/// </summary>
 	public static bool PodeAssentarNoChao(string id) =>
-		Get(id) is { } def && Array.IndexOf(def.AcoesDoItem, AcaoPosicionar) >= 0;
+		Get(id) is { } def
+		&& (Array.IndexOf(def.AcoesDoItem, AcaoPosicionar) >= 0 || Array.IndexOf(def.AcoesDoItem, AcaoPlantar) >= 0);
 }
 
 /// <summary>

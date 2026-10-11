@@ -78,7 +78,9 @@ public sealed partial class GameServer
 
 		double quanto = arg.Trim().Length == 0 ? tenho
 			: double.TryParse(arg.Trim(), System.Globalization.NumberStyles.Float,
-							  System.Globalization.CultureInfo.InvariantCulture, out double v) ? v : -1;
+							  System.Globalization.CultureInfo.InvariantCulture, out double v)
+			  && NumeroFinito(v) ? v : -1;   // "NaN" passa no `TryParse` e em todo `<=` daqui pra baixo: o zeni virava NaN, e NaN "paga" qualquer preco
+
 
 		if (quanto <= 0) { Avisar(pl, "diga quanto -- ou deixe em branco pra mover tudo."); return; }
 

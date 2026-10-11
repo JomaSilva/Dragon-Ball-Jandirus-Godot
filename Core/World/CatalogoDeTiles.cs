@@ -154,8 +154,7 @@ public sealed class CatalogoDeTiles
 				("Arvore", p.Arvore, p.VegetacaoPct > 0),
 				("ArvoreAcento", p.ArvoreAcento, p.VegetacaoPct > 0),
 				("Planta", p.Planta, p.PlantaPct > 0),
-				("Minerio", p.Minerio, p.MinerioPct > 0),
-				("Gema", p.Gema, p.MinerioPct > 0),
+				("RochaGrande", p.RochaGrande, p.MinerioPct > 0),
 			];
 
 			foreach ((string papel, TileVisual v, bool usado) in papeis)

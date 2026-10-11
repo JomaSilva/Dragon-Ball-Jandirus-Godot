@@ -58,6 +58,12 @@ public partial class GameServer
 		// continua no livro, so o "nao repassa" evapora.
 		if (save is { SkillsEnsinadas.Count: > 0 }) pl.Livro.CarregarEnsinadas(save.SkillsEnsinadas);
 
+		// QUAIS DELAS FORAM COMPRADAS (o `investedskills` do DM): so elas devolvem marco. **DEPOIS das ensinadas**,
+		// que a leitura descarta, e SEM o `Count > 0` das irmas: o campo NULO e o save de antes da lista (tudo o
+		// que ninguem ensinou conta como comprado) e a lista VAZIA e quem nao comprou nada -- ver
+		// `SkillBook.CarregarCompradas` e `CharacterSave.SkillsCompradas`.
+		pl.Livro.CarregarCompradas(save?.SkillsCompradas);
+
 		// A CASA ESCOLHIDA nas skills de escolha unica, pela MESMA razao e na MESMA ordem: e um
 		// dado a mais sobre uma skill que ele ja sabe, e o leitor descarta escolha orfa.
 		if (save is { SkillsEscolhas.Count: > 0 }) pl.Livro.CarregarEscolhas(save.SkillsEscolhas);
@@ -74,10 +80,30 @@ public partial class GameServer
 		{
 			pl.Livro.MarcosTotais = save.MarcosTotais;
 			pl.Livro.MarcosLivres = save.MarcosLivres;
+			pl.Livro.MarcosPorBp = save.MarcosPorBp;
 		}
 		else pl.Livro.Conceder(MarcosIniciais);
 
+		// AS SKILLS QUE O DONO TIROU DO JOGO saem do livro de quem as tinha, com os marcos de volta pra
+		// quem as comprou. DEPOIS dos marcos do save, que e sobre eles que o reembolso soma. O recado sai
+		// mais adiante no login, quando ja ha tela pra le-lo (`AvisarDasAposentadas`).
+		pl.SkillsQueSairam = SkillsAposentadas.Limpar(pl.Livro);
+
 		MigrarRazao(pl, save);
+	}
+
+	/// <summary>
+	/// O RECADO DE QUEM PERDEU UMA SKILL PRA UMA DECISAO DO JOGO. Sem ele o jogador abriria a aba de
+	/// aprendizado e acharia uma casa a menos e um marco a mais, sem ninguem ter dito por que.
+	/// </summary>
+	private void AvisarDasAposentadas(ServerPlayer pl)
+	{
+		foreach ((SkillsAposentadas.Aposentada skill, int devolvidos) in pl.SkillsQueSairam)
+			Avisar(pl, devolvidos > 0
+				? $"a habilidade {skill.Nome} saiu do jogo e foi tirada do seu livro. {devolvidos} marco(s) gasto(s) nela "
+				  + $"voltaram: você tem {pl.Livro.MarcosLivres} livre(s) pra gastar na aba de aprendizado."
+				: $"a habilidade {skill.Nome} saiu do jogo e foi tirada do seu livro.");
+		pl.SkillsQueSairam = [];
 	}
 
 	/// <summary>A versao do razao que este servidor grava. Ver `CharacterSave.RazaoVersao`.</summary>
@@ -323,6 +349,79 @@ public partial class GameServer
 	}
 
 	/// <summary>
+	/// O PROGRESSO DAS SKILLS, NO CHAT -- o `Check_Skill_Stats` do original (`skill.dm:110-128`: "Level: 3/100",
+	/// "Experience: 1200/5000"), que este port nao tinha em lugar nenhum.
+	///
+	/// E a outra metade do item 4 do playtest: o bonus de meditar existia e era aplicado, e ninguem tinha como
+	/// VER -- o nivel e o exp nao viajam no pacote de skills (so a subida de nivel virava uma linha de chat, e o
+	/// primeiro nivel do Ki Unlocked de um recem-nascido leva perto de uma hora meditando). A funcao que
+	/// responde isto ja existia no Core (`NiveisDeSkill.Andamento`) e nao tinha chamador.
+	/// </summary>
+	private void VerProgressoDasSkills(ServerPlayer pl)
+	{
+		if (_skills == null || pl.Livro == null) return;
+
+		var linhas = new List<string>();
+		foreach ((string path, int nivel, _) in pl.Niveis.Todas)
+		{
+			if (!pl.Livro.Sabe(path) || _skills.Get(path) is not { } skill) continue;
+			(double exp, double barreira) = pl.Niveis.Andamento(_skills, path);
+			linhas.Add(barreira > 0
+				? $"{skill.Nome}: nível {nivel}/{Math.Max(1, skill.MaxNivel)} — {exp:N0} de {barreira:N0} de exp ({exp / barreira * 100:0}%)"
+				: $"{skill.Nome}: nível {nivel} (no teto)");
+		}
+
+		if (linhas.Count == 0)
+		{
+			Avisar(pl, "nenhuma skill sua sobe de nível sozinha ainda. A primeira é o Ki Unlocked (aba Learning, árvore da Mente).");
+			return;
+		}
+
+		linhas.Sort(StringComparer.OrdinalIgnoreCase);
+		Avisar(pl, $"PROGRESSO DAS SKILLS ({linhas.Count}). Meditar faz as de Ki subirem mais rápido:");
+		foreach (string l in linhas) Avisar(pl, "  " + l);
+	}
+
+	/// <summary>
+	/// O `skillpointMod` DESTE CORPO, composto do genoma como os outros stats de raca (`Genome.Build`): um
+	/// mestico tem a media ponderada dos ancestrais, como no original. Sem genoma ou sem catalogo, 1.
+	/// </summary>
+	private double ModDeMarcosDe(ServerPlayer pl)
+	{
+		if (_racas == null || pl.Ficha.Genoma == null) return 1;
+		double mod = pl.Ficha.Genoma.Build(_racas.Protos).Stats.GetValueOrDefault("Skillpoint Mod", 1);
+		return mod > 0 ? mod : 1;
+	}
+
+	/// <summary>
+	/// OS MARCOS QUE O BP DEVE A ESTE CORPO -- o `processpoints()` + `HandleLevel()` do original
+	/// (`scaling.dm:1-13`, `mobhandlers.dm:7-22`). A regra e os numeros moram em <see cref="MarcosDeBp"/>.
+	///
+	/// POR ESTADO, a 5 Hz, e nao no instante de cada ganho: o BP base sobe por uma duzia de caminhos (treino,
+	/// soco, tiro, voo, nado, Zenkai, desejo, absorcao, potencial destravado), e um gancho em cada um seria
+	/// uma duzia de chances de esquecer o proximo. Quem pergunta e sempre a mesma linha -- "o BP de agora
+	/// ja passou do limiar que ainda nao foi pago?" --, e por isso quem ja passou recebe tudo de uma vez.
+	///
+	/// O PACOTE SAI JUNTO: os dois contadores do livro viajam no `S2C.Skills`, e ele so sai de quem o chama.
+	/// </summary>
+	private void ConferirMarcosDoBp(ServerPlayer pl)
+	{
+		int devidos = MarcosDeBp.Devidos(pl.Ficha.BP, pl.Livro.MarcosPorBp, pl.ModDeMarcos);
+		if (devidos <= 0) return;
+
+		pl.Livro.MarcosPorBp += devidos;
+		pl.Livro.Conceder(devidos);
+
+		// A FRASE NAO DIZ O NUMERO DO PODER: o BP do proprio corpo e sigilo sem scouter.
+		Avisar(pl, devidos == 1
+			? "MARCO! O seu poder cruzou um limiar: +1 marco pra gastar (menu P > Learning)."
+			: $"MARCOS! O seu poder cruzou {devidos} limiares: +{devidos} marcos pra gastar (menu P > Learning).");
+		GD.Print($"[skills] {pl.Name}: +{devidos} marco(s) por BP (base {pl.Ficha.BP:0}, mod {pl.ModDeMarcos:0.##}) "
+			   + $"-> {pl.Livro.MarcosLivres} livres / {pl.Livro.MarcosTotais} na vida");
+		MandarSkills(pl);
+	}
+
+	/// <summary>
 	/// O TIQUE DO EFETOR DE UM CORPO -- o corpo do laco do `TickDosNiveis`, separado pra que a bancada
 	/// (`--arvoreteste`) exercite a MESMA funcao num corpo forjado (que nao passa por `EhJogador`).
 	/// Devolve se algum nivel subiu.
@@ -330,6 +429,9 @@ public partial class GameServer
 	private bool TicarNiveisDe(ServerPlayer pl)
 	{
 		if (_skills == null || pl.Livro == null) return false;
+
+		// OS MARCOS DO BP, NA MESMA CADENCIA: o original os confere no mesmo laco de stats que anda o efetor.
+		ConferirMarcosDoBp(pl);
 
 		// ============================ O QUE O BUFF DE KI FAZ POR TIQUE ============================
 		// As duas linhas moram no `effector()` de skills da arvore da Mente, e as duas dependem de
@@ -516,9 +618,45 @@ public partial class GameServer
 		// copia ensinada tem a propria porta (`esquecer_licao`), sem reembolso -- ver `GameServer.Ensino.cs`
 		if (pl.Livro.FoiEnsinada(path)) { Avisar(pl, $"{s.Nome} foi ensinada: esqueca-a pela porta do ensino."); return; }
 
+		// ============================ O QUE O CARGO DEU NAO SE VENDE DE VOLTA ============================
+		// O reembolso devolve o `skillcost` de toda skill que nao foi ENSINADA -- e a skill que o cargo entrega
+		// (`Livro.Dar`, pela `ReconciliarDadiva`) tambem nao foi comprada. O portador esquecia uma do kit, levava os
+		// marcos, e o tique de 1 Hz dos cargos a devolvia ao livro: marcos sem fim, um punhado por segundo. No DM o
+		// modo FORGET so devolve o que esta em `CurrentTree.investedskills` (`SkillTreesWindow.dm:33-35`), que so o
+		// `fund()` da compra enche (`trees.dm:99-111`). Enquanto o cargo for dele, a skill do kit fica.
+		// (Desde a lista de compradas -- `SkillBook.FoiComprada` -- o livro ja nao pagaria por ela, MENOS no save de
+		// antes da lista, onde tudo o que ninguem ensinou conta como comprado. E esquecida, o tique a devolveria.)
+		// ==============================================================================================
+		if (!ReembolsaODoCargoDeTeste
+			&& Jandirus.Core.Ranks.DadivaDeCargo.De(CargoDe(pl.Conta)).Contains(path, StringComparer.OrdinalIgnoreCase))
+		{
+			Avisar(pl, $"{s.Nome} veio com o seu cargo: enquanto voce o carregar ela fica -- e ela nao vale marco nenhum, porque ninguem a comprou.");
+			return;
+		}
+
+		// ...E O QUE A FUSAO EMPRESTOU TAMBEM NAO (2026-10-11): as skills do passageiro entram no livro do dono
+		// pelo mesmo `Livro.Dar` (`GameServer.Fusao.cs`, passo 3 do `Fundir` -- pedido do dono, nao existe no DM), e
+		// o dono as esquecia por aqui levando os marcos de uma compra que nunca fez; na separacao nao havia mais o
+		// que tirar dele. Uma hora de recarga, e de novo. (Os marcos o livro ja nao daria: ela nao esta entre as
+		// compradas. A recusa fica porque a skill e do PASSAGEIRO -- sai na separacao, e nao pela mao do dono.)
+		if (EmprestadaPelaFusao(pl, path))
+		{
+			Avisar(pl, $"{s.Nome} veio com a fusão: ela sai sozinha quando vocês se separarem -- e não vale marco nenhum, porque você não a comprou.");
+			return;
+		}
+
+		// SO O QUE FOI COMPRADO DEVOLVE MARCO (dono, 2026-10-11) -- e so ele cai com a arvore que encolhe: a skill
+		// herdada pela absorcao Namekuseijin, a que um admin deu e a que um degrau concedeu se esquecem aqui como
+		// qualquer outra, sem pagar (`SkillBook.FoiComprada`). O predicado cobre o que o livro nao sabe: o kit do
+		// cargo num save de antes da lista, que a cascata levaria pagando e o tique dos cargos devolveria.
+		bool comprada = DevolveMarcoAoEsquecer(pl, path);
 		int antes = pl.Livro.MarcosLivres;
-		List<string> cascata = pl.Livro.EsquecerEReembolsar(_skills, path, pl.Race, pl.Class);
-		Avisar(pl, $"voce esquece {s.Nome} ({pl.Livro.MarcosLivres - antes} marco(s) de volta).");
+		List<string> cascata = pl.Livro.EsquecerEReembolsar(_skills, path, pl.Race, pl.Class, p => SkillQueNinguemComprou(pl, p));
+		int voltaram = pl.Livro.MarcosLivres - antes;
+		Avisar(pl, comprada
+			? $"voce esquece {s.Nome} ({voltaram} marco(s) de volta)."
+			: $"voce esquece {s.Nome}. Ela nao devolve marco: voce nao a comprou"
+			  + (voltaram > 0 ? $" ({voltaram} marco(s) de volta pelo que caiu junto)." : "."));
 		foreach (string p in cascata)
 			Avisar(pl, $"sem isso voce nao sustenta {_skills.Get(p)?.Nome ?? p}, e a esquece junto.");
 		GD.Print($"[server] {pl.Name} esqueceu '{s.Nome}' (+{pl.Livro.MarcosLivres - antes} marcos, cascata: {cascata.Count})");
@@ -580,9 +718,13 @@ public partial class GameServer
 		// E OS VERBS ATIVOS, pelo mesmo motivo de novo: um degrau cruzado no tique (ou a casa escolhida na
 		// Trindade) concede verb sem mexer em marco, skill nem arvore -- e o botao so nasceria na proxima
 		// compra. Ver `Protocol.PorEstadoDeSkills`.
+		// E AS QUE NAO DEVOLVEM MARCO, idem: ganhar um cargo cujo kit traz uma skill que o personagem ja tinha
+		// comprado muda a promessa do botao de esquecer sem mexer em marco, skill, arvore nem verb. Entra o RESUMO
+		// (quantas + soma), e nao a lista: esta linha roda todo tique -- ver `ResumoDasSemReembolso`.
+		(int semReembolso, int somaDelas) = ResumoDasSemReembolso(pl);
 		string sig = $"{pl.Livro.MarcosLivres}/{pl.Livro.MarcosTotais}:{pl.Livro.Aprendidas.Count}"
 				   + $":{(EhVilao(pl) ? 'v' : '-')}:{pl.Livro.AssinaturaDasArvores()}"
-				   + $":{string.Join(",", TecnicasDe(pl))}";
+				   + $":{string.Join(",", TecnicasDe(pl))}:{semReembolso}/{somaDelas}";
 		if (!forcar && sig == pl.SigSkills) return;
 		pl.SigSkills = sig;
 
@@ -635,8 +777,10 @@ public partial class GameServer
 		// A CAUDA: o estado das arvores -- o RESULTADO do `growbranches()`, e nao os contadores -- e os
 		// VERBS ATIVOS (skill + degrau + casa), a MESMA lista que o `SabeTecnica` aceita: o que o menu
 		// mostra e o que o servidor executa nunca podem ser duas listas. O porque esta em
-		// `Protocol.PorEstadoDeSkills`.
-		Protocol.PorEstadoDeSkills(w, pl.Livro, TecnicasDe(pl));
+		// `Protocol.PorEstadoDeSkills`. E, no fim, AS QUE NAO DEVOLVEM MARCO ao ser esquecidas -- a mesma pergunta
+		// que o `skill_esquecer` faz (`DevolveMarcoAoEsquecer`), pra o botao da ficha nao prometer o que este
+		// servidor nao paga.
+		Protocol.PorEstadoDeSkills(w, pl.Livro, TecnicasDe(pl), SkillsSemReembolso(pl));
 		return w;
 	}
 }

@@ -97,6 +97,24 @@ public enum TipoDeNpc
 	/// nem chefe (nao tem roteiro). O plano de povoamento tambem nao o aceita: ele so nasce pelo torneio.
 	/// </summary>
 	Lutador,
+
+	/// <summary>
+	/// O VILAO AVULSO das "quests de viloes" (item 12 do playtest de 2026-10-10; ver <see cref="VilaoAvulso"/>):
+	/// nasce pelo EVENTO -- nunca pelo povoamento --, caca jogador como todo papel que nao e pacifico, rende
+	/// karma a quem o derrota e vai embora no prazo. Nao e <see cref="Inimigo"/> de proposito: aquele e o
+	/// inimigo de AMBIENTE, que o recorte do dono mantem desligado (`Povoamento.InimigoComumLigado`), e este e
+	/// um evento com teto, relogio e aviso -- o proprio dono pediu. Nem <see cref="Chefe"/>: nao tem roteiro
+	/// de estagios, e as sagas nao sabem que ele existe.
+	/// </summary>
+	Vilao,
+
+	/// <summary>
+	/// O BICHO (pedido do dono em 2026-10-10; ver <see cref="Animais"/>): lobo, leao, vaca, galinha. Nao e gente
+	/// -- nao tem raca, skill, forma nem fala --, tem forca FIXA por especie, so bate corpo a corpo, MORRE quando
+	/// cai e deixa uma carcaca com carne. Nasce pela fauna do planeta (`GameServer.Animais.cs`), nunca pelo
+	/// povoamento. Nao e <see cref="Inimigo"/> de proposito: aquele continua desligado, e este e outra regra.
+	/// </summary>
+	Animal,
 }
 
 /// <summary>
@@ -163,6 +181,12 @@ public sealed class MoldeDeNpc
 
 	/// <summary>O `tipo` estava escrito no arquivo? So pra `Problemas()` poder exigir. Ver acima.</summary>
 	public bool TipoDeclarado;
+
+	/// <summary>
+	/// O bloco `"animal": { ... }` -- so os moldes do tipo <see cref="TipoDeNpc.Animal"/> o tem. Nulo nos outros.
+	/// Ver <see cref="FichaDeAnimal"/>.
+	/// </summary>
+	public FichaDeAnimal? Animal;
 
 	// =====================================================================
 	// QUEM ELE E
@@ -390,6 +414,9 @@ public sealed class MoldeDeNpc
 			if (!ultimo && Estagios[i].GatilhoMembro < 0)
 				p.Add($"'{Id}': estagio {i + 1} nao e o ultimo e nao tem gatilhoMembro -- a escada pararia nele");
 		}
+
+		// O BICHO tem a propria conferencia (folha de sprite, forca fixa, carne): ver `Animais.Problemas`.
+		p.AddRange(Animais.Problemas(this));
 		return p;
 	}
 }
@@ -479,7 +506,10 @@ public sealed class CatalogoDeMoldes
 				case "inimigo": m.Tipo = TipoDeNpc.Inimigo; m.TipoDeclarado = true; break;
 				case "chefe": m.Tipo = TipoDeNpc.Chefe; m.TipoDeclarado = true; break;
 				case "lutador": m.Tipo = TipoDeNpc.Lutador; m.TipoDeclarado = true; break;
+				case "vilao": m.Tipo = TipoDeNpc.Vilao; m.TipoDeclarado = true; break;
+				case "animal": m.Tipo = TipoDeNpc.Animal; m.TipoDeclarado = true; break;
 			}
+			m.Animal = FichaDeAnimal.Ler(e);
 
 			if (e.TryGetProperty("nomesPorRaca", out JsonElement pools) && pools.ValueKind == JsonValueKind.Object)
 				foreach (JsonProperty kv in pools.EnumerateObject())

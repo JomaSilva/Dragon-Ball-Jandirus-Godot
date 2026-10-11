@@ -476,6 +476,11 @@ public sealed partial class GameServer
 		_tronos["guardian"] = kami.Conta;
 		ReconciliarDadiva(kami);
 		EscutaDeAvisos?.Clear();
+		// (palco) O SEGUNDO AO LADO DO GUARDIAO, no mesmo andar: a chave se entrega a quem esta a vista (`in view(6)`,
+		// `EarthRanks.dm:140`), e a secao da lotacao deixou este corpo onde a Sala o largou. A recusa por distancia
+		// e medida na `--validacoesteste`.
+		b.Zone = kami.Zone;
+		b.Pos = kami.Pos + new Vec2(ZoneCollision.TileSize, 0);
 		ComandoDaSalaDoTempo(kami, "sala_autorizar", b.Id.ToString());
 		AfirmarSala("o Guardiao da Terra faz a chave (o `verb/Permission` do DM)", b.SalaAutorizada);
 
@@ -1349,11 +1354,20 @@ public sealed partial class GameServer
 		_naSala.Clear();
 		RecolherComidaDaSala();
 
-		// EM CIMA DA CELULA DE SAIDA: a passagem le a celula dos PES (`FeetOffsetY`), como a colisao.
+		// (palco, 2026-10-11) UM TILE AO SUL DA SAIDA, OLHANDO PRA ELA E ANDANDO -- os pes na celula (145,339), a
+		// do lado de dentro. A boca da passagem e LACRADA e o gatilho e o PASSO que entra nela (`Passagem.NoPasso`:
+		// andando, com a caixa dos pes projetada um tile no rumo do olhar), e nao o pe em cima da celula. Era em
+		// cima dela, e PARADO, que este palco punha o corpo desde que a passagem virou gesto: o `TickDasPassagens`
+		// nao via gesto nenhum, e as quatro afirmacoes que dependem de a saida RESPONDER (atravessar tres vezes, e
+		// a frase da recusa) reprovavam com a tranca certa. A marca do gesto (`_naBocaDaPassagem`) sai junto: cada
+		// chamada e um empurrao novo.
 		void NaSaida()
 		{
-			a.Pos = new Vec2(145 * ZoneCollision.TileSize + 16, 338 * ZoneCollision.TileSize + 8);
+			a.Pos = new Vec2(145 * ZoneCollision.TileSize + 16, 339 * ZoneCollision.TileSize + 8);
+			a.Facing = Facing.North;
+			a.Moving = true;
 			_acabouDeAtravessar.Remove(a.Id);
+			_naBocaDaPassagem.Remove(a.Id);
 			_avisoDePrisao.Remove(a.Id);
 		}
 
@@ -1448,10 +1462,11 @@ public sealed partial class GameServer
 		}
 		finally { EscutaDeAtributos = null; }
 
-		// A BANCADA TERMINA COMO COMECOU: o corpo fora, solto, sem sessao e sem comida no chao.
+		// A BANCADA TERMINA COMO COMECOU: o corpo fora, solto, parado, sem sessao e sem comida no chao.
 		a.SalaPreso = false;
 		a.SalaDiasDaSessao = 0;
 		a.SalaJanelaAte = 0;
+		a.Moving = false;
 		RecolherComidaDaSala();
 		ZoneList(a.Zone.Hash).Remove(a);
 		a.Zone = lookout;

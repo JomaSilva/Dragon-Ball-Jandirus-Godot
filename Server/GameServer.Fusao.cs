@@ -34,7 +34,7 @@ public sealed partial class GameServer
 	/// <summary>
 	/// O CONVITE NA MESA DE ALGUEM (a chave do dicionario e o id de QUEM RECEBEU).
 	///
-	/// VIVO, nao vai pro disco -- mesma regra do `PedidoDeAmizade` e do `PedidoDeLicao`: um convite
+	/// VIVO, nao vai pro disco -- mesma regra do `PedidoDeLicao`: um convite
 	/// e um gesto do momento.
 	/// </summary>
 	private sealed record PedidoDeFusao(int DeQuem, string Nome, TipoDeFusao Tipo, long Ate);
@@ -430,6 +430,11 @@ public sealed partial class GameServer
 
 		if (r != RecusaDeFusao.Pode) { Avisar(pl, PorQueNaoFunde(r, tipo, pl, outro, agora)); return; }
 
+		// O PRESO DA SALA DO TEMPO NAO FUNDE, nem convidando nem convidado: ele sairia dela como passageiro de quem
+		// nao esta preso. A Namekuseijin fica de fora (nela ninguem sai: o absorvido deixa de existir) -- ver
+		// `PorQueOPresoNaoFunde`.
+		if (tipo != TipoDeFusao.Namek && PorQueOPresoNaoFunde(pl, outro) is { Length: > 0 } prisao) { Avisar(pl, prisao); return; }
+
 		_pedidosDeFusao[outro.Id] = new PedidoDeFusao(pl.Id, pl.Name, tipo,
 			agora + (long)(Fusao.PrazoDoConviteSegundos * 1000));
 
@@ -535,8 +540,11 @@ public sealed partial class GameServer
 	/// passageiro) e o port fazia igual. Com o carimbo indo pro DISCO agora, duas escritas do mesmo
 	/// numero sao duas chances de uma delas ficar pra tras.
 	/// </summary>
-	private static void CobrarARecargaDeFusao(ServerPlayer p, long agora) =>
+	private void CobrarARecargaDeFusao(ServerPlayer p, long agora)
+	{
+		if (_paradaEmCurso) return;   // quando e a PARADA do servidor que desfaz a fusao, ninguem paga a hora (dono, 2026-10-11) -- ver GameServer.Parada.cs
 		p.Ficha.fusion_cooldown_until = agora + (long)(Fusao.RecargaSegundos * 1000);
+	}
 
 	/// <summary>
 	/// A RECUSA DIZ O QUE FALTA -- mesmo criterio do `PorQueNaoVincula` e do `PorQueNaoEnsina`.
@@ -696,6 +704,15 @@ public sealed partial class GameServer
 			string porque = PorQueNaoFunde(r, p.Tipo, quem, pl, agora);
 			Avisar(pl, porque);
 			Avisar(quem, $"a fusao com {pl.Name} nao fechou: {porque}");
+			return;
+		}
+
+		// A MESMA PORTA DO CONVITE, no aceite: a tranca da Sala do Tempo fecha por relogio, e pode ter fechado
+		// entre o convite e o "sim". Ver `PorQueOPresoNaoFunde`.
+		if (p.Tipo != TipoDeFusao.Namek && PorQueOPresoNaoFunde(pl, quem) is { Length: > 0 } prisao)
+		{
+			Avisar(pl, prisao);
+			Avisar(quem, $"a fusao com {pl.Name} nao fechou: {PorQueOPresoNaoFunde(quem, pl)}");
 			return;
 		}
 
@@ -1212,7 +1229,7 @@ public sealed partial class GameServer
 
 		Vec2 destino = quem.Pos + d.Normalized() * (float)Math.Min(passo, falta);
 
-		ZoneCollision? mapa = _catalogo?.Get(quem.Zone)?.Mapa;
+		ZoneCollision? mapa = MapaDoSalto(quem.Zone);   // planeta gerado tambem tem parede: ver `MapaDoSalto`
 		if (mapa != null && MoveRules.PathOccupied(mapa, quem.Pos, destino, ModoDeTravessiaDe(quem)))
 			return;
 

@@ -642,6 +642,10 @@ public partial class GameServer
 		controle.SalaAutorizada = antes;
 
 		// ---- Appoint_Elder -> cargo_nomear ----
+		// (palco) o Namekuseijin no tile vizinho do dono: nomear e presencial (`in view(1)`, `NamekRanks.dm:56`),
+		// e os corpos desta bancada nascem a tres tiles um do outro. Ele volta pro lugar no fim do bloco.
+		Vec2 lugarDoNamek = namek.Pos;
+		namek.Pos = dono.Pos + new Vec2(ZoneCollision.TileSize, 0);
 		_convitesDeAnciao.Clear();
 		_tronos.Clear();
 		TickDosCargos();
@@ -656,6 +660,7 @@ public partial class GameServer
 		  _convitesDeAnciao.ContainsKey(namek.Conta)
 		  && dono.Livro.Sabe("/datum/skill/rank/Appoint_Elder"), "");
 		_convitesDeAnciao.Clear();
+		namek.Pos = lugarDoNamek;
 
 		// ============================ O MISTICO DO KAIOSHIN -- A DIVIDA QUE ESTA BANCADA ACHOU, E FECHOU ============================
 		// **O QUE ESTAVA ESCRITO AQUI ERA UMA ACUSACAO**, e ela valia: o censo apontava o verb `Mystic`

@@ -108,11 +108,24 @@ public partial class GameServer
 	///
 	/// A ORDEM IMPORTA: um Namekuseijin sem braco que gastasse 70% do Ki curando um arranhao na
 	/// perna teria jogado a habilidade fora e continuaria sem braco.
+	///
+	/// ============================ SO QUEM CONSEGUE SE CONCENTRAR ============================
+	/// `if(usr.KO || usr.dead || usr.med || usr.train)` -- *"Voce nao consegue se concentrar para regenerar
+	/// agora."* (`namekian.dm:164-166`); e o `Regenerate` das arvores de Alien/Android/Demonio, que entra por
+	/// este mesmo verb, abre com o mesmo trio: `!KO && !med && !train` (`alien.dm:81`). O port so perguntava
+	/// `dead`: nocauteado no chao, o Namekuseijin refazia o braco -- e quem meditava ou treinava tambem.
+	/// ====================================================================================
 	/// </summary>
 	private void Regenerar(ServerPlayer pl)
 	{
 		if (!PodeRegenerar(pl)) { Avisar(pl, "seu corpo nao regenera assim."); return; }
 		if (pl.Combate == null || pl.Ficha.dead) { Avisar(pl, "agora nao."); return; }
+		if (!RegeneraCaidoDeTeste && (pl.Ficha.KO || pl.Ficha.med || pl.Ficha.train))
+		{
+			Avisar(pl, "voce nao consegue se concentrar pra regenerar agora ("
+					 + (pl.Ficha.KO ? "esta caido" : pl.Ficha.med ? "saia da meditacao primeiro" : "pare o treino primeiro") + ").");
+			return;
+		}
 
 		long agora = NowMs();
 		if (agora < pl.RegenLivreEm)
@@ -186,13 +199,22 @@ public partial class GameServer
 			// A SAIDA VOLUNTARIA E SECA, e nao por esquecimento: o pedido pede a gota na IDA e na
 			// volta por VITORIA. Abrir os olhos por vontade propria e sair da nave -- nao e um
 			// acontecimento, e um gesto.
-			case "sairdamente": SairDaMente(pl, "voce abre os olhos."); break;
+			case "sairdamente": SairDoTranse(pl); break;
 			// SEM BOTAO NO MENU desde 2026-09-03 (pedido do dono): a porta do jogador pro espaco e voar
-			// pra cima ate romper a atmosfera (`Voo.TentarRomperAAtmosfera`, que cobra Ki e poder). O id
-			// fica porque tres bancadas (`--diagnav`, `--diaguniverso`, `--socar`) precisam chegar ao
-			// espaco sem voar. Um cliente mexido pode chama-lo -- e um salto de graca, e e divida: se
-			// isso incomodar, a saida e cobrar aqui a mesma `PodeRomperAAtmosfera` do voo.
-			case "decolar": Decolar(pl); break;
+			// pra cima ate romper a atmosfera (`TentarRomperAAtmosfera`, com os tres portoes do
+			// `Space_Flight`, `Mindo.dm:162`) -- ou uma nave. O id fica SO PRAS BANCADAS que precisam
+			// chegar ao espaco sem voar, e so quando o processo do servidor subiu com a flag de uma delas
+			// (`BancadasQueDecolamSemVoar`, `GameServer.Validacoes.cs`).
+			//
+			// ERA UM SALTO DE GRACA (a divida que este comentario admitia ate 2026-10-10): um cliente
+			// mexido saia de qualquer luta, nocauteado inclusive, sem Ki, sem poder e sem saber voar. E
+			// cobrar aqui so os tres portoes nao fechava: quem os cumpre ainda pularia a subida ate o teto
+			// (no DM o verb espera 5 s e cai com qualquer dano, `Mindo.dm:177-181`). Entao a habilidade
+			// nao leva ninguem: a porta e uma so, e ela ja confere tudo.
+			case "decolar":
+				if (DecolagemDeBancada || DecolarSemPortaoDeTeste) Decolar(pl);
+				else Avisar(pl, "pra deixar o planeta, suba voando ate romper a atmosfera (ou embarque numa nave).");
+				break;
 			case "voar": AlternarVoo(pl); break;
 			// O `Swim` do DM (`Swim.dm:5`). Entra pelo MESMO cano do voo -- uma linha aqui e uma no
 			// registro de verbs do cliente, que e o preco que este canal cobra por acao nova.
@@ -234,6 +256,9 @@ public partial class GameServer
 				// EXPELIR UM SO de dentro do Majin: um botao por absorvido, no mesmo molde do de cima.
 				if (id.StartsWith("expelir:", StringComparison.Ordinal))
 				{ ExpelirDoMajin(pl, id["expelir:".Length..]); break; }
+				// O KIT DO DEUS DA DESTRUICAO, pelo mesmo motivo da linha de baixo: nao e skill de livro, e do
+				// TITULO -- cada verb confere o trono na hora. Ver `GameServer.KitDoDeus.cs`.
+				if (UsarKitDoDeus(pl, id)) break;
 				// AS DISCIPLINAS DIVINAS entram antes das tecnicas de skill: elas nao SAO skills
 				// (nao se compram com marco), e por isso nao estao no livro que o UsarTecnica varre.
 				if (UsarDisciplina(pl, id)) break;

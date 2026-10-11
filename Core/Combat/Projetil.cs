@@ -215,6 +215,42 @@ public sealed class ReceitaDeProjetil
 	/// pela raca de quem olha (`VisaoDoInvisivel`).
 	/// </summary>
 	public bool Invisivel;
+
+	/// <summary>
+	/// A ZONA QUE ESTE TIRO MIRA, quando ela e do TIRO e nao de quem atira -- o `A.selectzone` do objeto
+	/// (`objects.dm:35`), que quase nenhum verb de ki preenche. Vazio = a mira de quem atirou (ver `GameServer.Acertar`).
+	///
+	/// Quem a escreve hoje e o Destruction God's Fury (`A.selectzone = "torso"`, `GodOfDestruction.dm:279`). Como no
+	/// DM, a zona PESA o sorteio do membro e nao o garante (<see cref="Body.Sortear"/>).
+	/// </summary>
+	public string ZonaCerta = "";
+
+	/// <summary>O que este tiro faz A MAIS em quem ele fere. Ver <see cref="DomDeProjetil"/>.</summary>
+	public DomDeProjetil Dom = DomDeProjetil.Nenhum;
+}
+
+/// <summary>
+/// O QUE UM TIRO FAZ A MAIS EM QUEM ELE FERE -- o `OnSucCollWMob(M)` do DM (`objects.dm:68`), *"something for custom
+/// blasts to call when they need to do something unique to the mob if it hits"*, chamado logo depois do
+/// `DamageLimb` do impacto que FERIU (`objects.dm:439-440`): tiro defletido, esquivado ou fraco demais nao o chama.
+///
+/// E um simbolo e nao um delegate porque o Core nao conhece o servidor: quem executa e o `GameServer.Acertar`.
+/// </summary>
+public enum DomDeProjetil : byte
+{
+	Nenhum,
+
+	/// <summary>
+	/// `obj/attack/blast/godfury` (`GodOfDestruction.dm:251-256`): se o alvo esta de guarda erguida, ela CAI
+	/// (`M.blocking = 0`). A guarda ainda divide o dano DESTE tiro (a conta vem antes, `objects.dm:341-343`).
+	/// </summary>
+	DerrubaAGuarda,
+
+	/// <summary>
+	/// `obj/attack/blast/goddestroyer` (`GodOfDestruction.dm:294-299`): tenta o HAKAI em quem acertou, pelos mesmos
+	/// dois criterios do agarrao (`god_hakai_try`).
+	/// </summary>
+	Hakai,
 }
 
 /// <summary>
@@ -797,6 +833,10 @@ public sealed class Projetil
 
 	/// <summary>Copiado da receita no nascimento; viaja no anuncio. Ver `ReceitaDeProjetil.Invisivel`.</summary>
 	public bool Invisivel;
+
+	/// <summary>Copiados da receita no nascimento. Ver `ReceitaDeProjetil.ZonaCerta` e <see cref="DomDeProjetil"/>.</summary>
+	public string ZonaCerta = "";
+	public DomDeProjetil Dom = DomDeProjetil.Nenhum;
 
 	/// <summary>Morto: sai da lista no proximo tique. Ver o motivo em <see cref="Fim"/>.</summary>
 	public bool Vivo = true;

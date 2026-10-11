@@ -86,6 +86,43 @@ public partial class GameClient : Node
 	/// </summary>
 	public event Action<string>? Caiu;
 
+	/// <summary>
+	/// A QUEDA QUE NINGUEM TRATOU AINDA: o motivo, ou nulo.
+	///
+	/// ============================ ESTADO, E NAO SO EVENTO ============================
+	/// O dono (2026-10-10): *"caso tenha desconexao com o servidor o jogo te joga de volta pro menu
+	/// principal com a mensagem de desconectado do server"*. Quem faz isso e o `Boot` (`Boot.Queda.cs`), e
+	/// ele pergunta AQUI a cada quadro em vez de so ouvir o <see cref="Caiu"/>: um cliente fora do login e
+	/// sem conexao esta SEMPRE errado, e um evento perdido -- um assinante que estourou antes, uma tela
+	/// que ainda nao tinha nascido -- deixaria o mundo congelado na tela pra sempre, que era exatamente o
+	/// defeito. Quem trata chama <see cref="TratarQueda"/>.
+	///
+	/// SAIR NAO E CAIR: o <see cref="Desconectar"/> (o botao do menu de pausa, o "Sair" da selecao) nao
+	/// acende isto.
+	/// ==================================================================================
+	/// </summary>
+	public string? QuedaPendente { get; private set; }
+
+	/// <summary>A queda foi tratada: o `Boot` ja levou o jogador de volta e mostrou o aviso.</summary>
+	public void TratarQueda() => QuedaPendente = null;
+
+	/// <summary>O <see cref="Desconectar"/> foi chamado: a despedida que vem a seguir e a que EU pedi.</summary>
+	private bool _saiuPorVontade;
+
+	/// <summary>
+	/// O MOTIVO DA QUEDA, na lingua do jogador. O `DisconnectReason` do LiteNetLib e um enum em ingles
+	/// ("RemoteConnectionClose"), e era ele cru que ia pra tela.
+	/// </summary>
+	public static string MotivoDaQueda(DisconnectReason motivo) => motivo switch
+	{
+		DisconnectReason.Timeout => "o servidor parou de responder",
+		DisconnectReason.RemoteConnectionClose => "o servidor encerrou a conexão",
+		DisconnectReason.ConnectionFailed or DisconnectReason.HostUnreachable
+			or DisconnectReason.NetworkUnreachable or DisconnectReason.UnknownHost => "não foi possível alcançar o servidor",
+		DisconnectReason.ConnectionRejected => "o servidor recusou a conexão",
+		_ => motivo.ToString(),
+	};
+
 	/// <summary>Os tres slots da conta -- e a tela de selecao.</summary>
 	public event Action<List<SlotInfo>>? SlotsRecebidos;
 	/// <summary>Um golpe foi resolvido pelo servidor. Vale pra som, piscada e musica de luta.</summary>
@@ -211,13 +248,8 @@ public partial class GameClient : Node
 	public override void _Ready()
 	{
 		Instance = this;
-		_listener.PeerConnectedEvent += _ =>
-		{
-			var w = Protocol.Begin(Protocol.C2S.Login);
-			w.Put(_conta);
-			w.Put(_senha);
-			_peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
-		};
+		// O LOGIN NAO SAI MAIS AQUI: ele espera o servidor dizer a versao dele -- ver `GameClient.Versao.cs`.
+		_listener.PeerConnectedEvent += _ => EsperarAVersaoDoServidor();
 		_listener.NetworkReceiveEvent += (peer, reader, ch, method) =>
 		{
 			// O OPCODE E LIDO ANTES: depois da excecao o leitor ja andou e o numero se perdeu.
@@ -246,8 +278,22 @@ public partial class GameClient : Node
 		_listener.PeerDisconnectedEvent += (peer, info) =>
 		{
 			GD.Print($"[client] desconectado: {info.Reason}");
+
+			// A DESPEDIDA DE UM PAR VELHO NAO E SOBRE O PAR DE AGORA: quem saiu e discou de novo antes de
+			// ela ser lida ja tem outra conexao de pe, e ela nao pode ser apagada (nem virar queda).
+			if (_peer != null && !ReferenceEquals(peer, _peer)) return;
 			_peer = null;
-			Caiu?.Invoke(info.Reason.ToString());   // ver o comentario do evento: a cobertura depende disto
+
+			// SAIR NAO E CAIR: o `Desconectar` daqui (ou o proprio LiteNetLib dizendo que a chamada foi
+			// local) nao acende queda nenhuma -- quem saiu por vontade ja esta onde queria estar.
+			bool porVontade = _saiuPorVontade || info.Reason == DisconnectReason.DisconnectPeerCalled;
+			_saiuPorVontade = false;
+			if (porVontade) return;
+
+			// A RECUSA POR VERSAO traz a do servidor na carga, e o motivo dela diz a direcao -- ver `MotivoDeVersao`.
+			string motivo = MotivoDeVersao(info) ?? MotivoDaQueda(info.Reason);
+			QuedaPendente = motivo;         // o ESTADO: fica de pe ate o `Boot` tratar
+			Caiu?.Invoke(motivo);           // o evento: pra quem so quer saber da hora
 		};
 		_net.Start();
 	}
@@ -263,6 +309,7 @@ public partial class GameClient : Node
 		// todo corpo remoto andando aos trancos nesse meio tempo (medido na bancada de dois processos).
 		RelogioDoServidor.AvancarQuadro(delta);
 		_net.PollEvents();
+		VigiarOPrazoDaVersao();   // conectado e o servidor nao disse a versao dele? ver `GameClient.Versao.cs`
 
 		// ============================ O RELOGIO DO MUNDO ANDA AQUI ============================
 		// O comentario de <see cref="TempoDoMundo"/> ja PROMETIA isto ("entre um pacote e outro isto
@@ -294,7 +341,10 @@ public partial class GameClient : Node
 	{
 		_conta = conta;
 		_senha = senha;
-		_peer = _net.Connect(host, port, Protocol.ConnectionKey);
+		// CONEXAO NOVA, HISTORIA NOVA: a queda da anterior ja foi (ou nao vai mais ser) contada.
+		QuedaPendente = null;
+		_saiuPorVontade = false;
+		_peer = Discar(host, port);   // a senha de entrada E a minha versao -- ver `GameClient.Versao.cs`
 		GD.Print($"[client] conectando em {host}:{port} como conta \"{conta}\"");
 	}
 
@@ -320,6 +370,8 @@ public partial class GameClient : Node
 
 	public void Desconectar()
 	{
+		// A DESPEDIDA QUE VEM A SEGUIR E A QUE EU PEDI -- ver `QuedaPendente`.
+		_saiuPorVontade = _peer != null;
 		_peer?.Disconnect();
 		_peer = null;
 	}
@@ -543,6 +595,13 @@ public partial class GameClient : Node
 	public List<string> VerbosAtivos { get; private set; } = [];
 
 	/// <summary>
+	/// AS MINHAS SKILLS QUE NAO DEVOLVEM MARCO SE EU AS ESQUECER, ditas pelo servidor: as que eu nao comprei (a
+	/// herdada, a dada, a ensinada, a do cargo, a da fusao). So o botao de esquecer da ficha le isto -- pra nao
+	/// prometer um reembolso que o servidor nao paga. Ver `Protocol.PorEstadoDeSkills`.
+	/// </summary>
+	public List<string> SkillsSemReembolso { get; private set; } = [];
+
+	/// <summary>
 	/// ESTE PERSONAGEM FOI DESIGNADO VILAO por um admin (`mob/var/isVillain` do DM).
 	///
 	/// Chega junto das skills, e serve **so pro desenho do menu**: quem decide se a compra sai e o
@@ -660,6 +719,39 @@ public partial class GameClient : Node
 
 	/// <summary>A lista de mortos mudou -- a carta estelar se redesenha.</summary>
 	public event Action? MortosMudaram;
+
+	/// <summary>
+	/// OS NOMES DADOS AOS PLANETAS (o batismo), replicados por `S2C.NomesDePlanetas`. O planeta continua se
+	/// chamando o que sempre se chamou POR DENTRO (o nome faz parte da identidade da zona); isto e o que se
+	/// MOSTRA -- ver `Core/World/NomesDePlanetas.cs`.
+	/// </summary>
+	public readonly Jandirus.Core.World.RegistroDeNomes NomesDosPlanetas = new();
+
+	/// <summary>O MEU direito de batizar o chao em que estou (o cabecalho pessoal do pacote).</summary>
+	public Jandirus.Core.World.Batismo.Direito DireitoDeBatismo { get; private set; }
+
+	/// <summary>Quem pisou primeiro no mundo em que estou ("" fora de mundo gerado, ou sem descobridor).</summary>
+	public string DescobridorDaqui { get; private set; } = "";
+
+	/// <summary>A lista de nomes (ou o meu direito sobre este chao) mudou.</summary>
+	/// <summary>
+	/// O SERVIDOR RESPONDEU O QUE DA PRA LEVAR de quem esta nocauteado ao meu alcance: (id do caido, nome dele,
+	/// a lista). Chega depois do verbo `saquear` sem argumento, e de novo depois de cada item levado.
+	/// </summary>
+	public event Action<int, string, List<Jandirus.Core.Items.Pilha>>? SaqueAberto;
+
+	public event Action? NomesDosPlanetasMudaram;
+
+	/// <summary>O nome que se MOSTRA pra um corpo da carta estelar: o batizado, ou o dele.</summary>
+	public string NomeDoPlaneta(Jandirus.Core.World.PlanetaNoEspaco p) =>
+		NomesDosPlanetas.NomeVisto(Jandirus.Core.World.ChaveDePlaneta.De(p).Texto, p.Nome);
+
+	/// <summary>O mesmo pra uma zona. Zona que nao e planeta (espaco, alem, nave) fica com o nome dela.</summary>
+	public string NomeDaZona(ZoneKey z) =>
+		Jandirus.Core.World.ChaveDePlaneta.Da(z) is { } chave ? NomesDosPlanetas.NomeVisto(chave.Texto, z.Name) : z.Name;
+
+	/// <summary>Como se chama o lugar em que estou, pra quem le.</summary>
+	public string NomeDoLugar => NomeDaZona(Zone);
 	public event Action? SkillsMudaram;
 
 	/// <summary>Os efeitos ligados em mim agora ("invisivel", "escudo"). So pra HUD.</summary>
@@ -796,6 +888,13 @@ public partial class GameClient : Node
 	/// <summary>A frase do radar dourado, ja resolvida pelo servidor. Vazia = sem sinal.</summary>
 	public string SinalDourado { get; private set; } = "";
 	public event Action? SupersMudaram;
+
+	/// <summary>
+	/// OS FATOS DESTE PERSONAGEM QUE SO O SERVIDOR SABE (`S2C.Fatos`): tem coletores, ha um convite na mesa,
+	/// guia um aluno, domina este planeta... So servem pra decidir que verbs APARECEM -- ver `PosseDoCliente`.
+	/// </summary>
+	public Jandirus.Core.Verbos.Fatos Fatos { get; private set; }
+	public event Action? FatosMudaram;
 
 	/// <summary>Um dominio meu que ainda esta de pe -- uma das saidas do refugio (a opcao B1).</summary>
 	public readonly record struct RefugioDominio(string Chave, string Nome, bool Escolhido, float Minutos);
@@ -1127,16 +1226,16 @@ public partial class GameClient : Node
 	public event Action? CargosMudaram;
 
 	/// <summary>
-	/// UMA PESSOA QUE EU CONHECO, do jeito que a aba People precisa dela.
+	/// UMA PESSOA QUE EU CONHECO, do jeito que a aba People precisa dela: o nome e a raca como eu a vi por
+	/// ultimo e as DUAS medidas que sobraram (2026-10-10) -- o <c>Familiaridade</c>, que e o CONVIVIO
+	/// que o jogo conta, e a <c>Relacao</c>, que e o que EU declarei que ela e pra mim
+	/// (`Core.Social.Relacao`). A afinidade automatica, o odio e o "rival" sairam do fio com o sistema.
 	///
-	/// O <c>Nome</c> vem VAZIO pra quem tem vinculo sem ficha (pontos de amizade com alguem que
-	/// voce apagou da lista, um rival que voce nunca anotou). A aba desenha esses como
-	/// <c>??? (assinatura)</c> -- e o mesmo que o `HtmlUI.dm:374` do original faz com quem voce
-	/// nao conhece.
+	/// A CLASSE NAO VEM (ela nunca aparece: `GameServer.Sigilo.cs`, regra 2), e os DETALHES (idade, cargo,
+	/// historia) chegam a parte, pessoa a pessoa -- ver `GameClient.Gente.cs`.
 	/// </summary>
 	public readonly record struct ConhecidoInfo(string Assinatura, string Nome, string Raca,
-											   string Classe, int Familiaridade, byte Relacao,
-											   float Amizade, float Inimizade, bool Rival);
+											   int Familiaridade, byte Relacao);
 
 	public List<ConhecidoInfo> Conhecidos { get; private set; } = [];
 
@@ -1147,8 +1246,6 @@ public partial class GameClient : Node
 		ConhecidosMudaram?.Invoke();
 	}
 
-	/// <summary>Quem pediu minha amizade e ainda espera resposta ("" = ninguem).</summary>
-	public string PedidoDeAmizade { get; private set; } = "";
 	public event Action? ConhecidosMudaram;
 
 	/// <summary>
@@ -1634,6 +1731,13 @@ public partial class GameClient : Node
 				// NINGUEM CONTINUA COM GENTE DENTRO DESLOGADO, pelo mesmo motivo: o servidor desfaz a absorcao
 				// do Majin antes do save, e o outro personagem da conta herdaria os botoes de expelir deste.
 				AbsorvidosDoMajin = [];
+				// NINGUEM CONTINUA COM O DISCO DO RADAR ACESO DESLOGADO: sem o aparelho o servidor nao manda nada,
+				// nem "desligado", e o personagem seguinte herdaria o disco (e os sinais) deste.
+				EsquecerORadar();
+				// NINGUEM CONTINUA SABENDO A HISTORIA DOS CONHECIDOS DO OUTRO PERSONAGEM: o que o servidor contou era a
+				// memoria de quem saiu, e cada personagem tem a propria ficha de cada pessoa. Ver `GameClient.Gente.cs`.
+				EsquecerDetalhes();
+				EsquecerMestreEAlunos();   // ...nem com o discipulado dele (o mestre, os alunos). Ver `GameClient.Alunos.cs`.
 				Sheet = SheetState.Read(reader);
 				Visual = reader.GetAppearance();   // o servidor devolve a versao SANEADA
 				// A seed do universo vem JUNTO: a carta estelar precisa dela em terra firme, e nao
@@ -1653,6 +1757,8 @@ public partial class GameClient : Node
 				Rejected?.Invoke(motivo);
 				break;
 			}
+			// A VERSAO DO SERVIDOR: o primeiro pacote de toda conexao aceita. Ver `GameClient.Versao.cs`.
+			case Protocol.S2C.Versao: AoChegarAVersaoDoServidor(reader); break;
 
 			case Protocol.S2C.SlotList:
 			{
@@ -1764,6 +1870,10 @@ public partial class GameClient : Node
 				VozRecebida?.Invoke(quem, seq, dist, parede, _vozEntrando, tam);
 				break;
 			}
+
+			// O RADIO DO SCOUTER: a voz que chega pela frequencia, e a frequencia do meu aparelho. Ver `GameClient.Radio.cs`.
+			case Protocol.S2C.VozDeRadio: LerVozDeRadio(reader); break;
+			case Protocol.S2C.Radio: LerRadio(reader); break;
 
 			// UM EFEITO CAIU (ou saiu de cima) DE MIM. Um canal so pra todas as tecnicas: id do
 			// efeito + por quantos ms (0 = acabou, negativo = enquanto durar). Ver
@@ -1980,6 +2090,11 @@ public partial class GameClient : Node
 				break;
 			}
 
+			// O MENU DO DRAGAO: a janela de desejos. Quem le o pacote mora em `GameClient.Desejos.cs`.
+			case Protocol.S2C.MenuDoDragao:
+				LerOMenuDoDragao(reader);
+				break;
+
 			case Protocol.S2C.SuperEsferas:
 			{
 				int n = reader.GetByte();
@@ -1994,6 +2109,24 @@ public partial class GameClient : Node
 				SupersMudaram?.Invoke();
 				break;
 			}
+
+			case Protocol.S2C.Fatos:
+				Fatos = (Jandirus.Core.Verbos.Fatos)reader.GetUInt();
+				FatosMudaram?.Invoke();
+				break;
+
+			// O KI DIVINO: o meu retrato (medidor do despertar e maestria) e o despertar de alguem por perto.
+			// Quem le os dois e `GameClient.GodKi.cs`.
+			case Protocol.S2C.GodKi: LerGodKi(reader); break;
+			case Protocol.S2C.GodKiDespertou: LerGodKiDespertou(reader); break;
+
+			// O BILLS E O WHIS: onde eles moram (so depois de revelado) e qual dos dois a minha tecla E alcanca.
+			// Quem le os dois e `GameClient.Bills.cs`.
+			case Protocol.S2C.CasaDeBills: LerCasaDeBills(reader); break;
+			case Protocol.S2C.DivinoPerto: LerDivinoPerto(reader); break;
+
+			// O DISCO DO DRAGON RADAR -- so chega pra quem tem o aparelho. Ver `GameClient.Radar.cs`.
+			case Protocol.S2C.RadarDeEsferas: LerRadarDeEsferas(reader); break;
 
 			// O REFUGIO: o planeta natal acabou, e estas sao as duas saidas. Ver `S2C.Refugio`.
 			case Protocol.S2C.Refugio:
@@ -2064,12 +2197,18 @@ public partial class GameClient : Node
 				break;
 			}
 
+			// AS ARVORES QUE REBROTARAM (a que caiu vem no pacote de cima). Ver `GameClient.Lenha.cs`.
+			case Protocol.S2C.Lenha: LerLenha(reader); break;
+
 			case Protocol.S2C.Porta:
 			{
 				(bool completo, List<(int X, int Y, bool Aberta)> portas) = reader.GetPortas();
 				PortasMudaram?.Invoke(completo, portas);
 				break;
 			}
+
+			// O SALDO DE QUEM CONSTROI BASE: os dois bolsos e a moeda em uso (ver `GameClient.SaldoDeObra.cs`).
+			case Protocol.S2C.SaldoDeObra: LerSaldoDeObra(reader); break;
 
 			// OS BLOCOS ERGUIDOS, em quatro modos (ver `Protocol.BlocosRetrato`).
 			case Protocol.S2C.Blocos:
@@ -2104,6 +2243,11 @@ public partial class GameClient : Node
 				break;
 			}
 
+			// AS ROCHAS DE MINERIO, em tres modos (ver `Protocol.RochasRetrato` e `GameClient.Rochas.cs`).
+			case Protocol.S2C.Rochas:
+				LerRochas(reader);
+				break;
+
 			case Protocol.S2C.Tech:
 			{
 				TechNivel = reader.GetDouble();
@@ -2120,6 +2264,10 @@ public partial class GameClient : Node
 				TechMudou?.Invoke();
 				break;
 			}
+
+			// A CARTEIRA (zeni + recursos) E A MINERACAO: quem le os dois e `GameClient.Economia.cs`.
+			case Protocol.S2C.Carteira: LerCarteira(reader); break;
+			case Protocol.S2C.Mineracao: LerMineracao(reader); break;
 
 			case Protocol.S2C.Ceu:
 			{
@@ -2222,17 +2370,21 @@ public partial class GameClient : Node
 			case Protocol.S2C.Conhecidos:
 			{
 				int n = reader.GetUShort();
-				PedidoDeAmizade = reader.GetString(64);
 				var lista = new List<ConhecidoInfo>(n);
 				for (int i = 0; i < n; i++)
 					lista.Add(new ConhecidoInfo(
 						reader.GetString(96), reader.GetString(64), reader.GetString(32),
-						reader.GetString(48), reader.GetUShort(), reader.GetByte(),
-						reader.GetFloat(), reader.GetFloat(), reader.GetBool()));
+						reader.GetUShort(), reader.GetByte()));
 				Conhecidos = lista;
+				PodarDetalhes();   // os detalhes de quem saiu da lista (ou do convivio) saem junto: ver GameClient.Gente.cs
 				ConhecidosMudaram?.Invoke();
 				break;
 			}
+
+			case Protocol.S2C.DetalhesDeConhecido: LerDetalhesDeConhecido(reader); break;
+
+			// O PAINEL DA ABA ALUNOS/MESTRE -- so chega pra quem tem o vinculo. Ver `GameClient.Alunos.cs`.
+			case Protocol.S2C.MestreEAlunos: LerMestreEAlunos(reader); break;
 
 			case Protocol.S2C.Sentidos:
 			{
@@ -2394,7 +2546,7 @@ public partial class GameClient : Node
 				// A CAUDA: o estado das arvores. Lida pelo mesmo leitor que a bancada do servidor usa
 				// pra desmontar o pacote -- uma leitura so, pra que "o cliente le" e "o servidor
 				// escreveu" nunca sejam duas versoes do mesmo layout.
-				(SkillsDestravadas, SkillsArvores, VerbosAtivos) = Protocol.LerEstadoDeSkills(reader);
+				(SkillsDestravadas, SkillsArvores, VerbosAtivos, SkillsSemReembolso) = Protocol.LerEstadoDeSkills(reader);
 				SkillsMudaram?.Invoke();
 				break;
 			}
@@ -2416,6 +2568,52 @@ public partial class GameClient : Node
 				AplicarMortos(lista);
 				break;
 			}
+
+			// OS NOMES DADOS AOS PLANETAS. A lista e a INTEIRA (substitui), e o cabecalho e so meu -- ver
+			// `Protocol.S2C.NomesDePlanetas`.
+			case Protocol.S2C.NomesDePlanetas:
+			{
+				DireitoDeBatismo = (Jandirus.Core.World.Batismo.Direito)reader.GetByte();
+				DescobridorDaqui = reader.GetString(48);
+				int n = reader.GetUShort();
+				var lista = new List<Jandirus.Core.World.NomeDePlaneta>(n);
+				for (int i = 0; i < n; i++)
+					lista.Add(new Jandirus.Core.World.NomeDePlaneta
+					{
+						Chave = reader.GetString(64),
+						Nome = reader.GetString(48),
+						PorQuem = reader.GetString(48),
+					});
+
+				NomesDosPlanetas.Substituir(lista);
+				NomesDosPlanetasMudaram?.Invoke();
+				break;
+			}
+
+			// O QUE DA PRA LEVAR DE QUEM ESTA CAIDO AQUI -- a resposta do verbo `saquear`. Quem a desenha e o
+			// menu da tecla E (`MenuDeInteracao.AoAbrirSaque`). Ver `Protocol.S2C.Saque`.
+			case Protocol.S2C.Saque:
+			{
+				int caido = reader.GetInt();
+				string nomeDoCaido = reader.GetString(64);
+				int n = reader.GetByte();
+				var leva = new List<Jandirus.Core.Items.Pilha>(n);
+				for (int i = 0; i < n; i++)
+				{
+					// 64, como o `GetInventario`: o livro e a roupa guardada carregam os dados NO ID.
+					string idDoItem = reader.GetString(64);
+					int quantos = reader.GetUShort();
+					if (idDoItem.Length > 0 && quantos > 0) leva.Add(new Jandirus.Core.Items.Pilha(idDoItem, quantos));
+				}
+				SaqueAberto?.Invoke(caido, nomeDoCaido, leva);
+				break;
+			}
+
+			// COMO ESTA A DRILL AO MEU ALCANCE -- quem a desenha e o painel do menu da tecla E
+			// (`EstadoDaDrillNoMenu`). Ver `GameClient.Drill.cs` e `Protocol.S2C.Drill`.
+			case Protocol.S2C.Drill:
+				AoReceberADrill(reader);
+				break;
 
 			case Protocol.S2C.Atributos:
 				Atributos = Protocol.AtributosState.Read(reader);

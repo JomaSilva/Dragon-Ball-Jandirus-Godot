@@ -114,6 +114,10 @@ public partial class RoboDasAbas
 		Checa("'Lugar' e o NOME da zona do cliente (nao coordenada)", menu.ValorDesenhado("Stats", "Lugar") == cli.Zone.Name, $"tela '{menu.ValorDesenhado("Stats", "Lugar")}', cliente '{cli.Zone.Name}'");
 		Checa("'Cadência do soco' e a da ficha", menu.ValorDesenhado("Stats", "Cadência do soco") == $"{f.SocoMs} ms", menu.ValorDesenhado("Stats", "Cadência do soco") ?? "(nulo)");
 		Checa("'Zeni' e o do cliente", menu.ValorDesenhado("Stats", "Zeni") == $"{cli.Zeni:N0}", menu.ValorDesenhado("Stats", "Zeni") ?? "(nulo)");
+		// A OUTRA CARTEIRA, logo abaixo do zeni (dono, 2026-10-10). O valor vem da `S2C.Carteira`, que o servidor
+		// manda atras do catalogo de construcoes do login -- entao a linha existe desde a primeira abertura.
+		Checa("'Recursos' e o do cliente (a materia-prima que paga tecnologia ao dobro)",
+			  menu.ValorDesenhado("Stats", "Recursos") == $"{cli.Recursos:N0}", menu.ValorDesenhado("Stats", "Recursos") ?? "(nulo)");
 
 		// ---- alto / medio / baixo: a MESMA regra do ui_qual(), copiada aqui e invertida na injecao ----
 		Protocol.AtributosState a = cli.Atributos;
@@ -203,6 +207,11 @@ public partial class RoboDasAbas
 		await Segundos(1.5);
 		Checa("QUIETUDE: em 1,5 s parado a pagina de Stats nao e remontada a cada pacote de ficha (no maximo 1 remontagem)",
 			  menu.RemontagensDeTeste - r0 <= 1, $"remontagens {r0} -> {menu.RemontagensDeTeste}");
+
+		// POR ULTIMO, E DE PROPOSITO: a F2b muda o zeni, a pagina REMONTA, e todo node guardado la em cima (as
+		// barras, os cartoes) e liberado -- no meio da familia ela derrubava a injecao da barra escondida com um
+		// `ObjectDisposedException`.
+		await F2b_OZeniQueMudaPorFora(menu, cli);
 	}
 
 	/// <summary>
@@ -229,6 +238,52 @@ public partial class RoboDasAbas
 	// AS PECAS DE LEITURA DAS FAMILIAS F2 E F3 -- deveriam subir pra RoboDasAbas.cs
 	// =====================================================================
 	/// <summary>Abre uma aba PELO BOTAO dela (o caminho do dedo) e devolve a pagina montada.</summary>
+	/// <summary>
+	/// F2b -- O ZENI QUE MUDA POR FORA DO FUNIL CHEGA A TELA. O achado do agente `construcao` (2026-10-10): missao de
+	/// cargo, premio de torneio e desejo escrevem o zeni direto na ficha (a melhoria de maquina tambem escrevia, ate
+	/// passar a cobrar pelo contrato da carteira), e as abas Stats e Tech
+	/// ficavam com o numero velho ate o proximo catalogo. Quem conserta e a vigia do servidor
+	/// (`GameServer.VigiarAsCarteiras`); aqui se prova o que o jogador ve -- a linha "Zeni" se reescrevendo sozinha,
+	/// com o menu aberto. So com o servidor neste processo (`--host`): e ele que escreve na ficha por fora.
+	/// </summary>
+	private async System.Threading.Tasks.Task F2b_OZeniQueMudaPorFora(MenuJogo menu, GameClient cli)
+	{
+		bool hospedando = Array.IndexOf(OS.GetCmdlineArgs(), "--host") >= 0;
+		if (!hospedando || Jandirus.Server.GameServer.Instance is not { } srv)
+		{
+			ProvaNaoMedida("o zeni que muda por fora do funil chega a aba Stats",
+						   "servidor dedicado: nao ha como escrever na ficha daqui; com --host esta parte roda");
+			return;
+		}
+
+		const double porFora = 777;
+		double antes = cli.Zeni;
+		string naTelaAntes = menu.ValorDesenhado("Stats", "Zeni") ?? "(nulo)";
+
+		// ---- CONTRA-EXEMPLO primeiro: sem a vigia, o numero fica velho
+		srv.CarteiraSoPeloFunilDeTeste = true;
+		try
+		{
+			srv.ZeniPorForaDeTeste(cli.LocalId, porFora);
+			await Segundos(0.8);
+			Injeta("sem a vigia da carteira (`CarteiraSoPeloFunilDeTeste`), o zeni escrito direto na ficha NAO chega: a linha 'Zeni' fica com o numero velho",
+				   cli.Zeni == antes && menu.ValorDesenhado("Stats", "Zeni") == naTelaAntes,
+				   $"cliente {cli.Zeni:N0}, tela '{menu.ValorDesenhado("Stats", "Zeni")}'");
+		}
+		finally { srv.CarteiraSoPeloFunilDeTeste = false; }
+
+		// ---- com a vigia de volta, o MESMO zeni chega sozinho -- sem catalogo, sem abrir a Tech
+		string esperado = $"{antes + porFora:N0}";
+		bool chegou = await Ate(() => cli.Zeni == antes + porFora && menu.ValorDesenhado("Stats", "Zeni") == esperado, 4);
+		Checa("ZENI QUE MUDA POR FORA DO FUNIL (missao de cargo, premio de torneio, desejo de riqueza) chega ao cliente sozinho, e a linha 'Zeni' da aba se reescreve",
+			  chegou, $"cliente {cli.Zeni:N0}, tela '{menu.ValorDesenhado("Stats", "Zeni")}', esperado '{esperado}'");
+
+		srv.ZeniPorForaDeTeste(cli.LocalId, -porFora);
+		bool voltou = await Ate(() => cli.Zeni == antes && menu.ValorDesenhado("Stats", "Zeni") == naTelaAntes, 4);
+		Checa("...e a volta tambem (o zeni devolvido por fora): a carteira do cliente fica como estava", voltou,
+			  $"cliente {cli.Zeni:N0}, tela '{menu.ValorDesenhado("Stats", "Zeni")}'");
+	}
+
 	private async System.Threading.Tasks.Task<Control?> AbrirAbaPeloBotao(MenuJogo menu, string aba)
 	{
 		if (Botao(menu, aba) is { } b) await Clicar(b);

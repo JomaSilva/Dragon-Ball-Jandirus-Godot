@@ -223,6 +223,12 @@ public partial class GameServer
 			return null;
 		}
 
+		// O BICHO NAO E GENTE (2026-10-10): nao ha raca, classe, skill, forma nem roupa pra sortear, e a
+		// fabrica dele e outra -- `NascerAnimal` (`GameServer.Animais.cs`). Ela sai DESTA porta pra que o
+		// admin, a bancada e o trailer que pedirem um molde de animal recebam um animal, e nao um humano
+		// com nome de lobo.
+		if (molde.Tipo == TipoDeNpc.Animal) return NascerAnimal(molde, zona, pos, lugar);
+
 		// ============================ A ZONA FAZ PARTE DO "LUGAR" ============================
 		// `SementeDe` recebe (universo, molde, lugar), e o povoamento numera o lugar por planeta --
 		// entao o habitante numero 4 da Terra e o numero 4 de Vegeta caiam na MESMA semente. A raca

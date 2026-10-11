@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Godot;
+using Jandirus.Core.Economia;
 using Jandirus.Core.Tech;
 using Jandirus.Core.World;
 using Jandirus.Net;
@@ -110,6 +111,7 @@ public sealed partial class GameServer
 			case "grav_definir": DefinirGravidade(pl, arg); return true;
 			case "grav_info": InfoDaGravidade(pl); return true;
 			case "grav_up": MelhorarGravidade(pl, arg); return true;
+			case Interacoes.PrecosDaGravidade: PrecosDaGravidade(pl); return true;
 			default: return false;
 		}
 	}
@@ -148,7 +150,7 @@ public sealed partial class GameServer
 		if (!obra.Aparafusada) { Avisar(pl, "aparafuse a máquina antes de usá-la."); return; }
 		if (g.MudaEm != 0) { Avisar(pl, "a máquina já está mudando de gravidade: espere ela assentar."); return; }
 
-		if (!double.TryParse(arg, out double pedido)) { Avisar(pl, "número inválido."); return; }
+		if (!double.TryParse(arg, out double pedido) || !NumeroFinito(pedido)) { Avisar(pl, "número inválido."); return; }
 
 		// TRES CORTES, na ordem do original: o teto da MAQUINA, o piso, e o teto do MUNDO. O do
 		// mundo vem por ultimo porque ele vale mesmo pra uma maquina melhorada alem dele -- a
@@ -194,16 +196,35 @@ public sealed partial class GameServer
 		Avisar(pl, $"  estabilização: {(g.Estavel ? "sim" : "não")}");
 		if (g.Nanites > 0) Avisar(pl, $"  nanites: {g.Nanites}");
 
-		// OS PRECOS SAO DO ESTADO ATUAL, e por isso saem daqui e nao do catalogo de interacoes --
-		// eles mudam a cada melhoria comprada.
-		Avisar(pl, "-- melhorias --");
-		Avisar(pl, $"  força do campo: {CustoDeForca(g):N0} zeni");
-		Avisar(pl, $"  bateria: {CustoDeBateria(g):N0} zeni");
+		DizerOsPrecosDaGravidade(pl, g);
+	}
+
+	/// <summary>
+	/// O QUE O MENU PEDE AO ABRIR "Melhorar..." (<see cref="Interacoes.PerguntaAoAbrir"/>): so os precos e o
+	/// saldo, sem o resto do estado -- e a pagina seguinte pergunta com que moeda pagar.
+	/// </summary>
+	private void PrecosDaGravidade(ServerPlayer pl)
+	{
+		if (MaquinaPerto(pl, out _) is not { } g) { Avisar(pl, "não há máquina de gravidade por perto."); return; }
+		DizerOsPrecosDaGravidade(pl, g);
+	}
+
+	/// <summary>
+	/// OS PRECOS SAO DO ESTADO ATUAL, e por isso saem daqui e nao do catalogo de interacoes -- eles mudam a
+	/// cada melhoria comprada. NAS DUAS MOEDAS (dono, 2026-10-10): cada melhoria se paga em zeni ou, pelo
+	/// dobro, em recursos; e o SALDO vai junto, que e com ele que se escolhe.
+	/// </summary>
+	private void DizerOsPrecosDaGravidade(ServerPlayer pl, GravidadeDaObra g)
+	{
+		Avisar(pl, "-- melhorias (em zeni, ou o dobro em recursos) --");
+		Avisar(pl, $"  força do campo: {Recurso.DoisPrecos(CustoDeForca(g))}");
+		Avisar(pl, $"  bateria: {Recurso.DoisPrecos(CustoDeBateria(g))}");
 		Avisar(pl, g.Range < AlcanceMaximo
-			? $"  alcance: {CustoDeAlcance(g):N0} zeni"
+			? $"  alcance: {Recurso.DoisPrecos(CustoDeAlcance(g))}"
 			: $"  alcance: no máximo ({AlcanceMaximo})");
-		Avisar(pl, g.Estavel ? "  estabilização: já comprada" : $"  estabilização: {CustoDeEstabilidade:N0} zeni");
-		Avisar(pl, $"  nanites: {CustoDeNanites(g):N0} zeni (pede {TechDosNanites:0} de tecnologia)");
+		Avisar(pl, g.Estavel ? "  estabilização: já comprada" : $"  estabilização: {Recurso.DoisPrecos(CustoDeEstabilidade)}");
+		Avisar(pl, $"  nanites: {Recurso.DoisPrecos(CustoDeNanites(g))} (pede {TechDosNanites:0} de tecnologia)");
+		Avisar(pl, $"  você tem {CarteiraEscrita(pl)}.");
 	}
 
 	// Os precos do `verb/Upgrade` do DM (Gravity.dm:229-233), cada um em funcao do estado atual.
@@ -215,11 +236,17 @@ public sealed partial class GameServer
 	private static double CustoDeAlcance(GravidadeDaObra g) => 500 * (g.Range + 1);
 	private static double CustoDeNanites(GravidadeDaObra g) => 500 * (g.Nanites + 1);
 
-	private void MelhorarGravidade(ServerPlayer pl, string qual)
+	/// <summary>
+	/// O `verb/Upgrade` (`Gravity.dm:224-276`). O pedido e a melhoria e, se for o caso, a moeda no fim
+	/// ("forca", "forca recursos" -- ver <see cref="Recurso.LerPedidoPago"/>): em zeni o preco do DM, em
+	/// recursos o dobro. Quem cobra e o contrato (<see cref="CobrarOuExplicar"/>).
+	/// </summary>
+	private void MelhorarGravidade(ServerPlayer pl, string pedido)
 	{
 		GravidadeDaObra? g = MaquinaPerto(pl, out Obra? obra);
 		if (g == null || obra == null) { Avisar(pl, "não há máquina de gravidade por perto."); return; }
 
+		(string qual, Moeda moeda) = Recurso.LerPedidoPago(pedido);
 		double custo;
 		string feito;
 
@@ -227,14 +254,14 @@ public sealed partial class GameServer
 		{
 			case "forca":
 				custo = CustoDeForca(g);
-				if (!Cobrar(pl, custo)) return;
+				if (!CobrarOuExplicar(pl, custo, moeda, "a força do campo")) return;
 				g.Max = Math.Round(g.Max * 1.2);
 				feito = $"o campo aguenta {g.Max:0}x agora";
 				break;
 
 			case "bateria":
 				custo = CustoDeBateria(g);
-				if (!Cobrar(pl, custo)) return;
+				if (!CobrarOuExplicar(pl, custo, moeda, "a bateria")) return;
 				g.EnergiaMax *= 2;
 				g.Energia = g.EnergiaMax;   // a melhoria ENCHE, como no original
 				feito = "bateria dobrada e recarregada";
@@ -243,7 +270,7 @@ public sealed partial class GameServer
 			case "alcance":
 				if (g.Range >= AlcanceMaximo) { Avisar(pl, $"o alcance já está no máximo ({AlcanceMaximo})."); return; }
 				custo = CustoDeAlcance(g);
-				if (!Cobrar(pl, custo)) return;
+				if (!CobrarOuExplicar(pl, custo, moeda, "o alcance")) return;
 				g.Range++;
 				g.Cheias = null;   // o liquido tem mais onde escorrer
 				feito = $"o campo cobre até {g.Range + 1} tiles de lado em volta dela";
@@ -253,7 +280,7 @@ public sealed partial class GameServer
 			case "estabilidade":
 				if (g.Estavel) { Avisar(pl, "esta máquina já está estabilizada."); return; }
 				custo = CustoDeEstabilidade;
-				if (!Cobrar(pl, custo)) return;
+				if (!CobrarOuExplicar(pl, custo, moeda, "a estabilização")) return;
 				g.Estavel = true;
 				feito = "campo estabilizado";
 				break;
@@ -265,7 +292,7 @@ public sealed partial class GameServer
 					return;
 				}
 				custo = CustoDeNanites(g);
-				if (!Cobrar(pl, custo)) return;
+				if (!CobrarOuExplicar(pl, custo, moeda, "a regeneração de nanites")) return;
 				g.Nanites++;
 				feito = $"regeneração de nanites em {g.Nanites}";
 				break;
@@ -274,19 +301,7 @@ public sealed partial class GameServer
 		}
 
 		GravarMundo();
-		Avisar(pl, $"você melhora a máquina por {custo:N0} zeni: {feito}. Restam {pl.Ficha.Zeni:N0}.");
-	}
-
-	/// <summary>Tira o zeni, ou explica que nao da. Devolve se pagou.</summary>
-	private bool Cobrar(ServerPlayer pl, double quanto)
-	{
-		if (pl.Ficha.Zeni < quanto)
-		{
-			Avisar(pl, $"isso custa {quanto:N0} zeni -- você tem {pl.Ficha.Zeni:N0}.");
-			return false;
-		}
-		pl.Ficha.Zeni -= quanto;
-		return true;
+		Avisar(pl, $"você melhora a máquina por {Recurso.PrecoEscrito(custo, moeda)}: {feito}. Restam {CarteiraEscrita(pl)}.");
 	}
 
 	// =====================================================================

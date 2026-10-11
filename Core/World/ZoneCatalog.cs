@@ -13,8 +13,9 @@ public sealed class ZoneEntry
 	///
 	/// Elas nao moram na cena porque um `TileMapLayer` monta o desenho de TODAS as celulas que
 	/// tiver no primeiro quadro -- 708 ms na Terra. Fora da cena, o cliente entrega ao tilemap so
-	/// os pedacos que a camera alcanca. O SERVIDOR nao le este arquivo: ele nao desenha nada, e o
-	/// que ele precisa do cenario ja esta no `.col`.
+	/// os pedacos que a camera alcanca. O SERVIDOR nao desenha nada, e o que ele precisa do cenario
+	/// esta no `.col` -- menos UMA pergunta, que so a pintura responde: qual celula que bloqueia e
+	/// ARVORE. Pra isso ele abre este arquivo uma vez por planeta e o solta (ver <see cref="ArvoresDoMapa"/>).
 	/// </summary>
 	public string Pedacos = "";
 	public string Visao = "";     // res:// do bitset do que CEGA (parede e porta; ver Visao.cs)

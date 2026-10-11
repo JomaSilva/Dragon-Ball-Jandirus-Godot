@@ -69,7 +69,12 @@ public partial class GameServer
 	/// respeitar o falso ANTES de escrever o proprio estado (o leme de uma nave, por exemplo), senao
 	/// fica com um piloto registrado que nunca saiu da ponte e um leme trancado pra todo mundo.
 	/// </summary>
-	private bool LargarOCorpo(ServerPlayer pl, ZoneKey destino, Vec2 pos)
+	/// <param name="corpoProprio">
+	/// A MEDITACAO PROFUNDA pede `true`: o corpo que fica ganha uma copia da ficha e um corpo so dele, em
+	/// vez de dividir os do dono (ver `GameServer.Transe.cs`). O leme da nave grande nao pede: la quem pilota
+	/// e quem apanha sao a mesma pessoa, e o corpo dividido e a regra.
+	/// </param>
+	private bool LargarOCorpo(ServerPlayer pl, ZoneKey destino, Vec2 pos, bool corpoProprio = false)
 	{
 		if (pl.Peer == null) return false;              // corpo sem dono nao tem atencao pra mandar embora
 		if (pl.BonecoLargado != null) return false;     // ja esta fora do corpo
@@ -141,6 +146,10 @@ public partial class GameServer
 		// parado precisa pra ser VISTO e APANHAR. Ver `Mirar`, que e o unico ponto que precisou
 		// aprender a achar um corpo por id fora do `_players`.
 		// ==========================================================================================
+		// O CORPO PROPRIO DA MEDITACAO, antes de o boneco entrar em qualquer lista: quem o le (o snapshot, o
+		// resolvedor de golpe) ja o encontra inteiro.
+		if (corpoProprio && !BonecoDivideOCorpoDeTeste) DarCorpoProprio(boneco, pl);
+
 		ZoneList(boneco.Zone.Hash).Add(boneco);
 		pl.BonecoLargado = boneco;
 
@@ -359,7 +368,10 @@ public partial class GameServer
 	private void BordasDeQuemEstaFora(ServerPlayer pl)
 	{
 		if (pl.BonecoLargado is not { } boneco) return;
-		if (!ZoneList(boneco.Zone.Hash).Contains(boneco) || pl.Ficha.dead || pl.Ficha.KO)
+		// O CORPO DE FORA TAMBEM: com corpo proprio (a meditacao) ele cai e morre por conta dele -- uma
+		// explosao que nao passa pelo `MarcarAgressao`, por exemplo --, e o dono volta do mesmo jeito.
+		if (!ZoneList(boneco.Zone.Hash).Contains(boneco) || pl.Ficha.dead || pl.Ficha.KO
+			|| boneco.Ficha.dead || boneco.Ficha.KO)
 			PorNaFilaDeVolta(pl.Id);
 	}
 }

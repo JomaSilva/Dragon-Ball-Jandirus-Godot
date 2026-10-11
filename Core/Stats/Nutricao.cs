@@ -136,6 +136,15 @@ public static class Nutricao
 	}
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancada `--transeteste`): o piso de vigor do Majin e do Bio-Androide deixa de existir
+	/// -- o estado de antes de 2026-10-10. Lido pela propria regra, em <see cref="QueimarVigor"/>.
+	/// </summary>
+	public static bool SemPisoDeVigorDeTeste;
+
+	/// <summary>As duas racas do `StaminaDrain.dm:19`. Aqui o Bio-Androide se escreve sem hifen (`races.json`).</summary>
+	public static bool TemPisoDeVigor(string raca) => raca is "Majin" or "BioAndroid";
+
+	/// <summary>
 	/// O VIGOR QUEIMA COM O TEMPO -- o dreno passivo de `CheckNutrition`.
 	///
 	/// Existir custa folego, e lutar custa mais. Vontade (`Ewillpower`) e o stat de aguentar: ele
@@ -144,6 +153,22 @@ public static class Nutricao
 	public static void QueimarVigor(Fighter f, double dreno = 1)
 	{
 		if (f.dead) { f.stamina = 0.5 * f.maxstamina; return; }
+
+		// ============================ O PISO DE MEIO TANQUE DO MAJIN E DO BIO-ANDROIDE ============================
+		// `if(stamina<(maxstamina/2)&&(Race=="Majin"||Race=="Bio-Android")) stamina=(maxstamina/2)` -- a segunda
+		// linha do `CheckNutrition()` (`Stamina/StaminaDrain.dm:19-20`), e ela faltava aqui.
+		//
+		// ERA O "VIGOR DO MAJIN QUE AS VEZES NAO REGENERA" do playtest de 2026-10-10. O CUSTO de refazer o
+		// corpo foi portado (`Regeneracao.Tique`: 0,67% do tanque por segundo enquanto houver UM membro abaixo
+		// do cheio -- quatro vezes o que o estomago repoe), e o piso que o original poe embaixo dele nao. Sem
+		// ele o vigor ia a zero e la ficava: com zero a regeneracao para (`TemEnergia`), o corpo nunca fica
+		// inteiro, e o estomago -- que nao digere em luta nem de tanque vazio -- nao o tira de la. O cerebro e
+		// os orgaos, que so saram pelo canal lento, esticavam isso por dezenas de minutos.
+		//
+		// A CADA PASSADA DO ESTOMAGO (a cadencia do `CheckNutrition`), e ANTES do dreno, como la.
+		// ====================================================================================================
+		if (!SemPisoDeVigorDeTeste && TemPisoDeVigor(f.Race) && f.stamina < f.maxstamina / 2)
+			f.stamina = f.maxstamina / 2;
 
 		double resistencia = Math.Max(200 * f.Ewillpower * f.Estaminamod, 0.01);
 		double gasto = 1.5 * f.dashingMod * dreno * (Math.Max(f.Metabolism, 0.1) / 2) / resistencia;

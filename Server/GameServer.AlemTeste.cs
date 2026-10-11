@@ -135,6 +135,7 @@ public partial class GameServer
 		{
 			EscutaDeAvisos = escutaAntes;
 			MortoNaoRegeneraDeTeste = false;
+			MortoNaoTransformaDeTeste = false;
 
 			foreach (ServerPlayer f in forjados)
 			{
@@ -996,6 +997,33 @@ public partial class GameServer
 		AfirmarAlem("O FANTASMA REUNE ENERGIA (tecla C): `Carregar` aceita o morto de pe -- o `dead` cru "
 					+ "do `Carregar`/`CargaDeKi.Passo` o deixava mudo",
 					pl.Carregando);
+
+		// ...E CONTINUA REUNINDO DEPOIS DO TIQUE. O `Carregar` aceitava e o `TickDaCarga` derrubava no
+		// tique seguinte pelo `dead` cru: a checagem de cima passava com a tecla morta em jogo.
+		{
+			double kiDeAntes = pl.Ficha.Ki, vigorDeAntes = pl.Ficha.stamina, extraDeAntes = pl.Ficha.extracharge;
+			bool movendoDeAntes = pl.Moving;
+			pl.Moving = false;
+			pl.Ficha.Ki = pl.Ficha.MaxKi * 0.5;
+			pl.Ficha.stamina = Math.Max(pl.Ficha.stamina, pl.Ficha.maxstamina * 0.5);
+			for (int i = 0; i < 5; i++) TickDaCarga(pl, 0.1);
+			AfirmarAlem("...E CONTINUA REUNINDO NO TIQUE: depois de meio segundo de `TickDaCarga` a carga do "
+						+ "fantasma segue de pe e no estagio de encher o tanque",
+						pl.Carregando && pl.EstagioDaCarga == Jandirus.Core.Combat.EstagioDaCarga.Enchendo,
+						$"carregando={pl.Carregando} estagio={pl.EstagioDaCarga}");
+			CargaDoMortoCaiNoTiqueDeTeste = true;
+			try
+			{
+				TickDaCarga(pl, 0.1);
+				AfirmarAlem("(defeito injetado: o `dead` cru de volta no tique) a carga do fantasma cai no tique "
+							+ "seguinte -- a regua sabe reprovar", !pl.Carregando);
+			}
+			finally { CargaDoMortoCaiNoTiqueDeTeste = false; }
+			pl.Moving = movendoDeAntes;
+			pl.Ficha.Ki = kiDeAntes;
+			pl.Ficha.stamina = vigorDeAntes;
+			pl.Ficha.extracharge = extraDeAntes;
+		}
 		Carregar(pl, false);
 		if (cadaver != null)
 		{
@@ -1007,6 +1035,51 @@ public partial class GameServer
 			cadaver.Ficha.MeditateGivesKiRegen = reuniaCad;
 		}
 		pl.Ficha.MeditateGivesKiRegen = reuniaAntes;
+
+		// ---- 9b'') O TOQUE DUPLO NO C -- o dono (2026-10-10): "dps de morrer n da pra apertar C, diz q to caido" ----
+		// A carga (acima) ja aceitava o fantasma; a ESCADA DE FORMAS nao: as quatro perguntas dela liam o
+		// `dead` cru. Aqui se cobra a regra (`CaidoPraForma`) e as duas pontas que o jogador sente: o que o
+		// servidor responde ao pedido, e o tique que desfaz a forma de quem "caiu".
+		//
+		// A ESCUTA AMBIENTE VOLTA NO FIM: o `Ouvir` desliga a escuta ao sair (`EscutaDeAvisos = null`), e esta
+		// bancada inteira roda sobre UMA escuta ligada la em cima -- a prova da barreira espiritual, adiante,
+		// ficava surda e reprovava por culpa deste trecho.
+		List<string>? escutaDaBancada = EscutaDeAvisos;
+		AfirmarAlem("O FANTASMA DE PE NAO ESTA CAIDO pra escada de formas (o toque duplo no C, as teclas de forma, a aba Forms)",
+					!CaidoPraForma(pl));
+		List<string> aoPedir = Ouvir(() => Transformar(pl, subir: true));
+		AfirmarAlem("...e ao pedir pra subir ele NAO ouve \"nao da, caido\" (o que ele ouve e a porta da forma, como um vivo)",
+					!Disse(aoPedir, "caido"), string.Join(" | ", aoPedir));
+
+		Jandirus.Core.Forms.FormaDef? degrau = Jandirus.Core.Forms.Catalogo.Todas
+			.FirstOrDefault(d => d.Id != Jandirus.Core.Forms.Catalogo.IdBase && pl.Forma.NoCaminhoDoC(d));
+		string formaAntes = pl.Forma.Atual;
+		if (degrau != null)
+		{
+			pl.Forma.Entrar(degrau.Id);
+			List<string> noTique = Ouvir(() => TickDaForma(pl, 0.1));
+			AfirmarAlem("...e o tique NAO desfaz a forma dele por \"cair\" (no DM o morto sustenta a forma ate sem vigor)",
+						!Disse(noTique, "voce cai"), string.Join(" | ", noTique));
+
+			MortoNaoTransformaDeTeste = true;
+			pl.Forma.Entrar(degrau.Id);
+			List<string> comDefeito = Ouvir(() => TickDaForma(pl, 0.1));
+			List<string> pedidoComDefeito = Ouvir(() => Transformar(pl, subir: true));
+			MortoNaoTransformaDeTeste = false;
+			AfirmarAlem("(contraprova) com `MortoNaoTransformaDeTeste` as mesmas reguas REPROVAM: o tique desfaz a forma e o pedido ouve \"caido\"",
+						Disse(comDefeito, "voce cai") && Disse(pedidoComDefeito, "caido"),
+						$"tique: {string.Join(" | ", comDefeito)} || pedido: {string.Join(" | ", pedidoComDefeito)}");
+			if (pl.Forma.Atual != formaAntes) pl.Forma.Entrar(formaAntes);
+		}
+		else AfirmarAlem("(montagem) ha um degrau de forma no caminho do C deste corpo", false);
+
+		bool koAntes = pl.Ficha.KO;
+		pl.Ficha.KO = true;
+		bool nocauteadoCai = CaidoPraForma(pl);
+		pl.Ficha.KO = koAntes;
+		AfirmarAlem("o NOCAUTEADO continua caido pra ela, e o CADAVER tambem (o avesso, no mesmo instante)",
+					nocauteadoCai && cadaver != null && CaidoPraForma(cadaver));
+		EscutaDeAvisos = escutaDaBancada;
 
 		pl.Ficha.train = true;
 		AfirmarAlem("O FANTASMA TREINA (tecla T): a pose do morto de pe com `train` e `Treinando`, e nao `Nocauteado`",

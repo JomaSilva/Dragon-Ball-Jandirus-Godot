@@ -514,13 +514,16 @@ public static class FormasBench
 		Console.WriteLine("[5] SUBIR CADA LINHA INTEIRA (nenhum degrau inalcancavel)");
 
 		// ============================ O `Raiva:` DE CADA CASO E A REGRA DO DONO, NAO TEMPERO ============================
-		// Cada perfil traz o degrau MINIMO que aquela linha exige, e a diferenca entre eles e a
-		// regra inteira: o tronco Saiyajin (e a Futura, e o Beast) pede `Extrema` -- ver um amigo
-		// morrer --, e a linha Legendary sobe INTEIRA com `Lendaria`, que e o desconto da skill
-		// `legendary anger`. Trocar qualquer um destes por `Nenhuma` derruba a linha correspondente
-		// aqui mesmo, com o nome do degrau onde ela parou.
+		// Sem raiva nenhuma estas linhas param no primeiro degrau: trocar qualquer um destes por
+		// `Nenhuma` derruba a linha correspondente aqui mesmo, com o nome do degrau onde ela parou.
 		//
-		// E OS DOIS CAMINHOS DIVINOS PEDEM `Extrema` **por causa do `ssj1` no meio deles**: Blue e
+		// DESDE 2026-10-11 a raiva comum (`Lendaria`) abre as mesmas formas que a extrema, por um preco de
+		// BP maior (`FormaDef.AgioNaRaivaComum`, o `if("Angry")` do DM) -- com o BP sem fim desta secao as
+		// duas servem, e os casos guardam as duas de proposito. Quem mede o preco e a bancada `raiva` [13].
+		// So o Beast exige a `Extrema`. (Ate ali o tronco Saiyajin pedia a `Extrema` e so a linha
+		// Legendary subia com a `Lendaria`.)
+		//
+		// E OS DOIS CAMINHOS DIVINOS PEDEM RAIVA **por causa do `ssj1` no meio deles**: Blue e
 		// Rose sao CAMADA sobre o Super Saiyajin, entao a porta do SSJ1 e porta deles tambem. Isso
 		// nao contradiz "nenhuma divina por raiva" -- as entradas `ssg`/`blue`/`rose` nao pedem raiva
 		// nenhuma (a bancada `raiva` prova uma a uma); o que pede e o degrau Saiyajin que elas vestem.
@@ -2250,6 +2253,8 @@ public static class FormasBench
 				EscalaComGodKi = irmao.EscalaComGodKi, BaseDaClasse = irmao.BaseDaClasse,
 				ForaDoTronco = irmao.ForaDoTronco, PortaBp = irmao.PortaBp,
 				ChaveDoLimiar = irmao.ChaveDoLimiar, PedeFlag = irmao.PedeFlag,
+				// (o agio da raiva comum e DADO da entrada, como a porta -- o literal do `if("Angry")` do DM)
+				AgioNaRaivaComum = irmao.AgioNaRaivaComum,
 				PedeMaestria = irmao.PedeMaestria, PedeMaestriaDe = irmao.PedeMaestriaDe,
 				PedeGodKi = irmao.PedeGodKi, PedeEnergiaUe = irmao.PedeEnergiaUe,
 				PedeProficienciaUi = irmao.PedeProficienciaUi, SoPorConcessao = irmao.SoPorConcessao,
@@ -2498,12 +2503,14 @@ public static class FormasBench
 
 		// E O GANCHO QUE A SAGA MAJIN VAI USAR EXISTE E FUNCIONA: ver um amigo ser ABSORVIDO vale o
 		// mesmo grau de luto que ve-lo morrer (`MajinSaga.dm:173`), e o grau que abre as escadas de
-		// sangue e a `Extrema`. O gancho e o `GameServer.AmigoAbatido`, cuja unicidade a bancada
-		// `raiva` [8] ja vigia; o que se mede aqui e que o GRAU ainda significa o que a saga espera.
-		Checa("a raiva EXTREMA continua sendo a que abre as escadas de sangue (o grau que a absorcao vai usar)",
-			  Catalogo.RaivaExigida(Catalogo.Def("ssj1")) == NivelDeRaiva.Extrema
-			  && NivelDeRaiva.Extrema > NivelDeRaiva.Lendaria,
-			  Catalogo.RaivaExigida(Catalogo.Def("ssj1")).ToString());
+		// sangue PELA PORTA delas e a `Extrema`. O gancho e o `GameServer.AmigoAbatido`, cuja unicidade a
+		// bancada `raiva` [8] ja vigia; o que se mede aqui e que o GRAU ainda significa o que a saga espera.
+		// (Desde 2026-10-11 a raiva comum tambem abre essas escadas, por um preco de BP maior: por isso a
+		// pergunta e feita ao `Avaliar`, com o poder exato da porta, e nao ao `RaivaExigida`.)
+		RecusaForma comOLuto = new EstadoDeForma().Avaliar("ssj1", Catalogo.PortaSsj1, 1, false,
+			new PerfilDeFormas(Raca: "Saiyan", Linhagem: "Primal Saiyan", Raiva: NivelDeRaiva.Extrema));
+		Checa("a furia EXTREMA continua abrindo as escadas de sangue pela PORTA delas (o grau que a absorcao vai usar)",
+			  comOLuto == RecusaForma.Pode && NivelDeRaiva.Extrema > NivelDeRaiva.Lendaria, comOLuto.ToString());
 
 		Console.WriteLine();
 	}

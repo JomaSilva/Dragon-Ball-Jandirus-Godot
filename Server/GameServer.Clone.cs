@@ -601,6 +601,15 @@ public partial class GameServer
 			// molde, nem fera. Ver `GuiarOGuardiaoDoMajin` (`GameServer.AbsorcaoMajin.cs`).
 			if (!GuiarOGuardiaoDoMajin(npc, out presa, out destino)) return;
 		}
+		else if (npc.Papel is { Tipo: Jandirus.Core.Npc.TipoDeNpc.Animal } && npc.CerebroDaPosse == null)
+		{
+			// O BICHO (2026-10-10): nem habitante, nem hostil de saga. O manso pasta em volta da toca e corre de
+			// quem bate; o bravo morde o jogador que entra no faro, ate a borda do territorio; e quem cai, morre.
+			// ANTES do ramo do habitante de proposito: aquele entregaria o bicho ao `PresaDoHostil` (vinte tiles
+			// de faro, sessenta de perseguicao -- a regra de chefe) e ao passeio sem toca da `Rotina`. Ver
+			// `GuiarOAnimal` (`GameServer.Animais.cs`).
+			if (!GuiarOAnimal(npc, dt, out presa, out destino)) return;
+		}
 		else if (npc.Papel != null && npc.CerebroDaPosse == null)
 		{
 			// ============================ O HABITANTE. ELE NAO E A FERA. ============================
@@ -716,6 +725,8 @@ public partial class GameServer
 		Percepcao p = LerPercepcao(npc, presa, destino, cerebro.Poderes.DeLonge.TemAlguma);
 		Plano antes = cerebro.Atual;
 		Comando c = cerebro.Pensar(p, dtDaMente, _rng);
+		// (O bicho bravo fecha a distancia CORRENDO: ele nao tem a investida do golpe. Ver `PassoDeBicho`.)
+		if (EhAnimal(npc)) c = PassoDeBicho(c);
 		AplicarComando(npc, c, dt);
 
 		// ============================ A DECISAO VIRA DADO ============================

@@ -100,7 +100,11 @@ public sealed partial class GameServer
 			case "ajustar": AjustarPeso(pl, arg2); break;
 			case "tirar": TirarPeso(pl); break;
 			case "usar": UsarRemedio(pl, def); break;
-			case "cavar": Cavar(pl, def); break;
+
+			// "cavar" NAO ESTA AQUI, e de proposito: a acao da pa e da furadeira SAIU (dono, 2026-10-10: *"tire a
+			// opcao de cavar da pa e furadeira pq e redundante"* -- o que elas fazem agora e acelerar o verb Minerar,
+			// ver `GameServer.Recursos.cs`). Um cliente antigo que ainda mande `item_cavar` para no portao la em
+			// cima ("nao da pra cavar ..."): nenhuma das duas declara a acao (`CatalogoDeItens`).
 
 			// O LIVRO DE ENSINAMENTOS -- `Study_Book` (`KiStatsModule.dm:190-203`). Ver o lote G13.
 			case "ler": LerOsEnsinamentosG13(pl, def); break;
@@ -281,7 +285,7 @@ public sealed partial class GameServer
 
 	private void AjustarPeso(ServerPlayer pl, string valor)
 	{
-		if (!double.TryParse(valor, out double pct)) { Avisar(pl, "número inválido."); return; }
+		if (!double.TryParse(valor, out double pct) || !NumeroFinito(pct)) { Avisar(pl, "número inválido."); return; }
 		pct = Math.Clamp(pct, 0, PesoMaximoPct);
 
 		// `Weighted` E O QUANTO SE VESTE (em kg, na escala do `weight_cap_hw` -- ver `TetoDePeso`) e
@@ -376,55 +380,6 @@ public sealed partial class GameServer
 		Avisar(pl, $"você usa {def.Nome}.");
 	}
 
-	// =====================================================================
-	// CAVAR -- Pa e Furadeira
-	// =====================================================================
-	/// <summary>Quanto tempo entre duas cavadas, por ferramenta.</summary>
-	private const long MsDaPa = 6_000;
-	private const long MsDaFuradeira = 2_500;
-
-	private readonly Dictionary<int, long> _proximaCavada = [];
-
-	/// <summary>
-	/// CAVAR RENDE ZENI E TECNOLOGIA -- o `Shovel`/`Hand_Drill` do original (Tier 1.dm:254-331).
-	///
-	/// O GANHO PASSA PELO `techmod`, como la: quem nasceu esperto tira mais do mesmo buraco. E a
-	/// unica fonte de zeni do jogo que nao depende de bater em ninguem nem de ter um banco por
-	/// perto -- e por isso ela e lenta.
-	/// </summary>
-	private void Cavar(ServerPlayer pl, ItemDef def)
-	{
-		if (pl.Ficha.KO || pl.Ficha.dead) return;
-
-		long agora = NowMs();
-		if (_proximaCavada.TryGetValue(pl.Id, out long livre) && agora < livre)
-		{
-			Avisar(pl, "espere um pouco antes de cavar de novo.");
-			return;
-		}
-
-		bool furadeira = def.Id == CatalogoDeItens.Furadeira;
-		_proximaCavada[pl.Id] = agora + (furadeira ? MsDaFuradeira : MsDaPa);
-
-		double mod = Math.Max(pl.Ficha.techmod, 1);
-		double zeni = Math.Round(mod * (furadeira ? 3 : 1) * (1 + _rng.NextDouble()));
-		pl.Ficha.Zeni += zeni;
-
-		// UM EM CADA CINCO cava alguma coisa que ENSINA. E o `prob(20)` do original, e ele existe
-		// pra cavar nao virar uma segunda bancada de pesquisa: o caminho da tecnologia continua
-		// sendo estudar.
-		string extra = "";
-		if (_rng.NextDouble() < 0.20)
-		{
-			pl.Ficha.Estudar(mod * 4);
-			pl.SigAtributos = "";
-			extra = " Você desenterra algo curioso e aprende com isso.";
-		}
-
-		Avisar(pl, $"você cava e encontra {zeni:N0} zeni.{extra}");
-		MandarCatalogoDeObras(pl);
-	}
-
 	private void ComerItem(ServerPlayer pl, ItemDef def)
 	{
 		if (def.Nutricao <= 0) { Avisar(pl, $"{def.Nome} não é comida."); return; }
@@ -438,5 +393,29 @@ public sealed partial class GameServer
 
 		Avisar(pl, $"você come {def.Nome}.");
 		if (r.Aviso.Length > 0) Avisar(pl, r.Aviso);
+
+		// ============================ A SEMENTE QUE SOBRA DA FRUTA ============================
+		// `if(planttype&&prob(25))` (`Food.dm:140-143`): um quarto das frutas de plantar deixa a semente,
+		// que vai direto pra mochila de quem comeu. O dono (2026-10-10) pediu exatamente isto pra maca --
+		// *"pra n passar fome em planetas procedurais"*. A regra e o sorteio moram no `Plantio`.
+		//
+		// DEPOIS de a fruta sair da mochila, e a ordem importa: a ultima maca da pilha libera o slot em
+		// que a semente cabe. Com a mochila cheia de verdade a semente se perde, e o jogador fica sabendo
+		// (no DM o `contents` nao tem teto nesse caminho; aqui a mochila tem trinta espacos pra todo mundo).
+		// ====================================================================================
+		double sorteio = SorteioDeSementeDeTeste ?? _rng.NextDouble();
+		if (Plantio.SaiSemente(def.Id, sorteio) is not { } semente) return;
+
+		string nomeDaSemente = CatalogoDeItens.Get(semente)?.Nome ?? semente;
+		if (Guardar(pl, semente))
+			Avisar(pl, $"sobrou uma semente: {nomeDaSemente} foi pra mochila. Dá pra plantar onde quiser.");
+		else
+			Avisar(pl, $"sobrou uma semente, mas ela não coube na mochila e se perdeu.");
 	}
+
+	/// <summary>
+	/// PALCO DA `--macieirateste`: o sorteio da semente cravado (0 a 1), pra a bancada pisar nos dois lados
+	/// da fronteira do `prob(25)` sem depender da sorte. Nulo em jogo -- o sorteio e o do servidor.
+	/// </summary>
+	internal double? SorteioDeSementeDeTeste;
 }

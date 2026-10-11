@@ -161,6 +161,47 @@ public partial class VozOuvida : Node2D
 		/// <summary>Volume linear atual e alvo (a suavizacao anda entre os dois).</summary>
 		public float Volume = 1f, VolumeAlvo = 1f;
 		public bool Posicionada;
+
+		/// <summary>O que foi entregue ao gerador desde o ultimo relato do `--vozlog`, por tipo. Ver <see cref="Relatar"/>.</summary>
+		public int Normais, Fec, Plc, Esticados;
+		public ulong ProximoRelatoMs;
+	}
+
+	// =====================================================================
+	// O LOG DE QUEM OUVE -- `--vozlog`
+	// =====================================================================
+	/// <summary>
+	/// A TELEMETRIA DA VOZ, LIGADA POR FLAG: uma linha a cada cinco segundos por falante que este cliente esta
+	/// ouvindo. E o *"meça perda/atraso de pacotes e underruns na reproducao"* do item 10 do playtest de
+	/// 2026-10-10, com gente de verdade do outro lado -- a `--diagvoz` mede o mesmo com rede simulada.
+	///
+	/// COMO LER UMA LINHA:
+	///   * `normais`  -- quadros que chegaram e tocaram;
+	///   * `FEC`      -- vagas vazias remendadas com a copia que o pacote SEGUINTE trazia (perda de rede bem
+	///                   coberta: quase nao se ouve);
+	///   * `PLC`      -- vagas vazias que o decodificador teve de adivinhar (perda de dois seguidos);
+	///   * `esticados`-- a fila ia secar e a fala foi esticada (rede ENGASGADA, nao perdendo);
+	///   * `secou`    -- quantas vezes o gerador ficou sem audio no meio da fala. E o picote que se OUVE:
+	///                   numa conversa boa e zero;
+	///   * `atrasados`/`soltos` -- quadros de verdade jogados fora (chegou tarde demais / sobrou na fila);
+	///   * `alvo`     -- quanta folga a fila esta segurando, em quadros de 20 ms. 3 e rede boa; 10 e o teto.
+	/// </summary>
+	public static readonly bool LogLigado = Array.IndexOf(OS.GetCmdlineArgs(), "--vozlog") >= 0;
+
+	private const ulong MsEntreRelatos = 5000;
+
+	private static void Relatar(Fonte f, ulong agora)
+	{
+		if (agora < f.ProximoRelatoMs) return;
+		bool primeira = f.ProximoRelatoMs == 0;
+		f.ProximoRelatoMs = agora + MsEntreRelatos;
+		if (primeira || f.Normais + f.Fec + f.Plc + f.Esticados == 0) return;
+
+		FilaDeJitter q = f.Fila;
+		GD.Print($"[vozlog] falante {f.Id}: {f.Normais} normais, {f.Fec} FEC, {f.Plc} PLC, {f.Esticados} esticados em 5 s | "
+			   + $"desde o comeco: secou {q.Underruns}x, atrasados {q.Atrasados}, soltos {q.Soltos}, duplicados {q.Duplicados} | "
+			   + $"alvo {q.Alvo} quadros ({q.Alvo * VozLocal.MsPorQuadro} ms)");
+		f.Normais = f.Fec = f.Plc = f.Esticados = 0;
 	}
 
 	/// <summary>
@@ -391,6 +432,14 @@ public partial class VozOuvida : Node2D
 		f.Gerador.PushBuffer(_saida);
 		f.UltimoQuadroMs = Time.GetTicksMsec();
 
+		switch (tipo)
+		{
+			case FilaDeJitter.Tipo.Normal: f.Normais++; break;
+			case FilaDeJitter.Tipo.Fec: f.Fec++; break;
+			case FilaDeJitter.Tipo.Plc: f.Plc++; break;
+			case FilaDeJitter.Tipo.Esticado: f.Esticados++; break;
+		}
+
 		// DEPOIS do filtro, porque e ele quem modifica o `pcm` no lugar: chamar antes entregaria a
 		// bancada o sinal LIMPO e a abafada da parede -- que e metade do pedido do dono -- passaria
 		// verde com o filtro desligado. Ver `Espiao`.
@@ -415,6 +464,7 @@ public partial class VozOuvida : Node2D
 				f.Fila.Puxar(f.Capacidade - livres, livres, (long)agora);
 			}
 			Suavizar(f, (float)delta);
+			if (LogLigado) Relatar(f, agora);
 			if (agora - f.UltimoPacoteMs > MsAteDesmontar) (mortas ??= []).Add(id);
 		}
 		if (mortas == null) return;

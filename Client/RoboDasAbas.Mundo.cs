@@ -7,7 +7,8 @@ namespace Jandirus.Client;
 /// A familia de provas da aba Mundo (World) da `--diagabas` (F11). Ver o cabecalho de `RoboDasAbas.cs`.
 ///
 /// ============================ O QUE ELA PROVA, E COMO ============================
-/// A faixa do lugar pelo `ValorDesenhado`; os cartoes Céu e Clima pelo metadado; o disco da lua
+/// A faixa do lugar pelo `ValorDesenhado`; o cartao do MAPA (o quadro, o nome e o tamanho do mundo e as
+/// coordenadas do corpo); os cartoes Céu e Clima pelo metadado; o disco da lua
 /// pelo NODE (o proprio `LuaNoCeu`, o widget do HUD) e pela regra de que ele conta a MESMA verdade
 /// que o do HUD -- visivel se e so se a lua esta no ceu; os contratos das bancadas vizinhas (os
 /// botoes "Ver os desejos" e "Conquistar planeta", nenhuma palavra de nave em rotulo nenhum).
@@ -25,9 +26,21 @@ public partial class RoboDasAbas
 	// =====================================================================
 	// AS REGRAS -- puras, pra rodada de injecao chamar as MESMAS
 	// =====================================================================
-	/// <summary>O disco do menu e o do HUD contam a mesma verdade, e ela e a do ceu.</summary>
-	private static bool DuasTelasConcordam(bool discoDoMenu, bool discoDoHud, bool luaNoCeu) =>
-		discoDoMenu == discoDoHud && discoDoMenu == luaNoCeu;
+	/// <summary>
+	/// O disco do menu e o do HUD contam a mesma verdade, e ela e a do ceu -- COM UMA DIFERENCA DE PROPOSITO:
+	/// sob teto o do HUD some (de dentro de casa nao se ve o ceu: `LuaNoCeu.Aplicar`), e o do menu continua,
+	/// porque a ficha do planeta mostra a lua do LUGAR, e nao a que se ve dali.
+	///
+	/// A REGRA NASCEU SEM O TETO e ficou vermelha no dia em que o interior ganhou ceu proprio: o berco da Terra
+	/// e DENTRO do Banco, o robo nasce sob teto e o HUD esconde a lua cheia com razao. Em 2026-10-10 a mesma
+	/// linha vermelha apareceu no log de cinco sessoes, e cada uma culpou outra coisa (o clima do dia, o modo de
+	/// um processo so) -- porque o detalhe da checagem nao dizia que havia teto. Agora diz.
+	/// </summary>
+	private static bool DuasTelasConcordam(bool discoDoMenu, bool discoDoHud, bool luaNoCeu, bool sobTeto = false) =>
+		discoDoMenu == luaNoCeu && discoDoHud == (luaNoCeu && !sobTeto);
+
+	/// <summary>O corpo do robo esta sob teto agora? E o mesmo fato que o HUD passa pro disco dele.</summary>
+	private static bool SobTeto => World.Instancia?.EuEstouSobTeto ?? false;
 
 	/// <summary>
 	/// AS PALAVRAS QUE NAO PODEM SOBRAR EM ROTULO NENHUM -- a mesma lista da `--diagembarque`
@@ -39,6 +52,24 @@ public partial class RoboDasAbas
 
 	private static bool SemPalavraDeNaveNosRotulos(IEnumerable<string> rotulos) =>
 		!rotulos.Any(r => PalavrasDeNaveNasAbas.Any(p => r.Contains(p, StringComparison.OrdinalIgnoreCase)));
+
+	/// <summary>
+	/// O CARTAO DO PEDIDO, depois de 2026-10-10: nenhuma caixa de texto (o id digitado saiu: o desejo se escolhe
+	/// na janela de desejos), o botao "Ver os desejos" de pe, e nenhum dos botoes que mandavam o que a caixa
+	/// tinha escrito.
+	/// </summary>
+	private static bool CartaoDoPedidoSemCaixa(int caixas, IEnumerable<string> botoes) =>
+		caixas == 0 && botoes.Contains("Ver os desejos")
+		&& !botoes.Any(b => b is "PEDIR" or "PRONUNCIAR" or "ACEITO O PREÇO");
+
+	/// <summary>"Ver os desejos" pede o MENU ao servidor -- e nao a lista no chat, que era o `db_desejar` sem argumento.</summary>
+	private static bool PedeAJanelaDeDesejos(string? verbo, string? arg) => verbo == "db_menu" && arg == "";
+
+	/// <summary>
+	/// "Derrubar a estátua" existe se e so se este mundo TEM uma estatua (a que chegou no `S2C.Esferas`): botao
+	/// que nunca poderia funcionar dali nao aparece, e onde ha o que derrubar ele nao pode faltar.
+	/// </summary>
+	private static bool DerrubarSoOndeHaEstatua(bool temOBotao, bool haEstatuaAqui) => temOBotao == haEstatuaAqui;
 
 	/// <summary>Que fracao de um retangulo da foto e mais clara que um limiar de luminancia.</summary>
 	private static float FracaoClara(Image? img, Rect2I r, float limiar)
@@ -95,8 +126,9 @@ public partial class RoboDasAbas
 		// que o cliente esta", e nao um planeta cravado.
 		Checa("PRECONDICAO: a bancada esta num PLANETA (senao o dominio nem se desenha)", Jandirus.Core.World.Espaco.EhPlaneta(cli.Zone), cli.Zone.Name);
 		string? lugar = menu.ValorDesenhado("World", "Lugar");
-		Checa($"a FAIXA 'Lugar' diz o nome da zona do cliente ('{cli.Zone.Name}')",
-			  lugar != null && cli.Zone.Name.Length > 0 && lugar.StartsWith(cli.Zone.Name, StringComparison.Ordinal), lugar ?? "(nula)");
+		// O NOME QUE SE MOSTRA: o batizado, se alguem batizou este planeta; senao o da zona (ver `NomeDoLugar`).
+		Checa($"a FAIXA 'Lugar' diz o nome do lugar do cliente ('{cli.NomeDoLugar}')",
+			  lugar != null && cli.NomeDoLugar.Length > 0 && lugar.StartsWith(cli.NomeDoLugar, StringComparison.Ordinal), lugar ?? "(nula)");
 		Checa("...com a hora e o ciclo do dia na legenda", lugar != null && lugar.Contains("h)", StringComparison.Ordinal) && lugar.Contains("dia de", StringComparison.Ordinal), lugar ?? "(nula)");
 
 		PanelContainer? ceu = CartaoComTitulo(pg, "Céu");
@@ -110,6 +142,31 @@ public partial class RoboDasAbas
 		Checa("o cartao Clima tem a linha 'Clima' e o que pode cair em pilulas",
 			  clima != null && DentroDoCartao(LinhaEscrita(pg, "Clima"), clima) && PilulasEm(clima).Count > 0,
 			  clima == null ? "sem cartao" : $"Clima='{menu.ValorDesenhado("World", "Clima")}' pode cair [{string.Join("|", PilulasEm(clima))}]");
+
+		// ---------------- 1b. O MAPA DO LUGAR (dono, 2026-10-10) ----------------
+		// O contrato do cartao novo: o quadro do mapa, o nome e o tamanho do mundo, e as COORDENADAS do corpo --
+		// que sao as do cliente (a celula dos pes), e nao um texto parado. O desenho, o custo de quadro e os
+		// outros lugares (gerado, espaco) sao da `--diagmapa`.
+		PanelContainer? cartaoDoMapa = CartaoComTitulo(pg, "Mapa");
+		MapaDoLugarNaTela? quadroDoMapa = cartaoDoMapa == null ? null : Todos(cartaoDoMapa).OfType<MapaDoLugarNaTela>().FirstOrDefault();
+		Checa("o cartao 'Mapa' existe, com o quadro do mapa dentro e ANTES dos cartoes Céu e Clima",
+			  cartaoDoMapa != null && quadroDoMapa != null && ceu != null && cartaoDoMapa.GetGlobalRect().Position.Y < ceu.GetGlobalRect().Position.Y,
+			  $"mapa {cartaoDoMapa?.GetGlobalRect()} ceu {ceu?.GetGlobalRect()}");
+		Checa("...com as linhas 'Mundo' (o nome do lugar), 'Tamanho' e 'Coordenadas' dentro dele",
+			  cartaoDoMapa != null && DentroDoCartao(LinhaEscrita(pg, "Mundo"), cartaoDoMapa) && DentroDoCartao(LinhaEscrita(pg, "Tamanho"), cartaoDoMapa)
+			  && DentroDoCartao(LinhaEscrita(pg, "Coordenadas"), cartaoDoMapa) && menu.ValorDesenhado("World", "Mundo") == cli.NomeDoLugar,
+			  $"Mundo='{menu.ValorDesenhado("World", "Mundo")}' Tamanho='{menu.ValorDesenhado("World", "Tamanho")}' Coordenadas='{menu.ValorDesenhado("World", "Coordenadas")}'");
+		bool mapaPronto = await Ate(() => quadroDoMapa is { EstadoDeTeste: MapasDosLugares.Estado.Pronto }, 8);
+		Checa("o mapa deste planeta fica PRONTO, com o marcador dentro do retangulo do mapa",
+			  mapaPronto && quadroDoMapa!.MarcadorDeTeste is { } marcador && quadroDoMapa.RetanguloDeTeste.Grow(1).HasPoint(marcador),
+			  $"{quadroDoMapa?.EstadoDeTeste} marcador {quadroDoMapa?.MarcadorDeTeste} em {quadroDoMapa?.RetanguloDeTeste}");
+		string coordenadasNaAba = menu.ValorDesenhado("World", "Coordenadas") ?? "";
+		Vector2 corpoNoMundo = World.Instancia?.PosicaoLocal ?? Vector2.Zero;
+		string coordenadasDoCorpo = Jandirus.Core.World.MapaDoLugar.Coordenadas(new Jandirus.Core.World.Vec2(corpoNoMundo.X, corpoNoMundo.Y));
+		Checa("a linha 'Coordenadas' diz a celula do corpo do cliente (X ... · Y ...)",
+			  coordenadasNaAba == coordenadasDoCorpo && coordenadasNaAba.StartsWith("X ", StringComparison.Ordinal), $"aba '{coordenadasNaAba}' corpo '{coordenadasDoCorpo}'");
+		Injeta("a regra das coordenadas reprova a celula ao lado (um tile a leste da outro texto)",
+			   Jandirus.Core.World.MapaDoLugar.Coordenadas(new Jandirus.Core.World.Vec2(corpoNoMundo.X + 32, corpoNoMundo.Y)) != coordenadasDoCorpo);
 
 		// ---------------- 2. O DISCO DA LUA: o mesmo node do HUD, a mesma verdade ----------------
 		LuaNoCeu? lua = DiscoDoMenu(pg);
@@ -128,7 +185,7 @@ public partial class RoboDasAbas
 					: linhaDaLua.Contains("(abaixo do horizonte)", StringComparison.Ordinal) || linhaDaLua.Contains("não tem lua", StringComparison.Ordinal),
 			  $"{linhaDaLua} | ceu.LuaNoCeu {noCeu}");
 		Checa("o disco do menu conta a MESMA verdade que o do HUD: escondido nas duas telas com a lua abaixo do horizonte",
-			  lua != null && DuasTelasConcordam(lua.Visible, hud, noCeu), $"menu {lua?.Visible} hud {hud} ceu.LuaNoCeu {noCeu}");
+			  lua != null && DuasTelasConcordam(lua.Visible, hud, noCeu, SobTeto), $"menu {lua?.Visible} hud {hud} ceu.LuaNoCeu {noCeu} sob teto {SobTeto}");
 
 		// ---------------- 3. OS CONTRATOS DAS BANCADAS VIZINHAS ----------------
 		Checa("contrato --diagnav/--diagembarque: os botoes 'Ver os desejos' e 'Conquistar planeta' continuam na aba World",
@@ -136,8 +193,39 @@ public partial class RoboDasAbas
 		Checa("...e os blocos de dominio, esferas e pedido sao CARTOES",
 			  CartaoComTitulo(pg, "Domínio planetário") != null && CartaoComTitulo(pg, "Esferas do Dragão") != null
 			  && CartaoComTitulo(pg, "O pedido ao dragão") != null);
-		Checa("...com a caixa do pedido (LineEdit) dentro do cartao do pedido",
-			  CartaoComTitulo(pg, "O pedido ao dragão") is { } ped && Todos(ped).OfType<LineEdit>().Any());
+
+		// ============================ A CAIXA DO PEDIDO SAIU, DE PROPOSITO (2026-10-10) ============================
+		// Esta linha cobrava "a caixa do pedido (LineEdit) dentro do cartao do pedido". O dono mandou tirar a
+		// caixa: *"ao invocar o dragao das esferas, deveria aparecer um menu com varios desejos q vc pode escolher
+		// ... e nao ter q abrir um menu e colocar um id de pedido"*. O desejo se escolhe na janela de desejos
+		// (`MenuDeDesejos`, medida pela `--diagdesejos`), e o que se cobra daqui virou o contrario: o cartao NAO
+		// tem caixa, e o botao que ficou pede a janela ao servidor.
+		// ===========================================================================================================
+		PanelContainer? pedido = CartaoComTitulo(pg, "O pedido ao dragão");
+		List<string> botoesDoPedido = pedido == null ? []
+			: [.. Todos(pedido).OfType<Button>().Where(b => b.IsVisibleInTree()).Select(b => b.Text)];
+		int caixasDoPedido = pedido == null ? -1 : Todos(pedido).OfType<LineEdit>().Count();
+		Checa("...e o cartao do pedido NAO tem caixa de texto: fica 'Ver os desejos', sem 'PEDIR'",
+			  pedido != null && CartaoDoPedidoSemCaixa(caixasDoPedido, botoesDoPedido),
+			  $"{caixasDoPedido} caixa(s); botoes: {string.Join(" | ", botoesDoPedido)}");
+		// A METADE COM ESTATUA (o botao presente, e o que ele abre) e da `--diagdesejos`, que ergue uma.
+		bool haEstatuaAqui = cli.Esferas.Any(e => e.Tipo == Jandirus.Net.Protocol.CoisaDeEsfera.Estatua);
+		Checa("...e 'Derrubar a estátua' so aparece num mundo que TEM estatua (aqui: " + (haEstatuaAqui ? "tem" : "nao tem") + ")",
+			  DerrubarSoOndeHaEstatua(botoesDoPedido.Contains("Derrubar a estátua"), haEstatuaAqui),
+			  $"estatua aqui: {haEstatuaAqui}; botoes: {string.Join(" | ", botoesDoPedido)}");
+
+		// O QUE O BOTAO FAZ, pelo funil dos verbos, com o espiao ENGOLINDO (a bancada das abas nao abre janela
+		// nenhuma: quem abre e anda a janela e a `--diagdesejos`).
+		(string Cmd, string Arg)? saiu = null;
+		Func<string, string, bool>? espiaoDeAntes = GameClient.EspiaoDeVerbos;
+		GameClient.EspiaoDeVerbos = (c, a) => { saiu ??= (c, a); return false; };
+		try { if (Botao(pg, "Ver os desejos") is { } ver) await Clicar(ver); }
+		finally { GameClient.EspiaoDeVerbos = espiaoDeAntes; }
+		Checa("'Ver os desejos' pede a JANELA ao servidor (`db_menu`), e nao a lista no chat (`db_desejar`)",
+			  PedeAJanelaDeDesejos(saiu?.Cmd, saiu?.Arg), saiu is { } s ? $"{s.Cmd} '{s.Arg}'" : "nao saiu verbo nenhum");
+		Checa("...e a janela de desejos existe no mundo, fechada (ela so abre quando o servidor responde)",
+			  MenuDeDesejos.Instancia is { NaTela: false });
+
 		List<string> textos = RotulosEBotoes(pg);
 		Checa("contrato --diagembarque: nenhum rotulo nem botao da aba fala de nave, leme, lancar, pilotar ou embarcar",
 			  SemPalavraDeNaveNosRotulos(textos), string.Join(" | ", textos.Where(t => !SemPalavraDeNaveNosRotulos([t]))));
@@ -159,24 +247,84 @@ public partial class RoboDasAbas
 			  naTerra ? frasesDoCeu.Any(t => t.StartsWith("Este é o dia e o céu da Terra")) && !frasesDoCeu.Any(t => t.Contains("não são os da Terra"))
 					  : frasesDoCeu.Any(t => t.Contains("não são os da Terra")),
 			  $"zona={cli.Zone.Name}: {string.Join(" | ", frasesDoCeu)}");
-		ChapaDoCartaoNaPaleta("a chapa do cartao Céu e a clara do tema (Tema.PainelClaro)", f1, ceu, Tema.PainelClaro);
+		// O CARTAO DO MAPA EMPURROU O CEU PRA BAIXO: a foto do topo da pagina (a `world-01`) pega o mapa, e o ceu
+		// pode ficar cortado pela rolagem. A chapa dele se mede numa foto propria, com ele rolado pra dentro da tela.
+		// A PAGINA SE REFAZ SOZINHA quando o texto do ceu muda (o decimo de hora, o minuto da lua cheia), e o cartao
+		// guardado la em cima pode ser de uma montagem que ja morreu -- foi assim que esta bancada estourou com
+		// `ObjectDisposedException` em 2026-10-11. Pega-se o cartao de novo, e a foto so vale se ele continua vivo
+		// depois dela (senao a pagina se refez no meio, e mede-se outra vez).
+		Image? fotoDoCeu = null;
+		for (int vez = 0; vez < 3; vez++)
+		{
+			ceu = CartaoComTitulo(pg, "Céu");
+			await RolarAteVer(ceu);
+			fotoDoCeu = await Foto();
+			if (ceu != null && GodotObject.IsInstanceValid(ceu)) break;
+		}
+		ChapaDoCartaoNaPaleta("a chapa do cartao Céu e a clara do tema (Tema.PainelClaro)", fotoDoCeu,
+							  ceu != null && GodotObject.IsInstanceValid(ceu) ? ceu : null, Tema.PainelClaro);
+		if (Ancestral<ScrollContainer>(pg) is { } aoTopo) aoTopo.ScrollVertical = 0;
 
-		(bool igual, int nodes) = await RemontaIgual(menu, pg);
-		Checa("DETERMINISMO: duas montagens do mesmo ceu dao a MESMA arvore de nodes", igual, $"{nodes} nodes");
+		// O CEU ANDA, e a regua do determinismo compara DUAS FOTOS da arvore com uma remontagem FORCADA no meio. Ela
+		// so vale se a forcada foi a unica: uma automatica no intervalo quer dizer que o texto do ceu mudou (e a
+		// arvore, com razao). Nesse caso mede-se de novo -- o que se cobra e "mesmo estado, mesma arvore".
+		bool igual = false;
+		int nodes = 0, automaticas = 0;
+		for (int vez = 0; vez < 4; vez++)
+		{
+			int antesDaMedida = menu.RemontagensDeTeste;
+			(igual, nodes) = await RemontaIgual(menu, pg);
+			automaticas = menu.RemontagensDeTeste - antesDaMedida - 1;   // -1: a forcada
+			if (automaticas <= 0) break;
+		}
+		Checa("DETERMINISMO: duas montagens do mesmo ceu dao a MESMA arvore de nodes", igual && automaticas <= 0,
+			  $"{nodes} nodes, {Math.Max(automaticas, 0)} remontagem(ns) automatica(s) no meio da medida");
 
 		// ============================ QUANTAS VEZES A PAGINA REMONTA SOZINHA ============================
-		// So MEDIDO, e nao cobrado: a assinatura da World mora em `MenuJogo.cs` (compartilhado, fora
-		// desta frente) e leva o "quanto falta pra lua cheia" em SEGUNDOS inteiros (`AssinaturaDoCeu`),
-		// enquanto o texto desenhado e em MINUTOS -- a suspeita era uma remontagem por segundo, que
-		// recriaria a caixa do pedido vazia (e sem foco) na mao de quem digita. MEDIDO em 2026-09-03:
-		// 1 remontagem em 3 s parado na aba, ou seja a suspeita NAO se confirmou nesta rodada; a linha
-		// fica pra o dia em que o numero subir, e o conserto -- assinar o TEXTO da linha "Lua cheia" --
-		// e de la, nao daqui.
+		// A assinatura da World (`MenuJogo.AssinaturaDoCeu`) levava o "quanto falta pra lua cheia" em SEGUNDOS
+		// inteiros, enquanto a linha desenhada e em MINUTOS: a pagina inteira se refazia UMA VEZ POR SEGUNDO. Em
+		// 2026-09-03 isto era so uma suspeita medida (1 remontagem em 3 s); em 2026-10-11 a medida deu 3 em 3 s, a
+		// bancada estourou segurando um cartao morto, e quem digitasse no batismo do planeta perderia o texto a cada
+		// segundo. O conserto e o que a nota antiga ja dizia: assinar o TEXTO da linha (`MenuJogo.CheiaNaAssinatura`).
 		// ============================================================================================
-		int remontagensAntes = menu.RemontagensDeTeste;
-		await Segundos(3.0);
-		Nota($"    remontagens da World em 3 s parado na aba: {menu.RemontagensDeTeste - remontagensAntes}"
-			 + "   (0 ou 1 = a assinatura segura; 3 = ela esta em segundos e remonta por segundo)");
+		Checa("a assinatura da World leva o TEXTO da linha 'Lua cheia': dois instantes do mesmo minuto dao o MESMO pedaco",
+			  MenuJogo.CheiaNaAssinatura(3599.4) == MenuJogo.CheiaNaAssinatura(3598.2)
+			  && MenuJogo.CheiaNaAssinatura(3599.4) == MenuJogo.TextoDaLuaCheia(3599.4),
+			  $"'{MenuJogo.CheiaNaAssinatura(3599.4)}' e '{MenuJogo.CheiaNaAssinatura(3598.2)}'");
+		Checa("...e no ULTIMO minuto ela anda de segundo em segundo, como a linha ('AGORA' e 'nunca' sao pedacos proprios)",
+			  MenuJogo.CheiaNaAssinatura(42.3) != MenuJogo.CheiaNaAssinatura(41.2) && MenuJogo.CheiaNaAssinatura(0.4) == "AGORA"
+			  && MenuJogo.CheiaNaAssinatura(-1) != MenuJogo.CheiaNaAssinatura(0.4) && MenuJogo.CheiaNaAssinatura(-1).StartsWith("nunca", StringComparison.Ordinal),
+			  $"'{MenuJogo.CheiaNaAssinatura(42.3)}' / '{MenuJogo.CheiaNaAssinatura(41.2)}' / '{MenuJogo.CheiaNaAssinatura(0.4)}' / '{MenuJogo.CheiaNaAssinatura(-1)}'");
+
+		// AO VIVO, parado na aba. O TETO sai do relogio do lugar: na janela cabem as viradas de DECIMO DE HORA (o dia
+		// do lugar dividido em 240) e mais UMA do minuto da lua. So ha o que medir com uma lua de contagem longa: sem
+		// lua a contagem e fixa (e o defeito nao muda nada), e a menos de um minuto da cheia a linha anda por segundo
+		// de proposito.
+		const double JanelaDeRemontagem = 5.0;
+		Jandirus.Core.World.RelogioDoPlaneta relogioDaqui = World.Instancia?.RelogioDoLugar ?? Jandirus.Core.World.RelogioDoPlaneta.Padrao;
+		double decimoDeHora = relogioDaqui.SegundosPorDia / 240.0;
+		double faltaPraCheia = World.Instancia is { } mundoDaqui ? Jandirus.Core.World.Ceu.SegundosAteACheia(relogioDaqui, mundoDaqui.TempoDoMundo) : -1;
+		if (faltaPraCheia < 60 + 3 * JanelaDeRemontagem)
+			_naoMedidos.Add($"World: quantas vezes a pagina se refaz sozinha (a lua cheia deste mundo esta a {faltaPraCheia:0} s -- sem contagem longa nao ha o que medir)");
+		else
+		{
+			int teto = (int)Math.Ceiling(JanelaDeRemontagem / Math.Max(decimoDeHora, 0.5)) + 1;
+			int antesDaJanela = menu.RemontagensDeTeste;
+			await Segundos(JanelaDeRemontagem);
+			int sozinhas = menu.RemontagensDeTeste - antesDaJanela;
+			Checa($"parado na aba World por {JanelaDeRemontagem:0} s, a pagina se refaz no maximo {teto} vez(es) -- so quando o texto do ceu muda",
+				  sozinhas <= teto, $"{sozinhas} remontagem(ns); um decimo de hora daqui dura {decimoDeHora:0.0} s");
+			try
+			{
+				MenuJogo.CheiaEmSegundosNaAssinaturaDeTeste = true;
+				antesDaJanela = menu.RemontagensDeTeste;
+				await Segundos(JanelaDeRemontagem);
+				int comDefeito = menu.RemontagensDeTeste - antesDaJanela;
+				Injeta("(defeito injetado: a lua cheia em SEGUNDOS na assinatura) a pagina volta a se refazer a cada segundo, e a regua de cima REPROVA",
+					   comDefeito > teto, $"{comDefeito} remontagem(ns) em {JanelaDeRemontagem:0} s (teto {teto})");
+			}
+			finally { MenuJogo.CheiaEmSegundosNaAssinaturaDeTeste = false; }
+		}
 
 		// ---------------- 4. O CONTRA-EXEMPLO VIVO: a noite de lua cheia ----------------
 		// `admin_lua_cheia` adianta o relogio do ceu ate a proxima noite de lua cheia; o cliente chega
@@ -191,8 +339,8 @@ public partial class RoboDasAbas
 			await Quadros(3);
 			lua = DiscoDoMenu(pg);
 			hud = Hud.Instancia?.Lua.Visible ?? false;
-			Checa("...e o disco APARECE no cartao Céu e no HUD ao mesmo tempo",
-				  lua != null && DuasTelasConcordam(lua.Visible, hud, true), $"menu {lua?.Visible} hud {hud}");
+			Checa("...e o disco APARECE no cartao Céu e no HUD ao mesmo tempo (no HUD, so a ceu aberto)",
+				  lua != null && DuasTelasConcordam(lua.Visible, hud, true, SobTeto), $"menu {lua?.Visible} hud {hud} sob teto {SobTeto}");
 			string? linhaLua = menu.ValorDesenhado("World", "Lua");
 			Checa("...a linha 'Lua' diz LUA CHEIA (no céu)",
 				  linhaLua != null && linhaLua.Contains("LUA CHEIA", StringComparison.Ordinal) && linhaLua.Contains("(no céu)", StringComparison.Ordinal),
@@ -227,12 +375,21 @@ public partial class RoboDasAbas
 		lua = DiscoDoMenu(pg);
 		hud = Hud.Instancia?.Lua.Visible ?? false;
 		Checa("admin_meio_dia: a lua volta pra baixo do horizonte e o disco some das DUAS telas",
-			  dia && lua != null && DuasTelasConcordam(lua.Visible, hud, false), $"dia {dia} menu {lua?.Visible} hud {hud}");
+			  dia && lua != null && DuasTelasConcordam(lua.Visible, hud, false, SobTeto), $"dia {dia} menu {lua?.Visible} hud {hud} sob teto {SobTeto}");
 
 		// ---------------- 6. AS INJECOES ----------------
-		Injeta("a regra das duas telas reprova o menu aceso com o HUD apagado", !DuasTelasConcordam(true, false, true));
+		Injeta("a regra das duas telas reprova o menu aceso com o HUD apagado (a ceu aberto)", !DuasTelasConcordam(true, false, true));
 		Injeta("...e reprova as duas acesas com a lua abaixo do horizonte", !DuasTelasConcordam(true, true, false));
+		Injeta("...e, SOB TETO, reprova o HUD aceso (de dentro de casa nao se ve o ceu)", !DuasTelasConcordam(true, true, true, sobTeto: true));
+		Injeta("...e aceita, sob teto, o menu aceso com o HUD apagado (senao a de cima nao provaria nada)", DuasTelasConcordam(true, false, true, sobTeto: true));
 		Injeta("a regra de nave reprova 'Lançar nave' e 'Pilotar'", !SemPalavraDeNaveNosRotulos(["Ver os desejos", "Lançar nave"]) && !SemPalavraDeNaveNosRotulos(["Pilotar"]));
 		Injeta("...e aceita a lista de hoje (senao a linha de cima nao provaria nada)", SemPalavraDeNaveNosRotulos(["Ver os desejos", "Conquistar planeta", "Coletar tributo"]));
+		Injeta("a regra do cartao do pedido reprova a caixa de texto de volta", !CartaoDoPedidoSemCaixa(1, ["Ver os desejos", "Derrubar a estátua"]));
+		Injeta("...reprova o botao 'PEDIR' de volta", !CartaoDoPedidoSemCaixa(0, ["Ver os desejos", "PEDIR"]));
+		Injeta("...e aceita o cartao de hoje, com e sem estatua no mundo",
+			   CartaoDoPedidoSemCaixa(0, ["Ver os desejos", "Derrubar a estátua"]) && CartaoDoPedidoSemCaixa(0, ["Ver os desejos"]));
+		Injeta("a regra do botao reprova 'Ver os desejos' religado ao verbo antigo (`db_desejar`)", !PedeAJanelaDeDesejos("db_desejar", ""));
+		Injeta("a regra de derrubar reprova o botao num mundo SEM estatua (o que o cartao fazia: aparecia em todo planeta)", !DerrubarSoOndeHaEstatua(true, false));
+		Injeta("...e reprova a falta dele num mundo que tem uma", !DerrubarSoOndeHaEstatua(false, true));
 	}
 }
