@@ -96,22 +96,71 @@ public partial class RoboDasAbas
 		GameClient.EspiaoDeTech = null;
 		Checa("com o catalogo na mao, tres remontagens NAO pedem 'lista' de novo (seria 5 pedidos/s com o menu aberto)", listas == 0, $"{listas} pedido(s)");
 
-		// ---- as construcoes da zona
+		// ---- as construcoes da zona: SO AS MINHAS (dono, 2026-10-12: "so deve aparecer construçoes minhas e nao todas")
+		// O palco poe duas obras MINHAS na lista do cliente, ao lado das do mapa (que nao sao de ninguem): um
+		// regenerador solto (tem parafuso) e uma macieira plantada (nao tem). Sao so do cliente e saem no fim.
+		static PanelContainer? CartaoDasObras(Control pagina) => Todos(pagina).OfType<PanelContainer>()
+			.FirstOrDefault(c => c.HasMeta("titulo") && c.GetMeta("titulo").AsString().StartsWith(MenuJogo.TituloDasMinhasObras));
+		static List<string> Pilulas(Node onde) =>
+			[.. Todos(onde).OfType<PanelContainer>().Where(p => p.HasMeta("pilula")).Select(p => p.GetMeta("pilula").AsString())];
+
 		pg = menu.PaginaDeTeste("Tech")!;
-		PanelContainer? obras = Todos(pg).OfType<PanelContainer>()
-			.FirstOrDefault(c => c.HasMeta("titulo") && c.GetMeta("titulo").AsString().StartsWith("Construções nesta zona"));
-		Checa("o cartao 'Construções nesta zona (N)' existe, com a contagem do cliente",
-			  obras != null && obras.GetMeta("titulo").AsString().Contains($"({cli.Obras.Count})"), obras?.GetMeta("titulo").AsString() ?? "(sem cartao)");
-		if (cli.Obras.Count > 0)
+		int alheias = cli.Obras.Count;
+		PanelContainer? obras = CartaoDasObras(pg);
+		Checa("sem obra minha, o cartao 'Suas construções nesta zona (0)' diz isso -- com as do mapa de pe em volta",
+			  obras != null && obras.GetMeta("titulo").AsString().Contains("(0)") && alheias > 0
+			  && Rotulo(obras, "você não tem nenhuma construção nesta zona.") != null,
+			  $"{obras?.GetMeta("titulo").AsString() ?? "(sem cartao)"} | {alheias} obra(s) na zona");
+
+		var meuTanque = new GameClient.ObraInfo(9_900_001, Jandirus.Core.Tech.Regenerador.Tipo, "Regenerator de bancada", new Vector2(320, 320),
+												Aparafusada: false, Lab: 0, Dono: cli.LocalName, Arte: "", Estado: "", Pixel: default, Densa: false);
+		var minhaArvore = meuTanque with { Id = 9_900_002, Tipo = Jandirus.Core.Items.CatalogoDeItens.ArvoreDeMaca, Nome = "Apple Tree de bancada" };
+		cli.Obras.Add(meuTanque);
+		cli.Obras.Add(minhaArvore);
+		try
 		{
-			GameClient.ObraInfo primeira = cli.Obras.OrderBy(x => x.Nome, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.Id).First();
-			string? onde = menu.ValorDesenhado("Tech", primeira.Nome);
-			Checa("cada obra e uma linha 'nome · célula x, y' com a pilula aparafusada/solta",
-				  onde != null && onde.StartsWith("célula") && obras != null
-				  && Todos(obras).OfType<PanelContainer>().Any(p => p.HasMeta("pilula") && p.GetMeta("pilula").AsString() is "aparafusada" or "solta"),
-				  onde ?? "(sem linha)");
+			menu.ForcarRedesenho();
+			await Quadros(2);
+			pg = menu.PaginaDeTeste("Tech")!;
+			obras = CartaoDasObras(pg);
+			int linhas = obras == null ? 0 : Todos(obras).OfType<HBoxContainer>().Count(h => h.HasMeta("linha"));
+			Checa("**SO AS MINHAS**: com duas obras minhas na zona o cartao conta 2 e tem duas linhas -- nenhuma das alheias",
+				  obras != null && obras.GetMeta("titulo").AsString().Contains("(2)") && linhas == 2,
+				  $"{obras?.GetMeta("titulo").AsString() ?? "(sem cartao)"}, {linhas} linha(s), {alheias} alheia(s) na zona");
+			string? onde = menu.ValorDesenhado("Tech", meuTanque.Nome);
+			Checa("cada obra e uma linha 'nome · célula x, y'", onde != null && onde.StartsWith("célula"), onde ?? "(sem linha)");
+			List<string> pilulas = obras == null ? [] : Pilulas(obras);
+			Checa("o regenerador solto leva a pilula 'solta'; a macieira plantada (que nao tem parafuso) nao leva pilula nenhuma",
+				  pilulas.Count == 1 && pilulas[0] == "solta", string.Join(", ", pilulas));
+
+			Jandirus.Core.Tech.Interacoes.TudoPedeParafusoDeTeste = true;
+			menu.ForcarRedesenho();
+			await Quadros(2);
+			obras = CartaoDasObras(menu.PaginaDeTeste("Tech")!);
+			Checa("(defeito injetado: toda obra pede parafuso) a macieira ganha a pilula 'solta' -- a regua sabe reprovar",
+				  obras != null && Pilulas(obras).Count(p => p == "solta") == 2);
+			Jandirus.Core.Tech.Interacoes.TudoPedeParafusoDeTeste = false;
+
+			MenuJogo.ObrasDeTodosNaAbaDeTeste = true;
+			menu.ForcarRedesenho();
+			await Quadros(2);
+			obras = CartaoDasObras(menu.PaginaDeTeste("Tech")!);
+			Checa("(defeito injetado: a aba lista a zona inteira) o cartao passa a contar as alheias -- a regua sabe reprovar",
+				  obras != null && obras.GetMeta("titulo").AsString().Contains($"({cli.Obras.Count})") && cli.Obras.Count > 2,
+				  obras?.GetMeta("titulo").AsString() ?? "(sem cartao)");
 		}
-		else Checa("...e sem obra nenhuma o cartao diz isso", obras != null && Rotulo(obras, "nenhuma construção nesta zona.") != null);
+		finally
+		{
+			Jandirus.Core.Tech.Interacoes.TudoPedeParafusoDeTeste = false;
+			MenuJogo.ObrasDeTodosNaAbaDeTeste = false;
+			cli.Obras.Remove(meuTanque);
+			cli.Obras.Remove(minhaArvore);
+			menu.ForcarRedesenho();
+			await Quadros(2);
+		}
+		// (a pagina foi remontada: o cartao de antes morreu, e a foto la embaixo rola ate o de AGORA)
+		pg = menu.PaginaDeTeste("Tech")!;
+		obras = CartaoDasObras(pg);
 
 		// ---- OS ICONES DO CATALOGO (o segundo relato do dono: "na tela de construir do menu P ... esta errado")
 		// A aba tinha a TERCEIRA copia do carregador de miniatura, sem o saneamento do nome do estado:

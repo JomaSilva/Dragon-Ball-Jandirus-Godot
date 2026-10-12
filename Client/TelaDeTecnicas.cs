@@ -589,11 +589,15 @@ public partial class TelaDeTecnicas : CanvasLayer
 		criar.Pressed += () => GameClient.Instance?.SendVerbo("ca_criar");
 		_corpo.AddChild(criar);
 
-		if (TecnicaCustomizada.TiposDaMesa.Where(t => !Aberto(t)).ToList() is { Count: > 0 } fechados)
+		// SEM NENHUM TIPO ABERTO a nota e a frase curta do dono (2026-10-12: *"n precisa entrar em detalhes naquele
+		// texto"*) -- a mesma que o servidor responde ao `ca_criar`. Com a mesa ja aberta em parte, ela diz o que
+		// ainda falta, que e a informacao de quem ja esta inventando.
+		if (!algumAberto)
+			_corpo.AddChild(Nota(TecnicaCustomizada.SemControleDeKiNaTela, Tema.Perigo, 12));
+		else if (TecnicaCustomizada.TiposDaMesa.Where(t => !Aberto(t)).ToList() is { Count: > 0 } fechados)
 			_corpo.AddChild(Nota(
-				(algumAberto ? "A mesa abre por partes. Ainda falta: " : "Você ainda não sabe soltar ki. A mesa abre por partes: ")
-				+ string.Join("; ", fechados.Select(ComoAbre)) + ".",
-				algumAberto ? Tema.TextoFraco : Tema.Perigo, 12));
+				"A mesa abre por partes. Ainda falta: " + string.Join("; ", fechados.Select(ComoAbre)) + ".",
+				Tema.TextoFraco, 12));
 
 		// O TETO DIZ POR QUE, e nao so apaga o botao. Um botao cinza sem explicacao e a mesma coisa
 		// que o `switch` sem `else` do DM: o jogador nao descobre que ja tem dez.

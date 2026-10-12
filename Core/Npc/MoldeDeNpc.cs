@@ -297,6 +297,27 @@ public sealed class MoldeDeNpc
 	public string[] Dadas = [];
 
 	/// <summary>
+	/// OS TALENTOS -- o que VARIA de um corpo pro outro do MESMO molde (dono, 2026-10-12: *"sinto q os npcs em geral
+	/// como os viloes aleatorios q dao karma e os npcs do mundo em si n estao com mt variedade de skills, n vi nenhum
+	/// com after image por exemplo, eles deveriam ter mais variedade"*).
+	///
+	/// A <see cref="Vocacao"/> gasta os marcos numa ordem fixa e as <see cref="Dadas"/> sao as mesmas pra todo mundo:
+	/// dois viloes do mesmo molde nasciam com o MESMO kit de luta, e nenhum com a Afterimage. Esta e a lista de onde
+	/// cada corpo SORTEIA, pela semente dele, <see cref="QuantosTalentos"/> skills a mais -- ENSINADAS, como as dadas.
+	///
+	/// Cada entrada e um typepath, com um `@nivel` opcional no fim: `/datum/skill/mind/Basic_Ki_Control@30` da a skill
+	/// ja no degrau que abre o `Guided_Ball` (quando o nivel geral do molde e maior, vale o do molde).
+	/// Ver <see cref="SorteioDeNpc.SortearTalentos"/>.
+	/// </summary>
+	public string[] Talentos = [];
+
+	/// <summary>
+	/// QUANTOS talentos cada corpo sorteia, em media: a parte inteira e garantida e a fracao e a chance de mais um
+	/// (1,5 = um sempre, e um segundo em metade dos corpos). Zero = molde sem talento, que e o padrao.
+	/// </summary>
+	public double QuantosTalentos;
+
+	/// <summary>
 	/// O DEGRAU em que as skills deste NPC nascem (0..100), aplicado a tudo que ele sabe.
 	///
 	/// Nao e enfeite: e o nivel que abre capacidade. Voar pede `Ki_Unlocked` no nivel 50
@@ -475,6 +496,8 @@ public sealed class CatalogoDeMoldes
 				Roupa = Lista(e, "roupa"),
 				Vocacao = Lista(e, "vocacao"),
 				Dadas = Lista(e, "dadas"),
+				Talentos = Lista(e, "talentos"),
+				QuantosTalentos = Num(e, "quantosTalentos", 0),
 				NivelDasSkills = Num(e, "nivelDasSkills", 0),
 				EscadaAutomatica = Bit(e, "escadaAutomatica", true),
 				Formas = Lista(e, "formas"),

@@ -421,7 +421,6 @@ public partial class World : Node2D
 			cli.TiroNasceu += AoNascerTiro;
 			cli.TiroMorreu += AoMorrerTiro;
 			ProjetilDesenhado.OndeEstaOCorpo = OndeEstaONo;
-			ProjetilDesenhado.OndeEstaOTiro = OndeEstaOTiro;
 			ChoqueDeKi.ChaoSoltoEm = ChaoSoltoEm;
 			cli.TiroCortado += AoCortarTiro;
 			cli.TirosNoAr += AoMoverTiros;
@@ -510,7 +509,6 @@ public partial class World : Node2D
 			cli.TiroNasceu -= AoNascerTiro;
 			cli.TiroMorreu -= AoMorrerTiro;
 			if (ProjetilDesenhado.OndeEstaOCorpo == OndeEstaONo) ProjetilDesenhado.OndeEstaOCorpo = null;
-			if (ProjetilDesenhado.OndeEstaOTiro == OndeEstaOTiro) ProjetilDesenhado.OndeEstaOTiro = null;
 			if (ChoqueDeKi.ChaoSoltoEm == ChaoSoltoEm) ChoqueDeKi.ChaoSoltoEm = null;
 			cli.TiroCortado -= AoCortarTiro;
 			cli.TirosNoAr -= AoMoverTiros;
@@ -1141,6 +1139,19 @@ public partial class World : Node2D
 				CombatFx.Onda(_atores, p, 60, cor, 0.2);
 				break;
 
+			// ============================ O ESTOURO DO FIM DO ALCANCE (dono, 2026-10-12) ============================
+			// *"todo ataque de ki como esfera grande e beam explodem ao chegarem na distancia Maxima"*. E o fim do
+			// ataque inteiro, e por isso e maior que o estouro de um acerto: o clarao do tiro em dobro e duas ondas
+			// em cadencia diferente (a receita do `Mundo`, logo acima). A cratera grande vem do servidor, como
+			// decalque. A poeira so onde ha chao -- no vacuo ela ja foi reprovada pelo dono.
+			// =========================================================================================================
+			case Jandirus.Core.Combat.FimDeProjetil.Explodiu:
+				EstouroDeKi.Soltar(_atores, p, raioDoEstouro * 2.2f, corDoEstouro);
+				CombatFx.Onda(_atores, p, Mathf.Max(130f, raioDoEstouro * 4f), cor, 0.34);
+				CombatFx.Onda(_atores, p, Mathf.Max(230f, raioDoEstouro * 7f), cor, 0.55);
+				if (!Jandirus.Core.World.Espaco.EhEspaco(_zonaDoAtual)) PoeiraDeEstrago.Soltar(_atores, p);
+				break;
+
 			// APAGOU e CESSOU nao estouram: o alcance acabou, ou o dono soltou o raio. Um estouro
 			// aqui ensinaria o jogador que o tiro acertou alguma coisa quando ele so se dissolveu.
 			default:
@@ -1175,7 +1186,6 @@ public partial class World : Node2D
 				no.Solto = t.Solto;
 				no.ArrastaId = t.Arrasta;
 				no.Prensado = t.Prensado;
-				no.ContinuaDe = t.Dobra;
 				no.EscalaDoServidor = t.Escala;
 			}
 	}
@@ -1185,12 +1195,6 @@ public partial class World : Node2D
 	/// cabeca que leva alguem -- ver `ProjetilDesenhado.ArrastaId`.
 	/// </summary>
 	private Vector2? OndeEstaONo(int id) => Corpo(id)?.Position;
-
-	/// <summary>
-	/// O NO DO TIRO `id`, ou nulo. E por ele que o trecho desviado de um raio acha o raio de que e a
-	/// continuacao -- ver `ProjetilDesenhado.ContinuaDe`.
-	/// </summary>
-	private ProjetilDesenhado? OndeEstaOTiro(int id) => _tiros.GetValueOrDefault(id);
 
 	/// <summary>
 	/// BANCADA: poe (ou move) um tiro na zona pelos MESMOS dois caminhos do servidor -- o anuncio de
@@ -1322,7 +1326,8 @@ public partial class World : Node2D
 	///
 	///   * DUAS pontas prensadas que se tocam sao feixe contra feixe: UMA estrela no meio, metade da
 	///     cor de cada um;
-	///   * UMA ponta prensada sozinha e feixe contra a guarda de alguem: a estrela e toda dela.
+	///   * UMA ponta prensada sozinha e feixe contra a guarda de alguem (ou contra quem e forte demais pra ele): a
+	///     estrela e so a METADE do lado do ataque (`ChoqueDeKi.SoUmLado`) -- nao ha feixe vindo do outro lado.
 	///
 	/// A estrela mora na chave do feixe de MENOR id do par -- quem a carrega nao importa, importa que os
 	/// dois quadros seguintes cheguem a mesma resposta, senao ela morre e renasce a cada quadro.
@@ -1383,6 +1388,8 @@ public partial class World : Node2D
 			}
 			else bola.Definir(ponto, a.Rumo, raio, noEixo, a.CorNoChoque, (b ?? a).CorNoChoque);
 			bola.NoChao = altura <= Voo.AlturaDePairar;
+			// UM ATAQUE SO: a estrela existe so do lado dele. Com o par (feixe contra feixe), inteira.
+			bola.SoUmLado = b == null;
 			_choquesSemDono.Remove(idA);
 		}
 

@@ -271,19 +271,20 @@ public static partial class Tecnicas
 		// As duas primeiras SO PASSARAM A SER EXIGIVEIS quando o extrator parou de perder o
 		// `after_learn` delas (ver `DmSkillScanner.CorposDeAprendizado`): ate entao saiam do
 		// `skills.json` com `verbos: []` e o painel do cargo as anunciava como entregues.
-		// As duas ultimas fecham o `SistSigilo`, que era o unico sistema do censo em que o port
-		// tinha o lado de quem LE e nao o de quem ESCREVE.
+		// A ultima fecha o `SistSigilo`, que era o unico sistema do censo em que o port tinha o lado de quem LE e
+		// nao o de quem ESCREVE. (O `Conceal_Power`, do mesmo degrau, morou aqui ate 2026-10-12: o dono o fundiu no
+		// relaxar, e o verb do DM e atendido pelo canal `prontidao` -- ver `CensoDeSkills.PorOutroCanal`.)
 		Por("Mafuba", "Mafuba", Modo.Instantanea, "A Onda Selante. Precisa de um Pote Selante assentado por perto: a fita sai atras do alvo e o prende no pote pra sempre. Custa 90 de dano em CADA membro seu -- pode te matar. Quem quiser o preso de volta tem que quebrar o pote.", aba: "Outros");
 		Por("Open_Dead_Zone", "Abrir a Dead Zone", Modo.Instantanea,
 		"Rasga a realidade cinco tiles ao norte e abre a Dead Zone por dez segundos. Ela puxa "
 		+ "quem estiver por perto e sela quem cair dentro -- sem pote, sem quebrar: só sai "
 		+ "quem ficar 25% mais forte do que você era na hora. Custa quase toda a sua energia.",
 		aba: "Outros");
-		Por("Conceal_Power", "Ocultar o Poder", Modo.Sustentada, "Esconde o seu poder: ninguém mais sente a sua energia (Sense, telepatia, Transmissão) e o scouter não lista você. Enquanto durar o seu poder fica travado no mínimo -- você bate e apanha como quem não tem poder -- e o Ki se recupera pela metade. Liga e desliga, com cinco segundos de espera entre um e outro.");
 		Por("Power_Control", "Controle de Poder", Modo.Sustentada,
 		"Segura o seu próprio poder numa porcentagem, de 1 a 100 -- o controle fica na aba Ki do menu, e "
 		+ "este botão abre lá. Só serve pra BAIXAR, e baixa na hora: pra voltar a subir é carregando "
-		+ "(segure a tecla C) ou ficando pronto.", aba: "Skills");
+		+ "(segure a tecla C) ou ficando pronto. Segurar o poder não esconde você de scouter nem de Sense -- "
+		+ "pra sumir é relaxar, na mesma faixa.", aba: "Skills");
 
 		// ---- lote G10: OS GOLPES DO MOLDE DO G7 QUE O CENSO ACHOU MUDOS, e a Trindade ----
 		// Dezenove verbos que a arvore ja concedia (dezesseis por DEGRAU) e o servidor nao atendia,

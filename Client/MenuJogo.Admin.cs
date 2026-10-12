@@ -391,7 +391,7 @@ public partial class MenuJogo
 		{
 			Text = "Liberar skills de Ki",
 			TooltipText = "da o Basic Ki Control e o degrau que acende o canPower: segurar C passa a "
-						+ "carregar (aura), e os verbs Power Control e Conceal Power aparecem",
+						+ "carregar (aura), e a barra de poder e o Relaxar aparecem na aba Ki",
 		};
 		bKi.Pressed += () => cli.SendVerbo("admin_liberar_ki", cli.AlvoId.ToString());
 		topo.AddChild(bKi);

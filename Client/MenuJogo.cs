@@ -835,9 +835,61 @@ public partial class MenuJogo : CanvasLayer
 		ulong t0 = Time.GetTicksUsec();
 		_remontagens++;
 
+		// O CAMPO EM QUE SE ESCREVE ATRAVESSA A REMONTAGEM -- ver `CampoQueAtravessa`.
+		CampoQueAtravessa? escrevendo = FocoMorreNaRemontagemDeTeste ? null : CampoQueAtravessa.De(CampoComOFoco(), _conteudo);
 		foreach (Node n in _conteudo.GetChildren()) { _conteudo.RemoveChild(n); n.QueueFree(); }
 		Montar(f);
+		escrevendo?.Devolver(_conteudo);
 		_msRemontando += (Time.GetTicksUsec() - t0) / 1000.0;
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv020`): a pagina remontada nasce sem foco -- o menu de antes de 2026-10-12,
+	/// em que a caixa do batismo largava o teclado a cada remontagem e a letra seguinte virava atalho do jogo.
+	/// </summary>
+	internal static bool FocoMorreNaRemontagemDeTeste;
+
+	/// <summary>O controle com o foco na tela em que o menu MORA (a do jogo, ou a janela destacada), com ou sem o teclado do sistema.</summary>
+	private Control? CampoComOFoco() => _janela is { } j ? j.GuiGetFocusOwner() : GetViewport()?.GuiGetFocusOwner();
+
+	/// <summary>
+	/// ============================ QUEM ESTA ESCREVENDO NAO PERDE O TECLADO ============================
+	/// A pagina de uma aba e DESTRUIDA e montada de novo quando a assinatura dela muda -- e o campo de texto que
+	/// estivesse com o foco morria junto. O novo nascia sem foco, o `MenuJogo.Digitando` caia, e a proxima letra
+	/// era lida como atalho do jogo. O dono (2026-10-12): *"ao digitar pra batizar um planeta no menu p, os
+	/// comandos do teclado continuam funcionando, abrindo inventario etc e dificultando escrever o nome"*.
+	///
+	/// Isto guarda QUAL campo era (a posicao dele entre os `LineEdit` da pagina com a mesma dica), o cursor e o
+	/// texto, e devolve os tres ao campo que nasceu no lugar. Vale pra todo `LineEdit` de pagina -- o do batismo,
+	/// os do painel de admin, o do alvo --, e o proximo que nascer ja nasce coberto.
+	///
+	/// O TEXTO so e reposto se o campo novo nasceu VAZIO (o do batismo ja renasce escrito, pelo
+	/// `_nomeDigitadoDoPlaneta`), e avisando o `TextChanged` -- e por ele que cada tela guarda o que foi digitado.
+	/// ================================================================================================
+	/// </summary>
+	private sealed record CampoQueAtravessa(string Dica, int Ordem, string Texto, int Cursor)
+	{
+		private static IEnumerable<LineEdit> ComADica(Node pagina, string dica) =>
+			Descendentes(pagina).OfType<LineEdit>().Where(l => l.PlaceholderText == dica);
+
+		public static CampoQueAtravessa? De(Control? foco, Node pagina)
+		{
+			if (foco is not LineEdit campo || !pagina.IsAncestorOf(campo)) return null;
+			int ordem = ComADica(pagina, campo.PlaceholderText).TakeWhile(l => l != campo).Count();
+			return new CampoQueAtravessa(campo.PlaceholderText, ordem, campo.Text, campo.CaretColumn);
+		}
+
+		public void Devolver(Node pagina)
+		{
+			if (ComADica(pagina, Dica).Skip(Ordem).FirstOrDefault() is not { } novo) return;
+			if (novo.Text.Length == 0 && Texto.Length > 0)
+			{
+				novo.Text = Texto;
+				novo.EmitSignal(LineEdit.SignalName.TextChanged, Texto);
+			}
+			novo.GrabFocus();
+			novo.CaretColumn = Math.Min(Cursor, novo.Text.Length);
+		}
 	}
 
 	/// <summary>Enche a pagina da aba da vez. Separado do <see cref="Redesenhar"/> so pra o

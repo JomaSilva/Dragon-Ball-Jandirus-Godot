@@ -36,6 +36,12 @@ namespace Jandirus.Server;
 /// <see cref="AchoAEnergiaG4"/>): quem esta escondido (`isconcealed`), quem e Android, e quem expressa 5
 /// de BP ou menos. Na galaxia o DM testa so Android e o piso de 5 milhoes (`:387-388`) -- reproduzido
 /// igual, e anotado: um invisivel com 5 milhoes de BP e sentido de outro planeta, como no original.
+///
+/// OS DOIS PISOS SAO MEDIDOS SEM A BARRA DE PODER -- DIVERGENCIA DECLARADA das linhas acima, regra do dono de
+/// 2026-10-12: *"vc mudar teu poder na barra de % n esconde o ki do scouter, ou sense, so serve pra se segurar ou
+/// usar todo o poder, esconder o ki totalmente so com relaxar"*. Quem se segura continua em toda lista em que
+/// estaria com o poder inteiro (com a leitura baixa que a barra lhe da); quem RELAXA expressa a constante 5 e sai
+/// de todas. Ver <see cref="TemEnergiaQueSeSente"/> e `PoderEmUso.SemABarra`.
 /// Cadaver nao entra em alcance nenhum: no DM ele e um `/obj` (`Corpse.dm:1`), nao um mob, e nunca
 /// esteve em lista nenhuma.
 ///
@@ -191,7 +197,7 @@ public partial class GameServer
 				if (o == eu || o.ECadaver) continue;
 				bool npc = Gente.EhNpcDoMundo(o.Peer != null, o.Papel);
 				if (npc && o.Papel?.EhChefe != true) continue;
-				if (o.Ficha.expressedBP <= BpMinimoSentivel) continue;
+				if (!TemEnergiaQueSeSente(o)) continue;   // o piso dos 5, SEM a barra: quem se segura fica; quem relaxa sai
 				(int ox, int oy) = TileDe(o.Pos);
 				achados.Add((new Protocol.PresencaState
 				{
@@ -239,7 +245,7 @@ public partial class GameServer
 			{
 				if (o == eu || o.ECadaver || vistos.Contains(o.Id)) continue;
 				if (Gente.EhNpcDoMundo(o.Peer != null, o.Papel)) continue;
-				if (o.Race == "Android" || o.Ficha.expressedBP <= BpDaGalaxia) continue;
+				if (o.Race == "Android" || Jandirus.Core.Stats.PoderEmUso.SemABarra(o.Ficha) <= BpDaGalaxia) continue;
 				vistos.Add(o.Id);
 				(string nome, string sig) = IdentidadePara(eu, o);
 				achados.Add((new Protocol.PresencaState

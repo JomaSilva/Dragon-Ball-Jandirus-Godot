@@ -191,8 +191,18 @@ public partial class GameServer
 
 		MoldeDeNpc? povo = _moldes.Get("cidadao");
 		if (povo != null)
-			AfirmarTi("...e o HABITANTE continua sem nenhum (pacifico nao ganha raio de brinde)",
-					  !ArsenalDeLonge(CorpoDeMolde(povo, 3)).TemAlguma);
+		{
+			// (2026-10-12) O HABITANTE PODE SORTEAR UM TALENTO DE LONGE (`MoldeDeNpc.Talentos`: o raio, a bola), e a
+			// semente dele sai da do universo da pasta de save em que a bancada roda -- numa pasta sim, noutra nao. O
+			// que se mede aqui e o `dadas`, o kit que o MOLDE entrega: com os talentos desligados.
+			SorteioDeNpc.TalentosDesligadosDeTeste = true;
+			try
+			{
+				AfirmarTi("...e o `dadas` do HABITANTE continua sem nenhum (pacifico nao ganha raio de brinde -- o que ele sorteia a mais e TALENTO, medido na `--v020teste`)",
+						  !ArsenalDeLonge(CorpoDeMolde(povo, 3)).TemAlguma);
+			}
+			finally { SorteioDeNpc.TalentosDesligadosDeTeste = false; }
+		}
 
 		LimparEmbatesDaBancada();
 	}
@@ -269,18 +279,20 @@ public partial class GameServer
 		// E O TIRO ACERTA. O funil de dano e o de sempre (`Acertar` -> `DanoDeKi` -> `AplicarDanoPronto`).
 		//
 		// ============================ SEM O DADO DA DEFLEXAO, PELO MESMO MOTIVO DE SEMPRE ============================
-		// O `Acertar` sorteia deflexao em todo impacto acima do corte dos fracos contra quem esta de pe
-		// (`GameServer.Projeteis.cs:1190-1240`), e a chance e a razao entre as duas forcas
-		// (`DanoDeKi.ChanceDeDeflexao`, `objects.dm:333`). MEDIDO com os corpos daqui -- dois de 50.000
-		// e o feixe do `Ki_Wave` de `base_damage` 1 --: **1% por impacto**. E uma medicao de "o funil
-		// chegou ao fim" que as vezes mede o dado, que e o defeito que derrubou a `--tecnicateste` em
-		// 2026-09-02 (la a bola dava 0,0999%).
+		// O `Acertar` sorteia deflexao em todo impacto contra quem esta de pe e nao e parede pro tiro
+		// (os passos 3a-bis e 3 dele; ate 2026-10-12, em todo impacto acima do corte dos fracos), e a
+		// chance e a razao entre as duas forcas (`DanoDeKi.ChanceDeDeflexao`, `objects.dm:333`). MEDIDO
+		// com os corpos daqui -- dois de 50.000 e o feixe do `Ki_Wave` de `base_damage` 1 --: **1% por
+		// impacto**. E uma medicao de "o funil chegou ao fim" que as vezes mede o dado, que e o defeito
+		// que derrubou a `--tecnicateste` em 2026-09-02 (la a bola dava 0,0999%). (Entre estes dois
+		// iguais hoje so sobra o raspao, a metade dessa chance: defletir de vez pede o dobro do poder do
+		// tiro -- `KiContraCorpo.PodeDefletir`. O motivo de tirar o dado e o mesmo.)
 		//
 		// AQUI O KNOB NAO CABE NA RECEITA: quem monta o tiro e o ARSENAL de producao, dentro da decisao
 		// da IA -- escrever `Deflectivel = false` la seria dar a todo NPC do jogo um raio que ninguem
 		// deflete. Entao a bancada desarma o que ja esta no ar, a cada tique: e o mesmo campo, pelo
-		// mesmo motivo do `RaioDaBancada` (`GameServer.ProjeteisTeste.cs:2167`), no unico lugar que ela
-		// alcanca. Vale pra QUALQUER tiro da zona porque a IA pode atirar mais de uma vez nos 8 s.
+		// mesmo motivo do `RaioDaBancada` da `--projetilteste`, no unico lugar que ela alcanca. Vale
+		// pra QUALQUER tiro da zona porque a IA pode atirar mais de uma vez nos 8 s.
 		//
 		// E nao da pra desligar pelo corpo do alvo: `Fighter.Statify` calcula o `Rkidef` com piso
 		// (`max(kidef, 0.1)`, `Core/Stats/Fighter.Statify.cs:88`), entao `Ekidef` de um corpo vivo e
@@ -290,15 +302,21 @@ public partial class GameServer
 		// O QUE FOI FEITO DE CADA TIRO, pra a reprovacao dizer DE QUE ele morreu e pra onde ia -- sem isso "vida 100
 		// contra 100" manda quem le adivinhar entre errar, bater no cenario e nao ferir.
 		//
-		// ============================ E SEM O CORTE DOS FRACOS, PELA MESMA RAZAO (2026-10-09) ============================
-		// Desde 2026-10-08 o tiro de dano final abaixo de `DanoDeKi.CorteDoFraco` BATE SEM FERIR. MEDIDO com os corpos
-		// daqui: o `Ki_Wave` do NPC de 50.000 contra o alvo de 50.000 da dano final 6,00 -- abaixo do corte de 10. O
-		// raio chegava ao alvo, plantava a cabeca na frente dele e nao tirava vida nenhuma; esta linha so passava nas
-		// rodadas em que a IA sorteava outra tecnica nos 8 s (reprovou em 8 de 11 rodadas com a mira no marcado e em 1
-		// de 2 sem ela, `--semmiradeki`, sempre com esta assinatura: nao e a direcao do tiro; e ja reprovava 2 em 4 na
-		// noite em que o corte nasceu). Quem mede o corte e a `--projetilteste` (familia do corte dos
-		// fracos); aqui se mede "o funil chegou ao fim", entao o tiro que ja esta no ar e erguido acima do corte pelo
-		// mesmo ajudante de la (`CravarDanoFinal`, que so escala o `ModsBase` do tiro).
+		// ============================ O DANO ERGUIDO PRA 12: PREPARO DO TEMPO DO CORTE POR DANO ============================
+		// DE 2026-10-08 A 2026-10-12 o tiro de dano final abaixo de `DanoDeKi.CorteDoFraco` BATIA SEM FERIR. MEDIDO com
+		// os corpos daqui (2026-10-09): o `Ki_Wave` do NPC de 50.000 contra o alvo de 50.000 da dano final 6,00 --
+		// abaixo do corte de 10. O raio chegava ao alvo, plantava a cabeca na frente dele e nao tirava vida nenhuma;
+		// esta linha so passava nas rodadas em que a IA sorteava outra tecnica nos 8 s (reprovou em 8 de 11 rodadas com
+		// a mira no marcado e em 1 de 2 sem ela, `--semmiradeki`, sempre com esta assinatura: nao e a direcao do tiro;
+		// e ja reprovava 2 em 4 na noite em que o corte nasceu). Aqui se mede "o funil chegou ao fim", entao o tiro
+		// que ja esta no ar foi erguido acima do corte pelo ajudante da `--projetilteste` (`CravarDanoFinal`, que so
+		// escala o `ModsBase` do tiro).
+		//
+		// HOJE (dono, 2026-10-12 -- `KiContraCorpo`) O CORTE POR DANO NAO DECIDE MAIS NADA EM JOGO: quem o tiro nao
+		// fere e quem e parede pra ele (quatro vezes o poder do tiro), e o tiro fraco de um igual e golpe (medido na
+		// `--projetilteste`, familia 16). Pela regra, o `Ki_Wave` de 6,00 entre estes dois iguais ja fere sem ajuda.
+		// O PREPARO FICOU COMO ESTAVA -- a condicao ainda le o `FracoDemais`, e o tiro de 6 ainda sobe pra 12 --, e
+		// ninguem mediu esta cena sem ele depois da escada.
 		// ====================================================================================================================
 		var vistos = new Dictionary<int, Projetil>();
 		for (int i = 0; i < 30 * 8 && alvo.Combate.Corpo.Vida() >= vidaAntes; i++)

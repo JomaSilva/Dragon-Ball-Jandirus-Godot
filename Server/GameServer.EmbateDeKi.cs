@@ -16,7 +16,7 @@ namespace Jandirus.Server;
 /// dois feixes retos em fileiras vizinhas se atravessavam sem nunca colidir). Os numeros moram em
 /// <see cref="EmbateDeKi"/>, um por um, com a linha de origem.
 ///
-/// TRES COISAS SAO NOVAS, e cada uma esta marcada no lugar:
+/// QUATRO COISAS SAO NOVAS, e cada uma esta marcada no lugar:
 ///   1. FEIXE CONTRA QUEM BLOQUEIA -- no DM a disputa exige `WaveAttack` dos DOIS lados; quem esta
 ///      de guarda so ganha meia conta de dano e o dobro da chance de defletir. Ver
 ///      <see cref="TentarEmbateDeGuarda"/> e `EmbateDeKi.PoderDeSegurar`.
@@ -24,6 +24,8 @@ namespace Jandirus.Server;
 ///      avanco de verdade era depois de decidido. Ver <see cref="MoverOEncontro"/>.
 ///   3. A ENTRADA E O QUICK TIME EVENT do ZanzoClash, e nao martelar ESPACO. Ver
 ///      `EmbateDeKi.ApertosPorLetra`.
+///   4. QUEM SEGURA O RAIO COM AS MAOS SAI DE LADO sem baixar a guarda, e ninguem vence (dono,
+///      2026-10-12). Ver <see cref="SairDeLadoDaDisputa"/> e `KiContraCorpo.PassoAtravessado`.
 /// ======================================================================================
 ///
 /// ============================ O QUE SE REUSOU DO ZANZO CLASH ============================
@@ -275,10 +277,15 @@ public sealed partial class GameServer
 	/// `Acertar` acabou de rodar. Ate aquele dia valiam o numerador da chance de deflexao do DM, e com
 	/// ele quem segurava perdia sempre -- a historia e os numeros estao la.
 	///
-	/// O CORTE DOS FRACOS E O SORTEIO DE DEFLEXAO CONTINUAM VINDO ANTES (ver `Acertar`, passos 3a-bis e 3):
-	/// o raio que nao feriria quem segura nao abre disputa nenhuma -- so ha embate quando ha o que perder
-	/// --, e quem tem sorte defende de graca, como sempre teve. Isto aqui e o que acontece com quem NAO
-	/// defletiu um raio que fere, e mesmo assim nao vai abaixar a guarda.
+	/// A PAREDE E O SORTEIO DE DEFLEXAO CONTINUAM VINDO ANTES (ver `Acertar`, passos 3a-bis e 3): o raio que
+	/// nao feriria quem segura -- hoje, o que encontra uma PAREDE (quem tem quatro vezes o poder dele:
+	/// `KiContraCorpo`, 2026-10-12); ate esse dia, o de dano final abaixo de 10, o corte dos fracos -- nao
+	/// abre disputa nenhuma: so ha embate quando ha o que perder. E quem tem sorte defende de graca, como
+	/// sempre teve. Isto aqui e o que acontece com quem NAO defletiu um raio que fere, e mesmo assim nao vai
+	/// abaixar a guarda.
+	///
+	/// E (2026-10-12) SO SEGURA O RAIO QUEM NAO E MAIS FRACO QUE ELE: o mais fraco de guarda erguida nem
+	/// chega aqui -- o raio o leva, devagar, com o dano nos membros da guarda (`Acertar`, passos 3b, 4 e 5b).
 	/// ====================================================================================================
 	/// </summary>
 	private bool TentarEmbateDeGuarda(Projetil p, ServerPlayer alvo)
@@ -456,6 +463,10 @@ public sealed partial class GameServer
 
 		Comeco(d, a, b);
 		Comeco(d, b, a);
+		// SO O LADO DAS MAOS PODE SAIR DE LADO (dono, 2026-10-12), e a tela dele precisa do eixo do raio pra dar o
+		// passo pela mesma pergunta que o servidor faz -- ver `MandarOEixoDaSaidaDeLado`. Depois do `Comecou`: e ele
+		// quem abre o embate na tela.
+		if (b.DeMaos) MandarOEixoDaSaidaDeLado(d, b);
 		NovaLetra(d, a);
 		NovaLetra(d, b);
 
@@ -464,7 +475,7 @@ public sealed partial class GameServer
 			: $"os ataques de {a.Quem.Name} e {b.Quem.Name} colidem!";
 		Avisar(a.Quem, $"DISPUTA DE KI: {oque} Acerte as letras pra empurrar.");
 		Avisar(b.Quem, tipo == Protocol.TipoDeEmbate.FeixeContraGuarda
-			? $"voce agarra o ataque de {a.Quem.Name}! Acerte as letras pra devolve-lo."
+			? $"voce agarra o ataque de {a.Quem.Name}! Acerte as letras pra devolve-lo -- ou ande de lado pra sair da frente dele."
 			: $"DISPUTA DE KI contra {a.Quem.Name}! Acerte as letras pra empurrar.");
 
 		// O ESTOURO INICIAL, no mundo: o mesmo `createShockwavemisc(center, 3)` do `start()`.
@@ -736,6 +747,10 @@ public sealed partial class GameServer
 	///
 	/// Ou seja: sair e sempre possivel e nunca e de graca. Quem larga leva o feixe do outro, com o
 	/// dano cheio da cadeia de ki -- que e o mesmo desfecho de quem disputou e perdeu.
+	///
+	/// (2026-10-12) O LADO DAS MAOS TEM UMA SEGUNDA SAIDA, e essa nao e perder: o passo atravessado ao raio,
+	/// com a guarda erguida. Ela nao passa por aqui -- nenhum lado cai, e a disputa que fecha: ver
+	/// <see cref="SairDeLadoDaDisputa"/>.
 	/// ==========================================================================================
 	/// </summary>
 	private bool LadoOk(LadoDeKi l)
@@ -1200,6 +1215,96 @@ public sealed partial class GameServer
 	{
 		Acabou(d.A.Quem, venc, perd);
 		Acabou(d.B.Quem, venc, perd);
+	}
+
+	// =====================================================================
+	// A SAIDA DE LADO (dono, 2026-10-12)
+	// =====================================================================
+	/// <summary>
+	/// O OUVIDO DA BANCADA (`--embatekiteste`, familia 14): o fim de embate e o eixo da saida de lado que sairam pelo
+	/// `S2C.Clash` enquanto ela escuta -- pra quem (o id) e o fio. Nulo fora da bancada, o molde do `EscutaDeBlocos`:
+	/// os corpos forjados nao tem `Peer`, e sem isto "os dois ouviram o fim" nao teria onde ser lido.
+	/// </summary>
+	internal static List<(int Para, byte[] Fio)>? EscutaDeEmbates;
+
+	/// <summary>
+	/// "VOCE SEGURA ESTE RAIO COM AS MAOS, E PODE SAIR DE LADO": o eixo dele, pro lado das maos de uma disputa de
+	/// guarda (`Protocol.ClashSub.SaidaDeLado`). PESSOAL: quem atira nao tem pra onde sair -- o que o planta e o
+	/// proprio raio (`EnraizadoPorKi`), e nao a disputa.
+	///
+	/// O EIXO VIAJA, em vez de a tela deduzi-lo de onde ve os dois corpos, porque e por ELE que as duas pontas
+	/// respondem "este passo e atravessado?" (`KiContraCorpo.PassoAtravessado`). O corpo de quem atira chega na tela
+	/// interpolado, um tique atras; um eixo deduzido dali discordaria deste por uma fracao de grau, e na beira dos 30
+	/// graus o passo que a tela da e o servidor recusa e uma correcao de posicao por pacote.
+	/// </summary>
+	private static void MandarOEixoDaSaidaDeLado(DisputaDeKi d, LadoDeKi maos)
+	{
+		var w = Protocol.Begin(Protocol.S2C.Clash);
+		w.Put((byte)Protocol.ClashSub.SaidaDeLado);
+		w.PutVec(d.Eixo);
+		EscutaDeEmbates?.Add((maos.Quem.Id, w.CopyData()));
+		maos.Quem.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	/// <summary>
+	/// ============================ QUEM SEGURA O RAIO SAI DE LADO, E NINGUEM VENCE (dono, 2026-10-12) ============================
+	/// *"se o defensor for mais forte ele pode tentar se mover pros lados e sair da frente do ataque de ki enquanto
+	/// defende com a guarda e ele n é arrastado pelo ki"*. A regra, os numeros e os botoes moram no `KiContraCorpo`
+	/// (`PassoAtravessado`, `SegundosPraSairDeLado`); aqui e o que ela faz ao mundo.
+	///
+	/// CHAMADO DO `AplicarInput`, ANTES DO `PodeMexerOCorpo`: a disputa e uma das recusas daquela porta, e depois dela
+	/// nao sobra pacote pra ler -- a mesma razao do `DebatendoSe` de quem esta agarrado. Devolve verdadeiro quando a
+	/// disputa fechou; dali o pacote segue pela validacao de sempre, e o passo e dado ou nao pelo que ela disser.
+	///
+	/// QUEM PODE: so o lado das MAOS de uma disputa de guarda. Quem e mais fraco que o raio nem chega aqui -- ele nao
+	/// segura nada, e levado (`Acertar`, passo 3b) --, e quem atira esta plantado pelo proprio raio. E so quem ANDARIA
+	/// se nao fosse a disputa: paralisado, prensado pela gravidade ou sem as pernas, o passo nao existe, e fechar a
+	/// disputa por um passo que nao existe seria ganhar o prazo parado.
+	///
+	/// O QUE ACONTECE:
+	///   * a disputa fecha SEM VENCEDOR (<see cref="Fechar"/>): ninguem leva nada, o canal de quem atira continua de
+	///     pe e a guarda de quem saiu continua erguida;
+	///   * o raio SEGUE VIAGEM de onde o encontro estava, na velocidade dele (e nao na do empurrao de quem vence), e
+	///     nao disputa guarda de novo -- `Projetil.JaDisputou`, a regra de sempre: um embate de guarda por feixe;
+	///   * quem saiu fica FORA DA LINHA dele por um prazo (`Projetil.SoltarDeLado`): a cabeca estava encostada nas maos
+	///     dele, e sem isto sair seria apanhar no mesmo tique;
+	///   * as duas telas ouvem o fim (<see cref="Anunciar"/>): sem vencedor, e com quem saiu no lugar do perdedor -- a
+	///     terceira leitura do `Protocol.ClashSub.Acabou`.
+	/// =================================================================================================================================
+	/// </summary>
+	private bool SairDeLadoDaDisputa(ServerPlayer pl, Vec2 pedido)
+	{
+		if (KiContraCorpo.SemSaidaDeLadoDeTeste) return false;
+		if (!_emEmbateDeKi.TryGetValue(pl.Id, out DisputaDeKi? d)) return false;
+
+		LadoDeKi maos = d.A.Quem == pl ? d.A : d.B;
+		LadoDeKi atira = maos == d.A ? d.B : d.A;
+		if (!maos.DeMaos || atira.Feixe is not { } raio) return false;
+		if (!KiContraCorpo.PassoAtravessado(pedido - pl.Pos, d.Eixo)) return false;
+
+		// SO SAI QUEM ANDARIA. A pergunta e a de sempre (`PodeMexerOCorpo`), feita com a disputa fora da frente dela:
+		// escrever aqui as outras recusas daquela porta seria a segunda lista, que um dia discorda da primeira.
+		_emEmbateDeKi.Remove(pl.Id);
+		bool andaria = PodeMexerOCorpo(pl) && !SemAsRedeas(pl);
+		_emEmbateDeKi[pl.Id] = d;
+		if (!andaria) return false;
+
+		Fechar(d);
+		raio.EmEmbate = false;
+		raio.JaDisputou = true;
+
+		double prazo = KiContraCorpo.SaidaDeLadoSemPrazoDeTeste
+			? 0
+			: KiContraCorpo.SegundosPraSairDeLado(KiContraCorpo.LarguraPraSairDeCima(raio), MoveRules.SpeedPx(pl.SpeedStat));
+		if (prazo > 0) raio.SoltarDeLado(pl.Id, prazo);
+
+		Anunciar(d, 0, pl.Id);   // sem vencedor, e quem saiu no lugar do perdedor. Ver `Protocol.ClashSub.Acabou`.
+		Avisar(pl, $"voce sai da frente do ataque de {atira.Quem.Name} sem baixar a guarda.");
+		Avisar(atira.Quem, $"{pl.Name} saiu da frente: seu ataque segue viagem.");
+
+		GD.Print($"[server] EMBATE DE KI: {pl.Name} SAIU DE LADO da disputa de guarda com {atira.Quem.Name} (sem vencedor) "
+				 + $"| medidor {d.Medidor:0.#} | {d.Corridos:0.#}s | fora da linha do raio por {prazo:0.##}s");
+		return true;
 	}
 
 	/// <summary>

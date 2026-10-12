@@ -287,6 +287,9 @@ public partial class MenuJogo
 			// no chat, cobra NA MOEDA DO COMANDO, poe na mochila e reenvia o catalogo e a carteira -- e sao eles
 			// que remontam esta pagina.
 			cli.SendTech(escolhida == Moeda.Recursos ? "construir_recursos" : "construir", id);
+			// A ARMADURA ABRE A TELA DA ARTE (dono, 2026-10-12) -- quando a mochila confirmar que ela foi fabricada,
+			// e nao no clique: um pedido recusado nao tem o que moldar. Ver `TelaDeArmadura.EsperarAFabricada`.
+			if (id == Jandirus.Core.Items.ArmaduraDeTech.Id) TelaDeArmadura.Instancia?.EsperarAFabricada();
 			confirma.Visible = false;
 			rodape.Visible = true;
 		};
@@ -320,40 +323,57 @@ public partial class MenuJogo
 	// =====================================================================
 	// AS CONSTRUCOES DA ZONA
 	// =====================================================================
+	/// <summary>O titulo do cartao, sem a contagem. Uma casa so: a bancada (`--diagabas`) procura por ele.</summary>
+	internal const string TituloDasMinhasObras = "Suas construções nesta zona";
+
 	/// <summary>
-	/// O QUE ESTA DE PE NESTA ZONA. A lista `Obras` e da ZONA, nao do jogador (o `S2C.Construcoes`
-	/// leva tudo o que o cliente precisa desenhar: bancadas, banco, mobilia), entao o cartao diz isso
-	/// no titulo em vez de fingir que e "suas obras" -- e marca as suas com a pilula.
+	/// DEFEITO INJETADO (bancada `--diagabas`): o cartao volta a listar TUDO o que esta de pe na zona -- o estado
+	/// de antes de 2026-10-12, com as macieiras do mapa e a bancada dos outros no meio. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool ObrasDeTodosNaAbaDeTeste;
+
+	/// <summary>
+	/// AS MINHAS, de pe nesta zona, na ordem em que a aba as lista. A lista `Obras` do cliente e da ZONA (o
+	/// `S2C.Construcoes` leva tudo o que ha pra desenhar: bancadas dos outros, banco, macieira do mapa), e o
+	/// crivo do dono e o NOME -- o mesmo campo que o servidor manda em cada obra.
+	/// </summary>
+	internal static List<GameClient.ObraInfo> MinhasObrasNaZona(GameClient cli) =>
+	[
+		.. cli.Obras
+			.Where(o => ObrasDeTodosNaAbaDeTeste
+						|| (o.Dono.Length > 0 && string.Equals(o.Dono, cli.LocalName, StringComparison.OrdinalIgnoreCase)))
+			.OrderBy(x => x.Nome, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.Id),
+	];
+
+	/// <summary>
+	/// O QUE EU TENHO DE PE NESTA ZONA -- e so o que e meu (dono, 2026-10-12: *"so deve aparecer construçoes minhas
+	/// e nao todas"*). O cartao listava a zona inteira: quatro macieiras do mapa e seis bancadas alheias, com o
+	/// rodape "Nenhuma é sua".
 	///
 	/// A posicao e a CELULA (a mesma conta do servidor, `CatalogoDeObras.Celula`), e nao o pixel: e
 	/// a unidade em que se anda ate uma coisa.
 	/// </summary>
 	private void ObrasDaZona(GameClient cli)
 	{
-		VBoxContainer corpo = Cartao($"Construções nesta zona  ({cli.Obras.Count})");
-		if (cli.Obras.Count == 0)
+		List<GameClient.ObraInfo> minhas = MinhasObrasNaZona(cli);
+		VBoxContainer corpo = Cartao($"{TituloDasMinhasObras}  ({minhas.Count})");
+		if (minhas.Count == 0)
 		{
-			Nota("nenhuma construção nesta zona.", corpo);
+			Nota("você não tem nenhuma construção nesta zona.", corpo);
 			return;
 		}
 
-		int minhas = 0;
-		foreach (GameClient.ObraInfo o in cli.Obras.OrderBy(x => x.Nome, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.Id))
-		{
-			bool minha = o.Dono.Length > 0 && string.Equals(o.Dono, cli.LocalName, StringComparison.OrdinalIgnoreCase);
-			if (minha) minhas++;
-			corpo.AddChild(LinhaDeObra(o, minha));
-		}
-		Nota((minhas > 0 ? $"{minhas} sua(s). " : "Nenhuma é sua. ")
-			+ "Sem aparafusar (Bolt, ao lado dela) uma construção não funciona.", corpo);
+		foreach (GameClient.ObraInfo o in minhas) corpo.AddChild(LinhaDeObra(o));
+		if (minhas.Exists(o => !o.Aparafusada && Interacoes.PedeParafuso(o.Tipo)))
+			Nota("A que está solta não funciona: aparafuse (tecla E ao lado dela, ou o verb Bolt).", corpo);
 	}
 
 	/// <summary>
-	/// Nome a esquerda, a celula a direita, e as pilulas ("sua", "aparafusada"/"solta"). Carrega o
-	/// metadado `linha` com o nome, como toda linha rotulo/valor: `ValorDesenhado("Tech", nome)` le a
-	/// celula.
+	/// Nome a esquerda, a celula a direita, e a pilula "aparafusada"/"solta" -- so em quem TEM parafuso
+	/// (`Interacoes.PedeParafuso`: a macieira e a Drill trabalham assentadas). Carrega o metadado `linha` com o
+	/// nome, como toda linha rotulo/valor: `ValorDesenhado("Tech", nome)` le a celula.
 	/// </summary>
-	private static HBoxContainer LinhaDeObra(GameClient.ObraInfo o, bool minha)
+	private static HBoxContainer LinhaDeObra(GameClient.ObraInfo o)
 	{
 		var h = new HBoxContainer();
 		h.AddThemeConstantOverride("separation", 8);
@@ -371,8 +391,8 @@ public partial class MenuJogo
 		h.AddChild(onde);
 
 		HFlowContainer pilulas = Pilulas(
-			(minha ? "sua" : "", Tema.Bom),
-			(o.Aparafusada ? "aparafusada" : "solta", o.Aparafusada ? Tema.Bom : Tema.Destaque));
+			(!Interacoes.PedeParafuso(o.Tipo) ? "" : o.Aparafusada ? "aparafusada" : "solta",
+			 o.Aparafusada ? Tema.Bom : Tema.Destaque));
 		pilulas.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
 		h.AddChild(pilulas);
 		return h;

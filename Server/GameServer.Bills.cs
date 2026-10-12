@@ -1448,8 +1448,12 @@ public partial class GameServer
 		if (pl.Ficha.TrajeDoDeusRecebido && !TrajeTodaVezDeTeste) return;
 		if (!string.Equals(CargoDe(pl.Conta), BillsEWhis.CargoDoBills, StringComparison.OrdinalIgnoreCase)) return;
 
-		string item = new RoupaGuardada(BillsEWhis.Traje, null).Id;
-		if (CatalogoDeItens.Get(item) == null) return;   // a arte nao esta no catalogo deste servidor: nao ha o que entregar
+		// O ID E O DA PECA COMO ELA E VESTIDA (`RoupaGuardada.De`, pelo caminho da folha): o traje mora na pasta de
+		// armaduras, e desde 2026-10-12 a peca de la tem prefixo proprio na mochila (`Armadura|`). Entregue com o id de
+		// roupa comum ela se vestia, mas voltava do corpo com OUTRO id -- a mesma peca virando duas coisas na mochila.
+		if (_visual?.Peca(BillsEWhis.Traje) is not { } folha) return;   // a arte nao esta no catalogo deste servidor: nao ha o que entregar
+		string item = RoupaGuardada.De(new Jandirus.Core.Appearance.PecaDeRoupa(folha, null)).Id;
+		if (CatalogoDeItens.Get(item) == null) return;
 		if (pl.Mochila.Guardar(item) != 0) return;
 
 		pl.Ficha.TrajeDoDeusRecebido = true;

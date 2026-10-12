@@ -226,12 +226,14 @@ public static class CatalogoDeItens
 		// PESO NAO E EQUIPAMENTO COMUM: ele ATRAPALHA de propósito, e o ganho e o treino que a
 		// dificuldade rende. Por isso a acao e "ajustar" e nao "equipar" -- o quanto importa.
 		[Pesos] = new ItemDef(
-			Pesos, "Pesos", "Atrasa cada passo e cada golpe. Em troca, treinar rende muito mais.",
+			Pesos, "Pesos", "Atrasa cada passo e cada golpe. Em troca, treinar rende muito mais. Vêm leves (50 kg): "
+			+ "o peso máximo se compra, e você veste a porcentagem dele que quiser.",
 			// A ARTE E A DO DM: `obj/items/Weight` usa `Clothes_ShortSleeveShirt.dmi` (Tier 1.dm:107) -- os
 			// pesos sao ROUPA, e o icone e a camisa de frente. A folha de tech nao tem estado "weights";
 			// com ela o icone caia no primeiro estado da folha (um pod de androide), que foi o que o dono viu.
 			"res://Assets/Sprites/Clothes/Clothes_ShortSleeveShirt.tres", "walk_south",
-			Empilhavel: false, Acoes: ["ajustar", "tirar"]),
+			// "melhorar" e a porta paga do peso maximo (dono, 2026-10-12) -- ver `PesoDeTreino`.
+			Empilhavel: false, Acoes: ["ajustar", "melhorar", "tirar"]),
 
 		[Bandagem] = new ItemDef(
 			Bandagem, "Bandagens", "Fecha o que está aberto. Devagar, e só fora de combate.",
@@ -381,11 +383,18 @@ public static class CatalogoDeItens
 		Tech.Construcao? c = Obras?.Get(id);
 		if (c == null) return null;
 
+		// A ARMADURA DE TECH tem a acao dela: escolher a ARTE (dono, 2026-10-12). Ver `ArmaduraDeTech`.
+		//
+		// ENQUANTO O CATALOGO A DECLARA PESSOAL, que e o que ela e. Se a extracao a marcar como construcao de chao, vale
+		// a regra geral logo abaixo (e ela ganha o "posicionar"): o defeito aparece na tela em vez de ficar escondido
+		// atras desta linha -- e a bancada `instalar-prova` o cobra (I.3: a regra tem de NOTAR o campo trocado).
+		if (c.Id == ArmaduraDeTech.Id && c.Pessoal) return ArmaduraDeTech.Ficha(c);
+
 		// UMA CONSTRUCAO NA MOCHILA SO SABE FAZER UMA COISA: virar construcao de novo. "posicionar"
 		// e a acao, e ela abre o fantasma no mouse -- ver `TelaDeInventario`.
 		//
 		// O ITEM PESSOAL FICA SEM ACAO NENHUMA, e isso e honesto: o port ainda nao tem o que a
-		// armadura ou a espingarda FAZEM, e um botao "Assentar no chao" nelas nao seria uma acao a
+		// espingarda ou as luvas de dreno FAZEM, e um botao "Assentar no chao" nelas nao seria uma acao a
 		// mais -- seria a acao ERRADA. Quem ja tem mecanica portada esta na tabela la em cima com o
 		// verbo dela (equipar, ajustar, usar), e e por ali que as proximas entram.
 		return new ItemDef(c.Id, c.Nome, c.Desc, c.Arte, c.Estado,
@@ -584,12 +593,22 @@ public sealed class Inventario
 /// mesma porta da roupa de NPC), entao mover a pasta de arte nao estraga a mochila de ninguem -- e o id fica sem
 /// BARRA, que o canal de itens do servidor usa pra separar o argumento numerico (`GameServer.ComandoDeItem`). O
 /// nome mais comprido do catalogo tem 32 letras: o id inteiro cabe com folga nas 64 do pacote da mochila.
+///
+/// ============================ A ARMADURA E UMA PECA COM OUTRO PREFIXO (2026-10-12) ============================
+/// `Armadura|Armor 8|` e a mesma coisa -- uma folha e uma cor --, so que a folha e procurada na lista de ARMADURAS
+/// (`VisualCatalog.PecaDeArmadura`). O prefixo existe porque o NOME nao basta: ha folha com o mesmo nome no
+/// guarda-roupa e na pasta de armadura, e so uma das duas protege (ver `VisualCatalog.EhArmadura`). Quem decide o
+/// prefixo de uma peca vestida e o CAMINHO dela (<see cref="De"/>).
 /// ==========================================================================================================
 /// </summary>
-public sealed record RoupaGuardada(string Nome, Appearance.Rgb? Cor)
+/// <param name="Armadura">A folha e de armadura (a pasta `Clothes/Armor`): protege quem veste -- ver <see cref="ArmaduraDeTech"/>.</param>
+public sealed record RoupaGuardada(string Nome, Appearance.Rgb? Cor, bool Armadura = false)
 {
 	/// <summary>O prefixo do id. Uma constante porque ela e um contrato entre o catalogo, o servidor e a tela.</summary>
 	public const string Prefixo = "Roupa|";
+
+	/// <summary>O prefixo do id de uma peca de ARMADURA. Ver o cabecalho.</summary>
+	public const string PrefixoDeArmadura = "Armadura|";
 
 	/// <summary>A acao de por a peca no corpo -- o botao da mochila e o `case` do servidor leem daqui.</summary>
 	public const string AcaoVestir = "vestir";
@@ -606,51 +625,56 @@ public sealed record RoupaGuardada(string Nome, Appearance.Rgb? Cor)
 	/// </summary>
 	public static bool TiradaSomeDeTeste;
 
-	public string Id => $"{Prefixo}{Nome}|{(Cor is { } c ? $"{c.R:X2}{c.G:X2}{c.B:X2}" : "")}";
+	public string Id => $"{(Armadura ? PrefixoDeArmadura : Prefixo)}{Nome}|{(Cor is { } c ? $"{c.R:X2}{c.G:X2}{c.B:X2}" : "")}";
 
-	/// <summary>A peca vestida, vista como item: o nome do arquivo dela e a cor.</summary>
-	public static RoupaGuardada De(Appearance.PecaDeRoupa peca) => new(NomeDoArquivo(peca.Caminho), peca.Cor);
+	/// <summary>
+	/// A peca vestida, vista como item: o nome do arquivo dela, a cor, e se a folha e de armadura -- o que o
+	/// catalogo de aparencia responde pelo CAMINHO (<see cref="CatalogoDeItens.Visual"/>, o mesmo das duas pontas).
+	/// </summary>
+	public static RoupaGuardada De(Appearance.PecaDeRoupa peca) =>
+		new(NomeDoArquivo(peca.Caminho), peca.Cor, CatalogoDeItens.Visual?.EhArmadura(peca.Caminho) == true);
+
+	/// <summary>Onde mora a folha desta peca, ou nulo quando ela nao existe mais no catalogo.</summary>
+	private string? Caminho(Appearance.VisualCatalog? cat) => Armadura ? cat?.PecaDeArmadura(Nome) : cat?.Peca(Nome);
 
 	/// <summary>A peca pronta pra vestir, ou nula quando a folha nao existe mais no catalogo.</summary>
 	public Appearance.PecaDeRoupa? Peca(Appearance.VisualCatalog? cat) =>
-		cat?.Peca(Nome) is { } caminho ? new Appearance.PecaDeRoupa(caminho, Cor) : null;
+		Caminho(cat) is { } caminho ? new Appearance.PecaDeRoupa(caminho, Cor) : null;
 
 	/// <summary>
 	/// A ficha que a mochila e a tela leem -- NULA sem catalogo ou com a folha fora dele. Nula de proposito: e o
 	/// que faz o `Inventario.Sanear` varrer uma peca cuja arte sumiu, em vez de deixar um slot que nao desenha.
 	/// </summary>
 	public ItemDef? Ficha(Appearance.VisualCatalog? cat) =>
-		cat?.Peca(Nome) is { } caminho
+		Caminho(cat) is { } caminho
 			? new ItemDef(Id, Nome,
-						  "Uma peça de roupa. Vista por cima do que você já usa -- o corpo leva até "
-						  + $"{Appearance.Appearance.MaxRoupa} peças de uma vez.",
+						  Armadura
+							  ? ArmaduraDeTech.DescricaoDaPeca
+							  : "Uma peça de roupa. Vista por cima do que você já usa -- o corpo leva até "
+								+ $"{Appearance.Appearance.MaxRoupa} peças de uma vez.",
 						  caminho, "walk_south", Empilhavel: false, Acoes: [AcaoVestir])
 			: null;
 
 	/// <summary>Desmonta um id de roupa. Nulo pra qualquer outro id -- e a porta do <see cref="CatalogoDeItens.Get"/>.</summary>
 	public static RoupaGuardada? Ler(string id)
 	{
-		if (!id.StartsWith(Prefixo, StringComparison.Ordinal)) return null;
+		bool armadura = id.StartsWith(PrefixoDeArmadura, StringComparison.Ordinal);
+		if (!armadura && !id.StartsWith(Prefixo, StringComparison.Ordinal)) return null;
+		int inicio = (armadura ? PrefixoDeArmadura : Prefixo).Length;
 		int barra = id.LastIndexOf('|');
-		if (barra <= Prefixo.Length - 1) return null;
-		string nome = id[Prefixo.Length..barra];
+		if (barra <= inicio - 1) return null;
+		string nome = id[inicio..barra];
 		string cor = id[(barra + 1)..];
 		if (nome.Length == 0) return null;
-		if (cor.Length == 0) return new RoupaGuardada(nome, null);
+		if (cor.Length == 0) return new RoupaGuardada(nome, null, armadura);
 		// A COR E SEIS DIGITOS HEXA OU NAO E COR: um id adulterado nao vira uma peca de cor inventada pela metade.
 		if (cor.Length != 6 || !int.TryParse(cor, System.Globalization.NumberStyles.HexNumber,
 											 System.Globalization.CultureInfo.InvariantCulture, out int rgb)) return null;
-		return new RoupaGuardada(nome, new Appearance.Rgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb));
+		return new RoupaGuardada(nome, new Appearance.Rgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb), armadura);
 	}
 
 	/// <summary>O nome do arquivo de um caminho de folha, sem pasta e sem extensao.</summary>
-	private static string NomeDoArquivo(string caminho)
-	{
-		int barra = caminho.LastIndexOf('/');
-		string nome = barra >= 0 ? caminho[(barra + 1)..] : caminho;
-		int ponto = nome.LastIndexOf('.');
-		return ponto > 0 ? nome[..ponto] : nome;
-	}
+	private static string NomeDoArquivo(string caminho) => Appearance.VisualCatalog.NomeDoArquivo(caminho);
 }
 
 /// <summary>

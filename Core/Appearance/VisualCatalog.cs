@@ -120,6 +120,42 @@ public sealed class VisualCatalog
         return idx;
     }
 
+    // =====================================================================
+    // A ARMADURA, VISTA COMO ARMADURA (2026-10-12)
+    // =====================================================================
+    private HashSet<string>? _armaduras;
+    private Dictionary<string, string>? _armaduraPorNome;
+
+    /// <summary>
+    /// ESTA FOLHA E DE ARMADURA? -- pelo CAMINHO, e e a pergunta que decide se a peca protege quem a veste
+    /// (`Items.ArmaduraDeTech`) e com que prefixo ela e guardada na mochila (`Items.RoupaGuardada`).
+    ///
+    /// PELO CAMINHO E NAO PELO NOME porque ha folha com o mesmo nome nas duas listas: a 'GinsDynastyArmorRed' e a
+    /// 'Uncoloured Armour Plating' existem na raiz de `Clothes` (roupa de guarda-roupa, de graca na criacao) e
+    /// dentro de `Armor` (armadura, que se fabrica). Sao a mesma arte e duas coisas diferentes.
+    /// </summary>
+    public bool EhArmadura(string caminho) =>
+        (_armaduras ??= new HashSet<string>(Armaduras, StringComparer.Ordinal)).Contains(caminho);
+
+    /// <summary>
+    /// ACHA UMA ARMADURA PELO NOME DO ARQUIVO -- so na lista de armaduras. E a irma da <see cref="Peca"/> pra quem
+    /// JA SABE que procura armadura (a peca guardada com o prefixo de armadura, a arte escolhida na tela): la o
+    /// guarda-roupa vence o empate de nome, e aqui ele nem entra.
+    /// </summary>
+    public string? PecaDeArmadura(string nomeDoArquivo)
+    {
+        if (string.IsNullOrEmpty(nomeDoArquivo)) return null;
+        if (_armaduraPorNome == null)
+        {
+            _armaduraPorNome = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string c in Armaduras) _armaduraPorNome.TryAdd(Base(c), c);
+        }
+        return _armaduraPorNome.GetValueOrDefault(Base(nomeDoArquivo));
+    }
+
+    /// <summary>O nome do arquivo de uma folha, sem pasta e sem extensao -- como a mochila e a tela de escolha o escrevem.</summary>
+    public static string NomeDoArquivo(string caminho) => Base(caminho);
+
     /// <summary>O nome do arquivo, sem pasta e sem extensao. Serve pro 'x.dmi' do DM e pro 'res://.../x.tres'.</summary>
     private static string Base(string caminho)
     {

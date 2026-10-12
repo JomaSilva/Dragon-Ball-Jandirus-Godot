@@ -291,16 +291,22 @@ public sealed partial class GameServer
 	/// <summary>
 	/// A MESMA BOLA, FERINDO: o dano final dela NESTE alvo e cravado em <paramref name="danoFinal"/>.
 	///
-	/// ============================ A BOLA DE COCEGAS NAO E MAIS GOLPE ============================
+	/// ============================ O DANO CRAVADO NAO GARANTE O GOLPE ============================
 	/// As cenas que medem geometria atiram com `baseDano: 0.002`: a bola encosta, estoura e nao machuca o boneco
-	/// no meio da medida. Desde o corte dos fracos (`DanoDeKi.CorteDoFraco`, `objects.dm:355-357`) esse impacto
-	/// nao e golpe -- o tiro estoura e NAO sai relato (`EstourarSemFerir`). A cena que precisa do RELATO -- o
-	/// clarao, a faisca, a musica de combate entrando: a `--diagestouro` -- precisa de um tiro que fira.
+	/// no meio da medida. DE 2026-10-08 A 2026-10-12 esse impacto nao era golpe (o corte dos fracos,
+	/// `DanoDeKi.CorteDoFraco`, `objects.dm:355-357`): o tiro estourava e NAO saia relato (`EstourarSemFerir`). A
+	/// cena que precisa do RELATO -- o clarao, a faisca, a musica de combate entrando: a `--diagestouro` -- precisava
+	/// de um tiro acima do corte, e foi pra isso que este metodo nasceu.
+	///
+	/// HOJE (dono, 2026-10-12 -- `KiContraCorpo`) QUEM DECIDE SE HA GOLPE E A RAZAO DE PODER, E NAO O DANO: o tiro so
+	/// estoura sem ferir e sem relato quando o alvo e PAREDE pra ele (quatro vezes o poder de quem atirou) -- e ai
+	/// cravar o dano nao adianta. QUEM CHAMA PRECISA DE UM ALVO QUE NAO SEJA PAREDE pro atirador da cena. O numero
+	/// cravado continua escolhendo QUANTO o golpe tira.
 	///
 	/// O DANO E CRAVADO DEPOIS DE O TIRO SAIR pela porta de producao, pelo <see cref="CravarDanoFinal"/> das
 	/// bancadas do corte: o `ModsBase` dele e escalado ate a conta do `Acertar` (`DanoDeKi.Final`, com os mesmos
 	/// argumentos) dar o numero pedido contra ESTE corpo, com a ficha e a guarda que ele tem agora. Quem pede
-	/// escolhe quanto: pouco acima do corte fere sem marcar o sprite (a ferida so aparece com 15% do membro, que
+	/// escolhe quanto: os 12 das cenas ferem sem marcar o sprite (a ferida so aparece com 15% do membro, que
 	/// tem 100 de vida -- ver `Feridas.HematomaComeca`).
 	/// ==============================================================================================
 	/// </summary>
@@ -315,7 +321,7 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
-	/// O CORPO DE VOLTA AO QUE ERA, entre um tiro que fere e o seguinte. Um golpe pouco acima do corte nao marca
+	/// O CORPO DE VOLTA AO QUE ERA, entre um tiro que fere e o seguinte. Um golpe de 12 (o das cenas) nao marca
 	/// o sprite; dois no mesmo membro marcam, e a mascara de feridas viajando no quadro de um golpe entraria na
 	/// conta de quem mede esse quadro.
 	/// </summary>
@@ -329,8 +335,12 @@ public sealed partial class GameServer
 	/// <summary>
 	/// O MESMO RAIO, FERINDO -- o irmao da <see cref="BolaDeFotoQueFere"/>: o dano final dele NESTE alvo e cravado
 	/// em <paramref name="danoFinal"/>. E o raio das cenas da `--diagraio` em que o impacto tem que ser GOLPE: a C
-	/// (desde o corte dos fracos o raio de cocegas planta na frente do corpo e nao leva ninguem) e os voos do
-	/// raio da F (o relato do golpe).
+	/// (o corpo levado pelo feixe) e os voos do raio da F (o relato do golpe).
+	///
+	/// ELE NASCEU COM O CORTE POR DANO: de 2026-10-08 a 2026-10-12 o raio de cocegas plantava na frente do corpo e
+	/// nao levava ninguem. Hoje (`KiContraCorpo`) o dano nao decide isso: o raio leva quem e MAIS FRACO que ele,
+	/// fere quem nao e parede e so planta em quem e parede -- vale aqui o aviso da <see cref="BolaDeFotoQueFere"/>
+	/// sobre o alvo da cena.
 	///
 	/// `estoura` liga o `ReceitaDeProjetil.EstouraNoImpacto`: o raio que acaba no primeiro corpo, como bola (o do
 	/// Death Beam). Esse sai sem empurrar, pelo motivo da bola de foto -- a cena e o tiro chegando, e nao o alvo

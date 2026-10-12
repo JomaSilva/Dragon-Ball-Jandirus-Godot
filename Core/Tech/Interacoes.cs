@@ -763,6 +763,64 @@ public static class Interacoes
 	/// </summary>
 	public static bool Aceita(string tipo, string verbo) => AceitaNaPagina(tipo, tipo, verbo, 0);
 
+	/// <summary>O verbo do parafuso (o `Bolt` do original), como o menu da tecla E o manda.</summary>
+	public const string VerboDoParafuso = "aparafusar";
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagabas`): toda obra pede parafuso, como o desenho supunha ate 2026-10-12 --
+	/// a macieira plantada (que nunca teve `Bolt`) volta a piscar de "solta" e a ganhar a pilula. Falso em jogo.
+	/// </summary>
+	public static bool TudoPedeParafusoDeTeste;
+
+	/// <summary>
+	/// ESTE TIPO SE APARAFUSA? So o que tem o verbo do parafuso no proprio menu: a macieira, a Drill, o banco e a
+	/// lapide nao tem `Bolt` no original e trabalham assentados. Quem pergunta e o DESENHO -- o contorno que
+	/// pisca de "solta" e a pilula da aba Tech --, porque avisar "falta aparafusar" de uma coisa que nao tem
+	/// parafuso e mandar o jogador procurar um botao que nao existe (dono, 2026-10-12: *"apple tree plantada por
+	/// mim fica com uma area amarela em volta, tire isso"*).
+	/// </summary>
+	public static bool PedeParafuso(string tipo) =>
+		TudoPedeParafusoDeTeste || _pedeParafuso.GetOrAdd(tipo, static t => Aceita(t, VerboDoParafuso));
+
+	private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _pedeParafuso = new();
+
+	// =====================================================================
+	// A MELHORIA QUE SOME DO MENU (dono, 2026-10-12)
+	// =====================================================================
+	/// <summary>Bit do estado de UMA maquina: a melhoria de uma vez so dela ja foi comprada (ou ela ja nasceu com ela).</summary>
+	public const byte MelhoriaUnicaFeita = 1;
+
+	/// <summary>Bit do estado de UMA maquina: a melhoria que tem teto (o alcance do campo) ja esta nele.</summary>
+	public const byte MelhoriaNoTeto = 2;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v020teste`): a melhoria ja comprada continua na lista -- o menu de antes de
+	/// 2026-10-12, em que o botao so sabia recusar depois do clique. Falso em jogo, sempre.
+	/// </summary>
+	public static bool MelhoriaFeitaFicaNoMenuDeTeste;
+
+	/// <summary>
+	/// QUE BIT DO ESTADO DA MAQUINA TIRA ESTA ACAO DA LISTA -- zero = nenhum, a acao aparece sempre. O dono: *"upgrades
+	/// 1 time only da maquina de regeneraçao etc, ao comprar esse upgrade ou o objeto ja ter esse upgrade a opçao de
+	/// comprar ele deveria sumir do menu de upgrades"*.
+	///
+	/// A tabela de botoes e estatica (vale pra toda maquina do tipo); o que e de UMA maquina viaja com ela no pacote
+	/// de construcoes, num byte (`GameServer.MelhoriasFeitas`), e e por ele que o menu filtra. Hoje sao tres casos:
+	/// "tratar ferimentos" do regenerador e "estabilizacao" da maquina de gravidade (uma vez so), e o "alcance" dela
+	/// quando chega ao teto.
+	/// </summary>
+	public static byte BitQueEsconde(string tipo, string argDaAcao) => (tipo, argDaAcao) switch
+	{
+		(Regenerador.Tipo, "upgrades/ferimentos") => MelhoriaUnicaFeita,
+		("Gravity", "upgrades/estabilidade") => MelhoriaUnicaFeita,
+		("Gravity", "upgrades/alcance") => MelhoriaNoTeto,
+		_ => 0,
+	};
+
+	/// <summary>Esta acao sai do menu DESTA maquina? <paramref name="feitas"/> e o byte que veio com ela no pacote.</summary>
+	public static bool SaiDoMenu(string tipo, Acao acao, byte feitas) =>
+		!MelhoriaFeitaFicaNoMenuDeTeste && (BitQueEsconde(tipo, acao.Arg) & feitas) != 0;
+
 	/// <summary>
 	/// OS SUBMENUS CONTAM, EM QUALQUER FUNDURA. `grav_up` so existe dentro de "Melhorar..." -- e, desde que a
 	/// melhoria passou a perguntar como pagar, DUAS paginas abaixo da raiz. Sem descer o servidor recusaria a

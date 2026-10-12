@@ -15,6 +15,15 @@ namespace Jandirus.Core.Items;
 ///     roupa vestida nunca esteve na mochila (ver `RoupaGuardada`), entao ela ja fica de fora sozinha.
 ///   * QUEM VE: todo mundo a vista (`to_chat(view(usr), "[usr] steals [item] from [M]!")`). Aqui e um emote.
 ///
+/// ============================ (2026-10-12) A ROUPA DO CORPO TAMBEM SAI -- REGRA DO DONO ============================
+/// *"deveria dar pra pegar a roupa dos npcs e players q estao desmaiados"*, e a armadura junto: *"se o npc estiver
+/// usando uma armadura (como a maioria dos saiyajins) ainda assim vai dar pra roubar se vc o nocautear"*.
+///
+/// No DM a roupa equipada fica (`suffix=="*Equipped*"`). Aqui ela entra na lista do saque DEPOIS da mochila, uma
+/// linha por peca vestida, e sai do corpo do caido pra mochila do ladrao como a peca guardada de sempre
+/// (`RoupaGuardada`). A linha vai MARCADA (<see cref="NoCorpo"/>) pra as duas pontas saberem que ela esta no corpo e
+/// nao na mochila -- o caido pode ter a mesma peca nos dois lugares.
+///
 /// ============================ O ZENNI NAO VEIO, E ISSO E O ORIGINAL ============================
 /// A lista do DM oferece "Zenni", mas o ramo que o levaria compara a variavel errada (`else if(choice ==
 /// "Zenni")`, onde `choice` e o MOB escolhido um passo antes): ele nunca dispara, e ninguem jamais roubou
@@ -37,6 +46,47 @@ public static class Saque
 	/// (quem, o que); aqui e um clique, e sem este respiro uma mochila inteira sairia num segundo.
 	/// </summary>
 	public const double SegundosEntreSaques = 1.0;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v020teste`): a roupa do corpo nao entra na lista -- o saque de antes de
+	/// 2026-10-12. Lido pela propria <see cref="PecasQueDaPraLevar"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool RoupaDoCorpoFicaDeTeste;
+
+	/// <summary>
+	/// A MARCA, na frente do id, de que a peca esta NO CORPO do caido. O id que vem depois dela e o da peca
+	/// guardada (`Roupa|...` ou `Armadura|...`), que e o que cai na mochila de quem leva.
+	/// </summary>
+	public const string NoCorpo = "@";
+
+	/// <summary>A linha do saque de uma peca vestida.</summary>
+	public static string IdDaVestida(Appearance.PecaDeRoupa peca) => NoCorpo + RoupaGuardada.De(peca).Id;
+
+	/// <summary>Esta linha do saque e uma peca do corpo? Devolve o id da peca guardada que ela vira.</summary>
+	public static bool EhDoCorpo(string idDoSaque, out string idDaPeca)
+	{
+		bool doCorpo = idDoSaque.StartsWith(NoCorpo, StringComparison.Ordinal);
+		idDaPeca = doCorpo ? idDoSaque[NoCorpo.Length..] : idDoSaque;
+		return doCorpo;
+	}
+
+	/// <summary>
+	/// ESTA PECA FICA NO CORPO, mesmo com o dono caido? So a do Beerus: e a roupa do NPC Bills, desenhada pro corpo
+	/// DELE (outra folha), e o dono a tirou do que o jogador veste.
+	/// </summary>
+	public static bool FicaNoCorpo(string nomeDoArquivo) =>
+		nomeDoArquivo.Contains("Beerus", StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>AS PECAS DO CORPO QUE DA PRA LEVAR, na ordem em que estao vestidas -- uma linha marcada por peca.</summary>
+	public static List<Pilha> PecasQueDaPraLevar(IReadOnlyList<Appearance.PecaDeRoupa> vestindo)
+	{
+		var leva = new List<Pilha>();
+		if (RoupaDoCorpoFicaDeTeste) return leva;
+		foreach (Appearance.PecaDeRoupa peca in vestindo)
+			if (!FicaNoCorpo(Appearance.VisualCatalog.NomeDoArquivo(peca.Caminho)))
+				leva.Add(new Pilha(IdDaVestida(peca), 1));
+		return leva;
+	}
 
 	/// <summary>Este item esta em uso (e por isso fica com o dono)?</summary>
 	public static bool EmUso(string id, bool scouterLigado, bool comPesos) =>

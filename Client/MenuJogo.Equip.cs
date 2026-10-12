@@ -1,4 +1,5 @@
 using Godot;
+using Jandirus.Core.Economia;
 using Jandirus.Core.Items;
 using Jandirus.Net;
 
@@ -94,7 +95,9 @@ public partial class MenuJogo
 	{
 		bool tem = mochila.Quantos(CatalogoDeItens.Pesos) > 0;
 		double mult = _atributos.PesoMult;
-		bool vestidos = mult > 1.001;
+		// VESTIDO E TER KG NO CORPO, e nao "estar rendendo": os pesos de fabrica (50 kg) nao rendem num corpo forte, e
+		// a pilula dizia "guardados" pra quem os estava carregando.
+		bool vestidos = _atributos.PesoKg > 0;
 		VBoxContainer c = Cartao("Pesos", pai);
 
 		c.AddChild(CabecalhoDeItem(CatalogoDeItens.Pesos, vestidos ? ("VESTIDOS", Tema.Destaque)
@@ -107,6 +110,22 @@ public partial class MenuJogo
 		LinhaComBarra("Ganho no treino", $"{mult:0.##}x", (mult - 1) / Math.Max(teto - 1, 1e-9),
 			Tema.Destaque, c, vestidos ? Tema.Bom : Tema.Texto);
 
+		// O PESO MAXIMO E O QUE FOI PAGO (dono, 2026-10-12): 50 kg de fabrica, dobrando a cada melhoria -- em zeni, ou
+		// o dobro em recursos. Os dois botoes sao a MESMA melhoria nas duas moedas (`item_melhorar`).
+		if (tem)
+		{
+			double max = _atributos.PesoMaxKg;
+			double preco = Jandirus.Core.Items.PesoDeTreino.PrecoEmZeni(max);
+			Linha("Vestindo", $"{_atributos.PesoKg:N0} kg", null, c);
+			Linha("Peso máximo", $"{Jandirus.Core.Items.PesoDeTreino.Maximo(max):N0} kg", null, c);
+			var melhorar = new Button { Text = TelaDeInventario.RotuloDaMelhoriaDosPesos() };
+			melhorar.Pressed += () => GameClient.Instance?.SendVerbo("item_melhorar", CatalogoDeItens.Pesos);
+			c.AddChild(BotaoComDescricao(melhorar, "dobra o peso máximo; quanto vestir você escolhe na mochila, em % dele"));
+			var comRecursos = new Button { Text = $"...ou com recursos ({Recurso.PrecoEscrito(preco, Moeda.Recursos)})" };
+			comRecursos.Pressed += () => GameClient.Instance?.SendVerbo("item_melhorar", $"{CatalogoDeItens.Pesos}/{Recurso.PalavraDeRecursos}");
+			c.AddChild(comRecursos);
+		}
+
 		if (vestidos)
 		{
 			var b = new Button { Text = "Tirar os pesos" };
@@ -115,7 +134,8 @@ public partial class MenuJogo
 		}
 
 		Nota(tem
-			? "Ajuste quanto vestir pela mochila (tecla I): cada passo pesa, e em troca o treino rende mais."
+			? "Ajuste quanto vestir pela mochila (tecla I), em % do peso máximo: cada passo pesa, e em troca o treino rende mais. "
+			  + "Se o ganho está em 1x, os pesos estão leves demais pro seu corpo: melhore o peso máximo."
 			: "Sem pesos. Eles se fabricam na aba Tech e se ajustam pela mochila (tecla I).", c);
 	}
 
@@ -233,7 +253,7 @@ public partial class MenuJogo
 	{
 		GameClient? c = GameClient.Instance;
 		string mochila = c == null ? "" : string.Join(',', c.Mochila.Pilhas.Select(p => $"{p.Id}x{p.Quantidade}"));
-		return $"{_atributos.Poderes}|{_atributos.PesoMult:0.##}|{f.SocoMs}|{mochila}"
+		return $"{_atributos.Poderes}|{_atributos.PesoMult:0.##}|{_atributos.PesoMaxKg:0}|{_atributos.PesoKg:0}|{f.SocoMs}|{mochila}"
 			 + $"|{Teclas.NomeDaAcao("lethal")}|{Teclas.NomeDaAcao("guard")}"
 			 // o bloco do radio: a frequencia que o servidor guarda e as duas teclas que a nota dele ensina
 			 + $"|{c?.FrequenciaDoRadio}|{Teclas.NomeDaAcao("falar_radio")}|{Teclas.NomeDaAcao("falar_voz")}";

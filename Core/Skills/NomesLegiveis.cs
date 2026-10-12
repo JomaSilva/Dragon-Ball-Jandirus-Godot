@@ -131,8 +131,21 @@ public static class NomesLegiveis
 		return campo;
 	}
 
-	/// <summary>`Solar_Flare` -> "Solar Flare".</summary>
-	public static string Habilidade(string verb) => verb.Replace('_', ' ');
+	/// <summary>
+	/// OS VERBS QUE A TELA CHAMA POR OUTRO NOME: os que o port atende por outro gesto (`CensoDeSkills.PorOutroCanal`)
+	/// e cujo id do DM nao diz ao jogador o que procurar. A ficha de um degrau que concede o verb escreve o nome do
+	/// gesto que ele vai achar.
+	/// </summary>
+	private static readonly Dictionary<string, string> HabilidadesComOutroNome = new(StringComparer.OrdinalIgnoreCase)
+	{
+		// O `Conceal_Power` do degrau 5 de Basic Ki Control e, desde 2026-10-12, o RELAXAR (regra do dono: *"tire o
+		// botao de esconder o ki e faça com q o de relaxar faca o poder do personagem cair pra 5"*).
+		["Conceal_Power"] = "Relaxar (esconde o poder)",
+	};
+
+	/// <summary>`Solar_Flare` -> "Solar Flare" -- menos os que a tela chama por outro nome.</summary>
+	public static string Habilidade(string verb) =>
+		HabilidadesComOutroNome.GetValueOrDefault(verb, verb.Replace('_', ' '));
 
 	// =====================================================================
 	// OS GENES

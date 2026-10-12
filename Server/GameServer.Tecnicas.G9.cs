@@ -26,12 +26,11 @@ namespace Jandirus.Server;
 /// catalogo -- e entrar no catalogo e o que os torna EXIGIVEIS: a partir dali o censo os cobra.
 /// ==============================================================================
 ///
-/// ============================ AS QUATRO, E POR QUE ESTAS QUATRO ============================
+/// ============================ AS TRES, E POR QUE ESTAS TRES ============================
 ///     verbo             quem concede                              fonte no DM
 ///     ----------------  ----------------------------------------  ------------------------------
 ///     Mafuba            Eremita Tartaruga (skill `Mafuba`)        `Magic/Sealing.dm:156-190`
 ///     Open_Dead_Zone    Guardiao da Terra (skill `DeadZone`)      `Magic/Sealing.dm:239-253`
-///     Conceal_Power     Basic Ki Control nivel 5 (degrau)         `Stats/BP/Power Control.dm:71-83`
 ///     Power_Control     Basic Ki Control nivel 5 (degrau)         `Stats/BP/Power Control.dm:176-186`
 ///
 /// **O `Seal_Mob` (Superior Seal) NAO ENTRA, e a recusa e a regra do dono**: *"se um verbo depender
@@ -43,18 +42,19 @@ namespace Jandirus.Server;
 /// dos outros sete verbos de magia -- que ja e um avanco sobre ontem, quando ele nem aparecia.
 /// =========================================================================================
 ///
-/// ============================ AS DUAS DO SIGILO FECHAM UM SISTEMA PELA METADE QUE FALTANTE ============================
-/// `Conceal_Power` e `Power_Control` estavam no `Esperando` como *"sigilo de poder pelo lado de quem
-/// ESCONDE (o port so tem o de quem LE)"* -- e a etiqueta estava CERTA, o que e raro o bastante pra
-/// valer nota. Tudo do lado de quem le ja existia: `Fighter.isconcealed` trava o BP expresso em 5
-/// (`Fighter.Power.cs`), corta a regeneracao de Ki pela metade e folga o dreno passivo de vigor
-/// (`concealeddeBuff` 0,5 e `concealedBuff` 1,5, `Fighter.Statify.cs:42` -- NAO e defesa: `master.dm:72-73`),
-/// e o `powerMod` ja entra na conta do BP. O que nao existia era **um botao do jogador que escrevesse
-/// esses dois campos**: hoje quem escreve `isconcealed` e a invisibilidade, o admin e o ZanzoClash,
-/// e `powerMod` nao era baixado por NADA no port inteiro.
+/// ============================ O `Power_Control` FECHA UM SISTEMA QUE ESTAVA PELA METADE ============================
+/// Ele e o `Conceal_Power` (do mesmo degrau) estavam no `Esperando` como *"sigilo de poder pelo lado de quem
+/// ESCONDE (o port so tem o de quem LE)"* -- e a etiqueta estava CERTA, o que e raro o bastante pra valer nota.
+/// Tudo do lado de quem le ja existia: `Fighter.isconcealed` trava o BP expresso em 5 (`Fighter.Power.cs`), e o
+/// `powerMod` ja entra na conta do BP. O que nao existia era **um botao do jogador que escrevesse esses campos**:
+/// `powerMod` nao era baixado por NADA no port inteiro.
 ///
-/// O RESTO DO SISTEMA (relaxar / ficar pronto, o retrato do estado pra tela, o login, o sigilo que nao cai com
-/// outra tecnica, e o controle na aba Ki) veio depois e mora em `GameServer.PoderEmUso.cs` (2026-10-11).
+/// **O `Conceal_Power` MOROU AQUI ATE 2026-10-12**, com botao proprio e a trava de 5 s do `canconceal`. O dono jogou
+/// e o fundiu no relaxar (*"esconder o ki e relaxar é redundante [...] tire o botao de esconder o ki e faça com q o
+/// de relaxar faca o poder do personagem cair pra 5 de poder de luta sempre, ficando invisivel pra scouters etc"*):
+/// o que o verb do DM faz quem faz agora e o `prontidao`, e o censo o da por atendido la
+/// (`CensoDeSkills.PorOutroCanal`). O RESTO DO SISTEMA (relaxar / ficar pronto, o retrato do estado pra tela, o
+/// login e o controle na aba Ki) mora em `GameServer.PoderEmUso.cs`.
 ///
 /// E ISSO DEIXAVA UM ESTAGIO INTEIRO DA TECLA C INALCANCAVEL: `EstagioDaCarga.Retomando`
 /// (`CargaDeKi.cs:14`, `:205-209`) existe pra trazer o `powerMod` de volta a 1 -- e como nada o
@@ -68,7 +68,7 @@ public sealed partial class GameServer
 	// 0. O REGISTRO E O DESPACHO
 	// =====================================================================
 	/// <summary>
-	/// AS QUATRO TECNICAS DESTE LOTE. Chamado do `RegistrarTecnicas` junto dos outros lotes.
+	/// AS TRES TECNICAS DESTE LOTE. Chamado do `RegistrarTecnicas` junto dos outros lotes.
 	///
 	/// AS LINHAS-ESPELHO ESTAO EM `Core/Skills/Tecnicas.Portadas.cs`, e nao e opcional: a
 	/// `--catalogoteste` compara as duas bocas nas duas direcoes toda rodada.
@@ -78,7 +78,6 @@ public sealed partial class GameServer
 		IniciarLote("G9");
 		Vivo("Mafuba", MafubaG9);
 		Vivo("Open_Dead_Zone", AbrirDeadZoneG9);
-		Vivo("Conceal_Power", OcultarPoderG9);
 		Vivo("Power_Control", ControleDePoderG9);
 	}
 
@@ -210,62 +209,10 @@ public sealed partial class GameServer
 	}
 
 	// =====================================================================
-	// 3. CONCEAL POWER -- `Stats/BP/Power Control.dm:71-83`
+	// 3. QUEM SAI
 	// =====================================================================
-	/// <summary>Quando cada um pode tornar a mexer no sigilo. O `canconceal` do DM.</summary>
-	private readonly Dictionary<int, long> _sigiloPronto = [];
-
 	/// <summary>QUEM SAIU LEVA O ESTADO DELE JUNTO -- inscrito no `EsquecerTecnicas`, porque id se reusa.</summary>
-	private void EsquecerG9(int id)
-	{
-		_sigiloPronto.Remove(id);
-		EsquecerOPoderEmUso(id);   // ...e o sigilo ligado de proposito, com o retrato que a tela recebeu -- ver GameServer.PoderEmUso.cs
-	}
-
-	/// <summary>
-	/// `sleep(50)` (`Power Control.dm:76` e `:81`) -- CINCO segundos entre ligar e desligar.
-	///
-	/// **A MENSAGEM DO ORIGINAL MENTE**: as duas frases dizem *"It'll take a minute"* e o codigo
-	/// dorme 50 tiques, que sao 5 s. Portado o CODIGO. O texto deste port diz cinco segundos, que e
-	/// o que de fato acontece -- prometer um minuto seria copiar o erro de digitacao do autor pra
-	/// dentro da interface.
-	/// </summary>
-	private const long EsperaDoSigiloMs = 5000;
-
-	/// <summary>
-	/// LIGA E DESLIGA O SIGILO -- o alterna-estado de `isconcealed` com trava de 5 s.
-	///
-	/// O `if(canconceal)` do DM e uma trava de UMA ponta: ela e checada antes de qualquer troca e
-	/// re-armada 5 s depois, valendo pros dois sentidos. Aqui e um instante por jogador, que da o
-	/// mesmo comportamento sem prender uma linha de execucao dormindo.
-	///
-	/// O QUE SE ALTERNA E A VONTADE DE QUEM JOGA (`_escondendoOPoder`), E NAO O CAMPO DA FICHA: o
-	/// `isconcealed` tem outros escritores neste port (a invisibilidade, o Sneak, o embate de Zanzoken, todos
-	/// pelo `_invisiveis`), e inverter o campo MOSTRAVA o poder de quem apertasse isto ja sumido. O campo fica
-	/// ligado enquanto qualquer um dos dois o quiser -- ver `GameServer.PoderEmUso.cs`.
-	/// </summary>
-	private void OcultarPoderG9(ServerPlayer pl)
-	{
-		// (caido nao mexe no proprio poder -- e a recusa vem ANTES de gastar a trava de 5 s)
-		if (PorQueNaoMexeNoPoder(pl) is { Length: > 0 } nao) { Avisar(pl, nao); return; }
-
-		// `else to_chat(src, "You can't do that yet.")` (`:83`)
-		if (EmEspera(pl, _sigiloPronto, "ainda não dá")) return;
-		long agora = NowMs();
-
-		_sigiloPronto[pl.Id] = agora + EsperaDoSigiloMs;
-		bool esconde = !_escondendoOPoder.Remove(pl.Id);
-		if (esconde) _escondendoOPoder.Add(pl.Id);
-		pl.Ficha.isconcealed = esconde || _invisiveis.Contains(pl.Id);
-
-		Avisar(pl, esconde
-			? "você esconde o seu poder: ninguém mais sente a sua energia, e ele fica travado no mínimo. Leva cinco segundos pra voltar a mostrá-lo."
-			: "você deixa de esconder o seu poder. Leva cinco segundos pra escondê-lo de novo.");
-
-		// O PODER, A FICHA E O RETRATO VAO JUNTO, NA HORA: `isconcealed` muda o BP que o mundo LE
-		// (`Fighter.Power.cs`), a regeneracao de Ki e o dreno de vigor (`Fighter.Statify.cs`, `Nutricao.cs`).
-		AoMexerNoPoder(pl);
-	}
+	private void EsquecerG9(int id) => EsquecerOPoderEmUso(id);   // o retrato do poder em uso que a tela dele recebeu -- ver GameServer.PoderEmUso.cs
 
 	// =====================================================================
 	// 4. POWER CONTROL -- `Stats/BP/Power Control.dm:176-186`
@@ -302,17 +249,28 @@ public sealed partial class GameServer
 	/// </summary>
 	private void ControleDePoderG9(ServerPlayer pl, string arg)
 	{
+		bool relaxado = Jandirus.Core.Stats.PoderEmUso.Relaxado(pl.Ficha);
 		if (!double.TryParse(arg, System.Globalization.NumberStyles.Float,
-							 System.Globalization.CultureInfo.InvariantCulture, out double pedido)
+				System.Globalization.CultureInfo.InvariantCulture, out double pedido)
 			|| !NumeroFinito(pedido))   // `Power_Control:NaN` escrevia `powerMod = NaN`: ver `NumeroFinito`
 		{
-			Avisar(pl, $"você está usando {Jandirus.Core.Stats.PoderEmUso.Porcento(pl.Ficha)}% do seu poder. "
-					 + "Pra escolher quanto usar, abra a aba Ki do menu.");
+			string estado = relaxado
+				? "você está relaxado. "
+				: $"você está usando {Jandirus.Core.Stats.PoderEmUso.Porcento(pl.Ficha)}% do seu poder. ";
+			Avisar(pl, estado + "Pra escolher quanto usar, abra a aba Ki do menu.");
 			return;
 		}
 
 		// (caido nao mexe no proprio poder -- ver `PorQueNaoMexeNoPoder`)
 		if (PorQueNaoMexeNoPoder(pl) is { Length: > 0 } nao) { Avisar(pl, nao); return; }
+
+		// RELAXADO A BARRA NAO VALE: o corpo soltou o poder todo (5 de poder, escondido), e ficar pronto devolve os
+		// 100% de qualquer jeito. Aceitar o pedido seria dizer "voce segura o poder em 40%" a quem continua em 5.
+		if (relaxado)
+		{
+			Avisar(pl, "relaxado você não está usando poder nenhum: fique pronto antes de escolher quanto usar.");
+			return;
+		}
 
 		double alvo = Jandirus.Core.Stats.PoderEmUso.FracaoDoPedido(pedido);
 

@@ -373,6 +373,10 @@ public partial class GameServer
 		if (pl.Nadando)
 			pl.SpeedStat *= (float)Jandirus.Core.World.Nado.FatorDePasso(pl.Ficha.Epspeed);
 
+		// SOB UM RAIO, QUEM E MAIS FORTE QUE ELE ANDA DEVAGAR (dono, 2026-10-12: *"ainda pode tentar sair do ataque mas
+		// ele anda bem mais devagar enquanto toma o dano"*). Penalidade do CORPO, antes da nave -- como o nado.
+		if (NowMs() < pl.SobORaioAteMs) pl.SpeedStat *= (float)Jandirus.Core.Combat.KiContraCorpo.AndarSobORaio;
+
 		if (NaveDoPiloto(pl) is { } n) pl.SpeedStat = Naves.FatorDoPiloto(pl.SpeedStat, n.Velocidade);
 	}
 

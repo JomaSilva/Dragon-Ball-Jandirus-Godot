@@ -374,6 +374,7 @@ public static class Regeneracao
 			// Deixa-lo na urna so faria a vez ser gasta em nada -- e com o braco decepado, a mao
 			// decepada dobraria a espera do Majin sem que nada acontecesse na tela.
 			if (p.Dono != null && corpo.Achar(p.Dono) is { Decepado: true }) continue;
+			if (p.Decepado && p.Perdido) continue;   // perdido de vez: nao volta, e nao gasta a vez de quem volta
 			if (p.Decepado || p.Vida < p.VidaMax) candidatos.Add(p);
 		}
 

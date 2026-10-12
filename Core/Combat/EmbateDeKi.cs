@@ -223,12 +223,19 @@ public static class EmbateDeKi
 	/// E a escala do <see cref="PoderDeSegurar"/>: um feixe que faria exatamente isto ATRAVES da guarda de quem
 	/// segura abre a disputa empatada (vantagem 1 x 1); o dobro vale 2 pro feixe, a metade vale 2 pras maos.
 	///
-	/// ============================ ELE CONVERSA COM O CORTE DOS FRACOS ============================
-	/// O embate de guarda so abre depois do corte (<see cref="DanoDeKi.CorteDoFraco"/>, `objects.dm:355-357`; ver o
-	/// passo 3a-bis do `GameServer.Acertar`): o raio mais fraco que chega a disputar faz 10, e por isso a razao da
-	/// disputa nasce em `CorteDoFraco / DanoQueAsMaosEmpatam` -- 0,5 hoje, as maos com o dobro da forca do raio que
-	/// mal fere. Quem mexer num dos dois botoes mexe nessa razao: com o corte ACIMA deste numero, todo embate de
-	/// guarda ja nasceria perdido pra quem enfrenta um atirador que aperta as letras.
+	/// ============================ QUEM ABRE A DISPUTA, E COM QUE RAZAO ============================
+	/// (2026-10-12, a escada do dono -- `KiContraCorpo`) Segura o raio nas maos quem NAO E MAIS FRACO que ele e nao
+	/// e parede: de igual a quatro vezes o poder do tiro (os passos 3a-bis e 3b do `GameServer.Acertar`). O mais
+	/// fraco de guarda erguida e levado pelo raio; na parede o raio para sem ferir, e nao ha o que disputar. O DANO
+	/// nao barra mais ninguem: o raio fraco de um igual tambem encontra as maos, e a razao da disputa
+	/// (`dano / DanoQueAsMaosEmpatam`) ja nao tem piso -- so os limites da <see cref="Vantagem"/>.
+	///
+	/// ATE AQUELE DIA o embate so abria depois do corte dos fracos (<see cref="DanoDeKi.CorteDoFraco"/>,
+	/// `objects.dm:355-357`): o raio mais fraco que chegava a disputar fazia 10, e a razao nascia em
+	/// `CorteDoFraco / DanoQueAsMaosEmpatam` -- 0,5, as maos com o dobro da forca do raio que mal feria. Os dois
+	/// botoes conversavam: com o corte ACIMA deste numero, todo embate de guarda ja nasceria perdido pra quem
+	/// enfrenta um atirador que aperta as letras. A escada da guarda (`--embatekiteste` 13) ainda mede o raio de 10
+	/// como o primeiro degrau, e o jogo de antes (`KiContraCorpo.RegraDeAntesDeTeste`) repoe o corte.
 	///
 	/// BOTAO, E NAO CONSTANTE, como o <see cref="DanoDeKi.CorteDoFraco"/>: e balanceamento.
 	/// </summary>
@@ -277,10 +284,11 @@ public static class EmbateDeKi
 	/// A razao da disputa -- o que a <see cref="Vantagem"/> recebe -- fica sendo `dano / DanoQueAsMaosEmpatam`.
 	///
 	/// O DANO E O DA CADEIA DE KI DE SEMPRE (<see cref="DanoDeKi.Final"/>, `objects.dm:315-344`, com a guarda que o
-	/// corpo tem na hora), pela MESMA chamada que o `GameServer.Acertar` faz um passo antes pra perguntar se o
-	/// impacto e golpe (o corte dos fracos, `objects.dm:355-357`). Um numero so responde "isto fere?" e "quanto as
-	/// maos aguentam?", e nada da cadeia e escrito duas vezes: armadura, pericia de defesa, resistencia, o gap de
-	/// poder e o `maxdamage` da tecnica entram por onde ja entravam -- quem mexer na cadeia leva o embate junto.
+	/// corpo tem na hora), pela MESMA chamada que o `GameServer.Acertar` faz antes, pro numero que vai entrar no
+	/// membro. Um numero so responde "quanto isto fere?" e "quanto as maos aguentam?", e nada da cadeia e escrito
+	/// duas vezes: armadura, pericia de defesa, resistencia, o gap de poder e o `maxdamage` da tecnica entram por onde
+	/// ja entravam -- quem mexer na cadeia leva o embate junto. (Ate 2026-10-12 era esse numero, tambem, que dizia se
+	/// o impacto era golpe -- o corte dos fracos, `objects.dm:355-357`; hoje quem diz e a razao de poder, `KiContraCorpo`.)
 	///
 	/// A GUARDA ENTRA PELO DANO (`dmg /= 2 * log_4(...)`, `objects.dm:342-344`). Quem a abaixa no meio nem chega a
 	/// perder forca: o lado das maos cai inteiro (`GameServer.LadoOk`), que e o "sair e perder" de sempre.
@@ -293,7 +301,7 @@ public static class EmbateDeKi
 	/// Ate 2026-10-08 as maos valiam o NUMERADOR da chance de deflexao do DM (`objects.dm:333`) dividido por 100: o
 	/// empate ficava no feixe que o corpo defletiria sempre. So que `chance% x dano` e uma constante do corpo que
 	/// apanha (6 numa ficha nova, ~1 numa treinada -- a conta esta no <see cref="DanoDeKi.CorteDoFraco"/>), entao
-	/// aquele empate era um raio de 0,06 de dano, e o embate so abre com dano >= 10. MEDIDO: no corte o feixe tinha
+	/// aquele empate era um raio de 0,06 de dano, e o embate so abria com dano >= 10. MEDIDO: no corte o feixe tinha
 	/// 165 vezes o poder das maos de uma ficha nova, ~900 de uma treinada, 1900 com armadura de ki -- contra um teto
 	/// de vantagem de 6. Quem segurava perdia SEMPRE, em 0,9 s (4,2 s se o atirador nao apertasse nada), e "segurar e
 	/// devolver" so acontecia na bancada, num par que nao existe em jogo. Trocar so o divisor nao servia: o que
@@ -306,8 +314,9 @@ public static class EmbateDeKi
 	///     (o prazo estoura nos dois) e PERDE de 22 pra cima -- em 12 s com 25, em 3,6 s com 40;
 	///   * contra um atirador que nao aperta: vence ate 35, empata em 40, perde de 45 pra cima;
 	///   * do teto da vantagem em diante (120) e engolido em 0,9 s, ou 4,2 s se o atirador nao apertar.
-	/// O raio que mal fere (10, o do corte) e segurado e devolvido em 2,7 a 3,6 s. Cada numero cai das constantes do
-	/// `BeamClash.dm` e do prazo; a bancada imprime a tabela inteira e so afirma a escala, as pontas e a forma.
+	/// O raio de 10 (o do antigo corte por dano: o primeiro degrau da tabela) e segurado e devolvido em 2,7 a 3,6 s.
+	/// Cada numero cai das constantes do `BeamClash.dm` e do prazo; a bancada imprime a tabela inteira e so afirma a
+	/// escala, as pontas e a forma.
 	///
 	/// O MEDIDOR NAO E O UNICO RELOGIO. Os dois pagam a disputa (<see cref="KiPorCiclo"/>), mas quem atira paga
 	/// TAMBEM o aluguel do raio (`GameServer.Canalizar`), e sem Ki o lado cai (`GameServer.LadoOk`, o `side_ok` do

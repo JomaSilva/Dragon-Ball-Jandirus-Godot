@@ -54,6 +54,10 @@ namespace Jandirus.Server;
 ///     abre na razao dano/`DanoQueAsMaosEmpatam`, o raio do corte e segurado e devolvido, no teto quem
 ///     segura perde, e a escada so desce. Com as maos na escala da deflexao (o jogo de antes), ate o
 ///     raio do corte engole quem segura.
+/// 14. SAIR DE LADO (`GameServer.SairDeLadoTeste.cs`): quem segura o raio com as maos da o passo ATRAVESSADO
+///     a ele e a disputa fecha sem vencedor, com a guarda erguida -- o raio segue viagem e nao o acerta. O
+///     passo ao longo do raio nao solta, o mais fraco nem entra na disputa, e quem para no meio volta a ser
+///     alvo. Com a porta fechada (o jogo de antes), o mesmo passo nao fecha nada.
 /// =========================================================================
 /// </summary>
 public partial class GameServer
@@ -101,6 +105,7 @@ public partial class GameServer
 			OSaltoDePoderVira();
 			ORaioCresceComOPoder();
 			AEscadaDaGuarda();
+			ASaidaDeLado();
 		}
 		finally { EmbateDeKi.VantagemCongeladaDeTeste = false; LimparEmbatesDaBancada(); }
 
@@ -949,10 +954,11 @@ public partial class GameServer
 		LimparEmbatesDaBancada();
 
 		// ============================ O SORTEIO DE DEFLEXAO SAI DO CAMINHO ============================
-		// O raio sai pelo <see cref="SemDeflexao"/>. Contra um igual, o raio que fere atraves da guarda e
-		// defletido em menos de 1% dos impactos (a conta esta no `DanoDeKi.CorteDoFraco`) -- e esse 1%
-		// trocaria "as maos o seguram" por um `Defletido` sem nada errado no jogo: a familia de defeito
-		// que a varredura de 2026-09-02 tirou das cenas do EMBATE. O que se isola aqui e o embate; a ordem
+		// O raio sai pelo <see cref="SemDeflexao"/>. Contra um igual, o dado apara o raio de bancada atraves da
+		// guarda em menos de 1% dos impactos (a conta esta no `DanoDeKi.CorteDoFraco`) -- e esse 1%
+		// trocaria "as maos o seguram" por um tiro aparado sem nada errado no jogo: a familia de defeito
+		// que a varredura de 2026-09-02 tirou das cenas do EMBATE. (Desde 2026-10-12 so o raspao sai entre
+		// iguais: defletir de vez pede o dobro do poder do tiro.) O que se isola aqui e o embate; a ordem
 		// entre ele e o sorteio tem afirmacao propria logo abaixo.
 		// =============================================================================================
 		Vec2 chao = CorredorLivre(20);
@@ -966,10 +972,14 @@ public partial class GameServer
 
 		// ============================ UM IGUAL SEGURA O RAIO QUE O FERE, E O DEVOLVE (dono, 2026-10-08) ============================
 		// As maos se medem pelo DANO (`EmbateDeKi.PoderDeSegurar`): a razao da disputa e o que o raio faria atraves
-		// da guarda sobre `EmbateDeKi.DanoQueAsMaosEmpatam`. O raio daqui e o de um golpe de verdade contra um IGUAL
-		// de guarda erguida (`BaseQueFere`: 12 por batida, acima do corte dos fracos e abaixo do que as maos
-		// empatam), entao as maos entram MAIS FORTES que ele -- e quem acerta as letras o devolve. O ataque volta com
-		// o poder de quem o segurou e fere quem o disparou, que esta de maos abaixadas.
+		// da guarda sobre `EmbateDeKi.DanoQueAsMaosEmpatam`. O raio daqui e o golpe de bancada contra um IGUAL de
+		// guarda erguida (`BaseQueFere`: 12 por batida, abaixo do que as maos empatam), entao as maos entram MAIS
+		// FORTES que ele -- e quem acerta as letras o devolve. O ataque volta com o poder de quem o segurou e fere
+		// quem o disparou, que esta de maos abaixadas.
+		//
+		// (O PREPARO la embaixo ainda confere que o 12 passa de `DanoDeKi.CorteDoFraco`: e o piso do antigo corte por
+		// dano, que ate 2026-10-12 decidia se havia embate. Hoje quem decide e a razao de poder -- o igual segura, o
+		// mais fraco e levado, a parede nem sente: `KiContraCorpo` --, e esse piso nao barra mais nada.)
 		//
 		// ATE 2026-10-08 ESTA CENA SO FECHAVA COM UM PAR QUE NAO EXISTE EM JOGO (20 de poder contra 5.000.000, no
 		// piso do `BpModulus`): as maos valiam o numerador da chance de deflexao sobre 100, todo raio que feria
@@ -1030,7 +1040,8 @@ public partial class GameServer
 
 		// A OUTRA SAIDA: abaixar a guarda no meio e o equivalente a soltar o raio.
 		Vec2 chao2 = CorredorLivre(20);
-		ServerPlayer a2 = Forjar("Agressor2", chao2, bp: 5_000_000);
+		// (de poder IGUAL desde 2026-10-12: quem e mais fraco que o raio nao o segura nas maos -- e levado. `KiContraCorpo`)
+		ServerPlayer a2 = Forjar("Agressor2", chao2, bp: 5_000);
 		a2.Facing = Facing.East;
 		a2.Ficha.Ki = a2.Ficha.MaxKi;
 		ServerPlayer g2 = Forjar("Covarde", new Vec2(chao2.X + 8 * ZoneCollision.TileSize, chao2.Y), bp: 5_000);
@@ -1052,297 +1063,348 @@ public partial class GameServer
 
 		LimparEmbatesDaBancada();
 
-		// A ORDEM: QUEM TEM SORTE DEFENDE DE GRACA. O mesmo defensor gigante, agora contra um raio
-		// COMUM: a deflexao (que compara as mesmas duas forcas) resolve antes, e nao ha embate
-		// nenhum. Sem esta afirmacao, alguem poderia mover o gatilho pra antes do sorteio e apagar a
-		// defesa de ki do jogo inteiro sem nenhum teste reclamar.
+		// ============================ A ORDEM: QUEM TEM SORTE DEFENDE DE GRACA ============================
+		// O SORTEIO DE DEFLEXAO VEM ANTES DO EMBATE DE GUARDA. No `Acertar` os dois dados da deflexao rodam primeiro, e
+		// so quem nao teve sorte chega ao passo 3b (`TentarEmbateDeGuarda`): contra um raio COMUM -- com o dado --, quem
+		// tem a sorte sai da linha e nao ha disputa nenhuma. Sem esta cena, alguem poderia mover o gatilho pra antes do
+		// sorteio e apagar a defesa de ki do jogo inteiro sem nenhum teste reclamar.
 		//
-		// E O RAIO TEM QUE PASSAR DO CORTE DOS FRACOS PRA CHEGAR AO SORTEIO (2026-10-08): o Ki Wave de 5.000 contra
-		// esta fortaleza nem e sorteado -- a cena ficaria verde por outro motivo. Dano acima do corte E deflexao certa
-		// so cabem juntos no piso do `BpModulus` (ver `CravarORaspaoCerto` na `--projetilteste`): quem atira tem 100
-		// de poder contra 5.000.000, e a base sobe ate o raio ferir atraves da guarda (`BaseQueFere`).
+		// QUEM SEGURA A GUARDA ESTA DENTRO DA ESCADA (`KiContraCorpo`, dono 2026-10-12): tres vezes o poder do tiro, o
+		// degrau de quem PODE defletir (o dobro) e ainda nao e PAREDE (o quadruplo). E um corpo que o raio fere, que e
+		// sorteado nos dois dados e que, sem sorte, seguraria o raio nas maos: os tres caminhos estao abertos pra ele, e
+		// quem escolhe entre eles e so a ORDEM dos passos.
+		//
+		// E A SORTE E CERTA POR CONSTRUCAO: a chance de deflexao e cravada acima de 200% no proprio tiro, pelo `ModsBase`
+		// (`CravarAChance`, o lever da `--projetilteste` 15), e com ela o primeiro dado -- o raspao, `prob(deflectchance/2)`
+		// -- sai SEMPRE. O poder do tiro, que e o degrau da cena, nao e tocado; o dano que sobra e de milesimos, e nao
+		// importa: nem o sorteio nem a disputa de guarda olham o dano (quem nao e sorteado hoje e quem e parede).
+		//
+		// O RASPAO E AFIRMADO PELO QUE SO ELE DEIXA: o relato `Esquivou` no fio, o corpo na `Projetil.ForaDaLinha`, a
+		// cabeca seguindo viagem na mao de quem atirou, e os 0,5 de pericia de UMA batida (0,1 de encostar mais 0,4 de
+		// sair da linha). "Nenhuma disputa abriu" sozinha nao prova a ordem -- ver o controle da fortaleza, logo abaixo.
+		//
+		// O QUE ELA NAO ISOLA: o SEGUNDO dado (a deflexao cheia, `prob(deflectchance)`). Com o raspao certo ele nunca roda,
+		// e nao ha como faze-lo rodar sem sorte -- a chance do raspao e a metade da dele. O gatilho posto ENTRE os dois
+		// dados passaria por esta cena; posto antes dos dois, nao passa.
+		// ===================================================================================================
 		Vec2 chao3 = CorredorLivre(20);
-		ServerPlayer a3 = Forjar("Agressor3", chao3, bp: 100);
-		a3.Facing = Facing.East;
-		a3.Ficha.Ki = a3.Ficha.MaxKi;
-		ServerPlayer g3 = Forjar("Fortaleza", new Vec2(chao3.X + 8 * ZoneCollision.TileSize, chao3.Y), bp: 5_000_000);
-		g3.Ficha.Ki = g3.Ficha.MaxKi;
-		SegurarAGuarda(g3);
+		MedidaDaOrdem sorte = RaioNaGuardaSegurada("Sortudo", chao3, VezesDeQuemSeguraNaOrdem);
+		GD.Print($"[embateki]      (medido) QUEM PODE DEFLETIR, raio com o dado: {sorte.Relato()}");
+		AfirmarEk("PREPARO: quem segura a guarda tem de duas a quatro vezes o poder do tiro (pode defletir, e nao e parede), a guarda e a SEGURADA (fora da janela do deflect), e o raspao do raio comum e CERTO -- a chance cravada acima de 200%, com o Ki de aparar",
+				  sorte.Raio is { Deflectivel: true } && KiContraCorpo.PodeDefletir(sorte.Vezes) && !KiContraCorpo.EhParede(sorte.Vezes)
+				  && sorte.GuardaSegurada && sorte.Chance / 2 >= 100 && sorte.Ki >= 5,
+				  $"{sorte.Vezes:0.###}x o poder do tiro, guarda segurada {sorte.GuardaSegurada}, chance {sorte.Chance:0.#}%, Ki {sorte.Ki:0.#}");
+		AfirmarEk("contra um raio COMUM, quem podia defletir defende de graca (o sorteio vem antes): o raio chega nele e NENHUMA disputa de guarda abre",
+				  sorte.Chegou && sorte.Disputa == null,
+				  $"chegou {sorte.Chegou}, disputa {(sorte.Disputa == null ? "nenhuma" : "ABRIU")}");
+		AfirmarEk("...e quem resolveu foi o RASPAO: UM relato no fio, e ele e `Esquivou` -- nem `Aparou` (o golpe na guarda) nem `Rebateu` (o deflect)",
+				  sorte.Relatos.Count == 1 && RaspoesEm(sorte.Relatos) == 1,
+				  $"{sorte.Relatos.Count} relato(s): {sorte.Desfechos()}");
+		AfirmarEk("...o corpo SAIU DA LINHA do raio (`Projetil.ForaDaLinha`) e a cabeca SEGUIU VIAGEM: passou dele sem plantar, sem leva-lo e sem sair da mao de quem atirou -- e ele nao perdeu vida nenhuma",
+				  sorte.ForaDaLinhaNaBatida && sorte.ForaDaLinhaDepois && sorte.CabecaAlem > 2 * ZoneCollision.TileSize
+				  && !sorte.Plantada && sorte.Levando == 0 && sorte.NaMaoDeQuemAtirou && Math.Abs(sorte.Vida) < 1e-9,
+				  $"fora da linha na batida {sorte.ForaDaLinhaNaBatida} e depois {sorte.ForaDaLinhaDepois}, cabeca {sorte.CabecaAlem / ZoneCollision.TileSize:0.0} tiles alem, "
+				  + $"plantada {sorte.Plantada}, levando {sorte.Levando}, na mao de quem atirou {sorte.NaMaoDeQuemAtirou}, vida {sorte.Vida:+0.###;-0.###;0}");
+		AfirmarEk("...e o treino e o de UMA batida: 0,1 de encostar (`objects.dm:313`) mais 0,4 de sair da linha (`:359`), no proprio tique do encontro -- e nada mais soma depois",
+				  Math.Abs(sorte.PericiaNaBatida - 0.5) < 1e-9 && Math.Abs(sorte.Pericia - 0.5) < 1e-9,
+				  $"pericia de defesa de ki +{sorte.PericiaNaBatida:0.0} na batida, +{sorte.Pericia:0.0} no fim da cena");
 
-		ReceitaDeProjetil comum = RaioDeTeste();   // DEFLETIVEL
-		comum.BaseDano = BaseQueFere(a3, g3);
-		double modsDoComum = Projetil.ModsDoTiro(a3.Ficha, TipoDeProjetil.Beam) * comum.BaseDano;
-		double danoDoComum = DanoDeKi.Final(modsDoComum, comum.BaseDano, 0, a3.Ficha.expressedBP, g3.Combate!, true);
-		double chanceDoComum = DanoDeKi.ChanceDeDeflexao(g3.Ficha, a3.Ficha.expressedBP, modsDoComum, comum.BaseDano, true);
-		AfirmarEk("PREPARO: o raio comum desta cena fere atraves da guarda (passa do corte dos fracos) e a fortaleza o apararia com certeza (chance acima de 200%)",
-				  danoDoComum >= DanoDeKi.CorteDoFraco && chanceDoComum / 2 >= 100,
-				  $"dano final {danoDoComum:0.##}, chance {chanceDoComum:0.#}%");
-		double periciaDaFortaleza = g3.Ficha.kidefenseskill;
-		Canalizar(a3, "Ki_Wave", 10 * a3.Ficha.BaseDrain(), comum);
-		bool virouEmbate = false;
-		for (int i = 0; i < 30 * 8 && !virouEmbate; i++)
+		// O CONTROLE: O PREPARO DE ANTES. Ate 2026-10-12 quem segurava a guarda nesta cena era a "Fortaleza", com
+		// cinquenta mil vezes o poder do tiro -- do tempo em que o corte era por DANO (`objects.dm:355-357`) e o raspao
+		// certo so cabia no piso do `BpModulus`. Na escada isso e PAREDE, e o corte da parede (passo 3a-bis do `Acertar`)
+		// vem antes dos dois dados e do embate: nao ha sorteio nem disputa possivel. A cena continuava verde -- "nenhuma
+		// disputa" era verdade, e o "0,1 + 0,4 de pericia" que ela lia como raspao era o 0,1 de cada batida sem ferir,
+		// somado em oito segundos de laco -- e mover o gatilho pra antes do sorteio nao a derrubava. O que separa os
+		// dois mundos e o que o raspao deixa, e e isso que as linhas de cima afirmam.
+		MedidaDaOrdem fortaleza = RaioNaGuardaSegurada("Fortaleza", chao3, VezesDaFortalezaDeAntes);
+		GD.Print($"[embateki]      (medido) A FORTALEZA DE ANTES, o mesmo raio: {fortaleza.Relato()}");
+		AfirmarEk("CONTRA-EXEMPLO (o preparo de antes): contra quem e PAREDE pro tiro, o mesmo raio de raspao certo tambem nao abre disputa -- e nao ha raspao nenhum: nenhum relato, o corpo na linha, a cabeca parada nele, e a batida treina so o 0,1 de encostar",
+				  fortaleza.Raio is { Deflectivel: true } && KiContraCorpo.EhParede(fortaleza.Vezes) && fortaleza.Chance / 2 >= 100
+				  && fortaleza.Chegou && fortaleza.Disputa == null && fortaleza.Relatos.Count == 0 && !fortaleza.ForaDaLinhaNaBatida
+				  && fortaleza.CabecaAlem < 0 && Math.Abs(fortaleza.PericiaNaBatida - 0.1) < 1e-9,
+				  $"{fortaleza.Vezes:0.#}x o poder do tiro, chance {fortaleza.Chance:0.#}%, chegou {fortaleza.Chegou}, disputa {(fortaleza.Disputa == null ? "nenhuma" : "ABRIU")}, "
+				  + $"{fortaleza.Relatos.Count} relato(s), fora da linha {fortaleza.ForaDaLinhaNaBatida}, cabeca {fortaleza.CabecaAlem:0.0} px alem, pericia +{fortaleza.PericiaNaBatida:0.0} na batida");
+
+		// O DEFEITO INJETADO: A MESMA CENA, O MESMO RAIO, SEM O DADO (`SemDeflexao`, o `deflectable = 0` do DM). A conta
+		// da chance continua la em cima -- o que falta e quem a sorteie --, e ai o raio encontra as MAOS de quem segura a
+		// guarda: a disputa abre. E a prova de que, na cena de cima, quem impediu a disputa foi o SORTEIO, e nao o
+		// degrau, a guarda ou o raio: este corpo segura este raio. (O `TentarEmbateDeGuarda` nao le o `Deflectivel` -- o
+		// gatilho posto antes do sorteio acharia, na cena de cima, exatamente o que acha aqui.)
+		try
 		{
-			TickDosCanaisDeKi(Protocol.TickSeconds);
-			TickDosProjeteis(Protocol.TickSeconds);
-			TickDosEmbatesDeKi(Protocol.TickSeconds);
-			virouEmbate = _emEmbateDeKi.ContainsKey(g3.Id);
+			MedidaDaOrdem semDado = RaioNaGuardaSegurada("Sortudo", chao3, VezesDeQuemSeguraNaOrdem, comODado: false);
+			GD.Print($"[embateki]      (medido) QUEM PODE DEFLETIR, raio SEM o dado: {semDado.Relato()}");
+			AfirmarEk("(defeito injetado: o MESMO raio sai sem o dado da deflexao) a conta da chance continua acima de 200%, mas ninguem a sorteia: o raio encontra as MAOS de quem segura a guarda e a disputa de guarda ABRE -- na cena de cima, quem a impediu foi o sorteio",
+					  semDado.Raio is { Deflectivel: false } && KiContraCorpo.PodeDefletir(semDado.Vezes) && !KiContraCorpo.EhParede(semDado.Vezes)
+					  && semDado.GuardaSegurada && semDado.Chance / 2 >= 100 && semDado.Chegou
+					  && semDado.Disputa is { Tipo: Protocol.TipoDeEmbate.FeixeContraGuarda, B.DeMaos: true },
+					  $"{semDado.Vezes:0.###}x o poder do tiro, guarda segurada {semDado.GuardaSegurada}, chance da conta {semDado.Chance:0.#}%, "
+					  + $"chegou {semDado.Chegou}, disputa {(semDado.Disputa == null ? "NENHUMA" : semDado.Disputa.Tipo.ToString())}");
+			AfirmarEk("(defeito injetado) ...e raspao nenhum: nenhum relato no fio, o corpo continua na linha do raio, e a batida treina so o 0,1 de encostar",
+					  semDado.Relatos.Count == 0 && !semDado.ForaDaLinhaNaBatida && Math.Abs(semDado.PericiaNaBatida - 0.1) < 1e-9,
+					  $"{semDado.Relatos.Count} relato(s): {semDado.Desfechos()}; fora da linha {semDado.ForaDaLinhaNaBatida}, pericia +{semDado.PericiaNaBatida:0.0} na batida");
 		}
-		AfirmarEk("contra um raio COMUM, quem podia defletir defende de graca (o sorteio vem antes)",
-				  !virouEmbate);
-		// SEM ISTO A LINHA DE CIMA PASSARIA COM O RAIO NUNCA CHEGANDO: o treino de defesa de ki e a marca que o
-		// impacto deixa em quem o levou -- 0,1 de encostar (`objects.dm:313`) e 0,4 de sair da linha (`:359`).
-		AfirmarEk("...e o raio CHEGOU nela e ela saiu da linha: o treino do impacto mais o do raspao (0,1 + 0,4 de pericia)",
-				  g3.Ficha.kidefenseskill - periciaDaFortaleza >= 0.5 - 1e-9,
-				  $"pericia de defesa de ki {periciaDaFortaleza:0.0} -> {g3.Ficha.kidefenseskill:0.0}");
+		finally { LimparEmbatesDaBancada(); }   // a disputa que o defeito abre nao sobra pra familia seguinte
+	}
 
+	// ---------------------------------------------------------------------
+	// AS PECAS DA CENA DA ORDEM (o fim da familia 6)
+	// ---------------------------------------------------------------------
+	/// <summary>O poder de quem atira na cena da ordem -- o mesmo atirador das cenas do deflect (6b).</summary>
+	private const double BpDeQuemAtiraNaOrdem = 5_000;
+
+	/// <summary>
+	/// QUANTAS VEZES O PODER DO TIRO tem quem segura a guarda na cena da ordem: TRES -- o meio do degrau de quem pode
+	/// defletir (`KiContraCorpo.VezesPraDefletir`, o dobro) e ainda nao e parede (`VezesDaParede`, o quadruplo). Longe
+	/// das duas portas de proposito: a cena mede a ORDEM dos passos do `Acertar`, e nao a beirada de um degrau.
+	/// </summary>
+	private const double VezesDeQuemSeguraNaOrdem = 3;
+
+	/// <summary>
+	/// O preparo desta cena ate 2026-10-12: a "Fortaleza" tinha CINQUENTA MIL vezes o poder do tiro (100 contra
+	/// 5.000.000). Fica como o controle -- na escada isso e parede, e parede nem e sorteada.
+	/// </summary>
+	private const double VezesDaFortalezaDeAntes = 50_000;
+
+	/// <summary>
+	/// Quantos tiques depois da batida a cena da ordem olha onde a cabeca foi parar: seis. O Ki Wave anda 20 tiles por
+	/// segundo, entao a cabeca que seguiu viagem ja passou uns quatro tiles do corpo -- e ainda esta no corredor da cena.
+	/// </summary>
+	private const int TiquesPraCabecaPassarNaOrdem = 6;
+
+	/// <summary>
+	/// Por quantos tiques a cena da ordem continua de olho depois da batida: um segundo. Um raio que tivesse FICADO em
+	/// quem raspou moeria cinco vezes nesse tempo (`Projetil.SegundosPorCicloDeBeam`), e cada moida e outro `Acertar`.
+	/// </summary>
+	private const int TiquesDeVigiaDaOrdem = 30;
+
+	/// <summary>
+	/// O QUE A CENA DA ORDEM MEDIU num raio contra uma guarda segurada.
+	///   * O PREPARO, lido quando a cabeca nasce (nada dele muda ate ela chegar): `Vezes` = quantas vezes o poder do
+	///     tiro o corpo tem (a razao que a escada le); `Chance` = a chance de deflexao que a conta de producao da pra
+	///     este tiro neste corpo, ja cravada; `Dano` = o dano final que sobrou; `GuardaSegurada` e `Ki`.
+	///   * A BATIDA: `Chegou` = o raio encostou nele (todo `Acertar` treina 0,1 de defesa de ki antes de qualquer
+	///     desfecho); `PericiaNaBatida` e `ForaDaLinhaNaBatida` sao do proprio tique do encontro.
+	///   * DEPOIS: `Disputa` = a disputa de guarda que abriu (nula = nenhuma, em nenhum tique da cena);
+	///     `ForaDaLinhaDepois`, `CabecaAlem` (quanto a cabeca passou do corpo, pelo eixo do raio; negativo = parou antes
+	///     dele), `Plantada`, `Levando` e `NaMaoDeQuemAtirou` sao de <see cref="TiquesPraCabecaPassarNaOrdem"/> tiques
+	///     depois (ou do fim, se a cena acabou antes); `Relatos` = os relatos de golpe NELE, lidos do fio; `Pericia` e
+	///     `Vida` sao a diferenca no fim da cena.
+	/// </summary>
+	private readonly record struct MedidaDaOrdem(
+		Projetil? Raio, double Vezes, double Chance, double Dano, bool GuardaSegurada, double Ki,
+		bool Chegou, double PericiaNaBatida, bool ForaDaLinhaNaBatida,
+		DisputaDeKi? Disputa, bool ForaDaLinhaDepois, float CabecaAlem, bool Plantada, int Levando, bool NaMaoDeQuemAtirou,
+		List<Protocol.HitEvent> Relatos, double Pericia, double Vida)
+	{
+		/// <summary>Os desfechos dos relatos, na ordem em que sairam.</summary>
+		public string Desfechos() => Relatos.Count == 0 ? "nenhum" : string.Join(", ", Relatos.Select(h => (Desfecho)h.Desfecho));
+
+		public string Relato()
+			=> $"{Vezes:0.###}x o poder do tiro, chance da conta {Chance:0.#}% (dano final {Dano:0.####}) -> {Relatos.Count} relato(s) [{Desfechos()}], "
+			   + $"disputa {(Disputa == null ? "nenhuma" : Disputa.Tipo.ToString())}, fora da linha {ForaDaLinhaNaBatida}, "
+			   + $"pericia +{PericiaNaBatida:0.0} na batida e +{Pericia:0.0} no fim, cabeca {CabecaAlem / ZoneCollision.TileSize:0.0} tiles alem do corpo, "
+			   + $"vida {Vida:+0.###;-0.###;0}";
+	}
+
+	/// <summary>
+	/// UM KI WAVE CANALIZADO contra quem SEGURA a guarda a oito tiles, com a chance de deflexao CRAVADA no raspao certo
+	/// -- ate a batida, e mais um segundo de olho (<see cref="TiquesDeVigiaDaOrdem"/>). Se uma disputa de guarda abrir,
+	/// a cena para ali: o que ela faz dali em diante e assunto das cenas de cima.
+	///
+	/// TUDO POR PRODUCAO, como o resto da familia: `Canalizar` abre o canal, o tique fecha a carga e pare o raio, o
+	/// `Acertar` decide o que a batida e. O unico toque da bancada e o `CravarAChance` (`GameServer.RaspaoTeste.cs`), no
+	/// tique em que a cabeca nasce e antes do primeiro passo dela: ele escala o `ModsBase` do tiro ate a conta de
+	/// producao dar a chance pedida, sem mexer no poder do tiro -- que e o degrau da cena. O raio SEM o dado e cravado
+	/// igual: os dois saem identicos, menos o `Deflectivel`.
+	/// </summary>
+	/// <param name="vezesOPoderDoTiro">O poder de quem segura a guarda, em vezes o de quem atira -- o DEGRAU da cena.</param>
+	/// <param name="comODado">Verdadeiro = o raio COMUM (<see cref="RaioDeTeste"/>, defletivel). Falso = o mesmo raio <see cref="SemDeflexao"/>.</param>
+	private MedidaDaOrdem RaioNaGuardaSegurada(string nome, Vec2 chao, double vezesOPoderDoTiro, bool comODado = true)
+	{
 		LimparEmbatesDaBancada();
+		ServerPlayer atirador = Forjar("Agressor3", chao, bp: BpDeQuemAtiraNaOrdem);
+		atirador.Facing = Facing.East;
+		atirador.Ficha.Ki = atirador.Ficha.MaxKi;
+		ServerPlayer guarda = Forjar(nome, new Vec2(chao.X + 8 * ZoneCollision.TileSize, chao.Y), bp: BpDeQuemAtiraNaOrdem * vezesOPoderDoTiro);
+		guarda.Ficha.Ki = guarda.Ficha.MaxKi;
+		SegurarAGuarda(guarda);
+		double periciaAntes = guarda.Ficha.kidefenseskill, vidaAntes = guarda.Combate.Corpo.Vida();
+
+		Canalizar(atirador, "Ki_Wave", 10 * atirador.Ficha.BaseDrain(), comODado ? RaioDeTeste() : SemDeflexao());
+
+		Projetil? raio = null;
+		DisputaDeKi? disputa = null;
+		double vezes = 0, chance = 0, dano = 0, ki = 0, periciaNaBatida = 0;
+		bool segurada = false, foraNaBatida = false, foraDepois = false, plantada = false, naMao = false, olhou = false;
+		float cabecaAlem = 0;
+		int levando = 0, desdeABatida = -1;
+
+		void OlharACabeca()
+		{
+			olhou = true;
+			if (raio == null) return;
+			foraDepois = raio.EstaForaDaLinha(guarda.Id);
+			cabecaAlem = -NaFrenteDe(raio, guarda);
+			plantada = raio.Encostado;
+			levando = raio.Arrastando;
+			naMao = raio.Vivo && raio.Canalizando && raio.Desviador == 0 && _canais.GetValueOrDefault(atirador.Id)?.Raio == raio;
+		}
+
+		EscutaDeGolpes = [];
+		try
+		{
+			for (int i = 0; i < 30 * 8 && disputa == null && desdeABatida < TiquesDeVigiaDaOrdem; i++)
+			{
+				TickDosCanaisDeKi(Protocol.TickSeconds);
+
+				// A CABECA ACABOU DE NASCER (a carga fechou neste tique) e ainda nao deu passo nenhum: a chance e
+				// cravada aqui, e o preparo e lido aqui -- o poder do tiro e congelado no disparo, e ninguem tica a
+				// ficha nem o relogio da guarda de quem espera.
+				if (raio == null && _canais.GetValueOrDefault(atirador.Id)?.Raio is { } nascido)
+				{
+					raio = nascido;
+					CravarAChance(raio, guarda, ChanceDoRaspaoCerto);
+					vezes = VezesOPoderDoTiro(raio, guarda);
+					chance = ChanceDeDeflexaoDe(raio, guarda);
+					dano = DanoFinalDe(raio, guarda);
+					segurada = guarda.Combate.Bloqueando && guarda.Combate.TempoDeGuarda > MeleeResolver.JanelaContra;
+					ki = guarda.Ficha.Ki;
+				}
+
+				TickDosProjeteis(Protocol.TickSeconds);
+				// A DISPUTA DE GUARDA SO ABRE DENTRO DO TIQUE DOS PROJETEIS (`Acertar`, passo 3b): olha-se a cada tique.
+				disputa = _emEmbateDeKi.GetValueOrDefault(guarda.Id);
+				TickDosEmbatesDeKi(Protocol.TickSeconds);
+
+				if (desdeABatida >= 0) desdeABatida++;
+				else if (guarda.Ficha.kidefenseskill > periciaAntes)
+				{
+					desdeABatida = 0;
+					periciaNaBatida = guarda.Ficha.kidefenseskill - periciaAntes;
+					foraNaBatida = raio?.EstaForaDaLinha(guarda.Id) == true;
+				}
+				if (desdeABatida == TiquesPraCabecaPassarNaOrdem) OlharACabeca();
+			}
+			if (!olhou) OlharACabeca();
+
+			List<Protocol.HitEvent> relatos = EscutaDeGolpes.Where(g => g.Cheio).Select(g => LerGolpe(g.Fio))
+															.Where(h => h.Alvo == guarda.Id).ToList();
+			return new MedidaDaOrdem(
+				Raio: raio, Vezes: vezes, Chance: chance, Dano: dano, GuardaSegurada: segurada, Ki: ki,
+				Chegou: desdeABatida >= 0, PericiaNaBatida: periciaNaBatida, ForaDaLinhaNaBatida: foraNaBatida,
+				Disputa: disputa, ForaDaLinhaDepois: foraDepois, CabecaAlem: cabecaAlem, Plantada: plantada, Levando: levando,
+				NaMaoDeQuemAtirou: naMao,
+				Relatos: relatos, Pericia: guarda.Ficha.kidefenseskill - periciaAntes, Vida: guarda.Combate.Corpo.Vida() - vidaAntes);
+		}
+		finally { EscutaDeGolpes = null; }
 	}
 
 	// =====================================================================
 	// 6b) O PARRY CONTRA KI (dono, 2026-09-25)
 	// =====================================================================
 	/// <summary>
-	/// A GUARDA NO TEMPO CERTO NAO SEGURA O KI: MANDA EMBORA. O raio desvia pro lado -- a cabeca plantada em
-	/// quem desviou, e o RAMO crescendo de lado, a partir da DOBRA, enquanto o atirador alimenta --, e a bola
-	/// volta pra quem a atirou. Ver `GameServer.ParryDeKi.cs`.
+	/// O DEFLECT (dono, 2026-10-12): a guarda erguida NO TEMPO CERTO, por quem tem o DOBRO do poder do tiro, tira o
+	/// ataque de quem atirou -- a mao dele fecha, e o RAIO sai DE LADO, solto, pra estourar no fim do alcance. A ESFERA
+	/// volta pra quem a atirou (retorno do dono do mesmo dia: *"deflect de esferas de ki (apenas blast) voltam pro
+	/// atacante original"*). Ver `GameServer.ParryDeKi.cs` e `KiContraCorpo.PodeDefletir`.
 	///
-	/// A DOBRA E NA FRENTE DE QUEM DESVIOU (dono, 2026-10-08: *"o beam dar curva pro lado e nao criar um novo
-	/// beam atras do jogador"*): mede-se onde a cauda do ramo nasce, que ela acompanha a cabeca plantada, e que
-	/// quem desviou nao apanha do proprio desvio -- com os dois defeitos injetados (o lugar de antes; o ramo
-	/// enxergando quem o desviou) tendo que reprovar as mesmas reguas.
-	///
-	/// OS CONTROLES SAO AS PORTAS, UMA DE CADA VEZ: a mesma cena com o defensor MAIS FRACO que o tiro (o raio
-	/// nao desvia: vira o embate de guarda) e com a guarda SEGURADA ha mais que a janela (a bola acerta e sai
-	/// como bloqueio). A familia 6, logo acima, e o terceiro: guarda velha contra raio e o embate de sempre.
-	/// Todos os tiros saem SEM o dado da deflexao (`SemDeflexao`): o que se mede aqui e o gesto, e nao a sorte.
+	/// OS CONTROLES SAO AS PORTAS: a mesma cena com menos que o dobro do poder (nao ha deflect: o golpe segue a escada
+	/// do `KiContraCorpo`), e o defeito injetado da porta de antes (bastava ser igual). A familia 6, logo acima, e a
+	/// guarda VELHA contra raio: o embate de sempre. Todos os tiros saem SEM o dado da deflexao (`SemDeflexao`): o
+	/// que se mede aqui e o gesto, e nao a sorte.
 	/// </summary>
 	private void OParryContraKi()
 	{
-		GD.Print("[embateki] -- 6b) O PARRY CONTRA KI: O RAIO DESVIA, A BOLA VOLTA");
+		GD.Print("[embateki] -- 6b) O DEFLECT DE KI: O DOBRO DO PODER, E O ATAQUE SAI DAS MAOS DE QUEM ATIROU");
 		LimparEmbatesDaBancada();
+		static bool Defletiu(List<Protocol.HitEvent> relatos, ServerPlayer quem) =>
+			relatos.Any(h => h.Alvo == quem.Id && (Desfecho)h.Desfecho == Desfecho.Rebateu);
 
-		// ---------------------------------------------------------------- o raio, forca igual
-		var (feixe, _, espelho, relatos, vidaInicial) = RaioContraOParry("Espelho", bpDoDefensor: 5_000);
-		AfirmarEk("PREPARO: o raio saiu e a guarda subiu NA JANELA do parry (ha menos de 0,25 s quando ele encostou)",
-				  feixe != null && espelho.Combate.Bloqueando && espelho.Combate.TempoDeGuarda <= MeleeResolver.JanelaContra,
+		// ---------------------------------------------------------------- o raio, contra o dobro do poder (o atirador tem 5.000)
+		// DE CIMA (`Voo.AlturaQueAtravessa`) e com o alcance curto: o pedaco defletido sai de LADO, pra fora do
+		// corredor, e a cena mede o FIM DO ALCANCE dele -- nao o que o mapa tem em volta.
+		var (feixe, raiador, espelho, relatos, vidaInicial) = RaioContraOParry("Espelho", bpDoDefensor: 10_000, alcanceTiles: 14, altura: Voo.AlturaQueAtravessa);
+		AfirmarEk("PREPARO: a guarda subiu DENTRO da janela do parry",
+				  espelho.Combate.TempoDeGuarda <= MeleeResolver.JanelaContra + 1e-9 && feixe != null,
 				  $"guarda ha {espelho.Combate.TempoDeGuarda:0.###} s");
-		AfirmarEk("o raio que encontra um PARRY (guarda no tempo, forca IGUAL) desvia: a cabeca fica PLANTADA em quem desviou",
-				  feixe is { Vivo: true, Encostado: true } && feixe.DesviadoPor == espelho.Id,
-				  $"desviado por #{feixe?.DesviadoPor}, espelho #{espelho.Id}");
-		AfirmarEk("...e o golpe que sai e o PARRY (`Rebateu`), e nao um acerto nem o embate de guarda",
-				  relatos.Any(h => h.Alvo == espelho.Id && (Desfecho)h.Desfecho == Desfecho.Rebateu)
-				  && !_emEmbateDeKi.ContainsKey(espelho.Id),
-				  string.Join(" | ", relatos.Select(h => (Desfecho)h.Desfecho)));
-
-		Projetil? ramo = feixe == null ? null
-			: ProjeteisDaZona(espelho.Zone.Hash).FirstOrDefault(q => q.AlimentadoPor == feixe.Id);
-		double angulo = ramo == null || feixe == null ? double.NaN
-			: Math.Acos(Math.Clamp(ramo.Rumo.X * feixe.Rumo.X + ramo.Rumo.Y * feixe.Rumo.Y, -1, 1)) * 180 / Math.PI;
-		AfirmarEk($"...e nasce o RAMO, {AnguloDoDesvio:0} graus pro lado, alimentado pelo mesmo canal",
-				  ramo != null && Math.Abs(angulo - AnguloDoDesvio) < 0.5, $"{angulo:0.#} graus");
-		AfirmarEk("...e ele sai da DOBRA: a cabeca plantada do raio, NA FRENTE de quem desviou (e nao das costas dele)",
-				  ADobraEstaNaFrente(feixe, ramo, espelho), OndeADobraEsta(feixe, ramo, espelho));
-		AfirmarEk("...de LADO: a linha do ramo passa a um contato inteiro do corpo de quem desviou, sem cruzar por cima dele",
-				  ramo != null && ALinhaDoRamoPassaA(ramo, espelho) >= Projetil.RaioDeImpacto + Feixe.MeioCorpo - 0.5f,
-				  $"{(ramo == null ? 0 : ALinhaDoRamoPassaA(ramo, espelho)):0.#} px do centro dele");
-
-		// UM SEGUNDO SEGURANDO A GUARDA: o atirador continua alimentando, e a energia sai pelo ramo.
-		Vec2 ondeEstava = espelho.Pos;
-		float comprimentoAntes = ramo == null ? 0 : (ramo.Pos - ramo.Cauda).Length;
-		for (int i = 0; i < 30; i++) TiqueDoParry(espelho);
-		float comprimentoDepois = ramo == null ? 0 : (ramo.Pos - ramo.Cauda).Length;
-		AfirmarEk("...e enquanto a guarda fica de pe o ramo CRESCE: a cauda presa no ponto do desvio, a cabeca andando",
-				  ramo is { Vivo: true } && feixe != null && ramo.AlimentadoPor == feixe.Id
-				  && (ramo.Cauda - ramo.PontoDoDesvio).Length < 0.5f && comprimentoDepois > comprimentoAntes + 32,
-				  $"{comprimentoAntes:0} -> {comprimentoDepois:0} px");
-		AfirmarEk("...e quem desvia NAO apanha e NAO e arrastado (a energia passa por fora dele)",
-				  feixe is { DesviadoPor: > 0 } && espelho.Combate.Corpo.Vida() >= vidaInicial - 1e-9
-				  && (espelho.Pos - ondeEstava).Length < 1f && espelho.ArrastoRestante <= 0,
-				  $"vida {vidaInicial:0.##} -> {espelho.Combate.Corpo.Vida():0.##}, andou {(espelho.Pos - ondeEstava).Length:0.#} px");
-
-		// QUEM DESVIA RECUA UM POUCO, de guarda erguida: a cabeca do raio e replantada na frente dele no ciclo
-		// seguinte, e a dobra -- com o ramo inteiro -- vai junto.
-		Vec2 dobraAntes = ramo?.Cauda ?? default;
-		if (feixe != null) espelho.Pos += feixe.Rumo * 4f;
-		for (int i = 0; i < 10; i++) TiqueDoParry(espelho);
-		AfirmarEk("...e a dobra ANDA com a cabeca plantada: quem desvia recua 4 px e o ramo inteiro vai junto, sem entortar",
-				  ramo is { Vivo: true } && feixe != null && ramo.AlimentadoPor == feixe.Id
-				  && (ramo.Cauda - dobraAntes).Length > 3f && ADobraEstaNaFrente(feixe, ramo, espelho)
-				  && Math.Abs((ramo.Pos.X - ramo.Cauda.X) * ramo.Rumo.Y - (ramo.Pos.Y - ramo.Cauda.Y) * ramo.Rumo.X) < 0.5f,
-				  $"a dobra andou {(ramo == null ? 0 : (ramo.Cauda - dobraAntes).Length):0.#} px; {OndeADobraEsta(feixe, ramo, espelho)}");
-
-		// BAIXOU A GUARDA: o proximo ciclo de moer ja nao encontra quem segure.
-		espelho.Combate.Guardar(false);
-		for (int i = 0; i < 30 && espelho.Combate.Corpo.Vida() >= vidaInicial - 1e-9; i++) TiqueDoParry(espelho);
-		// MAIS UM TIQUE: a lista de tiros anda de tras pra frente e o ramo (que nasceu depois) roda ANTES do pai.
-		// No tique em que o pai larga o desvio e volta a moer, o ramo ja tinha passado -- ele le o fim no seguinte.
-		TiqueDoParry(espelho);
-		AfirmarEk("BAIXOU A GUARDA: o desvio acaba -- o ramo passa a voar SOLTO (a cauda larga o ponto do desvio) e o raio volta a pegar quem estava na frente",
-				  feixe is { DesviadoPor: 0 } && ramo is { Vivo: true, AlimentadoPor: 0 }
-				  && (ramo.Cauda - ramo.PontoDoDesvio).Length > 1f && espelho.Combate.Corpo.Vida() < vidaInicial - 1e-9,
-				  $"desviado por #{feixe?.DesviadoPor}, ramo vivo {ramo?.Vivo}, alimentado por #{ramo?.AlimentadoPor}, "
-				  + $"cauda a {(ramo == null ? 0 : (ramo.Cauda - ramo.PontoDoDesvio).Length):0.#} px do desvio, vida {espelho.Combate.Corpo.Vida():0.##}");
+		AfirmarEk("**O DEFLECT TIRA O RAIO DE QUEM ATIROU**: a mao dele FECHA no mesmo tique (nao sobra canal alimentando nada)",
+				  !_canais.ContainsKey(raiador.Id) && feixe is { Canalizando: false });
+		AfirmarEk($"...e o raio sai DE LADO ({AnguloDoDeflect:0} graus), solto, marcado por quem o defletiu",
+				  feixe is { Vivo: true } && feixe.Desviador == espelho.Id && Math.Abs(feixe.Rumo.X) < 0.01f && Math.Abs(Math.Abs(feixe.Rumo.Y) - 1) < 0.01f,
+				  $"vivo {feixe?.Vivo}, rumo ({feixe?.Rumo.X:0.##}, {feixe?.Rumo.Y:0.##}), desviador #{feixe?.Desviador}");
+		AfirmarEk("...o relato e o do deflect (`Rebateu`: o escudo na tela)", Defletiu(relatos, espelho));
+		int explosoes = ExplosoesDoFimDoAlcanceDeTeste;
+		for (int i = 0; i < 30 * 10 && feixe is { Vivo: true }; i++) TiqueDoParry(espelho);
+		AfirmarEk("**DEFLETIDO OU NAO, O RAIO ESTOURA NO FIM DO ALCANCE** -- e quem o defletiu nao perdeu vida nenhuma no caminho",
+				  feixe is { Vivo: false, Fim: FimDeProjetil.Explodiu } && ExplosoesDoFimDoAlcanceDeTeste == explosoes + 1
+				  && espelho.Combate.Corpo.Vida() >= vidaInicial - 1e-9,
+				  $"vivo {feixe?.Vivo}, fim {feixe?.Fim}, vida {vidaInicial:0.##} -> {espelho.Combate.Corpo.Vida():0.##}");
 		LimparEmbatesDaBancada();
 
-		// ---------------------------------------------------------------- (defeito injetado) o ramo nascendo ALEM do corpo
-		// O JOGO DE ANTES: a cauda do ramo alem de quem desviou, no rumo do desvio -- a foto do dono, o feixe novo
-		// saindo das costas do personagem. A mesma cena, a mesma regua.
-		//
-		// AS DUAS CENAS DE DEFEITO DEVOLVEM A FAIXA DE CHAO QUE USARAM: o mapa da bancada tem faixas contadas (o
-		// `CorredorLivre` anda tres linhas por cena, ate a 250), e com duas cenas a mais a ultima familia ficava
-		// sem corredor. A limpeza tira corpos e tiros, entao a faixa volta inteira.
-		int faixaDosDefeitos = _pjProximoCorredor;
-		Feixe.RamoNasceAlemDeTeste = true;
-		try
-		{
-			var (feixeDeAntes, _, deAntes, _, _) = RaioContraOParry("DeAntes", bpDoDefensor: 5_000);
-			Projetil? ramoDeAntes = feixeDeAntes == null ? null
-				: ProjeteisDaZona(deAntes.Zone.Hash).FirstOrDefault(q => q.AlimentadoPor == feixeDeAntes.Id);
-			AfirmarEk("(defeito injetado: o ramo nasce ALEM de quem desviou) a dobra NAO esta na frente dele -- a mesma regua reprova",
-					  feixeDeAntes is { DesviadoPor: > 0 } && ramoDeAntes != null && !ADobraEstaNaFrente(feixeDeAntes, ramoDeAntes, deAntes),
-					  OndeADobraEsta(feixeDeAntes, ramoDeAntes, deAntes));
-		}
-		finally { Feixe.RamoNasceAlemDeTeste = false; }
-		LimparEmbatesDaBancada();
-		_pjProximoCorredor = faixaDosDefeitos;
-
-		// ---------------------------------------------------------------- (defeito injetado) o ramo enxergando quem o desviou
-		// Com a dobra na frente do corpo, a cabeca recem-nascida do ramo fica a um contato exato dele: sem a regra do
-		// `Projetil.Desviador`, quem acerta o parry leva o proprio desvio no tique seguinte.
-		Feixe.RamoPegaQuemDesviouDeTeste = true;
-		try
-		{
-			var (feixeCego, _, cego, _, vidaDoCego) = RaioContraOParry("SemARegra", bpDoDefensor: 5_000);
-			for (int i = 0; i < 30; i++) TiqueDoParry(cego);
-			AfirmarEk("(defeito injetado: o ramo enxerga quem o desviou) quem ACERTOU o parry apanha do proprio desvio",
-					  feixeCego != null && cego.Combate.Corpo.Vida() < vidaDoCego - 1e-9,
-					  $"vida {vidaDoCego:0.##} -> {cego.Combate.Corpo.Vida():0.##}");
-		}
-		finally { Feixe.RamoPegaQuemDesviouDeTeste = false; }
-		LimparEmbatesDaBancada();
-		_pjProximoCorredor = faixaDosDefeitos;
-
-		// ---------------------------------------------------------------- o ramo que chega ao fim do alcance
-		// O RAMO HERDA O ALCANCE QUE O RAIO AINDA TINHA, e a 20 tiles por segundo ele o gasta num instante. Enquanto o
-		// desvio esta de pe a ponta PARA la e o tronco continua -- ver `seguraNoAlcance` no `AndarProjetil`. Raio de
-		// 12 tiles contra quem esta a 8: sobram uns cinco pro ramo, e um segundo e meio de guarda da pra andar trinta.
-		var (feixeCurto, _, firme, _, _) = RaioContraOParry("Firme", bpDoDefensor: 5_000, alcanceTiles: 12, altura: Voo.AlturaQueAtravessa);
-		Projetil? ramoCurto = feixeCurto == null ? null
-			: ProjeteisDaZona(firme.Zone.Hash).FirstOrDefault(q => q.AlimentadoPor == feixeCurto.Id);
-		double sobrava = ramoCurto?.Distancia ?? 0;
-		for (int i = 0; i < 45; i++) TiqueDoParry(firme);
-		float esticou = ramoCurto == null ? 0 : (ramoCurto.Pos - ramoCurto.Cauda).Length;
-		AfirmarEk("PREPARO: o ramo nasceu com poucos tiles de alcance (o que sobrava do raio), menos do que anda em 1,5 s",
-				  ramoCurto != null && sobrava is > 1 and < 10, $"{sobrava:0.#} tiles");
-		AfirmarEk("com o desvio DE PE o ramo NAO se apaga no fim do alcance: a ponta para la e o tronco continua alimentado",
-				  feixeCurto is { DesviadoPor: > 0 } && ramoCurto is { Vivo: true, Esvaziando: false }
-				  && ramoCurto.AlimentadoPor == feixeCurto.Id && Math.Abs(ramoCurto.Distancia) < 0.01
-				  && Math.Abs(esticou - sobrava * ZoneCollision.TileSize) < 2f,
-				  $"vivo {ramoCurto?.Vivo}, esvaziando {ramoCurto?.Esvaziando}, alimentado por #{ramoCurto?.AlimentadoPor}, "
-				  + $"alcance {ramoCurto?.Distancia:0.##}, tronco de {esticou:0} px (sobravam {sobrava * ZoneCollision.TileSize:0})");
-
-		firme.Combate.Guardar(false);
-		for (int i = 0; i < 30 && ramoCurto is { Vivo: true, Esvaziando: false }; i++) TiqueDoParry(firme);
-		AfirmarEk("...e quando o desvio ACABA ele se apaga como todo raio que gastou o alcance (`Apagou`)",
-				  ramoCurto is { AlimentadoPor: 0 } && (ramoCurto.Esvaziando ? ramoCurto.FimPendente : ramoCurto.Fim) == FimDeProjetil.Apagou,
-				  $"vivo {ramoCurto?.Vivo}, esvaziando {ramoCurto?.Esvaziando}, fim {ramoCurto?.Fim}/{ramoCurto?.FimPendente}");
-		LimparEmbatesDaBancada();
-		_pjProximoCorredor = faixaDosDefeitos;
-
-		Feixe.RamoMorreDeAlcanceDeTeste = true;
-		try
-		{
-			var (feixeDeUmSegundo, _, cansado, _, _) = RaioContraOParry("Cansado", bpDoDefensor: 5_000, alcanceTiles: 12, altura: Voo.AlturaQueAtravessa);
-			Projetil? ramoQueSome = feixeDeUmSegundo == null ? null
-				: ProjeteisDaZona(cansado.Zone.Hash).FirstOrDefault(q => q.AlimentadoPor == feixeDeUmSegundo.Id);
-			for (int i = 0; i < 45; i++) TiqueDoParry(cansado);
-			AfirmarEk("(defeito injetado: o ramo morre de alcance) com o desvio AINDA DE PE a curva some -- o raio bate em quem desviou e nao sai nada dali",
-					  feixeDeUmSegundo is { DesviadoPor: > 0 } && cansado.Combate.Bloqueando
-					  && ramoQueSome != null && (!ramoQueSome.Vivo || ramoQueSome.Esvaziando),
-					  $"desviado por #{feixeDeUmSegundo?.DesviadoPor}, ramo vivo {ramoQueSome?.Vivo}, esvaziando {ramoQueSome?.Esvaziando}");
-		}
-		finally { Feixe.RamoMorreDeAlcanceDeTeste = false; }
-		LimparEmbatesDaBancada();
-		_pjProximoCorredor = faixaDosDefeitos;
-
-		// ---------------------------------------------------------------- saindo da frente, de guarda erguida
-		// A OUTRA SAIDA DO DESVIO: quem desviou da um passo pro lado. A guarda continua de pe, mas a cabeca vencida
-		// no ciclo nao encontra mais ninguem pra replanta-la, anda -- e o desvio acaba. A bancada move o corpo (o
-		// passo do jogador); o que se mede e o que o raio faz quando ele sai.
-		var (feixeDoPasso, _, passo, _, vidaDoPasso) = RaioContraOParry("Passo", bpDoDefensor: 5_000);
-		Projetil? ramoDoPasso = feixeDoPasso == null ? null
-			: ProjeteisDaZona(passo.Zone.Hash).FirstOrDefault(q => q.AlimentadoPor == feixeDoPasso.Id);
-		passo.Pos += new Vec2(0, 3 * ZoneCollision.TileSize);
-		for (int i = 0; i < 15; i++) TiqueDoParry(passo);
-		AfirmarEk("SAIU DA FRENTE de guarda erguida: o desvio acaba -- o ramo voa solto, o raio segue reto e nao o pega",
-				  feixeDoPasso is { DesviadoPor: 0 } && ramoDoPasso is { AlimentadoPor: 0 } && passo.Combate.Bloqueando
-				  && passo.Combate.Corpo.Vida() >= vidaDoPasso - 1e-9,
-				  $"desviado por #{feixeDoPasso?.DesviadoPor}, ramo alimentado por #{ramoDoPasso?.AlimentadoPor}, vida {passo.Combate.Corpo.Vida():0.##}");
+		// ---------------------------------------------------------------- com menos que o dobro, nao ha deflect
+		var (feixeIgual, _, quase, relatosQuase, _) = RaioContraOParry("Quase", bpDoDefensor: 7_500);
+		AfirmarEk("CONTRA-EXEMPLO: com uma vez e meia o poder do tiro, a MESMA guarda no tempo certo nao deflete -- o raio continua em quem atirou",
+				  feixeIgual is { Vivo: true, Desviador: 0 } && !Defletiu(relatosQuase, quase) && quase.Combate.TempoDeGuarda <= MeleeResolver.JanelaContra + 1e-9,
+				  $"vivo {feixeIgual?.Vivo}, desviador #{feixeIgual?.Desviador}");
 		LimparEmbatesDaBancada();
 
-		// ---------------------------------------------------------------- (controle) o raio, defensor MAIS FRACO
-		var (feixeFraco, _, fraco, relatosFraco, _) = RaioContraOParry("Fraco", bpDoDefensor: 500);
-		AfirmarEk("(controle) o MESMO tempo de guarda, mas MAIS FRACO que o tiro: o raio NAO desvia (vira o embate de guarda)",
-				  feixeFraco != null && feixeFraco.DesviadoPor == 0 && fraco.Combate.TempoDeGuarda <= MeleeResolver.JanelaContra
-				  && !relatosFraco.Any(h => (Desfecho)h.Desfecho == Desfecho.Rebateu) && _emEmbateDeKi.ContainsKey(fraco.Id),
-				  $"desviado por #{feixeFraco?.DesviadoPor}, embate {_emEmbateDeKi.ContainsKey(fraco.Id)}, guarda ha {fraco.Combate.TempoDeGuarda:0.###} s");
-		LimparEmbatesDaBancada();
-
-		// ---------------------------------------------------------------- a bola, forca igual
-		var (bola, atirador, rebatedor, relatosBola, velocidade) = BolaContraOParry("Rebatedor", noTempo: true);
-		double vidaDoRebatedor = rebatedor.Combate.Corpo.Vida(), vidaDoAtirador = atirador.Combate.Corpo.Vida();
-		Vec2 praQuemAtirou = (atirador.Pos - bola.Pos).Normalized();
-		AfirmarEk("a bola que encontra um PARRY VOLTA: passa a ser de quem defendeu e vai na direcao de quem atirou",
-				  bola.Vivo && bola.Dono == rebatedor.Id && bola.Rumo.X * praQuemAtirou.X + bola.Rumo.Y * praQuemAtirou.Y > 0.99,
-				  $"dono #{bola.Dono}, rebatedor #{rebatedor.Id}, rumo {bola.Rumo}");
-		AfirmarEk("...na MESMA velocidade em que veio (e nao no passo lento do empurrao de embate)",
-				  Math.Abs(bola.SegundosPorTile - velocidade) < 1e-9, $"{velocidade:0.###} -> {bola.SegundosPorTile:0.###} s/tile");
-		AfirmarEk("...e quem defendeu nao levou nada, e o golpe que sai e o PARRY",
-				  rebatedor.Combate.Corpo.Vida() >= vidaDoRebatedor - 1e-9
-				  && relatosBola.Any(h => h.Alvo == rebatedor.Id && (Desfecho)h.Desfecho == Desfecho.Rebateu),
-				  string.Join(" | ", relatosBola.Select(h => (Desfecho)h.Desfecho)));
+		// ---------------------------------------------------------------- a esfera
+		var (bola, atirador, rebatedor, relatosBola, velocidadeDaIda) = BolaContraOParry("Rebatedor", noTempo: true, bpDoDefensor: 10_000);
+		double vidaDoAtirador = atirador.Combate.Corpo.Vida();
+		AfirmarEk("**A ESFERA DEFLETIDA VOLTA PRA QUEM ATIROU**: ela passa a ser de quem a defletiu (dono e poder), aponta pro atirador, na velocidade em que veio e com o alcance renovado",
+				  bola.Vivo && bola.Dono == rebatedor.Id && bola.Desviador == rebatedor.Id && Defletiu(relatosBola, rebatedor)
+				  && bola.Rumo.X < -0.99f && Math.Abs(bola.Bp - rebatedor.Ficha.expressedBP) < 1e-6
+				  && Math.Abs(bola.SegundosPorTile - velocidadeDaIda) < 1e-9 && Math.Abs(bola.Distancia - bola.MaxDistancia) < 1e-9
+				  && rebatedor.Combate.Corpo.Vida() >= 100 - 1e-9,
+				  $"vivo {bola.Vivo}, dono #{bola.Dono} (rebatedor #{rebatedor.Id}), rumo ({bola.Rumo.X:0.##}, {bola.Rumo.Y:0.##}), alcance {bola.Distancia:0.#}/{bola.MaxDistancia:0.#}");
 		for (int i = 0; i < 30 * 6 && bola.Vivo; i++) TickDosProjeteis(Protocol.TickSeconds);
-		AfirmarEk("...e ela ACERTA quem a atirou",
-				  !bola.Vivo && bola.Fim == FimDeProjetil.Acertou && atirador.Combate.Corpo.Vida() < vidaDoAtirador,
-				  $"fim {bola.Fim}, vida do atirador {vidaDoAtirador:0.##} -> {atirador.Combate.Corpo.Vida():0.##}");
+		AfirmarEk("...e ACERTA quem a atirou: o atirador perde vida com a propria esfera, e quem a defletiu nao perde nada",
+				  bola.Fim == FimDeProjetil.Acertou && atirador.Combate.Corpo.Vida() < vidaDoAtirador - 1e-6 && rebatedor.Combate.Corpo.Vida() >= 100 - 1e-9,
+				  $"fim {bola.Fim}; atirador {vidaDoAtirador:0.##} -> {atirador.Combate.Corpo.Vida():0.##}");
 		LimparEmbatesDaBancada();
 
-		// ---------------------------------------------------------------- (controle) a bola, guarda SEGURADA
-		var (bolaVelha, atiradorVelho, segurador, relatosVelhos, _) = BolaContraOParry("Segurador", noTempo: false);
-		for (int i = 0; i < 30 * 6 && bolaVelha.Vivo; i++) TickDosProjeteis(Protocol.TickSeconds);
-		AfirmarEk("(controle) a guarda SEGURADA ha mais que a janela nao devolve nada: a bola ACERTA e sai como BLOQUEIO",
-				  bolaVelha.Dono == atiradorVelho.Id && bolaVelha.Fim == FimDeProjetil.Acertou
-				  && !relatosVelhos.Any(h => (Desfecho)h.Desfecho == Desfecho.Rebateu)
-				  && relatosVelhos.Any(h => h.Alvo == segurador.Id && (Desfecho)h.Desfecho == Desfecho.Aparou),
-				  $"dono #{bolaVelha.Dono}, fim {bolaVelha.Fim}, relatos {string.Join(" | ", relatosVelhos.Select(h => (Desfecho)h.Desfecho))}");
+		// (A FAIXA DE CORREDOR DESTA CENA E DEVOLVIDA: a bancada ja gastava o mapa ate o fim, e com uma faixa a menos a
+		//  familia 11 ficava sem o corredor de 18 tiles dela. Os corpos saem na `LimparEmbatesDaBancada` logo abaixo.)
+		int faixaDaCenaDoDefeito = _pjProximoCorredor;
+		EsferaDefletidaSaiDeLadoDeTeste = true;
+		try
+		{
+			var (deLado, atiradorDeLado, _, _, _) = BolaContraOParry("DeLado", noTempo: true, bpDoDefensor: 10_000);
+			AfirmarEk("(defeito injetado: a esfera defletida sai de lado) ela nao troca de dono e nunca chega em quem a atirou -- a primeira entrega, que a regua de cima reprova",
+					  deLado.Dono == atiradorDeLado.Id && deLado.Desviador != 0 && deLado.Fim != FimDeProjetil.Acertou
+					  && atiradorDeLado.Combate.Corpo.Vida() >= 100 - 1e-9,
+					  $"fim {deLado.Fim}, dono #{deLado.Dono}, desviador #{deLado.Desviador}");
+		}
+		finally { EsferaDefletidaSaiDeLadoDeTeste = false; }
 		LimparEmbatesDaBancada();
-	}
 
-	/// <summary>
-	/// A DOBRA ESTA NA FRENTE DE QUEM DESVIOU? A cauda do ramo no ponto de `Feixe.DobraDoDesvio` do raio, e esse
-	/// ponto do lado de QUEM ATIRA, alem da beirada do corpo -- pelo eixo do raio que chega.
-	/// </summary>
-	private static bool ADobraEstaNaFrente(Projetil? feixe, Projetil? ramo, ServerPlayer defensor)
-	{
-		if (feixe == null || ramo == null) return false;
-		Vec2 doCorpo = ramo.Cauda - defensor.Pos;
-		float pelaFrente = -(doCorpo.X * feixe.Rumo.X + doCorpo.Y * feixe.Rumo.Y);
-		return (ramo.Cauda - Feixe.DobraDoDesvio(feixe)).Length < 0.5f && pelaFrente >= Feixe.MeioCorpo + Projetil.RaioDeImpacto - 0.5f;
-	}
+		// (na mesma faixa devolvida) O DEFLECT E O GESTO, e nao a guarda: com o dobro do poder mas a guarda SEGURADA --
+		// erguida antes, fora da janela -- a esfera so encontra a guarda.
+		var (bolaNaGuarda, atiradorDaGuarda, segurador, relatosDaGuarda, _) = BolaContraOParry("Segurador", noTempo: false, bpDoDefensor: 10_000);
+		AfirmarEk("CONTRA-EXEMPLO: com o dobro do poder e a guarda SEGURADA (fora da janela do gesto), a esfera NAO e defletida nem volta -- ela acaba na guarda, e continua sendo de quem atirou",
+				  !Defletiu(relatosDaGuarda, segurador) && bolaNaGuarda.Dono == atiradorDaGuarda.Id && bolaNaGuarda.Desviador == 0
+				  && bolaNaGuarda.Fim == FimDeProjetil.Acertou && atiradorDaGuarda.Combate.Corpo.Vida() >= 100 - 1e-9,
+				  $"fim {bolaNaGuarda.Fim}, dono #{bolaNaGuarda.Dono}, desviador #{bolaNaGuarda.Desviador}");
+		LimparEmbatesDaBancada();
+		_pjProximoCorredor = faixaDaCenaDoDefeito;
 
-	private static string OndeADobraEsta(Projetil? feixe, Projetil? ramo, ServerPlayer defensor)
-	{
-		if (feixe == null || ramo == null) return "sem raio ou sem ramo";
-		Vec2 doCorpo = ramo.Cauda - defensor.Pos;
-		return $"a cauda do ramo esta {-(doCorpo.X * feixe.Rumo.X + doCorpo.Y * feixe.Rumo.Y):0.#} px NA FRENTE do corpo (pelo eixo do raio) "
-			   + $"e a {(ramo.Cauda - Feixe.DobraDoDesvio(feixe)).Length:0.#} px da dobra";
-	}
+		var (bolaIgual, atiradorIgual, parelho, relatosParelho, _) = BolaContraOParry("Parelho", noTempo: true);
+		AfirmarEk("CONTRA-EXEMPLO: de poder IGUAL, a guarda no tempo certo so apara a bola (o deflect pede o dobro)",
+				  !Defletiu(relatosParelho, parelho) && bolaIgual.Dono == atiradorIgual.Id && bolaIgual.Desviador == 0,
+				  $"fim {bolaIgual.Fim}");
+		LimparEmbatesDaBancada();
 
-	/// <summary>A que distancia do centro deste corpo a LINHA do ramo passa (a reta inteira, pros dois lados).</summary>
-	private static float ALinhaDoRamoPassaA(Projetil ramo, ServerPlayer corpo)
-	{
-		Vec2 d = corpo.Pos - ramo.Cauda;
-		return MathF.Abs(d.X * ramo.Rumo.Y - d.Y * ramo.Rumo.X);
+		// ---------------------------------------------------------------- o jogo de antes
+		KiContraCorpo.RegraDeAntesDeTeste = true;
+		try
+		{
+			var (_, _, deAntes, relatosDeAntes, _) = RaioContraOParry("DeAntes", bpDoDefensor: 5_000);
+			AfirmarEk("(defeito injetado: a porta de antes, igual ou mais forte) de poder igual o raio e defletido -- a regua de cima reprovaria",
+					  Defletiu(relatosDeAntes, deAntes));
+		}
+		finally { KiContraCorpo.RegraDeAntesDeTeste = false; }
+		LimparEmbatesDaBancada();
 	}
 
 	/// <summary>Um tique de parry: canal, projetil, embate e o relogio da guarda de quem defende.</summary>
@@ -1360,12 +1422,12 @@ public partial class GameServer
 	/// embate). Os relatos do golpe sao lidos do fio (`EscutaDeGolpes` + `LerGolpe`), como o cliente os le.
 	/// </summary>
 	/// <param name="alcanceTiles">
-	/// O alcance do raio. O padrao e DE SOBRA: o ramo herda o que o raio ainda tinha, e as cenas que medem o ramo
-	/// CRESCENDO e depois SOLTO precisam que ele nao chegue ao fim no meio da medida. A cena do fim do alcance pede curto.
+	/// O alcance do raio. O padrao e DE SOBRA pras cenas que so vao ate o primeiro contato (o defensor esta a 8
+	/// tiles); a do fim do alcance pede curto, pra o pedaco defletido estourar dentro da medida.
 	/// </param>
 	/// <param name="altura">
-	/// A que altura os dois estao. A cena do fim do alcance roda DE CIMA (`Voo.AlturaQueAtravessa`): o ramo sai de
-	/// lado, pra fora do corredor, e o que ela mede e o alcance -- nao o que o mapa tem em volta.
+	/// A que altura os dois estao. A cena do fim do alcance roda DE CIMA (`Voo.AlturaQueAtravessa`): o pedaco
+	/// defletido sai de lado, pra fora do corredor, e o que ela mede e o alcance -- nao o que o mapa tem em volta.
 	/// </param>
 	private (Projetil? Feixe, ServerPlayer Atirador, ServerPlayer Defensor, List<Protocol.HitEvent> Relatos, double VidaInicial)
 		RaioContraOParry(string nome, double bpDoDefensor, double alcanceTiles = 100, float altura = 0f)
@@ -1379,9 +1441,12 @@ public partial class GameServer
 		atirador.Altitude = defensor.Altitude = altura;
 		double vidaInicial = defensor.Combate.Corpo.Vida();
 
-		// O RAIO FERE UM IGUAL MESMO DE GUARDA ERGUIDA (2026-10-08): as cenas daqui medem o que acontece quando o desvio
-		// ACABA (o raio volta a pegar quem estava na frente) e quando ele falha (o defeito injetado, o embate de guarda)
-		// -- e um Ki Wave de producao entre iguais, ~5,5 por batida, cai no corte dos fracos (`DanoDeKi.CorteDoFraco`).
+		// O RAIO SAI COM O GOLPE DE BANCADA NUM IGUAL DE GUARDA ERGUIDA (`QueFereUmIgual`: 12 por batida). As cenas
+		// daqui medem tambem o que acontece quando o deflect NAO sai (o raio pega quem ergueu a guarda sem ter o dobro),
+		// e a base subiu em 2026-10-08, quando um Ki Wave de producao entre iguais, ~5,5 por batida, caia no corte dos
+		// fracos (`DanoDeKi.CorteDoFraco`) e nao feria ninguem. O corte por dano saiu em 2026-10-12 -- hoje esse Ki
+		// Wave fere um igual --, e o 12 ficou: le-se sem derrubar o boneco, e e golpe tambem no jogo de antes, que os
+		// contra-exemplos repoem (ver `BaseQueFereUmIgual`).
 		ReceitaDeProjetil receita = QueFereUmIgual(SemDeflexao(), atirador, deGuarda: true);
 		receita.AlcanceTiles = alcanceTiles;
 		Canalizar(atirador, "Ki_Wave", 10 * atirador.Ficha.BaseDrain(), receita);
@@ -1394,7 +1459,7 @@ public partial class GameServer
 				feixe ??= ProjeteisDaZona(atirador.Zone.Hash).FirstOrDefault(q => q.Dono == atirador.Id && q.Tipo == TipoDeProjetil.Beam);
 				if (feixe != null && !defensor.Combate.Bloqueando && HoraDoParry(feixe, defensor)) defensor.Combate.Guardar(true);
 				TiqueDoParry(defensor);
-				if (feixe != null && (feixe.Encostado || feixe.DesviadoPor != 0 || _emEmbateDeKi.ContainsKey(defensor.Id))) break;
+				if (feixe != null && (feixe.Encostado || feixe.Desviador != 0 || !feixe.Vivo || _emEmbateDeKi.ContainsKey(defensor.Id))) break;
 			}
 			return (feixe, atirador, defensor, EscutaDeGolpes.Where(g => g.Cheio).Select(g => LerGolpe(g.Fio)).ToList(), vidaInicial);
 		}
@@ -1408,22 +1473,24 @@ public partial class GameServer
 	/// saiu da mao.
 	/// </summary>
 	private (Projetil Bola, ServerPlayer Atirador, ServerPlayer Defensor, List<Protocol.HitEvent> Relatos, double Velocidade)
-		BolaContraOParry(string nome, bool noTempo)
+		BolaContraOParry(string nome, bool noTempo, double bpDoDefensor = 5_000)
 	{
 		Vec2 chao = CorredorLivre(20);
 		ServerPlayer atirador = Forjar($"Bolador{nome}", chao, bp: 5_000);
 		atirador.Facing = Facing.East;
 		atirador.Ficha.Ki = atirador.Ficha.MaxKi;
-		ServerPlayer defensor = Forjar(nome, new Vec2(chao.X + 6 * ZoneCollision.TileSize, chao.Y), bp: 5_000);
+		ServerPlayer defensor = Forjar(nome, new Vec2(chao.X + 6 * ZoneCollision.TileSize, chao.Y), bp: bpDoDefensor);
 		defensor.Ficha.Ki = defensor.Ficha.MaxKi;
 		if (!noTempo) SegurarAGuarda(defensor);
 
 		EscutaDeGolpes = [];
 		try
 		{
-			// A BOLA FERE UM IGUAL MESMO DE GUARDA ERGUIDA (2026-10-08): o controle mede a bola que ACERTA a guarda
-			// segurada e sai como bloqueio, e a devolvida tem que ferir quem a atirou -- com a base 1 as duas caem no
-			// corte dos fracos (`DanoDeKi.CorteDoFraco`) e nenhuma e golpe.
+			// A BOLA SAI COM O GOLPE DE BANCADA NUM IGUAL DE GUARDA ERGUIDA (12): o controle mede a bola que ACERTA a
+			// guarda segurada e sai como bloqueio, e a devolvida tem que ferir quem a atirou. A base subiu em 2026-10-08,
+			// quando com a base 1 as duas caiam no corte dos fracos (`DanoDeKi.CorteDoFraco`) e nenhuma era golpe. O
+			// corte por dano saiu em 2026-10-12 (entre iguais toda bola fere), e o 12 ficou: e golpe tambem no jogo de
+			// antes, que os contra-exemplos desta familia repoem.
 			Projetil bola = Disparar(atirador, new ReceitaDeProjetil
 			{
 				Tipo = TipoDeProjetil.Blast, BaseDano = BaseQueFereUmIgual(atirador, TipoDeProjetil.Blast, deGuarda: true),
@@ -1781,7 +1848,8 @@ public partial class GameServer
 	// =====================================================================
 	/// <summary>O `Ki_Wave` de producao, na receita que o verb monta (`beams.dm:270`).</summary>
 	/// <remarks>
-	/// ELE E O RAIO **COMUM**, E CONTINUA DEFLETIVEL DE PROPOSITO: a familia da ordem (`:1038`) mede
+	/// ELE E O RAIO **COMUM**, E CONTINUA DEFLETIVEL DE PROPOSITO: a cena da ordem (o fim do
+	/// `OFeixeContraAGuarda`, pelo ajudante `RaioNaGuardaSegurada`) mede
 	/// justamente que *"contra um raio COMUM, quem podia defletir defende de graca"* -- desligar o
 	/// sorteio aqui apagaria a unica prova de que a defesa de ki vem antes do embate. Quem precisa do
 	/// dado fora do caminho vira o knob no proprio disparo: ver o <see cref="SemDeflexao"/>.
@@ -1798,12 +1866,13 @@ public partial class GameServer
 	///
 	/// ============================ POR QUE ELE PRECISA EXISTIR ============================
 	/// A chance de defletir e a razao entre as duas forcas (`objects.dm:333`), calculada em
-	/// `DanoDeKi.ChanceDeDeflexao` e sorteada DUAS vezes por impacto no `Acertar`
-	/// (`GameServer.Projeteis.cs:1190-1240`). MEDIDO com os corpos desta bancada -- feixe de
+	/// `DanoDeKi.ChanceDeDeflexao` e sorteada DUAS vezes por impacto no `Acertar` (o passo 3 dele: o
+	/// raspao com a metade da chance e a deflexao com ela inteira -- esta, desde 2026-10-12, so pra quem
+	/// tem o dobro do poder do tiro). MEDIDO com os corpos desta bancada -- feixe de
 	/// `base_damage` 1, dois duelistas de 50.000: **1% por impacto**, e a linha *"o perdedor LEVOU o
 	/// ataque"* (`:628`) depende do feixe do vencedor chegar inteiro no corpo dele. E dez vezes o
 	/// sorteio de 0,0999% que derrubou a `--tecnicateste` em 2026-09-02 -- mesma familia de defeito,
-	/// mesmo conserto, e o motivo e o que o `RaioDaBancada` da `--projetilteste` (`:2167`) escreve:
+	/// mesmo conserto, e o motivo e o que o `RaioDaBancada` da `--projetilteste` escreve:
 	/// um sorteio no meio da medicao mede o dado.
 	///
 	/// E NAO DA PRA DESLIGAR PELO CORPO: `Fighter.Statify` calcula o `Rkidef` com piso
@@ -1940,16 +2009,19 @@ public partial class GameServer
 		// nasce do encontro de dois feixes e nao consulta `Deflectivel` em lugar nenhum. O que muda e
 		// o DEPOIS -- acabado o embate, o feixe do vencedor avanca no corpo do perdedor e cai no
 		// `Acertar`, onde o sorteio de 1% por impacto (ver <see cref="SemDeflexao"/>) trocaria a linha
-		// "o perdedor LEVOU o ataque" (`:628`) por um `Defletido` sem nada errado no jogo.
+		// "o perdedor LEVOU o ataque" (`:628`) por um tiro aparado sem nada errado no jogo.
 		//
-		// A familia que PRECISA do raio defletivel (a ordem entre deflexao e embate, `:1038`) canaliza
-		// o dela na mao com o `RaioDeTeste` -- e por isso o knob esta aqui, e nao na receita comum.
+		// A cena que PRECISA do raio defletivel (a ordem entre deflexao e embate, no fim do
+		// `OFeixeContraAGuarda`) canaliza o dela na mao com o `RaioDeTeste` (`RaioNaGuardaSegurada`) -- e
+		// por isso o knob esta aqui, e nao na receita comum.
 		//
 		// E SAEM COM A BASE DE UM GOLPE (2026-10-08). O Ki Wave de producao (`base` 1) entre dois iguais faz ~5,5
-		// por batida, e desde o corte dos fracos (`DanoDeKi.CorteDoFraco`, `objects.dm:355-357`) isso nao e golpe: o
-		// feixe do vencedor chegaria no perdedor e nao o feriria -- como no DM, onde a cabeca que vence a disputa
-		// acerta pelo mesmo `Bump` (`BeamClash.dm`, `push_phase`). O DEPOIS da disputa so se mede com um raio que
-		// fere; a base sobe igual pros dois lados, entao a razao das forcas no embate nao muda.
+		// por batida, e com o corte dos fracos (`DanoDeKi.CorteDoFraco`, `objects.dm:355-357`; ate 2026-10-12) isso
+		// nao era golpe: o feixe do vencedor chegava no perdedor e nao o feria -- como no DM, onde a cabeca que vence
+		// a disputa acerta pelo mesmo `Bump` (`BeamClash.dm`, `push_phase`). O DEPOIS da disputa so se mede com um
+		// raio que fere; a base sobe igual pros dois lados, entao a razao das forcas no embate nao muda. (O corte
+		// por dano saiu, e hoje os ~5,5 ja feririam um igual. A base de 12 ficou: e golpe tambem no jogo de antes,
+		// que os contra-exemplos repoem -- ver `BaseQueFereUmIgual`.)
 		Canalizar(a, "Ki_Wave", 10 * a.Ficha.BaseDrain(), QueFereUmIgual(SemDeflexao(), a));
 		Canalizar(b, "Ki_Wave", 10 * b.Ficha.BaseDrain(), QueFereUmIgual(SemDeflexao(), b));
 

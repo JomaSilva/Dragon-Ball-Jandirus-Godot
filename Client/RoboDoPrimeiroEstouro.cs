@@ -1814,11 +1814,16 @@ public partial class RoboDoPrimeiroEstouro : Node
 	}
 
 	/// <summary>
-	/// Quanto cada bola tira do alvo, em vida de membro: pouco acima do corte dos fracos (`DanoDeKi.CorteDoFraco`,
-	/// 10). Abaixo dele o tiro estoura e NAO e golpe -- o servidor nao manda relato, e sem relato nao ha clarao,
-	/// faisca nem musica de combate, que e metade do que esta bancada mede. (Ela atirava com 0,002, de cocegas; no
-	/// dia em que o corte entrou as sete bolas estouraram e nenhuma luta abriu.) Doze nao marca o sprite -- a ferida
-	/// so aparece com 15% do membro --, e o alvo e sarado antes de cada bola pra duas no mesmo membro nao marcarem.
+	/// Quanto cada bola tira do alvo, em vida de membro: 12, pouco acima do antigo corte por dano
+	/// (`DanoDeKi.CorteDoFraco`, 10). O numero nasceu com ele: de 2026-10-08 a 2026-10-12, abaixo de 10 o tiro
+	/// estourava e NAO era golpe -- o servidor nao mandava relato, e sem relato nao ha clarao, faisca nem musica de
+	/// combate, que e metade do que esta bancada mede. (Ela atirava com 0,002, de cocegas; no dia em que o corte
+	/// entrou as sete bolas estouraram e nenhuma luta abriu.) Doze nao marca o sprite -- a ferida so aparece com 15%
+	/// do membro --, e o alvo e sarado antes de cada bola pra duas no mesmo membro nao marcarem.
+	///
+	/// HOJE (dono, 2026-10-12 -- `KiContraCorpo`) O DANO NAO DECIDE SE HA RELATO: decide a razao de poder. O tiro
+	/// estoura sem ferir e sem relato quando o alvo e PAREDE pra ele -- quatro vezes o poder de quem atira --, tenha
+	/// o dano que tiver. Os 12 so viram golpe se o alvo desta bancada nao for parede pro corpo que entra por ela.
 	/// </summary>
 	private const double DanoDaBola = 12;
 

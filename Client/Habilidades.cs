@@ -106,14 +106,16 @@ public static class Habilidades
 			() => GameClient.Instance?.SendHabilidade("nadar")) { Chave = "hab:nadar" });
 
 		// RELAXAR / FICAR PRONTO -- o `Toggle Readiness` do original (`mob/default/verb/ReadyUp`, `set
-		// category="Skills"`, `Power Control.dm:39-52`). De TODO corpo, como la: nao pede o controle de ki que
-		// baixar pra uma porcentagem e esconder o poder pedem, e por isso nao tem linha na tabela de requisitos.
+		// category="Skills"`, `Power Control.dm:39-52`). La e de todo corpo; aqui pede o controle de ki (regra do
+		// dono de 2026-10-12: *"relaxar e o poder cair deveria ser somente pra quem sabe controlar o proprio
+		// poder"*) -- a linha dele esta na tabela de requisitos (`RequisitosDosVerbos`, `hab:prontidao`).
 		// E um verb (e nao so o botao da faixa da aba Ki) pra poder ganhar uma TECLA na tela de teclas.
 		Verbos.Registrar(new Verbo(
 			"Relaxar / ficar pronto",
 			Verbos.Skills,
-			"Com o poder inteiro: relaxa, e o seu poder cai a 1% (quem é fraco some do Sense dos outros; "
-			+ "furioso você não consegue). Em qualquer ponto abaixo de 100%: fica pronto, e o poder volta "
+			"Com o poder inteiro: relaxa. O seu poder cai ao mínimo, ninguém mais sente a sua energia (nem "
+			+ "scouter) e o vigor volta o mais depressa que há -- mas você fica fraco de verdade, e furioso "
+			+ "não consegue. Relaxado, ou em qualquer ponto abaixo de 100%: fica pronto, e o poder volta "
 			+ "inteiro na hora.\n\nO estado aparece no painel de status e na aba Ki.",
 			() => GameClient.Instance?.SendHabilidade(MenuJogo.VerboDaProntidao)) { Chave = "hab:prontidao" });
 

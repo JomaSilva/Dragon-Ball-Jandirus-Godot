@@ -20,9 +20,9 @@ namespace Jandirus.Client;
 ///
 /// Ela e filha do corpo alheio (`World.MarcarNaCena`) e NUNCA esteve na lista de "quem sobe com o
 /// voo" -- por acidente, porque aquela lista era escrita a mao e ninguem a revisitou quando a marca
-/// nasceu. O acidente calhou de dar o resultado CERTO: ela e um decalque de piso (achatado, `ZIndex`
-/// -3, atras de todo mundo) e o lugar dela e o chao, ao lado da sombra, dizendo onde o sujeito esta
-/// de verdade. Anel achatado boiando a 160 px do chao nao le como mira, le como defeito.
+/// nasceu. O acidente calhou de dar o resultado CERTO: ela e um decalque de piso (achatado, no
+/// <see cref="PlanoNoChao"/>, atras de todo corpo) e o lugar dela e o chao, ao lado da sombra, dizendo onde o
+/// sujeito esta de verdade. Anel achatado boiando a 160 px do chao nao le como mira, le como defeito.
 ///
 /// Quando a regra virou "todo filho visual sobe", ela passou a subir sozinha -- e junto levaria uma
 /// segunda quebra: o `Position = (0, 14)` que a poe AOS PES seria apagado pela escrita da subida.
@@ -42,10 +42,29 @@ public partial class MarcaDeAlvo : Node2D, IFicaNoChao, INaoSomeComOCorpo
 
 	private double _t;
 
+	/// <summary>
+	/// O PLANO DA MARCA, relativo ao corpo marcado: um degrau abaixo dele -- e ACIMA DO CHAO.
+	///
+	/// ============================ ELA ESTAVA DEBAIXO DO PISO ============================
+	/// Era -3, "atras de todo mundo". So que o chao de um mapa de arquivo e a camada `Chao` em -2 (`MapConverter`),
+	/// e a decoracao e o chao de um planeta gerado estao em -1: a marca era desenhada ANTES do tile e nunca
+	/// apareceu em lugar nenhum (dono, 2026-10-12: *"o efeito de target q fica em baixo do inimigo fica em baixo
+	/// do tile ou seja n aparece nunca, coloque o efeito do target em uma layer acima dos tiles"*).
+	///
+	/// -1 e o plano da <see cref="SombraDeVoo"/>, pelo mesmo raciocinio: acima do `Chao` pelo numero e acima da
+	/// decoracao pela ordem da arvore (os corpos vem depois do cenario), e ainda atras de todo corpo e de todo
+	/// objeto que ordena por Y (plano 0).
+	/// ====================================================================================
+	/// </summary>
+	public const int PlanoNoChao = -1;
+
+	/// <summary>DEFEITO INJETADO (bancada `--diagabas`): a marca volta ao plano -3, debaixo do piso. Falso em jogo, sempre.</summary>
+	public static bool DebaixoDoPisoDeTeste;
+
 	public override void _Ready()
 	{
-		// ATRAS do personagem: a marca e chao, e chao nao cobre ninguem
-		ZIndex = -3;
+		// ATRAS do personagem (a marca e chao, e chao nao cobre ninguem) e por cima do piso -- ver `PlanoNoChao`.
+		ZIndex = DebaixoDoPisoDeTeste ? -3 : PlanoNoChao;
 		Modulate = Tema.Destaque;
 	}
 

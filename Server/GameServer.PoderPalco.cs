@@ -21,7 +21,7 @@ public partial class GameServer
 
 	/// <summary>
 	/// DA O CONTROLE DE KI (Ki Unlocked + Basic Ki Control no nivel 5) pelas MESMAS quatro chamadas do verb de admin
-	/// `admin_liberar_ki` (`AdminLiberarKi`, `GameServer.Admin.cs`): os dois verbos chegam pelo degrau e a lista vai
+	/// `admin_liberar_ki` (`AdminLiberarKi`, `GameServer.Admin.cs`): o `Power_Control` chega pelo degrau e a lista vai
 	/// pro cliente pelo pacote de skills.
 	/// </summary>
 	public bool PalcoDoPoder_DarAPorta(int id)
@@ -33,13 +33,13 @@ public partial class GameServer
 		AplicarEfeitos(pl);
 		MandarSkills(pl, forcar: true);
 		MandarFicha(pl);
-		return SabeTecnica(pl, "Power_Control") && SabeTecnica(pl, "Conceal_Power");
+		return SabeTecnica(pl, PoderEmUso.VerboDoControle);
 	}
 
 	/// <summary>A verdade do servidor sobre o poder em uso deste corpo, ou nulo se ele nao existe.</summary>
-	public (int Porcento, bool Escondido, bool PorVontade, bool Relaxado, bool SabeBaixar)? PalcoDoPoder_Verdade(int id) =>
+	public (int Porcento, bool Escondido, bool Relaxado, bool SabeBaixar, double Expresso)? PalcoDoPoder_Verdade(int id) =>
 		_players.TryGetValue(id, out ServerPlayer? pl)
-			? (PoderEmUso.Porcento(pl.Ficha), pl.Ficha.isconcealed, _escondendoOPoder.Contains(id), PoderEmUso.Relaxado(pl.Ficha),
-			   SabeTecnica(pl, "Power_Control"))
+			? (PoderEmUso.Porcento(pl.Ficha), PoderEmUso.Escondido(pl.Ficha), PoderEmUso.Relaxado(pl.Ficha),
+			   SabeTecnica(pl, PoderEmUso.VerboDoControle), pl.Ficha.expressedBP)
 			: null;
 }

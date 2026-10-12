@@ -986,6 +986,23 @@ public sealed class ServerPlayer
 	public bool Estrangulando;
 
 	/// <summary>
+	/// O MEU PESCOCO ESTA SENDO APERTADO -- a copia, do lado de quem esta preso, do `Estrangulando` de quem
+	/// segura. Existe pra a FICHA (`SheetState.Estrangulado`): o `Sheet()` so enxerga o proprio corpo. Escrita
+	/// num lugar so (`GameServer.AcertarOAperto`) e apagada pelo `LimparPreso`, junto com o resto do aperto.
+	/// </summary>
+	public bool PescocoApertado;
+
+	/// <summary>
+	/// QUEM ME SEGURA ME PEGOU PELO RABO (dono, 2026-10-12). Decidido no instante da pegada (`Prender`: por
+	/// tras, de um corpo com rabo) e apagado pelo `LimparPreso`. Enquanto vale, o poder cai
+	/// (`Fighter.raboPresoMod`) e a luta pra escapar nao anda -- ver `Core/Combat/RaboPreso.cs`.
+	/// </summary>
+	public bool PresoPeloRabo;
+
+	/// <summary>Quanto da luta pra escapar ja andou, de 0 a 100 -- o que a ficha manda (`SheetState.Escape`).</summary>
+	public byte EscapeNaFicha;
+
+	/// <summary>
 	/// O `choke_cooldown` (`attack_bck.dm:47-48`, `spawn(5)` = 0,5 s) -- quando a tecla de golpe pode
 	/// voltar a alternar o afogamento.
 	///
@@ -994,6 +1011,13 @@ public sealed class ServerPlayer
 	/// estado vira ruido -- ninguem consegue saber se esta estrangulando ou nao.
 	/// </summary>
 	public long AfogamentoLivreEm;
+
+	/// <summary>
+	/// ATE QUANDO ESTE CORPO ANDA DEVAGAR POR ESTAR SOB UM RAIO (relogio do servidor, em ms). Escrito a cada batida
+	/// do raio em quem e mais forte que ele e nao estava defendendo (`GameServer.AndarDevagarSobORaio`); lido pelo
+	/// `RecalcularVelocidade`. E um PRAZO e nao um interruptor: parou de apanhar, ele vence sozinho.
+	/// </summary>
+	public long SobORaioAteMs;
 
 	/// <summary>
 	/// EU PEDI PRA ANDAR NESTE PACOTE DE INPUT, estando preso -- o `curdir` do bloco de escape.
@@ -1135,6 +1159,7 @@ public sealed class ServerPlayer
 	/// mesmo buraco que ja deixou a barra de Ki e o golpe letal parados na tela.
 	/// </summary>
 	public int EnvEstado2 = -1;
+	public int EnvEscape = -1;
 
 	/// <summary>Ultimo estagio de carga anunciado. So se avisa o jogador quando o estagio MUDA.</summary>
 	public Jandirus.Core.Combat.EstagioDaCarga EstagioDaCarga;
@@ -1660,7 +1685,8 @@ public sealed class ServerPlayer
 		// pro proprio cooldown e pra duracao da animacao de soco
 		// (dividida pelo ritmo da recarga: sem os dois bracos a espera dobra -- ver `CombatState.RitmoDaRecarga`)
 		SocoMs = (int)Math.Round(CombatMath.Cadencia(Ficha) / (Combate?.RitmoDaRecarga?.Invoke() ?? 1) * 1000),
-		MembrosRuins = (byte)Math.Min(255, Combate?.Corpo.Partes.Count(p => p.Decepado || p.Quebrado) ?? 0),
+		// (o membro PERDIDO DE VEZ nao e ferimento: o rabo que nao volta nao deixa o boneco "machucado" pra sempre)
+		MembrosRuins = (byte)Math.Min(255, Combate?.Corpo.Partes.Count(p => (p.Decepado && !p.Perdido) || p.Quebrado) ?? 0),
 		Estado = (byte)((Ficha.KO ? 1 : 0) | (Ficha.dead ? 2 : 0)
 						| (Combate?.Bloqueando == true ? 4 : 0) | (Combate?.Letal == true ? 8 : 0)
 						| (TemRaboAgora() ? 16 : 0)
@@ -1693,7 +1719,14 @@ public sealed class ServerPlayer
 		// corpo esta sendo dirigido pelo servidor (`Empurrado` ligado, e tem que estar), mas ele nao
 		// esta sendo ARREMESSADO -- e o desenho do arremesso deita o corpo 90 graus. Ver
 		// `SheetState.PuxadoNaFusao`.
-		Estado2 = (byte)((Nadando ? 1 : 0) | (PuxaoDeFusaoRestante > 0 ? 2 : 0)),
+		// ...E MAIS CINCO, de 2026-10-12, todos pelo mesmo motivo do nado: sao estado do CORPO que o dono dele
+		// precisa ler na propria tela (o aviso de atordoado e o do agarrao) ou obedecer no proprio passo (agarrado
+		// nao integra tecla: manda a intencao). Ver os cinco em `SheetState`.
+		Estado2 = (byte)((Nadando ? 1 : 0) | (PuxaoDeFusaoRestante > 0 ? 2 : 0)
+						 | (Combate?.Stun > 0 ? 4 : 0)
+						 | (AgarradoPorId != 0 ? 8 : 0) | (PresoPeloRabo ? 16 : 0) | (PescocoApertado ? 32 : 0)
+						 | (AgarrandoId != 0 ? 64 : 0)),
+		Escape = AgarradoPorId != 0 ? EscapeNaFicha : (byte)0,
 	};
 }
 
@@ -2902,6 +2935,10 @@ public partial class GameServer : Node
 			// `--arsenalteste`, pelos mesmos motivos. Ver `GameServer.G12Teste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--g12teste") >= 0) RodarBancadaG12();
 
+			// `--v020teste`: O PEDIDO DE 2026-10-12 (a versao 0.2.0) -- o agarrao que se debate, o estrangulamento,
+			// o rabo preso e o que nao volta, a mira no rabo, o passo. Mesma infraestrutura da `--g12teste`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--v020teste") >= 0) RodarBancadaDaV020();
+
 			// `--g11teste`: AS SKILLS QUE JA ESTAVAM NA ARVORE SEM EFEITO (lote G11). Mesma
 			// infraestrutura da `--arsenalteste` (corpos forjados na Terra, ninguem logado); a familia
 			// dos astros mexe no relogio do ceu e o devolve no fim. Ver `GameServer.G11Teste.cs`.
@@ -3627,10 +3664,10 @@ public partial class GameServer : Node
 		// etiquetados como se dependessem. Ver `GameServer.Tecnicas.G8.cs`.
 		RegistrarTecnicasG8();
 
-		// O LOTE DO SELO E DO SIGILO: Mafuba, Abrir a Dead Zone, Ocultar o Poder e Controle de
-		// Poder. Os dois primeiros so passaram a ser exigiveis quando o extrator parou de perder o
-		// `after_learn` deles; os dois ultimos fecham o lado de quem ESCONDE do sigilo de poder, que
-		// o port so tinha do lado de quem le. Ver `GameServer.Tecnicas.G9.cs`.
+		// O LOTE DO SELO E DO SIGILO: Mafuba, Abrir a Dead Zone e Controle de Poder. Os dois primeiros so
+		// passaram a ser exigiveis quando o extrator parou de perder o `after_learn` deles; o ultimo fecha o
+		// lado de quem ESCONDE do sigilo de poder, que o port so tinha do lado de quem le. (O Ocultar o Poder
+		// morou aqui ate 2026-10-12: hoje quem esconde e o relaxar.) Ver `GameServer.Tecnicas.G9.cs`.
 		RegistrarTecnicasG9();
 
 		// O LOTE DOS GOLPES MUDOS DO MOLDE DO G7: os cinco do assassino, os quatro do berserker, os
@@ -4177,6 +4214,12 @@ public partial class GameServer : Node
 		// caminho de sprite fora do catalogo -- isso e o cliente inventando arquivo.
 		string ajuste = _visual?.Sanear(visual, ficha.Race, ficha.Gender) ?? "";
 		if (ajuste.Length > 0) GD.Print($"[server] aparencia de {nome} ajustada: {ajuste}");
+
+		// NINGUEM NASCE DE ARMADURA: ela se fabrica (ou se rouba). O `Sanear` aceita as folhas de armadura porque e
+		// por ele que a roupa do NPC passa; a grade da criacao nao as oferece, e um cliente mexido que mandasse uma
+		// ganharia a protecao de graca (`ArmaduraDeTech`).
+		if (TirarArmaduraDaCriacao(visual) > 0)
+			GD.Print($"[server] aparencia de {nome} ajustada: armadura nao se escolhe na criacao");
 
 		// A COR DA AURA NAO SE ESCOLHE: ela e SORTEADA (`rand(0,255)` nos tres canais, como o
 		// `CharacterCreation.dm:25-27`), e o sorteio e do servidor. O que chega do cliente aqui e
@@ -5272,7 +5315,15 @@ public partial class GameServer : Node
 		// (0,1 s), e ele o apaga ao ler. Somar aqui daria ao preso mais progresso quanto MAIOR fosse
 		// a taxa de quadros do cliente dele.
 		// ============================================================================================================
-		if (pl.AgarradoPorId != 0 && moving) pl.DebatendoSe = true;
+		if (pl.AgarradoPorId != 0 && moving && !pl.Ficha.KO && !pl.Ficha.dead) pl.DebatendoSe = true;   // (caido ninguem se debate)
+
+		// ============================ QUEM SEGURA UM RAIO COM AS MAOS SAI DE LADO (dono, 2026-10-12) ============================
+		// O passo ATRAVESSADO ao raio fecha a disputa de guarda sem vencedor -- ver `SairDeLadoDaDisputa`
+		// (`GameServer.EmbateDeKi.cs`). **TAMBEM ANTES DO `PodeMexerOCorpo`**, pelo motivo da linha de cima: a disputa
+		// e uma das recusas daquela porta, e depois dela nao sobra pacote pra ler. Fechada a disputa, o pacote segue
+		// pela validacao de sempre; o passo AO LONGO do raio nao fecha nada e e recusado ali embaixo, como ate hoje.
+		// ======================================================================================================================
+		if (moving) SairDeLadoDaDisputa(pl, claimed);
 
 		// QUEM ESTA NO CHAO NAO ANDA -- e quem esta REUNINDO ENERGIA tambem nao.
 		//
@@ -5994,6 +6045,10 @@ public partial class GameServer : Node
 			// atrasado. Ver `ProjetarRaiva` (`GameServer.Formas.cs`).
 			ProjetarRaiva(pl);
 
+			// A ARMADURA NO CORPO, lida da roupa a cada tique: e o que faz vestir, tirar e ser despido caido valerem
+			// na hora, sem um "ligou e esqueceu de desligar" por porta. Ver `VesteArmadura`.
+			pl.Ficha.armadura = VesteArmadura(pl);
+
 			pl.Ficha.Tick(agoraMs: NowMs());
 
 			// A VELOCIDADE PASSOU A TER DOIS DONOS (o corpo e a nave) e por isso virou UM metodo --
@@ -6033,7 +6088,8 @@ public partial class GameServer : Node
 				&& pl.EnvBpBase == pl.Ficha.BP
 				&& pl.EnvTetoKi == Jandirus.Core.Combat.CargaDeKi.TetoEmRazao(pl.Ficha)
 				&& pl.EnvMaxKi == ficha.MaxKi && pl.EnvSpeed == ficha.SpeedStat && pl.EnvMembros == ficha.MembrosRuins
-				&& pl.EnvEstado == ficha.Estado && pl.EnvEstado2 == ficha.Estado2) continue;
+				&& pl.EnvEstado == ficha.Estado && pl.EnvEstado2 == ficha.Estado2
+				&& pl.EnvEscape == ficha.Escape) continue;
 
 			MandarFicha(pl);
 		}
@@ -6065,6 +6121,7 @@ public partial class GameServer : Node
 		SheetState enviada = pl.Sheet();
 		pl.EnvEstado = enviada.Estado;
 		pl.EnvEstado2 = enviada.Estado2;
+		pl.EnvEscape = enviada.Escape;
 		pl.EnvMaxKi = enviada.MaxKi;
 		pl.EnvSpeed = enviada.SpeedStat;
 		pl.EnvMembros = enviada.MembrosRuins;

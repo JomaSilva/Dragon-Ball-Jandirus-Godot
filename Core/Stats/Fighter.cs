@@ -502,6 +502,27 @@ public sealed partial class Fighter
 	public double expandBuff = 1, giantFormbuff = 1, ArtifactsBuff = 1, eyeBuff = 1;
 	public double BPBoost = 1;        // Ascensao
 	public double powerMod = 1;       // Controle de Poder (pode ser < 1)
+
+	/// <summary>
+	/// RELAXADO (regra do dono, 2026-10-12): o corpo soltou o proprio poder -- o expresso trava em 5, o Sense e o
+	/// scouter nao o acham, e o vigor volta o mais depressa que ha. Quem escreve e `PoderEmUso` (relaxar, ficar
+	/// pronto, a raiva e a carga que acordam); o login o apaga junto do `powerMod`
+	/// (`GameServer.AcordarComOPoderInteiro`).
+	/// </summary>
+	public bool relaxado;
+
+	/// <summary>
+	/// O RABO PRESO: quanto do poder expresso sobra enquanto alguem segura este corpo pelo rabo (1 = solto).
+	/// Escrito pelo servidor a cada tique do agarrao (`RaboPreso.FatorDePoder` da maestria) e devolvido a 1 quando
+	/// o aperto acaba e quando o personagem entra no jogo -- e estado de UM aperto, nao do personagem.
+	/// </summary>
+	public double raboPresoMod = 1;
+
+	/// <summary>
+	/// A MAESTRIA DO RABO, de 0 a 100: quanto este corpo ja aprendeu a aguentar o rabo preso. Sobe a cada pegada e
+	/// a cada segundo segurado; aos 100 e imune. Vai pro save com a ficha. Ver `Core/Combat/RaboPreso.cs`.
+	/// </summary>
+	public double maestriaDoRabo;
 	public double OozaruBuff = 1;
 
 	// =====================================================================
@@ -800,6 +821,20 @@ public sealed partial class Fighter
 
 	// --- peso ------------------------------------------------------------
 	public double Weighted = 0;        // quanto de peso o personagem esta vestindo
+
+	/// <summary>
+	/// O PESO MAXIMO DOS PESOS DE TREINO deste personagem, em kg -- o que ele ja PAGOU pra poder vestir (dono,
+	/// 2026-10-12). Zero = nunca melhorou: vale o de fabrica (`PesoDeTreino.KgDeFabrica`, 50 kg). Vai pro save com
+	/// a ficha. Ver `Core/Items/PesoDeTreino.cs`.
+	/// </summary>
+	public double pesoMaximoKg;
+
+	/// <summary>
+	/// ESTE CORPO VESTE UMA ARMADURA QUE O PROTEGE? Quem escreve e o servidor, a cada tique de ficha, olhando a roupa
+	/// do corpo (`GameServer.VesteArmadura`) -- e por isso ela nao e estado de verdade: o save a leva junto, e o
+	/// primeiro tique depois do login a reescreve. O que ela rende esta em `Core/Items/ArmaduraDeTech.cs`.
+	/// </summary>
+	public bool armadura;
 	public double weight_ratio = 0;
 	public double weight_cap_hw = 0;   // RECORDE do corpo: nunca cai (senao vira espiral)
 

@@ -118,6 +118,9 @@ public static class Nutricao
 			}
 		}
 
+		// QUEM SE CONTEM DESCANSA (dono, 2026-10-12): relaxado ou usando so parte do poder, o mesmo tanque de comida
+		// devolve mais vigor -- ver `PoderEmUso.FatorDeDescanso`.
+		vigor *= PoderEmUso.FatorDeDescanso(f);
 		f.stamina = Math.Min(f.stamina + vigor, f.maxstamina);
 		// ============================ NAO APARE QUEM JA ESTAVA ACIMA ============================
 		// Isto era `Math.Min(f.Ki + ki, f.MaxKi)`, e o `Min` nao limitava so o que a comida

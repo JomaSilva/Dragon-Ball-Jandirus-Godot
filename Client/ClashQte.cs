@@ -68,6 +68,22 @@ public partial class ClashQte : CanvasLayer
 	/// <summary>Qual dos embates esta na tela. So muda o que se ESCREVE -- ver o cabecalho.</summary>
 	private Protocol.TipoDeEmbate _tipo = Protocol.TipoDeEmbate.Velocidade;
 
+	/// <summary>A frase da dica como o embate a escreveu (a vantagem, ou o aviso da danca) -- sem o convite de baixo.</summary>
+	private string _fraseDaDica = "";
+
+	/// <summary>
+	/// A DICA JA TRAZ O CONVITE DE SAIR DE LADO? Ele entra quando o servidor manda o eixo do raio
+	/// (`GameClient.EixoDoRaioNasMaos`), que chega um pacote DEPOIS do `Comecou` -- por isso e conferido no quadro, e
+	/// escrito so na mudanca (um texto novo por quadro seria lixo pro coletor).
+	/// </summary>
+	private bool _dicaComSaida;
+
+	/// <summary>
+	/// O CONVITE (dono, 2026-10-12): quem segura um raio com as maos pode sair de lado sem baixar a guarda, e a tela e
+	/// o unico lugar que conta isso a quem esta olhando as letras.
+	/// </summary>
+	private const string ConviteDeSairDeLado = " -- ou ande de lado pra sair da frente";
+
 	/// <summary>
 	/// O PISCA DO VEREDITO: quanto falta do brilho, e se ele e verde (acertei) ou vermelho (errei).
 	///
@@ -377,9 +393,11 @@ public partial class ClashQte : CanvasLayer
 		// pergunta nem existe: os dois acertam juntos ou os dois saem estragados. Repetir a frase de
 		// vantagem faria o jogador procurar um adversario que nao ha -- e a barra do meio, que nos
 		// outros mede quem esta na frente, aqui so mostra que os dois estao no mesmo passo.
+		_dicaComSaida = false;   // embate novo: o convite de sair de lado, se couber, entra quando o eixo chegar
 		if (tipo == Protocol.TipoDeEmbate.Fusao)
 		{
-			_dica.Text = "os dois têm que acertar TODOS os passos -- um erro de qualquer um estraga a fusão";
+			_fraseDaDica = "os dois têm que acertar TODOS os passos -- um erro de qualquer um estraga a fusão";
+			EscreverADica();
 			_ligado = true;
 			_raiz.Visible = true;
 			_desfecho.Visible = false;
@@ -400,7 +418,8 @@ public partial class ClashQte : CanvasLayer
 		// NO EMBATE DE KI a frase e outra porque o que se disputa e outro: la o acerto e um PONTO e
 		// quem tiver mais vence; aqui ele e um EMPURRAO, e o que se empurra e o ponto de encontro --
 		// que esta caminhando pra cima de alguem enquanto o jogador le isto.
-		_dica.Text = FraseDaVantagem(tipo, meu, dele);
+		_fraseDaDica = FraseDaVantagem(tipo, meu, dele);
+		EscreverADica();
 
 		_ligado = true;
 		_raiz.Visible = true;
@@ -447,8 +466,12 @@ public partial class ClashQte : CanvasLayer
 	private void Poder(float meu, float dele)
 	{
 		if (!_ligado) return;
-		_dica.Text = "O PODER MUDOU -- " + FraseDaVantagem(_tipo, meu, dele);
+		_fraseDaDica = "O PODER MUDOU -- " + FraseDaVantagem(_tipo, meu, dele);
+		EscreverADica();
 	}
+
+	/// <summary>A dica na tela: a frase do embate e, pra quem segura um raio com as maos, o convite de sair de lado.</summary>
+	private void EscreverADica() => _dica.Text = _dicaComSaida ? _fraseDaDica + ConviteDeSairDeLado : _fraseDaDica;
 
 	private void Placar(float meus, float dele)
 	{
@@ -471,6 +494,13 @@ public partial class ClashQte : CanvasLayer
 		bool empate = venc == 0 && perd == 0;
 		bool ganhei = GameClient.Instance?.LocalId == venc;
 
+		// SAIU DE LADO (dono, 2026-10-12): sem vencedor, e com quem saiu no lugar do perdedor -- a terceira leitura
+		// do par, que so a disputa de guarda produz (`Protocol.ClashSub.Acabou`). Ninguem engoliu ninguem: quem
+		// segurava o raio com as maos saiu da frente dele, e o raio seguiu viagem. Sem este ramo a tela diria "O ATAQUE
+		// DELE TE ENGOLIU" aos dois.
+		bool saiuDeLado = venc == 0 && perd != 0;
+		bool saiEu = saiuDeLado && GameClient.Instance?.LocalId == perd;
+
 		// ============================ A DANCA LE OS DOIS CAMPOS DE OUTRO JEITO ============================
 		// Ela nao tem vencedor, entao o servidor reusa o par pra dizer o DESFECHO da coreografia: os
 		// dois campos com o meu id = saiu perfeita; os dois zerados (a mesma convencao do empate) =
@@ -481,13 +511,17 @@ public partial class ClashQte : CanvasLayer
 
 		_desfecho.Text = danca
 			? fusaoBoa ? "A FUSÃO SAI PERFEITA" : "A COREOGRAFIA FALHOU"
-			: empate
-				? "OS DOIS EXPLODEM"
-				: _tipo == Protocol.TipoDeEmbate.Velocidade
-					? ganhei ? "VOCE FOI MAIS RAPIDO" : "ELE FOI MAIS RAPIDO"
-					: ganhei ? "VOCE ENGOLIU O ATAQUE DELE" : "O ATAQUE DELE TE ENGOLIU";
+			: saiuDeLado
+				? saiEu ? "VOCE SAIU DA FRENTE" : "ELE SAIU DA FRENTE"
+				: empate
+					? "OS DOIS EXPLODEM"
+					: _tipo == Protocol.TipoDeEmbate.Velocidade
+						? ganhei ? "VOCE FOI MAIS RAPIDO" : "ELE FOI MAIS RAPIDO"
+						: ganhei ? "VOCE ENGOLIU O ATAQUE DELE" : "O ATAQUE DELE TE ENGOLIU";
+		// (a saida de lado nao e derrota de ninguem: dourado pra quem saiu, e a cor do texto comum pra quem ficou com o raio)
 		_desfecho.AddThemeColorOverride("font_color",
 			danca ? (fusaoBoa ? Tema.Destaque : Tema.Vida)
+				  : saiuDeLado ? (saiEu ? Tema.Destaque : Tema.Texto)
 				  : empate ? Tema.Destaque : ganhei ? Tema.Destaque : Tema.Vida);
 		_desfecho.Visible = true;
 		_desfechoResta = SegundosDeDesfecho;
@@ -503,6 +537,14 @@ public partial class ClashQte : CanvasLayer
 		_t += delta;
 		if (_baque > 0) _baque = Math.Max(0, _baque - delta);
 		if (_veredito > 0) _veredito = Math.Max(0, _veredito - delta);
+
+		// O CONVITE DE SAIR DE LADO entra (e sai) com a licenca que o servidor da -- ver `_dicaComSaida`.
+		bool comSaida = _ligado && GameClient.Instance?.EixoDoRaioNasMaos != null;
+		if (comSaida != _dicaComSaida)
+		{
+			_dicaComSaida = comSaida;
+			EscreverADica();
+		}
 
 		// A COR DO VEREDITO. Verde acertou, vermelho errou -- e ela desbota ate voltar ao normal,
 		// pra o brilho ser um PISCA e nao um estado. `_brilho` vai de 1 (no instante da tecla) a 0.

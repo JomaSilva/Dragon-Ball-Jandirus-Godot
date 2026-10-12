@@ -124,7 +124,12 @@ public sealed partial class GameServer
 			if (DirigidoPeloDono(pl)) Avisar(pl, DebuffsDeMembro.AvisoDeGuarda);
 			return;
 		}
+		bool antes = pl.Combate.Bloqueando;
 		pl.Combate.Guardar(erguer);
+		// A FICHA SAI NA HORA quando a guarda sobe ou desce: e por ela que o HUD escreve "GUARDA LEVANTADA"
+		// (`Hud.Avisos.cs`), e esperar o tique de 5 Hz deixaria o aviso ate 200 ms atras da tecla. So o corpo com
+		// alguem lendo: a IA pede a guarda todo tique, e ela nao tem tela.
+		if (pl.Combate.Bloqueando != antes && pl.Peer != null) MandarFicha(pl);
 	}
 
 	/// <summary>

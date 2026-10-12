@@ -1172,15 +1172,23 @@ public partial class GameServer
 			MarcarAgressao(b, parrudo);
 			b.Knockback = false;
 			bool pegouOCurioso = false, largou = false;
-			BwLutar(18, () =>
+			// (2026-10-12) SEM A PISCADA DA IA NESTA CENA: quem tem a After Image agora some e aparece nas COSTAS da
+			// presa (`PiscarPelaIa`), e o Bills que chega por tras do Parrudo nunca tem o Curioso na frente. O que se
+			// mede aqui e o que o bote faz quando pega o corpo errado -- e pra isso ele tem de chegar ANDANDO.
+			IaNaoPiscaDeTeste = true;
+			try
 			{
-				SemKi();
-				DePe(parrudo);
-				pegouOCurioso |= curioso.AgarradoPorId == b.Id;
-				largou |= pegouOCurioso && curioso.AgarradoPorId == 0;
-				return largou;
-			});
-			BwLutar(1, () => { SemKi(); return false; });
+				BwLutar(18, () =>
+				{
+					SemKi();
+					DePe(parrudo);
+					pegouOCurioso |= curioso.AgarradoPorId == b.Id;
+					largou |= pegouOCurioso && curioso.AgarradoPorId == 0;
+					return largou;
+				});
+				BwLutar(1, () => { SemKi(); return false; });
+			}
+			finally { IaNaoPiscaDeTeste = false; }
 			AfirmarBw("...e o peteleco e SO de quem ele enfrenta: se o bote pega OUTRO corpo que estava na frente (um curioso que nunca bateu nele), ele o LARGA pelo proprio verb -- sem peteleco, sem arremesso e sem ferida",
 					  pegouOCurioso && largou && curioso.TiquesIniciaisDoVoo == 0 && curioso.Ficha.HP >= 99.9 && !Disse(avisos, "PETELECO") && !_desafiantesNaTerra.Contains(curioso.Id),
 					  $"pegou={pegouOCurioso}, largou={largou}, voo armado {curioso.TiquesIniciaisDoVoo}, HP {curioso.Ficha.HP:0.0} | {Ultimos(avisos.Where(t => t.Contains("PETELECO") || t.Contains("solta") || t.Contains("levanta")).ToList())}");
@@ -2509,7 +2517,8 @@ public partial class GameServer
 		GD.Print("[bills] ---- 10) o desafio pelo titulo");
 		if (_bills.Corpo is not { } b || _whis.Corpo is not { } w) { AfirmarBw("(montagem) os dois estao em casa", false); return; }
 
-		string traje = new RoupaGuardada(BillsEWhis.Traje, null).Id;
+		// (a folha do traje mora na pasta de armaduras: desde 2026-10-12 o id dela na mochila e o de armadura)
+		string traje = new RoupaGuardada(BillsEWhis.Traje, null, Armadura: true).Id;
 		AfirmarBw("o TRAJE existe como item de mochila (a folha esta no catalogo, fora da grade de roupas da criacao)",
 				  CatalogoDeItens.Get(traje) != null && _visual != null && _visual.Armaduras.Contains(_visual.Peca(BillsEWhis.Traje) ?? "")
 				  && !_visual.Roupas.Contains(_visual.Peca(BillsEWhis.Traje) ?? ""), $"{_visual?.Peca(BillsEWhis.Traje)}");
@@ -2636,6 +2645,20 @@ public partial class GameServer
 					  bool vestiu = pl.Visual.Roupa.Any(r => r.Caminho == _visual?.Peca(BillsEWhis.Traje));
 					  if (vestiu) ComandoDeItem(pl, "item_" + RoupaGuardada.AcaoTirar, traje);
 					  return vestiu && pl.Mochila.Quantos(traje) == 1;
+				  }))());
+		// (quem recebeu o traje ANTES do prefixo de armadura o tem com o id de roupa comum)
+		string trajeAntigo = new RoupaGuardada(BillsEWhis.Traje, null).Id;
+		AfirmarBw("o traje ANTIGO (o id de roupa comum, de antes de 2026-10-12) continua vestivel -- e ao sair do corpo volta com o id de hoje, o MESMO do que se entrega agora",
+				  ((Func<bool>)(() =>
+				  {
+					  pl.Visual.Roupa.Clear();
+					  pl.Mochila.Guardar(trajeAntigo);
+					  ComandoDeItem(pl, "item_" + RoupaGuardada.AcaoVestir, trajeAntigo);
+					  bool vestiu = pl.Visual.Roupa.Any(r => r.Caminho == _visual?.Peca(BillsEWhis.Traje)) && pl.Mochila.Quantos(trajeAntigo) == 0;
+					  ComandoDeItem(pl, "item_" + RoupaGuardada.AcaoTirar, traje);
+					  bool voltou = pl.Visual.Roupa.Count == 0 && pl.Mochila.Quantos(traje) == 2;
+					  pl.Mochila.Tirar(traje, 1);
+					  return vestiu && voltou && pl.Mochila.Quantos(traje) == 1;
 				  }))());
 
 		AfirmarBw("o Bills ainda esta la, se despedindo (o trono ja tem dono, mas ninguem some no meio da frase)",

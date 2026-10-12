@@ -148,9 +148,13 @@ public partial class GameServer
 		GD.Print($"[server] telepatia: {pl.Name} -> {alvo.Name}");
 	}
 
-	/// <summary>Os tres testes de `Communication.dm:53`, num lugar so.</summary>
+	/// <summary>
+	/// Os tres testes de `Communication.dm:53`, num lugar so. O piso dos 5 e medido SEM a barra de poder (regra do
+	/// dono de 2026-10-12, <see cref="TemEnergiaQueSeSente"/>): quem se segura continua achavel; quem RELAXA expressa
+	/// a constante 5 e some por ele.
+	/// </summary>
 	private static bool AchoAEnergiaG4(ServerPlayer m) =>
-		!m.Ficha.isconcealed && m.Race != "Android" && m.Ficha.expressedBP > 5;
+		!m.Ficha.isconcealed && m.Race != "Android" && TemEnergiaQueSeSente(m);
 
 	private void ListarMentesG4(ServerPlayer pl)
 	{

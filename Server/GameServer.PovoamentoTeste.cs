@@ -745,7 +745,14 @@ public partial class GameServer
 			return n;
 		}
 
-		ServerPlayer? cidadao = Por("cidadao", doze, 950_001);
+		// O HABITANTE DESTA MEDIDA E O DE SOCO. Desde 2026-10-12 um habitante pode nascer com um tiro (os talentos do
+		// molde, `MoldeDeNpc.Talentos`), e quem atira de longe NAO fecha a distancia: planta o pe e conjura -- como o
+		// chefe ao lado, que por isso reprova o "fecha a distancia" desde que aprendeu a atirar. O que esta secao mede
+		// e a reacao do habitante provocado e o passeio da vida diaria; os talentos sao medidos na `--v020teste` (16).
+		SorteioDeNpc.TalentosDesligadosDeTeste = true;
+		ServerPlayer? cidadao;
+		try { cidadao = Por("cidadao", doze, 950_001); }
+		finally { SorteioDeNpc.TalentosDesligadosDeTeste = false; }
 		ServerPlayer? chefe = Por("guardiao_saiyajin", -doze, 950_002);
 		if (cidadao == null || chefe == null)
 		{

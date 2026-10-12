@@ -84,6 +84,44 @@ public static class MoveRules
 	public const float EspeedBase = 2f;
 	public static float SpeedStatFrom(double espeed) => (float)Math.Max(espeed / EspeedBase, 0.1);
 
+	// =====================================================================
+	// O PASSO NA TELA (dono, 2026-10-12: "mesmo mt pesado e lento a animaçao de andar ainda deveria acontecer")
+	// =====================================================================
+	/// <summary>
+	/// QUE FRACAO DE UM PASSO CHEIO JA CONTA COMO "SAIU DO LUGAR". Empurrando uma parede o corpo nao sai nada
+	/// (zero), e andando ele faz o passo inteiro: 5% separa os dois com folga em qualquer taxa de quadros.
+	/// </summary>
+	public const float FracaoQueContaComoPasso = 0.05f;
+
+	/// <summary>DEFEITO INJETADO (bancada `--v020teste`): volta o corte FIXO de um decimo de pixel por quadro. Falso em jogo, sempre.</summary>
+	public static bool PassoPorPixelFixoDeTeste;
+
+	/// <summary>
+	/// O CORPO SAIU DO LUGAR NESTE QUADRO? Medido contra o passo que ELE daria neste quadro, e nao contra um
+	/// numero fixo de pixels.
+	///
+	/// O corte era `deslocamento² > 0,01` -- um decimo de pixel por quadro. Um corpo no piso da velocidade
+	/// (`SpeedStatFrom` nao desce de 0,1: 16 px/s) anda 0,11 px por quadro a 144 fps e 0,07 a 240: abaixo do
+	/// corte. O corpo andava e a pose dizia "parado" -- quem treina com peso deslizava pelo mapa.
+	/// </summary>
+	public static bool SaiuDoLugar(Vec2 antes, Vec2 depois, float dtSeconds, float speedStat, bool correndo)
+	{
+		float andou2 = (depois - antes).LengthSquared;
+		if (PassoPorPixelFixoDeTeste) return andou2 > 0.01f;
+		float corte = SpeedPx(speedStat, correndo) * Math.Max(dtSeconds, 0f) * FracaoQueContaComoPasso;
+		return andou2 > corte * corte && andou2 > 0f;
+	}
+
+	/// <summary>O piso do ritmo do passo: por mais pesado que o corpo esteja, a perna nao para.</summary>
+	public const float RitmoMinimoDoPasso = 0.35f;
+
+	/// <summary>
+	/// O RITMO DA ANIMACAO DE ANDAR, em razao do normal: quem anda na velocidade de base (ou acima) da o passo da
+	/// folha; quem anda mais devagar -- peso, gravidade, perna ferida -- da o passo mais devagar, na mesma
+	/// proporcao, ate o piso. Acima de 1 nao acelera: quem acelera o passo e a CORRIDA (`MultiplicadorCorrida`).
+	/// </summary>
+	public static float RitmoDoPasso(float speedStat) => Math.Clamp(speedStat <= 0 ? 1f : speedStat, RitmoMinimoDoPasso, 1f);
+
 	/// <summary>Passo do movimento livre, IGNORANDO parede. <paramref name="dir"/> nao precisa vir normalizado.</summary>
 	public static Vec2 Integrate(Vec2 pos, Vec2 dir, float dtSeconds, float speedStat)
 	{

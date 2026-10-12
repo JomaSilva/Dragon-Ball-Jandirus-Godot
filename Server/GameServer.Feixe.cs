@@ -85,8 +85,8 @@ public sealed partial class GameServer
 		{
 			if (o.Id == p.Dono || o.Combate == null || o.Combate.Intocavel) continue;
 			if (o.Id == p.Arrastando) continue;
-			// quem desviou nao corta o trecho que ele mesmo desviou (a dobra fica colada nele) -- `Projetil.Desviador`
-			if (p.Desviador != 0 && o.Id == p.Desviador && !Feixe.RamoPegaQuemDesviouDeTeste) continue;
+			// quem defletiu nao corta o raio que ele mesmo defletiu (a cauda nasce colada nele) -- `Projetil.Desviador`
+			if (p.Desviador != 0 && o.Id == p.Desviador) continue;
 			// quem raspou neste feixe saiu da linha dele: o tronco passa sem ser cortado (no DM o corpo esta um tile
 			// ao lado, e so corta se voltar a pisar nele) -- `Projetil.ForaDaLinha`
 			if (p.EstaForaDaLinha(o.Id)) continue;
@@ -110,8 +110,9 @@ public sealed partial class GameServer
 	///
 	///   * A PARTE DE LA (do outro lado do corpo ate a cabeca velha) vira OUTRO feixe, solto -- ninguem
 	///     a alimenta, ela voa com o comprimento que tem (o ramo "solto e voando" do rastro) e carrega
-	///     tudo o que a cabeca velha ja era: quem ela estava moendo ou levando, a disputa que ja teve,
-	///     o alcance que lhe sobrava. No DM os segmentos da frente simplesmente continuam andando.
+	///     tudo o que a cabeca velha ja era: quem ela estava moendo ou levando (e em que passo o levava),
+	///     a disputa que ja teve, o alcance que lhe sobrava. No DM os segmentos da frente simplesmente
+	///     continuam andando.
 	///   * A PARTE DE CA (a cauda ate o corte) fica sendo ESTE objeto, porque e nele que o canal do
 	///     dono (`CanalDeKi.Raio`) e o rastro alimentado pela mao apontam: a cabeca nova nasce na
 	///     frente de quem encostou, e o `Acertar` roda nela no mesmo instante -- e o `Bump` que a
@@ -160,6 +161,11 @@ public sealed partial class GameServer
 				// estar parado justamente nela (copia, e nao a mesma lista: cada parte esquece por conta propria)
 				ForaDaLinha = p.ForaDaLinha == null ? null : [.. p.ForaDaLinha],
 			};
+			// (2026-10-12) QUEM ELA LEVA VAI NO MESMO PASSO: o fator do arrasto e do par (tiro, corpo), escrito pelo
+			// `Acertar` na cabeca velha, e vai junto com o corpo. Sem ele a parte de la nascia com o padrao (1, a
+			// velocidade do feixe) e o levado disparava ate a batida seguinte reescreve-lo -- medido: 21,3 px por
+			// tique num arrasto de 12,8.
+			if (!CortePerdeOFatorDoArrastoDeTeste) deLa.FatorDoArrasto = p.FatorDoArrasto;
 			lista.Add(deLa);
 			_projeteisVivos++;
 			AnunciarProjetil(zona, Protocol.ProjetilSub.Nasceu, deLa);
@@ -182,6 +188,14 @@ public sealed partial class GameServer
 
 		Acertar(p, alvo);
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--projetilteste`, familia 12): a parte de la de um corte volta a nascer sem o fator
+	/// do arrasto da cabeca velha -- o arrasto como saiu na v0.2.0 (2026-10-12), em que quem ela levava disparava na
+	/// velocidade do feixe ate a batida seguinte. Lido pela propria linha do conserto (<see cref="Cortar"/>). Falso em
+	/// jogo, sempre.
+	/// </summary>
+	internal bool CortePerdeOFatorDoArrastoDeTeste;
 
 	/// <summary>
 	/// O `Cortou` no fio: onde a cabeca da parte de ca esta agora e onde a cauda da parte de la

@@ -25,7 +25,8 @@ namespace Jandirus.Server;
 ///
 /// ============================ O QUE ELA AFIRMA ============================
 ///  1. OS TRES TIPOS voam do jeito que cada um promete -- a bola reto, o teleguiado atras de um alvo
-///     que FOGE, e o raio saindo de uma carga com rastro que cresce e depois se esvazia.
+///     que FOGE, e o raio saindo de uma carga com rastro que cresce, voa inteiro e ESTOURA no fim do
+///     alcance (o rastro engolido ficou pro raio que para numa parede).
 ///  2. QUEM VALIDA E O SERVIDOR: o alvo perde vida, entra em combate e ganha pericia de defesa de
 ///     ki, tudo por chamada de producao -- e a cadeia de dano de ki e a de KI (`Ekidef` ao
 ///     quadrado), nao a do soco.
@@ -38,12 +39,23 @@ namespace Jandirus.Server;
 ///  7. O RAIO ARA O CHAO por onde passa -- lido nos BYTES que sairiam pro cliente, com os quatro
 ///     contra-exemplos que importam (a bola, o disparo do alto, o vacuo e a agua, que ganha ONDA e
 ///     nao sulco) e o custo disso medido.
-///  8. O RAIO LEVA QUEM ACERTA, na velocidade DELE -- com o muro, a agua, a queima-roupa, o boneco
-///     largado e a disputa de ki como contra-exemplos.
+///  8. O RAIO LEVA QUEM E MAIS FRACO QUE ELE, na velocidade que a diferenca de forca da, ate o fim do
+///     alcance -- onde estoura. Com o igual (que fica), o muro, a agua, a queima-roupa, o boneco
+///     largado, a disputa de ki e quem cresce no meio do caminho (que e solto) como contra-exemplos.
 ///  9. E ELA SABE REPROVAR (familia 10): cinco defeitos plantados no rastro medido, cada um obrigado
 ///     a deixar VERMELHA a regra que leva o nome dele, mais duas injecoes no estado de PRODUCAO do
 ///     arrasto. Sem esta familia, as oito de cima sao afirmacoes sobre si mesmas.
 /// =========================================================================
+///
+/// ============================ O IMPACTO E O DA ESCADA (dono, 2026-10-12) ============================
+/// O que um tiro faz ao corpo que acerta e a regra do `KiContraCorpo`: quem e mais fraco que o tiro e
+/// levado, quem tem de uma a quatro vezes o poder dele apanha e fica, quem tem quatro vezes ou mais e
+/// parede, defletir pede o dobro, e todo raio estoura no fim do alcance. Os corpos de cada cena dizem
+/// em que degrau ela esta (<see cref="BpDoFeixeDaEscada"/> e vizinhos). O jogo de antes -- o corte por
+/// dano, o empurrao de perto, o arrasto de dez tiles, o raio que se apagava -- so aparece aqui como
+/// CONTRA-EXEMPLO, com o `KiContraCorpo.RegraDeAntesDeTeste` ligado dentro de um `try/finally` na
+/// propria cena.
+/// ====================================================================================================
 /// </summary>
 public partial class GameServer
 {
@@ -54,6 +66,29 @@ public partial class GameServer
 	private static readonly ZoneKey ZonaDaBancadaDeProjetil = new(ZoneKey.KindPremade, "Earth");
 
 	private int _pjOk, _pjFalhou, _pjCorpos;
+
+	// =====================================================================
+	// OS CORPOS DA ESCADA (`KiContraCorpo`, dono 2026-10-12)
+	// =====================================================================
+	/// <summary>
+	/// O PODER DE QUEM ATIRA nas cenas de impacto -- e, com ele, o do tiro (`Projetil.Bp` e o poder expresso de
+	/// quem atirou, congelado no disparo). Os outros corpos dessas cenas se escrevem EM RELACAO a ele, que e como
+	/// a escada os le: a razao `poder do corpo / poder do tiro`.
+	/// </summary>
+	private const double BpDoFeixeDaEscada = 200_000;
+
+	/// <summary>
+	/// O MAIS FRACO: metade do poder do tiro. E quem o raio LEVA -- e a metade deixa o fator do arrasto
+	/// (`KiContraCorpo.FatorDoArrasto`: 0,6) longe das duas pontas, pra a medida de velocidade separar "na do
+	/// feixe" de "na do arrasto".
+	/// </summary>
+	private const double BpDoMaisFracoDaEscada = BpDoFeixeDaEscada / 2;
+
+	/// <summary>O IGUAL (razao 1): apanha e FICA -- o primeiro degrau de quem nao e levado.</summary>
+	private const double BpDoIgualDaEscada = BpDoFeixeDaEscada;
+
+	/// <summary>A PAREDE: cinco vezes o poder do tiro (o degrau comeca em `KiContraCorpo.VezesDaParede`, quatro).</summary>
+	private const double BpDaParedeDaEscada = BpDoFeixeDaEscada * 5;
 
 	/// <summary>
 	/// O MAPA DA ZONA DA BANCADA, lido uma vez. Ele NAO e enfeite: a Terra e um planeta com pedras,
@@ -145,6 +180,9 @@ public partial class GameServer
 		// familias dependem de saber onde ha chao livre.
 		AfirmarPj("a zona da bancada tem colisao carregada", _pjMapa != null);
 
+		// (O `KiContraCorpo.RegraDeAntesDeTeste` NAO e ligado aqui: ate 2026-10-12 esta bancada rodava inteira com
+		//  ele, medindo o jogo de antes. Cada familia mede hoje a escada, e o botao so sobe dentro do contra-exemplo
+		//  que o nomeia -- ver o cabecalho da classe.)
 		try
 		{
 			ABolaVoaReto();
@@ -165,7 +203,7 @@ public partial class GameServer
 			ApanharDerrubaORaio();
 			AFaiscaEstouraNaCabeca();
 			UmEncontroUmSorteio();
-			OCorteDosFracos();
+			AParedeNaoSenteOTiro();
 			ABancadaSeCobra();
 		}
 		finally
@@ -173,6 +211,9 @@ public partial class GameServer
 			LimparTudoDaBancada();
 		}
 
+		// QUANTO CHAO A BANCADA GASTOU. Cada cena pede uma faixa nova do mapa (`CorredorLivre` pula tres linhas por
+		// pedido) e a varredura acaba na linha 250: quem acrescentar cena le aqui quanto sobra antes de pedir.
+		GD.Print($"[projetil]      (chao) os corredores desta rodada foram ate a linha {_pjProximoCorredor} do mapa (a varredura vai ate a 250)");
 		GD.Print($"[projetil] ================ {_pjOk} passaram, {_pjFalhou} falharam ================");
 	}
 
@@ -196,12 +237,12 @@ public partial class GameServer
 		atirador.Facing = Facing.East;
 
 		// `Deflectivel = false` PELO MESMO MOTIVO DO `RaioDaBancada`: esta familia mede "a bola anda,
-		// encosta e machuca", e o `Acertar` sorteia deflexao em todo impacto que passa do corte dos fracos
-		// (`DanoDeKi.CorteDoFraco`) contra quem esta de pe. Com o par desta bancada -- atirador 5.000, vitima 500,
-		// `base_damage` 1 -- a chance MEDIDA e 0,0999% por impacto: uma rodada em mil terminaria com
-		// `fim = Defletido` (ou, no raspao, `Apagou`) sem nada errado no jogo. E o defeito que a bancada da
-		// tecnica customizada pegou em 2026-09-02, e ele mora aqui igual. (Ate 2026-10-08 o raspao ainda
-		// fazia o laco de sub-passos sortear de novo dentro do raio -- ver a familia 15, que mede o dado.)
+		// encosta e machuca", e o `Acertar` sorteia o RASPAO em todo impacto contra quem esta de pe e nao e
+		// parede pro tiro (a deflexao cheia nem entra neste par: ela pede o dobro do poder do tiro,
+		// `KiContraCorpo.PodeDefletir`, e a vitima tem um decimo). Com atirador 5.000, vitima 500 e
+		// `base_damage` 1 a chance MEDIDA e 0,0999% por impacto, e o raspao e a metade dela: uma rodada em
+		// duas mil terminaria com `fim = Apagou` sem nada errado no jogo. E o defeito que a bancada da
+		// tecnica customizada pegou em 2026-09-02, e ele mora aqui igual. (Quem mede o dado e a familia 15.)
 		Projetil p = Disparar(atirador, new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Blast, BaseDano = 1, Velocidade = 1, AlcanceTiles = 20,
@@ -422,11 +463,11 @@ public partial class GameServer
 		double vidaAntes = colada.Combate.Corpo.Vida();
 
 		// `Deflectivel = false` NAS DUAS RECEITAS DESTE PAR, e nas duas pela mesma razao do
-		// `RaioDaBancada`: o que se mede e a COLISAO, e a deflexao e um sorteio que come o tiro antes
-		// de ele virar dano (`GameServer.Projeteis.cs:1190-1240`). Aqui ela e rara -- 0,001% por
-		// impacto com 500.000 contra 500 -- mas rara e o intervalo em que este tipo de defeito mora, e
-		// o controle logo abaixo PRECISA nascer nas mesmas condicoes do tiro que ele controla: se so um
-		// dos dois tivesse o dado ligado, a dupla deixaria de comparar a mesma coisa.
+		// `RaioDaBancada`: o que se mede e a COLISAO, e o raspao e um sorteio que acaba com o tiro antes
+		// de ele virar dano (o passo 3 do `Acertar`). Aqui ele e raro -- a chance da conta e 0,001% por
+		// impacto com 500.000 contra 500, e o raspao e a metade dela -- mas raro e o intervalo em que este
+		// tipo de defeito mora, e o controle logo abaixo PRECISA nascer nas mesmas condicoes do tiro que
+		// ele controla: se so um dos dois tivesse o dado ligado, a dupla deixaria de comparar a mesma coisa.
 		Projetil tiro = Disparar(atirador, new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Blast, BaseDano = 1, Velocidade = 1, AlcanceTiles = 6,
@@ -489,9 +530,10 @@ public partial class GameServer
 		presa.Altitude = noAr;
 
 		// `Deflectivel = false` NOS DOIS TIROS DESTA FAMILIA (aqui e no controle la embaixo), pela razao
-		// do `RaioDaBancada`: o que se mede e a CURVA, e um sorteio de deflexao no fim da perseguicao
-		// (`GameServer.Projeteis.cs:1190-1240`) trocaria `Acertou` por `Defletido` sem o teleguiado ter
-		// errado nada. Com 5.000 contra 5.000 e `base_damage` 15 a chance e 0,0044% por impacto -- e o
+		// do `RaioDaBancada`: o que se mede e a CURVA, e um raspao sorteado no fim da perseguicao (o passo 3
+		// do `Acertar`) trocaria `Acertou` por `Apagou` sem o teleguiado ter errado nada. Entre iguais a
+		// deflexao cheia nao sai (ela pede o dobro do poder do tiro), mas o raspao sai: com 5.000 contra
+		// 5.000 e `base_damage` 15 a chance da conta e 0,0044% por impacto, e ele e a metade dela -- e o
 		// controle depende de nascer nas MESMAS condicoes, senao "so o TIPO muda" deixa de ser verdade.
 		Projetil p = Disparar(atirador, new ReceitaDeProjetil
 		{
@@ -541,12 +583,13 @@ public partial class GameServer
 	// 3) O RAIO
 	// =====================================================================
 	/// <summary>
-	/// BEAM: carrega, sai, o rastro CRESCE enquanto o dono segura, e quando ele solta o rastro se
-	/// ESVAZIA em vez de sumir de uma vez -- que e o trem de segmentos do DM visto de longe.
+	/// BEAM: carrega, sai, o rastro CRESCE enquanto o dono segura, e quando ele solta o raio voa INTEIRO --
+	/// o trem de segmentos do DM visto de longe -- ate o fim do alcance, onde ESTOURA (dono, 2026-10-12). O
+	/// rastro engolido pra dentro do ponto de parada ficou pro raio que PARA sem estourar: o que bate numa parede.
 	/// </summary>
 	private void ORaioCarregaCanalizaEDesfaz()
 	{
-		GD.Print("[projetil] -- 3) O RAIO: CARGA, CANAL E O RASTRO QUE SE ESVAZIA");
+		GD.Print("[projetil] -- 3) O RAIO: CARGA, CANAL, O VOO INTEIRO E O ESTOURO NO FIM DO ALCANCE");
 
 		Vec2 raia = CorredorLivre(28);
 		ServerPlayer pl = Forjar("Raiador", raia, bp: 50_000);
@@ -554,9 +597,11 @@ public partial class GameServer
 		pl.Ficha.Ki = pl.Ficha.MaxKi;
 
 		double kiAntes = pl.Ficha.Ki;
+		// O ALCANCE CABE NO CORREDOR (24 tiles mais a boca do cano, em 28): o raio desta familia tem que chegar ao FIM
+		// DELE, e nao numa pedra -- o que ele faz ao parar em cenario e outra regra, medida mais abaixo.
 		var receita = new ReceitaDeProjetil
 		{
-			Tipo = TipoDeProjetil.Beam, BaseDano = 1, Velocidade = 1, AlcanceTiles = 30,
+			Tipo = TipoDeProjetil.Beam, BaseDano = 1, Velocidade = 1, AlcanceTiles = 24,
 			CargaMinima = 1, Nome = "Onda de Ki",
 		};
 		Canalizar(pl, "Ki_Wave", 10 * pl.Ficha.BaseDrain(), receita);
@@ -602,7 +647,7 @@ public partial class GameServer
 				  (raio.Cauda - BocaDeCano.De(pl.Pos, raio.Rumo)).Length < 1f,
 				  $"cauda {raio.Cauda}, corpo {pl.Pos}");
 
-		// SOLTOU. A cabeca segue, a cauda corre atras, e o raio morre quando ela alcanca.
+		// SOLTOU. A cabeca segue e a cauda vai atras, na mesma velocidade.
 		SoltarCanal(pl, "Ki_Wave");
 		AfirmarPj("soltar fecha o canal", !_canais.ContainsKey(pl.Id));
 		AfirmarPj("...mas o raio que ja saiu CONTINUA no ar", raio.Vivo && !raio.Canalizando);
@@ -610,8 +655,8 @@ public partial class GameServer
 		// ============================ O RASTRO NAO ENCOLHE NO AR ============================
 		// Esta afirmacao ja foi o CONTRARIO, e estava errada. No DM o beam e um trem de segmentos que
 		// andam todos na mesma velocidade: solto, ele voa INTEIRO, com comprimento constante. O que
-		// esvazia o rastro e a cabeca PARAR -- ela e o segmento mais velho e a primeira a esgotar o
-		// alcance, e dali cada segmento de tras alcanca o ponto onde o da frente se apagou.
+		// esvazia o rastro e a cabeca PARAR -- e dali cada segmento de tras alcanca o ponto onde o da
+		// frente se apagou.
 		//
 		// A bancada pegou a versao errada (a cauda corria atras da cabeca na mesma velocidade, o que
 		// deixa a distancia eternamente igual) porque mediu duas vezes e comparou. Ver
@@ -623,21 +668,29 @@ public partial class GameServer
 				  Math.Abs(raio.Comprimento - rastro3) < 2f,
 				  $"{rastro3:0} px -> {raio.Comprimento:0} px");
 
-		// AGORA A CABECA PARA (o alcance acaba) e o rabo e engolido pra dentro do ponto de parada.
-		Vec2 ondeParou = default;
+		// ============================ O ALCANCE ACABA -- E O RAIO ESTOURA (dono, 2026-10-12) ============================
+		// *"todo ataque de ki como esfera grande e beam explodem ao chegarem na distancia Maxima, acertando ou nao o
+		// inimigo"*. O estouro e o fim do ataque INTEIRO, na hora (`ExplodirNoFimDoAlcance`): a fita some junto com o
+		// clarao, sem a cabeca parar pra o rastro ser engolido -- era assim que este raio acabava ate aquele dia, e e
+		// o contra-exemplo do fim desta familia.
+		// ==================================================================================================================
+		int explosoes = ExplosoesDoFimDoAlcanceDeTeste, crateras = CraterasDeExplosaoDeTeste;
 		bool viuEsvaziar = false;
 		for (int i = 0; i < 900 && raio.Vivo; i++)
 		{
 			TickDosProjeteis(Protocol.TickSeconds);
-			if (!raio.Esvaziando || viuEsvaziar) continue;
-			viuEsvaziar = true;
-			ondeParou = raio.Pos;
+			viuEsvaziar |= raio.Esvaziando;
 		}
-		AfirmarPj("...a cabeca PARA quando o alcance acaba e o rastro comeca a ser engolido", viuEsvaziar);
-		AfirmarPj("...ate o raio se apagar sozinho", !raio.Vivo, $"fim = {raio.Fim}");
-		AfirmarPj("...e a cauda terminou EM CIMA do ponto onde a cabeca parou",
-				  viuEsvaziar && (raio.Cauda - ondeParou).Length < ZoneCollision.TileSize,
-				  $"cauda {raio.Cauda}, parou em {ondeParou}");
+		AfirmarPj("no FIM DO ALCANCE o raio ESTOURA, sem ter encontrado ninguem (`FimDeProjetil.Explodiu`)",
+				  !raio.Vivo && raio.Fim == FimDeProjetil.Explodiu && ExplosoesDoFimDoAlcanceDeTeste == explosoes + 1,
+				  $"vivo {raio.Vivo}, fim = {raio.Fim}, explosoes +{ExplosoesDoFimDoAlcanceDeTeste - explosoes}");
+		AfirmarPj("...com o alcance da receita andado, e nao antes (ele nao parou em cenario)",
+				  raio.AndouTiles >= raio.MaxDistancia && raio.AndouTiles < raio.MaxDistancia + 1,
+				  $"andou {raio.AndouTiles:0.00} de {raio.MaxDistancia:0} tiles");
+		AfirmarPj("...DE UMA VEZ: a cabeca nao para pra o rastro ser engolido -- o estouro e o fim do ataque inteiro",
+				  !viuEsvaziar);
+		AfirmarPj("...e o chao ganha a cratera GRANDE da explosao (o raio era rasteiro, e a Terra tem chao)",
+				  CraterasDeExplosaoDeTeste == crateras + 1, $"crateras +{CraterasDeExplosaoDeTeste - crateras}");
 
 		// O CANAL CAI SEM KI, e nao fica cobrando de um tanque vazio.
 		ServerPlayer seco = Forjar("Seco", CorredorLivre(8), bp: 50_000);
@@ -650,6 +703,95 @@ public partial class GameServer
 			TickDosProjeteis(Protocol.TickSeconds);
 		}
 		AfirmarPj("o raio morre na mao de quem fica sem Ki", !_canais.ContainsKey(seco.Id));
+
+		ORastroEngolidoEDeQuemPara(raia, receita);
+	}
+
+	/// <summary>
+	/// O RASTRO ENGOLIDO -- o trem do DM, onde ele continua no jogo, e o contra-exemplo do estouro.
+	///
+	/// ============================ QUEM PARA SEM ESTOURAR SE ESVAZIA ============================
+	/// A cabeca que PARA vira o ponto de encontro e o rabo e sugado pra dentro dela; so entao o tiro sai da
+	/// lista, com o motivo que ja tinha sido decidido (`Projetil.Esvaziando`, `Matar`). Ate 2026-10-12 esse era
+	/// tambem o fim do raio que gastava o alcance; hoje aquele ESTOURA, e o que se esvazia e o que bate em
+	/// cenario. As duas metades ficam medidas aqui: a parede (a regra de hoje pro raio que para) e o fim do
+	/// alcance com o jogo de antes (o defeito injetado -- a regua do estouro tem que reprovar com ele).
+	/// ==========================================================================================
+	/// </summary>
+	/// <param name="raia">O corredor da familia, reusado: o raiador do contra-exemplo nasce onde o de cima nasceu.</param>
+	/// <param name="receita">A MESMA receita do raio de cima -- no contra-exemplo, so o botao muda.</param>
+	private void ORastroEngolidoEDeQuemPara(Vec2 raia, ReceitaDeProjetil receita)
+	{
+		const int T = ZoneCollision.TileSize;
+
+		// ---------- A PAREDE: a cabeca para nela e o rastro e engolido ----------
+		LimparTudoDaBancada();
+		if (_pjMapa is { } mapa && AcharParede(mapa, out int cx, out int cy, livresAtras: 9))
+		{
+			ServerPlayer atira = Forjar("RaiadorNoMuro", new Vec2((cx - 8) * T + T / 2f, cy * T + T / 2f), bp: 50_000);
+			atira.Facing = Facing.East;
+			Projetil noMuro = RaioDaBancada(atira, baseDano: 1);
+
+			int explosoes = ExplosoesDoFimDoAlcanceDeTeste;
+			Vec2 ondeParou = default;
+			bool viuEsvaziar = false;
+			float rastroAoParar = 0;
+			for (int i = 0; i < 300 && noMuro.Vivo; i++)
+			{
+				TickDosProjeteis(Protocol.TickSeconds);
+				if (!noMuro.Esvaziando || viuEsvaziar) continue;
+				viuEsvaziar = true;
+				ondeParou = noMuro.Pos;
+				rastroAoParar = noMuro.Comprimento;
+			}
+			AfirmarPj("o raio que bate numa PAREDE para nela e o rastro comeca a ser engolido (o trem do DM)",
+					  viuEsvaziar && rastroAoParar > 4 * T && Math.Abs(ondeParou.X - cx * T) <= T,
+					  $"esvaziou {viuEsvaziar}, rastro de {rastroAoParar:0} px, parou em {ondeParou} (parede em x {cx * T})");
+			AfirmarPj("...ate o raio sair da lista com o motivo que ja estava decidido -- o cenario, e nao um estouro",
+					  !noMuro.Vivo && noMuro.Fim == FimDeProjetil.Cenario && ExplosoesDoFimDoAlcanceDeTeste == explosoes,
+					  $"vivo {noMuro.Vivo}, fim = {noMuro.Fim}, explosoes +{ExplosoesDoFimDoAlcanceDeTeste - explosoes}");
+			AfirmarPj("...e a cauda terminou EM CIMA do ponto onde a cabeca parou",
+					  viuEsvaziar && (noMuro.Cauda - ondeParou).Length < T,
+					  $"cauda {noMuro.Cauda}, parou em {ondeParou}");
+		}
+		else AfirmarPj("achei uma parede com nove celulas livres na frente pra medir o rastro engolido", false, "varredura nao achou");
+
+		// ---------- O JOGO DE ANTES: no fim do alcance o raio so se apagava ----------
+		LimparTudoDaBancada();
+		KiContraCorpo.RegraDeAntesDeTeste = true;
+		try
+		{
+			ServerPlayer deAntes = Forjar("RaiadorDeAntes", raia, bp: 50_000);
+			deAntes.Facing = Facing.East;
+			deAntes.Ficha.Ki = deAntes.Ficha.MaxKi;
+			Canalizar(deAntes, "Ki_Wave", 10 * deAntes.Ficha.BaseDrain(), receita);
+			for (int i = 0; i < 300 && _canais.GetValueOrDefault(deAntes.Id)?.Raio == null; i++)
+			{
+				TickDosCanaisDeKi(Protocol.TickSeconds);
+				TickDosProjeteis(Protocol.TickSeconds);
+			}
+			Projetil? velho = _canais.GetValueOrDefault(deAntes.Id)?.Raio;
+			for (int i = 0; i < 15; i++)
+			{
+				TickDosCanaisDeKi(Protocol.TickSeconds);
+				TickDosProjeteis(Protocol.TickSeconds);
+			}
+			SoltarCanal(deAntes, "Ki_Wave");
+
+			int explosoes = ExplosoesDoFimDoAlcanceDeTeste;
+			bool viuEsvaziar = false;
+			for (int i = 0; i < 900 && velho is { Vivo: true }; i++)
+			{
+				TickDosProjeteis(Protocol.TickSeconds);
+				viuEsvaziar |= velho.Esvaziando;
+			}
+			AfirmarPj("(defeito injetado: o jogo de antes) o MESMO raio, no fim do alcance, so se APAGA com o rastro engolido -- "
+					  + "sem estouro: as reguas 'estoura' e 'de uma vez' ficam vermelhas",
+					  velho is { Vivo: false, Fim: FimDeProjetil.Apagou } && viuEsvaziar && ExplosoesDoFimDoAlcanceDeTeste == explosoes,
+					  $"fim = {velho?.Fim}, esvaziou {viuEsvaziar}, explosoes +{ExplosoesDoFimDoAlcanceDeTeste - explosoes}");
+		}
+		finally { KiContraCorpo.RegraDeAntesDeTeste = false; }
+		LimparTudoDaBancada();
 	}
 
 	// =====================================================================
@@ -1646,65 +1788,78 @@ public partial class GameServer
 	}
 
 	// =====================================================================
-	// 9) O RAIO LEVA QUEM ACERTA
+	// 9) O RAIO LEVA QUEM E MAIS FRACO QUE ELE (a escada do `KiContraCorpo`)
 	// =====================================================================
 	/// <summary>
 	/// O ARRASTO -- *"ao ACERTAREM alguem eles deveriam EMPURRAR A PESSOA JUNTO conforme o beam vai
-	/// indo"*.
+	/// indo"*, na regra de 2026-10-12: quem o raio leva e quem e MAIS FRACO que ele, de qualquer distancia,
+	/// na velocidade que a diferenca de forca da, ate o fim do alcance -- onde o raio estoura.
 	///
 	/// ============================ O QUE ESTA FAMILIA TEM QUE PROVAR, E POR QUE ============================
 	/// "O corpo se mexeu" e a afirmacao inutil aqui: o funil do ARREMESSO ja movia corpo, e a primeira
 	/// versao imaginavel deste efeito (rearmar o `Arremessar` a cada ciclo) ficaria VERDE num teste
-	/// desses -- e estaria errada, porque jogaria a vitima a 640 px/s contra os 320 px/s do proprio
-	/// feixe: ela sairia da frente do raio e ele nunca mais a alcancaria. O pedido do dono e "conforme
-	/// o beam vai indo", entao a medida que decide e **a VELOCIDADE**, comparada com a da cabeca no
-	/// mesmo intervalo.
+	/// desses -- e estaria errada, porque jogaria a vitima a 640 px/s, pra longe da cabeca que a empurra.
+	/// O pedido do dono e "conforme o beam vai indo", entao a medida que decide e **a VELOCIDADE**: o corpo
+	/// anda o que a cabeca andou, e a cabeca que leva alguem anda na velocidade do ARRASTO -- a do feixe
+	/// vezes o `KiContraCorpo.FatorDoArrasto` do par.
 	///
-	/// Depois dela vem o que o pedido nao diz e o codigo tem que decidir, e cada uma tem contra-exemplo
-	/// proprio: perto ARREMESSA (nao carrega), o muro PARA os dois, a agua so para quem esta a pe, o
-	/// boneco largado nao vai, o feixe que entra em disputa LARGA, e o corpo solto para SECO.
+	/// Depois dela vem o que a escada decide, e cada degrau tem a cena dele: o IGUAL apanha e fica; de
+	/// perto o raio LEVA como de longe (quem arremessa de perto e a bola); o muro PARA os dois; a agua so
+	/// para quem esta a pe; o boneco largado nao vai; o feixe que entra em disputa LARGA; quem deixa de
+	/// ser mais fraco no meio do caminho e SOLTO (a escada vale pro arrasto ja comecado); e no fim do
+	/// alcance o raio ESTOURA em quem vinha levando, e o corpo para SECO.
 	///
-	/// E a ULTIMA e a mais silenciosa: a CADENCIA DO DANO. Uma cabeca que anda encostada colidiria a
-	/// cada sub-passo -- seis vezes o dano do DM, sem nada na tela avisando. Ela e medida por contagem
-	/// de ciclos por segundo, e nao por "levou dano".
+	/// E DUAS MEDIDAS SILENCIOSAS, as duas tiradas da vida que o corpo perde: a CADENCIA do dano (uma
+	/// cabeca que anda encostada colidiria a cada sub-passo -- seis vezes o dano combinado, sem nada na
+	/// tela avisando) e o PRECO de cada batida no caminho (uma fracao: o grosso e o da explosao).
+	///
+	/// O JOGO DE ANTES -- o arrasto que so comecava alem de quatro tiles, ia na velocidade do feixe,
+	/// largava aos dez da mao e nao estourava; a queima-roupa que arremessava -- fica no fim, como o
+	/// defeito injetado (<see cref="OArrastoDoJogoDeAntes"/>).
 	/// ======================================================================================================
 	/// </summary>
 	private void ORaioLevaQuemAcerta()
 	{
-		GD.Print("[projetil] -- 9) O RAIO LEVA QUEM ACERTA");
+		GD.Print("[projetil] -- 9) O RAIO LEVA QUEM E MAIS FRACO QUE ELE, ATE O FIM DO ALCANCE");
 		LimparTudoDaBancada();
 
 		const int T = ZoneCollision.TileSize;
+		// UMA FAIXA DE CHAO PRA FAMILIA INTEIRA: cada cena limpa a bancada e nasce de novo no mesmo corredor (o muro
+		// e a margem do lago tem lugar proprio no mapa).
 		Vec2 raia = CorredorSeco(30);
-		ServerPlayer atira = Forjar("Feixe", raia, bp: 200_000);
-		atira.Facing = Facing.East;
-		// SEIS TILES: alem dos 4 do arremesso (`FatorDeEmpurrao`) e dentro dos 10 do arrasto.
-		ServerPlayer vitima = Forjar("Levado", raia + new Vec2(6 * T, 0), bp: 200_000);
 
-		// O RAIO DESTA FAMILIA E O PESADO (`speed` 0,5, a do Massive Beam: 10 tiles por segundo). As duas medidas
-		// que decidem aqui precisam dele: a VELOCIDADE (o corpo vai na do feixe, e a do feixe tem que ser OUTRA que
-		// a do arremesso pra a medida separar os dois funis -- e o raio comum, a 20 tiles por segundo desde
-		// 2026-10-08, empata com os 640 px/s do arremesso) e a TAXA de moida (dos 6 aos 10 tiles o raio comum
-		// leva um quinto de segundo: um ciclo so, e de um ciclo nao se tira taxa).
-		Projetil raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira), velocidade: 0.5);
+		// O RAIO DESTA CENA E O PESADO (`speed` 0,5, a do Massive Beam: 10 tiles por segundo), com 16 tiles de alcance
+		// e o corpo a 6 da mao: as medidas de TAXA precisam de tempo (o arrasto inteiro dura uns dois segundos, e de
+		// um ciclo so nao se tira taxa), e o alcance passa dos dez tiles em que o jogo de antes largava o corpo.
+		(ServerPlayer atira, ServerPlayer vitima, Projetil raio) =
+			FeixeNoMaisFraco("Levado", raia, tiles: 6, velocidade: 0.5, alcanceTiles: AlcanceDoArrastoDaBancada);
+		double razao = KiContraCorpo.Razao(vitima.Ficha.expressedBP, raio.Bp);
+		double fator = KiContraCorpo.FatorDoArrasto(razao, defendendo: false);
+		AfirmarPj("PREPARO: o corpo tem METADE do poder do tiro -- o degrau de quem e levado -- e o raio faz 12 por batida cheia nele",
+				  Math.Abs(razao - BpDoMaisFracoDaEscada / BpDoFeixeDaEscada) < 0.01 && KiContraCorpo.Arrasta(razao)
+				  && Math.Abs(DanoFinalDe(raio, vitima) - DanoQueFereDoCorte) < 1e-6,
+				  $"razao {razao:0.####}, dano final {DanoFinalDe(raio, vitima):0.####}");
 
 		int t = 0;
 		while (raio.Vivo && raio.Arrastando == 0 && t++ < 300) UmTiqueDeArrasto();
 
-		AfirmarPj("o feixe PEGOU a vitima em vez de so bater e parar nela",
+		AfirmarPj("o feixe PEGOU quem e mais fraco que ele, em vez de so bater e parar nele",
 				  raio.Arrastando == vitima.Id, $"arrastando={raio.Arrastando} apos {t} tiques");
 		if (raio.Arrastando != vitima.Id) { LimparTudoDaBancada(); return; }
 
-		AfirmarPj("...e NAO a arremessou: os dois empurroes se excluem (um `if`/`else`, como no DU)",
+		AfirmarPj("...e NAO o arremessou: o raio leva -- quem arremessa de perto e a bola",
 				  vitima.TiquesDeVoo == 0);
+		AfirmarPj("...sem defender, o mais fraco fica ATORDOADO enquanto apanha (`KiContraCorpo.Atordoa`)",
+				  vitima.Combate!.Stun > 0, $"stun {vitima.Combate.Stun:0.##} s");
 		AfirmarPj("...o corpo perde as redeas pelo funil de VETOR de sempre (`PodeMexerOCorpo`)",
 				  !PodeMexerOCorpo(vitima));
 		AfirmarPj("...e pelo MESMO bit que o arremesso ja acendia, e nao por um segundo bit",
 				  vitima.DirigidoPeloServidor && (vitima.Sheet().Estado & 32) != 0);
 
 		// ---------- A MEDIDA QUE DECIDE: A VELOCIDADE ----------
+		const int TiquesDaVelocidade = 6;
 		Vec2 corpoAntes = vitima.Pos, cabecaAntes = raio.Pos;
-		for (int i = 0; i < 6 && raio.Arrastando != 0; i++) UmTiqueDeArrasto();
+		for (int i = 0; i < TiquesDaVelocidade && raio.Arrastando != 0; i++) UmTiqueDeArrasto();
 		float dCorpo = (vitima.Pos - corpoAntes).Length;
 		float dCabeca = (raio.Pos - cabecaAntes).Length;
 
@@ -1712,114 +1867,455 @@ public partial class GameServer
 				  dCabeca > 1f && MathF.Abs(dCorpo - dCabeca) < 0.5f,
 				  $"corpo {dCorpo:0.0} px, cabeca {dCabeca:0.0} px");
 
-		// E O NUMERO QUE EXPLICA POR QUE O FUNIL DO ARREMESSO NAO SERVIA PRO DESLOCAMENTO. Os dois
-		// saem de constantes, e nao de valores digitados aqui: uma copia do "640" nesta bancada seria
-		// a segunda casa do numero, que e o que a regra 4 proibe.
+		// OS TRES NUMEROS SAEM DE CONSTANTES, e nao de valores digitados aqui: uma copia do "640" nesta bancada
+		// seria a segunda casa do numero, que e o que a regra 4 proibe.
 		double vFeixe = ZoneCollision.TileSize / raio.SegundosPorTile;
+		double vArrasto = dCorpo / (TiquesDaVelocidade * Protocol.TickSeconds);
 		double vArremesso = Empurrao.TilesPorTique * ZoneCollision.TileSize / Empurrao.SegundosPorTique;
-		AfirmarPj("...e essa e a velocidade DO FEIXE, que nao e a do arremesso (por isso ele nao serviu)",
-				  vArremesso > vFeixe * 1.5,
-				  $"feixe {vFeixe:0} px/s contra arremesso {vArremesso:0} px/s");
+		AfirmarPj($"...na velocidade do ARRASTO: a do feixe vezes o fator do par (`KiContraCorpo.FatorDoArrasto`: {fator:0.##} pra quem tem metade do poder do tiro)",
+				  fator > KiContraCorpo.ArrastoEntreIguais && fator < 1 && Math.Abs(vArrasto - vFeixe * fator) < vFeixe * 0.02,
+				  $"{vArrasto:0.#} px/s; o feixe anda {vFeixe:0.#} e o fator e {fator:0.###} ({vFeixe * fator:0.#} px/s)");
+		AfirmarPj("...que nao e a do arremesso -- por isso o funil dele nao serviu pra levar ninguem",
+				  vArremesso > vArrasto * 1.5,
+				  $"arrasto {vArrasto:0} px/s contra arremesso {vArremesso:0} px/s");
 
-		// ---------- A CADENCIA DO DANO NAO MUDOU ----------
+		// ---------- A CADENCIA DO DANO, E O PRECO DE CADA BATIDA ----------
 		// ============================ NAO SE MEDE ISTO PELA FLAG ============================
 		// A primeira versao contava as subidas de `Encostado` e leu ZERO em um segundo inteiro -- e o
 		// codigo estava certo. `Encostado` cai e volta DENTRO do mesmo tique (o passo 4 o derruba, o
 		// `Acertar` o levanta de volta no mesmo `AndarProjetil`), entao quem olha entre tiques nunca ve
 		// a borda. Medir a flag e medir o observador.
 		//
-		// O que se conta agora e o EFEITO: quantos tiques do segundo tiveram perda de vida. O dano de
-		// ki so entra por `Acertar`, e `Acertar` roda no maximo uma vez por tique por feixe -- entao
-		// "tiques em que a vida caiu" E o numero de ciclos, e ele e observavel de fora sem hook nenhum.
+		// O que se conta e o EFEITO: quantos tiques do segundo tiveram perda de vida. O dano de ki so
+		// entra por `Acertar`, e `Acertar` roda no maximo uma vez por tique por feixe -- entao "tiques em
+		// que a vida caiu" E o numero de ciclos, e ele e observavel de fora sem hook nenhum.
 		// ===================================================================================
-		// E NAO SE MEDE EM "POR SEGUNDO", TAMBEM: o arrasto nao dura um segundo. Ele acaba nos 10
-		// tiles da mao do dono (regra do DU), e daqui pra la sobram ~4 tiles a 10 tiles/s -- 0,4 s. Um
-		// contador de janela fixa leu "2 num segundo" e reprovou um codigo certo, pela mesma familia
-		// de erro da versao anterior: a bancada media a JANELA e nao o efeito. Aqui se mede a TAXA, com
-		// a janela que o proprio efeito permitir.
+		// E A JANELA E A QUE O EFEITO PERMITIR (um segundo, ou ate o arrasto acabar): um contador de janela
+		// fixa ja leu "2 num segundo" de um arrasto de 0,4 s e reprovou um codigo certo. Mede-se a TAXA.
 		int ciclos = 0, rodou = 0;
-		double vida = vitima.Combate!.Corpo.Partes.Sum(x => x.Vida);
+		double menorBatida = double.MaxValue, maiorBatida = 0;
 		for (int i = 0; i < (int)Math.Round(1.0 / Protocol.TickSeconds) && raio.Arrastando != 0; i++)
 		{
+			double[] antes = VidaPorParte(vitima);
 			UmTiqueDeArrasto();
 			rodou++;
-			double agora = vitima.Combate.Corpo.Partes.Sum(x => x.Vida);
-			if (agora < vida) ciclos++;
-			vida = agora;
+			double batida = FeridaMaisFunda(vitima, antes);
+			if (batida <= 1e-9) continue;
+			ciclos++;
+			menorBatida = Math.Min(menorBatida, batida);
+			maiorBatida = Math.Max(maiorBatida, batida);
 		}
 
 		double taxa = rodou > 0 ? ciclos / (rodou * Protocol.TickSeconds) : 0;
 		double esperada = 1.0 / Projetil.SegundosPorCicloDeBeam;          // 5 Hz -- o ciclo deste port (o DM bate 12)
 		double porSubPasso = 1.0 / Protocol.TickSeconds;                  // ~30 Hz -- o defeito que se teme
-		// OS NUMEROS MEDIDOS SAIEM SEMPRE, e nao so no detalhe de uma falha -- o mesmo habito da
-		// familia 7. Uma bancada que so mostra a conta quando reprova obriga a quebrar o codigo pra
-		// ler o que ele faz.
-		GD.Print($"[projetil]      arrasto: corpo {dCorpo:0.0} px x cabeca {dCabeca:0.0} px em 6 tiques; "
-				 + $"{vFeixe:0} px/s (o arremesso seria {vArremesso:0}); "
-				 + $"{taxa:0.0} moidas/s em {rodou * Protocol.TickSeconds:0.00}s "
-				 + $"(o port manda {esperada:0}; por sub-passo ~{porSubPasso:0})");
-
 		AfirmarPj("...e mesmo ANDANDO encostado ele moi na cadencia do port (o ciclo de 0,2 s; o DM bate 12 por segundo), e nao por sub-passo",
 				  rodou > 5 && taxa >= esperada * 0.6 && taxa <= esperada * 1.4,
 				  $"{taxa:0.0} moidas/s em {rodou * Protocol.TickSeconds:0.00}s "
 				  + $"(o port manda {esperada:0}; por sub-passo seriam ~{porSubPasso:0})");
 
-		// ---------- O FIM DA CORDA: DEZ TILES ----------
-		while (raio.Vivo && raio.Arrastando != 0 && t++ < 900) UmTiqueDeArrasto();
-		AfirmarPj("o arrasto larga aos 10 tiles da mao do dono (`if(getdist(Owner,P)<10)`)",
-				  raio.AndouTiles >= Projetil.TilesDeArrasto,
-				  $"largou com {raio.AndouTiles:0.0} tiles andados");
+		// ---------- O FIM: O ALCANCE INTEIRO, E O ESTOURO ----------
+		int explosoes = ExplosoesDoFimDoAlcanceDeTeste, crateras = CraterasDeExplosaoDeTeste;
+		double[] antesDoUltimoTique = VidaPorParte(vitima);
+		while (raio.Vivo && t++ < 900)
+		{
+			antesDoUltimoTique = VidaPorParte(vitima);
+			UmTiqueDeArrasto();
+		}
+		// A EXPLOSAO FERE TODO MEMBRO DE FORA POR IGUAL (`FerirComAExplosao`: o total dividido entre eles): o que cada um
+		// levou, vezes quantos sao, e a explosao inteira. (O menor tombo, e nao a soma: o que escorre de um membro pro
+		// filho dele viria junto na soma.)
+		int membrosDeFora = vitima.Combate.Corpo.Partes.Count(m => !m.Aninhado && !m.Decepado);
+		double porMembro = MenorFeridaDeFora(vitima, antesDoUltimoTique), noEstouro = porMembro * membrosDeFora;
+		double corpoDaMao = (vitima.Pos.X - raia.X) / T, cabecaDaMao = (raio.Pos - raio.Cauda).Length / T;
 
-		// ---------- LARGADO, PARA SECO ----------
+		// OS NUMEROS MEDIDOS SAEM SEMPRE, e nao so no detalhe de uma falha -- o mesmo habito da familia 7. Uma
+		// bancada que so mostra a conta quando reprova obriga a quebrar o codigo pra ler o que ele faz.
+		GD.Print($"[projetil]      (medido) arrasto: corpo {dCorpo:0.0} px x cabeca {dCabeca:0.0} px em {TiquesDaVelocidade} tiques = {vArrasto:0} px/s "
+				 + $"(o feixe anda {vFeixe:0}, o arremesso {vArremesso:0}); {taxa:0.0} moidas/s em {rodou * Protocol.TickSeconds:0.00}s, de {menorBatida:0.###} a {maiorBatida:0.###} cada; "
+				 + $"estouro de {noEstouro:0.###} ({porMembro:0.###} em cada um dos {membrosDeFora} membros de fora) com o corpo a {corpoDaMao:0.0} tiles de quem atirou "
+				 + $"(a cabeca a {cabecaDaMao:0.0} da mao, alcance {AlcanceDoArrastoDaBancada:0})");
+
+		// ATE O FIM DO ALCANCE, E NAO ALEM. Esta linha so pedia "o corpo alem do alcance", e passava com a cabeca a 18,4
+		// tiles da mao num raio de 16: o tique da batida nao pagava o alcance (ver `OAlcancePagaOTiqueDaBatida`, que
+		// guarda a medida e o defeito injetado). A regua de agora e a de la: a cabeca estoura onde o alcance acaba.
+		double umTiqueDeFeixe = Protocol.TickSeconds / raio.SegundosPorTile;
+		float corpoDaCabeca = vitima.Pos.X - raio.Pos.X;
+		AfirmarPj("o raio leva o corpo ATE O FIM DO ALCANCE dele -- e nao so dez tiles da mao, como no jogo de antes --, e NAO ALEM: "
+				  + "a cabeca estoura onde o alcance acaba, com o corpo na frente dela",
+				  raio.AndouTiles >= AlcanceDoArrastoDaBancada && EstourouOndeOAlcanceAcaba(cabecaDaMao, AlcanceDoArrastoDaBancada, umTiqueDeFeixe)
+				  && Math.Abs(corpoDaCabeca - Feixe.DistanciaDeContato) < 1f,
+				  $"alcance pago {raio.AndouTiles:0.00} de {AlcanceDoArrastoDaBancada:0} tiles, com a cabeca a {cabecaDaMao:0.00} da mao "
+				  + $"(um tique de feixe sao {umTiqueDeFeixe:0.00}) e o corpo {corpoDaCabeca:0.0} px a frente dela, a {corpoDaMao:0.0} tiles de quem atirou");
+		AfirmarPj("...e la ESTOURA: o tiro acaba como explosao, na hora, e o chao ganha a cratera grande",
+				  !raio.Vivo && raio.Fim == FimDeProjetil.Explodiu && ExplosoesDoFimDoAlcanceDeTeste == explosoes + 1
+				  && CraterasDeExplosaoDeTeste == crateras + 1,
+				  $"vivo {raio.Vivo}, fim = {raio.Fim}, explosoes +{ExplosoesDoFimDoAlcanceDeTeste - explosoes}, crateras +{CraterasDeExplosaoDeTeste - crateras}");
+		AfirmarPj($"...e a explosao e o grosso do dano: {KiContraCorpo.BatidasDaExplosao:0} batidas CHEIAS de uma vez, espalhadas por todo membro de fora de quem vinha na ponta, "
+				  + $"contra {KiContraCorpo.FracaoDaBatidaNoArrasto * 100:0}% de uma batida por ciclo no caminho",
+				  porMembro > 0 && Math.Abs(noEstouro - DanoQueFereDoCorte * KiContraCorpo.BatidasDaExplosao) < 1e-6
+				  && Math.Abs(maiorBatida - DanoQueFereDoCorte * KiContraCorpo.FracaoDaBatidaNoArrasto) < 1e-6
+				  && Math.Abs(maiorBatida - menorBatida) < 1e-6,
+				  $"estouro {noEstouro:0.####} (esperado {DanoQueFereDoCorte * KiContraCorpo.BatidasDaExplosao:0.##}), {porMembro:0.####} em cada um dos {membrosDeFora} membros de fora; "
+				  + $"batidas no caminho de {menorBatida:0.####} a {maiorBatida:0.####} (esperado {DanoQueFereDoCorte * KiContraCorpo.FracaoDaBatidaNoArrasto:0.##})");
+
+		// ---------- DEPOIS DO ESTOURO, PARA SECO ----------
 		Vec2 parou = vitima.Pos;
 		for (int i = 0; i < 10; i++) UmTiqueDeArrasto();
-		AfirmarPj("largado, o corpo PARA SECO -- nao ha inercia guardada em lugar nenhum",
+		AfirmarPj("depois do estouro o corpo PARA SECO -- nao ha inercia guardada em lugar nenhum",
 				  (vitima.Pos - parou).Length < 0.01f, $"{(vitima.Pos - parou).Length:0.00} px depois de solto");
 		AfirmarPj("...e as redeas voltam sozinhas: o prazo escorreu, ninguem apagou bit nenhum",
 				  vitima.ArrastoRestante <= 0 && !vitima.DirigidoPeloServidor);
 
-		OPertoArremessaEmVezDeLevar();
+		OIgualApanhaEFica(raia);
+		DePertoORaioTambemLeva(raia);
+		OAlcancePagaOTiqueDaBatida(raia);
 		OMuroParaOsDoisEOFeixeContinuaMoendo();
 		AAguaSoParaQuemEstaAPe();
-		OBonecoLargadoNaoVai();
-		ADisputaDeKiLargaOCorpo();
+		OBonecoLargadoNaoVai(raia);
+		ADisputaDeKiLargaOCorpo(raia);
+		OLevadoQueCresceESolto(raia);
+		OArrastoDoJogoDeAntes(raia);
 		LimparTudoDaBancada();
 	}
 
 	/// <summary>
-	/// CONTRA-EXEMPLO 1: DE PERTO ELE ARREMESSA, e nao carrega.
-	///
-	/// E o corte que as DUAS fontes escrevem no mesmo numero -- `beam_stun_start = 4` no DU
-	/// (`death.dm:727`) e `maxdistance-distance &lt;= 4` no Finale (`objects.dm:449-455`). Sem esta
-	/// medida, "carrega" e uma regra que vale sempre, e uma regra que vale sempre nao e uma regra.
+	/// O alcance do raio da cena principal do arrasto, em tiles da mao: alem dos dez em que o jogo de antes largava o
+	/// corpo (`Projetil.TilesDeArrasto`), pra "ate o fim do alcance" e "ate dez tiles" nao darem a mesma leitura.
 	/// </summary>
-	private void OPertoArremessaEmVezDeLevar()
+	private const double AlcanceDoArrastoDaBancada = 16;
+
+	/// <summary>A vida de cada parte do corpo, na ordem do corpo -- o retrato de ANTES, pra medir o que um tique feriu.</summary>
+	private static double[] VidaPorParte(ServerPlayer pl) => [.. pl.Combate!.Corpo.Partes.Select(m => m.Vida)];
+
+	/// <summary>
+	/// A FERIDA MAIS FUNDA que o corpo ganhou desde o retrato: o maior tombo de vida numa parte so. E o dano de UMA
+	/// batida de ki -- ela fere um membro pelo dano inteiro, e o que escorre pros filhos dele (`Regras.Propagacao`,
+	/// um quinto) e sempre menor.
+	///
+	/// NAO E A SOMA DO CORPO, e a primeira versao desta regua era: a batida no abdomen lia 20% a mais, porque o filho
+	/// dele (o reprodutor) fica do lado de FORA e recebe o escorrido. E o membro e sorteado -- a medida reprovava ou
+	/// passava conforme o dado.
+	/// </summary>
+	private static double FeridaMaisFunda(ServerPlayer pl, double[] antes)
+	{
+		List<BodyPart> partes = pl.Combate!.Corpo.Partes;
+		double maior = 0;
+		for (int i = 0; i < partes.Count && i < antes.Length; i++) maior = Math.Max(maior, antes[i] - partes[i].Vida);
+		return maior;
+	}
+
+	/// <summary>
+	/// O MENOR TOMBO ENTRE OS MEMBROS DE FORA desde o retrato -- zero se algum saiu ileso. Num dano que se divide por
+	/// igual entre eles (a explosao de ki, `FerirComAExplosao`) e a parte de cada um, sem o que escorreu de pai pra filho.
+	/// </summary>
+	private static double MenorFeridaDeFora(ServerPlayer pl, double[] antes)
+	{
+		List<BodyPart> partes = pl.Combate!.Corpo.Partes;
+		double menor = double.MaxValue;
+		for (int i = 0; i < partes.Count && i < antes.Length; i++)
+			if (!partes[i].Aninhado && !partes[i].Decepado) menor = Math.Min(menor, antes[i] - partes[i].Vida);
+		return menor == double.MaxValue ? 0 : Math.Max(menor, 0);
+	}
+
+	/// <summary>
+	/// O PAR DAS CENAS DE ARRASTO: quem atira (<see cref="BpDoFeixeDaEscada"/>) e um corpo MAIS FRACO
+	/// (<see cref="BpDoMaisFracoDaEscada"/>: metade do poder do tiro) a <paramref name="tiles"/> da mao, com o raio de
+	/// bancada ja no ar -- 12 por batida CHEIA neste corpo (<see cref="BaseQueFere"/>). Levado, ele paga a fracao do
+	/// arrasto a cada ciclo e a explosao no fim do alcance (`KiContraCorpo`).
+	/// </summary>
+	private (ServerPlayer Atira, ServerPlayer Fraco, Projetil Raio) FeixeNoMaisFraco(string nome, Vec2 deOnde, int tiles,
+																					  double velocidade = 1, double alcanceTiles = 40)
+	{
+		ServerPlayer atira = Forjar($"Feixe de {nome}", deOnde, bp: BpDoFeixeDaEscada);
+		atira.Facing = Facing.East;
+		ServerPlayer fraco = Forjar(nome, deOnde + new Vec2(tiles * ZoneCollision.TileSize, 0), bp: BpDoMaisFracoDaEscada);
+		return (atira, fraco, RaioDaBancada(atira, BaseQueFere(atira, fraco), velocidade, alcanceTiles));
+	}
+
+	/// <summary>
+	/// O DEGRAU DE CIMA: O IGUAL APANHA E FICA. De uma a quatro vezes o poder do tiro o corpo nao e levado -- a
+	/// cabeca para na frente dele e moi, e ele paga a batida INTEIRA a cada ciclo (quem e levado paga uma fracao e,
+	/// no fim, a explosao). Sem defender, o que o raio lhe cobra e o passo: ele anda devagar enquanto apanha
+	/// (`AndarDevagarSobORaio`; quanto, e a `--v020teste` que mede no relogio da ficha).
+	/// </summary>
+	private void OIgualApanhaEFica(Vec2 raia)
 	{
 		LimparTudoDaBancada();
 		const int T = ZoneCollision.TileSize;
 
-		Vec2 raia = CorredorSeco(20);
-		ServerPlayer atira = Forjar("Queima-roupa", raia, bp: 500_000);
+		ServerPlayer atira = Forjar("Feixe do igual", raia, bp: BpDoFeixeDaEscada);
 		atira.Facing = Facing.East;
-		ServerPlayer colado = Forjar("Colado", raia + new Vec2(2 * T, 0), bp: 5_000);
+		ServerPlayer igual = Forjar("Igual", raia + new Vec2(6 * T, 0), bp: BpDoIgualDaEscada);
+		Projetil raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
+		double razao = KiContraCorpo.Razao(igual.Ficha.expressedBP, raio.Bp);
+		AfirmarPj("PREPARO: o corpo tem o MESMO poder do tiro -- o primeiro degrau de quem fica (`PostoContraKi.MaisForte`)",
+				  KiContraCorpo.Posto(razao) == PostoContraKi.MaisForte && Math.Abs(razao - 1) < 0.01, $"razao {razao:0.####}");
 
-		Projetil raio = RaioDaBancada(atira, baseDano: 5);
-		for (int i = 0; i < 200 && raio.Vivo && colado.TiquesDeVoo == 0 && raio.Arrastando == 0; i++)
+		for (int i = 0; i < 300 && raio.Vivo && !raio.Encostado; i++) UmTiqueDeArrasto();
+		Vec2 onde = igual.Pos;
+		double menorBatida = double.MaxValue, maiorBatida = 0;
+		int batidas = 0;
+		for (int i = 0; i < 30 && raio.Vivo; i++)
+		{
+			double[] antes = VidaPorParte(igual);
 			UmTiqueDeArrasto();
+			double batida = FeridaMaisFunda(igual, antes);
+			if (batida <= 1e-9) continue;
+			batidas++;
+			menorBatida = Math.Min(menorBatida, batida);
+			maiorBatida = Math.Max(maiorBatida, batida);
+		}
 
-		AfirmarPj("a QUEIMA-ROUPA ARREMESSA (o impulso do Finale) e NAO carrega",
-				  colado.TiquesDeVoo > 0 && raio.Arrastando == 0,
-				  $"voo={colado.TiquesDeVoo} arrasto={raio.Arrastando}");
+		AfirmarPj("o IGUAL nao e levado: a cabeca para na frente dele e fica, e ele nao sai do lugar nem e arremessado",
+				  raio.Vivo && raio.Encostado && raio.Arrastando == 0 && (igual.Pos - onde).Length < 0.01f
+				  && igual.TiquesDeVoo == 0 && !igual.DirigidoPeloServidor,
+				  $"encostado {raio.Encostado}, levando {raio.Arrastando}, andou {(igual.Pos - onde).Length:0.00} px, voo {igual.TiquesDeVoo}");
+		AfirmarPj("...mas APANHA, e a batida inteira: 12 a cada ciclo de moer (quem e levado paga so a fracao do arrasto)",
+				  batidas >= 4 && Math.Abs(maiorBatida - DanoQueFereDoCorte) < 1e-6 && Math.Abs(maiorBatida - menorBatida) < 1e-6,
+				  $"{batidas} batida(s) num segundo, de {menorBatida:0.####} a {maiorBatida:0.####} cada");
+		AfirmarPj("...sem atordoar (isso e do mais fraco), e com o passo LENTO armado enquanto o raio bate (`KiContraCorpo.MsSobORaio`)",
+				  igual.Combate!.Stun <= 0 && igual.SobORaioAteMs > NowMs(),
+				  $"stun {igual.Combate.Stun:0.##}, sob o raio por mais {igual.SobORaioAteMs - NowMs()} ms");
 	}
 
 	/// <summary>
-	/// CONTRA-EXEMPLO 2: PRENSADO NUM MURO, os dois param -- e o feixe **continua moendo**.
+	/// DE PERTO O RAIO TAMBEM LEVA -- *"todo ataque de beam (...) q acertam em cheio o inimigo deveriam
+	/// arrastar o mesmo"* (dono, 2026-10-12): a faixa "so alem de quatro tiles" saiu do `Projetil.PodeArrastar`.
+	///
+	/// E O CONTRA-EXEMPLO DO TIPO: a BOLA, no mesmo par e na mesma distancia, ARREMESSA -- o impulso de perto
+	/// do Finale (`objects.dm:449-455`, o `FatorDeEmpurrao`) continua sendo dela. Sem esta metade, "o raio
+	/// leva" podia ser "nada mais arremessa", e ninguem veria.
+	/// </summary>
+	private void DePertoORaioTambemLeva(Vec2 raia)
+	{
+		LimparTudoDaBancada();
+
+		(_, ServerPlayer colado, Projetil raio) = FeixeNoMaisFraco("Colado", raia, tiles: 2);
+		for (int i = 0; i < 200 && raio.Vivo && colado.TiquesDeVoo == 0 && raio.Arrastando == 0; i++)
+			UmTiqueDeArrasto();
+
+		AfirmarPj("a QUEIMA-ROUPA do raio LEVA o mais fraco, como de longe -- e nao o arremessa",
+				  raio.Arrastando == colado.Id && colado.TiquesDeVoo == 0,
+				  $"arrasto={raio.Arrastando} voo={colado.TiquesDeVoo}, cabeca a {raio.AndouTiles:0.0} tiles da mao");
+
+		// A BOLA, NO MESMO PAR: mesma distancia, o mesmo golpe de 12 -- so o TIPO muda.
+		LimparTudoDaBancada();
+		ServerPlayer atira = Forjar("Bolista de perto", raia, bp: BpDoFeixeDaEscada);
+		atira.Facing = Facing.East;
+		ServerPlayer naBola = Forjar("Colado na bola", raia + new Vec2(2 * ZoneCollision.TileSize, 0), bp: BpDoMaisFracoDaEscada);
+		Projetil bola = Disparar(atira, new ReceitaDeProjetil
+		{
+			Tipo = TipoDeProjetil.Blast, BaseDano = BaseQueFere(atira, naBola, TipoDeProjetil.Blast), Velocidade = 1,
+			AlcanceTiles = 20, Deflectivel = false, Nome = "bola de perto",
+		});
+		for (int i = 0; i < 60 && bola.Vivo; i++) TickDosProjeteis(Protocol.TickSeconds);
+
+		AfirmarPj("...e a BOLA de perto, no mesmo par, ARREMESSA (o impulso do Finale) e nao leva ninguem: ela acaba no corpo",
+				  bola.Fim == FimDeProjetil.Acertou && naBola.TiquesDeVoo > 0 && bola.Arrastando == 0,
+				  $"fim = {bola.Fim}, voo={naBola.TiquesDeVoo}, arrasto={bola.Arrastando}");
+	}
+
+	/// <summary>
+	/// O ALCANCE PAGA TODO TIQUE EM QUE A CABECA ANDA, O DA BATIDA INCLUSIVE -- o raio que leva alguem estoura ONDE O
+	/// ALCANCE ACABA, e nao adiante.
+	///
+	/// ============================ O QUE FOI MEDIDO (2026-10-12) ============================
+	/// O raio de 12 tiles que pegava o mais fraco aos 3 estourava com a cabeca a 14,25 tiles da mao (o pesado) e a
+	/// 14,85 (o comum), com o `AndouTiles` dizendo 12,00 e 12,27; o MESMO raio, sozinho, a 12,00 cravados. No tique
+	/// em que a cabeca BATE o `AndarProjetil` voltava antes do desconto do alcance (o passo 7), e a cabeca que leva
+	/// alguem bate a cada 0,2 s: um tique em seis andado de graca.
+	/// =======================================================================================
+	///
+	/// A REGUA E O PROPRIO RAIO, SOZINHO: a cabeca que nao encontrou ninguem e a que levou um corpo desde os tres
+	/// tiles tem de estourar no mesmo lugar, a menos do que ela anda num tique (o alcance e conferido uma vez por
+	/// tique). E o `AndouTiles` tem de dizer onde a cabeca ESTA -- ele decide o `mods` de quem tem `rangemod`.
+	///
+	/// NAS DUAS VELOCIDADES: o raio pesado da um sub-passo por tique ate encostar; o comum, dois, e encosta no segundo.
+	/// </summary>
+	private void OAlcancePagaOTiqueDaBatida(Vec2 raia)
+	{
+		foreach ((string qual, double velocidade) in new[] { ("PESADO", 0.5), ("comum", 1.0) })
+		{
+			(Projetil sozinho, _, double sozinhoDaMao) = RaioAteOFimDoAlcance(raia, velocidade, comCorpo: false);
+			(Projetil levando, bool levou, double levandoDaMao) = RaioAteOFimDoAlcance(raia, velocidade, comCorpo: true);
+			double umTique = Protocol.TickSeconds / levando.SegundosPorTile;
+
+			GD.Print($"[projetil]      (medido) raio {qual} de {AlcanceDaCenaDoAlcance:0} tiles: sozinho, a cabeca estoura a {sozinhoDaMao:0.00} tiles da mao; "
+					 + $"levando o mais fraco desde os 3, a {levandoDaMao:0.00}, com {levando.AndouTiles:0.00} de alcance pago (um tique de feixe sao {umTique:0.00} tiles)");
+
+			AfirmarPj($"(controle) o raio {qual} SOZINHO estoura onde o alcance acaba: a cabeca a {AlcanceDaCenaDoAlcance:0} tiles da mao, sem passar dele mais que um tique",
+					  sozinho.Fim == FimDeProjetil.Explodiu && EstourouOndeOAlcanceAcaba(sozinhoDaMao, AlcanceDaCenaDoAlcance, umTique),
+					  $"fim = {sozinho.Fim}, cabeca a {sozinhoDaMao:0.00} tiles da mao");
+			AfirmarPj($"o raio {qual} que LEVA o mais fraco estoura NO MESMO LUGAR: o alcance paga todo tique em que a cabeca anda, o da batida inclusive",
+					  levou && levando.Fim == FimDeProjetil.Explodiu && EstourouOndeOAlcanceAcaba(levandoDaMao, AlcanceDaCenaDoAlcance, umTique),
+					  $"levou {levou}, fim = {levando.Fim}, cabeca a {levandoDaMao:0.00} tiles da mao (sozinho: {sozinhoDaMao:0.00})");
+			AfirmarPj($"...e o `AndouTiles` do raio {qual} diz onde a cabeca ESTA: o alcance pago e o caminho andado sao o mesmo numero",
+					  levou && Math.Abs(levando.AndouTiles - levandoDaMao) < FolgaDaReguaDoAlcance,
+					  $"pago {levando.AndouTiles:0.00} tiles, andado {levandoDaMao:0.00}");
+		}
+
+		ACabecaPlantadaNaoGastaAlcance(raia);
+		QuemAUltimaBatidaPegaVaiNaPonta(raia);
+
+		BatidaNaoPagaOAlcanceDeTeste = true;
+		try
+		{
+			(Projetil deAntes, bool levou, double daMao) = RaioAteOFimDoAlcance(raia, velocidade: 0.5, comCorpo: true);
+			double umTique = Protocol.TickSeconds / deAntes.SegundosPorTile;
+			AfirmarPj("(defeito injetado: a batida nao paga o alcance) o MESMO raio pesado leva o corpo ALEM do alcance, com o `AndouTiles` dizendo que nao -- "
+					  + "as duas reguas de cima ficam vermelhas",
+					  levou && deAntes.Fim == FimDeProjetil.Explodiu && !EstourouOndeOAlcanceAcaba(daMao, AlcanceDaCenaDoAlcance, umTique)
+					  && daMao - deAntes.AndouTiles > 1,
+					  $"levou {levou}, fim = {deAntes.Fim}, cabeca a {daMao:0.00} tiles da mao com {deAntes.AndouTiles:0.00} pagos (alcance {AlcanceDaCenaDoAlcance:0})");
+		}
+		finally { BatidaNaoPagaOAlcanceDeTeste = false; }
+	}
+
+	/// <summary>
+	/// O OUTRO LADO DA CONTA: QUEM NAO ANDA NAO PAGA. A cabeca plantada em quem ela NAO leva (o igual, a parede) da
+	/// um sub-passo e e replantada a cada ciclo de moer -- andou zero. O que o alcance cobra no tique da batida e o
+	/// que a cabeca ANDOU (os sub-passos menos o recuo do plantio), e nao o sub-passo: cobrado, o alcance de um raio
+	/// PARADO escorreria ate ele estourar sozinho em cima de quem so o segura.
+	/// </summary>
+	private void ACabecaPlantadaNaoGastaAlcance(Vec2 raia)
+	{
+		const int T = ZoneCollision.TileSize;
+		LimparTudoDaBancada();
+
+		ServerPlayer atira = Forjar("Feixe parado", raia, bp: BpDoFeixeDaEscada);
+		atira.Facing = Facing.East;
+		Forjar("Igual que segura", raia + new Vec2(3 * T, 0), bp: BpDoIgualDaEscada);
+		Projetil raio = RaioDaBancada(atira, BaseQueFereUmIgual(atira), alcanceTiles: AlcanceDaCenaDoAlcance);
+		for (int i = 0; i < 300 && raio.Vivo && !raio.Encostado; i++) UmTiqueDeArrasto();
+		double aoEncostar = raio.AndouTiles;
+		for (int i = 0; i < TiquesDoRaioParado && raio.Vivo; i++) UmTiqueDeArrasto();
+		double daMao = (raio.Pos - raio.Cauda).Length / T;
+
+		AfirmarPj($"a cabeca PLANTADA em quem ela nao leva (o igual) NAO gasta alcance: em {TiquesDoRaioParado} tiques de moer o `AndouTiles` continua sendo da mao ate a cabeca",
+				  raio.Vivo && raio.Encostado && raio.Arrastando == 0 && Math.Abs(raio.AndouTiles - daMao) < FolgaDaReguaDoAlcance
+				  && Math.Abs(raio.AndouTiles - aoEncostar) < FolgaDaReguaDoAlcance,
+				  $"vivo {raio.Vivo}, encostado {raio.Encostado}, levando {raio.Arrastando}; pago {aoEncostar:0.00} tiles ao encostar e {raio.AndouTiles:0.00} depois, com a cabeca a {daMao:0.00} da mao");
+	}
+
+	/// <summary>Por quantos tiques a cena do raio parado moi: um segundo, cinco ciclos de moer.</summary>
+	private const int TiquesDoRaioParado = 30;
+
+	/// <summary>
+	/// QUEM A ULTIMA BATIDA PEGA JA VAI NA PONTA. O corpo que a cabeca so alcanca no ULTIMO tique do alcance: a batida o
+	/// pega, o alcance acaba naquele mesmo tique, e a explosao INTEIRA e dele -- sem ser levado a lugar nenhum. Sem a
+	/// linha que o poe na ponta (o passo 6b do `AndarProjetil`) ele entraria na explosao como um vizinho, pela area.
+	///
+	/// A CENA E DE REGUA: a cabeca do raio pesado anda um terco de tile por tique e chega aos quatro tiles no 12o; o
+	/// corpo esta um contato adiante disso, mais <see cref="FolgaDaUltimaBatida"/> -- a cabeca o alcanca nesse tique e
+	/// nao no anterior, e o plantio a deixa essa folga ALEM do alcance (a conta nao depende do ultimo bit de um float).
+	/// </summary>
+	private void QuemAUltimaBatidaPegaVaiNaPonta(Vec2 raia)
+	{
+		const int T = ZoneCollision.TileSize;
+		LimparTudoDaBancada();
+
+		ServerPlayer atira = Forjar("Feixe curto", raia, bp: BpDoFeixeDaEscada);
+		atira.Facing = Facing.East;
+		Vec2 mao = BocaDeCano.De(atira.Pos, new Vec2(1, 0));
+		ServerPlayer pego = Forjar("Pego no fim", mao + new Vec2((float)AlcanceDaUltimaBatida * T + Feixe.DistanciaDeContato + FolgaDaUltimaBatida, 0),
+								   bp: BpDoMaisFracoDaEscada);
+		Projetil raio = RaioDaBancada(atira, BaseQueFere(atira, pego), velocidade: 0.5, alcanceTiles: AlcanceDaUltimaBatida);
+
+		Vec2 ondeEstava = pego.Pos;
+		double[] ileso = VidaPorParte(pego), antesDoUltimoTique = ileso;
+		int tiques = 0;
+		for (; tiques < 300 && raio.Vivo; tiques++)
+		{
+			antesDoUltimoTique = VidaPorParte(pego);
+			UmTiqueDeArrasto();
+		}
+		// A BATIDA E A EXPLOSAO NO MESMO TIQUE: ate o ultimo o corpo nao tinha levado nada.
+		bool ilesoAteOUltimo = antesDoUltimoTique.SequenceEqual(ileso);
+		int membrosDeFora = pego.Combate!.Corpo.Partes.Count(m => !m.Aninhado && !m.Decepado);
+		double porMembro = MenorFeridaDeFora(pego, antesDoUltimoTique), noEstouro = porMembro * membrosDeFora;
+		float andou = (pego.Pos - ondeEstava).Length;
+
+		GD.Print($"[projetil]      (medido) a ultima batida: o raio de {AlcanceDaUltimaBatida:0} tiles acabou no tique {tiques}, com a cabeca a {(raio.Pos - mao).Length / T:0.00} da mao; "
+				 + $"o corpo andou {andou:0.00} px e levou {noEstouro:0.###} de explosao ({porMembro:0.###} em cada um dos {membrosDeFora} membros de fora)");
+		AfirmarPj("o corpo que a cabeca so alcanca no ULTIMO tique do alcance leva a batida e a explosao INTEIRA no mesmo tique, sem sair do lugar: "
+				  + "quem a batida acabou de pegar ja e quem vai na ponta",
+				  !raio.Vivo && raio.Fim == FimDeProjetil.Explodiu && ilesoAteOUltimo && andou < 0.01f
+				  && Math.Abs(noEstouro - DanoQueFereDoCorte * KiContraCorpo.BatidasDaExplosao) < 1e-6,
+				  $"fim = {raio.Fim} no tique {tiques} (ileso ate o ultimo: {ilesoAteOUltimo}), o corpo andou {andou:0.00} px, "
+				  + $"explosao de {noEstouro:0.####} (a inteira sao {DanoQueFereDoCorte * KiContraCorpo.BatidasDaExplosao:0.##})");
+	}
+
+	/// <summary>O alcance do raio da cena da ultima batida, em tiles: curto, pra a cabeca chegar ao fim dele sem encontrar ninguem antes.</summary>
+	private const double AlcanceDaUltimaBatida = 4;
+
+	/// <summary>
+	/// Quanto ALEM de um contato do fim do alcance o corpo da cena da ultima batida esta, em pixels: menos que o meio
+	/// pixel de tolerancia do encosto (`Feixe.EncostaNoCorpo`), e mil vezes o erro de float de uma posicao.
+	/// </summary>
+	private const float FolgaDaUltimaBatida = 0.4f;
+
+	/// <summary>
+	/// O alcance do raio das cenas que medem ONDE ele estoura, em tiles da mao: o da medida de 2026-10-12. Com o corpo
+	/// a tres tiles de quem atira a cabeca o leva por quase onze -- umas dez batidas no caminho --, e mesmo com o
+	/// defeito injetado (a cabeca a 14,85) a cena cabe no corredor da familia.
+	/// </summary>
+	private const double AlcanceDaCenaDoAlcance = 12;
+
+	/// <summary>
+	/// A folga de float das reguas do alcance, em tiles (0,64 px). Um tique de batida que nao paga sao pelo menos 0,2
+	/// tile: o que a cabeca do arrasto mais lento desta bancada anda num tique.
+	/// </summary>
+	private const double FolgaDaReguaDoAlcance = 0.02;
+
+	/// <summary>
+	/// A REGUA DE "ONDE O RAIO ESTOURA": a cabeca a <paramref name="alcance"/> tiles da mao -- nem aquem, nem alem dele
+	/// mais do que ela anda num tique. O alcance e conferido uma vez por tique (o passo 7 do `AndarProjetil`), entao um
+	/// tique de caminho e a granularidade dele; a cabeca que leva alguem anda menos que isso.
+	/// </summary>
+	private static bool EstourouOndeOAlcanceAcaba(double cabecaDaMao, double alcance, double umTique)
+		=> cabecaDaMao >= alcance - FolgaDaReguaDoAlcance && cabecaDaMao <= alcance + umTique + FolgaDaReguaDoAlcance;
+
+	/// <summary>
+	/// UM RAIO DE BANCADA ATE ACABAR, no corredor da familia: sozinho, ou com o mais fraco a tres tiles de quem atira.
+	/// Devolve o raio (morto: onde ele acabou, e que fim teve), se a cabeca chegou a LEVAR o corpo, e a que distancia da
+	/// MAO ela acabou, em tiles -- a mao e a boca do cano (`BocaDeCano`), onde a cabeca nasce e onde a cauda de um raio
+	/// canalizado fica.
+	/// </summary>
+	private (Projetil Raio, bool Levou, double CabecaDaMao) RaioAteOFimDoAlcance(Vec2 raia, double velocidade, bool comCorpo)
+	{
+		LimparTudoDaBancada();
+		ServerPlayer? corpo = null;
+		Projetil raio;
+		if (comCorpo)
+			(_, corpo, raio) = FeixeNoMaisFraco("Levado ate o fim", raia, tiles: 3, velocidade: velocidade, alcanceTiles: AlcanceDaCenaDoAlcance);
+		else
+		{
+			ServerPlayer atira = Forjar("Feixe sozinho", raia, bp: BpDoFeixeDaEscada);
+			atira.Facing = Facing.East;
+			raio = RaioDaBancada(atira, BaseQueFereUmIgual(atira), velocidade, AlcanceDaCenaDoAlcance);
+		}
+
+		bool levou = false;
+		for (int t = 0; t < 900 && raio.Vivo; t++)
+		{
+			UmTiqueDeArrasto();
+			levou |= corpo != null && raio.Arrastando == corpo.Id;
+		}
+		return (raio, levou, (raio.Pos - raio.Cauda).Length / ZoneCollision.TileSize);
+	}
+
+	/// <summary>
+	/// PRENSADO NUM MURO, os dois param -- e o feixe **continua moendo**.
 	///
 	/// A decisao esta escrita no `ArrastarComOFeixe` e vem do DM pelos dois lados: o `step()` do
 	/// arrasto falha contra densidade, e o `Knockback` escreve a mesma conclusao com todas as letras
 	/// (`if(loc == old_loc) { KB=0; break }`, `death.dm:230`). O que esta bancada mede alem disso e
 	/// que a cabeca **nao atravessa** a vitima prensada: sem a ordem certa (empurrar antes de avancar)
 	/// o feixe passaria por dentro de quem ele esta esmagando.
+	///
+	/// E O MURO NAO E O FIM DO ALCANCE: a cabeca que nao anda nao gasta alcance, entao o raio segurado em
+	/// cima de quem esta prensado NAO estoura -- ele moi, na fracao do arrasto, enquanto durar.
 	/// </summary>
 	private void OMuroParaOsDoisEOFeixeContinuaMoendo()
 	{
@@ -1834,38 +2330,44 @@ public partial class GameServer
 			return;
 		}
 
+		// O MAIS FRACO COM O MURO NAS COSTAS: a sete tiles da mao, na celula colada na parede.
 		var deOnde = new Vec2((cx - 8) * T + T / 2f, cy * T + T / 2f);
-		ServerPlayer atira = Forjar("Prensador", deOnde, bp: 300_000);
-		atira.Facing = Facing.East;
-		ServerPlayer preso = Forjar("Prensado", new Vec2((cx - 1) * T + T / 2f, cy * T + T / 2f), bp: 300_000);
-
-		Projetil raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
+		(_, ServerPlayer preso, Projetil raio) = FeixeNoMaisFraco("Prensado", deOnde, tiles: 7);
 		for (int i = 0; i < 300 && raio.Vivo && raio.Arrastando == 0; i++) UmTiqueDeArrasto();
 
 		AfirmarPj("o feixe pegou o corpo que esta com o muro nas costas", raio.Arrastando == preso.Id,
 				  $"arrastando={raio.Arrastando}");
 		if (raio.Arrastando != preso.Id) return;
 
+		// O CORPO PODE ANDAR OS PIXELS QUE FALTAM ATE ENCOSTAR (a caixa dele tem meio tile de folga na celula): o que
+		// se mede e que ele PARA -- a posicao de meio segundo depois e a de um segundo depois -- sem entrar no muro.
+		int explosoes = ExplosoesDoFimDoAlcanceDeTeste;
+		for (int i = 0; i < 30; i++) UmTiqueDeArrasto();
 		Vec2 encostou = preso.Pos;
-		double vidaAntes = preso.Combate!.Corpo.Partes.Sum(p => p.Vida);
-		for (int i = 0; i < 60; i++) UmTiqueDeArrasto();
+		double vidaAntes = preso.Combate!.Corpo.Vida();
+		for (int i = 0; i < 30; i++) UmTiqueDeArrasto();
 
-		AfirmarPj("prensado contra o muro, o corpo PARA (o `step()` que falha do DM)",
-				  (preso.Pos - encostou).Length < 2f, $"{(preso.Pos - encostou).Length:0.0} px");
+		AfirmarPj("prensado contra o muro, o corpo PARA (o `step()` que falha do DM), sem entrar na parede",
+				  (preso.Pos - encostou).Length < 0.01f && preso.Pos.X + Feixe.MeioCorpo <= cx * T + 0.5f,
+				  $"andou {(preso.Pos - encostou).Length:0.00} px no ultimo segundo; beirada do corpo em {preso.Pos.X + Feixe.MeioCorpo:0.0}, parede em {cx * T}");
 		AfirmarPj("...e a cabeca do feixe NAO o atravessa: ela para nele",
 				  raio.Pos.X <= preso.Pos.X + Projetil.RaioDeImpacto + 1f,
 				  $"cabeca em {raio.Pos.X:0}, corpo em {preso.Pos.X:0}");
-		AfirmarPj("...e o feixe nao estoura nem some: ele continua MOENDO quem esta prensado",
-				  raio.Vivo && preso.Combate.Corpo.Partes.Sum(p => p.Vida) < vidaAntes,
-				  $"vivo={raio.Vivo}");
+		AfirmarPj("...e o feixe nao estoura nem some: ele continua MOENDO quem esta prensado (o muro nao e o fim do alcance)",
+				  raio.Vivo && raio.Arrastando == preso.Id && preso.Combate.Corpo.Vida() < vidaAntes - 1e-9
+				  && ExplosoesDoFimDoAlcanceDeTeste == explosoes,
+				  $"vivo={raio.Vivo}, levando {raio.Arrastando}, vida {vidaAntes:0.###} -> {preso.Combate.Corpo.Vida():0.###}, explosoes +{ExplosoesDoFimDoAlcanceDeTeste - explosoes}");
 	}
 
 	/// <summary>
-	/// CONTRA-EXEMPLO 3: A AGUA SO PARA QUEM ESTA A PE -- e quem decide e o `ModoDeTravessiaDe`, a
-	/// MESMA funcao que valida o passo do jogador e o da IA.
+	/// A AGUA SO PARA QUEM ESTA A PE -- e quem decide e o `ModoDeTravessiaDe`, a MESMA funcao que valida o
+	/// passo do jogador e o da IA.
 	///
 	/// O mesmo lago, o mesmo tiro, o mesmo corpo: muda so o `Nadando`. Medir so a metade que passa (ou
 	/// so a que para) deixaria verde um codigo que ignorasse a agua por inteiro.
+	///
+	/// O QUE SE LE E "ENTROU NA AGUA", TIQUE A TIQUE, e nao onde o corpo esta no fim: o raio leva quem nada
+	/// ate o fim do alcance dele, e um lago estreito seria atravessado de margem a margem.
 	/// </summary>
 	private void AAguaSoParaQuemEstaAPe()
 	{
@@ -1889,14 +2391,12 @@ public partial class GameServer
 			bool nadando = volta == 1;
 			LimparTudoDaBancada();
 
+			// O MAIS FRACO NA BEIRA: a sete tiles da mao, na celula seca colada na agua. O raio tem 12 tiles de alcance
+			// -- sobram cinco lago adentro, e a cena nao varre o mapa.
 			var deOnde = new Vec2((cx - 8) * T + T / 2f, cy * T + T / 2f);
-			ServerPlayer atira = Forjar("Molhador", deOnde, bp: 300_000);
-			atira.Facing = Facing.East;
-			ServerPlayer alvo = Forjar("Molhado", new Vec2((cx - 1) * T + T / 2f, cy * T + T / 2f),
-									   bp: 300_000);
+			(_, ServerPlayer alvo, Projetil raio) = FeixeNoMaisFraco("Molhado", deOnde, tiles: 7, alcanceTiles: 12);
 			alvo.Nadando = nadando;
 
-			Projetil raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
 			for (int i = 0; i < 300 && raio.Vivo && raio.Arrastando == 0; i++) UmTiqueDeArrasto();
 			if (raio.Arrastando != alvo.Id)
 			{
@@ -1905,67 +2405,73 @@ public partial class GameServer
 				continue;
 			}
 
-			for (int i = 0; i < 60 && raio.Vivo; i++) UmTiqueDeArrasto();
-			bool molhou = mapa.EhAguaEm(alvo.Pos);
+			bool entrou = false;
+			Vec2 daBeira = alvo.Pos;
+			for (int i = 0; i < 60 && raio.Vivo; i++)
+			{
+				UmTiqueDeArrasto();
+				entrou |= mapa.EhAguaEm(alvo.Pos);
+			}
 
 			AfirmarPj(nadando
 						  ? "...e quem esta NADANDO e levado pra dentro do lago pelo mesmo feixe"
 						  : "quem esta A PE e levado ate a beira do lago e para nela",
-					  molhou == nadando, $"molhou={molhou}");
+					  entrou == nadando && (nadando || (alvo.Pos.X - daBeira.X) < T),
+					  $"entrou na agua={entrou}, andou {(alvo.Pos.X - daBeira.X) / T:0.0} tiles desde a beira, fim do raio = {raio.Fim}");
 		}
 	}
 
 	/// <summary>
-	/// CONTRA-EXEMPLO 4: O BONECO LARGADO NAO VAI.
+	/// O BONECO LARGADO NAO VAI -- nem sendo mais fraco que o tiro.
 	///
 	/// A recusa e `_players.ContainsKey`, e nao um `if` de `Peer`/`Cerebro` -- ver
 	/// `PodeSerLevadoPeloFeixe`. O boneco e definido por NAO estar nessa lista, e e essa mesma lista
 	/// que o `TickDoEmpurrao` percorre pra soltar o corpo: carrega-lo seria o unico corpo do jogo que
 	/// ninguem solta. A bancada reproduz o boneco do jeito que ele existe -- fora do `_players` e
 	/// dentro da zona.
+	///
+	/// O CORPO E O DO DEGRAU DE QUEM E LEVADO, de proposito: com um igual a cena ficaria verde pela escada
+	/// (o igual nunca vai), e nao pela lista. E o controle fecha a conta -- devolvido ao `_players`, o
+	/// MESMO corpo passa a ser levado pelo MESMO raio.
 	/// </summary>
-	private void OBonecoLargadoNaoVai()
+	private void OBonecoLargadoNaoVai(Vec2 raia)
 	{
 		LimparTudoDaBancada();
-		const int T = ZoneCollision.TileSize;
 
-		Vec2 raia = CorredorSeco(24);
-		ServerPlayer atira = Forjar("Feixe-boneco", raia, bp: 200_000);
-		atira.Facing = Facing.East;
-		ServerPlayer boneco = Forjar("Boneco", raia + new Vec2(6 * T, 0), bp: 200_000);
+		(_, ServerPlayer boneco, Projetil raio) = FeixeNoMaisFraco("Boneco", raia, tiles: 6);
 
 		// E ASSIM QUE UM BONECO EXISTE: na zona (ele ocupa lugar e apanha) e fora do `_players`.
 		_players.Remove(boneco.Id);
+		try
+		{
+			Vec2 onde = boneco.Pos;
+			double vida = boneco.Combate!.Corpo.Vida();
+			for (int i = 0; i < 18 && raio.Vivo; i++) UmTiqueDeArrasto();
 
-		Projetil raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
-		Vec2 onde = boneco.Pos;
-		for (int i = 0; i < 300 && raio.Vivo; i++) UmTiqueDeArrasto();
+			AfirmarPj("o feixe NAO carrega o corpo largado (ele nao esta na lista que solta ninguem): a cabeca para nele e moi",
+					  raio.Vivo && raio.Encostado && raio.Arrastando == 0 && (boneco.Pos - onde).Length < 0.01f
+					  && boneco.Combate.Corpo.Vida() < vida - 1e-9,
+					  $"encostado {raio.Encostado}, arrastando={raio.Arrastando}, andou {(boneco.Pos - onde).Length:0.0} px, vida {vida:0.###} -> {boneco.Combate.Corpo.Vida():0.###}");
+		}
+		finally { _players[boneco.Id] = boneco; }   // devolve, senao o `LimparTudoDaBancada` o deixa na zona
 
-		AfirmarPj("o feixe NAO carrega o corpo largado (ele nao esta na lista que solta ninguem)",
-				  raio.Arrastando == 0 && (boneco.Pos - onde).Length < 0.01f,
-				  $"arrastando={raio.Arrastando}, andou {(boneco.Pos - onde).Length:0.0} px");
-
-		_players[boneco.Id] = boneco;   // devolve, senao o `LimparTudoDaBancada` o deixa na zona
+		for (int i = 0; i < 12 && raio.Vivo && raio.Arrastando == 0; i++) UmTiqueDeArrasto();
+		AfirmarPj("(controle) devolvido a lista, o MESMO corpo passa a ser levado pelo MESMO raio -- a recusa era a da lista, e nao a do degrau",
+				  raio.Arrastando == boneco.Id, $"arrastando={raio.Arrastando}");
 	}
 
 	/// <summary>
-	/// CONTRA-EXEMPLO 5: ENTROU NUMA DISPUTA DE KI, LARGA.
+	/// ENTROU NUMA DISPUTA DE KI, LARGA.
 	///
 	/// Numa colisao de feixes quem manda na cabeca e o `TickDosEmbatesDeKi` (ela e posta no ponto de
 	/// encontro a cada tique). Uma cabeca que nao anda nao tem delta pra passar pro corpo, e continuar
 	/// "arrastando" seria segurar alguem parado sem nada empurrando -- ver o passo 1 do `AndarProjetil`.
 	/// </summary>
-	private void ADisputaDeKiLargaOCorpo()
+	private void ADisputaDeKiLargaOCorpo(Vec2 raia)
 	{
 		LimparTudoDaBancada();
-		const int T = ZoneCollision.TileSize;
 
-		Vec2 raia = CorredorSeco(24);
-		ServerPlayer atira = Forjar("Feixe-disputa", raia, bp: 200_000);
-		atira.Facing = Facing.East;
-		ServerPlayer alvo = Forjar("Disputado", raia + new Vec2(6 * T, 0), bp: 200_000);
-
-		Projetil raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
+		(_, ServerPlayer alvo, Projetil raio) = FeixeNoMaisFraco("Disputado", raia, tiles: 6);
 		for (int i = 0; i < 300 && raio.Vivo && raio.Arrastando == 0; i++) UmTiqueDeArrasto();
 		if (raio.Arrastando != alvo.Id)
 		{
@@ -1983,6 +2489,441 @@ public partial class GameServer
 		AfirmarPj("...e o corpo volta a ser dele no mesmo prazo de sempre",
 				  (alvo.Pos - parado).Length < 0.01f && !alvo.DirigidoPeloServidor);
 		raio.EmEmbate = false;
+	}
+
+	/// <summary>
+	/// O ARRASTO JA COMECADO OBEDECE A ESCADA: quem vinha sendo LEVADO e deixa de ser mais fraco que o tiro no meio do
+	/// caminho -- o corpo que cresce: uma forma, uma explosao de raiva -- e SOLTO na batida seguinte. A razao e relida
+	/// a cada batida (`GameServer.Acertar`), e a regra do dono e uma so: de igual a quatro vezes, apanha e NAO e levado.
+	///
+	/// ============================ O QUE FOI MEDIDO ANTES DO CONSERTO (2026-10-12) ============================
+	/// O par da cena principal (raio de 16 tiles, o corpo com metade do poder a 6), com o poder do corpo saltando no
+	/// tique em que o arrasto comeca:
+	///   * pra 2x e pra 3,9x o poder do tiro: continuou levado por 70 tiques e 14 tiles, ate o fim do alcance, pagando
+	///     a batida CHEIA a cada ciclo, e levou a explosao inteira de quem vinha na ponta (seis batidas cheias);
+	///   * pra 5x (parede): solto em cinco tiques -- o unico ramo que zerava o `Projetil.Arrastando` era o do impacto
+	///     que nao e golpe (`EstourarSemFerir`; a cena (i) da familia 16).
+	/// O `vaiSerLevado` do `Acertar` ja dava falso; faltava soltar. A escada daquela manha fica no fim, como o defeito
+	/// injetado (`KiContraCorpo.ArrastoSoSoltaAParedeDeTeste`).
+	/// =========================================================================================================
+	///
+	/// TRES CORPOS, PORQUE A LINHA DO CONSERTO E UMA SO PRA OS TRES: quem leva o raio SEM DEFENDER (fica onde esta,
+	/// apanha a batida cheia, anda devagar, e do estouro so paga a area), quem o leva na ESFERA GRANDE (ela acaba nele
+	/// e estoura ali, como em qualquer um que ela nao leva) e quem o leva DE GUARDA (solto, as maos dele seguram o raio
+	/// na batida seguinte: quem esta sendo arrastado nao abre disputa -- `TentarEmbateDeGuarda`).
+	/// </summary>
+	private void OLevadoQueCresceESolto(Vec2 raia)
+	{
+		const int T = ZoneCollision.TileSize;
+		const double Cheia = DanoQueFereDoCorte, NoArrasto = DanoQueFereDoCorte * KiContraCorpo.FracaoDaBatidaNoArrasto;
+		static bool Todas(List<double> batidas, double valor) => batidas.Count > 0 && batidas.TrueForAll(b => Math.Abs(b - valor) < 1e-6);
+		static string Lista(List<double> batidas) => string.Join(", ", batidas.Select(b => $"{b:0.###}"));
+		static bool NaBatidaSeguinte(int antes, int depois) => antes > 0 && depois > antes && depois - antes <= TiquesAteABatidaSeguinte;
+
+		// ---------- sem defender, pra duas vezes o poder do tiro: o caso medido ----------
+		CrescidoNoArrasto c = RaioQueLevavaQuemCresce(raia, vezes: 2);
+		// (os numeros medidos saem sempre, e nao so no detalhe de uma falha -- o habito da cena principal)
+		GD.Print($"[projetil]      (medido) LEVADO QUE CRESCE pra {c.Vezes:0.###}x o poder do tiro (raio de {AlcanceDeQuemCresce:0} tiles): pego no tique {c.PegouEm} pagando {c.BatidaAoPegar:0.###}; "
+				 + $"solto no {c.SoltouEm} pagando {c.BatidaAoSoltar:0.###}, levado {c.LevadoDepois:0.0} px nesse meio, com {c.RestavaAoSoltar:0.0} tiles de alcance pela frente; "
+				 + $"parado andou {c.AndouParado:0.00} px e levou [{Lista(c.BatidasParado)}]; saiu {c.SaiuDeLado:0.0} px de lado; fim {c.Raio.Fim} a {c.PxDoCentro / T:0.00} tiles dele: "
+				 + $"pagou {c.NoEstouro:0.###} (a area cobra {c.DaArea:0.###}; a explosao inteira seria {c.Inteira:0.###})");
+		AfirmarPj("PREPARO: o raio pegou o mais fraco (a batida de quem e levado: 35% de 12) e, nesse tique, o corpo CRESCEU pra duas vezes o poder do tiro "
+				  + "-- o degrau de quem apanha e nao e levado --, com a batida cheia nele cravada em 12",
+				  c.PegouEm > 0 && Math.Abs(c.BatidaAoPegar - NoArrasto) < 1e-6 && KiContraCorpo.Posto(c.Vezes) == PostoContraKi.MaisForte
+				  && Math.Abs(c.Vezes - 2) < 0.01 && Math.Abs(c.BatidaCheia - Cheia) < 1e-6,
+				  $"pego no tique {c.PegouEm} pagando {c.BatidaAoPegar:0.####}; depois de crescer, {c.Vezes:0.####}x o poder do tiro e {c.BatidaCheia:0.####} por batida cheia");
+		AfirmarPj("QUEM VINHA SENDO LEVADO E DEIXA DE SER MAIS FRACO E SOLTO NA BATIDA SEGUINTE -- a escada vale pro arrasto ja comecado --, "
+				  + "com o raio vivo e alcance pela frente (nao foi o fim do raio que o largou)",
+				  NaBatidaSeguinte(c.PegouEm, c.SoltouEm) && c.RestavaAoSoltar > 1,
+				  $"pego no tique {c.PegouEm}, solto no {c.SoltouEm}; levado {c.LevadoDepois:0.0} px nesse meio; {c.RestavaAoSoltar:0.0} tiles de alcance pela frente");
+		AfirmarPj("...a batida que o solta ja e a CHEIA, e dali em diante ele FICA ONDE ESTA, apanhando 12 a cada ciclo de moer (e nao os 35% de quem e levado), "
+				  + "com a cabeca plantada na frente dele sem levar ninguem",
+				  Math.Abs(c.BatidaAoSoltar - Cheia) < 1e-6 && c.AndouParado < 0.01f && c.BatidasParado.Count >= 2 && Todas(c.BatidasParado, Cheia) && c.Plantada,
+				  $"ao soltar {c.BatidaAoSoltar:0.####}; parado andou {c.AndouParado:0.00} px e levou [{Lista(c.BatidasParado)}]; cabeca plantada sem levar ninguem: {c.Plantada}");
+		AfirmarPj("...com as REDEAS de volta (o prazo do arrasto escorre sozinho) e o passo LENTO de quem apanha sem defender armado (`AndarDevagarSobORaio`)",
+				  c.ComAsRedeas && c.PassoLento, $"redeas {c.ComAsRedeas}, passo lento {c.PassoLento}");
+		AfirmarPj("...e SAINDO DE LADO, o raio segue ate o fim do alcance e estoura sem cobrar dele a explosao de quem vinha na ponta: "
+				  + "dentro do raio dela, ele paga SO A AREA, pela distancia (`KiContraCorpo.FracaoDaExplosao`)",
+				  c.SaiuDeLado > KiContraCorpo.LarguraPraSairDeCima(c.Raio) && !c.LevadoNoFim && c.Raio.Fim == FimDeProjetil.Explodiu && c.Explosoes == 1
+				  && c.NoEstouro > 0 && Math.Abs(c.NoEstouro - c.DaArea) < 1e-6 && c.DaArea < c.Inteira - 1,
+				  $"saiu {c.SaiuDeLado:0.0} px de lado (o raio tem {KiContraCorpo.LarguraPraSairDeCima(c.Raio):0.0} de meia largura); fim {c.Raio.Fim}, explosoes +{c.Explosoes}, levado no fim {c.LevadoNoFim}; "
+				  + $"a {c.PxDoCentro / T:0.00} tiles do centro pagou {c.NoEstouro:0.####} (a area cobra {c.DaArea:0.####}; a explosao inteira seria {c.Inteira:0.####})");
+
+		// ---------- logo abaixo da parede: o outro lado do degrau ----------
+		CrescidoNoArrasto quase = RaioQueLevavaQuemCresce(raia, vezes: VezesLogoAbaixoDaParede);
+		AfirmarPj("LOGO ABAIXO DA PAREDE (3,9x) E O MESMO DEGRAU: solto na batida seguinte, parado e apanhando a batida cheia, e do estouro so a area",
+				  KiContraCorpo.Posto(quase.Vezes) == PostoContraKi.MaisForte && Math.Abs(quase.Vezes - VezesLogoAbaixoDaParede) < 0.01
+				  && NaBatidaSeguinte(quase.PegouEm, quase.SoltouEm) && quase.AndouParado < 0.01f && quase.BatidasParado.Count >= 2 && Todas(quase.BatidasParado, Cheia)
+				  && !quase.LevadoNoFim && quase.NoEstouro > 0 && Math.Abs(quase.NoEstouro - quase.DaArea) < 1e-6,
+				  $"{quase.Vezes:0.####}x; pego no tique {quase.PegouEm}, solto no {quase.SoltouEm}; parado andou {quase.AndouParado:0.00} px e levou [{Lista(quase.BatidasParado)}]; "
+				  + $"no estouro {quase.NoEstouro:0.####} (a area cobra {quase.DaArea:0.####}; a inteira seria {quase.Inteira:0.####}), levado no fim {quase.LevadoNoFim}");
+
+		// ---------- (controle) sem crescer: a escada so solta quem saiu do degrau ----------
+		CrescidoNoArrasto fraco = RaioQueLevavaQuemCresce(raia, vezes: 0);
+		AfirmarPj("(controle) SEM CRESCER, o mesmo corpo no mesmo roteiro continua levado ate o fim do alcance, pagando a fracao a cada ciclo, e leva a explosao INTEIRA "
+				  + "-- as reguas de cima sabem dizer 'levado'",
+				  KiContraCorpo.Arrasta(fraco.Vezes) && fraco.PegouEm > 0 && fraco.SoltouEm < 0 && fraco.LevadoNoFim && fraco.LevadoDepois > 2 * T
+				  && Todas(fraco.BatidasParado, NoArrasto) && fraco.Raio.Fim == FimDeProjetil.Explodiu && Math.Abs(fraco.NoEstouro - fraco.Inteira) < 1e-6,
+				  $"{fraco.Vezes:0.####}x; pego no tique {fraco.PegouEm}, solto no {fraco.SoltouEm}; levado {fraco.LevadoDepois / T:0.0} tiles, ate o fim: {fraco.LevadoNoFim}; "
+				  + $"batidas [{Lista(fraco.BatidasParado)}]; fim {fraco.Raio.Fim} com {fraco.NoEstouro:0.####} no estouro (a inteira e {fraco.Inteira:0.####})");
+
+		// ---------- a esfera grande ----------
+		var esfera = EsferaQueLevavaQuemCresce(raia, vezes: 2);
+		AfirmarPj("A ESFERA GRANDE OBEDECE A MESMA ESCADA: a que vinha levando quem cresce ACABA nele na batida seguinte e estoura ali (a cratera, sem ser o fim do alcance) "
+				  + "-- ele paga o golpe em cheio, num lugar so, e nao a explosao de quem vinha na ponta",
+				  esfera.Tiro.EsferaGrande && KiContraCorpo.Posto(esfera.Vezes) == PostoContraKi.MaisForte && NaBatidaSeguinte(esfera.PegouEm, esfera.AcabouEm)
+				  && esfera.Tiro.Fim == FimDeProjetil.Acertou && Math.Abs(esfera.Golpe - Cheia) < 1e-6 && esfera.PorFora < 1e-9
+				  && esfera.Explosoes == 0 && esfera.Crateras == 1,
+				  $"{esfera.Vezes:0.####}x; pego no tique {esfera.PegouEm}, a esfera acabou no {esfera.AcabouEm} com fim {esfera.Tiro.Fim}; no ultimo tique o golpe foi {esfera.Golpe:0.####} "
+				  + $"e o membro de fora menos ferido levou {esfera.PorFora:0.####}; explosoes de fim de alcance +{esfera.Explosoes}, crateras +{esfera.Crateras}");
+
+		// ---------- de guarda erguida ----------
+		var guarda = RaioQueLevavaAGuardaQueCresce(raia, vezes: 2);
+		AfirmarPj("DE GUARDA ERGUIDA E A MESMA ESCADA: o mais fraco que o raio levava defendendo, e cresceu, e SOLTO na batida seguinte -- e na outra as maos dele "
+				  + "SEGURAM o raio (a disputa de guarda de quem aguenta o raio; arrastado, ele nunca a abriria)",
+				  KiContraCorpo.Posto(guarda.Vezes) == PostoContraKi.MaisForte && NaBatidaSeguinte(guarda.PegouEm, guarda.SoltouEm)
+				  && NaBatidaSeguinte(guarda.SoltouEm, guarda.SegurouEm),
+				  $"{guarda.Vezes:0.####}x; pego no tique {guarda.PegouEm}, solto no {guarda.SoltouEm}, a disputa de guarda abriu no {guarda.SegurouEm}; "
+				  + $"andou {guarda.LevadoDepois:0.0} px depois de crescer, ainda levado no fim: {guarda.Levando}");
+
+		// ---------- A ESCADA DAQUELA MANHA, COMO DEFEITO INJETADO: os tres corpos de cima, so o botao muda ----------
+		KiContraCorpo.ArrastoSoSoltaAParedeDeTeste = true;
+		try
+		{
+			CrescidoNoArrasto d = RaioQueLevavaQuemCresce(raia, vezes: 2);
+			GD.Print($"[projetil]      (medido) ...E COM O DEFEITO INJETADO: pego no tique {d.PegouEm}, solto no {d.SoltouEm}; levado {d.LevadoDepois / T:0.0} tiles depois de crescer pra {d.Vezes:0.###}x, "
+					 + $"pagando [{Lista(d.BatidasParado)}]; fim {d.Raio.Fim} no tique {d.AcabouEm} a {d.PxDoCentro / T:0.00} tiles dele: pagou {d.NoEstouro:0.###} (a explosao inteira e {d.Inteira:0.###})");
+			AfirmarPj("(defeito injetado: o arrasto so solta a parede) o MESMO corpo que cresceu pra 2x continua LEVADO ate o fim do alcance, pagando a batida CHEIA a cada ciclo, "
+					  + "e leva a explosao INTEIRA de quem vinha na ponta -- as reguas 'e solto', 'fica onde esta' e 'so a area' ficam vermelhas",
+					  KiContraCorpo.Posto(d.Vezes) == PostoContraKi.MaisForte && d.PegouEm > 0 && d.SoltouEm < 0 && d.LevadoNoFim && d.LevadoDepois > 2 * T
+					  && Todas(d.BatidasParado, Cheia) && d.Raio.Fim == FimDeProjetil.Explodiu && Math.Abs(d.NoEstouro - d.Inteira) < 1e-6,
+					  $"{d.Vezes:0.####}x; pego no tique {d.PegouEm}, solto no {d.SoltouEm}; levado {d.LevadoDepois / T:0.0} tiles, ate o fim: {d.LevadoNoFim}; batidas [{Lista(d.BatidasParado)}]; "
+					  + $"fim {d.Raio.Fim} com {d.NoEstouro:0.####} no estouro (a inteira e {d.Inteira:0.####})");
+
+			var esferaDeAntes = EsferaQueLevavaQuemCresce(raia, vezes: 2);
+			AfirmarPj("(defeito injetado: o arrasto so solta a parede) a ESFERA GRANDE continua levando quem cresceu ate o fim do alcance e estoura NELE: a explosao em todo membro de fora",
+					  esferaDeAntes.Tiro.Fim == FimDeProjetil.Explodiu && esferaDeAntes.Levado > 2 * T && esferaDeAntes.PorFora > 1e-9 && esferaDeAntes.Explosoes == 1,
+					  $"fim {esferaDeAntes.Tiro.Fim} no tique {esferaDeAntes.AcabouEm} (pego no {esferaDeAntes.PegouEm}); o corpo andou {esferaDeAntes.Levado / T:0.0} tiles depois de crescer; "
+					  + $"no ultimo tique o membro de fora menos ferido levou {esferaDeAntes.PorFora:0.####}; explosoes de fim de alcance +{esferaDeAntes.Explosoes}");
+
+			var guardaDeAntes = RaioQueLevavaAGuardaQueCresce(raia, vezes: 2);
+			AfirmarPj("(defeito injetado: o arrasto so solta a parede) DE GUARDA ele continua levado e nunca chega a segurar o raio: quem esta sendo arrastado nao abre disputa",
+					  guardaDeAntes.PegouEm > 0 && guardaDeAntes.SoltouEm < 0 && guardaDeAntes.SegurouEm < 0 && guardaDeAntes.Levando && guardaDeAntes.LevadoDepois > 2 * T,
+					  $"pego no tique {guardaDeAntes.PegouEm}, solto no {guardaDeAntes.SoltouEm}, disputa no {guardaDeAntes.SegurouEm}; "
+					  + $"andou {guardaDeAntes.LevadoDepois / T:0.0} tiles depois de crescer, ainda levado no fim: {guardaDeAntes.Levando}");
+		}
+		finally { KiContraCorpo.ArrastoSoSoltaAParedeDeTeste = false; }
+	}
+
+	/// <summary>
+	/// O alcance do raio (e da esfera) das cenas de quem cresce no meio do arrasto, em tiles da mao. CURTO DE
+	/// PROPOSITO: pego a seis tiles e solto um ciclo depois, o corpo fica a uns dois tiles do fim -- quem sai de lado
+	/// continua DENTRO do raio da explosao (`KiContraCorpo.TilesDaExplosaoDeEscala1`, quatro), e a regua consegue
+	/// dizer "pagou so a area" em vez de "estava longe demais pra pagar". E poucas batidas cheias cabem no caminho: o
+	/// golpe nao letal para no piso do membro (`Body.Ferir`), e um membro no piso leria a explosao pela metade.
+	/// </summary>
+	private const double AlcanceDeQuemCresce = 8;
+
+	/// <summary>
+	/// Em quantos tiques, no maximo, a BATIDA SEGUINTE chega: um ciclo de moer (`Projetil.SegundosPorCicloDeBeam`, seis
+	/// tiques) e dois de folga -- a tolerancia da cena (i) da familia 16.
+	/// </summary>
+	private const int TiquesAteABatidaSeguinte = 8;
+
+	/// <summary>Por quantos tiques quem cresceu fica PARADO antes de tentar sair de lado: dois ciclos de moer, com folga.</summary>
+	private const int TiquesParadoSobORaio = 15;
+
+	/// <summary>O passo de quem sai de lado, em pixels por tique -- o da parede que anda raio adentro (familia 16).</summary>
+	private const float PassoDeLadoDaBancada = 4;
+
+	/// <summary>
+	/// O que aconteceu com quem CRESCEU no meio do arrasto de um raio (<see cref="RaioQueLevavaQuemCresce"/>). Os
+	/// tiques contam do disparo, e -1 e "nao aconteceu"; as batidas sao a ferida mais funda de um tique
+	/// (<see cref="FeridaMaisFunda"/>); `NoEstouro` e o que o ULTIMO tique fez a todo membro de fora, somado
+	/// (<see cref="MenorFeridaDeFora"/> vezes quantos sao -- a marca de uma explosao).
+	/// </summary>
+	private readonly record struct CrescidoNoArrasto(
+		Projetil Raio, ServerPlayer Alvo, double Vezes, double BatidaCheia, int PegouEm, double BatidaAoPegar,
+		int SoltouEm, double BatidaAoSoltar, float LevadoDepois, double RestavaAoSoltar,
+		float AndouParado, List<double> BatidasParado, bool Plantada, bool ComAsRedeas, bool PassoLento,
+		float SaiuDeLado, int AcabouEm, bool LevadoNoFim, int Explosoes, double NoEstouro, double PxDoCentro)
+	{
+		/// <summary>A explosao INTEIRA: o que paga quem vinha na ponta do tiro (`GameServer.Estourar`).</summary>
+		public double Inteira => BatidaCheia * KiContraCorpo.BatidasDaExplosao;
+
+		/// <summary>O que a AREA da explosao cobra de quem esta a esta distancia do centro dela -- a conta do `Estourar`.</summary>
+		public double DaArea => Inteira * KiContraCorpo.FracaoDaExplosao(
+			PxDoCentro / (KiContraCorpo.TilesDaExplosao(Raio.EscalaVisual) * ZoneCollision.TileSize));
+	}
+
+	/// <summary>
+	/// O RAIO PESADO PEGA O MAIS FRACO A SEIS TILES E, NO TIQUE EM QUE O ARRASTO COMECA, O CORPO CRESCE ate ter
+	/// <paramref name="vezes"/> o poder do tiro, com a batida cheia nele cravada de novo em 12. Dali o roteiro e um so,
+	/// pra toda rodada -- a limpa, a do controle e a do defeito:
+	///   1. espera a batida seguinte (<see cref="TiquesAteABatidaSeguinte"/>);
+	///   2. fica PARADO (<see cref="TiquesParadoSobORaio"/>): le-se se o corpo sai do lugar e quanto vale cada batida;
+	///   3. tenta sair de LADO, um passo por tique, ate estar fora da largura do raio -- e so anda quem tem as redeas
+	///      (`PodeMexerOCorpo`, a porta por onde o input de um jogador passa): quem continua sendo levado aperta a
+	///      tecla e nao sai do lugar;
+	///   4. a cena segue ate o raio acabar, e o ultimo tique e o do estouro.
+	/// O passo de lado e escrito pela bancada (como o da parede que anda raio adentro, na familia 16): o que ele prova
+	/// nao e o andar -- e o que o raio faz com quem saiu da frente dele.
+	/// </summary>
+	/// <param name="vezes">Quantas vezes o poder do tiro o corpo passa a ter. Abaixo de 1 ele NAO cresce: e o controle.</param>
+	private CrescidoNoArrasto RaioQueLevavaQuemCresce(Vec2 raia, double vezes)
+	{
+		LimparTudoDaBancada();
+		const int T = ZoneCollision.TileSize;
+		(_, ServerPlayer alvo, Projetil raio) =
+			FeixeNoMaisFraco("Crescido", raia, tiles: 6, velocidade: 0.5, alcanceTiles: AlcanceDeQuemCresce);
+		int explosoes = ExplosoesDoFimDoAlcanceDeTeste;
+
+		// UM TIQUE DO SERVIDOR E O QUE ELE FEZ AO CORPO: devolve a batida, e anota se foi nele que o raio, VIVO, deixou
+		// de leva-lo -- o estouro do fim do alcance tambem zera o `Arrastando`, e aquilo nao e soltar.
+		int t = 0, soltouEm = -1;
+		double batidaAoSoltar = 0, restavaAoSoltar = 0;
+		bool levadoNoUltimo = false;
+		Vec2 ondeSoltou = alvo.Pos;
+		double[] antes = VidaPorParte(alvo);
+		double Tique()
+		{
+			antes = VidaPorParte(alvo);
+			levadoNoUltimo = raio.Arrastando == alvo.Id;
+			UmTiqueDeArrasto();
+			t++;
+			double batida = FeridaMaisFunda(alvo, antes);
+			if (soltouEm < 0 && levadoNoUltimo && raio.Vivo && raio.Arrastando != alvo.Id)
+			{
+				soltouEm = t;
+				batidaAoSoltar = batida;
+				restavaAoSoltar = raio.Distancia;
+				ondeSoltou = alvo.Pos;
+			}
+			return batida;
+		}
+
+		// 0. ATE O RAIO PEGA-LO -- e ai ele cresce (o controle, nao).
+		double batidaAoPegar = 0;
+		while (raio.Vivo && raio.Arrastando != alvo.Id && t < 300) batidaAoPegar = Tique();
+		int pegouEm = raio.Arrastando == alvo.Id ? t : -1;
+		if (pegouEm > 0 && vezes >= 1)
+		{
+			CrescerAte(alvo, raio, vezes);
+			CravarDanoFinal(raio, alvo, DanoQueFereDoCorte);
+		}
+		Vec2 ondeCresceu = alvo.Pos;
+		double razao = VezesOPoderDoTiro(raio, alvo), cheia = DanoFinalDe(raio, alvo);
+
+		// 1. A BATIDA SEGUINTE.
+		for (int i = 0; i < TiquesAteABatidaSeguinte && raio.Vivo; i++) Tique();
+
+		// 2. PARADO. (a "batida" do tique em que o raio ACABA e o estouro: nao entra na lista)
+		Vec2 ondeParou = alvo.Pos;
+		var batidasParado = new List<double>();
+		for (int i = 0; i < TiquesParadoSobORaio && raio.Vivo; i++)
+		{
+			double batida = Tique();
+			if (batida > 1e-9 && raio.Vivo) batidasParado.Add(batida);
+		}
+		float andouParado = (alvo.Pos - ondeParou).Length;
+		bool plantada = raio.Vivo && raio.Encostado && raio.Arrastando == 0;
+		bool comAsRedeas = PodeMexerOCorpo(alvo) && !alvo.DirigidoPeloServidor && alvo.ArrastoRestante <= 0;
+		bool passoLento = alvo.SobORaioAteMs > NowMs();
+
+		// 3. O PASSO DE LADO, ate a meia largura do raio e mais meio corpo -- pra fileira vizinha que serve de chao,
+		//    quando ha (o corredor da bancada so garante a fileira dele; o sul, se as duas servem ou nenhuma serve).
+		int passos = (int)MathF.Ceiling((KiContraCorpo.LarguraPraSairDeCima(raio) + Feixe.MeioCorpo) / PassoDeLadoDaBancada);
+		int cx = (int)MathF.Floor(alvo.Pos.X / T), cy = (int)MathF.Floor(alvo.Pos.Y / T);
+		Vec2 lado = _pjMapa is { } mapa && !mapa.ServeDeChao(cx, cy + 1) && mapa.ServeDeChao(cx, cy - 1) ? new Vec2(0, -1) : new Vec2(0, 1);
+		float deOndeSaiu = alvo.Pos.Y;
+		for (int i = 0; i < passos && raio.Vivo; i++)
+		{
+			if (PodeMexerOCorpo(alvo)) alvo.Pos += lado * PassoDeLadoDaBancada;
+			Tique();
+		}
+		float saiuDeLado = MathF.Abs(alvo.Pos.Y - deOndeSaiu);
+
+		// 4. ATE O RAIO ACABAR.
+		while (raio.Vivo && t < 300) Tique();
+		int membrosDeFora = alvo.Combate!.Corpo.Partes.Count(m => !m.Aninhado && !m.Decepado);
+
+		return new CrescidoNoArrasto(raio, alvo, razao, cheia, pegouEm, batidaAoPegar, soltouEm, batidaAoSoltar,
+									 ((soltouEm > 0 ? ondeSoltou : alvo.Pos) - ondeCresceu).Length, restavaAoSoltar,
+									 andouParado, batidasParado, plantada, comAsRedeas, passoLento, saiuDeLado, t, levadoNoUltimo,
+									 ExplosoesDoFimDoAlcanceDeTeste - explosoes, MenorFeridaDeFora(alvo, antes) * membrosDeFora,
+									 Vec2.Distance(alvo.Pos, raio.Pos));
+	}
+
+	/// <summary>
+	/// O CORPO CRESCE ATE TER <paramref name="vezes"/> O PODER DESTE TIRO -- uma forma, uma explosao de raiva no meio
+	/// do raio --, pela conta de producao do poder expresso (`Fighter.Tick`, como no <see cref="Forjar"/> e na cena (i)
+	/// da familia 16). O poder expresso nao e so o BP -- vida, folego e raiva entram na conta, e este corpo acabou de
+	/// apanhar --, entao uma segunda volta acerta a razao no numero pedido: a cena diz em que degrau esta sem depender
+	/// de quanto o corpo ja perdeu (3,9x nao pode virar parede por um arredondamento).
+	/// </summary>
+	private void CrescerAte(ServerPlayer corpo, Projetil tiro, double vezes)
+	{
+		corpo.Ficha.BP = tiro.Bp * vezes;
+		corpo.Ficha.Tick(agoraMs: NowMs());
+		corpo.Ficha.BP *= vezes / VezesOPoderDoTiro(tiro, corpo);
+		corpo.Ficha.Tick(agoraMs: NowMs());
+	}
+
+	/// <summary>
+	/// UMA ESFERA GRANDE (escala 2: `Projetil.EsferaGrande`) no par das cenas de arrasto, com o corpo CRESCENDO no tique
+	/// em que ela o pega e o golpe cheio nele cravado em 12, ate ela acabar. Devolve a esfera morta, a razao depois de
+	/// crescer, o tique em que ela o pegou e o em que acabou, quanto o corpo andou depois de crescer, e o que o ULTIMO
+	/// tique lhe fez: o golpe (a ferida mais funda) e o que o membro de fora MENOS ferido levou (zero se algum saiu
+	/// ileso: so uma explosao fere todos) -- mais as explosoes de fim de alcance e as crateras que a cena somou.
+	/// </summary>
+	private (Projetil Tiro, double Vezes, int PegouEm, int AcabouEm, float Levado, double Golpe, double PorFora, int Explosoes, int Crateras)
+		EsferaQueLevavaQuemCresce(Vec2 raia, double vezes)
+	{
+		LimparTudoDaBancada();
+		ServerPlayer atira = Forjar("Esfera em quem cresce", raia, bp: BpDoFeixeDaEscada);
+		atira.Facing = Facing.East;
+		ServerPlayer alvo = Forjar("Crescido na esfera", raia + new Vec2(6 * ZoneCollision.TileSize, 0), bp: BpDoMaisFracoDaEscada);
+		Projetil esfera = Disparar(atira, new ReceitaDeProjetil
+		{
+			Tipo = TipoDeProjetil.Blast, BaseDano = BaseQueFere(atira, alvo, TipoDeProjetil.Blast), Velocidade = 1,
+			AlcanceTiles = AlcanceDeQuemCresce, EscalaVisual = 2, Deflectivel = false, Nome = "esfera grande",
+		});
+		int explosoes = ExplosoesDoFimDoAlcanceDeTeste, crateras = CraterasDeExplosaoDeTeste;
+
+		int t = 0, pegouEm = -1;
+		Vec2 ondeCresceu = alvo.Pos;
+		double[] antes = VidaPorParte(alvo);
+		while (esfera.Vivo && t < 600)
+		{
+			antes = VidaPorParte(alvo);
+			UmTiqueDeArrasto();
+			t++;
+			if (pegouEm > 0 || esfera.Arrastando != alvo.Id) continue;
+
+			pegouEm = t;
+			CrescerAte(alvo, esfera, vezes);
+			CravarDanoFinal(esfera, alvo, DanoQueFereDoCorte);
+			ondeCresceu = alvo.Pos;
+		}
+		return (esfera, VezesOPoderDoTiro(esfera, alvo), pegouEm, t, (alvo.Pos - ondeCresceu).Length,
+				FeridaMaisFunda(alvo, antes), MenorFeridaDeFora(alvo, antes),
+				ExplosoesDoFimDoAlcanceDeTeste - explosoes, CraterasDeExplosaoDeTeste - crateras);
+	}
+
+	/// <summary>
+	/// UM KI WAVE DE VERDADE (`Canalizar`, a carga, o canal -- so o raio que uma mao alimenta entra em disputa:
+	/// `PodeDisputar`) contra o mais fraco de GUARDA SEGURADA a seis tiles, que CRESCE no tique em que o raio o pega.
+	/// A cena vai ate as maos dele segurarem o raio (a disputa de guarda abrir), ou tres batidas depois de ele crescer.
+	/// Devolve a razao depois de crescer, os tiques em que o raio o pegou, em que o soltou e em que a disputa abriu
+	/// (-1 = nao aconteceu), quanto ele andou depois de crescer e se o raio ainda o levava no fim.
+	/// </summary>
+	private (double Vezes, int PegouEm, int SoltouEm, int SegurouEm, float LevadoDepois, bool Levando)
+		RaioQueLevavaAGuardaQueCresce(Vec2 raia, double vezes)
+	{
+		LimparEmbatesDaBancada();
+		ServerPlayer atira = Forjar("Raio na guarda que cresce", raia, bp: BpDoFeixeDaEscada);
+		atira.Facing = Facing.East;
+		atira.Ficha.Ki = atira.Ficha.MaxKi;
+		ServerPlayer guarda = Forjar("Guarda que cresce", raia + new Vec2(6 * ZoneCollision.TileSize, 0), bp: BpDoMaisFracoDaEscada);
+		guarda.Facing = Facing.West;
+		guarda.Ficha.Ki = guarda.Ficha.MaxKi;
+		SegurarAGuarda(guarda);
+
+		ReceitaDeProjetil queFere = SemDeflexao();
+		queFere.BaseDano = BaseQueFere(atira, guarda);
+		queFere.AlcanceTiles = AlcanceDoArrastoDaBancada;
+		Canalizar(atira, "Ki_Wave", 10 * atira.Ficha.BaseDrain(), queFere);
+
+		Projetil? raio = null;
+		int pegouEm = -1, soltouEm = -1, segurouEm = -1;
+		Vec2 ondeCresceu = guarda.Pos;
+		for (int t = 1; t <= 30 * 8; t++)
+		{
+			// (o empurrao antes, como no `UmTiqueDeArrasto`: e ele que escorre o prazo de quem foi solto)
+			TickDoEmpurrao();
+			UmTiqueDoEncontro();
+			raio ??= _canais.GetValueOrDefault(atira.Id)?.Raio;
+			if (raio == null) continue;
+
+			if (pegouEm < 0)
+			{
+				if (raio.Arrastando == guarda.Id)
+				{
+					pegouEm = t;
+					CrescerAte(guarda, raio, vezes);
+					ondeCresceu = guarda.Pos;
+				}
+				else if (!raio.Vivo) break;
+				continue;
+			}
+
+			if (soltouEm < 0 && raio.Vivo && raio.Arrastando != guarda.Id) soltouEm = t;
+			if (_emEmbateDeKi.ContainsKey(guarda.Id)) { segurouEm = t; break; }
+			if (!raio.Vivo || t - pegouEm >= 3 * TiquesAteABatidaSeguinte) break;
+		}
+
+		var medido = (raio == null ? 0 : VezesOPoderDoTiro(raio, guarda), pegouEm, soltouEm, segurouEm, (guarda.Pos - ondeCresceu).Length,
+					  raio is { Vivo: true } && raio.Arrastando == guarda.Id);
+		LimparEmbatesDaBancada();
+		return medido;
+	}
+
+	/// <summary>
+	/// O JOGO DE ANTES DE 2026-10-12, COMO DEFEITO INJETADO -- e o que a escada desta familia substituiu.
+	///
+	/// `KiContraCorpo.RegraDeAntesDeTeste` repoe o porte do DM/DU: perto (ate quatro tiles) o raio ARREMESSA e nao
+	/// carrega (`beam_stun_start = 4`, `death.dm:727`; `maxdistance-distance &lt;= 4`, `objects.dm:449-455`); longe
+	/// ele carrega na velocidade DELE, sem atordoar, e larga o corpo aos dez tiles da mao (`if(getdist(Owner,P)&lt;10)`,
+	/// `Projectiles.dm:584`) -- e segue viagem, sem estouro. O MESMO par e o MESMO raio das cenas de cima: so o botao
+	/// muda, e as reguas de cima (leva de perto, na velocidade do arrasto, ate o fim do alcance, onde estoura) tem
+	/// de ficar vermelhas com ele.
+	/// </summary>
+	private void OArrastoDoJogoDeAntes(Vec2 raia)
+	{
+		const int T = ZoneCollision.TileSize;
+		KiContraCorpo.RegraDeAntesDeTeste = true;
+		try
+		{
+			// ---------- de perto: arremessa, e nao carrega ----------
+			LimparTudoDaBancada();
+			(_, ServerPlayer colado, Projetil dePerto) = FeixeNoMaisFraco("Colado de antes", raia, tiles: 2);
+			for (int i = 0; i < 200 && dePerto.Vivo && colado.TiquesDeVoo == 0 && dePerto.Arrastando == 0; i++)
+				UmTiqueDeArrasto();
+			AfirmarPj("(defeito injetado: o jogo de antes) a QUEIMA-ROUPA do raio ARREMESSA e nao carrega -- a regua 'de perto o raio tambem leva' fica vermelha",
+					  colado.TiquesDeVoo > 0 && dePerto.Arrastando == 0,
+					  $"voo={colado.TiquesDeVoo} arrasto={dePerto.Arrastando}");
+
+			// ---------- de longe: na velocidade do feixe, sem atordoar, e so ate dez tiles da mao ----------
+			LimparTudoDaBancada();
+			(_, ServerPlayer vitima, Projetil raio) =
+				FeixeNoMaisFraco("Levado de antes", raia, tiles: 6, velocidade: 0.5, alcanceTiles: AlcanceDoArrastoDaBancada);
+			int t = 0;
+			while (raio.Vivo && raio.Arrastando == 0 && t++ < 300) UmTiqueDeArrasto();
+			bool pegou = raio.Arrastando == vitima.Id;
+			double stunAoPegar = vitima.Combate!.Stun;
+
+			const int TiquesDaVelocidade = 6;
+			Vec2 corpoAntes = vitima.Pos;
+			for (int i = 0; i < TiquesDaVelocidade && raio.Arrastando != 0; i++) UmTiqueDeArrasto();
+			double vArrasto = (vitima.Pos - corpoAntes).Length / (TiquesDaVelocidade * Protocol.TickSeconds);
+			double vFeixe = ZoneCollision.TileSize / raio.SegundosPorTile;
+
+			int explosoes = ExplosoesDoFimDoAlcanceDeTeste;
+			while (raio.Vivo && raio.Arrastando != 0 && t++ < 900) UmTiqueDeArrasto();
+			double largouCom = raio.AndouTiles, corpoDaMao = (vitima.Pos.X - raia.X) / T;
+			bool vivoAoLargar = raio.Vivo;
+
+			AfirmarPj("(defeito injetado: o jogo de antes) de longe o corpo vai na velocidade DO FEIXE (sem o fator da diferenca de forca) e sem atordoar",
+					  pegou && Math.Abs(vArrasto - vFeixe) < vFeixe * 0.02 && stunAoPegar <= 0,
+					  $"pegou {pegou}, {vArrasto:0} px/s contra {vFeixe:0} do feixe, stun {stunAoPegar:0.##}");
+			AfirmarPj("(defeito injetado: o jogo de antes) o arrasto LARGA aos 10 tiles da mao do dono (`if(getdist(Owner,P)<10)`), com o raio VIVO "
+					  + "e sem estouro -- as reguas 'ate o fim do alcance' e 'la estoura' ficam vermelhas",
+					  pegou && vivoAoLargar && largouCom >= Projetil.TilesDeArrasto && largouCom < AlcanceDoArrastoDaBancada - 2
+					  && corpoDaMao < AlcanceDoArrastoDaBancada - 2 && ExplosoesDoFimDoAlcanceDeTeste == explosoes,
+					  $"largou com {largouCom:0.0} tiles andados (alcance {AlcanceDoArrastoDaBancada:0}), raio vivo {vivoAoLargar}, "
+					  + $"corpo a {corpoDaMao:0.0} tiles de quem atirou, explosoes +{ExplosoesDoFimDoAlcanceDeTeste - explosoes}");
+		}
+		finally { KiContraCorpo.RegraDeAntesDeTeste = false; }
 	}
 
 	// =====================================================================
@@ -2093,16 +3034,11 @@ public partial class GameServer
 	/// </summary>
 	private void OArrastoInjetado()
 	{
-		const int T = ZoneCollision.TileSize;
-
 		// ---- 1. O PRAZO APAGADO ----
+		// (o par e o das cenas de arrasto da familia 9 -- `FeixeNoMaisFraco`: so quem e mais fraco que o tiro e levado)
 		LimparTudoDaBancada();
 		Vec2 raia = CorredorSeco(30);
-		ServerPlayer atira = Forjar("Feixe da injecao", raia, bp: 200_000);
-		atira.Facing = Facing.East;
-		ServerPlayer vitima = Forjar("Levado da injecao", raia + new Vec2(6 * T, 0), bp: 200_000);
-
-		Projetil raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
+		(_, ServerPlayer vitima, Projetil raio) = FeixeNoMaisFraco("Levado da injecao", raia, tiles: 6);
 		for (int i = 0; i < 300 && raio.Vivo && raio.Arrastando == 0; i++) UmTiqueDeArrasto();
 
 		if (raio.Arrastando != vitima.Id)
@@ -2128,12 +3064,7 @@ public partial class GameServer
 
 		// ---- 2. A VITIMA QUE O FEIXE NAO PODE LEVAR ----
 		LimparTudoDaBancada();
-		Vec2 outra = CorredorSeco(30);
-		ServerPlayer atira2 = Forjar("Feixe da injecao 2", outra, bp: 200_000);
-		atira2.Facing = Facing.East;
-		ServerPlayer morto = Forjar("Recusado", outra + new Vec2(6 * T, 0), bp: 200_000);
-
-		Projetil raio2 = RaioDaBancada(atira2, baseDano: BaseQueFereUmIgual(atira2));
+		(_, ServerPlayer morto, Projetil raio2) = FeixeNoMaisFraco("Recusado", raia, tiles: 6);
 		for (int i = 0; i < 300 && raio2.Vivo && raio2.Arrastando == 0; i++) UmTiqueDeArrasto();
 
 		if (raio2.Arrastando != morto.Id)
@@ -2181,12 +3112,16 @@ public partial class GameServer
 	/// chegar em ninguem. E `Deflectivel = false` porque um sorteio no meio da medicao mediria o dado.
 	/// </summary>
 	/// <param name="velocidade">O `speed` do raio: 1 = o raio comum; 0,5 = o raio PESADO (a do Massive Beam).</param>
-	private Projetil RaioDaBancada(ServerPlayer pl, double baseDano, double velocidade = 1)
+	/// <param name="alcanceTiles">
+	/// Ate onde ele vai. Quarenta tiles e "de sobra" pras cenas que medem o impacto; as que medem o FIM do alcance
+	/// (onde o raio estoura, e ate onde ele leva o mais fraco) pedem um que caiba no corredor delas.
+	/// </param>
+	private Projetil RaioDaBancada(ServerPlayer pl, double baseDano, double velocidade = 1, double alcanceTiles = 40)
 	{
 		Projetil raio = Disparar(pl, new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Beam, BaseDano = baseDano, Velocidade = velocidade,
-			AlcanceTiles = 40, Deflectivel = false, Nome = "Onda de Ki",
+			AlcanceTiles = alcanceTiles, Deflectivel = false, Nome = "Onda de Ki",
 		});
 		raio.Canalizando = true;
 		return raio;
@@ -2240,43 +3175,63 @@ public partial class GameServer
 	/// <summary>
 	/// *"atualmente a cabeca do beam fica SOBRE a pessoa e nao NA FRENTE dela a empurrando e dando
 	/// dano"* -- com a foto. Mede-se a projecao (corpo - cabeca) no rumo do feixe: tem que dar
-	/// `Feixe.DistanciaDeContato`, no impacto e durante o arrasto; e o defeito injetado (a cabeca fica
-	/// onde encostou) tem que ficar vermelho.
+	/// `Feixe.DistanciaDeContato`, no impacto e depois dele; e o defeito injetado (a cabeca fica onde
+	/// encostou) tem que ficar vermelho.
+	///
+	/// NOS DOIS DEGRAUS EM QUE O RAIO FERE (`KiContraCorpo`): o MAIS FRACO, que a cabeca leva empurrando
+	/// pela frente, e o IGUAL, em quem ela para e fica moendo. (O terceiro -- a parede, em quem ela bate
+	/// sem ferir -- e medido pela familia 16, com o corpo andando raio adentro.)
 	/// </summary>
 	private void ACabecaFicaNaFrenteDeQuemAcerta()
 	{
 		GD.Print("[projetil] -- 11) A CABECA FICA NA FRENTE DE QUEM ELA ACERTA, E NAO EM CIMA");
 		LimparTudoDaBancada();
 		const int T = ZoneCollision.TileSize;
+		Vec2 raia = CorredorSeco(30);   // uma faixa pra familia: cada cena limpa a bancada e nasce de novo nela
 
-		// LONGE (arrasto): a cabeca leva o corpo e continua na frente dele o tempo todo.
-		Vec2 raia = CorredorSeco(30);
-		ServerPlayer atira = Forjar("Feixe", raia, bp: 200_000);
-		atira.Facing = Facing.East;
-		ServerPlayer vitima = Forjar("Levado", raia + new Vec2(6 * T, 0), bp: 200_000);
-		Projetil raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
+		// O MAIS FRACO (arrasto): a cabeca leva o corpo e continua na frente dele o tempo todo.
+		(_, ServerPlayer vitima, Projetil raio) = FeixeNoMaisFraco("Levado", raia, tiles: 6);
 		int t = 0;
 		while (raio.Vivo && raio.Arrastando == 0 && t++ < 300) UmTiqueDeArrasto();
 		float NaFrente() => (vitima.Pos.X - raio.Pos.X) * raio.Rumo.X + (vitima.Pos.Y - raio.Pos.Y) * raio.Rumo.Y;
 
 		AfirmarPj("ao encostar, a cabeca para NA FRENTE do corpo: o centro dela a `DistanciaDeContato` do centro dele",
 				  raio.Arrastando == vitima.Id && Math.Abs(NaFrente() - Feixe.DistanciaDeContato) < 1f,
-				  $"{NaFrente():0.0} px a frente (esperado {Feixe.DistanciaDeContato})");
+				  $"levando {raio.Arrastando}, {NaFrente():0.0} px a frente (esperado {Feixe.DistanciaDeContato})");
 		float pior = 0;
+		Vec2 deOnde = vitima.Pos;
 		for (int i = 0; i < 12 && raio.Arrastando == vitima.Id; i++)
 		{
 			UmTiqueDeArrasto();
 			pior = Math.Max(pior, Math.Abs(NaFrente() - Feixe.DistanciaDeContato));
 		}
 		AfirmarPj("...e continua na frente enquanto EMPURRA (o corpo anda o mesmo delta que a cabeca)",
-				  pior < 1f, $"desvio maximo {pior:0.00} px em 12 tiques");
+				  pior < 1f && (vitima.Pos - deOnde).Length > T,
+				  $"desvio maximo {pior:0.00} px em 12 tiques, com o corpo levado {(vitima.Pos - deOnde).Length:0.0} px");
 
-		// PERTO (arremesso): o instante do impacto tambem planta a cabeca na frente.
+		// O IGUAL (nao e levado): a cabeca para na frente dele e FICA ali, moendo -- ciclo apos ciclo.
 		LimparTudoDaBancada();
-		raia = CorredorSeco(30);
-		atira = Forjar("Feixe2", raia, bp: 200_000);
+		ServerPlayer atira = Forjar("Feixe do igual", raia, bp: BpDoFeixeDaEscada);
 		atira.Facing = Facing.East;
-		vitima = Forjar("Batido", raia + new Vec2(2 * T, 0), bp: 200_000);
+		vitima = Forjar("Plantado", raia + new Vec2(6 * T, 0), bp: BpDoIgualDaEscada);
+		raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
+		t = 0;
+		while (raio.Vivo && !raio.Encostado && t++ < 300) UmTiqueDeArrasto();
+		pior = Math.Abs(NaFrente() - Feixe.DistanciaDeContato);
+		for (int i = 0; i < 12 && raio.Vivo; i++)
+		{
+			UmTiqueDeArrasto();
+			pior = Math.Max(pior, Math.Abs(NaFrente() - Feixe.DistanciaDeContato));
+		}
+		AfirmarPj("em quem NAO e levado (o igual) a cabeca tambem para na frente -- e fica ali, moendo, sem entrar no corpo",
+				  raio.Vivo && raio.Encostado && raio.Arrastando == 0 && pior < 1f,
+				  $"encostado {raio.Encostado}, levando {raio.Arrastando}, desvio maximo {pior:0.00} px em 12 tiques");
+
+		// DE PERTO: o instante do impacto tambem planta a cabeca na frente.
+		LimparTudoDaBancada();
+		atira = Forjar("Feixe de perto", raia, bp: BpDoFeixeDaEscada);
+		atira.Facing = Facing.East;
+		vitima = Forjar("Batido", raia + new Vec2(2 * T, 0), bp: BpDoIgualDaEscada);
 		raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
 		t = 0;
 		while (raio.Vivo && !raio.Encostado && t++ < 60) UmTiqueDeArrasto();
@@ -2287,19 +3242,18 @@ public partial class GameServer
 		// O DEFEITO INJETADO: a cabeca fica onde encostou -- em cima do corpo, a foto do dono.
 		LimparTudoDaBancada();
 		Feixe.CabecaEmCimaDeTeste = true;
-		raia = CorredorSeco(30);
-		atira = Forjar("Feixe3", raia, bp: 200_000);
-		atira.Facing = Facing.East;
-		vitima = Forjar("Coberto", raia + new Vec2(6 * T, 0), bp: 200_000);
-		raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
-		t = 0;
-		while (raio.Vivo && raio.Arrastando == 0 && t++ < 300) UmTiqueDeArrasto();
-		float emCima = NaFrente();
-		Feixe.CabecaEmCimaDeTeste = false;
-		// Sem o plantio a cabeca fica onde o SUB-PASSO a deixou ao encostar -- mais perto que a distancia
-		// de contato, e num lugar que depende do passo (16 px) e nao da regra. E o que a foto mostrava.
-		AfirmarPj("DEFEITO INJETADO (cabeca em cima) fica vermelho: a cabeca mais perto do corpo que a distancia de contato",
-				  raio.Arrastando == vitima.Id && emCima < Feixe.DistanciaDeContato - 1f, $"{emCima:0.0} px a frente");
+		try
+		{
+			(_, vitima, raio) = FeixeNoMaisFraco("Coberto", raia, tiles: 6);
+			t = 0;
+			while (raio.Vivo && raio.Arrastando == 0 && t++ < 300) UmTiqueDeArrasto();
+			float emCima = NaFrente();
+			// Sem o plantio a cabeca fica onde o SUB-PASSO a deixou ao encostar -- mais perto que a distancia
+			// de contato, e num lugar que depende do passo (16 px) e nao da regra. E o que a foto mostrava.
+			AfirmarPj("DEFEITO INJETADO (cabeca em cima) fica vermelho: a cabeca mais perto do corpo que a distancia de contato",
+					  raio.Arrastando == vitima.Id && emCima < Feixe.DistanciaDeContato - 1f, $"{emCima:0.0} px a frente");
+		}
+		finally { Feixe.CabecaEmCimaDeTeste = false; }
 		LimparTudoDaBancada();
 	}
 
@@ -2311,7 +3265,12 @@ public partial class GameServer
 	/// ser cortado e a cabeca nova do beam vai colidir com essa pessoa, e a outra parte do beam que foi
 	/// cortada vai continuar normalmente"*. E o `Crossed(mob)` do DM (`objects.dm:156-172`) num feixe
 	/// que e um objeto so -- ver `GameServer.Feixe.cs`. Com os tres casos que NAO cortam e o defeito
-	/// injetado.
+	/// injetado. E com alguem NA PONTA da cabeca velha: a parte de la continua levando-o, no mesmo passo
+	/// (<see cref="OCorteNaoMudaOPassoDeQuemELevado"/>).
+	///
+	/// A CABECA NOVA BATE EM QUEM PISOU PELA ESCADA DE TODO IMPACTO (`KiContraCorpo`, o `Acertar` que o corte
+	/// chama): o IGUAL e moido no lugar (a cena principal), o MAIS FRACO e levado por ela (logo depois), e em
+	/// quem e PAREDE ela para sem ferir (a familia 16).
 	/// </summary>
 	private void OTroncoSeCortaOndeAlguemEncosta()
 	{
@@ -2319,8 +3278,8 @@ public partial class GameServer
 		LimparTudoDaBancada();
 		const int T = ZoneCollision.TileSize;
 
-		Vec2 raia = CorredorSeco(40);
-		ServerPlayer atira = Forjar("Feixe", raia, bp: 200_000);
+		Vec2 raia = CorredorSeco(40);   // uma faixa pra familia: cada cena limpa a bancada e nasce de novo nela
+		ServerPlayer atira = Forjar("Feixe", raia, bp: BpDoFeixeDaEscada);
 		atira.Facing = Facing.East;
 		Projetil raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
 		for (int i = 0; i < 25; i++) UmTiqueDeArrasto();
@@ -2329,8 +3288,8 @@ public partial class GameServer
 		AfirmarPj("(o raio andou e tem tronco: um feixe so na zona)",
 				  lista.Count == 1 && raio.AndouTiles > 6, $"{raio.AndouTiles:0.0} tiles, {lista.Count} feixe(s)");
 
-		// ALGUEM PISA NO TRONCO, a 4 tiles da mao -- longe da cabeca.
-		ServerPlayer x = Forjar("Pisou", raia + new Vec2(4 * T, 0), bp: 200_000);
+		// ALGUEM PISA NO TRONCO, a 4 tiles da mao -- longe da cabeca. Um IGUAL: o degrau que apanha e fica.
+		ServerPlayer x = Forjar("Pisou", raia + new Vec2(4 * T, 0), bp: BpDoIgualDaEscada);
 		double vidaX = x.Combate!.Corpo.Vida();
 		UmTiqueDeArrasto();
 
@@ -2348,8 +3307,9 @@ public partial class GameServer
 		float esperado = (raio.Pos - raio.Cauda).Length / T;
 		AfirmarPj("...e o alcance dela voltou o que a cabeca recuou (`AndouTiles` = da mao ate a cabeca nova)",
 				  Math.Abs(raio.AndouTiles - esperado) < 0.05, $"andou {raio.AndouTiles:0.00} tiles, mao->cabeca {esperado:0.00}");
-		AfirmarPj("...e quem pisou LEVOU a cabeca nova (o `Bump` do DM): esta sendo moido, e perdeu vida",
-				  raio.Encostado && x.Combate.Corpo.Vida() < vidaX, $"encostado {raio.Encostado}, vida {vidaX:0.###} -> {x.Combate.Corpo.Vida():0.###}");
+		AfirmarPj("...e quem pisou LEVOU a cabeca nova (o `Bump` do DM): esta sendo moido no lugar, e perdeu vida",
+				  raio.Encostado && raio.Arrastando == 0 && x.Combate.Corpo.Vida() < vidaX,
+				  $"encostado {raio.Encostado}, levando {raio.Arrastando}, vida {vidaX:0.###} -> {x.Combate.Corpo.Vida():0.###}");
 
 		if (deLa != null)
 		{
@@ -2369,23 +3329,38 @@ public partial class GameServer
 					  lista.Count == 2, $"{lista.Count} feixe(s)");
 		}
 
-		// (a) UM CORPO NA FRENTE DA CABECA nao corta: e o impacto de sempre, sem feixe novo.
+		// (o MAIS FRACO que pisa no tronco) o corte e o mesmo -- e a cabeca nova, em vez de moer no lugar, o LEVA.
 		LimparTudoDaBancada();
-		raia = CorredorSeco(40);
-		atira = Forjar("Feixe2", raia, bp: 200_000);
+		atira = Forjar("Feixe do fraco", raia, bp: BpDoFeixeDaEscada);
 		atira.Facing = Facing.East;
 		raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
 		for (int i = 0; i < 25; i++) UmTiqueDeArrasto();
 		lista = ProjeteisDaZona(atira.Zone.Hash);
-		ServerPlayer y = Forjar("NaCabeca", raio.Pos + raio.Rumo * (Feixe.DistanciaDeContato + 4f), bp: 200_000);
+		ServerPlayer fraco = Forjar("Pisou e foi", raia + new Vec2(4 * T, 0), bp: BpDoMaisFracoDaEscada);
+		UmTiqueDeArrasto();
+		bool cortouNoFraco = lista.Count == 2 && raio.Arrastando == fraco.Id;
+		Vec2 ondePisou = fraco.Pos;
+		for (int i = 0; i < 6; i++) UmTiqueDeArrasto();
+		AfirmarPj("o MAIS FRACO que pisa no tronco tambem corta o feixe -- e a cabeca nova o LEVA, na frente dela (a escada vale no corte)",
+				  cortouNoFraco && raio.Arrastando == fraco.Id && (fraco.Pos - ondePisou).Length > T
+				  && Math.Abs((fraco.Pos.X - raio.Pos.X) - Feixe.DistanciaDeContato) < 1f,
+				  $"{lista.Count} feixe(s), levando {raio.Arrastando}, o corpo andou {(fraco.Pos - ondePisou).Length:0.0} px, cabeca {fraco.Pos.X - raio.Pos.X:0.0} px atras dele");
+
+		// (a) UM CORPO NA FRENTE DA CABECA nao corta: e o impacto de sempre, sem feixe novo.
+		LimparTudoDaBancada();
+		atira = Forjar("Feixe2", raia, bp: BpDoFeixeDaEscada);
+		atira.Facing = Facing.East;
+		raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
+		for (int i = 0; i < 25; i++) UmTiqueDeArrasto();
+		lista = ProjeteisDaZona(atira.Zone.Hash);
+		ServerPlayer y = Forjar("NaCabeca", raio.Pos + raio.Rumo * (Feixe.DistanciaDeContato + 4f), bp: BpDoIgualDaEscada);
 		for (int i = 0; i < 3; i++) UmTiqueDeArrasto();
 		AfirmarPj("quem esta na FRENTE da cabeca leva o impacto de sempre -- nao corta, nao nasce feixe",
-				  lista.Count == 1 && (raio.Encostado || raio.Arrastando == y.Id), $"{lista.Count} feixe(s)");
+				  lista.Count == 1 && raio.Encostado && raio.Arrastando == 0, $"{lista.Count} feixe(s), encostado {raio.Encostado}, levando {raio.Arrastando}");
 
 		// (b) O DONO NAO CORTA O PROPRIO FEIXE -- nem um feixe solto que passe por cima dele.
 		LimparTudoDaBancada();
-		raia = CorredorSeco(40);
-		atira = Forjar("Feixe3", raia, bp: 200_000);
+		atira = Forjar("Feixe3", raia, bp: BpDoFeixeDaEscada);
 		atira.Facing = Facing.East;
 		raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
 		for (int i = 0; i < 25; i++) UmTiqueDeArrasto();
@@ -2403,7 +3378,7 @@ public partial class GameServer
 		int antesDaDisputa = lista.Count;
 		if (disputa?.A.Feixe is { } fa)
 		{
-			ServerPlayer w = Forjar("NoCabo", fa.Cauda + fa.Rumo * (2 * T), bp: 200_000);
+			ServerPlayer w = Forjar("NoCabo", fa.Cauda + fa.Rumo * (2 * T), bp: BpDoIgualDaEscada);
 			_ = w;
 			UmTiqueDoEncontro();
 			AfirmarPj("um corpo no tronco de um feixe EM DISPUTA nao corta: a disputa e quem manda nele",
@@ -2414,18 +3389,137 @@ public partial class GameServer
 
 		// (d) O DEFEITO INJETADO: com o corte desligado, pisar no tronco nao faz nada.
 		Feixe.SemCorteDeTeste = true;
-		raia = CorredorSeco(40);
-		atira = Forjar("Feixe4", raia, bp: 200_000);
-		atira.Facing = Facing.East;
-		raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
-		for (int i = 0; i < 25; i++) UmTiqueDeArrasto();
-		lista = ProjeteisDaZona(atira.Zone.Hash);
-		Forjar("PisouEmVao", raia + new Vec2(4 * T, 0), bp: 200_000);
-		UmTiqueDeArrasto();
-		Feixe.SemCorteDeTeste = false;
-		AfirmarPj("DEFEITO INJETADO (corte desligado) fica vermelho: pisar no tronco nao corta e a cabeca segue longe",
-				  lista.Count == 1 && raio.AndouTiles > 6, $"{lista.Count} feixe(s), cabeca a {raio.AndouTiles:0.0} tiles");
+		try
+		{
+			atira = Forjar("Feixe4", raia, bp: BpDoFeixeDaEscada);
+			atira.Facing = Facing.East;
+			raio = RaioDaBancada(atira, baseDano: BaseQueFereUmIgual(atira));
+			for (int i = 0; i < 25; i++) UmTiqueDeArrasto();
+			lista = ProjeteisDaZona(atira.Zone.Hash);
+			Forjar("PisouEmVao", raia + new Vec2(4 * T, 0), bp: BpDoIgualDaEscada);
+			UmTiqueDeArrasto();
+			AfirmarPj("DEFEITO INJETADO (corte desligado) fica vermelho: pisar no tronco nao corta e a cabeca segue longe",
+					  lista.Count == 1 && raio.AndouTiles > 6, $"{lista.Count} feixe(s), cabeca a {raio.AndouTiles:0.0} tiles");
+		}
+		finally { Feixe.SemCorteDeTeste = false; }
+
+		// (e) O CORTE COM ALGUEM NA PONTA: a parte de la continua levando o corpo -- e no MESMO passo.
+		OCorteNaoMudaOPassoDeQuemELevado(raia);
 		LimparTudoDaBancada();
+	}
+
+	/// <summary>
+	/// O CORTE NAO MUDA O PASSO DE QUEM A CABECA LEVA. A parte de la de um corte herda quem a cabeca velha levava -- e a
+	/// velocidade em que o levava: o `Projetil.FatorDoArrasto`, que e do par (tiro, corpo) e nao da cabeca.
+	///
+	/// ============================ O QUE FOI MEDIDO (2026-10-12) ============================
+	/// Com a cabeca levando o mais fraco a 12,8 px por tique (fator 0,6) e outro corpo pisando no tronco, o levado
+	/// passou a andar 21,3 px por tique -- a velocidade DO FEIXE -- e so voltou aos 12,8 depois da batida seguinte. O
+	/// `Cortar` copiava pra parte de la quem ela levava e o relogio da batida, mas nao o fator: ela nascia com o padrao
+	/// (1), e quem o reescreve e o `Acertar` da batida seguinte.
+	/// =======================================================================================
+	///
+	/// A REGUA E O PASSO DE ANTES DO CORTE, medido na mesma cena: nos tiques entre o corte e a batida seguinte o corpo
+	/// tem de andar o que andava. E O INTRUSO PISA LOGO DEPOIS DE UMA BATIDA, de proposito: ate a seguinte sobram
+	/// quatro tiques limpos. Pisando na vespera dela o defeito duraria um tique so, e a cena mediria em que tique o
+	/// intruso pisou.
+	/// </summary>
+	private void OCorteNaoMudaOPassoDeQuemELevado(Vec2 raia)
+	{
+		PassoNoCorte m = PassoDeQuemELevadoNoCorte(raia);
+		GD.Print($"[projetil]      (medido) corte com alguem na ponta: o levado andava {m.Antes:0.0} px por tique (o feixe anda {m.DoFeixe:0.0}); "
+				 + $"nos {m.Tiques} tique(s) entre o corte e a batida seguinte, de {m.MenorDepois:0.0} a {m.MaiorDepois:0.0}");
+
+		AfirmarPj("PREPARO: a cabeca leva o mais fraco no passo do ARRASTO (o do feixe vezes o fator do par) quando outro corpo pisa no tronco -- "
+				  + "e o corte acontece: a parte de la nasce levando o MESMO corpo",
+				  m.Cortou && m.AParteDeLaLeva && Math.Abs(m.Antes - m.DoArrasto) < 0.1f && m.DoArrasto < m.DoFeixe * 0.75f,
+				  $"cortou {m.Cortou}, a parte de la leva o corpo {m.AParteDeLaLeva}; passo de antes {m.Antes:0.00} px (arrasto {m.DoArrasto:0.00}, feixe {m.DoFeixe:0.00})");
+		AfirmarPj($"O CORTE NAO MUDA O PASSO DE QUEM E LEVADO: nos {TiquesLimposDepoisDoCorte} tiques entre o corte e a batida seguinte o corpo anda o que andava "
+				  + "(a parte de la herda o `FatorDoArrasto` junto com quem ela leva)",
+				  m.Tiques == TiquesLimposDepoisDoCorte && Math.Abs(m.MaiorDepois - m.Antes) < 0.5f && Math.Abs(m.MenorDepois - m.Antes) < 0.5f,
+				  $"{m.Tiques} tique(s): de {m.MenorDepois:0.00} a {m.MaiorDepois:0.00} px, contra {m.Antes:0.00} antes do corte");
+
+		CortePerdeOFatorDoArrastoDeTeste = true;
+		try
+		{
+			PassoNoCorte d = PassoDeQuemELevadoNoCorte(raia);
+			AfirmarPj("(defeito injetado: o corte perde o fator do arrasto) o levado dispara na velocidade DO FEIXE ate a batida seguinte -- a regua de cima fica vermelha",
+					  d.Cortou && d.AParteDeLaLeva && d.MaiorDepois > d.Antes + 0.5f && Math.Abs(d.MaiorDepois - d.DoFeixe) < 0.5f,
+					  $"cortou {d.Cortou}; depois do corte ate {d.MaiorDepois:0.00} px por tique, contra {d.Antes:0.00} antes (o feixe anda {d.DoFeixe:0.00})");
+		}
+		finally { CortePerdeOFatorDoArrastoDeTeste = false; }
+	}
+
+	/// <summary>
+	/// QUANTOS TIQUES LIMPOS SOBRAM ENTRE O CORTE E A BATIDA SEGUINTE quando o intruso pisa logo depois de uma batida: o
+	/// ciclo de moer (`Projetil.SegundosPorCicloDeBeam`, seis tiques de servidor) menos o tique do corte e o da batida
+	/// que vem.
+	/// </summary>
+	private static readonly int TiquesLimposDepoisDoCorte = (int)Math.Round(Projetil.SegundosPorCicloDeBeam / Protocol.TickSeconds) - 2;
+
+	/// <summary>O passo de quem a cabeca leva, antes e depois de um corte do tronco -- em pixels por tique de servidor.</summary>
+	/// <param name="DoFeixe">O que a cabeca anda num tique sem levar ninguem.</param>
+	/// <param name="DoArrasto">O do feixe vezes o fator do par (`KiContraCorpo.FatorDoArrasto`).</param>
+	/// <param name="Antes">O maior passo do levado nos doze tiques de antes do corte.</param>
+	/// <param name="Tiques">Quantos tiques foram medidos depois do corte, com a parte de la levando o corpo.</param>
+	private readonly record struct PassoNoCorte(
+		bool Cortou, bool AParteDeLaLeva, float DoFeixe, float DoArrasto, float Antes, float MenorDepois, float MaiorDepois, int Tiques);
+
+	/// <summary>
+	/// A CENA DO CORTE COM ALGUEM NA PONTA, do disparo a ultima medida: o raio comum pega o mais fraco a seis tiles, leva-o
+	/// por doze tiques, espera a batida seguinte e so entao um IGUAL pisa no tronco, quatro tiles atras da cabeca. O
+	/// tique seguinte corta; os de depois sao a medida.
+	/// </summary>
+	private PassoNoCorte PassoDeQuemELevadoNoCorte(Vec2 raia)
+	{
+		const int T = ZoneCollision.TileSize;
+		LimparTudoDaBancada();
+
+		(ServerPlayer atira, ServerPlayer levado, Projetil raio) = FeixeNoMaisFraco("Levado no corte", raia, tiles: 6);
+		for (int i = 0; i < 300 && raio.Vivo && raio.Arrastando == 0; i++) UmTiqueDeArrasto();
+		float doFeixe = (float)(T / raio.SegundosPorTile * Protocol.TickSeconds);
+		float doArrasto = doFeixe * (float)KiContraCorpo.FatorDoArrasto(KiContraCorpo.Razao(levado.Ficha.expressedBP, raio.Bp), defendendo: false);
+		if (raio.Arrastando != levado.Id) return new PassoNoCorte(false, false, doFeixe, doArrasto, 0, 0, 0, 0);
+
+		// A CABECA SE AFASTA DA MAO (o tronco precisa de comprimento pra alguem pisar nele longe da cabeca), e o passo
+		// do levado e medido no caminho.
+		float antes = 0;
+		for (int i = 0; i < 12; i++) antes = MathF.Max(antes, PassoDoCorpoNumTique(levado));
+
+		// ATE A PROXIMA BATIDA -- o tique em que o corpo perde vida.
+		for (int i = 0; i < 12; i++)
+		{
+			double[] vida = VidaPorParte(levado);
+			UmTiqueDeArrasto();
+			if (FeridaMaisFunda(levado, vida) > 1e-9) break;
+		}
+
+		// ALGUEM PISA NO TRONCO, quatro tiles atras da cabeca: um IGUAL, que apanha e fica (a parte de ca para nele).
+		List<Projetil> lista = ProjeteisDaZona(atira.Zone.Hash);
+		Forjar("Pisou no arrasto", raio.Pos - raio.Rumo * (4 * T), bp: BpDoIgualDaEscada);
+		UmTiqueDeArrasto();   // o tique do corte: a cabeca velha ainda anda, e so entao o tronco e partido
+		Projetil? deLa = lista.FirstOrDefault(q => q.NascidoDoCorte == raio.Id);
+		if (deLa == null) return new PassoNoCorte(false, false, doFeixe, doArrasto, antes, 0, 0, 0);
+		bool leva = deLa.Arrastando == levado.Id;
+
+		float menor = float.MaxValue, maior = 0;
+		int tiques = 0;
+		while (tiques < TiquesLimposDepoisDoCorte && deLa.Vivo && deLa.Arrastando == levado.Id)
+		{
+			float passo = PassoDoCorpoNumTique(levado);
+			menor = MathF.Min(menor, passo);
+			maior = MathF.Max(maior, passo);
+			tiques++;
+		}
+		return new PassoNoCorte(true, leva, doFeixe, doArrasto, antes, tiques == 0 ? 0 : menor, maior, tiques);
+	}
+
+	/// <summary>Quanto este corpo andou num tique do servidor (`UmTiqueDeArrasto`), em pixels.</summary>
+	private float PassoDoCorpoNumTique(ServerPlayer corpo)
+	{
+		Vec2 de = corpo.Pos;
+		UmTiqueDeArrasto();
+		return (corpo.Pos - de).Length;
 	}
 
 	// =====================================================================
@@ -2443,12 +3537,13 @@ public partial class GameServer
 		LimparTudoDaBancada();
 		const int T = ZoneCollision.TileSize;
 
-		// UM TIRO DE KI de outro derruba o canal.
+		// UM TIRO DE KI de outro derruba o canal. De um IGUAL: o tiro tem que ser GOLPE em quem canaliza -- em quem e
+		// parede pra ele (quatro vezes mais forte) ele estoura sem ferir e nao derruba nada (a familia 16 mede).
 		Vec2 raia = CorredorSeco(20);
-		ServerPlayer canal = Forjar("Canalizador", raia + new Vec2(4 * T, 0), bp: 200_000);
+		ServerPlayer canal = Forjar("Canalizador", raia + new Vec2(4 * T, 0), bp: BpDoIgualDaEscada);
 		canal.Facing = Facing.East;
 		canal.Ficha.Ki = canal.Ficha.MaxKi;
-		ServerPlayer atirador = Forjar("Bolista", raia, bp: 200_000);
+		ServerPlayer atirador = Forjar("Bolista", raia, bp: BpDoFeixeDaEscada);
 		atirador.Facing = Facing.East;
 		Canalizar(canal, "Ki_Wave", 10 * canal.Ficha.BaseDrain(), SemDeflexao());
 		for (int i = 0; i < 40; i++) { TickDosCanaisDeKi(Protocol.TickSeconds); TickDosProjeteis(Protocol.TickSeconds); }

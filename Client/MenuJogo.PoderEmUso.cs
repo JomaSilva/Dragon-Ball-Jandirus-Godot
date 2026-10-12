@@ -5,12 +5,13 @@ namespace Jandirus.Client;
 
 /// <summary>
 /// **O CONTROLE DE PODER NA ABA KI** -- a faixa fixa onde se ve quanto do proprio poder esta em uso e se mexe
-/// nele: relaxar / ficar pronto, baixar pra uma porcentagem (o deslizador) e esconder / mostrar o poder.
-/// Pedido do dono de 2026-10-11 (power up e power down).
+/// nele: baixar pra uma porcentagem (o deslizador) e relaxar / ficar pronto. Pedido do dono de 2026-10-11
+/// (power up e power down), com a regra dele de 2026-10-12: *"tire o botao de esconder o ki e faça com q o de
+/// relaxar faca o poder do personagem cair pra 5 de poder de luta sempre, ficando invisivel pra scouters etc"*.
 ///
 /// ============================ O QUE FALTAVA NA TELA ============================
-/// Os dois verbos do servidor ja existiam (`GameServer.Tecnicas.G9.cs`), e o jogador nao tinha como usa-los:
-/// o botao "Controle de Poder" da aba Skills mandava o verbo SEM numero e o servidor respondia "Use
+/// O verbo do servidor ja existia (`GameServer.Tecnicas.G9.cs`), e o jogador nao tinha como usa-lo: o botao
+/// "Controle de Poder" da aba Skills mandava o verbo SEM numero e o servidor respondia "Use
 /// Power_Control:&lt;1 a 100&gt;" -- e nao ha onde digitar isso. E depois de baixar, nada dizia em que estado ele
 /// estava. Esta faixa e o lugar das duas coisas.
 ///
@@ -21,23 +22,25 @@ namespace Jandirus.Client;
 /// rolagem, como a de marcos da Learning (`MontarFaixaDeMarcos`): nasce uma vez e se atualiza no lugar.
 ///
 /// ============================ QUEM VE O QUE ============================
-/// Relaxar e de todo corpo (no DM e `mob/default/verb`). O deslizador e o botao de esconder so existem pra quem
-/// TEM o verbo (o nivel 5 de Basic Ki Control: `PosseDoCliente.SabeTecnica`, a lista que o servidor aceita) --
-/// a regra da casa: sem o requisito, o botao nao existe. Esconder botao nao e permissao: o servidor confere.
+/// O deslizador e o botao de relaxar so existem pra quem TEM o controle de ki (o `Power_Control`, do nivel 5 de
+/// Basic Ki Control: `PosseDoCliente.SabeTecnica`, a lista que o servidor aceita) -- a regra da casa: sem o
+/// requisito, o botao nao existe. Uma excecao, e ela e de saida: quem esta ABAIXO do proprio poder (relaxado ou
+/// contido) ve o "Ficar pronto" de qualquer jeito, porque voltar nao pede porta nenhuma. Esconder botao nao e
+/// permissao: o servidor confere.
 ///
 /// SEM NUMERO DE PODER em lugar nenhum daqui: so a porcentagem do PROPRIO poder em uso.
 /// ================================================================================
 /// </summary>
 public partial class MenuJogo
 {
-	/// <summary>Os tres ids que esta faixa manda pelo canal de habilidade.</summary>
-	public const string VerboDeBaixar = "Power_Control", VerboDeEsconder = "Conceal_Power", VerboDaProntidao = "prontidao";
+	/// <summary>Os dois ids que esta faixa manda pelo canal de habilidade.</summary>
+	public const string VerboDeBaixar = "Power_Control", VerboDaProntidao = "prontidao";
 
 	private PanelContainer _painelDoPoder = null!;
 	private Label _poderGrande = null!, _poderLegenda = null!, _poderEscolhido = null!, _poderNota = null!;
 	private HBoxContainer _poderLinhaDeBaixar = null!;
 	private HSlider _poderDeslizador = null!;
-	private Button _poderBaixar = null!, _poderProntidao = null!, _poderEsconder = null!;
+	private Button _poderBaixar = null!, _poderProntidao = null!;
 
 	/// <summary>
 	/// O QUE O DESLIZADOR MARCA. Mora fora dos controles pelo motivo do `_avisoDigitado` da aba de admin: e
@@ -102,16 +105,13 @@ public partial class MenuJogo
 		_poderBaixar.Pressed += () => GameClient.Instance?.SendHabilidade($"{VerboDeBaixar}:{_porcentoEscolhido}");
 		_poderLinhaDeBaixar.AddChild(_poderBaixar);
 
-		// ---- 3) relaxar / ficar pronto (de todo corpo) e esconder / mostrar (so pra quem tem o verbo) ----
+		// ---- 3) relaxar / ficar pronto ----
 		var gestos = new HBoxContainer();
 		gestos.AddThemeConstantOverride("separation", 10);
 		pilha.AddChild(gestos);
-		_poderProntidao = new Button { Text = "Relaxar (1%)", FocusMode = Control.FocusModeEnum.None };
+		_poderProntidao = new Button { Text = "Relaxar", FocusMode = Control.FocusModeEnum.None };
 		_poderProntidao.Pressed += () => GameClient.Instance?.SendHabilidade(VerboDaProntidao);
 		gestos.AddChild(_poderProntidao);
-		_poderEsconder = new Button { Text = "Esconder o poder", FocusMode = Control.FocusModeEnum.None };
-		_poderEsconder.Pressed += () => GameClient.Instance?.SendHabilidade(VerboDeEsconder);
-		gestos.AddChild(_poderEsconder);
 		_poderNota = new Label
 		{
 			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, AutowrapMode = TextServer.AutowrapMode.WordSmart,
@@ -147,44 +147,39 @@ public partial class MenuJogo
 	private void AtualizarOPoderEmUso()
 	{
 		PoderEmUsoState e = PoderDeAgora;
-		bool baixa = PosseDoCliente.Atual.SabeTecnica(VerboDeBaixar);
-		bool esconde = PosseDoCliente.Atual.SabeTecnica(VerboDeEsconder);
+		bool controla = PosseDoCliente.Atual.SabeTecnica(VerboDeBaixar);
 
-		_poderGrande.Text = $"{e.Porcento}%";
+		// RELAXADO A BARRA NAO DIZ NADA (o corpo soltou o poder todo): no lugar da porcentagem vai a palavra.
+		_poderGrande.Text = e.Relaxado ? "mínimo" : $"{e.Porcento}%";
 		_poderGrande.AddThemeColorOverride("font_color", e.Padrao ? Tema.Texto : Hud.Cor(e));
 		_poderLegenda.Text = Hud.PorExtenso(e);
 
 		// ---- baixar ----
-		_poderLinhaDeBaixar.Visible = baixa;
+		_poderLinhaDeBaixar.Visible = controla;
 		_poderEscolhido.Text = $"{_porcentoEscolhido}%";
 		_poderBaixar.Text = $"Baixar para {_porcentoEscolhido}%";
-		bool abaixo = _porcentoEscolhido < e.Porcento;
+		bool abaixo = !e.Relaxado && _porcentoEscolhido < e.Porcento;
 		_poderBaixar.Disabled = !abaixo;
-		_poderBaixar.TooltipText = abaixo
-			? "Segura o seu poder nessa porcentagem, na hora."
-			: "Isto só BAIXA: você já usa esse tanto ou menos. Pra subir, segure a tecla de carregar Ki -- ou fique pronto.";
+		_poderBaixar.TooltipText = e.Relaxado
+			? "Relaxado você não está usando poder nenhum: fique pronto primeiro."
+			: abaixo
+				? "Segura o seu poder nessa porcentagem, na hora."
+				: "Isto só BAIXA: você já usa esse tanto ou menos. Pra subir, segure a tecla de carregar Ki -- ou fique pronto.";
 
 		// ---- relaxar / ficar pronto: o `if(powerMod >= 1) ... else` do ReadyUp ----
-		bool inteiro = e.Porcento >= 100;
-		_poderProntidao.Text = inteiro ? "Relaxar (1%)" : "Ficar pronto (100%)";
-		_poderProntidao.TooltipText = inteiro
-			? "Solta o corpo: o seu poder cai a 1%. Furioso, você não consegue."
+		// Relaxar e de quem tem o controle de ki; FICAR PRONTO e de todo mundo que esta abaixo do proprio poder.
+		bool relaxa = !e.Relaxado && e.Porcento >= 100;
+		_poderProntidao.Visible = controla || !relaxa;
+		_poderProntidao.Text = relaxa ? "Relaxar" : "Ficar pronto (100%)";
+		_poderProntidao.TooltipText = relaxa
+			? "Solta o corpo: o seu poder cai ao mínimo, ninguém mais sente a sua energia (nem scouter) e o vigor volta "
+			  + "o mais depressa que há. Você fica fraco de verdade: bate e apanha como quem não tem poder. Furioso, você não consegue."
 			: "Volta a usar o poder inteiro, na hora.";
 
-		// ---- esconder / mostrar ----
-		_poderEsconder.Visible = esconde;
-		_poderEsconder.Text = e.PorVontade ? "Mostrar o poder" : "Esconder o poder";
-		_poderEsconder.Disabled = e.SigiloEmEspera;
-		_poderEsconder.TooltipText = e.SigiloEmEspera
-			? "Espere: são cinco segundos entre esconder e mostrar."
-			: e.PorVontade
-				? "Volta a mostrar o seu poder."
-				: "Ninguém mais sente a sua energia, e o scouter não lista você. Enquanto durar o seu poder fica travado no mínimo "
-				  + "(você bate e apanha como quem não tem poder) e o Ki se recupera pela metade.";
-
-		_poderNota.Text = baixa
-			? "Baixar é na hora. Pra subir de volta: segure a tecla de carregar Ki (aos poucos) ou fique pronto."
-			: "Relaxado você usa 1% do poder. Conter numa porcentagem e esconder o poder pedem mais controle de ki (Basic Ki Control 5).";
+		_poderNota.Text = controla
+			? "Baixar é na hora e NÃO esconde você de ninguém -- só relaxar esconde. Quanto menos poder em uso, mais depressa o "
+			  + "vigor volta. Pra subir: segure a tecla de carregar Ki (aos poucos) ou fique pronto."
+			: "Conter o poder numa porcentagem e relaxar pedem controle de ki (Basic Ki Control 5).";
 	}
 
 	/// <summary>O RETRATO MUDOU (`S2C.PoderEmUso`): a faixa se atualiza no lugar, e a aba Stats (que escreve a frase) se refaz.</summary>
@@ -231,19 +226,16 @@ public partial class MenuJogo
 
 	/// <summary>O que a faixa mostra AGORA, lido dos controles. So pra bancada.</summary>
 	public sealed record PoderNaAba(bool Visivel, string Grande, string Legenda, bool TemDeslizador, int Escolhido,
-									string Baixar, bool BaixarApagado, string Prontidao, bool TemEsconder, string Esconder,
-									bool EsconderApagado, string Nota);
+									string Baixar, bool BaixarApagado, bool TemProntidao, string Prontidao, string Nota);
 
 	public PoderNaAba PoderNaAbaDeTeste() => new(
 		_painelDoPoder.Visible, _poderGrande.Text, _poderLegenda.Text, _poderLinhaDeBaixar.Visible, _porcentoEscolhido,
-		_poderBaixar.Text, _poderBaixar.Disabled, _poderProntidao.Text, _poderEsconder.Visible, _poderEsconder.Text,
-		_poderEsconder.Disabled, _poderNota.Text);
+		_poderBaixar.Text, _poderBaixar.Disabled, _poderProntidao.Visible, _poderProntidao.Text, _poderNota.Text);
 
 	/// <summary>Arrasta o deslizador (o mesmo `ValueChanged` do mouse). So pra bancada.</summary>
 	public void ArrastarOPoderDeTeste(int porcento) => _poderDeslizador.Value = porcento;
 
 	public Button BotaoDeBaixarDeTeste => _poderBaixar;
 	public Button BotaoDaProntidaoDeTeste => _poderProntidao;
-	public Button BotaoDeEsconderDeTeste => _poderEsconder;
 	public Control PainelDoPoderDeTeste => _painelDoPoder;
 }

@@ -80,9 +80,11 @@ public partial class GameServer
 		LimparTudoDaBancada();
 		const int T = ZoneCollision.TileSize;
 		Vec2 raia = CorredorSeco(tiles + 8);
-		ServerPlayer atira = Forjar("Faisca", raia, bp: 200_000);
+		// QUEM LEVA E UM IGUAL: o degrau em que o tiro e golpe e o corpo fica onde foi acertado (`KiContraCorpo`) -- em
+		// quem e parede o impacto nem manda relato, e quem e mais fraco sai levado pelo raio no mesmo tique.
+		ServerPlayer atira = Forjar("Faisca", raia, bp: BpDoFeixeDaEscada);
 		atira.Facing = Facing.East;
-		ServerPlayer alvo = Forjar("Leva", raia + new Vec2(tiles * T, 0), bp: 200_000);
+		ServerPlayer alvo = Forjar("Leva", raia + new Vec2(tiles * T, 0), bp: BpDoIgualDaEscada);
 
 		Projetil p = Disparar(atira, new ReceitaDeProjetil
 		{

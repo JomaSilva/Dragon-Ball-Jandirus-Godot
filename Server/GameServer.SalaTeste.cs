@@ -814,6 +814,11 @@ public sealed partial class GameServer
 		// 50% do teto (que e 2x o limite do corpo) da razao 1 na gravidade da Terra: o ponto em que o
 		// corpo esta carregado ao maximo SEM ser esmagado, e o treino rende 2x.
 		// ========================================================================================
+		//
+		// (2026-10-12) O TETO E O QUE FOI PAGO (`PesoDeTreino`): esta secao mede a ESCALA do verbo, e por isso da ao
+		// corpo uns pesos cujo maximo e duas vezes o limite dele -- o teto que o DM dava de graca. A regra nova (50 kg
+		// de fabrica, a melhoria paga) e medida na `--v020teste`, familia 10.
+		f.pesoMaximoKg = f.weight_cap_hw * GainKnobs.WeightItemCapMult;
 		AjustarPeso(b, "50");
 
 		AfirmarSala("50% do peso maximo poe o corpo EXATAMENTE no limite dele (razao 1)",
@@ -849,6 +854,7 @@ public sealed partial class GameServer
 		AfirmarSala("tirar os pesos devolve o passo inteiro",
 					Math.Abs(Esmagamento.FatorDePasso(f) - 1) < 1e-9 && Math.Abs(f.weight - 1) < 1e-9,
 					$"fator {Esmagamento.FatorDePasso(f):0.###}, peso {f.weight:0.##}x");
+		f.pesoMaximoKg = 0;   // os pesos de bancada saem com a secao
 	}
 
 	// =====================================================================

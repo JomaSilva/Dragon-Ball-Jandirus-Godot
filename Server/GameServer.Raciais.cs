@@ -144,7 +144,7 @@ public partial class GameServer
 		// 1) um membro DECEPADO, e nunca um cuja raiz tambem caiu -- a mao volta junto com o
 		//    braco, entao escolher a mao separada desperdicaria a regeneracao
 		BodyPart? alvo = pl.Combate.Corpo.Partes.FirstOrDefault(
-			p => p.Decepado && !Caiu(pl.Combate.Corpo, p.Dono));
+			p => p.Decepado && !p.Perdido && !Caiu(pl.Combate.Corpo, p.Dono));
 
 		// 2) sem nenhum decepado, o mais machucado
 		alvo ??= pl.Combate.Corpo.Partes
@@ -219,9 +219,10 @@ public partial class GameServer
 			// O `Swim` do DM (`Swim.dm:5`). Entra pelo MESMO cano do voo -- uma linha aqui e uma no
 			// registro de verbs do cliente, que e o preco que este canal cobra por acao nova.
 			case "nadar": AlternarNado(pl); break;
-			// O `Toggle Readiness` do DM (`Power Control.dm:39-52`): relaxar (1% do poder) e ficar pronto (100%).
-			// Mesmo cano do voo e do nado, e pela mesma razao -- e `mob/default/verb`, de todo corpo, e nao uma
-			// tecnica do livro. Ver `GameServer.PoderEmUso.cs`.
+			// O `Toggle Readiness` do DM (`Power Control.dm:39-52`): relaxar (5 de poder, fora do Sense e do scouter)
+			// e ficar pronto (100%). Mesmo cano do voo e do nado: no DM e `mob/default/verb`, e nao uma tecnica do
+			// livro -- aqui relaxar pede o controle de ki, e quem cobra e o proprio `AlternarProntidao`
+			// (`GameServer.PoderEmUso.cs`). E tambem o canal que atende o `Conceal_Power` do DM (`CensoDeSkills`).
 			case "prontidao": AlternarProntidao(pl); break;
 			// O `Grab` do DM (`Grabbing.dm:48`). Mesmo cano do voo e do nado, e pela mesma razao: e um
 			// verb do CORPO e nao uma tecnica do livro, entao o `UsarTecnica` nunca o acharia. Uma

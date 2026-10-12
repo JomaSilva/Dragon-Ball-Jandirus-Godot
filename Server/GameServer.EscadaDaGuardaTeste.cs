@@ -10,8 +10,9 @@ namespace Jandirus.Server;
 ///
 /// ============================ O QUE SE MEDE ============================
 /// O embate de guarda da familia 6 (`TentarEmbateDeGuarda`, que e deste port: o DM so disputa feixe contra feixe),
-/// entre dois IGUAIS, com o dano que o raio faria atraves da guarda varrido do corte dos fracos
-/// (`DanoDeKi.CorteDoFraco`) pra cima, e cada lado respondendo ao quick time event de um jeito: o jogador que
+/// entre dois IGUAIS, com o dano que o raio faria atraves da guarda varrido de 10 pra cima (o
+/// `DanoDeKi.CorteDoFraco`: o antigo corte por dano, que ate 2026-10-12 era o piso de todo embate e aqui ficou
+/// de primeiro degrau), e cada lado respondendo ao quick time event de um jeito: o jogador que
 /// acerta toda letra no tique em que ela nasce, o jogador de 450 ms, quem nao tem teclado (a taxa do
 /// `ApertosDeQuemNaoTemTeclado`, inteligencia 50) e quem tem teclado e nao aperta. Sai uma tabela -- desfecho e
 /// segundos de disputa por dano -- lida do estado de producao: de quem e o feixe no fim, o `Corridos` e o `Medidor`.
@@ -22,13 +23,17 @@ namespace Jandirus.Server;
 ///
 /// ============================ O QUE SE AFIRMA, E O QUE SO SE LE ============================
 /// A escala (a vantagem com que a disputa abre e dano sobre o que as maos empatam, presa entre 1/6 e 6), as duas
-/// pontas (o raio mais fraco que abre embate -- o do corte -- e segurado e devolvido; no teto da vantagem quem
+/// pontas (o raio do primeiro degrau -- o do antigo corte -- e segurado e devolvido; no teto da vantagem quem
 /// segura perde) e a forma (em cada coluna um raio mais forte nunca e MELHOR pra guarda). O MEIO da tabela -- ate
 /// que dano cada coluna ainda vence -- cai das constantes do `BeamClash.dm` e do prazo, e se LE: cravar a medida
 /// de hoje seria escreve-la como regra (a disciplina da escada da familia 3).
 ///
-/// O CONTRA-EXEMPLO E O JOGO DE ANTES: com `EmbateDeKi.MaosPelaDeflexaoDeTeste` as maos voltam a valer o numerador
-/// da chance de deflexao sobre 100 (`objects.dm:333`), e o raio do corte ja nasce no teto e engole quem segura.
+/// E, DESDE 2026-10-12, QUE ABAIXO DO ANTIGO CORTE TAMBEM HA EMBATE: entre iguais o raio fraco encontra as maos
+/// (`KiContraCorpo`: so a parede nao e ferida). O corte por dano volta como defeito injetado
+/// (`KiContraCorpo.RegraDeAntesDeTeste`), e com ele o mesmo raio nao abre disputa nenhuma.
+///
+/// O CONTRA-EXEMPLO DA ESCALA E A DE ANTES: com `EmbateDeKi.MaosPelaDeflexaoDeTeste` as maos voltam a valer o
+/// numerador da chance de deflexao sobre 100 (`objects.dm:333`), e o raio de 10 ja nasce no teto e engole quem segura.
 ///
 /// A FICHA NAO ANDA nesta bancada (ninguem roda o `Ficha.Tick`, a mesma nota das familias 11 e 12): o dano fica
 /// parado do comeco ao fim da disputa. Em jogo o Ki que os dois pagam mexe no `expressedBP` dos dois.
@@ -81,8 +86,8 @@ public partial class GameServer
 			("guarda de 450 ms x atirador NPC", MaoNaEscada.Jogador, 0.45, MaoNaEscada.Npc),
 		];
 
-		// AS RAZOES (dano sobre o que as maos empatam). A primeira e a do CORTE -- o raio mais fraco que abre embate
-		// --, lida dos dois botoes; as outras sao as que ficam acima dela.
+		// AS RAZOES (dano sobre o que as maos empatam). A primeira e a do antigo CORTE por dano -- ate 2026-10-12, o
+		// raio mais fraco que abria embate --, lida dos dois botoes; as outras sao as que ficam acima dela.
 		double empata = EmbateDeKi.DanoQueAsMaosEmpatam;
 		double noCorte = DanoDeKi.CorteDoFraco / empata;
 		var razoes = new List<double> { noCorte };
@@ -180,10 +185,19 @@ public partial class GameServer
 				  + "(Venci >= Empate >= Perdi em toda coluna -- e desce mesmo)",
 				  desce && desceMesmo, trilha);
 
-		// ABAIXO DO CORTE NAO HA O QUE SEGURAR: o embate vem depois do corte dos fracos (passo 3a-bis do `Acertar`).
+		// O CORTE POR DANO SAIU (dono, 2026-10-12): quem o raio nao fere e quem e PAREDE (4x o poder dele), e nao quem
+		// levaria menos de 10. Entre iguais o raio fraco tambem encontra as maos -- e abre a disputa.
 		GuardaMedida fraco = SegurarORaio(chao, DanoDeKi.CorteDoFraco * 0.99, MaoNaEscada.Jogador, MaoNaEscada.Parado, 0);
-		AfirmarEk("ABAIXO DO CORTE NAO HA EMBATE: o raio que nao fere atraves da guarda nao abre disputa -- a escada comeca no corte",
-				  !fraco.Abriu, $"abriu {fraco.Abriu}, dano {fraco.Dano:0.##}");
+		AfirmarEk("ABAIXO DO ANTIGO CORTE TAMBEM HA EMBATE: entre iguais o raio fraco encontra as maos de quem defende (o corte por dano saiu em 2026-10-12)",
+				  fraco.Abriu, $"abriu {fraco.Abriu}, dano {fraco.Dano:0.##}");
+		KiContraCorpo.RegraDeAntesDeTeste = true;
+		try
+		{
+			GuardaMedida deAntes = SegurarORaio(chao, DanoDeKi.CorteDoFraco * 0.99, MaoNaEscada.Jogador, MaoNaEscada.Parado, 0);
+			AfirmarEk("(defeito injetado: o corte por dano do DM) o mesmo raio nao abre disputa nenhuma -- a regua de cima reprovaria",
+					  !deAntes.Abriu, $"abriu {deAntes.Abriu}");
+		}
+		finally { KiContraCorpo.RegraDeAntesDeTeste = false; }
 
 		// ---- O DEFEITO INJETADO: a escala de antes ----
 		EmbateDeKi.MaosPelaDeflexaoDeTeste = true;
@@ -295,7 +309,9 @@ public partial class GameServer
 		double entrada = entradaEmDrenos * atirador.Ficha.BaseDrain();
 		Canalizar(atirador, "Ki_Wave", entrada, queFaz, custoPorTiro: entrada * degrauDeCusto);
 
-		// ATE A DISPUTA ABRIR -- ou ate o raio parar na frente de quem segura, batendo sem ferir (abaixo do corte).
+		// ATE A DISPUTA ABRIR -- ou ate o raio parar na frente de quem segura, batendo sem ferir. (Entre estes dois
+		// iguais isso so acontece no jogo de antes, abaixo do corte por dano: o contra-exemplo com o
+		// `KiContraCorpo.RegraDeAntesDeTeste`. Hoje o raio so bate sem ferir numa parede.)
 		DisputaDeKi? d = null;
 		Projetil? raio = null;
 		for (int i = 0; i < 30 * 8 && d == null; i++)

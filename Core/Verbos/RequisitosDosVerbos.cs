@@ -329,6 +329,11 @@ public static class RequisitosDosVerbos
 		// `PodeRegenerar` (`GameServer.Raciais.cs`): o Namekuseijin pela raca, e quem COMPROU a skill `Regenerate`
 		// (arvores de Alien, Android e Demonio) -- esse ja tem o botao da propria skill, com o mesmo nome.
 		new("hab:regenerar", "Regenerar", AbaSkills, Raca("Namekian").Ou(Tecnica("Regenerate")), "seu corpo nao regenera assim"),
+		// RELAXAR PEDE CONTROLE DE KI (regra do dono, 2026-10-12: *"relaxar e o poder cair deveria ser somente pra
+		// quem sabe controlar o proprio poder"*): o mesmo `Power_Control` do degrau 5 de Basic Ki Control que abre a
+		// barra. No DM o `ReadyUp` e de todo corpo (`Power Control.dm:39`). Ver `GameServer.AlternarProntidao`.
+		new("hab:prontidao", "Relaxar / ficar pronto", AbaSkills, Tecnica(Stats.PoderEmUso.VerboDoControle),
+			"não sabe controlar o próprio poder"),
 
 		// O KIT DO DEUS DA DESTRUICAO (`GodOfDestruction.dm:119-133`, o `god_apply_powers`): os verbs sao do
 		// TITULO -- aparecem pra quem carrega o cargo e somem com ele, na hora. O servidor confere o trono em cada

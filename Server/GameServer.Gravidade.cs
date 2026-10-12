@@ -302,6 +302,8 @@ public sealed partial class GameServer
 
 		GravarMundo();
 		Avisar(pl, $"você melhora a máquina por {Recurso.PrecoEscrito(custo, moeda)}: {feito}. Restam {CarteiraEscrita(pl)}.");
+		// O MENU DE QUEM ESTA NA ZONA FICA SABENDO: a estabilizacao comprada e o alcance no teto saem da lista.
+		MandarObras(obra.Zona);
 	}
 
 	// =====================================================================

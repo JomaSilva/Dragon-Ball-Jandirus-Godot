@@ -346,9 +346,12 @@ public partial class GameServer
 
 	/// <summary>
 	/// O BP DE UM CORPO QUE ESTE TIRO FERE SEM DERRUBAR. A conta e a de producao (`DanoDeKi.Final`, com o tiro de
-	/// verdade na mao), e a faixa vai de uma vez e meia o corte dos fracos ate 60 -- um nucleo inteiro que leva 60
-	/// nao-letal fica acima do limiar do nocaute. Fora dela a prova mediria outra coisa: abaixo do corte o tiro nem
-	/// fere (`DanoDeKi.CorteDoFraco`), e o nocaute baixa a guarda sozinho (`CombatState.Nocautear`).
+	/// verdade na mao), e a faixa vai de 15 a 60 -- um nucleo inteiro que leva 60 nao-letal fica acima do limiar do
+	/// nocaute, e o nocaute baixa a guarda sozinho (`CombatState.Nocautear`): acima dela a prova mediria outra coisa.
+	///
+	/// O PISO DE 15 E UMA VEZ E MEIA O ANTIGO CORTE POR DANO (`DanoDeKi.CorteDoFraco`): ate 2026-10-12, abaixo de 10
+	/// o tiro nem feria. Hoje quem o tiro nao fere e quem e parede pra ele (`KiContraCorpo`) -- e o corpo achado aqui,
+	/// sempre mais fraco que o Deus, nunca e. O piso ficou como um dano que se le.
 	///
 	/// As razoes comecam em 1,5: o corpo achado tambem e fraco o bastante pro Hakai (75% do poder do Deus).
 	/// </summary>
@@ -995,8 +998,10 @@ public partial class GameServer
 		PerdasDiretas(pl, antes).Count(perda => perda > 1e-9);
 
 	/// <summary>
-	/// O dano de cada bola da <see cref="TirosEvitados"/>: tres vezes o corte dos fracos, e menos de um terco de um
-	/// membro inteiro -- fere sempre e nao derruba ninguem.
+	/// O dano de cada bola da <see cref="TirosEvitados"/>: tres vezes o antigo corte por dano
+	/// (`DanoDeKi.CorteDoFraco`), e menos de um terco de um membro inteiro -- fere sempre e nao derruba ninguem.
+	/// (Hoje "fere sempre" pede so que o alvo nao seja parede pro tiro, `KiContraCorpo`: quem atira nessa prova tem
+	/// dez vezes o poder dele.)
 	/// </summary>
 	private const double DanoDaBolaDeMedida = 30;
 
@@ -1008,6 +1013,8 @@ public partial class GameServer
 	/// defesa (`kidefenseskill += 0.1` por impacto) e a guarda divide o dano pela pericia DUAS vezes
 	/// (`DanoDeKi.Final`): depois de 400 bolas o tiro aparado caia abaixo do corte dos fracos, nao feria, e "nao
 	/// perdeu vida" deixava de querer dizer "desviou" -- a prova da guarda reprovava a regra certa (120 de 120).
+	/// (Isso foi com o corte por dano, que valeu ate 2026-10-12. A pericia continua voltando ao que era a cada tiro:
+	/// e ela que faz as 400 bolas serem a MESMA bola.)
 	/// </summary>
 	private int TirosEvitados(ServerPlayer alvo, ServerPlayer atirador, int tiros)
 	{

@@ -25,6 +25,11 @@ namespace Jandirus.Client;
 ///
 /// QUEM DECIDE E QUEM CRIA O NODE (o `World`, ao montar a vizinhanca), e nao este arquivo pela seed: os
 /// planetas de palco das bancadas (`RoboDaAgonia`) nascem com a seed que quiserem e continuam sem halo.
+///
+/// (2026-10-12: ele saiu por algumas horas -- o pedido do dono de tirar *"o circulo/brilho q fica em volta do
+/// personagem em planetas com atmosfera divina"* foi lido como sendo este clarao -- e voltou no mesmo dia, pela
+/// palavra dele: *"o halo no planeta de god ki em si vc pode deixar"*. O que entrou por aquele pedido e ficou sao os
+/// pontinhos brancos da superficie, `PoeiraDivina`.)
 /// </summary>
 public partial class PlanetaDesenhado
 {

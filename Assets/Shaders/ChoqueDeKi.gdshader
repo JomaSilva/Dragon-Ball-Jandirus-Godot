@@ -56,6 +56,10 @@ uniform float forca : hint_range(0.0, 1.0) = 1.0;
 /// Sobe pra 1 a cada `Baque` do servidor e desce sozinho: a estrela da um tranco pra fora.
 uniform float tranco : hint_range(0.0, 1.0) = 0.0;
 
+/// 1 = UM ATAQUE SO (o raio contra a guarda, ou contra quem e parede): a estrela existe so do lado de onde o
+/// ataque vem (x negativo, o lado da `cor_a`) e some logo depois do plano do encontro. 0 = dois feixes, estrela inteira.
+uniform float so_um_lado : hint_range(0.0, 1.0) = 0.0;
+
 /// Quantos desenhos por segundo. Doze e "animar em dois" a 24 quadros -- a cadencia do anime.
 const float DESENHOS_POR_SEGUNDO = 12.0;
 
@@ -155,5 +159,9 @@ void fragment() {
 	vec3 saida = rgb * fora + soma * (1.0 - fora);
 	float alfa = fora + cobre * (1.0 - fora);
 
-	COLOR = vec4(saida, clamp(alfa, 0.0, 1.0)) * forca;
+	// O CORTE DE UM LADO SO: passa inteiro o lado do ataque e apaga, num degrau curto depois do encontro, o lado de
+	// quem defende (nao ha feixe nenhum vindo de la). Multiplica o vetor inteiro: a mistura e de alfa pre-multiplicado.
+	float corte = mix(1.0, 1.0 - smoothstep(0.0, raio_no_eixo * 0.6, p.x), so_um_lado);
+
+	COLOR = vec4(saida, clamp(alfa, 0.0, 1.0)) * forca * corte;
 }

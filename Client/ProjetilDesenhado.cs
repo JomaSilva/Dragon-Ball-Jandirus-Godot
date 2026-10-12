@@ -365,42 +365,6 @@ public partial class ProjetilDesenhado : Node2D
 	public static Func<int, Vector2?>? OndeEstaOCorpo;
 
 	/// <summary>
-	/// ESTE RAIO E A CONTINUACAO DE OUTRO (0 = nao e): o id do raio que o alimenta -- ver `ProjetilState.Dobra`.
-	/// E o trecho que sai de um raio DESVIADO pelo parry, enquanto o desvio dura.
-	///
-	/// ============================ DOIS OBJETOS NO SERVIDOR, UM RAIO NA TELA (dono, 2026-10-08) ============================
-	/// *"o deflect ele deveria ao bater no jogador e o jogador dar o deflect o beam dar curva pro lado e nao
-	/// criar um novo beam atras do jogador"*. Desenhado sozinho, este trecho tem ponta de tras propria -- e o
-	/// que se via era exatamente um segundo feixe. Entao, enquanto ele continua outro, ele NAO se desenha:
-	/// apresenta-se ao pai a cada quadro (<see cref="_Process"/>), e e o PAI que pinta a fita inteira, da mao
-	/// de quem atirou ate a ponta DESTE trecho, fazendo a curva na dobra (<see cref="DesenharDobrado"/>).
-	///
-	/// QUEM PINTA E O PAI de proposito: o material e o relogio sao dele, e o raio que vinha vindo nao muda de
-	/// desenho no quadro em que e desviado -- a fita so passa a continuar pra outro lado.
-	///
-	/// Acabou o desvio (o servidor zera o campo), cada um volta a se desenhar: o pai como um raio comum, este
-	/// como um raio solto que vai embora.
-	/// ====================================================================================================================
-	/// </summary>
-	public int ContinuaDe;
-
-	/// <summary>O NO DE UM TIRO, por id -- quem responde e o `World`. E por ele que o trecho desviado acha o pai.</summary>
-	public static Func<int, ProjetilDesenhado?>? OndeEstaOTiro;
-
-	/// <summary>O trecho desviado que me continua, e o quadro em que ele se apresentou pela ultima vez.</summary>
-	private ProjetilDesenhado? _ramo;
-	private long _ramoNoQuadro = -10;
-
-	/// <summary>O quadro em que eu me apresentei a um pai -- enquanto for o de agora, quem me pinta e ele.</summary>
-	private long _paiNoQuadro = -10;
-
-	/// <summary>
-	/// O quadro ainda e o de uma apresentacao? Com um de folga: o `_Process` de um e o `_Draw` do outro caem no
-	/// mesmo quadro, mas a ordem entre irmaos nao e contrato -- e um quadro de fita emendada a mais nao se ve.
-	/// </summary>
-	private static bool Agora(long quadro) => (long)Engine.GetProcessFrames() - quadro <= 1;
-
-	/// <summary>
 	/// SEM LUZ -- a previa da mesa de tecnicas. Um tiro desenhado dentro de um painel de interface nao
 	/// ilumina cenario nenhum, e pendurar uma `PointLight2D` ali gastaria uma vaga do teto de luzes de ki
 	/// (`Settings.LuzesDeKi`) pra clarear um retangulo cinza. Falso em jogo, sempre.
@@ -556,7 +520,7 @@ public partial class ProjetilDesenhado : Node2D
 	}
 
 	/// <summary>
-	/// O RAIO MUDA DE TAMANHO VIVO. Refaz as MEDIDAS -- que o desenho, a ancora de quem ele leva, a dobra e o
+	/// O RAIO MUDA DE TAMANHO VIVO. Refaz as MEDIDAS -- que o desenho, a ancora de quem ele leva e o
 	/// estouro leem a cada quadro -- e escreve no material o que depende delas. O material, a semente do ruido e
 	/// as cores sao os mesmos: o raio cresce, nao troca de desenho (`PintorDeKi.EscalarFeixe`).
 	///
@@ -735,18 +699,6 @@ public partial class ProjetilDesenhado : Node2D
 		Position = _cabeca;
 		_luzDoTronco?.Esticar(_cabeca, _cauda, SubidaNaTela);
 
-		// O TRECHO DESVIADO SE APRESENTA AO PAI, a cada quadro -- ver `ContinuaDe`. Sem rumo ainda (o primeiro
-		// pacote: cabeca e cauda no mesmo ponto) nao ha pra onde continuar, e o pai segue se desenhando sozinho.
-		if (ContinuaDe != 0 && Tipo == TipoDeProjetil.Beam && _temRumo
-			&& OndeEstaOTiro?.Invoke(ContinuaDe) is { Tipo: TipoDeProjetil.Beam, _temRumo: true, Vestido: true } pai
-			&& pai != this)
-		{
-			long quadro = (long)Engine.GetProcessFrames();
-			pai._ramo = this;
-			pai._ramoNoQuadro = quadro;
-			_paiNoQuadro = quadro;
-		}
-
 		// OS DOIS ESTADOS ANDAM, NAO PULAM. Chegam do fio como bit (solto) e como velocidade medida a 30 Hz;
 		// escritos crus no shader, a boca do raio sumiria num quadro e o rastro da bola piscaria.
 		_soltura = Mathf.MoveToward(_soltura, Solto ? 1f : 0f, (float)delta * 8f);
@@ -781,14 +733,6 @@ public partial class ProjetilDesenhado : Node2D
 	private void DesenharRaio(ShaderMaterial mat)
 	{
 		if (!_temRumo) return;
-
-		// O RAIO DESVIADO E UMA FITA SO, e quem a pinta e o pai -- ver `ContinuaDe`.
-		if (Agora(_paiNoQuadro) && !SemDobraDeTeste) return;
-		if (_ramo is { } ramo && Agora(_ramoNoQuadro) && IsInstanceValid(ramo) && !SemDobraDeTeste)
-		{
-			DesenharDobrado(mat, ramo);
-			return;
-		}
 
 		Vector2 ponta = _rumo * _medidas.Frente;
 		(Vector2 mao, Vector2 saida) = AMao(_cauda - _cabeca);
@@ -909,112 +853,6 @@ public partial class ProjetilDesenhado : Node2D
 			_curva[i] = mao * (u * u) + controle * (2f * u * t) + ponta * (t * t);
 		}
 		return _curva;
-	}
-
-	// =====================================================================
-	// O RAIO DESVIADO -- uma fita, com a curva na dobra (dono, 2026-10-08)
-	// =====================================================================
-	/// <summary>
-	/// BANCADA: desliga a emenda -- o raio desviado volta a ser desenhado como DOIS (o pai ate a cabeca
-	/// plantada, o trecho desviado com ponta de tras propria), que e o desenho de antes de 2026-10-08. Sempre
-	/// falso em jogo.
-	/// </summary>
-	public static bool SemDobraDeTeste;
-
-	/// <summary>Em quantos degraus o arco da dobra e cortado. Num quarto de volta de 20 px de raio da 2,6 px por degrau.</summary>
-	private const int PassosDaDobra = 12;
-
-	/// <summary>O caminho da fita dobrada: a mao, o arco, a ponta. Alocado na primeira vez -- quase nenhum raio e desviado.</summary>
-	private Vector2[]? _dobrado;
-
-	/// <summary>
-	/// O RAIO DESVIADO, INTEIRO, NUMA FITA SO: da mao de quem atirou ate a dobra, a curva, e dali ate a ponta
-	/// do trecho desviado. Em coordenada local DESTE node (o pai), cuja origem e a cabeca plantada.
-	///
-	/// PRO SHADER NADA MUDOU: o `UV.x` e o comprimento percorrido (`PintorDeKi.FitaCurva`), entao ele pinta o
-	/// mesmo feixe de sempre -- a boca na mao, a cabeca na ponta do trecho desviado, e as fitas que giram em
-	/// volta do tronco seguindo a curva sem emenda.
-	/// </summary>
-	private void DesenharDobrado(ShaderMaterial mat, ProjetilDesenhado ramo)
-	{
-		(Vector2 mao, _) = AMao(_cauda - _cabeca);
-		Vector2 dobra = ramo._cauda - _cabeca;
-		Vector2 ponta = ramo._cabeca + ramo._rumo * ramo._medidas.Frente - _cabeca;
-
-		mat.SetShaderParameter("solto", _soltura);
-
-		int n = CaminhoDobrado(mao, dobra, ponta);
-		float comprimento = n < 2 ? 0f : PintorDeKi.FitaCurva(this, _dobrado!, n, PintorDeKi.MeiaFita(_estiloDoFeixe, _medidas),
-															  PintorDeKi.FolgaNaMao(_medidas), PintorDeKi.FolgaNaPonta(_medidas));
-		mat.SetShaderParameter("comprimento", comprimento);
-	}
-
-	/// <summary>
-	/// QUANTO DE CADA TRECHO O ARCO DA DOBRA COME, em pixel: a distancia da dobra ate onde a curva comeca
-	/// (e, do outro lado, ate onde acaba).
-	///
-	/// A CURVA TEM QUE SER MAIS ABERTA QUE O RAIO E GORDO. A fita e desenhada com a normal de cada degrau, e
-	/// do lado de DENTRO de uma curva ela se dobra sobre si mesma a partir de um raio de curvatura da largura
-	/// dela. O que precisa caber inteiro ali e o que o shader pinta no meio do tronco -- o macico, as fitas e o
-	/// halo, que ficam dentro de `Alcance + Halo` do eixo. (A fita e mais larga que isso, mas o resto dela so
-	/// tem tinta nas duas pontas: os leques.) Num Kamehameha sao uns 20 px; num Final Flash, 200.
-	/// </summary>
-	private float TangenteDaDobra() => Mathf.Max(_medidas.Frente, _medidas.Alcance + _medidas.Halo);
-
-	/// <summary>
-	/// MONTA O CAMINHO da fita dobrada em <see cref="_dobrado"/> e devolve quantos pontos ele tem: a mao, um
-	/// ARCO DE CIRCULO que sai tangente ao trecho que chega e entra tangente no que sai, e a ponta.
-	///
-	/// O arco encolhe pra caber: nunca come mais que 45% do trecho que chega (sobra raio reto saindo da mao)
-	/// nem mais que o trecho que sai inteiro -- e por isso o ramo recem-nascido, com poucos pixels, comeca num
-	/// canto vivo e a curva abre conforme ele cresce.
-	/// </summary>
-	private int CaminhoDobrado(Vector2 mao, Vector2 dobra, Vector2 ponta)
-	{
-		_dobrado ??= new Vector2[PassosDaDobra + 3];
-
-		Vector2 chega = dobra - mao, sai = ponta - dobra;
-		float c = chega.Length(), s = sai.Length();
-		// sem um dos dois trechos nao ha o que dobrar: a fita vai reta da mao a ponta
-		if (c < 1f || s < 1f)
-		{
-			_dobrado[0] = mao;
-			_dobrado[1] = ponta;
-			return (ponta - mao).LengthSquared() > 0.25f ? 2 : 0;
-		}
-
-		Vector2 e1 = chega / c, e2 = sai / s;
-		float cos = Mathf.Clamp(e1.Dot(e2), -1f, 1f);
-		float tg = Mathf.Tan(Mathf.Acos(cos) * 0.5f);            // a tangente de MEIA virada
-		float t = Mathf.Min(TangenteDaDobra(), Mathf.Min(c * 0.45f, s));
-
-		// quase reto (menos de ~3 graus), quase meia-volta, ou sem espaco: nao ha arco, so o canto
-		if (tg < 0.03f || tg > 8f || t < 1f)
-		{
-			_dobrado[0] = mao;
-			_dobrado[1] = dobra;
-			_dobrado[2] = ponta;
-			return 3;
-		}
-
-		float raio = t / tg;
-		Vector2 a = dobra - e1 * t, b = dobra + e2 * t;
-		// o centro fica do lado de DENTRO da virada: de `a`, perpendicular ao trecho que chega, pro lado do que sai
-		Vector2 centro = a + (e2 - e1 * cos).Normalized() * raio;
-		float de = (a - centro).Angle();
-		float varre = Mathf.Wrap((b - centro).Angle() - de, -Mathf.Pi, Mathf.Pi);
-
-		int k = 0;
-		_dobrado[k++] = mao;
-		for (int i = 0; i <= PassosDaDobra; i++)
-		{
-			float ang = de + varre * i / PassosDaDobra;
-			_dobrado[k++] = centro + new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * raio;
-		}
-		// com o trecho que sai inteiro dentro do arco, o fim do arco JA e a ponta (um ponto repetido deixaria
-		// um degrau sem direcao)
-		if (s - t > 0.5f) _dobrado[k++] = ponta;
-		return k;
 	}
 
 	// =====================================================================

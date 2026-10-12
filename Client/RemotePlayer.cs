@@ -139,6 +139,9 @@ public partial class RemotePlayer : Node2D
 	// pacote. Ver `AplicarMovimento`.
 	private Facing _olharDesenhado = Facing.South;
 	private bool _movendoDesenhado, _correndoDesenhado, _movimentoAplicado;
+
+	/// <summary>A pose de andar que nao some num toque de tecla. Ver <see cref="PassoSegurado"/>.</summary>
+	private PassoSegurado _passo = new();
 	private Vector2 _rumoDoDesenho;
 
 	/// <summary>
@@ -576,6 +579,9 @@ public partial class RemotePlayer : Node2D
 	/// </summary>
 	private void AplicarMovimento(Facing olhar, bool movendo, bool correndo, Vector2 rumo)
 	{
+		// A POSE DE ANDAR DURA UM MINIMO, aqui como no corpo local: quem anda em toquinhos chega em amostras
+		// soltas de `Moving`, e sem isto as pernas do corpo alheio tambem nao saiam do primeiro quadro.
+		movendo = _passo.Segurar(movendo, GetProcessDeltaTime());
 		if (rumo != Vector2.Zero) _rumoDoDesenho = rumo;
 		bool estreia = !_movimentoAplicado;
 		_movimentoAplicado = true;

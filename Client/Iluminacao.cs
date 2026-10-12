@@ -159,6 +159,10 @@ public partial class Iluminacao : Node2D
         _clima = new ClimaNaTela { Name = "Clima" };
         AddChild(_clima);
 
+        // OS PONTINHOS DO AR DE UM MUNDO DIVINO: vizinhos do clima porque sao a mesma especie de coisa -- o ar do
+        // lugar, desenhado no mundo. Eles se acendem sozinhos onde a atmosfera e divina. Ver `PoeiraDivina`.
+        AddChild(new PoeiraDivina { Name = PoeiraDivina.NomeDoNode });
+
         if (GameClient.Instance is { } cli)
         {
             if (cli.TempoChegou) { Tempo = cli.TempoDoMundo; _temHora = true; }

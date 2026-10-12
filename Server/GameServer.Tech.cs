@@ -1839,6 +1839,7 @@ public partial class GameServer
 			// limpa a camada de obras a cada pacote, e a planta e compartilhada por todas as naves --
 			// por isso a parede do console esta assada no bitset dela. Ver `NaveGrande.Montar`.
 			w.Put(p.Densa);
+			w.Put((byte)0);       // mobilia de nave nao tem melhoria (ver `MelhoriasFeitas`, logo abaixo das obras)
 		}
 		foreach (Nave n in navesDaZona)
 		{
@@ -1856,6 +1857,7 @@ public partial class GameServer
 			w.Put((float)(cn?.PixelX ?? 0));
 			w.Put((float)(cn?.PixelY ?? 0));
 			w.Put(cn?.Densa ?? false);
+			w.Put((byte)0);
 		}
 		foreach (Obra o in daZona)
 		{
@@ -1883,6 +1885,9 @@ public partial class GameServer
 			// servidor barra, e sem isto ele teria que adivinhar pelo catalogo -- que so lista o
 			// que ELE pode comprar.
 			w.Put(c?.Densa ?? false);
+			// ...E O QUE ESTA MAQUINA JA TEM de melhoria de uma vez so: e por este byte que o menu da tecla E tira da
+			// lista o que nao da mais pra comprar NESTA maquina. Ver `Interacoes.BitQueEsconde`.
+			w.Put(MelhoriasFeitas(o));
 		}
 		foreach (ServerPlayer pl in _players.Values)
 			if (pl.Zone.Equals(zona)) pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
@@ -1904,6 +1909,21 @@ public partial class GameServer
 	/// alguem constroi ou derruba, e o caminho incremental teria que acertar tambem o caso de
 	/// remocao -- que e onde uma parede fantasma ficaria pra tras sem nada apontando pra ela.
 	/// </summary>
+	/// <summary>
+	/// AS MELHORIAS QUE ESTA OBRA JA TEM e que saem do menu dela, nos bits do `Interacoes` (`MelhoriaUnicaFeita`,
+	/// `MelhoriaNoTeto`). Le o estado sem cria-lo: a maquina que nunca foi mexida nao tem nenhuma -- menos o tanque
+	/// do MAPA, que nasce turbinado (`RegeneradorDaObra.DaCidade`) e por isso ja nasce sem a opcao.
+	/// </summary>
+	private static byte MelhoriasFeitas(Obra o) => o.Tipo switch
+	{
+		Jandirus.Core.Tech.Regenerador.Tipo =>
+			(byte)((o.Regenerador ?? (o.DoMapa ? RegeneradorDaObra.DaCidade() : null))?.CuraFerimentos == true
+				? Jandirus.Core.Tech.Interacoes.MelhoriaUnicaFeita : 0),
+		"Gravity" => (byte)((o.Gravidade?.Estavel == true ? Jandirus.Core.Tech.Interacoes.MelhoriaUnicaFeita : 0)
+						   | (o.Gravidade?.Range >= AlcanceMaximo ? Jandirus.Core.Tech.Interacoes.MelhoriaNoTeto : 0)),
+		_ => 0,
+	};
+
 	private void AplicarColisaoDasObras(ZoneKey zona)
 	{
 		// `MapaDaZonaOuCatalogo` E NAO `_catalogo?.Get`: o catalogo so conhece mapa de ARQUIVO, e

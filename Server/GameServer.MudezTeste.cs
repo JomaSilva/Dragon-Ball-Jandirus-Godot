@@ -165,6 +165,49 @@ public partial class GameServer
 		return true;
 	}
 
+	// =====================================================================
+	// 2b) A DISPUTA DE GUARDA (dono, 2026-10-12: a saida de lado)
+	// =====================================================================
+	/// <summary>
+	/// ACENDE UM RAIO DE VERDADE CONTRA O JOGADOR, QUE JA ESTA DE GUARDA ERGUIDA -- quem a ergue e o robo, pelo ALT
+	/// de verdade; sem ela esta fixture nao arma nada. Um rival forjado a oito tiles, MAIS FRACO que ele (a disputa de
+	/// guarda e de quem nao e mais fraco que o raio, `KiContraCorpo`), canaliza na direcao dele; o raio encontra a
+	/// guarda pelo `Acertar`, e quem abre a disputa e o `TentarEmbateDeGuarda` de producao. A bancada do cliente
+	/// ESPERA o `Comecou`.
+	///
+	/// O RIVAL TEM TECLADO E NAO APERTA NADA (`_comTecladoDeTeste`, o privilegio da `--embatekiteste`): sem isto ele
+	/// empurraria pela taxa automatica, e a disputa poderia acabar antes de o robo medir a saida. So a deriva trabalha.
+	/// </summary>
+	public bool EmbateDeGuardaDeTeste(int idDoJogador)
+	{
+		if (!_mudezDeTeste || !_players.TryGetValue(idDoJogador, out ServerPlayer? eu)) return false;
+		if (eu.Combate is not { Bloqueando: true }) return false;
+
+		SoltarDoEmbate(eu.Id);
+		SoltarDoRaio(eu.Id);
+		ProntoParaOEmbateDaMudez(eu);   // (nao mexe na guarda)
+
+		ServerPlayer rival = ForjarRivalDaMudez(eu, dx: 8 * ZoneCollision.TileSize, bp: Math.Max(eu.Ficha.BP / 1.5, 1));
+		ProntoParaOEmbateDaMudez(rival);
+		rival.Facing = Facing.West;
+		_comTecladoDeTeste.Add(rival.Id);
+
+		ReceitaDeProjetil queFere = SemDeflexao();
+		queFere.BaseDano = BaseQueFere(rival, eu);
+		Canalizar(rival, "Ki_Wave", 10 * rival.Ficha.BaseDrain(), queFere);
+		GD.Print($"[mudez] um raio aceso contra a GUARDA de {eu.Name}, por {rival.Name} "
+				 + $"(canal dele={_canais.ContainsKey(rival.Id)}, poder {eu.Ficha.expressedBP:0} x {rival.Ficha.expressedBP:0})");
+		return _canais.ContainsKey(rival.Id);
+	}
+
+	/// <summary>A guarda deste corpo esta erguida NO SERVIDOR? O que a bancada do cliente nao tem como ver sozinha.</summary>
+	public bool GuardaErguidaDeTeste(int idDoJogador) =>
+		_mudezDeTeste && _players.TryGetValue(idDoJogador, out ServerPlayer? eu) && eu.Combate is { Bloqueando: true };
+
+	/// <summary>A vida do corpo deste jogador NO SERVIDOR (a media dos membros, `Body.Vida`). Negativa se nao houver corpo.</summary>
+	public double VidaDoCorpoDeTeste(int idDoJogador) =>
+		_mudezDeTeste && _players.TryGetValue(idDoJogador, out ServerPlayer? eu) && eu.Combate is { } c ? c.Corpo.Vida() : -1;
+
 	/// <summary>
 	/// UM CORPO NO CHAO AOS PES DO JOGADOR -- o que a tecla E precisa pra ter o que abrir.
 	///
@@ -316,6 +359,7 @@ public partial class GameServer
 			SoltarDoEmbate(p.Id);
 			SoltarDoRaio(p.Id);
 			LimparProjeteisDeUmDono(p.Id, p.Zone.Hash);
+			_comTecladoDeTeste.Remove(p.Id);   // (o rival da disputa de guarda: ver `EmbateDeGuardaDeTeste`)
 			_players.Remove(p.Id);
 			ZoneList(p.Zone.Hash).Remove(p);
 		}

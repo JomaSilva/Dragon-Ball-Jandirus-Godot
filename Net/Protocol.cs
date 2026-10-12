@@ -284,7 +284,9 @@ public static class Protocol
     /// As zonas do corpo que da pra mirar. A zona nao GARANTE o membro -- so pesa o sorteio a
     /// favor dele (ver <see cref="Jandirus.Core.Combat.Body.Sortear"/>).
     /// </summary>
-    public static readonly string[] Zonas = ["", "cabeca", "torso", "abdomen", "bracos", "pernas"];
+    /// (A SEXTA, "rabo", e de 2026-10-12: mira o rabo de quem tem um -- ver `Body.Sortear`. No fim da lista, pra os
+    /// indices que ja viajavam no fio nao mudarem.)
+    public static readonly string[] Zonas = ["", "cabeca", "torso", "abdomen", "bracos", "pernas", Jandirus.Core.Combat.Body.ZonaDoRabo];
 
     public static string ZonaDe(byte i) => i < Zonas.Length ? Zonas[i] : "";
 
@@ -1597,6 +1599,12 @@ public static class Protocol
         /// Acabou: quem venceu e quem perdeu. **Os dois zerados = EMPATE** (`draw()` do
         /// `BeamClash.dm:355`), que so o embate de ki produz: no ZanzoClash o desempate por poder
         /// garante que sempre ha um vencedor.
+        ///
+        /// **SEM VENCEDOR E COM "PERDEDOR" = ELE SAIU DE LADO** (dono, 2026-10-12): so a disputa de
+        /// guarda produz isso -- quem segurava o raio com as maos deu o passo atravessado e a disputa
+        /// fechou sem ninguem levar nada (`GameServer.SairDeLadoDaDisputa`). O segundo campo e quem
+        /// saiu. Vem pelo MESMO pacote, e nao por um momento novo, pra que tudo que ja ouve o fim de
+        /// um embate (o teclado destravado, o corpo solto, a tela do quick time event) o ouca igual.
         /// </summary>
         Acabou = 4,
 
@@ -1636,6 +1644,18 @@ public static class Protocol
         /// So viaja quando a razao muda de verdade (ver `GameServer.AvisarSeOPoderMudou`).
         /// </summary>
         Poder = 7,
+
+        /// <summary>
+        /// VOCE SEGURA ESTE RAIO COM AS MAOS, E PODE SAIR DE LADO (dono, 2026-10-12): o eixo do raio,
+        /// um vetor unitario. PESSOAL e so da disputa de guarda -- vai pro lado das MAOS, logo depois
+        /// do <see cref="Comecou"/>.
+        ///
+        /// E a licenca que faz o corpo local dar passo dentro de um embate (em todos os outros ele
+        /// fica plantado), e o numero com que ele decide QUAL passo dar: so o atravessado ao raio, pela
+        /// mesma pergunta com que o servidor fecha a disputa (`KiContraCorpo.PassoAtravessado`). O fim
+        /// vem pelo <see cref="Acabou"/> de sempre.
+        /// </summary>
+        SaidaDeLado = 8,
     }
 
     /// <summary>
@@ -1819,6 +1839,15 @@ public static class Protocol
         public float GanhoDeTreino, Gravidade, GravEfetiva, PesoMult, ZonaMult, Esmagamento;
 
         /// <summary>
+        /// O PESO MAXIMO DOS PESOS DE TREINO, em kg -- o que o jogador ja pagou pra poder vestir (`PesoDeTreino`). A
+        /// aba Equip e o botao "Melhorar" da mochila escrevem o proximo degrau e o preco a partir dele.
+        /// </summary>
+        public float PesoMaxKg;
+
+        /// <summary>Quantos kg dos pesos estao NO CORPO agora (`Fighter.Weighted`): a aba Equip escreve "vestindo X kg".</summary>
+        public float PesoKg;
+
+        /// <summary>
         /// ============================ A SESSAO DA SALA DO TEMPO ============================
         /// <see cref="SalaFase"/>: 0 = nao esta na Sala, 1 = sessao rendendo, 2 = acabou e a janela
         /// de saida esta aberta, 3 = PRESO. <see cref="SalaMinutos"/> sao os minutos REAIS que
@@ -1860,7 +1889,7 @@ public static class Protocol
             for (int i = 0; i < ms.Length && i < 255; i++) { w.Put(ms[i].Item1); w.Put(ms[i].Item2); }
             w.Put(Disciplina); w.Put(DiscReal); w.Put(DiscAtual); w.Put(DiscLigada);
             w.Put(GanhoDeTreino); w.Put(Gravidade); w.Put(GravEfetiva);
-            w.Put(PesoMult); w.Put(ZonaMult); w.Put(Esmagamento);
+            w.Put(PesoMult); w.Put(ZonaMult); w.Put(Esmagamento); w.Put(PesoMaxKg); w.Put(PesoKg);
             w.Put(SalaFase); w.Put(SalaMinutos);
 
             // AS PERICIAS VAO NO FIM, DEPOIS DE TUDO QUE JA EXISTIA: o layout antigo fica intacto e um
@@ -1892,6 +1921,8 @@ public static class Protocol
             PesoMult = r.GetFloat(),
             ZonaMult = r.GetFloat(),
             Esmagamento = r.GetFloat(),
+            PesoMaxKg = r.GetFloat(),
+            PesoKg = r.GetFloat(),
             SalaFase = r.GetByte(),
             SalaMinutos = r.GetFloat(),
             Pericias = LerPericias(r),
@@ -2674,6 +2705,37 @@ public struct SheetState
     /// </summary>
     public bool PuxadoNaFusao => (Estado2 & 2) != 0;
 
+    /// <summary>
+    /// ESTOU ATORDOADO (o `Stun` do `CombatState` acima de zero): nem golpeio nem ando direito.
+    ///
+    /// Vem pela ficha pra o HUD poder DIZER isso ao dono do corpo, e so a ele (dono, 2026-10-12: *"um aviso
+    /// apenas pro jogador local q ele ta stunado/atordoado"*) -- de fora nao ha como distinguir um corpo
+    /// atordoado de um parado, e era o que deixava a tecla "morta" sem explicacao.
+    /// </summary>
+    public bool Atordoado => (Estado2 & 4) != 0;
+
+    /// <summary>
+    /// ALGUEM ME SEGURA (o `grabber` do DM): o corpo nao anda, e apertar uma direcao e SE DEBATER
+    /// (`movement handler.dm:222-255`). O cliente precisa saber pra parar de integrar a tecla (senao ele anda
+    /// e e corrigido de volta trinta vezes por segundo) e mandar a INTENCAO de andar no lugar do passo.
+    /// </summary>
+    public bool Agarrado => (Estado2 & 8) != 0;
+
+    /// <summary>O QUE ME SEGURA E O RABO: fraco e sem sair do lugar. Ver `Core/Combat/RaboPreso.cs`.</summary>
+    public bool RaboPreso => (Estado2 & 16) != 0;
+
+    /// <summary>Quem me segura esta apertando o meu pescoco -- o dano por segundo do estrangulamento.</summary>
+    public bool Estrangulado => (Estado2 & 32) != 0;
+
+    /// <summary>EU SEGURO ALGUEM. So pra a dica do HUD de quem agarra (o soco estrangula, o passo arremessa).</summary>
+    public bool Segurando => (Estado2 & 64) != 0;
+
+    /// <summary>
+    /// QUANTO FALTA PRA EU ME SOLTAR, de 0 a 100 -- o `grabCounter` contra o alvo dele (`20/escapechance`).
+    /// Zero fora de um agarrao. E razao sobre si mesmo: nao diz o poder de ninguem, so o quanto a luta andou.
+    /// </summary>
+    public byte Escape;
+
     /// <summary>Nem anda nem golpeia: caido ou morto.</summary>
     public bool Imobilizado => KO || Morto;
 
@@ -2713,7 +2775,7 @@ public struct SheetState
         w.Put(Nutricao); w.Put(NutricaoMax);
         w.Put(Inteireza); w.Put(MultTotal); w.Put(TetoKi);
         w.Put(SpeedStat);
-        w.Put(SocoMs); w.Put(MembrosRuins); w.Put(Estado); w.Put(Estado2);
+        w.Put(SocoMs); w.Put(MembrosRuins); w.Put(Estado); w.Put(Estado2); w.Put(Escape);
     }
 
     public static SheetState Read(NetDataReader r) => new()
@@ -2726,6 +2788,7 @@ public struct SheetState
         SpeedStat = r.GetFloat(),
         SocoMs = r.GetInt(), MembrosRuins = r.GetByte(), Estado = r.GetByte(),
         Estado2 = r.GetByte(),
+        Escape = r.GetByte(),
     };
 }
 
@@ -3411,24 +3474,6 @@ public struct ProjetilState
     public bool Prensado;
 
     /// <summary>
-    /// ESTE RAIO E A CONTINUACAO DE OUTRO (0 = nao e): o id do raio que o alimenta -- o trecho que sai de um
-    /// raio DESVIADO pelo parry, enquanto o desvio dura (`Projetil.AlimentadoPor`).
-    ///
-    /// ============================ POR QUE O CLIENTE PRECISA SABER ============================
-    /// No servidor um raio desviado sao DOIS objetos (o feixe e um segmento reto, e um raio torto sao dois
-    /// segmentos). Desenhados como dois, o segundo saia com mao propria -- uma boca de disparo no meio do ar
-    /// -- e o dono viu um feixe novo nascendo atras de quem desviou (2026-10-08): *"o beam dar curva pro lado
-    /// e nao criar um novo beam"*. Com este id o cliente desenha os dois como UMA fita, da mao de quem atirou
-    /// ate a ponta do trecho desviado, fazendo a curva na dobra (`ProjetilDesenhado.DesenharDobrado`).
-    ///
-    /// ESTADO E NAO EVENTO: o desvio acaba a qualquer tique (a guarda caiu, o atirador soltou), e nesse
-    /// instante os dois voltam a ser dois raios. Quatro bytes, so nos raios e so enquanto ha desvio -- o mesmo
-    /// preco e a mesma forma do <see cref="Arrasta"/>.
-    /// =========================================================================================
-    /// </summary>
-    public int Dobra;
-
-    /// <summary>
     /// A ESCALA DE AGORA DESTE RAIO, quando ela ja nao e a de nascenca (0 = e a de nascenca, a do `Nasceu`).
     ///
     /// ============================ O RAIO CRESCE COM O PODER DE QUEM O SEGURA (dono, 2026-10-08) ============================
@@ -3436,7 +3481,7 @@ public struct ProjetilState
     /// transforma ou acende um aumento de poder no meio dele (`Core.Combat.Projetil.CrescerComOPoder`), e o
     /// servidor ja encosta, disputa e corta pelo tamanho novo -- o desenho tem que acompanhar.
     ///
-    /// ESTADO E NAO EVENTO, pelo motivo do <see cref="Dobra"/>: o tamanho sobe em rampa e desce quando o poder
+    /// ESTADO E NAO EVENTO: o tamanho sobe em rampa e desce quando o poder
     /// escorre, tique a tique. Um byte (a mesma escala de 1/20 do `Nasceu`,
     /// <see cref="Protocol.EscalaDeProjetilEmByte"/>), so nos raios e so enquanto ele esta fora do tamanho com
     /// que nasceu: um mundo sem ninguem crescendo no meio de um raio nao paga nada.
@@ -3449,7 +3494,6 @@ public struct ProjetilState
     private const byte BitSolto = 0x08;
     private const byte BitArrasta = 0x10;
     private const byte BitPrensado = 0x20;
-    private const byte BitDobra = 0x40;
     private const byte BitEscala = 0x80;
 
     public void Write(NetDataWriter w)
@@ -3459,10 +3503,9 @@ public struct ProjetilState
         bool cauda = (Tipo & MascaraDoTipo) == (byte)Jandirus.Core.Combat.TipoDeProjetil.Beam;
         w.Put((byte)((Tipo & MascaraDoTipo) | (cauda ? BitTemCauda : 0) | (cauda && Solto ? BitSolto : 0)
                      | (cauda && Arrasta != 0 ? BitArrasta : 0) | (cauda && Prensado ? BitPrensado : 0)
-                     | (cauda && Dobra != 0 ? BitDobra : 0) | (cauda && Escala > 0f ? BitEscala : 0)));
+                     | (cauda && Escala > 0f ? BitEscala : 0)));
         if (cauda) w.PutVec(Cauda);
         if (cauda && Arrasta != 0) w.Put(Arrasta);
-        if (cauda && Dobra != 0) w.Put(Dobra);
         if (cauda && Escala > 0f) w.Put(Protocol.EscalaDeProjetilEmByte(Escala));
     }
 
@@ -3475,7 +3518,6 @@ public struct ProjetilState
         p.Solto = (flags & BitSolto) != 0;
         p.Arrasta = (flags & BitArrasta) != 0 ? r.GetInt() : 0;
         p.Prensado = (flags & BitPrensado) != 0;
-        p.Dobra = (flags & BitDobra) != 0 ? r.GetInt() : 0;
         p.Escala = (flags & BitEscala) != 0 ? Protocol.DeEscalaDeProjetil(r.GetByte()) : 0f;
         return p;
     }

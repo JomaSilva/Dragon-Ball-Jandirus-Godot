@@ -1018,6 +1018,9 @@ public partial class Boot : Node2D
 		AddChild(new MenuDeInteracao { Name = "Interacao" });
 		// A TECLA I: a mochila.
 		AddChild(new TelaDeInventario { Name = "Inventario" });
+		// A ARTE DA ARMADURA: abre sozinha depois de fabricar uma na aba Tech, ou pela acao da armadura crua na
+		// mochila. Vive montada e invisivel. Ver `TelaDeArmadura`.
+		AddChild(new TelaDeArmadura { Name = "Armadura" });
 		// A TECLA M: meditar normal ou mergulhar na propria mente. Ver `TelaDeMeditacao` -- ela vive
 		// montada e invisivel, e e o `LocalPlayer` que a abre (a atividade e dele).
 		AddChild(new TelaDeMeditacao { Name = "Meditacao" });
@@ -1138,6 +1141,12 @@ public partial class Boot : Node2D
 		// Abre cada aba pelo botao, fotografa, e cobra a lingua visual comum. Ver RoboDasAbas.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagabas") >= 0)
 			AddChild(new RoboDasAbas { Name = "RoboDasAbas" });
+
+		// --diagv020: A VERSAO 0.2.0 NA TELA (o pedido de 2026-10-12) -- o chat que destrava, a caixa do batismo, a
+		// marca de alvo acima do piso, os avisos de guarda/atordoado/agarrao, o passo, a mira no rabo. Modo host,
+		// sem janela. Anda junto da `--v020teste` do servidor. Ver RoboDaV020.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagv020") >= 0)
+			AddChild(new RoboDaV020 { Name = "RoboDaV020" });
 
 		// --diagjanelas: O ARRANJO DA TELA -- o menu P arrastado, redimensionado e destacado numa janela do sistema,
 		// o chat e os dois paineis do topo em outros tamanhos, e o que mora em volta acompanhando. Modo host e com

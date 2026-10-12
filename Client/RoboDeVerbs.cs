@@ -312,6 +312,8 @@ public partial class RoboDeVerbs : Node
 			("humano com Split Form", Gente("Human", "Normal", terra, tecnicas: ["SplitForm"])),
 			("humano com Dragon Radar", Gente("Human", "Normal", terra, itens: [Jandirus.Core.Items.CatalogoDeItens.Radar])),
 			("humano que sabe a Dança", Gente("Human", "Normal", terra, skills: ["/datum/skill/rank/Fusion_Dance"])),
+			// (o `Power_Control` do degrau 5 de Basic Ki Control: e ele que abre a barra de poder e o relaxar)
+			("humano com controle de ki", Gente("Human", "Normal", terra, tecnicas: [Jandirus.Core.Stats.PoderEmUso.VerboDoControle])),
 			("Majin com Buu Absorb", Gente("Majin", "Normal", terra, tecnicas: [Jandirus.Core.Combat.AbsorcaoMajin.Verbo])),
 			("bio-androide", Gente(Jandirus.Core.Races.BioAndroids.Raca, "Normal", terra)),
 			("bio-androide de DNA Saiyajin", Gente(Jandirus.Core.Races.BioAndroids.Raca, "Normal", terra, Fatos.EscadaSuperSaiyajin)),
@@ -375,6 +377,10 @@ public partial class RoboDeVerbs : Node
 			  Tem("humano com Split Form", Verbos.Outros, doSplit)
 			  && elenco.Where(e => !e.Quem.SabeTecnica("SplitForm") && (e.Quem.Fatos & Fatos.TemCopias) == 0)
 					   .All(e => NaoTem(e.Nome, Verbos.Outros, doSplit)));
+		Checa("RELAXAR so pra quem sabe controlar o proprio poder (dono, 2026-10-12; no DM e de todo corpo): quem tem o `Power_Control` "
+			  + "ve \"Relaxar / ficar pronto\" na Skills, e do elenco so ele",
+			  Tem("humano com controle de ki", Verbos.Skills, "Relaxar / ficar pronto")
+			  && elenco.Where(e => e.Nome != "humano com controle de ki").All(e => NaoTem(e.Nome, Verbos.Skills, "Relaxar / ficar pronto")));
 		Checa("O RADAR: so quem tem o Dragon Radar ve o botao Radar",
 			  Tem("humano com Dragon Radar", "World", "Radar") && elenco.Where(e => e.Nome != "humano com Dragon Radar").All(e => NaoTem(e.Nome, "World", "Radar")));
 		Checa("O SAIYAJIN ve o que e dele: Toggle SSJ Grades e Line of Succession na Other, Voltar ao normal na Skills",

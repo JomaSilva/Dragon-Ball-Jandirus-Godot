@@ -239,7 +239,8 @@ public partial class GameServer
 		// Kaio-ken que estoura). E ele que poe a peca no chao da zona e a guarda pelos 600 s do DM.
 		// Ver `GameServer.Pecas.cs` e `CombatState.AoDecepar`.
 		// (e a frase do chat no instante da perda: `AnunciarMembroPerdido`, `GameServer.Membros.cs`)
-		pl.Combate.AoDecepar = (_, caiu) => { SoltarPecas(pl, caiu); AnunciarMembroPerdido(pl, caiu); };
+		// (e a marca do RABO QUE NAO VOLTA, antes de tudo: `MarcarORaboPerdido`, logo abaixo do `AjustarGanhoDoRabo`)
+		pl.Combate.AoDecepar = (_, caiu) => { MarcarORaboPerdido(pl, caiu); SoltarPecas(pl, caiu); AnunciarMembroPerdido(pl, caiu); };
 
 		// E QUEM RESPONDE "COM QUE RITMO A RECARGA DO SOCO ESCORRE?" -- sem os dois bracos, a meio ritmo
 		// (`movement handler.dm:167`). So pro corpo que o DONO dirige: ver `GameServer.Membros.cs`.
@@ -278,7 +279,15 @@ public partial class GameServer
 				{
 					p.Vida = Math.Clamp(v[0], 0, p.VidaMax);
 					p.Decepado = v[1] > 0.5;
+					p.Perdido = v.Length >= 3 && v[2] > 0.5;   // o save de antes de 2026-10-12 tem dois numeros: nada perdido de vez
 				}
+
+		// O RABO PRESO E DE UM APERTO, e nenhum aperto atravessa o logout: quem entra, entra com o poder inteiro.
+		pl.Ficha.raboPresoMod = 1;
+
+		// OS PESOS VESTIDOS NAO PASSAM DO MAXIMO PAGO (dono, 2026-10-12): o personagem de antes vestia ate o dobro do
+		// limite do corpo de graca, e volta com o que os pesos dele aguentam hoje -- 50 kg, ate ele melhorar.
+		pl.Ficha.Weighted = Math.Min(pl.Ficha.Weighted, TetoDePeso(pl.Ficha));
 
 		pl.Combate.SincronizarVida();
 		AjustarGanhoDoRabo(pl);
@@ -342,11 +351,26 @@ public partial class GameServer
 		pl.Ficha.tailgain = rabo.Decepado ? 1.25 : 0.5;
 	}
 
+	/// <summary>
+	/// O RABO CAIU -- E PRA SEMPRE? Regra do dono (2026-10-12), em `Core/Races/RaboDoSaiyajin.cs`: o Saiyajin que
+	/// nao e Primal e ja passou de 20 mil de poder de base nao refaz o rabo, nem no tanque. A marca vai no proprio
+	/// membro (`BodyPart.Perdido`) e as portas de devolver membro a respeitam; o ritmo de treino sem rabo
+	/// (`tailgain` 1,25) quem acerta e o `AjustarGanhoDoRabo`, como em toda perda.
+	/// </summary>
+	private void MarcarORaboPerdido(ServerPlayer pl, List<BodyPart> caiu)
+	{
+		if (caiu.Find(p => p.Nome == Jandirus.Core.Races.RaboDoSaiyajin.Membro) is not { } rabo) return;
+		if (!Jandirus.Core.Races.RaboDoSaiyajin.PerdaEhDefinitiva(pl.Ficha)) return;
+		rabo.Perdido = true;
+		AjustarGanhoDoRabo(pl);
+		AvisarSePessoa(pl, Jandirus.Core.Races.RaboDoSaiyajin.AvisoDaPerda);
+	}
+
 	/// <summary>Fotografa o corpo pro savefile: vida e "esta decepado" por membro.</summary>
 	public static Dictionary<string, double[]> FotografarCorpo(CombatState c)
 	{
 		var d = new Dictionary<string, double[]>(c.Corpo.Partes.Count);
-		foreach (BodyPart p in c.Corpo.Partes) d[p.Nome] = [p.Vida, p.Decepado ? 1 : 0];
+		foreach (BodyPart p in c.Corpo.Partes) d[p.Nome] = [p.Vida, p.Decepado ? 1 : 0, p.Perdido ? 1 : 0];
 		return d;
 	}
 
@@ -1617,6 +1641,8 @@ public partial class GameServer
 			PesoMult = (float)Math.Max(f.weight, 1),
 			ZonaMult = (float)f.zoneGainMult,
 			Esmagamento = (float)Jandirus.Core.Stats.Esmagamento.Razao(f),
+			PesoMaxKg = (float)Jandirus.Core.Items.PesoDeTreino.Maximo(f.pesoMaximoKg),
+			PesoKg = (float)f.Weighted,
 
 			// A SESSAO DA SALA DO TEMPO, na mesma ficha lenta e pelo mesmo criterio: ela muda de
 			// fase tres vezes numa visita inteira, e os minutos so precisam de resolucao de MINUTO
@@ -1643,7 +1669,7 @@ public partial class GameServer
 				   + $"{a.Technique:0.##}|{a.KiSkill:0.##}|{a.Speed:0.##}|{a.Esoteric:0.##}|"
 				   + $"{a.Willpower:0.##}|{a.Stamina:0.#}|{a.Poderes}|{a.Idade}|{a.FormaAtual}|"
 				   + $"{a.GanhoDeTreino:0.#}|{a.Gravidade:0.#}|{a.GravEfetiva:0.#}|{a.PesoMult:0.##}|"
-				   + $"{a.ZonaMult:0.#}|{a.Esmagamento:0.##}|{a.SalaFase}|{a.SalaMinutos:0}|"
+				   + $"{a.ZonaMult:0.#}|{a.Esmagamento:0.##}|{a.SalaFase}|{a.SalaMinutos:0}|{a.PesoMaxKg:0}|{a.PesoKg:0}|"
 				   + string.Join(',', a.Maestrias.Select(m => $"{m.Forma}:{m.Pct:0.#}"))
 				   // AS PERICIAS ENTRAM COM UMA CASA (`0.#`), pelo mesmo motivo do ganho de treino: sao os
 				   // contadores da ficha, e os de tecnica sobem por fracao a cada tiro que rende. Com

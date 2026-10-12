@@ -9,13 +9,13 @@ public enum EstadoDoPoder
 	/// <summary>"Using Full Power" (`:107-108`): `powerMod` em 1.</summary>
 	PoderTotal,
 
-	/// <summary>"Using some power." (`:103-104`): `powerMod` abaixo de 1 e acima do piso.</summary>
+	/// <summary>"Using some power." (`:103-104`): `powerMod` abaixo de 1 -- o corpo se segura.</summary>
 	Contendo,
 
-	/// <summary>"Relaxed" (`:98-99`): `powerMod` no piso de 0,01.</summary>
+	/// <summary>"Relaxed" (`:98-99`): o corpo soltou o poder (`Fighter.relaxado`) -- 5 de poder, e ninguem o sente.</summary>
 	Relaxado,
 
-	/// <summary>"Concealing Power" (`:100-101`): o poder expresso esta travado pelo sigilo.</summary>
+	/// <summary>"Concealing Power" (`:100-101`): o poder expresso esta travado por uma tecnica de sumir (`Fighter.isconcealed`).</summary>
 	Escondendo,
 }
 
@@ -24,15 +24,32 @@ public enum EstadoDoPoder
 /// proprio poder o corpo poe pra fora: relaxar e ficar pronto (`ReadyUp`, `:39-52`), baixar pra uma
 /// porcentagem (`Power_Control`, `:176-185`), a raiva que nao deixa relaxar (`RelaxCheck`, `:87-111`) e a
 /// leitura do estado (`relaxedstate`). Subir de volta segurando C e do `CargaDeKi` (o estagio `Retomando`,
-/// `:153-157`); esconder o poder e o `Fighter.isconcealed`, lido pelo `PowerLevel` (`base.dm:114-115`).
+/// `:153-157`).
 ///
-/// ============================ O QUE O `powerMod` E, E O QUE ELE MUDA ============================
-/// Um fator de 0,01 a 1 que multiplica o poder EXPRESSO no fim da conta (`base.dm:135`,
-/// `Fighter.Power.cs`). Tudo o que le o poder expresso muda junto: o dano dado e o recebido, o que o Sense e
-/// o scouter dos outros leem, o que a IA de um NPC pesa, e o bonus de lutar com alguem mais forte
-/// (`fight_gain_mult`, `combatgains.dm:93-95`: quem se contem diante de um igual treina como quem luta com
-/// alguem mais forte, ate o teto de 2x). Ele NAO entra na regeneracao nem no dreno de Ki, nem no ganho de
-/// treino por tique (`Egains`, `base.dm:160`), nem nas portas de transformacao (que leem o BP BASE).
+/// ============================ DOIS GESTOS, E O QUE CADA UM FAZ (regra do dono, 2026-10-12) ============================
+/// O DM tem tres: a barra (`Power_Control`), relaxar (`ReadyUp`, `powerMod = 0.01`) e esconder (`Conceal_Power`,
+/// `isconcealed`). O dono jogou e cortou um: *"esconder o ki e relaxar é redundante ambos abaixam o poder de forma
+/// praticamente igual (esconder o ki é ate menos), relaxar e o poder cair deveria ser somente pra quem sabe
+/// controlar o proprio poder, tire o botao de esconder o ki e faça com q o de relaxar faca o poder do personagem
+/// cair pra 5 de poder de luta sempre, ficando invisivel pra scouters etc, mas extremamente fraco fisicamente, vc
+/// mudar teu poder na barra de % n esconde o ki do scouter, ou sense, so serve pra se segurar ou usar todo o
+/// poder, esconder o ki totalmente so com relaxar"*. Ficaram dois:
+///
+///   * **A BARRA** (`Fighter.powerMod`, de 0,01 a 1): multiplica o poder EXPRESSO no fim da conta (`base.dm:135`,
+///     `Fighter.Power.cs`). Serve pra se segurar ou usar o poder todo, e so: o dano dado e o recebido, o que o
+///     Sense e o scouter dos outros LEEM e o que a IA pesa descem na mesma proporcao -- mas ela nunca ESCONDE
+///     ninguem (<see cref="SemABarra"/>: o piso dos 5 de quem nao se sente e medido sem ela);
+///   * **RELAXAR** (`Fighter.relaxado`): o poder expresso trava em 5 (a trava do `isconcealed` do DM,
+///     `base.dm:114-115`, que aqui vale pros dois -- <see cref="Escondido"/>), o Sense, o scouter e a telepatia
+///     nao acham o corpo, e ele bate e apanha como quem nao tem poder. E o unico jeito de esconder o ki.
+///
+/// Os dois pedem controle de ki (o degrau 5 de Basic Ki Control, que concede o `Power_Control`): quem cobra e o
+/// servidor (`GameServer.PoderEmUso.cs`). DIVERGENCIA DECLARADA de `Power Control.dm:39` e `Login.dm:301`, onde
+/// relaxar e `mob/default/verb` de todo corpo: a regra do dono vale mais.
+///
+/// O QUE NENHUM DOS DOIS MUDA: a regeneracao e o dreno de Ki, o ganho de treino por tique (`Egains`,
+/// `base.dm:160`) e as portas de transformacao (que leem o BP BASE). O que os dois mudam alem do poder e o VIGOR:
+/// <see cref="FatorDeDescanso"/>.
 ///
 /// ============================ DUAS FRASES DO ORIGINAL QUE O CODIGO DELE NAO CUMPRE ============================
 /// A caixa do `Power_Control` (`:178`) promete duas coisas: *"You can only use this to set your power lower
@@ -58,10 +75,15 @@ public static class PoderEmUso
 	public const double Cheio = 1;
 
 	/// <summary>
-	/// O PISO: `powerMod = 0.01` de quem relaxa (`:48`) e o `max(1,numb)/100` do `Power_Control`
-	/// (`:180-181`). Um por cento do proprio poder.
+	/// O PISO DA BARRA: o `max(1,numb)/100` do `Power_Control` (`:180-181`). Um por cento do proprio poder.
 	/// </summary>
 	public const double Piso = 0.01;
+
+	/// <summary>
+	/// O VERBO QUE DIZ "ESTE CORPO SABE CONTROLAR O PROPRIO PODER": o `Power_Control`, que nasce no degrau 5 de
+	/// Basic Ki Control (`Mind.dm:279-283`). E a porta da barra e, desde 2026-10-12, a de relaxar.
+	/// </summary>
+	public const string VerboDoControle = "Power_Control";
 
 	/// <summary>
 	/// O DIVISOR DA RAIVA QUE NAO DEIXA RELAXAR: `Anger > ((MaxAnger-100)/1.66)+100` (`:91`). E o mesmo
@@ -70,46 +92,121 @@ public static class PoderEmUso
 	public const double DivisorDaRaivaQueAcorda = 1.66;
 
 	/// <summary>
-	/// EM QUANTO O SIGILO DIVIDE O DRENO PASSIVO DE VIGOR: `concealedBuff = 1.5` (`master.dm:138`), lido
-	/// pelo `CheckNutrition` (`StaminaDrain.dm:30`). So pra documentar: quem escreve o campo e o `Statify`.
+	/// EM QUANTO UMA TECNICA DE SUMIR DIVIDE O DRENO PASSIVO DE VIGOR: `concealedBuff = 1.5` (`master.dm:138`),
+	/// lido pelo `CheckNutrition` (`StaminaDrain.dm:30`). So pra documentar: quem escreve o campo e o `Statify`,
+	/// pelo `isconcealed` -- relaxar nao passa por ele (o premio de quem relaxa e o <see cref="DescansoRelaxado"/>).
 	/// </summary>
 	public const double FolgaDeVigorDoSigilo = 1.5;
 
 	// =====================================================================
-	// OS DEFEITOS INJETADOS (bancada `--poderteste`)
+	// OS DEFEITOS INJETADOS (bancadas `--poderteste` e `--v020teste`)
 	// =====================================================================
 
 	/// <summary>
-	/// DEFEITO INJETADO (bancada `--poderteste`): a raiva nao acorda quem relaxa -- furioso, o corpo fica
-	/// em 1% do poder. Lido pela propria regra, em <see cref="IrritadoDemaisPraRelaxar"/>.
+	/// DEFEITO INJETADO (bancada `--poderteste`): a raiva nao acorda quem relaxa -- furioso, o corpo continua
+	/// relaxado. Lido pela propria regra, em <see cref="IrritadoDemaisPraRelaxar"/>.
 	/// </summary>
 	public static bool RaivaDeixaRelaxarDeTeste;
 
 	/// <summary>
 	/// DEFEITO INJETADO (bancada `--poderteste`): o `concealedBuff` volta a ser calculado e jogado fora --
-	/// esconder o poder nao poupa vigor nenhum (o estado de antes de 2026-10-11). Lido pela propria linha do
+	/// sumir por tecnica nao poupa vigor nenhum (o estado de antes de 2026-10-11). Lido pela propria linha do
 	/// conserto, em `Nutricao.QueimarVigor`.
 	/// </summary>
 	public static bool SigiloNaoPoupaVigorDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--poderteste`): relaxar nao trava o poder nem esconde ninguem -- o corpo
+	/// "relaxado" segue com o poder inteiro a vista de todo Sense e de todo scouter. Lido pela propria regra, em
+	/// <see cref="Escondido"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool RelaxadoNaoEscondeDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--poderteste`): o piso de quem nao se sente volta a ser medido COM a barra --
+	/// um corpo fraco que se segura a 1% expressa 5 ou menos e some do Sense e do scouter, que e o jogo de antes
+	/// de 2026-10-12. Lido pela propria regra, em <see cref="SemABarra"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool BarraEscondeDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--poderteste`): reunir energia nao acorda quem relaxa -- o corpo enche o tanque
+	/// e passa dos 100% de Ki escondido, com 5 de poder. Lido pela propria regra, em <see cref="ACargaAcorda"/>.
+	/// Falso em jogo, sempre.
+	/// </summary>
+	public static bool CargaNaoAcordaDeTeste;
 
 	// =====================================================================
 	// LER
 	// =====================================================================
 
-	/// <summary>O `powerMod` esta no piso (com a folga de um erro de ponto flutuante).</summary>
-	public static bool NoPiso(Fighter f) => f.powerMod <= Piso + 1e-9;
+	/// <summary>RELAXADO: o corpo soltou o proprio poder (`Fighter.relaxado`).</summary>
+	public static bool Relaxado(Fighter f) => f.relaxado;
 
 	/// <summary>
-	/// RELAXADO: o `isrelaxed` do DM, DERIVADO do piso e nao guardado.
-	///
-	/// DIVERGENCIA DECLARADA de `Power Control.dm:96`: la o `isrelaxed` e um campo, e a linha que o
-	/// apagaria quando o poder sai do piso esta escrita `if(!powerMod==0.01)` -- a negacao vale primeiro,
-	/// `!powerMod` e 0 e a comparacao nunca e verdadeira. Quem relaxa e depois carrega ate 100% segue
-	/// "Relaxed" na ficha, e a raiva ainda o "acorda" com o poder inteiro. A outra metade (`:110-111`,
-	/// `if(powerMod==0.01) isrelaxed=1`) funciona. Aqui valem as duas, como estao escritas pra valer:
-	/// relaxado e quem esta no piso, por onde quer que tenha chegado la.
+	/// **O PODER DESTE CORPO ESTA ESCONDIDO?** -- travado em 5 (`Fighter.Power.cs`), fora do Sense, do scouter e
+	/// da telepatia. Dois caminhos chegam aqui: uma tecnica de sumir (a invisibilidade, o Sneak, o embate de
+	/// Zanzoken: `isconcealed`) e relaxar. E a unica pergunta que quem LE o sigilo faz -- a trava do poder, o corte
+	/// do multiplicador (`GameServer.Sigilo.cs`) e o denominador do Sense (`GameServer.PoderEmUso.cs`).
 	/// </summary>
-	public static bool Relaxado(Fighter f) => NoPiso(f);
+	public static bool Escondido(Fighter f) => f.isconcealed || (f.relaxado && !RelaxadoNaoEscondeDeTeste);
+
+	/// <summary>
+	/// **O PODER QUE O CORPO EXPRESSARIA SEM A BARRA** -- o dono: *"vc mudar teu poder na barra de % n esconde o ki
+	/// do scouter, ou sense, so serve pra se segurar ou usar todo o poder"*.
+	///
+	/// O DM corta do Sense, do scouter e da telepatia quem expressa 5 de BP ou menos (`HtmlUI.dm:370` e `:411`,
+	/// `Communication.dm:53`), e la a barra entra nessa conta: um corpo de 400 de poder a 1% expressa 4 e some.
+	/// Aqui quem pergunta "este corpo tem energia que se sinta?" pergunta por ESTE numero, e nao pelo expresso:
+	/// a barra continua baixando o que os outros leem (10% do poder = 10% da leitura), mas nao tira ninguem da
+	/// lista. DIVERGENCIA DECLARADA das tres linhas: a regra do dono vale mais.
+	///
+	/// A barra e o ULTIMO fator do poder expresso (`... * powerMod`, `Fighter.Power.cs`), entao dividir por ela a
+	/// desfaz. Escondido (<see cref="Escondido"/>) o expresso e a constante 5, que nao passou pela barra: vai como
+	/// esta -- e o que mantem escondido quem relaxa.
+	/// </summary>
+	public static double SemABarra(Fighter f)
+	{
+		if (BarraEscondeDeTeste || Escondido(f) || !double.IsFinite(f.powerMod)) return f.expressedBP;
+		return f.expressedBP / Math.Clamp(f.powerMod, Piso, Cheio);
+	}
+
+	// =====================================================================
+	// O DESCANSO -- regra do dono (2026-10-12)
+	// =====================================================================
+
+	/// <summary>Quantas vezes o vigor volta mais depressa com a barra no piso (1% do poder).</summary>
+	public const double DescansoNoPiso = 2.5;
+
+	/// <summary>Quantas vezes o vigor volta mais depressa RELAXADO -- o maximo que ha.</summary>
+	public const double DescansoRelaxado = 3.5;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v020teste`): baixar o poder nao rende vigor nenhum -- o jogo de antes de
+	/// 2026-10-12. Lido pela propria regra, em <see cref="FatorDeDescanso"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool DescansoNaoRendeDeTeste;
+
+	/// <summary>
+	/// QUANTO O VIGOR VOLTA MAIS DEPRESSA PRA QUEM NAO ESTA USANDO O PODER INTEIRO. O dono: *"a regeneração de vigor
+	/// é a maxima relaxado, e um pouco menor se vc tiver em 1% de poder, assim a regeneração de vigor sendo uma
+	/// função linear em relação a % do poder liberado, com o teto em 2,5x quando chega em 1% do poder total, e
+	/// relaxado seria 3,5x"*.
+	///
+	/// Uma reta pela barra: 1x com o poder inteiro, <see cref="DescansoNoPiso"/> a 1%. Relaxado e um degrau a
+	/// parte, acima da reta: <see cref="DescansoRelaxado"/>. Sumir por tecnica (`isconcealed`) nao entra aqui --
+	/// o que o sigilo da e a folga no DRENO (<see cref="FolgaDeVigorDoSigilo"/>), como no DM.
+	///
+	/// No DM nao ha isto: la o `powerMod` so corta o poder. Multiplica o vigor que a digestao devolve
+	/// (`Nutricao.Digerir`), sem cobrar mais nutricao por ele.
+	/// </summary>
+	public static double FatorDeDescanso(Fighter f)
+	{
+		if (DescansoNaoRendeDeTeste) return 1;
+		if (f.relaxado) return DescansoRelaxado;
+		double contido = (Cheio - Math.Clamp(f.powerMod, Piso, Cheio)) / (Cheio - Piso);   // 0 = poder inteiro, 1 = no piso
+		return 1 + (DescansoNoPiso - 1) * contido;
+	}
 
 	/// <summary>A raiva a partir da qual nao se relaxa: `((MaxAnger-100)/1.66)+100` (`:91`).</summary>
 	public static double RaivaQueAcorda(Fighter f) => (f.MaxAnger - 100) / DivisorDaRaivaQueAcorda + 100;
@@ -119,32 +216,19 @@ public static class PoderEmUso
 		!RaivaDeixaRelaxarDeTeste && f.Anger > RaivaQueAcorda(f);
 
 	/// <summary>
-	/// O ESTADO, num caso so -- o `relaxedstate` (`:98-108`).
-	///
-	/// DIVERGENCIA DECLARADA de `:100-101`: no DM "Concealing Power" so se le com o corpo TAMBEM relaxado
-	/// (o teste mora dentro do `if(isrelaxed)`); quem esconde o poder com o `powerMod` em 1 le "Using Full
-	/// Power" com o poder expresso travado em 5. Aqui o sigilo vence sempre que esta ligado: e ele que
-	/// decide o que o corpo expressa, seja qual for o `powerMod`.
+	/// O ESTADO, num caso so -- o `relaxedstate` (`:98-108`). Relaxado vence (e ele que decide o que o corpo
+	/// expressa); depois a tecnica de sumir; depois a barra.
 	/// </summary>
 	public static EstadoDoPoder Estado(Fighter f) =>
-		f.isconcealed ? EstadoDoPoder.Escondendo
-		: NoPiso(f) ? EstadoDoPoder.Relaxado
+		f.relaxado ? EstadoDoPoder.Relaxado
+		: f.isconcealed ? EstadoDoPoder.Escondendo
 		: f.powerMod < Cheio ? EstadoDoPoder.Contendo
 		: EstadoDoPoder.PoderTotal;
 
-	/// <summary>As quatro frases do `relaxedstate`, como o jogador as le.</summary>
-	public static string Frase(EstadoDoPoder e) => e switch
-	{
-		EstadoDoPoder.Escondendo => "escondendo o poder",
-		EstadoDoPoder.Relaxado => "relaxado",
-		EstadoDoPoder.Contendo => "usando parte do poder",
-		_ => "usando todo o poder",
-	};
-
 	/// <summary>
-	/// QUANTO DO PROPRIO PODER ESTA EM USO, em porcentagem inteira de 1 a 100. So e 100 com o poder
+	/// QUANTO DO PROPRIO PODER A BARRA DEIXA PASSAR, em porcentagem inteira de 1 a 100. So e 100 com o poder
 	/// inteiro: no meio de uma subida, 99,9% ainda le 99. E porcentagem do PROPRIO poder -- nao e poder de
-	/// luta, e pode ir pra tela de quem nao tem scouter.
+	/// luta, e pode ir pra tela de quem nao tem scouter. (Relaxado a barra nao diz nada: o corpo expressa 5.)
 	/// </summary>
 	public static int Porcento(Fighter f)
 	{
@@ -174,22 +258,33 @@ public static class PoderEmUso
 	}
 
 	/// <summary>
-	/// RELAXAR / FICAR PRONTO -- o `ReadyUp` ("Toggle Readiness", `:39-52`), verbo de TODO corpo
-	/// (`mob/default/verb`, dado no login: `Login.dm:301`):
+	/// O PROXIMO APERTO DO BOTAO RELAXA? So com o poder inteiro e de pe: de qualquer ponto abaixo de 100% (e de
+	/// relaxado) o mesmo botao e "ficar pronto". E a pergunta que o servidor faz antes de cobrar o controle de ki
+	/// -- voltar ao poder inteiro nao pede porta nenhuma.
+	/// </summary>
+	public static bool VaiRelaxar(Fighter f) => !f.relaxado && f.powerMod >= Cheio;
+
+	/// <summary>
+	/// RELAXAR / FICAR PRONTO -- o `ReadyUp` ("Toggle Readiness", `:39-52`):
 	///
 	///     if(powerMod >= 1)  "You are relaxed."       powerMod=0.01
 	///     else               "You are now ready."     powerMod=1
 	///
-	/// Com o poder inteiro, relaxa (vai ao piso); em qualquer ponto abaixo, fica pronto (volta a 100% na
-	/// hora -- inclusive de 40%). Devolve verdadeiro quando RELAXOU.
+	/// Com o poder inteiro, relaxa; relaxado, ou em qualquer ponto abaixo de 100% da barra, fica pronto (o poder
+	/// volta inteiro na hora -- inclusive de 40%). Devolve verdadeiro quando RELAXOU.
+	///
+	/// DIVERGENCIA DECLARADA de `:48` (regra do dono, 2026-10-12): relaxar nao e mais o piso de 1% da barra. E um
+	/// estado proprio (`Fighter.relaxado`) em que o poder expresso trava em 5 e o corpo some do Sense e do
+	/// scouter -- ver o cabecalho da classe. A barra fica onde estava (em 100%, que e de onde se relaxa).
 	/// </summary>
 	public static bool AlternarProntidao(Fighter f)
 	{
-		if (f.powerMod >= Cheio)
+		if (VaiRelaxar(f))
 		{
-			f.powerMod = Piso;
+			f.relaxado = true;
 			return true;
 		}
+		f.relaxado = false;
 		f.powerMod = Cheio;
 		return false;
 	}
@@ -197,11 +292,32 @@ public static class PoderEmUso
 	/// <summary>
 	/// A RAIVA ACORDA QUEM RELAXA -- o `RelaxCheck` (`:90-95`): relaxado e com a raiva acima do limiar, o
 	/// poder volta inteiro. Devolve verdadeiro quando acordou (quem chama diz as duas frases de `:92-93`).
+	///
+	/// (No DM quem leva a barra a 1% tambem conta como relaxado -- `if(powerMod==0.01) isrelaxed=1`, `:110-111` --
+	/// e a raiva o acorda. Aqui se segurar a 1% e uma escolha de luta, e nao relaxar: a raiva nao mexe na barra.)
 	/// </summary>
 	public static bool ARaivaAcorda(Fighter f)
 	{
-		if (!Relaxado(f) || !IrritadoDemaisPraRelaxar(f)) return false;
+		if (!f.relaxado || !IrritadoDemaisPraRelaxar(f)) return false;
+		f.relaxado = false;
 		f.powerMod = Cheio;
+		return true;
+	}
+
+	/// <summary>
+	/// REUNIR ENERGIA ACORDA QUEM RELAXA: segurar a tecla de carregar e o contrario de soltar o corpo. O relaxado
+	/// deixa de se-lo e a barra comeca do piso -- e dali que o estagio `Retomando` da carga (`CargaDeKi.Passo`,
+	/// `Power Control.dm:153-157`) sobe o poder aos poucos, que e o power-up de quem estava escondido. Devolve
+	/// verdadeiro quando acordou.
+	///
+	/// Sem isto o relaxado encheria o tanque e passaria dos 100% de Ki com 5 de poder e fora de todo scouter, pra
+	/// aparecer ja carregado ao ficar pronto.
+	/// </summary>
+	public static bool ACargaAcorda(Fighter f)
+	{
+		if (!f.relaxado || CargaNaoAcordaDeTeste) return false;
+		f.relaxado = false;
+		f.powerMod = Piso;
 		return true;
 	}
 }

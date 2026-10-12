@@ -31,8 +31,9 @@ namespace Jandirus.Client;
 ///
 /// ============================ O PALCO, E POR QUE ELE E LONGE ============================
 /// O servidor poe este corpo num campo aberto e o boneco a NOVE tiles, na mesma linha. A distancia
-/// nao e enfeite: um tiro que acerta a ate quatro tiles de viagem ARREMESSA quem leva
-/// (`Projetil.FatorDeEmpurrao`), e a tres tiles a rajada honesta jogava o alvo vinte tiles adiante --
+/// nao e enfeite: a bola que acerta a ate quatro tiles de viagem ARREMESSA quem leva
+/// (`Projetil.FatorDeEmpurrao`; desde 2026-10-12 so a bola arremessa de perto -- o raio leva o mais
+/// fraco, `KiContraCorpo`), e a tres tiles a rajada honesta jogava o alvo vinte tiles adiante --
 /// as tres conferencias de depois do relogin reprovavam atirando num boneco que ja nao estava la.
 /// O robo CONFERE as duas pontas disso (a viagem prevista antes, o boneco no lugar depois) em vez de
 /// confiar: se a regra do arremesso mudar, quem avisa e a conferencia do palco, e nao a do relogin.
@@ -532,9 +533,11 @@ public partial class RoboDeKi : Node
 			// Dois aqui e dois depois do relogin cabem no tanque com folga, e bastam: quem confirma o
 			// dano e o `S2C.Hit`, com o numero. O segundo existe so pra um tiro defletido (a chance e
 			// pequena, mas e sorteio) nao reprovar a familia pelo dado. O boneco NAO e um igual de
-			// proposito: o tiro desta tecnica num igual fica abaixo do corte dos fracos e nao fere --
-			// o servidor acerta o poder dele pra este tiro tirar 18 de tanque cheio (ver o
-			// `DanoDoTiroHonestoDaPonta` e o `ArmarAMetadeViva`).
+			// proposito: o servidor acerta o poder dele pra este tiro tirar 18 de tanque cheio (ver o
+			// `DanoDoTiroHonestoDaPonta` e o `ArmarAMetadeViva`). O acerto nasceu com o corte dos fracos:
+			// de 2026-10-08 a 2026-10-12 o tiro desta tecnica num igual ficava abaixo de 10 e nao feria.
+			// Hoje ele fere quem nao e parede pro tiro (`KiContraCorpo`), e os 18 ficaram pela folga do
+			// nocaute.
 			// ====================================================================================
 			case 8:
 			case 9:

@@ -107,6 +107,14 @@ public sealed partial class GameServer
 		return _noChao.Count > antes ? _noChao[^1] : null;
 	}
 
+	/// <summary>
+	/// A LISTA DE MELHORIAS QUE O MENU DA TECLA E MOSTRA PRA ESTA MAQUINA: a pagina `tipo/upgrades` da tabela, passada
+	/// pelo mesmo crivo do cliente (`Interacoes.SaiDoMenu`) com o byte que o servidor poe no pacote de construcoes
+	/// (`MelhoriasFeitas`). E a regua do pedido de 2026-10-12: a melhoria de uma vez so some depois de comprada.
+	/// </summary>
+	private static string[] MelhoriasNoMenu(Obra o) =>
+		[.. Interacoes.De($"{o.Tipo}/upgrades").Where(a => !Interacoes.SaiDoMenu(o.Tipo, a, MelhoriasFeitas(o))).Select(a => a.Arg)];
+
 	// =====================================================================
 	// 1) O MENU DA TECLA E
 	// =====================================================================
@@ -158,6 +166,9 @@ public sealed partial class GameServer
 		RegeneradorDaObra r = EstadoDoTanque(tanque);
 		AfirmarMq("o tanque que alguem assenta nasce como o de fabrica: desligado, velocidade 1, uma carga, sem nanites e sem tratar ferimentos",
 				  r is { Ligado: false, Eficiencia: 1, Energia: 1, EnergiaMax: 1, Nanites: 0, CuraFerimentos: false });
+		AfirmarMq("...e de fabrica as CINCO melhorias estao no menu dele, 'tratar ferimentos' entre elas",
+				  MelhoriasFeitas(tanque) == 0 && MelhoriasNoMenu(tanque).Length == 5
+				  && MelhoriasNoMenu(tanque).Contains("upgrades/ferimentos"), string.Join(",", MelhoriasNoMenu(tanque)));
 
 		ServerPlayer p = Forjar("mq: o paciente", No(tx, ty), 1_000);
 		BodyPart Parte(ServerPlayer de, string nome) => de.Combate.Corpo.Achar(nome)!;
@@ -334,6 +345,24 @@ public sealed partial class GameServer
 		zeni = dono.Ficha.Zeni;
 		ComandoDeInteracao(dono, "regen_up", "ferimentos");
 		AfirmarMq("TRATAR FERIMENTOS custa 5000, uma vez so", comprou && Perto(zeni, dono.Ficha.Zeni));
+
+		// ============================ A MELHORIA DE UMA VEZ SO SOME DO MENU (dono, 2026-10-12) ============================
+		// *"upgrades 1 time only da maquina de regeneraçao etc, ao comprar esse upgrade ou o objeto ja ter esse upgrade
+		// a opçao de comprar ele deveria sumir do menu de upgrades"*.
+		AfirmarMq("**COMPRADA, 'TRATAR FERIMENTOS' SOME DO MENU**: sobram as quatro que ainda se compram",
+				  MelhoriasFeitas(tanque) == Interacoes.MelhoriaUnicaFeita && MelhoriasNoMenu(tanque).Length == 4
+				  && !MelhoriasNoMenu(tanque).Contains("upgrades/ferimentos"), string.Join(",", MelhoriasNoMenu(tanque)));
+		Interacoes.MelhoriaFeitaFicaNoMenuDeTeste = true;
+		try
+		{
+			AfirmarMq("(defeito injetado: a melhoria feita fica no menu) a opcao continua na lista, so pra recusar depois do clique -- a regua sabe reprovar",
+					  MelhoriasNoMenu(tanque).Contains("upgrades/ferimentos"));
+		}
+		finally { Interacoes.MelhoriaFeitaFicaNoMenuDeTeste = false; }
+		var doMapa = new Obra { Tipo = Regenerador.Tipo, DoMapa = true, Aparafusada = true };
+		AfirmarMq("**O OBJETO QUE JA TEM A MELHORIA NEM A OFERECE**: o tanque do mapa nasce turbinado, e no menu dele a opcao nao aparece",
+				  MelhoriasFeitas(doMapa) == Interacoes.MelhoriaUnicaFeita && !MelhoriasNoMenu(doMapa).Contains("upgrades/ferimentos")
+				  && doMapa.Regenerador == null, "(ler o byte nao pode criar o estado da obra)");
 
 		zeni = dono.Ficha.Zeni;
 		dono.Ficha.techskill = 0;
@@ -635,6 +664,9 @@ public sealed partial class GameServer
 		Passa(0.25);
 		AfirmarMq("com o alcance no teto (10, um quadrado de 11x11) o campo enche so a SALA: os 16 tiles de dentro",
 				  g.Range == 10 && g.Cheias is { Count: 16 }, $"alcance {g.Range}, {g.Cheias?.Count} tiles");
+		AfirmarMq("**NO TETO, 'ALCANCE' SOME DO MENU** da maquina (dono, 2026-10-12) -- e a estabilizacao, que ninguem comprou, continua la",
+				  (MelhoriasFeitas(maq) & Interacoes.MelhoriaNoTeto) != 0 && !MelhoriasNoMenu(maq).Contains("upgrades/alcance")
+				  && MelhoriasNoMenu(maq).Contains("upgrades/estabilidade"), string.Join(",", MelhoriasNoMenu(maq)));
 
 		bool cantos = true;
 		foreach ((int cx, int cy) in new[] { (x0 + 1, y0 + 1), (x1 - 1, y0 + 1), (x0 + 1, y1 - 1), (x1 - 1, y1 - 1) })
@@ -705,5 +737,11 @@ public sealed partial class GameServer
 		AfirmarMq("a gravidade LIGADA nao vai pro `mundo.json` (toda maquina acorda desligada, `New(): Grav = 0`); o alcance e o teto vao",
 				  g.Grav == 5 && !noDisco.Contains("\"Grav\"") && !noDisco.Contains("\"Cheias\"") && !noDisco.Contains("\"MudaEm\"")
 				  && noDisco.Contains("\"Range\":10") && noDisco.Contains("\"Max\":10"));
+
+		// ------------------------------------------------------------ A ESTABILIZACAO, UMA VEZ SO (e por ultimo)
+		ComandoDeInteracao(dono, "grav_up", "estabilidade");
+		AfirmarMq("comprada a ESTABILIZACAO (uma vez so), ela tambem sai do menu: sobram forca, bateria e nanites",
+				  g.Estavel && MelhoriasNoMenu(maq).SequenceEqual(["upgrades/forca", "upgrades/bateria", "upgrades/nanites"]),
+				  string.Join(",", MelhoriasNoMenu(maq)));
 	}
 }

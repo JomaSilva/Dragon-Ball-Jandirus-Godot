@@ -418,6 +418,7 @@ public partial class LocalPlayer : Node2D
 		else if (ficha.Empurrado && !ficha.PuxadoNaFusao) _visual.VoarPara(dir);
 		else _visual.GirarPara(default);
 		_empurrado = ficha.Empurrado;   // o servidor esta dirigindo o corpo: ver _Process
+		_agarrado = ficha.Agarrado;     // ...e este diz que alguem o segura: a tecla de andar vira a luta. Ver `Debatendo`
 		_puxadoNaFusao = ficha.PuxadoNaFusao;   // ...e este diz que ele NAO esta sendo arremessado
 		_nadando = ficha.Nadando;       // ...e este diz por ONDE ele passa: ver _nadando
 		_visual.MostrarRabo(ficha.Rabo);
@@ -539,8 +540,33 @@ public partial class LocalPlayer : Node2D
 		Godot.Input.IsActionPressed(Teclas.NomeNoMotor("move_right")) || Godot.Input.IsActionPressed(Teclas.NomeNoMotor("move_left"))
 		|| Godot.Input.IsActionPressed(Teclas.NomeNoMotor("move_down")) || Godot.Input.IsActionPressed(Teclas.NomeNoMotor("move_up"));
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv020`): agarrado, o bit de andar volta a ser so o deslocamento -- que e
+	/// zero, porque o corpo preso nao integra tecla. Ninguem se debate. Falso em jogo, sempre.
+	/// </summary>
+	public static bool AgarradoNaoSeDebateDeTeste;
+
+	/// <summary>
+	/// ESTOU ME DEBATENDO: alguem me segura e eu aperto uma direcao (dono, 2026-10-12: *"vc deveria ter a opçao de
+	/// ficar tentando sair do grab clicando nos botoes de se mover"*; `movement handler.dm:222-255`). Escrevendo
+	/// num campo de texto ninguem se debate: a letra e da frase.
+	/// </summary>
+	private bool Debatendo => _agarrado && !_caido && !AgarradoNaoSeDebateDeTeste && !Foco.Digitando && TeclaDeAndarApertada();
+
+	/// <summary>O que o proximo pacote de estado diria no bit de andar, parado: a intencao de quem esta preso. So pra bancada.</summary>
+	public bool DebatendoDeTeste => Debatendo;
+
 	/// <summary>Estou sendo ARREMESSADO -- quem move o corpo agora e o servidor.</summary>
 	private bool _empurrado;
+
+	/// <summary>A pose de andar que nao some num toque de tecla. Ver <see cref="PassoSegurado"/>.</summary>
+	private PassoSegurado _passo = new();
+
+	/// <summary>
+	/// ALGUEM ME SEGURA (`SheetState.Agarrado`): o corpo nao integra tecla -- e a tecla de andar apertada vira a
+	/// INTENCAO de se soltar, mandada no bit `InputAndando` do mesmo pacote de sempre. Ver o `_Process`.
+	/// </summary>
+	private bool _agarrado;
 
 	/// <summary>
 	/// ...E O QUE ME MOVE E O PUXAO DA FUSAO, e nao um golpe. Ver <see cref="SheetState.PuxadoNaFusao"/>:
@@ -575,14 +601,39 @@ public partial class LocalPlayer : Node2D
 	/// </summary>
 	private static bool PresoNoTorneio => GameClient.Instance?.EfeitosAtivos.Contains("torneio_espera") == true;
 
+	/// <summary>
+	/// O EIXO DO RAIO QUE ESTE CORPO SEGURA COM AS MAOS -- a disputa de guarda, do lado sem feixe (nulo fora dela).
+	///
+	/// ============================ O UNICO EMBATE EM QUE O CORPO DA PASSO (dono, 2026-10-12) ============================
+	/// *"se o defensor for mais forte ele pode tentar se mover pros lados e sair da frente do ataque de ki enquanto
+	/// defende com a guarda"*. Em todo embate o corpo fica plantado (<see cref="PorQueNaoAnda"/>); neste ele da UM
+	/// passo, o ATRAVESSADO ao raio -- e e esse passo que fecha a disputa no servidor, sem vencedor
+	/// (`GameServer.SairDeLadoDaDisputa`).
+	///
+	/// AS DUAS PONTAS PELA MESMA PERGUNTA, COM O MESMO NUMERO: `KiContraCorpo.PassoAtravessado`, e o eixo que o servidor
+	/// mandou (`GameClient.EixoDoRaioNasMaos`). A tecla que nao e atravessada nem vira intencao de andar (o `_Process`
+	/// a zera), e o passo que o cenario entortou pra ao longo do raio e desfeito: o servidor recusaria qualquer um dos
+	/// dois, e passo dado aqui e recusado la e uma correcao por pacote -- o corpo tremendo.
+	/// ================================================================================================================
+	/// </summary>
+	private static Vec2? EixoDoRaioQueSeguro => GameClient.Instance?.EixoDoRaioNasMaos;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagmudez`, familia F8): o jogo de antes de 2026-10-12 -- apertar uma direcao baixa
+	/// a guarda. Lido pela propria linha da guarda (`LerAcoes`). Falso em jogo, sempre.
+	/// </summary>
+	public static bool AndarBaixaAGuardaDeTeste;
+
 	public string PorQueNaoAnda =>
 		  _semRedeas                             ? "sem as redeas (o servidor dirige)"
 		: _empurrado                             ? "arremessado"
 		: _caido                                 ? "caido (nocaute ou morte)"
+		: _agarrado                              ? "agarrado (a tecla de andar e a luta pra se soltar)"
 		: _carregando                            ? "carregando Ki (C)"
 		: _canalDeKi                             ? "com um canal de Ki de pe"
 		: Foco.Digitando                         ? "campo de texto em foco"
-		: GameClient.Instance?.EmClash == true    ? "num embate"
+		// (segurando um raio com as maos o corpo NAO esta plantado: ele da o passo de lado -- `EixoDoRaioQueSeguro`)
+		: GameClient.Instance?.EmClash == true && EixoDoRaioQueSeguro == null ? "num embate"
 		: Transformacao.PrendendoOCorpo           ? "preso pela cinematica de transformacao"
 		: Prensado                                ? "prensado pela gravidade (ou pelo peso)"
 		: PresoNoTorneio                          ? "na area de espera do torneio"
@@ -779,6 +830,11 @@ public partial class LocalPlayer : Node2D
 				Godot.Input.GetActionStrength(Teclas.NomeNoMotor("move_down")) - Godot.Input.GetActionStrength(Teclas.NomeNoMotor("move_up")));
 
 		var dir = new Vec2(input.X, input.Y);
+		// SEGURANDO UM RAIO COM AS MAOS, A TECLA QUE NAO E ATRAVESSADA A ELE NAO E TECLA (ver `EixoDoRaioQueSeguro`):
+		// zerada AQUI, ela nao vira o olhar nem liga a corrida -- o corpo continua plantado de frente pro raio, como em
+		// qualquer outro embate.
+		Vec2? eixoDoRaio = EixoDoRaioQueSeguro;
+		if (eixoDoRaio is { } eixoDaTecla && !Jandirus.Core.Combat.KiContraCorpo.PassoAtravessado(dir, eixoDaTecla)) dir = Vec2.Zero;
 		bool tentandoAndar = dir.LengthSquared > 1e-6f;
 
 		// PILOTO AUTOMATICO (o nav system). NAO e teleporte nem velocidade extra: ele so
@@ -911,11 +967,17 @@ public partial class LocalPlayer : Node2D
 		// pontas em desacordo.
 		_pos = MoveRules.Advance(_pos, dir, (float)delta, SpeedStat,
 			Mapa, out _, _correndo, Voo.ModoNaAltura(_altitude, ModoDoCorpo), vizinhos);
+		// ...E SEGURANDO UM RAIO COM AS MAOS, SO FICA O PASSO QUE SAIU ATRAVESSADO A ELE (ver `EixoDoRaioQueSeguro`). A
+		// tecla ja foi peneirada la em cima; isto e pro passo que uma quina (ou um corpo) entortou pra ao longo do raio,
+		// e pro do piloto automatico: o servidor mede o DESLOCAMENTO, e este e o deslocamento.
+		if (eixoDoRaio is { } eixoDoPasso && !Jandirus.Core.Combat.KiContraCorpo.PassoAtravessado(_pos - antes, eixoDoPasso)) _pos = antes;
 		Desenhar();
 
 		// ANDANDO = saiu do lugar, nao = apertou a tecla. Empurrando a parede o personagem
 		// fica parado de pe em vez de marchar sem sair do lugar.
-		bool andando = (_pos - antes).LengthSquared > 0.01f;
+		// (a medida e contra o passo que ESTE corpo daria neste quadro, e nao um decimo de pixel fixo: o corpo no
+		// piso da velocidade ficava abaixo do corte em taxa de quadros alta e deslizava -- `MoveRules.SaiuDoLugar`.)
+		bool andando = MoveRules.SaiuDoLugar(antes, _pos, (float)delta, SpeedStat, _correndo);
 
 		// ============================ A CINEMATICA MANDA NA POSE, E MANDA TODO QUADRO ============================
 		// Durante a cena de estreia o corpo fica PARADO e virado pra frente -- o `move = 0;
@@ -951,7 +1013,10 @@ public partial class LocalPlayer : Node2D
 			// O OLHAR QUE O SERVIDOR CRAVOU (o tiro no marcado) NAO E REESCRITO PELO PASSO ate o prazo vencer.
 			if (_olharCravadoPor > 0) _olharCravadoPor -= delta;
 			else if (tentandoAndar) _facing = MoveRules.FacingFrom(dir, _facing);
-			_visual.SetMotion(_facing, andando);
+			// A POSE DE ANDAR dura um minimo depois de comecar (um toque na tecla mostra um passo, e nao um
+			// deslize) e anda no ritmo do corpo (o pesado da o passo devagar). Ver `PassoSegurado`.
+			_visual.RitmoDoPasso = MoveRules.RitmoDoPasso(SpeedStat);
+			_visual.SetMotion(_facing, _passo.Segurar(andando, delta));
 		}
 
 		// O BORRAO SEGUE A INTENCAO (`_correndo`), e nao o deslocamento quadro a quadro.
@@ -1024,7 +1089,9 @@ public partial class LocalPlayer : Node2D
 		if (_sendAccumulator >= SendInterval)
 		{
 			_sendAccumulator -= SendInterval;
-			GameClient.Instance?.SendState(_pos, _facing, andando, _correndo, subir, descer);   // o servidor recebe o EXATO
+			// (AGARRADO, o bit de "andando" leva a INTENCAO: o corpo nao sai do lugar, e apertar a direcao e se
+			// debater -- o servidor le exatamente este bit no `Input`, antes de recusar o passo. Ver `Debatendo`.)
+			GameClient.Instance?.SendState(_pos, _facing, andando || Debatendo, _correndo, subir, descer);   // o servidor recebe o EXATO
 		}
 	}
 
@@ -1192,7 +1259,22 @@ public partial class LocalPlayer : Node2D
 
 		// GUARDA. Segurar ALT ergue o braco; erguer a guarda no instante do golpe vira
 		// contra-ataque, e por isso ela e um estado continuo e nao um toque.
-		bool guardaAgora = Godot.Input.IsActionPressed(Teclas.NomeNoMotor("guard")) && !andando && !Foco.Digitando;
+		//
+		// ============================ ANDAR NAO BAIXA A GUARDA (dono, 2026-10-12) ============================
+		// Ate este dia a linha de baixo tinha um `&& !andando`: apertar uma direcao baixava a guarda. Era do port, desde
+		// o primeiro commit, e so do CLIENTE -- o servidor nunca baixou a guarda de quem anda, e os NPCs sempre andaram
+		// de guarda erguida (o `Cerebro` manda `Rumo` e `Guardar` no mesmo comando). No DM tambem se anda bloqueando:
+		// o `holdblock()` so liga `blocking` (`CombatMovement.dm:73-82`), e quem le esse bit no laco de movimento tira
+		// o `canfight`, nao o passo (`movement handler.dm:173`).
+		//
+		// O dono, perguntado se isso valia so dentro da disputa de guarda ou sempre: *"Sempre, como no BYOND"*. E e o
+		// que a saida de lado precisa (*"sair da frente do ataque de ki enquanto defende com a guarda"*): com o
+		// `!andando`, a guarda caida no passo chegaria ao servidor ANTES do passo (ela vai na hora, pelo canal
+		// confiavel; o passo espera a vez dos 30 Hz), o lado das maos cairia (`GameServer.LadoOk`) e sair seria levar
+		// o raio. Ver `EixoDoRaioQueSeguro`.
+		// ======================================================================================================
+		bool guardaAgora = Godot.Input.IsActionPressed(Teclas.NomeNoMotor("guard")) && !Foco.Digitando
+			&& !(AndarBaixaAGuardaDeTeste && andando);
 		if (guardaAgora != _guarda)
 		{
 			_guarda = guardaAgora;
@@ -1814,6 +1896,7 @@ public partial class LocalPlayer : Node2D
 		else if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("aim_abdomen"))) zona = 3;
 		else if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("aim_arms"))) zona = 4;
 		else if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("aim_legs"))) zona = 5;
+		else if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("aim_tail"))) zona = 6;   // o rabo (2026-10-12)
 		if (zona.HasValue) cli.SendAim(zona.Value);
 
 		if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("lethal"))) cli.SendLethal(!cli.Letal);

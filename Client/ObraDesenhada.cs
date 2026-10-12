@@ -229,12 +229,21 @@ public partial class ObraDesenhada : Node2D
 					 c.Lightened(0.35f));
 		}
 
-		if (!Aparafusada)
+		if (PiscaDeSolta)
 		{
 			float p = 0.5f + 0.5f * Mathf.Sin(Time.GetTicksMsec() / 250f);
 			DrawRect(corpo.Grow(3), new Color(1f, 0.85f, 0.35f, 0.25f + 0.35f * p), filled: false, width: 2f);
 		}
 	}
+
+	/// <summary>
+	/// O CONTORNO AMARELO DE "SOLTA" SO VALE PRA QUEM TEM PARAFUSO. A macieira que o jogador planta nasce
+	/// `Aparafusada = false` (ninguem a aparafusa: a `AppleTree` do original nao tem `Bolt`) e ficava com o
+	/// retangulo amarelo piscando em volta da copa inteira pra sempre -- o dono, 2026-10-12: *"apple tree plantada
+	/// por mim fica com uma area amarela em volta, tire isso"*. A pergunta e do Core (`Interacoes.PedeParafuso`):
+	/// o tipo tem o verbo do parafuso no menu dele?
+	/// </summary>
+	public bool PiscaDeSolta => !Aparafusada && Jandirus.Core.Tech.Interacoes.PedeParafuso(Tipo);
 
 	private Vector2 TamanhoDoSprite()
 	{
@@ -244,6 +253,6 @@ public partial class ObraDesenhada : Node2D
 
 	public override void _Process(double delta)
 	{
-		if (!Aparafusada) QueueRedraw();   // so a que pisca precisa de quadro novo
+		if (PiscaDeSolta) QueueRedraw();   // so a que pisca precisa de quadro novo
 	}
 }

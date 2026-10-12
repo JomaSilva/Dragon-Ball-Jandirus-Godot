@@ -147,6 +147,11 @@ public static class SorteioDeNpc
 			// SkillBook.cs:134) e por isso nunca poderiam ser compradas por ninguem.
 			foreach (string p in molde.Dadas) livro.Dar(p);
 
+			// OS TALENTOS DESTE CORPO, sorteados da pool do molde pela semente dele (dono, 2026-10-12): e o que faz
+			// dois viloes do mesmo molde nao lutarem igual. Ensinados, como as dadas. Ver `SortearTalentos`.
+			List<(string Path, int Nivel)> talentos = SortearTalentos(molde, semente, skills);
+			foreach ((string p, _) in talentos) livro.Dar(p);
+
 			EfeitosDeSkill.Aplicar(f, skills, livro.Aprendidas);
 
 			// O DEGRAU EM QUE AS SKILLS NASCEM. Nao e enfeite: `Ki_Unlocked` no nivel 50 e a porta
@@ -155,6 +160,9 @@ public static class SorteioDeNpc
 			if (molde.NivelDasSkills > 0)
 				foreach (string p in livro.Aprendidas) niveis.Por(p, (int)molde.NivelDasSkills);
 			foreach ((string p, double n) in molde.Niveis) niveis.Por(p, (int)n);
+			// O TALENTO QUE PEDE UM DEGRAU nasce nele -- ou no nivel geral do molde, se este for maior.
+			foreach ((string p, int n) in talentos)
+				if (n > 0) niveis.Por(p, Math.Max(n, (int)molde.NivelDasSkills));
 			niveis.Aplicar(f);
 		}
 
@@ -163,6 +171,56 @@ public static class SorteioDeNpc
 
 		var papel = new PapelDeNpc(molde, semente);
 		return new FichaSorteada(f, livro, niveis, papel, nome, genero, raca, f.Class);
+	}
+
+	// =====================================================================
+	// OS TALENTOS
+	// =====================================================================
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v020teste`): nenhum corpo sorteia talento -- o povoamento de antes de 2026-10-12,
+	/// em que todo NPC do mesmo molde nascia com o mesmo kit. Lido pela propria <see cref="SortearTalentos"/>.
+	/// </summary>
+	public static bool TalentosDesligadosDeTeste;
+
+	/// <summary>
+	/// OS TALENTOS DE UM CORPO: <see cref="MoldeDeNpc.QuantosTalentos"/> entradas da pool do molde, sem repetir,
+	/// tiradas por um gerador proprio da semente (`Sorteador(semente, "talentos")`) -- o mesmo corpo nasce com os
+	/// mesmos talentos em qualquer reinicio, e o talento nao anda junto com o cabelo nem com o nome.
+	///
+	/// A entrada que nao existe no catalogo de skills e pulada (e nao gasta a vez): um typepath digitado errado no
+	/// `npcs.json` nao pode virar uma skill fantasma no livro de ninguem.
+	/// </summary>
+	public static List<(string Path, int Nivel)> SortearTalentos(MoldeDeNpc molde, ulong semente, SkillCatalog? skills)
+	{
+		var saida = new List<(string, int)>();
+		if (TalentosDesligadosDeTeste || molde.QuantosTalentos <= 0) return saida;
+
+		var pool = new List<(string Path, int Nivel)>();
+		foreach (string bruto in molde.Talentos)
+		{
+			(string path, int nivel) = LerTalento(bruto);
+			if (path.Length > 0 && (skills == null || skills.Get(path) != null)) pool.Add((path, nivel));
+		}
+
+		Random r = Sorteador(semente, "talentos");
+		int quantos = (int)Math.Floor(molde.QuantosTalentos);
+		if (r.NextDouble() < molde.QuantosTalentos - quantos) quantos++;
+
+		for (int i = 0; i < quantos && pool.Count > 0; i++)
+		{
+			int k = r.Next(pool.Count);
+			saida.Add(pool[k]);
+			pool.RemoveAt(k);
+		}
+		return saida;
+	}
+
+	/// <summary>`/datum/skill/x@30` -> o typepath e o degrau pedido (0 = sem degrau proprio).</summary>
+	public static (string Path, int Nivel) LerTalento(string bruto)
+	{
+		int arroba = bruto.LastIndexOf('@');
+		if (arroba < 0) return (bruto.Trim(), 0);
+		return (bruto[..arroba].Trim(), int.TryParse(bruto[(arroba + 1)..], out int n) ? Math.Max(n, 0) : 0);
 	}
 
 	// =====================================================================

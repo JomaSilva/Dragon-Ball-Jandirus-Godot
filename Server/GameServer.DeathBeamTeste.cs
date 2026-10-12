@@ -14,15 +14,16 @@ namespace Jandirus.Server;
 /// ============================ O QUE SE MEDE, E POR ONDE ============================
 /// O raio sai pelo VERBO de producao (`UsarHabilidade` -> `RaioNomeadoG6` -> `Canalizar` -> a carga inteira ->
 /// `Disparar`): a receita que voa aqui e a que o jogador atira. O unico privilegio e a cadencia (os tiques na
-/// mao) e o dado da deflexao desligado no raio ja nascido -- o `Acertar` sorteia em todo impacto acima do corte dos fracos contra quem
-/// esta de pe, e o que se mede aqui e o impacto, nao o dado (o mesmo motivo do `RaioDaBancada`).
+/// mao) e o dado da deflexao desligado no raio ja nascido -- o `Acertar` sorteia em todo impacto contra quem esta
+/// de pe e nao e parede pro tiro, e o que se mede aqui e o impacto, nao o dado (o mesmo motivo do `RaioDaBancada`).
 ///
 ///   * RAPIDO: a velocidade do raio vivo contra a do raio comum, o que ele anda em dois tiques, e quanto leva
 ///     pra gastar os dez tiles de alcance.
 ///   * UM GOLPE: os relatos lidos do FIO (`EscutaDeGolpes`) -- um so, com o raio morto NO TIQUE do impacto
 ///     (`Acertou`, sem rastro sendo engolido), o canal de quem atirou fechado junto e as redeas do corpo com
-///     o dono dele. O alvo fica a oito tiles: bem alem dos quatro em que um tiro arremessa, onde um raio comum
-///     PEGA quem acerta pra levar junto.
+///     o dono dele. O alvo fica a oito tiles: bem alem dos quatro em que um tiro arremessa. (Ate 2026-10-12 era
+///     ali que um raio comum PEGAVA quem acertava pra levar junto. Hoje o raio so leva quem e mais fraco que ele,
+///     de qualquer distancia -- `KiContraCorpo` --, e o alvo desta cena e um igual.)
 ///   * CONTRA A GUARDA: um golpe aparado, e nenhum embate de maos.
 ///
 /// ============================ OS CONTRA-EXEMPLOS ============================
@@ -37,13 +38,16 @@ public partial class GameServer
 	/// A que distancia o alvo fica, em tiles: dentro do alcance (10) e com FOLGA alem do arremesso de perto. O
 	/// arremesso vale ate quatro tiles VIAJADOS pela cabeca, e ela nasce um tile a frente da mao e encosta com a
 	/// frente -- a seis tiles ela chega com 3,7 a 4,2 viajados (depende do sub-passo), e a cena caia ora num ramo,
-	/// ora no outro. A oito sao seis viajados: o ramo e sempre o de quem um raio comum PEGA pra levar.
+	/// ora no outro. A oito sao seis viajados: sempre alem do arremesso. (Ate 2026-10-12 esse era o ramo em que um
+	/// raio comum PEGAVA o corpo pra levar; hoje a distancia ja nao decide quem o raio leva -- `KiContraCorpo`.)
 	/// </summary>
 	private const int TilesDoAlvoDoDeathBeam = 8;
 
 	/// <summary>
-	/// O alvo DE PERTO: tres tiles, bem dentro do arremesso. E onde um raio comum fica plantado MOENDO (a bancada
-	/// nao roda o tique do arremesso, entao o corpo nao sai da frente) -- a cena em que "um golpe so" tem o que negar.
+	/// O alvo DE PERTO: tres tiles, bem dentro do arremesso. E onde um raio comum fica plantado MOENDO -- a cena em
+	/// que "um golpe so" tem o que negar. (Hoje ele fica plantado porque o alvo e um igual, que o raio fere e nao
+	/// leva: `KiContraCorpo`. Ate 2026-10-12 era porque de perto o raio arremessava, e a bancada nao roda o tique do
+	/// arremesso -- o corpo nao saia da frente.)
 	/// </summary>
 	private const int TilesDoAlvoDePerto = 3;
 
@@ -151,8 +155,8 @@ public partial class GameServer
 		AfirmarCen("...e gasta os dez tiles do alcance em menos de um quinto de segundo",
 				   solto.Esvaziando || !solto.Vivo ? tiques * dt < 0.2 : false, $"{tiques} tiques ({tiques * dt:0.00} s)");
 		for (int i = 0; i < 90 && solto.Vivo; i++) TickDosProjeteis(dt);
-		AfirmarCen("ERROU: sem ninguem no caminho ele se APAGA no fim do alcance, como qualquer raio (nada de estouro no ar)",
-				   !solto.Vivo && solto.Fim == FimDeProjetil.Apagou, $"vivo {solto.Vivo}, fim {solto.Fim}");
+		AfirmarCen("ERROU: sem ninguem no caminho ele ESTOURA no fim do alcance, como todo raio (dono, 2026-10-12: acertando ou nao)",
+				   !solto.Vivo && solto.Fim == FimDeProjetil.Explodiu, $"vivo {solto.Vivo}, fim {solto.Fim}");
 		LimparEmbatesDaBancada();
 
 		// ---------------------------------------------------------------- (b) num corpo: um golpe, e acabou
@@ -177,9 +181,10 @@ public partial class GameServer
 		{
 			var d = ODeathBeamNumCorpo(deGuarda: false);
 			GD.Print($"[censo]      (defeito) NUM CORPO: {d.Golpes} golpe(s), fim {d.Fim}, vivo {d.VivoNoImpacto}, canal {d.CanalNoImpacto}, corpo pego {d.PegoNoImpacto}");
-			AfirmarCen("(defeito injetado: o raio que estoura volta a ser um raio comum) o mesmo Death Beam NAO acaba no impacto: fica vivo, "
-					   + "segura o dono e pega o corpo pra levar",
-					   d.Nasceu && d.VivoNoImpacto && d.CanalNoImpacto && d.PegoNoImpacto && d.Fim != FimDeProjetil.Acertou,
+			// (ele nao LEVA mais o corpo desta cena: desde 2026-10-12 o raio so arrasta quem e mais fraco que ele -- `KiContraCorpo`)
+			AfirmarCen("(defeito injetado: o raio que estoura volta a ser um raio comum) o mesmo Death Beam NAO acaba no impacto: fica vivo "
+					   + "e segura o dono",
+					   d.Nasceu && d.VivoNoImpacto && d.CanalNoImpacto && d.Fim != FimDeProjetil.Acertou,
 					   $"vivo {d.VivoNoImpacto}, canal {d.CanalNoImpacto}, pego {d.PegoNoImpacto}, fim {d.Fim}");
 		}
 		finally { Projetil.RaioQueEstouraMoiDeTeste = false; }

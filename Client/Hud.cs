@@ -262,6 +262,8 @@ public partial class Hud : CanvasLayer
 		_hora.AddThemeFontSizeOverride("font_size", 12);
 		_hora.AddThemeColorOverride("font_color", Tema.TextoFraco);
 		linha.AddChild(_hora);
+
+		MontarOsAvisosDoCorpo(v);   // "GUARDA LEVANTADA", "ATORDOADO", o agarrao -- so aparecem quando valem. Ver `Hud.Avisos.cs`
 	}
 
 	// =====================================================================
@@ -455,6 +457,7 @@ public partial class Hud : CanvasLayer
 
 		_vigor.Valor = f.RazaoDeVigor;
 		_nutricao.Valor = f.RazaoDeNutricao;
+		MostrarOsAvisosDoCorpo(f);
 	}
 
 	/// <summary>

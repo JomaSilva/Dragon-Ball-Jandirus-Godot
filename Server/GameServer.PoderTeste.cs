@@ -12,24 +12,30 @@ namespace Jandirus.Server;
 /// BANCADA `--poderteste` -- POWER UP E POWER DOWN, DE PONTA A PONTA PELO FUNIL DO SERVIDOR.
 ///
 /// O pedido do dono (2026-10-11): *"Verifique pra mim se a capacidade de dar power up e power down pra poder
-/// esconder a presença ou ficar mais fraco de propósito ja ta no jogo, se nao implemente."*
+/// esconder a presença ou ficar mais fraco de propósito ja ta no jogo, se nao implemente."* E o retorno dele de
+/// 2026-10-12, depois de jogar: *"esconder o ki e relaxar é redundante [...] relaxar e o poder cair deveria ser
+/// somente pra quem sabe controlar o proprio poder, tire o botao de esconder o ki e faça com q o de relaxar faca o
+/// poder do personagem cair pra 5 de poder de luta sempre, ficando invisivel pra scouters etc, mas extremamente
+/// fraco fisicamente, vc mudar teu poder na barra de % n esconde o ki do scouter, ou sense, so serve pra se
+/// segurar ou usar todo o poder, esconder o ki totalmente so com relaxar"*.
 ///
 /// ============================ O QUE ELA MEDE ============================
-///   1. A PORTA: os dois verbos de controle (`Power_Control`, `Conceal_Power`) so pra quem tem o nivel 5 de
-///      Basic Ki Control (`Mind.dm:279-283`); relaxar e de todo corpo (`mob/default/verb/ReadyUp`);
+///   1. A PORTA: a barra (`Power_Control`) e relaxar so pra quem tem o nivel 5 de Basic Ki Control
+///      (`Mind.dm:279-283`); ficar pronto nao pede nada; o botao de esconder nao existe mais;
 ///   2. BAIXAR: o poder expresso cai NA HORA, e o Sense, o scouter e a IA de quem esta perto leem o poder
-///      contido; pedir mais nao levanta; as bordas (0, 500, negativo, NaN, infinito, texto);
+///      contido; pedir mais nao levanta; as bordas (0, 500, negativo, NaN, infinito, texto); e A BARRA NAO
+///      ESCONDE -- o fraco a 1% continua em toda lista, e o forte contido continua no Sense da galaxia;
 ///   3. SUBIR COM C: a ordem do `Energy_Draw` (o tanque, depois o poder, depois a carga), a velocidade pela
 ///      pericia de ki, andando nao rende, e sem controle de ki o C nao sobe o poder;
-///   4. RELAXAR / FICAR PRONTO: o piso de 1%, a volta a 100% de qualquer ponto, a raiva que acorda, e o fraco
-///      relaxado que some do Sense;
-///   5. ESCONDER: o expresso em 5, o Sense e o scouter que nao acham, a telepatia, a regeneracao de Ki pela
-///      metade, o vigor poupado, a forma que nao derruba o sigilo, a trava de 5 s, e a tecnica de sumir que
-///      acaba sem levar o sigilo junto;
-///   6. O SIGILO NAO ENTREGA BP: escondido, o Sense nao vira scouter e o multiplicador nao entrega o BP base;
-///   7. AS VALIDACOES: caido nao mexe, e o canal dos tres verbos e fechado pra quem perdeu as redeas;
-///   8. O RETRATO NO FIO: sai uma vez, so quando muda, com dois bytes e nenhum numero de poder;
-///   9. O LOGIN: o poder contido nao vem do disco; e a fiacao (o tique e o login chamam o que tem de chamar).
+///   4. RELAXAR / FICAR PRONTO: 5 de poder SEMPRE, fora do Sense, do scouter e da telepatia, sem custo de Ki, a
+///      forma e a tecnica de sumir que nao o desfazem, a volta a 100% de qualquer ponto, a raiva e a carga que
+///      acordam; e o que continua sendo de quem some por TECNICA (`isconcealed`);
+///   5. ESCONDIDO NAO ENTREGA BP: relaxado, o Sense nao vira scouter e o multiplicador nao entrega o BP base;
+///   6. AS VALIDACOES: caido nao mexe, e o canal dos dois verbos e fechado pra quem perdeu as redeas;
+///   7. O RETRATO NO FIO: sai uma vez, so quando muda, com dois bytes e nenhum numero de poder;
+///   8. O LOGIN: o poder contido nao vem do disco; e a fiacao (o tique e o login chamam o que tem de chamar).
+///
+/// (O VIGOR de quem se segura e de quem relaxa -- 1x a 2,5x pela barra, 3,5x relaxado -- e da `--v020teste`.)
 ///
 /// Cada regra nova guarda o seu defeito injetado, lido pela propria linha do conserto. Corpos forjados, sem
 /// cliente, como as vizinhas (`--sentidosteste`, `--seloteste`). Roda no boot e o servidor continua de pe.
@@ -52,7 +58,7 @@ public partial class GameServer
 	public void RodarBancadaDoPoder()
 	{
 		_pwOk = _pwFalhou = 0;
-		GD.Print("[poder] ================ POWER UP E POWER DOWN: baixar, subir, relaxar, esconder ================");
+		GD.Print("[poder] ================ POWER UP E POWER DOWN: baixar, subir, relaxar ================");
 		List<(int, NetDataWriter)>? escutaAnterior = EscutaDoPoderEmUso;
 		try
 		{
@@ -67,9 +73,7 @@ public partial class GameServer
 			LimparTudoDaBancada();
 			PwRelaxar();
 			LimparTudoDaBancada();
-			PwEsconder();
-			LimparTudoDaBancada();
-			PwOSigiloNaoEntregaBp();
+			PwEscondidoNaoEntregaBp();
 			LimparTudoDaBancada();
 			PwAsValidacoes();
 			LimparTudoDaBancada();
@@ -88,7 +92,8 @@ public partial class GameServer
 			EscutaDoPoderEmUso = escutaAnterior;
 			PoderEmUso.RaivaDeixaRelaxarDeTeste = false;
 			PoderEmUso.SigiloNaoPoupaVigorDeTeste = false;
-			PoderMexeCaidoDeTeste = SigiloCaiComOutraTecnicaDeTeste = PoderVemDoDiscoDeTeste = RetratoDoPoderCongeladoDeTeste = false;
+			PoderEmUso.RelaxadoNaoEscondeDeTeste = PoderEmUso.BarraEscondeDeTeste = PoderEmUso.CargaNaoAcordaDeTeste = false;
+			PoderMexeCaidoDeTeste = RelaxarSemControleDeTeste = PoderVemDoDiscoDeTeste = RetratoDoPoderCongeladoDeTeste = false;
 			SenseContraOPisoDeTeste = MultiplicadorEntregaOBpDeTeste = false;
 			try { LimparTudoDaBancada(); } catch (Exception e) { GD.PrintErr($"[poder]   (limpeza) {e.Message}"); }
 			GD.Print($"[poder] ================ {_pwOk} OK, {_pwFalhou} FALHA(S) ================");
@@ -102,7 +107,7 @@ public partial class GameServer
 	/// <summary>
 	/// Um corpo da bancada, com a propria conta (a assinatura sai de conta+slot). `comAPorta` da o controle de ki
 	/// pelo caminho de producao: Ki Unlocked e Basic Ki Control no livro, o DEGRAU 5 nos niveis, os efeitos da
-	/// skill e do nivel aplicados (e dai que saem `MeditateGivesKiRegen`, `canPower` e os dois verbos).
+	/// skill e do nivel aplicados (e dai que saem `MeditateGivesKiRegen`, `canPower` e o `Power_Control`).
 	/// </summary>
 	private ServerPlayer PwCorpo(string nome, Vec2 onde, double bp, bool comAPorta, bool sense = false, int nivel = 5)
 	{
@@ -140,34 +145,48 @@ public partial class GameServer
 	// =====================================================================
 	private void PwAPorta()
 	{
-		GD.Print("[poder] -- 1) A PORTA: controlar e esconder pedem Basic Ki Control 5; relaxar e de todo corpo");
+		GD.Print("[poder] -- 1) A PORTA: conter o poder e relaxar pedem Basic Ki Control 5; ficar pronto nao pede nada");
 		Vec2 c = CorredorLivre(20);
 		ServerPlayer novato = PwCorpo("Novato", c, 10_000, comAPorta: false);
 
 		List<string> f = ApertarEOuvir(novato, "Power_Control:40");
 		AfirmarPw("sem o nivel 5 de Basic Ki Control, `Power_Control:40` e recusado (\"voce nao sabe\") e o poder fica inteiro",
 				  Disse(f, "nao sabe") && PertoPw(novato.Ficha.powerMod, 1, 1e-9), $"powerMod {novato.Ficha.powerMod} | {Ultimos(f)}");
-		f = ApertarEOuvir(novato, "Conceal_Power");
-		AfirmarPw("...e `Conceal_Power` tambem: ninguem esconde o poder sem a porta",
-				  Disse(f, "nao sabe") && !novato.Ficha.isconcealed, Ultimos(f));
+		f = ApertarEOuvir(novato, "prontidao");
+		AfirmarPw("**RELAXAR TAMBEM PEDE A PORTA** (regra do dono; no DM o `ReadyUp` e de todo corpo): o novato e recusado, e continua com o poder inteiro e a vista",
+				  Disse(f, "não sabe controlar o próprio poder") && !novato.Ficha.relaxado && PertoPw(novato.Ficha.powerMod, 1, 1e-9) && novato.Ficha.expressedBP > 5,
+				  $"relaxado {novato.Ficha.relaxado}, expresso {novato.Ficha.expressedBP:0} | {Ultimos(f)}");
+		RelaxarSemControleDeTeste = true;
+		try
+		{
+			ApertarEOuvir(novato, "prontidao");
+			AfirmarPw("(defeito injetado: relaxar e de todo corpo) a prova de cima REPROVA -- o novato relaxa e some com um botao",
+					  novato.Ficha.relaxado && PertoPw(novato.Ficha.expressedBP, 5, 1e-9), $"relaxado {novato.Ficha.relaxado}, expresso {novato.Ficha.expressedBP:0.##}");
+		}
+		finally { RelaxarSemControleDeTeste = false; }
+		f = ApertarEOuvir(novato, "prontidao");
+		AfirmarPw("**FICAR PRONTO NAO PEDE PORTA**: quem esta relaxado sem o controle (aqui, pelo defeito) volta ao poder inteiro -- ninguem fica preso abaixo do proprio poder",
+				  !novato.Ficha.relaxado && Disse(f, "pronto") && novato.Ficha.expressedBP > 5, $"relaxado {novato.Ficha.relaxado} | {Ultimos(f)}");
 
 		ServerPlayer quase = PwCorpo("Quase", Em(c, 3, 0), 10_000, comAPorta: true, nivel: 4);
-		AfirmarPw("o nivel 4 ainda NAO abre: os dois verbos nascem no degrau 5 (`if(level == 5)`, Mind.dm:279)",
-				  !SabeTecnica(quase, "Power_Control") && !SabeTecnica(quase, "Conceal_Power") && quase.Ficha.canPower == 0,
-				  $"canPower {quase.Ficha.canPower}");
+		f = ApertarEOuvir(quase, "prontidao");
+		AfirmarPw("o nivel 4 ainda NAO abre: o `Power_Control` nasce no degrau 5 (`if(level == 5)`, Mind.dm:279), e relaxar e recusado igual",
+				  !SabeTecnica(quase, "Power_Control") && quase.Ficha.canPower == 0 && !quase.Ficha.relaxado && Disse(f, "não sabe controlar"),
+				  $"canPower {quase.Ficha.canPower} | {Ultimos(f)}");
 
 		ServerPlayer mestre = PwCorpo("Controlado", Em(c, 6, 0), 10_000, comAPorta: true);
-		AfirmarPw("no nivel 5 os dois verbos chegam pelo DEGRAU, junto do `canPower` (o que deixa o C subir o poder)",
-				  SabeTecnica(mestre, "Power_Control") && SabeTecnica(mestre, "Conceal_Power")
-				  && mestre.Ficha.canPower != 0 && mestre.Ficha.MeditateGivesKiRegen != 0,
+		AfirmarPw("no nivel 5 o verbo chega pelo DEGRAU, junto do `canPower` (o que deixa o C subir o poder)",
+				  SabeTecnica(mestre, "Power_Control") && mestre.Ficha.canPower != 0 && mestre.Ficha.MeditateGivesKiRegen != 0,
 				  $"canPower {mestre.Ficha.canPower}, MeditateGivesKiRegen {mestre.Ficha.MeditateGivesKiRegen}");
+		f = ApertarEOuvir(mestre, "prontidao");
+		AfirmarPw("...e com ele RELAXAR funciona", mestre.Ficha.relaxado && Disse(f, "relaxa"), Ultimos(f));
+		ApertarEOuvir(mestre, "prontidao");
 
-		f = ApertarEOuvir(novato, "prontidao");
-		AfirmarPw("**RELAXAR E DE TODO CORPO** (`mob/default/verb/ReadyUp`): sem porta nenhuma, o novato leva o proprio poder ao piso de 1%",
-				  PertoPw(novato.Ficha.powerMod, PoderEmUso.Piso, 1e-9) && Disse(f, "relaxa"), $"powerMod {novato.Ficha.powerMod} | {Ultimos(f)}");
-		f = ApertarEOuvir(novato, "prontidao");
-		AfirmarPw("...e fica pronto de novo, com o poder inteiro",
-				  PertoPw(novato.Ficha.powerMod, 1, 1e-9) && Disse(f, "pronto"), $"powerMod {novato.Ficha.powerMod} | {Ultimos(f)}");
+		bool antes = mestre.Ficha.relaxado, ocultoAntes = mestre.Ficha.isconcealed;
+		f = ApertarEOuvir(mestre, "Conceal_Power");
+		AfirmarPw("**O BOTAO DE ESCONDER SAIU**: `Conceal_Power` nao e mais tecnica viva (o censo o da por atendido pelo relaxar), e mandar o verbo antigo nao muda o estado de ninguem",
+				  !Jandirus.Core.Skills.Tecnicas.Vivas.Contains("Conceal_Power") && Jandirus.Core.Skills.CensoDeSkills.AtendidoPorOutroCanal("Conceal_Power")
+				  && mestre.Ficha.relaxado == antes && mestre.Ficha.isconcealed == ocultoAntes && mestre.Ficha.expressedBP > 5, Ultimos(f));
 	}
 
 	// =====================================================================
@@ -175,7 +194,7 @@ public partial class GameServer
 	// =====================================================================
 	private void PwBaixar()
 	{
-		GD.Print("[poder] -- 2) BAIXAR pra uma porcentagem: o expresso, o Sense, o scouter, a IA e o ganho de luta");
+		GD.Print("[poder] -- 2) BAIXAR pra uma porcentagem: o expresso, o Sense, o scouter, a IA e o ganho de luta -- e a barra NAO esconde");
 		Vec2 c = CorredorLivre(28);
 		ServerPlayer eu = PwCorpo("Contido", c, 10_000, comAPorta: true);
 		ServerPlayer vidente = PwCorpo("VidenteDoPoder", Em(c, 4, 0), 10_000, comAPorta: false, sense: true);
@@ -231,6 +250,45 @@ public partial class GameServer
 		f = ApertarEOuvir(eu, "Power_Control");
 		AfirmarPw("o verbo SEM numero (o botao da aba Skills) nao mexe em nada e diz ONDE se escolhe: na aba Ki do menu",
 				  PertoPw(eu.Ficha.powerMod, 1, 1e-9) && Disse(f, "aba Ki") && !Disse(f, "Power_Control:"), Ultimos(f));
+
+		// ---- A BARRA NAO ESCONDE (regra do dono, 2026-10-12) ----
+		ServerPlayer fraco = PwCorpo("FracoContido", Em(c, 2, 0), 300, comAPorta: true);
+		bool sentidoAntes = Acha(SentidosDe(vidente).Lista, fraco) != null, lidoAntes = Acha(SentidosDe(olho).Lista, fraco) != null;
+		ApertarEOuvir(fraco, "Power_Control:1");
+		PwTique(fraco);
+		AfirmarPw("(montagem) o fraco que se segura a 1% expressa 5 ou menos -- o que no DM o tiraria do Sense e do scouter (HtmlUI.dm:370 e :411)",
+				  sentidoAntes && lidoAntes && PertoPw(fraco.Ficha.powerMod, 0.01, 1e-9) && fraco.Ficha.expressedBP <= BpMinimoSentivel,
+				  $"sentido {sentidoAntes}, lido {lidoAntes}, expresso {fraco.Ficha.expressedBP:0.##}");
+		Protocol.PresencaState? noScouter = Acha(SentidosDe(olho).Lista, fraco);
+		AfirmarPw("**A BARRA NAO ESCONDE**: a 1% ele CONTINUA no Sense do vizinho, no scouter (com o numero baixo que a barra lhe da) e ao alcance da telepatia",
+				  Acha(SentidosDe(vidente).Lista, fraco) != null && noScouter != null && AchoAEnergiaG4(fraco)
+				  && PertoPw(noScouter?.Bp ?? double.NaN, Math.Round(fraco.Ficha.expressedBP, MidpointRounding.AwayFromZero), 1e-6),
+				  $"sense {Acha(SentidosDe(vidente).Lista, fraco) != null}, scouter {noScouter?.Bp}, telepatia {AchoAEnergiaG4(fraco)}");
+		PoderEmUso.BarraEscondeDeTeste = true;
+		try
+		{
+			AfirmarPw("(defeito injetado: o piso medido COM a barra) a prova de cima REPROVA -- o fraco que se segura some das tres listas, como no jogo de antes",
+					  Acha(SentidosDe(vidente).Lista, fraco) == null && Acha(SentidosDe(olho).Lista, fraco) == null && !AchoAEnergiaG4(fraco));
+		}
+		finally { PoderEmUso.BarraEscondeDeTeste = false; }
+
+		// ---- ...nem do Sense da galaxia: o piso dos 5 milhoes tambem e medido sem ela ----
+		ServerPlayer tita = StCorpoEm("TitaContido", "Namek", 60_000_000);
+		vidente.Ficha.kiawarenessskill = PericiaDaGalaxia;
+		bool naGalaxiaAntes = Acha(SentidosDe(vidente).Lista, tita) != null;
+		tita.Ficha.powerMod = 0.05;
+		PwTique(tita);
+		AfirmarPw("o forte que se segura continua no SENSE DA GALAXIA: a 5% ele expressa menos que os 5 milhoes do piso (HtmlUI.dm:389), e segue na lista de outro planeta",
+				  naGalaxiaAntes && tita.Ficha.expressedBP <= BpDaGalaxia && Acha(SentidosDe(vidente).Lista, tita) != null,
+				  $"antes {naGalaxiaAntes}; expresso {tita.Ficha.expressedBP:0}");
+		PoderEmUso.BarraEscondeDeTeste = true;
+		try
+		{
+			AfirmarPw("(defeito injetado: o piso medido COM a barra) a prova de cima REPROVA -- contido, ele some do Sense da galaxia",
+					  Acha(SentidosDe(vidente).Lista, tita) == null);
+		}
+		finally { PoderEmUso.BarraEscondeDeTeste = false; }
+		vidente.Ficha.kiawarenessskill = 0;
 	}
 
 	// =====================================================================
@@ -296,17 +354,24 @@ public partial class GameServer
 		eu.Moving = false;
 		PararCarga(eu);
 
-		// ---- sem controle de ki o C so enche o tanque: quem relaxou volta ficando pronto ----
+		// ---- sem controle de ki o C so enche o tanque: quem esta abaixo do proprio poder volta ficando pronto ----
 		ServerPlayer novato = PwCorpo("SoKiLiberado", Em(c, 4, 0), 10_000, comAPorta: false);
 		novato.Ficha.MeditateGivesKiRegen = 1;   // sente o proprio ki (Ki Unlocked), e mais nada
-		ApertarEOuvir(novato, "prontidao");
+		novato.Ficha.powerMod = 0.4;             // (posto a mao: sem a porta ele nao tem como baixar)
 		Carregar(novato, true);
 		for (int i = 0; i < 150; i++) TickDaCarga(novato, dt);
 		PararCarga(novato);
-		AfirmarPw("SEM CONTROLE DE KI (`canPower` 0) o C nao sobe o poder de quem relaxou: cinco segundos segurando e ele continua em 1% (o galho de :169-173 so enche o tanque)",
-				  PertoPw(novato.Ficha.powerMod, PoderEmUso.Piso, 1e-9), $"powerMod {novato.Ficha.powerMod}");
+		AfirmarPw("SEM CONTROLE DE KI (`canPower` 0) o C nao sobe o poder: cinco segundos segurando e a barra continua em 40% (o galho de :169-173 so enche o tanque)",
+				  PertoPw(novato.Ficha.powerMod, 0.4, 1e-9), $"powerMod {novato.Ficha.powerMod}");
+		novato.Ficha.powerMod = 1;
+		novato.Ficha.relaxado = true;            // (posto a mao: sem a porta ele nao relaxa)
+		Carregar(novato, true);
+		PararCarga(novato);
+		AfirmarPw("...e relaxado a carga dele NAO o acorda: sem `canPower` a barra nao subiria, e acordar no piso o prenderia em 1% do poder",
+				  novato.Ficha.relaxado && PertoPw(novato.Ficha.powerMod, 1, 1e-9), $"relaxado {novato.Ficha.relaxado}, powerMod {novato.Ficha.powerMod}");
 		ApertarEOuvir(novato, "prontidao");
-		AfirmarPw("...e o caminho dele de volta e FICAR PRONTO: 100% na hora (`powerMod=1`, :52)", PertoPw(novato.Ficha.powerMod, 1, 1e-9), $"{novato.Ficha.powerMod}");
+		AfirmarPw("o caminho dele de volta e FICAR PRONTO, que nao pede porta: 100% na hora (`powerMod=1`, :52)",
+				  !novato.Ficha.relaxado && PertoPw(novato.Ficha.powerMod, 1, 1e-9), $"relaxado {novato.Ficha.relaxado}, powerMod {novato.Ficha.powerMod}");
 	}
 
 	// =====================================================================
@@ -314,42 +379,93 @@ public partial class GameServer
 	// =====================================================================
 	private void PwRelaxar()
 	{
-		GD.Print("[poder] -- 4) RELAXAR e FICAR PRONTO: o piso, a volta, a raiva que acorda, o fraco que some do Sense");
+		GD.Print("[poder] -- 4) RELAXAR e FICAR PRONTO: 5 de poder sempre, fora do Sense e do scouter, a volta, a raiva e a carga que acordam");
+		const double dt = 1.0 / 30;
 		Vec2 c = CorredorLivre(28);
-		ServerPlayer eu = PwCorpo("Relaxador", c, 10_000, comAPorta: false);
+		ServerPlayer eu = PwCorpo("Relaxador", c, 10_000, comAPorta: true);
 		ServerPlayer vidente = PwCorpo("VidenteDoRelaxo", Em(c, 4, 0), 10_000, comAPorta: false, sense: true);
+		ServerPlayer olho = PwOlho("OlhoDoRelaxo", Em(c, 6, 0));
 		double cheio = eu.Ficha.expressedBP;
-		AfirmarPw("(montagem) de pe e calmo, o estado e \"usando todo o poder\" (Using Full Power)",
-				  PoderEmUso.Estado(eu.Ficha) == EstadoDoPoder.PoderTotal && PoderEmUso.Porcento(eu.Ficha) == 100);
+		double regenAntes = eu.Ficha.KIregen;
+		AfirmarPw("(montagem) de pe e calmo: \"usando todo o poder\" (Using Full Power), e o Sense, o scouter e a telepatia do vizinho o acham",
+				  PoderEmUso.Estado(eu.Ficha) == EstadoDoPoder.PoderTotal && PoderEmUso.Porcento(eu.Ficha) == 100
+				  && Acha(SentidosDe(vidente).Lista, eu) != null && Acha(SentidosDe(olho).Lista, eu) != null && AchoAEnergiaG4(eu));
 
 		List<string> f = ApertarEOuvir(eu, "prontidao");
-		AfirmarPw("relaxar leva o `powerMod` ao piso de 0,01 (`powerMod=0.01`, :48) e o estado vira \"relaxado\"",
-				  PertoPw(eu.Ficha.powerMod, 0.01, 1e-9) && PoderEmUso.Estado(eu.Ficha) == EstadoDoPoder.Relaxado && PoderEmUso.Porcento(eu.Ficha) == 1
-				  && Disse(f, "relaxa"), $"powerMod {eu.Ficha.powerMod} | {Ultimos(f)}");
-		AfirmarPw("...e o poder expresso cai pra 1% NA HORA", PertoPw(eu.Ficha.expressedBP, cheio * 0.01, Math.Max(1, cheio * 0.001)),
-				  $"{eu.Ficha.expressedBP:0.##} vs {cheio * 0.01:0.##}");
+		AfirmarPw("**RELAXAR TRAVA O PODER EXPRESSO EM 5, NA HORA** (o dono: \"cair pra 5 de poder de luta sempre\"), e diz o que fez",
+				  eu.Ficha.relaxado && PertoPw(eu.Ficha.expressedBP, 5, 1e-9) && PoderEmUso.Estado(eu.Ficha) == EstadoDoPoder.Relaxado && Disse(f, "relaxa"),
+				  $"relaxado {eu.Ficha.relaxado}, expresso {eu.Ficha.expressedBP:0.##} | {Ultimos(f)}");
+		PwTique(eu);
+		AfirmarPw("...e ele fica em 5 depois do tique de ficha, com a barra onde estava (100%)",
+				  PertoPw(eu.Ficha.expressedBP, 5, 1e-9) && PertoPw(eu.Ficha.powerMod, 1, 1e-9), $"expresso {eu.Ficha.expressedBP:0.##}, powerMod {eu.Ficha.powerMod}");
+		AfirmarPw("**O SENSE NAO O ACHA**", Acha(SentidosDe(vidente).Lista, eu) == null, Nomes(SentidosDe(vidente).Lista));
+		AfirmarPw("**O SCOUTER TAMBEM NAO**, pelo caminho de producao: o scan pula quem nao tem energia que se sinta, e relaxado e 5",
+				  Acha(SentidosDe(olho).Lista, eu) == null, Nomes(SentidosDe(olho).Lista));
+		AfirmarPw("a telepatia, o observar e a Transmissao nao acham a energia dele", !AchoAEnergiaG4(eu));
+		Percepcao p = LerPercepcao(vidente, eu, eu.Pos, quemAtira: false);
+		AfirmarPw("**EXTREMAMENTE FRACO**: a IA de um NPC le 5 -- e e com esses 5 que ele bate e apanha (o dano le o poder expresso)",
+				  PertoPw(p.PoderDoAlvo, 5, 1e-9), $"{p.PoderDoAlvo:0.##}");
+		AfirmarPw("RELAXAR NAO CUSTA KI: a regeneracao de Ki e a mesma de antes (a metade do `concealeddeBuff` e so de quem some por TECNICA)",
+				  !eu.Ficha.isconcealed && PertoPw(eu.Ficha.KIregen, regenAntes, regenAntes * 0.001 + 1e-12), $"{regenAntes:0.#####} -> {eu.Ficha.KIregen:0.#####}");
+		PoderEmUso.RelaxadoNaoEscondeDeTeste = true;
+		try
+		{
+			PwTique(eu);
+			AfirmarPw("(defeito injetado: relaxar nao esconde) as provas de cima REPROVAM -- o \"relaxado\" expressa o poder inteiro e esta no Sense e no scouter",
+					  eu.Ficha.relaxado && eu.Ficha.expressedBP > 5 && Acha(SentidosDe(vidente).Lista, eu) != null && Acha(SentidosDe(olho).Lista, eu) != null,
+					  $"expresso {eu.Ficha.expressedBP:0}");
+		}
+		finally { PoderEmUso.RelaxadoNaoEscondeDeTeste = false; }
+		PwTique(eu);
+
+		// ---- a forma nao desfaz o relaxado ----
+		eu.Ficha.ssjBuff = 50;
+		PwTique(eu);
+		AfirmarPw("TRANSFORMAR NAO TIRA NINGUEM DO RELAXADO: com um multiplicador de forma de 50x o expresso continua 5 (a trava vem antes da forma na conta)",
+				  eu.Ficha.relaxado && PertoPw(eu.Ficha.expressedBP, 5, 1e-9), $"{eu.Ficha.expressedBP:0.##}");
+		eu.Ficha.ssjBuff = 1;
+		PwTique(eu);
+
+		// ---- a barra nao vale relaxado ----
+		f = ApertarEOuvir(eu, "Power_Control:40");
+		AfirmarPw("RELAXADO A BARRA NAO VALE: `Power_Control:40` e recusado e manda ficar pronto primeiro",
+				  PertoPw(eu.Ficha.powerMod, 1, 1e-9) && eu.Ficha.relaxado && Disse(f, "fique pronto"), $"powerMod {eu.Ficha.powerMod} | {Ultimos(f)}");
+
+		// ---- uma tecnica de sumir que acaba nao acorda o relaxado ----
+		eu.Ficha.Ki = Math.Max(eu.Ficha.Ki, Jandirus.Core.Skills.Tecnicas.InvisKiMinimo + 10);
+		Invisibilidade(eu);
+		bool sumiu = EstaOculto(eu.Id);
+		Invisibilidade(eu);
+		PwTique(eu);
+		AfirmarPw("**QUEM RELAXA CONTINUA RELAXADO**: uma invisibilidade que liga e desliga (ela apaga o `isconcealed` ao acabar) nao mostra o poder de quem relaxou -- relaxar e um campo proprio da ficha",
+				  sumiu && !EstaOculto(eu.Id) && !eu.Ficha.isconcealed && eu.Ficha.relaxado && PertoPw(eu.Ficha.expressedBP, 5, 1e-9)
+				  && Acha(SentidosDe(vidente).Lista, eu) == null,
+				  $"sumiu {sumiu}; relaxado {eu.Ficha.relaxado}; expresso {eu.Ficha.expressedBP:0.##}");
+
+		// ---- ficar pronto ----
 		f = ApertarEOuvir(eu, "prontidao");
-		AfirmarPw("apertar de novo: pronto, poder inteiro (`powerMod=1`, :52)",
-				  PertoPw(eu.Ficha.powerMod, 1, 1e-9) && PoderEmUso.Estado(eu.Ficha) == EstadoDoPoder.PoderTotal && Disse(f, "pronto")
-				  && PertoPw(eu.Ficha.expressedBP, cheio, Math.Max(1, cheio * 0.001)), $"powerMod {eu.Ficha.powerMod}, expresso {eu.Ficha.expressedBP:0}");
+		AfirmarPw("apertar de novo: PRONTO -- o poder expresso volta inteiro na hora (`powerMod=1`, :52), e o Sense e o scouter o acham de novo",
+				  !eu.Ficha.relaxado && PertoPw(eu.Ficha.powerMod, 1, 1e-9) && PoderEmUso.Estado(eu.Ficha) == EstadoDoPoder.PoderTotal && Disse(f, "pronto")
+				  && PertoPw(eu.Ficha.expressedBP, cheio, Math.Max(1, cheio * 0.001))
+				  && Acha(SentidosDe(vidente).Lista, eu) != null && Acha(SentidosDe(olho).Lista, eu) != null,
+				  $"relaxado {eu.Ficha.relaxado}, expresso {eu.Ficha.expressedBP:0} | {Ultimos(f)}");
 
 		eu.Ficha.powerMod = 0.4;
 		AfirmarPw("(montagem) a 40% o estado e \"usando parte do poder\" (Using some power.)",
 				  PoderEmUso.Estado(eu.Ficha) == EstadoDoPoder.Contendo && PoderEmUso.Porcento(eu.Ficha) == 40);
 		ApertarEOuvir(eu, "prontidao");
 		AfirmarPw("de QUALQUER ponto abaixo de 100% o verbo e \"ficar pronto\": de 40% ele volta a 100%, e nao relaxa (`if(powerMod >= 1) ... else`, :42-52)",
-				  PertoPw(eu.Ficha.powerMod, 1, 1e-9), $"{eu.Ficha.powerMod}");
+				  PertoPw(eu.Ficha.powerMod, 1, 1e-9) && !eu.Ficha.relaxado, $"powerMod {eu.Ficha.powerMod}, relaxado {eu.Ficha.relaxado}");
 
-		// ---- o fraco relaxado some do Sense ----
-		ServerPlayer fraco = PwCorpo("FracoRelaxado", Em(c, 2, 0), 400, comAPorta: false);
-		bool sentidoAntes = Acha(SentidosDe(vidente).Lista, fraco) != null;
-		ApertarEOuvir(fraco, "prontidao");
-		PwTique(fraco);
-		AfirmarPw("QUEM E FRACO SOME SO DE RELAXAR: 1% de um poder pequeno expressa 5 ou menos, e o Sense nao lista quem expressa 5 ou menos (HtmlUI.dm:371)",
-				  sentidoAntes && fraco.Ficha.expressedBP <= BpMinimoSentivel && Acha(SentidosDe(vidente).Lista, fraco) == null,
-				  $"sentido antes {sentidoAntes}; expresso {fraco.Ficha.expressedBP:0.##}");
-		AfirmarPw("...e quem e forte nao: relaxado, o corpo de poder alto continua na lista, com 1% da leitura",
-				  PwSenteRelaxado(eu, vidente), "");
+		// ---- 5, sempre: o forte relaxa igual ao fraco ----
+		ServerPlayer forte = PwCorpo("ForteRelaxado", Em(c, 2, 0), 5_000_000, comAPorta: true);
+		bool forteLido = Acha(SentidosDe(olho).Lista, forte) != null;
+		ApertarEOuvir(forte, "prontidao");
+		PwTique(forte);
+		AfirmarPw("**5, SEMPRE**: um corpo de 5 milhoes relaxado expressa os mesmos 5 e some do scouter (no jogo de antes relaxar era 1% do poder -- 50 mil, a vista de todos)",
+				  forteLido && PertoPw(forte.Ficha.expressedBP, 5, 1e-9) && Acha(SentidosDe(olho).Lista, forte) == null,
+				  $"lido antes {forteLido}; expresso {forte.Ficha.expressedBP:0.##}");
+		ApertarEOuvir(forte, "prontidao");
 
 		// ---- a raiva acorda ----
 		eu.RaivaLendariaAte = NowMs() + 60_000;   // a janela da raiva comum (um amigo nocauteado)
@@ -358,20 +474,21 @@ public partial class GameServer
 				  eu.Ficha.Anger > PoderEmUso.RaivaQueAcorda(eu.Ficha), $"raiva {eu.Ficha.Anger:0.#} contra {PoderEmUso.RaivaQueAcorda(eu.Ficha):0.#}");
 		f = ApertarEOuvir(eu, "prontidao");
 		AfirmarPw("**FURIOSO NAO SE RELAXA** (`RelaxCheck`, :90-95): o poder volta inteiro no mesmo aperto, com as duas frases do original",
-				  PertoPw(eu.Ficha.powerMod, 1, 1e-9) && Disse(f, "furioso") && Disse(f, "briga"), $"powerMod {eu.Ficha.powerMod} | {Ultimos(f)}");
+				  !eu.Ficha.relaxado && PertoPw(eu.Ficha.powerMod, 1, 1e-9) && eu.Ficha.expressedBP > 5 && Disse(f, "furioso") && Disse(f, "briga"),
+				  $"relaxado {eu.Ficha.relaxado}, expresso {eu.Ficha.expressedBP:0} | {Ultimos(f)}");
 		PoderEmUso.RaivaDeixaRelaxarDeTeste = true;
 		try
 		{
 			ApertarEOuvir(eu, "prontidao");
-			AfirmarPw("(defeito injetado: a raiva deixa relaxar) a prova de cima REPROVA -- furioso, o corpo fica em 1% do poder",
-					  PertoPw(eu.Ficha.powerMod, 0.01, 1e-9), $"{eu.Ficha.powerMod}");
+			AfirmarPw("(defeito injetado: a raiva deixa relaxar) a prova de cima REPROVA -- furioso, o corpo fica relaxado",
+					  eu.Ficha.relaxado, $"relaxado {eu.Ficha.relaxado}");
 		}
-		finally { PoderEmUso.RaivaDeixaRelaxarDeTeste = false; eu.Ficha.powerMod = 1; }
+		finally { PoderEmUso.RaivaDeixaRelaxarDeTeste = false; eu.Ficha.relaxado = false; eu.Ficha.powerMod = 1; }
 
 		eu.RaivaLendariaAte = 0;
 		ProjetarRaiva(eu);
 		ApertarEOuvir(eu, "prontidao");
-		bool relaxouCalmo = PertoPw(eu.Ficha.powerMod, 0.01, 1e-9);
+		bool relaxouCalmo = eu.Ficha.relaxado;
 		eu.RaivaLendariaAte = NowMs() + 60_000;
 		ProjetarRaiva(eu);
 		// (a escuta ligada e o que faz o tique considerar um corpo SEM TELA: em jogo ele so olha jogador -- NPC nao relaxa)
@@ -381,58 +498,54 @@ public partial class GameServer
 		try { noTique = Ouvir(() => { for (int i = 0; i < TicksEntreFatos; i++) TickDoPoderEmUso(); }); }
 		finally { EscutaDoPoderEmUso = escutaDeAntes; }
 		AfirmarPw("...e a raiva que chega DEPOIS acorda quem ja estava relaxado, pelo tique (5 Hz)",
-				  relaxouCalmo && PertoPw(eu.Ficha.powerMod, 1, 1e-9) && Disse(noTique, "furioso"), $"relaxou calmo {relaxouCalmo}; powerMod {eu.Ficha.powerMod} | {Ultimos(noTique)}");
+				  relaxouCalmo && !eu.Ficha.relaxado && PertoPw(eu.Ficha.powerMod, 1, 1e-9) && Disse(noTique, "furioso"),
+				  $"relaxou calmo {relaxouCalmo}; relaxado {eu.Ficha.relaxado} | {Ultimos(noTique)}");
 		eu.RaivaLendariaAte = 0;
 		ProjetarRaiva(eu);
-	}
+		PwTique(eu);
 
-	/// <summary>Relaxa `eu`, confere que `vidente` ainda o sente (com cerca de 1% da leitura) e o deixa pronto de novo.</summary>
-	private bool PwSenteRelaxado(ServerPlayer eu, ServerPlayer vidente)
-	{
+		// ---- reunir energia acorda ----
+		eu.Ficha.maxstamina = Math.Max(eu.Ficha.maxstamina, 100_000);   // a medida e o acordar e a subida, e nao o folego
+		eu.Ficha.stamina = eu.Ficha.maxstamina;
+		eu.Ficha.Ki = eu.Ficha.MaxKi;
+		PwTique(eu);
+		double cheioAgora = eu.Ficha.expressedBP;
+		ApertarEOuvir(eu, "prontidao");
+		bool relaxouPraCarga = eu.Ficha.relaxado;
+		List<string> naCarga = Ouvir(() => Carregar(eu, true));
+		AfirmarPw("**REUNIR ENERGIA ACORDA QUEM RELAXA**: ao segurar C o corpo deixa de estar relaxado, volta a aparecer, e a barra comeca do piso de 1%",
+				  relaxouPraCarga && eu.Carregando && !eu.Ficha.relaxado && PertoPw(eu.Ficha.powerMod, PoderEmUso.Piso, 1e-9) && Disse(naCarga, "deixa de relaxar")
+				  && PertoPw(eu.Ficha.expressedBP, cheioAgora * 0.01, Math.Max(1, cheioAgora * 0.002)),
+				  $"relaxou {relaxouPraCarga}; relaxado {eu.Ficha.relaxado}; powerMod {eu.Ficha.powerMod}; expresso {eu.Ficha.expressedBP:0.##} de {cheioAgora:0} | {Ultimos(naCarga)}");
+		for (int i = 0; i < 10; i++) TickDaCarga(eu, dt);
+		AfirmarPw("...e dali a carga SOBE o poder aos poucos (o estagio `Retomando`): dez tiques depois a barra esta acima de 1% e abaixo de 100%",
+				  eu.EstagioDaCarga == EstagioDaCarga.Retomando && eu.Ficha.powerMod > PoderEmUso.Piso + 1e-6 && eu.Ficha.powerMod < 1,
+				  $"estagio {eu.EstagioDaCarga}; powerMod {eu.Ficha.powerMod:0.####}");
+		PararCarga(eu);
 		eu.Ficha.powerMod = 1;
+		eu.Ficha.Ki = eu.Ficha.MaxKi;
 		PwTique(eu);
-		float antes = Acha(SentidosDe(vidente).Lista, eu)?.PoderRelativo ?? float.NaN;
-		ApertarEOuvir(eu, "prontidao");
+		PoderEmUso.CargaNaoAcordaDeTeste = true;
+		try
+		{
+			ApertarEOuvir(eu, "prontidao");
+			Carregar(eu, true);
+			for (int i = 0; i < 30; i++) TickDaCarga(eu, dt);
+			AfirmarPw("(defeito injetado: a carga nao acorda) a prova de cima REPROVA -- o corpo passa dos 100% de Ki relaxado, com 5 de poder e fora do scouter",
+					  eu.Ficha.relaxado && eu.Ficha.Ki > eu.Ficha.MaxKi && Acha(SentidosDe(olho).Lista, eu) == null,
+					  $"relaxado {eu.Ficha.relaxado}; Ki {eu.Ficha.Ki / eu.Ficha.MaxKi * 100:0.##}%");
+			PararCarga(eu);
+		}
+		finally { PoderEmUso.CargaNaoAcordaDeTeste = false; eu.Ficha.relaxado = false; eu.Ficha.powerMod = 1; eu.Ficha.Ki = eu.Ficha.MaxKi; }
 		PwTique(eu);
-		float depois = Acha(SentidosDe(vidente).Lista, eu)?.PoderRelativo ?? float.NaN;
-		ApertarEOuvir(eu, "prontidao");
-		PwTique(eu);
-		return antes > 50 && PertoPw(depois, antes * 0.01, 1.01);
-	}
 
-	// =====================================================================
-	// 5) ESCONDER -- `Conceal_Power`, `Power Control.dm:71-85`
-	// =====================================================================
-	private void PwEsconder()
-	{
-		GD.Print("[poder] -- 5) ESCONDER o poder: o que trava, quem deixa de achar, o que custa, e o que nao o derruba");
-		Vec2 c = CorredorLivre(28);
-		ServerPlayer eu = PwCorpo("Oculto", c, 10_000, comAPorta: true);
-		ServerPlayer vidente = PwCorpo("VidenteDoOculto", Em(c, 4, 0), 10_000, comAPorta: false, sense: true);
-		ServerPlayer olho = PwOlho("OlhoDoOculto", Em(c, 6, 0));
-		double cheio = eu.Ficha.expressedBP;
-		double regenAntes = eu.Ficha.KIregen;
-		AfirmarPw("(montagem) a vista: o Sense e o scouter do vizinho o listam, e a telepatia acha a energia dele",
-				  Acha(SentidosDe(vidente).Lista, eu) != null && Acha(SentidosDe(olho).Lista, eu) != null && AchoAEnergiaG4(eu));
-
-		_sigiloPronto.Remove(eu.Id);
-		List<string> f = ApertarEOuvir(eu, "Conceal_Power");
-		AfirmarPw("esconder liga o sigilo e trava o poder expresso em 5 NA HORA (`if(isconcealed&&expressedBP>=5) expressedBP = 5`, base.dm:114-115)",
-				  eu.Ficha.isconcealed && PertoPw(eu.Ficha.expressedBP, 5, 1e-9) && Disse(f, "esconde"), $"expresso {eu.Ficha.expressedBP:0.##} | {Ultimos(f)}");
+		// ---- o que continua sendo de quem some por TECNICA (`isconcealed`, `master.dm:136-141`) ----
+		regenAntes = eu.Ficha.KIregen;
+		eu.Ficha.isconcealed = true;   // (o campo que a invisibilidade, o Sneak e o embate escrevem; posto a mao pra medir so ele)
 		PwTique(eu);
-		AfirmarPw("...e ele fica em 5 depois do tique de ficha", PertoPw(eu.Ficha.expressedBP, 5, 1e-9), $"{eu.Ficha.expressedBP:0.##}");
-		AfirmarPw("o estado vira \"escondendo o poder\" (Concealing Power), com o `powerMod` ainda em 100%",
-				  PoderEmUso.Estado(eu.Ficha) == EstadoDoPoder.Escondendo && PoderEmUso.Porcento(eu.Ficha) == 100);
-		AfirmarPw("**O SENSE NAO O ACHA** (`D.isconcealed`, HtmlUI.dm:370)", Acha(SentidosDe(vidente).Lista, eu) == null, Nomes(SentidosDe(vidente).Lista));
-		AfirmarPw("**O SCOUTER TAMBEM NAO**, pelo caminho de producao: o scan pula quem expressa 5 ou menos (HtmlUI.dm:411), e escondido e 5",
-				  Acha(SentidosDe(olho).Lista, eu) == null, Nomes(SentidosDe(olho).Lista));
-		AfirmarPw("a telepatia, o observar e a Transmissao nao acham a energia dele (`M.isconcealed`, Communication.dm:53, observe.dm:9)", !AchoAEnergiaG4(eu));
-		Percepcao p = LerPercepcao(vidente, eu, eu.Pos, quemAtira: false);
-		AfirmarPw("a IA de um NPC le 5: pra ela o escondido e fraco (nao escala, nao recua)", PertoPw(p.PoderDoAlvo, 5, 1e-9), $"{p.PoderDoAlvo:0.##}");
-		AfirmarPw("O PRECO, 1: a regeneracao de Ki cai pela metade (`concealeddeBuff=0.5`, master.dm:137 e :184)",
-				  PertoPw(eu.Ficha.KIregen, regenAntes * 0.5, regenAntes * 0.001 + 1e-12), $"{regenAntes:0.#####} -> {eu.Ficha.KIregen:0.#####}");
-
-		// ---- o vigor poupado: o dreno passivo dividido por 1,5 (`StaminaDrain.dm:30`) ----
+		AfirmarPw("SUMIR POR TECNICA continua como no DM: o expresso em 5, o estado \"escondendo o poder\" (Concealing Power) e a regeneracao de Ki pela metade (`concealeddeBuff=0.5`, master.dm:137 e :184)",
+				  PertoPw(eu.Ficha.expressedBP, 5, 1e-9) && PoderEmUso.Estado(eu.Ficha) == EstadoDoPoder.Escondendo && !eu.Ficha.relaxado
+				  && PertoPw(eu.Ficha.KIregen, regenAntes * 0.5, regenAntes * 0.001 + 1e-12), $"{regenAntes:0.#####} -> {eu.Ficha.KIregen:0.#####}");
 		double Gasto()
 		{
 			eu.Ficha.stamina = eu.Ficha.maxstamina;
@@ -444,74 +557,21 @@ public partial class GameServer
 		double semPoupar;
 		try { semPoupar = Gasto(); }
 		finally { PoderEmUso.SigiloNaoPoupaVigorDeTeste = false; }
-		AfirmarPw("O PREMIO: escondido o corpo gasta menos vigor parado -- o dreno passivo dividido por 1,5 (`concealedBuff`, master.dm:138, StaminaDrain.dm:30)",
+		AfirmarPw("...e o corpo gasta menos vigor parado -- o dreno passivo dividido por 1,5 (`concealedBuff`, master.dm:138, StaminaDrain.dm:30)",
 				  escondido > 0 && PertoPw(semPoupar / escondido, PoderEmUso.FolgaDeVigorDoSigilo, 1e-6), $"{semPoupar:0.######} / {escondido:0.######} = {semPoupar / Math.Max(escondido, 1e-12):0.###}");
 		AfirmarPw("(defeito injetado: o `concealedBuff` calculado e jogado fora) a prova de cima REPROVA -- o gasto e o mesmo de quem esta a vista",
 				  !PertoPw(semPoupar, escondido, escondido * 0.01), $"{semPoupar:0.######} vs {escondido:0.######}");
 		eu.Ficha.stamina = eu.Ficha.maxstamina;
-
-		// ---- a forma nao derruba o sigilo ----
-		eu.Ficha.ssjBuff = 50;
+		eu.Ficha.isconcealed = false;
 		PwTique(eu);
-		AfirmarPw("TRANSFORMAR NAO DERRUBA O SIGILO: com um multiplicador de forma de 50x o expresso continua 5 (o sigilo vem antes da forma na conta)",
-				  eu.Ficha.isconcealed && PertoPw(eu.Ficha.expressedBP, 5, 1e-9), $"{eu.Ficha.expressedBP:0.##}");
-		eu.Ficha.ssjBuff = 1;
-		PwTique(eu);
-
-		// ---- a trava de 5 s ----
-		f = ApertarEOuvir(eu, "Conceal_Power");
-		AfirmarPw("A TRAVA: apertar de novo na hora nao muda nada, e a recusa diz quanto falta (`canconceal`, `sleep(50)` = 5 s, :78)",
-				  eu.Ficha.isconcealed && Disse(f, "faltam"), Ultimos(f));
-
-		// ---- outra tecnica de sumir que acaba nao leva o sigilo junto ----
-		eu.Ficha.Ki = Math.Max(eu.Ficha.Ki, Jandirus.Core.Skills.Tecnicas.InvisKiMinimo + 10);
-		Invisibilidade(eu);
-		bool sumiu = EstaOculto(eu.Id);
-		Invisibilidade(eu);
-		TickDoPoderEmUso();
-		PwTique(eu);
-		AfirmarPw("**QUEM ESCONDE CONTINUA ESCONDIDO**: uma invisibilidade que liga e desliga (ela apaga o `isconcealed` ao acabar) nao leva junto o sigilo ligado de proposito",
-				  sumiu && !EstaOculto(eu.Id) && eu.Ficha.isconcealed && PertoPw(eu.Ficha.expressedBP, 5, 1e-9),
-				  $"sumiu {sumiu}; oculto {eu.Ficha.isconcealed}; expresso {eu.Ficha.expressedBP:0.##}");
-		SigiloCaiComOutraTecnicaDeTeste = true;
-		try
-		{
-			Invisibilidade(eu);
-			Invisibilidade(eu);
-			TickDoPoderEmUso();
-			PwTique(eu);
-			AfirmarPw("(defeito injetado: o sigilo cai com a outra tecnica) a prova de cima REPROVA -- o poder de verdade aparece sem ninguem ter mandado",
-					  !eu.Ficha.isconcealed && eu.Ficha.expressedBP > 5, $"oculto {eu.Ficha.isconcealed}; expresso {eu.Ficha.expressedBP:0}");
-		}
-		finally { SigiloCaiComOutraTecnicaDeTeste = false; }
-		TickDoPoderEmUso();
-		PwTique(eu);
-
-		// ---- mostrar de novo ----
-		_sigiloPronto[eu.Id] = 0;   // o prazo venceu
-		f = ApertarEOuvir(eu, "Conceal_Power");
-		AfirmarPw("passados os 5 s, apertar MOSTRA: o poder expresso volta inteiro na hora e o Sense o acha de novo",
-				  !eu.Ficha.isconcealed && PertoPw(eu.Ficha.expressedBP, cheio, Math.Max(1, cheio * 0.001)) && Acha(SentidosDe(vidente).Lista, eu) != null,
-				  $"oculto {eu.Ficha.isconcealed}; expresso {eu.Ficha.expressedBP:0} | {Ultimos(f)}");
-
-		// ---- ligar o sigilo estando invisivel ESCONDE (e nao mostra) ----
-		eu.Ficha.Ki = Math.Max(eu.Ficha.Ki, Jandirus.Core.Skills.Tecnicas.InvisKiMinimo + 10);
-		Invisibilidade(eu);
-		_sigiloPronto[eu.Id] = 0;
-		f = ApertarEOuvir(eu, "Conceal_Power");
-		AfirmarPw("ligar o sigilo estando INVISIVEL esconde (o verbo so invertia o campo, e mostrava o poder de quem ja estava sumido)",
-				  eu.Ficha.isconcealed && Disse(f, "esconde") && (PoderEmUsoDe(eu).Bits & BitsDoPoderEmUso.PorVontade) != 0, Ultimos(f));
-		Invisibilidade(eu);
-		_sigiloPronto[eu.Id] = 0;
-		ApertarEOuvir(eu, "Conceal_Power");
 	}
 
 	// =====================================================================
-	// 6) O SIGILO NAO ENTREGA O BP DE NINGUEM
+	// 5) ESCONDIDO NAO ENTREGA O BP DE NINGUEM
 	// =====================================================================
-	private void PwOSigiloNaoEntregaBp()
+	private void PwEscondidoNaoEntregaBp()
 	{
-		GD.Print("[poder] -- 6) A REGRA PRINCIPAL DO BP: escondido (expresso = 5, uma constante), nenhuma leitura relativa vira numero");
+		GD.Print("[poder] -- 5) A REGRA PRINCIPAL DO BP: relaxado (expresso = 5, uma constante), nenhuma leitura relativa vira numero");
 		Vec2 c = CorredorLivre(28);
 		ServerPlayer espiao = PwCorpo("Espiao", c, 20_000, comAPorta: true, sense: true);
 		ServerPlayer alvo = PwCorpo("Medido", Em(c, 3, 0), 37_000, comAPorta: false);
@@ -521,13 +581,12 @@ public partial class GameServer
 		AfirmarPw("(montagem) a vista, o Sense do espiao le o alvo em porcentagem do proprio poder EXPRESSO (HtmlUI.dm:375)",
 				  PertoPw(aVista, Math.Round(doAlvo / espiao.Ficha.expressedBP * 100, MidpointRounding.AwayFromZero), 1e-6), $"{aVista}%");
 
-		_sigiloPronto.Remove(espiao.Id);
-		ApertarEOuvir(espiao, "Conceal_Power");
+		ApertarEOuvir(espiao, "prontidao");
 		PwTique(espiao);
 		float escondido = Acha(SentidosDe(espiao).Lista, alvo)?.PoderRelativo ?? float.NaN;
 		double vazaria = Math.Round(doAlvo / 5 * 100, MidpointRounding.AwayFromZero);
-		AfirmarPw("**ESCONDIDO, O SENSE NAO VIRA SCOUTER**: a leitura NAO e `expresso do outro / 5` (de onde o BP do outro sairia por uma conta de cabeca)",
-				  espiao.Ficha.isconcealed && !float.IsNaN(escondido) && !PertoPw(escondido, vazaria, 1) && !PertoPw(escondido * 5 / 100, doAlvo, 1),
+		AfirmarPw("**RELAXADO, O SENSE NAO VIRA SCOUTER**: a leitura NAO e `expresso do outro / 5` (de onde o BP do outro sairia por uma conta de cabeca)",
+				  espiao.Ficha.relaxado && PoderEmUso.Escondido(espiao.Ficha) && !float.IsNaN(escondido) && !PertoPw(escondido, vazaria, 1) && !PertoPw(escondido * 5 / 100, doAlvo, 1),
 				  $"leu {escondido}%; contra o piso seria {vazaria}% (= {vazaria * 5 / 100:0} de BP)");
 		AfirmarPw("...ela e a razao contra o BP BASE de quem le: continua dizendo \"mais forte ou mais fraco que voce\"",
 				  PertoPw(escondido, Math.Round(doAlvo / espiao.Ficha.BP * 100, MidpointRounding.AwayFromZero), 1e-6), $"{escondido}% vs {doAlvo / espiao.Ficha.BP * 100:0.#}%");
@@ -541,7 +600,7 @@ public partial class GameServer
 		finally { SenseContraOPisoDeTeste = false; }
 
 		SheetState ficha = FichaVisivel(espiao);
-		AfirmarPw("**ESCONDIDO E SEM SCOUTER, O MULTIPLICADOR TOTAL NAO VIAJA** (vai zero): inteiro ele e `5 / BP`, e o BP base sairia por uma divisao",
+		AfirmarPw("**RELAXADO E SEM SCOUTER, O MULTIPLICADOR TOTAL NAO VIAJA** (vai zero): inteiro ele e `5 / BP`, e o BP base sairia por uma divisao",
 				  double.IsNaN(ficha.BP) && double.IsNaN(ficha.ExpressedBP) && ficha.MultTotal == 0, $"MultTotal {ficha.MultTotal}");
 		MultiplicadorEntregaOBpDeTeste = true;
 		try
@@ -558,9 +617,9 @@ public partial class GameServer
 		espiao.PoderesConcedidos &= ~Protocol.Poder.Scouter;
 		AplicarPoderes(espiao);
 
-		_sigiloPronto[espiao.Id] = 0;
-		ApertarEOuvir(espiao, "Conceal_Power");
-		AfirmarPw("a vista de novo, o multiplicador volta a viajar (ele so e cortado enquanto o expresso e a constante)", FichaVisivel(espiao).MultTotal > 0.5);
+		ApertarEOuvir(espiao, "prontidao");
+		AfirmarPw("pronto de novo, o multiplicador volta a viajar (ele so e cortado enquanto o expresso e a constante)",
+				  !espiao.Ficha.relaxado && FichaVisivel(espiao).MultTotal > 0.5);
 
 		PoderEmUsoState retrato = PoderEmUsoDe(espiao);
 		NetDataWriter w = Protocol.Begin(Protocol.S2C.PoderEmUso);
@@ -570,23 +629,20 @@ public partial class GameServer
 	}
 
 	// =====================================================================
-	// 7) AS VALIDACOES
+	// 6) AS VALIDACOES
 	// =====================================================================
 	private void PwAsValidacoes()
 	{
-		GD.Print("[poder] -- 7) AS VALIDACOES: caido nao mexe no proprio poder, e o canal e fechado pra quem perdeu as redeas");
+		GD.Print("[poder] -- 6) AS VALIDACOES: caido nao mexe no proprio poder, e o canal e fechado pra quem perdeu as redeas");
 		Vec2 c = CorredorLivre(20);
 		ServerPlayer eu = PwCorpo("Caido", c, 10_000, comAPorta: true);
-		_sigiloPronto.Remove(eu.Id);
 
 		eu.Ficha.KO = true;
 		List<string> f1 = ApertarEOuvir(eu, "Power_Control:40");
-		List<string> f2 = ApertarEOuvir(eu, "Conceal_Power");
 		List<string> f3 = ApertarEOuvir(eu, "prontidao");
-		AfirmarPw("NOCAUTEADO: baixar, esconder e relaxar sao recusados, e nada muda (nem a trava de 5 s e gasta)",
-				  PertoPw(eu.Ficha.powerMod, 1, 1e-9) && !eu.Ficha.isconcealed && !_sigiloPronto.ContainsKey(eu.Id)
-				  && Disse(f1, "caído") && Disse(f2, "caído") && Disse(f3, "caído"),
-				  $"powerMod {eu.Ficha.powerMod}, oculto {eu.Ficha.isconcealed} | {Ultimos(f1)} | {Ultimos(f2)} | {Ultimos(f3)}");
+		AfirmarPw("NOCAUTEADO: baixar e relaxar sao recusados, e nada muda",
+				  PertoPw(eu.Ficha.powerMod, 1, 1e-9) && !eu.Ficha.relaxado && Disse(f1, "caído") && Disse(f3, "caído"),
+				  $"powerMod {eu.Ficha.powerMod}, relaxado {eu.Ficha.relaxado} | {Ultimos(f1)} | {Ultimos(f3)}");
 		PoderMexeCaidoDeTeste = true;
 		try
 		{
@@ -602,24 +658,23 @@ public partial class GameServer
 		f1 = ApertarEOuvir(eu, "Power_Control:40");
 		f3 = ApertarEOuvir(eu, "prontidao");
 		AfirmarPw("CADAVER (morto que ainda nao esta de pe no Outro Mundo): recusado tambem",
-				  cadaver && PertoPw(eu.Ficha.powerMod, 1, 1e-9) && Disse(f1, "sem vida") && Disse(f3, "sem vida"), $"{Ultimos(f1)} | {Ultimos(f3)}");
+				  cadaver && PertoPw(eu.Ficha.powerMod, 1, 1e-9) && !eu.Ficha.relaxado && Disse(f1, "sem vida") && Disse(f3, "sem vida"), $"{Ultimos(f1)} | {Ultimos(f3)}");
 		eu.Ficha.dead = false;
 
-		AfirmarPw("POSSUIDO: os tres verbos viajam no canal de habilidade, que o despacho fecha pra quem perdeu as redeas (`ComandoDeCorpo`)",
+		AfirmarPw("POSSUIDO: os dois verbos viajam no canal de habilidade, que o despacho fecha pra quem perdeu as redeas (`ComandoDeCorpo`)",
 				  ComandoDeCorpo(Protocol.C2S.Habilidade));
 		f1 = ApertarEOuvir(eu, "Power_Control:40");
 		AfirmarPw("(o caminho legitimo continua aberto: de pe, o mesmo corpo baixa pra 40%)", PertoPw(eu.Ficha.powerMod, 0.4, 1e-9), Ultimos(f1));
 	}
 
 	// =====================================================================
-	// 8) O RETRATO NO FIO
+	// 7) O RETRATO NO FIO
 	// =====================================================================
 	private void PwORetratoNoFio()
 	{
-		GD.Print("[poder] -- 8) O RETRATO NO FIO: o que a tela de quem joga recebe, e quando");
+		GD.Print("[poder] -- 7) O RETRATO NO FIO: o que a tela de quem joga recebe, e quando");
 		Vec2 c = CorredorLivre(20);
 		ServerPlayer eu = PwCorpo("Retratado", c, 10_000, comAPorta: true);
-		_sigiloPronto.Remove(eu.Id);
 		EscutaDoPoderEmUso = [];
 
 		List<(byte Opcode, PoderEmUsoState Estado, bool Fim)> Meus() =>
@@ -643,65 +698,63 @@ public partial class GameServer
 
 		ApertarEOuvir(eu, "Power_Control:40");
 		m = Meus();
-		AfirmarPw("**BAIXAR MANDA O RETRATO NA HORA**: 40%, sem esperar o tique",
+		AfirmarPw("**BAIXAR MANDA O RETRATO NA HORA**: 40%, sem esperar o tique, e sem bit nenhum (a barra nao esconde)",
 				  m.Count == 2 && m[^1].Estado.Porcento == 40 && !m[^1].Estado.Relaxado && !m[^1].Estado.Escondido, $"{m.Count} pacote(s); ultimo {(m.Count > 0 ? m[^1].Estado.ToString() : "-")}");
 		UmQuintoDeSegundo();
 		AfirmarPw("...e o tique seguinte nao o repete", Meus().Count == 2, $"{Meus().Count}");
 
-		ApertarEOuvir(eu, "Conceal_Power");
+		ApertarEOuvir(eu, "prontidao");   // de 40%: fica pronto
+		ApertarEOuvir(eu, "prontidao");   // de 100%: relaxa
 		m = Meus();
-		AfirmarPw("esconder manda os tres bits: escondido, por vontade propria, e a espera de 5 s correndo",
-				  m.Count == 3 && m[^1].Estado.Escondido && m[^1].Estado.PorVontade && m[^1].Estado.SigiloEmEspera && m[^1].Estado.Porcento == 40,
+		AfirmarPw("ficar pronto (100%, nenhum bit) e relaxar (os dois bits: relaxado e escondido) mandam um retrato cada",
+				  m.Count == 4 && m[^2].Estado == PoderEmUsoState.Cheio && m[^1].Estado.Relaxado && m[^1].Estado.Escondido && m[^1].Estado.Porcento == 100,
 				  $"{m.Count} pacote(s); ultimo {(m.Count > 0 ? m[^1].Estado.ToString() : "-")}");
-		_sigiloPronto[eu.Id] = 0;   // o prazo venceu
-		UmQuintoDeSegundo();
-		m = Meus();
-		AfirmarPw("vencidos os 5 s o retrato sai de novo, sem o bit da espera (e o que reacende o botao na tela)",
-				  m.Count == 4 && m[^1].Estado.Escondido && !m[^1].Estado.SigiloEmEspera, $"{m.Count} pacote(s)");
-
-		ApertarEOuvir(eu, "prontidao");
-		ApertarEOuvir(eu, "prontidao");
-		m = Meus();
-		AfirmarPw("ficar pronto (100%) e relaxar (1%, com o bit de relaxado) mandam um retrato cada",
-				  m.Count == 6 && m[^2].Estado.Porcento == 100 && !m[^2].Estado.Relaxado && m[^1].Estado.Porcento == 1 && m[^1].Estado.Relaxado,
-				  $"{m.Count} pacote(s)");
 
 		RetratoDoPoderCongeladoDeTeste = true;
 		try
 		{
-			ApertarEOuvir(eu, "prontidao");
+			ApertarEOuvir(eu, "prontidao");   // fica pronto
 			UmQuintoDeSegundo();
-			AfirmarPw("(defeito injetado: o retrato congelado) a prova de cima REPROVA -- o poder voltou a 100% e a tela continua lendo 1%",
-					  Meus().Count == 6 && PertoPw(eu.Ficha.powerMod, 1, 1e-9), $"{Meus().Count} pacote(s); powerMod {eu.Ficha.powerMod}");
+			AfirmarPw("(defeito injetado: o retrato congelado) a prova de cima REPROVA -- o corpo ficou pronto e a tela continua lendo \"relaxado\"",
+					  Meus().Count == 4 && !eu.Ficha.relaxado, $"{Meus().Count} pacote(s); relaxado {eu.Ficha.relaxado}");
 		}
 		finally { RetratoDoPoderCongeladoDeTeste = false; }
 		UmQuintoDeSegundo();
-		AfirmarPw("(desligado o defeito, o tique corrige a tela)", Meus().Count == 7 && Meus()[^1].Estado.Porcento == 100, $"{Meus().Count}");
+		AfirmarPw("(desligado o defeito, o tique corrige a tela)", Meus().Count == 5 && Meus()[^1].Estado == PoderEmUsoState.Cheio, $"{Meus().Count}");
+
+		eu.Ficha.isconcealed = true;   // (o campo de quem some por tecnica)
+		UmQuintoDeSegundo();
+		m = Meus();
+		AfirmarPw("sumir por TECNICA manda o bit de escondido SEM o de relaxado (a tela escreve \"PODER ESCONDIDO\", e nao \"RELAXADO\")",
+				  m.Count == 6 && m[^1].Estado.Escondido && !m[^1].Estado.Relaxado, $"{m.Count} pacote(s); ultimo {(m.Count > 0 ? m[^1].Estado.ToString() : "-")}");
+		eu.Ficha.isconcealed = false;
 		EscutaDoPoderEmUso = null;
 	}
 
 	// =====================================================================
-	// 9) O LOGIN, E A FIACAO
+	// 8) O LOGIN, E A FIACAO
 	// =====================================================================
 	private void PwOLoginEAFiacao()
 	{
-		GD.Print("[poder] -- 9) O LOGIN: o poder contido nao vem do disco; e a fiacao no servidor de verdade");
+		GD.Print("[poder] -- 8) O LOGIN: o poder contido nao vem do disco; e a fiacao no servidor de verdade");
 		Vec2 c = CorredorLivre(20);
 		ServerPlayer eu = PwCorpo("Voltando", c, 10_000, comAPorta: true);
 
 		eu.Ficha.powerMod = 0.01;
+		eu.Ficha.relaxado = true;
 		AcordarComOPoderInteiro(eu);
-		AfirmarPw("**QUEM SAIU DO JOGO RELAXADO ENTRA COM O PODER INTEIRO** (`powerMod` e `tmp` no DM, base.dm:37-38; aqui a ficha vai inteira pro disco)",
-				  PertoPw(eu.Ficha.powerMod, 1, 1e-9), $"{eu.Ficha.powerMod}");
+		AfirmarPw("**QUEM SAIU DO JOGO RELAXADO (OU A 1%) ENTRA PRONTO, COM O PODER INTEIRO** (`powerMod` e `tmp` no DM, base.dm:37-38; aqui a ficha vai inteira pro disco)",
+				  PertoPw(eu.Ficha.powerMod, 1, 1e-9) && !eu.Ficha.relaxado, $"powerMod {eu.Ficha.powerMod}, relaxado {eu.Ficha.relaxado}");
 		PoderVemDoDiscoDeTeste = true;
 		try
 		{
 			eu.Ficha.powerMod = 0.01;
+			eu.Ficha.relaxado = true;
 			AcordarComOPoderInteiro(eu);
-			AfirmarPw("(defeito injetado: o poder vem do disco) a prova de cima REPROVA -- ele entra a 1%, sem nada na tela que diga",
-					  PertoPw(eu.Ficha.powerMod, 0.01, 1e-9), $"{eu.Ficha.powerMod}");
+			AfirmarPw("(defeito injetado: o poder vem do disco) a prova de cima REPROVA -- ele entra relaxado e a 1%, sem nada na tela que diga",
+					  PertoPw(eu.Ficha.powerMod, 0.01, 1e-9) && eu.Ficha.relaxado, $"powerMod {eu.Ficha.powerMod}, relaxado {eu.Ficha.relaxado}");
 		}
-		finally { PoderVemDoDiscoDeTeste = false; eu.Ficha.powerMod = 1; }
+		finally { PoderVemDoDiscoDeTeste = false; eu.Ficha.powerMod = 1; eu.Ficha.relaxado = false; }
 		eu.Ficha.powerMod = double.NaN;
 		AcordarComOPoderInteiro(eu);
 		AfirmarPw("...e um valor estragado no save (NaN) tambem volta a 1", PertoPw(eu.Ficha.powerMod, 1, 1e-9), $"{eu.Ficha.powerMod}");
@@ -714,7 +767,9 @@ public partial class GameServer
 		AfirmarPw("FIACAO: o `Tick()` chama `TickDoPoderEmUso()`", Chama(servidor, "TickDoPoderEmUso()"));
 		AfirmarPw("FIACAO: o canal de habilidade atende `prontidao` (`GameServer.Raciais.cs`)",
 				  Chama(Fonte("Server/GameServer.Raciais.cs"), "AlternarProntidao(pl)"));
-		AfirmarPw("FIACAO: quem sai do jogo leva o sigilo ligado junto (`EsquecerG9` chama `EsquecerOPoderEmUso`)",
+		AfirmarPw("FIACAO: a tecla C chama `AcordarPelaCarga(pl)` (`GameServer.Carga.cs`)",
+				  Chama(Fonte("Server/GameServer.Carga.cs"), "AcordarPelaCarga(pl)"));
+		AfirmarPw("FIACAO: quem sai do jogo leva junto o retrato que a tela dele recebeu (`EsquecerG9` chama `EsquecerOPoderEmUso`)",
 				  Chama(Fonte("Server/GameServer.Tecnicas.G9.cs"), "EsquecerOPoderEmUso(id)"));
 
 		// ---- e o tique de verdade: doze quadros do `Tick()` inteiro mandam o primeiro retrato ----

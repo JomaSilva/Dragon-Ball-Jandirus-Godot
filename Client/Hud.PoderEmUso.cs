@@ -5,7 +5,7 @@ namespace Jandirus.Client;
 
 /// <summary>
 /// **O PODER EM USO, NO PAINEL DE STATUS** -- a linha que diz ao dono do corpo quando ele NAO esta usando o
-/// proprio poder inteiro: "USANDO 40% DO PODER", "RELAXADO · 1% DO PODER", "PODER ESCONDIDO".
+/// proprio poder inteiro: "USANDO 40% DO PODER", "RELAXADO · PODER ESCONDIDO", "PODER ESCONDIDO".
 ///
 /// ============================ POR QUE ELA PRECISOU EXISTIR ============================
 /// O "N% efetivo" ao lado do BP mede o CORPO (Ki, ferimento, fome, peso, gravidade, idade) e nao o controle de
@@ -15,7 +15,8 @@ namespace Jandirus.Client;
 /// SO APARECE FORA DO PADRAO. Com o poder inteiro e a vista ela nao existe -- o painel e o de sempre.
 ///
 /// SEM NUMERO DE PODER: e a porcentagem do PROPRIO poder em uso, que o jogador mesmo escolheu. A regra
-/// principal do BP deixa (e razao sobre si mesmo); o BP ao lado continua "???" sem scouter.
+/// principal do BP deixa (e razao sobre si mesmo); o BP ao lado continua "???" sem scouter. Relaxado nao ha
+/// porcentagem a dizer: o corpo soltou o poder todo.
 /// ======================================================================================
 /// </summary>
 public partial class Hud
@@ -58,31 +59,30 @@ public partial class Hud
 
 	/// <summary>
 	/// A LINHA DO PAINEL, em caixa alta e curta. Vazia no padrao (100% e a vista): ausencia de linha e "poder
-	/// inteiro".
+	/// inteiro". Relaxado ela diz as duas coisas que relaxar faz -- e nao a porcentagem da barra, que relaxado nao
+	/// vale nada.
 	/// </summary>
 	public static string NoPainel(PoderEmUsoState e)
 	{
 		if (e.Padrao) return "";
-		string uso = e.Relaxado ? $"RELAXADO · {e.Porcento}% DO PODER"
-			: e.Porcento < 100 ? $"USANDO {e.Porcento}% DO PODER"
-			: "";
+		if (e.Relaxado) return "RELAXADO · PODER ESCONDIDO";
+		string uso = e.Porcento < 100 ? $"USANDO {e.Porcento}% DO PODER" : "";
 		if (!e.Escondido) return uso;
 		return uso.Length > 0 ? uso + " · ESCONDIDO" : "PODER ESCONDIDO";
 	}
 
 	/// <summary>
 	/// A FRASE DO MENU, por extenso: as quatro do `relaxedstate` do original ("Relaxed", "Concealing Power",
-	/// "Using some power.", "Using Full Power" -- `Power Control.dm:98-108`), com a porcentagem.
+	/// "Using some power.", "Using Full Power" -- `Power Control.dm:98-108`), com a porcentagem da barra.
 	/// </summary>
 	public static string PorExtenso(PoderEmUsoState e)
 	{
-		string uso = e.Relaxado ? $"relaxado ({e.Porcento}% do poder)"
-			: e.Porcento < 100 ? $"usando parte do poder ({e.Porcento}%)"
-			: "usando todo o poder";
-		return e.Escondido ? uso + " · escondendo o poder" : uso;
+		if (e.Relaxado) return "relaxado (poder no mínimo, escondido)";
+		string uso = e.Porcento < 100 ? $"usando parte do poder ({e.Porcento}%)" : "usando todo o poder";
+		return e.Escondido ? uso + " · poder escondido" : uso;
 	}
 
-	/// <summary>Apagado no padrao, laranja quando o corpo esta contido, azul de ki quando o poder esta escondido.</summary>
+	/// <summary>Apagado no padrao, laranja quando o corpo se segura, azul de ki quando o poder esta escondido (relaxado inclusive).</summary>
 	public static Color Cor(PoderEmUsoState e) =>
 		e.Escondido ? Tema.Ki : e.Porcento < 100 ? Tema.Destaque : Tema.TextoFraco;
 }

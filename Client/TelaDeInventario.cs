@@ -113,25 +113,70 @@ public partial class TelaDeInventario : CanvasLayer
 		caixa.AddChild(fechar);
 	}
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv020`): o Esc da mochila aberta e ouvido no `_UnhandledInput` -- onde o menu de
+	/// pausa o recebe ANTES (ele e o ultimo da arvore) e abre por cima, com a mochila aberta atras. Era onde esta tela
+	/// o ouvia ate 2026-10-12, com o botao dizendo "Fechar (I ou Esc)". Lido pelas duas portas de entrada. Falso em
+	/// jogo, sempre.
+	/// </summary>
+	public static bool EscSoDepoisDaPausaDeTeste;
+
+	/// <summary>
+	/// ============================ O ESC COM A MOCHILA ABERTA E DA MOCHILA ============================
+	/// Ele e ouvido AQUI, no `_Input`, e nao no `_UnhandledInput` junto da tecla I -- pelo motivo escrito no
+	/// `MenuDeInteracao._Input`: o menu de pausa escuta a mesma tecla no `_UnhandledInput` e e o ultimo node da arvore
+	/// (`MoveChild(pm, -1)` no `Boot`), entao la ele a recebia ANTES deste node. Com a mochila aberta o Esc abria a
+	/// PAUSA por cima e a mochila continuava aberta atras -- e o botao daqui diz "Fechar (I ou Esc)". O `_Input` roda
+	/// antes: a coisa mais na frente da tela responde primeiro, e a pausa so abre quando nao ha mais nada pra fechar.
+	///
+	/// UMA CAMADA POR VEZ: com o teclado numerico por cima (o ajuste dos pesos), o Esc fecha o TECLADO e a mochila
+	/// fica. E com a grade da armadura por cima quem responde e a grade: o node dela vem DEPOIS deste na arvore (ver o
+	/// `Boot`), entao o `_Input` dela roda antes e consome a tecla.
+	///
+	/// QUEM ESTA DIGITANDO E DONO DO ESC (`Foco.Digitando`, a mesma porta do `MenuDeInteracao`): a frase do chat
+	/// desiste por ele. E a guarda e obrigatoria, e nao cortesia: o chat e o primeiro node do mundo, entao o `_Input`
+	/// dele roda DEPOIS deste -- sem ela a mochila fecharia, consumiria a tecla e a frase ficaria aberta.
+	///
+	/// A PAUSA ABERTA E DELA: se ela ja esta na tela, e ela que esta na frente -- o Esc segue e a fecha.
+	///
+	/// SEM O PORTAO DO EMBATE (`Foco.AtalhosMudos`), que continua valendo pra tecla I logo abaixo: aquele portao cala
+	/// o que ABRE coisa por cima da disputa. Fechar nunca e bloqueado (a mesma regra escrita no `PauseMenu`).
+	/// =================================================================================================
+	/// </summary>
+	public override void _Input(InputEvent evento)
+	{
+		if (!EscSoDepoisDaPausaDeTeste) FecharComOEsc(evento);
+	}
+
 	public override void _UnhandledInput(InputEvent evento)
 	{
+		if (EscSoDepoisDaPausaDeTeste && FecharComOEsc(evento)) return;
+
 		// O "I" E UMA DAS LETRAS QUE O EMBATE SORTEIA -- ver `Foco.AtalhosMudos`. Sem esta troca,
 		// responder ao quick time event abria a mochila por cima dele.
 		if (Foco.AtalhosMudos) return;
 		if (evento is not InputEventKey { Pressed: true, Echo: false } k) return;
 
-		if (_raiz.Visible && k.Keycode == Key.Escape)
-		{
-			Fechar();
-			GetViewport().SetInputAsHandled();
-			return;
-		}
+		// (O ESC da mochila aberta nao e daqui: ele e ouvido no `_Input`, antes do menu de pausa. Ver acima.)
 
 		// PELO REGISTRO -- ver a mesma linha em `MenuDeInteracao` e o cabecalho do `Teclas`.
 		if (!Teclas.Bate("ui_mochila", k)) return;
 
 		if (_raiz.Visible) Fechar(); else Abrir();
 		GetViewport().SetInputAsHandled();
+	}
+
+	/// <summary>O Esc da mochila aberta: fecha a camada da frente e consome a tecla. Falso se a tecla nao era dela.</summary>
+	private bool FecharComOEsc(InputEvent evento)
+	{
+		if (!_raiz.Visible || Foco.Digitando) return false;
+		if (evento is not InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape }) return false;
+		if (PauseMenu.Instancia is { Aberto: true }) return false;
+
+		if (_teclado != null) FecharTeclado();
+		else Fechar();
+		GetViewport().SetInputAsHandled();
+		return true;
 	}
 
 	/// <summary>Abre a mochila. Publico pro robo diretor (`RoboDoTrailer`), que nao aperta tecla.</summary>
@@ -339,6 +384,15 @@ public partial class TelaDeInventario : CanvasLayer
 				// ver `GameServer.ComandoDeItem`.
 				if (a == "ajustar") { AbrirTeclado(def); return; }
 
+				// A ARMADURA CRUA NAO MANDA VERBO AQUI: ela abre a grade de artes, e e o clique LA que manda
+				// (`item_moldar Armor/<arte>`). Ver `TelaDeArmadura`.
+				if (a == ArmaduraDeTech.AcaoMoldar)
+				{
+					FecharAcoes();
+					TelaDeArmadura.Instancia?.Abrir();
+					return;
+				}
+
 				// POSICIONAR NAO MANDA VERBO: ela poe a construcao na MAO e fecha o inventario. O
 				// verbo sai depois, quando o jogador clicar no chao -- ver `TelaDeConstrucao`.
 				// PLANTAR E A MESMA COISA com outra palavra: a semente vai pra mao e o clique no chao
@@ -372,7 +426,9 @@ public partial class TelaDeInventario : CanvasLayer
 		FecharAcoes();
 		FecharTeclado();
 
-		var t = new TecladoNumerico($"{def.Nome} — % do corpo", 0, 100,
+		// A PORCENTAGEM E DO PESO MAXIMO DOS PESOS (o que ja foi pago), e o titulo diz de quantos kg -- ver `PesoDeTreino`.
+		double maximo = Jandirus.Core.Items.PesoDeTreino.Maximo(GameClient.Instance?.Atributos.PesoMaxKg ?? 0);
+		var t = new TecladoNumerico($"{def.Nome} — % do peso máximo ({maximo:N0} kg)", 0, 100,
 			v =>
 			{
 				GameClient.Instance?.SendVerbo("item_ajustar", $"{def.Id}/{v:0}");
@@ -391,12 +447,23 @@ public partial class TelaDeInventario : CanvasLayer
 		_teclado = null;
 	}
 
+	/// <summary>"Melhorar: 50 → 100 kg (500 zeni)" -- o proximo degrau do peso maximo e o preco dele. Ver `PesoDeTreino`.</summary>
+	internal static string RotuloDaMelhoriaDosPesos()
+	{
+		double max = GameClient.Instance?.Atributos.PesoMaxKg ?? 0;
+		return $"Melhorar: {Jandirus.Core.Items.PesoDeTreino.Maximo(max):N0} → {Jandirus.Core.Items.PesoDeTreino.ProximoMaximo(max):N0} kg "
+			 + $"({Jandirus.Core.Economia.Recurso.PrecoEscrito(Jandirus.Core.Items.PesoDeTreino.PrecoEmZeni(max), Jandirus.Core.Economia.Moeda.Zeni)})";
+	}
+
 	private static string Rotulo(string acao) => acao switch
 	{
 		"comer" => "Comer",
 		"equipar" => "Equipar / tirar",
 		"ajustar" => "Ajustar o peso",
+		// O PESO MAXIMO SE COMPRA (dono, 2026-10-12): o botao diz o degrau e o preco, lidos da ficha lenta.
+		"melhorar" => RotuloDaMelhoriaDosPesos(),
 		"tirar" => "Tirar os pesos",
+		ArmaduraDeTech.AcaoMoldar => "Escolher a arte",
 		"usar" => "Usar",
 		// O LIVRO DE ENSINAMENTOS (lote G13). "Ler" sozinho serviria -- o `_` la embaixo ja
 		// capitaliza --, mas o botao precisa dizer que o livro SE GASTA, e isso nao cabe no verbo.

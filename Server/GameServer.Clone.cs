@@ -729,6 +729,10 @@ public partial class GameServer
 		if (EhAnimal(npc)) c = PassoDeBicho(c);
 		AplicarComando(npc, c, dt);
 
+		// A PISCADA: quem sabe a Afterimage e esta fechando a distancia some e reaparece nas costas da presa. Pela
+		// porta do jogador (`Zanzoken`), com recarga propria. Ver `GameServer.PiscadaDaIa.cs`.
+		if (presa != null) PiscarPelaIa(npc, presa, cerebro.Atual);
+
 		// ============================ A DECISAO VIRA DADO ============================
 		// So na TROCA de plano: um despejo por tique seriam 30 linhas por segundo por corpo, e o
 		// console viraria inutil exatamente quando fosse mais preciso.

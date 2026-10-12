@@ -117,10 +117,11 @@ public sealed partial class Fighter
 		// nasce em 1 porque o ramo do poder escondido nao passa pelas somas da familia 2.
 		gravDiv = 1;
 
-		if (isconcealed && expressedBP >= 5)
+		if (PoderEmUso.Escondido(this) && expressedBP >= 5)
 		{
-			// poder escondido: trava em 5 e ATROPELA tudo acima. Uma UI que liste os fatores
-			// sem avisar disso vai se contradizer com o total.
+			// poder escondido -- por uma tecnica de sumir (`isconcealed`, `base.dm:114-115`) ou por RELAXAR (regra
+			// do dono de 2026-10-12, que da ao relaxar a trava que no DM e so do `Conceal_Power`): trava em 5 e
+			// ATROPELA tudo acima. Uma UI que liste os fatores sem avisar disso vai se contradizer com o total.
 			expressedBP = 5;
 		}
 		else
@@ -174,6 +175,11 @@ public sealed partial class Fighter
 		// Frost mutante sem controle: o poder VAZA ate o piso enquanto a supressao nao firma.
 		if (fd_release < 1) expressedBP = DmMath.Round(Math.Max(expressedBP * fd_release, 1));
 
+		// O RABO PRESO (dono, 2026-10-12): segurado pelo rabo, o Saiyajin perde grande parte do poder. No fim de
+		// tudo, como o vazamento acima: forma, raiva e Ki alto nao compensam a mao no rabo. O "% efetivo" do HUD
+		// cai junto -- o pico (`peakexBP`) nao leva este corte. Ver `Core/Combat/RaboPreso.cs`.
+		if (raboPresoMod < 1) expressedBP = DmMath.Round(Math.Max(expressedBP * raboPresoMod, 1));
+
 		// Nocauteado = COMPLETAMENTE exposto: 10% do BP base, e nada acima disso conta.
 		if (KO) expressedBP = DmMath.Round(Math.Max(BP * 0.1, 1));
 
@@ -205,7 +211,8 @@ public sealed partial class Fighter
 		// A % MUDOU DE CONTA em vez de o piso sair (ver `Inteireza`): o pico continua sendo o pico do
 		// DM, e a % passou a ser o produto dos fatores de condicao, que e o que ela sempre VALEU.
 		// ================================================================================================
-		peakexBP = Math.Max(expressedBP / Math.Max(AgeDiv * deBuff * statusBuff * gravDiv, 1e-9), expressedBP);
+		// (o RABO PRESO e condicao do corpo como as outras: sai do pico pela mesma divisao -- `raboPresoMod`)
+		peakexBP = Math.Max(expressedBP / Math.Max(AgeDiv * deBuff * statusBuff * gravDiv * raboPresoMod, 1e-9), expressedBP);
 
 		Egains = HBTCMod * Trainmult * bgains * tgains * tailgain;
 		if (isHV && BoostActive && BoostMult != 0) Egains *= BoostMult;
@@ -252,7 +259,8 @@ public sealed partial class Fighter
 	/// existe num lutador recem-criado que nunca tiquou -- e pra esse a resposta honesta e 1
 	/// (corpo inteiro), que era o que a razao antiga tambem devolvia com `peakexBP` zerado.
 	/// </remarks>
-	public double Inteireza => statusBuff > 0 ? Math.Max(AgeDiv * deBuff * statusBuff * gravDiv, 0) : 1;
+	// (O RABO PRESO entra no produto: e o corte que o Saiyajin segurado pelo rabo LE na tela -- o "% efetivo" despenca.)
+	public double Inteireza => statusBuff > 0 ? Math.Max(AgeDiv * deBuff * statusBuff * gravDiv * raboPresoMod, 0) : 1;
 
 	/// <summary>
 	/// O MULTIPLICADOR TOTAL sobre o BP base -- o que o treino virou depois de TUDO.

@@ -1026,7 +1026,8 @@ public sealed partial class GameServer
 	/// silencioso deste sistema (ver o comentario do `LiberarOKi`).
 	///
 	/// `MandarSkills(forcar: true)` fecha o circuito com o cliente: o degrau 5 concede os verbs
-	/// `Power_Control` e `Conceal_Power`, e o menu so os desenha quando a lista chega.
+	/// `Power_Control` e `Conceal_Power` (o segundo e hoje o relaxar), e o menu so desenha a barra e o botao de relaxar
+	/// quando a lista chega.
 	/// ==================================================================================
 	///
 	/// CONFIRMA COM OS NUMEROS, e nao com "pronto". "Nao deu erro" nunca provou que os dois canais

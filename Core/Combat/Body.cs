@@ -46,6 +46,13 @@ public sealed class BodyPart
 	public double Vida = 100, VidaMax = 100;
 	public bool Decepado;
 
+	/// <summary>
+	/// PERDIDO DE VEZ: este membro foi arrancado e NAO VOLTA -- nem pela regeneracao da raca, nem no tanque, nem ao
+	/// renascer. Hoje so o rabo do Saiyajin nao-Primal acima de 20 mil de poder (`Core/Races/RaboDoSaiyajin.cs`).
+	/// As duas portas de devolver membro (`Body.Regenerar`, `Body.Restaurar`) recusam quem carrega a marca.
+	/// </summary>
+	public bool Perdido;
+
 	/// <summary>Peso no sorteio de qual membro o golpe pega.</summary>
 	public double Chance = 100;
 
@@ -292,10 +299,25 @@ public sealed class Body
 	/// acha, e os pesos (<see cref="BodyPart.Chance"/>) nao sao os `targetchance` do `mobparts.dm:119-293`. A
 	/// historia e os numeros estao em <see cref="MeleeResolver.AplicarDanoPronto"/>.
 	/// </summary>
+	public const string ZonaDoRabo = "rabo";
+	public const string NomeDoRabo = "Rabo";
+
+	/// <summary>O peso do rabo no sorteio quando e ELE que se mira: o de um braco (`Chance` 60).</summary>
+	public const double PesoDoRaboMirado = 60;
+
+	/// <summary>DEFEITO INJETADO (bancada `--v020teste`): mirar o rabo volta a ser mirar o abdomen, como antes de 2026-10-12. Falso em jogo, sempre.</summary>
+	public static bool MiraNoRaboDesligadaDeTeste;
+
 	public BodyPart? Sortear(string? zona, Random rng)
 	{
 		var elegiveis = Partes.Where(p => !p.Aninhado && !p.Decepado).ToList();
 		if (elegiveis.Count == 0) return null;
+
+		// A MIRA NO RABO (dono, 2026-10-12): com um rabo de pe, ele ganha o peso de um braco e o resto do corpo cai
+		// a um quarto -- uns 35% dos golpes pegam o rabo. Sem rabo (outra raca, ou ja arrancado) a mira cai onde ele
+		// estaria: o abdomen, que e por onde o original ja chegava nele.
+		bool miraNoRabo = zona == ZonaDoRabo && !MiraNoRaboDesligadaDeTeste;
+		if (zona == ZonaDoRabo && !(miraNoRabo && elegiveis.Exists(p => p.Nome == NomeDoRabo))) { zona = "abdomen"; miraNoRabo = false; }
 
 		double total = 0;
 		var pesos = new double[elegiveis.Count];
@@ -303,7 +325,8 @@ public sealed class Body
 		{
 			// fora da zona mirada o membro ainda pode ser pego, com um quarto do peso
 			double w = elegiveis[i].Chance;
-			if (zona != null && elegiveis[i].Zona != zona) w /= 4;
+			if (miraNoRabo) w = elegiveis[i].Nome == NomeDoRabo ? PesoDoRaboMirado : w / 4;
+			else if (zona != null && elegiveis[i].Zona != zona) w /= 4;
 			pesos[i] = Math.Max(w, 0.01);
 			total += pesos[i];
 		}
@@ -452,6 +475,7 @@ public sealed class Body
 	public bool Regenerar(BodyPart alvo)
 	{
 		if (!alvo.Decepado) return false;
+		if (alvo.Perdido) return false;   // perdido de vez: ver `BodyPart.Perdido`
 		if (alvo.Dono != null && Achar(alvo.Dono) is { Decepado: true }) return false;
 
 		alvo.Decepado = false;
@@ -463,11 +487,15 @@ public sealed class Body
 		return true;
 	}
 
-	/// <summary>Morrer devolve o corpo inteiro: ninguem renasce sem braco.</summary>
+	/// <summary>
+	/// Morrer devolve o corpo inteiro: ninguem renasce sem braco. MENOS o que foi perdido de vez
+	/// (<see cref="BodyPart.Perdido"/>): o rabo que nao volta nao volta nem aqui.
+	/// </summary>
 	public void Restaurar()
 	{
 		foreach (BodyPart p in Partes)
 		{
+			if (p.Perdido && p.Decepado) continue;
 			p.Decepado = false;
 			p.Vida = p.VidaMax;
 		}
@@ -505,6 +533,7 @@ public sealed class Body
 			p.Vida = dele.Vida;
 			p.VidaMax = dele.VidaMax;
 			p.Decepado = dele.Decepado;
+			p.Perdido = dele.Perdido;
 		}
 	}
 }

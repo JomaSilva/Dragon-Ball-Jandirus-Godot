@@ -50,6 +50,10 @@ public sealed partial class GameServer
 		// `dead` cru daqui, com o do `CargaDeKi.Passo`, deixava a tecla C do morto muda (2026-09-04).
 		if (pl.Ficha.KO || EhCadaver(pl)) return;
 
+		// REUNIR ENERGIA ACORDA QUEM RELAXA (regra de 2026-10-12): segurar C e o contrario de soltar o corpo. O
+		// relaxado volta a aparecer e a barra comeca do piso -- o estagio `Retomando` a sobe. Ver `AcordarPelaCarga`.
+		AcordarPelaCarga(pl);
+
 		pl.Carregando = true;
 		pl.EstagioDaCarga = EstagioDaCarga.Nada;
 

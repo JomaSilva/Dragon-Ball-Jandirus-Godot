@@ -375,6 +375,12 @@ public partial class GameServer
 	/// corpo e cabelo sao listas escritas a mao no proc; aqui e o catalogo do jogo. Uma lista escrita
 	/// a mao envelhece calada quando um sprite e renomeado.
 	/// </summary>
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v020teste`): o NPC nasce sem cor de ki -- o jogo de antes de 2026-10-12, em que
+	/// todo tiro de NPC saia da mesma cor. Lido pela propria <see cref="AparenciaDeNpc"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool NpcSemCorDeKiDeTeste;
+
 	private Appearance AparenciaDeNpc(MoldeDeNpc molde, string raca, string genero, ulong semente)
 	{
 		var ap = new Appearance();
@@ -445,6 +451,13 @@ public partial class GameServer
 			GD.PushWarning($"[server] aparencia de NPC do molde '{molde.Id}' ({raca}): {queixa}");
 
 		ap.CorAura = Jandirus.Core.Appearance.CorDeAura.DeSemente(semente);
+
+		// E A COR DO KI DELE (dono, 2026-10-12: *"eles deveriam ter mais variedade, cor de ataques de ki diferentes"*).
+		// O jogador ganha a dele no primeiro login (`CorDoTiro.De`, o `blastR/G/B = rand(0,255)` do
+		// `CharacterCreation.dm:28-30`); o NPC nunca ganhou, e por isso todo raio de NPC saia da cor padrao do
+		// cliente. A funcao ja existia (`CorDoTiro.DeSemente`, com o sal proprio pra nao andar junto da aura) --
+		// faltava esta linha.
+		if (!NpcSemCorDeKiDeTeste) ap.CorKi = Jandirus.Core.Appearance.CorDoTiro.DeSemente(semente);
 		return ap;
 	}
 

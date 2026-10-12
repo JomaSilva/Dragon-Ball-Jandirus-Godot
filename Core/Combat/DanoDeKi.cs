@@ -60,8 +60,14 @@ public static class DanoDeKi
 	// =====================================================================
 	// O CORTE DOS FRACOS -- `objects.dm:355-357`
 	// =====================================================================
+	// (2026-10-12) ESTE CORTE NAO DECIDE MAIS NADA EM JOGO: quem o tiro nao fere e quem e PAREDE pra ele (quatro vezes
+	// o poder do tiro -- `KiContraCorpo`), e todo o resto apanha e e sorteado, valha o golpe o que valer. Ele ficou
+	// como a regra do jogo de antes (`KiContraCorpo.RegraDeAntesDeTeste`, o defeito injetado das bancadas de ki) e
+	// como numero de referencia de bancada (a escada da guarda mede o raio "no corte"). O que esta escrito abaixo e o
+	// que o DM faz, medido -- e o ramo que ele abre (`GameServer.EstourarSemFerir`) e o mesmo em que a parede cai hoje.
 	/// <summary>
-	/// O LIMIAR ABAIXO DO QUAL UM IMPACTO DE KI NAO E GOLPE: 10, em vida de membro (o membro cheio tem 100).
+	/// O LIMIAR ABAIXO DO QUAL UM IMPACTO DE KI NAO E GOLPE NO DM: 10, em vida de membro (o membro cheio tem 100).
+	/// Aqui ele decidiu de 2026-10-08 a 2026-10-12; hoje so decide no jogo de antes (ver a nota logo acima).
 	///
 	///     if(M.ResistCheck(dmg,"[element]")*BPModulus(BP,M.expressedBP) &lt; 10)
 	///         explodeme = 1
@@ -92,17 +98,19 @@ public static class DanoDeKi
 	/// --, e o `explosion()` devolve na primeira volta do laco: nenhuma explosao do DM fere ninguem.)
 	/// ==========================================================================================================
 	///
-	/// ============================ ONDE A LINHA CAI NAO E ONDE CAI NO DM, E ISSO E DIVIDA ANTIGA ============================
-	/// O NUMERO e o do DM; a ESCALA do que ele corta nao e, porque a conta de `mods`/`basedamage` deste port ainda
+	/// ============================ ONDE A LINHA CAIA NAO ERA ONDE CAI NO DM (ERA O JOGO DE ANTES) ============================
+	/// O NUMERO e o do DM; a ESCALA do que ele cortava nao era, porque a conta de `mods`/`basedamage` deste port ainda
 	/// funde as duas grandezas (ver o cabecalho de `GameServer.Tecnicas.G5.cs`). Ficha nova contra um espelho de
 	/// mesmo BP, medido com `Birth.Nascer`: a bola basica faz ~22 aqui e 0,99 no DM; o Ki Wave faz ~5,5 por batida
-	/// aqui e 2,74 la. Entao, com o mesmo 10: aqui a bola de um novato fere ate um alvo 2x mais forte (no DM, so
-	/// quem tem um decimo do BP dele), e o Ki Wave de um novato NAO fere um igual em nenhum dos dois (aqui precisa de
-	/// 1,85x o BP do alvo; la, de 3,7x). O dono decidiu portar o numero como esta (2026-10-08).
+	/// aqui e 2,74 la. Entao, com o mesmo 10: aqui a bola de um novato feria ate um alvo 2x mais forte (no DM, so
+	/// quem tem um decimo do BP dele), e o Ki Wave de um novato NAO feria um igual em nenhum dos dois (aqui precisava
+	/// de 1,85x o BP do alvo; la, de 3,7x). O dono decidiu portar o numero como estava (2026-10-08) -- e foi esse Ki
+	/// Wave entre iguais, o vilao de mesmo poder atirando sem efeito, que o fez trocar o corte pela escada (2026-10-12).
 	///
-	/// E A DEFLEXAO QUASE SOME, como no DM: `deflexao% x dano final = 12 x max(kdef/10,1) / (Ekidef x
+	/// E A DEFLEXAO QUASE SUMIA, como no DM: `deflexao% x dano final = 12 x max(kdef/10,1) / (Ekidef x
 	/// log_4(max(kdef,4)))`, sem depender de quem atira nem do BP (fora do piso 0,01 do `BpModulus`). Sorteando so
-	/// com dano >= 10, o teto e ~0,6% pra uma ficha nova (`Ekidef` 2). Ver <see cref="ChanceDeDeflexao"/>.
+	/// com dano >= 10, o teto era ~0,6% pra uma ficha nova (`Ekidef` 2). A CONTA CONTINUA VALENDO; o piso de dano,
+	/// nao: hoje so a parede fica fora do sorteio. Ver <see cref="ChanceDeDeflexao"/>.
 	/// ========================================================================================================================
 	///
 	/// BOTAO, E NAO CONSTANTE, como o <see cref="DanoGlobalDeKi"/>: e balanceamento.
@@ -110,17 +118,12 @@ public static class DanoDeKi
 	public static double CorteDoFraco = 10;
 
 	/// <summary>
-	/// DEFEITO INJETADO (bancada): o tiro fraco fere e e sorteado como qualquer outro -- o `Acertar` sem o ramo de
-	/// `objects.dm:355-357`. Era o jogo ate 2026-10-08: um tiro de 5 tirava 5 de um membro, e um forte "esquivava"
-	/// de bolas que no DM nem chegam ao sorteio.
-	/// </summary>
-	public static bool TiroFracoFereDeTeste;
-
-	/// <summary>
 	/// ESTE IMPACTO E FRACO DEMAIS PRA SER GOLPE? `dano final &lt; 10`, estrito -- dez cravado fere
-	/// (`objects.dm:355`). E a pergunta que o `Acertar` do servidor faz depois da paralisia e antes dos sorteios.
+	/// (`objects.dm:355`). Era a pergunta que o `Acertar` do servidor fazia depois da paralisia e antes dos sorteios;
+	/// desde 2026-10-12 ele so a faz no jogo de antes (`KiContraCorpo.RegraDeAntesDeTeste`) -- em jogo a pergunta e
+	/// `KiContraCorpo.EhParede`.
 	/// </summary>
-	public static bool FracoDemais(double danoFinal) => !TiroFracoFereDeTeste && danoFinal < CorteDoFraco;
+	public static bool FracoDemais(double danoFinal) => danoFinal < CorteDoFraco;
 
 	/// <summary>
 	/// O DANO CRU, antes de armadura, pericia de defesa, guarda, resistencia e gap de poder.
@@ -252,11 +255,17 @@ public static class DanoDeKi
 	/// outra metade e a cara (deflete/reflete/absorve). Quem sorteia e o servidor -- ver
 	/// `GameServer.Projeteis.cs`.
 	///
-	/// E ELA SO E SORTEADA ACIMA DO CORTE DOS FRACOS (<see cref="CorteDoFraco"/>, `objects.dm:355-357`): o "raio
-	/// fraco contra um defensor forte" do paragrafo acima, que na conta passa de 100%, nem chega ao sorteio -- ele
-	/// estoura sem ferir. A conta amarra as duas coisas (`chance% x dano final` e uma constante do defensor), entao
-	/// na pratica a deflexao so aparece pra quem tem MUITA pericia de defesa de ki, ou no piso do `BpModulus`
-	/// (um tiro pesado de alguem mais de quarenta vezes mais fraco).
+	/// QUEM CHEGA AO SORTEIO (dono, 2026-10-12 -- a escada por diferenca de poder, `KiContraCorpo`): quem NAO E
+	/// PAREDE pro tiro. A parede -- quatro vezes o poder dele: o "defensor forte" do paragrafo acima, no extremo --
+	/// nem e sorteada: o tiro estoura ou para nela sem ferir (`GameServer.EstourarSemFerir`). Abaixo disso a metade
+	/// barata e de qualquer um, e a cara so de quem tem o DOBRO do poder do tiro (`KiContraCorpo.PodeDefletir`).
+	///
+	/// ATE AQUELE DIA ela so era sorteada acima do corte dos fracos do DM (<see cref="CorteDoFraco"/>,
+	/// `objects.dm:355-357`): o raio fraco contra o defensor forte, que na conta passa de 100%, estourava sem ferir
+	/// antes do sorteio. A conta amarra as duas coisas (`chance% x dano final` e uma constante do defensor), entao,
+	/// com o piso de dano, a deflexao so aparecia pra quem tinha MUITA pericia de defesa de ki, ou no piso do
+	/// `BpModulus` (um tiro pesado de alguem mais de quarenta vezes mais fraco). A amarra continua; sem o piso, o
+	/// golpe pequeno chega ao sorteio com a chance grande que ela lhe da.
 	/// </summary>
 	public static double ChanceDeDeflexao(Fighter alvo, double bpDoTiro, double mods,
 										  double baseDano, bool bloqueando, bool fisico = false)

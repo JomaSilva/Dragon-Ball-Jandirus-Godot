@@ -45,9 +45,9 @@ namespace Jandirus.Server;
 /// "ensinar a IA a atirar". Foi o que aconteceu: hoje `TecnicasDeLonge` tem as tres que voam (raio,
 /// bola, teleguiado) e estas duas linhas passaram a receber trafego sem mudar de forma.
 ///
-/// Fica de fora, e de proposito: `C2S.Zanzoken` -- a IA nao pisca, e o respondedor de QTE do
-/// ZanzoClash continua sendo uma decisao do dono (ou a IA ganha o lado dela, ou `TentarEmbate`
-/// passa a exigir `Peer != null` nos dois lados).
+/// O `C2S.Zanzoken` FICOU DE FORA do `Comando` e entrou por outra porta (2026-10-12): a piscada da IA e um reflexo
+/// do servidor (`PiscarPelaIa`, `GameServer.PiscadaDaIa.cs`), que chama o MESMO `Zanzoken` do duplo clique -- o
+/// cerebro nao precisou aprender nada. E o embate de Zanzoken ja responde pela maquina (`ResponderPelaMaquina`).
 /// ==========================================================================
 /// </summary>
 public partial class GameServer

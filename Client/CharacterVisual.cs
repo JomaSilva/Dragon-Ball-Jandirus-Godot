@@ -2018,6 +2018,23 @@ public partial class CharacterVisual : Node2D
 	/// </summary>
 	public void Correr(bool correndo, Vector2 rumo) => _correndo = correndo;
 
+	/// <summary>
+	/// O RITMO DO PASSO ANDANDO (sem correr), em razao do normal -- quem escreve e o dono do corpo, com o
+	/// `MoveRules.RitmoDoPasso` da velocidade dele. Um corpo pesado da o passo devagar em vez de deslizar com a
+	/// perna parada (dono, 2026-10-12). So mexe na animacao de ANDAR: parado, socando e correndo nao leem isto.
+	/// </summary>
+	public float RitmoDoPasso { get; set; } = 1f;
+
+	/// <summary>O multiplicador do relogio da pose neste quadro: a corrida acelera o passo, o corpo lento o atrasa.</summary>
+	private double RitmoDaPernada() =>
+		!_moving || !(_state == "default" || _flickAcabou) ? 1 : _correndo ? RitmoDaCorrida : RitmoDoPasso;
+
+	/// <summary>Quanto o relogio da pose anda por segundo agora. So pra bancada (`--diagv020`).</summary>
+	public double RitmoDaPernadaDeTeste => RitmoDaPernada();
+
+	/// <summary>A pose e a de ANDAR? So pra bancada (`--diagv020`).</summary>
+	public bool AndandoDeTeste => _moving;
+
 	// O soco NAO volta ao normal por "animacao terminou": todo estado vindo do .dmi tem
 	// loop=true (o BYOND repetia o ciclo eternamente), entao esse evento nunca dispararia.
 	// Quem encerra a pose e o RELOGIO, dos dois lados.
@@ -3691,7 +3708,7 @@ public partial class CharacterVisual : Node2D
 		// de caminhada enquanto o corpo atravessa o dobro do chao, e o cerebro le como patinacao.
 		// So vale enquanto ANDANDO -- correndo parado (empurrando parede) nao existe, e acelerar a
 		// pose de respiracao daria um personagem ofegante de pe.
-		double ritmo = _ritmo * (_correndo && _moving && (_state == "default" || _flickAcabou) ? RitmoDaCorrida : 1);
+		double ritmo = _ritmo * RitmoDaPernada();
 
 		// ============================ O SOCO TOCA UMA VEZ: E `flick`, NAO ESTADO ============================
 		// No BYOND o golpe e `flick("Attack", src)` (`attack_proc.dm`): os quadros tocam UMA vez e o
@@ -3711,7 +3728,7 @@ public partial class CharacterVisual : Node2D
 			_ritmo = 1;
 			Aplicar(force: true);   // o corpo volta ao parado/andando, do primeiro quadro
 			ciclo = CompassoDe(_corpo).Ciclo;   // o `Aplicar` trocou a animacao: o sinal dela ja venceu o compasso
-			ritmo = _correndo && _moving ? RitmoDaCorrida : 1;
+			ritmo = RitmoDaPernada();
 		}
 		_relogio = ciclo > 0 ? (_relogio + delta * ritmo) % ciclo : 0;
 

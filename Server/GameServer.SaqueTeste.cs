@@ -18,7 +18,8 @@ namespace Jandirus.Server;
 ///   2. A PERGUNTA: `saquear` sem argumento devolve a lista de quem esta caido ao alcance.
 ///   3. O ITEM: um por clique, de uma mochila pra outra, anunciado a quem esta perto, com o respiro.
 ///   4. AS RECUSAS: de pe, longe, morto, ladrao caido, mochila cheia, item que ja saiu.
-///   5. O NPC: cai na mesma regra e nao tem o que levar (nenhum molde nasce com item).
+///   5. O NPC: cai na mesma regra e, pelado, nao tem o que levar (nenhum molde nasce com item). A ROUPA DO CORPO
+///      -- que passou a sair em 2026-10-12, armadura inclusive -- e medida na `--v020teste`, familia 15.
 ///
 /// O defeito injetado (`Saque.EquipadoTambemSaiDeTeste`) e a regra sem a ressalva do equipado.
 ///
@@ -152,7 +153,7 @@ public partial class GameServer
 			vitima.Pos = praca + new Vec2(ZoneCollision.TileSize * 8, 0);
 			lista = null;
 			Ouvir(() => Verbo(ladrao, Saque.Verbo, ""));
-			AfirmarSq("O NPC NOCAUTEADO cai na MESMA regra -- e a lista vem vazia: nenhum molde deste port carrega item",
+			AfirmarSq("O NPC NOCAUTEADO cai na MESMA regra -- e, sem roupa no corpo, a lista vem vazia: nenhum molde deste port carrega item",
 					  lista is { } l5 && l5.Caido == npc.Id && l5.Leva.Count == 0);
 		}
 		catch (Exception e)

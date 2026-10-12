@@ -89,13 +89,14 @@ public partial class RoboDasMaquinas : Node
 	{
 		CampoDeGravidade.AtravessaParedeDeTeste = false;
 		MenuDeInteracao.VoltarVaiPraRaizDeTeste = MenuDeInteracao.AbreSemPerguntarDeTeste = false;
+		Interacoes.MelhoriaFeitaFicaNoMenuDeTeste = false;
 		if (C is { } cli) cli.Falou -= AoOuvir;
 	}
 
 	private const int PAssentar = 0,
 					  // o ato do TANQUE
 					  TIrAoLado = 1, TPlantar = 2, TParafuso = 3, TSubir = 4, TDesligado = 5, TLigar = 6, TLigado = 7,
-					  TCurar = 8, TContraprova = 9, TVoltar = 10, TPagar = 11,
+					  TCurar = 8, TContraprova = 9, TVoltar = 10, TPagar = 11, TUnica = 12,
 					  // o ato da GRAVIDADE
 					  GPlantar = 20, GParafuso = 21, GSala = 22, GTeclado = 23, GEspera = 24, GCampo = 25, GSair = 26,
 					  GDefeito = 27;
@@ -128,6 +129,7 @@ public partial class RoboDasMaquinas : Node
 			case TCurar: Curar(mundo, srv, cli); break;
 			case TContraprova: Contraprova(mundo, srv, cli); break;
 			case TPagar: PagarAMelhoriaPeloMenu(srv, cli); break;
+			case TUnica: AMelhoriaUnicaSome(srv, cli); break;
 			case TVoltar: VoltarProCentro(mundo, srv, cli); break;
 
 			case GPlantar: PlantarAMaquina(mundo, srv, cli); break;
@@ -607,9 +609,113 @@ public partial class RoboDasMaquinas : Node
 					$"...e o chat diz o que foi pago e o que sobrou nos dois bolsos [{string.Join(" | ", _ouvido)}]");
 				Conferir(E is not { NaTela: true }, "...e o menu fechou, como em toda acao direta");
 				cli.Falou -= AoOuvir;
-				Ir(TVoltar);
+				Ir(TUnica);
 				return;
 			}
+		}
+	}
+
+	// ---------------------------------------------------------------------
+	// A MELHORIA DE UMA VEZ SO SOME DO MENU (dono, 2026-10-12)
+	// ---------------------------------------------------------------------
+	private const string AUnica = "Tratar ferimentos";
+
+	private static readonly string[] MelhoriasSemAUnica =
+		["< Voltar", "Recarregar a bateria", "Bateria maior", "Velocidade de cura", "Regeneração de nanites"];
+
+	/// <summary>A TECLA ESC DE VERDADE, pelo mesmo caminho da tecla E: e ela que fecha o menu aberto.</summary>
+	private void ApertarEsc()
+	{
+		var ev = new InputEventKey { PhysicalKeycode = Key.Escape, Keycode = Key.Escape, Pressed = true };
+		GetViewport().PushInput(ev);
+	}
+
+	/// <summary>
+	/// *"upgrades 1 time only da maquina de regeneraçao etc, ao comprar esse upgrade ou o objeto ja ter esse upgrade a
+	/// opçao de comprar ele deveria sumir do menu de upgrades"*. O dedo compra "Tratar ferimentos" pelo menu, e a lista
+	/// de melhorias DESTE tanque volta sem ela -- o que conta ao cliente e o byte da obra no pacote de construcoes.
+	/// </summary>
+	private void AMelhoriaUnicaSome(Jandirus.Server.GameServer srv, GameClient cli)
+	{
+		const double UmQuadroDeMenu = 0.25;
+		if (_sub > 0 && _t < UmQuadroDeMenu) return;
+
+		switch (_sub)
+		{
+			case 0:
+				Conferir(srv.EconomiaDeTeste(cli.LocalId, Regenerador.CustoDeFerimentos, 0),
+					$"(a cena) no bolso: os {Regenerador.CustoDeFerimentos:N0} zeni de \"{AUnica}\"");
+				ApertarE();
+				Sub(1);
+				return;
+
+			case 1:
+				if (!(E is { NaTela: true } && cli.Zeni == Regenerador.CustoDeFerimentos) && _t < 3) return;
+				Conferir(OMenuMostra(RaizDoTanque) && Apertar("Melhorar..."), $"a tecla E abre o menu do tanque, e apertei \"Melhorar...\": {NoMenu()}");
+				Sub(2);
+				return;
+
+			case 2:
+				Conferir(OMenuMostra(MelhoriasDoTanque), $"antes de comprar, \"{AUnica}\" ESTA na lista: {NoMenu()}");
+				Conferir(Apertar(AUnica), $"apertei \"{AUnica}\"");
+				Sub(3);
+				return;
+
+			case 3:
+			{
+				string naPagina = NoMenu();   // lido ANTES do aperto: a acao direta fecha o menu
+				Conferir(Apertar($"{AUnica}: pagar com zeni"), $"...e \"{AUnica}: pagar com zeni\" ({naPagina})");
+				Sub(4);
+				return;
+			}
+
+			case 4:
+			{
+				// A COMPRA CHEGA AO CLIENTE PELO PACOTE DE CONSTRUCOES (o byte da maquina): espera por ele, e nao por um prazo.
+				bool chegou = cli.Obras.Any(o => o.Id == _tanque && (o.Feitas & Interacoes.MelhoriaUnicaFeita) != 0);
+				if (!(chegou && cli.Zeni == 0) && _t < 4) return;
+				Conferir(chegou && cli.Zeni == 0,
+					$"comprada: o servidor cobrou os {Regenerador.CustoDeFerimentos:N0} zeni e contou ao cliente que ESTE tanque ja trata ferimentos (o byte da obra) "
+					+ $"-- zeni {cli.Zeni:N0}");
+				ApertarE();
+				Sub(5);
+				return;
+			}
+
+			case 5:
+				if (E is not { NaTela: true } && _t < 3) return;
+				Conferir(OMenuMostra(RaizDoTanque) && Apertar("Melhorar..."), $"abri o menu de novo, e \"Melhorar...\": {NoMenu()}");
+				Sub(6);
+				return;
+
+			case 6:
+				Conferir(OMenuMostra(MelhoriasSemAUnica),
+					$"**COMPRADA, A MELHORIA DE UMA VEZ SO SOME DO MENU**: \"{AUnica}\" nao esta mais na lista, e as outras quatro continuam: {NoMenu()}");
+				GuardarATela("dmaquinas-3c-melhoria-unica.png", "3c. depois de comprar \"Tratar ferimentos\", ela some da lista de melhorias");
+
+				// A CONTRAPROVA: com o defeito, a opcao fica la pra recusar depois do clique.
+				Interacoes.MelhoriaFeitaFicaNoMenuDeTeste = true;
+				Conferir(Apertar("< Voltar"), "(defeito injetado) voltei pra raiz");
+				Sub(7);
+				return;
+
+			case 7:
+				Conferir(Apertar("Melhorar..."), "(defeito injetado) \"Melhorar...\"");
+				Sub(8);
+				return;
+
+			case 8:
+				Conferir(OMenuMostra(MelhoriasDoTanque),
+					$"(defeito injetado: a melhoria feita fica no menu -- o de antes) \"{AUnica}\" VOLTA a lista, so pra recusar depois do clique -- a regua de cima reprova: {NoMenu()}");
+				Interacoes.MelhoriaFeitaFicaNoMenuDeTeste = false;
+				ApertarEsc();
+				Sub(9);
+				return;
+
+			default:
+				Conferir(E is not { NaTela: true }, "...e o Esc fechou o menu");
+				Ir(TVoltar);
+				return;
 		}
 	}
 
@@ -1187,6 +1293,7 @@ public partial class RoboDasMaquinas : Node
 
 		CampoDeGravidade.AtravessaParedeDeTeste = false;
 		MenuDeInteracao.VoltarVaiPraRaizDeTeste = MenuDeInteracao.AbreSemPerguntarDeTeste = false;
+		Interacoes.MelhoriaFeitaFicaNoMenuDeTeste = false;
 		if (GetTree() is { } t) t.Paused = false;
 		Mostrar(true);
 		World.Instancia?.PararDeTeste();

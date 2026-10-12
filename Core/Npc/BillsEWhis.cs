@@ -116,7 +116,8 @@ public static class BillsEWhis
 	/// O TRAJE -- o nome do arquivo da peca (`Assets/Sprites/Clothes/Beerus Inspired Suit (DU).png`). O Bills o
 	/// veste pelo molde, e todo jogador que GANHA o titulo de Deus da Destruicao recebe um na mochila
 	/// (`GameServer.ReconciliarOTrajeDoDeus`). Ele mora na lista `armaduras` do `visual.json`: vestivel, e fora da
-	/// grade de roupas da criacao de personagem.
+	/// grade de roupas da criacao de personagem -- e por morar la, na mochila ele e uma peca de ARMADURA
+	/// (`RoupaGuardada.PrefixoDeArmadura`), como toda folha daquela pasta.
 	/// </summary>
 	public const string Traje = "Beerus Inspired Suit (DU)";
 

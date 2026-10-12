@@ -155,7 +155,7 @@ public static class SubirComOVoo
 ///   * <see cref="SombraDeVoo"/> -- ela fica na origem DE PROPOSITO. O vao entre ela e o corpo E a
 ///     altura na tela; sombra que sobe junto vira uma segunda mancha grudada no pe e a altura deixa
 ///     de ser legivel. Ela recebe a altura por um canal proprio (`SombraDeVoo.Altura`).
-///   * <see cref="MarcaDeAlvo"/> -- decalque de PISO (achatado, `ZIndex` -3). Ela mora ao lado da
+///   * <see cref="MarcaDeAlvo"/> -- decalque de PISO (achatado, no plano da sombra). Ela mora ao lado da
 ///     sombra pelo mesmo motivo da sombra, e subir apagaria de quebra o `(0, 14)` que a poe aos pes.
 ///   * <see cref="RastroDeCorrida"/> -- ele nao desenha nada. As fotos que ele larga sao carimbadas
 ///     em `GlobalPosition` do DESENHO do corpo (que ja carrega a altitude) e ficam paradas no palco

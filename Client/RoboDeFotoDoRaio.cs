@@ -409,11 +409,19 @@ public partial class RoboDeFotoDoRaio : Node
 	// 6) CENA C: o corpo levado pelo feixe
 	// =====================================================================
 	/// <summary>
-	/// O DANO FINAL DE CADA TIRO QUE PRECISA SER GOLPE, em vida de membro: pouco acima do corte dos fracos
-	/// (`DanoDeKi.CorteDoFraco`, 10). Abaixo dele o tiro encosta sem ferir -- o raio planta na frente do corpo e
-	/// nao leva ninguem, a bola estoura sem relato de golpe (`GameServer.EstourarSemFerir`) --, e as cenas C e F
-	/// medem justamente o arrasto e o relato. As outras medem geometria e continuam atirando de cocegas.
-	/// Um golpe destes nao marca o sprite: a ferida so aparece com 15% do membro, que tem 100 de vida.
+	/// O DANO FINAL DOS TIROS DAS CENAS C E F, em vida de membro: 12, pouco acima do antigo corte por dano
+	/// (`DanoDeKi.CorteDoFraco`, 10). O numero nasceu com ele: de 2026-10-08 a 2026-10-12, abaixo de 10 o tiro
+	/// encostava sem ferir -- o raio plantava na frente do corpo e nao levava ninguem, a bola estourava sem relato
+	/// de golpe (`GameServer.EstourarSemFerir`) --, e as cenas C e F medem justamente o arrasto e o relato.
+	///
+	/// HOJE (dono, 2026-10-12 -- `KiContraCorpo`) QUEM DECIDE ISSO E A RAZAO DE PODER, E NAO O DANO: o raio leva quem
+	/// e mais fraco que ele, e o tiro so encosta sem ferir em quem e PAREDE pra ele (quatro vezes o poder de quem
+	/// atira). Estas cenas contam com um atirador mais forte que os corpos delas: a linha da bancada entra com
+	/// `--bpteste 3000000`, e os corpos tem 200.000. De cocegas o tiro tambem fere, pouco -- e o raio de cocegas leva
+	/// o mais fraco do mesmo jeito.
+	///
+	/// O 12 FICOU COMO O TAMANHO DO GOLPE: nao marca o sprite (a ferida so aparece com 15% do membro, que tem 100 de
+	/// vida). As outras cenas medem geometria e continuam atirando de cocegas.
 	/// </summary>
 	private const double DanoQueFere = 12;
 
@@ -423,8 +431,11 @@ public partial class RoboDeFotoDoRaio : Node
 
 		if (mundo.PosicaoLocal is not { } eu) { Nota("cena C: sem corpo local"); Fechar(); return; }
 
-		// SEIS TILES: alem dos 4 do arremesso (que ARREMESSA em vez de levar) e dentro dos 10 do
-		// arrasto. O rumo e o SECO -- o oposto do da agua --, pra que o que se fotografe aqui seja o
+		// SEIS TILES. O numero vem do jogo de antes: alem dos 4 em que o raio ARREMESSAVA em vez de levar, e
+		// dentro dos 10 em que largava o corpo. Hoje (2026-10-12, `KiContraCorpo`) o raio leva o mais fraco de
+		// qualquer distancia e ate o fim do alcance -- os 20 tiles desta cena --, e o corpo daqui (200.000) e
+		// mais fraco que quem atira com o `--bpteste` da linha da bancada; a distancia ficou so de enquadramento.
+		// O rumo e o SECO -- o oposto do da agua --, pra que o que se fotografe aqui seja o
 		// corpo andando e nao a beira do lago.
 		Vector2 rumo = -_rumoDaAgua;
 		var desloc = new Vec2(rumo.X * 6 * ZoneCollision.TileSize, rumo.Y * 6 * ZoneCollision.TileSize);

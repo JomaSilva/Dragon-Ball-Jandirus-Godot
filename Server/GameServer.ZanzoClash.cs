@@ -649,7 +649,8 @@ public sealed partial class GameServer
 
 	/// <summary>
 	/// "O EMBATE ACABOU", pra UM dos dois. O MESMO pacote dos dois embates -- ver
-	/// <see cref="Protocol.ClashSub.Acabou"/>; os dois zerados sao o empate da colisao de ki.
+	/// <see cref="Protocol.ClashSub.Acabou"/>; os dois zerados sao o empate da colisao de ki, e sem vencedor mas com
+	/// "perdedor" e a saida de lado da disputa de guarda (`SairDeLadoDaDisputa`).
 	/// </summary>
 	private static void Acabou(ServerPlayer p, int venc, int perd)
 	{
@@ -657,6 +658,7 @@ public sealed partial class GameServer
 		w.Put((byte)Protocol.ClashSub.Acabou);
 		w.Put(venc);
 		w.Put(perd);
+		EscutaDeEmbates?.Add((p.Id, w.CopyData()));   // o ouvido da bancada: ver o campo, em `GameServer.EmbateDeKi.cs`
 		p.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 

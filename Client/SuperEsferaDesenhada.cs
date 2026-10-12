@@ -103,7 +103,7 @@ public partial class SuperEsferaDesenhada : Node2D
 
 		// LUZ PROPRIA (ver o cabecalho): fora do ambiente do espaco. O material e do NODE -- vale pro anel do
 		// `_Draw` -- e os dois filhos o herdam (`UseParentMaterial`). E o gerado do motor, o mesmo do halo do
-		// planeta divino (`PlanetaDesenhado.Divino`): nao ha shader do projeto aqui.
+		// ar divino (`PoeiraDivina`): nao ha shader do projeto aqui.
 		if (!SobOAmbienteDeTeste)
 			Material = new CanvasItemMaterial { LightMode = CanvasItemMaterial.LightModeEnum.Unshaded };
 

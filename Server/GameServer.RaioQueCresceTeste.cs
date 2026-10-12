@@ -94,29 +94,8 @@ public partial class GameServer
 				  finalFlash.Nasceu && Math.Abs(finalFlash.Salto - 2) < 0.1 && Math.Abs(finalFlash.Fator - 1) < 1e-9,
 				  $"nasceu {finalFlash.Nasceu}, salto {finalFlash.Salto:0.###}x, tamanho {finalFlash.Fator:0.###}x");
 
-		// ---------------------------------------------------------------- (d) o trecho desviado por um parry engrossa com o pai
-		// DE CIMA (`Voo.AlturaQueAtravessa`), como a cena do fim do alcance da familia 6b: o trecho desviado sai de
-		// LADO, pra fora do corredor, e pra um lado SORTEADO -- no chao, uma rodada em duas ele morria no cenario
-		// antes da medida (a primeira versao desta cena reprovou assim, com os dois tamanhos certos).
-		RecomecarOMapaDaBancada();
-		var (pai, raiador, espelho, _, _) = RaioContraOParry("Engrossa", bpDoDefensor: 5_000, altura: Voo.AlturaQueAtravessa);
-		Projetil? ramo = pai == null ? null : ProjeteisDaZona(espelho.Zone.Hash).FirstOrDefault(q => q.AlimentadoPor == pai.Id);
-		AfirmarEk("PREPARO: o parry desviou o raio e o trecho desviado esta sendo alimentado",
-				  pai is { Vivo: true } && pai.DesviadoPor == espelho.Id && ramo is { Vivo: true });
-		if (pai != null && ramo != null)
-		{
-			raiador.Ficha.Tick(agoraMs: NowMs());   // a ficha anda antes do salto -- ver `OVerboCresceNoAr`
-			TiqueDoParry(espelho);
-			Kaioken(raiador, 50);
-			raiador.Ficha.Tick(agoraMs: NowMs());
-			for (int i = 0; i < 20; i++) TiqueDoParry(espelho);
-			AfirmarEk("O TRECHO DESVIADO E O MESMO RAIO: ele engrossa junto com o pai (uma fita so na tela)",
-					  ramo is { Vivo: true } && ramo.AlimentadoPor == pai.Id && pai.EscalaVisual > pai.EscalaDeNascenca * 1.5
-					  && Math.Abs(ramo.EscalaVisual - pai.EscalaVisual) < 1e-9,
-					  $"pai #{pai.Id} {pai.EscalaVisual:0.###} (vivo {pai.Vivo}), trecho {ramo.EscalaVisual:0.###} (vivo {ramo.Vivo}, "
-					  + $"esvaziando {ramo.Esvaziando}), alimentado por #{ramo.AlimentadoPor}");
-			Kaioken(raiador, 0);
-		}
+		// (a cena (d) media o trecho DESVIADO por um parry engrossando com o pai. Desde 2026-10-12 o deflect cancela o
+		// raio -- nao ha mais trecho desviado pra engrossar. Ver `GameServer.ParryDeKi.cs`.)
 		LimparEmbatesDaBancada();
 
 		// ---------------------------------------------------------------- (e) o jogo de antes

@@ -101,9 +101,19 @@ public partial class MenuDeInteracao : CanvasLayer
 		_naPorta = false;
 		_noSaque = true;
 		_nomeDoAlvo = leva.Count == 0 ? $"{nome}: nada que dê pra levar" : $"Revistar {nome}";
-		_acoesDoSaque = [.. leva.Select(p => new Interacoes.Acao(
-			$"Pegar {Jandirus.Core.Items.CatalogoDeItens.Get(p.Id)?.Nome ?? p.Id}{(p.Quantidade > 1 ? $"  (tem {p.Quantidade})" : "")}",
-			Jandirus.Core.Items.Saque.Verbo, p.Id, "leva UM pra sua mochila -- quem estiver por perto vê"))];
+		// A LINHA MARCADA E A ROUPA DO CORPO do caido (dono, 2026-10-12): o botao diz que ela sai DO CORPO, e o nome
+		// e o da peca que ela vira na mochila. O id volta inteiro, com a marca -- e por ela que o servidor sabe de
+		// onde tirar. Ver `Saque.NoCorpo`.
+		_acoesDoSaque = [.. leva.Select(p =>
+		{
+			bool doCorpo = Jandirus.Core.Items.Saque.EhDoCorpo(p.Id, out string peca);
+			string item = Jandirus.Core.Items.CatalogoDeItens.Get(peca)?.Nome ?? peca;
+			return new Interacoes.Acao(
+				doCorpo ? $"Tirar do corpo: {item}" : $"Pegar {item}{(p.Quantidade > 1 ? $"  (tem {p.Quantidade})" : "")}",
+				Jandirus.Core.Items.Saque.Verbo, p.Id,
+				doCorpo ? "despe a peça do caído e leva pra sua mochila -- quem estiver por perto vê"
+						: "leva UM pra sua mochila -- quem estiver por perto vê");
+		})];
 		Desenhar("");
 		_raiz.Visible = true;
 	}
@@ -594,6 +604,10 @@ public partial class MenuDeInteracao : CanvasLayer
 		// O CADAVER E A TERCEIRA TABELA, e ele nao tem submenu nem tipo: as acoes de um corpo no chao
 		// sao as mesmas para todo corpo (ver `Interacoes.DoCadaver`, que explica por que e uma so).
 		// A PORTA ERGUIDA E A QUARTA, e a tabela dela depende de quem olha (ver `Interacoes.DaPorta`).
+		// O QUE ESTA MAQUINA JA TEM de melhoria de uma vez so (o byte que veio com ela no pacote de construcoes): a
+		// opcao sai da lista em vez de ficar ali pra recusar depois do clique. Ver `Interacoes.BitQueEsconde`.
+		byte feitas = _noSaque || _naPorta || _noCadaver || _noVeiculo ? (byte)0 : MaisPerto()?.Feitas ?? 0;
+
 		foreach (Interacoes.Acao a in _noSaque ? _acoesDoSaque
 									 : _naPorta ? _acoesDaPorta
 									 : _noCadaver ? Interacoes.DoCadaver()
@@ -603,6 +617,7 @@ public partial class MenuDeInteracao : CanvasLayer
 			// O MESMO CRIVO DO MENU P (`RequisitosDosVerbos`): acao que este personagem nao tem como usar -- o
 			// laboratorio e de humano -- nao aparece. Acao fora da tabela nao tem requisito, e aparece.
 			if (!Jandirus.Core.Verbos.RequisitosDosVerbos.DoVerbo(a.Verbo, a.Arg).Atende(PosseDoCliente.Atual)) continue;
+			if (Interacoes.SaiDoMenu(tipo, a, feitas)) continue;
 
 			Interacoes.Acao acao = a;
 			var b = new Button { Text = a.Rotulo, TooltipText = a.Dica };

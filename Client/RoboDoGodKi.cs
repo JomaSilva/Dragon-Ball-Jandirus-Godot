@@ -16,21 +16,22 @@ namespace Jandirus.Client;
 ///       as duas pontas concordam sobre o lugar (o bit do servidor e a funcao pura do cliente);
 ///   F2  a VIAGEM de verdade: no chao o verb de admin recusa; o robo decola (a decolagem das bancadas), o
 ///       verb o larga em orbita -- onde o disco do mundo tem o node do HALO, e os outros discos nao --, o
-///       corpo voa contra o disco e POUSA; o aviso chega no chat, a linha "Atmosfera" nasce no cartao Ceu
-///       e o cartao "Ki divino" diz que o corpo ainda nao alcanca;
+///       corpo voa contra o disco e POUSA; o aviso chega no chat, OS PONTINHOS DO AR acendem (`PoeiraDivina`),
+///       a linha "Atmosfera" nasce no cartao Ceu e o cartao "Ki divino" diz que o corpo ainda nao alcanca;
 ///   F3  o BP base chega ao requisito: o cartao vira MEDIDOR, e ele anda na tela sozinho;
 ///   F4  o despertar: o retrato, o pacote do anel de luz (`S2C.GodKiDespertou`) e o efeito NASCIDO no mundo,
 ///       a maestria no cartao e o botao "Challenge God of Destruction" nascendo na aba Other;
-///   F5  de volta a um lugar comum: a linha da atmosfera some, o cartao do personagem fica;
+///   F5  de volta a um lugar comum: a linha da atmosfera some, os pontinhos apagam, o cartao do personagem fica;
 ///   F6  um mundo divino que ESTOURA leva o halo junto (planeta de palco, estourado pela porta do desenho).
 ///
-/// TRES DEFEITOS INJETADOS: o servidor achando que todo chao e divino (`GodKiEmQualquerChaoDeTeste`: as duas
-/// pontas passam a discordar), o retrato que so sai uma vez (`GodKiCongeladoDeTeste`: o medidor para na tela)
-/// e o halo que nao acompanha o estouro (`PlanetaDesenhado.HaloFicaNoEstouroDeTeste`).
+/// QUATRO DEFEITOS INJETADOS: o servidor achando que todo chao e divino (`GodKiEmQualquerChaoDeTeste`: as duas
+/// pontas passam a discordar), o retrato que so sai uma vez (`GodKiCongeladoDeTeste`: o medidor para na tela),
+/// o ar divino que nao desenha nada (`PoeiraDivina.ApagadaDeTeste`) e o halo que nao acompanha o estouro
+/// (`PlanetaDesenhado.HaloFicaNoEstouroDeTeste`).
 ///
 /// O QUE ELA NAO PROVA: o som, e a marca dourada desenhada na carta estelar -- dela so se confere a PERGUNTA
 /// (`MenuJogo.MundoDivino`), que e a mesma do anel. COR E FORMA nenhum numero daqui mede: com janela
-/// (`--janela` no lugar do `--headless`) ela FOTOGRAFA o halo do planeta em orbita, a aba World e o
+/// (`--janela` no lugar do `--headless`) ela FOTOGRAFA o halo do planeta em orbita, os pontinhos do ar, a aba World e o
 /// instante do despertar (`user://godki-NN-*.png`), pro olho de quem confere.
 ///
 ///     Godot --headless --path . --host --rede 8251 --diaggodki --raca Human --conta bancada_dgodki --nome Mortal
@@ -96,6 +97,7 @@ public partial class RoboDoGodKi : Node
 	{
 		// O MUNDO VOLTA: nenhum botao de defeito e nenhum ouvido sobrevivem ao roteiro.
 		if (S is { } srv) { srv.GodKiEmQualquerChaoDeTeste = false; srv.GodKiCongeladoDeTeste = false; }
+		PoeiraDivina.ApagadaDeTeste = false;
 		PlanetaDesenhado.HaloFicaNoEstouroDeTeste = false;
 		if (_escutando && C is { } cli)
 		{
@@ -199,6 +201,8 @@ public partial class RoboDoGodKi : Node
 		(int discosDaTerra, int errados) = HalosDesenhados();
 		Checa("em volta da Terra ha discos de planeta na tela, e o HALO esta so nos de atmosfera divina (aqui, quase sempre nenhum)",
 			  discosDaTerra > 0 && errados == 0, $"{discosDaTerra} disco(s), {errados} com o halo trocado");
+		Checa("no espaco o ar divino nao desenha nada: os pontinhos sao da SUPERFICIE de um mundo divino",
+			  Poeira() is { AcesaDeTeste: false }, Poeira() == null ? "(sem o node)" : "aceso");
 		_falas.Clear();
 		cli.SendVerbo("admin_mundo_divino");
 
@@ -250,6 +254,20 @@ public partial class RoboDoGodKi : Node
 		Checa("**O AVISO AO POUSAR** chega no chat: \"este mundo tem uma ATMOSFERA DIVINA\"", avisado, Ultimas());
 		Checa("...e, com metade do requisito, o jogador le que o corpo ainda nao alcanca", Disse("ainda não o alcança"), Ultimas());
 		Checa("as duas pontas concordam que ESTE lugar e divino", MenuJogo.LugarDivino(cli) && cli.KiDivino.NaAtmosfera);
+
+		// OS PONTINHOS DO AR (dono, 2026-10-12): poucos, na tela, e so aqui.
+		await Quadros(4);
+		PoeiraDivina? poeira = Poeira();
+		Checa($"**OS PONTINHOS DO AR DIVINO**: na superficie a poeira esta acesa, com {PoeiraDivina.Pontos} pontos (poucos) e todos dentro da tela",
+			  poeira is { AcesaDeTeste: true } && poeira.PontosDesenhadosDeTeste.Count == PoeiraDivina.Pontos && TodosNaTela(poeira),
+			  poeira == null ? "(sem o node)" : $"acesa={poeira.AcesaDeTeste}, {poeira.PontosDesenhadosDeTeste.Count} ponto(s)");
+		await FotoDoMundo(menu, "superficie-os-pontinhos-do-ar", zoom: 2);
+		PoeiraDivina.ApagadaDeTeste = true;
+		await Quadros(4);
+		Injeta("(o ar divino que nao desenha nada) a poeira apaga num mundo divino -- a checagem de cima reprova",
+			   Poeira() is not { AcesaDeTeste: true });
+		PoeiraDivina.ApagadaDeTeste = false;
+		await Quadros(4);
 
 		await Abrir(menu, "World", forcar: false);
 		bool linha = await Ate(() => menu.ValorDesenhado("World", "Atmosfera") == "divina", 4);
@@ -348,6 +366,8 @@ public partial class RoboDoGodKi : Node
 		Checa("fora do mundo divino a linha 'Atmosfera' SOME, e o cartao 'Ki divino' fica -- ele agora e do personagem",
 			  saiu && semLinha && menu.ValorDesenhado("World", "Ki divino") == "desperto" && !MenuJogo.LugarDivino(cli),
 			  $"zona {cli.Zone.Name} | atmosfera={menu.ValorDesenhado("World", "Atmosfera") ?? "(sem linha)"}");
+		await Quadros(4);
+		Checa("...e os pontinhos do ar APAGAM: num lugar comum a poeira nao desenha nada", Poeira() is { AcesaDeTeste: false });
 	}
 
 	/// <summary>
@@ -416,7 +436,7 @@ public partial class RoboDoGodKi : Node
 
 	/// <summary>
 	/// A tela inteira em `user://godki-NN-nome.png`. SO COM JANELA: as fotos sao pro olho de quem confere o que
-	/// robo nenhum mede -- o halo em volta do disco, o anel do despertar, a cara do cartao.
+	/// robo nenhum mede -- o halo em volta do disco, os pontinhos do ar, o anel do despertar, a cara do cartao.
 	/// </summary>
 	private async Tarefa Foto(string nome)
 	{
@@ -452,6 +472,19 @@ public partial class RoboDoGodKi : Node
 			if (d.HasNode(PlanetaDesenhado.NomeDoHalo) != PlanetaDesenhado.TemAtmosferaDivina(d.Premade, d.Seed)) trocados++;
 		}
 		return (discos, trocados);
+	}
+
+	/// <summary>O node dos pontinhos do ar divino, onde quer que a iluminacao o tenha pendurado.</summary>
+	private static PoeiraDivina? Poeira() =>
+		World.Instancia is { } w ? Todos(w).OfType<PoeiraDivina>().FirstOrDefault() : null;
+
+	/// <summary>Todos os pontos desenhados caem dentro do que a camera mostra (com a margem de um ponto)?</summary>
+	private static bool TodosNaTela(PoeiraDivina poeira)
+	{
+		if (poeira.GetViewport() is not { } tela) return false;
+		Transform2D paraOMundo = tela.CanvasTransform.AffineInverse();
+		var visto = new Rect2(paraOMundo * Vector2.Zero, paraOMundo.BasisXform(tela.GetVisibleRect().Size)).Grow(16);
+		return poeira.PontosDesenhadosDeTeste.TrueForAll(visto.HasPoint);
 	}
 
 	/// <summary>

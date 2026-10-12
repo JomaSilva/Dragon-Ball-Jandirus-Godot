@@ -291,6 +291,21 @@ public sealed partial class GameServer
 		d.ForcaDeQuemMeSegura = Agarrao.Forca(a.Ficha);
 		d.ContadorDaLuta = 0;
 		d.DebatendoSe = false;
+		d.EscapeNaFicha = 0;
+		d.PescocoApertado = false;
+
+		// ============================ PELO RABO? (dono, 2026-10-12) ============================
+		// Quem agarra POR TRAS um corpo com rabo pega o rabo: o poder dele cai (`Fighter.raboPresoMod`) e ele nao
+		// golpeia enquanto durar. Cada pegada ensina (`maestriaDoRabo`); a que completa a maestria ja nao derruba.
+		// Decidido AQUI, no instante da pegada: quem gira o corpo preso depois nao muda o que pegou.
+		// =======================================================================================
+		d.PresoPeloRabo = RaboPreso.Pega(d.TemRaboAgora(), a.Facing, d.Facing, d.Ficha);
+		if (d.PresoPeloRabo)
+		{
+			d.Ficha.maestriaDoRabo = RaboPreso.ComMaisUmaPegada(d.Ficha.maestriaDoRabo);
+			d.PresoPeloRabo = !RaboPreso.Imune(d.Ficha);
+			d.Ficha.raboPresoMod = d.PresoPeloRabo ? RaboPreso.FatorDePoder(d.Ficha.maestriaDoRabo) : 1;
+		}
 
 		// `M.totalTime = 0` (`Grabbing.dm:172`) -- o buffer de passo do alvo e zerado, pra ele nao
 		// gastar credito guardado no primeiro instante da prisao. Aqui o equivalente exato e o
@@ -306,8 +321,18 @@ public sealed partial class GameServer
 		// (`RecusarAgarrarQuemDisputa`). Ver `GameServer.Feixe.cs`.
 		AoLevarGolpeComRaioNaMao(d, a);
 
-		Avisar(a, $"você agarra {d.Name}! Ande pra arremessá-lo, ou aperte de novo pra carregá-lo.");
-		AvisarSePessoa(d, $"{a.Name} agarra você! Ande pra tentar se soltar.");
+		if (d.PresoPeloRabo)
+		{
+			Avisar(a, $"você agarra {d.Name} PELO RABO! A força dele some enquanto você segura. "
+					  + "Ande pra arremessá-lo, aperte de novo pra carregá-lo, ou soque pra estrangular.");
+			AvisarSePessoa(d, $"{a.Name} agarra o seu RABO! A força some do seu corpo -- "
+							  + "aperte as teclas de andar pra tentar se soltar.");
+		}
+		else
+		{
+			Avisar(a, $"você agarra {d.Name}! Ande pra arremessá-lo, aperte de novo pra carregá-lo, ou soque pra estrangular.");
+			AvisarSePessoa(d, $"{a.Name} agarra você! Aperte as teclas de andar pra tentar se soltar.");
+		}
 		MandarFicha(d);
 	}
 
@@ -373,6 +398,13 @@ public sealed partial class GameServer
 		d.ContadorDaLuta = 0;
 		d.DebatendoSe = false;
 		d.OrcamentoPx = 0;   // sai do aperto sem credito acumulado, como sai do arremesso
+
+		// ...E O QUE O APERTO ESCREVIA NA FICHA sai junto: o pescoco, o rabo e o andamento da luta. O poder que o
+		// rabo preso tirava volta no proximo tique de ficha (o `raboPresoMod` e lido pelo `PowerLevel`).
+		d.PescocoApertado = false;
+		d.PresoPeloRabo = false;
+		d.EscapeNaFicha = 0;
+		d.Ficha.raboPresoMod = 1;
 	}
 
 	/// <summary>
@@ -478,6 +510,14 @@ public sealed partial class GameServer
 				if (a.ModoDoAgarrao == ModoDeAgarrao.Carregando) forca *= Agarrao.ApertoDeQuemCarrega;
 				d.ForcaDeQuemMeSegura = forca;
 			}
+
+			// ---- O RABO NA MAO: a maestria anda com o tempo, e o poder volta com ela (dono, 2026-10-12)
+			if (tiqueDoDm && d.PresoPeloRabo) SegurarPeloRabo(a, d);
+
+			// ---- O CORPO SEM DONO SE DEBATE SOZINHO: no DM e o passo da IA que entra no ramo do `grabParalysis`
+			//      (`movement handler.dm:222`); aqui a IA nem tenta o passo (o `PodeMexerOCorpo` a recusa antes), e
+			//      sem esta linha um NPC agarrado ficava na mao de quem o pegou pra sempre.
+			if (tiqueDoDm && SeDebateSozinho(d)) d.DebatendoSe = true;
 
 			// ---- ANDOU SEGURANDO? ARREMESSA ---- `mob/OnStep()` (`Throw.dm:1-3`)
 			if (a.ModoDoAgarrao == ModoDeAgarrao.Segurando && a.Moving)
@@ -643,14 +683,13 @@ public sealed partial class GameServer
 	/// </summary>
 	private void LutaPraEscapar(ServerPlayer a, ServerPlayer d)
 	{
-		// ---- O ESTRANGULAMENTO acontece no tique de movimento da VITIMA (`movement handler.dm:193`),
-		//      e nao no de quem aperta: `prob(5)` por tique, com o `grabCounter` somando no dano.
-		if (a.Estrangulando && _rng.NextDouble() * 100 < Agarrao.ChanceDeAfogar)
-		{
-			Espalhar(d, Agarrao.DanoDeAfogamento(a.Ficha, d.Ficha, d.ContadorDaLuta));
-			AvisarSePessoa(d, "você não consegue respirar!");
-		}
+		// ---- O ESTRANGULAMENTO: dano POR SEGUNDO no pescoco, pela diferenca de forca (dono, 2026-10-12).
+		//      No DM era um `prob(5)` por tique de movimento da vitima (`movement handler.dm:193`): ver
+		//      `Agarrao.EstrangulamentoPorSegundo` pra a divergencia declarada.
+		if (a.Estrangulando) ApertarOPescoco(a, d);
 
+		// CAIDO NINGUEM SE DEBATE: o aperto pode ter acabado de nocautear, e um corpo no chao nao luta.
+		if (d.Ficha.KO || d.Ficha.dead) d.DebatendoSe = false;
 		if (!d.DebatendoSe) return;
 		d.DebatendoSe = false;
 
@@ -679,7 +718,77 @@ public sealed partial class GameServer
 
 		// FALHOU: o contador sobe mais (`:253-255`). E o que garante progresso mesmo sem sorte.
 		d.ContadorDaLuta += Agarrao.PassoDeQuemFalhou(d.Ficha);
-		AvisarSePessoa(d, $"você se debate contra {a.Name}!");
+
+		// O ANDAMENTO VAI PRA FICHA (o HUD escreve "AGARRADO ... (N%)"), e a frase do chat sai a cada QUARTO do
+		// caminho: ela saia a cada tique de luta, dez por segundo, e afogava o chat de quem estava preso.
+		byte antes = d.EscapeNaFicha;
+		d.EscapeNaFicha = Agarrao.ProgressoDaLuta(d.ContadorDaLuta, escape);
+		if (antes == 0 || d.EscapeNaFicha / 25 != antes / 25)
+			AvisarSePessoa(d, $"você se debate contra {a.Name}! ({d.EscapeNaFicha}% do caminho)");
+	}
+
+	/// <summary>
+	/// ESTE CORPO LUTA PRA SE SOLTAR SEM NINGUEM APERTAR TECLA? O que tem cerebro e nao tem dono na linha (o NPC),
+	/// de pe e acordado. O boneco de quem esta em transe e o cadaver nao tem cerebro: ficam onde foram postos.
+	/// </summary>
+	private static bool SeDebateSozinho(ServerPlayer d) =>
+		d.Peer == null && d.Cerebro != null && !d.Ficha.KO && !d.Ficha.dead && !NpcNaoSeDebateDeTeste;
+
+	/// <summary>DEFEITO INJETADO (bancada `--v020teste`): o NPC agarrado nao se debate -- o jogo de antes de 2026-10-12. Falso em jogo, sempre.</summary>
+	internal static bool NpcNaoSeDebateDeTeste;
+
+	/// <summary>
+	/// UM TIQUE DE APERTO NO PESCOCO. O dano e o de `Agarrao.EstrangulamentoPorSegundo`, fatiado no tique do DM,
+	/// e vai na CABECA pelo mesmo funil do dano direto (`FerirUmMembroG10`): letal ou nao pela escolha de quem
+	/// aperta, e com a cauda de sempre -- nocaute, morte, Zenkai, rancor.
+	/// </summary>
+	private void ApertarOPescoco(ServerPlayer a, ServerPlayer d)
+	{
+		if (Agarrao.EstrangulamentoPorSorteioDeTeste)
+		{
+			if (_rng.NextDouble() * 100 < Agarrao.ChanceDeAfogar)
+				Espalhar(d, Agarrao.DanoDeAfogamento(a.Ficha, d.Ficha, d.ContadorDaLuta));
+			return;
+		}
+
+		CombatState? c = d.Combate;
+		if (c == null || d.Ficha.dead || c.Intocavel) return;
+		BodyPart? pescoco = c.Corpo.Achar("Cabeca") is { Decepado: false } cabeca ? cabeca : c.Corpo.Sortear("cabeca", _rng);
+		if (pescoco == null) return;
+
+		c.EntrarEmCombate(comAlguem: true);
+		a.Combate?.EntrarEmCombate();
+		c.Ferir(pescoco, Agarrao.EstrangulamentoPorSegundo(a.Ficha, d.Ficha) * Empurrao.SegundosPorTique, a.Combate?.Letal == true);
+		c.SincronizarVida();
+		MarcarAgressao(d, a);
+		ConsequenciaDoDano(d, a, "estrangulado");
+	}
+
+	/// <summary>
+	/// UM TIQUE COM O RABO NA MAO DE ALGUEM: a maestria sobe, o poder volta na proporcao dela, e o corpo segue
+	/// sem golpear. Quando a maestria fecha -- ou o rabo e arrancado no meio do aperto -- vira um agarrao comum.
+	/// </summary>
+	private void SegurarPeloRabo(ServerPlayer a, ServerPlayer d)
+	{
+		d.Ficha.maestriaDoRabo = RaboPreso.ComMaisTempo(d.Ficha.maestriaDoRabo, Empurrao.SegundosPorTique);
+		bool imune = RaboPreso.Imune(d.Ficha);
+		if (imune || !d.TemRaboAgora())
+		{
+			d.PresoPeloRabo = false;
+			d.Ficha.raboPresoMod = 1;
+			if (imune)
+			{
+				AvisarSePessoa(d, "o seu corpo aprendeu: o rabo preso não tira mais a sua força.");
+				Avisar(a, $"{d.Name} não fraqueja mais com o rabo preso!");
+			}
+			MandarFicha(d);
+			return;
+		}
+
+		d.Ficha.raboPresoMod = RaboPreso.FatorDePoder(d.Ficha.maestriaDoRabo);
+		// SEM FORCA NAO SE GOLPEIA: o corpo fica atordoado enquanto o rabo esta na mao (dois tiques a frente, e
+		// este tique o renova). Ele continua podendo se DEBATER -- com o poder que sobrou.
+		if (d.Combate != null) d.Combate.Stun = Math.Max(d.Combate.Stun, 2 * Empurrao.SegundosPorTique);
 	}
 
 	// =====================================================================
@@ -708,6 +817,10 @@ public sealed partial class GameServer
 		a.Estrangulando = !a.Estrangulando;
 		if (QuemEuSeguro(a) is { } d)
 		{
+			// A COPIA DO LADO DE QUEM E APERTADO (pra a ficha dele: o HUD escreve "ESTRANGULADO") -- escrita aqui,
+			// no unico lugar que liga o aperto, e apagada pelo `LimparPreso` com o resto.
+			d.PescocoApertado = a.Estrangulando;
+			MandarFicha(d);
 			Avisar(a, a.Estrangulando
 				? $"você aperta o pescoço de {d.Name}."
 				: $"você afrouxa o aperto em {d.Name}.");

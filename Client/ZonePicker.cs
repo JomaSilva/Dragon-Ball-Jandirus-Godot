@@ -37,12 +37,19 @@ public partial class ZonePicker : Control
         CustomMinimumSize = new Vector2(Lado * Escala, Lado * Escala);
         Size = CustomMinimumSize;
         MouseFilter = MouseFilterEnum.Stop;   // este widget PRECISA receber clique
-        TooltipText = "onde mirar (clique, ou 0-5)";
+        TooltipText = "onde mirar (clique, ou 0-6; o gancho ao lado da cintura é o rabo)";
 
         _base = Camada(Quadro("screen_midnight", "zone_sel"));
         AddChild(_base);
         _destaque = Camada(null);
         AddChild(_destaque);
+
+        // O RABO NAO ESTA NA ARTE DO BYOND (o `zone_sel.dmi` so tem o boneco): ele e um gancho desenhado por cima,
+        // ao lado da cintura -- apagado quando nao e a mira, aceso quando e. Ver `DesenharORabo`.
+        _rabo = new Control { Name = "Rabo", MouseFilter = MouseFilterEnum.Ignore };
+        _rabo.SetAnchorsPreset(LayoutPreset.FullRect);
+        _rabo.Draw += DesenharORabo;
+        AddChild(_rabo);
 
         _quadros = FolhasPresas.Carregar($"{Arte}zone_sel.tres");
         if (_quadros == null) GD.PushWarning("[hud] zone_sel.tres ausente");
@@ -100,7 +107,7 @@ public partial class ZonePicker : Control
     /// O mapa de cliques do original, transcrito de `ZoneSelect.dm`. As faixas que sobram
     /// (fora do boneco) devolvem nulo: clicar no vazio nao muda a mira.
     /// </summary>
-    private static string? Regiao(int x, int y) => y switch
+    private static string? Regiao(int x, int y) => NoRabo(x, y) ? SelDoRabo : y switch
     {
         >= 1 and <= 9 => x switch          // pernas
         {
@@ -137,8 +144,42 @@ public partial class ZonePicker : Control
         "groin" => 3,
         "r_arm" or "l_arm" => 4,
         "r_leg" or "l_leg" => 5,
+        SelDoRabo => 6,
         _ => 2,
     };
+
+    // =====================================================================
+    // O RABO (dono, 2026-10-12: "adicione uma forma de conseguir mirar no rabo dos saiyajins")
+    // =====================================================================
+    /// <summary>O nome da selecao do rabo, no vocabulario do desenho. Nao e um quadro do `zone_sel.dmi`: ver <see cref="DesenharORabo"/>.</summary>
+    public const string SelDoRabo = "tail";
+
+    /// <summary>A zona do rabo, em px de arte e no eixo do BYOND (y de baixo pra cima): a faixa livre a direita da cintura.</summary>
+    private static bool NoRabo(int x, int y) => x is >= 25 and <= 32 && y is >= 7 and <= 17;
+
+    private Control _rabo = null!;
+
+    /// <summary>A selecao de agora, no vocabulario do desenho ("" = sem mira). So pra bancada (`--diagv020`).</summary>
+    public string SelecionadoDeTeste => _selecionado;
+
+    /// <summary>Clica no ponto (x, y) da arte, no eixo do BYOND -- como o `_GuiInput` faria. So pra bancada (`--diagv020`).</summary>
+    public void ClicarDeTeste(int x, int y) { if (Regiao(x, y) is { } z) Aplicar(z, avisarServidor: true); }
+
+    /// <summary>
+    /// O GANCHO DO RABO: uma curva de quatro tracos saindo da cintura. Cinza quando nao e a mira (pra se saber que
+    /// da pra clicar ali), na cor de destaque quando e.
+    /// </summary>
+    private void DesenharORabo()
+    {
+        bool mirado = _selecionado == SelDoRabo;
+        Color cor = mirado ? Tema.Destaque : new Color(0.72f, 0.72f, 0.78f, 0.55f);
+        Vector2[] curva =
+        [
+            new(24.5f, 21.5f), new(27.5f, 23f), new(30f, 21f), new(30.5f, 17.5f), new(28.5f, 15.5f),
+        ];
+        for (int i = 0; i < curva.Length; i++) curva[i] *= Escala;
+        _rabo.DrawPolyline(curva, cor, mirado ? 2.5f * Escala / 3f + 1.5f : 2f, antialiased: true);
+    }
 
     /// <summary>Do indice do protocolo de volta pro quadro que o desenho destaca.</summary>
     private static string DoJogo(byte zona) => zona switch
@@ -148,6 +189,7 @@ public partial class ZonePicker : Control
         3 => "groin",
         4 => "r_arm",
         5 => "r_leg",
+        6 => SelDoRabo,
         _ => "",
     };
 
@@ -170,6 +212,7 @@ public partial class ZonePicker : Control
     {
         _selecionado = "";
         _destaque.Texture = null;
+        _rabo?.QueueRedraw();
     }
 
     private void Aplicar(string sel, bool avisarServidor)
@@ -178,6 +221,7 @@ public partial class ZonePicker : Control
         _destaque.Texture = _quadros != null && _quadros.HasAnimation(sel) && _quadros.GetFrameCount(sel) > 0
             ? _quadros.GetFrameTexture(sel, 0)
             : null;
+        _rabo?.QueueRedraw();
 
         if (avisarServidor) GameClient.Instance?.SendAim(ZonaDeJogo(sel));
     }

@@ -107,6 +107,7 @@ public static class Teclas
 		new("aim_abdomen", "mirar o abdomen", GrupoDeTecla.Combate, [Key.Key3]),
 		new("aim_arms", "mirar os bracos", GrupoDeTecla.Combate, [Key.Key4]),
 		new("aim_legs", "mirar as pernas", GrupoDeTecla.Combate, [Key.Key5]),
+		new("aim_tail", "mirar o rabo", GrupoDeTecla.Combate, [Key.Key6]),
 
 			// ============================ O AGARRAO E O **Q**, E O DM NAO PODIA EMPRESTAR A TECLA DELE ============================
 			// No original o `Grab()` e o **T** (`skin.dmf:191-192`). Aqui o T ja e "treinar" desde o
@@ -540,7 +541,7 @@ public static class Teclas
 			($"{U("run")} + {U("attack")}", "investida + golpe pesado"),
 			(U("guard"), "guarda (na hora certa = contra-ataque)"),
 			(U("agarrar"), "agarrar · 2x = carregar · andar = arremessar"),
-			($"{U("aim_none")} - {U("aim_legs")}", "onde mirar (ou clique no boneco)"),
+			($"{U("aim_none")} - {U("aim_tail")}", "onde mirar (ou clique no boneco; a ultima e o rabo)"),
 			(U("lethal"), "alternar golpe letal"),
 			($"{U("train")} / {U("meditate")}", "treinar / meditar"),
 			(U("transformar"), "segurar = Ki  ·  dois toques = subir"),

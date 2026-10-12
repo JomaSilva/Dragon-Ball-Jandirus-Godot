@@ -101,18 +101,21 @@ public partial class RoboDeFotoDaPose : Node
 	///
 	/// Tem que ser MUITO maior que o `Protocol.AttackPoseMs` (240 ms), senao "a pose ficou" seria so
 	/// "o prazo do soco ainda nao venceu" -- e e justamente essa a confusao que o pedido do dono
-	/// desfaz ("so voltaria ao IDLE quando ele PARASSE de usar o beam"). Dez vezes o prazo.
+	/// desfaz ("so voltaria ao IDLE quando ele PARASSE de usar o beam"). Cinco vezes o prazo.
 	///
 	/// E tem que ser MENOR que a vida do feixe: quando o raio acaba de alcance o canal cai junto
 	/// (`TickDosCanaisDeKi`), e a bancada estaria medindo o alcance em vez da pose.
 	///
-	/// A VIDA DE UM KI WAVE SEGURADO NO VAZIO SAO TRES SEGUNDOS: a cabeca anda os 30 tiles do alcance em
-	/// 1,5 s (20 tiles por segundo, dono 2026-10-08) e o tronco leva outro 1,5 s pra ser engolido ate ela --
-	/// e so entao o canal cai. Eram QUATRO segundos aqui enquanto o raio andava 10 tiles por segundo (3 s de
-	/// voo, e o prazo de 5 s cortava o resto): a linha "o canal chegou vivo" ficou vermelha na primeira
-	/// rodada depois da mudanca, que era o aviso que este comentario ja deixava escrito.
+	/// A VIDA DE UM KI WAVE SEGURADO NO VAZIO E UM SEGUNDO E MEIO (2026-10-12): a cabeca anda os 30 tiles do alcance
+	/// em 1,5 s (20 tiles por segundo, dono 2026-10-08) e ESTOURA no fim dele -- *"todo ataque de ki como esfera
+	/// grande e beam explodem ao chegarem na distancia Maxima"* --, e o canal cai junto. Ate ali o tronco ainda
+	/// levava outro 1,5 s pra ser engolido (tres segundos de canal), e a cena segurava 2,5 s: a linha "o canal
+	/// chegou vivo" ficou vermelha na primeira regressao depois da regra do estouro, que era o aviso que este
+	/// comentario ja deixava escrito (a mesma historia de quando o raio dobrou de velocidade: eram 4 s).
+	///
+	/// 1,2 s sao cinco vezes o prazo da pose de soco -- menos que as dez de antes, e ainda longe dele.
 	/// </summary>
-	private const double SegurarOCanal = 2.5;
+	private const double SegurarOCanal = 1.2;
 
 	/// <summary>
 	/// QUANTO A CENA E ESPERA A POEIRA DO POUSO BAIXAR antes de fotografar o idle. Ver `E_Depois`.

@@ -79,7 +79,11 @@ public sealed partial class Fighter
         // no mesmo posto do `*Style`, e ficam de fora do `powerlevel()` de proposito.
         Rphysoff = (Math.Max(physoff, 0.1) * Math.Max(physoffMod, 0.1) + Math.Max(physoffBuff + Tphysoff, 0.1))
                    * physoffStyle * formaPhysoff * fadiga * Math.Max(0.01, phys_remove);
-        Rphysdef = (Math.Max(physdef, 0.1) * Math.Max(physdefMod, 0.1) + Math.Max(physdefBuff + Tphysdef, 0.1))
+        // A ARMADURA DE TECH soma aqui, junto do `physdefBuff` -- que e onde o `Equip()` do DM a poe
+        // (`usr.physdefBuff+=armorincrease`, `Armor.dm:29`). Ela nao e escrita NO `physdefBuff` porque o quanto ela
+        // rende cai com o poder (regra do dono): ver `Items.ArmaduraDeTech.Bonus`.
+        Rphysdef = (Math.Max(physdef, 0.1) * Math.Max(physdefMod, 0.1)
+                    + Math.Max(physdefBuff + Tphysdef + Items.ArmaduraDeTech.Bonus(this), 0.1))
                    * physdefStyle * formaPhysdef * fadiga;
         Rtechnique = (Math.Max(technique, 0.1) * Math.Max(techniqueMod, 0.1) + Math.Max(techniqueBuff + Ttechnique, 0.1))
                    * techniqueStyle * formaTecnica;

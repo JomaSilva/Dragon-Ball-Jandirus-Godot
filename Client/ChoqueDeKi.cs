@@ -224,6 +224,37 @@ public partial class ChoqueDeKi : Node2D
 	}
 
 	/// <summary>
+	/// A ESTRELA DE UM LADO SO (dono, 2026-10-12): *"ao usar a guarda pra bloquear um ataque de ki ... ja q so tem 1
+	/// ataque de ki colidindo a estrela da colisao vai ser so de um lado (o lado do ataque)"*. Ligada pelo `World`
+	/// quando a ponta prensada esta SOZINHA -- contra a guarda de alguem, ou contra quem e forte demais pra ela --,
+	/// e desligada quando ha duas se encontrando. O corte e do shader (`so_um_lado`): fica o lado de onde o raio vem.
+	/// </summary>
+	public bool SoUmLado
+	{
+		get => _soUmLado;
+		set
+		{
+			if (_soUmLado == value) return;
+			_soUmLado = value;
+			_mat?.SetShaderParameter("so_um_lado", UmLadoNoShader);
+			QueueRedraw();
+		}
+	}
+
+	private bool _soUmLado;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv020`): a estrela de uma ponta so sai INTEIRA -- a de antes de 2026-10-12, que
+	/// pintava as duas metades da cor do unico raio. Lido por quem escreve o uniform. Falso em jogo, sempre.
+	/// </summary>
+	public static bool UmLadoSaiInteiroDeTeste;
+
+	private float UmLadoNoShader => _soUmLado && !UmLadoSaiInteiroDeTeste ? 1f : 0f;
+
+	/// <summary>O que o shader recebeu no `so_um_lado` (0 ou 1), lido de volta do material. SO PRA BANCADA.</summary>
+	public float UmLadoNoShaderDeTeste => _mat?.GetShaderParameter("so_um_lado").AsSingle() ?? -1f;
+
+	/// <summary>
 	/// O `Baque` do servidor caiu aqui: a estrela incha num soco. E o que marca o compasso da disputa
 	/// pra quem esta de fora -- um por segundo, e um mais forte no empate.
 	/// </summary>
@@ -279,6 +310,7 @@ public partial class ChoqueDeKi : Node2D
 		_mat.SetShaderParameter("ponta", Ponta);
 		_mat.SetShaderParameter("cor_a", new Vector3(_corA.R, _corA.G, _corA.B));
 		_mat.SetShaderParameter("cor_b", new Vector3(_corB.R, _corB.G, _corB.B));
+		_mat.SetShaderParameter("so_um_lado", UmLadoNoShader);
 	}
 
 	private void AjustarFaiscas()

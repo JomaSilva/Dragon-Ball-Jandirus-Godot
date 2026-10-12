@@ -366,6 +366,9 @@ public sealed partial class GameServer
 			const string consciencia = "/datum/skill/mind/Basic_Ki_Awareness";
 			ServerPlayer mentalista = Gente("HumanoDaMente", "Human", skills: ["/datum/skill/mind/Ki_Unlocked", consciencia],
 											degraus: [(consciencia, 10)]);
+			// (o `Power_Control` vem do DEGRAU 5 de Basic Ki Control -- e ele que abre a barra de poder e o relaxar)
+			ServerPlayer controlado = Gente("HumanoComControleDeKi", "Human", skills: ["/datum/skill/mind/Ki_Unlocked", SkillKiControl],
+											degraus: [(SkillKiControl, 5)]);
 			ServerPlayer noEspaco = Gente("HumanoNoEspaco", "Human");
 			noEspaco.Zone = espaco;
 			noEspaco.Pos = naSuper;
@@ -393,7 +396,7 @@ public sealed partial class GameServer
 				("humano com Dragon Radar", comRadarNaMao), ("humano que sabe a Dança", dancarino),
 				("Majin com Buu Absorb", majin), ("Majin sem a skill", majinCru), ("bio-androide", bio),
 				("bio-androide de DNA Saiyajin", bioSaiyajin), ("androide de absorção", coletor), ("androide de energia infinita", infinito),
-				("humano com God Ki", divino), ("humano com o estudo da Mente", mentalista),
+				("humano com God Ki", divino), ("humano com o estudo da Mente", mentalista), ("humano com controle de ki", controlado),
 				("humano no espaço", noEspaco), ("Grande Ancião de Namek", anciao), ("Rei de Vegeta", rei),
 				("Presidente da Terra", presidente), ("Guardião da Terra", guardiao), ("Mestre Korin", korin),
 			];
@@ -473,6 +476,9 @@ public sealed partial class GameServer
 				  semOInstinto && comOInstinto, $"sem o Instinto escondidos: {semOInstinto}; com ele visiveis: {comOInstinto}");
 			Checa("O ESTUDO DA MENTE (focar, escrever) so pra quem tem o verb do degrau", VeChave(mentalista, "hab:Focus_Skill")
 				  && VeChave(mentalista, "hab:Write_Teachings") && !VeChave(novato, "hab:Focus_Skill") && !VeChave(novato, "hab:Write_Teachings"));
+			Checa("RELAXAR so pra quem sabe controlar o proprio poder (dono, 2026-10-12; no DM e de todo corpo): quem tem o degrau 5 de "
+				  + "Basic Ki Control ve o verb, e o novato e quem so estuda a Mente nao",
+				  VeChave(controlado, "hab:prontidao") && !VeChave(novato, "hab:prontidao") && !VeChave(mentalista, "hab:prontidao"));
 			Checa("AS SUPER ESFERAS so no espaco: quem esta la ve os tres botoes, quem esta em terra nao ve nenhum",
 				  new[] { "verbo:sdb_status", "verbo:sdb_reivindicar", "verbo:sdb_invocar" }
 					  .All(c => VeChave(noEspaco, c) && !VeChave(novato, c)));

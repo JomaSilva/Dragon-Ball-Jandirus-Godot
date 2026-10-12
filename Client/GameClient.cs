@@ -771,9 +771,13 @@ public partial class GameClient : Node
 	/// recurso (`tipo.Replace('_', ' ')`) -- o jogador lia "Ship Control" e "Time Chamber Door", em
 	/// ingles, no meio de um jogo em portugues.
 	/// </summary>
+	/// <param name="Feitas">
+	/// As melhorias de uma vez so que ESTA maquina ja tem (os bits de `Interacoes.MelhoriaUnicaFeita` /
+	/// `MelhoriaNoTeto`): o menu da tecla E tira da lista o que nao da mais pra comprar nela.
+	/// </param>
 	public readonly record struct ObraInfo(int Id, string Tipo, string Nome, Vector2 Pos, bool Aparafusada,
 										   int Lab, string Dono,
-										   string Arte, string Estado, Vector2 Pixel, bool Densa);
+										   string Arte, string Estado, Vector2 Pixel, bool Densa, byte Feitas = 0);
 
 	/// <summary>
 	/// Uma linha do catalogo de tecnologia, com o motivo do nao (0 = pode) e a ARTE.
@@ -1533,6 +1537,19 @@ public partial class GameClient : Node
 	private ulong _clashAte;
 
 	/// <summary>
+	/// O EIXO DO RAIO QUE EU SEGURO COM AS MAOS (unitario) -- so existe pro lado das maos de uma disputa de guarda, e
+	/// so enquanto ela esta de pe (`Protocol.ClashSub.SaidaDeLado`). E a licenca de SAIR DE LADO (dono, 2026-10-12):
+	/// com ele o `LocalPlayer` da o passo atravessado ao raio, pela mesma pergunta com que o servidor fecha a disputa
+	/// (`KiContraCorpo.PassoAtravessado`).
+	///
+	/// DERIVADO DO <see cref="EmClash"/>, pelo motivo dele: se o `Acabou` nao chegar, a licenca morre com o prazo.
+	/// </summary>
+	public Vec2? EixoDoRaioNasMaos => EmClash ? _eixoDoRaioNasMaos : null;
+
+	/// <summary>O que o servidor disse por ultimo. Apagado em todo `Comecou` e em todo `Acabou`.</summary>
+	private Vec2? _eixoDoRaioNasMaos;
+
+	/// <summary>
 	/// A FOLGA DO PRAZO. O `ms` do `Comecou` e o relogio do SERVIDOR; daqui ate la ha a ida do
 	/// pacote, o tique de 30 Hz que fecha o embate e a volta do `Acabou`. Dois segundos cobrem isso
 	/// com sobra sem deixar o silencio arrastar depois da cena.
@@ -1937,9 +1954,15 @@ public partial class GameClient : Node
 						// O PRAZO NASCE AQUI. Ver `EmClash` -- e ele que garante que o silencio dos
 						// atalhos acaba mesmo que o `Acabou` nunca chegue.
 						_clashAte = Time.GetTicksMsec() + (ulong)Math.Max(ms, 0) + FolgaDoEmbate;
+						// EMBATE NOVO, LICENCA NENHUMA: o eixo da saida de lado, se houver, chega no pacote seguinte.
+						_eixoDoRaioNasMaos = null;
 						ClashComecou?.Invoke(tipo, a, b, ms, meu, dele);
 						break;
 					}
+					// SEGURO UM RAIO COM AS MAOS, E POSSO SAIR DE LADO. Ver `EixoDoRaioNasMaos`.
+					case Protocol.ClashSub.SaidaDeLado:
+						_eixoDoRaioNasMaos = reader.GetVec();
+						break;
 					case Protocol.ClashSub.Tecla:
 					{
 						char c = (char)reader.GetByte();
@@ -1973,6 +1996,7 @@ public partial class GameClient : Node
 						// (`Terminar` e `Anunciar` mandam so aos dois), senao o fim do embate alheio na
 						// mesma zona destravaria o teclado de quem ainda esta preso no seu.
 						_clashAte = 0;
+						_eixoDoRaioNasMaos = null;
 						ClashAcabou?.Invoke(venc, perd);
 						break;
 					}
@@ -2071,7 +2095,7 @@ public partial class GameClient : Node
 						new Vector2(reader.GetFloat(), reader.GetFloat()),
 						reader.GetBool(), reader.GetByte(), reader.GetString(32),
 						reader.GetString(160), reader.GetString(48),
-						new Vector2(reader.GetFloat(), reader.GetFloat()), reader.GetBool()));
+						new Vector2(reader.GetFloat(), reader.GetFloat()), reader.GetBool(), reader.GetByte()));
 				Obras = l;
 				ObrasMudaram?.Invoke();
 				break;

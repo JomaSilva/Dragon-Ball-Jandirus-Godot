@@ -6,8 +6,9 @@ namespace Jandirus.Client;
 
 /// <summary>
 /// `--diagpoder`: POWER UP E POWER DOWN NA TELA -- a faixa "Poder em uso" da aba Ki (o estado, o deslizador,
-/// relaxar / ficar pronto, esconder / mostrar), a linha do painel de status em cada estado, a linha da aba Stats,
-/// e o botao "Controle de Poder" da aba Skills abrindo o controle. Pedido do dono de 2026-10-11.
+/// relaxar / ficar pronto), a linha do painel de status em cada estado, a linha da aba Stats, e o botao "Controle
+/// de Poder" da aba Skills abrindo o controle. Pedido do dono de 2026-10-11, com o retorno dele de 2026-10-12: o
+/// botao de esconder saiu, relaxar esconde (5 de poder, fora do scouter) e pede controle de ki.
 ///
 /// MODO HOST (o servidor e deste processo): o palco (`GameServer.PoderPalco.cs`) da o controle de ki a cobaia
 /// pelas chamadas do `admin_liberar_ki` e devolve a VERDADE do servidor. Tudo o que o robo CONFERE passa pelo fio
@@ -90,58 +91,74 @@ public partial class RoboDoPoder : Node
 		Checa("(montagem) a cobaia existe no servidor, de pe", srv.PalcoDoPoder_Cobaia(eu));
 		await Segundos(1.0);   // o primeiro retrato sai pelo tique de 5 Hz
 
-		// ---- 1) sem o controle de ki: so relaxar ----
+		// ---- 1) sem o controle de ki: nem barra, nem relaxar ----
 		menu.Abrir();
 		await Abrir(menu, "Ki");
 		MenuJogo.PoderNaAba p = menu.PoderNaAbaDeTeste();
 		Checa("a aba Ki tem a faixa \"Poder em uso\", e de pe ela le 100% -- \"usando todo o poder\"",
 			  p.Visivel && p.Grande == "100%" && p.Legenda == "usando todo o poder", $"{p.Grande} / {p.Legenda}");
-		Checa("SEM o controle de ki (o novato): nao ha deslizador nem botao de esconder -- so \"Relaxar (1%)\", que e de todo corpo",
-			  !p.TemDeslizador && !p.TemEsconder && p.Prontidao == "Relaxar (1%)", $"deslizador {p.TemDeslizador}, esconder {p.TemEsconder}, botao '{p.Prontidao}'");
+		Checa("**SEM o controle de ki (o novato) NAO HA deslizador NEM botao de relaxar**, e a nota diz o que falta (Basic Ki Control 5)",
+			  !p.TemDeslizador && !p.TemProntidao && p.Nota.Contains("Basic Ki Control 5", StringComparison.Ordinal),
+			  $"deslizador {p.TemDeslizador}, relaxar {p.TemProntidao}, nota '{p.Nota}'");
 		Checa("...e o painel de status nao escreve linha nenhuma com o poder inteiro e a vista", hud.TextoDoPoderEmUsoDeTeste == "", hud.TextoDoPoderEmUsoDeTeste);
-		Checa("o verb \"Relaxar / ficar pronto\" existe na aba Skills (da pra ligar uma tecla nele), e o \"Controle de Poder\" ainda nao",
-			  Verbos.Da(Verbos.Skills).Any(v => v.Nome == "Relaxar / ficar pronto") && Verbos.PorChave("hab:Power_Control") == null);
+		Checa("o verb \"Relaxar / ficar pronto\" tambem nao existe pra ele na aba Skills, nem o \"Controle de Poder\"",
+			  Verbos.PorChave("hab:prontidao") == null && Verbos.PorChave("hab:Power_Control") == null);
+		cli.SendHabilidade(MenuJogo.VerboDaProntidao);
+		await Segundos(0.8);
+		Checa("ESCONDER BOTAO NAO E PERMISSAO: o verbo mandado por fora do menu e recusado pelo servidor -- a cobaia continua pronta e a vista",
+			  srv.PalcoDoPoder_Verdade(eu) is { Relaxado: false, Escondido: false, Porcento: 100 } && cli.PoderEmUso.Padrao, $"{srv.PalcoDoPoder_Verdade(eu)}");
 		await Foto("aba-ki-sem-controle-de-ki");
 
-		// ---- 2) relaxar ----
+		// ---- 2) com o controle de ki: o deslizador e o botao de relaxar ----
+		Checa("(palco) a cobaia ganha o controle de ki (Ki Unlocked + Basic Ki Control 5) pelas chamadas do `admin_liberar_ki`", srv.PalcoDoPoder_DarAPorta(eu));
+		bool chegou = await Ate(() => cli.VerbosAtivos.Contains(MenuJogo.VerboDeBaixar) && menu.PoderNaAbaDeTeste() is { TemDeslizador: true, TemProntidao: true }, 15);
+		p = menu.PoderNaAbaDeTeste();
+		Checa("**COM A PORTA, O CONTROLE APARECE**: o verbo chega pelo fio e a faixa ganha o deslizador e o botao \"Relaxar\" -- e o de esconder nao existe mais",
+			  chegou && p.TemDeslizador && p.TemProntidao && p.Prontidao == "Relaxar"
+			  && Verbos.PorChave("hab:prontidao") != null && Verbos.PorChave("hab:Conceal_Power") == null,
+			  $"deslizador {p.TemDeslizador}, relaxar {p.TemProntidao} '{p.Prontidao}'");
+		await Foto("aba-ki-com-o-controle");
+
+		// ---- 3) relaxar ----
 		await Clicar(menu.BotaoDaProntidaoDeTeste);
 		bool relaxou = await Ate(() => cli.PoderEmUso.Relaxado, 5);
 		p = menu.PoderNaAbaDeTeste();
-		Checa("**RELAXAR**: o botao manda o verbo, o retrato volta pelo fio e a faixa le 1% -- \"relaxado (1% do poder)\", com o botao virando \"Ficar pronto (100%)\"",
-			  relaxou && p.Grande == "1%" && p.Legenda == "relaxado (1% do poder)" && p.Prontidao == "Ficar pronto (100%)", $"{p.Grande} / {p.Legenda} / '{p.Prontidao}'");
-		Checa("...o servidor concorda (1% do poder, relaxado)", srv.PalcoDoPoder_Verdade(eu) is { Porcento: 1, Relaxado: true }, $"{srv.PalcoDoPoder_Verdade(eu)}");
-		Checa("**O PAINEL DE STATUS DIZ**: \"RELAXADO · 1% DO PODER\"", hud.TextoDoPoderEmUsoDeTeste == "RELAXADO · 1% DO PODER", hud.TextoDoPoderEmUsoDeTeste);
+		Checa("**RELAXAR**: o botao manda o verbo, o retrato volta pelo fio e a faixa le \"mínimo\" -- \"relaxado (poder no mínimo, escondido)\", com o botao virando \"Ficar pronto (100%)\"",
+			  relaxou && p.Grande == "mínimo" && p.Legenda == "relaxado (poder no mínimo, escondido)" && p.Prontidao == "Ficar pronto (100%)", $"{p.Grande} / {p.Legenda} / '{p.Prontidao}'");
+		Checa("...o servidor concorda: relaxado, escondido, e com 5 de poder expresso (o dono: \"cair pra 5 de poder de luta sempre\")",
+			  srv.PalcoDoPoder_Verdade(eu) is { Relaxado: true, Escondido: true, Expresso: <= 5 }, $"{srv.PalcoDoPoder_Verdade(eu)}");
+		Checa("**O PAINEL DE STATUS DIZ**: \"RELAXADO · PODER ESCONDIDO\"", hud.TextoDoPoderEmUsoDeTeste == "RELAXADO · PODER ESCONDIDO", hud.TextoDoPoderEmUsoDeTeste);
 		Hud.PoderEmUsoMudoDeTeste = true;
 		try
 		{
 			hud.RedesenharOPoderEmUsoDeTeste();
-			Injeta("o painel mudo (o HUD de antes): a 1% do poder a tela nao diz nada, e a prova de cima reprova", hud.TextoDoPoderEmUsoDeTeste == "");
+			Injeta("o painel mudo (o HUD de antes): relaxado a tela nao diz nada, e a prova de cima reprova", hud.TextoDoPoderEmUsoDeTeste == "");
 		}
 		finally { Hud.PoderEmUsoMudoDeTeste = false; hud.RedesenharOPoderEmUsoDeTeste(); }
+		Checa("relaxado o botao \"Baixar\" fica apagado: a barra nao vale enquanto o corpo esta solto", p.BaixarApagado, $"apagado {p.BaixarApagado}");
 		await Foto("relaxado-aba-ki");
 		await Abrir(menu, "Stats");
-		Checa("a aba Stats escreve o estado no cartao Estado: \"Poder em uso: relaxado (1% do poder)\"",
-			  menu.ValorDesenhado("Stats", "Poder em uso") == "relaxado (1% do poder)", menu.ValorDesenhado("Stats", "Poder em uso") ?? "(sem linha)");
+		Checa("a aba Stats escreve o estado no cartao Estado: \"Poder em uso: relaxado (poder no mínimo, escondido)\"",
+			  menu.ValorDesenhado("Stats", "Poder em uso") == "relaxado (poder no mínimo, escondido)", menu.ValorDesenhado("Stats", "Poder em uso") ?? "(sem linha)");
+		await Ate(() => cli.Sheet.MultTotal == 0, 3);
+		await Abrir(menu, "Forms");
+		string mult = menu.ValorDesenhado("Forms", "Multiplicador total") ?? "(sem linha)";
+		Checa("RELAXADO E SEM SCOUTER, a aba Forms nao entrega o BP: o multiplicador total le \"×0\" (inteiro ele seria 5 / BP)",
+			  mult == "×0" && double.IsNaN(cli.Sheet.BP) && cli.Sheet.MultTotal == 0, $"'{mult}', MultTotal no fio {cli.Sheet.MultTotal}");
 		menu.Fechar();
 		await Foto("relaxado-o-painel-de-status");
 		await FotoDoPainel("relaxado");
 
-		// ---- 3) ficar pronto ----
+		// ---- 4) ficar pronto ----
 		menu.Abrir();
 		await Abrir(menu, "Ki");
 		await Clicar(menu.BotaoDaProntidaoDeTeste);
-		bool voltou = await Ate(() => cli.PoderEmUso.Porcento == 100 && !cli.PoderEmUso.Relaxado, 5);
-		Checa("**FICAR PRONTO**: o poder volta a 100% na hora, a faixa volta a \"usando todo o poder\" e a linha do painel some",
-			  voltou && menu.PoderNaAbaDeTeste().Grande == "100%" && hud.TextoDoPoderEmUsoDeTeste == "", $"{menu.PoderNaAbaDeTeste().Grande} / '{hud.TextoDoPoderEmUsoDeTeste}'");
-
-		// ---- 4) com o controle de ki: o deslizador e o botao de esconder ----
-		Checa("(palco) a cobaia ganha o controle de ki (Ki Unlocked + Basic Ki Control 5) pelas chamadas do `admin_liberar_ki`", srv.PalcoDoPoder_DarAPorta(eu));
-		bool chegou = await Ate(() => cli.VerbosAtivos.Contains(MenuJogo.VerboDeBaixar) && cli.VerbosAtivos.Contains(MenuJogo.VerboDeEsconder)
-									  && menu.PoderNaAbaDeTeste().TemDeslizador, 15);
+		bool voltou = await Ate(() => cli.PoderEmUso.Padrao, 5);
 		p = menu.PoderNaAbaDeTeste();
-		Checa("**COM A PORTA, O CONTROLE APARECE**: os dois verbos chegam pelo fio e a faixa ganha o deslizador e o botao \"Esconder o poder\"",
-			  chegou && p.TemDeslizador && p.TemEsconder && p.Esconder == "Esconder o poder" && !p.EsconderApagado, $"deslizador {p.TemDeslizador}, esconder {p.TemEsconder} '{p.Esconder}'");
-		await Foto("aba-ki-com-o-controle");
+		Checa("**FICAR PRONTO**: o poder volta a 100% na hora, a faixa volta a \"usando todo o poder\", o botao volta a \"Relaxar\" e a linha do painel some",
+			  voltou && p.Grande == "100%" && p.Legenda == "usando todo o poder" && p.Prontidao == "Relaxar" && hud.TextoDoPoderEmUsoDeTeste == "",
+			  $"{p.Grande} / {p.Legenda} / '{p.Prontidao}' / '{hud.TextoDoPoderEmUsoDeTeste}'");
+		Checa("...e o servidor concorda: a vista, com o poder de verdade", srv.PalcoDoPoder_Verdade(eu) is { Relaxado: false, Escondido: false, Expresso: > 5 }, $"{srv.PalcoDoPoder_Verdade(eu)}");
 
 		// ---- 5) baixar pra 40% ----
 		menu.ArrastarOPoderDeTeste(40);
@@ -154,7 +171,8 @@ public partial class RoboDoPoder : Node
 		p = menu.PoderNaAbaDeTeste();
 		Checa("**BAIXAR**: o botao manda `Power_Control:40`, e a faixa le 40% -- \"usando parte do poder (40%)\"",
 			  baixou && p.Grande == "40%" && p.Legenda == "usando parte do poder (40%)", $"{p.Grande} / {p.Legenda}");
-		Checa("...o servidor concorda (40%)", srv.PalcoDoPoder_Verdade(eu) is { Porcento: 40, Relaxado: false, Escondido: false }, $"{srv.PalcoDoPoder_Verdade(eu)}");
+		Checa("...o servidor concorda (40%) -- e A BARRA NAO ESCONDE: nem relaxado, nem escondido",
+			  srv.PalcoDoPoder_Verdade(eu) is { Porcento: 40, Relaxado: false, Escondido: false }, $"{srv.PalcoDoPoder_Verdade(eu)}");
 		Checa("**O PAINEL DE STATUS DIZ**: \"USANDO 40% DO PODER\"", hud.TextoDoPoderEmUsoDeTeste == "USANDO 40% DO PODER", hud.TextoDoPoderEmUsoDeTeste);
 		Checa("o mesmo 40 ja nao baixa nada: o botao apaga (isto so BAIXA)", p.BaixarApagado, $"apagado {p.BaixarApagado}");
 		menu.ArrastarOPoderDeTeste(80);
@@ -166,42 +184,16 @@ public partial class RoboDoPoder : Node
 		await Foto("contido-em-40-o-painel-de-status");
 		await FotoDoPainel("contido-em-40");
 
-		// ---- 6) esconder ----
+		// ---- 6) de 40%, ficar pronto ----
 		menu.Abrir();
 		await Abrir(menu, "Ki");
-		await Clicar(menu.BotaoDeEsconderDeTeste);
-		bool escondeu = await Ate(() => cli.PoderEmUso.Escondido && cli.PoderEmUso.PorVontade, 5);
-		p = menu.PoderNaAbaDeTeste();
-		Checa("**ESCONDER**: a faixa le \"usando parte do poder (40%) · escondendo o poder\", e o botao vira \"Mostrar o poder\"",
-			  escondeu && p.Legenda == "usando parte do poder (40%) · escondendo o poder" && p.Esconder == "Mostrar o poder", $"{p.Legenda} / '{p.Esconder}'");
-		Checa("...com o botao APAGADO enquanto os cinco segundos correm (a trava do original)", p.EsconderApagado && cli.PoderEmUso.SigiloEmEspera);
-		Checa("...o servidor concorda (escondido, por vontade propria)", srv.PalcoDoPoder_Verdade(eu) is { Escondido: true, PorVontade: true }, $"{srv.PalcoDoPoder_Verdade(eu)}");
-		Checa("**O PAINEL DE STATUS DIZ**: \"USANDO 40% DO PODER · ESCONDIDO\"", hud.TextoDoPoderEmUsoDeTeste == "USANDO 40% DO PODER · ESCONDIDO", hud.TextoDoPoderEmUsoDeTeste);
-		await Foto("escondido-aba-ki");
-		await Abrir(menu, "Forms");
-		string mult = menu.ValorDesenhado("Forms", "Multiplicador total") ?? "(sem linha)";
-		Checa("ESCONDIDO E SEM SCOUTER, a aba Forms nao entrega o BP: o multiplicador total le \"×0\" (inteiro ele seria 5 / BP)",
-			  mult == "×0" && double.IsNaN(cli.Sheet.BP) && cli.Sheet.MultTotal == 0, $"'{mult}', MultTotal no fio {cli.Sheet.MultTotal}");
-		await Abrir(menu, "Ki");
-		bool reacendeu = await Ate(() => !cli.PoderEmUso.SigiloEmEspera && !menu.PoderNaAbaDeTeste().EsconderApagado, 9);
-		Checa("passados os cinco segundos o botao REACENDE sozinho (o servidor manda o retrato de novo)", reacendeu);
-
-		// ---- 7) ficar pronto escondido, e mostrar ----
 		await Clicar(menu.BotaoDaProntidaoDeTeste);
-		bool cheioEscondido = await Ate(() => cli.PoderEmUso.Porcento == 100 && cli.PoderEmUso.Escondido, 5);
-		Checa("ficar pronto NAO mostra o poder: 100% em uso e ainda escondido -- o painel le \"PODER ESCONDIDO\"",
-			  cheioEscondido && hud.TextoDoPoderEmUsoDeTeste == "PODER ESCONDIDO", hud.TextoDoPoderEmUsoDeTeste);
-		menu.Fechar();
-		await Foto("escondido-o-painel-de-status");
-		await FotoDoPainel("escondido");
-		menu.Abrir();
-		await Abrir(menu, "Ki");
-		await Clicar(menu.BotaoDeEsconderDeTeste);
-		bool mostrou = await Ate(() => !cli.PoderEmUso.Escondido, 5);
-		Checa("**MOSTRAR**: o botao desliga o sigilo, e com 100% a vista a linha do painel some de novo",
-			  mostrou && hud.TextoDoPoderEmUsoDeTeste == "" && menu.PoderNaAbaDeTeste().Legenda == "usando todo o poder", $"'{hud.TextoDoPoderEmUsoDeTeste}' / {menu.PoderNaAbaDeTeste().Legenda}");
+		bool cheio = await Ate(() => cli.PoderEmUso.Padrao, 5);
+		Checa("de 40% o botao FICA PRONTO: 100% na hora, sem passar por relaxado, e a linha do painel some de novo",
+			  cheio && srv.PalcoDoPoder_Verdade(eu) is { Porcento: 100, Relaxado: false } && hud.TextoDoPoderEmUsoDeTeste == ""
+			  && menu.PoderNaAbaDeTeste().Legenda == "usando todo o poder", $"{srv.PalcoDoPoder_Verdade(eu)} / '{hud.TextoDoPoderEmUsoDeTeste}'");
 
-		// ---- 8) o botao "Controle de Poder" da aba Skills abre o controle ----
+		// ---- 7) o botao "Controle de Poder" da aba Skills abre o controle ----
 		await Abrir(menu, "Stats");
 		Verbo? controle = Verbos.PorChave("hab:Power_Control");
 		PoderEmUsoState antes = cli.PoderEmUso;
@@ -214,9 +206,9 @@ public partial class RoboDoPoder : Node
 		await Quadros(4);
 		Checa("...com o menu FECHADO ele o abre ja na aba Ki", MenuJogo.Aberto && menu.AbaDeTeste == "Ki" && menu.PoderNaAbaDeTeste().Visivel);
 
-		// ---- 9) a regra principal do BP ----
+		// ---- 8) a regra principal do BP ----
 		p = menu.PoderNaAbaDeTeste();
-		string tudo = string.Join(" | ", p.Grande, p.Legenda, p.Baixar, p.Prontidao, p.Esconder, p.Nota);
+		string tudo = string.Join(" | ", p.Grande, p.Legenda, p.Baixar, p.Prontidao, p.Nota);
 		Checa("SEM SCOUTER, nenhum texto da faixa fala em BP: so a porcentagem do PROPRIO poder em uso",
 			  !tudo.Contains("BP", StringComparison.Ordinal) && double.IsNaN(cli.Sheet.ExpressedBP), tudo);
 		await Abrir(menu, "Learning");

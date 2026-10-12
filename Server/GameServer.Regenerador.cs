@@ -260,6 +260,8 @@ public sealed partial class GameServer
 		Avisar(pl, $"você melhora o regenerador por {Recurso.PrecoEscrito(custo, moeda)}: {feito}. Restam {CarteiraEscrita(pl)}.");
 		// O TANQUE DO MAPA NAO VAI PRO DISCO (`Obra.DoMapa`): la tambem a cidade e refeita a cada boot.
 		if (obra.DoMapa) Avisar(pl, "(este tanque faz parte do lugar: a melhoria vale até o servidor reiniciar.)");
+		// O MENU DE QUEM ESTA NA ZONA FICA SABENDO: a melhoria de uma vez so sai da lista (`MelhoriasFeitas`).
+		MandarObras(obra.Zona);
 	}
 
 	// =====================================================================
@@ -392,7 +394,8 @@ public sealed partial class GameServer
 		int vistos = 0;
 		foreach (BodyPart p in c.Corpo.Partes)
 		{
-			bool candidato = p.Decepado ? !Caiu(c.Corpo, p.Dono) : p.Vida < p.VidaMax * Regenerador.FerimentoInteiro;
+			// (o membro PERDIDO DE VEZ fica de fora: o rabo que nao volta nao volta nem aqui -- `BodyPart.Perdido`)
+			bool candidato = p.Decepado ? !p.Perdido && !Caiu(c.Corpo, p.Dono) : p.Vida < p.VidaMax * Regenerador.FerimentoInteiro;
 			if (candidato && _rng.Next(++vistos) == 0) escolhido = p;
 		}
 		if (escolhido == null) return;

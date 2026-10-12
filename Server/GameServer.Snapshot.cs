@@ -202,9 +202,9 @@ public partial class GameServer
 				// SO QUEM O FEIXE LEVA DE VERDADE: o arrasto ou a moida encostada. Ver `ProjetilState.Arrasta`.
 				Arrasta = p.Arrastando,
 				// A DISPUTA SE VE NO FEIXE, e por todo mundo: ver `ProjetilState.Prensado`.
-				Prensado = p.EmEmbate,
-				// O TRECHO DESVIADO DIZ DE QUEM ELE E A CONTINUACAO, enquanto o desvio dura: ver `ProjetilState.Dobra`.
-				Dobra = p.AlimentadoPor,
+				// (2026-10-12) ...e o raio prensado contra a GUARDA de quem ele empurra, ou contra quem e PAREDE, tambem
+				// acende a estrela -- so do lado do ataque: ver `PrensadoContraUmCorpo`.
+				Prensado = p.EmEmbate || PrensadoContraUmCorpo(p),
 				// O RAIO QUE ENGROSSOU (ou murchou de volta) DIZ O TAMANHO DE AGORA: ver `ProjetilState.Escala`. Comparado
 				// NO BYTE, que e o que o cliente recebeu no `Nasceu` -- meio degrau de 1/20 nao e mudanca nenhuma.
 				Escala = Protocol.EscalaDeProjetilEmByte(p.EscalaVisual) != Protocol.EscalaDeProjetilEmByte(p.EscalaDeNascenca)

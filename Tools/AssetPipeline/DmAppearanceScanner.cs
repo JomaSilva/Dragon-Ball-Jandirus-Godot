@@ -112,14 +112,28 @@ public static class DmAppearanceScanner
     };
 
     /// <summary>
-    /// Roupa CURADA. A pasta de roupas do jogo tem 223 arquivos, mas ela e o deposito de tudo
-    /// que vira overlay de corpo -- inclusive olho, halo, rabo, potara e a pasta de armadura.
-    /// Varrer a pasta inteira poria "olhos" na lista de camisas. Aqui fica so o que veste.
+    /// O GUARDA-ROUPA: TUDO o que esta na raiz de `Clothes`, menos o que o dono tirou.
+    ///
+    /// ============================ REGRA DO DONO (2026-10-12) ============================
+    /// *"nem todas as roupas do ...\Assets\Sprites\Clothes estao aparecendo na criaçao de personagem, eu quero TODAS
+    /// (menos a do beerus e o tail) dessa pasta"*.
+    ///
+    /// ANTES esta lista era CURADA: ficavam de fora o halo, os brincos potara e tudo o que "nao sabe ficar de pe" (o
+    /// Mega Buster so tem quadro de ataque). Agora entra tudo. O que continua de fora, e por que:
+    ///   * `Tail` e a do Beerus -- o dono tirou pelo nome;
+    ///   * `Eyes_*` -- nao e roupa: e a camada de OLHOS que todo corpo ja tem (a secao `olhos` deste catalogo).
     ///
     /// SO A RAIZ: a pasta `Armor` e outra lista -- ver <see cref="Armaduras"/>.
+    /// ====================================================================================
     /// </summary>
     public static List<string> Roupas(string pastaSprites) =>
-        Varrer(Path.Combine(pastaSprites, "Clothes"));
+        [.. FolhasDoGuardaRoupa(pastaSprites).Select(f => Path.GetFileNameWithoutExtension(f))];
+
+    /// <summary>O que nao entra no guarda-roupa, por pedaco do nome. Ver <see cref="Roupas"/>.</summary>
+    private static readonly string[] ForaDoGuardaRoupa = ["Eyes_", "Tail", "Beerus"];
+
+    private static List<string> FolhasDoGuardaRoupa(string pastaSprites) =>
+        Varrer(Path.Combine(pastaSprites, "Clothes"), SearchOption.TopDirectoryOnly, ForaDoGuardaRoupa, soOQueFicaDePe: false);
 
     /// <summary>
     /// ============================ ARMADURA NAO E ROUPA DE GUARDA-ROUPA ============================
@@ -132,45 +146,70 @@ public static class DmAppearanceScanner
     ///   * e o NPC a veste por um caminho que nem passa pelo catalogo: `npc_wear_armor_icon`
     ///     (PlanetPopulation.dm:246-252) cria um `obj/items/clothes` PELADO e escreve o `.icon` na mao.
     ///
-    /// Juntar as duas listas poria armadura de batalha na grade da criacao de personagem -- uma
-    /// mudanca que o dono nao pediu. Separadas, o Saiyajin do mundo veste a dele
-    /// (<see cref="Jandirus.Core.Npc.RoupaDeNpc"/>) e a tela do jogador continua igual.
+    /// Juntar as duas listas poria armadura de batalha na grade da criacao de personagem. Separadas, o
+    /// Saiyajin do mundo veste a dele (<see cref="Jandirus.Core.Npc.RoupaDeNpc"/>) e a grade da criacao so
+    /// oferece roupa.
     ///
     /// E ELA PRECISA EXISTIR NO CATALOGO de qualquer jeito: `VisualCatalog.Sanear` recusa caminho
     /// que nao esta no catalogo, e o servidor chama `Sanear` na aparencia do NPC. Sem esta lista,
     /// vestir um Saiyajin de armadura seria DESCARTADO EM SILENCIO -- ele nasceria pelado do mesmo
     /// jeito, so que agora com codigo que jura o contrario.
+    ///
+    /// (2026-10-12) ELA E TAMBEM A LISTA DE ARTES DA ARMADURA DE TECH -- o dono: *"a sub pasta "Armor" sao sprites
+    /// da armadura q vc pode fabricar com tech, q ao fabricar uma armadura da tech, vai abrir uma tela pra vc escolher
+    /// qual sprite vc quer"*. Por isso ela agora desce nas SUBPASTAS (`Mandalorian`, `Phoenix Armour`, `Shields`):
+    /// tudo o que esta debaixo de `Armor` e arte de armadura. Ficam de fora as folhas `unused*`, que o proprio nome
+    /// diz o que sao. A do Beerus FICA na lista (e a roupa do NPC Bills) e sai na tela de escolha -- ver
+    /// `Core/Items/ArmaduraDeTech.cs`.
     /// ==========================================================================================
     /// </summary>
     public static List<string> Armaduras(string pastaSprites) =>
-        Varrer(Path.Combine(pastaSprites, "Clothes", "Armor"));
+        [.. FolhasDeArmadura(pastaSprites).Select(f => Path.GetFileNameWithoutExtension(f))];
 
-    /// <summary>O crivo comum das duas listas: so a raiz da pasta, e so o que sabe ficar de pe.</summary>
-    private static List<string> Varrer(string dir)
+    private static readonly string[] ForaDasArmaduras = ["unused"];
+
+    private static List<string> FolhasDeArmadura(string pastaSprites) =>
+        Varrer(Path.Combine(pastaSprites, "Clothes", "Armor"), SearchOption.AllDirectories, ForaDasArmaduras, soOQueFicaDePe: true);
+
+    /// <summary>
+    /// O crivo comum das duas listas. Devolve os ARQUIVOS, em ordem de nome -- quem quer o nome tira do caminho, e
+    /// quem escreve o catalogo escreve o caminho do proprio arquivo (ver <see cref="Escrever"/>).
+    /// </summary>
+    private static List<string> Varrer(string dir, SearchOption fundura, string[] fora, bool soOQueFicaDePe)
     {
         if (!Directory.Exists(dir)) return [];
 
-        var fora = new[] { "Eyes_", "Halo", "Tail", "Potara", "potara", "Aura", "Scouter" };
         var saida = new List<string>();
+        var nomes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (string f in Directory.GetFiles(dir, "*.tres"))
+        foreach (string f in Directory.GetFiles(dir, "*.tres", fundura).OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
         {
             string nome = Path.GetFileNameWithoutExtension(f);
             if (fora.Any(p => nome.Contains(p, StringComparison.OrdinalIgnoreCase))) continue;
 
-            // SE NAO SABE FICAR DE PE, NAO E ROUPA. A pasta guarda tambem coisas que so
-            // existem numa pose (o "Mega Buster" so tem quadros de ataque): vestir isso
-            // deixaria o personagem sem a peca 90% do tempo. Vale a pose PARADA ou a de
-            // CAMINHADA -- muitas pecas so trazem uma das duas.
-            string txt = File.ReadAllText(f);
-            if (!txt.Contains("\"default_south\"", StringComparison.Ordinal)
-                && !txt.Contains("\"walk_south\"", StringComparison.Ordinal)) continue;
+            // SE NAO SABE FICAR DE PE, NAO E ARMADURA. Vale a pose PARADA ou a de CAMINHADA -- muitas pecas so
+            // trazem uma das duas. (O guarda-roupa nao passa por aqui desde 2026-10-12: o dono quer a pasta inteira.)
+            if (soOQueFicaDePe)
+            {
+                string txt = File.ReadAllText(f);
+                if (!txt.Contains("\"default_south\"", StringComparison.Ordinal)
+                    && !txt.Contains("\"walk_south\"", StringComparison.Ordinal)) continue;
+            }
 
-            saida.Add(nome);
+            // UM NOME, UMA PECA: a mochila guarda a peca pelo NOME do arquivo (`RoupaGuardada`), e duas folhas com
+            // o mesmo nome em subpastas diferentes seriam a mesma peca pra ela. Vale a primeira, em ordem de caminho.
+            if (!nomes.Add(nome)) continue;
+
+            saida.Add(f);
         }
-        saida.Sort(StringComparer.OrdinalIgnoreCase);
+        saida.Sort((a, b) => StringComparer.OrdinalIgnoreCase.Compare(
+            Path.GetFileNameWithoutExtension(a), Path.GetFileNameWithoutExtension(b)));
         return saida;
     }
+
+    /// <summary>O caminho `res://` de um arquivo varrido, relativo a raiz do repo (a pasta de onde a ferramenta roda).</summary>
+    private static string Res(string arquivo) =>
+        "res://" + Path.GetRelativePath(Directory.GetCurrentDirectory(), arquivo).Replace('\\', '/');
 
     // =====================================================================
     // RESOLUCAO CONTRA O DISCO
@@ -238,16 +277,17 @@ public static class DmAppearanceScanner
         sb.Append("  },\n");
 
         // --- roupas ---
-        List<string> roupas = Roupas(pastaSprites);
-        var roupaPaths = roupas.Select(r => Resolver(idx, r)).Where(x => x != null).ToList();
+        // O CAMINHO SAI DO PROPRIO ARQUIVO VARRIDO, e nao do indice por nome: ha folha com o MESMO nome na raiz de
+        // `Clothes` e dentro de `Armor` (a GinsDynastyArmorRed), e o indice por nome entregava a da raiz pras duas
+        // listas -- a "armadura" do catalogo era a roupa do guarda-roupa.
+        List<string> roupaPaths = [.. FolhasDoGuardaRoupa(pastaSprites).Select(Res)];
         sb.Append("  \"roupas\": [\n");
         for (int i = 0; i < roupaPaths.Count; i++)
             sb.Append($"    {Txt(roupaPaths[i])}").Append(i < roupaPaths.Count - 1 ? ",\n" : "\n");
         sb.Append("  ],\n");
 
         // --- armaduras: a pasta `Clothes/Armor`, que e EQUIPAMENTO e nao guarda-roupa (ver `Armaduras`) ---
-        List<string> armaduras = Armaduras(pastaSprites);
-        var armaduraPaths = armaduras.Select(a => Resolver(idx, a)).Where(x => x != null).ToList();
+        List<string> armaduraPaths = [.. FolhasDeArmadura(pastaSprites).Select(Res)];
         sb.Append("  \"armaduras\": [\n");
         for (int i = 0; i < armaduraPaths.Count; i++)
             sb.Append($"    {Txt(armaduraPaths[i])}").Append(i < armaduraPaths.Count - 1 ? ",\n" : "\n");

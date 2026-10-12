@@ -1,4 +1,5 @@
 using Godot;
+using Jandirus.Core.Economia;
 using Jandirus.Core.Items;
 using Jandirus.Net;
 using LiteNetLib;
@@ -98,6 +99,9 @@ public sealed partial class GameServer
 			case "comer": ComerItem(pl, def); break;
 			case "equipar": Equipar(pl, def); break;
 			case "ajustar": AjustarPeso(pl, arg2); break;
+			case "melhorar": MelhorarOsPesos(pl, arg2); break;
+			// A ARMADURA CRUA GANHA A ARTE que o jogador escolheu na tela (dono, 2026-10-12). Ver `MoldarAArmadura`.
+			case ArmaduraDeTech.AcaoMoldar: MoldarAArmadura(pl, arg2); break;
 			case "tirar": TirarPeso(pl); break;
 			case "usar": UsarRemedio(pl, def); break;
 
@@ -167,11 +171,54 @@ public sealed partial class GameServer
 		if (pl.Visual.Roupa.Count >= Jandirus.Core.Appearance.Appearance.MaxRoupa)
 		{ Avisar(pl, $"você já veste {Jandirus.Core.Appearance.Appearance.MaxRoupa} peças: tire uma antes."); return; }
 
+		// UMA ARMADURA POR CORPO -- o "You already have armor equipped." do `Equip()` (`Armor.dm:21-23`).
+		bool armadura = _visual?.EhArmadura(peca.Caminho) == true;
+		if (armadura && pl.Visual.Roupa.Exists(p => _visual!.EhArmadura(p.Caminho)))
+		{ Avisar(pl, "você já veste uma armadura: tire a que está no corpo antes."); return; }
+
 		if (pl.Mochila.Tirar(def.Id) <= 0) return;
 		pl.Visual.Roupa.Add(peca);
 		ReapresentarAparencia(pl);
 		MandarMochila(pl);
-		Avisar(pl, $"você veste {def.Nome}.");
+		Avisar(pl, armadura ? $"você veste a armadura ({def.Nome}): ela protege o corpo contra golpes físicos."
+							: $"você veste {def.Nome}.");
+	}
+
+	/// <summary>
+	/// ESTE CORPO VESTE UMA ARMADURA QUE O PROTEGE? -- quem escreve o `Fighter.armadura`, a cada tique de ficha.
+	///
+	/// A ARMADURA E UMA PECA DE ROUPA cuja folha esta na lista de armaduras do catalogo (`VisualCatalog.EhArmadura`),
+	/// e quem ela protege e o corpo SEM cerebro de IA: no DM o NPC a veste como desenho, sem defesa nenhuma
+	/// (`npc_wear_armor_icon`, PlanetPopulation.dm:246-252), e a que se rouba dele protege o ladrao -- ver
+	/// `Core/Items/ArmaduraDeTech.cs`.
+	/// </summary>
+	private bool VesteArmadura(ServerPlayer pl) =>
+		_visual != null && pl.Cerebro == null && pl.Visual.Roupa.Exists(p => _visual.EhArmadura(p.Caminho));
+
+	/// <summary>Tira da roupa de uma ficha de CRIACAO toda peca de armadura, e diz quantas tirou. Ver `ReceberCriacao`.</summary>
+	private int TirarArmaduraDaCriacao(Jandirus.Core.Appearance.Appearance visual) =>
+		_visual is { } catalogo ? visual.Roupa.RemoveAll(p => catalogo.EhArmadura(p.Caminho)) : 0;
+
+	/// <summary>
+	/// A ARMADURA RECEM-FABRICADA GANHA A ARTE -- o `verb/Icon()` do original (`Armor.dm:67-125`), na hora de fabricar:
+	/// *"ao fabricar uma armadura da tech, vai abrir uma tela pra vc escolher qual sprite vc quer"*. O item cru
+	/// (`ArmaduraDeTech.Id`) sai da mochila e a PECA de armadura (`Armadura|nome|`) entra no lugar dele; dali em
+	/// diante ela se veste, se tira e se rouba como toda roupa.
+	///
+	/// A lista e a da pasta `Clothes/Armor` (o catalogo), e nao os estilos por nivel de tecnologia do DM: quem ja
+	/// fabricou a armadura escolhe qualquer uma. So a do Beerus fica de fora (`ArmaduraDeTech.Escolhivel`).
+	/// </summary>
+	private void MoldarAArmadura(ServerPlayer pl, string arte)
+	{
+		if (_visual == null || !ArmaduraDeTech.Escolhivel(arte) || _visual.PecaDeArmadura(arte) is not { } caminho)
+		{ Avisar(pl, "essa arte de armadura não existe."); return; }
+
+		// (o `ComandoDeItem` ja conferiu que o item cru esta na mochila; o slot que ele deixa e o que a peca ocupa)
+		if (pl.Mochila.Tirar(ArmaduraDeTech.Id) <= 0) return;
+		var peca = RoupaGuardada.De(new Jandirus.Core.Appearance.PecaDeRoupa(caminho, null));
+		pl.Mochila.Guardar(peca.Id);
+		MandarMochila(pl);
+		Avisar(pl, $"você molda a armadura: {peca.Nome}. Vista pela mochila (tecla I).");
 	}
 
 	/// <summary>
@@ -280,8 +327,34 @@ public sealed partial class GameServer
 	/// e justamente o que teria mostrado o 1x parado.
 	/// ======================================================================================================
 	/// </summary>
+	// ============================ (2026-10-12) O TETO E O QUE FOI PAGO ============================
+	// Ate aqui o teto era o do DM: duas vezes o limite do corpo, destravado de graca (`Tier 1.dm:145`). O dono: os
+	// pesos vem com 50 kg e o maximo se COMPRA -- `PesoDeTreino`. O limite do corpo continua onde estava (o
+	// `weight_ratio` do `WeightTick` e o `Esmagamento`): vestir mais do que ele aguenta esmaga, como sempre.
+	// ==============================================================================================
 	private static double TetoDePeso(Jandirus.Core.Stats.Fighter f) =>
-		Math.Max(f.weight_cap_hw, 1) * Jandirus.Core.Stats.GainKnobs.WeightItemCapMult;
+		PesoDeTreino.TetoDoCorpoDeGracaDeTeste
+			? Math.Max(f.weight_cap_hw, 1) * Jandirus.Core.Stats.GainKnobs.WeightItemCapMult
+			: PesoDeTreino.Maximo(f.pesoMaximoKg);
+
+	/// <summary>
+	/// A MELHORIA PAGA DOS PESOS: o maximo dobra, por zeni ou (o dobro) por recursos. Quem cobra e o contrato de toda
+	/// melhoria de maquina (`CobrarOuExplicar`). O que se VESTE nao muda sozinho: continua a mesma quantidade de kg, e
+	/// quem quiser mais ajusta a porcentagem.
+	/// </summary>
+	private void MelhorarOsPesos(ServerPlayer pl, string comQue)
+	{
+		Moeda moeda = string.Equals(comQue, Recurso.PalavraDeRecursos, StringComparison.OrdinalIgnoreCase) ? Moeda.Recursos : Moeda.Zeni;
+		double antes = PesoDeTreino.Maximo(pl.Ficha.pesoMaximoKg);
+		double custo = PesoDeTreino.PrecoEmZeni(pl.Ficha.pesoMaximoKg);
+		if (!CobrarOuExplicar(pl, custo, moeda, "melhorar os pesos")) return;
+
+		pl.Ficha.pesoMaximoKg = PesoDeTreino.ProximoMaximo(pl.Ficha.pesoMaximoKg);
+		pl.SigAtributos = "";
+		Avisar(pl, $"você melhora os pesos por {Recurso.PrecoEscrito(custo, moeda)}: o peso máximo vai de {antes:N0} kg pra "
+				   + $"{pl.Ficha.pesoMaximoKg:N0} kg. A próxima melhoria custa {Recurso.PrecoEscrito(PesoDeTreino.PrecoEmZeni(pl.Ficha.pesoMaximoKg), Moeda.Zeni)}. "
+				   + $"Ajuste quanto vestir pela mochila. Restam {CarteiraEscrita(pl)}.");
+	}
 
 	private void AjustarPeso(ServerPlayer pl, string valor)
 	{
@@ -323,9 +396,16 @@ public sealed partial class GameServer
 		// quanto rende. Sem o do meio o jogador nao teria como saber que 40% na Terra e 40% num chao
 		// 10x mais pesado sao coisas completamente diferentes -- o `weight_ratio` multiplica a
 		// gravidade local, e e essa multiplicacao que vira panqueca.
+		//
+		// (2026-10-12) O DO MEIO VIROU PALAVRA, e nao numero: agora que os pesos tem QUILOS escritos (50, 100, 200...),
+		// dizer "0,05% do que o seu corpo aguenta" entregaria o poder de quem le -- o limite do corpo e funcao direta
+		// do poder expresso (`WeightTick`), e a regra principal do dono e que sem scouter ninguem sabe o proprio poder.
 		double r = Jandirus.Core.Stats.Esmagamento.Razao(pl.Ficha);
-		Avisar(pl, $"você veste {pct:0}% do peso máximo: {r:0.##}x o que seu corpo aguenta nesta "
-				   + $"gravidade, e {pl.Ficha.weight:0.##}x de ganho no treino.");
+		string noCorpo = pl.Ficha.weight_ratio > 1 ? "mais do que o seu corpo aguenta nesta gravidade"
+					   : pl.Ficha.weight > 1 ? "pesa de verdade no seu corpo"
+					   : "leve demais pro seu corpo -- o treino só rende mais com pesos mais pesados (melhore o peso máximo)";
+		Avisar(pl, $"você veste {pct:0}% do peso máximo ({pl.Ficha.Weighted:N0} de {TetoDePeso(pl.Ficha):N0} kg): {noCorpo}, "
+				   + $"e {pl.Ficha.weight:0.##}x de ganho no treino.");
 
 		// E O AVISO DE QUE PASSOU DO PONTO. O peso esmaga pela MESMA regra da gravidade (a pior das
 		// duas razoes manda), entao vestir demais nao e "mais lento": e perder vida por segundo, e

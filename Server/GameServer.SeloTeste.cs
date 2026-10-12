@@ -36,7 +36,7 @@ namespace Jandirus.Server;
 ///  5. DEAD ZONE-- cobra 90,9% do Ki, arrasta quem esta a 12 tiles, e o selo dela NAO tem pote --
 ///     ou seja, nao ha o que quebrar.
 ///  6. DISCO    -- selo gravado e selo relido: logout nao e a chave mestra da prisao.
-///  7. SIGILO   -- `Conceal_Power` alterna e trava 5 s; `Power_Control` SO BAIXA.
+///  7. SIGILO   -- relaxar esconde o poder (o `Conceal_Power` do DM, desde 2026-10-12); `Power_Control` SO BAIXA.
 ///  8. CENSO    -- as tres skills de selo deixaram de ser "folha muda de nascenca": duas respondem
 ///     PRONTA e a terceira nomeia o sistema que falta. E a afirmacao que fecha o buraco original.
 ///  9. O PAINEL, LIDO DO PACOTE -- a pergunta do dono ("o painel do Eremita Tartaruga ainda anuncia o
@@ -406,34 +406,28 @@ public partial class GameServer
 		Vec2 chao = CorredorLivre(10);
 		ServerPlayer pl = ForjarSelador("Escondido", chao, bp: 100_000);
 
-		// ---- Conceal_Power ----
-		_sigiloPronto.Remove(pl.Id);
-		AfirmarSe("nasce mostrando o poder", !pl.Ficha.isconcealed);
+		// ---- esconder o poder: o `Conceal_Power` do DM, que desde 2026-10-12 e o RELAXAR (regra do dono) ----
+		AfirmarSe("nasce mostrando o poder", !pl.Ficha.relaxado && !pl.Ficha.isconcealed);
 
-		UsarHabilidade(pl, "Conceal_Power");
-		AfirmarSe("apertar ESCONDE", pl.Ficha.isconcealed);
+		UsarHabilidade(pl, "prontidao");
+		AfirmarSe("relaxar ESCONDE", pl.Ficha.relaxado);
 
-		UsarHabilidade(pl, "Conceal_Power");
-		AfirmarSe("apertar de novo NA HORA nao faz nada -- a trava de 5 s do `canconceal`",
-				  pl.Ficha.isconcealed);
-
-		_sigiloPronto[pl.Id] = 0;   // o relogio venceu
-		UsarHabilidade(pl, "Conceal_Power");
-		AfirmarSe("passados os 5 s, apertar MOSTRA de novo", !pl.Ficha.isconcealed);
-
-		// E O LADO DE QUEM LE, que ja existia e agora tem quem o acione: `isconcealed` trava o BP
-		// expresso em 5 (`Fighter.Power.cs:86`). Sem esta afirmacao o botao poderia ligar um campo
-		// que nao chega a lugar nenhum -- que e exatamente o estado em que o port estava.
-		_sigiloPronto[pl.Id] = 0;
-		UsarHabilidade(pl, "Conceal_Power");
+		// E O LADO DE QUEM LE, que ja existia: o poder escondido trava o BP expresso em 5
+		// (`Fighter.Power.cs`). Sem esta afirmacao o botao poderia ligar um campo que nao chega a
+		// lugar nenhum -- que e exatamente o estado em que o port estava.
 		pl.Ficha.Tick(agoraMs: NowMs());
 		AfirmarSe("escondido, o BP que o mundo LE cai pro piso do sigilo",
 				  pl.Ficha.expressedBP <= 5, $"{pl.Ficha.expressedBP:N0}");
 
-		_sigiloPronto[pl.Id] = 0;
+		UsarHabilidade(pl, "prontidao");
+		pl.Ficha.Tick(agoraMs: NowMs());
+		AfirmarSe("ficar pronto MOSTRA de novo, na hora -- a trava de 5 s do `canconceal` saiu com o botao de esconder",
+				  !pl.Ficha.relaxado && pl.Ficha.expressedBP > 5, $"{pl.Ficha.expressedBP:N0}");
+
 		UsarHabilidade(pl, "Conceal_Power");
 		pl.Ficha.Tick(agoraMs: NowMs());
-		AfirmarSe("...e volta ao normal ao desligar", pl.Ficha.expressedBP > 5);
+		AfirmarSe("o verbo antigo (`Conceal_Power`) nao e mais atendido: apertar nao esconde ninguem",
+				  !pl.Ficha.relaxado && !pl.Ficha.isconcealed && pl.Ficha.expressedBP > 5, $"{pl.Ficha.expressedBP:N0}");
 
 		// ---- Power_Control ----
 		AfirmarSe("nasce expressando 100% (`powerMod` 1)", Math.Abs(pl.Ficha.powerMod - 1) < 1e-9);
@@ -894,21 +888,19 @@ public partial class GameServer
 							  && (s.Verbos.Contains("Conceal_Power", StringComparer.OrdinalIgnoreCase)
 								  || s.Verbos.Contains("Power_Control", StringComparer.OrdinalIgnoreCase))));
 
-		// ---- CONCEAL POWER: o BP que o mundo LE vira 5 ----
-		_sigiloPronto.Remove(pl.Id);
+		// ---- ESCONDER O PODER (o `Conceal_Power` do degrau, que hoje e o RELAXAR): o BP que o mundo LE vira 5 ----
 		pl.Ficha.Tick(agoraMs: NowMs());
 		double lidoAntes = pl.Ficha.expressedBP;
 		AfirmarSe("o mundo LE o poder de verdade antes do sigilo", lidoAntes > 5, $"{lidoAntes:N0}");
 
-		UsarHabilidade(pl, "Conceal_Power");
+		UsarHabilidade(pl, "prontidao");
 		pl.Ficha.Tick(agoraMs: NowMs());
-		AfirmarSe("EFEITO: escondido, o BP que o mundo LE vira CINCO -- e nao o BP de verdade",
+		AfirmarSe("EFEITO: relaxado, o BP que o mundo LE vira CINCO -- e nao o BP de verdade",
 				  Math.Abs(pl.Ficha.expressedBP - 5) < 1e-9, $"{pl.Ficha.expressedBP:N0}");
 
-		_sigiloPronto[pl.Id] = 0;
-		UsarHabilidade(pl, "Conceal_Power");
+		UsarHabilidade(pl, "prontidao");
 		pl.Ficha.Tick(agoraMs: NowMs());
-		AfirmarSe("...e desligar devolve o numero de verdade",
+		AfirmarSe("...e ficar pronto devolve o numero de verdade",
 				  Math.Abs(pl.Ficha.expressedBP - lidoAntes) < 1, $"{pl.Ficha.expressedBP:N0}");
 
 		// ---- POWER CONTROL: o expresso vira a porcentagem pedida ----

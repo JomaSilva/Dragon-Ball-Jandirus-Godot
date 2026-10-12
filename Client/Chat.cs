@@ -33,6 +33,13 @@ public partial class Chat : CanvasLayer
 	/// </summary>
 	public static bool Digitando { get; private set; }
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv020`): o campo que perde o foco NAO fecha a linha -- o chat de antes de
+	/// 2026-10-12, em que um clique num botao de outro menu deixava o `Digitando` aceso sem campo nenhum com o
+	/// teclado. Falso em jogo, sempre.
+	/// </summary>
+	public static bool FocoPerdidoNaoFechaDeTeste;
+
 	private const int MaxLinhas = 300;
 
 	/// <summary>Uma fala guardada. Sao guardadas TODAS; o filtro decide o que se desenha.</summary>
@@ -191,6 +198,7 @@ public partial class Chat : CanvasLayer
 			PlaceholderText = "falar...",
 		};
 		_entrada.TextSubmitted += Enviar;
+		_entrada.FocusExited += AoPerderOCampo;
 		_rodape.AddChild(_entrada);
 
 		Opacidade(false);
@@ -275,19 +283,53 @@ public partial class Chat : CanvasLayer
 		Digitando = true;
 		_rodape.Visible = true;
 		Opacidade(true);
-		_entrada.Text = comeco;
+		// O RASCUNHO que um clique fora deixou pra tras (`AoPerderOCampo`) volta com o ENTER; a barra do comando
+		// comeca do zero, como sempre.
+		if (comeco.Length > 0 || _entrada.Text.Length == 0) _entrada.Text = comeco;
 		_entrada.GrabFocus();
-		_entrada.CaretColumn = comeco.Length;
+		_entrada.CaretColumn = _entrada.Text.Length;
 	}
 
-	private void Fechar()
+	/// <param name="guardarORascunho">A frase pela metade fica no campo escondido, pro proximo ENTER. So quem fecha por PERDER o foco pede isso.</param>
+	private void Fechar(bool guardarORascunho = false)
 	{
 		Digitando = false;
 		_rodape.Visible = false;
-		_entrada.Text = "";
+		if (!guardarORascunho) _entrada.Text = "";
 		_entrada.ReleaseFocus();
 		Opacidade(false);
 	}
+
+	/// <summary>
+	/// O CAMPO PERDEU O FOCO SEM ENTER NEM ESC: alguem clicou num botao de outra tela (o menu da tecla E, a
+	/// mochila) ou no mundo. A linha de digitacao FECHA -- o `Digitando` e "ha um campo de texto com o teclado",
+	/// e ele nao pode ficar aceso sem campo nenhum.
+	///
+	/// ============================ ERA O CORPO TRAVADO DO PLAYTEST DE 2026-10-12 ============================
+	/// O dono: *"caso vc abra um menu de interaçao como quebrar um minerio pra recurso, antes de vc clicar em
+	/// qualquer opçao vc apertar enter e abrir o chat e dps selecionar uma opçao, o personagem fica parado e
+	/// nenhum botao funciona, como se tivesse digitando no chat so resolvendo quando clica na caixa de texto do
+	/// chat e enviando uma mensagem"*. O clique no botao levava o foco do campo; o `Digitando` (ligado no
+	/// `Abrir`, desligado so no `Fechar`) continuava verdadeiro, e todo ponto de leitura de tecla do jogo
+	/// (`Foco.Digitando`) seguia mudo -- com as letras indo pra lugar nenhum.
+	///
+	/// A FRASE PELA METADE NAO SE PERDE: fica no campo escondido e volta no proximo ENTER (ver `Abrir`).
+	/// =======================================================================================================
+	/// </summary>
+	private void AoPerderOCampo()
+	{
+		if (!Digitando || FocoPerdidoNaoFechaDeTeste) return;
+		Fechar(guardarORascunho: true);
+	}
+
+	/// <summary>A linha de digitacao esta na tela? So pra bancada (`--diagv020`).</summary>
+	public bool LinhaAbertaDeTeste => _rodape.Visible;
+
+	/// <summary>O que esta escrito no campo (aberto ou guardado). So pra bancada (`--diagv020`).</summary>
+	public string RascunhoDeTeste => _entrada.Text;
+
+	/// <summary>Escreve no campo aberto, como um teclado faria. So pra bancada (`--diagv020`).</summary>
+	public void EscreverDeTeste(string texto) { if (Digitando) { _entrada.Text = texto; _entrada.CaretColumn = texto.Length; } }
 
 	private void Enviar(string texto)
 	{

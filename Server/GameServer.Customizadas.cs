@@ -125,11 +125,11 @@ public sealed partial class GameServer
 		while (pl.Customizadas.Exists(t => t.Id == id)) id++;
 
 		// A MESA ABRE POR PARTES (dono, 2026-10-12) -- ver `TecnicaCustomizada.VerboQueAbre`. O rascunho nasce no
-		// primeiro tipo ABERTO (o raio, se ja abriu: e o de sempre); sem nenhum, nao ha o que inventar ainda.
+		// primeiro tipo ABERTO (o raio, se ja abriu: e o de sempre); sem nenhum, nao ha o que inventar ainda -- e
+		// a recusa e a frase curta do dono, sem a lista do que abre o que (`TecnicaCustomizada.SemControleDeKi`).
 		if (TecnicaCustomizada.TipoDeNascenca(v => SabeTecnica(pl, v)) is not { } tipo)
 		{
-			Avisar(pl, "voce ainda nao sabe soltar ki: nao ha o que inventar. A mesa abre por partes -- "
-					   + string.Join(", ", TecnicaCustomizada.TiposDaMesa.Select(OQueAbreOTipo)) + ".");
+			Avisar(pl, TecnicaCustomizada.SemControleDeKi);
 			return;
 		}
 
@@ -138,10 +138,6 @@ public sealed partial class GameServer
 		Avisar(pl, "voce comeca a desenhar uma tecnica nova na cabeca.");
 		MandarCustomizadas(pl);
 	}
-
-	/// <summary>"a bola com Bola de Ki" -- o tipo e a generica que o abre, pras frases de recusa.</summary>
-	private static string OQueAbreOTipo(TipoDeProjetil t) =>
-		$"{NomeDoTipoNaFrase(t)} com {TecnicaCustomizada.NomeDaQueAbre(t)}";
 
 	private static string NomeDoTipoNaFrase(TipoDeProjetil t) => t switch
 	{

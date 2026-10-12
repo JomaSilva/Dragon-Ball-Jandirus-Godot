@@ -18,8 +18,11 @@ namespace Jandirus.Server;
 /// NADA E DECIDIDO NO CLIENTE: a lista que ele mostra e uma foto, e o clique num item que ja saiu so rende um
 /// aviso e a lista nova.
 ///
-/// O NPC CAI NA MESMA REGRA -- e nao tem o que levar: nenhum molde deste port nasce com item na mochila. Dar
+/// O NPC CAI NA MESMA REGRA -- e nao tem o que levar NA MOCHILA: nenhum molde deste port nasce com item nela. Dar
 /// inventario a NPC e um sistema de loot, e o pedido manda perguntar antes de criar um.
+///
+/// (2026-10-12) O QUE ELE TEM E A ROUPA DO CORPO, e ela passou a sair -- de NPC e de jogador, armadura inclusive.
+/// Ver `Saque.PecasQueDaPraLevar` (a regra) e o ramo `EhDoCorpo` do <see cref="Saquear"/> (a troca de mao).
 /// </summary>
 public sealed partial class GameServer
 {
@@ -67,13 +70,29 @@ public sealed partial class GameServer
 		return melhor;
 	}
 
-	/// <summary>O que da pra levar deste corpo agora: a mochila dele, menos o que esta em uso.</summary>
-	private static List<Pilha> OQueDaPraLevarDe(ServerPlayer alvo) =>
-		Saque.OQueDaPraLevar(alvo.Mochila,
-							 scouterLigado: (alvo.PoderesConcedidos & Protocol.Poder.Scouter) != 0,
-							 comPesos: alvo.Ficha.Weighted > 0);
+	/// <summary>
+	/// O que da pra levar deste corpo agora: a mochila dele, menos o que esta em uso -- e, depois dela, a ROUPA DO
+	/// CORPO (dono, 2026-10-12), uma linha marcada por peca.
+	///
+	/// A ROUPA SO ENTRA QUANDO O QUE O MUNDO VE E O GUARDA-ROUPA DELE: fundido ou disfarcado o corpo veste outra
+	/// coisa por cima (`PodeMexerNaRoupa`), e despir a peca de verdade por baixo seria levar o que ninguem ve. A
+	/// carcaca de bicho nao veste nada.
+	/// </summary>
+	private List<Pilha> OQueDaPraLevarDe(ServerPlayer alvo)
+	{
+		List<Pilha> leva = Saque.OQueDaPraLevar(alvo.Mochila,
+												scouterLigado: (alvo.PoderesConcedidos & Protocol.Poder.Scouter) != 0,
+												comPesos: alvo.Ficha.Weighted > 0);
+		if (!EhCarcaca(alvo) && PodeMexerNaRoupa(alvo, out _)) leva.AddRange(Saque.PecasQueDaPraLevar(alvo.Visual.Roupa));
+		return leva;
+	}
 
-	private static string NomeDoItemDeSaque(string id) => CatalogoDeItens.Get(id)?.Nome ?? id;
+	/// <summary>O nome de uma linha do saque -- a do corpo e a peca que ela vira na mochila.</summary>
+	private static string NomeDoItemDeSaque(string id)
+	{
+		Saque.EhDoCorpo(id, out string peca);
+		return CatalogoDeItens.Get(peca)?.Nome ?? peca;
+	}
 
 	private void Saquear(ServerPlayer pl, string item)
 	{
@@ -113,24 +132,42 @@ public sealed partial class GameServer
 			return;
 		}
 
+		// A PECA DO CORPO sai da APARENCIA do caido e nao da mochila dele -- ver `Saque.NoCorpo`. O que cai na
+		// mochila de quem leva e a peca guardada de sempre (`Roupa|...`, ou `Armadura|...` se a folha for de armadura).
+		bool doCorpo = Saque.EhDoCorpo(item, out string guardada);
+		int vestida = doCorpo ? alvo.Visual.Roupa.FindIndex(p => RoupaGuardada.De(p).Id == guardada) : -1;
+		if (doCorpo && vestida < 0)
+		{
+			Avisar(pl, "isso não está mais com ele.");
+			MandarSaque(pl, alvo, OQueDaPraLevarDe(alvo));
+			return;
+		}
+
 		// PRIMEIRO CABE, DEPOIS SAI: guardar antes de tirar e o que impede o item de sumir no ar quando a
 		// mochila do ladrao esta cheia.
-		if (pl.Mochila.Guardar(item, 1) > 0)
+		if (pl.Mochila.Guardar(guardada, 1) > 0)
 		{
 			Avisar(pl, $"sua mochila está cheia ({Inventario.Slots} espaços).");
 			return;
 		}
-		alvo.Mochila.Tirar(item, 1);
+		string nome = NomeDoItemDeSaque(item);
+		if (doCorpo)
+		{
+			alvo.Visual.Roupa.RemoveAt(vestida);
+			ReapresentarAparencia(alvo);   // o mundo ve o corpo sem a peca -- e a fileira "vestindo" do caido anda junto
+		}
+		else alvo.Mochila.Tirar(item, 1);
 		pl.ProximoSaqueMs = agora + (long)(Saque.SegundosEntreSaques * 1000);
 
 		MandarMochila(pl);
 		MandarMochila(alvo);
 
 		// TODO MUNDO A VISTA FICA SABENDO: `to_chat(view(usr), "[usr] steals [item] from [M]!")` (`:23`).
-		string nome = NomeDoItemDeSaque(item);
-		// (Da carcaca de um bicho nao se "rouba": tira-se a carne.)
-		Falar(pl, Protocol.Fala.Emote, EhCarcaca(alvo) ? $"tira {nome} do {NomeVisivel(alvo)}." : $"rouba {nome} de {NomeVisivel(alvo)}!");
-		GD.Print($"[server] {pl.Name} SAQUEOU {nome} de {alvo.Name}");
+		// (Da carcaca de um bicho nao se "rouba": tira-se a carne. E a roupa do corpo se TIRA -- todo mundo ve o caido ficar sem ela.)
+		Falar(pl, Protocol.Fala.Emote, EhCarcaca(alvo) ? $"tira {nome} do {NomeVisivel(alvo)}."
+									 : doCorpo ? $"tira {nome} do corpo de {NomeVisivel(alvo)} e leva!"
+									 : $"rouba {nome} de {NomeVisivel(alvo)}!");
+		GD.Print($"[server] {pl.Name} SAQUEOU {nome} de {alvo.Name}{(doCorpo ? " (do corpo)" : "")}");
 
 		// A CARCACA QUE ESVAZIOU SOME NA HORA, e sem lista nova: nao ha mais o que revistar ali.
 		if (EhCarcaca(alvo) && alvo.Mochila.Ocupados == 0) { DesfazerOCadaver(alvo); return; }

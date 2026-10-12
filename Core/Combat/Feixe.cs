@@ -71,58 +71,11 @@ public static class Feixe
 	public static bool AtravessaDeFrenteDeTeste;
 
 	/// <summary>
-	/// DEFEITO INJETADO: o trecho desviado de um raio nasce ALEM de quem o desviou, no rumo do desvio -- o
-	/// codigo de antes de 2026-10-08, e a foto do dono: um feixe novo saindo das costas do personagem.
-	/// </summary>
-	public static bool RamoNasceAlemDeTeste;
-
-	/// <summary>
-	/// DEFEITO INJETADO: o trecho desviado enxerga quem o desviou -- a cabeca dele o acerta e o corpo dele
-	/// corta o tronco. Com a dobra na FRENTE do corpo (ver <see cref="DobraDoDesvio"/>) essa cegueira deixou
-	/// de ser geometria e passou a ser regra.
-	/// </summary>
-	public static bool RamoPegaQuemDesviouDeTeste;
-
-	/// <summary>
-	/// DEFEITO INJETADO: o trecho desviado morre quando a ponta dele chega ao fim do alcance, com o desvio ainda
-	/// de pe -- a curva some no meio do parry e o raio fica batendo em quem desviou sem sair nada dali. Era o
-	/// jogo ate 2026-10-08 (com o raio a 20 tiles por segundo, a curva durava um segundo).
-	/// </summary>
-	public static bool RamoMorreDeAlcanceDeTeste;
-
-	/// <summary>
 	/// DEFEITO INJETADO (bancada): a cabeca que bate sem ferir (`Projetil.BatendoSemFerir`) nao recua na frente de
 	/// quem anda contra ela -- o corpo entra no raio e a cabeca fica desenhada em cima dele ate a batida seguinte,
 	/// e quem anda depressa passa por ela e corta o tronco, soltando um toco de feixe pelas costas.
 	/// </summary>
 	public static bool CabecaNaoRecuaDeTeste;
-
-	// =====================================================================
-	// A DOBRA DE UM RAIO DESVIADO (dono, 2026-10-08)
-	// =====================================================================
-	/// <summary>
-	/// ONDE UM RAIO DESVIADO PELO PARRY DOBRA: na cabeca plantada dele, que fica NA FRENTE de quem desviou
-	/// (<see cref="CabecaNaFrenteDe"/>). E dali que o trecho desviado sai -- a cauda dele mora neste ponto
-	/// enquanto o desvio durar.
-	///
-	/// ============================ O PEDIDO, E A FOTO ============================
-	/// *"o deflect ele deveria ao bater no jogador e o jogador dar o deflect o beam dar curva pro lado e
-	/// nao criar um novo beam atras do jogador como a imagem mostra"*. A versao anterior punha a cauda do
-	/// trecho desviado ALEM do corpo de quem desviou, no rumo do desvio: o raio batia nele pela frente e a
-	/// energia reaparecia nas costas, como um segundo disparo. Agora o raio DOBRA onde bate.
-	///
-	/// ============================ NUNCA MAIS PERTO QUE UM RAIO DE IMPACTO ============================
-	/// A cabeca plantada fica a `frente desenhada + meio corpo` do centro dele, e ha artes de frente ZERO
-	/// (a broca do Makkankosappo): a dobra cairia na beirada do corpo e o trecho desviado seria desenhado
-	/// por cima de quem desviou. O piso e o raio de impacto -- meio tile, a meia largura do sprite.
-	///
-	/// E NUNCA ATRAS DA MAO de quem atira (a queima-roupa), pela mesma razao da cabeca plantada.
-	/// </summary>
-	public static Vec2 DobraDoDesvio(Projetil pai)
-	{
-		float recuo = MathF.Max(0f, Projetil.RaioDeImpacto - AlcanceDaCabeca(pai));
-		return NaoAtrasDaCauda(pai.Pos - pai.Rumo * recuo, pai);
-	}
 
 	// =====================================================================
 	// A CABECA NA FRENTE

@@ -243,9 +243,11 @@ public partial class GameServer
 		b.Altitude = c.AlturaDeB;
 		double vidaDeB = b.Combate!.Corpo.Vida();
 
-		// OS DOIS RAIOS SAEM COM A BASE DE UM GOLPE (2026-10-08): o Ki Wave de producao entre dois iguais cai no corte
-		// dos fracos (`DanoDeKi.CorteDoFraco`) e nao e golpe -- e tres cenas daqui medem justamente o corpo ACERTADO
+		// OS DOIS RAIOS SAEM COM A BASE DE UM GOLPE (2026-10-08): o Ki Wave de producao entre dois iguais caia no corte
+		// dos fracos (`DanoDeKi.CorteDoFraco`) e nao era golpe -- e tres cenas daqui medem justamente o corpo ACERTADO
 		// (o Final Flash de lado, a queima-roupa, o feixe que vence e chega em B). A base sobe igual pros dois lados.
+		// (O corte por dano saiu em 2026-10-12, e hoje esse Ki Wave ja feriria um igual. A base de 12 ficou: ver
+		// `BaseQueFereUmIgual`.)
 		ReceitaDeProjetil ra = QueFereUmIgual(SemDeflexao(), a);
 		ra.EscalaVisual = c.EscalaA;
 		ReceitaDeProjetil rb = QueFereUmIgual(SemDeflexao(), b);

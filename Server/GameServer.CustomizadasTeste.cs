@@ -939,23 +939,26 @@ public sealed partial class GameServer
 		// no jogo -- o que a linha de baixo estava medindo era o SORTEIO DE DEFLEXAO DE PRODUCAO.
 		//
 		// ---- ONDE MORA O DADO ----
-		// `GameServer.Projeteis.cs:1190-1240`, dentro do `Acertar`: a chance sai de
-		// `DanoDeKi.ChanceDeDeflexao` (`Core/Combat/DanoDeKi.cs:170`), que e
+		// No `Acertar` de `GameServer.Projeteis.cs` (o passo 3 dele): a chance sai de
+		// `DanoDeKi.ChanceDeDeflexao` (`Core/Combat/DanoDeKi.cs`), que e
 		//
 		//     (Ekidef * max(expressedBP,1) * max(Ekiskill,Etechnique) * max(kidefenseskill/10,1))
 		//     / (BP_do_tiro * mods * basedamage)                            (`objects.dm:333`)
 		//
 		// em PORCENTO, sorteada DUAS vezes por impacto: `prob(chance/2)` e a deflexao barata (o corpo
-		// sai da linha: a bola acaba ali sem dano, `Apagou`) e `prob(chance)` e a cara, que MATA o tiro com
-		// `FimDeProjetil.Defletido`. Ela dispara em todo impacto acima do corte dos fracos contra quem NAO esta nocauteado nem
+		// sai da linha: a bola acaba ali sem dano, `Apagou`) e `prob(chance)` e a cara, que em 2026-09-02 MATAVA o
+		// tiro com `FimDeProjetil.Defletido`. Ela dispara em todo impacto contra quem NAO esta nocauteado nem
 		// atordoado e tem 5 de Ki -- ou seja, contra a vitima desta prova, que e um corpo inteiro de pe.
+		// (A ESCADA DE 2026-10-12, `KiContraCorpo`: quem e parede pro tiro nem e sorteado, e a deflexao cara pede o
+		// dobro do poder dele -- a vitima daqui, com um decimo do poder do atirador, hoje so pode sair de raspao. De
+		// 2026-10-08 ate esse dia o sorteio so acontecia acima do corte dos fracos.)
 		// MEDIDO com os corpos exatos daqui (atirador 5.000, vitima 500, `base_damage` 1,0): 0,0999%
 		// por impacto. (Em 2026-09-02 o raspao ainda fazia o laco de sub-passos do `AndarProjetil` sortear
 		// de novo dentro da janela de 16 px; desde 2026-10-08 e um sorteio por encontro -- `--projetilteste` 15.)
 		//
 		// ---- POR QUE DESLIGAR ASSIM, E NAO DE OUTRO JEITO ----
-		// O precedente e o `RaioDaBancada` (`GameServer.ProjeteisTeste.cs:2167`): a receita da bancada
-		// nasce com `Deflectivel = false` *"porque um sorteio no meio da medicao mediria o dado"* -- o
+		// O precedente e o `RaioDaBancada` da `--projetilteste` (`GameServer.ProjeteisTeste.cs`): a receita da
+		// bancada nasce com `Deflectivel = false` *"porque um sorteio no meio da medicao mediria o dado"* -- o
 		// mesmo motivo pelo qual o `Dupla` (`GameServer.BancadaComum.cs:124`) desliga o bloqueio.
 		// Aqui a RECEITA nao e nossa: ela sai de `TecnicaCustomizada.Receita()`, e o comentario de la
 		// (`Core/Skills/TecnicaCustomizada.cs:258`) diz por que `Deflectivel` fica no padrao -- o painel
@@ -1312,10 +1315,10 @@ public sealed partial class GameServer
 
 		// ---------------------------------------------------------------- sem nenhuma generica
 		List<string> falas = Ouvir(() => CriarTecnica(pl));
-		AfirmarTc("um corpo que nao sabe soltar ki NAO inventa nada: a mesa nem abre, e ele ouve como ela abre",
+		AfirmarTc("um corpo que nao sabe soltar ki NAO inventa nada: a mesa nem abre, e ele ouve a frase curta do dono (sem a lista do que abre o que)",
 				  !Sabe(TipoDeProjetil.Blast) && !Sabe(TipoDeProjetil.Beam) && !Sabe(TipoDeProjetil.Guided)
-				  && pl.Mesa == null && Disse(falas, "por partes") && Disse(falas, nomeDaBola) && Disse(falas, nomeDoRaio)
-				  && Disse(falas, nomeDaTeleguiada), Ultimos(falas));
+				  && pl.Mesa == null && Disse(falas, TecnicaCustomizada.SemControleDeKi) && !Disse(falas, nomeDaBola) && !Disse(falas, nomeDoRaio)
+				  && !Disse(falas, nomeDaTeleguiada), Ultimos(falas));
 
 		TecnicaCustomizada.MesaSemPortaoDeTeste = true;
 		try

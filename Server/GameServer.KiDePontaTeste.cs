@@ -58,8 +58,9 @@ public partial class GameServer
 	/// A QUANTOS TILES DO JOGADOR O BONECO FICA, a leste e na mesma linha.
 	///
 	/// ============================ LONGE O BASTANTE PRA NAO VOAR ============================
-	/// Um tiro que acerta a ate 4 tiles de viagem ARREMESSA quem leva (`Projetil.FatorDeEmpurrao`, o
-	/// *"harder to knock back at range"* do `objects.dm:449-455`), com forca igual ao dano. Eram TRES
+	/// A bola que acerta a ate 4 tiles de viagem ARREMESSA quem leva (`Projetil.FatorDeEmpurrao`, o
+	/// *"harder to knock back at range"* do `objects.dm:449-455`), com forca igual ao dano -- desde
+	/// 2026-10-12 so a bola: o raio leva o mais fraco, de qualquer distancia (`KiContraCorpo`). Eram TRES
 	/// tiles, e a rajada honesta jogava o boneco vinte tiles adiante (`Empurrao.TiquesMax`) -- no
 	/// banco, atravessando a PAREDE, que o voo derruba.
 	///
@@ -81,16 +82,22 @@ public partial class GameServer
 	/// (ver o <see cref="ArmarAMetadeViva"/>).
 	///
 	/// ============================ PELO TIRO, E NAO POR UMA FRACAO DO BP ============================
-	/// O tiro honesto tem que ser GOLPE: abaixo de `DanoDeKi.CorteDoFraco` (10, o `objects.dm:355-357`) a bola
-	/// estoura sem ferir e sem relato, e "o tiro HONESTO acerta" le zero acerto. Um boneco com o poder de quem atira
-	/// leva uns nove -- ja nao serve. E "a metade do poder" tambem nao: a potencia do tiro depende da CLASSE que a
-	/// conta nova sorteia (`Projetil.ModsDoTiro` e `Ekioff * Ekiskill`), e com a metade do BP cru o mesmo robo
-	/// tirou de 12 a 27 por acerto em tres rodadas de 2026-10-08 -- uma classe fraca de ki cairia abaixo do corte
-	/// depois do relogin com o jogo certo, e uma forte somava 85 em quatro acertos.
+	/// O NUMERO NASCEU COM O CORTE POR DANO (2026-10-08). O tiro honesto tinha que ser GOLPE: abaixo de
+	/// `DanoDeKi.CorteDoFraco` (10, o `objects.dm:355-357`) a bola estourava sem ferir e sem relato, e "o tiro
+	/// HONESTO acerta" lia zero acerto. Um boneco com o poder de quem atira levava uns nove -- nao servia. E "a
+	/// metade do poder" tambem nao: a potencia do tiro depende da CLASSE que a conta nova sorteia
+	/// (`Projetil.ModsDoTiro` e `Ekioff * Ekiskill`), e com a metade do BP cru o mesmo robo tirou de 12 a 27 por
+	/// acerto em tres rodadas de 2026-10-08 -- uma classe fraca de ki cairia abaixo do corte depois do relogin com
+	/// o jogo certo, e uma forte somava 85 em quatro acertos.
 	///
-	/// DEZOITO CABE DOS DOIS LADOS. No piso do Ki (o `kiratio` nao desce de 0,6, e o poder do tiro cai com ele)
-	/// ainda sao 10,8, acima do corte. E os quatro tiros da metade viva (dois antes do relogin, dois depois) somam
+	/// DEZOITO CABIA DOS DOIS LADOS. No piso do Ki (o `kiratio` nao desce de 0,6, e o poder do tiro cai com ele)
+	/// ainda eram 10,8, acima do corte. E os quatro tiros da metade viva (dois antes do relogin, dois depois) somam
 	/// no maximo 72: nem caindo todos no mesmo nucleo o derrubam (`Regras.LimiarQuebra`: ele so cede com 80).
+	///
+	/// HOJE (dono, 2026-10-12 -- `KiContraCorpo`) O PISO NAO E MAIS O DANO: o tiro fere quem nao e PAREDE pra ele
+	/// (quatro vezes o poder do tiro), valha o golpe o que valer. Este boneco, acertado pra levar 18, fica longe de
+	/// ser parede -- pelas medidas de cima, entre um terco e tres quartos do poder de quem atira. Do numero, o lado
+	/// que continua trabalhando e o de cima: o teto dos 72.
 	/// ===============================================================================================
 	/// </summary>
 	private const double DanoDoTiroHonestoDaPonta = 18;
@@ -576,7 +583,9 @@ public partial class GameServer
 
 		string argumentos = chamada.Success ? chamada.Groups[1].Value : "";
 		AfirmarPp("a regiao mirada que vale e a de QUEM ATIRA (`dono`), como no soco -- e nao a da vitima",
-				  argumentos.Contains("dono.") && !argumentos.Contains("cd.ZonaMirada"),
+				  // (desde 2026-10-12 a zona tem nome -- `zonaDoTiro` --, porque a chamada da guarda a usa tambem)
+				  (argumentos.Contains("dono.") || (argumentos.Contains("zonaDoTiro") && tudo.Contains("zonaDoTiro = p.ZonaCerta.Length > 0 ? p.ZonaCerta : dono.Combate?.ZonaMirada")))
+				  && !argumentos.Contains("cd.ZonaMirada") && !tudo.Contains("cd.ZonaMirada"),
 				  argumentos.Trim());
 	}
 
@@ -595,13 +604,16 @@ public partial class GameServer
 	/// ==========================================================================================================
 	///
 	/// ============================ O TIRO E O MESMO NAS DUAS MEDIDAS, E E GOLPE NAS DUAS ============================
-	/// A base era 1: uns 7 de dano por tiro no corpo de defesa 1x e 1,8 no de 2x. Abaixo de
-	/// `DanoDeKi.CorteDoFraco` (10, o `objects.dm:355-357`) o tiro estoura sem ferir, e a cena passou a
-	/// medir 0 contra 0. A base agora e a de um golpe (12) no MAIS DEFENDIDO da comparacao
+	/// A base era 1: uns 7 de dano por tiro no corpo de defesa 1x e 1,8 no de 2x. Com o corte por dano
+	/// (2026-10-08: abaixo de `DanoDeKi.CorteDoFraco`, 10, o tiro estourava sem ferir -- `objects.dm:355-357`)
+	/// a cena passou a medir 0 contra 0, e a base subiu pra a de um golpe (12) no MAIS DEFENDIDO da comparacao
 	/// (<paramref name="maisDefendido"/>, o mesmo numero nas duas chamadas -- e isso que faz o tiro ser
 	/// o mesmo): o menos defendido leva o quadrado da diferenca a mais (48 com o dobro), longe de
 	/// saturar um membro de 100 restaurado a cada tiro (o piso do nao-letal fica em 19,8) e longe do
 	/// nocaute (um nucleo cai abaixo de 20% com 80).
+	///
+	/// O CORTE POR DANO SAIU EM 2026-10-12 (`KiContraCorpo`: entre estes dois iguais todo tiro fere), e a base
+	/// de 12 ficou: e um dano que se le nos dois corpos sem saturar nenhum.
 	/// ===============================================================================================================
 	/// </summary>
 	private double VidaPerdidaEmTiros(double fatorDeDefesa, int tiros, double maisDefendido)
@@ -787,10 +799,11 @@ public partial class GameServer
 		ServerPlayer presa = Forjar("Presa", new Vec2(pista.X + 400, pista.Y), bp: 5_000);
 		presa.Altitude = noAr;
 
-		// `Deflectivel = false` PELA RAZAO DO `RaioDaBancada` (`GameServer.ProjeteisTeste.cs:2167`): o
-		// que se mede aqui e a PERSEGUICAO, e o `Acertar` sorteia deflexao em todo impacto acima do corte dos fracos contra quem
-		// esta de pe (`GameServer.Projeteis.cs:1190-1240`) -- com 5.000 contra 5.000 e `base_damage` 15
-		// da 0,0044% por impacto, e um `Defletido` no fim da caca viraria "o teleguiado nao alcancou".
+		// `Deflectivel = false` PELA RAZAO DO `RaioDaBancada` da `--projetilteste`: o que se mede aqui e a
+		// PERSEGUICAO, e o `Acertar` sorteia deflexao em todo impacto contra quem esta de pe e nao e parede pro
+		// tiro (os passos 3a-bis e 3 dele) -- com 5.000 contra 5.000 e `base_damage` 15 da 0,0044% por impacto,
+		// e um tiro aparado no fim da caca viraria "o teleguiado nao alcancou". (Entre iguais so o raspao sai --
+		// a bola acaba ali, sem dano --: defletir de vez pede o dobro do poder do tiro desde 2026-10-12.)
 		// Vale pros DOIS tipos: o teleguiado e o contra-exemplo passam pela mesma receita de proposito.
 		Projetil p = Disparar(atirador, new ReceitaDeProjetil
 		{ Tipo = tipo, BaseDano = 15, Velocidade = 1, AlcanceTiles = 60, Deflectivel = false });
@@ -2011,12 +2024,14 @@ public partial class GameServer
 			//
 			// A terceira dava PODER IGUAL: `BPModulus` 1, uns nove de dano por acerto de tanque cheio e
 			// uns seis depois do relogin (o Ki volta como saiu, e o poder expresso cai com ele). Com o
-			// corte dos fracos (`DanoDeKi.CorteDoFraco`, o `objects.dm:355-357`) isso nao e golpe: a
-			// bola estoura sem ferir e sem relato, e "o tiro HONESTO acerta" passou a ler zero acerto.
+			// corte dos fracos (`DanoDeKi.CorteDoFraco`, o `objects.dm:355-357`; de 2026-10-08 a 2026-10-12)
+			// isso nao era golpe: a bola estourava sem ferir e sem relato, e "o tiro HONESTO acerta" passou a
+			// ler zero acerto.
 			//
 			// A QUARTA nasce com a metade e e ACERTADA PELO TIRO logo abaixo: quem diz o tamanho do boneco e o
 			// dano que o tiro honesto faz nele (`DanoDoTiroHonestoDaPonta`, que explica por que nao e uma
-			// fracao fixa do BP).
+			// fracao fixa do BP). (O corte por dano saiu em 2026-10-12 -- hoje o tiro so nao fere quem e
+			// parede pra ele, `KiContraCorpo` --, e a quarta ficou: ela ainda guarda a folga do nocaute.)
 			// ================================================================================================
 			Ficha = new Fighter { Race = "Human", BP = vivo.Ficha.BP / 2 },
 			Livro = new SkillBook(),

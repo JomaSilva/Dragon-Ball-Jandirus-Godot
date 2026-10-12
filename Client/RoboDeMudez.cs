@@ -323,7 +323,10 @@ public partial class RoboDeMudez : Node
 
 	private void Pediu(char c, int ms) { _letraPedida = c; _letras++; }
 
-	private void Acabou(int venc, int perd) { _fins++; _letraPedida = '\0'; }
+	private void Acabou(int venc, int perd) { _fins++; _letraPedida = '\0'; _ultimoVenc = venc; _ultimoPerd = perd; }
+
+	/// <summary>O par do ultimo `Acabou` que chegou -- a `F8` le nele a saida de lado (sem vencedor, e eu no lugar de quem saiu).</summary>
+	private int _ultimoVenc, _ultimoPerd;
 
 	// =====================================================================
 	// AS DEZOITO TECLAS DO JOGADOR
@@ -569,6 +572,7 @@ public partial class RoboDeMudez : Node
 		foreach (double d in F5_OEmbateDosOutros()) yield return d;
 		foreach (double d in F6_OQueOEscNaoQuebrou()) yield return d;
 		foreach (double d in F7_ATelaDePausaDentroDoJogo()) yield return d;
+		foreach (double d in F8_AGuardaAndaEOPassoDeLadoSolta()) yield return d;
 		foreach (double d in Fechamento()) yield return d;
 	}
 
@@ -1309,5 +1313,178 @@ public partial class RoboDeMudez : Node
 		Toque(Key.Escape);
 		yield return 0.4;
 		Checa("o ESC fecha a tela de pausa de volta", !menu.Aberto);
+	}
+
+	// =====================================================================
+	// F8 -- A GUARDA ANDA, E O PASSO DE LADO SOLTA A DISPUTA DE GUARDA (dono, 2026-10-12)
+	// =====================================================================
+	/// <summary>
+	/// *"se o defensor for mais forte ele pode tentar se mover pros lados e sair da frente do ataque de ki enquanto
+	/// defende com a guarda"* -- e, perguntado se andar de guarda erguida valia so ali ou sempre: *"Sempre, como no
+	/// BYOND"*. A `--embatekiteste` (familia 14) mede a metade do SERVIDOR com pacotes forjados; aqui se mede a do
+	/// CLIENTE, com as teclas de verdade:
+	///
+	///   1. ALT + DIRECAO: o corpo anda e a guarda NAO desce (nenhum `Guard` sai no fio enquanto ele anda; no servidor
+	///      ela continua erguida). O contra-exemplo e o jogo de antes (`LocalPlayer.AndarBaixaAGuardaDeTeste`);
+	///   2. NA DISPUTA DE GUARDA (um raio de verdade contra a guarda do jogador, `GameServer.EmbateDeGuardaDeTeste`): o
+	///      eixo do raio chega e a tela convida a sair; a tecla AO LONGO do raio nao e passo (o cliente nem pede: nao
+	///      ha correcao por pacote); a tecla DE LADO solta -- o fim chega sem vencedor, o corpo anda de guarda erguida,
+	///      ileso, e a tela do quick time event diz que ele saiu e fecha. O contra-exemplo e a porta fechada no
+	///      servidor (`KiContraCorpo.SemSaidaDeLadoDeTeste`): a mesma tecla, e a disputa continua de pe.
+	///
+	/// O RAIO VEM DO LESTE (o rival nasce oito tiles a direita, como o da `F3`): D e A sao ao longo dele, W e S de lado.
+	/// </summary>
+	private IEnumerable<double> F8_AGuardaAndaEOPassoDeLadoSolta()
+	{
+		Nota("--- F8: a guarda ANDA (ALT + direcao), e o passo de lado SOLTA a disputa de guarda ---");
+		if (C is not { } cli || Servidor is not { } srv) yield break;
+
+		srv.SoltarEmbateDeTeste(cli.LocalId);
+		foreach (double d in AteQue(() => !cli.EmClash && cli.Sheet.Empurrado != true && cli.Sheet.Imobilizado != true, 12.0))
+			yield return d;
+
+		Vector2 Onde() => World.Instancia?.PosicaoLocal ?? default;
+
+		// ---------------------------------------------------------------- 1) ALT + direcao
+		Marcar();
+		Tecla(Key.Alt, true);
+		foreach (double d in AteOFatoOuAsEstradas(() => Saiu(Protocol.C2S.Guard), VoltasEmBaixo)) yield return d;
+		foreach (double d in AteQue(() => srv.GuardaErguidaDeTeste(cli.LocalId), 2.0)) yield return d;
+		bool subiu = srv.GuardaErguidaDeTeste(cli.LocalId);
+
+		// ANDANDO DE GUARDA ERGUIDA: o primeiro dos quatro rumos em que o mundo deixar (o mesmo criterio da `F2`).
+		float andou = 0;
+		bool desceu = false;
+		foreach ((Key tecla, Vector2 eixo) in new[] { (Key.S, new Vector2(0, 1)), (Key.W, new Vector2(0, -1)), (Key.A, new Vector2(-1, 0)), (Key.D, new Vector2(1, 0)) })
+		{
+			Vector2 daqui = Onde();
+			Marcar();   // dali em diante, qualquer `Guard` no fio e uma DESCIDA
+			Tecla(tecla, true);
+			ulong fim = Time.GetTicksMsec() + 2000;
+			while ((Onde() - daqui).Dot(eixo) <= 12 && Time.GetTicksMsec() < fim) yield return 0;
+			foreach (double d in AsEstradasAndaram(VoltasDepoisDeSoltar)) yield return d;
+			andou = (Onde() - daqui).Dot(eixo);
+			desceu = Saiu(Protocol.C2S.Guard);
+			Tecla(tecla, false);
+			yield return 0.2;
+			if (andou > 8) break;
+		}
+		Checa("ALT + direcao: a guarda SOBE e o corpo ANDA com ela", subiu && andou > 8, $"guarda no servidor {subiu}, andou {andou:0} px");
+		Checa("...e ela NAO DESCE: nenhum `Guard` sai no fio enquanto ele anda, e no servidor a guarda continua erguida",
+			  !desceu && srv.GuardaErguidaDeTeste(cli.LocalId), desceu ? "saiu um `Guard` no fio" : "");
+
+		// O CONTRA-EXEMPLO: o jogo de antes. A mesma tecla, com a guarda ainda erguida -- e ela desce.
+		LocalPlayer.AndarBaixaAGuardaDeTeste = true;
+		bool desceuComOBotao = false;
+		try
+		{
+			foreach ((Key tecla, Vector2 eixo) in new[] { (Key.W, new Vector2(0, -1)), (Key.S, new Vector2(0, 1)), (Key.D, new Vector2(1, 0)), (Key.A, new Vector2(-1, 0)) })
+			{
+				Vector2 daqui = Onde();
+				Marcar();
+				Tecla(tecla, true);
+				ulong fim = Time.GetTicksMsec() + 2000;
+				while (!Saiu(Protocol.C2S.Guard) && Time.GetTicksMsec() < fim) yield return 0;
+				desceuComOBotao = Saiu(Protocol.C2S.Guard);
+				Tecla(tecla, false);
+				yield return 0.2;
+				if (desceuComOBotao || (Onde() - daqui).Dot(eixo) > 8) break;
+			}
+		}
+		finally { LocalPlayer.AndarBaixaAGuardaDeTeste = false; }
+		Injeta("com o jogo de antes (andar baixa a guarda), a mesma tecla faz o `Guard` de descida sair", desceuComOBotao);
+
+		// ---------------------------------------------------------------- 2) a disputa de guarda
+		// A GUARDA VOLTA A SUBIR (o ALT continua apertado; o botao de cima a tinha baixado) e ENVELHECE: a guarda que
+		// acabou de subir e o gesto do deflect, e nao o de segurar o raio.
+		foreach (double d in AteQue(() => srv.GuardaErguidaDeTeste(cli.LocalId), 3.0)) yield return d;
+		yield return 0.7;
+
+		bool armou = srv.EmbateDeGuardaDeTeste(cli.LocalId);
+		foreach (double d in AteQue(() => cli.EmClash && _tipo == Protocol.TipoDeEmbate.FeixeContraGuarda, 8.0)) yield return d;
+		bool dePe = cli.EmClash && _tipo == Protocol.TipoDeEmbate.FeixeContraGuarda;
+		Checa("a DISPUTA DE GUARDA esta de pe (um raio de verdade encontrou a guarda do jogador)", armou && dePe, $"armou {armou}, tipo {_tipo}");
+		if (!dePe)
+		{
+			Tecla(Key.Alt, false);
+			yield break;
+		}
+
+		foreach (double d in AteQue(() => cli.EixoDoRaioNasMaos != null, 3.0)) yield return d;
+		Jandirus.Core.World.Vec2 eixoDoRaio = cli.EixoDoRaioNasMaos ?? default;
+		Checa("...o cliente recebeu o EIXO do raio: unitario, e deitado (o rival esta a leste)",
+			  cli.EixoDoRaioNasMaos != null && Math.Abs(eixoDoRaio.Length - 1f) < 1e-3f && Math.Abs(eixoDoRaio.X) > 0.9f, $"eixo {eixoDoRaio}");
+		yield return 0.2;
+		bool Na(string trecho) => Achar("ClashQte") is { } q && Todos<Label>(q).Any(l => l.IsVisibleInTree() && l.Text.Contains(trecho));
+		Checa("...e a tela do quick time event convida a sair de lado", TelaAberta("ClashQte") && Na("ande de lado"));
+
+		// (a) AO LONGO DO RAIO: nao e passo.
+		Vector2 antes = Onde();
+		Marcar();
+		Tecla(Key.D, true);
+		foreach (double d in AsEstradasAndaram(VoltasEmBaixo + VoltasDepoisDeSoltar)) yield return d;
+		bool pediuAoLongo = BitDeInput(Protocol.InputAndando);
+		float andouAoLongo = (Onde() - antes).Length();
+		Tecla(Key.D, false);
+		yield return 0.1;
+		Checa("NA DISPUTA DE GUARDA a tecla AO LONGO do raio nao e passo: o corpo fica, o cliente nem pede (nao ha correcao por pacote) e a disputa continua",
+			  cli.EmClash && !pediuAoLongo && andouAoLongo < 0.5f, $"em disputa {cli.EmClash}, pediu {pediuAoLongo}, andou {andouAoLongo:0.0} px");
+
+		// (b) O CONTRA-EXEMPLO PRIMEIRO, enquanto a disputa esta de pe: com a porta fechada no SERVIDOR, a tecla de lado
+		//     nao solta nada. (O cliente da o passo e o servidor o devolve -- e o corpo tremendo que a regra evita.)
+		Jandirus.Core.Combat.KiContraCorpo.SemSaidaDeLadoDeTeste = true;
+		bool continuou;
+		try
+		{
+			int finsDaInjecao = _fins;
+			Tecla(Key.S, true);
+			foreach (double d in AsEstradasAndaram(VoltasEmBaixo + VoltasDepoisDeSoltar)) yield return d;
+			Tecla(Key.S, false);
+			continuou = cli.EmClash && _fins == finsDaInjecao;
+		}
+		finally { Jandirus.Core.Combat.KiContraCorpo.SemSaidaDeLadoDeTeste = false; }
+		Injeta("com a porta da saida fechada no servidor (o jogo de antes), a tecla de lado NAO solta a disputa", continuou);
+		if (!cli.EmClash)
+		{
+			Checa("a disputa de guarda continuou de pe ate a medida da saida", false, "acabou antes");
+			Tecla(Key.Alt, false);
+			yield break;
+		}
+		// (o passo da injecao foi devolvido pelo servidor: espera o corpo assentar antes de medir a saida de verdade)
+		foreach (double d in AsEstradasAndaram(VoltasEmBaixo)) yield return d;
+
+		// (c) DE LADO: solta.
+		antes = Onde();
+		int fins = _fins;
+		double vida = srv.VidaDoCorpoDeTeste(cli.LocalId);
+		Marcar();
+		Tecla(Key.W, true);
+		foreach (double d in AteQue(() => !cli.EmClash, 4.0)) yield return d;
+		bool soltou = !cli.EmClash && _fins > fins;
+		bool disseQueSaiu = false;
+		ulong ate = Time.GetTicksMsec() + 900;   // segue andando: e o tempo de sair de cima do raio
+		while (Time.GetTicksMsec() < ate)
+		{
+			disseQueSaiu |= Na("VOCE SAIU DA FRENTE");
+			yield return 0;
+		}
+		float andouDeLado = Math.Abs(Onde().Y - antes.Y);
+		bool guardaDesceu = Saiu(Protocol.C2S.Guard);
+		bool guardaNoServidor = srv.GuardaErguidaDeTeste(cli.LocalId);
+		Tecla(Key.W, false);
+
+		Checa("a tecla DE LADO solta a disputa: o fim chega SEM vencedor e comigo no lugar de quem saiu",
+			  soltou && _ultimoVenc == 0 && _ultimoPerd == cli.LocalId, $"soltou {soltou}, venc {_ultimoVenc}, perd {_ultimoPerd} (eu sou {cli.LocalId})");
+		Checa("...o corpo ANDA de lado, de guarda erguida (nenhum `Guard` desceu; no servidor ela continua de pe)",
+			  andouDeLado > 8 && !guardaDesceu && guardaNoServidor, $"andou {andouDeLado:0} px, `Guard` no fio {guardaDesceu}, guarda no servidor {guardaNoServidor}");
+		Checa("...ILESO: a vida do corpo no servidor nao desceu", srv.VidaDoCorpoDeTeste(cli.LocalId) >= vida - 1e-6,
+			  $"vida {vida:0.##} -> {srv.VidaDoCorpoDeTeste(cli.LocalId):0.##}");
+		Checa("...e a tela diz VOCE SAIU DA FRENTE", disseQueSaiu);
+		foreach (double d in AteQue(() => !TelaAberta("ClashQte"), 6.0)) yield return d;
+		Checa("...e FECHA", !TelaAberta("ClashQte"));
+
+		Tecla(Key.Alt, false);
+		srv.SoltarEmbateDeTeste(cli.LocalId);
+		yield return 0.3;
 	}
 }

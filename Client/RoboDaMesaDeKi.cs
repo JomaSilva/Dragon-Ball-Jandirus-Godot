@@ -128,9 +128,8 @@ public partial class RoboDaMesaDeKi : Node
 					 "(palco) o personagem novo nao sabe nenhuma das tres genericas (Bola de Ki, Onda de Ki, Esfera Teleguiada)");
 			Conferir(tela.BotaoApagado(inventar) && !tela.ClicarBotao(inventar),
 					 "sem saber soltar ki, o botao de inventar esta na tela e APAGADO");
-			Conferir(tela.TemTexto("Você ainda não sabe soltar ki") && tela.TemTexto(TecnicaCustomizada.NomeDaQueAbre(TipoDeProjetil.Blast))
-					 && tela.TemTexto(TecnicaCustomizada.NomeDaQueAbre(TipoDeProjetil.Beam)),
-					 "...e a tela diz por que, e com que tecnica cada tipo abre");
+			Conferir(tela.TemTexto(TecnicaCustomizada.SemControleDeKiNaTela) && !tela.TemTexto("A mesa abre por partes"),
+					 "...e a tela diz por que, na frase curta do dono (2026-10-12), sem a lista do que abre cada tipo");
 			cli.SendVerbo("ca_criar");   // quem manda o pacote na mao tem de ouvir nao do servidor
 			_fasePalco = 1;
 			_t = 1.5;   // um segundo pro pacote ir e a recusa voltar
@@ -139,7 +138,7 @@ public partial class RoboDaMesaDeKi : Node
 		if (_fasePalco == 1)
 		{
 			Fotografar("user://mesa-0-fechada.png", "a mesa de quem ainda nao sabe soltar ki: o botao de inventar apagado, com o motivo");
-			Conferir(cli.Mesa == null && Ouviu("por partes"),
+			Conferir(cli.Mesa == null && Ouviu(TecnicaCustomizada.SemControleDeKi),
 					 "o `ca_criar` mandado na mao com a mesa fechada foi RECUSADO pelo servidor, com o motivo (nenhum rascunho abriu)");
 			Conferir(srv.AbrirAMesaDeBancada(cli.LocalId), "(palco) o servidor da ao corpo as tres genericas que abrem a mesa");
 			_fasePalco = 2;

@@ -215,6 +215,43 @@ public static class Agarrao
 		(CombatMath.DanoBase(quemSegura, preso) + contador) / 20
 		* CombatMath.BpModulus(quemSegura.expressedBP, preso.expressedBP);
 
+	/// <summary>Quanto o aperto no pescoco tira POR SEGUNDO entre dois corpos iguais em tudo, antes do `DanoGlobal`.</summary>
+	public const double ApertoPorSegundo = 4;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v020teste`): o estrangulamento volta a ser o `prob(5)` do DM -- um tranco de
+	/// dano a cada dois segundos, espalhado pelo corpo. Falso em jogo, sempre.
+	/// </summary>
+	public static bool EstrangulamentoPorSorteioDeTeste;
+
+	/// <summary>
+	/// ============================ O ESTRANGULAMENTO, POR SEGUNDO -- REGRA DO DONO ============================
+	/// *"vc vai começar a estrangular, fazendo o personagem tomar dano por segundo com base na diferença de
+	/// força"* (2026-10-12). DIVERGENCIA DECLARADA do DM: la o aperto e um `prob(5)` por tique de movimento da
+	/// vitima (`movement handler.dm:193`), com <see cref="DanoDeAfogamento"/> espalhado pelos membros -- na media,
+	/// meio tranco por segundo de centesimos de vida. Na pratica nao acontecia nada, e nada dizia que acontecia.
+	///
+	/// AQUI e continuo e vai na CABECA (o pescoco): o dano de um golpe (`DanoBase`: a forca e a tecnica de quem
+	/// aperta contra a defesa e a tecnica de quem e apertado) vezes o gap de poder (`BpModulus`, a curva do jogo
+	/// inteiro), <see cref="ApertoPorSegundo"/> vezes por segundo. Entre iguais sao ~3 de vida por segundo: quase
+	/// meio minuto ate o nocaute. Com o dobro do poder, a metade do tempo; contra alguem bem mais forte o piso do
+	/// gap (1%) faz do aperto um carinho -- e ele se solta antes.
+	///
+	/// O `grabCounter` SAIU DA SOMA: debater-se continua custando (a luta gasta o folego de quem segura), mas
+	/// nao machuca mais quem se debate.
+	/// ==========================================================================================================
+	/// </summary>
+	public static double EstrangulamentoPorSegundo(Fighter quemSegura, Fighter preso) =>
+		CombatMath.DanoBase(quemSegura, preso) * ApertoPorSegundo
+		* CombatMath.BpModulus(quemSegura.expressedBP, preso.expressedBP);
+
+	/// <summary>Quanto da luta pra escapar ja andou, de 0 a 100: o contador contra o alvo dele (`20/escapechance`).</summary>
+	public static byte ProgressoDaLuta(double contador, double chanceDeEscapar)
+	{
+		double alvo = ContadorParaEscapar / Math.Max(chanceDeEscapar, EscapeMinimo);
+		return (byte)Math.Clamp(Math.Round(100 * contador / alvo), 0, 100);
+	}
+
 	// =====================================================================
 	// O ARREMESSO -- `Throw.dm:1-34`
 	// =====================================================================

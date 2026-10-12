@@ -831,9 +831,9 @@ public partial class GameServer
 				  && !ku.Progressao.Contains("senão"), ku.Progressao);
 
 		FichaDeSkill.Texto ct = Ficha("Basic_Ki_Control");
-		AfirmarMn("Basic Ki Control nivel 5: 'libera carregar Ki (tecla C)' (a chave `canPower`) e Controle de Poder + Ocultar o Poder",
+		AfirmarMn("Basic Ki Control nivel 5: 'libera carregar Ki (tecla C)' (a chave `canPower`) e Controle de Poder + Relaxar (o `Conceal_Power` do DM, que desde 2026-10-12 e o relaxar)",
 				  ct.PorNivel.Any(l => l.StartsWith("nível 5:", StringComparison.Ordinal) && l.Contains("libera carregar Ki (tecla C)")
-									   && l.Contains("Controle de Poder") && l.Contains("Ocultar o Poder")),
+									   && l.Contains("Controle de Poder") && l.Contains("Relaxar (esconde o poder)") && !l.Contains("não portado")),
 				  ct.PorNivel.FirstOrDefault(l => l.StartsWith("nível 5:", StringComparison.Ordinal)) ?? "(sem nivel 5)");
 		AfirmarMn("...e a progressao: 'com o Ki acima do normal, mais quanto mais acima do nível 5 em diante' (kiratio>1, :296)",
 				  ct.Progressao.Contains("com o Ki acima do normal, mais quanto mais acima do nível 5 em diante"), ct.Progressao);

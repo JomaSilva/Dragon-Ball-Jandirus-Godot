@@ -377,6 +377,27 @@ public static class MeleeResolver
 		return r;
 	}
 
+	/// <summary>
+	/// O MESMO DANO PRONTO, NO MEMBRO QUE APARA. O ki que encontra a guarda fere o braco ou a perna que a segura --
+	/// o rodizio do soco aparado (<see cref="EscolherGuarda"/>) --, e nao o membro que quem atirou mirava. O dono
+	/// (2026-10-12): *"o ataque de ki vai, assim como golpes fisicos, começar a ferir ou os braços ou as pernas do
+	/// defensor"*. Sem braco nem perna pra aparar, cai no sorteio comum.
+	/// </summary>
+	public static GolpeResultado AplicarDanoProntoNaGuarda(CombatState d, double dano, bool letal,
+														   Random rng, string? zona = null)
+	{
+		var r = new GolpeResultado { Membro = "" };
+		if (d.Intocavel || dano <= 0) return r;
+
+		BodyPart? membro = EscolherGuarda(d.Corpo, rng) ?? d.Corpo.Sortear(zona, rng);
+		if (membro == null) return r;
+
+		r.Desfecho = Desfecho.Acertou;
+		r.Dano = dano;
+		AplicarNoMembro(d, membro, dano, letal, ref r);
+		return r;
+	}
+
 	private static void AplicarNoMembro(CombatState d, BodyPart membro, double dano, bool letal,
 										ref GolpeResultado r)
 	{

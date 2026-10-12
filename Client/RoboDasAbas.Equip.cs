@@ -87,7 +87,8 @@ public partial class RoboDasAbas
 			  && Rotulos(cScouter).Any(l => l.Text.Contains("rádio") && l.Text.Contains(teclaDoRadio)), teclaDoRadio);
 
 		// ---- os pesos ----
-		bool vestidos = cli.Atributos.PesoMult > 1.001;
+		// VESTIDO E TER KG NO CORPO (2026-10-12): os pesos de fabrica quase nunca rendem, e nem por isso estao guardados.
+		bool vestidos = cli.Atributos.PesoKg > 0;
 		string ganho = menu.ValorDesenhado("Equip", "Ganho no treino") ?? "(nulo)";
 		Checa("'Ganho no treino' e o PesoMult da ficha lenta, com barra",
 			  ganho == $"{cli.Atributos.PesoMult:0.##}x" && BarrasDaAba(pg).Any(b => b.GetMeta("barra").AsString() == "Ganho no treino"), ganho);
@@ -95,6 +96,19 @@ public partial class RoboDasAbas
 		PanelContainer? cPesos = CartaoPorTitulo(pg, "Pesos");
 		string pesoEsperado = vestidos ? "VESTIDOS" : mochila.Quantos(CatalogoDeItens.Pesos) > 0 ? "guardados" : "não tem";
 		Checa($"a pilula dos pesos diz '{pesoEsperado}'", cPesos != null && PilulasDaAba(cPesos).Contains(pesoEsperado), cPesos == null ? "sem cartao" : string.Join(",", PilulasDaAba(cPesos)));
+
+		// O PESO MAXIMO SE COMPRA (dono, 2026-10-12): a linha e o botao so existem com os pesos na mochila, e o numero
+		// e o do servidor (`AtributosState.PesoMaxKg`).
+		bool temPesos = mochila.Quantos(CatalogoDeItens.Pesos) > 0;
+		string? maximoNaTela = menu.ValorDesenhado("Equip", "Peso máximo");
+		Button? bMelhorar = Botao(pg, "Melhorar:");
+		Checa("o PESO MAXIMO e o botao 'Melhorar' so existem com os pesos na mochila",
+			  (maximoNaTela != null) == temPesos && (bMelhorar != null) == temPesos,
+			  $"tem={temPesos} linha='{maximoNaTela ?? "(nula)"}' botao='{bMelhorar?.Text ?? "(nulo)"}'");
+		if (temPesos)
+			Checa("...o maximo escrito e o da ficha lenta, e o botao diz o proximo degrau e o preco",
+				  maximoNaTela == $"{Jandirus.Core.Items.PesoDeTreino.Maximo(cli.Atributos.PesoMaxKg):N0} kg"
+				  && bMelhorar?.Text == TelaDeInventario.RotuloDaMelhoriaDosPesos(), $"'{maximoNaTela}' / '{bMelhorar?.Text}'");
 
 		// ---- os aparelhos: cada linha com o nome do catalogo, o icone e a pilula que a mochila manda ----
 		var erros = new List<string>();

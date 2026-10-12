@@ -158,6 +158,15 @@ public static class CensoDeSkills
 		// perguntas que o proprio verb do DM faz). No dia em que a arvore fechar, o `effector()` dela
 		// gateia pela MESMA `conq_owns_any` que o verb ja consulta -- nada aqui muda.
 		["Create_Dragon_Statue"] = "db_estatua",
+
+		// ============================ ESCONDER O PODER VIROU RELAXAR (2026-10-12) ============================
+		// O `Conceal_Power` (`Power Control.dm:71-83`, do degrau 5 de Basic Ki Control) foi tecnica viva deste port
+		// ate 2026-10-12, com botao proprio e trava de 5 s. O dono jogou e o fundiu no relaxar: *"esconder o ki e
+		// relaxar é redundante [...] tire o botao de esconder o ki e faça com q o de relaxar faca o poder do
+		// personagem cair pra 5 de poder de luta sempre, ficando invisivel pra scouters etc"*. O que o verb do DM
+		// faz -- o poder expresso travado em 5, fora do Sense e do scouter -- quem faz agora e o `prontidao`
+		// (relaxar / ficar pronto, `GameServer.PoderEmUso.cs`), pra quem tem o MESMO degrau.
+		["Conceal_Power"] = "prontidao",
 	};
 
 	/// <summary>
@@ -326,6 +335,9 @@ public static class CensoDeSkills
 		// O `Power_Control` ainda destravou um estagio INTEIRO da tecla C que era inalcancavel:
 		// `EstagioDaCarga.Retomando` existe pra trazer o `powerMod` de volta a 1, e nada no port
 		// jamais o baixava. Ver `Server/GameServer.Tecnicas.G9.cs`.
+		//
+		// (2026-10-12: o `Conceal_Power` deixou de ser tecnica viva e passou a ser atendido pelo relaxar -- ver a
+		// entrada dele no <see cref="PorOutroCanal"/>.)
 		//
 		// A CONSTANTE `SistSigilo` FOI DELETADA junto, e nao esquecida aqui "por via das duvidas": um
 		// grupo sem nenhum verb dentro sai do relatorio como uma linha de zero, que e ruido.

@@ -322,6 +322,17 @@ public sealed class TecnicaCustomizada
 	public static bool MesaSemPortaoDeTeste;
 
 	/// <summary>
+	/// A RECUSA DE QUEM AINDA NAO ABRIU TIPO NENHUM, nas palavras do dono (2026-10-12): *"reescreva como 'você n
+	/// pode criar técnica nenhuma, seu controle de ki ainda é muito baixo', n precisa entrar em detalhes naquele
+	/// texto"*. A frase anterior listava qual generica abre qual tipo. Uma fonte pras duas pontas: o chat do
+	/// servidor (`ca_criar`) e a nota da tela de tecnicas.
+	/// </summary>
+	public const string SemControleDeKi = "você não pode criar técnica nenhuma: seu controle de ki ainda é muito baixo.";
+
+	/// <summary>A mesma frase, com a maiuscula de quem abre uma nota na tela.</summary>
+	public const string SemControleDeKiNaTela = "Você não pode criar técnica nenhuma: seu controle de ki ainda é muito baixo.";
+
+	/// <summary>
 	/// ESTE TIPO ESTA ABERTO? <paramref name="sabe"/> responde "este corpo tem este verb?" -- o `SabeTecnica` do
 	/// servidor (que decide) e a lista de verbs ativos do cliente (que so desenha): a MESMA regra nas duas pontas.
 	/// </summary>
