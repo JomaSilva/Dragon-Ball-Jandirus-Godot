@@ -314,6 +314,10 @@ public sealed partial class GameServer
 		relato = "";
 		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return "";
 
+		// A MESA ABRE POR PARTES (dono, 2026-10-12): o corpo da foto ganha as tres genericas, senao a bancada da
+		// ARTE mediria o portao -- que tem familia propria na `--tecnicateste` (8).
+		AbrirAMesaDeBancada(pl);
+
 		List<string>? antes = EscutaDeAvisos;
 		EscutaDeAvisos = [];
 		try
@@ -330,6 +334,11 @@ public sealed partial class GameServer
 
 			ComandoDeTecnicaCustomizada(pl, "ca_texto", "nome/" + nome);
 			ComandoDeTecnicaCustomizada(pl, "ca_arte", ((int)arte).ToString());
+
+			// O RAIO DA FOTO SAI SOZINHO: o robo aperta o verb UMA vez e espera o tiro, e sem o `instantattack` a
+			// carga fecharia e ficaria na mao esperando o segundo aperto (`--tecnicateste`, familia 5).
+			if (tipo == TipoDeProjetil.Beam)
+				ComandoDeTecnicaCustomizada(pl, "ca_comprar", nameof(Jandirus.Core.Skills.Compra.InstantaneoLigar));
 
 			// O QUE A MESA ACEITOU, lido ANTES do salvar: se o recorte por tipo tivesse recusado a
 			// folha, a bancada precisa saber disso aqui e nao adivinhar pela foto.

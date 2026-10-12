@@ -157,7 +157,13 @@ public sealed class TecnicaCustomizada
 	public double Velocidade = VelocidadePadrao;
 	public double Alcance = AlcancePadrao;
 	public double DistanciaMod = DistModPadrao;
-	public bool Instantaneo;                     // `instantattack = 0`
+
+	/// <summary>
+	/// `instantattack = 0` (`:91`). Ligado (2 pontos), o raio SAI SOZINHO quando a carga fecha. Desligado, a carga
+	/// fecha e fica na mao ate o verb ser apertado de novo -- ver <see cref="ReceitaDeProjetil.SeguraACarga"/>, que
+	/// e este campo pelo avesso. Nos dois casos a carga minima e cumprida inteira.
+	/// </summary>
+	public bool Instantaneo;
 
 	/// <summary>
 	/// ESTE RAIO E TELEGUIADO: nasce perseguindo quem estiver marcado, dentro da curva do
@@ -280,6 +286,61 @@ public sealed class TecnicaCustomizada
 	}
 
 	// =====================================================================
+	// A MESA ABRE POR PARTES
+	// =====================================================================
+	/// <summary>
+	/// A TECNICA GENERICA QUE ABRE CADA TIPO NA MESA: a bola pela Bola de Ki, o raio pela Onda de Ki, a bola
+	/// teleguiada pela Esfera Teleguiada.
+	///
+	/// ============================ NAO E PORTE: E PEDIDO DO DONO (2026-10-12) ============================
+	/// *"ta dando pra criar um ataque de ki custom antes de vc aprender o blast basico, a criacao de tecnicas de
+	/// ki deveria liberar por partes, primeiro esferas (blast) e depois os beams, conforme vc libera a skill
+	/// generica deles (onda de ki e blast basicos)"*. No DM o `Create_Attack` e um `/mob/default/verb`
+	/// (`customattacks.dm:228`): todo personagem nasce com ele, e um recem-criado montava um raio de 5 pontos
+	/// sem nunca ter soltado ki.
+	///
+	/// A TELEGUIADA ele nao citou; ela segue a mesma frase ("a skill generica DELES"): o tipo que persegue abre
+	/// com a generica que persegue (`Guided_Ball`, nivel 30 do Basic Ki Control), e nao com a bola reta -- senao
+	/// a mesa entregaria a perseguicao antes de o jogo a ensinar. (Leitura minha; avisado ao dono.)
+	/// ====================================================================================================
+	/// </summary>
+	public static string VerboQueAbre(TipoDeProjetil t) => t switch
+	{
+		TipoDeProjetil.Beam => "Ki_Wave",
+		TipoDeProjetil.Guided => "Guided_Ball",
+		_ => "Basic_Blast",
+	};
+
+	/// <summary>O nome de tela da generica que abre o tipo ("Bola de Ki", "Onda de Ki", "Esfera Teleguiada").</summary>
+	public static string NomeDaQueAbre(TipoDeProjetil t) => Tecnicas.Get(VerboQueAbre(t))?.Nome ?? VerboQueAbre(t);
+
+	/// <summary>Os tres tipos, na ordem em que o jogo os ensina: bola (Ki Unlocked 35), raio, teleguiada.</summary>
+	public static readonly TipoDeProjetil[] TiposDaMesa =
+		[TipoDeProjetil.Blast, TipoDeProjetil.Beam, TipoDeProjetil.Guided];
+
+	/// <summary>DEFEITO INJETADO (bancada --tecnicateste): a mesa volta a abrir os tres tipos pra qualquer um.</summary>
+	public static bool MesaSemPortaoDeTeste;
+
+	/// <summary>
+	/// ESTE TIPO ESTA ABERTO? <paramref name="sabe"/> responde "este corpo tem este verb?" -- o `SabeTecnica` do
+	/// servidor (que decide) e a lista de verbs ativos do cliente (que so desenha): a MESMA regra nas duas pontas.
+	/// </summary>
+	public static bool TipoAberto(TipoDeProjetil t, Func<string, bool> sabe) =>
+		MesaSemPortaoDeTeste || sabe(VerboQueAbre(t));
+
+	/// <summary>
+	/// O TIPO COM QUE UM RASCUNHO NOVO NASCE: o raio, se ja abriu (e o de sempre -- `PorTipo(Beam)`); senao o
+	/// primeiro aberto na ordem em que o jogo ensina. Nulo = nenhum aberto: ainda nao ha o que inventar.
+	/// </summary>
+	public static TipoDeProjetil? TipoDeNascenca(Func<string, bool> sabe)
+	{
+		if (TipoAberto(TipoDeProjetil.Beam, sabe)) return TipoDeProjetil.Beam;
+		foreach (TipoDeProjetil t in TiposDaMesa)
+			if (TipoAberto(t, sabe)) return t;
+		return null;
+	}
+
+	// =====================================================================
 	// O ENCAIXE COM A CAMADA DO PROJETIL
 	// =====================================================================
 	/// <summary>
@@ -299,7 +360,8 @@ public sealed class TecnicaCustomizada
 		AlcanceTiles = Alcance,
 		RangeMod = DistanciaMod,
 		CargaMinima = CargaMinima,
-		Instantaneo = Instantaneo,
+		// SEM O `instantattack` O RAIO ESPERA O SEGUNDO APERTO -- ver `ReceitaDeProjetil.SeguraACarga`.
+		SeguraACarga = Tipo == TipoDeProjetil.Beam && !Instantaneo,
 		Teleguiado = Tipo == TipoDeProjetil.Beam && Teleguiado,
 		Nome = Nome,
 		// A ESCOLHA DO JOGADOR, OU O PADRAO DO TIPO -- os dois ramos do `if (S.attackicon != null)`

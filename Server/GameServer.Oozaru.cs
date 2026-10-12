@@ -103,13 +103,19 @@ public partial class GameServer
 					$"a lua ferve o seu sangue, e o Super Saiyajin ainda nao e SEU o bastante pra "
 					+ $"aguentar isso (maestria {pl.Forma.Maestria.De("ssj1"):0.#}% de 100%).",
 
-				// A PORTA DE PODER FALA O NUMERO DELA, e o numero e o DESTE personagem (o `ultrassjat`
+				// A PORTA DE PODER DIZ QUANTO FALTA, e a porta e a DESTE personagem (o `ultrassjat`
 				// sorteado no nascimento) -- nao a constante de fabrica. Sem dizer quanto falta, o
 				// jogador que ja dominou o SSJ1 fica olhando pra lua achando que o gate da maestria
 				// nao pegou. E a mesma economia de tempo do ramo de cima.
+				//
+				// EM NUMERO SO COM SCOUTER (a regra principal do BP; ver `PoderNaFrase`). Sem ele vai a FRACAO da
+				// porta: ela e pessoal e secreta, entao a porcentagem nao deixa refazer o BP de ninguem.
 				RecusaOozaru.SemPoder =>
-					$"a lua ferve o seu sangue, mas o seu corpo ainda nao aguenta o que ela pede "
-					+ $"(BP base {pl.Ficha.BP:N0} de {PortaDoDourado(pl):N0}).",
+					"a lua ferve o seu sangue, mas o seu corpo ainda nao aguenta o que ela pede ("
+					+ (Jandirus.Core.Stats.PoderNaFrase.EmNumero(TemScouter(pl))
+						? $"BP base {pl.Ficha.BP:N0} de {PortaDoDourado(pl):N0}"
+						: $"voce tem {Jandirus.Core.Stats.PoderNaFrase.FracaoDoLimiar(pl.Ficha.BP, PortaDoDourado(pl))}")
+					+ ").",
 
 				_ => "a lua puxa alguma coisa em voce, e nao encontra resposta.",
 			});

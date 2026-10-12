@@ -669,8 +669,11 @@ public static class Habilidades
 			// pegou sem reabrir a mesa.
 			string ficha = $"{tipo}. Potência {t.BaseDano:0.#}, energia {t.CustoKi:0}, "
 						 + $"velocidade {t.Velocidade:0.#}, alcance {t.Alcance:0} tiles";
+			// COMO SE SOLTA, escrito no botao: sem o "sai sozinho" a carga fecha e fica na mao ate o segundo aperto
+			// (dono, 2026-10-12), e quem nao leu a mesa nao tem outro lugar pra descobrir.
 			if (t.Tipo == Jandirus.Core.Combat.TipoDeProjetil.Beam)
-				ficha += $", carga {t.CargaMinima:0.#}s" + (t.Instantaneo ? " (sai sozinho)" : "");
+				ficha += $", carga {t.CargaMinima:0.#}s"
+					   + (t.Instantaneo ? " (sai sozinho)" : " (aperte de novo para soltar; e mais uma vez para parar)");
 			if (t.UsaStamina) ficha += $", {t.CustoStamina:0} de fôlego";
 
 			Verbos.Registrar(new Verbo(

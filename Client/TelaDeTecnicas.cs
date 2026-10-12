@@ -118,6 +118,14 @@ public partial class TelaDeTecnicas : CanvasLayer
 		return true;
 	}
 
+	/// <summary>O botao com este texto esta na tela, e APAGADO? (o `ClicarBotao` nao o apertaria.)</summary>
+	public bool BotaoApagado(string texto) =>
+		Todos(_raiz).OfType<Button>().Any(x => x.Text == texto && x.IsVisibleInTree() && x.Disabled);
+
+	/// <summary>Alguma legenda visivel da tela traz este pedaco de texto?</summary>
+	public bool TemTexto(string pedaco) =>
+		Todos(_raiz).OfType<Label>().Any(l => l.IsVisibleInTree() && l.Text.Contains(pedaco, StringComparison.Ordinal));
+
 	/// <summary>A cor no seletor. Escrever dispara o mesmo `ColorChanged` que arrastar o mouse dispara.</summary>
 	public Color CorNoSeletor
 	{
@@ -540,7 +548,14 @@ public partial class TelaDeTecnicas : CanvasLayer
 			coluna.AddChild(botoes);
 
 			int id = t.Id;
-			var editar = new Button { Text = "Ajustar" };
+			// AJUSTAR TAMBEM PEDE O TIPO ABERTO (o servidor recusa pela mesma regra): quem inventou antes de o
+			// portao existir continua com a tecnica, mas nao a redesenha antes de aprender a generica do tipo.
+			bool tipoAberto = Aberto(t.Tipo);
+			var editar = new Button
+			{
+				Text = "Ajustar", Disabled = !tipoAberto,
+				TooltipText = tipoAberto ? "" : $"Aprenda {TecnicaCustomizada.NomeDaQueAbre(t.Tipo)} para mexer nela.",
+			};
 			editar.Pressed += () => GameClient.Instance?.SendVerbo("ca_editar", id.ToString());
 			botoes.AddChild(editar);
 
@@ -566,10 +581,19 @@ public partial class TelaDeTecnicas : CanvasLayer
 			_corpo.AddChild(p);
 		}
 
+		// A MESA ABRE POR PARTES (dono, 2026-10-12): cada tipo com a tecnica generica dele -- ver
+		// `TecnicaCustomizada.VerboQueAbre`. Sem nenhum aberto nao ha o que inventar, e o botao diz por que.
 		bool cabe = cli.Customizadas.Count < TecnicaCustomizada.Maximo;
-		var criar = new Button { Text = "Inventar uma técnica nova", Disabled = !cabe };
+		bool algumAberto = TecnicaCustomizada.TiposDaMesa.Any(Aberto);
+		var criar = new Button { Text = "Inventar uma técnica nova", Disabled = !cabe || !algumAberto };
 		criar.Pressed += () => GameClient.Instance?.SendVerbo("ca_criar");
 		_corpo.AddChild(criar);
+
+		if (TecnicaCustomizada.TiposDaMesa.Where(t => !Aberto(t)).ToList() is { Count: > 0 } fechados)
+			_corpo.AddChild(Nota(
+				(algumAberto ? "A mesa abre por partes. Ainda falta: " : "Você ainda não sabe soltar ki. A mesa abre por partes: ")
+				+ string.Join("; ", fechados.Select(ComoAbre)) + ".",
+				algumAberto ? Tema.TextoFraco : Tema.Perigo, 12));
 
 		// O TETO DIZ POR QUE, e nao so apaga o botao. Um botao cinza sem explicacao e a mesma coisa
 		// que o `switch` sem `else` do DM: o jogador nao descobre que ja tem dez.
@@ -625,12 +649,17 @@ public partial class TelaDeTecnicas : CanvasLayer
 			})
 			{
 				TipoDeProjetil alvo = t;
-				var b = new Button { Text = rotulo, Disabled = m.Tipo == t };
+				// O TIPO QUE AINDA NAO ABRIU FICA APAGADO, com o que falta escrito embaixo -- o servidor recusa o
+				// `ca_tipo` pela mesma regra.
+				var b = new Button { Text = rotulo, Disabled = m.Tipo == t || !Aberto(t) };
 				b.Pressed += () => GameClient.Instance?.SendVerbo("ca_tipo", alvo.ToString().ToLowerInvariant());
 				tipos.AddChild(b);
 			}
 			_corpo.AddChild(tipos);
 			_corpo.AddChild(Nota(DescricaoDoTipo(m.Tipo), Tema.TextoFraco, 11));
+			if (TecnicaCustomizada.TiposDaMesa.Where(t => !Aberto(t)).ToList() is { Count: > 0 } fechados)
+				_corpo.AddChild(Nota("Ainda fechado: " + string.Join("; ", fechados.Select(ComoAbre)) + ".",
+									 Tema.TextoFraco, 11));
 		}
 		else
 		{
@@ -686,6 +715,13 @@ public partial class TelaDeTecnicas : CanvasLayer
 						m.Instantaneo, null,
 						() => GameClient.Instance?.SendVerbo("ca_comprar",
 							m.Instantaneo ? nameof(Compra.InstantaneoDesligar) : nameof(Compra.InstantaneoLigar)));
+			// AS DUAS FORMAS, ESCRITAS: e a diferenca que o jogador esta comprando, e ela nao se ve na tabela.
+			_corpo.AddChild(Nota(
+				m.Instantaneo
+					? "Ligado: você aperta uma vez, ele carrega o tempo de cima e o raio sai sozinho."
+					: "Desligado: você aperta, ele carrega, e a carga fica na mão até você apertar a técnica de novo "
+					  + "para soltar. Apertar antes de a carga fechar desfaz.",
+				Tema.TextoFraco, 11));
 
 			Numero($"Alcance: {m.Alcance:0} tiles", (int)m.Alcance, TecnicaCustomizada.AlcancePiso, 60,
 				   "1 ponto por tile, nos dois sentidos. Mínimo 5, padrão 20.",
@@ -845,6 +881,23 @@ public partial class TelaDeTecnicas : CanvasLayer
 		TipoDeProjetil.Beam => "raio canalizado",
 		TipoDeProjetil.Blast => "bola solta",
 		_ => "esfera teleguiada",
+	};
+
+	/// <summary>
+	/// ESTE TIPO JA ABRIU NA MESA? A MESMA regra do servidor (`TecnicaCustomizada.TipoAberto`), perguntada aos
+	/// verbs ativos que ele mandou (`GameClient.VerbosAtivos`, a lista que o `SabeTecnica` de la aceita). A tela
+	/// so DESENHA com isto: quem decide e o servidor, nas quatro portas da mesa.
+	/// </summary>
+	internal static bool Aberto(TipoDeProjetil t) =>
+		GameClient.Instance is { } cli
+		&& TecnicaCustomizada.TipoAberto(t, v => cli.VerbosAtivos.Contains(v, StringComparer.OrdinalIgnoreCase));
+
+	/// <summary>"o raio, com Onda de Ki" -- o que falta aprender pra um tipo abrir.</summary>
+	private static string ComoAbre(TipoDeProjetil t) => t switch
+	{
+		TipoDeProjetil.Beam => $"o raio, com {TecnicaCustomizada.NomeDaQueAbre(t)}",
+		TipoDeProjetil.Blast => $"a bola, com {TecnicaCustomizada.NomeDaQueAbre(t)}",
+		_ => $"a bola teleguiada, com {TecnicaCustomizada.NomeDaQueAbre(t)}",
 	};
 
 	private static string DescricaoDoTipo(TipoDeProjetil t) => t switch

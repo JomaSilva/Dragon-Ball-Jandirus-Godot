@@ -367,7 +367,11 @@ public sealed partial class GameServer
 		Persistir(pl);
 
 		AnunciarDesejo($"{pl.Name} pede PODER a {s.NomeDoDragao}!");
-		Avisar(pl, $"o seu poder de luta sobe de {antes:N0} para {pl.Ficha.BP:N0}.");
+		// O NUMERO SO PRA QUEM TEM SCOUTER (a regra principal do BP; ver `PoderNaFrase`): os outros ouvem o quanto
+		// cresceram -- e o `Dragonballs.dm:64` do original, que esconde ate o anuncio do upgrade.
+		Avisar(pl, Jandirus.Core.Stats.PoderNaFrase.EmNumero(TemScouter(pl))
+			? $"o seu poder de luta sobe de {antes:N0} para {pl.Ficha.BP:N0}."
+			: $"o seu poder de luta sobe: você está {Jandirus.Core.Stats.PoderNaFrase.QuantoMaisForte(antes, pl.Ficha.BP)}.");
 		return true;
 	}
 
@@ -703,6 +707,7 @@ public sealed partial class GameServer
 		// antes de pedir baratearia o desejo.
 		melhor = Math.Max(melhor, Jandirus.Core.Stats.GainKnobs.TopBP);
 
+		double antes = quem.Ficha.BP;
 		quem.Ficha.BP = melhor * Desejos.MultiplicadorDoSupremo;
 		quem.Ficha.sw_doom_year = TempoDoMundo + Esferas.SegundosDe(Desejos.AnosDoSupremo);
 		quem.Ficha.Statify();
@@ -713,7 +718,11 @@ public sealed partial class GameServer
 		string dragao = s?.NomeDoDragao ?? "SUPER SHENRON";
 		AnunciarDesejo($"{quem.Name} trocou a própria VIDA por poder absoluto -- o ser mais forte do "
 					 + $"universo caminha entre nós... por um ano. ({dragao})");
-		Avisar(quem, $"o poder absoluto queima nas suas veias: {quem.Ficha.BP:N0}. O seu corpo tem "
+		// O NUMERO SO PRA QUEM TEM SCOUTER, como no desejo de poder -- ver `PoderNaFrase`.
+		string poder = Jandirus.Core.Stats.PoderNaFrase.EmNumero(TemScouter(quem))
+			? $"{quem.Ficha.BP:N0}"
+			: $"você está {Jandirus.Core.Stats.PoderNaFrase.QuantoMaisForte(antes, quem.Ficha.BP)}";
+		Avisar(quem, $"o poder absoluto queima nas suas veias: {poder}. O seu corpo tem "
 				   + $"{Esferas.SegundosDe(Desejos.AnosDoSupremo) / 3600.0:0.#} h reais antes de cobrar "
 				   + "o preço -- e dessa morte NÃO há retorno, apenas reencarnação.");
 		if (quem != pl) Avisar(pl, $"{quem.Name} aceitou o preço.");

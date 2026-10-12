@@ -169,6 +169,16 @@ public partial class GameServer
 	/// *"NPCs agora PODEM ser absorvidos: sao devorados por inteiro (sem bolsao/guardiao) e rendem os mesmos
 	/// 10% de BP ate o Majin ser nocauteado"* (`:132`).
 	/// </summary>
+	/// <summary>
+	/// O QUE O MAJIN GANHOU, PRA FRASE: "+8.000 de poder" a quem tem scouter; aos outros, a REGRA -- "+10% do
+	/// poder dele". O numero e uma fracao do BP da vitima, e a regra principal do BP so deixa numero com medidor
+	/// (ver `PoderNaFrase`). Uma funcao pras duas frases (o NPC devorado e o jogador selado).
+	/// </summary>
+	private static string GanhoDoMajinNaFrase(ServerPlayer majin, double bonus, double poderDele) =>
+		Jandirus.Core.Stats.PoderNaFrase.EmNumero(TemScouter(majin))
+			? $"{bonus:N0} de poder"
+			: Jandirus.Core.Stats.PoderNaFrase.ParteDoPoderDele(bonus, poderDele);
+
 	private void DevorarPeloMajin(ServerPlayer pl, ServerPlayer npc)
 	{
 		var rec = new AbsorvidoPeloMajin
@@ -197,7 +207,7 @@ public partial class GameServer
 		if (npc.Combate.Morrer(ignorarSeguro: true)) AoPerderALuta(npc, pl, morreu: true);
 
 		RecalcularOMajin(pl);
-		Avisar(pl, $"voce devora {rec.Nome} (+{rec.BonusDeBp:N0} de poder, enquanto voce nao cair).");
+		Avisar(pl, $"voce devora {rec.Nome} (+{GanhoDoMajinNaFrase(pl, rec.BonusDeBp, npc.Ficha.BP)}, enquanto voce nao cair).");
 		GD.Print($"[server] {pl.Name} (Majin) DEVOROU {rec.Nome}: +{rec.BonusDeBp:0} de BP emprestado");
 	}
 
@@ -262,7 +272,7 @@ public partial class GameServer
 		Avisar(m, $"{NomeVisivel(pl)} absorve voce! Preso dentro dele, voce encara uma copia de {NomeVisivel(pl)} -- "
 				  + "DERROTE-A pra escapar. Se perder, continua absorvido.");
 		Avisar(pl, $"voce absorve {rec.Nome} -- o poder, as tecnicas e as roupas dele sao seus enquanto ele "
-				   + $"estiver dentro de voce (+{rec.BonusDeBp:N0} de poder).");
+				   + $"estiver dentro de voce (+{GanhoDoMajinNaFrase(pl, rec.BonusDeBp, m.Ficha.BP)}).");
 		Falar(pl, Protocol.Fala.Emote, $"absorve {rec.Nome}!");
 		GD.Print($"[server] {pl.Name} (Majin) ABSORVEU {rec.Nome}: +{rec.BonusDeBp:0} de BP, {rec.Verbos.Count} verb(s), "
 				 + $"guardiao id {rec.Guardiao} com BP {AbsorcaoMajin.BpDoGuardiao(pl.Ficha.expressedBP):0}");

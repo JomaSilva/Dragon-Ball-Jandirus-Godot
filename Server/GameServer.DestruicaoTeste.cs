@@ -1155,6 +1155,48 @@ public partial class GameServer
 		Checa("...nem com 999 de Ki (o `PDESTROY_KI_COST 1000`)",
 			  !_cargaDoPlanetDestroy.ContainsKey(pl.Id));
 
+		// ============================ A RECUSA NAO DIZ O PODER DE QUEM PEDE SEM SCOUTER (dono, 2026-10-12) ============================
+		// A frase terminava em "Voce tem N de Ki e M de BP" pra qualquer um -- a regra principal do BP: numero so com
+		// medidor (`PoderNaFrase`). Com o Ki em 999 o verb recusa toda vez, entao as tres leituras saem do
+		// `PlanetDestroy` de producao sem gastar nada.
+		// ==============================================================================================================================
+		double meuExpresso = pl.Ficha.expressedBP;
+		var (semScouter, comScouter, comDefeito) = AsTresLeiturasDoPoder(pl, () => PlanetDestroy(pl));
+		Checa("SEM scouter, a recusa diz o Ki que voce tem e que o seu poder ALCANCA -- sem o numero dele",
+			  Disse(semScouter, "999 de Ki") && Disse(semScouter, "um poder que alcança") && !TrazOPoder(semScouter, meuExpresso),
+			  Ultimos(semScouter));
+		Checa("COM o scouter ligado, a mesma recusa traz o numero do poder", TrazOPoder(comScouter, meuExpresso), Ultimos(comScouter));
+		Checa("(defeito injetado: o numero sem medidor) sem scouter o numero volta -- a regua de cima reprovaria",
+			  TrazOPoder(comDefeito, meuExpresso), Ultimos(comDefeito));
+
+		// QUANDO E O PODER QUE FALTA, a frase diz isso -- tambem sem numero, e SEM PORCENTAGEM: o limiar do planeta
+		// sai escrito na mesma frase, e limiar vezes fracao seria o BP de quem pediu.
+		//
+		// O KI CONTINUA EM 999 (a recusa e a mesma linha quando faltam os dois, e sem os 1000 o verb nunca comeca a
+		// carga), e o BP BASE E ACERTADO PELO EXPRESSO: o poder expresso nao e o BP -- com o Ki acima do tanque ele
+		// multiplica. A primeira versao deste palco pos Ki de sobra num corpo de BP baixo: o expresso saiu o dobro do
+		// limiar, o verb COMECOU a carga e derrubou as checagens de baixo junto.
+		double bpGuardado = pl.Ficha.BP;
+		double exigido = MortePlanetaria.BpExigido(pl.Ficha.Planetgrav);
+		pl.Ficha.BP = exigido * 0.43;
+		for (int acerto = 0; acerto < 4; acerto++)
+		{
+			pl.Ficha.Tick(agoraMs: NowMs());
+			pl.Ficha.Ki = MortePlanetaria.KiDaDestruicao - 1;
+			if (pl.Ficha.expressedBP >= exigido * 0.3 && pl.Ficha.expressedBP <= exigido * 0.6) break;
+			pl.Ficha.BP *= exigido * 0.43 / Math.Max(pl.Ficha.expressedBP, 1);
+		}
+		double expressoFraco = pl.Ficha.expressedBP;
+		List<string> fraco = OuvirEDevolver(() => PlanetDestroy(pl));
+		Checa($"(palco) com {expressoFraco:0} de poder expresso o corpo fica abaixo dos {exigido:0} que este planeta pede",
+			  expressoFraco >= 1000 && expressoFraco < exigido);
+		Checa("...e com poder de menos a recusa diz 'ainda nao alcanca', sem numero e sem porcentagem",
+			  !_cargaDoPlanetDestroy.ContainsKey(pl.Id) && Disse(fraco, "ainda não alcança")
+			  && !TrazOPoder(fraco, expressoFraco) && !Disse(fraco, "%"), Ultimos(fraco));
+		pl.Ficha.BP = bpGuardado;
+		pl.Ficha.Tick(agoraMs: NowMs());
+		pl.Ficha.Ki = MortePlanetaria.KiDaDestruicao - 1;
+
 		pl.Ficha.Ki = kiGuardado;
 		PlanetDestroy(pl);
 		Checa("vilao com Ki e BP sobrando COMECA a carga",

@@ -204,11 +204,9 @@ public partial class GameServer
 		}
 
 		bool povo = TemPovo(p.Nome);
-		double minimo = povo ? Conquista.BpMinimoComPovo : Conquista.BpMinimoSemPovo;
-		if (pl.Ficha.expressedBP < minimo)
+		if (pl.Ficha.expressedBP < Conquista.BpMinimo(povo))
 		{
-			Avisar(pl, $"você é fraco demais para subjugar este mundo (poder mínimo: {minimo:N0}; "
-					 + $"o seu é {pl.Ficha.expressedBP:N0}).");
+			Avisar(pl, Conquista.RecusaPorFraqueza(povo, pl.Ficha.expressedBP));
 			return;
 		}
 

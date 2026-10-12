@@ -119,6 +119,7 @@ public partial class GameServer
 			OSistemaDeEstudo();
 			OBuffDeKiEACura();
 			AFichaEmTexto();
+			AFichaDizAPratica();
 		}
 		catch (Exception e)
 		{
@@ -549,7 +550,7 @@ public partial class GameServer
 
 			pl.Niveis.Por(MnRaiz, 30);
 			MnLogin(pl);
-			AfirmarMn("...e o VOO do nivel 30 continua RECUSADO por decisao do dono (`NaoConcedidasPorDegrau`)",
+			AfirmarMn("...e o VOO do nivel 30 continua RECUSADO por decisao do dono (`DegrausDoPort.NaoConcede`)",
 					  !pl.Livro.Sabe(SkillDoVoo));
 		}
 	}
@@ -932,5 +933,80 @@ public partial class GameServer
 			foreach (string c in d.Buffs.Keys.Concat(d.Mults.Keys).Concat(d.Flags.Keys)) yield return c;
 			foreach (string v in d.Verbos) if (v.Contains('_')) yield return v;
 		}
+	}
+
+	// =====================================================================
+	// 9) A FICHA DIZ O QUE A PRATICA FAZ
+	// =====================================================================
+	/// <summary>
+	/// O NIVEL QUE A FICHA DO KI UNLOCKED ANUNCIA pra cada coisa e o nivel em que ela ABRE no servidor.
+	///
+	/// O dono, no playtest de 2026-10-12: *"as informacoes q tem no ki unlocked n estao corretas com oq da por
+	/// nivel, exemplo diz q o fly la e no lvl 30 mas na pratica e no 50"*. A secao 8 confere a ficha contra o
+	/// DM, e por isso nao via nada: a ficha REPETIA o DM, e o desvio (o voo no 50, regra do dono) morava numa
+	/// lista privada do servidor. Aqui a regua e a PRATICA: um corpo sobe do nivel 1 ao 100 pelo trio do login
+	/// e anota-se o primeiro nivel em que cada porta de producao responde sim.
+	/// </summary>
+	private void AFichaDizAPratica()
+	{
+		GD.Print("[mente] -- 9) A FICHA DO KI UNLOCKED DIZ O NIVEL EM QUE CADA COISA ABRE NA PRATICA");
+
+		const string sense = "/datum/skill/sense";
+		ServerPlayer pl = ForjarComSkills("Degrau", CorredorLivre(4), bp: 50_000, skills: [MnRaiz]);
+		int voa = 0, kiai = 0, bola = 0, alvos = 0, sente = 0;
+		for (int n = 1; n <= 100; n++)
+		{
+			pl.Niveis.Por(MnRaiz, n);
+			MnLogin(pl);
+			if (voa == 0 && PodeVoar(pl)) voa = n;
+			if (kiai == 0 && SabeTecnica(pl, "Kiai")) kiai = n;
+			if (bola == 0 && SabeTecnica(pl, "Basic_Blast")) bola = n;
+			if (alvos == 0 && SabeTecnica(pl, "Ki_Targets")) alvos = n;
+			if (sente == 0 && pl.Livro.Sabe(sense)) sente = n;
+		}
+		AfirmarMn($"(a pratica) subindo de 1 a 100: o Sense chega no 5, o Kiai no 10, a Bola de Ki no 35, os Alvos de Ki e o VOO no {MaestriaQueDestravaVoo}",
+				  sente == 5 && kiai == 10 && bola == 35 && alvos == 50 && voa == MaestriaQueDestravaVoo,
+				  $"sense {sente}, kiai {kiai}, bola {bola}, alvos {alvos}, voo {voa}");
+
+		Skill raiz = _skills!.Get(MnRaiz)!;
+		string nomeDoVoo = _skills.Get(SkillDoVoo)?.Nome ?? SkillDoVoo;
+		string nomeDoSense = _skills.Get(sense)?.Nome ?? sense;
+		FichaDeSkill.Texto ficha = FichaDeSkill.Montar(_skills, raiz, RegrasDeNivel.Get(MnRaiz));
+
+		// O NIVEL DA LINHA "nível N: ..." que traz o trecho (0 = nenhuma linha de marco o traz).
+		static int NivelDe(FichaDeSkill.Texto t, string trecho)
+		{
+			foreach (string l in t.PorNivel)
+			{
+				if (!l.StartsWith("nível ", StringComparison.Ordinal) || !l.Contains(trecho, StringComparison.Ordinal)) continue;
+				int fim = l.IndexOf(':');
+				if (fim > 6 && int.TryParse(l.AsSpan(6, fim - 6), out int n)) return n;
+			}
+			return 0;
+		}
+
+		AfirmarMn($"a ficha diz o VOO no nivel em que ele abre: 'nível {voa}: ... {DegrausDoPort.FraseDoVoo}'",
+				  NivelDe(ficha, DegrausDoPort.FraseDoVoo) == voa, string.Join(" | ", ficha.PorNivel));
+		AfirmarMn($"...e NAO anuncia a skill '{nomeDoVoo}' do nivel 30 do DM, que este port nao concede (o corpo de cima chegou ao 100 sem ela)",
+				  !ficha.PorNivel.Any(l => l.Contains("concede a skill " + nomeDoVoo, StringComparison.Ordinal)) && !pl.Livro.Sabe(SkillDoVoo),
+				  string.Join(" | ", ficha.PorNivel.Where(l => l.Contains(nomeDoVoo, StringComparison.Ordinal))));
+		AfirmarMn("...e as outras quatro batem com a pratica: Sense, Kiai, Bola de Ki e Alvos de Ki",
+				  NivelDe(ficha, "concede a skill " + nomeDoSense) == sente
+				  && NivelDe(ficha, Tecnicas.Get("Kiai")!.Nome) == kiai
+				  && NivelDe(ficha, Tecnicas.Get("Basic_Blast")!.Nome) == bola
+				  && NivelDe(ficha, Tecnicas.Get("Ki_Targets")!.Nome) == alvos,
+				  string.Join(" | ", ficha.PorNivel));
+		AfirmarMn("...e os Alvos de Ki e o voo dividem UMA linha do nivel 50 (nao duas)",
+				  ficha.PorNivel.Count(l => l.StartsWith("nível 50:", StringComparison.Ordinal)) == 1);
+
+		DegrausDoPort.FichaRepeteODmDeTeste = true;
+		try
+		{
+			FichaDeSkill.Texto doDm = FichaDeSkill.Montar(_skills, raiz, RegrasDeNivel.Get(MnRaiz));
+			AfirmarMn("(defeito injetado: a ficha repete o DM) ela anuncia a skill de voo no nivel 30 e cala o voo do 50 -- e a comparacao com a pratica reprova",
+					  NivelDe(doDm, "concede a skill " + nomeDoVoo) == 30 && NivelDe(doDm, DegrausDoPort.FraseDoVoo) != voa,
+					  string.Join(" | ", doDm.PorNivel));
+		}
+		finally { DegrausDoPort.FichaRepeteODmDeTeste = false; }
 	}
 }

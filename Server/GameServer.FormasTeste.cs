@@ -1121,6 +1121,27 @@ public partial class GameServer
 				  string.Join(" | ", semLinhagem));
 			pl.Ficha.SaiyanLineage = linhagemReal;
 
+			// ============================ A TERCEIRA FECHADURA, E O QUE A FRASE DELA DIZ (dono, 2026-10-12) ============================
+			// Primal em SSJ, com o SSJ1 dominado, mas SEM o poder que a porta PESSOAL pede: a recusa dizia "BP base X de
+			// Y" a qualquer um. A regra principal do BP: em numero so pra quem tem scouter; sem ele vai a FRACAO da porta
+			// (`PoderNaFrase.FracaoDoLimiar` -- a porta e sorteada e secreta, entao a porcentagem nao entrega o BP de
+			// ninguem). As tres leituras saem do `Apeshit` de producao, que recusa toda vez sem mexer em nada.
+			// ===========================================================================================================================
+			double bpDeVerdade = pl.Ficha.BP, portaDoDourado = PortaDoDourado(pl);
+			pl.Ficha.BP = Math.Floor(portaDoDourado * 0.62);
+			double bpCurto = pl.Ficha.BP;
+			var (semScouter, comScouter, comDefeito) = AsTresLeiturasDoPoder(pl, () => Apeshit(pl));
+			pl.Ficha.BP = bpDeVerdade;
+			Checa("(palco) a porta pessoal do Dourado existe, e com 62% dela a lua nao faz fera nenhuma",
+				  portaDoDourado >= 1000 && pl.Oozaru == FormaOozaru.Nao, $"porta {portaDoDourado:0}, {pl.Oozaru}");
+			Checa("SEM scouter, a recusa por poder diz a FRACAO da porta ('62% do que ela pede') e nao traz o BP nem a porta",
+				  semScouter.Any(a => a.Contains("62% do que ela pede"))
+				  && !TrazOPoder(semScouter, bpCurto) && !TrazOPoder(semScouter, portaDoDourado), string.Join(" | ", semScouter));
+			Checa("COM o scouter ligado, a mesma recusa traz os dois numeros (o BP base e a porta)",
+				  TrazOPoder(comScouter, bpCurto) && TrazOPoder(comScouter, portaDoDourado), string.Join(" | ", comScouter));
+			Checa("(defeito injetado: o numero sem medidor) sem scouter os numeros voltam -- a regua de cima reprovaria",
+				  TrazOPoder(comDefeito, bpCurto) && TrazOPoder(comDefeito, portaDoDourado), string.Join(" | ", comDefeito));
+
 			// 3. NA BASE, com as duas fechaduras abertas: sai o REGULAR.
 			Transformar(pl, subir: false);
 			Apeshit(pl);

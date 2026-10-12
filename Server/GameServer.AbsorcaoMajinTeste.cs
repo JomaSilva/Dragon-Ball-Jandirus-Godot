@@ -666,6 +666,28 @@ public partial class GameServer
 			UsarHabilidade(majin, "expelir");
 		}
 		finally { AbsorcaoMajin.MultiplicadorDeNpc = deFabrica; }
+
+		// ---- A FRASE DO QUE FOI DEVORADO NAO DIZ PODER EM NUMERO SEM SCOUTER (dono, 2026-10-12) ----
+		// "(+12.345 de poder ...)" e um decimo do BP da vitima, dito a qualquer um. A regra principal do BP: numero so
+		// com medidor (`PoderNaFrase`); sem ele a frase diz a REGRA -- "+10% do poder dele". Tres NPCs, um por leitura
+		// (a frase de quem sela um JOGADOR sai da mesma `GanhoDoMajinNaFrase`).
+		var bonus = new List<double>();
+		var (semScouter, comScouter, comDefeito) = AsTresLeiturasDoPoder(majin, () =>
+		{
+			ServerPlayer prato = ForjarMj($"bancada: o prato {bonus.Count + 1}", praca + new Vec2(ZoneCollision.TileSize, 0),
+										  123_450 + bonus.Count * 10, pessoa: false);
+			DerrubarMj(prato);
+			double antes = majin.Ficha.majin_absorb_bp;
+			ApertarAbsorver(majin);
+			bonus.Add(majin.Ficha.majin_absorb_bp - antes);
+		});
+		UsarHabilidade(majin, "expelir");
+		AfirmarMj("SEM scouter, devorar diz '+10% do poder dele' -- e nao o bonus em numero",
+				  bonus.Count == 3 && bonus[0] > 1000 && Disse(semScouter, "10% do poder dele") && !TrazOPoder(semScouter, bonus[0]),
+				  Ultimos(semScouter));
+		AfirmarMj("COM o scouter ligado, a mesma frase traz o numero", bonus.Count == 3 && TrazOPoder(comScouter, bonus[1]), Ultimos(comScouter));
+		AfirmarMj("(defeito injetado: o numero sem medidor) sem scouter o numero volta -- a regua de cima reprovaria",
+				  bonus.Count == 3 && TrazOPoder(comDefeito, bonus[2]), Ultimos(comDefeito));
 	}
 
 	// =====================================================================

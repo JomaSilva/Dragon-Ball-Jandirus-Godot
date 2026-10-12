@@ -3,24 +3,30 @@
 **Primeira leva:** rádio do scouter, economia do "recurso", Drill, rochas, planetas procedurais, árvores, animais,
 tela de conhecidos, verbs, menu de desejos, construção de base, bug da gravidade, mapa do mundo e radar das esferas.
 **Segunda leva:** a interface (menu P como janela, chat e painéis redimensionáveis).
-**Terceira leva (noite de 10/10 e 11/10):** o despertar do God Ki e os marcos de ganho das formas, as validações do
-servidor, a limpeza do catálogo, o versionamento, a abertura com o título, a aba de mestre e alunos, os debuffs de
-desmembramento, a raiva por amigo, a parada do servidor, o kit do Deus da Destruição e os NPCs Bills e Whis.
+**Terceira leva (noite de 10/10 e manhã de 11/10):** o despertar do God Ki e os marcos de ganho das formas, as
+validações do servidor, a limpeza do catálogo, o versionamento, a abertura com o título, a aba de mestre e alunos, os
+debuffs de desmembramento, a raiva por amigo, a parada do servidor, o kit do Deus da Destruição e os NPCs Bills e Whis.
+**Quarta leva (11/10, de dia):** o kit do Bills na luta da Terra e o Whis que assiste, o admin só de quem hospeda, as
+Super Esferas visíveis, a reserva ×10 e a mineração nas cavernas, as Salas do Tempo em planetas gerados, os
+interiores com estado por cópia, e o power up / power down.
 
 **Como foi feito:** um subagente por tópico, cada um numa pasta de rascunho própria, publicando no repo só pela fila
-e só o que compila. **Nada foi commitado** (o HEAD continua no seu commit de 09/10 22:40, `bac218a`). Nenhum arquivo
-do repo foi apagado; não houve checkout, reset nem stash.
+e só o que compila. **Os commits são seus:** você commitou em 11/10 às 13:31 (`cd00ee6`, "mega update") e às 18:31
+(`df567a8`, "mega update parte 2"), e o segundo já inclui a última publicação dos agentes (17:43). Eu e os agentes
+não fizemos nenhum commit, checkout, reset nem stash, e nenhum arquivo do repo foi apagado. Fora dos commits ficaram
+só esta versão do relatório, o update log (`UPDATE-LOG-v0.1.0.md`) e 23 binários de build que o git rastreia
+(`Core/bin`, `Core/obj` e `Tools/AssetPipeline`), refeitos por uma compilação às 18:32.
 
-**Regressão no estado final (11/10, 09:05 às 09:55, depois da última publicação):** 155 bancadas, mais repetições das
-que já tinham oscilado (157 corridas). Vermelhas só as que já eram antes desta sessão: `planeta` (2), `tecla` (1),
-`diagforma` (as 10 fixas), `dskills` (1), `povo` (1) e a pura `disciplinas` (1). As três que oscilaram durante o
-trabalho — `dtranse`, `formas` e `abas` — passaram em todas as repetições; as duas últimas tiveram a causa achada e
-consertada (seção 30).
+**Regressão no estado final (11/10, 17:47 às 18:48, depois da última publicação):** 159 bancadas do lançador comum,
+mais as seis de dois processos e seis repetições das que já tinham oscilado (171 corridas). Vermelhas só as que já
+eram antes desta sessão: `planeta` (2), `tecla` (1), `diagforma` (as 10 fixas), `dskills` (1), `povo` (1) e a pura
+`disciplinas` (1). Uma oscilação: na `planeta`, um defeito injetado da rampa de destruição não foi pego nessa rodada;
+repeti cinco vezes e foi pego nas cinco.
 
-**Tamanho da mudança:** 152 publicações; 233 arquivos alterados e 402 novos no repo (203 deles são código novo e
-cerca de 190 são os `.uid` que o Godot gera ao lado de cada script); nenhum apagado.
+**Tamanho da mudança:** 183 publicações; entre o seu commit de 09/10 e o de 11/10 18:31 são 693 arquivos e cerca de
+104 mil linhas novas (sem contar os binários de build).
 
-Fotos de tudo: `Trailer/bruto/fotos_6199e7/pedido-2026-10-10/` (184 arquivos).
+Fotos de tudo: `Trailer/bruto/fotos_6199e7/pedido-2026-10-10/` (211 arquivos).
 
 ---
 
@@ -29,7 +35,7 @@ Fotos de tudo: `Trailer/bruto/fotos_6199e7/pedido-2026-10-10/` (184 arquivos).
 | # | Tópico | Estado | Bancadas (placar) |
 |---|---|---|---|
 | 1 | Rádio do scouter | feito | `radio` 62/0 · `dradio` OK · `radiovivo` OK |
-| 2 | Economia: recurso, Minerar, tech e melhorias em recursos, Space Pod 999, cavar removido | feito | `recursos` 137/0 · `minerar` 55 OK · `instalar` 248/0 |
+| 2 | Economia: recurso, Minerar, tech e melhorias em recursos, Space Pod 999, cavar removido | feito | `recursos` 175/0 · `minerar` 72 OK · `instalar` 248/0 |
 | 3 | Drill | feito | `drill` 88/0 · `ddrill` OK |
 | 4 | Rochas (colisão das grandes + minério) | feito | `rochas` 63/0 · `drochas` 19/0 |
 | 5 | Planetas procedurais (blocos de madeira + macieira) | feito | `procedural` 23/0 · `pomar` 46/0 |
@@ -37,7 +43,7 @@ Fotos de tudo: `Trailer/bruto/fotos_6199e7/pedido-2026-10-10/` (184 arquivos).
 | 7 | Animais + carne | feito | `animais` 125/0 · `danimais` 12/0 |
 | 8 | Tela de conhecidos (People) + detalhes | feito | `conhecidos` 133/0 · `dconhecidos` 72 ok · `convivio` 194/0 |
 | 9 | Radar sem radar + verbs por requisito | feito | `verbs` 88/0 · `dverbs` OK |
-| 10 | Menu de desejos do dragão | feito | `menudragao` 105/0 · `ddesejos` 49/0 |
+| 10 | Menu de desejos do dragão | feito | `menudragao` 108/0 · `ddesejos` 67/0 |
 | 11 | Construção de base: custo + seletor | feito | `blocos` 86/0 · `construir` 57/0 |
 | 12 | Bug da gravidade (4x virava 1x) | feito | `gravidade` 82/0 · `bercos` 327/0 |
 | 13 | Mapa do mundo + radar circular | feito | `mapa` 49/0 · `radar` 26/0 · `dmapa` 48 OK |
@@ -51,9 +57,14 @@ Fotos de tudo: `Trailer/bruto/fotos_6199e7/pedido-2026-10-10/` (184 arquivos).
 | 21 | Aba de mestre e alunos | feito | `alunos` 88/0 · `dalunos` 109 ok |
 | 22 | Debuffs de desmembramento | feito | `membros` 103/0 · `kiponta` 128/0 |
 | 23 | Raiva por amigo (dois degraus, salto de Ki, transformação automática) | feito | `raiva` 109/0 · `draiva` 59/0 · `raivapura` 697/0 |
-| 24 | Parada do servidor, admin automático, saída no meio do embate | feito | `parada` 68/0 · `adminlocal` 26/0 · `saidaembate` 13/0 |
+| 24 | Parada do servidor, admin só de quem hospeda, saída no meio do embate | feito | `parada` 81/0 · `adminlocal` 20/0 · `saidaembate` 13/0 |
 | 25 | Kit do Deus da Destruição (forma Fury) + passivas de Ultra Instinto / Ultra Ego | feito | `godkit` 203/0 |
-| 26 | NPCs Bills e Whis | feito | `bills` 225/0 · `dbills` 48/0 |
+| 26 | NPCs Bills e Whis (com o kit na luta da Terra e o Whis que assiste) | feito | `bills` 316/0 · `dbills` 56/0 |
+| 27 | Economia: reserva ×10 e mineração nas cavernas | feito | `recursos` 175/0 · `minerar` 72 OK |
+| 28 | Super Esferas visíveis no espaço | feito | `ddesejos` 67/0 · `menudragao` 108/0 |
+| 29 | Salas do Tempo em planetas gerados | feito | `salas` 78/0 · `dsalas` 13 OK |
+| 30 | Interiores com estado por cópia + furo da Sala da Terra | feito | `interiores` 90/0 · `salapresenca` 20/0 |
+| 31 | Power up e power down (relaxar, baixar, esconder) | feito | `poder` 88/0 · `dpoder` 32/0 |
 
 Todas as bancadas rodam pelo lançador comum, dentro da fila:
 `python E:/Users/Joao/Desktop/_rascunho_6199e7/fila.py teste -- bash Trailer/bruto/vizinhas_dos_blocos.sh <nome>`.
@@ -83,9 +94,9 @@ desliga o scouter — silêncio.
 
 - **Recurso** é um segundo saldo, ao lado do zeni (Stats, aba Tech, modo de construir). Tudo o que custa N zeni pode
   ser feito com 2N recursos.
-- **Reserva do planeta:** lado² × 2 (Terra 500 mil; procedurais de 74 mil a 2 milhões). Enche do zero em 24 h, mesmo
-  com o servidor desligado; persiste (`reservas.json`). Planeta destruído não tem; restaurado volta cheio. Lookout,
-  além, interiores e espaço não têm reserva.
+- **Reserva do planeta:** lado² × 10 desde 11/10 (era × 2; os números estão na seção 28). Enche do zero em 24 h,
+  mesmo com o servidor desligado; persiste (`reservas.json`). Planeta destruído não tem; restaurado volta cheio.
+  Lookout, além, interiores e espaço não têm reserva; as cavernas tiram da reserva do planeta delas (seção 28).
 - **Minerar** (P → Other → "Treino e estudo"): trava o corpo como a meditação; andar ou agir interrompe. Mãos 3/s,
   pá 6/s, furadeira 12/s — basta a ferramenta estar na mochila. Uma faixa acima do chat mostra ganho, saldo e a
   reserva do planeta.
@@ -581,25 +592,35 @@ Começou num achado do agente da abertura e cresceu com as suas respostas.
 - **Castigo de quem abandona não cai em quem foi derrubado pela parada.** O único que existia era o golpe final do
   embate de Zanzoken.
 
-**Admin automático (furo de segurança fechado).** Quando uma segunda conta local entrava, o servidor desligava o admin
-automático — mas quem disparava o desligamento entrava como admin, e o dono perdia. Agora:
-- é admin quem entra da máquina do servidor **enquanto for a única conta local em jogo**;
-- com duas ao mesmo tempo, ninguém é admin pelo endereço até o servidor reiniciar;
-- trocar de conta não desliga;
-- o dono continua admin pela marca na própria conta.
+**Admin automático: só de quem clicou em "Hospedar partida".** Antes ele vinha do endereço: quem entrasse da máquina
+do servidor era admin, e atrás de um túnel todo mundo parece local. Pior, quando uma segunda conta local entrava,
+quem disparava o desligamento saía admin e o dono perdia. Agora:
+- é admin automático só o jogador do mesmo jogo aberto que clicou em "Hospedar partida", e só enquanto essa
+  hospedagem durar. A prova é um segredo sorteado a cada hospedagem, que não sai do processo: outro jogo aberto no
+  mesmo computador, ou alguém por túnel, entra como jogador comum;
+- fora isso, é admin quem tem a marca na conta (painel de contas), de qualquer lugar;
+- no servidor dedicado ninguém é admin sozinho. `--admin <conta>` na linha do servidor marca uma conta **que já
+  existe** (promover um nome sem dono entregaria o servidor a quem o registrasse primeiro);
+- a flag `--sem-admin-local` deixou de existir.
 
 **Sair no meio de um embate de Zanzoken.** O personagem era gravado invisível, com o poder preso em 5, e o golpe
 final acontecia embora o menu dissesse que não. Agora, como no original, sair desfaz o embate sem vencedor, e o login
 conserta quem já estava gravado assim.
 
-- **Bancadas:** `parada` 68/0 · `adminlocal` 26/0 · `adminlocal_chave` 6/0 · `saidaembate` 13/0.
+- **Bancadas:** `parada` 81/0 · `adminlocal` 20/0 · `adminlocal_dedicado` 5/0 · `saidaembate` 13/0.
 
 **O que robô não prova:** o Ctrl+C de verdade no `servidor.bat`. Teste: abrir o `servidor.bat`, entrar com um
 personagem, dar Ctrl+C e ver `[server] fechando: N personagem(ns)...` antes de sair.
 
-**O que continua aberto:** um estranho que entra **sozinho** por túnel, com o dono fora do jogo, ainda vira admin;
-hoje só `--sem-admin-local` cobre. Matar o servidor pelo Gerenciador de Tarefas, queda de energia e crash continuam
+**O que continua aberto:** matar o servidor pelo Gerenciador de Tarefas, queda de energia e crash continuam
 cobertos só pelo save de 2 minutos.
+
+**Para o servidor dedicado ter admin:** hospedar uma vez pelo botão e marcar a própria conta no painel (a marca fica
+no disco e vale no dedicado da mesma máquina), ou pôr `--admin <conta>` na linha do `servidor.bat` (ele hoje não
+repassa argumentos; não editei o seu `.bat`).
+
+**Teste de mão:** hospedar e ver a aba Admin; abrir um segundo jogo no mesmo PC, entrar em 127.0.0.1 com outra
+conta e conferir que ele **não** tem a aba.
 
 ## 26. Kit do Deus da Destruição e passivas de Ultra Instinto / Ultra Ego
 
@@ -652,8 +673,8 @@ Regra sua, sem equivalente no original. Tudo em `Core/Npc/BillsEWhis.cs` (regras
 1. **Majin Boo é vencido por jogadores.** O mundo lê um aviso, e a chegada fica marcada para 28 dias in-game depois
    (cerca de 11 horas reais). O prazo sobrevive a reinício.
 2. **Bills e Whis pousam na Terra.** Bills veste o traje e cochila; quem bate nele o acorda. Ele luta só com quem
-   bateu, com 15% do poder (150 bilhões de 1 trilhão), e só derruba. Sem ninguém de pé por 6 s, volta a cochilar
-   inteiro. Fica na Terra sem prazo, até cair. O Whis é intocável.
+   bateu, com 15% do poder (150 bilhões de 1 trilhão), usando o **kit completo do Deus da Destruição, menos a Fury**.
+   Sem ninguém de pé por 6 s, volta a pé para o cochilo, inteiro. Fica na Terra sem prazo, até cair.
 3. **Derrotado**, fala sete linhas; uma delas dá as coordenadas galácticas, e o Whis repete com o nome do mundo. A
    carta estelar de todos passa a marcar a casa em roxo, com um botão na aba Nav. Quem não estava online recebe a
    notícia no primeiro login.
@@ -663,30 +684,220 @@ Regra sua, sem equivalente no original. Tudo em `Core/Npc/BillsEWhis.cs` (regras
    (acompanha se o jogador se transformar), Ultra Instinto a 100% sem efeito visual, e a precisão dele não cai. Dura
    até 5 minutos; a tecla E oferece "Parar o treino" de qualquer distância. Quem já tem o Ultra Instinto ganha
    maestria 3× mais rápido ali.
-6. **Tecla E no Bills → treinar** (igual, com a aura da Destruição a 100%; acelera o Ultra Ego) **ou desafiar pelo
-   título.** O desafio exige ki divino desperto e segue as regras do duelo que já existia: nocaute decide, 10
-   minutos, terceiro que se mete anula. Bills entra com 1 trilhão de base, na Fury e com o God's Temper; ele não usa
-   as habilidades ativas do kit (Hakai, tiros). Quem perde espera 1 dia in-game.
+6. **Tecla E no Bills → treinar** (igual, com a aura da Destruição a 100% e sem o kit; acelera o Ultra Ego) **ou
+   desafiar pelo título.** O desafio exige ki divino desperto e segue as regras do duelo que já existia: nocaute
+   decide, 10 minutos, terceiro que se mete anula. Bills entra com 1 trilhão de **base**, com o kit completo e na
+   Fury (72× por cima). Quem perde espera 1 dia in-game.
 7. **Bills cai no desafio:** o vencedor é entronizado na hora, recebe o kit e o traje, e o Bills sai do mundo. O
    Whis fica.
 
+**A luta da Terra pode matar.** Com o kit completo o Hakai entrou. Ele só pega quem já **caiu** (o corte é torso
+abaixo de 15%, e um corpo é nocauteado antes disso), só quem bateu no Bills, e só quando não sobra ninguém de pé na
+briga. Quem é pego morre de verdade, com a marca do Hakai (o Enma cobra o dobro). O soco e o tiro dele continuam não
+letais. Duas chaves desligam o Hakai sem mexer no resto: `HakaiNaTerra` e `HakaiNoDesafio`.
+
+| Habilidade | Quando o Bills usa |
+|---|---|
+| Destruction God's Fury (tiro) | alvo de pé, de 3 a 16 tiles |
+| Destroyer Sphere | alvo parado de 3 a 10 tiles, ou caído no ponto do Hakai |
+| Hakai | alvo caído no ponto, à mão |
+| Power Flick | agarra pela primeira vez aos 4 s de luta, depois a cada 9 a 15 s |
+| Energy Nullification | quando vem ki mais fraco na direção dele |
+| God's Temper | passiva |
+| Fury | nunca na Terra; no desafio, antes da contagem |
+
+Quem decide é a IA de combate de todo NPC, que ganhou as habilidades do kit (`Core/Ai/Cerebro.Kit.cs`).
+
+**O Whis.** Fora de luta fica a 2 tiles do Bills e anda junto. Quando uma luta começa, recua para um ponto a 9
+tiles do meio da briga, fica intocável e comenta sobre comida (12 falas; a primeira aos 5 s, depois uma a cada 18 a
+28 s). Quando é o Whis quem dá aula, o Bills fica no posto.
+
+- **Não ensinam** Ultra Instinto nem Ultra Ego; só aceleram quem já tem.
 - **Existem enquanto o cargo está vago** (Bills ↔ Deus da Destruição, Whis ↔ Anjo), cada um pelo seu. Se o cargo
   vagar de novo, ele volta.
 - **O traje** (`Beerus Inspired Suit (DU)`) entra na mochila de quem ganha o título por qualquer caminho, uma vez por
   personagem; quem já é o Deus recebe no login.
 - **Sem BP na tela:** nenhuma fala, menu ou pacote novo leva número de poder (a bancada procura nos bytes).
-- **Falas:** mais de 80, escritas para o jogo no tom dos dois.
-- **Bancadas:** `bills` 225/0 (20 defeitos injetados) · `dbills` 48/0.
+- **Falas:** mais de 90, escritas para o jogo no tom dos dois.
+- **Bancadas:** `bills` 316/0 · `dbills` 56/0.
 
 **Teste de mão** (menu P → Admin → cartão "Bills e Whis"): "Avançar a história" três vezes leva do despertar ao
 convite; "Aguentar a casa" sobe a sua maestria de gravidade (sem isso os ~80x esmagam); "Ir para a casa" leva à
 órbita. No servidor, `--billsdias N` troca o prazo de 28 dias.
 
-**O que robô não mede:** a graça da luta (o mestre usa a IA de combate de todo NPC) e dois clientes reais.
+**O que robô não mede:** a graça da luta e dois clientes reais.
 
 ---
 
-## 28. Decisões que você já deu
+# Quarta leva (11/10, de dia): o que você pediu depois do fechamento
+
+As mudanças no Bills e no Whis estão na seção 27, e a regra nova do admin na seção 25.
+
+## 28. Economia: reserva ×10 e mineração nas cavernas
+
+- **Reserva do planeta = lado² × 10** (era × 2). Terra e os outros planetas feitos à mão: 2.500.000. Planetas
+  gerados: de 368.640 (lado 192) a 10.000.000 (lado 1000).
+- O prazo de 24 h para encher não mudou, então a reposição ficou 5× mais rápida (a Terra repõe cerca de 29 por
+  segundo). Uma furadeira sozinha não faz mais a Terra descer. Para a reposição de antes com o teto novo: 120 h em
+  `HorasPraEncher`.
+- Servidor que já existe carrega: o que estava gravado continua valendo como número absoluto (um planeta a 50% passa
+  a mostrar 10%) e vai enchendo.
+- **Cavernas:** minerar funciona dentro da `Earth_Cave` e da `Vegeta_Cave`, tirando da reserva do planeta. Dentro e
+  fora dividem o mesmo número; o chat e o painel dizem de que planeta é a reserva. A Drill assentada na caverna também
+  extrai, no mesmo rateio das da superfície. Rocha de minério não nasce na caverna.
+- **Mudança de comportamento:** minerar passou a ser **recusado debaixo de teto no mapa do planeta** (prédio ou
+  base). Antes funcionava. Quem nasce na Terra, em Namek ou em Vegeta está dentro de um prédio e precisa sair para
+  minerar. Saiu de uma instrução minha ao agente; se você quer mineração dentro de prédio de volta, é uma constante
+  (`Recurso.OTetoBarra`).
+- Mirante, Sala do Tempo, estações, além, nave e interior do Majin continuam sem reserva.
+- **Constantes:** `Core/Economia/Recursos.cs` (`RecursosPorCelula`) e `Core/World/Cavernas.cs` (a lista de cavernas e
+  de que planeta cada uma é filha).
+- **Bancadas:** `recursos` 175/0 · `minerar` 72 OK.
+
+**Teste:** no berço da Terra (dentro do prédio) minerar recusa; na rua minera. Bocas de caverna na Terra: (267,110),
+(45,146), (475,153); em Vegeta: (141,214), (159,72), (258,101).
+
+## 29. Super Esferas visíveis
+
+- As Super Esferas passaram a ser **desenhadas no espaço**, com a arte do original (que já estava convertida no
+  projeto e nunca tinha sido usada). O servidor já mandava a posição das que estão por perto; o cliente não fazia
+  nada com ela.
+- **Tamanho:** 128 px de mundo, o dobro do ícone do original, para se ver de longe. Uma constante em
+  `Client/SuperEsferaDesenhada.cs`.
+- **O anel dourado** em volta é o alcance de invocar: dentro dele o Super Shenron atende.
+- **A legenda** diz quantas estrelas e de quem é ("SUA", "de Fulano", "sem dono").
+- Sem seta na borda da tela (daria um mini-radar a quem não tem o Dragon Radar).
+- **Dois defeitos do servidor consertados no caminho:** quem decolava ao lado de uma Super Esfera não a recebia na
+  tela; e a troca de dono só chegava a quem tomou, deixando o placar do ex-dono velho.
+- **A frase do Dragon Radar** dava o ponto em pixels, enquanto a linha "Coordenadas" da aba World mostra tiles. Agora
+  as duas usam a mesma unidade.
+- **Bancadas:** `ddesejos` 67/0 · `menudragao` 108/0.
+
+## 30. Salas do Tempo em planetas gerados
+
+Regra sua, em cima da Sala que já existia. Tudo em `Core/World/SalaDePlaneta.cs`.
+
+- **Achar:** um mundo gerado em cada 400 tem uma sala (depende só da semente do mundo). A carta estelar não marca;
+  quem pousa num desses vê, na aba World, "Sala do Tempo: há uma porta na rocha". A porta fica na parede de montanha
+  mais perto do pouso.
+- **Entrar:** tecla E na porta. "Ler as regras da porta" diz a dilatação daquela sala, a sessão, a idade e a
+  recarga. Cabem dois; não há guardião nem chave.
+- **Dentro:** o mesmo interior da Sala da Terra, uma cópia por mundo. Gravidade 10x e o clima caótico. Sem comida. A
+  aba Stats mostra os minutos que faltam.
+- **Fim da sessão** (2 dias in-game, cerca de 48 minutos): a sala **expulsa** o jogador para a porta, do lado de
+  fora. Dá para sair antes.
+- **Recarga:** 24 h reais × a dilatação, **contada da entrada**, e vale para toda Sala do Tempo, inclusive a da
+  Terra, nos dois sentidos.
+
+| Dilatação (por dia) | Chance | Ganho de BP | Idade por sessão | Recarga |
+|---|---|---|---|---|
+| 3 meses | 34% | 70× | não envelhece | 6 h |
+| 6 meses | 26% | 140× | 1 ano | 12 h |
+| 1 ano (igual à Terra) | 18% | 280× | 2 anos | 24 h |
+| 2 anos | 11% | 560× | 4 anos | 2 dias |
+| 3 anos | 6% | 840× | 6 anos | 3 dias |
+| 4 anos | 3% | 1120× | 8 anos | 4 dias |
+| 5 anos | 2% | 1400× | 10 anos | 5 dias |
+
+- **A maestria de forma fica em 4× em todas** (só o BP e a idade escalam com a dilatação).
+- **O que se assenta lá dentro fica, e é daquela sala:** máquina de gravidade, regenerador e as outras máquinas ficam
+  gravadas em disco para aquela Sala. Não aparecem na da Terra nem na de outro planeta, continuam lá depois de todo
+  mundo sair e voltar, e atravessam reinício. Base com parede continua recusada dentro da Sala.
+- **Quanto existe:** medido em dois universos, 1 mundo em 381 e 1 em 392. A sala mais perto da Terra fica em média a
+  5,5 células de sistema (uns 37 minutos de voo); a de 5 anos mais perto, a umas 37 células (cerca de 4 horas).
+- **Deslogar dentro:** a sessão está no save e continua na volta. **Planeta destruído com gente dentro:** quem sai
+  cai no espaço onde o mundo ficava.
+- **Bancadas:** `salas` 78/0 (14 defeitos injetados) · `dsalas` 13 OK.
+
+**Teste de mão:** P → Admin → "Ir Para A Sala Do Tempo" lista as salas por perto e salta até a órbita da mais
+próxima; pousar, andar até a montanha, E na porta.
+
+**O que robô não prova:** dois clientes reais na mesma sala, a sessão em tempo real (a bancada adianta o relógio) e
+a sala de 5 anos de ponta a ponta.
+
+## 31. Interiores: cada cópia com o seu estado, e o furo da Sala da Terra
+
+**O furo da Sala da Terra (já existia).** Quem entrava, mergulhava na própria mente e acordava continuava treinando a
+280× sem fim: em 3 dias de jogo medidos a sessão contou meio dia, sem envelhecer, sem a porta trancar e sem ocupar
+vaga. O mesmo com o passageiro de uma fusão que se separava lá dentro, e com quem nunca tinha passado pela porta.
+Fundir ou ser absorvido na janela de 2 minutos livrava da tranca.
+- A sessão estava presa a "em que zona o corpo está", e a mente, o bolso da fusão e o interior do Majin trocam a
+  zona sem tirar o corpo da Sala. Agora a sessão é uma marca posta pela porta e gravada no personagem: sem a marca
+  não rende.
+- Dentro de um desses bolsos o corpo continua ocupando a vaga, a janela e a tranca continuam correndo, e os dias
+  voltam a contar de onde pararam.
+- As suas regras da Sala da Terra não mudaram (prende, o guardião solta, 2 minutos).
+
+**Cada cópia de um interior tem o próprio estado.** O servidor dava um único mapa de paredes a todas as cópias do
+mesmo interior, e guardava "o que já caiu" pelo nome do lugar. Dividiam estado entre si:
+- as naves (24 paredes quebráveis e o chão que racha);
+- as mentes, e os bolsos de fusão;
+- as Salas do Tempo de planeta, entre si e com a da Terra;
+- planetas gerados de mesmo nome (22,6% dos mundos perto da Terra repetem nome).
+
+Uma parede quebrada num deles abria em todos. Agora cada cópia trabalha na sua, ao custo de menos de 500 bytes por
+lugar com gente dentro. O cliente tinha o mesmo defeito do lado dele, também consertado.
+
+**Para não se repetir** (pedido seu):
+- uma checagem automática, a bancada `interiores`: cria duas cópias de cada tipo de interior, muda uma e confere que
+  a outra fica intacta. Tipo de interior novo que não entrar nela reprova;
+- a regra escrita no ponto do código onde se cria um interior (`Core/World/ZoneKey.cs`, `Server/GameServer.Interiores.cs`);
+- a regra no guia que todo agente lê antes de trabalhar, e na memória do assistente entre sessões.
+
+**Nada se constrói nos interiores que deixam de existir com o dono:** nave (já recusava), mente, bolso da fusão,
+selo e interior do Majin. Nem máquina, nem lápide, nem bloco. Interior novo recusa por padrão; a exceção é a Sala do
+Tempo (seção 30). Regra em `Core/World/LugarDeObra.cs`. Obra antiga que esteja gravada num desses lugares não é
+apagada do arquivo; só fica fora do mundo.
+
+**Parar e hospedar de novo não guarda mais estrago.** Parede caída, árvore derrubada, porta aberta e planeta gerado
+carregado sobreviviam para sempre a "parar e hospedar de novo" no mesmo jogo aberto. Agora a parada devolve o
+cenário ao que um reinício daria; o que está em disco (construções, bases, reservas, saves) fica.
+
+- **Bancadas:** `interiores` 90/0 (32 defeitos injetados) · `salapresenca` 20/0 (antes do conserto: 8 OK / 12
+  falhas) · `parada` 81/0.
+
+## 32. Power up e power down
+
+Você perguntou se já estava no jogo. **Metade estava.**
+
+| Coisa | Antes |
+|---|---|
+| Esconder o poder | existia e funcionava (o Sense, o scouter e a telepatia dos outros não acham; o poder trava num mínimo), com quatro defeitos |
+| Baixar para uma porcentagem | existia só no servidor: o botão mandava o comando sem número e não havia onde digitar |
+| Subir de volta segurando C | existia e funcionava, igual ao original |
+| Relaxar / ficar pronto | não existia |
+| Saber em que estado você está | não existia (o "N% efetivo" do painel mede o corpo, não o controle) |
+
+**Como se usa agora**
+- **P → aba Ki:** a faixa "Poder em uso", com a porcentagem e o estado.
+- **Todo mundo:** Relaxar (1%) ↔ Ficar pronto (100%). Com raiva alta não dá para relaxar.
+- **Com Basic Ki Control 5** (a mesma exigência do original): deslizador de 1 a 100 com "Baixar para N%", e
+  "Esconder o poder" ↔ "Mostrar o poder", com 5 s de espera entre um e outro.
+- **Subir aos poucos:** segurar C (enche o Ki, depois sobe a porcentagem, depois passa de 100%).
+- **No painel de status**, abaixo do BP, o estado quando não é o normal: "USANDO 40% DO PODER", "RELAXADO", "PODER
+  ESCONDIDO".
+
+**Defeitos consertados**
+- Esconder caía calado quando uma invisibilidade, o Sneak ou um embate de Zanzoken terminava; apertado já invisível,
+  mostrava o poder; e nocauteado conseguia mexer.
+- Quem saía do jogo com o poder baixo voltava com ele baixo. No original todo login nasce a 100%.
+- **Dois vazamentos de BP com o poder escondido:** o Sense de quem se escondia lia o poder dos outros como uma
+  porcentagem da qual saía o BP exato deles, e um multiplicador na ficha entregava o próprio BP.
+- O vigor gasto mais devagar enquanto escondido estava calculado e nunca era aplicado.
+
+- Baixar é na hora e só baixa; "ficar pronto" volta a 100% na hora. As duas coisas são o que o código do original
+  faz (o texto de lá promete "aos poucos").
+- Treinar com o poder contido rende mais: o bônus de luta olha o poder em uso (contra um igual, de 1× até 2×). Já
+  era assim.
+- **Constantes:** `Core/Stats/PoderEmUso.cs`.
+- **Bancadas:** `poder` 88/0 (antes dos consertos: 51 OK / 37 falhas) · `dpoder` 32/0.
+
+**O que robô não prova:** na tela de **outro** jogador com Sense ou scouter, o nome sumir da lista ao esconder e a
+porcentagem cair ao baixar (a lista do servidor está provada).
+
+---
+
+## 33. Decisões que você já deu
 
 **Primeira e segunda levas**
 - Namek, Icer e Arlia: sem macieira, só animais. Makyo Star: nada.
@@ -714,126 +925,161 @@ convite; "Aguentar a casa" sobe a sua maestria de gravidade (sem isso os ~80x es
   cancelado na parada; fusão perdoada na parada.
 - Bills e Whis, e o que não estava portado do kit do Deus da Destruição: portar.
 
-## 29. Perguntas abertas
+**Quarta leva**
+- Bills e Whis não ensinam Ultra Instinto nem Ultra Ego. O Bills tem 1 trilhão de base, e a Fury multiplica por
+  cima. Na luta da Terra (15%) ele usa o kit completo, menos a Fury. O Whis só segue o Bills fora de combate; em luta
+  assiste de longe comentando sobre comida, intocável.
+- Admin automático só para quem clicou em "Hospedar partida".
+- As Super Esferas aparecem no espaço.
+- Reserva do planeta = lado² × 10. Minerar vale dentro das cavernas do planeta, a única exceção de interior.
+- Salas do Tempo em planetas gerados, bem raras, com dilatação sorteada, sem guardião, recarga proporcional e
+  compartilhada, gravidade 10x e clima caótico. No fim da sessão a sala expulsa. A recarga conta da entrada.
+- Cada cópia de um interior com o seu estado (Salas e naves), com a regra escrita para mapas futuros.
+- Nada se constrói na mente, no bolso da fusão, no selo nem no interior do Majin. Na Sala do Tempo as máquinas
+  ficam, gravadas só para aquela sala; base com parede não.
+- Power up e power down: verificar e implementar o que faltasse.
+
+## 34. Perguntas abertas
 
 **Economia**
 1. Sem o cavar, zeni sem luta só vem de missão de cargo, tributo, desejo e torneio. Quer outra fonte?
-2. Minerar dentro de prédio vale, ou só a céu aberto?
-3. Os números (taxas de mineração, Drill, preços de peça) servem?
-4. Nas máquinas de gravidade e no regenerador, os preços das melhorias saem no chat ao abrir "Melhorar…". Quer um
+2. Os números (taxas de mineração, Drill, preços de peça) servem?
+3. Nas máquinas de gravidade e no regenerador, os preços das melhorias saem no chat ao abrir "Melhorar…". Quer um
    painel dentro do menu, como o da Drill?
+4. Minerar passou a ser recusado debaixo de teto no mapa do planeta (prédio ou base); antes funcionava. Mantém?
+5. A Drill debaixo de teto continua extraindo. Barro também?
+6. Quer rocha de minério dentro das cavernas?
+7. A caverna de Vegeta tem gravidade 1x (a superfície tem 10x): dá para tirar da reserva de Vegeta sem os 10x. No
+   original a caverna faz parte de Vegeta. Ponho 10x lá dentro?
 
 **Construção**
-5. Reembolso ao desmanchar? Admin constrói de graça?
+8. Reembolso ao desmanchar? Admin constrói de graça?
 
 **Animais**
-6. Novato de BP 1–3 não mata nem a galinha (BP 10). Quer uma presa mais fraca?
-7. Espécies por planeta/bioma, ou todas em todo lugar como está? Arconia fica com fauna?
-8. Entra mais algum bicho com arte pronta (urso, dinossauro e sapo de Namek, gato, cachorro, cobra…)?
+9. Novato de BP 1–3 não mata nem a galinha (BP 10). Quer uma presa mais fraca?
+10. Espécies por planeta/bioma, ou todas em todo lugar como está? Arconia fica com fauna?
+11. Entra mais algum bicho com arte pronta (urso, dinossauro e sapo de Namek, gato, cachorro, cobra…)?
 
 **Rádio**
-9. Atravessa do Lookout e das cavernas pro planeta-mãe? A tecla O serve? Frequência também na mochila?
+12. Atravessa do Lookout e das cavernas pro planeta-mãe? A tecla O serve? Frequência também na mochila?
 
 **Conhecidos**
-10. A classe fora do cartão está certa? 20 de convívio é o número? Idade e gênero atrás do convívio?
-11. Quer uma tela pra reler ou editar a própria história?
+13. A classe fora do cartão está certa? 20 de convívio é o número? Idade e gênero atrás do convívio?
+14. Quer uma tela pra reler ou editar a própria história?
 
 **Esferas e dragão**
-12. O servidor manda a posição de todas as esferas do chão da zona pra todo mundo (é como são desenhadas); um
+15. O servidor manda a posição de todas as esferas do chão da zona pra todo mundo (é como são desenhadas); um
     cliente adulterado saberia sem radar. Quer que eu feche?
-13. Sobrou pedido, a próxima invocação começa com o resto. Fica assim ou começa cheia?
-14. "Erguer Estátua" aparece pro Clã do Dragão em mundo que ele não domina (com a frase do que falta). Esconder?
-15. Fusão Namekuseijin cobra a skill da árvore, como no original?
-16. As Super Esferas não são desenhadas no espaço (o servidor manda a posição, o cliente não usa). Com a regra
-    nova o Super Shenron só é chamado a até 2 tiles de uma delas: o jogador precisa ficar ao lado de algo
-    invisível, guiado só pela frase do Dragon Radar. Quer que elas apareçam?
+16. Sobrou pedido, a próxima invocação começa com o resto. Fica assim ou começa cheia?
+17. "Erguer Estátua" aparece pro Clã do Dragão em mundo que ele não domina (com a frase do que falta). Esconder?
+18. Fusão Namekuseijin cobra a skill da árvore, como no original?
+19. A Super Esfera é desenhada com o dobro do tamanho do ícone do original. Serve?
 
 **Gravidade**
-17. Refúgio aclimata como berço (como ficou), ou sorteia refúgio só entre mundos que o corpo aguenta?
+20. Refúgio aclimata como berço (como ficou), ou sorteia refúgio só entre mundos que o corpo aguenta?
 
 **Estética**
-18. A "terra batida" marrom embaixo do toco destoa na neve de Icer. Quer que siga o bioma?
+21. A "terra batida" marrom embaixo do toco destoa na neve de Icer. Quer que siga o bioma?
 
 **Interface**
-19. O X da janela destacada fecha o menu e o "Encaixar" devolve. Prefere que o X encaixe?
-20. A faixa de 70% a 160% dos painéis serve? A 70% a letra fica com 7 a 9 px.
+22. O X da janela destacada fecha o menu e o "Encaixar" devolve. Prefere que o X encaixe?
+23. A faixa de 70% a 160% dos painéis serve? A 70% a letra fica com 7 a 9 px.
 
 **God Ki e marcos**
-21. Requisito pessoal (225 a 325 milhões, como ficou) ou um número único de 250 milhões?
-22. Quem não é Saiyajin desperta o ki divino mas não tem forma divina para treinar a maestria; com isso Ultra
+24. Requisito pessoal (225 a 325 milhões, como ficou) ou um número único de 250 milhões?
+25. Quem não é Saiyajin desperta o ki divino mas não tem forma divina para treinar a maestria; com isso Ultra
     Instinto e o desafio ao Deus da Destruição continuam fora do alcance dele. Como ele deve treinar a maestria?
-23. O Golden do Frost Demon (no original dava ki divino): portar?
-24. Os tempos servem (600 s de atmosfera; luta +0,4 / +0,6 por golpe, teto de 10 por minuto)?
-25. Ligar os marcos de Ascensão (asc5/10/20) para as raças sem escada de forma? Hoje nada os concede.
-26. Quer uma linha na aba Stats com o multiplicador de ganho atual? Hoje só aparece no chat e no Assess.
+26. O Golden do Frost Demon (no original dava ki divino): portar?
+27. Os tempos servem (600 s de atmosfera; luta +0,4 / +0,6 por golpe, teto de 10 por minuto)?
+28. Ligar os marcos de Ascensão (asc5/10/20) para as raças sem escada de forma? Hoje nada os concede.
+29. Quer uma linha na aba Stats com o multiplicador de ganho atual? Hoje só aparece no chat e no Assess.
 
 **Catálogo**
-27. `*_Placed` e `Central_Computer` (que saíram do catálogo na primeira leva) entram na lista de itens aposentados?
+30. `*_Placed` e `Central_Computer` (que saíram do catálogo na primeira leva) entram na lista de itens aposentados?
 
 **Versionamento**
-28. Igualdade estrita (como está) ou versões que só diferem no último número se aceitam?
-29. 0.1.0 serve como número inicial? O pacote de skills cresceu depois: sobe para 0.1.1?
+31. Igualdade estrita (como está) ou versões que só diferem no último número se aceitam?
+32. 0.1.0 serve como número de lançamento?
 
 **Abertura**
-30. Título também na criação de personagem (teria de ser menor)? O som e o volume servem? O respiro de 1,55 s e a
+33. Título também na criação de personagem (teria de ser menor)? O som e o volume servem? O respiro de 1,55 s e a
     subida de 0,75 s estão no gosto?
 
 **Mestre e alunos**
-31. Preencher o vínculo antigo a partir das formas já despertadas, assumindo o mestre atual?
-32. Contador de treinos com o mestre? Do colega só nome e ensinamentos em comum? Receber um ensinamento vale metade
+34. Preencher o vínculo antigo a partir das formas já despertadas, assumindo o mestre atual?
+35. Contador de treinos com o mestre? Do colega só nome e ensinamentos em comum? Receber um ensinamento vale metade
     do progresso?
 
 **Desmembramento**
-33. No original, sem as duas pernas e no chão o personagem também fica sem socar e atirar. Aqui ele só não anda.
+36. No original, sem as duas pernas e no chão o personagem também fica sem socar e atirar. Aqui ele só não anda.
     Quer igual?
-34. No original o NPC refaz os membros quando sai da luta. Quer?
-35. A lentidão de quem está ferido (com metade da vida, metade do passo) é do original e pesa. Mantém?
+37. No original o NPC refaz os membros quando sai da luta. Quer?
+38. A lentidão de quem está ferido (com metade da vida, metade do passo) é do original e pesa. Mantém?
 
 **Raiva**
-36. Beast: no original a raiva comum não o abre (ficou assim). Confirma?
-37. Legendary: com os números do original ele paga ×1,5 na raiva comum e perdeu o desconto antigo. Vale o original?
-38. Nocaute: no original já dá o degrau mais alto (preço barato); aqui dá a raiva comum (preço maior). Confirma?
-39. "Inspiração" (quem conviveu com um Super Saiyajin pode despertar na raiva comum sem o preço maior): portar?
-40. Dupla estreia (SSJ1 e, quando a cena acaba, SSJ2 na mesma raiva): ok?
-41. Ondas de choque da fúria na cor do ki do personagem: ok? A fusão e as cenas do bio continuam com o clarão
+39. Beast: no original a raiva comum não o abre (ficou assim). Confirma?
+40. Legendary: com os números do original ele paga ×1,5 na raiva comum e perdeu o desconto antigo. Vale o original?
+41. Nocaute: no original já dá o degrau mais alto (preço barato); aqui dá a raiva comum (preço maior). Confirma?
+42. "Inspiração" (quem conviveu com um Super Saiyajin pode despertar na raiva comum sem o preço maior): portar?
+43. Dupla estreia (SSJ1 e, quando a cena acaba, SSJ2 na mesma raiva): ok?
+44. Ondas de choque da fúria na cor do ki do personagem: ok? A fusão e as cenas do bio continuam com o clarão
     vermelho: mantém?
 
 **Parada do servidor e admin**
-42. Admin automático só para quem clicou em "Hospedar partida" (o cliente do mesmo processo), em vez de qualquer
-    conexão local? Fecharia de vez o caso do estranho que entra sozinho por túnel.
-43. Quem sai do jogo **perdendo** um embate de Zanzoken deveria levar o golpe antes de ser gravado?
+45. `--admin <conta>` no servidor dedicado só marca conta que já existe (num servidor novo é entrar uma vez e
+    religar). Quer que valha também para conta criada depois?
+46. Dois `.bat` seus de teste (`testar-as-abas.bat` e `testar-a-aba-de-skills.bat`) perderam o admin, porque usam
+    servidor dedicado com robô entrando de fora. Quer uma flag só de teste para eles?
+47. Quem sai do jogo **perdendo** um embate de Zanzoken deveria levar o golpe antes de ser gravado?
 
 **Kit do Deus da Destruição**
-44. O Deus deve ficar imune à idade também na Sala do Tempo?
-45. A Fury atravessa nocaute e morte, como no original. Fica? A cena de estreia (invenção) fica?
-46. God's Temper conta todo dano (como está) ou só os caminhos em que o original o conta?
-47. Cores dos dois tiros: amarelo e roxo fixos, como no original, ou a arte de ki do personagem?
-48. A esquiva do Instinto custa Ki no port e é de graça no original. Tira o custo?
-49. Aura e cabelo roxos do Deus (e brancos do Anjo) pelo rank no ki divino: portar?
+48. O Deus deve ficar imune à idade também na Sala do Tempo?
+49. A Fury atravessa nocaute e morte, como no original. Fica? A cena de estreia (invenção) fica?
+50. God's Temper conta todo dano (como está) ou só os caminhos em que o original o conta?
+51. Cores dos dois tiros: amarelo e roxo fixos, como no original, ou a arte de ki do personagem?
+52. A esquiva do Instinto custa Ki no port e é de graça no original. Tira o custo?
+53. Aura e cabelo roxos do Deus (e brancos do Anjo) pelo rank no ki divino: portar?
 
 **Bills e Whis**
-50. "100% + Fury": 1 trilhão de base × 72 (como está) ou 1 trilhão já na Fury?
-51. Eles ensinam Ultra Instinto / Ultra Ego, ou só aceleram quem já tem (como está)?
-52. Cargo vago de novo: o Bills ou o Whis volta (como está)?
-53. Antes da visita eles não existem em lugar nenhum. Ou já devem estar no planeta deles desde o começo?
-54. No desafio o Bills usa a Fury e o God's Temper, e nenhuma habilidade ativa do kit (a IA de combate não sabe
-    chamá-las). Quer que ele use o Hakai, os dois tiros e a Energy Nullification?
-55. O triplo é do poder expresso e acompanha o jogador. Ou do base, medido só no início?
-56. Desafio exige ki divino e espera de 1 dia in-game entre tentativas: ok? Treino de 5 minutos, sem bônus de BP: ok?
-57. Com o trono vago, o botão "desafiar" da aba Cargos ainda diz que não há Deus para desafiar. Aponta para o Bills?
+54. Na Terra o Bills executa com o Hakai quem cai na briga, quando não sobra ninguém de pé. Era isso que você queria
+    com "kit completo"? (Desliga com `HakaiNaTerra`.)
+55. No desafio pelo título ele usa o kit completo mais a Fury, e o desafiante que cai no ponto do Hakai morre.
+    Confirma? (Desliga com `HakaiNoDesafio`.)
+56. Cargo vago de novo: o Bills ou o Whis volta (como está)?
+57. Antes da visita eles não existem em lugar nenhum. Ou já devem estar no planeta deles desde o começo?
+58. O triplo é do poder expresso e acompanha o jogador. Ou do base, medido só no início?
+59. Desafio exige ki divino e espera de 1 dia in-game entre tentativas: ok? Treino de 5 minutos, sem bônus de BP: ok?
+60. Com o trono vago, o botão "desafiar" da aba Cargos ainda diz que não há Deus para desafiar. Aponta para o Bills?
+61. O Whis assiste a 9 tiles; o Bills agarra pela primeira vez aos 4 s e depois a cada 9 a 15 s. Ajustar?
+
+**Salas do Tempo de planeta**
+62. 1 mundo em 400, sem marca na carta estelar (a pista é a linha na aba World). Serve?
+63. 60% das salas são piores que a da Terra (3 e 6 meses) e 2% são de 5 anos. Os pesos servem?
+64. A maestria de forma fica em 4× em todas, sem escalar com a dilatação. Confirma?
+65. A sala de 3 meses não envelhece ninguém (meio ano por sessão; o ano só entra quando fecha). Confirma?
+
+**Power up e power down**
+66. Baixar é na hora (é o código do original; o texto de lá promete "aos poucos"). Quer a descida gradual?
+67. "Ficar pronto" volta a 100% na hora. Quer que voltar a 100% exija carregar com C?
+68. Tecla padrão para relaxar: L?
+69. Com o poder escondido você ainda lê a força dos outros no Sense. Mantém, ou escondido não lê ninguém?
+70. O "N% efetivo" do painel continua medindo só o corpo. Quer que o controle de poder entre nessa porcentagem?
 
 **Do relatório do playtest, ainda sem resposta**
-58. Loot de NPC humanoide; roubo de zenni; alfa do rastro; commits (um por tópico?).
+71. Loot de NPC humanoide; roubo de zenni; alfa do rastro; commits (um por tópico?).
 
-## 30. Achados fora do pedido
+## 35. Achados fora do pedido
 
 **Consertados no caminho**
 - A aba World se refazia inteira uma vez por segundo (a assinatura dela contava os segundos até a lua cheia). Quem
   digitasse no batismo de planeta perderia o texto a cada segundo.
 - Com o menu da tecla E aberto, Esc abria a pausa em vez de fechar o menu.
+- NPC sem os quatro membros ainda erguia a guarda; o jogador não. No original a regra vale para todo corpo.
 - A bancada das formas media o poder em dois instantes com o personagem em fúria, e a raiva goteja por milissegundo:
   oscilava. Passou a medir o corpo em paz.
 - O robô das abas reprovava "a lua no HUD": ele nasce dentro do Banco, e sob teto o HUD esconde a lua de propósito.
+- A bancada `diagforma` tinha de 2 a 5 falhas que mudavam a cada rodada quando o sorteio dava Saiyajin de classe
+  baixa (nasce dentro do Banco); passou a rodar num campo aberto.
 
 **Não consertados**
 - Base ou máquina feita antes de 10/10 num planeta procedural, em célula que virou base de pedra grande, fica
@@ -842,11 +1088,12 @@ convite; "Aguentar a casa" sobe a sua maestria de gravidade (sem isso os ~80x es
 - Quem hospeda jogando e fecha o **console** por trás da janela continua sem gravar (só o servidor dedicado vigia o
   console).
 - O save periódico no meio de um embate de Zanzoken ainda grava o personagem oculto; quem conserta é o login.
-- Fundir ou ser absorvido durante a janela de 2 minutos da Sala do Tempo tira o corpo da contagem dela.
 - A tela de inventário e a de técnicas ouvem o Esc do mesmo jeito que o menu da tecla E ouvia; não medi se a
   pausa também abre por cima delas.
 - Se a casa do Bills for revelada com a aba Nav aberta, o botão "casa de Bills" só aparece na próxima vez que a
   aba se refizer.
+- Um corpo arremessado que bate num corpo intocável (alguém em cinemática) fere os dois; só o Whis foi protegido.
+- Sobras em robôs de dois processos que ainda se promovem a admin no primeiro segundo (não é mais preciso).
 
 **Bancadas antigas que continuam vermelhas** (já eram antes desta sessão): `planeta` (2, portão de marcos do Planet
 Destroy), `tecla` (1, um "[ACHADO]" que o próprio robô registra), `diagforma` (10 fixas), `dskills` (1, pede o
@@ -855,13 +1102,14 @@ uma linha de bancada de 05/09) e a `--iateste` (2, de 07/10 e 09/10).
 
 **Bancadas frágeis:** `--diagabas` reprova 5 linhas quando o sorteio da criação dá Saiyajin Lendário (o berço vira
 um planeta sem lua); `npc`, `povo` e `rotina` oscilam com a semente do universo; `fotofusao` falha quando a classe
-sorteada é Low-Class; `--diagcarga` reprova 1 ou 2 linhas de noite.
+sorteada é Low-Class; `--diagcarga` reprova 1 ou 2 linhas de noite; na `planeta`, um dos 24 defeitos injetados (a
+rampa de destruição virar uma constante) passou sem ser pego em uma de seis rodadas.
 
-## 31. Disco
+## 36. Disco
 
-- Pastas de rascunho dos subagentes: cerca de 1,4 GB em `E:\Users\Joao\Desktop\_rascunho_6199e7\ag\` (quase tudo é
+- Pastas de rascunho dos subagentes: cerca de 1,5 GB em `E:\Users\Joao\Desktop\_rascunho_6199e7\ag\` (quase tudo é
   cache de compilação de cada agente).
-- Saves de bancada desta sessão: 290 pastas, cerca de 250 MB em `Trailer\bruto\appdata\`.
-- Fotos de evidência: 184 arquivos, 35 MB em `Trailer\bruto\fotos_6199e7\pedido-2026-10-10\`.
+- Saves de bancada desta sessão: 344 pastas, cerca de 290 MB em `Trailer\bruto\appdata\`.
+- Fotos de evidência: 211 arquivos, 39 MB em `Trailer\bruto\fotos_6199e7\pedido-2026-10-10\`.
 - Tudo no E:. Não apaguei nada.
 - Para listar e limpar (eu não apago): `Trailer\bruto\limpar-sessao-6199e7.ps1` (sem chave só lista).

@@ -256,6 +256,28 @@ public partial class GameServer
 				  estranho.Ficha.BP > bpEstranhoAntes,
 				  $"{bpEstranhoAntes:N0} -> {estranho.Ficha.BP:N0}");
 
+			// ============================ O NUMERO SO COM SCOUTER (dono, 2026-10-12) ============================
+			// A frase do desejo dizia "sobe de A para B" a qualquer um. A regra principal do BP: em numero so pra
+			// quem tem medidor; os outros ouvem o quanto cresceram (`PoderNaFrase`). Medido no texto que o
+			// `DesejoDePoder` de producao manda, tres vezes -- cada rodada anota o antes e o depois DELA, porque o
+			// desejo mexe no poder de novo.
+			// ====================================================================================================
+			var rodadas = new List<(double Antes, double Depois)>();
+			var (semScouter, comScouter, comDefeito) = AsTresLeiturasDoPoder(estranho, () =>
+			{
+				estranho.Ficha.Tick();   // o teto de treino acompanha o BP novo -- ver a nota do `Tick`, acima
+				double a = estranho.Ficha.BP;
+				DesejoDePoder(estranho, set);
+				rodadas.Add((a, estranho.Ficha.BP));
+			});
+			Checa("SEM scouter, o desejo de poder diz o quanto ele cresceu e NAO traz o numero de antes nem o de depois",
+				  Disse(semScouter, "você está") && !TrazOPoder(semScouter, rodadas[0].Antes)
+				  && !TrazOPoder(semScouter, rodadas[0].Depois), Ultimos(semScouter));
+			Checa("COM o scouter ligado, a mesma frase traz os dois numeros",
+				  TrazOPoder(comScouter, rodadas[1].Antes) && TrazOPoder(comScouter, rodadas[1].Depois), Ultimos(comScouter));
+			Checa("(defeito injetado: o numero sem medidor) sem scouter a frase volta a trazer o numero -- a regua de cima reprovaria",
+				  TrazOPoder(comDefeito, rodadas[2].Depois), Ultimos(comDefeito));
+
 			// =====================================================================
 			// 6. O DESEJO DE REVIVER -- a pergunta que a Fase 0 mandou medir
 			// =====================================================================
@@ -349,6 +371,27 @@ public partial class GameServer
 				  estranho.Ficha.dead);
 			Checa("...e a morte e de VELHICE (`aged_out`): nem as Super Esferas a desfazem",
 				  estranho.Ficha.aged_out);
+
+			// O SUPREMO TAMBEM SO DIZ O NUMERO A QUEM TEM SCOUTER -- as mesmas tres leituras, no `DesejoSupremo` de
+			// producao. O corpo e o que acabou de morrer do proprio desejo (a frase nao pergunta se ele esta vivo);
+			// o poder e o prazo dele voltam ao que eram no fim, pra as secoes de baixo nao herdarem o dobro do dobro.
+			double bpDoSupremo = estranho.Ficha.BP, prazoDoSupremo = estranho.Ficha.sw_doom_year;
+			rodadas.Clear();
+			(semScouter, comScouter, comDefeito) = AsTresLeiturasDoPoder(estranho, () =>
+			{
+				double a = estranho.Ficha.BP;
+				DesejoSupremo(estranho, set, estranho);
+				rodadas.Add((a, estranho.Ficha.BP));
+			});
+			estranho.Ficha.BP = bpDoSupremo;
+			estranho.Ficha.sw_doom_year = prazoDoSupremo;
+			estranho.Ficha.Statify();
+			Checa("SEM scouter, o supremo diz quantas vezes ele ficou mais forte e NAO traz o numero do poder absoluto",
+				  Disse(semScouter, "queima nas suas veias") && Disse(semScouter, "mais forte")
+				  && !TrazOPoder(semScouter, rodadas[0].Depois), Ultimos(semScouter));
+			Checa("COM o scouter ligado, o numero aparece", TrazOPoder(comScouter, rodadas[1].Depois), Ultimos(comScouter));
+			Checa("(defeito injetado: o numero sem medidor) sem scouter o numero volta -- a regua de cima reprovaria",
+				  TrazOPoder(comDefeito, rodadas[2].Depois), Ultimos(comDefeito));
 
 			// =====================================================================
 			// 9. A LINGUA DOS DEUSES -- os DOIS eixos, cada um com as duas metades

@@ -725,8 +725,8 @@ public partial class GameServer
 			? "  habitado: há um povo, e ele defende o planeta em ondas."
 			: $"  desabitado: ninguém vive aqui. A bandeira leva {Conquista.SegundosDePlantio:0}s pra "
 			  + "firmar, e pode ser arrancada nesse tempo.");
-		Avisar(pl, $"  poder mínimo pra invadir: {(povo ? Conquista.BpMinimoComPovo : Conquista.BpMinimoSemPovo):N0} "
-				 + $"(expresso) | o seu: {pl.Ficha.expressedBP:N0}");
+		// SEM O PODER DE QUEM PERGUNTA EM NUMERO -- a regra principal do BP; ver `Conquista.LinhaDoPoderMinimo`.
+		Avisar(pl, Conquista.LinhaDoPoderMinimo(povo, pl.Ficha.expressedBP));
 		Avisar(pl, $"  tributo: {Conquista.TributoPorHora(povo):N0} zeni por hora real "
 				 + $"(teto de {Conquista.HorasDeTetoDoTributo:0} h de acúmulo)");
 

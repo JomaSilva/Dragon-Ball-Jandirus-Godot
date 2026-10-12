@@ -156,6 +156,52 @@ public partial class GameServer
 				  && EscutaDeAvisos.Exists(t => t.Contains("fraco demais")),
 				  string.Join(" | ", EscutaDeAvisos));
 
+			// ============================ O PODER DE QUEM PERGUNTA NAO SAI EM NUMERO (dono, 2026-10-12) ============================
+			// *"outro bug e conseguir ver o proprio bp ao ver se o planeta tem um lider"*. As duas frases que falam do
+			// poder minimo -- o "ver este mundo" e a recusa do fraco -- traziam "o seu: N" pra qualquer um, com ou sem
+			// scouter. A regua e o TEXTO que o servidor manda: o numero do corpo, em qualquer formato, nao pode estar la.
+			// =======================================================================================================================
+			pl.Ficha.BP = 123_457;
+			pl.Ficha.Statify();
+			pl.Ficha.PowerLevel();
+			double meu = pl.Ficha.expressedBP;
+			string[] meuEmTexto =
+			[
+				meu.ToString("N0"), meu.ToString("0"),
+				meu.ToString("N0", System.Globalization.CultureInfo.InvariantCulture),
+				meu.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("pt-BR")),
+			];
+			bool Traz(List<string> falas) => falas.Exists(t => meuEmTexto.Any(n => t.Contains(n, StringComparison.Ordinal)));
+			List<string> OQueOuve(Action gesto)
+			{
+				List<string> falas = [];
+				EscutaDeAvisos = falas;
+				gesto();
+				EscutaDeAvisos = [];
+				return falas;
+			}
+
+			Checa("(palco) o fraco expressa um numero de cinco algarismos ou mais, abaixo do minimo -- nao se confunde com os outros numeros das frases",
+				  meu >= 10_000 && meu < Conquista.BpMinimoComPovo, $"{meu:0}");
+			List<string> ver = OQueOuve(() => ConquistaOndeEstou(pl));
+			Checa("'ver este mundo' diz o poder MINIMO e que o seu AINDA NAO ALCANCA -- e nao diz o seu em numero",
+				  ver.Exists(t => t.Contains("poder mínimo") && t.Contains($"{Conquista.BpMinimoComPovo:N0}") && t.Contains("ainda não alcança"))
+				  && !Traz(ver), string.Join(" | ", ver));
+			List<string> recusa = OQueOuve(() => ConquistaInvadir(pl, ""));
+			Checa("a recusa do fraco diz SO o minimo, como o original (`PlanetConquest.dm:396`)",
+				  recusa.Exists(t => t.Contains("fraco demais") && t.Contains($"{Conquista.BpMinimoComPovo:N0}")) && !Traz(recusa),
+				  string.Join(" | ", recusa));
+
+			Conquista.FraseComOProprioPoderDeTeste = true;
+			try
+			{
+				List<string> verD = OQueOuve(() => ConquistaOndeEstou(pl));
+				List<string> recusaD = OQueOuve(() => ConquistaInvadir(pl, ""));
+				Checa("(defeito injetado: as frases voltam a trazer o proprio poder) as DUAS reprovam -- a regua le o numero do corpo no texto",
+					  Traz(verD) && Traz(recusaD), string.Join(" | ", verD.Concat(recusaD)));
+			}
+			finally { Conquista.FraseComOProprioPoderDeTeste = false; }
+
 			// =====================================================================
 			// 3. A REIVINDICACAO PACIFICA -- a porta que a reputacao abre
 			// =====================================================================
@@ -164,6 +210,11 @@ public partial class GameServer
 			pl.Ficha.PowerLevel();
 			Checa($"o invasor de teste expressa {pl.Ficha.expressedBP:N0} -- acima do minimo",
 				  pl.Ficha.expressedBP >= Conquista.BpMinimoComPovo);
+			List<string> verForte = OQueOuve(() => ConquistaOndeEstou(pl));
+			Checa("...e 'ver este mundo' diz ao forte que o seu ALCANCA, tambem sem numero",
+				  verForte.Exists(t => t.Contains("poder mínimo") && t.Contains("o seu alcança"))
+				  && !verForte.Exists(t => t.Contains(pl.Ficha.expressedBP.ToString("N0"), StringComparison.Ordinal)),
+				  string.Join(" | ", verForte));
 
 			// SEM ser heroi, o verb NAO reivindica em paz: ele invade. A metade de controle da regra
 			// -- sem ela, "heroi reivindica em paz" passaria com a paz valendo pra todo mundo.

@@ -202,13 +202,18 @@ public sealed partial class GameServer
 		foreach (ServerPlayer o in ZoneList(dono.Zone.Hash))
 			Avisar(o, $"{dono.Name} absorve {nomeDele} -- os dois viram um so, e nao ha volta.");
 
+		// O NUMERO SO PRA QUEM TEM SCOUTER (a regra principal do BP; ver `PoderNaFrase`): os outros ouvem o quanto
+		// cresceram. Lido DEPOIS do `AplicarPoderes` de cima, que e quem refaz o bit do scouter.
+		string cresceu = Jandirus.Core.Stats.PoderNaFrase.EmNumero(TemScouter(dono))
+			? $"BP {bpAntes:N0} -> {dono.Ficha.BP:N0}"
+			: $"voce ficou {Jandirus.Core.Stats.PoderNaFrase.QuantoMaisForte(bpAntes, dono.Ficha.BP)}";
 		Avisar(dono, ehJogador
 			? $"voce absorveu {nomeDele}. O poder dele agora e SEU, e e pra sempre "
-			+ $"(BP {bpAntes:N0} -> {dono.Ficha.BP:N0}"
+			+ $"({cresceu}"
 			+ (skillsGanhas > 0 ? $", {skillsGanhas} habilidade(s) dele" : "")
 			+ (ganhouAForma ? ", e o Super Namekuseijin despertou em voce" : "") + ")."
 			: $"voce absorveu {nomeDele}, que nao era ninguem: o corpo dele mal tinha o que dar "
-			+ $"(BP {bpAntes:N0} -> {dono.Ficha.BP:N0}). Fundir com os seus e outra coisa.");
+			+ $"({cresceu}). Fundir com os seus e outra coisa.");
 
 		GD.Print($"[server] ABSORCAO NAMEK ({(ehJogador ? "JOGADOR" : "NPC")}): {dono.Name} + {nomeDele} "
 			   + $"| BP {bpAntes:N0} -> {dono.Ficha.BP:N0} (dele {bpDele:N0}) "

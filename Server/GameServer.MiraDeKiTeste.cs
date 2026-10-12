@@ -107,13 +107,19 @@ public partial class GameServer
 		for (int i = 0; i < tiques && p.Vivo; i++) TickDosProjeteis(Protocol.TickSeconds);
 	}
 
-	/// <summary>Roda os canais ate a cabeca do raio deste corpo nascer. Nulo = a carga nao fechou.</summary>
+	/// <summary>
+	/// Roda os canais ate a cabeca do raio deste corpo nascer. Nulo = a carga nao fechou.
+	///
+	/// O RAIO DA MESA SEM O "SAI SOZINHO" fecha a carga e fica na mao (`CanalDeKi.Segurando`): ai quem o solta e o
+	/// segundo aperto do verb de producao, como no jogo.
+	/// </summary>
 	private Projetil? NascerORaioDe(ServerPlayer pl)
 	{
 		for (int i = 0; i < 900; i++)
 		{
 			if (!_canais.TryGetValue(pl.Id, out CanalDeKi? c)) return null;
 			if (c.Raio != null) return c.Raio;
+			if (c.Segurando) { UsarTecnicaCustomizada(pl, c.Verbo); continue; }
 			TickDosCanaisDeKi(Protocol.TickSeconds);
 		}
 		return null;
@@ -330,6 +336,7 @@ public partial class GameServer
 		GD.Print("[mira] -- 4) NA MESA DE TECNICAS: O RAIO TELEGUIADO E UM BOTAO DE 2 PONTOS");
 
 		ServerPlayer pl = Forjar("Inventor", CorredorLivre(4), bp: 50_000);
+		AbrirAMesaDeBancada(pl);   // a mesa abre por partes: o corpo cru so mediria o portao (`--tecnicateste`, 8)
 		CriarTecnica(pl);   // nasce raio
 		ComprarNaMesa(pl, nameof(Compra.TeleguiadoLigar));
 		AfirmarMira($"ligar o teleguiado num raio custa {TecnicaCustomizada.PrecoDoTeleguiado} pontos",

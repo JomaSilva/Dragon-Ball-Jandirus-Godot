@@ -1776,10 +1776,15 @@ public partial class GameServer
 		double bpExigido = MortePlanetaria.BpExigido(pl.Ficha.Planetgrav);
 		if (pl.Ficha.Ki < MortePlanetaria.KiDaDestruicao || pl.Ficha.expressedBP < bpExigido)
 		{
+			// O PODER DE QUEM PEDE SO SAI EM NUMERO COM SCOUTER (a regra principal do BP; ver `PoderNaFrase`). Sem
+			// ele NAO vai porcentagem: o limiar e do MUNDO e esta escrito nesta mesma frase -- limiar vezes fracao
+			// seria o BP. Diz-se so de que lado o corpo esta, que e o que a recusa ja conta.
+			string meuPoder = Jandirus.Core.Stats.PoderNaFrase.EmNumero(TemScouter(pl))
+				? $"{pl.Ficha.expressedBP:0} de BP"
+				: pl.Ficha.expressedBP < bpExigido ? "um poder que ainda não alcança isso" : "um poder que alcança";
 			Avisar(pl, $"você não tem energia. São {MortePlanetaria.KiDaDestruicao:0} de Ki e "
 					   + $"{bpExigido:0} de BP expresso aqui (a gravidade deste planeta é "
-					   + $"{pl.Ficha.Planetgrav:0.##}x). Você tem {pl.Ficha.Ki:0} de Ki e "
-					   + $"{pl.Ficha.expressedBP:0} de BP.");
+					   + $"{pl.Ficha.Planetgrav:0.##}x). Você tem {pl.Ficha.Ki:0} de Ki e {meuPoder}.");
 			return;
 		}
 

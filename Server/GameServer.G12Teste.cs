@@ -602,6 +602,33 @@ public partial class GameServer
 		AfirmarG12("...e se solta aos 3 s", PodeMexerOCorpo(pl) && !_genkidamaG12.ContainsKey(pl.Id));
 		LimparTudoG12();
 
+		// ---- A FRASE DO DISPARO NAO DIZ PODER EM NUMERO SEM SCOUTER (dono, 2026-10-12) ----
+		// "o poder acumulado na espera: N (o seu proprio e M)" saia pra qualquer um. A regra principal do BP: numero so
+		// com medidor (`PoderNaFrase`); sem ele a bomba e medida CONTRA o poder de quem a solta. Tres bombas inteiras:
+		// a frase so sai no disparo, pelo tique de producao -- e o acumulado ja nao muda depois do segundo aperto.
+		ServerPlayer leitor = ForjarG12("GokuLeitor", CorredorLivre(24), bp: 50_000, skills: [PathSpiritBombG12]);
+		leitor.Facing = Facing.East;
+		var bombas = new List<double>();
+		var (semScouter, comScouter, comDefeito) = AsTresLeiturasDoPoder(leitor, () =>
+		{
+			leitor.Ficha.Ki = leitor.Ficha.MaxKi;
+			UsarHabilidade(leitor, "SpiritBomb");
+			TiquesG12(TiquesDeG12(3.1));   // a esfera se forma
+			TiquesG12(TiquesDeG12(4.0));   // dois pulsos de crescimento
+			UsarHabilidade(leitor, "SpiritBomb");   // pede o disparo
+			if (_genkidamaG12.TryGetValue(leitor.Id, out EstadoDaGenkidamaG12? gl)) bombas.Add(gl.BpAcumulado);
+			TiquesG12(TiquesDeG12(2.0) + 1);   // sai
+			TiquesG12(TiquesDeG12(3.1));       // o corpo se solta
+			LimparTudoDaBancada(manter: [leitor]);   // a bomba que ficou voando nao entra na rodada seguinte
+		});
+		AfirmarG12("SEM scouter, o disparo da Genkidama mede a bomba CONTRA o poder de quem a solta ('maior que o seu') e nao traz o acumulado em numero",
+				   bombas.Count == 3 && Disse(semScouter, "maior que o seu") && !TrazOPoder(semScouter, bombas[0]), Ultimos(semScouter));
+		AfirmarG12("COM o scouter ligado, a mesma frase traz o acumulado em numero",
+				   bombas.Count == 3 && TrazOPoder(comScouter, bombas[1]), Ultimos(comScouter));
+		AfirmarG12("(defeito injetado: o numero sem medidor) sem scouter o numero volta -- a regua de cima reprovaria",
+				   bombas.Count == 3 && TrazOPoder(comDefeito, bombas[2]), Ultimos(comDefeito));
+		LimparTudoG12();
+
 		// ---- COM UM DOADOR MEDITANDO ----
 		ServerPlayer dono = ForjarG12("Goku2", CorredorLivre(24), bp: 50_000, skills: [PathSpiritBombG12]);
 		ServerPlayer doador = ForjarG12("Krillin", CorredorLivre(24), bp: 20_000);

@@ -1162,6 +1162,24 @@ public partial class GameServer
 		AfirmarFd("J5 ...e o convite CONTINUA na mesa (ele foi encaminhado, nao respondido)",
 				  _pedidosDeFusao.ContainsKey(b.Id));
 
+		// ---- J5b: O AVISO NAO DIZ O PODER DE QUEM VAI SER APAGADO SEM SCOUTER (dono, 2026-10-12) ----
+		// O "PARE E LEIA" trazia "poder N" na ficha do personagem. A regra principal do BP: numero so com medidor
+		// (`PoderNaFrase`); sem ele a linha sai sem o poder -- nome, raca e idade ja dizem quem some. Quem fala e a
+		// PRIMEIRA confirmacao, entao o relogio dela e desarmado antes de cada leitura e no fim: a J6 comeca do zero.
+		double bpDoAvisado = b.Ficha.BP;
+		var (semScouter, comScouter, comDefeito) = AsTresLeiturasDoPoder(b, () =>
+		{
+			_confirmacoesDeAbsorcao.Remove(b.Id);
+			ResponderAoConviteDeAbsorcao(b);
+		});
+		_confirmacoesDeAbsorcao.Remove(b.Id);
+		AfirmarFd("J5b SEM scouter, o 'PARE E LEIA' diz quem sera apagado (o nome) e NAO o poder dele",
+				  Disse(semScouter, "PARE E LEIA") && Disse(semScouter, b.Name) && !TrazOPoder(semScouter, bpDoAvisado),
+				  Ultimos(semScouter));
+		AfirmarFd("J5c COM o scouter ligado, o poder entra na ficha do aviso", TrazOPoder(comScouter, bpDoAvisado), Ultimos(comScouter));
+		AfirmarFd("J5d (defeito injetado: o numero sem medidor) sem scouter o poder volta -- a regua de cima reprovaria",
+				  TrazOPoder(comDefeito, bpDoAvisado), Ultimos(comDefeito));
+
 		// ---- J6: UMA CONFIRMACAO SO NAO ACEITA ----
 		ResponderAoConviteDeAbsorcao(b);
 		AfirmarFd("J6 a PRIMEIRA confirmacao no botao proprio nao aceita nada",
@@ -1241,7 +1259,16 @@ public partial class GameServer
 
 		double bpDono = dono.Ficha.BP, bpDele = comido.Ficha.BP;
 
-		AbsorverDeVerdade(dono, comido);
+		List<string> aoAbsorver = OuvirEDevolver(() => AbsorverDeVerdade(dono, comido));
+
+		// ---- AS FRASES DOS DOIS NAO DIZEM PODER EM NUMERO (nenhum tem scouter) -- dono, 2026-10-12 ----
+		// As tres leituras (sem, com, defeito injetado) moram na J' (o aviso) e na J''' (o resultado); aqui e o
+		// caminho INTEIRO de um jogador absorvendo outro, medido uma vez, do jeito que os dois o ouviriam.
+		AfirmarFd("J10b o 'PARE E LEIA' de quem vai ser absorvido nao traz o poder dele",
+				  Disse(aoAbsorver, "PARE E LEIA") && !TrazOPoder(aoAbsorver, bpDele), Ultimos(aoAbsorver));
+		AfirmarFd("J10c ...e quem absorveu ouve o quanto ficou mais forte, sem o BP de antes nem o de depois",
+				  Disse(aoAbsorver, "O poder dele agora e SEU") && Disse(aoAbsorver, "voce ficou")
+				  && !TrazOPoder(aoAbsorver, bpDono) && !TrazOPoder(aoAbsorver, dono.Ficha.BP), Ultimos(aoAbsorver));
 
 		// ---- O QUE **NAO** ACONTECEU: nao ha fusao viva ----
 		// A regra estrutural inteira depende disto. Se a absorcao produzisse uma `FusaoAtiva`, o
@@ -1400,6 +1427,29 @@ public partial class GameServer
 		// ---- E O CORPO DO NPC SAIU DO MUNDO ----
 		AfirmarFd("J31 o NPC absorvido sai do mundo (`RemoverNpc`, o avesso do `PorNoMundo`)",
 				  !_players.ContainsKey(npc.Id));
+
+		// ---- J31b: A FRASE DE QUEM ABSORVEU NAO DIZ O PODER EM NUMERO SEM SCOUTER (dono, 2026-10-12) ----
+		// "(BP A -> B)" saia pra qualquer um. A regra principal do BP: numero so com medidor; os outros ouvem o
+		// quanto cresceram (`PoderNaFrase`). Tres aldeoes novos, absorvidos pelo `AbsorverNamekuseijin` de
+		// producao -- cada rodada anota o antes e o depois DELA, porque cada absorcao mexe no poder de novo.
+		var rodadas = new List<(double Antes, double Depois)>();
+		var (semScouter, comScouter, comDefeito) = AsTresLeiturasDoPoder(dono, () =>
+		{
+			ServerPlayer outro = ForjarNaFusaoDupla($"Aldeao{rodadas.Count + 2}", "Namekian", 400_000, sabeDancar: false, 1);
+			outro.Papel = new Jandirus.Core.Npc.PapelDeNpc(
+				new Jandirus.Core.Npc.MoldeDeNpc { Id = "bancada", Nome = "aldeao" }, 0);
+			double antes = dono.Ficha.BP;
+			AbsorverNamekuseijin(dono, outro);
+			rodadas.Add((antes, dono.Ficha.BP));
+		});
+		AfirmarFd("J31b SEM scouter, quem absorveu ouve o quanto ficou mais forte, e NAO o BP de antes nem o de depois",
+				  rodadas.Count == 3 && rodadas[0].Depois > rodadas[0].Antes && Disse(semScouter, "voce ficou")
+				  && !TrazOPoder(semScouter, rodadas[0].Antes) && !TrazOPoder(semScouter, rodadas[0].Depois), Ultimos(semScouter));
+		AfirmarFd("J31c COM o scouter ligado, a mesma frase traz os dois numeros",
+				  rodadas.Count == 3 && TrazOPoder(comScouter, rodadas[1].Antes) && TrazOPoder(comScouter, rodadas[1].Depois),
+				  Ultimos(comScouter));
+		AfirmarFd("J31d (defeito injetado: o numero sem medidor) sem scouter o numero volta -- a regua de cima reprovaria",
+				  rodadas.Count == 3 && TrazOPoder(comDefeito, rodadas[2].Depois), Ultimos(comDefeito));
 
 		// ---- O CONTRA-EXEMPLO DO PORTAO: clone e boneco NAO sao absorviveis ----
 		// `EhNamekNpcAbsorvivel` e estreito de proposito: o terceiro grupo do `Gente` (clone da mente,

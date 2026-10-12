@@ -132,7 +132,9 @@ public sealed partial class GameServer
 		//     decidindo, com a MESMA pose na tela;
 		//   * o combo que o DM permite ("carrega, pisca, solta") nao existe aqui do mesmo jeito: la a carga se
 		//     SEGURA, engordando o `wavemult`, ate o jogador escolher soltar (`beams.dm:36-47`); aqui ela tem
-		//     duracao fixa (`Projetil.SegundosDeCarga`) e dispara por conta propria;
+		//     duracao fixa (`Projetil.SegundosDeCarga`) e dispara por conta propria. (Desde 2026-10-12 o raio
+		//     da MESA sem o "sai sozinho" tambem se segura na mao -- `CanalDeKi.Segurando` --, mas sem engordar:
+		//     a carga segurada continua sendo canal, e este portao a recusa igual);
 		//   * e "raio na mao" ja quer dizer o canal inteiro no resto do port: a investida (`Aproximar`, pelo
 		//     `PodeMexerOCorpo`), o escudo (`EscudoDeEnergiaG6`) e o Fio Psiquico -- que mora NESTE mesmo
 		//     clique, logo acima (`FioPsiquicoNoCliqueG11`) -- recusam os dois estagios.

@@ -234,9 +234,16 @@ public partial class RoboDaMiraDeKi : Node
 		srv.PorOAlvoDaMira(eu, _alvo, onde);
 		yield return 0.6;
 		cli.SendHabilidade(verbo);
+		// A CARGA FECHA E FICA NA MAO (dono, 2026-10-12): este raio nao comprou o "sai sozinho", entao o tiro so
+		// nasce no SEGUNDO aperto do verb -- pelo mesmo pacote que o botao da tecnica manda.
+		yield return 1.5;
+		(bool canal, bool atirando, _) = srv.CanalDeKiDe(eu);
+		Afirmar("passada a carga, o raio inventado NAO saiu sozinho: o canal esta de pe, sem atirar, e nao ha tiro no mundo",
+				canal && !atirando && !srv.TiroDaMira(eu).Achou, $"canal {canal}, atirando {atirando}");
+		cli.SendHabilidade(verbo);   // o segundo aperto solta
 		tiro = srv.TiroDaMira(eu);
 		for (int i = 0; i < 80 && !tiro.Achou; i++) { yield return 0.05; tiro = srv.TiroDaMira(eu); }
-		Afirmar("o raio inventado nasceu perseguindo o marcado", tiro.Achou && tiro.Alvo == _alvo, $"alvo do tiro {tiro.Alvo} (o marcado e {_alvo})");
+		Afirmar("no segundo aperto o raio inventado nasceu perseguindo o marcado", tiro.Achou && tiro.Alvo == _alvo, $"alvo do tiro {tiro.Alvo} (o marcado e {_alvo})");
 
 		_passoDoAlvo = new Vec2(0, 90);   // o alvo anda pro sul, 2,8 tiles por segundo
 		yield return 0.3;

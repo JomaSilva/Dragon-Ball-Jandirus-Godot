@@ -72,8 +72,8 @@ public partial class GameServer
 			o.Peer?.Send(w, Protocol.ChannelReliable, LiteNetLib.DeliveryMethod.ReliableOrdered);
 	}
 
-	/// <summary>A skill que destrava tudo isto.</summary>
-	private const string SkillDoVoo = "/datum/skill/flying";
+	/// <summary>A skill que destrava tudo isto. O nome mora no Core, com o resto do desvio do voo.</summary>
+	private const string SkillDoVoo = Jandirus.Core.Skills.DegrausDoPort.SkillDoVoo;
 
 	/// <summary>`--vooteste`: quem entrar ja sabe voar. Ver a leitura dos argumentos em GameServer.cs.</summary>
 	private bool _vooDeTeste;
@@ -125,14 +125,16 @@ public partial class GameServer
 		=> pl.Livro.Sabe(SkillDoVoo) ? pl.Niveis.Nivel(SkillDoVoo) : 0;
 
 	/// <summary>A raiz da arvore de Ki. Sobe meditando (2 por tique) e voando (2) -- Mind.dm:81.</summary>
-	private const string SkillDoKi = "/datum/skill/mind/Ki_Unlocked";
+	private const string SkillDoKi = Jandirus.Core.Skills.DegrausDoPort.SkillDoKi;
 
 	/// <summary>
 	/// METADE DA MAESTRIA DO KI: onde o voo aparece sozinho.
 	///
-	/// `Ki_Unlocked` tem `maxlevel = 100`, entao "50% de maestria" e o nivel 50, literal.
+	/// O NUMERO MORA NO CORE (`DegrausDoPort.MaestriaQueDestravaVoo`), porque a FICHA do Ki Unlocked tem de
+	/// dizer o mesmo nivel em que esta porta abre: enquanto ele so existia aqui, a tela repetia o DM (voo no
+	/// 30) e o servidor abria no 50 -- foi o que o dono leu no playtest de 2026-10-12.
 	/// </summary>
-	public const int MaestriaQueDestravaVoo = 50;
+	public const int MaestriaQueDestravaVoo = Jandirus.Core.Skills.DegrausDoPort.MaestriaQueDestravaVoo;
 
 	/// <summary>
 	/// ESTE CORPO PODE VOAR?

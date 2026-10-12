@@ -455,16 +455,19 @@ public partial class RoboDeKi : Node
 
 			// ---------------------------------------------------------- a mesa, pelo fio
 			case 2:
-				Conferir(cli.Mesa is { Id: 1, Gasto: 0 } && cli.Mesa.Tipo == TipoDeProjetil.Beam,
-						 "`ca_criar` abre a mesa no id 1, tipo raio e com os 5 pontos na mao",
+				// A MESA ABRE POR PARTES (dono, 2026-10-12): este personagem so sabe a Bola de Ki (o palco do
+				// servidor a deu, `ArmarAMetadeViva`), entao o rascunho nasce BOLA -- o unico tipo aberto.
+				Conferir(cli.Mesa is { Id: 1, Gasto: 0 } && cli.Mesa.Tipo == TipoDeProjetil.Blast,
+						 "`ca_criar` abre a mesa no id 1, com os 5 pontos na mao -- e tipo BOLA, o unico aberto pra quem so sabe a Bola de Ki",
 						 cli.Mesa == null ? "mesa fechada" : $"id {cli.Mesa.Id}, {cli.Mesa.Tipo}, gasto {cli.Mesa.Gasto}");
-				cli.SendVerbo("ca_tipo", "blast");
+				Limpar();
+				cli.SendVerbo("ca_tipo", "beam");   // o raio ainda nao abriu: quem pede pelo fio tem de ouvir nao
 				break;
 
 			case 3:
-				Conferir(cli.Mesa is { Tipo: TipoDeProjetil.Blast, Carregavel: false },
-						 "trocar pra bola desliga a carga (o `PickAttackType` do DM)",
-						 cli.Mesa == null ? "mesa fechada" : $"{cli.Mesa.Tipo}, carrega {cli.Mesa.Carregavel}");
+				Conferir(cli.Mesa is { Tipo: TipoDeProjetil.Blast, Carregavel: false } && Ouviu("Onda de Ki"),
+						 "pedir RAIO pelo fio sem saber a Onda de Ki e RECUSADO com o motivo: a mesa continua bola, sem carga",
+						 (cli.Mesa == null ? "mesa fechada" : $"{cli.Mesa.Tipo}, carrega {cli.Mesa.Carregavel}") + " | " + string.Join(" | ", _avisos));
 				cli.SendVerbo("ca_texto", "nome/" + NomeDaTecnica);
 				cli.SendVerbo("ca_texto", "grito/" + GritoDaTecnica);
 				cli.SendVerbo("ca_grito", "grito");

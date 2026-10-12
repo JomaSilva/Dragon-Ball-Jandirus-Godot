@@ -48,6 +48,45 @@ public static class Conquista
 	/// <summary>`CONQ_MIN_BP_PROC` (:39). Mundo sem habitante custa vinte vezes menos.</summary>
 	public const double BpMinimoSemPovo = 250_000;
 
+	/// <summary>A porta de poder deste mundo: `premade ? CONQ_MIN_BP_POP : CONQ_MIN_BP_PROC` (:394).</summary>
+	public static double BpMinimo(bool temPovo) => temPovo ? BpMinimoComPovo : BpMinimoSemPovo;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada --conquistateste): as duas frases de baixo voltam a trazer o poder de quem
+	/// pergunta, em numero.
+	/// </summary>
+	public static bool FraseComOProprioPoderDeTeste;
+
+	/// <summary>
+	/// A LINHA DO PODER MINIMO em "ver este mundo" -- o minimo (numero do MUNDO, de ninguem) e se quem
+	/// pergunta o alcanca. O PODER DE QUEM PERGUNTA NAO SAI EM NUMERO.
+	///
+	/// ============================ A REGRA PRINCIPAL DO BP (dono) ============================
+	/// *"Nao e possivel saber o proprio bp ou de ninguem sem um medidor como um scouter"*. Esta linha dizia
+	/// "| o seu: 1.234.567" a qualquer um, com ou sem scouter -- e foi por ela que o dono leu o proprio BP no
+	/// playtest de 2026-10-12, perguntando se o planeta tinha lider. Era acrescimo do port: o original so
+	/// diz o minimo (`PlanetConquest.dm:396`).
+	///
+	/// O "alcanca / ainda nao alcanca" fica porque a tentativa de invadir ja responde a mesma coisa (a
+	/// recusa de baixo); porcentagem do minimo NAO entra -- minimo vezes porcentagem e o BP.
+	/// ========================================================================================
+	/// </summary>
+	public static string LinhaDoPoderMinimo(bool temPovo, double expressoDeQuemPergunta)
+	{
+		double minimo = BpMinimo(temPovo);
+		string linha = $"  poder mínimo pra invadir: {minimo:N0} (vale o que você expressa agora) -- "
+					 + (expressoDeQuemPergunta >= minimo ? "o seu alcança." : "o seu ainda não alcança.");
+		return FraseComOProprioPoderDeTeste ? $"{linha} | o seu: {expressoDeQuemPergunta:N0}" : linha;
+	}
+
+	/// <summary>
+	/// A RECUSA DE QUEM E FRACO DEMAIS PRA INVADIR, literal ao DM (`PlanetConquest.dm:396`): so o minimo.
+	/// Ver <see cref="LinhaDoPoderMinimo"/> sobre o numero que saiu daqui.
+	/// </summary>
+	public static string RecusaPorFraqueza(bool temPovo, double expressoDeQuemPergunta) =>
+		$"você é fraco demais para subjugar este mundo (poder mínimo: {BpMinimo(temPovo):N0}"
+		+ (FraseComOProprioPoderDeTeste ? $"; o seu é {expressoDeQuemPergunta:N0})." : ").");
+
 	/// <summary>`CONQ_MAX_DOMAINS` (:40). Tres, e e a primeira metade do "manter custa".</summary>
 	public const int MaximoDeDominios = 3;
 

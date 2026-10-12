@@ -188,4 +188,91 @@ public partial class GameServer
 
 	/// <summary>O que o servidor disse, numa linha so -- o rodape de toda prova vermelha.</summary>
 	private static string Ultimos(List<string>? falas) => string.Join(" | ", falas ?? []);
+
+	// =====================================================================
+	// A FRASE QUE FALA DE PODER -- numero so com scouter (dono, 2026-10-12)
+	// =====================================================================
+	/// <summary>
+	/// O MESMO OUVIDO do <see cref="Ouvir"/>, DEVOLVENDO a escuta que estava ligada antes: pra a medida que entra
+	/// no meio de uma bancada que ja escuta por conta propria (o `Ouvir` a deixaria nula). O que foi dito no
+	/// gesto tambem vai pra escuta de fora -- ela nao perde nada.
+	/// </summary>
+	private static List<string> OuvirEDevolver(Action gesto)
+	{
+		List<string>? antes = EscutaDeAvisos;
+		List<string> falas = [];
+		EscutaDeAvisos = falas;
+		try { gesto(); }
+		finally
+		{
+			EscutaDeAvisos = antes;
+			antes?.AddRange(falas);
+		}
+		return falas;
+	}
+
+	/// <summary>
+	/// ALGUMA DESTAS FALAS TRAZ ESTE PODER EM NUMERO? Nos formatos que as frases do servidor usam: `:N0` na
+	/// cultura da maquina, `:0`, e `:N0` invariante e pt-BR (a bancada roda em mais de uma maquina).
+	/// </summary>
+	private static bool TrazOPoder(List<string> falas, double poder)
+	{
+		string[] escritas =
+		[
+			poder.ToString("N0"), poder.ToString("0"),
+			poder.ToString("N0", System.Globalization.CultureInfo.InvariantCulture),
+			poder.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("pt-BR")),
+		];
+		return falas.Exists(f => escritas.Any(n => f.Contains(n, StringComparison.Ordinal)));
+	}
+
+	/// <summary>
+	/// LIGA OU DESLIGA O SCOUTER DE UM CORPO DE BANCADA. Nos DOIS campos: o `TemScouter` le `Poderes`, e o
+	/// `AplicarPoderes` (que metade dos gestos medidos chama antes de falar) o refaz de `PoderesConcedidos`.
+	/// </summary>
+	private static void ScouterDeBancada(ServerPlayer pl, bool ligado)
+	{
+		if (ligado)
+		{
+			pl.PoderesConcedidos |= Jandirus.Net.Protocol.Poder.Scouter;
+			pl.Poderes |= Jandirus.Net.Protocol.Poder.Scouter;
+		}
+		else
+		{
+			pl.PoderesConcedidos &= ~Jandirus.Net.Protocol.Poder.Scouter;
+			pl.Poderes &= ~Jandirus.Net.Protocol.Poder.Scouter;
+		}
+	}
+
+	/// <summary>
+	/// AS TRES LEITURAS DE UMA FRASE QUE FALA DO PODER DE QUEM A LE: sem scouter, com scouter e sem scouter com o
+	/// defeito injetado (`PoderNaFrase.NumeroSemMedidorDeTeste`: o numero sai pra qualquer um). O gesto roda TRES
+	/// vezes, pelo codigo de producao; se ele muda o poder a cada vez, quem chama anota o antes e o depois de cada
+	/// rodada dentro dele. O scouter do leitor volta a ser o que era.
+	///
+	/// POR QUE SAO TRES: "sem scouter nao traz o numero" passa tambem numa frase que nunca o traz -- e com scouter
+	/// o numero TEM de continuar la; e sem o defeito injetado ninguem sabe se a regua le o numero quando ele vem.
+	/// </summary>
+	private static (List<string> Sem, List<string> Com, List<string> ComDefeito) AsTresLeiturasDoPoder(
+		ServerPlayer leitor, Action gesto)
+	{
+		bool tinha = TemScouter(leitor);
+		try
+		{
+			ScouterDeBancada(leitor, false);
+			List<string> sem = OuvirEDevolver(gesto);
+
+			ScouterDeBancada(leitor, true);
+			List<string> com = OuvirEDevolver(gesto);
+
+			ScouterDeBancada(leitor, false);
+			Jandirus.Core.Stats.PoderNaFrase.NumeroSemMedidorDeTeste = true;
+			List<string> comDefeito;
+			try { comDefeito = OuvirEDevolver(gesto); }
+			finally { Jandirus.Core.Stats.PoderNaFrase.NumeroSemMedidorDeTeste = false; }
+
+			return (sem, com, comDefeito);
+		}
+		finally { ScouterDeBancada(leitor, tinha); }
+	}
 }

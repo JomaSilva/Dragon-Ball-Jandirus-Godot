@@ -315,20 +315,15 @@ public partial class GameServer
 	// O QUE UM DEGRAU DE NIVEL CONCEDE E ACENDE
 	// =====================================================================
 	/// <summary>
-	/// A SKILL `flying` que o nivel 30 do Ki Unlocked entregaria (Mind.dm:109-110) NAO e concedida:
-	/// o dono cortou o voo-por-skill -- "voar tem que LIBERAR SOZINHO ao chegar em metade da
-	/// maestria do Ki, e antes disso nem aparecer" (ver `GameServer.Voo.PodeVoar` e
-	/// `MaestriaQueDestravaVoo`). Conceder a skill aqui reabriria pelo nivel 30 a porta que ele
-	/// fechou no 50. O dado continua no `niveis.json` (e fiel ao DM); o desvio mora nesta lista.
-	/// </summary>
-	private static readonly HashSet<string> NaoConcedidasPorDegrau =
-		new(StringComparer.OrdinalIgnoreCase) { SkillDoVoo };
-
-	/// <summary>
 	/// CONCEDE o que os degraus ja cruzados entregam e o livro ainda nao tem -- o
 	/// `var/datum/skill/A = new/datum/skill/sense; A.learn(savant, 1)` do Mind.dm:103-104, lido do
 	/// NIVEL (e nao do instante da subida): quem passou do 5 antes de este canal existir recebe o
 	/// Sense no login. Devolve quantas skills entraram.
+	///
+	/// A SKILL `flying` que o nivel 30 do Ki Unlocked entregaria (Mind.dm:109-110) NAO e concedida: o dono
+	/// cortou o voo-por-skill -- "voar tem que LIBERAR SOZINHO ao chegar em metade da maestria do Ki, e antes
+	/// disso nem aparecer" (ver `GameServer.Voo.PodeVoar`). O desvio mora no Core (`DegrausDoPort.NaoConcede`),
+	/// onde a ficha da skill tambem o le: a tela nao pode anunciar o que esta funcao pula.
 	/// </summary>
 	private int ConcederPorDegrau(ServerPlayer pl)
 	{
@@ -336,7 +331,7 @@ public partial class GameServer
 		int n = 0;
 		foreach ((string path, int nivel) in pl.Niveis.ConcessoesPendentes(pl.Livro).ToList())
 		{
-			if (NaoConcedidasPorDegrau.Contains(path) || _skills.Get(path) is not { Arvore: false } s) continue;
+			if (DegrausDoPort.NaoConcede(path) || _skills.Get(path) is not { Arvore: false } s) continue;
 			pl.Livro.Dar(path);
 			// o `baselevel` do `learn()` -- so tem onde morar em skill COM regra de nivel (`Por` ignora
 			// as outras; o Sense e uma delas: o effector dele e quarentena inteira, entao o 1 nao muda nada)

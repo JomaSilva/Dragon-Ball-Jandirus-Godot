@@ -124,10 +124,42 @@ public sealed partial class GameServer
 		int id = 1;
 		while (pl.Customizadas.Exists(t => t.Id == id)) id++;
 
+		// A MESA ABRE POR PARTES (dono, 2026-10-12) -- ver `TecnicaCustomizada.VerboQueAbre`. O rascunho nasce no
+		// primeiro tipo ABERTO (o raio, se ja abriu: e o de sempre); sem nenhum, nao ha o que inventar ainda.
+		if (TecnicaCustomizada.TipoDeNascenca(v => SabeTecnica(pl, v)) is not { } tipo)
+		{
+			Avisar(pl, "voce ainda nao sabe soltar ki: nao ha o que inventar. A mesa abre por partes -- "
+					   + string.Join(", ", TecnicaCustomizada.TiposDaMesa.Select(OQueAbreOTipo)) + ".");
+			return;
+		}
+
 		pl.Mesa = new TecnicaCustomizada { Id = id };
-		pl.Mesa.PorTipo(TipoDeProjetil.Beam);
+		pl.Mesa.PorTipo(tipo);
 		Avisar(pl, "voce comeca a desenhar uma tecnica nova na cabeca.");
 		MandarCustomizadas(pl);
+	}
+
+	/// <summary>"a bola com Bola de Ki" -- o tipo e a generica que o abre, pras frases de recusa.</summary>
+	private static string OQueAbreOTipo(TipoDeProjetil t) =>
+		$"{NomeDoTipoNaFrase(t)} com {TecnicaCustomizada.NomeDaQueAbre(t)}";
+
+	private static string NomeDoTipoNaFrase(TipoDeProjetil t) => t switch
+	{
+		TipoDeProjetil.Beam => "o raio",
+		TipoDeProjetil.Guided => "a bola teleguiada",
+		_ => "a bola",
+	};
+
+	/// <summary>
+	/// ESTE TIPO JA ABRIU NA MESA DESTE CORPO? Falso avisa por que. E a pergunta unica das quatro portas da
+	/// mesa -- inventar, trocar o tipo, ajustar e confirmar: um portao que so valesse numa delas nao seria
+	/// portao (o rascunho sobrevive entre comandos, e os comandos chegam por texto no canal de verbos).
+	/// </summary>
+	private bool TipoAbertoNaMesa(ServerPlayer pl, TipoDeProjetil t)
+	{
+		if (TecnicaCustomizada.TipoAberto(t, v => SabeTecnica(pl, v))) return true;
+		Avisar(pl, $"{NomeDoTipoNaFrase(t)} so abre na mesa depois de voce aprender {TecnicaCustomizada.NomeDaQueAbre(t)}.");
+		return false;
 	}
 
 	/// <summary>
@@ -141,6 +173,9 @@ public sealed partial class GameServer
 	{
 		TecnicaCustomizada? t = AcharTecnica(pl, arg);
 		if (t == null) { Avisar(pl, "voce nao tem essa tecnica."); return; }
+		// QUEM INVENTOU ANTES DE O PORTAO EXISTIR continua com a tecnica; o que nao faz e redesenha-la na mesa
+		// antes de aprender a generica do tipo.
+		if (!TipoAbertoNaMesa(pl, t.Tipo)) return;
 
 		pl.Mesa = t.Clonar();
 		MandarCustomizadas(pl);
@@ -171,6 +206,7 @@ public sealed partial class GameServer
 			_ => null,
 		};
 		if (t == null) { Avisar(pl, "tipo desconhecido: use beam, blast ou guided."); return; }
+		if (!TipoAbertoNaMesa(pl, t.Value)) return;
 
 		// ============================ SAIR DO RAIO DESFAZ OS MODIFICADORES DE RAIO ============================
 		// Alcance, forca-pela-distancia, instantaneo e tempo de carga so existem no Beam
@@ -441,6 +477,7 @@ public sealed partial class GameServer
 	private void SalvarTecnica(ServerPlayer pl)
 	{
 		if (pl.Mesa is not { } m) { Avisar(pl, "nao ha nada aberto pra confirmar."); return; }
+		if (!TipoAbertoNaMesa(pl, m.Tipo)) return;
 
 		TecnicaCustomizada? existente = pl.Customizadas.Find(t => t.Id == m.Id);
 		if (existente != null)
@@ -533,8 +570,13 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
-	/// BEAM: aperta pra carregar, aperta de novo pra soltar, e mais uma pra parar -- o mesmo estado
-	/// do `Ki_Wave`, porque e o mesmo motor (`GameServer.Canalizar`).
+	/// BEAM: aperta pra carregar, aperta de novo pra soltar, e mais uma pra parar -- o fluxo do
+	/// `CustomAttackHandler` (`customattacks.dm:404-475`), no motor do `Ki_Wave` (`GameServer.Canalizar`).
+	///
+	/// O SEGUNDO APERTO E DE VERDADE (dono, playtest de 2026-10-12): a carga fecha e FICA NA MAO ate o verb ser
+	/// apertado de novo; antes de fechar, o mesmo aperto a desfaz. Quem comprou o "sai sozinho" da mesa
+	/// (`instantattack`) dispensa esse aperto -- e so isso: a carga minima e cumprida do mesmo jeito. Ate aqui
+	/// TODO raio da mesa saia sozinho, e o botao de 2 pontos so fazia a carga sumir.
 	///
 	/// ============================ A ESTAMINA VALE AQUI TAMBEM, E NO DM NAO VALIA ============================
 	/// O `CustomShotOK` (`:481`) -- o unico lugar que confere e cobra estamina -- so e chamado pelo
@@ -568,7 +610,8 @@ public sealed partial class GameServer
 		if (t.Teleguiado && AlvoDeTeleguiado(pl) == null)
 			Avisar(pl, "sem alvo marcado: o raio vai sair reto. (Marque alguem com duplo clique.)");
 
-		Canalizar(pl, t.Verbo, custo, t.Receita());
+		Canalizar(pl, t.Verbo, custo, t.Receita(),
+				  gritoAoSoltar: t.DizGrito && t.Grito.Length > 0 ? t.Grito : null);
 
 		// SO COBRA O FOLEGO SE O CANAL ABRIU. `Canalizar` refaz o `PodeAtirar` por conta propria
 		// (ele e chamado direto por outras tecnicas), e entre a conferencia daqui e a de la nao ha

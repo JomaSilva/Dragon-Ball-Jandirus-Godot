@@ -1,5 +1,6 @@
 using Godot;
 using Jandirus.Core.Combat;
+using Jandirus.Core.Skills;
 using Jandirus.Net;
 
 namespace Jandirus.Client;
@@ -20,7 +21,12 @@ namespace Jandirus.Client;
 ///      `GameServer` no mesmo processo) e ela VOLTA pelo `PeerLook` pro `World`, que e de onde todo
 ///      tiro meu tira a cor; 999,0,0 e recusado; "Sortear" da outra cor.
 ///
-/// As duas fotos (`mesa-1-raio.png`, `mesa-2-bola.png`) sao a mesa aberta nos dois tipos.
+///   0. (dono, 2026-10-12) A MESA ABRE POR PARTES: o personagem novo, que nao sabe soltar ki, ve o botao de
+///      inventar APAGADO com o motivo escrito, e o `ca_criar` mandado na mao e recusado pelo servidor. So entao
+///      o palco lhe da as tres genericas e o resto do roteiro segue.
+///
+/// As tres fotos: `mesa-0-fechada.png` (o personagem novo, com o botao de inventar apagado) e a mesa aberta nos
+/// dois tipos (`mesa-1-raio.png`, `mesa-2-bola.png`).
 /// ==============================================================================
 ///
 /// COMO RODAR -- um processo so, com `--host` (a cor guardada e lida do servidor) e JANELA (as fotos):
@@ -47,6 +53,12 @@ public partial class RoboDaMesaDeKi : Node
 	private static readonly Color CorPedida = new(200 / 255f, 40 / 255f, 40 / 255f);
 
 	private Color _corAntes;
+
+	/// <summary>
+	/// Onde o passo 0 esta: 0 = a mesa fechada do personagem novo, 1 = a recusa do servidor chegou e o palco abre a
+	/// mesa, 2 = esperando os verbs novos chegarem.
+	/// </summary>
+	private int _fasePalco;
 
 	private void Conferir(bool ok, string oque)
 	{
@@ -82,7 +94,7 @@ public partial class RoboDaMesaDeKi : Node
 
 		switch (_passo)
 		{
-			case 0: Abrir(tela, cli, mundo); break;
+			case 0: Abrir(tela, srv, cli, mundo); break;
 			case 1: AGradeDoRaio(tela, cli); break;
 			case 2: AArteEscolhida(tela, cli); break;
 			case 3: ARecusaDaBolaNoRaio(tela, cli); break;
@@ -101,9 +113,40 @@ public partial class RoboDaMesaDeKi : Node
 	// =====================================================================
 	// 0) ABRIR
 	// =====================================================================
-	private void Abrir(TelaDeTecnicas tela, GameClient cli, World mundo)
+	private void Abrir(TelaDeTecnicas tela, Jandirus.Server.GameServer srv, GameClient cli, World mundo)
 	{
 		if (_t < 2.5) return;
+
+		// A MESA ABRE POR PARTES (dono, 2026-10-12). O personagem deste robo acabou de nascer e nao sabe soltar ki:
+		// a tela abre (a cor do ki e de todo mundo), mas o botao de inventar esta APAGADO e diz por que. So depois o
+		// palco lhe da as tres genericas -- o resto do roteiro e sobre arte e cor, e nao sobre o portao.
+		const string inventar = "Inventar uma técnica nova";
+		if (_fasePalco == 0)
+		{
+			tela.Abrir();
+			Conferir(TecnicaCustomizada.TiposDaMesa.All(t => !TelaDeTecnicas.Aberto(t)),
+					 "(palco) o personagem novo nao sabe nenhuma das tres genericas (Bola de Ki, Onda de Ki, Esfera Teleguiada)");
+			Conferir(tela.BotaoApagado(inventar) && !tela.ClicarBotao(inventar),
+					 "sem saber soltar ki, o botao de inventar esta na tela e APAGADO");
+			Conferir(tela.TemTexto("Você ainda não sabe soltar ki") && tela.TemTexto(TecnicaCustomizada.NomeDaQueAbre(TipoDeProjetil.Blast))
+					 && tela.TemTexto(TecnicaCustomizada.NomeDaQueAbre(TipoDeProjetil.Beam)),
+					 "...e a tela diz por que, e com que tecnica cada tipo abre");
+			cli.SendVerbo("ca_criar");   // quem manda o pacote na mao tem de ouvir nao do servidor
+			_fasePalco = 1;
+			_t = 1.5;   // um segundo pro pacote ir e a recusa voltar
+			return;
+		}
+		if (_fasePalco == 1)
+		{
+			Fotografar("user://mesa-0-fechada.png", "a mesa de quem ainda nao sabe soltar ki: o botao de inventar apagado, com o motivo");
+			Conferir(cli.Mesa == null && Ouviu("por partes"),
+					 "o `ca_criar` mandado na mao com a mesa fechada foi RECUSADO pelo servidor, com o motivo (nenhum rascunho abriu)");
+			Conferir(srv.AbrirAMesaDeBancada(cli.LocalId), "(palco) o servidor da ao corpo as tres genericas que abrem a mesa");
+			_fasePalco = 2;
+			_t = 1.0;   // um segundo e meio pro pacote de skills chegar com os verbs novos
+			return;
+		}
+		if (TecnicaCustomizada.TiposDaMesa.Any(t => !TelaDeTecnicas.Aberto(t))) return;   // o pacote ainda nao chegou
 
 		_corAntes = mundo.CorDoKiDe(cli.LocalId);
 		tela.Abrir();

@@ -61,8 +61,26 @@ public sealed class ReceitaDeProjetil
 	/// <summary>`minimum_chargetime`. So o Beam carrega; blast e guided saem na hora.</summary>
 	public double CargaMinima = 1;
 
-	/// <summary>`instantattack`: paga 2 pontos pra a carga nao prender ninguem.</summary>
-	public bool Instantaneo;
+	/// <summary>
+	/// A CARGA FECHADA ESPERA O SEGUNDO APERTO DO VERB -- o raio do DM sem `instantattack`.
+	///
+	/// ============================ O QUE O `instantattack` E, E O QUE ESTE CAMPO NAO ERA ============================
+	/// No DM TODO raio se solta no dedo: o verb liga `charging`, e so o MESMO verb apertado de novo, com a carga
+	/// minima ja cumprida (`accum >= 10*chargedelay/3`), liga `beaming` (`customattacks.dm:411-422`,
+	/// `beams.dm:279-284`). O `instantattack` da mesa (2 pontos, `:461-471`) e quem dispensa o segundo aperto:
+	/// ele liga `beaming` sozinho -- e a cabeca continua esperando o mesmo `accum` no `AreYaBeamingKid`
+	/// (`beams.dm:52-55`). Ou seja: "sai sozinho QUANDO TERMINA de carregar", que e o que o botao da mesa diz.
+	///
+	/// Este campo se chamava `Instantaneo` e fazia outra coisa: ZERAVA a carga. Quem pagava os 2 pontos nem via o
+	/// personagem carregar, e quem NAO pagava via o raio sair sozinho do mesmo jeito -- o botao nao separava
+	/// nada (dono, playtest de 2026-10-12). Agora o sentido e o do DM, pelo avesso: verdadeiro = SEGURA.
+	///
+	/// SO A TECNICA INVENTADA O LIGA (`TecnicaCustomizada.Receita`). Os raios portados a mao (Ki Wave, Masenko,
+	/// Final Flash...) continuam saindo sozinhos no fim da carga -- DIVERGENCIA DECLARADA do DM, que e anterior a
+	/// este campo e de que a IA depende (corpo sem teclado nao aperta o verb duas vezes).
+	/// ================================================================================================================
+	/// </summary>
+	public bool SeguraACarga;
 
 	/// <summary>`physdamage`: troca a cadeia de ki pela fisica e o elemento pra "Physical".</summary>
 	public bool Fisico;
@@ -1109,9 +1127,9 @@ public sealed class Projetil
 	/// laco desconta a pericia: `chargedelay /= log_10(max(chargedskill+beamskill, 10))`
 	/// (`beams.dm:33`), que e o que faz um veterano carregar um Kamehameha mais rapido.
 	///
-	/// COM PISO: soltar o botao antes da carga minima CANCELA (`stopcharging`), entao uma carga de
-	/// zero segundos nao existiria como estado -- e o `instantattack` (que paga 2 pontos justamente
-	/// pra pular a espera) deixaria de ter o que pular.
+	/// COM PISO: apertar o verb de novo antes da carga minima CANCELA (`stopcharging`), entao uma carga de
+	/// zero segundos nao existiria como estado. E VALE PRA TODO RAIO: o `instantattack` da mesa nao encurta
+	/// esta espera -- ele so dispensa o segundo aperto (ver <see cref="ReceitaDeProjetil.SeguraACarga"/>).
 	/// </summary>
 	public static double SegundosDeCarga(double cargaMinima, Fighter f)
 	{

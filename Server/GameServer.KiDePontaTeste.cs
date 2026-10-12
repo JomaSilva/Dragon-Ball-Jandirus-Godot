@@ -411,6 +411,7 @@ public partial class GameServer
 		// familia nao escreve nada no disco de ninguem -- e a decima primeira tecnica do ROBO, la na
 		// metade viva, atravessa o mesmo teto com save de verdade.
 		ServerPlayer pl = Forjar("Inventor", CorredorLivre(4), bp: 5_000);
+		AbrirAMesaDeBancada(pl);   // a mesa abre por partes: o corpo cru so mediria o portao (`--tecnicateste`, 8)
 		EscutaDeAvisos = [];
 		for (int i = 0; i < TecnicaCustomizada.Maximo; i++)
 		{
@@ -1838,6 +1839,7 @@ public partial class GameServer
 		GD.Print("[kiponta] -- 9) O SAVE VELHO CARREGA, E O NOVO ATRAVESSA O DISCO");
 
 		ServerPlayer pl = Forjar("Arquivo", CorredorLivre(4), bp: 5_000);
+		AbrirAMesaDeBancada(pl);   // a teleguiada so abre com a Esfera Teleguiada
 		ComandoDeTecnicaCustomizada(pl, "ca_criar", "");
 		ComandoDeTecnicaCustomizada(pl, "ca_tipo", "guided");
 		ComandoDeTecnicaCustomizada(pl, "ca_texto", "nome/Perseguidora");
@@ -1896,7 +1898,10 @@ public partial class GameServer
 			AfirmarPp("...e o campo entra NULO, que e o mesmo que \"nunca inventei nada\"",
 					  antigo?.Customizadas == null);
 
-			var velho = new ServerPlayer { Id = 4343, Ficha = pl.Ficha };
+			// COM LIVRO, e sabendo as genericas: o que este corpo prova e que o SAVE VELHO nao aleija ninguem -- e
+			// desde que a mesa abre por partes, sem livro ele so ouviria a recusa do portao.
+			var velho = new ServerPlayer { Id = 4343, Ficha = pl.Ficha, Livro = new Jandirus.Core.Skills.SkillBook() };
+			AbrirAMesaDeBancada(velho);
 			PrepararCustomizadas(velho, antigo);
 			AfirmarPp("...e o corpo entra sem tecnica nenhuma, sem migracao e sem estourar",
 					  velho.Customizadas.Count == 0 && velho.Mesa == null);
@@ -1960,6 +1965,16 @@ public partial class GameServer
 	{
 		AfirmarPp($"a metade viva tem palco: um campo aberto de {CampoDaMetadeViva} tiles pra cada lado do jogador",
 				  PorEmCampoAberto(vivo, CampoDaMetadeViva), $"{vivo.Name} ficou em {vivo.Pos}");
+
+		// A MESA ABRE POR PARTES (dono, 2026-10-12): a conta nova do robo nao sabe soltar ki, e a mesa nem abriria.
+		// Ela ganha SO a Bola de Ki -- a tecnica que o robo inventa e uma bola, e a Onda de Ki tem de continuar
+		// FALTANDO: o robo pede o raio pelo fio pra ouvir a recusa do portao, e a "mentira 3" dele e o `Ki_Wave` que
+		// este personagem nao aprendeu. O trio do login logo atras, pra o corpo ja entrar com o que o degrau da (o
+		// relogin da metade viva o reaplicaria do mesmo jeito -- e nada mudaria entre os tiros de antes e os de depois).
+		DarAGenericaDeBancada(vivo, TipoDeProjetil.Blast);
+		vivo.Niveis.Aplicar(vivo.Ficha);
+		AplicarPoderes(vivo);
+		AplicarEfeitos(vivo);
 
 		vivo.Ficha.BP = Math.Max(vivo.Ficha.BP, 200_000);
 		vivo.Ficha.Statify();

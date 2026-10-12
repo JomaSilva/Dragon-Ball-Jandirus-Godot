@@ -31,6 +31,10 @@ namespace Jandirus.Server;
 ///     da faixa e texto, respeita a porta do `Aura_and_Blast_Color` (carregando/voando/escudado),
 ///     `sortear` da outra cor, e a cor ATRAVESSA O DISCO sem ser re-derivada -- com o defeito
 ///     injetado da faixa desligada pra provar que a recusa sabe ficar vermelha.
+///  8. A MESA ABRE POR PARTES (dono, 2026-10-12): cada tipo so depois da tecnica generica dele, nas
+///     quatro portas (inventar, trocar o tipo, ajustar, confirmar). E, na familia 5, os outros dois
+///     pedidos do mesmo dia: a carga do raio FICA NA MAO ate o segundo aperto (o "sai sozinho" e quem
+///     o dispensa, sem zerar a carga) e o grito do disparo e o que o jogador escreveu.
 /// =========================================================================
 ///
 /// ============================ CHAMA O CODIGO DE PRODUCAO ============================
@@ -51,6 +55,67 @@ public sealed partial class GameServer
 		GD.PrintErr($"[tecnica]   FALHA {oque}   {detalhe}");
 	}
 
+	/// <summary>
+	/// AS TRES GENERICAS QUE ABREM A MESA (Bola de Ki, Onda de Ki, Esfera Teleguiada), dadas a um corpo de
+	/// bancada pelos caminhos de PRODUCAO -- a skill comprada entra no livro, o degrau que concede o verb vira
+	/// nivel.
+	///
+	/// POR QUE TODA BANCADA DA MESA CHAMA ISTO: elas medem pontos, arte, mira e disparo com corpos forjados
+	/// crus, que nao sabem tecnica nenhuma. Desde que a mesa abre por partes, um corpo cru so mediria a recusa
+	/// do portao -- que tem familia propria (a 8 desta bancada), com corpo cru e tudo.
+	/// </summary>
+	internal void AbrirAMesaDeBancada(ServerPlayer pl)
+	{
+		foreach (TipoDeProjetil t in TecnicaCustomizada.TiposDaMesa) DarAGenericaDeBancada(pl, t);
+	}
+
+	/// <summary>O mesmo, pro jogador LOGADO de um robo de cliente (que so tem o id). Verdadeiro = os tres tipos abriram.</summary>
+	internal bool AbrirAMesaDeBancada(int id)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return false;
+		AbrirAMesaDeBancada(pl);
+		return TecnicaCustomizada.TiposDaMesa.All(t => SabeTecnica(pl, TecnicaCustomizada.VerboQueAbre(t)));
+	}
+
+	/// <summary>
+	/// A generica que abre UM tipo: a skill que a entrega na compra, senao o degrau que a concede.
+	///
+	/// O DEGRAU VAI COM A SKILL NO LIVRO, e nao so com o nivel: num jogador LOGADO o tique acerta os niveis com o
+	/// livro (`NiveisDeSkill.Sincronizar`: *"skill esquecida sai"*), e o nivel de uma skill que o livro nao tem
+	/// some no tique seguinte. Num corpo forjado ninguem sincroniza -- por isso a primeira versao deste palco
+	/// passou na `--tecnicateste` e deixou o robo da `--kideponta` com a mesa fechada.
+	/// </summary>
+	private void DarAGenericaDeBancada(ServerPlayer pl, TipoDeProjetil t)
+	{
+		string verbo = TecnicaCustomizada.VerboQueAbre(t);
+		if (_skills == null || SabeTecnica(pl, verbo)) return;
+
+		if (_skills.Todas.FirstOrDefault(s => !s.Arvore && s.Verbos.Contains(verbo, StringComparer.OrdinalIgnoreCase)) is { } compra)
+		{
+			pl.Livro?.Dar(compra.Path);
+			return;
+		}
+		foreach (Skill s in _skills.Todas)
+		{
+			if (s.Arvore || RegrasDeNivel.Get(s.Path) is not { } r) continue;
+			foreach (Degrau d in r.Degraus)
+			{
+				if (d.Periodo != 0 || !d.Verbos.Contains(verbo, StringComparer.OrdinalIgnoreCase)) continue;
+				pl.Livro?.Dar(s.Path);
+				if (d.Nivel > pl.Niveis.Nivel(s.Path)) pl.Niveis.Por(s.Path, d.Nivel);
+				return;
+			}
+		}
+	}
+
+	/// <summary>O <see cref="Forjar"/> das familias que USAM a mesa: o corpo ja sabe as tres genericas.</summary>
+	private ServerPlayer ForjarInventor(string nome, Vec2 onde, double bp)
+	{
+		ServerPlayer pl = Forjar(nome, onde, bp);
+		AbrirAMesaDeBancada(pl);
+		return pl;
+	}
+
 	public void RodarBancadaDeTecnicas()
 	{
 		_tcOk = _tcFalhou = 0;
@@ -66,6 +131,7 @@ public sealed partial class GameServer
 			AsTresDisparam();
 			ODespachoDoVerbo();
 			ACorDoKi();
+			AMesaAbrePorPartes();
 		}
 		finally
 		{
@@ -431,7 +497,7 @@ public sealed partial class GameServer
 		VarrerTodasAsSequencias();
 
 		// ---------------------------------------------------------------- o teto de dez tecnicas
-		ServerPlayer pl = Forjar("Inventor", CorredorLivre(4), bp: 5_000);
+		ServerPlayer pl = ForjarInventor("Inventor", CorredorLivre(4), bp: 5_000);
 		EscutaDeAvisos = [];
 		for (int i = 0; i < TecnicaCustomizada.Maximo; i++)
 		{
@@ -588,7 +654,7 @@ public sealed partial class GameServer
 	{
 		GD.Print("[tecnica] -- 3) A MESA EDITA UMA COPIA (descartar nao encosta na tecnica de pe)");
 
-		ServerPlayer pl = Forjar("Copista", CorredorLivre(4), bp: 5_000);
+		ServerPlayer pl = ForjarInventor("Copista", CorredorLivre(4), bp: 5_000);
 		CriarTecnica(pl);
 		pl.Mesa!.Nome = "Original";
 		ComprarNaMesa(pl, nameof(Compra.DanoMais));
@@ -735,7 +801,7 @@ public sealed partial class GameServer
 	{
 		GD.Print("[tecnica] -- 4) ELAS ATRAVESSAM O DISCO (pelo `AccountStore` de verdade)");
 
-		ServerPlayer pl = Forjar("Arquivista", CorredorLivre(4), bp: 5_000);
+		ServerPlayer pl = ForjarInventor("Arquivista", CorredorLivre(4), bp: 5_000);
 		CriarTecnica(pl);
 		TipoDaTecnica(pl, "guided");
 		TextoDaMesa(pl, "nome/Rastreadora");
@@ -831,7 +897,7 @@ public sealed partial class GameServer
 
 		// ---------------------------------------------------------------- bola
 		Vec2 chao = CorredorLivre(24);
-		ServerPlayer pl = Forjar("Atirador", chao, bp: 5_000);
+		ServerPlayer pl = ForjarInventor("Atirador", chao, bp: 5_000);
 		pl.Facing = Facing.East;
 
 		CriarTecnica(pl);
@@ -945,7 +1011,7 @@ public sealed partial class GameServer
 
 		// ---------------------------------------------------------------- raio
 		chao = CorredorLivre(24);
-		pl = Forjar("Raiador", chao, bp: 5_000);
+		pl = ForjarInventor("Raiador", chao, bp: 5_000);
 		pl.Facing = Facing.East;
 		CriarTecnica(pl);
 		TextoDaMesa(pl, "nome/Raio Comprido");
@@ -958,13 +1024,37 @@ public sealed partial class GameServer
 		AfirmarTc("...e enquanto carrega o corpo fica PLANTADO (o `canmove = 0`, `beams.dm:294`)",
 				  !PodeMexerOCorpo(pl));
 
-		for (int i = 0; i < 200 && ProjeteisDaZona(pl.Zone.Hash).Count == 0; i++)
+		// ============================ A CARGA FECHA E FICA NA MAO (dono, playtest de 2026-10-12) ============================
+		// *"mesmo sem essa opcao selecionada o personagem ta soltando o beam automaticamente quando ele carrega o
+		// minimo necessario pra soltar ele"*. Este raio NAO comprou o "sai sozinho" (os 5 pontos foram no alcance):
+		// passado o tempo de carga com folga, a cabeca nao pode ter nascido. E o `charging` do DM depois do limiar,
+		// que so o segundo aperto do verb transforma em `beaming` (`customattacks.dm:411-420`).
+		// ===================================================================================================================
+		double cargaDoRaio = Projetil.SegundosDeCarga(pl.Customizadas[0].CargaMinima, pl.Ficha);
+		int tiquesDaCarga = (int)Math.Ceiling(cargaDoRaio / Protocol.TickSeconds);
+		void PassarACarga()
 		{
-			TickDosCanaisDeKi(Protocol.TickSeconds);
-			TickDosProjeteis(Protocol.TickSeconds);
+			for (int i = 0; i < tiquesDaCarga * 4 + 30; i++)
+			{
+				TickDosCanaisDeKi(Protocol.TickSeconds);
+				TickDosProjeteis(Protocol.TickSeconds);
+			}
 		}
+
+		List<string> naCarga = Ouvir(PassarACarga);
+		AfirmarTc($"a carga de {cargaDoRaio:0.##}s FECHA e o raio NAO sai sozinho: fica na mao, com o corpo ainda plantado",
+				  _canais.TryGetValue(pl.Id, out CanalDeKi? segurado) && segurado.Segurando && !segurado.Atirando
+				  && ProjeteisDaZona(pl.Zone.Hash).Count == 0 && !PodeMexerOCorpo(pl),
+				  $"canal {_canais.ContainsKey(pl.Id)}, tiros {ProjeteisDaZona(pl.Zone.Hash).Count}");
+		AfirmarTc("...e o jogador e avisado UMA vez de que a carga fechou e de como soltar",
+				  naCarga.Count(a => a.Contains("aperte de novo", StringComparison.OrdinalIgnoreCase)) == 1,
+				  string.Join(" | ", naCarga));
+		AfirmarTc("...o SEGUNDO aperto do verb solta o raio, e o canal passa a atirar",
+				  UsarTecnicaCustomizada(pl, "Custom_Attack1") && ProjeteisDaZona(pl.Zone.Hash).Count == 1
+				  && _canais.TryGetValue(pl.Id, out CanalDeKi? solto) && solto.Atirando && !solto.Segurando,
+				  $"tiros {ProjeteisDaZona(pl.Zone.Hash).Count}");
 		lista = ProjeteisDaZona(pl.Zone.Hash);
-		AfirmarTc("...depois da carga o raio SAI", lista.Count == 1, $"{lista.Count}");
+		AfirmarTc("...depois do segundo aperto o raio SAI", lista.Count == 1, $"{lista.Count}");
 		if (lista.Count == 1)
 		{
 			Projetil r = lista[0];
@@ -976,15 +1066,129 @@ public sealed partial class GameServer
 		}
 
 		// APERTAR DE NOVO SOLTA -- o `if(beaming) stopbeaming()` de todo verbo de raio.
-		AfirmarTc("apertar de novo solta o raio e devolve o corpo",
+		AfirmarTc("o TERCEIRO aperto fecha a mao: o raio se apaga e o corpo volta a andar",
 				  UsarTecnicaCustomizada(pl, "Custom_Attack1") && !_canais.ContainsKey(pl.Id)
 				  && PodeMexerOCorpo(pl));
+
+		LimparTudoDaBancada(manter: [pl]);
+
+		// ANTES DE A CARGA FECHAR, o mesmo aperto DESFAZ -- `else if(charging&&accum<10*chargedelay/3) stopcharging()`.
+		pl.Ficha.Ki = pl.Ficha.MaxKi;   // o tanque de volta: o que se mede e o aperto, e nao a recusa por energia
+		UsarTecnicaCustomizada(pl, "Custom_Attack1");
+		TickDosCanaisDeKi(Protocol.TickSeconds);
+		bool carregando = _canais.TryGetValue(pl.Id, out CanalDeKi? cedo) && !cedo.Segurando && !cedo.Atirando;
+		AfirmarTc("apertar de novo ANTES de a carga fechar desfaz a carga: nenhum raio nasce e o corpo volta a andar",
+				  carregando && UsarTecnicaCustomizada(pl, "Custom_Attack1") && !_canais.ContainsKey(pl.Id)
+				  && ProjeteisDaZona(pl.Zone.Hash).Count == 0 && PodeMexerOCorpo(pl),
+				  $"carregando {carregando}, canal {_canais.ContainsKey(pl.Id)}");
+		LimparTudoDaBancada(manter: [pl]);
+
+		// O DEFEITO INJETADO: a carga segurada sai sozinha, como saia antes.
+		CargaSeguradaSaiSozinhaDeTeste = true;
+		try
+		{
+			pl.Ficha.Ki = pl.Ficha.MaxKi;
+			UsarTecnicaCustomizada(pl, "Custom_Attack1");
+			int nasceuSozinho = -1;
+			for (int i = 1; i <= tiquesDaCarga * 4 + 30 && nasceuSozinho < 0; i++)
+			{
+				TickDosCanaisDeKi(Protocol.TickSeconds);
+				TickDosProjeteis(Protocol.TickSeconds);
+				if (ProjeteisDaZona(pl.Zone.Hash).Count > 0) nasceuSozinho = i;
+			}
+			AfirmarTc("(defeito injetado: a carga segurada sai sozinha) o raio nasce SEM o segundo aperto -- a prova de cima reprovaria",
+					  nasceuSozinho > 0 && _canais.TryGetValue(pl.Id, out CanalDeKi? d) && d.Atirando,
+					  $"nasceu no tique {nasceuSozinho}");
+		}
+		finally { CargaSeguradaSaiSozinhaDeTeste = false; }
+		LimparTudoDaBancada();
+
+		// ---------------------------------------------------------------- raio que SAI SOZINHO, e o grito do disparo
+		// *"o botao de soltar o ki automaticamente ao carregar o ataque ta meio estranho tb, parece q o personagem nem
+		// carrega o ataque"*: o `instantattack` ZERAVA a carga. No DM ele so dispensa o segundo aperto -- o raio
+		// continua esperando a carga minima (`customattacks.dm:461-471` + `beams.dm:52-55`).
+		// *"colocar pra ele gritar uma frase custom ao soltar o beam n ta funcionando, ele grita o nome da tecnica"*:
+		// o disparo so sabia gritar o nome da receita; o do DM e o `S.shout` (`customattacks.dm:412-413`).
+		pl = ForjarInventor("Gritador", CorredorLivre(24), bp: 5_000);
+		pl.Facing = Facing.East;
+		CriarTecnica(pl);
+		TextoDaMesa(pl, "nome/Raio Pronto");
+		ComprarNaMesa(pl, nameof(Compra.InstantaneoLigar));
+		AlternarGrito(pl, "grito");
+		TextoDaMesa(pl, "grito/TOMA ISSO");
+		SalvarTecnica(pl);
+		TecnicaCustomizada pronto = pl.Customizadas[0];
+		double cargaDoPronto = Projetil.SegundosDeCarga(pronto.CargaMinima, pl.Ficha);
+		int tiquesDoPronto = (int)Math.Ceiling(cargaDoPronto / Protocol.TickSeconds);
+
+		// APERTA UMA VEZ E ESPERA: devolve o tique em que a cabeca nasceu (-1 = nao nasceu) e o que o corpo falou.
+		(int NasceuNoTique, List<string> Falas) ApertarEEsperar()
+		{
+			LimparTudoDaBancada(manter: [pl]);
+			pl.Ficha.Ki = pl.Ficha.MaxKi;   // o tanque de volta: o que se mede e a carga e o grito
+			_ultimaFala.Remove(pl.Id);
+			var antes = EscutaDeFalas;
+			EscutaDeFalas = [];
+			try
+			{
+				UsarTecnicaCustomizada(pl, "Custom_Attack1");
+				int nasceu = -1;
+				for (int i = 1; i <= tiquesDoPronto * 4 + 30 && nasceu < 0; i++)
+				{
+					TickDosCanaisDeKi(Protocol.TickSeconds);
+					TickDosProjeteis(Protocol.TickSeconds);
+					if (ProjeteisDaZona(pl.Zone.Hash).Count > 0) nasceu = i;
+				}
+				return (nasceu, EscutaDeFalas.Where(f => f.Quem == pl.Id).Select(f => f.Texto).ToList());
+			}
+			finally { EscutaDeFalas = antes; }
+		}
+
+		(int nasceuNoTique, List<string> gritos) = ApertarEEsperar();
+		AfirmarTc($"com o 'sai sozinho' ({TecnicaCustomizada.PrecoDoInstantaneo} pontos) o raio CARREGA os mesmos {cargaDoPronto:0.##}s de qualquer raio e sai SEM o segundo aperto",
+				  pronto.Instantaneo && nasceuNoTique >= tiquesDoPronto && nasceuNoTique <= tiquesDoPronto + 1,
+				  $"nasceu no tique {nasceuNoTique}; a carga sao {tiquesDoPronto} tiques");
+		AfirmarTc("...e ao SAIR ele grita a frase que o jogador escreveu, e nao o nome da tecnica",
+				  gritos.SequenceEqual(["TOMA ISSO"]), string.Join(" | ", gritos));
+
+		// O GRITO DA CARGA E O DO DISPARO SAEM OS DOIS, mesmo com a carga mais curta que o intervalo entre falas.
+		EditarTecnica(pl, "1");
+		AlternarGrito(pl, "gritocarga");
+		TextoDaMesa(pl, "gritocarga/La vai");
+		ComprarNaMesa(pl, nameof(Compra.CargaMenos));
+		ComprarNaMesa(pl, nameof(Compra.CargaMenos));
+		SalvarTecnica(pl);
+		double cargaCurta = Projetil.SegundosDeCarga(pronto.CargaMinima, pl.Ficha);
+		(_, gritos) = ApertarEEsperar();
+		AfirmarTc($"com a carga de {cargaCurta:0.##}s (mais curta que os {MsEntreFalas} ms entre duas falas) o grito da CARGA e o do DISPARO saem os dois, nessa ordem",
+				  cargaCurta * 1000 < MsEntreFalas && gritos.SequenceEqual(["La vai", "TOMA ISSO"]),
+				  string.Join(" | ", gritos));
+
+		// O DEFEITO INJETADO: o disparo volta a gritar o nome.
+		GritoDaMesaIgnoradoDeTeste = true;
+		try
+		{
+			(_, gritos) = ApertarEEsperar();
+			AfirmarTc("(defeito injetado: o grito da mesa ignorado) o raio grita o NOME -- a prova de cima reprovaria",
+					  gritos.Exists(g => g.Contains("Raio Pronto", StringComparison.Ordinal)) && !gritos.Contains("TOMA ISSO"),
+					  string.Join(" | ", gritos));
+		}
+		finally { GritoDaMesaIgnoradoDeTeste = false; }
+
+		// E A CAIXINHA DESLIGADA CONTINUA COMO ERA: o raio grita o nome dele.
+		EditarTecnica(pl, "1");
+		AlternarGrito(pl, "grito");
+		AlternarGrito(pl, "gritocarga");
+		SalvarTecnica(pl);
+		(_, gritos) = ApertarEEsperar();
+		AfirmarTc("com as duas caixinhas de grito desligadas, o raio grita o nome dele (como todo raio do jogo)",
+				  !pronto.DizGrito && gritos.SequenceEqual(["Raio Pronto!!"]), string.Join(" | ", gritos));
 
 		LimparTudoDaBancada();
 
 		// ---------------------------------------------------------------- teleguiado
 		chao = CorredorLivre(24);
-		pl = Forjar("Cacador", chao, bp: 5_000);
+		pl = ForjarInventor("Cacador", chao, bp: 5_000);
 		pl.Facing = Facing.East;
 		ServerPlayer presa = Forjar("Presa", new Vec2(chao.X + 300, chao.Y), bp: 500);
 		pl.AlvoId = presa.Id;
@@ -1004,7 +1208,7 @@ public sealed partial class GameServer
 		// Ver a nota de `AtirarRaioCustom`: o `CustomShotOK` do original nunca e chamado pelo beam,
 		// entao ligar estamina num raio la e dois pontos de graca. Aqui cobra.
 		LimparTudoDaBancada();
-		pl = Forjar("Cansado", CorredorLivre(4), bp: 5_000);
+		pl = ForjarInventor("Cansado", CorredorLivre(4), bp: 5_000);
 		CriarTecnica(pl);
 		TextoDaMesa(pl, "nome/Raio Suado");
 		// O FOLEGO E TODO ESTORNO (2 pra ligar + 1 por degrau), entao ele abre com o orcamento inteiro
@@ -1048,7 +1252,7 @@ public sealed partial class GameServer
 				  && TecnicaCustomizada.IdDoVerbo("Ki_Wave") == 0
 				  && TecnicaCustomizada.IdDoVerbo("Custom_Attack0") == 0);
 
-		ServerPlayer pl = Forjar("Vazio", CorredorLivre(4), bp: 5_000);
+		ServerPlayer pl = ForjarInventor("Vazio", CorredorLivre(4), bp: 5_000);
 		EscutaDeAvisos = [];
 
 		AfirmarTc("um verbo que nao e custom passa direto (nao e daqui)",
@@ -1079,6 +1283,104 @@ public sealed partial class GameServer
 				  !ComandoDeTecnicaCustomizada(pl, "quem", ""));
 
 		EscutaDeAvisos = null;
+		LimparTudoDaBancada();
+	}
+
+	// =====================================================================
+	// 8) A MESA ABRE POR PARTES
+	// =====================================================================
+	/// <summary>
+	/// CADA TIPO SO ABRE NA MESA DEPOIS DA TECNICA GENERICA DELE -- pedido do dono (2026-10-12), ver
+	/// <c>TecnicaCustomizada.VerboQueAbre</c>. O corpo aqui e CRU (o <c>Forjar</c> puro), e as genericas chegam
+	/// uma a uma, pelos caminhos de producao, pra cada porta ser medida fechada e depois aberta.
+	/// </summary>
+	private void AMesaAbrePorPartes()
+	{
+		GD.Print("[tecnica] -- 8) A MESA ABRE POR PARTES: a bola com a Bola de Ki, o raio com a Onda de Ki, a teleguiada com a Esfera Teleguiada");
+
+		AfirmarTc("(palco) o catalogo de skills carregou -- e ele que responde quem sabe o que", _skills != null);
+		AfirmarTc("a tabela: bola -> Basic_Blast, raio -> Ki_Wave, teleguiada -> Guided_Ball",
+				  TecnicaCustomizada.VerboQueAbre(TipoDeProjetil.Blast) == "Basic_Blast"
+				  && TecnicaCustomizada.VerboQueAbre(TipoDeProjetil.Beam) == "Ki_Wave"
+				  && TecnicaCustomizada.VerboQueAbre(TipoDeProjetil.Guided) == "Guided_Ball");
+
+		ServerPlayer pl = Forjar("Novato", CorredorLivre(4), bp: 5_000);
+		bool Sabe(TipoDeProjetil t) => SabeTecnica(pl, TecnicaCustomizada.VerboQueAbre(t));
+		string nomeDaBola = TecnicaCustomizada.NomeDaQueAbre(TipoDeProjetil.Blast),
+			   nomeDoRaio = TecnicaCustomizada.NomeDaQueAbre(TipoDeProjetil.Beam),
+			   nomeDaTeleguiada = TecnicaCustomizada.NomeDaQueAbre(TipoDeProjetil.Guided);
+
+		// ---------------------------------------------------------------- sem nenhuma generica
+		List<string> falas = Ouvir(() => CriarTecnica(pl));
+		AfirmarTc("um corpo que nao sabe soltar ki NAO inventa nada: a mesa nem abre, e ele ouve como ela abre",
+				  !Sabe(TipoDeProjetil.Blast) && !Sabe(TipoDeProjetil.Beam) && !Sabe(TipoDeProjetil.Guided)
+				  && pl.Mesa == null && Disse(falas, "por partes") && Disse(falas, nomeDaBola) && Disse(falas, nomeDoRaio)
+				  && Disse(falas, nomeDaTeleguiada), Ultimos(falas));
+
+		TecnicaCustomizada.MesaSemPortaoDeTeste = true;
+		try
+		{
+			CriarTecnica(pl);
+			AfirmarTc("(defeito injetado: a mesa sem portao) o corpo cru inventa um RAIO -- o jogo de antes, e a prova de cima reprovaria",
+					  pl.Mesa is { Tipo: TipoDeProjetil.Beam }, $"mesa {pl.Mesa?.Tipo}");
+			CancelarMesa(pl);
+		}
+		finally { TecnicaCustomizada.MesaSemPortaoDeTeste = false; }
+
+		// ---------------------------------------------------------------- so a Bola de Ki
+		DarAGenericaDeBancada(pl, TipoDeProjetil.Blast);
+		CriarTecnica(pl);
+		AfirmarTc($"com {nomeDaBola} a mesa abre -- e o rascunho nasce BOLA, o unico tipo aberto",
+				  Sabe(TipoDeProjetil.Blast) && !Sabe(TipoDeProjetil.Beam) && !Sabe(TipoDeProjetil.Guided)
+				  && pl.Mesa is { Tipo: TipoDeProjetil.Blast, Carregavel: false }, $"mesa {pl.Mesa?.Tipo}");
+		falas = Ouvir(() => TipoDaTecnica(pl, "beam"));
+		AfirmarTc("...trocar pra RAIO e recusado, dizendo a generica que falta",
+				  pl.Mesa is { Tipo: TipoDeProjetil.Blast } && Disse(falas, nomeDoRaio), Ultimos(falas));
+		falas = Ouvir(() => TipoDaTecnica(pl, "guided"));
+		AfirmarTc("...e pra TELEGUIADA tambem",
+				  pl.Mesa is { Tipo: TipoDeProjetil.Blast } && Disse(falas, nomeDaTeleguiada), Ultimos(falas));
+		TextoDaMesa(pl, "nome/Primeira Bola");
+		SalvarTecnica(pl);
+		AfirmarTc("...e a bola e confirmada", pl.Customizadas.Count == 1 && pl.Customizadas[0].Tipo == TipoDeProjetil.Blast);
+
+		// ---------------------------------------------------------------- as outras duas portas, com o raio fechado
+		// CONFIRMAR: o rascunho sobrevive entre comandos -- um raio na mesa de quem nao tem a generica (quem a
+		// esqueceu com a mesa aberta, ou um pacote que a tela nao mandaria) nao vira tecnica.
+		pl.Mesa = new TecnicaCustomizada { Id = 2 };
+		pl.Mesa.PorTipo(TipoDeProjetil.Beam);
+		falas = Ouvir(() => SalvarTecnica(pl));
+		AfirmarTc($"CONFIRMAR um raio sem {nomeDoRaio} e recusado: a tecnica nao nasce",
+				  pl.Customizadas.Count == 1 && Disse(falas, nomeDoRaio), Ultimos(falas));
+		CancelarMesa(pl);
+
+		// AJUSTAR: quem inventou um raio antes de o portao existir continua ATIRANDO com ele; so nao o redesenha.
+		var antigo = new TecnicaCustomizada { Id = 2, Nome = "Raio Antigo", Criada = true };
+		antigo.PorTipo(TipoDeProjetil.Beam);
+		pl.Customizadas.Add(antigo);
+		falas = Ouvir(() => EditarTecnica(pl, "2"));
+		AfirmarTc($"AJUSTAR um raio antigo sem {nomeDoRaio} e recusado (a mesa nao abre)",
+				  pl.Mesa == null && Disse(falas, nomeDoRaio), Ultimos(falas));
+		AfirmarTc("...mas ATIRAR com ele continua valendo (o portao e da mesa, nao do disparo)",
+				  UsarTecnicaCustomizada(pl, "Custom_Attack2") && _canais.ContainsKey(pl.Id));
+		if (_canais.TryGetValue(pl.Id, out CanalDeKi? aberto)) FecharCanal(pl.Id, aberto, null);
+		pl.Customizadas.Remove(antigo);
+
+		// ---------------------------------------------------------------- com a Onda de Ki
+		DarAGenericaDeBancada(pl, TipoDeProjetil.Beam);
+		CriarTecnica(pl);
+		AfirmarTc($"com {nomeDoRaio} o rascunho volta a nascer RAIO (o de sempre)",
+				  Sabe(TipoDeProjetil.Beam) && pl.Mesa is { Tipo: TipoDeProjetil.Beam, Carregavel: true }, $"mesa {pl.Mesa?.Tipo}");
+		falas = Ouvir(() => TipoDaTecnica(pl, "guided"));
+		AfirmarTc($"...e a teleguiada continua fechada ate {nomeDaTeleguiada}",
+				  !Sabe(TipoDeProjetil.Guided) && pl.Mesa is { Tipo: TipoDeProjetil.Beam } && Disse(falas, nomeDaTeleguiada), Ultimos(falas));
+
+		// ---------------------------------------------------------------- com as tres
+		DarAGenericaDeBancada(pl, TipoDeProjetil.Guided);
+		TipoDaTecnica(pl, "guided");
+		AfirmarTc($"com {nomeDaTeleguiada} os TRES tipos estao abertos",
+				  Sabe(TipoDeProjetil.Guided) && pl.Mesa is { Tipo: TipoDeProjetil.Guided }, $"mesa {pl.Mesa?.Tipo}");
+		CancelarMesa(pl);
+
 		LimparTudoDaBancada();
 	}
 }

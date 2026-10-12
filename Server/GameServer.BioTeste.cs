@@ -568,6 +568,33 @@ public partial class GameServer
 				  bio.Ficha.bio_stage == BioAndroids.Perfeito && bio.Ficha.bio_abs_players == 0,
 				  $"estagio {bio.Ficha.bio_stage}, jogadores {bio.Ficha.bio_abs_players}");
 		}
+
+		// ============================ A FRASE NAO DIZ O PODER DA VITIMA SEM SCOUTER (dono, 2026-10-12) ============================
+		// "(+N de poder absorvido ...)" entregava o BP INTEIRO de quem foi comido, a qualquer um. A regra principal do
+		// BP: em numero so com medidor (`PoderNaFrase`); sem ele a frase diz a regra -- entrou todo o poder dele.
+		// Num bio A PARTE, pra a media do `AbsorbBP` do corpo principal nao mudar debaixo das secoes seguintes.
+		// ==========================================================================================================================
+		ServerPlayer? leitor = ForjarCorpo(host, BioAndroids.Raca, "Leitor", forjados);
+		if (leitor == null) { Checa("PRECONDICAO: o bio das tres leituras nasceu", false); return; }
+		var comidos = new List<double>();
+		var (semScouter, comScouter, comDefeito) = AsTresLeiturasDoPoder(leitor, () =>
+		{
+			ServerPlayer? prato = ForjarCorpo(host, "Human", $"Prato {comidos.Count + 1}", forjados);
+			if (prato == null) return;
+			prato.Ficha.BP = 123_457 + comidos.Count;   // um numero que nao se confunde com nenhum outro da frase
+			prato.Ficha.KO = true;
+			leitor.AlvoId = prato.Id;
+			_prontoAbsorver.Remove(leitor.Id);
+			comidos.Add(prato.Ficha.BP);
+			UsarHabilidade(leitor, "absorver");
+		});
+		Checa("SEM scouter, a absorcao do bio diz que entrou TODO o poder dele -- e nao o BP da vitima em numero",
+			  comidos.Count == 3 && Disse(semScouter, "todo o poder dele") && !TrazOPoder(semScouter, comidos[0]),
+			  Ultimos(semScouter));
+		Checa("COM o scouter ligado, a mesma frase traz o numero",
+			  comidos.Count == 3 && TrazOPoder(comScouter, comidos[1]), Ultimos(comScouter));
+		Checa("(defeito injetado: o numero sem medidor) sem scouter o numero volta -- a regua de cima reprovaria",
+			  comidos.Count == 3 && TrazOPoder(comDefeito, comidos[2]), Ultimos(comDefeito));
 	}
 
 	// =====================================================================

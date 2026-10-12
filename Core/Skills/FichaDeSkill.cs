@@ -113,8 +113,21 @@ public static class FichaDeSkill
 			// os periodicos primeiro (sao o ganho constante), depois os marcos em ordem de nivel
 			foreach (Degrau d in r.Degraus.Where(d => d.Periodo > 0).OrderBy(d => d.Periodo))
 				if (Partes(cat, d) is { Count: > 0 } p) t.PorNivel.Add($"a cada {d.Periodo} níveis: {string.Join("; ", p)}");
+			var marcos = new List<(int Nivel, string Linha)>();
 			foreach (Degrau d in r.Degraus.Where(d => d.Periodo == 0).OrderBy(d => d.Nivel))
-				if (Partes(cat, d) is { Count: > 0 } p) t.PorNivel.Add($"nível {d.Nivel}: {string.Join("; ", p)}");
+				if (Partes(cat, d) is { Count: > 0 } p) marcos.Add((d.Nivel, $"nível {d.Nivel}: {string.Join("; ", p)}"));
+
+			// O QUE O PORT DA NUM NIVEL E O DM NAO MARCA ALI (o voo, no 50 do Ki Unlocked -- ver `DegrausDoPort`):
+			// entra na linha daquele nivel, ou ganha a propria, no lugar certo da ordem. Sem isto a ficha so
+			// repetia o DM, e o DM poe o voo no 30 (o que este port NAO concede sai em `Partes`).
+			if (!DegrausDoPort.FichaRepeteODmDeTeste)
+				foreach ((int nivel, string frase) in DegrausDoPort.Acrescimos(r.Path))
+				{
+					int i = marcos.FindLastIndex(m => m.Nivel == nivel);
+					if (i >= 0) marcos[i] = (nivel, $"{marcos[i].Linha}; {frase}");
+					else marcos.Insert(marcos.FindLastIndex(m => m.Nivel < nivel) + 1, (nivel, $"nível {nivel}: {frase}"));
+				}
+			foreach ((_, string linha) in marcos) t.PorNivel.Add(linha);
 			t.NoTopo = NoTopo(r, max);
 		}
 
@@ -204,7 +217,12 @@ public static class FichaDeSkill
 				d.VerbosPorCasa.Select(pc => $"{pc.Casa} → {Tecnicas.Get(pc.Verbo)?.Nome ?? NomesLegiveis.Habilidade(pc.Verbo)}")));
 		foreach (string alvo in d.Destrava) p.Add($"libera a compra de {cat.Get(alvo)?.Nome ?? alvo}");
 		foreach ((string path, int nivel) in d.Concede)
+		{
+			// A SKILL QUE ESTE PORT NAO ENTREGA NESTE DEGRAU nao e anunciada -- a `flying` do nivel 30 do Ki
+			// Unlocked: o servidor a pula pela mesma pergunta (`ConcederPorDegrau`).
+			if (DegrausDoPort.NaoConcede(path) && !DegrausDoPort.FichaRepeteODmDeTeste) continue;
 			p.Add($"concede a skill {cat.Get(path)?.Nome ?? path}{(nivel > 0 ? $" (já no nível {nivel})" : "")}");
+		}
 		return p;
 	}
 

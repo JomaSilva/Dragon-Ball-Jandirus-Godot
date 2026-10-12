@@ -172,11 +172,20 @@ public sealed partial class GameServer
 		public required ReceitaDeProjetil Receita;
 		public required string Verbo;
 
-		/// <summary>Segundos que ainda faltam de carga. Zero ou menos = ja esta atirando.</summary>
+		/// <summary>
+		/// Segundos que ainda faltam de carga. Zero ou menos = a carga FECHOU -- e o raio ja saiu da mao
+		/// (<see cref="Atirando"/>) ou esta sendo segurado nela (<see cref="Segurando"/>).
+		/// </summary>
 		public double CargaRestante;
 
-		/// <summary>O tiro que esta saindo da mao. Nulo enquanto carrega.</summary>
+		/// <summary>O tiro que esta saindo da mao. Nulo enquanto carrega e enquanto a carga fechada e segurada.</summary>
 		public Projetil? Raio;
+
+		/// <summary>
+		/// O QUE O CORPO GRITA QUANDO O RAIO SAI, se nao for o nome da tecnica: o `S.shout` de uma tecnica inventada
+		/// com o `doshout` ligado (`customattacks.dm:412-413`). Nulo = grita o nome, como todo raio portado.
+		/// </summary>
+		public string? Grito;
 
 		/// <summary>Quanto Ki cada ciclo de 0,2 s cobra enquanto o raio esta de pe.</summary>
 		public double CustoPorCiclo;
@@ -205,8 +214,28 @@ public sealed partial class GameServer
 		/// </summary>
 		public required int Carga;
 
-		public bool Atirando => CargaRestante <= 0;
+		/// <summary>O RAIO JA SAIU DA MAO -- o `beaming` do DM.</summary>
+		public bool Atirando => Raio != null;
+
+		/// <summary>
+		/// A CARGA FECHOU E O RAIO AINDA ESTA NA MAO, esperando o segundo aperto do verb: o `charging` do DM depois
+		/// do limiar (`accum >= 10*chargedelay/3`, `beams.dm:279`). So a receita que SEGURA para aqui
+		/// (<see cref="ReceitaDeProjetil.SeguraACarga"/>); nas outras a carga vira raio no mesmo tique em que fecha.
+		///
+		/// DERIVADO, como o resto do estado do canal: nao ha bit de "segurando" pra alguem esquecer de apagar. Quem
+		/// solta escreve o <see cref="Raio"/>, e a pergunta muda de resposta sozinha.
+		/// </summary>
+		public bool Segurando => CargaRestante <= 0 && Raio == null;
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada --tecnicateste): a carga que devia ficar na mao sai sozinha quando fecha -- o
+	/// jogo de antes, em que o botao "sai sozinho" da mesa nao separava nada.
+	/// </summary>
+	internal bool CargaSeguradaSaiSozinhaDeTeste;
+
+	/// <summary>DEFEITO INJETADO (bancada --tecnicateste): o raio inventado grita o nome dele, e nao o grito que o jogador escreveu.</summary>
+	internal bool GritoDaMesaIgnoradoDeTeste;
 
 	/// <summary>Este corpo esta preso carregando ou segurando um raio? Ver <see cref="PodeMexerOCorpo"/>.</summary>
 	public bool EnraizadoPorKi(int id) => _canais.ContainsKey(id);
@@ -746,8 +775,11 @@ public sealed partial class GameServer
 	/// custaria um decimo do que o original cobra por segundo -- e o preco e o unico contrapeso que
 	/// ele tem.
 	/// </param>
+	/// <param name="gritoAoSoltar">
+	/// O que o corpo grita quando o raio SAI, no lugar do nome da tecnica -- ver <see cref="CanalDeKi.Grito"/>.
+	/// </param>
 	private void Canalizar(ServerPlayer pl, string verbo, double custo, ReceitaDeProjetil r,
-						   double? custoPorTiro = null)
+						   double? custoPorTiro = null, string? gritoAoSoltar = null)
 	{
 		if (!PodeAtirar(pl, custo, out string porque)) { Avisar(pl, porque); return; }
 
@@ -758,13 +790,16 @@ public sealed partial class GameServer
 		// com o alvo onde ele estiver naquela hora. O corpo plantado nao gira pelo teclado, entao o olhar fica.
 		RumoDoTiro(pl);
 
-		double carga = r.Instantaneo ? 0 : Projetil.SegundosDeCarga(r.CargaMinima, pl.Ficha);
+		// A CARGA MINIMA VALE PRA TODO RAIO. Ela era ZERADA pra tecnica com o "sai sozinho" da mesa, e quem pagava
+		// os 2 pontos nem via o personagem carregar -- ver `ReceitaDeProjetil.SeguraACarga`.
+		double carga = Projetil.SegundosDeCarga(r.CargaMinima, pl.Ficha);
 
 		_canais[pl.Id] = new CanalDeKi
 		{
 			Receita = r,
 			Verbo = verbo,
 			CargaRestante = carga,
+			Grito = gritoAoSoltar,
 			// `finalcost = lastbeamcost` e o ciclo cobra `(finalcost/4)*BaseDrain` (`beams.dm:83`),
 			// com `lastbeamcost = custo_do_verb / 10` depois da fase de carga (`beams.dm:38`).
 			CustoPorCiclo = (custoPorTiro ?? custo) / 10 / 4 * pl.Ficha.BaseDrain(),
@@ -799,20 +834,56 @@ public sealed partial class GameServer
 		// previsao local antes da primeira correcao chegar -- e o corpo pareceria escorregar pra
 		// dentro do proprio raio.
 		pl.Moving = false;
-		Avisar(pl, carga > 0
-			? $"voce planta os pes e comeca a reunir energia ({carga:0.#}s)."
-			: "a energia salta da sua mao.");
+		Avisar(pl, r.SeguraACarga
+			? $"voce planta os pes e comeca a reunir energia ({carga:0.#}s) -- quando ela fechar, aperte de novo pra soltar."
+			: $"voce planta os pes e comeca a reunir energia ({carga:0.#}s).");
 	}
 
 	/// <summary>
-	/// APERTOU O MESMO VERB COM O RAIO DE PE: solta. Devolve verdadeiro quando havia o que soltar --
-	/// e o `if(beaming) { canmove = 1; stopbeaming(); return }` que abre todos os verbs de raio.
+	/// APERTOU O MESMO VERB COM O CANAL DE PE. Devolve verdadeiro quando havia canal deste verb -- e o que o
+	/// aperto faz depende de onde o canal esta, como no DM:
+	///   * raio na mao: desliga (`if(beaming) { canmove = 1; stopbeaming(); return }`, a primeira linha de todo
+	///     verb de raio);
+	///   * carga FECHADA sendo segurada: SOLTA o raio (`if(charging&amp;&amp;accum>=10*chargedelay/3) ... beaming=1`,
+	///     `beams.dm:279-284`);
+	///   * carga ainda correndo: desfaz (`else if(charging&amp;&amp;accum&lt;10*chargedelay/3) stopcharging()`, `:285-287`).
 	/// </summary>
 	private bool SoltarCanal(ServerPlayer pl, string verbo)
 	{
 		if (!_canais.TryGetValue(pl.Id, out CanalDeKi? c) || c.Verbo != verbo) return false;
+		if (c.Segurando) { NascerORaio(pl, c); return true; }
 		FecharCanal(pl.Id, c, "voce fecha a mao e o raio se apaga.");
 		return true;
+	}
+
+	/// <summary>
+	/// A CARGA VIRA RAIO: nasce a cabeca, ja canalizando, e o corpo grita. As duas portas chegam aqui -- o tique,
+	/// pro raio que sai sozinho quando a carga fecha, e o segundo aperto do verb, pro que e segurado na mao.
+	///
+	/// O `c.Verbo` VAI JUNTO e e ele que da arte aos DEZ raios do jogo de uma vez: o canal ja guardava o id do
+	/// verb (era so pra o "apertar de novo desliga"), e e exatamente a chave que a `ArteDeProjetil` pede.
+	/// </summary>
+	private void NascerORaio(ServerPlayer pl, CanalDeKi c)
+	{
+		Projetil raio = Disparar(pl, c.Receita, verbo: c.Verbo);
+		if (!raio.Vivo)
+		{
+			FecharCanal(pl.Id, c, "nao ha espaco pra mais energia solta aqui.");
+			return;
+		}
+		raio.Canalizando = true;
+		c.Raio = raio;
+
+		// O GRITO DA TECNICA INVENTADA, quando o jogador escreveu um e ligou a caixinha (`if (S.doshout == 1)
+		// voice(S.shout)`, `customattacks.dm:412-413`). Este metodo so sabia gritar o NOME da receita, e o grito
+		// do disparo de um raio da mesa nunca saia -- so o da bola (dono, playtest de 2026-10-12).
+		//
+		// E ELE NAO E ENGOLIDO PELO GRITO DA CARGA: as duas falas sao da mesma tecnica, e a carga mais curta da mesa
+		// (0,13 s) cabe inteira dentro do intervalo entre duas falas (`MsEntreFalas`). So o grito ESCRITO passa por
+		// cima do intervalo, uma vez por raio -- e cada raio paga o Ki e a carga dele, entao isto nao vira megafone.
+		if (c.Grito is { Length: > 0 }) _ultimaFala.Remove(pl.Id);
+		Falar(pl, Protocol.Fala.Diz,
+			  c.Grito is { Length: > 0 } grito && !GritoDaMesaIgnoradoDeTeste ? grito : c.Receita.Nome + "!!");
 	}
 
 	/// <summary>
@@ -854,24 +925,28 @@ public sealed partial class GameServer
 
 			if (!c.Atirando)
 			{
-				c.CargaRestante -= dt;
-				if (c.CargaRestante > 0) continue;
-
-				// A CARGA FECHOU: nasce a cabeca do raio, ja canalizando.
-				//
-				// O `c.Verbo` VAI JUNTO e e ele que da arte aos DEZ raios do jogo de uma vez: o
-				// canal ja guardava o id do verb (era so pra o "apertar de novo desliga"), e e
-				// exatamente a chave que a `ArteDeProjetil` pede. Nenhum verb de raio precisou
-				// mudar por causa disto.
-				Projetil raio = Disparar(pl, c.Receita, verbo: c.Verbo);
-				if (!raio.Vivo)
+				bool fechouAgora = false;
+				if (c.CargaRestante > 0)
 				{
-					FecharCanal(id, c, "nao ha espaco pra mais energia solta aqui.");
+					c.CargaRestante -= dt;
+					if (c.CargaRestante > 0) continue;
+					fechouAgora = true;
+				}
+
+				// A CARGA ESTA FECHADA. O raio que SEGURA fica na mao ate o verb ser apertado de novo
+				// (`SoltarCanal`): no DM e o jogador quem passa de `charging` a `beaming`, e o `instantattack` da
+				// mesa e quem dispensa o segundo aperto -- ver `ReceitaDeProjetil.SeguraACarga`.
+				//
+				// DIVERGENCIA DECLARADA: segurar nao custa Ki nem engrossa o raio. No DM o laco da carga cobra
+				// `lastbeamcost` a cada 3 ciclos e faz o `wavemult` crescer (`beams.dm:36-47`); aqui a carga e uma
+				// contagem regressiva (ver `ReceitaDeProjetil.MultDeOnda`), e o raio sai com o que a tecnica declara.
+				if (c.Receita.SeguraACarga && !CargaSeguradaSaiSozinhaDeTeste)
+				{
+					if (fechouAgora) Avisar(pl, "a carga fechou na sua mao -- aperte de novo pra soltar.");
 					continue;
 				}
-				raio.Canalizando = true;
-				c.Raio = raio;
-				Falar(pl, Protocol.Fala.Diz, c.Receita.Nome + "!!");
+
+				NascerORaio(pl, c);
 				continue;
 			}
 
