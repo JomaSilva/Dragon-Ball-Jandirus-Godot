@@ -27,6 +27,9 @@ public partial class GameServer
 	/// DOBRO E NAO CHEIO, e a diferenca e a mecanica: o androide de absorcao COMPRIME energia. Aparar
 	/// o ganho em `MaxKi` faria dele um corpo que so repoe, e o que o DM desenhou e um corpo que
 	/// LUCRA com quem atira nele.
+	///
+	/// (2026-10-13) O TETO DE CARGA DO CORPO E DURO (`CargaDeKi.TetoDuro`, no funil do tique): o dobro daqui so e
+	/// alcancado por quem tem o teto em 200% -- as duas pericias de ki no maximo. Os demais comprimem ate o proprio teto.
 	/// </summary>
 	private const double TetoDoAndroideAbsorcao = 2;
 
@@ -106,7 +109,7 @@ public partial class GameServer
 
 		f.ki_absorb_stance = true;
 		Avisar(pl, $"voce finca os pes e abre os coletores: qualquer ataque de ki que te acertar "
-				   + $"vira energia (ate {TetoDoAndroideAbsorcao * 100:0}% do seu tanque). Voce nao anda "
+				   + $"vira energia (ate o seu teto de carga, {Jandirus.Core.Combat.CargaDeKi.TetoEmRazao(f) * 100:0}% do tanque). Voce nao anda "
 				   + "enquanto estiver assim.");
 		Falar(pl, Jandirus.Net.Protocol.Fala.Emote,
 			  "finca os pes e abre os coletores de energia -- pronto para SUGAR qualquer ataque de ki!");

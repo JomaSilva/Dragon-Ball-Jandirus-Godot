@@ -3211,6 +3211,33 @@ public partial class World : Node2D
 	}
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv021`): a roda volta a mexer no zoom com o mouse EM CIMA de um menu -- o jogo de
+	/// antes do conserto, em que so a lista que rolava segurava a roda. Lido pelo `_UnhandledInput`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool RodaSobreMenuMexeNoZoomDeTeste;
+
+	/// <summary>
+	/// O MOUSE ESTA EM CIMA DE UMA PECA DESENHADA DA INTERFACE -- uma janela, um painel, um botao, o veu da pausa?
+	/// Entao a roda e de la e nao do mundo, role ela alguma coisa ou nao.
+	///
+	/// A PERGUNTA E "HA ALGO DESENHADO AQUI", E NAO "HA UM CONTROLE AQUI": a tela tem ARMACAO invisivel de ponta a
+	/// ponta (a raiz da mochila e um `Control` do tamanho da tela; os `CenterContainer` e as caixas que so arrumam os
+	/// filhos), e com a pergunta larga a roda morreria na tela inteira com a mochila aberta -- o dono pediu o zoom de
+	/// volta *"com o mouse fora da area do menu"*. Armacao e o `Control` cru e o conteiner que nao pinta fundo; todo o
+	/// resto (painel, veu, botao, lista, peca desenhada a mao) e interface. Sobe-se do controle sob o mouse ate a
+	/// camada: basta um ancestral desenhado.
+	/// </summary>
+	internal static bool MouseNumaPecaDaInterface(Viewport tela)
+	{
+		for (Node? n = tela.GuiGetHoveredControl(); n is Control c; n = c.GetParent())
+		{
+			bool armacao = c.GetType() == typeof(Control) || c is Container and not (PanelContainer or TabContainer);
+			if (!armacao) return true;
+		}
+		return false;
+	}
+
+	/// <summary>
 	/// A GRADE EM QUE TODA ARTE DE PIXEL E DESENHADA -- quantos pontos por pixel de MUNDO.
 	///
 	/// ============================ POR QUE ELA E O ZOOM, E POR QUE MORA AQUI ============================
@@ -6408,10 +6435,17 @@ public partial class World : Node2D
 		// *"adicione a capacidade de dar zoom no jogo sem ter q abrir o menu de pause, so rolando o scroll ja mudaria
 		// o zoom"*. Pra cima aproxima, pra baixo afasta, de um em um e dentro dos mesmos limites do controle da pausa
 		// (zoom INTEIRO: em arte de pixel um zoom quebrado cintila). NO `_UnhandledInput` de proposito: a roda que
-		// uma lista ou um painel rolou ja foi consumida la, e so chega aqui a que sobrou em cima do mundo.
+		// uma lista rolou ja foi consumida la.
+		//
+		// MAS SO ESSA: o motor deixa a roda ATRAVESSAR todo controle que nao a usou (`force_pass_scroll_events`) -- o
+		// painel sem lista, a lista que chegou ao fim --, e ela caia aqui com o mouse em cima do menu. O dono, na vespera
+		// do lancamento: *"enquanto o mouse esta em cima de qualquer menu (inventario, menu P, pausa ou oq for) o zoom da
+		// camera n deveria acontecer, somente se tiver com menu fechado ou o mouse fora da area do menu"*. Entao quem
+		// decide e ONDE o mouse esta (`MouseNumaPecaDaInterface`), e nao quem consumiu o evento.
 		// =================================================================================================
 		if (e is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } roda)
 		{
+			if (!RodaSobreMenuMexeNoZoomDeTeste && MouseNumaPecaDaInterface(GetViewport())) return;
 			if (RodarOZoom(roda.ButtonIndex == MouseButton.WheelUp ? 1 : -1)) GetViewport().SetInputAsHandled();
 			return;
 		}

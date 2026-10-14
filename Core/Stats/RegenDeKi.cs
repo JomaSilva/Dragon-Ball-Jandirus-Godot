@@ -118,6 +118,10 @@ public static class RegenDeKi
 		// vem DEPOIS do teto. E o que sobra da energia que se comprimiu segurando o C -- ela
 		// volta como Ki ao longo dos segundos seguintes, em vez de sumir ao soltar a tecla.
 		//
+		// DO TETO DE CARGA DO CORPO ELE NAO PASSA (dono, 2026-10-13): quem soltava o C no teto e voltava a segurar
+		// recebia o resto do troco ACIMA dele (o ramo "ja no maximo" da carga nao escorre). O corte e do funil -- o
+		// `GameServer.TickDaCarga`, unico chamador daqui, apara o Ki no `Combat.CargaDeKi.TetoDuro` no fim do mesmo tique.
+		//
 		// A PARABOLA `-(x-25)^2/100 + 6.25` vale ZERO nas pontas (0 e 50) e 6,25 no meio: carga
 		// pouca quase nao rende, carga media rende o maximo, e carga cheia rende pouco -- e vai
 		// rendendo mais conforme decai pro meio. Nao e curva arbitraria, e a do original.

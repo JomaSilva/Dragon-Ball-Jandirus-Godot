@@ -34,6 +34,7 @@ public partial class TelaDeInventario : CanvasLayer
 	public static TelaDeInventario? Instancia { get; private set; }
 
 	private Control _raiz = null!;
+	private PanelContainer _painel = null!;
 	private GridContainer _grade = null!;
 	private Label _contagem = null!;
 	private Label _titulo = null!, _rotuloDoCorpo = null!;
@@ -125,6 +126,7 @@ public partial class TelaDeInventario : CanvasLayer
 
 		PanelContainer painel = Tema.Painel1(16);
 		centro.AddChild(painel);
+		_painel = painel;
 
 		var caixa = new VBoxContainer();
 		caixa.AddThemeConstantOverride("separation", 8);
@@ -752,6 +754,9 @@ public partial class TelaDeInventario : CanvasLayer
 
 	/// <summary>A tela esta aberta na MINHA mochila? SO PRA BANCADA.</summary>
 	public bool MinhaAbertaDeTeste => IsInstanceValid(_raiz) && _raiz.Visible && _saque == null;
+
+	/// <summary>O retangulo do PAINEL da mochila na tela (a raiz dela e do tamanho da tela inteira, e invisivel). SO PRA BANCADA.</summary>
+	public Rect2 RetanguloDeTeste => _painel.GetGlobalRect();
 
 	private static IEnumerable<Button> BotoesDe(Node raiz)
 	{

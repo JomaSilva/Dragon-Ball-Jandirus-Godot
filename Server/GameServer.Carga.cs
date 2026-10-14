@@ -191,8 +191,13 @@ public sealed partial class GameServer
 		double dano = CargaDeKi.PrecoDoExcesso(f, dt, reunindo || emCena);
 		if (dano > 0) EspalharDanoDaCarga(pl, dano);
 
-		// O TETO DO JOGO (dono, 2026-10-13): ninguem passa de 200% de Ki, venha ele de onde vier.
-		if (!CargaDeKi.TetoPelaFormulaDoDmDeTeste && f.Ki > f.MaxKi * CargaDeKi.TetoDoJogo) f.Ki = f.MaxKi * CargaDeKi.TetoDoJogo;
+		// O TETO E DURO (dono, 2026-10-13): ninguem passa do PROPRIO teto de carga, venha o Ki de onde vier -- e o teto de
+		// ninguem passa dos 200% do jogo. Ver `CargaDeKi.TetoDuro`: quem furava era o troco da carga, pago logo acima.
+		if (!CargaDeKi.TetoPelaFormulaDoDmDeTeste)
+		{
+			double teto = CargaDeKi.TetoDeCargaNaoEDuroDeTeste ? f.MaxKi * CargaDeKi.TetoDoJogo : CargaDeKi.TetoDuro(f);
+			if (f.Ki > teto) f.Ki = teto;
+		}
 
 		// A AURA E DO KI, NAO DA TECLA. Ver CargaDeKi.AuraAcesa -- o limiar de acender (1,01) e
 		// diferente do de apagar (1,0) justamente pra ela nao piscar em quem parou no limite.

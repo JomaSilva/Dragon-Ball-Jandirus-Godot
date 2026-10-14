@@ -1369,10 +1369,84 @@ public sealed partial class GameServer
 		{
 			ServerPlayer alem = ForjarV2("AlemDoTeto", chao, 10_000);
 			Fighter f = alem.Ficha;
+			// (o teto DESTE corpo e o do jogo, como o de quem tem as duas pericias no maximo -- o de cada um e o V6b, logo
+			// abaixo. Escrito direto: o `powerupcap` e do `Statify`, que nao roda no tique da carga.)
+			f.powerupcap = CargaDeKi.TetoDoJogo;
 			f.Ki = f.MaxKi * 3.5;
 			TickDaCarga(alem, Protocol.TickSeconds);
-			AfirmarV21("**O CORTE DOS 200%**: o Ki que chega acima do teto do jogo por qualquer caminho e aparado no tique seguinte",
+			AfirmarV21("**O CORTE DOS 200%**: o Ki que chega acima do teto do jogo por qualquer caminho e aparado no tique seguinte -- mesmo em quem tem o teto de carga no maximo",
 					   f.Ki <= f.MaxKi * CargaDeKi.TetoDoJogo + 1e-6 && f.Ki > f.MaxKi * 1.9, $"{f.Ki / f.MaxKi:P1}");
+		}
+
+		// ---------------------------------------------------------------- V6b) O TETO DE CARGA E DURO
+		// (dono, 2026-10-13, na vespera do lancamento) *"Simplesmente so carrego meu ki com C e ele passa do teto do meu
+		// personagem q é 140%"* -- a tela dele: 158,7% de Ki com "Teto de carga 140% do tanque". Quem furava era o TROCO DA
+		// CARGA (`extracharge`), no gesto de SOLTAR O C E VOLTAR A SEGURAR: solto, o troco comeca a voltar como Ki pelo
+		// `RegenDeKi.Passo`; segurando de novo com o Ki no teto, a carga cai no ramo "ja no maximo", que nao escorre nem
+		// reenche o troco -- e o resto dele entra acima do teto. (Segurando sem parar ele fica cheio e nao paga nada.)
+		LimparTudoDaBancada();
+		{
+			ServerPlayer firme = ForjarV2("Firme", chao, 10_000);
+			Fighter f = firme.Ficha;
+			f.MeditateGivesKiRegen = 1;
+			f.canPower = 1;
+			// A REGENERACAO DE UM PERSONAGEM TREINADO: 0,09% do tanque por chamada. E a que poe o furo nos 158% da tela do
+			// dono (o troco inteiro vale 208 chamadas); a de um corpo de bancada e um quarto disso, e com ela o Ki solto
+			// escorre mais depressa do que o troco paga. Escrita direto: o `KIregen` e do `Statify`, que nao roda no tique
+			// da carga.
+			f.KIregen = f.MaxKi * 0.0009;
+			double teto = CargaDeKi.TetoEmRazao(f);
+			double PicoSoltandoEVoltando()
+			{
+				f.Ki = f.MaxKi * 0.2;
+				f.extracharge = 0;
+				f.powerMod = 1;
+				double pico = 0;
+				void Tiques(int segundos)
+				{
+					for (int i = 0; i < 30 * segundos; i++)
+					{
+						f.stamina = f.maxstamina;   // (o folego nao e o assunto: sem ele a carga pararia antes do teto)
+						TickDaCarga(firme, Protocol.TickSeconds);
+						pico = Math.Max(pico, f.Ki / f.MaxKi);
+					}
+				}
+				Carregar(firme, true);
+				Tiques(45);                  // sobe ate o teto, e o troco enche
+				Carregar(firme, false);
+				Tiques(5);                   // solta: o troco comeca a voltar
+				Carregar(firme, true);
+				Tiques(25);                  // segura de novo: no ramo "ja no maximo" nada escorre
+				Carregar(firme, false);
+				return pico;
+			}
+			double pico = PicoSoltandoEVoltando();
+			AfirmarV21("**O TETO DE CARGA E DURO**: carregar ate o teto, soltar o C por cinco segundos e voltar a segurar -- o Ki chega ao teto do personagem (140%) e NAO PASSA dele: o troco da carga nao fura",
+					   Math.Abs(teto - CargaDeKi.TetoDeFabrica) < 1e-9 && pico > teto - 0.01 && pico <= teto + 1e-9, $"pico {pico:P2}; teto {teto:P0}");
+			CargaDeKi.TetoDeCargaNaoEDuroDeTeste = true;
+			try
+			{
+				double furado = PicoSoltandoEVoltando();
+				AfirmarV21("(defeito injetado: o teto de carga so vale pra tecla C) o mesmo gesto leva o Ki a mais de 150% com o teto em 140% -- *\"so carrego meu ki com C e ele passa do teto do meu personagem\"*, e a tela dele mostrava 158,7%",
+						   furado > teto + 0.10 && furado < CargaDeKi.TetoDoJogo, $"pico {furado:P2}; teto {teto:P0}");
+			}
+			finally { CargaDeKi.TetoDeCargaNaoEDuroDeTeste = false; }
+			Carregar(firme, false);
+
+			// ...e venha o Ki de onde vier: um presente, uma tecnica, um tiro engolido
+			f.extracharge = 0;
+			f.Ki = f.MaxKi * 1.9;
+			TickDaCarga(firme, Protocol.TickSeconds);
+			double aparado = f.Ki / f.MaxKi;
+			f.powerupcap = 1.7;
+			f.Ki = f.MaxKi * 1.9;
+			TickDaCarga(firme, Protocol.TickSeconds);
+			double noTetoDele = f.Ki / f.MaxKi;
+			f.Ki = f.MaxKi * 1.6;
+			TickDaCarga(firme, Protocol.TickSeconds);
+			double dentro = f.Ki / f.MaxKi;
+			AfirmarV21("...e VENHA O KI DE ONDE VIER: o que chega acima do teto do personagem e aparado no mesmo tique (190% vira 140%), o teto e o DELE (com o teto em 170%, os mesmos 190% viram 170%) e quem esta abaixo dele so perde o que escorre (160% continua em 160%)",
+					   Math.Abs(aparado - 1.4) < 1e-9 && Math.Abs(noTetoDele - 1.7) < 1e-9 && dentro is > 1.595 and < 1.6, $"{aparado:P1}; {noTetoDele:P1}; {dentro:P2}");
 		}
 
 		LimparEmbatesDaBancada();

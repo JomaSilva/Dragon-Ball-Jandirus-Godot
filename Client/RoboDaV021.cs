@@ -94,6 +94,7 @@ public partial class RoboDaV021 : Node
 	{
 		// O MUNDO VOLTA: nenhum botao de defeito sobrevive ao roteiro.
 		World.ScrollNaoMudaOZoomDeTeste = false;
+		World.RodaSobreMenuMexeNoZoomDeTeste = false;
 		MenuDeInteracao.PegarDoChaoSoPeloVerboDeTeste = false;
 		Chao.LargarApagaDeTeste = false;
 		PedidosPendentes.SemNotificacaoDeTeste = false;
@@ -201,10 +202,103 @@ public partial class RoboDaV021 : Node
 				Injeta("(a roda nao mexe no zoom) o dente pra cima deixa o zoom onde estava -- o jogo de antes, em que so a pausa o mudava", Em(3), $"zoom {cfg.Zoom}");
 			}
 			finally { World.ScrollNaoMudaOZoomDeTeste = false; }
+
+			// ============================ A RODA EM CIMA DE UM MENU NAO MEXE NO ZOOM (dono, 2026-10-13) ============================
+			// *"enquanto o mouse esta em cima de qualquer menu (inventario, menu P, pausa ou oq for) o zoom da camera n deveria
+			// acontecer, somente se tiver com menu fechado ou o mouse fora da area do menu"*. AQUI A RODA ENTRA PELA PORTA DE
+			// VERDADE (`Viewport.PushInput`, com a posicao): a pergunta e justamente ONDE ela caiu, e quem responde e o motor
+			// (o controle sob o mouse). Sempre o dente PRA CIMA: uma lista aberta esta no topo, e pra cima ela nao rola -- e a
+			// roda que a lista nao usou e a que vazava.
+			// =======================================================================================================================
+			Viewport tela = GetViewport();
+			Vector2 tamanho = tela.GetVisibleRect().Size;
+			void Tres() { cfg.Zoom = 3; mundo.AplicarZoom(3); }
+			string SobOMouse() => tela.GuiGetHoveredControl() is { } sob ? $"{sob.GetType().Name} {sob.GetPath()}" : "(nada)";
+			bool RodaEm(Vector2 p)
+			{
+				Tres();
+				tela.PushInput(new InputEventMouseMotion { Position = p, GlobalPosition = p }, true);
+				tela.PushInput(new InputEventMouseButton { ButtonIndex = MouseButton.WheelUp, Pressed = true, Position = p, GlobalPosition = p }, true);
+				bool mexeu = cfg.Zoom != 3;
+				Tres();
+				return mexeu;
+			}
+			(int Mexeram, string Onde) Varrer(Rect2 r)
+			{
+				int mexeram = 0;
+				string onde = "";
+				for (int i = 0; i < 5; i++)
+					for (int j = 0; j < 5; j++)
+					{
+						var p = new Vector2(r.Position.X + 8 + (r.Size.X - 16) * i / 4f, r.Position.Y + 8 + (r.Size.Y - 16) * j / 4f);
+						if (!RodaEm(p)) continue;
+						mexeram++;
+						if (onde.Length == 0) onde = $"(o primeiro: {p}, sobre {SobOMouse()})";
+					}
+				return (mexeram, onde);
+			}
+			int VazavamEm(Rect2 r)
+			{
+				World.RodaSobreMenuMexeNoZoomDeTeste = true;
+				try { return Varrer(r).Mexeram; }
+				finally { World.RodaSobreMenuMexeNoZoomDeTeste = false; }
+			}
+
+			// (um ponto do MUNDO: a meia altura, perto da borda direita -- fora da mochila e do menu P, que nascem no centro)
+			var noMundo = new Vector2(tamanho.X * 0.88f, tamanho.Y * 0.5f);
+			await Quadros(2);
+			bool livre = RodaEm(noMundo);
+			Checa("(pela porta de verdade) com os menus fechados, a roda em cima do mundo muda o zoom", livre, $"em {noMundo} de {tamanho}; sob o mouse: {SobOMouse()}");
+
+			TelaDeInventario mochila = TelaDeInventario.Instancia!;
+			mochila.Abrir();
+			await Quadros(3);
+			Rect2 rMochila = mochila.RetanguloDeTeste;
+			(int naMochila, string ondeNaMochila) = Varrer(rMochila);
+			bool foraDaMochila = !rMochila.HasPoint(noMundo) && RodaEm(noMundo);
+			string sobForaDaMochila = SobOMouse();
+			int vazavamNaMochila = VazavamEm(rMochila);
+			mochila.Fechar();
+			await Quadros(2);
+			Checa("**A RODA EM CIMA DA MOCHILA NAO MEXE NO ZOOM**: vinte e cinco pontos do painel, nenhum muda o zoom -- e com ela aberta, o mouse FORA do painel continua mudando",
+				  rMochila.Size.X > 100 && naMochila == 0 && foraDaMochila,
+				  $"painel {rMochila}; mexeram {naMochila} {ondeNaMochila}; fora do painel mexeu {foraDaMochila} (sob o mouse: {sobForaDaMochila})");
+			Injeta("(a roda atravessa o menu) em cima da mochila aberta a roda volta a mexer no zoom -- o painel nao tem lista que a segure", vazavamNaMochila > 0, $"{vazavamNaMochila} de 25 pontos");
+
+			MenuJogo menuP = MenuJogo.Instancia!;
+			menuP.Abrir();
+			await Quadros(3);
+			Rect2 rMenu = MenuJogo.RetanguloNaTela ?? default;
+			(int noMenu, string ondeNoMenu) = Varrer(rMenu);
+			bool foraDoMenu = !rMenu.HasPoint(noMundo) && RodaEm(noMundo);
+			int vazavamNoMenu = VazavamEm(rMenu);
+			menuP.Fechar();
+			await Quadros(2);
+			Checa("**...NEM EM CIMA DO MENU P**: vinte e cinco pontos da janela dele, nenhum muda o zoom -- e fora dela continua mudando",
+				  rMenu.Size.X > 100 && noMenu == 0 && foraDoMenu, $"janela {rMenu}; mexeram {noMenu} {ondeNoMenu}; fora dela mexeu {foraDoMenu}");
+			Injeta("(a roda atravessa o menu) em cima do menu P a roda volta a mexer no zoom onde a pagina nao rola", vazavamNoMenu > 0, $"{vazavamNoMenu} de 25 pontos");
+
+			PauseMenu pausa = PauseMenu.Instancia!;
+			pausa.Abrir();
+			await Quadros(3);
+			bool pausaNoMeio = RodaEm(tamanho / 2), pausaNoVeu = RodaEm(noMundo);
+			string sobAPausa = SobOMouse();
+			World.RodaSobreMenuMexeNoZoomDeTeste = true;
+			bool vazavaNaPausa;
+			try { vazavaNaPausa = RodaEm(noMundo); }
+			finally { World.RodaSobreMenuMexeNoZoomDeTeste = false; }
+			pausa.Fechar("a bancada fechou");
+			await Quadros(2);
+			Checa("**...NEM COM A PAUSA ABERTA**: o veu dela cobre a tela inteira, e a roda nao mexe no zoom nem no meio do painel nem na beirada",
+				  !pausaNoMeio && !pausaNoVeu, $"no meio mexeu {pausaNoMeio}; no veu mexeu {pausaNoVeu} (sob o mouse: {sobAPausa})");
+			Injeta("(a roda atravessa o menu) com a pausa aberta a roda em cima do veu volta a mexer no zoom", vazavaNaPausa);
+			bool voltou = RodaEm(noMundo);
+			Checa("...e fechados os tres, a roda em cima do mundo volta a mudar o zoom", voltou, $"sob o mouse: {SobOMouse()}");
 		}
 		finally
 		{
 			World.ScrollNaoMudaOZoomDeTeste = false;
+			World.RodaSobreMenuMexeNoZoomDeTeste = false;
 			cfg.Zoom = deAntes;
 			cfg.Gravar();
 			mundo.AplicarZoom(deAntes);

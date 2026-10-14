@@ -166,8 +166,8 @@ public static class Habilidades
 			Verbos.Skills,
 			"Só do androide de ABSORÇÃO. Finca os pés e abre os coletores: enquanto estiverem "
 			+ "abertos você NÃO ANDA, e todo ataque de ki que te acertar é engolido inteiro -- "
-			+ "sem dano, virando energia (6% do seu tanque por golpe, acumulando até o DOBRO da "
-			+ "sua capacidade).\n\nAperte de novo pra fechar e voltar a se mover. Cair "
+			+ "sem dano, virando energia (6% do seu tanque por golpe, acumulando até o seu teto "
+			+ "de carga, o da aba Ki).\n\nAperte de novo pra fechar e voltar a se mover. Cair "
 			+ "nocauteado fecha sozinho.",
 			() => GameClient.Instance?.SendHabilidade("absorver_ki")) { Chave = "hab:absorver_ki" });
 

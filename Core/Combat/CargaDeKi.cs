@@ -121,9 +121,32 @@ public static class CargaDeKi
 	/// <summary>
 	/// **O TETO DO JOGO**: ninguem passa de 200% de Ki, por caminho nenhum -- *"o teto limite do jogo q vc pode ter
 	/// de ki seria 200%"*. E onde chega a carga de quem tem as duas pericias no maximo (<see cref="TetoPelaPericia"/>),
-	/// e e o corte que o servidor aplica em todo tique (`GameServer.TickDaCarga`).
+	/// e e o mais alto que o corte duro de um corpo pode ser (<see cref="TetoDuro"/>).
 	/// </summary>
 	public const double TetoDoJogo = 2.0;
+
+	/// <summary>
+	/// **O TETO E DURO** (dono, 2026-10-13, na vespera do lancamento): *"ta dando pra passar o ki maximo (deveria ser um
+	/// hard cap)"* e *"simplesmente so carrego meu ki com C e ele passa do teto do meu personagem q é 140%"*. O teto de
+	/// carga do corpo (<see cref="TetoDeCarga"/>, o numero que a aba Ki mostra) e o MAXIMO de Ki dele, venha o Ki de
+	/// onde vier -- a tecla C, o troco da carga, um presente, um tiro engolido --, e nunca alem do
+	/// <see cref="TetoDoJogo"/>. E o corte que o servidor aplica em todo tique (`GameServer.TickDaCarga`).
+	///
+	/// QUEM FURAVA: o TROCO DA CARGA (`extracharge`, `Stats.RegenDeKi.Passo`), e so pra quem SOLTA o C e volta a
+	/// segurar. Carregando sem parar o troco fica cheio (50) e nao paga nada -- a parabola dele vale zero na ponta.
+	/// Solto o C (ou andando, ou sem folego), ele comeca a voltar como Ki; e quem aperta o C de novo com o Ki ja no teto
+	/// cai no ramo "ja no maximo" do <see cref="Passo"/>, que nao escorre nem reenche o troco: o resto dele -- ate 208
+	/// vezes o `KIregen` -- entrava ACIMA do teto e ficava la. MEDIDO: com a regeneracao em 0,09% do tanque por chamada,
+	/// soltar cinco segundos no teto e segurar de novo levava o Ki de 140% a 158,4% (a tela do dono mostrava 158,7% com
+	/// "Teto de carga 140% do tanque"); com o dobro dela, a 170%.
+	/// </summary>
+	public static double TetoDuro(Fighter f) => f.MaxKi * Math.Min(Math.Max(f.powerupcap, 1), TetoDoJogo);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): o teto de carga volta a valer so pra tecla C -- o troco da carga (e
+	/// qualquer outro caminho) passa dele, ate os 200% do jogo. Lido pelo `GameServer.TickDaCarga`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool TetoDeCargaNaoEDuroDeTeste;
 
 	/// <summary>
 	/// O nivel das duas pericias (circulacao e controle de ki) em que a carga chega ao teto do jogo: o fim das tres
