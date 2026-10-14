@@ -224,7 +224,7 @@ public sealed partial class GameServer
 
 		_cuspeProntoG14[pl.Id] = NowMs() + 1000;
 		f.Ki -= custo;
-		f.BlastGain(_rng);
+		GanhoDeKi(pl);
 		Disparar(pl, new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Blast,

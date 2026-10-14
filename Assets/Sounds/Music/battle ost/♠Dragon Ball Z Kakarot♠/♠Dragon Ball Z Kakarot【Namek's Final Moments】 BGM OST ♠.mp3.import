@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://d3x42hv4hveop"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【Namek's Final Moments】 BGM OST ♠.mp3-5c664a2003369d17eaae4e3caee239bb.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot♠/♠Dragon Ball Z Kakarot【Namek's Final Moments】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【Namek's Final Moments】 BGM OST ♠.mp3-5c664a2003369d17eaae4e3caee239bb.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

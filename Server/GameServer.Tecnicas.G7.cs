@@ -757,7 +757,7 @@ public sealed partial class GameServer
 		double tiques = Math.Max(20 * pl.Ficha.Eactspeed, 70);
 		_scatterPronto[pl.Id] = NowMs() + (long)(tiques * TempoDoDm.MsPorTique);
 		pl.Ficha.Ki -= custo;
-		for (int i = 0; i < 7; i++) pl.Ficha.BlastGain(_rng);   // sete `Blast_Gain()` literais
+		GanhoDeKi(pl, vezes: 7);   // sete `Blast_Gain()` literais, num pacote so pra rajada inteira
 		pl.Ficha.blastskill += 0.05 * quantas;
 		pl.Ficha.targetedskill += 0.05 * quantas;
 
@@ -862,7 +862,7 @@ public sealed partial class GameServer
 		// (`niveis.json`, `"cond": "savant.SpiritBallFireCount"`), e o port ainda nao le condicao de
 		// efetor. Um campo escrito e nunca lido e exatamente o codigo morto que a casa proibe -- fica
 		// catalogado, e volta junto com o consumidor.
-		pl.Ficha.AttackGain(_rng);
+		GanhoDeKi(pl, dePunho: true);   // e, como todo tiro, so quando ela encosta em algo (`GameServer.Ganhos.cs`)
 
 		Disparar(pl, new ReceitaDeProjetil
 		{

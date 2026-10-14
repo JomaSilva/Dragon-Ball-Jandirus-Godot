@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://b2po56u4gxqyr"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【To the Edge of the Universe】 BGM OST ♠.mp3-bdb45a7f7512ec96a13ee6a383fb259d.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot♠/♠Dragon Ball Z Kakarot【To the Edge of the Universe】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【To the Edge of the Universe】 BGM OST ♠.mp3-bdb45a7f7512ec96a13ee6a383fb259d.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

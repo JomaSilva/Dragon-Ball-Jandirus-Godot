@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://64e5oq5fbtdo"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【Get Dragon Ball!】 Jingle   BGM OST ♠.mp3-5190deb12ee28c2e157e50a8a62640f8.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot♠/♠Dragon Ball Z Kakarot【Get Dragon Ball!】 Jingle   BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【Get Dragon Ball!】 Jingle   BGM OST ♠.mp3-5190deb12ee28c2e157e50a8a62640f8.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

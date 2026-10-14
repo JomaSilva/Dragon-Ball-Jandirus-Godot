@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://bwg3t08v0oby0"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【In the Hall of the Gods】 BGM OST ♠.mp3-51fdd9d1f00c414c1a06a1189a42a06a.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot♠/♠Dragon Ball Z Kakarot【In the Hall of the Gods】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【In the Hall of the Gods】 BGM OST ♠.mp3-51fdd9d1f00c414c1a06a1189a42a06a.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

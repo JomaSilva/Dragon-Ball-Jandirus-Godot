@@ -1,0 +1,24 @@
+# Configuracao do servidor. O instalar.sh copia este arquivo pra `servidor.conf` (se ainda nao existir) --
+# mude o servidor.conf, nao este: uma atualizacao do servidor sobrescreve o .exemplo e nunca toca no seu.
+# Depois de mudar, religue: ./parar.sh e ./iniciar.sh
+
+# A porta UDP em que os jogadores conectam (a mesma do campo de porta do "Entrar" no jogo).
+# Libere esta porta no firewall da VPS E no painel do provedor.
+PORTA=7777
+
+# Uma conta pra marcar como administradora toda vez que o servidor liga (opcional, pode ficar vazio).
+# So funciona com conta que JA EXISTE -- a conta nasce no primeiro login. O jeito normal de dar admin e o
+# comando `admin <conta>` no console (./console.sh), que vale na hora e nao precisa religar nada.
+ADMIN=
+
+# Teto de quadros por segundo do processo. 60 e o ritmo em que o servidor ja roda quando alguem hospeda pelo
+# jogo numa tela de 60 Hz, sobra pros 30 tiques por segundo do servidor, e deixa a CPU da VPS mais livre.
+# 0 = sem teto (o padrao do Godot sem tela).
+FPS_MAXIMO=60
+
+# Fuso horario das datas do log e do admin.log (VPS costuma vir em UTC).
+FUSO=America/Sao_Paulo
+
+# Cultura do processo: numeros e datas saem como no Windows (1.234,5). Precisa da biblioteca ICU, que o
+# instalar.sh instala.
+IDIOMA=pt_BR.UTF-8

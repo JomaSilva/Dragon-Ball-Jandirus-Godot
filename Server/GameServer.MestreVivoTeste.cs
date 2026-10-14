@@ -373,11 +373,12 @@ public partial class GameServer
 		Soco com = GanhoDeUmSoco(aluno, mestre, bpDoAluno);
 
 		// ============================ O SOCO TEM QUE TER ACERTADO ============================
-		// Socar o AR tambem rende BP (`GameServer.Combat.cs:249`), so que sem multiplicador nenhum --
-		// entao uma bancada que nao confere o alvo mede dois socos no ar, acha os dois iguais e chama
-		// isso de "o bonus nao chegou". Foi literalmente a primeira leitura vermelha desta familia.
+		// Socar o AR rendia BP (`GameServer.Combat.cs:249`), so que sem multiplicador nenhum -- entao
+		// uma bancada que nao conferisse o alvo media dois socos no ar, achava os dois iguais e chamava
+		// isso de "o bonus nao chegou". Foi literalmente a primeira leitura vermelha desta familia. (Desde
+		// 2026-10-14 o soco no ar nao rende nada -- `GameServer.Ganhos.cs` --, e a conferencia continua valendo.)
 		// ================================================================================
-		AfirmarMv("os dois socos ACERTARAM o mestre (socar o ar tambem rende BP, e sem bonus nenhum)",
+		AfirmarMv("os dois socos ACERTARAM o mestre (o soco no ar nao conta: ele nao leva bonus nenhum)",
 				  sem.Acertou && com.Acertou);
 		AfirmarMv("um soco no mestre rende BP de verdade (o ganho nao morre no CapCheck)",
 				  sem.Ganho > 0 && com.Ganho > 0, $"sem {sem.Ganho:0.######} | com {com.Ganho:0.######}");

@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://x5mrr1sowklq"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【King Kai at the Edge of the Other World】 BGM OST ♠.mp3-c62c8a4a897ab685e8ff810bc00990d7.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot♠/♠Dragon Ball Z Kakarot【King Kai at the Edge of the Other World】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【King Kai at the Edge of the Other World】 BGM OST ♠.mp3-c62c8a4a897ab685e8ff810bc00990d7.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

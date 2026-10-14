@@ -647,8 +647,9 @@ public sealed partial class GameServer
 		if (t.UsaStamina) pl.Ficha.stamina = Math.Max(0, pl.Ficha.stamina - t.CustoStamina);
 
 		// A PERICIA SOBE COMO EM QUALQUER TIRO. `Blast_Gain()` e o que faz atirar treinar quem
-		// atira; uma tecnica inventada que nao treinasse seria um atalho pra ficar fraco.
-		pl.Ficha.BlastGain(_rng);
+		// atira; uma tecnica inventada que nao treinasse seria um atalho pra ficar fraco. (E, como em
+		// qualquer tiro, o BP so sai quando ele encosta em algo -- `GameServer.Ganhos.cs`.)
+		GanhoDeKi(pl);
 
 		Projetil p = Disparar(pl, t.Receita());
 		if (p.Vivo && alvo != null) p.Alvo = alvo.Id;

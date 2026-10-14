@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    O LANCADOR (`server.dll`): o que um painel de hospedagem ".NET" sabe rodar (`dotnet server.dll`). Ele so liga o
+    servidor de verdade (o binario do Godot ao lado dele, jandirus-servidor.x86_64) e espera ele sair. Ver
+    Program.cs.
+
+    `RollForward=LatestMajor`: o painel instala o .NET que quiser (8, 9, 10...), e este programa nao usa nada que mude
+    entre eles. `UseAppHost=false`: sai so a DLL, que e o que o painel chama.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>server</AssemblyName>
+    <RootNamespace>Jandirus.Lancador</RootNamespace>
+    <RollForward>LatestMajor</RollForward>
+    <UseAppHost>false</UseAppHost>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+</Project>

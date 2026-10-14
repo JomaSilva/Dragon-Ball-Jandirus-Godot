@@ -137,6 +137,36 @@ public static class GainKnobs
 	/// </summary>
 	public static bool ColegaSemBonusDeTeste;
 
+	// --- de onde o ganho da luta vem (dono, 2026-10-14) -------------------------
+	/// <summary>
+	/// SOCAR UM OBJETO (parede, arvore, pedra, construcao, nave, bloco) rende isto, em vezes do ganho de socar um NPC:
+	/// *"objetos (e oq menos da)"*. O mesmo peso vale pro ki que acaba numa parede ou no chao de um planeta. Socar o AR
+	/// e o ki que some no nada nao rendem -- as regras estao em `GameServer.Ganhos.cs`.
+	/// </summary>
+	public static double GanhoDeObjeto = 0.1;
+
+	/// <summary>
+	/// LUTAR COM OUTRO JOGADOR NUMA TROCA DE GOLPES rende isto, em vezes do ganho contra um NPC, POR CIMA do gap e do
+	/// mestre (<see cref="Fighter.FightGainMult"/>): *"e o maior ganho do jogo"*. Sem troca -- o outro nao te atacou
+	/// nos ultimos <see cref="SegundosDaTroca"/> -- bater nele (ou apanhar dele) nao rende nada.
+	/// </summary>
+	public static double GanhoDaTrocaPvp = 2;
+
+	/// <summary>A JANELA DA TROCA: o outro jogador te atacou (soco ou ki, acertando, errando ou sendo bloqueado) ha no maximo isto.</summary>
+	public static double SegundosDaTroca = 10;
+
+	/// <summary>DEFEITO INJETADO (bancada `--ganhoteste`): socar o ar volta a render como um soco, a regra de antes. Falso em jogo, sempre.</summary>
+	public static bool SocoNoArRendeDeTeste;
+
+	/// <summary>DEFEITO INJETADO (bancada `--ganhoteste`): o ki volta a render no disparo, acerte ou nao. Falso em jogo, sempre.</summary>
+	public static bool KiRendeNoDisparoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--ganhoteste`): jogador contra jogador volta a render como contra NPC, com troca ou
+	/// sem, e sem o bonus dela. Falso em jogo, sempre.
+	/// </summary>
+	public static bool PvpSemTrocaDeTeste;
+
 	// --- zonas especiais -------------------------------------------------------
 	/// <summary>Sala do Tempo: 1 dia la = 1 ano de treino (28 dias x 10 meses).</summary>
 	public const double TimeChamberMult = 28 * 10;

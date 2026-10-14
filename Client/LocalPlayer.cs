@@ -1458,7 +1458,8 @@ public partial class LocalPlayer : Node2D
 			// atualizando com a posiçao atual do player". A miragem podia nascer do outro lado do
 			// mapa, no lugar onde ele tinha investido minutos antes.
 			// ==============================================================================
-			_deOndeSai = new Vector2(_pos.X, _pos.Y);
+			// (E a marca responde pelo salto DESTE golpe e de mais nenhum -- ver `OrigemDoSalto`.)
+			MarcarSaida();
 
 			_ataqueAte = dura;
 			// a animacao e ESTICADA pra caber no golpe: com a cadencia nova (~0,33 s) o ciclo
@@ -1936,16 +1937,36 @@ public partial class LocalPlayer : Node2D
 	private Vector2 _deOndeSai;
 
 	/// <summary>
+	/// Ate quando o <see cref="_deOndeSai"/> responde por um salto (relogio do motor, em ms). Zero: nenhum gesto
+	/// meu esta esperando o servidor, e o salto que chegar nao foi pedido por mim. Ver <see cref="OrigemDoSalto"/>.
+	/// </summary>
+	private ulong _saidaValeAte;
+
+	/// <summary>
+	/// UM SEGUNDO: a confirmacao de um gesto chega um RTT depois dele, e um RTT de um segundo ja e um jogo que
+	/// nao responde a nada. Passado isso, o salto que chegar nao e o deste gesto.
+	/// </summary>
+	private const ulong JanelaDaSaidaMs = 1000;
+
+	/// <summary>
 	/// GRAVA DE ONDE EU SAIO, pra um gesto que ainda vai ser confirmado pelo servidor.
 	///
 	/// O soco ja fazia isso sozinho; a PISCADA por duplo clique precisava disto e nao tinha. Ver
 	/// o comentario do <see cref="DeixarVulto"/>.
 	/// </summary>
-	public void MarcarSaida() => _deOndeSai = new Vector2(_pos.X, _pos.Y);
+	public void MarcarSaida()
+	{
+		_deOndeSai = new Vector2(_pos.X, _pos.Y);
+		_saidaValeAte = Time.GetTicksMsec() + JanelaDaSaidaMs;
+	}
+
+	/// <summary>A marca do ultimo gesto, como ele a gravou. So pra bancada (`--diagmiragem`).</summary>
+	public Vector2 SaidaMarcadaDeTeste => _deOndeSai;
 
 	/// <summary>
-	/// O servidor confirmou o deslocamento: e aqui que o vulto nasce, na posicao que o CLIENTE
-	/// guardou no instante do gesto.
+	/// O servidor confirmou o deslocamento: e aqui que o vulto nasce, na <paramref name="origem"/> que o
+	/// <see cref="OrigemDoSalto"/> escolheu pra ESTE salto -- a posicao que o CLIENTE guardou no instante
+	/// do gesto, quando o salto e de um gesto meu.
 	///
 	/// ============================ POR QUE NAO USAR A POSICAO DO SERVIDOR ============================
 	/// O pacote da piscada (`S2C.Zanzo`) traz a posicao de onde o corpo saiu, e a piscada usava ELA.
@@ -1966,9 +1987,9 @@ public partial class LocalPlayer : Node2D
 	/// a piscada usar o mesmo caminho, nao inventar um terceiro.
 	/// ================================================================================================
 	/// </summary>
-	public void DeixarVulto(Vector2 doServidor)
+	public void DeixarVulto(Vector2 origem)
 	{
-		if (GetParent() is { } palco) Zanzoken.Deixar(palco, this, OrigemDoSalto(doServidor));
+		if (GetParent() is { } palco) Zanzoken.Deixar(palco, this, origem);
 	}
 
 	/// <summary>
@@ -1978,22 +1999,43 @@ public partial class LocalPlayer : Node2D
 	/// e o deslocamento (qualquer corpo). Estao lado a lado porque compartilham a origem.
 	///
 	/// **NAO HA NADA AQUI QUE SEJA "DO JOGADOR"**: o `RastroDeCorrida.Arranque` e o mesmo node e o mesmo
-	/// metodo que o corpo remoto e o do NPC chamam. Este atalho existe so pra escolher a ORIGEM, que e a
-	/// unica coisa que o corpo local sabe melhor que o pacote -- e nem sempre (ver `OrigemDoSalto`).
+	/// metodo que o corpo remoto e o do NPC chamam. A <paramref name="origem"/> chega escolhida pelo
+	/// <see cref="OrigemDoSalto"/>, a unica coisa que o corpo local sabe melhor que o pacote -- e nem sempre.
 	/// </summary>
-	public void BorrarArranque(Vector2 doServidor)
+	public void BorrarArranque(Vector2 origem)
 	{
-		if (GetNodeOrNull<RastroDeCorrida>(CaminhoDoRastro) is { } rastro) rastro.Arranque(OrigemDoSalto(doServidor));
+		if (GetNodeOrNull<RastroDeCorrida>(CaminhoDoRastro) is { } rastro) rastro.Arranque(origem);
 	}
 
 	/// <summary>
-	/// DE ONDE ESTE CORPO SALTOU -- e a resposta muda conforme quem esta dirigindo.
+	/// DE ONDE ESTE CORPO SALTOU -- e a resposta muda conforme quem esta dirigindo. Perguntada UMA vez por
+	/// salto anunciado (`World.AoPiscar`): a resposta GASTA a marca, e o borrao e o vulto recebem a mesma.
 	///
 	/// ============================ COM AS REDEAS: A MINHA, GUARDADA ============================
 	/// Quem apertou a tecla fui eu, e eu guardei a posicao no instante do gesto (`_deOndeSai`). As duas
 	/// razoes pra nao usar a do pacote estao inteiras no <see cref="DeixarVulto"/>: ela esta ATRASADA
 	/// (e a ultima que chegou ao servidor por input) e vem por um canal SEM ORDEM garantida com a
 	/// correcao que move o corpo.
+	///
+	/// ============================ MAS SO PRO SALTO QUE EU PEDI: A MARCA E DE UM SALTO SO ============================
+	/// O dono (2026-10-14): *"zanzoken miragem ta bem bugado, ele n fica criando miragem por onde passo, ele fica
+	/// criando miragem no ultimo local q usei o zanzoken/after image"*. A marca so e escrita por DOIS gestos -- a tecla
+	/// do soco e o duplo clique da piscada -- e era lida por TODO salto anunciado pro corpo local. Ha saltos que nenhum
+	/// dos dois pede: a Zanzoken Afterimage (lote G14) anuncia uma miragem a cada meio segundo ONDE O CORPO ESTA,
+	/// durante cinco segundos; o Zanzoken Rush salta de diagonal em diagonal em volta do alvo; o Zanzoken Combo, o
+	/// Rapid Movement e o Light Buster tambem saltam pelo servidor. Todos saiam daqui com a posicao do ULTIMO soco ou da
+	/// ultima piscada: as onze miragens da Afterimage empilhadas num ponto que o corpo tinha deixado ha minutos. Quem
+	/// assistia de fora via certo -- o corpo remoto sempre usou a origem do pacote.
+	///
+	/// Entao a marca responde por UM salto, e so dentro da janela do gesto (<see cref="JanelaDaSaidaMs"/>): o primeiro
+	/// salto que chega a gasta. O que chega sem marca viva -- o salto de tecnica, ou o segundo salto do Rush -- usa a
+	/// origem do servidor, e as duas objecoes acima nao mordem ali: nao ha instante de gesto pra ela estar atrasada em
+	/// relacao a ele, e a miragem de quem anda nasce onde o corpo ESTAVA, que e o que ela desenha.
+	///
+	/// A JANELA E O QUE SEGURA O SOCO QUE NAO INVESTIU: colado no outro nao ha arranque (e o soco mais comum de uma
+	/// troca), e a marca dele ficaria viva sem salto nenhum pra gasta-la -- respondendo pelo proximo salto, que veio de
+	/// outra tecla, talvez minutos depois.
+	/// ==============================================================================================================
 	///
 	/// ============================ SEM AS REDEAS: A DO SERVIDOR, SEMPRE ============================
 	/// **E aqui mora a fera do Oozaru e a furia lendaria.** Um corpo possuido tambem arranca -- so que
@@ -2007,7 +2049,19 @@ public partial class LocalPlayer : Node2D
 	/// servidor, ver `ReceberPosse`), entao a posicao do pacote e a unica verdade que existe.
 	/// ==========================================================================================
 	/// </summary>
-	private Vector2 OrigemDoSalto(Vector2 doServidor) => _semRedeas ? doServidor : _deOndeSai;
+	public Vector2 OrigemDoSalto(Vector2 doServidor)
+	{
+		bool doMeuGesto = !_semRedeas && (Time.GetTicksMsec() <= _saidaValeAte || MarcaDeSaidaEternaDeTeste);
+		_saidaValeAte = 0;
+		return doMeuGesto ? _deOndeSai : doServidor;
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagmiragem`): a marca volta a responder por TODO salto do corpo local, sem prazo
+	/// e sem gastar -- o estado de antes de 2026-10-14, o relato do dono. Lido pelo <see cref="OrigemDoSalto"/>.
+	/// Falso em jogo, sempre.
+	/// </summary>
+	public static bool MarcaDeSaidaEternaDeTeste;
 
 	/// <summary>
 	/// Onde mirar. A zona nao GARANTE o membro -- so pesa o sorteio a favor dele -- mas e o

@@ -253,6 +253,9 @@ public partial class GameServer
 		if (Array.IndexOf(args, "--saidaembateteste") >= 0) RodarBancadaDaSaidaDoEmbate(porta);
 		// `--adminlocalteste`: o admin de quem HOSPEDA (a prova do anfitriao) e o `--admin`. Ver `GameServer.AdminLocalTeste.cs`.
 		if (Array.IndexOf(args, "--adminlocalteste") >= 0) RodarBancadaDoAdminLocal(porta);
+		// `--ganhoteste`: de onde o poder da luta vem -- o soco no ar, o objeto, a troca entre jogadores e o ki que so
+		// rende encostando. Os jogadores entram pela porta. Ver `GameServer.GanhoTeste.cs`.
+		if (Array.IndexOf(args, "--ganhoteste") >= 0) RodarBancadaDeGanho(porta);
 	}
 
 	/// <summary>

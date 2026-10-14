@@ -116,7 +116,11 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--server") >= 0)
 		{
 			GD.Print("[boot] modo servidor: sem interface");
-			if (DecidirSeEDedicadoDeProducao(OS.GetCmdlineArgs())) AddChild(new VigiaDoConsole { Name = "VigiaDoConsole" });   // o dedicado de producao GRAVA ao fechar (o X e o console) -- ver Boot.Dedicado.cs
+			if (DecidirSeEDedicadoDeProducao(OS.GetCmdlineArgs()))
+			{
+				AddChild(new VigiaDoConsole { Name = "VigiaDoConsole" });   // o dedicado de producao GRAVA ao fechar (o X e o console) -- ver Boot.Dedicado.cs
+				AddChild(new Jandirus.Server.TerminalDoServidor { Name = "TerminalDoServidor" });   // ...e ATENDE o que o dono digita no console (admin, banir, parar) -- ver Server/TerminalDoServidor.cs
+			}
 			return;
 		}
 
@@ -152,6 +156,14 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagfusaolook") >= 0)
 		{
 			AddChild(new RoboDeFusaoLook { Name = "RoboDeFusaoLook" });
+			return;
+		}
+
+		// A ROUPA SEM DESENHO DEITADO, COM O CORPO NO CHAO: como a de cima, so o catalogo, as folhas e o
+		// `CharacterVisual` -- sem rede e sem janela. Ver `RoboDaRoupaDeitada`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagroupadeitada") >= 0)
+		{
+			AddChild(new RoboDaRoupaDeitada { Name = "RoboDaRoupaDeitada" });
 			return;
 		}
 
@@ -1678,6 +1690,14 @@ public partial class Boot : Node2D
 		// RoboDeBorrao e `ver-o-borrao.bat`.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagborrao") >= 0)
 			AddChild(new RoboDeBorrao { Name = "RoboDeBorrao" });
+
+		// --diagmiragem: A MIRAGEM POR ONDE PASSO -- o relato do dono "ele n fica criando miragem por onde passo, ele fica
+		// criando miragem no ultimo local q usei o zanzoken/after image". O corpo LOCAL usava a marca do ultimo soco ou
+		// piscada pra TODO salto anunciado, inclusive as miragens da Zanzoken Afterimage. Mede a miragem do proprio corpo
+		// contra a origem que o servidor mandou, com uma rodada do defeito injetado. Precisa de `--host` e da Afterimage
+		// (`--skillteste /datum/skill/ki/Afterimage`); NAO precisa de janela. Ver RoboDaMiragemPorOndePasso.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmiragem") >= 0)
+			AddChild(new RoboDaMiragemPorOndePasso { Name = "RoboDaMiragemPorOndePasso" });
 
 		// --diagvariedade: a VARIEDADE dos ataques de ki, fotografada com o tiro SAINDO DA MAO. A
 		// `--diagartedeki` (la em cima, sem rede) monta os `ProjetilDesenhado` com a mao e ja prova a

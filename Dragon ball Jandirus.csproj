@@ -46,6 +46,9 @@
     <None Remove="Core\**" />
     <Compile Remove="Tools\**" />
     <None Remove="Tools\**" />
+    <!-- o lancador `server.dll` dos paineis .NET (projeto proprio, com obj/ proprio) e o pacote do servidor Linux -->
+    <Compile Remove="ServidorLinux\**" />
+    <None Remove="ServidorLinux\**" />
   </ItemGroup>
 
 </Project>

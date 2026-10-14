@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://ba5wvvr6svnwb"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【Battle of Gods】 BGM OST ♠.mp3-adb97d66d79e5df105635c2e71ebfc75.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot♠/♠Dragon Ball Z Kakarot【Battle of Gods】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【Battle of Gods】 BGM OST ♠.mp3-adb97d66d79e5df105635c2e71ebfc75.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

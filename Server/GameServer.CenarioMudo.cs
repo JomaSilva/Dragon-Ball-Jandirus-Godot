@@ -102,7 +102,7 @@ public partial class GameServer
 		foreach ((string arte, List<string> zonas) in portasPorArte.OrderBy(kv => kv.Key, StringComparer.Ordinal))
 		{
 			string onde = $"{zonas.Count} porta(s) em {string.Join(", ", zonas.Distinct())}";
-			if (arte.Length == 0 || !Godot.FileAccess.FileExists(arte))
+			if (arte.Length == 0 || !ArteExiste(arte))
 			{
 				alarmes++;
 				GD.PushError($"[cenario] porta sem folha de sprite ('{arte}', {onde}) -- ela bloqueia "
@@ -113,7 +113,7 @@ public partial class GameServer
 			// OS QUATRO ESTADOS, e nao so o "closed": o `Porta.cs` do cliente cai de `opening` pra
 			// `open` e de `closing` pra `closed` quando falta (`Porta.cs:82`), entao faltar um dos
 			// dois do meio e feio e nao e mudo -- mas faltar `closed` e uma porta fechada invisivel.
-			HashSet<string> anims = AnimacoesDoTres(arte);
+			if (AnimacoesDoTres(arte) is not { } anims) continue;   // jogo exportado: ver `AnimacoesDoTres`
 			string[] faltando = [.. new[] { "closed", "open", "opening", "closing" }.Where(a => !anims.Contains(a))];
 			if (faltando.Contains("closed"))
 			{
@@ -144,9 +144,9 @@ public partial class GameServer
 	private static (bool Desenha, bool QuadroCerto, string Porque) JulgarArteDaObra(Construcao c)
 	{
 		if (c.Arte.Length == 0) return (false, false, "`arte` vazia no construcoes.json");
-		if (!Godot.FileAccess.FileExists(c.Arte)) return (false, false, $"o `.tres` '{c.Arte}' nao existe");
+		if (!ArteExiste(c.Arte)) return (false, false, $"o `.tres` '{c.Arte}' nao existe");
 
-		HashSet<string> anims = AnimacoesDoTres(c.Arte);
+		if (AnimacoesDoTres(c.Arte) is not { } anims) return (true, true, "");   // jogo exportado: ver `AnimacoesDoTres`
 		if (anims.Count == 0) return (false, false, $"'{c.Arte}' nao tem animacao nenhuma");
 
 		string alvo = c.Estado.Length > 0 ? SanearComoOCliente(c.Estado) : "default";
@@ -155,16 +155,30 @@ public partial class GameServer
 	}
 
 	/// <summary>
+	/// ESTA ARTE ESTA NO JOGO? Pelo arquivo (o projeto) ou pelo carregador de recursos (o jogo exportado).
+	///
+	/// No export o Godot converte cada `.tres` pra binario e deixa no caminho dele so um `.remap`
+	/// (`DecTrees.tres.remap`, achado no .pck do servidor Linux): o `FileAccess.FileExists` responde NAO pra
+	/// uma folha que esta la, e o servidor exportado acusava parede invisivel em toda maquina e toda porta do
+	/// mapa a cada boot. O `ResourceLoader.Exists` segue o `.remap` -- e nao carrega nada.
+	/// </summary>
+	private static bool ArteExiste(string res) => Godot.FileAccess.FileExists(res) || ResourceLoader.Exists(res);
+
+	/// <summary>
 	/// OS NOMES DE ANIMACAO DE UM `.tres`, lidos como TEXTO.
 	///
 	/// De proposito: `ResourceLoader.Load&lt;SpriteFrames&gt;` traria a folha inteira -- todas as
 	/// texturas -- pra dentro da memoria do SERVIDOR, que nao desenha nada e roda headless. Sao
 	/// algumas dezenas de arquivos pequenos e o dado que interessa e uma linha de cada um.
+	///
+	/// NULO NO JOGO EXPORTADO: la o `.tres` virou binario e nao ha texto pra ler (ver <see cref="ArteExiste"/>).
+	/// Quem chama pula a conferencia dos estados -- ela ja rodou no projeto, onde o texto existe, sobre a mesma
+	/// folha que foi pro .pck.
 	/// </summary>
-	private static HashSet<string> AnimacoesDoTres(string res)
+	private static HashSet<string>? AnimacoesDoTres(string res)
 	{
+		if (!Godot.FileAccess.FileExists(res)) return null;
 		var nomes = new HashSet<string>(StringComparer.Ordinal);
-		if (!Godot.FileAccess.FileExists(res)) return nomes;
 		foreach (System.Text.RegularExpressions.Match m in
 				 System.Text.RegularExpressions.Regex.Matches(
 					 Godot.FileAccess.GetFileAsString(res), "\"name\": &\"([^\"]*)\""))

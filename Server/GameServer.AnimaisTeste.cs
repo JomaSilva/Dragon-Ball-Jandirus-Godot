@@ -1034,7 +1034,7 @@ public sealed partial class GameServer
 				  novato.Ficha.HasZenkai() && leao.Ficha.expressedBP > novato.Ficha.expressedBP * 10,
 				  $"{novato.Ficha.expressedBP:0.#} contra {leao.Ficha.expressedBP:0.#}");
 
-			Checa("**SOCAR BICHO RENDE O QUE SOCAR O AR RENDE**: o gap de poder contra um leao nao multiplica o ganho",
+			Checa("**SOCAR BICHO RENDE COMO UM SOCO SEM BONUS**: o gap de poder contra um leao nao multiplica o ganho",
 				  novato.Ficha.FightGainMult(leao.Ficha) == 1, $"x{novato.Ficha.FightGainMult(leao.Ficha):0.##}");
 			Animais.BonusDeLutaDeTeste = true;
 			try

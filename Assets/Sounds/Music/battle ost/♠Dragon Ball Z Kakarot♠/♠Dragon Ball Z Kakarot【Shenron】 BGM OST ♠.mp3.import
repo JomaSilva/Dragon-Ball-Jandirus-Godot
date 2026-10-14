@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://6qxhgeunahr5"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【Shenron】 BGM OST ♠.mp3-b64a83b00cd6dc1248d90df713b33342.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot♠/♠Dragon Ball Z Kakarot【Shenron】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【Shenron】 BGM OST ♠.mp3-b64a83b00cd6dc1248d90df713b33342.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

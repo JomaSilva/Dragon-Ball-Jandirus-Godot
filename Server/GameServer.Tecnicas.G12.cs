@@ -394,7 +394,7 @@ public sealed partial class GameServer
 				db.OlharDaGuia = pl.Facing;
 				db.Bola.Rumo = MeleeArea.Frente(pl.Facing);
 			}
-			f.BlastGain(_rng);
+			GanhoDeKi(pl, tiro: db.Bola);   // no pacote da bola: so rende se ela encostar em algo
 			CreditarContador(pl, "blastcounter", 3);
 			CreditarContador(pl, "guidedcounter", 3);
 		}
@@ -451,7 +451,7 @@ public sealed partial class GameServer
 			db.Bola.Rumo = Vec2.Zero;
 			db.Bola.VidaRestante = Math.Min(db.Bola.VidaRestante, Projetil.SegundosDeBurnout);
 		}
-		if (db.Lancada) for (int i = 0; i < 4; i++) pl.Ficha.BlastGain(_rng);   // `:105-108`
+		if (db.Lancada) GanhoDeKi(pl, vezes: 4, tiro: db.Bola);   // `:105-108` -- pago se a bola encostou em algo
 		if (aviso != null) Avisar(pl, aviso);
 	}
 
@@ -524,7 +524,7 @@ public sealed partial class GameServer
 				if (!b.AvisouComoParar) { b.AvisouComoParar = true; Avisar(pl, "aperte de novo pra parar de atirar."); }
 			}
 			CuspirEsferaDoBusterG12(pl, b);
-			f.BlastGain(_rng);   // `usr.Blast_Gain()` depois de cada esfera (`:58`, `:76`)
+			GanhoDeKi(pl);   // `usr.Blast_Gain()` depois de cada esfera (`:58`, `:76`) -- no pacote dela
 
 			// `sleep(usr.Eactspeed/4)` depois da A, `sleep(usr.Eactspeed/2)` depois da B (`:59`, `:77`).
 			double tiques = b.Fase == 0 ? f.Eactspeed / 4 : f.Eactspeed / 2;
@@ -628,10 +628,10 @@ public sealed partial class GameServer
 		if (EmEspera(pl, _volleyPronto, "suas maos ainda estao quentes da ultima barragem")) return;
 		if (pl.Combate == null || !pl.Combate.PodeAtacar()) { Avisar(pl, "voce nao esta em condicoes de lutar."); return; }
 
-		// `canmove = 0; barrageCD = 1; Ki -= kireq; Blast_Gain(); blasting = 1; volleying = 1` (`:270-276`).
+		// `canmove = 0; barrageCD = 1; Ki -= kireq; Blast_Gain(); blasting = 1; volleying = 1` (`:270-276`). O
+		// `Blast_Gain()` daqui vai com a PRIMEIRA esfera (o tique, abaixo): ainda nao ha tiro pra levar o pacote.
 		_volleyPronto[pl.Id] = NowMs() + 3_600_000;   // "ocupado" enquanto durar; o prazo real e escrito no fim
 		f.Ki -= kireq;
-		f.BlastGain(_rng);
 		_voleiG12[pl.Id] = new EstadoDoVoleiG12
 		{
 			Giro = giro, KiReq = kireq, ProximoEm = _relogioG12, Zona = pl.Zone.Hash,
@@ -676,7 +676,7 @@ public sealed partial class GameServer
 				if (f.Ki <= v.KiReq) break;
 				if (v.Duracao % 3 == 0)   // `:281-284` e `:351-354`
 				{
-					f.BlastGain(_rng);
+					GanhoDeKi(pl, vezes: v.Duracao == 0 ? 2 : 1);   // a primeira leva tambem o da abertura (`VoleiG12`)
 					CreditarContador(pl, "blastcounter", 1);
 					CreditarContador(pl, "volleycounter", 1);
 				}
@@ -877,7 +877,7 @@ public sealed partial class GameServer
 				case 0:
 					if (_relogioG12 < g.FaseAte) break;
 					// `:61-69` e o convite aos que meditam (`:77-100`).
-					for (int i = 0; i < 3; i++) f.BlastGain(_rng);
+					GanhoDeKi(pl, vezes: 3, tiro: g.Bola);   // no pacote da Genkidama: rende quando ela encostar
 					g.Fase = 1;
 					g.PulsosRestantes = 0;
 					g.ProximoPulsoEm = _relogioG12;

@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://bg1ld13ptm7aj"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【Fateful Finals】 BGM OST ♠.mp3-c10d40b6c0dafcd9f17d9e06d5aa4b43.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot♠/♠Dragon Ball Z Kakarot【Fateful Finals】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【Fateful Finals】 BGM OST ♠.mp3-c10d40b6c0dafcd9f17d9e06d5aa4b43.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

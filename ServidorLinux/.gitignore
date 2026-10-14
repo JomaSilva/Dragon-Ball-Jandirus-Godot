@@ -1,0 +1,6 @@
+# O que o exportar-servidor-linux.bat gera: vai pra VPS, nao pro git.
+jandirus-servidor/
+*.tar.gz
+exportar.log*
+lancador/bin/
+lancador/obj/

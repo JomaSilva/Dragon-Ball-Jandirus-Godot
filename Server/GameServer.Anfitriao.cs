@@ -175,12 +175,13 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// O RASTRO de uma promocao que nao veio de um admin em jogo: uma linha no `admin.log`, no mesmo formato do
-	/// <see cref="Registrar"/>, com "a linha de comando do servidor" no lugar do nome de quem fez.
+	/// O RASTRO de uma acao que nao veio de um admin em jogo: uma linha no `admin.log`, no mesmo formato do
+	/// <see cref="Registrar"/>, com <paramref name="quem"/> no lugar do nome de quem fez -- a linha de comando (o
+	/// `--admin`) ou o terminal do servidor dedicado (`GameServer.Terminal.cs`).
 	/// </summary>
-	private void RastroDaLinhaDeComando(string oque)
+	private void RastroDaLinhaDeComando(string oque, string quem = "a linha de comando do servidor")
 	{
-		string linha = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}  a linha de comando do servidor  {oque}";
+		string linha = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}  {quem}  {oque}";
 		GD.Print("[admin] " + linha);
 		if (_store == null) return;
 		try

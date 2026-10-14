@@ -356,7 +356,7 @@ public sealed partial class GameServer
 		pl.Ficha.Ki -= custo;
 		_kikoho[pl.Id] = (silaba, agora + 6000);
 		_blastPronto[pl.Id] = agora + 1000;   // `sleep(10)` antes de liberar o proximo tiro
-		for (int i = 0; i < 3; i++) pl.Ficha.BlastGain(_rng);
+		GanhoDeKi(pl, vezes: 3);
 		pl.Ficha.blastskill += 0.05;
 
 		Falar(pl, Protocol.Fala.Diz, silaba switch { 1 => "KI", 2 => "KO", _ => "HO" });
@@ -541,7 +541,8 @@ public sealed partial class GameServer
 		pl.Ficha.Ki -= custo;
 		_soproPronto[pl.Id] = NowMs() + (long)(tiques * TempoDoDm.MsPorTique);
 		int gains = qual == TipoDeSopro.Kiai ? 1 : 2;
-		for (int i = 0; i < gains; i++) pl.Ficha.BlastGain(_rng);
+		// (o BP so sai se o sopro pegar alguem -- ou o tiro do Kiai encostar em algo; ver `GameServer.Ganhos.cs`)
+		GanhoDeKi(pl, vezes: gains);
 		pl.Ficha.kiaiskill += 0.1 * gains;   // `kiaicounter++` / `+= 2` -- usar treina
 		// `Kiai.dm:15,22,27,32` (`kiaicounter++`, o sopro simples) e `:70,76` (`+= 2`, a onda e o
 		// grito). O `gains` acima ja E esse delta -- ele vale 1 pro Kiai e 2 pros outros dois.
@@ -832,7 +833,7 @@ public sealed partial class GameServer
 
 		int util = Math.Min(carga.Carga, CargaUtilDoRugido);
 		float raio = Math.Max(util - 1, 1) * ZoneCollision.TileSize;
-		for (int i = 0; i < 2; i++) pl.Ficha.BlastGain(_rng);
+		GanhoDeKi(pl, vezes: 2);   // pago no primeiro que o rugido pegar (`MarcarAgressao`, abaixo); ninguem pego, nada
 		pl.Ficha.kiaiskill += 0.1 * util;
 		// `usr.kiaicounter += charge` (`Kiai.dm:146,151`) -- o rugido paga pela CARGA que se segurou,
 		// e o `util` daqui e essa carga (ja cortada pelo teto do rugido).

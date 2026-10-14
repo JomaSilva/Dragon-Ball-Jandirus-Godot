@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://vox6o300v83s"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【Eat Up!】 BGM OST ♠.mp3-7f6b607c7d071e63a401a126d0ae1a57.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot♠/♠Dragon Ball Z Kakarot【Eat Up!】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【Eat Up!】 BGM OST ♠.mp3-7f6b607c7d071e63a401a126d0ae1a57.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

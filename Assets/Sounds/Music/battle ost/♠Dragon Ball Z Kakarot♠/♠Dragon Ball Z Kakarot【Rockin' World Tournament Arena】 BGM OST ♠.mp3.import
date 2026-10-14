@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://vyebsjqntkme"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【Rockin' World Tournament Arena】 BGM OST ♠.mp3-3dccc292c9e33845d392d648a1ac272d.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot♠/♠Dragon Ball Z Kakarot【Rockin' World Tournament Arena】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【Rockin' World Tournament Arena】 BGM OST ♠.mp3-3dccc292c9e33845d392d648a1ac272d.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

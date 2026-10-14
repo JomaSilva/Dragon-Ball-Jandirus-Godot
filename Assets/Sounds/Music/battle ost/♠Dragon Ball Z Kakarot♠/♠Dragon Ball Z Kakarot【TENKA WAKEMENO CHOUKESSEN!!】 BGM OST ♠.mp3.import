@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://bghc2wo7sp3cs"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【TENKA WAKEMENO CHOUKESSEN!!】 BGM OST ♠.mp3-8b0cf33d19bcf0c64821350f99c184a1.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot♠/♠Dragon Ball Z Kakarot【TENKA WAKEMENO CHOUKESSEN!!】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【TENKA WAKEMENO CHOUKESSEN!!】 BGM OST ♠.mp3-8b0cf33d19bcf0c64821350f99c184a1.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

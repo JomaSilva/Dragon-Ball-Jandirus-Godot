@@ -923,11 +923,16 @@ public partial class World : Node2D
 		var origem = new Vector2(de.X, de.Y);
 		if (GameClient.Instance?.LocalId == quem && _local != null)
 		{
-			// A ORIGEM DO PACOTE VAI JUNTO e nao e redundante: com as redeas o corpo local usa a que
-			// ELE guardou, mas um corpo POSSUIDO (Oozaru, furia lendaria) nao guardou nada -- quem
-			// apertou a tecla foi o cerebro, no servidor. Ver `LocalPlayer.OrigemDoSalto`.
-			_local.BorrarArranque(origem);
-			if (vulto) _local.DeixarVulto(origem);
+			// A ORIGEM DO PACOTE VAI JUNTO e nao e redundante: o corpo local so usa a que ELE guardou
+			// pro salto que ELE pediu (o soco, a piscada). Um corpo POSSUIDO (Oozaru, furia lendaria)
+			// nao guardou nada, e o salto de tecnica -- as miragens da Zanzoken Afterimage, os saltos
+			// do Rush -- nao veio de gesto nenhum que guarde. Ver `LocalPlayer.OrigemDoSalto`.
+			//
+			// UMA PERGUNTA POR SALTO, e a resposta serve aos dois: a marca do gesto vale pra um salto
+			// so, e perguntar duas vezes daria ao borrao a marca e ao vulto a origem do pacote.
+			Vector2 deOnde = _local.OrigemDoSalto(origem);
+			_local.BorrarArranque(deOnde);
+			if (vulto) _local.DeixarVulto(deOnde);
 		}
 		else
 		{

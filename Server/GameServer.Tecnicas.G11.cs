@@ -461,7 +461,7 @@ public sealed partial class GameServer
 		if (alvo.Ficha.Tspeed - debuff <= 0.1) debuff = alvo.Ficha.Tspeed - 0.1;
 
 		_debuffPronto[pl.Id] = NowMs() + (long)(Math.Max(f.Eactspeed * 10, 2) * TempoDoDm.MsPorTique);
-		for (int i = 0; i < 4; i++) f.BlastGain(_rng);   // `:69-72`
+		GanhoDeKiNoAlvo(pl, alvo, 4);   // `:69-72` -- o grilhao ja pegou o alvo: paga na hora, com o peso da luta
 
 		string id = $"Shackle:{++_seqShackleG11}";
 		long ms = (long)(Math.Max(prazoS, 1) * 1000);
@@ -937,7 +937,7 @@ public sealed partial class GameServer
 		}, rumoDado: Vec2.Zero, deOnde: pl.Pos, verbo: "Psycho_Thread");
 		if (p.Vivo) p.VidaRestante = 5;   // `Burnout()` sem argumento: 50 tiques
 
-		for (int i = 0; i < 4; i++) f.BlastGain(_rng);
+		GanhoDeKi(pl, vezes: 4);   // no pacote do fio: so quando alguem pisa nele
 		_debuffPronto[pl.Id] = NowMs() + (long)(Math.Max(f.Eactspeed * 6, 2) * TempoDoDm.MsPorTique);
 
 		Avisar(pl, "voce arma um fio psiquico embaixo dos seus pes.");

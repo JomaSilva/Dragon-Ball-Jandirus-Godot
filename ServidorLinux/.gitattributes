@@ -1,0 +1,5 @@
+# Os scripts rodam no bash do Debian, e um CR no fim da linha quebra todos eles ("$'\r': command not found").
+# Sem isto o checkout no Windows (core.autocrlf=true) os entregaria em CRLF.
+*.sh       text eol=lf
+*.exemplo  text eol=lf
+*.bat      text eol=crlf

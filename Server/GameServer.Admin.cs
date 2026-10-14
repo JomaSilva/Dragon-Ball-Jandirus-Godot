@@ -222,15 +222,18 @@ public sealed partial class GameServer
 	/// alfabetica seria dar admin a quem chegou primeiro no alfabeto; e, de proposito, seria um
 	/// roubo barato: bastaria criar uma conta com um personagem homonimo e esperar.
 	/// </summary>
-	private AccountSave? AcharConta(ServerPlayer adm, string quem)
+	private AccountSave? AcharConta(ServerPlayer adm, string quem) => AcharConta(quem, texto => Avisar(adm, texto));
+
+	/// <summary>O MESMO, pra quem responde fora do jogo: o terminal do servidor dedicado diz no console (`GameServer.Terminal.cs`).</summary>
+	private AccountSave? AcharConta(string quem, Action<string> avisar)
 	{
 		AccountSave? a = _store!.Achar(quem, out List<string> empate);
 		if (a != null) return a;
 		if (empate.Count > 1)
-			Avisar(adm, $"'{quem}' e o nome de personagem de {empate.Count} contas ({string.Join(", ", empate)})"
-					  + " -- use o nome da CONTA.");
+			avisar($"'{quem}' e o nome de personagem de {empate.Count} contas ({string.Join(", ", empate)})"
+				   + " -- use o nome da CONTA.");
 		else
-			Avisar(adm, $"nao achei conta nem personagem chamado '{quem}'.");
+			avisar($"nao achei conta nem personagem chamado '{quem}'.");
 		return null;
 	}
 
@@ -263,8 +266,26 @@ public sealed partial class GameServer
 			return;
 		}
 
+		MarcarAdmin(a, virar);
+
+		Registrar(adm, $"{(virar ? "promoveu" : "rebaixou")} a conta '{a.Conta}'");
+		Avisar(adm, $"conta '{a.Conta}' {(virar ? "agora e administradora" : "nao e mais administradora")}.");
+		MandarContas(adm);
+	}
+
+	/// <summary>
+	/// A MARCA DE ADMIN, GRAVADA E LIGADA: o disco, as copias vivas da conta e o bit de quem esta online com ela.
+	///
+	/// E o funil das duas portas que promovem com o servidor no ar: o painel de contas (<see cref="AdminPromover"/>)
+	/// e o terminal do servidor dedicado (`GameServer.Terminal.cs`). As tres metades so valem juntas, e as duas
+	/// ultimas ja faltaram sozinhas neste arquivo (os dois blocos abaixo) -- uma segunda copia delas no terminal
+	/// seria a primeira a envelhecer.
+	/// </summary>
+	/// <returns>Quantos personagens online receberam (ou perderam) o bit na hora.</returns>
+	private int MarcarAdmin(AccountSave a, bool virar)
+	{
 		a.Admin = virar;
-		_store.Gravar(a);
+		_store!.Gravar(a);
 
 		// A conta em memoria do jogador e OUTRA instancia (carregada no login dele). Ver
 		// `EmTodaCopiaViva`: sem atualizar as DUAS colecoes, o proximo save dele regravaria o
@@ -298,10 +319,7 @@ public sealed partial class GameServer
 
 		GD.Print($"[server] conta '{a.Conta}' {(virar ? "promovida" : "rebaixada")}"
 				 + $" -- {online} personagem(ns) online receberam o bit na hora");
-
-		Registrar(adm, $"{(virar ? "promoveu" : "rebaixou")} a conta '{a.Conta}'");
-		Avisar(adm, $"conta '{a.Conta}' {(virar ? "agora e administradora" : "nao e mais administradora")}.");
-		MandarContas(adm);
+		return online;
 	}
 
 	/// <summary>
@@ -332,9 +350,23 @@ public sealed partial class GameServer
 			return;
 		}
 
+		MarcarBanimento(a, banir, $"banida por {adm.Name}");
+
+		Registrar(adm, $"{(banir ? "baniu" : "perdoou")} a conta '{a.Conta}'");
+		Avisar(adm, $"conta '{a.Conta}' {(banir ? "banida" : "perdoada")}.");
+		MandarContas(adm);
+	}
+
+	/// <summary>
+	/// A MARCA DE BANIMENTO, GRAVADA E CUMPRIDA: o disco, as copias vivas, e quem esta usando a conta cai na hora.
+	/// O funil do painel (<see cref="AdminBanir"/>) e do terminal do servidor dedicado. As recusas (administrador,
+	/// a si mesmo) ficam em quem chama: cada porta explica a sua do seu jeito.
+	/// </summary>
+	private void MarcarBanimento(AccountSave a, bool banir, string motivo)
+	{
 		a.Banida = banir;
-		a.MotivoDoBanimento = banir ? $"banida por {adm.Name}" : "";
-		_store.Gravar(a);
+		a.MotivoDoBanimento = banir ? motivo : "";
+		_store!.Gravar(a);
 		EmTodaCopiaViva(a.Conta, v => { v.Banida = banir; v.MotivoDoBanimento = a.MotivoDoBanimento; });
 
 		if (banir)
@@ -349,10 +381,6 @@ public sealed partial class GameServer
 			// nao a alcanca -- e sem isto ela clicava num slot e entrava no mundo banida.
 			foreach (NetPeer preso in PeersNaSelecao(a.Conta)) preso.Disconnect();
 		}
-
-		Registrar(adm, $"{(banir ? "baniu" : "perdoou")} a conta '{a.Conta}'");
-		Avisar(adm, $"conta '{a.Conta}' {(banir ? "banida" : "perdoada")}.");
-		MandarContas(adm);
 	}
 
 	// =====================================================================
@@ -674,13 +702,19 @@ public sealed partial class GameServer
 		if (p == null) { Avisar(adm, "marque alguem antes (duplo clique nele)."); return; }
 		if (p == adm) { Avisar(adm, "expulsar a si mesmo nao e um poder."); return; }
 		if (!EhPessoa(adm, p)) return;
+		Registrar(adm, $"expulsou {p.Name} ({p.Conta})");
+		Avisar(adm, $"{p.Name} foi desconectado.");
+		ExpulsarGravando(p);
+	}
+
+	/// <summary>DERRUBA quem esta jogando, e GRAVA ANTES. O funil do painel e do terminal do servidor dedicado.</summary>
+	private void ExpulsarGravando(ServerPlayer p)
+	{
 		Avisar(p, "voce foi desconectado por um administrador.");
 		// GRAVA ANTES DE DERRUBAR. O `Drop` do evento de desconexao tambem persiste, mas depender
 		// dele e depender de o evento chegar -- e expulsar alguem nunca pode custar o progresso
 		// dele. Salvar duas vezes nao machuca; salvar zero, sim.
 		Persistir(p);
-		Registrar(adm, $"expulsou {p.Name} ({p.Conta})");
-		Avisar(adm, $"{p.Name} foi desconectado.");
 		p.Peer?.Disconnect();
 	}
 
@@ -709,14 +743,23 @@ public sealed partial class GameServer
 		if (conta == null) { Avisar(adm, "nao achei a conta desse jogador."); return; }
 
 		bool calar = !conta.Calada;
-		conta.Calada = calar;
-		_store?.Gravar(conta);
-		EmTodaCopiaViva(conta.Conta, v => v.Calada = calar);
-		if (calar) _calados.Add(conta.Conta); else _calados.Remove(conta.Conta);
+		MarcarMudez(conta, calar);
 
 		string nome = p?.Name ?? conta.Conta;
 		Avisar(adm, calar ? $"{nome} foi calado." : $"{nome} pode falar de novo.");
 		if (p != null) Avisar(p, calar ? "um administrador te calou." : "voce voltou a poder falar.");
+	}
+
+	/// <summary>
+	/// A MARCA DE MUDEZ: o disco, as copias vivas e o cache de quem esta calado AGORA (<see cref="_calados"/>, que e
+	/// o que o chat consulta). O funil do painel, que alterna, e do terminal do servidor dedicado, que diz qual.
+	/// </summary>
+	private void MarcarMudez(AccountSave conta, bool calar)
+	{
+		conta.Calada = calar;
+		_store?.Gravar(conta);
+		EmTodaCopiaViva(conta.Conta, v => v.Calada = calar);
+		if (calar) _calados.Add(conta.Conta); else _calados.Remove(conta.Conta);
 	}
 
 	private void AdminDescalarTodos(ServerPlayer adm)
@@ -1281,13 +1324,21 @@ public sealed partial class GameServer
 
 	private void AdminSalvarTudo(ServerPlayer adm)
 	{
+		int n = GravarTudoAgora();
+		Avisar(adm, $"{n} personagem(ns), o mundo e os cargos foram gravados.");
+		Registrar(adm, "forcou o save de tudo");
+	}
+
+	/// <summary>O "Save All": cada jogador no mundo, o mundo, as bases e os cargos. O verb do painel e o `salvar` do terminal.</summary>
+	/// <returns>Quantos personagens foram gravados.</returns>
+	private int GravarTudoAgora()
+	{
 		int n = 0;
 		foreach (ServerPlayer p in Jogadores.ToList()) { Persistir(p); n++; }
 		GravarMundo();
 		GravarBasesSeMudou();
 		SalvarCargos();
-		Avisar(adm, $"{n} personagem(ns), o mundo e os cargos foram gravados.");
-		Registrar(adm, "forcou o save de tudo");
+		return n;
 	}
 
 	/// <summary>

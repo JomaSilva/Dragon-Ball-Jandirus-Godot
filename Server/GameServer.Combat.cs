@@ -44,6 +44,11 @@ public partial class GameServer
 	{
 		if (agressor.Id == vitima.Id) return;   // ninguem guarda rancor de si mesmo
 
+		// A TROCA DE GOLPES (dono, 2026-10-14): todo ataque que passa por aqui conta pra luta entre jogadores render, e o
+		// gesto de ki sem tiro (o sopro, o rugido) paga o ganho dele em quem pegou -- ver `GameServer.Ganhos.cs`.
+		RegistrarAtaque(agressor, vitima);
+		PagarOGestoSemTiro(agressor, vitima);
+
 		// ============================ HABITANTE QUE ACERTA HABITANTE ESTA TREINANDO (v0.2.1) ============================
 		// O unico jeito de um cidadao acertar outro e a vida diaria: o SPAR da rotina (`GameServer.Rotina.cs`), o soco
 		// dele que pega quem estava na frente, o tiro de um defensor que estoura ao lado do colega. Nenhum deles e
@@ -560,9 +565,9 @@ public partial class GameServer
 
 		if (alvo == null)
 		{
-			// SOCAR O AR AINDA TREINA. E o que o BYOND fazia e o que faz o novato progredir
-			// sozinho num canto do mapa -- so que sem o multiplicador de lutar contra alguem.
-			a.Ficha.AttackGain(_rng);
+			// SOCAR O AR NAO TREINA (dono, 2026-10-14: *"socar o ar ta dando bp"*). No BYOND treinava, e era o que fazia
+			// o novato progredir sozinho num canto do mapa; aqui o poder sai de bater em alguem ou em algo -- o objeto
+			// rende pouco (`GanhoDeObjeto`, abaixo) e o ar nada. Ver `GameServer.Ganhos.cs`.
 			ca.ZerarCombo();
 			if (_diagGolpe) ExplicarSocoNoAr(a, investiu);
 
@@ -579,8 +584,13 @@ public partial class GameServer
 			// O NIVEL VAI JUNTO porque ele e o que escolhe o baque: um soco leve na parede soa
 			// pequeno e um pesado soa grande, igual a bater num corpo. Sem combo -- nao ha combo
 			// contra cenario.
-			if (SocarCenario(a, (int)Math.Min(3, tipo))) return;
+			if (SocarCenario(a, (int)Math.Min(3, tipo)))
+			{
+				a.Ficha.AttackGain(_rng, GainKnobs.GanhoDeObjeto);
+				return;
+			}
 
+			if (GainKnobs.SocoNoArRendeDeTeste) a.Ficha.AttackGain(_rng);
 			AnunciarSocoNoAr(a, zanzo, investiu);
 			return;
 		}
@@ -662,9 +672,12 @@ public partial class GameServer
 		// batendo nele; o mestre batendo no aluno cai no teto geral (2x, e na pratica 1x, porque ele
 		// e o mais forte). E o desenho do DM -- o bonus e de quem esta aprendendo.
 		// ==============================================================================================
-		a.Ficha.AttackGain(_rng, a.Ficha.FightGainMult(alvo.Ficha, EhMeuMestre(a, alvo), EhColegaDeMestre(a, alvo)));
+		// E ENTRE DOIS JOGADORES, SO NUMA TROCA (dono, 2026-10-14): `FatorDaLuta` da 2x se o outro te atacou nos
+		// ultimos 10 s e nada se nao -- pros dois lados do golpe. Contra NPC continua 1. Ver `GameServer.Ganhos.cs`.
+		double luta = FatorDaLuta(a, alvo);
+		if (luta > 0) a.Ficha.AttackGain(_rng, luta * a.Ficha.FightGainMult(alvo.Ficha, EhMeuMestre(a, alvo), EhColegaDeMestre(a, alvo)));
 		// (MENOS QUEM APANHA DE BICHO: um lobo que nao cansa nao e parceiro de treino -- ver `GolpeDeBichoNaoTreina`.)
-		if (r.Encostou && !GolpeDeBichoNaoTreina(a)) alvo.Ficha.AttackGain(_rng, alvo.Ficha.FightGainMult(a.Ficha, EhMeuMestre(alvo, a), EhColegaDeMestre(alvo, a)));
+		if (luta > 0 && r.Encostou && !GolpeDeBichoNaoTreina(a)) alvo.Ficha.AttackGain(_rng, luta * alvo.Ficha.FightGainMult(a.Ficha, EhMeuMestre(alvo, a), EhColegaDeMestre(alvo, a)));
 
 		// O contra-ataque devolve o golpe: quem bloqueou na hora certa acerta de volta.
 		if (r.Desfecho == Desfecho.Contra)

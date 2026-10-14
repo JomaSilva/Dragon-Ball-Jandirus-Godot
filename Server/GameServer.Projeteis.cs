@@ -379,7 +379,7 @@ public sealed partial class GameServer
 		_blastPronto[pl.Id] = agora + (long)(tiques * 100);
 
 		pl.Ficha.Ki -= custo;
-		pl.Ficha.BlastGain(_rng);
+		GanhoDeKi(pl);   // so rende se a bola encostar em algo -- ver `GameServer.Ganhos.cs`
 		pl.Ficha.blastskill += 0.05;
 		CreditarContador(pl, "blastcounter", 1);   // `usr.blastcounter++` (`blasts.dm:54`)
 
@@ -422,8 +422,7 @@ public sealed partial class GameServer
 		}
 
 		pl.Ficha.Ki -= custo;
-		pl.Ficha.BlastGain(_rng);
-		pl.Ficha.BlastGain(_rng);   // `usr.Blast_Gain()` duas vezes -- a esfera custa e rende dobrado
+		GanhoDeKi(pl, vezes: 2);   // `usr.Blast_Gain()` duas vezes -- a esfera custa e rende dobrado (quando encosta)
 
 		Projetil p = Disparar(pl, new ReceitaDeProjetil
 		{
@@ -640,6 +639,7 @@ public sealed partial class GameServer
 		_projeteisVivos++;
 		AnunciarProjetil(pl.Zone.Hash, Protocol.ProjetilSub.Nasceu, p);
 		FazerAPoseDeTiro(pl);
+		PrenderOGanhoNoTiro(pl, p);   // o ganho de ki do gesto viaja com o tiro -- ver `GameServer.Ganhos.cs`
 		return p;
 	}
 
@@ -991,10 +991,10 @@ public sealed partial class GameServer
 			pl.Ficha.Ki -= c.CustoPorCiclo;
 
 			// TREINO: `beamcounter += 3` e `Blast_Gain()` a cada ciclo. Sustentar um raio treina --
-			// devagar, e enquanto se paga por ele.
+			// devagar, enquanto se paga por ele, e o BP so com ele em cima de algo (o ganho vai no pacote do raio).
 			pl.Ficha.beamskill += 0.03;
 			CreditarContador(pl, "beamcounter", 3);   // `proprietor.beamcounter += 3` (`objects.dm:317`)
-			pl.Ficha.BlastGain(_rng);
+			GanhoDeKi(pl, tiro: c.Raio);
 
 			// O raio pode ter morrido (parede, alvo, alcance) sem o dono soltar: o canal cai junto,
 			// senao ele ficaria cobrando Ki por um raio que nao existe mais.
@@ -1390,6 +1390,7 @@ public sealed partial class GameServer
 			{
 				p.Pos = nova;
 				AtingirMundoComKi(mundo, p, dono);
+				AoTiroEncostar(p, dono, GainKnobs.GanhoDeObjeto);   // o chao de um planeta rende como um objeto
 
 				// `Mundo` E NAO `Cenario`, e a diferenca e so de ESCALA -- ver o enum. A regra dos dois
 				// e a mesma (o tiro acaba aqui); o que muda e que o desenho do `Cenario` foi
@@ -1577,7 +1578,12 @@ public sealed partial class GameServer
 		//    apanha ganha `kidefensecounter++`, que e a UNICA fonte de defesa contra ki.
 		// O BIT DO MESTRE VALE PRO TIRO TAMBEM: no DM o `fight_gain_mult` e um so e o
 		// `Blast_Gain` o consome igual ao soco. Ver `GameServer.Combat.cs` pro bloco inteiro.
-		dono.Ficha.BlastGain(_rng, dono.Ficha.FightGainMult(alvo.Ficha, EhMeuMestre(dono, alvo), EhColegaDeMestre(dono, alvo)));
+		// E O PESO DA LUTA TAMBEM (`FatorDaLuta`): jogador fora de uma troca de golpes nao rende, e dentro dela rende
+		// o dobro. O encosto paga ainda o ganho que o gesto deixou no pacote do tiro -- ver `GameServer.Ganhos.cs`.
+		RegistrarAtaque(dono, alvo);
+		double luta = FatorDaLuta(dono, alvo);
+		if (luta > 0) dono.Ficha.BlastGain(_rng, luta * dono.Ficha.FightGainMult(alvo.Ficha, EhMeuMestre(dono, alvo), EhColegaDeMestre(dono, alvo)));
+		AoTiroEncostar(p, dono, luta);
 		// APANHAR DE KI E A UNICA FONTE DE DEFESA CONTRA KI, e o exp vai pra QUEM APANHOU (`alvo`) e
 		// nao pra quem atirou: `M.kidefensecounter++` (`objects.dm:313`), onde `M` e o alvo do Bump.
 		if (!alvo.Ficha.KO) { alvo.Ficha.kidefenseskill += 0.1; CreditarContador(alvo, "kidefensecounter", 1); }
@@ -2022,6 +2028,7 @@ public sealed partial class GameServer
 			Desfecho = defendendo ? Desfecho.Aparou : Desfecho.Acertou, Dano = total, Membro = membros[0].Nome,
 		}, nivel: 3, ponto: alvo.Pos);
 		if (cadaver) return;
+		AoTiroEncostar(p, dono, FatorDaLuta(dono, alvo));
 		MarcarAgressao(alvo, dono);
 		ConsequenciaDoDano(alvo, dono, "na explosao de ki");
 	}
@@ -2100,16 +2107,25 @@ public sealed partial class GameServer
 	/// </summary>
 	private void AcabarNoCenario(Projetil p, List<ServerPlayer> corpos, ZoneKey zona, bool temChao, Vec2 onde)
 	{
-		if (p.EstouraSempreQueAcaba) { ExplodirOndeAcabou(p, corpos, zona, temChao); return; }
+		// A PAREDE RENDE COMO UM OBJETO, e paga DEPOIS do estouro: se ele pegou alguem, o pacote do tiro ja saiu com
+		// o peso dessa pessoa (`FerirComAExplosao`), e a parede nao paga de novo. Ver `GameServer.Ganhos.cs`.
+		ServerPlayer? dono = _players.GetValueOrDefault(p.Dono);
+		if (p.EstouraSempreQueAcaba)
+		{
+			ExplodirOndeAcabou(p, corpos, zona, temChao);
+			AoTiroEncostar(p, dono, GainKnobs.GanhoDeObjeto);
+			return;
+		}
 
 		// (a v0.2.0: a esfera grande estourava no cenario sem o clarao grande -- hoje so o botao de defeito chega aqui)
 		if (p.EsferaGrande && !KiContraCorpo.RegraDeAntesDeTeste) Estourar(p, zona, temChao, onde);
 		else if (!KiContraCorpo.RegraDeAntesDeTeste)
 		{
 			BaterNoCenarioComKi(zona, (int)MathF.Floor(onde.X / ZoneCollision.TileSize),
-								(int)MathF.Floor(onde.Y / ZoneCollision.TileSize), p.Bp, _players.GetValueOrDefault(p.Dono));
+								(int)MathF.Floor(onde.Y / ZoneCollision.TileSize), p.Bp, dono);
 			if (temChao && !p.Invisivel) AbrirACrateraPequena(zona, onde, p.Altitude);
 		}
+		AoTiroEncostar(p, dono, GainKnobs.GanhoDeObjeto);
 		Matar(p, FimDeProjetil.Cenario);
 	}
 

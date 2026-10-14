@@ -1124,9 +1124,10 @@ public partial class GameServer
 		GolpeResultado r = MeleeResolver.Resolver(ca, cd, angulo, _rng, 1, addDano + DanoDeEstilo(a, d));
 		MarcarAgressao(d, a);
 
-		// O bit do mestre, igual ao soco comum -- ver o bloco em `GameServer.Combat.cs`.
-		a.Ficha.AttackGain(_rng, a.Ficha.FightGainMult(d.Ficha, EhMeuMestre(a, d), EhColegaDeMestre(a, d)));
-		if (r.Encostou) d.Ficha.AttackGain(_rng, d.Ficha.FightGainMult(a.Ficha, EhMeuMestre(d, a), EhColegaDeMestre(d, a)));
+		// O bit do mestre e o peso da luta, iguais ao soco comum -- ver o bloco em `GameServer.Combat.cs`.
+		double luta = FatorDaLuta(a, d);
+		if (luta > 0) a.Ficha.AttackGain(_rng, luta * a.Ficha.FightGainMult(d.Ficha, EhMeuMestre(a, d), EhColegaDeMestre(a, d)));
+		if (luta > 0 && r.Encostou) d.Ficha.AttackGain(_rng, luta * d.Ficha.FightGainMult(a.Ficha, EhMeuMestre(d, a), EhColegaDeMestre(d, a)));
 
 		// o contra-ataque de guarda perfeita vale contra tecnica tambem: quem bloqueou na hora
 		// certa devolve, venha o golpe de um soco ou de uma espada de Ki

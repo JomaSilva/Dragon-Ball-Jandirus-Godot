@@ -640,7 +640,7 @@ public partial class GameServer
 			Dom = qual,
 			Nome = esfera ? "Destroyer Sphere" : "Destruction God's Fury",
 		}, verbo: esfera ? KitDoDeus.TiroDaEsfera : KitDoDeus.TiroDaFuria);
-		pl.Ficha.BlastGain(_rng);   // `usr.Blast_Gain()` (`:287`, `:330`)
+		GanhoDeKi(pl);   // `usr.Blast_Gain()` (`:287`, `:330`) -- vai no pacote do tiro de cima
 	}
 
 	/// <summary>

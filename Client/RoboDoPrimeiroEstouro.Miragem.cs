@@ -191,7 +191,7 @@ public partial class RoboDoPrimeiroEstouro
 
 		int antes = Zanzoken.MiragensDeTeste;
 		local.MarcarSaida();
-		local.DeixarVulto(local.GlobalPosition);
+		local.DeixarVulto(local.OrigemDoSalto(local.GlobalPosition));
 		if (Zanzoken.MiragensDeTeste == antes)
 		{
 			Conferir(false, $"a miragem {_miragensPedidas} nasceu (`LocalPlayer.DeixarVulto` -> `Zanzoken.Deixar`)");

@@ -265,7 +265,7 @@ public sealed partial class GameServer
 
 		// `usr.Blast_Gain()` tres vezes + `chargedcounter += 5` -- e o unico canal de treino da
 		// pericia de CARGA, que e a que encurta o raio (ver `Projetil.SegundosDeCarga`).
-		for (int i = 0; i < 3; i++) pl.Ficha.BlastGain(_rng);
+		GanhoDeKi(pl, vezes: 3);
 		pl.Ficha.blastskill += 0.05;
 		pl.Ficha.chargedskill += 0.05;
 		// `usr.blastcounter += 5` (`blasts.dm:100`) -- CINCO, e nao um: o tiro carregado conta por
@@ -309,7 +309,7 @@ public sealed partial class GameServer
 		if (!PodeAtirar(pl, custo, out string porque)) { Avisar(pl, porque); return; }
 
 		pl.Ficha.Ki -= custo;
-		for (int i = 0; i < 4; i++) pl.Ficha.BlastGain(_rng);
+		GanhoDeKi(pl, vezes: 4);
 
 		Disparar(pl, new ReceitaDeProjetil
 		{
@@ -346,7 +346,7 @@ public sealed partial class GameServer
 		if (!PodeAtirar(pl, custo, out string porque)) { Avisar(pl, porque); return; }
 
 		pl.Ficha.Ki -= custo;
-		for (int i = 0; i < 4; i++) pl.Ficha.BlastGain(_rng);
+		GanhoDeKi(pl, vezes: 4);
 
 		Vec2 frente = RumoDoTiro(pl);   // no marcado, se houver (dono, 2026-10-09)
 		Vec2 lado = new(-frente.Y, frente.X);
@@ -411,7 +411,7 @@ public sealed partial class GameServer
 
 		_volleyPronto[pl.Id] = NowMs() + (long)(Math.Max(tiquesDeRecarga, 2) * TempoDoDm.MsPorTique);
 		pl.Ficha.Ki -= custo;
-		for (int i = 0; i < (disperso ? 4 : 3); i++) pl.Ficha.BlastGain(_rng);
+		GanhoDeKi(pl, vezes: disperso ? 4 : 3);   // um pacote pra rajada inteira: o primeiro tiro que encostar paga
 		pl.Ficha.blastskill += 0.05 * quantas;
 		pl.Ficha.volleyskill += 0.05 * quantas;
 
@@ -512,7 +512,7 @@ public sealed partial class GameServer
 		double tiques = Math.Max(pl.Ficha.Eactspeed * (converge ? 10 : 5), 20);
 		_alvoPronto[pl.Id] = NowMs() + (long)(tiques * TempoDoDm.MsPorTique);
 		pl.Ficha.Ki -= custo;
-		for (int i = 0; i < (converge ? 5 : 4); i++) pl.Ficha.BlastGain(_rng);
+		GanhoDeKi(pl, vezes: converge ? 5 : 4);   // um pacote pro cerco inteiro: o primeiro tiro que encostar paga
 		pl.Ficha.blastskill += 0.05 * quantas;
 		pl.Ficha.targetedskill += 0.15 * quantas;   // `targetedcounter += amount*3`
 		pl.Ficha.volleyskill += 0.05 * quantas;
@@ -601,7 +601,7 @@ public sealed partial class GameServer
 		if (alvo != null && (alvo == pl || alvo.Ficha.dead || !alvo.Zone.Equals(pl.Zone))) alvo = null;
 
 		pl.Ficha.Ki -= custo;
-		for (int i = 0; i < 4; i++) pl.Ficha.BlastGain(_rng);
+		GanhoDeKi(pl, vezes: 4);
 		pl.Ficha.guidedskill += 0.1;
 
 		// `usr.guidedcounter += 2` (`discs.dm:93`). NO DM ISSO E POR PASSO DO DISCO, dentro do
@@ -661,7 +661,7 @@ public sealed partial class GameServer
 		_debuffPronto[pl.Id] = NowMs() + (long)(Math.Max(tiques, 2) * TempoDoDm.MsPorTique);
 
 		pl.Ficha.Ki -= custo;
-		for (int i = 0; i < 4; i++) pl.Ficha.BlastGain(_rng);
+		GanhoDeKi(pl, vezes: 4);
 		pl.Ficha.kidebuffskill += forte ? 0.5 : 0.2;   // `kidebuffcounter += 5` / `+= 2`
 		CreditarContador(pl, "kidebuffcounter", forte ? 5 : 2);   // `Debuffs.dm:8` / `meta.dm:64`
 

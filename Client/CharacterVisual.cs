@@ -4036,6 +4036,12 @@ public partial class CharacterVisual : Node2D
 		nome.EndsWith("_north", StringComparison.Ordinal) || nome.EndsWith("_south", StringComparison.Ordinal)
 		|| nome.EndsWith("_east", StringComparison.Ordinal) || nome.EndsWith("_west", StringComparison.Ordinal);
 
+	/// <summary>
+	/// DEFEITO INJETADO (`--diagroupadeitada`): a peca sem quadro deitado volta a descer a escada ate um quadro em pe
+	/// com o corpo no chao -- a armadura "toda bugada" de antes. Falso em jogo, sempre.
+	/// </summary>
+	public static bool RoupaEmPeNoChaoDeTeste;
+
 	private string? Escolher(AnimatedSprite2D sprite, string? doCorpo)
 	{
 		SpriteFrames? f = sprite.SpriteFrames;
@@ -4071,6 +4077,17 @@ public partial class CharacterVisual : Node2D
 		// ======================================================================================================
 		if (fam == "ko" && !f.HasAnimation("ko") && f.HasAnimation("ko_west"))
 			return _facing == Facing.West && DeitaPelosDoisLados ? "ko_east" : "ko_west";
+
+		// ============================ A PECA SEM QUADRO DEITADO SOME COM O CORPO NO CHAO ============================
+		// Com o corpo deitado, a peca que nao tem desenho de KO descia a escada abaixo ate um quadro EM PE (`default_*`,
+		// `walk_*`), e a rotacao do node (`DeitarPor`) deitava esse boneco em pe por cima do corpo: a armadura "toda
+		// bugada" que o dono viu (2026-10-14, a `ClothesSaiyanSuit` -- uma das 12 roupas do catalogo sem `ko`). Sem o quadro, a peca
+		// nao aparece enquanto ele estiver no chao; a gemea que tem (`Clothes_SaiyanSuit`) continua aparecendo. O corpo
+		// e a forma nao entram aqui: sao eles o desenho deitado.
+		// ==========================================================================================================
+		if (PoseDeitada(doCorpo) && !RoupaEmPeNoChaoDeTeste && !ReferenceEquals(sprite, _corpo) && !ReferenceEquals(sprite, _corpoDaForma)
+			&& !EhEfeito(sprite) && !f.HasAnimation(AnimKo) && !f.HasAnimation(AnimKoOeste) && !f.HasAnimation(AnimKoLeste))
+			return null;
 
 		if (doCorpo != null && f.HasAnimation(doCorpo)) return doCorpo;
 		if (f.HasAnimation($"{fam}_{dir}")) return $"{fam}_{dir}";

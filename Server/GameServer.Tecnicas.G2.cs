@@ -661,7 +661,7 @@ public partial class GameServer
 		ServerPlayer? alvo = AlvoNaFrente(pl);
 		if (alvo == null)
 		{
-			pl.Ficha.AttackGain(_rng);
+			// (o punho no vazio nao rende, como o soco no ar -- ver `GameServer.Ganhos.cs`)
 			ca.ZerarCombo();
 			AnunciarSocoNoAr(pl);
 			Avisar(pl, "o punho espiritual passa pelo vazio.");
@@ -685,9 +685,10 @@ public partial class GameServer
 
 		if (r.Encostou) ca.SomarCombo(); else ca.ZerarCombo();
 
-		// O bit do mestre, igual ao soco comum -- ver o bloco em `GameServer.Combat.cs`.
-		pl.Ficha.AttackGain(_rng, pl.Ficha.FightGainMult(alvo.Ficha, EhMeuMestre(pl, alvo), EhColegaDeMestre(pl, alvo)));
-		if (r.Encostou) alvo.Ficha.AttackGain(_rng, alvo.Ficha.FightGainMult(pl.Ficha, EhMeuMestre(alvo, pl), EhColegaDeMestre(alvo, pl)));
+		// O bit do mestre e o peso da luta, iguais ao soco comum -- ver o bloco em `GameServer.Combat.cs`.
+		double luta = FatorDaLuta(pl, alvo);
+		if (luta > 0) pl.Ficha.AttackGain(_rng, luta * pl.Ficha.FightGainMult(alvo.Ficha, EhMeuMestre(pl, alvo), EhColegaDeMestre(pl, alvo)));
+		if (luta > 0 && r.Encostou) alvo.Ficha.AttackGain(_rng, luta * alvo.Ficha.FightGainMult(pl.Ficha, EhMeuMestre(alvo, pl), EhColegaDeMestre(alvo, pl)));
 
 		// O CONTRA CONTINUA VALENDO. Deixar o punho ignorar a guarda perfeita faria dele o jeito
 		// de furar o sistema de contra-ataque -- e ai ninguem mais usaria soco.

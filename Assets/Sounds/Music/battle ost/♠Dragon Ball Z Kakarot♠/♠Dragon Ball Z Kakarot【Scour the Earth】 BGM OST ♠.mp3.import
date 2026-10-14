@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://2hqw1fe0fpwb"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【Scour the Earth】 BGM OST ♠.mp3-1790fa9578434fb4dd1c7d7e08a12c29.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot♠/♠Dragon Ball Z Kakarot【Scour the Earth】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【Scour the Earth】 BGM OST ♠.mp3-1790fa9578434fb4dd1c7d7e08a12c29.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4
