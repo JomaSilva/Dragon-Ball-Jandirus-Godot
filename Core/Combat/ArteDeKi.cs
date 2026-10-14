@@ -188,6 +188,22 @@ public enum ArteDeKi : ushort
 
 	/// <summary>`14.dmi`. O alvo de treino da meditacao (`Stats/Training/Meditate.dm:26`).</summary>
 	Blast14 = 44,
+
+	// =====================================================================
+	// AS BALAS -- `Icons/Bullets` e `Icons/Misc` (v0.2.1: as armas de fogo de `Tech/Guns.dm`)
+	// =====================================================================
+	// NENHUMA TECNICA CUSTOMIZADA AS ALCANCA: a mesa so oferece as pastas `Beams`, `Blasts` e `Techniques`
+	// (<see cref="ArteDeProjetil.PermitidasPara"/>). E NENHUMA LEVA A COR DO KI de quem atira: sao chumbo e aco -- a
+	// folha delas nao e somada com `rgb(blastR, blastG, blastB)` no original (`Guns.dm:121-135`).
+
+	/// <summary>`Bullet.dmi` (`Icons/Misc`): doze pixels pretos. A bala da pistola, da metralhadora e do rifle (`Guns.dm:244,253,334`).</summary>
+	Bala = 45,
+
+	/// <summary>`Bullet 3.dmi` (`Icons/Bullets`): o chumbo da escopeta, preto com um miolo branco (`Guns.dm:264`).</summary>
+	Chumbo = 46,
+
+	/// <summary>`Missile.dmi` (`Icons/Bullets`): o foguete do lanca-foguetes, corpo cinza e fogo amarelo (`Guns.dm:345`).</summary>
+	Missil = 47,
 }
 
 /// <summary>
@@ -396,6 +412,24 @@ public static class ArteDeProjetil
 		// de quem atira (ver `ReceitaDeProjetil.Nome`), e a folha e a mesma `12.dmi` cinza. Divergencia declarada.
 		[Ranks.KitDoDeus.TiroDaFuria] = new(Fonte.Literal, ArteDeKi.Blast12),
 		[Ranks.KitDoDeus.TiroDaEsfera] = new(Fonte.Literal, ArteDeKi.Blast12),
+
+		// ---------------------------------------------------------------
+		// AS ARMAS DE FOGO (`Tech/Guns.dm`, v0.2.1) -- a chave e `ArmasDeFogo.PrefixoDeVerbo` + o id da arma
+		// ---------------------------------------------------------------
+		// `BulletIcon='Bullet.dmi'` na pistola, na metralhadora e no rifle (`:244`, `:253`, `:334`); `'Bullet 3.dmi'` na
+		// escopeta (`:264`); `'Missile.dmi'` no lanca-foguetes (`:345`).
+		[Tech.ArmasDeFogo.PrefixoDeVerbo + Tech.ArmasDeFogo.Pistola] = new(Fonte.Literal, ArteDeKi.Bala),
+		[Tech.ArmasDeFogo.PrefixoDeVerbo + Tech.ArmasDeFogo.Metralhadora] = new(Fonte.Literal, ArteDeKi.Bala),
+		[Tech.ArmasDeFogo.PrefixoDeVerbo + Tech.ArmasDeFogo.Rifle] = new(Fonte.Literal, ArteDeKi.Bala),
+		[Tech.ArmasDeFogo.PrefixoDeVerbo + Tech.ArmasDeFogo.Escopeta] = new(Fonte.Literal, ArteDeKi.Chumbo),
+		[Tech.ArmasDeFogo.PrefixoDeVerbo + Tech.ArmasDeFogo.LancaFoguetes] = new(Fonte.Literal, ArteDeKi.Missil),
+		// AS DE ENERGIA atiram a `23.dmi` (`Guns.dm:356-359`, `buildable.dm:185-188`, `Tier2.dm:339-340`) e a de ki o
+		// estado `blast` da `gblaster.dmi` (`Guns.dm:389-392`). Nenhuma das duas folhas esta entre as artes deste port:
+		// saem com o dardo fino (`12.dmi`) e com a bola cheia (`20.dmi`), na cor do ki de quem atira. Divergencia declarada.
+		[Tech.ArmasDeFogo.PrefixoDeVerbo + Tech.ArmasDeFogo.Blaster] = new(Fonte.Literal, ArteDeKi.Blast12),
+		[Tech.ArmasDeFogo.PrefixoDeVerbo + Tech.ArmasDeFogo.Bolter] = new(Fonte.Literal, ArteDeKi.Blast12),
+		[Tech.ArmasDeFogo.PrefixoDeVerbo + Tech.Atordoador.Id] = new(Fonte.Literal, ArteDeKi.Blast12),
+		[Tech.ArmasDeFogo.PrefixoDeVerbo + Tech.ArmasDeFogo.Gaster] = new(Fonte.Literal, ArteDeKi.Blast20),
 	};
 
 	/// <summary>
@@ -504,6 +538,11 @@ public static class ArteDeProjetil
 		// --- fora de `Icons/`: uma imagem solta (e `.png`, nao `.dmi` -- por isso a extensao vem escrita),
 		//     que nenhuma tecnica customizada alcanca ---
 		ArteDeKi.SpiritBomb => ("Images/attacks", "SpiritBomb22017.png"),
+
+		// --- as balas das armas de fogo: `Icons/Misc` e `Icons/Bullets`, pastas que a mesa de tecnicas nao oferece ---
+		ArteDeKi.Bala => ("Misc", "Bullet"),
+		ArteDeKi.Chumbo => ("Bullets", "Bullet 3"),
+		ArteDeKi.Missil => ("Bullets", "Missile"),
 
 		_ => ("", ""),
 	};

@@ -276,7 +276,7 @@ public partial class MenuJogo
 					 ? $"Você ainda não ensinou nada a {a.Quem.Nome}. "
 					 : $"O diário deste vínculo começa agora: o que você ensinou a {a.Quem.Nome} antes disso não ficou anotado. ")
 				 + "De frente pra ele: \"Ajudar a transformar\" (aqui embaixo) desperta uma forma com a porta de poder pela metade, "
-				 + "e \"Ensinar: ...\" (aba Learning) passa uma técnica sua.",
+				 + "e \"Ensinar…\" passa uma skill ou uma técnica de ki sua.",
 				 corpo).SetMeta("discipulado", "sem-ensinamentos");
 		else
 		{
@@ -299,10 +299,143 @@ public partial class MenuJogo
 		ajudar.AddThemeFontSizeOverride("font_size", 12);
 		ajudar.Pressed += () => cli.AjudarAlunoATransformar(sig);
 		botoes.AddChild(ajudar);
+
+		// "ENSINAR...": abre (e fecha) a lista do que passar a ESTE aluno, aqui mesmo no cartao -- ver `ListaDoQueEnsinar`.
+		bool aberta = _ensinandoA == sig && a.Quem.Online;
+		var ensinar = new Button
+		{
+			Text = aberta ? "Fechar a lista" : "Ensinar…", FocusMode = Control.FocusModeEnum.None, Disabled = !a.Quem.Online,
+			TooltipText = a.Quem.Online
+				? $"Escolhe uma skill ou uma técnica de ki sua pra ensinar a {nome}: fique COLADO nele. Ele aceita ou recusa pelo aviso que aparece na tela."
+				: $"{nome} não está no mundo agora.",
+		};
+		ensinar.SetMeta("acao", "licao");
+		ensinar.SetMeta("aberta", aberta);
+		ensinar.AddThemeFontSizeOverride("font_size", 12);
+		ensinar.Pressed += () =>
+		{
+			_ensinandoA = _ensinandoA == sig ? "" : sig;
+			_rolarAteALista = _ensinandoA.Length > 0;
+			Redesenhar();
+		};
+		botoes.AddChild(ensinar);
 		botoes.AddChild(BotaoDeConfirmar("Dispensar aluno", $"Confirmar: dispensar {nome}", "dispensar:" + sig, "dispensar",
 										 $"Desfaz o vínculo com {nome} (vale de qualquer lugar, com ele no mundo ou não). O que você "
 										 + "ensinou fica com ele; este cartão some.",
 										 () => cli.DispensarAluno(sig)));
+
+		if (aberta) ListaDoQueEnsinar(cli, sig, nome, corpo);
+	}
+
+	// =====================================================================
+	// "ENSINAR...": o que o mestre passa a ESTE aluno
+	// =====================================================================
+	/// <summary>De qual aluno a lista do "Ensinar..." esta aberta (a assinatura dele), ou vazio. Uma de cada vez.</summary>
+	private string _ensinandoA = "";
+
+	/// <summary>A altura da lista do "Ensinar..." quando ela e comprida: ai ela rola por dentro, pra um mestre de cem skills nao esticar o cartao.</summary>
+	private const float AlturaDaListaDeEnsino = 190f;
+
+	/// <summary>Ate quantas licoes a lista cabe solta no cartao (umas tres linhas de botoes); acima disso ela ganha a rolagem propria.</summary>
+	private const int LicoesSemRolagem = 9;
+
+	/// <summary>
+	/// A lista ACABOU de abrir pelo clique: a pagina rola ate ela. Ela nasce embaixo dos botoes do cartao, e num
+	/// cartao comprido isso e abaixo da dobra do menu -- o clique parecia nao ter feito nada. So no clique: a pagina se
+	/// refaz por outros motivos com a lista aberta, e puxar a rolagem a cada vez tiraria a tela da mao do jogador.
+	/// </summary>
+	private bool _rolarAteALista;
+
+	/// <summary>DEFEITO INJETADO (bancada `--diagalunos`): a lista abre e a pagina nao rola ate ela -- o primeiro desenho. Falso em jogo, sempre.</summary>
+	internal static bool ListaAbreSemRolarDeTeste;
+
+	/// <summary>
+	/// A LISTA DO "ENSINAR...", dentro do cartao do aluno (dono, 2026-10-13: *"dar pra ensinar mais skills pros alunos e
+	/// tb técnicas proprias"*): as tecnicas de ki que o mestre inventou e tudo o que ele sabe
+	/// (`EnsinoDeSkill.OQueOMestreEnsina`). Cada botao e a OFERTA -- o aluno responde pelo aviso de tela, e quem decide
+	/// e o servidor (`GameServer.LicaoPeloCartao`): colado nele, fora da recarga, e o que foi ensinado ao mestre nao
+	/// repassa (a tela nao sabe o que foi ensinado a ele: a recusa diz).
+	///
+	/// A ESTRELA marca a LICAO DE MESTRE -- a skill que nao se ensina a um estranho (`EnsinoDeSkill.LicaoDeMestre`).
+	/// So ela GASTA os marcos do aluno; as outras so exigem que ele os tenha. O numero no botao e esse preco.
+	/// </summary>
+	private void ListaDoQueEnsinar(GameClient cli, string sig, string nome, Control corpo)
+	{
+		var bloco = new VBoxContainer();
+		bloco.SetMeta("discipulado", "ensinar");
+		bloco.AddThemeConstantOverride("separation", 4);
+		corpo.AddChild(bloco);
+		bloco.AddChild(Tema.Rotulo($"O que ensinar a {nome}"));
+		if (_rolarAteALista)
+		{
+			_rolarAteALista = false;
+			// (um instante depois: a rolagem so sabe onde o bloco fica quando a pagina acabou de se arrumar)
+			if (!ListaAbreSemRolarDeTeste)
+				GetTree().CreateTimer(0.05).Timeout += () => { if (IsInstanceValid(bloco)) _rolagemDaPagina.EnsureControlVisible(bloco); };
+		}
+
+		var botoes = new List<Button>();
+		foreach (TecnicaCustomizada t in cli.Customizadas)
+		{
+			if (!t.Criada || t.Ensinada) continue;
+			int id = t.Id;
+			Button b = BotaoDeLicao($"Técnica de ki: {t.Nome}",
+				$"Ensina a {nome} a técnica que você inventou. Ele precisa já ter aberto esse tipo de técnica e ter uma vaga entre as "
+				+ $"{TecnicaCustomizada.Maximo} dele. Não custa marco nenhum, e ele não pode repassá-la.");
+			b.SetMeta("tecnica", id);
+			b.Pressed += () => cli.EnsinarTecnicaAoAluno(sig, id);
+			botoes.Add(b);
+		}
+
+		if (CatalogoPublico() is { } cat)
+			foreach (Skill s in EnsinoDeSkill.OQueOMestreEnsina(cat, cli.SkillsAprendidas).OrderBy(s => s.Nome, StringComparer.OrdinalIgnoreCase))
+			{
+				bool deMestre = EnsinoDeSkill.LicaoDeMestre(s, eMeuAluno: true);
+				string path = s.Path;
+				int custo = EnsinoDeSkill.Custo(s);
+				Button b = BotaoDeLicao($"{(deMestre ? "★ " : "")}{s.Nome} ({custo})", deMestre
+					? $"LIÇÃO DE MESTRE: {s.Nome} custa {custo} marco(s) DELE. Vale sem o pré-requisito e sem o patamar -- mas tem que ser "
+					  + "uma skill que a raça e a classe dele alcançam. Ele não pode repassá-la."
+					: $"{s.Nome}: ele precisa ter {custo} marco(s) livre(s), e não gasta nenhum. Ele não pode repassá-la.");
+				b.SetMeta("licao", path);
+				b.SetMeta("de_mestre", deMestre);
+				b.Pressed += () => cli.EnsinarSkillAoAluno(sig, path);
+				botoes.Add(b);
+			}
+
+		if (botoes.Count == 0)
+		{
+			Nota("Você ainda não sabe nada que dê pra ensinar.", bloco).SetMeta("discipulado", "nada-a-ensinar");
+			return;
+		}
+
+		Nota($"Fique colado nele: a oferta aparece na tela dele, com Aceitar e Recusar ({EnsinoDeSkill.PrazoDaOfertaSegundos:0} s). "
+			 + "O número é o que a lição exige em marcos. ★ = lição de mestre (o que você não ensinaria a um estranho): essa GASTA os "
+			 + "marcos dele; as outras só exigem que ele os tenha.", bloco);
+
+		var lista = new HFlowContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+		lista.AddThemeConstantOverride("h_separation", 6);
+		lista.AddThemeConstantOverride("v_separation", 4);
+		foreach (Button b in botoes) lista.AddChild(b);
+
+		// CURTA, ela vai solta no cartao; comprida, numa caixa que rola por dentro (a caixa de altura fixa em volta de
+		// dois botoes era um vazio de meio cartao).
+		if (botoes.Count <= LicoesSemRolagem) { bloco.AddChild(lista); return; }
+		var rolagem = new ScrollContainer
+		{
+			CustomMinimumSize = new Vector2(0, AlturaDaListaDeEnsino),
+			HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+		};
+		bloco.AddChild(rolagem);
+		rolagem.AddChild(lista);
+	}
+
+	private static Button BotaoDeLicao(string rotulo, string dica)
+	{
+		var b = new Button { Text = rotulo, TooltipText = dica, FocusMode = Control.FocusModeEnum.None };
+		b.AddThemeFontSizeOverride("font_size", 12);
+		return b;
 	}
 
 	// =====================================================================
@@ -317,7 +450,9 @@ public partial class MenuJogo
 									"Seu progresso no que ele ensinou"));
 
 		// A REGRA DO TREINO, com os numeros que o servidor usa (`GainKnobs`): e a linha que a aba do original tinha.
-		Nota($"Treinar lutando contra o seu mestre rende até {Jandirus.Core.Stats.GainKnobs.MasterGainCap:0.#}× mais poder por golpe.", corpo);
+		Nota($"Treinar lutando contra o seu mestre rende de {Jandirus.Core.Stats.GainKnobs.MasterGainMin:0.#}× a "
+			 + $"{Jandirus.Core.Stats.GainKnobs.MasterGainCap:0.#}× mais poder por golpe (quanto mais forte ele for que você), e contra um "
+			 + $"colega — outro aluno dele — {Jandirus.Core.Stats.GainKnobs.ColegaDeMestreGain:0.#}×.", corpo);
 
 		if (m.Ensinamentos.Count == 0)
 			Nota((m.Quem.DesdeHaSegundos > 0
@@ -744,6 +879,15 @@ public partial class MenuJogo
 			foreach (EnsinamentoNoPainel e in a.Ensinamentos) Quando(e);
 		}
 		sb.Append("||").Append(Time.GetTicksMsec() < _gestoArmadoAteMs ? _gestoArmado : "");
+
+		// A LISTA DO "ENSINAR...": de quem esta aberta e, aberta, o que ela lista (o que eu sei e o que inventei).
+		sb.Append("||e:").Append(_ensinandoA);
+		if (_ensinandoA.Length > 0)
+		{
+			sb.Append(':').Append(c.SkillsAprendidas.Count);
+			foreach (TecnicaCustomizada t in c.Customizadas)
+				if (t.Criada && !t.Ensinada) sb.Append(',').Append(t.Id).Append(t.Nome);
+		}
 		return sb.ToString();
 	}
 }

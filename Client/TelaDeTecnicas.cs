@@ -539,7 +539,8 @@ public partial class TelaDeTecnicas : CanvasLayer
 			var coluna = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
 			linha.AddChild(coluna);
 
-			var nome = new Label { Text = $"{t.Nome}  —  {NomeDoTipo(t.Tipo)}" };
+			// (a que veio de um mestre diz que veio: ela se usa e se ajusta como as outras, mas nao se repassa)
+			var nome = new Label { Text = $"{t.Nome}  —  {NomeDoTipo(t.Tipo)}{(t.Ensinada ? "  ·  ensinada pelo seu mestre" : "")}" };
 			nome.AddThemeColorOverride("font_color", Tema.Destaque);
 			coluna.AddChild(nome);
 			coluna.AddChild(Nota(Resumo(t), Tema.TextoFraco, 12));

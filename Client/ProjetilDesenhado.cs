@@ -515,6 +515,8 @@ public partial class ProjetilDesenhado : Node2D
 		{
 			_estiloDaBola = EstiloDaBola(arte);
 			_raioDaBola = _estiloDaBola.Raio * Escala;
+			// (v0.2.1) A BALA NAO E KI: a tinta de quem atira nao entra nela -- ver `EstiloDeBola.SemTinta`.
+			if (_estiloDaBola.SemTinta) Cor = Colors.Black;
 			Material = PintorDeKi.MaterialDeBola(_estiloDaBola, _raioDaBola, Cor);
 		}
 	}

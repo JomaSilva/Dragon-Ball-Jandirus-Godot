@@ -71,6 +71,11 @@ public sealed partial class GameServer
 	/// </summary>
 	private void SoltarPecas(ServerPlayer d, List<BodyPart> caiu)
 	{
+		// (2026-10-13) O MAJIN NAO DEIXA PECA: a folha das pecas e a `Body Parts Bloody`, e ele e *"o unico caso do
+		// jogo onde n deve ter efeito de sangue"* -- o membro arrancado some do corpo (a mascara de amputacao
+		// continua viajando) e nada ensanguentado cai no chao. Ele volta sozinho, pela regeneracao da raca.
+		if (Feridas.NaoSangra(d.Race)) return;
+
 		long agora = NowMs();
 		ulong zona = d.Zone.Hash;
 		List<PecaNoChao> lista = PecasDaZona(zona);

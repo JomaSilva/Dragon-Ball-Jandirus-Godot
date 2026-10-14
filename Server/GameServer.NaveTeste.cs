@@ -204,13 +204,114 @@ public partial class GameServer
 				// meio de pixels a 30 Hz levaria os quatro minutos de verdade -- o que esta sob
 				// teste e o POUSO, e ele e uma pergunta por posicao.
 				pl.Pos = namek.Pos;
-				TickDoEspaco(pl);
-				TickDasNaves();
+				List<string> naChegada = Ouvir(() =>
+				{
+					TickDoEspaco(pl);
+					TickDasNaves();
+				});
 
 				Checa("encostar em Namek pousa (o `TickDoEspaco` de producao)",
 					  pl.Zone.Kind == ZoneKey.KindPremade && pl.Zone.Name == "Namek", $"zona: {pl.Zone}");
 				Checa("e a nave desceu junto -- sem um segundo caminho de pouso",
 					  n.Zona.Equals(pl.Zone), $"nave em {n.Zona}");
+				Checa("...e o piloto e AVISADO de que ela chegou pousada (v0.2.1): a frase diz como sair do chao",
+					  naChegada.Any(f => f.Contains("pousa", StringComparison.OrdinalIgnoreCase)
+										 && f.Contains("decolar", StringComparison.OrdinalIgnoreCase)),
+					  string.Join(" | ", naChegada));
+			}
+
+			// ---------------------------------------------------------------- 7b. POUSAR, DECOLAR E ROMPER A ATMOSFERA
+			// (v0.2.1, dono 2026-10-13: *"space pods e naves sao igual voar, ao pilotar e apertar page up ou page down vc
+			// sobe ou desce (ate pousar) com elas, se subir muito sai do planeta e comeca a voar pelo espaco"*.)
+			// O piloto esta ao leme, num planeta (Namek, se o lancamento de cima rodou; senao o de partida).
+			if (!Espaco.EhEspaco(pl.Zone) && n.PilotoId == pl.Id)
+			{
+				double kiDeAntes = pl.Ficha.Ki;
+				// As teclas de altura, pelo tique de voo de producao. O tanque fica cheio: o que se mede aqui e a ALTURA
+				// (o preco do voo tem bancada propria, a `--vooteste`).
+				void Voar(double segundos, bool subir, bool descer, Func<bool>? ate = null)
+				{
+					for (int i = 0; i < (int)(segundos / Jandirus.Net.Protocol.TickSeconds); i++)
+					{
+						pl.QuerSubir = subir;
+						pl.QuerDescer = descer;
+						pl.Ficha.Ki = pl.Ficha.MaxKi;
+						TickDoVoo(pl, (float)Jandirus.Net.Protocol.TickSeconds);
+						if (ate?.Invoke() == true) break;
+					}
+					pl.QuerSubir = pl.QuerDescer = false;
+				}
+
+				// QUEM CHEGA DO ESPACO CHEGA NO CHAO: o voo nao atravessa a troca de zona (`MoveToZone`), e a nave que
+				// desceu num planeta esta POUSADA -- parada, com o piloto ao leme. (Se o lancamento de cima nao rodou, o
+				// piloto ainda paira no planeta de partida desde o embarque, e este passo nao se aplica.)
+				if (!pl.Voando)
+				{
+					Checa("**A NAVE QUE CHEGA DO ESPACO CHEGA POUSADA**: o piloto ao leme, no chao -- e ela nao anda ate decolar",
+						  pl.Altitude <= 0f && EstaPilotando(pl.Id) && !PodeMexerOCorpo(pl),
+						  $"altura {pl.Altitude:0.#}, ao leme {EstaPilotando(pl.Id)}, anda {PodeMexerOCorpo(pl)}");
+					Voar(0.3, subir: true, descer: false);
+				}
+				Voar(1, subir: false, descer: false);
+				Checa("no ar a nave PAIRA, e anda (pilotar e voar)", pl.Voando && pl.Altitude > 0f && PodeMexerOCorpo(pl),
+					  $"voando {pl.Voando}, altura {pl.Altitude:0.#}, anda {PodeMexerOCorpo(pl)}");
+
+				Voar(40, subir: false, descer: true, ate: () => !pl.Voando);
+				Checa("**DESCENDO ATE O CHAO A NAVE POUSA**: o piloto continua ao leme, no chao -- e a nave pousada NAO ANDA",
+					  !pl.Voando && pl.Altitude <= 0f && n.PilotoId == pl.Id && EstaPilotando(pl.Id) && !PodeMexerOCorpo(pl),
+					  $"voando {pl.Voando}, altura {pl.Altitude:0.#}, piloto {n.PilotoId}, anda {PodeMexerOCorpo(pl)}");
+				NavePousadaAndaDeTeste = true;
+				try
+				{
+					Checa("   DEFEITO INJETADO (a nave pousada anda): o piloto sem voo anda no chao com a nave em volta -- a v0.2.0",
+						  PodeMexerOCorpo(pl));
+				}
+				finally { NavePousadaAndaDeTeste = false; }
+
+				NavePousadaNaoDecolaDeTeste = true;
+				try
+				{
+					Voar(0.5, subir: true, descer: false);
+					Checa("   DEFEITO INJETADO (a tecla de subir nao decola): a nave fica no chao -- so a tecla de voar a tiraria, e ela pede o treino de voo do piloto",
+						  !pl.Voando && pl.Altitude <= 0f);
+				}
+				finally { NavePousadaNaoDecolaDeTeste = false; }
+
+				Voar(0.3, subir: true, descer: false);
+				Checa("**A TECLA DE SUBIR DECOLA A NAVE POUSADA** -- o voo e da nave, sem pedir o treino de voo do piloto -- e ela volta a andar",
+					  pl.Voando && PodeMexerOCorpo(pl), $"voando {pl.Voando}, anda {PodeMexerOCorpo(pl)}");
+
+				// O TETO. O piloto desta bancada nao passaria sozinho pelos portoes do `Space_Flight` (Ki, poder e treino
+				// de voo): quem sai do planeta e a NAVE.
+				bool passariaSozinho = Voo.PodeRomperAAtmosfera(pl.Ficha.MaxKi, pl.Ficha.expressedBP, HabilidadeDeVoo(pl));
+				GD.Print($"       o piloto passaria sozinho pelos portoes do Space Flight? {passariaSozinho} "
+						 + $"(BP expresso {pl.Ficha.expressedBP:N0}, voo {HabilidadeDeVoo(pl):0.#})");
+				if (!passariaSozinho)
+				{
+					NaveSoSaiPeloMenuDeTeste = true;
+					try
+					{
+						pl.AvisoDeTetoAte = 0;
+						Voar(60, subir: true, descer: false, ate: () => pl.Altitude >= Voo.AlturaMaxima);
+						Voar(0.3, subir: true, descer: false);
+						TickDasNaves();
+						Checa("   DEFEITO INJETADO (no teto a nave pergunta pelos portoes de quem voa sozinho): o piloto bate no limite da atmosfera e a nave FICA no planeta -- a v0.2.0",
+							  !Espaco.EhEspaco(pl.Zone) && n.LancaEm == 0 && pl.Altitude >= Voo.AlturaMaxima,
+							  $"zona {pl.Zone}, relogio {n.LancaEm}, altura {pl.Altitude:0.#}");
+					}
+					finally { NaveSoSaiPeloMenuDeTeste = false; }
+				}
+
+				pl.AvisoDeTetoAte = 0;
+				Voar(60, subir: true, descer: false, ate: () => n.LancaEm > 0);
+				Checa("**NO TETO DO CEU A NAVE ROMPE A ATMOSFERA**: o relogio de lancamento e armado ja vencido -- o funil do `nave_lancar`, sem a espera do menu",
+					  n.LancaEm > 0 && n.LancaEm <= NowMs() && pl.Altitude >= Voo.AlturaMaxima,
+					  $"relogio {n.LancaEm}, altura {pl.Altitude:0.#} de {Voo.AlturaMaxima:0.#}");
+				TickDasNaves();
+				Checa("...e o tique das naves a leva pro ESPACO pelo `Decolar` de producao, com o piloto ao leme -- e la fora ela ANDA: no espaco nao ha pouso (o voo ficou no planeta, e a nave nao fica presa no vazio)",
+					  Espaco.EhEspaco(pl.Zone) && n.Zona.Equals(pl.Zone) && n.PilotoId == pl.Id && PodeMexerOCorpo(pl),
+					  $"zona {pl.Zone}, nave em {n.Zona}, voando {pl.Voando}, anda {PodeMexerOCorpo(pl)}");
+				pl.Ficha.Ki = kiDeAntes;
 			}
 
 			// ---------------------------------------------------------------- 8. DESEMBARCAR

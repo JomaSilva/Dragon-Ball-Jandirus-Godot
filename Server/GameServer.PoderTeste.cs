@@ -468,7 +468,7 @@ public partial class GameServer
 		ApertarEOuvir(forte, "prontidao");
 
 		// ---- a raiva acorda ----
-		eu.RaivaLendariaAte = NowMs() + 60_000;   // a janela da raiva comum (um amigo nocauteado)
+		eu.RaivaComumAte = NowMs() + 60_000;   // a janela da raiva comum (um amigo nocauteado)
 		ProjetarRaiva(eu);
 		AfirmarPw("(montagem) com a janela de raiva aberta, a raiva passa do limiar de `((MaxAnger-100)/1.66)+100` (:91)",
 				  eu.Ficha.Anger > PoderEmUso.RaivaQueAcorda(eu.Ficha), $"raiva {eu.Ficha.Anger:0.#} contra {PoderEmUso.RaivaQueAcorda(eu.Ficha):0.#}");
@@ -485,11 +485,11 @@ public partial class GameServer
 		}
 		finally { PoderEmUso.RaivaDeixaRelaxarDeTeste = false; eu.Ficha.relaxado = false; eu.Ficha.powerMod = 1; }
 
-		eu.RaivaLendariaAte = 0;
+		eu.RaivaComumAte = 0;
 		ProjetarRaiva(eu);
 		ApertarEOuvir(eu, "prontidao");
 		bool relaxouCalmo = eu.Ficha.relaxado;
-		eu.RaivaLendariaAte = NowMs() + 60_000;
+		eu.RaivaComumAte = NowMs() + 60_000;
 		ProjetarRaiva(eu);
 		// (a escuta ligada e o que faz o tique considerar um corpo SEM TELA: em jogo ele so olha jogador -- NPC nao relaxa)
 		List<(int, NetDataWriter)>? escutaDeAntes = EscutaDoPoderEmUso;
@@ -500,7 +500,7 @@ public partial class GameServer
 		AfirmarPw("...e a raiva que chega DEPOIS acorda quem ja estava relaxado, pelo tique (5 Hz)",
 				  relaxouCalmo && !eu.Ficha.relaxado && PertoPw(eu.Ficha.powerMod, 1, 1e-9) && Disse(noTique, "furioso"),
 				  $"relaxou calmo {relaxouCalmo}; relaxado {eu.Ficha.relaxado} | {Ultimos(noTique)}");
-		eu.RaivaLendariaAte = 0;
+		eu.RaivaComumAte = 0;
 		ProjetarRaiva(eu);
 		PwTique(eu);
 

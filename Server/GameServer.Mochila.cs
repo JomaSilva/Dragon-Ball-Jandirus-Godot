@@ -83,8 +83,9 @@ public sealed partial class GameServer
 		if (def == null) { Avisar(pl, "isso não existe."); return true; }
 		if (pl.Mochila.Quantos(def.Id) <= 0) { Avisar(pl, $"você não tem {def.Nome}."); return true; }
 
-		// "largar" vale pra todo item e por isso nao esta no catalogo -- ver `ItemDef.AcoesDoItem`.
-		if (acao != "largar" && Array.IndexOf(def.AcoesDoItem, acao) < 0)
+		// "largar" vale pra todo item e por isso nao esta no catalogo -- ver `ItemDef.AcoesDoItem`. "guardar" (num
+		// deposito aberto) tambem: ver `TechDeBolso.AcaoGuardar`.
+		if (acao != "largar" && acao != TechDeBolso.AcaoGuardar && Array.IndexOf(def.AcoesDoItem, acao) < 0)
 		{
 			Avisar(pl, $"não dá pra {acao} {def.Nome}.");
 			return true;
@@ -100,6 +101,8 @@ public sealed partial class GameServer
 			case "equipar": Equipar(pl, def); break;
 			case "ajustar": AjustarPeso(pl, arg2); break;
 			case "melhorar": MelhorarOsPesos(pl, arg2); break;
+			// OS PESOS GANHAM A FOLHA que o jogador escolheu na grade (dono, 2026-10-13). Ver `EscolherAArteDosPesos`.
+			case PesoDeTreino.AcaoArte: EscolherAArteDosPesos(pl, arg2); break;
 			// A ARMADURA CRUA GANHA A ARTE que o jogador escolheu na tela (dono, 2026-10-12). Ver `MoldarAArmadura`.
 			case ArmaduraDeTech.AcaoMoldar: MoldarAArmadura(pl, arg2); break;
 			case "tirar": TirarPeso(pl); break;
@@ -124,16 +127,18 @@ public sealed partial class GameServer
 				else Avisar(pl, $"não dá pra jogar {def.Nome} em ninguém.");
 				break;
 
-			// LARGAR APAGA, por enquanto. O item cair no chao pede um sistema inteiro (objeto no
-			// mundo, quem ve, quem pega, o que acontece no reinicio) que ainda nao existe -- e
-			// prometer que a maca fica no chao e pior que dizer que ela se perde.
-			case "largar":
-				pl.Mochila.Tirar(def.Id);
-				MandarMochila(pl);
-				Avisar(pl, $"você joga fora {def.Nome}.");
-				break;
+			// LARGAR POE NO CHAO (dono, 2026-10-13: *"poder dropar itens"*). Ate a v0.2.0 esta linha APAGAVA o item --
+			// *"o item cair no chao pede um sistema inteiro"*, dizia o comentario daqui. O sistema e o
+			// `GameServer.Chao.cs`; o numero depois da barra e quantos ("Apple/3", ou "Apple/tudo").
+			case "largar": LargarItem(pl, def, arg2); break;
 
-			default: Avisar(pl, $"'{acao}' ainda não faz nada."); break;
+			// (v0.2.1) GUARDAR NO DEPOSITO ABERTO -- o `Put()` do bau e o "Store Item" da base. Ver `GuardarNoDeposito`.
+			case TechDeBolso.AcaoGuardar: GuardarNoDeposito(pl, def); break;
+
+			// (v0.2.1) A TECH DE BOLSO tem o proprio despacho -- ver `GameServer.TechDeBolso.cs`.
+			default:
+				if (!AcaoDeTechDeBolso(pl, def, acao, arg2)) Avisar(pl, $"'{acao}' ainda não faz nada.");
+				break;
 		}
 		return true;
 	}
@@ -271,6 +276,10 @@ public sealed partial class GameServer
 		AplicarPoderes(pl);
 		MandarAtributos(pl);
 
+		// (2026-10-13) E O MUNDO VE: o scouter ligado aparece no rosto -- `usr.overlayList += icon` (`Tier 1.5.dm:361`).
+		// Ver `Items.EquipamentoNoCorpo`.
+		ReapresentarOCorpo(pl);
+
 		// ============================ A FICHA TEM QUE IR JUNTO, E ISSO ERA UM BUG ============================
 		// Achado pela bancada `--diagbancada`: equipar o scouter acendia o bit, o cliente recebia os
 		// atributos novos... e continuava com `BP = NaN` na ficha. A aba Stats, que ja entrava no ramo
@@ -369,7 +378,12 @@ public sealed partial class GameServer
 		// O `weight` NAO E MAIS ESCRITO A MAO AQUI. Ele era `1 + Weighted`, um palpite que o
 		// `WeightTick` reescrevia no tique seguinte -- duas contas pro mesmo campo, e a que o jogador
 		// via era a que morria. Quem escreve `weight` e o `WeightTick`, tres linhas abaixo, e so ele.
+		bool vestia = pl.Ficha.Weighted > 0;
 		pl.Ficha.Weighted = pct / 100.0 * TetoDePeso(pl.Ficha);
+
+		// (2026-10-13) VESTIR E TIRAR APARECEM NO CORPO -- `usr.overlayList += icon` / `-= icon` (`Tier 1.dm:124` e
+		// `:132`). So quando o corpo passa de sem peso pra com peso (ou o contrario): mudar a porcentagem nao muda o desenho.
+		if (vestia != pl.Ficha.Weighted > 0) ReapresentarOCorpo(pl);
 
 		// ============================ O TIQUE INTEIRO, E NAO `Statify` + `WeightTick` ============================
 		// "Cada passo pesa" era uma frase VAZIA ate a camada 2: o peso nao custava nada. Agora custa
@@ -418,6 +432,23 @@ public sealed partial class GameServer
 	}
 
 	private void TirarPeso(ServerPlayer pl) => AjustarPeso(pl, "0");
+
+	/// <summary>
+	/// A ARTE DOS PESOS -- o `verb/Icon()` do original (`Tier 1.dm:167-175`), com a grade do guarda-roupa no lugar do
+	/// arquivo enviado: *"permita tb o jogador a mudar o icone do peso (assim como é quando cria uma armadura)"*. A
+	/// escolha vai pra ficha (`Fighter.pesoArte`); quem esta vestindo ve o corpo trocar na hora.
+	///
+	/// SEM O `if(!equipped)` DO DM: la a folha so se troca com os pesos fora do corpo porque o overlay antigo teria de
+	/// ser tirado da lista a mao. Aqui o desenho e derivado a cada pacote, e trocar vestido nao deixa nada pra tras.
+	/// </summary>
+	private void EscolherAArteDosPesos(ServerPlayer pl, string arte)
+	{
+		if (_visual?.Peca(arte) == null) { Avisar(pl, "essa arte não existe."); return; }
+
+		pl.Ficha.pesoArte = arte == PesoDeTreino.ArtePadrao ? "" : arte;
+		if (pl.Ficha.Weighted > 0) ReapresentarOCorpo(pl);
+		Avisar(pl, $"os pesos agora têm a aparência de {arte}" + (pl.Ficha.Weighted > 0 ? "." : ": ela aparece no corpo quando você os vestir."));
+	}
 
 	// =====================================================================
 	// CURATIVO

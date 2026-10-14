@@ -274,6 +274,12 @@ public enum DomDeProjetil : byte
 	/// dois criterios do agarrao (`god_hakai_try`).
 	/// </summary>
 	Hakai,
+
+	/// <summary>
+	/// `obj/attack/blast/Acid_spit` (`arlian.dm`, o `OnSucCollWMob` logo abaixo do verb): envenena quem acertou -- o
+	/// `/effect/Alchemy/Health/Damage_Duration` com `duration = 30` e `magnitude = 2`. Ver `GameServer.EnvenenarG14`.
+	/// </summary>
+	Veneno,
 }
 
 /// <summary>
@@ -424,6 +430,13 @@ public sealed class Projetil
 	/// separados criaria a segunda resposta pra "qual e o poder deste tiro".
 	/// </summary>
 	public bool Paralisia;
+
+	/// <summary>
+	/// `paralysis == 2` (`objects.dm:351`) -- O TIRO DO ATORDOADOR: alem de paralisar, DERRUBA quem ja esta quase caido.
+	/// Nao esta na receita porque uma coisa so o escreve (`GameServer.AtirarOAtordoador`); a conta e do
+	/// `Jandirus.Core.Tech.Atordoador`, e quem a cobra e o `GameServer.Acertar`.
+	/// </summary>
+	public bool Nocauteia;
 
 	/// <summary>`kiforceful`/`WaveAttack` -- ver o mesmo campo na receita, onde a regra do DM esta escrita.</summary>
 	public bool Empurra = true;
@@ -889,6 +902,12 @@ public sealed class Projetil
 	/// <summary>Copiado da receita no nascimento; viaja no anuncio. Ver `ReceitaDeProjetil.Invisivel`.</summary>
 	public bool Invisivel;
 
+	/// <summary>
+	/// O SOM COM QUE ESTE TIRO SAIU (`SonsDeKi.DoDisparo`, pela tecnica que o atirou). Viaja no anuncio de
+	/// nascimento, um byte. O pedaco que nasce de um CORTE fica em <see cref="SomDeKi.Nenhum"/>: ele ja estava no ar.
+	/// </summary>
+	public SomDeKi Som;
+
 	/// <summary>Copiados da receita no nascimento. Ver `ReceitaDeProjetil.ZonaCerta` e <see cref="DomDeProjetil"/>.</summary>
 	public string ZonaCerta = "";
 	public DomDeProjetil Dom = DomDeProjetil.Nenhum;
@@ -1116,8 +1135,9 @@ public sealed class Projetil
 	public static double PressaSobreORaioDoDm(double velocidade) => AtrasoDeRaioNoDm(1) / AtrasoDeRaio(velocidade);
 
 	/// <summary>
-	/// DEFEITO INJETADO (bancada): o tiro devolvido pela Deflexao volta no passo do EMPURRAO de uma disputa (o
-	/// que o `Devolver` deixa nele) -- 10 tiles por segundo, mais devagar que qualquer bola e que quem corre.
+	/// DEFEITO INJETADO (bancada): o tiro devolvido pela Deflexao volta no passo que o `Devolver` deixa nele -- o
+	/// do EMPURRAO de uma disputa, num raio, e o DELE MESMO, numa esfera (v0.2.1: a esfera que vence segue no passo
+	/// dela) -- em vez do passo do DM, o da bola mais rapida. Uma bola lenta voltaria lenta.
 	/// </summary>
 	public static bool DeflexaoNoPassoDoEmpurraoDeTeste;
 
@@ -1318,6 +1338,25 @@ public sealed class Projetil
 	public bool ExplodeNoFimDoAlcance => !KiContraCorpo.RegraDeAntesDeTeste && (Tipo == TipoDeProjetil.Beam || EsferaGrande);
 
 	/// <summary>
+	/// ESTE TIRO ESTOURA GRANDE ONDE QUER QUE ACABE -- na parede, quando o prazo vence, e quando a mao solta o raio
+	/// que estava em cima de alguem? Os mesmos do <see cref="ExplodeNoFimDoAlcance"/> (dono, 2026-10-13: *"a
+	/// explosao do beam ta sem efeito nenhum, nem mesmo a cratera"* -- o raio que LEVAVA alguem devagar morria de
+	/// prazo antes do fim do alcance, calado). O que ainda esta sendo formado e o que ninguem ve nao estouram.
+	/// </summary>
+	public bool EstouraSempreQueAcaba =>
+		ExplodeNoFimDoAlcance && !KiContraCorpo.SoEstouraNoFimDoAlcanceDeTeste && !Inerte && !Invisivel;
+
+	/// <summary>
+	/// ESTA E UMA BOLA COMUM, QUE ACABA NUM ESTOURO PEQUENO quando o alcance ou o prazo vencem? *"quando uma esfera
+	/// de ki se afasta muito ela so some e n explode"* (dono, 2026-10-13). No DM o prazo de toda bola termina em
+	/// `explode()` (`obj/attack/proc/Burnout`, `objects.dm:652-661`). Fora: a esfera grande e o raio (tem o estouro
+	/// deles), o que ainda esta sendo formado (`Inerte`: o alvo de treino some) e o que ninguem ve (a lamina de ar).
+	/// </summary>
+	public bool BolaQueEstouraAoAcabar =>
+		!KiContraCorpo.RegraDeAntesDeTeste && !KiContraCorpo.BolaSomeAoAcabarDeTeste
+		&& Tipo != TipoDeProjetil.Beam && !EsferaGrande && !Inerte && !Invisivel;
+
+	/// <summary>
 	/// ATE ONDE O FEIXE CARREGAVA, em tiles a partir da mao do dono: `if(getdist(Owner,P) &lt; 10)`
 	/// (`Projectiles.dm:584`). Chegando la, o DU larga o corpo e abre um `BigCrater` no chao
 	/// (`:589-591`) -- o fim do arrasto e um lugar, e nao um relogio.
@@ -1382,4 +1421,11 @@ public enum FimDeProjetil : byte
 	/// ESCALA do desenho. O estouro de um acerto e do tamanho do tiro; este e o fim do ataque inteiro, com cratera.
 	/// </summary>
 	Explodiu = 7,
+
+	/// <summary>
+	/// A BOLA COMUM ESTOUROU SEM ACERTAR NINGUEM -- o alcance ou o prazo dela acabaram (`Projetil.
+	/// BolaQueEstouraAoAcabar`; dono, 2026-10-13). Outro valor, e nao o <see cref="Acertou"/>, porque `Acertou` e
+	/// lido como "houve um corpo" por quem conta os golpes; o desenho e o mesmo estouro do tamanho do tiro.
+	/// </summary>
+	Estourou = 8,
 }

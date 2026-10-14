@@ -601,17 +601,31 @@ public sealed partial class GameServer
 		AfirmarMb("...mas a PONTARIA cai pra ele tambem: o `hitProc` e um so pros dois (40% de 80%)", MbPerto(taxa, 0.40, 0.03), $"{taxa:P1}");
 
 		// AO LEME: a nave nao anda com as pernas do piloto.
+		// (v0.2.1) A NAVE POUSADA NAO ANDA, DE NINGUEM (`NavePousada`): quem a move e quem a decolou. Entao a medida das
+		// pernas e com ela NO AR, decolada pela porta de producao (a tecla de subir, `DecolarANavePousada`) -- ate a
+		// v0.2.0 esta linha media a nave no chao, e passou a reprovar por causa da regra nova, e nao das pernas.
 		ServerPlayer piloto = MbCorpo("mbPiloto");
 		MbArrancar(piloto, "Perna esquerda", "Perna direita");
 		var nave = new Nave { Id = -9_911, Tipo = "bancada", PilotoId = piloto.Id };
 		nave.PorZona(piloto.Zone);
 		bool presoAPe = !PodeMexerOCorpo(piloto);
 		_naves.Add(nave);
-		bool livreAoLeme;
-		try { livreAoLeme = PodeMexerOCorpo(piloto) && !SemPernaPraCorrer(piloto); }
-		finally { _naves.Remove(nave); }
-		AfirmarMb("o piloto sem as duas pernas esta preso A PE, e AO LEME dirige a nave normalmente (inclusive no SHIFT)",
-			presoAPe && livreAoLeme && !PodeMexerOCorpo(piloto), $"a pe preso={presoAPe}, ao leme livre={livreAoLeme}");
+		bool pousadaParada, livreAoLeme;
+		try
+		{
+			pousadaParada = !PodeMexerOCorpo(piloto);
+			DecolarANavePousada(piloto);
+			livreAoLeme = piloto.Voando && PodeMexerOCorpo(piloto) && !SemPernaPraCorrer(piloto);
+		}
+		finally
+		{
+			_naves.Remove(nave);
+			piloto.Voando = false;
+			piloto.Altitude = 0;
+		}
+		AfirmarMb("o piloto sem as duas pernas esta preso A PE; AO LEME, a nave pousada nao anda (de ninguem) e, DECOLADA, ele a dirige normalmente (inclusive no SHIFT)",
+			presoAPe && pousadaParada && livreAoLeme && !PodeMexerOCorpo(piloto),
+			$"a pe preso={presoAPe}, pousada parada={pousadaParada}, ao leme livre={livreAoLeme}");
 
 		// O ZENKAI DE QUEM FOI DESPEDACADO: `if(lopcount >= 2) return TRUE` (`Injuries.dm:191`).
 		ServerPlayer saiyajin = MbCorpo("mbZenkai");

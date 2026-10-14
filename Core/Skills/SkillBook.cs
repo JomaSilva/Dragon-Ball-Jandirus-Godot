@@ -34,6 +34,12 @@ public enum Recusa
 	TierTrancado,
 	AguardaAcendedor,
 	Apagada,
+
+	/// <summary>
+	/// A skill esta FECHADA pra compra: o unico efeito dela e um verb cujo sistema este port ainda nao tem -- ver
+	/// <see cref="SkillsFechadas"/>. (No FIM do enum: o cliente e o servidor leem a mesma lista.)
+	/// </summary>
+	ForaDoPort,
 }
 
 /// <summary>
@@ -631,6 +637,8 @@ public sealed class SkillBook
 		v.TierDaSkill = s.Tier;
 
 		if (Sabe(path)) return v.Com(Recusa.JaSabe);
+		// FECHADA: nem raca, nem arvore, nem marco a abre -- o sistema dela nao existe aqui. Ver `SkillsFechadas`.
+		if (SkillsFechadas.De(path) != null) return v.Com(Recusa.ForaDoPort);
 		if (s.SoVilao && !vilao) return v.Com(Recusa.SoVilao);
 		if (!cat.Permitida(s, raca, classe, vilao)) return v.Com(Recusa.RacaOuClasse);
 

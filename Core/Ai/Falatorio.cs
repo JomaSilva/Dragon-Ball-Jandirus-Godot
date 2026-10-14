@@ -269,6 +269,33 @@ public sealed class Falatorio
 	/// </summary>
 	public bool Ligado;
 
+	/// <summary>
+	/// A VOZ DO BICHO, ou nulo em gente. O dono, 2026-10-13: *"os animais quando estao lutando, eles falam igual um npc
+	/// normal durante combate, eles deveriam fazer o som de seus respectivos sprites/animais"*.
+	///
+	/// COM ELA, TODA OCASIAO DE FALA SAI COMO UM SOM DA ESPECIE: as duas de quem apanha (`Apanhar`, `NoFio`) e os tres
+	/// avisos de recurso pela lista de FERIDO, todas as outras pela de BRAVO. Os dois relogios, as chances e as
+	/// histereses sao os de gente -- o lobo rosna na cadencia em que um lutador provocaria. Quem a escreve e o
+	/// `Npc.Animais.MenteDeBicho`, pela folha de sprite da especie.
+	/// </summary>
+	public VozDeBicho? Bicho;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--animaisteste`): a voz do bicho e ignorada, e o cerebro dele volta a entregar frase
+	/// de gente. Lido pela propria porta das frases (<see cref="DaLista"/>). Falso em jogo, sempre.
+	/// </summary>
+	public static bool BichoFalaComoGenteDeTeste;
+
+	/// <summary>
+	/// UMA FRASE DESTA LISTA -- ou, na boca de um bicho, um som da especie (<see cref="Bicho"/>): o de ferido quando a
+	/// ocasiao e de quem apanha ou esta no limite, o de bravo em todas as outras.
+	/// </summary>
+	private string DaLista(string[] deGente, bool ferido, Random rng)
+	{
+		string[] lista = Bicho is { } voz && !BichoFalaComoGenteDeTeste ? (ferido ? voz.Ferido : voz.Bravo) : deGente;
+		return lista[rng.Next(lista.Length)];
+	}
+
 	/// <summary>Os dois relogios andam. Chamado uma vez por tique, pelo <see cref="Cerebro.Pensar"/>.</summary>
 	public void Tique(double dt)
 	{
@@ -352,7 +379,7 @@ public sealed class Falatorio
 		_ => 0,
 	};
 
-	private static string Escolher(Momento m, Random rng)
+	private string Escolher(Momento m, Random rng)
 	{
 		string[] lista = m switch
 		{
@@ -365,7 +392,7 @@ public sealed class Falatorio
 			Momento.NoFio => NoFio,
 			_ => SoltandoORaio,   // `ContraFeixe` e `Disparar`: as duas sao "solto o raio"
 		};
-		return lista[rng.Next(lista.Length)];
+		return DaLista(lista, ferido: m is Momento.Apanhar or Momento.NoFio, rng);
 	}
 
 	/// <summary>
@@ -394,20 +421,20 @@ public sealed class Falatorio
 
 		string? frase = null;
 
-		if (p.KiFrac <= KiQuePreocupa) { if (!_avisouKi && Pode()) { _avisouKi = true; frase = SemKi[rng.Next(SemKi.Length)]; } }
+		if (p.KiFrac <= KiQuePreocupa) { if (!_avisouKi && Pode()) { _avisouKi = true; frase = DaLista(SemKi, ferido: true, rng); } }
 		else if (p.KiFrac >= KiQuePreocupa + Folga) _avisouKi = false;
 
 		if (p.FolegoFrac <= FolegoQuePreocupa)
 		{
 			if (frase == null && !_avisouFolego && Pode())
-			{ _avisouFolego = true; frase = SemFolego[rng.Next(SemFolego.Length)]; }
+			{ _avisouFolego = true; frase = DaLista(SemFolego, ferido: true, rng); }
 		}
 		else if (p.FolegoFrac >= FolegoQuePreocupa + Folga) _avisouFolego = false;
 
 		if (p.VidaFrac <= VidaQuePreocupa)
 		{
 			if (frase == null && !_avisouVida && Pode())
-			{ _avisouVida = true; frase = Ferido[rng.Next(Ferido.Length)]; }
+			{ _avisouVida = true; frase = DaLista(Ferido, ferido: true, rng); }
 		}
 		else if (p.VidaFrac >= VidaQuePreocupa + FolgaDaVida) _avisouVida = false;
 
@@ -422,7 +449,7 @@ public sealed class Falatorio
 	public string? DeRecarga(Random rng)
 	{
 		if (!Ligado || !Pode()) return null;
-		return Carregando[rng.Next(Carregando.Length)];
+		return DaLista(Carregando, ferido: false, rng);
 	}
 
 	/// <summary>
@@ -488,3 +515,10 @@ public enum Momento
 	/// </summary>
 	Disparar,
 }
+
+/// <summary>
+/// A VOZ DE UM BICHO: os sons que a especie faz no lugar das frases -- os de quem ATACA e os de quem APANHA (ou esta
+/// no limite). So o formato: a tabela por especie mora com os bichos (`Npc.Animais.VozDe`), e este arquivo nao
+/// conhece nenhum deles.
+/// </summary>
+public sealed record VozDeBicho(string[] Bravo, string[] Ferido);

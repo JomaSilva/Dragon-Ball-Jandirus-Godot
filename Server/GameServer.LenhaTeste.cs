@@ -532,20 +532,42 @@ public sealed partial class GameServer
 			doVizinho.BrigandoComAlguem = 0;
 
 			// ============================================================ 5) SEM SOCO NAO PAGA
-			GD.Print("[lenha] -- 5) o tiro de ki nao derruba; e a arvore que cai sem soco (o chao que racha, o arremesso) vira toco e nao paga --");
+			GD.Print("[lenha] -- 5) a arvore que cai sem soco (o tiro de ki, o chao que racha, o arremesso) vira toco e nao paga --");
 
-			// O TIRO DE KI: uma bola de verdade (`Disparar`), do chao, colada na arvore e apontada pra ela.
+			// ============================ O TIRO DE KI DERRUBA, E NAO PAGA (dono, 2026-10-13) ============================
+			// *"esferas de ki, kiai etc deveriam quebrar paredes assim como soco"*: a arvore e TILE, e o tiro bate nela pela
+			// regra do tile -- o limiar e o sorteio do soco no cenario, 34% por bola (`BaterNoCenarioComKi`). Ate a v0.2.0
+			// esta linha afirmava o contrario ("pro tiro ela e parede: ki nao derruba lenha"), e desde o item 27 ela so
+			// passava quando o sorteio poupava a arvore: duas rodadas em tres. Bolas de verdade (`Disparar`), do chao,
+			// coladas na arvore e apontadas pra ela, ate ela ceder.
+			// ==============================================================================================================
 			(int X, int Y, TileDeArvore Tile) c0 = Arvore();
 			pl.Pos = AoSul(c0.X, c0.Y);
 			pl.Facing = Facing.North;
 			antes = pl.Ficha.Recursos;
-			Projetil bola = Disparar(pl, BolaDaMira(), rumoDado: new Vec2(0, -1));
-			VoarAteAcabar(bola);
-			double doTronco = Math.Sqrt((bola.Pos - Meio(c0.X, c0.Y)).LengthSquared) / T;
-			AfirmarLenha("o TIRO DE KI morre na arvore (pro tiro ela e parede): ela continua de pe, nao vira toco e ninguem recebe -- ki nao derruba lenha",
-						 !Voo.AtravessaCenario(pl.Altitude) && !bola.Vivo && doTronco <= 1.5 && mapa.BlockedCell(c0.X, c0.Y)
-						 && ArvoreDePe(terra, c0.X, c0.Y) && !TocoDeTeste(terra, c0.X, c0.Y) && pl.Ficha.Recursos == antes,
-						 $"a bola acabou a {doTronco:0.0} tile(s) do tronco");
+			int BolasAteCair(int max)
+			{
+				int dadas = 0;
+				while (dadas < max && mapa.BlockedCell(c0.X, c0.Y))
+				{
+					VoarAteAcabar(Disparar(pl, BolaDaMira(), rumoDado: new Vec2(0, -1)));
+					dadas++;
+				}
+				return dadas;
+			}
+			Jandirus.Core.Combat.KiContraCorpo.KiNaoEstragaCenarioDeTeste = true;
+			try
+			{
+				int emVao = BolasAteCair(40);
+				AfirmarLenha("(defeito injetado: o ki nao estraga cenario) quarenta bolas na arvore e ela continua de pe, parede pro tiro -- a v0.2.0",
+							 emVao == 40 && mapa.BlockedCell(c0.X, c0.Y) && ArvoreDePe(terra, c0.X, c0.Y) && !TocoDeTeste(terra, c0.X, c0.Y));
+			}
+			finally { Jandirus.Core.Combat.KiContraCorpo.KiNaoEstragaCenarioDeTeste = false; }
+			int bolas = BolasAteCair(60);
+			AfirmarLenha("**O TIRO DE KI DERRUBA A ARVORE PELA REGRA DO TILE** (o sorteio do soco no cenario): ela cai e vira toco -- e NAO PAGA ninguem, que madeira e do soco",
+						 !Voo.AtravessaCenario(pl.Altitude) && bolas is >= 1 and < 60 && !mapa.BlockedCell(c0.X, c0.Y)
+						 && TocoDeTeste(terra, c0.X, c0.Y) && pl.Ficha.Recursos == antes,
+						 $"{bolas} bola(s) ate cair");
 
 			(int X, int Y, TileDeArvore Tile) c1 = Arvore();
 			pl.Pos = AoSul(c1.X, c1.Y);
@@ -894,10 +916,12 @@ public sealed partial class GameServer
 			finally { ZoneCollision.CelulaAbertaIgnoraObraDeTeste = false; }
 
 			// ...e o que NAO muda: a celula caida SEM obra densa continua chao (a do piso, logo acima), e a parede do
-			// arquivo que ninguem abriu continua parede (a arvore em que a bola de ki morreu, que nunca caiu).
+			// arquivo que ninguem abriu continua parede (uma arvore em que ninguem encostou -- a do tiro de ki, que servia
+			// de controle aqui, hoje cai).
+			(int X, int Y, TileDeArvore Tile) intocada = Arvore();
 			AfirmarLenha("...e o resto fica como era: a celula de arvore caida SEM maquina continua aberta (anda-se por ela), e a arvore do mapa que esta de pe continua parede",
 						 !mapa.BlockedCell(i2.X, i2.Y) && mapa.Aberta(i2.X, i2.Y) && mapa.BloqueadaNoArquivo(i2.X, i2.Y)
-						 && mapa.BlockedCell(c0.X, c0.Y) && mapa.BloqueadaNoArquivo(c0.X, c0.Y) && !mapa.Aberta(c0.X, c0.Y));
+						 && mapa.BlockedCell(intocada.X, intocada.Y) && mapa.BloqueadaNoArquivo(intocada.X, intocada.Y) && !mapa.Aberta(intocada.X, intocada.Y));
 
 			UmaPassada();
 			bool tocoSobAMaquina = TocoAVistaDeTeste(terra, i3.X, i3.Y);

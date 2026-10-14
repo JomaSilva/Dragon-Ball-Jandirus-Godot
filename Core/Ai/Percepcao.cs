@@ -51,6 +51,15 @@ public readonly struct Percepcao
 	/// <summary>Fracao do folego (0..1). E o gate da carga: sem folego a carga PARA sozinha.</summary>
 	public double FolegoFrac { get; init; }
 
+	/// <summary>O folego ABSOLUTO -- a moeda das tecnicas que nao cobram Ki (<see cref="Tiro.CustoDeFolego"/>).</summary>
+	public double Folego { get; init; }
+
+	/// <summary>
+	/// HA KI ALHEIO VINDO PRA CIMA DESTE CORPO? So e perguntado (a 30 Hz, sem criar lista) pra quem sabe uma tecnica
+	/// que REBATE -- ver <see cref="Exige.TiroVindo"/> e `GameServer.HaTiroVindo`. Falso pra todo o resto do mundo.
+	/// </summary>
+	public bool HaTiroVindo { get; init; }
+
 	public bool Caido { get; init; }
 
 	/// <summary>Atordoado agora (o `stagger` do DM). Guardar atordoado e a metade defensiva do `npc_defensive_check`.</summary>
@@ -100,6 +109,17 @@ public readonly struct Percepcao
 	/// ==========================================================================================================
 	/// </summary>
 	public bool LinhaLivre { get; init; }
+
+	/// <summary>
+	/// O RUMO (unitario) DO PROXIMO PASSO ATE O ALVO, QUANDO HA PAREDE ENTRE NOS. Zero = a linha reta serve (ou
+	/// ninguem sabe, ou nao ha por onde ir) -- e ai vale a <see cref="Direcao"/>.
+	///
+	/// O dono, 2026-10-13: *"n sabe fazer path finding e fica andando contra a parede"*. Quem traca o caminho e o
+	/// servidor (`GameServer.DesvioDaIa`, com o `World.Caminho`), umas cinco vezes por segundo por corpo e so quando
+	/// a linha reta esta barrada; entre uma leitura e outra ele so reaponta pro ponto da vez. Nao e clarividencia: e
+	/// o que qualquer um ve olhando o mapa -- a casa, e a porta dela.
+	/// </summary>
+	public Vec2 Desvio { get; init; }
 
 	// =====================================================================
 	// A ARENA -- so existe quando o servidor a poe (torneio, bancada)
@@ -163,6 +183,22 @@ public readonly struct Percepcao
 	public int Segurando { get; init; }
 
 	/// <summary>
+	/// ESTOU APERTANDO O PESCOCO DE QUEM SEGURO (v0.2.1) -- o `Estrangulando` do proprio corpo, custo zero. O soco de
+	/// quem segura nao soca: ALTERNA o aperto (`GameServer.EstrangularEmVezDeSocar`), e quem aperta nao anda. O
+	/// cerebro precisa do estado pra dar UM pulso na hora de apertar e UM na hora de afrouxar: sem ele o aperto
+	/// piscava a cada soco da rajada, e o passo que arremessa era recusado sempre que caia num tique de aperto. Ver
+	/// `Cerebro.ComAPresaNaMaoDoRepertorio`.
+	/// </summary>
+	public bool Estrangulando { get; init; }
+
+	/// <summary>
+	/// A PRESA ESTA NO COLO (v0.2.1) -- o segundo modo do agarrao (`ModoDeAgarrao.Carregando`), em que o Espigao e o
+	/// Arrasto a deixam. No colo, andar LEVA a presa junto em vez de arremessar: quem a solta e o terceiro toque da
+	/// tecla de agarrar. Outro campo do proprio corpo, custo zero. Ver `Cerebro.ComAPresaNaMaoDoRepertorio`.
+	/// </summary>
+	public bool CarregandoAPresa { get; init; }
+
+	/// <summary>
 	/// O HAKAI PEGARIA O ALVO AGORA? -- a resposta da MESMA pergunta que o verb faz antes de apagar alguem (o torso
 	/// em 15% ou menos e o poder ao menos 25% abaixo, `KitDoDeus.HakaiPega`). Falso pra quem nao carrega o kit, e
 	/// pra o corpo cujo Hakai foi desligado nesta luta.
@@ -198,6 +234,15 @@ public readonly struct Percepcao
 			return d.LengthSquared > 1e-6f ? d.Normalized() : Vec2.Zero;
 		}
 	}
+
+	/// <summary>HA PAREDE ENTRE NOS, e o servidor achou por onde dar a volta? Ver <see cref="Desvio"/>.</summary>
+	public bool TemParede => Desvio.LengthSquared > 1e-6f;
+
+	/// <summary>
+	/// PRA ONDE ANDAR PRA CHEGAR NELE: o <see cref="Desvio"/> quando ha parede no meio, senao a linha reta. E o rumo
+	/// de toda receita que FECHA a distancia; quem se afasta continua usando a <see cref="Direcao"/> ao contrario.
+	/// </summary>
+	public Vec2 RumoAoAlvo => TemParede ? Desvio : Direcao;
 
 	/// <summary>Em que faixa de altura eu estou (0 = chao). Ver <see cref="Voo.Andar"/>.</summary>
 	public int MeuAndar => Voo.Andar(MinhaAltitude);

@@ -736,9 +736,10 @@ public partial class GameClient : Node
 	/// <summary>A lista de nomes (ou o meu direito sobre este chao) mudou.</summary>
 	/// <summary>
 	/// O SERVIDOR RESPONDEU O QUE DA PRA LEVAR de quem esta nocauteado ao meu alcance: (id do caido, nome dele,
-	/// a lista). Chega depois do verbo `saquear` sem argumento, e de novo depois de cada item levado.
+	/// a lista, e o zeni e os recursos que ele carrega). Chega depois do verbo `saquear` sem argumento, e de novo
+	/// depois de cada coisa levada. O id ZERO manda fechar: nao ha mais caido ao alcance.
 	/// </summary>
-	public event Action<int, string, List<Jandirus.Core.Items.Pilha>>? SaqueAberto;
+	public event Action<int, string, List<Jandirus.Core.Items.Pilha>, double, double>? SaqueAberto;
 
 	public event Action? NomesDosPlanetasMudaram;
 
@@ -881,6 +882,17 @@ public partial class GameClient : Node
 	public List<EsferaInfo> Esferas { get; private set; } = [];
 	public event Action? EsferasMudaram;
 
+	/// <summary>
+	/// UMA COISA LARGADA NO CHAO DESTA ZONA -- um item, um monte de zeni ou uma bolsa de recursos (`S2C.Chao`; a
+	/// regra esta em `Core/Items/Chao.cs`). `Pos` e o centro da celula em que ela esta.
+	/// </summary>
+	public readonly record struct LargadoInfo(int Id, Jandirus.Core.Items.TipoDeLargado Tipo, string Item,
+											  double Quantidade, Vector2 Pos);
+
+	/// <summary>O chao da zona em que eu estou: a lista inteira, trocada a cada `S2C.Chao`.</summary>
+	public List<LargadoInfo> Largados { get; private set; } = [];
+	public event Action? ChaoMudou;
+
 	/// <summary>Uma Super Esfera ao meu alcance, no espaco. Dono vazio = livre.</summary>
 	public readonly record struct SuperInfo(int Numero, Vector2 Pos, string Dono, bool Minha);
 
@@ -899,6 +911,17 @@ public partial class GameClient : Node
 	/// </summary>
 	public Jandirus.Core.Verbos.Fatos Fatos { get; private set; }
 	public event Action? FatosMudaram;
+
+	/// <summary>
+	/// UM PEDIDO QUE ESPERA A MINHA RESPOSTA (`S2C.Pedidos`): de que tipo (o fato dele -- e por ele que se acham os
+	/// verbs de responder, `PedidosPendentes.Respostas`), o que dizer, e quantos segundos faltavam quando o pacote
+	/// chegou (0 = sem prazo).
+	/// </summary>
+	public readonly record struct PedidoInfo(Jandirus.Core.Verbos.Fatos Fato, string Texto, int Segundos);
+
+	/// <summary>Os pedidos pendentes de agora: a lista inteira, trocada a cada `S2C.Pedidos`. Quem desenha e o `PainelDePedidos`.</summary>
+	public List<PedidoInfo> Pedidos { get; private set; } = [];
+	public event Action? PedidosMudaram;
 
 	/// <summary>Um dominio meu que ainda esta de pe -- uma das saidas do refugio (a opcao B1).</summary>
 	public readonly record struct RefugioDominio(string Chave, string Nome, bool Escolhido, float Minutos);
@@ -1799,6 +1822,19 @@ public partial class GameClient : Node
 				// ZERO NAO E UM TIPO, e virar nulo AQUI e o que impede o resto do cliente de carregar um
 				// `TipoDeFusao` invalido: os valores sao os `FType` do DM (1, 2, 3) e nao ha o 0.
 				byte tipoFus = reader.GetByte();
+				// AS MARCAS DO CORPO, o ultimo byte (2026-10-13): o bit 0 e o potencial desperto na pele. Vai na
+				// PROPRIA ficha visual -- ver `Appearance.PotencialNaPele` pro porque de ela nao viajar no `GetAppearance`.
+				// O BIT 1 E O SCOUTER NO ROSTO, e depois do byte vem a folha dos pesos que o corpo veste (vazia = nenhum)
+				// -- ver `Items.EquipamentoNoCorpo`.
+				byte marcas = reader.GetByte();
+				ap.PotencialNaPele = (marcas & 1) != 0;
+				ap.ScouterNoRosto = (marcas & 2) != 0;
+				// (v0.2.1) os bits 2 e 3: as luvas e as botas de dreno vestidas.
+				ap.LuvasDeDreno = (marcas & 4) != 0;
+				ap.BotasDeDreno = (marcas & 8) != 0;
+				ap.NoBarco = (marcas & 16) != 0;   // o bit 4: o barco embaixo de quem veleja
+				ap.CapaceteDoRelogio = (marcas & 32) != 0;   // o bit 5: o capacete do "Henshin!"
+				ap.PesosNoCorpo = reader.GetString(120);
 				PeerLooked?.Invoke(quem, nome, raca, genero, ap,
 					tipoFus == 0 ? null : (Jandirus.Core.Social.TipoDeFusao)tipoFus);
 				break;
@@ -1923,8 +1959,10 @@ public partial class GameClient : Node
 					var onde = reader.GetVec();
 					// AS FLAGS VEM NO FIM: bit 0 = nasceu invisivel (a lamina de ar do Kiai).
 					bool invisivel = (reader.GetByte() & 1) != 0;
+					// ...E DEPOIS DELAS, O SOM (`Core.Combat.SomDeKi`): com que arquivo o tiro sai.
+					byte som = reader.GetByte();
 					TiroNasceu?.Invoke(new NascimentoDeProjetil(
-						tiro, dono, tipo, arte, escala, altura, onde, invisivel));
+						tiro, dono, tipo, arte, escala, altura, onde, invisivel, som));
 				}
 				else if (sub == Protocol.ProjetilSub.Cortou)
 				{
@@ -2114,6 +2152,21 @@ public partial class GameClient : Node
 				break;
 			}
 
+			// O QUE ESTA LARGADO NO CHAO DA ZONA -- a lista inteira, sempre. Quem desenha e o `World.DesenharOChao`,
+			// e quem oferece pegar e o menu da tecla E. Ver `Protocol.S2C.Chao`.
+			case Protocol.S2C.Chao:
+			{
+				int n = reader.GetUShort();
+				var l = new List<LargadoInfo>(n);
+				for (int i = 0; i < n; i++)
+					l.Add(new LargadoInfo(reader.GetInt(), (Jandirus.Core.Items.TipoDeLargado)reader.GetByte(),
+						// 64, como o `GetInventario`: o livro e a roupa guardada carregam os dados NO ID.
+						reader.GetString(64), reader.GetDouble(), new Vector2(reader.GetFloat(), reader.GetFloat())));
+				Largados = l;
+				ChaoMudou?.Invoke();
+				break;
+			}
+
 			// O MENU DO DRAGAO: a janela de desejos. Quem le o pacote mora em `GameClient.Desejos.cs`.
 			case Protocol.S2C.MenuDoDragao:
 				LerOMenuDoDragao(reader);
@@ -2138,6 +2191,18 @@ public partial class GameClient : Node
 				Fatos = (Jandirus.Core.Verbos.Fatos)reader.GetUInt();
 				FatosMudaram?.Invoke();
 				break;
+
+			// OS PEDIDOS QUE ESPERAM A MINHA RESPOSTA -- a lista inteira. Ver `Protocol.S2C.Pedidos`.
+			case Protocol.S2C.Pedidos:
+			{
+				int n = reader.GetByte();
+				var l = new List<PedidoInfo>(n);
+				for (int i = 0; i < n; i++)
+					l.Add(new PedidoInfo((Jandirus.Core.Verbos.Fatos)reader.GetUInt(), reader.GetString(240), reader.GetUShort()));
+				Pedidos = l;
+				PedidosMudaram?.Invoke();
+				break;
+			}
 
 			// O KI DIVINO: o meu retrato (medidor do despertar e maestria) e o despertar de alguem por perto.
 			// Quem le os dois e `GameClient.GodKi.cs`.
@@ -2615,8 +2680,8 @@ public partial class GameClient : Node
 				break;
 			}
 
-			// O QUE DA PRA LEVAR DE QUEM ESTA CAIDO AQUI -- a resposta do verbo `saquear`. Quem a desenha e o
-			// menu da tecla E (`MenuDeInteracao.AoAbrirSaque`). Ver `Protocol.S2C.Saque`.
+			// O QUE DA PRA LEVAR DE QUEM ESTA CAIDO AQUI -- a resposta do verbo `saquear`. Quem a desenha e a tela
+			// da mochila, aberta na mochila DELE (`TelaDeInventario.AbrirSaque`). Ver `Protocol.S2C.Saque`.
 			case Protocol.S2C.Saque:
 			{
 				int caido = reader.GetInt();
@@ -2630,7 +2695,9 @@ public partial class GameClient : Node
 					int quantos = reader.GetUShort();
 					if (idDoItem.Length > 0 && quantos > 0) leva.Add(new Jandirus.Core.Items.Pilha(idDoItem, quantos));
 				}
-				SaqueAberto?.Invoke(caido, nomeDoCaido, leva);
+				// A CARTEIRA DELE, no fim: o que da pra roubar de cada saldo.
+				double zeniDoCaido = reader.GetDouble(), recursosDoCaido = reader.GetDouble();
+				SaqueAberto?.Invoke(caido, nomeDoCaido, leva, zeniDoCaido, recursosDoCaido);
 				break;
 			}
 

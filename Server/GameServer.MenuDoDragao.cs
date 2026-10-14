@@ -479,6 +479,13 @@ public sealed partial class GameServer
 				e.Motivo = "Não há ninguém para trazer de volta.";
 				return e;
 			}
+
+			if (d.Id == "potencial" && JaTemOOrange(pl))
+			{
+				e.Pode = false;
+				e.Motivo = "O dragão já liberou tudo o que dormia em você.";
+				return e;
+			}
 		}
 
 		// ---------------------------------------------------------- "pra mim ou pra outra pessoa?"

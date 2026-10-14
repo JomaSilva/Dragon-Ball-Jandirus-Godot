@@ -1502,10 +1502,13 @@ public partial class GameServer
 				// **Se esta linha reprovar, a resposta certa nao e subir o numero**: e ler a linha "a leitura de
 				// capacidades de UM corpo aloca SO a resposta", logo abaixo, que diz se o lixo novo mora na leitura.
 				// ======================================================================================================================
-				Checa("a leitura de capacidades (1 Hz) so aloca a RESPOSTA -- o array de `Tiro` do arsenal (72 B com um "
-					+ "tiro); o catalogo de formas, as perguntas e o passo custam zero (linhas abaixo); se esta linha "
-					+ "reprovar, alguem pos um laco novo no caminho",
-					  b20 < 52, $"{b20} B por tique (media) com 20 corpos -- a resposta sozinha da 48");
+				// (v0.2.1) NEM A RESPOSTA: o array do arsenal passou a ser do CORPO, reescrito no lugar a cada leitura
+				// (`ServerPlayer.ArsenalDaIa`) -- com a tabela em 32 linhas, um array novo por segundo seria o maior
+				// lixo deste caminho. O teto fica onde estava: quem trouxer um array de volta soma +48 e reprova.
+				Checa("a leitura de capacidades (1 Hz) nao deixa lixo -- nem o array de `Tiro` do arsenal, que e do corpo "
+					+ "e se reescreve no lugar; o catalogo de formas, as perguntas e o passo custam zero (linhas abaixo); "
+					+ "se esta linha reprovar, alguem pos um laco novo no caminho",
+					  b20 < 52, $"{b20} B por tique (media) com 20 corpos -- um array novo por leitura daria 48 ou mais");
 
 				// ============================ AS CINCO PERGUNTAS, SOZINHAS -- E O CONTRA-EXEMPLO ============================
 				// O total de cima diz QUANTO; esta diz ONDE. Sao as mesmas `SabeTecnica` que a `LerCapacidades`
@@ -1573,10 +1576,10 @@ public partial class GameServer
 					HashSet<LinhaDeForma> conjunto = Catalogo.LinhasAbertas(perfilDaAmostra);
 					long lixoDoConjunto = GC.GetAllocatedBytesForCurrentThread() - s0;
 
-					Checa("a leitura de capacidades de UM corpo aloca SO a resposta -- o array de `Tiro` do arsenal; as 46 "
-						+ "`Avaliar` do `Proxima` nao montam conjunto nem lambda",
-						  lida.DeLonge.TemAlguma && lixoDaLeitura == tamanhoDaResposta,
-						  $"{lixoDaLeitura} B; um array de {doMesmoTamanho.Length} tiro(s) custa {tamanhoDaResposta} B");
+					Checa("a leitura de capacidades de UM corpo aloca ZERO -- o arsenal reescreve o array do proprio corpo "
+						+ "(v0.2.1), o repertorio de luta tambem, e as 46 `Avaliar` do `Proxima` nao montam conjunto nem lambda",
+						  lida.DeLonge.TemAlguma && lixoDaLeitura == 0 && tamanhoDaResposta > 0,
+						  $"{lixoDaLeitura} B; um array NOVO de {doMesmoTamanho.Length} tiro(s) custaria {tamanhoDaResposta} B por leitura");
 					Checa("[contra-exemplo] o CONJUNTO de linhas (`Catalogo.LinhasAbertas`, que o `Avaliar` montava 43 vezes "
 						+ "por leitura) aloca -- o instrumento enxerga o caminho antigo",
 						  lixoDoConjunto > 0 && conjunto.Contains(LinhaDeForma.Saiyajin), $"{lixoDoConjunto} B por conjunto");
@@ -1643,8 +1646,10 @@ public partial class GameServer
 				// expectativa exata tem que ser corrigida no MESMO commit em que a tabela cresce, como
 				// qualquer outra afirmacao de conjunto.
 				// ======================================================================================
+				// (v0.2.1) TRINTA E DUAS: todo verb que poe tiro no mundo ganhou linha (dono, 2026-10-13: *"deveriam
+				// usar todas as skills disponiveis"*). Quem cobra que o numero acompanhe o jogo e a `--catalogoteste`.
 				Checa("as tecnicas que VIAJAM estao na tabela de ataque de longe",
-					  TecnicasDeLonge.Alguma && TecnicasDeLonge.Quantas == 4,
+					  TecnicasDeLonge.Alguma && TecnicasDeLonge.Quantas == 32,
 					  $"{TecnicasDeLonge.Quantas} registradas");
 				Checa("...e as instantaneas continuam FORA (o `Light_Buster` e golpe de aproximacao)",
 					  TecnicasDeLonge.Get("Light_Buster") == null && TecnicasDeLonge.Get("Solar_Flare") == null);
@@ -1682,10 +1687,20 @@ public partial class GameServer
 				// `NiveisDeSkill.VerbosAtivos()` respondia sem que ninguem perguntasse. Foi esta
 				// afirmacao que achou a funcao orfa: um corpo com o catalogo inteiro saia com UMA opcao.
 				// ========================================================================================
-				Checa($"o corpo que aprendeu o catalogo INTEIRO ({aprendidas} skills) sai com o RAIO e a "
-					+ "BALA DISPERSA -- os dois que uma skill destrava",
-					  sabido.Cerebro.Poderes.DeLonge.Quantas == 2,
-					  $"{sabido.Cerebro.Poderes.DeLonge.Quantas} opcoes");
+				// (v0.2.1) Com a tabela em 32 linhas, "os dois que uma skill destrava" viraram VINTE: a conta
+				// certa nao e um numero escrito aqui, e a mesma pergunta do jogador feita linha a linha.
+				static bool NoArsenal(Arsenal a, string id)
+				{
+					for (int i = 0; i < a.Quantas; i++) if (a[i].Id == id) return true;
+					return false;
+				}
+				int deSkill = TecnicasDeLonge.Todas.Count(l => SabeTecnica(sabido, l.Id));
+				Arsenal doSabido = sabido.Cerebro.Poderes.DeLonge;
+				Checa($"o corpo que aprendeu o catalogo INTEIRO ({aprendidas} skills) sai com TODO tiro que uma skill "
+					+ "destrava -- o RAIO e a BALA DISPERSA entre eles -- e sem os dois que so vem por NIVEL",
+					  doSabido.Quantas == deSkill && deSkill >= 15 && NoArsenal(doSabido, "Ki_Wave") && NoArsenal(doSabido, "Scattering_Bullet")
+					  && !NoArsenal(doSabido, "Basic_Blast") && !NoArsenal(doSabido, "Guided_Ball"),
+					  $"{doSabido.Quantas} opcoes; a pergunta do jogador diz {deSkill}");
 
 				// E AGORA OS DEGRAUS, pelo caminho de producao (o mesmo `DoSave` do login).
 				var comNiveis = new NivelSave();
@@ -1694,9 +1709,10 @@ public partial class GameServer
 				sabido.Niveis.DoSave(comNiveis);
 
 				sabido.Cerebro.Poderes = LerCapacidades(sabido);
-				Checa("...e subindo os degraus que concedem as outras duas, o arsenal sai com as QUATRO",
-					  sabido.Cerebro.Poderes.DeLonge.Quantas == 4,
-					  $"{sabido.Cerebro.Poderes.DeLonge.Quantas} opcoes");
+				Checa("...e subindo os degraus que concedem as outras duas, elas ENTRAM no arsenal",
+					  sabido.Cerebro.Poderes.DeLonge.Quantas == deSkill + 2
+					  && NoArsenal(sabido.Cerebro.Poderes.DeLonge, "Basic_Blast") && NoArsenal(sabido.Cerebro.Poderes.DeLonge, "Guided_Ball"),
+					  $"{sabido.Cerebro.Poderes.DeLonge.Quantas} opcoes (eram {deSkill})");
 				Checa("...e o jogo passa a ACEITAR os verbs vindos de nivel (`SabeTecnica`, o mesmo gate)",
 					  SabeTecnica(sabido, "Basic_Blast") && SabeTecnica(sabido, "Guided_Ball"));
 
@@ -1767,30 +1783,96 @@ public partial class GameServer
 					var cerebro = new Cerebro { Inteligencia = 1.0, Disciplina = 1.0 };
 					cerebro.Poderes = LerCapacidades(sabido);
 					var rng = new Random(20260812);
-					int pediu = 0, planejou = 0;
+					int pediu = 0, planejou = 0, deOutroAndar = 0;
 					var quais = new HashSet<string>();
 					for (int i = 0; i < 10_000; i++)
 					{
+						// (v0.2.1) METADE DOS ALVOS NO CHAO. A varredura sorteava a altura do alvo em todo o ceu e deixava
+						// o corpo no chao: com o tiro guardando a altura de quem atira (`Voo.PodeAcertar`), do chao nao ha
+						// tiro que alcance quem esta no ar -- e o cerebro passou a saber disso. Sem alvo no chao, o plano
+						// de atirar seria inalcancavel PELA REGRA, e nao pelo gancho.
+						bool alvoNoAr = rng.Next(2) == 0;
 						var p = new Percepcao
 						{
 							TemAlvo = true, IdDoAlvo = 4242, Minha = Vec2.Zero,
 							DoAlvo = new Vec2((float)(rng.NextDouble() * 1200 - 600), 0),
-							AltitudeDoAlvo = (float)(rng.NextDouble() * Voo.AlturaMaxima),
-							AlvoVoando = rng.Next(2) == 0, AlvoSeMovendo = rng.Next(2) == 0,
+							AltitudeDoAlvo = alvoNoAr ? (float)(rng.NextDouble() * Voo.AlturaMaxima) : 0f,
+							AlvoVoando = alvoNoAr, AlvoSeMovendo = rng.Next(2) == 0,
 							LinhaLivre = rng.Next(2) == 0,
 							VidaFrac = rng.NextDouble(), KiFrac = rng.NextDouble(),
 							Ki = rng.NextDouble() * 5000, FolegoFrac = rng.NextDouble(),
 							MeuPoder = 1000, PoderDoAlvo = rng.NextDouble() * 5000,
 						};
 						Comando c = cerebro.Pensar(p, Protocol.TickSeconds, rng);
-						if (c.Habilidade is { Length: > 0 } id) { pediu++; quais.Add(id); }
+						if (c.Habilidade is { Length: > 0 } id)
+						{
+							pediu++;
+							quais.Add(id);
+							if (TecnicasDeLonge.Get(id) != null && !p.AlcancoPelaAltura) deOutroAndar++;
+						}
 						if (cerebro.Atual == Plano.Atirar) planejou++;
 					}
+					// (v0.2.1) ...E UMA CENA CALMA NO FIM. A varredura troca a cena INTEIRA a cada tique -- o andar do alvo,
+					// a linha de visao, o Ki --, e um gesto que pede o pe plantado por meio segundo so se completa nela por
+					// sorte: desde que o tiro guarda a altura de quem atira, a sorte ficou rara demais pra uma afirmacao
+					// (medido: 209 pedidos, nenhum deles um tiro). Vinte segundos com o alvo parado no chao, a seis tiles,
+					// com a linha livre e os tanques cheios: aqui o tiro TEM de sair.
+					//
+					// E ELA MEDE O PRAZO DO RECUO. O cerebro esperto escolhe primeiro o tiro mais forte que cabe no
+					// tanque -- a Genkidama, cuja janela comeca a oito tiles -- e recua pra abrir a distancia. Nesta cena a
+					// distancia NAO ABRE (a percepcao e fixa: e o corpo encurralado numa parede). Com o prazo ele desiste
+					// do tiro, manda-o pro fim da fila e solta os outros; sem o prazo, recua os vinte segundos inteiros.
+					(int Tiros, HashSet<string> Quais, double Recuando) Calma()
+					{
+						var calmo = new Cerebro { Inteligencia = 1.0, Disciplina = 1.0 };
+						calmo.Poderes = LerCapacidades(sabido);
+						var sorte = new Random(20261013);
+						int tiros = 0, recuando = 0;
+						var pedidas = new HashSet<string>();
+						for (int i = 0; i < 600; i++)
+						{
+							var p = new Percepcao
+							{
+								TemAlvo = true, IdDoAlvo = 4242, Minha = Vec2.Zero,
+								DoAlvo = new Vec2(6 * ZoneCollision.TileSize, 0), LinhaLivre = true,
+								VidaFrac = 1, KiFrac = 1, Ki = sabido.Ficha.MaxKi,
+								FolegoFrac = 1, Folego = sabido.Ficha.maxstamina,
+								MeuPoder = 1000, PoderDoAlvo = 1000,
+							};
+							Comando c = calmo.Pensar(p, Protocol.TickSeconds, sorte);
+							if (calmo.Atual == Plano.Atirar && c.Rumo.X < -0.5f) recuando++;
+							if (c.Habilidade is not { Length: > 0 } id) continue;
+							pedidas.Add(id);
+							if (TecnicasDeLonge.Get(id) != null) tiros++;
+							calmo.Apertou(id);
+						}
+						return (tiros, pedidas, recuando * Protocol.TickSeconds);
+					}
+					var calma = Calma();
+					pediu += calma.Quais.Count;
+					quais.UnionWith(calma.Quais);
+					Checa("...e na cena calma (o alvo parado no chao, a seis tiles, a linha livre) o tiro SAI -- **O RECUO PRA ABRIR A JANELA TEM PRAZO**: o cerebro esperto tenta o tiro de janela longa, a distancia nao abre, e em dois segundos e meio ele desiste, manda-o pro fim da fila e solta os outros (tres ou mais em vinte segundos)",
+						  calma.Tiros >= 3 && calma.Recuando > 1.5 && calma.Recuando < 12,
+						  $"{calma.Tiros} tiro(s) em vinte segundos; {calma.Recuando:0.0} s recuando");
+					Cerebro.TiroRecuaPraSempreDeTeste = true;
+					try
+					{
+						var presa = Calma();
+						Checa("   DEFEITO INJETADO (o recuo nao tem prazo, e o tiro que morreu continua o primeiro da fila): na mesma cena o cerebro recua os vinte segundos inteiros e nao solta NENHUM tiro -- o corpo andando contra a parede",
+							  presa.Tiros == 0 && presa.Recuando > 15,
+							  $"{presa.Tiros} tiro(s); {presa.Recuando:0.0} s recuando");
+					}
+					finally { Cerebro.TiroRecuaPraSempreDeTeste = false; }
 					Checa("COM arsenal, o plano de atirar deixa de ser inalcancavel",
 						  planejou > 0, $"{planejou} tiques no plano de atirar");
+					Checa("...e NENHUM tiro e pedido de um andar que nao alcanca o alvo (v0.2.1: o tiro guarda a altura de quem atira)",
+						  deOutroAndar == 0, $"{deOutroAndar} tiro(s) pedido(s) de outro andar");
+					// (v0.2.1) "De verdade" passou a ser as DUAS tabelas: o corpo que sabe tudo tambem pede os reforcos e
+					// os socorros do repertorio de luta (`TecnicasDeLuta`), pelo mesmo cano.
 					Checa("...e o que sai sao pedidos de tecnicas DE VERDADE, pelo canal do jogador",
-						  pediu > 0 && quais.All(q => TecnicasDeLonge.Get(q) != null),
-						  $"{pediu} pedidos: {string.Join(", ", quais)}");
+						  pediu > 0 && quais.Any(q => TecnicasDeLonge.Get(q) != null)
+						  && quais.All(q => TecnicasDeLonge.Get(q) != null || Jandirus.Core.Skills.TecnicasDeLuta.Get(q) != null),
+						  $"{pediu} pedidos: {string.Join(", ", quais.Distinct())}");
 				}
 
 				// ---------- (B) O GANCHO EXERCITADO, COM UM TIRO SINTETICO ----------
@@ -2147,7 +2229,7 @@ public partial class GameServer
 					+ "e escreve `pl.Pos`",
 					  AncoraDoPasso(corpoPassoDoJogador), $"{corpoPassoDoJogador.Length} linhas");
 
-				// ============================ AS CINCO EXCECOES, E CADA UMA TEM ARGUMENTO ============================
+				// ============================ AS NOVE EXCECOES, E CADA UMA TEM ARGUMENTO ============================
 				//   * `PassoDaIa`   -- e o proprio atuador chamando a outra metade de si mesmo.
 				//   * `Advance`     -- **a assimetria de propósito do movimento**: o jogador vai por
 				//     `MoveRules.ValidateStep`, que CONFERE uma posicao que o cliente afirmou; a IA vai
@@ -2169,8 +2251,29 @@ public partial class GameServer
 				//   * `AguaNoRumo` -- a PERGUNTA que alimenta o sentido `BarradoPelaAgua` (ver a excecao de escrita,
 				//     em (b)): `static`, pura, le uma celula do mapa. Nao anda, nao cobra, nao bate -- so separa
 				//     "parei num muro" de "parei num lago" pro cerebro do tique seguinte (travessia da IA, 2026-09-07).
+				//   * `RumoComContorno` e `ContornarSeEmperrou` -- o CONTORNO da parede (v0.2.1, *"fica andando contra a
+				//     parede"*, `GameServer.CaminhoDaIa.cs`). Sao a outra metade da assimetria do `Advance`: quem GERA
+				//     o passo do jogador e o cliente, e quem desvia da parede por ele e ELE -- tem olhos e tem mao. O
+				//     corpo dirigido nao tem nenhum dos dois, entao o atuador escolhe o RUMO do passo (o primeiro) e
+				//     tenta os lados quando o passo nao rendeu (o segundo). Nenhum dos dois move o corpo por fora da
+				//     regra: o passo que sai deles e o MESMO `Advance`, com o mesmo mapa, o mesmo modo e a mesma
+				//     vizinhanca -- nao cobram, nao batem, nao atravessam nada. E so valem pro comando que o CEREBRO
+				//     montou (`Comando.DesviaDeParede`): o comando escrito a mao anda como sempre andou.
+				//   * `MaosOcupadasDaIa` -- a RECUSA do corpo que segura um ataque de ki (o raio canalizado, a disputa de
+				//     feixes, a tecnica a espera do segundo aperto). O jogador tem essa recusa dentro de cada verb (*"voce
+				//     ja esta com um raio na mao"*) e, acima de tudo, tem a tela: ele VE o raio e nao aperta outra coisa.
+				//     O cerebro nao ve -- a `Percepcao` nao tem esse campo, de proposito --, entao o atuador recusa por
+				//     ele o pulso que DESFARIA o proprio golpe (o mesmo verb de novo fecha o canal). So le tres
+				//     dicionarios; nao escreve nada. (Ate a v0.2.0 as duas perguntas estavam cruas no atuador --
+				//     `EnraizadoPorKi` e um `ContainsKey` -- e esta checagem reprovava com elas desde 2026-10-07.)
+				//   * `DepoisDoApertoDaIa` -- o SEGUNDO APERTO das tecnicas que se seguram (v0.2.1). O jogador da o
+				//     segundo aperto com o dedo; o corpo dirigido so sabe dar um pulso, e quem fecha a barragem, o rugido
+				//     e a esfera e um relogio do servidor -- o desenho do prazo do raio (`TickDoPrazoDeRaioDaIa`). A funcao
+				//     so ARMA o relogio (e avisa a escuta da bancada): o aperto em si sai pelo `UsarHabilidade`, o cano
+				//     do jogador.
 				// ==============================================================================================
-				string[] excecoesDeChamada = ["PassoDaIa", "Advance", "FacingFrom", "VizinhancaDe", "AguaNoRumo"];
+				string[] excecoesDeChamada = ["PassoDaIa", "Advance", "FacingFrom", "VizinhancaDe", "AguaNoRumo",
+											  "RumoComContorno", "ContornarSeEmperrou", "MaosOcupadasDaIa", "DepoisDoApertoDaIa"];
 
 				HashSet<string> chamaIa = ChamadasDe(corpoAtuador);
 				HashSet<string> chamaJogador = ChamadasDe(corpoJogador);
@@ -2342,6 +2445,24 @@ public partial class GameServer
 					["GameServer.FuriaLendaria.cs"] = 1,  // a furia
 					["GameServer.Tecnicas.G12.cs"] = 1,   // SO a copia do Split Form (`CriarSplitformG12`)
 					["GameServer.FotoDoBorrao.cs"] = 1,   // o palco da `--diagborrao`
+					// O GUARDIAO DO INTERIOR DO MAJIN (`ErguerOGuardiaoDoMajin`): a "imagem" que vigia o absorvido. E um
+					// `mob/npc` nascido de fabrica, e o tempero default e o que o DM da a ele -- o `AbsorbGuardian` nao
+					// declara `behavior_vals`, entao vale o `list(50,50,50,50)` de todo `mob/npc` (`NPCAI.dm:76`). Nao e
+					// POSSE: nenhum corpo de jogador recebe este cerebro.
+					["GameServer.AbsorcaoMajin.cs"] = 1,
+					// A SIMULACAO DO SIMULADOR (`CriarSimulacao`, v0.2.1): um `mob/npc/Enemy/Simulation` (`Tier2.dm:147`), que
+					// nao declara tempero e herda o de todo `mob/npc` -- o default e o literal, como na copia do Split Form.
+					// Nao e POSSE: e um corpo sem dono que nasce ao lado da maquina.
+					["GameServer.MaquinasGrandes.cs"] = 1,
+					// A CRIATURA DE UMA CAPSULA DE COMPANHEIRO (`CriarCompanheiro`, v0.2.1): um `mob/npc/pet`
+					// (`NPCs/companions.dm:240`), que nao declara `ai_intelligence` nem `ai_aggression` e herda os de todo
+					// `mob/npc` -- o default e o literal, como na copia do Split Form. Nao e POSSE: e um corpo sem dono de
+					// tela que obedece a ordem de quem o soltou.
+					["GameServer.Companheiros.cs"] = 1,
+					// O DROIDE DO SUPER COMPUTADOR (`CriarDroide`, v0.2.1): um `mob/npc/Clone` (`Geti Star.dm:9`), que so declara
+					// `hasAI=1` e herda o tempero de todo `mob/npc` -- o default e o literal, como na copia do Split Form. Nao e
+					// POSSE: e um corpo sem dono de tela que obedece a ordem de quem o montou.
+					["GameServer.SuperComputador.cs"] = 1,
 				};
 
 				static int LinhasQueFabricam(string[] linhas) => linhas.Count(linhaCrua =>
@@ -2375,7 +2496,7 @@ public partial class GameServer
 					}
 				}
 				Checa("(d) so os arquivos ARGUMENTADOS fabricam cerebro (molde, reflexo, fera, furia, copia do Split "
-					+ "Form, palco do borrao), e cada um so as vezes que o argumento cobre -- uma posse nova nasceria "
+					+ "Form, palco do borrao, guardiao do Majin, simulacao do simulador, criatura de capsula, droide do super computador), e cada um so as vezes que o argumento cobre -- uma posse nova nasceria "
 					+ "com o tempero default, que APARA e RECARREGA",
 					  foraDaConta.Count == 0, string.Join(", ", foraDaConta));
 				List<string> contaErrada =
@@ -5241,9 +5362,11 @@ public partial class GameServer
 				// **Se esta linha reprovar, a resposta certa nao e subir o numero**: e olhar se a
 				// pergunta nova cabia numa das que ja passam por aqui.
 				// ======================================================================================================
-				Checa("...e a leitura de 1 Hz de um corpo ARMADO so aloca a RESPOSTA -- o array de tres `Tiro` (168 B "
-					+ "por leitura, 112 B por tique com 20 corpos); lingua, emocao, catalogo e perguntas custam zero",
-					  lixoLeitura < 120, $"{lixoLeitura} B por tique (media) com 20 corpos -- a resposta sozinha da 112");
+				// (v0.2.1) O array do arsenal e do corpo e se reescreve no lugar: a leitura de um corpo armado tambem
+				// passou a custar zero. O teto fica -- quem trouxer o array de volta soma 112 e reprova.
+				Checa("...e a leitura de 1 Hz de um corpo ARMADO nao deixa lixo -- nem o array de `Tiro`, que e do corpo; "
+					+ "lingua, emocao, catalogo e perguntas custam zero",
+					  lixoLeitura < 120, $"{lixoLeitura} B por tique (media) com 20 corpos -- um array novo por leitura daria 112 ou mais");
 
 				foreach (ServerPlayer c in caros) c.Cerebro = null;
 			}

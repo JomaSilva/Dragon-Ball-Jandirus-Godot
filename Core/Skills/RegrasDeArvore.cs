@@ -474,7 +474,9 @@ public sealed class ContextoDeRegra
 
 	/// <summary>O port tem este contador? (o censo pergunta isto pra dizer o que falta.)</summary>
 	public static bool PortConhece(string ident) =>
-		ident is "invested" or "Class" or "Race" || Campo(ident) != null;
+		ident is "invested" or "Class" or "Race" || Campo(ident) != null
+		// (2026-10-13) ...ou o servidor responde por ele sem que seja campo da ficha -- ver `AcendedoresDoPort`
+		|| AcendedoresDoPort.EDoServidor(ident);
 
 	private static FieldInfo? Campo(string nome)
 	{

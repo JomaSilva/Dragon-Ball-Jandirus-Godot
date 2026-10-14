@@ -399,17 +399,82 @@ public static class Animais
 	///     `Aproximar`; isto so poupa o bicho de socar o ar tentando). Ele fecha a distancia CORRENDO -- ver
 	///     <see cref="VelocidadeDoPasso"/>;
 	///   * A DISTANCIA DE BOTE no lugar da de gente -- ver <see cref="DistanciaDoBote"/>;
-	///   * MUDO: bicho nao grita "Toma essa!" no chat.
+	///   * A VOZ E A DA ESPECIE: bicho nao grita "Toma essa!" no chat -- rosna, uiva, muge. Ver <see cref="VozDe"/>.
 	///
 	/// O resto sai do molde como em todo NPC: `inteligencia` 0 (nunca apara, nunca para pra reunir ki),
 	/// `coragem` (quando recua) e `furia` (o quanto o golpe sai pesado).
 	/// </summary>
-	public static void MenteDeBicho(Ai.Cerebro c)
+	public static void MenteDeBicho(Ai.Cerebro c, string folha)
 	{
 		c.AlcanceDaInvestida = 0;
 		c.ChanceDeInvestir = 0;
 		c.DistanciaIdeal = DistanciaDoBote;
-		c.Boca.Ligado = false;
+		c.Boca.Bicho = VozDe(folha);
+	}
+
+	// =====================================================================
+	// A VOZ -- o som de cada especie
+	// =====================================================================
+
+	/// <summary>
+	/// ============================ O SOM DE CADA BICHO, PELA FOLHA DE SPRITE DELE ============================
+	/// O dono, 2026-10-13: *"os animais quando estao lutando, eles falam igual um npc normal durante combate, eles
+	/// deveriam fazer o som de seus respectivos sprites/animais"*.
+	///
+	/// E TEXTO, E NAO AUDIO: o jogo nao tem arquivo de som de bicho nenhum (o unico rugido da pasta, `Roar.wav`, e o do
+	/// Oozaru), e o original tambem nao tinha. O que o bicho "diz" sai pelo MESMO funil da fala de todo corpo
+	/// (`GameServer.Falar`): aparece no balao sobre ele e no chat de quem esta perto, e o som que termina em "!" e
+	/// grito -- o rugido do leao se ouve de mais longe que o coaxar do sapo.
+	///
+	/// DUAS LISTAS POR ESPECIE: a de BRAVO (atacando, vencendo) e a de FERIDO (apanhando, no limite). Quem escolhe
+	/// entre as duas e o cerebro, pela ocasiao (`Ai.Falatorio.Bicho`). Nenhum som se repete entre especies -- a
+	/// bancada `--animaisteste` cobra --, entao da pra saber quem rosnou sem olhar.
+	///
+	/// A CHAVE E A FOLHA (`FichaDeAnimal.Folha`), e nao o id do molde: e o SPRITE que diz que bicho e aquele, e duas
+	/// especies do `npcs.json` desenhadas com a mesma folha tem de soar igual.
+	/// ==========================================================================================================
+	/// </summary>
+	private static readonly Dictionary<string, Ai.VozDeBicho> Vozes = new(StringComparer.OrdinalIgnoreCase)
+	{
+		["Wolf"] = new(["Grrrrr...", "Auuuuuuu!", "Grrrau! Grrrau!"], ["Cain! Cain!", "Uuuuh..."]),
+		["Animal Lion"] = new(["ROOOAAAR!", "Rrrrrrrr...", "RAAAUR!"], ["Grruuuh...", "Rrruh..."]),
+		["Animal DinoBird"] = new(["SKREEEEE!", "KRAAAA!", "Graaak! Graaak!"], ["Skriiih...", "Kruuu..."]),
+		["Animal Bat"] = new(["Skriii! Skriii!", "Iiiic! Iiiic!", "Tsiii!"], ["Iiic...", "Tsii..."]),
+		["Animal Cow"] = new(["Muuuuuu!", "MUUU!"], ["Muuuh...", "Mmmuu..."]),
+		["Animal Chicken"] = new(["Có! Có có có!", "Cocoricóóó!"], ["Pó pó pó...", "Cóóó..."]),
+		["Animal, Frog"] = new(["Croac! Croac!", "Rebbit!"], ["Croooac...", "Coax..."]),
+		["NPC Sheep"] = new(["Bééééé!", "Mééé!"], ["Bééé...", "Mééh..."]),
+		["Turtle"] = new(["Hsssss!", "Fssss!"], ["Hsss...", "Fff..."]),
+	};
+
+	/// <summary>A voz de um bicho cuja folha nao esta na tabela (especie nova no `npcs.json`): bicho nenhum fala como gente.</summary>
+	private static readonly Ai.VozDeBicho VozQualquer = new(["Rrrrr!", "Grah!"], ["Nhh..."]);
+
+	/// <summary>A voz da especie desta folha de sprite. Nunca nula: folha sem voz propria ganha a <see cref="VozQualquer"/>.</summary>
+	public static Ai.VozDeBicho VozDe(string folha) => Vozes.GetValueOrDefault(folha) ?? VozQualquer;
+
+	/// <summary>Esta folha tem voz PROPRIA na tabela? A bancada cobra as nove de <see cref="Folhas"/>.</summary>
+	public static bool TemVozPropria(string folha) => Vozes.ContainsKey(folha);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--animaisteste`): o funil da fala deixa passar o que quer que chegue na boca de um
+	/// bicho. Lido pela propria <see cref="NaBocaDoBicho"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool BichoFalaLinguaDeGenteDeTeste;
+
+	/// <summary>
+	/// O QUE SAI DA BOCA DE UM BICHO, venha a frase de onde vier: ela mesma, se ja e um som da especie; senao, um som de
+	/// bravo no lugar. E A SEGUNDA TRANCA -- quem escolhe o som certo pela ocasiao e o cerebro (`Ai.Falatorio.Bicho`), e
+	/// esta fica no funil da fala do servidor (`GameServer.Falar`), pro caminho de fala que nasca amanha sem saber que
+	/// bicho existe.
+	/// </summary>
+	public static string NaBocaDoBicho(string folha, string texto, Random rng)
+	{
+		if (BichoFalaLinguaDeGenteDeTeste) return texto;
+		Ai.VozDeBicho voz = VozDe(folha);
+		return Array.IndexOf(voz.Bravo, texto) >= 0 || Array.IndexOf(voz.Ferido, texto) >= 0
+			? texto
+			: voz.Bravo[rng.Next(voz.Bravo.Length)];
 	}
 
 	/// <summary>DEFEITO INJETADO (bancada): o manso passa a cacar como o bravo. Lido pelo `GuiarOAnimal`.</summary>

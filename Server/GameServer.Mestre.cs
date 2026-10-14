@@ -46,7 +46,8 @@ public sealed record PedidoDeMestre(bool Despertar, string SigMestre, string Nom
 /// ==============================================================================================
 ///
 /// ============================ E O QUE ELE FAZ SAO TRES COISAS ============================
-///   1. **Ganho** -- treinar contra o proprio mestre paga ate 3x (piso 1,2x). Ver
+///   1. **Ganho** -- treinar contra o proprio mestre paga de 2x a 3x (o piso e do dono: `GainKnobs.MasterGainMin`),
+///      e contra um COLEGA -- outro aluno do mesmo mestre -- 1,5x (<see cref="EhColegaDeMestre"/>). Ver
 ///      <see cref="EhMeuMestre"/>: e o segundo parametro do `Fighter.FightGainMult`, que estava
 ///      escrito e **orfao** desde que foi portado -- sete chamadores, todos passando um argumento
 ///      so. Ligar o discipulado e passar o bit nesses sete pontos.
@@ -141,6 +142,18 @@ public partial class GameServer
 		return MestreDe(aluno.Assinatura) == outro.Assinatura;
 	}
 
+	/// <summary>
+	/// ESTE OUTRO E MEU COLEGA? -- os dois tem mestre, e e o MESMO (dono, 2026-10-13). A irma do
+	/// <see cref="EhMeuMestre"/>, perguntada no mesmo lugar (a cada golpe que rende ganho) e do mesmo jeito: duas
+	/// consultas a dicionario. Vale nos dois sentidos -- cada um dos dois ganha o bonus quando e a vez dele de ganhar.
+	/// </summary>
+	private bool EhColegaDeMestre(ServerPlayer aluno, ServerPlayer? outro)
+	{
+		if (outro == null || outro == aluno || !EhPessoa(aluno) || !EhPessoa(outro)) return false;
+		string meu = MestreDe(aluno.Assinatura);
+		return meu.Length > 0 && meu == MestreDe(outro.Assinatura);
+	}
+
 	/// <summary>O corpo online daquela assinatura, se houver. `mst_mob_of` (`:75`).</summary>
 	private ServerPlayer? CorpoDaAssinatura(string sig) =>
 		sig.Length == 0 ? null : _players.Values.FirstOrDefault(p => EhPessoa(p) && p.Assinatura == sig);
@@ -163,8 +176,10 @@ public partial class GameServer
 				 + $"({ContarAlunos(mestre.Assinatura)}/{Discipulado.MaxAlunos})");
 		Avisar(mestre, $"{aluno.Name} aceita ser seu aluno "
 					 + $"({ContarAlunos(mestre.Assinatura)}/{Discipulado.MaxAlunos}).");
-		Avisar(aluno, $"{mestre.Name} agora e seu mestre. Treinar contra ele rende ate 3x mais, "
-					+ "e ele pode te guiar numa transformacao.");
+		Avisar(aluno, $"{mestre.Name} agora e seu mestre. Treinar contra ele rende de "
+					+ $"{Jandirus.Core.Stats.GainKnobs.MasterGainMin:0.#}x a {Jandirus.Core.Stats.GainKnobs.MasterGainCap:0.#}x mais "
+					+ $"(e contra outro aluno dele, {Jandirus.Core.Stats.GainKnobs.ColegaDeMestreGain:0.#}x), "
+					+ "e ele pode te guiar numa transformacao e te ensinar o que sabe.");
 	}
 
 	/// <summary>

@@ -33,11 +33,13 @@ namespace Jandirus.Server;
 ///   7. O MANSO         nao ataca; apanhou, foge
 ///   8. O BRAVO         ataca quem chega perto, pelas pernas (corre, nao investe); nao voa, nao usa ki;
 ///                      larga na borda do territorio e da tregua a quem derrubou
+///   8b. A VOZ          o som da especie no lugar da frase: no cerebro (pela ocasiao) e no funil da fala
 ///   9. A CACA          cai e morre, a carcaca, a carne, o saque; sem karma nem reputacao; a pata nao cai
 ///  10. A CARNE         alimenta mais que a maca, pela mesma porta
 ///  11. SEM ABUSO       nada de Zenkai, de treino apanhando nem de bonus de luta
 ///
-/// ONZE DEFEITOS INJETADOS (`Animais.*DeTeste`, cada um lido pela propria linha da regra) e os contra-exemplos
+/// TREZE DEFEITOS INJETADOS (`Animais.*DeTeste` e o `Falatorio.BichoFalaComoGenteDeTeste`, cada um lido pela propria
+/// linha da regra) e os contra-exemplos
 /// de dado e de gente (o molde invalido, o cidadao morto pelo mesmo caminho, o corpo de gente destrocado, o
 /// braco de gente arrancado).
 ///
@@ -301,9 +303,10 @@ public sealed partial class GameServer
 			Checa("**A FORCA DE CADA UM E A DO MOLDE**, e o poder expresso bate com ela",
 				  bichos.All(b => b.Ficha.BP == Animais.BpDe(b.Papel!.Molde) && b.Ficha.expressedBP / b.Ficha.BP is > 0.9 and < 1.3),
 				  string.Join(", ", bichos.Select(b => $"{b.Name} {b.Ficha.BP:0}/{b.Ficha.expressedBP:0}")));
-			Checa("nenhum sabe skill, voa ou usa ki; nenhum fala e nenhum investe",
+			Checa("nenhum sabe skill, voa ou usa ki; nenhum investe, e a voz de cada um e a da especie dele",
 				  bichos.All(b => b.Livro.Aprendidas.Count == 0 && b.Perfil == PerfilDeCombate.SoCorpo && !PodeVoar(b)
-								  && b.Cerebro is { ChanceDeInvestir: 0, AlcanceDaInvestida: 0 } c && !c.Boca.Ligado));
+								  && b.Cerebro is { ChanceDeInvestir: 0, AlcanceDaInvestida: 0 } c && c.Boca.Ligado
+								  && ReferenceEquals(c.Boca.Bicho, Animais.VozDe(b.Papel!.Molde.Animal!.Folha))));
 			Checa("o passo de todos e o de bicho (pouco mais da metade do passo de gente), e nao o que a ficha daria",
 				  bichos.All(b => b.SpeedStat == Animais.VelocidadeDoPasso), $"x{Animais.VelocidadeDoPasso}");
 			Checa("**BICHO SO DERRUBA**: o golpe de todos e o nao-letal, e a mordida nao arremessa ninguem (o voo contra a parede mataria por fora do golpe)",
@@ -604,6 +607,82 @@ public sealed partial class GameServer
 				  $"lobo correndo {lobocorrendo:0} px/s; jogador andando {genteAndando:0}, correndo {genteCorrendo:0}");
 			Checa("...e so corpo a corpo: nao voa, nao solta ki, nao carrega energia nem ergue guarda",
 				  !voou && !guardou && !carregou && ProjeteisDaZona(terra.Hash).Count == projeteisAntes);
+
+			// ================================================================ 8b. a voz
+			GD.Print("[animais] -- 8b) a voz do bicho: o som da especie no lugar da frase --");
+			VozDeBicho vozDoLobo = Animais.VozDe("Wolf");
+			bool SomDeLobo(string som) => vozDoLobo.Bravo.Contains(som) || vozDoLobo.Ferido.Contains(som);
+			Checa("**CADA ESPECIE TEM O SOM DELA**: as nove folhas de bicho tem voz propria, com som de quem ataca e de quem apanha, e nenhum som se repete entre especies",
+				  Animais.Folhas.All(folha => Animais.TemVozPropria(folha) && Animais.VozDe(folha) is { Bravo.Length: > 0, Ferido.Length: > 0 })
+				  && Animais.Folhas.SelectMany(folha => Animais.VozDe(folha).Bravo.Concat(Animais.VozDe(folha).Ferido)).GroupBy(som => som).All(grupo => grupo.Count() == 1)
+				  && !Animais.TemVozPropria("Unicornio") && Animais.VozDe("Unicornio").Bravo.Length > 0,
+				  string.Join("; ", Animais.Folhas.Select(folha => $"{folha}: {Animais.VozDe(folha).Bravo[0]}")));
+
+			// o cerebro, ocasiao por ocasiao (o `Falatorio` puro, com os relogios dele)
+			var boca = new Falatorio { Ligado = true, Bicho = vozDoLobo };
+			var sorte = new Random(7);
+			List<string> Ditas(Momento ocasiao)
+			{
+				var ditas = new List<string>();
+				for (int i = 0; i < 2000 && ditas.Count < 12; i++)
+				{
+					boca.Tique(Falatorio.PausaDeCombate);
+					if (boca.DeCombate(ocasiao, sorte) is { } dita) ditas.Add(dita);
+				}
+				return ditas;
+			}
+			Momento[] deAtaque = [Momento.Finalizar, Momento.AbrirEspaco, Momento.Rajada, Momento.Socar, Momento.Vencer, Momento.ContraFeixe, Momento.Disparar];
+			Momento[] deDor = [Momento.Apanhar, Momento.NoFio];
+			bool ataqueCerto = deAtaque.All(ocasiao => Ditas(ocasiao) is { Count: 12 } dele && dele.All(som => vozDoLobo.Bravo.Contains(som)));
+			bool dorCerta = deDor.All(ocasiao => Ditas(ocasiao) is { Count: 12 } dele && dele.All(som => vozDoLobo.Ferido.Contains(som)));
+			string? queixa = boca.Aviso(new Percepcao { TemAlvo = true, KiFrac = 0.1, FolegoFrac = 1, VidaFrac = 1 }, sorte);
+			Checa("**O CEREBRO ESCOLHE O SOM PELA OCASIAO**: nas sete ocasioes de ataque sai um som de bravo; nas duas de quem apanha, e no aviso de quem esta no limite, um de ferido -- nunca uma frase",
+				  ataqueCerto && dorCerta && queixa != null && vozDoLobo.Ferido.Contains(queixa), $"ataque {ataqueCerto}; dor {dorCerta}; aviso '{queixa}'");
+			Falatorio.BichoFalaComoGenteDeTeste = true;
+			try
+			{
+				List<string> deGente = Ditas(Momento.Socar);
+				Checa("(defeito injetado: a voz do bicho e ignorada) o cerebro volta a entregar frase de gente -- a regua sabe reprovar",
+					  deGente.Count == 12 && !deGente.Any(SomDeLobo), string.Join(" | ", deGente.Distinct()));
+			}
+			finally { Falatorio.BichoFalaComoGenteDeTeste = false; }
+
+			// a briga de verdade, pelo tique de producao: o que chega ao funil da fala
+			var ouvidas = new List<(int Quem, Protocol.Fala Canal, string Texto)>();
+			EscutaDeFalas = ouvidas;
+			try
+			{
+				Refazer(cacador, 5000);
+				Mudar(lobo, pista + new Vec2(24 * T, 0));
+				cacador.Pos = lobo.Pos + new Vec2(-3 * T, 0);
+				Tiques(1800, () => ouvidas.Count(fala => fala.Quem == lobo.Id) >= 3);
+				List<(int Quem, Protocol.Fala Canal, string Texto)> doLobo = [.. ouvidas.Where(fala => fala.Quem == lobo.Id)];
+				Checa("**BRIGANDO, O LOBO FAZ SOM DE LOBO**: pelo tique de producao, o que sai da boca dele durante a briga chega ao funil da fala como rosnado e uivo -- e nada alem disso",
+					  doLobo.Count >= 3 && doLobo.All(fala => fala.Canal == Protocol.Fala.Diz && SomDeLobo(fala.Texto)),
+					  doLobo.Count == 0 ? "o lobo nao abriu a boca em um minuto de briga" : string.Join(" | ", doLobo.Select(fala => fala.Texto)));
+
+				// o funil: a segunda tranca
+				ouvidas.Clear();
+				AndarORelogio(1000);
+				Falar(lobo, Protocol.Fala.Diz, "Toma essa!");
+				AndarORelogio(1000);
+				Falar(lobo, Protocol.Fala.Emote, "fareja o ar.");
+				Checa("**O FUNIL E A SEGUNDA TRANCA**: uma frase de gente que chegue a fala de um bicho, venha de onde vier, sai como som da especie -- e o emote (a narracao do que ele fez) passa como e",
+					  ouvidas.Count == 2 && ouvidas[0].Canal == Protocol.Fala.Diz && SomDeLobo(ouvidas[0].Texto)
+					  && ouvidas[1].Canal == Protocol.Fala.Emote && ouvidas[1].Texto == "fareja o ar.",
+					  string.Join(" | ", ouvidas.Select(fala => $"{fala.Canal}: {fala.Texto}")));
+				Animais.BichoFalaLinguaDeGenteDeTeste = true;
+				try
+				{
+					ouvidas.Clear();
+					AndarORelogio(1000);
+					Falar(lobo, Protocol.Fala.Diz, "Toma essa!");
+					Checa("(defeito injetado: o funil deixa o bicho falar) a frase de gente sai da boca do lobo como foi escrita -- a regua sabe reprovar",
+						  ouvidas.Count == 1 && ouvidas[0].Texto == "Toma essa!");
+				}
+				finally { Animais.BichoFalaLinguaDeGenteDeTeste = false; }
+			}
+			finally { EscutaDeFalas = null; }
 
 			// a investida, pedida na mao: o golpe pesado de longe com o alvo marcado
 			cacador.Pos = pista;

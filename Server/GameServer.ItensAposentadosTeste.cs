@@ -202,12 +202,18 @@ public partial class GameServer
 			}
 
 			// ---------------------------------------------------------------- 5. o Staff de depois fica
-			GD.Print("[aposentados] -- 5) o Staff comprado DEPOIS e o cajado magico, e fica --");
+			GD.Print("[aposentados] -- 5) o Staff de DEPOIS e o cajado magico, e fica --");
 			comprador.Ficha.techskill = 1;
 			comprador.Ficha.Zeni = 1500;
+			// (v0.2.1) O CAJADO MAGICO FECHOU PRA VENDA (`TechFechada`: ele pede o sistema de magia, e era vendido como um
+			// item que nao faz nada): a bancada de hoje o recusa sem cobrar. Quem o comprou entre 2026-10-10 e a v0.2.1
+			// continua com ele -- e e esse save que este passo monta, pondo o cajado na mochila pela mao.
 			List<string> compra = Ouvir(() => Construir(comprador, "Staff"));
-			AfirmarAp("com tech 1 e 1.000 zeni a bancada de hoje FABRICA o Staff (o cajado): ele entra na mochila e o zeni sai",
-					  comprador.Mochila.Quantos("Staff") == 1 && comprador.Ficha.Zeni == 500, Ultimos(compra));
+			AfirmarAp("a bancada de hoje NAO fabrica mais o Staff (o cajado magico fechou: pede o sistema de magia): nada entra na mochila e nenhum zeni sai",
+					  comprador.Mochila.Quantos("Staff") == 0 && comprador.Ficha.Zeni == 1500 && compra.Exists(f => f.Contains("ainda não existe neste jogo")),
+					  Ultimos(compra));
+			comprador.Mochila.Guardar("Staff");
+			comprador.Ficha.Zeni = 500;
 			conta.Slots[1] = AccountStore.DeJogador(comprador, 0);
 			loja.Gravar(conta);
 			CharacterSave? comCajado = loja.Carregar("bancada_aposentados")?.Slots[1];

@@ -1125,8 +1125,8 @@ public partial class GameServer
 		MarcarAgressao(d, a);
 
 		// O bit do mestre, igual ao soco comum -- ver o bloco em `GameServer.Combat.cs`.
-		a.Ficha.AttackGain(_rng, a.Ficha.FightGainMult(d.Ficha, EhMeuMestre(a, d)));
-		if (r.Encostou) d.Ficha.AttackGain(_rng, d.Ficha.FightGainMult(a.Ficha, EhMeuMestre(d, a)));
+		a.Ficha.AttackGain(_rng, a.Ficha.FightGainMult(d.Ficha, EhMeuMestre(a, d), EhColegaDeMestre(a, d)));
+		if (r.Encostou) d.Ficha.AttackGain(_rng, d.Ficha.FightGainMult(a.Ficha, EhMeuMestre(d, a), EhColegaDeMestre(d, a)));
 
 		// o contra-ataque de guarda perfeita vale contra tecnica tambem: quem bloqueou na hora
 		// certa devolve, venha o golpe de um soco ou de uma espada de Ki

@@ -126,6 +126,8 @@ public partial class MenuJogo
 		RecusaObra.RacaErrada => "não é da sua raça",
 		RecusaObra.LugarOcupado => "lugar ocupado",
 		RecusaObra.ZonaProibida => "não aqui",
+		// (v0.2.1) a oferta fechada -- os itens de magia, que pedem um sistema que este jogo ainda nao tem (`TechFechada`)
+		RecusaObra.ForaDoPort => "ainda não existe neste jogo",
 		_ => "?",
 	};
 

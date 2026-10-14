@@ -1240,6 +1240,7 @@ public partial class GameServer
 			ServerPlayer anciao = Forjar("rc: o do Cla do Dragao", CorredorLivre(6), 5000);
 			anciao.Race = "Namekian";
 			anciao.Class = "Dragon clan";
+			(anciao.Livro ??= new Jandirus.Core.Skills.SkillBook()).Dar(Jandirus.Core.Skills.AcendedoresDoPort.EstatuaDoDragao);   // (2026-10-13) a estatua pede a skill dela -- ver `ErguerEstatua`
 			_tronos["guardian"] = anciao.Conta;   // na Terra quem ergue estatua e o Guardiao
 			int NaTerra() => _sets.Count(s => s.Zona.Hash == terra.Hash);
 			int ComOSupremo() => _sets.Count(s => s.Zona.Hash == terra.Hash && s.TemSupremo);

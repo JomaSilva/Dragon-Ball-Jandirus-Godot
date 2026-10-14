@@ -61,6 +61,36 @@ public partial class RoboDaRaiva : Node
 	/// </summary>
 	private string _ondeLi = "";
 
+	/// <summary>
+	/// O MAIS ALTO que o Ki do dono chegou NA FICHA DESTE CLIENTE desde o ultimo `_picoDoKi = 0`, em razao do tanque
+	/// (1,4 = 140%). Anotado a cada quadro, inclusive nos de espera do roteiro.
+	///
+	/// O SALTO DA FURIA SE MEDE POR ELE, E NAO SO PELA BARRA DE AGORA. Desde 2026-10-13 o Ki acima do tanque ESCORRE
+	/// (item 33 do pedido da v0.2.1 -- `CargaDeKi.VazamentoPorSegundo`: 2,5% do tanque por segundo a 140%), entao a
+	/// barra lida um segundo depois do salto ja esta tres pontos abaixo do teto. A checagem antiga ("a barra de agora
+	/// esta a tres pontos do teto") passou a depender da DEMORA da leitura: passava raspando numa linha e reprovava na
+	/// seguinte, com a regra certa nos dois casos. Ver <see cref="OKiSaltouProTeto"/>.
+	/// </summary>
+	private double _picoDoKi;
+
+	/// <summary>
+	/// Quanto a barra pode ter perdido entre o salto e a leitura sem que isso seja "o salto se desfez": uns tres
+	/// segundos de vazamento a 140% (`0,5% + 5% x 0,4` = 2,5% do tanque por segundo).
+	/// </summary>
+	private const double FolgaDoVazamento = 0.08;
+
+	/// <summary>
+	/// O KI SALTOU PRO TETO DE CARGA -- E CONTINUA LA EM CIMA? Duas perguntas:
+	///   * o PICO desde o ultimo `_picoDoKi = 0` encostou no teto: o salto aconteceu, e foi pro teto (nem mais, nem menos);
+	///   * a barra de AGORA ainda esta perto dele: so perdeu o que o vazamento explica, e nao o salto inteiro (que e o
+	///     que "atravessou a transformacao" quer dizer nos passos 3 e 5).
+	/// </summary>
+	private bool OKiSaltouProTeto(GameClient cli) =>
+		Math.Abs(_picoDoKi - cli.Sheet.TetoKi) < 0.03 && RazaoDeKiNaFicha(cli) > cli.Sheet.TetoKi - FolgaDoVazamento;
+
+	private string OKiEmTexto(GameClient cli) =>
+		$"pico {_picoDoKi * 100:0}%, agora {RazaoDeKiNaFicha(cli) * 100:0}% do tanque, teto {cli.Sheet.TetoKi * 100:0}%";
+
 	private void Afirmar(string nome, bool cond, string detalhe = "")
 	{
 		if (cond) { _ok++; GD.Print($"[draiva]   OK    {nome}" + (detalhe.Length > 0 ? $"   [{detalhe}]" : "")); }
@@ -97,6 +127,9 @@ public partial class RoboDaRaiva : Node
 			_assinou = true;
 			TravarALuzDoPalco();
 		}
+
+		// o pico do Ki na ficha, quadro a quadro -- inclusive nos quadros de espera do roteiro (ver `_picoDoKi`)
+		_picoDoKi = Math.Max(_picoDoKi, RazaoDeKiNaFicha(cli));
 
 		_espera -= delta;
 		if (_espera > 0) return;
@@ -329,6 +362,7 @@ public partial class RoboDaRaiva : Node
 		GD.Print("[draiva] -- 1) o amigo MORRE na frente dele (sem ter caido antes) --");
 		int presosAntes = Transformacao.PresosDeTeste;
 		int vermelhosAntes = emPazNaTela?.Vermelhos ?? 0;
+		_picoDoKi = 0;
 		srv.AbaterOAmigoDeTeste(morreu: true);
 		yield return 0.1;
 		Transformacao? cena = null;
@@ -344,9 +378,8 @@ public partial class RoboDaRaiva : Node
 				$"camada {som.CamadaDeTeste}, faixa '{som.FaixaDeTeste.GetFile()}'");
 		(NivelDeRaiva Nivel, double Raiva, double RazaoDeKi, double Teto)? noTopo = srv.RaivaDeTeste(eu);
 		Afirmar("o servidor diz FURIA EXTREMA", noTopo?.Nivel == NivelDeRaiva.Extrema, noTopo?.Nivel.ToString() ?? "?");
-		Afirmar("**O KI DO DONO SALTA PRO TETO DE CARGA** -- na ficha que chegou pelo fio (a barra do HUD)",
-				Math.Abs(RazaoDeKiNaFicha(cli) - cli.Sheet.TetoKi) < 0.03 && cli.Sheet.TetoKi > 1.01,
-				$"Ki {RazaoDeKiNaFicha(cli) * 100:0}% do tanque, teto {cli.Sheet.TetoKi * 100:0}%");
+		Afirmar("**O KI DO DONO SALTA PRO TETO DE CARGA** -- na ficha que chegou pelo fio (a barra do HUD): o pico encosta no teto, e dali em diante so escorre",
+				OKiSaltouProTeto(cli) && cli.Sheet.TetoKi > 1.01, OKiEmTexto(cli));
 
 		// ---- A CENA SEM VERMELHO (dono, 2026-10-11; a divergencia do `Murder.dm:146-150` esta em `Cinematicas.Furia`) ----
 		if (cena != null && IsInstanceValid(cena))
@@ -404,6 +437,7 @@ public partial class RoboDaRaiva : Node
 
 		// ------------------------------------------------------------ 1b. MEDITAR ACALMA (o tema fica, o Ki fica)
 		GD.Print("[draiva] -- 1b) ele senta pra meditar: a raiva se desfaz, o tema continua, o Ki fica --");
+		double kiAoSentar = RazaoDeKiNaFicha(cli);
 		bool sentou = srv.MeditarDeTeste(eu, sentar: true);
 		yield return 0.8;
 		(NivelDeRaiva Nivel, double Raiva, double RazaoDeKi, double Teto)? calmo = srv.RaivaDeTeste(eu);
@@ -413,9 +447,15 @@ public partial class RoboDaRaiva : Node
 		Afirmar("...o TEMA da raiva continua tocando (so um tema de transformacao ou outra furia o calam, `BattleMusic.dm:138` e `:151`)",
 				TemaDaRaivaNoAr(som) && som.TocandoDeTeste, $"camada {som.CamadaDeTeste}");
 		aura = AuraNormal(eu);
-		Afirmar("...e o Ki que a furia deu NAO e devolvido: a barra continua no teto e a aura normal continua acesa",
-				Math.Abs(RazaoDeKiNaFicha(cli) - cli.Sheet.TetoKi) < 0.05 && aura.Acesa,
-				$"Ki {RazaoDeKiNaFicha(cli) * 100:0}%, aura acesa={aura.Acesa}");
+		// O QUE "NAO E DEVOLVIDO" QUER DIZER DESDE 2026-10-13: o Ki acima do tanque ESCORRE sozinho, sentado ou de pe
+		// (item 33 do pedido da v0.2.1 -- ver `_picoDoKi`). Ate ali esta linha cobrava "a barra continua no teto", e isso
+		// deixou de ser a regra: uns oito segundos depois do salto a barra esta em ~125%. O que meditar NAO pode fazer e
+		// TIRAR o Ki: ele continua bem acima do tanque, e nos 0,8 s sentado so perdeu o que o vazamento explica (um ponto
+		// e meio) -- e nao os vinte e tantos de um Ki devolvido aos 100%.
+		double kiSentado = RazaoDeKiNaFicha(cli);
+		Afirmar("...e o Ki que a furia deu NAO e devolvido: meditar nao o derruba pro tanque -- a barra continua acima dos 100% (so escorrendo, como todo Ki acima do tanque) e a aura normal continua acesa",
+				kiSentado > 1.05 && kiSentado > kiAoSentar - 0.05 && aura.Acesa,
+				$"Ki {kiAoSentar * 100:0}% ao sentar -> {kiSentado * 100:0}% sentado, aura acesa={aura.Acesa}");
 		srv.MeditarDeTeste(eu, sentar: false);
 
 		// ------------------------------------------------------------ 2. a luta de verdade: cai, e depois morre
@@ -430,21 +470,21 @@ public partial class RoboDaRaiva : Node
 		yield return 1.2;
 		(NivelDeRaiva Nivel, double Raiva, double RazaoDeKi, double Teto)? comum = srv.RaivaDeTeste(eu);
 		Afirmar("o amigo CAI: o servidor diz raiva COMUM, e ela vale MENOS que a extrema",
-				comum?.Nivel == NivelDeRaiva.Lendaria && noTopo != null && comum.Value.Raiva < noTopo.Value.Raiva - 0.5,
+				comum?.Nivel == NivelDeRaiva.Comum && noTopo != null && comum.Value.Raiva < noTopo.Value.Raiva - 0.5,
 				$"{comum?.Nivel}, raiva {comum?.Raiva:0.#} contra {noTopo?.Raiva:0.#} no topo");
 		Afirmar("**...e NADA acende: nenhum pacote de furia, nenhuma cena, o tema calado, o Ki onde estava, nenhuma aura**",
 				_furias.Count == 0 && CenaDaFuriaEm(eu) == null && !TemaDaRaivaNoAr(som) && RazaoDeKiNaFicha(cli) < 0.6 && !AuraNormal(eu).Acesa,
 				$"{_furias.Count} pacote(s), camada {som.CamadaDeTeste}, Ki {RazaoDeKiNaFicha(cli) * 100:0}%");
 		Fotografar("raiva-03-o-amigo-caido-so-raiva-comum");
 
+		_picoDoKi = 0;
 		srv.AbaterOAmigoDeTeste(morreu: true);
 		yield return 0.5;
 		cena = CenaDaFuriaEm(eu);
 		Afirmar("**...e ele MORRE: a cinematica e o tema VEM, mesmo pra quem ja estava com raiva do nocaute**",
 				_furias.Count == 1 && cena != null && TemaDaRaivaNoAr(som),
 				$"{_furias.Count} pacote(s), cena {(cena != null ? "viva" : "nenhuma")}, camada {som.CamadaDeTeste}");
-		Afirmar("...e o Ki salta pro teto de novo",
-				Math.Abs(RazaoDeKiNaFicha(cli) - cli.Sheet.TetoKi) < 0.03, $"Ki {RazaoDeKiNaFicha(cli) * 100:0}%");
+		Afirmar("...e o Ki salta pro teto de novo", OKiSaltouProTeto(cli), OKiEmTexto(cli));
 		for (int i = 0; i < 40 && cena != null && IsInstanceValid(cena) && cena.TempoDeTeste < 1.5; i++) yield return 0.05;
 		Fotografar("raiva-04-caiu-e-morreu-a-cena-vem");
 		foreach (object passo in EsperarACenaDaFuriaAcabar(eu)) yield return passo;
@@ -532,6 +572,7 @@ public partial class RoboDaRaiva : Node
 				emPaz is { Forma: "base", Despertou: false } && TemaDaRaivaNoAr(som),
 				$"forma {emPaz?.Forma}, despertou={emPaz?.Despertou}, camada {som.CamadaDeTeste}");
 
+		_picoDoKi = 0;
 		srv.AbaterOAmigoDeTeste(morreu: true);
 		yield return 1.0;
 		(string Forma, bool Despertou)? virou = srv.FormaDeTeste(eu, "ssj1");
@@ -541,8 +582,7 @@ public partial class RoboDaRaiva : Node
 				$"forma {virou?.Forma}, {cenas.Count} cena(s) no corpo");
 		Afirmar("**...e a cinematica da RAIVA nao toca: nenhum pacote de furia chegou, nenhuma cena de furia nasceu (nunca as duas)**",
 				_furias.Count == 0 && CenaDaFuriaEm(eu) == null, $"{_furias.Count} pacote(s) de furia");
-		Afirmar("...o Ki saltou pro teto e atravessou a transformacao",
-				Math.Abs(RazaoDeKiNaFicha(cli) - cli.Sheet.TetoKi) < 0.03, $"Ki {RazaoDeKiNaFicha(cli) * 100:0}% do tanque, teto {cli.Sheet.TetoKi * 100:0}%");
+		Afirmar("...o Ki saltou pro teto e atravessou a transformacao", OKiSaltouProTeto(cli), OKiEmTexto(cli));
 		Afirmar("**O TEMA DA TRANSFORMACAO TOMA O LUGAR DO DA RAIVA** (`BattleMusic.dm:138`: a transformation always wins)",
 				som.CamadaDeTeste == AudioDirector.Camada.Transformacao && som.FaixaDeTeste.Length > 0
 				&& !som.FaixaDeTeste.Contains("Anger Theme", StringComparison.Ordinal),
@@ -602,6 +642,7 @@ public partial class RoboDaRaiva : Node
 				antesDoDois is { Forma: "base", Despertou: false } && CenasEm(eu).Count == 0,
 				$"forma {antesDoDois?.Forma}, ssj2 despertou={antesDoDois?.Despertou}");
 
+		_picoDoKi = 0;
 		srv.AbaterOAmigoDeTeste(morreu: true);
 		yield return 1.0;
 		(string Forma, bool Despertou)? noDois = srv.FormaDeTeste(eu, "ssj2");
@@ -617,8 +658,8 @@ public partial class RoboDaRaiva : Node
 				cenas.Count == 1 && cenas[0].CenaDeTeste.Forma == "ssj2" && _furias.Count == 0,
 				$"{cenas.Count} cena(s): {string.Join(", ", cenas.Select(t => t.CenaDeTeste.Forma.Length > 0 ? t.CenaDeTeste.Forma : "furia"))}; {_furias.Count} pacote(s) de furia");
 		Afirmar("...o tema e o da transformacao, e o Ki saltou pro teto e atravessou os dois degraus",
-				som.CamadaDeTeste == AudioDirector.Camada.Transformacao && Math.Abs(RazaoDeKiNaFicha(cli) - cli.Sheet.TetoKi) < 0.03,
-				$"camada {som.CamadaDeTeste}, Ki {RazaoDeKiNaFicha(cli) * 100:0}% (teto {cli.Sheet.TetoKi * 100:0}%)");
+				som.CamadaDeTeste == AudioDirector.Camada.Transformacao && OKiSaltouProTeto(cli),
+				$"camada {som.CamadaDeTeste}, {OKiEmTexto(cli)}");
 		yield return 2.5;
 		Fotografar("raiva-08-na-base-com-os-requisitos-do-ssj2-sobe-pelo-ssj1-e-estreia-o-ssj2");
 
@@ -646,7 +687,7 @@ public partial class RoboDaRaiva : Node
 		(NivelDeRaiva Nivel, double Raiva, double RazaoDeKi, double Teto)? soRaiva = srv.RaivaDeTeste(eu);
 		(string Forma, bool Despertou)? naoVirou = srv.FormaDeTeste(eu, "ssj1");
 		Afirmar("**O AMIGO SO CAI, COM O PODER ENTRE OS DOIS PRECOS: a raiva comum acende e NADA se transforma** (nenhum pacote de forma, nenhuma cena)",
-				soRaiva?.Nivel == NivelDeRaiva.Lendaria && naoVirou is { Forma: "base", Despertou: false }
+				soRaiva?.Nivel == NivelDeRaiva.Comum && naoVirou is { Forma: "base", Despertou: false }
 				&& _formas.Count == 0 && _furias.Count == 0 && CenasEm(eu).Count == 0,
 				$"{soRaiva?.Nivel}, forma {naoVirou?.Forma}, {_formas.Count} pacote(s) de forma, {CenasEm(eu).Count} cena(s)");
 
@@ -661,7 +702,7 @@ public partial class RoboDaRaiva : Node
 		(NivelDeRaiva Nivel, double Raiva, double RazaoDeKi, double Teto)? raivaNaForma = srv.RaivaDeTeste(eu);
 		cenas = CenasEm(eu);
 		Afirmar("**COM 1,2x A PORTA, O AMIGO SO CAI E ELE VIRA SUPER SAIYAJIN SOZINHO** -- com a raiva COMUM, e pela estreia: um pacote de forma, base -> ssj1",
-				virouComAComum is { Forma: "ssj1", Despertou: true } && raivaNaForma?.Nivel == NivelDeRaiva.Lendaria
+				virouComAComum is { Forma: "ssj1", Despertou: true } && raivaNaForma?.Nivel == NivelDeRaiva.Comum
 				&& poderNoPreco >= Catalogo.AgioComumDoSaiyajin
 				&& _formas.Count == 1 && _formas[0] is { De: "base", Para: "ssj1", Degrau: DegrauDeCena.Estreia },
 				$"forma {virouComAComum?.Forma}, {raivaNaForma?.Nivel}, poder {poderNoPreco:0.00}x a porta; "

@@ -52,6 +52,29 @@ public static class SkillsAposentadas
 			"tirada em 2026-10-11: vinha de um arquivo que o jogo original nao compila (fora do .dme)"),
 		new("/datum/skill/CustomAttacks/ki/blast/Blast", "Blast", 1,
 			"tirada em 2026-10-11: vinha de um arquivo que o jogo original nao compila (fora do .dme)"),
+
+		// AS CINCO MAESTRIAS DE FORMA QUE O PROPRIO DM JA MATOU (2026-10-13). O dono mandou acabar com as skills "sem
+		// acendedor" da loja (*"verifique quais skills estao sem acendedor ..."*) e com o que esta morto (*"tem mts
+		// verbs mortos q poderiam ser tirados"*). Estas cinco pendiam de arvore, nao acendiam por caminho nenhum, e
+		// no original sao LEGADO do sistema de maestria por skill, que o rework de maestria em % substituiu:
+		//   * `forms/ssj` -- *"OBSOLETA: a skill de maestria SSJ foi removida (rework para %). ... nunca e
+		//     concedida"* (`supersaiyan.dm:214`); o proprio DM a APAGA do livro de quem a tem (`:47-56`);
+		//   * `forms/mssj` e `forms/lssjm` -- sobravam na arvore Legendary, onde *"mexem so no lssjmult orfao"*
+		//     (`supersaiyan.dm:47`): um numero que nada le. A `lssjm` nasce `enabled=0` e ninguem a acende;
+		//   * `heran/MstedMXPWR` e `heran/MstedTMXPWR` -- os `effector()` das duas estao VAZIOS: *"Maestria do Super
+		//     Heran agora cresce em % no buff Loop"* (`heran.dm:126-132`). Custavam 2 marcos e nao faziam nada.
+		// Neste port a maestria de toda forma ja sobe sozinha, com o uso (`Core/Forms`): acende-las criaria um
+		// segundo caminho de maestria, pago, que nao muda nada. Quem as tiver no livro recebe o marco de volta.
+		new("/datum/skill/forms/ssj", "Super Saiyan Mastery", 1,
+			"tirada em 2026-10-13: maestria por skill, legado do jogo original -- a maestria da forma sobe sozinha"),
+		new("/datum/skill/forms/mssj", "Mastered Super Saiyan", 1,
+			"tirada em 2026-10-13: maestria por skill, legado do jogo original -- a maestria da forma sobe sozinha"),
+		new("/datum/skill/forms/lssjm", "Mastered Legendary Super Saiyan", 1,
+			"tirada em 2026-10-13: maestria por skill, legado do jogo original -- a maestria da forma sobe sozinha"),
+		new("/datum/skill/heran/MstedMXPWR", "Mastered Max Power", 2,
+			"tirada em 2026-10-13: nao fazia nada (a maestria do Max Power sobe sozinha)"),
+		new("/datum/skill/heran/MstedTMXPWR", "Mastered true Max Power", 2,
+			"tirada em 2026-10-13: nao fazia nada (a maestria do True Max Power sobe sozinha)"),
 	];
 
 	/// <summary>Esta skill saiu do jogo?</summary>

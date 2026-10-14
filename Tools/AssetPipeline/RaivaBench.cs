@@ -17,7 +17,7 @@ namespace Jandirus.Tools;
 /// ====================================================================================
 ///
 /// ============================ O QUE ELA COBRE, E A LINHA QUE CADA UMA TRANCA ============================
-///   [1] O NIVEL DE CADA ENTRADA -- a MENOR raiva que abre cada forma: a comum (`Lendaria`) pra toda forma
+///   [1] O NIVEL DE CADA ENTRADA -- a MENOR raiva que abre cada forma: a comum (`Comum`) pra toda forma
 ///       de raiva, a `Extrema` so pro Beast, nenhuma pro resto. Tabela escrita a mao, nos dois sentidos.
 ///   [2] TODA FORMA DE RAIVA ABRE COM A COMUM, MENOS O BEAST -- a linha Legendary nao tem mais desconto proprio.
 ///   [3] O `Avaliar` COBRA o degrau, forma por forma: sem raiva recusa, no degrau exato abre, e o
@@ -83,7 +83,7 @@ public static class RaivaBench
 	/// gerada pelo `Catalogo.RaivaExigida` o teste passaria por construcao e nao provaria nada -- e o
 	/// mesmo motivo pelo qual os multiplicadores da bancada `formas` estao a mao.
 	///
-	/// DESDE 2026-10-11 a raiva comum (`Lendaria`) abre toda forma de raiva menos o Beast -- por um preco de BP
+	/// DESDE 2026-10-11 a raiva comum (`Comum`) abre toda forma de raiva menos o Beast -- por um preco de BP
 	/// maior, que e a secao [13]. Ate ali esta tabela dizia `Extrema` pro tronco Saiyajin, o Futuro e o Heran.
 	///
 	/// Quem nao esta aqui nao pede raiva nenhuma. Ver a secao [1] pros dois sentidos da conferencia.
@@ -91,20 +91,20 @@ public static class RaivaBench
 	private static readonly (string Id, NivelDeRaiva Nivel)[] Esperado =
 	[
 		// O TRONCO DE SANGUE: basta ver um amigo CAIR (o `if("Angry")` do `supersaiyan.dm:111-114` e `:128-131`).
-		("ssj1",               NivelDeRaiva.Lendaria),
-		("ssj2",               NivelDeRaiva.Lendaria),
-		("future_ssj",         NivelDeRaiva.Lendaria),
+		("ssj1",               NivelDeRaiva.Comum),
+		("ssj2",               NivelDeRaiva.Comum),
+		("future_ssj",         NivelDeRaiva.Comum),
 
 		// A FERA: a unica divina por raiva, e a unica que so a furia extrema abre (`supersaiyan.dm:166`).
 		("beast",              NivelDeRaiva.Extrema),
 
 		// A LINHA LEGENDARY INTEIRA: idem (`supersaiyan.dm:67-70`, `:93-94`, `:101-102`).
-		("wrathful",           NivelDeRaiva.Lendaria),
-		("c_type",             NivelDeRaiva.Lendaria),
-		("legendary",          NivelDeRaiva.Lendaria),
-		("primal_c_type",      NivelDeRaiva.Lendaria),
-		("primal_legendary",   NivelDeRaiva.Lendaria),
-		("primal_legendary2",  NivelDeRaiva.Lendaria),
+		("wrathful",           NivelDeRaiva.Comum),
+		("c_type",             NivelDeRaiva.Comum),
+		("legendary",          NivelDeRaiva.Comum),
+		("primal_c_type",      NivelDeRaiva.Comum),
+		("primal_legendary",   NivelDeRaiva.Comum),
+		("primal_legendary2",  NivelDeRaiva.Comum),
 
 		// O HERAN. Ele entra aqui pelo mesmo motivo do tronco Saiyajin -- `heran.dm:20-52` roda o
 		// MESMO `switch(savant.Emotion)` do `supersaiyan.dm` nos dois degraus, e o
@@ -116,8 +116,8 @@ public static class RaivaBench
 		// `RaivaExigida` listava so `Saiyajin` e `Futuro`, com um comentario prometendo que a linha
 		// Heran seria pega sozinha quando viesse. Nao seria: linha nova cai no `_ => Nenhuma`, e as
 		// duas formas teriam nascido de graca, caladas.
-		("heran1",             NivelDeRaiva.Lendaria),
-		("heran2",             NivelDeRaiva.Lendaria),
+		("heran1",             NivelDeRaiva.Comum),
+		("heran2",             NivelDeRaiva.Comum),
 
 		// O SUPER NAMEKUSEIJIN E AS DUAS FORMAS ALIEN **NAO** ENTRAM, e a ausencia e medida: elas se
 		// COMPRAM (`FormaDef.PedeFlag`), e o `snamek()` / `Alien_Trans()` nao olham `Emotion` uma
@@ -174,7 +174,7 @@ public static class RaivaBench
 			  comRaiva == Esperado.Length, $"deu {comRaiva}");
 
 		Console.WriteLine($"  -> EXTREMA: {Lista(NivelDeRaiva.Extrema)}");
-		Console.WriteLine($"  -> LENDARIA: {Lista(NivelDeRaiva.Lendaria)}");
+		Console.WriteLine($"  -> COMUM: {Lista(NivelDeRaiva.Comum)}");
 		Console.WriteLine();
 
 		static string Lista(NivelDeRaiva n) =>
@@ -204,12 +204,12 @@ public static class RaivaBench
 		Checa("a UNICA forma que so a furia extrema abre e o Beast",
 			  soExtrema.Length == 1 && soExtrema[0] == "beast", string.Join(", ", soExtrema));
 
-		string[] comAComum = [.. deRaiva.Where(d => Catalogo.RaivaExigida(d) == NivelDeRaiva.Lendaria).Select(d => d.Id)];
+		string[] comAComum = [.. deRaiva.Where(d => Catalogo.RaivaExigida(d) == NivelDeRaiva.Comum).Select(d => d.Id)];
 		LinhaDeForma[] deSangue = [LinhaDeForma.Saiyajin, LinhaDeForma.Futuro, LinhaDeForma.Heran,
 								   LinhaDeForma.Legendary, LinhaDeForma.LegendaryPrimal];
 		Checa($"e as outras {comAComum.Length} abrem com a raiva comum -- do tronco Saiyajin, do Futuro, do Heran e das duas linhas Legendary",
 			  comAComum.Length == deRaiva.Length - 1
-			  && deSangue.All(l => deRaiva.Any(d => d.Linha == l && Catalogo.RaivaExigida(d) == NivelDeRaiva.Lendaria)),
+			  && deSangue.All(l => deRaiva.Any(d => d.Linha == l && Catalogo.RaivaExigida(d) == NivelDeRaiva.Comum)),
 			  string.Join(", ", comAComum));
 
 		// OS QUE NAO PEDEM RAIVA NENHUMA SAO OS QUE SAIRAM DO TRONCO, e nao "os que sobraram". Sem esta linha, um
@@ -383,14 +383,14 @@ public static class RaivaBench
 			// --- um degrau ABAIXO: recusa (so faz sentido pra quem pede Extrema) -----------
 			if (pede == NivelDeRaiva.Extrema)
 			{
-				(EstadoDeForma e2, PerfilDeFormas p2, _) = Preparado(d, NivelDeRaiva.Lendaria);
+				(EstadoDeForma e2, PerfilDeFormas p2, _) = Preparado(d, NivelDeRaiva.Comum);
 				RecusaForma r2 = e2.Avaliar(d.Id, bp, 1, false, p2);
 				Checa($"`{d.Id}` com a raiva COMUM so, e poder sem fim: ainda recusado por furia (so a extrema o abre)",
 					  r2 == RecusaForma.SemFuria, r2.ToString());
 			}
 
 			// --- um degrau ACIMA: abre (o `>=`) --------------------------------------------
-			if (pede == NivelDeRaiva.Lendaria)
+			if (pede == NivelDeRaiva.Comum)
 			{
 				(EstadoDeForma e3, PerfilDeFormas p3, _) = Preparado(d, NivelDeRaiva.Extrema);
 				RecusaForma r3 = e3.Avaliar(d.Id, bp, 1, false, p3);
@@ -846,7 +846,7 @@ public static class RaivaBench
 					}
 
 					// E AS DUAS JANELAS DIRETAMENTE: quem quiser burlar o gancho escreveria no campo.
-					bool escreve = (l.Contains("FuriaExtremaAte") || l.Contains("RaivaLendariaAte"))
+					bool escreve = (l.Contains("FuriaExtremaAte") || l.Contains("RaivaComumAte"))
 								   && l.Contains('=') && !l.Contains("==") && !l.Contains(">");
 					if (escreve && Array.IndexOf(podemEscreverAJanela, nome) < 0 && !EhBancada(nome))
 						escritoresDaJanela.Add($"{nome}:{i + 1}");
@@ -1009,8 +1009,8 @@ public static class RaivaBench
 			  && PerfilDeFormas.Comum.Raiva == NivelDeRaiva.Nenhuma
 			  && PerfilDeFormas.MeioSangue.Raiva == NivelDeRaiva.Nenhuma);
 		Checa("e a calma e o MENOR nivel (a comparacao `>=` depende dessa ordem)",
-			  NivelDeRaiva.Nenhuma < NivelDeRaiva.Lendaria
-			  && NivelDeRaiva.Lendaria < NivelDeRaiva.Extrema);
+			  NivelDeRaiva.Nenhuma < NivelDeRaiva.Comum
+			  && NivelDeRaiva.Comum < NivelDeRaiva.Extrema);
 
 		Console.WriteLine("  -> quem acende a raiva e ver um amigo cair ou morrer na sua frente.");
 		Console.WriteLine("     Quem responde 'e amigo?' e o Core.Social.Convivio.");
@@ -1483,7 +1483,7 @@ public static class RaivaBench
 		{
 			double folga = maxAnger - 100;
 			double extrema = Jandirus.Core.Combat.RaivaEmDegraus.Topo(NivelDeRaiva.Extrema, maxAnger);
-			double comum = Jandirus.Core.Combat.RaivaEmDegraus.Topo(NivelDeRaiva.Lendaria, maxAnger);
+			double comum = Jandirus.Core.Combat.RaivaEmDegraus.Topo(NivelDeRaiva.Comum, maxAnger);
 
 			Checa($"MaxAnger {maxAnger:0}: a furia EXTREMA vale o topo ({maxAnger:0}, `Murder.dm:112`)",
 				  Math.Abs(extrema - maxAnger) < 1e-9, $"{extrema:0.###}");
@@ -1502,14 +1502,14 @@ public static class RaivaBench
 		Checa("calma vale 100 (o 1,0x), e sem folga os dois degraus tambem",
 			  Jandirus.Core.Combat.RaivaEmDegraus.Topo(NivelDeRaiva.Nenhuma, 150) == 100
 			  && Jandirus.Core.Combat.RaivaEmDegraus.Topo(NivelDeRaiva.Extrema, 100) == 100
-			  && Jandirus.Core.Combat.RaivaEmDegraus.Topo(NivelDeRaiva.Lendaria, 100) == 100
+			  && Jandirus.Core.Combat.RaivaEmDegraus.Topo(NivelDeRaiva.Comum, 100) == 100
 			  && Jandirus.Core.Combat.RaivaEmDegraus.Topo(NivelDeRaiva.Extrema, 60) == 100);
 
 		Jandirus.Core.Combat.RaivaEmDegraus.NocauteNoTopoDeTeste = true;
 		try
 		{
 			Checa("(defeito injetado: o nocaute vale o topo) a checagem 'comum abaixo do topo' REPROVA",
-				  !(Jandirus.Core.Combat.RaivaEmDegraus.Topo(NivelDeRaiva.Lendaria, 150) < 150));
+				  !(Jandirus.Core.Combat.RaivaEmDegraus.Topo(NivelDeRaiva.Comum, 150) < 150));
 		}
 		finally { Jandirus.Core.Combat.RaivaEmDegraus.NocauteNoTopoDeTeste = false; }
 
@@ -1542,7 +1542,7 @@ public static class RaivaBench
 
 		Jandirus.Core.Stats.Fighter b = Corpo(50);
 		Checa("raiva COMUM (o nocaute) NAO salta, com o mesmo controle na mao",
-			  !Salta(b, NivelDeRaiva.Lendaria) && b.Ki == 50 && !b.overcharge, $"Ki {b.Ki:0}");
+			  !Salta(b, NivelDeRaiva.Comum) && b.Ki == 50 && !b.overcharge, $"Ki {b.Ki:0}");
 		Checa("...nem a calma", !Salta(b, NivelDeRaiva.Nenhuma) && b.Ki == 50);
 
 		Jandirus.Core.Stats.Fighter semControle = Corpo(50, controle: false);
@@ -1576,7 +1576,7 @@ public static class RaivaBench
 		{
 			Jandirus.Core.Stats.Fighter c = Corpo(50);
 			Checa("(defeito injetado: a raiva comum tambem salta) a checagem 'o nocaute nao salta' REPROVA",
-				  Salta(c, NivelDeRaiva.Lendaria) && c.Ki > 50);
+				  Salta(c, NivelDeRaiva.Comum) && c.Ki > 50);
 		}
 		finally { Jandirus.Core.Combat.RaivaEmDegraus.SaltoNaRaivaComumDeTeste = false; }
 
@@ -1627,7 +1627,7 @@ public static class RaivaBench
 
 		// ---- (b) so a raiva que a forma pede ----
 		Checa("em CALMA nao ha plano nenhum", SubidaPelaRaiva.Planejar(e, bp, p with { Raiva = NivelDeRaiva.Nenhuma }) == null);
-		PlanoDeSubida? comAComum = SubidaPelaRaiva.Planejar(e, bp, p with { Raiva = NivelDeRaiva.Lendaria });
+		PlanoDeSubida? comAComum = SubidaPelaRaiva.Planejar(e, bp, p with { Raiva = NivelDeRaiva.Comum });
 		Checa("...e a raiva COMUM, com poder de sobra, faz o MESMO plano: ela abre as mesmas formas, por um preco maior (secao [13])",
 			  comAComum is { Alvo.Id: "ssj2", Degraus.Length: 1 } && comAComum.Degraus[0].Id == "ssj1", Texto(comAComum));
 
@@ -1660,7 +1660,7 @@ public static class RaivaBench
 			  e1.Atual == "grade2" && doGrade is { Alvo.Id: "ssj2", Degraus.Length: 0 }, Texto(doGrade));
 
 		// ---- (g) a subida e do CATALOGO: a linha Legendary, dois degraus, com a raiva COMUM ----
-		(EstadoDeForma el, PerfilDeFormas pl, _) = Preparado(Catalogo.Def("legendary")!, NivelDeRaiva.Lendaria);
+		(EstadoDeForma el, PerfilDeFormas pl, _) = Preparado(Catalogo.Def("legendary")!, NivelDeRaiva.Comum);
 		el.Entrar(Catalogo.IdWrathful);
 		el.Entrar("c_type");
 		el.Entrar(Catalogo.IdBase);
@@ -1772,7 +1772,7 @@ public static class RaivaBench
 		{
 			FormaDef d = Catalogo.Def(id)!;
 			(EstadoDeForma e, PerfilDeFormas emPaz, _) = Preparado(d, NivelDeRaiva.Nenhuma);
-			PerfilDeFormas comum = emPaz with { Raiva = NivelDeRaiva.Lendaria }, furia = emPaz with { Raiva = NivelDeRaiva.Extrema };
+			PerfilDeFormas comum = emPaz with { Raiva = NivelDeRaiva.Comum }, furia = emPaz with { Raiva = NivelDeRaiva.Extrema };
 			double porta = e.PortaDeBp(d), cara = porta * agio;
 			RecusaForma A(double bp, PerfilDeFormas p, double fator = 1) => e.Avaliar(id, bp, 1, false, p, fator);
 
@@ -1824,7 +1824,7 @@ public static class RaivaBench
 
 		// ---- o Beast: a comum nao o abre por poder nenhum ----
 		FormaDef beast = Catalogo.Def("beast")!;
-		(EstadoDeForma eb, PerfilDeFormas pb, double muito) = Preparado(beast, NivelDeRaiva.Lendaria);
+		(EstadoDeForma eb, PerfilDeFormas pb, double muito) = Preparado(beast, NivelDeRaiva.Comum);
 		RecusaForma beastComum = eb.Avaliar("beast", muito, 1, false, pb);
 		RecusaForma beastFuria = eb.Avaliar("beast", muito, 1, false, pb with { Raiva = NivelDeRaiva.Extrema });
 		Checa("o BEAST com a raiva COMUM e poder sem fim: recusado por FURIA -- e com a extrema abre",
@@ -1832,7 +1832,7 @@ public static class RaivaBench
 
 		// ---- o outro defeito: a regra de antes (a comum nao abre o tronco) ----
 		FormaDef ssj1 = Catalogo.Def("ssj1")!, wrathful = Catalogo.Def(Catalogo.IdWrathful)!;
-		(EstadoDeForma es, PerfilDeFormas ps, _) = Preparado(ssj1, NivelDeRaiva.Lendaria);
+		(EstadoDeForma es, PerfilDeFormas ps, _) = Preparado(ssj1, NivelDeRaiva.Comum);
 		double caraDoSsj1 = es.PortaDeBp(ssj1) * ssj1.AgioNaRaivaComum;
 		Catalogo.SoAFuriaAbreOTroncoDeTeste = true;
 		try
@@ -1844,7 +1844,7 @@ public static class RaivaBench
 		finally { Catalogo.SoAFuriaAbreOTroncoDeTeste = false; }
 
 		// ---- o que mudou pro Legendary, medido: a comum deixou de abrir pela porta ----
-		(EstadoDeForma ew, PerfilDeFormas pw, _) = Preparado(wrathful, NivelDeRaiva.Lendaria);
+		(EstadoDeForma ew, PerfilDeFormas pw, _) = Preparado(wrathful, NivelDeRaiva.Comum);
 		double portaW = ew.PortaDeBp(wrathful);
 		RecusaForma lendarioNaPorta = ew.Avaliar(Catalogo.IdWrathful, portaW, 1, false, pw);
 		RecusaForma lendarioNoPreco = ew.Avaliar(Catalogo.IdWrathful, portaW * Catalogo.AgioComumDoLegendary, 1, false, pw);

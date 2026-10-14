@@ -296,7 +296,7 @@ public partial class GameServer
 	/// Ele porta dois lacos do DM que sao o mesmo laco com listas diferentes:
 	///
 	///   * `Death.dm:73-85` -- o amigo MORREU: <see cref="NivelDeRaiva.Extrema"/>;
-	///   * `KO.dm:29-41`    -- o amigo CAIU:   <see cref="NivelDeRaiva.Lendaria"/>.
+	///   * `KO.dm:29-41`    -- o amigo CAIU:   <see cref="NivelDeRaiva.Comum"/>.
 	///
 	/// E os dois graus valem os dois, e nao so a morte: **o nocaute abre as mesmas formas de raiva que a
 	/// morte, por um preco de BP maior** (`FormaDef.AgioNaRaivaComum`, dono 2026-10-11 -- ate ali so a
@@ -333,7 +333,7 @@ public partial class GameServer
 	/// </summary>
 	/// <param name="vitima">Quem caiu ou morreu.</param>
 	/// <param name="algoz">Quem a derrubou. Pode ser um corpo sem dono -- e ai ele e inimigo.</param>
-	/// <param name="morreu">TRUE = morte (furia extrema); FALSE = nocaute (a raiva comum, `NivelDeRaiva.Lendaria`).</param>
+	/// <param name="morreu">TRUE = morte (furia extrema); FALSE = nocaute (a raiva comum, `NivelDeRaiva.Comum`).</param>
 	private void LutoNaVizinhanca(ServerPlayer vitima, ServerPlayer? algoz, bool morreu)
 	{
 		// SEM ALGOZ NAO HA LUTO: `deathKiller` nulo no DM quer dizer morte ambiental, e o
@@ -349,7 +349,7 @@ public partial class GameServer
 		//    assiste: quem morre e que sabe se aquilo foi um duelo entre amigos ou um assassinato.
 		if (!vitima.Social.AlgozEhInimigo(algoz.Assinatura)) return;
 
-		NivelDeRaiva grau = morreu ? NivelDeRaiva.Extrema : NivelDeRaiva.Lendaria;
+		NivelDeRaiva grau = morreu ? NivelDeRaiva.Extrema : NivelDeRaiva.Comum;
 		float raio2 = RaioDeTestemunha * RaioDeTestemunha;
 
 		foreach (ServerPlayer o in ZoneList(vitima.Zone.Hash).ToList())
@@ -419,7 +419,7 @@ public partial class GameServer
 	/// <param name="morreu">
 	/// FALSE = nocaute, TRUE = morte. Um golpe que nocauteia E mata chama as duas vezes (e como o
 	/// DM: `Death()` chama `KO(-1)` antes de matar), e o `AmigoAbatido` sabe lidar -- as duas
-	/// janelas de raiva sao independentes e a extrema ja satisfaz a lendaria.
+	/// janelas de raiva sao independentes e a extrema ja satisfaz a comum.
 	/// </param>
 	private void AoPerderALuta(ServerPlayer vitima, ServerPlayer algoz, bool morreu)
 	{

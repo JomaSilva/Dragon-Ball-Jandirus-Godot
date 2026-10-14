@@ -1274,7 +1274,7 @@ public sealed partial class GameServer
 			c.Ficha.train = c.Ficha.med = false;
 			c.CenaSegundos = 0;
 			c.FuriaExtremaAte = 0;
-			c.RaivaLendariaAte = 0;
+			c.RaivaComumAte = 0;
 			c.Ficha.Anger = 100;
 			// A FORMA VOLTA PRA BASE PELO `Transformar`, um degrau por vez -- e com a cena zerada antes,
 			// senao o proprio congelamento recusaria a descida. Seis voltas cobrem a escada inteira.

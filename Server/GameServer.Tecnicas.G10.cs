@@ -800,7 +800,7 @@ public sealed partial class GameServer
 			Vec2 de = pl.Pos;
 			AvancarG3(pl, marcado, 3 * ZoneCollision.TileSize);
 			if (Vec2.Distance(de, pl.Pos) > 0.5f)
-				AnunciarZanzo(pl, de, vulto: pl.Livro?.Sabe(PathDoZanzoken) == true);
+				AnunciarZanzo(pl, de, vulto: UsaAMiragem(pl));
 			return;
 		}
 		if (!alvoValido) Avisar(pl, "voce precisa de um alvo MARCADO a menos de vinte tiles. (Duplo clique.)");

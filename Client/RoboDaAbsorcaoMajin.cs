@@ -38,7 +38,8 @@ namespace Jandirus.Client;
 ///     antes: a zona caia no chao provisorio, sem parede e sem desenho) e as MESMAS reguas tem que reprovar;
 ///   * do MAJIN -- `MenuJogo.AbsorvidosNaoRemontamDeTeste` cala o remonte dos botoes, e a regua do
 ///     `Expelir: nome` tem que reprovar com gente dentro; e `CensoDeSkills.OutroCanalEhMudoDeTeste` devolve
-///     o botao cinza "Buu Absorb (nao portada)" e o "efeito ainda nao portado" da ficha da skill.
+///     o "efeito ainda nao portado" da ficha da skill (devolvia tambem o botao cinza "Buu Absorb (nao portada)",
+///     ate o cinza sair do jogo em 2026-10-13).
 /// ================================================================================
 ///
 /// COMO RODAR -- um processo so, com JANELA (no headless o `GetImage` volta vazio):
@@ -662,9 +663,11 @@ public partial class RoboDaAbsorcaoMajin : Node
 				Jandirus.Core.Skills.CensoDeSkills.OutroCanalEhMudoDeTeste = true;
 				Habilidades.Montar(cli.Atributos.Raca ?? "");
 				string fichaRuim = FichaDaSkill();
-				Conferir(Botao("hab:" + AbsorcaoMajin.Verbo) is { PodeAgora: false } && fichaRuim.Contains("não portado", StringComparison.Ordinal),
-					$"(defeito injetado: verb de outro canal tratado como mudo) as duas reguas REPROVAM -- o botao cinza volta, "
-					+ $"e a ficha diz `{fichaRuim}`");
+				// (2026-10-13: o botao cinza "(nao portada)" saiu do jogo -- o verb sem corpo nao vira botao nenhum --,
+				// entao a regua que este defeito reprova e a da FICHA; a do botao continua valendo, e quem mede a
+				// volta do cinza e o robo dos verbs, F7.)
+				Conferir(Botao("hab:" + AbsorcaoMajin.Verbo) == null && fichaRuim.Contains("não portado", StringComparison.Ordinal),
+					$"(defeito injetado: verb de outro canal tratado como mudo) a regua da ficha REPROVA -- ela diz `{fichaRuim}`");
 			}
 			finally
 			{

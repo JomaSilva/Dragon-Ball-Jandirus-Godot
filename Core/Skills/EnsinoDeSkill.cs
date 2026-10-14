@@ -14,6 +14,12 @@ public enum RecusaDeLicao
 	Longe,
 	Recarga,
 	SemMarcos,
+
+	/// <summary>
+	/// A skill nao se ensina a estranho, quem recebe e ALUNO de quem ensina -- e mesmo assim ela nao pende de arvore
+	/// nenhuma do aluno (e de outra raca, de outra classe, so de vilao). Ver <see cref="EnsinoDeSkill.Avaliar"/>.
+	/// </summary>
+	NaoEDoCorpoDele,
 }
 
 /// <summary>
@@ -25,12 +31,14 @@ public enum RecusaDeLicao
 /// faz TRANSMISSAO DE SKILL entre dois corpos vizinhos quaisquer. O `Teach_Skill` nao consulta o
 /// `mst_list`, nao pergunta quem e aluno de quem e nao paga recarga de mestre.
 ///
-/// **Amarrar os dois seria inventar regra.** Quem ensina o Kamehameha ao estranho que chegou perto
-/// nao vira mestre dele, e um mestre nao ganha o direito de despejar o arsenal no aluno. Fica
-/// escrito pra ninguem "consertar" isso depois: a INDEPENDENCIA e a decisao.
+/// **Ate 2026-10-13 amarrar os dois seria inventar regra**, e este cabecalho dizia exatamente isso. Nesse dia o
+/// dono mandou: *"dar pra ensinar mais skills pros alunos e tb técnicas proprias"*. O ensino de sempre continua
+/// sem pedir mestre -- quem ensina o Kamehameha ao estranho que chegou perto nao vira mestre dele --, e o que
+/// entrou e uma SEGUNDA porta, que so abre entre mestre e aluno do discipulado: ver <see cref="LicaoDeMestre"/>.
+/// Fora dela a independencia continua sendo a regra.
 /// ================================================================================================
 ///
-/// ============================ O QUE O ALUNO PAGA: **NADA** ============================
+/// ============================ O QUE O ALUNO PAGA NA LICAO DE SEMPRE: **NADA** ============================
 /// Esta e a descoberta que muda o sistema, e ela esta escrita em duas linhas do original que
 /// discordam do resumo que se costuma fazer dele:
 ///
@@ -93,6 +101,52 @@ public static class EnsinoDeSkill
 	/// </summary>
 	public static int Custo(Skill s) => SkillCatalog.CustoDoEnsino(s);
 
+	// =====================================================================
+	// A LICAO DO MESTRE AO PROPRIO ALUNO -- regra do dono (2026-10-13), e ela DIVERGE do DM de olho aberto
+	// =====================================================================
+	// *"dar pra ensinar mais skills pros alunos e tb técnicas proprias"*.
+	//
+	// O cabecalho desta classe diz que o ensino NAO pede vinculo de mestre, e continua verdade pras skills que
+	// "se ensinam" (`teacher = TRUE`): qualquer um as mostra a qualquer um, de graca, como no original. O que entrou
+	// e uma SEGUNDA porta, e ela so abre entre mestre e aluno do discipulado: **o mestre ensina ao aluno DELE qualquer
+	// skill que saiba**, inclusive as que nao se ensinam a estranho.
+	//
+	// O QUE O MESTRE ABRE, E O QUE ELE NAO ABRE. Pro aluno, a licao do mestre e uma COMPRA COM A PORTA ABERTA: o
+	// pre-requisito que falta, o tier da arvore que ele ainda nao alcancou e a skill que nasce apagada esperando um
+	// acendedor deixam de barrar -- o mestre mostra o caminho. O que continua barrando e o que nenhum mestre muda: a
+	// skill tem de pender de uma arvore que o ALUNO tem (raca, classe, vilao -- `SkillBook.Avaliar`), e ele PAGA os
+	// marcos dela. (Nas de sempre o custo continua sendo so limiar.) Paga porque de graca o mestre despejaria o
+	// arsenal inteiro em cinco alunos numa tarde, e os marcos deixariam de ser escolha -- e a mesma conta que fez o
+	// DM limitar o que e `teacher`. DECISAO MINHA, declarada: o dono pediu a mecanica, nao o preco.
+	//
+	// E QUEM APRENDEU ASSIM NAO REPASSA, como toda copia ensinada (`wastaught`): senao o aluno viraria o caminho
+	// pra skill sair do circulo do mestre.
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): o mestre volta a so ensinar ao aluno o que ensinaria a qualquer um
+	/// -- a v0.2.0. Lido pela <see cref="LicaoDeMestre"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool MestreSoEnsinaOQueSeEnsinaDeTeste;
+
+	/// <summary>
+	/// ESTA LICAO E A DO MESTRE? -- a skill nao se ensina a estranho, e quem recebe e aluno de quem ensina. E ela
+	/// quem COBRA os marcos do aluno (<see cref="Ensinar"/>).
+	/// </summary>
+	public static bool LicaoDeMestre(Skill s, bool eMeuAluno) =>
+		!s.Ensinavel && eMeuAluno && !MestreSoEnsinaOQueSeEnsinaDeTeste;
+
+	/// <summary>
+	/// O que o livro do ALUNO diz desta skill barra a licao do mestre? So o que mestre nenhum muda: a skill nao e
+	/// do corpo dele. Pre-requisito, tier, acendedor e marcos NAO entram aqui -- os tres primeiros o mestre abre, e os
+	/// marcos tem a recusa propria deles.
+	///
+	/// (E a skill FECHADA -- `SkillsFechadas`, a que so promete um verb que este jogo ainda nao tem -- entra junto: a
+	/// licao do mestre COBRA marcos, e cobraria por nada.)
+	/// </summary>
+	public static bool ForaDoCorpo(Recusa doAlunoSozinho) =>
+		doAlunoSozinho is Recusa.NaoExiste or Recusa.SoVilao or Recusa.RacaOuClasse or Recusa.SemArvore or Recusa.Apagada
+			or Recusa.ForaDoPort;
+
 	/// <summary>
 	/// ESTE LIVRO PODE REPASSAR ESTA SKILL? As tres condicoes do `Teach_Skill` (`:9-10`), e a
 	/// terceira e a regra inteira do sistema:
@@ -130,21 +184,28 @@ public static class EnsinoDeSkill
 	/// ================================================================================================
 	/// </summary>
 	/// <param name="distanciaTiles">Negativo = nao conferir.</param>
+	/// <param name="eMeuAluno">Quem recebe e aluno (do discipulado) de quem ensina -- abre a licao do mestre, ver o bloco acima.</param>
+	/// <param name="doAlunoSozinho">
+	/// O que o livro do aluno responde se ELE fosse comprar esta skill (`SkillBook.PodeAprender`). So e lido na licao
+	/// do mestre, e so pra saber se a skill e do corpo dele (<see cref="ForaDoCorpo"/>).
+	/// </param>
 	public static RecusaDeLicao Avaliar(SkillBook doMestre, SkillBook doAluno, Skill? s,
 										bool mestreTemAssinatura, bool alunoTemAssinatura,
-										bool mesmaPessoa, double distanciaTiles, bool naRecarga)
+										bool mesmaPessoa, double distanciaTiles, bool naRecarga,
+										bool eMeuAluno = false, Recusa doAlunoSozinho = Recusa.Pode)
 	{
 		if (s == null || s.Arvore) return RecusaDeLicao.NaoExiste;
 		if (!doMestre.Sabe(s.Path)) return RecusaDeLicao.NaoSabe;
-		if (!s.Ensinavel) return RecusaDeLicao.NaoSeEnsina;
+		if (!s.Ensinavel && !LicaoDeMestre(s, eMeuAluno)) return RecusaDeLicao.NaoSeEnsina;
 		if (doMestre.FoiEnsinada(s.Path)) return RecusaDeLicao.AprendeuDeAlguem;
 		if (!mestreTemAssinatura || !alunoTemAssinatura) return RecusaDeLicao.SemAssinatura;
 		if (mesmaPessoa) return RecusaDeLicao.EleMesmo;
 		if (doAluno.Sabe(s.Path)) return RecusaDeLicao.AlunoJaSabe;
+		if (LicaoDeMestre(s, eMeuAluno) && ForaDoCorpo(doAlunoSozinho)) return RecusaDeLicao.NaoEDoCorpoDele;
 		if (distanciaTiles >= 0 && distanciaTiles > TilesDaLicao) return RecusaDeLicao.Longe;
 		if (naRecarga) return RecusaDeLicao.Recarga;
 
-		// O LIMIAR, E SO O LIMIAR. Ver o cabecalho: nada e debitado aqui nem em lugar nenhum.
+		// O LIMIAR. Nada e debitado AQUI: a licao de sempre nunca debita, e a de MESTRE debita no `Ensinar(cobrar)`.
 		if (doAluno.MarcosLivres < Custo(s)) return RecusaDeLicao.SemMarcos;
 		return RecusaDeLicao.Pode;
 	}
@@ -159,11 +220,31 @@ public static class EnsinoDeSkill
 	/// chega aqui com <see cref="RecusaDeLicao.Pode"/>; a guarda existe pra que uma segunda porta
 	/// nao apareca no dia em que alguem chamar isto direto.
 	/// </summary>
-	public static bool Ensinar(SkillBook doAluno, Skill s)
+	/// <param name="cobrar">
+	/// A licao do MESTRE (<see cref="LicaoDeMestre"/>): os marcos da skill saem do aluno. Sem saldo ela nao acontece
+	/// -- a avaliacao ja tinha recusado, e a guarda daqui e a mesma do `Sabe` logo abaixo.
+	/// </param>
+	public static bool Ensinar(SkillBook doAluno, Skill s, bool cobrar = false)
 	{
 		if (doAluno.Sabe(s.Path)) return false;
+		if (cobrar)
+		{
+			if (doAluno.MarcosLivres < Custo(s)) return false;
+			doAluno.MarcosLivres -= Custo(s);
+		}
 		doAluno.DarComoEnsinada(s.Path);
 		return true;
+	}
+
+	/// <summary>
+	/// O QUE ESTE MESTRE TEM PRA ENSINAR A UM ALUNO DELE -- tudo o que ele sabe e nao e arvore. A lista e o que a tela
+	/// oferece; cada licao ainda passa pelo <see cref="Avaliar"/> (o que foi ensinado a ele nao repassa, e a tela nao
+	/// sabe disso: quem diz e a recusa).
+	/// </summary>
+	public static IEnumerable<Skill> OQueOMestreEnsina(SkillCatalog cat, IEnumerable<string> aprendidas)
+	{
+		foreach (string path in aprendidas)
+			if (cat.Get(path) is { Arvore: false, Nome.Length: > 0 } s) yield return s;
 	}
 
 	/// <summary>

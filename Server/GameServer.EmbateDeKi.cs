@@ -324,7 +324,9 @@ public sealed partial class GameServer
 		// `MoverOEncontro` devolve cada cabeca pro chao descontando a propria subida.
 		Vec2 subA = Feixe.Subida(a.Feixe!.Altitude);
 		Vec2 subB = Feixe.Subida(b.Feixe?.Altitude ?? b.Quem.Altitude);
-		Vec2 corpoA = a.Quem.Pos + subA, corpoB = b.Quem.Pos + subB;
+		// (2026-10-13) O LADO QUE DISPUTA COM UMA ESFERA nao tem mao nem cauda: a ancora dele e um ponto ATRAS da
+		// esfera, ate quem a jogou (`AncoraDoLado`). Nos lados de sempre -- o raio, as maos -- e o corpo.
+		Vec2 corpoA = AncoraDoLado(a, subA), corpoB = AncoraDoLado(b, subB);
 
 		Vec2 eixo = corpoB - corpoA;
 		eixo = eixo.LengthSquared > 1e-4f ? eixo.Normalized() : a.Feixe!.Rumo;
@@ -364,8 +366,8 @@ public sealed partial class GameServer
 		// ficar SE EMPURRANDO na colisao" (dono, 2026-09-07), e nao uma em cima da outra.
 		// COM FRENTES DE TAMANHOS DIFERENTES (2026-09-23) o contato nao e o meio: e onde cada frente chega,
 		// dividindo a distancia entre as duas cabecas na proporcao de cada alcance. Iguais, e o meio.
-		float frenteA = a.Feixe != null ? Feixe.AlcanceDaCabeca(a.Feixe) : 0f;
-		float frenteB = b.Feixe != null ? Feixe.AlcanceDaCabeca(b.Feixe) : 0f;
+		float frenteA = a.Feixe != null ? FrenteNoEmbate(a.Feixe) : 0f;
+		float frenteB = b.Feixe != null ? FrenteNoEmbate(b.Feixe) : 0f;
 		Vec2 ponto = b.Feixe != null
 			? Feixe.NaTela(a.Feixe!) + (Feixe.NaTela(b.Feixe) - Feixe.NaTela(a.Feixe!)) * (frenteA + frenteB > 0 ? frenteA / (frenteA + frenteB) : 0.5f)
 			: corpoB - eixo * Feixe.MeioCorpo;
@@ -388,9 +390,10 @@ public sealed partial class GameServer
 		// nascendo colada na do outro) comecava com uma cabeca ja atras da propria mao. No embate de GUARDA o lado
 		// de B sao as maos, na beirada do corpo; o lado de A continua sendo a mao de A.
 		// ======================================================================================================================
-		float sA = NoEixo(BocaDeCano.De(a.Quem.Pos, a.Feixe!.Rumo) - a.Quem.Pos, eixo) + frenteA;
+		// (a ESFERA recua ate a ancora dela -- ja e o ponto atras dela, ate quem a jogou; o raio, ate a boca do cano)
+		float sA = (EhEsfera(a.Feixe) ? 0f : NoEixo(BocaDeCano.De(a.Quem.Pos, a.Feixe!.Rumo) - a.Quem.Pos, eixo)) + frenteA;
 		float sB = b.Feixe != null
-			? NoEixo(BocaDeCano.De(b.Quem.Pos, b.Feixe.Rumo) + subB - corpoA, eixo) - frenteB
+			? NoEixo((EhEsfera(b.Feixe) ? corpoB : BocaDeCano.De(b.Quem.Pos, b.Feixe.Rumo) + subB) - corpoA, eixo) - frenteB
 			: NoEixo(corpoB - eixo * Feixe.MeioCorpo - corpoA, eixo);
 		if (EmbateDeKi.EncontroAteOCorpoDeTeste)
 		{
@@ -492,6 +495,38 @@ public sealed partial class GameServer
 	/// </summary>
 	private static double PoderDoLado(LadoDeKi l)
 		=> l.Feixe?.PoderDeEmbate() ?? EmbateDeKi.PoderDeSegurar(l.Segura!, l.Quem.Combate);
+
+	// =====================================================================
+	// A ESFERA COMO LADO DE UMA DISPUTA (dono, 2026-10-13: "beam vs esferas gigantes")
+	// =====================================================================
+	/// <summary>O ataque deste lado e uma ESFERA (bola ou teleguiado), e nao um raio?</summary>
+	private static bool EhEsfera(Projetil? x) => x != null && x.Tipo != TipoDeProjetil.Beam;
+
+	/// <summary>
+	/// QUANTO A FRENTE DESTE ATAQUE AVANCA ALEM DO CENTRO DELE, na disputa: o raio pela frente desenhada da cabeca
+	/// (`Feixe.AlcanceDaCabeca`), a esfera pelo raio desenhado dela -- uma Genkidama encosta de longe.
+	/// </summary>
+	private static float FrenteNoEmbate(Projetil x) => EhEsfera(x) ? KiContraKi.RaioDeToque(x) : Feixe.AlcanceDaCabeca(x);
+
+	/// <summary>
+	/// A ANCORA DE UM LADO -- de onde o eixo da disputa sai, e ate onde o ataque dele pode ser empurrado de volta.
+	/// O raio e as maos: o CORPO de quem os segura. A ESFERA: um ponto ATRAS dela, no rumo de onde ela veio -- ate
+	/// quem a jogou, se ele esta la (com o teto de `KiContraKi.TilesDeRecuoDaEsfera`), ou um trecho fixo se nao
+	/// esta (ele andou depois de joga-la). E pra esse ponto que a esfera vencida recua.
+	/// </summary>
+	private static Vec2 AncoraDoLado(LadoDeKi l, Vec2 subida)
+	{
+		if (!EhEsfera(l.Feixe)) return l.Quem.Pos + subida;
+
+		Projetil esfera = l.Feixe!;
+		Vec2 praTras = esfera.Rumo * -1f;
+		Vec2 ateODono = l.Quem.Pos - esfera.Pos;
+		float atras = ateODono.X * praTras.X + ateODono.Y * praTras.Y;
+		float recuo = atras > ZoneCollision.TileSize
+			? MathF.Min(atras, (float)KiContraKi.TilesDeRecuoDaEsfera * ZoneCollision.TileSize)
+			: (float)KiContraKi.TilesDeRecuoSemDonoAtras * ZoneCollision.TileSize;
+		return esfera.Pos + subida + praTras * recuo;
+	}
 
 	/// <summary>
 	/// ============================ A DISPUTA LE O PODER DE AGORA ============================
@@ -761,6 +796,9 @@ public sealed partial class GameServer
 
 		if (l.DeMaos) return p.Combate is { Bloqueando: true };
 
+		// A ESFERA so precisa continuar viva: quem a jogou a empurra de onde esta, sem canal nenhum.
+		if (EhEsfera(l.Feixe)) return l.Feixe is { Vivo: true };
+
 		// O FEIXE precisa continuar vivo E continuar sendo alimentado pelo dono.
 		return l.Feixe is { Vivo: true } && _canais.GetValueOrDefault(p.Id)?.Raio == l.Feixe;
 	}
@@ -807,8 +845,8 @@ public sealed partial class GameServer
 		// e a DESENHADA (folha x escala, 2026-09-23): um raio de 16 px, um Final Flash 128.
 		// O PONTO E DESENHADO: cada cabeca volta pro chao descontando a propria subida (ver `DisputaDeKi.SubidaA`).
 		bool mesmoPonto = EmbateDeKi.CabecasNoMesmoPontoDeTeste;
-		if (d.A.Feixe != null) d.A.Feixe.Pos = d.Ponto - d.Eixo * (mesmoPonto ? 0f : Feixe.AlcanceDaCabeca(d.A.Feixe)) - d.SubidaA;
-		if (d.B.Feixe != null) d.B.Feixe.Pos = d.Ponto + d.Eixo * (mesmoPonto ? 0f : Feixe.AlcanceDaCabeca(d.B.Feixe)) - d.SubidaB;
+		if (d.A.Feixe != null) d.A.Feixe.Pos = d.Ponto - d.Eixo * (mesmoPonto ? 0f : FrenteNoEmbate(d.A.Feixe)) - d.SubidaA;
+		if (d.B.Feixe != null) d.B.Feixe.Pos = d.Ponto + d.Eixo * (mesmoPonto ? 0f : FrenteNoEmbate(d.B.Feixe)) - d.SubidaB;
 	}
 
 	/// <summary>
@@ -882,8 +920,20 @@ public sealed partial class GameServer
 			{
 				hP.EmEmbate = false;
 				hP.JaDisputou = true;
-				hP.Vivo = false;
-				hP.Fim = FimDeProjetil.Defletido;
+				if (EhEsfera(hP) && hP.EstouraSempreQueAcaba)
+				{
+					// (2026-10-13) A ESFERA VENCIDA VOLTA PRA QUEM A JOGOU E ESTOURA NELE. O encontro a empurrou ate a
+					// ancora dela (o ponto atras, ate o dono): ali ela muda de lado -- passa a ser de quem venceu,
+					// como o feixe devolvido pelas maos -- e faz o estouro grande, com a cratera e o dano em area.
+					// Quem a jogou esta no raio dele, e ja nao e o dono.
+					TrocarDeLado(hP, venc.Quem, perd.Quem);
+					ExplodirOndeAcabou(hP, ZoneList(d.Zona), venc.Quem.Zone, Espaco.EhPlaneta(venc.Quem.Zone));
+				}
+				else
+				{
+					hP.Vivo = false;
+					hP.Fim = FimDeProjetil.Defletido;
+				}
 			}
 
 			hV.EmEmbate = false;
@@ -998,8 +1048,12 @@ public sealed partial class GameServer
 		// NA PRESSA DOS RAIOS (dono, 2026-10-08): o `BCL_PUSH_STEP` e o DOBRO do passo de um raio comum no DM
 		// (0,2 s por tile contra 0,1), e continua sendo o dobro aqui -- o empurrao nao pode ter ficado pra tras
 		// enquanto o raio que o alimenta dobrava de velocidade.
-		p.SegundosPorTile = EmbateDeKi.SegundosPorTileDoEmpurrao / Projetil.PressaDeRaio;
-		p.Pressa = Projetil.PressaDeRaio;
+		// (a ESFERA que venceu segue no passo DELA: o passo do empurrao e o de um raio, e ela nao e um)
+		if (p.Tipo == TipoDeProjetil.Beam)
+		{
+			p.SegundosPorTile = EmbateDeKi.SegundosPorTileDoEmpurrao / Projetil.PressaDeRaio;
+			p.Pressa = Projetil.PressaDeRaio;
+		}
 		p.Distancia = Math.Max(p.Distancia, EmbateDeKi.TilesDoEmpurrao);
 		p.MaxDistancia = Math.Max(p.MaxDistancia, p.Distancia);
 		p.VidaRestante = Math.Max(p.VidaRestante, Projetil.SegundosDeBurnout);
@@ -1380,7 +1434,9 @@ public sealed partial class GameServer
 	/// </summary>
 	private void TickDoContraFeixe(ServerPlayer npc, long agora)
 	{
-		if (npc.Peer != null) return;                                  // reflexo e de quem nao tem dono
+		// REFLEXO E DE QUEM NAO TEM AS REDEAS: o NPC, e (v0.2.1) o corpo POSSUIDO -- ele tem dono (`Peer`) e quem o
+		// dirige e o cerebro. Antes a fera de um jogador que sabia o raio levava o feixe de frente, de bracos abertos.
+		if (npc.Peer != null && npc.Cerebro == null) return;
 		if (_canais.ContainsKey(npc.Id)) return;                       // ja esta com um raio na mao
 		if (npc.Ficha.KO || npc.Ficha.dead) return;
 		if (_emEmbateDeKi.ContainsKey(npc.Id) || _emEmbate.ContainsKey(npc.Id)) return;
@@ -1437,13 +1493,20 @@ public sealed partial class GameServer
 	/// Ki Wave ficaria plantado ate o Ki acabar -- e plantado, pro `PodeMexerOCorpo`, quer dizer sem
 	/// andar, sem perseguir e sem fugir.
 	/// </summary>
+	/// <summary>DEFEITO INJETADO (bancada `--v021teste`, familia U): o prazo do raio volta a valer so pro corpo SEM dono -- o possuido segura o raio ate secar.</summary>
+	internal static bool PrazoDeRaioSoDeNpcDeTeste;
+
 	private void TickDoPrazoDeRaioDaIa(double dt)
 	{
 		if (_canais.Count == 0) return;
 
 		foreach (int id in _canais.Keys.ToList())
 		{
-			if (!_players.TryGetValue(id, out ServerPlayer? pl) || pl.Peer != null) continue;
+			// QUEM TEM TECLADO SOLTA O PROPRIO RAIO -- o que quer dizer "tem dono E esta com as redeas". (v0.2.1) O corpo
+			// POSSUIDO tem dono e nao tem teclado: o cerebro abre o canal com um pulso e ninguem o fechava -- o macaco
+			// ficava plantado segurando o raio ate o Ki acabar. O prazo dele e o do NPC.
+			if (!_players.TryGetValue(id, out ServerPlayer? pl)
+				|| (pl.Peer != null && (pl.Cerebro == null || PrazoDeRaioSoDeNpcDeTeste))) continue;
 			if (_emEmbateDeKi.ContainsKey(id)) continue;   // numa disputa o prazo NAO corre
 
 			double t = _raioDaIaAte.GetValueOrDefault(id) + dt;

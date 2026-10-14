@@ -183,6 +183,8 @@ public sealed partial class GameServer
 				double menorVida = 100;
 				bool descansou = false;
 				int maiorSparEmTiques = 0;
+				// (v0.2.1) O SPAR E TREINO: de pe e no spar, o cerebro do habitante sabe disso (`Cerebro.LutaDeTreino`).
+				int sparDePe = 0, sparSemAviso = 0;
 				for (int t = 0; t < 2700; t++)
 				{
 					Tiques(1);
@@ -197,6 +199,11 @@ public sealed partial class GameServer
 							menorVida = Math.Min(menorVida, x.Ficha.HP);
 							sparAtual[x.Id]++;
 							maiorSparEmTiques = Math.Max(maiorSparEmTiques, sparAtual[x.Id]);
+							if (!x.Ficha.KO && sparAtual[x.Id] > 2)
+							{
+								sparDePe++;
+								if (x.Cerebro?.LutaDeTreino != true) sparSemAviso++;
+							}
 						}
 						else sparAtual[x.Id] = 0;
 						if (r.Afazer == Afazer.Descansando) descansou = true;
@@ -215,6 +222,8 @@ public sealed partial class GameServer
 				Checa("...NAO-LETAL: ninguem morreu, e a vida parou perto do limiar (60%)",
 					  quatro.All(x => !x.Ficha.dead) && menorVida >= 25, $"menor vida {menorVida:0}, mortos {quatro.Count(x => x.Ficha.dead)}");
 				Checa("...o spar acabou: os dois foram DESCANSAR e a frase de fim saiu", descansou && falas.Any(f => deFim.Contains(f.Texto)));
+				Checa("...e o spar e TREINO (v0.2.1): em todo tique de spar, de pe, o cerebro do habitante esta avisado -- os punhos nomeados do repertorio ficam fora dele",
+					  sparDePe > 0 && sparSemAviso == 0, $"{sparDePe} tiques de spar de pe, {sparSemAviso} sem o aviso");
 				Checa($"...e nenhum spar passou do tempo maximo ({cfg.SparMax:0} s): a condicao de termino existe",
 					  maiorSparEmTiques <= (cfg.SparMax + 1.5) * Protocol.TickHz, $"o mais longo durou {maiorSparEmTiques / (double)Protocol.TickHz:0.0} s");
 				Checa("em 90 s apareceram ocio, conversa, spar e descanso",
@@ -236,16 +245,25 @@ public sealed partial class GameServer
 				double bpAntes = solo.Ficha.BP;
 				bool treinou = false, treinouComPose = false, passeou = false;
 				var vistosSolo = new HashSet<Afazer>();
+				// O QUE SE MEDE E O TREINO, e nao o minuto inteiro. A Terra tem habitantes de verdade, e um deles que
+				// passe pelo canto chama o "sozinho" pra conversar e pro spar -- e golpe de spar rende BP pros dois (o
+				// ganho de luta, que nao e o assunto desta afirmacao). Entao soma-se so o que o poder andou nos tiques
+				// em que ele estava TREINANDO.
+				double ganhoTreinando = 0;
 				for (int t = 0; t < 1800; t++)
 				{
+					bool treinava = solo.Rotina is { Afazer: Afazer.Treinando };
+					double bpDoTique = solo.Ficha.BP;
 					Tiques(1);
+					if (treinava && solo.Rotina is { Afazer: Afazer.Treinando }) ganhoTreinando += solo.Ficha.BP - bpDoTique;
 					if (solo.Rotina is not { } r) continue;
 					vistosSolo.Add(r.Afazer);
 					if (r.Afazer == Afazer.Treinando) { treinou = true; if (solo.Ficha.train) treinouComPose = true; }
 					if (r.Afazer == Afazer.Passeando && solo.Moving) passeou = true;
 				}
 				Checa("sozinho, houve TREINO com a pose de treino ligada (`Ficha.train`, a mesma da tecla do jogador)", treinou && treinouComPose, string.Join(", ", vistosSolo));
-				Checa("...e o treino do habitante NAO sobe o poder (decisao propria: cosmetico)", Math.Abs(solo.Ficha.BP - bpAntes) < 1e-6, $"{bpAntes:0} -> {solo.Ficha.BP:0}");
+				Checa("...e o treino do habitante NAO sobe o poder (decisao propria: cosmetico)", Math.Abs(ganhoTreinando) < 1e-6,
+					  $"treinando {ganhoTreinando:0.######}; no minuto inteiro {bpAntes:0} -> {solo.Ficha.BP:0} [{string.Join(", ", vistosSolo)}]");
 				Checa("...houve PASSEIO: saiu do lugar passeando", passeou);
 				Checa("...e a pose de treino se desliga quando o treino acaba", !solo.Ficha.train || solo.Rotina is { Afazer: Afazer.Treinando });
 				cfg.ChanceDeTreinar = 0.3;

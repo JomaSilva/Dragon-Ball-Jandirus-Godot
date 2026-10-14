@@ -100,6 +100,8 @@ public static class FichaDeSkill
 			foreach (Escolha e in s.Escolhas) t.NaCompra.Add($"    {e.Rotulo}: {TextoDaCasa(e)}");
 		}
 		foreach (Escolha e in s.PorRaca) t.NaCompra.Add($"se for {e.Rotulo}: {TextoDaCasa(e)}");
+		// o efeito que o catalogo nao carrega porque o servidor o escreveu a mao -- ver `EfeitosEscritosAMao`
+		if (EfeitosEscritosAMao.De(s.Path) is { } feitoAMao) t.NaCompra.Add(feitoAMao);
 
 		// ---- o nivel ----
 		// SEM REGRA DE NIVEL NAO HA O QUE DIZER. O `maxlevel = 3` de fabrica do DM (skill.dm:10) esta

@@ -184,12 +184,16 @@ public partial class GameServer
 		// bate com o total de mudos (ou seja, nenhum mudo escapa do agrupamento). Isso continua
 		// valendo quando o ultimo verb for portado -- e ai o `PorSistema` fica VAZIO, que e o unico
 		// estado em que esta linha deve mudar de novo.
+		//
+		// (2026-10-13) ...E ELA MUDOU ANTES DISSO, PELO MESMO MOTIVO: o "varios sistemas" estava escrito `> 10`, e o
+		// lote G14 fechou tres grupos de uma vez (o zanzoken avancado, a fusao e o veneno): sobraram DEZ. O numero
+		// agora e o que a frase diz -- mais de um punhado --, e nao o retrato do dia.
 		// ============================================================================================================
 		int somaDosGrupos = 0;
 		foreach ((string _, int quantos) in _relatorio.PorSistema) somaDosGrupos += quantos;
 
 		AfirmarCen("os mudos estao AGRUPADOS por sistema, e a soma dos grupos bate com o total",
-				   _relatorio.PorSistema.Count > 10
+				   _relatorio.PorSistema.Count > 5
 				   && _relatorio.PorSistema[0].Quantos > 1
 				   && somaDosGrupos == _relatorio.VerbosEsperando,
 				   $"{_relatorio.PorSistema.Count} sistemas, maior com {_relatorio.PorSistema[0].Quantos}, "
@@ -382,6 +386,9 @@ public partial class GameServer
 			// declarado mora neles. Canal novo declarado num roteador que nao esta aqui -> o arquivo entra
 			// nesta lista no mesmo commit (foi exatamente o que faltou com as esferas).
 			"Server/GameServer.Esferas.cs",
+			// O ROTEADOR DA FUSAO (`UsarFusao`, os `case "fus_danca"` e `case "fus_namek"`): os dois verbs de fusao
+			// do catalogo sairam da lista de espera pro `PorOutroCanal` em 2026-10-13, e o canal deles mora la.
+			"Server/GameServer.Fusao.cs",
 		];
 
 		string tudo = "";
@@ -884,20 +891,27 @@ public partial class GameServer
 		_soproPronto.Remove(pl.Id);
 		inimigo.TiquesDeVoo = 0;
 		inimigo.Pos = chao + new Vec2(ZoneCollision.TileSize, 0);
+		// A BOLA COMUM E MAIS LENTA QUE A DEVOLUCAO: `speed` 1 e `lag` 3 (`max(1, round(4 - speed))`), 16 tiles por
+		// segundo; o passo do DM pra quem devolve e o de `lag` 1, 20 tiles por segundo. E nela que a correcao aparece.
 		Projetil segunda = Disparar(inimigo, new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Blast, BaseDano = 1, Velocidade = 1, AlcanceTiles = 10,
 		});
+		double passoDaLenta = segunda.SegundosPorTile;
 		UsarHabilidade(pl, "Deflection");
 		AfirmarCen("a Deflexao devolve o tiro fraco E TROCA O DONO",
 				   segunda.Vivo && segunda.Dono == pl.Id, $"dono {segunda.Dono} vs {pl.Id}");
 
 		// E ELE VOLTA NO PASSO DO DM: `walk(M, get_opposite_dir(M))` sem atraso, o da bola mais rapida.
 		float correndo = MoveRules.SpeedPx(1f, correndo: true) / ZoneCollision.TileSize;
-		AfirmarCen("...e o tiro devolvido volta a um tile por tique do DM (o passo da bola mais rapida): ganha de quem atirou e saiu correndo",
-				   Math.Abs(segunda.SegundosPorTile - Projetil.AtrasoDeBolaPorLag(1)) < 1e-9 && 1 / segunda.SegundosPorTile > correndo,
-				   $"{1 / segunda.SegundosPorTile:0.#} tiles/s contra {correndo:0.#} correndo");
+		AfirmarCen("...e o tiro devolvido volta a um tile por tique do DM (o passo da bola mais rapida), por mais lento que tenha vindo: ganha de quem atirou e saiu correndo",
+				   passoDaLenta > Projetil.AtrasoDeBolaPorLag(1) + 1e-6
+				   && Math.Abs(segunda.SegundosPorTile - Projetil.AtrasoDeBolaPorLag(1)) < 1e-9 && 1 / segunda.SegundosPorTile > correndo,
+				   $"veio a {1 / passoDaLenta:0.#} tiles/s, voltou a {1 / segunda.SegundosPorTile:0.#} contra {correndo:0.#} correndo");
 
+		// (a bola devolvida sai do palco antes da proxima: desde que tiro bate em tiro -- v0.2.1 --, a segunda nascia
+		// em cima da primeira, as duas se chocavam, e a Deflexao nao tinha o que devolver)
+		Matar(segunda, FimDeProjetil.Apagou);
 		Projetil.DeflexaoNoPassoDoEmpurraoDeTeste = true;
 		try
 		{
@@ -906,10 +920,11 @@ public partial class GameServer
 			{
 				Tipo = TipoDeProjetil.Blast, BaseDano = 1, Velocidade = 1, AlcanceTiles = 10,
 			});
+			pl.Ficha.Ki = pl.Ficha.MaxKi;
 			UsarHabilidade(pl, "Deflection");
-			AfirmarCen("(defeito injetado: o passo do empurrao de uma disputa) o tiro devolvido volta mais DEVAGAR do que quem corre",
-					   lenta.Dono == pl.Id && 1 / lenta.SegundosPorTile < correndo,
-					   $"dono {lenta.Dono}; {1 / lenta.SegundosPorTile:0.#} tiles/s contra {correndo:0.#} correndo");
+			AfirmarCen("(defeito injetado: o passo que o `Devolver` deixa no tiro) a bola lenta devolvida continua no passo lento DELA, e nao no do DM",
+					   lenta.Dono == pl.Id && Math.Abs(lenta.SegundosPorTile - passoDaLenta) < 1e-9 && lenta.SegundosPorTile > Projetil.AtrasoDeBolaPorLag(1) + 1e-6,
+					   $"dono {lenta.Dono} vs {pl.Id}; {1 / lenta.SegundosPorTile:0.#} tiles/s (veio a {1 / passoDaLenta:0.#}, o do DM e {1 / Projetil.AtrasoDeBolaPorLag(1):0.#})");
 			Matar(lenta, FimDeProjetil.Apagou);
 		}
 		finally { Projetil.DeflexaoNoPassoDoEmpurraoDeTeste = false; }

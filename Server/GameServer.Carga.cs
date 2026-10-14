@@ -151,6 +151,8 @@ public sealed partial class GameServer
 		double drenoDaForma = pl.Forma.NaBase ? 0 : pl.Forma.DrenoPorSegundo();
 		if (!emCena) RegenDeKi.Passo(f, dt, drenoDaForma);
 
+		// (2026-10-13) REUNINDO ENERGIA NESTE TIQUE? E o que segura o Ki acima de 100% -- ver `CargaDeKi.PrecoDoExcesso`.
+		bool reunindo = false;
 		if (pl.Carregando)
 		{
 			// O NOCAUTE CONTINUA SENDO OUVIDO EM CENA -- ele fica FORA do `emCena` de proposito: cair
@@ -166,6 +168,7 @@ public sealed partial class GameServer
 			{
 				EstagioDaCarga e = CargaDeKi.Passo(f, dt, pl.Moving);
 				AnunciarEstagio(pl, e);
+				reunindo = e is EstagioDaCarga.Enchendo or EstagioDaCarga.Retomando or EstagioDaCarga.Ultrapassando;
 
 				// ANDOU: a carga fica SUSPENSA (nao cancelada). A aura e o zumbido apagam na hora,
 				// que e o que ensina a regra sem precisar de texto -- parou, volta sozinha. Cancelar
@@ -184,9 +187,12 @@ public sealed partial class GameServer
 			}
 		}
 
-		// O PRECO DO EXCESSO, com ou sem tecla apertada.
-		double dano = CargaDeKi.PrecoDoExcesso(f, dt);
+		// O PRECO DO EXCESSO, com ou sem tecla apertada. (Em cena o relogio do corpo esta parado: nada escorre.)
+		double dano = CargaDeKi.PrecoDoExcesso(f, dt, reunindo || emCena);
 		if (dano > 0) EspalharDanoDaCarga(pl, dano);
+
+		// O TETO DO JOGO (dono, 2026-10-13): ninguem passa de 200% de Ki, venha ele de onde vier.
+		if (!CargaDeKi.TetoPelaFormulaDoDmDeTeste && f.Ki > f.MaxKi * CargaDeKi.TetoDoJogo) f.Ki = f.MaxKi * CargaDeKi.TetoDoJogo;
 
 		// A AURA E DO KI, NAO DA TECLA. Ver CargaDeKi.AuraAcesa -- o limiar de acender (1,01) e
 		// diferente do de apagar (1,0) justamente pra ela nao piscar em quem parou no limite.

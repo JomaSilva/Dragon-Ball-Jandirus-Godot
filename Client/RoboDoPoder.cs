@@ -125,8 +125,10 @@ public partial class RoboDoPoder : Node
 		p = menu.PoderNaAbaDeTeste();
 		Checa("**RELAXAR**: o botao manda o verbo, o retrato volta pelo fio e a faixa le \"mínimo\" -- \"relaxado (poder no mínimo, escondido)\", com o botao virando \"Ficar pronto (100%)\"",
 			  relaxou && p.Grande == "mínimo" && p.Legenda == "relaxado (poder no mínimo, escondido)" && p.Prontidao == "Ficar pronto (100%)", $"{p.Grande} / {p.Legenda} / '{p.Prontidao}'");
+		// (EXATAMENTE 5, e nao "ate 5": a cobaia tem mil de BP -- `PalcoDoPoder_Cobaia` --, entao um relaxar que nao
+		// travasse o poder reprova aqui. Com o BP do berco -- ~2 -- o "<= 5" de antes passava sem trava nenhuma.)
 		Checa("...o servidor concorda: relaxado, escondido, e com 5 de poder expresso (o dono: \"cair pra 5 de poder de luta sempre\")",
-			  srv.PalcoDoPoder_Verdade(eu) is { Relaxado: true, Escondido: true, Expresso: <= 5 }, $"{srv.PalcoDoPoder_Verdade(eu)}");
+			  srv.PalcoDoPoder_Verdade(eu) is { Relaxado: true, Escondido: true, Expresso: 5 }, $"{srv.PalcoDoPoder_Verdade(eu)}");
 		Checa("**O PAINEL DE STATUS DIZ**: \"RELAXADO · PODER ESCONDIDO\"", hud.TextoDoPoderEmUsoDeTeste == "RELAXADO · PODER ESCONDIDO", hud.TextoDoPoderEmUsoDeTeste);
 		Hud.PoderEmUsoMudoDeTeste = true;
 		try

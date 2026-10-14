@@ -206,11 +206,16 @@ public partial class MenuJogo
 
 	/// <summary>
 	/// O BOTAO "Controle de Poder" DA ABA SKILLS (e a tecla ligada a ele) ABRE ESTA FAIXA. O verbo sem numero
-	/// nao faz nada no servidor; o numero se escolhe aqui. Devolve falso pra qualquer outro id -- e ai quem
-	/// chamou manda o verbo como sempre (`Habilidades.DasSkills`).
+	/// nao faz nada no servidor; o numero se escolhe aqui. (E o "Materializar" abre a grade dele, pelo mesmo motivo.)
+	/// Devolve falso pra qualquer outro id -- e ai quem chamou manda o verbo como sempre (`Habilidades.DasSkills`).
 	/// </summary>
 	public static bool AbrirOControleDe(string id)
 	{
+		// O "MATERIALIZAR" ABRE A GRADE DE ESCOLHA: o que materializar (os pesos, ou qual roupa e de que cor) nao cabe
+		// num botao. Ver `TelaDeArmadura.AbrirPraMaterializar`.
+		if (string.Equals(id, Jandirus.Core.Items.Materializacao.Verbo, StringComparison.OrdinalIgnoreCase))
+			return TelaDeArmadura.Instancia?.AbrirPraMaterializar() == true;
+
 		if (!string.Equals(id, VerboDeBaixar, StringComparison.OrdinalIgnoreCase) || Instancia is not { } m) return false;
 		m._busca.Text = "";   // a busca vence a aba: com ela preenchida a faixa nao aparece
 		if (!m.Visible) m.Abrir();

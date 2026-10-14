@@ -305,6 +305,10 @@ public partial class GameServer
 			},
 		};
 
+		// A BOLSA (2026-10-13): o zeni que ele carrega -- o que se rouba dele nocauteado, e o premio de quem mata o
+		// vilao. Da MESMA semente da ficha. Ver `Core/Npc/BolsaDeNpc.cs`.
+		npc.Ficha.Zeni = BolsaDeNpc.Zeni(molde.Tipo, semente);
+
 		PorNoMundo(npc);
 
 		// AS FORMAS SO DEPOIS DO CORPO EXISTIR, porque o gate delas le o `PerfilDeFormas`, que e

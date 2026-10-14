@@ -147,7 +147,8 @@ public sealed partial class GameServer
 			case Jandirus.Core.Npc.BillsEWhis.VerboParar:
 				return ComandoDeBills(pl, cmd, arg);
 
-			default: return ComandoDeRegenerador(pl, cmd, arg) || ComandoDeGravidade(pl, cmd, arg);
+			default: return ComandoDeRegenerador(pl, cmd, arg) || ComandoDeGravidade(pl, cmd, arg)
+							|| ComandoDeTechPortada(pl, cmd, arg);   // (v0.2.1) as maquinas do lote da tech -- `GameServer.TechDeBolso.cs`
 		}
 	}
 

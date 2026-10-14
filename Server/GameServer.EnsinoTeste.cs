@@ -568,6 +568,11 @@ public partial class GameServer
 	/// em marco de ninguem**. Ela reprova no dia em que alguem escrever `Conceder(` ou
 	/// `MarcosLivres -=` nestes dois arquivos -- que e exatamente o dia em que o dono precisa ser
 	/// perguntado (ver o cabecalho do `EnsinoDeSkill`).
+	///
+	/// (2026-10-13) ESSE DIA CHEGOU UMA VEZ, e a varredura a conhece pelo nome: a LICAO DE MESTRE (dono: *"dar pra
+	/// ensinar mais skills pros alunos"*) cobra do aluno os marcos da skill que nao se ensina a estranho. E UMA linha,
+	/// no `EnsinoDeSkill.Ensinar`, atras do `if (cobrar)`. Uma segunda cobranca -- ou aquela fora do `if` -- continua
+	/// reprovando, e o que o comportamento prova (a licao de sempre nao gasta nada) esta nas secoes 3 e 4.
 	/// ======================================================================================
 	/// </summary>
 	private void NinguemMexeEmMarco()
@@ -578,8 +583,17 @@ public partial class GameServer
 		string[] proibidos = ["Conceder(", "MarcosLivres -", "MarcosLivres +", "MarcosTotais -",
 							  "MarcosTotais +", "MarcosLivres =", "MarcosTotais ="];
 
+		// A UNICA COBRANCA QUE EXISTE (a licao de mestre), reconhecida pelo texto E pelo `if (cobrar)` logo acima.
+		const string aCobrancaDoMestre = "doAluno.MarcosLivres -= Custo(s);";
+		static bool AtrasDoCobrar(string[] linhas, int i)
+		{
+			for (int j = i - 1; j >= Math.Max(0, i - 4); j--)
+				if (SemTextoNemComentario(linhas[j]).Contains("if (cobrar)", StringComparison.Ordinal)) return true;
+			return false;
+		}
+
 		var achados = new List<string>();
-		int linhasLidas = 0;
+		int linhasLidas = 0, cobrancasDeMestre = 0;
 		foreach (string f in fontes)
 		{
 			string[] linhas = Fonte(f);
@@ -590,13 +604,20 @@ public partial class GameServer
 			for (int i = 0; i < linhas.Length; i++)
 			{
 				string l = SemTextoNemComentario(linhas[i]);
+				if (l.Trim() == aCobrancaDoMestre && f.EndsWith("EnsinoDeSkill.cs", StringComparison.Ordinal) && AtrasDoCobrar(linhas, i))
+				{
+					cobrancasDeMestre++;
+					continue;
+				}
 				foreach (string p in proibidos)
 					if (l.Contains(p, StringComparison.Ordinal)) achados.Add($"{f}:{i + 1}  {l.Trim()}");
 			}
 		}
 
-		AfirmarEns($"nenhuma linha de producao do ensino credita ou debita marco ({linhasLidas} linhas lidas)",
-				   achados.Count == 0, string.Join(" | ", achados.Take(4)));
+		AfirmarEns($"nenhuma linha de producao do ensino credita ou debita marco -- fora a UNICA cobranca da licao de mestre, atras do `if (cobrar)` ({linhasLidas} linhas lidas)",
+				   achados.Count == 0 && cobrancasDeMestre == 1, $"{cobrancasDeMestre} cobranca(s) de mestre; {string.Join(" | ", achados.Take(4))}");
+		AfirmarEns("...e a mesma linha FORA do `if (cobrar)` nao passaria por ela (a excecao e a linha no lugar, e nao o texto)",
+				   !AtrasDoCobrar(["\t\tdoAluno.DarComoEnsinada(s.Path);", "\t\t" + aCobrancaDoMestre], 1));
 
 		// E A VARREDURA TEM QUE SABER REPROVAR -- senao ela e um comentario bonito. A prova roda o
 		// mesmo criterio sobre uma linha adulterada.

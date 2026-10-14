@@ -9,7 +9,8 @@ namespace Jandirus.Core.Skills;
 /// ============================ O QUE E ISTO, E O QUE NAO E ============================
 /// No original o vinculo de mestre e aluno faz TRES coisas, e so tres:
 ///
-///   1. quem tem mestre GANHA MAIS treinando contra ele (ate 3x, piso 1,2x);
+///   1. quem tem mestre GANHA MAIS treinando contra ele (ate 3x; la o bonus pedia um gap de 1,2x, e aqui ele nunca
+///      e menor que 2x -- regra do dono, `GainKnobs.MasterGainMin`);
 ///   2. o mestre pode PROVOCAR/ENSINAR um despertar de forma, e nessa tentativa o requisito
 ///      PESSOAL de BP do aluno vale METADE (`MST_HALF`);
 ///   3. o vinculo e do MUNDO (savefile `MASTER`, por assinatura) -- ele atravessa logout, morte e
@@ -110,8 +111,8 @@ public static class Discipulado
 	public const double PrazoDoConviteSegundos = 60;
 
 	// O TETO E O PISO DO GANHO **NAO MORAM AQUI**: eles ja tinham casa em
-	// `GainKnobs.MasterGainCap` (3) e `GainKnobs.MasterGainFloor` (1,2), lidos pelo
-	// `Fighter.FightGainMult`, que e o porte literal do `fight_gain_mult`
+	// `GainKnobs.MasterGainCap` (3) e `GainKnobs.MasterGainMin` (2 -- regra do dono; no DM o piso era um
+	// gap de 1,2x), lidos pelo `Fighter.FightGainMult`, que e o porte do `fight_gain_mult`
 	// (`combatgains.dm:88-100`). Repeti-los aqui seria a quarta copia do mesmo numero e a primeira
 	// a divergir.
 

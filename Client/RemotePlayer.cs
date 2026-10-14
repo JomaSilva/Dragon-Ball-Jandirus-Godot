@@ -562,11 +562,39 @@ public partial class RemotePlayer : Node2D
 	}
 
 	/// <summary>Posicao e altura interpoladas do MESMO par -- o corpo anda, sobe e VIRA no mesmo relogio.</summary>
+	/// <summary>
+	/// **QUEM ME LEVA NO COLO** (o node do corpo que me carrega), ou nulo. Escrito pelo `World` a cada snapshot, do
+	/// `EntityState.LevadoPor`. Enquanto vale, este corpo e desenhado NO PONTO em que o carregador esta desenhado:
+	/// no servidor os dois estao no mesmo lugar, e desenhar um pela interpolacao (um decimo de segundo atras) e o
+	/// outro pela previsao local era o *"ele fica um pouco atrasado no movimento"* do dono (2026-10-13).
+	///
+	/// O carregado processa DEPOIS (`ProcessPriority`): assim ele le a posicao que o carregador escreveu NESTE quadro.
+	/// </summary>
+	public Node2D? Carregador
+	{
+		get => _carregador;
+		set
+		{
+			_carregador = value;
+			ProcessPriority = value != null ? 1 : 0;
+		}
+	}
+	private Node2D? _carregador;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv021`): o corpo no colo volta a ser desenhado pela propria interpolacao --
+	/// atrasado em relacao a quem o carrega, como na v0.2.0. Lido pelas duas pontas do conserto (aqui e no
+	/// `LocalPlayer`). Falso em jogo, sempre.
+	/// </summary>
+	public static bool AgarradoVemAtrasadoDeTeste;
+
 	private void Mostrar(Vector2 onde, float altitude, in Amostra fonte, Vector2 rumo)
 	{
 		// (Com o defeito injetado o olhar ja foi aplicado na chegada; aplicar aqui de novo o desfaria e
 		// a bancada mediria o conserto por baixo dos panos.)
 		if (!DefeitoViradaNaChegada) AplicarMovimento(fonte.Olhar, fonte.Movendo, fonte.Correndo, rumo);
+		// NO COLO, o ponto e o de quem me leva -- ver `Carregador`.
+		if (!AgarradoVemAtrasadoDeTeste && _carregador is { } leva && IsInstanceValid(leva)) onde = leva.Position;
 		_exata = onde;
 		Desenhar(onde);
 		Altura(altitude);

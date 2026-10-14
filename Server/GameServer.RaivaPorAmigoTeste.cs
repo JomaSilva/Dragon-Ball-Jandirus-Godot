@@ -99,7 +99,7 @@ public partial class GameServer
 		bool caidoAntes = f.KO;
 		double unlockedAntes = f.MeditateGivesKiRegen, controleAntes = f.canPower;
 		bool travaAntes = f.fd_ki_locked, overAntes = f.overcharge;
-		long extremaAntes = pl.FuriaExtremaAte, comumAntes = pl.RaivaLendariaAte, cenaAntes = pl.FuriaCenaAte;
+		long extremaAntes = pl.FuriaExtremaAte, comumAntes = pl.RaivaComumAte, cenaAntes = pl.FuriaCenaAte;
 		bool treinavaAntes = f.train, meditavaAntes = f.med, voavaAntes = pl.Voando;
 		double maestriaDoSsj1Antes = pl.Forma.Maestria.De("ssj1");
 		// (os marcos de ganho: a secao 7 confere o do Super Saiyajin 2 pelo funil de producao, que escreve na ficha)
@@ -129,7 +129,7 @@ public partial class GameServer
 		void EmPaz()
 		{
 			pl.FuriaExtremaAte = 0;
-			pl.RaivaLendariaAte = 0;
+			pl.RaivaComumAte = 0;
 			pl.FuriaCenaAte = 0;
 			ProjetarRaiva(pl);
 			furias.Clear();
@@ -190,7 +190,7 @@ public partial class GameServer
 			KiEm(0.05);
 			List<string> falas = Ouvir(() => AoPerderALuta(amigo, algoz, morreu: false));
 			Checa("amigo NOCAUTEADO por um inimigo: o degrau e o COMUM, e nao o mais alto",
-				  Nivel() == NivelDeRaiva.Lendaria, Nivel().ToString());
+				  Nivel() == NivelDeRaiva.Comum, Nivel().ToString());
 			Checa("**...e a raiva dele vale o 'Angry' do DM (100 + folga/1,30), e NAO o topo (MaxAnger)**",
 				  Math.Abs(f.Anger - comum) < 0.05 && f.Anger < f.MaxAnger - 0.5,
 				  $"Anger {f.Anger:0.##}; comum {comum:0.##}; topo {f.MaxAnger:0.##}");
@@ -219,12 +219,12 @@ public partial class GameServer
 			f.BP = 1;
 
 			// a raiva comum goteja como a outra, e nao encosta na calma antes do prazo
-			pl.RaivaLendariaAte = NowMs() + (long)(0.01 * SegundosDeRaiva * 1000);
+			pl.RaivaComumAte = NowMs() + (long)(0.01 * SegundosDeRaiva * 1000);
 			ProjetarRaiva(pl);
 			double noFim = comum - Folga() * (0.99 * SegundosDeRaiva) / 1600.0;
 			Checa("...ela goteja (Stats.dm:443) e no fim dos 120 s ainda e raiva: quem a derruba e o PRAZO",
 				  Math.Abs(f.Anger - noFim) < 0.05 && f.Anger > 100 + Folga() * 0.5, $"Anger {f.Anger:0.##}, esperado {noFim:0.##}");
-			pl.RaivaLendariaAte = NowMs() - 1;
+			pl.RaivaComumAte = NowMs() - 1;
 			ProjetarRaiva(pl);
 			Checa("...e vencido o prazo ela volta a 100 sozinha", Math.Abs(f.Anger - 100) < 0.001, $"{f.Anger:0.##}");
 
@@ -306,7 +306,7 @@ public partial class GameServer
 			KiEm(0.30);
 			AoPerderALuta(amigo, algoz, morreu: false);
 			Checa("o amigo cai: raiva comum, sem cena, Ki onde estava",
-				  Nivel() == NivelDeRaiva.Lendaria && Cenas() == 0 && Math.Abs(Razao() - 0.30) < 0.001,
+				  Nivel() == NivelDeRaiva.Comum && Cenas() == 0 && Math.Abs(Razao() - 0.30) < 0.001,
 				  $"{Nivel()}, {Cenas()} cena(s), Ki {Razao() * 100:0.#}%");
 			AoPerderALuta(amigo, algoz, morreu: true);
 			Checa("...e ele MORRE logo depois: a raiva SOBE de degrau e de numero",
@@ -329,7 +329,7 @@ public partial class GameServer
 			EmPaz();
 			AoPerderALuta(amigo, algoz, morreu: true);
 			pl.FuriaExtremaAte = 0;
-			pl.RaivaLendariaAte = 0;
+			pl.RaivaComumAte = 0;
 			ProjetarRaiva(pl);
 			furias.Clear();
 			AoPerderALuta(amigo, algoz, morreu: true);
@@ -802,7 +802,7 @@ public partial class GameServer
 			f.BP = 1;
 			AoPerderALuta(amigo, algoz, morreu: true);
 			pl.FuriaExtremaAte = NowMs() - 1;
-			pl.RaivaLendariaAte = 0;
+			pl.RaivaComumAte = 0;
 			ProjetarRaiva(pl);
 			Checa("vencidos os 120 s a raiva volta a 100 e o Ki NAO e tirado de volta",
 				  Math.Abs(f.Anger - 100) < 0.001 && Razao() > 1.39, $"Anger {f.Anger:0.##}, Ki {Razao() * 100:0.#}%");
@@ -826,7 +826,7 @@ public partial class GameServer
 			falas = Ouvir(Sentar);
 			Checa("**a furia EXTREMA acaba no instante em que ele senta pra meditar** (Meditate.dm:27-31)",
 				  f.med && Nivel() == NivelDeRaiva.Nenhuma && Math.Abs(f.Anger - 100) < 0.001
-				  && pl.FuriaExtremaAte == 0 && pl.RaivaLendariaAte == 0,
+				  && pl.FuriaExtremaAte == 0 && pl.RaivaComumAte == 0,
 				  $"medita {f.med}, {Nivel()}, Anger {f.Anger:0.##}");
 			Checa("...ele le a frase da MEDITACAO (e nao a do prazo vencido), e o buff de poder da raiva sai na hora",
 				  Disse(falas, "se centra") && !Disse(falas, "se apaga") && buffEnfurecido > 1.0001 && Math.Abs(f.angerBuff - 1) < 0.0001,
@@ -840,7 +840,7 @@ public partial class GameServer
 			EmPaz();
 			KiEm(0.05);
 			AoPerderALuta(amigo, algoz, morreu: false);
-			bool estavaComRaivaComum = Nivel() == NivelDeRaiva.Lendaria;
+			bool estavaComRaivaComum = Nivel() == NivelDeRaiva.Comum;
 			Sentar();
 			Checa("a raiva COMUM tambem acaba (sao os dois degraus)",
 				  estavaComRaivaComum && Nivel() == NivelDeRaiva.Nenhuma && Math.Abs(f.Anger - 100) < 0.001, $"{Nivel()}, Anger {f.Anger:0.##}");
@@ -850,10 +850,10 @@ public partial class GameServer
 			EmPaz();
 			AoPerderALuta(amigo, algoz, morreu: false);
 			AoPerderALuta(amigo, algoz, morreu: true);
-			bool asDuasAbertas = pl.FuriaExtremaAte > NowMs() && pl.RaivaLendariaAte > NowMs();
+			bool asDuasAbertas = pl.FuriaExtremaAte > NowMs() && pl.RaivaComumAte > NowMs();
 			Sentar();
 			Checa("com as DUAS janelas abertas (ele caiu, e morreu) meditar fecha as duas: nao sobra a raiva comum por baixo",
-				  asDuasAbertas && Nivel() == NivelDeRaiva.Nenhuma && pl.FuriaExtremaAte == 0 && pl.RaivaLendariaAte == 0, Nivel().ToString());
+				  asDuasAbertas && Nivel() == NivelDeRaiva.Nenhuma && pl.FuriaExtremaAte == 0 && pl.RaivaComumAte == 0, Nivel().ToString());
 			Levantar();
 
 			// (d) a forma que a raiva despertou fica
@@ -940,7 +940,7 @@ public partial class GameServer
 			UmTique();
 			RecusaForma entreOsDois = pl.Forma.Avaliar("ssj1", f.BP, 1, false, Perfil(pl));
 			Checa("**(b) o amigo so CAI e o poder esta entre a porta e 1,2x ela: com a raiva comum acesa, ele NAO se transforma**",
-				  Nivel() == NivelDeRaiva.Lendaria && pl.Forma.NaBase && entreOsDois == RecusaForma.SemPoderPraRaivaComum,
+				  Nivel() == NivelDeRaiva.Comum && pl.Forma.NaBase && entreOsDois == RecusaForma.SemPoderPraRaivaComum,
 				  $"{Nivel()}, forma {pl.Forma.Atual}, {entreOsDois}");
 			List<string> aoApertarC = Ouvir(() => Transformar(pl, subir: true));
 			Checa("...e a tecla C diz o porque sem numero nenhum: a raiva dele pede mais poder -- ou uma dor maior",
@@ -960,7 +960,7 @@ public partial class GameServer
 			f.BP = precoComum1 * 1.01;
 			falas = Ouvir(() => { AoPerderALuta(amigo, algoz, morreu: false); UmTique(); });
 			Checa("**(d) o amigo so CAI e o poder paga 1,2x a porta: ele VIRA SUPER SAIYAJIN SOZINHO, com a raiva COMUM**",
-				  pl.Forma.Atual == "ssj1" && pl.Forma.Despertou("ssj1") && Nivel() == NivelDeRaiva.Lendaria,
+				  pl.Forma.Atual == "ssj1" && pl.Forma.Despertou("ssj1") && Nivel() == NivelDeRaiva.Comum,
 				  $"forma {pl.Forma.Atual}, {Nivel()}");
 			Checa("...pela ESTREIA de sempre: ele le 'VOCE DESPERTA', e a cinematica que prende o corpo e a DA TRANSFORMACAO",
 				  Disse(falas, "VOCE DESPERTA") && presoPeloSsj1 > 0 && Math.Abs(pl.CenaSegundos - presoPeloSsj1) < 0.2,
@@ -1084,7 +1084,7 @@ public partial class GameServer
 			f.Ki = kiAntes;
 			f.overcharge = overAntes;
 			pl.FuriaExtremaAte = extremaAntes;
-			pl.RaivaLendariaAte = comumAntes;
+			pl.RaivaComumAte = comumAntes;
 			pl.FuriaCenaAte = cenaAntes;
 			f.Statify();
 			AplicarForma(pl);
@@ -1146,7 +1146,7 @@ public partial class GameServer
 	{
 		if (!_players.TryGetValue(hostId, out ServerPlayer? host)) return;
 		host.FuriaExtremaAte = 0;
-		host.RaivaLendariaAte = 0;
+		host.RaivaComumAte = 0;
 		host.FuriaCenaAte = 0;
 		host.Ficha.Ki = host.Ficha.MaxKi * kiEm;
 		host.Ficha.overcharge = false;

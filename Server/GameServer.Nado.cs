@@ -263,7 +263,9 @@ public partial class GameServer
 	{
 		if (!pl.Nadando) return;
 		pl.Nadando = false;
-		if (aviso != null) Avisar(pl, aviso);
+		// (v0.2.1) QUEM VELEJAVA ATRACA: a frase e a do barco, e o desenho dele sai de baixo do corpo. Ver `Barco`.
+		if (aviso != null) Avisar(pl, Velejando(pl) ? "você atraca." : aviso);
+		AoPararDeNadar(pl);
 		AnunciarNado(pl);
 	}
 
@@ -357,6 +359,9 @@ public partial class GameServer
 		if (EmCena(pl)) return;
 
 		Jandirus.Core.Stats.Fighter f = pl.Ficha;
+
+		// (v0.2.1) QUEM VELEJA NAO PAGA: o barco tira do nado a exaustao, o custo de Ki e a maestria. Ver `Barco`.
+		if (VelaPoupaONado(pl)) return;
 
 		// PARA POR EXAUSTAO: `if(Ki > MaxKi*0.01) ... else { to_chat("You stop swimming."); Ki=0 }`.
 		// O `Ki = 0` e literal do original -- quem esvazia o tanque nadando sai da agua sem nada.

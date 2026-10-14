@@ -335,6 +335,13 @@ public static class VerbosDoJogo
 			+ "Andar ou agir interrompe; acionar de novo para.",
 			LocalPlayer.PedirMineracao) { Chave = "minerar" });
 
+		// (v0.2.1) O GATILHO DAS ARMAS DE FOGO -- o `verb/fire()` do original (`set name="Shoot"`, `set category="Skills"`,
+		// `Guns.dm:110-114`). So existe pra quem carrega uma arma (`Fatos.TemArmaDeFogo`).
+		Verbos.Registrar(new Verbo("Atirar (arma de fogo)", Verbos.Outros,
+			"Aperta o gatilho da primeira arma da mochila que tem munição, energia ou Ki pra atirar. "
+			+ "Ponha numa tecla: cada arma tem o intervalo dela entre um tiro e outro.",
+			() => C?.SendVerbo(Jandirus.Core.Tech.ArmasDeFogo.VerboAtirar)) { Requisito = Do(Jandirus.Core.Tech.ArmasDeFogo.VerboAtirar) });
+
 		Verbos.Registrar(new Verbo("Who", Verbos.Outros,
 			"Quem esta no mundo agora, e onde.",
 			() => C?.SendVerbo("quem")));

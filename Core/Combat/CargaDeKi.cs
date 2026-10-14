@@ -112,9 +112,50 @@ public static class CargaDeKi
 	/// </summary>
 	public static double TetoDeCarga(Fighter f) => f.MaxKi * Math.Max(f.powerupcap, 1);
 
+	// =====================================================================
+	// O TETO DO JOGO: 200% (dono, 2026-10-13)
+	// =====================================================================
+	/// <summary>O teto de quem acabou de ganhar o controle (Basic Ki Control 5): 140% do tanque.</summary>
+	public const double TetoDeFabrica = 1.4;
+
 	/// <summary>
-	/// O MESMO TETO, mas EM RAZAO sobre o tanque -- 1,4 de fabrica, mais de 3,8 com as skills de
-	/// power-up no talo.
+	/// **O TETO DO JOGO**: ninguem passa de 200% de Ki, por caminho nenhum -- *"o teto limite do jogo q vc pode ter
+	/// de ki seria 200%"*. E onde chega a carga de quem tem as duas pericias no maximo (<see cref="TetoPelaPericia"/>),
+	/// e e o corte que o servidor aplica em todo tique (`GameServer.TickDaCarga`).
+	/// </summary>
+	public const double TetoDoJogo = 2.0;
+
+	/// <summary>
+	/// O nivel das duas pericias (circulacao e controle de ki) em que a carga chega ao teto do jogo: o fim das tres
+	/// escadas de cada uma (Basic, Advanced e Perfect ate o nivel 100 -- uns cem pontos de pericia).
+	/// </summary>
+	public const double PericiaDoTeto = 100;
+
+	/// <summary>Abaixo disto a pericia ainda nao rende teto nenhum -- o `max(pericia/10, 1)` da conta do DM (`master.dm:183`).</summary>
+	public const double PericiaQueComecaARender = 10;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): o teto da carga volta a sair da conta do DM (`1.4 * log7(...)`,
+	/// que passava de 200% com pericia mediana e ia a 500% no talo) e o corte dos 200% deixa de existir -- a v0.2.0.
+	/// Lido pelo `Fighter.Statify` e pelo `GameServer.TickDaCarga`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool TetoPelaFormulaDoDmDeTeste;
+
+	/// <summary>
+	/// ATE ONDE A CARGA DESTE CORPO CHEGA, em razao sobre o tanque: de 1,4 (de fabrica) a 2,0 (o teto do jogo), em
+	/// reta pela MEDIA GEOMETRICA das duas pericias -- as duas contam, como na conta do DM, e so as duas no maximo
+	/// chegam aos 200%.
+	/// </summary>
+	public static double TetoPelaPericia(double circulacao, double controle)
+	{
+		double media = Math.Sqrt(Math.Max(circulacao, 0) * Math.Max(controle, 0));
+		double progresso = Math.Clamp((media - PericiaQueComecaARender) / (PericiaDoTeto - PericiaQueComecaARender), 0, 1);
+		return TetoDeFabrica + (TetoDoJogo - TetoDeFabrica) * progresso;
+	}
+
+	/// <summary>
+	/// O MESMO TETO, mas EM RAZAO sobre o tanque -- 1,4 de fabrica, 2,0 com as duas pericias de ki no
+	/// maximo (ate 2026-10-13 a conta do DM o levava a mais de 3,8).
 	///
 	/// Existe pra a barra de Ki do HUD: ela desenha razao, e um trilho que acaba em 1,0 e o que
 	/// fazia o excedente sumir da tela. O DM ja expunha este numero ao jogador com esta cara
@@ -214,7 +255,14 @@ public static class CargaDeKi
 
 		// --- 3) alem dos 100% ------------------------------------------------
 		double teto = TetoDeCarga(f);
-		if (f.Ki >= teto) return EstagioDaCarga.Ultrapassando;   // ja no maximo: segura, nao sobe
+		if (f.Ki >= teto)
+		{
+			// JA NO MAXIMO: segura, nao sobe -- E CANSA (2026-10-13). Ate aqui este ramo saia sem cobrar nada, e
+			// desde que o Ki acima de 100% passou a escorrer de quem NAO esta reunindo (`PrecoDoExcesso`), segurar o
+			// C no teto seria o jeito de ficar la em cima de graca, pra sempre.
+			if (!SegurarNoTetoDeGracaDeTeste) f.stamina -= f.maxstamina * FolegoUltrapassando * dt;
+			return EstagioDaCarga.Ultrapassando;
+		}
 
 		// O GANHO ENCOLHE conforme se sobe (`/(3*kiratio)`), e e o que impede o power-up de virar
 		// uma rampa infinita: quanto mais comprimido o ki, mais caro cada gota.
@@ -238,6 +286,46 @@ public static class CargaDeKi
 	private static double Habilidade(Fighter f, double divisor)
 		=> f.Ekiskill + (f.kicontrolskill + f.kigatheringskill) / Math.Max(divisor, 1e-9);
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): segurar o C com o Ki ja no teto volta a nao gastar folego -- a
+	/// v0.2.0. Lido pela propria linha, no <see cref="Passo"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool SegurarNoTetoDeGracaDeTeste;
+
+	// =====================================================================
+	// O KI ACIMA DE 100% ESCORRE (dono, 2026-10-13)
+	// =====================================================================
+	// *"ki acima de 100% deveria cair mais rapido por ser algo 'nao natural' ultrapassar o maximo natural do seu
+	// corpo, atualmente tu consegue ficar MUITO tempo com ki acima de 100%"* e *"quanto maior o ki acima de 100%
+	// mais rapido ele deveria cair"*.
+	//
+	// O vazamento do DM dentro do teto seguro e `Ki * 0.0001` com `prob(25)` a 10 Hz (`Power Control.dm:126-130`):
+	// 0,025% por segundo -- uma hora pra perder os 40% de quem carregou. Agora o excesso escorre por uma taxa que
+	// CRESCE com ele: meio por cento do tanque por segundo, mais cinco por cento de cada "cem por cento" a mais.
+	// De 140% volta-se a 100% em uns 32 s; de 200%, em uns 48 s -- e os primeiros pontos somem muito mais depressa
+	// que os ultimos.
+	//
+	// SO DE QUEM NAO ESTA REUNINDO: com o C segurado (parado, com folego) o excesso se sustenta, e quem paga e o
+	// vigor. Soltou a tecla, andou, ficou sem folego -- escorre.
+	/// <summary>O vazamento de quem esta um fio acima dos 100%, em fracao do Ki MAXIMO por segundo.</summary>
+	public const double VazamentoMinimoPorSegundo = 0.005;
+
+	/// <summary>Quanto o vazamento cresce por cada 100% de excesso, em fracao do Ki MAXIMO por segundo.</summary>
+	public const double VazamentoPorExcessoPorSegundo = 0.05;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): o Ki acima de 100% volta a escorrer so pela taxa do DM (0,025% por
+	/// segundo: fica la em cima por uma hora) -- a v0.2.0. Lido pelo <see cref="PrecoDoExcesso"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool ExcessoNaoEscorreDeTeste;
+
+	/// <summary>
+	/// Quanto do Ki MAXIMO o excesso perde por segundo, pela razao de agora (1,4 = 140%): cresce com ela.
+	/// Em 100% ou menos, zero.
+	/// </summary>
+	public static double VazamentoPorSegundo(double razao) =>
+		razao <= 1 ? 0 : VazamentoMinimoPorSegundo + VazamentoPorExcessoPorSegundo * (razao - 1);
+
 	// =====================================================================
 	// O PRECO DE FICAR LA EM CIMA
 	// =====================================================================
@@ -254,7 +342,11 @@ public static class CargaDeKi
 	///
 	/// Devolve quanto dano espalhar pelos membros (0 = nada).
 	/// </summary>
-	public static double PrecoDoExcesso(Fighter f, double dt)
+	/// <param name="reunindo">
+	/// ESTE CORPO ESTA REUNINDO ENERGIA AGORA (o C segurado, parado, com folego)? Entao o excesso nao escorre pela
+	/// taxa nova -- ver <see cref="VazamentoPorSegundo"/>. O padrao e falso: quem nao segura a tecla, escorre.
+	/// </param>
+	public static double PrecoDoExcesso(Fighter f, double dt, bool reunindo = false)
 	{
 		if (f.Ki <= f.MaxKi)
 		{
@@ -264,6 +356,14 @@ public static class CargaDeKi
 
 		const double Eventos = 2.5;   // o prob(25) a 10 Hz
 		double razao = f.Ki / Math.Max(f.MaxKi, 1e-9);
+
+		// (2026-10-13) O EXCESSO ESCORRE, mais depressa quanto maior -- e nunca abaixo dos 100% por este caminho.
+		if (!reunindo && !ExcessoNaoEscorreDeTeste)
+		{
+			f.Ki = Math.Max(f.MaxKi, f.Ki - f.MaxKi * VazamentoPorSegundo(razao) * dt);
+			if (f.Ki <= f.MaxKi) { f.overcharge = false; return 0; }
+			razao = f.Ki / Math.Max(f.MaxKi, 1e-9);
+		}
 		double pericia = Math.Max(f.Ekiskill, 0.1);
 
 		// ============================ AS DUAS SAO UNIDADES DIFERENTES ============================

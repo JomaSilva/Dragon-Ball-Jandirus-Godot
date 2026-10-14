@@ -1318,12 +1318,18 @@ public sealed partial class GameServer
 	/// port -- <see cref="DominioDaZona"/> e o livro de tronos --, e a instrucao da tarefa foi
 	/// explicita: **reuse, nao invente um segundo eixo**.
 	///
-	/// O que muda em relacao ao DM e que a skill `MakeDragonballs` (`/datum/skill/rank/...`) ainda nao
-	/// existe neste port -- o censo de skills a marca como esperando pelo `SistEsferas`. Entao o portao
-	/// e RACA + CLASSE + territorio, que sao as tres perguntas do verb; a skill entra quando a arvore
-	/// racial Namek for fechada, e o `effector()` dela gateia pela MESMA `DominaAlgum`.
+	/// (2026-10-13) A SKILL `MakeDragonballs` (`/datum/skill/rank/...`) ENTROU: ate aqui ela pendia da arvore racial
+	/// Namek sem acender por caminho nenhum, e o portao era so RACA + CLASSE + territorio. Agora o `effector()` da
+	/// arvore a acende pela MESMA pergunta de territorio (`AcendedoresDoPort.TemOndeErguer`), e o verb e o que ela
+	/// da -- como no original, onde ele nasce no `after_learn()` da skill (`namekian.dm:40-49`).
 	/// ======================================================================================================
 	/// </summary>
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): a estatua volta a nao pedir a skill -- raca e classe bastam, e a
+	/// `Make Dragon Statue` e uma compra que nao da nada. O jogo de antes.
+	/// </summary>
+	internal static bool EstatuaSemSkillDeTeste;
+
 	private void ErguerEstatua(ServerPlayer pl, string arg)
 	{
 		bool namek = string.Equals(pl.Race, "Namekian", StringComparison.OrdinalIgnoreCase);
@@ -1332,6 +1338,12 @@ public sealed partial class GameServer
 		if (!namek || !cla)
 		{
 			Avisar(pl, "apenas Namekuseijins do Clã do Dragão carregam o segredo das Esferas.");
+			return;
+		}
+		// O SEGREDO SE APRENDE: e a skill `Make Dragon Statue` (2026-10-13 -- ver o cabecalho).
+		if (pl.Livro?.Sabe(Jandirus.Core.Skills.AcendedoresDoPort.EstatuaDoDragao) != true && !EstatuaSemSkillDeTeste)
+		{
+			Avisar(pl, "você ainda não aprendeu a moldar a Estátua do Dragão: a habilidade Make Dragon Statue está na sua árvore racial (aba Skills).");
 			return;
 		}
 

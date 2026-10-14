@@ -270,7 +270,7 @@ public sealed partial class GameServer
 
 		// ---- o Grande Anciao: `Appoint_Elder(var/mob/M in view(1))` (`NamekRanks.dm:56`)
 		Vec2 palco = CorredorLivre(24);
-		ServerPlayer anciao = ValGente("AnciaoDaBancada", "Namekian", palco, classe: "Dragon clan");
+		ServerPlayer anciao = ValGente("AnciaoDaBancada", "Namekian", palco, classe: "Dragon clan", skills: [Jandirus.Core.Skills.AcendedoresDoPort.EstatuaDoDragao]);
 		ServerPlayer novico = ValGente("NovicoDaBancada", "Namekian", palco + new Vec2(5 * T, 0), classe: "Warrior clan");
 		_tronos["elder"] = anciao.Conta;
 
@@ -762,7 +762,7 @@ public sealed partial class GameServer
 		GD.Print("[validacoes] -- 8c) `db_refazer` com o dragao de pe nao devolve os pedidos --");
 		List<int> setsDeAntes = [.. _sets.Select(s => s.Id)];
 		Vec2 palco = CorredorLivre(24);
-		ServerPlayer escultor = ValGente("EscultorDaBancada", "Namekian", palco, classe: "Dragon clan");
+		ServerPlayer escultor = ValGente("EscultorDaBancada", "Namekian", palco, classe: "Dragon clan", skills: [Jandirus.Core.Skills.AcendedoresDoPort.EstatuaDoDragao]);
 		string guardiaoDeAntes = _tronos.GetValueOrDefault("guardian", "");
 		try
 		{

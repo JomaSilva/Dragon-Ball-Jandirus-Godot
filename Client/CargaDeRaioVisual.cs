@@ -143,7 +143,21 @@ public partial class CargaDeRaioVisual : Node2D
 		// quadro e a soma, e nao a origem de cada uma.
 		// ====================================================================================================
 		LuzDeKi.Pendurar(this, Cor, 1f);
+
+		// ============================ E A CARGA SE OUVE (dono, 2026-10-13) ============================
+		// `usr.emit_Sound('kame_charge.wav')` (`beams.dm:290` e as irmas): no DM o som de reunir energia toca no
+		// instante em que a carga comeca. O arquivo estava importado e ninguem o tocava -- carregar um raio era mudo.
+		// Filho DESTE node, de proposito: o brilho morre no instante em que o feixe nasce (ou a carga e desfeita), e
+		// o som morre com ele -- ai entra o do raio saindo (`World.AoNascerTiro`).
+		// ================================================================================================
+		if (!CargaMudaDeTeste) AudioDirector.EfeitoNoLugar(this, Trilha.CargaDeRaio, 0.6f);
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv021`): carregar um raio volta a ser mudo. Lido pela propria linha do som,
+	/// no `_Ready`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool CargaMudaDeTeste;
 
 	/// <summary>
 	/// O CORPO VIROU (ou o estado mudou). Chamado pelo `World` a cada snapshot enquanto a carga vive.

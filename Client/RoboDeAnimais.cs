@@ -172,8 +172,9 @@ public partial class RoboDeAnimais : Node
 		// o gesto do menu: o mesmo verbo que a tecla E manda
 		cli.SendVerbo(Saque.Verbo);
 		yield return 1.2;
-		(bool Aberto, int Itens, string Titulo) menu = MenuDeInteracao.Instancia?.SaqueDeTeste ?? (false, 0, "sem menu");
-		Afirmar("**O MENU DE REVISTAR ABRE COM A CARNE**", menu.Aberto && menu.Itens == 1 && menu.Titulo.Contains("Revistar", StringComparison.Ordinal),
+		// (2026-10-13) quem desenha o saque e a tela da mochila, aberta na "mochila" da carcaca -- ver `TelaDeInventario.AbrirSaque`
+		(bool Aberto, int Itens, string Titulo) menu = TelaDeInventario.Instancia?.SaqueDeTeste ?? (false, 0, "sem tela");
+		Afirmar("**A TELA DE REVISTAR ABRE COM A CARNE**", menu.Aberto && menu.Itens == 1 && menu.Titulo.StartsWith("MOCHILA DE", StringComparison.Ordinal),
 				$"aberto={menu.Aberto}, {menu.Itens} item(ns), titulo '{menu.Titulo}'");
 		Fotografar("animais-04-revistar-a-carcaca");
 

@@ -9,11 +9,24 @@ namespace Jandirus.Server;
 /// </summary>
 public partial class GameServer
 {
-	/// <summary>A cobaia de pe, calma e de tanque cheio: o roteiro mede a tela, e nao um corpo caido.</summary>
+	/// <summary>O BP minimo da cobaia: bem acima dos 5 em que o poder escondido trava.</summary>
+	private const double PoderDaCobaia = 1000;
+
+	/// <summary>A cobaia de pe, calma, de tanque cheio e com poder de verdade: o roteiro mede a tela, e nao um corpo caido.</summary>
 	public bool PalcoDoPoder_Cobaia(int id)
 	{
 		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return false;
 		pl.Ficha.KO = false;
+		// A COBAIA TEM PODER DE VERDADE, E NAO O DO BERCO. O recem-nascido sorteia classe e BP (`Genome.StartingBp`): um
+		// Humano comum nasce com ~2 de BP, e ai "relaxar cai pra 5" nao derruba nada (a trava do poder escondido so vale
+		// de 5 pra cima) e "ficar pronto devolve o poder de verdade" reprovava pelo SORTEIO -- 1,9 de BP em 2026-10-13.
+		if (pl.Ficha.BP < PoderDaCobaia)
+		{
+			pl.Ficha.BP = PoderDaCobaia;
+			pl.Ficha.Statify();
+			pl.Ficha.PowerLevel();
+			MandarFicha(pl);
+		}
 		pl.Ficha.Ki = pl.Ficha.MaxKi;
 		pl.Ficha.stamina = pl.Ficha.maxstamina;
 		return !pl.Ficha.dead;

@@ -231,17 +231,37 @@ public sealed partial class GameServer
 		int i = _viloes.FindIndex(v => v.Npc == vitima.Id);
 		if (i < 0) return;
 		EventoDeVilao e = _viloes[i];
-		if (e.Derrotado && !VilaoPagaDeNovoDeTeste) return;
-		e.Derrotado = true;
 
 		// QUEM DERROTOU. O algoz pode ser o clone ou a imagem de alguem: o merito e de quem manda nele.
 		ServerPlayer? heroi = EhJogador(algoz) ? algoz
 			: algoz.DonoDoClone != 0 && _players.TryGetValue(algoz.DonoDoClone, out ServerPlayer? dono) && EhJogador(dono) ? dono
 			: null;
 
+		if (e.Derrotado && !VilaoPagaDeNovoDeTeste) return;
+		e.Derrotado = true;
+
 		if (heroi != null)
 		{
 			SomarKarma(heroi, VilaoAvulso.KarmaPorDerrotar, $"você {(morreu ? "acabou com" : "derrotou")} o vilão {e.Nome}.");
+
+			// ============================ ...E FICA COM O ZENI DELE (dono, 2026-10-13) ============================
+			// *"matar vilao deveria dar zenni como reward"*. O premio e a BOLSA que ele carrega desde que nasceu
+			// (`BolsaDeNpc`), e ela vai direto pra carteira de quem o derrotou -- como o karma da linha de cima, e nao
+			// pro chao: e premio, e premio que cai no mato (ou na agua) onde o vilao caiu e de quem passar primeiro.
+			//
+			// NA DERROTA, E NAO SO NA MORTE, pelo motivo escrito no cabecalho: o vilao NOCAUTEADO vai embora no
+			// segundo seguinte -- nao ha como mata-lo depois --, entao cobrar a morte deixaria sem premio quase toda
+			// luta, que acaba em nocaute. Uma vez so: a guarda do `Derrotado` logo acima e a mesma do karma.
+			// =====================================================================================================
+			if (vitima.Ficha.Zeni >= 1 && !VilaoNaoPagaZeniDeTeste)
+			{
+				double premio = Math.Floor(vitima.Ficha.Zeni);
+				vitima.Ficha.Zeni = 0;
+				heroi.Ficha.Zeni += premio;
+				MandarCarteira(heroi);
+				Avisar(heroi, $"você fica com o que o vilão carregava: {premio:N0} zeni.");
+				GD.Print($"[viloes] {heroi.Name} derrotou {e.Nome} e ficou com {premio:N0} zeni");
+			}
 			AnunciarNoPlaneta(e.Zona, $"{NomeVisivel(heroi)} {(morreu ? "acabou com" : "derrotou")} o vilão {e.Nome}!");
 		}
 		else AnunciarNoPlaneta(e.Zona, $"o vilão {e.Nome} caiu.");
@@ -252,6 +272,12 @@ public sealed partial class GameServer
 	/// depois matar pagaria duas vezes. Lido pela propria guarda, em <see cref="VilaoFoiDerrotado"/>.
 	/// </summary>
 	internal bool VilaoPagaDeNovoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): derrotar o vilao volta a nao render zeni nenhum -- a v0.2.0, em que o
+	/// premio era so o karma. Lido pela propria linha que paga, em <see cref="VilaoFoiDerrotado"/>.
+	/// </summary>
+	internal bool VilaoNaoPagaZeniDeTeste;
 
 	/// <summary>Quantos eventos estao de pe (no servidor, e naquele planeta). SO PRA BANCADA.</summary>
 	internal (int NoServidor, int NoPlaneta) ViloesDeTeste(ZoneKey zona) =>

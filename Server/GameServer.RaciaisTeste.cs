@@ -104,7 +104,7 @@ public partial class GameServer
 		string racaAntes = pl.Race, classeAntes = pl.Ficha.Class, classeJogadorAntes = pl.Class;
 		EstadoDeForma formaAntes = pl.Forma;
 		double bpAntes = pl.Ficha.BP;
-		long extremaAntes = pl.FuriaExtremaAte, lendariaAntes = pl.RaivaLendariaAte;
+		long extremaAntes = pl.FuriaExtremaAte, comumAntes = pl.RaivaComumAte;
 		List<string> corposAntes = [.. pl.Visual.FormasDeFrost];
 		// O DEGRAU DE BIO-ANDROIDE que o `VestirCorpoRacial` veste e despe a cada linha (ver la).
 		int estagioBioAntes = pl.Ficha.bio_stage;
@@ -140,7 +140,7 @@ public partial class GameServer
 			pl.Forma = formaAntes;
 			pl.Ficha.BP = bpAntes;
 			pl.FuriaExtremaAte = extremaAntes;
-			pl.RaivaLendariaAte = lendariaAntes;
+			pl.RaivaComumAte = comumAntes;
 			pl.Ficha.Statify();
 			ProjetarRaiva(pl);
 			AplicarEfeitos(pl);
@@ -441,7 +441,7 @@ public partial class GameServer
 			// anteriores atravessaria esta checagem e ela passaria verde sem ter chegado perto da porta
 			// -- que e exatamente o defeito que a secao 2 da `RaivaTeste` tinha.
 			pl.FuriaExtremaAte = 0;
-			pl.RaivaLendariaAte = 0;
+			pl.RaivaComumAte = 0;
 			ProjetarRaiva(pl);
 			pl.Ficha.BP = bpGuardado;
 			pl.Ficha.Statify();
@@ -467,7 +467,7 @@ public partial class GameServer
 			// Sem esta linha, uma raiva que vazasse pra elas passaria despercebida -- ninguem repara
 			// numa forma que so sai depois de uma briga.
 			pl.FuriaExtremaAte = 0;
-			pl.RaivaLendariaAte = 0;
+			pl.RaivaComumAte = 0;
 			ProjetarRaiva(pl);
 			pl.Ficha.Ki = pl.Ficha.MaxKi;
 			Transformar(pl, subir: true);

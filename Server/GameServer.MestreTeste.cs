@@ -493,9 +493,31 @@ public partial class GameServer
 		AfirmarMst($"...e o teto e {Jandirus.Core.Stats.GainKnobs.MasterGainCap:0}x, por mais forte que ele seja",
 				   Math.Abs(aluno.Ficha.FightGainMult(mestre.Ficha, true) - Jandirus.Core.Stats.GainKnobs.MasterGainCap) < 1e-9);
 
+		// O PISO (dono, 2026-10-13: "treinar com o seu mestre ... deveria dar um bonus"). No DM, abaixo de 1,2x de gap
+		// o bonus valia 1 -- ver `GainKnobs.MasterGainMin`.
 		mestre.Ficha.BP = aluno.Ficha.BP * 1.1;
-		AfirmarMst($"...e abaixo do piso ({Jandirus.Core.Stats.GainKnobs.MasterGainFloor:0.0}x) o bonus nao vale (mestre fraco demais nao ensina)",
-				   Math.Abs(aluno.Ficha.FightGainMult(mestre.Ficha, true) - 1) < 1e-9);
+		double quaseIgual = aluno.Ficha.FightGainMult(mestre.Ficha, true);
+		mestre.Ficha.BP = aluno.Ficha.BP * 0.5;
+		double maisFraco = aluno.Ficha.FightGainMult(mestre.Ficha, true);
+		AfirmarMst($"...e o PISO e {Jandirus.Core.Stats.GainKnobs.MasterGainMin:0.#}x: treinar com o mestre rende mesmo com ele quase do mesmo poder (1,1x) ou mais fraco (0,5x)",
+				   Math.Abs(quaseIgual - Jandirus.Core.Stats.GainKnobs.MasterGainMin) < 1e-9
+				   && Math.Abs(maisFraco - Jandirus.Core.Stats.GainKnobs.MasterGainMin) < 1e-9,
+				   $"1,1x -> {quaseIgual:0.###} | 0,5x -> {maisFraco:0.###}");
+
+		mestre.Ficha.BP = aluno.Ficha.BP * 2.5;
+		AfirmarMst("...e entre o piso e o teto a escala e LINEAR pela razao dos BPs base (mestre 2,5x -> 2,5x)",
+				   Math.Abs(aluno.Ficha.FightGainMult(mestre.Ficha, true) - 2.5) < 1e-9);
+
+		// O CONTRA-EXEMPLO do piso: sem ele, o mestre do mesmo poder rende o que um estranho rende.
+		Jandirus.Core.Stats.GainKnobs.MestreSemPisoDeTeste = true;
+		try
+		{
+			mestre.Ficha.BP = aluno.Ficha.BP;
+			AfirmarMst("(defeito injetado: o bonus do mestre so pelo gap) com o mestre do MESMO poder o ganho cai pra 1x -- a regua enxerga",
+					   Math.Abs(aluno.Ficha.FightGainMult(mestre.Ficha, true) - 1) < 1e-9);
+		}
+		finally { Jandirus.Core.Stats.GainKnobs.MestreSemPisoDeTeste = false; }
+		mestre.Ficha.BP = aluno.Ficha.BP * 1.1;
 
 		// TER MESTRE NUNCA PODE PIORAR: se o gap de poder EXPRESSO paga mais que o bonus, vale o gap.
 		aluno.Ficha.expressedBP = 100;
@@ -611,7 +633,7 @@ public partial class GameServer
 		aluno.Forma.Liberadas.Clear();
 		aluno.Ficha.BP = porta * 0.6;
 		aluno.Ficha.Ki = aluno.Ficha.MaxKi;
-		aluno.FuriaExtremaAte = aluno.RaivaLendariaAte = 0;
+		aluno.FuriaExtremaAte = aluno.RaivaComumAte = 0;
 
 		AfirmarMst("sozinho, com 60% da porta, o SSJ1 e recusado por PODER",
 				   aluno.Forma.Avaliar("ssj1", aluno.Ficha.BP, 1, false, perfil) == RecusaForma.SemPoder);
@@ -644,14 +666,14 @@ public partial class GameServer
 		// 2026-10-11 ela e a COMUM pro Super Saiyajin -- o `mst_ignite_anger` do DM (`MasterStudent.dm:405-409`)
 		// tambem acende o "Angry" --, e a assistida nao paga o agio da raiva comum: o preco dela e a metade da
 		// porta (`EstadoDeForma.Avaliar`, passo 9b). Ate ali esta linha olhava a janela da furia EXTREMA.
-		long furiaAntes = aluno.FuriaExtremaAte, comumAntes = aluno.RaivaLendariaAte;
+		long furiaAntes = aluno.FuriaExtremaAte, comumAntes = aluno.RaivaComumAte;
 		ResponderAoMestre(aluno, aceitou: true);
 
 		AfirmarMst("o aluno DESPERTA o SSJ1 com 60% da porta pessoal",
 				   aluno.Forma.Atual == "ssj1", $"{aluno.Forma.Atual}, BP {aluno.Ficha.BP:N0} de {porta:N0}");
 		AfirmarMst("...e a raiva foi acesa pela provocacao (a forma nasce dela) -- a COMUM, que e a que o degrau pede",
-				   aluno.RaivaLendariaAte > comumAntes && aluno.FuriaExtremaAte == furiaAntes,
-				   $"comum {comumAntes} -> {aluno.RaivaLendariaAte}; extrema {furiaAntes} -> {aluno.FuriaExtremaAte}");
+				   aluno.RaivaComumAte > comumAntes && aluno.FuriaExtremaAte == furiaAntes,
+				   $"comum {comumAntes} -> {aluno.RaivaComumAte}; extrema {furiaAntes} -> {aluno.FuriaExtremaAte}");
 		AfirmarMst("...e o corte ficou anotado", aluno.Forma.PortasCortadas.Contains(ssj1.IdRede));
 		AfirmarMst("...e a forma entrou pelo funil normal (liberada + estreia consumida)",
 				   aluno.Forma.Despertou("ssj1") && aluno.Forma.JaViuAEstreia("ssj1"));
@@ -682,7 +704,7 @@ public partial class GameServer
 		AfirmarMst("(montagem) de volta a base pelo funil, o aluno SAIU da cena e voltou a ser alcancavel",
 				   aluno.Forma.Atual == Catalogo.IdBase && !aluno.Combate.Intocavel,
 				   $"forma {aluno.Forma.Atual}, cena {aluno.CenaSegundos:0.#} s");
-		aluno.FuriaExtremaAte = aluno.RaivaLendariaAte = 0;
+		aluno.FuriaExtremaAte = aluno.RaivaComumAte = 0;
 		AfirmarMst("depois de voltar a base, o aluno REENTRA sozinho na forma (sem mestre e sem raiva)",
 				   aluno.Forma.Avaliar("ssj1", aluno.Ficha.BP, 1, false, Perfil(aluno)) == RecusaForma.Pode,
 				   aluno.Forma.Avaliar("ssj1", aluno.Ficha.BP, 1, false, Perfil(aluno)).ToString());
@@ -695,7 +717,7 @@ public partial class GameServer
 		{
 			fraco.Forma = virgem;
 			fraco.Ficha.BP = porta * 0.4;
-			fraco.FuriaExtremaAte = fraco.RaivaLendariaAte = 0;
+			fraco.FuriaExtremaAte = fraco.RaivaComumAte = 0;
 			fraco.FormasVistas.Add(ssj1.IdRede);
 			mestre.RecargaDeEnsino = 0;
 			Encostar(mestre, fraco, tiles: 1);
@@ -717,7 +739,7 @@ public partial class GameServer
 					   fraco.Forma.Atual == Catalogo.IdBase, $"ofereceu={ofereceu}, forma={fraco.Forma.Atual}");
 			AfirmarMst("...e a tentativa fadada NAO da raiva de graca "
 					   + "(a ordem do `Avaliar` poe a raiva por ultimo, e e isso que a garante)",
-					   fraco.FuriaExtremaAte == 0 && fraco.RaivaLendariaAte == 0);
+					   fraco.FuriaExtremaAte == 0 && fraco.RaivaComumAte == 0);
 		}
 		finally { fraco.Forma = guardado; }
 	}
@@ -858,7 +880,7 @@ public partial class GameServer
 		try
 		{
 			aluno.Forma = new EstadoDeForma { Limiares = guardado.Limiares };
-			aluno.FuriaExtremaAte = aluno.RaivaLendariaAte = 0;
+			aluno.FuriaExtremaAte = aluno.RaivaComumAte = 0;
 			aluno.Ficha.Ki = aluno.Ficha.MaxKi;
 			Encostar(mestre, aluno, tiles: 1);
 			AdminForcarForma(aluno, "ssj1");
@@ -890,7 +912,7 @@ public partial class GameServer
 					   aluno.Forma.Atual == "ssj1" && !aluno.Forma.Despertou("ssj2"),
 					   $"forma {aluno.Forma.Atual}, ssj2 despertado={aluno.Forma.Despertou("ssj2")}");
 			AfirmarMst("...sem raiva de graca (a recusa vem ANTES do `mst_ignite_anger`, `:535` e `:540`) e sem devolver a recarga",
-					   aluno.FuriaExtremaAte == 0 && aluno.RaivaLendariaAte == 0 && mestre.RecargaDeEnsino > NowMs());
+					   aluno.FuriaExtremaAte == 0 && aluno.RaivaComumAte == 0 && mestre.RecargaDeEnsino > NowMs());
 
 			// --- b2) O ULTRA INSTINTO TAMBEM ACHA QUEM ESTA EM CENA ---
 			// O mestre e a raiz da cadeia e o aluno tem o ki divino que o `GODKI_UIUE_LEARN_PCT` exige: entre os
@@ -958,7 +980,7 @@ public partial class GameServer
 			// Estado virgem de novo (o SSJ1 volta a ser o degrau que falta), 60% da porta, e o aluno vira fera pelo
 			// funil da lua. A cena da fera escorre pelo `TickDaForma`, pra a linha medir SO o `Apeshit`.
 			aluno.Forma = new EstadoDeForma { Limiares = guardado.Limiares };
-			aluno.FuriaExtremaAte = aluno.RaivaLendariaAte = 0;
+			aluno.FuriaExtremaAte = aluno.RaivaComumAte = 0;
 			aluno.Ficha.BP = PortaDeTeste(aluno, "ssj1") * 0.6;
 			aluno.Ficha.Ki = aluno.Ficha.MaxKi;
 			VirarFera(aluno, FormaOozaru.Regular);

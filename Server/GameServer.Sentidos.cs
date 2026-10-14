@@ -55,6 +55,17 @@ namespace Jandirus.Server;
 /// transe (`mind_dummy`, que aqui e o boneco largado, sem papel). O scouter e aparelho: nao exige a
 /// skill nem o contador, e vence quando os dois existem.
 ///
+/// ============================ OS NPCs TEM NOME, E O SCOUTER OS LE (dono, 2026-10-13) ============================
+/// *"scouter deveria mostrar o bp dos npcs tb, e o sense (e o scouter) deveria mostrar o nome dos npcs q vc ta
+/// analisando"*. DUAS DIVERGENCIAS DECLARADAS das linhas de cima:
+///   * o NPC COMUM entra no scan (o DM so listava chefe, `HtmlUI.dm:410`) -- ate <see cref="TilesDoScanDeNpc"/>
+///     tiles: uma cidade tem cento e cinquenta habitantes, e a lista da zona inteira seria um pacote de seis
+///     kilobytes por segundo pra cada scouter ligado. O chefe continua aparecendo de qualquer distancia;
+///   * o NPC vai com o NOME dele no Sense (`IdentidadePara`): ele nao tem assinatura nem identidade pra
+///     esconder, e o "???" que saia nao dizia se aquilo era um guarda ou o Rei. Jogador desconhecido continua
+///     indo sem nome, com a assinatura.
+/// ==========================================================================================================
+///
 /// ============================ O SIGILO ============================
 /// No modo Sense o BP absoluto NUNCA vai no pacote: o campo sai como <see cref="SemLeitura"/> (NaN) e so
 /// a RAZAO viaja (`round((D.expressedBP/max(expressedBP,1))*100, 1)`, `HtmlUI.dm:374`) -- que e
@@ -87,6 +98,15 @@ public partial class GameServer
 
 	/// <summary>Os tres alcances, como o pacote os nomeia (`PresencaState.Alcance`).</summary>
 	public const byte AlcancePerto = 1, AlcanceMundo = 2, AlcanceGalaxia = 3;
+
+	/// <summary>Ate quantos tiles o scouter le um NPC comum (o chefe, de qualquer distancia). Ver o cabecalho.</summary>
+	public const int TilesDoScanDeNpc = 40;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): o NPC comum volta a ficar fora do scan e a ir sem nome no Sense --
+	/// a v0.2.0. Lido pelas duas linhas da regra (`SentidosDe`, `IdentidadePara`). Falso em jogo, sempre.
+	/// </summary>
+	internal static bool NpcSemNomeNemLeituraDeTeste;
 
 	/// <summary>
 	/// A BANCADA ESCUTA O QUE SAIU, pelo mesmo motivo do `EscutaDeAtributos`: pacote que saiu no fio nao
@@ -195,8 +215,10 @@ public partial class GameServer
 			foreach (ServerPlayer o in zona)
 			{
 				if (o == eu || o.ECadaver) continue;
+				// (2026-10-13) O NPC COMUM TAMBEM, ate `TilesDoScanDeNpc`; o chefe, de qualquer distancia.
 				bool npc = Gente.EhNpcDoMundo(o.Peer != null, o.Papel);
-				if (npc && o.Papel?.EhChefe != true) continue;
+				if (npc && o.Papel?.EhChefe != true
+					&& (NpcSemNomeNemLeituraDeTeste || DistanciaEmTiles(eu, o) > TilesDoScanDeNpc)) continue;
 				if (!TemEnergiaQueSeSente(o)) continue;   // o piso dos 5, SEM a barra: quem se segura fica; quem relaxa sai
 				(int ox, int oy) = TileDe(o.Pos);
 				achados.Add((new Protocol.PresencaState
@@ -300,6 +322,9 @@ public partial class GameServer
 	/// </summary>
 	private static (string Nome, string Assinatura) IdentidadePara(ServerPlayer eu, ServerPlayer o)
 	{
+		// (2026-10-13) O NPC DIZ QUEM E: ele nao tem identidade pra esconder -- ver o cabecalho.
+		if (!NpcSemNomeNemLeituraDeTeste && Gente.EhNpcDoMundo(o.Peer != null, o.Papel)) return (o.Name, "");
+
 		string sig = o.Assinatura;
 		return eu.Social.Conhece(sig) ? (o.Name, "") : ("", sig);
 	}

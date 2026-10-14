@@ -160,6 +160,49 @@ public sealed class Appearance
     /// </summary>
     public Rgb? CorKi;
 
+    /// <summary>
+    /// ============================ O POTENCIAL DESPERTO APARECE NA PELE DESTE CORPO? ============================
+    /// Dono, 2026-10-13: *"nameks q tem potential unlocked/mistico ficam levemente amarelados a cor de pele"*. Quem
+    /// decide e o servidor (`Forms.Catalogo.PotencialMarcaAPele`), e a resposta chega ao cliente no `S2C.PeerLook`,
+    /// num byte AO LADO da aparencia.
+    ///
+    /// **NAO VAI PRO DISCO E NAO VIAJA NO `PutAppearance`**, e as duas ausencias sao a regra: e um fato do corpo
+    /// DERIVADO da ficha de luta, e gravado num save ele sobreviveria ao que o produziu (o argumento que deixou o
+    /// tipo de fusao fora deste objeto); e o `PutAppearance` e tambem o que o CLIENTE manda no `JoinRequest` -- um
+    /// campo destes ali seria o jogador dizendo ao servidor de que cor e a propria pele.
+    ///
+    /// MORA AQUI MESMO ASSIM, do lado de quem LE: o boneco pinta o corpo a partir da ficha visual
+    /// (`CharacterVisual.Vestir`), e um fato que muda a pele e parte do que ele precisa pra pintar. Um mapa
+    /// `id -> tem potencial` ao lado do `World._looks` seria um segundo registro pra envelhecer sozinho.
+    /// ===========================================================================================================
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool PotencialNaPele;
+
+    /// <summary>
+    /// O SCOUTER LIGADO APARECE NO ROSTO, E OS PESOS VESTIDOS NO CORPO (dono, 2026-10-13) -- irmaos do
+    /// <see cref="PotencialNaPele"/>, e pelos mesmos dois motivos fora do disco e fora do `PutAppearance`: sao fatos
+    /// do corpo que o SERVIDOR deriva (`Items.EquipamentoNoCorpo`), e chegam no `S2C.PeerLook` ao lado da aparencia.
+    /// `PesosNoCorpo` e o caminho da folha que os pesos usam; vazio = sem pesos no corpo.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool ScouterNoRosto;
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string PesosNoCorpo = "";
+
+    /// <summary>(v0.2.1) As luvas e as botas de dreno vestidas -- irmas do scouter e dos pesos: ver `Items.EquipamentoNoCorpo`.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool LuvasDeDreno, BotasDeDreno;
+
+    /// <summary>(v0.2.1) Este corpo esta velejando: o barco aparece embaixo dele. Ver `Jandirus.Core.Tech.Barco`.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool NoBarco;
+
+    /// <summary>(v0.2.1) O capacete do "Henshin!" do relogio de teleporte. Ver `Jandirus.Core.Tech.Teleporte`.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool CapaceteDoRelogio;
+
     public Appearance Copiar() => new()
     {
         Corpo = Corpo, Tom = Tom, CorPele = CorPele,
@@ -174,6 +217,13 @@ public sealed class Appearance
         // O CLONE HERDA TAMBEM A COR DO TIRO -- `A.blastR = blastR` (`CopyMaker.dm:101`), a linha
         // seguinte a da aura no mesmo proc. Esquece-la faria o clone atirar de outra cor que o dono.
         CorKi = CorKi,
+        PotencialNaPele = PotencialNaPele,
+        ScouterNoRosto = ScouterNoRosto,
+        PesosNoCorpo = PesosNoCorpo,
+        LuvasDeDreno = LuvasDeDreno,
+        BotasDeDreno = BotasDeDreno,
+        NoBarco = NoBarco,
+        CapaceteDoRelogio = CapaceteDoRelogio,
     };
 }
 

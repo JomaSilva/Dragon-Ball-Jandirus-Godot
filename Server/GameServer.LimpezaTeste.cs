@@ -676,6 +676,9 @@ public partial class GameServer
 		// nunca sairam da memoria. Numa pasta sem `torneio.json` a leitura deixa a agenda como o
 		// `ZerarTorneio` acabou de deixar -- o primeiro torneio marcado --, que e o primeiro boot.
 		CarregarAgenda();
+
+		// O COFRE DA TECH DE BOLSO (v0.2.1). O leitor esvazia antes de ler -- ver `CarregarOCofreDeTech`.
+		CarregarOCofreDeTech();
 	}
 
 	// =====================================================================
@@ -794,6 +797,9 @@ public partial class GameServer
 		// remarca); aqui e a mesma antecipacao dos outros. O tamanho dela no retrato nao depende de QUANDO
 		// o primeiro torneio foi marcado: carimbo em milissegundos tem 13 digitos de 2001 a 2286.
 		SalvarAgenda();
+		// O COFRE DA TECH DE BOLSO (v0.2.1): em producao ele vai pro disco quando alguem escreve num livro ou guarda uma
+		// amostra; aqui e a mesma antecipacao dos outros.
+		GravarOCofreDeTech();
 		// AS CONTAS NAO TEM ESCRITOR COLETIVO -- cada uma e gravada por `Persistir`/`_store.Gravar`,
 		// e o `Persistir` esta medido na secao 3. Quem semeia conta aqui grava na hora.
 	}
@@ -1094,6 +1100,12 @@ public partial class GameServer
 		{
 			Fase = Jandirus.Core.Npc.FaseDaVisita.EmCasa, DerrubadoPor = "JogadorDoWipe",
 		};
+
+		// ---------------------------------------------------------- 19. um LIVRO ESCRITO e uma AMOSTRA guardada
+		// O que os itens da tech de bolso guardam fora do id (v0.2.1). Sem isto o `tech-itens.json` teria o mesmo
+		// conteudo nos tres retratos e o `Zerar` do cofre passaria sem ser medido.
+		_cofreDeTech.Textos[_cofreDeTech.Proximo++] = "o que o jogador do wipe escreveu";
+		_cofreDeTech.Amostras[_cofreDeTech.Proximo++] = [];
 
 		ForcarGravacaoDeTudo();
 	}
@@ -2035,6 +2047,7 @@ public partial class GameServer
 
 		pl.Race = "Namekian";
 		pl.Class = "Dragon clan";
+		(pl.Livro ??= new Jandirus.Core.Skills.SkillBook()).Dar(Jandirus.Core.Skills.AcendedoresDoPort.EstatuaDoDragao);   // (2026-10-13) a estatua pede a skill dela -- ver `ErguerEstatua`
 		pl.Ficha.Zeni = Jandirus.Core.Magic.Desejos.PrecoDoSupremo;
 		_tronos["guardian"] = pl.Conta;
 

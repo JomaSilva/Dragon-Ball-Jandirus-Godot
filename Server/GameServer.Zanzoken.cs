@@ -70,6 +70,12 @@ public sealed partial class GameServer
 			Avisar(pl, "você não sabe se mover assim -- é o que a Afterimage Technique ensina.");
 			return;
 		}
+		// O `haszanzo = 0` do `Afterimage_Toggle` (`Ki/misc.dm:91-98`): quem guardou a tecnica nao pisca.
+		if (!UsaAMiragem(pl))
+		{
+			Avisar(pl, "a sua Miragem está guardada: ligue-a de novo (Miragem: ligar / desligar) pra piscar.");
+			return;
+		}
 
 		// ============================ `!usr.KO` -- E SO O KO (`click.dm:54`) ============================
 		// A linha do DM nao le `dead`: o morto do Outro Mundo e um corpo de pe (o `Death()` escreve `move = 1`

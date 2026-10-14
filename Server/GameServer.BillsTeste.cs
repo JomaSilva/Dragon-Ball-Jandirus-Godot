@@ -1050,6 +1050,7 @@ public partial class GameServer
 		}
 		bool Cena()
 		{
+			DevolverOReunir();
 			foreach (ServerPlayer c in cena) { BwRecolher(c); forjados.Remove(c); }
 			cena.Clear();
 			avisos = [];
@@ -1058,7 +1059,28 @@ public partial class GameServer
 			(b, w, ponta) = nova;
 			return true;
 		}
-		void SemKi() => b.Ficha.Ki = 0;
+		// SEM KI **E SEM SABER REUNI-LO** (v0.2.1, item 22). O Ki zerado e o jeito desta familia de dizer "ele nao
+		// atira: a cena e a do corpo a corpo". Desde a regra *"se afastar e carregar o ki pra continuar lutando"*, um
+		// cerebro de Ki baixo e vigor cheio LARGA a luta pra carregar -- e a cena que media o agarrao via um Bills de
+		// costas, no plano `Recuperar`. Entao a cena tira as duas coisas, e `Cena()` devolve o saber ao corpo.
+		double sabiaReunir = 0;
+		ServerPlayer? semReunir = null;
+		void DevolverOReunir()
+		{
+			if (semReunir != null) semReunir.Ficha.MeditateGivesKiRegen = sabiaReunir;
+			semReunir = null;
+		}
+		void SemKi()
+		{
+			if (semReunir != b)
+			{
+				DevolverOReunir();
+				semReunir = b;
+				sabiaReunir = b.Ficha.MeditateGivesKiRegen;
+			}
+			b.Ficha.Ki = 0;
+			b.Ficha.MeditateGivesKiRegen = 0;
+		}
 		void DePe(ServerPlayer c) { if (c.Ficha.HP < 70 && !c.Ficha.KO && !c.Ficha.dead) c.Combate.Curar(); }
 
 		_bwViuAFury = false;
@@ -1141,6 +1163,11 @@ public partial class GameServer
 			bool agarrou = false, soltou = false;
 			double inicio = _bwAndado, agarrouAos = -1;
 			Vec2 noBote = default, doBills = default;
+			// (v0.2.1) SEM O REPERTORIO DE LUTA NAS DUAS CENAS DO BOTE (esta e a de baixo): o Bills sabe punhos nomeados,
+			// e o punho nomeado ANDA ate o alvo marcado e agarra por conta propria -- o que se mede aqui e a receita do
+			// KIT (quando ele agarra, e o que faz com quem agarrou). A chave volta no `finally` da cena de baixo e no
+			// do metodo.
+			Cerebro.SemRepertorioDeTeste = true;
 			BwLutar(18, () =>
 			{
 				SemKi();   // (sem Ki ele nao atira: a cena e a do corpo a corpo)
@@ -1188,7 +1215,7 @@ public partial class GameServer
 				});
 				BwLutar(1, () => { SemKi(); return false; });
 			}
-			finally { IaNaoPiscaDeTeste = false; }
+			finally { IaNaoPiscaDeTeste = Cerebro.SemRepertorioDeTeste = false; }
 			AfirmarBw("...e o peteleco e SO de quem ele enfrenta: se o bote pega OUTRO corpo que estava na frente (um curioso que nunca bateu nele), ele o LARGA pelo proprio verb -- sem peteleco, sem arremesso e sem ferida",
 					  pegouOCurioso && largou && curioso.TiquesIniciaisDoVoo == 0 && curioso.Ficha.HP >= 99.9 && !Disse(avisos, "PETELECO") && !_desafiantesNaTerra.Contains(curioso.Id),
 					  $"pegou={pegouOCurioso}, largou={largou}, voo armado {curioso.TiquesIniciaisDoVoo}, HP {curioso.Ficha.HP:0.0} | {Ultimos(avisos.Where(t => t.Contains("PETELECO") || t.Contains("solta") || t.Contains("levanta")).ToList())}");
@@ -1355,6 +1382,8 @@ public partial class GameServer
 		finally
 		{
 			BillsEWhis.HakaiDesligadoDeTeste = BillsEWhis.SemKitNaTerraDeTeste = BillsEWhis.FuryNaTerraDeTeste = false;
+			Cerebro.SemRepertorioDeTeste = false;
+			DevolverOReunir();   // (o corpo dele segue pras familias seguintes: sai daqui sabendo reunir Ki como entrou)
 			EscutaDeAvisos = avisosDeAntes;
 			foreach (ServerPlayer c in cena) { BwRecolher(c); forjados.Remove(c); }
 			BwLimparOsTiros(TerraDaVisita);

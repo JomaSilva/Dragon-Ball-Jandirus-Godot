@@ -421,6 +421,10 @@ public partial class RoboDeBills : Node
 		// 4) O TREINO COM O WHIS, PELO BOTAO
 		// =====================================================================
 		Nota("-- 4) o treino com o Whis: comeca e para pelo menu, e o Instinto dele nao pinta nada --");
+		// (v0.2.1) O HOST DE PE ANTES DE CHAMAR ALGUEM PRA LUTAR. Desde que a IA usa o repertorio inteiro, o Bills pode
+		// derrubar o fotografo no ultimo instante da briga da Terra -- depois da ultima cura de la, com o poder do host ja
+		// devolvido --, e ele chegava aqui no chao: "caido, voce nao chama ninguem pra lutar", nove falhas em cascata.
+		srv.ManterOHostDePeDeTeste(eu);
 		srv.AoLadoDoDivinoDeTeste(eu, whis: true);
 		for (int i = 0; i < 16 && E?.DicaNaTela != "[E] Whis"; i++) yield return 0.25;
 		Tecla(Key.E);
@@ -476,8 +480,19 @@ public partial class RoboDeBills : Node
 		Nota("-- 5) o desafio pelo titulo: o Bills na Fury --");
 		srv.ManterOHostDePeDeTeste(eu);
 		srv.DespertarOHostDeTeste(eu);
-		srv.AoLadoDoDivinoDeTeste(eu, whis: false);
-		for (int i = 0; i < 16 && E?.DicaNaTela != "[E] Bills"; i++) yield return 0.25;
+		// (v0.2.1) AO LADO DO BILLS, E DE NOVO ATE A DICA APARECER. Desde que a IA usa o repertorio inteiro, o treino com o
+		// Whis pode acabar com um raio dele ainda no ar -- o mestre para, e o que ele ja lancou continua
+		// (`BillsEWhis.SegundosDeFolegoAoFim`). O host era posto ao lado do Bills uma vez so e levado embora em seguida:
+		// a tecla E nao achava ninguem, e o desafio nao abria.
+		for (int i = 0; i < 48 && E?.DicaNaTela != "[E] Bills"; i++)
+		{
+			if (i % 4 == 0)
+			{
+				srv.ManterOHostDePeDeTeste(eu);
+				srv.AoLadoDoDivinoDeTeste(eu, whis: false);
+			}
+			yield return 0.25;
+		}
 		Tecla(Key.E);
 		yield return 0.4;
 		_falas.Clear();

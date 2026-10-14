@@ -995,13 +995,28 @@ public partial class GameServer
 			pl.UltimoAgressor = 0;
 			pl.RancorAte = 0;
 
-			for (int i = 0; i < 900 && !inv.Defensores.ContainsKey(pl.UltimoAgressor); i++)
+			// SO VALE O GOLPE DE QUEM ESTAVA CACANDO O INVASOR (v0.2.1). Um defensor sem rancor volta a vida diaria, e
+			// a vida diaria tem SPAR: desde o caminho novo da IA a onda CHEGA junta, quatro habitantes lado a lado
+			// treinam entre si colados no invasor, e soco de treino acerta quem estiver na frente -- pancada sem
+			// intencao nenhuma, que nao e a onda lutando. O criterio continua medindo PANCADA; ele so pergunta de quem.
+			bool DaOnda() => _players.TryGetValue(pl.UltimoAgressor, out ServerPlayer? q)
+							 && inv.Defensores.ContainsKey(q.Id) && PresaDoNpc(q)?.Id == pl.Id;
+			int tiques = 0;
+			for (; tiques < 900 && !DaOnda(); tiques++)
 			{
 				TickCombate(Jandirus.Net.Protocol.TickSeconds);
 				TickDosCorposSemDono(Jandirus.Net.Protocol.TickSeconds);
 			}
 
-			bool bateram = inv.Defensores.ContainsKey(pl.UltimoAgressor);
+			bool bateram = DaOnda();
+			// (o retrato da medida vai pro log sempre: e ele que diz, numa reprovacao, QUEM acertou e fazendo o que)
+			GD.Print($"[conquista]    medida da onda: {(bateram ? "a onda acertou" : "a onda NAO acertou")} em {tiques} tique(s); "
+				   + $"ultimo a encostar no invasor: #{pl.UltimoAgressor}; invasor HP {pl.Ficha.HP:0} KO {pl.Ficha.KO} "
+				   + $"{(pl.Voando ? "voando" : "no chao")}{(PesNaAgua(pl) ? " na agua" : "")} | "
+				   + string.Join(" | ", inv.Defensores.Keys.Select(id => _players[id]).Select(d =>
+						 $"{d.Name}#{d.Id} a {(d.Pos - pl.Pos).Length / ZoneCollision.TileSize:0.0} tiles, {d.Rotina?.Afazer.ToString() ?? "sem rotina"}, "
+					   + $"plano {d.Cerebro?.Atual.ToString() ?? "sem cerebro"}, presa {PresaDoNpc(d)?.Name ?? "ninguem"}, agressor #{d.UltimoAgressor}, "
+					   + $"HP {d.Ficha.HP:0}{(d.Ficha.KO ? " KO" : "")}, ki {d.Ficha.Ki / Math.Max(d.Ficha.MaxKi, 1):P0}, vigor {d.Ficha.stamina / Math.Max(d.Ficha.maxstamina, 1):P0}")));
 
 			pl.Combate.Corpo.Restaurar();
 			pl.Combate.SincronizarVida();
@@ -1015,7 +1030,62 @@ public partial class GameServer
 			"o rancor da onda apagado: o cidadao volta a ser 'pacifico ate apanhar' e a onda fica parada",
 			ALutaAcontece,
 			() => { foreach (int id in inv.Defensores.Keys) { _players[id].UltimoAgressor = 0; _players[id].RancorAte = 0; } },
-			() => { foreach (int id in inv.Defensores.Keys.ToList()) EngajarDefensor(inv, _players[id]); });
+			() =>
+			{
+				// A VIDA DIARIA DEIXA MARCA. Em trinta segundos sem rancor os soldados treinaram entre si, e o corpo
+				// gasto do treino (o Ki dos socos, o vigor, um caido) nao e o defeito: e o resto dele -- e este laco nao
+				// roda a regeneracao que o devolveria. A onda volta INTEIRA pra medida que confere a causa.
+				foreach (int id in inv.Defensores.Keys.ToList())
+				{
+					ServerPlayer d = _players[id];
+					DePeDeNovo(d);
+					d.Ficha.stamina = d.Ficha.maxstamina;
+					EngajarDefensor(inv, d);
+				}
+			});
+
+		// ============================ O SOCO DE TREINO NAO E AGRESSAO (v0.2.1) ============================
+		// A cena direta do que a medida de cima achou: dois soldados SEM rancor (habitantes), um acerta o outro pelo
+		// `Atacar` de producao, com o invasor -- gente de verdade, com cliente -- a tres tiles. Quem apanhou nao pode
+		// sair dali cacando o invasor, que nao encostou em ninguem.
+		// ================================================================================================
+		List<ServerPlayer> soldados = [.. inv.Defensores.Keys.Select(id => _players[id]).Where(d => !d.Ficha.dead)];
+		if (soldados.Count >= 2)
+		{
+			ServerPlayer bate = soldados[0], apanha = soldados[1];
+			(Vec2 Bate, Vec2 Apanha) deAntes = (bate.Pos, apanha.Pos);
+			ServerPlayer? OTreino()
+			{
+				foreach (ServerPlayer s in soldados) { s.UltimoAgressor = 0; s.RancorAte = 0; DePeDeNovo(s); }
+				bate.Pos = pl.Pos + new Vec2(2 * ZoneCollision.TileSize, 0);
+				apanha.Pos = pl.Pos + new Vec2(3 * ZoneCollision.TileSize, 0);
+				Mirar(bate, apanha.Id);     // (o soco vira pro marcado: o invasor fica as costas de quem bate)
+				bate.Combate.Tick(30);      // (a recarga do golpe anterior passa)
+				Atacar(bate, Jandirus.Net.Protocol.Golpe.Leve);
+				return PresaDoNpc(apanha);
+			}
+			try
+			{
+				ServerPlayer? presa = OTreino();
+				Checa("**SOCO DE TREINO ENTRE DOIS HABITANTES NAO E AGRESSAO**: quem apanhou do colega continua sem rancor e nao "
+					+ "sai cacando o jogador que estava perto (a tres tiles, sem ter encostado em ninguem)",
+					  presa == null && apanha.UltimoAgressor == 0 && apanha.RancorAte == 0,
+					  $"presa {presa?.Name ?? "ninguem"}; agressor #{apanha.UltimoAgressor}; rancor ate {apanha.RancorAte}");
+				TreinoDeHabitanteProvocaDeTeste = true;
+				ServerPlayer? presaDeAntes = OTreino();
+				Checa("   DEFEITO INJETADO (o soco de treino marca agressao): quem apanhou do colega ganha rancor de quem nao e "
+					+ "gente e a busca alargada o manda pra cima do INVASOR -- a v0.2.0",
+					  presaDeAntes?.Id == pl.Id && apanha.UltimoAgressor == bate.Id,
+					  $"presa {presaDeAntes?.Name ?? "ninguem"}; agressor #{apanha.UltimoAgressor}");
+			}
+			finally
+			{
+				TreinoDeHabitanteProvocaDeTeste = false;
+				bate.AlvoId = 0;
+				(bate.Pos, apanha.Pos) = deAntes;
+				foreach (ServerPlayer s in soldados) { DePeDeNovo(s); EngajarDefensor(inv, s); }
+			}
+		}
 
 		return inv;
 	}

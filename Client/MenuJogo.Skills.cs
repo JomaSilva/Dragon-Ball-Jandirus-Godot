@@ -887,6 +887,7 @@ public partial class MenuJogo
 			Recusa.SoVilao => ("só pra vilão", Tema.TextoFraco),
 			Recusa.RacaOuClasse => ("não é da sua raça ou classe", Tema.TextoFraco),
 			Recusa.SemArvore => ("não pende desta árvore", Tema.TextoFraco),
+			Recusa.ForaDoPort => ("ainda não existe neste jogo", Tema.TextoFraco),
 			_ => ("indisponível", Tema.TextoFraco),
 		};
 	}
@@ -912,6 +913,8 @@ public partial class MenuJogo
 			Recusa.Desligada => s.Ensinavel
 				? "Marco nenhum abre esta: alguém que a saiba precisa te ensinar, de perto."
 				: "Nenhuma regra deste port a acende. No jogo antigo ela abria por um caminho que ainda não foi trazido.",
+			Recusa.ForaDoPort => $"Esta habilidade ainda não existe neste jogo: falta {SkillsFechadas.De(s.Path)?.Falta ?? "o sistema dela"}. "
+				+ "Por isso ela não se vende -- e quem a tinha comprado recebeu os marcos de volta.",
 			Recusa.SoVilao => "Só quem foi designado vilão aprende isto.",
 			Recusa.RacaOuClasse => "Sua raça ou classe não aprende esta.",
 			Recusa.SemArvore => "Não pende de nenhuma árvore sua.",

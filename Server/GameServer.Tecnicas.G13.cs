@@ -302,7 +302,13 @@ public partial class GameServer
 			if (string.Equals(NomeDaSkillG13(path), arg, StringComparison.OrdinalIgnoreCase))
 			{
 				_focoG13[pl.Id] = path;
-				Avisar(pl, $"voce agora vai focar em aprender {NomeDaSkillG13(path)}.");   // `:94`
+				// `:94` -- *"You will now focus on learning [focusskill.name]"*. E SO. O dono leu a frase, esperou
+				// alguma coisa acontecer e nada aconteceu (2026-10-13: *"tem verb q diz q faz algo mas n faz nada, como
+				// focar em ki unlocked"*): o foco so muda o ESTUDO de outra pessoa. A frase agora diz isso, e diz
+				// se ele ja esta valendo.
+				Avisar(pl, _estudoG13.TryGetValue(pl.Id, out string? estudado)
+					? $"o foco do seu estudo agora e {NomeDaSkillG13(path)}: enquanto voce estuda {estudado}, so ela adianta -- dez vezes mais (e so se ele estiver na sua frente nela)."
+					: $"o foco do seu estudo agora e {NomeDaSkillG13(path)}. Sozinho isto nao muda nada: ele so vale enquanto voce ESTUDA alguem mais adiantado que voce nela (marque a pessoa com duplo clique e use Estudar) -- ai ela adianta dez vezes mais, e as outras nada.");
 				return;
 			}
 

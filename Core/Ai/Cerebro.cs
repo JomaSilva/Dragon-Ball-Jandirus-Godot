@@ -362,6 +362,51 @@ public sealed partial class Cerebro
 	/// <summary>Apanhou isto enquanto carregava: desiste. `NPC_AI_RECHARGE_ABORT_DMG 15` de HP (`NPCAI.dm:24`).</summary>
 	public const double DanoQueAbortaACarga = 0.15;
 
+	// =====================================================================
+	// A CARGA DE KI PELA REGRA DO DONO (2026-10-13)
+	// =====================================================================
+	// *"percebi q elas n carregam o ki nunca, elas deveriam se afastar e carregar o ki pra continuar lutando ate o
+	// vigor acabar"*.
+	//
+	// O PORTAO DO DM (`NPCAI.dm:522`) pede Ki CRITICO **e** folego CRITICO, pelo sorteio da inteligencia -- e neste
+	// port quem paga a carga e o folego (`CargaDeKi.Passo`): com os dois no chao nao ha com o que carregar, e o
+	// portao nunca abria numa hora em que servisse. A fera e a furia, com inteligencia zero, nem o sorteavam.
+	//
+	// A REGRA NOVA vale pra TODO cerebro, sem sorteio: o Ki ficou baixo e ha vigor pra pagar -> afasta-se, planta o
+	// pe, carrega ate `CarregarAte`, volta. E o que o proprio dono pediu do jogador (*"socar deveria gastar um pouco
+	// de ki ... forcar o jogador ter q carregar o ki e gastar vigor"*): a luta longa passa a ser medida em vigor.
+
+	/// <summary>Abaixo disto ele se afasta pra carregar. O MESMO 0,30 do <see cref="KiBaixo"/>: o ponto em que gastar Ki vira decisao.</summary>
+	public const double KiQuePedeCarga = KiBaixo;
+
+	/// <summary>
+	/// O vigor minimo pra a carga valer. Abaixo dele nao ha com o que pagar (o `Passo` devolveria "sem folego"), e
+	/// ele luta com o que sobrou -- *"ate o vigor acabar"*. O MESMO 0,12 do <see cref="FolegoCritico"/>.
+	/// </summary>
+	public const double FolegoQuePagaACarga = FolegoCritico;
+
+	/// <summary>
+	/// Recuou isto sem conseguir abrir a <see cref="DistanciaSegura"/>: desiste por ora e volta a lutar. Sem este
+	/// prazo, um corpo com o Ki baixo e alguem no encalco recuaria pra sempre -- e quem persegue anda igual.
+	/// DESENHO NOVO (o `rechargeState` do DM recua enquanto o prazo de 20 s dele durar).
+	/// </summary>
+	public const double PrazoPraAbrirDistancia = 2.5;
+
+	/// <summary>Depois de largar a carga pela metade (nao abriu distancia, apanhou, o prazo venceu), espera isto antes de tentar de novo.</summary>
+	public const double CarenciaDaCarga = 6;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): so vale o portao do DM -- Ki E folego criticos, pelo sorteio da
+	/// inteligencia. A v0.2.0, em que a fera nunca carregava. Falso em jogo, sempre.
+	/// </summary>
+	public static bool SoCarregaNoCriticoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--iateste`): o recuo pra abrir a janela do tiro nao tem prazo, e o tiro que morreu
+	/// no meio continua o primeiro da fila -- o cerebro de antes, que encurralado recuava contra a parede pra sempre.
+	/// </summary>
+	public static bool TiroRecuaPraSempreDeTeste;
+
 	/// <summary>
 	/// KI MINIMO PRA TENTAR TRANSFORMAR. **LITERAL**: `if(Ki &lt; MaxKi * 0.25) return`
 	/// (`npc_try_transform`, `NPCAI.dm:365`).
@@ -533,12 +578,15 @@ public sealed partial class Cerebro
 	// --- carga ---
 	private double _vidaAoCarregar;
 	private double _carregandoHa;
+	private double _recuandoHa;         // ha quanto tempo ele recua SEM conseguir plantar o pe (ver `PrazoPraAbrirDistancia`)
+	private double _carenciaDaCarga;    // depois de largar a carga pela metade (ver `CarenciaDaCarga`)
 
 	// --- escalar ---
 	private double _carenciaDeForma;
 
 	// --- o tiro de longe (ver `Plano.Atirar`) ---
 	private int _tiroEscolhido = -1;   // indice no `Poderes.DeLonge`; -1 = nenhum
+	private double _abrindoDesde = -1; // desde quando recua pra abrir a janela do tiro (relogio do cerebro); -1 = nao esta
 	private double _conjurandoHa;
 	private double _pausaDoTiro;
 	private double _vidaAoConjurar;
@@ -899,8 +947,10 @@ public sealed partial class Cerebro
 		if (_pausaDoSopro > 0) _pausaDoSopro -= dt;
 		if (_carenciaDeVooDeArena > 0) _carenciaDeVooDeArena -= dt;
 		if (_carenciaDeAgua > 0) _carenciaDeAgua -= dt;
-		if (Atual == Plano.Recuperar) _carregandoHa += dt;
+		if (Atual == Plano.Recuperar) { _carregandoHa += dt; _recuandoHa += dt; }
+		if (_carenciaDaCarga > 0) _carenciaDaCarga -= dt;
 		TicarOKit(p, dt);
+		TicarORepertorio(p, dt);
 
 		// A FRASE E DESTE TIQUE E DE MAIS NENHUM. Zerada aqui, no topo, antes de qualquer ponto de
 		// fala poder escrever: sem isto uma frase recusada pelo `Comando` (um corpo caido, por
@@ -1154,6 +1204,7 @@ public sealed partial class Cerebro
 		{
 			_vidaAoCarregar = p.VidaFrac;
 			_carregandoHa = 0;
+			_recuandoHa = 0;
 			_fala ??= Boca.DeRecarga(rng);
 		}
 
@@ -1165,7 +1216,7 @@ public sealed partial class Cerebro
 		// MESMA CONTA PRA CONJURACAO, e pelo mesmo motivo: quem apanha no meio do gesto larga o
 		// gesto. Sem zerar o relogio aqui, um plano de atirar retomado herdaria a conjuracao do
 		// anterior e o golpe sairia no primeiro tique -- sem a parada que o jogador precisa ver.
-		if (novo == Plano.Atirar) { _vidaAoConjurar = p.VidaFrac; _conjurandoHa = 0; }
+		if (novo == Plano.Atirar) { _vidaAoConjurar = p.VidaFrac; _conjurandoHa = 0; _abrindoDesde = -1; }
 	}
 
 	/// <summary>
@@ -1198,7 +1249,15 @@ public sealed partial class Cerebro
 		// SEM ALVO, ANDA -- e a fera vagando. O ponto pra onde ela vai chega em `DoAlvo` mesmo com
 		// `TemAlvo` falso (ver `LerPercepcao`), e ele nunca e alcancado, porque e recalculado a
 		// partir da posicao ATUAL: e o que a faz ANDAR na direcao em vez de parar num destino.
-		if (!p.TemAlvo) { _finalizando = false; Porque = "vagar"; return Plano.Vagar; }
+		if (!p.TemAlvo)
+		{
+			_finalizando = false;
+			// SEM NINGUEM POR PERTO E COM O KI BAIXO, ELE CARREGA (regra do dono, 2026-10-13 -- ver `QuerCarregar`): a
+			// fera que acabou com a ultima presa enche o tanque antes de achar a proxima.
+			if (QuerCarregar(p)) { Porque = "carregar: ki baixo e ninguem por perto"; return Plano.Recuperar; }
+			Porque = "vagar";
+			return Plano.Vagar;
+		}
 
 		// ---- O KIT DO DEUS: QUEM O HAKAI PEGA NAO E MAIS UMA LUTA, E UMA EXECUCAO ----
 		// Antes do "alvo no chao" de proposito: e no chao que o criterio costuma se cumprir (o torso em 15% ja
@@ -1281,6 +1340,15 @@ public sealed partial class Cerebro
 			}
 		}
 
+		// --- CARREGAR O KI (REGRA DO DONO, 2026-10-13) --------------------
+		// Antes do portao do DM, logo abaixo, e sem o sorteio dele: ver `QuerCarregar` e o bloco das constantes.
+		if (QuerCarregar(p))
+		{
+			if (Explicando) Porque = $"carregar: ki {p.KiFrac:0.00}, folego {p.FolegoFrac:0.00}";
+			else Porque = "carregar: ki baixo";
+			return Plano.Recuperar;
+		}
+
 		// --- RECUPERAR ----------------------------------------------------
 		// `if(!ai_recharging && kr <= KI_CRIT && sr <= STAM_CRIT && prob(ai_intelligence))`
 		// (NPCAI.dm:522). O gate probabilistico E a inteligencia: bicho burro morre batendo.
@@ -1297,11 +1365,12 @@ public sealed partial class Cerebro
 		//
 		//   * DEPOIS de escalar e de recarregar, porque as duas sao decisoes sobre a luta INTEIRA e
 		//     um golpe de longe nao resolve estar fraco nem estar sem folego;
-		//   * ANTES de alcancar, e este e o ponto interessante: quando o alvo esta num andar que ele
-		//     nao encosta, atirar RESOLVE o mesmo problema que decolar -- e sem pagar o dreno de voo,
-		//     que e o mais caro do jogo. Um lutador com raio nao sobe atras de quem esta voando; ele
-		//     mira. Deixar o voo primeiro produziria o NPC que gasta o tanque subindo pra socar quem
-		//     ele podia ter acertado do chao, e ninguem entenderia por que.
+		//   * ANTES de alcancar -- mas so pra quem o tiro ALCANCA. Esta linha nasceu dizendo que
+		//     atirar resolvia o andar errado ("um lutador com raio nao sobe atras de quem esta voando;
+		//     ele mira"), e isso deixou de ser verdade quando o tiro passou a guardar a altura de quem
+		//     atira (`Voo.PodeAcertar`, a regra de todo tiro: do chao nao se acerta quem voa, e de alto
+		//     demais nao se acerta o chao). Desde entao o `EscolherTiro` recusa o alvo que a altura nao
+		//     alcanca (v0.2.1), e o plano que sobra e o de baixo: subir ou descer ate ele.
 		// ======================================================================================
 		if (EscolherTiro(p, rng, out int qual))
 		{
@@ -1391,6 +1460,40 @@ public sealed partial class Cerebro
 	}
 
 	/// <summary>
+	/// QUER SE AFASTAR E CARREGAR O KI? -- a regra do dono (2026-10-13), inteira.
+	///
+	/// ENTRA quando o Ki esta baixo (<see cref="KiQuePedeCarga"/>), ha vigor pra pagar
+	/// (<see cref="FolegoQuePagaACarga"/>), o corpo sabe reunir Ki e a carencia venceu.
+	///
+	/// FICA ate encher (<see cref="CarregarAte"/>) -- e nao ate sair do "baixo": sem isto ele plantaria o pe pra
+	/// ganhar um ponto de Ki e voltaria a apanhar com o tanque em 31%.
+	///
+	/// SAI PELA METADE, e arma a <see cref="CarenciaDaCarga"/>, por tres acontecimentos que se leem em jogo: apanhou
+	/// demais carregando (`DanoQueAbortaACarga`), o prazo do estado venceu (`PrazoDaRecarga`), ou recuou
+	/// <see cref="PrazoPraAbrirDistancia"/> sem conseguir abrir a distancia segura -- e ai ele volta a lutar com o que
+	/// tem. E com o vigor no fim ele nem tenta: e o *"ate o vigor acabar"*.
+	///
+	/// ELA MORA NA ESCOLHA, e nao so nas interrupcoes, por causa da forma do motor: as interrupcoes nomeadas so sao
+	/// consultadas quando o plano escolhido MUDA, e enquanto o Ki estiver baixo a escolha continuaria sendo carregar.
+	/// </summary>
+	private bool QuerCarregar(in Percepcao p)
+	{
+		if (SoCarregaNoCriticoDeTeste || !Poderes.SabeReunirKi) return false;
+		if (p.FolegoFrac <= FolegoQuePagaACarga) return false;
+
+		if (Atual != Plano.Recuperar) return _carenciaDaCarga <= 0 && p.KiFrac <= KiQuePedeCarga;
+
+		if (p.KiFrac >= CarregarAte) return false;   // encheu: sem carencia -- a proxima baixa abre de novo
+		bool naoAbriuDistancia = p.TemAlvo && p.Distancia < DistanciaSegura && _recuandoHa > PrazoPraAbrirDistancia;
+		if (p.VidaFrac < _vidaAoCarregar - DanoQueAbortaACarga || _carregandoHa > PrazoDaRecarga || naoAbriuDistancia)
+		{
+			_carenciaDaCarga = CarenciaDaCarga;
+			return false;
+		}
+		return true;
+	}
+
+	/// <summary>
 	/// HA UM GOLPE DE LONGE QUE VALE A PENA AGORA? **Hoje devolve falso na primeira linha, sempre.**
 	///
 	/// ============================ ESTA FUNCAO E O GANCHO INTEIRO ============================
@@ -1427,6 +1530,13 @@ public sealed partial class Cerebro
 		if (!p.TemAlvo || p.AlvoCaido) return false;
 		if (_pausaDoTiro > 0) return false;
 
+		// O TIRO GUARDA A ALTURA DE QUEM ATIRA (v0.2.1): de outro andar ele passa por cima ou por baixo do alvo
+		// (`Voo.PodeAcertar`). Atirar assim era Ki no vazio -- e pior: com a pausa do tiro (1 s) menor que o
+		// compromisso do plano (1,2 s), o corpo que ja estava na janela voltava a escolher o tiro em toda decisao e
+		// nunca chegava ao plano de alcancar (medido na `--iateste`: o NPC parado no segundo andar, atirando por cima
+		// de quem tinha pousado). Quem nao alcanca pela altura sobe ou desce primeiro.
+		if (!p.AlcancoPelaAltura) return false;
+
 		// ============================ ECONOMIA DE KI: COM O TANQUE BAIXO, ELE SOCA ============================
 		// **LITERAL**: `if(ki_ratio <= NPC_AI_KI_LOW && prob(ai_intelligence)) attack(); return`
 		// (`NPCAI.dm:404`) -- e o comentario do autor e a regra inteira: *"com ki baixo o NPC esperto
@@ -1448,7 +1558,17 @@ public sealed partial class Cerebro
 		// longe se voce der espaco, mas se voce colar nele ele esquece que tem raio".
 		bool sabeRecuarPraAtirar = Inteligencia >= 0.35;
 
-		double melhorNota = 0;
+		// ============================ O RODIZIO (v0.2.1) ============================
+		// A nota elege o golpe mais caro que cabe -- e, sozinha, elege o MESMO a luta inteira: um corpo que sabe
+		// trinta tiros soltava um. Entao, entre os que cabem, sai o que esta HA MAIS TEMPO SEM SER USADO
+		// (`UltimoUso`, `Cerebro.Repertorio.cs`), e a nota so desempata.
+		//
+		// A PRIMEIRA VOLTA E A DE SEMPRE: quem nunca foi usado empata, e o desempate e a nota -- o mais forte sai
+		// primeiro, depois o segundo, e so depois da volta inteira o primeiro reaparece. QUEM SO TEM UM TIRO NAO
+		// FICA MAIS LENTO: o rodizio muda QUAL sai, e nao QUANDO (quem espaca e a pausa do tiro). A excecao sao as
+		// linhas que declaram o proprio descanso (as que se seguram, as de recarga longa): essas esperam de verdade.
+		// ===========================================================================
+		double melhorNota = 0, maisAntiga = double.PositiveInfinity;
 		for (int i = 0; i < Poderes.DeLonge.Quantas; i++)
 		{
 			Tiro t = Poderes.DeLonge[i];
@@ -1457,14 +1577,20 @@ public sealed partial class Cerebro
 			if (p.Distancia < t.AlcanceMin && !sabeRecuarPraAtirar) continue;
 			if (t.PrecisaDeLinhaLivre && !p.LinhaLivre) continue;
 			if (p.Ki - t.CustoDeKi < ReservaDeKi(p)) continue;
+			// A SEGUNDA MOEDA e o que a tecnica pede da cena (o Spirit Gun cobra folego; o Kikoho, sangue).
+			if (!PagaOFolego(p, t) || !ACenaServe(p, t)) continue;
 
 			// o risco medido ONDE ele vai atirar: dentro da janela, e nao onde ele esta agora
 			float daJanela = Math.Clamp(p.Distancia, t.AlcanceMin, t.AlcanceMax);
 			double risco = Arsenal.RiscoDeErrar(t, daJanela, p.AlvoSeMovendo);
 			if (risco > ToleranciaDeErro) continue;
 
-			double nota = (1 - risco) * t.CustoDeKi;
-			if (nota <= melhorNota) continue;
+			// (o preco e o tamanho da tecnica, na moeda que ela cobrar; o piso evita a nota zero do tiro de graca)
+			double nota = (1 - risco) * Math.Max(t.CustoDeKi + t.CustoDeFolego, 1e-9);
+			if (Descansando(t, 0)) continue;
+			double usada = UltimoUso(t.Id);
+			if (usada > maisAntiga || (usada == maisAntiga && nota <= melhorNota)) continue;
+			maisAntiga = usada;
 			melhorNota = nota;
 			qual = i;
 		}
@@ -1494,9 +1620,22 @@ public sealed partial class Cerebro
 		return p.Distancia > t.AlcanceMax                              // ele saiu do alcance
 			|| (t.PrecisaDeLinhaLivre && !p.LinhaLivre)                // entrou parede no meio
 			|| p.Ki - t.CustoDeKi < ReservaDeKi(p)                     // o folego acabou
+			|| !PagaOFolego(p, t)                                      // ...ou a outra moeda (o Spirit Gun)
+			|| !p.AlcancoPelaAltura                                    // ele mudou de andar: o tiro passaria por cima
 			|| p.VidaFrac < _vidaAoConjurar - DanoQueAbortaACarga      // apanhou demais conjurando
-			|| _conjurandoHa > PrazoDaConjuracao;                      // nunca completa: desiste
+			|| _conjurandoHa > PrazoDaConjuracao                       // nunca completa: desiste
+			|| NaoAbriuAJanela();                                      // recua e a distancia nao abre: desiste
 	}
+
+	/// <summary>
+	/// RECUOU O PRAZO INTEIRO E A JANELA DO TIRO NAO ABRIU (v0.2.1). Quem e esperto recua pra abrir a distancia do
+	/// tiro que escolheu (ver <see cref="Disparo"/>) -- e, sem prazo, recuava PRA SEMPRE quando ela nao abria:
+	/// encurralado numa parede (o corpo "andando contra a parede" que o dono viu), ou com a presa vindo atras na
+	/// mesma velocidade. O prazo e o mesmo da carga de Ki (<see cref="PrazoPraAbrirDistancia"/>): passou, o tiro
+	/// morre -- e vai pro fim da fila do rodizio (<see cref="AbortarTiro"/>), pra a escolha seguinte ser OUTRA.
+	/// </summary>
+	private bool NaoAbriuAJanela() =>
+		!TiroRecuaPraSempreDeTeste && _abrindoDesde >= 0 && _relogio - _abrindoDesde > PrazoPraAbrirDistancia;
 
 	/// <summary>
 	/// LARGA O GESTO. Zera a conjuracao, esquece a opcao escolhida, paga a pausa e devolve o corpo
@@ -1505,8 +1644,14 @@ public sealed partial class Cerebro
 	/// </summary>
 	private void AbortarTiro()
 	{
+		// (v0.2.1) O TIRO QUE MORREU VAI PRO FIM DA FILA. O rodizio so contava o que SAIU: um tiro que morria no
+		// meio continuava sendo "o que esta ha mais tempo sem ser usado", e a escolha seguinte era ELE de novo --
+		// o corpo tentava o mesmo raio a luta inteira, e era interrompido a luta inteira.
+		if (!TiroRecuaPraSempreDeTeste && _tiroEscolhido >= 0 && _tiroEscolhido < Poderes.DeLonge.Quantas)
+			Usei(Poderes.DeLonge[_tiroEscolhido].Id);
 		_pausaDoTiro = Math.Max(_pausaDoTiro, PausaDepoisDoTiro);
 		_conjurandoHa = 0;
+		_abrindoDesde = -1;
 		_tiroEscolhido = -1;
 		Atual = Plano.Nada;
 		_noPlano = TempoMinimoNoPlano;
@@ -1543,12 +1688,18 @@ public sealed partial class Cerebro
 		if (p.Distancia < t.AlcanceMin)
 		{
 			_conjurandoHa = 0;
+			if (_abrindoDesde < 0) _abrindoDesde = _relogio;   // (o recuo tem prazo -- ver `NaoAbriuAJanela`)
 			return new Comando { Rumo = p.Direcao * -1f, Guardar = guarda };
 		}
+		_abrindoDesde = -1;
 
 		// NA JANELA: para e conjura. `Rumo` zero de proposito.
 		if (_conjurandoHa < t.TempoDeConjuracao)
 			return new Comando { Guardar = guarda };
+
+		// (v0.2.1) O ALVO MUDOU DE ANDAR NO MEIO DO GESTO: o tiro passaria por cima (ou por baixo). Segura -- a
+		// decisao seguinte larga o plano (`TiroMorreu`) e vai alcanca-lo.
+		if (!p.AlcancoPelaAltura) return new Comando { Guardar = guarda };
 
 		// SOLTA -- um PULSO so, pelo mesmo canal do jogador. Quem cobra recarga, Ki e "voce nao sabe
 		// isso" e a tecnica, la no `UsarHabilidade`; aqui nao se confere nada.
@@ -1560,6 +1711,7 @@ public sealed partial class Cerebro
 		// linha um chefe cujo kit inteiro e raio atravessaria a luta mudo (medido: 20 s, zero frases).
 		_pausaDoTiro = PausaDepoisDoTiro;
 		_conjurandoHa = 0;
+		Pedi(t.Id, t.Id);   // (o rodizio: quando o verb SAIR, a proxima escolha e outra -- ver `Apertou` e `EscolherTiro`)
 		Dizer(Momento.Disparar, rng);
 		return new Comando { Habilidade = t.Id, Guardar = guarda };
 	}
@@ -1656,7 +1808,7 @@ public sealed partial class Cerebro
 
 		// O KIT DO DEUS VEM ANTES DO PLANO quando ha alguem nos bracos: andar segurando arremessa e socar segurando
 		// estrangula, entao com a presa na mao o gesto e um so -- o peteleco (ou o Hakai). Ver `Cerebro.Kit.cs`.
-		Comando gesto = ComAPresaNaMao(p) is { } naMao ? naMao
+		Comando gesto = ComAPresaNaMao(p, rng) is { } naMao ? naMao
 			: _hesitaAte > 0
 			// HESITANDO: recua guardando e nao ataca. Curto -- ver `Sustos`.
 			? new Comando { Rumo = p.Direcao * -1f, Guardar = guarda, QuerDescer = false }
@@ -1674,13 +1826,14 @@ public sealed partial class Cerebro
 
 				// VAGAR: so o rumo. Sem soco (o ponto nao e ninguem) e sem guarda (nao ha de quem se
 				// defender) -- e exatamente o que o cerebro antigo fazia quando `posAlvo` era um ponto.
-				Plano.Vagar => new Comando { Rumo = p.Direcao },
+				Plano.Vagar => new Comando { Rumo = p.Direcao },   // (um PONTO, e nao alguem: reto, e o atuador contorna o que emperrar)
 
 				_ => new Comando { Guardar = guarda },
 			};
 
 		// ...e a ANULACAO do kit vai POR CIMA do gesto do plano: o corpo nao para pra apagar o ki que vem.
 		gesto = AnularOQueVem(p, gesto);
+		gesto = ComORepertorio(p, gesto, rng);   // (v0.2.1) os golpes, as investidas, os reforcos, o socorro -- `Cerebro.Repertorio.cs`
 
 		// ============================ O OLHAR, E ELE E DECIDIDO **UMA VEZ SO** ============================
 		// **Havendo com quem lutar, o corpo encara.** Uma linha, fora do `switch`, e de proposito: a
@@ -1761,6 +1914,10 @@ public sealed partial class Cerebro
 			Olhar = encara && Atual != Plano.Fugir ? p.Direcao : Vec2.Zero,
 			Marcar = encara ? p.IdDoAlvo : 0,
 			Falar = _fala,
+			// TODO PASSO DO CEREBRO CONTORNA O QUE O EMPERRAR (dono, 2026-10-13: *"fica andando contra a parede"*).
+			// Uma linha, fora do `switch`, pelo motivo das tres de cima: a receita que esquecesse voltaria a empurrar o
+			// muro -- e as que recuam esqueceriam, porque nelas o caminho nunca foi assunto. Ver `Comando.DesviaDeParede`.
+			DesviaDeParede = true,
 		};
 	}
 
@@ -1904,6 +2061,8 @@ public sealed partial class Cerebro
 
 		// longe o bastante: planta o pe e carrega. Rumo ZERO e obrigatorio -- andar SUSPENDE a carga
 		// (`CargaDeKi.Passo` recebe o `Moving`), e um NPC que carrega andando nao carrega nada.
+		// (E o relogio do recuo volta a zero: o prazo de abrir distancia e de cada tentativa, e esta deu certo.)
+		_recuandoHa = 0;
 		return new Comando { Carregar = true, Guardar = guarda };
 	}
 
@@ -1921,7 +2080,7 @@ public sealed partial class Cerebro
 		// ja no ar: sobe/desce ate o andar certo e continua indo pra cima dele
 		return new Comando
 		{
-			Rumo = p.Distancia > DistanciaIdeal * 1.4f ? p.Direcao : Vec2.Zero,
+			Rumo = p.Distancia > DistanciaIdeal * 1.4f || p.TemParede ? p.RumoAoAlvo : Vec2.Zero,
 			QuerSubir = QuerSubirPara(p),
 			QuerDescer = QuerDescerPara(p),
 			Guardar = guarda,
@@ -1966,8 +2125,10 @@ public sealed partial class Cerebro
 		// ---- O KIT DO DEUS: de tempos em tempos, colado, ele AGARRA -- o peteleco vem do `ComAPresaNaMao` ----
 		if (QuerAgarrar(p, guarda)) return Agarrar(p, rng);
 
+		// COM PAREDE NO MEIO ELE DA A VOLTA, mesmo "perto": a um tile do alvo com um muro entre os dois, a distancia
+		// ja esta boa e o soco nao chega -- parado ali ele socaria o muro pra sempre. Ver `Percepcao.Desvio`.
 		Vec2 rumo = Vec2.Zero;
-		if (p.Distancia > DistanciaIdeal * 1.4f) rumo = p.Direcao;
+		if (p.Distancia > DistanciaIdeal * 1.4f || p.TemParede) rumo = p.RumoAoAlvo;
 		else if (p.Distancia < DistanciaIdeal * 0.6f) rumo = p.Direcao * -1f;
 
 		bool noAlcance = p.Distancia <= DistanciaIdeal * 1.6f && p.AlcancoPelaAltura;
@@ -1988,7 +2149,8 @@ public sealed partial class Cerebro
 		// curto dois e meio), e o pesado abaixo daqui exige folego. Sem esta condicao, um NPC sem Ki
 		// pediria um golpe LEVE de 300 px de distancia -- que e um soco no ar com nome novo.
 		// =====================================================================================================
-		bool investida = !noAlcance && temFolego && p.AlcancoPelaAltura
+		// (SEM PAREDE NO MEIO: o arranque e uma linha reta, e com um muro entre os dois ele acabaria na cara do muro.)
+		bool investida = !noAlcance && temFolego && p.AlcancoPelaAltura && !p.TemParede
 					  && p.Distancia <= AlcanceDaInvestida
 					  && rng.NextDouble() < ChanceDeInvestir;
 

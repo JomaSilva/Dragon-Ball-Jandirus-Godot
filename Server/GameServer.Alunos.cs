@@ -530,7 +530,9 @@ public partial class GameServer
 	///
 	///   * `alunos` [`seguir`]        -- o pedido do painel (ao abrir a tela / com ela aberta);
 	///   * `alunos_ensinar &lt;aluno&gt;`   -- o "Ajudar a transformar" do cartao DESTE aluno;
-	///   * `alunos_dispensar &lt;aluno&gt;` -- o "Dispensar aluno" do cartao DESTE aluno.
+	///   * `alunos_dispensar &lt;aluno&gt;` -- o "Dispensar aluno" do cartao DESTE aluno;
+	///   * `alunos_licao &lt;aluno&gt;|&lt;typepath&gt;` e `alunos_tecnica &lt;aluno&gt;|&lt;id&gt;` -- o "Ensinar..." do cartao DESTE
+	///     aluno (2026-10-13): uma skill do mestre, ou uma tecnica de ki que ele inventou.
 	/// </summary>
 	private bool ComandoDeAlunos(ServerPlayer pl, string cmd, string arg)
 	{
@@ -539,6 +541,8 @@ public partial class GameServer
 			case "alunos": PedidoDoPainel(pl, seguir: arg == "seguir"); return true;
 			case "alunos_ensinar": EnsinarPeloCartao(pl, arg); return true;
 			case "alunos_dispensar": DispensarPeloCartao(pl, arg); return true;
+			case "alunos_licao": LicaoPeloCartao(pl, arg, tecnica: false); return true;
+			case "alunos_tecnica": LicaoPeloCartao(pl, arg, tecnica: true); return true;
 			default: return false;
 		}
 	}
@@ -593,6 +597,34 @@ public partial class GameServer
 			UsarHabilidade(mestre, "mst_ensinar");
 		}
 		finally { mestre.AlvoId = alvoDeAntes; }
+	}
+
+	/// <summary>
+	/// "ENSINAR...", NO CARTAO DE UM ALUNO (dono, 2026-10-13: *"dar pra ensinar mais skills pros alunos e tb técnicas
+	/// proprias"*). O argumento e `assinatura|o que` -- o typepath de uma skill do mestre, ou o id de uma tecnica de ki
+	/// que ele inventou. O gesto e o de sempre (`OferecerLicao` / `OferecerTecnica`), so que MIRADO, como o "Ajudar a
+	/// transformar" logo acima: o cartao e deste aluno, e a licao ou e pra ele ou nao e pra ninguem. A distancia de um
+	/// tile, a recarga e todas as recusas sao as da licao.
+	/// </summary>
+	private void LicaoPeloCartao(ServerPlayer mestre, string arg, bool tecnica)
+	{
+		int barra = arg.IndexOf('|');
+		string sigAluno = barra >= 0 ? arg[..barra] : arg, oQue = barra >= 0 ? arg[(barra + 1)..] : "";
+
+		if (!EhPessoa(mestre) || sigAluno.Length == 0 || MestreDe(sigAluno) != mestre.Assinatura)
+		{
+			Avisar(mestre, SoPraAlunoSeu);
+			return;
+		}
+		if (CorpoDaAssinatura(sigAluno) is not { } aluno)
+		{
+			Avisar(mestre, $"{NomeDaAssinatura(sigAluno)} não está no mundo agora: não há como ensiná-lo daqui.");
+			return;
+		}
+
+		if (!tecnica) { OferecerLicao(mestre, oQue, aluno); return; }
+		if (!int.TryParse(oQue, out int id)) { Avisar(mestre, "escolha qual técnica você quer ensinar."); return; }
+		OferecerTecnica(mestre, aluno, id);
 	}
 
 	/// <summary>

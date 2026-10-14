@@ -123,6 +123,7 @@ public partial class GameServer
 		// ==============================================================================================================================
 		clone.Livro = new Jandirus.Core.Skills.SkillBook();
 		if (dono.Livro?.Sabe(PathDoZanzoken) == true) clone.Livro.Dar(PathDoZanzoken);
+		clone.Ficha.zanzoDesligado = dono.Ficha.zanzoDesligado;   // (o bit que o `Afterimage_Toggle` alterna: e o MESMO `haszanzo` da linha do DM)
 		clone.Combate.Letal = false;   // a mente nao decepa membro nem mata: e treino
 
 		// ============================ A FICHA DELE SAI PELA PORTA DE TODO CORPO NOVO ============================
@@ -595,6 +596,24 @@ public partial class GameServer
 			// nem fera. Ver `GuiarSplitformG12`.
 			if (!GuiarSplitformG12(npc, copiaDividida, out presa, out destino)) return;
 		}
+		else if (_simulacoes.TryGetValue(npc.Id, out int donoDaSimulacao))
+		{
+			// (v0.2.1) A SIMULACAO DO SIMULADOR: caca quem a pediu, e se desfaz quando um dos dois cai -- nem molde,
+			// nem fera. Ver `GuiarASimulacao` (`GameServer.MaquinasGrandes.cs`).
+			if (!GuiarASimulacao(npc, donoDaSimulacao, out presa, out destino)) return;
+		}
+		else if (_companheiros.TryGetValue(npc.Id, out CompanheiroSolto? criaturaSolta))
+		{
+			// (v0.2.1) A CRIATURA DE UMA CAPSULA DE COMPANHEIRO: segue o dono e persegue quem ele manda -- nem molde, nem
+			// fera. Ver `GuiarOCompanheiro` (`GameServer.Companheiros.cs`).
+			if (!GuiarOCompanheiro(npc, criaturaSolta, out presa, out destino)) return;
+		}
+		else if (_droides.TryGetValue(npc.Id, out Droide? droideDoComputador))
+		{
+			// (v0.2.1) O DROIDE DO SUPER COMPUTADOR: segue o dono e ataca quem ele manda -- nem molde, nem fera. Ver
+			// `GuiarODroide` (`GameServer.SuperComputador.cs`).
+			if (!GuiarODroide(npc, droideDoComputador, out presa, out destino)) return;
+		}
 		else if (npc.PresoGuardado != 0)
 		{
 			// A IMAGEM DE UM MAJIN, dentro dele: a presa e o prisioneiro que ela guarda, e so ele -- nem
@@ -661,6 +680,7 @@ public partial class GameServer
 			if (presa != null)
 			{
 				if (npc.Rotina is { Afazer: not Afazer.Ocioso } r) r.Interromper("presa de verdade");
+				if (npc.Cerebro is { LutaDeTreino: true } deixouOTreino) deixouOTreino.LutaDeTreino = false;   // (v0.2.1) a briga agora e de verdade
 				if (npc.Ficha.train) npc.Ficha.train = false;
 				destino = presa.Pos;
 			}
@@ -722,7 +742,8 @@ public partial class GameServer
 		// tecnicas que voam (ver `TecnicasDeLonge`) nao paga a varredura de segmento. Passar a
 		// resposta do arsenal como argumento e o que mantem esse custo fora do caminho de 30 Hz de
 		// todo mundo, em vez de perguntar la dentro.
-		Percepcao p = LerPercepcao(npc, presa, destino, cerebro.Poderes.DeLonge.TemAlguma);
+		// (v0.2.1) ...e pra quem tem INVESTIDA: a corrida contra a parede erra caro -- `Capacidades.PedeLinha`.
+		Percepcao p = LerPercepcao(npc, presa, destino, cerebro.Poderes.PedeLinha);
 		Plano antes = cerebro.Atual;
 		Comando c = cerebro.Pensar(p, dtDaMente, _rng);
 		// (O bicho bravo fecha a distancia CORRENDO: ele nao tem a investida do golpe. Ver `PassoDeBicho`.)
@@ -1123,6 +1144,7 @@ public partial class GameServer
 			&& _players.TryGetValue(fera.PresaEngajada, out ServerPlayer? antes)
 			&& antes.Id != fera.Id && antes.Zone.Hash == fera.Zone.Hash
 			&& !antes.Ficha.dead && !antes.Ficha.KO && (!soJogadores || EhJogador(antes))
+			&& !EhCopiaDeG12(antes.Id, fera.Id)
 			&& Jandirus.Core.Social.Fusao.DistanciaEmTilesDoDm(fera.Pos, antes.Pos, ZoneCollision.TileSize) <= raio
 			&& (!macaco || LinhaDeVisaoLivre(fera, antes)))
 			return antes;
@@ -1135,6 +1157,10 @@ public partial class GameServer
 		{
 			if (o.Id == fera.Id || o.Ficha.dead || o.Ficha.KO) continue;
 			if (soJogadores && !EhJogador(o)) continue;
+			// A COPIA DELA NAO E PRESA (v0.2.1). *"Ataca tudo o que ve"* e a copia da Divisao do Corpo nasce a um passo
+			// de quem se dividiu: desde que o corpo possuido usa as tecnicas do dono, a fera fazia a copia e passava a
+			// luta batendo nela. A copia e o proprio corpo, dividido -- e nao outro corpo que ela ve.
+			if (EhCopiaDeG12(o.Id, fera.Id)) continue;
 			// `!M.attackable` -- so a furia pergunta (`lssjbuff.dm:618`); o laco do macaco nao (`Oozaru.dm:191`).
 			if (!macaco && o.Combate is { Intocavel: true }) continue;
 			if (Jandirus.Core.Social.Fusao.DistanciaEmTilesDoDm(fera.Pos, o.Pos, ZoneCollision.TileSize) > raio) continue;

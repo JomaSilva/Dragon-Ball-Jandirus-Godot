@@ -263,7 +263,7 @@ public partial class GameServer
 		// o que `AcenderJanelaDeRaiva` escreve. Medir o derivado deixaria a afirmacao a merce do
 		// relogio do tique.
 		AfirmarMnt("DENTRO da mente, ver um amigo cair nao acende raiva",
-				   plateia.RaivaLendariaAte == 0, $"{plateia.RaivaLendariaAte}");
+				   plateia.RaivaComumAte == 0, $"{plateia.RaivaComumAte}");
 
 		// ============================ A OUTRA METADE: A MESMA CENA, LA FORA ============================
 		// Os mesmos tres corpos, os mesmos vinculos, a mesma chamada -- so o LUGAR muda. Se esta
@@ -284,7 +284,7 @@ public partial class GameServer
 		AfirmarMnt("FORA da mente a mesma cena paga Zenkai",
 				   vitima.Ficha.BP > bpAntes + 1e-6, $"{vitima.Ficha.BP} == {bpAntes}");
 		AfirmarMnt("FORA da mente a mesma cena acende raiva",
-				   plateia.RaivaLendariaAte > 0, $"{plateia.RaivaLendariaAte}");
+				   plateia.RaivaComumAte > 0, $"{plateia.RaivaComumAte}");
 	}
 
 	// =====================================================================

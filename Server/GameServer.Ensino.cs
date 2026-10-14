@@ -14,7 +14,11 @@ namespace Jandirus.Server;
 /// oferece um Kamehameha ao mesmo corpo. Empilhar os tres num campo so criaria um estado que o
 /// jogo produz de verdade e que alguem teria que decidir o que significa.
 /// </summary>
-public sealed record PedidoDeLicao(string SigMestre, string NomeDoMestre, string Path, long Ate);
+/// <param name="Tecnica">
+/// (2026-10-13) Maior que zero = a licao e uma TECNICA DE KI que o mestre inventou (o id dela na lista DELE), e o
+/// `Path` vem vazio. Ver `GameServer.OferecerTecnica`.
+/// </param>
+public sealed record PedidoDeLicao(string SigMestre, string NomeDoMestre, string Path, long Ate, int Tecnica = 0);
 
 /// <summary>
 /// O ENSINO DE SKILL, LADO DO SERVIDOR -- porte de
@@ -89,7 +93,11 @@ public partial class GameServer
 	/// que desiste antes de escolher alguem nao paga. Se o "nao" do aluno devolvesse os 6 s, oferecer
 	/// viraria gratis.
 	/// </summary>
-	private void OferecerLicao(ServerPlayer mestre, string path)
+	/// <param name="alvo">
+	/// (2026-10-13) A quem a licao e oferecida, quando o gesto ja sabe -- o cartao do aluno, na aba Alunos
+	/// (<see cref="LicaoPeloCartao"/>). Nulo = quem estiver na frente, como sempre. A distancia de um tile vale igual.
+	/// </param>
+	private void OferecerLicao(ServerPlayer mestre, string path, ServerPlayer? alvo = null)
 	{
 		if (_skills == null) { Avisar(mestre, "o servidor esta sem catalogo de skills."); return; }
 		if (path.Length == 0) { Avisar(mestre, "escolha qual habilidade voce quer ensinar."); return; }
@@ -99,19 +107,13 @@ public partial class GameServer
 		// `Study` (`:38-57`) nao pergunta `transing`. O unico filtro daquela lista, `!(Choice.type in
 		// M.learned_skills)`, virou a recusa `AlunoJaSabe` (ver `EnsinoDeSkill.Avaliar`): sem o menu do DM,
 		// o port escolhe um corpo so, e "ele ja sabe isso" diz mais que uma lista vazia.
-		ServerPlayer? aluno = QuemEstaNaFrente(mestre, _ => true);
+		ServerPlayer? aluno = alvo ?? QuemEstaNaFrente(mestre, _ => true);
 		if (aluno == null) { Avisar(mestre, "nao ha ninguem na sua frente."); return; }
 
 		Skill? s = _skills.Get(path);
 		long agora = NowMs();
 
-		RecusaDeLicao r = EnsinoDeSkill.Avaliar(
-			doMestre: mestre.Livro, doAluno: aluno.Livro, s,
-			mestreTemAssinatura: EhPessoa(mestre), alunoTemAssinatura: EhPessoa(aluno),
-			mesmaPessoa: mestre == aluno,
-			distanciaTiles: mestre.Zone.Hash != aluno.Zone.Hash
-				? double.MaxValue : Vec2.Distance(mestre.Pos, aluno.Pos) / ZoneCollision.TileSize,
-			naRecarga: mestre.RecargaDaLicao > agora);
+		RecusaDeLicao r = AvaliarLicao(mestre, aluno, s, naRecarga: mestre.RecargaDaLicao > agora);
 
 		if (r != RecusaDeLicao.Pode)
 		{
@@ -129,10 +131,38 @@ public partial class GameServer
 		// A MENSAGEM DIZ OS DOIS NUMEROS, como a caixa do DM (`:48`) -- inclusive a parte que
 		// costuma surpreender: **os marcos nao somem**. Sem essa frase o jogador junta marcos
 		// achando que vai gastar, e nunca descobre que so precisava chegar la.
-		Avisar(aluno, $"{mestre.Name} se oferece pra te ensinar {s.Nome}. "
-					+ $"Exige {EnsinoDeSkill.Custo(s)} marco(s) e voce tem {aluno.Livro.MarcosLivres} -- "
-					+ "e aprender NAO gasta marco nenhum. Aceite ou recuse na aba Learning "
-					+ $"({EnsinoDeSkill.PrazoDaOfertaSegundos:0} s).");
+		//
+		// (2026-10-13) NA LICAO DO MESTRE ELES SOMEM, e a frase diz o contrario com a mesma clareza -- ver
+		// `EnsinoDeSkill.LicaoDeMestre`. O aviso de tela (o cartao com Aceitar e Recusar) sai do `PedidosDe`.
+		Avisar(aluno, EnsinoDeSkill.LicaoDeMestre(s, EhMeuMestre(aluno, mestre))
+			? $"o seu mestre {mestre.Name} se oferece pra te ensinar {s.Nome}, que ele nao ensinaria a um estranho. "
+			  + $"Custa {EnsinoDeSkill.Custo(s)} marco(s) e voce tem {aluno.Livro.MarcosLivres} -- esta licao GASTA os marcos "
+			  + $"(e esquecer nao os devolve). Aceite ou recuse no aviso da tela ({EnsinoDeSkill.PrazoDaOfertaSegundos:0} s)."
+			: $"{mestre.Name} se oferece pra te ensinar {s.Nome}. "
+			  + $"Exige {EnsinoDeSkill.Custo(s)} marco(s) e voce tem {aluno.Livro.MarcosLivres} -- "
+			  + "e aprender NAO gasta marco nenhum. Aceite ou recuse no aviso da tela "
+			  + $"({EnsinoDeSkill.PrazoDaOfertaSegundos:0} s).");
+	}
+
+	/// <summary>
+	/// A AVALIACAO DA LICAO ENTRE ESTES DOIS CORPOS, com o que so o servidor sabe: se quem recebe e ALUNO de quem
+	/// ensina (o discipulado) e, quando a licao e a do mestre, o que o livro do aluno diria da skill se ele a fosse
+	/// comprar sozinho. A oferta e a resposta perguntam por aqui -- a segunda revalida tudo.
+	/// </summary>
+	private RecusaDeLicao AvaliarLicao(ServerPlayer mestre, ServerPlayer aluno, Skill? s, bool naRecarga)
+	{
+		bool eMeuAluno = EhMeuMestre(aluno, mestre);
+		Recusa sozinho = s != null && _skills != null && EnsinoDeSkill.LicaoDeMestre(s, eMeuAluno)
+			? aluno.Livro.PodeAprender(_skills, s.Path, aluno.Race, aluno.Class, vilao: EhVilao(aluno))
+			: Recusa.Pode;
+
+		return EnsinoDeSkill.Avaliar(
+			doMestre: mestre.Livro, doAluno: aluno.Livro, s,
+			mestreTemAssinatura: EhPessoa(mestre), alunoTemAssinatura: EhPessoa(aluno),
+			mesmaPessoa: mestre == aluno,
+			distanciaTiles: mestre.Zone.Hash != aluno.Zone.Hash
+				? double.MaxValue : Vec2.Distance(mestre.Pos, aluno.Pos) / ZoneCollision.TileSize,
+			naRecarga: naRecarga, eMeuAluno: eMeuAluno, doAlunoSozinho: sozinho);
 	}
 
 	/// <summary>
@@ -142,12 +172,15 @@ public partial class GameServer
 	/// unico lugar do jogo onde o jogador descobre as duas regras centrais do sistema (nao se
 	/// repassa o que foi ensinado; o custo e limiar e nao preco).
 	/// </summary>
-	private static string PorQueNaoEnsina(RecusaDeLicao r, Skill? s, ServerPlayer aluno,
-										  ServerPlayer mestre, long agora) => r switch
+	private string PorQueNaoEnsina(RecusaDeLicao r, Skill? s, ServerPlayer aluno,
+								   ServerPlayer mestre, long agora) => r switch
 	{
 		RecusaDeLicao.NaoExiste => "essa habilidade nao existe.",
 		RecusaDeLicao.NaoSabe => "voce nao sabe isso.",
-		RecusaDeLicao.NaoSeEnsina => $"{s?.Nome ?? "isso"} nao se ensina -- nao ha como mostrar.",
+		RecusaDeLicao.NaoSeEnsina => $"{s?.Nome ?? "isso"} nao se ensina a um estranho -- so um mestre mostra isso ao proprio aluno.",
+		RecusaDeLicao.NaoEDoCorpoDele => s != null && Jandirus.Core.Skills.SkillsFechadas.De(s.Path) is { } fechada
+			? $"{s.Nome} ainda nao existe neste jogo (falta {fechada.Falta}): nem um mestre a ensina."
+			: $"{s?.Nome ?? "isso"} nao e do corpo de {aluno.Name}: nem um mestre ensina o que a raca ou a classe dele nao alcanca.",
 		RecusaDeLicao.AprendeuDeAlguem =>
 			$"{s?.Nome ?? "isso"} foi ENSINADO a voce, e quem aprendeu de um mestre nao repassa.",
 		RecusaDeLicao.SemAssinatura => "essa criatura nao tem identidade propria.",
@@ -158,7 +191,9 @@ public partial class GameServer
 			$"voce acabou de ensinar ({(mestre.RecargaDaLicao - agora) / 1000.0:0.#} s).",
 		RecusaDeLicao.SemMarcos =>
 			$"{aluno.Name} ainda nao andou o bastante: precisa TER {(s != null ? EnsinoDeSkill.Custo(s) : 0)} "
-			+ $"marco(s) livre(s) e tem {aluno.Livro.MarcosLivres} (nenhum sera gasto).",
+			+ $"marco(s) livre(s) e tem {aluno.Livro.MarcosLivres} "
+			+ (s != null && EnsinoDeSkill.LicaoDeMestre(s, EhMeuMestre(aluno, mestre))
+				? "(a licao de mestre GASTA os marcos)." : "(nenhum sera gasto)."),
 		_ => "agora nao.",
 	};
 
@@ -186,6 +221,9 @@ public partial class GameServer
 		ServerPlayer? mestre = CorpoDaAssinatura(p.SigMestre);
 		if (mestre == null) { Avisar(aluno, $"{p.NomeDoMestre} nao esta mais por aqui."); return; }
 
+		// A LICAO ERA UMA TECNICA DE KI DO MESTRE (2026-10-13): outra resposta, com as mesmas duas pontas.
+		if (p.Tecnica > 0) { ResponderATecnica(aluno, mestre, p.Tecnica, aceitou); return; }
+
 		Skill? s = _skills.Get(p.Path);
 		if (!aceitou)
 		{
@@ -196,13 +234,7 @@ public partial class GameServer
 			return;
 		}
 
-		RecusaDeLicao r = EnsinoDeSkill.Avaliar(
-			doMestre: mestre.Livro, doAluno: aluno.Livro, s,
-			mestreTemAssinatura: EhPessoa(mestre), alunoTemAssinatura: EhPessoa(aluno),
-			mesmaPessoa: mestre == aluno,
-			distanciaTiles: mestre.Zone.Hash != aluno.Zone.Hash
-				? double.MaxValue : Vec2.Distance(mestre.Pos, aluno.Pos) / ZoneCollision.TileSize,
-			naRecarga: false);
+		RecusaDeLicao r = AvaliarLicao(mestre, aluno, s, naRecarga: false);
 
 		if (r != RecusaDeLicao.Pode)
 		{
@@ -212,7 +244,9 @@ public partial class GameServer
 			return;
 		}
 
-		if (!EnsinoDeSkill.Ensinar(aluno.Livro, s!)) return;
+		// A LICAO DO MESTRE COBRA OS MARCOS; a de sempre, nao. Ver `EnsinoDeSkill.LicaoDeMestre`.
+		bool doMestre = EnsinoDeSkill.LicaoDeMestre(s!, EhMeuMestre(aluno, mestre));
+		if (!EnsinoDeSkill.Ensinar(aluno.Livro, s!, cobrar: doMestre)) return;
 		AnotarLicaoDoMestre(mestre, aluno, s!);   // so entra no diario do discipulado se quem ensinou e o MESTRE dele -- ver GameServer.Alunos.cs
 
 		// O RESTO E O MESMO DE QUEM COMPRA (ver `Aprender`): sem estas tres linhas a skill entra no
@@ -223,11 +257,101 @@ public partial class GameServer
 		AplicarPoderes(aluno);
 		AplicarEfeitos(aluno);
 
-		Avisar(aluno, $"{mestre.Name} te ensinou {s!.Nome}! Seus marcos continuam intactos "
-					+ $"({aluno.Livro.MarcosLivres}) -- mas voce nao pode repassar isto a ninguem.");
+		Avisar(aluno, doMestre
+			? $"o seu mestre {mestre.Name} te ensinou {s!.Nome}! Custou {EnsinoDeSkill.Custo(s)} marco(s) "
+			  + $"(restam {aluno.Livro.MarcosLivres}) -- e voce nao pode repassar isto a ninguem."
+			: $"{mestre.Name} te ensinou {s!.Nome}! Seus marcos continuam intactos "
+			  + $"({aluno.Livro.MarcosLivres}) -- mas voce nao pode repassar isto a ninguem.");
 		Avisar(mestre, $"{aluno.Name} aprendeu {s.Nome}.");
 		GD.Print($"[server] ensino: {mestre.Name} ensinou '{s.Nome}' a {aluno.Name} "
-			   + $"(limiar {EnsinoDeSkill.Custo(s)} marcos, o aluno segue com {aluno.Livro.MarcosLivres})");
+			   + $"({(doMestre ? "licao de mestre: custou" : "limiar")} {EnsinoDeSkill.Custo(s)} marcos, o aluno segue com {aluno.Livro.MarcosLivres})");
+	}
+
+	// =====================================================================
+	// A TECNICA DE KI DO MESTRE (dono, 2026-10-13)
+	// =====================================================================
+	/// <summary>
+	/// O MESTRE OFERECE UMA TECNICA QUE ELE INVENTOU AO ALUNO DELE -- o `Teach_Custom_Attack` que o original deixou
+	/// comentado (`customattacks.dm:238-242` e `:258-270`): *"dar pra ensinar mais skills pros alunos e tb técnicas
+	/// proprias"*.
+	///
+	/// AS REGRAS, e de onde cada uma sai:
+	///   * SO AO PROPRIO ALUNO, colado nele (o tile da licao) e fora da recarga de ensino -- o gesto e uma licao;
+	///   * SO O QUE ELE INVENTOU: a tecnica que ele mesmo recebeu de um mestre nao se repassa (`Ensinada`);
+	///   * O ALUNO PRECISA DO TIPO ABERTO -- *"In the case of things like Beam, they will need to know the Beam
+	///     skill!"*, diz o proprio `input()` comentado do DM. E a mesma pergunta da mesa (`TecnicaCustomizada.TipoAberto`);
+	///   * E DE UMA VAGA: cabem dez na cabeca de cada um.
+	/// O aluno responde pelo mesmo aviso de tela das licoes, e o que entra na lista dele e uma COPIA.
+	/// </summary>
+	private void OferecerTecnica(ServerPlayer mestre, ServerPlayer aluno, int id)
+	{
+		if (PorQueNaoEnsinaATecnica(mestre, aluno, id, out TecnicaCustomizada? t, conferirRecarga: true) is { Length: > 0 } porque)
+		{ Avisar(mestre, porque); return; }
+
+		long agora = NowMs();
+		mestre.RecargaDaLicao = agora + (long)(EnsinoDeSkill.RecargaSegundos * 1000);
+		aluno.PedidoDeLicao = new PedidoDeLicao(mestre.Assinatura, mestre.Name, "",
+			agora + (long)(EnsinoDeSkill.PrazoDaOfertaSegundos * 1000), Tecnica: id);
+
+		Avisar(mestre, $"voce comeca a mostrar {t!.Nome} a {aluno.Name}.");
+		Avisar(aluno, $"o seu mestre {mestre.Name} se oferece pra te ensinar a tecnica {t.Nome}. "
+					+ $"Aceite ou recuse no aviso da tela ({EnsinoDeSkill.PrazoDaOfertaSegundos:0} s).");
+	}
+
+	/// <summary>Por que a tecnica nao passa deste mestre pra este aluno agora -- vazio quando passa.</summary>
+	private string PorQueNaoEnsinaATecnica(ServerPlayer mestre, ServerPlayer aluno, int id, out TecnicaCustomizada? t,
+										   bool conferirRecarga)
+	{
+		t = mestre.Customizadas.Find(x => x.Id == id && x.Criada);
+		if (!EhMeuMestre(aluno, mestre)) return "a tecnica que voce inventou so se ensina a um aluno seu.";
+		if (t == null) return "voce nao tem essa tecnica.";
+		if (t.Ensinada) return $"{t.Nome} foi ENSINADA a voce, e quem aprendeu de um mestre nao repassa.";
+		if (mestre.Zone.Hash != aluno.Zone.Hash
+			|| Vec2.Distance(mestre.Pos, aluno.Pos) / ZoneCollision.TileSize > EnsinoDeSkill.TilesDaLicao)
+			return $"{aluno.Name} precisa estar colado em voce.";
+		if (conferirRecarga && mestre.RecargaDaLicao > NowMs())
+			return $"voce acabou de ensinar ({(mestre.RecargaDaLicao - NowMs()) / 1000.0:0.#} s).";
+
+		if (!TecnicaCustomizada.TipoAberto(t.Tipo, v => SabeTecnica(aluno, v)))
+			return $"{aluno.Name} ainda nao abriu esse tipo de tecnica: precisa aprender {TecnicaCustomizada.NomeDaQueAbre(t.Tipo)} antes.";
+		if (aluno.Customizadas.Count >= TecnicaCustomizada.Maximo)
+			return $"{aluno.Name} ja tem as {TecnicaCustomizada.Maximo} tecnicas que cabem na cabeca.";
+		string nome = t.Nome;
+		if (aluno.Customizadas.Exists(x => x.Ensinada && x.Nome == nome))
+			return $"{aluno.Name} ja aprendeu {t.Nome}.";
+		return "";
+	}
+
+	/// <summary>A resposta do aluno a uma tecnica oferecida: tudo e revalidado, e a copia entra no menor slot livre dele.</summary>
+	private void ResponderATecnica(ServerPlayer aluno, ServerPlayer mestre, int id, bool aceitou)
+	{
+		TecnicaCustomizada? daMesa = mestre.Customizadas.Find(x => x.Id == id);
+		if (!aceitou)
+		{
+			Avisar(aluno, $"voce decide nao aprender {daMesa?.Nome ?? "a tecnica"} agora.");
+			Avisar(mestre, $"{aluno.Name} escolheu nao aprender {daMesa?.Nome ?? "a tecnica"}.");
+			return;
+		}
+
+		if (PorQueNaoEnsinaATecnica(mestre, aluno, id, out TecnicaCustomizada? t, conferirRecarga: false) is { Length: > 0 } porque)
+		{
+			Avisar(aluno, porque);
+			Avisar(mestre, $"a licao com {aluno.Name} nao fechou: {porque}");
+			return;
+		}
+
+		// O MENOR ID LIVRE -- e o do RASCUNHO que o aluno tiver aberto na mesa tambem esta ocupado: confirmar aquele
+		// rascunho escreveria por cima da tecnica que acabou de chegar (o `SalvarTecnica` acha a tecnica pelo id).
+		int livre = 1;
+		while (aluno.Customizadas.Exists(x => x.Id == livre) || aluno.Mesa?.Id == livre) livre++;
+		aluno.Customizadas.Add(t!.CopiaEnsinada(livre));
+		aluno.Customizadas.Sort((a, b) => a.Id.CompareTo(b.Id));
+		MandarCustomizadas(aluno);
+		if (EhJogador(aluno)) Persistir(aluno);
+
+		Avisar(aluno, $"o seu mestre {mestre.Name} te ensinou a tecnica {t.Nome}! Ela esta entre as suas -- mas voce nao pode repassa-la a ninguem.");
+		Avisar(mestre, $"{aluno.Name} aprendeu {t.Nome}.");
+		GD.Print($"[server] ensino: {mestre.Name} ensinou a tecnica '{t.Nome}' a {aluno.Name} (slot {livre})");
 	}
 
 	/// <summary>
@@ -256,7 +380,8 @@ public partial class GameServer
 		MandarSkills(pl, forcar: true);
 		AplicarPoderes(pl);
 		AplicarEfeitos(pl);
-		Avisar(pl, $"voce deixa {s.Nome} pra tras. Nenhum marco volta -- nenhum tinha sido gasto.");
+		// (a licao de MESTRE custou marcos, e eles tambem nao voltam -- a oferta avisou. Ver `EnsinoDeSkill.LicaoDeMestre`.)
+		Avisar(pl, $"voce deixa {s.Nome} pra tras. Nenhum marco volta.");
 		GD.Print($"[server] ensino: {pl.Name} esqueceu a licao '{s.Nome}'");
 	}
 }

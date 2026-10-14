@@ -116,9 +116,9 @@ public static class Temperamento
 		c.Boca.Ligado = true;
 		c.Boca.Chefe = molde.EhChefe;
 
-		// O BICHO E A EXCECAO DAS DUAS DE CIMA, e de mais uma: nao fala, nao investe e morde de mais perto.
+		// O BICHO E OUTRA MENTE: nao investe, morde de mais perto e, no lugar das frases, faz o som da especie dele.
 		// Depois de tudo, porque sao manivelas que este metodo acabou de escrever. Ver `Animais.MenteDeBicho`.
-		if (molde.Tipo == TipoDeNpc.Animal) Animais.MenteDeBicho(c);
+		if (molde.Tipo == TipoDeNpc.Animal) Animais.MenteDeBicho(c, molde.Animal?.Folha ?? "");
 
 		c.DesfasarCapacidades(faseDasCapacidades);
 		return c;

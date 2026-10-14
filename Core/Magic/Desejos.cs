@@ -62,6 +62,12 @@ public sealed class DesejoDef
 	/// <summary>So aparece pra quem tem 25% ou mais de genoma Saiyajin (:141).</summary>
 	public bool PedeSangueSaiyajin;
 
+	/// <summary>
+	/// So aparece pra ESTA raca (vazio = pra todas). Irmao do <see cref="PedeSangueSaiyajin"/>: um desejo que da uma
+	/// forma so existe pra quem pode vesti-la. Hoje so o "Liberar o meu potencial", que e do Namekuseijin.
+	/// </summary>
+	public string PedeRaca = "";
+
 	public AlvoDoDesejo Alvo = AlvoDoDesejo.Nenhum;
 
 	/// <summary>
@@ -201,6 +207,9 @@ public static class Desejos
 	/// <summary>
 	/// **A LISTA COMPLETA**, na ordem em que o `GenerateWishList` a monta (`WishTable.dm:122-149`).
 	///
+	/// (E MAIS UMA QUE NAO E DO DM: o "Liberar o meu potencial", regra do dono de 2026-10-13 -- o desejo que da o
+	/// Orange ao Namekuseijin. Ela diz isso na propria linha, no lugar da referencia ao `WishTable.dm`.)
+	///
 	/// Vinte entradas -- as dezenove do menu mais o "Cancel", que nao e desejo e nao consome nada. A
 	/// vigesima-primeira do arquivo do DM ("Gender Change", :383-408) **nao esta aqui** e a ausencia e
 	/// fiel: o codigo dela existe completo no original e a string **nunca e inserida no WishList**. Ela
@@ -298,6 +307,17 @@ public static class Desejos
 				Nome = "Super Saiyajin", Patamar = 6, PedeSangueSaiyajin = true,
 				Desc = "Libera o Super Saiyajin. Quem já o tem ganha o SSJ2 -- mas só se alguém no mundo já o tiver alcançado." },
 
+		// ============================ REGRA DO DONO (2026-10-13), SEM PAR NO `WishTable.dm` ============================
+		// *"adicione a forma "ORANGE" pros nameks , essa forma tem o mesmo buff do beast, porem vc aprende pedindo
+		// pras esferas pra liberar seu potencial"*. NO MESMO PATAMAR DO SUPER SAIYAJIN, que e o outro desejo que da
+		// uma forma -- e gateado pela raca como aquele e pelo sangue: fora do Namekuseijin a linha nem aparece (a
+		// forma e dele, e um desejo que nao da nada a quem pede seria o pior botao do menu). O efeito e codigo de
+		// servidor: `GameServer.Desejos.DesejoDePotencial`.
+		// ================================================================================================================
+		new() { Id = "potencial", Dm = "(nao existe no DM)", Linha = "regra do dono, 2026-10-13 -- sem par no WishTable.dm",
+				Nome = "Liberar o meu potencial", Patamar = 6, PedeRaca = Forms.Catalogo.RacaNamekuseijin,
+				Desc = "O dragão desperta tudo o que dorme em você -- e dá um pouco a mais: a forma ORANGE, com o poder do Beast. Só um Namekuseijin pode pedir." },
+
 		// -------------------------------------------------- TrueWishPower >= 7 E Wishs <= 2
 		new() { Id = "reviver_todos", Dm = "Revive-All", Linha = "WishTable.dm:238-251",
 				Nome = "Ressuscitar TODOS", Patamar = 7, SoAteDoisPedidos = true,
@@ -356,8 +376,9 @@ public static class Desejos
 	/// <param name="temSupremo">O criador comprou o "Strongest in the Universe"?</param>
 	/// <param name="ehKaioshin">`kai_body_wish_ok` -- Kai + Golden Apple + Kaioshin atual.</param>
 	/// <param name="sangueSaiyajin">`genome.race_percent("Saiyan")`, 0 a 100.</param>
+	/// <param name="raca">A raca de quem pede -- o portao do <see cref="DesejoDef.PedeRaca"/>. Vazio = nenhuma.</param>
 	public static IEnumerable<DesejoDef> Menu(
-		double poder, int pedidos, bool temSupremo, bool ehKaioshin, double sangueSaiyajin)
+		double poder, int pedidos, bool temSupremo, bool ehKaioshin, double sangueSaiyajin, string raca = "")
 	{
 		double t = PoderVerdadeiro(poder, pedidos);
 
@@ -371,6 +392,7 @@ public static class Desejos
 			if (d.PedeSupremo && !temSupremo) continue;
 			if (d.PedeKaioshin && !ehKaioshin) continue;
 			if (d.PedeSangueSaiyajin && sangueSaiyajin < SangueSaiyajinMinimo) continue;
+			if (d.PedeRaca.Length > 0 && !string.Equals(d.PedeRaca, raca, StringComparison.OrdinalIgnoreCase)) continue;
 
 			yield return d;
 		}

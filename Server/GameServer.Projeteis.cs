@@ -633,11 +633,39 @@ public sealed partial class GameServer
 			return p;
 		}
 
+		// O SOM COM QUE ELE SAI (dono, 2026-10-13): a tabela e do `SonsDeKi`, pela tecnica; viaja no nascimento.
+		p.Som = SonsDeKi.DoDisparo(verbo, r.Tipo);
+
 		lista.Add(p);
 		_projeteisVivos++;
 		AnunciarProjetil(pl.Zone.Hash, Protocol.ProjetilSub.Nasceu, p);
+		FazerAPoseDeTiro(pl);
 		return p;
 	}
+
+	/// <summary>
+	/// **A POSE DE TIRO EM TODO ATAQUE DE KI** (dono, 2026-10-13: *"animaçao de socar ao usar qualquer ataque de
+	/// ki"* -- a folha `blast_*`, que na maioria dos corpos e o proprio desenho do soco; ver `CharacterVisual.SetPose`).
+	/// No DM todo verb de bola escreve `usr.icon_state="Blast"` e o desfaz tres tiques depois (`spawn(3)
+	/// usr.icon_state=""`, `blasts.dm:82-83` e as irmas); aqui a pose so existia no raio canalizado e no sopro do
+	/// Kiai. Quem a leva e o `ServerPlayer.GestoAte`, pelo snapshot: nao prende o corpo e nao cobra nada.
+	///
+	/// QUEM ESTA COM UM RAIO NA MAO NAO PASSA POR AQUI: o canal ja veste a mesma pose, pelo tempo que durar.
+	/// </summary>
+	private void FazerAPoseDeTiro(ServerPlayer pl)
+	{
+		if (TiroSemPoseDeTeste || _canais.ContainsKey(pl.Id)) return;
+		pl.GestoAte = Math.Max(pl.GestoAte, NowMs() + PoseDeTiroMs);
+	}
+
+	/// <summary>Quanto dura a pose de tiro de uma bola: `spawn(3) usr.icon_state=""` (`blasts.dm:83`).</summary>
+	private const long PoseDeTiroMs = 300;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): o tiro volta a sair sem a pose -- so o raio canalizado e o Kiai a
+	/// faziam. Lido pela propria <see cref="FazerAPoseDeTiro"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal bool TiroSemPoseDeTeste;
 
 	// =====================================================================
 	// A MIRA
@@ -1135,7 +1163,7 @@ public sealed partial class GameServer
 		// 2) O PRAZO (`Burnout`). Vale pros tres tipos e independe de andar: um raio segurado
 		//    contra uma parede tambem se apaga.
 		p.VidaRestante -= dt;
-		if (p.VidaRestante <= 0) { Matar(p, FimDeProjetil.Apagou); return; }
+		if (p.VidaRestante <= 0) { AcabarSemBaterEmNada(p, corpos, zona, temChao); return; }
 
 		// 3) O RASTRO DO RAIO, e ele tem TRES estados -- ver `Projetil.Esvaziando`.
 		if (p.Tipo == TipoDeProjetil.Beam)
@@ -1170,7 +1198,15 @@ public sealed partial class GameServer
 			//     o dono ja tendo soltado: ali a cauda alcanca, e o raio acabou.
 			else
 			{
-				if ((p.Pos - p.Cauda).Length <= passo) { Matar(p, FimDeProjetil.Cessou); return; }
+				if ((p.Pos - p.Cauda).Length <= passo)
+				{
+					// (2026-10-13) O RAIO QUE ACABA EM CIMA DE ALGUEM ESTOURA ALI: a mao soltou e a cauda chegou na cabeca
+					// plantada num corpo (ou levando um) -- e o fim do ataque, com o clarao e a cratera. Parado atras de
+					// outro feixe, sem ninguem na ponta, ele so cessa, como sempre.
+					if (p.EstouraSempreQueAcaba && (p.Encostado || p.Arrastando != 0)) ExplodirOndeAcabou(p, corpos, zona, temChao);
+					else Matar(p, FimDeProjetil.Cessou);
+					return;
+				}
 				p.Cauda += p.Rumo * passo;
 			}
 		}
@@ -1303,15 +1339,20 @@ public sealed partial class GameServer
 				}
 			}
 
+			// 6-pre-bis) OUTRO ATAQUE DE KI NO CAMINHO, que nao e raio contra raio (dono, 2026-10-13: *"permita a
+			//        colisao de quaisquer ataques de ki, beam vs esferas gigantes, beams vs esferas de ki etc"*). A
+			//        forca decide quem acaba -- ou, entre um raio alimentado e uma esfera grande, comeca a disputa.
+			//        Ver `KiContraKi` e `ChocarComOutroAtaque`. Quem acabou (ou entrou na disputa) para aqui; quem
+			//        venceu segue no mesmo sub-passo.
+			if (!KiContraKi.SemChoqueDeTeste && ChocarComOutroAtaque(p, nova, lista, corpos, zona, temChao)
+				&& (!p.Vivo || p.EmEmbate || p.Esvaziando)) return;
+
 			// 6a) O CENARIO. Quem voa alto atravessa -- a mesma regra do corpo (`AtravessaCenario`),
 			//     e ela e o que faz um raio disparado do alto passar por cima do muro.
 			if (mapa != null && !Voo.AtravessaCenario(p.Altitude) && mapa.BlockedAt(nova))
 			{
 				p.Pos = nova;
-				// (a esfera grande que acaba no cenario estoura ali: o chao fica marcado e quem esta em volta apanha --
-				//  dono, 2026-10-12)
-				if (p.EsferaGrande && !KiContraCorpo.RegraDeAntesDeTeste) Estourar(p, zona, temChao, nova);
-				Matar(p, FimDeProjetil.Cenario);
+				AcabarNoCenario(p, corpos, zona, temChao, nova);
 				return;
 			}
 
@@ -1427,7 +1468,7 @@ public sealed partial class GameServer
 			// (2026-10-12) O RAIO E A ESFERA GRANDE ESTOURAM NO FIM DO ALCANCE, com ou sem alguem na ponta -- ver
 			// `ExplodirNoFimDoAlcance`. A bola comum so se apaga, como sempre.
 			if (p.ExplodeNoFimDoAlcance) ExplodirNoFimDoAlcance(p, levado != null && p.Arrastando == levado.Id ? levado : null, zona, temChao);
-			else Matar(p, FimDeProjetil.Apagou);
+			else AcabarSemBaterEmNada(p, corpos, zona, temChao);
 		}
 	}
 
@@ -1536,7 +1577,7 @@ public sealed partial class GameServer
 		//    apanha ganha `kidefensecounter++`, que e a UNICA fonte de defesa contra ki.
 		// O BIT DO MESTRE VALE PRO TIRO TAMBEM: no DM o `fight_gain_mult` e um so e o
 		// `Blast_Gain` o consome igual ao soco. Ver `GameServer.Combat.cs` pro bloco inteiro.
-		dono.Ficha.BlastGain(_rng, dono.Ficha.FightGainMult(alvo.Ficha, EhMeuMestre(dono, alvo)));
+		dono.Ficha.BlastGain(_rng, dono.Ficha.FightGainMult(alvo.Ficha, EhMeuMestre(dono, alvo), EhColegaDeMestre(dono, alvo)));
 		// APANHAR DE KI E A UNICA FONTE DE DEFESA CONTRA KI, e o exp vai pra QUEM APANHOU (`alvo`) e
 		// nao pra quem atirou: `M.kidefensecounter++` (`objects.dm:313`), onde `M` e o alvo do Bump.
 		if (!alvo.Ficha.KO) { alvo.Ficha.kidefenseskill += 0.1; CreditarContador(alvo, "kidefensecounter", 1); }
@@ -1604,6 +1645,15 @@ public sealed partial class GameServer
 			MandarEfeito(alvo, "paralisia", (long)(seg * 1000));
 			Avisar(alvo, $"{p.Nome} tranca suas pernas: voce nao consegue andar ({seg:0.#}s).");
 			Avisar(dono, $"{alvo.Name} fica paralisado.");
+		}
+
+		// 3a-ter) O ATORDOADOR (v0.2.1) -- `if(paralysis==2&&!M.KO&&!M.hasForcefield)` (`objects.dm:351-354`), dentro do
+		//         mesmo bloco da paralisia e portanto ANTES da parede e dos sorteios: quem ja esta quase caido cai,
+		//         defletindo ou nao. O tiro acaba ali. Ver `DerrubarComOAtordoador`.
+		if (DerrubarComOAtordoador(p, alvo, dono))
+		{
+			Matar(p, FimDeProjetil.Acertou);
+			return true;
 		}
 
 		// 3a-bis) A PAREDE -- O IMPACTO QUE NAO E GOLPE (REGRA DO DONO, 2026-10-12; `KiContraCorpo`): quem tem quatro
@@ -1696,6 +1746,16 @@ public sealed partial class GameServer
 		if (p.Tipo == TipoDeProjetil.Beam && !p.EstouraComoBola
 			&& (KiContraCorpo.RegraDeAntesDeTeste || !KiContraCorpo.Arrasta(razao)) && TentarEmbateDeGuarda(p, alvo)) return true;
 
+		// 3c) O CAMPO DE FORCA (v0.2.1) -- `if(M.hasForcefield&&isobj(M.forcefieldID)) M.forcefieldID.takeDamage(...)`
+		//     (`objects.dm:421-423`): no lugar exato em que o corpo levaria o dano, quem o leva e o campo ligado. Depois
+		//     da parede e dos sorteios, como la: o tiro que nao feriria (ou que foi desviado) nao gasta o campo.
+		if (CampoDeForcaAbsorve(p, alvo, dono))
+		{
+			AnunciarGolpe(dono, alvo, new GolpeResultado { Desfecho = Desfecho.Rebateu, Membro = "" }, nivel: 2,
+						  ponto: Feixe.PontoDoImpacto(p, alvo.Pos));
+			return true;
+		}
+
 		// 4) O DANO NO CORPO, pelo MESMO caminho do soco depois do numero pronto.
 		//
 		// ============================ A MIRA E DE QUEM ATIRA, E ERA DE QUEM APANHAVA ============================
@@ -1724,7 +1784,8 @@ public sealed partial class GameServer
 		ResolverDesfecho(dono, alvo, r);
 		// O `OnSucCollWMob(M)` DO DM (`objects.dm:440`), logo depois do `DamageLimb` do impacto que feriu: o que este
 		// tiro faz A MAIS em quem acertou. Ver `DomDeProjetil`.
-		if (p.Dom != DomDeProjetil.Nenhum) AoFerirComTiroDoKit(p, dono, alvo);
+		if (p.Dom == DomDeProjetil.Veneno) EnvenenarG14(dono, alvo);   // o Cuspe Acido -- lote G14
+		else if (p.Dom != DomDeProjetil.Nenhum) AoFerirComTiroDoKit(p, dono, alvo);
 		// A FAISCA NA CABECA, E NAO NO MEIO DO FEIXE (dono, 2026-09-23). O relato do soco manda so quem bateu
 		// e quem apanhou, e o cliente estoura a faisca no MEIO dos dois -- num tiro, o meio do raio inteiro.
 		// O ponto do impacto viaja junto (ver `HitEvent.Ponto`).
@@ -1840,6 +1901,8 @@ public sealed partial class GameServer
 		// (a esfera grande que acaba num corpo que ela nao leva estoura ali mesmo: o chao fica marcado e quem esta em
 		//  volta apanha -- menos ele, que ja levou o golpe em cheio logo acima)
 		if (p.EsferaGrande && !KiContraCorpo.RegraDeAntesDeTeste) Estourar(p, alvo.Zone, Espaco.EhPlaneta(alvo.Zone), alvo.Pos, jaFerido: alvo);
+		// (2026-10-13) ...e a bola comum que estoura num corpo marca o chao com a cratera pequena.
+		else if (!p.Invisivel) AbrirACrateraPequena(alvo.Zone, alvo.Pos, p.Altitude);
 		Matar(p, FimDeProjetil.Acertou);
 		return true;
 	}
@@ -1894,6 +1957,12 @@ public sealed partial class GameServer
 	private void Estourar(Projetil p, ZoneKey zona, bool temChao, Vec2 onde, ServerPlayer? levado = null, ServerPlayer? jaFerido = null)
 	{
 		AbrirACrateraDaExplosao(zona, temChao, onde, p.Altitude);
+
+		// (2026-10-13) O CENARIO EM VOLTA APANHA JUNTO: paredes, construcoes, naves, blocos erguidos e o chao -- ver
+		// `EstragarOCenarioNaExplosao`. So a explosao perto do chao: a que acontece la no alto estoura no ar.
+		if (!Voo.AtravessaCenario(p.Altitude))
+			EstragarOCenarioNaExplosao(zona, onde, KiContraCorpo.TilesDaExplosao(p.EscalaVisual) * ZoneCollision.TileSize,
+									   p.Bp, _players.GetValueOrDefault(p.Dono));
 
 		// SEM DONO NAO HA DANO: nao ha a quem creditar a derrota de ninguem (ver o comeco do `Acertar`).
 		if (!_players.TryGetValue(p.Dono, out ServerPlayer? dono)) return;
@@ -1970,7 +2039,120 @@ public sealed partial class GameServer
 		CraterasDeExplosaoDeTeste++;
 	}
 
-	/// <summary>Quantas explosoes de fim de alcance aconteceram neste processo. So pra bancada (`--v020teste`).</summary>
+	/// <summary>
+	/// **O RAIO (OU A ESFERA GRANDE) ACABOU FORA DO FIM DO ALCANCE E ESTOURA ALI** (dono, 2026-10-13: *"a explosao
+	/// do beam ta sem efeito nenhum, nem mesmo a cratera"*). Tres caminhos chegam aqui: a PAREDE, o PRAZO (o raio
+	/// que leva alguem devagar gasta o prazo antes do alcance -- era por isso que ele sumia calado) e a MAO QUE
+	/// SOLTOU o raio que estava em cima de alguem. E o mesmo estouro do fim do alcance
+	/// (<see cref="ExplodirNoFimDoAlcance"/>): quem vinha sendo levado paga a explosao inteira, quem esta em volta
+	/// paga pela distancia, e o cenario do raio dela apanha junto.
+	/// </summary>
+	private void ExplodirOndeAcabou(Projetil p, List<ServerPlayer> corpos, ZoneKey zona, bool temChao)
+	{
+		ServerPlayer? levado = null;
+		if (p.Arrastando != 0)
+			foreach (ServerPlayer o in corpos)
+				if (o.Id == p.Arrastando) { levado = o; break; }
+		ExplodirNoFimDoAlcance(p, levado, zona, temChao);
+	}
+
+	/// <summary>
+	/// **O ALCANCE OU O PRAZO ACABARAM, E O TIRO NAO BATEU EM NADA.** O raio e a esfera grande estouram grande
+	/// (<see cref="ExplodirOndeAcabou"/>); a bola comum estoura pequeno (<see cref="EstourarABola"/>); e so o que
+	/// sobra se apaga -- o alvo de treino, a lamina que ninguem ve.
+	///
+	/// O RAIO QUE JA ESTA SE ESVAZIANDO NAO ESTOURA: o fim dele foi decidido antes (a parede, a disputa), e o
+	/// prazo so o encerra.
+	/// </summary>
+	private void AcabarSemBaterEmNada(Projetil p, List<ServerPlayer> corpos, ZoneKey zona, bool temChao)
+	{
+		if (!p.Esvaziando)
+		{
+			if (p.EstouraSempreQueAcaba) { ExplodirOndeAcabou(p, corpos, zona, temChao); return; }
+			if (p.BolaQueEstouraAoAcabar) { EstourarABola(p, zona, temChao); return; }
+		}
+		Matar(p, FimDeProjetil.Apagou);
+	}
+
+	/// <summary>
+	/// **A BOLA COMUM ESTOURA ONDE ESTA** -- *"quando uma esfera de ki se afasta muito ela so some e n explode"*
+	/// (dono, 2026-10-13). O clarao e do cliente, pelo motivo (`FimDeProjetil.Estourou`); daqui sai a cratera
+	/// pequena. Sem dano em area: esse e do raio e da esfera grande.
+	/// </summary>
+	private void EstourarABola(Projetil p, ZoneKey zona, bool temChao)
+	{
+		if (temChao) AbrirACrateraPequena(zona, p.Pos, p.Altitude);
+		Matar(p, FimDeProjetil.Estourou);
+		BolasEstouradasDeTeste++;
+	}
+
+	/// <summary>
+	/// **O TIRO ACABOU NUMA PAREDE** (ou no que barra como ela: a construcao, a nave pousada, o bloco erguido).
+	///
+	///   * O RAIO E A ESFERA GRANDE ESTOURAM ALI, com tudo o que o estouro faz -- a cratera, o dano em area e o
+	///     cenario em volta: *"explosoes de colisao com esferas grandes idem (...) podendo destruid varias paredes
+	///     em volta da explosao e tiles de chao tb"* (dono, 2026-10-13);
+	///   * A BOLA COMUM BATE NA CELULA EM QUE ACABOU, pela regra do soco (*"esferas de ki, kiai etc deveriam quebrar
+	///     paredes assim como soco"*), e deixa a cratera pequena.
+	///
+	/// A CELULA E A DO PONTO, sem o deslocamento dos pes: e a mesma conta do `ZoneCollision.BlockedAt` que acabou de
+	/// dizer que ali ha parede.
+	/// </summary>
+	private void AcabarNoCenario(Projetil p, List<ServerPlayer> corpos, ZoneKey zona, bool temChao, Vec2 onde)
+	{
+		if (p.EstouraSempreQueAcaba) { ExplodirOndeAcabou(p, corpos, zona, temChao); return; }
+
+		// (a v0.2.0: a esfera grande estourava no cenario sem o clarao grande -- hoje so o botao de defeito chega aqui)
+		if (p.EsferaGrande && !KiContraCorpo.RegraDeAntesDeTeste) Estourar(p, zona, temChao, onde);
+		else if (!KiContraCorpo.RegraDeAntesDeTeste)
+		{
+			BaterNoCenarioComKi(zona, (int)MathF.Floor(onde.X / ZoneCollision.TileSize),
+								(int)MathF.Floor(onde.Y / ZoneCollision.TileSize), p.Bp, _players.GetValueOrDefault(p.Dono));
+			if (temChao && !p.Invisivel) AbrirACrateraPequena(zona, onde, p.Altitude);
+		}
+		Matar(p, FimDeProjetil.Cenario);
+	}
+
+	/// <summary>Onde ha cratera pequena aberta, por zona, e ate quando ela barra a vizinha. Ver <see cref="AbrirACrateraPequena"/>.</summary>
+	private readonly Dictionary<ulong, List<(Vec2 Onde, long Ate)>> _craterasPequenas = [];
+
+	/// <summary>
+	/// **A CRATERA PEQUENA DO ESTOURO DE UMA BOLA** (`Protocol.Decal.Cratera`): *"so explode se bater em paredes ou
+	/// pessoas e n cria a cratera"* (dono, 2026-10-13). UMA POR LUGAR: o DM so abre a dele se nao houver outra a
+	/// tres tiles (`if(!locate(/obj/Crater/destroyed) in range(3)) createCrater(loc,1)`, `objects.dm:464`) -- sem
+	/// isso a rajada num muro mandaria um decalque por tiro pra zona inteira. So perto do chao, e so onde ha chao.
+	/// </summary>
+	private void AbrirACrateraPequena(ZoneKey zona, Vec2 onde, float altitude)
+	{
+		if (KiContraCorpo.BolaSemCrateraDeTeste || KiContraCorpo.RegraDeAntesDeTeste || Voo.AtravessaCenario(altitude)) return;
+
+		long agora = NowMs();
+		if (!_craterasPequenas.TryGetValue(zona.Hash, out List<(Vec2 Onde, long Ate)>? abertas))
+			_craterasPequenas[zona.Hash] = abertas = [];
+		abertas.RemoveAll(c => c.Ate <= agora);
+
+		float perto = (float)(KiContraCorpo.TilesEntreCraterasPequenas * ZoneCollision.TileSize);
+		foreach ((Vec2 la, long _) in abertas)
+			if (Vec2.Distance(la, onde) <= perto) return;
+
+		// (a pergunta cara -- ver `TickDosProjeteis` -- so depois do crivo barato de cima)
+		if (!Espaco.EhPlaneta(zona)) return;
+
+		abertas.Add((onde, agora + (long)(KiContraCorpo.SegundosDaCrateraPequena * 1000)));
+		MandarDecalque(zona, Protocol.Decal.Cratera, onde, Facing.South);
+		CraterasPequenasDeTeste++;
+	}
+
+	/// <summary>Quantas bolas comuns estouraram ao acabar (alcance ou prazo) neste processo. So pra bancada (`--v021teste`).</summary>
+	internal int BolasEstouradasDeTeste;
+
+	/// <summary>Quantas crateras pequenas de bola foram abertas neste processo. So pra bancada (`--v021teste`).</summary>
+	internal int CraterasPequenasDeTeste;
+
+	/// <summary>
+	/// Quantas explosoes GRANDES aconteceram neste processo -- as do fim do alcance e, desde 2026-10-13, as de onde
+	/// quer que o raio ou a esfera grande acabem. So pra bancada (`--v020teste`, `--v021teste`).
+	/// </summary>
 	internal int ExplosoesDoFimDoAlcanceDeTeste;
 
 	/// <summary>Quantas crateras grandes de explosao foram abertas neste processo. So pra bancada (`--v020teste`).</summary>
@@ -2588,6 +2770,8 @@ public sealed partial class GameServer
 			// AS FLAGS VAO NO FIM (crescer pelo fim e o que mantem escritor e leitor faceis de conferir
 			// lado a lado): bit 0 = nasceu invisivel (a lamina de ar do Kiai). Ver `Projetil.Invisivel`.
 			w.Put((byte)(p.Invisivel ? 1 : 0));
+			// ...E DEPOIS DELAS, O SOM (2026-10-13): com que arquivo o tiro sai. Ver `SomDeKi`.
+			w.Put((byte)p.Som);
 		}
 		else
 		{

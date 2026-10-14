@@ -579,8 +579,10 @@ public partial class GameServer
 		// Dois corpos identicos, um vivo e um morto, com o MESMO dt: a diferenca so pode ser o `dead`.
 		Fighter vivoKi = FichaDeDrenoDeKi(false), mortoKi = FichaDeDrenoDeKi(true);
 		double kiAntes = vivoKi.Ki;
-		Jandirus.Core.Combat.CargaDeKi.PrecoDoExcesso(vivoKi, 1.0);
-		Jandirus.Core.Combat.CargaDeKi.PrecoDoExcesso(mortoKi, 1.0);
+		// (2026-10-13) COM `reunindo`: o que se mede aqui e o vazamento do DM, e nao o escorrer novo do excesso (igual
+		// pros dois, e medido na `--v021teste`, V5) -- so o do DM dobra no morto.
+		Jandirus.Core.Combat.CargaDeKi.PrecoDoExcesso(vivoKi, 1.0, reunindo: true);
+		Jandirus.Core.Combat.CargaDeKi.PrecoDoExcesso(mortoKi, 1.0, reunindo: true);
 		double drenoVivo = kiAntes - vivoKi.Ki, drenoMorto = kiAntes - mortoKi.Ki;
 		AfirmarAlem("o Ki do morto vaza EM DOBRO (o segundo desconto do `if (f.dead)`)",
 					drenoVivo > 0 && Math.Abs(drenoMorto - 2 * drenoVivo) < drenoVivo * 0.01,

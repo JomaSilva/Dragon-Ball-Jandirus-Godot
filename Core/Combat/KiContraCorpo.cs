@@ -166,6 +166,85 @@ public static class KiContraCorpo
 		distanciaSobreORaio > 1 ? 0 : 1 - (1 - FracaoNaBeiraDaExplosao) * Math.Max(distanciaSobreORaio, 0);
 
 	// =====================================================================
+	// O KI CONTRA O CENARIO, E O TIRO QUE ACABA ESTOURANDO (dono, 2026-10-13)
+	// =====================================================================
+	// *"a explosao do beam ta sem efeito nenhum, nem mesmo a cratera ( a mesma q tem quando uma transformaçao de
+	// raiva acontece), e quando uma esfera de ki se afasta muito ela so some e n explode (so explode se bater em
+	// paredes ou pessoas e n cria a cratera)"* e *"esferas de ki, kiai etc deveriam quebrar paredes assim como soco
+	// (explosoes de colisao com esferas grandes idem), explosoes de ataque de ki como esferas grandes e beams alem
+	// da cratera devem dar dano em area na regiao da explosao, paredes e construçoes tb levam o dano, podendo
+	// destruid varias paredes em volta da explosao e tiles de chao tb"*.
+	//
+	// O QUE MUDOU, EM TRES LINHAS:
+	//   * TODO RAIO E TODA ESFERA GRANDE ACABAM NUM ESTOURO GRANDE -- no fim do alcance (ja era), e agora tambem na
+	//     parede, quando o prazo vence e quando a mao solta o raio que estava em cima de alguem. A v0.2.0 so
+	//     estourava no fim do alcance: o raio que LEVAVA alguem devagar morria de prazo no meio do caminho, sem
+	//     clarao e sem cratera -- era a queixa.
+	//   * TODA BOLA COMUM ACABA NUM ESTOURO PEQUENO, com a cratera pequena: no corpo, na parede, e no fim do alcance
+	//     ou do prazo (o `Burnout` do DM termina em `explode()`, `objects.dm:652-661`).
+	//   * O ESTOURO BATE NO CENARIO: a bola, na celula em que acabou, pela REGRA DO SOCO; o estouro grande, em
+	//     tudo o que esta no raio dele (parede, construcao, nave, bloco erguido e o chao).
+	//
+	// NO DM a explosao e um objeto (`obj/explosions`, `explosions.dm:185-232`): `obj` leva `takeDamage(strength)`,
+	// `turf` cai se `Resistance <= strength/dist` com `prob(80)` (`damage_turf`, `:178-183`) -- igual pra chao e
+	// parede. (La o `return` da linha 225 esta DENTRO do `for`: so o primeiro atomo da lista era processado, e a
+	// poeira e a cratera do fim nunca saiam. E defeito de la, e nao regra.)
+
+	/// <summary>A chance de uma PAREDE (celula que barra) cair na explosao que a alcanca -- o `prob(80)` do `damage_turf`.</summary>
+	public const double ChanceDeParedeNaExplosao = 0.80;
+
+	/// <summary>
+	/// A chance de o CHAO rachar bem no centro da explosao. DIVERGENCIA DECLARADA do DM, onde o chao caia com os
+	/// mesmos 80% da parede: aqui cada Kamehameha deixaria um disco de terra batida de oito tiles de lado a lado.
+	/// </summary>
+	public const double ChanceDeChaoNoCentro = 0.55;
+
+	/// <summary>A chance de o chao rachar na beirada da explosao; entre o centro e ela, uma reta.</summary>
+	public const double ChanceDeChaoNaBeira = 0.06;
+
+	/// <summary>A chance de uma celula de CHAO rachar na explosao, pela distancia ao centro em fracao do raio.</summary>
+	public static double ChanceDeChaoNaExplosao(double distanciaSobreORaio) =>
+		distanciaSobreORaio > 1
+			? 0
+			: ChanceDeChaoNoCentro - (ChanceDeChaoNoCentro - ChanceDeChaoNaBeira) * Math.Max(distanciaSobreORaio, 0);
+
+	/// <summary>
+	/// De quantos em quantos tiles uma CRATERA PEQUENA pode nascer: `if(!locate(/obj/Crater/destroyed) in range(3))
+	/// createCrater(loc,1)` (`objects.dm:464`). Sem isto a rajada de bolas num muro empilharia uma por tiro.
+	/// </summary>
+	public const double TilesEntreCraterasPequenas = 3;
+
+	/// <summary>Por quanto tempo uma cratera pequena barra a vizinha: o que ela dura na tela (`Decalques.Prazo`, 18 s).</summary>
+	public const double SegundosDaCrateraPequena = 18;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): o ki volta a nao arranhar o cenario -- a bola acaba na parede sem
+	/// bater nela e a explosao nao toca em nada. Lido pelas duas portas do servidor (`BaterNoCenarioComKi`,
+	/// `EstragarOCenarioNaExplosao`). Falso em jogo, sempre.
+	/// </summary>
+	public static bool KiNaoEstragaCenarioDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--v021teste` e `--diagv021`): a bola comum volta a se APAGAR no fim do alcance e do prazo, sem
+	/// estouro nem cratera -- a v0.2.0. Lido pelo `Projetil.BolaQueEstouraAoAcabar`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool BolaSomeAoAcabarDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): o raio e a esfera grande voltam a so estourar no fim do alcance --
+	/// na parede lascam, e o raio que acaba em cima de alguem (o prazo, a mao que soltou) some calado. E a v0.2.0.
+	/// Lido pelo `Projetil.EstouraSempreQueAcaba`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool SoEstouraNoFimDoAlcanceDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): a bola comum volta a nao deixar cratera nenhuma -- no corpo, na
+	/// parede ou no fim do alcance. Lido pela propria porta da cratera pequena (`GameServer.AbrirACrateraPequena`).
+	/// Falso em jogo, sempre.
+	/// </summary>
+	public static bool BolaSemCrateraDeTeste;
+
+	// =====================================================================
 	// SAIR DE LADO DA DISPUTA DE GUARDA (dono, 2026-10-12)
 	// =====================================================================
 	/// <summary>

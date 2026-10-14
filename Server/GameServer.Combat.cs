@@ -43,8 +43,28 @@ public partial class GameServer
 	private void MarcarAgressao(ServerPlayer vitima, ServerPlayer agressor)
 	{
 		if (agressor.Id == vitima.Id) return;   // ninguem guarda rancor de si mesmo
+
+		// ============================ HABITANTE QUE ACERTA HABITANTE ESTA TREINANDO (v0.2.1) ============================
+		// O unico jeito de um cidadao acertar outro e a vida diaria: o SPAR da rotina (`GameServer.Rotina.cs`), o soco
+		// dele que pega quem estava na frente, o tiro de um defensor que estoura ao lado do colega. Nenhum deles e
+		// agressao -- e marcar como se fosse acendia o rancor de quem apanhou com um agressor que NAO e gente, o que no
+		// `PresaDoNpc` cai na busca alargada do `provoke()` (*"ki kills / stale lastDamager -> widen the search"*,
+		// `PlanetPopulation.dm:112-116`): o habitante saia do treino direto pra cima do JOGADOR mais perto, que nao
+		// tinha encostado em ninguem. Medido na `--conquistateste`: a onda sem rancor voltou a vida diaria, um soldado
+		// treinou com o outro e o que apanhou foi cacar o invasor.
+		//
+		// O DM nao tem este caso porque la habitante nao treina com habitante (*"AI nao ataca AI"*, `NPCAI.dm:439`): a
+		// busca alargada so roda pro golpe de um jogador que ficou sem autor ou pro agressor que morreu. O spar e do
+		// port, e a regra que o acompanha tambem. E o que ja estava marcado FICA: se um jogador bateu nele antes, o soco
+		// do colega nao apaga de quem e o rancor (nem de quem e a morte, que a reputacao cobra pelo mesmo campo).
+		// ================================================================================================================
+		if (vitima.Papel is { Pacifico: true } && agressor.Papel is { Pacifico: true } && !TreinoDeHabitanteProvocaDeTeste) return;
 		vitima.UltimoAgressor = agressor.Id;
 		vitima.RancorAte = NowMs() + (long)(Jandirus.Core.Npc.Povoamento.SegundosDeRancor * 1000);
+
+		// (v0.2.1) QUEM APANHA DE PERTO DE UM MUTANTE PODE SE CONTAMINAR -- ver `ContagiarPeloGolpe`
+		// (`GameServer.Sintetizador.cs`). Sai na primeira linha pra quem nao tem mutacao: e o caso de quase todo golpe.
+		ContagiarPeloGolpe(vitima, agressor);
 
 		// ============================ E BATERAM NUM CORPO LARGADO? ELE ACORDA ============================
 		// *"se elas TE BATEREM vc ACORDA da meditacao pro corpo real"* / *"caso alguem te bata vc volta
@@ -69,6 +89,13 @@ public partial class GameServer
 	/// saber o que o adversario aprendeu, so precisa VER o vulto. Ver `HitEvent.Zanzo`.
 	/// </summary>
 	private const string PathDoZanzoken = "/datum/skill/ki/Afterimage";
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--conquistateste`, familia B): o soco de treino entre dois habitantes volta a marcar
+	/// agressao -- quem apanhou ganha rancor de um agressor que nao e gente, e a busca alargada o manda atras do jogador
+	/// mais perto. Ver <see cref="MarcarAgressao"/>.
+	/// </summary>
+	internal static bool TreinoDeHabitanteProvocaDeTeste;
 
 	/// <summary>Segundos de carencia de quem acabou de renascer (ver CombatState.Carencia).</summary>
 	private const double SegundosDeCarencia = 6;
@@ -377,6 +404,19 @@ public partial class GameServer
 	// =====================================================================
 	// O GOLPE
 	// =====================================================================
+	/// <summary>
+	/// **O KI DE UM SOCO** (`Cansaco.KiDoSoco`: 0,4% do tanque no leve, o triplo no pesado). Nunca recusa o golpe --
+	/// sem Ki o soco sai, fraco: o poder expresso ja cai com o tanque (`kiratio` no `PowerLevel`).
+	///
+	/// SO O CORPO QUE NAO E NPC DO MUNDO PAGA: o habitante e o vilao nao sabem parar pra carregar (a IA que controla
+	/// o corpo de um jogador -- o Oozaru, a furia -- soca com o Ki dele, e paga).
+	/// </summary>
+	private void CobrarOKiDoSoco(ServerPlayer a, double pesoDoGolpe)
+	{
+		if (Cansaco.SocoDeGracaDeTeste || EhNpcDoMundo(a)) return;
+		a.Ficha.Ki = Math.Max(0, a.Ficha.Ki - Cansaco.KiDoSoco(a.Ficha, pesoDoGolpe));
+	}
+
 	private void Atacar(ServerPlayer a, Protocol.Golpe golpe)
 	{
 		CombatState ca = a.Combate;
@@ -460,7 +500,7 @@ public partial class GameServer
 		// mesmo sem ninguem perto e eu tenho after image, eu crio uma miragem no meu lugar mesmo
 		// nao me movendo". O vulto e do Zanzoken -- do corpo que saiu rapido demais pra vista
 		// acompanhar --, entao sem deslocamento nao ha nada que a vista tenha perdido.
-		bool zanzo = investiu && a.Livro?.Sabe(PathDoZanzoken) == true;
+		bool zanzo = investiu && UsaAMiragem(a);
 
 		// A MIRAGEM VIAJA COM A ORIGEM, num pacote so pros dois casos.
 		//
@@ -503,6 +543,10 @@ public partial class GameServer
 		double espera = CombatMath.Cadencia(a.Ficha, tipo);
 		ca.Recarga = espera;
 		a.AtaqueAte = NowMs() + (long)(espera * 1000);
+
+		// (2026-10-13) O SOCO GASTA UM POUCO DE KI -- *"nao muita coisa, mas pra pelomenos uma luta longa forçar o
+		// jogador ter q carregar o ki e gastar vigor"*. Acerte ou erre: e o golpe que custa. Ver `CobrarOKiDoSoco`.
+		CobrarOKiDoSoco(a, tipo);
 
 		// bater com a guarda erguida nao existe: o braco que soca e o que estava aparando
 		ca.Guardar(false);
@@ -618,9 +662,9 @@ public partial class GameServer
 		// batendo nele; o mestre batendo no aluno cai no teto geral (2x, e na pratica 1x, porque ele
 		// e o mais forte). E o desenho do DM -- o bonus e de quem esta aprendendo.
 		// ==============================================================================================
-		a.Ficha.AttackGain(_rng, a.Ficha.FightGainMult(alvo.Ficha, EhMeuMestre(a, alvo)));
+		a.Ficha.AttackGain(_rng, a.Ficha.FightGainMult(alvo.Ficha, EhMeuMestre(a, alvo), EhColegaDeMestre(a, alvo)));
 		// (MENOS QUEM APANHA DE BICHO: um lobo que nao cansa nao e parceiro de treino -- ver `GolpeDeBichoNaoTreina`.)
-		if (r.Encostou && !GolpeDeBichoNaoTreina(a)) alvo.Ficha.AttackGain(_rng, alvo.Ficha.FightGainMult(a.Ficha, EhMeuMestre(alvo, a)));
+		if (r.Encostou && !GolpeDeBichoNaoTreina(a)) alvo.Ficha.AttackGain(_rng, alvo.Ficha.FightGainMult(a.Ficha, EhMeuMestre(alvo, a), EhColegaDeMestre(alvo, a)));
 
 		// O contra-ataque devolve o golpe: quem bloqueou na hora certa acerta de volta.
 		if (r.Desfecho == Desfecho.Contra)
@@ -685,7 +729,7 @@ public partial class GameServer
 			// vira morte na sequencia.
 			//
 			// E DESDE QUE A AMIZADE EXISTE ISTO FAZ MAIS UMA COISA: quem gostava de quem caiu, e
-			// estava vendo, entra em RAIVA LENDARIA -- que e o que a linha Legendary pede. Ver
+			// estava vendo, entra em RAIVA COMUM -- a que abre as formas de raiva pelo preco com agio. Ver
 			// `AoPerderALuta`, que e o funil unico das consequencias de derrota.
 			AoPerderALuta(d, a, morreu: false);
 		}
@@ -1257,7 +1301,7 @@ public partial class GameServer
 			// CORPO -- e o `flick('Zanzoken.dmi', M)`, que o cliente faz com `EsquivaZanzoken.Trocar`
 			// pra todo mundo. O que este campo liga e o VULTO DO CORPO (a foto das quatro camadas),
 			// caro demais pra nascer em cada soco desviado de uma troca inteira.
-			ZanzoEsquiva = r.EsquivaAtiva && d.Livro?.Sabe(PathDoZanzoken) == true,
+			ZanzoEsquiva = r.EsquivaAtiva && UsaAMiragem(d),
 			TemPonto = ponto != null && !FaiscaNoMeioDeTeste,
 			// RELATIVO A QUEM APANHOU -- ver `HitEvent.Ponto`.
 			Ponto = ponto is { } absoluto ? absoluto - d.Pos : default,

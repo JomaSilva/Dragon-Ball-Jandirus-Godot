@@ -77,6 +77,13 @@ public enum Fatos : uint
 	/// Infusion (`god_apply_powers`, `GodOfDestruction.dm:134-138`). Cai com o titulo.
 	/// </summary>
 	KitDaDestruicaoEmprestado = 1u << 19,
+
+	// ---- (v0.2.1) o que este personagem CARREGA, e a mochila sozinha nao diz ----
+	/// <summary>
+	/// Carrega uma arma de fogo (ou o atordoador): o gatilho de tecla e dele. E FATO e nao `Item(...)` porque o id de
+	/// uma arma leva o estado dela (`Handgun|28|30|...`) e a pergunta da mochila e por id inteiro.
+	/// </summary>
+	TemArmaDeFogo = 1u << 20,
 }
 
 /// <summary>

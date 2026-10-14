@@ -166,6 +166,7 @@ public partial class GameServer
 					// pro `ErguerEstatua`, ele e chamado com os tres portoes ligados. Tudo volta no fim.
 					pl.Race = "Namekian";
 					pl.Class = "Dragon clan";
+					(pl.Livro ??= new Jandirus.Core.Skills.SkillBook()).Dar(Jandirus.Core.Skills.AcendedoresDoPort.EstatuaDoDragao);   // (2026-10-13) a estatua pede a skill dela -- ver `ErguerEstatua`
 					_tronos["guardian"] = pl.Conta;
 
 					// O BP VIRA O `WishPower` DA ESTATUA (`namekian.dm:97`), e e ele que abre o patamar do

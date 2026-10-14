@@ -114,7 +114,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private IEnumerable<DesejoDef> MenuDaqui(ServerPlayer pl, SetDeEsferas s) =>
 		Desejos.Menu(s.Poder, s.Desejos, s.TemSupremo, EhKaioshinDoCorpo(pl),
-					 pl.Ficha.Genoma?.RacePercent("Saiyan") ?? 0);
+					 pl.Ficha.Genoma?.RacePercent("Saiyan") ?? 0, pl.Race);
 
 	/// <summary>
 	/// `kai_body_wish_ok(M)` (`WishTable.dm:55-56`) -- os TRES ao mesmo tempo: raca Kai, classe Golden
@@ -251,6 +251,7 @@ public sealed partial class GameServer
 		"juventude_alheia" => DesejoDeJuventudeAlheia(pl, s, alvo),
 		"curar_planeta" => DesejoDeCurarPlaneta(pl, s, alvo),
 		"super_saiyajin" => DesejoDeSuperSaiyajin(pl, s),
+		"potencial" => DesejoDePotencial(pl, s),
 		"reviver_todos" => DesejoDeReviverTodos(pl, s),
 		"matar" => DesejoDeMatar(pl, s, alvo),
 		"supremo" => DesejoSupremo(pl, s, pl),
@@ -677,6 +678,45 @@ public sealed partial class GameServer
 			: "ninguém neste universo alcançou o Super Saiyajin 2 ainda -- o dragão não tem o que copiar.");
 		return true;   // consumiu: e o que o original faz (o `WishCount+=DidWish` roda igual)
 	}
+
+	/// <summary>
+	/// "Liberar o meu potencial" -- REGRA DO DONO (2026-10-13), sem par no `WishTable.dm`: *"adicione a forma
+	/// "ORANGE" pros nameks , essa forma tem o mesmo buff do beast, porem vc aprende pedindo pras esferas pra liberar
+	/// seu potencial"*.
+	///
+	/// DUAS COISAS, NESTA ORDEM:
+	///   1. **o potencial desperta**, pela MESMA porta do verbo do Guru (<see cref="DespertarPotencialG11"/>, o
+	///      `UnlockPotential.dm`): e o que o pedido diz, e e uma vez por vida -- quem ja o tinha despertado pula
+	///      este passo sem perder o desejo;
+	///   2. **o Orange e concedido** (`Forma.Liberar`, a mesma porta do Mistico -- ver `ConcederMistico`): e o "um
+	///      pouco a mais". `Liberar` e nao `Entrar`, pelo motivo escrito la: a estreia da forma fica pro dia em que
+	///      ele apertar o C.
+	///
+	/// A RECUSA NAO CONSOME: quem ja tem o Orange nao tem mais nada pra receber deste pedido (e o menu ja apaga a
+	/// linha antes -- <see cref="JaTemOOrange"/>). So o Namekuseijin chega aqui: a linha nem aparece pros outros
+	/// (`DesejoDef.PedeRaca`).
+	/// </summary>
+	private bool DesejoDePotencial(ServerPlayer pl, SetDeEsferas s)
+	{
+		if (JaTemOOrange(pl))
+		{
+			Avisar(pl, "o dragão já liberou tudo o que dormia em você. Nenhum pedido foi gasto.");
+			return false;
+		}
+
+		AnunciarDesejo($"{pl.Name} pede a {s.NomeDoDragao} que LIBERE O SEU POTENCIAL -- e o dragão dá um pouco a mais!");
+		if (pl.Ficha.unlockPotential < 1) DespertarPotencialG11(pl, pl, autor: s.NomeDoDragao);
+
+		pl.Forma.Liberar(Jandirus.Core.Forms.Catalogo.IdOrange);
+		Persistir(pl);
+		HabilidadesMudaram(pl);
+		ReapresentarOCorpo(pl);
+		Avisar(pl, "e algo a mais desperta junto: a forma ORANGE é sua. Aperte C.");
+		return true;
+	}
+
+	/// <summary>O dragao ja deu o Orange a este corpo? Quem recusa (<see cref="DesejoDePotencial"/>) e o menu do dragao perguntam aqui.</summary>
+	private static bool JaTemOOrange(ServerPlayer pl) => pl.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdOrange);
 
 	/// <summary>
 	/// "Strongest in the Universe" -- `WishTable.dm:198-204` + `proc/sw_strongest_wish` (:102-113).

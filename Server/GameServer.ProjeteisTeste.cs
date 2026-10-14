@@ -713,9 +713,11 @@ public partial class GameServer
 	/// ============================ QUEM PARA SEM ESTOURAR SE ESVAZIA ============================
 	/// A cabeca que PARA vira o ponto de encontro e o rabo e sugado pra dentro dela; so entao o tiro sai da
 	/// lista, com o motivo que ja tinha sido decidido (`Projetil.Esvaziando`, `Matar`). Ate 2026-10-12 esse era
-	/// tambem o fim do raio que gastava o alcance; hoje aquele ESTOURA, e o que se esvazia e o que bate em
-	/// cenario. As duas metades ficam medidas aqui: a parede (a regra de hoje pro raio que para) e o fim do
-	/// alcance com o jogo de antes (o defeito injetado -- a regua do estouro tem que reprovar com ele).
+	/// o fim do raio que gastava o alcance, e ate 2026-10-13 o do que batia em cenario; hoje os dois ESTOURAM
+	/// (`KiContraCorpo`: *"a explosao do beam ta sem efeito nenhum"*), e o que se esvazia e o raio que alguem
+	/// APAGA -- a Onda de Choque, a cabeca solta empurrada. Tres metades medidas aqui: a parede (estoura; com o
+	/// botao da v0.2.0, esvazia), o raio apagado pela onda (a regra de hoje pro rastro engolido) e o fim do
+	/// alcance com o jogo de antes.
 	/// ==========================================================================================
 	/// </summary>
 	/// <param name="raia">O corredor da familia, reusado: o raiador do contra-exemplo nasce onde o de cima nasceu.</param>
@@ -724,37 +726,91 @@ public partial class GameServer
 	{
 		const int T = ZoneCollision.TileSize;
 
-		// ---------- A PAREDE: a cabeca para nela e o rastro e engolido ----------
+		// ---------- A PAREDE: o raio ESTOURA nela (dono, 2026-10-13); com o botao da v0.2.0, para e se esvazia ----------
 		LimparTudoDaBancada();
 		if (_pjMapa is { } mapa && AcharParede(mapa, out int cx, out int cy, livresAtras: 9))
 		{
-			ServerPlayer atira = Forjar("RaiadorNoMuro", new Vec2((cx - 8) * T + T / 2f, cy * T + T / 2f), bp: 50_000);
+			(Projetil Raio, bool Esvaziou, float Rastro, Vec2 Parou, int Explosoes) RaioNoMuro()
+			{
+				LimparTudoDaBancada();
+				ServerPlayer atira = Forjar("RaiadorNoMuro", new Vec2((cx - 8) * T + T / 2f, cy * T + T / 2f), bp: 50_000);
+				atira.Facing = Facing.East;
+				Projetil noMuro = RaioDaBancada(atira, baseDano: 1);
+
+				int explosoes = ExplosoesDoFimDoAlcanceDeTeste;
+				Vec2 ondeParou = default;
+				bool viuEsvaziar = false;
+				float rastroAoParar = 0;
+				for (int i = 0; i < 300 && noMuro.Vivo; i++)
+				{
+					TickDosProjeteis(Protocol.TickSeconds);
+					if (!noMuro.Esvaziando || viuEsvaziar) continue;
+					viuEsvaziar = true;
+					ondeParou = noMuro.Pos;
+					rastroAoParar = noMuro.Comprimento;
+				}
+				return (noMuro, viuEsvaziar, rastroAoParar, ondeParou, ExplosoesDoFimDoAlcanceDeTeste - explosoes);
+			}
+
+			// (o ki nao mexe no cenario durante esta medida: o muro tem que continuar de pe pro contra-exemplo)
+			KiContraCorpo.KiNaoEstragaCenarioDeTeste = true;
+			try
+			{
+				var hoje = RaioNoMuro();
+				AfirmarPj("o raio que bate numa PAREDE ESTOURA nela, de uma vez (sem o rastro ser engolido antes)",
+						  hoje.Raio is { Vivo: false, Fim: FimDeProjetil.Explodiu } && !hoje.Esvaziou && hoje.Explosoes == 1
+						  && Math.Abs(hoje.Raio.Pos.X - cx * T) <= T,
+						  $"fim = {hoje.Raio.Fim}, esvaziou {hoje.Esvaziou}, explosoes +{hoje.Explosoes}, parou em {hoje.Raio.Pos} (parede em x {cx * T})");
+
+				KiContraCorpo.SoEstouraNoFimDoAlcanceDeTeste = true;
+				try
+				{
+					var antes = RaioNoMuro();
+					AfirmarPj("(defeito injetado: so estoura no fim do alcance) o raio PARA na parede e o rastro e engolido (o trem do DM), ate sair com `Cenario` -- sem estouro",
+							  antes.Esvaziou && antes.Rastro > 4 * T && Math.Abs(antes.Parou.X - cx * T) <= T
+							  && antes.Raio is { Vivo: false, Fim: FimDeProjetil.Cenario } && antes.Explosoes == 0,
+							  $"esvaziou {antes.Esvaziou}, rastro de {antes.Rastro:0} px, parou em {antes.Parou}, fim = {antes.Raio.Fim}, explosoes +{antes.Explosoes}");
+					AfirmarPj("(defeito injetado) ...e a cauda terminou EM CIMA do ponto onde a cabeca parou",
+							  antes.Esvaziou && (antes.Raio.Cauda - antes.Parou).Length < T, $"cauda {antes.Raio.Cauda}, parou em {antes.Parou}");
+				}
+				finally { KiContraCorpo.SoEstouraNoFimDoAlcanceDeTeste = false; }
+			}
+			finally { KiContraCorpo.KiNaoEstragaCenarioDeTeste = false; }
+		}
+		else AfirmarPj("achei uma parede com nove celulas livres na frente pra medir o raio no muro", false, "varredura nao achou");
+
+		// ---------- O RAIO QUE ALGUEM APAGA (a Onda de Choque): a cabeca para e o rastro e engolido ----------
+		LimparTudoDaBancada();
+		{
+			ServerPlayer atira = Forjar("RaiadorApagado", raia, bp: 50_000);
 			atira.Facing = Facing.East;
-			Projetil noMuro = RaioDaBancada(atira, baseDano: 1);
+			// quem apaga fica a um tile e meio da LINHA do raio (fora do caminho da cabeca) e e mais forte que o tiro
+			ServerPlayer apaga = Forjar("QuemApaga", raia + new Vec2(7 * T, 1.5f * T), bp: 200_000);
+			Projetil apagado = RaioDaBancada(atira, baseDano: 1);
 
 			int explosoes = ExplosoesDoFimDoAlcanceDeTeste;
 			Vec2 ondeParou = default;
-			bool viuEsvaziar = false;
+			bool viuEsvaziar = false, soprou = false;
 			float rastroAoParar = 0;
-			for (int i = 0; i < 300 && noMuro.Vivo; i++)
+			for (int i = 0; i < 300 && apagado.Vivo; i++)
 			{
 				TickDosProjeteis(Protocol.TickSeconds);
-				if (!noMuro.Esvaziando || viuEsvaziar) continue;
+				if (!soprou && apagado.AoAlcanceDe(apaga.Pos, 2 * T)) { soprou = true; OndaDeChoqueG6(apaga); }
+				if (!apagado.Esvaziando || viuEsvaziar) continue;
 				viuEsvaziar = true;
-				ondeParou = noMuro.Pos;
-				rastroAoParar = noMuro.Comprimento;
+				ondeParou = apagado.Pos;
+				rastroAoParar = apagado.Comprimento;
 			}
-			AfirmarPj("o raio que bate numa PAREDE para nela e o rastro comeca a ser engolido (o trem do DM)",
-					  viuEsvaziar && rastroAoParar > 4 * T && Math.Abs(ondeParou.X - cx * T) <= T,
-					  $"esvaziou {viuEsvaziar}, rastro de {rastroAoParar:0} px, parou em {ondeParou} (parede em x {cx * T})");
-			AfirmarPj("...ate o raio sair da lista com o motivo que ja estava decidido -- o cenario, e nao um estouro",
-					  !noMuro.Vivo && noMuro.Fim == FimDeProjetil.Cenario && ExplosoesDoFimDoAlcanceDeTeste == explosoes,
-					  $"vivo {noMuro.Vivo}, fim = {noMuro.Fim}, explosoes +{ExplosoesDoFimDoAlcanceDeTeste - explosoes}");
+			AfirmarPj("o raio que a ONDA DE CHOQUE apaga para onde estava e o rastro comeca a ser engolido (o trem do DM)",
+					  soprou && viuEsvaziar && rastroAoParar > 2 * T,
+					  $"soprou {soprou}, esvaziou {viuEsvaziar}, rastro de {rastroAoParar:0} px, parou em {ondeParou}");
+			AfirmarPj("...ate o raio sair da lista com o motivo que ja estava decidido -- apagado, e nao um estouro",
+					  !apagado.Vivo && apagado.Fim == FimDeProjetil.Apagou && ExplosoesDoFimDoAlcanceDeTeste == explosoes,
+					  $"vivo {apagado.Vivo}, fim = {apagado.Fim}, explosoes +{ExplosoesDoFimDoAlcanceDeTeste - explosoes}");
 			AfirmarPj("...e a cauda terminou EM CIMA do ponto onde a cabeca parou",
-					  viuEsvaziar && (noMuro.Cauda - ondeParou).Length < T,
-					  $"cauda {noMuro.Cauda}, parou em {ondeParou}");
+					  viuEsvaziar && (apagado.Cauda - ondeParou).Length < T,
+					  $"cauda {apagado.Cauda}, parou em {ondeParou}");
 		}
-		else AfirmarPj("achei uma parede com nove celulas livres na frente pra medir o rastro engolido", false, "varredura nao achou");
 
 		// ---------- O JOGO DE ANTES: no fim do alcance o raio so se apagava ----------
 		LimparTudoDaBancada();

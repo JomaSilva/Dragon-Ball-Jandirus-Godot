@@ -43,7 +43,7 @@ namespace Jandirus.Server;
 ///  8. IMITACAO: nome, raca, genero e aparencia copiados campo a campo; volta ao proprio no segundo aperto;
 ///  9. DIVISAO DO CORPO: a copia EXISTE, tem cerebro, metade do poder, obedece a seguir / atacar /
 ///     desfazer, some no prazo, e o dono perde poder por copia viva;
-/// 10. SENZU: a semente aparece na mochila aos 60 s E NAO ANTES; comer cura; acudir levanta E cura o
+/// 10. SENZU: a semente brota NO CHAO, um passo ao sul, aos 60 s E NAO ANTES; comer cura; acudir levanta E cura o
 ///     caido, nao quem da (o DM curava quem da);
 /// 11. ALVOS DE KI: meditando, um alvo nasce a cada 3,5 s, vaga, some em 5 s, e o SOCO o acerta;
 /// 12. PRECOGNICAO: quem tem a skill da um passo perpendicular ao tiro inimigo; quem nao tem, nao;
@@ -313,7 +313,10 @@ public partial class GameServer
 				   $"rumo {solta.Rumo} vida {solta.VidaRestante:0.##}");
 		AfirmarG12("...e o corpo se solta", PodeMexerOCorpo(pl));
 		TiquesG12(TiquesDeG12(5.1));
-		AfirmarG12("...e cinco segundos depois ela se apagou", !solta.Vivo && solta.Fim == FimDeProjetil.Apagou, $"vivo {solta.Vivo} fim {solta.Fim}");
+		// (2026-10-13) A ESFERA GRANDE QUE ACABA ESTOURA, onde quer que seja -- e o `Burnout()` do DM tambem termina em
+		// `explode()` (`objects.dm:652-661`). Ate a v0.2.0 ela so se apagava.
+		AfirmarG12("...e cinco segundos depois ela ESTOURA onde parou (toda esfera grande acaba num estouro)",
+				   !solta.Vivo && solta.Fim == FimDeProjetil.Explodiu, $"vivo {solta.Vivo} fim {solta.Fim}");
 
 		// O TERCEIRO APERTO DURANTE A CARGA: larga a guia (2o) e ENCURTA a carga (3o) -- sai no estagio de agora, parada.
 		ServerPlayer curto = ForjarG12("Curto", CorredorLivre(24), bp: 50_000, skills: [PathDeathBallG12]);
@@ -1018,10 +1021,50 @@ public partial class GameServer
 		ApertarEOuvir(korin, "Grow_Senzu_Bean");
 		AfirmarG12("o aperto comeca a cultivar", _senzuG12.ContainsKey(korin.Id));
 		AfirmarG12("...e apertar de novo enquanto cresce e recusado ('espere')", Disse(ApertarEOuvir(korin, "Grow_Senzu_Bean"), "espere"));
+		List<Largado> noChao = LargadosDe(korin.Zone.Hash);
+		Largado? Broto() => noChao.Find(l => l.Tipo == TipoDeLargado.Item && l.Item == CatalogoDeItens.Senzu);
+		const float tile = ZoneCollision.TileSize;
+		// A CELULA AO SUL TEM DE SER CHAO pra a regra aparecer -- contra a parede ou a agua a semente brota aos pes. O
+		// corredor da bancada e uma fileira solta (ao sul dele nao ha chao em parte alguma), entao Korin cultiva numa
+		// celula que TENHA sul: a fileira de cima do corredor (o sul dela e o proprio corredor) ou, se ela for toda
+		// parede, a primeira dupla livre do mapa. Depois de colher ele volta pro corredor, pro resto da cena.
+		if (_pjMapa is { } mapaDoSenzu)
+		{
+			bool EhChao(int x, int y) => x >= 0 && y >= 0 && x < mapaDoSenzu.Width && y < mapaDoSenzu.Height && !mapaDoSenzu.BlockedCell(x, y) && !mapaDoSenzu.EhAgua(x, y);
+			(int cx0, int cy0) = ((int)MathF.Floor(chao.X / tile), (int)MathF.Floor(chao.Y / tile));
+			(int X, int Y)? achei = null;
+			for (int k = 0; k < 24 && achei == null; k++)
+				if (EhChao(cx0 + k, cy0 - 1) && EhChao(cx0 + k, cy0)) achei = (cx0 + k, cy0 - 1);
+			for (int y = 8; y < mapaDoSenzu.Height - 8 && achei == null; y++)
+				for (int x = 8; x < mapaDoSenzu.Width - 8 && achei == null; x++)
+					if (EhChao(x, y) && EhChao(x, y + 1)) achei = (x, y);
+			if (achei is { } onde) korin.Pos = new Vec2(onde.X * tile + tile / 2, onde.Y * tile + tile / 2);
+		}
 		TiquesG12(TiquesDeG12(59.0));
-		AfirmarG12("aos 59 s a mochila ainda NAO tem a semente", korin.Mochila.Quantos(CatalogoDeItens.Senzu) == 0);
+		AfirmarG12("aos 59 s ainda NAO ha semente -- nem na mochila, nem no chao", korin.Mochila.Quantos(CatalogoDeItens.Senzu) == 0 && Broto() == null);
 		TiquesG12(TiquesDeG12(1.1));
-		AfirmarG12("aos 60 s a Semente Senzu APARECE na mochila", korin.Mochila.Quantos(CatalogoDeItens.Senzu) == 1 && !_senzuG12.ContainsKey(korin.Id));
+		// (2026-10-13) ELA BROTA NO CHAO, um passo ao sul: `A.loc = locate(x, (y-1), z)` (`Food.dm:10`). Ate a v0.2.0
+		// nascia na mochila, porque o port nao tinha item largado no mundo.
+		Largado? broto = Broto();
+		AfirmarG12("aos 60 s a Semente Senzu BROTA NO CHAO, um passo ao SUL de quem cultivou -- e a mochila continua sem ela",
+				   broto is { Quantidade: 1 } && !_senzuG12.ContainsKey(korin.Id) && korin.Mochila.Quantos(CatalogoDeItens.Senzu) == 0
+				   && MathF.Floor(broto.X / tile) == MathF.Floor(korin.Pos.X / tile) && MathF.Floor(broto.Y / tile) == MathF.Floor(korin.Pos.Y / tile) + 1,
+				   broto == null ? "nada no chao" : $"no chao em ({broto.X:0},{broto.Y:0}); Korin em ({korin.Pos.X:0},{korin.Pos.Y:0})");
+		Verbo(korin, Chao.VerboPegar, "");
+		AfirmarG12("...e pegar do chao a poe na mochila", korin.Mochila.Quantos(CatalogoDeItens.Senzu) == 1 && Broto() == null);
+
+		SenzuBrotaNaMochilaDeTeste = true;
+		try
+		{
+			ServerPlayer deAntes = ForjarG12("KorinDeAntes", korin.Pos + new Vec2(2 * tile, 0), bp: 5_000, skills: [PathGrowSenzuG12]);
+			ApertarEOuvir(deAntes, "Grow_Senzu_Bean");
+			TiquesG12(TiquesDeG12(60.1));
+			AfirmarG12("(defeito injetado: a semente nasce na mochila) nada brota no chao -- a v0.2.0",
+					   deAntes.Mochila.Quantos(CatalogoDeItens.Senzu) == 1 && Broto() == null);
+			TirarDoMundoV2(deAntes);   // (senao ele fica ao lado, e o "acudir" de mais abaixo o acha no lugar do caido)
+		}
+		finally { SenzuBrotaNaMochilaDeTeste = false; }
+		korin.Pos = chao;
 
 		// COMER: um membro ferido volta a 100 e a nutricao sobe 10.
 		BodyPart membro = korin.Combate.Corpo.Partes.First(x => x.Papel == Vitalidade.Membro);

@@ -830,6 +830,12 @@ public sealed partial class Fighter
 	public double pesoMaximoKg;
 
 	/// <summary>
+	/// A ARTE QUE OS PESOS DESTE PERSONAGEM USAM NO CORPO -- o nome do arquivo de uma folha do guarda-roupa (dono,
+	/// 2026-10-13). Vazio = a de fabrica (`PesoDeTreino.ArtePadrao`). Vai pro save com a ficha, como o peso maximo.
+	/// </summary>
+	public string pesoArte = "";
+
+	/// <summary>
 	/// ESTE CORPO VESTE UMA ARMADURA QUE O PROTEGE? Quem escreve e o servidor, a cada tique de ficha, olhando a roupa
 	/// do corpo (`GameServer.VesteArmadura`) -- e por isso ela nao e estado de verdade: o save a leva junto, e o
 	/// primeiro tique depois do login a reescreve. O que ela rende esta em `Core/Items/ArmaduraDeTech.cs`.

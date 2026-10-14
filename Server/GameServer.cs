@@ -162,6 +162,21 @@ public sealed class ServerPlayer
 	/// <summary>A carencia da `Travessia` pro corpo dirigido pela ROTINA (o cerebro de luta tem a sua).</summary>
 	public double CarenciaDeAgua;
 
+	/// <summary>O caminho em volta da parede que este corpo dirigido esta seguindo, e quando refazer a pergunta. Ver `GameServer.CaminhoDaIa.cs`.</summary>
+	public RotaDaIa? Rota;
+
+	/// <summary>
+	/// OS DOIS ARRAYS DO QUE A IA SABE DESTE CORPO -- o arsenal de longe e o repertorio de luta --, reescritos no
+	/// lugar a cada leitura de capacidades (1 Hz). Nulos em quem nunca foi dirigido, ou nao sabe tecnica nenhuma.
+	/// Ver `GameServer.ArsenalDeLonge` e `GameServer.ArsenalDeLuta`.
+	/// </summary>
+	public Jandirus.Core.Ai.Tiro[]? ArsenalDaIa, RepertorioDaIa;
+	public long DesvioRelerEm;
+
+	/// <summary>O contorno do passo que emperrou: quantos graus o rumo do cerebro esta girado, pra que lado foi a ultima vez, e ate quando vale.</summary>
+	public float ContornoAngulo, ContornoLado;
+	public long ContornoAte;
+
 	/// <summary>A margem lembrada (ver `RumoDaMargem`): o rumo, de onde foi perguntado, e por quantos tiques ainda vale.</summary>
 	public Jandirus.Core.World.Vec2 RumoDaMargemGuardado, PosDaMargemGuardada;
 	public int TiquesAteRecalcularMargem;
@@ -234,7 +249,7 @@ public sealed class ServerPlayer
 	///
 	/// A janela do `rageExpire` do DM (`Murder.dm:110-114`, 1200 decimos = 2 minutos), e metade do
 	/// estado por tras do <see cref="Jandirus.Core.Forms.PerfilDeFormas.Raiva"/> -- a outra metade e
-	/// a <see cref="RaivaLendariaAte"/>. Quem as acende e um ponto so:
+	/// a <see cref="RaivaComumAte"/>. Quem as acende e um ponto so:
 	/// <see cref="GameServer.AmigoAbatido"/>.
 	///
 	/// NAO PERSISTE, e isso e regra e nao economia: luto nao atravessa o logout. Se atravessasse,
@@ -253,7 +268,9 @@ public sealed class ServerPlayer
 	public long FuriaExtremaAte;
 
 	/// <summary>
-	/// ATE QUANDO ESTE CORPO ESTA EM RAIVA LENDARIA (relogio real, ms) -- a de ver um amigo CAIR.
+	/// ATE QUANDO ESTE CORPO ESTA EM RAIVA COMUM (relogio real, ms) -- a de ver um amigo CAIR. (Ate 2026-10-13 o
+	/// campo se chamava `RaivaLendariaAte`: o nome vinha de uma regra antiga da linha Legendary, e nao tem nada a ver
+	/// com a skill Legendary Anger nem com a Furia Lendaria -- ver o cabecalho de `NivelDeRaiva`.)
 	///
 	/// ============================ POR QUE SAO DOIS CAMPOS E NAO UM CAMPO + UM NIVEL ============================
 	/// Com um so (`RaivaAte` + `RaivaNivel`) um nocaute chegando no meio de um luto teria que
@@ -271,7 +288,17 @@ public sealed class ServerPlayer
 	///
 	/// NAO PERSISTE, pelo mesmo motivo da de cima.
 	/// </summary>
-	public long RaivaLendariaAte;
+	public long RaivaComumAte;
+
+	/// <summary>
+	/// DESDE QUANDO ESTE CORPO ESTA NA RAIVA DE UMA INJECAO (relogio real, ms; zero = nao esta), e que fracao da folga de
+	/// raiva ela acendeu (`Jandirus.Core.Tech.Sintetizador.FracaoDaRaiva`). E a TERCEIRA fonte do numero de raiva
+	/// (`GameServer.RaivaComoNumero`), e so do numero: nao e um degrau -- `NivelDaRaivaDe` nao a ve --, entao nao abre
+	/// forma nenhuma (o `anger_ssj = 0` das duas injecoes do original, *"Can't give SSJ"*). Nao tem prazo: la a injecao
+	/// nao arma `rageExpire`, e so o gotejamento a apaga. NAO PERSISTE, como as duas de cima.
+	/// </summary>
+	public long RaivaDeInjecaoDesde;
+	public double RaivaDeInjecaoFracao;
 
 	/// <summary>
 	/// ATE QUANDO A CENA DE FURIA DESTE CORPO ESTA EM RECARGA (relogio real, ms). Zero = pode tocar.
@@ -635,6 +662,9 @@ public sealed class ServerPlayer
 	/// recado. So vive do `PrepararSkills` ate o `AvisarDasAposentadas` -- nao vai pro save.
 	/// </summary>
 	public List<(Jandirus.Core.Skills.SkillsAposentadas.Aposentada Skill, int Devolvidos)> SkillsQueSairam = [];
+
+	/// <summary>O mesmo, pras skills FECHADAS que eu tinha comprado (`SkillsFechadas.Limpar`): os marcos voltaram.</summary>
+	public List<(Jandirus.Core.Skills.SkillsFechadas.Fechada Skill, int Devolvidos)> SkillsQueFecharam = [];
 
 	/// <summary>
 	/// O que o login tirou da minha mochila porque saiu do jogo (`ItensAposentados.Limpar`), esperando o
@@ -1578,6 +1608,13 @@ public sealed class ServerPlayer
 	public long GestoAte;
 
 	/// <summary>
+	/// ATE QUANDO VALE A VIRADA DE QUEM SE DEBATE (relogio real, ms): agarrado, a tecla de andar so VIRA o corpo
+	/// (`GameServer.AplicarInput`), e no colo essa virada segura por um instante o "de costas pra quem carrega"
+	/// que o `LevarNoColo` escreve todo tique. Sem o prazo, o tique seguinte a desfaria.
+	/// </summary>
+	public long ViradaDoDebateAte;
+
+	/// <summary>
 	/// O OLHAR QUE O SERVIDOR CRAVOU NESTE CORPO, e ate quando ele vale (relogio real, ms). Hoje quem crava e
 	/// o ataque de ki com alguem marcado (`GameServer.CravarOlhar`): nesse prazo o olhar que o cliente manda no
 	/// pacote de movimento nao e escrito. Ver `MiraDeKi.OlharDoTiroMs`.
@@ -1725,7 +1762,7 @@ public sealed class ServerPlayer
 		Estado2 = (byte)((Nadando ? 1 : 0) | (PuxaoDeFusaoRestante > 0 ? 2 : 0)
 						 | (Combate?.Stun > 0 ? 4 : 0)
 						 | (AgarradoPorId != 0 ? 8 : 0) | (PresoPeloRabo ? 16 : 0) | (PescocoApertado ? 32 : 0)
-						 | (AgarrandoId != 0 ? 64 : 0)),
+						 | (AgarrandoId != 0 ? 64 : 0) | (Estrangulando && AgarrandoId != 0 ? 128 : 0)),
 		Escape = AgarradoPorId != 0 ? EscapeNaFicha : (byte)0,
 	};
 }
@@ -1839,6 +1876,7 @@ public partial class GameServer : Node
 		// laco do estudo) sao do relogio do EFETOR no original -- `writetime++` mora no `medproc()`,
 		// que roda no mesmo `sleep(2)` das skills. Ver `GameServer.Tecnicas.G13.cs`.
 		TickG13();
+		TickG14();   // as miragens do Zanzoken e o veneno do Cuspe Acido: os `Ticked` dos efeitos do DM
 	}
 
 	/// <summary>
@@ -2939,6 +2977,10 @@ public partial class GameServer : Node
 			// o rabo preso e o que nao volta, a mira no rabo, o passo. Mesma infraestrutura da `--g12teste`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--v020teste") >= 0) RodarBancadaDaV020();
 
+			// `--v021teste`: O PEDIDO DE 2026-10-13 (a versao 0.2.1) -- o ki que acaba estourando, a cratera, o cenario
+			// que apanha, a pose e o som do tiro... Mesma infraestrutura da `--v020teste`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--v021teste") >= 0) RodarBancadaDaV021();
+
 			// `--g11teste`: AS SKILLS QUE JA ESTAVAM NA ARVORE SEM EFEITO (lote G11). Mesma
 			// infraestrutura da `--arsenalteste` (corpos forjados na Terra, ninguem logado); a familia
 			// dos astros mexe no relogio do ceu e o devolve no fim. Ver `GameServer.G11Teste.cs`.
@@ -3690,6 +3732,12 @@ public partial class GameServer : Node
 		// Write_Teachings -- os tres verbs que faltavam das dezessete skills da Mente. Ver
 		// `GameServer.Tecnicas.G13.cs`.
 		RegistrarTecnicasG13();
+
+		// O LOTE DOS VERBS QUE A LOJA PROMETIA E NAO ENTREGAVA (2026-10-13). Ver `GameServer.Tecnicas.G14.cs`.
+		RegistrarTecnicasG14();
+
+		// AS SKILLS QUE CRIAM ITEM (2026-10-13): a Materialize. Ver `GameServer.Tecnicas.G15.cs`.
+		RegistrarTecnicasG15();
 
 		// O `Planet_Destroy` -- a unica tecnica so-de-vilao do catalogo. Ver `GameServer.Destruicao.cs`.
 		RegistrarTecnicasDaDestruicao();
@@ -4794,6 +4842,7 @@ public partial class GameServer : Node
 		// dourado sao coisa que o jogador precisa ter na tela desde o primeiro quadro -- ver
 		// `GameServer.SuperEsferas.cs`.
 		MandarEsferas(pl.Zone);
+		MandarOChaoPara(pl);   // ...e o que esta largado no chao da zona -- ver GameServer.Chao.cs
 		MandarSupers(pl);
 		MandarPortas(pl);
 		MandarCenario(pl);
@@ -5035,7 +5084,50 @@ public partial class GameServer : Node
 		w.Put((byte)(p.LookDeFusao != null && FusaoDe(p.Id) is { } fus
 			? (byte)fus.Tipo
 			: 0));
+
+		// ============================ E AS MARCAS DO CORPO (2026-10-13) ============================
+		// Um byte de bits, ao lado do tipo de fusao e pelo mesmo motivo: um fato do CORPO que o desenho precisa e que
+		// nao mora na ficha salva. O bit 0 e o potencial desperto aparecendo na pele (o Namekuseijin amarelado --
+		// `Catalogo.PotencialMarcaAPele`). O cliente o guarda em `Appearance.PotencialNaPele`, que nao vai pro disco.
+		// ============================================================================================
+		//
+		// O BIT 1 E O SCOUTER NO ROSTO, e logo depois do byte vai a folha dos PESOS que o corpo veste (vazia = nenhum):
+		// *"equipar o scouter e o peso n aparece no sprite do personagem como overlay (oq deveria)"*. Ver
+		// `Items.EquipamentoNoCorpo`. FUNDIDO OU DISFARCADO o corpo que o mundo ve nao e o de quem joga, e o que ele
+		// usa nao aparece -- a mesma fronteira do `PodeMexerNaRoupa`.
+		bool corpoProprio = p.LookDeFusao == null && p.Disfarce == null;
+		bool scouter = corpoProprio && Jandirus.Core.Items.EquipamentoNoCorpo.ScouterNoRosto((p.PoderesConcedidos & Protocol.Poder.Scouter) != 0);
+		// (v0.2.1) OS BITS 2 E 3 SAO AS LUVAS E AS BOTAS DE DRENO vestidas -- `usr.overlayList += icon` no `Equip()` das duas
+		// (`Tier 1.5.dm:273` e `:309`). O estado mora no item da mochila (`DrenoDeEnergia.Vestida`).
+		(bool luvasDeDreno, bool botasDeDreno) = corpoProprio
+			? Jandirus.Core.Items.EquipamentoNoCorpo.DrenoNoCorpo(p.Mochila) : (false, false);
+		// O BIT 4 E O BARCO embaixo de quem veleja (`Jandirus.Core.Tech.Barco`).
+		w.Put((byte)((PotencialNaPele(p) ? 1 : 0) | (scouter ? 2 : 0) | (luvasDeDreno ? 4 : 0) | (botasDeDreno ? 8 : 0)
+					 | (corpoProprio && Velejando(p) ? 16 : 0)
+					 // O BIT 5 E O CAPACETE DO "HENSHIN!" do relogio de teleporte (`Jandirus.Core.Tech.Teleporte`).
+					 | (corpoProprio && DeCapacete(p) ? 32 : 0)));
+		w.Put(corpoProprio ? Jandirus.Core.Items.EquipamentoNoCorpo.PesosNoCorpo(p.Ficha.Weighted, p.Ficha.pesoArte, _visual) : "");
 		return w;
+	}
+
+	/// <summary>
+	/// O POTENCIAL DESPERTO APARECE NA PELE DESTE CORPO? -- os tres fatos que o `Catalogo.PotencialMarcaAPele` pede,
+	/// lidos do corpo. A RACA E A QUE O MUNDO VE (o disfarce), como a do proprio pacote.
+	/// </summary>
+	private static bool PotencialNaPele(ServerPlayer p) =>
+		Jandirus.Core.Forms.Catalogo.PotencialMarcaAPele(
+			p.Disfarce?.Raca ?? p.Race, p.Ficha.unlockPotential,
+			p.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico));
+
+	/// <summary>
+	/// O QUE ESTE CORPO MOSTRA POR FORA DA FICHA DE APARENCIA MUDOU -- a pele (o potencial despertou, o Mistico foi
+	/// concedido) ou o que ele usa (ligou o scouter, vestiu ou tirou os pesos, trocou a arte deles): a zona precisa ver.
+	/// So pra quem tem tela -- o corpo forjado de bancada e o NPC entram numa zona pelo <see cref="TrocarAparencias"/>,
+	/// que ja manda as marcas.
+	/// </summary>
+	private void ReapresentarOCorpo(ServerPlayer pl)
+	{
+		if (EhJogador(pl)) ReapresentarAparencia(pl);
 	}
 
 	/// <summary>
@@ -5315,7 +5407,20 @@ public partial class GameServer : Node
 		// (0,1 s), e ele o apaga ao ler. Somar aqui daria ao preso mais progresso quanto MAIOR fosse
 		// a taxa de quadros do cliente dele.
 		// ============================================================================================================
-		if (pl.AgarradoPorId != 0 && moving && !pl.Ficha.KO && !pl.Ficha.dead) pl.DebatendoSe = true;   // (caido ninguem se debate)
+		if (pl.AgarradoPorId != 0 && moving && !pl.Ficha.KO && !pl.Ficha.dead)
+		{
+			pl.DebatendoSe = true;   // (caido ninguem se debate)
+
+			// (2026-10-13) ...E QUEM SE DEBATE SO VIRA: *"ele so fica virando de direçao conforme a direçao q o
+			// jogador agarrado apertou, mas ele n vai tocar animaçao de andar, nem se mover de verdade, a nao ser q
+			// ele saia do grab"*. O olhar do pacote e escrito AQUI, porque a recusa logo abaixo devolve o pacote
+			// inteiro -- e o `Moving` de quem esta preso fica falso por ela (e pelo `LevarNoColo`, no colo).
+			if (!AgarradoNaoViraDeTeste)
+			{
+				pl.Facing = facing;
+				pl.ViradaDoDebateAte = NowMs() + MsDaViradaDoDebate;
+			}
+		}
 
 		// ============================ QUEM SEGURA UM RAIO COM AS MAOS SAI DE LADO (dono, 2026-10-12) ============================
 		// O passo ATRAVESSADO ao raio fecha a disputa de guarda sem vencedor -- ver `SairDeLadoDaDisputa`
@@ -5696,10 +5801,19 @@ public partial class GameServer : Node
 		_aoEsquecer.Add(EsquecerG7);
 		_aoEsquecer.Add(EsquecerG9);
 		_aoEsquecer.Add(EsquecerProjeteis);
+		_aoEsquecer.Add(EsquecerArmas);
+		_aoEsquecer.Add(EsquecerMaquinasGrandes);
+		_aoEsquecer.Add(EsquecerComunicacoes);
+		_aoEsquecer.Add(EsquecerCompanheiros);
+		_aoEsquecer.Add(EsquecerSintetizador);
+		_aoEsquecer.Add(EsquecerKits);
+		_aoEsquecer.Add(EsquecerSuperComputador);
 		_aoEsquecer.Add(EsquecerG10);
 		_aoEsquecer.Add(EsquecerG11);
 		_aoEsquecer.Add(EsquecerG12);
 		_aoEsquecer.Add(EsquecerG13);
+		_aoEsquecer.Add(EsquecerG14);
+		_aoEsquecer.Add(EsquecerRepertorioDaIa);
 		_aoEsquecer.Add(EsquecerOKitDoDeus);
 	}
 
@@ -5828,6 +5942,9 @@ public partial class GameServer : Node
 		// O PRAZO DO RAIO DE QUEM NAO TEM TECLADO (`BCL_NPC_BEAM_TIME`) -- ver o metodo: e ele que
 		// faz o pulso unico do `Cerebro.Disparo` virar um canal com comeco e fim.
 		TickDoPrazoDeRaioDaIa(Protocol.TickSeconds);
+		// ...E O SEGUNDO APERTO das tecnicas que se seguram (v0.2.1) -- o mesmo desenho, pra barragem, a esfera e o rugido.
+		TickDoSegundoApertoDaIa();
+		TickDaTechPortada(Protocol.TickSeconds);   // (v0.2.1) a pesca e as maquinas do lote da tech -- `GameServer.TechDeBolso.cs`
 
 		// A LIMPEZA DO CACHE DE PAREDE DA VOZ. Ela se guarda sozinha (`< 64` sai na hora): varrer um
 		// dicionario de tres entradas 30x por segundo seria pagar pela limpeza mais do que se limpa.
@@ -5942,7 +6059,7 @@ public partial class GameServer : Node
 		// Hz, ao lado do calor da estrela) de proposito: a estrela e um lugar por onde se ATRAVESSA e
 		// 200 ms la tem que custar 200 ms de dano; ninguem "roça" o vacuo. Ver `GameServer.Vacuo.cs`.
 		if (_tickCount % TicksPorSegundo == 0)
-			{ TickDasTecnicas(); TickDasTecnicasG6(); TickDoEstudo(); TickDaGestacao(); TickDaLarva(); TickDoPalcoDoBio(); TickDoOlharDoBio(); TickDoFilmeDoBio(); TickDoNucleoInfinito(); TickDaPostura(); TickDosEstilos(); TickDosBuffs(); TickTecnicasG2(); TickDoCeu(); TickDoConvivio(); TickDoRoteiro(); TickDasSagas(); TickDoPalcoDaAgonia(1); TickDaDestruicao(1); TickDasInvasoes(); TickDaConquista(); TickDasEsferas(); TickDasSuperEsferas(); TickDosCargos(); TickDoEsmagamento(); TickDoVacuo(); TickDaFusao(); }
+			{ TickDasTecnicas(); TickDasTecnicasG6(); TickDoEstudo(); TickDaGestacao(); TickDaLarva(); TickDoPalcoDoBio(); TickDoOlharDoBio(); TickDoFilmeDoBio(); TickDoNucleoInfinito(); TickDaPostura(); TickDosEstilos(); TickDosBuffs(); TickTecnicasG2(); TickDoCeu(); TickDoConvivio(); TickDoRoteiro(); TickDasSagas(); TickDoPalcoDaAgonia(1); TickDaDestruicao(1); TickDasInvasoes(); TickDaConquista(); TickDasEsferas(); TickDasSuperEsferas(); TickDoChao(); TickDosCargos(); TickDoEsmagamento(); TickDoVacuo(); TickDaFusao(); }
 			if (_tickCount % TicksPorSegundo == 0) TickDosViloes();     // OS VILOES AVULSOS (item 12 do playtest de 2026-10-10): o relogio de cada planeta com gente, e o prazo de quem esta de pe -- ver `GameServer.Viloes.cs`
 			if (_tickCount % TicksPorSegundo == 0) TickDosAnimais();    // OS ANIMAIS (dono, 2026-10-10): a fauna de cada planeta com gente -- quem nasce, quem some, a forca fixa e as carcacas. Ver `GameServer.Animais.cs`
 			if (_tickCount % TicksPorSegundo == 0) TickDosSentidos();   // OS SENTIDOS (a aba Sense/Scan) ANDAM A 1 Hz: a lista de quem eu sinto so muda quando alguem anda um tile, e so sai quando muda -- ver `GameServer.Sentidos.cs`
@@ -6192,11 +6309,42 @@ public partial class GameServer : Node
 		// preso ligado quando o jogador andasse pra longe. Ver `BonusDeTreinoPerto`.
 		double aparelho = f.train ? BonusDeTreinoPerto(pl) : 1;
 
-		if (f.train) f.TrainGain(_rng, 6.0 / (1 + Math.Log(2)) * aparelho);
+		if (f.train)
+		{
+			// (2026-10-13) O TREINO CANSA, e para quando o corpo nao aguenta -- ver `PagarOVigorDoTreino`.
+			if (!PagarOVigorDoTreino(pl)) { f.BufferTick(); return; }
+			f.TrainGain(_rng, 6.0 / (1 + Math.Log(2)) * aparelho);
+		}
 		else if (f.med) f.MedGain(_rng);
 		else { f.BufferTick(); return; }   // parado: so acumula pro proximo treino
 
 		f.GravGain();
+	}
+
+	/// <summary>O tempo que uma passada do `Treinar` cobre: o tique de ficha, a 5 Hz.</summary>
+	private const double SegundosPorFicha = TicksPorFicha * Protocol.TickSeconds;
+
+	/// <summary>
+	/// **O TREINO GASTA VIGOR, E PARA QUANDO ELE ACABA** -- dono, 2026-10-13: *"falta o treino (botao T) gastar vigor
+	/// com o tempo, pq atualmente ta dando pra treinar pra sempre"*. E o `trainproc()` do DM (`Train.dm:86-103`:
+	/// `if(stamina >= custo) stamina -= custo ... else "You stop training."`), com o custo de `Cansaco.VigorDoTreino`.
+	///
+	/// Devolve falso quando o treino acabou de parar: a flag cai aqui, e a ancora da atividade avisa o cliente no
+	/// tique seguinte (`AtividadeValendo`, o caminho de todo treino encerrado pelo servidor).
+	/// </summary>
+	private bool PagarOVigorDoTreino(ServerPlayer pl)
+	{
+		Fighter f = pl.Ficha;
+		if (Cansaco.TreinoNaoCansaDeTeste) return true;
+
+		if (!Cansaco.AguentaTreinar(f, SegundosPorFicha))
+		{
+			f.train = false;
+			Avisar(pl, "você está exausto: o treino para. Descanse -- ou medite -- até o vigor voltar.");
+			return false;
+		}
+		f.stamina -= Cansaco.VigorDoTreino(f, SegundosPorFicha);
+		return true;
 	}
 
 	/// <summary>Move um jogador de zona e avisa as duas pontas (usado pela troca de planeta).</summary>
@@ -6302,6 +6450,9 @@ public partial class GameServer : Node
 		// continuaria vendo as sete desenhadas no chao da Terra -- e o inverso: quem chega em Namek
 		// nao veria nenhuma ate a proxima vez que alguem mexesse numa delas.
 		MandarEsferas(destino);
+		// O CHAO E POR ZONA IGUAL: quem troca de zona recebe o que esta largado na nova (mesmo que nada -- e a lista
+		// vazia que apaga o que ele via na anterior).
+		MandarOChaoPara(pl);
 		// ...e as SUPER ESFERAS, que so existem no espaco. Elas saiam so quando o tique via o corpo cruzar uma
 		// chunk -- e quem DECOLA chega com a chunk ja carimbada: a esfera ao lado do ponto de chegada nao vinha
 		// (e agora ela e desenhada). Na volta vale o inverso: a lista de quem pousou era a do espaco.
@@ -6389,6 +6540,22 @@ public partial class GameServer : Node
 	/// <summary>`--espeedteste`: o stat BASE de velocidade com que todo mundo entra. Zero = producao. Ver o parse.</summary>
 	private float _speedStatDeTeste;
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv021`): a pose de tiro do gesto volta a viajar como canal de verdade, e o
+	/// cliente planta o proprio corpo enquanto ela dura -- quem atira uma bola correndo trava na propria tela. Lido
+	/// pela propria linha do bit, no `EstadoDe`. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool GestoPrendeNaTelaDeTeste;
+
+	/// <summary>Por quanto tempo a virada de quem se debate no colo vence o "de costas pra quem carrega". Ver `ServerPlayer.ViradaDoDebateAte`.</summary>
+	private const long MsDaViradaDoDebate = 400;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): quem se debate agarrado volta a nao virar -- a v0.2.0. Lido pela
+	/// propria linha, no `AplicarInput`. Falso em jogo, sempre.
+	/// </summary>
+	internal bool AgarradoNaoViraDeTeste;
+
 	private EntityState EstadoDe(ServerPlayer pl, long agora)
 	{
 		// O CANAL E PERGUNTADO UMA VEZ SO, e as duas leituras abaixo (a pose e o byte do canal) saem
@@ -6400,7 +6567,8 @@ public partial class GameServer : Node
 		// O GESTO DE SOPRO (o `flick("Blast", usr)` do Kiai, `ServerPlayer.GestoAte`) veste a pose de
 		// tiro por um instante: canal "atirando" sem carga, que e exatamente o `blast` do desenho e
 		// nada mais -- o cliente so acende a carga visual quando NAO esta atirando (`World.cs`).
-		if (!canal && agora < pl.GestoAte) { canal = true; atirando = true; }
+		bool soAPose = !canal && agora < pl.GestoAte;
+		if (soAPose) { canal = true; atirando = true; }
 
 		var e = new EntityState
 		{
@@ -6434,6 +6602,8 @@ public partial class GameServer : Node
 			// O ESTADO DA TECLA C, ao lado do visual dela (`Carregando`, tres linhas acima): e o que o
 			// zumbido de quem esta perto segue. Ver `EntityState.Reunindo`.
 			Reunindo = pl.Carregando,
+			// QUEM ME LEVA NO COLO (2026-10-13): pra a tela desenhar os dois juntos -- ver `EntityState.LevadoPor`.
+			LevadoPor = SendoCarregado(pl) ? pl.AgarradoPorId : 0,
 			// ...E O CHAO TREMENDO em volta de quem comprime o Ki alem de 120%. A regra e do Core
 			// (`CargaDeKi.TremeOChao`) e a decisao e daqui, porque o Ki alheio nao viaja.
 			CargaAlta = Jandirus.Core.Combat.CargaDeKi.TremeOChao(pl.Ficha, pl.Carregando, pl.EstagioDaCarga),
@@ -6479,6 +6649,8 @@ public partial class GameServer : Node
 		{
 			e.CanalAtirando = atirando;
 			e.CargaDoCanal = cargaDoCanal;
+			// O GESTO NAO E CANAL: o dono do corpo continua andando. Ver `EntityState.CanalSoDePose`.
+			e.CanalSoDePose = soAPose && !GestoPrendeNaTelaDeTeste;
 		}
 
 		return e;

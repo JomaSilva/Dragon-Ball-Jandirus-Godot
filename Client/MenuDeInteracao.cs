@@ -55,22 +55,19 @@ public partial class MenuDeInteracao : CanvasLayer
 		Layer = 4;   // acima do menu do jogo (3), abaixo do quick time event (5)
 		Instancia = this;
 		Montar();
-		if (GameClient.Instance is { } cli) cli.SaqueAberto += AoAbrirSaque;
 	}
 
 	public override void _ExitTree()
 	{
 		if (Instancia == this) Instancia = null;
-		// O `-=` DO PAR: o menu morre no relog e o `GameClient` nao -- sem isto a lista de saque seguinte
-		// chamaria um menu que ja foi liberado.
-		if (GameClient.Instance is { } cli) cli.SaqueAberto -= AoAbrirSaque;
 	}
 
 	// =====================================================================
 	// O CAIDO -- a QUINTA fonte de alvo da tecla E (o saque, item 9b do playtest de 2026-10-10)
 	// =====================================================================
-	private bool _noSaque;
-	private Interacoes.Acao[] _acoesDoSaque = [];
+	// (2026-10-13) O MENU DE BOTOES DO SAQUE SAIU DAQUI: o dono pediu a mochila do caido no lugar dele -- *"deveria
+	// abrir o inventario dela e nao um menu onde vc seleciona por botoes oq vc quer"*. Este menu continua sendo quem
+	// ACHA o caido e manda a pergunta (o verbo `saquear`); quem desenha a resposta e a `TelaDeInventario.AbrirSaque`.
 
 	/// <summary>
 	/// O NOCAUTEADO AO ALCANCE, se ele for o alvo: o cadaver apontado pelo servidor fica de fora (ele tem o
@@ -86,40 +83,41 @@ public partial class MenuDeInteracao : CanvasLayer
 		return (caido.Id, caido.Nome);
 	}
 
+	// =====================================================================
+	// O QUE ESTA LARGADO NO CHAO -- a SEXTA fonte de alvo da tecla E (dono, 2026-10-13)
+	// =====================================================================
 	/// <summary>
-	/// A LISTA CHEGOU: o menu abre NELA. Cada item e um botao que manda o MESMO verbo com o id dele -- e o
-	/// servidor responde com a lista nova depois de cada item levado, entao o menu se redesenha sozinho sem
-	/// guardar foto nenhuma da mochila alheia.
+	/// A COISA LARGADA MAIS PERTO, ao alcance, se ela for o alvo: como o cadaver e o caido, ela nao esta em
+	/// `cli.Obras` -- vem no `S2C.Chao` (`cli.Largados`) -- e disputa com a mobilia por perto pela regra de sempre, a
+	/// distancia. O CORTE E POR EIXO, como o do servidor (`GameServer.AoAlcanceDoChao`).
+	///
+	/// ELA NAO ABRE MENU: o E PEGA (`chao_pegar #id`). E o `Get()` do original, que e um gesto so -- e com tres
+	/// coisas no chao sao tres toques, cada um levando a mais perto.
 	/// </summary>
-	private void AoAbrirSaque(int caido, string nome, List<Jandirus.Core.Items.Pilha> leva)
+	private static GameClient.LargadoInfo? NoChaoGanha(GameClient.ObraInfo? obra)
 	{
-		FecharTeclado();
-		_pagina = "";
-		_tipoDoAlvo = "";
-		_noVeiculo = false;
-		_noCadaver = false;
-		_naPorta = false;
-		_noSaque = true;
-		_nomeDoAlvo = leva.Count == 0 ? $"{nome}: nada que dê pra levar" : $"Revistar {nome}";
-		// A LINHA MARCADA E A ROUPA DO CORPO do caido (dono, 2026-10-12): o botao diz que ela sai DO CORPO, e o nome
-		// e o da peca que ela vira na mochila. O id volta inteiro, com a marca -- e por ela que o servidor sabe de
-		// onde tirar. Ver `Saque.NoCorpo`.
-		_acoesDoSaque = [.. leva.Select(p =>
+		if (PegarDoChaoSoPeloVerboDeTeste) return null;
+		if (GameClient.Instance is not { } cli || World.Instancia?.PosicaoDesenhadaDe(cli.LocalId) is not { } eu) return null;
+
+		GameClient.LargadoInfo? melhor = null;
+		float melhorDist = float.MaxValue;
+		foreach (GameClient.LargadoInfo l in cli.Largados)
 		{
-			bool doCorpo = Jandirus.Core.Items.Saque.EhDoCorpo(p.Id, out string peca);
-			string item = Jandirus.Core.Items.CatalogoDeItens.Get(peca)?.Nome ?? peca;
-			return new Interacoes.Acao(
-				doCorpo ? $"Tirar do corpo: {item}" : $"Pegar {item}{(p.Quantidade > 1 ? $"  (tem {p.Quantidade})" : "")}",
-				Jandirus.Core.Items.Saque.Verbo, p.Id,
-				doCorpo ? "despe a peça do caído e leva pra sua mochila -- quem estiver por perto vê"
-						: "leva UM pra sua mochila -- quem estiver por perto vê");
-		})];
-		Desenhar("");
-		_raiz.Visible = true;
+			if (Math.Abs(l.Pos.X - eu.X) > Alcance || Math.Abs(l.Pos.Y - eu.Y) > Alcance) continue;
+			float d = eu.DistanceSquaredTo(l.Pos);
+			if (d >= melhorDist) continue;
+			melhorDist = d;
+			melhor = l;
+		}
+		if (melhor == null) return null;
+		return obra is { } o && eu.DistanceSquaredTo(o.Pos) <= melhorDist ? null : melhor;
 	}
 
-	/// <summary>O menu esta aberto na lista de saque, e com quantos itens. SO PRA BANCADA.</summary>
-	public (bool Aberto, int Itens, string Titulo) SaqueDeTeste => (_raiz.Visible && _noSaque, _acoesDoSaque.Length, _titulo.Text);
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv021`): a tecla E nao enxerga o que esta largado no chao -- nem a dica, nem o
+	/// gesto. O item cai e fica la, sem porta de volta. Lido pela propria <see cref="NoChaoGanha"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool PegarDoChaoSoPeloVerboDeTeste;
 
 	private void Montar()
 	{
@@ -221,6 +219,14 @@ public partial class MenuDeInteracao : CanvasLayer
 		{
 			_dica.Visible = true;
 			_dica.Text = $"[E] {NomeDaPorta(porta)}";
+			return;
+		}
+
+		// O QUE ESTA LARGADO NO CHAO, pela mesma regra. Ver `NoChaoGanha`.
+		if (NoChaoGanha(perto) is { } noChao)
+		{
+			_dica.Visible = true;
+			_dica.Text = $"[E] pegar {Jandirus.Core.Items.Chao.Nome(noChao.Tipo, noChao.Item, noChao.Quantidade)}";
 			return;
 		}
 
@@ -542,6 +548,13 @@ public partial class MenuDeInteracao : CanvasLayer
 			return;
 		}
 
+		// O QUE ESTA LARGADO NO CHAO: o E PEGA, sem menu nenhum -- ver `NoChaoGanha`.
+		if (NoChaoGanha(perto) is { } noChao)
+		{
+			GameClient.Instance?.SendVerbo(Jandirus.Core.Items.Chao.VerboPegar, $"#{noChao.Id}");
+			return;
+		}
+
 		if (perto is not { } o) return;
 		_noVeiculo = false;
 		_noCadaver = false;
@@ -606,10 +619,9 @@ public partial class MenuDeInteracao : CanvasLayer
 		// A PORTA ERGUIDA E A QUARTA, e a tabela dela depende de quem olha (ver `Interacoes.DaPorta`).
 		// O QUE ESTA MAQUINA JA TEM de melhoria de uma vez so (o byte que veio com ela no pacote de construcoes): a
 		// opcao sai da lista em vez de ficar ali pra recusar depois do clique. Ver `Interacoes.BitQueEsconde`.
-		byte feitas = _noSaque || _naPorta || _noCadaver || _noVeiculo ? (byte)0 : MaisPerto()?.Feitas ?? 0;
+		byte feitas = _naPorta || _noCadaver || _noVeiculo ? (byte)0 : MaisPerto()?.Feitas ?? 0;
 
-		foreach (Interacoes.Acao a in _noSaque ? _acoesDoSaque
-									 : _naPorta ? _acoesDaPorta
+		foreach (Interacoes.Acao a in _naPorta ? _acoesDaPorta
 									 : _noCadaver ? Interacoes.DoCadaver()
 									 : _noVeiculo ? Interacoes.DoVeiculo(tipo)
 									 : Interacoes.De(chave))
@@ -645,6 +657,13 @@ public partial class MenuDeInteracao : CanvasLayer
 
 			case Interacoes.Forma.Texto:
 				AbrirCaixaDeTexto(acao);
+				break;
+
+			case Interacoes.Forma.Roupa:
+				// A VITRINE DA BANCADA DE CRIACAO: a grade do guarda-roupa abre por cima, e o clique LA manda o verbo, com
+				// a peca e a cor. Ver `TelaDeArmadura.AbrirPraVitrine`.
+				TelaDeArmadura.Instancia?.AbrirPraVitrine(acao.Verbo);
+				Fechar();
 				break;
 
 			default:
@@ -720,7 +739,6 @@ public partial class MenuDeInteracao : CanvasLayer
 		_noVeiculo = false;
 		_noCadaver = false;
 		_naPorta = false;
-		_noSaque = false;
 	}
 
 	// =====================================================================

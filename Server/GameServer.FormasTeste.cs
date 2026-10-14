@@ -2333,11 +2333,11 @@ public partial class GameServer
 
 			// E AS DUAS JANELAS SAO CONFERIDAS, nao so a do luto: a morte passa pelo `Nocauteou`
 			// antes do `Morreu` no funil do combate, entao um gancho de nocaute ligado por engano
-			// acenderia a LENDARIA e o SSJ1 de qualquer Legendary abriria calado.
+			// acenderia a raiva COMUM, e uma forma de raiva abriria calada pra quem tem o preco dela.
 			Checa("uma morte SEM ALGOZ nao acende raiva em ninguem (nao ha luto por acidente)",
 				  Perfil(pl).Raiva == NivelDeRaiva.Nenhuma
-				  && pl.FuriaExtremaAte == 0 && pl.RaivaLendariaAte == 0,
-				  $"extrema={pl.FuriaExtremaAte} lendaria={pl.RaivaLendariaAte}");
+				  && pl.FuriaExtremaAte == 0 && pl.RaivaComumAte == 0,
+				  $"extrema={pl.FuriaExtremaAte} comum={pl.RaivaComumAte}");
 			Checa("...e ninguem ouviu a frase do luto",
 				  !noLuto.Any(a => a.Contains("PARTE", StringComparison.Ordinal)),
 				  string.Join(" | ", noLuto));

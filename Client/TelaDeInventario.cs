@@ -30,9 +30,49 @@ public partial class TelaDeInventario : CanvasLayer
 	/// <summary>O lado de cada slot, em pixels. O sprite tem 32; o dobro se le sem esforco.</summary>
 	private const int LadoDoSlot = 64;
 
+	/// <summary>A tela viva, ou nula antes do mundo. SO PRA BANCADA.</summary>
+	public static TelaDeInventario? Instancia { get; private set; }
+
 	private Control _raiz = null!;
 	private GridContainer _grade = null!;
 	private Label _contagem = null!;
+	private Label _titulo = null!, _rotuloDoCorpo = null!;
+
+	/// <summary>
+	/// A FILEIRA DA CARTEIRA, embaixo da grade (dono, 2026-10-13). Na MINHA mochila sao os dois botoes de largar zeni
+	/// e recursos no chao; na mochila de um caido, os dois de levar o que ele carrega. Ver <see cref="Redesenhar"/>.
+	/// </summary>
+	private HBoxContainer _carteira = null!;
+
+	/// <summary>
+	/// ============================ A MOCHILA DE QUEM ESTA CAIDO (dono, 2026-10-13) ============================
+	/// *"ao analisar uma pessoa ou npc nocauteado pra pegar os itens dela, deveria abrir o inventario dela e nao um
+	/// menu onde vc seleciona por botoes oq vc quer, deveria ter o mesmo GUI do inventario (botao i) porem com oq tem
+	/// no inventario da pessoa nocauteada, e tb ter como roubar recursos e zeni de nocauteados (npc ou player)"*.
+	///
+	/// E ESTA MESMA TELA, COM OUTRA LISTA: a fileira de cima mostra o que ele veste (as linhas marcadas do saque,
+	/// `Saque.NoCorpo`), a grade mostra o que ele carrega, e a fileira da carteira oferece o zeni e os recursos dele.
+	/// Clicar LEVA -- um por clique, como o `Steal()` do original --, e o servidor responde com a lista nova depois de
+	/// cada coisa levada (`S2C.Saque`), entao a tela se redesenha sem guardar foto nenhuma da mochila alheia.
+	///
+	/// NULO = a tela mostra a MINHA mochila. Quem a abre na de outro e so o pacote (<see cref="AbrirSaque"/>): a
+	/// tecla I e o botao de fechar voltam sempre pra minha.
+	/// ============================================================================================================
+	/// </summary>
+	private MochilaAlheia? _saque;
+
+	private readonly record struct MochilaAlheia(int Caido, string Nome, List<Pilha> Leva, double Zeni, double Recursos)
+	{
+		/// <summary>(v0.2.1) O id NEGATIVO e o de um DEPOSITO (bau, geladeira, base) -- ver `GameServer.MandarODeposito`.</summary>
+		public bool EhDeposito => Caido < 0;
+	}
+
+	/// <summary>
+	/// O DEPOSITO ABERTO (v0.2.1) -- o nome do bau, da geladeira ou da base cuja tela esta (ou esteve agora ha pouco)
+	/// aberta. Enquanto houver um, cada item da MINHA mochila ganha o botao "Guardar no baú", e a fileira de baixo o
+	/// botao de voltar pra ele. Nulo = nenhum.
+	/// </summary>
+	private string? _deposito;
 
 	/// <summary>
 	/// A FILEIRA "VESTINDO": as pecas que estao no corpo agora, uma por vaga (dono, 2026-10-08: *"a roupa q vc
@@ -51,16 +91,25 @@ public partial class TelaDeInventario : CanvasLayer
 	public override void _Ready()
 	{
 		Layer = 4;   // a mesma do menu de interacao: sao as duas telas "do mundo"
+		Instancia = this;
 		Montar();
 
 		if (GameClient.Instance is { } cli)
+		{
 			cli.MochilaMudou += AoMudarMochila;
+			cli.CarteiraMudou += AoMudarMochila;   // a fileira da carteira mostra os dois saldos
+			cli.SaqueAberto += AbrirSaque;
+		}
 	}
 
-	/// <summary>Solta a assinatura -- ver a nota no `MenuJogo._Ready`: o `GameClient` sobrevive ao logout.</summary>
+	/// <summary>Solta as assinaturas -- ver a nota no `MenuJogo._Ready`: o `GameClient` sobrevive ao logout.</summary>
 	public override void _ExitTree()
 	{
-		if (GameClient.Instance is { } cli) cli.MochilaMudou -= AoMudarMochila;
+		if (Instancia == this) Instancia = null;
+		if (GameClient.Instance is not { } cli) return;
+		cli.MochilaMudou -= AoMudarMochila;
+		cli.CarteiraMudou -= AoMudarMochila;
+		cli.SaqueAberto -= AbrirSaque;
 	}
 
 	private void AoMudarMochila() { if (_raiz.Visible) Redesenhar(); }
@@ -81,9 +130,10 @@ public partial class TelaDeInventario : CanvasLayer
 		caixa.AddThemeConstantOverride("separation", 8);
 		painel.AddChild(caixa);
 
-		var titulo = new Label { Text = "MOCHILA", HorizontalAlignment = HorizontalAlignment.Center };
-		titulo.AddThemeFontSizeOverride("font_size", 22);
-		caixa.AddChild(titulo);
+		// (o texto do titulo e o da fileira do corpo sao escritos no `Redesenhar`: a tela serve a minha mochila e a de um caido)
+		_titulo = new Label { HorizontalAlignment = HorizontalAlignment.Center };
+		_titulo.AddThemeFontSizeOverride("font_size", 22);
+		caixa.AddChild(_titulo);
 
 		_contagem = new Label { HorizontalAlignment = HorizontalAlignment.Center };
 		_contagem.AddThemeColorOverride("font_color", Tema.TextoFraco);
@@ -91,10 +141,10 @@ public partial class TelaDeInventario : CanvasLayer
 		caixa.AddChild(_contagem);
 		caixa.AddChild(new HSeparator());
 
-		var vestindo = new Label { Text = "VESTINDO", HorizontalAlignment = HorizontalAlignment.Center };
-		vestindo.AddThemeColorOverride("font_color", Tema.TextoFraco);
-		vestindo.AddThemeFontSizeOverride("font_size", 12);
-		caixa.AddChild(vestindo);
+		_rotuloDoCorpo = new Label { HorizontalAlignment = HorizontalAlignment.Center };
+		_rotuloDoCorpo.AddThemeColorOverride("font_color", Tema.TextoFraco);
+		_rotuloDoCorpo.AddThemeFontSizeOverride("font_size", 12);
+		caixa.AddChild(_rotuloDoCorpo);
 
 		_vestindo = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
 		_vestindo.AddThemeConstantOverride("separation", 6);
@@ -105,6 +155,10 @@ public partial class TelaDeInventario : CanvasLayer
 		_grade.AddThemeConstantOverride("h_separation", 6);
 		_grade.AddThemeConstantOverride("v_separation", 6);
 		caixa.AddChild(_grade);
+
+		_carteira = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+		_carteira.AddThemeConstantOverride("separation", 8);
+		caixa.AddChild(_carteira);
 
 		// O TEXTO LE O REGISTRO: quem religou a mochila pra outra tecla tem que ler a tecla DELE
 		// aqui, senao o botao ensina errado justamente quem mudou.
@@ -180,13 +234,34 @@ public partial class TelaDeInventario : CanvasLayer
 	}
 
 	/// <summary>Abre a mochila. Publico pro robo diretor (`RoboDoTrailer`), que nao aperta tecla.</summary>
-	public void Abrir() { _raiz.Visible = true; Redesenhar(); }
+	public void Abrir() { _saque = null; _deposito = null; _raiz.Visible = true; Redesenhar(); }
 
 	public void Fechar()
 	{
 		FecharAcoes();
 		FecharTeclado();
 		_raiz.Visible = false;
+		_saque = null;   // a proxima vez que a tecla I abrir, e a MINHA mochila
+		_deposito = null;
+	}
+
+	/// <summary>
+	/// O `S2C.Saque` CHEGOU: a tela abre (ou se redesenha) na mochila do caido. O id ZERO manda fechar -- ele acordou,
+	/// ou eu me afastei --, e so fecha se a tela estava mesmo na mochila de alguem: a minha, aberta pela tecla I, fica.
+	/// </summary>
+	private void AbrirSaque(int caido, string nome, List<Pilha> leva, double zeni, double recursos)
+	{
+		if (caido == 0)
+		{
+			if (_saque != null) Fechar();
+			return;
+		}
+
+		FecharTeclado();
+		_saque = new MochilaAlheia(caido, nome, leva, zeni, recursos);
+		_deposito = _saque.Value.EhDeposito ? nome : null;
+		_raiz.Visible = true;
+		Redesenhar();
 	}
 
 	private void Redesenhar()
@@ -194,7 +269,12 @@ public partial class TelaDeInventario : CanvasLayer
 		FecharAcoes();
 		foreach (Node n in _grade.GetChildren()) n.QueueFree();
 		foreach (Node n in _vestindo.GetChildren()) n.QueueFree();
+		foreach (Node n in _carteira.GetChildren()) n.QueueFree();
 
+		if (_saque is { } alheia) { DesenharAMochilaAlheia(alheia); return; }
+
+		_titulo.Text = _deposito != null ? $"MOCHILA -- guardar em {_deposito.ToUpperInvariant()}" : "MOCHILA";
+		_rotuloDoCorpo.Text = "VESTINDO";
 		Inventario inv = GameClient.Instance?.Mochila ?? new Inventario();
 		_contagem.Text = $"{inv.Ocupados} de {Inventario.Slots} espaços";
 
@@ -213,6 +293,88 @@ public partial class TelaDeInventario : CanvasLayer
 			if (i < inv.Pilhas.Count) _grade.AddChild(SlotCheio(inv.Pilhas[i]));
 			else _grade.AddChild(SlotVazio());
 		}
+
+		// A CARTEIRA: largar zeni e recursos no chao (dono, 2026-10-13: *"ter a opçao de dropar zeni e recursos"*). O
+		// botao abre o teclado numerico e o verbo leva a quantia -- o `Drop()` do `obj/Zenni` (`Inventory.dm:124-142`),
+		// que tambem pergunta quanto. Sem saldo o botao fica apagado, com o saldo escrito.
+		double zeni = Math.Floor(GameClient.Instance?.Zeni ?? 0), recursos = Math.Floor(GameClient.Instance?.Recursos ?? 0);
+		_carteira.AddChild(BotaoDaCarteira($"Largar zeni ({zeni:N0})", zeni >= 1, () => AbrirTecladoDeLargar(recursos: false)));
+		_carteira.AddChild(BotaoDaCarteira($"Largar recursos ({recursos:N0})", recursos >= 1, () => AbrirTecladoDeLargar(recursos: true)));
+		// (v0.2.1) COM UM DEPOSITO ABERTO, o caminho de volta pra tela dele.
+		if (_deposito != null)
+			_carteira.AddChild(BotaoDaCarteira($"Ver {_deposito}", true,
+											   () => GameClient.Instance?.SendVerbo(Jandirus.Core.Tech.Deposito.VerboAbrir)));
+	}
+
+	/// <summary>
+	/// A MESMA TELA, NA MOCHILA DE UM CAIDO -- ver <see cref="_saque"/>. A fileira de cima e o que ele VESTE (sai do
+	/// corpo dele), a grade e o que ele CARREGA, e a carteira e o zeni e os recursos. As vagas sao sempre as mesmas
+	/// quatro e trinta, cheias ou nao: a tela nao danca.
+	/// </summary>
+	private void DesenharAMochilaAlheia(MochilaAlheia s)
+	{
+		_titulo.Text = s.EhDeposito ? s.Nome.ToUpperInvariant() : $"MOCHILA DE {s.Nome.ToUpperInvariant()}";
+		_rotuloDoCorpo.Text = s.EhDeposito ? "" : "NO CORPO";
+
+		List<Pilha> doCorpo = [.. s.Leva.Where(p => Saque.EhDoCorpo(p.Id, out _))];
+		List<Pilha> daMochila = [.. s.Leva.Where(p => !Saque.EhDoCorpo(p.Id, out _))];
+		bool nada = s.Leva.Count == 0 && s.Zeni < 1 && s.Recursos < 1;
+		_contagem.Text = s.EhDeposito ? (s.Leva.Count == 0 ? "vazio" : "clique no que quer pegar")
+			: nada ? "nada que dê pra levar" : "clique no que quer levar -- quem estiver por perto vê";
+
+		for (int i = 0; i < Jandirus.Core.Appearance.Appearance.MaxRoupa; i++)
+			_vestindo.AddChild(i < doCorpo.Count ? SlotDeSaque(doCorpo[i]) : SlotVazio());
+		for (int i = 0; i < Inventario.Slots; i++)
+			_grade.AddChild(i < daMochila.Count ? SlotDeSaque(daMochila[i]) : SlotVazio());
+
+		// (v0.2.1) O DEPOSITO NAO TEM CARTEIRA: no lugar dela, o botao que leva a MINHA mochila -- e la que se guarda.
+		if (s.EhDeposito)
+		{
+			_carteira.AddChild(BotaoDaCarteira("Guardar algo da minha mochila", true,
+											   () => { _saque = null; Redesenhar(); }));
+			return;
+		}
+
+		// A CARTEIRA DELE: tudo de uma vez, como o `Steal()` do original faria (`Grabbing.dm:25-28`). Ver `Saque`.
+		_carteira.AddChild(BotaoDaCarteira($"Levar o zeni ({s.Zeni:N0})", s.Zeni >= 1,
+										   () => GameClient.Instance?.SendVerbo(Saque.Verbo, Saque.Zeni)));
+		_carteira.AddChild(BotaoDaCarteira($"Levar os recursos ({s.Recursos:N0})", s.Recursos >= 1,
+										   () => GameClient.Instance?.SendVerbo(Saque.Verbo, Saque.Recursos)));
+	}
+
+	/// <summary>Um botao da fileira da carteira. Apagado quando nao ha o que largar ou levar.</summary>
+	private static Button BotaoDaCarteira(string texto, bool ligado, Action aoApertar)
+	{
+		var b = new Button { Text = texto, Disabled = !ligado };
+		b.Pressed += aoApertar;
+		return b;
+	}
+
+	/// <summary>
+	/// UM SLOT DA MOCHILA ALHEIA: o mesmo desenho do meu (icone, e a quantidade no canto), e o clique LEVA -- manda o
+	/// `saquear` com o id da linha, inteiro (a marca do corpo vai junto: e por ela que o servidor sabe de onde tirar).
+	/// A peca que esta no corpo dele leva a borda de destaque, como a minha fileira "vestindo".
+	/// </summary>
+	private Control SlotDeSaque(Pilha linha)
+	{
+		bool doCorpo = Saque.EhDoCorpo(linha.Id, out string peca);
+		ItemDef? def = CatalogoDeItens.Get(peca);
+		string nome = def?.Nome ?? peca;
+
+		var botao = new Button
+		{
+			CustomMinimumSize = new Vector2(LadoDoSlot, LadoDoSlot),
+			TooltipText = doCorpo ? $"{nome}\nNo corpo. Clique para despir e levar pra sua mochila."
+								  : $"{nome}\nClique para levar UM pra sua mochila.",
+			ExpandIcon = true,
+			IconAlignment = HorizontalAlignment.Center,
+		};
+		if (doCorpo) botao.AddThemeStyleboxOverride("normal", Tema.Caixa(Tema.PainelClaro, Tema.Destaque, 4));
+		PorIcone(botao, def, RoupaGuardada.Ler(peca)?.Cor);
+		// O ROTULO VAI EM METADADO: e por ele que a bancada acha o slot ("Tirar do corpo: X", "Pegar X").
+		botao.SetMeta("saque", doCorpo ? $"Tirar do corpo: {nome}" : $"Pegar {nome}");
+		botao.Pressed += () => GameClient.Instance?.SendVerbo(Saque.Verbo, linha.Id);
+		return ComAQuantidade(botao, linha.Quantidade);
 	}
 
 	private static Control SlotVazio()
@@ -243,8 +405,13 @@ public partial class TelaDeInventario : CanvasLayer
 		PorIcone(botao, def, RoupaGuardada.Ler(pilha.Id)?.Cor);
 
 		botao.Pressed += () => AbrirAcoes(pilha, botao);
+		return ComAQuantidade(botao, pilha.Quantidade);
+	}
 
-		if (pilha.Quantidade <= 1) return botao;
+	/// <summary>O slot com o numero da pilha no canto -- ou o proprio botao, quando e uma coisa so.</summary>
+	private static Control ComAQuantidade(Button botao, int quantidade)
+	{
+		if (quantidade <= 1) return botao;
 
 		// O NUMERO POR CIMA do botao, e nao ao lado: ele pertence ao slot, e um `Label` irmao
 		// empurraria a grade inteira.
@@ -255,7 +422,7 @@ public partial class TelaDeInventario : CanvasLayer
 
 		var n = new Label
 		{
-			Text = pilha.Quantidade.ToString(),
+			Text = quantidade.ToString(),
 			AnchorLeft = 0, AnchorTop = 1, AnchorRight = 1, AnchorBottom = 1,
 			OffsetTop = -18, OffsetRight = -4,
 			HorizontalAlignment = HorizontalAlignment.Right,
@@ -373,16 +540,40 @@ public partial class TelaDeInventario : CanvasLayer
 
 		// "LARGAR" ENTRA AQUI e nao no catalogo: ela vale pra todo item, e repeti-la em cada linha
 		// seria uma chance por item de esquecer. Ver `ItemDef.AcoesDoItem`.
-		foreach (string acao in def.AcoesDoItem.Append("largar"))
+		// (v0.2.1) COM UM DEPOSITO ABERTO, "guardar" vem primeiro: vale pra todo item, como "largar".
+		IEnumerable<string> acoesDoMenu = def.AcoesDoItem.Append("largar");
+		if (_deposito != null) acoesDoMenu = acoesDoMenu.Prepend(TechDeBolso.AcaoGuardar);
+		foreach (string acao in acoesDoMenu)
 		{
 			string a = acao;
-			var b = new Button { Text = Rotulo(a) };
+			var b = new Button { Text = Rotulo(a, def.Id) };
 			b.Pressed += () =>
 			{
+				// (v0.2.1) A TECH DE BOLSO: o botao que PERGUNTA abre o teclado ou a caixa de texto, e a resposta viaja
+				// colada no id (`Key/senha`), como o numero do ajuste dos pesos. O fabricador abre a aba Tech.
+				if (TechDeBolso.BotaoDa(a, def.Id) is { } pergunta)
+				{
+					if (pergunta.Forma != Jandirus.Core.Tech.Interacoes.Forma.Direta) { AbrirPerguntaDaTech(def, a, pergunta); return; }
+					if (a == TechDeBolso.AcaoFabricar)
+					{
+						Fechar();
+						MenuJogo.Instancia?.Abrir();
+						MenuJogo.Instancia?.IrPara("Tech");
+					}
+				}
+
 				// AS ACOES QUE PEDEM UM NUMERO abrem o mesmo teclado do menu de interacao. O valor
 				// viaja colado no id ("Weights/40") porque o canal de verbos tem um argumento so --
 				// ver `GameServer.ComandoDeItem`.
 				if (a == "ajustar") { AbrirTeclado(def); return; }
+
+				// A ARTE DOS PESOS ABRE A MESMA GRADE DA ARMADURA, e o verbo sai de la -- ver `TelaDeArmadura.AbrirPraPesos`.
+				if (a == PesoDeTreino.AcaoArte)
+				{
+					FecharAcoes();
+					TelaDeArmadura.Instancia?.AbrirPraPesos();
+					return;
+				}
 
 				// A ARMADURA CRUA NAO MANDA VERBO AQUI: ela abre a grade de artes, e e o clique LA que manda
 				// (`item_moldar Armor/<arte>`). Ver `TelaDeArmadura`.
@@ -390,6 +581,21 @@ public partial class TelaDeInventario : CanvasLayer
 				{
 					FecharAcoes();
 					TelaDeArmadura.Instancia?.Abrir();
+					return;
+				}
+
+				// (v0.2.1) O PENTE E A TINTA DE OLHOS da bancada de criacao abrem a mesma grade: o penteado (e a cor) se
+				// escolhem la, e e de la que o verbo sai. Ver `TelaDeArmadura.AbrirPraPentear` e `AbrirPraOsOlhos`.
+				if (a == Jandirus.Core.Tech.BancadaDeCriacao.AcaoPentear)
+				{
+					FecharAcoes();
+					TelaDeArmadura.Instancia?.AbrirPraPentear();
+					return;
+				}
+				if (a == Jandirus.Core.Tech.BancadaDeCriacao.AcaoTingirOsOlhos)
+				{
+					FecharAcoes();
+					TelaDeArmadura.Instancia?.AbrirPraOsOlhos();
 					return;
 				}
 
@@ -409,6 +615,50 @@ public partial class TelaDeInventario : CanvasLayer
 				FecharAcoes();
 			};
 			caixa.AddChild(b);
+
+			// ============================ A MELHORIA DOS PESOS TEM AS DUAS MOEDAS (dono, 2026-10-13) ============================
+			// *"ao tentar melhorar o peso pelo inventario, so tem a opçao de zenni e nao de recurso, adicione essa opçao"*.
+			// O servidor ja aceitava as duas (`GameServer.MelhorarOsPesos`) e a aba Equip ja oferecia as duas; aqui so
+			// havia o botao do zeni. A moeda viaja colada no id, como o numero do ajuste ("Weights/recursos").
+			// ==================================================================================================================
+			// A PILHA SE LARGA INTEIRA TAMBEM -- o `Drop_All()` do original (`Grabbing.dm:236-239`). O botao de cima
+			// larga UM; este, todos. A palavra viaja colada no id, como o numero do ajuste dos pesos ("Apple/tudo").
+			if (a == "largar" && pilha.Quantidade > 1)
+			{
+				var tudo = new Button { Text = $"Largar tudo ({pilha.Quantidade})" };
+				tudo.Pressed += () =>
+				{
+					GameClient.Instance?.SendVerbo("item_largar", $"{def.Id}/{Chao.PalavraDeTudo}");
+					FecharAcoes();
+				};
+				caixa.AddChild(tudo);
+			}
+
+			// (v0.2.1) TODA MELHORIA PAGA DA TECH DE BOLSO TEM AS DUAS MOEDAS: o botao de cima paga em zeni, este em
+			// recursos -- a palavra da moeda vai colada no id, como a dos pesos logo abaixo. Ver `TechDeBolso.Botao.Paga`.
+			if (TechDeBolso.BotaoDa(a, def.Id) is { Paga: true } pago && !MelhoriaSoComZeniDeTeste)
+			{
+				var emRecursos = new Button { Text = pago.RotuloEm(Jandirus.Core.Economia.Moeda.Recursos) };
+				emRecursos.SetMeta("moeda", Jandirus.Core.Economia.Recurso.PalavraDeRecursos);
+				emRecursos.Pressed += () =>
+				{
+					GameClient.Instance?.SendVerbo($"item_{a}", $"{def.Id}/{Jandirus.Core.Economia.Recurso.PalavraDeRecursos}");
+					FecharAcoes();
+				};
+				caixa.AddChild(emRecursos);
+			}
+
+			if (a == "melhorar" && !MelhoriaSoComZeniDeTeste)
+			{
+				var comRecursos = new Button { Text = RotuloDaMelhoriaDosPesos(Jandirus.Core.Economia.Moeda.Recursos) };
+				comRecursos.SetMeta("moeda", Jandirus.Core.Economia.Recurso.PalavraDeRecursos);
+				comRecursos.Pressed += () =>
+				{
+					GameClient.Instance?.SendVerbo("item_melhorar", $"{def.Id}/{Jandirus.Core.Economia.Recurso.PalavraDeRecursos}");
+					FecharAcoes();
+				};
+				caixa.AddChild(comRecursos);
+			}
 		}
 
 		_raiz.AddChild(_acoes);
@@ -447,23 +697,187 @@ public partial class TelaDeInventario : CanvasLayer
 		_teclado = null;
 	}
 
-	/// <summary>"Melhorar: 50 → 100 kg (500 zeni)" -- o proximo degrau do peso maximo e o preco dele. Ver `PesoDeTreino`.</summary>
-	internal static string RotuloDaMelhoriaDosPesos()
+	/// <summary>
+	/// (v0.2.1) A PERGUNTA DE UM BOTAO DA TECH DE BOLSO: o teclado numerico ou a caixa de texto, pelo que a tabela
+	/// diz (`TechDeBolso.BotaoDa`). A resposta vai colada no id do item, depois da barra.
+	/// </summary>
+	private void AbrirPerguntaDaTech(ItemDef def, string acao, TechDeBolso.Botao botao)
+	{
+		FecharAcoes();
+		FecharTeclado();
+		string titulo = botao.Pergunta.Length > 0 ? $"{def.Nome} — {botao.Pergunta}" : $"{def.Nome} — {botao.Rotulo}";
+		Node pergunta = botao.Forma == Jandirus.Core.Tech.Interacoes.Forma.Numero
+			? new TecladoNumerico(titulo, botao.Min, botao.Max,
+				v => { GameClient.Instance?.SendVerbo($"item_{acao}", $"{def.Id}/{v:0}"); FecharTeclado(); }, FecharTeclado)
+			: new CaixaDeTexto(titulo, "", (int)Math.Max(1, botao.Max),
+				texto => { GameClient.Instance?.SendVerbo($"item_{acao}", $"{def.Id}/{texto}"); FecharTeclado(); }, FecharTeclado);
+
+		_teclado = new CenterContainer { AnchorRight = 1, AnchorBottom = 1 };
+		_teclado.AddChild(pergunta);
+		_raiz.AddChild(_teclado);
+	}
+
+	/// <summary>
+	/// QUANTO LARGAR DA CARTEIRA: o teclado numerico, de 1 ate o que ha. O verbo leva a moeda e a quantia juntas
+	/// (`chao_largar zeni/500`) -- ver `GameServer.LargarDaCarteira`.
+	/// </summary>
+	private void AbrirTecladoDeLargar(bool recursos)
+	{
+		FecharAcoes();
+		FecharTeclado();
+		if (GameClient.Instance is not { } cli) return;
+		double tem = Math.Floor(recursos ? cli.Recursos : cli.Zeni);
+		if (tem < 1) return;
+
+		string moeda = recursos ? Jandirus.Core.Economia.Recurso.PalavraDeRecursos : Jandirus.Core.Economia.Recurso.PalavraDeZeni;
+		var t = new TecladoNumerico($"Largar no chão — quanto de {moeda}? (você tem {tem:N0})", 1, tem,
+			v =>
+			{
+				GameClient.Instance?.SendVerbo(Chao.VerboLargar, $"{moeda}/{v:0}");
+				FecharTeclado();
+			},
+			FecharTeclado);
+
+		_teclado = new CenterContainer { AnchorRight = 1, AnchorBottom = 1 };
+		_teclado.AddChild(t);
+		_raiz.AddChild(_teclado);
+	}
+
+	// =====================================================================
+	// AS PORTAS DE BANCADA (`--diagv020`, `--diagv021`, `--diaganimais`)
+	// =====================================================================
+	/// <summary>A tela esta aberta na mochila de um caido, com quantas linhas, e o titulo. SO PRA BANCADA.</summary>
+	public (bool Aberto, int Itens, string Titulo) SaqueDeTeste =>
+		(IsInstanceValid(_raiz) && _raiz.Visible && _saque != null, _saque?.Leva.Count ?? 0, _titulo.Text);
+
+	/// <summary>A tela esta aberta na MINHA mochila? SO PRA BANCADA.</summary>
+	public bool MinhaAbertaDeTeste => IsInstanceValid(_raiz) && _raiz.Visible && _saque == null;
+
+	private static IEnumerable<Button> BotoesDe(Node raiz)
+	{
+		foreach (Node n in raiz.GetChildren())
+		{
+			if (n.IsQueuedForDeletion()) continue;
+			if (n is Button b) yield return b;
+			foreach (Button dentro in BotoesDe(n)) yield return dentro;
+		}
+	}
+
+	/// <summary>Os rotulos dos slots da mochila alheia aberta, o corpo primeiro ("Tirar do corpo: X", "Pegar X"). SO PRA BANCADA.</summary>
+	public List<string> RotulosDoSaqueDeTeste()
+	{
+		var saida = new List<string>();
+		if (!SaqueDeTeste.Aberto) return saida;
+		foreach (Button b in BotoesDe(_vestindo).Concat(BotoesDe(_grade)))
+			if (b.HasMeta("saque")) saida.Add(b.GetMeta("saque").AsString());
+		return saida;
+	}
+
+	/// <summary>Clica no slot da mochila alheia que tem este rotulo -- o mesmo sinal do dedo. SO PRA BANCADA.</summary>
+	public bool LevarDoSaqueDeTeste(string rotulo)
+	{
+		if (!SaqueDeTeste.Aberto) return false;
+		foreach (Button b in BotoesDe(_vestindo).Concat(BotoesDe(_grade)))
+		{
+			if (!b.HasMeta("saque") || b.GetMeta("saque").AsString() != rotulo) continue;
+			b.EmitSignal(BaseButton.SignalName.Pressed);
+			return true;
+		}
+		return false;
+	}
+
+	/// <summary>Os botoes da fileira da carteira, na ordem: (texto, ligado). SO PRA BANCADA.</summary>
+	public List<(string Texto, bool Ligado)> CarteiraDeTeste()
+	{
+		var saida = new List<(string, bool)>();
+		if (!IsInstanceValid(_carteira)) return saida;
+		foreach (Button b in BotoesDe(_carteira)) saida.Add((b.Text, !b.Disabled));
+		return saida;
+	}
+
+	/// <summary>Aperta o botao da carteira cujo texto comeca assim. Falso se ele nao esta la ou esta apagado. SO PRA BANCADA.</summary>
+	public bool ApertarNaCarteiraDeTeste(string comecaCom)
+	{
+		foreach (Button b in BotoesDe(_carteira))
+		{
+			if (b.Disabled || !b.Text.StartsWith(comecaCom, StringComparison.Ordinal)) continue;
+			b.EmitSignal(BaseButton.SignalName.Pressed);
+			return true;
+		}
+		return false;
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv021`): a mochila volta a oferecer a melhoria dos pesos so em zeni -- a v0.2.0.
+	/// Lido pelo proprio painel de acoes, em <see cref="AbrirAcoes"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool MelhoriaSoComZeniDeTeste;
+
+	/// <summary>
+	/// "Melhorar: 50 → 100 kg (500 zeni)" -- o proximo degrau do peso maximo e o preco dele, na moeda pedida (em
+	/// recursos e o dobro, como toda melhoria). Ver `PesoDeTreino`.
+	/// </summary>
+	internal static string RotuloDaMelhoriaDosPesos(Jandirus.Core.Economia.Moeda moeda = Jandirus.Core.Economia.Moeda.Zeni)
 	{
 		double max = GameClient.Instance?.Atributos.PesoMaxKg ?? 0;
 		return $"Melhorar: {Jandirus.Core.Items.PesoDeTreino.Maximo(max):N0} → {Jandirus.Core.Items.PesoDeTreino.ProximoMaximo(max):N0} kg "
-			 + $"({Jandirus.Core.Economia.Recurso.PrecoEscrito(Jandirus.Core.Items.PesoDeTreino.PrecoEmZeni(max), Jandirus.Core.Economia.Moeda.Zeni)})";
+			 + $"({Jandirus.Core.Economia.Recurso.PrecoEscrito(Jandirus.Core.Items.PesoDeTreino.PrecoEmZeni(max), moeda)})";
 	}
 
-	private static string Rotulo(string acao) => acao switch
+	/// <summary>
+	/// Os botoes do painel de acoes aberto agora, na ordem: (texto, moeda marcada no botao -- vazia na maioria). SO PRA
+	/// BANCADA (`--diagv021`).
+	/// </summary>
+	public List<(string Texto, string Moeda)> AcoesAbertasDeTeste()
+	{
+		var saida = new List<(string, string)>();
+		if (_acoes == null || !IsInstanceValid(_acoes)) return saida;
+		foreach (Node n in _acoes.GetChild(0).GetChildren())
+			if (n is Button b) saida.Add((b.Text, b.HasMeta("moeda") ? b.GetMeta("moeda").AsString() : ""));
+		return saida;
+	}
+
+	/// <summary>Abre o painel de acoes do primeiro slot que guarda este item. Falso se ele nao esta na mochila. SO PRA BANCADA.</summary>
+	public bool AbrirAcoesDeTeste(string idDoItem)
+	{
+		Inventario inv = GameClient.Instance?.Mochila ?? new Inventario();
+		int i = inv.Pilhas.FindIndex(p => p.Id == idDoItem);
+		if (i < 0 || i >= _grade.GetChildCount() || _grade.GetChild(i) is not Control slot) return false;
+		AbrirAcoes(inv.Pilhas[i], slot);
+		return true;
+	}
+
+	/// <summary>
+	/// Aperta o botao do painel de acoes aberto cujo texto comeca assim -- o mesmo sinal do dedo. Falso se ele nao esta
+	/// la, ou esta apagado. SO PRA BANCADA (`--diagv021`).
+	/// </summary>
+	public bool ApertarAcaoDeTeste(string comecaCom)
+	{
+		if (_acoes == null || !IsInstanceValid(_acoes)) return false;
+		foreach (Node n in _acoes.GetChild(0).GetChildren())
+		{
+			if (n is not Button b || b.Disabled || !b.Text.StartsWith(comecaCom, StringComparison.Ordinal)) continue;
+			b.EmitSignal(BaseButton.SignalName.Pressed);
+			return true;
+		}
+		return false;
+	}
+
+	private static string Rotulo(string acao, string id = "") =>
+		TechDeBolso.BotaoDa(acao, id) is { } daTech ? daTech.RotuloEm(Jandirus.Core.Economia.Moeda.Zeni) : acao switch
 	{
 		"comer" => "Comer",
 		"equipar" => "Equipar / tirar",
 		"ajustar" => "Ajustar o peso",
 		// O PESO MAXIMO SE COMPRA (dono, 2026-10-12): o botao diz o degrau e o preco, lidos da ficha lenta.
 		"melhorar" => RotuloDaMelhoriaDosPesos(),
+		// A FOLHA QUE OS PESOS USAM NO CORPO (dono, 2026-10-13) -- a mesma grade da armadura. Ver `PesoDeTreino.AcaoArte`.
+		PesoDeTreino.AcaoArte => "Escolher a aparência",
 		"tirar" => "Tirar os pesos",
 		ArmaduraDeTech.AcaoMoldar => "Escolher a arte",
+		// (v0.2.1) o pente e a tinta de olhos da bancada de criacao
+		Jandirus.Core.Tech.BancadaDeCriacao.AcaoPentear => "Mudar o penteado",
+		Jandirus.Core.Tech.BancadaDeCriacao.AcaoTingirOsOlhos => "Tingir os olhos",
 		"usar" => "Usar",
 		// O LIVRO DE ENSINAMENTOS (lote G13). "Ler" sozinho serviria -- o `_` la embaixo ja
 		// capitaliza --, mas o botao precisa dizer que o livro SE GASTA, e isso nao cabe no verbo.
@@ -477,7 +891,8 @@ public partial class TelaDeInventario : CanvasLayer
 		// jogador procurar um segundo botao que nao existe.
 		Jandirus.Core.Items.CatalogoDeItens.AcaoPosicionar => "Instalar no chão",
 		Jandirus.Core.Items.CatalogoDeItens.AcaoPlantar => "Plantar",
-		"largar" => "Jogar fora",
+		// LARGAR POE NO CHAO (dono, 2026-10-13): ate a v0.2.0 o botao era "Jogar fora", e apagava o item.
+		"largar" => "Largar no chão",
 		_ => char.ToUpperInvariant(acao[0]) + acao[1..],
 	};
 

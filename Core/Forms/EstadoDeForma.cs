@@ -361,6 +361,12 @@ public sealed class EstadoDeForma
 	/// </summary>
 	public static bool SaiDaFuryPelaEscadaDeTeste;
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): a forma CONCEDIDA volta a cobrar o degrau de baixo da linha dela -- o
+	/// Orange so sairia de dentro do Super Namekuseijin. Lido pelo passo 5 do <see cref="Avaliar"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool ConcedidaCobraODegrauDeTeste;
+
 	public RecusaForma Avaliar(string alvo, double bpBase, double kiFracao, bool caido,
 							   PerfilDeFormas perfil, double fatorDaPorta = 1)
 	{
@@ -526,8 +532,13 @@ public sealed class EstadoDeForma
 		// sido DESPERTADO e nao por estar nele: quem vai virar Blue esta em SSJ1, nao em SSG --
 		// exigir "estar no SSG" tornaria o Blue inalcancavel, que e o defeito que esta bancada ja
 		// pegou duas vezes nesta sessao.
+		//
+		// (2026-10-13) A FORMA CONCEDIDA NAO COBRA O DEGRAU DE BAIXO, pelo mesmo argumento do passo 1: quem concedeu
+		// ja respondeu por ela. O caso e o ORANGE, que mora na linha do Namekuseijin acima do Super Namekuseijin -- e o
+		// dragao o da tambem a quem nunca comprou a forma de baixo. (O Mistico nunca chegou a esta pergunta: ele e o
+		// primeiro da linha dele.)
 		FormaDef? ant = Catalogo.Anterior(d);
-		if (ant != null && ant.Id != Catalogo.IdBase)
+		if (ant != null && ant.Id != Catalogo.IdBase && (!d.SoPorConcessao || ConcedidaCobraODegrauDeTeste))
 		{
 			bool ok = d.PedeFormaAtual.Length > 0 ? Despertou(ant.Id) : EstaEmOuAcimaDe(ant);
 			if (!ok) return RecusaForma.ForaDeOrdem;

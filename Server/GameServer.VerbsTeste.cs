@@ -345,8 +345,11 @@ public sealed partial class GameServer
 			GD.Print("[verbs] -- 3) os personagens: quem ve o que --");
 			ServerPlayer novato = Gente("HumanoNovato", "Human");
 			ServerPlayer saiyajin = Gente("SaiyajinNovato", "Saiyan", "Low-Class");
-			ServerPlayer guerreiro = Gente("NamekGuerreiro", "Namekian", "Warrior clan");
-			ServerPlayer doCla = Gente("NamekDoCla", "Namekian", "Dragon clan");
+			// (2026-10-13) A FUSAO NAMEKUSEIJIN PEDE A SKILL DELA (`Fusion- Namek Style`): estes dois a aprenderam. O
+			// Namekuseijin que NAO a aprendeu e medido mais abaixo, na cena da absorcao (o `NamekB`).
+			ServerPlayer guerreiro = Gente("NamekGuerreiro", "Namekian", "Warrior clan", skills: [RequisitosDosVerbos.SkillDaFusaoNamek]);
+			ServerPlayer doCla = Gente("NamekDoCla", "Namekian", "Dragon clan",   // (a estatua tambem pede a skill dela, 2026-10-13)
+									   skills: [Jandirus.Core.Skills.AcendedoresDoPort.EstatuaDoDragao, RequisitosDosVerbos.SkillDaFusaoNamek]);
 			ServerPlayer divisor = Gente("HumanoComSplitForm", "Human", skills: ["/datum/skill/general/splitform"]);
 			ServerPlayer comRadarNaMao = Gente("HumanoComRadar", "Human");
 			comRadarNaMao.Mochila.Guardar(CatalogoDeItens.Radar);
@@ -433,7 +436,7 @@ public sealed partial class GameServer
 			Checa("O NAMEKUSEIJIN DO CLA DO DRAGAO ve Erguer Estatua e Erguer + SUPREMO (num mundo sem estatua), a fusao Namekuseijin e Regenerar",
 				  VeChave(doCla, "verbo:db_estatua") && VeChave(doCla, "verbo:db_estatua supremo")
 				  && VeChave(doCla, "hab:fus_namek") && VeChave(doCla, "hab:regenerar"));
-			Checa("...e o Namekuseijin de OUTRA classe ve a fusao e o Regenerar (sao da raca), mas NAO os verbs do Cla",
+			Checa("...e o Namekuseijin de OUTRA classe ve a fusao (aprendeu a skill dela) e o Regenerar (e da raca), mas NAO os verbs do Cla",
 				  VeChave(guerreiro, "hab:fus_namek") && VeChave(guerreiro, "hab:regenerar") && doClaDoDragao.All(c => !VeChave(guerreiro, c)));
 			Checa("QUEM TEM SPLIT FORM ve as cinco ordens das copias -- e so ele, no elenco inteiro",
 				  doSplitForm.All(c => VeChave(divisor, c))
@@ -674,10 +677,12 @@ public sealed partial class GameServer
 				  && !VeChave(aluno, "hab:mst_aceitar") && !VeChave(mestre, "hab:mst_largar"), Ultimos(aceite));
 			// A ABA DO DISCIPULADO (dono, 2026-10-11) nasce do MESMO vinculo: a aba (o pedido do painel) pros dois, e os
 			// dois gestos do cartao de um aluno so pra quem guia.
-			Checa("...e a aba Alunos/Mestre passa a existir pros DOIS (o verb do painel); os gestos do cartao de um aluno (ajudar a transformar, dispensar) so pro mestre",
+			Checa("...e a aba Alunos/Mestre passa a existir pros DOIS (o verb do painel); os gestos do cartao de um aluno (ajudar a transformar, ensinar uma skill ou uma tecnica, dispensar) so pro mestre",
 				  VeChave(aluno, "verbo:alunos") && VeChave(mestre, "verbo:alunos")
 				  && VeChave(mestre, "verbo:alunos_ensinar") && VeChave(mestre, "verbo:alunos_dispensar")
-				  && !VeChave(aluno, "verbo:alunos_ensinar") && !VeChave(aluno, "verbo:alunos_dispensar"));
+				  && VeChave(mestre, "verbo:alunos_licao") && VeChave(mestre, "verbo:alunos_tecnica")
+				  && !VeChave(aluno, "verbo:alunos_ensinar") && !VeChave(aluno, "verbo:alunos_dispensar")
+				  && !VeChave(aluno, "verbo:alunos_licao") && !VeChave(aluno, "verbo:alunos_tecnica"));
 			Ouvir(() => UsarHabilidade(aluno, "mst_largar"));
 			Checa("...e ele DEIXA o mestre: os tres botoes somem dos dois lados -- e a aba Alunos/Mestre tambem",
 				  !Tem(aluno, Fatos.TemMestre) && !Tem(mestre, Fatos.TemAluno)
@@ -706,13 +711,19 @@ public sealed partial class GameServer
 			Ouvir(() => UsarHabilidade(d2, "fus_nao"));
 			Checa("...recusou: os botoes somem", !Tem(d2, Fatos.ConviteDeFusao) && !VeChave(d2, "hab:fus_sim") && !VeChave(d2, "hab:fus_nao"));
 
-			ServerPlayer n1 = Gente("NamekA", "Namekian", "Warrior clan");
+			ServerPlayer n1 = Gente("NamekA", "Namekian", "Warrior clan", skills: [RequisitosDosVerbos.SkillDaFusaoNamek]);
 			ServerPlayer n2 = Gente("NamekB", "Namekian", "Warrior clan");
 			n1.Pos = palco + new Vec2(0, 12 * T);
 			n2.Pos = n1.Pos + new Vec2(T * 0.9f, 0);
 			n1.Facing = Facing.East;
 			n2.Facing = Facing.West;
 			n1.AlvoId = n2.Id;
+			n2.AlvoId = n1.Id;
+			List<string> semASkill = Ouvir(() => UsarHabilidade(n2, "fus_namek"));
+			Checa("(2026-10-13) A FUSAO NAMEKUSEIJIN E DE QUEM APRENDEU A SKILL DELA: o Namekuseijin que nao aprendeu a Fusion- Namek Style nao ve o botao, e o servidor recusa o gesto dizendo onde ela esta -- nenhum convite sai",
+				  VeChave(n1, "hab:fus_namek") && !VeChave(n2, "hab:fus_namek") && Disse(semASkill, "Fusion- Namek Style") && !Tem(n1, Fatos.ConviteDeAbsorcao),
+				  Ultimos(semASkill));
+			n2.AlvoId = 0;
 			List<string> oferta = Ouvir(() => UsarHabilidade(n1, "fus_namek"));
 			Checa("A ABSORCAO NAMEKUSEIJIN: o convidado passa a ver Aceitar a ABSORCAO e Recusar -- e NAO o aceite da fusao comum",
 				  Tem(n2, Fatos.ConviteDeAbsorcao) && VeChave(n2, "hab:fus_namek_sim") && VeChave(n2, "hab:fus_nao")
@@ -785,6 +796,18 @@ public sealed partial class GameServer
 			Checa("COPIAS DE PE sem a tecnica (o Majin que expeliu quem a sabia): as cinco ordens continuam ao alcance",
 				  Tem(novato, Fatos.TemCopias) && doSplitForm.All(c => VeChave(novato, c)));
 			novato.Ficha.splitformCount = 0;
+
+			// ---- a arma de fogo (v0.2.1) ----
+			string gatilho = RequisitosDosVerbos.ChaveDoVerbo(Jandirus.Core.Tech.ArmasDeFogo.VerboAtirar);
+			bool semArma = !Tem(novato, Fatos.TemArmaDeFogo) && !VeChave(novato, gatilho);
+			// (com o estado no id, como fica depois do primeiro tiro: a pergunta e pela arma, e nao pelo id cru)
+			string pistolaUsada = Jandirus.Core.Tech.ArmasDeFogo.Escrever(Jandirus.Core.Tech.ArmasDeFogo.Pistola,
+				new Jandirus.Core.Tech.ArmasDeFogo.Estado(12, 30, 1, false, false));
+			novato.Mochila.Guardar(pistolaUsada);
+			Checa("UMA ARMA DE FOGO NA MOCHILA (com o estado dela no id): o gatilho de tecla aparece -- antes nao aparecia, e some com ela",
+				  semArma && Tem(novato, Fatos.TemArmaDeFogo) && VeChave(novato, gatilho));
+			novato.Mochila.Tirar(pistolaUsada);
+			Checa("...sem a arma: some", !Tem(novato, Fatos.TemArmaDeFogo) && !VeChave(novato, gatilho));
 
 			// ---- o dominio e a estatua ----
 			string[] deQuemDominaAqui = ["verbo:conq_tributo", "verbo:conq_spawn", "verbo:conq_abandonar sim"];

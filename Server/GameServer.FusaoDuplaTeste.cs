@@ -114,6 +114,10 @@ public partial class GameServer
 		};
 		novo.Ficha.Class = "Normal";
 		if (sabeDancar) novo.Livro.Dar(PathDaDanca);
+		// (2026-10-13) A FUSAO NAMEKUSEIJIN PEDE A SKILL DELA (`Fusion- Namek Style`): todo Namekuseijin desta bancada a
+		// aprendeu. O que ela mede e o convite, o consentimento e a absorcao -- a porta do verb e da `--v021teste`
+		// (familia G) e da `--verbsteste`.
+		if (raca == "Namekian") novo.Livro.Dar(Jandirus.Core.Verbos.RequisitosDosVerbos.SkillDaFusaoNamek);
 
 		PorNoMundo(novo);
 		novo.Ficha.Ki = novo.Ficha.MaxKi;

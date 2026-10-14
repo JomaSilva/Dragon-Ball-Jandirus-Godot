@@ -97,6 +97,16 @@ public static class RequisitosDosVerbos
 	/// <summary>`Race == "Namekian" &amp;&amp; Class == "Dragon clan"` -- o portao do `ErguerEstatua` (`namekian.dm:79`).</summary>
 	public static readonly Requisito ClaDoDragao = Raca("Namekian").E(Classe("Dragon clan"));
 
+	/// <summary>A skill que ensina a fusao dos Namekuseijin (`/datum/skill/namek/fusion`, `namekian.dm:111`).</summary>
+	public const string SkillDaFusaoNamek = "/datum/skill/namek/fusion";
+
+	/// <summary>
+	/// QUEM MOLDA A ESTATUA: o Namekuseijin do Cla do Dragao que APRENDEU a fazer isso -- a skill `Make Dragon
+	/// Statue` da arvore racial (`namekian.dm:18`, e o verb sai do `after_learn()` dela). Ate 2026-10-13 a skill
+	/// nao acendia neste port e o verb pedia so raca e classe; ver `AcendedoresDoPort`.
+	/// </summary>
+	public static readonly Requisito EscultorDaEstatua = ClaDoDragao.E(Skill(Skills.AcendedoresDoPort.EstatuaDoDragao));
+
 	/// <summary>O Dragon Radar na mochila -- o que o `UsarORadar` cobra, e o que o sinal dourado passou a cobrar.</summary>
 	public static readonly Requisito TemRadar = Item(Items.CatalogoDeItens.Radar);
 
@@ -178,17 +188,17 @@ public static class RequisitosDosVerbos
 			"não está carregando nenhuma esfera"),
 		new(ChaveDoVerbo("db_invocar"), "INVOCAR", AbaWorldEsferas, ComEstatua,
 			"não há Esferas do Dragão aqui"),
-		new(ChaveDoVerbo("db_estatua"), "Erguer Estátua do Dragão", AbaWorldEsferas, ClaDoDragao.E(SemEstatua),
-			"apenas Namekuseijins do Clã do Dragão|só pode erguer uma Estátua|somente o Guardião da Terra"),
+		new(ChaveDoVerbo("db_estatua"), "Erguer Estátua do Dragão", AbaWorldEsferas, EscultorDaEstatua.E(SemEstatua),
+			"apenas Namekuseijins do Clã do Dragão|ainda não aprendeu a moldar a Estátua|só pode erguer uma Estátua|somente o Guardião da Terra"),
 		new(ChaveDoVerbo("db_estatua", "supremo"), "Erguer + gravar o SUPREMO (2.000.000 zeni)", AbaWorldEsferas,
-			ClaDoDragao.E(SemEstatua),
-			"apenas Namekuseijins do Clã do Dragão|só pode erguer uma Estátua|somente o Guardião da Terra"),
+			EscultorDaEstatua.E(SemEstatua),
+			"apenas Namekuseijins do Clã do Dragão|ainda não aprendeu a moldar a Estátua|só pode erguer uma Estátua|somente o Guardião da Terra"),
 		// O MESMO GESTO, PAGO EM RECURSOS (dono, 2026-10-10): a moeda vai no fim do argumento, e o requisito e o
 		// da linha de cima -- e o mesmo botao pra mesma gente.
 		new(ChaveDoVerbo("db_estatua", Economia.Recurso.PedidoPago("supremo", Economia.Moeda.Recursos)),
 			"Erguer + gravar o SUPREMO (4.000.000 recursos)", AbaWorldEsferas,
-			ClaDoDragao.E(SemEstatua),
-			"apenas Namekuseijins do Clã do Dragão|só pode erguer uma Estátua|somente o Guardião da Terra"),
+			EscultorDaEstatua.E(SemEstatua),
+			"apenas Namekuseijins do Clã do Dragão|ainda não aprendeu a moldar a Estátua|só pode erguer uma Estátua|somente o Guardião da Terra"),
 		new(ChaveDoVerbo("db_reviver"), "Despertar as esferas", AbaWorldEsferas,
 			Fato(Fatos.CriouAEstatuaDaqui, "ergueu a estátua deste mundo"),
 			"não há Estátua do Dragão neste mundo|só quem ergueu a estátua"),
@@ -240,6 +250,11 @@ public static class RequisitosDosVerbos
 		new(ChaveDoVerbo("splitform_perto"), "Split Form: Attack Nearest", AbaOther, Copias, "nenhuma copia de pe"),
 		new(ChaveDoVerbo("splitform_destruir"), "Split Form: Destroy", AbaOther, Copias, "nenhuma copia de pe"),
 
+		// (v0.2.1) O GATILHO DAS ARMAS DE FOGO -- o `verb/fire()` do original (`Guns.dm:110-114`): so existe pra quem
+		// carrega uma.
+		new(ChaveDoVerbo(Tech.ArmasDeFogo.VerboAtirar), "Atirar (arma de fogo)", AbaOther,
+			Fato(Fatos.TemArmaDeFogo, "carrega uma arma de fogo"), "não tem uma arma de fogo"),
+
 		// AS RESPOSTAS A UMA OFERTA: sem oferta na mesa nao ha o que responder.
 		new(ChaveDoVerbo("juventude_aceitar"), "Accept Youth", AbaOther, Juventude, "ninguem te ofereceu juventude"),
 		new(ChaveDoVerbo("juventude_recusar"), "Decline Youth", AbaOther, Juventude, "ninguem te ofereceu juventude"),
@@ -284,19 +299,25 @@ public static class RequisitosDosVerbos
 
 		// ---------------------------------------------------------- Alunos / Mestre (a aba do discipulado)
 		// A PRIMEIRA LINHA E A ABA INTEIRA: o verb e o pedido do painel, e sem mestre nem aluno nao ha aba nem
-		// painel (`GameServer.Alunos.cs`). As outras duas sao os gestos do cartao de UM aluno, pela assinatura dele.
+		// painel (`GameServer.Alunos.cs`). As outras sao os gestos do cartao de UM aluno, pela assinatura dele.
 		new(ChaveDoVerbo("alunos"), "(a aba inteira: o pedido do painel)", AbaDoDiscipulado,
 			Fato(Fatos.TemMestre | Fatos.TemAluno, "tem um mestre ou um aluno"), "não tem mestre nem alunos"),
 		new(ChaveDoVerbo("alunos_ensinar"), "Ajudar a transformar (no cartão do aluno)", AbaDoDiscipulado, TemAluno,
 			"só vale pra um aluno seu"),
 		new(ChaveDoVerbo("alunos_dispensar"), "Dispensar aluno (no cartão do aluno)", AbaDoDiscipulado, TemAluno,
 			"só vale pra um aluno seu"),
+		new(ChaveDoVerbo("alunos_licao"), "Ensinar uma skill sua (no cartão do aluno)", AbaDoDiscipulado, TemAluno,
+			"só vale pra um aluno seu"),
+		new(ChaveDoVerbo("alunos_tecnica"), "Ensinar uma técnica de ki sua (no cartão do aluno)", AbaDoDiscipulado, TemAluno,
+			"só vale pra um aluno seu"),
 
 		// (as duas perguntam "ha alguem na frente?" ANTES do requisito: sozinho, a recusa e a do alvo)
 		new("hab:fus_danca", "Dança da Fusão", AbaLearning, Skill("/datum/skill/rank/Fusion_Dance"),
 			"nao sabe a Danca da Fusao|nao ha ninguem na sua frente"),
-		new("hab:fus_namek", "Fusão Namekuseijin (absorver)", AbaLearning, Raca("Namekian"),
-			"coisa de Namekuseijin|nao ha ninguem na sua frente"),
+		// (2026-10-13) PEDE A SKILL `Fusion- Namek Style`, e nao so a raca: no DM o verb nasce do `after_learn()` dela
+		// (`namekian.dm:111-124`), e sem isto a skill era uma compra que nao dava nada.
+		new("hab:fus_namek", "Fusão Namekuseijin (absorver)", AbaLearning, Raca("Namekian").E(Skill(SkillDaFusaoNamek)),
+			"coisa de Namekuseijin|nao ha ninguem na sua frente|aprendeu a se fundir"),
 		new("hab:fus_sim", "Aceitar a fusão", AbaLearning, ConviteDeFusao,
 			"ninguem te convidou pra fundir"),
 		new("hab:fus_namek_sim", "Aceitar a ABSORÇÃO (perco o personagem)", AbaLearning, ConviteDeAbsorcao,

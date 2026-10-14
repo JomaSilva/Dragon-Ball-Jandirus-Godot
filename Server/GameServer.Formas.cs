@@ -90,16 +90,16 @@ public partial class GameServer
 	/// <summary>
 	/// EM QUE RAIVA ESTE CORPO ESTA -- a mais alta das duas janelas que ainda estiver aberta.
 	///
-	/// A ORDEM DOS DOIS `if` E A REGRA: a furia extrema vem primeiro porque ela SATISFAZ a lendaria
+	/// A ORDEM DOS DOIS `if` E A REGRA: a furia extrema vem primeiro porque ela SATISFAZ a comum
 	/// (ver <see cref="NivelDeRaiva"/>). Invertidos, um corpo com as duas acesas se anunciaria
-	/// `Lendaria` -- e quem acabou de ver um amigo morrer pagaria o agio da raiva comum pelo SSJ1, e
+	/// `Comum` -- e quem acabou de ver um amigo morrer pagaria o agio da raiva comum pelo SSJ1, e
 	/// ficaria sem o Beast.
 	/// </summary>
 	private static NivelDeRaiva NivelDaRaivaDe(ServerPlayer pl)
 	{
 		long agora = NowMs();
 		if (pl.FuriaExtremaAte > agora) return NivelDeRaiva.Extrema;
-		if (pl.RaivaLendariaAte > agora) return NivelDeRaiva.Lendaria;
+		if (pl.RaivaComumAte > agora) return NivelDeRaiva.Comum;
 		return NivelDeRaiva.Nenhuma;
 	}
 
@@ -187,8 +187,14 @@ public partial class GameServer
 
 		// A MAIOR DAS DUAS, pelo mesmo motivo do `NivelDaRaivaDe`: um nocaute chegando no meio de um
 		// luto nao pode ENCURTAR nem REBAIXAR o luto, e a raiva que vale e a mais alta que ainda corre.
-		return Math.Max(DaJanela(NivelDeRaiva.Extrema, pl.FuriaExtremaAte),
-						DaJanela(NivelDeRaiva.Lendaria, pl.RaivaLendariaAte));
+		// (v0.2.1) A RAIVA DE UMA INJECAO (`Jandirus.Core.Tech.Sintetizador`): acende numa fracao da folga e SO goteja --
+		// la ela nao arma `rageExpire`, entao nao ha o corte seco dos dois degraus. Funcao do relogio, como o resto.
+		// Ver `ServerPlayer.RaivaDeInjecaoDesde`.
+		double daInjecao = pl.RaivaDeInjecaoDesde == 0 ? 100
+			: Math.Max(100, 100 + folga * (pl.RaivaDeInjecaoFracao - (agora - pl.RaivaDeInjecaoDesde) / 1000.0 / SegundosDeGotejamento));
+
+		return Math.Max(daInjecao, Math.Max(DaJanela(NivelDeRaiva.Extrema, pl.FuriaExtremaAte),
+											DaJanela(NivelDeRaiva.Comum, pl.RaivaComumAte)));
 	}
 
 	/// <summary>
@@ -290,6 +296,7 @@ public partial class GameServer
 	internal bool ConcederMistico(ServerPlayer alvo, string dequem)
 	{
 		if (!alvo.Forma.Liberar(Catalogo.IdMistico)) return false;
+		ReapresentarOCorpo(alvo);   // (2026-10-13) quem TEM o Mistico o mostra na pele -- `Catalogo.PotencialMarcaAPele`
 
 		GD.Print($"[server] {alvo.Name} recebeu o MISTICO ({dequem})");
 		Avisar(alvo, "algo em voce se abre: o Mistico e seu -- todo o potencial, de uma vez.");
@@ -328,7 +335,7 @@ public partial class GameServer
 	///   * um jogador MORREU: <see cref="NivelDeRaiva.Extrema"/> pra cada amigo que estava vendo.
 	///     No DM e `Death.dm:73-85` (`M.Do_Anger_Stuff(1)`, *"friend was KILLED by an enemy ->
 	///     EXTREMELY enraged"*);
-	///   * um jogador foi NOCAUTEADO: <see cref="NivelDeRaiva.Lendaria"/>. No DM e `KO.dm:29-41`.
+	///   * um jogador foi NOCAUTEADO: <see cref="NivelDeRaiva.Comum"/>. No DM e `KO.dm:29-41`.
 	///
 	/// **OS DOIS DEGRAUS NAO VALEM O MESMO (dono, 2026-10-11).** O do nocaute e a raiva COMUM ("angry"): um
 	/// numero menor, sem cinematica, sem tema e sem mexer no Ki. O da morte e o mais alto ("very angry" =
@@ -383,7 +390,7 @@ public partial class GameServer
 	/// <param name="enlutado">Quem viu. E ele que entra em raiva -- nao quem caiu.</param>
 	/// <param name="nomeDoAmigo">Nome do amigo, so pra mensagem.</param>
 	/// <param name="grau">
-	/// <see cref="NivelDeRaiva.Extrema"/> pra morte/absorcao, <see cref="NivelDeRaiva.Lendaria"/>
+	/// <see cref="NivelDeRaiva.Extrema"/> pra morte/absorcao, <see cref="NivelDeRaiva.Comum"/>
 	/// pra nocaute. <see cref="NivelDeRaiva.Nenhuma"/> nao faz nada -- e o `return` que impede um
 	/// chamador distraido de "acender" calma e zerar a janela de quem estava em luto.
 	/// </param>
@@ -417,7 +424,7 @@ public partial class GameServer
 		// do 20x que o DM ja pagou uma vez (`Murder.dm:112`, *"never stack, sum, or multiply"*).
 		//
 		// E CADA GRAU MEXE **SO NA PROPRIA JANELA**: um nocaute nao encurta nem prolonga um luto em
-		// andamento, e uma morte nao precisa reacender a janela lendaria porque a extrema ja a
+		// andamento, e uma morte nao precisa reacender a janela comum porque a extrema ja a
 		// satisfaz (`NivelDeRaiva` e ordenado). Sem essa separacao, "um amigo caiu" logo depois de
 		// "um amigo morreu" rebaixaria a raiva de quem esta de luto.
 		AcenderJanelaDeRaiva(enlutado, grau, agora + (long)(SegundosDeRaiva * 1000));
@@ -468,7 +475,7 @@ public partial class GameServer
 	{
 		if (grau == NivelDeRaiva.Nenhuma) return;
 		if (grau == NivelDeRaiva.Extrema) pl.FuriaExtremaAte = prazo;
-		else pl.RaivaLendariaAte = prazo;
+		else pl.RaivaComumAte = prazo;
 
 		// E A RAIVA VALE JA. Ver o bloco do buff no cabecalho do `AmigoAbatido`: isto nao acumula
 		// nada, so traz o numero derivado (que a janela acima acabou de mudar) pra dentro da ficha
@@ -502,8 +509,8 @@ public partial class GameServer
 	/// o <see cref="ProjetarRaiva"/> diz na borda.
 	///
 	/// ============================ O QUE ELA **NAO** DESFAZ, E OS QUATRO SAO DO ORIGINAL ============================
-	///   * o KI que a furia extrema deu (o salto pro teto de carga): a energia fica, e vaza devagar como todo
-	///     excesso. La o `Meditate` nao toca em `Ki`;
+	///   * o KI que a furia extrema deu (o salto pro teto de carga): a energia fica, e escorre como todo excesso
+	///     (desde 2026-10-13 pela taxa do `CargaDeKi.VazamentoPorSegundo`). La o `Meditate` nao toca em `Ki`;
 	///   * a FORMA em que ele esta -- inclusive a que a raiva acabou de despertar. Despertou, e dele (`hasssj`);
 	///   * o TEMA da raiva que estiver tocando. No DM so duas coisas calam o canal dele: um tema de
 	///     transformacao (`BattleMusic.dm:138`) e outra furia (`:151`). Meditando, a faixa toca ate o fim;
@@ -518,7 +525,8 @@ public partial class GameServer
 		if (NivelDaRaivaDe(pl) == NivelDeRaiva.Nenhuma && pl.Ficha.Anger <= 100) return false;
 
 		pl.FuriaExtremaAte = 0;
-		pl.RaivaLendariaAte = 0;
+		pl.RaivaComumAte = 0;
+		pl.RaivaDeInjecaoDesde = 0;   // (v0.2.1) a raiva de injecao tambem: meditar acalma TODA raiva
 		pl.Ficha.Anger = 100;
 
 		// O PODER CAI JA (o buff da raiva saiu da conta), e a ficha do dono mostra na hora -- sem isto o
@@ -693,6 +701,7 @@ public partial class GameServer
 			// seguintes, e o jogador veria o tanque subir sozinho depois de ter liberado.
 			ficha.extracharge = 0;
 			Avisar(pl, "você libera a energia que excedia: o Ki volta a 100%.");
+			SoarODescer(pl);
 			return;
 		}
 
@@ -702,8 +711,28 @@ public partial class GameServer
 			return;
 		}
 
+		string antes = pl.Forma.Atual;
 		RecuarPara(pl, EstagioAnterior(pl.Forma, Perfil(pl)));
+		if (pl.Forma.Atual != antes) SoarODescer(pl);
 	}
+
+	/// <summary>
+	/// **O SOM DA TECLA X** -- `emit_Sound('descend.wav')` (`Power Control.dm:68`). O dono, 2026-10-13: *"apertar X
+	/// pra sair de transformaçoes e voltar o ki pra 100% n tem o som q deveria ter (veja no DM o som q era tb)"*. La o
+	/// arquivo so toca no ramo que reverte a forma; aqui toca nos dois gestos da tecla, que foi o que ele pediu --
+	/// e so quando alguma coisa de fato desceu (apertar X na base, com o Ki em 100%, continua calado).
+	/// </summary>
+	private void SoarODescer(ServerPlayer pl)
+	{
+		if (XSemSomDeTeste) return;
+		AnunciarGesto(pl, Protocol.GestoDoCorpo.Descer);
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--v021teste` e `--diagv021`): a tecla X volta a ser muda. Lido pela propria
+	/// <see cref="SoarODescer"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal bool XSemSomDeTeste;
 
 	/// <summary>
 	/// ============================ O ESTAGIO ANTERIOR DA LINHA -- OU A BASE ============================

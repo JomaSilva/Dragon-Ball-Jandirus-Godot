@@ -94,7 +94,8 @@ public partial class Hud
 		}
 		if (f.Atordoado) l.Add((AvisoDeAtordoado, Tema.Perigo));
 		if (f.Guarda) l.Add((AvisoDeGuarda, Tema.Ki));
-		if (f.Segurando) l.Add(("SEGURANDO ALGUÉM · ande pra arremessar · o soco estrangula", Tema.Destaque));
+		if (f.Estrangulando) l.Add(("ESTRANGULANDO · parado enquanto aperta · o soco afrouxa", Tema.Destaque));
+		else if (f.Segurando) l.Add(("SEGURANDO ALGUÉM · ande pra arremessar · o soco estrangula", Tema.Destaque));
 		return l;
 	}
 }

@@ -186,7 +186,63 @@ public partial class LocalPlayer : Node2D
 
 	/// <summary>O servidor mandou a minha altura. Ver o laco de snapshot em <c>World</c>.</summary>
 	public void ReceberAltura(bool voando, float altitude)
-		=> _altitude = voando ? altitude : 0f;
+	{
+		_altitude = voando ? altitude : 0f;
+		_voando = voando;
+	}
+
+	/// <summary>O bit de voo CRU do servidor (o do mesmo pacote da altura). So a nave pousada pergunta por ele -- ver <see cref="NavePousada"/>.</summary>
+	private bool _voando;
+
+	/// <summary>
+	/// A NAVE ESTA POUSADA (v0.2.1): ao leme, sem voo, num planeta -- a pergunta do `GameServer.NavePousada`. No chao
+	/// ela nao anda, e o cliente nem tenta o passo (o servidor devolveria uma correcao por pacote). Pra sair do
+	/// lugar se decola: a tecla de subir.
+	/// </summary>
+	private bool NavePousada =>
+		AoLeme && !_voando && GameClient.Instance is { } cli && !Jandirus.Core.World.Espaco.EhEspaco(cli.Zone);
+
+	/// <summary>
+	/// O DESTINO QUE ESPERA A DECOLAGEM (v0.2.1) -- coordenada de GALAXIA, e nao deste planeta.
+	///
+	/// Dono (2026-10-13): *"se a nave estiver pousada e vc colocar no nav system pra ir no piloto automatico pra algum
+	/// planeta/sistema, a nave vai decolar sozinha, ir pro espaco e dps ir ate o planeta/sistema"*. Enquanto houver um
+	/// aqui e o corpo estiver ao leme num planeta, o piloto SEGURA A SUBIDA (o mesmo bit da tecla -- quem decola, sobe
+	/// e rompe a atmosfera e o servidor, pelas regras de sempre); chegando ao espaco ele vira o <see cref="Destino"/>.
+	///
+	/// ESTATICO porque atravessa a troca de zona: o corpo local e teleportado na subida, e o teleporte apaga o
+	/// destino comum de proposito ("chegou noutro lugar: o piloto anterior nao vale mais") -- este e justamente o que
+	/// tem de sobreviver a ela. Qualquer tecla de movimento o desliga, como ao outro.
+	/// </summary>
+	public static Vec2? RumoDepoisDeDecolar;
+
+	/// <summary>Liga o piloto que decola: sobe ate o espaco e segue pro destino. Ver <see cref="RumoDepoisDeDecolar"/>.</summary>
+	public static void DecolarERumar(Vec2 destinoNoEspaco) => RumoDepoisDeDecolar = destinoNoEspaco;
+
+	/// <summary>
+	/// O PILOTO QUE DECOLA, por quadro: devolve se ele esta SEGURANDO A SUBIDA agora. No espaco, entrega o destino ao
+	/// piloto comum; fora do leme (desembarcou, a nave se foi), desiste em voz alta.
+	/// </summary>
+	private bool PilotoSegurandoASubida()
+	{
+		if (RumoDepoisDeDecolar is not { } rumo) return false;
+		if (GameClient.Instance is not { } cli) return false;
+
+		if (Jandirus.Core.World.Espaco.EhEspaco(cli.Zone))
+		{
+			RumoDepoisDeDecolar = null;
+			Destino = rumo;
+			Chat.Sistema("a nave saiu do planeta: rumo ao destino.");
+			return false;
+		}
+		if (!AoLeme || _caido)
+		{
+			RumoDepoisDeDecolar = null;
+			Chat.Sistema("piloto automatico desligado.");
+			return false;
+		}
+		return true;
+	}
 
 	/// <summary>
 	/// O SERVIDOR MANDOU: EU ESTOU COM UM RAIO NA MAO (ou parei de estar).
@@ -195,9 +251,13 @@ public partial class LocalPlayer : Node2D
 	/// `World`. Ver o comentario de la -- este estado e do servidor de ponta a ponta, e nao ha versao
 	/// local dele pra espelhar.
 	/// </summary>
-	public void ReceberCanalDeKi(bool canal, bool atirando)
+	/// <param name="soAPose">
+	/// O "canal" e so a POSE de um gesto (o sopro, a bola de ki): ela se desenha, mas o corpo NAO fica plantado --
+	/// o servidor nunca prendeu ninguem por gesto. Ver `EntityState.CanalSoDePose`.
+	/// </param>
+	public void ReceberCanalDeKi(bool canal, bool atirando, bool soAPose = false)
 	{
-		_canalDeKi = canal;
+		_canalDeKi = canal && !soAPose;
 		_raioSaindo = canal && atirando;
 	}
 
@@ -419,6 +479,8 @@ public partial class LocalPlayer : Node2D
 		else _visual.GirarPara(default);
 		_empurrado = ficha.Empurrado;   // o servidor esta dirigindo o corpo: ver _Process
 		_agarrado = ficha.Agarrado;     // ...e este diz que alguem o segura: a tecla de andar vira a luta. Ver `Debatendo`
+		_segurando = ficha.Segurando;           // ...EU seguro alguem: o soco nao e soco, e o aperto. Ver `LerAcoes`
+		_estrangulando = ficha.Estrangulando;   // ...e apertando o pescoco dele eu fico plantado. Ver `PorQueNaoAnda`
 		_puxadoNaFusao = ficha.PuxadoNaFusao;   // ...e este diz que ele NAO esta sendo arremessado
 		_nadando = ficha.Nadando;       // ...e este diz por ONDE ele passa: ver _nadando
 		_visual.MostrarRabo(ficha.Rabo);
@@ -576,6 +638,25 @@ public partial class LocalPlayer : Node2D
 	/// </summary>
 	private bool _puxadoNaFusao;
 
+	/// <summary>EU SEGURO ALGUEM (`SheetState.Segurando`): a tecla de golpe vira o estrangulamento, e NAO toca a pose de soco.</summary>
+	private bool _segurando;
+
+	/// <summary>EU ESTOU APERTANDO O PESCOCO DE ALGUEM (`SheetState.Estrangulando`): o corpo fica plantado.</summary>
+	private bool _estrangulando;
+
+	/// <summary>
+	/// QUEM ME LEVA NO COLO (o node do corpo que me carrega), ou nulo -- do `EntityState.LevadoPor`, pelo `World`.
+	/// Enquanto vale, o meu corpo e desenhado onde ELE e desenhado: o servidor crava a minha posicao na dele todo
+	/// tique, e seguir essas correcoes cruas me poria um decimo de segundo A FRENTE do corpo que me carrega (ele e
+	/// desenhado pela interpolacao). Ver `RemotePlayer.Carregador`, que e a outra metade.
+	/// </summary>
+	private Node2D? _carregador;
+
+	public void ReceberCarregador(Node2D? quem) => _carregador = quem;
+
+	private bool LevadoNoColo =>
+		_agarrado && !RemotePlayer.AgarradoVemAtrasadoDeTeste && _carregador != null && IsInstanceValid(_carregador);
+
 	/// <summary>
 	/// ============================ POR QUE O CORPO NAO ANDA AGORA -- UM LUGAR SO ============================
 	/// Vazio = ele anda. E esta propriedade **e a propria condicao** que zera o vetor de andar la no
@@ -624,11 +705,30 @@ public partial class LocalPlayer : Node2D
 	/// </summary>
 	public static bool AndarBaixaAGuardaDeTeste;
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv021`): agarrado, a tecla de andar volta a nao virar o boneco -- a v0.2.0, em que
+	/// a direcao apertada so contava como luta. Lido pela propria linha, no bloco do `Debatendo`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool AgarradoNaoViraDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv021`): quem estrangula volta a integrar a tecla de andar -- e e corrigido de
+	/// volta pelo servidor a cada pacote. Lido pela propria linha do <see cref="PorQueNaoAnda"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool EstranguladorAndaDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv021`): apertar o golpe com alguem na mao volta a tocar a pose de soco --
+	/// a v0.2.0. Lido pela propria linha, no `LerAcoes`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool EstrangularTocaOSocoDeTeste;
+
 	public string PorQueNaoAnda =>
 		  _semRedeas                             ? "sem as redeas (o servidor dirige)"
 		: _empurrado                             ? "arremessado"
 		: _caido                                 ? "caido (nocaute ou morte)"
 		: _agarrado                              ? "agarrado (a tecla de andar e a luta pra se soltar)"
+		: _estrangulando && !EstranguladorAndaDeTeste ? "estrangulando alguem (afrouxe o aperto pra andar)"
 		: _carregando                            ? "carregando Ki (C)"
 		: _canalDeKi                             ? "com um canal de Ki de pe"
 		: Foco.Digitando                         ? "campo de texto em foco"
@@ -637,6 +737,7 @@ public partial class LocalPlayer : Node2D
 		: Transformacao.PrendendoOCorpo           ? "preso pela cinematica de transformacao"
 		: Prensado                                ? "prensado pela gravidade (ou pelo peso)"
 		: PresoNoTorneio                          ? "na area de espera do torneio"
+		: NavePousada                             ? "a nave esta pousada (suba pra decolar)"
 		: SemPernasNoChao                         ? MotivoSemPernas
 		: "";
 
@@ -819,9 +920,24 @@ public partial class LocalPlayer : Node2D
 		// SEM AS DUAS PERNAS o corpo so sai do lugar voando (`movement handler.dm:133`). O servidor recusa o passo
 		// pelo `PodeMexerOCorpo`, e aqui ele nem e tentado -- mas quem aperta uma direcao le o PORQUE (a frase e do
 		// Core, a mesma regra que o servidor aplica), em vez de achar que o teclado morreu.
+		// (2026-10-13) NO COLO DE ALGUEM, O MEU CORPO ESTA ONDE ELE ESTA DESENHADO -- ver `_carregador`.
+		if (LevadoNoColo) _pos = new Vec2(_carregador!.Position.X, _carregador.Position.Y);
+
 		string porQueNaoAnda = PorQueNaoAnda;
 		if (porQueNaoAnda == MotivoSemPernas && TeclaDeAndarApertada())
 			AvisarDoMembro(Jandirus.Core.Combat.DebuffsDeMembro.AvisoDeChao);
+
+		// (2026-10-13) AGARRADO, A TECLA DE ANDAR SO VIRA O CORPO: *"ele so fica virando de direçao conforme a direçao
+		// q o jogador agarrado apertou, mas ele n vai tocar animaçao de andar, nem se mover de verdade"*. O passo
+		// continua zerado logo abaixo (o `PorQueNaoAnda`), e a animacao de andar com ele; so o olhar muda -- o mesmo
+		// que o servidor escreve pros outros (`GameServer.AplicarInput`).
+		if (Debatendo && !AgarradoNaoViraDeTeste)
+		{
+			var apertado = new Vec2(
+				Godot.Input.GetActionStrength(Teclas.NomeNoMotor("move_right")) - Godot.Input.GetActionStrength(Teclas.NomeNoMotor("move_left")),
+				Godot.Input.GetActionStrength(Teclas.NomeNoMotor("move_down")) - Godot.Input.GetActionStrength(Teclas.NomeNoMotor("move_up")));
+			if (apertado.LengthSquared > 1e-6f) _facing = MoveRules.FacingFrom(apertado, _facing);
+		}
 
 		var input = porQueNaoAnda.Length > 0
 			? Vector2.Zero   // no chao nao se anda: ver OnSheet
@@ -868,6 +984,12 @@ public partial class LocalPlayer : Node2D
 		{
 			// encostou numa tecla: assume o controle. Piloto que ignora o piloto e um sequestro.
 			Destino = null;
+			Chat.Sistema("piloto automatico desligado.");
+		}
+		// (v0.2.1) ...e o piloto que ainda esta DECOLANDO larga do mesmo jeito -- ver `RumoDepoisDeDecolar`.
+		if (tentandoAndar && RumoDepoisDeDecolar != null)
+		{
+			RumoDepoisDeDecolar = null;
 			Chat.Sistema("piloto automatico desligado.");
 		}
 
@@ -1061,6 +1183,8 @@ public partial class LocalPlayer : Node2D
 		// ==================================================================================================================
 		bool subir = !Foco.AtalhosMudos && !PresoNoTorneio && Godot.Input.IsActionPressed(Teclas.NomeNoMotor("subir"));
 		bool descer = !Foco.AtalhosMudos && !PresoNoTorneio && Godot.Input.IsActionPressed(Teclas.NomeNoMotor("descer"));
+		// (v0.2.1) O PILOTO QUE DECOLA SEGURA A SUBIDA: o mesmo bit da tecla, e quem responde e o servidor.
+		if (PilotoSegurandoASubida()) { subir = true; descer = false; }
 
 		// V ALTERNA O VOO. Vai pelo canal de habilidade -- e o MESMO caminho do verb do menu, pra
 		// que a tecla e o botao nao virem duas regras que precisam concordar.
@@ -1339,7 +1463,11 @@ public partial class LocalPlayer : Node2D
 			_ataqueAte = dura;
 			// a animacao e ESTICADA pra caber no golpe: com a cadencia nova (~0,33 s) o ciclo
 			// que veio do .dmi (~0,8 s) nao terminaria antes do proximo soco
-			_visual.RestartState("attack", dura);
+			//
+			// (2026-10-13) COM ALGUEM NA MAO O GOLPE NAO E SOCO: ele alterna o estrangulamento
+			// (`GameServer.EstrangularEmVezDeSocar`), e a pose de soco nao toca -- *"estrangular um inimigo q ta no
+			// teu grab, nao deveria tocar a animaçao de socar"*. O pedido continua indo: quem aperta e o servidor.
+			if (!_segurando || EstrangularTocaOSocoDeTeste) _visual.RestartState("attack", dura);
 			GameClient.Instance?.SendAction(golpe);
 		}
 
@@ -1919,6 +2047,8 @@ public partial class LocalPlayer : Node2D
 		// a fera assumir) vira ALVO. Aplicada crua, ela teleportaria o corpo entre dois quadros e
 		// desfaria a perseguicao -- que e o proprio deslize voltando por outra porta.
 		if (_semRedeas) { _alvoDaPosse = pos; return; }
+		// NO COLO, a posicao e a do corpo que me leva, DESENHADO (2026-10-13): a correcao crua me poria a frente dele.
+		if (LevadoNoColo) return;
 		_pos = pos;
 		Desenhar();
 	}

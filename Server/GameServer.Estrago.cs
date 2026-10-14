@@ -286,6 +286,7 @@ public partial class GameServer
 		// interacao principal do Mafuba no jogo original: quem quer o preso de volta nao precisa
 		// bater no preso, precisa achar o pote. Ver `GameServer.Selo.cs`.
 		PoteFoiAoChao(o);
+		OQueEstavaGuardadoCai(o);   // (v0.2.1) o deposito destruido larga no chao o que guardava -- `GameServer.TechDeBolso.cs`
 
 		_noChao.Remove(o);
 		if (!o.DoMapa) GravarMundo();
@@ -356,6 +357,147 @@ public partial class GameServer
 		// sabe desenhar (poeira, faisca, terra batida) -- ver `World.AplicarEstrago`.
 		MandarCelulaCaida(zona, cx, cy);
 	}
+
+	// =====================================================================
+	// O KI CONTRA O CENARIO (dono, 2026-10-13)
+	// =====================================================================
+	/// <summary>
+	/// **UM TIRO DE KI BATEU NESTA CELULA** -- *"esferas de ki, kiai etc deveriam quebrar paredes assim como soco"*.
+	///
+	/// A REGRA E A DO SOCO, degrau por degrau (<see cref="SocarCenario"/>): quem OCUPA a celula responde por ela, na
+	/// mesma ordem -- a obra pela armadura acumulada, a nave idem, o bloco erguido pela resistencia dele com o
+	/// sorteio do soco, a rocha de minerio aguenta, e o tile denso cai com `prob(34)` se a forca alcanca a
+	/// resistencia do cenario. O QUE MUDA: a forca e o poder do TIRO, e ninguem e avisado linha a linha (o autor
+	/// esta a uma tela de distancia; a parede que range nao e assunto do chat dele). A ARVORE entra pela regra do
+	/// tile -- vira toco e rebrota, sem pagar madeira a ninguem (o pagamento e so do soco: ver `SocarArvore`).
+	///
+	/// No DM a bola que encosta em turf denso ou em obj `fragile`/`density` chama `explode()` (`objects.dm:557-566`),
+	/// e e a explosao que decide se o turf cai (`Resistance &lt;= strength/dist`, `prob(80)`). Aqui a bola comum fica
+	/// com a chance do soco, que e o que o dono pediu; os 80% sao do estouro grande (<see cref="EstragarOCenarioNaExplosao"/>).
+	/// Devolve se havia cenario ali.
+	/// </summary>
+	private bool BaterNoCenarioComKi(ZoneKey zona, int cx, int cy, double forca, ServerPlayer? autor)
+	{
+		if (KiContraCorpo.KiNaoEstragaCenarioDeTeste) return false;
+
+		if (ObraNaCelula(zona, cx, cy) is { } obra) { Estragar(obra, forca, null); return true; }
+		if (NaveNaCelula(zona, cx, cy) is { } nave) { EstragarNave(nave, forca, null); return true; }
+		if (BlocoQueBarra(zona, cx, cy) is { } bloco)
+		{
+			double limiar = BlocoCaiComoCenarioDeTeste ? Empurrao.ResistenciaPadrao : bloco.Resistencia;
+			if (forca >= limiar && _rng.NextDouble() < ChanceDoSocoDerrubar) DerrubarBloco(bloco, autor);
+			return true;
+		}
+		if (RochaNaCelula(zona, cx, cy)) return true;
+
+		if (MapaDaZonaOuCatalogo(zona) is not { } mapa || !ClasseDeAgua.SocoAlcanca(mapa, cx, cy)) return false;
+		if (mapa.NaBorda(cx, cy) || mapa.Indestrutivel(cx, cy)) return true;
+		if (forca >= Empurrao.ResistenciaPadrao && _rng.NextDouble() < ChanceDoSocoDerrubar && DerrubarCelula(zona, cx, cy))
+			CelulasQuebradasPorKiDeTeste++;
+		return true;
+	}
+
+	/// <summary>
+	/// **A EXPLOSAO DE KI NO CENARIO** -- *"explosoes de ataque de ki como esferas grandes e beams alem da cratera
+	/// devem dar dano em area na regiao da explosao, paredes e construçoes tb levam o dano, podendo destruid varias
+	/// paredes em volta da explosao e tiles de chao tb"*.
+	///
+	/// Toda celula dentro do raio recebe a forca do tiro descontada pela distancia -- a MESMA reta que fere os
+	/// corpos (`KiContraCorpo.FracaoDaExplosao`: inteira no centro, um quarto na beirada):
+	///   * a OBRA e a NAVE levam a pancada na armadura, UMA vez por explosao (a que ocupa duas celulas nao apanha
+	///     em dobro), pelas portas de sempre (<see cref="Estragar"/>, `EstragarNave`);
+	///   * o BLOCO ERGUIDO cai se a forca alcanca a resistencia dele (`DerrubarBlocoSeAguenta`, sem sorteio --
+	///     como o corpo arremessado);
+	///   * a PAREDE do mapa cai com `KiContraCorpo.ChanceDeParedeNaExplosao`, e o CHAO racha com uma chance que
+	///     desce do centro pra beirada (`ChanceDeChaoNaExplosao`), os dois pelo limiar de sempre.
+	/// Quem recusa continua recusando no lugar de sempre: a beirada do mundo, o que nao se quebra, o Outro Mundo, a
+	/// rocha de minerio (`DerrubarCelula`). A agua e a nuvem nao racham.
+	///
+	/// UMA PASSADA PELAS OBRAS, e nao uma por celula: o `ObraNaCelula` varre a lista inteira do servidor, e um
+	/// estouro de oito tiles de raio perguntaria isso 289 vezes.
+	/// Devolve quantas celulas cederam.
+	/// </summary>
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`, familia K3): o estouro nao confere se a zona TEM chave -- e numa zona
+	/// sem ninguem (o tiro de quem saiu do planeta) o catalogo e perguntado por um nome nulo e o tique estoura.
+	/// </summary>
+	internal static bool EstouroSemConferirAZonaDeTeste;
+
+	private int EstragarOCenarioNaExplosao(ZoneKey zona, Vec2 onde, double raioPx, double forca, ServerPlayer? autor)
+	{
+		if (KiContraCorpo.KiNaoEstragaCenarioDeTeste || raioPx <= 0) return 0;
+
+		// A ZONA SEM NINGUEM NAO TEM CHAVE. A lista de tiros so guarda o HASH da zona, e a chave inteira sai do
+		// primeiro corpo que estiver nela (`MapaDaZonaDoHash`) -- sem corpo nenhum ela vem vazia, com o nome nulo. E
+		// o caso do tiro de quem saiu do planeta (deslogou, decolou, morreu) antes de a bola acabar: ela chega ao fim
+		// do alcance num mundo vazio. Sem esta linha o catalogo era perguntado por um nome nulo e a excecao subia
+		// ate o `Tick()` -- o resto daquele quadro (os outros tiros, os embates, o retrato do mundo) nao rodava.
+		// Nao ha o que estragar que alguem va ver: sem chave nao se acha nem o mapa, nem as obras, nem os blocos.
+		if (zona.Name is null && !EstouroSemConferirAZonaDeTeste) return 0;
+		if (MapaDaZonaOuCatalogo(zona) is not { } mapa) return 0;
+
+		const int T = ZoneCollision.TileSize;
+		int cx0 = (int)Math.Floor(onde.X / T), cy0 = (int)Math.Floor(onde.Y / T);
+		int alcance = (int)Math.Ceiling(raioPx / T);
+
+		// QUEM ESTA DE PE NA REGIAO, numa passada so.
+		var obras = new Dictionary<(int, int), Obra>();
+		foreach (Obra o in _noChao)
+		{
+			if (!o.Zona.Equals(zona)) continue;
+			(int ox, int oy) = CatalogoDeObras.Celula(o.X, o.Y);
+			if (Math.Abs(ox - cx0) <= alcance && Math.Abs(oy - cy0) <= alcance) obras.TryAdd((ox, oy), o);
+		}
+		var naves = new Dictionary<(int, int), Nave>();
+		foreach (Nave n in NavesParadasEm(zona))
+		{
+			(int nx, int ny) = CatalogoDeObras.Celula(n.X, n.Y);
+			if (Math.Abs(nx - cx0) <= alcance && Math.Abs(ny - cy0) <= alcance) naves.TryAdd((nx, ny), n);
+		}
+
+		int cederam = 0;
+		for (int dy = -alcance; dy <= alcance; dy++)
+			for (int dx = -alcance; dx <= alcance; dx++)
+			{
+				int cx = cx0 + dx, cy = cy0 + dy;
+				if (cx < 0 || cy < 0 || cx >= mapa.Width || cy >= mapa.Height) continue;
+
+				double distancia = Vec2.Distance(mapa.CentroDaCelula(cx, cy), onde);
+				if (distancia > raioPx) continue;
+				double fracao = distancia / raioPx;
+				double chega = forca * KiContraCorpo.FracaoDaExplosao(fracao);
+
+				// QUEM OCUPA A CELULA RESPONDE POR ELA -- a ordem do soco.
+				if (obras.Remove((cx, cy), out Obra? obra))
+				{
+					double antes = obra.Armadura;
+					Estragar(obra, chega, null);
+					if (obra.Armadura < antes) cederam++;
+					continue;
+				}
+				if (naves.Remove((cx, cy), out Nave? nave)) { EstragarNave(nave, chega, null); continue; }
+				if (BlocoEm(zona, cx, cy) is { } bloco)
+				{
+					if (DerrubarBlocoSeAguenta(bloco, chega, autor)) cederam++;
+					continue;
+				}
+
+				if (chega < Empurrao.ResistenciaPadrao) continue;
+				if (mapa.NaBorda(cx, cy) || mapa.EhAgua(cx, cy) || mapa.EhNuvem(cx, cy)) continue;
+
+				double chance = mapa.BlockedCell(cx, cy)
+					? KiContraCorpo.ChanceDeParedeNaExplosao
+					: KiContraCorpo.ChanceDeChaoNaExplosao(fracao);
+				if (_rng.NextDouble() >= chance) continue;
+				if (DerrubarCelula(zona, cx, cy)) cederam++;
+			}
+
+		CelulasQuebradasPorKiDeTeste += cederam;
+		return cederam;
+	}
+
+	/// <summary>Quantas celulas de cenario o ki derrubou neste processo (a batida e a explosao). So pra bancada (`--v021teste`).</summary>
+	internal int CelulasQuebradasPorKiDeTeste;
 
 	/// <summary>
 	/// A obra que ocupa uma celula, se houver.

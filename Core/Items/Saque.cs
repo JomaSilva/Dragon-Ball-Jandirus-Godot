@@ -24,11 +24,17 @@ namespace Jandirus.Core.Items;
 /// (`RoupaGuardada`). A linha vai MARCADA (<see cref="NoCorpo"/>) pra as duas pontas saberem que ela esta no corpo e
 /// nao na mochila -- o caido pode ter a mesma peca nos dois lugares.
 ///
-/// ============================ O ZENNI NAO VEIO, E ISSO E O ORIGINAL ============================
-/// A lista do DM oferece "Zenni", mas o ramo que o levaria compara a variavel errada (`else if(choice ==
-/// "Zenni")`, onde `choice` e o MOB escolhido um passo antes): ele nunca dispara, e ninguem jamais roubou
-/// zenni naquele jogo. O que se porta e o que o original FAZ. Se o dono quiser o roubo de zenni, e uma
-/// decisao de jogo (quanto, de quem, com que limite) e nao um conserto.
+/// ============================ (2026-10-13) O ZENNI E O RECURSO SAEM -- REGRA DO DONO ============================
+/// *"tb ter como roubar recursos e zeni de nocauteados (npc ou player)"*.
+///
+/// A lista do DM ja oferecia "Zenni", e o ramo que o levaria nunca disparou: compara a variavel errada (`else
+/// if(choice == "Zenni")`, onde `choice` e o MOB escolhido um passo antes). Ninguem jamais roubou zenni naquele
+/// jogo -- mas o que o ramo FARIA esta escrito, e e o que veio: **tudo o que o caido carrega**, de uma vez
+/// (`zenni+=M.zenni`, `M.zenni=0`, `Grabbing.dm:25-28`), com o aviso pra quem esta a vista. O recurso e o mesmo
+/// gesto com o outro saldo (no DM recurso era zeni). O que esta no BANCO nao esta com ele, e nao sai.
+///
+/// A carteira entra na lista por duas linhas proprias (<see cref="Zeni"/> e <see cref="Recursos"/>), que nao sao
+/// item nenhum: a quantia viaja a parte, no fim do `S2C.Saque`. A carcaca de um bicho nao tem carteira.
 /// </summary>
 public static class Saque
 {
@@ -58,6 +64,25 @@ public static class Saque
 	/// guardada (`Roupa|...` ou `Armadura|...`), que e o que cai na mochila de quem leva.
 	/// </summary>
 	public const string NoCorpo = "@";
+
+	/// <summary>
+	/// AS DUAS LINHAS DA CARTEIRA do caido no verbo: `saquear $zeni` leva todo o zeni que ele carrega, e
+	/// `saquear $recursos` todo o recurso. O `$` nao aparece em id de item nenhum.
+	/// </summary>
+	public const string Zeni = "$zeni", Recursos = "$recursos";
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--v021teste` e `--diagv021`): a carteira do caido fica com ele -- o saque de antes de
+	/// 2026-10-13. Lido pela propria <see cref="CarteiraQueDaPraLevar"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool CarteiraFicaDeTeste;
+
+	/// <summary>
+	/// O QUE DA PRA ROUBAR DA CARTEIRA de quem esta caido: tudo o que ele carrega, em quantia inteira (`Grabbing.dm:27`).
+	/// Zero nos dois pra carcaca de bicho.
+	/// </summary>
+	public static (double Zeni, double Recursos) CarteiraQueDaPraLevar(double zeni, double recursos, bool carcaca) =>
+		carcaca || CarteiraFicaDeTeste ? (0, 0) : (Math.Max(Math.Floor(zeni), 0), Math.Max(Math.Floor(recursos), 0));
 
 	/// <summary>A linha do saque de uma peca vestida.</summary>
 	public static string IdDaVestida(Appearance.PecaDeRoupa peca) => NoCorpo + RoupaGuardada.De(peca).Id;

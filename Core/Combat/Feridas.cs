@@ -143,6 +143,34 @@ public static class Feridas
 	/// inteiro nao sao "um braco meio quebrado". A media apagaria justamente o membro que o
 	/// jogador mirou.
 	/// </summary>
+	// =====================================================================
+	// O MAJIN NAO SANGRA (dono, 2026-10-13)
+	// =====================================================================
+	// *"majin n deveria sangrar, majin é o unico caso do jogo onde n deve ter efeito de sangue ao se ferir e tb n
+	// ter ferimentos no corpo, o maximo é desmembrado ai o jogo remove o membro do majin (mas eles regeneram
+	// sozinho entao dps de um tempo volta ao normal)"*.
+	//
+	// A MASCARA E O UNICO LUGAR ONDE ISSO PRECISA SER DITO: e dela que o cliente tira o roxo e o sangue do corpo,
+	// o rasgo da roupa e a poca que respinga no chao (`World.Decalques`). Sem os cinco bytes de zona -- so o de
+	// amputacao -- o corpo do Majin fica limpo em toda tela, e o membro arrancado continua sumindo do desenho.
+	// O jato do instante do corte e a peca ensanguentada no chao tem porta propria (`NaoSangra`).
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): o Majin volta a sangrar como todo mundo -- a v0.2.0. Lido pela
+	/// propria <see cref="NaoSangra"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool MajinSangraDeTeste;
+
+	/// <summary>ESTA RACA NAO SANGRA NEM MOSTRA FERIDA? So o Majin.</summary>
+	public static bool NaoSangra(string? raca) => raca == "Majin" && !MajinSangraDeTeste;
+
+	/// <summary>A mesma mascara, so com o que foi ARRANCADO: sem roxo, sem sangue, sem rasgo.</summary>
+	public static MascaraDeFeridas SoAmputacoes(MascaraDeFeridas m) => new(0, 0, 0, 0, 0, m.AmputadosBruto);
+
+	/// <summary>A mascara que a TELA recebe deste corpo: a de <see cref="De(Body)"/>, ou so as amputacoes pra quem nao sangra.</summary>
+	public static MascaraDeFeridas NaTela(Body corpo, string? raca) =>
+		NaoSangra(raca) ? SoAmputacoes(De(corpo)) : De(corpo);
+
 	public static MascaraDeFeridas De(Body corpo)
 	{
 		Span<byte> z = stackalloc byte[MascaraDeFeridas.Zonas];

@@ -190,6 +190,18 @@ public sealed partial class GameServer
 			Zerar = ZerarConstrucoes,
 		});
 
+		// ---------------------------------------------------------- o cofre da tech de bolso (v0.2.1)
+		// O que os itens guardam fora do id: o texto de um livro, as amostras de um recipiente de DNA.
+		_sistemasDoMundo.Add(new SistemaDoMundo
+		{
+			Nome = "o que os itens de tecnologia guardam (textos e amostras)",
+			Arquivos = [ArquivoDoCofreDeTech],
+			Unidade = "registro(s)",
+			Contar = () => _cofreDeTech.Textos.Count + _cofreDeTech.Amostras.Count + _cofreDeTech.Numeros.Count + _cofreDeTech.Plantas.Count
+						   + _cofreDeTech.Biblioteca.Count + _cofreDeTech.Companheiros.Count,
+			Zerar = () => { _cofreDeTech = new CofreDeTech(); _pescarias.Clear(); _bauAberto.Clear(); },
+		});
+
 		// ---------------------------------------------------------- bases
 		_sistemasDoMundo.Add(new SistemaDoMundo
 		{

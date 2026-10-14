@@ -1135,7 +1135,12 @@ public sealed partial class GameServer
 	/// Age/1.1` (o port nao tem `Body` nem `InclineAge`), e o `up_life_bonus` de 15% na expectativa
 	/// de vida (a tabela de idade do port e por raca e nao tem esse bonus).
 	/// </summary>
-	private void DespertarPotencialG11(ServerPlayer alvo, ServerPlayer quem)
+	/// <param name="autor">
+	/// QUEM APARECE NA FRASE como o autor do despertar, quando nao e o <paramref name="quem"/> -- o dragao, no desejo
+	/// "Liberar o meu potencial" (`GameServer.Desejos.DesejoDePotencial`): la quem pede e quem recebe sao o mesmo
+	/// corpo, e a frase diria que ele despertou a si mesmo.
+	/// </param>
+	private void DespertarPotencialG11(ServerPlayer alvo, ServerPlayer quem, string? autor = null)
 	{
 		Fighter f = alvo.Ficha;
 		if (f.unlockPotential >= 1) { Avisar(quem, "esse potencial ja foi despertado!"); return; }
@@ -1165,7 +1170,10 @@ public sealed partial class GameServer
 		MandarFicha(alvo);
 		if (EhJogador(alvo)) Persistir(alvo);
 
-		AvisarPertoG3(alvo, RaioDaVista, $"{quem.Name} desperta o potencial de {alvo.Name}!");
+		// (2026-10-13) O POTENCIAL DESPERTO APARECE NA PELE DO NAMEKUSEIJIN -- ver `Catalogo.PotencialMarcaAPele`.
+		ReapresentarOCorpo(alvo);
+
+		AvisarPertoG3(alvo, RaioDaVista, $"{autor ?? quem.Name} desperta o potencial de {alvo.Name}!");
 		string msg = $"seu potencial desperta! +{gainedBase:N0} de BP base";
 		if (gainedHidden > 0) msg += $" e +{gainedHidden:N0} do potencial acumulado (treino/idade)";
 		Avisar(alvo, msg + ".");

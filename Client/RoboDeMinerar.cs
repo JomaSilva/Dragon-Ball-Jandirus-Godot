@@ -38,7 +38,8 @@ namespace Jandirus.Client;
 ///   8. A reserva SECA: o servidor para, a faixa some, e o que entrou no bolso e o que o planeta tinha; e num
 ///      planeta esgotado o verb e recusado sem o corpo local ficar "minerando".
 ///   9. O "CAVAR" SAIU (dono: *"tire a opcao de cavar da pa e furadeira pq e redundante"*): na mochila, o painel
-///      da pa so tem "Jogar fora"; a dica dela (no slot e no card da aba Tech) diz o que ela faz agora; e o
+///      da pa so tem o botao de todo item ("Largar no chão" desde a v0.2.1; era "Jogar fora"); a dica dela (no
+///      slot e no card da aba Tech) diz o que ela faz agora; e o
 ///      comando antigo, mandado a mao, e recusado sem render nada. Contraprova: o botao que volta.
 ///  10. NA CAVERNA DO PLANETA SE MINERA (dono, 2026-10-11: *"essa e a unica excessao de mapa de interior"*): o
 ///      corpo viaja pra `Earth_Cave`, o verb comeca, o chat e a faixa dizem que o chao e do PLANETA, e o que
@@ -776,8 +777,9 @@ public partial class RoboDeMinerar : Node
 		static bool EhDeCavar(string texto) => texto.Contains("cavar", StringComparison.OrdinalIgnoreCase);
 
 		(string dica, List<string> botoes) = await PainelDaPa();
-		Conferir(botoes.Count == 1 && botoes[0] == "Jogar fora" && !botoes.Any(EhDeCavar),
-			"**NAO HA MAIS BOTAO DE CAVAR**: clicar na pa, na mochila, abre o painel so com \"Jogar fora\" (o de todo item)",
+		// (v0.2.1) O BOTAO DE TODO ITEM E "Largar no chão": ate a v0.2.0 ele era "Jogar fora", e apagava o item.
+		Conferir(botoes.Count == 1 && botoes[0] == "Largar no chão" && !botoes.Any(EhDeCavar),
+			"**NAO HA MAIS BOTAO DE CAVAR**: clicar na pa, na mochila, abre o painel so com \"Largar no chão\" (o de todo item)",
 			string.Join(" | ", botoes));
 		Conferir(dica == $"Pá\n{daPa}" && daPa.Contains("minerar mais rápido") && !EhDeCavar(dica),
 			"...e a dica do slot diz o que ela faz AGORA: na mochila, minera-se mais rapido (com os numeros e o caminho do verb)",

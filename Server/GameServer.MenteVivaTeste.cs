@@ -1180,7 +1180,7 @@ public partial class GameServer
 
 			// B DECLAROU A AMIGO: sem a declaracao, `LutoPorQueda` recusa e a familia 6 mediria o nada.
 			DeclararDeTeste(b, a, Relacao.Bom);
-			b.RaivaLendariaAte = b.FuriaExtremaAte = 0;
+			b.RaivaComumAte = b.FuriaExtremaAte = 0;
 			a.Ficha.zenkaiReady = 0;
 			double bpAntes = a.Ficha.BP;
 
@@ -1189,8 +1189,8 @@ public partial class GameServer
 			AfirmarMvv("DENTRO da mente, perder nao paga Zenkai",
 					   Math.Abs(a.Ficha.BP - bpAntes) < 1e-6, $"{a.Ficha.BP:0} != {bpAntes:0}");
 			AfirmarMvv("DENTRO da mente, ver o amigo cair nao acende raiva de verdade",
-					   b.RaivaLendariaAte == 0 && b.FuriaExtremaAte == 0,
-					   $"{b.RaivaLendariaAte} / {b.FuriaExtremaAte}");
+					   b.RaivaComumAte == 0 && b.FuriaExtremaAte == 0,
+					   $"{b.RaivaComumAte} / {b.FuriaExtremaAte}");
 		}
 
 		// ============================ A SAIDA: CADA UM NO SEU CORPO ============================
@@ -1252,7 +1252,7 @@ public partial class GameServer
 		if (carrasco != null)
 		{
 			MoveToZone(carrasco.Id, fora, a.Pos + new Vec2(48, 0));
-			b.RaivaLendariaAte = b.FuriaExtremaAte = 0;
+			b.RaivaComumAte = b.FuriaExtremaAte = 0;
 			a.Ficha.zenkaiReady = 0;
 			double bpAntes = a.Ficha.BP;
 
@@ -1261,8 +1261,8 @@ public partial class GameServer
 			AfirmarMvv("FORA da mente a mesma derrota PAGA Zenkai",
 					   a.Ficha.BP > bpAntes + 1e-6, $"{a.Ficha.BP:0} == {bpAntes:0}");
 			AfirmarMvv("FORA da mente ver o amigo cair ACENDE raiva de verdade",
-					   b.FuriaExtremaAte > 0 || b.RaivaLendariaAte > 0,
-					   $"{b.RaivaLendariaAte} / {b.FuriaExtremaAte}");
+					   b.FuriaExtremaAte > 0 || b.RaivaComumAte > 0,
+					   $"{b.RaivaComumAte} / {b.FuriaExtremaAte}");
 		}
 
 		foreach (ServerPlayer p in new[] { a, b })
@@ -1270,7 +1270,7 @@ public partial class GameServer
 			CurarPorInteiro(p);
 			PorBp(p, 500_000);
 			p.Ficha.med = false;
-			p.RaivaLendariaAte = p.FuriaExtremaAte = 0;
+			p.RaivaComumAte = p.FuriaExtremaAte = 0;
 		}
 	}
 

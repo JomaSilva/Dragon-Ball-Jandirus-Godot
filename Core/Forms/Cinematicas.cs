@@ -2653,6 +2653,18 @@ public static class Cinematicas
 		"Deixa as faíscas voarem!",
 		"o corpo cresce e endurece, e o poder verde que estava guardado sai inteiro de uma vez.");
 
+	/// <summary>
+	/// ORANGE -- a forma que o dragao da ao Namekuseijin (dono, 2026-10-13). NAO TEM PAR NO DM, entao nao ha proc de
+	/// cena pra portar: ela ganha o surto curto das formas que o original troca no mesmo tique, com o piso de la
+	/// (<see cref="SurtoInstantaneo"/>) -- o mesmo desenho do Super Namekuseijin, da mesma linha. CENA PROPRIA, e nao a
+	/// do degrau de baixo: a bancada `--diagforma` nao deixa uma forma estrear com a cena de outra, e sem cena nenhuma
+	/// ela estreava muda e instantanea (foi assim que ela nasceu, e a regressao de 13/10 acusou).
+	/// </summary>
+	public static readonly Cinematica Orange = SurtoCurto(
+		Catalogo.IdOrange, "", SurtoInstantaneo,
+		"Este é o meu potencial!",
+		"a pele se acende em laranja e o corpo cresce: o que o dragão despertou nele vem todo à tona.");
+
 	/// <summary>MAX POWER (Heran). A espinha Saiyajin com a largada dos tremores -- ver o bloco acima.</summary>
 	public static readonly Cinematica Heran1 = EspinhaSaiyajin(
 		"heran1", "", Largada.TresTremores,
@@ -3391,8 +3403,8 @@ public static class Cinematicas
 		// a escada do Frost Demon -- as quatro supressoes, a base e as duas evolucoes
 		Frost1, Frost2, Frost3, Frost4, Frost5, Frost6, Frost7,
 
-		// as tres linhas raciais: uma entrada Namekuseijin, duas Heran, duas Alien
-		SuperNamek, Heran1, Heran2, Alien1, Alien2,
+		// as tres linhas raciais: duas entradas Namekuseijin (o Super e o Orange), duas Heran, duas Alien
+		SuperNamek, Orange, Heran1, Heran2, Alien1, Alien2,
 
 		// a forma do titulo de Deus da Destruicao
 		GodFury,

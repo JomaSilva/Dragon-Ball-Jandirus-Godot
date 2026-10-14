@@ -29,6 +29,19 @@ public static class GainKnobs
 	public static double GlobalGravGain = 1;
 
 	/// <summary>
+	/// **QUANTO DO GANHO DE BP A MEDITACAO REALIZA** -- dono, 2026-10-13: *"meditar e training (botao t) tao dano o
+	/// mesmo bp/s oq n deveria ser assim, train por consumir vigor deveria dar mais bp/s q o meditate (o train pode
+	/// manter os ganhos atuais q ja ta legal), o meditate q deveria ganhar menos bp pq ele n cansa e ainda ganha
+	/// energia"*.
+	///
+	/// POR QUE OS DOIS RENDIAM IGUAL: o `MedGain` tem DUAS parcelas, como no DM -- a da atividade (um vinte e
+	/// quatro avos da base) e a do potencial escondido virando poder (`hiddenpotential/30`). A segunda quase nao
+	/// difere da do treino (`/32`), e em quem tem potencial alto ela e o ganho inteiro: sentado ou suando, o numero
+	/// subia igual. O fator vale pras DUAS parcelas. DIVERGENCIA DECLARADA do DM; o treino nao muda.
+	/// </summary>
+	public static double MeditarRende = 0.4;
+
+	/// <summary>
 	/// A TAXA GLOBAL DO EXP DE SKILL DE KI -- `var/GlobalKiExpRate = 1` (`KiStatsModule.dm:3`).
 	///
 	/// Ela NAO e irma das quatro de cima: aquelas multiplicam ganho de BP, esta multiplica o exp das
@@ -88,8 +101,41 @@ public static class GainKnobs
 	public static double FightGainCap = 2;
 	/// <summary>Teto do bonus treinando com o PROPRIO mestre (o geral e 2x).</summary>
 	public static double MasterGainCap = 3;
-	/// <summary>Diferenca minima de poder pro bonus do mestre valer.</summary>
-	public static double MasterGainFloor = 1.2;
+
+	/// <summary>
+	/// O PISO DO BONUS DO MESTRE (dono, 2026-10-13: *"treinar com o seu mestre (do sistema de mestre e aluno) deveria
+	/// dar um bonus de ganhos de bp, alunos treinando com alunos tb deveriam ganhar um bonus de ganho mas menor do q
+	/// treinar com o mestre"*): contra o proprio mestre o ganho nunca e menor que isto, seja qual for o poder dele.
+	///
+	/// DIVERGENCIA DECLARADA. No DM o bonus do mestre so valia com ele pelo menos 1,2x mais forte em BP base
+	/// (`MST_GAIN_FLOOR`, `combatgains.dm:98`): abaixo disso treinar com o mestre rendia o mesmo que treinar com um
+	/// estranho, e o aluno que alcancava o mestre perdia o bonus calado -- e passaria a render MAIS com um colega do
+	/// que com o mestre, o contrario da frase. Com ela o bonus vale SEMPRE, e fica acima do de colega
+	/// (<see cref="ColegaDeMestreGain"/>) em qualquer poder. Entre o piso e o teto a escala continua a do original:
+	/// linear pela razao dos BPs base.
+	/// </summary>
+	public static double MasterGainMin = 2;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--mestreteste` e `--v021teste`): o bonus do mestre volta a depender so do gap -- com
+	/// o mestre do mesmo poder, treinar com ele nao rende nada a mais. Lido pelo `Fighter.FightGainMult`. Falso em
+	/// jogo, sempre.
+	/// </summary>
+	public static bool MestreSemPisoDeTeste;
+
+	/// <summary>
+	/// O BONUS DE TREINAR COM UM COLEGA -- outro aluno do MESMO mestre (dono, 2026-10-13: *"alunos treinando com
+	/// alunos tb deveriam ganhar um bonus de ganho mas menor do q treinar com o mestre"*). Fixo, e metade do teto do
+	/// mestre: os dois alunos podem ter o mesmo poder, e um bonus que dependesse do gap (como o do mestre) nao
+	/// renderia nada justamente pro par mais comum. NAO EXISTE NO DM -- la o `fight_gain_mult` so conhece o mestre.
+	/// </summary>
+	public static double ColegaDeMestreGain = 1.5;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): treinar com um colega de mestre volta a nao render nada a mais -- a
+	/// v0.2.0. Lido pelo `Fighter.FightGainMult`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool ColegaSemBonusDeTeste;
 
 	// --- zonas especiais -------------------------------------------------------
 	/// <summary>Sala do Tempo: 1 dia la = 1 ano de treino (28 dias x 10 meses).</summary>

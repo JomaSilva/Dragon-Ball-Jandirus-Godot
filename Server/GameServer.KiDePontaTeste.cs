@@ -616,9 +616,26 @@ public partial class GameServer
 	/// de 12 ficou: e um dano que se le nos dois corpos sem saturar nenhum.
 	/// ===============================================================================================================
 	/// </summary>
+	/// <summary>
+	/// Ha algum corpo na faixa que os tiros da <see cref="VidaPerdidaEmTiros"/> atravessam -- do atirador ate um tile
+	/// depois do saco, com um tile e meio de folga pra cada lado?
+	/// </summary>
+	private bool HaAlguemNaRaia(Vec2 raia)
+	{
+		const float T = ZoneCollision.TileSize;
+		foreach (ServerPlayer c in ZoneList(ZonaDaBancadaDeProjetil.Hash))
+			if (c.Pos.X >= raia.X - T && c.Pos.X <= raia.X + 160 + T && MathF.Abs(c.Pos.Y - raia.Y) <= 1.5f * T) return true;
+		return false;
+	}
+
 	private double VidaPerdidaEmTiros(double fatorDeDefesa, int tiros, double maisDefendido)
 	{
+		// (2026-10-13) NINGUEM NA PISTA. A metade viva roda num planeta POVOADO, e o `CorredorLivre` so confere o
+		// mapa: um habitante parado entre o atirador e o saco come os tiros no lugar dele. A regressao de 13/10 mediu
+		// "162,5 contra 0" com um "Metralhador NOCAUTEOU Annin" no log -- e passou sozinha na rodada seguinte, com o
+		// habitante noutro lugar. Pista com alguem dentro nao serve: tenta a de baixo.
 		Vec2 raia = CorredorLivre(20);
+		for (int tentativa = 0; tentativa < 12 && HaAlguemNaRaia(raia); tentativa++) raia = CorredorLivre(20);
 		ServerPlayer atirador = Forjar("Metralhador", raia, bp: 5_000);
 		atirador.Facing = Facing.East;
 		ServerPlayer alvo = Forjar("Saco", new Vec2(raia.X + 160, raia.Y), bp: 5_000);
@@ -1182,17 +1199,24 @@ public partial class GameServer
 		// seria mais tarde: o reflexo roda fora da decisao de 4 Hz de proposito (ver o cabecalho do
 		// `TickDoContraFeixe`), e no DM o grito sai colado no tiro (`NPCAI.dm:378-379`).
 		//
-		// `EnraizadoPorKi` chegou em 2026-10-07, com a trava do `AplicarComando` (*"parece q eles as vezes
-		// se mexem durante a colisao"*): com um raio na mao ou numa disputa, a IA nao voa, nao troca de
-		// guarda, nao usa habilidade e nao soca. E outra PERGUNTA, e a mais magra da lista -- o corpo dela
-		// e `_canais.ContainsKey(id)`, o MESMO dicionario que o `PodeAtirar` do jogador consulta pra dizer
+		// `MaosOcupadasDaIa` e a trava do `AplicarComando` (2026-10-07, *"parece q eles as vezes se mexem
+		// durante a colisao"*): com um raio na mao ou numa disputa, a IA nao voa, nao troca de guarda, nao
+		// usa habilidade e nao soca. E outra PERGUNTA -- o corpo dela comeca por `EnraizadoPorKi`, que e
+		// `_canais.ContainsKey(id)`, o MESMO dicionario que o `PodeAtirar` do jogador consulta pra dizer
 		// *"voce ja esta com um raio na mao"*. E o que ela serve e uma porta que so FECHA: a trava tira
 		// gestos da IA, nao lhe da nenhum. A contraprova de que ela trabalha e a `--tiroiateste` (a rodada
-		// com `IaComAsMaosLivresDeTeste`, em que a IA larga a disputa em 1,4 s).
+		// com `IaComAsMaosLivresDeTeste`, em que a IA larga a disputa em 1,4 s). (Ate a v0.2.0 a excecao
+		// escrita aqui era o proprio `EnraizadoPorKi`, cru no atuador; na v0.2.1 a pergunta ganhou a terceira
+		// perna -- a tecnica que se segura -- e virou uma funcao so.)
+		//
+		// `DepoisDoApertoDaIa` (v0.2.1) ARMA o segundo aperto das tecnicas que se seguram -- a barragem ligada,
+		// a esfera que carrega, o rugido. O jogador da o segundo aperto com o dedo; o corpo dirigido so sabe
+		// dar um pulso, e quem fecha e um relogio do servidor (o desenho do prazo do raio). O aperto em si
+		// sai pelo `UsarHabilidade`, o cano do jogador.
 		// ==========================================================================================
 		string[] excecoes = ["PassoDaIa", "FacingFrom",
 							 "VemFeixeContraMim", "SabeTecnica", "ContainsKey", "TryGetValue",
-							 "FraseDoContraFeixe", "EnraizadoPorKi"];
+							 "FraseDoContraFeixe", "MaosOcupadasDaIa", "DepoisDoApertoDaIa"];
 
 		HashSet<string> chamaIa = ChamadasDe(tiroDaIa);
 		HashSet<string> chamaJogador = ChamadasDe(funilDoJogador);

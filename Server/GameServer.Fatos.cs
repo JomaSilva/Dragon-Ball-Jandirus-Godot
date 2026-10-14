@@ -67,6 +67,7 @@ public sealed partial class GameServer
 		if (ficha.godki?.awakened == true) f |= Fatos.GodKiDesperto;        // `VerboDesafiar`, CargoDuelo.cs:206
 		if (ficha.splitformCount > 0) f |= Fatos.TemCopias;                 // `OrdenarSplitformsG12`, Tecnicas.G12.cs:1603
 		if (ficha.canSSJ) f |= Fatos.EscadaSuperSaiyajin;                   // `PerfilDeFormas.CanSsj`, Formas.cs:88
+		if (TemArmaDeFogo(pl)) f |= Fatos.TemArmaDeFogo;                    // `ComandoDeArma`, Armas.cs
 		if (pl.UltraInstinct.Aprendida && !pl.PoderDaDestruicao.Aprendida && EhDeusDaDestruicao(pl))
 			f |= Fatos.KitDaDestruicaoEmprestado;                           // `UsarOKitEmprestado`, KitDoDeus.cs
 
@@ -89,31 +90,18 @@ public sealed partial class GameServer
 
 		if (FusaoDe(pl.Id) is { } fusao && fusao.Dono == pl) f |= Fatos.DirigeUmaFusao;   // `PassarOControle`, Fusao.cs:2057-2058
 
-		// ---- o que esta na mesa esperando resposta. O PRAZO ENTRA: convite vencido nao e convite ----
-		if (pl.PedidoDoMestre is { } doMestre && agora <= doMestre.Ate) f |= Fatos.ConviteDeMestre;       // Mestre.cs:352-353
-		if (pl.PedidoDeLicao is { } licao && agora <= licao.Ate) f |= Fatos.LicaoOferecida;               // Ensino.cs:175-176
-		if (_pedidosDeFusao.TryGetValue(pl.Id, out PedidoDeFusao? pedido) && agora <= pedido.Ate)         // Fusao.cs:619, :756
-			f |= pedido.Tipo == TipoDeFusao.Namek ? Fatos.ConviteDeAbsorcao : Fatos.ConviteDeFusao;
-		// (o pedido so vale enquanto a bomba de quem pediu CRESCE: disparada ou desfeita, o verb recusa)
-		if (_ofertasDeGenkidamaG12.TryGetValue(pl.Id, out int daBomba) && _players.ContainsKey(daBomba)
-			&& _genkidamaG12.TryGetValue(daBomba, out EstadoDaGenkidamaG12? bomba) && bomba.Fase == 1)
-			f |= Fatos.PedidoDeGenkidama;                                                                 // Tecnicas.G12.cs:981-983
-
-		// (as tres de baixo sao guardadas por CONTA, e um corpo sem conta nao recebe oferta nenhuma)
-		if (pl.Conta.Length > 0)
-		{
-			if (_ofertasDeJuventudeG8.TryGetValue(pl.Conta, out (string Quem, int Idade, long Ate) juventude)
-				&& agora <= juventude.Ate) f |= Fatos.OfertaDeJuventude;                                  // Tecnicas.G8.cs:360
-			if (_ofertasDePotencialG11.TryGetValue(pl.Conta, out (string Quem, long Ate) potencial)
-				&& agora <= potencial.Ate) f |= Fatos.OfertaDePotencial;                                  // Tecnicas.G11.cs:1083
-			if (_convitesDeAnciao.ContainsKey(pl.Conta)) f |= Fatos.OfertaDeAssento;                      // CargoPortas.cs:413
-			if (_desafianteEsperando.Length > 0
-				&& string.Equals(ContaDoDeus, pl.Conta, StringComparison.OrdinalIgnoreCase))
-				f |= Fatos.DesafioAoTitulo;                                                               // CargoDuelo.cs:241-242
-		}
+		// ---- o que esta na mesa esperando resposta ----
+		// (2026-10-13) AS CONDICOES MORAM NUM LUGAR SO, o `PedidosDe` (`GameServer.Pedidos.cs`): e dele que sai a lista
+		// que a tela mostra como notificacao, e os fatos de pedido sao os tipos daquela lista. O PRAZO ENTRA la:
+		// convite vencido nao e convite.
+		PedidosDe(pl, _pedidosDosFatos);
+		foreach (PedidoNaTela p in _pedidosDosFatos) f |= p.Fato;
 
 		return f;
 	}
+
+	/// <summary>A lista reusada do `FatosDe` -- ele roda pra cada jogador cinco vezes por segundo.</summary>
+	private readonly List<PedidoNaTela> _pedidosDosFatos = [];
 
 	/// <summary>
 	/// O TIQUE DOS FATOS: pra cada jogador com tela, o que e verdade agora -- e o pacote so se mudou.
@@ -123,12 +111,16 @@ public sealed partial class GameServer
 		if (VerbsDeTeste) DispararABancadaDosVerbs();   // a bancada `--verbsteste` (so com a flag) -- ver `GameServer.VerbsTeste.cs`
 
 		foreach (ServerPlayer pl in _players.Values)
-			if (pl.Peer != null && EhJogador(pl)) MandarFatos(pl);
+			if (pl.Peer != null && EhJogador(pl))
+			{
+				MandarFatos(pl);
+				MandarPedidos(pl);   // ...e a notificacao de cada pedido pendente -- ver GameServer.Pedidos.cs
+			}
 
 		// A FAXINA: id de quem saiu nao fica na memoria. So roda quando sobra entrada, e sobra pouco.
 		if (_fatosMandados.Count <= _players.Count) return;
 		foreach (int id in _fatosMandados.Keys.ToList())
-			if (!_players.ContainsKey(id)) _fatosMandados.Remove(id);
+			if (!_players.ContainsKey(id)) { _fatosMandados.Remove(id); _pedidosMandados.Remove(id); }
 	}
 
 	/// <summary>Manda os fatos deste jogador se mudaram -- ou se esta TELA ainda nao recebeu nenhum.</summary>

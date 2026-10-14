@@ -280,6 +280,113 @@ public partial class GameServer
 	/// A NAVE PARADA AO ALCANCE DA MAO -- mesmo `AlcanceDeUso` de qualquer construcao, e mesma
 	/// ordenacao por distancia que o `ObraPerto` usa.
 	/// </summary>
+	// =====================================================================
+	// A NAVE VOA COMO SE VOA (v0.2.1, item 26)
+	// =====================================================================
+	// Dono (2026-10-13): *"space pods e naves sao igual voar, ao pilotar e apertar page up ou page down vc sobe ou
+	// desce (ate pousar) com elas, se subir muito sai do planeta e comeca a voar pelo espaco"*.
+	//
+	// QUASE TUDO JA EXISTIA, e por isso o lote e pequeno: embarcar ja liga o voo do piloto (`pilot.flight = 1`,
+	// `PlanetTech.dm:135`) e o voo ja tem altura -- as teclas de subir e descer ja levavam a nave pra cima e pra
+	// baixo. O que faltava eram as tres PONTAS:
+	//   * O CHAO: descendo ate o fim o piloto perdia o voo e ficava a pe DENTRO da nave, andando com ela no chao.
+	//     Agora a nave POUSA: fica onde desceu, e nao anda (`NavePousada`, no `PodeMexerOCorpo`).
+	//   * A VOLTA: pra sair do chao so havia a tecla de voar, que pergunta pelo treino de voo do PILOTO -- e quem
+	//     compra uma nave quase nunca tem. A tecla de subir decola a nave (`DecolarANavePousada`).
+	//   * O TETO: la em cima o corpo esbarrava nos portoes do `Space_Flight` (Ki, poder e treino de voo de quem voa
+	//     sozinho). Ao leme quem rompe a atmosfera e a nave, pelo funil de lancamento de sempre
+	//     (`RomperAAtmosferaComANave`).
+	// O `nave_lancar` do menu continua: e a mesma subida, sem precisar segurar a tecla.
+	//
+	// O PRECO DO VOO NAO MUDOU: pilotar conta como voar e gasta o Ki do voo (`Stats.dm:411-427`, com o `flight = 1` do
+	// pod). Sem Ki a nave desce e pousa -- e so levanta de novo com o piloto recuperado.
+	//
+	// QUEM CHEGA DO ESPACO CHEGA POUSADO: a troca de zona zera o voo de todo corpo (`MoveToZone`), entao a nave que
+	// desce num planeta ja esta no chao, parada -- e o piloto ouve o mesmo aviso do pouso. NO ESPACO NAO HA POUSO: la
+	// fora o voo tambem esta zerado, e a nave anda como sempre andou (ver `NavePousada`).
+	// =====================================================================
+
+	/// <summary>DEFEITO INJETADO (bancada `--naveteste`): a nave pousada anda no chao com o piloto dentro, como na v0.2.0.</summary>
+	internal static bool NavePousadaAndaDeTeste;
+
+	/// <summary>DEFEITO INJETADO (bancada `--naveteste`): a tecla de subir nao tira a nave do chao (so a de voar, que pede o treino do piloto).</summary>
+	internal static bool NavePousadaNaoDecolaDeTeste;
+
+	/// <summary>DEFEITO INJETADO (bancada `--naveteste`): no teto a nave pergunta pelos portoes de quem voa sozinho -- so sai do planeta pelo menu.</summary>
+	internal static bool NaveSoSaiPeloMenuDeTeste;
+
+	/// <summary>
+	/// A NAVE ESTA POUSADA? O piloto ao leme, sem voo, num planeta. NO ESPACO NAO HA POUSO: la a nave anda mesmo com
+	/// o piloto exausto, como sempre andou -- nao existe chao onde ficar parado, e prender alguem no vazio por falta
+	/// de Ki seria uma armadilha.
+	/// </summary>
+	private bool NavePousada(ServerPlayer pl) =>
+		!pl.Voando && !NavePousadaAndaDeTeste && EstaPilotando(pl.Id) && !Espaco.EhEspaco(pl.Zone);
+
+	/// <summary>
+	/// A TECLA DE SUBIR, COM A NAVE NO CHAO: ela decola. Sem a porta do treino de voo (o voo e da nave, como ao
+	/// embarcar) e sem a taxa de decolagem do corpo (`Voo.CustoParaLigar` e do gesto de quem voa sozinho); o que ela
+	/// pede e o que o voo pede pra continuar de pe -- Ki acima do que derruba (`Voo.KiQueDerruba`).
+	/// </summary>
+	private void DecolarANavePousada(ServerPlayer pl)
+	{
+		if (NavePousadaNaoDecolaDeTeste || NaveDoPiloto(pl) is not { } n) return;
+		if (pl.Ficha.KO || pl.Ficha.dead || AlturaPresaPeloKi(pl) || PresoNoTorneio(pl.Id)) return;
+
+		if (pl.Ficha.Ki <= Voo.KiQueDerruba)
+		{
+			long agora = NowMs();
+			if (agora < pl.AvisoDeTetoAte) return;   // (a tecla fica apertada: um aviso a cada quatro segundos)
+			pl.AvisoDeTetoAte = agora + 4000;
+			Avisar(pl, $"você está sem energia pra tirar {NomeDaNave(n)} do chão.");
+			return;
+		}
+
+		pl.Voando = true;
+		MandarEfeito(pl, "voo", -1);
+		MandarFicha(pl);
+		Avisar(pl, $"{NomeDaNave(n)} decola.");
+	}
+
+	/// <summary>Ao leme, quem pousou foi a nave: o piloto continua dentro, e o aviso diz como sair do chao.</summary>
+	private void AvisarDoPousoDaNave(ServerPlayer pl)
+	{
+		if (NaveDoPiloto(pl) is not { } n || Espaco.EhEspaco(pl.Zone)) return;
+		Avisar(pl, $"{NomeDaNave(n)} pousa. Suba pra decolar de novo -- ou desembarque.");
+	}
+
+	/// <summary>
+	/// NO TETO DO CEU, AO LEME: a nave sai do planeta. Pelo MESMO funil do `nave_lancar` -- o relogio de lancamento,
+	/// que aqui ja nasce vencido: o `TickDasNaves` completa a subida no proximo tique (o `Decolar` de producao, a
+	/// orbita do foguete, a zona da nave), e nao ha um segundo caminho de decolagem pra manter em dia.
+	///
+	/// A ESPERA DO MENU (`400/Speed` decimos, `PlanetTech.dm:68`) NAO SE REPETE AQUI: quem chegou ao teto ja subiu o
+	/// ceu inteiro segurando a tecla -- a subida FOI a espera.
+	/// </summary>
+	private void RomperAAtmosferaComANave(ServerPlayer pl, Nave n)
+	{
+		if (n.LancaEm > 0) return;   // ja esta saindo: o tique das naves completa
+
+		long agora = NowMs();
+		// UM FOGUETE GASTO NAO SOBE -- a recusa do `LancarNave` (`PlanetTech.dm:255`), com o aviso espacado: a tecla
+		// fica apertada, e o teto e perguntado a cada tique.
+		if (Naves.EhFoguete(n.Tipo) && n.Usada)
+		{
+			if (agora < pl.AvisoDeTetoAte) return;
+			pl.AvisoDeTetoAte = agora + 4000;
+			Avisar(pl, $"{NomeDaNave(n)} já foi usado: o casco não aguenta outra subida. Recondicionar custa {Naves.CustoDeRecondicionar:N0} zeni.");
+			return;
+		}
+		// (o lugar que nao fica no mapa do universo recusa la no `Decolar`, em voz alta -- uma tentativa a cada quatro segundos)
+		if (agora < pl.AvisoDeTetoAte) return;
+		pl.AvisoDeTetoAte = agora + 4000;
+
+		n.PorZonaDaVolta(pl.Zone, pl.Pos);
+		n.AvisouDaReentrada = false;
+		n.LancaEm = agora;
+		Avisar(pl, $"{NomeDaNave(n)} rompe a atmosfera.");
+	}
+
 	private Nave? NavePerto(ServerPlayer pl) => NavesParadasEm(pl.Zone)
 		.OrderBy(n => (n.X - pl.Pos.X) * (n.X - pl.Pos.X) + (n.Y - pl.Pos.Y) * (n.Y - pl.Pos.Y))
 		.FirstOrDefault(n => Math.Abs(n.X - pl.Pos.X) <= AlcanceDeUso && Math.Abs(n.Y - pl.Pos.Y) <= AlcanceDeUso);
@@ -370,7 +477,8 @@ public partial class GameServer
 		//
 		// DEPOIS DO ESMAGAMENTO E ANTES DA NAVE, na mesma ordem e pela mesma razao do peso: sao
 		// penalidades do CORPO, e dentro de uma nave a velocidade passa a ser a do veiculo.
-		if (pl.Nadando)
+		// (v0.2.1) MENOS QUEM VELEJA: o barco anda no passo do corpo (`move_delay = 0.1`, `Boat.dm:9`).
+		if (pl.Nadando && !VelaPoupaONado(pl))
 			pl.SpeedStat *= (float)Jandirus.Core.World.Nado.FatorDePasso(pl.Ficha.Epspeed);
 
 		// SOB UM RAIO, QUEM E MAIS FORTE QUE ELE ANDA DEVAGAR (dono, 2026-10-12: *"ainda pode tentar sair do ataque mas
@@ -510,7 +618,8 @@ public partial class GameServer
 
 		// A NAVE SAI DA LISTA DE PARADAS na hora, e com ela sai a parede: e o `density = 0` do
 		// original (:137). Sem isto o piloto ficaria preso dentro do proprio veiculo.
-		Avisar(pl, $"você entra em {NomeDaNave(n)}. Ela anda com você -- e atravessa o que houver embaixo.");
+		Avisar(pl, $"você entra em {NomeDaNave(n)}. Ela voa com você -- e atravessa o que houver embaixo. "
+				   + "Suba e desça como no voo: descendo até o chão ela pousa, e lá no alto ela sai do planeta.");
 		GD.Print($"[server] {pl.Name} embarcou na nave #{n.Id} (velocidade {n.Velocidade})");
 		MandarObras(pl.Zone);
 	}
@@ -740,6 +849,9 @@ public partial class GameServer
 				MandarObras(zonaAntes);
 				MandarObras(n.Zona);
 				mudouAlgo = true;
+				// (v0.2.1) CHEGOU DO ESPACO: a nave desce POUSADA. O voo nao atravessa a troca de zona (`MoveToZone`:
+				// *"quem viaja chega no chao"*), e a nave pousada nao anda -- o piloto tem de saber como sair dali.
+				if (Espaco.EhEspaco(zonaAntes)) AvisarDoPousoDaNave(pl);
 			}
 		}
 

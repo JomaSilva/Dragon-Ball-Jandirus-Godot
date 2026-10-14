@@ -92,7 +92,13 @@ public partial class GameServer
 	/// removem o que ATRAPALHA MEDIR, nunca o que esta sendo medido.
 	/// =====================================================================================
 	/// </summary>
-	private bool PagaPeloVoo(ServerPlayer pl) => _vooDeTeste || !EhAdmin(pl);
+	/// <remarks>
+	/// (2026-10-13) O ADMIN PASSOU A PAGAR. O dono: *"voar parece q n ta gastando energia, olha no DM como era e
+	/// aplique a logica aqui tb"* -- e ele e o admin da casa: voava de graca por esta linha. O `freeflight` do DM
+	/// e um modulo de ciborgue (`Cyborgs.dm:785-815`), e nao um privilegio de admin; a isencao so sobrevive atras
+	/// do botao de defeito da bancada.
+	/// </remarks>
+	private bool PagaPeloVoo(ServerPlayer pl) => _vooDeTeste || !Jandirus.Core.Stats.Cansaco.VooSemPisoDeTeste || !EhAdmin(pl);
 
 	/// <summary>
 	/// A PROFICIENCIA DE AGORA, com o piso do nivel ja aplicado.
@@ -312,7 +318,14 @@ public partial class GameServer
 
 		if (!pl.Voando)
 		{
-			if (pl.Altitude <= 0f) { pl.Altitude = 0f; return; }
+			if (pl.Altitude <= 0f)
+			{
+				pl.Altitude = 0f;
+				// (v0.2.1) A NAVE POUSADA DECOLA COM A TECLA DE SUBIR -- ver `DecolarANavePousada` (`GameServer.Nave.cs`).
+				// Um bool e, pra quem aperta subir no chao, uma varredura da lista de naves: ninguem mais paga nada.
+				if (pl.QuerSubir) DecolarANavePousada(pl);
+				return;
+			}
 			if (AlturaPresaPeloKi(pl)) return;   // a queda espera o raio acabar
 			DescerAte(pl, 0f, Voo.QuedaPorSegundo * dt);
 			return;
@@ -366,7 +379,10 @@ public partial class GameServer
 						pl.Ficha.FlightGain();
 					}
 
-					pl.Ficha.Ki -= Voo.CustoPorSegundo(HabilidadeDeVoo(pl), pl.VooRapido) * dt;
+					// (2026-10-13) ...E COM UM PISO EM FRACAO DO TANQUE pro corpo de jogador: o custo do DM e Ki
+					// absoluto, e some conforme o tanque cresce -- ver `Jandirus.Core.Stats.Cansaco.KiDoVooPorSegundo`.
+					pl.Ficha.Ki -= Jandirus.Core.Stats.Cansaco.KiDoVooPorSegundo(pl.Ficha, Voo.CustoPorSegundo(HabilidadeDeVoo(pl), pl.VooRapido),
+															pl.VooRapido, comPiso: !EhNpcDoMundo(pl)) * dt;
 				}
 				else
 				{
@@ -467,6 +483,7 @@ public partial class GameServer
 
 		MandarEfeito(pl, "voo", 0);
 		MandarEfeito(pl, "pouso", -1);
+		AvisarDoPousoDaNave(pl);   // (v0.2.1) ao leme, quem pousou foi a NAVE -- e ela diz como sair do chao
 	}
 
 	/// <summary>
@@ -510,6 +527,11 @@ public partial class GameServer
 	private void TentarRomperAAtmosfera(ServerPlayer pl)
 	{
 		if (Espaco.EhEspaco(pl.Zone)) return;
+
+		// (v0.2.1) AO LEME, QUEM ROMPE A ATMOSFERA E A NAVE -- os tres portoes abaixo sao do CORPO que voa sozinho (o
+		// `Space_Flight`, `Mindo.dm:162`), e uma nave existe justamente pra levar quem nao os tem. Ver
+		// `RomperAAtmosferaComANave` (`GameServer.Nave.cs`).
+		if (!NaveSoSaiPeloMenuDeTeste && NaveDoPiloto(pl) is { } nave) { RomperAAtmosferaComANave(pl, nave); return; }
 
 		if (Voo.PodeRomperAAtmosfera(pl.Ficha.Ki, pl.Ficha.expressedBP, HabilidadeDeVoo(pl)))
 		{

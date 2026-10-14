@@ -239,7 +239,7 @@ public sealed partial class GameServer
 			corpo.Combate.Corpo.CopiarEstadoDe(morto.Combate.Corpo);
 			corpo.Combate.SincronizarVida();
 		}
-		corpo.EnvFeridas = Feridas.De(corpo.Combate.Corpo);
+		corpo.EnvFeridas = Feridas.NaTela(corpo.Combate.Corpo, corpo.Race);
 
 		// QUEM ESTA NA ZONA PRECISA VER O CORPO -- mesmo funil do NPC e do boneco. Sai ANTES do
 		// `MoveToZone` de quem viaja (ver a ordem no `IrProAlem`): assim a aparencia do cadaver chega
@@ -353,7 +353,7 @@ public sealed partial class GameServer
 				// nao o alcanca (ele so varre o `_players`), e este e o unico laco que passa por todo
 				// cadaver do mundo -- entao a mesma pergunta por diferenca mora aqui. Sem isto o corpo
 				// que apanha ate se desfazer continuaria com a cara de quando caiu.
-				MascaraDeFeridas feridasAgora = Feridas.De(c.Combate.Corpo);
+				MascaraDeFeridas feridasAgora = Feridas.NaTela(c.Combate.Corpo, c.Race);
 				if (feridasAgora != c.EnvFeridas) { c.EnvFeridas = feridasAgora; MandarFeridas(c); }
 			}
 

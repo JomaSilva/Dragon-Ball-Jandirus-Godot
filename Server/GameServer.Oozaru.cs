@@ -497,7 +497,9 @@ public partial class GameServer
 	private bool AFonteDaFera(ServerPlayer pl)
 	{
 		Jandirus.Core.World.EstadoDoCeu ceu = CeuDe(pl);
-		return ceu.Cheia && ceu.LuaNoCeu;
+		// (v0.2.1) A SEGUNDA FONTE, que o paragrafo de cima esperava: a lua artificial (ou o emissor) acesa a vista
+		// do corpo. Ver `LuaArtificialAVista` (`GameServer.MaquinasDeChao.cs`).
+		return (ceu.Cheia && ceu.LuaNoCeu) || LuaArtificialAVista(pl);
 	}
 
 	private double SegundosNaForma(ServerPlayer pl)

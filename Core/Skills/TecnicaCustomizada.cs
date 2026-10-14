@@ -261,6 +261,26 @@ public sealed class TecnicaCustomizada
 	public bool Criada;
 
 	/// <summary>
+	/// ESTA TECNICA VEIO DE UM MESTRE (dono, 2026-10-13: *"dar pra ensinar ... tb técnicas proprias"*) -- o
+	/// `Teach_Custom_Attack` que o original deixou comentado (`customattacks.dm:238-242`, `:258-270`). Como a skill
+	/// ensinada (`wastaught`), ela NAO se repassa: so quem inventou ensina. Vai pro save com a tecnica.
+	/// </summary>
+	public bool Ensinada;
+
+	/// <summary>
+	/// A COPIA QUE O ALUNO RECEBE: os mesmos numeros, a mesma arte e os mesmos gritos, no slot
+	/// <paramref name="idDoAluno"/> dele -- confirmada (nao e rascunho) e marcada como ensinada.
+	/// </summary>
+	public TecnicaCustomizada CopiaEnsinada(int idDoAluno)
+	{
+		var copia = new TecnicaCustomizada { Id = idDoAluno };
+		copia.CopiarDe(this);
+		copia.Criada = true;
+		copia.Ensinada = true;
+		return copia;
+	}
+
+	/// <summary>
 	/// Quantos pontos ainda cabem. `custompoints_left` (`:644`).
 	///
 	/// Com o piso em zero ele vive em 0..5 -- antes podia passar de 5 (era o saldo inflado) e a tela

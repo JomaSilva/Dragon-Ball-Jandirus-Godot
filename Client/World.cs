@@ -411,6 +411,7 @@ public partial class World : Node2D
 			cli.ObrasMudaram += DesenharObras;
 			// AS ESFERAS SEGUEM AS CONSTRUCOES: mesmo evento, mesma camada, mesmo Y-sort.
 			cli.EsferasMudaram += DesenharEsferas;
+			cli.ChaoMudou += DesenharOChao;   // ...e o que esta largado no chao: mesma camada, mesmo Y-sort
 			cli.SupersMudaram += DesenharSupers;   // ...e as SUPER, no espaco: ver `World.SuperEsferas.cs`
 			cli.EfeitoCaiu += AoCairEfeito;
 			cli.Piscou += AoPiscar;
@@ -503,6 +504,7 @@ public partial class World : Node2D
 			cli.VizinhancaMudou -= DesenharPlanetas;
 			cli.ObrasMudaram -= DesenharObras;
 			cli.EsferasMudaram -= DesenharEsferas;
+			cli.ChaoMudou -= DesenharOChao;
 			cli.SupersMudaram -= DesenharSupers;
 			cli.EfeitoCaiu -= AoCairEfeito;
 			cli.Piscou -= AoPiscar;
@@ -997,9 +999,29 @@ public partial class World : Node2D
 		_atores.AddChild(no);
 		_tiros[n.Id] = no;
 
-		// O SOM SAI DA MAO DE QUEM ATIROU, e nao da camera: ouvir de onde veio e metade da leitura
-		// de uma luta a distancia.
-		AudioDirector.EfeitoNoLugar(no, Trilha.Acerto(1), 0.55f);
+		// ============================ O SOM E O DO DM, POR TECNICA (dono, 2026-10-13) ============================
+		// *"o som ao soltar ataques de ki ta errado (veja no DM qual era o som) e tb tem o som do ataque andando em
+		// si q tb tem no DM"*. Aqui tocava o baque de SOCO (`Trilha.Acerto(1)`), pra qualquer tiro. O arquivo certo
+		// vem no pacote (`SomDeKi`, decidido no servidor pela tecnica) e sai de dois lugares:
+		//   * o do RAIO fica preso NA CABECA dele e anda com ela -- e o "som do ataque andando": `kamehameha_fire`
+		//     dura o voo inteiro e acaba com o raio (filho do node, recolhido junto);
+		//   * o estalo da BOLA fica em QUEM ATIROU: preso na bola, um tiro que acerta a meio tile cortaria o som no
+		//     primeiro decimo de segundo.
+		// O SOM NAO SAI DA CAMERA: ouvir de onde veio e metade da leitura de uma luta a distancia.
+		// ======================================================================================================
+		var som = (Jandirus.Core.Combat.SomDeKi)n.Som;
+		string arquivo = Trilha.DoKi(som);
+		if (arquivo.Length > 0)
+		{
+			bool anda = Jandirus.Core.Combat.SonsDeKi.AndaComOAtaque(som);
+			Node2D fonte = anda ? no : Corpo(n.Dono) ?? no;
+			AudioDirector.EfeitoNoLugar(fonte, arquivo, anda ? 0.7f : 0.6f, anda ? 720f : 480f);
+		}
+
+		// A POSE DE TIRO RECOMECA DO PRIMEIRO QUADRO (o `flick`), encaixada no tempo que o servidor a segura. So a
+		// bola: quem solta um raio ja esta na pose pelo canal, e reiniciar ali cortaria o desenho no meio.
+		if (no.Tipo != Jandirus.Core.Combat.TipoDeProjetil.Beam && !n.Invisivel)
+			VisualDe(n.Dono)?.RestartState("blast", 0.3);
 	}
 
 	/// <summary>
@@ -1108,10 +1130,23 @@ public partial class World : Node2D
 				PoeiraDeEstrago.Soltar(_atores, p);
 				break;
 
+			// ============================ A BOLA QUE ESTOUROU SEM ACERTAR NINGUEM (dono, 2026-10-13) ============================
+			// *"quando uma esfera de ki se afasta muito ela so some e n explode"*. O mesmo estouro de um acerto, do
+			// tamanho do tiro, com o estalo de explosao do DM (`scouterexplode.ogg`, `explosions.dm:158`) -- o acerto
+			// num corpo nao precisa dele: la quem soa e o relato do golpe. A cratera pequena vem do servidor.
+			// =====================================================================================================================
+			case Jandirus.Core.Combat.FimDeProjetil.Estourou:
+				EstouroDeKi.Soltar(_atores, p, raioDoEstouro, corDoEstouro);
+				CombatFx.Onda(_atores, p, Mathf.Max(84f, raioDoEstouro * 2.4f), cor, 0.26);
+				if (!Jandirus.Core.World.Espaco.EhEspaco(_zonaDoAtual)) PoeiraDeEstrago.Soltar(_atores, p);
+				SomNoPonto(p, Trilha.EstaloDeKi, 0.45f);
+				break;
+
 			// NA PAREDE o tiro se gasta: o mesmo estouro, a dois tercos do tamanho.
 			case Jandirus.Core.Combat.FimDeProjetil.Cenario:
 				EstouroDeKi.Soltar(_atores, p, raioDoEstouro * 0.68f, corDoEstouro);
 				PoeiraDeEstrago.Soltar(_atores, p);
+				SomNoPonto(p, Trilha.EstaloDeKi, 0.4f);
 				break;
 
 			// ============================ O TIRO QUE ENCOSTOU NUM PLANETA ============================
@@ -1150,13 +1185,29 @@ public partial class World : Node2D
 				CombatFx.Onda(_atores, p, Mathf.Max(130f, raioDoEstouro * 4f), cor, 0.34);
 				CombatFx.Onda(_atores, p, Mathf.Max(230f, raioDoEstouro * 7f), cor, 0.55);
 				if (!Jandirus.Core.World.Espaco.EhEspaco(_zonaDoAtual)) PoeiraDeEstrago.Soltar(_atores, p);
+				// (2026-10-13) E A EXPLOSAO SE OUVE, de longe: `kiplosion.wav`, o estrondo de ki do DM (`Ki Attacks.dm:20`).
+				SomNoPonto(p, Trilha.ExplosaoDeKi, 0.95f, 1100f);
 				break;
 
-			// APAGOU e CESSOU nao estouram: o alcance acabou, ou o dono soltou o raio. Um estouro
-			// aqui ensinaria o jogador que o tiro acertou alguma coisa quando ele so se dissolveu.
+			// APAGOU e CESSOU nao estouram: e o que nunca chegou a ser um ataque (o alvo de treino, a lamina que
+			// ninguem ve) e o raio que a mao soltou no ar, sem ninguem na ponta.
 			default:
 				break;
 		}
+	}
+
+	/// <summary>
+	/// UM SOM NUM PONTO DO MUNDO, sem corpo nenhum pra carrega-lo: o estouro acontece onde o tiro acabou, e o tiro
+	/// ja foi recolhido. O ponto e um node proprio, que some quando o som acaba.
+	/// </summary>
+	private void SomNoPonto(Vector2 onde, string caminho, float volume, float alcance = 480f)
+	{
+		var ponto = new Node2D { Name = "SomDeEstouro", Position = onde };
+		_atores.AddChild(ponto);
+		AudioDirector.EfeitoNoLugar(ponto, caminho, volume, alcance);
+		// O PONTO VAI EMBORA COM O SOM: o player e filho dele e se solta ao acabar. (Arquivo ausente = sem filho.)
+		if (ponto.GetChildCount() > 0 && ponto.GetChild(0) is AudioStreamPlayer2D tocando) tocando.Finished += ponto.QueueFree;
+		else ponto.QueueFree();
 	}
 
 	/// <summary>
@@ -3137,6 +3188,29 @@ public partial class World : Node2D
 	}
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv021`): a roda do mouse volta a nao mexer no zoom -- a v0.2.0, em que so a
+	/// pausa o mudava. Lido pela propria <see cref="RodarOZoom"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool ScrollNaoMudaOZoomDeTeste;
+
+	/// <summary>
+	/// UM DENTE DA RODA DO MOUSE: o zoom anda um passo, entre `Settings.ZoomMin` e `Settings.ZoomMax`, e a
+	/// preferencia e GRAVADA (e a mesma do controle da pausa -- uma so resposta pra "qual e o zoom desta maquina").
+	/// Devolve se o zoom mudou; no limite, a roda nao faz nada.
+	/// </summary>
+	internal bool RodarOZoom(int passo)
+	{
+		if (ScrollNaoMudaOZoomDeTeste || _camera == null || Foco.Digitando) return false;
+		Settings cfg = Boot.Config;
+		int novo = Math.Clamp(cfg.Zoom + passo, Settings.ZoomMin, Settings.ZoomMax);
+		if (novo == cfg.Zoom) return false;
+		cfg.Zoom = novo;
+		cfg.Gravar();
+		AplicarZoom(novo);
+		return true;
+	}
+
+	/// <summary>
 	/// A GRADE EM QUE TODA ARTE DE PIXEL E DESENHADA -- quantos pontos por pixel de MUNDO.
 	///
 	/// ============================ POR QUE ELA E O ZOOM, E POR QUE MORA AQUI ============================
@@ -3293,7 +3367,7 @@ public partial class World : Node2D
 				// andando no ar enquanto todo mundo o via em pose de voo"*) e com o nado, os dois
 				// anotados dentro do `PorAPoseDoCorpo`. A terceira nao precisa acontecer pra ser prevista.
 				// ==========================================================================================================
-				_local?.ReceberCanalDeKi(e.Pose == Protocol.Pose.Canalizando, e.CanalAtirando);
+				_local?.ReceberCanalDeKi(e.Pose == Protocol.Pose.Canalizando, e.CanalAtirando, e.CanalSoDePose);
 				// E A CARGA VISIVEL TAMBEM: sem isto o unico jogador que nao veria a propria mao
 				// brilhando seria o dono dela -- a mesma frase que a nave e a pupila ja dizem aqui.
 				MarcarCargaDeRaio(e.Id, e, (Facing)e.Facing);
@@ -3309,6 +3383,8 @@ public partial class World : Node2D
 				// redeas em furia lendaria PRECISA ver o proprio olho apagar, senao a unica pessoa que
 				// nao sabe o que aconteceu com aquele corpo e a dona dele.
 				AoMudarPosse(e.Id, e.SemRedeas);
+				// NO COLO DE ALGUEM, o MEU corpo e desenhado onde quem me leva e desenhado -- ver `EntityState.LevadoPor`.
+				_local?.ReceberCarregador(e.LevadoPor != 0 ? Corpo(e.LevadoPor) : null);
 				continue;
 			}
 
@@ -3344,6 +3420,9 @@ public partial class World : Node2D
 			// vez de atravessa-lo voando. Ver `RemotePlayer.Ocupacao` e `MontarGradeDeCorpos`.
 			r.Receive(servidorMs, e.IdadeMs, e.Pos, (Facing)e.Facing, e.Moving, e.Deitado, e.Pose, e.Correndo,
 					  e.Rabo, e.Altitude, e.Voando, e.CanalAtirando, e.Ocupacao);
+			// QUEM O LEVA NO COLO (2026-10-13): o corpo carregado e desenhado colado em quem o carrega -- ver
+			// `EntityState.LevadoPor` e `RemotePlayer.Carregador`. O carregador pode ser o MEU corpo.
+			r.Carregador = e.LevadoPor != 0 ? Corpo(e.LevadoPor) : null;
 
 			// ============================ QUEM VOA ALTO SOME DE VISTA -- SO PRA BAIXO ============================
 			// "Se a pessoa estiver voando muito alto, as pessoas que estao no chao nem conseguem ver
@@ -3776,6 +3855,14 @@ public partial class World : Node2D
 	{
 		Node2D? corpo = Corpo(quem);
 		if (corpo == null) return;
+
+		// A TECLA X (2026-10-13): so o `descend.wav` -- este gesto nao veste pose. Ver `GestoDoCorpo.Descer`.
+		if (gesto == (byte)Protocol.GestoDoCorpo.Descer)
+		{
+			AudioDirector.EfeitoNoLugar(corpo, Trilha.Descer, 0.8f);
+			return;
+		}
+
 		VisualDe(quem)?.RestartState("blast");
 		AudioDirector.EfeitoNoLugar(corpo, Trilha.Kiai, 0.8f);
 		if (gesto == (byte)Protocol.GestoDoCorpo.KiaiComLamina)
@@ -4024,7 +4111,8 @@ public partial class World : Node2D
 			// canais porque sao duas exigencias diferentes -- meio segundo de sangue pode se perder no
 			// fio, uma peca de 600 s no chao nao pode (e quem chega depois a recebe pelo `S2C.Pecas`).
 			// ==================================================================================================
-			if (quemLeva != null) CombatFx.JatoDeSangue(_atores, quemLeva);
+			// (2026-10-13) MENOS NO MAJIN: ele perde o membro e nao sangra -- ver `Feridas.NaoSangra`.
+			if (quemLeva != null && !Jandirus.Core.Combat.Feridas.NaoSangra(RacaDe(h.Alvo))) CombatFx.JatoDeSangue(_atores, quemLeva);
 		}
 		if (h.Morreu || h.Nocauteou)
 		{
@@ -4952,6 +5040,11 @@ public partial class World : Node2D
 	private float _tremorQueda = QuedaDoImpacto, _tremorCadencia = CadenciaDoImpacto, _tremorRelogio;
 	private Vector2 _tremorDe, _tremorPara;
 	private static readonly RandomNumberGenerator Sorte = new();
+
+	/// <summary>A raca de um corpo da zona, pela ficha visual dele (`_looks`); a minha, pela minha ficha. Vazio se ainda nao chegou.</summary>
+	private string RacaDe(int id) =>
+		_looks.TryGetValue(id, out var visto) ? visto.Raca
+		: GameClient.Instance is { } c && c.LocalId == id ? c.Atributos.Raca : "";
 
 	private static void Som(Node2D? onde, string caminho, float volume = 1f)
 	{
@@ -5983,6 +6076,48 @@ public partial class World : Node2D
 				Inerte = o.Inerte,
 			});
 		}
+
+		// O CHAO DA ZONA VAI JUNTO, e nao e economia de chamada: as cinco linhas que replantam as esferas quando a
+		// zona monta (uma por ramo de zona, em `AoMudarZona`) sao exatamente os cinco lugares em que o que esta
+		// largado tambem precisa voltar pra tela -- o pacote dele chega antes de o chao da zona existir. Pendurado
+		// aqui, um sexto ramo de zona que nasca amanha herda os dois de graca.
+		DesenharOChao();
+	}
+
+	/// <summary>
+	/// PLANTA O QUE ESTA LARGADO NO CHAO da zona -- itens, zeni e recursos (dono, 2026-10-13). Mesmo desenho da
+	/// <see cref="DesenharEsferas"/>: refaz a lista inteira, ancora na BASE da celula e entra em `_atores` pro
+	/// Y-sort intercalar corpo e coisa. Nao bloqueia: passa-se por cima, que e como se pega.
+	/// </summary>
+	private void DesenharOChao()
+	{
+		foreach (Node n in _atores.GetChildren())
+			if (n is LargadoDesenhado) n.QueueFree();
+		if (GameClient.Instance is not { } cli) return;
+
+		const int t = ZoneCollision.TileSize;
+		foreach (GameClient.LargadoInfo l in cli.Largados)
+		{
+			(int cx, int cy) = Jandirus.Core.Tech.CatalogoDeObras.Celula(l.Pos.X, l.Pos.Y);
+			_atores.AddChild(new LargadoDesenhado
+			{
+				Name = "Largado" + l.Id,
+				Position = new Vector2(cx * t, (cy + 1) * t),
+				Id = l.Id,
+				Tipo = l.Tipo,
+				Item = l.Item,
+				Quantidade = l.Quantidade,
+			});
+		}
+	}
+
+	/// <summary>As coisas largadas que estao DESENHADAS agora: (id, tem arte). Pra bancada.</summary>
+	internal List<(int Id, bool ComArte)> LargadosDesenhadosDeTeste()
+	{
+		var saida = new List<(int, bool)>();
+		foreach (Node n in _atores.GetChildren())
+			if (n is LargadoDesenhado l && !l.IsQueuedForDeletion()) saida.Add((l.Id, l.ComArte));
+		return saida;
 	}
 
 	private void DesenharPlanetas()
@@ -6144,12 +6279,14 @@ public partial class World : Node2D
 	public Vector2? UltimaNoEspaco { get; private set; }
 
 	/// <summary>Pra onde o piloto automatico esta indo, ou nulo. E o que o mapa estelar desenha.</summary>
-	public Vec2? DestinoDoPiloto => _local != null && IsInstanceValid(_local) ? _local.Destino : null;
+	public Vec2? DestinoDoPiloto =>
+		_local != null && IsInstanceValid(_local) ? _local.Destino ?? LocalPlayer.RumoDepoisDeDecolar : null;   // (v0.2.1) ...ou pra onde ele vai depois de DECOLAR
 
 	/// <summary>Desliga o piloto. O mesmo caminho que encostar numa tecla de movimento usa.</summary>
 	public void SoltarPiloto()
 	{
 		if (_local != null && IsInstanceValid(_local)) _local.Destino = null;
+		LocalPlayer.RumoDepoisDeDecolar = null;   // (v0.2.1) o piloto que ainda esta decolando larga junto
 	}
 
 	/// <summary>Onde EU estou, em coordenada de mundo. Nulo antes de entrar.</summary>
@@ -6267,6 +6404,18 @@ public partial class World : Node2D
 	/// </summary>
 	public override void _UnhandledInput(InputEvent e)
 	{
+		// ============================ O SCROLL MUDA O ZOOM (dono, 2026-10-13) ============================
+		// *"adicione a capacidade de dar zoom no jogo sem ter q abrir o menu de pause, so rolando o scroll ja mudaria
+		// o zoom"*. Pra cima aproxima, pra baixo afasta, de um em um e dentro dos mesmos limites do controle da pausa
+		// (zoom INTEIRO: em arte de pixel um zoom quebrado cintila). NO `_UnhandledInput` de proposito: a roda que
+		// uma lista ou um painel rolou ja foi consumida la, e so chega aqui a que sobrou em cima do mundo.
+		// =================================================================================================
+		if (e is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } roda)
+		{
+			if (RodarOZoom(roda.ButtonIndex == MouseButton.WheelUp ? 1 : -1)) GetViewport().SetInputAsHandled();
+			return;
+		}
+
 		if (e is not InputEventMouseButton { DoubleClick: true, ButtonIndex: MouseButton.Left }) return;
 		if (Foco.Digitando || GameClient.Instance is not { } cli) return;
 		DuploClique(GetGlobalMousePosition(), cli);

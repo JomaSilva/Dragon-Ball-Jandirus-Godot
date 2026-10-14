@@ -345,6 +345,9 @@ public partial class CharacterVisual : Node2D
 		s.FrameChanged += () => AtualizarCaixa(s);
 		s.AnimationChanged += () => AtualizarCaixa(s);
 
+		// A CAMADA QUE NASCE DENTRO DE UMA FORMA QUE ESTICA O CORPO ja nasce esticada -- ver `AplicarOPorte`.
+		if (!Mathf.IsEqualApprox(_porte, 1f)) PorNoPorte(s);
+
 		AddChild(s);
 		_camadas.Add(s);
 		return s;
@@ -422,6 +425,12 @@ public partial class CharacterVisual : Node2D
 		// GUARDA A FORMA ANTES DE QUALQUER COISA -- ver `_formaVestida`. E o que deixa a cor do olho
 		// responder a uma virada de POSSE que chegue no meio da forma, sem revestir o corpo inteiro.
 		_formaVestida = d;
+
+		// A PELE E O PORTE DA FORMA, ANTES DE QUALQUER `return` deste metodo (o ramo da fusao sai cedo): o Orange
+		// pinta o corpo inteiro e o estica -- ver `PintarCorpo` e `AplicarOPorte`. Pra toda outra forma as duas
+		// chamadas reescrevem o que ja estava.
+		PintarCorpo();
+		AplicarOPorte();
 
 		Jandirus.Core.Forms.ModoDoCabelo modo = Jandirus.Core.Forms.Catalogo.ModoDoCabelo(d);
 
@@ -509,8 +518,14 @@ public partial class CharacterVisual : Node2D
 			return;
 		}
 
-		TingirCabelo(pinta && Jandirus.Core.Forms.Catalogo.CorDoCabelo(d) is { } ch ? new Color(ch) : null,
-					 matiz: trocou);
+		// (2026-10-13) O PENTEADO SEM A ARTE DA FORMA GANHA O DOURADO DELA: a forma pediu a folha de Super Saiyajin e
+		// este penteado nao tem a variante -- ver `Catalogo.CorDoCabeloSemArte`. SOMA, e nao matiz: a tinta cai no
+		// penteado do jogador (a regra derivada do bloco de cima).
+		if (!trocou && sufixo.Length > 0 && Jandirus.Core.Forms.Catalogo.CorDoCabeloSemArte(d) is { } dourado)
+			TingirCabelo(new Color(dourado), matiz: false);
+		else
+			TingirCabelo(pinta && Jandirus.Core.Forms.Catalogo.CorDoCabelo(d) is { } ch ? new Color(ch) : null,
+						 matiz: trocou);
 
 		PintarRabo(Jandirus.Core.Forms.Catalogo.CorDoRabo(d) is { } cr ? new Color(cr) : null);
 
@@ -718,6 +733,86 @@ public partial class CharacterVisual : Node2D
 	public static bool RaboSemACorDoCabeloDeTeste;
 
 	/// <summary>
+	/// ============================ A TINTA DO CORPO: A FICHA, O POTENCIAL E A FORMA ============================
+	/// Um lugar so escreve os dois canais do corpo (a `tinta` do material e o `SelfModulate`), e ele PERGUNTA em vez
+	/// de guardar -- a mesma disciplina do <see cref="BaseDaFicha"/>:
+	///
+	///   1. a FICHA: a cor livre do Majin e do Kai (SOMA) e o tom do Namekuseijin (o brilho que multiplica);
+	///   2. o POTENCIAL DESPERTO do Namekuseijin (dono, 2026-10-13: *"nameks q tem potential unlocked/mistico ficam
+	///      levemente amarelados a cor de pele"*): um pouco de vermelho SOMADO e um pouco de azul tirado -- ver
+	///      `Catalogo.AmareladoDoPotencial` e `Catalogo.AzulDoPotencial`. O fato chega na ficha
+	///      (`Appearance.PotencialNaPele`, do `S2C.PeerLook`);
+	///   3. a FORMA que pinta o corpo inteiro (`Catalogo.PeleDaForma`, hoje so o Orange), em MATIZ -- e ela passa
+	///      por cima das duas de cima.
+	///
+	/// Quem chama: o <see cref="Vestir"/> (a ficha mudou) e o <see cref="VestirCabeloDaForma"/> (a forma mudou).
+	/// Sair da forma devolve a pele da ficha por esta mesma conta, sem registro nenhum pra ficar velho.
+	/// ===========================================================================================================
+	/// </summary>
+	private void PintarCorpo()
+	{
+		if (_corpo is not { } corpo || !IsInstanceValid(corpo)) return;
+
+		(Rgb? soma, float brilho) = _ficha is { } f && _catalogoDaFicha is { } cat
+			? cat.TintaDoCorpo(f, _racaDaFicha) : (null, 1f);
+		bool amarelado = _ficha is { PotencialNaPele: true }
+						 && _racaDaFicha == Jandirus.Core.Forms.Catalogo.RacaNamekuseijin;
+
+		if (Jandirus.Core.Forms.Catalogo.PeleDaForma(_formaVestida) is { } pele)
+		{
+			corpo.SelfModulate = new Color(brilho, brilho, brilho);
+			Tingir(corpo, Tinta.De(new Color(pele), matiz: true));
+			return;
+		}
+
+		corpo.SelfModulate = new Color(brilho, brilho,
+									   amarelado ? brilho * Jandirus.Core.Forms.Catalogo.AzulDoPotencial : brilho);
+		Tingir(corpo, amarelado ? Tinta.De(new Color(Jandirus.Core.Forms.Catalogo.AmareladoDoPotencial))
+								: Tinta.DaFicha(soma));
+	}
+
+	/// <summary>A tinta que o CORPO realmente recebeu (cor e modo), lida do material. Pra bancada -- irma da <see cref="TintaDoOlhoDeTeste"/>.</summary>
+	public (Vector3 Cor, int Modo)? TintaDoCorpoDeTeste =>
+		_corpo != null && IsInstanceValid(_corpo) ? TintaDoMaterial(_corpo.Material) : null;
+
+	/// <summary>
+	/// ============================ O PORTE DA FORMA: AS CAMADAS CRESCEM EM TORNO DOS PES ============================
+	/// Dono, 2026-10-13, sobre o Orange: *"(e o sprite deles , e os overlays tb) ficam um pouco maiores"*.
+	///
+	/// POR CAMADA, E NAO NA ESCALA DESTE NODE: a `Scale` da raiz ja tem dois donos de fora -- o crescimento do Oozaru
+	/// (<see cref="Crescer"/>) e as telas de previa, que montam o boneco com `Scale = 5` pra caber no painel. Escrever
+	/// 1,15 nela encolheria o retrato de quem abrir a aba de formas vestindo o Orange.
+	///
+	/// PELOS PES: a camada e centrada, entao esticar em torno da origem afundaria os pes no chao. A posicao sobe a
+	/// metade do que a celula cresceu, e a base do quadro fica onde estava. Camada que NASCE depois (uma roupa
+	/// vestida dentro da forma) pega o porte no <see cref="NovaCamada"/>.
+	///
+	/// A AURA E OS RAIOS NAO CRESCEM: sao irmaos deste node, e nao camadas dele.
+	/// ================================================================================================================
+	/// </summary>
+	private void AplicarOPorte()
+	{
+		float porte = (float)Jandirus.Core.Forms.Catalogo.PorteDaForma(_formaVestida);
+		if (Mathf.IsEqualApprox(porte, _porte)) return;
+		_porte = porte;
+		foreach (AnimatedSprite2D s in _camadas)
+			if (IsInstanceValid(s)) PorNoPorte(s);
+	}
+
+	/// <summary>Poe UMA camada no porte de agora. Ver <see cref="AplicarOPorte"/>.</summary>
+	private void PorNoPorte(AnimatedSprite2D s)
+	{
+		s.Scale = Vector2.One * _porte;
+		s.Position = new Vector2(0, Celula * 0.5f * (1f - _porte));
+	}
+
+	/// <summary>O porte que as camadas estao usando. 1 = o tamanho de sempre.</summary>
+	private float _porte = 1f;
+
+	/// <summary>O porte em que o corpo esta desenhado. Pra bancada.</summary>
+	public float PorteDeTeste => _corpo != null && IsInstanceValid(_corpo) ? _corpo.Scale.Y : 1f;
+
+	/// <summary>
 	/// A ULTIMA FICHA VESTIDA, e a raca com que ela foi lida. So a <see cref="BaseDaFicha"/> usa.
 	///
 	/// E a referencia viva de proposito: a tela de criacao mexe no proprio objeto e chama o
@@ -725,6 +820,9 @@ public partial class CharacterVisual : Node2D
 	/// </summary>
 	private Appearance? _ficha;
 	private string _racaDaFicha = "";
+
+	/// <summary>O catalogo com que a ultima ficha foi vestida -- e ele quem sabe a tinta do corpo de cada raca (<see cref="PintarCorpo"/>).</summary>
+	private VisualCatalog? _catalogoDaFicha;
 
 	// =====================================================================
 	// FERIDAS
@@ -1058,9 +1156,9 @@ public partial class CharacterVisual : Node2D
 		// da `BaseDaFicha` -- e o que apagou os tres registros de "guarde a cor pra devolver".
 		_ficha = ap;
 		_racaDaFicha = raca;
+		_catalogoDaFicha = cat;
 
 		// --- corpo ---
-		(Rgb? soma, float brilho) = cat.TintaDoCorpo(ap, raca);
 		Trocar(_corpo!, cat.CorpoSprite(ap, raca, genero));
 		_feminina = genero.StartsWith("F", StringComparison.OrdinalIgnoreCase);
 		// SO O TOM DO NAMEKUSEIJIN (o `Brilho` 1,18/0,82 de `VisualCatalog.TintaDoCorpo`; 1,0 pro resto,
@@ -1069,9 +1167,9 @@ public partial class CharacterVisual : Node2D
 		// que o comentario do catalogo diz que nao pode acontecer -- "os quatro tons de Namekuseijin
 		// sairiam todos iguais".
 		//
-		// Ver o bloco do `COLOR` no shader.
-		_corpo!.SelfModulate = new Color(brilho, brilho, brilho);
-		Tingir(_corpo, Tinta.DaFicha(soma));
+		// Ver o bloco do `COLOR` no shader. (Quem escreve os dois canais do corpo e o `PintarCorpo`: a ficha, e por
+		// cima dela o potencial desperto e a forma vestida.)
+		PintarCorpo();
 
 		// --- roupa: uma camada por peca, na ordem em que foi vestida ---
 		while (_roupa.Count > ap.Roupa.Count)
@@ -1098,6 +1196,20 @@ public partial class CharacterVisual : Node2D
 			// zero. Nao ha como pedir "matiz" e ficar sem cor -- ver o bloco do tipo `Tinta`.
 			Tingir(_roupa[i], Tinta.DaFicha(ap.Roupa[i].Cor, matiz: true));
 		}
+
+		// --- o que se USA: os pesos (por cima da roupa) e o scouter (no rosto, por cima do cabelo) ---
+		// Dono, 2026-10-13: *"equipar o scouter e o peso n aparece no sprite do personagem como overlay (oq deveria)"*.
+		// Os dois chegam na ficha visual como fatos do corpo (`Appearance.PesosNoCorpo` / `ScouterNoRosto`, do
+		// `S2C.PeerLook`); a regra de quem aparece mora em `Items.EquipamentoNoCorpo`.
+		VestirOQueSeUsa(ref _pesos, ap.PesosNoCorpo.Length > 0 ? ap.PesosNoCorpo : null, OrdemDosPesos);
+		VestirOQueSeUsa(ref _scouter, ap.ScouterNoRosto ? Jandirus.Core.Items.EquipamentoNoCorpo.FolhaDoScouter : null, OrdemDoScouter);
+		// (v0.2.1) as luvas e as botas de dreno vestidas -- `usr.overlayList += icon` (`Tier 1.5.dm:273` e `:309`).
+		VestirOQueSeUsa(ref _luvasDeDreno, ap.LuvasDeDreno ? Jandirus.Core.Items.EquipamentoNoCorpo.FolhaDasLuvasDeDreno : null, OrdemDasLuvasDeDreno);
+		VestirOQueSeUsa(ref _botasDeDreno, ap.BotasDeDreno ? Jandirus.Core.Items.EquipamentoNoCorpo.FolhaDasBotasDeDreno : null, OrdemDasBotasDeDreno);
+		// (v0.2.1) o barco embaixo de quem veleja -- a `Boat.dmi`, que no original anda sob o piloto (`Boat.dm:44-47`).
+		VestirOQueSeUsa(ref _barco, ap.NoBarco ? Jandirus.Core.Tech.Barco.Folha : null, OrdemDoBarco);
+		// (v0.2.1) o capacete do "Henshin!" -- `usr.updateOverlay(/obj/overlay/clothes/henshin, storedclothesicon)` (`Teleports.dm:162`).
+		VestirOQueSeUsa(ref _capaceteDoRelogio, ap.CapaceteDoRelogio ? Jandirus.Core.Tech.Teleporte.FolhaDoCapacete : null, OrdemDoCapaceteDoRelogio);
 
 		// --- cabelo: acima da roupa, como no jogo (plano 4 contra 3) ---
 		string? cabelo = VisualCatalog.TemCabelo(raca) ? cat.SpriteDoCabelo(ap.Cabelo) : null;
@@ -1167,6 +1279,51 @@ public partial class CharacterVisual : Node2D
 		// A ROUPA NOVA NASCE LIMPA, e trocar de roupa nao fecha ferimento. Ver `ReaplicarFeridas`.
 		ReaplicarFeridas();
 	}
+
+	/// <summary>As camadas do que se usa -- nulas quando o corpo nao usa. Ver <see cref="VestirOQueSeUsa"/>.</summary>
+	private AnimatedSprite2D? _pesos, _scouter, _luvasDeDreno, _botasDeDreno, _barco, _capaceteDoRelogio;
+
+	/// <summary>O capacete do "Henshin!" fica por cima de tudo, do scouter inclusive: ele cobre a cabeca.</summary>
+	private const int OrdemDoCapaceteDoRelogio = 13;
+
+	/// <summary>O barco fica por baixo de tudo: o corpo vai dentro dele.</summary>
+	private const int OrdemDoBarco = -1;
+
+	/// <summary>Este boneco esta desenhado dentro de um barco? Pra bancada.</summary>
+	public bool NoBarcoDeTeste => _barco != null && IsInstanceValid(_barco);
+
+	/// <summary>As luvas e as botas de dreno ficam logo acima dos pesos, e por baixo do cabelo (10).</summary>
+	private const int OrdemDasLuvasDeDreno = 7, OrdemDasBotasDeDreno = 8;
+
+	/// <summary>O que este boneco veste de dreno: (as luvas, as botas). Pra bancada.</summary>
+	public (bool Luvas, bool Botas) DrenoDeTeste =>
+		(_luvasDeDreno != null && IsInstanceValid(_luvasDeDreno), _botasDeDreno != null && IsInstanceValid(_botasDeDreno));
+
+	/// <summary>Os pesos ficam por cima das quatro vagas de roupa (2 a 5) e por baixo do cabelo (10).</summary>
+	private const int OrdemDosPesos = 6;
+
+	/// <summary>O scouter fica por cima do cabelo (10) e dos olhos (11): ele e uma lente na frente do rosto.</summary>
+	private const int OrdemDoScouter = 12;
+
+	/// <summary>
+	/// UMA CAMADA DO QUE SE USA: nasce quando ha folha, troca quando a folha muda e MORRE quando o corpo deixa de usar
+	/// -- e uma camada reciclada como a da roupa, e nao um `Visible`: a camada que sobrasse apagada ainda iria na foto
+	/// do corpo e na silhueta. Quem a esconde dentro de um Oozaru e a <see cref="Escondida"/>, como toda camada.
+	/// </summary>
+	private void VestirOQueSeUsa(ref AnimatedSprite2D? camada, string? folha, int ordem)
+	{
+		if (folha == null)
+		{
+			if (camada != null) { Descartar(camada); camada = null; }
+			return;
+		}
+		camada ??= NovaCamada(ordem);
+		Trocar(camada, folha);
+	}
+
+	/// <summary>O que este boneco esta usando por cima do corpo: (os pesos, o scouter). Pra bancada.</summary>
+	public (bool Pesos, bool Scouter) UsandoDeTeste =>
+		(_pesos != null && IsInstanceValid(_pesos), _scouter != null && IsInstanceValid(_scouter));
 
 	/// <summary>
 	/// O RABO aparece e some em jogo -- nao e escolha de criacao, e estado de corpo. Quem
@@ -1927,6 +2084,7 @@ public partial class CharacterVisual : Node2D
 				Centered = s.Centered,
 				Offset = s.Offset,
 				Position = s.Position,
+				Scale = s.Scale,   // o porte da forma (o Orange) -- ver `AplicarOPorte`
 				FlipH = s.FlipH,
 				TextureFilter = TextureFilterEnum.Nearest,
 

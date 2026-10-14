@@ -686,8 +686,8 @@ public partial class GameServer
 		if (r.Encostou) ca.SomarCombo(); else ca.ZerarCombo();
 
 		// O bit do mestre, igual ao soco comum -- ver o bloco em `GameServer.Combat.cs`.
-		pl.Ficha.AttackGain(_rng, pl.Ficha.FightGainMult(alvo.Ficha, EhMeuMestre(pl, alvo)));
-		if (r.Encostou) alvo.Ficha.AttackGain(_rng, alvo.Ficha.FightGainMult(pl.Ficha, EhMeuMestre(alvo, pl)));
+		pl.Ficha.AttackGain(_rng, pl.Ficha.FightGainMult(alvo.Ficha, EhMeuMestre(pl, alvo), EhColegaDeMestre(pl, alvo)));
+		if (r.Encostou) alvo.Ficha.AttackGain(_rng, alvo.Ficha.FightGainMult(pl.Ficha, EhMeuMestre(alvo, pl), EhColegaDeMestre(alvo, pl)));
 
 		// O CONTRA CONTINUA VALENDO. Deixar o punho ignorar a guarda perfeita faria dele o jeito
 		// de furar o sistema de contra-ataque -- e ai ninguem mais usaria soco.

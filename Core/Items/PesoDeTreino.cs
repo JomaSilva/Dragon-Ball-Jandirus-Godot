@@ -53,4 +53,39 @@ public static class PesoDeTreino
 
 	/// <summary>O preco da PROXIMA melhoria, em zeni: 500 a primeira, 1.000 a segunda, 1.500 a terceira...</summary>
 	public static double PrecoEmZeni(double daFicha) => ZeniPorNivel * (Nivel(daFicha) + 1);
+
+	// =====================================================================
+	// A ARTE DOS PESOS NO CORPO (dono, 2026-10-13)
+	// =====================================================================
+	// *"permita tb o jogador a mudar o icone do peso (assim como é quando cria uma armadura) e quando ele equipar n
+	// esqueça de colocar como overlay no personagem assim como o scouter deveria ser (mesma logica das roupas normais
+	// e armadura)"*.
+	//
+	// NO DM os pesos SAO roupa: `obj/items/Weight` usa `Clothes_ShortSleeveShirt.dmi` (`Tier 1.dm:107`), vestir faz
+	// `usr.overlayList += icon` (`:124`), e o `verb/Icon()` (`:167-175`) troca a folha por um arquivo que o jogador
+	// envia. Aqui a troca e por uma folha do guarda-roupa (a mesma grade da armadura), e a escolha mora na ficha
+	// (`Fighter.pesoArte`), ao lado do peso maximo e pelo mesmo motivo: o item da mochila nao tem estado proprio.
+
+	/// <summary>A acao da mochila que abre a grade de artes. O botao e o `case` do servidor leem daqui.</summary>
+	public const string AcaoArte = "arte";
+
+	/// <summary>A folha de fabrica -- `icon='Clothes_ShortSleeveShirt.dmi'` (`Tier 1.dm:107`). E o que o `Default` do `Icon()` devolve.</summary>
+	public const string ArtePadrao = "Clothes_ShortSleeveShirt";
+
+	/// <summary>
+	/// O caminho da folha que os pesos deste personagem usam no corpo: a escolhida, ou a de fabrica quando ele nunca
+	/// escolheu (ou a escolhida saiu do catalogo). Nulo sem catalogo.
+	/// </summary>
+	public static string? Folha(string arteDaFicha, Appearance.VisualCatalog? cat) =>
+		cat == null ? null
+		: (arteDaFicha.Length > 0 ? cat.Peca(arteDaFicha) : null) ?? cat.Peca(ArtePadrao);
+
+	/// <summary>As artes que a grade oferece: o guarda-roupa inteiro, na ordem do catalogo -- (nome do arquivo, caminho).</summary>
+	public static List<(string Nome, string Caminho)> Escolhiveis(Appearance.VisualCatalog cat)
+	{
+		var saida = new List<(string, string)>();
+		foreach (string caminho in cat.Roupas)
+			saida.Add((Appearance.VisualCatalog.NomeDoArquivo(caminho), caminho));
+		return saida;
+	}
 }

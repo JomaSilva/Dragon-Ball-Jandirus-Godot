@@ -214,8 +214,8 @@ public partial class GameServer
 			// NPC nao tem assinatura: acha-se pela distancia
 			AfirmarSn("...um NPC do mundo a 18 tiles NAO entra no 'neste mundo' (o DM varre `player_list`, so jogador)",
 					  !l2b.Any(p => p.Distancia == 18), Nomes(l2b));
-			AfirmarSn("...mas um NPC a 7 tiles ENTRA no 'perto' (o DM varre `current_area.contents`, todo mob), sem nome nem assinatura",
-					  l2b.Any(p => p.Distancia == 7 && p.Alcance == AlcancePerto && p.Nome == "" && p.Assinatura == ""), Nomes(l2b));
+			AfirmarSn("...mas um NPC a 7 tiles ENTRA no 'perto' (o DM varre `current_area.contents`, todo mob), com o NOME dele e sem assinatura (dono, 2026-10-13)",
+					  l2b.Any(p => p.Distancia == 7 && p.Alcance == AlcancePerto && p.Nome == "Vizinho" && p.Assinatura == ""), Nomes(l2b));
 		}
 		else GD.Print("[sentidos]   --    (sem catalogo de NPCs: a peneira de NPC do alcance 2 nao foi medida)");
 
@@ -280,7 +280,8 @@ public partial class GameServer
 			cidadao.Conta = "";
 			(_, l) = SentidosDe(eu);
 			AfirmarSn("o chefe NPC aparece no scan, marcado como CHEFE (o `isBoss` do DM)", Acha(l, chefe) is { Chefe: true }, Nomes(l));
-			AfirmarSn("...e o NPC comum NAO (HtmlUI.dm:410)", Acha(l, cidadao) == null, Nomes(l));
+			AfirmarSn("...e o NPC comum TAMBEM, com o BP exato e sem a marca de chefe (dono, 2026-10-13; no DM so o chefe, `HtmlUI.dm:410`)",
+					  Acha(l, cidadao) is { Chefe: false, Nome: "Cidadao2" } lido && lido.Bp == Math.Round(cidadao.Ficha.expressedBP, MidpointRounding.AwayFromZero), Nomes(l));
 		}
 		else GD.Print("[sentidos]   --    (sem molde de chefe/cidadao no catalogo: a peneira de NPC do scan nao foi medida)");
 

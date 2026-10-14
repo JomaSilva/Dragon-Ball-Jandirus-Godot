@@ -199,6 +199,14 @@ public sealed class Obra
 
 	/// <summary>Se for um laboratorio: em que estado esta a gestacao (ver <see cref="Gestacao"/>).</summary>
 	public Gestacao? Fornada;
+
+	/// <summary>
+	/// O ESTADO DE UMA MAQUINA PORTADA NA v0.2.1 (o bau, a base, o simulador...): numeros, textos e o que ela guarda.
+	/// Nulo em todo o resto, e nulo na maquina que ainda nao guardou nada -- ver <see cref="EstadoDeTech"/>, onde esta
+	/// contado por que e um saco so e nao uma classe por maquina. Mora aqui pelo motivo do <see cref="Gravidade"/>:
+	/// nasce e morre com a obra, e vai pro `mundo.json` de graca.
+	/// </summary>
+	public EstadoDeTech? Tech;
 }
 
 /// <summary>
@@ -440,6 +448,7 @@ public partial class GameServer
 		if (densas > 0) GD.Print($"[server] construcoes que bloqueiam: {densas}");
 
 		CarregarObjetosDoMapa();
+		CarregarOCofreDeTech();   // (v0.2.1) o que os itens de bolso guardam fora do id -- ver `GameServer.TechDeBolso.cs`
 		SemearOEnma();   // o juiz dos mortos, na mesa dele -- ver `GameServer.Alem.cs`, secao 5
 
 		// ============================ E ENTAO A GUARDA, EM VOZ ALTA ============================
@@ -723,6 +732,9 @@ public partial class GameServer
 			return;
 		}
 
+		// (v0.2.1) O QUE A FABRICACAO PEDE ALEM DO PRECO: a semente da capsula de Saibaman (`GameServer.Companheiros.cs`).
+		if (PorQueNaoFabrica(pl, c.Id) is { } falta) { Avisar(pl, falta); return; }
+
 		// A PORTA UNICA DA COBRANCA. O `Permitida` de cima ja conferiu o saldo NESTA moeda, entao a recusa
 		// daqui so dispara se as duas contas divergirem -- e nesse caso nada foi cobrado e nada e entregue.
 		if (!Cobrar(pl, c.Custo, moeda))
@@ -731,6 +743,7 @@ public partial class GameServer
 			return;
 		}
 		Guardar(pl, c.Id);
+		AoFabricarTech(pl, c.Id);   // (v0.2.1) o que vem junto de uma fabricacao -- o barril da nuke, `GameServer.Armas.cs`
 
 		string preco = moeda == Moeda.Recursos
 			? $"{Recurso.CustoEmRecursos(c.Custo):N0} recursos"
@@ -928,6 +941,12 @@ public partial class GameServer
 		if (o.DonoConta.Length > 0 && !string.Equals(o.DonoConta, pl.Conta, StringComparison.OrdinalIgnoreCase))
 		{ Avisar(pl, $"{NomeDaObra(o)} é de {o.DonoNome}."); return; }
 		if (pl.Mochila.Cheio) { Avisar(pl, "sua mochila está cheia."); return; }
+		// (v0.2.1) COM COISA DENTRO NAO SE RECOLHE: a obra recolhida vira um item sem identidade, e o que ela guardava
+		// sumiria com ela. Ver `Deposito`.
+		if (o.Tech is { Itens.Count: > 0 }) { Avisar(pl, $"esvazie {NomeDaObra(o)} antes de recolher."); return; }
+		// (v0.2.1) A LUA ACESA NAO SE RECOLHE: recolhida, ela voltaria pra mochila nova em folha -- e acenderia de novo.
+		if (LuaArtificial.EhFonte(o.Tipo) && o.Tech?.Num(LuaArtificial.ChaveAcesaAte) > 0)
+		{ Avisar(pl, $"{NomeDaObra(o)} está acesa: não dá pra recolher."); return; }
 
 		// A DRILL NAO PERDE NADA AO SER RECOLHIDA: o estoque vai pro saldo e o nivel fica com quem a recolhe.
 		// Ver `GameServer.Drill.AoRecolherADrill`.
@@ -941,6 +960,10 @@ public partial class GameServer
 		// isto deixaria a parede dela no lugar, e o jogador levaria correcao num ponto vazio.
 		AplicarColisaoDasObras(pl.Zone);
 		Avisar(pl, $"você recolhe {NomeDaObra(o)}.");
+		// (v0.2.1) A MAQUINA RECOLHIDA VIRA UM ITEM SEM IDENTIDADE: o que as maquinas do lote da tech guardam em `Obra.Tech`
+		// (as melhorias, a programacao) fica pra tras, e quem recolhe e avisado.
+		if (o.Tech is { N.Count: > 0 } or { S.Count: > 0 })
+			Avisar(pl, "as melhorias e os ajustes dela ficaram pra trás: recolhida, ela volta a ser a de fábrica.");
 		MandarObras(pl.Zone);
 	}
 
@@ -951,6 +974,7 @@ public partial class GameServer
 		RecusaObra.SemZeni => $"{c.Nome} custa {c.Custo:N0} zeni -- voce tem {pl.Ficha.Zeni:N0}.",
 		RecusaObra.SemRecursos => $"{c.Nome} custa {Recurso.CustoEmRecursos(c.Custo):N0} recursos -- voce tem {pl.Ficha.Recursos:N0}.",
 		RecusaObra.RacaErrada => $"{c.Nome} nao e coisa de {Jandirus.Core.Races.NomeDaRaca.Bonito(pl.Race)}.",
+		RecusaObra.ForaDoPort => $"{c.Nome} ainda não existe neste jogo: pede {TechFechada.Falta}. Nada foi cobrado.",
 		_ => "nao deu pra construir.",
 	};
 
@@ -1111,7 +1135,18 @@ public partial class GameServer
 			.OrderBy(o => Vec2.Distance(o.Pos, pl.Pos))
 			.FirstOrDefault(o => Vec2.Distance(o.Pos, pl.Pos) <= AlcanceDeUso);
 
-		if (vitima == null) { Avisar(pl, "nao ha ninguem caido ao seu alcance."); return; }
+		// (v0.2.1) SEM NINGUEM CAIDO POR PERTO, O QUE SE COLHE E O QUE ESTA NO RECIPIENTE DE DNA DA MOCHILA -- o
+		// `DNA_Container` do original e a ferramenta de coleta, e a amostra e trazida ao laboratorio dentro dele
+		// (`DNALabs.dm:268-334`). Ver `DespejarOsRecipientesNoLab`.
+		if (vitima == null)
+		{
+			if (lab.Fornada is { PrometidaEm: > 0 }) { Avisar(pl, "a gestacao ja comecou -- nao da pra acrescentar DNA."); return; }
+			int doRecipiente = DespejarOsRecipientesNoLab(pl, lab);
+			Avisar(pl, doRecipiente > 0
+				? $"voce despeja {doRecipiente} amostra(s) do recipiente no tanque. Amostras: {lab.Fornada!.Amostras.Count}/{BioMaxDna}."
+				: "nao ha ninguem caido ao seu alcance -- e nenhuma amostra nova num recipiente de DNA da sua mochila.");
+			return;
+		}
 
 		lab.Fornada ??= new Gestacao { DonoConta = pl.Conta };
 		if (lab.Fornada.PrometidaEm > 0) { Avisar(pl, "a gestacao ja comecou -- nao da pra acrescentar DNA."); return; }
@@ -1921,6 +1956,10 @@ public partial class GameServer
 				? Jandirus.Core.Tech.Interacoes.MelhoriaUnicaFeita : 0),
 		"Gravity" => (byte)((o.Gravidade?.Estavel == true ? Jandirus.Core.Tech.Interacoes.MelhoriaUnicaFeita : 0)
 						   | (o.Gravidade?.Range >= AlcanceMaximo ? Jandirus.Core.Tech.Interacoes.MelhoriaNoTeto : 0)),
+		// (v0.2.1) a ressurreicao de androide do super computador: comprada uma vez, sai do menu dele.
+		Jandirus.Core.Tech.SuperComputador.Tipo =>
+			(byte)(o.Tech?.Ligado(Jandirus.Core.Tech.SuperComputador.ChaveRessurreicao) == true
+				? Jandirus.Core.Tech.Interacoes.MelhoriaUnicaFeita : 0),
 		_ => 0,
 	};
 

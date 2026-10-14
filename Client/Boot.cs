@@ -1148,6 +1148,12 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagv020") >= 0)
 			AddChild(new RoboDaV020 { Name = "RoboDaV020" });
 
+		// --diagv021: A VERSAO 0.2.1 NA TELA (o pedido de 2026-10-13) -- a roda do zoom, largar e pegar pela tecla E, o
+		// pedido que vira cartao, os pesos nas duas moedas e o que se usa no boneco, a carteira do caido e a bancada de
+		// criacao. Modo host, sem janela, em campo aberto. Anda junto da `--v021teste` do servidor. Ver RoboDaV021.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagv021") >= 0)
+			AddChild(new RoboDaV021 { Name = "RoboDaV021" });
+
 		// --diagjanelas: O ARRANJO DA TELA -- o menu P arrastado, redimensionado e destacado numa janela do sistema,
 		// o chat e os dois paineis do topo em outros tamanhos, e o que mora em volta acompanhando. Modo host e com
 		// JANELA (as fotos, e a janela do sistema de verdade). Ver RoboDeJanelas.

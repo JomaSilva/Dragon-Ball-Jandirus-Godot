@@ -64,6 +64,12 @@ public static class CatalogoDeItens
 	public const string ArvoreDeMaca = "AppleTree";
 	public const string Scouter = "Scouter";
 	public const string Pesos = "Weights";
+
+	/// <summary>
+	/// OS PEIXES -- `obj/items/food/Fish`, `Trout` e `Salmon` (`Stamina/Fishing.dm:60-97`): o que a vara de pescar
+	/// tira da agua. A nutricao e a do peixe CRU (10, 15 e 20); a versao cozida e da cozinha, que este port nao tem.
+	/// </summary>
+	public const string Peixe = "Fish", Truta = "Trout", Salmao = "Salmon";
 	public const string Bandagem = "Bandages";
 	public const string KitMedico = "First_Aid_Kit";
 	public const string Pa = "Shovel";
@@ -233,16 +239,25 @@ public static class CatalogoDeItens
 			// com ela o icone caia no primeiro estado da folha (um pod de androide), que foi o que o dono viu.
 			"res://Assets/Sprites/Clothes/Clothes_ShortSleeveShirt.tres", "walk_south",
 			// "melhorar" e a porta paga do peso maximo (dono, 2026-10-12) -- ver `PesoDeTreino`.
-			Empilhavel: false, Acoes: ["ajustar", "melhorar", "tirar"]),
+			// "arte" e o `verb/Icon()` dos pesos (`Tier 1.dm:167-175`): o jogador escolhe a folha que aparece no corpo
+			// (dono, 2026-10-13) -- ver `PesoDeTreino.AcaoArte`.
+			Empilhavel: false, Acoes: ["ajustar", "melhorar", PesoDeTreino.AcaoArte, "tirar"]),
 
+		// ============================ ARTE VAZIA = A DO CATALOGO DE CONSTRUCOES (2026-10-13) ============================
+		// A bandagem, o kit e a furadeira apontavam pra folhas que NAO EXISTEM: `tech.tres` nao tem os estados
+		// "bandage" nem "drill" (o icone caia no primeiro estado da folha, um computador), e `Technology/FirstAid.tres`
+		// nao esta no disco. O dono viu na furadeira: *"alguns itens fabricados como a furadeira ficam com outro sprite
+		// no inventario"* -- a aba Tech desenhava a arte certa (a do `construcoes.json`, extraida do DM) e a mochila
+		// desenhava a daqui. Sem arte escrita, o `Get` usa a da construcao de mesmo id: uma resposta so pras duas telas.
+		// ================================================================================================================
 		[Bandagem] = new ItemDef(
 			Bandagem, "Bandagens", "Fecha o que está aberto. Devagar, e só fora de combate.",
-			"res://Assets/Sprites/Misc/Objects/Technology/tech.tres", "bandage",
+			"", "",
 			Empilhavel: true, Acoes: ["usar"]),
 
 		[KitMedico] = new ItemDef(
 			KitMedico, "Kit de Primeiros Socorros", "Dez usos. Cura bem mais que uma bandagem.",
-			"res://Assets/Sprites/Misc/Objects/Technology/FirstAid.tres", "",
+			"", "",
 			Empilhavel: false, Acoes: ["usar"]),
 
 		// A PA E A FURADEIRA NAO TEM ACAO: o "cavar" saiu (dono, 2026-10-10: *"tire a opcao de cavar da pa e
@@ -255,7 +270,7 @@ public static class CatalogoDeItens
 
 		[Furadeira] = new ItemDef(
 			Furadeira, "Furadeira Manual", Economia.Recurso.DescricaoDeFerramenta(Furadeira)!,
-			"res://Assets/Sprites/Misc/Objects/Technology/tech.tres", "drill",
+			"", "",   // a arte e a da construcao (`Drill Hand.tres`) -- ver o bloco da bandagem
 			Empilhavel: false, Acoes: []),
 
 		// `stackable = 1`, `nutrition = 10` (`Food.dm:21-28`). A arte e o `Senzu Bean.dmi` de `:24`.
@@ -320,6 +335,17 @@ public static class CatalogoDeItens
 			"res://Assets/Sprites/Clothes/potara.tres", "",
 			Empilhavel: false, Acoes: ["jogar"]),
 
+		// `icon = 'food.dmi'`, `icon_state = "fish"` nos tres (`Fishing.dm:61-93`).
+		[Peixe] = new ItemDef(
+			Peixe, "Peixe", "Um peixe cru, tirado da água com a vara. Mata a fome.",
+			"res://Assets/Sprites/Misc/food.tres", "fish", Empilhavel: true, Nutricao: 10),
+		[Truta] = new ItemDef(
+			Truta, "Truta", "Uma truta crua: só morde pra quem já pesca bem. Alimenta mais que o peixe comum.",
+			"res://Assets/Sprites/Misc/food.tres", "fish", Empilhavel: true, Nutricao: 15),
+		[Salmao] = new ItemDef(
+			Salmao, "Salmão", "Um salmão cru: o peixe de quem domina a vara. O que mais alimenta dos três.",
+			"res://Assets/Sprites/Misc/food.tres", "fish", Empilhavel: true, Nutricao: 20),
+
 		[Respirador] = new ItemDef(
 			Respirador, "Respirador",
 			"Enquanto estiver com você, dá pra respirar no vácuo. Cabe no rosto, custa mais e não constrange ninguém.",
@@ -376,9 +402,22 @@ public static class CatalogoDeItens
 	public static ItemDef? Get(string id)
 	{
 		if (Tudo.TryGetValue(id, out ItemDef? mao))
+		{
+			mao = ComAArteDaObra(mao);
 			return FerramentaVoltaACavarDeTeste && id is Pa or Furadeira ? mao with { Acoes = ["cavar"] } : mao;
+		}
 		if (LivroDeEnsinamentos.Ler(id) is { } livro) return livro.Ficha;
 		if (RoupaGuardada.Ler(id) is { } roupa) return roupa.Ficha(Visual);
+
+		// A TECH DE BOLSO (v0.2.1): o item fabricado que tem acao propria -- e, as vezes, estado no id. Ver `TechDeBolso`.
+		if (TechDeBolso.Ficha(id, Obras) is { } deBolso) return deBolso;
+
+		// O QUE O SINTETIZADOR DE VIRUS FABRICA (v0.2.1): os virus, os antivirus e as injecoes. Nao estao no catalogo de
+		// construcoes -- nao se fabricam na bancada --, e a ficha de cada um sai da lista do `Sintetizador`.
+		if (Tech.Sintetizador.Ficha(id) is { } sintetizado) return sintetizado;
+
+		// O QUE A BANCADA DE CRIACAO FAZ (v0.2.1): o pente e a tinta de olhos, que tambem nao estao no catalogo de construcoes.
+		if (Tech.BancadaDeCriacao.Ficha(id) is { } daBancada) return daBancada;
 
 		Tech.Construcao? c = Obras?.Get(id);
 		if (c == null) return null;
@@ -408,7 +447,23 @@ public static class CatalogoDeItens
 	/// </summary>
 	public static bool FerramentaVoltaACavarDeTeste;
 
-	public static IEnumerable<ItemDef> Todos => Tudo.Values;
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): o item escrito a mao sem arte NAO herda a da construcao de mesmo id --
+	/// ele fica sem desenho nenhum, que e o que a mochila mostrava da furadeira (um quadro de outra folha). Lido pela
+	/// propria <see cref="ComAArteDaObra"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool ItemNaoHerdaAArteDaObraDeTeste;
+
+	/// <summary>
+	/// A ARTE DE QUEM NAO ESCREVEU A PROPRIA: a da CONSTRUCAO de mesmo id, que e a extraida do DM e a que a aba Tech
+	/// desenha no card que fabrica o item. Ver o bloco da bandagem na tabela.
+	/// </summary>
+	private static ItemDef ComAArteDaObra(ItemDef mao) =>
+		mao.Arte.Length == 0 && !ItemNaoHerdaAArteDaObraDeTeste && Obras?.Get(mao.Id) is { } c
+			? mao with { Arte = c.Arte, Estado = c.Estado }
+			: mao;
+
+	public static IEnumerable<ItemDef> Todos => Tudo.Values.Select(ComAArteDaObra);
 
 	/// <summary>
 	/// O NOME DA ACAO DE ASSENTAR NO CHAO. Escrito uma vez porque ele e um contrato entre tres

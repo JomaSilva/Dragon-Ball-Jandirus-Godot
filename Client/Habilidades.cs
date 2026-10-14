@@ -516,7 +516,8 @@ public static class Habilidades
 			"Aceitar a licao",
 			Verbos.Aprendizado,
 			"Aceita a habilidade que alguem esta te ensinando agora. Voce precisa TER os marcos que "
-			+ "ela exige -- mas aprender nao gasta marco nenhum.",
+			+ "ela exige -- mas aprender nao gasta marco nenhum. (A excecao e a LICAO DE MESTRE: o que o seu "
+			+ "mestre nao ensinaria a um estranho gasta os marcos, e a oferta avisa.)",
 			() => GameClient.Instance?.SendHabilidade("ens_licao_sim")) { Chave = "hab:ens_licao_sim" });
 
 		Verbos.Registrar(new Verbo(
@@ -546,8 +547,8 @@ public static class Habilidades
 				$"Esquecer a licao: {s.Nome}",
 				Verbos.Aprendizado,
 				$"Deixa {s.Nome} pra tras -- **so funciona se alguem te ensinou**. O que voce comprou "
-				+ "com os proprios marcos nao se esquece por aqui. Nenhum marco volta, porque nenhum "
-				+ "tinha sido gasto.",
+				+ "com os proprios marcos nao se esquece por aqui. Nenhum marco volta (nem os da licao "
+				+ "de mestre, que custou).",
 				() => GameClient.Instance?.SendHabilidade($"ens_esquecer:{idLocal}"))
 				{ Chave = $"hab:ens_esquecer:{idLocal}" });
 		}
@@ -594,10 +595,11 @@ public static class Habilidades
 			string nome = s.Nome;
 
 			Verbos.Registrar(new Verbo(
-				$"Focar: {nome}",
+				$"Foco do estudo: {nome}",
 				Verbos.Aprendizado,
-				$"Concentra o seu estudo em {nome}. Enquanto estiver estudando alguem, so ela adianta "
-				+ "-- e adianta DEZ VEZES mais do que o estudo espalhado.",
+				$"Escolhe {nome} como o foco do seu ESTUDO. Sozinho isto nao muda nada: o foco so vale enquanto voce "
+				+ "ESTUDA alguem mais adiantado que voce nela (marque a pessoa e use Estudar) -- ai so ela adianta, "
+				+ "e adianta DEZ VEZES mais do que o estudo espalhado.",
 				() => GameClient.Instance?.SendHabilidade($"Focus_Skill:{nome}"))
 				{ Chave = $"hab:Focus_Skill:{nome}", Requisito = foco });
 
@@ -614,7 +616,7 @@ public static class Habilidades
 		if (!alguma) return;
 
 		Verbos.Registrar(new Verbo(
-			"Focar: nenhuma",
+			"Foco do estudo: nenhum",
 			Verbos.Aprendizado,
 			"Solta o foco: o estudo volta a adiantar um pouco de TUDO que a pessoa estudada sabe mais "
 			+ "que voce, em vez de dez vezes numa so.",
@@ -784,15 +786,23 @@ public static class Habilidades
 	}
 
 	/// <summary>
+	/// DEFEITO INJETADO (o robo dos verbs, `RoboDeVerbs` F7): o verb sem corpo volta a virar o botao cinza
+	/// "(nao portada)" -- a fileira de botoes mortos da v0.2.0. Lido pelo <see cref="DasSkills"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool BotaoCinzaDeTeste;
+
+	/// <summary>
 	/// OS BOTOES QUE VIERAM DAS SKILLS APRENDIDAS.
 	///
 	/// Nenhuma linha aqui conhece tecnica nenhuma: le o que foi aprendido, pergunta ao catalogo
 	/// quais verbs aquilo destrava e registra um botao por verb. Portar a proxima tecnica nao
 	/// mexe neste arquivo -- so no `UsarTecnica` do servidor e na tabela do <see cref="Tecnicas"/>.
 	///
-	/// A TECNICA AINDA NAO PORTADA TAMBEM VIRA BOTAO, apagado e dizendo por que. Esconde-la
-	/// deixaria o jogador achando que perdeu os marcos; um botao cinza com "o efeito ainda nao
-	/// foi trazido do jogo antigo" e a verdade, e some sozinho no dia em que a tecnica sair.
+	/// (2026-10-13) A TECNICA SEM CORPO NAO VIRA MAIS BOTAO. Ela virava um botao cinza escrito "(nao portada)", pra
+	/// quem a comprou nao achar que perdeu os marcos -- e o dono viu a fileira deles: *"tem mts verbs mortos q
+	/// poderiam ser tirados, e tem verb q diz q faz algo mas n faz nada"*. Sairam. O que protege os marcos agora e a
+	/// LOJA: a skill que so promete um verb sem corpo nao se vende (`SkillsFechadas`), e a que da outra coisa junto
+	/// diz na ficha qual das habilidades dela ainda nao existe.
 	/// </summary>
 	public static void DasSkills()
 	{
@@ -807,21 +817,19 @@ public static class Habilidades
 			Tecnicas.Tecnica? t = Tecnicas.Get(id);
 			if (t == null) return;
 
-			bool pronta = t.Modo != Modo.NaoPortada;
-
-			// O VERB ATENDIDO POR OUTRO CANAL NAO GANHA O BOTAO CINZA: ele tem corpo, e o botao (ou a tecla)
-			// que o aciona nasce de outro lugar -- a absorcao e o `Absorver` da raca, o voo e uma tecla, a
-			// mesa de tecnicas mora na aba de Ki. Um "(nao portada)" ao lado do botao que funciona e mentira.
-			if (!pronta && CensoDeSkills.AtendidoPorOutroCanal(id)) return;
+			// SO O VERB QUE TEM CORPO AQUI. O atendido por outro canal tem corpo, mas o botao (ou a tecla) dele nasce
+			// de outro lugar -- a absorcao e o `Absorver` da raca, o voo e uma tecla, a mesa de tecnicas mora na aba
+			// de Ki; o que nao tem corpo nenhum nao e botao (ver o cabecalho).
+			if (t.Modo == Modo.NaoPortada && !BotaoCinzaDeTeste) return;
 
 			string idLocal = id;
 			Verbos.Registrar(new Verbo(
-				pronta ? t.Nome : $"{t.Nome} (nao portada)",
+				t.Modo == Modo.NaoPortada ? $"{t.Nome} (nao portada)" : t.Nome,
 				t.Aba,
 				t.Desc,
 				// (o `Power_Control` nao viaja sem numero: o botao dele ABRE a faixa da aba Ki, onde o numero se escolhe)
 				() => { if (!MenuJogo.AbrirOControleDe(idLocal)) GameClient.Instance?.SendHabilidade(idLocal); },
-				pronta ? null : () => false) { Chave = $"hab:{idLocal}" });
+				t.Modo == Modo.NaoPortada ? () => false : null) { Chave = $"hab:{idLocal}" });
 		}
 
 		foreach (string path in cli.SkillsAprendidas)

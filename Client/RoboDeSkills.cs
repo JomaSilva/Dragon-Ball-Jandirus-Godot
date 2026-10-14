@@ -316,7 +316,9 @@ public partial class RoboDeSkills : Node
 		// ---- os estados, nada comprado ainda ----
 		Checa("'Basic Training' (ligada, sem pre-requisito) e COMPRAVEL: o card diz o preco", EstadoDo(pg, "Basic Training") == "1 marco", EstadoDo(pg, "Basic Training"));
 		Checa("'Evasion Training' esta trancada POR PRE-REQUISITO, com o nome dele", EstadoDo(pg, "Evasion Training") == "depois de Basic Training", EstadoDo(pg, "Evasion Training"));
-		Checa("'Rapid Movement' (enabled=0, sem regra que a acenda) diz 'sem acendedor'", EstadoDo(pg, "Rapid Movement") == "sem acendedor", EstadoDo(pg, "Rapid Movement"));
+		// (ate 2026-10-13 ela dizia 'sem acendedor' pra sempre: o DM a deixou com a lista de pre-requisitos vazia. O port
+		// deu a ela o Speed Drills -- `AcendedoresDoPort`.)
+		Checa("'Rapid Movement' esta trancada pelo pre-requisito que o port deu a ela: 'depois de Speed Drills'", EstadoDo(pg, "Rapid Movement") == "depois de Speed Drills", EstadoDo(pg, "Rapid Movement"));
 		Checa("'Afterimage Technique' (tier 2) esta trancada POR TIER", EstadoDo(pg, "Afterimage Technique") == "tier trancado", EstadoDo(pg, "Afterimage Technique"));
 		Checa("'Planet Destroy' diz 'so pra vilao'", EstadoDo(pg, "Planet Destroy") == "só pra vilão", EstadoDo(pg, "Planet Destroy"));
 		Checa("nao existe mais a gaveta 'nao estao a venda'", Botao(pg, "▸") == null && Rotulos(pg).All(l => !l.Text.Contains("não estão à venda")));
@@ -567,8 +569,8 @@ public partial class RoboDeSkills : Node
 
 		// ---- O DADO: o registro de degraus DESTE processo (o niveis.json que o cliente carregou) ----
 		int porDegrau = RegrasDeNivel.DestravadasPorDegrau.Count;
-		Checa("o cliente carregou o niveis.json: o registro tem 32 skills acesas por DEGRAU (as Advanced_* e Perfect_*)",
-			  porDegrau == 32, $"{porDegrau} no registro; {MenuJogo.NiveisNoClienteDeTeste} regras carregadas pelo cliente em {MenuJogo.MsDoNiveisDeTeste:0.0} ms");
+		Checa("o cliente carregou o niveis.json: o registro tem 33 skills acesas por DEGRAU (as Advanced_* e Perfect_*, e a Full Power -- que o port acendeu no nivel 3 da Meditate Power)",
+			  porDegrau == 33, $"{porDegrau} no registro; {MenuJogo.NiveisNoClienteDeTeste} regras carregadas pelo cliente em {MenuJogo.MsDoNiveisDeTeste:0.0} ms");
 		Checa("...e carregar custou pouco (menos de 60 ms, na mesma chamada que ja le o skills.json -- fora do quadro do mundo)",
 			  MenuJogo.MsDoNiveisDeTeste < 60, $"skills.json {MenuJogo.MsDoCatalogoDeTeste:0.0} ms, niveis.json {MenuJogo.MsDoNiveisDeTeste:0.0} ms");
 
@@ -600,8 +602,8 @@ public partial class RoboDeSkills : Node
 			string esperada = $"{cat.Get(quem.Path)?.Nome ?? quem.Path} chega ao nivel {quem.Nivel}";
 			if (frase == esperada) rendemCerto++; else erradas.Add($"{cat.Get(alvo)?.Nome ?? alvo}: '{frase}' (esperava '{esperada}')");
 		}
-		Checa("as 32 acesas por degrau rendem, pelo caminho da tela, exatamente '<acendedor> chega ao nivel 100' -- com o nome do catalogo inteiro (Debuff, Kiai, Volley...)",
-			  porDegrau == 32 && rendemCerto == 32, $"{rendemCerto} de {porDegrau}" + (erradas.Count > 0 ? "; " + string.Join(" | ", erradas.Take(3)) : ""));
+		Checa("as 33 acesas por degrau rendem, pelo caminho da tela, exatamente '<acendedor> chega ao nivel N' (100 nas pericias, 3 na Full Power) -- com o nome do catalogo inteiro (Debuff, Kiai, Volley...)",
+			  porDegrau == 33 && rendemCerto == 33, $"{rendemCerto} de {porDegrau}" + (erradas.Count > 0 ? "; " + string.Join(" | ", erradas.Take(3)) : ""));
 
 		// ---- (c) os contra-exemplos na arvore do Body, que esta aberta desde a F2 ----
 		string preReq = EstadoDo(pg, "Speed Drills"), porTier = EstadoDo(pg, "Afterimage Technique"), tier2 = LinhaDoTier(pg, 2);
@@ -828,7 +830,8 @@ public partial class RoboDeSkills : Node
 
 		string tier1 = LinhaDoTier(pg, 1);
 		Checa("DEFEITO G MORTO: a linha 'TIER 1' continua existindo com tudo comprado", Rotulo(pg, "TIER 1") != null && tier1.Contains("10 de 11 suas"), tier1);
-		Checa("Rapid Movement continua no lugar dela, apagada, dizendo por que", EstadoDo(pg, "Rapid Movement") == "sem acendedor", EstadoDo(pg, "Rapid Movement"));
+		Checa("Rapid Movement continua no lugar dela -- e, com o Speed Drills comprado, ABRIU: o card diz o preco (ela ficava 'sem acendedor' pra sempre)",
+			  EstadoDo(pg, "Rapid Movement") == "1 marco", EstadoDo(pg, "Rapid Movement"));
 		string tier2 = LinhaDoTier(pg, 2), tier3 = LinhaDoTier(pg, 3);
 		Checa("com 10 marcos investidos, TIER 2 e TIER 3 ABRIRAM (as regras >=4 e >=7 do Body.dm), e a linha diz isso",
 			  !tier2.Contains("TRANCADO") && !tier3.Contains("TRANCADO"), $"{tier2} | {tier3}");

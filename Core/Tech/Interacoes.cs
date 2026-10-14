@@ -72,6 +72,12 @@ public static class Interacoes
 		/// <see cref="Acao.Max"/> e o teto de letras, e o valor inicial vem de <see cref="TextoInicial"/>.
 		/// </summary>
 		Texto = 3,
+
+		/// <summary>
+		/// Abre a GRADE DO GUARDA-ROUPA (a vitrine da bancada de criacao): a peca escolhida -- e a cor, se o jogador a
+		/// tingir -- vira o ARGUMENTO do verbo (`&lt;folha&gt;` ou `&lt;folha&gt;/&lt;RRGGBB&gt;`).
+		/// </summary>
+		Roupa = 4,
 	}
 
 	private static readonly Acao[] Nenhuma = [];
@@ -128,6 +134,33 @@ public static class Interacoes
 		new Acao($"{nome}: pagar com recursos", verbo, Economia.Recurso.PedidoPago(oQue, Economia.Moeda.Recursos),
 				 "a mesma melhoria, pelo dobro em recursos"),
 	];
+
+	/// <summary>
+	/// AS PAGINAS DO SINTETIZADOR DE VIRUS: a prateleira (uma linha por produto, com o preco e a tecnologia que ele
+	/// pede) e, de cada produto, as duas formas de pagar. Saem da lista do <see cref="Sintetizador"/>: produto novo la
+	/// aparece aqui sozinho.
+	/// </summary>
+	private static Acao[]? PaginaDoSintetizador(string chave)
+	{
+		const string prefixo = Sintetizador.Tipo + "/";
+		if (!chave.StartsWith(prefixo, StringComparison.Ordinal)) return null;
+		string[] p = chave[prefixo.Length..].Split('/');
+		Sintetizador.Classe? classe = p[0] switch
+		{
+			"virus" => Sintetizador.Classe.Virus,
+			"antivirus" => Sintetizador.Classe.AntiVirus,
+			"injecoes" => Sintetizador.Classe.Injecao,
+			_ => null,
+		};
+		if (classe == null) return null;
+		if (p.Length == 1)
+			return [.. Sintetizador.Produtos.Where(x => x.Classe == classe).Select(x => EscolherComoPagar(
+				x.Nome, "sint_como", $"{p[0]}/{x.Id}",
+				$"{Economia.Recurso.PrecoEscrito(x.Preco, Economia.Moeda.Zeni)} e {x.Tecnologia:0} de tecnologia: {x.Descricao}"))];
+		return p.Length == 2 && Sintetizador.De(p[1]) is { } produto && produto.Classe == classe
+			? DuasFormasDePagar(produto.Nome, Sintetizador.VerboFazer, produto.Id)
+			: null;
+	}
 
 	private static readonly Acao MelhorarVelocidade =
 		new("Melhorar velocidade", "nave_melhorar", "", "cada degrau custa 1000 x a velocidade atual, em zeni");
@@ -289,7 +322,8 @@ public static class Interacoes
 		// `--recursosteste` cobra que os numeros daqui sao os que o servidor tira.
 		"Android_Creation_Mainframe/androide" =>
 		[
-			new Acao("Androide de Absorção (1.000.000 zeni)", "androide_absorcao", "", "suga ataques de ki"),
+			new Acao("Androide de Absorção (1.000.000 zeni)", "androide_absorcao", "",
+					 "suga ataques de ki -- e não se cura no regenerador: o corpo dele se conserta com kits"),
 			new Acao("Androide de Absorção (2.000.000 recursos)", "androide_absorcao", Economia.Recurso.PalavraDeRecursos,
 					 "a mesma conversão, paga em recursos (o dobro)"),
 			new Acao("Androide de Energia Infinita (2.000.000 zeni)", "androide_infinito", "", "nunca cansa nem come"),
@@ -426,6 +460,181 @@ public static class Interacoes
 			new Acao("Aparafusar / soltar", "aparafusar", ""),
 		],
 
+		// ============================ OS DEPOSITOS (v0.2.1) ============================
+		// O bau, a geladeira, a base e a fortaleza -- a regra de cada um esta em `Deposito`. "Abrir" abre a TELA DA
+		// MOCHILA no que esta guardado (a mesma de revistar um nocauteado), e guardar e pela mochila de quem abriu.
+		Deposito.Bau =>
+		[
+			new Acao("Abrir", Deposito.VerboAbrir, "", "qualquer um guarda e tira de um baú"),
+			new Acao("Pegar", "pegar", "", "recolhe o baú pra mochila (só o seu, e vazio)"),
+		],
+		Deposito.Geladeira =>
+		[
+			new Acao("Abrir", Deposito.VerboAbrir, "", "guarda comida -- só funciona aparafusada"),
+			new Acao("Aparafusar / soltar", "aparafusar", "", "ela só funciona aparafusada"),
+			new Acao("Pegar", "pegar", "", "recolhe a geladeira pra mochila (só a sua, e vazia)"),
+		],
+		Deposito.Base or Deposito.Fortaleza =>
+		[
+			new Acao("Descansar", Deposito.VerboDescansar, "", "recupera um pouco de vida e de Ki"),
+			new Acao("Abrir o depósito", Deposito.VerboAbrir, "", "qualquer um guarda; só o dono tira"),
+			new Acao("Desmontar", Deposito.VerboDesmontar, "", "só o dono: o que estava guardado cai no chão"),
+		],
+
+		// O SCANNER MEDICO (`Tier 1.5.dm:422-441`): o `Click()` examina quem clicou, e o `Scan_Other` examina outro.
+		ScannerMedico.Tipo =>
+		[
+			new Acao("Examinar-me", ScannerMedico.VerboEu, "", "idade, dano, energia e o estado de cada membro"),
+			new Acao("Examinar quem eu marquei", ScannerMedico.VerboAlvo, "", "alguém a até dois tiles do scanner"),
+			new Acao("Aparafusar / soltar", "aparafusar", ""),
+			new Acao("Pegar", "pegar", "", "recolhe o scanner pra mochila (só o seu)"),
+		],
+
+		// ============================ (v0.2.1, lote T3) AS MAQUINAS DE CHAO ============================
+		// O REPARADOR E O REFORCADOR DE PAREDES (`buildable.dm:41-128`). A regra esta em `MurosDeTech`.
+		MurosDeTech.Reparador =>
+		[
+			new Acao("Ver estado", MurosDeTech.VerboInfo, "", "o que ele alcança, e quando cura de novo"),
+			new Acao("Aparafusar / soltar", "aparafusar", ""),
+			new Acao("Pegar", "pegar", "", "recolhe o reparador pra mochila (só o seu)"),
+		],
+		MurosDeTech.Reforcador =>
+		[
+			new Acao("Reforçar tudo em volta", MurosDeTech.VerboReforcar, "",
+					 "construções e paredes erguidas a até 15 tiles sobem pro teto da SUA tecnologia"),
+			new Acao("Ver estado", MurosDeTech.VerboInfo, "", "o que ele alcança, e quando cura de novo"),
+			new Acao("Aparafusar / soltar", "aparafusar", ""),
+			new Acao("Pegar", "pegar", "", "recolhe o reforçador pra mochila (só o seu)"),
+		],
+
+		// A ESTACAO DE RECARGA (`Androids.dm:568-675`). A regra esta em `EstacaoDeRecarga`.
+		EstacaoDeRecarga.Tipo =>
+		[
+			new Acao("Ver a energia", EstacaoDeRecarga.VerboInfo, "", "a energia, o nível, a eficiência e os preços das melhorias"),
+			new Acao("Melhorar...", "recarga_upgrades", "upgrades", "gasta zeni ou recursos", Forma.Submenu),
+			new Acao("Aparafusar / soltar", "aparafusar", "", "ela só funciona aparafusada"),
+			new Acao("Pegar", "pegar", "", "recolhe a estação pra mochila (só a sua) -- as melhorias não vêm junto"),
+		],
+		EstacaoDeRecarga.Tipo + "/upgrades" =>
+		[
+			EscolherComoPagar("Eficiência", "recarga_como", "upgrades/eficiencia", "recarrega mais por volta, e gasta menos energia (o teto é 4)"),
+			EscolherComoPagar("Nível", "recarga_como", "upgrades/nivel", "mais capacidade, e ela passa a render energia sozinha (o teto é 6)"),
+			EscolherComoPagar("Painéis solares", "recarga_como", "upgrades/solar", "uma vez só: ela rende energia sozinha"),
+		],
+		EstacaoDeRecarga.Tipo + "/upgrades/eficiencia" => DuasFormasDePagar("Eficiência", EstacaoDeRecarga.VerboMelhorar, EstacaoDeRecarga.Eficiencia),
+		EstacaoDeRecarga.Tipo + "/upgrades/nivel" => DuasFormasDePagar("Nível", EstacaoDeRecarga.VerboMelhorar, EstacaoDeRecarga.Nivel),
+		EstacaoDeRecarga.Tipo + "/upgrades/solar" => DuasFormasDePagar("Painéis solares", EstacaoDeRecarga.VerboMelhorar, EstacaoDeRecarga.Solar),
+
+		// A LUA ARTIFICIAL E O EMISSOR DE ONDAS BLUTZ (`Tier 1.dm:364-417`, `Tier3.dm:69-97`). A regra esta em `LuaArtificial`.
+		LuaArtificial.Lua =>
+		[
+			new Acao("Acender", LuaArtificial.VerboAcender, "", "quem tem rabo e a vê vira a fera -- e ela se apaga e some quando a fera acabaria"),
+			new Acao("Lua negra: pagar com zeni", LuaArtificial.VerboMelhorar, Economia.Recurso.PedidoPago("", Economia.Moeda.Zeni),
+					 "1.000.000 de zeni e 50 de tecnologia: acesa, manda pro Oozaru Dourado quem já pode ser Dourado"),
+			new Acao("Lua negra: pagar com recursos", LuaArtificial.VerboMelhorar, Economia.Recurso.PedidoPago("", Economia.Moeda.Recursos),
+					 "a mesma melhoria, por 2.000.000 de recursos"),
+			new Acao("Pegar", "pegar", "", "recolhe a lua pra mochila (só a sua, e apagada)"),
+		],
+		LuaArtificial.Emissor =>
+		[
+			new Acao("Ativar", LuaArtificial.VerboAcender, "",
+					 "devolve o rabo do Saiyajin que o perdeu e manda pro Oozaru Dourado quem já pode ser Dourado"),
+			new Acao("Pegar", "pegar", "", "recolhe o emissor pra mochila (só o seu, e desligado)"),
+		],
+
+		// ============================ (v0.2.1, lote T4) O TELEPORTE E A VIGILANCIA ============================
+		// O TELEPAD (`Teleports.dm:172-207`). A regra esta em `Teleporte`.
+		Teleporte.Telepad =>
+		[
+			new Acao("Definir o canal", Teleporte.VerboCanalDoTelepad, "", "os relógios deste canal chegam aqui",
+					 Forma.Texto, 0, Teleporte.MaxDeCanal),
+			new Acao("Reforçar", Teleporte.VerboReforcarOTelepad, "", "a armadura dele sobe pro teto da sua tecnologia"),
+			new Acao("Aparafusar / soltar", "aparafusar", "", "só aparafusado ele é destino"),
+			new Acao("Pegar", "pegar", "", "recolhe o telepad pra mochila (só o seu) -- o canal não vem junto"),
+		],
+
+		// A CAMERA (`Camera.dm:117-124`). A regra esta em `Vigilancia`.
+		Vigilancia.Camera =>
+		[
+			new Acao("Definir a frequência", Vigilancia.VerboFrequencia, "", "quem consulta essa frequência fica sabendo quem ela vê",
+					 Forma.Texto, 0, Vigilancia.MaxDeFrequencia),
+			new Acao("Aparafusar / soltar", "aparafusar", "", "só aparafusada ela transmite"),
+			new Acao("Pegar", "pegar", "", "recolhe a câmera pra mochila (só a sua) -- a frequência não vem junto"),
+		],
+
+		// O COMUNICADOR (`Communicator.dm`).
+		Vigilancia.Comunicador =>
+		[
+			new Acao("Enviar", Vigilancia.VerboEnviar, "", "a frase vai pra todo aparelho que escuta uma das frequências dele",
+					 Forma.Texto, 0, Vigilancia.MaxDeFrase),
+			new Acao("Megafone", Vigilancia.VerboMegafone, "", "pra todo mundo -- pede a melhoria, e esfria um minuto a mais a cada uso",
+					 Forma.Texto, 0, Vigilancia.MaxDeFrase),
+			new Acao("Frequências...", "com_frequencias", "frequencias", "o que ele escuta (até 8)", Forma.Submenu),
+			new Acao("Ver as câmeras", Vigilancia.VerboCameras, "", "as das frequências dele -- pede a melhoria"),
+			new Acao("Histórico", Vigilancia.VerboHistorico, "", "as últimas frases que passaram por ele"),
+			new Acao("Melhorar...", "com_upgrades", "upgrades", "megafone, difusor e câmera -- em zeni ou recursos", Forma.Submenu),
+			new Acao("Travar / destravar o DNA", Vigilancia.VerboDna, "", "travado, só quem travou vê as câmeras e lê o histórico"),
+			new Acao("Aparafusar / soltar", "aparafusar", ""),
+			new Acao("Pegar", "pegar", "", "recolhe o comunicador pra mochila (só o seu) -- as melhorias e as frequências não vêm junto"),
+		],
+		Vigilancia.Comunicador + "/frequencias" =>
+		[
+			new Acao("Adicionar", Vigilancia.VerboMaisFrequencia, "", "passa a escutar esta frequência", Forma.Texto, 0, Vigilancia.MaxDeFrequencia),
+			new Acao("Tirar", Vigilancia.VerboMenosFrequencia, "", "deixa de escutar esta frequência", Forma.Texto, 0, Vigilancia.MaxDeFrequencia),
+			new Acao("Ver as frequências", Vigilancia.VerboFrequencias, ""),
+		],
+		Vigilancia.Comunicador + "/upgrades" =>
+		[
+			EscolherComoPagar("Megafone", "com_como", "upgrades/megafone", "100.000 zeni e 35 de tecnologia: fala com o universo inteiro"),
+			EscolherComoPagar("Difusor", "com_como", "upgrades/difusor", "100.000 zeni e 40 de tecnologia: o que chega é dito em voz alta em volta dele"),
+			EscolherComoPagar("Câmera", "com_como", "upgrades/camera", "150.000 zeni e 45 de tecnologia: consulta as câmeras das frequências dele"),
+		],
+		Vigilancia.Comunicador + "/upgrades/megafone" => DuasFormasDePagar("Megafone", Vigilancia.VerboMelhorar, Vigilancia.Megafone),
+		Vigilancia.Comunicador + "/upgrades/difusor" => DuasFormasDePagar("Difusor", Vigilancia.VerboMelhorar, Vigilancia.Difusor),
+		Vigilancia.Comunicador + "/upgrades/camera" => DuasFormasDePagar("Câmera", Vigilancia.VerboMelhorar, Vigilancia.OlhoDeCamera),
+
+		// O SIMULADOR (`Tier2.dm:61-182`). A regra esta em `Simulador`.
+		Simulador.Tipo =>
+		[
+			new Acao("Iniciar / cancelar a simulação", Simulador.VerboIniciar, "",
+					 "ergue uma cópia sua, com o poder limitado ao teto da máquina, pra você derrotar"),
+			new Acao("Ver estado", Simulador.VerboInfo, "", "o teto de poder, a energia e os preços das melhorias"),
+			new Acao("Melhorar...", "sim_upgrades", "upgrades", "gasta zeni ou recursos", Forma.Submenu),
+			new Acao("Aparafusar / soltar", "aparafusar", ""),
+			new Acao("Pegar", "pegar", "", "recolhe o simulador pra mochila (só o seu) -- as melhorias não vêm junto"),
+		],
+		Simulador.Tipo + "/upgrades" =>
+		[
+			EscolherComoPagar("Poder da simulação", "sim_como", "upgrades/poder", "dobra o teto de poder da cópia"),
+			EscolherComoPagar("Energia", "sim_como", "upgrades/energia", "mais um ponto de energia, e ela enche"),
+		],
+		Simulador.Tipo + "/upgrades/poder" => DuasFormasDePagar("Poder da simulação", Simulador.VerboMelhorar, Simulador.Poder),
+		Simulador.Tipo + "/upgrades/energia" => DuasFormasDePagar("Energia", Simulador.VerboMelhorar, Simulador.Energia),
+
+		// A MAQUINA DE CLONAGEM (`Cloning Machine.dm`). A regra esta em `MaquinaDeClonagem`.
+		MaquinaDeClonagem.Tipo =>
+		[
+			new Acao("Programar pra mim", MaquinaDeClonagem.VerboProgramar, "",
+					 "se você morrer, ela tenta trazer você de volta ao lado dela (máquina sem senha)"),
+			new Acao("Programar pra mim, com a senha", MaquinaDeClonagem.VerboProgramar, "", "pra máquina que tem senha",
+					 Forma.Texto, 0, MaquinaDeClonagem.MaxDeSenha),
+			new Acao("Ver estado", MaquinaDeClonagem.VerboInfo, "", "a energia, o tempo, a chance de falha e os preços das melhorias"),
+			new Acao("Melhorar...", "clone_upgrades", "upgrades", "gasta zeni ou recursos", Forma.Submenu),
+			new Acao("Pôr uma senha (1.000 zeni)", MaquinaDeClonagem.VerboSenha, "", "permanente: só quem a souber reprograma a máquina",
+					 Forma.Texto, 0, MaquinaDeClonagem.MaxDeSenha),
+			new Acao("Aparafusar / soltar", "aparafusar", ""),
+			new Acao("Pegar", "pegar", "", "recolhe a máquina pra mochila (só a sua) -- as melhorias e a programação não vêm junto"),
+		],
+		MaquinaDeClonagem.Tipo + "/upgrades" =>
+		[
+			EscolherComoPagar("Sessão mais curta", "clone_como", "upgrades/tempo", "a clonagem leva 10 minutos divididos pelo nível disto"),
+			EscolherComoPagar("Menos falha", "clone_como", "upgrades/falha", "a chance de falhar é 50% dividida pelo nível disto"),
+			EscolherComoPagar("Bateria", "clone_como", "upgrades/bateria", "mais um ponto de energia (uma tentativa), e ela enche"),
+		],
+		MaquinaDeClonagem.Tipo + "/upgrades/tempo" => DuasFormasDePagar("Sessão mais curta", MaquinaDeClonagem.VerboMelhorar, MaquinaDeClonagem.Tempo),
+		MaquinaDeClonagem.Tipo + "/upgrades/falha" => DuasFormasDePagar("Menos falha", MaquinaDeClonagem.VerboMelhorar, MaquinaDeClonagem.Falha),
+		MaquinaDeClonagem.Tipo + "/upgrades/bateria" => DuasFormasDePagar("Bateria", MaquinaDeClonagem.VerboMelhorar, MaquinaDeClonagem.Bateria),
+
 		// ============================ A SPACEPOD, POUSADA ============================
 		// Os verbs do `obj/Spacepod` do original que se usam DE FORA: `Use` (:119), `Upgrade` (:190)
 		// e `Info` (:185). O `Pegar` nao e do DM -- la o pod e `SaveItem=1` e entra no `contents` por
@@ -529,6 +738,72 @@ public static class Interacoes
 		"Grave_1" or "Grave_2" or "Grave_3" or "Grave_4" or "Grave_5" =>
 		[
 			new Acao("Ler a lápide", "lapide_ler", "", "o que ficou escrito de quem está enterrado aqui"),
+		],
+
+		// ============================ (v0.2.1, lote T5) O SINTETIZADOR DE VIRUS ============================
+		// (`Viruses.dm`.) A regra e a lista de produtos estao em `Sintetizador`; as prateleiras saem dela.
+		Sintetizador.Tipo =>
+		[
+			new Acao("Injeções...", "sint_injecoes", "injecoes", "pedem de 25 de tecnologia pra cima", Forma.Submenu),
+			new Acao("Vírus...", "sint_virus", "virus", "pedem de 65 de tecnologia pra cima", Forma.Submenu),
+			new Acao("Antivírus...", "sint_antivirus", "antivirus", "pedem de 75 de tecnologia pra cima", Forma.Submenu),
+			new Acao("Aparafusar / soltar", "aparafusar", "", "só aparafusado ele funciona"),
+			new Acao("Pegar", "pegar", "", "recolhe o sintetizador pra mochila (só o seu)"),
+		],
+		_ when PaginaDoSintetizador(tipo) is { } doSintetizador => doSintetizador,
+
+		// ============================ (v0.2.1, lote T6) O SUPER COMPUTADOR ============================
+		// (`Tier3.dm:134-226`.) A regra esta em `SuperComputador`. O `Use()` de la pede a senha e abre uma lista; aqui a
+		// chave se digita uma vez por sessao, e a lista e esta. As ordens dos droides moram aqui porque este port nao tem
+		// clique em corpo (la se clica no droide).
+		SuperComputador.Tipo =>
+		[
+			new Acao("Digitar a chave", SuperComputador.VerboChave, "", "abre o computador cifrado pra você, até você sair do jogo",
+					Forma.Texto, 0, SuperComputador.MaxDeChave),
+			new Acao("Montar um droide", SuperComputador.VerboDroide, "", "um corpo de androide com o seu poder, que obedece às suas ordens -- até quatro de pé"),
+			new Acao("Ordens aos droides...", "sc_ordens", "ordens", "seguir, atacar, destruir -- valem pra todos os seus", Forma.Submenu),
+			new Acao("Melhorias...", "sc_melhorias", "melhorias", "ressurreição de androide, blindagem e conserto", Forma.Submenu),
+			new Acao("Ver estado", SuperComputador.VerboInfo, "", "se está cifrado, por quem responde, a armadura e os seus droides"),
+			new Acao("Cifrar (pôr a chave)", SuperComputador.VerboCifrar, "", "só o dono: com a chave posta, só quem a digitar usa o computador",
+					Forma.Texto, 0, SuperComputador.MaxDeChave),
+			new Acao("Decifrar", SuperComputador.VerboDecifrar, "", "apaga a chave -- e ele deixa de responder pelo androide que o cifrou"),
+			new Acao("Aparafusar / soltar", "aparafusar", "", "aparafusado ninguém o carrega"),
+			new Acao("Pegar", "pegar", "", "recolhe o computador pra mochila (só o seu, e solto)"),
+		],
+		SuperComputador.Tipo + "/ordens" =>
+		[
+			new Acao("Seguir", SuperComputador.VerboOrdem, SuperComputador.Seguir, "largam o que fazem e voltam a andar atrás de você"),
+			new Acao("Atacar o alvo marcado", SuperComputador.VerboOrdem, SuperComputador.AtacarOAlvo, "quem você marcou (duplo clique) -- e quem marcar depois"),
+			new Acao("Atacar o mais próximo", SuperComputador.VerboOrdem, SuperComputador.AtacarOProximo, "quem estiver mais perto de cada droide, a até vinte tiles"),
+			new Acao("Destruir os meus droides", SuperComputador.VerboOrdem, SuperComputador.Destruir, "apaga todos os seus"),
+		],
+		// As duas melhorias pagas abrem as duas formas de pagar (zeni, ou o dobro em recursos); o conserto e de graca.
+		SuperComputador.Tipo + "/melhorias" =>
+		[
+			EscolherComoPagar("Ressurreição de androide", "sc_como", "melhorias/ressurreicao",
+						  "75.000 zeni, uma vez: o computador refaz, ao lado dele, o androide que o cifrou quando ele morre"),
+			EscolherComoPagar("Blindagem", "sc_como", "melhorias/blindagem",
+						  "50.000 zeni: a armadura do computador sobe pra 1,2x o teto da sua tecnologia"),
+			new Acao("Consertar", SuperComputador.VerboMelhorar, SuperComputador.Conserto, "de graça: a armadura volta ao máximo"),
+		],
+		SuperComputador.Tipo + "/melhorias/ressurreicao" =>
+			DuasFormasDePagar("Ressurreição de androide", SuperComputador.VerboMelhorar, SuperComputador.Ressurreicao),
+		SuperComputador.Tipo + "/melhorias/blindagem" =>
+			DuasFormasDePagar("Blindagem", SuperComputador.VerboMelhorar, SuperComputador.Blindagem),
+
+		// ============================ (v0.2.1, lote T7) A BANCADA DE CRIACAO ============================
+		// (`Crafting.dm`.) A regra esta em `BancadaDeCriacao`. O `Craft()` de la pergunta "Clothes" ou "Items"; aqui a
+		// vitrine e a grade do guarda-roupa (`Forma.Roupa`), e os dois itens que vieram sao um botao cada.
+		BancadaDeCriacao.Tipo =>
+		[
+			new Acao("Fazer uma roupa...", BancadaDeCriacao.VerboRoupa, "",
+					"abre a vitrine: escolha a peça e a cor -- cada peça tem o seu preço em zeni, e ela vai pra mochila", Forma.Roupa),
+			new Acao("Fazer um pente (100 zeni)", BancadaDeCriacao.VerboItem, BancadaDeCriacao.Pente,
+					"muda o penteado e a cor do cabelo quantas vezes você quiser"),
+			new Acao("Fazer tinta de olhos (100 zeni)", BancadaDeCriacao.VerboItem, BancadaDeCriacao.TintaDeOlhos,
+					"muda a cor dos olhos quantas vezes você quiser"),
+			new Acao("Aparafusar / soltar", "aparafusar", "", "ela só trabalha aparafusada"),
+			new Acao("Pegar", "pegar", "", "recolhe a bancada pra mochila (só a sua, e solta)"),
 		],
 
 		_ => Nenhuma,
@@ -750,6 +1025,8 @@ public static class Interacoes
 	{
 		("Gravity", "upgrades") => PrecosDaGravidade,
 		(Regenerador.Tipo, "upgrades") => PrecosDoRegenerador,
+		// (v0.2.1) o super computador diz o estado e os precos dele quando a lista de melhorias abre
+		(SuperComputador.Tipo, "melhorias") => SuperComputador.VerboInfo,
 		_ => "",
 	};
 
@@ -814,6 +1091,7 @@ public static class Interacoes
 		(Regenerador.Tipo, "upgrades/ferimentos") => MelhoriaUnicaFeita,
 		("Gravity", "upgrades/estabilidade") => MelhoriaUnicaFeita,
 		("Gravity", "upgrades/alcance") => MelhoriaNoTeto,
+		(SuperComputador.Tipo, "melhorias/ressurreicao") => MelhoriaUnicaFeita,
 		_ => 0,
 	};
 

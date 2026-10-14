@@ -370,6 +370,68 @@ public static class Trilha
     /// <summary>A LAMINA DE AR saindo: `emit_Sound('fire_kiblast.wav')` (`Kiai.dm:37`), so no `if(!mobaff)`.</summary>
     public const string LaminaDeAr = K + "fire_kiblast.ogg";
 
+    // =====================================================================
+    // OS ATAQUES DE KI (dono, 2026-10-13) -- a tabela e do `Core.Combat.SonsDeKi`
+    // =====================================================================
+    /// <summary>`fire_kiblast.wav` -- a bola de ki (`blasts.dm:58,108`).</summary>
+    public const string KiBola = K + "fire_kiblast.ogg";
+    /// <summary>`KIBLAST.WAV` -- as rajadas (`blasts.dm:164,227,290,360,434,497`).</summary>
+    public const string KiRajada = K + "KIBLAST.ogg";
+    /// <summary>`burning_fire.wav` -- a teleguiada, a Buster Shell, a Scattering Bullet (`blasts.dm:561`, `GuidedBall.dm:77`).</summary>
+    public const string KiQueima = K + "burning_fire.ogg";
+    /// <summary>`disc_fire.wav` -- o Kienzan e o Kill Driver (`discs.dm:52`, `KillDriver.dm:44`).</summary>
+    public const string KiDisco = K + "disc_fire.ogg";
+    /// <summary>`kikoho.wav` (`Kikoho.dm:31`).</summary>
+    public const string KiKikoho = K + "kikoho.wav";
+    /// <summary>`Blast.wav` -- a Death Ball partindo (`DeathBall.dm:87`).</summary>
+    public const string KiEsferaDaMorte = K + "Blast.wav";
+    /// <summary>`spiritbombfire.wav` -- a Genkidama partindo (`SpiritBomb.dm:173`).</summary>
+    public const string KiGenkidama = K + "spiritbombfire.wav";
+    /// <summary>`kamehameha_fire.wav` -- todo raio ao sair, e ele ANDA com a cabeca (`beams.dm:283` e as irmas).</summary>
+    public const string KiRaio = K + "kamehameha_fire.ogg";
+    /// <summary>`basicbeam_fire.wav` -- o Final Flash (`FinalFlash.dm:38`).</summary>
+    public const string KiRaioBasico = K + "basicbeam_fire.ogg";
+
+    /// <summary>
+    /// `kame_charge.wav` -- o raio sendo CARREGADO (`beams.dm:290` e as irmas). O Final Flash usa outro arquivo no DM
+    /// (`basicbeam_chargeoriginal.wav`, `FinalFlash.dm:41`); aqui a carga soa igual pros dez raios, porque o snapshot
+    /// nao diz qual tecnica esta na mao -- so que ha uma.
+    /// </summary>
+    public const string CargaDeRaio = K + "kame_charge.ogg";
+
+    /// <summary>
+    /// O ESTALO DO ESTOURO DE UMA BOLA: `scouterexplode.ogg`, o que a explosao do DM toca em quem ela pega
+    /// (`explosions.dm:158`). E o mesmo arquivo do <see cref="Kiai"/>.
+    /// </summary>
+    public const string EstaloDeKi = T + "scouterexplode.ogg";
+
+    /// <summary>O ESTRONDO DA EXPLOSAO GRANDE (o raio, a esfera grande): `kiplosion.wav` (`Ki Attacks.dm:20`).</summary>
+    public const string ExplosaoDeKi = K + "kiplosion.ogg";
+
+    /// <summary>A TECLA X: `descend.wav` (`Power Control.dm:68`) -- o Ki que excedia, ou um estagio da forma, descendo.</summary>
+    public const string Descer = E + "descend.ogg";
+
+    /// <summary>O arquivo de cada som de ki. Vazio = calado.</summary>
+    public static string DoKi(Jandirus.Core.Combat.SomDeKi som) => som switch
+    {
+        Jandirus.Core.Combat.SomDeKi.Bola => KiBola,
+        Jandirus.Core.Combat.SomDeKi.Rajada => KiRajada,
+        Jandirus.Core.Combat.SomDeKi.Queima => KiQueima,
+        Jandirus.Core.Combat.SomDeKi.Disco => KiDisco,
+        Jandirus.Core.Combat.SomDeKi.Kikoho => KiKikoho,
+        Jandirus.Core.Combat.SomDeKi.EsferaDaMorte => KiEsferaDaMorte,
+        Jandirus.Core.Combat.SomDeKi.Genkidama => KiGenkidama,
+        Jandirus.Core.Combat.SomDeKi.Raio => KiRaio,
+        Jandirus.Core.Combat.SomDeKi.RaioBasico => KiRaioBasico,
+        // (v0.2.1) as armas de fogo -- o `shotsound` de cada uma (`Tech/Guns.dm`).
+        Jandirus.Core.Combat.SomDeKi.Pistola => T + "handgunheavy.ogg",
+        Jandirus.Core.Combat.SomDeKi.Rajada7mm => T + "riflelight.ogg",
+        Jandirus.Core.Combat.SomDeKi.Escopeta => T + "shotgun.ogg",
+        Jandirus.Core.Combat.SomDeKi.Foguete => T + "RPGshot.ogg",
+        Jandirus.Core.Combat.SomDeKi.Blaster => T + "rifleheavy.ogg",
+        _ => "",
+    };
+
     // NAO HA SOM DE LACO NO AR, e e decisao do dono: "enquanto ta voando n deveria ter som nenhum".
     // O original tambem e mudo depois do impulso. `db_flying.ogg` esta convertido e nao e usado.
 

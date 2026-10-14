@@ -130,7 +130,9 @@ public sealed class Skill
 	/// </summary>
 	public bool SemEfeito => !Arvore && Buffs.Count == 0 && Verbos.Length == 0 && Estilo.Length == 0
 		&& Mults.Count == 0 && Genes.Count == 0 && Flags.Count == 0 && Escolhas.Length == 0
-		&& Compra.Length == 0 && PorRaca.Length == 0;
+		&& Compra.Length == 0 && PorRaca.Length == 0
+		// (2026-10-13) ...e o servidor nao a escreveu a mao: ver `EfeitosEscritosAMao`
+		&& EfeitosEscritosAMao.De(Path) == null;
 }
 
 /// <summary>
@@ -341,6 +343,11 @@ public sealed class SkillCatalog
 		cat.ArvoresDeTodos = [.. Lista(arvoresJson, "todos")];
 		cat.ArvorePorRaca = Mapa(arvoresJson, "raca");
 		cat.ArvorePorClasse = Mapa(arvoresJson, "classe");
+
+		// OS ACENDEDORES QUE O PORT ESCREVE POR CIMA DO DM (o que o extrator nao le, e dois defeitos do original).
+		AcendedoresDoPort.Aplicar(cat);
+		// ...E OS VERBS QUE O PORT DA A QUEM, NO DM, AGIA POR UM SISTEMA QUE AQUI NAO EXISTE (a Materialize e o ritual dela).
+		VerbosDoPort.Aplicar(cat);
 		return cat;
 	}
 

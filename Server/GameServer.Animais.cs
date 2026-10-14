@@ -349,7 +349,7 @@ public sealed partial class GameServer
 	/// NASCE UM BICHO. A fabrica dele, e nao a de gente (`NascerNpc`): nao ha raca, classe, idade, skill, forma
 	/// nem roupa pra sortear. O que e igual e o que faz dele um corpo do mundo -- a ficha e um `Fighter`, o corpo
 	/// entra pelo <see cref="PorNoMundo"/> e a mente sai do molde (`CerebroDeNascimento`, que pra bicho ja vem
-	/// sem investida, sem fala e com a distancia de bote: `Animais.MenteDeBicho`).
+	/// sem investida, com a voz da especie e com a distancia de bote: `Animais.MenteDeBicho`).
 	/// </summary>
 	private ServerPlayer? NascerAnimal(MoldeDeNpc molde, ZoneKey zona, Vec2 pos, ulong lugar)
 	{

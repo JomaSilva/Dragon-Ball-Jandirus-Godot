@@ -649,7 +649,7 @@ public partial class GameServer
 			// relogio da bancada anda entre elas). Em paz isso nao pode mudar nada, e deixou de ser sorte; em
 			// furia e o que reproduz a oscilacao -- ver o segundo contra-exemplo.
 			// ==============================================================================================================
-			long extremaGuardada = pl.FuriaExtremaAte, comumGuardada = pl.RaivaLendariaAte;
+			long extremaGuardada = pl.FuriaExtremaAte, comumGuardada = pl.RaivaComumAte;
 			const long PassoDoRelogioMs = 7;
 
 			// UMA LEITURA: poe os mods pedidos na entrada VIVA do catalogo, tiqueia a forma (o `AplicarForma` os
@@ -670,7 +670,7 @@ public partial class GameServer
 				PassarACena(pl);
 
 				pl.FuriaExtremaAte = 0;
-				pl.RaivaLendariaAte = 0;
+				pl.RaivaComumAte = 0;
 				var comMods = Ler(modsG3, 0);
 				Checa("[grades] (preparo) o corpo e lido EM PAZ: a raiva anda com o relogio, e o poder andaria junto",
 					  NivelDaRaivaDe(pl) == NivelDeRaiva.Nenhuma && Math.Abs(f.Anger - 100) < 1e-9,
@@ -713,7 +713,7 @@ public partial class GameServer
 				ModDeFormaVazaProPoderDeTeste = false;
 				if (defG3 != null) defG3.Mods = modsG3;
 				pl.FuriaExtremaAte = extremaGuardada;
-				pl.RaivaLendariaAte = comumGuardada;
+				pl.RaivaComumAte = comumGuardada;
 				TickDaForma(pl, 0.1);
 			}
 

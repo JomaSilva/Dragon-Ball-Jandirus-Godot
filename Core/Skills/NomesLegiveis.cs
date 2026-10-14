@@ -430,6 +430,7 @@ public static class NomesLegiveis
 		"effusionspecial" => "especialidade de efusão",
 		"effspec" => "especialidade de efusão",
 		"hasdemitype" => "linhagem de semideus",
+		AcendedoresDoPort.TemOndeErguer => "ser o Guardião da Terra ou dominar um planeta",
 		_ => Campo(id).Replace('_', ' '),
 	};
 }

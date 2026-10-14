@@ -71,6 +71,15 @@ public static partial class Tecnicas
 		Tudo[id] = nova;
 		return nova;
 	}
+
+	/// <summary>
+	/// ESTE VERB FAZ ALGUMA COISA NESTE JOGO? -- tem corpo aqui (portado), ou e atendido por outro canal (a tecla, a
+	/// raca, a mesa). E a pergunta de quem ANUNCIA um verb: o botao do menu, o aviso de compra. O que sobra e o verb
+	/// cujo sistema falta, e esse nao se anuncia (dono, 2026-10-13: *"tem mts verbs mortos q poderiam ser tirados"*).
+	/// </summary>
+	public static bool TemCorpo(string id) =>
+		Get(id) is { Modo: not Modo.NaoPortada } || CensoDeSkills.AtendidoPorOutroCanal(id);
+
 	public static IEnumerable<Tecnica> Todas => Tudo.Values;
 
 	/// <summary>

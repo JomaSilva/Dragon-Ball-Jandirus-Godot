@@ -364,14 +364,18 @@ public partial class RoboDeAlunos : Node
 		ProblemasDoTopo(ruim, c, a.Quem, [.. a.Ensinamentos.Select(e => e.Progresso)]);
 		ProblemasDosEnsinamentos(ruim, c.Ensinamentos, a.Ensinamentos, "COM VOCÊ", _ => null);
 
-		// OS DOIS GESTOS, e so eles: ajudar (apagado pra quem nao esta no mundo) e dispensar (de dois cliques).
-		BotaoLido ajudar = c.Botoes.FirstOrDefault(b => b.Acao == "ensinar"), dispensar = c.Botoes.FirstOrDefault(b => b.Acao == "dispensar");
-		if (!c.Botoes.Select(b => b.Acao).SequenceEqual(["ensinar", "dispensar"]))
-			ruim.Add($"os botoes do cartao sao [{string.Join(",", c.Botoes.Select(b => b.Acao))}], deviam ser ensinar e dispensar");
+		// OS TRES GESTOS, e so eles: ajudar e ensinar (apagados pra quem nao esta no mundo) e dispensar (de dois cliques).
+		// O "Ensinar…" (2026-10-13) abre a lista no proprio cartao, e aberto vira "Fechar a lista".
+		BotaoLido ajudar = c.Botoes.FirstOrDefault(b => b.Acao == "ensinar"), licao = c.Botoes.FirstOrDefault(b => b.Acao == "licao"),
+				  dispensar = c.Botoes.FirstOrDefault(b => b.Acao == "dispensar");
+		if (!c.Botoes.Select(b => b.Acao).SequenceEqual(["ensinar", "licao", "dispensar"]))
+			ruim.Add($"os botoes do cartao sao [{string.Join(",", c.Botoes.Select(b => b.Acao))}], deviam ser ensinar, licao e dispensar");
 		else
 		{
 			if (ajudar.Texto != "Ajudar a transformar" || ajudar.Desligado == a.Quem.Online)
 				ruim.Add($"'{ajudar.Texto}' {(ajudar.Desligado ? "apagado" : "aceso")} com o aluno {(a.Quem.Online ? "no mundo" : "fora dele")}");
+			if (licao.Texto is not ("Ensinar…" or "Fechar a lista") || licao.Desligado == a.Quem.Online)
+				ruim.Add($"'{licao.Texto}' {(licao.Desligado ? "apagado" : "aceso")} com o aluno {(a.Quem.Online ? "no mundo" : "fora dele")}");
 			string texto = dispensar.Armado ? $"Confirmar: dispensar {a.Quem.Nome}" : "Dispensar aluno";
 			if (dispensar.Texto != texto || dispensar.Desligado) ruim.Add($"o botao de dispensar diz '{dispensar.Texto}' (armado={dispensar.Armado})");
 		}
@@ -1113,6 +1117,93 @@ public partial class RoboDeAlunos : Node
 		srv.EsquecerOfertaDeTeste(sigGoten);
 		srv.ZerarRecargaDeEnsinoDeTeste(id);
 
+		// ---------------------------------------------------------------- "ENSINAR...": a lista do que eu sei, no cartao
+		Nota("--- 1g. 'Ensinar…' abre no cartao do aluno a lista do que eu sei, e o clique oferece a licao AQUELE aluno ---");
+		string daLicao = srv.PrepararLicaoDeMestreDeTeste(id, sigGoten);
+		foreach (double s in Ate(() => daLicao.Length > 0 && cli.SkillsAprendidas.Contains(daLicao), 5)) yield return s;
+		Afirmar("(montagem) eu passo a saber uma skill que NAO se ensina a estranho, e o Goten (na minha frente) tem os marcos dela",
+				daLicao.Length > 0 && cli.SkillsAprendidas.Contains(daLicao), daLicao);
+
+		Control? ListaDe(string nome) => Cartao(menu.PaginaDeTeste(MenuJogo.AbaDeAlunos)!, "aluno", nome) is { } ca
+			? Todos(ca).OfType<Control>().FirstOrDefault(n => n.HasMeta("discipulado") && n.GetMeta("discipulado").AsString() == "ensinar")
+			: null;
+		Afirmar("fechada, a lista nao existe em cartao nenhum (o cartao nao cresce sozinho)", new[] { "Gohan", "Trunks", "Goten" }.All(n => ListaDe(n) == null));
+
+		pg = menu.PaginaDeTeste(MenuJogo.AbaDeAlunos)!;
+		TrazerPraTela(menu, Cartao(pg, "aluno", "Goten"));
+		BotaoDe(Cartao(pg, "aluno", "Goten"), "licao")?.EmitSignal(BaseButton.SignalName.Pressed);
+		foreach (double s in Ate(() => ListaDe("Goten") != null, 3)) yield return s;
+		yield return 0.3;
+		pg = menu.PaginaDeTeste(MenuJogo.AbaDeAlunos)!;
+		List<Button> botoesDaLista = ListaDe("Goten") is { } aberta ? [.. Todos(aberta).OfType<Button>().Where(b => b.HasMeta("licao"))] : [];
+		Jandirus.Core.Skills.SkillCatalog? catalogo = MenuJogo.CatalogoPublico();
+		List<string> esperadas = catalogo == null ? []
+			: [.. Jandirus.Core.Skills.EnsinoDeSkill.OQueOMestreEnsina(catalogo, cli.SkillsAprendidas).Select(s => s.Path).OrderBy(p => p, StringComparer.Ordinal)];
+		List<string> naTela = [.. botoesDaLista.Select(b => b.GetMeta("licao").AsString()).OrderBy(p => p, StringComparer.Ordinal)];
+		Afirmar("**'Ensinar…' no cartao do Goten abre a lista NELE, e so nele**: um botao por skill que eu sei, a estrela so nas que nao se ensinam a estranho, "
+				+ "o botao do cartao vira 'Fechar a lista', e o cartao continua no contrato",
+				ListaDe("Gohan") == null && ListaDe("Trunks") == null && esperadas.Count > 0 && naTela.SequenceEqual(esperadas)
+				&& botoesDaLista.All(b => b.Text.StartsWith("★ ", StringComparison.Ordinal) == (catalogo!.Get(b.GetMeta("licao").AsString()) is { Ensinavel: false }))
+				&& Lido(menu, "aluno", "Goten").Botoes.Any(b => b is { Acao: "licao", Texto: "Fechar a lista" })
+				&& ProblemasDoCartaoDeAluno(Lido(menu, "aluno", "Goten"), srv.PainelDoDiscipuladoDeTeste(id)!.Alunos.First(a => a.Quem.Nome == "Goten")).Count == 0,
+				$"{naTela.Count} na tela, {esperadas.Count} esperadas; botoes [{string.Join(",", Lido(menu, "aluno", "Goten").Botoes.Select(b => b.Texto))}]");
+		bool ListaAVista(string nome) => ListaDe(nome) is { } l && menu.RolagemDeTeste.GetGlobalRect().Grow(2).Encloses(l.GetGlobalRect());
+		Afirmar("**a pagina ROLA ate a lista que abriu** (ela nasce embaixo dos botoes do cartao, abaixo da dobra do menu): a lista inteira esta a vista",
+				ListaAVista("Goten"), $"lista {ListaDe("Goten")?.GetGlobalRect()}, rolagem {menu.RolagemDeTeste.GetGlobalRect()}");
+		Recortar(Fotografar("alunos-4a-ensinar", "4a ensinar: a lista no cartao do aluno"), Cartao(pg, "aluno", "Goten"), "alunos-4a-cartao-ensinar");
+		try
+		{
+			MenuJogo.ListaAbreSemRolarDeTeste = true;
+			BotaoDe(Cartao(pg, "aluno", "Goten"), "licao")?.EmitSignal(BaseButton.SignalName.Pressed);
+			foreach (double s in Ate(() => ListaDe("Goten") == null, 3)) yield return s;
+			menu.RolagemDeTeste.ScrollVertical = 0;
+			yield return 0.2;
+			BotaoDe(Cartao(menu.PaginaDeTeste(MenuJogo.AbaDeAlunos)!, "aluno", "Goten"), "licao")?.EmitSignal(BaseButton.SignalName.Pressed);
+			foreach (double s in Ate(() => ListaDe("Goten") != null, 3)) yield return s;
+			yield return 0.4;
+			Injeta("(defeito injetado: a lista abre sem rolar a pagina) com a pagina no topo a lista abre fora da vista, e a checagem REPROVA",
+				   ListaDe("Goten") != null && !ListaAVista("Goten"), $"lista {ListaDe("Goten")?.GetGlobalRect()}");
+		}
+		finally { MenuJogo.ListaAbreSemRolarDeTeste = false; }
+		// (de volta ao estado da prova: fechada e reaberta, agora com a rolagem)
+		BotaoDe(Cartao(menu.PaginaDeTeste(MenuJogo.AbaDeAlunos)!, "aluno", "Goten"), "licao")?.EmitSignal(BaseButton.SignalName.Pressed);
+		foreach (double s in Ate(() => ListaDe("Goten") == null, 3)) yield return s;
+		BotaoDe(Cartao(menu.PaginaDeTeste(MenuJogo.AbaDeAlunos)!, "aluno", "Goten"), "licao")?.EmitSignal(BaseButton.SignalName.Pressed);
+		foreach (double s in Ate(() => ListaDe("Goten") != null, 3)) yield return s;
+		yield return 0.4;
+		pg = menu.PaginaDeTeste(MenuJogo.AbaDeAlunos)!;
+		botoesDaLista = ListaDe("Goten") is { } reaberta ? [.. Todos(reaberta).OfType<Button>().Where(b => b.HasMeta("licao"))] : [];
+
+		// O CLIQUE: a licao de mestre vai pro Goten, que esta colado na minha frente.
+		_verbos.Clear();
+		_doServidor.Clear();
+		botoesDaLista.FirstOrDefault(b => b.GetMeta("licao").AsString() == daLicao)?.EmitSignal(BaseButton.SignalName.Pressed);
+		foreach (double s in Ate(() => srv.LicaoOferecidaDeTeste(sigGoten).Length > 0, 4)) yield return s;
+		Afirmar("**o clique numa licao da lista manda `alunos_licao` com a assinatura do Goten e o caminho da skill, e a oferta vai pra mesa DELE**",
+				_verbos.Contains($"alunos_licao:{sigGoten}|{daLicao}") && srv.LicaoOferecidaDeTeste(sigGoten) == daLicao && Ouvi("Goten"),
+				$"verbs [{string.Join(",", _verbos.Where(v => !v.StartsWith("alunos:", StringComparison.Ordinal)))}]; oferta '{srv.LicaoOferecidaDeTeste(sigGoten)}'; {string.Join(" | ", _doServidor)}");
+		srv.EsquecerLicaoDeTeste(id, sigGoten);
+
+		// A MIRA: o Goten continua na frente, e a lista aberta e a do TRUNKS (que esta longe).
+		BotaoDe(Cartao(menu.PaginaDeTeste(MenuJogo.AbaDeAlunos)!, "aluno", "Trunks"), "licao")?.EmitSignal(BaseButton.SignalName.Pressed);
+		foreach (double s in Ate(() => ListaDe("Trunks") != null && ListaDe("Goten") == null, 3)) yield return s;
+		bool umaSo = ListaDe("Trunks") != null && ListaDe("Goten") == null;
+		_doServidor.Clear();
+		(ListaDe("Trunks") is { } doTrunks ? Todos(doTrunks).OfType<Button>().FirstOrDefault(b => b.HasMeta("licao") && b.GetMeta("licao").AsString() == daLicao) : null)
+			?.EmitSignal(BaseButton.SignalName.Pressed);
+		foreach (double s in Ate(() => Ouvi("colado"), 4)) yield return s;
+		Afirmar("**a lista e de UM aluno por vez, e a licao e MIRADA**: abrir a do Trunks fecha a do Goten, e a licao clicada nela nao cai no Goten que esta na frente -- "
+				+ "o servidor diz que o Trunks precisa estar colado",
+				umaSo && Ouvi("Trunks precisa estar colado") && srv.LicaoOferecidaDeTeste(sigGoten).Length == 0 && srv.LicaoOferecidaDeTeste(sigTrunks).Length == 0,
+				$"uma so {umaSo}; {string.Join(" | ", _doServidor)}");
+		srv.EsquecerLicaoDeTeste(id, sigTrunks);
+
+		BotaoDe(Cartao(menu.PaginaDeTeste(MenuJogo.AbaDeAlunos)!, "aluno", "Trunks"), "licao")?.EmitSignal(BaseButton.SignalName.Pressed);
+		foreach (double s in Ate(() => ListaDe("Trunks") == null, 3)) yield return s;
+		pg = menu.PaginaDeTeste(MenuJogo.AbaDeAlunos)!;
+		Afirmar("...e 'Fechar a lista' devolve o cartao ao que era ('Ensinar…', sem a lista)",
+				ListaDe("Trunks") == null && Lido(menu, "aluno", "Trunks").Botoes.Any(b => b is { Acao: "licao", Texto: "Ensinar…" }));
+
 		// DISPENSAR: dois cliques, e vale pra quem esta fora do mundo.
 		Afirmar("(montagem) o Kuririn ainda e meu aluno", srv.MestreDeTeste(sigKuririn) == srv.AssinaturaDeTeste(id));
 		TrazerPraTela(menu, Cartao(pg, "aluno", "Kuririn"));
@@ -1419,7 +1510,8 @@ public partial class RoboDeAlunos : Node
 		}
 		var certo = new CartaoLido("aluno", "Gohan", ["ONLINE"], "Saiyan  ·  seu aluno há 12 dias", "sentida", "80%", $"{media * 100:0}%", media,
 								   [Bloco(forma, "COM VOCÊ"), Bloco(licao, "COM VOCÊ")],
-								   [new BotaoLido("ensinar", "Ajudar a transformar", false, false), new BotaoLido("dispensar", "Dispensar aluno", false, false)],
+								   [new BotaoLido("ensinar", "Ajudar a transformar", false, false), new BotaoLido("licao", "Ensinar…", false, false),
+									new BotaoLido("dispensar", "Dispensar aluno", false, false)],
 								   true, false, ["datas"], ["Gohan", "maestria", "62%", "poder relativo", "80%"]);
 		Afirmar("CONTROLE: o cartao certo de um aluno nao tem problema nenhum (a regra nao reprova tudo)",
 				ProblemasDoCartaoDeAluno(certo, aluno).Count == 0, string.Join("; ", ProblemasDoCartaoDeAluno(certo, aluno)));
@@ -1461,6 +1553,9 @@ public partial class RoboDeAlunos : Node
 		Injeta("pega o 'Ajudar a transformar' ACESO pra quem esta fora do mundo, e o cartao de aluno sem o botao de dispensar",
 			   ProblemasDoCartaoDeAluno(certo with { PilulasDoTopo = ["OFFLINE"], Forca = "offline", PoderRelativo = "" }, aluno with { Quem = gohan with { Online = false, VistoHaSegundos = 0 } }).Count > 0
 			   && ProblemasDoCartaoDeAluno(certo with { Botoes = [certo.Botoes[0]] }, aluno).Count > 0);
+		Injeta("...pega o cartao de aluno SEM o 'Ensinar…' (os dois botoes da v0.2.0), e o 'Ensinar…' com outro texto",
+			   ProblemasDoCartaoDeAluno(certo with { Botoes = [certo.Botoes[0], certo.Botoes[2]] }, aluno).Count > 0
+			   && ProblemasDoCartaoDeAluno(certo with { Botoes = [certo.Botoes[0], certo.Botoes[1] with { Texto = "Ensinar: ..." }, certo.Botoes[2]] }, aluno).Count > 0);
 
 		// ---- o cartao do mestre e o do colega ----
 		var bardock = new PessoaNoPainel("222", "Bardock", "Saiyan", true, 0, 86_400 * 9);

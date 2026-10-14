@@ -105,6 +105,9 @@ public sealed partial class GameServer
 	private static string EstadoDaArte(Obra o, Construcao? c) =>
 		o is { Tipo: Regenerador.Tipo, Aparafusada: true, Regenerador.Ligado: true }
 			? Regenerador.ArteLigado
+			// (v0.2.1) A LUA ARTIFICIAL E O EMISSOR: apagados ate alguem acender (`icon_state="Off"` / `"On"`).
+			: LuaArtificial.EhFonte(o.Tipo)
+				? (o.Tech?.Num(LuaArtificial.ChaveAcesaAte) > 0 ? LuaArtificial.ArteAcesa : LuaArtificial.ArteApagada)
 			: c?.Estado ?? "";
 
 	// =====================================================================
@@ -320,6 +323,16 @@ public sealed partial class GameServer
 				// `M.Player` (`:75`): gente. O cadaver e um corpo neste port, e cadaver nao se cura.
 				if (!EhPessoa(pl) || EhCadaver(pl) || pl.Combate is not { } c) continue;
 				if (!PrecisaDoTanque(r, c)) continue;
+
+				// O ANDROIDE DE ABSORCAO NAO SE CURA NO TANQUE (dono, 2026-10-13): *"androides q absorvem energia nao curam
+				// na maquina de regeneração, androides de energia infinita q custa 2 milhoes regeneram normalmente"*. O
+				// corpo dele se conserta com os kits (`Jandirus.Core.Tech.KitsDeAndroide`). O tanque nem gasta bateria
+				// com ele, e explica o porque -- de tempos em tempos, e nao a cada pulso.
+				if (pl.Ficha.AndroideAbsorcao && !KitsDeAndroide.AbsorcaoCuraNoTanqueDeTeste)
+				{
+					AvisarQueOTanqueNaoCura(pl, agora);
+					continue;
+				}
 
 				// `M.dir=SOUTH` e `M.inregen = 1` (`:77-78`): o paciente fica de frente, e nao golpeia.
 				if (pl.Facing != Facing.South) CravarOlhar(pl, Facing.South);

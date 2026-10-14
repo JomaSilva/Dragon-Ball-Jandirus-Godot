@@ -603,7 +603,12 @@ public sealed partial class GameServer
 	// =====================================================================
 	/// <summary>Esta porta abre pra este corpo, so por ele encostar?</summary>
 	private static bool PortaAbrePara(BlocoDePe p, ServerPlayer pl) =>
-		p.Senha.Length == 0 || PortaSemTrancaDeTeste || SabeASenha(p, pl);
+		p.Senha.Length == 0 || PortaSemTrancaDeTeste || SabeASenha(p, pl)
+		// (v0.2.1) A CHAVE: quem CARREGA uma com a senha desta porta passa -- ver `GameServer.GravarSenhaNaChave`.
+		|| (!ChaveNaoAbreDeTeste && Jandirus.Core.Items.TechDeBolso.TemChaveCom(pl.Mochila, p.Senha));
+
+	/// <summary>DEFEITO INJETADO (bancada `--v021teste`, familia T): a chave na mochila nao abre porta nenhuma -- a da v0.2.0.</summary>
+	internal static bool ChaveNaoAbreDeTeste;
 
 	/// <summary>O dono, ou quem ja digitou a senha de agora. Corpo sem conta (NPC) nunca sabe: `if(M.client)`, `buildturfs.dm:469`.</summary>
 	private static bool SabeASenha(BlocoDePe p, ServerPlayer pl) =>

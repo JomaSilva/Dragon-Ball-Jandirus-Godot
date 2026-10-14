@@ -90,8 +90,12 @@ public partial class GameServer
 		// O QUE CONTINUA PASSANDO, de proposito: a forma (transformar no meio de um embate e a cena mais
 		// classica que existe), a carga de Ki, a mira e a fala.
 		// ==========================================================================================================================
-		bool comKiNaMao = (EnraizadoPorKi(npc.Id) || _emEmbateDeKi.ContainsKey(npc.Id))
-						  && !Jandirus.Core.Combat.EmbateDeKi.IaComAsMaosLivresDeTeste;
+		//
+		// (v0.2.1) E A TECNICA QUE SE SEGURA entra na mesma recusa: a barragem ligada, a esfera que carrega sobre a
+		// cabeca, o rugido juntando. Terminam com OUTRO aperto do mesmo verb, e quem o da e o relogio do servidor
+		// (`TickDoSegundoApertoDaIa`) -- um pulso do cerebro no meio desligaria a tecnica no segundo em que ligou.
+		// As tres perguntas moram numa funcao so: ver `MaosOcupadasDaIa`.
+		bool comKiNaMao = MaosOcupadasDaIa(npc) && !Jandirus.Core.Combat.EmbateDeKi.IaComAsMaosLivresDeTeste;
 
 		// --- 1. PULSOS DE FORMA, ANTES DE TUDO --------------------------------
 		// Transformar muda `MaxKi`, `Espeed` e o `SpeedStat`; feito depois do passo, o tique
@@ -168,7 +172,16 @@ public partial class GameServer
 		// `if (temKi)`: quem responde "voce nao sabe isso", "ainda se recompoe" e "isso pede pelo
 		// menos N de energia" e a tecnica -- e essas tres frases sao as MESMAS que o jogador ouve.
 		// ======================================================================================
-		if (c.Habilidade is { Length: > 0 } tecnica && !comKiNaMao) UsarHabilidade(npc, tecnica);
+		//
+		// (v0.2.1) O QUE O VERB DIZ A QUEM APERTA NAO VAI PRO CORPO DIRIGIDO -- ver `_iaApertando`: o jogador possuido
+		// nao apertou nada. E, depois do aperto, o segundo das tecnicas que se seguram e armado (`DepoisDoApertoDaIa`).
+		if (c.Habilidade is { Length: > 0 } tecnica && !comKiNaMao)
+		{
+			_iaApertando = npc;
+			try { UsarHabilidade(npc, tecnica); }
+			finally { _iaApertando = null; }
+			DepoisDoApertoDaIa(npc, tecnica);
+		}
 
 		// --- 9. O SOCO, POR ULTIMO -------------------------------------------
 		// Depois do passo porque o `Atacar` faz o `Aproximar` a partir da posicao ATUAL: socar antes
@@ -316,9 +329,9 @@ public partial class GameServer
 		// verb de IA pra isso), entao na pratica ele so responde `APe` ou `Voando` -- e e por isso
 		// que o NPC que voa continua passando por cima do lago.
 		//
-		// A PE, A AGUA PARA O NPC IGUAL A UMA PAREDE, e nao ha caminhamento nenhum a consertar: a IA
-		// nao contorna obstaculo (nao ha A* aqui), ela desliza no eixo livre e para. O lago se
-		// comporta exatamente como o muro que ja existia.
+		// A PE, A AGUA PARA O NPC IGUAL A UMA PAREDE -- e pro caminho da IA tambem (`Core/World/Caminho.cs`, v0.2.1):
+		// a rota a pe nao passa por dentro do lago. O que a agua tem de diferente do muro e o OUTRO MODO (nadar,
+		// voar), e quem decide por ele e a `Travessia`, logo abaixo.
 		// =========================================================================================
 		// ============================ E O CORPO ALHEIO PARA O NPC PELA MESMA FUNCAO ============================
 		// O `Vizinhanca` sai do `VizinhancaDe`, o mesmo que o resto do servidor usa, e entra no MESMO
@@ -330,17 +343,28 @@ public partial class GameServer
 		// AQUI A PERGUNTA E GERADA E NAO CONFERIDA -- o servidor E quem move o NPC --, entao ela nao cai
 		// na ressalva do `MoveRules.ValidateStep` (que abstem-se dos corpos de proposito; ver la).
 		// ====================================================================================================
-		npc.Pos = MoveRules.Advance(npc.Pos, c.Rumo, (float)dt, npc.SpeedStat, mapa, out bool barrado, correndo,
-									Voo.ModoNaAltura(npc.Altitude, ModoDeTravessiaDe(npc)), VizinhancaDe(npc));
+		// O CONTORNO (dono, 2026-10-13: *"fica andando contra a parede"*): o passo que o CEREBRO mandou e emperrou vira
+		// pro lado livre -- ver `GameServer.CaminhoDaIa.cs`. O comando montado a mao anda como sempre andou.
+		ModoDeTravessia modoDoPasso = Voo.ModoNaAltura(npc.Altitude, ModoDeTravessiaDe(npc));
+		Vec2 rumoDoPasso = c.DesviaDeParede ? RumoComContorno(npc, c.Rumo) : c.Rumo;
+		npc.Pos = MoveRules.Advance(npc.Pos, rumoDoPasso, (float)dt, npc.SpeedStat, mapa, out bool barrado, correndo,
+									modoDoPasso, VizinhancaDe(npc));
 		npc.Moving = (npc.Pos - antes).LengthSquared > 0.01f;
 		// ============================ BATEU EM PAREDE OU EM AGUA? ============================
 		// O `Advance` nao distingue, e a distincao e a pergunta inteira da `Travessia`: parede se
-		// contorna (ou nao), agua se NADA. A resposta fica no corpo e entra na percepcao do tique
-		// seguinte -- a IA nao contorna obstaculo (nao ha A* aqui), mas passa a saber que o que a
-		// parou e um lago, e que o lago tem outro modo. O paragrafo acima que dizia "nenhum NPC nada
-		// hoje" deixou de ser verdade em 2026-09-07 (pedido do dono). Ver `Travessia`.
+		// CONTORNA (desde a v0.2.1, logo abaixo), agua se NADA. A resposta fica no corpo e entra na
+		// percepcao do tique seguinte -- o cerebro passa a saber que o que o parou e um lago, e que o
+		// lago tem outro modo. O paragrafo acima que dizia "nenhum NPC nada hoje" deixou de ser verdade
+		// em 2026-09-07 (pedido do dono). Ver `Travessia`.
+		//
+		// A RESPOSTA E UM LOCAL, E O CAMPO SO E ESCRITO: o atuador nao le o sentido da IA (quem le e o
+		// cerebro, pelo `LerPercepcao`) -- a `--iateste` cobra isto na familia (b).
 		// ====================================================================================
-		npc.BarradoPelaAgua = barrado && mapa != null && AguaNoRumo(mapa, npc.Pos, c.Rumo);
+		bool pelaAgua = barrado && mapa != null && AguaNoRumo(mapa, npc.Pos, c.Rumo);
+		npc.BarradoPelaAgua = pelaAgua;
+		// (a AGUA nao se contorna aqui: ela tem outro modo -- nadar, voar --, e quem decide e a `Travessia`)
+		if (c.DesviaDeParede && barrado && mapa != null && !pelaAgua)
+			ContornarSeEmperrou(npc, c.Rumo, antes, (float)dt, correndo, mapa, modoDoPasso);
 		npc.Correndo = correndo;
 		npc.Ficha.dashing = correndo;   // entra na conta de dano, igualzinho ao do jogador
 	}
@@ -457,6 +481,10 @@ public partial class GameServer
 		// O gesto de SE DEBATER nao morre com a recusa: ele e lido no `Input` **antes** desta porta e
 		// guardado em `DebatendoSe`. Ver la, e o `LutaPraEscapar`.
 		&& !Agarrado(pl)
+		// QUEM ESTA ESTRANGULANDO FICA PLANTADO (dono, 2026-10-13: *"enquanto ta estrangulando vc n pode se mover,
+		// tendo q ficar parado"*). Pelo mesmo funil, e por isso vale pra IA que aperta o pescoco de alguem. Pra
+		// andar (ou arremessar: o passo de quem segura e o arremesso) afrouxa-se o aperto primeiro.
+		&& !(pl.Estrangulando && pl.AgarrandoId != 0 && !EstranguladorAndaDeTeste)
 		&& !PrensadoPelaGravidade(pl)
 		// SEM AS DUAS PERNAS, NO CHAO (`legsLost >= 2 && !flight`, `movement handler.dm:133` -- a linha logo abaixo
 		// do `gravParalysis` de cima). So o corpo que o DONO dirige: a IA nao passa pelo `unitimer` do DM, e um NPC
@@ -470,7 +498,12 @@ public partial class GameServer
 		// andado, e o dono via o proprio boneco "teleportando de volta" (2026-09-07). Recusado na
 		// origem, o passo nem acontece -- e o cliente, avisado pelo efeito `torneio_espera`, nem
 		// tenta (`LocalPlayer.PorQueNaoAnda`).
-		&& !PresoNoTorneio(pl.Id);
+		&& !PresoNoTorneio(pl.Id)
+		// A NAVE POUSADA NAO ANDA (v0.2.1, dono: *"ao pilotar ... vc sobe ou desce (ate pousar) com elas"*). Ao leme, quem
+		// anda e a nave, e a nave so anda voando: no chao ela esta estacionada, e pra sair do lugar se decola (a tecla
+		// de subir -- `DecolarANavePousada`). Por ULTIMO na lista: so e perguntado a quem ja passou em tudo acima, e a
+		// primeira metade (`!pl.Voando`) ja e falsa pra todo piloto no ar.
+		&& !NavePousada(pl);
 
 	/// <summary>
 	/// O QUE O JOGO RESPONDE QUE ESTE CORPO PODE FAZER. Lido a 1 Hz por corpo (ver
@@ -514,6 +547,10 @@ public partial class GameServer
 			TemComQueAparar = TemComQueAparar(pl),
 			CustoDaGuarda = pl.Ficha.MaxKi * CombatKnobs.CustoKiDaGuarda,
 			DeLonge = ArsenalDeLonge(pl),
+			// O REPERTORIO DE LUTA (v0.2.1): tudo o que ele sabe e nao viaja -- ver `GameServer.RepertorioDaIa.cs`.
+			DeLuta = ArsenalDeLuta(pl, out bool temInvestida, out bool sabeRebater),
+			TemInvestida = temInvestida,
+			SabeRebater = sabeRebater,
 
 			// O SOPRO. A pergunta e a MESMA do jogador (`SabeTecnica`, quem responde "voce nao sabe
 			// isso" pro verb) e o preco e a MESMA expressao que o verb cobra (`CustoDoSopro`,
@@ -583,7 +620,13 @@ public partial class GameServer
 		}
 		if (quantas + doKit == 0) return Arsenal.Vazio;
 
-		var tiros = new Tiro[quantas + doKit];
+		// (v0.2.1) O ARRAY E O DO CORPO, reescrito no lugar: com a tabela em trinta e duas linhas, um array novo por
+		// leitura seria ate dois kilobytes de lixo por segundo por corpo que sabe tudo. So nasce outro quando a CONTA
+		// muda (aprendeu, esqueceu, ganhou o kit) -- e ai o indice que o cerebro guardava e conferido contra o
+		// tamanho, como sempre foi (`Cerebro.TiroMorreu`).
+		Tiro[] tiros = pl.ArsenalDaIa is { } guardado && guardado.Length == quantas + doKit
+			? guardado
+			: (pl.ArsenalDaIa = new Tiro[quantas + doKit]);
 		int k = 0;
 		i = 0;
 		foreach (TecnicasDeLonge.Linha linha in TecnicasDeLonge.Todas)
@@ -611,6 +654,12 @@ public partial class GameServer
 
 		PrecisaDeLinhaLivre = linha.PrecisaDeLinhaLivre,
 		Precisao = linha.Precisao,
+
+		// (v0.2.1) A SEGUNDA MOEDA, o que ela pede da cena e o descanso entre dois usos -- ver `Tiro`.
+		Uso = Uso.Tiro,
+		CustoDeFolego = linha.CustoDeFolego?.Invoke(f) ?? 0,
+		Exige = linha.Exige,
+		Descanso = linha.Descanso,
 	};
 
 	/// <summary>
@@ -648,12 +697,19 @@ public partial class GameServer
 			// O KIT DO DEUS DA DESTRUICAO, so pra quem o carrega: quem ele segura e campo velho do proprio corpo, e as
 			// outras duas sao as perguntas dos PROPRIOS verbs (`OHakaiPega`, `HaKiPraAnular`). Ver `Percepcao`.
 			Segurando = npc.AgarrandoId,
+			Estrangulando = npc.Estrangulando && npc.AgarrandoId != 0,   // (v0.2.1) campos do proprio corpo -- ver `Percepcao`
+			CarregandoAPresa = npc.AgarrandoId != 0 && npc.ModoDoAgarrao == ModoDeAgarrao.Carregando,
 			HakaiPegaOAlvo = comOKit && alvo != null && OHakaiPega(npc, alvo),
 			HaKiPraAnular = comOKit && HaKiPraAnular(npc),
+			// (v0.2.1) SO PRA QUEM SABE REBATER: e uma varredura dos tiros da zona, a 30 Hz -- ver `HaTiroVindo`.
+			HaTiroVindo = npc.Cerebro is { } quemPensa && quemPensa.Poderes.SabeRebater && HaTiroVindo(npc),
 
 			IdDoAlvo = alvo?.Id ?? 0,
 			AlvoSeMovendo = alvo?.Moving ?? false,
 			LinhaLivre = quemAtira && alvo != null && LinhaDeVisaoLivre(npc, alvo),
+			// O CAMINHO EM VOLTA DA PAREDE, so com alguem pra alcancar (o ponto do passeio nao e destino: ele anda com o
+			// corpo). Ver `GameServer.CaminhoDaIa.cs`.
+			Desvio = alvo != null ? DesvioDaIa(npc, alvo.Pos) : Vec2.Zero,
 
 			Minha = npc.Pos,
 			MinhaAltitude = npc.Altitude,
@@ -662,6 +718,7 @@ public partial class GameServer
 			KiFrac = f.MaxKi > 0 ? f.Ki / f.MaxKi : 1,
 			Ki = f.Ki,
 			FolegoFrac = f.maxstamina > 0 ? f.stamina / f.maxstamina : 1,
+			Folego = f.stamina,
 			// O MORTO DE PE (Outro Mundo) nao esta caido: ele luta no torneio celeste como no original.
 			Caido = f.KO || (f.dead && !npc.MortoDePe),
 			Atordoado = npc.Combate.Stun > 0,

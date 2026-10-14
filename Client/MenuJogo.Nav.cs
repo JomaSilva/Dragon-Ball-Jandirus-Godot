@@ -287,13 +287,17 @@ public partial class MenuJogo
 		{
 			Text = $"Viajar para {nomeVisto}",
 			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-			// SO NO ESPACO. Viajar e voar entre mundos: em terra firme o piloto automatico andaria
-			// contra a parede do planeta. Continua APARECENDO, apagado, porque saber que o destino
-			// existe e que falta decolar e informacao -- sumir com o botao seria esconder o jogo.
-			Disabled = !noEspaco,
+			// SO NO ESPACO -- OU AO LEME DE UMA NAVE (v0.2.1). Viajar e voar entre mundos: em terra firme o piloto
+			// automatico andaria contra a parede do planeta. A nave e a excecao que o dono pediu: com ela o piloto
+			// DECOLA SOZINHO, sobe ate romper a atmosfera e so entao toma o rumo. A pe o botao continua APARECENDO,
+			// apagado, porque saber que o destino existe e que falta decolar e informacao -- sumir com ele seria
+			// esconder o jogo.
+			Disabled = !noEspaco && !AoLemeDeUmaNave,
 			TooltipText = noEspaco
 				? "liga o piloto automatico. Qualquer tecla de movimento desliga."
-				: "só no espaço. Pra subir, voe pra cima até romper a atmosfera.",
+				: AoLemeDeUmaNave
+					? "a nave decola sozinha, sobe até o espaço e segue pro destino. Qualquer tecla de movimento desliga."
+					: "só no espaço. Pra subir, voe pra cima até romper a atmosfera -- ou embarque numa nave.",
 		};
 		Jandirus.Core.World.PlanetaNoEspaco destino = p;
 		viajar.Pressed += () => Viajar(destino, noEspaco);
@@ -363,8 +367,25 @@ public partial class MenuJogo
 		return e.LuaNoCeu ? $"{hora}, {Jandirus.Core.World.Ceu.NomeDaFase(e.Fase)}" : hora;
 	}
 
+	/// <summary>Estou ao leme de uma nave? (O servidor diz, no pacote do veiculo -- ver `GameClient.VeiculoMontado`.)</summary>
+	private static bool AoLemeDeUmaNave => GameClient.Instance is { VeiculoMontado.Length: > 0 };
+
+	/// <summary>
+	/// (v0.2.1) FORA DO ESPACO E AO LEME: o piloto que DECOLA. Devolve se assumiu a viagem -- o destino fica guardado
+	/// (em coordenada de galaxia) ate a nave romper a atmosfera. Ver `LocalPlayer.RumoDepoisDeDecolar`.
+	/// </summary>
+	private bool DecolarERumar(Vector2 destinoNoEspaco, string praOnde)
+	{
+		if (!AoLemeDeUmaNave) return false;
+		LocalPlayer.DecolarERumar(new Jandirus.Core.World.Vec2(destinoNoEspaco.X, destinoNoEspaco.Y));
+		Chat.Sistema($"a nave decola sozinha: sobe até o espaço e segue {praOnde}. Qualquer tecla de movimento desliga o piloto.");
+		Fechar();
+		return true;
+	}
+
 	private void Viajar(Jandirus.Core.World.PlanetaNoEspaco p, bool noEspaco)
 	{
+		if (!noEspaco && DecolarERumar(new Vector2(p.Pos.X, p.Pos.Y), $"pra {GameClient.Instance?.NomeDoPlaneta(p) ?? p.Nome}")) return;
 		if (!noEspaco) { Chat.Sistema("voce precisa estar no espaco pra viajar."); return; }
 		World.Instancia?.Pilotar(new Vector2(p.Pos.X, p.Pos.Y));
 		Chat.Sistema($"rumo a {GameClient.Instance?.NomeDoPlaneta(p) ?? p.Nome}. Qualquer tecla de movimento desliga o piloto.");
@@ -384,6 +405,7 @@ public partial class MenuJogo
 	/// </summary>
 	private void ViajarAoPonto(Vector2 destino, bool noEspaco)
 	{
+		if (!noEspaco && DecolarERumar(destino, "pro porto do sistema")) return;
 		if (!noEspaco) { Chat.Sistema("voce precisa estar no espaco pra viajar."); return; }
 		World.Instancia?.Pilotar(destino);
 		Chat.Sistema("rumo ao porto do sistema. A chegada e um ponto vazio -- abra o mapa do sistema "

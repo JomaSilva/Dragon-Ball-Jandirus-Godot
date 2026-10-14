@@ -630,6 +630,9 @@ public sealed partial class GameServer
 
 		if (pegos > 0)
 		{
+			// (2026-10-13) O SOPRO BATE NO CENARIO DA FRENTE, como o soco: *"esferas de ki, kiai etc deveriam quebrar
+			// paredes assim como soco"*. So neste ramo: sem ninguem colado sai a LAMINA, e ela bate no muro em que acabar.
+			SoprarNoCenarioG6(pl, MeleeArea.Frente(pl.Facing));
 			AnunciarGesto(pl, Protocol.GestoDoCorpo.Kiai);
 			Avisar(pl, $"o sopro joga {pegos} pra longe.");
 			return;
@@ -650,6 +653,18 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
+	/// O SOPRO NA CELULA VIZINHA DESTE LADO: a regra do ki contra o cenario (`BaterNoCenarioComKi`, a do soco), com
+	/// o poder de quem sopra. A celula e a do corpo mais um tile, com o deslocamento dos pes -- a conta do soco.
+	/// </summary>
+	private void SoprarNoCenarioG6(ServerPlayer pl, Vec2 lado)
+	{
+		if (Voo.AtravessaCenario(pl.Altitude)) return;
+		(int cx, int cy) = CelulaDoPonto(new Vec2(pl.Pos.X + lado.X * ZoneCollision.TileSize,
+												  pl.Pos.Y + lado.Y * ZoneCollision.TileSize));
+		BaterNoCenarioComKi(pl.Zone, cx, cy, pl.Ficha.expressedBP, pl);
+	}
+
+	/// <summary>
 	/// SHOCKWAVE (`Ki2.0/Kiai.dm:61`). Arremessa TODO MUNDO a um tile em volta e APAGA os tiros a
 	/// dois tiles que voce tenha poder pra apagar.
 	///
@@ -665,6 +680,11 @@ public sealed partial class GameServer
 		Falar(pl, Protocol.Fala.Diz, "HAAA!");
 		float umTile = ZoneCollision.TileSize;
 		int pegos = 0;
+
+		// (2026-10-13) A ONDA E RADIAL, e bate no cenario dos oito lados como o sopro bate no da frente.
+		for (int dy = -1; dy <= 1; dy++)
+			for (int dx = -1; dx <= 1; dx++)
+				if (dx != 0 || dy != 0) SoprarNoCenarioG6(pl, new Vec2(dx, dy));
 
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash).ToList())
 		{
@@ -744,11 +764,11 @@ public sealed partial class GameServer
 
 			Devolver(p, pl, atirador);
 
-			// O PASSO DE VOLTA E O DO DM, e nao o do empurrao de uma disputa (que e o que o `Devolver` deixa no
-			// tiro): `walk(M, get_opposite_dir(M))` (`Kiai.dm:104`) nao escreve atraso -- o tiro volta a um tile
-			// por tique, o passo da bola mais rapida. No passo do empurrao ele voltava mais DEVAGAR do que veio
-			// (10 tiles por segundo contra os 16 a 20 de uma bola, dono 2026-10-08) e perdia de quem atirou e
-			// saiu correndo: uma deflexao da qual se foge a pe.
+			// O PASSO DE VOLTA E O DO DM, e nao o que o `Devolver` deixa no tiro (o do empurrao de uma disputa, num
+			// raio; o dele mesmo, numa esfera -- v0.2.1): `walk(M, get_opposite_dir(M))` (`Kiai.dm:104`) nao escreve
+			// atraso -- o tiro volta a um tile por tique, o passo da bola mais rapida, por mais lento que tenha
+			// vindo. Sem isto a bola lenta voltava lenta, e perdia de quem atirou e saiu correndo: uma deflexao
+			// da qual se foge a pe.
 			if (!Projetil.DeflexaoNoPassoDoEmpurraoDeTeste)
 			{
 				p.SegundosPorTile = Projetil.AtrasoDeBolaPorLag(1);

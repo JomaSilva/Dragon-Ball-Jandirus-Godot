@@ -56,7 +56,8 @@ public sealed partial class GameServer
 	/// </summary>
 	private void PiscarPelaIa(ServerPlayer npc, ServerPlayer presa, Plano plano)
 	{
-		if (IaNaoPiscaDeTeste || npc.Livro?.Sabe(PathDoZanzoken) != true) return;
+		// (o `UsaAMiragem` e o `haszanzo` do DM: quem guardou a tecnica -- `Afterimage_Toggle` -- e perdeu as redeas nao pisca)
+		if (IaNaoPiscaDeTeste || !UsaAMiragem(npc)) return;
 
 		// O PERFIL CORTA POR CIMA, como corta o arsenal de longe e o sopro (`PerfilDeCombate.Filtrar`): o corpo que
 		// sabe a tecnica e "so luta de corpo" nao a usa. A piscada e ki, e o habitante sorteia o perfil ao nascer.

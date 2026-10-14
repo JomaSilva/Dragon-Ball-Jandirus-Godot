@@ -742,8 +742,14 @@ public static class NiveisBench
 		Conferir("...e as 'sem acendedor' CAEM (eram 55)", com.SemAcendedor.Count < sem.SemAcendedor.Count && com.SemAcendedor.Count <= 25, $"{com.SemAcendedor.Count}");
 		Conferir("a Advanced Ki Awareness esta 'por degrau' (Basic Ki Awareness nivel 100)",
 				 com.TrancadasPorDegrau.Any(x => x.Nome == "Advanced Ki Awareness" && x.Quem.Contains("100")));
-		Conferir("a Basic Buff Mastery CONTINUA sem acendedor (o growbranches dela mora na arvore errada, BuffMastery.dm:15)",
-				 com.SemAcendedor.Contains("Basic Buff Mastery"));
+		// (Ate 2026-10-13 a Basic Buff Mastery CONTINUAVA sem acendedor: o growbranches dela mora na arvore errada no
+		// DM, BuffMastery.dm:15. O port devolveu a regra a arvore dela e acendeu as outras -- `AcendedoresDoPort`.)
+		Conferir("NENHUMA folha que pende de arvore fica sem acendedor (a Basic Buff Mastery inclusive)",
+				 !com.SemAcendedor.Contains("Basic Buff Mastery") && com.SemAcendedorEmArvore.Count == 0,
+				 string.Join(", ", com.SemAcendedorEmArvore));
+		Conferir("a Full Power esta 'por degrau' (Meditate Power nivel 3 -- o `effector()` da arvore do Gray, `gray.dm:13-16`)",
+				 com.TrancadasPorDegrau.Any(x => x.Nome == "Full Power" && x.Quem.Contains("Meditate Power") && x.Quem.Contains('3')),
+				 string.Join(" | ", com.TrancadasPorDegrau.Where(x => x.Nome == "Full Power").Select(x => x.Quem)));
 		int total = com.TrancadasPorPreReq + com.TrancadasSoVilao + com.TrancadasComAcendedor + com.AcendedorForaDoPort.Count
 				  + com.TrancadasPorDegrau.Count + com.TrancadasSoPorEnsino + com.SemAcendedor.Count;
 		Conferir("a conta fecha: as sete classes somam todas as `ligada: 0`", total == cat.Todas.Count(s => !s.Arvore && !s.Ligada), $"{total}");

@@ -65,6 +65,15 @@ public partial class GameClient
 	/// <summary>O gesto de um cartao de aluno: dispensar AQUELE aluno.</summary>
 	public void DispensarAluno(string assinatura) => SendVerbo("alunos_dispensar", assinatura);
 
+	/// <summary>
+	/// O "Ensinar..." de um cartao de aluno: oferecer AQUELE aluno uma skill minha (o typepath). O servidor confere
+	/// tudo (colado nele, fora da recarga, o que e do corpo dele) e o aluno responde pelo aviso de tela.
+	/// </summary>
+	public void EnsinarSkillAoAluno(string assinatura, string path) => SendVerbo("alunos_licao", assinatura + "|" + path);
+
+	/// <summary>O "Ensinar..." de um cartao de aluno: oferecer AQUELE aluno uma tecnica de ki que eu inventei (o id dela).</summary>
+	public void EnsinarTecnicaAoAluno(string assinatura, int id) => SendVerbo("alunos_tecnica", assinatura + "|" + id);
+
 	/// <summary>O `S2C.MestreEAlunos` chegou.</summary>
 	private void LerMestreEAlunos(NetDataReader reader)
 	{

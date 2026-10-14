@@ -175,6 +175,7 @@ public partial class GameServer
 
 			pl.Race = "Namekian";
 			pl.Class = "Dragon clan";
+			(pl.Livro ??= new Jandirus.Core.Skills.SkillBook()).Dar(Jandirus.Core.Skills.AcendedoresDoPort.EstatuaDoDragao);   // (2026-10-13) a estatua pede a skill dela -- ver `ErguerEstatua`
 			_tronos["guardian"] = pl.Conta;
 
 			ErguerEstatua(pl, "");

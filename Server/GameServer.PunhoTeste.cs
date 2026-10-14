@@ -42,8 +42,9 @@ namespace Jandirus.Server;
 ///  7. AS DUAS BOLAS -- a Bala Dispersa nasce ESPALHADA (nao empilhada), espera antes de cacar e
 ///                         recusa sem alvo SEM COBRAR; o Spirit Gun gasta FOLEGO e nao Ki -- e essa
 ///                         e a unica coisa que ele tem de proprio no jogo inteiro.
-///  8. A IA -- a Bala Dispersa entra no arsenal de longe e e a UNICA que dispensa linha livre; e a
-///                         divida fica medida: a tabela da IA tem 4 linhas pra 21 verbos que atiram.
+///  8. A IA -- a Bala Dispersa entra no arsenal de longe e dispensa linha livre (como os dois cercos
+///                         e as duas que atiram em volta, e nenhum tiro reto); e a divida que esta
+///                         familia media foi paga na v0.2.1: o Spirit Gun tem linha, em folego.
 /// ==================================================================================
 /// </summary>
 public partial class GameServer
@@ -106,8 +107,9 @@ public partial class GameServer
 		// que ela esperava ja tinha chegado, e a cambalhota e uma funcao sobre ele.
 		// `BusterBarrage`, `Continuous_Energy_Bullets`, `Spin_Blast` e `Death_Ball` SAIRAM desta lista pelo
 		// lote G12 (`GameServer.Tecnicas.G12.cs`): o jorro sustentado e a bola que se carrega na mao chegaram
-		// (bola INERTE que renasce por estagio, ver `Projetil.Inerte`). Ficam as duas que ainda esperam.
-		("Acid_Spit", "dano ao longo do tempo"),
+		// (bola INERTE que renasce por estagio, ver `Projetil.Inerte`).
+		// `Acid_Spit` SAIU desta lista pelo lote G14 (`GameServer.Tecnicas.G14.cs`, 2026-10-13): o dano ao longo do
+		// tempo e o `OnSucCollWMob` do tiro (`DomDeProjetil.Veneno`). Fica a que ainda espera.
 		("Energy_Wave_Volley", "jorro sustentado"),
 	];
 
@@ -163,7 +165,7 @@ public partial class GameServer
 		var vazadas = new List<string>();
 		foreach ((string v, string espera) in RecusadasG7)
 			if (EhDoLote("G7", v) || Tecnicas.Get(v)!.Modo != Modo.NaoPortada) vazadas.Add($"{v} ({espera})");
-		AfirmarPunho("as NOVE recusadas continuam mudas e fora do lote (nenhuma foi meio-portada)",
+		AfirmarPunho("a que sobrou das NOVE recusadas continua muda e fora do lote (nenhuma foi meio-portada)",
 					 vazadas.Count == 0, string.Join(" | ", vazadas));
 
 		Vec2 chao = CorredorLivre(24);
@@ -540,9 +542,14 @@ public partial class GameServer
 					 TecnicasDeLonge.Get("Scattering_Bullet") != null);
 
 		TecnicasDeLonge.Linha? bala = TecnicasDeLonge.Get("Scattering_Bullet");
-		AfirmarPunho("...e ela e a UNICA que dispensa linha livre (as bolas contornam)",
+		// (v0.2.1) Ela era a UNICA enquanto a tabela tinha quatro linhas. Com todo verb que atira la dentro, a regra
+		// que a distinguia continua a mesma e ganhou companhia: so dispensa linha livre o tiro que NAO e reto -- os
+		// dois cercos nascem em volta do alvo, e a barragem e a rajada giratoria atiram em volta de quem atira.
+		string[] semLinha = [.. TecnicasDeLonge.Todas.Where(l => !l.PrecisaDeLinhaLivre).Select(l => l.Id).Order(StringComparer.Ordinal)];
+		AfirmarPunho("...e ela dispensa linha livre (as bolas contornam) -- como os dois cercos e as duas que atiram em volta, e nenhum tiro reto",
 					 bala is { PrecisaDeLinhaLivre: false }
-					 && TecnicasDeLonge.Todas.Count(l => !l.PrecisaDeLinhaLivre) == 1);
+					 && semLinha.SequenceEqual(["BusterBarrage", "Hellzone_Grenade", "Ki_Bomb", "Scattering_Bullet", "Spin_Blast"]),
+					 string.Join(", ", semLinha));
 
 		// O CUSTO SAI DA MESMA EXPRESSAO QUE O VERB COBRA -- nunca uma copia. Se alguem reequilibrar
 		// o verb e esquecer a tabela, esta linha fica vermelha.
@@ -554,17 +561,20 @@ public partial class GameServer
 		AfirmarPunho("...e o arsenal dela e montado pela MESMA pergunta do jogador (`SabeTecnica`)",
 					 ArsenalDeLonge(pl).TemAlguma);
 
-		// A DIVIDA, MEDIDA. Vinte e um verbos atiram; a tabela tem quatro linhas. Enquanto esta
-		// afirmacao passar, a divida esta declarada e nao esquecida -- e no dia em que alguem
-		// preencher a tabela, ela fica vermelha e pede pra ser reescrita, que e o que se quer.
-		AfirmarPunho("A DIVIDA: a tabela da IA tem 4 linhas, e o Spirit Gun (folego) fica de fora",
-					 TecnicasDeLonge.Quantas == 4 && TecnicasDeLonge.Get("Spirit_Gun") == null,
+		// A DIVIDA FOI PAGA (v0.2.1, dono 2026-10-13: *"deveriam usar todas as skills disponiveis"*). Esta afirmacao
+		// dizia "a tabela tem 4 linhas e o Spirit Gun fica de fora" -- e ficou vermelha no dia em que a tabela foi
+		// preenchida, que era o que ela existia pra fazer. O Spirit Gun entrou com a moeda que faltava: FOLEGO.
+		TecnicasDeLonge.Linha? spiritGun = TecnicasDeLonge.Get("Spirit_Gun");
+		AfirmarPunho("A DIVIDA FOI PAGA: o Spirit Gun tem linha na tabela da IA, e o preco dela e em FOLEGO -- o mesmo "
+				   + "que o verb cobra -- e zero de Ki",
+					 spiritGun is { CustoDeFolego: not null } sg && sg.CustoDeKi(pl.Ficha) == 0
+					 && Math.Abs(sg.CustoDeFolego!(pl.Ficha) - pl.Ficha.angerBuff * pl.Ficha.Ephysoff * pl.Ficha.SpiritBallCost * 10) < 1e-9,
 					 $"{TecnicasDeLonge.Quantas} linhas");
 
-		AfirmarPunho("...e os vinte raios/bolas dos lotes G5 e G6 continuam invisiveis pra ela",
-					 TecnicasDeLonge.Get("Kamehameha") == null
-					 && TecnicasDeLonge.Get("Hellzone_Grenade") == null
-					 && TecnicasDeLonge.Get("Final_Flash") == null);
+		AfirmarPunho("...e os raios e as bolas dos lotes G5 e G6 deixaram de ser invisiveis pra ela",
+					 TecnicasDeLonge.Get("Kamehameha") != null
+					 && TecnicasDeLonge.Get("Hellzone_Grenade") != null
+					 && TecnicasDeLonge.Get("Final_Flash") != null);
 
 		LimparTudoDaBancada();
 	}

@@ -102,8 +102,10 @@ public static class InstalarBench
 		("Base_Camp",                  true ),   // oview
 		("Bio_Field",                  true ),   // Bolt
 		("Boat",                       true ),   // palpite: fora de /obj/items
+		("Camera",                     true ),   // ficha do port (`TechDeBolso`): a descricao manda *"Place it down, bolt it"*; os verbs dela sao `view(1)`, que nao votam (o extrator: palpite /obj/items)
 		("Capital_Ship",               true ),   // palpite: fora de /obj/items
 		("Clone_Machine",              true ),   // oview
+		("Communicator",               true ),   // Bolt (`Communicator.dm:79`) -- que o extrator perde: a string de varias linhas do `messagelist` engole o resto do tipo. Assenta pela ficha do port (`TechDeBolso`)
 		("Crafting_Bench",             true ),   // Bolt
 		("Crate",                      true ),   // palpite: fora de /obj/items
 		("Emitter",                    true ),   // oview
@@ -136,10 +138,8 @@ public static class InstalarBench
 		("Blood_Bag",                  false),   // palpite: /obj/items
 		("Bolter",                     false),   // usr
 		("Books",                      false),   // palpite: /obj/items
-		("Camera",                     false),   // palpite: /obj/items
 		("Camera_Computer",            false),   // palpite: /obj/items
 		("Chalk",                      false),   // usr
-		("Communicator",               false),   // palpite: /obj/items
 		("DNA_Container",              false),   // usr (o `Extract_DNA` de `DNALabs.dm`; era palpite enquanto o extrator lia o tipo errado)
 		("Destructor",                 false),   // palpite: /obj/items
 		("Detonator",                  false),   // usr

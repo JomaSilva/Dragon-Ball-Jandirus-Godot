@@ -102,6 +102,14 @@ public static class MarcoDoCatalogo
 			"vinha de um arquivo fora do .dme (o DM nao a compila); tirada em 2026-10-11 (ver SkillsAposentadas)",
 		["/datum/skill/tree/Custom_Attacks"] =
 			"arvore de um arquivo fora do .dme (o DM nao a compila) e que nunca foi concedida; tirada em 2026-10-11",
+
+		// AS CINCO MAESTRIAS DE FORMA LEGADAS (2026-10-13, ver `SkillsAposentadas`): pendiam de arvore sem acender por
+		// caminho nenhum, e o proprio DM as trocou pela maestria em %. Quatro delas tinham regra de nivel.
+		["/datum/skill/forms/ssj"] = "maestria de forma por skill, legado do DM; tirada em 2026-10-13 (ver SkillsAposentadas)",
+		["/datum/skill/forms/mssj"] = "maestria de forma por skill, legado do DM; tirada em 2026-10-13 (ver SkillsAposentadas)",
+		["/datum/skill/forms/lssjm"] = "maestria de forma por skill, legado do DM; tirada em 2026-10-13 (ver SkillsAposentadas)",
+		["/datum/skill/heran/MstedMXPWR"] = "effector() vazio no DM (maestria em %); tirada em 2026-10-13 (ver SkillsAposentadas)",
+		["/datum/skill/heran/MstedTMXPWR"] = "effector() vazio no DM (maestria em %); tirada em 2026-10-13 (ver SkillsAposentadas)",
 	};
 
 	/// <summary>

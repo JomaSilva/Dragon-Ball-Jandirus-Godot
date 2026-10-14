@@ -44,7 +44,7 @@ public sealed partial class GameServer
 		{
 			if (pl.Combate?.Corpo is not { } corpo) continue;
 
-			MascaraDeFeridas agora = Feridas.De(corpo);
+			MascaraDeFeridas agora = Feridas.NaTela(corpo, pl.Race);   // (o Majin nao sangra: so o membro some)
 			if (agora == pl.EnvFeridas) continue;
 			pl.EnvFeridas = agora;
 			MandarFeridas(pl);
@@ -129,7 +129,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void TrocarFeridas(ServerPlayer novo)
 	{
-		if (novo.Combate?.Corpo is { } corpo) novo.EnvFeridas = Feridas.De(corpo);
+		if (novo.Combate?.Corpo is { } corpo) novo.EnvFeridas = Feridas.NaTela(corpo, novo.Race);
 
 		List<ServerPlayer> zona = ZoneList(novo.Zone.Hash);
 		NetDataWriter minhas = PacoteDeFeridas(novo);

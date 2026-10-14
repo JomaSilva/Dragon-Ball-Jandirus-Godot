@@ -319,7 +319,7 @@ public sealed partial class GameServer
 
 		// OS DOIS PRECISAM SABER SUMIR. E o que o original exige (`haszanzo && M.haszanzo`), e e o
 		// que da sentido a cena: o embate e dois corpos rapidos demais pra vista.
-		if (a.Livro?.Sabe(PathDoZanzoken) != true || d.Livro?.Sabe(PathDoZanzoken) != true) return false;
+		if (!UsaAMiragem(a) || !UsaAMiragem(d)) return false;
 
 		if (_emEmbate.ContainsKey(a.Id) || _emEmbate.ContainsKey(d.Id)) return false;
 		// NEM QUEM ESTA COM UM ATAQUE DE KI NA MAO (2026-10-07): este embate teleporta e vira os dois corpos, e

@@ -517,11 +517,11 @@ public static class FormasBench
 		// Sem raiva nenhuma estas linhas param no primeiro degrau: trocar qualquer um destes por
 		// `Nenhuma` derruba a linha correspondente aqui mesmo, com o nome do degrau onde ela parou.
 		//
-		// DESDE 2026-10-11 a raiva comum (`Lendaria`) abre as mesmas formas que a extrema, por um preco de
+		// DESDE 2026-10-11 a raiva comum (`Comum`) abre as mesmas formas que a extrema, por um preco de
 		// BP maior (`FormaDef.AgioNaRaivaComum`, o `if("Angry")` do DM) -- com o BP sem fim desta secao as
 		// duas servem, e os casos guardam as duas de proposito. Quem mede o preco e a bancada `raiva` [13].
 		// So o Beast exige a `Extrema`. (Ate ali o tronco Saiyajin pedia a `Extrema` e so a linha
-		// Legendary subia com a `Lendaria`.)
+		// Legendary subia com a comum.)
 		//
 		// E OS DOIS CAMINHOS DIVINOS PEDEM RAIVA **por causa do `ssj1` no meio deles**: Blue e
 		// Rose sao CAMADA sobre o Super Saiyajin, entao a porta do SSJ1 e porta deles tambem. Isso
@@ -539,12 +539,12 @@ public static class FormasBench
 			 ["future_ssj"]),
 
 			("Legendary", new PerfilDeFormas(Raca: "Saiyan", Classe: "Legendary", Legendary: true,
-											 Raiva: NivelDeRaiva.Lendaria),
+											 Raiva: NivelDeRaiva.Comum),
 			 ["wrathful", "c_type", "legendary"]),
 
 			("Legendary Primal", new PerfilDeFormas(Raca: "Saiyan", Classe: "Legendary Primal Saiyan",
 													Linhagem: "Primal Saiyan",
-													Raiva: NivelDeRaiva.Lendaria),
+													Raiva: NivelDeRaiva.Comum),
 			 ["primal_c_type", "primal_legendary", "primal_legendary2", "primal_legendary3",
 			  "primal_legendary4", "primal_legendary4_full_power"]),
 
@@ -2470,10 +2470,25 @@ public static class FormasBench
 				var livro = new Jandirus.Core.Skills.SkillBook();
 				livro.Conceder(99);
 				Jandirus.Core.Skills.Recusa r = livro.PodeAprender(cat, path, "Icer", "Frost Demon", vilao: false);
-				Jandirus.Core.Skills.Recusa esperada = path.EndsWith("Golden_Form", StringComparison.Ordinal)
-					? Jandirus.Core.Skills.Recusa.AguardaAcendedor : Jandirus.Core.Skills.Recusa.SemArvore;
+				//
+				// E MUDOU DE NOVO EM 2026-10-13: a Golden Form FECHOU (`SkillsFechadas`) -- o unico efeito dela e o verb da
+				// camada Golden, que este port ainda nao tem --, e a loja a recusa por `ForaDoPort` ANTES de olhar arvore e
+				// acendedor. A recusa de baixo continua la, e e medida: com a lista de fechadas aberta (o defeito injetado
+				// da `--v021teste`), quem responde volta a ser o acendedor que le o que o port nao tem.
+				bool golden = path.EndsWith("Golden_Form", StringComparison.Ordinal);
+				Jandirus.Core.Skills.Recusa esperada = golden
+					? Jandirus.Core.Skills.Recusa.ForaDoPort : Jandirus.Core.Skills.Recusa.SemArvore;
 				Checa($"...e NAO se aprende hoje ({s.Nome}): a loja recusa por {esperada}",
 					  r == esperada, r.ToString());
+				if (golden)
+				{
+					Jandirus.Core.Skills.Recusa porBaixo;
+					Jandirus.Core.Skills.SkillsFechadas.TudoAbertoDeTeste = true;
+					try { porBaixo = livro.PodeAprender(cat, path, "Icer", "Frost Demon", vilao: false); }
+					finally { Jandirus.Core.Skills.SkillsFechadas.TudoAbertoDeTeste = false; }
+					Checa($"...e por baixo da porta fechada o acendedor continua recusando ({s.Nome}, com as fechadas abertas): AguardaAcendedor",
+						  porBaixo == Jandirus.Core.Skills.Recusa.AguardaAcendedor, porBaixo.ToString());
+				}
 
 				// E NENHUMA FORMA DO CATALOGO A ESPERA: uma entrada que pedisse a flag de uma skill
 				// desligada seria uma forma inalcancavel pra sempre -- e inalcancavel e indistinguivel
@@ -2510,7 +2525,7 @@ public static class FormasBench
 		RecusaForma comOLuto = new EstadoDeForma().Avaliar("ssj1", Catalogo.PortaSsj1, 1, false,
 			new PerfilDeFormas(Raca: "Saiyan", Linhagem: "Primal Saiyan", Raiva: NivelDeRaiva.Extrema));
 		Checa("a furia EXTREMA continua abrindo as escadas de sangue pela PORTA delas (o grau que a absorcao vai usar)",
-			  comOLuto == RecusaForma.Pode && NivelDeRaiva.Extrema > NivelDeRaiva.Lendaria, comOLuto.ToString());
+			  comOLuto == RecusaForma.Pode && NivelDeRaiva.Extrema > NivelDeRaiva.Comum, comOLuto.ToString());
 
 		Console.WriteLine();
 	}
@@ -2640,9 +2655,18 @@ public static class FormasBench
 			+ $"({string.Join(", ", pelaFlag.Select(d => d.Id))})",
 			  pelaFlag.Length == 1, $"{pelaFlag.Length}");
 
-		FormaDef[] naLinha = [.. Catalogo.Todas.Where(d => d.Linha == LinhaDeForma.Namekuseijin)];
-		Checa($"...e **UMA** na linha Namekuseijin inteira ({string.Join(", ", naLinha.Select(d => d.Id))})",
+		// (2026-10-13) A LINHA GANHOU O ORANGE, e ele NAO e um segundo Super Namekuseijin: so existe por concessao (o
+		// desejo ao dragao), sem flag e sem limiar. A contagem que protege contra a entrada duplicada e a das formas
+		// que SE CONQUISTAM -- e a outra metade da linha e conferida pelo nome, logo abaixo.
+		FormaDef[] naLinha = [.. Catalogo.Todas.Where(d => d.Linha == LinhaDeForma.Namekuseijin && !d.SoPorConcessao)];
+		Checa($"...e **UMA** que se conquista na linha Namekuseijin inteira ({string.Join(", ", naLinha.Select(d => d.Id))})",
 			  naLinha.Length == 1, $"{naLinha.Length}");
+
+		FormaDef[] concedidas = [.. Catalogo.Todas.Where(d => d.Linha == LinhaDeForma.Namekuseijin && d.SoPorConcessao)];
+		Checa("...e a outra entrada da linha e o ORANGE, que so existe por concessao: sem flag de skill e sem porta de BP "
+			+ $"({string.Join(", ", concedidas.Select(d => d.Id))})",
+			  concedidas.Length == 1 && concedidas[0].Id == Catalogo.IdOrange
+			  && concedidas[0].PedeFlag == null && concedidas[0].PortaBp <= 0 && concedidas[0].ChaveDoLimiar.Length == 0);
 
 		Checa("...e as duas contagens acham a MESMA entrada (a flag e a linha nao apontam pra formas "
 			+ "diferentes)",

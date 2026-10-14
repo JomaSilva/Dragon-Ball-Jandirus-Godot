@@ -88,6 +88,8 @@ public partial class GameServer
 		// quem as comprou. DEPOIS dos marcos do save, que e sobre eles que o reembolso soma. O recado sai
 		// mais adiante no login, quando ja ha tela pra le-lo (`AvisarDasAposentadas`).
 		pl.SkillsQueSairam = SkillsAposentadas.Limpar(pl.Livro);
+		// ...e as FECHADAS que ele tinha comprado (o verb delas nao existe aqui): os marcos voltam. Ver `SkillsFechadas`.
+		pl.SkillsQueFecharam = SkillsFechadas.Limpar(pl.Livro);
 
 		MigrarRazao(pl, save);
 	}
@@ -104,6 +106,11 @@ public partial class GameServer
 				  + $"voltaram: você tem {pl.Livro.MarcosLivres} livre(s) pra gastar na aba de aprendizado."
 				: $"a habilidade {skill.Nome} saiu do jogo e foi tirada do seu livro.");
 		pl.SkillsQueSairam = [];
+
+		foreach ((SkillsFechadas.Fechada skill, int devolvidos) in pl.SkillsQueFecharam)
+			Avisar(pl, $"a habilidade {skill.Nome} ainda não existe neste jogo (falta {skill.Falta}) e saiu do seu livro. "
+					 + $"{devolvidos} marco(s) gasto(s) nela voltaram: você tem {pl.Livro.MarcosLivres} livre(s).");
+		pl.SkillsQueFecharam = [];
 	}
 
 	/// <summary>A versao do razao que este servidor grava. Ver `CharacterSave.RazaoVersao`.</summary>
@@ -165,6 +172,10 @@ public partial class GameServer
 		var abertasAntes = new HashSet<string>(pl.Livro.Destravadas, StringComparer.OrdinalIgnoreCase);
 		ContextoDeRegra ctx = ContextoDeRegra.De(pl.Ficha, pl.Race, pl.Class);
 		ctx.DestravadasPorDegrau = () => pl.Niveis.Destravadas();
+		// O QUE A FICHA NAO SABE E O SERVIDOR SABE (o territorio, a maestria das formas) entra na FRENTE do leitor de
+		// campos -- ver `ContadorDoServidor`. Ao vivo, como o resto do contexto: ele fica guardado no livro.
+		Func<string, double?> daFicha = ctx.Contador;
+		ctx.Contador = nome => ContadorDoServidor(pl, nome) ?? daFicha(nome);
 		pl.Livro.Recalcular(_skills, ctx, pl.Race, pl.Class);
 		foreach (string p in pl.Livro.Destravadas)
 			if (!abertasAntes.Contains(p) && _skills.Get(p) is { } arv)
@@ -182,6 +193,16 @@ public partial class GameServer
 		// do pacote cobre o estado, entao quem chama `MandarSkills` depois disto manda so se mudou.
 		MandarSkills(pl);
 	}
+
+	/// <summary>
+	/// O IDENTIFICADOR DE REGRA DE ARVORE QUE SO O SERVIDOR RESPONDE (`AcendedoresDoPort.EDoServidor`): nao e campo
+	/// da ficha, e a regra do DM o pergunta mesmo assim. Nulo = nao e comigo (o leitor de campos responde).
+	///
+	/// `temOndeErguerAEstatua` -- `savant.signature == Earth_Guardian || conq_owns_any(savant.signature)`
+	/// (`namekian.dm:24`): as duas perguntas de territorio que a propria estatua ja fazia (`ErguerEstatua`).
+	/// </summary>
+	private double? ContadorDoServidor(ServerPlayer pl, string nome) =>
+		nome == AcendedoresDoPort.TemOndeErguer ? (EhGuardiao(pl) || DominaAlgum(pl.Assinatura) ? 1 : 0) : null;
 
 	// =====================================================================
 	// O KI LIBERADO -- as duas pecas que a tecla C exige
@@ -244,21 +265,53 @@ public partial class GameServer
 	/// O aviso de aprendizado DIZ O QUE MUDOU. "voce aprendeu Backstab" nao ensina nada; o
 	/// jogador nao tem como saber se comprou um numero ou uma tecnica, e as duas coisas se jogam
 	/// de jeitos opostos. Skill sem efeito portado admite isso em vez de fingir.
+	///
+	/// (2026-10-13) E SO ADMITE QUANDO E VERDADE. Este aviso olhava so o que a COMPRA da, e dizia "(sem efeito
+	/// mecanico ainda)" de duas populacoes que funcionam: a skill que rende POR NIVEL (as pericias de Ki -- comprar a
+	/// Basic Ki Gathering nao soma nada na hora, e cada cinco niveis dela somam) e a que o servidor escreveu a mao
+	/// (`EfeitosEscritosAMao`). O dono leu a frase na Basic Ki Gathering. A pergunta agora e a mesma da ficha
+	/// (`FichaDeSkill.TemEfeitoPortado`).
 	/// </summary>
 	private static string EfeitoEmTexto(Skill s)
 	{
-		if (s.Verbos.Length > 0)
-			return $"voce aprendeu {s.Nome} -- nova habilidade: {string.Join(", ", s.Verbos.Select(NomesLegiveis.Habilidade))}.";
+		// SO O VERB QUE TEM CORPO SE ANUNCIA (2026-10-13): "nova habilidade: X" de um X que nao existe neste jogo
+		// mandava o jogador procurar um botao que nao esta em lugar nenhum. Ver `Tecnicas.TemCorpo`.
+		string[] vivos = [.. s.Verbos.Where(v => AvisoAnunciaVerbMortoDeTeste || Tecnicas.TemCorpo(v))];
+		if (vivos.Length > 0)
+			return $"voce aprendeu {s.Nome} -- nova habilidade: {string.Join(", ", vivos.Select(v => Tecnicas.Get(v)?.Nome ?? NomesLegiveis.Habilidade(v)))}.";
 		if (s.Buffs.Count > 0)
 			return $"voce aprendeu {s.Nome} ({string.Join(", ", s.Buffs.Select(b => $"{NomesLegiveis.Campo(b.Key)} {b.Value:+0.##;-0.##}"))}).";
 		// A ESCOLHA UNICA que pergunta: sem casa escolhida ela nao rende nada (e fiel), entao o aviso
 		// tem que mandar escolher -- senao a Holy Trinity parece uma compra que nao fez nada.
 		if (s.Escolhas.Length > 0 && s.EscolhaSegue.Length == 0)
 			return $"voce aprendeu {s.Nome} -- escolha uma casa com `skill_escolha {s.Path}`.";
-		if (s.Escolhas.Length > 0 || s.Genes.Count > 0 || s.Mults.Count > 0 || s.Flags.Count > 0 || s.Compra.Length > 0)
+		// O ESTILO DE LUTA (2026-10-13): Martial Arts, Kame Style e as outras seis so dao isto, e o aviso as chamava
+		// de "sem efeito mecanico" -- a regua da `--v021teste` achou as oito.
+		if (s.Estilo.Length > 0)
+			return $"voce aprendeu {s.Nome} -- novo estilo de luta: {s.Estilo} (assuma a postura na aba Skills).";
+		if (s.Escolhas.Length > 0 || s.Genes.Count > 0 || s.Mults.Count > 0 || s.Flags.Count > 0 || s.Compra.Length > 0
+			|| s.PorRaca.Length > 0)
 			return $"voce aprendeu {s.Nome}.";
+		if (!AvisoSoOlhaACompraDeTeste)
+		{
+			if (EfeitosEscritosAMao.De(s.Path) is { } feitoAMao) return $"voce aprendeu {s.Nome}: {feitoAMao}.";
+			if (RegrasDeNivel.Get(s.Path) is { } regra && Array.Exists(regra.Degraus, FichaDeSkill.DegrauTemEfeito))
+				return $"voce aprendeu {s.Nome} -- ela rende por NIVEL: sobe com o treino, e a ficha dela (aba Skills) diz o que cada nivel da.";
+		}
 		return $"voce aprendeu {s.Nome} (sem efeito mecanico ainda).";
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): o aviso de compra volta a olhar so o que a compra da -- a skill que
+	/// rende por nivel e a escrita a mao voltam a ser anunciadas como "sem efeito mecanico ainda". A v0.2.0.
+	/// </summary>
+	internal static bool AvisoSoOlhaACompraDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): o aviso de compra volta a anunciar "nova habilidade: X" de todo verb
+	/// da skill, tenha X corpo neste jogo ou nao -- a v0.2.0, em que o jogador ia procurar o botao.
+	/// </summary>
+	internal static bool AvisoAnunciaVerbMortoDeTeste;
 
 	/// <summary>
 	/// "Quero comprar esta skill." O cliente manda o typepath; quem decide e aqui.
@@ -578,6 +631,7 @@ public partial class GameServer
 			Recusa.NaoExiste => "essa habilidade nao existe.",
 			Recusa.JaSabe => "voce ja sabe isso.",
 			Recusa.Desligada => $"{nome} nao acende por caminho nenhum deste port (nem pre-requisito, nem regra de arvore).",
+			Recusa.ForaDoPort => $"{nome} ainda nao existe neste jogo (falta {SkillsFechadas.De(v.Path)?.Falta ?? "o sistema dela"}): ela nao se vende.",
 			Recusa.SoVilao => "so um vilao aprende isso.",
 			Recusa.RacaOuClasse => "sua raca ou classe nao aprende isso.",
 			Recusa.SemArvore => "isso nao pende de nenhuma arvore sua -- e ensinado, nao comprado.",

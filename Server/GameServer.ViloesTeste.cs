@@ -35,6 +35,7 @@ public partial class GameServer
 		}
 
 		int karmaDeAntes = pl.Karma;
+		double zeniDeAntes = pl.Ficha.Zeni;
 		ZoneKey terra = pl.Zone;
 		ServerPlayer? visitante = null;
 		bool ligadoDeAntes = VilaoAvulso.Ligado;
@@ -137,11 +138,18 @@ public partial class GameServer
 			// ---------------------------------------------------------------- 5. derrotar
 			GD.Print("[viloes] -- 5) derrotar ou matar da karma, uma vez, a quem derrotou --");
 			pl.Karma = 0;
+			// (2026-10-13) O VILAO CARREGA ZENI, e quem o derrota fica com ele -- ver `BolsaDeNpc` e `VilaoFoiDerrotado`.
+			double bolsaDoVilao = vilao.Ficha.Zeni, meuZeni = pl.Ficha.Zeni;
+			Checa($"(montagem) o vilao nasce com a bolsa dele: entre {BolsaDeNpc.ZeniMinDoVilao:N0} e {BolsaDeNpc.ZeniMaxDoVilao:N0} zeni",
+				  bolsaDoVilao >= BolsaDeNpc.ZeniMinDoVilao && bolsaDoVilao <= BolsaDeNpc.ZeniMaxDoVilao, $"{bolsaDoVilao:N0}");
 			falas = Ouvir(() => AoPerderALuta(vilao, pl, morreu: false));
 			Checa($"**NOCAUTEAR O VILAO DA KARMA** (+{VilaoAvulso.KarmaPorDerrotar}) a quem nocauteou", pl.Karma == VilaoAvulso.KarmaPorDerrotar, $"karma {pl.Karma}");
+			Checa("**...E O ZENI QUE ELE CARREGAVA**: a bolsa do vilao vai inteira pra carteira de quem o derrotou, e o jogador le quanto",
+				  Math.Abs(pl.Ficha.Zeni - meuZeni - bolsaDoVilao) < 1e-6 && vilao.Ficha.Zeni < 1 && Disse(falas, "zeni"), $"{meuZeni:N0} -> {pl.Ficha.Zeni:N0} (bolsa {bolsaDoVilao:N0}); {Ultimos(falas)}");
 			Checa("...e o planeta fica sabendo quem foi", Disse(falas, "derrotou o vilão"), Ultimos(falas));
 			AoPerderALuta(vilao, pl, morreu: true);
-			Checa("...UMA VEZ: matar o mesmo vilao que ja estava no chao nao paga de novo", pl.Karma == VilaoAvulso.KarmaPorDerrotar, $"karma {pl.Karma}");
+			Checa("...UMA VEZ: matar o mesmo vilao que ja estava no chao nao paga de novo (nem o karma, nem o zeni)",
+				  pl.Karma == VilaoAvulso.KarmaPorDerrotar && Math.Abs(pl.Ficha.Zeni - meuZeni - bolsaDoVilao) < 1e-6, $"karma {pl.Karma}, zeni {pl.Ficha.Zeni:N0}");
 
 			long antesDoFim = NowMs();
 			TickDosViloes();
@@ -156,9 +164,12 @@ public partial class GameServer
 			Checa("(montagem) outro vilao nasce na Terra", segundo != null);
 			if (segundo == null) return;
 			pl.Karma = 0;
+			double bolsaDoSegundo = segundo.Ficha.Zeni, zeniAntesDoSegundo = pl.Ficha.Zeni;
 			segundo.Combate.Morrer(ignorarSeguro: true);
 			falas = Ouvir(() => AoPerderALuta(segundo, pl, morreu: true));
 			Checa($"**MATAR O VILAO TAMBEM DA KARMA** (+{VilaoAvulso.KarmaPorDerrotar})", pl.Karma == VilaoAvulso.KarmaPorDerrotar && Disse(falas, "acabou com o vilão"), Ultimos(falas));
+			Checa("**MATAR O VILAO DA ZENI** (dono, 2026-10-13): quem mata fica com a bolsa dele",
+				  bolsaDoSegundo >= 1 && Math.Abs(pl.Ficha.Zeni - zeniAntesDoSegundo - bolsaDoSegundo) < 1e-6, $"{zeniAntesDoSegundo:N0} -> {pl.Ficha.Zeni:N0} (bolsa {bolsaDoSegundo:N0})");
 			TickDosViloes();
 			Checa("...e o evento fecha (o corpo morto sai pelo caminho de todo NPC)", ViloesDeTeste(terra).NoPlaneta == 0);
 
@@ -170,8 +181,9 @@ public partial class GameServer
 			ServerPlayer? outroNpc = NascerNpc("cidadao", vegeta, deVegeta.Pos, 0x7120_0001UL);
 			if (outroNpc != null)
 			{
+				double zeniAntesDoNpc = pl.Ficha.Zeni;
 				falas = Ouvir(() => AoPerderALuta(deVegeta, outroNpc, morreu: false));
-				Checa("derrubado por um NPC, o vilao cai e NINGUEM ganha karma", pl.Karma == 0 && Disse(falas, "caiu"), Ultimos(falas));
+				Checa("derrubado por um NPC, o vilao cai e NINGUEM ganha karma (nem zeni)", pl.Karma == 0 && Math.Abs(pl.Ficha.Zeni - zeniAntesDoNpc) < 1e-6 && Disse(falas, "caiu"), Ultimos(falas));
 				TickDosViloes();
 				RemoverNpc(outroNpc);
 			}
@@ -201,6 +213,18 @@ public partial class GameServer
 			ServerPlayer? repetido = ViloesDePe().FirstOrDefault(v => v.Zone.Equals(terra));
 			if (repetido != null)
 			{
+				// (defeito injetado: o vilao nao paga zeni) -- a v0.2.0, em que o premio era so o karma. NUM VILAO NOVO, e
+				// antes do defeito de baixo: aquele derruba o mesmo corpo duas vezes, e a bolsa so paga uma.
+				double antesDoDefeito = pl.Ficha.Zeni;
+				VilaoNaoPagaZeniDeTeste = true;
+				try
+				{
+					AoPerderALuta(repetido, pl, morreu: false);
+					Checa("(defeito injetado: derrotar o vilao nao rende zeni) a carteira de quem o derrotou nao muda, e a bolsa fica com ele -- a regua sabe reprovar",
+						  Math.Abs(pl.Ficha.Zeni - antesDoDefeito) < 1e-6 && repetido.Ficha.Zeni >= 1, $"{antesDoDefeito:N0} -> {pl.Ficha.Zeni:N0}");
+				}
+				finally { VilaoNaoPagaZeniDeTeste = false; }
+
 				pl.Karma = 0;
 				VilaoPagaDeNovoDeTeste = true;
 				try
@@ -219,6 +243,8 @@ public partial class GameServer
 		finally
 		{
 			VilaoPagaDeNovoDeTeste = false;
+			VilaoNaoPagaZeniDeTeste = false;
+			pl.Ficha.Zeni = zeniDeAntes;
 			VilaoAvulso.Ligado = ligadoDeAntes;
 			SorteioDoVilaoDeTeste = null;
 			foreach (ServerPlayer v in ViloesDePe()) RemoverNpc(v);

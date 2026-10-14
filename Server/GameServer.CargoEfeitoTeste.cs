@@ -156,7 +156,9 @@ public partial class GameServer
 		["BusterBarrage"] = "a barragem LIGA e passa a cuspir esferas em rumos sorteados drenando Ki; desliga sem Ki e no nocaute (`BusterBarrage.dm:26-87`)",
 		["Death_Ball"] = "a bola nasce e CARREGA em ate quatro estagios (1,5 s cada, `DeathBall.dm:75`), guiada pelo olhar; o nocaute a desfaz",
 		["SpiritBomb"] = "a Genkidama se forma com 90% do Ki, cresce com quem doa meditando e SAI dois segundos depois do segundo aperto (`SpiritBomb.dm:169-173`)",
-		["Grow_Senzu_Bean"] = "um minuto depois do aperto (`sleep(600)`, `Food.dm:7`) a Semente Senzu APARECE na mochila de quem cultivou",
+		["Grow_Senzu_Bean"] = "um minuto depois do aperto (`sleep(600)`, `Food.dm:7`) a Semente Senzu BROTA NO CHAO, um passo ao sul de quem cultivou (v0.2.1: o que se cria nasce no chao)",
+		// ---- a danca da fusao: o verb do DM virou a habilidade `fus_danca` (`GameServer.Fusao.cs`), e o censo a conta viva desde a v0.2.1 ----
+		["Fusion_dance"] = "os dois acertando as tres letras da danca, os corpos se FUNDEM: BP base (A+B)x2 e o convidado vai pro selo (`Fusion.dm:513`)",
 		["SplitForm"] = "nasce uma COPIA com cerebro proprio, o nome '<dono> Copy' e metade do poder expresso (`Split Forms.dm:78-103`)",
 		["Expand_Body"] = "o grau pedido infla o corpo: Tphysoff/Tphysdef sobem e Tspeed cai pelos numeros do `Loop()` (`Body Expansion.dm`)",
 		["Majin"] = "o buff de forma liga em si mesmo: BPadd, physoffMod x1,3, kiregenMod +0,5, angerMod /1,2 (`Magic/Majin.dm:25-50`)",
@@ -217,7 +219,10 @@ public partial class GameServer
 			["BusterBarrage"] = ("Server/GameServer.G12Teste.cs", "o aperto liga a barragem"),
 			["Death_Ball"] = ("Server/GameServer.G12Teste.cs", "o nocaute durante a carga desfaz a Death Ball e solta o corpo (na medida do nocaute)"),
 			["SpiritBomb"] = ("Server/GameServer.G12Teste.cs", "2 s depois a Genkidama SAI: nao inerte, pra frente, na velocidade da bola mais rapida, 100 s de prazo, escala mantida"),
-			["Grow_Senzu_Bean"] = ("Server/GameServer.G12Teste.cs", "aos 60 s a Semente Senzu APARECE na mochila"),
+			["Grow_Senzu_Bean"] = ("Server/GameServer.G12Teste.cs", "aos 60 s a Semente Senzu BROTA NO CHAO, um passo ao SUL de quem cultivou"),
+			// A DANCA pede DOIS corpos de gente, o convite aceito e as tres letras dos dois lados -- a cena inteira
+			// mora na `--fusaoduplateste`, que tambem mede a danca errada, o nocaute e o logout no meio.
+			["Fusion_dance"] = ("Server/GameServer.FusaoDuplaTeste.cs", "D1 os dois acertando as tres letras, a fusao acontece"),
 			["SplitForm"] = ("Server/GameServer.G12Teste.cs", "o aperto poe uma copia NOVA no mundo, com cerebro (IA), o nome '<dono> Copy' e METADE do poder expresso"),
 			["Expand_Body"] = ("Server/GameServer.G11Teste.cs", "2o grau: Tphysoff +1,25, Tphysdef +1,125 e Tspeed -(1 - 1/1,125) -- os numeros do `Loop()`"),
 			["Majin"] = ("Server/GameServer.G11Teste.cs", "Majin liga: BPadd += BP*1,2*(MaxAnger/100)/10, physoffMod x1,3, kiregenMod +0,5, angerMod /1,2, MajinPcnt 1,2"),

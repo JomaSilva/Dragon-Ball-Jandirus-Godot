@@ -82,6 +82,14 @@ public readonly struct Comando
 	/// <summary>C segurado: reunindo energia.</summary>
 	public bool Carregar { get; init; }
 
+	/// <summary>
+	/// ESTE PASSO CONTORNA O QUE O EMPERRAR. Nao e tecla: e o que um jogador faz sem pensar quando bate de frente
+	/// numa parede -- vira e passa pelo lado. Escrito pelo cerebro em todo comando dele (`Cerebro.Montar`); os
+	/// comandos montados a mao (a rota de um chefe, o passo de uma bancada) nao o trazem, e batem na parede como
+	/// sempre bateram. Quem contorna e o atuador (`GameServer.PassoDaIa`).
+	/// </summary>
+	public bool DesviaDeParede { get; init; }
+
 	// =====================================================================
 	// PULSO -- vale UM tique
 	// =====================================================================

@@ -114,6 +114,30 @@ public readonly struct Capacidades
 	public Arsenal DeLonge { get; init; }
 
 	/// <summary>
+	/// O REPERTORIO DE LUTA -- tudo o que ele sabe e que NAO viaja: os golpes de perto, as investidas, os reforcos e
+	/// os socorros (`TecnicasDeLuta`, dono 2026-10-13: *"deveriam usar todas as skills disponiveis do jogador"*).
+	///
+	/// OUTRO ARSENAL, E NAO MAIS LINHAS NO DE CIMA, pelo argumento que o <see cref="SabeSopro"/> ja escreve logo
+	/// abaixo: quem escolhe entre dois TIROS e a nota `(1 - risco) * CustoDeKi`, e um golpe de alcance zero posto
+	/// naquela disputa ganharia de um raio por ser caro. Aqui cada uso tem a receita dele no cerebro
+	/// (`Cerebro.Repertorio.cs`), e as tres propriedades do <see cref="DeLonge"/> valem igual: quem preenche e o
+	/// servidor, no relogio de 1 Hz, e quem recusa e o verb.
+	/// </summary>
+	public Arsenal DeLuta { get; init; }
+
+	/// <summary>
+	/// HA UMA INVESTIDA NO REPERTORIO? Anotado junto com ele: a corrida erra caro contra parede (*"sua corrida falha
+	/// e voce cai"*), entao ela pede a mesma linha de visao que o tiro -- e a linha so e tracada pra quem pede.
+	/// </summary>
+	public bool TemInvestida { get; init; }
+
+	/// <summary>ELE SABE REBATER TIRO? (a Deflexao.) So pra esses o servidor pergunta, a 30 Hz, se ha ki vindo -- ver `Percepcao.HaTiroVindo`.</summary>
+	public bool SabeRebater { get; init; }
+
+	/// <summary>A linha de visao ate o alvo serve pra alguma decisao deste corpo? Derivado: tiro ou investida.</summary>
+	public bool PedeLinha => DeLonge.TemAlguma || TemInvestida;
+
+	/// <summary>
 	/// ELE SABE O SOPRO? (`Kiai`) -- a resposta do MESMO `SabeTecnica` que responde ao verb do
 	/// jogador, perguntada no relogio de 1 Hz junto com o resto.
 	///

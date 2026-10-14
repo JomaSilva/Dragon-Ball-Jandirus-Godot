@@ -236,6 +236,10 @@ public static class RegrasDoDisco
 			if (emObra.TryGetValue(path, out RegraDeNivel? rq))
 				_porEstado -= rq.PorEstado.RemoveAll(g => g.Cadeia == cadeia);
 
+		// O DEGRAU DE UMA SKILL QUE ACENDE OUTRA e o DM guarda fora do `effector()` dela (o nivel 3 da Meditate Power
+		// acende a Full Power, pelo `effector()` da ARVORE do Gray) -- ver `AcendedoresDoPort.PorDegrau`.
+		AcendedoresDoPort.AplicarAosDegraus(degraus);
+
 		int n = 0;
 		foreach ((string path, RegraDeNivel r) in emObra)
 		{

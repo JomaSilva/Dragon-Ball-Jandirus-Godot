@@ -587,8 +587,10 @@ public partial class RoboDaV020 : Node
 	private async Tarefa F11_ARoupaDoCaido(GameClient cli, Jandirus.Server.GameServer srv)
 	{
 		Nota("--- F11: revistar um nocauteado mostra a roupa do corpo ---");
-		if (MenuDeInteracao.Instancia is not { } menuE || World.Instancia is not { } mundo)
-		{ Checa("(montagem) o menu da tecla E esta montado", false); return; }
+		// (2026-10-13) QUEM DESENHA O SAQUE E A TELA DA MOCHILA, aberta na mochila do caido -- o menu de botoes da tecla E
+		// saiu. A tecla E continua sendo o gesto que pergunta.
+		if (TelaDeInventario.Instancia is not { } telaI || World.Instancia is not { } mundo)
+		{ Checa("(montagem) a tela da mochila esta montada", false); return; }
 
 		int caido = srv.CaidoVestidoDeTeste(cli.LocalId);
 		Checa("(montagem) um corpo de bancada nocauteado e vestido (camisa tingida + armadura) apareceu ao lado", caido != 0);
@@ -601,28 +603,28 @@ public partial class RoboDaV020 : Node
 			Checa("o cliente ve o caido ao alcance da tecla E", visto);
 
 			Toque(Key.E);
-			bool abriu = await Ate(() => menuE.SaqueDeTeste.Aberto, 4);
-			List<string> botoes = menuE.BotoesDesenhados();
+			bool abriu = await Ate(() => telaI.SaqueDeTeste.Aberto, 4);
+			List<string> botoes = telaI.RotulosDoSaqueDeTeste();
 			Checa("**REVISTAR UM NOCAUTEADO MOSTRA A ROUPA DO CORPO**: 'Tirar do corpo' pra camisa e pra armadura",
 				  abriu && botoes.Contains("Tirar do corpo: Clothes_GiTop") && botoes.Contains("Tirar do corpo: Armor 8"), string.Join(" | ", botoes));
 
 			int minhas = cli.Mochila.Quantos(camisa);
-			Checa("(montagem) apertei 'Tirar do corpo: Clothes_GiTop'", menuE.ApertarDesenhado("Tirar do corpo: Clothes_GiTop"));
+			Checa("(montagem) apertei 'Tirar do corpo: Clothes_GiTop'", telaI.LevarDoSaqueDeTeste("Tirar do corpo: Clothes_GiTop"));
 			bool levou = await Ate(() => cli.Mochila.Quantos(camisa) == minhas + 1, 4);
 			Checa("**A PECA SAI DO CORPO DELE PRA MINHA MOCHILA**, com a cor que tinha",
 				  levou && !srv.RoupaDeTeste(caido).Contains(camisa), $"ele veste: {string.Join(", ", srv.RoupaDeTeste(caido))}");
-			bool voltou = await Ate(() => menuE.SaqueDeTeste is { Aberto: true, Itens: 1 }, 4);
-			Checa("...e o menu volta com o que sobrou: so a armadura",
-				  voltou && menuE.BotoesDesenhados().SequenceEqual(["Tirar do corpo: Armor 8"]), string.Join(" | ", menuE.BotoesDesenhados()));
+			bool voltou = await Ate(() => telaI.SaqueDeTeste is { Aberto: true, Itens: 1 }, 4);
+			Checa("...e a tela volta com o que sobrou: so a armadura",
+				  voltou && telaI.RotulosDoSaqueDeTeste().SequenceEqual(["Tirar do corpo: Armor 8"]), string.Join(" | ", telaI.RotulosDoSaqueDeTeste()));
 
 			Toque(Key.Escape);
-			bool fechou = await Ate(() => !menuE.NaTela, 2);
-			Checa("o Esc fecha o menu de revistar", fechou && PauseMenu.Instancia is not { Aberto: true },
-				  $"menu={menuE.NaTela} pausa={PauseMenu.Instancia?.Aberto}");
+			bool fechou = await Ate(() => !telaI.SaqueDeTeste.Aberto, 2);
+			Checa("o Esc fecha a tela de revistar", fechou && PauseMenu.Instancia is not { Aberto: true },
+				  $"tela={telaI.SaqueDeTeste.Aberto} pausa={PauseMenu.Instancia?.Aberto}");
 			Saque.RoupaDoCorpoFicaDeTeste = true;
 			Toque(Key.E);
-			bool vazio = await Ate(() => menuE.SaqueDeTeste is { Aberto: true, Itens: 0 }, 4);
-			Injeta("(a roupa do corpo fica) o menu de revistar volta a dizer que nao ha nada pra levar -- o saque de antes", vazio, menuE.SaqueDeTeste.Titulo);
+			bool vazio = await Ate(() => telaI.SaqueDeTeste is { Aberto: true, Itens: 0 }, 4);
+			Injeta("(a roupa do corpo fica) a tela de revistar volta a nao ter nada no corpo pra levar -- o saque de antes", vazio, telaI.SaqueDeTeste.Titulo);
 			Saque.RoupaDoCorpoFicaDeTeste = false;
 		}
 		finally

@@ -355,6 +355,12 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): a fusao Namekuseijin volta a valer pra raca inteira, sem a skill --
+	/// e a `Fusion- Namek Style` volta a ser uma compra que nao da nada.
+	/// </summary>
+	internal static bool FusaoNamekSemSkillDeTeste;
+
+	/// <summary>
 	/// `Namekian_Fusion` (`Fusion.dm:549-569`): a fusao dos Namekuseijin, que **nao e uma fusao: e uma
 	/// ABSORCAO**. Ver `GameServer.Namekuseijin.cs` e `Core/Social/AbsorcaoNamekuseijin.cs`.
 	///
@@ -369,10 +375,12 @@ public sealed partial class GameServer
 	/// fundir sem consentimento.
 	/// ======================================================================================================
 	///
-	/// ============================ ELA NAO PEDE SKILL, E ISSO E DO DM ============================
-	/// O verb do original nao consulta livro nenhum: ele mora num `obj/Namekian_Fusion` e num
-	/// `mob/keyable/verb`, e os unicos portoes sao **as duas racas** (`:556-557`) mais os que toda
-	/// fusao tem (ja fundido, recarga). Ver `Fusao.Avaliar`, onde o portao racial mora.
+	/// ============================ ELA PEDE A SKILL DELA (2026-10-13) ============================
+	/// O CORPO do verb nao consulta livro nenhum: os portoes escritos nele sao **as duas racas** (`:556-557`) mais os
+	/// que toda fusao tem (ja fundido, recarga) -- ver `Fusao.Avaliar`. Mas quem TEM o verb e quem aprendeu a skill
+	/// `Fusion- Namek Style` da arvore racial (`namekian.dm:111-124`: o `after_learn()` faz o `assignverb`). Este
+	/// cabecalho dizia "ela nao pede skill, e isso e do DM", lendo so o corpo; com o botao valendo pra raca inteira a
+	/// skill era uma compra que nao dava nada. A porta agora e a do original: a skill.
 	///
 	/// O ALVO E O DA FRENTE, pela mesma busca da Danca e com a mesma divergencia declarada la: o
 	/// `oview(1)` do original (`:553`) tambem nao pergunta `attackable`, e aqui quem esta intocavel nao e
@@ -381,6 +389,15 @@ public sealed partial class GameServer
 	/// </summary>
 	private void ConvidarParaAFusaoNamekuseijin(ServerPlayer pl)
 	{
+		// SO O NAMEKUSEIJIN OUVE ISTO: quem e de outra raca ouve a recusa de sempre, la embaixo ("coisa de
+		// Namekuseijin") -- a skill e da arvore racial DELES, e mandar um humano procura-la na dele seria mentira.
+		if (pl.Race == "Namekian" && pl.Livro?.Sabe(Jandirus.Core.Verbos.RequisitosDosVerbos.SkillDaFusaoNamek) != true
+			&& !FusaoNamekSemSkillDeTeste)
+		{
+			Avisar(pl, "você ainda não aprendeu a se fundir assim: a habilidade Fusion- Namek Style está na sua árvore racial (aba Learning).");
+			return;
+		}
+
 		ServerPlayer? outro = AlvoNaFrente(pl);
 		if (outro == null) { Avisar(pl, "nao ha ninguem na sua frente."); return; }
 

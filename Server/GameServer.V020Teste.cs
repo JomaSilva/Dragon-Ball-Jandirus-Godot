@@ -778,7 +778,8 @@ public sealed partial class GameServer
 				  noVazio is { Vivo: false, Fim: FimDeProjetil.Explodiu } && ExplosoesDoFimDoAlcanceDeTeste == explosoes + 1
 				  && CraterasDeExplosaoDeTeste == crateras + 1, $"fim {noVazio?.Fim}");
 
-		// ---- (g) a esfera grande tambem; a bola comum so se apaga
+		// ---- (g) a esfera grande tambem; a bola comum estoura PEQUENO (ate a v0.2.0 ela so se apagava: dono, 2026-10-13,
+		//      *"quando uma esfera de ki se afasta muito ela so some e n explode"* -- medido na `--v021teste`, K1)
 		LimparTudoDaBancada();
 		explosoes = ExplosoesDoFimDoAlcanceDeTeste;
 		crateras = CraterasDeExplosaoDeTeste;
@@ -787,8 +788,8 @@ public sealed partial class GameServer
 		Projetil grande = Disparar(so, new ReceitaDeProjetil { Tipo = TipoDeProjetil.Blast, BaseDano = 1, Velocidade = 1, AlcanceTiles = 6, EscalaVisual = 2, Deflectivel = false, Nome = "esfera grande" });
 		Projetil comum = Disparar(so, new ReceitaDeProjetil { Tipo = TipoDeProjetil.Blast, BaseDano = 1, Velocidade = 1, AlcanceTiles = 6, Deflectivel = false, Nome = "bola comum" });
 		for (int i = 0; i < 30 * 12 && (grande.Vivo || comum.Vivo); i++) TickDosProjeteis(Protocol.TickSeconds);
-		AfirmarV2("**A ESFERA GRANDE TAMBEM ESTOURA** no fim do alcance (com cratera); a bola comum so se apaga, como sempre",
-				  grande.EsferaGrande && !comum.EsferaGrande && grande.Fim == FimDeProjetil.Explodiu && comum.Fim == FimDeProjetil.Apagou
+		AfirmarV2("**A ESFERA GRANDE TAMBEM ESTOURA** no fim do alcance (com a cratera grande); a bola comum estoura pequeno, sem o estouro grande nem a cratera dele",
+				  grande.EsferaGrande && !comum.EsferaGrande && grande.Fim == FimDeProjetil.Explodiu && comum.Fim == FimDeProjetil.Estourou
 				  && ExplosoesDoFimDoAlcanceDeTeste == explosoes + 1 && CraterasDeExplosaoDeTeste == crateras + 1,
 				  $"grande {grande.Fim}, comum {comum.Fim}, crateras +{CraterasDeExplosaoDeTeste - crateras}");
 

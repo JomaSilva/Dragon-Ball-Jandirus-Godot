@@ -98,13 +98,15 @@ public sealed partial class Fighter
 
             // 1/24 = 24 horas pra chegar num dado teto a 1x. (A meditacao NAO leva o
             // multiplicador de zona -- so o treino e o spar levam. E assim no DM.)
+            // (2026-10-13) MEDITAR RENDE MENOS QUE TREINAR, nas duas parcelas -- ver `GainKnobs.MeditarRende`.
             double amount = CapCheck(BpGainBase() * GainKnobs.BPTick * GainKnobs.GlobalMedGain * multi
-                                     * Egains * MedMod * (1.0 / 24));
+                                     * Egains * MedMod * (1.0 / 24) * GainKnobs.MeditarRende);
 
             if (train_med_to_hp) hiddenpotential += amount / 4;
             else BP += amount;
 
-            BP += CapCheck(hiddenpotential * GainKnobs.BPTick * (hiddenpotential >= BP ? 1.0 / 30 : 1.0 / 50));
+            BP += CapCheck(hiddenpotential * GainKnobs.BPTick * (hiddenpotential >= BP ? 1.0 / 30 : 1.0 / 50)
+                           * GainKnobs.MeditarRende);
         }
 
         if (baseKi <= baseKiMax)
@@ -381,9 +383,15 @@ public sealed partial class Fighter
     /// distorcido por forma, raiva, supressao e Ki, e "mestre 3x mais forte = 3x de ganho" so
     /// e estavel comparando o poder de verdade.
     ///
-    /// Nunca reduz: oponente igual ou mais fraco da 1x.
+    /// Nunca reduz: oponente igual ou mais fraco da 1x -- menos o MESTRE, que rende no minimo
+    /// <see cref="GainKnobs.MasterGainMin"/> seja qual for o poder dele (regra do dono, 2026-10-13; no DM, abaixo de
+    /// 1,2x de gap o bonus do mestre valia 1).
+    ///
+    /// (2026-10-13) E CONTRA UM COLEGA -- outro aluno do mesmo mestre -- o ganho nunca e menor que
+    /// <see cref="GainKnobs.ColegaDeMestreGain"/>: *"alunos treinando com alunos tb deveriam ganhar um bonus de ganho
+    /// mas menor do q treinar com o mestre"*. Fixo, e nao pelo gap: ver a constante.
     /// </summary>
-    public double FightGainMult(Fighter? outro, bool ehMeuMestre = false)
+    public double FightGainMult(Fighter? outro, bool ehMeuMestre = false, bool ehColegaDeMestre = false)
     {
         if (outro == null || ReferenceEquals(outro, this)) return 1;
 
@@ -395,10 +403,14 @@ public sealed partial class Fighter
         double dele = Math.Max(outro.expressedBP, 1);
         double geral = Math.Min(Math.Max(dele / meu, 1), GainKnobs.FightGainCap);
 
+        if (ehColegaDeMestre && !ehMeuMestre && !GainKnobs.ColegaSemBonusDeTeste)
+            return Math.Max(geral, GainKnobs.ColegaDeMestreGain);
         if (!ehMeuMestre) return geral;
 
+        // LINEAR PELA RAZAO DOS BPs BASE, entre o piso e o teto (`combatgains.dm:97-98`).
         double r = Math.Max(outro.BP, 1) / Math.Max(BP, 1);
-        double bonus = r < GainKnobs.MasterGainFloor ? 1 : Math.Min(r, GainKnobs.MasterGainCap);
+        double piso = GainKnobs.MestreSemPisoDeTeste ? 1 : GainKnobs.MasterGainMin;
+        double bonus = Math.Clamp(r, piso, GainKnobs.MasterGainCap);
         return Math.Max(geral, bonus);   // ter mestre nunca pode PIORAR o ganho
     }
 

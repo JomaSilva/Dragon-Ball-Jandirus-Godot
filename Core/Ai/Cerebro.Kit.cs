@@ -186,9 +186,11 @@ public sealed partial class Cerebro
 	/// Passado o <see cref="PrazoComAPresaNaMao"/> sem o gesto ter saido, devolve nulo: o plano volta, anda, e quem
 	/// estava preso e arremessado. Nao ha corpo que fique nos bracos dele pra sempre.
 	/// </summary>
-	private Comando? ComAPresaNaMao(in Percepcao p)
+	private Comando? ComAPresaNaMao(in Percepcao p, Random rng)
 	{
-		if (!Poderes.KitDoDeus || p.Segurando == 0) return null;
+		if (p.Segurando == 0) return null;
+		// (quem agarrou por um golpe do repertorio, e nao pelo kit: a receita dele mora em `Cerebro.Repertorio.cs`)
+		if (!Poderes.KitDoDeus) return ComAPresaNaMaoDoRepertorio(p, rng);
 		if (_segurandoHa > PrazoComAPresaNaMao) return null;
 		if (_segurandoHa < SegundosComAPresaNaMao || _pausaDoKit > 0) return new Comando();
 

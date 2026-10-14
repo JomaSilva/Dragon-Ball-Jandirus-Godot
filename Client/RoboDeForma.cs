@@ -481,11 +481,18 @@ public partial class RoboDeForma : Node
 		// lados, e a razao esta escrita ali em cima: a proxima falha de verdade entra no meio das ja
 		// aceitas e ninguem repara.
 		// ==================================================================================================================
+		// ============================ E TREZE COM O ORANGE (dono, 2026-10-13) ============================
+		// Forma nova, sem par no DM: *"essa forma tem o mesmo buff do beast"*, na linha do Namekuseijin. O `Raios = 1`
+		// dela e ESCOLHA DESTE PORT, e fica escrita aqui porque esta lista existe pra isso: e o volume do Super
+		// Namekuseijin (a outra forma da linha, `snamek Elec.dmi`), e o Beast -- de quem ela copia o buff -- tambem
+		// acende. A lista ficou pra tras de novo, e desta vez com a forma nascendo SEM CENA junto: a `diagforma` nao
+		// foi rodada no dia em que o Orange entrou.
+		// ===============================================================================================
 		string[] esperado =
 			["ssj2", "ssj3", "primal_legendary2", "primal_legendary3", "ssj4_limit_breaker",
-			 "mistico", "beast", "snamek", "heran2", "alien1", "alien2", "super_perfect"];
+			 "mistico", "beast", "snamek", "orange", "heran2", "alien1", "alien2", "super_perfect"];
 		Conferir(comRaio.Count == esperado.Length && esperado.All(comRaio.Contains),
-				 $"SO doze formas acendem raio, e sao estas ({string.Join(", ", comRaio)})");
+				 $"SO treze formas acendem raio, e sao estas ({string.Join(", ", comRaio)})");
 
 		// O VOLUME. O SSJ2 e o UNICO leve porque no DM o `if(2)` acende UMA folha; o SSJ3 e o
 		// `primal_legendary2` sao o CHEIO porque os dois caem no `if(3)`, que soma tres; o Limit
@@ -572,8 +579,10 @@ public partial class RoboDeForma : Node
 		// Saiyajin --, entao a faisca dela sai no `9fe8a8` da propria chama, que e o verde-branco da
 		// carapaca. Tom novo, uma forma so, sem repetir nenhum dos oito.
 		// ======================================================================================================
-		Conferir(tomDaFaisca.Count == 9,
-				 $"as doze faiscas saem em NOVE tons ({tomDaFaisca.Count}: "
+		// (E DEZ COM O ORANGE: a linha do Namekuseijin tambem cai no `_ => d.Aura`, e a faisca dele sai no laranja
+		// `ff8a1e` da propria chama -- tom novo, uma forma so.)
+		Conferir(tomDaFaisca.Count == 10,
+				 $"as treze faiscas saem em DEZ tons ({tomDaFaisca.Count}: "
 			   + $"{string.Join(" / ", tomDaFaisca.Select(p => $"{p.Key}={p.Value.Count}"))})");
 		Conferir(tomDaFaisca.TryGetValue("8fe3ff", out List<string>? azuis) && azuis.Count == 4,
 				 $"QUATRO delas sao azuis #8fe3ff ({Quem("8fe3ff")})");
@@ -582,7 +591,7 @@ public partial class RoboDeForma : Node
 		// as duas Alien, que sao a MESMA folha em tons diferentes porque a chama de cada degrau e que
 		// muda. Sem esta linha, duas racas trocando de cor entre si passariam pela conta de cima.
 		foreach ((string id, string tom) in new[]
-			{ ("snamek", "6fe36f"), ("heran2", "ff4a4a"), ("super_perfect", "9fe8a8") })
+			{ ("snamek", "6fe36f"), ("orange", "ff8a1e"), ("heran2", "ff4a4a"), ("super_perfect", "9fe8a8") })
 			Conferir(tomDaFaisca.TryGetValue(tom, out List<string>? so) && so.Count == 1 && so[0] == id,
 					 $"e a faisca de `{id}` e #{tom}, so dela ({Quem(tom)})");
 		Conferir(tomDaFaisca.TryGetValue("ff2d2f", out List<string>? vermelhas)
@@ -1793,6 +1802,10 @@ public partial class RoboDeForma : Node
 		// A FURY DO DEUS DA DESTRUICAO (2026-10-11), pelo mesmo motivo das de cima: o `Buff()` do `GodFury`
 		// (`GodOfDestruction.dm:396-401`) veste a aura, toca `1aura.wav` e escreve uma linha -- sem espera nenhuma.
 		("god_fury",                        "o `Buff()` do `GodFury` nao tem um `sleep` -- a forma fica no mesmo tique"),
+
+		// O ORANGE (2026-10-13) nao tem proc NENHUM no DM -- a forma e regra do dono, sem par la. A cena e o surto curto
+		// das de cima, com o mesmo piso (`Cinematicas.Orange`).
+		("orange",                          "forma nova do dono (2026-10-13), sem par no DM: nao ha proc de cena pra portar"),
 	];
 
 	/// <summary>
@@ -3936,23 +3949,23 @@ public partial class RoboDeForma : Node
 		// agora que existem dois niveis -- faria todas as formas de raiva menos o Beast estrearem com
 		// a cratera pequena. Nada quebraria, nada apareceria no log: so um chao que racha menos.
 		// ================================================================================
-		int extremas = 0, lendarias = 0;
+		int extremas = 0, porQueda = 0;
 		foreach (Jandirus.Core.Forms.FormaDef d in Jandirus.Core.Forms.Catalogo.Todas)
 		{
 			Jandirus.Core.Forms.NivelDeRaiva n = Jandirus.Core.Forms.Catalogo.RaivaExigida(d);
 			if (n == Jandirus.Core.Forms.NivelDeRaiva.Extrema) extremas++;
-			else if (n == Jandirus.Core.Forms.NivelDeRaiva.Lendaria) lendarias++;
+			else if (n == Jandirus.Core.Forms.NivelDeRaiva.Comum) porQueda++;
 
 			// A CRATERA SEGUE A PERGUNTA "TEM RAIVA?", e nao "de qual?".
 			Conferir(Jandirus.Core.Forms.Catalogo.NasceDaRaiva(d)
 					 == (n != Jandirus.Core.Forms.NivelDeRaiva.Nenhuma),
 					 $"`{d.Id}`: a cratera segue o `NasceDaRaiva`, que segue o nivel ({n})");
 		}
-		Conferir(extremas > 0 && lendarias > 0,
-				 $"os DOIS degraus existem no catalogo ({extremas} por luto, {lendarias} por queda)");
-		Conferir(extremas + lendarias == deuRaiva.Count,
-				 $"e os dois somam a lista da cratera ({extremas}+{lendarias} contra {deuRaiva.Count})");
-		_passos.Add($"  --     so com a furia do LUTO: {extremas} forma(s); tambem com a raiva comum (mais caro): {lendarias}");
+		Conferir(extremas > 0 && porQueda > 0,
+				 $"os DOIS degraus existem no catalogo ({extremas} por luto, {porQueda} por queda)");
+		Conferir(extremas + porQueda == deuRaiva.Count,
+				 $"e os dois somam a lista da cratera ({extremas}+{porQueda} contra {deuRaiva.Count})");
+		_passos.Add($"  --     so com a furia do LUTO: {extremas} forma(s); tambem com a raiva comum (mais caro): {porQueda}");
 
 		// AS QUE MAIS PODEM ESCORREGAR, ditas com o motivo -- sao os tres jeitos de sair do tronco.
 		Conferir(!Jandirus.Core.Forms.Catalogo.NasceDaRaiva(Jandirus.Core.Forms.Catalogo.Def("grade2")),
@@ -9743,6 +9756,11 @@ public partial class RoboDeForma : Node
 		// A FURY DO DEUS DA DESTRUICAO (2026-10-11): o `Buff()` dela so escreve o multiplicador e veste a aura colada
 		// (`GodOfDestruction.dm:396-401`) -- nao ha `RemoveHair`/`AddHair`, overlay de olho nem tinta de rabo.
 		("god_fury",                        ModoCabelo.Base,             null,     null),
+
+		// O ORANGE (2026-10-13), a segunda forma do Namekuseijin: como o `snamek`, nao encosta em cabelo (a raca nao
+		// tem), em rabo nem em olho. O que ele muda e a PELE e o PORTE do corpo -- outros dois canais (`Catalogo.PeleDaForma`,
+		// `PorteDaForma`), cobrados na `--v021teste` e na `--diagv021`.
+		("orange",                          ModoCabelo.Base,             null,     null),
 	];
 
 	/// <summary>

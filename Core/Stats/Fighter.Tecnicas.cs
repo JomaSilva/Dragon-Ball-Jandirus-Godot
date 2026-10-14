@@ -128,6 +128,13 @@ public partial class Fighter
 	public double kiaiskill, kibuffskill, kiawarenessskill;
 
 	/// <summary>
+	/// O `haszanzo = 0` DO `Afterimage_Toggle` (`Ki/misc.dm:91-98`): quem sabe a tecnica da Miragem a GUARDOU. No DM o
+	/// verb alterna o proprio `haszanzo` (que o `after_learn()` da skill pos em 1); aqui o "sabe" e o livro, entao o
+	/// que se guarda e so o botao. Vai pro save com a ficha, como la.
+	/// </summary>
+	public bool zanzoDesligado;
+
+	/// <summary>
 	/// AS TRES CHAVES QUE OS `growbranches()` LEEM e que o port nao tinha onde guardar -- a SEXTA
 	/// vez do mesmo achado: o extrator ja as escrevia (`effusionspecial=1` no degrau 25 da Basic Ki
 	/// Effusion em `niveis.json`; `effspec=1..3` e `gravitate=1..2` nos `after_learn` de

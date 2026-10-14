@@ -595,19 +595,32 @@ public sealed partial class GameServer
 	/// segundo.
 	/// ==========================================================================================================================
 	/// </summary>
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): o carregado volta a marchar no colo com a animacao de quem o
+	/// carrega -- a v0.2.0. Lido pela propria linha, no <see cref="LevarNoColo"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal bool AgarradoMarchaNoColoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`): quem estrangula volta a poder andar -- a v0.2.0. Lido pelo
+	/// `PodeMexerOCorpo`. Falso em jogo, sempre.
+	/// </summary>
+	internal bool EstranguladorAndaDeTeste;
+
 	private void LevarNoColo(ServerPlayer a, ServerPlayer d, long agora)
 	{
 		d.Altitude = a.Altitude;
 		d.Nadando = a.Nadando;
 
-		// `grabbee.dir = turn(dir,180)` (`Grabbing.dm:190`) -- carregado de costas pra quem carrega.
-		d.Facing = DeCostasPara(a.Facing);
+		// `grabbee.dir = turn(dir,180)` (`Grabbing.dm:190`) -- carregado de costas pra quem carrega. (Menos no
+		// instante em que ele SE DEBATE: ai o corpo fica virado pra onde ele apertou -- `ServerPlayer.ViradaDoDebateAte`.)
+		if (agora >= d.ViradaDoDebateAte) d.Facing = DeCostasPara(a.Facing);
 
-		// O `Moving` VEM DE QUEM CARREGA, e nao e desleixo: o corpo no colo se DESLOCA (a posicao dele
-		// e reescrita todo quadro), e um corpo que se desloca com `Moving` falso e exatamente o "sai
-		// deslizando" que o `EntityState.SemRedeas` ja documenta -- posicao andando e animacao parada.
-		// Enquanto nao houver uma pose de "carregado", a animacao de quem anda e a leitura menos errada.
-		d.Moving = a.Moving;
+		// (2026-10-13) O CARREGADO NAO MARCHA. Ate aqui o `Moving` vinha de quem carrega ("a animacao de quem anda
+		// e a leitura menos errada"), e o dono pediu o contrario: *"ele n vai tocar animaçao de andar, nem se mover
+		// de verdade, a nao ser q ele saia do grab"*. Quem esta no colo e LEVADO: o corpo fica parado, e a tela o
+		// desenha colado em quem o leva (`EntityState.LevadoPor`).
+		d.Moving = AgarradoMarchaNoColoDeTeste && a.Moving;
 
 		// O CARIMBO DE SEQUENCIA e o que impede os pacotes de input que o cliente do carregado JA
 		// MANDOU (com a posicao antiga) de serem lidos como cliente errado e puxarem o corpo de volta

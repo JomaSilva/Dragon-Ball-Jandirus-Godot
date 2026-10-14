@@ -16,7 +16,7 @@ namespace Jandirus.Core.Combat;
 ///
 /// SAO DOIS DEGRAUS, e o enum deles ja existia (<see cref="NivelDeRaiva"/>, que nasceu pra PORTA das formas):
 ///
-///   * <see cref="NivelDeRaiva.Lendaria"/> -- a RAIVA COMUM, o "Angry" do DM: um amigo foi NOCAUTEADO;
+///   * <see cref="NivelDeRaiva.Comum"/> -- a RAIVA COMUM, o "Angry" do DM: um amigo foi NOCAUTEADO;
 ///   * <see cref="NivelDeRaiva.Extrema"/>  -- o degrau MAIS ALTO, o "Very Angry" do DM: um amigo MORREU ou foi ABSORVIDO.
 ///
 /// Este arquivo guarda o que cada degrau VALE em numero (o `Anger` do DM, que vira `angerBuff` e BP) e a regra que
@@ -38,6 +38,15 @@ namespace Jandirus.Core.Combat;
 /// vale justamente o "Angry" de la. Ver <see cref="NivelDeRaiva"/> e `FormaDef.AgioNaRaivaComum`.
 /// O *"second wind"* de `KO.dm:19-26` esta COMENTADO no original (codigo morto la) e era de quem CAI, nao de quem
 /// assiste: nao ha o que portar.
+///
+/// ============================ E A SKILL `LEGENDARY ANGER` (pergunta do dono, 2026-10-13) ============================
+/// *"lendario saiyajin tem como ter a skill raiva lendaria e com isso o multiplicador de raiva dele em todos os niveis
+/// (extreme e normal) é maior"*. E, e este arquivo nao precisa de linha nenhuma pra isso: a skill soma 100 no
+/// `MaxAnger` (`saiyan.dm:50` + `master.dm:180`, no `Fighter.Statify`) e sobe o teto do buff de 2x pra 3x
+/// (`base.dm:88`, no `Fighter.Power`), e os DOIS degraus daqui saem do `MaxAnger` (<see cref="Topo"/>). O +100 entra
+/// inteiro na extrema (+1,0x) e dividido por <see cref="DivisorDaRaivaComum"/> na comum (+0,77x): num corpo no piso
+/// de fabrica (`MaxAnger` 120) a extrema vai de 1,20x pra 2,20x e a comum de 1,15x pra 1,92x. Medido no corpo vivo,
+/// com a skill aprendida pelo canal do jogo, pela `--formasteste` (`GameServer.ALegendaryAngerNosDoisDegraus`).
 /// ==============================================================================================================
 /// </summary>
 public static class RaivaEmDegraus
@@ -59,6 +68,14 @@ public static class RaivaEmDegraus
 	/// *"raiva comum n acontece isso"* do dono. Lido pelo <see cref="SaltaOKi"/>.
 	/// </summary>
 	public static bool SaltoNaRaivaComumDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--formasteste`, secao `ALegendaryAngerNosDoisDegraus`): o bonus da skill Legendary
+	/// Anger fica so no TETO do buff (`Fighter.Power`: `2 + legendaryAngerBonus/100`) e NAO entra no `MaxAnger` -- os
+	/// dois degraus deixam de subir com ela, que e como a skill estaria "desatualizada" com a raiva em degraus. Lido
+	/// pelo `Fighter.Statify`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool LegendaryAngerSoNoTetoDeTeste;
 
 	// =====================================================================
 	// 1. O NUMERO DE CADA DEGRAU
@@ -92,7 +109,7 @@ public static class RaivaEmDegraus
 		return grau switch
 		{
 			NivelDeRaiva.Extrema => 100 + folga,
-			NivelDeRaiva.Lendaria => NocauteNoTopoDeTeste ? 100 + folga : 100 + folga / DivisorDaRaivaComum,
+			NivelDeRaiva.Comum => NocauteNoTopoDeTeste ? 100 + folga : 100 + folga / DivisorDaRaivaComum,
 			_ => 100,
 		};
 	}
@@ -128,7 +145,7 @@ public static class RaivaEmDegraus
 	/// </summary>
 	public static bool SaltaOKi(NivelDeRaiva grau, Fighter f) =>
 		!SemSaltoDeKiDeTeste
-		&& (grau == NivelDeRaiva.Extrema || (SaltoNaRaivaComumDeTeste && grau == NivelDeRaiva.Lendaria))
+		&& (grau == NivelDeRaiva.Extrema || (SaltoNaRaivaComumDeTeste && grau == NivelDeRaiva.Comum))
 		&& TemOControleDeKiExigido(f);
 
 	/// <summary>
@@ -147,7 +164,8 @@ public static class RaivaEmDegraus
 	/// (`kicapacity`), e ali o excesso machuca (`CargaDeKi.PrecoDoExcesso`, `Power Control.dm:118-125`). O Ki que a
 	/// furia DA nao pode nocautear o enfurecido: e a mesma chave que o DM liga quando da Ki de presente
 	/// (`MajinSaga.dm:221-222`: `Ki = MaxKi; overcharge = 1`) -- ela segura o dano ate o Ki voltar pra baixo do
-	/// teto seguro, e so. O vazamento lento continua.
+	/// teto seguro, e so. O vazamento continua (desde 2026-10-13 pela taxa que cresce com o excesso,
+	/// `CargaDeKi.VazamentoPorSegundo`).
 	/// </summary>
 	public static bool SaltarOKi(NivelDeRaiva grau, Fighter f)
 	{

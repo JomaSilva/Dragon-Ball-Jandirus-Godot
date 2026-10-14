@@ -1652,9 +1652,18 @@ public sealed partial class GameServer
 	private double _acumuloDoSenzuG12;
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--g12teste` e `--v021teste`): a semente pronta volta a nascer NA MOCHILA -- a
+	/// v0.2.0, de antes de haver chao. Lido pelo <see cref="TickDoSenzuG12"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool SenzuBrotaNaMochilaDeTeste;
+
+	/// <summary>
 	/// `if(!GrowingBean) { GrowingBean = 1; sleep(600); new Senzu em (x, y-1); GrowingBean = 0 }` -- 60 s.
-	/// A semente nasce NA MOCHILA em vez de no chao: o port nao tem item largado no mundo ("largar apaga",
-	/// `GameServer.Mochila.cs`), e uma semente no chao que ninguem consegue pegar e uma semente perdida.
+	///
+	/// (2026-10-13) A SEMENTE BROTA NO CHAO, um passo ao SUL de onde quem cultiva estiver quando ela fica pronta --
+	/// o `A.loc = locate(x, (y-1), z)` do original (`Food.dm:10`). Ate a v0.2.0 ela nascia na mochila, e o motivo
+	/// estava escrito aqui: *"o port nao tem item largado no mundo"*. Agora tem (`GameServer.Chao.cs`), e o dono
+	/// pediu as skills que criam item junto com ele. Sem chao livre ao sul (parede, agua), ela brota aos pes.
 	/// </summary>
 	private void CultivarSenzuG12(ServerPlayer pl)
 	{
@@ -1670,7 +1679,13 @@ public sealed partial class GameServer
 			if (_relogioG12 < _senzuG12[id]) continue;
 			_senzuG12.Remove(id);
 			if (!_players.TryGetValue(id, out ServerPlayer? pl)) continue;
-			if (Guardar(pl, CatalogoDeItens.Senzu)) Avisar(pl, "pronto: a Semente Senzu esta na sua mochila.");   // `:11`
+			if (SenzuBrotaNaMochilaDeTeste)
+			{
+				if (Guardar(pl, CatalogoDeItens.Senzu)) Avisar(pl, "pronto: a Semente Senzu esta na sua mochila.");
+				continue;
+			}
+			PorNoChao(pl.Zone, UmPassoOuAosPes(pl, Facing.South), TipoDeLargado.Item, CatalogoDeItens.Senzu, 1);
+			Avisar(pl, "pronto: a Semente Senzu brotou no chao, ao seu lado.");   // `:11`, "All done."
 		}
 
 		// O DECAIMENTO: um tique de folego por segundo (`StaminaDrain.dm:42-44`).

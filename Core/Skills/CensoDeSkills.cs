@@ -94,6 +94,13 @@ public static class CensoDeSkills
 		// aperta a esquiva. Ver `GameServer.Zanzoken.cs`.
 		["Zanzoken_Dodge"] = "C2S.Zanzoken",
 
+		// AS DUAS FUSOES ESTAVAM NA LISTA DE ESPERA, e o sistema delas existe desde o lote da fusao
+		// (`GameServer.Fusao.cs`): a danca e a `fus_danca` (pede a skill `Fusion Dance`) e a dos Namekuseijin e a
+		// `fus_namek` (pede a skill `Fusion- Namek Style` desde 2026-10-13). A etiqueta "falta fusao de dois corpos
+		// num so" envelheceu calada -- e fazia a aba Skills desenhar as duas como "(nao portada)".
+		["Fusion_dance"] = "fus_danca",
+		["Namekian_Fusion"] = "fus_namek",
+
 		// Os atalhos configuraveis do Kaio-ken viraram sete botoes de multiplo fixo (lote G2). O canal
 		// declarado e o verb-mae (`Kaioken`) e nao um dos sete: os sete nascem de um laco
 		// (`Kaioken_{n}`) e nenhum deles existe como literal no fonte -- apontar pra um seria apontar
@@ -280,10 +287,9 @@ public static class CensoDeSkills
 		// ==========================================================================================================================
 		["Seal_Mob"] = SistMagia,
 
-		// ---- 2 (eram 6: Zanzoken_Combo, Zanzoken_Dash, Zanzoken_Rush e Rapid_Movement sairam pelo
-		// lote G10 -- os dois teleportes e a corrida de Ki nao esperavam "zanzoken avancado": eram um
-		// `Move` e um laco de `step`, ver `GameServer.Tecnicas.G10.cs`) ----
-		["Afterimage_Toggle"] = SistZanzo, ["Zanzoken_Afterimage"] = SistZanzo,
+		// (O grupo do "zanzoken avancado" FECHOU: Zanzoken_Combo, Zanzoken_Dash, Zanzoken_Rush e Rapid_Movement sairam
+		// pelo lote G10, e os dois que sobravam -- `Afterimage_Toggle` e `Zanzoken_Afterimage` -- pelo G14, em
+		// 2026-10-13. Nenhum esperava sistema: um e um bit, o outro e um buff de cinco segundos.)
 
 		// ---- 6 ----
 		["Earth_Taxes"] = SistImposto, ["Vegeta_Taxes"] = SistImposto,
@@ -323,7 +329,7 @@ public static class CensoDeSkills
 		// proprio lote: sem o espalhamento de +-45 graus do `volley` ele vira um Ki Wave pior --
 		// porta-lo assim seria entregar uma tecnica que nao e ela.
 		["Energy_Wave_Volley"] = SistTrem,
-		["Namekian_Fusion"] = SistFusao, ["Fusion_dance"] = SistFusao,
+		// (as duas fusoes sairam daqui em 2026-10-13: ja eram atendidas por outro canal -- ver `PorOutroCanal`)
 
 		// ============================ O `SistSigilo` FECHOU INTEIRO, E ERAM SO ESTES DOIS ============================
 		// `Conceal_Power` e `Power_Control` MORAVAM AQUI, com a etiqueta *"sigilo de poder pelo lado
@@ -362,7 +368,7 @@ public static class CensoDeSkills
 		// ---- e os que sao um sistema cada, com o nome do sistema no lugar do grupo ----
 		["Golden_Form"] = "a camada Golden do Frost Demon (god ki temporario por cima da evolucao)",
 		["Narrate"] = "ferramentas de narrador (o verb e do `mob/Admin1`, nao do jogador)",
-		["Acid_Spit"] = "veneno: dano ao longo do tempo carregado por um tiro",
+		// (o `Acid_Spit` saiu pelo lote G14: o veneno e o `OnSucCollWMob` do tiro -- `DomDeProjetil.Veneno`)
 	};
 
 	// OS NOMES DOS GRUPOS, em constante e nao em string solta: eles aparecem em ate vinte e nove
@@ -371,12 +377,10 @@ public static class CensoDeSkills
 	private const string SistAbsorcao = "absorcao de corpo (comer alguem e ficar com o que era dele)";
 	private const string SistAlem = "burocracia do alem (corpo guardado, julgamento, reencarnacao)";
 	private const string SistMagia = "magia: mana, palavra de poder e ritual";
-	private const string SistZanzo = "zanzoken avancado (o port so tem a esquiva reflexa)";
 	private const string SistImposto = "impostos: cofre que TIRA dinheiro de quem mora no planeta";
 	private const string SistTempo = "parar o tempo";
 	private const string SistArvore = "arvore-arma (arrancar cenario e usar como arma)";
 	private const string SistTrem = "raio em TREM DE SEGMENTOS (o port colapsou o raio num objeto so)";
-	private const string SistFusao = "fusao de dois corpos num so";
 	private const string SistPatronato = "patronato de Kaishin (aprendiz com varios donos)";
 
 	// =====================================================================
@@ -444,6 +448,18 @@ public static class CensoDeSkills
 		public int Folhas, ComEfeitoPassivo, SoVerbo, PassivoEVerbo, Mudas;
 
 		/// <summary>
+		/// SEM DADO NO CATALOGO, MAS COM O EFEITO ESCRITO A MAO NO SERVIDOR (<see cref="EfeitosEscritosAMao"/>): a
+		/// Heran Power, o Sol e a Lua do Makyo, a Precognicao. Ate 2026-10-13 caiam em <see cref="Mudas"/>.
+		/// </summary>
+		public int EscritasAMao;
+
+		/// <summary>
+		/// AS MUDAS QUE PENDEM DE UMA ARVORE -- as que o jogador VE na loja e pode comprar sem ganhar nada. As outras
+		/// mudas nao pendem de arvore nenhuma (datums de infraestrutura e legado do DM): ninguem as alcanca.
+		/// </summary>
+		public List<string> MudasEmArvore = [];
+
+		/// <summary>
 		/// NADA NA COMPRA, MAS UM DEGRAU DE NIVEL DA ALGUMA COISA -- as dezesseis da Mente, o Green
 		/// Dean, o Hokuto no Shinken. Ate 2026-09-03 elas caiam em <see cref="Mudas"/>, e a ficha do
 		/// cliente, fazendo a mesma conta, chamava todas de "efeito ainda nao portado". A pergunta e a
@@ -495,6 +511,12 @@ public static class CensoDeSkills
 		/// o extrator nao le (degrau de nivel de OUTRA skill, `effector()` de arvore racial, cargo).
 		/// </summary>
 		public List<string> SemAcendedor = [];
+
+		/// <summary>
+		/// As de cima que PENDEM DE UMA ARVORE: sao as que a loja mostra com "sem acendedor". O dono mandou acabar
+		/// com elas (2026-10-13, ver <see cref="AcendedoresDoPort"/>), e a bancada cobra que esta lista fique vazia.
+		/// </summary>
+		public List<string> SemAcendedorEmArvore = [];
 	}
 
 	/// <summary>
@@ -543,7 +565,13 @@ public static class CensoDeSkills
 			// O DEGRAU CONTA, pela MESMA pergunta da ficha (`FichaDeSkill.TemEfeitoPortado`): o registro
 			// de niveis e o mesmo de onde vem o `verbosDeDegrau` e o `destravadasPorDegrau` desta chamada
 			else if (RegrasDeNivel.Get(s.Path) is { } regra && Array.Exists(regra.Degraus, FichaDeSkill.DegrauTemEfeito)) r.SoPorNivel++;
-			else r.Mudas++;
+			else if (EfeitosEscritosAMao.De(s.Path) != null) r.EscritasAMao++;
+			else
+			{
+				r.Mudas++;
+				if (cat.Arvores.Any(a => Array.Exists(a.Galhos, g => string.Equals(g, s.Path, StringComparison.OrdinalIgnoreCase))))
+					r.MudasEmArvore.Add(s.Nome);
+			}
 
 			bool doCargo = deCargo.Contains(s.Path);
 			if (doCargo) r.SkillsDeCargo++;
@@ -649,8 +677,11 @@ public static class CensoDeSkills
 			}
 			if (s.Ensinavel) { r.TrancadasSoPorEnsino++; continue; }
 			r.SemAcendedor.Add(s.Nome);
+			if (arvores.Exists(a => Array.Exists(a.Galhos, g => string.Equals(g, s.Path, StringComparison.OrdinalIgnoreCase))))
+				r.SemAcendedorEmArvore.Add(s.Nome);
 		}
 		r.SemAcendedor.Sort(StringComparer.OrdinalIgnoreCase);
+		r.SemAcendedorEmArvore.Sort(StringComparer.OrdinalIgnoreCase);
 		r.AcendedorForaDoPort.Sort((a, b) => string.Compare(a.Nome, b.Nome, StringComparison.OrdinalIgnoreCase));
 		r.TrancadasPorDegrau.Sort((a, b) => string.Compare(a.Nome, b.Nome, StringComparison.OrdinalIgnoreCase));
 	}
@@ -709,7 +740,10 @@ public static class CensoDeSkills
 		yield return $"  numero E verbo                        : {r.PassivoEVerbo}";
 		yield return $"  so destravam um verbo                 : {r.SoVerbo}";
 		yield return $"  so por DEGRAU de nivel                : {r.SoPorNivel}";
-		yield return $"  MUDAS (nada na compra nem por nivel)  : {r.Mudas}";
+		yield return $"  efeito ESCRITO A MAO no servidor      : {r.EscritasAMao}";
+		yield return $"  MUDAS (nada na compra nem por nivel)  : {r.Mudas}  ({r.MudasEmArvore.Count} delas pendem de arvore)";
+		foreach (string nome in r.MudasEmArvore)
+			yield return $"     muda na loja   : {nome}";
 		yield return "";
 		yield return "================ OS VERBOS QUE O JOGO CONCEDE ================";
 		yield return $"verbos distintos                        : {r.VerbosTotal}";
@@ -739,13 +773,13 @@ public static class CensoDeSkills
 		yield return $"  regra de arvore FORA do alcance       : {r.AcendedorForaDoPort.Count}";
 		yield return $"  um DEGRAU de outra skill acende       : {r.TrancadasPorDegrau.Count}";
 		yield return $"  so por ENSINO (sem regra, ensinavel)  : {r.TrancadasSoPorEnsino}";
-		yield return $"  SEM ACENDEDOR (mortas neste port)     : {r.SemAcendedor.Count}";
+		yield return $"  SEM ACENDEDOR (mortas neste port)     : {r.SemAcendedor.Count}  ({r.SemAcendedorEmArvore.Count} delas pendem de arvore)";
 		foreach ((string nome, string cond, string falta) in r.AcendedorForaDoPort)
 			yield return $"     fora do alcance: {nome,-28} {cond}   (falta: {falta})";
 		foreach ((string nome, string quem) in r.TrancadasPorDegrau)
 			yield return $"     por degrau     : {nome,-28} {quem}";
 		foreach (string nome in r.SemAcendedor)
-			yield return $"     sem acendedor  : {nome}";
+			yield return $"     sem acendedor  : {nome}{(r.SemAcendedorEmArvore.Contains(nome) ? "   <<< NA LOJA" : "   (nao pende de arvore nenhuma)")}";
 
 		if (r.SemCobertura.Count == 0) yield break;
 		yield return "";

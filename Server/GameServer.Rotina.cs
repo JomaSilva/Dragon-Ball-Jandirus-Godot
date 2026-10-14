@@ -147,6 +147,8 @@ public sealed partial class GameServer
 		{
 			presa = parceiro;
 			destino = parceiro.Pos;
+			// (v0.2.1) O SPAR E TREINO, E O CEREBRO FICA SABENDO: sem golpe especial -- ver `Cerebro.LutaDeTreino`.
+			if (npc.Cerebro is { } quemTreina) quemTreina.LutaDeTreino = true;
 			return true;
 		}
 

@@ -231,7 +231,7 @@ public partial class GameServer
 			// a enfurecer o outro. Hoje ele nao diz nada: a vitima morre nas maos de um inimigo, na frente de
 			// quem conviveu 25 minutos com ela, e ninguem se enfurece -- porque ninguem DISSE que ela era amiga.
 			amigo.FuriaExtremaAte = 0;
-			amigo.RaivaLendariaAte = 0;
+			amigo.RaivaComumAte = 0;
 			Checa("**com o convivio pago e NENHUMA declaracao, o jogo nao concluiu amizade nenhuma**",
 				  !amigo.Social.EhAmigo(vitima.Assinatura) && !vitima.Social.EhAmigo(amigo.Assinatura), "");
 			AoPerderALuta(vitima, algoz, morreu: true);
@@ -256,7 +256,7 @@ public partial class GameServer
 				  vitima.Social.RelacaoCom(algoz.Assinatura) == Relacao.Bom,
 				  $"{vitima.Social.RelacaoCom(algoz.Assinatura)}, convivio {vitima.Social.Familiaridade(algoz.Assinatura)}");
 			amigo.FuriaExtremaAte = 0;
-			amigo.RaivaLendariaAte = 0;
+			amigo.RaivaComumAte = 0;
 
 			AoPerderALuta(vitima, algoz, morreu: true);
 			Checa("amigo MORTO por um AMIGO dele: ninguem entra em furia",
@@ -278,10 +278,10 @@ public partial class GameServer
 			// formas que a morte, por um preco de BP maior (secao 6). Ligar so a morte deixaria metade da
 			// regra do dono sem dono.
 			amigo.FuriaExtremaAte = 0;
-			amigo.RaivaLendariaAte = 0;
+			amigo.RaivaComumAte = 0;
 			AoPerderALuta(vitima, algoz, morreu: false);
-			Checa("amigo NOCAUTEADO por um inimigo: raiva LENDARIA (e nao a extrema)",
-				  Perfil(amigo).Raiva == NivelDeRaiva.Lendaria, Perfil(amigo).Raiva.ToString());
+			Checa("amigo NOCAUTEADO por um inimigo: raiva COMUM (e nao a extrema)",
+				  Perfil(amigo).Raiva == NivelDeRaiva.Comum, Perfil(amigo).Raiva.ToString());
 
 			// ============================ 6. E ENTAO A TECLA C ============================
 			// O elo final, e o unico que interessa ao jogador. Pelo `Transformar` -- a MESMA funcao
@@ -350,7 +350,7 @@ public partial class GameServer
 			algoz.Forma.Liberadas.Clear();
 			algoz.Forma.EstreiaVista.Clear();
 			algoz.FuriaExtremaAte = 0;
-			algoz.RaivaLendariaAte = 0;
+			algoz.RaivaComumAte = 0;
 			algoz.Ficha.Ki = algoz.Ficha.MaxKi;
 			AplicarForma(algoz);
 
@@ -413,7 +413,7 @@ public partial class GameServer
 			// relacao a que?".
 			// ==================================================================================================
 			algoz.FuriaExtremaAte -= (long)(SegundosDeRaiva * 1000) + 500;
-			algoz.RaivaLendariaAte -= (long)(SegundosDeRaiva * 1000) + 500;
+			algoz.RaivaComumAte -= (long)(SegundosDeRaiva * 1000) + 500;
 			algoz.Forma.Entrar(Catalogo.IdBase);
 			algoz.Ficha.Ki = algoz.Ficha.MaxKi;
 			AplicarForma(algoz);
@@ -436,7 +436,7 @@ public partial class GameServer
 			// de `SemFuria`. A bancada daria vermelho falando de raiva por causa de BP -- e uma bancada
 			// que reprova pelo motivo errado ensina a desconfiar dela, nao do jogo.
 			longe.FuriaExtremaAte = 0;
-			longe.RaivaLendariaAte = 0;
+			longe.RaivaComumAte = 0;
 			longe.Ficha.BP = Math.Max(longe.Ficha.BP, PortaDeTeste(longe, "ssj1") * 1.5);
 			longe.Ficha.Statify();
 			longe.Forma.Entrar(Catalogo.IdBase);
@@ -469,7 +469,7 @@ public partial class GameServer
 			// ja se enfurece com a queda -- e a metade `is_friend` de `KO.dm:36`, que era a dos 50 pontos.
 			// ==========================================================================================================
 			Checa("a MENOR raiva que abre o `wrathful` e a comum (a do nocaute), e nao a do luto",
-				  Catalogo.RaivaExigida(Catalogo.Def(Catalogo.IdWrathful)) == NivelDeRaiva.Lendaria,
+				  Catalogo.RaivaExigida(Catalogo.Def(Catalogo.IdWrathful)) == NivelDeRaiva.Comum,
 				  Catalogo.RaivaExigida(Catalogo.Def(Catalogo.IdWrathful)).ToString());
 
 			// O BP SAI DO LIMIAR PESSOAL, e nao de um numero escrito aqui: `restssjat` e sorteado por
@@ -490,7 +490,7 @@ public partial class GameServer
 			lenda.Forma.Liberadas.Clear();
 			lenda.Forma.EstreiaVista.Clear();
 			lenda.FuriaExtremaAte = 0;
-			lenda.RaivaLendariaAte = 0;
+			lenda.RaivaComumAte = 0;
 			AplicarForma(lenda);
 
 			Checa("o corpo lendario passa da porta do `wrathful` e nao da do degrau seguinte",
@@ -518,15 +518,15 @@ public partial class GameServer
 			amigo.Forma.Liberadas.Clear();
 			amigo.Forma.EstreiaVista.Clear();
 			amigo.FuriaExtremaAte = 0;
-			amigo.RaivaLendariaAte = 0;
+			amigo.RaivaComumAte = 0;
 			amigo.Ficha.Ki = amigo.Ficha.MaxKi;
 			AplicarForma(amigo);
 
 			AoPerderALuta(vitima, longe, morreu: false);
 			lenda.Ficha.Ki = lenda.Ficha.MaxKi;
 
-			Checa("o nocaute abre a janela LENDARIA e deixa a do LUTO fechada",
-				  Perfil(lenda).Raiva == NivelDeRaiva.Lendaria && lenda.FuriaExtremaAte == 0,
+			Checa("o nocaute abre a janela COMUM e deixa a do LUTO fechada",
+				  Perfil(lenda).Raiva == NivelDeRaiva.Comum && lenda.FuriaExtremaAte == 0,
 				  $"{Perfil(lenda).Raiva}, luto ate {lenda.FuriaExtremaAte}");
 			RecusaForma naPortaDoLendario = lenda.Forma.Avaliar(Catalogo.IdWrathful, portaWrathful * 1.25, 1, false, Perfil(lenda));
 			Checa("com um nocaute so e o poder ENTRE a porta e o preco da raiva comum, o `wrathful` NAO abre (o Legendary nao tem mais desconto)",
@@ -711,8 +711,8 @@ public partial class GameServer
 		{
 			cobaiaA.Social.Conhecidos.Clear();
 			cobaiaB.Social.Conhecidos.Clear();
-			cobaiaA.FuriaExtremaAte = cobaiaA.RaivaLendariaAte = 0;
-			cobaiaB.FuriaExtremaAte = cobaiaB.RaivaLendariaAte = 0;
+			cobaiaA.FuriaExtremaAte = cobaiaA.RaivaComumAte = 0;
+			cobaiaB.FuriaExtremaAte = cobaiaB.RaivaComumAte = 0;
 		}
 
 		void QuinhentosPassos()

@@ -87,6 +87,7 @@ public sealed partial class GameServer
 
 		if (ComandoDeInteracao(pl, cmd, arg)) return;
 		if (ComandoDeItem(pl, cmd, arg)) return;
+		if (ComandoDeArma(pl, cmd)) return;         // (v0.2.1) o gatilho de tecla das armas de fogo -- ver GameServer.Armas.cs
 		if (ComandoDeRadio(pl, cmd, arg)) return;   // a frequencia do radio do scouter -- ver GameServer.Radio.cs
 
 		// O CONVIVIO: conhecidos, amizade, rivais e relacoes. Arquivo proprio pelo mesmo motivo do
@@ -109,6 +110,8 @@ public sealed partial class GameServer
 		// domina e quem da o nome) -- ver `GameServer.Batismo.cs`.
 		if (ComandoDeBatismo(pl, cmd, arg)) return;
 		if (ComandoDeSaque(pl, cmd, arg)) return;
+		if (ComandoDoChao(pl, cmd, arg)) return;   // largar a carteira e pegar do chao -- ver GameServer.Chao.cs
+		if (ComandoDeMaterializar(pl, cmd, arg)) return;   // a escolha da tela do Materializar -- ver GameServer.Tecnicas.G15.cs
 
 		// O REFUGIO: para onde vai quem ficou sem planeta natal, e a escolha entre o dominio
 		// conquistado e a vizinhanca de casa. Vem LOGO DEPOIS da conquista porque escreve no mesmo

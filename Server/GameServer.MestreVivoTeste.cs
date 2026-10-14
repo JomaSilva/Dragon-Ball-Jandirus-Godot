@@ -44,7 +44,7 @@ namespace Jandirus.Server;
 ///     teto for lido de um contador que nao e a lista.
 ///  3. O GANHO CHEGA NO BP -- **reprova** se o bit do mestre nao chegar ao `AttackGain` (era o
 ///     estado do projeto ate ha pouco: sete chamadores, nenhum passando o segundo argumento), se o
-///     teto de 3x ou o piso de 1,2x sairem do lugar, ou se ter mestre PIORAR o ganho.
+///     teto de 3x ou o piso de 2x (regra do dono) sairem do lugar, ou se ter mestre PIORAR o ganho.
 ///  4. A METADE -- **reprova** se o corte deixar de entrar no funil do `Avaliar` (viraria desconto
 ///     do chamador, e a mensagem de recusa mentiria), se a metade virar outro numero, ou se o corte
 ///     nao ficar anotado (o aluno desperta e nao reentra -- o bug que o `mst_form_apply` descreve).
@@ -339,8 +339,8 @@ public partial class GameServer
 	// 3) O GANHO CHEGA NO BP DE VERDADE
 	// =====================================================================
 	/// <summary>
-	/// `fight_gain_mult` (`combatgains.dm:88-100`): treinar contra o proprio mestre paga ate 3x, com
-	/// piso de 1,2x.
+	/// `fight_gain_mult` (`combatgains.dm:88-100`): treinar contra o proprio mestre paga ate 3x -- e nunca
+	/// menos de 2x (o piso e do dono, 2026-10-13: `GainKnobs.MasterGainMin`; no DM o bonus pedia um gap de 1,2x).
 	///
 	/// ============================ AQUI ELE E MEDIDO NO BP, E NAO NA FUNCAO ============================
 	/// A `--mestreteste` compara o retorno de `FightGainMult` e varre os fontes atras dos chamadores.
@@ -388,28 +388,27 @@ public partial class GameServer
 				  Math.Abs(razao - GainKnobs.MasterGainCap) < 0.02,
 				  $"razao medida {razao:0.###} (mult {sem.Mult:0.##} -> {com.Mult:0.##})");
 
-		// O PISO: mestre 1,1x mais forte nao paga nada (abaixo de `MasterGainFloor`), e 1,2x paga.
+		// O PISO (dono, 2026-10-13): com o mestre so 1,1x mais forte -- ou mais FRACO que o aluno -- o soco ja rende
+		// `MasterGainMin`. No DM, abaixo de 1,2x de gap o bonus nao valia nada.
 		PorBp(mestre, bpDoAluno * 1.1);
 		Soco fraco = GanhoDeUmSoco(aluno, mestre, bpDoAluno);
-		AfirmarMv($"mestre so 1,1x mais forte (abaixo do piso de {GainKnobs.MasterGainFloor:0.0}x) nao "
-				+ "paga bonus nenhum",
-				  fraco.Acertou && Math.Abs(fraco.Ganho / sem.Ganho - 1) < 0.02,
+		AfirmarMv($"mestre so 1,1x mais forte ja paga o piso de {GainKnobs.MasterGainMin:0.#}x (no DM nao pagava nada)",
+				  fraco.Acertou && Math.Abs(fraco.Ganho / sem.Ganho - GainKnobs.MasterGainMin) < 0.02,
 				  $"razao {fraco.Ganho / sem.Ganho:0.###}");
 
-		PorBp(mestre, bpDoAluno * GainKnobs.MasterGainFloor);
-		Soco noPiso = GanhoDeUmSoco(aluno, mestre, bpDoAluno);
-		AfirmarMv($"...e no piso EXATO ({GainKnobs.MasterGainFloor:0.0}x) o bonus ja vale",
-				  noPiso.Acertou
-				  && Math.Abs(noPiso.Ganho / sem.Ganho - GainKnobs.MasterGainFloor) < 0.02,
-				  $"razao {noPiso.Ganho / sem.Ganho:0.###}");
+		PorBp(mestre, bpDoAluno * 2.5);
+		Soco noMeio = GanhoDeUmSoco(aluno, mestre, bpDoAluno);
+		AfirmarMv("...e entre o piso e o teto a escala e LINEAR pela razao dos BPs base (mestre 2,5x -> 2,5x)",
+				  noMeio.Acertou && Math.Abs(noMeio.Ganho / sem.Ganho - 2.5) < 0.02,
+				  $"razao {noMeio.Ganho / sem.Ganho:0.###}");
 
 		// E O GANHO FICA NA FAIXA QUE A SPEC PEDE, seja qual for a forca do mestre.
 		PorBp(mestre, bpDoAluno * 50);
 		Soco gigante = GanhoDeUmSoco(aluno, mestre, bpDoAluno);
 		double razaoGigante = gigante.Ganho / sem.Ganho;
 		AfirmarMv("com o mestre 50x mais forte o ganho PARA no teto -- o bonus vive entre "
-				+ $"{GainKnobs.MasterGainFloor:0.0}x e {GainKnobs.MasterGainCap:0}x",
-				  gigante.Acertou && razaoGigante >= GainKnobs.MasterGainFloor - 0.02
+				+ $"{GainKnobs.MasterGainMin:0.#}x e {GainKnobs.MasterGainCap:0}x",
+				  gigante.Acertou && razaoGigante >= GainKnobs.MasterGainMin - 0.02
 				  && razaoGigante <= GainKnobs.MasterGainCap + 0.02,
 				  $"razao {razaoGigante:0.###}");
 
@@ -450,7 +449,7 @@ public partial class GameServer
 		GarantirVinculoVivo(mestre, aluno);
 		aluno.Forma.Entrar(Catalogo.IdBase);
 		aluno.Forma.PortasCortadas.Clear();
-		aluno.FuriaExtremaAte = aluno.RaivaLendariaAte = 0;
+		aluno.FuriaExtremaAte = aluno.RaivaComumAte = 0;
 
 		FormaDef? alvo = PrimeiroDegrauEnsinavel(aluno);
 		if (alvo == null)
@@ -493,13 +492,13 @@ public partial class GameServer
 		// ============================ AS DUAS JANELAS, PORQUE O ALVO E SORTEADO ============================
 		// A raiva que a provocacao acende e a que o DEGRAU pede (`Catalogo.RaivaExigida`), e o
 		// `AcenderJanelaDeRaiva` escreve cada uma num campo: a Extrema (tronco Saiyajin) no
-		// `FuriaExtremaAte`, a Lendaria (linha Legendary) no `RaivaLendariaAte`. Esta linha so olhava o
+		// `FuriaExtremaAte`, a comum (a da linha Legendary, naquela data) no `RaivaComumAte`. Esta linha so olhava o
 		// primeiro, e quando o sorteio de classe dava um aluno Legendary (alvo `wrathful`) ela ficava
 		// VERMELHA com o despertar verde logo acima (74/1 em 2026-09-24) -- a bancada reprovando por
 		// sorteio, que e o que o cabecalho desta secao proibe. Fotografa as duas e confere a que o alvo nomeia.
 		// ==================================================================================================
 		NivelDeRaiva raivaPedida = Catalogo.RaivaExigida(alvo);
-		long furiaAntes = aluno.FuriaExtremaAte, lendariaAntes = aluno.RaivaLendariaAte;
+		long furiaAntes = aluno.FuriaExtremaAte, comumAntes = aluno.RaivaComumAte;
 		UsarVerboDeMestre(mestre, $"mst_ensinar:{alvo.Id}");
 		AfirmarMv("a oferta de despertar sai pelo verb", aluno.PedidoDoMestre is { Despertar: true });
 		UsarVerboDeMestre(aluno, "mst_aceitar");
@@ -511,11 +510,11 @@ public partial class GameServer
 				  raivaPedida switch
 				  {
 					  NivelDeRaiva.Extrema => aluno.FuriaExtremaAte > furiaAntes,
-					  NivelDeRaiva.Lendaria => aluno.RaivaLendariaAte > lendariaAntes,
+					  NivelDeRaiva.Comum => aluno.RaivaComumAte > comumAntes,
 					  _ => true,
 				  },
 				  $"alvo {alvo.Id} pede {raivaPedida}: FuriaExtremaAte {furiaAntes} -> {aluno.FuriaExtremaAte}, "
-				  + $"RaivaLendariaAte {lendariaAntes} -> {aluno.RaivaLendariaAte}");
+				  + $"RaivaComumAte {comumAntes} -> {aluno.RaivaComumAte}");
 		AfirmarMv("...e o corte ficou ANOTADO no personagem (sem isto ele nao reentra na propria forma)",
 				  aluno.Forma.PortasCortadas.Contains(alvo.IdRede));
 
@@ -534,7 +533,7 @@ public partial class GameServer
 		AfirmarMv("(montagem) de volta a base pelo funil, o aluno SAIU da cena e voltou a ser alcancavel",
 				  aluno.Forma.Atual == Catalogo.IdBase && !aluno.Combate.Intocavel,
 				  $"forma {aluno.Forma.Atual}, cena {aluno.CenaSegundos:0.#} s");
-		aluno.FuriaExtremaAte = aluno.RaivaLendariaAte = 0;
+		aluno.FuriaExtremaAte = aluno.RaivaComumAte = 0;
 		AfirmarMv("depois de voltar a base ele REENTRA sozinho, sem mestre e sem raiva",
 				  aluno.Forma.Avaliar(alvo.Id, aluno.Ficha.BP, 1, false, Perfil(aluno)) == RecusaForma.Pode);
 
@@ -549,7 +548,7 @@ public partial class GameServer
 			aluno.Forma = virgem;
 			PorBp(aluno, porta * 0.49);
 			aluno.Ficha.Ki = aluno.Ficha.MaxKi;
-			aluno.FuriaExtremaAte = aluno.RaivaLendariaAte = 0;
+			aluno.FuriaExtremaAte = aluno.RaivaComumAte = 0;
 			aluno.FormasVistas.Add(alvo.IdRede);
 			mestre.RecargaDeEnsino = 0;
 			Encostar(mestre, aluno, tiles: 1);
@@ -565,7 +564,7 @@ public partial class GameServer
 			AfirmarMv("com 49% da porta (um fio abaixo da metade) o despertar assistido FALHA",
 					  aluno.Forma.Atual == Catalogo.IdBase, aluno.Forma.Atual);
 			AfirmarMv("...e a tentativa fadada nao da raiva de graca (a raiva e o ULTIMO passo do Avaliar)",
-					  aluno.FuriaExtremaAte == 0 && aluno.RaivaLendariaAte == 0);
+					  aluno.FuriaExtremaAte == 0 && aluno.RaivaComumAte == 0);
 
 			// E NA BORDA EXATA (50%) ela acontece.
 			PorBp(aluno, porta * Discipulado.FatorAssistido);

@@ -59,8 +59,10 @@ public sealed class VisualCatalog
     // (O BICHO tambem nao tem cabelo, e nao esta na lista de cima porque nao e raca do jogo: o corpo dele e
     // UMA folha de sprite inteira -- ver `Npc.Animais`.)
     // (E o BILLS e o WHIS pelo mesmo motivo: a folha de cada um ja traz a cabeca desenhada -- ver `Npc.BillsEWhis`.)
+    // (E o INTERCEPTADOR das capsulas de companheiro, outra folha so -- ver `Tech.Companheiros`.)
     public static bool TemCabelo(string raca) =>
-        Array.IndexOf(SemCabelo, raca) < 0 && !Npc.Animais.EhAnimal(raca) && !Npc.BillsEWhis.EhRacaDivina(raca);
+        Array.IndexOf(SemCabelo, raca) < 0 && !Npc.Animais.EhAnimal(raca) && !Npc.BillsEWhis.EhRacaDivina(raca)
+        && !Tech.Companheiros.EhDeFolha(raca);
 
     /// <summary>
     /// Saiyajin nao escolhe cor de cabelo: o cabelo dele JA e preto no sprite, com os realces
@@ -342,6 +344,9 @@ public sealed class VisualCatalog
         // =======================================================================================================
         if (Npc.BillsEWhis.FolhaDoCorpo(raca) is { } folhaDivina) return folhaDivina;
 
+        // (v0.2.1) O INTERCEPTADOR das capsulas de companheiro: uma folha so, como o bicho -- ver `Tech.Companheiros`.
+        if (Tech.Companheiros.FolhaDoCorpo(raca) is { } folhaDoCompanheiro) return folhaDoCompanheiro;
+
         List<string> lista = CorposDe(raca).Para(genero);
         if (lista.Count == 0) return genero == "Female" ? CorpoPadraoF : CorpoPadraoM;
 
@@ -378,7 +383,7 @@ public sealed class VisualCatalog
         // O BICHO e o segundo que responde "nao": a folha dele ja traz a cara desenhada, e os olhos de gente
         // ficariam flutuando em cima do lobo -- o mesmo defeito da larva.
         // (o BILLS e o WHIS sao o terceiro e o quarto, pela mesma razao do bicho -- ver `Npc.BillsEWhis`.)
-        !Npc.Animais.EhAnimal(raca) && !Npc.BillsEWhis.EhRacaDivina(raca)
+        !Npc.Animais.EhAnimal(raca) && !Npc.BillsEWhis.EhRacaDivina(raca) && !Tech.Companheiros.EhDeFolha(raca)
         && (!Races.BioAndroids.EhBio(raca) || Races.BioAndroids.CorpoTemRosto(ap.Corpo));
 
     /// <summary>

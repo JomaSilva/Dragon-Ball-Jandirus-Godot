@@ -117,6 +117,7 @@ public partial class RoboDeVerbs : Node
 		await F4_ORadarPeloFio(menu, cli, srv);
 		await F5_ATecnicaEAOfertaPeloFio(menu, cli, srv);
 		await F6_ATeclaE(menu, cli, srv);
+		await F7_OVerbSemCorpoNaoEBotao(menu, cli);
 
 		menu.Fechar();
 		Encerrar(_falha == 0 && _injFalha == 0 ? 0 : 1);
@@ -306,8 +307,13 @@ public partial class RoboDeVerbs : Node
 		[
 			("humano novato", Gente("Human", "Normal", terra)),
 			("Saiyajin novato", Gente("Saiyan", "Low-Class", terra)),
-			("Namekuseijin guerreiro", Gente("Namekian", "Warrior clan", terra)),
-			("Namekuseijin do Clã do Dragão", Gente("Namekian", "Dragon clan", terra)),
+			// (2026-10-13) A FUSAO NAMEKUSEIJIN PEDE A SKILL DELA (`Fusion- Namek Style`): o guerreiro e o do Cla a
+			// aprenderam; o "Cla do Dragao que nao aprendeu a estatua" e o Namekuseijin que so tem o que e da raca.
+			("Namekuseijin guerreiro", Gente("Namekian", "Warrior clan", terra, skills: [RequisitosDosVerbos.SkillDaFusaoNamek])),
+			// (2026-10-13) A ESTATUA PEDE A SKILL DELA (`Make Dragon Statue`): o do Cla que a aprendeu, e o que ainda nao.
+			("Namekuseijin do Clã do Dragão", Gente("Namekian", "Dragon clan", terra,
+				skills: [Jandirus.Core.Skills.AcendedoresDoPort.EstatuaDoDragao, RequisitosDosVerbos.SkillDaFusaoNamek])),
+			("Clã do Dragão que não aprendeu a estátua", Gente("Namekian", "Dragon clan", terra)),
 			("Clã do Dragão que ergueu a estátua daqui", Gente("Namekian", "Dragon clan", terra | Lugar.ComEstatua, Fatos.CriouAEstatuaDaqui)),
 			("humano com Split Form", Gente("Human", "Normal", terra, tecnicas: ["SplitForm"])),
 			("humano com Dragon Radar", Gente("Human", "Normal", terra, itens: [Jandirus.Core.Items.CatalogoDeItens.Radar])),
@@ -319,8 +325,9 @@ public partial class RoboDeVerbs : Node
 			("bio-androide de DNA Saiyajin", Gente(Jandirus.Core.Races.BioAndroids.Raca, "Normal", terra, Fatos.EscadaSuperSaiyajin)),
 			("androide de absorção", Gente("Android", "Normal", terra, Fatos.AndroideDeAbsorcao)),
 			("humano no espaço", Gente("Human", "Normal", Lugar.Espaco)),
-			("humano com tudo na mesa (ofertas, mestre, aluno, fusão, cópias, God Ki)",
-				Gente("Human", "Normal", terra, ofertas | Fatos.TemMestre | Fatos.TemAluno | Fatos.DirigeUmaFusao | Fatos.TemCopias | Fatos.GodKiDesperto)),
+			("humano com tudo na mesa (ofertas, mestre, aluno, fusão, cópias, God Ki, arma de fogo)",
+				Gente("Human", "Normal", terra, ofertas | Fatos.TemMestre | Fatos.TemAluno | Fatos.DirigeUmaFusao | Fatos.TemCopias | Fatos.GodKiDesperto
+											 | Fatos.TemArmaDeFogo)),
 			("dono deste planeta", Gente("Human", "Normal", terra, Fatos.DominaEstePlaneta | Fatos.DominaAlgum)),
 			("Grande Ancião de Namek", Gente("Namekian", "Dragon clan", terra, cargos: ["elder"])),
 			("Rei de Vegeta", Gente("Saiyan", "Elite", terra, cargos: ["kov"])),
@@ -363,16 +370,19 @@ public partial class RoboDeVerbs : Node
 		string[] doCla = ["Erguer Estátua do Dragão", "Erguer + gravar o SUPREMO (2.000.000 zeni)", "Erguer + gravar o SUPREMO (4.000.000 recursos)"];
 		string[] doSplit = ["Split Form: Follow", "Split Form: Stop", "Split Form: Attack Target", "Split Form: Attack Nearest", "Split Form: Destroy"];
 
-		Checa("VERBS DE CLA DO DRAGAO: o Namekuseijin do Cla ve Erguer Estatua e Erguer + SUPREMO; o guerreiro de Namek, o Saiyajin e o humano nao",
-			  Tem("Namekuseijin do Clã do Dragão", "World", doCla) && NaoTem("Namekuseijin guerreiro", "World", doCla)
+		Checa("VERBS DE CLA DO DRAGAO: o Namekuseijin do Cla QUE APRENDEU A ESTATUA ve Erguer Estatua e Erguer + SUPREMO; o do Cla que nao aprendeu, o guerreiro de Namek, o Saiyajin e o humano nao",
+			  Tem("Namekuseijin do Clã do Dragão", "World", doCla) && NaoTem("Clã do Dragão que não aprendeu a estátua", "World", doCla)
+			  && NaoTem("Namekuseijin guerreiro", "World", doCla)
 			  && NaoTem("Saiyajin novato", "World", doCla) && NaoTem("humano novato", "World", doCla));
 		Checa("...quem ERGUEU a estatua daqui ve Despertar as esferas e Ver/Pegar/Largar/INVOCAR -- e deixa de ver Erguer (ja ha uma)",
 			  Tem("Clã do Dragão que ergueu a estátua daqui", "World", "Despertar as esferas", "Ver as esferas daqui", "Pegar esfera", "Largar tudo", "INVOCAR")
 			  && NaoTem("Clã do Dragão que ergueu a estátua daqui", "World", doCla));
-		Checa("VERB DE FUSAO NAMEK: os dois Namekuseijins a veem na Learning; o Saiyajin e o humano nao",
+		Checa("VERB DE FUSAO NAMEK: os dois Namekuseijins QUE APRENDERAM a Fusion- Namek Style a veem na Learning; o Namekuseijin que nao a aprendeu, o Saiyajin e o humano nao",
 			  Tem("Namekuseijin guerreiro", Verbos.Aprendizado, "Fusão Namekuseijin (absorver)")
 			  && Tem("Namekuseijin do Clã do Dragão", Verbos.Aprendizado, "Fusão Namekuseijin (absorver)")
-			  && NaoTem("Saiyajin novato", Verbos.Aprendizado, "Fusão Namekuseijin (absorver)"));
+			  && NaoTem("Clã do Dragão que não aprendeu a estátua", Verbos.Aprendizado, "Fusão Namekuseijin (absorver)")
+			  && NaoTem("Saiyajin novato", Verbos.Aprendizado, "Fusão Namekuseijin (absorver)")
+			  && NaoTem("humano novato", Verbos.Aprendizado, "Fusão Namekuseijin (absorver)"));
 		Checa("SPLIT FORM: quem tem a tecnica ve as cinco ordens na Other -- e, do elenco, so ele e quem tem copias de pe",
 			  Tem("humano com Split Form", Verbos.Outros, doSplit)
 			  && elenco.Where(e => !e.Quem.SabeTecnica("SplitForm") && (e.Quem.Fatos & Fatos.TemCopias) == 0)
@@ -400,6 +410,51 @@ public partial class RoboDeVerbs : Node
 	}
 
 	// =====================================================================
+	// F7 -- O VERB SEM CORPO NAO E BOTAO
+	// =====================================================================
+	/// <summary>
+	/// O dono, 2026-10-13: *"tem mts verbs mortos q poderiam ser tirados"*. O verb que nao tem corpo neste jogo virava
+	/// um botao cinza escrito "(nao portada)"; agora nao vira botao nenhum. Medido na TELA, com duas skills postas no
+	/// livro do cliente: a Tree Mastery (o unico verb dela, `Pluck_Tree`, nao tem corpo) e a Afterimage Technique (o
+	/// `Afterimage_Toggle` ganhou corpo no lote G14).
+	/// </summary>
+	private async Tarefa F7_OVerbSemCorpoNaoEBotao(MenuJogo menu, GameClient cli)
+	{
+		Nota("--- F7: o verb sem corpo nao vira botao (o \"(nao portada)\" cinza saiu do menu) ---");
+		// (a F6 fechou o menu P pra apertar E no mundo: com ele fechado nenhum botao esta "na tela", e as duas reguas
+		// daqui mediriam uma pagina vazia)
+		if (E is { NaTela: true }) { ApertarE(); await Quadros(2); }
+		menu.Abrir();
+		await Quadros(3);
+		string[] skills = ["/datum/skill/Tree_Mastery", "/datum/skill/ki/Afterimage"];
+		List<string> postas = [.. skills.Where(cli.SkillsAprendidas.Add)];
+		static List<string> Cinzas(Dictionary<string, HashSet<string>> tela) =>
+			[.. tela.Values.SelectMany(b => b).Where(t => t.Contains("(nao portada)", StringComparison.Ordinal))];
+		try
+		{
+			Habilidades.Montar(cli.Atributos.Raca ?? "");
+			Dictionary<string, HashSet<string>> tela = await Tela(menu, null);
+			string miragem = Jandirus.Core.Skills.Tecnicas.Get("Afterimage_Toggle")?.Nome ?? "";
+			Checa("**NENHUM BOTAO \"(nao portada)\"** nas quatro abas de quem sabe uma skill cujo verb nao tem corpo (a Tree Mastery) -- e o verb que ganhou corpo esta la: \"Miragem: ligar / desligar\"",
+				  Cinzas(tela).Count == 0 && miragem.Length > 0 && tela.Values.Any(b => b.Contains(miragem)),
+				  $"cinzas: {string.Join(" | ", Cinzas(tela))}; miragem '{miragem}' na tela: {tela.Values.Any(b => b.Contains(miragem))}");
+
+			Habilidades.BotaoCinzaDeTeste = true;
+			Habilidades.Montar(cli.Atributos.Raca ?? "");
+			Dictionary<string, HashSet<string>> antes = await Tela(menu, null);
+			Injeta("com o botao cinza de volta, o verb morto da Tree Mastery reaparece escrito \"(nao portada)\" -- a fileira da v0.2.0",
+				   Cinzas(antes).Count > 0, string.Join(" | ", Cinzas(antes)));
+		}
+		finally
+		{
+			Habilidades.BotaoCinzaDeTeste = false;
+			foreach (string p in postas) cli.SkillsAprendidas.Remove(p);
+			Habilidades.Montar(cli.Atributos.Raca ?? "");
+			await Tela(menu, null);
+		}
+	}
+
+	// =====================================================================
 	// F3 -- A BUSCA E A TECLA LIGADA
 	// =====================================================================
 	private void F3_ABuscaEATecla()
@@ -408,6 +463,8 @@ public partial class RoboDeVerbs : Node
 		var comSplit = new PosseEscrita { Raca = "Human", Classe = "Normal", Lugar = Lugar.Planeta };
 		comSplit.Tecnicas.Add("SplitForm");
 		var namek = new PosseEscrita { Raca = "Namekian", Classe = "Warrior clan", Lugar = Lugar.Planeta };
+		namek.Skills.Add(RequisitosDosVerbos.SkillDaFusaoNamek);
+		var namekSemASkill = new PosseEscrita { Raca = "Namekian", Classe = "Warrior clan", Lugar = Lugar.Planeta };
 
 		// (so as ORDENS -- a busca tambem casa a descricao, e outro verb pode citar o Split Form na frase dele)
 		static int Ordens() => Verbos.Buscar("Split Form").Count(v => v.Nome.StartsWith("Split Form:", StringComparison.Ordinal));
@@ -419,6 +476,8 @@ public partial class RoboDeVerbs : Node
 		int deQuemTem = Ordens();
 		PosseDoCliente.DeTeste = namek;
 		bool teclaDoNamek = Verbos.PorChave("hab:fus_namek") != null;
+		PosseDoCliente.DeTeste = namekSemASkill;
+		bool teclaDoNamekSemASkill = Verbos.PorChave("hab:fus_namek") != null;
 		Requisito.MostrarTudoDeTeste = true;
 		PosseDoCliente.DeTeste = null;
 		int comOBotao = Ordens();
@@ -426,8 +485,8 @@ public partial class RoboDeVerbs : Node
 
 		Checa("A BUSCA: \"Split Form\" nao acha nada pra quem nao tem a tecnica, e acha as cinco ordens pra quem tem",
 			  doNovato == 0 && deQuemTem == 5, $"novato {doNovato}, quem tem {deQuemTem}");
-		Checa("A TECLA: uma tecla ligada a Fusao Namekuseijin nao acha o verb num humano (\"este personagem nao tem essa acao\") e acha num Namekuseijin",
-			  !teclaDoNovato && teclaDoNamek, $"humano {teclaDoNovato}, namek {teclaDoNamek}");
+		Checa("A TECLA: uma tecla ligada a Fusao Namekuseijin nao acha o verb num humano (\"este personagem nao tem essa acao\") nem num Namekuseijin que nao aprendeu a skill dela, e acha no que aprendeu",
+			  !teclaDoNovato && teclaDoNamek && !teclaDoNamekSemASkill, $"humano {teclaDoNovato}, namek {teclaDoNamek}, namek sem a skill {teclaDoNamekSemASkill}");
 		Injeta("com o botao que mostra tudo a busca do novato acha as cinco ordens do Split Form", comOBotao == 5, $"{comOBotao}");
 	}
 

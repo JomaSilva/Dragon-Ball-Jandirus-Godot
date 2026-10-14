@@ -774,9 +774,31 @@ public static class Protocol
         /// O QUE DA PRA LEVAR DE QUEM ESTA NOCAUTEADO AO MEU ALCANCE -- a resposta do verbo `saquear` (item 9b do
         /// playtest de 2026-10-10; a regra esta em `Core/Items/Saque.cs`). So pra quem perguntou: id do caido
         /// (int), nome dele (string) e a lista (byte n; n x (id do item, ushort quantidade)). Vazia quer dizer
-        /// "nada que de pra levar" -- e ela vai assim mesmo, pra o menu dizer isso em vez de nao abrir.
+        /// "nada que de pra levar" -- e ela vai assim mesmo, pra a tela dizer isso em vez de nao abrir.
+        ///
+        /// (2026-10-13) NO FIM VAO A CARTEIRA DELE -- `double zeni` + `double recursos`, o que da pra roubar de cada um
+        /// (zero = nada) -- e quem desenha deixou de ser o menu da tecla E: e a tela da mochila, aberta na mochila do
+        /// caido (`TelaDeInventario.AbrirSaque`). O id ZERO, sem lista, manda FECHAR: nao ha mais caido ao alcance.
         /// </summary>
         Saque = 63,
+
+        /// <summary>
+        /// O QUE ESTA LARGADO NO CHAO DESTA ZONA -- itens, zeni e recursos (dono, 2026-10-13; a regra esta em
+        /// `Core/Items/Chao.cs`). A lista INTEIRA da zona, pra todo mundo que esta nela, toda vez que ela muda, e pra
+        /// quem chega (mesmo vazia: e ela que apaga o chao da zona anterior). `ushort n`, e n x (int id, byte tipo
+        /// -- `TipoDeLargado` --, string id do item (vazio pra zeni e recursos), double quantidade, float x, float y).
+        /// E o mesmo desenho do <see cref="Esferas"/>, que sao a outra coisa que se pega do chao.
+        /// </summary>
+        Chao = 66,
+
+        /// <summary>
+        /// OS PEDIDOS QUE ESPERAM A MINHA RESPOSTA -- o convite de mestre, a licao oferecida, a fusao, o potencial...
+        /// (dono, 2026-10-13: *"deveriam aparecer na tela da pessoa como uma notificaçao (assim como tem de torneio)"*;
+        /// a tabela esta em `Core/Verbos/PedidosPendentes.cs`). So pro dono, a lista INTEIRA, toda vez que ela muda:
+        /// `byte n`, e n x (uint o fato do pedido -- `Verbos.Fatos` --, string o texto, ushort segundos que faltam;
+        /// zero = sem prazo). Vazia apaga os cartoes. Quem responde sao os verbs de sempre: o pacote so MOSTRA.
+        /// </summary>
+        Pedidos = 69,
 
         /// <summary>
         /// A MINHA CARTEIRA: `double zeni` + `double recursos` (a materia-prima que paga obra ao dobro do preco,
@@ -1483,6 +1505,11 @@ public static class Protocol
         Kiai = 1,
         /// <summary>O sopro saiu no vazio e virou lamina: o mesmo, mais `fire_kiblast.wav` (`Kiai.dm:37`).</summary>
         KiaiComLamina = 2,
+        /// <summary>
+        /// A tecla X desceu alguma coisa (o Ki que excedia, ou um estagio da forma): `descend.wav`
+        /// (`Power Control.dm:68`). SO O SOM -- este gesto nao veste pose nenhuma.
+        /// </summary>
+        Descer = 3,
     }
 
     /// <summary>O primeiro byte do <see cref="S2C.GodKi"/>: como esta o ki divino deste personagem.</summary>
@@ -2731,6 +2758,14 @@ public struct SheetState
     public bool Segurando => (Estado2 & 64) != 0;
 
     /// <summary>
+    /// EU ESTOU APERTANDO O PESCOCO DE QUEM SEGURO -- e por isso estou PLANTADO (dono, 2026-10-13: *"enquanto ta
+    /// estrangulando vc n pode se mover, tendo q ficar parado"*). O servidor recusa o passo
+    /// (`GameServer.PodeMexerOCorpo`); o cliente precisa saber pra nem tenta-lo, senao anda e e corrigido de volta
+    /// trinta vezes por segundo. O ultimo bit do segundo byte de estado.
+    /// </summary>
+    public bool Estrangulando => (Estado2 & 128) != 0;
+
+    /// <summary>
     /// QUANTO FALTA PRA EU ME SOLTAR, de 0 a 100 -- o `grabCounter` contra o alvo dele (`20/escapechance`).
     /// Zero fora de um agarrao. E razao sobre si mesmo: nao diz o poder de ninguem, so o quanto a luta andou.
     /// </summary>
@@ -3166,6 +3201,25 @@ public struct EntityState
 
     private const byte BitCargaAlta = 0x40;
 
+    /// <summary>
+    /// **QUEM ME LEVA NO COLO** (o id de quem me carrega), ou zero. So no agarrao de CARREGAR.
+    ///
+    /// ============================ POR QUE ISTO VIAJA (dono, 2026-10-13) ============================
+    /// *"quando eu agarro um jogador e ando com ele agarrado, ele n vem junto comigo, ele fica um pouco atrasado
+    /// no movimento"*. No servidor os dois corpos estao no MESMO ponto, todo tique (`LevarNoColo`). Na tela nao:
+    /// o meu corpo e desenhado pela previsao local, sem atraso, e o do outro pela interpolacao de snapshots, um
+    /// decimo de segundo pra tras -- quanto mais rapido se anda, mais ele fica pra tras. Sabendo quem leva quem, o
+    /// cliente desenha o carregado NO PONTO em que o carregador esta desenhado (`RemotePlayer.Carregador`,
+    /// `LocalPlayer.ReceberCarregador`), e os dois andam juntos em qualquer tela.
+    ///
+    /// E O ULTIMO BIT DO TERCEIRO BYTE, gasto como PORTA (como o comentario do <see cref="CargaAlta"/> pediu): o
+    /// inteiro so vai no fio pra quem esta no colo de alguem -- zero byte pra todo o resto do mundo.
+    /// ===============================================================================================
+    /// </summary>
+    public int LevadoPor;
+
+    private const byte BitLevado = 0x80;
+
     // =====================================================================
     // O CANAL DE KI -- um byte OPCIONAL, e so pra quem esta com um raio na mao
     // =====================================================================
@@ -3220,7 +3274,25 @@ public struct EntityState
     public int CargaDoCanal
     {
         get => (Canal >> 1) & 0x0F;
-        set => Canal = (byte)((Canal & 0x01) | ((value & 0x0F) << 1));
+        set => Canal = (byte)((Canal & ~0x1E) | ((value & 0x0F) << 1));
+    }
+
+    /// <summary>
+    /// ISTO E SO A POSE DE TIRO, SEM CANAL NENHUM -- o `ServerPlayer.GestoAte`: o sopro do Kiai e, desde
+    /// 2026-10-13, toda bola de ki (`GameServer.FazerAPoseDeTiro`). O sexto bit do byte do canal.
+    ///
+    /// ============================ POR QUE ELE PRECISOU EXISTIR ============================
+    /// O gesto viaja como "canal atirando" (e a mesma pose `blast` do desenho), e o cliente plantava o PROPRIO
+    /// corpo sempre que o snapshot dizia `Canalizando` -- o raio na mao prende os pes (`LocalPlayer.PorQueNaoAnda`).
+    /// No servidor o gesto nunca prendeu ninguem (`GestoAte` nao entra no `PodeMexerOCorpo`). Com meio segundo de
+    /// Kiai a diferenca passava; com a pose em toda bola, quem atirasse correndo ficaria travado na propria tela a
+    /// cada tiro. O bit diz ao dono do corpo qual dos dois e.
+    /// =======================================================================================
+    /// </summary>
+    public bool CanalSoDePose
+    {
+        get => (Canal & 0x20) != 0;
+        set => Canal = (byte)(value ? Canal | 0x20 : Canal & ~0x20);
     }
 
     public void Write(NetDataWriter w)
@@ -3240,11 +3312,14 @@ public struct EntityState
         // O TERCEIRO BYTE: o que este corpo esta FAZENDO. Ver `Ocupacao` -- ele e o unico do pacote
         // que nao e opcional porque nao sobrou bit nenhum pra servir de porta.
         w.Put((byte)(((byte)Ocupacao & MascaraDaOcupacao) | (Kaioken ? BitKaioken : 0)
-                   | (Reunindo ? BitReunindo : 0) | (CargaAlta ? BitCargaAlta : 0)));
+                   | (Reunindo ? BitReunindo : 0) | (CargaAlta ? BitCargaAlta : 0)
+                   | (LevadoPor != 0 ? BitLevado : 0)));
         if (Voando) w.Put(Jandirus.Core.World.Voo.ParaByte(Altitude));
         // O BYTE DO CANAL, e so pra quem esta canalizando -- ver `Canal`. A ORDEM importa e e a
         // mesma na leitura: altitude primeiro (ela e a mais antiga), canal depois.
         if (Pose == Protocol.Pose.Canalizando) w.Put(Canal);
+        // ...E POR ULTIMO QUEM ME LEVA NO COLO, so pra quem esta no colo de alguem -- ver `LevadoPor`.
+        if (LevadoPor != 0) w.Put(LevadoPor);
     }
 
     public static EntityState Read(NetDataReader r)
@@ -3274,6 +3349,7 @@ public struct EntityState
         e.CargaAlta = (terceiro & BitCargaAlta) != 0;
         if (e.Voando) e.Altitude = Jandirus.Core.World.Voo.DeByte(r.GetByte());
         if (e.Pose == Protocol.Pose.Canalizando) e.Canal = r.GetByte();
+        if ((terceiro & BitLevado) != 0) e.LevadoPor = r.GetInt();
         return e;
     }
 }
@@ -3562,7 +3638,12 @@ public readonly record struct NascimentoDeProjetil(
     /// pacote e um so pra zona inteira, e recortar por destinatario custaria um buffer por jogador
     /// (a mesma escolha do `Oculto` do snapshot). Vai no FIM do pacote, como um bit de flags.
     /// </summary>
-    bool Invisivel);
+    bool Invisivel,
+    /// <summary>
+    /// COM QUE SOM ELE SAI -- `Core.Combat.SomDeKi`, decidido no servidor pela tecnica que atirou (o cliente so
+    /// conhece o tipo e a arte). Zero = calado: o tiro de bancada, o pedaco que nasce de um corte.
+    /// </summary>
+    byte Som = 0);
 
 /// <summary>
 /// A SERIALIZACAO DE UMA TECNICA INVENTADA -- as duas pontas, no MESMO arquivo.
@@ -3591,6 +3672,8 @@ public static class CustomWire
     private const byte BitInstantaneo = 1 << 4;
     private const byte BitCriada = 1 << 5;
     private const byte BitTeleguiado = 1 << 6;
+    // (2026-10-13) A tecnica veio de um mestre: a tela a marca, e o cartao do aluno nao a oferece pra repassar.
+    private const byte BitEnsinada = 1 << 7;
 
     public const int MaxNome = 32;
     public const int MaxDesc = 160;
@@ -3610,7 +3693,8 @@ public static class CustomWire
                    | (t.Carregavel ? BitCarregavel : 0)
                    | (t.Instantaneo ? BitInstantaneo : 0)
                    | (t.Criada ? BitCriada : 0)
-                   | (t.Teleguiado ? BitTeleguiado : 0)));
+                   | (t.Teleguiado ? BitTeleguiado : 0)
+                   | (t.Ensinada ? BitEnsinada : 0)));
         w.Put((float)t.BaseDano);
         w.Put((float)t.CargaMinima);
         w.Put((float)t.CustoKi);
@@ -3649,6 +3733,7 @@ public static class CustomWire
         t.Instantaneo = (f & BitInstantaneo) != 0;
         t.Criada = (f & BitCriada) != 0;
         t.Teleguiado = (f & BitTeleguiado) != 0;
+        t.Ensinada = (f & BitEnsinada) != 0;
         t.BaseDano = r.GetFloat();
         t.CargaMinima = r.GetFloat();
         t.CustoKi = r.GetFloat();

@@ -310,6 +310,12 @@ public sealed partial class GameServer
 				EnsinarAVoar(v);
 				v.Cerebro!.Inteligencia = 0.9;   // esperto o bastante pra pairar rasante (a receita do andar 1)
 				Armar(v);
+				// (2026-10-13) O GOLPE DESTE VOADOR NAO ARREMESSA. Ele e um corpo possuido (sem papel), e a presa de um corpo
+				// possuido e quem ele VE -- dez tiles (`PresaDaFera`, o `LEGB_RANGE` do original). Um golpe pesado jogava o alvo
+				// pra fora desse raio, o voador perdia a presa e saia VAGANDO: uma rodada em cada dez desta secao reprovava com
+				// ele a cem tiles do alvo, sem ter nada a ver com altura (o detalhe das linhas abaixo mostra o plano e a
+				// distancia). A pergunta aqui e o andar; o arremesso tem as bancadas dele.
+				v.Knockback = false;
 				int maiorAndar = 0;
 				void Correr(int tiques, Action? segurarOAlvo = null)
 				{
@@ -328,12 +334,17 @@ public sealed partial class GameServer
 				void AlvoNoAndar(int andar) { alvo.Voando = true; alvo.Altitude = meioDoAndar(andar); alvo.Ficha.Ki = alvo.Ficha.MaxKi; }
 				maiorAndar = 0;
 				Correr(300, () => AlvoNoAndar(2));
-				Checa("o alvo sobe ao andar 2: o voador SEGUE (andar 2)", Jandirus.Core.World.Voo.Andar(v.Altitude) == 2, $"andar {Jandirus.Core.World.Voo.Andar(v.Altitude)}");
+				// (o detalhe diz o que o cerebro estava fazendo: e a unica pista de uma falha que so aparece em uma rodada de tres)
+				string OQueOVoadorFaz() =>
+					$"andar {Jandirus.Core.World.Voo.Andar(v.Altitude)}; plano {v.Cerebro!.Atual} ({v.Cerebro.Porque}); voando {v.Voando}; "
+					+ $"a {Vec2.Distance(v.Pos, alvo.Pos) / ZoneCollision.TileSize:0.0} tiles; folego {v.Ficha.stamina:0}/{v.Ficha.maxstamina:0}; "
+					+ $"KO {v.Ficha.KO}; segura {v.AgarrandoId}; preso por {v.AgarradoPorId}; alvo no andar {Jandirus.Core.World.Voo.Andar(alvo.Altitude)}";
+				Checa("o alvo sobe ao andar 2: o voador SEGUE (andar 2)", Jandirus.Core.World.Voo.Andar(v.Altitude) == 2, OQueOVoadorFaz());
 				Checa("...sem passar dele (nunca no 3)", maiorAndar <= 2, $"maior {maiorAndar}");
 				Correr(300, () => AlvoNoAndar(3));
-				Checa("o alvo sobe ao andar 3: o voador segue ate o 3", Jandirus.Core.World.Voo.Andar(v.Altitude) == 3, $"andar {Jandirus.Core.World.Voo.Andar(v.Altitude)}");
+				Checa("o alvo sobe ao andar 3: o voador segue ate o 3", Jandirus.Core.World.Voo.Andar(v.Altitude) == 3, OQueOVoadorFaz());
 				Correr(300, () => AlvoNoAndar(1));
-				Checa("o alvo desce ao andar 1: o voador DESCE junto (andar 1)", Jandirus.Core.World.Voo.Andar(v.Altitude) == 1, $"andar {Jandirus.Core.World.Voo.Andar(v.Altitude)}");
+				Checa("o alvo desce ao andar 1: o voador DESCE junto (andar 1)", Jandirus.Core.World.Voo.Andar(v.Altitude) == 1, OQueOVoadorFaz());
 				alvo.Voando = false;
 				alvo.Altitude = 0f;
 				Correr(300);

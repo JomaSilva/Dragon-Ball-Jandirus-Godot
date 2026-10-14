@@ -221,6 +221,12 @@ public static class ArteDeKiNoCliente
 		/// </summary>
 		public bool SemGiro { get; init; }
 
+		/// <summary>
+		/// NAO LEVA A COR DO KI de quem atira. So as balas das armas de fogo: chumbo e aco nao sao energia, e a folha
+		/// delas nao e somada com a cor do dono no original (`Guns.dm:121-135`). Quem obedece e o `ProjetilDesenhado.Vestir`.
+		/// </summary>
+		public bool SemTinta { get; init; }
+
 		public Rampa Tons { get; init; } = CinzaDeBola;
 	}
 
@@ -361,6 +367,14 @@ public static class ArteDeKiNoCliente
 		// `SpiritBomb.dm:119-121`) multiplica isto, como multiplicava a folha.
 		// =============================================================================================================
 		[ArteDeKi.SpiritBomb] = new() { Raio = 96, Calma = 1, Brancura = 0.8f, Tons = Rampa.De("3a78c8", "9fd8ff", "ffffff") },
+
+		// ============================ AS BALAS (v0.2.1, as armas de fogo) ============================
+		// `Bullet.dmi`: doze pixels pretos -- um risco de chumbo, sem brilho nenhum.
+		[ArteDeKi.Bala] = new() { Raio = 1.8f, Rastro = 2.4f, Brancura = 0.05f, SemTinta = true, Tons = Rampa.De("000000", "1c1c1c", "3a3a3a") },
+		// `Bullet 3.dmi`: o chumbo da escopeta, preto com um miolo branco.
+		[ArteDeKi.Chumbo] = new() { Raio = 2.4f, Rastro = 1.2f, Brancura = 0.5f, SemTinta = true, Tons = Rampa.De("000000", "2a2a2a", "ffffff") },
+		// `Missile.dmi`: o corpo cinza e o fogo amarelo atras.
+		[ArteDeKi.Missil] = new() { Raio = 5.5f, Rastro = 2.8f, Chama = 1, Brancura = 0.35f, SemTinta = true, Tons = Rampa.De("545454", "ffcc33", "ffff33") },
 	};
 
 	/// <summary>A bola sem arte: lisa, com um rastro curto.</summary>

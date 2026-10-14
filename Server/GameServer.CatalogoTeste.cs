@@ -340,6 +340,11 @@ public partial class GameServer
 		//
 		// O ALVO DO ESTUDO E O "Boneco" da cena (o segundo corpo); as duas skills escolhidas sao a
 		// `Ki Unlocked`, que o corpo da varredura sabe no nivel 99.
+		// ---- lote G15: o Materializar abre uma ESCOLHA (o ritual do DM perguntava "Make what?", `Rituals_Manipulation.dm:528`).
+		// O aperto nu responde o que da pra materializar; o com argumento cria o item no chao e cobra o Ki -- e e o Ki
+		// que a impressao do mundo ve mudar.
+		["Materialize"] = "Materialize:pesos",
+
 		["Study_Other"] = "Study_Other:Boneco",
 		["Focus_Skill"] = "Focus_Skill:Ki Unlocked",
 		["Write_Teachings"] = "Write_Teachings:Ki Unlocked",
@@ -723,39 +728,17 @@ public partial class GameServer
 	// 3) A IA CRESCE COM O JOGO
 	// =====================================================================
 	/// <summary>
-	/// OS TIROS QUE A IA AINDA NAO SABE USAR -- divida DECLARADA, e ela e o produto desta familia.
+	/// A IA USA O QUE O JOGO TEM (v0.2.1) -- a divida que esta familia media foi paga.
 	///
-	/// A tabela `TecnicasDeLonge` e escrita a mao de proposito: cada linha declara alcance minimo,
-	/// maximo e precisao, e **nenhum dos tres esta no DM** (o verb so diz `maxdistance`). Deriva-los
-	/// automaticamente produziria uma IA que rejeita quase todo tiro por risco -- ver o cabecalho de
-	/// la. Entao o arsenal NAO cresce sozinho, e a unica saida honesta e a divida ficar medida.
+	/// Ate a v0.2.0 morava aqui uma lista, `AtiramEAIaNaoUsa`: os trinta verbos que punham tiro no mundo e que a
+	/// tabela da IA nao conhecia. Ela era divida DECLARADA -- e o pedido do dono de 2026-10-13 (*"deveriam usar todas
+	/// as skills disponiveis do jogador"*) a zerou: todo verb que atira tem linha em `TecnicasDeLonge`, e o resto do
+	/// que tem corpo esta em `TecnicasDeLuta` ou na lista do que nao e gesto de luta (`TecnicasDeLuta.ForaDaLuta`).
 	///
-	/// O que esta lista tem de diferente de um comentario e a origem: quem diz que estes verbos atiram
-	/// **e a familia 2**, apertando cada um e vendo projetil nascer. Um tiro novo que entre no jogo
-	/// aparece aqui sem ninguem escrever nada -- e ai a bancada exige que alguem decida a janela dele
-	/// ou o declare em falta.
+	/// O que continua valendo e a ORIGEM da medida: quem diz que um verb atira **e a familia 2**, apertando cada um e
+	/// vendo projetil nascer. Um tiro novo que entre no jogo aparece aqui sem ninguem escrever nada -- e a bancada
+	/// reprova ate alguem decidir a janela dele.
 	/// </summary>
-	private static readonly string[] AtiramEAIaNaoUsa =
-	[
-		// ---- os catorze do lote G5 que atiram de verdade (os outros do lote resolvem por raio) ----
-		"Masenko", "Makkankosappo", "Massive_Beam", "Final_Flash", "Charged_Shot", "KillDriver",
-		"BusterShell", "Scattershot", "Energy_Barrage", "Ki_Bomb", "Hellzone_Grenade", "Kienzan",
-		"Paralysis", "Stunlock",
-
-		// ---- os sete do lote G6 (os seis raios nomeados de cargo, mais o Kikoho) ----
-		"Kamehameha", "GalicGun", "Death_Beam", "Dodompa", "Enkumei", "Boom_Wave", "Kikoho",
-
-		// ---- e o Spirit Gun, que nao cabe na tabela por um motivo ESTRUTURAL e nao por trabalho ----
-		// O campo se chama `Linha.CustoDeKi` e a IA compara com o Ki dela; o Spirit Gun cobra FOLEGO
-		// (`usr.stamina -= kireq`, `Spirit.dm:352`). Registra-lo com custo em Ki faria a IA achar que
-		// pode atirar sem folego -- ou o contrario, timida com o tanque cheio. Liga-lo pede um segundo
-		// campo de MOEDA na linha, que e decisao de dado e nao remendo.
-		"Spirit_Gun",
-
-		// ---- lote G12: as bolas que nascem no aperto (Death Ball e Genkidama nascem INERTES sobre a cabeca)
-		// e as tres que so cospem no tique. Nenhuma tem janela de alcance na tabela da IA ainda.
-		"Death_Ball", "SpiritBomb", "BusterBarrage", "Continuous_Energy_Bullets", "Spin_Blast",
-	];
 
 	private void AIaCresceComOJogo()
 	{
@@ -773,18 +756,12 @@ public partial class GameServer
 		AfirmarCat("a varredura viu tiro nascer (senao esta familia nao esta medindo nada)",
 				   _catAtiraram.Count > 0);
 
-		// A INVARIANTE: todo verb que ATIRA esta na tabela da IA ou na divida declarada. Nenhuma lista
-		// escrita a mao decide quem atira -- quem decide e o jogo, apertando o botao.
-		var fora = _catAtiraram.FindAll(
-			v => !naTabela.Contains(v) && !AtiramEAIaNaoUsa.Contains(v, StringComparer.OrdinalIgnoreCase));
-		AfirmarCat("todo verb que POE TIRO no mundo esta na tabela da IA ou na divida declarada",
+		// A INVARIANTE: todo verb que ATIRA esta na tabela da IA. Nenhuma lista escrita a mao decide quem
+		// atira -- quem decide e o jogo, apertando o botao. (A lista de divida que esta linha aceitava
+		// ficou vazia na v0.2.1, e saiu.)
+		var fora = _catAtiraram.FindAll(v => !naTabela.Contains(v));
+		AfirmarCat("todo verb que POE TIRO no mundo esta na tabela de longe da IA",
 				   fora.Count == 0, string.Join(" | ", fora));
-
-		// ...e a divida declarada nao pode ter fantasma: um verb que ja entrou na tabela da IA nao
-		// pode continuar listado como divida (o mesmo desencontro da familia 1, na outra tabela).
-		var fantasmas = AtiramEAIaNaoUsa.Where(v => naTabela.Contains(v)).ToList();
-		AfirmarCat("...e a divida declarada nao lista quem a IA ja usa",
-				   fantasmas.Count == 0, string.Join(" | ", fantasmas));
 
 		// ============================ O ARSENAL SAI DA PRODUCAO, PRA UM CORPO DE VERDADE ============================
 		// `ArsenalDeLonge` e o mesmo metodo que o `LerCapacidades` chama a 1 Hz por corpo dirigido.
@@ -827,6 +804,127 @@ public partial class GameServer
 				   depois.Quantas < arsenal.Quantas, $"{depois.Quantas} contra {arsenal.Quantas}");
 
 		LimparTudoDoCatalogo();
+
+		OQueAIaUsaCobreOJogo();
+		OPrecoQueAIaAcredita();
+	}
+
+	/// <summary>
+	/// A REGUA DO "TODAS" (v0.2.1): todo verb com corpo esta numa das duas tabelas da IA -- a de longe ou a de luta --
+	/// ou na lista do que nao e gesto de luta, com o motivo escrito. E nas duas direcoes: linha de tabela (ou de
+	/// lista) que aponta pra um verb que nao existe mais e tao defeito quanto verb sem linha.
+	///
+	/// AS FAMILIAS POR PREFIXO (`Kaioken_20`, `Final_Explosion_3`) respondem pelo nome da familia.
+	/// </summary>
+	private void OQueAIaUsaCobreOJogo()
+	{
+		GD.Print("[catalogo] -- 3b) TODO VERB VIVO ESTA NA MAO DA IA, OU FORA DELA COM MOTIVO");
+
+		// (o verb oco e da PROPRIA bancada: a familia 2 o registra pra provar que a varredura enxerga um verb que nao
+		// faz nada -- ele nao e do jogo)
+		List<string> vivos = [.. Tecnicas.Vivas.Where(v => v != "Verbo_Oco_Da_Bancada")];
+		static bool DaFamilia(string id, string familia) =>
+			string.Equals(id, familia, StringComparison.OrdinalIgnoreCase)
+			|| id.StartsWith(familia + "_", StringComparison.OrdinalIgnoreCase);
+		static string SemArgumento(string id) => id.IndexOf(':') is var c and >= 0 ? id[..c] : id;
+
+		bool NaIa(string id) =>
+			TecnicasDeLonge.Get(id) != null || TecnicasDeLuta.Get(id) != null
+			|| TecnicasDeLuta.ForaDaLuta.Keys.Any(k => DaFamilia(id, k));
+
+		var semLinha = vivos.Where(v => !NaIa(v)).Order(StringComparer.OrdinalIgnoreCase).ToList();
+		AfirmarCat($"**A IA USA TODAS**: cada um dos {vivos.Count} verbos com corpo esta na tabela de longe "
+				 + $"({TecnicasDeLonge.Quantas} linhas), na de luta ({TecnicasDeLuta.Quantas}) ou na lista do que nao e de luta "
+				 + $"({TecnicasDeLuta.ForaDaLuta.Count}, cada um com o motivo)",
+				   semLinha.Count == 0, "sem linha: " + string.Join(" | ", semLinha));
+
+		bool Existe(string familia) => vivos.Exists(v => DaFamilia(v, familia));
+		var fantasmas = new List<string>();
+		foreach (TecnicasDeLonge.Linha l in TecnicasDeLonge.Todas) if (!Existe(l.Id)) fantasmas.Add("longe:" + l.Id);
+		foreach (TecnicasDeLuta.Linha l in TecnicasDeLuta.Todas) if (!Existe(l.Gate)) fantasmas.Add("luta:" + l.Gate);
+		foreach (string k in TecnicasDeLuta.ForaDaLuta.Keys) if (!Existe(k)) fantasmas.Add("fora:" + k);
+		AfirmarCat("...e nenhuma linha (nem da lista do que fica de fora) aponta pra um verb que nao existe",
+				   fantasmas.Count == 0, string.Join(" | ", fantasmas));
+
+		var nasDuas = TecnicasDeLuta.ForaDaLuta.Keys
+			.Where(k => TecnicasDeLonge.Get(k) != null || TecnicasDeLuta.Get(k) != null).ToList();
+		foreach (TecnicasDeLuta.Linha l in TecnicasDeLuta.Todas)
+			if (TecnicasDeLonge.Get(SemArgumento(l.Id)) != null) nasDuas.Add(l.Id);
+		AfirmarCat("...e nenhum verb esta em duas casas ao mesmo tempo (usado E declarado fora; de longe E de luta)",
+				   nasDuas.Count == 0, string.Join(" | ", nasDuas));
+
+		AfirmarCat("...e cada um dos que ficam de fora tem o motivo escrito",
+				   TecnicasDeLuta.ForaDaLuta.Values.All(m => m.Trim().Length >= 8),
+				   string.Join(" | ", TecnicasDeLuta.ForaDaLuta.Where(kv => kv.Value.Trim().Length < 8).Select(kv => kv.Key)));
+
+		// O CORPO QUE SABE TUDO sai com o repertorio de luta inteiro -- menos o que ele nao tem como saber.
+		ServerPlayer npc = ForjarQueSabeTudo("CorpoDaIa", ChaoDaBancada());
+		Arsenal luta = ArsenalDeLuta(npc, out bool temInvestida, out bool sabeRebater);
+		var noRepertorio = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		for (int i = 0; i < luta.Quantas; i++) noRepertorio.Add(luta[i].Id);
+		var naoSabe = new List<string>();
+		foreach (TecnicasDeLuta.Linha l in TecnicasDeLuta.Todas) if (!noRepertorio.Contains(l.Id)) naoSabe.Add(l.Id);
+		var porque = naoSabe.Where(id => !NaoTemPorta.ContainsKey(SemArgumento(id))).ToList();
+		AfirmarCat($"um corpo que sabe tudo sai com {luta.Quantas} das {TecnicasDeLuta.Quantas} tecnicas de luta -- e as que "
+				 + "faltam sao as que ele nao tem como saber (sem porta neste port, ou de uma casa que so um corpo escolhe)",
+				   luta.Quantas > 40 && porque.Count == 0 && temInvestida && sabeRebater,
+				   $"de fora: {string.Join(", ", naoSabe)}; sem motivo: {string.Join(", ", porque)}");
+		LimparTudoDoCatalogo();
+	}
+
+	/// <summary>As tecnicas de luta que o corpo da varredura NAO sabe, e por que -- as mesmas razoes de `RecusamPorCondicao` e `SemPortaNestePort`.</summary>
+	private static readonly Dictionary<string, string> NaoTemPorta = new(StringComparer.OrdinalIgnoreCase)
+	{
+		["Bite"] = "nao tem porta neste port (vem de ser vampiro ou lobisomem) -- ver `SemPortaNestePort`",
+		["Slap"] = "e da casa Ricardo da Trindade: o corpo da varredura nao escolheu casa",
+		["Counter_Taunt"] = "e da casa Aniki da Trindade: o corpo da varredura nao escolheu casa",
+	};
+
+	/// <summary>
+	/// A REGUA DO PRECO (v0.2.1): a tabela da IA nunca promete MAIS BARATO do que o verb cobra.
+	///
+	/// As linhas novas ESPELHAM a conta do verb em vez de chamar a mesma funcao (os verbs dos lotes G5 a G14
+	/// escrevem o custo dentro do efeito). Espelho envelhece -- e o lado perigoso e o da tabela ficar pra baixo: a IA
+	/// acharia que pode pagar, pediria, e ouviria "isso pede N de energia" a luta inteira. Entao cada linha e
+	/// APERTADA numa cena nova (dois corpos colados, tanque cheio), e o que saiu do tanque -- nas duas moedas -- tem
+	/// de caber no preco que a linha declara pra aquele corpo.
+	/// </summary>
+	private void OPrecoQueAIaAcredita()
+	{
+		GD.Print("[catalogo] -- 3c) O PRECO QUE A IA ACREDITA NUNCA E MENOR QUE O QUE O VERB COBRA");
+
+		var linhas = new List<(string Id, Func<Fighter, double> Ki, Func<Fighter, double>? Folego)>();
+		foreach (TecnicasDeLonge.Linha l in TecnicasDeLonge.Todas) linhas.Add((l.Id, l.CustoDeKi, l.CustoDeFolego));
+		foreach (TecnicasDeLuta.Linha l in TecnicasDeLuta.Todas) linhas.Add((l.Id, l.CustoDeKi, l.CustoDeFolego));
+
+		var barato = new List<string>();
+		var absurdo = new List<string>();
+		int cobraram = 0;
+		foreach ((string id, Func<Fighter, double> precoKi, Func<Fighter, double>? precoFolego) in linhas)
+		{
+			(ServerPlayer a, _) = CenaDoCatalogo();
+			Fighter f = a.Ficha;
+			double tabelaKi = precoKi(f), tabelaFolego = precoFolego?.Invoke(f) ?? 0;
+			// (o tanque de ANTES: os reforcos refazem os atributos ao ligar, e o `Statify` reescreve o `MaxKi` da cena)
+			double ki0 = f.Ki, folego0 = f.stamina, tanque = f.MaxKi, pulmao = f.maxstamina;
+			Ouvir(() => { try { UsarHabilidade(a, id); } catch (Exception) { /* a familia 2 ja cobra que nenhum estoura */ } });
+			double cobrouKi = ki0 - f.Ki, cobrouFolego = folego0 - f.stamina;
+			if (cobrouKi > 1e-9 || cobrouFolego > 1e-9) cobraram++;
+			if (cobrouKi > tabelaKi * (1 + 1e-9) + 1e-6) barato.Add($"{id}: tabela {tabelaKi:0.##} de Ki, o verb cobrou {cobrouKi:0.##}");
+			if (cobrouFolego > tabelaFolego * (1 + 1e-9) + 1e-6) barato.Add($"{id}: tabela {tabelaFolego:0.##} de folego, o verb cobrou {cobrouFolego:0.##}");
+			// O OUTRO LADO: a tabela dizer "nao da pra pagar" de um verb que o jogo ACEITOU. (O Escudo de Energia e o
+			// caso legitimo -- o preco dele cresce com o quadrado do tanque, e neste corpo de tanque gigante o proprio
+			// verb recusa: a tabela e ele concordam.)
+			if ((tabelaKi > tanque && cobrouKi > 1e-9) || (tabelaFolego > pulmao && cobrouFolego > 1e-9))
+				absurdo.Add($"{id}: a tabela pede {tabelaKi:0} de Ki num tanque de {tanque:0}, e o verb cobrou {cobrouKi:0}");
+			LimparTudoDoCatalogo();
+		}
+
+		AfirmarCat($"**A TABELA DA IA NUNCA PROMETE MAIS BARATO DO QUE O VERB COBRA** -- as {linhas.Count} linhas apertadas, uma a uma, "
+				 + $"numa cena nova ({cobraram} cobraram alguma coisa)",
+				   barato.Count == 0 && cobraram > 40, string.Join(" | ", barato));
+		AfirmarCat("...e nenhuma pede mais que o tanque inteiro por um verb que o jogo aceita (um preco que ninguem paga e uma tecnica que a IA nunca usa)",
+				   absurdo.Count == 0, string.Join(" | ", absurdo));
 	}
 
 	// =====================================================================
@@ -1136,15 +1234,21 @@ public partial class GameServer
 		// vinham de `.dm` que o `.dme` nao inclui -- o jogo original nao as compila. Sairam quando o extrator
 		// passou a ler so o que o compilador le; a familia 8 cobra o livro de quem tivesse uma.)
 		//
-		// SAO SEIS LINHAS DE TRES DONOS: a arvore comentada so tinha regra de nivel (uma linha), a skill
-		// aposentada sumiu do catalogo E perdeu as regras de nivel (duas), e as tres do arquivo fora do `.dme`
-		// so sumiram do catalogo (tres: nenhuma tinha regra de nivel).
-		AfirmarCat("as perdas contra o marco tem TRES donos e nenhum outro: a arvore comentada, a skill que o dono aposentou e as tres do arquivo fora do .dme",
-				   d.Explicadas.Count == 6
+		// (A QUARTA e de 2026-10-13: as cinco maestrias de forma por skill, legado que o proprio DM trocou pela
+		// maestria em % -- pendiam de arvore sem acender por caminho nenhum. Ver `SkillsAposentadas`.)
+		//
+		// SAO QUINZE LINHAS DE QUATRO DONOS: a arvore comentada so tinha regra de nivel (uma linha), a skill
+		// aposentada sumiu do catalogo E perdeu as regras de nivel (duas), as tres do arquivo fora do `.dme` so sumiram
+		// do catalogo (tres: nenhuma tinha regra de nivel), e as cinco maestrias sumiram do catalogo (cinco) e quatro
+		// delas perderam as regras de nivel (quatro: a `forms/mssj` nunca teve).
+		string[] maestrias = ["/forms/ssj ", "/forms/mssj ", "/forms/lssjm ", "/heran/MstedMXPWR ", "/heran/MstedTMXPWR "];
+		AfirmarCat("as perdas contra o marco tem QUATRO donos e nenhum outro: a arvore comentada, a skill que o dono aposentou, as tres do arquivo fora do .dme e as cinco maestrias legadas",
+				   d.Explicadas.Count == 15
 				   && d.Explicadas.Count(e => e.Contains("Focused", StringComparison.Ordinal)) == 1
 				   && d.Explicadas.Count(e => e.Contains("Saiyan_Power", StringComparison.Ordinal)) == 2
 				   && d.Explicadas.Count(e => e.Contains("/CustomAttacks/ki/", StringComparison.Ordinal)) == 2
-				   && d.Explicadas.Count(e => e.Contains("/tree/Custom_Attacks", StringComparison.Ordinal)) == 1,
+				   && d.Explicadas.Count(e => e.Contains("/tree/Custom_Attacks", StringComparison.Ordinal)) == 1
+				   && d.Explicadas.Count(e => maestrias.Any(m => e.Contains(m, StringComparison.Ordinal))) == 9,
 				   string.Join(" | ", d.Explicadas));
 
 		// ...e a re-extracao TEM que ter trazido alguma coisa: um marco identico ao hoje nao prova

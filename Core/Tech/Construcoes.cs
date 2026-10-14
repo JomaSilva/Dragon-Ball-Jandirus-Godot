@@ -111,6 +111,54 @@ public enum RecusaObra
 	/// `S2C.Tech`, e entrar no meio renumeraria os que ja estao no fio.
 	/// </summary>
 	SemRecursos,
+
+	/// <summary>
+	/// A OFERTA ESTA FECHADA: o que o item faz pede um sistema que este port ainda nao tem -- ver
+	/// <see cref="TechFechada"/>. (No FIM do enum, pelo mesmo motivo do <see cref="SemRecursos"/>.)
+	/// </summary>
+	ForaDoPort,
+}
+
+/// <summary>
+/// ============================ A TECH QUE ESTE JOGO AINDA NAO VENDE (v0.2.1) ============================
+/// O pedido do dono (2026-10-13): *"tem muita tech q n foi portada, faça o port delas todas"*. Sete entradas do
+/// catalogo nao sao tecnologia: sao os `obj/Creatables` do `Modules/Magic/Magitech.dm` -- o GIZ que desenha
+/// rituais, o PREDITOR que le o ritual que esta no chao, a VARINHA e o CAJADO que controlam quanto mana cada
+/// feitico gasta (e sao armas de corpo a corpo), a PENEIRA que tira ingredientes do mana de quem a alimenta, e o
+/// CRISTAL e a BOLSA que os guardam. Tudo o que eles fazem pede o sistema de magia -- os rituais de
+/// `Rituals*.dm`, os ingredientes de `Magic_Items.dm`, a reserva de mana, as armas de `Equipment` --, que este port
+/// nao tem (e a divida "magia" do `Skills.CensoDeSkills`).
+///
+/// Ate aqui a aba Tech os VENDIA: pagava-se, e levava-se um item sem acao nenhuma. E o mesmo defeito das skills que
+/// so davam um verb sem corpo (`Skills.SkillsFechadas`, do mesmo pedido: *"tem verb q diz q faz algo mas n faz
+/// nada"*), e a saida e a mesma: a oferta FECHA -- a aba a mostra dizendo que ainda nao existe neste jogo, e a
+/// fabricacao e recusada sem cobrar nada. Quem ja tinha um deles na mochila continua com ele.
+///
+/// (No original a janela de tecnologia os esconde de quem nao e mago: `TechWindow.dm:48` apaga o Creatable com
+/// `Rmagiskill &lt; A.neededmag` -- de 1,01 a 3 conforme o item --, e so o giz se vende a todo mundo: sem pericia
+/// esoterica ele faz um rabisco no chao.)
+///
+/// No dia em que o sistema de magia vier, a linha sai daqui -- e a bancada `--v021teste` (familia X11) cobra a lista.
+/// =======================================================================================================
+/// </summary>
+public static class TechFechada
+{
+	/// <summary>O que falta pra estes itens existirem -- o pedaco da frase que o jogador le.</summary>
+	public const string Falta = "o sistema de magia (rituais, ingredientes e feitiços)";
+
+	/// <summary>Os ids do catalogo, na ordem do `Magitech.dm`.</summary>
+	public static readonly string[] Todas =
+		["Chalk", "Wand", "Staff", "Predictor", "Magic_Sifter", "Ingredient_Crystal", "Ingredient_Bag"];
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v021teste`, familia X11): nada esta fechado -- a aba Tech volta a vender os sete, e
+	/// quem paga leva um item que nao faz nada. A v0.2.0. Falso em jogo, sempre.
+	/// </summary>
+	public static bool TudoAbertoDeTeste;
+
+	/// <summary>Esta oferta esta fechada?</summary>
+	public static bool Eh(string id) =>
+		!TudoAbertoDeTeste && Array.Exists(Todas, x => string.Equals(x, id, StringComparison.OrdinalIgnoreCase));
 }
 
 /// <summary>
@@ -268,6 +316,8 @@ public sealed class CatalogoDeObras
 		if (!c.Construivel) return RecusaObra.NaoExiste;
 		// ...NEM O QUE PEDE TECNOLOGIA ACIMA DO TETO, pela mesma razao -- ver `Construcao.AcimaDoTeto`.
 		if (c.AcimaDoTeto && !AcimaDoTetoViraOfertaDeTeste) return RecusaObra.NaoExiste;
+		// ...E O QUE PEDE UM SISTEMA QUE O PORT NAO TEM FICA NA LISTA, FECHADO -- ver `TechFechada`.
+		if (TechFechada.Eh(c.Id)) return RecusaObra.ForaDoPort;
 		if (c.Racas.Length > 0 && !c.Racas.Contains(raca, StringComparer.OrdinalIgnoreCase))
 			return RecusaObra.RacaErrada;
 		if (f.techskill < c.Tech) return RecusaObra.SemTech;

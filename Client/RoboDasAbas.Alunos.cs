@@ -59,13 +59,17 @@ public partial class RoboDasAbas
 		Checa("...e por isso NAO ha aba 'Alunos' nem 'Mestre' na barra, nem pagina montada pra elas (o contrato do Abas())",
 			  !abas.Contains(alunos) && !abas.Contains(mestre) && menu.PaginaDeTeste(alunos) == null && menu.PaginaDeTeste(mestre) == null,
 			  string.Join(",", abas));
-		Checa("a linha `alunos` da tabela de requisitos e a que decide (tem um mestre OU um aluno), e os dois gestos de cartao pedem 'tem aluno'",
+		Checa("a linha `alunos` da tabela de requisitos e a que decide (tem um mestre OU um aluno), e os gestos de cartao pedem 'tem aluno'",
 			  RequisitosDosVerbos.Linha(RequisitosDosVerbos.ChaveDoVerbo(MenuJogo.VerboDoDiscipulado)) is { } linha && linha.Onde == RequisitosDosVerbos.AbaDoDiscipulado
 			  && !RequisitosDosVerbos.DoVerbo("alunos").Atende(new PosseEscrita())
 			  && RequisitosDosVerbos.DoVerbo("alunos").Atende(new PosseEscrita { Fatos = Fatos.TemMestre })
 			  && RequisitosDosVerbos.DoVerbo("alunos").Atende(new PosseEscrita { Fatos = Fatos.TemAluno })
 			  && !RequisitosDosVerbos.DoVerbo("alunos_dispensar").Atende(new PosseEscrita { Fatos = Fatos.TemMestre })
-			  && RequisitosDosVerbos.DoVerbo("alunos_ensinar").Atende(new PosseEscrita { Fatos = Fatos.TemAluno }));
+			  && RequisitosDosVerbos.DoVerbo("alunos_ensinar").Atende(new PosseEscrita { Fatos = Fatos.TemAluno })
+			  && RequisitosDosVerbos.DoVerbo("alunos_licao").Atende(new PosseEscrita { Fatos = Fatos.TemAluno })
+			  && !RequisitosDosVerbos.DoVerbo("alunos_licao").Atende(new PosseEscrita { Fatos = Fatos.TemMestre })
+			  && RequisitosDosVerbos.DoVerbo("alunos_tecnica").Atende(new PosseEscrita { Fatos = Fatos.TemAluno })
+			  && !RequisitosDosVerbos.DoVerbo("alunos_tecnica").Atende(new PosseEscrita { Fatos = Fatos.TemMestre }));
 
 		// O ELENCO PLANTADO. A Retratada esta no mundo e eu ja a vi (a minha propria aparencia: e a unica que este
 		// processo tem em maos sem inventar uma); o Ausente saiu ha duas horas e eu nunca o vi.
@@ -145,7 +149,7 @@ public partial class RoboDasAbas
 			{
 				RoboDeAlunos.CartaoLido lido = RoboDeAlunos.Cartao(pg, "aluno", a.Quem.Nome) is { } c ? RoboDeAlunos.Ler(c) : RoboDeAlunos.SemCartao;
 				List<string> ruim = RoboDeAlunos.ProblemasDoCartaoDeAluno(lido, a);
-				Checa($"o cartao de '{a.Quem.Nome}' esta no contrato: a presenca, as datas, o progresso geral ({lido.Geral}), {a.Ensinamentos.Count} ensinamento(s) com pilula, linha e barra, e os dois gestos",
+				Checa($"o cartao de '{a.Quem.Nome}' esta no contrato: a presenca, as datas, o progresso geral ({lido.Geral}), {a.Ensinamentos.Count} ensinamento(s) com pilula, linha e barra, e os tres gestos",
 					  ruim.Count == 0, string.Join("; ", ruim));
 			}
 			RoboDeAlunos.CartaoLido daRetratada = RoboDeAlunos.Cartao(pg, "aluno", "Retratada") is { } cr ? RoboDeAlunos.Ler(cr) : RoboDeAlunos.SemCartao;

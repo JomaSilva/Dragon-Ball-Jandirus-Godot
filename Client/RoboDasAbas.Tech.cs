@@ -28,6 +28,7 @@ public partial class RoboDasAbas
 		[(int)RecusaObra.LugarOcupado] = "lugar ocupado",
 		[(int)RecusaObra.ZonaProibida] = "não aqui",
 		[(int)RecusaObra.NaoExiste] = "?",
+		[(int)RecusaObra.ForaDoPort] = "ainda não existe neste jogo",
 	};
 
 	private async System.Threading.Tasks.Task F14_Tech(MenuJogo menu, GameClient cli)

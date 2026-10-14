@@ -48,6 +48,12 @@ public partial class GameServer
 		// o texto chegava sem autor, desenhado como recado do servidor: um aviso de administrador forjado.
 		if (!CanalDeFalaLivreDeTeste && canal is < Protocol.Fala.Ooc or > Protocol.Fala.Looc) return;
 
+		// (2026-10-13) BICHO NAO FALA LINGUA DE GENTE, venha a frase de onde vier: o que sai da boca de um animal e um
+		// som da especie dele. Quem ja escolhe o som certo pela ocasiao e o cerebro (`Falatorio.Bicho`); esta e a segunda
+		// tranca, no funil. O EMOTE PASSA: e a narracao do que o corpo FEZ ("cai atordoado!"), e nao uma frase dele.
+		if (EhAnimal(a) && canal != Protocol.Fala.Emote)
+			texto = Jandirus.Core.Npc.Animais.NaBocaDoBicho(a.Papel?.Molde.Animal?.Folha ?? "", texto, _rng);
+
 		texto = Limpar(texto);
 		if (texto.Length == 0) return;
 
@@ -137,6 +143,9 @@ public partial class GameServer
 		// nao dizia a SAIDA, e nada no projeto percebeu, porque a ausencia de uma frase nao quebra nada.
 		// Nula em jogo (uma comparacao por linha de chat). Ver `GameServer.FormasTeste.cs`.
 		EscutaDeAvisos?.Add(texto);
+		// O CORPO QUE A IA DIRIGE NAO OUVE O PROPRIO VERB (v0.2.1) -- ver `_iaApertando`, `GameServer.RepertorioDaIa.cs`.
+		// (A bancada continua ouvindo: a escuta fica acima desta linha.)
+		if (ReferenceEquals(para, _iaApertando) && !IaFalaComODonoDeTeste) { _frasesCaladasDaIa++; return; }
 		// `falante: null` -- nao ha ninguem falando: e o servidor. Ver o parametro em `Mandar`.
 		Mandar(para, Protocol.Fala.Sistema, "", texto, falante: null);
 	}

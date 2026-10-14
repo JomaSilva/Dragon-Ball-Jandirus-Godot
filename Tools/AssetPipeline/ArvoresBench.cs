@@ -58,6 +58,9 @@ public static class ArvoresBench
 	private const string RapidMovement = "/datum/skill/rapidmovement";
 	private const string KiAwareness = "/datum/skill/mind/Basic_Ki_Awareness";
 	private const string BuffMastery = "/datum/skill/mind/Basic_Buff_Mastery";
+
+	/// <summary>O catalogo sem as correcoes do port -- ver o <see cref="Run"/>.</summary>
+	private static SkillCatalog _cru = null!;
 	private const string MartialArts = "/datum/skill/MartialSkill/MartialArts";
 
 	public static int Run(string pastaDados)
@@ -72,6 +75,11 @@ public static class ArvoresBench
 			return _falhou;
 		}
 		SkillCatalog cat = SkillCatalog.Parse(File.ReadAllText(cs), File.ReadAllText(ct));
+		// O CATALOGO COMO O EXTRATOR O LE, sem os acendedores que o port escreve por cima (`AcendedoresDoPort`): e o
+		// contra-exemplo das folhas que o port acendeu em 2026-10-13.
+		AcendedoresDoPort.SemCorrecaoDeTeste = true;
+		try { _cru = SkillCatalog.Parse(File.ReadAllText(cs), File.ReadAllText(ct)); }
+		finally { AcendedoresDoPort.SemCorrecaoDeTeste = false; }
 
 		try
 		{
@@ -232,9 +240,15 @@ public static class ArvoresBench
 				 livro.PodeAprender(cat, Evasive, "Saiyan", "None", false) == Recusa.Pode,
 				 livro.PodeAprender(cat, Evasive, "Saiyan", "None", false).ToString());
 
+		// RAPID MOVEMENT nasce `enabled = 0` com a lista de pre-requisitos VAZIA no DM (`speedy.dm:94-107`: e o molde de
+		// skill, e ninguem a preencheu). O port deu a ela o Speed Drills (dono, 2026-10-13 -- `AcendedoresDoPort`).
 		Veredito rm = livro.Avaliar(cat, RapidMovement, "Saiyan", "None", false);
-		Conferir("Rapid Movement nasce `enabled = 0` SEM pre-requisito e SEM regra que a acenda -> Desligada de verdade",
-				 rm.Motivo == Recusa.Desligada, rm.Motivo.ToString());
+		Conferir("Rapid Movement pede o Speed Drills (o pre-requisito que o PORT deu a ela) -> FaltaPreRequisito, dizendo qual",
+				 rm.Motivo == Recusa.FaltaPreRequisito && rm.PreReqsFaltando is [AcendedoresDoPort.SpeedDrills],
+				 $"{rm.Motivo} [{string.Join(",", rm.PreReqsFaltando)}]");
+		Veredito rmCru = new SkillBook().Avaliar(_cru, RapidMovement, "Saiyan", "None", false);
+		Conferir("(defeito injetado: o catalogo sem as correcoes do port) Rapid Movement volta a ser Desligada de verdade -- sem pre-requisito e sem regra, como o DM a deixou",
+				 rmCru.Motivo == Recusa.Desligada, rmCru.Motivo.ToString());
 
 		Veredito ka = livro.Avaliar(cat, KiAwareness, "Saiyan", "None", false);
 		Conferir("Basic Ki Awareness nasce apagada e tem acendedor na Mind (Mind.dm:15) -> AguardaAcendedor",
@@ -249,14 +263,20 @@ public static class ArvoresBench
 
 		// A KI BUFF MASTERY: a arvore abre por `kibuffskill >= 1`, mas o growbranches que acende as
 		// tres basicas dela esta escrito na arvore ERRADA (BuffMastery.dm:15 declara o proc da
-		// effusionmas). Fiel ao DM: a folha fica sem acendedor.
+		// effusionmas). No DM a folha fica sem acendedor; o port devolveu as tres regras a arvore delas
+		// (dono, 2026-10-13 -- `AcendedoresDoPort`).
 		f.kibuffskill = 1;
 		livro.Recalcular(cat, ctx, "Saiyan", "None");
 		Conferir("kibuffskill=1 abre a Ki Buff Mastery (Mind.dm:28-29)",
 				 livro.Destravadas.Contains("/datum/skill/tree/kibuffmas"), string.Join(",", livro.Destravadas));
 		Veredito bm = livro.Avaliar(cat, BuffMastery, "Saiyan", "None", false);
-		Conferir("...mas a Basic Buff Mastery e Desligada: o acendedor do DM esta na arvore errada (BuffMastery.dm:15)",
-				 bm.Motivo == Recusa.Desligada, bm.Motivo.ToString());
+		Conferir("...e a Basic Buff Mastery ACENDE com a arvore dela: o galho que o DM pendurou na arvore errada (BuffMastery.dm:15) voltou pro lugar",
+				 bm.Motivo is Recusa.Pode or Recusa.SemMarcos, bm.Motivo.ToString());
+		var livroCru = new SkillBook();
+		livroCru.Recalcular(_cru, ctx, "Saiyan", "None");
+		Veredito bmCru = livroCru.Avaliar(_cru, BuffMastery, "Saiyan", "None", false);
+		Conferir("(defeito injetado: o catalogo sem as correcoes do port) com a arvore aberta a Basic Buff Mastery e Desligada -- o estado do DM",
+				 livroCru.Destravadas.Contains("/datum/skill/tree/kibuffmas") && bmCru.Motivo == Recusa.Desligada, bmCru.Motivo.ToString());
 	}
 
 	// =====================================================================
@@ -482,9 +502,25 @@ public static class ArvoresBench
 					 livro.PodeAprender(cat, "/datum/skill/general/imitation", "Alien", "None", false) == Recusa.Pode,
 					 livro.PodeAprender(cat, "/datum/skill/general/imitation", "Alien", "None", false).ToString());
 			Comprar(livro, cat, f, "/datum/skill/general/imitation");
-			Veredito st = livro.Avaliar(cat, "/datum/skill/general/stoptime", "Alien", "None", false);
+			// (a Time Skip, e nao mais a Time Stop do mesmo galho: desde 2026-10-13 a Time Stop esta FECHADA --
+			// `SkillsFechadas` -- e responde isso antes de qualquer regra de arvore)
+			Veredito st = livro.Avaliar(cat, "/datum/skill/general/timefreeze", "Alien", "None", false);
 			Conferir("...e com 4 o resto dela esta APAGADO (alien.dm:14-17: 'After 4 Milestones ... locked')",
 					 st.Motivo == Recusa.Apagada && st.Acendedor.Contains("invested>=3"), $"{st.Motivo} {st.Acendedor}");
+			(SkillBook recemNascido, Fighter fNovo) = Nascer(10, "Alien");
+			recemNascido.Recalcular(cat, ContextoDeRegra.De(fNovo, "Alien", "None"), "Alien", "None");
+			Recusa fechadaCom4 = livro.Avaliar(cat, "/datum/skill/general/stoptime", "Alien", "None", false).Motivo;
+			Recusa fechadaCom0 = recemNascido.Avaliar(cat, "/datum/skill/general/stoptime", "Alien", "None", false).Motivo;
+			Conferir("...menos a Time Stop, que responde FORA DO PORT com 4 marcos investidos ou com nenhum (o sistema dela nao existe aqui: `SkillsFechadas`)",
+					 fechadaCom4 == Recusa.ForaDoPort && fechadaCom0 == Recusa.ForaDoPort, $"{fechadaCom4} / {fechadaCom0}");
+			SkillsFechadas.TudoAbertoDeTeste = true;
+			try
+			{
+				Conferir("(defeito injetado: nada fechado) o recem-nascido volta a poder comprar a Time Stop -- um marco por um botao que nao fazia nada",
+						 recemNascido.PodeAprender(cat, "/datum/skill/general/stoptime", "Alien", "None", false) == Recusa.Pode,
+						 recemNascido.PodeAprender(cat, "/datum/skill/general/stoptime", "Alien", "None", false).ToString());
+			}
+			finally { SkillsFechadas.TudoAbertoDeTeste = false; }
 		}
 	}
 
@@ -538,9 +574,20 @@ public static class ArvoresBench
 		Conferir($"o censo classifica TODAS as {ligada0} folhas `ligada: 0` (nenhuma some)", trancadas == ligada0, $"{trancadas}");
 		// (Eram 43: a 43a era a `CustomAttacks/ki/beam/Beam`, de um arquivo que o `.dme` nao inclui -- saiu do catalogo
 		// em 2026-10-11 com as outras duas do sistema velho de ataques customizados.)
-		Conferir("42 delas um pre-requisito acende", r.TrancadasPorPreReq == 42, $"{r.TrancadasPorPreReq}");
-		Conferir("a Basic Buff Mastery esta nomeada como SEM ACENDEDOR", r.SemAcendedor.Contains("Basic Buff Mastery"),
-				 string.Join(", ", r.SemAcendedor.Take(12)));
+		// (...e voltaram a ser 43 em 2026-10-13: a Rapid Movement ganhou o pre-requisito que o port deu a ela.)
+		Conferir("43 delas um pre-requisito acende", r.TrancadasPorPreReq == 43, $"{r.TrancadasPorPreReq}");
+		// SEM O `niveis.json` NA MAO (este censo nao o carrega), as folhas de arvore que sobram sem acendedor sao as
+		// que um DEGRAU acende: as Advanced_* e Perfect_* (o nivel 100 da anterior) e a Full Power (o nivel 3 da
+		// Meditate Power). Com ele, nenhuma -- ver a `niveis` e a `--v021teste`.
+		List<string> semDegrau = [.. r.SemAcendedorEmArvore.Where(n => !n.StartsWith("Advanced ", StringComparison.Ordinal)
+																		&& !n.StartsWith("Perfect ", StringComparison.Ordinal) && n != "Full Power")];
+		Conferir("a Basic Buff Mastery NAO esta mais entre as SEM ACENDEDOR, e das que pendem de arvore so sobram as que um DEGRAU acende (Advanced, Perfect e a Full Power)",
+				 !r.SemAcendedor.Contains("Basic Buff Mastery") && semDegrau.Count == 0 && r.SemAcendedorEmArvore.Contains("Full Power"),
+				 string.Join(", ", semDegrau));
+		CensoDeSkills.Relatorio cru = CensoDeSkills.Levantar(_cru);
+		Conferir("(defeito injetado: o catalogo sem as correcoes do port) a Basic Buff Mastery volta a ser nomeada como SEM ACENDEDOR, e sao 42 por pre-requisito",
+				 cru.SemAcendedor.Contains("Basic Buff Mastery") && cru.TrancadasPorPreReq == 42,
+				 $"{cru.TrancadasPorPreReq}; {string.Join(", ", cru.SemAcendedorEmArvore)}");
 		Conferir("a Golden Form esta como acendedor FORA DO ALCANCE (le `godki_at`, `KOcount`, `Age`)",
 				 r.AcendedorForaDoPort.Any(x => x.Nome == "Golden Form"),
 				 string.Join(", ", r.AcendedorForaDoPort.Select(x => x.Nome).Take(12)));

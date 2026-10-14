@@ -29,6 +29,9 @@ public sealed partial class GameServer
 	private bool ComandoDeSaque(ServerPlayer pl, string cmd, string arg)
 	{
 		if (cmd != Saque.Verbo) return false;
+		// (v0.2.1) A TELA DE UM DEPOSITO E A MESMA, e o clique nela manda o mesmo verbo: com um bau aberto, o item sai
+		// DELE. Ver `TirarDoDepositoAberto`.
+		if (TirarDoDepositoAberto(pl, arg.Trim())) return true;
 		Saquear(pl, arg.Trim());
 		return true;
 	}
@@ -104,7 +107,14 @@ public sealed partial class GameServer
 		if (NaMente(pl)) { Avisar(pl, "aqui dentro nada é real: não há o que levar."); return; }
 
 		ServerPlayer? alvo = CaidoPerto(pl);
-		if (alvo == null) { Avisar(pl, "não há ninguém nocauteado ao seu alcance."); return; }
+		if (alvo == null)
+		{
+			Avisar(pl, "não há ninguém nocauteado ao seu alcance.");
+			// A TELA DA MOCHILA DELE FECHA (2026-10-13): ele acordou, ou quem revistava se afastou. Sem isto a tela
+			// ficava aberta numa foto de mochila que nao esta mais ao alcance.
+			MandarSaqueFechado(pl);
+			return;
+		}
 
 		List<Pilha> leva = OQueDaPraLevarDe(alvo);
 
@@ -122,6 +132,13 @@ public sealed partial class GameServer
 			// do cliente fecha a cada escolha, e sem ela ele ficaria fechado sem ter levado nada.
 			Avisar(pl, "um de cada vez.");
 			MandarSaque(pl, alvo, leva);
+			return;
+		}
+
+		// A CARTEIRA DO CAIDO (dono, 2026-10-13) nao e item da lista: tem as duas linhas dela. Ver `RoubarACarteira`.
+		if (item is Saque.Zeni or Saque.Recursos)
+		{
+			RoubarACarteira(pl, alvo, item == Saque.Recursos, leva);
 			return;
 		}
 
@@ -175,9 +192,63 @@ public sealed partial class GameServer
 		MandarSaque(pl, alvo, OQueDaPraLevarDe(alvo));
 	}
 
+	/// <summary>O que da pra roubar da carteira deste caido agora. Ver `Saque.CarteiraQueDaPraLevar`.</summary>
+	private (double Zeni, double Recursos) CarteiraDoCaido(ServerPlayer alvo) =>
+		Saque.CarteiraQueDaPraLevar(alvo.Ficha.Zeni, alvo.Ficha.Recursos, EhCarcaca(alvo));
+
 	/// <summary>
-	/// A LISTA, pro ladrao e so pra ele (`S2C.Saque`): quem e o caido, e o que da pra levar dele. A bancada a le
-	/// pelo <see cref="EscutaDeSaque"/>, que recebe o mesmo que vai no fio.
+	/// LEVA A CARTEIRA DO CAIDO -- o ramo "Zenni" do `Steal()` (`Grabbing.dm:25-28`), que no original nunca disparou
+	/// (ver o cabecalho do `Saque`): **tudo de uma vez**, e todo mundo a vista fica sabendo, com a quantia
+	/// (`"[src] steals [M]'s zenni! ([M.zenni]z)"`). O recurso e o mesmo gesto com o outro saldo.
+	/// </summary>
+	private void RoubarACarteira(ServerPlayer pl, ServerPlayer alvo, bool recursos, List<Pilha> leva)
+	{
+		(double zeni, double recs) = CarteiraDoCaido(alvo);
+		double quanto = recursos ? recs : zeni;
+		if (quanto < 1)
+		{
+			Avisar(pl, recursos ? "ele não carrega recursos." : "ele não carrega zeni.");
+			MandarSaque(pl, alvo, leva);
+			return;
+		}
+
+		if (recursos)
+		{
+			alvo.Ficha.Recursos -= quanto;
+			DarRecursos(pl, quanto);
+		}
+		else
+		{
+			alvo.Ficha.Zeni -= quanto;
+			pl.Ficha.Zeni += quanto;
+			MandarCarteira(pl);
+		}
+		MandarCarteira(alvo);
+		pl.ProximoSaqueMs = NowMs() + (long)(Saque.SegundosEntreSaques * 1000);
+
+		TipoDeLargado tipo = recursos ? TipoDeLargado.Recursos : TipoDeLargado.Zeni;
+		Falar(pl, Protocol.Fala.Emote, $"rouba {Chao.Nome(tipo, "", quanto)} de {NomeVisivel(alvo)}!");
+		GD.Print($"[server] {pl.Name} ROUBOU {Chao.Nome(tipo, "", quanto)} de {alvo.Name}");
+		MandarSaque(pl, alvo, OQueDaPraLevarDe(alvo));
+	}
+
+	/// <summary>Manda a tela de revistar FECHAR: o `S2C.Saque` com o id zero. So pra quem tem tela.</summary>
+	private static void MandarSaqueFechado(ServerPlayer pl)
+	{
+		if (pl.Peer == null) return;
+		var w = Protocol.Begin(Protocol.S2C.Saque);
+		w.Put(0);
+		w.Put("");
+		w.Put((byte)0);
+		w.Put(0.0);
+		w.Put(0.0);
+		pl.Peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	/// <summary>
+	/// A LISTA, pro ladrao e so pra ele (`S2C.Saque`): quem e o caido, o que da pra levar dele, e a carteira dele. A
+	/// bancada a le pelo <see cref="EscutaDeSaque"/>, que recebe o mesmo que vai no fio (a carteira, pelo
+	/// <see cref="CarteiraDoCaido"/>).
 	/// </summary>
 	private void MandarSaque(ServerPlayer pl, ServerPlayer alvo, List<Pilha> leva)
 	{
@@ -193,6 +264,10 @@ public sealed partial class GameServer
 			w.Put(leva[i].Id);
 			w.Put((ushort)Math.Clamp(leva[i].Quantidade, 0, ushort.MaxValue));
 		}
+		// A CARTEIRA DO CAIDO, no fim (2026-10-13): o que da pra roubar de cada saldo.
+		(double zeni, double recursos) = CarteiraDoCaido(alvo);
+		w.Put(zeni);
+		w.Put(recursos);
 		pl.Peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 

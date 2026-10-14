@@ -1162,4 +1162,37 @@ public partial class GameServer
 	{
 		if (_players.TryGetValue(id, out ServerPlayer? pl)) pl.RecargaDeEnsino = 0;
 	}
+
+	/// <summary>
+	/// SO PRA BANCADA DE JANELA: o palco da LICAO DE MESTRE. O jogador passa a saber uma skill que NAO se ensina a
+	/// estranho e que e do corpo deste aluno (escolhida por predicado, a primeira pelo caminho), o aluno ganha os
+	/// marcos dela, e a recarga de licao do jogador e zerada. Devolve o caminho da skill ("" = nao deu).
+	/// </summary>
+	internal string PrepararLicaoDeMestreDeTeste(int idDoHost, string sigDoAluno)
+	{
+		if (_skills == null || !_players.TryGetValue(idDoHost, out ServerPlayer? mestre) || CorpoDaAssinatura(sigDoAluno) is not { Peer: null } aluno) return "";
+		aluno.Livro.Conceder(60);
+		Jandirus.Core.Skills.Skill? s = _skills.Todas
+			.Where(x => !x.Ensinavel && !x.Arvore && x.Nome.Length > 0 && Jandirus.Core.Skills.EnsinoDeSkill.Custo(x) > 0
+						&& !aluno.Livro.Sabe(x.Path) && !mestre.Livro.Sabe(x.Path)
+						&& !Jandirus.Core.Skills.EnsinoDeSkill.ForaDoCorpo(aluno.Livro.PodeAprender(_skills, x.Path, aluno.Race, aluno.Class, vilao: false)))
+			.OrderBy(x => x.Path, StringComparer.Ordinal).FirstOrDefault();
+		if (s == null) return "";
+		mestre.Livro.Dar(s.Path);
+		AplicarPoderes(mestre);
+		AplicarEfeitos(mestre);   // (e daqui que o pacote de skills sai pra tela do jogador)
+		mestre.RecargaDaLicao = 0;
+		return s.Path;
+	}
+
+	/// <summary>SO PRA BANCADA DE JANELA: a licao que esta na mesa deste corpo do palco -- o caminho da skill, ou `tecnica:id`; "" = nenhuma.</summary>
+	internal string LicaoOferecidaDeTeste(string sig) =>
+		CorpoDaAssinatura(sig)?.PedidoDeLicao is { } p && NowMs() <= p.Ate ? (p.Tecnica > 0 ? $"tecnica:{p.Tecnica}" : p.Path) : "";
+
+	/// <summary>SO PRA BANCADA DE JANELA: tira a licao da mesa deste corpo do palco (ele nao tem tela pra responder) e zera a recarga de licao do jogador.</summary>
+	internal void EsquecerLicaoDeTeste(int idDoHost, string sig)
+	{
+		if (CorpoDaAssinatura(sig) is { Peer: null } corpo) corpo.PedidoDeLicao = null;
+		if (_players.TryGetValue(idDoHost, out ServerPlayer? pl)) pl.RecargaDaLicao = 0;
+	}
 }

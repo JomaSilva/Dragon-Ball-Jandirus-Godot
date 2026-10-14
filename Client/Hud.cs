@@ -105,6 +105,9 @@ public partial class Hud : CanvasLayer
 		// O CONVITE DO TORNEIO, no canto inferior direito (pedido do dono, 2026-09-06). Ver `PainelDoTorneio`.
 		_torneio = new PainelDoTorneio { Name = "Torneio" };
 		raiz.AddChild(_torneio);
+		// OS PEDIDOS QUE ESPERAM RESPOSTA (convite de mestre, licao, fusao...), no mesmo canto e logo acima do convite
+		// do torneio (dono, 2026-10-13). Ver `PainelDePedidos`.
+		raiz.AddChild(new PainelDePedidos { Name = "Pedidos" });
 		// O DISCO DO DRAGON RADAR, no mesmo canto (dono, 2026-10-10): so aparece pra quem tem o aparelho, e o
 		// convite do torneio encosta a esquerda dele. Ver `RadarNaTela`.
 		raiz.AddChild(new RadarNaTela { Name = "RadarDeEsferas" });

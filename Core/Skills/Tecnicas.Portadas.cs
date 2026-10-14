@@ -310,6 +310,16 @@ public static partial class Tecnicas
 		Por("Counter_Taunt", "Contra-Provocacao", Modo.Instantanea, "Uma resposta atravessada que machuca: o seu alvo marcado leva dano MENTAL, um quarto de um golpe, sem poder desviar.");
 		Por("Slap", "Tapa", Modo.Instantanea, "Voce bate na propria bunda e todo mundo por perto que estava lutando fica um segundo e meio sem reagir, de tao pasmo.");
 
+		// ---- lote G14 (2026-10-13): OS VERBS QUE A LOJA PROMETIA E NAO ENTREGAVA ----
+		// Ver `Server/GameServer.Tecnicas.G14.cs`.
+		Por("Afterimage_Toggle", "Miragem: ligar / desligar", Modo.Instantanea, "Guarda ou solta a tecnica da Miragem. Desligada, voce nao pisca (o duplo clique no chao nao te leva), nao deixa vulto ao investir nem ao esquivar, e nao entra no embate de Zanzoken. Aperte de novo pra voltar.");
+		Por("Zanzoken_Afterimage", "Zanzoken: Miragens", Modo.Instantanea, "Por cinco segundos voce se move rapido demais pra vista: deixa uma miragem a cada meio segundo e os golpes dos outros tem bem menos chance de te acertar. Pede uma mao livre e um pouco de vigor.");
+		// ---- lote G15 (2026-10-13): AS SKILLS QUE CRIAM ITEM ----
+		// Ver `Server/GameServer.Tecnicas.G15.cs` e `Core/Items/Materializacao.cs`.
+		Por("Materialize", "Materializar", Modo.Instantanea, "Junta energia e da forma a um item, que nasce no chao aos seus pes: uns PESOS de treino (leves -- o peso maximo se compra) ou uma ROUPA do guarda-roupa, na cor que voce quiser. O botao abre a escolha. Custa uma boa parte do seu Ki; quanto maior a sua pericia esoterica, menos.");
+
+		Por("Acid_Spit", "Cuspe Acido", Modo.Instantanea, "Cospe uma bola de acido pra frente. Fere como um tiro forte e ENVENENA quem acerta: por tres segundos o corpo dele continua perdendo um pouco de vida. Pede um decimo do seu Ki cheio.");
+
 		// ---- lote G12: OS PROJETEIS QUE FALTAVAM E OS SISTEMAS PEQUENOS ----
 		// Onze verbos do censo de 2026-09-02 (tabela 1, familia F2). A Precognicao nao esta aqui porque
 		// nao tem verbo (e um `effector()`). Ver `Server/GameServer.Tecnicas.G12.cs`.
@@ -322,7 +332,7 @@ public static partial class Tecnicas
 		Por("Absorb_Android", "Dreno de Energia", Modo.Sustentada, "Contra um Androide caido: absorve-o inteiro. Contra qualquer outro caido: comeca a DRENAR a energia dele, um decimo a cada 0,7 s, enquanto ele estiver colado em voce -- e ele morre se a energia cair abaixo de um decimo. Aperte de novo, leve um golpe ou caia e o dreno para.");
 		Por("Imitation", "Imitacao", Modo.Sustentada, "Copia o nome e a aparencia inteira de quem voce marcou (ou do mais proximo, a ate cinco tiles) -- pra todo mundo que olhar. Aperte de novo pra voltar a ser voce.");
 		Por("SplitForm", "Divisao do Corpo", Modo.Instantanea, "Cria uma copia sua com METADE do seu poder expresso, que obedece aos verbos Split Form da aba Other (seguir, parar, atacar o alvo, atacar o mais perto, desfazer). Custa metade do Ki maximo dividido pela sua pericia de divisao, e cada copia viva abaixa o seu proprio poder. Ela some sozinha em 100 s, ou quando cai.");
-		Por("Grow_Senzu_Bean", "Cultivar Senzu", Modo.Instantanea, "Comeca a cultivar uma Semente Senzu: um minuto depois ela aparece na sua mochila. Uma de cada vez.", aba: "Outros");
+		Por("Grow_Senzu_Bean", "Cultivar Senzu", Modo.Instantanea, "Comeca a cultivar uma Semente Senzu: um minuto depois ela brota no chao, um passo ao sul de onde voce estiver -- e so pegar. Uma de cada vez.", aba: "Outros");
 		Por("Ki_Targets", "Alvos de Ki", Modo.Sustentada, "Voce entra em meditacao e, a cada 3,5 s, uma esfera de treino nasce ate quatro tiles de voce e vaga por cinco segundos. SOQUE-A (rende ganho de treino). Aperte de novo, ou pare de meditar, pra encerrar.");
 
 		// ---- lote G11: "UMA FUNCAO SOBRE PECA EXISTENTE" ----

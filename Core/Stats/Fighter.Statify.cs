@@ -153,7 +153,11 @@ public sealed partial class Fighter
         double hdnptlmod = hdnptltoBP > 1 ? Math.Max(DmMath.Log(4, hdnptltoBP), 1) : 1;
 
         // piso 120 pra um baseAnger perdido nao deixar o personagem "Muito Irritado" pra sempre
-        MaxAnger = Math.Max(120, hdnptlmod * Ewillpower * angerMod * baseAnger) + legendaryAngerBonus;
+        // (o bonus da skill Legendary Anger entra AQUI -- `master.dm:180` --, e por isso ela sobe os DOIS degraus da
+        // raiva por amigo: os dois saem do `MaxAnger`, ver `Combat.RaivaEmDegraus`. O `? 0` e o defeito injetado da
+        // bancada; em jogo ele e sempre falso.)
+        MaxAnger = Math.Max(120, hdnptlmod * Ewillpower * angerMod * baseAnger)
+                   + (Jandirus.Core.Combat.RaivaEmDegraus.LegendaryAngerSoNoTetoDeTeste ? 0 : legendaryAngerBonus);
         MaxKi = baseKi * KiMod * kiAmp * trueKiMod * hdnptlmod * Math.Max(0.01, kicapacity_remove) * TMaxKi;
 
         // Capacidade de concentrar Ki no corpo antes de se machucar, e o teto do power-up.
@@ -166,7 +170,19 @@ public sealed partial class Fighter
 
         double skillPup = Math.Max(kicirculationskill / 10 * (kicontrolskill / 10), 1)
                           * KiMod * kicapacityMod * hdnptlmod * Math.Max(Ekiskill, 0.1);
-        powerupcap = Math.Max(1.4 * Math.Max(DmMath.Log(7, Math.Max(skillPup, 1)), 1) * OozaruBuff, 1.4);
+        // ============================ O TETO DO JOGO E 200% (dono, 2026-10-13) ============================
+        // *"o teto limite do jogo q vc pode ter de ki seria 200%, entao escale as pericias e skills etc pro teto de
+        // 200%, pq atualmente rapidinho vc consegue passar de 200% de ki oq quebra um pouco as coisas no jogo.
+        // (entao 200% seria o cara q tem uma pericia absurda, no maximo, do controle de ki)"*.
+        //
+        // A conta do DM (`master.dm:183`) e `1.4 * log7(circulacao/10 * controle/10 * KiMod * kicapacityMod *
+        // hdnptlmod * Ekiskill)`: com as duas pericias em 30 ja passava de 200%, e no talo chegava a 500%. A de
+        // agora le SO as duas pericias (`CargaDeKi.TetoPelaPericia`): 140% de fabrica, 200% com as duas no maximo.
+        // O botao devolve a de la, pra bancada.
+        // ====================================================================================================
+        powerupcap = Jandirus.Core.Combat.CargaDeKi.TetoPelaFormulaDoDmDeTeste
+            ? Math.Max(1.4 * Math.Max(DmMath.Log(7, Math.Max(skillPup, 1)), 1) * OozaruBuff, 1.4)
+            : Jandirus.Core.Combat.CargaDeKi.TetoPelaPericia(kicirculationskill, kicontrolskill);
 
         // Regeneracao de Ki: sempre passa por Ki Skill e pela MAIOR entre tecnica e esoterico.
         KIregen = kiregenMod * basekiregen * kiregenStyle * trueKiMod * hdnptlmod * Tkiregen

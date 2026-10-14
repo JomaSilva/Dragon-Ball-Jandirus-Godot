@@ -7,7 +7,7 @@ namespace Jandirus.Server;
 /// BANCADA AO VIVO DOS DOIS DEGRAUS DE RAIVA -- roda dentro do `--formasteste`.
 ///
 /// ============================ O QUE SO DAQUI SE VE ============================
-/// A bancada `raiva` (AssetPipeline) prova as REGRAS: quem pede `Extrema`, quem pede `Lendaria`, e
+/// A bancada `raiva` (AssetPipeline) prova as REGRAS: quem pede `Extrema`, quem pede `Comum`, e
 /// que o `EstadoDeForma.Avaliar` cobra as duas. Ela nao pode provar TRES coisas, e as tres sao
 /// justamente onde este port ja quebrou antes:
 ///
@@ -36,7 +36,7 @@ public partial class GameServer
 		string classeAntes = pl.Ficha.Class, formaAntes = pl.Forma.Atual;
 		var liberadasAntes = new HashSet<int>(pl.Forma.Liberadas);
 		var estreiasAntes = new HashSet<int>(pl.Forma.EstreiaVista);
-		long extremaAntes = pl.FuriaExtremaAte, lendariaAntes = pl.RaivaLendariaAte;
+		long extremaAntes = pl.FuriaExtremaAte, comumAntes = pl.RaivaComumAte;
 		double kiAntes = pl.Ficha.Ki, bpAntes = pl.Ficha.BP;
 		double raivaAntes = pl.Ficha.Anger, baseRaivaAntes = pl.Ficha.baseAnger;
 		double lendarioAntes = pl.Ficha.legendaryAngerBonus;
@@ -47,7 +47,7 @@ public partial class GameServer
 			pl.Ficha.dead = false;
 			pl.Ficha.Ki = pl.Ficha.MaxKi;
 			pl.FuriaExtremaAte = 0;
-			pl.RaivaLendariaAte = 0;
+			pl.RaivaComumAte = 0;
 			pl.Forma.Entrar(Catalogo.IdBase);
 			AplicarForma(pl);
 
@@ -55,17 +55,17 @@ public partial class GameServer
 			Checa("em paz, o perfil do JOGO diz calma",
 				  Perfil(pl).Raiva == NivelDeRaiva.Nenhuma, Perfil(pl).Raiva.ToString());
 
-			Checa("o gancho com grau LENDARIO erupciona",
-				  AmigoAbatido(pl, "Krillin", NivelDeRaiva.Lendaria), "");
-			Checa("...e o perfil do jogo passa a dizer LENDARIA",
-				  Perfil(pl).Raiva == NivelDeRaiva.Lendaria, Perfil(pl).Raiva.ToString());
+			Checa("o gancho com grau COMUM erupciona",
+				  AmigoAbatido(pl, "Krillin", NivelDeRaiva.Comum), "");
+			Checa("...e o perfil do jogo passa a dizer COMUM",
+				  Perfil(pl).Raiva == NivelDeRaiva.Comum, Perfil(pl).Raiva.ToString());
 			Checa("...e repetir o mesmo grau so prolonga (a cena nao toca duas vezes)",
-				  !AmigoAbatido(pl, "Yamcha", NivelDeRaiva.Lendaria), "");
+				  !AmigoAbatido(pl, "Yamcha", NivelDeRaiva.Comum), "");
 
 			// SUBIR DE GRAU ERUPCIONA DE NOVO, e tem que erupcionar: e uma dor NOVA, e a cinematica
 			// de luto que um dia pendurarem aqui nao pode ser engolida por uma janela mais fraca ja
 			// aberta. `jaEstava` compara o nivel EFETIVO com o grau que chegou -- e nao um booleano.
-			Checa("subir de LENDARIA pra EXTREMA erupciona de novo",
+			Checa("subir de COMUM pra EXTREMA erupciona de novo",
 				  AmigoAbatido(pl, "Bulma", NivelDeRaiva.Extrema), "");
 			Checa("...e o perfil passa a dizer EXTREMA (a maior das duas janelas manda)",
 				  Perfil(pl).Raiva == NivelDeRaiva.Extrema, Perfil(pl).Raiva.ToString());
@@ -73,7 +73,7 @@ public partial class GameServer
 			// E UM NOCAUTE NO MEIO DO LUTO NAO REBAIXA NINGUEM. Este e o defeito que os dois campos
 			// separados existem pra impedir: com uma janela so, este `AmigoAbatido` sobrescreveria
 			// o grau e fecharia o SSJ1 na cara de quem acabou de ver um amigo morrer.
-			AmigoAbatido(pl, "Chichi", NivelDeRaiva.Lendaria);
+			AmigoAbatido(pl, "Chichi", NivelDeRaiva.Comum);
 			Checa("um nocaute no meio do luto NAO rebaixa a raiva",
 				  Perfil(pl).Raiva == NivelDeRaiva.Extrema, Perfil(pl).Raiva.ToString());
 
@@ -85,13 +85,14 @@ public partial class GameServer
 
 			// AS JANELAS FECHAM SOZINHAS -- o prazo e puxado pra tras em vez de esperar 2 minutos.
 			pl.FuriaExtremaAte -= (long)(SegundosDeRaiva * 1000) + 500;
-			Checa("passado o prazo do luto, sobra a raiva LENDARIA (que ainda corre)",
-				  Perfil(pl).Raiva == NivelDeRaiva.Lendaria, Perfil(pl).Raiva.ToString());
-			pl.RaivaLendariaAte -= (long)(SegundosDeRaiva * 1000) + 500;
+			Checa("passado o prazo do luto, sobra a raiva COMUM (que ainda corre)",
+				  Perfil(pl).Raiva == NivelDeRaiva.Comum, Perfil(pl).Raiva.ToString());
+			pl.RaivaComumAte -= (long)(SegundosDeRaiva * 1000) + 500;
 			Checa("passado o prazo das duas, volta a calma sem ninguem apagar nada",
 				  Perfil(pl).Raiva == NivelDeRaiva.Nenhuma, Perfil(pl).Raiva.ToString());
 
 			ARaivaComoNumero(pl, Checa);
+			ALegendaryAngerNosDoisDegraus(pl, Checa);
 			ACinematicaDaFuriaAoVivo(pl, Checa);
 
 			// ============================ 2. A TECLA C NUM SAIYAJIN COMUM ============================
@@ -110,7 +111,7 @@ public partial class GameServer
 			//
 			//   * **A JANELA DE LUTO.** `ACinematicaDaFuriaAoVivo` (chamado dez linhas acima) acende
 			//     `NivelDeRaiva.Extrema` varias vezes, e o prazo dela e de DOIS MINUTOS de relogio real.
-			//     A bancada inteira roda em segundos: quando esta checagem perguntava "com raiva LENDARIA
+			//     A bancada inteira roda em segundos: quando esta checagem perguntava "com raiva COMUM
 			//     o C nao sai da base?", o corpo ainda estava em luto -- e a escada abria com razao.
 			//   * **AS FORMAS JA LIBERADAS.** A raiva paga a entrada UMA VEZ (`!Despertou(d.Id)` no passo 9
 			//     do `Avaliar`, o `hasbeast` do DM). Uma forma despertada por um bloco anterior dispensa a
@@ -124,14 +125,14 @@ public partial class GameServer
 			pl.Forma.Liberadas.Clear();
 			pl.Forma.EstreiaVista.Clear();
 			pl.FuriaExtremaAte = 0;
-			pl.RaivaLendariaAte = 0;
+			pl.RaivaComumAte = 0;
 			double portaDoSsj1 = PortaDeTeste(pl, "ssj1");
 			pl.Ficha.BP = portaDoSsj1 * (1 + Catalogo.AgioComumDoSaiyajin) / 2;
 			pl.Ficha.Statify();
 			pl.Ficha.Ki = pl.Ficha.MaxKi;
 			AplicarForma(pl);
 
-			AmigoAbatido(pl, "Krillin", NivelDeRaiva.Lendaria);
+			AmigoAbatido(pl, "Krillin", NivelDeRaiva.Comum);
 			EscutaDeAvisos = [];
 			SubirAteParar(pl);
 			List<string> comARaivaComum = EscutaDeAvisos ?? [];
@@ -158,13 +159,13 @@ public partial class GameServer
 			pl.Forma.Liberadas.Clear();
 			pl.Forma.EstreiaVista.Clear();
 			pl.FuriaExtremaAte = 0;
-			pl.RaivaLendariaAte = 0;
+			pl.RaivaComumAte = 0;
 			pl.CenaSegundos = 0;
 			pl.Ficha.BP = portaDoSsj1 * Catalogo.AgioComumDoSaiyajin * 1.05;
 			pl.Ficha.Statify();
 			pl.Ficha.Ki = pl.Ficha.MaxKi;
 			AplicarForma(pl);
-			AmigoAbatido(pl, "Krillin", NivelDeRaiva.Lendaria);
+			AmigoAbatido(pl, "Krillin", NivelDeRaiva.Comum);
 			SubirAteParar(pl);
 			Checa("**e com o poder que a raiva comum cobra (1,2x a porta), um amigo NOCAUTEADO tambem leva ao Super Saiyajin**",
 				  pl.Forma.Atual == "ssj1", pl.Forma.Atual);
@@ -181,7 +182,7 @@ public partial class GameServer
 			pl.Forma.Liberadas.Clear();
 			pl.Forma.EstreiaVista.Clear();
 			pl.FuriaExtremaAte = 0;
-			pl.RaivaLendariaAte = 0;
+			pl.RaivaComumAte = 0;
 			pl.Ficha.Class = "Legendary";
 			pl.Ficha.Ki = pl.Ficha.MaxKi;
 			AplicarForma(pl);
@@ -196,7 +197,7 @@ public partial class GameServer
 				  emPaz.Any(a => a.Contains("cair", StringComparison.OrdinalIgnoreCase)),
 				  string.Join(" | ", emPaz));
 
-			AmigoAbatido(pl, "Krillin", NivelDeRaiva.Lendaria);
+			AmigoAbatido(pl, "Krillin", NivelDeRaiva.Comum);
 			pl.Ficha.Ki = pl.Ficha.MaxKi;
 			SubirAteParar(pl);
 			Checa("com um nocaute so (e poder de sobra), o Legendary sobe",
@@ -208,7 +209,7 @@ public partial class GameServer
 			// estrita, um Legendary de luto ficaria preso na base sem entender por que.
 			pl.Forma.Entrar(Catalogo.IdBase);
 			pl.Forma.Liberadas.Clear();
-			pl.RaivaLendariaAte = 0;
+			pl.RaivaComumAte = 0;
 			pl.FuriaExtremaAte = 0;
 			AmigoAbatido(pl, "Bulma", NivelDeRaiva.Extrema);
 			pl.Ficha.Ki = pl.Ficha.MaxKi;
@@ -225,7 +226,7 @@ public partial class GameServer
 			pl.Forma.EstreiaVista.UnionWith(estreiasAntes);
 			pl.Ficha.Class = classeAntes;
 			pl.FuriaExtremaAte = extremaAntes;
-			pl.RaivaLendariaAte = lendariaAntes;
+			pl.RaivaComumAte = comumAntes;
 			pl.Ficha.Ki = kiAntes;
 			pl.Ficha.BP = bpAntes;
 			pl.Ficha.baseAnger = baseRaivaAntes;
@@ -311,13 +312,13 @@ public partial class GameServer
 			return pl.Ficha.expressedBP;
 		}
 
-		long extremaGuardada = pl.FuriaExtremaAte, lendariaGuardada = pl.RaivaLendariaAte;
+		long extremaGuardada = pl.FuriaExtremaAte, comumGuardada = pl.RaivaComumAte;
 		pl.FuriaExtremaAte = 0;
-		pl.RaivaLendariaAte = 0;
+		pl.RaivaComumAte = 0;
 		ProjetarRaiva(pl);
 		double emPaz = PoderAgora();
 		pl.FuriaExtremaAte = extremaGuardada;
-		pl.RaivaLendariaAte = lendariaGuardada;
+		pl.RaivaComumAte = comumGuardada;
 		ProjetarRaiva(pl);
 		double emFuria = PoderAgora();
 
@@ -411,7 +412,7 @@ public partial class GameServer
 
 		// ============================ E O PRAZO VENCE SOZINHO -- O 2x PERMANENTE NAO EXISTE ============================
 		pl.FuriaExtremaAte = NowMs() - 1;
-		pl.RaivaLendariaAte = 0;
+		pl.RaivaComumAte = 0;
 		ProjetarRaiva(pl);
 		pl.Ficha.Tick(agoraMs: NowMs());
 		Checa("vencido o prazo, a raiva volta a 100 SOZINHA (Stats.dm:438-441)",
@@ -450,8 +451,148 @@ public partial class GameServer
 		pl.Ficha.baseAnger = baseGuardada;
 		pl.Ficha.Statify();
 		pl.FuriaExtremaAte = 0;
-		pl.RaivaLendariaAte = 0;
+		pl.RaivaComumAte = 0;
 		ProjetarRaiva(pl);
+	}
+
+	/// <summary>
+	/// ============================ A SKILL `LEGENDARY ANGER` NOS DOIS DEGRAUS (pergunta do dono, 2026-10-13) ============================
+	/// *"lendario saiyajin tem como ter a skill raiva lendaria e com isso o multiplicador de raiva dele em todos os
+	/// niveis (extreme e normal) é maior (no dm mostra) (...) veja se ta tudo certo e se a skill dele ta certa pq
+	/// atualizamos a raiva mas n sei se essa skill ta atualizada com o novo sistema de raiva"*.
+	///
+	/// A SKILL SAO TRES LINHAS NO ORIGINAL: `savant.legendaryAngerBonus = 100` (`saiyan.dm:50`), `MaxAnger = max(120,
+	/// ...) + legendaryAngerBonus` (`master.dm:180`) e `angerBuff = min(Anger/100, 2 + legendaryAngerBonus/100)`
+	/// (`base.dm:88`). E os dois degraus da raiva por amigo saem do `MaxAnger` (`RaivaEmDegraus.Topo`): a extrema vale
+	/// ele inteiro, a comum vale `100 + folga/1,30`. Entao o +100 entra INTEIRO na extrema (+1,0x) e dividido por 1,30
+	/// na comum (+0,77x) -- "em todos os niveis", como o dono descreve.
+	///
+	/// O QUE A SECAO DE CIMA NAO MEDIA: ela escreve o campo a mao, com um `baseAnger` de 1000, e olha so o TETO de 3x
+	/// na extrema. Um `MaxAnger` que deixasse o bonus de fora (a skill so no teto) passava verde ali -- com 1000 de
+	/// raiva de base o teto e a unica coisa que decide. Aqui a skill e APRENDIDA pelo canal do jogo (`Livro.Dar` +
+	/// `AplicarEfeitos`, as duas linhas que o `Aprender` executa depois de cobrar), num corpo no PISO de raiva
+	/// (`MaxAnger` 120, o de fabrica), e cada degrau e medido em numero, em buff e em BP -- sem ela, com ela, e com o
+	/// defeito.
+	///
+	/// E A PORTA: so a classe Legendary a ve acesa (o `growbranches()` da `SaiyanRacial`, `saiyan.dm:15-17`).
+	/// ================================================================================================================================
+	/// </summary>
+	private void ALegendaryAngerNosDoisDegraus(ServerPlayer pl, Action<string, bool, string> Checa)
+	{
+		const string LegendaryAnger = "/datum/skill/lssj/Legendary_Anger";
+		if (_skills == null || pl.Livro == null)
+		{
+			Checa("PRECONDICAO: ha catalogo de skills e o corpo da bancada tem livro", false, "");
+			return;
+		}
+		Jandirus.Core.Skills.SkillCatalog catalogo = _skills;
+
+		// ============================ A PORTA: SO O LEGENDARY ============================
+		// Um livro novo por classe, com marcos de sobra, pela mesma pergunta que o `Aprender` faz (`Avaliar`).
+		Jandirus.Core.Skills.Recusa PortaPra(string classe)
+		{
+			var livro = new Jandirus.Core.Skills.SkillBook();
+			livro.Conceder(10);
+			livro.Recalcular(catalogo, Jandirus.Core.Skills.ContextoDeRegra.Vazio("Saiyan", classe), "Saiyan", classe);
+			return livro.PodeAprender(catalogo, LegendaryAnger, "Saiyan", classe, vilao: false);
+		}
+		Jandirus.Core.Skills.Recusa doComum = PortaPra("Normal"), doLendario = PortaPra("Legendary");
+		Checa("a Legendary Anger so se oferece a classe LEGENDARY: o Saiyajin comum a ve apagada (a regra `Class=='Legendary'` da arvore racial nao valeu) e o Legendary pode compra-la",
+			  doComum == Jandirus.Core.Skills.Recusa.AguardaAcendedor && doLendario == Jandirus.Core.Skills.Recusa.Pode,
+			  $"Normal: {doComum}; Legendary: {doLendario}");
+
+		bool jaSabia = pl.Livro.Sabe(LegendaryAnger);
+		double baseGuardada = pl.Ficha.baseAnger;
+		try
+		{
+			if (jaSabia) pl.Livro.Esquecer(LegendaryAnger);
+			pl.Ficha.baseAnger = 1;      // o PISO: `max(120, ...)` devolve os 120 de fabrica (`mobvars.dm:45`)
+			AplicarEfeitos(pl);           // (o `Statify` roda la dentro)
+
+			// O BUFF E O BP DE UM DEGRAU, no instante em que a janela acende (o gotejamento ainda e zero) e pela MESMA
+			// divisao da secao de cima: entre as duas contas de poder so a JANELA muda, entao a razao de BP e o buff
+			// puro. A janela e acesa pela mao de producao (`AcenderJanelaDeRaiva`) e nao pelo `AmigoAbatido`: o luto de
+			// verdade tambem salta o Ki e pode transformar, e ai a razao mediria as tres coisas de uma vez.
+			(double Raiva, double Buff, double Vezes) Medir(NivelDeRaiva grau)
+			{
+				pl.FuriaExtremaAte = 0;
+				pl.RaivaComumAte = 0;
+				ProjetarRaiva(pl);
+				pl.Ficha.PowerLevel(agoraMs: NowMs());
+				double emPaz = pl.Ficha.expressedBP;
+				AcenderJanelaDeRaiva(pl, grau, NowMs() + (long)(SegundosDeRaiva * 1000));
+				pl.Ficha.PowerLevel(agoraMs: NowMs());
+				(double, double, double) lido = (pl.Ficha.Anger, pl.Ficha.angerBuff, pl.Ficha.expressedBP / Math.Max(emPaz, 1e-9));
+				pl.FuriaExtremaAte = 0;
+				pl.RaivaComumAte = 0;
+				ProjetarRaiva(pl);
+				return lido;
+			}
+
+			double semSkill = pl.Ficha.MaxAnger;
+			(double Raiva, double Buff, double Vezes) comum0 = Medir(NivelDeRaiva.Comum), extrema0 = Medir(NivelDeRaiva.Extrema);
+			Checa("SEM a skill, no piso de fabrica: MaxAnger 120, a furia EXTREMA vale 1,20x e a raiva COMUM vale 1,154x (`100 + 20/1,30`)",
+				  Math.Abs(semSkill - 120) < 1e-6 && pl.Ficha.legendaryAngerBonus == 0
+				  && Math.Abs(extrema0.Buff - 1.20) < 0.001 && Math.Abs(comum0.Buff - (100 + 20 / 1.30) / 100) < 0.001,
+				  $"MaxAnger {semSkill:0.###}; extrema {extrema0.Buff:0.####}x; comum {comum0.Buff:0.####}x");
+
+			// ---- aprende, pelo canal do jogo ----
+			pl.Livro.Dar(LegendaryAnger);
+			AplicarEfeitos(pl);
+			double comSkill = pl.Ficha.MaxAnger;
+			Checa("APRENDIDA pelo canal do jogo, a skill escreve o bonus na ficha (`legendaryAngerBonus = 100`, `saiyan.dm:50`) e o MaxAnger sobe exatamente 100 (`master.dm:180`)",
+				  pl.Ficha.legendaryAngerBonus == 100 && Math.Abs(comSkill - (semSkill + 100)) < 1e-6,
+				  $"bonus {pl.Ficha.legendaryAngerBonus:0.#}; MaxAnger {semSkill:0.###} -> {comSkill:0.###}");
+
+			(double Raiva, double Buff, double Vezes) comum1 = Medir(NivelDeRaiva.Comum), extrema1 = Medir(NivelDeRaiva.Extrema);
+			Checa("**COM A SKILL A FURIA EXTREMA SOBE +1,0x**: vale o MaxAnger novo inteiro (220 -> 2,20x), acima do teto de 2x de quem nao a tem",
+				  Math.Abs(extrema1.Raiva - comSkill) < 0.05 && Math.Abs(extrema1.Buff - 2.20) < 0.001
+				  && Math.Abs(extrema1.Buff - extrema0.Buff - 1) < 0.001,
+				  $"raiva {extrema1.Raiva:0.###}; {extrema0.Buff:0.####}x -> {extrema1.Buff:0.####}x");
+			Checa("**...E A RAIVA COMUM SOBE TAMBEM** (o degrau do amigo nocauteado sai do mesmo MaxAnger): `100 + 120/1,30` = 192,3 -> 1,923x, +0,77x",
+				  Math.Abs(comum1.Raiva - (100 + (comSkill - 100) / Jandirus.Core.Combat.RaivaEmDegraus.DivisorDaRaivaComum)) < 0.05
+				  && Math.Abs(comum1.Buff - (100 + 120 / 1.30) / 100) < 0.001
+				  && Math.Abs(comum1.Buff - comum0.Buff - 100 / 1.30 / 100) < 0.001,
+				  $"raiva {comum1.Raiva:0.###}; {comum0.Buff:0.####}x -> {comum1.Buff:0.####}x");
+			Checa("...e o BP EXPRESSO acompanha nos dois degraus: com raiva ele e o BP em paz VEZES o buff",
+				  Math.Abs(extrema1.Vezes - extrema1.Buff) < 1e-6 && Math.Abs(comum1.Vezes - comum1.Buff) < 1e-6,
+				  $"extrema {extrema1.Vezes:0.######}x (buff {extrema1.Buff:0.######}); comum {comum1.Vezes:0.######}x (buff {comum1.Buff:0.######})");
+			Checa("...e a ordem dos degraus continua: mesmo com a skill, a comum vale MENOS que a extrema",
+				  comum1.Buff < extrema1.Buff - 0.1, $"{comum1.Buff:0.####}x contra {extrema1.Buff:0.####}x");
+
+			// ---- o contra-exemplo: a skill so no TETO do buff, fora do `MaxAnger` ----
+			Jandirus.Core.Combat.RaivaEmDegraus.LegendaryAngerSoNoTetoDeTeste = true;
+			try
+			{
+				pl.Ficha.Statify();
+				(double Raiva, double Buff, double Vezes) comumD = Medir(NivelDeRaiva.Comum), extremaD = Medir(NivelDeRaiva.Extrema);
+				Checa("(defeito injetado: o bonus da skill fica so no teto do buff e nao entra no MaxAnger) os dois degraus voltam ao valor de quem nao tem a skill -- as duas checagens de cima REPROVAM",
+					  Math.Abs(extremaD.Buff - extrema0.Buff) < 0.001 && Math.Abs(comumD.Buff - comum0.Buff) < 0.001,
+					  $"extrema {extremaD.Buff:0.####}x; comum {comumD.Buff:0.####}x");
+			}
+			finally
+			{
+				Jandirus.Core.Combat.RaivaEmDegraus.LegendaryAngerSoNoTetoDeTeste = false;
+				pl.Ficha.Statify();
+			}
+
+			// ---- esquecida, tudo volta ----
+			pl.Livro.Esquecer(LegendaryAnger);
+			AplicarEfeitos(pl);
+			Checa("ESQUECIDA a skill, o bonus sai da ficha e o MaxAnger volta ao de antes (o canal de efeitos desfaz o que escreveu)",
+				  pl.Ficha.legendaryAngerBonus == 0 && Math.Abs(pl.Ficha.MaxAnger - semSkill) < 1e-6,
+				  $"bonus {pl.Ficha.legendaryAngerBonus:0.#}; MaxAnger {pl.Ficha.MaxAnger:0.###}");
+		}
+		finally
+		{
+			Jandirus.Core.Combat.RaivaEmDegraus.LegendaryAngerSoNoTetoDeTeste = false;
+			if (jaSabia) pl.Livro.Dar(LegendaryAnger); else pl.Livro.Esquecer(LegendaryAnger);
+			pl.Ficha.baseAnger = baseGuardada;
+			AplicarEfeitos(pl);
+			pl.FuriaExtremaAte = 0;
+			pl.RaivaComumAte = 0;
+			ProjetarRaiva(pl);
+		}
 	}
 
 	/// <summary>
@@ -498,7 +639,7 @@ public partial class GameServer
 		void EmPaz()
 		{
 			pl.FuriaExtremaAte = 0;
-			pl.RaivaLendariaAte = 0;
+			pl.RaivaComumAte = 0;
 			pl.FuriaCenaAte = 0;
 			ProjetarRaiva(pl);
 			EscutaDeFurias?.Clear();
@@ -566,7 +707,7 @@ public partial class GameServer
 			// Janelas fechadas (erupcao nova, legitima) e a recarga ainda correndo: o DM nao toca.
 			// E o caso da briga em grupo -- ver o comentario do `ServerPlayer.FuriaCenaAte`.
 			pl.FuriaExtremaAte = 0;
-			pl.RaivaLendariaAte = 0;
+			pl.RaivaComumAte = 0;
 			ProjetarRaiva(pl);
 			EscutaDeFurias?.Clear();
 			Checa("a recarga de 60 s foi anotada",
@@ -579,7 +720,7 @@ public partial class GameServer
 
 			// E VENCIDA A RECARGA, ela volta -- puxando o prazo pra tras em vez de esperar um minuto.
 			pl.FuriaExtremaAte = 0;
-			pl.RaivaLendariaAte = 0;
+			pl.RaivaComumAte = 0;
 			pl.FuriaCenaAte -= (long)(Cinematicas.SegundosEntreFurias * 1000) + 500;
 			ProjetarRaiva(pl);
 			EscutaDeFurias?.Clear();
@@ -601,7 +742,7 @@ public partial class GameServer
 			// e neste jogo o amigo sempre CAI antes de morrer. A divergencia esta declarada em
 			// `JaEstavaNaFuriaDaCena` (`GameServer.Raiva.cs`), e o contra-exemplo mora na `--raivateste`.
 			EmPaz();
-			AmigoAbatido(pl, "Krillin", NivelDeRaiva.Lendaria);
+			AmigoAbatido(pl, "Krillin", NivelDeRaiva.Comum);
 			Checa("ver um amigo CAIR nao toca cena nenhuma (o `extreme = 0` do DM)", Furias() == 0,
 				  $"{Furias()} cena(s)");
 			bool erupcao = AmigoAbatido(pl, "Krillin", NivelDeRaiva.Extrema);
@@ -631,7 +772,7 @@ public partial class GameServer
 			pl.Forma.EstreiaVista.Clear();
 			pl.Forma.EstreiaVista.UnionWith(estreiasAntes);
 			pl.FuriaExtremaAte = 0;
-			pl.RaivaLendariaAte = 0;
+			pl.RaivaComumAte = 0;
 			ProjetarRaiva(pl);
 			pl.Ficha.Statify();
 		}

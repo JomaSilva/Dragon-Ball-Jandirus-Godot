@@ -169,10 +169,18 @@ public partial class PauseMenu : CanvasLayer
         GetViewport().SetInputAsHandled();
     }
 
+    /// <summary>O controle de zoom e o rotulo dele, pra tela mostrar o zoom de AGORA ao abrir (ele muda tambem pela roda do mouse).</summary>
+    private HSlider? _zoom;
+    private Label? _zoomTxt;
+
     public void Abrir()
     {
         Aberto = true;
         _painel.Visible = true;
+
+        // O ZOOM PODE TER MUDADO PELA RODA DO MOUSE (2026-10-13): sem sinal, pra nao regravar o que ja esta gravado.
+        _zoom?.SetValueNoSignal(_cfg.Zoom);
+        if (_zoomTxt != null) _zoomTxt.Text = $"{_cfg.Zoom}x";
 
         // A TELA SE AJUSTA NA ABERTURA, e nao so na montagem. Sao duas coisas que mudam por baixo
         // dela sem ninguem avisar: o CONTEXTO (o mesmo node atende o lobby e o mundo) e o TETO DE
@@ -389,6 +397,9 @@ public partial class PauseMenu : CanvasLayer
         // ZOOM INTEIRO: em arte de pixel um zoom quebrado faz a imagem cintilar andando.
         var zoom = new HSlider { MinValue = Settings.ZoomMin, MaxValue = Settings.ZoomMax, Step = 1, Value = _cfg.Zoom };
         var zoomTxt = new Label { Text = $"{_cfg.Zoom}x", CustomMinimumSize = new Vector2(40, 0) };
+        // (guardados: o zoom tambem muda pela roda do mouse, e a tela o rele ao abrir -- ver `Abrir`)
+        _zoom = zoom;
+        _zoomTxt = zoomTxt;
         zoom.ValueChanged += v =>
         {
             _cfg.Zoom = (int)v;

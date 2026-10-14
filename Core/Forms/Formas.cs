@@ -453,7 +453,7 @@ public sealed class FormaDef
 	/// <summary>
 	/// ============================ O PRECO DA RAIVA **COMUM** -- o ramo `if("Angry")` do DM ============================
 	/// POR QUANTO A PORTA DE BP E MULTIPLICADA quando quem DESPERTA esta forma esta so na raiva comum (viu um
-	/// amigo CAIR, <see cref="NivelDeRaiva.Lendaria"/>) e nao na furia extrema (viu morrer). ZERO = a raiva comum
+	/// amigo CAIR, <see cref="NivelDeRaiva.Comum"/>) e nao na furia extrema (viu morrer). ZERO = a raiva comum
 	/// nao abre esta forma: o Beast, e tudo o que nao nasce da raiva.
 	///
 	/// O dono (2026-10-11): *"o rage normal (ao ver um amigo ser nocauteado mas n morto) tb faz vc se transformar
@@ -659,6 +659,28 @@ public sealed class FormaDef
 	/// mexer aqui continua movendo os tres, o que mudou e que agora da pra mover um sem os outros.
 	/// </summary>
 	public string Aura = "ffd24a";
+
+	/// <summary>
+	/// A COR QUE A FORMA DA AO CORPO INTEIRO -- a pele. **Vazio = o corpo fica como a ficha o pinta**, e vazio e
+	/// quase tudo: forma nenhuma do original repinta a pele (as que mudam o corpo trocam a FOLHA dele -- ver
+	/// <see cref="Corpo"/>).
+	///
+	/// So o ORANGE a preenche (dono, 2026-10-13): *"na orange obviamente ficam laranja"*. Em MATIZ, e nao em soma:
+	/// o corpo do Namekuseijin e verde puro (`00e600`, `00b000`, `008000` -- medido na `Namek Young.png`), e somar
+	/// laranja em verde da amarelo. O matiz troca a cor e guarda o sombreado que o artista desenhou. Quem le e o
+	/// <see cref="Catalogo.PeleDaForma"/>.
+	/// </summary>
+	public string Pele = "";
+
+	/// <summary>
+	/// O PORTE DO CORPO NESTA FORMA -- por quanto o sprite E as camadas por cima dele (roupa, peso, scouter)
+	/// crescem. 1 = o tamanho de sempre.
+	///
+	/// So o ORANGE cresce (dono, 2026-10-13): *"(e o sprite deles, e os overlays tb) ficam um pouco maiores"*. NAO E O
+	/// `Crescer` DO OOZARU: aquele troca a folha por uma de 96 px; este estica a MESMA folha. Quem le e o
+	/// <see cref="Catalogo.PorteDaForma"/>.
+	/// </summary>
+	public double Porte = 1;
 
 	/// <summary>
 	/// A TINTA QUE A FORMA SOMA NO CABELO. **Vazio = nao pinta**, e vazio e a maioria.
@@ -921,7 +943,7 @@ public sealed record CurvaDeGodKi(string[] Origens, double SemGodKi, double AoDe
 /// La eles sao o MESMO proc com um parametro -- `mob/proc/Do_Anger_Stuff(var/extreme = 0)`
 /// (`Murder.dm:110`) --, e e por isso que aqui sao um nivel e nao dois sistemas:
 ///
-///   * <see cref="Lendaria"/> -- `Do_Anger_Stuff(0)`, de `KO.dm:37`: um amigo foi NOCAUTEADO por
+///   * <see cref="Comum"/> -- `Do_Anger_Stuff(0)`, de `KO.dm:37`: um amigo foi NOCAUTEADO por
 ///     um inimigo na sua view. O `koByEnemy` de la (`KO.dm:30-33`) ainda exige `combatTag ||
 ///     IsInFight`, pra um `lastDamager` velho nao transformar um desmaio por gravidade em luta.
 ///   * <see cref="Extrema"/> -- `Do_Anger_Stuff(1)`, de `Death.dm:81` (amigo MORTO por um inimigo,
@@ -942,7 +964,7 @@ public sealed record CurvaDeGodKi(string[] Origens, double SemGodKi, double AoDe
 /// ============================ E O QUE CADA DEGRAU **VALE** (dono, 2026-10-11) ============================
 /// Este enum nasceu pra PORTA das formas. O que cada degrau rende em poder, e o que so o de cima faz
 /// (a cinematica, o tema, o Ki no teto de carga), mora em `Core.Combat.RaivaEmDegraus`: la o
-/// <see cref="Lendaria"/> e a raiva COMUM (o "angry" do dono) e o <see cref="Extrema"/> e o degrau
+/// <see cref="Comum"/> e a raiva COMUM (o "angry" do dono) e o <see cref="Extrema"/> e o degrau
 /// mais alto.
 /// ================================================================================================
 ///
@@ -961,7 +983,7 @@ public sealed record CurvaDeGodKi(string[] Origens, double SemGodKi, double AoDe
 /// vale `100 + folga/1,30`, dentro da faixa "Angry" de `Stats.dm:448-449`), entao:
 ///
 ///   * <see cref="Extrema"/> abre toda forma de raiva pela PORTA dela;
-///   * <see cref="Lendaria"/> -- a COMUM -- abre as mesmas formas pela porta VEZES o agio da entrada
+///   * <see cref="Comum"/> -- a COMUM -- abre as mesmas formas pela porta VEZES o agio da entrada
 ///     (<see cref="FormaDef.AgioNaRaivaComum"/>: 1,2 no tronco Saiyajin, 1,3 no primeiro degrau do Heran, 1,5 na
 ///     linha Legendary). So o Beast nao tem ramo `"Angry"` no DM (`supersaiyan.dm:166`): so a extrema o abre.
 ///
@@ -975,8 +997,16 @@ public sealed record CurvaDeGodKi(string[] Origens, double SemGodKi, double AoDe
 /// `legendary anger` e por isso precisa de MENOS: basta ver um amigo ser NOCAUTEADO"*. O pedido novo vale por
 /// cima, e com os numeros do DM o Legendary deixou de pagar menos: na raiva comum ele paga 1,5x a porta, contra
 /// 1,2x do Saiyajin comum -- la o Legendary sempre foi o mais estrito (`supersaiyan.dm:67-70` contra `:111-114`).
-/// A `Legendary_Anger` (`saiyan.dm:38-51`) nunca tocou gatilho nenhum: ela e TETO DE PODER (`base.dm:88` leva o
-/// `angerBuff` de 2x pra 3x). O NOME `Lendaria` ficou daquela regra; hoje ele quer dizer "a raiva comum".
+/// A `Legendary_Anger` (`saiyan.dm:38-51`) nunca tocou gatilho nenhum: ela e PODER -- soma 100 no `MaxAnger`
+/// (`master.dm:180`), de onde saem os DOIS degraus, e leva o teto do `angerBuff` de 2x pra 3x (`base.dm:88`). Ver
+/// `Core.Combat.RaivaEmDegraus`.
+///
+/// ============================ O NOME DO DEGRAU COMUM (2026-10-13) ============================
+/// Ate esta data a raiva comum se chamava `Lendaria` neste enum (e o prazo dela, `RaivaLendariaAte`, no servidor) --
+/// heranca daquela regra de desconto. O dono leu o nome e perguntou se a raiva normal do jogo era "a lendaria": nao
+/// era, e o nome so servia pra confundir com a skill e com o Lendario. Virou <see cref="Comum"/>. (A FURIA LENDARIA do
+/// `GameServer.FuriaLendaria.cs` e outra coisa -- a posse do corpo na forma Legendary -- e continua com o nome dela.)
+/// =============================================================================================
 ///
 /// ============================ O QUE DO DM NAO ENTROU, E POR QUE ============================
 ///   * `"Annoyed"` (x2,2) e `"Slightly Angry"`: a regua de cinco humores (`Stats.dm:445-449`) virou estes dois
@@ -1003,14 +1033,14 @@ public enum NivelDeRaiva
 
 	/// <summary>
 	/// A RAIVA COMUM: ver um amigo CAIR numa luta (o "Angry" do DM). Abre toda forma de raiva menos o Beast, pela
-	/// porta de BP VEZES o agio da entrada (<see cref="FormaDef.AgioNaRaivaComum"/>). O nome e o da regra
-	/// anterior -- ver o cabecalho.
+	/// porta de BP VEZES o agio da entrada (<see cref="FormaDef.AgioNaRaivaComum"/>). (Ate 2026-10-13 este degrau
+	/// se chamava `Lendaria` -- ver o cabecalho.)
 	/// </summary>
-	Lendaria = 1,
+	Comum = 1,
 
 	/// <summary>
 	/// A FURIA EXTREMA: ver um amigo proximo MORRER (ou ser absorvido) na sua frente -- o "Very Angry" do DM. Abre
-	/// toda forma de raiva pela porta dela, e e a unica que abre o Beast. Satisfaz a <see cref="Lendaria"/> por
+	/// toda forma de raiva pela porta dela, e e a unica que abre o Beast. Satisfaz a <see cref="Comum"/> por
 	/// ser maior -- ver o cabecalho.
 	/// </summary>
 	Extrema = 2,
@@ -1862,6 +1892,103 @@ public static class Catalogo
 		d == null || d.Cabelo.Length == 0 ? null : d.Cabelo;
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--v021teste` e `--diagv021`): o penteado sem a arte de Super Saiyajin volta a ficar na
+	/// cor de sempre dentro da forma -- a v0.2.0. Lido pela propria <see cref="CorDoCabeloSemArte"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool CabeloSemArteNaoPintaDeTeste;
+
+	/// <summary>
+	/// ============================ O PENTEADO QUE NAO TEM A ARTE DA FORMA FICA DOURADO ============================
+	/// Dono, 2026-10-13: *"tem muitos cabelos q nao tem versao super saiyajin em sprite, no caso deles so precisa
+	/// pintar o cabelo de dourado (ssj3 todos usam o mesmo sprite de cabelo do goku ssj3 entao pro ssj3 n precisa
+	/// pintar nada) no ssj2 mesma coisa (god e blue sem querer ja fazem isso entao eles estao funcionando
+	/// normalmente)"*.
+	///
+	/// ISTO REVERTE UM VETO ANTIGO DELE (o que o cabecalho do <see cref="CorDoCabelo"/> conta: *"n coloque efeitos
+	/// sobre o cabelo, somente no contorno dele"*, de quando o dourado ia por cima de TODO penteado). A regra de
+	/// agora e mais estreita, e por isso nao e a de la: so pinta o penteado que a forma PEDIU pra trocar e nao
+	/// achou a folha (`CabelosDeForma.De` devolveu nulo). Quem tem a arte de Super Saiyajin continua com ela, sem
+	/// tinta nenhuma -- ela ja e dourada.
+	///
+	/// A COR E A DO RABO, e nao um segundo dourado: `icon += rgb(218, 218, 38)` (`SaiyanObjects.dm:113`), que e o
+	/// que o original soma na cauda de quem ergue o cabelo de Super Saiyajin -- a cauda nunca teve arte dourada, e
+	/// e exatamente o caso deste penteado. So as escadas que escrevem `ssj`/`lssj` (a mesma lista do
+	/// <see cref="CorDoRabo"/>): o Ultra Instinct tambem tem sufixo, e nao e Super Saiyajin.
+	///
+	/// Devolve nulo pra forma que ja tinge o cabelo por conta propria (o SSG, o Blue, o Rose, o Legendary): la a
+	/// tinta dela cai no penteado de sempre, pelo caminho de sempre -- e o "sem querer ja fazem isso" do dono.
+	/// ==========================================================================================================
+	/// </summary>
+	public static string? CorDoCabeloSemArte(FormaDef? d)
+	{
+		if (d == null || CabeloSemArteNaoPintaDeTeste || d.SufixoDoCabelo.Length == 0 || CorDoCabelo(d) != null) return null;
+		bool escadaQueEscreveSsjOuLssj =
+			d.Linha is LinhaDeForma.Saiyajin or LinhaDeForma.Futuro
+					or LinhaDeForma.Legendary or LinhaDeForma.LegendaryPrimal
+					or LinhaDeForma.GodKi or LinhaDeForma.GodKiRose;
+		return escadaQueEscreveSsjOuLssj ? DouradoDoRabo : null;
+	}
+
+	// =====================================================================
+	// A PELE E O PORTE (dono, 2026-10-13)
+	// =====================================================================
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--v021teste` e `--diagv021`): a forma volta a nao pintar o corpo -- o Orange fica
+	/// verde, como toda forma ate a v0.2.0. Lido pela propria <see cref="PeleDaForma"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool FormaNaoPintaAPeleDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--v021teste` e `--diagv021`): a forma volta a nao mudar o tamanho do corpo. Lido pela
+	/// propria <see cref="PorteDaForma"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool FormaNaoMudaOPorteDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--v021teste` e `--diagv021`): o potencial desperto volta a nao aparecer na pele do
+	/// Namekuseijin. Lido pela propria <see cref="PotencialMarcaAPele"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool PotencialNaoMarcaAPeleDeTeste;
+
+	/// <summary>A cor que esta forma da ao corpo inteiro (em MATIZ), ou nulo quando ela nao mexe na pele. Ver <see cref="FormaDef.Pele"/>.</summary>
+	public static string? PeleDaForma(FormaDef? d) =>
+		d == null || d.Pele.Length == 0 || FormaNaoPintaAPeleDeTeste ? null : d.Pele;
+
+	/// <summary>Por quanto o corpo e o que esta por cima dele crescem nesta forma. Ver <see cref="FormaDef.Porte"/>.</summary>
+	public static double PorteDaForma(FormaDef? d) => d == null || FormaNaoMudaOPorteDeTeste ? 1 : d.Porte;
+
+	/// <summary>
+	/// ============================ O POTENCIAL DESPERTO APARECE NA PELE DO NAMEKUSEIJIN ============================
+	/// Dono, 2026-10-13: *"nameks q tem potential unlocked/mistico ficam levemente amarelados a cor de pele"*.
+	///
+	/// LIDO AO PE DA LETRA: quem TEM. E um fato do corpo e nao de uma forma vestida -- o potencial despertado
+	/// (`unlockPotential`, o `UnlockPotential.dm`, uma vez por vida) ou o Mistico concedido. Por isso ele nao e um
+	/// campo do <see cref="FormaDef"/>: o Namekuseijin de potencial desperto anda amarelado na base, e so o Orange
+	/// (que pinta o corpo inteiro) passa por cima.
+	///
+	/// QUEM RESPONDE E O SERVIDOR, e a resposta viaja no `S2C.PeerLook` (ver `GameServer.PacoteDeAparencia`): o
+	/// cliente nao conhece o `unlockPotential` de ninguem alem do dono da tela.
+	/// ================================================================================================================
+	/// </summary>
+	public static bool PotencialMarcaAPele(string raca, double unlockPotential, bool temOMistico) =>
+		!PotencialNaoMarcaAPeleDeTeste && EhDaRaca(raca, RacaNamekuseijin) && (unlockPotential >= 1 || temOMistico);
+
+	/// <summary>
+	/// O QUE O POTENCIAL DESPERTO SOMA NA PELE -- vermelho, que em cima do verde puro do Namekuseijin e amarelo.
+	/// Medido na `Namek Young.png`: `00e600` vira `38f400` (matiz 120 -> 106 graus), `008000` vira `388e00` (120 ->
+	/// 96). SOMA, e nao matiz: o matiz pintaria da mesma cor as placas vermelhas do braco e da perna, e o corpo
+	/// perderia o desenho. E pouco de proposito -- *"levemente"*.
+	/// </summary>
+	public const string AmareladoDoPotencial = "380e00";
+
+	/// <summary>
+	/// ...E O QUE ELE TIRA DO AZUL, multiplicando. Num corpo verde nao faz nada (o azul dele ja e zero); e pro
+	/// ALBINO que isto existe -- a folha dele e branca, somar vermelho em branco nao muda um pixel, e tirar azul de
+	/// branco e amarelo claro.
+	/// </summary>
+	public const float AzulDoPotencial = 0.8f;
+
+	/// <summary>
 	/// ============================ A COR DOS OLHOS, FORMA A FORMA ============================
 	/// Devolve o hexa que a forma SOMA no olho, ou nulo quando ela nao mexe nele. Nulo continua sendo
 	/// um caso real -- Mistico, Prodigial, Oozaru e a base --, so deixou de ser a maioria.
@@ -2690,7 +2817,9 @@ public static class Catalogo
 			// O NAMEKUSEIJIN E O UNICO COM NUMERO PROPRIO, e por isso ele tem constante: `trueKiMod = 2`
 			// esta escrito no buff dele (`Super_Namek.dm:41`) e nao sai de var nenhuma. Ver `SuperNamekKi`.
 			// ====================================================================================================
-			LinhaDeForma.Namekuseijin => SuperNamekKi,
+			// (2026-10-13) SO O SUPER NAMEKUSEIJIN: o `trueKiMod = 2` e do buff DELE. O Orange, que mora na mesma
+			// linha, e *"o mesmo buff do beast"* -- e o Beast nao mexe no tanque (cai no `_` de baixo).
+			LinhaDeForma.Namekuseijin => d.Ordem < 20 ? SuperNamekKi : 1,
 			LinhaDeForma.Alien => f.ssjenergymod,
 			LinhaDeForma.Heran => d.Ordem < 20 ? f.ssjenergymod : f.ssj2energymod,
 
@@ -2781,7 +2910,7 @@ public static class Catalogo
 	/// extrema -- o lado estrito --, e a bancada `raiva` [13] reprova ate alguem decidir o numero dele.
 	///
 	/// O QUE ESTA FUNCAO DIZIA ATE 2026-10-11 (e as bancadas mediam): `Extrema` pro tronco Saiyajin, Futuro e
-	/// Heran, e `Lendaria` -- sem agio -- pra linha Legendary, que era o desconto da `legendary anger`. Ver o
+	/// Heran, e a comum (que entao se chamava `Lendaria`) -- sem agio -- pra linha Legendary: o desconto da `legendary anger`. Ver o
 	/// cabecalho de <see cref="NivelDeRaiva"/> pro que mudou e por que.
 	/// ========================================================================================================================
 	/// </summary>
@@ -2790,7 +2919,7 @@ public static class Catalogo
 		if (d == null || !DespertaPelaRaiva(d)) return NivelDeRaiva.Nenhuma;
 		if (SoAFuriaAbreOTroncoDeTeste && d.Linha is LinhaDeForma.Saiyajin or LinhaDeForma.Futuro or LinhaDeForma.Heran)
 			return NivelDeRaiva.Extrema;
-		return d.AgioNaRaivaComum > 0 ? NivelDeRaiva.Lendaria : NivelDeRaiva.Extrema;
+		return d.AgioNaRaivaComum > 0 ? NivelDeRaiva.Comum : NivelDeRaiva.Extrema;
 	}
 
 	/// <summary>
@@ -2851,7 +2980,7 @@ public static class Catalogo
 			// junto com as divinas, e o comentario existe pra ninguem "consertar" isso depois.
 			//
 			// AS DUAS LINHAS LEGENDARY ESTAO NO MESMO BRACO desde 2026-10-11: enquanto a raiva comum era
-			// desconto so delas, elas tinham um braco proprio que respondia `Lendaria`. Hoje quem diz se a
+			// desconto so delas, elas tinham um braco proprio que respondia a comum (entao `Lendaria`). Hoje quem diz se a
 			// comum abre e o campo da entrada, pra todo mundo.
 			// ==========================================================================================================
 			LinhaDeForma.Saiyajin or LinhaDeForma.Futuro or LinhaDeForma.Heran
@@ -3154,6 +3283,9 @@ public static class Catalogo
 	/// <see cref="FormaDef.SoPorConcessao"/>.
 	/// </summary>
 	public const string IdMistico = "mistico";
+
+	/// <summary>O id do ORANGE -- a forma que o dragao da ao Namekuseijin que pede pra liberar o potencial. Ver a entrada.</summary>
+	public const string IdOrange = "orange";
 
 	/// <summary>
 	/// O SUPER SAIYAJIN COMUM. Constante porque ele e o unico degrau com DOIS estados de
@@ -4738,6 +4870,34 @@ public static class Catalogo
 				// ==============================================================================================
 				Desc = "5x, e o tanque de Ki DOBRA. Desperta perto do mesmo poder em que um Saiyajin "
 					 + "vira Super Saiyajin -- e o ponto exato e SEU, nao do jogo." },
+
+		// ============================ O ORANGE -- regra do dono (2026-10-13), sem par no DM ============================
+		// *"adicione a forma "ORANGE" pros nameks , essa forma tem o mesmo buff do beast, porem vc aprende pedindo
+		// pras esferas pra liberar seu potencial. nameks q tem potential unlocked/mistico ficam levemente amarelados
+		// a cor de pele, na orange obviamente ficam laranja (e o sprite deles , e os overlays tb) ficam um pouco
+		// maiores"*.
+		//
+		// O MESMO BUFF DO BEAST, e os tres numeros sao os dele: 56x ABSOLUTO, 6% do Ki por segundo, e o tanque de
+		// Ki de sempre (o `TetoDeKi` so dobra o tanque no Super Namekuseijin -- ver o ramo da linha). A bancada
+		// `--v021teste` compara as duas entradas campo a campo: se o Beast mudar, esta tem que mudar junto.
+		//
+		// SO POR CONCESSAO, como o Mistico, e quem concede e o DRAGAO (o desejo `potencial`, `Desejos.Todos`). Sem
+		// porta de BP, sem raiva e sem ki divino: o Beast cobra as tres coisas porque nasce do luto; este nasce de
+		// um pedido. E SEM DEGRAU ANTERIOR: ele mora na linha do Namekuseijin (e a forma DA RACA), mas quem recebeu
+		// o dom nao precisa ter comprado o Super Namekuseijin -- ver o passo 5 do `EstadoDeForma.Avaliar`, que nao
+		// cobra o degrau de baixo de forma concedida.
+		//
+		// A AURA E LARANJA E A PELE TAMBEM (`Pele`, em matiz); o corpo e o que esta por cima dele crescem 15%
+		// (`Porte`). O amarelado de quem so despertou o potencial NAO e desta entrada: e um fato do CORPO, e mora
+		// em `Catalogo.PotencialMarcaAPele`.
+		// ================================================================================================================
+		new() { Id = IdOrange, IdRede = 805, Linha = LinhaDeForma.Namekuseijin, Ordem = 20,
+				Nome = "Orange", NumeroDm = -1, Intensidade = 5, Raios = 1,
+				Mult = [56], Absoluta = true, Dreno = [0.06],
+				SoPorConcessao = true,
+				Aura = "ff8a1e", Pele = "f0861a", Porte = 1.15,
+				Desc = "56x -- o mesmo poder do Beast. Nao se treina: e o que o dragao da a mais ao Namekuseijin "
+					 + "que pede pra liberar o proprio potencial. A pele vira laranja e o corpo cresce." },
 
 		// ==================================================================================
 		// O HERAN -- `HeranBuff.dm` + `heran.dm`
