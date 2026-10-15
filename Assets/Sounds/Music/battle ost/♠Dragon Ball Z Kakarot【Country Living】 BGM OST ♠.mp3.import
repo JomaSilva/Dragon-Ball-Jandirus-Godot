@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://c01edm2efkl8y"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【Country Living】 BGM OST ♠.mp3-1f5ea0614fa9b0287777073d5649f384.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot【Country Living】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【Country Living】 BGM OST ♠.mp3-1f5ea0614fa9b0287777073d5649f384.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

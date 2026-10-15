@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://d3bv418c8hhx7"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【Clash of Warriors】 BGM OST ♠.mp3-c1fbc149e3fbd6bb19cef5e4d913efbd.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot【Clash of Warriors】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【Clash of Warriors】 BGM OST ♠.mp3-c1fbc149e3fbd6bb19cef5e4d913efbd.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

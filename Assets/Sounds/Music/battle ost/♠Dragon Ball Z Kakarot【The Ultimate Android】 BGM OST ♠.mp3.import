@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://c181gnq7l7smu"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【The Ultimate Android】 BGM OST ♠.mp3-c99a78437adc7fe95f2e522365ba3a93.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot【The Ultimate Android】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【The Ultimate Android】 BGM OST ♠.mp3-c99a78437adc7fe95f2e522365ba3a93.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

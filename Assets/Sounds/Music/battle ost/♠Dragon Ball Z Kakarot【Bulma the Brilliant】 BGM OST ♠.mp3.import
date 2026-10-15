@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://4gopgt4ypwne"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【Bulma the Brilliant】 BGM OST ♠.mp3-32fc76dfbcb6c77c08ec7af139c23aaf.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot【Bulma the Brilliant】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【Bulma the Brilliant】 BGM OST ♠.mp3-32fc76dfbcb6c77c08ec7af139c23aaf.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

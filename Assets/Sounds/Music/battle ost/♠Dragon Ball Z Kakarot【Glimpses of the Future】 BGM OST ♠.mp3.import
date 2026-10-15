@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://dh8q5aw5dv8qi"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【Glimpses of the Future】 BGM OST ♠.mp3-67649ad46009af8b1f4ed7f80a281fda.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot【Glimpses of the Future】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【Glimpses of the Future】 BGM OST ♠.mp3-67649ad46009af8b1f4ed7f80a281fda.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://duqyd0n0johk8"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【Return of the Red Ribbon Army】 BGM OST ♠.mp3-4e24decdcd57653792b23c7ccdfc609d.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot【Return of the Red Ribbon Army】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【Return of the Red Ribbon Army】 BGM OST ♠.mp3-4e24decdcd57653792b23c7ccdfc609d.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

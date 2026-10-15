@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://cmboe23kxfoa7"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【YAPPARI SAIKYO SONGOKU!!】 WE GOTTA POWER   BGM OST ♠.mp3-1e7b05018a3b35538938b77d6719d0a8.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot【YAPPARI SAIKYO SONGOKU!!】 WE GOTTA POWER   BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【YAPPARI SAIKYO SONGOKU!!】 WE GOTTA POWER   BGM OST ♠.mp3-1e7b05018a3b35538938b77d6719d0a8.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

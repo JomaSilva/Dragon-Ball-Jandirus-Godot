@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://bhw0vqd20hbu8"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【Frieza Force Reborn】 BGM OST ♠.mp3-87de493f69fd9d86ad5bf3246810eb7f.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot【Frieza Force Reborn】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【Frieza Force Reborn】 BGM OST ♠.mp3-87de493f69fd9d86ad5bf3246810eb7f.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

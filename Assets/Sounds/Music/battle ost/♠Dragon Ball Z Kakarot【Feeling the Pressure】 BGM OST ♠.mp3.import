@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://c8ih1qrfbounb"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【Feeling the Pressure】 BGM OST ♠.mp3-efe9b74f385d4714f56b184c1f77edd7.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot【Feeling the Pressure】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【Feeling the Pressure】 BGM OST ♠.mp3-efe9b74f385d4714f56b184c1f77edd7.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

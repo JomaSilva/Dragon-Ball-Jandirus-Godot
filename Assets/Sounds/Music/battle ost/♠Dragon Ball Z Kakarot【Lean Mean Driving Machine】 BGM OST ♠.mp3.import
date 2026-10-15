@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://drnkssifissvs"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【Lean Mean Driving Machine】 BGM OST ♠.mp3-8b56f34f6d448281b30ea914e4714f7f.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot【Lean Mean Driving Machine】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【Lean Mean Driving Machine】 BGM OST ♠.mp3-8b56f34f6d448281b30ea914e4714f7f.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

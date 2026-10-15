@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://s461lrcfcpd3"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【MOETSUKIRO!! NESSEN・RESSEN・CHOU GEKISEN】 BGM OST ♠.mp3-e425823492ca59a63b45bdaf5f27cb8a.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot【MOETSUKIRO!! NESSEN・RESSEN・CHOU GEKISEN】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【MOETSUKIRO!! NESSEN・RESSEN・CHOU GEKISEN】 BGM OST ♠.mp3-e425823492ca59a63b45bdaf5f27cb8a.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

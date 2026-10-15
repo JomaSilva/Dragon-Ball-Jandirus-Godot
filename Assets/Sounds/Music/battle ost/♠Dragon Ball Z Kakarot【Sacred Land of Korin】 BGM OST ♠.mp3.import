@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://c6rge6impwbie"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【Sacred Land of Korin】 BGM OST ♠.mp3-1502c1ae69c7d470a012875769a69a7e.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot【Sacred Land of Korin】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【Sacred Land of Korin】 BGM OST ♠.mp3-1502c1ae69c7d470a012875769a69a7e.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

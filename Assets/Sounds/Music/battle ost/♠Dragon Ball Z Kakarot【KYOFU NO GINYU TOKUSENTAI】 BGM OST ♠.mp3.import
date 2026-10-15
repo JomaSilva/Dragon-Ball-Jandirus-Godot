@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://0cxjq2ervmx0"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【KYOFU NO GINYU TOKUSENTAI】 BGM OST ♠.mp3-1857db88bbcdfed835ff49e6d4173fa0.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/battle ost/♠Dragon Ball Z Kakarot【KYOFU NO GINYU TOKUSENTAI】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【KYOFU NO GINYU TOKUSENTAI】 BGM OST ♠.mp3-1857db88bbcdfed835ff49e6d4173fa0.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4
