@@ -98,9 +98,12 @@ public sealed partial class GameServer
 			case "comer" when def.Id == CatalogoDeItens.Senzu: ComerSenzuG12(pl, def); break;
 			case "acudir": AcudirComSenzuG12(pl, def); break;
 			case "comer": ComerItem(pl, def); break;
+			// (v0.3.0) OS PESOS VESTEM A PORCENTAGEM GUARDADA (dono, 2026-10-15) -- ver `VestirOsPesos`.
+			case "equipar" when def.Id == CatalogoDeItens.Pesos: VestirOsPesos(pl); break;
 			case "equipar": Equipar(pl, def); break;
 			case "ajustar": AjustarPeso(pl, arg2); break;
 			case "melhorar": MelhorarOsPesos(pl, arg2); break;
+			case PesoDeTreino.AcaoAteOLimite: LevarOsPesosAoLimite(pl, arg2); break;
 			// OS PESOS GANHAM A FOLHA que o jogador escolheu na grade (dono, 2026-10-13). Ver `EscolherAArteDosPesos`.
 			case PesoDeTreino.AcaoArte: EscolherAArteDosPesos(pl, arg2); break;
 			// A ARMADURA CRUA GANHA A ARTE que o jogador escolheu na tela (dono, 2026-10-12). Ver `MoldarAArmadura`.
@@ -264,6 +267,12 @@ public sealed partial class GameServer
 	/// recalculo de skill (`AplicarPoderes`), e escrever ali seria escrever pra ser apagado na
 	/// proxima skill aprendida. E a mesma armadilha que ja engoliu o bit de admin uma vez.
 	/// ====================================================================================
+	///
+	/// (v0.3.0) E ELE VOLTA LIGADO DO RELOG: `PoderesConcedidos` nao vai pro disco, entao o save leva uma copia do bit
+	/// (`CharacterSave.ScouterLigado`, gravada no `DeJogador` e lida no `ParaJogador`) -- o dono: *"ao sair do server usando
+	/// scouter, e dps entrar, o scouter e desequipado"*.
+	///
+	/// (Os PESOS tem o "equipar" deles -- `VestirOsPesos`, que o `ComandoDeItem` despacha antes deste.)
 	/// </summary>
 	private void Equipar(ServerPlayer pl, ItemDef def)
 	{
@@ -302,6 +311,12 @@ public sealed partial class GameServer
 			? "você tira o scouter. Os números voltam a ser \"???\"."
 			: "o scouter liga com um bipe. Agora você lê o poder de quem olha.");
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`): o scouter volta a acordar desligado no login -- o jogo de antes. Lido pelo
+	/// `AccountStore.ParaJogador`. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool ScouterAcordaDesligadoDeTeste;
 
 	// =====================================================================
 	// PESO -- o `Weights` do original
@@ -365,6 +380,30 @@ public sealed partial class GameServer
 				   + $"Ajuste quanto vestir pela mochila. Restam {CarteiraEscrita(pl)}.");
 	}
 
+	/// <summary>
+	/// ATE O LIMITE DO CORPO, DE UMA VEZ (dono, 2026-10-15) -- ver `PesoDeTreino.AcaoAteOLimite`. As melhorias que faltam pro
+	/// maximo passar do que o corpo aguenta, pelo preco de cada uma somado, numa moeda so (recursos e o dobro, como sempre).
+	/// </summary>
+	private void LevarOsPesosAoLimite(ServerPlayer pl, string comQue)
+	{
+		int n = PesoDeTreino.MelhoriasAteOLimite(pl.Ficha.pesoMaximoKg, pl.Ficha.weight_cap_hw);
+		if (n <= 0)
+		{
+			Avisar(pl, "os seus pesos já chegam ao que o seu corpo aguenta -- daqui pra cima, só dobrando (Melhorar).");
+			return;
+		}
+		Moeda moeda = string.Equals(comQue, Recurso.PalavraDeRecursos, StringComparison.OrdinalIgnoreCase) ? Moeda.Recursos : Moeda.Zeni;
+		double antes = PesoDeTreino.Maximo(pl.Ficha.pesoMaximoKg);
+		double custo = PesoDeTreino.PrecoDeVariasEmZeni(pl.Ficha.pesoMaximoKg, n);
+		if (!CobrarOuExplicar(pl, custo, moeda, "levar os pesos ao limite do corpo")) return;
+
+		pl.Ficha.pesoMaximoKg = PesoDeTreino.MaximoDepoisDe(pl.Ficha.pesoMaximoKg, n);
+		pl.SigAtributos = "";
+		Avisar(pl, $"você paga {Recurso.PrecoEscrito(custo, moeda)} e leva os pesos de {antes:N0} kg a {pl.Ficha.pesoMaximoKg:N0} kg de uma vez "
+				   + $"({n} melhoria{(n > 1 ? "s" : "")}): já passam do que o seu corpo aguenta hoje. Ajuste quanto vestir pela mochila; "
+				   + $"dobrar continua valendo. Restam {CarteiraEscrita(pl)}.");
+	}
+
 	private void AjustarPeso(ServerPlayer pl, string valor)
 	{
 		if (!double.TryParse(valor, out double pct) || !NumeroFinito(pct)) { Avisar(pl, "número inválido."); return; }
@@ -380,6 +419,10 @@ public sealed partial class GameServer
 		// via era a que morria. Quem escreve `weight` e o `WeightTick`, tres linhas abaixo, e so ele.
 		bool vestia = pl.Ficha.Weighted > 0;
 		pl.Ficha.Weighted = pct / 100.0 * TetoDePeso(pl.Ficha);
+
+		// (v0.3.0) A PORCENTAGEM ESCOLHIDA FICA GUARDADA -- e e com ela que o "equipar" veste (`VestirOsPesos`). Tirar (o zero) nao
+		// a apaga: e justamente o que se quer de volta da proxima vez.
+		if (pct > 0 && !Jandirus.Core.Items.PesoDeTreino.PorcentagemEsquecidaDeTeste) pl.Ficha.pesoPct = pct;
 
 		// (2026-10-13) VESTIR E TIRAR APARECEM NO CORPO -- `usr.overlayList += icon` / `-= icon` (`Tier 1.dm:124` e
 		// `:132`). So quando o corpo passa de sem peso pra com peso (ou o contrario): mudar a porcentagem nao muda o desenho.
@@ -434,6 +477,26 @@ public sealed partial class GameServer
 	private void TirarPeso(ServerPlayer pl) => AjustarPeso(pl, "0");
 
 	/// <summary>
+	/// VESTE OS PESOS NA PORCENTAGEM GUARDADA (dono, 2026-10-15): *"dps de setar a % do peso maximo ele salvaria aquele valor e
+	/// vc so precisaria clicar na opcao 'equipar' pra por o peso ao inves de colocar a % toda vez"*. E o `Equip()` dos pesos do
+	/// DM (`Tier 1.dm:113-135`), que veste o `pounds` guardado no item -- aqui guardado na ficha (`Fighter.pesoPct`), em
+	/// porcentagem do maximo, como o jogador a escolheu. Quem escolhe (e guarda) e o "ajustar"; sem escolha nenhuma ainda, o
+	/// botao da mochila abre o teclado dele.
+	///
+	/// PELO MESMO CAMINHO DO AJUSTE, e nao uma segunda conta: a frase, o desenho no corpo, o tique e o aviso de esmagamento
+	/// sao os do <see cref="AjustarPeso"/>.
+	/// </summary>
+	private void VestirOsPesos(ServerPlayer pl)
+	{
+		if (pl.Ficha.pesoPct <= 0)
+		{
+			Avisar(pl, "escolha antes quanto vestir (\"Ajustar o peso\", na mochila): a porcentagem fica guardada pro Equipar.");
+			return;
+		}
+		AjustarPeso(pl, pl.Ficha.pesoPct.ToString(System.Globalization.CultureInfo.CurrentCulture));
+	}
+
+	/// <summary>
 	/// A ARTE DOS PESOS -- o `verb/Icon()` do original (`Tier 1.dm:167-175`), com a grade do guarda-roupa no lugar do
 	/// arquivo enviado: *"permita tb o jogador a mudar o icone do peso (assim como é quando cria uma armadura)"*. A
 	/// escolha vai pra ficha (`Fighter.pesoArte`); quem esta vestindo ve o corpo trocar na hora.
@@ -446,6 +509,7 @@ public sealed partial class GameServer
 		if (_visual?.Peca(arte) == null) { Avisar(pl, "essa arte não existe."); return; }
 
 		pl.Ficha.pesoArte = arte == PesoDeTreino.ArtePadrao ? "" : arte;
+		pl.SigAtributos = "";   // (2026-10-15) o icone da mochila acompanha: ele le a arte na ficha lenta
 		if (pl.Ficha.Weighted > 0) ReapresentarOCorpo(pl);
 		Avisar(pl, $"os pesos agora têm a aparência de {arte}" + (pl.Ficha.Weighted > 0 ? "." : ": ela aparece no corpo quando você os vestir."));
 	}

@@ -326,7 +326,7 @@ public partial class GameServer
 		// `.ToList()` porque um golpe pode matar alguem e mexer na lista da zona no meio do laco
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash).ToList())
 		{
-			if (o == pl || o.Ficha.dead || o.Combate == null || o.Combate.Intocavel) continue;
+			if (o == pl || EhCadaver(o) || o.Combate == null || o.Combate.Intocavel) continue;
 			if (!MeleeArea.NoAlcance(pl.Pos, pl.Facing, o.Pos)) continue;
 
 			GolpeResultado r = GolpeG3(pl, o, addDano: 5, nivel: 2);
@@ -445,7 +445,7 @@ public partial class GameServer
 			return;
 		}
 
-		if (pl.Ficha.dead || pl.Ficha.KO) { Avisar(pl, "você não está em condições."); return; }
+		if (EhCadaver(pl) || pl.Ficha.KO) { Avisar(pl, "você não está em condições."); return; }
 
 		if (raio != RaioPertoG3 && raio != RaioMedioG3 && raio != RaioMaximoG3)
 		{
@@ -512,14 +512,14 @@ public partial class GameServer
 		int pegos = 0;
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash).ToList())
 		{
-			if (o == pl || o.Ficha.dead || o.Combate == null || o.Combate.Intocavel) continue;
+			if (o == pl || EhCadaver(o) || o.Combate == null || o.Combate.Intocavel) continue;
 
 			double distTiles = Math.Max(Vec2.Distance(o.Pos, pl.Pos) / ZoneCollision.TileSize, 1);
 			if (distTiles > carga.Raio) continue;
 
 			double baixo = Math.Max(o.Ficha.expressedBP * o.Ficha.Ekidef, 1);   // o `if(!downscalar) downscalar=1`
 			double dano = power / distTiles / baixo * 10;                        // misc.dm:311
-			EspalharDanoG3(o, pl, dano, letal: true);
+			EspalharDanoG3(o, pl, dano, letal: true, porKi: true);
 			MandarEfeito(o, "explosao_final", 600);
 			Avisar(o, $"a explosão de {pl.Name} passa por cima de você.");
 			pegos++;
@@ -529,7 +529,7 @@ public partial class GameServer
 		// 10))` (misc.dm:317). Nao e efeito colateral: e o preco de ter juntado toda a energia
 		// dentro do proprio corpo.
 		double meuBaixo = Math.Max(f.expressedBP * f.Ekidef, 1);
-		EspalharDanoG3(pl, pl, power / meuBaixo * 10, letal: true);
+		EspalharDanoG3(pl, pl, power / meuBaixo * 10, letal: true, porKi: true);
 
 		// misc.dm:318 -- o custo escala com o RAIO escolhido, nao com o tempo de carga
 		f.Ki = Math.Max(f.Ki - carga.Raio * (f.MaxKi / 25), 0);
@@ -543,7 +543,7 @@ public partial class GameServer
 		// `GameServer.Sol.Queimar` e `EspalharDanoG2`).
 		if (carga.Contador > CargaLetalG3
 			&& (_rng.NextDouble() * 100 < CargaMortePct || f.HP <= 10 || f.KO)
-			&& !f.dead
+			&& !EhCadaver(pl)
 			&& !pl.Combate.Intocavel
 			&& pl.Combate.Morrer())
 		{
@@ -625,7 +625,7 @@ public partial class GameServer
 	private void ResolverBusterG3(ServerPlayer pl, BusterG3 b)
 	{
 		if (!_players.TryGetValue(b.Alvo, out ServerPlayer? alvo)
-			|| alvo.Ficha.dead || alvo.Combate == null || alvo.Combate.Intocavel
+			|| EhCadaver(alvo) || alvo.Combate == null || alvo.Combate.Intocavel
 			|| alvo.Zone.Hash != pl.Zone.Hash
 			|| Vec2.Distance(alvo.Pos, pl.Pos) > AlcanceBusterG3)
 		{
@@ -655,7 +655,7 @@ public partial class GameServer
 		// quatro `doAttack(target,2,...)` em sequencia (yardrat.dm:241-244)
 		for (int i = 0; i < 4; i++)
 		{
-			if (alvo.Ficha.dead || alvo.Combate.Intocavel) break;
+			if (EhCadaver(alvo) || alvo.Combate.Intocavel) break;
 			GolpeG3(pl, alvo, addDano: 2, nivel: i == 3 ? 3 : 2);
 		}
 
@@ -917,7 +917,7 @@ public partial class GameServer
 		{
 			BarragemG3 b = _barragemG3[id];
 			if (!_players.TryGetValue(id, out ServerPlayer? pl)
-				|| pl.Ficha.dead || pl.Ficha.KO || pl.Combate == null)
+				|| EhCadaver(pl) || pl.Ficha.KO || pl.Combate == null)
 			{
 				_barragemG3.Remove(id);
 				continue;
@@ -925,7 +925,7 @@ public partial class GameServer
 			if (agora < b.ProximoMs) continue;
 
 			if (!_players.TryGetValue(b.Alvo, out ServerPlayer? alvo)
-				|| alvo.Ficha.dead || alvo.Combate == null || alvo.Combate.Intocavel
+				|| EhCadaver(alvo) || alvo.Combate == null || alvo.Combate.Intocavel
 				|| alvo.Zone.Hash != pl.Zone.Hash)
 			{
 				_barragemG3.Remove(id);
@@ -974,7 +974,7 @@ public partial class GameServer
 			// O ARREMESSO DO FIM (Punho da Presa do Lobo): `kbdir = usr.dir`, `kbpow = expressedBP`,
 			// `kbdur = 4`. Ele sai DEPOIS do ultimo golpe e independe do sorteio do `TentarEmpurrar`
 			// -- e a promessa da tecnica, nao uma consequencia do dano.
-			if (b.ArremessoNoFim > 0 && !alvo.Ficha.dead)
+			if (b.ArremessoNoFim > 0 && !EhCadaver(alvo))
 				Arremessar(alvo, MeleeArea.Frente(pl.Facing), pl.Ficha.expressedBP, b.ArremessoNoFim);
 
 			_barragemG3.Remove(id);
@@ -1003,7 +1003,7 @@ public partial class GameServer
 				continue;
 			}
 			// `if(sding && (!grabbee || KO))` -- a carga cai com o corpo (e, na autodestruicao, com o agarrao)
-			if (pl.Ficha.dead || pl.Ficha.KO || (c.PrecisaAgarrar && pl.AgarrandoId == 0))
+			if (EhCadaver(pl) || pl.Ficha.KO || (c.PrecisaAgarrar && pl.AgarrandoId == 0))
 			{
 				_cargaG3.Remove(id);
 				c.AoCair(pl);
@@ -1074,7 +1074,8 @@ public partial class GameServer
 	{
 		porque = "";
 		if (pl.Combate == null) { porque = "seu corpo ainda nao esta pronto."; return false; }
-		if (pl.Ficha.dead) { porque = "voce esta morto."; return false; }
+		// (2026-10-15) O CADAVER, e nao todo morto: o fantasma do Outro Mundo usa as tecnicas de corpo como um vivo.
+		if (EhCadaver(pl)) { porque = "voce esta morto."; return false; }
 		if (pl.Ficha.KO) { porque = "voce esta caido."; return false; }
 		if (pl.Ficha.med) { porque = "nao da pra fazer isso meditando -- saia da meditacao primeiro."; return false; }
 		if (pl.Ficha.train) { porque = "voce esta treinando; pare o treino pra usar tecnica."; return false; }
@@ -1093,7 +1094,7 @@ public partial class GameServer
 	}
 
 	/// <summary>Caido ou morto -- o `usr.KO || usr.dead` que abre metade dos verbs do DM.</summary>
-	private static bool Caido(ServerPlayer pl) => pl.Ficha.KO || pl.Ficha.dead;
+	private static bool Caido(ServerPlayer pl) => pl.Ficha.KO || EhCadaver(pl);   // (2026-10-15) o fantasma de pe nao esta caido
 
 	/// <summary>
 	/// RECUSA quem esta caido ou morto, com a frase do verb. Devolve se recusou. Era um `if` de duas
@@ -1108,6 +1109,12 @@ public partial class GameServer
 	}
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`): o golpe de tecnica volta a sair sem virar o corpo e sem a pose de soco -- o
+	/// jogo de antes. Lido pelo <see cref="GolpeG3"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool GolpeSemPoseDeTeste;
+
+	/// <summary>
 	/// UM GOLPE DE TECNICA PELO FUNIL NORMAL -- o equivalente do `doAttack(M, addeddamage, ...)`.
 	///
 	/// Faz a MESMA coisa que <see cref="Atacar"/> faz depois de escolher o alvo: resolve, paga o
@@ -1118,6 +1125,18 @@ public partial class GameServer
 	private GolpeResultado GolpeG3(ServerPlayer a, ServerPlayer d, double addDano, int nivel = 2)
 	{
 		CombatState ca = a.Combate, cd = d.Combate;
+
+		// (2026-10-15) O GOLPE AUTOMATICO SOCA NA TELA E OLHA PRO ALVO -- o dono: *"ataques q dao golpes automaticos como
+		// zanzo combo lariat etc, nao estao tendo animaçao de soco ao dar o golpe e nem olham pro target"*. O soco do teclado
+		// (`Atacar`) vira o corpo pro alvo e arma a pose (`AtaqueAte`); a tecnica ia direto pro `Resolver`. Agora e a MESMA
+		// frase: o snapshot leva a pose e a direcao pra quem ve, e o relato do golpe (`AnunciarGolpe`) poe o corpo LOCAL na
+		// pose (`LocalPlayer.GolpeDoServidor`). A recarga continua sendo de cada tecnica (o `basicCD`).
+		if (!GolpeSemPoseDeTeste)
+		{
+			Vec2 rumo = d.Pos - a.Pos;
+			if (rumo.LengthSquared > 1e-4f) a.Facing = MoveRules.FacingFrom(rumo, a.Facing);
+			a.AtaqueAte = Math.Max(a.AtaqueAte, NowMs() + Protocol.AttackPoseMs);
+		}
 		double angulo = MeleeArea.AnguloDeChegada(d.Pos, d.Facing, a.Pos);
 
 		// o dano de estilo entra somado, igual ao soco comum (`dmg += compareStyles(M)`)
@@ -1155,10 +1174,11 @@ public partial class GameServer
 	/// propagacao pelo membro que os contem, que e como o <see cref="Body.Ferir"/> ja funciona. No
 	/// original eles entravam com `prob(10)`, o que dava na mesma com mais sorteio.
 	/// </summary>
-	private void EspalharDanoG3(ServerPlayer vitima, ServerPlayer autor, double dano, bool letal)
+	/// <param name="porKi">(2026-10-15) o dano e de KI (a explosao final, a autodestruicao, o estouro do embate): o unico que mata o Majin de vez -- ver `CombatState.QuandoONucleoCede`.</param>
+	private void EspalharDanoG3(ServerPlayer vitima, ServerPlayer autor, double dano, bool letal, bool porKi = false)
 	{
 		CombatState? c = vitima.Combate;
-		if (c == null || dano <= 0 || vitima.Ficha.dead || c.Intocavel) return;
+		if (c == null || dano <= 0 || EhCadaver(vitima) || c.Intocavel) return;
 
 		// SEM ALGOZ (autor = vitima: o esmagamento, o vacuo, o preco de uma tecnica) a tag arma, e a BRIGA nao --
 		// ninguem trocou golpe com ninguem. Ver `CombatState.BrigandoComAlguem`.
@@ -1176,7 +1196,7 @@ public partial class GameServer
 		}
 		c.SincronizarVida();
 		if (autor != vitima) MarcarAgressao(vitima, autor);
-		ConsequenciaDoDano(vitima, autor, "com dano em area");
+		ConsequenciaDoDano(vitima, autor, "com dano em area", porKi);
 	}
 
 	/// <summary>
@@ -1194,19 +1214,32 @@ public partial class GameServer
 	/// cai pra uma bomba sumiria calado.
 	/// </summary>
 	/// <param name="relato">O que sai no log quando mata: "com dano em area", "com dano direto (braco)".</param>
-	private void ConsequenciaDoDano(ServerPlayer vitima, ServerPlayer autor, string relato)
+	/// <param name="porKi">(2026-10-15) o dano era de ki -- ver `CombatState.QuandoONucleoCede`.</param>
+	private void ConsequenciaDoDano(ServerPlayer vitima, ServerPlayer autor, string relato, bool porKi = false)
 	{
 		if (vitima.Combate is not { } c) return;
 		// O GOD'S TEMPER conta tambem o dano DIRETO de outro corpo (explosao em area, tecnica de corpo) -- ver
 		// `ContarGolpeNoTemper`, em `GameServer.KitDoDeus.cs`. O preco que um corpo paga a si mesmo nao e golpe.
 		if (autor != vitima) ContarGolpeNoTemper(vitima);
-		if (c.Corpo.DeveMorrer() && !c.Corpo.RegeneraDecepado && c.Morrer())
+		// (2026-10-15) O NUCLEO PERDIDO, PELA MESMA PERGUNTA do soco e do tiro (`CombatState.QuandoONucleoCede`): o corpo
+		// comum morre, a raca que refaz membro cai em coma, e o Majin se desfaz em pedacos -- menos no ki (`porKi`).
+		FimDoNucleo? fim = c.Corpo.DeveMorrer() ? c.QuandoONucleoCede(porKi) : null;
+		if (fim == FimDoNucleo.Morre && c.Morrer())
 		{
 			if (autor != vitima) AoPerderALuta(vitima, autor, morreu: true);
 			else ZenkaiPorDerrota(vitima, autor);
 			GD.Print($"[server] {autor.Name} MATOU {vitima.Name} {relato}");
 		}
-		else if (!vitima.Ficha.KO && c.Corpo.DeveNocautear())
+		else if (fim == FimDoNucleo.SeDesfaz)
+		{
+			if (c.Desfeito) return;
+			c.Desfazer();
+			if (autor != vitima) AoPerderALuta(vitima, autor, morreu: false);
+			else ZenkaiPorDerrota(vitima, autor);
+			GD.Print($"[server] {autor.Name} DESFEZ {vitima.Name} {relato}");
+		}
+		// O COMA DE QUEM REFAZ MEMBRO (o nucleo DECEPADO) cai aqui tambem -- ver `MeleeResolver.AplicarNoMembro`.
+		else if (!vitima.Ficha.KO && (c.Corpo.DeveNocautear() || c.Corpo.DeveMorrer()))
 		{
 			c.Nocautear(MeleeResolver.TetoDoNocaute, porVital: true);
 			if (autor != vitima) AoPerderALuta(vitima, autor, morreu: false);
@@ -1261,7 +1294,7 @@ public partial class GameServer
 	}
 
 	/// <summary>A regra do combate pra "em quem pega": vivo e fora de cinematica -- a mesma do <see cref="Marcado"/>.</summary>
-	private static bool AlvoVivoETocavel(ServerPlayer o) => !o.Ficha.dead && o.Combate is { Intocavel: false };
+	private static bool AlvoVivoETocavel(ServerPlayer o) => !EhCadaver(o) && o.Combate is { Intocavel: false };   // (2026-10-15) "vivo" = de pe: o fantasma conta
 
 	/// <summary>
 	/// AVANCA ate <paramref name="maxPx"/> na direcao do alvo, parando a um tile dele -- o

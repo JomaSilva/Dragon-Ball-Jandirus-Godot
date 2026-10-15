@@ -90,6 +90,9 @@ public partial class BodyDoll : Control
     private TextureRect _base = null!;
     private Label _extra = null!;
 
+    /// <summary>A linha do rabo como ela saiu na tela ("" quando nao aparece). Pra bancada (`--diagv030`).</summary>
+    public string TextoDoRaboDeTeste => _extra.Visible ? _extra.Text : "";
+
     public override void _Ready()
     {
         CustomMinimumSize = new Vector2(96 * Escala, 96 * Escala);

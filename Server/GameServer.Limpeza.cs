@@ -486,6 +486,17 @@ public sealed partial class GameServer
 			Contar = () => 0,
 		});
 
+		// (v0.3.0) A CONFIGURACAO DO SERVIDOR -- hoje, o modo das racas dos personagens novos (`GameServer.ModoDeRacas.cs`).
+		// Tambem SOBREVIVE: ela e do SERVIDOR (quem hospeda escolheu, ou um admin), e a limpeza devolve o primeiro boot do MUNDO.
+		_sistemasDoMundo.Add(new SistemaDoMundo
+		{
+			Nome = "configuracao do servidor -- o modo das racas (SOBREVIVE a limpeza)",
+			Arquivos = [NomeDoArquivoDoServidor],
+			Preservar = true,
+			Unidade = "arquivo de configuracao",
+			Contar = () => 0,
+		});
+
 		// A INSCRICAO RESERVA O NOME. E o que impede a conta chamada "naves" de gravar por cima da
 		// frota do servidor -- ver o cabecalho de `AccountStore.NaoSaoContas`, e o defeito que isto
 		// conserta. Feito daqui, e nao la, porque so aqui alguem sabe a lista inteira.

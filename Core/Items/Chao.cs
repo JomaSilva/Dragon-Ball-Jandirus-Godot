@@ -35,6 +35,12 @@ public sealed class Largado
 
 	/// <summary>O instante (relogio do servidor, ms) em que ela some sozinha -- ver <see cref="Chao.SegundosNoChao"/>.</summary>
 	public long SomeMs;
+
+	/// <summary>
+	/// (2026-10-15) A FOLHA QUE A TELA DESENHA NO LUGAR DA DO ITEM -- hoje so os pesos largados com a arte que o dono deles
+	/// escolheu (`PesoDeTreino`). Vazia = a do catalogo (<see cref="Chao.Arte"/>).
+	/// </summary>
+	public string Arte = "";
 }
 
 /// <summary>

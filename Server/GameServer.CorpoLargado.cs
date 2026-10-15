@@ -105,6 +105,10 @@ public partial class GameServer
 			SpeedStat = pl.SpeedStat,
 			LastInputMs = NowMs(),
 
+			// (v0.3.0) E A ETAPA DA MORTE: o fantasma que mergulha deixa um corpo DE AUREOLA, como ele -- `Alem.TemAureola` le
+			// esta etapa, e um `ServerPlayer` novo nasce sem ela.
+			MorteJaViajou = pl.MorteJaViajou,
+
 			// AS INSTANCIAS COMPARTILHADAS -- ver o cabecalho. `Ficha` da a vida, o BP expresso e a
 			// pose; `Combate` da os membros e RECEBE O DANO; `Forma` faz o boneco ser desenhado
 			// transformado (o `SincronizarFormas` la embaixo le exatamente este objeto).
@@ -168,6 +172,9 @@ public partial class GameServer
 		// em SSJ3 deixaria pra tras um lutador comum de cabelo curto. Os envios de VOLTA (pro
 		// boneco) sao no-op, porque `Peer` e nulo.
 		TrocarAparencias(boneco);
+		// (v0.3.0) ...e a AUREOLA do fantasma que mergulhou: o corpo dele e um corpo novo na zona, e quem esta la so ve a aureola
+		// de um corpo pelo pacote dela (`MandarAureola`).
+		if (Alem.TemAureola(boneco.Ficha.dead, boneco.MorteJaViajou)) MandarAureola(boneco);
 
 		MoveToZone(pl.Id, destino, pos);
 		return true;
@@ -368,10 +375,20 @@ public partial class GameServer
 	private void BordasDeQuemEstaFora(ServerPlayer pl)
 	{
 		if (pl.BonecoLargado is not { } boneco) return;
+		// (v0.3.0) O FANTASMA QUE MERGULHOU (`FotoDaMente.Morto`) ja entrou morto, e o corpo dele tambem: o `dead` dos dois e o
+		// de antes, e nao uma queda. O que o traz de volta e o que traz o vivo -- o nocaute, o golpe, o corpo que some. Ver
+		// `DimensaoMental.PorQueNaoMergulhar`.
+		bool entrouMorto = pl.FotoDaMente is { Morto: true } && !MortoExpulsoDaMenteDeTeste;
 		// O CORPO DE FORA TAMBEM: com corpo proprio (a meditacao) ele cai e morre por conta dele -- uma
 		// explosao que nao passa pelo `MarcarAgressao`, por exemplo --, e o dono volta do mesmo jeito.
-		if (!ZoneList(boneco.Zone.Hash).Contains(boneco) || pl.Ficha.dead || pl.Ficha.KO
-			|| boneco.Ficha.dead || boneco.Ficha.KO)
+		if (!ZoneList(boneco.Zone.Hash).Contains(boneco) || (pl.Ficha.dead && !entrouMorto) || pl.Ficha.KO
+			|| (boneco.Ficha.dead && !entrouMorto) || boneco.Ficha.KO)
 			PorNaFilaDeVolta(pl.Id);
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--transeteste`): o morto que mergulhou volta a ser expulso na hora -- a borda de antes, que
+	/// lia o `dead` da entrada como uma queda. Lido por <see cref="BordasDeQuemEstaFora"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool MortoExpulsoDaMenteDeTeste;
 }

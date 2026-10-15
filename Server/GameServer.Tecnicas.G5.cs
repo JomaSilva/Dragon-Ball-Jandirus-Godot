@@ -483,7 +483,7 @@ public sealed partial class GameServer
 		if (EmEspera(pl, _alvoPronto, "voce ainda nao consegue armar outro cerco")) return;
 
 		ServerPlayer? alvo = Marcado(pl);
-		if (alvo == null || alvo == pl || alvo.Ficha.dead || !alvo.Zone.Equals(pl.Zone))
+		if (alvo == null || alvo == pl || EhCadaver(alvo) || !alvo.Zone.Equals(pl.Zone))
 		{
 			Avisar(pl, "isso precisa de um alvo marcado. (Marque alguem com duplo clique.)");
 			return;
@@ -598,7 +598,7 @@ public sealed partial class GameServer
 		if (!PodeAtirar(pl, custo, out string porque)) { Avisar(pl, porque); return; }
 
 		ServerPlayer? alvo = Marcado(pl);
-		if (alvo != null && (alvo == pl || alvo.Ficha.dead || !alvo.Zone.Equals(pl.Zone))) alvo = null;
+		if (alvo != null && (alvo == pl || EhCadaver(alvo) || !alvo.Zone.Equals(pl.Zone))) alvo = null;
 
 		pl.Ficha.Ki -= custo;
 		GanhoDeKi(pl, vezes: 4);

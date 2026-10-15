@@ -238,8 +238,9 @@ public sealed class EstadoDoChefe
 	public double UltimatoEm;
 
 	/// <summary>
-	/// Esta nos 30 s de carga do ultimato -- a janela em que nocautea-lo INTERROMPE (`BEV_PD_CHARGE`,
-	/// BossEvents.dm:29). Nao persiste: uma carga cortada por reinicio nao pode voltar pela metade.
+	/// Esta na carga do ultimato -- no DM os 30 s em que nocautea-lo INTERROMPE (`BEV_PD_CHARGE`, BossEvents.dm:29); desde
+	/// a v0.3.0, a SUPERNOVA (`Npc.Supernova`), com o chefe intocavel ate a explosao. Nao persiste: uma carga cortada por
+	/// reinicio nao pode voltar pela metade.
 	/// </summary>
 	[System.Text.Json.Serialization.JsonIgnore]
 	public bool Carregando;

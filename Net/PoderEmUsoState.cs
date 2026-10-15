@@ -16,6 +16,12 @@ public enum BitsDoPoderEmUso : byte
 
 	/// <summary>Relaxado (`Fighter.relaxado`): o corpo soltou o proprio poder. Vem sempre junto do <see cref="Escondido"/>.</summary>
 	Relaxado = 2,
+
+	/// <summary>(2026-10-15) Com raiva: a raiva COMUM (`NivelDeRaiva.Comum`). O HUD escreve "COM RAIVA" embaixo da vida.</summary>
+	ComRaiva = 4,
+
+	/// <summary>(2026-10-15) Furioso: a raiva EXTREMA (`NivelDeRaiva.Extrema`). O HUD escreve "FURIOSO".</summary>
+	Furioso = 8,
 }
 
 /// <summary>
@@ -34,9 +40,13 @@ public readonly record struct PoderEmUsoState(byte Porcento, BitsDoPoderEmUso Bi
 
 	public bool Escondido => (Bits & BitsDoPoderEmUso.Escondido) != 0;
 	public bool Relaxado => (Bits & BitsDoPoderEmUso.Relaxado) != 0;
+	public bool ComRaiva => (Bits & BitsDoPoderEmUso.ComRaiva) != 0;
+	public bool Furioso => (Bits & BitsDoPoderEmUso.Furioso) != 0;
 
 	/// <summary>Nada fora do padrao: 100% e a vista. E quando o HUD nao escreve linha nenhuma.</summary>
-	public bool Padrao => Porcento >= 100 && Bits == BitsDoPoderEmUso.Nenhum;
+	/// (A raiva nao conta: ela tem a linha dela no HUD, e um corpo com raiva usando o poder inteiro e a vista continua
+	/// sem a linha do PODER.)
+	public bool Padrao => Porcento >= 100 && (Bits & (BitsDoPoderEmUso.Escondido | BitsDoPoderEmUso.Relaxado)) == 0;
 
 	public void Write(NetDataWriter w)
 	{

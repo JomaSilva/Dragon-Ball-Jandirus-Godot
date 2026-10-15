@@ -447,15 +447,7 @@ public sealed partial class GameServer
 			if (!TrocarItem(pl, def.Id, TechDeBolso.Com(TechDeBolso.ContainerDeDna, numero.ToString()))) { Avisar(pl, "sua mochila está cheia."); return; }
 			_cofreDeTech.Proximo++;
 		}
-		guardadas.Add(new Amostra
-		{
-			Raca = vitima.Race,
-			RacaDoPai = vitima.Ficha.ParentRace,
-			Doador = vitima.Name,
-			Assinatura = vitima.Assinatura,
-			Bp = vitima.Ficha.BP,
-			Skills = [.. TecnicasHerdaveis(vitima)],
-		});
+		guardadas.Add(AmostraDe(vitima));   // a mesma agulha do laboratorio -- ver `GameServer.SangueDoBio.cs`
 		_cofreDeTech.Amostras[numero] = guardadas;
 		GravarOCofreDeTech();
 		Avisar(pl, $"amostra coletada e guardada no recipiente: {Jandirus.Core.Races.NomeDaRaca.Bonito(vitima.Race)} de {vitima.Name} "

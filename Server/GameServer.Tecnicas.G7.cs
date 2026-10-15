@@ -468,11 +468,21 @@ public sealed partial class GameServer
 	{
 		if (!AbrirPunhoG7(pl, 15, BasicCdG3, out _)) return;
 
+		// (v0.3.0) A VOLTA INTEIRA NA TELA -- o dono: *"faca o personagem realmente dar um 360 pra representar o giro"*. O DM nao
+		// girava nada (o verb so batia em quem estivesse em volta). O corpo segura a pose de golpe pela volta toda (`AtaqueAte`)
+		// e o gesto manda cada tela girar o desenho dele (`CharacterVisual.Girar`). ANTES dos golpes: o relato de cada um chega
+		// com o giro ja comecado.
+		if (!GiroSemVoltaDeTeste)
+		{
+			pl.AtaqueAte = Math.Max(pl.AtaqueAte, NowMs() + Protocol.GiroMs);
+			AnunciarGesto(pl, Protocol.GestoDoCorpo.Giro);
+		}
+
 		int pegos = 0;
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash).ToList())
 		{
 			if (pegos >= 3) break;
-			if (o == pl || o.Ficha.dead || o.Combate == null || o.Combate.Intocavel) continue;
+			if (o == pl || EhCadaver(o) || o.Combate == null || o.Combate.Intocavel) continue;
 			if (Vec2.Distance(o.Pos, pl.Pos) > ColadoG7) continue;
 			if (!AlcancaPelaAltura(pl, o)) continue;
 
@@ -484,6 +494,9 @@ public sealed partial class GameServer
 			? $"voce gira e acerta {pegos} de uma vez."
 			: "voce gira no vazio.");
 	}
+
+	/// <summary>DEFEITO INJETADO (bancadas `--v030teste` e `--diagv030`): o Spin Attack bate sem girar -- o jogo de antes. Falso em jogo, sempre.</summary>
+	internal static bool GiroSemVoltaDeTeste;
 
 	/// <summary>
 	/// STUN ATTACK (`:340`). `kireq = Ephysoff*20*BaseDrain`, `if(target in view(10))
@@ -735,7 +748,7 @@ public sealed partial class GameServer
 		// `if(target && get_dist(src,target)<=30) M = target else "You need a valid target..."` --
 		// e recusa ANTES de cobrar, como no DM (o `return` do `:539` vem antes do `Ki -=`).
 		ServerPlayer? alvo = Marcado(pl);
-		if (alvo == null || alvo == pl || alvo.Ficha.dead || !alvo.Zone.Equals(pl.Zone)
+		if (alvo == null || alvo == pl || EhCadaver(alvo) || !alvo.Zone.Equals(pl.Zone)
 			|| Vec2.Distance(alvo.Pos, pl.Pos) > 30 * ZoneCollision.TileSize)
 		{
 			Avisar(pl, "isso precisa de um alvo marcado a ate trinta tiles. (Duplo clique.)");

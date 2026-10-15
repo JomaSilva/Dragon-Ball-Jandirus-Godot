@@ -365,8 +365,25 @@ public partial class GameServer
 			antes = vila.Select(c => c.Pos).ToList();
 			MoveToZone(pl.Id, palco, berco);
 			double andouCedo = vila.Select((c, i) => (c.Pos - antes[i]).Length).Max();
-			Checa("voltar ANTES dos 5 minutos nao mexe ninguem de lugar",
+			Checa("voltar ANTES do prazo nao mexe ninguem de lugar (o *\"sair e voltar em 1 segundo\"* do dono)",
 				  andouCedo < 0.001, $"{andouCedo:0.00} px");
+
+			// (v0.3.0) ...E A VOLTA CEDO CONSOME A MARCA: a ausencia acabou nesta chegada. Ficando, ela venceria com o host
+			// DENTRO do planeta, e a proxima chegada (outro jogador) embaralharia a cidade na frente dele.
+			Checa("...e a volta cedo CONSOME a marca de vazio: a ausencia acabou aqui, ande alguem ou nao",
+				  !_vazioDesde.ContainsKey(palco.Hash));
+			// UM TIQUE COM O HOST NA TERRA antes de sair: a marca de vazio e DERIVADA do `_zonasComGente` do tique anterior,
+			// e sem ele a saida nao deixaria marca nenhuma -- o defeito abaixo nao teria o que guardar.
+			TickDosCorposSemDono(Protocol.TickSeconds);
+			MoveToZone(pl.Id, longe, PontoDeNascimento(longe));
+			TickDosCorposSemDono(Protocol.TickSeconds);
+			MarcaDaVoltaCedoFicaDeTeste = true;
+			try { MoveToZone(pl.Id, palco, berco); }
+			finally { MarcaDaVoltaCedoFicaDeTeste = false; }
+			Checa("PRECONDICAO (o defeito injetado: o jogo de antes) com a volta cedo guardando a marca, ela continua la -- e "
+				+ "venceria com o host dentro do planeta",
+				  _vazioDesde.ContainsKey(palco.Hash));
+			_vazioDesde.Remove(palco.Hash);
 
 			MoveToZone(pl.Id, longe, PontoDeNascimento(longe));
 			TickDosCorposSemDono(Protocol.TickSeconds);
@@ -382,7 +399,10 @@ public partial class GameServer
 
 			int mudaram = 0, naParede = 0, longeDemais = 0;
 			const int t2 = ZoneCollision.TileSize;
-			double tetoEsperado = (Povoamento.TilesMaxDoEmbaralho + 8) * t2 * 1.5;
+			// (v0.3.0) O TETO E O RAIO DESTA AUSENCIA (`Povoamento.RaioDoEmbaralho`), e nao o teto geral: por eixo ate o raio,
+			// mais meio tile do centro da celula -- a diagonal disso, com folga.
+			int raioDaVolta = Povoamento.RaioDoEmbaralho(Povoamento.SegundosAteOEmbaralho + 60);
+			double tetoEsperado = (raioDaVolta + 1) * t2 * 1.5;
 			for (int i = 0; i < vila.Count; i++)
 			{
 				double d = (vila[i].Pos - antes[i]).Length;
@@ -391,12 +411,27 @@ public partial class GameServer
 				if (mapa.BlockedAt(vila[i].Pos)) naParede++;
 			}
 
-			Checa("passados os 5 minutos, TODOS os habitantes mudaram de lugar na chegada do jogador",
+			Checa("passado o prazo, TODOS os habitantes mudaram de lugar na chegada do jogador",
 				  mudaram == vila.Count, $"{mudaram}/{vila.Count}");
 			Checa("...e NENHUM foi parar dentro de parede (o `PontoLivrePerto`, que o dono pediu em maiusculas)",
 				  naParede == 0, $"{naParede} na pedra");
-			Checa("...e nenhum atravessou o mapa: o passeio e PERTO de onde ele estava",
+			Checa($"...e nenhum foi alem do raio que o TEMPO VAZIO da ({raioDaVolta} tiles por eixo aos "
+				+ $"{Povoamento.SegundosAteOEmbaralho + 60:0} s): o passeio e PERTO de onde ele estava",
 				  longeDemais == 0, $"{longeDemais} alem de {tetoEsperado:0} px");
+
+			// (v0.3.0) O CONTRA-EXEMPLO DO RAIO: com o raio fixo no teto (o "parar do outro lado do planeta" que o dono nao
+			// quer), a MESMA ausencia leva os habitantes alem do raio dela.
+			MoveToZone(pl.Id, longe, PontoDeNascimento(longe));
+			TickDosCorposSemDono(Protocol.TickSeconds);
+			_vazioDesde[palco.Hash] = NowMs() - (long)((Povoamento.SegundosAteOEmbaralho + 60) * 1000);
+			var antesDoRaioFixo = vila.Select(c => c.Pos).ToList();
+			Povoamento.RaioFixoDeTeste = true;
+			try { MoveToZone(pl.Id, palco, berco); }
+			finally { Povoamento.RaioFixoDeTeste = false; }
+			int alemComRaioFixo = vila.Where((c, i) => (c.Pos - antesDoRaioFixo[i]).Length > tetoEsperado).Count();
+			Checa("PRECONDICAO (o defeito injetado: o raio fixo no teto) a mesma ausencia leva gente alem do raio dela -- a "
+				+ "linha de cima sabe ficar vermelha",
+				  alemComRaioFixo > 0, $"{alemComRaioFixo} de {vila.Count} alem de {tetoEsperado:0} px");
 
 			// QUANTO A LINHA ACIMA VALE NESTE MAPA. O berco da Terra e campo aberto de proposito
 			// (o (249,250) do BYOND foi escrito PRA ela), entao "ninguem caiu na pedra" aqui pode ser
@@ -404,8 +439,8 @@ public partial class GameServer
 			// so evita que a leitura desta secao seja mais confiante do que a medida.
 			int cairiaNaPedra = 0;
 			foreach (ServerPlayer c in vila)
-				for (int dx = -Povoamento.TilesMaxDoEmbaralho; dx <= Povoamento.TilesMaxDoEmbaralho; dx++)
-					for (int dy = -Povoamento.TilesMaxDoEmbaralho; dy <= Povoamento.TilesMaxDoEmbaralho; dy++)
+				for (int dx = -raioDaVolta; dx <= raioDaVolta; dx++)
+					for (int dy = -raioDaVolta; dy <= raioDaVolta; dy++)
 						if (mapa.BlockedAt(c.Pos + new Vec2(dx * t2, dy * t2))) cairiaNaPedra++;
 			GD.Print($"  (contexto: o raio do sorteio em volta dos 8 corpos da Terra tem {cairiaNaPedra} "
 				   + "celulas densas -- a prova do funil e a familia 4, em Icer)");
@@ -453,8 +488,8 @@ public partial class GameServer
 
 				int densasEmVolta = 0;
 				foreach (ServerPlayer c in presos)
-					for (int dx = -Povoamento.TilesMaxDoEmbaralho; dx <= Povoamento.TilesMaxDoEmbaralho; dx++)
-						for (int dy = -Povoamento.TilesMaxDoEmbaralho; dy <= Povoamento.TilesMaxDoEmbaralho; dy++)
+					for (int dx = -raioDaVolta; dx <= raioDaVolta; dx++)
+						for (int dy = -raioDaVolta; dy <= raioDaVolta; dy++)
 							if (mapaPedra.BlockedAt(c.Pos + new Vec2(dx * t2, dy * t2))) densasEmVolta++;
 
 				MoveToZone(pl.Id, longe, PontoDeNascimento(longe));
@@ -584,8 +619,8 @@ public partial class GameServer
 				int tx = mx + Povoamento.TilesMinDoEmbaralho, ty = my;
 				bool servia = mapa.ServeDeChao(tx, ty);
 
-				for (int dx = -Povoamento.TilesMaxDoEmbaralho; dx <= Povoamento.TilesMaxDoEmbaralho; dx++)
-					for (int dy = -Povoamento.TilesMaxDoEmbaralho; dy <= Povoamento.TilesMaxDoEmbaralho; dy++)
+				for (int dx = -raioDaVolta; dx <= raioDaVolta; dx++)
+					for (int dy = -raioDaVolta; dy <= raioDaVolta; dy++)
 						if (dx != 0 || dy != 0) mapa.Bloquear(mx + dx, my + dy);
 
 				// A PRECONDICAO E AFIRMADA AGORA, E NAO DEPOIS DA CHEGADA -- e isto e uma medida, nao
@@ -1100,11 +1135,16 @@ public partial class GameServer
 			var zonasPovoadas = _players.Values.Where(EhNpcDoMundo)
 				.GroupBy(c => c.Zone.Hash).Select(g => g.First().Zone).ToList();
 
+			// (v0.3.0) A AUSENCIA E LONGA (uma hora): o raio vai ao teto (`Povoamento.RaioDoEmbaralho`), e e com o sorteio mais
+			// largo que a parede, a agua e o bolsao fora do habitat mais aparecem ao alcance.
+			const double ausenciaLonga = 60 * 60;
+			int raioLongo = Povoamento.RaioDoEmbaralho(ausenciaLonga);
+			var ondeEstavamNaVarredura = _players.Values.Where(c => EhNpcDoMundo(c) && c.Papel is { Pacifico: true }).ToDictionary(c => c.Id, c => c.Pos);
 			foreach (ZoneKey z in zonasPovoadas)
 			{
 				MoveToZone(pl.Id, longe, PontoDeNascimento(longe));
 				TickDosCorposSemDono(Protocol.TickSeconds);
-				_vazioDesde[z.Hash] = NowMs() - (long)(Povoamento.SegundosAteOEmbaralho * 2000);
+				_vazioDesde[z.Hash] = NowMs() - (long)(ausenciaLonga * 1000);
 				MoveToZone(pl.Id, z, PontoDeNascimento(z));
 			}
 			MoveToZone(pl.Id, longe, PontoDeNascimento(longe));
@@ -1130,8 +1170,8 @@ public partial class GameServer
 
 				// O QUE HAVIA AO ALCANCE DO SORTEIO. Sem este numero, "ninguem caiu na agua" nao
 				// distingue um funil que funciona de um mapa que nao tem agua.
-				for (int dx = -Povoamento.TilesMaxDoEmbaralho; dx <= Povoamento.TilesMaxDoEmbaralho; dx++)
-					for (int dy = -Povoamento.TilesMaxDoEmbaralho; dy <= Povoamento.TilesMaxDoEmbaralho; dy++)
+				for (int dx = -raioLongo; dx <= raioLongo; dx++)
+					for (int dy = -raioLongo; dy <= raioLongo; dy++)
 					{
 						if (m.EhAgua(cx + dx, cy + dy)) aguaNoAlcance++;
 						if (m.BlockedCell(cx + dx, cy + dy)) pedraNoAlcance++;
@@ -1154,6 +1194,51 @@ public partial class GameServer
 				  naAguaGeral == 0, $"{naAguaGeral} na agua");
 			Checa("VARREDURA: nenhum ficou na BEIRADA do mapa (celula de onde nao se da um passo)",
 				  naBordaGeral == 0, $"{naBordaGeral} na borda");
+
+			// (v0.3.0) O HABITAT: todo habitante que o embaralho MEXEU caiu na terra em que o povoamento poe gente. So os que
+			// mexeram -- quem nao achou lugar ficou onde a vida diaria o deixou, e isso e outra pergunta.
+			int mexidos = 0, foraDoHabitat = 0, alemDoAntigo = 0;
+			foreach (ServerPlayer c in _players.Values.Where(c => EhNpcDoMundo(c) && c.Papel is { Pacifico: true }).ToList())
+			{
+				if (!ondeEstavamNaVarredura.TryGetValue(c.Id, out Vec2 antesDaVarredura)) continue;
+				Vec2 passoDoEmbaralho = c.Pos - antesDaVarredura;
+				if (passoDoEmbaralho.Length < 0.001f) continue;
+				mexidos++;
+				int hx = (int)MathF.Floor(c.Pos.X / t3), hy = (int)MathF.Floor(c.Pos.Y / t3);
+				if (_habitats.TryGetValue(c.Zone.Hash, out Habitat? h) && !h.Navegavel(hx, hy)) foraDoHabitat++;
+				if (MathF.Max(MathF.Abs(passoDoEmbaralho.X), MathF.Abs(passoDoEmbaralho.Y)) > 10.5f * t3) alemDoAntigo++;
+			}
+			Checa("VARREDURA: todo habitante que o embaralho mexeu caiu DENTRO DO HABITAT da zona -- a terra em que o "
+				+ "povoamento poe gente, e nao um bolsao de chao sem saida",
+				  mexidos > 0 && foraDoHabitat == 0, $"{mexidos} mexidos, {foraDoHabitat} fora do habitat");
+			Checa($"...e a ausencia LONGA leva longe: com uma hora de planeta vazio (raio {raioLongo} tiles) ha quem andou mais "
+				+ "que os 10 tiles do embaralho antigo -- o raio e do tempo",
+				  alemDoAntigo > 0, $"{alemDoAntigo} de {mexidos} alem de 10 tiles");
+
+			// O CONTRA-EXEMPLO DO HABITAT: uma celula de chao que SERVE e fica FORA do habitat (Namek e ilhas, e as pequenas nao
+			// entram -- `Espalhamento.MinimoDeCelulasPorComponente`). A pergunta de producao a recusa; sem o habitat ela passaria.
+			ZoneKey ilhas = ZoneKey.Premade("Namek");
+			ZoneCollision? mapaDasIlhas = MapaDaZonaOuCatalogo(ilhas);
+			Habitat? habitatDasIlhas = mapaDasIlhas == null ? null : HabitatDaZona(ilhas);
+			(int X, int Y)? bolsaoAchado = null;
+			if (mapaDasIlhas != null && habitatDasIlhas != null)
+				for (int y = 0; y < mapaDasIlhas.Height && bolsaoAchado == null; y++)
+					for (int x = 0; x < mapaDasIlhas.Width && bolsaoAchado == null; x++)
+						if (mapaDasIlhas.ServeDeChao(x, y) && !habitatDasIlhas.Navegavel(x, y)) bolsaoAchado = (x, y);
+			if (mapaDasIlhas == null || bolsaoAchado is not { } bolsao)
+				Checa("PRECONDICAO: Namek tem chao que serve FORA do habitat (uma ilha pequena)", false);
+			else
+			{
+				bool recusou = !ServeDeEmbaralho(mapaDasIlhas, habitatDasIlhas, bolsao.X, bolsao.Y);
+				bool passariaSemHabitat;
+				ForaDoHabitatDeTeste = true;
+				try { passariaSemHabitat = ServeDeEmbaralho(mapaDasIlhas, habitatDasIlhas, bolsao.X, bolsao.Y); }
+				finally { ForaDoHabitatDeTeste = false; }
+				Checa($"o embaralho RECUSA o chao fora do habitat (Namek ({bolsao.X},{bolsao.Y}): serve de chao, e e uma ilha pequena)",
+					  recusou);
+				Checa("PRECONDICAO (o defeito injetado: sem o habitat) a mesma celula passaria -- a linha de cima sabe ficar vermelha",
+					  passariaSemHabitat);
+			}
 
 			// ---------------------------------------------------------------
 			// FAMILIA 13 -- O GANHO, COM O MUNDO CHEIO E NINGUEM ONLINE
@@ -1233,6 +1318,107 @@ public partial class GameServer
 				  $"{usTudoDormindo:0.00} x {usComUmaZonaAcordada:0.00} us");
 
 			MoveToZone(pl.Id, longe, PontoDeNascimento(longe));
+
+			// ---------------------------------------------------------------
+			// FAMILIA 14 -- O FIO: QUEM ESTA LONGE SO VAI NO TIQUE EM QUE PENSA (v0.3.0)
+			// ---------------------------------------------------------------
+			// ============================ MAIS GENTE SEM ENGORDAR O SNAPSHOT ============================
+			// O dono pediu mais habitantes *"mas cuidado com a performance do server"*, e o custo de um corpo a mais na zona e o
+			// FIO: ele vai pra cada jogador dela trinta vezes por segundo (`Povoamento.MaxPorZona`). O recorte
+			// (`CorposDoSnapshot`) manda o habitante longe de todo jogador SO no tique em que a mente dele pensa. A familia mede
+			// o recorte na Terra cheia, com o host no berco e o controle ao lado:
+			//   * o host e o habitante colado nele vao em TODO tique;
+			//   * quem esta longe vai uma vez a cada `divisorDeLonge`, e no tique em que pensa;
+			//   * e o cliente NAO PERDE NADA: toda mudanca de lugar, olhar ou passo de um habitante longe acontece num tique em
+			//     que ele foi no snapshot -- a afirmacao que faz do recorte uma economia, e nao uma perda.
+			// ==========================================================================================
+			MoveToZone(pl.Id, palco, berco);
+			int divisorDoFio = Math.Max(1, _rotina.DivisorDeLonge);
+			ServerPlayer? vizinhoDoHost = NascerNpc("cidadao", palco, mapa.PontoLivrePerto(berco + new Vec2(2 * t2, 0)), ++_lugarDaBancadaDeEmbaralho);
+			if (vizinhoDoHost == null) Checa("PRECONDICAO: nasceu o habitante de controle colado no host", false);
+			else
+			{
+				forjados.Add(vizinhoDoHost);
+				const int tiquesDoFio = 900;   // 30 s: o bastante pra os habitantes longe passearem
+				int hostFoi = 0, vizinhoFoi = 0, longesVistos = 0, idasDeLonge = 0, foraDeFase = 0, mudancasDeLonge = 0, mudouSemIr = 0;
+				long bytesComRecorte = 0, bytesSemRecorte = 0;
+				int amostrasDeBytes = 0;
+				var estadoDeAntes = new Dictionary<int, (Vec2 Pos, Facing Olhar, bool Andando)>();
+				foreach (ServerPlayer c in ZoneList(palco.Hash)) estadoDeAntes[c.Id] = (c.Pos, c.Facing, c.Moving);
+
+				for (int t = 0; t < tiquesDoFio; t++)
+				{
+					TickDosCorposSemDono(Protocol.TickSeconds);
+					List<ServerPlayer> zonaDoFio = ZoneList(palco.Hash);
+					var foiNoFio = new HashSet<ServerPlayer>(CorposDoSnapshot(zonaDoFio));
+					if (foiNoFio.Contains(pl)) hostFoi++;
+					if (foiNoFio.Contains(vizinhoDoHost)) vizinhoFoi++;
+					foreach (ServerPlayer c in zonaDoFio)
+					{
+						(Vec2 Pos, Facing Olhar, bool Andando) estadoDele = (c.Pos, c.Facing, c.Moving);
+						bool mudouDeEstado = estadoDeAntes.TryGetValue(c.Id, out var estadoQueEra) && !estadoQueEra.Equals(estadoDele);
+						estadoDeAntes[c.Id] = estadoDele;
+						if (c.LongeNoTique != _tiquesDosCorpos) continue;   // so quem o recorte pode tirar
+						longesVistos++;
+						if (foiNoFio.Contains(c))
+						{
+							idasDeLonge++;
+							if ((_tiquesDosCorpos + (ulong)c.Id) % (ulong)divisorDoFio != 0) foraDeFase++;
+						}
+						if (mudouDeEstado) { mudancasDeLonge++; if (!foiNoFio.Contains(c)) mudouSemIr++; }
+					}
+					// O FIO EM BYTES, uma vez por segundo: as partes do recorte e as da zona inteira, no teto real.
+					if (t % TicksPorSegundo == 0)
+					{
+						int orcamentoDoFio = OrcamentoDoSnapshot(zonaDoFio);
+						foreach (var parte in PartesDoSnapshot(CorposDoSnapshot(zonaDoFio), TirosDaZona(palco.Hash), NowMs(), 0u, orcamentoDoFio))
+							bytesComRecorte += parte.Length;
+						foreach (var parte in PartesDoSnapshot(zonaDoFio, TirosDaZona(palco.Hash), NowMs(), 0u, orcamentoDoFio))
+							bytesSemRecorte += parte.Length;
+						amostrasDeBytes++;
+					}
+				}
+				GD.Print($"  MEDIDA  o fio da Terra com o host no berco: {bytesSemRecorte / Math.Max(1, amostrasDeBytes)} bytes por tique "
+					   + $"com a zona inteira, {bytesComRecorte / Math.Max(1, amostrasDeBytes)} com o recorte ({ZoneList(palco.Hash).Count} "
+					   + $"corpos na zona, {longesVistos / tiquesDoFio} longe de todo jogador em media)");
+
+				Checa("PRECONDICAO: havia habitante LONGE do host na medida, e ele mudou de lugar ou de passo -- sem isso \"o "
+					+ "cliente nao perde nada\" seria verdade sobre ninguem parado",
+					  longesVistos > 0 && mudancasDeLonge > 0, $"{longesVistos} tiques-longe, {mudancasDeLonge} mudancas");
+				Checa("o host e o habitante colado nele vao no snapshot em TODO tique (o recorte e so de quem esta longe de todos)",
+					  hostFoi == tiquesDoFio && vizinhoFoi == tiquesDoFio, $"host {hostFoi}, vizinho {vizinhoFoi} de {tiquesDoFio}");
+				Checa($"quem esta longe vai UMA vez a cada {divisorDoFio} tiques, e sempre no tique em que a mente dele pensa",
+					  foraDeFase == 0 && Math.Abs(idasDeLonge - longesVistos / (double)divisorDoFio) <= longesVistos / (double)tiquesDoFio + 1,
+					  $"{idasDeLonge} idas em {longesVistos} tiques-longe; {foraDeFase} fora da fase");
+				Checa("O CLIENTE NAO PERDE NADA: toda mudanca de lugar, olhar ou passo de um habitante longe aconteceu num tique "
+					+ "em que ele foi no snapshot",
+					  mudouSemIr == 0, $"{mudouSemIr} de {mudancasDeLonge} mudancas ficaram de fora");
+				Checa("...e o fio emagrece: a Terra cheia custa menos bytes por tique com o recorte do que inteira",
+					  bytesComRecorte < bytesSemRecorte, $"{bytesComRecorte} x {bytesSemRecorte} bytes em {amostrasDeBytes} amostras");
+
+				// O DEFEITO INJETADO: o jogo de antes (todo corpo em todo tique). A mesma conta de idas dispara.
+				int idasSemRecorte = 0, longesSemRecorte = 0;
+				LongeSempreNoSnapshotDeTeste = true;
+				try
+				{
+					for (int t = 0; t < 2 * divisorDoFio; t++)
+					{
+						TickDosCorposSemDono(Protocol.TickSeconds);
+						var foiSemRecorte = new HashSet<ServerPlayer>(CorposDoSnapshot(ZoneList(palco.Hash)));
+						foreach (ServerPlayer c in ZoneList(palco.Hash))
+						{
+							if (c.LongeNoTique != _tiquesDosCorpos) continue;
+							longesSemRecorte++;
+							if (foiSemRecorte.Contains(c)) idasSemRecorte++;
+						}
+					}
+				}
+				finally { LongeSempreNoSnapshotDeTeste = false; }
+				Checa("PRECONDICAO (o defeito injetado: sem o recorte) o habitante longe volta a ir em todo tique -- a conta de idas "
+					+ "acima sabe ficar vermelha",
+					  longesSemRecorte > 0 && idasSemRecorte == longesSemRecorte, $"{idasSemRecorte} idas em {longesSemRecorte} tiques-longe");
+			}
+			MoveToZone(pl.Id, longe, PontoDeNascimento(longe));
 		}
 		catch (Exception ex)
 		{
@@ -1244,6 +1430,10 @@ public partial class GameServer
 		{
 			_rotina.ChanceDeConversar = conversarGuardado;
 			_rotina.ChanceDeConvidar = convidarGuardado;
+			Povoamento.RaioFixoDeTeste = false;
+			ForaDoHabitatDeTeste = false;
+			MarcaDaVoltaCedoFicaDeTeste = false;
+			LongeSempreNoSnapshotDeTeste = false;
 			foreach (ServerPlayer c in forjados)
 			{
 				// O `Peer` EMPRESTADO SAI ANTES. O boneco forjado da familia 8 carrega o `Peer` do

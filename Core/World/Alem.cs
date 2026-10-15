@@ -189,6 +189,21 @@ public static class Alem
 	/// <summary>`zeni_revive_debuff_until = world.realtime + 36000` (`SkyNPCs.dm:194`): uma hora com o BP expresso em 25%.</summary>
 	public const long MsDoDebuffDoEnma = 3_600_000;
 
+	/// <summary>
+	/// (v0.3.0) A FRACAO DO PODER QUE A REENCARNACAO LEVA: o `Reincarnate(0.1)` do Enma (`SkyNPCs.dm:204`) -- o proximo
+	/// personagem da conta nasce com `round(oldBP * 0.1)` de BP base (`Reincarnation.dm:9`).
+	/// </summary>
+	public const double FracaoDaReencarnacao = 0.1;
+
+	/// <summary>(v0.3.0) O passe pro mundo dos vivos: 100.000 zeni (o dono, 2026-10-15). Nao existe no DM.</summary>
+	public const double PrecoDoPasseDoEnma = 100_000;
+
+	/// <summary>(v0.3.0) Quantos dias o passe vale -- DIAS DO JOGO, o dia do ceu (`Espaco.SegundosPorDiaInGame`).</summary>
+	public const int DiasDoPasseDoEnma = 7;
+
+	/// <summary>O prazo do passe em ms de relogio: 7 dias de 24 min = 2 h 48 min.</summary>
+	public const long MsDoPasseDoEnma = (long)(DiasDoPasseDoEnma * Espaco.SegundosPorDiaInGame * 1000);
+
 	/// <summary>Onde o Enma senta, na grade do Godot -- a mesma conversao da <see cref="MesaDoEnma"/>.</summary>
 	public static Vec2 CadeiraDoEnma(int alturaDaZonaEmTiles)
 	{
@@ -219,8 +234,74 @@ public static class Alem
 	/// De graca vem o caso que um campo erraria: o morto que atravessa a passagem pro Ceu ou pro
 	/// Inferno continua de pe, sem ninguem ter que lembrar de reescrever o campo na travessia.
 	/// ==========================================================================================
+	///
+	/// (v0.3.0) E A MENTE TAMBEM E LUGAR DE MORTO: o fantasma que mergulha na meditacao profunda fica de pe la dentro -- o
+	/// dono: *"permita q morto possa fazer meditacao profunda [...] na interdimension e a excecao"*. E o unico lugar fora do
+	/// Outro Mundo onde o morto sem o passe anda, luta e treina (ver `DimensaoMental.PorQueNaoMergulhar`).
 	/// </summary>
-	public static bool MortoDePe(bool morto, string nomeDaZona) => morto && EhOAlem(nomeDaZona);
+	public static bool MortoDePe(bool morto, string nomeDaZona) =>
+		morto && (EhOAlem(nomeDaZona) || (nomeDaZona == DimensaoMental.Zona && !MenteDeitaOMortoDeTeste));
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--transeteste` e `--diagv030`): a mente volta a nao ser lugar de morto -- o fantasma que
+	/// mergulhou e o cadaver deitado la dentro. Lido por <see cref="MortoDePe"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool MenteDeitaOMortoDeTeste;
+
+	/// <summary>
+	/// (v0.3.0) O MORTO COM O PASSE DO ENMA, entre os vivos: de pe e de aureola FORA do Outro Mundo enquanto o prazo da
+	/// ficha (`Fighter.passe_do_enma_ate`) estiver armado. E a outra metade do "este morto anda?": o lugar responde pelo
+	/// Outro Mundo, o passe responde pelo resto. Quem desarma e o relogio do passe (`GameServer.CumprirOPasseDoEnma`) -- por
+	/// isso a pergunta e "armado", e nao "dentro do prazo": entre o vencimento e o tique da volta (ate um quinto de
+	/// segundo) o morto continua de pe, e nao cai como cadaver no meio do caminho.
+	/// </summary>
+	public static bool EmVisita(bool morto, long passeAte) => morto && passeAte != 0;
+
+	// =====================================================================
+	// AS ILHAS DO OUTRO MUNDO PUXAM 10x (dono, 2026-10-15)
+	// =====================================================================
+	// *"as ilhas q estao no outro mundo/ceu deveriam ter gravidade de 10x, assim como o planeta do sr kaioh era no anime,
+	// porem, o resto do ceu como o caminho da serpente e o local do emna mantem gravidade em 1x"*.
+	//
+	// No DM so o planeta do Sr. Kaioh puxava 10x: o retangulo de `Gravity.dm:121-123` (x 29..49, y 273..350 contados de
+	// baixo pra cima, no z6 -- a ilha do OESTE). Aqui TODA ILHA do mapa do Outro Mundo: a terra solta entre as nuvens, fora
+	// do Caminho da Serpente (e do palacio da Princesa Serpente, que fica no laco dele) e do palacio do Enma. Os retangulos
+	// sao do mapa `z06_Afterlife` (celulas, y de cima pra baixo), um por componente conexa de chao que nao toca o Caminho:
+	// os quatro planetas dos Kaiohs (as quatro ilhas redondas com a mesma casa), a ilha das palmeiras, a do fragmento de
+	// ressurreicao e a do peixe.
+	//
+	// O SR. KAIOH E O DO NORTE (dono, no mesmo pedido: *"coloca o sr kaioh na ilha mais ao norte"*) -- o DM o punha na do
+	// oeste, e por isso o nome "o planeta do Sr. Kaioh" e o da ilha de cima.
+
+	/// <summary>As ilhas do Outro Mundo: o nome que a frase usa e o retangulo, em celulas (inclusive).</summary>
+	public static readonly (string Nome, int X0, int Y0, int X1, int Y1)[] IlhasDoOutroMundo =
+	[
+		("o planeta do Sr. Kaioh", 125, 0, 219, 40),
+		("o planeta do Kaioh do Oeste", 15, 149, 49, 236),
+		("o planeta do Kaioh do Leste", 444, 196, 478, 283),
+		("o planeta do Kaioh do Sul", 270, 447, 364, 483),
+		("a ilha das palmeiras", 291, 285, 331, 346),
+		("a ilha do fragmento de ressurreição", 256, 210, 281, 233),
+		("a ilha do peixe", 12, 377, 53, 413),
+	];
+
+	/// <summary>A gravidade das ilhas: a do planeta do Sr. Kaioh no anime (e no DM).</summary>
+	public const double GravidadeDasIlhas = 10;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`): as ilhas voltam a puxar como o Caminho (1x) -- o jogo de antes. Lido por
+	/// <see cref="IlhaEm"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool IlhasComoOCaminhoDeTeste;
+
+	/// <summary>A ilha do Outro Mundo nesta celula (o nome da frase), ou nulo -- fora delas, ou noutra zona.</summary>
+	public static string? IlhaEm(string nomeDaZona, int cx, int cy)
+	{
+		if (IlhasComoOCaminhoDeTeste || !string.Equals(nomeDaZona, ZonaDoOutroMundo, StringComparison.OrdinalIgnoreCase)) return null;
+		foreach ((string nome, int x0, int y0, int x1, int y1) in IlhasDoOutroMundo)
+			if (cx >= x0 && cx <= x1 && cy >= y0 && cy <= y1) return nome;
+		return null;
+	}
 
 	/// <summary>
 	/// ============================ A AUREOLA E DA VIAGEM, E NAO DA MORTE ============================

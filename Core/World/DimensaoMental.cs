@@ -89,10 +89,16 @@ public static class DimensaoMental
 	/// Aqui ha uma lista so, e a telinha nao INVENTA nada: ela repete o que o servidor vai dizer.
 	/// ================================================================================
 	///
-	/// ============================ SAO EXATAMENTE AS TRES DO ORIGINAL ============================
+	/// ============================ SAO AS TRES DO ORIGINAL -- MENOS O MORTO DE PE (v0.3.0) ============================
 	/// `if(mind_session || !client || dead || KO) return` (`MindMeditate.dm:355`) -- ja em transe,
 	/// morto, nocauteado. O `!client` nao tem par aqui (um corpo sem dono nao aperta tecla nenhuma;
 	/// quem responde por ele e o `pl.Peer == null` do servidor).
+	///
+	/// O MORTO DE PE MERGULHA, e a regra e do dono (2026-10-15): *"permita q morto possa fazer meditacao profunda, e nesse
+	/// caso ele mesmo q n possa estar no 'mundo dos vivos' pq n comprou com os 100k zeni, na interdimension e a
+	/// excecao"*. DIVERGENCIA DECLARADA do `dead` do DM: quem fica de fora e so o CADAVER -- o corpo no chao antes da
+	/// viagem (`Alem.MsNoChao`), que nao se levanta, nao medita e nao tem alma de pe pra mandar embora. O fantasma do
+	/// Outro Mundo e o morto com o passe do Enma estao de pe -- e la dentro continuam de pe (`Alem.MortoDePe`).
 	///
 	/// **ESTAR EM COMBATE NAO ESTA NA LISTA, E ISSO E DELIBERADO.** Nem o DM nem este servidor
 	/// recusam quem acabou de trocar socos -- e o desenho inteiro do corpo largado depende disso:
@@ -102,10 +108,10 @@ public static class DimensaoMental
 	/// autoridade nao tem.
 	/// ======================================================================================
 	/// </summary>
-	public static string PorQueNaoMergulhar(bool jaEmTranse, bool ko, bool morto)
+	public static string PorQueNaoMergulhar(bool jaEmTranse, bool ko, bool cadaver)
 	{
 		if (jaEmTranse) return "voce ja esta em transe.";
-		if (morto) return "um morto nao mergulha na propria mente.";
+		if (cadaver) return "um corpo caído não mergulha na própria mente.";
 		if (ko) return "voce esta caido -- nao da pra entrar em transe assim.";
 		return "";
 	}

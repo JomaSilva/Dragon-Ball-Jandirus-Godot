@@ -38,14 +38,14 @@ public partial class GameServer
 			// SO AVISA QUEM TEM O DOM. Dizer "ainda em recarga" pra um humano seria contar de um
 			// sistema que nunca vai ser dele.
 			if (z == Fighter.ZenkaiResult.EmRecarga && vitima.Ficha.HasZenkai())
-				Avisar(vitima, "seu corpo ainda se refaz do ultimo surto.");
+				Avisar(vitima, "seu corpo ainda se refaz do ultimo surto.", Jandirus.Net.Protocol.Fala.AvisoDeZenkai);
 			return;
 		}
 
 		GD.Print($"[server] Zenkai de {vitima.Name}: +{vitima.Ficha.UltimoZenkai:0} de BP"
 				 + (vitima.Ficha.UltimoZenkaiNoTeto ? " (no teto)" : ""));
 		Avisar(vitima, Narrar(vitima.Ficha.UltimoZenkai / Math.Max(vitima.Ficha.BP - vitima.Ficha.UltimoZenkai, 1),
-							  vitima.Ficha.UltimoZenkaiNoTeto));
+							  vitima.Ficha.UltimoZenkaiNoTeto), Jandirus.Net.Protocol.Fala.AvisoDeZenkai);
 	}
 
 	/// <summary>
@@ -101,7 +101,7 @@ public partial class GameServer
 	/// ====================================================================================================
 	/// </summary>
 	private bool PodeRegenerar(ServerPlayer pl) =>
-		pl.Race is "Namekian" || SabeTecnica(pl, "Regenerate");
+		pl.Race is "Namekian" || Jandirus.Core.Races.SangueDoBio.Carrega(pl.Ficha, "Namekian") || SabeTecnica(pl, "Regenerate");
 
 	/// <summary>
 	/// REGENERA. Prefere devolver um membro DECEPADO; sem nenhum, cura o mais ferido ao cheio.
@@ -119,7 +119,7 @@ public partial class GameServer
 	private void Regenerar(ServerPlayer pl)
 	{
 		if (!PodeRegenerar(pl)) { Avisar(pl, "seu corpo nao regenera assim."); return; }
-		if (pl.Combate == null || pl.Ficha.dead) { Avisar(pl, "agora nao."); return; }
+		if (pl.Combate == null || EhCadaver(pl)) { Avisar(pl, "agora nao."); return; }
 		if (!RegeneraCaidoDeTeste && (pl.Ficha.KO || pl.Ficha.med || pl.Ficha.train))
 		{
 			Avisar(pl, "voce nao consegue se concentrar pra regenerar agora ("

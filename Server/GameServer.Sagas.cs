@@ -378,6 +378,11 @@ public partial class GameServer
 
 		// O PINO E O DEGRAU, os dois antes de qualquer outra coisa tocar a ficha.
 		npc.Papel.BpsPinados = ec.Bps;
+		// (v0.3.0) O CHEFE DE SAGA CACA O PLANETA INTEIRO -- ver `GameServer.CacaOPlaneta`.
+		npc.Papel.DaSaga = true;
+		// (v0.3.0) E O KI DELE NAO ACABA (*"faça boss de saga de ki infinito pra deixar mais desafiador"*): quem segura e o
+		// cadeado do corpo, no fim de todo tique (`Nutricao.KiSempreCheio`). Ver `GameServer.ChefeDeSaga.cs`.
+		npc.Ficha.KiDeChefe = true;
 		npc.Papel.Estagio = Math.Clamp(ec.Degrau, 0, Math.Max(npc.Papel.Molde.Estagios.Length - 1, 0));
 		EntrarNoDegrau(npc, cura: 0, anunciar: false);
 
@@ -391,7 +396,7 @@ public partial class GameServer
 		ec.UltimatoEm = elo.DestroiPlaneta ? _relogioDoMundo + elo.MinutosDeOcio * 60 : 0;
 
 		ChefeDaSaga? ficha = Array.Find(elo.Chefes, c => c.Molde == ec.Molde);
-		AnunciarNoMundo(como switch
+		string frase = como switch
 		{
 			ComoChegou.Retomando =>
 				$"{npc.Name} CONTINUA em {NomeDoPlaneta(elo.Planeta)} -- a ameaça não passou.",
@@ -403,7 +408,13 @@ public partial class GameServer
 					? linha : $"{npc.Name} voltou -- e não está mais como antes.",
 
 			_ => ficha?.AnuncioDaChegada ?? "",
-		});
+		};
+		AnunciarNoMundo(frase);
+
+		// (v0.3.0) A CENA DA CHEGADA, pra TODOS (*"uma cutscene q aparece pra todos quando um boss de saga aparece"*) -- a de quem
+		// chega e a de quem volta da morte. Quem RETOMA nao chegou: ele ja estava no mundo antes do reinicio. Ver
+		// `GameServer.ChefeDeSaga.cs`.
+		if (como != ComoChegou.Retomando) AnunciarChegadaDoChefe(npc, elo.Planeta, frase);
 
 		GD.Print($"[server] SAGA '{elo.Id}': '{npc.Name}' chegou em {elo.Planeta} | degrau "
 			   + $"{npc.Papel.Estagio + 1}/{npc.Papel.Molde.Estagios.Length} | BP PINADO "
@@ -709,33 +720,44 @@ public partial class GameServer
 		// uma vez, pelo proprio corpo.
 		if (!_players.Values.Any(p => EhJogador(p) && !p.Ficha.dead))
 		{
+			// (v0.3.0) SE A SUPERNOVA JA ESTAVA NO AR, ela se desfaz -- e volta inteira quando houver gente pra ve-la.
+			if (ec.Carregando)
+			{
+				ec.Carregando = false;
+				AcabarASupernova(corpo);
+			}
 			ec.UltimatoEm = _relogioDoMundo + (ec.Engajou ? elo.MinutosDeLuta : elo.MinutosDeOcio) * 60;
 			return;
 		}
 
 		if (_relogioDoMundo < ec.UltimatoEm) return;
 
-		// ============================ A CARGA DE 30 s: A JANELA PRA INTERROMPER ============================
-		// `BEV_PD_CHARGE 300` decimos = 30 s (BossEvents.dm:29), e o comentario diz o desenho: *"janela
-		// p/ matar/nocautear e interromper"*. Sem ela o ultimato seria um instante e nao um momento --
-		// e derrubar o chefe deixaria de ter um significado especifico no fim da luta.
-		// ==============================================================================================
+		// ============================ A SUPERNOVA (v0.3.0): A CARGA COM CORPO NA TELA ============================
+		// No DM era a carga de 30 s com a bola do `15.dmi` sobre o chefe (`BEV_PD_CHARGE`, BossEvents.dm:29) -- e a JANELA
+		// pra nocautea-lo. O dono (2026-10-15): *"ele deveria fazer uma animacao parecida com a da genkidama e carregar a
+		// super nova [...] nesse momento ele fica imune aos ataques e joga a esfera na direcao do planeta"*. O chefe ergue o
+		// sol (`ComecarASupernova`: parado e intocavel), o prazo vai ate a EXPLOSAO (a carga e a queda de `Core.Npc.Supernova`)
+		// e so entao a destruicao comeca (`GanchoDeDestruicao`, que tira o chefe do mundo -- e e isso que a tela le como "o
+		// sol bateu no chao").
+		// =========================================================================================================
 		if (!ec.Carregando)
 		{
 			ec.Carregando = true;
-			ec.UltimatoEm = _relogioDoMundo + 30;
+			ec.UltimatoEm = _relogioDoMundo + Jandirus.Core.Npc.Supernova.SegundosAteAExplosao;
+			ComecarASupernova(corpo);
 			AnunciarNoMundo(elo.AnuncioDoUltimato.Length > 0
 				? elo.AnuncioDoUltimato.Replace("{planeta}", NomeDoPlaneta(elo.Planeta))
-				: $"{corpo.Name} começou a concentrar uma energia COLOSSAL sobre "
-				  + $"{NomeDoPlaneta(elo.Planeta)}! Nocauteiem-no em 30 SEGUNDOS para interromper!");
+				: $"{corpo.Name} ergue uma SUPERNOVA sobre {NomeDoPlaneta(elo.Planeta)}! Nada o atinge enquanto ela cresce...");
 			return;
 		}
 
-		// NOCAUTEADO NA JANELA: interrompido, e ele tenta de novo em 2 min (`BEV_PD_RETRY`, :30).
+		// UM NOCAUTE QUE O ALCANCE INTERROMPE, e ele tenta de novo em 2 min (`BEV_PD_RETRY`, :30). A Supernova o deixa
+		// intocavel, entao golpe nenhum chega aqui -- sobra o verb de admin, e a Supernova se desfaz com ele.
 		if (corpo.Ficha.KO || corpo.Ficha.dead)
 		{
 			ec.Carregando = false;
 			ec.UltimatoEm = _relogioDoMundo + 120;
+			AcabarASupernova(corpo);
 			AnunciarNoMundo($"O ataque de {corpo.Name} foi INTERROMPIDO! "
 						  + "Ele foi nocauteado antes de liberar a energia!");
 			return;
@@ -749,7 +771,8 @@ public partial class GameServer
 	/// Este metodo era **inerte de proposito**, e o comentario que estava aqui prometia: *"quando a
 	/// destruicao existir, o que muda e o CORPO deste metodo -- nem a cadeia, nem o relogio, nem o
 	/// save"*. Foi exatamente isso que aconteceu: a cadeia, o prazo em dias in-game, o ultimato que
-	/// espera o servidor encher, os 30 s de janela e o KO que interrompe **nao mudaram uma linha**.
+	/// espera o servidor encher, os 30 s de janela e o KO que interrompe **nao mudaram uma linha**. (A janela de 30 s
+	/// virou a SUPERNOVA na v0.3.0 -- ver `CorrerOUltimato`; este gancho continuou o mesmo.)
 	///
 	/// O que ele faz agora, na ordem:
 	///   1. fecha o elo como **consumado** (o vilao venceu -- o `s1_state = 4` do original), o que

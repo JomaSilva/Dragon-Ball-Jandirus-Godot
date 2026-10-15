@@ -23,10 +23,15 @@ namespace Jandirus.Server;
 ///   5. TIRADO POR FORA (o `MoveToZone` de um admin, do torneio): o transe fecha direito.
 ///   6. O SAVE EM TRANSE leva o corpo de verdade, e o login o aplica.
 ///   7. OS ESTADOS QUE NAO DEVIAM EXISTIR ainda tem saida.
-///   8. O VIGOR DO MAJIN tem o piso de meio tanque do original.
+///   8. O PISO DE MEIO TANQUE do original (`StaminaDrain.dm:19-20`) nao vale pra mais ninguem (v0.3.0).
+///   9. O MORTO DE PE MERGULHA (v0.3.0, item 26): o fantasma entra na mente e fica de pe la dentro; cair la dentro nao e a
+///      segunda morte; o golpe letal no corpo de fora e; quem e revivido no meio do transe continua vivo; a pena do Inferno
+///      nao o arranca; e o cadaver continua recusado.
 ///
-/// Dois defeitos injetados: o corpo dividido de antes (`BonecoDivideOCorpoDeTeste`) e o Majin sem piso
-/// (`Nutricao.SemPisoDeVigorDeTeste`).
+/// Os defeitos injetados: o corpo dividido de antes (`BonecoDivideOCorpoDeTeste`), o bio com as passivas do DM
+/// (`SangueDoBio.BioComOsPassivosDeAntesDeTeste`, que devolve o piso), e os tres do morto na mente -- a porta de antes
+/// (`MortoNaoMergulhaDeTeste`), a borda de antes (`MortoExpulsoDaMenteDeTeste`) e a mente que deita o morto
+/// (`Alem.MenteDeitaOMortoDeTeste`).
 ///
 ///     Godot --headless --path . --host --rede 7984 --transeteste --raca Human --conta bancada_transe --nome Monge
 /// </summary>
@@ -51,6 +56,9 @@ public partial class GameServer
 		double kiDeAntes = pl.Ficha.Ki, vigorDeAntes = pl.Ficha.stamina;
 		bool letalDeAntes = pl.Combate.Letal, medDeAntes = pl.Ficha.med, trainDeAntes = pl.Ficha.train;
 		bool koDeAntes = pl.Ficha.KO, mortoDeAntes = pl.Ficha.dead;
+		// (v0.3.0) a etapa da morte, a pena e o passe -- a secao 9 faz do host um fantasma
+		bool jaViajouDeAntes = pl.MorteJaViajou;
+		long relogioDeAntes = pl.RelogioDaMorte, penaDeAntes = pl.Ficha.hell_lockout_until, passeDeAntes = pl.Ficha.passe_do_enma_ate;
 
 		ZoneKey terra = ZoneKey.Premade("Earth");
 		const string BuffDeAntes = "bancada_de_antes", BuffDeDentro = "bancada_de_dentro";
@@ -337,7 +345,7 @@ public partial class GameServer
 			// =====================================================================
 			// 8) O VIGOR DO MAJIN
 			// =====================================================================
-			GD.Print("[transe] -- 8) o piso de vigor do Majin e do Bio-Androide --");
+			GD.Print("[transe] -- 8) o piso de meio tanque saiu: o Majin trava no cheio e o bio, sozinho, nao tem nada (2026-10-15: `--v030teste`) --");
 			static double DepoisDeUmaPassada(string raca, double vigor)
 			{
 				// `Statify` ANTES: e ele quem escreve a vontade e o mod de vigor que dividem o dreno -- sem eles a
@@ -349,18 +357,156 @@ public partial class GameServer
 				Nutricao.QueimarVigor(f);
 				return f.stamina;
 			}
-			double majin = DepoisDeUmaPassada("Majin", 3), bio = DepoisDeUmaPassada("BioAndroid", 3), humano = DepoisDeUmaPassada("Human", 3);
-			Checa("**O MAJIN E O BIO-ANDROIDE TEM PISO DE MEIO TANQUE** (`StaminaDrain.dm:19-20`): com 3% de vigor, a passada do estomago os poe em 50% (menos o dreno dela)",
-				  majin > 49 && majin <= 50 && bio > 49 && bio <= 50, $"majin={majin:0.##} bio={bio:0.##}");
-			Checa("...e so eles: o Humano com 3% continua com 3% (menos o dreno)", humano <= 3, $"humano={humano:0.##}");
-			Checa("...acima do piso ninguem e mexido: Majin com 80% continua perto de 80%", DepoisDeUmaPassada("Majin", 80) is > 79 and <= 80);
+			double bio = DepoisDeUmaPassada("BioAndroid", 3), humano = DepoisDeUmaPassada("Human", 3), majin = DepoisDeUmaPassada("Majin", 3);
+			Checa("**O BIO-ANDROIDE NAO TEM MAIS O PISO DE MEIO TANQUE** (o dono, 2026-10-15: *\"bio androide sozinho N tem nada\"* -- o vigor dele e o das racas doadoras, medido na `--v030teste`): com 3% de vigor, a passada do estomago o deixa nos 3% (menos o dreno)",
+				  bio <= 3, $"bio={bio:0.##}");
+			Checa("...e o Humano e o Majin tambem: o Majin nao tem piso aqui -- o vigor dele trava NO CHEIO no tique do corpo (`Nutricao.ManterOsInfinitos`)",
+				  humano <= 3 && majin <= 3, $"humano={humano:0.##} majin={majin:0.##}");
 
-			Nutricao.SemPisoDeVigorDeTeste = true;
-			double semPiso;
-			try { semPiso = DepoisDeUmaPassada("Majin", 3); }
-			finally { Nutricao.SemPisoDeVigorDeTeste = false; }
-			Checa("(defeito injetado: sem o piso) o Majin com 3% de vigor fica nos 3% -- o \"vigor que nao regenera\" do playtest",
-				  semPiso <= 3, $"semPiso={semPiso:0.##}");
+			Jandirus.Core.Races.SangueDoBio.BioComOsPassivosDeAntesDeTeste = true;
+			double comPiso;
+			try { comPiso = DepoisDeUmaPassada("BioAndroid", 3); }
+			finally { Jandirus.Core.Races.SangueDoBio.BioComOsPassivosDeAntesDeTeste = false; }
+			Checa("(defeito injetado: o bio com as passivas do DM) o piso de meio tanque volta -- os 3% viram 50% (menos o dreno): a regua de cima sabe reprovar",
+				  comPiso > 49 && comPiso <= 50, $"comPiso={comPiso:0.##}");
+
+			// =====================================================================
+			// 9) O MORTO DE PE MERGULHA (v0.3.0, item 26)
+			// =====================================================================
+			GD.Print("[transe] -- 9) o morto de pe mergulha: a interdimensao e a excecao (dono, 2026-10-15) --");
+			Checa("**A REGRA, NO CORE**: o cadaver nao mergulha e o fantasma de pe sim; e a mente e lugar de morto -- de pe la dentro, e no mundo dos vivos (sem o passe) nao",
+				  DimensaoMental.PorQueNaoMergulhar(false, false, cadaver: true).Length > 0
+				  && DimensaoMental.PorQueNaoMergulhar(false, false, cadaver: false).Length == 0
+				  && Alem.MortoDePe(true, DimensaoMental.Zona) && !Alem.MortoDePe(false, DimensaoMental.Zona) && !Alem.MortoDePe(true, "Earth"));
+
+			ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
+			Vec2 mesa = MesaDoEnma(alem);
+			Vec2 longe = MapaDaZonaOuCatalogo(alem)?.PontoLivrePerto(mesa + new Vec2(12 * ZoneCollision.TileSize, 0))
+							?? mesa + new Vec2(12 * ZoneCollision.TileSize, 0);
+
+			// O FANTASMA: morto, de pe e de aureola num lugar de morto, com a ferida de entrada -- e LONGE da mesa do Enma, pra a
+			// segunda morte (que leva a mesa) nao se confundir com a volta pro corpo.
+			void Fantasma(ZoneKey onde, Vec2 ponto)
+			{
+				if (NaMente(pl) || pl.BonecoLargado != null) SairDoTranse(pl);
+				pl.Ficha.KO = false;
+				pl.Combate.NocauteRestante = 0;
+				foreach (BodyPart p in pl.Combate.Corpo.Partes) { p.Decepado = false; p.Vida = p.VidaMax; }
+				membro.Vida = feridaDeEntrada;
+				pl.Combate.SincronizarVida();
+				pl.Ficha.dead = true;
+				pl.MorteJaViajou = true;
+				pl.RelogioDaMorte = long.MaxValue;
+				pl.Ficha.passe_do_enma_ate = 0;
+				pl.Ficha.hell_lockout_until = 0;
+				if (!pl.Zone.Equals(onde) || !pl.Pos.Equals(ponto)) MoveToZone(pl.Id, onde, ponto);
+			}
+
+			Fantasma(alem, longe);
+			bool entrouMorto = Mergulhar();
+			ServerPlayer? corpoDoFantasma = pl.BonecoLargado;
+			Checa("**O FANTASMA MERGULHA** (*\"permita q morto possa fazer meditacao profunda\"*): morto e de pe no Outro Mundo, a porta da mente o aceita -- ele esta numa mente, e o corpo ficou la fora",
+				  entrouMorto && pl.Ficha.dead && corpoDoFantasma != null, Estado());
+			if (corpoDoFantasma == null) return;
+			Checa("**LA DENTRO ELE CONTINUA DE PE** (a interdimensao e a excecao): e o fantasma, e nao o cadaver -- anda, luta e treina como no Outro Mundo",
+				  pl.MortoDePe && !EhCadaver(pl), $"mortoDePe={pl.MortoDePe} cadaver={EhCadaver(pl)}");
+			Checa("...e o corpo que fica la fora e o dele: de pe, meditando e DE AUREOLA",
+				  corpoDoFantasma.MortoDePe && corpoDoFantasma.Pose(NowMs(), false) == Protocol.Pose.Meditando
+				  && Alem.TemAureola(corpoDoFantasma.Ficha.dead, corpoDoFantasma.MorteJaViajou),
+				  $"pose={corpoDoFantasma.Pose(NowMs(), false)} aureola={Alem.TemAureola(corpoDoFantasma.Ficha.dead, corpoDoFantasma.MorteJaViajou)}");
+
+			BordasDeQuemEstaFora(pl);
+			TickDeQuemVolta();
+			Checa("**A BORDA NAO O EXPULSA**: o `dead` dele e o da entrada, e nao uma queda -- depois da borda e da fila de volta ele continua la dentro",
+				  NaMente(pl) && pl.BonecoLargado != null, Estado());
+			MortoExpulsoDaMenteDeTeste = true;
+			try { BordasDeQuemEstaFora(pl); TickDeQuemVolta(); }
+			finally { MortoExpulsoDaMenteDeTeste = false; }
+			Checa("(defeito injetado: a borda de antes) o `dead` da entrada vira queda e o fantasma e expulso no mesmo tique -- a regua de cima sabe reprovar",
+				  !NaMente(pl), Estado());
+
+			// CAIR DE VEZ LA DENTRO: o funil de toda morte (`Morrer`) num fantasma de pe -- e onde o golpe do reflexo cairia.
+			Fantasma(alem, longe);
+			Mergulhar();
+			outro.Vida = 5;
+			pl.Combate.SincronizarVida();
+			bool morreuDeNovoLaDentro = pl.Combate.Morrer();
+			bool desmaiouLaDentro = pl.Ficha.KO && NaMente(pl);
+			BordasDeQuemEstaFora(pl);
+			TickDeQuemVolta();
+			Checa("**CAIR DE VEZ LA DENTRO NAO E A SEGUNDA MORTE**: o fantasma desmaia na mente, e o desmaio o devolve ao corpo -- como entrou (a ferida de entrada, o membro de dentro inteiro), de pe, no lugar do corpo, e NAO na mesa do Enma",
+				  !morreuDeNovoLaDentro && desmaiouLaDentro && !NaMente(pl) && pl.Zone.Equals(alem) && pl.Pos.Equals(longe)
+				  && pl.Ficha.dead && !pl.Ficha.KO && membro.Vida == feridaDeEntrada && outro.Vida == outro.VidaMax,
+				  $"desmaiou={desmaiouLaDentro} {Estado()} pos={pl.Pos} (corpo {longe}, mesa {mesa})");
+
+			// ABRIR OS OLHOS
+			Fantasma(alem, longe);
+			Mergulhar();
+			falas = Acordar();
+			Checa("**ABRIR OS OLHOS DEVOLVE O FANTASMA COMO ENTROU**: morto, de pe, sem desmaio, no lugar do corpo -- o `dead` da entrada nao vira uma 'morte de novo' na volta",
+				  !NaMente(pl) && pl.Ficha.dead && pl.MortoDePe && !pl.Ficha.KO && pl.Zone.Equals(alem) && pl.Pos.Equals(longe)
+				  && Disse(falas, "abre os olhos"), $"{Estado()} | {Ultimos(falas)}");
+
+			// O GOLPE LETAL NO CORPO DE FORA
+			Fantasma(alem, longe);
+			Mergulhar();
+			ServerPlayer corpoAbatido = pl.BonecoLargado!;
+			foreach (BodyPart p in corpoAbatido.Combate.Corpo.Partes) p.Vida = 0;
+			corpoAbatido.Combate.SincronizarVida();
+			MarcarAgressao(corpoAbatido, agressor);
+			falas = Ouvir(TickDeQuemVolta);
+			Checa("**O GOLPE LETAL NO CORPO DE FORA E A SEGUNDA MORTE DO FANTASMA** (`Death.dm:113-118`): ele volta, e na volta cai de vez -- curado, na mesa do Enma, 2 s em coma",
+				  !NaMente(pl) && pl.Ficha.dead && pl.Zone.Equals(alem) && Vec2.Distance(pl.Pos, mesa) < 1
+				  && pl.Ficha.KO && Math.Abs(pl.Combate.NocauteRestante - Alem.SegundosDeComaDoMortoDeNovo) < 0.5
+				  && membro.Vida == membro.VidaMax && Disse(falas, "mesa do Enma"),
+				  $"{Estado()} pos={pl.Pos} mesa={mesa} restante={pl.Combate.NocauteRestante:0.##} | {Ultimos(falas)}");
+
+			// REVIVIDO NO MEIO DO TRANSE: o `Reviver` de producao (o do verb de admin, que nao tira ninguem do lugar)
+			Fantasma(alem, longe);
+			Mergulhar();
+			pl.Combate.Reviver(1, SegundosDeCarencia);
+			bool vivoNaMente = NaMente(pl) && !pl.Ficha.dead;
+			Acordar();
+			Checa("**REVIVIDO NO MEIO DO TRANSE CONTINUA VIVO**: as esferas, um admin ou a tecnica de alguem o trazem de volta enquanto ele medita -- e abrir os olhos nao o mata de novo pela foto da entrada, nem lhe devolve as feridas do fantasma",
+				  vivoNaMente && !NaMente(pl) && !pl.Ficha.dead && membro.Vida == membro.VidaMax,
+				  $"vivoNaMente={vivoNaMente} {Estado()} morto={pl.Ficha.dead}");
+
+			// A PENA DO INFERNO
+			ZoneKey inferno = ZoneKey.Premade(Alem.ZonaDoInferno);
+			Fantasma(inferno, PortaoDoInferno(inferno));
+			pl.Ficha.hell_lockout_until = NowMs() + 600_000;
+			bool entrouPreso = Mergulhar();
+			CumprirPenaNoInferno(pl);
+			bool ficouNaMente = NaMente(pl);
+			Acordar();
+			Checa("**A PENA NO INFERNO NAO O ARRANCA DA MENTE**: o corpo esta no Inferno, e e pra ele que a alma volta -- ao abrir os olhos ele esta la de novo",
+				  entrouPreso && ficouNaMente && !NaMente(pl) && pl.Zone.Equals(inferno), $"entrou={entrouPreso} ficou={ficouNaMente} {Estado()}");
+			pl.Ficha.hell_lockout_until = 0;
+
+			// O CADAVER: morto no chao do mundo dos vivos, antes da viagem e sem o passe
+			Fantasma(terra, lugar);
+			pl.MorteJaViajou = false;
+			List<string> recusa = Ouvir(() => Mergulhar());
+			Checa("**O CADAVER NAO MERGULHA**: morto no chao do mundo dos vivos (antes da viagem, sem o passe), a porta recusa -- \"um corpo caído\"",
+				  !NaMente(pl) && EhCadaver(pl) && Disse(recusa, "corpo caído"), Ultimos(recusa));
+
+			// OS DEFEITOS DO JOGO DE ANTES
+			Fantasma(alem, longe);
+			MortoNaoMergulhaDeTeste = true;
+			bool entrouComDefeito;
+			try { entrouComDefeito = Mergulhar(); }
+			finally { MortoNaoMergulhaDeTeste = false; }
+			Checa("(defeito injetado: a porta de antes) o fantasma de pe e recusado como no DM (o `dead` de `MindMeditate.dm:355`) -- a regua de cima sabe reprovar",
+				  !entrouComDefeito && !NaMente(pl), Estado());
+			Mergulhar();
+			Alem.MenteDeitaOMortoDeTeste = true;
+			bool deitado;
+			try { deitado = EhCadaver(pl) && !pl.MortoDePe; }
+			finally { Alem.MenteDeitaOMortoDeTeste = false; }
+			Checa("(defeito injetado: a mente nao e lugar de morto) la dentro o fantasma vira o cadaver deitado -- a regua do 'de pe' sabe reprovar",
+				  NaMente(pl) && deitado, Estado());
+			SairDoTranse(pl);
+			Remontar();
 		}
 		catch (Exception e)
 		{
@@ -370,7 +516,10 @@ public partial class GameServer
 		finally
 		{
 			BonecoDivideOCorpoDeTeste = false;
-			Nutricao.SemPisoDeVigorDeTeste = false;
+			Jandirus.Core.Races.SangueDoBio.BioComOsPassivosDeAntesDeTeste = false;
+			MortoNaoMergulhaDeTeste = false;
+			MortoExpulsoDaMenteDeTeste = false;
+			Alem.MenteDeitaOMortoDeTeste = false;
 
 			if (NaMente(pl) || pl.BonecoLargado != null) SairDoTranse(pl);
 			DesligarBuff(pl, BuffDeAntes);
@@ -385,6 +534,10 @@ public partial class GameServer
 				}
 			pl.Ficha.KO = koDeAntes;
 			pl.Ficha.dead = mortoDeAntes;
+			pl.MorteJaViajou = jaViajouDeAntes;
+			pl.RelogioDaMorte = relogioDeAntes;
+			pl.Ficha.hell_lockout_until = penaDeAntes;
+			pl.Ficha.passe_do_enma_ate = passeDeAntes;
 			pl.Combate.NocauteRestante = 0;
 			pl.Combate.Letal = letalDeAntes;
 			pl.Ficha.Ki = kiDeAntes;

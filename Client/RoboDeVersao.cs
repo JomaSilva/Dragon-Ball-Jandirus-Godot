@@ -229,6 +229,11 @@ public partial class RoboDeVersao : Node
 		return (abertos[0], abertos[1], senha, entrar, hospedar);
 	}
 
+	/// <summary>(v0.3.0) Um botao da primeira tela pelo rotulo -- a tela de hospedar mora na mesma camada do formulario.</summary>
+	private Button? BotaoDaPrimeiraTela(string texto) =>
+		_boot?.CamadaDaPrimeiraTela()?.FindChildren("*", nameof(Button), true, false).OfType<Button>()
+			.FirstOrDefault(b => b.Text == texto && b.IsVisibleInTree());
+
 	/// <summary>Preenche o formulario e aperta "Entrar" (ou "Hospedar partida"), como o dedo do jogador.</summary>
 	private bool ApertarEntrar(bool hospedar = false)
 	{
@@ -404,6 +409,12 @@ public partial class RoboDeVersao : Node
 		_espiando = true;
 		int pacotes0 = _pacotesNoServidor;
 		ApertarEntrar(hospedar: true);
+		// (v0.3.0) A TELA DE HOSPEDAR: o servidor ainda nao subiu, e a pergunta do modo das racas esta na frente
+		// (`Boot.ModoDeRacas.cs`). O robo responde como o dono responderia, no padrao.
+		Afirmar("(v0.3.0) hospedar abre ANTES a pergunta do modo das racas: \"Modo padrão\" e \"Raças aleatórias\" na tela, e nada de servidor ainda",
+				boot.EscolhaDoModoNaTela && BotaoDaPrimeiraTela("Modo padrão") != null && BotaoDaPrimeiraTela("Raças aleatórias") != null
+				&& S is { Running: false });
+		BotaoDaPrimeiraTela("Modo padrão")?.EmitSignal(BaseButton.SignalName.Pressed);
 		foreach (object o in Ate(() => boot.SelecaoNaTela != null || Aviso.Length > 0, 60)) yield return o;
 		yield return 0.3;
 

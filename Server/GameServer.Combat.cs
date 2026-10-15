@@ -217,9 +217,14 @@ public partial class GameServer
 	/// </summary>
 	private PerfilDeRegen EixoDeRegen(string raca, Jandirus.Core.Stats.Fighter? ficha = null)
 	{
-		// Half-Saiyan nao tem proto proprio -- o corpo vem do Saiyajin. Mesma ponte do `Birth.Nascer`.
-		string proto = raca == "Halfbreed" ? "Saiyan" : raca;
-		double reg = _racas?.Get(proto)?.MiscStat("Regeneration") ?? 1;
+		// (v0.3.0) O BIO-ANDROIDE REGENERA COMO A DOADORA QUE MAIS REGENERA -- e sozinho, como o comum: o dono (2026-10-15),
+		// *"regeneracao e semi imortalidade se tiver majin"* e *"bio androide sozinho N tem nada"*. Ver `SangueDoBio`.
+		if (ficha != null && Jandirus.Core.Races.BioAndroids.EhBio(raca) && !Jandirus.Core.Races.SangueDoBio.BioComOsPassivosDeAntesDeTeste)
+		{
+			(string doSangue, double regDoSangue) = Jandirus.Core.Races.SangueDoBio.RegeneracaoDoBio(ficha, RegeneracaoDaRaca);
+			return PerfilDeRegen.De(doSangue, regDoSangue + ficha.RegenerationDeSkill);
+		}
+		double reg = RegeneracaoDaRaca(raca);
 		// A PARTE DAS SKILLS SOMA POR CIMA DA RACA -- `genome.add_to_stat("Regeneration", 10)` da
 		// Doll Regeneration (spirit-doll.dm:33), `5` da Regenerate (alien.dm:65), `1` da Grace de
 		// Ricardo (Bodybuilding.dm:254). O `assign_regen()` do DM relê o genoma inteiro; aqui o
@@ -227,6 +232,13 @@ public partial class GameServer
 		if (ficha != null) reg += ficha.RegenerationDeSkill;
 		return PerfilDeRegen.De(raca, reg);
 	}
+
+	/// <summary>
+	/// O `misc_stats["Regeneration"]` DO PROTO DESTA RACA (o `races.json`); 1 quando ela nao tem proto. O Half-Saiyan nao tem
+	/// proto proprio -- o corpo vem do Saiyajin. Mesma ponte do `Birth.Nascer`.
+	/// </summary>
+	private double RegeneracaoDaRaca(string raca) =>
+		_racas?.Get(raca == "Halfbreed" ? "Saiyan" : raca)?.MiscStat("Regeneration") ?? 1;
 
 	/// <summary>
 	/// Quem nasce com rabo. Saiyajin puro e mesticos.
@@ -265,6 +277,10 @@ public partial class GameServer
 		// de vez, volta curado pra mesa do Enma em coma (`Death.dm:113-118`).
 		pl.Combate.MortoDePe = _ => pl.MortoDePe;
 		pl.Combate.AoMorrerDeNovo = _ => MorrerDeNovoNoAlem(pl);
+		// O MAJIN QUE SE DESFAZ (dono, 2026-10-15): fora do ki, o golpe que o mataria o desfaz em pedacos por 30 s -- ver
+		// `CombatState.Desfeito` e `GameServer.MajinDesfeito.cs`.
+		pl.Combate.SeDesfazAoMorrer = _ => CorpoDeMajin(pl);
+		pl.Combate.AoSeDesfazer = _ => OMajinSeDesfez(pl);
 
 		// E QUEM OUVE O MEMBRO QUE CAIU -- o `SpawnLop()` do original, instalado UMA vez e valendo pra
 		// todo funil de dano letal deste corpo (soco, raio, explosao, dano direto, calor da estrela,
@@ -312,6 +328,8 @@ public partial class GameServer
 					p.Vida = Math.Clamp(v[0], 0, p.VidaMax);
 					p.Decepado = v[1] > 0.5;
 					p.Perdido = v.Length >= 3 && v[2] > 0.5;   // o save de antes de 2026-10-12 tem dois numeros: nada perdido de vez
+					// (2026-10-15) o quarto numero e a ferida que falta fechar; o save de antes nao o tem: o perdido de antes ja cicatrizou
+					p.FeridaAberta = v.Length >= 4 ? Math.Max(0, v[3]) : 0;
 				}
 
 		// O RABO PRESO E DE UM APERTO, e nenhum aperto atravessa o logout: quem entra, entra com o poder inteiro.
@@ -347,7 +365,7 @@ public partial class GameServer
 			// dos vivos, `OtherworldRankSkills.dm:195-202`), e esta linha que fica errada -- e ela erra
 			// as duas coisas juntas, entao conserta-la conserta as duas. Ver `Alem.TemAureola`.
 			// ==============================================================================================
-			bool jaViajou = Alem.EhOAlem(pl.Zone);
+			bool jaViajou = JaViajouAoEntrar(pl);
 			pl.MorteJaViajou = jaViajou;
 			// Quem loga ja no Outro Mundo NAO ganha prazo nenhum (nao ha volta automatica -- ver
 			// `Alem.TipoDoEnma`); quem loga caido no mundo dos vivos ainda tem os 15 s ate subir.
@@ -394,6 +412,7 @@ public partial class GameServer
 		if (caiu.Find(p => p.Nome == Jandirus.Core.Races.RaboDoSaiyajin.Membro) is not { } rabo) return;
 		if (!Jandirus.Core.Races.RaboDoSaiyajin.PerdaEhDefinitiva(pl.Ficha)) return;
 		rabo.Perdido = true;
+		rabo.FeridaAberta = Jandirus.Core.Races.RaboDoSaiyajin.SegundosDaFerida;   // (2026-10-15) o toco fecha em dez minutos
 		AjustarGanhoDoRabo(pl);
 		AvisarSePessoa(pl, Jandirus.Core.Races.RaboDoSaiyajin.AvisoDaPerda);
 	}
@@ -402,7 +421,7 @@ public partial class GameServer
 	public static Dictionary<string, double[]> FotografarCorpo(CombatState c)
 	{
 		var d = new Dictionary<string, double[]>(c.Corpo.Partes.Count);
-		foreach (BodyPart p in c.Corpo.Partes) d[p.Nome] = [p.Vida, p.Decepado ? 1 : 0, p.Perdido ? 1 : 0];
+		foreach (BodyPart p in c.Corpo.Partes) d[p.Nome] = [p.Vida, p.Decepado ? 1 : 0, p.Perdido ? 1 : 0, p.FeridaAberta];
 		return d;
 	}
 
@@ -732,6 +751,14 @@ public partial class GameServer
 		if (r.Encostou) ConvivioPorGolpe(d, a);
 		// E TROCAR GOLPES COM QUEM TEM KI DIVINO ACORDA O SEU (dono, 2026-10-10) -- ver `GameServer.GodKi.cs`.
 		if (r.Encostou) ExposicaoPorGolpe(a, d, r);
+
+		// (2026-10-15) O MAJIN QUE SE DESFEZ perdeu a luta como quem caiu -- o mesmo funil da derrota (o Zenkai, o luto de
+		// quem gostava dele). Quem conta pro jogador e o gancho `AoSeDesfazer` (`GameServer.MajinDesfeito.cs`).
+		if (r.Desfez)
+		{
+			GD.Print($"[server] {a.Name} DESFEZ {d.Name} em pedacos ({r.Membro})");
+			AoPerderALuta(d, a, morreu: false);
+		}
 
 		if (r.Nocauteou)
 		{
@@ -1550,6 +1577,16 @@ public partial class GameServer
 		// mexe nas listas de duas zonas e tira a imagem dele do `_players`. Ver `TickDoMajin`.
 		TickDoMajin(dt);
 
+		TirarOsNpcsMortos();
+	}
+
+	/// <summary>
+	/// O DRENO DOS NPCs MORTOS DESTE TIQUE: o ultimo passo do <see cref="TickCombate"/>, FORA de todo laco sobre o
+	/// `_players`. Virou metodo em 2026-10-15 pra a bancada do NPC absorvido (`--v030teste`) poder chama-lo -- a mesma
+	/// linha, no mesmo lugar.
+	/// </summary>
+	private void TirarOsNpcsMortos()
+	{
 		if (_npcsPraTirar.Count == 0) return;
 		foreach (ServerPlayer morto in _npcsPraTirar)
 		{
@@ -1575,7 +1612,8 @@ public partial class GameServer
 			// paga a propria conta: uma invasao de ondas mata dezenas de corpos, e sem o teto uma cidade
 			// sitiada acumularia habitante morto ate o fim da sessao.
 			// ==================================================================================================
-			DeixarOCadaver(morto);
+			// (2026-10-15) O ABSORVIDO PELO MAJIN NAO DEIXA CORPO: ele sumiu dentro de outro (ver `DevorarPeloMajin`).
+			if (!morto.SumiuAbsorvido) DeixarOCadaver(morto);
 
 			RemoverNpc(morto);
 		}
@@ -1657,6 +1695,10 @@ public partial class GameServer
 			Idade = pl.Idade,
 			Raca = pl.Race,
 			Classe = pl.Class,
+			// (v0.3.0) o sangue do bio: a aba de aprendizado abre as arvores raciais das doadoras -- ver `SangueDoBio`
+			Sangue = Jandirus.Core.Races.SangueDoBio.Texto(pl.Ficha),
+			// (v0.3.0) a porcentagem guardada dos pesos -- o botao "Equipar (N%)". Ver `Fighter.pesoPct`.
+			PesoPct = (byte)Math.Clamp(Math.Round(pl.Ficha.pesoPct), 0, 100),
 
 			// AINDA ZERO, e de proposito: nenhuma destas habilidades existe no port. Quem
 			// acende cada bit e a etapa que trouxer o sistema -- a skill de Sense, o scouter,
@@ -1700,6 +1742,10 @@ public partial class GameServer
 			Esmagamento = (float)Jandirus.Core.Stats.Esmagamento.Razao(f),
 			PesoMaxKg = (float)Jandirus.Core.Items.PesoDeTreino.Maximo(f.pesoMaximoKg),
 			PesoKg = (float)f.Weighted,
+			// (2026-10-15) A ARTE DOS PESOS e quantas melhorias faltam pro limite do corpo: o icone da mochila e o botao "Ate o
+			// limite do corpo". Ver `PesoDeTreino`.
+			PesoArte = f.pesoArte,
+			PesoMelhoriasAteOLimite = (byte)Math.Min(255, Jandirus.Core.Items.PesoDeTreino.MelhoriasAteOLimite(f.pesoMaximoKg, f.weight_cap_hw)),
 
 			// A SESSAO DA SALA DO TEMPO, na mesma ficha lenta e pelo mesmo criterio: ela muda de
 			// fase tres vezes numa visita inteira, e os minutos so precisam de resolucao de MINUTO
@@ -1726,7 +1772,7 @@ public partial class GameServer
 				   + $"{a.Technique:0.##}|{a.KiSkill:0.##}|{a.Speed:0.##}|{a.Esoteric:0.##}|"
 				   + $"{a.Willpower:0.##}|{a.Stamina:0.#}|{a.Poderes}|{a.Idade}|{a.FormaAtual}|"
 				   + $"{a.GanhoDeTreino:0.#}|{a.Gravidade:0.#}|{a.GravEfetiva:0.#}|{a.PesoMult:0.##}|"
-				   + $"{a.ZonaMult:0.#}|{a.Esmagamento:0.##}|{a.SalaFase}|{a.SalaMinutos:0}|{a.PesoMaxKg:0}|{a.PesoKg:0}|"
+				   + $"{a.ZonaMult:0.#}|{a.Esmagamento:0.##}|{a.SalaFase}|{a.SalaMinutos:0}|{a.PesoMaxKg:0}|{a.PesoKg:0}|{a.PesoArte}|{a.PesoMelhoriasAteOLimite}|{a.Sangue}|{a.PesoPct}|"
 				   + string.Join(',', a.Maestrias.Select(m => $"{m.Forma}:{m.Pct:0.#}"))
 				   // AS PERICIAS ENTRAM COM UMA CASA (`0.#`), pelo mesmo motivo do ganho de treino: sao os
 				   // contadores da ficha, e os de tecnica sobem por fracao a cada tiro que rende. Com
@@ -1764,6 +1810,9 @@ public partial class GameServer
 		var sb = new System.Text.StringBuilder();
 		foreach (BodyPart p in pl.Combate.Corpo.Partes)
 		{
+			// (2026-10-15) O MEMBRO PERDIDO DE VEZ E JA CICATRIZADO NAO VAI PRO BONECO: o corpo de agora nao o tem, e o "rabo:
+			// ARRANCADO" ficava na tela pra sempre (dono: *"esse aviso deveria sumir pq n tem necessidade"*).
+			if (!ParteVaiPraTela(p)) continue;
 			// ARREDONDA AO MAIS PROXIMO. O original usa duas contas diferentes e vale saber
 			// qual e qual: o HP GERAL usa `round(x)` de um argumento, que no DM e PISO; a
 			// porcentagem POR MEMBRO usa `round(x, 1)` de dois, que arredonda. E a de membro
@@ -1782,6 +1831,27 @@ public partial class GameServer
 		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
+	/// <summary>Este membro aparece no boneco do HUD? Todos, menos o perdido de vez ja cicatrizado. Ver <see cref="MandarCorpo"/>.</summary>
+	internal static bool ParteVaiPraTela(BodyPart p) => !p.CicatrizouDeVez || Feridas.RaboPerdidoSangraPraSempreDeTeste;
+
+	/// <summary>
+	/// A FERIDA DO MEMBRO PERDIDO DE VEZ FECHA (dono, 2026-10-15) -- a 1 Hz, de relogio. Hoje so o rabo do Saiyajin que nao
+	/// volta tem uma (`MarcarORaboPerdido`); fechada, ela sai da mascara de feridas e do boneco, e o dono le que cicatrizou.
+	/// </summary>
+	private void TickDaFeridaDoRabo(double dt)
+	{
+		foreach (ServerPlayer pl in _players.Values)
+		{
+			if (pl.Combate?.Corpo is not { } corpo) continue;
+			foreach (BodyPart p in corpo.Partes)
+			{
+				if (!p.Perdido || !p.Decepado || p.FeridaAberta <= 0) continue;
+				p.FeridaAberta = Math.Max(0, p.FeridaAberta - dt);
+				if (p.FeridaAberta <= 0) AvisarSePessoa(pl, Jandirus.Core.Races.RaboDoSaiyajin.AvisoDaCicatriz);
+			}
+		}
+	}
+
 	// ============================ A CURA PASSIVA MUDOU DE CASA ============================
 	// Ela era um `private const` daqui. Foi pra `CombatKnobs.RegenPorSegundo`, no Core, e a razao e
 	// a regra 0.1 da especificacao: **e uma regra que decide resultado de jogo**, e agora ela decide
@@ -1797,6 +1867,13 @@ public partial class GameServer
 	/// (`ServerPlayer.MortoDePe`) e alvo, socador e paciente como um vivo -- `Death()` nao olha `dead`.
 	/// </summary>
 	private static bool EhCadaver(ServerPlayer o) => o.Ficha.dead && !o.MortoDePe;
+
+	/// <summary>
+	/// QUEM LOGA MORTO JA VIAJOU? -- o palpite do login, pelo lugar: no Outro Mundo, ou entre os vivos com o passe do Enma
+	/// (v0.3.0, `ServerPlayer.EmVisita`: o morto que ANDA no mundo dos vivos, que o comentario do login esperava). O
+	/// cadaver que deslogou caido no mundo dos vivos nao.
+	/// </summary>
+	private static bool JaViajouAoEntrar(ServerPlayer pl) => Alem.EhOAlem(pl.Zone) || pl.EmVisita;
 
 	/// <summary>DEFEITO INJETADO (`--alemteste`): a regeneracao volta a pular TODO morto -- a prova do fantasma tem que ficar vermelha.</summary>
 	internal bool MortoNaoRegeneraDeTeste;

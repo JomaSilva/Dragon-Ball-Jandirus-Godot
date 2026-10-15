@@ -10,9 +10,9 @@ namespace Jandirus.Core.Items;
 /// o `Weighted`) e nunca o desenho: o boneco de quem usava scouter era igual ao de quem nao usava.
 ///
 /// ============================ SAO FATOS DO CORPO, E NAO DA FICHA DE APARENCIA ============================
-/// Nenhum dos dois mora em `Appearance.Roupa`: o scouter ligado e um bit que nao vai pro disco
-/// (`ServerPlayer.PoderesConcedidos`) e os pesos vestidos sao o `Fighter.Weighted`. Gravar "estou de scouter" na
-/// aparencia seria a segunda resposta pra mesma pergunta. Entao quem responde e o servidor, na hora de montar o
+/// Nenhum dos dois mora em `Appearance.Roupa`: o scouter ligado e um bit de `ServerPlayer.PoderesConcedidos` (que so vai
+/// pro disco pela copia `CharacterSave.ScouterLigado`) e os pesos vestidos sao o `Fighter.Weighted`. Gravar "estou de
+/// scouter" na aparencia seria a segunda resposta pra mesma pergunta. Entao quem responde e o servidor, na hora de montar o
 /// `S2C.PeerLook` (`GameServer.PacoteDeAparencia`), e a resposta viaja ao lado da aparencia -- o mesmo desenho do
 /// potencial desperto na pele (`Appearance.PotencialNaPele`). O cliente so desenha.
 ///

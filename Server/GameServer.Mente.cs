@@ -217,7 +217,7 @@ public partial class GameServer
 	///
 	///   * a TELINHA do meditar, que apaga o botao antes do clique (pela metade que mora no Core);
 	///   * o comeco da onda (<see cref="ComecarOMergulho"/>), que recusa NA HORA -- ninguem deve
-	///     esperar 1,8 s de ondulacao pra ouvir "um morto nao mergulha";
+	///     esperar 1,8 s de ondulacao pra ouvir "um corpo caido nao mergulha";
 	///   * o fim da onda (<see cref="EntrarNaMente"/>), que e a autoridade de verdade.
 	///
 	/// E o terceiro leitor e o que faz o pedido *"interrompeu, a onda morre"* funcionar sem bit
@@ -230,7 +230,9 @@ public partial class GameServer
 	/// </summary>
 	private string RecusaDoMergulho(ServerPlayer pl)
 	{
-		if (DimensaoMental.PorQueNaoMergulhar(NaMente(pl), pl.Ficha.KO, pl.Ficha.dead) is { Length: > 0 } m)
+		// (v0.3.0) O CADAVER, e nao todo morto: o fantasma de pe mergulha (dono, 2026-10-15) -- ver `DimensaoMental.PorQueNaoMergulhar`.
+		if (DimensaoMental.PorQueNaoMergulhar(NaMente(pl), pl.Ficha.KO, EhCadaver(pl) || (MortoNaoMergulhaDeTeste && pl.Ficha.dead))
+			is { Length: > 0 } m)
 			return m;
 
 		// ESTA NAO TEM PAR NO CLIENTE, e de proposito: ela nao e sobre o ESTADO do corpo, e sim sobre
@@ -253,6 +255,12 @@ public partial class GameServer
 
 		return "";
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--transeteste` e `--diagv030`): o morto volta a ser recusado na porta da mente -- o `dead`
+	/// do DM (`MindMeditate.dm:355`), o jogo de antes. Lido por <see cref="RecusaDoMergulho"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool MortoNaoMergulhaDeTeste;
 
 	/// <summary>
 	/// ENTRA NA MENTE -- na propria, ou na de quem esta meditando do seu lado.
@@ -401,12 +409,17 @@ public partial class GameServer
 		// porque ele troca de zona -- e o `TrocarFeridas`/`MandarCorpo` que saem de la tem que
 		// descrever o corpo ja restaurado, senao a zona de fora ve o sangue de uma luta que nao
 		// aconteceu ate o proximo tique consertar.
+		//
+		// (v0.3.0) O FANTASMA QUE CAIU DE VEZ LA FORA (`MorreuDeNovoLaFora`) e perguntado ANTES -- a foto e o corpo de fora somem
+		// no restauro -- e cobrado DEPOIS da volta.
+		bool morreuDeNovo = MorreuDeNovoLaFora(pl);
 		RestaurarDaMente(pl);
 
 		// VOLTA PRO CORPO -- pra ONDE ELE ESTIVER, e nao pra onde ele foi deixado (ele pode ter sido
 		// arremessado no meio da meditacao). Sem boneco nenhum, o mecanismo cai na Terra em vez de
 		// deixar alguem preso no bolso. Ver `GameServer.CorpoLargado.cs`.
 		VoltarProCorpo(pl, motivo);
+		if (morreuDeNovo) pl.Combate.Morrer();   // o fantasma de pe -> `AoMorrerDeNovo` -> a mesa do Enma
 
 		// QUEM FICOU NA MENTE PRECISA SABER -- o `remove_member` (`MindMeditate.dm:211-215`). Depois da
 		// viagem de proposito: `MoveToZone` ja tirou este corpo da lista da mente, entao o laco fala
@@ -674,7 +687,14 @@ public partial class GameServer
 		ServerPlayer? corpoDeFora = pl.BonecoLargado is { } b && TemCorpoProprio(b, pl)
 									&& ZoneList(b.Zone.Hash).Contains(b) ? b : null;
 
-		if (f != null || corpoDeFora != null)
+		// ============================ (v0.3.0) REVIVIDO NO MEIO DO TRANSE ============================
+		// Quem entrou MORTO (o fantasma que mergulhou) e ja nao esta: as esferas, um admin, a tecnica de alguem ou a volta no
+		// tempo o trouxeram de volta enquanto ele estava aqui dentro. A volta a vida e o corpo de verdade agora, inteiro -- nem
+		// a foto (que o mataria de novo) nem o corpo de fora (que e o do fantasma) o desfazem.
+		// ==============================================================================================
+		bool revivido = f is { Morto: true } && !pl.Ficha.dead;
+
+		if (!revivido && (f != null || corpoDeFora != null))
 		{
 			foreach (BodyPart p in pl.Combate.Corpo.Partes)
 			{
@@ -697,7 +717,7 @@ public partial class GameServer
 		LimparOCombateDaMente(pl, f);
 
 		pl.Combate.SincronizarVida();
-		if (corpoDeFora != null) DecidirOQueOCorpoSofreu(pl, corpoDeFora);
+		if (corpoDeFora != null && !revivido) DecidirOQueOCorpoSofreu(pl, corpoDeFora, entrouMorto: f?.Morto == true);
 
 		AjustarGanhoDoRabo(pl);
 		MandarFicha(pl);   // 5 Hz seria tarde: a barra de vida ficaria vermelha por dois quadros

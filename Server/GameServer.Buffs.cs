@@ -131,6 +131,7 @@ public partial class GameServer
 		pl.Ficha.Statify();
 		pl.SigAtributos = "";
 		MandarEfeito(pl, id, duracaoMs > 0 ? duracaoMs : -1);
+		SincronizarPorte(pl, id);
 		return true;
 	}
 
@@ -148,7 +149,19 @@ public partial class GameServer
 		pl.Ficha.Statify();
 		pl.SigAtributos = "";
 		MandarEfeito(pl, id, 0);
+		SincronizarPorte(pl, id);
 		return true;
+	}
+
+	/// <summary>
+	/// (2026-10-15) O TAMANHO DO CORPO E DE QUEM VE: a Forma Gigante muda o porte do corpo, e a zona inteira precisa
+	/// redesenha-lo -- o bit vai nas marcas do `S2C.PeerLook` (`PacoteDeAparencia`). Por aqui passam a entrada e as tres
+	/// saidas da forma (o verb de novo, o folego que acaba, a queda que derruba os buffs) sem nenhuma delas lembrar; e vale
+	/// pro NPC tambem (o Lorde Slug cresce no meio da luta), por isso nao e o `ReapresentarOCorpo`.
+	/// </summary>
+	private void SincronizarPorte(ServerPlayer pl, string id)
+	{
+		if (id == BuffGiganteG2) ReapresentarAparencia(pl);
 	}
 
 	/// <summary>Liga se estava desligado, desliga se estava ligado. Devolve o estado NOVO.</summary>
@@ -187,7 +200,8 @@ public partial class GameServer
 		{
 			if (!_players.TryGetValue(id, out ServerPlayer? pl)) continue;
 
-			if (pl.Ficha.KO || pl.Ficha.dead) { DerrubarBuffs(pl); continue; }
+			// (2026-10-15) O CADAVER perde os buffs; o fantasma de pe do Outro Mundo os mantem -- o Kaio-ken do Sr. Kaioh e de morto.
+			if (pl.Ficha.KO || EhCadaver(pl)) { DerrubarBuffs(pl); continue; }
 
 			foreach (BuffAtivo b in meus.Values.ToList())
 			{

@@ -5,7 +5,7 @@ using Jandirus.Core.World;
 namespace Jandirus.Server;
 
 /// <summary>
-/// **A PROVA DO REFUGIO** -- as familias 8, 9 e 10 da `--bercoprova`.
+/// **A PROVA DO REFUGIO** -- as familias 8, 9, 10 e (v0.3.0) 11 da `--bercoprova`.
 ///
 /// ============================ POR QUE ELAS EXISTEM, COM A FAMILIA 7 JA VERDE ============================
 /// A familia 7 mede os cinco estados do pedido do dono com **UM personagem** -- um Human que conquistou
@@ -849,7 +849,8 @@ public partial class GameServer
 	/// o sentido se o dominio por acaso passasse a ser um vizinho. A propria familia afirma a distancia
 	/// antes de usar (ver <see cref="SemCasa"/>).
 	/// </summary>
-	private PlanetaNoEspaco PreFeitoLongeDe(string natal)
+	/// <param name="tambemNao">(v0.3.0) Um planeta que nao pode ser o dominio -- a familia 11 tira a Terra, que e outra saida.</param>
+	private PlanetaNoEspaco PreFeitoLongeDe(string natal, string? tambemNao = null)
 	{
 		Vec2 a = AncoraDaBancada(natal);
 		PlanetaNoEspaco melhor = default;
@@ -858,6 +859,7 @@ public partial class GameServer
 		foreach (PlanetaNoEspaco p in Espaco.PreFeitos())
 		{
 			if (string.Equals(p.Nome, natal, StringComparison.OrdinalIgnoreCase)) continue;
+			if (tambemNao != null && string.Equals(p.Nome, tambemNao, StringComparison.OrdinalIgnoreCase)) continue;
 			if (PlanetaMorto(p) || _catalogo?.Get(ZoneKey.Premade(p.Nome)) == null) continue;
 
 			double dx = p.Pos.X - a.X, dy = p.Pos.Y - a.Y, q = dx * dx + dy * dy;
@@ -905,4 +907,227 @@ public partial class GameServer
 	/// ================================================================================================================
 	/// </summary>
 	private Vec2 BandeiraEm(PlanetaNoEspaco p) => PontoDeNascimento(Espaco.ZonaDe(p));
+
+	// =====================================================================
+	// 11) A TERRA, O PONTO DE ENCONTRO (v0.3.0, o adendo 11 do dono)
+	// =====================================================================
+	/// <summary>
+	/// *"faca q alem do jogador poder escolher spawnar em um planeta proximo ao planeta natal dele, ele sempre tem a opcao de
+	/// reviver na terra se o planeta natal dele foi destruido. a terra seria o ponto de encontro principal do jogo"*.
+	///
+	/// ============================ UM NAMEKUSEIJIN SEM NAMEK, E A TERRA DE PE ============================
+	/// A familia 7 usa um Human, e pra ele a Terra e justamente o planeta que acabou -- a opcao nao existe. Aqui o corpo e de
+	/// Namek, Namek morre e a Terra fica: e o caso do pedido. Cada estado e afirmado nas DUAS pontas da casa -- a ESCOLHA que
+	/// existia (`EscolhaDeRefugio`, o que manda a tela abrir) e o DESTINO de verdade (os funis da morte e do login, com o corpo
+	/// no chao).
+	/// ================================================================================================
+	///
+	/// ============================ E O DEFEITO E O JOGO DE ANTES ============================
+	/// `TerraForaDoRefugioDeTeste` tira a Terra das saidas. Com ele as provas (2), (4) e (9) REPROVAM: sem territorio nao ha
+	/// escolha (a tela nao abriria), escolher a Terra e recusado (o corpo fica na vizinhanca) e, sem vizinhanca, o corpo vai
+	/// pro vacuo -- que e exatamente o refugio antes deste adendo.
+	/// =======================================================================================
+	/// </summary>
+	private void ATerraOPontoDeEncontro()
+	{
+		GD.Print("[bercoprova] -- 11) A TERRA, O PONTO DE ENCONTRO: quem perdeu o natal sempre pode voltar pela Terra");
+
+		var namek = ZoneKey.Premade("Namek");
+		var terra = ZoneKey.Premade("Earth");
+		var salvos = new List<Dominio>(_dominios);
+		List<string>? escutaAntes = EscutaDeAvisos;
+
+		// ---- (0) COM NAMEK DE PE: o verb 'terra' se recusa, e o corpo volta pra casa ----
+		// Um corpo PROPRIO, recolhido antes da morte de Namek: a destruicao mexe em quem esta no planeta.
+		CharacterSave c0 = SaveDeBancada("Prova Terra Viva", "Namekian", LinhagemDe("Namekian"), "Normal", false,
+															  new Random(20261015));
+		ServerPlayer vivo = CorpoDoSave(c0, FaixaDoRefugio);
+		vivo.Conta = ContaDoRefugio;
+		try
+		{
+			PousarDeVerdade(vivo);
+			ComandoDeRefugio(vivo, "refugio", "terra");
+			(ZoneKey z0, Vec2 _) = DestinoDe(vivo);
+			Provar($"(0) com Namek DE PE o verb 'refugio terra' se RECUSA -- a opcao e de quem perdeu o natal -- e o corpo volta pra "
+				  + $"casa ('{z0.Name}')",
+					!PerdeuOBerco(vivo) && !vivo.RefugioNaTerra && z0.Equals(namek),
+					$"PerdeuOBerco={PerdeuOBerco(vivo)} RefugioNaTerra={vivo.RefugioNaTerra} destino={z0.Name}");
+		}
+		finally { Recolher(vivo); }
+
+		using PalcoDeMortes palco = PalcoDeMortesDeBancada();   // a Terra e Namek voltam no fim do metodo
+		if (!MatarPlanetaNoPalco(namek, "bercoprova: a Terra, o ponto de encontro"))
+		{
+			Provar("a injecao matou Namek (rodada da Terra)", false, "nao chegou a `Destruido` -- esta familia nao provaria nada");
+			return;
+		}
+		Provar("a injecao matou Namek e a Terra continua de pe (rodada da Terra)", !ZonaMorta(terra) && TerraServeDeRefugio());
+
+		HashSet<string> aceitos = OndeEsteCorpoDeveriaAcordar("Namek");
+		CharacterSave c = SaveDeBancada("Prova Terra", "Namekian", LinhagemDe("Namekian"), "Normal", false, new Random(20261015));
+		ServerPlayer pl = CorpoDoSave(c, FaixaDoRefugio);
+		pl.Conta = ContaDoRefugio;   // assinatura propria: dominio e do PERSONAGEM, e nao da conta
+
+		Dominio? d = null;
+		try
+		{
+			// ---- (1) NASCER sem casa: a vizinhanca (no nascimento nao ha escolha -- ver a familia 8) ----
+			PousarDeVerdade(pl);
+			string aoNascer = pl.Zone.Name;
+			bool chao1 = PisouEmChao(pl, out string porque1);
+			Provar($"(1) nasceu sem Namek e acordou em '{aoNascer}', perto de casa -- e NAO na Terra (ela e opcao, nao padrao)",
+					  aceitos.Contains(aoNascer) && !pl.Zone.Equals(terra) && chao1, $"{aoNascer} -- {porque1}");
+
+			// ---- (2) SEM TERRITORIO NENHUM, HA ESCOLHA: a vizinhanca e a Terra ----
+			(Vec2 _, List<Dominio> dom2, Arredores perto2, bool escolha2) = EscolhaDeRefugio(pl);
+			Provar("(2) **SEM DOMINIO NENHUM HA ESCOLHA** -- a vizinhanca e a Terra: a tela abre pra todo mundo que perdeu o natal",
+					  PerdeuOBerco(pl) && escolha2 && dom2.Count == 0 && !perto2.Vazia && TerraServeDeRefugio(),
+					  $"escolha={escolha2} dominios={dom2.Count} vizinhos={perto2.Mundos.Count} terra={TerraServeDeRefugio()}");
+
+			// ---- (3) SEM ESCOLHER NADA, O PADRAO CONTINUA A VIZINHANCA ----
+			MandarProBerco(pl);
+			PousarDeVerdade(pl);
+			string padrao = pl.Zone.Name;
+			bool chao3 = PisouEmChao(pl, out string porque3);
+			Provar($"(3) sem escolher nada, o PADRAO continua a vizinhanca ('{padrao}') -- a Terra e opcao",
+					  aceitos.Contains(padrao) && !pl.Zone.Equals(terra) && !pl.RefugioNaTerra && chao3, $"{padrao} -- {porque3}");
+
+			// ---- O DEFEITO: o refugio sem a Terra (o jogo de antes) -- as provas (2) e (4) reprovam ----
+			bool escolhaSemTerra;
+			bool guardouSemTerra;
+			ZoneKey destinoSemTerra;
+			TerraForaDoRefugioDeTeste = true;
+			try
+			{
+				escolhaSemTerra = EscolhaDeRefugio(pl).Escolha;
+				ComandoDeRefugio(pl, "refugio", "terra");
+				guardouSemTerra = pl.RefugioNaTerra;
+				destinoSemTerra = DestinoDe(pl).Zona;
+			}
+			finally { TerraForaDoRefugioDeTeste = false; }
+			Provar("(2) DEFEITO INJETADO (a Terra fora do refugio): sem territorio NAO ha escolha -- a tela nao abriria; a prova (2) "
+				  + "REPROVA", !escolhaSemTerra);
+			Provar("(4) DEFEITO INJETADO: escolher a Terra e RECUSADO e o corpo fica na vizinhanca -- a prova (4) REPROVA",
+					  !guardouSemTerra && !destinoSemTerra.Equals(terra), $"guardou={guardouSemTerra} destino={destinoSemTerra.Name}");
+
+			// ---- (4) ELE ESCOLHE A TERRA: a morte pousa nela, no marco do mapa ----
+			EscutaDeAvisos = [];
+			ComandoDeRefugio(pl, "refugio", "terra");
+			MandarProBerco(pl);
+			List<string> avisos = [.. EscutaDeAvisos];
+			EscutaDeAvisos = escutaAntes;
+			PousarDeVerdade(pl);
+			bool chao4 = PisouEmChao(pl, out string porque4);
+			Vec2 marco = PontoDeNascimento(terra);
+			Provar("(4) **ESCOLHENDO A TERRA, O CORPO ACORDA NA TERRA**, em chao de verdade e no marco de nascimento dela -- o mesmo "
+				  + "ponto de quem nasce la, e por isso um ponto de ENCONTRO",
+					  pl.RefugioNaTerra && pl.Zone.Equals(terra) && chao4
+					  && Math.Abs(pl.Pos.X - marco.X) < 1 && Math.Abs(pl.Pos.Y - marco.Y) < 1,
+					  $"RefugioNaTerra={pl.RefugioNaTerra} destino={pl.Zone.Name} @ ({pl.Pos.X:0},{pl.Pos.Y:0}) marco ({marco.X:0},{marco.Y:0})"
+				  + $" -- {porque4}");
+			GD.Print($"[bercoprova]      as frases da escolha e da volta: {string.Join("  ||  ", avisos)}");
+			Provar("...e as frases dizem a escolha e a volta pela Terra -- sem oferecer a Terra de novo a quem ja esta indo pra ela",
+					  avisos.Any(a => a.Contains("você escolhe a Terra")) && avisos.Any(a => a.Contains("Você volta pela Terra"))
+					  && !avisos.Any(a => a.Contains("na Terra, o ponto de encontro")),
+					  string.Join("  ||  ", avisos));
+
+			// ---- (5) O LOGIN TAMBEM: o outro caminho do funil ----
+			PousarNoBercoSemPacote(pl);
+			Provar($"(5) o LOGIN seguinte tambem pousa na Terra (`PousarNoBercoSemPacote`, o caminho do `Entrar`): '{pl.Zone.Name}'",
+					  pl.Zone.Equals(terra), pl.Zone.Name);
+
+			// ---- (6) A ESCOLHA ATRAVESSA O DISCO ----
+			var opcoes = new System.Text.Json.JsonSerializerOptions { IncludeFields = true };
+			CharacterSave gravado = AccountStore.DeJogador(pl, NowMs());
+			string json = System.Text.Json.JsonSerializer.Serialize(gravado, opcoes);
+			CharacterSave lido = System.Text.Json.JsonSerializer.Deserialize<CharacterSave>(json, opcoes)!;
+			var relogado = new ServerPlayer();
+			AccountStore.ParaJogador(lido, relogado);
+			Provar("(6) a escolha vai pro DISCO e volta (`DeJogador` -> JSON -> `ParaJogador`, o caminho do login)",
+					  gravado.RefugioNaTerra && lido.RefugioNaTerra && relogado.RefugioNaTerra,
+					  $"save={gravado.RefugioNaTerra} lido={lido.RefugioNaTerra} corpo={relogado.RefugioNaTerra}");
+			string semCampo = json.Replace("\"RefugioNaTerra\":true,", "").Replace(",\"RefugioNaTerra\":true", "");
+			CharacterSave antigo = System.Text.Json.JsonSerializer.Deserialize<CharacterSave>(semCampo, opcoes)!;
+			Provar("...e um save ANTIGO (sem o campo) chega com a vizinhanca, o padrao de sempre",
+					  semCampo != json && !antigo.RefugioNaTerra, semCampo == json ? "o campo nao estava no JSON" : "");
+
+			// ---- (7) A TERRA E O DOMINIO SE EXCLUEM -- uma escolha so, pelo verb e pela bandeira ----
+			PlanetaNoEspaco longe = PreFeitoLongeDe("Namek", tambemNao: terra.Name);
+			d = FincarDominio(pl, longe, BandeiraEm(longe));
+			ComandoDeRefugio(pl, "refugio", d.Chave.Texto);
+			(ZoneKey z7a, Vec2 _) = DestinoDe(pl);
+			Provar($"(7) escolher o DOMINIO apaga a Terra -- e o corpo vai pro dominio ('{z7a.Name}')",
+					  d.EhOSpawn && !pl.RefugioNaTerra && string.Equals(z7a.Name, longe.Nome, StringComparison.OrdinalIgnoreCase),
+					  $"EhOSpawn={d.EhOSpawn} RefugioNaTerra={pl.RefugioNaTerra} destino={z7a.Name} (dominio {longe.Nome})");
+
+			ComandoDeRefugio(pl, "refugio", "terra");
+			(ZoneKey z7b, Vec2 _) = DestinoDe(pl);
+			Provar("...e escolher a TERRA desmarca o dominio -- o corpo volta a ir pra Terra",
+					  !d.EhOSpawn && pl.RefugioNaTerra && z7b.Equals(terra), $"EhOSpawn={d.EhOSpawn} destino={z7b.Name}");
+
+			// A BANDEIRA (`conq_spawn`, "Renascer aqui"): de pe junto dela, no planeta conquistado.
+			MoveToZone(pl.Id, Espaco.ZonaDe(longe), BandeiraEm(longe));
+			ConquistaSpawn(pl);
+			Provar("...e o 'Renascer aqui' da BANDEIRA tambem apaga a Terra (o `conq_spawn` e a outra porta da mesma escolha)",
+					  d.EhOSpawn && !pl.RefugioNaTerra, $"EhOSpawn={d.EhOSpawn} RefugioNaTerra={pl.RefugioNaTerra} zona={pl.Zone.Name}");
+
+			// ---- (8) VOLTAR ATRAS: a vizinhanca, no MESMO mundo de antes ----
+			ComandoDeRefugio(pl, "refugio", "vizinhanca");
+			MandarProBerco(pl);
+			PousarDeVerdade(pl);
+			bool chao8 = PisouEmChao(pl, out string porque8);
+			Provar($"(8) voltando pra vizinhanca, o corpo acorda no MESMO mundo vizinho de antes ('{pl.Zone.Name}')",
+					  !pl.RefugioNaTerra && !d.EhOSpawn && pl.Zone.Name == padrao && chao8,
+					  $"RefugioNaTerra={pl.RefugioNaTerra} EhOSpawn={d.EhOSpawn} antes={padrao} depois={pl.Zone.Name} -- {porque8}");
+
+			// ---- (9) SO A TERRA SOBROU: ela e o destino, sem perguntar -- e nao o vacuo ----
+			PerderDominio(d, "", "bercoprova: fim da familia 11", anunciar: false);
+			d = null;
+			using (SemVizinhancaDeRefugio())
+			{
+				(Vec2 _, List<Dominio> dom9, Arredores perto9, bool escolha9) = EscolhaDeRefugio(pl);
+				(ZoneKey z9, Vec2 _) = DestinoDe(pl);
+				Provar("(9) sem dominio e sem vizinhanca, sobra UMA saida -- a Terra: ela e o destino (e nao o vacuo), sem perguntar",
+						  !escolha9 && dom9.Count == 0 && perto9.Vazia && z9.Equals(terra) && !pl.RefugioNaTerra,
+						  $"escolha={escolha9} dominios={dom9.Count} vizinhos={perto9.Mundos.Count} destino={z9.Name}");
+
+				ZoneKey z9d;
+				TerraForaDoRefugioDeTeste = true;
+				try { z9d = DestinoDe(pl).Zona; }
+				finally { TerraForaDoRefugioDeTeste = false; }
+				Provar("(9) DEFEITO INJETADO (a Terra fora do refugio): o mesmo corpo vai pro VACUO -- a prova (9) REPROVA",
+						  Espaco.EhEspaco(z9d), z9d.Name);
+			}
+
+			// ---- (10) A TERRA TAMBEM MORREU: a opcao some, e quem a escolheu volta pela vizinhanca ----
+			ComandoDeRefugio(pl, "refugio", "terra");
+			bool escolheuAntes = pl.RefugioNaTerra;
+			if (!MatarPlanetaNoPalco(terra, "bercoprova: a Terra tambem"))
+			{
+				Provar("a injecao matou a Terra tambem (rodada da Terra)", false, "nao chegou a `Destruido`");
+				return;
+			}
+			(Vec2 _, List<Dominio> _, Arredores _, bool escolha10) = EscolhaDeRefugio(pl);
+			(ZoneKey z10, Vec2 _) = DestinoDe(pl);
+			Provar("(10) com a TERRA MORTA tambem, ela sai das saidas -- e quem a tinha escolhido acorda na vizinhanca, nunca num "
+				  + $"cadaver ('{z10.Name}')",
+					  escolheuAntes && !TerraServeDeRefugio() && !escolha10 && aceitos.Contains(z10.Name) && !ZonaMorta(z10),
+					  $"escolheu={escolheuAntes} serve={TerraServeDeRefugio()} escolha={escolha10} destino={z10.Name}");
+
+			pl.RefugioNaTerra = false;
+			ComandoDeRefugio(pl, "refugio", "terra");
+			Provar("...e o verb 'refugio terra' se recusa com ela morta", !pl.RefugioNaTerra);
+		}
+		finally
+		{
+			EscutaDeAvisos = escutaAntes;
+			if (d != null) PerderDominio(d, "", "bercoprova: fim da familia 11", anunciar: false);
+			Recolher(pl);
+
+			// O LIVRO VOLTA COMO ESTAVA -- ver o `finally` da familia 7.
+			_dominios.Clear();
+			_dominios.AddRange(salvos);
+			SalvarConquista();
+		}
+	}
 }

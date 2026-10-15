@@ -68,7 +68,7 @@ public sealed partial class GameServer
 
 		// SO QUEM ESTA FECHANDO A DISTANCIA PRA BATER: quem foge, descansa ou esta plantado pra atirar nao pula pra
 		// cima do alvo. E a presa tem de estar de pe -- em cima de um caido nao ha costas pra ganhar.
-		if (plano != Plano.Pressionar || presa.Ficha.KO || presa.Ficha.dead || presa.Zone.Hash != npc.Zone.Hash) return;
+		if (plano != Plano.Pressionar || presa.Ficha.KO || EhCadaver(presa) || presa.Zone.Hash != npc.Zone.Hash) return;
 
 		const float tile = ZoneCollision.TileSize;
 		float distancia = Vec2.Distance(npc.Pos, presa.Pos);

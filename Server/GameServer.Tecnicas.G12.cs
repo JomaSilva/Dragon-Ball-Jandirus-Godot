@@ -344,7 +344,7 @@ public sealed partial class GameServer
 
 			// CAIR, MORRER, MEDITAR OU TROCAR DE PLANETA DESFAZ TUDO. O DM nao trata nenhum dos quatro
 			// (a carga continua num corpo caido); aqui a regra da casa e "sustentado cai com o corpo".
-			if (f.dead || f.KO || f.med || f.train || pl.Zone.Hash != db.Zona || db.Bola is not { Vivo: true })
+			if (EhCadaver(pl) || f.KO || f.med || f.train || pl.Zone.Hash != db.Zona || db.Bola is not { Vivo: true })
 			{
 				if (db.Bola is { Vivo: true } && !db.Lancada) Matar(db.Bola, FimDeProjetil.Nenhum);
 				if (db.Bola is { Vivo: true } && db.Lancada) { /* a bola solta continua; so a guia acaba */ }
@@ -510,7 +510,7 @@ public sealed partial class GameServer
 			Fighter f = pl.Ficha;
 
 			// `if(usr.Ki>=1&&!usr.KO&&!usr.med&&!usr.train) ... else { desliga }` (`:37` e `:78-82`).
-			if (f.Ki < 1 || f.KO || f.dead || f.med || f.train || pl.Zone.Hash != b.Zona)
+			if (f.Ki < 1 || f.KO || EhCadaver(pl) || f.med || f.train || pl.Zone.Hash != b.Zona)
 			{
 				_busterG12.Remove(id);
 				MandarEfeito(pl, "BusterBarrage", 0);
@@ -648,7 +648,7 @@ public sealed partial class GameServer
 			Fighter f = pl.Ficha;
 
 			// `while(volleying && !usr.KO && usr.Ki > kireq)` (`:280`) -- mais o relog/planeta da casa.
-			if (v.Desligando || f.KO || f.dead || f.Ki <= v.KiReq || pl.Zone.Hash != v.Zona)
+			if (v.Desligando || f.KO || EhCadaver(pl) || f.Ki <= v.KiReq || pl.Zone.Hash != v.Zona)
 			{
 				// `reload = 50 (80); barrageCD = reload; canmove = 1; blasting = 0; volleying = 0` (`:318-327`).
 				_voleiG12.Remove(id);
@@ -864,7 +864,7 @@ public sealed partial class GameServer
 		{
 			Fighter f = pl.Ficha;
 
-			if (g.Fase < 3 && (f.dead || f.KO || pl.Zone.Hash != g.Zona || g.Bola is not { Vivo: true }))
+			if (g.Fase < 3 && (EhCadaver(pl) || f.KO || pl.Zone.Hash != g.Zona || g.Bola is not { Vivo: true }))
 			{
 				if (g.Bola is { Vivo: true }) Matar(g.Bola, FimDeProjetil.Nenhum);
 				EncerrarGenkidamaG12(pl, g, "a Genkidama se desfaz no ar.");
@@ -966,7 +966,7 @@ public sealed partial class GameServer
 		{
 			// "GENTE" AQUI E QUEM TEM FICHA PROPRIA E MEDITA: jogador (com tela) ou corpo de bancada; nunca um
 			// NPC do mundo nem o reflexo da mente. O `M.client` do DM existia porque so gente medita.
-			if (o == pl || o.Papel != null || o.DonoDoClone != 0 || !o.Ficha.med || o.Ficha.dead || o.Ficha.KO) continue;
+			if (o == pl || o.Papel != null || o.DonoDoClone != 0 || !o.Ficha.med || EhCadaver(o) || o.Ficha.KO) continue;
 			_ofertasDeGenkidamaG12[o.Id] = pl.Id;
 			Avisar(o, $"{pl.Name} esta formando uma GENKIDAMA. Doar custa um decimo do seu Ki -- responda na aba Other "
 					  + "(Doar a Genkidama / Negar).");
@@ -1267,7 +1267,7 @@ public sealed partial class GameServer
 			// `if(prehp > usr.HP) break; if(usr.KO) break; ... if(breakme) break` (`:42-55`).
 			bool alvoPerto = alvo != null && !alvo.Ficha.dead && alvo.Zone.Hash == pl.Zone.Hash
 							 && Vec2.Distance(alvo.Pos, pl.Pos) <= RaioDeUmTileG4;
-			if (f.HP < d.VidaAoComecar || f.KO || f.dead || !alvoPerto)
+			if (f.HP < d.VidaAoComecar || f.KO || EhCadaver(pl) || !alvoPerto)
 			{
 				_drenoG12.Remove(id);
 				if (alvo != null) MandarEfeito(alvo, "Absorb_Android", 0);
@@ -1324,7 +1324,7 @@ public sealed partial class GameServer
 		}
 		if (RecusarCaido(pl)) return;
 
-		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDaImitacaoG12, o => o.Disfarce == null && !o.Ficha.dead);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDaImitacaoG12, o => o.Disfarce == null && !EhCadaver(o));
 		if (alvo == null) { Avisar(pl, "nao ha ninguem a cinco tiles pra imitar (marque alguem com duplo clique)."); return; }
 
 		pl.Disfarce = new DisfarceG12
@@ -1543,7 +1543,7 @@ public sealed partial class GameServer
 				break;
 			case FuncaoDeSplitformG12.AtacarAlvo:
 				if (dono.AlvoId != 0 && dono.AlvoId != copia.Id && _players.TryGetValue(dono.AlvoId, out ServerPlayer? m)
-					&& m.Zone.Hash == copia.Zone.Hash && !m.Ficha.dead)
+					&& m.Zone.Hash == copia.Zone.Hash && !EhCadaver(m))
 				{ presa = m; destino = m.Pos; }
 				break;
 			case FuncaoDeSplitformG12.AtacarPerto:
@@ -1552,7 +1552,7 @@ public sealed partial class GameServer
 				perto *= perto;
 				foreach (ServerPlayer o in ZoneList(copia.Zone.Hash))
 				{
-					if (o.Id == copia.Id || o.Id == dono.Id || o.Ficha.dead || o.Ficha.KO) continue;
+					if (o.Id == copia.Id || o.Id == dono.Id || EhCadaver(o) || o.Ficha.KO) continue;
 					if (_splitformsG12.TryGetValue(o.Id, out SplitformG12? irma) && irma.Master == dono.Id) continue;
 					float d2 = (o.Pos - copia.Pos).LengthSquared;
 					if (d2 >= perto) continue;
@@ -1575,7 +1575,9 @@ public sealed partial class GameServer
 			if (_relogioG12 < sf.ProximoTiqueEm) continue;
 			sf.ProximoTiqueEm = _relogioG12 + 1.0;
 
-			bool masterSumiu = !_players.TryGetValue(sf.Master, out ServerPlayer? dono) || dono.Ficha.dead;
+			// (2026-10-15) o DONO fantasma continua de pe: as copias dele nao somem no Outro Mundo. As copias nascem vivas
+			// (`dead = false` no `CriarSplitformG12`), e a morte DELAS continua sendo o `dead` cru da linha de baixo.
+			bool masterSumiu = !_players.TryGetValue(sf.Master, out ServerPlayer? dono) || EhCadaver(dono);
 			if (copia.Ficha.dead || (copia.Ficha.KO && copia.Ficha.HP <= 8) || masterSumiu || _relogioG12 >= sf.ExpiraEm)
 			{
 				if (!copia.Ficha.dead && !masterSumiu)
@@ -1739,7 +1741,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void AcudirComSenzuG12(ServerPlayer pl, ItemDef def)
 	{
-		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDeUmTileG4, o => o.Ficha.KO && !o.Ficha.dead && o.Combate != null);
+		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDeUmTileG4, o => o.Ficha.KO && !EhCadaver(o) && o.Combate != null);
 		if (alvo == null) { Avisar(pl, "isto so serve em alguem DESACORDADO ao seu lado."); return; }   // `:66`
 
 		pl.Mochila.Tirar(def.Id);
@@ -1820,7 +1822,7 @@ public sealed partial class GameServer
 			ak.Alvos.RemoveAll(t => !t.Vivo);
 
 			// `while(shdbox && med && !deepmeditation) { if(!move || !hasTime) break; ... }` (`:251-252`).
-			if (!f.med || f.KO || f.dead || pl.Zone.Hash != ak.Zona || NaMente(pl))
+			if (!f.med || f.KO || EhCadaver(pl) || pl.Zone.Hash != ak.Zona || NaMente(pl))
 			{
 				_alvosDeKiG12.Remove(id);
 				foreach (Projetil t in ak.Alvos) if (t.Vivo) Matar(t, FimDeProjetil.Apagou);
@@ -1934,7 +1936,7 @@ public sealed partial class GameServer
 		foreach (int id in _precognitivosG12)
 		{
 			if (!_players.TryGetValue(id, out ServerPlayer? pl)) continue;
-			if (pl.Ficha.KO || pl.Ficha.dead || BlastingG12(id) || _canais.ContainsKey(id) || !PodeMexerOCorpo(pl)) continue;
+			if (pl.Ficha.KO || EhCadaver(pl) || BlastingG12(id) || _canais.ContainsKey(id) || !PodeMexerOCorpo(pl)) continue;
 			List<Projetil> tiros = ProjeteisDaZona(pl.Zone.Hash);
 			if (tiros.Count == 0) continue;
 			foreach (Projetil t in tiros)

@@ -81,6 +81,25 @@ public partial class GameServer
 	///
 	/// O NOME E O QUE O JOGADOR LE na frase "o chao de X puxa...": o batizado, quando alguem batizou.
 	/// </summary>
+	/// <summary>A ilha do Outro Mundo debaixo deste corpo (nulo fora delas). Ver `Alem.IlhaEm`.</summary>
+	private static string? IlhaDoOutroMundoDe(ServerPlayer pl) =>
+		Alem.IlhaEm(pl.Zone.Name, (int)MathF.Floor(pl.Pos.X / ZoneCollision.TileSize), (int)MathF.Floor(pl.Pos.Y / ZoneCollision.TileSize));
+
+	/// <summary>
+	/// (2026-10-15) QUEM PISA NUMA ILHA DO OUTRO MUNDO (OU SAI DELA) ganha a gravidade do lugar -- a 1 Hz, pelo mesmo funil
+	/// da troca de zona (`AplicarGravidade`). So quem esta no Outro Mundo (ou acabou de sair de uma ilha), e so quando a
+	/// ilha debaixo dele mudou.
+	/// </summary>
+	private void TickDasIlhas()
+	{
+		foreach (ServerPlayer pl in _players.Values.ToList())
+		{
+			if (!string.Equals(pl.Zone.Name, Alem.ZonaDoOutroMundo, StringComparison.OrdinalIgnoreCase)
+				&& pl.IlhaDoOutroMundo == null) continue;
+			if (IlhaDoOutroMundoDe(pl) != pl.IlhaDoOutroMundo) AplicarGravidade(pl);
+		}
+	}
+
 	private FichaDePlaneta FichaDoChao(ZoneKey zona) =>
 		EhZonaProcedural(zona) && !GravidadeSoDoCatalogoDeTeste
 			? new FichaDePlaneta { Nome = NomeDoMundo(zona), Gravidade = MundoProcedural.GravidadeDaSeed(zona.Seed) }

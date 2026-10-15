@@ -776,6 +776,23 @@ public partial class CharacterVisual : Node2D
 		_corpo != null && IsInstanceValid(_corpo) ? TintaDoMaterial(_corpo.Material) : null;
 
 	/// <summary>
+	/// (2026-10-15) A PELE DO CORPO PRA FORA DO BONECO -- os pedacos do Majin desfeito (<see cref="PedacosDoMajin"/>): a
+	/// folha da camada do corpo, um material NOVO com o mesmo shader e a mesma tinta (o do corpo carrega tambem a caixa do
+	/// quadro e as feridas DELE), e o brilho do `SelfModulate`. Nulo sem corpo montado.
+	/// </summary>
+	public (SpriteFrames Folha, ShaderMaterial? Tinta, Color Pele)? CorpoParaOsPedacos()
+	{
+		if (_corpo is not { } corpo || !IsInstanceValid(corpo) || corpo.SpriteFrames is not { } folha) return null;
+		ShaderMaterial? tinta = null;
+		if (corpo.Material is ShaderMaterial m && m.Shader == ShaderTinta)
+		{
+			tinta = new ShaderMaterial { Shader = ShaderTinta };
+			Tinta.Do(m).Escrever(tinta);
+		}
+		return (folha, tinta, corpo.SelfModulate);
+	}
+
+	/// <summary>
 	/// ============================ O PORTE DA FORMA: AS CAMADAS CRESCEM EM TORNO DOS PES ============================
 	/// Dono, 2026-10-13, sobre o Orange: *"(e o sprite deles , e os overlays tb) ficam um pouco maiores"*.
 	///
@@ -792,7 +809,9 @@ public partial class CharacterVisual : Node2D
 	/// </summary>
 	private void AplicarOPorte()
 	{
-		float porte = (float)Jandirus.Core.Forms.Catalogo.PorteDaForma(_formaVestida);
+		// (2026-10-15) E A FORMA GIGANTE POR CIMA DA FORMA: o corpo inteiro dobra -- ver `PorteDoGigante`.
+		float porte = (float)Jandirus.Core.Forms.Catalogo.PorteDaForma(_formaVestida)
+						* (_ficha is { Gigante: true } && !GiganteSoNoServidorDeTeste ? PorteDoGigante : 1f);
 		if (Mathf.IsEqualApprox(porte, _porte)) return;
 		_porte = porte;
 		foreach (AnimatedSprite2D s in _camadas)
@@ -809,8 +828,55 @@ public partial class CharacterVisual : Node2D
 	/// <summary>O porte que as camadas estao usando. 1 = o tamanho de sempre.</summary>
 	private float _porte = 1f;
 
+	/// <summary>
+	/// (2026-10-15) O PORTE DA FORMA GIGANTE -- `animate(container, transform = matrix()*2, time = 5)` (`Giant Form.dm`): o
+	/// corpo inteiro dobra, crescendo pelos pes como o Orange (ver <see cref="AplicarOPorte"/>). Chega pela ficha
+	/// (`Appearance.Gigante`, o bit 6 das marcas do `S2C.PeerLook`).
+	/// </summary>
+	public const float PorteDoGigante = 2f;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv030`): o boneco ignora a Forma Gigante -- o buff liga no servidor e o desenho fica
+	/// do tamanho de sempre, o jogo de antes. Lido pelo <see cref="AplicarOPorte"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool GiganteSoNoServidorDeTeste;
+
 	/// <summary>O porte em que o corpo esta desenhado. Pra bancada.</summary>
 	public float PorteDeTeste => _corpo != null && IsInstanceValid(_corpo) ? _corpo.Scale.Y : 1f;
+
+	/// <summary>
+	/// (2026-10-15) O TAMANHO DO CORPO NA TELA, em corpos de 32 px: a altura do quadro mais alto vestido (a folha do corpo,
+	/// ou a arte da forma -- o macaco de 96 da 3), vezes o porte (o gigante 2, o Orange 1,15), vezes a escala deste node (o
+	/// crescimento do Oozaru). E o que a chama acompanha (`SpriteDeAura.AcompanharOCorpo`) -- o dono: *"personagens
+	/// gigantes como oozaru a aura n muda de tamanho pra ficar proporcional, faça isso pro namek gigante tb e outras
+	/// formas gigantes"*.
+	///
+	/// AS ALTURAS SAO MEDIDAS SO QUANDO A FOLHA TROCA (a referencia e comparada a cada leitura, e medir um quadro so acontece
+	/// na virada): a chama le isto a cada quadro, e um quadro novo medido por leitura seria lixo pro coletor.
+	/// </summary>
+	public float TamanhoDoCorpo
+	{
+		get
+		{
+			SpriteFrames? doCorpo = _corpo != null && IsInstanceValid(_corpo) ? _corpo.SpriteFrames : null;
+			if (!ReferenceEquals(doCorpo, _folhaDoCorpoMedida))
+			{
+				_folhaDoCorpoMedida = doCorpo;
+				float h = TamanhoDoQuadro(doCorpo).Y;
+				_alturaDoCorpo = h > 0 ? h : Celula;
+			}
+			SpriteFrames? daForma = _corpoDaForma != null && IsInstanceValid(_corpoDaForma) ? _corpoDaForma.SpriteFrames : null;
+			if (!ReferenceEquals(daForma, _folhaDaFormaMedida))
+			{
+				_folhaDaFormaMedida = daForma;
+				_alturaDaForma = daForma == null ? 0 : TamanhoDoQuadro(daForma).Y;
+			}
+			return Math.Max(_alturaDoCorpo, _alturaDaForma) / Celula * _porte * Scale.Y;
+		}
+	}
+
+	private SpriteFrames? _folhaDoCorpoMedida, _folhaDaFormaMedida;
+	private float _alturaDoCorpo = Celula, _alturaDaForma;
 
 	/// <summary>
 	/// A ULTIMA FICHA VESTIDA, e a raca com que ela foi lida. So a <see cref="BaseDaFicha"/> usa.
@@ -1170,6 +1236,8 @@ public partial class CharacterVisual : Node2D
 		// Ver o bloco do `COLOR` no shader. (Quem escreve os dois canais do corpo e o `PintarCorpo`: a ficha, e por
 		// cima dela o potencial desperto e a forma vestida.)
 		PintarCorpo();
+		// (2026-10-15) E O PORTE: a Forma Gigante chega pela ficha (`Appearance.Gigante`) -- ver `AplicarOPorte`.
+		AplicarOPorte();
 
 		// --- roupa: uma camada por peca, na ordem em que foi vestida ---
 		while (_roupa.Count > ap.Roupa.Count)
@@ -1645,7 +1713,7 @@ public partial class CharacterVisual : Node2D
 	///
 	/// Folha 32x32 da deslocamento zero, entao o caso comum nao paga nada.
 	/// </summary>
-	private static void Ancorar(AnimatedSprite2D alvo, SpriteFrames f)
+	internal static void Ancorar(AnimatedSprite2D alvo, SpriteFrames f)
 	{
 		foreach (string anim in f.GetAnimationNames())
 		{
@@ -2019,6 +2087,8 @@ public partial class CharacterVisual : Node2D
 
 	public void SetMotion(Facing facing, bool moving)
 	{
+		// (v0.3.0) GIRANDO, a direcao pedida espera o fim da volta -- ver `Girar`.
+		if (_giroResta > 0) { _facingPedido = facing; facing = _facing; }
 		if (_travado || (_facing == facing && _moving == moving)) return;
 		bool virou = _facing != facing;
 		_facing = facing;
@@ -2026,6 +2096,69 @@ public partial class CharacterVisual : Node2D
 		Aplicar(force: false);
 		// VIROU: o braco esquerdo dele mudou de lado na tela. Ver `AplicarAmputacao`.
 		if (virou) SeguirDirecaoNaAmputacao();
+	}
+
+	// =====================================================================
+	// O GIRO (v0.3.0) -- o Spin Attack da a volta inteira na tela
+	// =====================================================================
+	/// <summary>
+	/// ============================ A VOLTA DE 360 GRAUS DO CHUTE GIRATORIO ============================
+	/// O dono (2026-10-15): *"na skill chute giratorio/spin kick faca o personagem realmente dar um 360 pra representar o
+	/// giro"*. O BYOND nao girava nada (o `Spin_Attack`, `Martial Skill Attacks.dm:325`, so batia em quem estivesse em volta).
+	/// Aqui o desenho passa pelas quatro direcoes, no sentido do relogio a partir de onde olha, e volta a ela -- um quarto de
+	/// volta por quarto do tempo -- com o golpe esticado pela volta inteira.
+	///
+	/// POR CIMA DO `SetMotion`: enquanto gira, a direcao que o dono do corpo pede (o teclado, o snapshot) espera em
+	/// <see cref="_facingPedido"/>, e no fim e ela que vale. Quem manda girar e o gesto do servidor (`Protocol.GestoDoCorpo.Giro`).
+	/// ==============================================================================================
+	/// </summary>
+	public void Girar(double segundos)
+	{
+		if (GiroSoNoServidorDeTeste || _travado || segundos <= 0) return;
+		if (_giroResta <= 0) { _facingPedido = _facing; _giroDe = _facing; }
+		_giroTotal = segundos;
+		_giroResta = segundos;
+		RestartState(EstadoDeFlick, segundos);
+	}
+
+	private double _giroResta, _giroTotal;
+	private Facing _giroDe = Facing.South, _facingPedido = Facing.South;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv030`): o desenho nao gira -- o Spin Attack bate parado na tela, o jogo de antes. Lido por
+	/// <see cref="Girar"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool GiroSoNoServidorDeTeste;
+
+	/// <summary>A direcao em que o corpo esta DESENHADO agora (a do giro, girando). So pra bancada.</summary>
+	public Facing FacingDesenhadoDeTeste => _facing;
+
+	/// <summary>Um quarto de volta no sentido do relogio, na tela: sul -> oeste -> norte -> leste -> sul.</summary>
+	private static Facing NoSentidoDoRelogio(Facing f) => f switch
+	{
+		Facing.South => Facing.West,
+		Facing.West => Facing.North,
+		Facing.North => Facing.East,
+		_ => Facing.South,
+	};
+
+	/// <summary>O passo do giro neste quadro: o quarto de volta da vez -- e, no fim, a direcao que foi pedida enquanto girava.</summary>
+	private void AndarOGiro(double delta)
+	{
+		if (_giroResta <= 0) return;
+		_giroResta -= delta;
+		Facing agora = _facingPedido;
+		if (_giroResta > 0)
+		{
+			int quarto = Math.Clamp((int)((1 - _giroResta / _giroTotal) * 4), 0, 3);
+			agora = _giroDe;
+			for (int i = 0; i < quarto; i++) agora = NoSentidoDoRelogio(agora);
+		}
+		else _giroResta = 0;
+		if (agora == _facing) return;
+		_facing = agora;
+		Aplicar(force: false);
+		SeguirDirecaoNaAmputacao();
 	}
 
 	// =====================================================================
@@ -3857,6 +3990,8 @@ public partial class CharacterVisual : Node2D
 		AnimarContorno(delta);
 
 		if (_corpo?.SpriteFrames == null) return;
+
+		AndarOGiro(delta);   // (v0.3.0) o Spin Attack -- ver `Girar`
 
 		// TUDO anima, inclusive parado: a pose parada e um estado proprio com ciclo proprio
 		// (a "respiracao"). Quem NAO anima e a camada que caiu numa pose emprestada.

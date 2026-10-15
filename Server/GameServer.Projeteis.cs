@@ -412,7 +412,7 @@ public sealed partial class GameServer
 		if (!PodeAtirar(pl, custo, out string porque)) { Avisar(pl, porque); return; }
 
 		ServerPlayer? alvo = Marcado(pl);
-		if (alvo == null || alvo == pl || alvo.Ficha.dead || !alvo.Zone.Equals(pl.Zone))
+		if (alvo == null || alvo == pl || EhCadaver(alvo) || !alvo.Zone.Equals(pl.Zone))
 		{
 			alvo = null;
 			// O AVISO E DO DM, literal: *"Sem alvo selecionado: o ataque voa reto."* Ele existe
@@ -446,11 +446,19 @@ public sealed partial class GameServer
 	/// A ORDEM IMPORTA: a falta de Ki e a ULTIMA a ser dita. Quem esta nocauteado tambem esta sem
 	/// Ki quase sempre, e "voce esta caido" e a resposta util.
 	/// </summary>
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`): o tiro volta a recusar TODO morto, inclusive o de pe no Outro Mundo -- o
+	/// jogo de antes. Lido pela primeira recusa do <see cref="PodeAtirar"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool MortoNaoAtiraDeTeste;
+
 	private bool PodeAtirar(ServerPlayer pl, double custo, out string porque)
 	{
 		porque = "";
 		if (pl.Combate == null) { porque = "seu corpo ainda nao esta pronto."; return false; }
-		if (pl.Ficha.dead) { porque = "voce esta morto."; return false; }
+		// (2026-10-15) O MORTO DE PE ATIRA -- so o CADAVER nao. O dono, no Outro Mundo: *"n ta dando pra usar ataques de ki
+		// tb como morto"*. Era o `dead` cru, e la todo mundo esta morto; o soco, o voo e o Zanzoken ja perguntavam pelo cadaver.
+		if (MortoNaoAtiraDeTeste ? pl.Ficha.dead : EhCadaver(pl)) { porque = "voce esta morto."; return false; }
 		if (pl.Ficha.KO) { porque = "voce esta caido."; return false; }
 		// O `canfight` QUE TODO VERB DE KI DO DM PERGUNTA (`if(KO || med || train || !canfight || charging ||
 		// beaming) return 0`, `customattacks.dm:486`; `&&canfight` nos raios, `Kamehameha.dm:48`), e que aqui e o
@@ -738,7 +746,7 @@ public sealed partial class GameServer
 	/// `CustomGuidedFire` (`if(T &amp;&amp; !T.dead &amp;&amp; T.z == z &amp;&amp; T != src)`, `customattacks.dm:533`).
 	/// </summary>
 	private ServerPlayer? AlvoDeTeleguiado(ServerPlayer pl)
-		=> Marcado(pl) is { } a && a != pl && !a.Ficha.dead && a.Zone.Equals(pl.Zone) ? a : null;
+		=> Marcado(pl) is { } a && a != pl && !EhCadaver(a) && a.Zone.Equals(pl.Zone) ? a : null;   // (2026-10-15) o fantasma e alvo
 
 	/// <summary>
 	/// O RAIO TELEGUIADO GIRA ATRAS DO ALVO -- reto, em torno da cauda. A regra (quanto, e ate onde) e do
@@ -945,7 +953,7 @@ public sealed partial class GameServer
 			if (!_players.TryGetValue(id, out ServerPlayer? pl)) { _canais.Remove(id); continue; }
 
 			// AS MESMAS CONDICOES DO `AreYaBeamingKid`: `if(KO||med||train) stopcharging/stopbeaming`.
-			if (pl.Ficha.dead || pl.Ficha.KO || pl.Ficha.med || pl.Ficha.train)
+			if (EhCadaver(pl) || pl.Ficha.KO || pl.Ficha.med || pl.Ficha.train)
 			{
 				FecharCanal(id, c, "voce perde a concentracao e o raio se desfaz.");
 				continue;
@@ -1259,7 +1267,7 @@ public sealed partial class GameServer
 		//    Hellzone a pare) nao anda. E o `spawn(10)` do `blasts.dm:517` -- ver `Projetil.EsperaDeCaca`.
 		if (p.EsperaDeCaca > 0) p.EsperaDeCaca -= dt;
 		else if (p.Alvo != 0 && p.Tipo != TipoDeProjetil.Blast
-			&& _players.TryGetValue(p.Alvo, out ServerPlayer? mira) && !mira.Ficha.dead)
+			&& _players.TryGetValue(p.Alvo, out ServerPlayer? mira) && !EhCadaver(mira))
 		{
 			float andaNoTique = (float)(ZoneCollision.TileSize / p.SegundosPorTile * dt);
 			if (p.Tipo == TipoDeProjetil.Beam) GirarRaioTeleguiado(p, mira, dono, mapa, andaNoTique);
@@ -1785,8 +1793,8 @@ public sealed partial class GameServer
 		// aparado: ver `MeleeResolver.AplicarDanoProntoNaGuarda`.
 		string? zonaDoTiro = p.ZonaCerta.Length > 0 ? p.ZonaCerta : dono.Combate?.ZonaMirada;
 		GolpeResultado r = cd.Bloqueando && !KiContraCorpo.RegraDeAntesDeTeste
-			? MeleeResolver.AplicarDanoProntoNaGuarda(cd, dano, p.Letal, _rng, zonaDoTiro)
-			: MeleeResolver.AplicarDanoPronto(cd, dano, p.Letal, _rng, zonaDoTiro);
+			? MeleeResolver.AplicarDanoProntoNaGuarda(cd, dano, p.Letal, _rng, zonaDoTiro, porKi: !p.Fisico)
+			: MeleeResolver.AplicarDanoPronto(cd, dano, p.Letal, _rng, zonaDoTiro, porKi: !p.Fisico);
 		ResolverDesfecho(dono, alvo, r);
 		// O `OnSucCollWMob(M)` DO DM (`objects.dm:440`), logo depois do `DamageLimb` do impacto que feriu: o que este
 		// tiro faz A MAIS em quem acertou. Ver `DomDeProjetil`.
@@ -2030,7 +2038,7 @@ public sealed partial class GameServer
 		if (cadaver) return;
 		AoTiroEncostar(p, dono, FatorDaLuta(dono, alvo));
 		MarcarAgressao(alvo, dono);
-		ConsequenciaDoDano(alvo, dono, "na explosao de ki");
+		ConsequenciaDoDano(alvo, dono, "na explosao de ki", porKi: !p.Fisico);
 	}
 
 	/// <summary>

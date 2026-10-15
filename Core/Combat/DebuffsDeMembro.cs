@@ -195,8 +195,12 @@ public static class DebuffsDeMembro
 	/// </summary>
 	public static bool AndaNoChao(Perdas p) => p.Pernas < PernasQuePrendemNoChao;
 
-	/// <summary>`undelayed = 1`: o Androide (`statandroid.dm:2`) e o Majin (`statmajin.dm:14`) nao mancam.</summary>
-	public static bool SemAtrasoDeFerimento(string raca) => raca is "Android" or "Majin";
+	/// <summary>
+	/// `undelayed = 1`: o Androide (`statandroid.dm:2`) e o Majin (`statmajin.dm:14`) nao mancam -- e o bio com o sangue de um
+	/// deles (v0.3.0): a pergunta recebe a RACA COM SANGUE (`Races.SangueDoBio`).
+	/// </summary>
+	public static bool SemAtrasoDeFerimento(string raca) =>
+		Races.SangueDoBio.Tem(raca, "Android") || Races.SangueDoBio.Tem(raca, "Majin");
 
 	/// <summary>
 	/// QUANTO DO PASSO SOBRA A UM CORPO FERIDO -- `if(HP>0&amp;&amp;!undelayed) mobTime*=HP/100 //Damage delay`

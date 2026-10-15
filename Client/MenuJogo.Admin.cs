@@ -53,6 +53,9 @@ public partial class MenuJogo
 	/// <summary>Ja pedi a lista de contas nesta sessao? Ver o comentario em <see cref="PainelDeContas"/>.</summary>
 	private bool _pediContas;
 
+	/// <summary>(v0.3.0) Ja perguntei o modo das racas nesta sessao? O mesmo desenho do <see cref="_pediContas"/>.</summary>
+	private bool _pediModoDeRacas;
+
 	/// <summary>O clima escolhido no painel de admin, e a forca dele. Sobrevivem ao redesenho.</summary>
 	// Nasce em `Limpo`: quem abre esta aba quase sempre quer TIRAR o clima (ver o Oozaru, que so
 	// aparece com a lua livre), nao por chuva. Por chuva e a excecao, e a excecao pode dar um clique.
@@ -530,6 +533,9 @@ public partial class MenuJogo
 		// ------------------------------------------------- contas
 		PainelDeContas(cli);
 
+		// ------------------------------------------------- (v0.3.0) as racas dos personagens novos
+		PainelDoModoDeRacas(cli);
+
 		// ------------------------------------------------- os planetas destruidos
 		PainelDosPlanetasDestruidos(cli);
 
@@ -544,6 +550,45 @@ public partial class MenuJogo
 		// ROLAR ATE O FIM da aba mais longa do jogo pra ver o botao que apaga o servidor. Nao e
 		// seguranca (a seguranca sao os dois passos e o codigo), e afastar a mao.
 		PainelDePerigo(cli);
+	}
+
+	/// <summary>
+	/// (v0.3.0) AS RACAS DOS PERSONAGENS NOVOS -- o modo do servidor (item 34 do pedido 15): *"na aba de adm no meu P vai ter a
+	/// opçao de mudar essa config mesmo dps do server ter sido criado"*. O modo de agora vem do servidor (`S2C.ModoDeRacas`,
+	/// perguntado uma vez por menu), e cada botao manda o verb `admin_modo_racas` -- quem confere a permissao e o servidor.
+	/// </summary>
+	private void PainelDoModoDeRacas(GameClient cli)
+	{
+		VBoxContainer corpo = Cartao("Raças dos personagens novos");
+		if (cli.ModoDeRacas is not { } modo)
+		{
+			Nota("perguntando ao servidor...", corpo);
+			if (!_pediModoDeRacas) { _pediModoDeRacas = true; cli.SendVerbo("admin_modo_racas"); }
+			return;
+		}
+
+		bool sorteia = modo == Jandirus.Core.Races.ModoDeRacas.Aleatorio;
+		Nota(sorteia
+			? "Hoje: RAÇAS ALEATÓRIAS -- a raça inicial de quem cria personagem é sorteada (Alien 22%, Terráqueo 20%, "
+			  + "Namekuseijin 18%, Saiyajin 15%, Frost Demon 8%, Majin 4%, as outras treze 1% cada)."
+			: "Hoje: MODO PADRÃO -- cada jogador escolhe a raça do personagem novo.", corpo);
+		Nota("Vale para os personagens criados daqui pra frente; quem já tem personagem fica com ele.", corpo);
+
+		var linha = new HBoxContainer();
+		linha.AddThemeConstantOverride("separation", 6);
+		foreach ((string rotulo, string arg, bool aleatorio) in new[] { ("Modo padrão", "padrao", false), ("Raças aleatórias", "aleatorio", true) })
+		{
+			bool atual = aleatorio == sorteia;
+			var b = new Button
+			{
+				Text = rotulo,
+				Disabled = atual,
+				TooltipText = atual ? "é o modo de agora" : $"os personagens novos passam a: {rotulo.ToLowerInvariant()}",
+			};
+			b.Pressed += () => cli.SendVerbo("admin_modo_racas", arg);
+			linha.AddChild(b);
+		}
+		corpo.AddChild(linha);
 	}
 
 	/// <summary>Um verb de admin que age sobre alguem precisa escolher na lista? Sem marca, ou com a marca em mim.</summary>
@@ -997,7 +1042,11 @@ public partial class MenuJogo
 	//
 	// E OS PLANETAS DESTRUIDOS TAMBEM, pela mesma razao: o `S2C.Mortos` chega sem mexer em mais nada desta
 	// assinatura, e o cartao continuaria oferecendo um planeta que ja voltou (ou nao mostraria o que morreu).
+	//
+	// (v0.3.0) E O MODO DAS RACAS, pela mesma razao outra vez: o `S2C.ModoDeRacas` chega sem mexer em mais nada, e o cartao
+	// ficava em "perguntando ao servidor..." pra sempre -- a `--diagv030` (RA) pegou o cartao sem botao nenhum.
 	private string ExtraDaAssinaturaDeAdmin(SheetState f) =>
 		$"{_alvoPedido?.Cmd ?? ""}|{string.Join(",", (GameClient.Instance?.Online ?? []).Select(o => o.Id))}"
-		+ $"|{(GameClient.Instance is { } c ? string.Join(",", PlanetasDestruidos(c.Mortos).Select(e => e.Chave)) : "")}";
+		+ $"|{(GameClient.Instance is { } c ? string.Join(",", PlanetasDestruidos(c.Mortos).Select(e => e.Chave)) : "")}"
+		+ $"|{GameClient.Instance?.ModoDeRacas}";
 }

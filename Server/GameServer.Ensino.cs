@@ -153,7 +153,7 @@ public partial class GameServer
 	{
 		bool eMeuAluno = EhMeuMestre(aluno, mestre);
 		Recusa sozinho = s != null && _skills != null && EnsinoDeSkill.LicaoDeMestre(s, eMeuAluno)
-			? aluno.Livro.PodeAprender(_skills, s.Path, aluno.Race, aluno.Class, vilao: EhVilao(aluno))
+			? aluno.Livro.PodeAprender(_skills, s.Path, RacaComSangue(aluno), aluno.Class, vilao: EhVilao(aluno))
 			: Recusa.Pode;
 
 		return EnsinoDeSkill.Avaliar(

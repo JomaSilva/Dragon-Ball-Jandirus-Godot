@@ -184,6 +184,13 @@ public sealed class ServerPlayer
 	/// <summary>Quantas vezes a mente deste corpo pensou (a bancada mede o ritmo reduzido por aqui).</summary>
 	public int TiquesDaMente;
 
+	/// <summary>
+	/// (v0.3.0) O TIQUE EM QUE O LACO DA IA ACHOU ESTE CORPO LONGE DE TODO JOGADOR (`LongeDeTodos`), no relogio
+	/// `_tiquesDosCorpos`. Zero = nunca. O snapshot le isto pra mandar quem esta longe so no tique em que ele pensa --
+	/// ver `GameServer.CorposDoSnapshot`.
+	/// </summary>
+	public ulong LongeNoTique;
+
 	/// <summary>O ultimo `Porque` da rotina impresso no `--diagia`, pra nao repetir.</summary>
 	public string PorqueDaRotina = "";
 
@@ -726,6 +733,13 @@ public sealed class ServerPlayer
 	public double CenaSegundos;
 
 	/// <summary>
+	/// (v0.3.0) DESDE QUANDO (ms) ESTE CORPO CONCENTRA A SUPERNOVA -- zero = nao concentra. Quem escreve e o ultimato da
+	/// saga (`GameServer.ComecarASupernova`); o corpo vira `Ocupacao.Supernova` e a tela desenha o sol. Vivo, como o
+	/// `CenaSegundos`: o chefe de saga renasce no reinicio sem carga nenhuma.
+	/// </summary>
+	public long SupernovaDesde;
+
+	/// <summary>
 	/// ATE QUANDO ESTE ATACANTE NAO PRECISA OUVIR DE NOVO que o golpe atravessou quem esta em
 	/// cinematica. Instante de relogio de servidor, em ms.
 	///
@@ -764,6 +778,15 @@ public sealed class ServerPlayer
 	/// </summary>
 	public bool Knockback = true;
 
+	/// <summary>
+	/// (2026-10-15) ESTE NPC SUMIU DENTRO DE UM MAJIN: sai do mundo sem deixar cadaver -- ver
+	/// `GameServer.DevorarPeloMajin`. Lido no dreno dos NPCs mortos (`GameServer.TirarOsNpcsMortos`).
+	/// </summary>
+	public bool SumiuAbsorvido;
+
+	/// <summary>(2026-10-15) A ilha do Outro Mundo debaixo deste corpo (nulo fora delas) -- ver `GameServer.TickDasIlhas`.</summary>
+	public string? IlhaDoOutroMundo;
+
 	/// <summary>O VOO em curso: quantos tiques faltam, pra onde, e com que forca. Ver GameServer.Empurrao.cs.</summary>
 	/// <summary>A direcao pra onde ele estava olhando quando caiu. Congelada -- ver Sheet().</summary>
 	public Facing FacingDaQueda;
@@ -781,7 +804,16 @@ public sealed class ServerPlayer
 	///
 	/// Falso pra quem esta vivo, entao ela serve sozinha como "estou no alem, morto".
 	/// </summary>
-	public bool MortoDePe => Jandirus.Core.World.Alem.MortoDePe(Ficha.dead, Zone.Name);
+	public bool MortoDePe => Jandirus.Core.World.Alem.MortoDePe(Ficha.dead, Zone.Name) || EmVisita;
+
+	/// <summary>
+	/// (v0.3.0) MORTO COM O PASSE DO ENMA, entre os vivos (`Alem.EmVisita`): de pe e de aureola fora do Outro Mundo ate o
+	/// prazo vencer -- a outra metade do <see cref="MortoDePe"/>. Ver `GameServer.PasseEReencarnacao.cs`.
+	/// </summary>
+	public bool EmVisita => !GameServer.PasseDeitaDeTeste && Jandirus.Core.World.Alem.EmVisita(Ficha.dead, Ficha.passe_do_enma_ate);
+
+	/// <summary>(v0.3.0) Ja ouviu "falta um dia" deste passe -- o aviso sai uma vez so.</summary>
+	public bool AvisadoDoFimDoPasse;
 
 	/// <summary>
 	/// O corpo esta deitado? Caido ou voando -- e a mesma pergunta pro desenho.
@@ -1189,6 +1221,9 @@ public sealed class ServerPlayer
 	/// mesmo buraco que ja deixou a barra de Ki e o golpe letal parados na tela.
 	/// </summary>
 	public int EnvEstado2 = -1;
+
+	/// <summary>(v0.3.0) ...e o TERCEIRO (o passe do Enma). Na comparacao pela mesma regra do segundo.</summary>
+	public int EnvEstado3 = -1;
 	public int EnvEscape = -1;
 
 	/// <summary>Ultimo estagio de carga anunciado. So se avisa o jogador quando o estagio MUDA.</summary>
@@ -1213,7 +1248,8 @@ public sealed class ServerPlayer
 	public Jandirus.Core.Combat.MascaraDeFeridas EnvFeridas;
 
 	/// <summary>
-	/// OS BITS QUE NAO VEM DE SKILL -- hoje so o <see cref="Protocol.Poder.Admin"/>.
+	/// OS BITS QUE NAO VEM DE SKILL -- o <see cref="Protocol.Poder.Admin"/> e o scouter ligado (`GameServer.Equipar`; ele tem
+	/// copia no save, `CharacterSave.ScouterLigado`, porque este campo nao vai pro disco).
 	///
 	/// ============================ POR QUE ELE PRECISA EXISTIR ============================
 	/// `Poderes` e RECALCULADO do zero toda vez que a lista de skills muda (`AplicarPoderes` faz
@@ -1413,10 +1449,18 @@ public sealed class ServerPlayer
 	/// informacao em barulho, e barulho e o jeito mais rapido de ela deixar de ser lida. Uma vez por
 	/// login basta, e um campo novo no save de todo personagem seria caro demais pra isso.
 	///
-	/// Depois da primeira, a porta continua aberta pelo botao do menu (aba Nav) -- ver
+	/// Depois da primeira, a porta continua aberta pelo botao do menu (o cartao Refugio da aba World) -- ver
 	/// `GameServer.Refugio.OferecerORefugio`.
 	/// </summary>
 	public bool RefugioJaOferecido;
+
+	/// <summary>
+	/// (v0.3.0) ESTE PERSONAGEM ESCOLHEU VOLTAR PELA TERRA quando o planeta natal dele nao existir -- a saida B3 do refugio,
+	/// o "ponto de encontro principal do jogo" do dono. So vale com o berco morto e a Terra viva; vai pro disco
+	/// (`CharacterSave.RefugioNaTerra`). Escrito pelo verb `refugio` e apagado pelo `conq_spawn` -- uma escolha so. Ver
+	/// `GameServer.Refugio.cs`.
+	/// </summary>
+	public bool RefugioNaTerra;
 
 	/// <summary>O que este personagem carrega. Ver `Core.Items.Inventario`.</summary>
 	public Jandirus.Core.Items.Inventario Mochila = new();
@@ -1764,6 +1808,8 @@ public sealed class ServerPlayer
 						 | (AgarradoPorId != 0 ? 8 : 0) | (PresoPeloRabo ? 16 : 0) | (PescocoApertado ? 32 : 0)
 						 | (AgarrandoId != 0 ? 64 : 0) | (Estrangulando && AgarrandoId != 0 ? 128 : 0)),
 		Escape = AgarradoPorId != 0 ? EscapeNaFicha : (byte)0,
+		// (v0.3.0) O TERCEIRO BYTE: o morto com o passe do Enma, de pe entre os vivos -- o cliente nao se deita (`LocalPlayer.Caido`).
+		Estado3 = (byte)(EmVisita ? 1 : 0),
 	};
 }
 
@@ -2036,6 +2082,13 @@ public partial class GameServer : Node
 			// `GameServer.GravidadeDoChao.cs`.
 			FichaDePlaneta f = FichaDoChao(pl.Zone);
 
+			// (2026-10-15) AS ILHAS DO OUTRO MUNDO PUXAM 10x -- ver `Alem.IlhasDoOutroMundo`. Aqui o LUGAR dentro da zona decide,
+			// e por isso a ilha e conferida tambem a 1 Hz (`TickDasIlhas`), e nao so na troca de zona. Ficha nova: a do catalogo
+			// e de todos.
+			string? ilha = IlhaDoOutroMundoDe(pl);
+			pl.IlhaDoOutroMundo = ilha;
+			if (ilha != null) f = new FichaDePlaneta { Nome = ilha, Gravidade = Alem.GravidadeDasIlhas, Tipo = f.Tipo };
+
 			// ============================ NINGUEM NASCE ESMAGADO ============================
 			// O `race.dm:130-131` -- ver `Birth.AclimatarAoBerco`, onde a divida esta escrita por
 			// inteiro. Em resumo: um Frost Demon nasce em Icer Planet, que puxa 15x, e a maestria de
@@ -2072,8 +2125,8 @@ public partial class GameServer : Node
 
 				pl.SigAtributos = "";
 				if (f.Gravidade > 1)
-					Avisar(pl, $"o chão de {f.Nome} puxa {f.Gravidade:0.##} vezes mais forte. Cada passo custa, "
-							   + "e cada treino rende.");
+					Avisar(pl, (ilha != null ? $"{char.ToUpper(ilha[0])}{ilha[1..]} puxa" : $"o chão de {f.Nome} puxa")
+							   + $" {f.Gravidade:0.##} vezes mais forte. Cada passo custa, e cada treino rende.");
 			}
 		}
 
@@ -2981,6 +3034,10 @@ public partial class GameServer : Node
 			// que apanha, a pose e o som do tiro... Mesma infraestrutura da `--v020teste`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--v021teste") >= 0) RodarBancadaDaV021();
 
+			// `--v030teste`: O PEDIDO 15 (2026-10-15, a versao 0.3.0) -- o empurrao no morto de pe, o vigor que nao acaba, o NPC
+			// absorvido que some, o som de Vegeta, os avisos com cor... Mesma infraestrutura da `--v021teste`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--v030teste") >= 0) RodarBancadaDaV030();
+
 			// `--g11teste`: AS SKILLS QUE JA ESTAVAM NA ARVORE SEM EFEITO (lote G11). Mesma
 			// infraestrutura da `--arsenalteste` (corpos forjados na Terra, ninguem logado); a familia
 			// dos astros mexe no relogio do ceu e o devolve no fim. Ver `GameServer.G11Teste.cs`.
@@ -3606,6 +3663,10 @@ public partial class GameServer : Node
 		// homonima, pela mesma regra dos outros arquivos de mundo.
 		CarregarSemente();
 
+		// (v0.3.0) O MODO DAS RACAS DOS PERSONAGENS NOVOS (`servidor.json`), logo depois da semente: o sorteio de vaga usa a
+		// semente, e a primeira lista de vagas ja sai no modo certo. Ver `GameServer.ModoDeRacas.cs`.
+		CarregarConfiguracaoDoServidor();
+
 		CarregarSkills();
 		CarregarTech();
 		// AS BASES (parede, piso e porta erguidos por jogador) depois das zonas e das construcoes: os
@@ -4158,14 +4219,21 @@ public partial class GameServer : Node
 				Nome = c?.Nome ?? "", Raca = c?.Raca ?? "", Classe = c?.Ficha.Class ?? "",
 				Genero = c?.Genero ?? "Male", Idade = c?.Idade ?? 0, BP = c?.Ficha.BP ?? 0,
 				Visual = c?.Visual ?? new Jandirus.Core.Appearance.Appearance(),
+				// (v0.3.0) A RACA SORTEADA DA VAGA VAZIA (o modo de racas aleatorias) -- ver `GameServer.ModoDeRacas.cs`.
+				RacaSorteada = c == null ? acc.Sorteios[i]?.Raca ?? "" : "",
+				LinhagemSorteada = c == null ? acc.Sorteios[i]?.Linhagem ?? "" : "",
 			});
 		}
 		return slots;
 	}
 
-	/// <summary>A tela de selecao inteira num pacote: os tres slots com o que ela mostra.</summary>
-	private static void MandarSlots(NetPeer peer, AccountSave acc)
+	/// <summary>
+	/// A tela de selecao inteira num pacote: os tres slots com o que ela mostra. (v0.3.0) As vagas vazias ganham o sorteio
+	/// do modo de racas aleatorias ANTES de sair (`PrepararVagas`).
+	/// </summary>
+	private void MandarSlots(NetPeer peer, AccountSave acc)
 	{
+		PrepararVagas(acc);
 		var w = Protocol.Begin(Protocol.S2C.SlotList);
 		w.Put((byte)AccountStore.Slots);
 		foreach (SlotInfo s in SlotsVisiveisDe(acc)) s.Write(w);
@@ -4245,6 +4313,10 @@ public partial class GameServer : Node
 		if (slot < 0 || slot >= AccountStore.Slots) { Recusar(peer, "slot invalido"); return; }
 		if (acc.Slots[slot] != null) { Recusar(peer, "esse slot ja tem um personagem"); return; }
 
+		// (v0.3.0) NO MODO DE RACAS ALEATORIAS a ficha nasce com a raca SORTEADA da vaga, diga o cliente o que disser. Antes
+		// da conferencia de proposito: a idade e o genero se ajustam a raca que vale. Ver `GameServer.ModoDeRacas.cs`.
+		AplicarOSorteio(acc, slot, ficha);
+
 		string motivo = ValidarFicha(ficha);
 		if (motivo.Length > 0) { Recusar(peer, motivo); GD.Print($"[server] ficha recusada: {motivo}"); return; }
 
@@ -4256,6 +4328,11 @@ public partial class GameServer : Node
 		}
 
 		Fighter lutador = Nascer(ficha, nome);
+
+		// (v0.3.0) A REENCARNACAO PELO ENMA: quem nasce numa conta com eco leva 10% do BP de quem reencarnou -- o
+		// `CheckIncarnate` do DM, chamado no mesmo ponto da criacao (`CharacterCreation.dm:208`). Consumido aqui, antes do
+		// gravar logo abaixo. Ver `AplicarOEcoDaReencarnacao`.
+		Reencarnacao? eco = AplicarOEcoDaReencarnacao(acc, lutador);
 
 		// APARENCIA: saneada, nunca recusada. Ela nao da vantagem nenhuma, entao um indice
 		// fora da faixa vira o padrao em vez de derrubar a conexao. O que NAO se aceita e
@@ -4319,6 +4396,7 @@ public partial class GameServer : Node
 				(ulong)novo.CriadoEm, (ulong)slot, (ulong)nome.GetHashCode()));
 
 		acc.Slots[slot] = novo;
+		acc.Sorteios[slot] = null;   // (v0.3.0) o sorteio da vaga foi gasto neste personagem
 		_store?.Gravar(acc);
 
 		// E DE NOVO NA CRIACAO, e nao e redundancia: um save de antes desta limpeza (ou um slot
@@ -4342,6 +4420,8 @@ public partial class GameServer : Node
 			// nenhuma das duas frases dizer a classe.
 			Avisar(recem, HistoriaDoBerco(berco));
 			DicaDeClasse(recem);
+			// O ECO, com a frase do DM (`Reincarnation.dm:10`) -- sem numero: e uma razao, nao uma leitura de poder.
+			if (eco != null) Avisar(recem, "você renasce, carregando um eco fraco do seu poder antigo. (Reencarnação)");
 		}
 	}
 
@@ -5105,7 +5185,13 @@ public partial class GameServer : Node
 		w.Put((byte)((PotencialNaPele(p) ? 1 : 0) | (scouter ? 2 : 0) | (luvasDeDreno ? 4 : 0) | (botasDeDreno ? 8 : 0)
 					 | (corpoProprio && Velejando(p) ? 16 : 0)
 					 // O BIT 5 E O CAPACETE DO "HENSHIN!" do relogio de teleporte (`Jandirus.Core.Tech.Teleporte`).
-					 | (corpoProprio && DeCapacete(p) ? 32 : 0)));
+					 | (corpoProprio && DeCapacete(p) ? 32 : 0)
+					 // (2026-10-15) O BIT 6 E A FORMA GIGANTE: o corpo inteiro dobra (`transform = matrix()*2`, `Giant Form.dm`) --
+					 // ver `SincronizarPorte`, que reenvia este pacote a cada virada do buff.
+					 | (TemBuff(p, BuffGiganteG2) ? 64 : 0)
+					 // (v0.3.0) O BIT 7 E O CORPO QUE NAO SANGRA: o Majin, e o bio com sangue Majin -- a raca com sangue que so o
+					 // servidor sabe montar (`Feridas.NaoSangra`). E o que o jato de sangue do golpe pergunta (`World.NaoSangraNaTela`).
+					 | (corpoProprio && Jandirus.Core.Combat.Feridas.NaoSangra(RacaComSangue(p)) ? 128 : 0)));
 		w.Put(corpoProprio ? Jandirus.Core.Items.EquipamentoNoCorpo.PesosNoCorpo(p.Ficha.Weighted, p.Ficha.pesoArte, _visual) : "");
 		return w;
 	}
@@ -6064,6 +6150,8 @@ public partial class GameServer : Node
 			if (_tickCount % TicksPorSegundo == 0) TickDosAnimais();    // OS ANIMAIS (dono, 2026-10-10): a fauna de cada planeta com gente -- quem nasce, quem some, a forca fixa e as carcacas. Ver `GameServer.Animais.cs`
 			if (_tickCount % TicksPorSegundo == 0) TickDosSentidos();   // OS SENTIDOS (a aba Sense/Scan) ANDAM A 1 Hz: a lista de quem eu sinto so muda quando alguem anda um tile, e so sai quando muda -- ver `GameServer.Sentidos.cs`
 			if (_tickCount % TicksPorSegundo == 0) TickDosAlunos();     // O DIARIO DO DISCIPULADO (a aba Alunos/Mestre): a fotografia do progresso de cada aluno que esta no mundo, e o disco quando ela muda -- ver `GameServer.Alunos.cs`
+			if (_tickCount % TicksPorSegundo == 0) TickDasIlhas();          // (2026-10-15) AS ILHAS DO OUTRO MUNDO puxam 10x: quem pisa numa (ou sai dela) ganha a gravidade do lugar -- ver `GameServer.GravidadeDoChao.cs`
+			if (_tickCount % TicksPorSegundo == 0) TickDaFeridaDoRabo(1.0);   // (2026-10-15) A FERIDA DO RABO QUE NAO VOLTA fecha em dez minutos de relogio -- ver `GameServer.Combat.cs`
 			if (_tickCount % TicksPorSegundo == 0) TickDoGodKi();       // O KI DIVINO (dono, 2026-10-10): quem respira uma atmosfera divina enche o medidor do despertar, e a maestria de quem ja e deus sobe -- as constantes sao por segundo. Ver `GameServer.GodKi.cs`
 
 		// SALVAMENTO PERIODICO: sem isto, uma queda do servidor custa tudo desde o login.
@@ -6094,7 +6182,8 @@ public partial class GameServer : Node
 			// vao no mesmo pacote porque sao o mesmo tipo de dado (posicao autoritativa, 30 Hz,
 			// sequenced) e a zona sem tiro nenhum paga dois bytes. O mesmo buffer vai pra todos da
 			// zona: quem esta noutro planeta nao recebe nada.
-			MandarSnapshot(zona, zona, TirosDaZona(zona[0].Zone.Hash), agora, carimbo);
+			// (v0.3.0) A ZONA MENOS O HABITANTE LONGE DE TODO JOGADOR fora do tique em que ele pensa -- ver `CorposDoSnapshot`.
+			MandarSnapshot(zona, CorposDoSnapshot(zona), TirosDaZona(zona[0].Zone.Hash), agora, carimbo);
 		}
 
 		// ============================ O SNAPSHOT SAI AGORA, NAO NO PROXIMO DESPERTAR ============================
@@ -6149,6 +6238,7 @@ public partial class GameServer : Node
 		{
 			Treinar(pl);
 			CumprirPenaNoInferno(pl);   // o `afterlife_alignment_check()` do DM, no laco de fichas
+			CumprirOPasseDoEnma(pl);    // (v0.3.0) e o relogio do passe pros vivos, ao lado -- `GameServer.PasseEReencarnacao.cs`
 
 			// A RAIVA ANDA AQUI, e este e o tique CERTO e nao um qualquer: `TicksPorFicha` da 5 Hz,
 			// que e exatamente o `sleep(sleep_tiem)` com `sleep_tiem = 2` do `mob/proc/Stats()`
@@ -6205,7 +6295,7 @@ public partial class GameServer : Node
 				&& pl.EnvBpBase == pl.Ficha.BP
 				&& pl.EnvTetoKi == Jandirus.Core.Combat.CargaDeKi.TetoEmRazao(pl.Ficha)
 				&& pl.EnvMaxKi == ficha.MaxKi && pl.EnvSpeed == ficha.SpeedStat && pl.EnvMembros == ficha.MembrosRuins
-				&& pl.EnvEstado == ficha.Estado && pl.EnvEstado2 == ficha.Estado2
+				&& pl.EnvEstado == ficha.Estado && pl.EnvEstado2 == ficha.Estado2 && pl.EnvEstado3 == ficha.Estado3
 				&& pl.EnvEscape == ficha.Escape) continue;
 
 			MandarFicha(pl);
@@ -6238,6 +6328,7 @@ public partial class GameServer : Node
 		SheetState enviada = pl.Sheet();
 		pl.EnvEstado = enviada.Estado;
 		pl.EnvEstado2 = enviada.Estado2;
+		pl.EnvEstado3 = enviada.Estado3;
 		pl.EnvEscape = enviada.Escape;
 		pl.EnvMaxKi = enviada.MaxKi;
 		pl.EnvSpeed = enviada.SpeedStat;

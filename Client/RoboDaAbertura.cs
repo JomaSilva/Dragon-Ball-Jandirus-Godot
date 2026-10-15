@@ -1260,6 +1260,9 @@ public partial class RoboDaAbertura : Node
 		campoDaConta.Text = conta;
 		campoDaSenha.Text = "bancada";
 		hospedar.EmitSignal(BaseButton.SignalName.Pressed);
+		// (v0.3.0) A TELA DE HOSPEDAR pergunta o modo das racas antes de subir o servidor (`Boot.ModoDeRacas.cs`): o padrao. Com o
+		// servidor deste processo ja de pe ela nao aparece, e o botao nao existe.
+		BotaoComTexto(boot, "Modo padrão")?.EmitSignal(BaseButton.SignalName.Pressed);
 		yield return 0.1;
 	}
 

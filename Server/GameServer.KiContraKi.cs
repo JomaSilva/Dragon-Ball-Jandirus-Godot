@@ -146,7 +146,7 @@ public sealed partial class GameServer
 		dono = null;
 		if (!x.Vivo || !x.EsferaGrande || x.EmEmbate || x.Inerte || x.Rumo.LengthSquared < 1e-6f) return false;
 		if (!_players.TryGetValue(x.Dono, out ServerPlayer? d) || !d.Zone.Equals(zona)) return false;
-		if (d.Ficha.dead || d.Ficha.KO || d.Ficha.Ki <= 1) return false;
+		if (EhCadaver(d) || d.Ficha.KO || d.Ficha.Ki <= 1) return false;
 		if (_emEmbateDeKi.ContainsKey(d.Id) || _emEmbate.ContainsKey(d.Id) || EstaDancando(d.Id)) return false;
 
 		dono = d;

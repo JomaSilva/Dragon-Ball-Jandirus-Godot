@@ -403,7 +403,9 @@ public sealed partial class GameServer
 		// depois de resolver (o nome de quem foi banido, quantas celulas voltaram).
 		// LISTAR NAO E AGIR: as duas listas (contas, online) ficam fora do registro, senao cada abertura
 		// do painel viraria uma linha no `admin.log`.
-		if (cmd != "admin_contas" && cmd != "admin_online") Registrar(pl, arg.Length > 0 ? $"{cmd} [{arg}]" : cmd);
+		// (v0.3.0) ...e PERGUNTAR o modo das racas tambem nao: so muda-lo (com argumento) vai pro registro.
+		if (cmd != "admin_contas" && cmd != "admin_online" && !(cmd == "admin_modo_racas" && arg.Trim().Length == 0))
+			Registrar(pl, arg.Length > 0 ? $"{cmd} [{arg}]" : cmd);
 
 		switch (cmd)
 		{
@@ -448,6 +450,8 @@ public sealed partial class GameServer
 			case "admin_consertar_cenario": AdminConsertarCenario(pl); break;
 			case "admin_salvar": AdminSalvarTudo(pl); break;
 			case "admin_anunciar": AdminAnunciar(pl, arg); break;
+			// (v0.3.0) as racas dos personagens novos: padrao ou aleatorias -- ver `GameServer.ModoDeRacas.cs`.
+			case "admin_modo_racas": AdminModoDeRacas(pl, arg); break;
 
 			// ---------------------------------------------------------- ceu (ver GameServer.Clima.cs)
 			case "admin_clima": AdminClima(pl, arg); break;

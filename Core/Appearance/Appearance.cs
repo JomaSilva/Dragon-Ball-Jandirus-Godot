@@ -203,6 +203,21 @@ public sealed class Appearance
     [System.Text.Json.Serialization.JsonIgnore]
     public bool CapaceteDoRelogio;
 
+    /// <summary>
+    /// (2026-10-15) A FORMA GIGANTE: o corpo inteiro dobra de tamanho (`CharacterVisual.PorteDoGigante`). Irma do capacete:
+    /// fato do corpo que o servidor deriva (o buff `Giant_Form`) e manda nas marcas do `S2C.PeerLook`.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool Gigante;
+
+    /// <summary>
+    /// (v0.3.0) ESTE CORPO NAO SANGRA -- o Majin, e o bio com sangue Majin (`Feridas.NaoSangra` da raca com sangue, que so o
+    /// servidor sabe montar de um corpo alheio). Vai no bit 7 das marcas do `S2C.PeerLook`, e e o que o jato de sangue do
+    /// golpe pergunta (`World.NaoSangraNaTela`).
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool SemSangue;
+
     public Appearance Copiar() => new()
     {
         Corpo = Corpo, Tom = Tom, CorPele = CorPele,
@@ -224,6 +239,8 @@ public sealed class Appearance
         BotasDeDreno = BotasDeDreno,
         NoBarco = NoBarco,
         CapaceteDoRelogio = CapaceteDoRelogio,
+        Gigante = Gigante,
+        SemSangue = SemSangue,
     };
 }
 

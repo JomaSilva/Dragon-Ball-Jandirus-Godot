@@ -400,6 +400,11 @@ public partial class GameServer
 	private void MorrerDeNovoNoAlem(ServerPlayer pl)
 	{
 		if (!pl.MortoDePe || pl.Combate is not { } c) return;
+
+		// (v0.3.0) NA MENTE NADA E REAL, nem a segunda morte: o fantasma que mergulhou e cai la dentro so desmaia -- e o desmaio
+		// o expulsa (`BordasDeQuemEstaFora`) com o corpo da entrada, como o vivo que "morre" la dentro. Sem a mesa do Enma e sem
+		// rasgar o passe.
+		if (NaMente(pl)) { c.Nocautear(Alem.SegundosDeComaDoMortoDeNovo); return; }
 		c.Corpo.Restaurar();
 		c.SincronizarVida();
 		MandarFeridas(pl);
@@ -407,6 +412,15 @@ public partial class GameServer
 		MoveToZone(pl.Id, alem, MesaDoEnma(alem));
 		c.Nocautear(Alem.SegundosDeComaDoMortoDeNovo);
 		Avisar(pl, "você desaba -- e acorda de novo na mesa do Enma, inteiro. Um morto não morre duas vezes.");
+		// (v0.3.0) O MORTO COM O PASSE QUE CAI ENTRE OS VIVOS volta por aqui tambem (o `else if(dead)` do DM nao olha o
+		// lugar) -- e o passe acaba na mesa do Enma. Ver `GameServer.PasseEReencarnacao.cs`.
+		if (pl.Ficha.passe_do_enma_ate != 0)
+		{
+			pl.Ficha.passe_do_enma_ate = 0;
+			pl.AvisadoDoFimDoPasse = false;
+			Avisar(pl, "o seu passe do Enma se rasgou com a queda: a visita aos vivos acabou.");
+			MandarFicha(pl);
+		}
 		GD.Print($"[server] {pl.Name} caiu de vez no Outro Mundo: curado, de volta a mesa do Enma, em coma por {Alem.SegundosDeComaDoMortoDeNovo:0.#} s");
 	}
 
@@ -572,12 +586,16 @@ public partial class GameServer
 		if (pl.Karma < 0) { JulgarProInferno(pl); return; }
 		if (pl.Ficha.aged_out)
 		{
-			Avisar(pl, "Enma Daioh: \"Sua ampulheta virou pela última vez -- morte de velhice não tem volta.\"");
+			// (v0.3.0) ...e a frase inteira do DM (`SkyNPCs.dm:166`): a reencarnacao e o que resta.
+			Avisar(pl, "Enma Daioh: \"Sua ampulheta virou pela última vez -- morte de velhice não tem volta. Só a reencarnação resta a essa alma.\"");
 			return;
 		}
 		// O PRECO E O DESTA ALMA: quem foi apagado por Hakai le o dobro aqui, e nao so na recusa -- ver `PrecoDoEnmaPara`.
 		Avisar(pl, $"Enma Daioh lê a sua ficha: \"Uma alma equilibrada. Pode descansar no Outro Mundo -- ou voltar, por "
 				 + $"{PrecoDoEnmaPara(pl):N0} zeni. Você tem {pl.Ficha.Zeni:N0}.\"" + FraseDoHakaiNoEnma(pl));
+		// (v0.3.0) AS DUAS SAIDAS NOVAS DA MESA -- ver `GameServer.PasseEReencarnacao.cs`.
+		Avisar(pl, $"Enma Daioh: \"Ou, por {Alem.PrecoDoPasseDoEnma:N0} zeni, {Alem.DiasDoPasseDoEnma} dias entre os vivos -- morto, de "
+				   + "auréola, e de volta pra cá no fim. E quem cansou de quem é pode REENCARNAR: começar de novo, com um eco de 10% do poder.\"");
 	}
 
 	/// <summary>
@@ -629,7 +647,9 @@ public partial class GameServer
 			return;
 		}
 		ZoneKey inferno = ZoneKey.Premade(Alem.ZonaDoInferno);
-		if (!pl.Zone.Equals(inferno)) MoveToZone(pl.Id, inferno, PortaoDoInferno(inferno));
+		// (v0.3.0) A MENTE NAO E FUGA: quem cumpre pena e mergulha deixa o corpo NO INFERNO (o corpo largado), e e pra ele que a
+		// alma volta ao abrir os olhos -- a interdimensao e a excecao do dono ao "morto nao sai do lugar dele".
+		if (!pl.Zone.Equals(inferno) && !NaMente(pl)) MoveToZone(pl.Id, inferno, PortaoDoInferno(inferno));
 	}
 
 	/// <summary>
@@ -664,7 +684,7 @@ public partial class GameServer
 	/// O DOBRO PRA QUEM FOI APAGADO POR HAKAI (`hakai_mark`, `:189`) sai do `PrecoDoEnmaPara`
 	/// (`GameServer.KitDoDeus.cs`), e a marca cai na volta a vida (`CombatState.Reviver`).
 	///
-	/// NAO PORTADO (ainda): a reencarnacao a 10%.
+	/// A REENCARNACAO A 10% E O PASSE PROS VIVOS (v0.3.0) moram em `GameServer.PasseEReencarnacao.cs`.
 	/// </summary>
 	private void EnmaReviverPorZeni(ServerPlayer pl)
 	{

@@ -23,6 +23,18 @@ public partial class Hud
 {
 	private Label _poderEmUso = null!;
 
+	/// <summary>(2026-10-15) A LINHA DA RAIVA, logo abaixo da do poder: "COM RAIVA" ou "FURIOSO", e nada calmo.</summary>
+	private Label _raiva = null!;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv030`): o painel nao escreve a raiva -- o jogo de antes, em que so o chat dizia.
+	/// Lido pela propria <see cref="MostrarOPoderEmUso"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool RaivaMudaDeTeste;
+
+	/// <summary>A linha da raiva como ela saiu na tela ("" quando nao aparece). Pra bancada, e so pra ela.</summary>
+	public string TextoDaRaivaDeTeste => _raiva.Visible ? _raiva.Text : "";
+
 	/// <summary>
 	/// DEFEITO INJETADO (bancada `--diagpoder`): o painel nao escreve a linha -- o estado de antes de 2026-10-11,
 	/// em que o jogador a 1% do poder nao tinha como saber. Lido pela propria <see cref="MostrarOPoderEmUso"/>.
@@ -41,6 +53,12 @@ public partial class Hud
 		_poderEmUso = new Label { Text = "", Visible = false, Name = "PoderEmUso" };
 		_poderEmUso.AddThemeFontSizeOverride("font_size", 12);
 		coluna.AddChild(_poderEmUso);
+
+		// (2026-10-15) A RAIVA, NO MESMO LUGAR -- dono: *"seria bom ter um aviso em baixo da vida no canto superior esquerdo
+		// (mesmo local onde fala q vc ta relaxado etc) q vc ta com raiva mostrando se ta com raiva ou furioso"*.
+		_raiva = new Label { Text = "", Visible = false, Name = "Raiva" };
+		_raiva.AddThemeFontSizeOverride("font_size", 12);
+		coluna.AddChild(_raiva);
 		MostrarOPoderEmUso();
 	}
 
@@ -51,7 +69,18 @@ public partial class Hud
 		_poderEmUso.Text = texto;
 		_poderEmUso.Visible = texto.Length > 0;
 		_poderEmUso.AddThemeColorOverride("font_color", Cor(e));
+
+		string raiva = RaivaMudaDeTeste ? "" : NaRaiva(e);
+		_raiva.Text = raiva;
+		_raiva.Visible = raiva.Length > 0;
+		_raiva.AddThemeColorOverride("font_color", e.Furioso ? CorDaFuria : CorDaRaiva);
 	}
+
+	/// <summary>A linha da raiva: "FURIOSO" (a extrema), "COM RAIVA" (a comum), ou nada.</summary>
+	public static string NaRaiva(PoderEmUsoState e) => e.Furioso ? "FURIOSO" : e.ComRaiva ? "COM RAIVA" : "";
+
+	/// <summary>O laranja-fogo da raiva comum e o vermelho vivo da furia (os do chat sao irmaos destes).</summary>
+	private static readonly Color CorDaRaiva = new("ff8a3c"), CorDaFuria = new("ff3b2f");
 
 	// =====================================================================
 	// AS FRASES -- uma fonte pro HUD e pro menu

@@ -531,7 +531,7 @@ public partial class GameServer
 		RecusaForma recusa = proxima == null
 			? RecusaForma.JaEsta
 			: pl.Forma.Avaliar(proxima.Id, pl.Ficha.BP, kiFrac,
-							   pl.Ficha.KO || pl.Ficha.dead, perfil);
+							   pl.Ficha.KO || EhCadaver(pl), perfil);
 
 		return new Capacidades
 		{

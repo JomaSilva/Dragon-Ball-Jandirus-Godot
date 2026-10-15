@@ -203,7 +203,7 @@ public partial class TelaDeMeditacao : CanvasLayer
 		return DimensaoMental.PorQueNaoMergulhar(
 			jaEmTranse: DimensaoMental.EhAMente(cli.Zone),
 			ko: cli.Sheet.KO,
-			morto: cli.Sheet.Morto);
+			cadaver: LocalPlayer.Cadaver(cli.Sheet));   // (v0.3.0) o fantasma de pe mergulha -- so o cadaver nao
 	}
 
 	/// <summary>

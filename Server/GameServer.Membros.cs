@@ -89,7 +89,7 @@ public sealed partial class GameServer
 	private static double FatorDeVidaNoPasso(ServerPlayer pl) =>
 		DebuffsDeMembro.DesligadosDeTeste || !DirigidoPeloDono(pl)
 			? 1
-			: DebuffsDeMembro.FatorDoPasso(pl.Ficha.HP, pl.Race);
+			: DebuffsDeMembro.FatorDoPasso(pl.Ficha.HP, RacaComSangue(pl));
 
 	/// <summary>
 	/// ERGUER (OU BAIXAR) A GUARDA -- o `holdblock()` do DM, com a recusa dele (`CombatMovement.dm:73-82`):

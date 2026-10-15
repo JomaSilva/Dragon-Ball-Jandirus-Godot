@@ -41,6 +41,7 @@ public partial class Boot
 
 	public override void _Process(double delta)
 	{
+		if (GameClient.Instance is { DespedidaPendente: { } adeus } despedido) AoSerDespedido(despedido, adeus);
 		if (GameClient.Instance is { QuedaPendente: { } motivo } cli) AoCairAConexao(cli, motivo);
 	}
 
@@ -190,6 +191,44 @@ public partial class Boot
 
 	/// <summary>O mundo esta montado (o node `World` existe debaixo do `Boot`)?</summary>
 	internal bool MundoMontado => GetNodeOrNull("World") is { } m && !m.IsQueuedForDeletion();
+
+	/// <summary>
+	/// (bancada `--diagv030`) O MODO AUTOMATICO (o `--connect` sem ninguem clicando). A familia da reencarnacao o desliga
+	/// pra ver a CRIACAO abrir sozinha na vaga certa, como na tela do jogador.
+	/// </summary>
+	internal bool AutoDeTeste { get => _auto; set => _auto = value; }
+
+	/// <summary>A criacao esta na tela? Em que vaga, e com que anuncio em cima (vazio = nenhum).</summary>
+	internal (bool NaTela, int Vaga, string Anuncio) CriacaoDeTeste =>
+		(_criacao != null && IsInstanceValid(_criacao) && !_criacao.IsQueuedForDeletion() && _criacao.Visible, _slotAlvo,
+		 _criacao != null && IsInstanceValid(_criacao) ? _criacao.AnuncioDeTeste : "");
+
+	/// <summary>O "Confirmar" da criacao pela porta do modo automatico: a ficha da linha de comando, na vaga 1.</summary>
+	internal void CriarComoOAutomaticoDeTeste() => AutoEscolher(_slotsAtuais);
+
+	// =====================================================================
+	// (v0.3.0) A DESPEDIDA DE PROPOSITO -- a reencarnacao
+	// =====================================================================
+	/// <summary>
+	/// O SERVIDOR ME DESPEDIU DE PROPOSITO -- e nao caiu. Hoje so a REENCARNACAO faz isso: o Enma apagou o personagem, e o
+	/// jogador volta pra CRIACAO, na vaga que ele deixou, sem passar pelo painel de queda (o `client.mob = lobby` do DM,
+	/// `Reincarnation.dm:43-49`). O mundo e derrubado como na queda (`VoltarAoLogin`) e o cliente disca de novo no mesmo
+	/// servidor com a mesma conta; quando a lista de slots chegar, a criacao abre sozinha com a frase do Enma em cima
+	/// (`AoReceberSlots`). Se a discagem falhar, e uma queda comum e cai no <see cref="AoCairAConexao"/>.
+	/// </summary>
+	private void AoSerDespedido(GameClient cli, Jandirus.Net.FioDaDespedida.Despedida adeus)
+	{
+		cli.TomarDespedida();
+		if (_carga is { NoAr: true }) _carga.Soltar();
+		if (_pause is { Aberto: true }) _pause.Fechar("o servidor despediu o personagem");
+
+		GD.Print($"[client] despedida do servidor ({adeus.Motivo}): de volta a criacao, na vaga {adeus.Slot + 1}");
+		VoltarAoLogin();
+		_criarNoSlot = adeus.Slot;
+		_anuncioDaCriacao = adeus.Texto;
+		_status.Text = "renascendo...";
+		cli.Reconectar();
+	}
 
 	/// <summary>
 	/// PALCO DA `--diagqueda`: disca de novo no servidor com a conta da linha de comando -- a mesma chamada

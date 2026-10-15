@@ -59,6 +59,9 @@ public partial class GameServer
 	private static readonly Vec2 PalcoDoSufoco = new(1600, 0);
 	private static readonly Vec2 PalcoDoFrio = new(1920, 0);
 
+	/// <summary>(v0.3.0) O canto da familia 16: o tanque com DOIS doadores -- um Majin e um androide perpetuo.</summary>
+	private static readonly Vec2 PalcoDoSangue = new(2240, 0);
+
 	// =====================================================================
 	// AS TRES SKILLS COM NOME -- ver o bloco do segundo doador em `MedirONascimento`
 	// =====================================================================
@@ -74,8 +77,9 @@ public partial class GameServer
 	private const string VerboDaRaca = "Namekian_Fusion";
 
 	/// <summary>
-	/// O CONTROLE da heranca: "Stretchy Arms", do MESMO galho racial e **sem verbo**. Ela nao pode
-	/// atravessar -- `Keyableverbs` e uma lista de botoes, e nao o livro do doador.
+	/// O CONTROLE da heranca: "Stretchy Arms", do MESMO galho racial e **sem verbo**. No DM ela nao atravessava
+	/// (`Keyableverbs` e uma lista de botoes, e nao o livro do doador); desde a v0.3.0 ela ATRAVESSA -- o dono: *"todas as
+	/// skills da aba learn"* -- e e o controle da regra nova.
 	/// </summary>
 	private const string SkillPassivaDaRaca = "/datum/skill/namek/Stretchy_Arms";
 
@@ -132,6 +136,7 @@ public partial class GameServer
 			MedirOZenkai(Checa, host, bio, semDna, forjados);
 			MedirOSuperSaiyajinPeloDna(Checa, bio, semDna);
 			MedirOFolegoNoVacuoPeloDna(Checa, host, forjados, obras);
+			MedirOSangueEOLivroDosDoadores(Checa, host, forjados, obras);
 			MedirOsNumerosContraODm(Checa);
 			MedirAsInjecoesDeDefeito(Checa, host, bio, semDna, forjados, obras);
 
@@ -329,9 +334,9 @@ public partial class GameServer
 		//
 		//   * `namek/fusion` (verb `Namekian_Fusion`) -- pendura no `tree/namek` e em lugar nenhum
 		//     mais. Se ela aparecer no bio, ela so pode ter vindo do sangue do Namekuseijin.
-		//   * `namek/Stretchy_Arms` -- do MESMO galho, e **sem verbo**. Ela e o controle: prova que a
-		//     agulha copia BOTAO (`Keyableverbs`) e nao "o que a pessoa tinha aprendido". Sem este par,
-		//     um dia em que a heranca copiasse o livro inteiro passaria verde.
+		//   * `namek/Stretchy_Arms` -- do MESMO galho, e **sem verbo**. Ela era o controle do DM (a agulha copiava
+		//     BOTAO, `Keyableverbs`); desde a v0.3.0 e o controle da regra do dono, ao contrario: *"todas as skills da
+		//     aba learn"* -- a agulha leva o LIVRO inteiro, com botao ou sem.
 		//
 		// ELE ENTRA **DEPOIS** DA LINHA DE CIMA de proposito: aquela afirma que a mesma pessoa nao enche
 		// o tanque sozinha, e ela conta amostras. Um segundo corpo caido no alcance antes dela mediria
@@ -351,9 +356,9 @@ public partial class GameServer
 			Amostra? an = lab.Fornada.Amostras.LastOrDefault();
 			Checa($"...e a amostra dele guarda a habilidade RACIAL com botao (`{VerboDaRaca}`)",
 				  an != null && an.Skills.Contains(SkillDaRaca), $"{an?.Skills.Count} skill(s)");
-			Checa("...e **nao** guarda a do mesmo galho que nao tem botao (`Stretchy Arms`) -- a agulha "
-				  + "copia `Keyableverbs`, que e uma lista de BOTOES, e nao o livro do doador",
-				  an != null && !an.Skills.Contains(SkillPassivaDaRaca));
+			Checa("...e guarda TAMBEM a do mesmo galho que nao tem botao (`Stretchy Arms`) -- desde a v0.3.0 a agulha leva "
+				  + "o LIVRO inteiro do doador (*\"todas as skills da aba learn\"*), e nao so os botoes (`Keyableverbs`) do DM",
+				  an != null && an.Skills.Contains(SkillPassivaDaRaca));
 			namek.Ficha.KO = false;
 		}
 		else Checa("PRECONDICAO: o doador Namekuseijin nasceu", false);
@@ -421,7 +426,8 @@ public partial class GameServer
 			  !_noChao.Contains(lab));
 
 		// ---- ZENKAI: a linha que estava escrita e inalcancavel por causa do hifen ----
-		Checa("O BIO-ANDROIDE TEM ZENKAI -- e este ramo do `HasZenkai` era MORTO: ele testava "
+		// (v0.3.0) E AGORA E O SANGUE QUE DA: este bio tem um doador Saiyajin. O que nao tem esta na familia 12.
+		Checa("O BIO-ANDROIDE COM SANGUE SAIYAJIN TEM ZENKAI -- e este ramo do `HasZenkai` era MORTO: ele testava "
 			  + "\"Bio-Android\" com hifen e a raca do `races.json` e \"BioAndroid\" sem",
 			  pl.Ficha.HasZenkai());
 
@@ -1137,16 +1143,20 @@ public partial class GameServer
 			  + "te-la pelo sangue do doador Namekuseijin",
 			  SabeTecnica(bio, VerboDaRaca));
 
-		Checa("...e ele **nao** herdou a `Stretchy Arms` do MESMO galho racial, que nao tem botao -- "
-			  + "a agulha copia `Keyableverbs`, e nao o livro do doador",
-			  !bio.Livro.Sabe(SkillPassivaDaRaca));
+		// (v0.3.0) O LIVRO INTEIRO ATRAVESSA, e nao so os botoes: o dono (2026-10-15) -- *"todas as skills da aba learn dos
+		// jogadores q tiveram o dna usado, do mesmo nivel q eles"*. Ate aqui esta linha dizia o contrario (o `Keyableverbs` do DM).
+		Checa("...e herdou TAMBEM a `Stretchy Arms` do MESMO galho racial, que nao tem botao -- a agulha copia o LIVRO do "
+			  + "doador inteiro (regra do dono, 2026-10-15; no DM so iam os `Keyableverbs`)",
+			  bio.Livro.Sabe(SkillPassivaDaRaca));
 
-		Checa("...e nao herdou a ARVORE do Namekuseijin junto (`generatetrees` despacha por "
-			  + "`Parent_Race`, que agora e Bio-Android): um bio feito de DNA Namekuseijin NAO "
-			  + "regenera como Namekuseijin",
-			  !_skills!.ArvoresDe(bio.Race, "").Any(
-				  s => s.Path.Contains("namek", StringComparison.OrdinalIgnoreCase)),
-			  string.Join(", ", _skills.ArvoresDe(bio.Race, "").Select(s => s.Path)));
+		// (v0.3.0) E A ARVORE DO NAMEKUSEIJIN VEM PELO SANGUE: a raca com sangue do bio e "BioAndroid+...+Namekian", e a
+		// racial de cada parte abre (`SkillCatalog.ArvoresDe`). Ate aqui esta linha dizia o contrario (o `generatetrees` do DM).
+		string comSangue = Jandirus.Core.Races.SangueDoBio.RacaComSangue(bio.Race, bio.Ficha);
+		Checa("...e herdou a ARVORE do Namekuseijin pelo sangue (regra do dono: *\"ele pega as passivas e skills das racas "
+			  + "q foram usadas pra criar ele\"*) -- a raca com sangue abre a racial de cada doadora, e a do proprio bio continua",
+			  _skills!.ArvoresDe(comSangue, "").Any(s => s.Path.Contains("namek", StringComparison.OrdinalIgnoreCase))
+			  && _skills.ArvoresDe(comSangue, "").Any(s => s.Path.Contains("bioandroid", StringComparison.OrdinalIgnoreCase)),
+			  $"{comSangue}: " + string.Join(", ", _skills.ArvoresDe(comSangue, "").Select(s => s.Path)));
 
 		Checa("...e as duas herdadas estao marcadas como ENSINADAS: ele SABE usar e nao sabe "
 			  + "REPASSAR (o laboratorio nao pode virar lavanderia de skill)",
@@ -1173,10 +1183,9 @@ public partial class GameServer
 	///
 	/// Aqui o bio PERDE uma luta de verdade e a bancada mede o **BP subindo**.
 	///
-	/// E O CONTRA-EXEMPLO E DE OUTRA RACA, e nao um bio sem DNA Saiyajin -- porque no DM o Zenkai do
-	/// bio vem da RACA e nao do sangue do doador (`combatgains.dm:14` testa a raca, primeira linha da
-	/// funcao). Um bio sem DNA Saiyajin TEM Zenkai, e essa distincao e exatamente o que separa as
-	/// duas coisas que o dono pediu na mesma frase.
+	/// E HA DOIS CONTRA-EXEMPLOS: um HUMANO, e o bio SEM DNA Saiyajin. No DM o Zenkai do bio vinha da RACA
+	/// (`combatgains.dm:14` testa a raca, primeira linha da funcao) e todo bio o tinha; desde a v0.3.0 ele vem do
+	/// SANGUE (dono, 2026-10-15: *"zenkai se tiver saiyajin"* e *"bio androide sozinho N tem nada"*).
 	/// </summary>
 	private void MedirOZenkai(Checagem Checa, ServerPlayer host, ServerPlayer bio,
 							  ServerPlayer? semDna, List<ServerPlayer> forjados)
@@ -1220,7 +1229,7 @@ public partial class GameServer
 			  || bio.Ficha.UltimoZenkaiNoTeto,
 			  $"{bio.Ficha.UltimoZenkai:N0}");
 
-		// ---- o bio SEM DNA Saiyajin tambem tem: o Zenkai e da RACA ----
+		// ---- (v0.3.0) o bio SEM DNA Saiyajin NAO tem: o Zenkai e do SANGUE (dono, 2026-10-15) ----
 		if (semDna != null)
 		{
 			double a2 = semDna.Ficha.BP;
@@ -1232,10 +1241,9 @@ public partial class GameServer
 			RepercutirPoder(semDna);
 			double a3 = semDna.Ficha.BP;
 			AoPerderALuta(semDna, algoz, morreu: false);
-			Checa("...e o bio SEM DNA Saiyajin **tambem** ganha: no DM o Zenkai do bio vem da RACA "
-				  + "(`combatgains.dm:14`, primeira linha) e nao do sangue do doador. Sao duas "
-				  + "coisas diferentes na mesma frase do pedido",
-				  semDna.Ficha.BP > a3, $"{a3:N0} -> {semDna.Ficha.BP:N0}");
+			Checa("...e o bio SEM DNA Saiyajin **nao** ganha: o Zenkai do bio e do SANGUE (dono, 2026-10-15: *\"zenkai se "
+				  + "tiver saiyajin\"*). No DM vinha da RACA (`combatgains.dm:14`, primeira linha) e todo bio ganhava",
+				  Math.Abs(semDna.Ficha.BP - a3) < 1, $"{a3:N0} -> {semDna.Ficha.BP:N0}");
 			semDna.Ficha.KO = false;
 			semDna.Ficha.BP = a2;
 			semDna.Ficha.Statify();
@@ -1546,6 +1554,109 @@ public partial class GameServer
 		return cientista;
 	}
 
+	// =====================================================================
+	// 16. O SANGUE E O LIVRO DOS DOADORES (v0.3.0, itens 24, 25 e 25b)
+	// =====================================================================
+	/// <summary>
+	/// O BIO HERDA O SANGUE E O LIVRO DOS DOADORES, pela cadeia inteira (agulha, gestacao, parto) e com DOIS doadores no mesmo
+	/// tanque: um MAJIN que sabe o Kicker no nivel 3 e inventou uma tecnica, e um ANDROIDE de energia infinita. O dono
+	/// (2026-10-15): *"bio androide sozinho N tem nada, ele pega as passivas e skills das racas q foram usadas pra criar ele,
+	/// zenkai se tiver saiyajin, regeneracao e semi imortalidade se tiver majin"*, e *"vem com todas as skills da aba learn dos
+	/// jogadores q tiveram o dna usado, do mesmo nivel q eles, e as tecnicas customizadas tb e as liberadas"*.
+	///
+	/// AS REGRAS PURAS (a raca com sangue, o empate da regeneracao, o sangue da fornada) sao da `--v030teste`, familia X.
+	/// </summary>
+	private void MedirOSangueEOLivroDosDoadores(Checagem Checa, ServerPlayer host, List<ServerPlayer> forjados, List<Obra> obras)
+	{
+		GD.Print("--- 16. O SANGUE E O LIVRO DOS DOADORES (v0.3.0) ---");
+		const string Kicker = "/datum/skill/MartialSkill/Kicker";
+
+		ServerPlayer? cientista = ForjarCorpo(host, "Human", "Dr. Sangue", forjados, PalcoDoSangue);
+		ServerPlayer? majin = ForjarCorpo(host, "Majin", "Doador Majin", forjados, PalcoDoSangue);
+		ServerPlayer? droide = ForjarCorpo(host, "Android", "Doador Perpetuo", forjados, PalcoDoSangue);
+		if (cientista == null || majin == null || droide == null) { Checa("PRECONDICAO: o cientista e os dois doadores nasceram", false); return; }
+		cientista.Ficha.techskill = 99;
+		// AS DO CRIADOR MORREM COM ELE: uma tecnica inventada por ele, pra o parto ter o que apagar.
+		cientista.Customizadas.Add(new Jandirus.Core.Skills.TecnicaCustomizada { Id = 1, Nome = "Do Criador", Criada = true });
+		Obra lab = PorUmLabDeBio(cientista, 984_030, obras);
+
+		// O LIVRO DO MAJIN: o Kicker comprado na aba de aprendizado, no nivel 3, uma tecnica inventada e um rascunho que ele
+		// nunca confirmou (este nao atravessa a agulha).
+		majin.Livro = new Jandirus.Core.Skills.SkillBook();
+		majin.Livro.Dar(Kicker);
+		majin.Niveis = new Jandirus.Core.Skills.NiveisDeSkill();
+		majin.Niveis.Por(Kicker, 3);
+		majin.Customizadas.Add(new Jandirus.Core.Skills.TecnicaCustomizada { Id = 2, Nome = "Raio do Majin", Criada = true });
+		majin.Customizadas.Add(new Jandirus.Core.Skills.TecnicaCustomizada { Id = 3, Nome = "Rascunho do Majin" });
+		droide.Livro = new Jandirus.Core.Skills.SkillBook();
+		droide.Ficha.AndroideInfinito = true;
+
+		majin.Ficha.KO = true;
+		ComandoDeTech(cientista, "colher_dna", "");
+		majin.Ficha.KO = false;
+		// O SEGUNDO DOADOR ENTRA PELA MESMA `AmostraDe` DA AGULHA, posto direto no tanque: a agulha o recusaria por ASSINATURA --
+		// corpo forjado nao tem uma (`ServerPlayer.Assinatura` e vazia com `Slot < 0`, e e o certo: com `Slot >= 0` o `Persistir`
+		// gravaria o boneco dentro da conta do host), e "uma amostra por pessoa" ve dois vazios iguais. A familia 7 contorna isso
+		// com o proprio host de doador; aqui o que se mede e o PARTO.
+		lab.Fornada?.Amostras.Add(AmostraDe(droide));
+		Amostra? daMajin = lab.Fornada?.Amostras.FirstOrDefault(a => a.Doador == majin.Name);
+		Checa("(16) a agulha pegou os dois -- e a amostra do Majin guarda o LIVRO, o NIVEL e a tecnica CONFIRMADA (o rascunho fica com ele)",
+			  lab.Fornada?.Amostras.Count == 2 && daMajin != null && daMajin.Skills.Contains(Kicker)
+			  && daMajin.Niveis.GetValueOrDefault(Kicker) == 3 && daMajin.Customizadas.Count == 1 && daMajin.Customizadas[0].Nome == "Raio do Majin",
+			  $"{lab.Fornada?.Amostras.Count} amostra(s); skills [{string.Join(", ", daMajin?.Skills ?? [])}]; nivel {daMajin?.Niveis.GetValueOrDefault(Kicker)}; customizadas {daMajin?.Customizadas.Count}");
+		if (lab.Fornada == null || daMajin == null) return;
+
+		ComandoDeTech(cientista, "gestar", "");
+		if (lab.Fornada == null) { Checa("(16) a gestacao comecou", false); return; }
+		lab.Fornada.PrometidaEm = NowMs() - 1;
+		List<string> parto = Ouvir(TickDaGestacao);
+		if (!BioAndroids.EhBio(cientista.Race)) { Checa("(16) o bio-androide nasceu", false, cientista.Race); return; }
+		ServerPlayer bio = cientista;
+
+		Checa("**O SANGUE DAS DOADORAS**: o bio de um Majin e de um androide perpetuo carrega as duas racas, na ordem das amostras",
+			  SangueDoBio.Texto(bio.Ficha) == "Majin+Android", SangueDoBio.Texto(bio.Ficha));
+		Checa("**O MAJIN NO SANGUE**: a semi-imortalidade (se desfaz em vez de morrer, fora do ki), o nao sangrar, o nao mancar e o vigor no cheio -- *\"regeneracao e semi imortalidade se tiver majin\"*",
+			  CorpoDeMajin(bio) && Jandirus.Core.Combat.Feridas.NaoSangra(RacaComSangue(bio))
+			  && Jandirus.Core.Combat.DebuffsDeMembro.SemAtrasoDeFerimento(RacaComSangue(bio)) && Nutricao.VigorSempreCheio(bio.Ficha));
+		Checa("...e a REGENERACAO dele: cura em combate e o membro volta (o perfil do Majin, a doadora que mais regenera)",
+			  bio.Combate.Corpo.Regen is { CuraEmCombate: true } && bio.Combate.Corpo.RegeneraDecepado, $"{bio.Combate.Corpo.Regen}");
+		Checa("**O MOTOR DO ANDROIDE NO SANGUE**: o vigor E o Ki nunca baixam de 100%", Nutricao.KiSempreCheio(bio.Ficha));
+		Checa("**SEM SANGUE SAIYAJIN, SEM ZENKAI** (*\"zenkai se tiver saiyajin\"*): nenhuma das doadoras era", !bio.Ficha.HasZenkai());
+		Checa("**O LIVRO DO DOADOR, NO NIVEL DELE** (*\"do mesmo nivel q eles\"*): o Kicker entra ENSINADO (ele sabe e nao repassa) e no nivel 3",
+			  bio.Livro.Sabe(Kicker) && bio.Livro.FoiEnsinada(Kicker) && bio.Niveis.Nivel(Kicker) == 3,
+			  $"sabe={bio.Livro.Sabe(Kicker)} ensinada={bio.Livro.FoiEnsinada(Kicker)} nivel={bio.Niveis.Nivel(Kicker)}");
+		Checa("**AS TECNICAS CUSTOMIZADAS DO DOADOR** (*\"e as tecnicas customizadas tb\"*): a confirmada do Majin entra como copia ENSINADA -- e a do criador morreu com ele",
+			  bio.Customizadas.Count == 1 && bio.Customizadas[0].Nome == "Raio do Majin" && bio.Customizadas[0].Ensinada && bio.Customizadas[0].Criada,
+			  string.Join(", ", bio.Customizadas.Select(c => $"{c.Id}:{c.Nome}{(c.Ensinada ? " (ensinada)" : "")}")));
+		Checa("...e o parto conta o que veio: as skills no nivel dos doadores, as tecnicas inventadas e o sangue -- e nenhuma palavra de Zenkai (nenhum Saiyajin)",
+			  Disse(parto, "no nível em que eles") && Disse(parto, "que eles mesmos inventaram") && Disse(parto, "corre em você") && !Disse(parto, "Zenkai"),
+			  string.Join(" | ", parto));
+
+		// O DEFEITO DO NIVEL: a mesma funcao do parto, num corpo novo, com a amostra que a agulha gravou
+		ServerPlayer? semNivel = ForjarCorpo(host, "Human", "Sem Nivel", forjados, PalcoDoSangue);
+		if (semNivel != null)
+		{
+			semNivel.Livro = new Jandirus.Core.Skills.SkillBook();
+			semNivel.Niveis = new Jandirus.Core.Skills.NiveisDeSkill();
+			var g = new Gestacao { Amostras = { daMajin }, Tecnicas = { Kicker } };
+			NivelDoDoadorFicaDeForaDeTeste = true;
+			try { HerdarOLivroDosDoadores(semNivel, g); }
+			finally { NivelDoDoadorFicaDeForaDeTeste = false; }
+			Checa("(defeito injetado: o nivel do doador fica de fora) o Kicker entra no nivel ZERO -- a regua do nivel sabe reprovar",
+				  semNivel.Livro.Sabe(Kicker) && semNivel.Niveis.Nivel(Kicker) == 0, $"nivel={semNivel.Niveis.Nivel(Kicker)}");
+		}
+
+		SangueDoBio.SangueNaoPassaDeTeste = true;
+		bool semNada;
+		try
+		{
+			semNada = !CorpoDeMajin(bio) && !Jandirus.Core.Combat.Feridas.NaoSangra(RacaComSangue(bio))
+						  && !Nutricao.VigorSempreCheio(bio.Ficha) && !Nutricao.KiSempreCheio(bio.Ficha);
+		}
+		finally { SangueDoBio.SangueNaoPassaDeTeste = false; }
+		Checa("(defeito injetado: o sangue nao passa) o mesmo bio fica sem semi-imortalidade, sangrando e com o vigor e o Ki comuns -- sozinho o bio nao tem nada", semNada);
+	}
+
 	/// <summary>
 	/// Uma linha por numero que o original crava. Elas nao dirigem nada -- sao a tabela de conversao
 	/// do sistema, e existem porque um multiplicador trocado nao quebra bancada nenhuma das de cima:
@@ -1577,7 +1688,6 @@ public partial class GameServer
 		Numero("o marco `bio_ssj2`", Milestones.Valor("bio_ssj2"), 4);
 		Numero("`DNL_ABSORB_KI_PER_HIT` (6% do tanque por tiro engolido)", AbsorcaoPorGolpeDeKi, 0.06);
 		Numero("o teto do androide de absorcao (o DOBRO do tanque)", TetoDoAndroideAbsorcao, 2);
-		Numero("o nucleo infinito (2% por meio segundo = 4% por segundo)", RegenDoNucleoInfinito, 0.04);
 		Numero("`DNL_INT_REQ` (tecnologia pro laboratorio)", TechDoLaboratorio, 70);
 		Numero("o androide de ABSORCAO, em zeni", CustoAndroideAbsorcao, 1_000_000);
 		Numero("o androide de ENERGIA INFINITA, em zeni", CustoAndroideInfinito, 2_000_000);
@@ -1684,13 +1794,15 @@ public partial class GameServer
 		// Este e exatamente o tipo de coisa que a injecao existe pra achar: uma medida que parece
 		// verde por um caminho que ninguem estava olhando.
 		// =====================================================================================================
-		ServerPlayer? soRaca = semDna ?? bio;
-		Injetar("o ramo da RACA no `HasZenkai` (trocando a raca do bio SEM DNA, o predicado TEM que "
-				+ "cair) -- e este e o defeito literal que ficou meses escrito e inalcancavel por "
-				+ "causa do hifen",
-				() => { soRaca.Ficha.Race = "Human"; soRaca.Ficha.ParentRace = "Human"; },
-				() => soRaca.Ficha.HasZenkai(),
-				() => { soRaca.Ficha.Race = soRaca.Race; soRaca.Ficha.ParentRace = soRaca.Race; });
+		// (v0.3.0) O RAMO DO BIO NO `HasZenkai` E O SANGUE: tirando o Saiyajin das doadoras do bio que o tem, o predicado TEM
+		// que cair -- mesmo com o `canSSJ` aceso, que e o caminho que uma regra preguicosa usaria pra parecer certa.
+		List<string> sangueGuardado = [.. bio.Ficha.bio_racas_dna];
+		bool saiyajinGuardado = bio.Ficha.bio_saiyan_dna;
+		Injetar("o ramo do SANGUE no `HasZenkai` (tirando o Saiyajin das doadoras do bio, o predicado TEM que cair -- "
+				+ "com o `canSSJ` dele ainda aceso)",
+				() => { bio.Ficha.bio_racas_dna = [.. sangueGuardado.Where(r => !Catalogo.EhSaiyajin(r))]; bio.Ficha.bio_saiyan_dna = false; },
+				() => bio.Ficha.HasZenkai(),
+				() => { bio.Ficha.bio_racas_dna = sangueGuardado; bio.Ficha.bio_saiyan_dna = saiyajinGuardado; });
 
 		// ---- 4. O SUPER SAIYAJIN PELO DNA ----
 		Injetar("o `canSSJ` (apagando o DNA, a linha Saiyajin TEM que fechar pro bio que a tinha)",

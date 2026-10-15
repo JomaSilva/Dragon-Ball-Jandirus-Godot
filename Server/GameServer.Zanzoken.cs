@@ -388,7 +388,12 @@ public sealed partial class GameServer
 	/// Nasce a IMAGEM REMANESCENTE junto? So quem sabe a Afterimage deixa vulto -- o borrao do
 	/// deslocamento nao pede skill nenhuma, porque ele nao e tecnica: e o corpo tendo passado por ali.
 	/// </param>
-	private void AnunciarZanzo(ServerPlayer pl, Vec2 de, bool vulto = true)
+	/// <param name="longa">
+	/// (v0.3.0) A miragem e a da Zanzoken Afterimage, que dura mais que a do zanzoken comum -- o dono: *"as miragens nesse caso
+	/// deveriam durar mais q as miragens padroes do zanzoken"*. Viaja no MESMO byte do `vulto` (0 nenhum, 1 miragem, 2 a longa):
+	/// o pacote continua com os 14 bytes que a `--borraoteste` mede.
+	/// </param>
+	private void AnunciarZanzo(ServerPlayer pl, Vec2 de, bool vulto = true, bool longa = false)
 	{
 		// QUEM ESTA INVISIVEL NAO DEIXA VULTO.
 		//
@@ -403,7 +408,8 @@ public sealed partial class GameServer
 		var w = Protocol.Begin(Protocol.S2C.Zanzo);
 		w.Put(pl.Id);
 		w.PutVec(de);
-		w.Put(vulto);
+		w.Put((byte)(!vulto ? 0 : longa ? 2 : 1));
+		if (vulto) EscutaDeMiragens?.Add((pl.Id, de, longa));
 
 		// ============================ O CARIMBO QUE A BANCADA LE (`--borraoteste`) ============================
 		// Duas linhas, e elas medem o que REALMENTE saiu: o `w.Length` e o tamanho do pacote montado,
@@ -436,6 +442,9 @@ public sealed partial class GameServer
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
 			o.Peer?.Send(w, Protocol.ChannelState, DeliveryMethod.Unreliable);
 	}
+
+	/// <summary>(v0.3.0) A bancada ouve as miragens anunciadas: quem, de onde, e se e a longa da tecnica. Nula em producao.</summary>
+	internal static List<(int Quem, Vec2 De, bool Longa)>? EscutaDeMiragens;
 
 	/// <summary>Quantos anuncios de salto sairam. Zerado e lido pela bancada `--borraoteste`.</summary>
 	private int _saltosAnunciados;

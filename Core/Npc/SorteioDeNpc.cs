@@ -119,6 +119,14 @@ public static class SorteioDeNpc
 		Fighter f = Birth.Nascer(racas, raca, linhagem, Sorteador(semente, "classe"), nome,
 								 classeForcada: classeForcada);
 
+		// (v0.3.0) O SANGUE DO BIO-ANDROIDE DO MOLDE: as racas doadoras dele, e o folego no vacuo de quem respira entre elas --
+		// o que o parto do laboratorio grava (`GameServer.NascerBioAndroide`), aqui gravado pelo molde.
+		if (molde.SangueDoBio.Length > 0)
+		{
+			f.bio_racas_dna = [.. molde.SangueDoBio];
+			f.bio_dna_respira = molde.SangueDoBio.Any(r => Vacuo.RespiraNoVacuo(r));
+		}
+
 		// --- 2. A IDADE, NO PLATO EM QUE ELA NAO COBRA NADA -----------------
 		// `DivisorDeIdade` vale exatamente 1 entre a idade adulta e o auge da raca
 		// (Envelhecimento.cs:130-140). Sortear DENTRO desse plato da variedade de ficha sem mexer

@@ -103,18 +103,40 @@ public partial class GameServer
 	/// onde moram o seguro de morte, o prazo do cadaver e a viagem pro Outro Mundo. A pergunta e a mesma que
 	/// o resolvedor de golpe faz depois de ferir (`MeleeResolver.AplicarNoMembro`).
 	/// </summary>
-	private void DecidirOQueOCorpoSofreu(ServerPlayer pl, ServerPlayer boneco)
+	private void DecidirOQueOCorpoSofreu(ServerPlayer pl, ServerPlayer boneco, bool entrouMorto)
 	{
 		Body corpo = pl.Combate.Corpo;
-		if (boneco.Ficha.dead || (corpo.DeveMorrer() && !corpo.RegeneraDecepado))
+		bool letal = corpo.DeveMorrer() && !corpo.RegeneraDecepado;
+
+		// (v0.3.0) QUEM ENTROU MORTO (o fantasma que mergulhou -- ver `DimensaoMental.PorQueNaoMergulhar`): o `dead` do corpo de
+		// fora e o da entrada, e nao uma morte nova. O golpe letal la fora e o "morrer de novo" do fantasma -- curado, a mesa do
+		// Enma, 2 s de coma --, e quem o cobra e a volta, depois da viagem (`MorreuDeNovoLaFora`). Fora isso, o nocaute de fora
+		// ele sofre como o vivo.
+		if (entrouMorto && letal) return;
+		if (!entrouMorto && (boneco.Ficha.dead || letal))
 		{
 			if (pl.Combate.Morrer()) return;
 		}
-		if (!pl.Ficha.dead && (boneco.Ficha.KO || corpo.DeveNocautear()))
+		if ((!pl.Ficha.dead || entrouMorto) && (boneco.Ficha.KO || corpo.DeveNocautear()))
 			pl.Combate.Nocautear(
 				boneco.Combate.NocauteRestante > 0 ? boneco.Combate.NocauteRestante : MeleeResolver.TetoDoNocaute,
 				porVital: boneco.Combate.NocautePorVital || corpo.DeveNocautear());
 	}
+
+	/// <summary>
+	/// (v0.3.0) O FANTASMA QUE CAIU DE VEZ LA FORA enquanto meditava: entrou morto (`FotoDaMente.Morto`), continua morto, e o
+	/// corpo que ficou levou um golpe que o mataria -- o `Morrer()` do corpo de fora, que nao tem gancho de fantasma, so o
+	/// deixa ferido. E perguntado ANTES da volta (a foto e o corpo de fora somem no restauro) e cobrado DEPOIS dela, pelo
+	/// `Morrer()` do dono: no fantasma de pe e o `AoMorrerDeNovo` (`GameServer.MorrerDeNovoNoAlem`) -- curado, de volta a mesa
+	/// do Enma, 2 s em coma e o passe rasgado. Cobrado antes, ele viajaria da mente pra mesa e em seguida seria puxado pro
+	/// lugar do corpo.
+	///
+	/// QUEM E ARRANCADO POR FORA (`ArrancarDoTranse`: um admin, o fim do passe) nao paga aqui: vai pra onde o levam, com as
+	/// feridas do corpo de fora.
+	/// </summary>
+	private bool MorreuDeNovoLaFora(ServerPlayer pl) =>
+		pl.Ficha.dead && pl.FotoDaMente is { Morto: true } && pl.BonecoLargado is { } b && TemCorpoProprio(b, pl)
+		&& ZoneList(b.Zone.Hash).Contains(b) && b.Combate.Corpo.DeveMorrer() && !b.Combate.Corpo.RegeneraDecepado;
 
 	/// <summary>
 	/// A FAXINA DA SAIDA: o que foi ligado, armado ou posto em movimento DENTRO da mente nao segue o corpo

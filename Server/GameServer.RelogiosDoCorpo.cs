@@ -156,6 +156,13 @@ public partial class GameServer
 			TickDoUnboundEgo(pl);
 			TickDasPilhasDeEsquiva(pl);
 		}
+
+		// ============================ O VIGOR (E O KI) QUE NAO ACABAM -- dono, 2026-10-15 ============================
+		// O Majin trava o vigor no cheio; o androide de energia infinita, o vigor e o Ki (`Nutricao.ManterOsInfinitos`).
+		// POR ULTIMO, depois de todo relogio acima que gasta (a forma, a carga, o voo, o nado): o que eles cobraram neste
+		// tique volta no mesmo tique, e a ficha que sai pro cliente ja sai cheia.
+		// ===========================================================================================================
+		foreach (ServerPlayer pl in _players.Values) Jandirus.Core.Stats.Nutricao.ManterOsInfinitos(pl.Ficha);
 	}
 
 	/// <summary>

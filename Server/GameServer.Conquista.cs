@@ -808,6 +808,10 @@ public partial class GameServer
 			// decidida pela ordem de insercao, que e o pior tipo de regra que existe.
 			foreach (Dominio o in DominiosDe(pl.Assinatura)) o.EhOSpawn = false;
 			d.EhOSpawn = true;
+
+			// (v0.3.0) UMA ESCOLHA SO: a bandeira apaga a Terra do refugio (`RefugioNaTerra`) -- senao, perdido este dominio, a
+			// pessoa voltaria pela Terra que ela acabou de trocar por ele.
+			if (pl.RefugioNaTerra) { pl.RefugioNaTerra = false; Persistir(pl); }
 			Avisar(pl, $"você passa a renascer em {NomeVisivel(d.Planeta)} enquanto for o soberano.");
 		}
 		SalvarConquista();

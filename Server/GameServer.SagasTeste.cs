@@ -416,15 +416,16 @@ public partial class GameServer
 		// motivo: a regra medida e o PRAZO, e esperar cinco minutos reais nao e uma bancada.
 		_relogioDoMundo += elo.MinutosDeLuta * 60 + elo.MinutosDeOcio * 60 + 1;
 		TickDasSagas();
-		Checa("vencido o prazo, ele comeca a CARGA de 30 s (a janela pra interromper)",
-			  ec.Carregando, "");
+		Checa("vencido o prazo, ele ergue a SUPERNOVA (v0.3.0): a carga do ultimato, com o chefe parado e intocavel ate a explosao",
+			  ec.Carregando && OcupacaoDe(corpo) == Ocupacao.Supernova && corpo.Combate.Intocavel, $"ocupacao {OcupacaoDe(corpo)}");
 
-		// NOCAUTE NA JANELA INTERROMPE -- e o significado que o KO tem no fim de uma luta de chefe.
+		// UM NOCAUTE QUE O ALCANCE INTERROMPE -- e ja nao ha golpe que o alcance (a Supernova o deixa intocavel, regra do
+		// dono de 2026-10-15); o que sobra e o verb de admin, que e o caminho desta linha.
 		corpo.Combate.Nocautear(60);
 		_relogioDoMundo += 31;
 		TickDasSagas();
-		Checa("nocautea-lo dentro da janela INTERROMPE o ultimato",
-			  !ec.Carregando && !est.Condenado && EscutaDasSagas!.Any(t => t.Contains("INTERROMPIDO")),
+		Checa("nocautea-lo na carga INTERROMPE o ultimato -- e a Supernova se desfaz",
+			  !ec.Carregando && !est.Condenado && EscutaDasSagas!.Any(t => t.Contains("INTERROMPIDO")) && OcupacaoDe(corpo) != Ocupacao.Supernova,
 			  string.Join(" | ", EscutaDasSagas!));
 
 		// e ele tenta de novo -- 2 min depois (`BEV_PD_RETRY`)

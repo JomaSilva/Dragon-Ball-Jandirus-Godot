@@ -672,7 +672,7 @@ public partial class RoboDeBorrao : Node
 	// E) O OUTRO JOGADOR
 	// =====================================================================
 	/// <summary>Quem piscou por ultimo, e se veio com miragem -- o gancho do `S2C.Zanzo` chegando pelo fio.</summary>
-	private void AoPiscarAlguem(int quem, Vec2 de, bool vulto)
+	private void AoPiscarAlguem(int quem, Vec2 de, bool vulto, bool longa)
 	{
 		_ultimoQuePiscou = quem;
 		_origemDoOutro = de;

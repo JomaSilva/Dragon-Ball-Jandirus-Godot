@@ -104,7 +104,7 @@ public partial class GameServer
 
 		if (DesligarBuff(pl, id)) { Avisar(pl, desligou); return; }
 
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, $"{nome} pede um corpo de pé."); return; }
+		if (pl.Ficha.KO || EhCadaver(pl)) { Avisar(pl, $"{nome} pede um corpo de pé."); return; }
 
 		string? ocupado = OcupanteDoSlotG1(pl, id);
 		if (ocupado != null)
@@ -157,7 +157,7 @@ public partial class GameServer
 
 		if (DesligarBuff(pl, id)) { Avisar(pl, $"seu {nome} se dissipa."); return; }
 
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "não dá para moldar Ki assim."); return; }
+		if (pl.Ficha.KO || EhCadaver(pl)) { Avisar(pl, "não dá para moldar Ki assim."); return; }
 
 		// A MAO E UMA SO. No DM isso vem de graca pelo slot (`sBUFF`) mais o `KiWeaponOn`; aqui e
 		// a mesma regra escrita a mao, porque o alicerce de buff do port nao tem slot.
@@ -230,7 +230,7 @@ public partial class GameServer
 
 		if (DesligarBuff(pl, id)) { Avisar(pl, "você relaxa e volta ao normal."); return; }
 
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "você não está em condições de assumir a forma."); return; }
+		if (pl.Ficha.KO || EhCadaver(pl)) { Avisar(pl, "você não está em condições de assumir a forma."); return; }
 
 		bool ascendido = pl.Ficha.BPBoost > 1;
 

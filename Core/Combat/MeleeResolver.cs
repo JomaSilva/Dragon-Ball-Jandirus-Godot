@@ -22,6 +22,14 @@ public enum Desfecho : byte
 	Rebateu,
 }
 
+/// <summary>O que um corpo cujo nucleo cedeu de vez faz agora -- ver <see cref="CombatState.QuandoONucleoCede"/>.</summary>
+public enum FimDoNucleo : byte
+{
+	Morre,
+	Coma,
+	SeDesfaz,
+}
+
 /// <summary>
 /// O relato de um golpe. O servidor resolve UMA vez e conta a mesma historia pros dois lados
 /// -- nenhum cliente recalcula dano.
@@ -36,6 +44,9 @@ public struct GolpeResultado
 
 	/// <summary>O rabo foi arrancado por este golpe (regra separada -- ver o passo 7).</summary>
 	public bool RaboArrancado;
+
+	/// <summary>(2026-10-15) O MAJIN SE DESFEZ em pedacos em vez de morrer -- ver <see cref="CombatState.Desfeito"/>.</summary>
+	public bool Desfez;
 
 	// AS PECAS QUE CAIRAM NAO VIAJAM NESTE RELATO. Havia aqui uma `List<PecaDeCorpo>? PecasCaidas`,
 	// preenchida so pelo soco e lida so pelo anuncio do soco -- e por isso o dano em area e o dano
@@ -204,7 +215,7 @@ public static class MeleeResolver
 				double dmgB = Calcular(a, d, anguloGraus, tipo, addDano) * ReducaoDaGuarda(d.F);
 				r.Desfecho = Desfecho.Aparou;
 				r.Dano = dmgB;
-				AplicarNoMembro(d, guarda, dmgB, a.Letal, ref r);
+				AplicarNoMembro(d, guarda, dmgB, a.Letal, porKi: false, ref r);
 				return r;
 			}
 			// a guarda CEDEU: o golpe passa e entra inteiro
@@ -242,7 +253,7 @@ public static class MeleeResolver
 
 		r.Desfecho = crit ? Desfecho.Critico : Desfecho.Acertou;
 		r.Dano = dano;
-		AplicarNoMembro(d, membro, dano, a.Letal, ref r);
+		AplicarNoMembro(d, membro, dano, a.Letal, porKi: false, ref r);
 
 		// === 7. O RABO ================================================
 		ArrancarRabo(a, d, anguloGraus, dano, ref r);
@@ -362,8 +373,9 @@ public static class MeleeResolver
 	/// <see cref="Projetil.SegundosPorCicloDeBeam"/>.
 	/// =====================================================================================================================
 	/// </summary>
+	/// <param name="porKi">(2026-10-15) o dano e de KI -- o unico que mata o Majin de vez (ver `CombatState.QuandoONucleoCede`). O tiro FISICO passa falso.</param>
 	public static GolpeResultado AplicarDanoPronto(CombatState d, double dano, bool letal,
-												   Random rng, string? zona = null)
+												   Random rng, string? zona = null, bool porKi = true)
 	{
 		var r = new GolpeResultado { Membro = "" };
 		if (d.Intocavel || dano <= 0) return r;   // o morto tambem apanha -- ver o `Resolver`
@@ -373,7 +385,7 @@ public static class MeleeResolver
 
 		r.Desfecho = Desfecho.Acertou;
 		r.Dano = dano;
-		AplicarNoMembro(d, membro, dano, letal, ref r);
+		AplicarNoMembro(d, membro, dano, letal, porKi, ref r);
 		return r;
 	}
 
@@ -384,7 +396,7 @@ public static class MeleeResolver
 	/// defensor"*. Sem braco nem perna pra aparar, cai no sorteio comum.
 	/// </summary>
 	public static GolpeResultado AplicarDanoProntoNaGuarda(CombatState d, double dano, bool letal,
-														   Random rng, string? zona = null)
+														   Random rng, string? zona = null, bool porKi = true)
 	{
 		var r = new GolpeResultado { Membro = "" };
 		if (d.Intocavel || dano <= 0) return r;
@@ -394,11 +406,11 @@ public static class MeleeResolver
 
 		r.Desfecho = Desfecho.Acertou;
 		r.Dano = dano;
-		AplicarNoMembro(d, membro, dano, letal, ref r);
+		AplicarNoMembro(d, membro, dano, letal, porKi, ref r);
 		return r;
 	}
 
-	private static void AplicarNoMembro(CombatState d, BodyPart membro, double dano, bool letal,
+	private static void AplicarNoMembro(CombatState d, BodyPart membro, double dano, bool letal, bool porKi,
 										ref GolpeResultado r)
 	{
 		bool eraQuebrado = membro.Quebrado;
@@ -427,11 +439,25 @@ public static class MeleeResolver
 		// `Morrer()` pode ser NEGADO (ver `CombatState.NegarMorte`) -- e ai nao houve morte, entao o
 		// resultado nao pode dizer que houve: quem le `r.Morreu` marca prazo de renascer e paga
 		// Zenkai por uma morte que nao aconteceu.
-		if (d.Corpo.DeveMorrer() && !d.Corpo.RegeneraDecepado)
+		//
+		// (2026-10-15) QUEM DECIDE O QUE O NUCLEO PERDIDO FAZ e o `CombatState.QuandoONucleoCede`: o corpo comum morre, a
+		// raca que refaz membro cai em coma, e o Majin se desfaz em pedacos -- a nao ser que tenha sido o KI (`porKi`).
+		if (d.Corpo.DeveMorrer())
 		{
-			r.Morreu = d.Morrer();
+			switch (d.QuandoONucleoCede(porKi))
+			{
+				case FimDoNucleo.Morre:
+					r.Morreu = d.Morrer();
+					return;
+				case FimDoNucleo.SeDesfaz:
+					if (!d.Desfeito) { d.Desfazer(); r.Desfez = true; }
+					return;
+			}
 		}
-		else if (!d.F.KO && d.Corpo.DeveNocautear())
+		// O COMA DE QUEM REFAZ MEMBRO TAMBEM CAI AQUI: um nucleo DECEPADO nao esta "abaixo da linha" (`DeveNocautear` so ve
+		// nucleo inteiro), e a raca que refaz membro ficava DE PE sem a cabeca enquanto os outros dois aguentavam. O DM
+		// derruba os dois casos no mesmo ramo -- `else if(coreBroken >= 1 || coreDead >= 1)` (`Injuries.dm:279-285`).
+		if (!d.F.KO && (d.Corpo.DeveNocautear() || d.Corpo.DeveMorrer()))
 		{
 			r.Nocauteou = true;
 			d.Nocautear(TetoDoNocaute, porVital: true);

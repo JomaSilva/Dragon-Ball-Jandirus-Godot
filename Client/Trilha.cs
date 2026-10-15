@@ -67,7 +67,9 @@ public static class Trilha
     {
         "Earth" => A + "windy.ogg",
         "Namek" => A + "namek.ogg",
-        "Vegeta" => A + "desert.ogg",
+        // (2026-10-15) O MESMO DA TERRA -- dono: *"o som ambiente do planeta vegeta ta ruim, coloque o mesmo som ambiente
+        // q tem na terra"*. Escrito como a REFERENCIA a Terra, e nao como o arquivo: se o da Terra mudar, Vegeta vai junto.
+        "Vegeta" => AmbienteDe("Earth"),
         "Hell" => A + "volcanichell.ogg",
         "Heaven" => A + "windy2.ogg",
         "Space" => A + "space.ogg",

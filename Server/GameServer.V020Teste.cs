@@ -556,7 +556,9 @@ public sealed partial class GameServer
 		AfirmarV2("AS VANTAGENS de nao ter rabo valem: o ritmo de treino sobe pra 1,25 (era 0,5 com ele)", pl.Ficha.tailgain == 1.25);
 		AfirmarV2("...e o rabo perdido de vez nao conta como ferimento no boneco do HUD", pl.Sheet().MembrosRuins == 0, $"{pl.Sheet().MembrosRuins}");
 		double[] foto = FotografarCorpo(pl.Combate)[RaboDoSaiyajin.Membro];
-		AfirmarV2("a marca vai pro save junto do corpo (o terceiro numero da foto do membro)", foto.Length == 3 && foto[1] > 0.5 && foto[2] > 0.5);
+		// (2026-10-15) e o QUARTO numero e o relogio da ferida do perdido de vez -- dez minutos, ver `--v030teste` (familia R)
+		AfirmarV2("a marca vai pro save junto do corpo (o terceiro numero da foto do membro; o quarto e a ferida que falta fechar)",
+				  foto.Length == 4 && foto[1] > 0.5 && foto[2] > 0.5 && foto[3] == RaboDoSaiyajin.SegundosDaFerida, $"[{string.Join(", ", foto)}]");
 		TirarDoMundoV2(pl);
 
 		(pl, rabo) = ArrancarORaboV2(abaixo, "Saiyan");

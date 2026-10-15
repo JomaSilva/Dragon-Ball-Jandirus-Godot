@@ -351,7 +351,10 @@ public partial class GameServer
 	/// </summary>
 	private bool PodeSaltarDePlaneta(ServerPlayer pl, out string porque)
 	{
-		porque = pl.Ficha.KO || pl.Ficha.dead ? "nao da, caido."
+		// (2026-10-15) O FANTASMA DE PE NAO ESTA CAIDO, mas continua sem saltar: o morto sai do Outro Mundo PAGANDO (as
+		// esferas, a tecnica de reviver de um vivo, o Enma) e nao por conta propria -- a regra da morte do dono. So a frase muda.
+		porque = pl.Ficha.KO || EhCadaver(pl) ? "nao da, caido."
+			: pl.Ficha.dead ? "um morto nao sai do Outro Mundo por conta propria."
 			: pl.Combate is { Stun: > 0 } ? "voce ainda esta atordoado."
 			: pl.Ficha.med || pl.Ficha.train ? "voce precisa parar de treinar pra se concentrar nisto."
 			: NaMente(pl) ? "primeiro saia do transe."
@@ -635,7 +638,7 @@ public partial class GameServer
 	/// </summary>
 	private void SugarVidaG4(ServerPlayer pl)
 	{
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "não da, caido."); return; }
+		if (pl.Ficha.KO || EhCadaver(pl)) { Avisar(pl, "não da, caido."); return; }
 		// O REFLEXO DA MENTE E A COPIA DO SPLIT FORM NAO TEM VIDA PROPRIA PRA DAR (`M.HasSoul`, `demon.dm:77-83`;
 		// `mob/npc` nasce com `HasSoul = 0`): ver `CorpoDerivado`, no filtro abaixo, e a recusa dentro da mente.
 		if (RecusarAbsorcaoNaMente(pl)) return;
@@ -793,7 +796,7 @@ public partial class GameServer
 		string nome = Catalogo.NomeDe(d, est.Maestria);
 
 		// --- os testes, um a um, SEM o de ordem ----------------------------
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "não da, caido."); return; }
+		if (pl.Ficha.KO || EhCadaver(pl)) { Avisar(pl, "não da, caido."); return; }
 
 		if (!est.JaViuAEstreia(d.Id))
 		{

@@ -1213,10 +1213,15 @@ public partial class GameServer
 		// a esfera que carrega, o rugido. O jogador da o segundo aperto com o dedo; o corpo dirigido so sabe
 		// dar um pulso, e quem fecha e um relogio do servidor (o desenho do prazo do raio). O aperto em si
 		// sai pelo `UsarHabilidade`, o cano do jogador.
+		//
+		// `EhCadaver` (v0.3.0) e PERGUNTA, e a mais pura da lista: "este corpo e o cadaver do chao dos vivos?". O reflexo a faz
+		// sobre o proprio NPC antes de responder o raio (o fantasma de pe do Outro Mundo responde como um vivo; o cadaver nao),
+		// e e a mesma que o tiro do jogador faz -- so que la ela mora dentro da porta (`PodeAtirar`), fora do
+		// `Handle`/`UsarHabilidade` que esta bancada le.
 		// ==========================================================================================
 		string[] excecoes = ["PassoDaIa", "FacingFrom",
 							 "VemFeixeContraMim", "SabeTecnica", "ContainsKey", "TryGetValue",
-							 "FraseDoContraFeixe", "MaosOcupadasDaIa", "DepoisDoApertoDaIa"];
+							 "FraseDoContraFeixe", "MaosOcupadasDaIa", "DepoisDoApertoDaIa", "EhCadaver"];
 
 		HashSet<string> chamaIa = ChamadasDe(tiroDaIa);
 		HashSet<string> chamaJogador = ChamadasDe(funilDoJogador);

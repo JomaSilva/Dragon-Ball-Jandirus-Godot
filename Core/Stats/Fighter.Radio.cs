@@ -8,8 +8,8 @@ public partial class Fighter
 {
 	/// <summary>
 	/// EM QUE FREQUENCIA O SCOUTER DESTE PERSONAGEM ESTA. Campo publico da ficha, entao vai pro save sozinho
-	/// (`CharacterSave.Ficha`, `IncludeFields`) e sobrevive ao relog -- ao contrario do liga/desliga do
-	/// aparelho, que mora em `ServerPlayer.PoderesConcedidos` e acorda desligado.
+	/// (`CharacterSave.Ficha`, `IncludeFields`) e sobrevive ao relog -- e o liga/desliga do aparelho, que mora em
+	/// `ServerPlayer.PoderesConcedidos`, tambem sobrevive desde a v0.3.0, pela copia `CharacterSave.ScouterLigado`.
 	///
 	/// NO PERSONAGEM E NAO NO ITEM: no DM o canal e `var/channel` do proprio `obj/items/Scouter`
 	/// (`Tier 1.5.dm:328`), mas aqui a pilha da mochila e so id + quantidade (`Core/Items/Inventario.cs`) e

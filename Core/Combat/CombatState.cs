@@ -165,6 +165,66 @@ public sealed class CombatState
 	public bool NocautePorVital;
 
 	/// <summary>
+	/// ============================ O DESMAIO TEM UM PISO (dono, 2026-10-15) ============================
+	/// *"majin n ta dando pra ser nocauteado no soco, tem o efeito de KO mas ele n desmaia,ele deveria desmaiar mas
+	/// levantar mais rapido q outras raças"*.
+	///
+	/// O nocaute por NUCLEO acaba quando o nucleo volta acima da linha (<see cref="NocautePorVital"/>), e quem cura EM
+	/// COMBATE (o `fastRegen` -- ver `PerfilDeRegen.CuraEmCombate`) a recupera em fracao de segundo: o Majin, com o vigor
+	/// travado no cheio, subia os 20% antes de o corpo encostar no chao, e o golpe dizia "KO" pra um corpo de pe. DESVIO
+	/// DECLARADO DO DM (`Injuries.dm:286-289` acorda no mesmo ciclo da cura): o desmaio por nucleo dura pelo menos isto.
+	/// Pra quem nao cura em luta o piso nunca morde -- a tag de combate segura a cura por muito mais tempo --, e e por isso
+	/// que o Majin continua levantando antes de todo mundo.
+	/// ===============================================================================================
+	/// </summary>
+	public const double SegundosMinimosDoDesmaio = 8;
+
+	/// <summary>Quanto ainda falta do <see cref="SegundosMinimosDoDesmaio"/> deste desmaio (zero = a cura ja levanta o corpo).</summary>
+	public double DesmaioMinimo;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`): o desmaio por nucleo volta a acabar no ciclo em que o nucleo sara -- o
+	/// jogo de antes. Lido pelo <see cref="Nocautear"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool DesmaioSemMinimoDeTeste;
+
+	/// <summary>
+	/// ============================ O MAJIN DESFEITO EM PEDACOS (dono, 2026-10-15) ============================
+	/// *"majin "morto" por soco n morre de verdade ele so fica em um KO mais longo e começa uma animaçao q tinha no DM
+	/// representando ele regenerando e voltando a vida, morrer pra ki é oq mata definitivamente"*.
+	///
+	/// E o ramo `DeathRegen >= 6` do `TestDeathRegen` (`DeathRegen.dm:152-173`): o corpo some, cinco pedacos de
+	/// `Majin1.dmi` ficam espalhados em volta, *"You will regenerate in 30 seconds"*, e no fim os pedacos voltam e ele se
+	/// levanta INTEIRO (`SpreadHeal(100)` e todo membro decepado refeito, `:58` e `:71-73`). Naquele DM a porta estava
+	/// fechada pra todo mundo (`:39`, *"SEM respawn automatico por tempo"*); o dono a reabre so pro Majin, e so fora do ki
+	/// -- ver <see cref="QuandoONucleoCede"/>.
+	///
+	/// DESFEITO = CAIDO + INTOCAVEL: o DM tirava o corpo do mapa (`loc=locate(100,100,25)`, `:69`); aqui ele fica no
+	/// lugar, ninguem o acerta (<see cref="Intocavel"/>) e a tela desenha os pedacos (`Ocupacao.Desfeito`). O relogio e o
+	/// do nocaute (<see cref="NocauteRestante"/>), e quem o levanta e o <see cref="Levantar"/>, que o devolve inteiro.
+	/// ====================================================================================================
+	/// </summary>
+	public bool Desfeito;
+
+	/// <summary>Os segundos em pedacos -- *"You will regenerate in 30 seconds"* (`DeathRegen.dm:162`).</summary>
+	public const double SegundosDesfeito = 30;
+
+	/// <summary>
+	/// ESTE CORPO SE DESFAZ EM VEZ DE MORRER? Gancho, e nao campo, pelo motivo do <see cref="MortoDePe"/>: quem sabe a
+	/// raca (o `Race=="Majin"||Parent_Race=="Majin"` do DM) e o servidor. Nulo = ninguem se desfaz.
+	/// </summary>
+	public Func<CombatState, bool>? SeDesfazAoMorrer;
+
+	/// <summary>Quem ouve o corpo se desfazer: as frases (`GameServer.MajinDesfeito.cs`). Chamado depois de tudo escrito.</summary>
+	public Action<CombatState>? AoSeDesfazer;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`): o Majin volta a ser so mais uma raca que refaz membro -- o golpe que o
+	/// mataria o poe em coma, e o ki nao o mata. Lido pelo <see cref="QuandoONucleoCede"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool MajinNaoSeDesfazDeTeste;
+
+	/// <summary>
 	/// O `limbregenbuffer` (`Injuries.dm:296-300`): pontos juntados rumo a devolver UM membro
 	/// perdido. So o Majin, o Bio e as racas de `canheallopped` juntam -- ver
 	/// <see cref="Regeneracao.PontosPorSegundo"/>. Nao vai pro savefile: um membro pela metade nao e
@@ -211,14 +271,15 @@ public sealed class CombatState
 	public Func<bool>? EmCinematica;
 
 	/// <summary>
-	/// NAO PODE SER ATINGIDO AGORA -- e as duas razoes moram na MESMA pergunta de proposito.
+	/// NAO PODE SER ATINGIDO AGORA -- e as tres razoes (a carencia, a cinematica e o Majin em pedacos, <see cref="Desfeito"/>)
+	/// moram na MESMA pergunta de proposito.
 	///
 	/// Sao dezoito leitores espalhados pelo servidor (a busca do soco, o arranque, a mira, o varredor
 	/// do projetil, o cone das tecnicas, o embate de ki, o dano em area). Uma segunda propriedade pra
 	/// a imunidade de cinematica significaria visitar os dezoito e acertar todos -- e o que sobrasse
 	/// seria o "as vezes" que ninguem consegue reproduzir.
 	/// </summary>
-	public bool Intocavel => Carencia > 0 || EmCinematica?.Invoke() == true;
+	public bool Intocavel => Carencia > 0 || Desfeito || EmCinematica?.Invoke() == true;
 
 	/// <summary>
 	/// ============================ ESTE CORPO ESTA SENDO ARREMESSADO AGORA? ============================
@@ -442,6 +503,8 @@ public sealed class CombatState
 		// e o que ela quis dizer.
 		bool armado = NocauteRestante > 0;
 		if (armado) NocauteRestante = Math.Max(0, NocauteRestante - dt);
+		// O PISO DO DESMAIO anda junto -- ver `SegundosMinimosDoDesmaio`.
+		if (DesmaioMinimo > 0) DesmaioMinimo = Math.Max(0, DesmaioMinimo - dt);
 
 		// ============================ QUEM ACORDA O CORPO E A CURA, E DEPOIS O TETO ============================
 		// A ordem e a de `Injuries.dm:277-289`, e ela e ESTA e nao a inversa: o coma por nucleo acaba
@@ -451,7 +514,7 @@ public sealed class CombatState
 		// `DeveMorrer()` entra junto porque um nucleo DECEPADO nao satisfaz `DeveNocautear()` -- ele
 		// nao esta "abaixo do limiar", ele nao esta. E o coma do Majin sem cabeca, e ele nao pode
 		// terminar pela primeira pergunta.
-		if (NocautePorVital && !Corpo.DeveNocautear() && !Corpo.DeveMorrer()) Levantar();
+		if (NocautePorVital && DesmaioMinimo <= 0 && !Corpo.DeveNocautear() && !Corpo.DeveMorrer()) Levantar();
 		else if (armado && NocauteRestante == 0) Levantar();
 	}
 
@@ -551,6 +614,8 @@ public sealed class CombatState
 		TempoDeGuarda = 0;
 		NocauteRestante = segundos;
 		NocautePorVital = porVital;
+		// (2026-10-15) O PISO DO DESMAIO, so no nocaute por nucleo -- o unico que a cura encerra (ver `SegundosMinimosDoDesmaio`).
+		DesmaioMinimo = porVital && !DesmaioSemMinimoDeTeste ? SegundosMinimosDoDesmaio : 0;
 	}
 
 	/// <summary>
@@ -575,6 +640,17 @@ public sealed class CombatState
 		F.KO = false;
 		NocauteRestante = 0;
 		NocautePorVital = false;
+		DesmaioMinimo = 0;
+
+		// (2026-10-15) O MAJIN QUE SE REFAZ volta INTEIRO: `SpreadHeal(100,1,0)` e todo membro decepado refeito
+		// (`DeathRegen.dm:58` e `:71-73`) -- e nao os 25 pontos do `Un_KO` de quem so desmaiou.
+		if (Desfeito)
+		{
+			Desfeito = false;
+			Corpo.Restaurar();
+			SincronizarVida();
+			return;
+		}
 
 		Corpo.CurarVitais(CuraDeAcordar);
 
@@ -593,6 +669,34 @@ public sealed class CombatState
 
 	/// <summary>O `SpreadHeal(25,1,1)` de `Un_KO` (`KO.dm:133`). Vinte e cinco, e so nos vitais.</summary>
 	public const double CuraDeAcordar = 25;
+
+	/// <summary>
+	/// O NUCLEO CEDEU DE VEZ (<see cref="Body.DeveMorrer"/>) -- e agora? A pergunta UNICA, que o soco, o tiro e o dano
+	/// direto fazem do mesmo jeito (`MeleeResolver.AplicarNoMembro` e `GameServer.ConsequenciaDoDano`):
+	///   * o corpo comum MORRE;
+	///   * a raca que refaz membro (o `canheallopped`) cai em COMA ate o nucleo voltar (`Injuries.dm:276-285`);
+	///   * o Majin SE DESFAZ em pedacos (<see cref="Desfeito"/>) -- menos quando foi o KI: *"morrer pra ki é oq mata
+	///     definitivamente"* (dono, 2026-10-15).
+	/// </summary>
+	/// <param name="porKi">O golpe era de ki: o tiro, o raio, a explosao de ki. O soco, a tecnica de corpo, a bomba, nao.</param>
+	public FimDoNucleo QuandoONucleoCede(bool porKi)
+	{
+		if (!Corpo.RegeneraDecepado) return FimDoNucleo.Morre;
+		if (MajinNaoSeDesfazDeTeste || SeDesfazAoMorrer?.Invoke(this) != true) return FimDoNucleo.Coma;
+		return porKi ? FimDoNucleo.Morre : FimDoNucleo.SeDesfaz;
+	}
+
+	/// <summary>
+	/// SE DESFAZ: cai pelo RELOGIO do nocaute (<see cref="SegundosDesfeito"/>, e nao pelo nucleo -- o corpo nem esta
+	/// inteiro pra "sarar acima da linha"), fica <see cref="Intocavel"/>, e quem o levanta e o <see cref="Levantar"/>, que
+	/// o devolve inteiro. Avisa quem ouve (<see cref="AoSeDesfazer"/>) depois de tudo escrito.
+	/// </summary>
+	public void Desfazer()
+	{
+		Nocautear(SegundosDesfeito, porVital: false);
+		Desfeito = true;
+		AoSeDesfazer?.Invoke(this);
+	}
 
 	/// <summary>
 	/// ALGUEM PODE NEGAR ESTA MORTE. Devolve true quando negou -- e ai o corpo NAO morre.
@@ -680,6 +784,8 @@ public sealed class CombatState
 
 		F.dead = true;
 		F.KO = false;
+		Desfeito = false;   // (2026-10-15) quem morre de vez nao fica em pedacos
+		DesmaioMinimo = 0;
 		// O TREINO E A MEDITACAO DESLIGAM: o `Death()` do DM comeca por `KO(-1)`, e `KO()` faz
 		// `train = 0; med = 0` (`KO.dm:57-58`). Sem isto quem morria com a tecla T ligada seguia
 		// ganhando BP no Outro Mundo -- e o cliente nunca manda "parado", porque o morto nem le acoes.
@@ -700,6 +806,8 @@ public sealed class CombatState
 	{
 		F.dead = false;
 		F.KO = false;
+		Desfeito = false;
+		DesmaioMinimo = 0;
 		// `hakai_mark = 0` (`Death.dm:148`, no `ReviveMe`): a marca do Hakai morre junto com a volta a vida, por
 		// QUALQUER porta -- o Enma, as esferas, a tecnica de reviver. Ver `Fighter.hakai_mark`.
 		F.hakai_mark = false;
@@ -722,6 +830,8 @@ public sealed class CombatState
 	public void Curar(double carencia = 0)
 	{
 		F.KO = false;
+		Desfeito = false;
+		DesmaioMinimo = 0;
 		Carencia = carencia;
 		Corpo.Restaurar();
 		SincronizarVida();

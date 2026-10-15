@@ -33,9 +33,6 @@ public partial class GameServer
 	/// </summary>
 	private const double TetoDoAndroideAbsorcao = 2;
 
-	/// <summary>`Ki += MaxKi * 0.02` a cada `sleep(5)` -- 2% por meio segundo, ou 4% por segundo.</summary>
-	private const double RegenDoNucleoInfinito = 0.04;
-
 	// =====================================================================
 	// A ENERGIA INFINITA
 	// =====================================================================
@@ -48,9 +45,9 @@ public partial class GameServer
 	/// re-arma-lo (`:705`). Aqui ele e uma passada do tique de 1 Hz sobre quem tem a classe -- nao ha
 	/// laco pra morrer, nao ha o que re-armar no login, e o dono da conta reconecta ja funcionando.
 	///
-	/// A TAXA E A MESMA: 2% do `MaxKi` por meio segundo sao 4% por segundo. Escrever 2% aqui teria
-	/// cortado a regeneracao pela metade calada -- e o erro classico de portar um `sleep` sem
-	/// converter a cadencia.
+	/// (2026-10-15) O KI NAO SE ENCHE MAIS AOS POUCOS: o dono quer o vigor E o Ki do androide perpetuo sempre no cheio
+	/// (`Nutricao.ManterOsInfinitos`, que o tique do corpo chama a 30 Hz). O `Ki += MaxKi * 0.02` a cada meio segundo do
+	/// original saiu; daqui o cadeado so passa de novo, e a fome continua sendo deste relogio.
 	/// ============================================================================================================
 	///
 	/// **NUNCA MAIS COME E NUNCA MAIS CANSA**, e as duas sao afirmacoes e nao somas: `stamina =
@@ -64,9 +61,8 @@ public partial class GameServer
 			Fighter f = pl.Ficha;
 			if (!f.AndroideInfinito || f.dead) continue;
 
-			f.stamina = f.maxstamina;
+			Nutricao.ManterOsInfinitos(f);
 			f.CurrentNutrition = Nutricao.Tanque(f.Metabolism);
-			if (f.Ki < f.MaxKi) f.Ki = Math.Min(f.MaxKi, f.Ki + f.MaxKi * RegenDoNucleoInfinito);
 		}
 	}
 

@@ -48,6 +48,12 @@ public sealed class PapelDeNpc(MoldeDeNpc molde, ulong semente)
 	public int Estagio;
 
 	/// <summary>
+	/// (v0.3.0) ESTE CORPO E O CHEFE QUE UMA SAGA POS NO MUNDO (`GameServer.Sagas`) -- e nao o mesmo molde nascido de um
+	/// admin, de uma bancada, ou o Bills e o Whis na casa deles. O chefe de saga caca o planeta inteiro (`PresaDoHostil`).
+	/// </summary>
+	public bool DaSaga;
+
+	/// <summary>
 	/// ============================ O BP PINADO PELA SAGA, DEGRAU A DEGRAU ============================
 	/// Vazio no corpo comum (e no chefe nascido fora de uma saga -- admin, bancada): ai o BP e o da
 	/// ficha do `npcs.json`, lido direto. Preenchido pela cadeia de sagas com o vetor que ela resolveu

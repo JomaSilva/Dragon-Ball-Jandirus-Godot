@@ -53,6 +53,20 @@ public sealed class BodyPart
 	/// </summary>
 	public bool Perdido;
 
+	/// <summary>
+	/// (2026-10-15) QUANTOS SEGUNDOS AINDA FALTAM PRA A FERIDA DESTE MEMBRO PERDIDO DE VEZ FECHAR. O rabo do Saiyajin que
+	/// nao volta nasce com `RaboDoSaiyajin.SegundosDaFerida` e o servidor desconta a 1 Hz; zerado, o toco cicatrizou
+	/// (<see cref="CicatrizouDeVez"/>). So vale pra quem tem <see cref="Perdido"/>.
+	/// </summary>
+	public double FeridaAberta;
+
+	/// <summary>
+	/// PERDIDO, ARRANCADO E JA CICATRIZADO: o membro sai da conta das feridas e do boneco do HUD -- o corpo de agora
+	/// simplesmente nao o tem. Dono: *"passou de uns 10 minutos do rabo arrancado eternamente, ele deve sumir o efeito de
+	/// ferido"*.
+	/// </summary>
+	public bool CicatrizouDeVez => Perdido && Decepado && FeridaAberta <= 0;
+
 	/// <summary>Peso no sorteio de qual membro o golpe pega.</summary>
 	public double Chance = 100;
 
@@ -534,6 +548,7 @@ public sealed class Body
 			p.VidaMax = dele.VidaMax;
 			p.Decepado = dele.Decepado;
 			p.Perdido = dele.Perdido;
+			p.FeridaAberta = dele.FeridaAberta;
 		}
 	}
 }

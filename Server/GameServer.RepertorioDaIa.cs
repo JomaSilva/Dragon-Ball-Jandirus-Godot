@@ -188,12 +188,20 @@ public partial class GameServer
 	private const long MsEntreApertosDaIa = 3000;
 
 	/// <summary>
-	/// O CORPO ESTA COM AS MAOS OCUPADAS POR UM ATAQUE DE KI? O raio canalizado, a disputa de feixes, ou uma
-	/// tecnica que se segura a espera do segundo aperto. O cerebro NAO SABE disso -- ele continua mandando --, e
-	/// quem recusa por ele e o atuador (`AplicarComando`, onde esta contado por que).
+	/// O CORPO ESTA COM AS MAOS OCUPADAS POR UM ATAQUE DE KI? O raio canalizado, a disputa de feixes, uma tecnica que se
+	/// segura a espera do segundo aperto, ou (v0.3.0) a SUPERNOVA do ultimato erguida sobre a cabeca. O cerebro NAO SABE
+	/// disso -- ele continua mandando --, e quem recusa por ele e o atuador (`AplicarComando`, onde esta contado por que).
+	///
+	/// A SUPERNOVA PRECISAVA DESTA PORTA, e nao so da cena: a cena prende o PASSO (`PodeMexerOCorpo`), mas o soco tem a
+	/// investida dele (`Atacar` -> `Aproximar`) e a tecnica nao passa pelo passo. Medido na `--diagv030`: o Freeza erguendo
+	/// o sol nocauteou o jogador a cinco tiles.
 	/// </summary>
 	private bool MaosOcupadasDaIa(ServerPlayer npc) =>
-		EnraizadoPorKi(npc.Id) || _emEmbateDeKi.ContainsKey(npc.Id) || _segundoApertoDaIa.ContainsKey(npc.Id);
+		EnraizadoPorKi(npc.Id) || _emEmbateDeKi.ContainsKey(npc.Id) || _segundoApertoDaIa.ContainsKey(npc.Id)
+		|| (npc.SupernovaDesde != 0 && !SupernovaComAsMaosLivresDeTeste);
+
+	/// <summary>DEFEITO INJETADO (bancada `--v030teste`, familia U): a Supernova nao ocupa as maos -- o chefe investe, soca e atira com o sol erguido.</summary>
+	internal static bool SupernovaComAsMaosLivresDeTeste;
 
 	/// <summary>Esta tecnica e das que se seguram, e o corpo a esta segurando agora?</summary>
 	private bool AindaSeSegura(ServerPlayer pl) => BlastingG12(pl.Id) || _rugindo.ContainsKey(pl.Id);

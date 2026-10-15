@@ -100,6 +100,7 @@ public partial class TelaDeInventario : CanvasLayer
 			cli.MochilaMudou += AoMudarMochila;
 			cli.CarteiraMudou += AoMudarMochila;   // a fileira da carteira mostra os dois saldos
 			cli.SaqueAberto += AbrirSaque;
+			cli.AtributosRecebidos += AoMudarAtributos;   // (2026-10-15) a arte dos pesos chega pela ficha lenta
 		}
 	}
 
@@ -111,9 +112,19 @@ public partial class TelaDeInventario : CanvasLayer
 		cli.MochilaMudou -= AoMudarMochila;
 		cli.CarteiraMudou -= AoMudarMochila;
 		cli.SaqueAberto -= AbrirSaque;
+		cli.AtributosRecebidos -= AoMudarAtributos;
 	}
 
 	private void AoMudarMochila() { if (_raiz.Visible) Redesenhar(); }
+
+	/// <summary>A arte dos pesos com que a grade foi desenhada da ultima vez.</summary>
+	private string _arteDosPesosDesenhada = "";
+
+	/// <summary>(2026-10-15) A ARTE DOS PESOS CHEGA PELA FICHA LENTA: com a mochila aberta e a arte nova, o icone e redesenhado.</summary>
+	private void AoMudarAtributos(Jandirus.Net.Protocol.AtributosState a)
+	{
+		if (_raiz.Visible && (a.PesoArte ?? "") != _arteDosPesosDesenhada) Redesenhar();
+	}
 
 	private void Montar()
 	{
@@ -268,6 +279,7 @@ public partial class TelaDeInventario : CanvasLayer
 
 	private void Redesenhar()
 	{
+		_arteDosPesosDesenhada = GameClient.Instance?.Atributos.PesoArte ?? "";
 		FecharAcoes();
 		foreach (Node n in _grade.GetChildren()) n.QueueFree();
 		foreach (Node n in _vestindo.GetChildren()) n.QueueFree();
@@ -406,6 +418,7 @@ public partial class TelaDeInventario : CanvasLayer
 
 		PorIcone(botao, def, RoupaGuardada.Ler(pilha.Id)?.Cor);
 
+		botao.SetMeta("item", pilha.Id);   // o id do slot, pra bancada achar o icone (`IconeDoSlotDeTeste`)
 		botao.Pressed += () => AbrirAcoes(pilha, botao);
 		return ComAQuantidade(botao, pilha.Quantidade);
 	}
@@ -442,7 +455,7 @@ public partial class TelaDeInventario : CanvasLayer
 	}
 
 	/// <summary>O icone do item: o carregador unico (<see cref="Miniaturas"/>), o mesmo das abas Equip e Tech.</summary>
-	private static Texture2D? Miniatura(ItemDef def) => Miniaturas.DoItem(def);
+	private static Texture2D? Miniatura(ItemDef def) => Miniaturas.DoItemNaMochila(def, GameClient.Instance?.Atributos.PesoArte ?? "");
 
 	/// <summary>
 	/// POE O DESENHO DO ITEM NO BOTAO DO SLOT -- e, se ele for uma peca de roupa TINGIDA, na cor dela.
@@ -569,6 +582,11 @@ public partial class TelaDeInventario : CanvasLayer
 				// ver `GameServer.ComandoDeItem`.
 				if (a == "ajustar") { AbrirTeclado(def); return; }
 
+				// (v0.3.0) O "EQUIPAR" DOS PESOS veste a porcentagem guardada -- e, sem nenhuma escolhida ainda, pede o numero pelo
+				// mesmo teclado do ajuste (que e quem a guarda). Ver `GameServer.VestirOsPesos`.
+				if (a == "equipar" && def.Id == CatalogoDeItens.Pesos && (GameClient.Instance?.Atributos.PesoPct ?? 0) == 0)
+				{ AbrirTeclado(def); return; }
+
 				// A ARTE DOS PESOS ABRE A MESMA GRADE DA ARMADURA, e o verbo sai de la -- ver `TelaDeArmadura.AbrirPraPesos`.
 				if (a == PesoDeTreino.AcaoArte)
 				{
@@ -660,6 +678,19 @@ public partial class TelaDeInventario : CanvasLayer
 					FecharAcoes();
 				};
 				caixa.AddChild(comRecursos);
+			}
+
+			// (2026-10-15) O LIMITE DO CORPO TAMBEM NAS DUAS MOEDAS, como a melhoria (o botao de cima paga em zeni).
+			if (a == PesoDeTreino.AcaoAteOLimite && !MelhoriaSoComZeniDeTeste && (GameClient.Instance?.Atributos.PesoMelhoriasAteOLimite ?? 0) > 0)
+			{
+				var limiteEmRecursos = new Button { Text = RotuloDoLimiteDosPesos(Jandirus.Core.Economia.Moeda.Recursos) };
+				limiteEmRecursos.SetMeta("moeda", Jandirus.Core.Economia.Recurso.PalavraDeRecursos);
+				limiteEmRecursos.Pressed += () =>
+				{
+					GameClient.Instance?.SendVerbo($"item_{PesoDeTreino.AcaoAteOLimite}", $"{def.Id}/{Jandirus.Core.Economia.Recurso.PalavraDeRecursos}");
+					FecharAcoes();
+				};
+				caixa.AddChild(limiteEmRecursos);
 			}
 		}
 
@@ -819,9 +850,33 @@ public partial class TelaDeInventario : CanvasLayer
 	public static bool MelhoriaSoComZeniDeTeste;
 
 	/// <summary>
+	/// (2026-10-15) "Até o limite do corpo: 50 → 1.600 kg (7.500 zeni)" -- as melhorias que faltam, de uma vez, lidas da
+	/// ficha lenta. Sem nada faltando, diz isso. Ver `PesoDeTreino.AcaoAteOLimite`.
+	/// </summary>
+	internal static string RotuloDoLimiteDosPesos(Jandirus.Core.Economia.Moeda moeda = Jandirus.Core.Economia.Moeda.Zeni)
+	{
+		double max = GameClient.Instance?.Atributos.PesoMaxKg ?? 0;
+		int n = GameClient.Instance?.Atributos.PesoMelhoriasAteOLimite ?? 0;
+		if (n <= 0) return "Até o limite do corpo: já chegou";
+		return $"Até o limite do corpo: {PesoDeTreino.Maximo(max):N0} → {PesoDeTreino.MaximoDepoisDe(max, n):N0} kg "
+			+ $"({Jandirus.Core.Economia.Recurso.PrecoEscrito(PesoDeTreino.PrecoDeVariasEmZeni(max, n), moeda)})";
+	}
+
+	/// <summary>
 	/// "Melhorar: 50 → 100 kg (500 zeni)" -- o proximo degrau do peso maximo e o preco dele, na moeda pedida (em
 	/// recursos e o dobro, como toda melhoria). Ver `PesoDeTreino`.
 	/// </summary>
+	/// <summary>
+	/// (v0.3.0) "Equipar (40% do máximo)" -- a porcentagem que o jogador escolheu da ultima vez, e que o "equipar" veste (dono:
+	/// *"dps de setar a % do peso maximo ele salvaria aquele valor e vc so precisaria clicar na opcao 'equipar'"*). Sem nenhuma
+	/// guardada, o botao pede o numero.
+	/// </summary>
+	internal static string RotuloDoEquiparDosPesos()
+	{
+		int pct = GameClient.Instance?.Atributos.PesoPct ?? 0;
+		return pct > 0 ? $"Equipar ({pct}% do máximo)" : "Equipar (escolha a %)";
+	}
+
 	internal static string RotuloDaMelhoriaDosPesos(Jandirus.Core.Economia.Moeda moeda = Jandirus.Core.Economia.Moeda.Zeni)
 	{
 		double max = GameClient.Instance?.Atributos.PesoMaxKg ?? 0;
@@ -833,6 +888,16 @@ public partial class TelaDeInventario : CanvasLayer
 	/// Os botoes do painel de acoes aberto agora, na ordem: (texto, moeda marcada no botao -- vazia na maioria). SO PRA
 	/// BANCADA (`--diagv021`).
 	/// </summary>
+	/// <summary>O icone que o slot deste item esta mostrando (nulo sem slot). SO PRA BANCADA (`--diagv030`).</summary>
+	public Texture2D? IconeDoSlotDeTeste(string itemId)
+	{
+		if (!IsInstanceValid(_grade)) return null;
+		foreach (Node n in _grade.FindChildren("*", "Button", true, false))
+			if (n is Button b && b.HasMeta("item") && b.GetMeta("item").AsString() == itemId)
+				return b.Icon ?? b.GetChildren().OfType<TextureRect>().FirstOrDefault()?.Texture;
+		return null;
+	}
+
 	public List<(string Texto, string Moeda)> AcoesAbertasDeTeste()
 	{
 		var saida = new List<(string, string)>();
@@ -872,10 +937,13 @@ public partial class TelaDeInventario : CanvasLayer
 		TechDeBolso.BotaoDa(acao, id) is { } daTech ? daTech.RotuloEm(Jandirus.Core.Economia.Moeda.Zeni) : acao switch
 	{
 		"comer" => "Comer",
+		"equipar" when id == CatalogoDeItens.Pesos => RotuloDoEquiparDosPesos(),
 		"equipar" => "Equipar / tirar",
 		"ajustar" => "Ajustar o peso",
 		// O PESO MAXIMO SE COMPRA (dono, 2026-10-12): o botao diz o degrau e o preco, lidos da ficha lenta.
 		"melhorar" => RotuloDaMelhoriaDosPesos(),
+		// (2026-10-15) as melhorias que faltam pro limite do corpo, de uma vez. Ver `PesoDeTreino.AcaoAteOLimite`.
+		PesoDeTreino.AcaoAteOLimite => RotuloDoLimiteDosPesos(),
 		// A FOLHA QUE OS PESOS USAM NO CORPO (dono, 2026-10-13) -- a mesma grade da armadura. Ver `PesoDeTreino.AcaoArte`.
 		PesoDeTreino.AcaoArte => "Escolher a aparência",
 		"tirar" => "Tirar os pesos",

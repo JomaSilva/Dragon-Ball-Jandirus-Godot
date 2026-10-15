@@ -55,7 +55,7 @@ public sealed partial class GameServer
 	private bool TentarParryDeKi(Projetil p, ServerPlayer alvo, ServerPlayer atirador)
 	{
 		CombatState cd = alvo.Combate!;
-		if (p.Fisico || alvo.Ficha.KO || alvo.Ficha.dead || cd.Stun > 0) return false;
+		if (p.Fisico || alvo.Ficha.KO || EhCadaver(alvo) || cd.Stun > 0) return false;
 		if (!cd.Bloqueando || !cd.ContraPronto || cd.TempoDeGuarda > MeleeResolver.JanelaContra) return false;
 
 		// A FORCA: o dobro do poder do tiro. (O defeito injetado e a porta de antes: igual ou mais forte.)

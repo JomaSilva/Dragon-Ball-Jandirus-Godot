@@ -123,6 +123,10 @@ public sealed partial class GameServer
 		{
 			// A MESMA CONTA DO `Pose()`: morto DE PE (no Outro Mundo) volta a ter poses e volta a
 			// andar, entao ele nao e um corpo caido -- e nao pode ser tratado como um.
+			// (2026-10-15) O MAJIN EM PEDACOS: a tela desenha os pedacos por este valor -- ver `CombatState.Desfeito`.
+			Desfeito = pl.Combate?.Desfeito == true,
+			// (v0.3.0) O CHEFE ERGUENDO O SOL DO ULTIMATO: a tela desenha a Supernova por este valor -- ver `ComecarASupernova`.
+			Supernova = pl.SupernovaDesde != 0,
 			Nocauteado = pl.Ficha.KO || (pl.Ficha.dead && !pl.MortoDePe),
 			NoEmbate = _emEmbate.ContainsKey(pl.Id) || _emEmbateDeKi.ContainsKey(pl.Id),
 			EmCena = EmCena(pl),

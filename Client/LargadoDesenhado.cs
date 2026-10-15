@@ -23,6 +23,12 @@ public partial class LargadoDesenhado : Node2D
 	public string Item = "";
 	public double Quantidade;
 
+	/// <summary>(2026-10-15) A folha no lugar da do item -- os pesos largados com a arte do dono deles. Vazia = a do catalogo.</summary>
+	public string Arte = "";
+
+	/// <summary>A folha que este node de fato desenhou. Pra bancada (`--diagv030`).</summary>
+	public string ArteUsadaDeTeste { get; private set; } = "";
+
 	/// <summary>A coisa achou o desenho dela? Falso = o quadradinho de reserva. Pra bancada.</summary>
 	public bool ComArte { get; private set; }
 
@@ -30,7 +36,8 @@ public partial class LargadoDesenhado : Node2D
 	{
 		YSortEnabled = true;
 		const int t = ZoneCollision.TileSize;
-		(string arte, string estado) = Chao.Arte(Tipo, Item);
+		(string arte, string estado) = Arte.Length > 0 ? (Arte, PesoDeTreino.PoseDoIcone) : Chao.Arte(Tipo, Item);
+		ArteUsadaDeTeste = arte;
 
 		if (Tipo == TipoDeLargado.Zeni && arte.Length > 0 && ResourceLoader.Exists(arte) && FolhasPresas.Carregar(arte) is { } folha)
 		{

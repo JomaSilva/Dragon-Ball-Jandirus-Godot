@@ -527,8 +527,9 @@ public partial class GameServer
 
 				DragaoPara(raditz);
 				string[] semPergunta = [.. MenuDe(raditz).Entradas.Where(e => !e.Acao && e.Pode && !e.TemPergunta).Select(e => e.Id)];
-				string[] esperadas = ["nada", "dinheiro", "marcos", "tecnologia", "poder", "inteligencia", "super_saiyajin", "reviver_todos", "supremo"];
-				Checa("(montagem) pra um Saiyajin que NAO ergueu a estatua, num set de 2 pedidos com o supremo, a janela acende as 9 linhas sem pergunta",
+				// (v0.3.0) "Liberar o meu potencial" e de toda raca: o Saiyajin a ve acesa e o laco abaixo a pede
+				string[] esperadas = ["nada", "dinheiro", "marcos", "tecnologia", "poder", "inteligencia", "super_saiyajin", "potencial", "reviver_todos", "supremo"];
+				Checa("(montagem) pra um Saiyajin que NAO ergueu a estatua, num set de 2 pedidos com o supremo, a janela acende as 10 linhas sem pergunta",
 					  semPergunta.ToHashSet().SetEquals(esperadas), string.Join(",", semPergunta));
 
 				var naoConcedeu = new List<string>();
@@ -563,22 +564,36 @@ public partial class GameServer
 				Checa($"JUVENTUDE \"Para mim, extremamente jovem\": {Desejos.IdadeDaJuventudeExtrema} anos",
 					  pediu && raditz.Idade == Desejos.IdadeDaJuventudeExtrema, $"pediu={pediu}, idade {raditz.Idade}");
 
-				// ---- "Liberar o meu potencial" (2026-10-13): so o Namekuseijin ve a linha, e ela da o Orange
+				// ---- "Liberar o meu potencial" (v0.3.0): TODA raca pede -- o Saiyajin ja o pediu no laco de cima e ganhou SO o
+				//      potencial; o Namekuseijin precisa do poder do ki divino dele, e ganha tambem o Mistico e o Orange
+				Checa("'Liberar o meu potencial' acendeu pro Saiyajin (toda raca pede) -- e ele ganhou SO o potencial: nem o Mistico nem o Orange",
+					  raditz.Ficha.unlockPotential >= 1 && !raditz.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico)
+					  && !raditz.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdOrange), $"potencial {raditz.Ficha.unlockPotential}");
+				DragaoPara(raditz);
+				EntradaDoDragao? doSaiyajin = MenuDe(raditz).Entrada("potencial");
+				Checa("...e depois a linha dele vem APAGADA, com o motivo (o potencial e uma vez por vida)",
+					  doSaiyajin is { Pode: false } && doSaiyajin.Motivo.Length > 10, doSaiyajin == null ? "sem linha" : $"pode={doSaiyajin.Pode}");
 				ServerPlayer piccolo = Forjar("Piccolo", pl.Pos, terra, "bancada_menu_n");
 				forjados.Add(piccolo);
 				piccolo.Race = "Namekian"; piccolo.Ficha.Race = "Namekian";
-				Checa("'Liberar o meu potencial' NAO aparece pra quem nao e Namekuseijin", MenuDe(raditz).Entrada("potencial") == null);
 				DragaoPara(piccolo);
 				EntradaDoDragao? potencial = MenuDe(piccolo).Entrada("potencial");
-				Checa("...e pro Namekuseijin ela aparece acesa e sem pergunta", potencial is { Pode: true, TemPergunta: false },
+				Checa("pro Namekuseijin SEM o poder do ki divino ela vem APAGADA, com o motivo -- e o motivo nao diz numero de poder",
+					  potencial is { Pode: false } && potencial.Motivo.Contains("ki divino", StringComparison.Ordinal) && !potencial.Motivo.Any(char.IsDigit),
+					  potencial == null ? "sem linha" : $"pode={potencial.Pode}, motivo={potencial.Motivo}");
+				piccolo.Ficha.BP = Math.Max(piccolo.Ficha.BP, RequisitoDeGodKi(piccolo));
+				DragaoPara(piccolo);
+				potencial = MenuDe(piccolo).Entrada("potencial");
+				Checa("...e com o poder do ki divino ela acende, sem pergunta", potencial is { Pode: true, TemPergunta: false },
 					  potencial == null ? "sem linha" : $"pode={potencial.Pode}, motivo={potencial.Motivo}");
 				pediu = Pedir(piccolo, "potencial");
-				Checa("LIBERAR O POTENCIAL pelo caminho da janela: o potencial desperta e o ORANGE passa a ser dele, por um pedido",
-					  pediu && piccolo.Ficha.unlockPotential >= 1 && piccolo.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdOrange) && set.Pedidos == 1,
+				Checa("LIBERAR O POTENCIAL pelo caminho da janela: o potencial desperta e o MISTICO e o ORANGE passam a ser dele, por um pedido",
+					  pediu && piccolo.Ficha.unlockPotential >= 1 && piccolo.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico)
+					  && piccolo.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdOrange) && set.Pedidos == 1,
 					  $"pediu={pediu}, potencial {piccolo.Ficha.unlockPotential}, pedidos {set.Pedidos}");
 				DragaoPara(piccolo);
 				potencial = MenuDe(piccolo).Entrada("potencial");
-				Checa("...e quem ja o tem ve a linha APAGADA, com o motivo", potencial is { Pode: false } && potencial.Motivo.Length > 10,
+				Checa("...e quem ja tem tudo ve a linha APAGADA, com o motivo", potencial is { Pode: false } && potencial.Motivo.Length > 10,
 					  potencial == null ? "sem linha" : $"pode={potencial.Pode}");
 
 				// A TRAVA DE CONJUNTO: desejo novo na tabela sem prova pelo caminho da janela deixa esta linha vermelha.

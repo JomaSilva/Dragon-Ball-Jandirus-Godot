@@ -42,6 +42,17 @@ public partial class CreationScreen : CanvasLayer
 	/// <summary>O sexo escolhido na etapa propria. "Male" pras racas que nao tem o passo.</summary>
 	private string _generoEscolhido = "Male";
 
+	/// <summary>
+	/// (v0.3.0) A RACA SORTEADA DA VAGA, no modo de racas aleatorias do servidor (`SlotInfo.RacaSorteada`), e a sub-raca dela.
+	/// Vazia = o jogador escolhe. Com ela, as etapas de mundo, raca e linhagem somem (`Etapa.Cabe`) e a criacao abre no berco.
+	/// </summary>
+	private string _racaSorteada = "", _linhagemSorteada = "";
+
+	/// <summary>DEFEITO INJETADO (`--diagv030`, RA): a tela ignora o sorteio na hora de esconder as etapas -- o jogo de antes.</summary>
+	internal static bool EtapasDoSorteioVisiveisDeTeste;
+
+	private bool Sorteada => _racaSorteada.Length > 0 && !EtapasDoSorteioVisiveisDeTeste;
+
 	/// <summary>Qual dos corpos do Frost Demon a grade esta editando (0 = base).</summary>
 	private int _slotDeForma;
 	private HBoxContainer _linhaCorCabelo = null!, _linhaCorPele = null!;
@@ -179,6 +190,12 @@ public partial class CreationScreen : CanvasLayer
 	private readonly List<Etapa> _etapas = [];
 	private int _passo;
 	private Label _tituloEtapa = null!, _dicaEtapa = null!, _trilha = null!;
+
+	/// <summary>
+	/// (v0.3.0) O ANUNCIO DE QUEM NAO PEDIU A CRIACAO: a volta da reencarnacao abre esta tela sozinha, e a frase do Enma fica
+	/// em cima dizendo por que (`Boot.AoSerDespedido`). Vazio, ele nem aparece.
+	/// </summary>
+	private Label _anuncio = null!;
 	private Button _btVoltar = null!, _btAvancar = null!;
 	private VBoxContainer _pilha = null!;
 
@@ -203,6 +220,15 @@ public partial class CreationScreen : CanvasLayer
 		var caixa = new VBoxContainer { CustomMinimumSize = new Vector2(470, 470) };
 		caixa.AddThemeConstantOverride("separation", 7);
 		painel.AddChild(caixa);
+
+		_anuncio = new Label
+		{
+			HorizontalAlignment = HorizontalAlignment.Center,
+			AutowrapMode = TextServer.AutowrapMode.Word,
+			Visible = false,
+		};
+		_anuncio.AddThemeColorOverride("font_color", Tema.Destaque);
+		caixa.AddChild(_anuncio);
 
 		_tituloEtapa = new Label { HorizontalAlignment = HorizontalAlignment.Center };
 		_tituloEtapa.AddThemeFontSizeOverride("font_size", 24);
@@ -269,14 +295,16 @@ public partial class CreationScreen : CanvasLayer
 		// ==========================================================================================
 		_etapas.Add(new Etapa("DE ONDE VEM O SEU POVO?",
 			"O mundo que você escolhe aqui decide quais povos podem te gerar -- onde você "
-			+ "vai acordar quem diz é o seu povo, mais adiante.", PaginaDePlaneta(), () => true));
+			+ "vai acordar quem diz é o seu povo, mais adiante.", PaginaDePlaneta(), () => !Sorteada));
 
+		// (v0.3.0) AS TRES PRIMEIRAS SOMEM COM A RACA SORTEADA: no modo de racas aleatorias do servidor quem decide mundo, raca e
+		// linhagem e o sorteio da vaga (`GameServer.ModoDeRacas.cs`), e uma etapa sem escolha seria um passo a mais sem motivo.
 		_etapas.Add(new Etapa("ESCOLHA SUA RAÇA",
-			"O que você é importa mais que tudo o que vier depois.", PaginaDeRaca(), () => true));
+			"O que você é importa mais que tudo o que vier depois.", PaginaDeRaca(), () => !Sorteada));
 
 		_etapas.Add(new Etapa("LINHAGEM",
 			"O sangue de onde você vem, dentro do seu próprio povo.", PaginaDeLinhagem(),
-			() => CharacterDraft.EscolhasDeClasse(_ficha.Race).Length > 0));
+			() => !Sorteada && CharacterDraft.EscolhasDeClasse(_ficha.Race).Length > 0));
 
 		// O BERCO VEM DEPOIS DA LINHAGEM, e a ordem e a da regra: o planeta e funcao da RACA (e, nas
 		// duas excecoes, da classe que ainda vai ser sorteada). Perguntar antes de a raca existir
@@ -338,8 +366,22 @@ public partial class CreationScreen : CanvasLayer
 		int aqui = _etapas.Take(_passo + 1).Count(x => x.Cabe());
 		_trilha.Text = $"etapa {aqui} de {total}";
 
-		_btVoltar.Text = _passo == 0 ? "Cancelar" : "Voltar";
+		_btVoltar.Text = PrimeiraEtapa ? "Cancelar" : "Voltar";
 		_btAvancar.Text = UltimaEtapa ? "Entrar no mundo" : "Avançar";
+	}
+
+	/// <summary>
+	/// (v0.3.0) NAO HA ETAPA ANTES DESTA pra este personagem? Era `_passo == 0` -- e com a raca sorteada a primeira etapa e o
+	/// berco, e nao o mundo: o "Voltar" da primeira levaria a uma etapa que nao existe pra ele.
+	/// </summary>
+	private bool PrimeiraEtapa
+	{
+		get
+		{
+			for (int i = _passo - 1; i >= 0; i--)
+				if (_etapas[i].Cabe()) return false;
+			return true;
+		}
 	}
 
 	private bool UltimaEtapa
@@ -365,7 +407,7 @@ public partial class CreationScreen : CanvasLayer
 
 	private void Retroceder()
 	{
-		if (_passo == 0) { Visible = false; Cancelado?.Invoke(); return; }
+		if (PrimeiraEtapa) { Visible = false; Cancelado?.Invoke(); return; }
 
 		do { _passo--; } while (_passo > 0 && !_etapas[_passo].Cabe());
 		MostrarEtapa();
@@ -1401,7 +1443,10 @@ public partial class CreationScreen : CanvasLayer
 	/// A tela e montada ANTES, escondida, enquanto ele le a lista de slots -- e abrir vira
 	/// trocar um booleano.
 	/// </summary>
-	public void Reabrir()
+	/// <param name="anuncio">(v0.3.0) A frase que vai em cima -- a do Enma, na volta da reencarnacao. Vazio = nenhuma.</param>
+	/// <param name="racaSorteada">(v0.3.0) A raca sorteada da vaga (modo de racas aleatorias). Vazia = o jogador escolhe.</param>
+	/// <param name="linhagemSorteada">(v0.3.0) A sub-raca sorteada junto (Primal Saiyan, o cla do Namekuseijin), ou vazia.</param>
+	public void Reabrir(string anuncio = "", string racaSorteada = "", string linhagemSorteada = "")
 	{
 		// ZERA O GUARDA-ROUPA. Esta tela nao e destruida (e o que tira a travadinha de abrir) e a
 		// `Appearance` dela e um campo unico: sem isto, criar um segundo personagem comecava com a
@@ -1410,13 +1455,41 @@ public partial class CreationScreen : CanvasLayer
 		foreach (Node n in _gradeRoupa.GetChildren()) if (n is Button b) b.ButtonPressed = false;
 		RedesenharRoupa();
 
+		// (v0.3.0) A RACA SORTEADA ENTRA ANTES DE TUDO: as etapas que sobram (genero, corpo, cabelo, as formas do Frost Demon)
+		// dependem dela, e o mundo de origem vai junto pra ficha nao dizer "Terra" de um Namekuseijin.
+		_racaSorteada = racaSorteada;
+		_linhagemSorteada = linhagemSorteada;
+		if (_racaSorteada.Length > 0)
+		{
+			EscolherPlaneta(SorteioDeRaca.PlanetaDaRaca(_racaSorteada));
+			EscolherRaca(_racaSorteada);
+			_ficha.ChosenClass = _linhagemSorteada;
+		}
+
 		// VOLTA PRA PRIMEIRA ETAPA. A tela nao e destruida entre um personagem e outro, entao sem
 		// isto o segundo comecaria na pagina em que o primeiro terminou -- "QUEM E VOCE?" com tudo
-		// ja preenchido, e as escolhas de mundo e raca do anterior valendo em silencio.
+		// ja preenchido, e as escolhas de mundo e raca do anterior valendo em silencio. (v0.3.0) A primeira QUE EXISTE pra
+		// este personagem: com a raca sorteada, o berco.
 		_passo = 0;
+		while (_passo < _etapas.Count - 1 && !_etapas[_passo].Cabe()) _passo++;
 		MostrarEtapa();
 
 		_erro.Text = "";
+		string sorteio = _racaSorteada.Length > 0
+			? $"Neste servidor a raça é sorteada: você nasceu {NomeBonito(_racaSorteada)}"
+			  + (_linhagemSorteada.Length > 0 ? $" ({_linhagemSorteada})" : "") + "."
+			: "";
+		string texto = anuncio.Length > 0 && sorteio.Length > 0 ? anuncio + "\n" + sorteio : anuncio + sorteio;
+		_anuncio.Text = texto;
+		_anuncio.Visible = texto.Length > 0;
 		Visible = true;
 	}
+
+	/// <summary>(v0.3.0) O titulo da etapa na tela, a trilha e a raca/linhagem da ficha. Pra bancada `--diagv030` (RA).</summary>
+	internal string TituloDaEtapaDeTeste => _tituloEtapa.Text;
+	internal string TrilhaDeTeste => _trilha.Text;
+	internal (string Raca, string Linhagem) FichaDeTeste => (_ficha.Race, _ficha.ChosenClass);
+
+	/// <summary>O anuncio que esta na tela agora (vazio = nenhum). Pra bancada `--diagv030`.</summary>
+	internal string AnuncioDeTeste => _anuncio != null && _anuncio.Visible ? _anuncio.Text : "";
 }

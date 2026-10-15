@@ -632,7 +632,7 @@ public sealed partial class GameServer
 		{
 			alvo = Marcado(pl);
 			// `if(T && !T.dead && T.z == z && T != src)` -- a mesma tripla do DM (`:533`).
-			if (alvo == null || alvo == pl || alvo.Ficha.dead || !alvo.Zone.Equals(pl.Zone))
+			if (alvo == null || alvo == pl || EhCadaver(alvo) || !alvo.Zone.Equals(pl.Zone))
 			{
 				alvo = null;
 				// O aviso e do original, literal (`:536`): sem ele o jogador acha que a tecnica

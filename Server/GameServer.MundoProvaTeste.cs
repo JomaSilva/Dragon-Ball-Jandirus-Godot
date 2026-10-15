@@ -1144,7 +1144,9 @@ public partial class GameServer
 		MoldeDeNpc cidadao = _moldes!.Get("cidadao")!;
 		var fila = new List<(string, ulong, string, string, ulong)>();
 
-		foreach (LinhaDePovoamento linha in _moldes.Plano)
+		// SO AS LINHAS DO CIDADAO: a semente aqui e montada com o molde dele, e a do Rei e do Principe de Vegeta (v0.3.0, uma
+		// cada, com a roupa cravada) sai do molde DELES -- contar o cidadao de novo naquelas linhas repetiria as de Vegeta.
+		foreach (LinhaDePovoamento linha in _moldes.Plano.Where(l => l.Molde == cidadao.Id))
 		{
 			var zona = ZoneKey.Premade(linha.Planeta);
 			for (ulong lugar = 1; lugar <= LugaresDeReposicao; lugar++)
@@ -1345,7 +1347,9 @@ public partial class GameServer
 		var linhas = new List<string>();
 		MoldeDeNpc cidadao = _moldes!.Get("cidadao")!;
 
-		foreach (LinhaDePovoamento linha in _moldes.Plano)
+		// SO AS LINHAS DO CIDADAO: a semente aqui e montada com o molde dele, e a do Rei e do Principe de Vegeta (v0.3.0, uma
+		// cada, com a roupa cravada) sai do molde DELES -- contar o cidadao de novo naquelas linhas repetiria as de Vegeta.
+		foreach (LinhaDePovoamento linha in _moldes.Plano.Where(l => l.Molde == cidadao.Id))
 		{
 			var zona = ZoneKey.Premade(linha.Planeta);
 			for (ulong lugar = 1; lugar <= HabitantesPorPlaneta; lugar++)

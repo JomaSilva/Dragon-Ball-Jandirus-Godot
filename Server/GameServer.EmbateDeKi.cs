@@ -250,7 +250,7 @@ public sealed partial class GameServer
 		if (EmbateDeKi.RevancheProibidaDeTeste && p.JaDisputou) return false;
 		if (!p.Canalizando) return false;
 		if (!_players.TryGetValue(p.Dono, out ServerPlayer? d)) return false;
-		if (d.Ficha.dead || d.Ficha.KO) return false;
+		if (EhCadaver(d) || d.Ficha.KO) return false;
 		if (_emEmbateDeKi.ContainsKey(d.Id) || _emEmbate.ContainsKey(d.Id)) return false;
 		// NEM DANCANDO -- ver a mesma guarda no `TentarEmbate` do ZanzoClash: o canal de letra e um so.
 		if (EstaDancando(d.Id)) return false;
@@ -295,7 +295,7 @@ public sealed partial class GameServer
 		if (p.JaDisputou) return false;
 		if (!PodeDisputar(p, out ServerPlayer? dono) || dono == null) return false;
 		if (alvo.Combate is not { Bloqueando: true }) return false;
-		if (alvo.Ficha.dead || alvo.Ficha.KO || alvo.Combate.Stun > 0) return false;
+		if (EhCadaver(alvo) || alvo.Ficha.KO || alvo.Combate.Stun > 0) return false;
 		if (_emEmbateDeKi.ContainsKey(alvo.Id) || _emEmbate.ContainsKey(alvo.Id)) return false;
 		if (EstaDancando(alvo.Id)) return false;
 		// QUEM ESTA NO AR DE UM ARREMESSO (ou sendo levado por outro feixe) NAO SEGURA NADA (2026-10-07): a
@@ -791,7 +791,7 @@ public sealed partial class GameServer
 	private bool LadoOk(LadoDeKi l)
 	{
 		ServerPlayer p = l.Quem;
-		if (!_players.ContainsKey(p.Id) || p.Ficha.dead || p.Ficha.KO) return false;
+		if (!_players.ContainsKey(p.Id) || EhCadaver(p) || p.Ficha.KO) return false;
 		if (p.Ficha.Ki <= 1) return false;
 
 		if (l.DeMaos) return p.Combate is { Bloqueando: true };
@@ -1170,7 +1170,7 @@ public sealed partial class GameServer
 		var vitimas = new List<ServerPlayer>();
 		void Juntar(ServerPlayer p)
 		{
-			if (p.Ficha.dead || p.Combate is not { Intocavel: false }) return;
+			if (EhCadaver(p) || p.Combate is not { Intocavel: false }) return;
 			if (!vitimas.Contains(p)) vitimas.Add(p);
 		}
 		Juntar(d.A.Quem);
@@ -1221,7 +1221,7 @@ public sealed partial class GameServer
 
 				double cheio = DanoDeKi.Final(h.ModsAgora(), h.BaseDano, h.MaxDano, h.Bp,
 											  cv, cv.Bloqueando, h.Fisico);
-				EspalharDanoG3(v, autor, EmbateDeKi.DanoDoEstouro(cheio, dist), letal: h.Letal);
+				EspalharDanoG3(v, autor, EmbateDeKi.DanoDoEstouro(cheio, dist), letal: h.Letal, porKi: !h.Fisico);
 			}
 		}
 
@@ -1234,7 +1234,7 @@ public sealed partial class GameServer
 
 		foreach (ServerPlayer v in vitimas)
 		{
-			if (v.Ficha.dead) continue;   // quem a onda ja matou nao voa: o corpo fica
+			if (EhCadaver(v)) continue;   // quem a onda ja matou nao voa: o corpo fica (o fantasma de pe voa)
 
 			Vec2 fora = v.Pos - d.PontoNoChao;
 			fora = fora.LengthSquared > 1e-4f ? fora.Normalized() : d.Eixo;
@@ -1438,7 +1438,7 @@ public sealed partial class GameServer
 		// dirige e o cerebro. Antes a fera de um jogador que sabia o raio levava o feixe de frente, de bracos abertos.
 		if (npc.Peer != null && npc.Cerebro == null) return;
 		if (_canais.ContainsKey(npc.Id)) return;                       // ja esta com um raio na mao
-		if (npc.Ficha.KO || npc.Ficha.dead) return;
+		if (npc.Ficha.KO || EhCadaver(npc)) return;
 		if (_emEmbateDeKi.ContainsKey(npc.Id) || _emEmbate.ContainsKey(npc.Id)) return;
 		if (_contraFeixeLivreEm.TryGetValue(npc.Id, out long livre) && agora < livre) return;
 

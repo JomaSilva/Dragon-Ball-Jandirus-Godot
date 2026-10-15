@@ -193,6 +193,20 @@ public partial class CharacterSelect : CanvasLayer
             livre.AddThemeColorOverride("font_color", Tema.TextoFraco);
             caixa.AddChild(livre);
 
+            // (v0.3.0) O MODO DE RACAS ALEATORIAS: a vaga ja vem com a raca sorteada (`GameServer.ModoDeRacas.cs`).
+            if (!string.IsNullOrEmpty(s.RacaSorteada))
+            {
+                var sorteada = new Label
+                {
+                    Text = $"raça sorteada: {Jandirus.Core.Races.NomeDaRaca.Bonito(s.RacaSorteada)}"
+                         + (string.IsNullOrEmpty(s.LinhagemSorteada) ? "" : $" ({s.LinhagemSorteada})"),
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    AutowrapMode = TextServer.AutowrapMode.Word,
+                };
+                sorteada.AddThemeColorOverride("font_color", Tema.Destaque);
+                caixa.AddChild(sorteada);
+            }
+
             caixa.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
             var criar = new Button { Text = "Criar personagem" };
             int alvo = indice;

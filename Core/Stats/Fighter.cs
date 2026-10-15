@@ -610,6 +610,13 @@ public sealed partial class Fighter
 	public long hell_lockout_until;
 
 	/// <summary>
+	/// (v0.3.0) ATE QUANDO ESTE MORTO VISITA OS VIVOS -- o passe do Enma (100.000 zeni, sete dias do jogo), em ms do relogio
+	/// do servidor, como a pena do Inferno logo acima. Zero = sem passe. Quem escreve e o Enma
+	/// (`GameServer.EnmaPasse`); quem apaga e o relogio do passe, a volta a vida e o "morrer de novo". Nao existe no DM.
+	/// </summary>
+	public long passe_do_enma_ate;
+
+	/// <summary>
 	/// ATE QUANDO ESTE CORPO NAO PODE FUNDIR DE NOVO -- o `fusion_cooldown_until` do DM
 	/// (`Fusion.dm:28`), em ms de relogio real (a mesma unidade do
 	/// <see cref="zeni_revive_debuff_until"/> logo acima).
@@ -708,6 +715,19 @@ public sealed partial class Fighter
 	/// ======================================================================================
 	/// </summary>
 	public bool bio_dna_respira;
+
+	/// <summary>
+	/// (v0.3.0) AS RACAS DOADORAS -- o sangue que este bio carrega, gravado no parto (a fornada morre nele, pelo motivo do
+	/// <see cref="bio_dna_respira"/>). E daqui que saem as passivas e as arvores raciais dele: ver
+	/// <see cref="Jandirus.Core.Races.SangueDoBio"/>. Vazia no bio de antes da v0.3.0 (dele so o <see cref="bio_saiyan_dna"/>).
+	/// </summary>
+	public List<string> bio_racas_dna = [];
+
+	/// <summary>
+	/// (v0.3.0) UMA DOADORA ERA UM ANDROIDE DE ENERGIA INFINITA (`AndroideInfinito`): o vigor e o ki deste bio nao baixam de
+	/// 100%. Ver <see cref="Jandirus.Core.Races.SangueDoBio.InfinitoNoSangue"/>.
+	/// </summary>
+	public bool bio_dna_infinito;
 
 	/// <summary>Quantos JOGADORES absorvidos desde a ultima evolucao. NPC vale meio.</summary>
 	public double bio_abs_players;
@@ -834,6 +854,20 @@ public sealed partial class Fighter
 	/// 2026-10-13). Vazio = a de fabrica (`PesoDeTreino.ArtePadrao`). Vai pro save com a ficha, como o peso maximo.
 	/// </summary>
 	public string pesoArte = "";
+
+	/// <summary>
+	/// (v0.3.0) A PORCENTAGEM DO PESO MAXIMO QUE O JOGADOR ESCOLHEU da ultima vez (0 a 100; zero = nunca escolheu) -- o `pounds`
+	/// dos pesos do DM (`Tier 1.dm:110`), guardado: o "equipar" da mochila veste com ela (dono, 2026-10-15). Quem escreve e o
+	/// "ajustar" (`GameServer.AjustarPeso`); tirar os pesos nao a apaga. Vai pro save com a ficha, como o peso maximo.
+	/// </summary>
+	public double pesoPct;
+
+	/// <summary>
+	/// (v0.3.0) O KI DE UM CHEFE DE SAGA NAO ACABA -- dono, 2026-10-15: *"faça boss de saga de ki infinito pra deixar mais
+	/// desafiador"*. Ligado no nascimento do chefe (`GameServer.NascerChefeDaSaga`); quem o le e o cadeado do corpo
+	/// (`Nutricao.KiSempreCheio`). E de corpo de NPC: jogador nenhum nasce com ele.
+	/// </summary>
+	public bool KiDeChefe;
 
 	/// <summary>
 	/// ESTE CORPO VESTE UMA ARMADURA QUE O PROTEGE? Quem escreve e o servidor, a cada tique de ficha, olhando a roupa

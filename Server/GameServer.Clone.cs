@@ -352,6 +352,9 @@ public partial class GameServer
 			double dtDaMente = dt;
 			if (LongeDeTodos(npc))
 			{
+				// (v0.3.0) A MARCA DO FIO: longe NESTE tique. O snapshot so manda este corpo no tique em que ele pensa -- a
+				// mesma fase da linha de baixo. Ver `GameServer.CorposDoSnapshot`.
+				npc.LongeNoTique = _tiquesDosCorpos;
 				int divisor = Math.Max(1, _rotina.DivisorDeLonge);
 				if ((_tiquesDosCorpos + (ulong)npc.Id) % (ulong)divisor != 0) continue;
 				dtDaMente = dt * divisor;
@@ -1008,6 +1011,23 @@ public partial class GameServer
 	private const float RaioDePerseguicao = 60 * Jandirus.Core.World.ZoneCollision.TileSize;
 
 	/// <summary>
+	/// (v0.3.0, item 5) O CHEFE DE SAGA CACA O PLANETA INTEIRO. O dono (2026-10-15): *"a IA dos boss (tipo freeza etc) esta
+	/// bem ruim, as vezes eles ficam perdidos no que fazer, eles precisam ser mais inteligentes que IA de npc normal"*. O
+	/// hostil comum nota quem passa a vinte tiles (`MAX_AGGRO_RANGE`) e larga a sessenta (o leash) -- e o Freeza de uma saga,
+	/// que veio ao planeta pelos jogadores dele, ficava parado do outro lado do mapa esperando alguem chegar perto. O chefe
+	/// que a SAGA pos no mundo (`PapelDeNpc.DaSaga`) nota e persegue qualquer um na zona; o mesmo molde nascido fora de uma
+	/// saga (admin, bancada, o Bills e o Whis na casa deles) continua com os raios do hostil comum.
+	///
+	/// DIVERGENCIA DECLARADA, e ela vai ALEM do DM: la o chefe de evento ja tinha um raio maior que o de todo NPC
+	/// (`BEV_BOSS_AGGRO_DIST 40`, BossEvents.dm:28, com `AIAlwaysActive = 1` -- *"caca players a vista"*, :174), e o port
+	/// dava a ele os 20/60 do hostil comum. Agora ele nao tem raio nenhum dentro do planeta dele.
+	/// </summary>
+	private static bool CacaOPlaneta(ServerPlayer npc) => !ChefeComRaioComumDeTeste && npc.Papel is { DaSaga: true };
+
+	/// <summary>DEFEITO INJETADO (bancada `--diagv030`): o chefe de saga volta ao raio do hostil comum -- parado do outro lado do planeta.</summary>
+	internal static bool ChefeComRaioComumDeTeste;
+
+	/// <summary>
 	/// ATRAS DE QUEM UM NPC HOSTIL VAI -- **dentro de um raio**, que e o que faltava.
 	///
 	/// ============================ O CHEFE CACAVA A ZONA INTEIRA, E NENHUM NPC DO DM FAZ ISSO ============================
@@ -1032,6 +1052,9 @@ public partial class GameServer
 	/// O CUSTO E O MESMO de antes: uma varredura da lista da zona, e ela agora tem uma SAIDA CURTA
 	/// -- quem ja tem presa engajada e valida responde num `TryGetValue`, sem varrer nada. Numa saga
 	/// em andamento (o caso comum) isso troca a varredura por uma consulta.
+	///
+	/// (v0.3.0) A EXCECAO E O CHEFE DE SAGA, por pedido do dono: ele volta a cacar a zona inteira -- ver
+	/// `CacaOPlaneta`, logo acima. O hostil comum continua com os dois raios do DM.
 	/// </summary>
 	private ServerPlayer? PresaDoHostil(ServerPlayer npc)
 	{
@@ -1043,12 +1066,13 @@ public partial class GameServer
 			&& engajada.Id != npc.Id && EhJogador(engajada)
 			&& !engajada.Ficha.dead && !engajada.Ficha.KO
 			&& engajada.Zone.Hash == npc.Zone.Hash
-			&& (engajada.Pos - npc.Pos).LengthSquared <= RaioDePerseguicao * RaioDePerseguicao)
+			&& (CacaOPlaneta(npc) || (engajada.Pos - npc.Pos).LengthSquared <= RaioDePerseguicao * RaioDePerseguicao))
 			return engajada;
 
 		// --- 2. NOTAR ALGUEM: o corpo em pe mais proximo DENTRO do raio -----
 		ServerPlayer? melhor = null;
-		float perto = RaioDeAgressao * RaioDeAgressao;
+		// (v0.3.0) O CHEFE DE SAGA NOTA QUEM ESTA NO PLANETA, e nao so quem passa a vinte tiles -- ver `CacaOPlaneta`.
+		float perto = CacaOPlaneta(npc) ? float.MaxValue : RaioDeAgressao * RaioDeAgressao;
 		foreach (ServerPlayer o in ZoneList(npc.Zone.Hash))
 		{
 			if (o.Id == npc.Id || !EhJogador(o) || o.Ficha.dead || o.Ficha.KO) continue;

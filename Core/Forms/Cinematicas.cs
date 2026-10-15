@@ -3383,6 +3383,78 @@ public static class Cinematicas
 		_ => null,
 	};
 
+	// ---------------------------------------------------------------------------
+	// (v0.3.0) OS CHEFES DE SAGA QUE MUDAM DE CORPO -- o pedido de 2026-10-15
+	// ---------------------------------------------------------------------------
+	// ============================ "QUANDO BOSS SE TRANSFORMA ELE TEM CINEMATICA IGUAL UM PLAYER" ============================
+	// O dono: *"E n esqueça q quando boss se transoforma ele tem cinematica igual um player"*. O degrau de chefe que entra
+	// numa FORMA do catalogo ja passava pelo funil do jogador (`GameServer.AnunciarForma`, a cena da forma). O que ficava
+	// mudo era o degrau que troca o CORPO (o Freeza das cinco formas, `BEV_FREEZA2_ICONS`) e o que nao trocava nada visivel (o
+	// Cell semi-perfeito e perfeito): sprite trocado no meio da luta e uma linha no chat.
+	//
+	// AS CENAS SAO AS DE JOGADOR, e nao cenas novas por chefe:
+	//   * o Cell evolui pela MESMA cena do bio-androide jogador que evolui (`BioSemiPerfeito`, `BioPerfeito`) -- e o mesmo
+	//     corpo virando a mesma coisa;
+	//   * o corpo novo de um chefe e o SURTO da escada do Frost Demon (`SurtoCurto`, 2,5 s), e a forma final e a cena GRANDE
+	//     das evolucoes dele (`LendaGrande`, a `fd_grand_cinematic` -- e o tema dela).
+	// O degrau escolhe a cena pelo NOME, no `npcs.json` (`"cena"` do estagio): o dado diz qual, o codigo so sabe tocar.
+	//
+	// E O CORPO SO TROCA NA VIRADA: a cena sai antes da aparencia nova, no mesmo canal ordenado, e o cliente guarda o
+	// `PeerLook` ate o `Assumir` (`World._pendentes`) -- a mesma ordem que o bio jogador ja usa (`GameServer.SubirDegrauDoBio`).
+	// ======================================================================================================================
+
+	/// <summary>(v0.3.0) A cena de um degrau de chefe de saga: o byte do `S2C.CenaDoChefe` e o `"cena"` do estagio no `npcs.json`.</summary>
+	public enum CenaDeChefe : byte
+	{
+		/// <summary>O degrau nao tem cena propria (o de forma toca a da forma; o primeiro nasce assim).</summary>
+		Nenhuma = 0,
+		/// <summary>`"corpo_novo"`: o corpo se refaz maior -- o surto da escada do Frost Demon (2,5 s).</summary>
+		CorpoNovo = 1,
+		/// <summary>`"forma_final"`: a forma final -- a cena grande das evolucoes do Frost Demon (28 s), com o tema dela.</summary>
+		FormaFinal = 2,
+		/// <summary>`"bio_semi"`: o bio-androide vira Semi-Perfeito -- a cena do jogador bio.</summary>
+		BioSemiPerfeito = 3,
+		/// <summary>`"bio_perfeito"`: o bio-androide vira Perfeito -- a cena do jogador bio.</summary>
+		BioPerfeito = 4,
+	}
+
+	/// <summary>O CORPO NOVO DE UM CHEFE -- o surto da escada do Frost Demon, com a fala de quem foi obrigado a ir alem.</summary>
+	public static readonly Cinematica ChefeCorpoNovo = SurtoCurto(
+		"", "", SurtoDoFrost,
+		"Vocês me obrigaram a ir além!",
+		"o corpo se parte e se refaz maior -- o poder sobe mais um degrau.");
+
+	/// <summary>A FORMA FINAL DE UM CHEFE -- a cena grande das evolucoes do Frost Demon (`fd_grand_cinematic`), com o tema dela.</summary>
+	public static readonly Cinematica ChefeFormaFinal = LendaGrande(
+		"", TemaFrost,
+		"o ar em volta congela e racha ao mesmo tempo; a última casca começa a ceder.",
+		"HAAAAAAAAAAAAA!!!",
+		"a forma final se fecha em volta dele -- e todo o poder está do lado de fora.");
+
+	/// <summary>A cena deste degrau de chefe. Nulo = nenhuma.</summary>
+	public static Cinematica? DoChefe(CenaDeChefe q) => q switch
+	{
+		CenaDeChefe.CorpoNovo => ChefeCorpoNovo,
+		CenaDeChefe.FormaFinal => ChefeFormaFinal,
+		CenaDeChefe.BioSemiPerfeito => BioSemiPerfeito,
+		CenaDeChefe.BioPerfeito => BioPerfeito,
+		_ => null,
+	};
+
+	/// <summary>
+	/// O NOME QUE O `npcs.json` ESCREVE (`"cena"` do estagio) -> a cena. Vazio = nenhuma; nulo = um nome que nao existe (o
+	/// `MoldeDeNpc.Problemas` acusa no boot, em vez de o degrau virar mudo calado).
+	/// </summary>
+	public static CenaDeChefe? CenaDeChefePorNome(string nome) => nome switch
+	{
+		"" => CenaDeChefe.Nenhuma,
+		"corpo_novo" => CenaDeChefe.CorpoNovo,
+		"forma_final" => CenaDeChefe.FormaFinal,
+		"bio_semi" => CenaDeChefe.BioSemiPerfeito,
+		"bio_perfeito" => CenaDeChefe.BioPerfeito,
+		_ => null,
+	};
+
 	// ==================================================================================
 	// AS CONSULTAS
 	// ==================================================================================

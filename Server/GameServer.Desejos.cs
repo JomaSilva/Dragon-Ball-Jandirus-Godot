@@ -114,7 +114,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private IEnumerable<DesejoDef> MenuDaqui(ServerPlayer pl, SetDeEsferas s) =>
 		Desejos.Menu(s.Poder, s.Desejos, s.TemSupremo, EhKaioshinDoCorpo(pl),
-					 pl.Ficha.Genoma?.RacePercent("Saiyan") ?? 0, pl.Race);
+					 pl.Ficha.Genoma?.RacePercent("Saiyan") ?? 0);
 
 	/// <summary>
 	/// `kai_body_wish_ok(M)` (`WishTable.dm:55-56`) -- os TRES ao mesmo tempo: raca Kai, classe Golden
@@ -680,43 +680,75 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
-	/// "Liberar o meu potencial" -- REGRA DO DONO (2026-10-13), sem par no `WishTable.dm`: *"adicione a forma
-	/// "ORANGE" pros nameks , essa forma tem o mesmo buff do beast, porem vc aprende pedindo pras esferas pra liberar
-	/// seu potencial"*.
+	/// "Liberar o meu potencial" -- REGRA DO DONO, em duas datas, sem par no `WishTable.dm`:
+	///   * (2026-10-13) *"adicione a forma "ORANGE" pros nameks, essa forma tem o mesmo buff do beast, porem vc aprende
+	///     pedindo pras esferas pra liberar seu potencial"*;
+	///   * (2026-10-15, v0.3.0) *"shenlong poderia ter um desejo pra liberar o potencial, e caso seja feito por um namek ele
+	///     ganha alem do potential unlocked, ele ganha a forma mistica e orange. pra pedir isso ele precisa ter o poder
+	///     minimo de god ki dele (por mais q essas formas n sejam god ki) outras racas podem pedir unlock potential em
+	///     qualquer momento, mas so ganham a liberacao de potencial, mais nada."*
 	///
-	/// DUAS COISAS, NESTA ORDEM:
-	///   1. **o potencial desperta**, pela MESMA porta do verbo do Guru (<see cref="DespertarPotencialG11"/>, o
-	///      `UnlockPotential.dm`): e o que o pedido diz, e e uma vez por vida -- quem ja o tinha despertado pula
-	///      este passo sem perder o desejo;
-	///   2. **o Orange e concedido** (`Forma.Liberar`, a mesma porta do Mistico -- ver `ConcederMistico`): e o "um
-	///      pouco a mais". `Liberar` e nao `Entrar`, pelo motivo escrito la: a estreia da forma fica pro dia em que
-	///      ele apertar o C.
+	/// TODA RACA PEDE, e cada uma recebe o que e dela:
+	///   * QUALQUER RACA: o potencial desperta, pela MESMA porta do verbo do Guru (<see cref="DespertarPotencialG11"/>, o
+	///     `UnlockPotential.dm`) -- uma vez por vida;
+	///   * O NAMEKUSEIJIN, alem dele, o MISTICO (<see cref="ConcederMistico"/>) e o ORANGE (`Forma.Liberar`) -- `Liberar` e
+	///     nao `Entrar`: a estreia da forma fica pro dia em que ele apertar o C. E SO COM O PODER DO KI DIVINO DELE: o BP
+	///     base no requisito pessoal (<see cref="RequisitoDeGodKi"/>), mesmo que nenhuma das duas formas seja divina.
+	///     Abaixo dele o Namekuseijin nao pede -- e a recusa nao diz numero (a regra principal do BP).
 	///
-	/// A RECUSA NAO CONSOME: quem ja tem o Orange nao tem mais nada pra receber deste pedido (e o menu ja apaga a
-	/// linha antes -- <see cref="JaTemOOrange"/>). So o Namekuseijin chega aqui: a linha nem aparece pros outros
-	/// (`DesejoDef.PedeRaca`).
+	/// A RECUSA NAO CONSOME, e o menu do dragao apaga a linha pelo MESMO motivo (<see cref="PorQueNaoLiberaOPotencial"/>).
 	/// </summary>
 	private bool DesejoDePotencial(ServerPlayer pl, SetDeEsferas s)
 	{
-		if (JaTemOOrange(pl))
+		if (PorQueNaoLiberaOPotencial(pl) is { } recusa)
 		{
-			Avisar(pl, "o dragão já liberou tudo o que dormia em você. Nenhum pedido foi gasto.");
+			Avisar(pl, recusa + " Nenhum pedido foi gasto.");
 			return false;
 		}
 
-		AnunciarDesejo($"{pl.Name} pede a {s.NomeDoDragao} que LIBERE O SEU POTENCIAL -- e o dragão dá um pouco a mais!");
+		bool namek = EhNamekuseijinDoDesejo(pl);
+		AnunciarDesejo(namek
+			? $"{pl.Name} pede a {s.NomeDoDragao} que LIBERE O SEU POTENCIAL -- e o dragão dá muito mais!"
+			: $"{pl.Name} pede a {s.NomeDoDragao} que LIBERE O SEU POTENCIAL!");
 		if (pl.Ficha.unlockPotential < 1) DespertarPotencialG11(pl, pl, autor: s.NomeDoDragao);
-
-		pl.Forma.Liberar(Jandirus.Core.Forms.Catalogo.IdOrange);
+		if (namek)
+		{
+			ConcederMistico(pl, s.NomeDoDragao);
+			pl.Forma.Liberar(Jandirus.Core.Forms.Catalogo.IdOrange);
+			Avisar(pl, "e algo a mais desperta junto: a forma ORANGE é sua. Aperte C.");
+		}
 		Persistir(pl);
 		HabilidadesMudaram(pl);
 		ReapresentarOCorpo(pl);
-		Avisar(pl, "e algo a mais desperta junto: a forma ORANGE é sua. Aperte C.");
 		return true;
 	}
 
-	/// <summary>O dragao ja deu o Orange a este corpo? Quem recusa (<see cref="DesejoDePotencial"/>) e o menu do dragao perguntam aqui.</summary>
-	private static bool JaTemOOrange(ServerPlayer pl) => pl.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdOrange);
+	/// <summary>
+	/// POR QUE ESTE CORPO NAO PODE PEDIR A LIBERACAO DO POTENCIAL AGORA -- nulo = pode. A recusa do desejo e a linha apagada do
+	/// menu do dragao perguntam aqui, e por isso as duas dizem a mesma coisa:
+	///   * quem nao e Namekuseijin: so o potencial, entao so quem ainda nao o despertou;
+	///   * o Namekuseijin: o poder do ki divino dele (sem numero), e enquanto faltar o potencial, o Mistico ou o Orange.
+	/// </summary>
+	private string? PorQueNaoLiberaOPotencial(ServerPlayer pl)
+	{
+		if (!EhNamekuseijinDoDesejo(pl))
+			return pl.Ficha.unlockPotential >= 1 ? "O seu potencial já foi despertado -- o dragão não tem mais o que liberar em você." : null;
+
+		if (pl.Ficha.unlockPotential >= 1 && pl.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico)
+			&& pl.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdOrange))
+			return "O dragão já liberou tudo o que dormia em você.";
+
+		if (!RequisitoDoPotencialIgnoradoDeTeste && pl.Ficha.BP < RequisitoDeGodKi(pl))
+			return "O dragão sente o que dorme num Namekuseijin -- mas o seu poder ainda não alcança o do ki divino. Volte mais forte.";
+		return null;
+	}
+
+	/// <summary>O desejo olha a RACA de quem pede, como o menu fazia: o Namekuseijin (`Catalogo.RacaNamekuseijin`).</summary>
+	private static bool EhNamekuseijinDoDesejo(ServerPlayer pl) =>
+		string.Equals(pl.Race, Jandirus.Core.Forms.Catalogo.RacaNamekuseijin, StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>DEFEITO INJETADO (`--v030teste`): o Namekuseijin pede sem o poder do ki divino -- e ganha o Mistico e o Orange de graca.</summary>
+	internal static bool RequisitoDoPotencialIgnoradoDeTeste;
 
 	/// <summary>
 	/// "Strongest in the Universe" -- `WishTable.dm:198-204` + `proc/sw_strongest_wish` (:102-113).

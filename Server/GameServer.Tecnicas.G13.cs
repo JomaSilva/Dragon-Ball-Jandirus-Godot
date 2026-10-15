@@ -209,7 +209,7 @@ public partial class GameServer
 		foreach (int id in _estudoG13.Keys.ToList())
 		{
 			if (!_players.TryGetValue(id, out ServerPlayer? pl)) { _estudoG13.Remove(id); continue; }
-			if (pl.Livro == null || pl.Ficha.dead || pl.Ficha.KO)
+			if (pl.Livro == null || EhCadaver(pl) || pl.Ficha.KO)
 			{
 				PararDeEstudarG13(pl, "voce perde a concentracao e para de estudar.");
 				continue;
@@ -396,7 +396,7 @@ public partial class GameServer
 		foreach (int id in _escritaG13.Keys.ToList())
 		{
 			if (!_players.TryGetValue(id, out ServerPlayer? pl)) { _escritaG13.Remove(id); continue; }
-			if (!pl.Ficha.med || pl.Ficha.KO || pl.Ficha.dead) continue;
+			if (!pl.Ficha.med || pl.Ficha.KO || EhCadaver(pl)) continue;
 
 			EscritaG13 e = _escritaG13[id];
 			if (++e.Feito < e.Alvo) continue;

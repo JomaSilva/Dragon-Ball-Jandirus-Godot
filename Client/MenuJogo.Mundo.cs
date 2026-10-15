@@ -411,7 +411,7 @@ public partial class MenuJogo
 		var refugio = new Button
 		{
 			Text = "Escolher para onde eu volto",
-			TooltipText = "um planeta que você conquistou, ou o mundo vivo mais perto de onde era casa",
+			TooltipText = "o mundo vivo mais perto de onde era casa, a Terra (o ponto de encontro) ou um planeta que você conquistou",
 			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
 		};
 		refugio.AddThemeColorOverride("font_color", Tema.Destaque);

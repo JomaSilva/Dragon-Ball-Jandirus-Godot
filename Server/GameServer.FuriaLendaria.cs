@@ -70,7 +70,7 @@ public partial class GameServer
 		//     relogio comeca quando o corpo e dele.
 		// ================================================================================================================
 		if (!FuriaLendaria.EhDescontrolavel(d) || FuriaLendaria.Dominou(maestria)
-			|| pl.Ficha.KO || pl.Ficha.dead || EmCena(pl))
+			|| pl.Ficha.KO || EhCadaver(pl) || EmCena(pl))
 		{
 			// ============================ A PERGUNTA E A POSSE, E NAO "TEM CEREBRO" ============================
 			// Eram dois `SemAsRedeas(pl)` (aqui e no passo 3), e `SemAsRedeas` e `Cerebro != null` -- o que
@@ -82,7 +82,7 @@ public partial class GameServer
 			if (pl.FuriaAte != 0 && pl.CerebroDaPosse != null)
 			{
 				DevolverAsRedeas(pl);
-				Avisar(pl, "a furia se esvai, e o corpo volta a ser seu.");
+				Avisar(pl, "a furia se esvai, e o corpo volta a ser seu.", Jandirus.Net.Protocol.Fala.AvisoDeRaiva);
 				GD.Print($"[server] {pl.Name}: a furia lendaria soltou o corpo (fim de forma/dominio)");
 			}
 			pl.FuriaAte = 0;
@@ -125,7 +125,7 @@ public partial class GameServer
 
 		Avisar(pl, (voltando ? "a furia se esvai e voce volta a controlar o proprio corpo -- " : "")
 				 + $"voce segura as redeas por cerca de {prazo:0} s "
-				 + $"(dominio {maestria:0.#}% de 100%).");
+				 + $"(dominio {maestria:0.#}% de 100%).", Jandirus.Net.Protocol.Fala.AvisoDeRaiva);
 	}
 
 	/// <summary>
@@ -192,9 +192,9 @@ public partial class GameServer
 		// ou seja este tempo nao e perdido, ele e o preco de aprender a forma. Dizer isso e a diferenca
 		// entre uma punicao e uma progressao.
 		// ====================================================================================
-		Avisar(pl, "A FURIA LENDARIA TOMA O SEU CORPO. Voce nao controla mais o que ele faz.");
+		Avisar(pl, "A FURIA LENDARIA TOMA O SEU CORPO. Voce nao controla mais o que ele faz.", Jandirus.Net.Protocol.Fala.AvisoDeRaiva);
 		Avisar(pl, $"aguente cerca de {posse:0} s -- e o tempo todo dentro da forma paga maestria, "
-				 + $"que e o que encurta isto ate ela nunca mais te pegar (dominio {maestria:0.#}%).");
+				 + $"que e o que encurta isto ate ela nunca mais te pegar (dominio {maestria:0.#}%).", Jandirus.Net.Protocol.Fala.AvisoDeRaiva);
 
 		GD.Print($"[server] {pl.Name}: a furia lendaria assumiu {pl.Forma.Atual} "
 				 + $"(maestria {maestria:0.00}, posse {posse:0.#}s)");

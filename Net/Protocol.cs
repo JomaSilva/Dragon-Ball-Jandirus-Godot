@@ -277,7 +277,11 @@ public static class Protocol
         Pensa = 4,      // "Fulano pensa consigo mesmo, '...'"
         Emote = 5,      // *Fulano faz alguma coisa*
         Looc = 6,       // fora do personagem, mas so pra quem esta perto
-        Sistema = 200,  // so o cliente escreve; nunca sai na rede
+        Sistema = 200,  // o recado do servidor (`Avisar`) e as linhas que o proprio cliente escreve; o jogador nao fala nele
+        // (2026-10-15) OS AVISOS COM COR PROPRIA -- dono: *"aviso de raiva, zenkai etc deveriam ter cor propria no chat pra
+        // ficar facil de ver"*. Sao recados do servidor como o `Sistema` (moram na aba Sistema), so que pintados.
+        AvisoDeRaiva = 201,
+        AvisoDeZenkai = 202,
     }
 
     /// <summary>
@@ -424,6 +428,13 @@ public static class Protocol
     /// e a animacao tem que acompanhar. 240 ms e a cadencia de um soco leve com stat inicial.
     /// </summary>
     public const int AttackPoseMs = 240;
+
+    /// <summary>
+    /// (v0.3.0) QUANTO DURA A VOLTA DO SPIN ATTACK: as quatro direcoes, um quarto de volta a cada 100 ms. O servidor segura a
+    /// pose de golpe por isso (`AtaqueAte`) e o cliente gira o desenho por isso (`CharacterVisual.Girar`) -- um numero so pras
+    /// duas pontas. Ver <see cref="GestoDoCorpo.Giro"/>.
+    /// </summary>
+    public const int GiroMs = 400;
 
     /// <summary>
     /// Bits do byte de input. Direcao ocupa 0-1; 0x40 e "estou correndo" e 0x80 e "estou
@@ -1377,6 +1388,9 @@ public static class Protocol
         ///
         /// `abrir` e o servidor PEDINDO pra tela aparecer agora (a chegada ao Outro Mundo, uma vez
         /// por sessao). Sem ele, o mesmo pacote e so uma atualizacao de quem ja esta olhando.
+        ///
+        /// (v0.3.0) NO FIM, A TERRA -- a saida B3, o ponto de encontro: `bool serve` (viva e com mapa) + `bool escolhida` +
+        /// `float minutos de voo de onde era casa`. Ver `GameServer.Refugio.TerraServeDeRefugio`.
         /// </summary>
         Refugio = 51,
 
@@ -1460,6 +1474,28 @@ public static class Protocol
         /// do original, sem travar a tela. So sai pra admin, a pedido (`admin_online`).
         /// </summary>
         Online = 54,
+
+        /// <summary>
+        /// (v0.3.0) O MODO DAS RACAS DO SERVIDOR, pro cartao da aba Admin: `byte modo` (`Core.Races.ModoDeRacas`: 0 padrao,
+        /// 1 aleatorio). So sai pra admin -- a pedido (`admin_modo_racas` sem argumento) e quando um admin o muda. Ver
+        /// `GameServer.ModoDeRacas.cs`.
+        /// </summary>
+        ModoDeRacas = 118,
+
+        /// <summary>
+        /// (v0.3.0) UM CHEFE DE SAGA CHEGOU -- pra TODO jogador do mundo, em qualquer planeta: `int id` + `string nome` +
+        /// `string planeta` (o nome bonito) + `string frase` (a da chegada) + `string raca` + `string genero` + a aparencia
+        /// inteira (o retrato e o mesmo boneco do mundo). Desenhado pelo `Client/CenaDaChegada.cs`, que nao prende ninguem.
+        /// Ver `GameServer.ChefeDeSaga.cs`.
+        /// </summary>
+        ChegadaDoChefe = 119,
+
+        /// <summary>
+        /// (v0.3.0) A CENA DE UM DEGRAU DE CHEFE DE SAGA COMECOU: `int id` + `byte cena` (`Core.Forms.Cinematicas.CenaDeChefe`).
+        /// Irmao do <see cref="CenaDoBio"/>: acontecimento de zona, sem prazo nem arte no pacote (a cena mora no Core). Sai ANTES
+        /// da aparencia nova, e o corpo novo espera a virada no cliente. Ver `GameServer.ChefeDeSaga.cs`.
+        /// </summary>
+        CenaDoChefe = 120,
     }
 
     /// <summary>
@@ -1510,6 +1546,12 @@ public static class Protocol
         /// (`Power Control.dm:68`). SO O SOM -- este gesto nao veste pose nenhuma.
         /// </summary>
         Descer = 3,
+        /// <summary>
+        /// (v0.3.0) O SPIN ATTACK: o corpo da a volta inteira (360 graus) na tela de quem ve, em <see cref="GiroMs"/> -- o dono:
+        /// *"na skill chute giratorio/spin kick faca o personagem realmente dar um 360 pra representar o giro"*. A pose de
+        /// golpe vai pelo snapshot (`AtaqueAte`); este gesto so manda o desenho girar (`CharacterVisual.Girar`).
+        /// </summary>
+        Giro = 4,
     }
 
     /// <summary>O primeiro byte do <see cref="S2C.GodKi"/>: como esta o ki divino deste personagem.</summary>
@@ -1899,6 +1941,28 @@ public static class Protocol
         /// </summary>
         public float[] Pericias;
 
+        /// <summary>
+        /// (2026-10-15) A ARTE ESCOLHIDA PROS PESOS (`Fighter.pesoArte`; vazia = a de fabrica): o icone deles na mochila e
+        /// na aba Equip. Vai no FIM do pacote, depois das pericias.
+        /// </summary>
+        public string PesoArte;
+
+        /// <summary>(2026-10-15) Quantas melhorias faltam pro maximo dos pesos passar do limite do corpo -- o botao "Ate o limite".</summary>
+        public byte PesoMelhoriasAteOLimite;
+
+        /// <summary>
+        /// (v0.3.0) O SANGUE DO BIO-ANDROIDE: as racas doadoras, `"Saiyan+Majin"` (vazio pra quem nao e bio). E o que a aba de
+        /// aprendizado junta a <see cref="Raca"/> pra abrir as arvores raciais das doadoras -- ver `Core.Races.SangueDoBio`.
+        /// No FIM do pacote, depois do botao dos pesos.
+        /// </summary>
+        public string Sangue;
+
+        /// <summary>
+        /// (v0.3.0) A PORCENTAGEM GUARDADA DOS PESOS (`Fighter.pesoPct`, 0 a 100; zero = nunca escolhida): o botao "Equipar
+        /// (40% do maximo)" da mochila e da aba Equip. No FIM do pacote, depois do sangue.
+        /// </summary>
+        public byte PesoPct;
+
         public readonly bool Tem(Poder p) => (Poderes & (uint)p) != 0;
 
         public readonly void Write(NetDataWriter w)
@@ -1925,6 +1989,10 @@ public static class Protocol
             // do tamanho do que o escritor tinha em maos.
             float[] ps = Pericias ?? [];
             for (int i = 0; i < PericiasDeKi.Length; i++) w.Put(i < ps.Length ? ps[i] : 0f);
+            w.Put(PesoArte ?? "");
+            w.Put(PesoMelhoriasAteOLimite);
+            w.Put(Sangue ?? "");
+            w.Put(PesoPct);
         }
 
         public static AtributosState Read(NetDataReader r) => new()
@@ -1953,6 +2021,10 @@ public static class Protocol
             SalaFase = r.GetByte(),
             SalaMinutos = r.GetFloat(),
             Pericias = LerPericias(r),
+            PesoArte = r.GetString(64),
+            PesoMelhoriasAteOLimite = r.GetByte(),
+            Sangue = r.GetString(160),
+            PesoPct = r.GetByte(),
         };
 
         private static (ushort, float)[] LerMaestrias(NetDataReader r)
@@ -2771,6 +2843,18 @@ public struct SheetState
     /// </summary>
     public byte Escape;
 
+    /// <summary>
+    /// (v0.3.0) O TERCEIRO BYTE DO CORPO -- os dois primeiros estao cheios. Bit 0: <see cref="EmVisita"/>; sete livres.
+    /// </summary>
+    public byte Estado3;
+
+    /// <summary>
+    /// ESTOU MORTO COM O PASSE DO ENMA, entre os vivos (`Alem.EmVisita`): de pe, e nao o cadaver. O cliente precisa saber
+    /// pra NAO se deitar (`LocalPlayer.Caido`): fora do Outro Mundo o lugar diria "cadaver", e quem sabe do passe e o
+    /// servidor. Vem pela ficha pelo motivo do nado: e estado do MEU corpo que muda como eu ando.
+    /// </summary>
+    public bool EmVisita => (Estado3 & 1) != 0;
+
     /// <summary>Nem anda nem golpeia: caido ou morto.</summary>
     public bool Imobilizado => KO || Morto;
 
@@ -2811,6 +2895,7 @@ public struct SheetState
         w.Put(Inteireza); w.Put(MultTotal); w.Put(TetoKi);
         w.Put(SpeedStat);
         w.Put(SocoMs); w.Put(MembrosRuins); w.Put(Estado); w.Put(Estado2); w.Put(Escape);
+        w.Put(Estado3);
     }
 
     public static SheetState Read(NetDataReader r) => new()
@@ -2824,6 +2909,7 @@ public struct SheetState
         SocoMs = r.GetInt(), MembrosRuins = r.GetByte(), Estado = r.GetByte(),
         Estado2 = r.GetByte(),
         Escape = r.GetByte(),
+        Estado3 = r.GetByte(),
     };
 }
 
@@ -2840,10 +2926,16 @@ public struct SlotInfo
     public double BP;
     public Appearance Visual;
 
+    /// <summary>
+    /// (v0.3.0) A RACA SORTEADA DESTA VAGA VAZIA, no modo de racas aleatorias do servidor, e a sub-raca dela (vazias no modo
+    /// padrao). So existem em vaga vazia, e so nela vao pro fio -- a criacao abre com elas. Ver `GameServer.ModoDeRacas.cs`.
+    /// </summary>
+    public string RacaSorteada, LinhagemSorteada;
+
     public void Write(NetDataWriter w)
     {
         w.Put(Ocupado);
-        if (!Ocupado) return;
+        if (!Ocupado) { w.Put(RacaSorteada ?? ""); w.Put(LinhagemSorteada ?? ""); return; }
         w.Put(Nome); w.Put(Raca); w.Put(Classe); w.Put(Genero);
         w.Put(Idade); w.Put(BP);
         w.PutAppearance(Visual);
@@ -2852,7 +2944,12 @@ public struct SlotInfo
     public static SlotInfo Read(NetDataReader r)
     {
         var s = new SlotInfo { Ocupado = r.GetBool() };
-        if (!s.Ocupado) { s.Visual = new Appearance(); return s; }
+        if (!s.Ocupado)
+        {
+            s.RacaSorteada = r.GetString(24); s.LinhagemSorteada = r.GetString(32);
+            s.Visual = new Appearance();
+            return s;
+        }
         s.Nome = r.GetString(24); s.Raca = r.GetString(24);
         s.Classe = r.GetString(32); s.Genero = r.GetString(8);
         s.Idade = r.GetInt(); s.BP = r.GetDouble();

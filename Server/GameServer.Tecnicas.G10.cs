@@ -234,7 +234,7 @@ public sealed partial class GameServer
 	private void FerirUmMembroG10(ServerPlayer vitima, ServerPlayer autor, double dano, bool letal, string? zona = null)
 	{
 		CombatState? c = vitima.Combate;
-		if (c == null || dano <= 0 || vitima.Ficha.dead || c.Intocavel) return;
+		if (c == null || dano <= 0 || EhCadaver(vitima) || c.Intocavel) return;
 
 		BodyPart? membro = c.Corpo.Sortear(zona ?? autor.Combate?.ZonaMirada, _rng);
 		if (membro == null) return;
@@ -324,7 +324,7 @@ public sealed partial class GameServer
 
 		Travar(alvo, 0.4);
 		GolpeG3(pl, alvo, addDano: 2, nivel: 2);
-		if (alvo.Ficha.dead || alvo.Combate.Intocavel) return;
+		if (EhCadaver(alvo) || alvo.Combate.Intocavel) return;
 
 		double dose = 1 + pl.Ficha.Ephysoff / 2 + pl.Ficha.Etechnique / 2;
 		FerirUmMembroG10(alvo, pl, dose, pl.Combate.Letal);
@@ -347,7 +347,7 @@ public sealed partial class GameServer
 
 		Travar(alvo, 0.4);
 		GolpeG3(pl, alvo, addDano: 2, nivel: 2);
-		if (alvo.Ficha.dead || alvo.Combate.Intocavel) return;
+		if (EhCadaver(alvo) || alvo.Combate.Intocavel) return;
 
 		double onda = 5 + pl.Ficha.Ephysoff + pl.Ficha.Etechnique;
 		bool letal = pl.Combate.Letal;
@@ -372,7 +372,7 @@ public sealed partial class GameServer
 
 		Travar(alvo, 0.4);
 		GolpeG3(pl, alvo, addDano: 2, nivel: 2);
-		if (alvo.Ficha.dead || alvo.Combate.Intocavel) return;
+		if (EhCadaver(alvo) || alvo.Combate.Intocavel) return;
 
 		double estouro = 70 + pl.Ficha.Ephysoff + pl.Ficha.Etechnique;
 		AgendarAtrasoG10(pl, alvo, NowMs() + 2000, estouro, espalhado: false, letal: pl.Combate.Letal, nome: "estouro");
@@ -413,7 +413,7 @@ public sealed partial class GameServer
 
 		if (EmEspera(pl, _ultiG10, "os golpes especiais de corpo ainda estao em espera")) return;
 		long agora = NowMs();
-		if (pl.Combate == null || f.dead || f.KO || f.med || pl.Combate.Stun > 0 || f.stamina < 18)
+		if (pl.Combate == null || EhCadaver(pl) || f.KO || f.med || pl.Combate.Stun > 0 || f.stamina < 18)
 		{
 			Avisar(pl, "voce nao consegue usar isso agora.");
 			return;
@@ -445,7 +445,7 @@ public sealed partial class GameServer
 		// `if(BarrageAttack(...)) { damage_mob(target, NormDamageCalc(target)); sleep(10); damage_mob(target, 70) }`
 		// (`:112-116`): o bloco que o DM nunca entrava (ver GolpeFinalDoHokutoG10). "Encostou" e o
 		// `firstBarrage` -- o primeiro golpe da rajada entrou (acertou, critico ou aparado).
-		if (!rajada.Encostou || alvo.Ficha.dead || alvo.Combate.Intocavel) return;
+		if (!rajada.Encostou || EhCadaver(alvo) || alvo.Combate.Intocavel) return;
 		double golpeFinal = CombatMath.DanoBase(pl.Ficha, alvo.Ficha);
 		FerirUmMembroG10(alvo, pl, golpeFinal, pl.Combate.Letal);
 		AgendarAtrasoG10(pl, alvo, NowMs() + AtrasoDoGolpeFinalDoHokutoMsG10, GolpeFinalDoHokutoG10,
@@ -519,7 +519,7 @@ public sealed partial class GameServer
 		double extra = DanoExtraRevengeDemonG10(pl.Ficha, alvo.Ficha);
 		FerirUmMembroG10(alvo, pl, extra, pl.Combate.Letal);
 		AvisarPertoG3(pl, 8 * ZoneCollision.TileSize, $"{pl.Name} arremessa {alvo.Name} pra frente!");
-		if (!alvo.Ficha.dead)
+		if (!EhCadaver(alvo))
 			Arremessar(alvo, MeleeArea.Frente(pl.Facing), Agarrao.ForcaDoArremesso(pl.Ficha),
 					   TiquesDoArremessoDoDemonioG10);
 		Avisar(pl, $"soco, jab na cara e {alvo.Name} voa pra frente (-{custo:0} de energia).");
@@ -895,7 +895,7 @@ public sealed partial class GameServer
 
 		// `get_me_a_target()`: o marcado, senao o mais proximo colado; depois `get_dist < 20`.
 		ServerPlayer? alvo = Marcado(pl) ?? AlvoDeTecnica(pl, PassoDeAproximacaoG7);
-		bool alvoValido = alvo != null && alvo != pl && !alvo.Ficha.dead
+		bool alvoValido = alvo != null && alvo != pl && !EhCadaver(alvo)
 						  && Vec2.Distance(alvo.Pos, pl.Pos) < AlcanceDaCorridaG10;
 		bool emRush = _rushG10.ContainsKey(pl.Id);
 		bool exausto = EmEspera(pl, _rushProntoG10, out long restanteDoRush);
@@ -932,7 +932,7 @@ public sealed partial class GameServer
 	private void SaltarG10(ServerPlayer pl, RushG10 r, long agora)
 	{
 		ServerPlayer? alvo = CorpoNaMinhaZona(pl, r.Alvo);
-		if (alvo == null || alvo.Ficha.dead || alvo.Combate == null || alvo.Combate.Intocavel)
+		if (alvo == null || EhCadaver(alvo) || alvo.Combate == null || alvo.Combate.Intocavel)
 		{ EncerrarRushG10(pl, r, "seu alvo esta fora de alcance!"); return; }
 		if (pl.Ficha.KO || !PodeMexerOCorpo(pl))
 		{ EncerrarRushG10(pl, r, "seu ataque falha porque voce nao consegue se mover!"); return; }
@@ -995,7 +995,7 @@ public sealed partial class GameServer
 	{
 		var l = new List<ServerPlayer>();
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
-			if (o != pl && !o.Ficha.dead && o.Combate != null && Vec2.Distance(o.Pos, pl.Pos) <= raioPx)
+			if (o != pl && !EhCadaver(o) && o.Combate != null && Vec2.Distance(o.Pos, pl.Pos) <= raioPx)
 				l.Add(o);
 		return l;
 	}

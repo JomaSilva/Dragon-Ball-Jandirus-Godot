@@ -88,4 +88,70 @@ public static class PesoDeTreino
 			saida.Add((Appearance.VisualCatalog.NomeDoArquivo(caminho), caminho));
 		return saida;
 	}
+
+	/// <summary>A pose do icone dos pesos -- a do item de fabrica (`CatalogoDeItens`): a camisa de frente.</summary>
+	public const string PoseDoIcone = "walk_south";
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--v030teste` e `--diagv030`): a arte escolhida so aparece no CORPO -- na mochila, na aba
+	/// Equip e no chao os pesos continuam com o icone de fabrica, o jogo de antes. Lido pelo icone do cliente
+	/// (`Miniaturas.DosPesos`) e pelo servidor ao largar (`GameServer.LargarItem`). Falso em jogo, sempre.
+	/// </summary>
+	public static bool ArteSoNoCorpoDeTeste;
+
+	// =====================================================================
+	// ATE O LIMITE DO CORPO DE UMA VEZ (dono, 2026-10-15)
+	// =====================================================================
+	// *"o peso deveria ter uma opçao q vc compra seu peso maximo do personagem, sem ter q ficar dobrando o peso varias vezes
+	// ate chegar no q vc quer, e claro o preço proporcional ao peso q vc precisa, e ai se quiser vc pode dobrar e continuar
+	// o upgrade atual"*. O "peso maximo do personagem" e o LIMITE DO CORPO -- o recorde `weight_cap_hw`, o que ele aguenta
+	// sem esmagar em gravidade 1x. O botao compra de uma vez as melhorias que faltam pra o maximo dos pesos passar dele, pelo
+	// preco de cada uma somado: e o mesmo dinheiro de dobrar uma a uma, num clique so. O maximo continua num degrau
+	// (50 kg x 2^n) -- um numero exato do limite entregaria o poder do corpo, que e funcao direta dele.
+
+	/// <summary>A acao da mochila (e o `case` do servidor).</summary>
+	public const string AcaoAteOLimite = "limite";
+
+	/// <summary>Nenhuma compra leva mais longe que isto de uma vez (50 kg x 2^40 ja passa de qualquer corpo).</summary>
+	public const int MaximoDeMelhoriasDeUmaVez = 40;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`): a compra ate o limite nao existe -- o jogo de antes, em que so se dobrava.
+	/// Lido por <see cref="MelhoriasAteOLimite"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool SoDobrandoDeTeste;
+
+	/// <summary>Quantas melhorias faltam pro maximo dos pesos alcancar o limite do corpo (0 = ja alcancou).</summary>
+	public static int MelhoriasAteOLimite(double daFicha, double limiteDoCorpoKg)
+	{
+		if (SoDobrandoDeTeste || limiteDoCorpoKg <= Maximo(daFicha)) return 0;
+		int n = (int)Math.Ceiling(Math.Log(limiteDoCorpoKg / Maximo(daFicha), VezesPorMelhoria) - 1e-9);
+		return Math.Clamp(n, 1, MaximoDeMelhoriasDeUmaVez);
+	}
+
+	/// <summary>O preco, em zeni, de <paramref name="n"/> melhorias seguidas a partir deste maximo: a soma do preco de cada uma.</summary>
+	public static double PrecoDeVariasEmZeni(double daFicha, int n)
+	{
+		int nivel = Nivel(daFicha);
+		double soma = 0;
+		for (int k = 1; k <= n; k++) soma += ZeniPorNivel * (nivel + k);
+		return soma;
+	}
+
+	/// <summary>O maximo depois de <paramref name="n"/> melhorias.</summary>
+	public static double MaximoDepoisDe(double daFicha, int n) => Maximo(daFicha) * Math.Pow(VezesPorMelhoria, n);
+
+	// =====================================================================
+	// A PORCENTAGEM GUARDADA (dono, 2026-10-15)
+	// =====================================================================
+	// *"dps de setar a % do peso maximo ele salvaria aquele valor e vc so precisaria clicar na opcao 'equipar' pra por o peso
+	// ao inves de colocar a % toda vez"*. A porcentagem mora na ficha (`Fighter.pesoPct`), quem a escreve e o "ajustar" e
+	// quem a veste e o "equipar" (`GameServer.VestirOsPesos`).
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--v030teste` e `--diagv030`): a porcentagem escolhida nao fica guardada -- o "equipar" nao
+	/// tem com o que vestir, e a % volta a ser pedida toda vez (o jogo de antes). Lido pelo ajuste do servidor
+	/// (`GameServer.AjustarPeso`). Falso em jogo, sempre.
+	/// </summary>
+	public static bool PorcentagemEsquecidaDeTeste;
 }

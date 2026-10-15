@@ -110,7 +110,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void MafubaG9(ServerPlayer pl)
 	{
-		if (pl.Ficha.dead || pl.Ficha.KO) { Avisar(pl, "voce nao esta em condicoes."); return; }
+		if (EhCadaver(pl) || pl.Ficha.KO) { Avisar(pl, "voce nao esta em condicoes."); return; }
 		if (pl.Selo.Preso) { Avisar(pl, "daqui de dentro nao."); return; }
 
 		// `for(var/obj/items/SealingItem/A in view())` (`:159-160`) -- o mais proximo a vista.
@@ -177,7 +177,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void AbrirDeadZoneG9(ServerPlayer pl)
 	{
-		if (pl.Ficha.dead || pl.Ficha.KO) { Avisar(pl, "voce nao esta em condicoes."); return; }
+		if (EhCadaver(pl) || pl.Ficha.KO) { Avisar(pl, "voce nao esta em condicoes."); return; }
 		if (pl.Selo.Preso) { Avisar(pl, "daqui de dentro nao."); return; }
 
 		// `if(usr.Ki>=MaxKi/1.1)` (`:243`) -- 90,9% do tanque, e nao "quase tudo" arredondado.

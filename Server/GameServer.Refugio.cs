@@ -21,6 +21,16 @@ namespace Jandirus.Server;
 /// perguntado. Sem nenhuma, o corpo abre os olhos no ESPACO ABERTO -- ver o bloco do ultimo recurso.
 /// ================================================================================
 ///
+/// ============================ (v0.3.0) E A TERCEIRA: A TERRA, O PONTO DE ENCONTRO ============================
+/// *"faca q alem do jogador poder escolher spawnar em um planeta proximo ao planeta natal dele, ele sempre tem a opcao de
+/// reviver na terra se o planeta natal dele foi destruido. a terra seria o ponto de encontro principal do jogo"* (o dono).
+///   **B3** -- a TERRA (<see cref="TerraServeDeRefugio"/>), escolhida pelo jogador (`ServerPlayer.RefugioNaTerra`).
+///
+/// Ela e OPCAO e nao padrao (*"alem de poder escolher..., ele sempre tem a opcao"*): sem escolha, o destino continua a
+/// vizinhanca. Com ela as saidas sao tres e a escolha existe com duas -- ou seja, a tela passou a abrir pra todo mundo
+/// que perdeu o natal, e nao so pra quem tem territorio. E ela e a ultima saida antes do vacuo.
+/// ==========================================================================================================
+///
 /// ============================ O QUE MORREU PRA ISTO NASCER ============================
 /// O `GameServer.Berco.cs` tinha um `ZonaDeRecuoViva` que descia `Espaco.PreFeitos()` e devolvia o
 /// PRIMEIRO planeta vivo. **Ele foi DELETADO**, com a carta trocavel (`_cartaDeRecuo`) e o escopo
@@ -169,6 +179,18 @@ public partial class GameServer
 		List<Dominio> dominios = DominiosDeRefugio(dono, ancora);
 		Arredores perto = VizinhancaDeRefugio(ancora);
 		MundoDeRefugio? sorteado = perto.Sorteia(semente);
+		bool terra = TerraServeDeRefugio();
+
+		// ============================ (v0.3.0) A TERRA ESCOLHIDA VEM PRIMEIRO ============================
+		// B3 e PEDIDA (`RefugioNaTerra`), como a B1 -- e quem marcou um dominio nem chega aqui: o `DestinoDe` o atende antes,
+		// e o verb apaga a Terra quando o dominio e escolhido (uma escolha so). Com a Terra MORTA a escolha fica guardada e
+		// nao vale: o corpo segue a regra de sempre, e nunca vai parar num cadaver.
+		// ============================================================================================
+		if (terra && dono is { RefugioNaTerra: true })
+		{
+			ContarORefugio(dono, casa, TerraDoRefugio.Name, MotivoDoRefugio.Terra, dominios.Count, perto.CelulasOlhadas, terra);
+			return PousarNo(BercoDaTerra(casa));
+		}
 
 		// ============================ AS DUAS EXISTEM: QUEM DECIDE E O JOGADOR ============================
 		// E aqui que o "ou ... ou" do dono vira codigo. O DESTINO DE AGORA e a vizinhanca, e nao o
@@ -189,7 +211,7 @@ public partial class GameServer
 		{
 			ContarORefugio(dono, casa, comEscolha.Corpo.Nome,
 				perto.Reserva ? MotivoDoRefugio.MundoPesado : MotivoDoRefugio.PertoDoNatal,
-				dominios.Count, perto.CelulasOlhadas);
+				dominios.Count, perto.CelulasOlhadas, terra);
 			return PousarNo(BercoDoRefugio(comEscolha, casa));
 		}
 
@@ -198,14 +220,14 @@ public partial class GameServer
 		{
 			ContarORefugio(dono, casa, so.Corpo.Nome,
 				perto.Reserva ? MotivoDoRefugio.MundoPesado : MotivoDoRefugio.PertoDoNatal,
-				0, perto.CelulasOlhadas);
+				0, perto.CelulasOlhadas, terra);
 			return PousarNo(BercoDoRefugio(so, casa));
 		}
 
 		if (dominios.Count > 0 && CorpoDoDominio(dominios[0]) is { } doDominio)
 		{
 			Dominio d = dominios[0];
-			ContarORefugio(dono, casa, d.Planeta, MotivoDoRefugio.Dominio, 0, perto.CelulasOlhadas);
+			ContarORefugio(dono, casa, d.Planeta, MotivoDoRefugio.Dominio, 0, perto.CelulasOlhadas, terra);
 			return PousarNo(new Berco
 			{
 				Planeta = doDominio.Nome,
@@ -217,6 +239,18 @@ public partial class GameServer
 				Gravidade = doDominio.Premade ? 0 : MundoProcedural.GravidadeDaSeed(doDominio.Seed),
 				Natal = casa,
 			});
+		}
+
+		// ============================ (v0.3.0) SEM DOMINIO E SEM VIZINHANCA, SOBRA A TERRA ============================
+		// Uma saida so, e a regra desta casa e "com uma so, ela e o destino e ninguem e perguntado". A Terra viva e chao de
+		// verdade -- povo, colisao e o marco de nascimento do mapa --, melhor que o vacuo, que continua sendo o ultimo recurso
+		// pra quando ela TAMBEM acabou. Em jogo isto e tao inalcancavel quanto o vacuo (a vizinhanca nunca sai vazia); a
+		// bancada o alcanca pelo mesmo `_celulasDeRefugio`.
+		// ======================================================================================================
+		if (terra)
+		{
+			ContarORefugio(dono, casa, TerraDoRefugio.Name, MotivoDoRefugio.Terra, 0, perto.CelulasOlhadas, terra);
+			return PousarNo(BercoDaTerra(casa));
 		}
 
 		// ============================ O ULTIMO RECURSO: O ESPACO ABERTO ============================
@@ -233,10 +267,11 @@ public partial class GameServer
 		// A coordenada e a do natal -- o corpo abre os olhos exatamente onde o mundo dele ficava, o
 		// que e a unica coisa honesta a se fazer com esse ponto do mapa. Em jogo isto e inalcancavel
 		// (a vizinhanca so fica vazia com a busca desligada); a bancada o alcanca pelo
-		// <see cref="_celulasDeRefugio"/>, porque recurso que nunca roda e recurso que nao existe.
+		// <see cref="_celulasDeRefugio"/> com a Terra morta junto (desde a v0.3.0 ela vem antes do vacuo), porque recurso
+		// que nunca roda e recurso que nao existe.
 		// ======================================================================================
 		ContarORefugio(dono, casa, "", MotivoDoRefugio.OEspacoAberto, dominios.Count,
-					   perto.CelulasOlhadas);
+					   perto.CelulasOlhadas, terra);
 		return (ZonaDoEspaco, ancora);
 	}
 
@@ -362,6 +397,53 @@ public partial class GameServer
 		Motivo = MotivoDoBerco.VizinhoDoNatal,
 	};
 
+	// =====================================================================
+	// (v0.3.0) A TERRA -- o ponto de encontro, a saida B3
+	// =====================================================================
+	/// <summary>
+	/// **A TERRA, O PONTO DE ENCONTRO PRINCIPAL DO JOGO** -- ver o bloco (v0.3.0) do cabecalho deste arquivo.
+	///
+	/// ============================ "SEMPRE" TEM DUAS BORDAS, E AS DUAS SAO DO MUNDO ============================
+	/// A Terra tem que estar VIVA -- ela tambem pode ser destruida, e entao a opcao some e quem a tinha escolhido volta pela
+	/// vizinhanca, nunca por um cadaver -- e tem que ter MAPA (a mesma exigencia que a vizinhanca faz a todo pre-feito). Quem
+	/// nasceu na Terra e a perdeu nao tem a opcao porque ela e justamente o planeta que acabou.
+	///
+	/// A escolha mora no PERSONAGEM (`ServerPlayer.RefugioNaTerra`) e nao no livro de dominios como a B1: a Terra nao e de
+	/// ninguem, e nao ha bandeira pra ir ate ela.
+	/// ==========================================================================================================
+	/// </summary>
+	private static readonly ZoneKey TerraDoRefugio = ZoneKey.Premade("Earth");
+
+	/// <summary>A TERRA SERVE DE REFUGIO AGORA? A pergunta unica -- o destino, a oferta, o verb e a tela leem esta linha.</summary>
+	private bool TerraServeDeRefugio() =>
+		!TerraForaDoRefugioDeTeste && !ZonaMorta(TerraDoRefugio) && _catalogo?.Get(TerraDoRefugio) != null;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--bercoprova` familia 11, `--diagv030` familia TR): o refugio sem a Terra -- o jogo de antes. Falso
+	/// em jogo, sempre.
+	/// </summary>
+	internal static bool TerraForaDoRefugioDeTeste;
+
+	/// <summary>
+	/// O BERCO QUE LEVA A TERRA, pra entrar no MESMO <see cref="PousarNo"/> de todo mundo: o pre-feito pousa no marco do mapa
+	/// dela (`PontoDeNascimento`), o mesmo ponto de quem nasce la -- e e isso que faz dela um ponto de ENCONTRO. O `Natal`
+	/// nao e reescrito, pelo motivo escrito no <see cref="BercoDoRefugio"/>.
+	/// </summary>
+	private static Berco BercoDaTerra(string natal) => new()
+	{
+		Planeta = TerraDoRefugio.Name,
+		PreFeito = true,
+		Natal = natal,
+	};
+
+	/// <summary>Onde a Terra fica na carta -- perguntado a carta, e nao cravado na origem. Le a distancia da oferta.</summary>
+	private static Vec2 PosicaoDaTerra()
+	{
+		foreach (PlanetaNoEspaco p in Espaco.PreFeitos())
+			if (string.Equals(p.Nome, TerraDoRefugio.Name, StringComparison.OrdinalIgnoreCase)) return p.Pos;
+		return default;
+	}
+
 	/// <summary>
 	/// **O JOGADOR TEM QUE SABER QUE O DESTINO DELE MUDOU.** Antes disto havia um `GD.Print` -- ou
 	/// seja, o console do servidor sabia, e a pessoa que perdeu o planeta natal nao.
@@ -377,8 +459,9 @@ public partial class GameServer
 	/// alguem for investigar. Zero quer dizer que a busca estava DESLIGADA -- em jogo isso nao
 	/// acontece, e e exatamente por isso que o numero precisa aparecer se acontecer.
 	/// </param>
+	/// <param name="terra">(v0.3.0) A Terra servia de saida -- entra na linha das outras saidas.</param>
 	private void ContarORefugio(ServerPlayer? dono, string natal, string destino,
-								MotivoDoRefugio motivo, int dominios, int celulas)
+								MotivoDoRefugio motivo, int dominios, int celulas, bool terra)
 	{
 		string casa = NomeDoPlaneta(natal);
 		GD.Print($"[refugio] {dono?.Name ?? "(corpo sem dono)"}: '{natal}' nao existe mais -- "
@@ -402,14 +485,24 @@ public partial class GameServer
 				+ $"-- e mesmo assim e melhor que lugar nenhum. Voce acorda em {destino}, e o proprio "
 				+ "corpo vai ter que se acostumar.",
 
+			MotivoDoRefugio.Terra =>
+				$"{casa} não existe mais. Você volta pela Terra -- o ponto de encontro de todo mundo.",
+
 			_ =>
 				$"{casa} nao existe mais, e nao havia para onde ir. Voce abre os olhos no vacuo, "
 				+ "exatamente onde o seu mundo ficava. Nao ha chao -- ha a carta estelar.",
 		});
 
+		// AS OUTRAS SAIDAS, numa linha so -- sem ela a tela seria a unica pista, e quem a fechasse sem ler nunca mais saberia
+		// que podia escolher. (v0.3.0) A Terra entrou na lista, e a porta passou a ser o cartao Refugio da aba World: a frase
+		// apontava pra aba Nav, que passou a exigir o item Nav System -- uma porta que nem todo mundo tem.
+		var outras = new List<string>(2);
 		if (dominios > 0 && motivo != MotivoDoRefugio.Dominio)
-			Avisar(dono, $"voce ainda manda em {dominios} planeta(s). Da pra renascer la em vez de aqui "
-					   + "-- a tela do refugio (menu, aba Nav) tem as duas opcoes.");
+			outras.Add(dominios == 1 ? "no planeta que você conquistou" : $"num dos {dominios} planetas que você conquistou");
+		if (terra && motivo != MotivoDoRefugio.Terra) outras.Add("na Terra, o ponto de encontro de todo mundo");
+		if (outras.Count > 0)
+			Avisar(dono, $"dá pra renascer {string.Join(" ou ", outras)} em vez de aqui -- o cartão Refúgio (menu P, aba World) "
+					   + "tem as opções.");
 	}
 
 	// =====================================================================
@@ -438,7 +531,7 @@ public partial class GameServer
 	/// distinguiria "foi pra vizinhanca porque escolheu" de "foi porque nao havia mais nada".
 	/// ============================================================================================================
 	///
-	/// A ESCOLHA SO EXISTE COM AS DUAS. Com uma saida so nao ha nada pra decidir, e empurrar uma tela
+	/// A ESCOLHA SO EXISTE COM DUAS SAIDAS OU MAIS. Com uma saida so nao ha nada pra decidir, e empurrar uma tela
 	/// nessa hora seria roubar o clique de quem esta morto no meio de uma briga.
 	/// </summary>
 	private (Vec2 Ancora, List<Dominio> Dominios, Arredores Perto, bool Escolha) EscolhaDeRefugio(ServerPlayer pl)
@@ -446,7 +539,10 @@ public partial class GameServer
 		Vec2 ancora = AncoraDoRefugio(pl.Berco);
 		List<Dominio> dominios = DominiosDeRefugio(pl, ancora);
 		Arredores perto = VizinhancaDeRefugio(ancora);
-		return (ancora, dominios, perto, dominios.Count > 0 && !perto.Vazia);
+		// (v0.3.0) AS SAIDAS SAO TRES, e a escolha existe com DUAS: a Terra conta (`TerraServeDeRefugio`) -- e por isso a tela
+		// passou a abrir pra quem perdeu o natal mesmo sem territorio nenhum.
+		int saidas = (dominios.Count > 0 ? 1 : 0) + (perto.Vazia ? 0 : 1) + (TerraServeDeRefugio() ? 1 : 0);
+		return (ancora, dominios, perto, saidas >= 2);
 	}
 
 	/// <summary>
@@ -466,7 +562,7 @@ public partial class GameServer
 	///
 	/// UMA VEZ POR SESSAO. O aviso e sobre uma catastrofe, nao sobre uma morte -- empurrar a tela a
 	/// cada morte seria transformar a informacao em barulho, e barulho e o jeito mais rapido de ela
-	/// deixar de ser lida. Depois da primeira, a porta e o botao do menu (aba Nav).
+	/// deixar de ser lida. Depois da primeira, a porta e o botao do menu (o cartao Refugio da aba World).
 	/// ==========================================================================================
 	/// </summary>
 	private void OferecerORefugio(ServerPlayer pl, bool podeAbrir)
@@ -502,6 +598,12 @@ public partial class GameServer
 		}
 
 		w.Put(perto.Reserva);
+
+		// (v0.3.0) A TERRA: se ela serve, se e a escolhida, e a quantos minutos de voo de onde era casa. Ver `S2C.Refugio`.
+		bool terra = TerraServeDeRefugio();
+		w.Put(terra);
+		w.Put(terra && pl.RefugioNaTerra);
+		w.Put((float)MinutosDeVoo(ancora, PosicaoDaTerra()));
 		pl.Peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
@@ -521,10 +623,14 @@ public partial class GameServer
 	// O VERBO
 	// =====================================================================
 	/// <summary>
-	/// O CANAL DO REFUGIO. Tres argumentos, e o de escrever e o unico com trava:
+	/// O CANAL DO REFUGIO. Quatro argumentos, e os de escrever sao os unicos com trava:
 	///   `""`             -- me manda a oferta de novo (o botao do menu abre a tela com isto);
-	///   `"vizinhanca"`   -- eu escolho B2: nenhum dominio meu e ponto de renascimento;
+	///   `"vizinhanca"`   -- eu escolho B2: nenhum dominio meu e ponto de renascimento, e a Terra tambem nao;
+	///   `"terra"`        -- (v0.3.0) eu escolho B3: a Terra, o ponto de encontro (`ServerPlayer.RefugioNaTerra`);
 	///   `<chave>`        -- eu escolho B1: este dominio passa a ser.
+	///
+	/// UMA ESCOLHA SO: cada uma das tres apaga as outras duas. A Terra nao tem campo no livro de dominios porque nao e de
+	/// ninguem -- mora no personagem e vai pro save dele.
 	///
 	/// ============================ ELE ESCREVE NO MESMO CAMPO QUE O `conq_spawn`, E SO PODE ============================
 	/// A escolha nao ganhou campo novo: ela e o `Dominio.EhOSpawn` que ja existe, com a mesma regra de
@@ -562,6 +668,9 @@ public partial class GameServer
 				limpo.Put((byte)0);
 				limpo.Put((byte)0);
 				limpo.Put(false);
+				limpo.Put(false);   // (v0.3.0) a Terra: com o berco de pe nao ha o que oferecer
+				limpo.Put(false);
+				limpo.Put(0f);
 				pl.Peer.Send(limpo, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 			}
 			return true;
@@ -570,10 +679,30 @@ public partial class GameServer
 		string escolha = arg.Trim();
 		if (escolha.Length == 0) { OferecerORefugio(pl, podeAbrir: true); return true; }
 
+		// ---- (v0.3.0) B3: A TERRA ---------------------------------------------
+		if (string.Equals(escolha, "terra", StringComparison.OrdinalIgnoreCase))
+		{
+			if (!TerraServeDeRefugio())
+			{
+				Avisar(pl, "a Terra também não existe mais -- não dá pra voltar por ela.");
+				OferecerORefugio(pl, podeAbrir: false);
+				return true;
+			}
+			foreach (Dominio o in DominiosDe(pl.Assinatura)) o.EhOSpawn = false;   // uma escolha so
+			SalvarConquista();
+			pl.RefugioNaTerra = true;
+			Persistir(pl);
+			Avisar(pl, "você escolhe a Terra: renasce nela, o ponto de encontro de todo mundo.");
+			OferecerORefugio(pl, podeAbrir: false);
+			return true;
+		}
+
 		if (string.Equals(escolha, "vizinhanca", StringComparison.OrdinalIgnoreCase))
 		{
 			foreach (Dominio o in DominiosDe(pl.Assinatura)) o.EhOSpawn = false;
 			SalvarConquista();
+			pl.RefugioNaTerra = false;
+			Persistir(pl);
 			Avisar(pl, "voce escolhe a vizinhanca de casa: renasce no mundo vivo mais perto de onde "
 					 + "o seu planeta ficava.");
 			OferecerORefugio(pl, podeAbrir: false);
@@ -591,6 +720,8 @@ public partial class GameServer
 		foreach (Dominio o in DominiosDe(pl.Assinatura)) o.EhOSpawn = false;
 		alvo.EhOSpawn = true;
 		SalvarConquista();
+		pl.RefugioNaTerra = false;   // (v0.3.0) uma escolha so
+		Persistir(pl);
 		Avisar(pl, $"voce passa a renascer em {NomeDoPlaneta(alvo.Planeta)}, no seu proprio territorio.");
 		OferecerORefugio(pl, podeAbrir: false);
 		return true;

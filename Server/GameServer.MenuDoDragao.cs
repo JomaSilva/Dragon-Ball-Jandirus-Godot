@@ -480,10 +480,12 @@ public sealed partial class GameServer
 				return e;
 			}
 
-			if (d.Id == "potencial" && JaTemOOrange(pl))
+			// (v0.3.0) A MESMA PERGUNTA DA RECUSA DO DESEJO: quem nao tem mais o que receber, e o Namekuseijin sem o poder do
+			// ki divino -- ver `PorQueNaoLiberaOPotencial`.
+			if (d.Id == "potencial" && PorQueNaoLiberaOPotencial(pl) is { } semPotencial)
 			{
 				e.Pode = false;
-				e.Motivo = "O dragão já liberou tudo o que dormia em você.";
+				e.Motivo = semPotencial;
 				return e;
 			}
 		}

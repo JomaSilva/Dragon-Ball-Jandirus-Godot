@@ -428,6 +428,24 @@ public sealed class CharacterSave
     /// `Limiares`) que o metodo monta o save do ZERO e campo nao escrito e campo APAGADO.
     /// </summary>
     public bool? GradesLigados;
+
+    /// <summary>
+    /// (v0.3.0) O SCOUTER ESTAVA LIGADO na hora do save -- a copia em disco do bit `Poder.Scouter` de
+    /// `ServerPlayer.PoderesConcedidos`, que nao vai pro disco. O dono: *"ao sair do server usando scouter, e dps entrar, o
+    /// scouter e desequipado"*. No DM o `scouteron` e variavel do mob sem `tmp` (`Inventory.dm:155`) e viaja no save.
+    /// Lido no `ParaJogador`; save antigo chega `false` e acorda desligado, como acordava.
+    ///
+    /// E ELE E GRAVADO EM `DeJogador` (campo nao escrito e campo apagado).
+    /// </summary>
+    public bool ScouterLigado;
+
+    /// <summary>
+    /// (v0.3.0) A ESCOLHA DO REFUGIO PELA TERRA -- a copia em disco de `ServerPlayer.RefugioNaTerra` (o ponto de encontro,
+    /// pra quando o planeta natal nao existir). Save antigo chega `false`: a vizinhanca de casa, o padrao de sempre.
+    ///
+    /// E ELE E GRAVADO EM `DeJogador` (campo nao escrito e campo apagado).
+    /// </summary>
+    public bool RefugioNaTerra;
 }
 
 /// <summary>
@@ -485,6 +503,48 @@ public sealed class AccountSave
 
     /// <summary>Os tres slots. Nulo = vazio.</summary>
     public CharacterSave?[] Slots = new CharacterSave?[AccountStore.Slots];
+
+    /// <summary>
+    /// (v0.3.0) O ECO DE UMA REENCARNACAO QUE AINDA NAO NASCEU: o proximo personagem criado nesta conta, em qualquer vaga,
+    /// leva a fracao do poder de quem reencarnou. Nulo = nenhum. Ver <see cref="Reencarnacao"/>.
+    /// </summary>
+    public Reencarnacao? Reencarnacao;
+
+    /// <summary>
+    /// (v0.3.0) A RACA SORTEADA DE CADA VAGA VAZIA, no modo de racas aleatorias do servidor -- uma por vaga, nula na vaga
+    /// ocupada e no modo padrao. Gravada na conta pra que sair e entrar nao sorteie de novo. Ver `GameServer.ModoDeRacas.cs`.
+    /// </summary>
+    public RacaSorteada?[] Sorteios = new RacaSorteada?[AccountStore.Slots];
+
+    /// <summary>(v0.3.0) Quantos sorteios esta conta ja fez -- entra na semente, pra vaga esvaziada nao repetir o sorteio velho.</summary>
+    public int SorteiosFeitos;
+}
+
+/// <summary>(v0.3.0) O sorteio de uma vaga vazia: a raca e a sub-raca (Primal Saiyan, o cla do Namekuseijin; vazia nas outras).</summary>
+public sealed class RacaSorteada
+{
+    public string Raca = "";
+    public string Linhagem = "";
+}
+
+/// <summary>
+/// (v0.3.0) O ECO DE UMA REENCARNACAO -- o `Reincarnator` do DM (`Reincarnation.dm:58-63`), guardado na CONTA (e nao na
+/// sessao, como la) ate o proximo personagem nascer. Quem escreve e o Enma (`GameServer.EnmaReencarnar`); quem consome e
+/// a criacao (`GameServer.AplicarOEcoDaReencarnacao`).
+/// </summary>
+public sealed class Reencarnacao
+{
+    /// <summary>Quem reencarnou -- so pro log.</summary>
+    public string De = "";
+
+    /// <summary>O BP BASE de quem reencarnou (o `oldBP`).</summary>
+    public double BPAntigo;
+
+    /// <summary>A fracao que o novo leva (o `startBPMult`: 0,1 pelo Enma).</summary>
+    public double Fracao;
+
+    /// <summary>O BP base com que o novo nasce, no minimo: `round(oldBP * startBPMult)` -- o `round` de um argumento do DM e o chao.</summary>
+    public double BPDoNovo() => DmMath.Round(BPAntigo * Fracao);
 }
 
 /// <summary>
@@ -543,6 +603,9 @@ public sealed class AccountStore(string pasta)
             if (a == null) return null;
             // save de uma versao com menos slots nao pode explodir na primeira indexacao
             if (a.Slots.Length < Slots) Array.Resize(ref a.Slots, Slots);
+            // (v0.3.0) nem a de antes dos sorteios de vaga (o modo de racas aleatorias)
+            a.Sorteios ??= new RacaSorteada?[Slots];
+            if (a.Sorteios.Length < Slots) Array.Resize(ref a.Sorteios, Slots);
             return a;
         }
         catch (Exception e)
@@ -672,6 +735,8 @@ public sealed class AccountStore(string pasta)
                 AccountSave? a = JsonSerializer.Deserialize<AccountSave>(File.ReadAllText(f), Opcoes);
                 if (a == null || a.Conta.Length == 0) continue;
                 if (a.Slots.Length < Slots) Array.Resize(ref a.Slots, Slots);
+                a.Sorteios ??= new RacaSorteada?[Slots];
+                if (a.Sorteios.Length < Slots) Array.Resize(ref a.Sorteios, Slots);
                 l.Add(a);
             }
             catch (Exception e)
@@ -809,6 +874,12 @@ public sealed class AccountStore(string pasta)
         // uma escolha que ninguem fez. Ver `CharacterSave.GradesLigados`.
         GradesLigados = pl.Forma?.GradesLigados,
 
+        // (v0.3.0) O SCOUTER LIGADO -- a copia do bit que nao vai pro disco. Ver `CharacterSave.ScouterLigado`.
+        ScouterLigado = (pl.PoderesConcedidos & Jandirus.Net.Protocol.Poder.Scouter) != 0,
+
+        // (v0.3.0) A ESCOLHA DO REFUGIO PELA TERRA. Ver `CharacterSave.RefugioNaTerra`.
+        RefugioNaTerra = pl.RefugioNaTerra,
+
         // O DISCIPULADO. O VINCULO em si nao vem pra ca -- ele e do MUNDO e mora no
         // `mestres.txt` (mesmo ciclo de vida do `cargos.txt`); o que e do PERSONAGEM sao estas
         // tres coisas: o que ele viu, a porta que abriram pra ele e o folego de quem ensina.
@@ -920,6 +991,16 @@ public sealed class AccountStore(string pasta)
         pl.ItensQueSairam = Jandirus.Core.Items.ItensAposentados.Limpar(pl.Mochila, s.ItensVersao);
 
         pl.Mochila.Sanear();   // save antigo nao tem porte
+
+        // (v0.3.0) O SCOUTER LIGADO VOLTA LIGADO -- ver `CharacterSave.ScouterLigado`. AQUI, com a mochila ja pronta: so com o
+        // aparelho nela (um scouter que saiu do jogo nao religa sozinho). O `ConcederPoderes` do login so SOMA bits a este
+        // campo, e o `AplicarPoderes` o junta aos das skills.
+        if (s.ScouterLigado && !GameServer.ScouterAcordaDesligadoDeTeste
+            && pl.Mochila.Quantos(Jandirus.Core.Items.CatalogoDeItens.Scouter) > 0)
+            pl.PoderesConcedidos |= Jandirus.Net.Protocol.Poder.Scouter;
+
+        // (v0.3.0) A ESCOLHA DO REFUGIO PELA TERRA volta do disco. Ver `CharacterSave.RefugioNaTerra`.
+        pl.RefugioNaTerra = s.RefugioNaTerra;
 
         // SAVE ANTIGO NAO TEM CONVIVIO: o `?? new()` e o que separa "nunca conheceu ninguem" de
         // uma referencia nula que estouraria no primeiro tique de proximidade.

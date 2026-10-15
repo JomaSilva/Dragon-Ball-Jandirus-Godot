@@ -252,7 +252,7 @@ public sealed class Gestacao
 	/// <summary>`brew_has_saiyan` -- havia sangue Saiyajin entre os doadores.</summary>
 	public bool TemSaiyajin;
 
-	/// <summary>`brew_verbs` -- a uniao SEM DUPLICATAS das tecnicas dos doadores.</summary>
+	/// <summary>`brew_verbs` -- a uniao SEM DUPLICATAS das skills dos doadores (desde a v0.3.0, o livro inteiro de cada um).</summary>
 	public List<string> Tecnicas = [];
 }
 
@@ -292,20 +292,29 @@ public sealed class Amostra
 	public double Bp;
 
 	/// <summary>
-	/// AS TECNICAS DO DOADOR -- o `donor_verbs = M.Keyableverbs.Copy()` do original.
+	/// AS SKILLS DO DOADOR -- o LIVRO INTEIRO dele (v0.3.0, dono: *"bio androide tb vem com todas as skills da aba learn dos
+	/// jogadores q tiveram o dna usado, do mesmo nivel q eles, e as tecnicas customizadas tb e as liberadas"*): o que ele
+	/// comprou, o que lhe ensinaram e o que lhe deram. Ver `GameServer.SkillsHerdaveis`.
 	///
-	/// ============================ NO PORT "VERB" E O CAMINHO DA SKILL ============================
-	/// O DM guarda caminhos de `verb` porque la um verb existe solto no mob. Aqui nao ha verb pra
-	/// copiar: quem responde "voce sabe essa tecnica?" e o LIVRO (`SabeTecnica` varre
-	/// `Livro.Aprendidas` procurando a skill que declara aquele verb). Entao o equivalente exato de
-	/// uma `Keyableverb` e o typepath da skill que a concede.
-	///
-	/// **SO SKILL QUE TEM VERB ENTRA**, e essa e a fidelidade que importa: `Keyableverbs` e uma
-	/// lista de BOTOES. Uma skill de buff passivo nao esta la, entao o bio nao herda buff passivo --
-	/// ele herda o que o doador sabia FAZER. Ver `TecnicasHerdaveis`.
-	/// =========================================================================================
+	/// DIVERGENCIA DECLARADA: o DM guarda so os botoes (`donor_verbs = M.Keyableverbs.Copy()`, `DNALabs.dm:312`) -- nem o buff
+	/// passivo, nem o nivel, nem a tecnica customizada. Amostra gravada antes da v0.3.0 tem so as que tem botao.
 	/// </summary>
 	public List<string> Skills = [];
+
+	/// <summary>(v0.3.0) O NIVEL de cada skill do doador na hora da agulha -- o bio nasce com elas nesse nivel. Vazio = nivel zero.</summary>
+	public Dictionary<string, int> Niveis = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>(v0.3.0) AS TECNICAS CUSTOMIZADAS do doador (as confirmadas), copiadas na agulha. O bio as recebe como ensinadas.</summary>
+	public List<Jandirus.Core.Skills.TecnicaCustomizada> Customizadas = [];
+
+	/// <summary>
+	/// (v0.3.0) AS RACAS DO SANGUE do doador (`SangueDoBio.DeUmDoador`): a raca e a do pai, ou, num bio colhido, as doadoras
+	/// dele. Vazio em amostra de antes: ai valem a `Raca` e a `RacaDoPai` (`GameServer.SangueDaAmostra`).
+	/// </summary>
+	public List<string> Sangue = [];
+
+	/// <summary>(v0.3.0) O doador era um androide de ENERGIA INFINITA (ou um bio que herdou o motor dele): o bio herda o motor.</summary>
+	public bool Infinito;
 }
 
 /// <summary>
@@ -450,6 +459,7 @@ public partial class GameServer
 		CarregarObjetosDoMapa();
 		CarregarOCofreDeTech();   // (v0.2.1) o que os itens de bolso guardam fora do id -- ver `GameServer.TechDeBolso.cs`
 		SemearOEnma();   // o juiz dos mortos, na mesa dele -- ver `GameServer.Alem.cs`, secao 5
+		SemearOsNpcsDeConversa();   // (v0.3.0) o Sr. Kaioh e o Korin -- ver `GameServer.NpcsDeConversa.cs`
 
 		// ============================ E ENTAO A GUARDA, EM VOZ ALTA ============================
 		// DEPOIS do `CarregarObjetosDoMapa` e nao antes: ela cruza o catalogo com o que esta
@@ -1158,44 +1168,13 @@ public partial class GameServer
 		if (lab.Fornada.Amostras.Any(a => a.Assinatura == vitima.Assinatura))
 		{ Avisar(pl, $"o tanque ja tem uma amostra de {vitima.Name}."); return; }
 
-		var amostra = new Amostra
-		{
-			Raca = vitima.Race,
-			RacaDoPai = vitima.Ficha.ParentRace,   // ver `Amostra.RacaDoPai`: meio-sangue vale pelos dois
-			Doador = vitima.Name,
-			Assinatura = vitima.Assinatura,
-			Bp = vitima.Ficha.BP,
-			Skills = [.. TecnicasHerdaveis(vitima)],
-		};
+		Amostra amostra = AmostraDe(vitima);
 		lab.Fornada.Amostras.Add(amostra);
 		GravarMundo();
 
 		Avisar(pl, $"voce colhe DNA de {vitima.Name} ({Jandirus.Core.Races.NomeDaRaca.Bonito(vitima.Race)}) -- {amostra.Skills.Count} tecnica(s) "
 				   + $"gravada(s) no tecido. Amostras: {lab.Fornada.Amostras.Count}/{BioMaxDna}.");
 		Avisar(vitima, "alguem enfia uma agulha em voce enquanto voce esta caido.");
-	}
-
-	/// <summary>
-	/// AS SKILLS DESTE CORPO QUE ATRAVESSAM UMA AGULHA -- o `Keyableverbs` do original.
-	///
-	/// ============================ SO O QUE TEM BOTAO, E ISSO E A REGRA DO DM ============================
-	/// `donor_verbs = M.Keyableverbs.Copy()` (`DNALabs.dm:312`): uma lista de VERBS. Skill de buff
-	/// passivo nao esta nela -- o `after_learn` dela escreve um numero na ficha e nao cria verb
-	/// nenhum --, entao ela nao viaja. O bio herda o que o doador sabia FAZER, nao o que o doador
-	/// ERA. E o mesmo criterio que ja separa "vem da pessoa" de "vem da raca" no relatorio deste
-	/// sistema: os stats do doador nao entram, e um buff passivo e um stat com outro nome.
-	///
-	/// **A ARVORE NAO ATRAVESSA, SO A FOLHA.** No DM o bio nao ganha entrada em arvore nenhuma
-	/// (`generatetrees` despacha por `Parent_Race`, que agora e Bio-Android); ele ganha os verbs
-	/// soltos. Aqui o equivalente e por o typepath no livro sem tocar em `Destravadas` -- ele SABE a
-	/// tecnica, e continua sem o ramo de onde ela veio.
-	/// =================================================================================================
-	/// </summary>
-	private IEnumerable<string> TecnicasHerdaveis(ServerPlayer doador)
-	{
-		if (_skills == null || doador.Livro == null) yield break;
-		foreach (string path in doador.Livro.Aprendidas)
-			if (_skills.Get(path) is { Verbos.Length: > 0 }) yield return path;
 	}
 
 	/// <summary>
@@ -1235,10 +1214,12 @@ public partial class GameServer
 		//    testa `"Saiyan"` e `"Half-Saiyan"`). `Catalogo.EhSaiyajin` cobre os dois mais o
 		//    `"Halfbreed"` do `races.json`, e e o MESMO predicado que decide quem tem a escada --
 		//    duas respostas pra "tem sangue Saiyajin?" e como um bio nasce com `canSSJ` e sem escada.
-		g.TemSaiyajin = g.Amostras.Any(a => Jandirus.Core.Forms.Catalogo.EhSaiyajin(a.Raca));
+		// (v0.3.0) pelo SANGUE da amostra (`SangueDaAmostra`): o meio-sangue de pai Saiyajin e o bio colhido com sangue
+		// Saiyajin contam -- a mesma pergunta que da o Zenkai ao bio (`SangueDoBio.TemSaiyajin`).
+		g.TemSaiyajin = g.Amostras.Any(a => SangueDaAmostra(a).Any(Jandirus.Core.Forms.Catalogo.EhSaiyajin));
 
 		// 3) `brew_verbs` -- a UNIAO SEM DUPLICATAS (`:436-437`). Quatro doadores que sabem a mesma
-		//    tecnica dao uma tecnica, nao quatro.
+		//    skill dao uma skill, nao quatro. (v0.3.0: o livro inteiro de cada um -- ver `Amostra.Skills`.)
 		g.Tecnicas = [.. g.Amostras.SelectMany(a => a.Skills).Distinct(StringComparer.OrdinalIgnoreCase)];
 
 		// O CRIADOR E QUEM FECHA O TANQUE -- `creator_sig = usr.signature` (`DNALabs.dm:441`), o personagem e nao
@@ -1325,7 +1306,7 @@ public partial class GameServer
 	/// =========================================================================================================
 	/// </summary>
 	private static Amostra? PulmaoDaFornada(Gestacao g) =>
-		g.Amostras.FirstOrDefault(a => Vacuo.RespiraNoVacuo(a.Raca, a.RacaDoPai));
+		g.Amostras.FirstOrDefault(a => SangueDaAmostra(a).Any(r => Vacuo.RespiraNoVacuo(r)));
 
 	/// <summary>
 	/// O SANGUE DE UMA AMOSTRA, EM UMA PALAVRA -- "Majin", ou "Human/Majin" no meio-sangue.
@@ -1468,13 +1449,15 @@ public partial class GameServer
 		// morrem junto com ele, e um `Clear()` esqueceria algum desses tres.
 		pl.Livro = new Jandirus.Core.Skills.SkillBook();
 		pl.Livro.Conceder(MarcosIniciais);
+		// (v0.3.0) E AS TECNICAS CUSTOMIZADAS DELE, pelo mesmo motivo: sao do humano que morreu.
+		pl.Customizadas.Clear();
+		pl.Mesa = null;
 
-		// --- e o que sobrou dos doadores ------------------------------------
-		int herdadas = 0;
-		if (_skills != null)
-			foreach (string path in g.Tecnicas)
-				if (_skills.Get(path) != null && !pl.Livro.Sabe(path))
-				{ pl.Livro.DarComoEnsinada(path); herdadas++; }
+		// --- e o que sobrou dos doadores: o LIVRO de cada um, no nivel dele, e as tecnicas que eles inventaram ---
+		// (v0.3.0, o dono: *"todas as skills da aba learn [...] do mesmo nivel q eles, e as tecnicas customizadas tb e as
+		// liberadas"*) -- ver `GameServer.SangueDoBio.cs`.
+		int herdadas = HerdarOLivroDosDoadores(pl, g);
+		int customizadas = HerdarAsCustomizadas(pl, g);
 
 		// --- o corpo ---------------------------------------------------------
 		pl.Ficha.BP = bp;
@@ -1495,6 +1478,11 @@ public partial class GameServer
 		// ==============================================================================================================
 		Amostra? pulmao = PulmaoDaFornada(g);
 		pl.Ficha.bio_dna_respira = pulmao != null;
+
+		// (v0.3.0) E O SANGUE INTEIRO, pela mesma janela: as racas doadoras (as passivas e as arvores raciais do bio -- ver
+		// `SangueDoBio`) e o motor de energia infinita de um androide doador.
+		pl.Ficha.bio_racas_dna = Jandirus.Core.Races.SangueDoBio.DaFornada(g.Amostras.Select(SangueDaAmostra));
+		pl.Ficha.bio_dna_infinito = g.Amostras.Any(a => a.Infinito);
 
 		pl.Ficha.form3cantrevert = false;
 		pl.Ficha.bio_ssj2_by_death = false;
@@ -1527,20 +1515,24 @@ public partial class GameServer
 		_visual?.Sanear(pl.Visual, pl.Race, pl.Genero);
 
 		// --- e o corpo passa a ser outro corpo --------------------------------
-		pl.Ficha.Statify();
+		// (v0.3.0) AS SKILLS HERDADAS ENTRAM PELA PORTA DE QUEM APRENDE: os poderes que elas dao, e os efeitos delas na ficha --
+		// o `AplicarEfeitos` faz o `Statify`, refaz o perfil de cura pelo sangue novo (`EixoDeRegen`) e manda o pacote das
+		// skills. E a mesma dupla do fim de `AprenderSkill`.
+		AplicarPoderes(pl);
+		AplicarEfeitos(pl);
 		AplicarForma(pl);                   // reescreve ssjBuff/trueKiMod e chama `RepercutirPoder`
 		pl.Ficha.Ki = pl.Ficha.MaxKi;        // `Ki = MaxKi`: virar bio poe o Ki em 100% EXATOS
 		pl.Combate?.Corpo.Restaurar();
 		pl.Combate?.SincronizarVida();
 		pl.SigAtributos = "";
 		TrocarAparencias(pl);
-		MandarSkills(pl);
+		MandarCustomizadas(pl);
 		Persistir(pl);
 
 		GD.Print($"[server] BIO-ANDROIDE nasceu: {antes} -> {pl.Name} | BP {bp:N0} | "
-				 + $"saiyajin={g.TemSaiyajin} | vacuo={pl.Ficha.bio_dna_respira}"
+				 + $"saiyajin={g.TemSaiyajin} | vacuo={pl.Ficha.bio_dna_respira} | sangue={Jandirus.Core.Races.SangueDoBio.Texto(pl.Ficha)}"
 				 + $"{(pulmao != null ? $" (por {pulmao.Doador}/{SangueDe(pulmao)})" : "")} | "
-				 + $"{herdadas} tecnica(s) herdada(s)");
+				 + $"{herdadas} skill(s) e {customizadas} tecnica(s) customizada(s) herdada(s)");
 
 		Avisar(pl, "a criatura atravessa o seu peito com a cauda. Voce morre... e seus olhos "
 				   + "continuam abertos, agora DENTRO dela.");
@@ -1548,15 +1540,19 @@ public partial class GameServer
 				   + $"proprio poder ({bp:N0} de base). Em cerca de {MaturacaoDaLarvaSegundos / 60:0} "
 				   + "minutos sua carapaca vai se romper.");
 		if (herdadas > 0)
-			Avisar(pl, $"memorias musculares fluem do DNA: voce nasce dominando {herdadas} tecnica(s) "
-					   + "dos seus doadores -- e nao sabe ENSINAR nenhuma delas.");
+			Avisar(pl, $"memórias fluem do DNA: você nasce sabendo {herdadas} skill(s) dos seus doadores, no nível em que eles "
+					   + "as tinham -- e não sabe ENSINAR nenhuma delas.");
+		if (customizadas > 0)
+			Avisar(pl, $"...e {customizadas} técnica(s) que eles mesmos inventaram: estão entre as suas, e não se repassam.");
 		if (g.TemSaiyajin)
 			Avisar(pl, "celulas SAIYAJIN pulsam no seu nucleo: o Super Saiyajin ja corre no seu DNA "
 					   + "(maestria zero -- treine a forma).");
 		if (pulmao != null)
 			Avisar(pl, $"e voce nao precisa de ar: o sangue de {pulmao.Doador} ({SangueDe(pulmao)}) "
 					   + "atravessa o vacuo, e agora e o seu.");
-		Avisar(pl, "e ha algo mais: seu corpo aprende com a derrota. Zenkai.");
+		// (v0.3.0) AS PASSIVAS, SO AS QUE O SANGUE TROUXE -- sozinho, o bio nao tem nenhuma (ver `SangueDoBio`). Era aqui que
+		// morava o "seu corpo aprende com a derrota. Zenkai." de todo bio.
+		foreach ((string frase, Jandirus.Net.Protocol.Fala tom) in FrasesDoSangue(pl)) Avisar(pl, frase, tom);
 	}
 
 	/// <summary>

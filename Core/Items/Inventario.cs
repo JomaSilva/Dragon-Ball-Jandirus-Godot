@@ -230,7 +230,10 @@ public static class CatalogoDeItens
 			Empilhavel: false, Acoes: ["equipar"]),
 
 		// PESO NAO E EQUIPAMENTO COMUM: ele ATRAPALHA de propósito, e o ganho e o treino que a
-		// dificuldade rende. Por isso a acao e "ajustar" e nao "equipar" -- o quanto importa.
+		// dificuldade rende. Por isso a acao que ESCOLHE e "ajustar" -- o quanto importa. (v0.3.0) E o "equipar" veste de novo a
+		// porcentagem escolhida da ultima vez (`Fighter.pesoPct`), como o `Equip()` dos pesos do DM veste o `pounds` guardado no
+		// item (`Tier 1.dm:113-135`) -- o dono: *"dps de setar a % do peso maximo ele salvaria aquele valor e vc so precisaria
+		// clicar na opcao 'equipar' pra por o peso ao inves de colocar a % toda vez"*.
 		[Pesos] = new ItemDef(
 			Pesos, "Pesos", "Atrasa cada passo e cada golpe. Em troca, treinar rende muito mais. Vêm leves (50 kg): "
 			+ "o peso máximo se compra, e você veste a porcentagem dele que quiser.",
@@ -241,7 +244,8 @@ public static class CatalogoDeItens
 			// "melhorar" e a porta paga do peso maximo (dono, 2026-10-12) -- ver `PesoDeTreino`.
 			// "arte" e o `verb/Icon()` dos pesos (`Tier 1.dm:167-175`): o jogador escolhe a folha que aparece no corpo
 			// (dono, 2026-10-13) -- ver `PesoDeTreino.AcaoArte`.
-			Empilhavel: false, Acoes: ["ajustar", "melhorar", PesoDeTreino.AcaoArte, "tirar"]),
+			// "limite" leva o maximo ate o limite do corpo de uma vez (dono, 2026-10-15) -- ver `PesoDeTreino.AcaoAteOLimite`.
+			Empilhavel: false, Acoes: ["equipar", "ajustar", "melhorar", PesoDeTreino.AcaoAteOLimite, PesoDeTreino.AcaoArte, "tirar"]),
 
 		// ============================ ARTE VAZIA = A DO CATALOGO DE CONSTRUCOES (2026-10-13) ============================
 		// A bandagem, o kit e a furadeira apontavam pra folhas que NAO EXISTEM: `tech.tres` nao tem os estados
@@ -305,10 +309,11 @@ public static class CatalogoDeItens
 		// ============================ E ELAS NAO TEM ACAO, E ISSO E O CONSERTO ============================
 		// A tentacao obvia era `Acoes: ["equipar"]`, copiando o scouter. **Seria um bug que mata.** O
 		// scouter guarda o estado ligado/desligado em `ServerPlayer.PoderesConcedidos`, e esse campo
-		// **nao vai pro disco** -- ele nao aparece em nenhuma linha do `CharacterStore`. Quem desloga
-		// com o scouter ligado acorda com ele desligado, e hoje isso custa um "???" na tela ate
-		// reequipar. Com a roupa espacial custaria a VIDA: deslogar no vacuo e voltar seria morrer em
-		// 20 s sem ter feito nada, e o jogador nao teria como saber por que.
+		// **nao vai pro disco**: o scouter so volta ligado do relog porque ganhou uma copia propria no save
+		// (`CharacterSave.ScouterLigado`, v0.3.0 -- antes ele acordava desligado e custava um "???" na tela
+		// ate reequipar). Um liga/desliga da roupa precisaria da mesma copia, e esquece-la custaria a VIDA:
+		// deslogar no vacuo e voltar seria morrer em 20 s sem ter feito nada, e o jogador nao teria como
+		// saber por que.
 		//
 		// Entao a protecao e ESTAR COM A ROUPA, e nao um bit ligado: a mochila **e** salva
 		// (`CharacterStore.cs:673` e `:769`), entao o abrigo sobrevive ao relog de graca, sem campo

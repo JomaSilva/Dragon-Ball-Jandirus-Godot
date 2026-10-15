@@ -230,13 +230,16 @@ public sealed partial class GameServer
 		DrMarcar();
 		double antes = reserva.Atual;
 		DrPassar(100);
-		AfirmarDr("em 100 s a Drill de nivel 1 junta 100 recursos (1 por segundo)", DrPerto(d.Estoque, 100), $"{d.Estoque:0.######}");
+		// (v0.3.0) A TAXA E DEZ VEZES A DE ANTES (dono, 2026-10-15: *"aumente em 10x os ganhos de recursos da drill"*): as contas
+		// daqui leem a constante (`Drill.TaxaPorNivel`), e nao o 1 por segundo que estava cravado nelas.
+		double cem = 100 * Drill.TaxaPorNivel, umaHora = 3600 * Drill.TaxaPorNivel;
+		AfirmarDr($"em 100 s a Drill de nivel 1 junta {cem:0} recursos ({Drill.TaxaPorNivel:0} por segundo)", DrPerto(d.Estoque, cem), $"{d.Estoque:0.######}");
 		AfirmarDr("...e a reserva do planeta caiu EXATAMENTE isso: o que entra no estoque e o que saiu dela",
-				  DrPerto(antes - reserva.Atual, 100), $"saiu {antes - reserva.Atual:0.######}");
+				  DrPerto(antes - reserva.Atual, cem), $"saiu {antes - reserva.Atual:0.######}");
 
 		DrPassar(0);
 		AfirmarDr("consultar de novo no MESMO instante nao paga nada (o carimbo andou com a conta)",
-				  DrPerto(d.Estoque, 100) && d.ContadoAteMs == _drRelogio, $"{d.Estoque:0.######}");
+				  DrPerto(d.Estoque, cem) && d.ContadoAteMs == _drRelogio, $"{d.Estoque:0.######}");
 		try
 		{
 			Drill.CarimboParadoDeTeste = true;
@@ -245,7 +248,7 @@ public sealed partial class GameServer
 			DrPassar(100);
 			DrPassar(0);
 			AfirmarDr("(defeito injetado: o carimbo nao anda) a mesma regua REPROVA -- a segunda consulta paga os 100 s de novo",
-					  !DrPerto(d.Estoque, 100), $"{d.Estoque:0.###}");
+					  !DrPerto(d.Estoque, cem), $"{d.Estoque:0.###}");
 		}
 		finally { Drill.CarimboParadoDeTeste = false; }
 
@@ -253,8 +256,8 @@ public sealed partial class GameServer
 		d.Estoque = 0;
 		DrMarcar();
 		DrPassar(3600);
-		AfirmarDr("uma HORA sem ninguem contar: a conta seguinte paga a hora inteira (3600), e nao um tique",
-				  DrPerto(d.Estoque, 3600), $"{d.Estoque:0.###}");
+		AfirmarDr($"uma HORA sem ninguem contar: a conta seguinte paga a hora inteira ({umaHora:0}), e nao um tique",
+				  DrPerto(d.Estoque, umaHora), $"{d.Estoque:0.###}");
 		try
 		{
 			Drill.ContaSoOTiqueDeTeste = true;
@@ -262,7 +265,7 @@ public sealed partial class GameServer
 			DrMarcar();
 			DrPassar(3600);
 			AfirmarDr("(defeito injetado: a conta so enxerga um tique) a mesma regua REPROVA -- a hora vira cinco segundos",
-					  !DrPerto(d.Estoque, 3600), $"{d.Estoque:0.###}");
+					  !DrPerto(d.Estoque, umaHora), $"{d.Estoque:0.###}");
 		}
 		finally { Drill.ContaSoOTiqueDeTeste = false; }
 
@@ -428,8 +431,8 @@ public sealed partial class GameServer
 		d.Estoque = 0;
 		DrMarcar();
 		DrPassar(100);
-		AfirmarDr("no nivel 3 ela tira 3 por segundo: 300 em 100 s (a de nivel 1 juntou 100 no mesmo tempo)",
-				  DrPerto(d.Estoque, 300), $"{d.Estoque:0.######}");
+		AfirmarDr($"no nivel 3 ela tira {Drill.Taxa(3):0} por segundo: {100 * Drill.Taxa(3):0} em 100 s (a de nivel 1 juntou {100 * Drill.Taxa(1):0} no mesmo tempo)",
+				  DrPerto(d.Estoque, 100 * Drill.Taxa(3)), $"{d.Estoque:0.######}");
 		AfirmarDr("...e o teto do estoque subiu junto com a taxa", DrPerto(Drill.Teto(d.Nivel), 3 * Drill.Teto(1)));
 
 		// ------------------------------------------------------------ SEM SALDO
@@ -494,19 +497,19 @@ public sealed partial class GameServer
 			d.Estoque = 0;
 			DrMarcar();
 			DrPassar(100);
-			AfirmarDr("(defeito injetado: a Drill credita o que pediu) a mesma regua REPROVA -- com a reserva em zero ela junta 300",
+			AfirmarDr($"(defeito injetado: a Drill credita o que pediu) a mesma regua REPROVA -- com a reserva em zero ela junta {100 * Drill.Taxa(d.Nivel):0}",
 					  !DrPerto(d.Estoque, 0), $"{d.Estoque:0.###}");
 		}
 		finally { Drill.TiraDoNadaDeTeste = false; }
 
 		// A RESERVA REGENERA (seis horas de relogio, pela conta do contrato), e ninguem religa nada.
 		reserva.Regenerar(6 * 3600);
-		double voltou = reserva.Atual;
+		double voltou = reserva.Atual, cem = 100 * Drill.Taxa(d.Nivel);
 		d.Estoque = 0;
 		DrMarcar();
 		DrPassar(100);
-		AfirmarDr("a reserva REGENERA e ela volta sozinha, sem ninguem religar: 300 em 100 s, tirados do que regenerou",
-				  voltou > 300 && DrPerto(d.Estoque, 300) && DrPerto(voltou - reserva.Atual, 300),
+		AfirmarDr($"a reserva REGENERA e ela volta sozinha, sem ninguem religar: {cem:0} em 100 s, tirados do que regenerou",
+				  voltou > cem && DrPerto(d.Estoque, cem) && DrPerto(voltou - reserva.Atual, cem),
 				  $"regenerou {voltou:0}, estoque {d.Estoque:0.###}");
 
 		DrPorAReservaEm(reserva, 40);
@@ -543,8 +546,9 @@ public sealed partial class GameServer
 		}
 
 		Cena(reserva.Maximo, 1);
-		AfirmarDr("com a reserva folgada cada uma junta o seu (100 e 100), e o planeta perde a SOMA: e uma reserva so",
-				  DrPerto(d1.Estoque, 100) && DrPerto(d2.Estoque, 100) && DrPerto(reserva.Maximo - reserva.Atual, 200),
+		double cada = 100 * Drill.Taxa(1);
+		AfirmarDr($"com a reserva folgada cada uma junta o seu ({cada:0} e {cada:0}), e o planeta perde a SOMA: e uma reserva so",
+				  DrPerto(d1.Estoque, cada) && DrPerto(d2.Estoque, cada) && DrPerto(reserva.Maximo - reserva.Atual, 2 * cada),
 				  $"{d1.Estoque:0.###} / {d2.Estoque:0.###}, planeta -{reserva.Maximo - reserva.Atual:0.###}");
 
 		Cena(60, 1);

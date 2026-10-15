@@ -941,6 +941,10 @@ public partial class GameServer
 			var comVazamento = new double[janelas];
 			long lixeira = 0;
 			List<ServerPlayer> vivos = [.. _players.Values.Where(p => p.Papel != null)];
+			// (v0.3.0) O VAZAMENTO ACOMPANHA A POPULACAO: com 2,5x mais habitantes o tique base ficou 2,5x mais caro, e os 60
+			// por tique de antes viraram ruido dentro do criterio relativo (1,5x). A injecao cresce na mesma proporcao daquilo
+			// de que ela tem que se destacar -- os mesmos 60 com a populacao de antes (~150 corpos).
+			int zumbisPorTique = Math.Max(60, vivos.Count * 2 / 5);
 			if (vivos.Count > 0)
 			{
 				for (int j = 0; j < janelas; j++)
@@ -950,7 +954,7 @@ public partial class GameServer
 					{
 						ulong t0 = Time.GetTicksUsec();
 						TickDosCorposSemDono(Protocol.TickSeconds);
-						for (int k = 0; k < 60; k++) zumbis.Add(vivos[k % vivos.Count]);
+						for (int k = 0; k < zumbisPorTique; k++) zumbis.Add(vivos[k % vivos.Count]);
 						foreach (ServerPlayer z in zumbis) lixeira += z.Id;
 						soma += Time.GetTicksUsec() - t0;
 					}

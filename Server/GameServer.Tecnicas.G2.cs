@@ -176,7 +176,7 @@ public partial class GameServer
 		// primeira linha de todos os cinco verbs (`if(usr.KaioPcnt != 1) usr.KaiokenRevert()`).
 		if (TemBuff(pl, BuffKaiokenG2)) { ReverterKaiokenG2(pl, porKO: false); return; }
 
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "caído não se acende Kaio-ken."); return; }
+		if (pl.Ficha.KO || EhCadaver(pl)) { Avisar(pl, "caído não se acende Kaio-ken."); return; }
 
 		// `if(src.powerMod>1)` -- SetKaioken:135. Carregar Ki e Kaio-ken sao a mesma tomada.
 		if (pl.Ficha.powerMod > 1)
@@ -292,17 +292,17 @@ public partial class GameServer
 			return;
 		}
 
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "caído não se cresce."); return; }
+		if (pl.Ficha.KO || EhCadaver(pl)) { Avisar(pl, "caído não se cresce."); return; }
 
 		// Os numeros sao os do `obj/buff/Giant_Form.Buff()` (Giant Form.dm:67-77):
 		//   giantFormbuff = 1.55  -> multiplica BP (entra no buffBuff do powerlevel)
 		//   Tphysoff += 1.5 / Tphysdef += 1.5 / Tspeed -= 0.5
 		// giantFormbuff vale 1 desligado, entao o buff soma 0,55 e o desligar devolve.
 		//
-		// O QUE NAO DEU PRA PORTAR: `animate(container, transform = matrix()*2, time = 5)` -- o
-		// sprite dobrando de tamanho. Isso e do CLIENTE, e o `MandarEfeito` que o `LigarBuff` ja
-		// dispara ("Giant_Form", duracao -1) e exatamente o gancho pra ele fazer isso quando
-		// alguem escrever a parte visual. Daqui nao ha como.
+		// O SPRITE DOBRANDO -- `animate(container, transform = matrix()*2, time = 5)` -- e da TELA, e chega a quem ve
+		// pelo bit da Forma Gigante nas marcas do corpo (`PacoteDeAparencia`, reenviado pelo `SincronizarPorte` a cada
+		// virada do buff); o boneco dobra pelo `CharacterVisual.PorteDoGigante`. Dono, 2026-10-15: *"namek gigante n ta
+		// deixando o sprite gigante, resolva isso"*.
 		LigarBuff(pl, BuffGiganteG2, "Forma Gigante", new()
 		{
 			["giantFormbuff"] = 0.55,
@@ -375,7 +375,7 @@ public partial class GameServer
 
 		if (DesligarBuff(pl, BuffElementalG2)) { Avisar(pl, "o elemento recua."); return; }
 
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "caído não se chama elemento nenhum."); return; }
+		if (pl.Ficha.KO || EhCadaver(pl)) { Avisar(pl, "caído não se chama elemento nenhum."); return; }
 
 		if (!_elementoG2.TryGetValue(pl.Id, out string? elem))
 		{
@@ -419,7 +419,7 @@ public partial class GameServer
 	{
 		if (EmEspera(pl, _prontoTimeTouchG2, "o tempo ainda não voltou pra sua mão")) return;
 		long agora = NowMs();
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "você não está em condições."); return; }
+		if (pl.Ficha.KO || EhCadaver(pl)) { Avisar(pl, "você não está em condições."); return; }
 
 		ServerPlayer? alvo = AlvoDeTecnica(pl, TimeTouchAlcanceG2);
 		if (alvo == null) { Avisar(pl, "não há ninguém ao seu alcance pra tocar."); return; }
@@ -550,7 +550,7 @@ public partial class GameServer
 		// `usr.Ki>=kireq && usr.HP<100 && !usr.blasting && !usr.KO` -- Spirit.dm:250.
 		// (`blasting` nao existe no port: nao ha projeteis. Cai fora sozinho.)
 		if (pl.Ficha.Ki < kireq) { Avisar(pl, $"isso pede pelo menos {kireq:0} de energia."); return; }
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "você não está em condições."); return; }
+		if (pl.Ficha.KO || EhCadaver(pl)) { Avisar(pl, "você não está em condições."); return; }
 		if (pl.Combate == null || pl.Ficha.HP >= 100) { Avisar(pl, "seu corpo já está inteiro."); return; }
 
 		double skill = _hamonSkillG2.GetValueOrDefault(pl.Id);
@@ -739,7 +739,7 @@ public partial class GameServer
 			double amt = _kaiokenAmtG2[id];
 			double maestria = MaestriaKaiokenG2(pl);
 
-			if (pl.Ficha.KO || pl.Ficha.dead || !TemBuff(pl, BuffKaiokenG2))
+			if (pl.Ficha.KO || EhCadaver(pl) || !TemBuff(pl, BuffKaiokenG2))
 			{
 				ReverterKaiokenG2(pl, porKO: true);
 				continue;
@@ -817,7 +817,7 @@ public partial class GameServer
 			double porSegundo = porDreno / VoltasPorCobrancaG2;
 
 			double minimo = pl.Ficha.maxstamina * 0.005 * TransDrainG2 * GiganteEficienciaG2;
-			if (pl.Ficha.stamina < minimo && !pl.Ficha.dead)
+			if (pl.Ficha.stamina < minimo && !EhCadaver(pl))
 			{
 				// O DM nao desliga o gigante por falta de folego: o `if` simplesmente para de
 				// cobrar, e a forma fica de graca. Aqui ela CAI -- forma que se sustenta sozinha
@@ -886,7 +886,7 @@ public partial class GameServer
 			if (!p.Decepado && !p.Aninhado) pl.Combate.Ferir(p, dano, letal: false);
 		pl.Combate.SincronizarVida();
 
-		if (!pl.Ficha.KO && !pl.Ficha.dead && pl.Combate.Corpo.DeveNocautear())
+		if (!pl.Ficha.KO && !EhCadaver(pl) && pl.Combate.Corpo.DeveNocautear())
 			pl.Combate.Nocautear(MeleeResolver.TetoDoNocaute, porVital: true);
 	}
 

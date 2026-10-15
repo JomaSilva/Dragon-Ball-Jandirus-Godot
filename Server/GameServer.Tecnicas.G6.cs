@@ -451,7 +451,7 @@ public sealed partial class GameServer
 	private void EscudoDeEnergiaG6(ServerPlayer pl)
 	{
 		if (DesligarBuff(pl, "Energy_Shield")) { Avisar(pl, "o escudo de energia se apaga."); return; }
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "agora nao."); return; }
+		if (pl.Ficha.KO || EhCadaver(pl)) { Avisar(pl, "agora nao."); return; }
 		if (EnraizadoPorKi(pl.Id)) { Avisar(pl, "nao da pra erguer o escudo com um raio na mao."); return; }
 
 		double def = Math.Max(pl.Ficha.kidefenseskill, 1);
@@ -486,7 +486,7 @@ public sealed partial class GameServer
 	private void FullPowerG6(ServerPlayer pl)
 	{
 		if (DesligarBuff(pl, "Full_Power")) { Avisar(pl, "voce relaxa a aura."); return; }
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "agora nao."); return; }
+		if (pl.Ficha.KO || EhCadaver(pl)) { Avisar(pl, "agora nao."); return; }
 
 		if (pl.Ficha.Ki < pl.Ficha.MaxKi / 20)
 		{
@@ -619,7 +619,7 @@ public sealed partial class GameServer
 
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash).ToList())
 		{
-			if (o == pl || o.Ficha.dead || o.Combate == null) continue;
+			if (o == pl || EhCadaver(o) || o.Combate == null) continue;
 			if (!NoArcoDoSoproG6(pl, o)) continue;
 
 			Arremessar(o, MeleeArea.Frente(pl.Facing), pl.Ficha.expressedBP,
@@ -689,7 +689,7 @@ public sealed partial class GameServer
 
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash).ToList())
 		{
-			if (o == pl || o.Ficha.dead || o.Combate == null) continue;
+			if (o == pl || EhCadaver(o) || o.Combate == null) continue;
 			if ((o.Pos - pl.Pos).Length > umTile * 1.5f) continue;
 
 			// O RUMO E DE MIM PRA ELE, e nao o meu olhar: a onda e RADIAL (`oview(1)` pega os oito
@@ -825,7 +825,7 @@ public sealed partial class GameServer
 
 		// `if(!med&&!train&&!KO&&canfight&&!KB&&!stagger)` -- quem foi derrubado no meio da carga
 		// perde o rugido. E o unico jeito de a tecnica ser interrompivel: o custo ja foi pago.
-		if (pl.Ficha.KO || pl.Ficha.dead || pl.Ficha.med || pl.Ficha.train || pl.TiquesDeVoo > 0)
+		if (pl.Ficha.KO || EhCadaver(pl) || pl.Ficha.med || pl.Ficha.train || pl.TiquesDeVoo > 0)
 		{
 			Avisar(pl, "o rugido se perde no peito.");
 			return;
@@ -846,7 +846,7 @@ public sealed partial class GameServer
 
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash).ToList())
 		{
-			if (o == pl || o.Ficha.dead || o.Combate == null) continue;
+			if (o == pl || EhCadaver(o) || o.Combate == null) continue;
 			if ((o.Pos - pl.Pos).Length > raio) continue;
 
 			Vec2 fora = o.Pos - pl.Pos;
@@ -964,11 +964,11 @@ public sealed partial class GameServer
 	private void CurarG6(ServerPlayer pl)
 	{
 		if (_curando.Remove(pl.Id)) { Avisar(pl, "voce para de curar."); return; }
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "agora nao."); return; }
+		if (pl.Ficha.KO || EhCadaver(pl)) { Avisar(pl, "agora nao."); return; }
 
 		ServerPlayer? alvo = Marcado(pl) ?? AlvoNaFrente(pl);
 		if (alvo == null || alvo == pl) { Avisar(pl, "marque quem voce quer curar e fique ao lado dele."); return; }
-		if (alvo.Combate == null || alvo.Ficha.dead) { Avisar(pl, "nao ha o que curar ai."); return; }
+		if (alvo.Combate == null || EhCadaver(alvo)) { Avisar(pl, "nao ha o que curar ai."); return; }
 
 		double entrada = pl.Ficha.MaxKi / Math.Max(pl.Ficha.Ekiskill * 20, 1);
 		if (pl.Ficha.Ki < entrada) { Avisar(pl, $"isso pede pelo menos {entrada:0} de energia."); return; }
@@ -1128,7 +1128,7 @@ public sealed partial class GameServer
 		{
 			if (!_players.TryGetValue(id, out ServerPlayer? pl)) { _curando.Remove(id); continue; }
 			if (!_players.TryGetValue(_curando[id], out ServerPlayer? alvo)
-				|| alvo.Combate == null || alvo.Ficha.dead
+				|| alvo.Combate == null || EhCadaver(alvo)
 				|| !alvo.Zone.Equals(pl.Zone)
 				|| (alvo.Pos - pl.Pos).Length > ZoneCollision.TileSize * 1.5f)
 			{
@@ -1147,7 +1147,7 @@ public sealed partial class GameServer
 			// 5 milhoes de Ki pagaria ~94 milhoes por tique pra devolver `0,2*Ekiskill` de vida. A cura
 			// do jogo antigo era impagavel exatamente pra quem tinha Ki pra cura-la.
 			double kireq = pl.Ficha.MaxKi / Math.Max(pl.Ficha.Ekiskill * 10, 1);
-			if (pl.Ficha.Ki < kireq * 2 || pl.Ficha.KO || pl.Ficha.dead)
+			if (pl.Ficha.Ki < kireq * 2 || pl.Ficha.KO || EhCadaver(pl))
 			{
 				_curando.Remove(id);
 				Avisar(pl, "voce nao tem mais energia pra curar.");
@@ -1165,7 +1165,7 @@ public sealed partial class GameServer
 			if (!_players.TryGetValue(id, out ServerPlayer? pl)) { _rugindo.Remove(id); continue; }
 			RugidoG6 c = _rugindo[id];
 
-			if (pl.Ficha.KO || pl.Ficha.dead || pl.Ficha.med || pl.Ficha.train)
+			if (pl.Ficha.KO || EhCadaver(pl) || pl.Ficha.med || pl.Ficha.train)
 			{
 				_rugindo.Remove(id);
 				MandarEfeito(pl, "rugido", 0);

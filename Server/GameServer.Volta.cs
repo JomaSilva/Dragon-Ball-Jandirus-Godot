@@ -46,13 +46,23 @@ namespace Jandirus.Server;
 public sealed partial class GameServer
 {
 	/// <summary>
-	/// A FAIXA DA VOLTA, em celulas. `x &lt;= 3` do DM, em base zero.
+	/// A FAIXA DA VOLTA, em celulas: a ULTIMA, a que encosta na borda. DESVIO DECLARADO DO DM (`x &lt;= 3`, tres celulas) --
+	/// o dono, 2026-10-15: *"dar a volta no planeta deveria acontecer so quando vc encosta na borda do planeta, pq tem locais
+	/// como no planeta vegeta q tem portas coladas na borda q n da pra chegar por conta do loop do planeta"*. A entrada do
+	/// castelo de Vegeta (`VCastleEntrance1`) e a linha 0 do mapa: com a faixa de tres, quem chegava a duas celulas dela ja
+	/// estava do outro lado do mundo. A boca e lacrada (ninguem pisa nela), entao o corpo para na linha 1 empurrando pro
+	/// norte -- e a passagem o leva.
 	///
-	/// Tem que ser MAIOR que a margem indestrutivel da borda (<see cref="ZoneCollision.MargemDaBorda"/>):
-	/// o jogador precisa dar a volta ANTES de chegar no chao que ninguem pode quebrar, senao ele
-	/// para encostado numa parede invisivel de dois tiles e a volta nunca acontece.
+	/// O MURO INVISIVEL que este comentario temia nao existe: a beirada indestrutivel (<see cref="ZoneCollision.MargemDaBorda"/>)
+	/// e de DESTRUICAO, e nao de passo -- a celula da borda se anda como qualquer outra (`ZoneCollision.BlockedCell`).
 	/// </summary>
-	private const int FaixaDaVolta = 3;
+	private static int FaixaDaVolta => VoltaNaFaixaDoDmDeTeste ? 3 : 1;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`): a volta dispara de novo a tres celulas da borda (o `x &lt;= 3` do DM) -- o
+	/// jogo de antes. Lido pela <see cref="FaixaDaVolta"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool VoltaNaFaixaDoDmDeTeste;
 
 	/// <summary>Onde o corpo REAPARECE, contado da borda oposta. `nx = 4` / `maxx - 3` do DM.</summary>
 	private const int PousoDaVolta = 4;

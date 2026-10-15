@@ -114,7 +114,7 @@ public partial class RoboDaMiragemPorOndePasso : Node
 	/// UM SALTO FOI ANUNCIADO, e o `World.AoPiscar` ja o desenhou (esta assinatura veio depois da dele). Se a conta de
 	/// miragens andou neste disparo e o salto e do corpo local, a miragem dele e o ultimo `Zanzoken` do palco.
 	/// </summary>
-	private void AoPiscar(int quem, Vec2 de, bool vulto)
+	private void AoPiscar(int quem, Vec2 de, bool vulto, bool longa)
 	{
 		int agora = Zanzoken.MiragensDeTeste;
 		bool nasceu = agora > _conta;

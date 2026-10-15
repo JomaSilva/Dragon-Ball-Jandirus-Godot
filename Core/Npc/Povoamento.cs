@@ -26,6 +26,13 @@ public sealed class LinhaDePovoamento
 
 	/// <summary>O alvo. A manutencao COMPLETA ate aqui; ela nunca mata ninguem pra chegar no numero.</summary>
 	public int Quantos;
+
+	/// <summary>
+	/// (v0.3.0) SO COM ESTE TRONO VAGO: a chave de um cargo (`"kov"`, o Rei de Vegeta) -- a linha so nasce enquanto nenhum
+	/// jogador o carrega. Vazio = sempre. E o `if(!King_of_Vegeta ...)` do `populate_vegeta` (PlanetPopulation.dm:435); ver
+	/// <see cref="Povoamento.LinhaVale"/> e `GameServer.ReiDeVegeta.cs`.
+	/// </summary>
+	public string TronoVago = "";
 }
 
 /// <summary>
@@ -81,6 +88,17 @@ public static class Povoamento
 	/// </summary>
 	public static bool PodeNascer(TipoDeNpc tipo) => tipo != TipoDeNpc.Inimigo || InimigoComumLigado;
 
+	/// <summary>
+	/// (v0.3.0) ESTA LINHA VALE AGORA? A que pede um trono vago (<see cref="LinhaDePovoamento.TronoVago"/>) so vale enquanto
+	/// `tronoVago(cargo)` responde sim -- quem responde e o servidor, que sabe quem esta em cada trono. As outras valem
+	/// sempre. O Rei Vegeta e o Principe sao as duas linhas de hoje (`GameServer.ReiDeVegeta.cs`).
+	/// </summary>
+	public static bool LinhaVale(LinhaDePovoamento linha, Func<string, bool> tronoVago) =>
+		linha.TronoVago.Length == 0 || TronoIgnoradoDeTeste || tronoVago(linha.TronoVago);
+
+	/// <summary>DEFEITO INJETADO (`--v030teste`): o trono e ignorado -- o Rei NPC nasceria com um jogador no trono (dois reis).</summary>
+	public static bool TronoIgnoradoDeTeste;
+
 	/// <summary>Por que este molde nao nasce. Vazio = nasce. Existe pra o console dizer o motivo.</summary>
 	public static string PorQueNaoNasce(TipoDeNpc tipo) =>
 		PodeNascer(tipo) ? "" : $"inimigo comum esta DESLIGADO ({MotivoDoInimigoDesligado})";
@@ -103,35 +121,43 @@ public static class Povoamento
 	/// canal de cada pessoa que estiver la -- e isso ANTES dos jogadores. 200 seriam ~96 KB/s, que
 	/// e mais banda do que o jogo inteiro usa hoje.
 	///
-	/// 80 e o numero, e ele REJEITA DE VERDADE: o plano de producao pede 40 na Terra, e a bancada
-	/// aperta o teto contra o codigo de PRODUCAO (o parametro existe por isso, como o `teto` do
-	/// <see cref="Races.Bercos.ServeDeBerco"/>) pra provar que ele dispara. Corolario 0.7: um teto
-	/// que nunca e atingido e indistinguivel de teto nenhum.
+	/// (v0.3.0) E FOI O FIO QUE MUDOU -- e nao o teto que foi esticado no chute. O dono pediu *"aumentar a quantidade
+	/// de npcs consideravelmente, mas cuidado com a performance do server"*, e o habitante longe de todo jogador (o
+	/// mesmo `LongeDeTodos` que ja faz a mente dele pensar um tique a cada dez) passou a ir no snapshot SO no tique em
+	/// que pensa (`GameServer.CorposDoSnapshot`): o fio paga a vizinhanca de quem esta jogando, e nao o planeta
+	/// inteiro. O plano da Terra foi a 100; 150 deixa a fauna e as ondas de invasao cabendo em cima dele.
+	///
+	/// 150 e o numero, e ele REJEITA DE VERDADE: a bancada aperta o teto contra o codigo de PRODUCAO (o parametro
+	/// existe por isso, como o `teto` do <see cref="Races.Bercos.ServeDeBerco"/>) pra provar que ele dispara.
+	/// Corolario 0.7: um teto que nunca e atingido e indistinguivel de teto nenhum.
 	/// ================================================================================
 	/// </summary>
-	public const int MaxPorZona = 80;
+	public const int MaxPorZona = 150;
 
 	/// <summary>
 	/// QUANTOS NO SERVIDOR INTEIRO. `TickCombate` e `TickDaForma` varrem `_players` a 30 Hz, e essa
 	/// varredura NAO e por zona: um planeta cheio custa nos tiques de todo mundo, inclusive de quem
 	/// esta em outro mapa.
 	///
-	/// 300 cabe no plano de producao (148) com folga de dobrar, e continua sendo um teto que a
-	/// bancada faz disparar.
+	/// (v0.3.0) 600: o plano de producao foi de 150 a 372 corpos (o pedido do dono de mais gente nos planetas
+	/// civilizados), e o teto continua com folga pra fauna, invasao e torneio -- e continua sendo um teto que a bancada
+	/// faz disparar. O preco e linear e e medido: os dez relogios do corpo custavam 0,717 ms por tique com 148 corpos e
+	/// ninguem online (`GameServer.RelogiosDoCorpo.cs`), e a `--embaralhoteste` (familias 5 e 13) mede o tique do mundo
+	/// cheio de hoje e reprova acima de 25% do orcamento.
 	/// </summary>
-	public const int MaxNoServidor = 300;
+	public const int MaxNoServidor = 600;
 
 	/// <summary>
 	/// QUANTOS NASCEM POR TIQUE. Sortear uma ficha custa 0,16 a 0,29 ms (medido no mapeamento:
 	/// `soldado_saiyajin` 0,199 ms, `guerreiro_namekuseijin` 0,294 ms) -- e isso ANTES do
 	/// `PorNoMundo`, que faz `Statify` e `PrepararCombate`.
 	///
-	/// Povoar 148 corpos de uma vez seriam ~30 ms num tique so: o servidor inteiro parado por um
-	/// quadro por causa de uma manutencao que ninguem pediu. E exatamente o que o `sleep(1)` entre
+	/// Povoar os 372 corpos do plano de uma vez seriam ~80 ms num tique so: o servidor inteiro parado por
+	/// alguns quadros por causa de uma manutencao que ninguem pediu. E exatamente o que o `sleep(1)` entre
 	/// cada NPC do original evita (PlanetPopulation.dm:431), e a regra 0.4 diz a mesma coisa com
 	/// outras palavras.
 	///
-	/// UM por tique = 30 por segundo = o mundo inteiro povoado em 5 s, ao preco de 0,3 ms num
+	/// UM por tique = 30 por segundo = o mundo inteiro povoado em ~12 s, ao preco de 0,3 ms num
 	/// tique de 33,3 ms (1%).
 	/// </summary>
 	public const int NascimentosPorTique = 1;
@@ -157,19 +183,25 @@ public static class Povoamento
 	// =====================================================================
 
 	/// <summary>
-	/// QUANTO TEMPO UM PLANETA VAZIO PRECISA FICAR VAZIO ANTES DE OS HABITANTES "TEREM ANDADO".
-	/// **DADO DO DONO, literal**: *"ao SAIR de um planeta e passar UNS 5 MINUTOS, todos os npcs do
-	/// mapa sao colocados em POSICOES ALEATORIAS PROXIMA DA ONDE ELES ESTAVAM, pra parecer q eles
-	/// andaram"*.
+	/// QUANTOS TILES UM HABITANTE "ANDA" POR MINUTO DE PLANETA VAZIO -- o raio do embaralho cresce com a ausencia.
 	///
-	/// Bate com <see cref="SegundosEntreManutencoes"/> por coincidencia util e nao por dependencia:
-	/// os dois sao 300 s, e um planeta esquecido acorda com a populacao completada E com todo mundo
-	/// noutro canto -- que e exatamente a impressao de "a vida seguiu sem mim".
+	/// ============================ O PEDIDO VIROU UMA PROPORCAO (v0.3.0) ============================
+	/// O primeiro pedido era um PRAZO: *"ao SAIR de um planeta e passar UNS 5 MINUTOS, todos os npcs do mapa sao
+	/// colocados em POSICOES ALEATORIAS PROXIMA DA ONDE ELES ESTAVAM, pra parecer q eles andaram"*. O de 2026-10-15 o
+	/// trocou por uma conta: *"o embaralhamento vai ser baseado no tempo q o planeta ficou sem player, pro cara n sair
+	/// e voltar em 1 segundo e o npc parar no outro lado do planeta"*. Entao o quanto cada um andou e o TEMPO VAZIO
+	/// vezes esta velocidade (<see cref="RaioDoEmbaralho"/>), e os 5 minutos de antes viraram um ponto da reta: dois
+	/// tiles por minuto dao, aos 5 minutos, os mesmos 10 tiles que o embaralho antigo dava.
+	///
+	/// POR QUE DOIS: a caminhada da vida diaria anda bem mais que isso em TRAJETO, e trajeto nao e deslocamento --
+	/// quem passeia a esmo volta sobre os proprios passos. Dois tiles por minuto e o deslocamento LIQUIDO de quem
+	/// passeou, e nao o odometro dele.
+	/// ======================================================================================
 	/// </summary>
-	public const double SegundosAteOEmbaralho = 300;
+	public const double TilesPorMinutoDoEmbaralho = 2;
 
 	/// <summary>
-	/// ATE ONDE UM CORPO "ANDOU" NO EMBARALHO, em tiles, e por que sao dois numeros.
+	/// O MENOR PASSO DO EMBARALHO, em tiles -- o anel morto do sorteio --, e por isso ele tambem decide o prazo.
 	///
 	/// ============================ O PISO E O QUE FAZ A COISA APARECER ============================
 	/// Sem anel morto no meio, metade dos sorteios cai a um tile de onde o corpo ja estava -- e um
@@ -177,18 +209,51 @@ public static class Povoamento
 	/// (o `get_dist >= 2` do `conq_spawn_turf_near`), pela mesma razao: o sorteio precisa RECUSAR o
 	/// meio, senao o comportamento existe no codigo e nao no jogo.
 	///
-	/// O TETO E A CIDADE. O passeio de verdade da ~1 tile a cada 20 s (`PasseioDeHabitante`), entao
-	/// 5 min de caminhada honesta sao ~15 tiles de trajeto e MUITO menos de deslocamento liquido
-	/// (passeio aleatorio nao anda em linha reta). 10 tiles ficam dentro do que uma ausencia curta
-	/// justifica, e -- o que importa mais -- dentro do quadrado de 24 tiles em que o povoamento
-	/// espalhou os habitantes (<c>PontoDeHabitante</c>): mais que isso e o vilarejo se dissolvendo
-	/// no mapa a cada visita, que e o defeito que o proprio passeio ja teve uma vez (2400 px em 20 s).
+	/// E UM RAIO MENOR QUE O PISO NAO TEM ONDE POR NINGUEM: abaixo dele ninguem anda, e o tempo em que o raio o
+	/// alcanca e o <see cref="SegundosAteOEmbaralho"/>.
 	/// ======================================================================================
 	/// </summary>
 	public const int TilesMinDoEmbaralho = 3;
 
-	/// <inheritdoc cref="TilesMinDoEmbaralho"/>
-	public const int TilesMaxDoEmbaralho = 10;
+	/// <summary>
+	/// O TETO DO RAIO, em tiles: o quanto uma ausencia LONGA leva -- 64, alcancados aos 32 minutos.
+	///
+	/// ============================ O TETO ANTIGO (10) PROTEGIA UM VILAREJO QUE NAO EXISTE MAIS ============================
+	/// Ele nasceu quando o povoamento espalhava os habitantes num quadrado de 24 tiles, e mais que 10 era "o vilarejo se
+	/// dissolvendo no mapa a cada visita". Hoje o povoamento espalha por AREA no planeta inteiro (`Core/Npc/Habitat.cs`,
+	/// regioes de 32 tiles): 64 tiles sao duas regioes -- trocar de bairro, e nao de planeta.
+	///
+	/// E O TETO CONTINUA EXISTINDO: sem ele uma ausencia de um dia viraria um sorteio de lugar novo no planeta inteiro, e
+	/// apagaria a continuidade ("ele estava perto do lago, agora esta do outro lado da montanha") que e o motivo do
+	/// embaralho existir.
+	/// =================================================================================================================
+	/// </summary>
+	public const int TilesMaxDoEmbaralho = 64;
+
+	/// <summary>
+	/// O PRAZO MINIMO: quanto tempo o planeta precisa ficar vazio pra alguem ter andado. DERIVADO, e nao escolhido: e o
+	/// tempo em que o raio alcanca o anel morto (3 tiles a 2 por minuto = 90 s). Quem sai e volta antes disso encontra
+	/// todo mundo onde deixou -- o *"sair e voltar em 1 segundo"* do dono.
+	/// </summary>
+	public const double SegundosAteOEmbaralho = TilesMinDoEmbaralho * 60.0 / TilesPorMinutoDoEmbaralho;
+
+	/// <summary>
+	/// O RAIO DO EMBARALHO, em tiles por eixo, pra um planeta que ficou <paramref name="segundosVazio"/> sem jogador:
+	/// zero abaixo do prazo (ninguem anda), o tempo vezes a velocidade acima dele, e nunca mais que o teto. Funcao pura
+	/// -- o servidor e as bancadas perguntam a mesma.
+	/// </summary>
+	public static int RaioDoEmbaralho(double segundosVazio)
+	{
+		if (segundosVazio < SegundosAteOEmbaralho) return 0;
+		if (RaioFixoDeTeste) return TilesMaxDoEmbaralho;
+		return (int)Math.Min(TilesMaxDoEmbaralho, Math.Floor(segundosVazio / 60.0 * TilesPorMinutoDoEmbaralho));
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--embaralhoteste`, `--v030teste`): o raio ignora o tempo -- vencido o prazo, toda ausencia leva
+	/// o teto, e quem saiu por dois minutos acha a cidade espalhada pelo bairro todo. Falso em jogo, sempre.
+	/// </summary>
+	public static bool RaioFixoDeTeste;
 
 	/// <summary>
 	/// QUANTOS PONTOS O EMBARALHO SORTEIA ANTES DE DESISTIR DE UM CORPO.
@@ -210,10 +275,10 @@ public static class Povoamento
 	/// Sortear N pontos e ficar com o primeiro que serve nao tem nenhum dos dois vicios: todo ponto
 	/// candidato ja nasce dentro do raio que o dono pediu, e a distribuicao e a do sorteio.
 	///
-	/// OITO, e o numero tem uma conta atras dele: o anel util (3..10 tiles nos dois eixos, com sinal)
-	/// tem 4x8x8 = 256 celulas. Com metade delas livres, oito tentativas erram todas com chance 1/256;
-	/// com so um QUARTO livre, 10%. Abaixo disso -- um corpo praticamente emparedado -- ficar onde
-	/// estava e o comportamento desejado e nao uma falha.
+	/// OITO, e o numero tem uma conta atras dele: o anel util (3..R tiles nos dois eixos, com sinal)
+	/// tem 4x(R-2)^2 celulas -- 256 com o raio dos 5 minutos (R = 10), e mais com raio maior. Com metade
+	/// delas livres, oito tentativas erram todas com chance 1/256; com so um QUARTO livre, 10%. Abaixo
+	/// disso -- um corpo praticamente emparedado -- ficar onde estava e o comportamento desejado e nao uma falha.
 	/// ========================================================================================
 	/// </summary>
 	public const int TentativasDoEmbaralho = 8;
@@ -240,6 +305,7 @@ public static class Povoamento
 				Molde = e.TryGetProperty("molde", out JsonElement m) ? m.GetString() ?? "" : "",
 				Quantos = e.TryGetProperty("quantos", out JsonElement q) && q.ValueKind == JsonValueKind.Number
 					? q.GetInt32() : 0,
+				TronoVago = e.TryGetProperty("tronoVago", out JsonElement tv) ? tv.GetString() ?? "" : "",
 			};
 			if (linha.Planeta.Length > 0 && linha.Molde.Length > 0) l.Add(linha);
 		}

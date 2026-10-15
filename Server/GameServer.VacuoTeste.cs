@@ -1151,16 +1151,20 @@ public partial class GameServer
 					$"{antes[bioHumano.Id]:0.##} -> {MenorNucleo(bioHumano):0.##}");
 
 			// ---- 3. E O PARTO ESCREVE ISSO? (o cruzamento com a `--bioteste`) --
+			// (v0.3.0) A AMOSTRA MUDOU DE CASA: a agulha monta o registro pelo `AmostraDe` (`GameServer.SangueDoBio.cs`), e o pulmao
+			// le o SANGUE de cada amostra (`SangueDaAmostra`) -- os dois fontes sao lidos juntos.
 			string caminho = ProjectSettings.GlobalizePath("res://Server/GameServer.Tech.cs");
-			if (!File.Exists(caminho)) { p.NaoDeu($"o fonte da tecnologia nao esta no disco ({caminho})"); return; }
-			string fonte = (_vacFonteMutante ?? File.ReadAllText)(caminho);
+			string caminhoDoSangue = ProjectSettings.GlobalizePath("res://Server/GameServer.SangueDoBio.cs");
+			if (!File.Exists(caminho) || !File.Exists(caminhoDoSangue))
+			{ p.NaoDeu($"o fonte da tecnologia nao esta no disco ({caminho} / {caminhoDoSangue})"); return; }
+			string fonte = (_vacFonteMutante ?? File.ReadAllText)(caminho) + (_vacFonteMutante ?? File.ReadAllText)(caminhoDoSangue);
 
 			p.Prova("o PARTO grava o folego herdado na ficha (`bio_dna_respira`) -- a fornada e "
 					+ "destruida no nascimento, entao ou e agora ou a informacao some",
 					fonte.Contains("pl.Ficha.bio_dna_respira = pulmao != null;"), "");
-			p.Prova("...e a derivacao pergunta ao CORE, doador por doador (`Vacuo.RespiraNoVacuo`), em "
+			p.Prova("...e a derivacao pergunta ao CORE, raca por raca do sangue de cada doador (`Vacuo.RespiraNoVacuo`), em "
 					+ "vez de escrever a lista de racas pela segunda vez",
-					fonte.Contains("Vacuo.RespiraNoVacuo(a.Raca, a.RacaDoPai)"), "");
+					fonte.Contains("SangueDaAmostra(a).Any(r => Vacuo.RespiraNoVacuo(r))"), "");
 			p.Prova("...e a agulha guarda a raca do PAI do doador (senao o meio-sangue entraria cego "
 					+ "no tanque, e a prova do meio-Majin la em cima seria vacua)",
 					fonte.Contains("RacaDoPai = vitima.Ficha.ParentRace"), "");
@@ -1182,7 +1186,7 @@ public partial class GameServer
 
 			("a derivacao virou uma SEGUNDA lista de raca, cravada no parto",
 			 _ => _vacFonteMutante = c => File.ReadAllText(c)
-					.Replace("Vacuo.RespiraNoVacuo(a.Raca, a.RacaDoPai)", "a.Raca == \"Majin\"")),
+					.Replace("SangueDaAmostra(a).Any(r => Vacuo.RespiraNoVacuo(r))", "a.Raca == \"Majin\"")),
 
 			("a agulha parou de guardar a raca do pai (meio-sangue entra cego no tanque)",
 			 _ => _vacFonteMutante = c => File.ReadAllText(c)

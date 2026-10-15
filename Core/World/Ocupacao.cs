@@ -8,7 +8,7 @@ namespace Jandirus.Core.World;
 ///
 /// ============================ POR QUE UM NOME, E NAO UM `bool` ============================
 /// Um `bool Ocupado` responde "ele nao se mexe" e nada mais -- e "o corpo nao saiu do lugar" nao e
-/// diagnostico nenhum: sao ONZE estados diferentes, cada um por um motivo legitimo, e de fora eles
+/// diagnostico nenhum: sao DOZE estados diferentes, cada um por um motivo legitimo, e de fora eles
 /// sao identicos. Este projeto ja pagou essa conta na propria mudez do corpo local, e a resposta foi
 /// o <c>LocalPlayer.PorQueNaoAnda</c>, que NOMEIA em vez de devolver um bit. Este arquivo e o irmao
 /// dele do lado do OBSTACULO: o `PorQueNaoAnda` responde *"por que EU nao ando"*, este responde
@@ -46,7 +46,7 @@ public enum Ocupacao : byte
 	Livre = 0,
 
 	/// <summary>
-	/// NOCAUTEADO OU MORTO NO CHAO. Primeiro da lista porque ganha de tudo -- um corpo caido nao
+	/// NOCAUTEADO OU MORTO NO CHAO. Ganha de tudo menos do <see cref="Desfeito"/> -- um corpo caido nao
 	/// esta atacando nem guardando, e mostrar qualquer outro nome aqui seria mentira.
 	///
 	/// Ele ja barrava quem anda (o DM nunca desliga `density` por KO nem por morte -- ver
@@ -108,6 +108,19 @@ public enum Ocupacao : byte
 
 	/// <summary>MEDITANDO (`Ficha.med`). Idem.</summary>
 	Meditando = 10,
+
+	/// <summary>
+	/// (2026-10-15) O MAJIN DESFEITO EM PEDACOS, se refazendo (`CombatState.Desfeito`). Primeiro da cadeia: e um corpo
+	/// caido E a tela precisa saber que ele nao esta inteiro -- e por este valor que ela desenha os pedacos no lugar dele
+	/// (`Client/PedacosDoMajin.cs`).
+	/// </summary>
+	Desfeito = 11,
+
+	/// <summary>
+	/// (v0.3.0) O CHEFE CONCENTRANDO A SUPERNOVA -- o ultimato de destruicao (`GameServer.ComecarASupernova`): parado e
+	/// intocavel ate a explosao. E por este valor que a tela desenha o sol sobre ele (`Client/SupernovaDesenhada.cs`).
+	/// </summary>
+	Supernova = 12,
 }
 
 /// <summary>
@@ -124,6 +137,12 @@ public static class CorpoOcupado
 	/// </summary>
 	public struct Sinais
 	{
+		/// <summary>(2026-10-15) `CombatState.Desfeito` -- o Majin em pedacos.</summary>
+		public bool Desfeito;
+
+		/// <summary>(v0.3.0) `ServerPlayer.SupernovaDesde` -- o chefe erguendo o sol do ultimato.</summary>
+		public bool Supernova;
+
 		/// <summary>`Ficha.KO` ou morto ainda deitado no mundo dos vivos.</summary>
 		public bool Nocauteado;
 
@@ -168,7 +187,11 @@ public static class CorpoOcupado
 	/// ==========================================================
 	/// </summary>
 	public static Ocupacao De(in Sinais s) =>
-		  s.Nocauteado    ? Ocupacao.Nocauteado
+		  s.Desfeito      ? Ocupacao.Desfeito
+		: s.Nocauteado    ? Ocupacao.Nocauteado
+		// (v0.3.0) DEPOIS do nocaute (o chefe derrubado ja nao concentra nada: o KO e o que interrompe o ultimato) e ANTES
+		// da cena -- a Supernova escreve o `CenaSegundos` pra prender o chefe, e sem esta linha ele leria "em cena".
+		: s.Supernova     ? Ocupacao.Supernova
 		: s.NoEmbate      ? Ocupacao.NoEmbate
 		: s.EmCena        ? Ocupacao.EmCena
 		: s.CanalizandoKi ? Ocupacao.CanalizandoKi
@@ -193,6 +216,8 @@ public static class CorpoOcupado
 	/// </summary>
 	public static string Nome(Ocupacao o) => o switch
 	{
+		Ocupacao.Desfeito      => "desfeito em pedacos (o Majin se refazendo)",
+		Ocupacao.Supernova     => "concentrando a Supernova (o ultimato do chefe)",
 		Ocupacao.Nocauteado    => "nocauteado (ou morto no chao)",
 		Ocupacao.NoEmbate      => "num embate",
 		Ocupacao.EmCena        => "numa cinematica de transformacao",
@@ -211,5 +236,5 @@ public static class CorpoOcupado
 	/// corrompido) vira <see cref="Ocupacao.Livre"/> e nao um estado inventado -- errar pro lado de
 	/// "nao barra" e o unico erro que nao prende ninguem.
 	/// </summary>
-	public static Ocupacao DeByte(byte b) => b <= (byte)Ocupacao.Meditando ? (Ocupacao)b : Ocupacao.Livre;
+	public static Ocupacao DeByte(byte b) => b <= (byte)Ocupacao.Supernova ? (Ocupacao)b : Ocupacao.Livre;   // o ULTIMO valor do `enum`
 }

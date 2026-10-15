@@ -198,7 +198,7 @@ public partial class GameServer
 
 	private RecusaDeDisciplina PodeAprender(ServerPlayer pl, TipoDeDisciplina tipo)
 	{
-		if (pl.Ficha.KO || pl.Ficha.dead) return RecusaDeDisciplina.Caido;
+		if (pl.Ficha.KO || EhCadaver(pl)) return RecusaDeDisciplina.Caido;
 		if (EstadoDe(pl, tipo).Aprendida) return RecusaDeDisciplina.JaSabe;
 
 		// AS DUAS SE EXCLUEM. Ja valia pras FORMAS (`Catalogo.LinhasAbertas`); aqui vale pra skill,
@@ -290,7 +290,7 @@ public partial class GameServer
 	/// casos: no kit emprestado ele mora no mesmo campo, com o `Aprendida` falso.
 	/// </summary>
 	private bool AuraDaDestruicaoLigada(ServerPlayer pl) =>
-		!pl.Ficha.dead
+		!EhCadaver(pl)
 		&& (pl.PoderDaDestruicao.Ligada || FormaDaDisciplina(pl, Disciplinas.PoderDaDestruicao) != null)
 		&& FatorDoKitDaDestruicao(pl) > 0;
 
@@ -666,7 +666,7 @@ public partial class GameServer
 		EnsinarADestruicao(alvo, def.RealPorGatilho * Disciplinas.FracaoDoGatilhoAoApanhar);
 
 		// O RECUO no atacante MELEE. So melee: quem atira de longe nao encosta na aura.
-		if (ehKi || atacante == null || atacante == alvo || atacante.Ficha.dead) return;
+		if (ehKi || atacante == null || atacante == alvo || EhCadaver(atacante)) return;
 
 		double recuo = dano * Disciplinas.Recuo(EnergiaDoKit(alvo)) * FatorDoKitDaDestruicao(alvo) / 100.0;
 		if (recuo <= 0) return;
@@ -837,7 +837,7 @@ public partial class GameServer
 	{
 		EstadoDeDisciplina est = pl.PoderDaDestruicao;
 		if (!est.Ligada || pl.AuraSalvouNestaLuta || FatorDoKitDaDestruicao(pl) <= 0) return false;
-		if (pl.Combate == null || pl.Ficha.dead) return false;
+		if (pl.Combate == null || EhCadaver(pl)) return false;
 
 		pl.AuraSalvouNestaLuta = true;
 		est.Ligada = false;                    // a aura ESTOURA -- nao "gasta uma carga"
@@ -884,7 +884,7 @@ public partial class GameServer
 		int pegos = 0;
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash).ToList())
 		{
-			if (o == pl || o.Ficha.dead || o.Combate is not { Intocavel: false }) continue;
+			if (o == pl || EhCadaver(o) || o.Combate is not { Intocavel: false }) continue;
 			if (Fusao.DistanciaEmTilesDoDm(o.Pos, pl.Pos, ZoneCollision.TileSize) > Disciplinas.ExplosaoRaioTiles) continue;
 
 			// `murderToggle` no DM: a explosao mata se a luta for letal. Aqui a letalidade e do
@@ -979,7 +979,7 @@ public partial class GameServer
 		{
 			List<ServerPlayer> alvos = [];
 			foreach (int id in pl.GdMarcados)
-				if (CorpoNaMinhaZona(pl, id) is { } v && !v.Ficha.dead
+				if (CorpoNaMinhaZona(pl, id) is { } v && !EhCadaver(v)
 					&& Fusao.DistanciaEmTilesDoDm(pl.Pos, v.Pos, ZoneCollision.TileSize) <= Disciplinas.GdAlcanceDoSegundoToque)
 					alvos.Add(v);
 			if (alvos.Count == 0) { Avisar(pl, "nenhum alvo marcado ao alcance."); return; }
@@ -1036,7 +1036,7 @@ public partial class GameServer
 		float percorrido = Vec2.Distance(origem, destino);
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
 		{
-			if (o == pl || o.Ficha.dead || o.Combate is not { Intocavel: false }) continue;
+			if (o == pl || EhCadaver(o) || o.Combate is not { Intocavel: false }) continue;
 			if (!AlcancaPelaAltura(pl, o)) continue;
 
 			Vec2 d = o.Pos - origem;
@@ -1099,7 +1099,7 @@ public partial class GameServer
 		for (int h = 0; h < Disciplinas.GdGolpes; h++)
 		{
 			ServerPlayer v = alvos[h % alvos.Count];
-			if (v.Ficha.dead || v.Combate == null) continue;
+			if (EhCadaver(v) || v.Combate == null) continue;
 
 			double dano = CombatMath.DanoBase(pl.Ficha, v.Ficha) * Disciplinas.GdDanoPorGolpe;
 			if (v.Combate.Bloqueando) dano *= Disciplinas.GdBloqueioMult;   // bloquear protege dos golpes em si

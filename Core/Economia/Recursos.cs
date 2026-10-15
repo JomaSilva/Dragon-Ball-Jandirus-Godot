@@ -168,8 +168,12 @@ public static class Recurso
 	/// cada 2,5 s com 20% de chance (`Tier 1.dm:263-265` e `:316-318`). Esse "cavar" chegou a ser portado como
 	/// acao do item e SAIU (dono, 2026-10-10: *"tire a opcao de cavar da pa e furadeira pq e redundante"*): as
 	/// duas ferramentas so fazem isto aqui. A razao entre elas ficou a de la (2x).
+	///
+	/// (v0.3.0) A PA E A FURADEIRA RENDEM DEZ VEZES O QUE RENDIAM (6 e 12 por segundo) -- o dono, 2026-10-15: *"aumente em 10x os
+	/// ganhos de recursos da drill, furadeira e pa, pq os jogadores estao reclamando da demora absurda q ta pra conseguir
+	/// recursos pra construir coisas"*. A mao continua nos 3: ela nao estava no pedido. A Drill e `Drill.TaxaPorNivel`.
 	/// </summary>
-	public const double PorSegundoNaMao = 3, PorSegundoComPa = 6, PorSegundoComFuradeira = 12;
+	public const double PorSegundoNaMao = 3, PorSegundoComPa = 60, PorSegundoComFuradeira = 120;
 
 	/// <summary>
 	/// DEFEITO INJETADO (bancada `--recursosteste`): a ferramenta nao conta -- todo mundo minera na mao. Lido

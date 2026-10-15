@@ -122,6 +122,9 @@ public partial class GameServer
 			AEscolhaRacaPorRaca();
 			AsBordasDoRefugio();
 			AListaMorreuDeVerdade();
+
+			// (v0.3.0) A 11a: a Terra, o ponto de encontro (o adendo 11 do dono) -- ver `GameServer.RefugioProva.cs`.
+			ATerraOPontoDeEncontro();
 		}
 		catch (Exception ex)
 		{

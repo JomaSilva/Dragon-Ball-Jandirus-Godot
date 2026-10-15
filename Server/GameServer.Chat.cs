@@ -134,9 +134,26 @@ public partial class GameServer
 		para.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
+	/// <summary>Gancho de bancada: o TOM de cada aviso (`Avisar`), na ordem. Nulo fora de teste.</summary>
+	internal static List<(Protocol.Fala Tom, string Texto)>? EscutaDeTons;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`): todo aviso volta a sair no `Fala.Sistema`, sem cor propria -- o jogo de
+	/// antes. Lido pelo <see cref="Avisar(ServerPlayer, string, Protocol.Fala)"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool AvisoSemTomDeTeste;
+
 	/// <summary>Uma linha do servidor pra UM jogador so: aviso, recusa, resultado de comando.</summary>
-	public void Avisar(ServerPlayer para, string texto)
+	public void Avisar(ServerPlayer para, string texto) => Avisar(para, texto, Protocol.Fala.Sistema);
+
+	/// <summary>
+	/// O MESMO AVISO, NUM TOM: `Fala.AvisoDeRaiva` e `Fala.AvisoDeZenkai` saem pintados no chat (2026-10-15). Fora deles,
+	/// o `Fala.Sistema` de sempre.
+	/// </summary>
+	public void Avisar(ServerPlayer para, string texto, Protocol.Fala tom)
 	{
+		if (AvisoSemTomDeTeste) tom = Protocol.Fala.Sistema;
+		EscutaDeTons?.Add((tom, texto));
 		// A BANCADA ESCUTA AQUI. `Avisar` termina num `Peer.Send`, e pacote que saiu no fio nao volta
 		// pra ser conferido -- uma bancada de servidor nao tem como perguntar "o jogador foi avisado?".
 		// E justamente este pedaco ja falhou nesta fase: a punicao do Oozaru dizia o que ACONTECEU e
@@ -147,7 +164,7 @@ public partial class GameServer
 		// (A bancada continua ouvindo: a escuta fica acima desta linha.)
 		if (ReferenceEquals(para, _iaApertando) && !IaFalaComODonoDeTeste) { _frasesCaladasDaIa++; return; }
 		// `falante: null` -- nao ha ninguem falando: e o servidor. Ver o parametro em `Mandar`.
-		Mandar(para, Protocol.Fala.Sistema, "", texto, falante: null);
+		Mandar(para, tom, "", texto, falante: null);
 	}
 
 	/// <summary>

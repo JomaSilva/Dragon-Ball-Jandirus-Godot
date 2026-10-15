@@ -59,6 +59,24 @@ public sealed class EstagioDeChefe
 
 	/// <summary>O que a zona ouve quando o degrau vira. Vazio = silencio.</summary>
 	public string Anuncio = "";
+
+	/// <summary>
+	/// (v0.3.0) A CENA deste degrau, quando ele NAO entra numa forma do catalogo -- o `"cena"` do `npcs.json`
+	/// (`Forms.Cinematicas.CenaDeChefePorNome`). O degrau de forma toca a cena da forma; o de corpo novo (o Freeza) e o que nao
+	/// trocava nada visivel (o Cell) eram mudos. O primeiro degrau (o nascimento) nunca a toca: quem chega tem a cena da
+	/// chegada (`GameServer.AnunciarChegadaDoChefe`).
+	/// </summary>
+	public Forms.Cinematicas.CenaDeChefe Cena;
+
+	/// <summary>O nome da cena como esta escrito no arquivo -- so pra o <see cref="MoldeDeNpc.Problemas"/> acusar o que nao existe.</summary>
+	public string NomeDaCena = "";
+
+	/// <summary>
+	/// (v0.3.0) O CORPO DE BIO-ANDROIDE deste degrau (`Races.BioAndroids`: 2 imperfeito, 3 semi-perfeito, 4 perfeito; 0 = nao
+	/// mexe) -- o `"degrauDoBio"`. O Cell veste o corpo do degrau como o jogador bio veste o dele (`GameServer.SubirDegrauDoBio`):
+	/// sem isto a cena de evolucao acabaria no corpo de antes. So o DESENHO: o BP do chefe e o pinado.
+	/// </summary>
+	public int DegrauDoBio;
 }
 
 /// <summary>
@@ -234,6 +252,20 @@ public sealed class MoldeDeNpc
 	/// ========================================================================================================
 	/// </summary>
 	public string[] Roupa = [];
+
+	/// <summary>
+	/// (v0.3.0) O CABELO CRAVADO, pelo nome do catalogo ("Vegeta") -- o `npc_apply_hair(M, "Vegeta", ...)` do
+	/// `make_saiyan_elite` (PlanetPopulation.dm:379). Vazio (ou um nome que o catalogo nao tem), o cabelo e sorteado como
+	/// o de todo NPC.
+	/// </summary>
+	public string Cabelo = "";
+
+	/// <summary>
+	/// (v0.3.0) AS RACAS DOADORAS de um molde Bio-Androide (`"sangueDoBio"`) -- o Cell do anime foi feito do sangue de Goku e
+	/// Vegeta, Piccolo, Freeza e dos humanos. Sozinho um bio nao tem dom nenhum (`Races.SangueDoBio`); e daqui que o NPC
+	/// tira os dele. Vazio em todo molde que nao e bio.
+	/// </summary>
+	public string[] SangueDoBio = [];
 
 	// =====================================================================
 	// PODER
@@ -434,6 +466,15 @@ public sealed class MoldeDeNpc
 			bool ultimo = i == Estagios.Length - 1;
 			if (!ultimo && Estagios[i].GatilhoMembro < 0)
 				p.Add($"'{Id}': estagio {i + 1} nao e o ultimo e nao tem gatilhoMembro -- a escada pararia nele");
+
+			// (v0.3.0) A CENA DO DEGRAU tem que existir -- e o degrau de FORMA nao a declara: a forma ja tem a dela.
+			EstagioDeChefe e = Estagios[i];
+			if (Forms.Cinematicas.CenaDeChefePorNome(e.NomeDaCena) == null)
+				p.Add($"'{Id}': estagio {i + 1} pede a cena '{e.NomeDaCena}', que nao existe (corpo_novo, forma_final, bio_semi, bio_perfeito)");
+			else if (e.Forma.Length > 0 && e.Cena != Forms.Cinematicas.CenaDeChefe.Nenhuma)
+				p.Add($"'{Id}': estagio {i + 1} entra na forma '{e.Forma}' e ainda declara a cena '{e.NomeDaCena}' -- a forma ja tem a dela");
+			if (e.DegrauDoBio != 0 && (e.DegrauDoBio < Races.BioAndroids.Imperfeito || e.DegrauDoBio > Races.BioAndroids.Perfeito))
+				p.Add($"'{Id}': estagio {i + 1} com degrauDoBio {e.DegrauDoBio} -- o corpo de chefe bio vai de {Races.BioAndroids.Imperfeito} a {Races.BioAndroids.Perfeito}");
 		}
 
 		// O BICHO tem a propria conferencia (folha de sprite, forca fixa, carne): ver `Animais.Problemas`.
@@ -507,6 +548,8 @@ public sealed class CatalogoDeMoldes
 				Agressividade = Num(e, "agressividade", 50),
 				Coragem = Num(e, "coragem", 50),
 				Furia = Num(e, "furia", 50),
+				Cabelo = Txt(e, "cabelo"),
+				SangueDoBio = Lista(e, "sangueDoBio"),
 			};
 
 			if (e.TryGetProperty("perfil", out JsonElement perfil) && perfil.ValueKind == JsonValueKind.Object)
@@ -560,6 +603,9 @@ public sealed class CatalogoDeMoldes
 						GatilhoMembro = Num(s, "gatilhoMembro", -1),
 						Cura = Num(s, "cura", 0.5),
 						Anuncio = Txt(s, "anuncio"),
+						NomeDaCena = Txt(s, "cena"),
+						Cena = Forms.Cinematicas.CenaDeChefePorNome(Txt(s, "cena")) ?? Forms.Cinematicas.CenaDeChefe.Nenhuma,
+						DegrauDoBio = (int)Num(s, "degrauDoBio", 0),
 					});
 				m.Estagios = [.. l];
 			}

@@ -500,6 +500,10 @@ public partial class GameServer
 		// ao pendurar a regra dentro do `killer_stuff`. Ver `GameServer.CargoPortas.cs`.
 		if (morreu) SucessaoPorMorte(vitima, algoz);
 
+		// (v0.3.0) ...e o REI NPC: matar o Rei Vegeta sendo Saiyajin toma o trono vago (`grant_throne()`,
+		// PlanetPopulation.dm:193-211). Ver `GameServer.ReiDeVegeta.cs`.
+		if (morreu) OReiNpcCaiu(vitima, algoz);
+
 		// E O KARMA, que vem do MESMO `killer_stuff` (`Murder.dm:83`). Matar um inocente
 		// suja a alma, matar um assassino a limpa -- e e este eixo que decide nove dos cargos
 		// reivindicaveis. So a MORTE conta, pelo mesmo motivo da sucessao. Ver `GameServer.Karma.cs`.

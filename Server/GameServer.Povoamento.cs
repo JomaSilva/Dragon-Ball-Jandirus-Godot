@@ -184,6 +184,9 @@ public partial class GameServer
 			// inimigo no plano antes de o dono religar o interruptor.
 			if (!Povoamento.PodeNascer(molde.Tipo)) continue;
 
+			// (v0.3.0) A LINHA QUE PEDE UM TRONO VAGO so nasce com ele vago -- o Rei Vegeta e o Principe (`GameServer.ReiDeVegeta.cs`).
+			if (!Povoamento.LinhaVale(linha, TronoVago)) continue;
+
 			var zona = ZoneKey.Premade(linha.Planeta);
 
 			// ============================ A ZONA TEM QUE EXISTIR ============================

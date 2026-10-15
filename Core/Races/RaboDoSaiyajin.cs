@@ -50,4 +50,14 @@ public static class RaboDoSaiyajin
 	public const string AvisoDaPerda =
 		"o seu rabo não volta mais: o corpo já é forte demais pra refazê-lo. Sem ele você treina bem mais "
 		+ "rápido, a lua cheia não o domina e ninguém o agarra pelo rabo -- mas o Oozaru ficou pra trás.";
+
+	/// <summary>
+	/// (2026-10-15) QUANTO TEMPO O TOCO DO RABO PERDIDO DE VEZ FICA COMO FERIDA: *"so durante uns minutos apos ter o rabo
+	/// arrancado q esse efeito de ferimento fica, passou de uns 10 minutos (...) ele deve sumir o efeito de ferido"*.
+	/// Dez minutos de relogio, contados pelo servidor (`GameServer.TickDaFeridaDoRabo`).
+	/// </summary>
+	public const double SegundosDaFerida = 600;
+
+	/// <summary>O que o dono do corpo le quando o toco cicatriza.</summary>
+	public const string AvisoDaCicatriz = "o toco do seu rabo cicatriza -- ele não volta, mas também não sangra mais.";
 }

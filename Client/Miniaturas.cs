@@ -39,6 +39,19 @@ public static class Miniaturas
 	public static Texture2D? DoItem(ItemDef def) => De(def.Arte, def.Estado);
 
 	/// <summary>
+	/// (2026-10-15) O ICONE DE UM ITEM COMO O DONO DA MOCHILA O VE: os PESOS de treino com a arte que ele escolheu pra eles
+	/// (dono: *"o icone do peso no inventario e o q vc dropa n muda quando vc muda a aparencia do peso, so muda quando vc
+	/// veste"*); todo o resto, o <see cref="DoItem"/>.
+	/// </summary>
+	public static Texture2D? DoItemNaMochila(ItemDef def, string arteDosPesos) =>
+		def.Id == CatalogoDeItens.Pesos && DosPesos(arteDosPesos) is { } tex ? tex : DoItem(def);
+
+	/// <summary>O retrato dos pesos numa arte escolhida, na pose do icone de fabrica. Nulo sem escolha (ou com o defeito ligado).</summary>
+	public static Texture2D? DosPesos(string arteDosPesos) =>
+		arteDosPesos.Length == 0 || PesoDeTreino.ArteSoNoCorpoDeTeste ? null
+		: PesoDeTreino.Folha(arteDosPesos, CatalogoDeItens.Visual) is { } folha ? De(folha, PesoDeTreino.PoseDoIcone) : null;
+
+	/// <summary>
 	/// O nome da animacao que um `icon_state` do DM vira na folha convertida: o mesmo saneamento do
 	/// conversor de `.dmi` (minusculas, tudo que nao e letra ou digito vira `_`), e o estado vazio vira
 	/// "default". E A regra -- quem quiser comparar estados compara por aqui, nao pelo texto cru.

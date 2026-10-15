@@ -176,7 +176,8 @@ public partial class GameServer
 		// campos -- ver `ContadorDoServidor`. Ao vivo, como o resto do contexto: ele fica guardado no livro.
 		Func<string, double?> daFicha = ctx.Contador;
 		ctx.Contador = nome => ContadorDoServidor(pl, nome) ?? daFicha(nome);
-		pl.Livro.Recalcular(_skills, ctx, pl.Race, pl.Class);
+		// (v0.3.0) a RACA COM SANGUE: o bio abre as arvores raciais das doadoras -- ver `SangueDoBio`
+		pl.Livro.Recalcular(_skills, ctx, RacaComSangue(pl), pl.Class);
 		foreach (string p in pl.Livro.Destravadas)
 			if (!abertasAntes.Contains(p) && _skills.Get(p) is { } arv)
 				Avisar(pl, $"o que voce treinou abriu um caminho novo: {arv.Nome} -- olhe a aba de aprendizado.");
@@ -334,9 +335,9 @@ public partial class GameServer
 		// `villainonly = 1 //only an admin-designated Villain can learn it` (`Planets.dm:382`).
 		// Ver `GameServer.EhVilao`.
 		// ==================================================================================
-		Veredito v = pl.Livro.Avaliar(_skills, path, pl.Race, pl.Class, vilao: EhVilao(pl));
+		Veredito v = pl.Livro.Avaliar(_skills, path, RacaComSangue(pl), pl.Class, vilao: EhVilao(pl));
 		Recusa r = v.Motivo == Recusa.Pode
-			? pl.Livro.Aprender(_skills, path, pl.Race, pl.Class, vilao: EhVilao(pl))
+			? pl.Livro.Aprender(_skills, path, RacaComSangue(pl), pl.Class, vilao: EhVilao(pl))
 			: v.Motivo;
 		if (r != Recusa.Pode)
 		{
@@ -700,7 +701,7 @@ public partial class GameServer
 		// cargo num save de antes da lista, que a cascata levaria pagando e o tique dos cargos devolveria.
 		bool comprada = DevolveMarcoAoEsquecer(pl, path);
 		int antes = pl.Livro.MarcosLivres;
-		List<string> cascata = pl.Livro.EsquecerEReembolsar(_skills, path, pl.Race, pl.Class, p => SkillQueNinguemComprou(pl, p));
+		List<string> cascata = pl.Livro.EsquecerEReembolsar(_skills, path, RacaComSangue(pl), pl.Class, p => SkillQueNinguemComprou(pl, p));
 		int voltaram = pl.Livro.MarcosLivres - antes;
 		Avisar(pl, comprada
 			? $"voce esquece {s.Nome} ({voltaram} marco(s) de volta)."

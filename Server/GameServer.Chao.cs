@@ -109,7 +109,11 @@ public sealed partial class GameServer
 
 		if (Chao.LargarApagaDeTeste) { Avisar(pl, $"você joga fora {def.Nome}."); return; }
 
-		PorNoChao(pl.Zone, OndeCaiOQueSeLarga(pl), TipoDeLargado.Item, def.Id, saiu);
+		// (2026-10-15) OS PESOS CAEM COM A ARTE QUE O DONO ESCOLHEU (o item nao a carrega: ela mora na ficha). Os pesos nao
+		// empilham, entao o monte e so deles. Ver `Largado.Arte`.
+		string arte = def.Id == CatalogoDeItens.Pesos && !PesoDeTreino.ArteSoNoCorpoDeTeste && pl.Ficha.pesoArte.Length > 0
+			? PesoDeTreino.Folha(pl.Ficha.pesoArte, _visual) ?? "" : "";
+		PorNoChao(pl.Zone, OndeCaiOQueSeLarga(pl), TipoDeLargado.Item, def.Id, saiu, arte);
 		// TODO MUNDO A VISTA FICA SABENDO: `to_chat(view(TargetMob), "[TargetMob] drops [src].")` (`:294`).
 		Falar(pl, Protocol.Fala.Emote, $"larga {Chao.Nome(TipoDeLargado.Item, def.Id, saiu)} no chão.");
 	}
@@ -154,7 +158,8 @@ public sealed partial class GameServer
 	/// A posicao vai pro CENTRO da celula (e onde o cliente a desenha); o que e do mesmo monte se junta ao que ja
 	/// estava ali (`Chao.Junta`); e a zona que passa do teto perde a coisa mais velha. Avisa a zona.
 	/// </summary>
-	internal Largado PorNoChao(ZoneKey zona, Vec2 onde, TipoDeLargado tipo, string item, double quantidade)
+	/// <param name="arte">(2026-10-15) a folha que a tela desenha no lugar da do item (`Largado.Arte`); vazia = a do catalogo.</param>
+	internal Largado PorNoChao(ZoneKey zona, Vec2 onde, TipoDeLargado tipo, string item, double quantidade, string arte = "")
 	{
 		const int t = ZoneCollision.TileSize;
 		float x = MathF.Floor(onde.X / t) * t + t / 2f, y = MathF.Floor(onde.Y / t) * t + t / 2f;
@@ -169,7 +174,7 @@ public sealed partial class GameServer
 		}
 		else
 		{
-			monte = new Largado { Id = _proximoLargado++, Tipo = tipo, Item = item, Quantidade = quantidade, X = x, Y = y, SomeMs = some };
+			monte = new Largado { Id = _proximoLargado++, Tipo = tipo, Item = item, Quantidade = quantidade, X = x, Y = y, SomeMs = some, Arte = arte };
 			lista.Add(monte);
 			// O TETO DA ZONA: a lista esta na ordem em que as coisas cairam, entao a mais velha e a primeira.
 			while (lista.Count > Chao.MaximoPorZona) lista.RemoveAt(0);
@@ -283,6 +288,7 @@ public sealed partial class GameServer
 			w.Put(l.Quantidade);
 			w.Put(l.X);
 			w.Put(l.Y);
+			w.Put(l.Arte);   // (2026-10-15) a folha no lugar da do item (os pesos com arte); vazia no resto
 		}
 		return w;
 	}

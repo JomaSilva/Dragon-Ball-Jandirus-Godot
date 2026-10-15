@@ -37,6 +37,13 @@ public sealed partial class GameServer
 			// O ENMA DAIOH (ver `GameServer.Alem.cs`, secao 5): a fala e a volta paga.
 			case "enma_ouvir": EnmaOuvir(pl); return true;
 			case "enma_reviver": EnmaReviverPorZeni(pl); return true;
+			// (v0.3.0) as duas saidas novas da mesa: o passe pros vivos e a reencarnacao (`GameServer.PasseEReencarnacao.cs`)
+			case "enma_passe": EnmaPasse(pl, arg); return true;
+			case "enma_reencarnar": EnmaReencarnar(pl, arg); return true;
+
+			// O SR. KAIOH E O KORIN (v0.3.0, `GameServer.NpcsDeConversa.cs`): a conversa do DM, pelo menu E.
+			case "kaioh_falar": SrKaiohFalar(pl); return true;
+			case "korin_falar": KorinFalar(pl); return true;
 
 			// OS VERBOS DE TECNOLOGIA JA EXISTIAM -- o menu so virou uma segunda porta pra eles. Por
 			// isso o reenvio pro canal de sempre em vez de uma copia da logica aqui: duas copias

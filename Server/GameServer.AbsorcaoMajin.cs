@@ -102,8 +102,12 @@ public partial class GameServer
 	/// <summary>O relogio do `guard_watch()`: a cada <see cref="AbsorcaoMajin.SegundosEntreOlhadas"/>.</summary>
 	private double _relogioDosGuardioes;
 
-	/// <summary>Este corpo sela em vez de consumir? `Race=="Majin"||Parent_Race=="Majin"` (`Absorption.dm:83`).</summary>
-	private static bool CorpoDeMajin(ServerPlayer pl) => AbsorcaoMajin.EhMajin(pl.Race, pl.Ficha.ParentRace);
+	/// <summary>
+	/// Este corpo e de Majin? `Race=="Majin"||Parent_Race=="Majin"` (`Absorption.dm:83`) -- e, desde a v0.3.0, o bio com sangue
+	/// Majin (`SangueDoBio`). Decide quem sela em vez de consumir e quem se desfaz em vez de morrer (`SeDesfazAoMorrer`).
+	/// </summary>
+	private static bool CorpoDeMajin(ServerPlayer pl) =>
+		AbsorcaoMajin.EhMajin(pl.Race, pl.Ficha.ParentRace) || Jandirus.Core.Races.SangueDoBio.Carrega(pl.Ficha, "Majin");
 
 	/// <summary>Este corpo esta dentro de um Majin agora? A pergunta e do LUGAR (ver o cabecalho).</summary>
 	private static bool DentroDeUmMajin(ServerPlayer pl) => InteriorDoMajin.EhOInterior(pl.Zone);
@@ -179,6 +183,12 @@ public partial class GameServer
 			? $"{bonus:N0} de poder"
 			: Jandirus.Core.Stats.PoderNaFrase.ParteDoPoderDele(bonus, poderDele);
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`): o NPC absorvido volta a ser "devorado" -- morre e fica no chao pra ser
+	/// enterrado, como um morto qualquer. Lido pelo <see cref="DevorarPeloMajin"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool AbsorvidoDeixaCorpoDeTeste;
+
 	private void DevorarPeloMajin(ServerPlayer pl, ServerPlayer npc)
 	{
 		var rec = new AbsorvidoPeloMajin
@@ -194,7 +204,15 @@ public partial class GameServer
 		RegistrosDoMajin(pl.Id).Add(rec);
 
 		CurarOMajinQueAbsorveu(pl);
-		Falar(pl, Protocol.Fala.Emote, $"devora {rec.Nome} por inteiro!");
+
+		// ============================ ABSORVIDO, E NAO DEVORADO (dono, 2026-10-15) ============================
+		// *"majin quando absorve um npc o npc so morre dando pra enterrar, o certo seria o npc absorvido so sumir e o jogo
+		// falar q ele foi absorvido (pq atualmente fala q ele foi devorado, oq e estranho)"*. O NPC do mundo SAI do mundo sem
+		// cadaver (`SumiuAbsorvido`, lido no dreno `TirarOsNpcsMortos`), e as frases dizem "absorve". O resto da morte
+		// continua (a reputacao, o rancor, a bolsa): ela e a porta de toda consequencia.
+		// =====================================================================================================
+		bool comoAntes = AbsorvidoDeixaCorpoDeTeste;
+		Falar(pl, Protocol.Fala.Emote, comoAntes ? $"devora {rec.Nome} por inteiro!" : $"absorve {rec.Nome} por inteiro!");
 
 		// ANTES DE O NPC SAIR DO MUNDO, como la (`:144`): a roupa e copiada do corpo que ainda existe.
 		VestirAUltimaRefeicao(pl, npc);
@@ -205,10 +223,18 @@ public partial class GameServer
 		// DEVORAR E AGREDIR (o agarrao ja e): quem cobra a reputacao le o ultimo agressor.
 		MarcarAgressao(npc, pl);
 		if (npc.Combate.Morrer(ignorarSeguro: true)) AoPerderALuta(npc, pl, morreu: true);
+		// O CORPO SAI JUNTO, no dreno do fim do tique (a absorcao pode chegar de dentro de um laco da IA, e mexer no
+		// `_players` dali derruba o tique). So o NPC DO MUNDO: o clone, a fera e o corpo forjado tem o proprio ciclo, e
+		// morrem como sempre morreram.
+		if (!comoAntes && EhNpcDoMundo(npc))
+		{
+			npc.SumiuAbsorvido = true;
+			if (!_npcsPraTirar.Contains(npc)) _npcsPraTirar.Add(npc);
+		}
 
 		RecalcularOMajin(pl);
-		Avisar(pl, $"voce devora {rec.Nome} (+{GanhoDoMajinNaFrase(pl, rec.BonusDeBp, npc.Ficha.BP)}, enquanto voce nao cair).");
-		GD.Print($"[server] {pl.Name} (Majin) DEVOROU {rec.Nome}: +{rec.BonusDeBp:0} de BP emprestado");
+		Avisar(pl, $"voce {(comoAntes ? "devora" : "absorve")} {rec.Nome} (+{GanhoDoMajinNaFrase(pl, rec.BonusDeBp, npc.Ficha.BP)}, enquanto voce nao cair).");
+		GD.Print($"[server] {pl.Name} (Majin) ABSORVEU {rec.Nome}: +{rec.BonusDeBp:0} de BP emprestado");
 	}
 
 	// =====================================================================

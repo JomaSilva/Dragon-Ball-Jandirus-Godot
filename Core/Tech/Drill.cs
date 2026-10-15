@@ -142,16 +142,20 @@ public static class Drill
 	public const int NivelMaximo = 10;
 
 	/// <summary>
+	/// (v0.3.0) DEZ VEZES O QUE ERA -- o dono, 2026-10-15: *"aumente em 10x os ganhos de recursos da drill, furadeira e pa"*.
+	/// Os numeros abaixo sao os de antes (1 por nivel); hoje cada um e dez vezes maior, e a reserva do planeta e a mesma -- uma
+	/// Drill de nivel 3 ja tira mais do que um planeta pre-feito repoe.
+	///
 	/// RECURSOS POR SEGUNDO, POR NIVEL: a de fabrica tira 1 por segundo, a de nivel 10 tira 10. Pra medir: um
 	/// planeta pre-feito (500x500) guarda 2,5 milhoes e regenera 28,9 por segundo (os numeros de 2026-10-11,
 	/// com a reserva em lado^2 x 10; antes eram 500 mil e 5,8) -- so tres Drills do nivel 10 juntas tiram mais
 	/// do que ele repoe. Num mundo gerado pequeno (lado 192: 369 mil, 4,3 por segundo) uma do nivel 5 ja tira.
 	/// </summary>
-	public const double TaxaPorNivel = 1.0;
+	public const double TaxaPorNivel = 10.0;
 
 	/// <summary>
 	/// QUANTAS HORAS DE TRABALHO CABEM NO ESTOQUE. Cheia, ela para -- e e o que obriga alguem a passar por
-	/// ela. O teto sobe junto com a taxa: nivel 1 guarda 21.600, nivel 10 guarda 216.000.
+	/// ela. O teto sobe junto com a taxa: nivel 1 guarda 216.000, nivel 10 guarda 2.160.000 (v0.3.0: a taxa e dez vezes a de antes).
 	/// </summary>
 	public const double HorasDeEstoque = 6.0;
 
@@ -293,13 +297,24 @@ public static class Drill
 	/// AS LINHAS DO ESTADO, na ordem em que se leem -- as MESMAS no chat ("Ver estado") e no painel do menu
 	/// da tecla E. Uma casa so pras duas pontas: o que o servidor diz e o que a tela mostra nao discordam.
 	/// </summary>
+	/// <summary>
+	/// A TAXA DESTE NIVEL COMO A TELA A ESCREVE ("10 recursos por segundo") -- a linha do <see cref="Descrever"/>. Casa propria
+	/// desde a v0.3.0 porque o robo `--diagdrill` a cobra no painel, e uma copia da frase la envelheceu calada quando a taxa
+	/// foi a dez vezes.
+	/// </summary>
+	public static string TaxaEmTexto(int nivel)
+	{
+		double taxa = Taxa(nivel);
+		return $"{taxa:0.#} {(taxa == 1 ? "recurso" : "recursos")} por segundo";
+	}
+
 	public static List<string> Descrever(in EstadoDeDrill e)
 	{
 		List<string> l = [];
 		if (!e.Minha && e.Dono.Length > 0) l.Add($"Drill de {e.Dono}: só o dono coleta e melhora.");
 
 		double taxa = Taxa(e.Nivel), teto = Teto(e.Nivel);
-		l.Add($"Nível {NivelValido(e.Nivel)} de {NivelMaximo}: {taxa:0.#} {(taxa == 1 ? "recurso" : "recursos")} por segundo");
+		l.Add($"Nível {NivelValido(e.Nivel)} de {NivelMaximo}: {TaxaEmTexto(e.Nivel)}");
 
 		string estoque = $"Estoque: {Math.Floor(e.Estoque + Folga):N0} de {teto:N0}";
 		if (e.Situacao == SituacaoDaDrill.Extraindo && taxa > 0)

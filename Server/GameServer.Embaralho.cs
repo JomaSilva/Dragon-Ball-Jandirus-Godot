@@ -18,6 +18,11 @@ namespace Jandirus.Server;
 /// POSICOES ALEATORIAS (cuidado pra n colocar dentro de paredes) PROXIMA DA ONDE ELES ESTAVAM, pra
 /// parecer q eles andaram. essa mudanca de posicao SO BASTA ACONTECER 1 VEZ, apos os 5 minutos q o
 /// ULTIMO JOGADOR SAIU do planeta"*.
+///
+/// (v0.3.0) E O PEDIDO VIROU UMA PROPORCAO: *"o embaralhamento vai ser baseado no tempo q o planeta ficou sem player,
+/// pro cara n sair e voltar em 1 segundo e o npc parar no outro lado do planeta"*. O quanto cada um anda agora e o
+/// tempo vazio vezes uma velocidade (`Povoamento.RaioDoEmbaralho`): nada abaixo de 90 s, 10 tiles aos 5 minutos (o
+/// embaralho antigo inteiro e um ponto desta reta), ate 64 tiles numa ausencia longa.
 /// ==========================================================================================================
 ///
 /// ============================ E ELE E PREGUICOSO -- A EQUIVALENCIA FOI MEDIDA, NAO SUPOSTA ============================
@@ -148,13 +153,27 @@ public partial class GameServer
 	/// CHEGOU ALGUEM: se o planeta esfriou, os habitantes "andaram" enquanto voce nao estava.
 	///
 	/// Chamado ANTES de o recem-chegado receber qualquer snapshot daquela zona -- e por isso ele
-	/// nunca ve o pulo, so o resultado. E acontece **uma vez so** (a marca e consumida), como o dono
-	/// pediu: quem fica dez minutos no planeta nao ve ninguem se teleportar.
+	/// nunca ve o pulo, so o resultado. E acontece **uma vez so** (a marca e consumida em TODA chegada, ande
+	/// alguem ou nao), como o dono pediu: quem fica dez minutos no planeta nao ve ninguem se teleportar.
 	/// </summary>
 	private void EmbaralharSeEsfriou(ZoneKey zona)
 	{
 		if (!_vazioDesde.TryGetValue(zona.Hash, out long desde)) return;
-		if (NowMs() - desde < (long)(Povoamento.SegundosAteOEmbaralho * 1000)) return;
+
+		// ============================ O RAIO E DO TEMPO -- E A AUSENCIA ACABA AQUI, ANDE ALGUEM OU NAO (v0.3.0) ============================
+		// O quanto cada um andou e proporcional ao tempo vazio (`Povoamento.RaioDoEmbaralho`). Abaixo do prazo o raio e zero
+		// e ninguem anda -- e A MARCA SAI MESMO ASSIM, porque a ausencia terminou nesta chegada. Antes a marca de uma volta
+		// cedo FICAVA, e o defeito era de verdade: sair, voltar em um minuto e ficar -- e quem chegasse depois (outro
+		// jogador, com a cidade cheia de gente olhando) achava a marca velha vencida e embaralhava a cidade na frente de
+		// todos. Com alguem no planeta a mente esta acordada: nao ha passeio a simular.
+		// ===============================================================================================================================
+		long vazioMs = NowMs() - desde;
+		int raio = Povoamento.RaioDoEmbaralho(vazioMs / 1000.0);
+		if (raio == 0)
+		{
+			if (!MarcaDaVoltaCedoFicaDeTeste) _vazioDesde.Remove(zona.Hash);
+			return;
+		}
 
 		// O MAPA PRIMEIRO, E A ORDEM AQUI E UM DEFEITO CONSERTADO. A marca era consumida ANTES desta
 		// pergunta, com a razao "mesmo que nao haja um corpo pra mexer, o prazo foi cumprido" -- e
@@ -179,6 +198,10 @@ public partial class GameServer
 		// A CAMPANHA DESTA SUPERFICIE, UMA VEZ SO -- e nao uma consulta por corpo. Ver
 		// <see cref="PasseiaSozinho"/>: ela e a unica pergunta do crivo que depende da zona.
 		Invasao? campanha = InvasaoAqui(zona);
+
+		// O HABITAT DA ZONA, tambem uma vez so -- e so se ja estiver levantado (zona em que nenhum habitante nasceu nao
+		// tem). Ver <see cref="ServeDeEmbaralho"/>.
+		_habitats.TryGetValue(zona.Hash, out Habitat? habitat);
 
 		int quantos = 0, desistiu = 0, parados = 0;
 		foreach (ServerPlayer npc in ZoneList(zona.Hash))
@@ -214,18 +237,19 @@ public partial class GameServer
 			// e o teleporte que o dono nao pediu) e a busca por aneis e DIRECIONAL (os habitantes de um
 			// bolsao de pedra sairiam todos pro mesmo lado). Aqui os N candidatos ja nascem dentro do
 			// raio, e quem nao acha lugar nenhum simplesmente nao andou.
+			//
+			// (v0.3.0) O RAIO E O DO TEMPO VAZIO, e o HABITAT entrou na pergunta (`ServeDeEmbaralho`): com o sorteio
+			// alcancando ate 64 tiles, "chao que serve" passou a alcancar bolsao sem saida -- ver o metodo.
 			// ==============================================================================================
 			Vec2? achou = null;
 			for (int n = 0; n < Povoamento.TentativasDoEmbaralho && achou == null; n++)
 			{
-				int dx = r.Next(Povoamento.TilesMinDoEmbaralho, Povoamento.TilesMaxDoEmbaralho + 1)
-					   * (r.Next(2) == 0 ? -1 : 1);
-				int dy = r.Next(Povoamento.TilesMinDoEmbaralho, Povoamento.TilesMaxDoEmbaralho + 1)
-					   * (r.Next(2) == 0 ? -1 : 1);
+				int dx = r.Next(Povoamento.TilesMinDoEmbaralho, raio + 1) * (r.Next(2) == 0 ? -1 : 1);
+				int dy = r.Next(Povoamento.TilesMinDoEmbaralho, raio + 1) * (r.Next(2) == 0 ? -1 : 1);
 
 				// O CENTRO DA CELULA, e nao o ponto cru: um ponto na quina de uma celula livre
 				// encostada em parede ja nasce em violacao pro `MoveRules`. Mesma nota do funil.
-				if (mapa.ServeDeChao(cx + dx, cy + dy)) achou = mapa.CentroDaCelula(cx + dx, cy + dy);
+				if (ServeDeEmbaralho(mapa, habitat, cx + dx, cy + dy)) achou = mapa.CentroDaCelula(cx + dx, cy + dy);
 			}
 
 			// AS N TENTATIVAS ERRARAM: ELE FICA ONDE ESTAVA. Nao ha meio-termo a inventar aqui --
@@ -242,11 +266,30 @@ public partial class GameServer
 		}
 
 		if (quantos > 0 || desistiu > 0)
-			GD.Print($"[povoamento] {zona.Name} ficou {(NowMs() - desde) / 60000} min sem ninguem: "
-				   + $"{quantos} habitantes mudaram de lugar (volta {volta}"
+			GD.Print($"[povoamento] {zona.Name} ficou {vazioMs / 60000} min sem ninguem: "
+				   + $"{quantos} habitantes andaram ate {raio} tiles (volta {volta}"
 				   + (desistiu > 0 ? $", {desistiu} sem lugar livre perto" : "")
 				   + (parados > 0 ? $", {parados} de posto ou fora do crivo" : "") + ")");
 	}
+
+	/// <summary>
+	/// (v0.3.0) ONDE O EMBARALHO PODE POR ALGUEM: chao que serve (`ServeDeChao` -- parede, beirada, agua) E dentro do
+	/// HABITAT da zona (`Habitat.Navegavel`: a componente do berco e as ilhas grandes, a mesma terra em que o povoamento
+	/// poe gente). Com o raio de 10 tiles a segunda pergunta quase nunca decidia nada; com o de 64 ela decide: um bolsao
+	/// de chao cercado (o patio fechado, a ilhota) serve de chao e nao tem saida -- o habitante "andaria" pra dentro de
+	/// um lugar de onde nao sai. Zona sem habitat levantado fica so com a primeira pergunta.
+	/// </summary>
+	private static bool ServeDeEmbaralho(ZoneCollision mapa, Habitat? habitat, int cx, int cy) =>
+		mapa.ServeDeChao(cx, cy) && (habitat == null || ForaDoHabitatDeTeste || habitat.Navegavel(cx, cy));
+
+	/// <summary>DEFEITO INJETADO (`--embaralhoteste`): o embaralho esquece o habitat e volta a aceitar qualquer chao que serve.</summary>
+	internal static bool ForaDoHabitatDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--embaralhoteste`): a volta cedo NAO consome a marca de vazio -- o jogo de antes, em que a marca
+	/// vencia com gente dentro do planeta e a chegada seguinte embaralhava a cidade na frente de todos.
+	/// </summary>
+	internal static bool MarcaDaVoltaCedoFicaDeTeste;
 
 	/// <summary>
 	/// ============================ QUEM ANDA SOZINHO -- E POR ISSO EMBARALHA ============================

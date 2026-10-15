@@ -161,8 +161,18 @@ public static class Feridas
 	/// </summary>
 	public static bool MajinSangraDeTeste;
 
-	/// <summary>ESTA RACA NAO SANGRA NEM MOSTRA FERIDA? So o Majin.</summary>
-	public static bool NaoSangra(string? raca) => raca == "Majin" && !MajinSangraDeTeste;
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--v030teste` e `--diagv030`): o membro perdido de vez continua ferida pra sempre (o
+	/// abdomen do Saiyajin sem rabo sangrando, e o "rabo: ARRANCADO" no boneco) -- o jogo de antes. Lido pelo
+	/// <see cref="De"/> e pelo `GameServer.ParteVaiPraTela`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool RaboPerdidoSangraPraSempreDeTeste;
+
+	/// <summary>
+	/// ESTA RACA NAO SANGRA NEM MOSTRA FERIDA? So o Majin -- e, desde a v0.3.0, o bio com sangue Majin: a pergunta recebe a RACA
+	/// COM SANGUE (`Races.SangueDoBio`, `"BioAndroid+Majin"`), que pra quem nao e bio e a propria raca.
+	/// </summary>
+	public static bool NaoSangra(string? raca) => Races.SangueDoBio.Tem(raca, "Majin") && !MajinSangraDeTeste;
 
 	/// <summary>A mesma mascara, so com o que foi ARRANCADO: sem roxo, sem sangue, sem rasgo.</summary>
 	public static MascaraDeFeridas SoAmputacoes(MascaraDeFeridas m) => new(0, 0, 0, 0, 0, m.AmputadosBruto);
@@ -178,6 +188,10 @@ public static class Feridas
 
 		foreach (BodyPart p in corpo.Partes)
 		{
+			// (2026-10-15) O MEMBRO PERDIDO DE VEZ, DEPOIS DE CICATRIZAR, NAO E MAIS FERIDA: o rabo do Saiyajin que nao volta
+			// sangrava no abdomen pra sempre (todo decepado entra com dano 1). Ver `BodyPart.CicatrizouDeVez`.
+			if (p.CicatrizouDeVez && !RaboPerdidoSangraPraSempreDeTeste) continue;
+
 			// ARRANCADO SOME. A MAO leva o braco junto e o PE leva a perna: no sprite de 32 px o
 			// braco inteiro tem uns quatro pixels de largura, entao "so a mao" nao e uma regiao
 			// que exista pra desenhar. Perder a mao ja e perder o braco, visualmente.

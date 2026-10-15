@@ -545,8 +545,22 @@ public partial class LocalPlayer : Node2D
 	/// O <see cref="ServerPlayer.Deitado"/> do lado de ca, menos o arremesso (que ja tem caminho
 	/// proprio logo acima). Ver <see cref="_caido"/>.
 	/// </summary>
-	public static bool Caido(SheetState f) =>
-		f.KO || (f.Morto && !Jandirus.Core.World.Alem.MortoDePe(true, GameClient.Instance?.Zone.Name ?? ""));
+	public static bool Caido(SheetState f) => f.KO || Cadaver(f);
+
+	/// <summary>
+	/// (v0.3.0) O CADAVER, do lado de ca: morto e deitado -- nem de pe num lugar de morto (o Outro Mundo, a mente), nem de
+	/// visita com o passe do Enma. E o `GameServer.EhCadaver` lido da mesma regra; a telinha do meditar o pergunta pra apagar a
+	/// meditacao profunda (`DimensaoMental.PorQueNaoMergulhar`).
+	/// </summary>
+	public static bool Cadaver(SheetState f) =>
+		f.Morto && !(f.EmVisita && !VisitaDeitaDeTeste)
+		&& !Jandirus.Core.World.Alem.MortoDePe(true, GameClient.Instance?.Zone.Name ?? "");
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv030`): o bit do passe do Enma (`SheetState.EmVisita`) e ignorado -- o morto que
+	/// visita os vivos se ve deitado na propria tela, como o cadaver (o jogo de antes).
+	/// </summary>
+	public static bool VisitaDeitaDeTeste;
 
 	/// <summary>
 	/// PRENSADO NO CHAO pela gravidade ou pelo peso -- a mesma regra que o servidor aplica em
@@ -1321,6 +1335,30 @@ public partial class LocalPlayer : Node2D
 	/// Com isto o relógio e a pose andam juntos, e há um dono só pra os dois.
 	/// ======================================================================================
 	/// </summary>
+	/// <summary>
+	/// (2026-10-15) O GOLPE QUE O SERVIDOR DEU POR ESTE CORPO -- a tecnica que soca sozinha (o Lariat, o Zanzoken Rush, as
+	/// barragens): o corpo posa o soco e vira pro alvo, como o remoto ja faz pelo snapshot. O dono: *"ataques q dao golpes
+	/// automaticos como zanzo combo lariat etc, nao estao tendo animaçao de soco ao dar o golpe e nem olham pro target"*.
+	///
+	/// O SOCO DO TECLADO JA ARMOU A POSE DELE NA TECLA, e o relato dele chega dentro dela: com a pose armada esta chamada
+	/// nao faz nada -- nao encurta a cadencia nem vira o corpo que o jogador esta dirigindo.
+	/// </summary>
+	public void GolpeDoServidor(Vector2 alvo)
+	{
+		if (_ataqueAte > 0 || GolpeDoServidorSemPoseDeTeste) return;
+		Vec2 rumo = new(alvo.X - _pos.X, alvo.Y - _pos.Y);
+		PosarDeGolpe(Protocol.AttackPoseMs / 1000.0, MoveRules.FacingFrom(rumo, _facing));
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv030`): o corpo local ignora o golpe que o servidor deu por ele -- o jogo de antes.
+	/// Lido pelo <see cref="GolpeDoServidor"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool GolpeDoServidorSemPoseDeTeste;
+
+	/// <summary>O corpo esta na pose de soco agora (o relogio `_ataqueAte` armado). Pra bancada.</summary>
+	public bool PosandoGolpeDeTeste => _ataqueAte > 0;
+
 	public void PosarDeGolpe(double segundos, Facing? olhar = null)
 	{
 		if (segundos <= 0) return;
@@ -1987,9 +2025,9 @@ public partial class LocalPlayer : Node2D
 	/// a piscada usar o mesmo caminho, nao inventar um terceiro.
 	/// ================================================================================================
 	/// </summary>
-	public void DeixarVulto(Vector2 origem)
+	public void DeixarVulto(Vector2 origem, bool longa = false)
 	{
-		if (GetParent() is { } palco) Zanzoken.Deixar(palco, this, origem);
+		if (GetParent() is { } palco) Zanzoken.Deixar(palco, this, origem, longa: longa);
 	}
 
 	/// <summary>

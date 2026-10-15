@@ -314,7 +314,7 @@ public partial class MenuJogo
 
 		AtualizarFaixaDeMarcos();
 
-		string raca = _atributos.Raca ?? "";
+		string raca = RacaComSangue();
 		string classe = cli.Sheet.Class ?? "";
 		List<Skill> arvores = ArvoresDoPersonagem(cat, raca, classe);
 
@@ -345,6 +345,12 @@ public partial class MenuJogo
 	/// duas, senao ela some da segunda sem motivo visivel. As regras de recusa, essas sim, saem
 	/// inteiras do Core (<see cref="SkillBook.Avaliar"/>): nao ha uma segunda copia aqui.
 	/// </summary>
+	/// <summary>
+	/// A RACA COM SANGUE desta ficha (v0.3.0): a raca, e no bio as racas doadoras (`AtributosState.Sangue`) -- a mesma string
+	/// que o servidor monta (`Core.Races.SangueDoBio`), pra a aba abrir as mesmas arvores que ele.
+	/// </summary>
+	private string RacaComSangue() => Jandirus.Core.Races.SangueDoBio.RacaComSangue(_atributos.Raca ?? "", _atributos.Sangue ?? "");
+
 	private List<Skill> ArvoresDoPersonagem(SkillCatalog cat, string raca, string classe)
 	{
 		List<Skill> l = cat.ArvoresDe(raca, classe);
@@ -1058,7 +1064,7 @@ public partial class MenuJogo
 	{
 		SkillCatalog? cat = Catalogo();
 		if (cat == null || GameClient.Instance is not { } cli) return;
-		string raca = _atributos.Raca ?? "";
+		string raca = RacaComSangue();
 		string classe = cli.Sheet.Class ?? "";
 		Veredito v = Avaliar(cat, s, raca, classe);
 
@@ -1340,7 +1346,7 @@ public partial class MenuJogo
 		}
 		else
 		{
-			string raca = _atributos.Raca ?? "";
+			string raca = RacaComSangue();
 			string classe = GameClient.Instance?.Sheet.Class ?? "";
 
 			// Vai esvaziando conforme cada arvore reclama as suas. O que sobrar no fim veio de fora.
@@ -1428,7 +1434,7 @@ public partial class MenuJogo
 	{
 		SkillCatalog? cat = Catalogo();
 		if (cat == null || GameClient.Instance is not { } cli) return 0;
-		string raca = _atributos.Raca ?? "";
+		string raca = RacaComSangue();
 		string classe = cli.Sheet.Class ?? "";
 
 		var vistas = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

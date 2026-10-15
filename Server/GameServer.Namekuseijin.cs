@@ -415,7 +415,13 @@ public sealed partial class GameServer
 	/// tudo, e nao depois: ele fecha a porta do save no mesmo gesto que apaga o arquivo.
 	/// ================================================================================================
 	/// </summary>
-	private void ApagarOPersonagemParaSempre(ServerPlayer alvo, string motivo)
+	/// <remarks>
+	/// (v0.3.0) A REENCARNACAO PELO ENMA PASSA POR AQUI TAMBEM, com o <paramref name="eco"/>: o mesmo apagamento (slot,
+	/// copias vivas, assinatura, log), mais o ECO gravado na conta no MESMO gravar que apaga o slot, a frase do Enma no
+	/// lugar da da absorcao, e a DESPEDIDA de proposito na carga do `Disconnect` (`FioDaDespedida`) -- e ela que leva o
+	/// cliente pra criacao, e nao pro menu principal com "DESCONECTADO". Ver `GameServer.EnmaReencarnar`.
+	/// </remarks>
+	private void ApagarOPersonagemParaSempre(ServerPlayer alvo, string motivo, Reencarnacao? eco = null)
 	{
 		AccountSave? acc = PodeApagarOPersonagem(alvo, out string porque);
 		if (acc == null)
@@ -432,6 +438,7 @@ public sealed partial class GameServer
 		alvo.PersonagemConsumido = true;
 
 		acc.Slots[alvo.Slot] = null;
+		if (eco != null) acc.Reencarnacao = eco;   // (v0.3.0) o eco vai pro disco no MESMO gravar que apaga o slot
 
 		// AS OUTRAS COPIAS VIVAS DA MESMA CONTA TAMBEM. O `AdminBanir` ja faz isto pelo mesmo motivo:
 		// `_contas` e `_logados` podem guardar objetos diferentes da mesma conta (uma segunda conexao,
@@ -439,6 +446,7 @@ public sealed partial class GameServer
 		EmTodaCopiaViva(acc.Conta, v =>
 		{
 			if (alvo.Slot < v.Slots.Length) v.Slots[alvo.Slot] = null;
+			if (eco != null) v.Reencarnacao = eco;
 		});
 
 		GravarAConta(acc);
@@ -453,6 +461,16 @@ public sealed partial class GameServer
 		// de responder.
 		GD.Print($"[server] {acc.Conta} PERDEU o slot {alvo.Slot + 1}: '{c?.Nome ?? alvo.Name}' "
 			   + $"({c?.Raca ?? alvo.Race}, BP {c?.Ficha.BP ?? alvo.Ficha.BP:0}) -- {motivo}");
+
+		// (v0.3.0) A REENCARNACAO SE DESPEDE DE OUTRO JEITO: a frase do Enma, e o motivo na carga do `Disconnect` -- o
+		// cliente le e abre a criacao na vaga que vagou (`FioDaDespedida`, `Boot.AoSerDespedido`).
+		if (eco != null)
+		{
+			string adeus = FraseDaReencarnacao(alvo.Name);
+			Avisar(alvo, adeus);
+			alvo.Peer?.Disconnect(Jandirus.Net.FioDaDespedida.Escrever(Jandirus.Net.FioDaDespedida.Motivo.Reencarnou, alvo.Slot, adeus));
+			return;
+		}
 
 		Avisar(alvo, "voce deixou de existir como pessoa: o seu corpo, a sua forca e o seu nome agora "
 				   + "sao de outro. O personagem se foi PARA SEMPRE, e nao ha desfazer. A sua CONTA "

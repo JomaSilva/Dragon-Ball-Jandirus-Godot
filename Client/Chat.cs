@@ -54,7 +54,7 @@ public partial class Chat : CanvasLayer
 		("Fala", [Protocol.Fala.Diz, Protocol.Fala.Sussurro]),
 		("RP", [Protocol.Fala.Emote, Protocol.Fala.Pensa]),
 		("OOC", [Protocol.Fala.Ooc, Protocol.Fala.Looc]),
-		("Sistema", [Protocol.Fala.Sistema]),
+		("Sistema", [Protocol.Fala.Sistema, Protocol.Fala.AvisoDeRaiva, Protocol.Fala.AvisoDeZenkai]),
 	];
 
 	private int _filtro;
@@ -443,6 +443,14 @@ public partial class Chat : CanvasLayer
 			Protocol.Fala.Sistema =>
 				$"{hora}[color=#{Tema.Destaque.ToHtml(false)}]»[/color] [color=#c9d2e8]{oque}[/color]",
 
+			// (2026-10-15) OS AVISOS QUE O JOGADOR NAO PODE PERDER, cada um na sua cor -- o "»" e o texto pintados. A raiva no
+			// vermelho-fogo, o zenkai no dourado: *"aviso de raiva, zenkai etc deveriam ter cor propria no chat"*.
+			Protocol.Fala.AvisoDeRaiva =>
+				$"{hora}[color=#{CorDaRaiva}]» {oque}[/color]",
+
+			Protocol.Fala.AvisoDeZenkai =>
+				$"{hora}[color=#{CorDoZenkai}]» {oque}[/color]",
+
 			Protocol.Fala.Ooc =>
 				$"{hora}[color=#6fb6e8](OOC) {quem}:[/color] [color=#dfe4f0]{oque}[/color]",
 
@@ -471,6 +479,23 @@ public partial class Chat : CanvasLayer
 	}
 
 	private static string Esc(string s) => s.Replace("[", "[lb]");
+
+	/// <summary>A cor do aviso de raiva (2026-10-15). Publica pra bancada (`--diagv030`).</summary>
+	public const string CorDaRaiva = "ff5a3c";
+
+	/// <summary>A cor do aviso de zenkai (2026-10-15). Publica pra bancada (`--diagv030`).</summary>
+	public const string CorDoZenkai = "ffcf4a";
+
+	/// <summary>A LINHA COMO ELA SAI NO PAINEL, pra uma fala do servidor sem autor. SO PRA BANCADA (`--diagv030`).</summary>
+	public static string FormatarDeTeste(Protocol.Fala canal, string texto) => Formatar(new Linha(canal, "", texto, "00:00"));
+
+	/// <summary>As linhas que o chat guardou (canal e texto), da mais velha a mais nova. SO PRA BANCADA (`--diagv030`).</summary>
+	public static List<(Protocol.Fala Canal, string Texto)> LinhasDeTeste() =>
+		Instancia == null ? [] : [.. Instancia._linhas.Select(l => (l.Canal, l.Texto))];
+
+	/// <summary>A aba de nome dado mostra este canal? SO PRA BANCADA (`--diagv030`).</summary>
+	public static bool AbaMostraDeTeste(string aba, Protocol.Fala canal) =>
+		Array.Find(Filtros, f => f.Nome == aba) is { Nome: not null } f && (f.Canais.Length == 0 || Array.IndexOf(f.Canais, canal) >= 0);
 
 	private static string NomeDoCanal(Protocol.Fala f) => f switch
 	{

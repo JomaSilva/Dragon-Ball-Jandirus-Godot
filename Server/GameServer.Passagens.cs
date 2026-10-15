@@ -156,7 +156,9 @@ public sealed partial class GameServer
 			// escrita mesmo assim porque ela e a metade barata do `Aging.dm:123` -- ver
 			// <see cref="OAlemNaoDeixaSair"/> pra a outra metade, a que importa.
 			// ==========================================================================================
-			if (pl.Ficha.dead && !Alem.EhOAlem(pl.Zone)) continue;
+			// (v0.3.0) O CADAVER, e nao "o morto fora do alem": o morto com o passe do Enma anda entre os vivos e atravessa
+			// as bocas deles como qualquer um (`EhCadaver` le o `MortoDePe`, que le o passe).
+			if (EhCadaver(pl)) continue;
 
 			if (_acabouDeAtravessar.TryGetValue(pl.Id, out long livre) && agora < livre) continue;
 			if (!_passagens.TryGetValue(pl.Zone.Name, out List<Passagem>? lista)) continue;

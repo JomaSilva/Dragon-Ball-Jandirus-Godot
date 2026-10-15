@@ -386,7 +386,7 @@ public sealed partial class GameServer
 
 		if (DesligarBuff(pl, id))
 		{
-			Avisar(pl, "sua raiva se aquieta e voce deixa o poder Majin.");
+			Avisar(pl, "sua raiva se aquieta e voce deixa o poder Majin.", Jandirus.Net.Protocol.Fala.AvisoDeRaiva);
 			return;
 		}
 
@@ -555,7 +555,10 @@ public sealed partial class GameServer
 	private void TeletransporteG11(ServerPlayer pl, string arg)
 	{
 		Fighter f = pl.Ficha;
-		if (f.KO || f.dead) { Avisar(pl, "nao da, caido."); return; }
+		if (f.KO || EhCadaver(pl)) { Avisar(pl, "nao da, caido."); return; }
+		// (2026-10-15) o fantasma de pe nao esta caido, mas a transmissao e um SALTO: o morto nao sai do Outro Mundo por ela
+		// (a mesma porta fechada do `PodeSaltarDePlaneta`).
+		if (f.dead) { Avisar(pl, "um morto nao sai do Outro Mundo por conta propria."); return; }
 		if (pl.Combate is { Stun: > 0 }) { Avisar(pl, "voce ainda esta atordoado."); return; }
 		if (Agarrado(pl)) { Avisar(pl, "preso num agarrao voce nao se concentra."); return; }
 		if (f.med || f.train || NaMente(pl) || pl.Selo.Preso || _canais.ContainsKey(pl.Id))
@@ -841,17 +844,17 @@ public sealed partial class GameServer
 		int pegos = 0;
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash).ToList())
 		{
-			if (o == pl || o == mz || o.Ficha.dead || o.Combate == null) continue;
+			if (o == pl || o == mz || EhCadaver(o) || o.Combate == null) continue;
 			double distTiles = Vec2.Distance(o.Pos, pl.Pos) / ZoneCollision.TileSize;
 			if (distTiles > 3) continue;
-			EspalharDanoG3(o, pl, power / Math.Max(distTiles, 1), letal: true);
+			EspalharDanoG3(o, pl, power / Math.Max(distTiles, 1), letal: true, porKi: true);
 			MandarEfeito(o, "explosao_final", 600);
 			pegos++;
 		}
 
 		EspalharDanoG3(pl, pl, power, letal: false);   // `usr.SpreadDamage(power)` sem `Death()` atras
 		f.Ki = 0;
-		EspalharDanoG3(mz, pl, power, letal: true);     // `Mz.SpreadDamage(power)` + `if(Mz.HP<=0) Mz.Death()`
+		EspalharDanoG3(mz, pl, power, letal: true, porKi: true);     // `Mz.SpreadDamage(power)` + `if(Mz.HP<=0) Mz.Death()`
 		MandarEfeito(mz, "explosao_final", 600);
 
 		bool morreu = false;
@@ -974,7 +977,7 @@ public sealed partial class GameServer
 		long agora = NowMs();
 		foreach (ServerPlayer a in ZoneList(pl.Zone.Hash).ToList())
 		{
-			if (a == pl || !EhPessoa(a) || a.Ficha.dead) continue;
+			if (a == pl || !EhPessoa(a) || EhCadaver(a)) continue;
 			if (Vec2.Distance(a.Pos, pl.Pos) > RaioDaVista) continue;
 			if (_paralisadoAte.ContainsKey(a.Id)) continue;   // `!A.Frozen`
 
@@ -1048,7 +1051,7 @@ public sealed partial class GameServer
 
 		var perto = new List<string>();
 		foreach (ServerPlayer o in ZoneList(alvo.Zone.Hash))
-			if (o != alvo && !o.Ficha.dead && Vec2.Distance(o.Pos, alvo.Pos) <= RaioDaVista) perto.Add(o.Name);
+			if (o != alvo && !EhCadaver(o) && Vec2.Distance(o.Pos, alvo.Pos) <= RaioDaVista) perto.Add(o.Name);
 		Avisar(pl, perto.Count == 0 ? "  nao ha ninguem em volta." : $"  em volta: {string.Join(", ", perto)}.");
 		Avisar(pl, "  (Observe sem nome solta a projecao.)");
 	}
@@ -1263,7 +1266,7 @@ public sealed partial class GameServer
 	{
 		_doacaoG11.Remove(pl.Id);
 		MandarEfeito(pl, "dando_poder", 0);
-		if (!pl.Ficha.dead && !pl.Ficha.KO && pl.Combate != null)
+		if (!EhCadaver(pl) && !pl.Ficha.KO && pl.Combate != null)
 			pl.Combate.Nocautear(MeleeResolver.TetoDoNocaute, porVital: false);   // `spawn usr.KO()`
 		Avisar(pl, $"voce deu {d.Deu} dose{(d.Deu == 1 ? "" : "s")} de energia e desmaia de exaustao.");
 		GD.Print($"[G11] {pl.Name} encerrou a doacao ({d.Deu} doses) e desmaiou");
@@ -1363,7 +1366,7 @@ public sealed partial class GameServer
 		double maior = 0;
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
 		{
-			if (o == pl || o.Ficha.dead || !o.Ficha.IsInFight) continue;
+			if (o == pl || EhCadaver(o) || !o.Ficha.IsInFight) continue;
 			if (Vec2.Distance(o.Pos, pl.Pos) > RaioDaVista) continue;
 			if (o.Ficha.expressedBP > maior) maior = o.Ficha.expressedBP;
 		}
@@ -1666,8 +1669,8 @@ public sealed partial class GameServer
 		// tambem acaba com o doador caido ou morto, com o alvo morto ou fora do mundo, e com os dois em zonas
 		// diferentes. O laco do DM nao pergunta nada disso -- continuaria transferindo de um corpo desmaiado, ou
 		// pra outro planeta --, e o port nao tem como mandar Ki pra um corpo que nao esta na lista da zona.
-		bool continua = !d.Parar && !f.dead && !f.KO && f.Ki >= 0.01 * f.MaxKi
-						&& alvo != null && alvo.Combate != null && !alvo.Ficha.dead
+		bool continua = !d.Parar && !EhCadaver(pl) && !f.KO && f.Ki >= 0.01 * f.MaxKi
+						&& alvo != null && alvo.Combate != null && !EhCadaver(alvo)
 						&& alvo.Zone.Hash == pl.Zone.Hash;
 		if (!continua) { EncerrarDoacaoG11(pl, d); return; }
 

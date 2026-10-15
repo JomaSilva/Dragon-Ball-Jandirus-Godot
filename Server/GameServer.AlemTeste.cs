@@ -47,7 +47,8 @@ namespace Jandirus.Server;
 ///      DIRETO na ficha (como fazem o restauro da mente, o G4 e a gestacao) tem que acender do mesmo
 ///      jeito. E o pacote nao sai quando nada muda.
 ///   6. **O QUE SE PODE FAZER MORTO** -- o `move = 1` do `Death()` e as tres negativas do original:
-///      sem Zenkai, sem digerir, estamina travada em 50%, Ki drenando em dobro.
+///      sem Zenkai, sem digerir, Ki drenando em dobro -- e o VIGOR no cheio (v0.3.0, dono: *"mortos tem vigor infinito"*;
+///      o DM o cravava em 50%).
 ///   7. **NAO SAIR DO ALEM** -- as passagens do alem so levam ao alem, decolar de la e recusado, e a
 ///      recusa nova (`OAlemNaoDeixaSair`) responde ao caso que os mapas de hoje nao produzem.
 ///   8. **A VOLTA** -- o `ReviveMe()` do DM tem que desfazer **tudo** o que a morte fez. Item a item,
@@ -561,7 +562,8 @@ public partial class GameServer
 		AfirmarAlem("...e vivo ele ganha (senao a linha acima estaria medindo outra coisa)",
 					cobaia.GainZenkai(1e9, NowMs()) == Fighter.ZenkaiResult.Concedido);
 
-		// --- SEM DIGERIR, E A ESTAMINA TRAVADA EM 50% (`StaminaDrain.dm:35-36`) ---
+		// --- SEM DIGERIR, E O VIGOR TRAVADO NO CHEIO (v0.3.0, dono: *"mortos tem vigor infinito"*; o DM o cravava em 50%,
+		// `StaminaDrain.dm:35-36`) ---
 		var estomago = new Fighter { Race = "Human", BP = 1000, dead = true };
 		estomago.Statify();
 		estomago.CurrentNutrition = Jandirus.Core.Stats.Nutricao.Tanque(estomago.Metabolism);
@@ -571,9 +573,21 @@ public partial class GameServer
 					Mathf.IsZeroApprox((float)vigor) && Mathf.IsZeroApprox((float)ki));
 
 		Jandirus.Core.Stats.Nutricao.QueimarVigor(estomago);
-		AfirmarAlem("...e a estamina trava em METADE do maximo, nem sobe nem desce",
-					Math.Abs(estomago.stamina - 0.5 * estomago.maxstamina) < 1e-6,
+		bool naoQueimou = estomago.stamina == 0;   // o estomago nao mexe no morto: nem queima, nem crava a metade
+		Jandirus.Core.Stats.Nutricao.ManterOsInfinitos(estomago);
+		AfirmarAlem("...e o VIGOR trava no CHEIO (o cadeado do tique do corpo): o morto tem vigor infinito -- e o estomago nao o queima nem o crava em meio tanque",
+					naoQueimou && Math.Abs(estomago.stamina - estomago.maxstamina) < 1e-6,
 					$"{estomago.stamina:0.##}/{estomago.maxstamina:0.##}");
+		Jandirus.Core.Stats.Nutricao.MortoComMeioTanqueDeTeste = true;
+		try
+		{
+			estomago.stamina = 0;
+			Jandirus.Core.Stats.Nutricao.QueimarVigor(estomago);
+			Jandirus.Core.Stats.Nutricao.ManterOsInfinitos(estomago);
+		}
+		finally { Jandirus.Core.Stats.Nutricao.MortoComMeioTanqueDeTeste = false; }
+		AfirmarAlem("(defeito injetado: o meio tanque do DM) o morto volta a ficar cravado em METADE -- a regua de cima sabe reprovar",
+					Math.Abs(estomago.stamina - 0.5 * estomago.maxstamina) < 1e-6, $"{estomago.stamina:0.##}/{estomago.maxstamina:0.##}");
 
 		// --- O KI DRENA EM DOBRO (`CargaDeKi`, o ramo de dentro do teto) ---
 		// Dois corpos identicos, um vivo e um morto, com o MESMO dt: a diferenca so pode ser o `dead`.

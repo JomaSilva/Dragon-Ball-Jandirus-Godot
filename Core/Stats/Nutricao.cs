@@ -139,13 +139,80 @@ public static class Nutricao
 	}
 
 	/// <summary>
-	/// DEFEITO INJETADO (bancada `--transeteste`): o piso de vigor do Majin e do Bio-Androide deixa de existir
-	/// -- o estado de antes de 2026-10-10. Lido pela propria regra, em <see cref="QueimarVigor"/>.
+	/// QUEM TEM PISO DE MEIO TANQUE: ninguem, desde a v0.3.0. O `StaminaDrain.dm:19` fala dos dois, Majin e Bio-Androide -- e
+	/// o dono tirou os dois em 2026-10-15: o Majin TRAVA NO CHEIO (<see cref="VigorSempreCheio"/>), e o bio *"sozinho N tem
+	/// nada"*: o vigor dele e o das racas doadoras (`Races.SangueDoBio`). O piso so volta como o jogo de antes, nas bancadas.
 	/// </summary>
-	public static bool SemPisoDeVigorDeTeste;
+	public static bool TemPisoDeVigor(string raca) =>
+		(raca == "Majin" && VigorDoMajinComPisoDeTeste) || (raca == Races.BioAndroids.Raca && Races.SangueDoBio.BioComOsPassivosDeAntesDeTeste);
 
-	/// <summary>As duas racas do `StaminaDrain.dm:19`. Aqui o Bio-Androide se escreve sem hifen (`races.json`).</summary>
-	public static bool TemPisoDeVigor(string raca) => raca is "Majin" or "BioAndroid";
+	// =====================================================================
+	// O VIGOR (E O KI) QUE NAO ACABAM -- dono, 2026-10-15
+	// =====================================================================
+	// *"se majin tem vigor infinito, n precisa fazer o vigor deles cair pra 50% e dps travar, trava logo no 100%, dieferenca
+	// deles pros androides de energia infinita e q os androides tem vigor e ki infinitos (ou seja nunca caem pra baixo de
+	// 100%)"*. DESVIO DECLARADO DO ORIGINAL: no DM o Majin cai a meio tanque e para la (`StaminaDrain.dm:19-20`), e o
+	// androide perpetuo enche 2% do Ki a cada meio segundo (`DNALabs.dm:201-210`).
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`): o vigor do Majin volta a cair ate meio tanque e travar la -- o jogo de
+	/// antes. Lido por <see cref="TemPisoDeVigor"/> e <see cref="VigorSempreCheio"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool VigorDoMajinComPisoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`): o Ki do androide de energia infinita volta a nao ter piso -- o jogo de
+	/// antes. Lido por <see cref="KiSempreCheio"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool KiDoAndroideSemPisoDeTeste;
+
+	/// <summary>
+	/// O vigor deste corpo nunca sai do cheio: o do Majin (vivo ou fantasma) e o do androide de energia infinita vivo -- e, desde
+	/// a v0.3.0, o do bio com o sangue de um deles (`Races.SangueDoBio`: *"o gasto de vigor/ki das racas q foram usadas pra
+	/// criar ele"*) e o de TODO MORTO (*"mortos tem vigor infinito"* -- ver <see cref="MortoComMeioTanqueDeTeste"/>).
+	/// </summary>
+	public static bool VigorSempreCheio(Fighter f) =>
+		((f.Race == "Majin" || Races.SangueDoBio.Carrega(f, "Majin")) && !VigorDoMajinComPisoDeTeste) || (EnergiaInfinita(f) && !f.dead)
+		|| (f.dead && !MortoComMeioTanqueDeTeste);
+
+	/// <summary>
+	/// ============================ O MORTO TEM VIGOR INFINITO (dono, 2026-10-15) ============================
+	/// *"Mortos atualmente o vigor fica preso em 50% seria melhor deixar preso em 100% logo, mortos tem vigor infinito"*.
+	/// DESVIO DECLARADO DO ORIGINAL: no DM o morto fica cravado em meio tanque (`else if(dead) stamina = 0.5*maxstamina`,
+	/// `StaminaDrain.dm:35-36`); aqui o cadeado do tique do corpo o segura no cheio (<see cref="VigorSempreCheio"/>), e o
+	/// estomago nao o queima (<see cref="QueimarVigor"/>). O Ki do morto continua o de sempre -- e o do androide morto continua
+	/// sem o motor (<see cref="KiSempreCheio"/>).
+	///
+	/// DEFEITO INJETADO (bancadas `--v030teste` e `--alemteste`): o morto volta a ficar em meio tanque -- o jogo de antes. Falso
+	/// em jogo, sempre.
+	/// ====================================================================================================
+	/// </summary>
+	public static bool MortoComMeioTanqueDeTeste;
+
+	/// <summary>
+	/// O Ki deste corpo nunca fica abaixo de 100%: o do androide de energia infinita vivo (e o do bio que tem o motor dele no
+	/// sangue) e, desde a v0.3.0, o do CHEFE DE SAGA (`Fighter.KiDeChefe`: *"faça boss de saga de ki infinito pra deixar mais
+	/// desafiador"*). ACIMA de 100% ele carrega, escorre e para no teto de carga como o de qualquer um -- o cadeado so segura o
+	/// piso.
+	/// </summary>
+	public static bool KiSempreCheio(Fighter f) =>
+		(EnergiaInfinita(f) && !f.dead && !KiDoAndroideSemPisoDeTeste) || (f.KiDeChefe && !KiDoChefeFinitoDeTeste);
+
+	/// <summary>DEFEITO INJETADO (`--v030teste`): o Ki do chefe de saga volta a acabar -- o jogo de antes. Falso em jogo, sempre.</summary>
+	public static bool KiDoChefeFinitoDeTeste;
+
+	/// <summary>O motor de energia infinita: o androide que o tem, e o bio que o herdou (`Races.SangueDoBio.InfinitoNoSangue`).</summary>
+	private static bool EnergiaInfinita(Fighter f) => f.AndroideInfinito || Races.SangueDoBio.InfinitoNoSangue(f);
+
+	/// <summary>
+	/// O CADEADO: poe o vigor (e o Ki) de volta onde a regra manda. Chamado POR ULTIMO no tique do corpo
+	/// (`GameServer.TickDosRelogiosDoCorpo`), depois de todo relogio que gasta -- o que eles cobraram volta no mesmo tique.
+	/// </summary>
+	public static void ManterOsInfinitos(Fighter f)
+	{
+		if (VigorSempreCheio(f)) f.stamina = f.maxstamina;
+		if (KiSempreCheio(f) && f.Ki < f.MaxKi) f.Ki = f.MaxKi;
+	}
 
 	/// <summary>
 	/// O VIGOR QUEIMA COM O TEMPO -- o dreno passivo de `CheckNutrition`.
@@ -155,9 +222,11 @@ public static class Nutricao
 	/// </summary>
 	public static void QueimarVigor(Fighter f, double dreno = 1)
 	{
-		if (f.dead) { f.stamina = 0.5 * f.maxstamina; return; }
+		// (v0.3.0) O MORTO NAO QUEIMA: o vigor dele trava no cheio no tique do corpo -- ver `MortoComMeioTanqueDeTeste`, que
+		// devolve o meio tanque do DM.
+		if (f.dead) { if (MortoComMeioTanqueDeTeste) f.stamina = 0.5 * f.maxstamina; return; }
 
-		// ============================ O PISO DE MEIO TANQUE DO MAJIN E DO BIO-ANDROIDE ============================
+		// ============================ O PISO DE MEIO TANQUE DO BIO-ANDROIDE (e do Majin, ate 2026-10-15) ============================
 		// `if(stamina<(maxstamina/2)&&(Race=="Majin"||Race=="Bio-Android")) stamina=(maxstamina/2)` -- a segunda
 		// linha do `CheckNutrition()` (`Stamina/StaminaDrain.dm:19-20`), e ela faltava aqui.
 		//
@@ -170,7 +239,7 @@ public static class Nutricao
 		//
 		// A CADA PASSADA DO ESTOMAGO (a cadencia do `CheckNutrition`), e ANTES do dreno, como la.
 		// ====================================================================================================
-		if (!SemPisoDeVigorDeTeste && TemPisoDeVigor(f.Race) && f.stamina < f.maxstamina / 2)
+		if (TemPisoDeVigor(f.Race) && f.stamina < f.maxstamina / 2)
 			f.stamina = f.maxstamina / 2;
 
 		// QUEM ESCONDE O PODER CANSA MAIS DEVAGAR PARADO: `max(200*Ewillpower*concealedBuff*Estaminamod,0.01)`

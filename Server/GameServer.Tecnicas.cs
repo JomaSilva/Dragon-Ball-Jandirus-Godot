@@ -67,7 +67,7 @@ public partial class GameServer
 
 		double custo = Tecnicas.SolarCustoKi(pl.Ficha);
 		if (pl.Ficha.Ki < custo) { Avisar(pl, $"isso pede pelo menos {custo:0} de energia."); return; }
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "voce nao esta em condicoes."); return; }
+		if (pl.Ficha.KO || EhCadaver(pl)) { Avisar(pl, "voce nao esta em condicoes."); return; }
 
 		pl.Ficha.Ki -= custo;
 		_solarPronto[pl.Id] = agora + Tecnicas.SolarRecargaMs(pl.Ficha);

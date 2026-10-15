@@ -182,6 +182,57 @@ public partial class GameServer
 	}
 
 	/// <summary>
+	/// ============================ QUEM VAI NO SNAPSHOT DESTE TIQUE (v0.3.0) ============================
+	/// A zona inteira, MENOS o habitante longe de todo jogador fora do tique em que ele pensa.
+	///
+	/// O pedido foi mais gente nos planetas civilizados *"mas cuidado com a performance do server"*, e o teto de lotacao ja
+	/// dizia onde mora o custo de um corpo a mais (`Povoamento.MaxPorZona`: "o teto nao e a IA -- e o fio"): ele vai pra
+	/// cada jogador da zona trinta vezes por segundo. Este recorte NAO inventa criterio: e o MESMO `LongeDeTodos` que ja faz
+	/// a mente desse habitante pensar um tique a cada `divisorDeLonge`, com a MESMA fase (`_tiquesDosCorpos + id`), marcado
+	/// pelo proprio laco da IA (`LongeNoTique`). Entre um pensamento e outro o corpo dele nao muda -- o passo, o olhar e a
+	/// pose sao decididos so no tique em que ele pensa --, entao os snapshots do meio repetiam o MESMO estado, e o cliente
+	/// ja descartava a repeticao (`RemotePlayer.Receive`: a mesma hora e a mesma amostra). Mandar so o tique que muda e
+	/// mandar a mesma informacao. (O que anda sozinho entre um pensamento e outro -- a altura de quem esta subindo, um
+	/// arremesso -- chega no pensamento seguinte; a 40 tiles de todo jogador ninguem esta olhando.)
+	///
+	/// O QUE NUNCA E RECORTADO: jogador, clone, corpo possuido, chefe, lutador -- tudo que o `LongeDeTodos` ja deixa pensando
+	/// todo tique (so o habitante pacifico entra nele). E quem o laco nao marcou NESTE tique (sem cerebro, recem-nascido) vai
+	/// sempre. A `--embaralhoteste` (familia 14) mede o recorte, a fase e que o cliente nao perde mudanca nenhuma.
+	/// =====================================================================================================
+	/// </summary>
+	private IReadOnlyList<ServerPlayer> CorposDoSnapshot(List<ServerPlayer> zona)
+	{
+		if (LongeSempreNoSnapshotDeTeste) return zona;
+		ulong divisor = (ulong)Math.Max(1, _rotina.DivisorDeLonge);
+		_corposDoSnapshot.Clear();
+		foreach (ServerPlayer c in zona)
+			if (c.LongeNoTique != _tiquesDosCorpos || (_tiquesDosCorpos + (ulong)c.Id) % divisor == 0)
+				_corposDoSnapshot.Add(c);
+		return _corposDoSnapshot;
+	}
+
+	/// <summary>A lista reusada do <see cref="CorposDoSnapshot"/> -- o arranjo do `_dirigidos`: um `Clear()` por zona por tique, zero alocacao.</summary>
+	private readonly List<ServerPlayer> _corposDoSnapshot = [];
+
+	/// <summary>DEFEITO INJETADO (`--embaralhoteste`): o recorte some -- o habitante longe volta a ir em todo tique (o jogo de antes).</summary>
+	internal static bool LongeSempreNoSnapshotDeTeste;
+
+	/// <summary>
+	/// So o robo `--diagsombra`: em quantas partes a zona INTEIRA (sem o recorte do <see cref="CorposDoSnapshot"/>) sai no
+	/// teto real do pacote. O snapshot de UM tique pode caber num pacote so -- o recorte tirou os habitantes longe --, e a
+	/// pergunta do robo ("a zona cheia passa do MTU e sai em partes?") e sobre a zona, e nao sobre o tique.
+	/// </summary>
+	internal (int Partes, int MaiorParte, int Orcamento) PartesDaZonaInteiraDeTeste(ZoneKey zona)
+	{
+		List<ServerPlayer> todos = ZoneList(zona.Hash);
+		int orcamento = OrcamentoDoSnapshot(todos);
+		int maior = 0;
+		List<NetDataWriter> partes = PartesDoSnapshot(todos, TirosDaZona(zona.Hash), NowMs(), 0u, orcamento);
+		foreach (NetDataWriter p in partes) maior = Math.Max(maior, p.Length);
+		return (partes.Count, maior, orcamento);
+	}
+
+	/// <summary>
 	/// OS TIROS DE UMA ZONA, prontos pro fio -- todos, ou so os perto de um ponto (o recorte por chunk
 	/// do espaco, onde "todos os tiros da zona" seria todo tiro dado em qualquer canto da galaxia).
 	/// </summary>

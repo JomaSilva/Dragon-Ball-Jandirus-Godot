@@ -57,13 +57,16 @@
   ],
 
   "povoamento": [
-    { "planeta": "Earth",      "molde": "cidadao", "quantos": 40 },
-    { "planeta": "Vegeta",     "molde": "cidadao", "quantos": 40 },
-    { "planeta": "Namek",      "molde": "cidadao", "quantos": 32 },
-    { "planeta": "Icer",       "molde": "cidadao", "quantos": 12 },
-    { "planeta": "Arlia",      "molde": "cidadao", "quantos": 12 },
-    { "planeta": "Makyo_Star", "molde": "cidadao", "quantos": 12 }
+    { "planeta": "Earth",      "molde": "cidadao", "quantos": 100 },
+    { "planeta": "Vegeta",     "molde": "cidadao", "quantos": 100 },
+    { "planeta": "Namek",      "molde": "cidadao", "quantos": 80 },
+    { "planeta": "Icer",       "molde": "cidadao", "quantos": 30 },
+    { "planeta": "Arlia",      "molde": "cidadao", "quantos": 30 },
+    { "planeta": "Makyo_Star", "molde": "cidadao", "quantos": 30 },
+    { "planeta": "Vegeta",     "molde": "rei_vegeta",      "quantos": 1, "tronoVago": "kov" },
+    { "planeta": "Vegeta",     "molde": "principe_vegeta", "quantos": 1, "tronoVago": "kov" }
   ],
+  "_povoamento": "(v0.3.0) OS NUMEROS: o dono pediu mais gente nos planetas civilizados ('a galera reclamou q os planetas q tem civilizacoes estao mt desertos') -- os seis foram a 2,5x (Terra e Vegeta 100, Namek 80, Icer, Arlia e Makyo Star 30). O fio aguenta porque o habitante longe de todo jogador so vai no snapshot no tique em que pensa (Server/GameServer.Snapshot.cs, CorposDoSnapshot), e a mente dele so roda com jogador no planeta. (v0.3.0) 'tronoVago' e a chave de um cargo: a linha so nasce enquanto nenhum JOGADOR o carrega. O Rei Vegeta e o Principe sao do PlanetPopulation.dm (populate_vegeta, :432-436): o dono quer os dois so com o trono de Vegeta vago (no DM o Principe nascia sempre). Matar o Rei sendo Saiyajin toma o trono -- ver Server/GameServer.ReiDeVegeta.cs.",
 
   "sagas": [
     {
@@ -77,7 +80,7 @@
       "minutosDeLuta": 6,
       "anuncioDoMarco": "O poder crescente dos Saiyajins chamou uma atencao terrivel... Freeza se aproxima do Planeta Vegeta! Ele chegara em {dias} dias.",
       "anuncioDiario": "A nave de Freeza se aproxima do Planeta Vegeta... chegada em {dias} dia(s).",
-      "anuncioDoUltimato": "FREEZA concentra uma energia colossal sobre {planeta}! Nocauteiem-no em 30 SEGUNDOS para interromper!",
+      "anuncioDoUltimato": "FREEZA ergue um dedo ao céu -- e uma SUPERNOVA começa a nascer sobre {planeta}! Nada o atinge enquanto ela cresce...",
       "anuncioDaVitoria": "FREEZA FOI DERROTADO! O Planeta Vegeta esta a salvo!",
       "chefes": [
         { "molde": "freeza_vegeta", "diasMin": 3, "diasMax": 5, "recompensa": 100,
@@ -97,7 +100,7 @@
       "minutosDeOcio": 5,
       "anuncioDoMarco": "Freeza partiu em direcao a Namek atras das Esferas do Dragao! Ele chegara em {dias} dias.",
       "anuncioDiario": "Freeza se aproxima de Namek... chegada em {dias} dia(s).",
-      "anuncioDoUltimato": "FREEZA vai destruir {planeta}! Nocauteiem-no em 30 SEGUNDOS!",
+      "anuncioDoUltimato": "FREEZA vai destruir {planeta}: uma SUPERNOVA cresce sobre ele, e nada o atinge enquanto ela cresce!",
       "anuncioDaVitoria": "FREEZA FOI DERROTADO EM NAMEK! As Esferas do Dragao estao seguras!",
       "chefes": [
         { "molde": "freeza_namek", "diasMin": 7, "diasMax": 7, "recompensa": 100,
@@ -366,6 +369,52 @@
     },
 
     {
+      "id": "rei_vegeta",
+      "nome": "Rei Vegeta",
+      "tipo": "cidadao",
+      "racas": ["Saiyan"],
+      "classe": "Elite",
+      "generos": ["Male"],
+      "nomes": ["Rei Vegeta"],
+      "cabelo": "Vegeta",
+      "roupa": ["Armor_Elite", "Clothes, Saiyan Gloves", "Clothes, Saiyan Shoes", "Clothes_KingVegetaCape"],
+      "bpMin": 18000, "bpMax": 22000,
+      "talentos": ["/datum/skill/ki/Ki_Wave", "/datum/skill/mind/Ki_Unlocked@35", "/datum/skill/ki/Scattering_Bullet",
+                   "/datum/skill/mind/Basic_Ki_Control@30", "/datum/skill/ki/Afterimage"],
+      "quantosTalentos": 0.8,
+      "marcosBase": 4, "marcosPorDecada": 1.5,
+      "vocacao": ["/datum/skill/tree/Body", "/datum/skill/tree/Mind"],
+      "nivelDasSkills": 35,
+      "escadaAutomatica": false,
+      "inteligencia": 60, "agressividade": 60, "coragem": 90, "furia": 80,
+      "perfil": { "voa": 0.5, "ki": 0.6 },
+      "_nota": "O REI DE VEGETA do make_saiyan_elite(T, 'king', rand(18000,22000), 1) (PlanetPopulation.dm:372-385, :436): Saiyajin Elite, cabelo 'Vegeta', armadura de elite + luvas + botas Saiyajins + a capa do Rei. Cidadao: nao ataca ninguem por conta propria e revida quem o ataca ('PEACEFUL but TRAINABLE', :8-9). O nome e o do dono ('Rei Vegeta'); no DM era 'King <nome sorteado>'. Nasce so com o trono de Vegeta vago (o 'tronoVago' da linha do povoamento), e quem o mata sendo Saiyajin vira o Rei -- ver Server/GameServer.ReiDeVegeta.cs."
+    },
+
+    {
+      "id": "principe_vegeta",
+      "nome": "Príncipe Vegeta",
+      "tipo": "cidadao",
+      "racas": ["Saiyan"],
+      "classe": "Elite",
+      "generos": ["Male"],
+      "nomes": ["Príncipe Vegeta"],
+      "cabelo": "Vegeta",
+      "roupa": ["Clothes_VegetaSaiyanSagaArmor", "Clothes, Saiyan Gloves", "Clothes, Saiyan Shoes"],
+      "bpMin": 14000, "bpMax": 18000,
+      "talentos": ["/datum/skill/ki/Ki_Wave", "/datum/skill/mind/Ki_Unlocked@35", "/datum/skill/ki/Scattering_Bullet",
+                   "/datum/skill/mind/Basic_Ki_Control@30", "/datum/skill/ki/Afterimage"],
+      "quantosTalentos": 0.8,
+      "marcosBase": 4, "marcosPorDecada": 1.5,
+      "vocacao": ["/datum/skill/tree/Body", "/datum/skill/tree/Mind"],
+      "nivelDasSkills": 35,
+      "escadaAutomatica": false,
+      "inteligencia": 60, "agressividade": 60, "coragem": 90, "furia": 80,
+      "perfil": { "voa": 0.5, "ki": 0.6 },
+      "_nota": "O PRINCIPE do make_saiyan_elite(T, 'prince', rand(14000,18000), 0) (PlanetPopulation.dm:372-385, :433): o kit de elite sem a capa. O DM sorteia a armadura entre a de elite e a da saga Saiyajin e da o cabelo 'Vegeta Junior' (que nao esta no catalogo do port): aqui ele veste a da saga Saiyajin, e o cabelo e o 'Vegeta'. No DM ele nascia SEMPRE; aqui, a pedido do dono, so com o trono vago, como o Rei."
+    },
+
+    {
       "id": "guardiao_saiyajin",
       "nome": "Guardiao",
       "tipo": "chefe",
@@ -399,7 +448,8 @@
       "racas": ["Icer"],
       "classe": "Frost Demon",
       "marcosBase": 6, "marcosPorDecada": 2.0,
-      "dadas": ["/datum/skill/ki/Ki_Wave"],
+      "dadas": ["/datum/skill/ki/Ki_Wave", "/datum/skill/rank/Death_Beam", "/datum/skill/rank/DeathBall"],
+      "_ataques": "(v0.3.0, item 5) Os ATAQUES DELE: o dono pediu os chefes com 'ataques mais individuais como o freeza com death beam e death ball'. O arsenal de longe da IA (Core/Skills/TecnicasDeLonge.cs) ja usa toda tecnica que o corpo SABE, pela mesma porta do jogador -- o que faltava era o chefe saber.",
       "_dadas": "O `isBlaster` do DM (NPCAI.dm:39) -- la o NPC atira por FLAG, e nao por skill. Aqui ele passa pelo funil do jogador, entao a flag vira a skill DADA (`SkillBook.Dar`, o caminho de quem foi ENSINADO): `/datum/skill/ki/Ki_Wave` e comum e ligada, mas nao pende de arvore nenhuma -- nem aqui nem no DM --, entao ela so entra por este campo. Sem esta linha o contra-feixe (NPCAI.dm:374) e a colisao de ki entre NPCs nunca aconteciam em jogo: nenhum corpo do mundo sabia um raio.",
       "vocacao": ["/datum/skill/tree/Mind", "/datum/skill/tree/Spirit", "/datum/skill/tree/Body"],
       "nivelDasSkills": 70,
@@ -420,7 +470,8 @@
       "racas": ["Icer"],
       "classe": "Frost Demon",
       "marcosBase": 6, "marcosPorDecada": 2.0,
-      "dadas": ["/datum/skill/ki/Ki_Wave"],
+      "dadas": ["/datum/skill/ki/Ki_Wave", "/datum/skill/rank/Death_Beam", "/datum/skill/rank/DeathBall"],
+      "_ataques": "(v0.3.0, item 5) Os ATAQUES DELE: o dono pediu os chefes com 'ataques mais individuais como o freeza com death beam e death ball'. O arsenal de longe da IA (Core/Skills/TecnicasDeLonge.cs) ja usa toda tecnica que o corpo SABE, pela mesma porta do jogador -- o que faltava era o chefe saber.",
       "_dadas": "O `isBlaster` do DM (NPCAI.dm:39) -- la o NPC atira por FLAG, e nao por skill. Aqui ele passa pelo funil do jogador, entao a flag vira a skill DADA (`SkillBook.Dar`, o caminho de quem foi ENSINADO): `/datum/skill/ki/Ki_Wave` e comum e ligada, mas nao pende de arvore nenhuma -- nem aqui nem no DM --, entao ela so entra por este campo. Sem esta linha o contra-feixe (NPCAI.dm:374) e a colisao de ki entre NPCs nunca aconteciam em jogo: nenhum corpo do mundo sabia um raio.",
       "vocacao": ["/datum/skill/tree/Mind", "/datum/skill/tree/Spirit", "/datum/skill/tree/Body"],
       "nivelDasSkills": 70,
@@ -431,16 +482,17 @@
       "estagios": [
         { "bp": 530000,   "gatilhoMembro": 0.70, "cura": 0.5, "corpo": "Changling - Form 1",
           "anuncio": "Freeza estala o pescoco. -- Voces me obrigaram a mudar de forma." },
-        { "bp": 1000000,  "gatilhoMembro": 0.50, "cura": 0.5, "corpo": "Changling - Form 2",
+        { "bp": 1000000,  "gatilhoMembro": 0.50, "cura": 0.5, "corpo": "Changling - Form 2", "cena": "corpo_novo",
           "anuncio": "Freeza TRANSFORMOU-SE! Sua nova forma pulsa com um poder ainda maior! (Forma 2)" },
-        { "bp": 2000000,  "gatilhoMembro": 0.35, "cura": 0.5, "corpo": "Changling - Form 3",
+        { "bp": 2000000,  "gatilhoMembro": 0.35, "cura": 0.5, "corpo": "Changling - Form 3", "cena": "corpo_novo",
           "anuncio": "Freeza TRANSFORMOU-SE! Sua nova forma pulsa com um poder ainda maior! (Forma 3)" },
-        { "bp": 3000000,  "gatilhoMembro": 0.25, "cura": 0.5, "corpo": "Changeling Form 4",
+        { "bp": 3000000,  "gatilhoMembro": 0.25, "cura": 0.5, "corpo": "Changeling Form 4", "cena": "corpo_novo",
           "anuncio": "Freeza TRANSFORMOU-SE! Sua nova forma pulsa com um poder ainda maior! (Forma 4)" },
-        { "bp": 4000000,  "cura": 0.5, "corpo": "Changeling Frieza 100% 3",
+        { "bp": 4000000,  "cura": 0.5, "corpo": "Changeling Frieza 100% 3", "cena": "forma_final",
           "anuncio": "FREEZA ATINGIU SUA FORMA FINAL! Derrotem-no antes que ele destrua o planeta!" }
       ],
-      "_nota": "BEV_FREEZA2_BPS e BEV_FREEZA2_THRESHOLDS (BossEvents.dm:54,67). O ULTIMO degrau nao tem gatilho: nada o encerra."
+      "_nota": "BEV_FREEZA2_BPS e BEV_FREEZA2_THRESHOLDS (BossEvents.dm:54,67). O ULTIMO degrau nao tem gatilho: nada o encerra.",
+      "_cena": "(v0.3.0, dono: 'quando boss se transoforma ele tem cinematica igual um player') A 'cena' de cada degrau e a cena de jogador que ele toca ao trocar de corpo: 'corpo_novo' e o surto da escada do Frost Demon, 'forma_final' a cena grande das evolucoes dele (Core/Forms/Cinematicas.cs, CenaDeChefe). O corpo novo so aparece na virada da cena."
     },
 
     {
@@ -488,10 +540,13 @@
       "nome": "Cell",
       "tipo": "chefe",
       "racas": ["BioAndroid"],
+      "sangueDoBio": ["Saiyan", "Namekian", "Icer", "Human"],
+      "_sangueDoBio": "(v0.3.0) As racas do sangue dele -- o Cell do anime foi feito de Goku e Vegeta (Saiyajin), Piccolo (Namekuseijin), Freeza e o Rei Cold (Icer) e dos humanos. O dono (2026-10-15): o bio sozinho nao tem nada, e as passivas e as skills de raca vem das racas que o fizeram (Core/Races/SangueDoBio.cs).",
       "classe": "Majin-Type",
       "generos": ["Male"],
       "marcosBase": 8, "marcosPorDecada": 2.2,
-      "dadas": ["/datum/skill/ki/Ki_Wave"],
+      "dadas": ["/datum/skill/ki/Ki_Wave", "/datum/skill/rank/Kamehameha", "/datum/skill/rank/Death_Beam"],
+      "_ataques": "(v0.3.0, item 5) Os ATAQUES DELE: o dono pediu os chefes com 'ataques mais individuais como o freeza com death beam e death ball'. O arsenal de longe da IA (Core/Skills/TecnicasDeLonge.cs) ja usa toda tecnica que o corpo SABE, pela mesma porta do jogador -- o que faltava era o chefe saber.",
       "_dadas": "O `isBlaster` do DM (NPCAI.dm:39) -- la o NPC atira por FLAG, e nao por skill. Aqui ele passa pelo funil do jogador, entao a flag vira a skill DADA (`SkillBook.Dar`, o caminho de quem foi ENSINADO): `/datum/skill/ki/Ki_Wave` e comum e ligada, mas nao pende de arvore nenhuma -- nem aqui nem no DM --, entao ela so entra por este campo. Sem esta linha o contra-feixe (NPCAI.dm:374) e a colisao de ki entre NPCs nunca aconteciam em jogo: nenhum corpo do mundo sabia um raio.",
       "vocacao": ["/datum/skill/tree/Spirit", "/datum/skill/tree/Mind", "/datum/skill/tree/Body"],
       "nivelDasSkills": 85,
@@ -499,12 +554,12 @@
       "ascendePorDecisao": false,
       "inteligencia": 90, "agressividade": 85, "coragem": 95, "furia": 60,
       "estagios": [
-        { "bp": 150000000,  "gatilhoMembro": 0.35, "cura": 0.6 },
-        { "bp": 500000000,  "gatilhoMembro": 0.30, "cura": 0.6,
+        { "bp": 150000000,  "gatilhoMembro": 0.35, "cura": 0.6, "degrauDoBio": 2 },
+        { "bp": 500000000,  "gatilhoMembro": 0.30, "cura": 0.6, "degrauDoBio": 3, "cena": "bio_semi",
           "anuncio": "O corpo de Cell se retorce -- Semi-Perfeito." },
-        { "bp": 3500000000, "gatilhoMembro": 0.25, "cura": 0.6,
+        { "bp": 3500000000, "gatilhoMembro": 0.25, "cura": 0.6, "degrauDoBio": 4, "cena": "bio_perfeito",
           "anuncio": "CELL ATINGIU A FORMA PERFEITA! Um poder monstruoso emana dele!" },
-        { "bp": 5000000000, "cura": 1.0,
+        { "bp": 5000000000, "cura": 1.0, "degrauDoBio": 4,
           "anuncio": "IMPOSSIVEL... CELL VOLTOU DA MORTE em seu poder maximo!" }
       ],
       "_nota": "BEV_CELL_BPS (BossEvents.dm:56). A escada dele sobe por DOIS gatilhos: absorver um androide nocauteado (o 'absorve' da saga -- e o caminho canonico) OU o dano no membro mais ferido, pra ele nao ficar preso na forma 1 se os jogadores matarem os androides antes. DIVERGENCIA CONSCIENTE: o original constroi Cell com genoma Human e so troca o Race por cosmetica (o comentario dele admite isso); aqui ele nasce da raca BioAndroid que este port TEM -- a mesma que um jogador vira no laboratorio de DNA. Ganha-se coerencia com o resto do jogo; perde-se a literalidade do spread de stats, que o BP pinado torna quase invisivel."
@@ -517,7 +572,8 @@
       "classe": "Corrupted Majin",
       "generos": ["Male"],
       "marcosBase": 8, "marcosPorDecada": 2.2,
-      "dadas": ["/datum/skill/ki/Ki_Wave"],
+      "dadas": ["/datum/skill/ki/Ki_Wave", "/datum/skill/rank/Kamehameha"],
+      "_ataques": "(v0.3.0, item 5) Os ATAQUES DELE: o dono pediu os chefes com 'ataques mais individuais como o freeza com death beam e death ball'. O arsenal de longe da IA (Core/Skills/TecnicasDeLonge.cs) ja usa toda tecnica que o corpo SABE, pela mesma porta do jogador -- o que faltava era o chefe saber.",
       "_dadas": "O `isBlaster` do DM (NPCAI.dm:39) -- la o NPC atira por FLAG, e nao por skill. Aqui ele passa pelo funil do jogador, entao a flag vira a skill DADA (`SkillBook.Dar`, o caminho de quem foi ENSINADO): `/datum/skill/ki/Ki_Wave` e comum e ligada, mas nao pende de arvore nenhuma -- nem aqui nem no DM --, entao ela so entra por este campo. Sem esta linha o contra-feixe (NPCAI.dm:374) e a colisao de ki entre NPCs nunca aconteciam em jogo: nenhum corpo do mundo sabia um raio.",
       "vocacao": ["/datum/skill/tree/Body", "/datum/skill/tree/Spirit"],
       "nivelDasSkills": 90,

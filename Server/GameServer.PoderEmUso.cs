@@ -177,8 +177,8 @@ public sealed partial class GameServer
 	private bool ConferirARaivaDeQuemRelaxa(ServerPlayer pl)
 	{
 		if (!PoderEmUso.ARaivaAcorda(pl.Ficha)) return false;
-		Avisar(pl, "você não consegue relaxar: está furioso demais!");
-		Avisar(pl, "o seu poder volta inteiro -- você está louco por uma briga.");
+		Avisar(pl, "você não consegue relaxar: está furioso demais!", Jandirus.Net.Protocol.Fala.AvisoDeRaiva);
+		Avisar(pl, "o seu poder volta inteiro -- você está louco por uma briga.", Jandirus.Net.Protocol.Fala.AvisoDeRaiva);
 		return true;
 	}
 
@@ -235,6 +235,13 @@ public sealed partial class GameServer
 		BitsDoPoderEmUso bits = BitsDoPoderEmUso.Nenhum;
 		if (PoderEmUso.Escondido(pl.Ficha)) bits |= BitsDoPoderEmUso.Escondido;
 		if (PoderEmUso.Relaxado(pl.Ficha)) bits |= BitsDoPoderEmUso.Relaxado;
+		// (2026-10-15) A RAIVA VAI NO MESMO RETRATO: o HUD a escreve embaixo da vida (dono: *"seria bom ter um aviso em baixo
+		// da vida (...) q vc ta com raiva mostrando se ta com raiva ou furioso"*). E ele sai quando muda, a 5 Hz.
+		switch (NivelDaRaivaDe(pl))
+		{
+			case Jandirus.Core.Forms.NivelDeRaiva.Extrema: bits |= BitsDoPoderEmUso.Furioso; break;
+			case Jandirus.Core.Forms.NivelDeRaiva.Comum: bits |= BitsDoPoderEmUso.ComRaiva; break;
+		}
 		return new PoderEmUsoState((byte)PoderEmUso.Porcento(pl.Ficha), bits);
 	}
 

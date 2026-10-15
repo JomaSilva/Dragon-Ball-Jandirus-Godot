@@ -437,7 +437,11 @@ public sealed partial class Fighter
         // `GameServer.Sigilo.cs` e o `skilltrees.json` ja fazem a mesma pergunta em outros dois
         // lugares. Uma copia a mais e mais um lugar pra divergir.
         // =============================================================================================================
-        if (Races.BioAndroids.EhBio(Race) || Races.BioAndroids.EhBio(ParentRace)) return true;
+        // (v0.3.0) E O ZENKAI DO BIO VEM DO SANGUE, nao da raca: o dono (2026-10-15) -- *"zenkai se tiver saiyajin"*, e
+        // *"bio androide sozinho N tem nada"*. Ver `Races.SangueDoBio`. O ramo acima continua sendo o porque de a grafia
+        // importar: e ele que reconhece o bio.
+        if (Races.BioAndroids.EhBio(Race) || Races.BioAndroids.EhBio(ParentRace))
+            return Races.SangueDoBio.BioComOsPassivosDeAntesDeTeste || Races.SangueDoBio.TemSaiyajin(this);
         if (Race == "Saiyan" || ParentRace == "Saiyan") return true;
         if (Race == "Halfbreed" || Race == "Half-Saiyan" || ParentRace == "Half-Saiyan") return true;
         if (canSSJ) return true;

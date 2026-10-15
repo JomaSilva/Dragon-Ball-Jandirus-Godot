@@ -500,6 +500,8 @@ public partial class RoboDeDecalque : Node
 		// "Entrar".
 		string botao = System.Array.IndexOf(args, "--host") >= 0 ? "Hospedar partida (servidor local)" : "Entrar";
 		if (!Apertar(botao)) Conferir(false, $"o lobby nao tem o botao '{botao}'");
+		// (v0.3.0) A TELA DE HOSPEDAR pergunta o modo das racas antes de subir o servidor (`Boot.ModoDeRacas.cs`): o padrao.
+		else if (botao != "Entrar") Apertar("Modo padrão");
 	}
 
 	private static string? Arg(string[] args, string chave)

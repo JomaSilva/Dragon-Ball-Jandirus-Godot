@@ -52,7 +52,11 @@ public sealed partial class GameServer
 	private void TentarEmpurrar(ServerPlayer a, ServerPlayer d, double dmg, Protocol.Golpe golpe,
 								bool garantido = false)
 	{
-		if (!a.Knockback || d.TiquesDeVoo > 0 || d.Ficha.dead) return;
+		// (2026-10-15) O MORTO DE PE E EMPURRADO -- so o CADAVER nao. O dono, no Inferno: *"n ta dando pra dar knock back
+		// (...) n sei se e bug do local ou se e pq estamos mortos"*, e logo depois: *"consegui dar knock back, mas foi em uma
+		// pessoa viva"*. Era o `dead` cru, que pega todo fantasma do Outro Mundo (la TODO MUNDO esta morto); o lugar nao
+		// trava nada. E a mesma troca que a carga e a regeneracao ja tinham feito (`EhCadaver`).
+		if (!a.Knockback || d.TiquesDeVoo > 0 || (MortoNaoVoaDeTeste ? d.Ficha.dead : EhCadaver(d))) return;
 
 		// ============================ O INTERRUPTOR DO DEFEITO INJETADO ============================
 		// FALSO EM JOGO, SEMPRE -- so a `--kbteste` o liga, e o que ele reproduz e EXATAMENTE a linha
@@ -96,6 +100,12 @@ public sealed partial class GameServer
 	/// `attack cmn.dm:115`. Ver o bloco no <see cref="TentarEmpurrar"/> -- e falso em jogo.
 	/// </summary>
 	private bool _kbPesadoSemSorteio;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`): o empurrao volta a pular TODO morto, inclusive o de pe no Outro Mundo --
+	/// o jogo de antes. Lido pela primeira linha do <see cref="TentarEmpurrar"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool MortoNaoVoaDeTeste;
 
 	/// <summary>
 	/// QUANTOS CORPOS ESTE SERVIDOR JA JOGOU PRO AR desde o boot -- um `++` por passagem pelo

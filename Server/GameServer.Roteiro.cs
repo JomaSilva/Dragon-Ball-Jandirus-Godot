@@ -185,8 +185,17 @@ public partial class GameServer
 			string antes = npc.Forma.Atual;
 			npc.Forma.Entrar(novo.Forma);
 			AplicarForma(npc);
-			if (anunciar) AnunciarForma(npc, antes, novo.Forma, estreia: false);
+			// (v0.3.0) A ESTREIA DA FORMA NAQUELE CORPO (*"quando boss se transoforma ele tem cinematica igual um player"*): com
+			// `estreia: false` a maestria do molde decidia a cena -- e o guardiao Saiyajin, com 60%, virava SSJ CALADO (a cena e
+			// dispensada a partir de 50%, `Cinematicas.Degrau`). O degrau de chefe e a primeira vez daquele corpo naquela forma.
+			if (anunciar) AnunciarForma(npc, antes, novo.Forma, estreia: !FormaDeChefeSemEstreiaDeTeste);
 		}
+
+		// (v0.3.0) A CENA DO DEGRAU -- o Freeza que troca de corpo, o Cell que evolui (*"quando boss se transoforma ele tem
+		// cinematica igual um player"*). ANTES da aparencia nova, no mesmo canal ordenado: o cliente guarda o corpo novo ate a
+		// virada. So no degrau sem forma (o de forma toca a cena da forma, logo acima) e so quando o degrau e ANUNCIADO -- o
+		// nascimento (`anunciar: false`) tem a cena da chegada. Ver `GameServer.ChefeDeSaga.cs`.
+		if (anunciar && novo.Forma.Length == 0 && novo.Cena != Cinematicas.CenaDeChefe.Nenhuma) CenaDoChefe(npc, novo.Cena);
 
 		// O CORPO, quando o degrau troca de sprite -- o `boss2.icon = BEV_FREEZA2_ICONS[s2_form]`.
 		//
@@ -197,6 +206,14 @@ public partial class GameServer
 		{
 			if (npc.Visual.FormasDeFrost.Count > 0) npc.Visual.FormasDeFrost[0] = novo.Corpo;
 			else npc.Visual.FormasDeFrost.Add(novo.Corpo);
+			TrocarAparencias(npc);
+		}
+
+		// (v0.3.0) O CORPO DE BIO DO DEGRAU -- o Cell imperfeito, semi-perfeito e perfeito, pela mesma lista de corpos do jogador
+		// bio (`BioAndroids.IndiceDoCorpo`). So o desenho: o BP e o pinado.
+		if (novo.DegrauDoBio > 0)
+		{
+			npc.Visual.Corpo = Jandirus.Core.Races.BioAndroids.IndiceDoCorpo(novo.DegrauDoBio);
 			TrocarAparencias(npc);
 		}
 

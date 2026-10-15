@@ -1273,6 +1273,7 @@ public sealed partial class GameServer
 			if (c.AgarradoPorId != 0) LimparPreso(c);
 			c.Ficha.train = c.Ficha.med = false;
 			c.CenaSegundos = 0;
+			c.SupernovaDesde = 0;
 			c.FuriaExtremaAte = 0;
 			c.RaivaComumAte = 0;
 			c.Ficha.Anger = 100;
@@ -1369,7 +1370,21 @@ public sealed partial class GameServer
 		// verde e a frase passa a mentir -- por isso a frase cita a funcao, e nao o campo.
 		(Ocupacao Qual, string Como, Action Ligar, Action? PorTique, float Tiles, int Tiques)[] tabela =
 		[
-			// ---- NOCAUTEADO: o unico da lista que TIRA o voo, e por isso o palco dele e curto ----
+			// ---- DESFEITO (v0.3.0): o Majin em pedacos -- caido como o nocauteado, e por isso o palco curto tambem ----
+			// `CombatState.Desfazer` e a porta que o golpe letal fora do ki abre no Majin (`QuandoONucleoCede`). A bancada a
+			// chama direto num corpo comum: o que se mede aqui e o ESTADO, e nao quem tem direito a ele.
+			(Ocupacao.Desfeito,
+			 "se desfez em pedacos (`CombatState.Desfazer`, a porta do golpe que mataria o Majin)",
+			 () => b.Combate!.Desfazer(), null, 1.5f, 12),
+
+			// ---- SUPERNOVA (v0.3.0): o chefe concentrando o ultimato -- parado e intocavel como na cena ----
+			// `ComecarASupernova` e a porta que o ultimato da saga abre. A bancada a chama direto num corpo comum: o que se mede
+			// aqui e o ESTADO, e nao quem tem direito a ele.
+			(Ocupacao.Supernova,
+			 "ergueu a Supernova (`ComecarASupernova`, a porta do ultimato da saga)",
+			 () => ComecarASupernova(b), null, 3f, TiquesDoPasseio),
+
+			// ---- NOCAUTEADO: o outro que TIRA o voo (com o desfeito, logo acima), e por isso o palco dele e curto ----
 			// `Nocautear` (o verb de admin) chama `CombatState.Nocautear`, que e o MESMO que o
 			// `MeleeResolver` chama quando um soco derruba alguem -- e nao `Ficha.KO = true`, que
 			// deixaria o corpo sem prazo pra levantar.
@@ -1462,10 +1477,13 @@ public sealed partial class GameServer
 			 () => { b.Ficha.med = true; }, null, 3f, TiquesDoPasseio),
 		];
 
+		// (v0.3.0) CONTADO PELO PROPRIO `enum` (todos menos o `Livre`), e nao pelo ultimo nome: o `Meditando` deixou de ser
+		// o ultimo quando o `Desfeito` chegou, e um teto escrito a mao envelhece calado no proximo estado.
+		int estadosDoEnum = Enum.GetValues<Ocupacao>().Length - 1;
 		AfirmarDc($"PRECONDICAO: a tabela cobre a lista INTEIRA do `CorpoOcupado` "
-				+ $"({tabela.Length} estados, e o `enum` tem {(int)Ocupacao.Meditando}) -- um estado novo "
+				+ $"({tabela.Length} estados, e o `enum` tem {estadosDoEnum}) -- um estado novo "
 				+ "no `enum` sem linha aqui reprova nesta mesma checagem",
-				  tabela.Length == (int)Ocupacao.Meditando
+				  tabela.Length == estadosDoEnum
 				  && tabela.Select(t => t.Qual).Distinct().Count() == tabela.Length);
 
 		foreach ((Ocupacao qual, string como, Action ligar, Action? porTique, float tiles, int tiques) in tabela)
@@ -2308,7 +2326,11 @@ public sealed partial class GameServer
 		// Alfa fica ao NORTE do corpo, virado pro SUL: se este golpe deitasse alguem, deitaria pro sul.
 		Encostar(a, c, new Vec2(0, 1));
 		a.AlvoId = 0;
-		a.Combate.Letal = true;
+		// NAO-LETAIS (2026-10-15): dez socos LETAIS destrocam o cadaver -- todo membro a zero, o `Destroy()` do DM
+		// (`GameServer.Cadaver.EstaDestrocado`) --, e o zelador o tira do mundo antes do arremesso da secao (iii): o voo dele
+		// nunca acontecia (a rodada daquele dia mediu "destrocado, fora da zona"). A pergunta daqui e a DIRECAO, e o soco
+		// nao-letal a faz do mesmo jeito.
+		a.Combate.Letal = false;
 		for (int i = 0; i < 10; i++)
 		{
 			a.Combate.Recarga = 0;
@@ -2355,7 +2377,11 @@ public sealed partial class GameServer
 		Arremessar(c, new Vec2(0, 1), Empurrao.ResistenciaPadrao, 6);
 		bool deitouNoRumoDoVoo = c.DirecaoDeitado == Facing.South;
 		Tiques(120);
-		AfirmarDc("PRECONDICAO: o arremesso do cadaver pro SUL acabou", c.TiquesDeVoo <= 0, $"{c.TiquesDeVoo}");
+		// O DETALHE DIZ ONDE O CADAVER FOI PARAR: um cadaver que SAIU do mundo (o zelador o desfez -- destrocado, ou o teto
+		// da zona) nunca voa, e o "6" sozinho nao separava isso de um voo que travou.
+		AfirmarDc("PRECONDICAO: o arremesso do cadaver pro SUL acabou", c.TiquesDeVoo <= 0,
+				  $"{c.TiquesDeVoo} tiques; na zona {ZoneList(c.Zone.Hash).Contains(c)}; destrocado {EstaDestrocado(c)}; "
+				  + $"cadaveres na zona {ZoneList(c.Zone.Hash).Count(o => o.ECadaver)}; caiu em {c.CaiuEm}");
 		AfirmarDc("ARREMESSADO pro SUL, o cadaver deita pro SUL durante o voo (o rumo do voo)...", deitouNoRumoDoVoo);
 		AfirmarDc("...E CONTINUA pro SUL depois de pousar -- sem o ESTALO de volta pro angulo antigo "
 				+ "(`CongelarDirecaoDeitada` no pouso de quem pousa caido)",

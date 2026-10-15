@@ -57,6 +57,26 @@ public partial class Zanzoken : Node2D
 	/// <summary>Quanto dura o vulto. O DM usa `spawn(10)` = 1 s; 0,55 s le melhor num jogo mais rapido.</summary>
 	private const double Duracao = 0.55;
 
+	/// <summary>
+	/// (v0.3.0) QUANTO DURA A MIRAGEM DA TECNICA (a Zanzoken Afterimage), em segundos -- o dono: *"as miragens nesse caso deveriam
+	/// durar mais q as miragens padroes do zanzoken, pq fica sem sentido a miragem durar milisegundos nesse caso"*. A do duplo
+	/// clique continua a <see cref="Duracao"/>. Dois segundos e a roda inteira: uma miragem a cada meio segundo, quatro em volta
+	/// do alvo ao mesmo tempo (`GameServer.RondarOAlvoG14`). O DM deixava a imagem um segundo (`spawn(10)`, `Buff Effects.dm:45`).
+	/// </summary>
+	public const double DuracaoDaTecnica = 2.0;
+
+	/// <summary>DEFEITO INJETADO (bancada `--diagv030`): a miragem da tecnica volta a durar o mesmo que a comum. Falso em jogo, sempre.</summary>
+	public static bool MiragemDaTecnicaCurtaDeTeste;
+
+	/// <summary>A ultima MIRAGEM deixada (o estilo de shader) -- so pra bancada medir quanto ela vive.</summary>
+	public static Zanzoken? UltimaDeTeste { get; private set; }
+
+	/// <summary>Quanto esta miragem foi feita pra viver, em segundos. So pra bancada.</summary>
+	public double VidaDeTeste => _vida;
+
+	/// <summary>A vida inteira desta miragem: a comum ou a da tecnica.</summary>
+	private double _vida = Duracao;
+
 
 	/// <summary>
 	/// O CODIGO DESTE EFEITO mora num `.gdshader` de verdade -- ver o comentario de
@@ -103,7 +123,7 @@ public partial class Zanzoken : Node2D
 	public static bool MiragemSemACorDoCorpoDeTeste;
 
 	public static void Deixar(Node palco, Node2D corpo, Vector2? onde = null,
-							  EstiloDeVulto estilo = EstiloDeVulto.Miragem)
+							  EstiloDeVulto estilo = EstiloDeVulto.Miragem, bool longa = false)
 	{
 		if (corpo.GetNodeOrNull<CharacterVisual>("Visual") is not { } vis) return;
 
@@ -177,6 +197,9 @@ public partial class Zanzoken : Node2D
 			v._mats.Add(m);
 		}
 
+		// (v0.3.0) A MIRAGEM DA TECNICA vive mais -- ver `DuracaoDaTecnica`.
+		if (longa && !MiragemDaTecnicaCurtaDeTeste) v._vida = v._resta = DuracaoDaTecnica;
+		UltimaDeTeste = v;
 		MiragensDeTeste++;
 		palco.AddChild(v);
 	}
@@ -268,7 +291,7 @@ public partial class Zanzoken : Node2D
 		_resta -= delta;
 		if (_resta <= 0) { QueueFree(); return; }
 
-		var t = (float)(1.0 - _resta / Duracao);   // 0 -> 1 ao longo da vida
+		var t = (float)(1.0 - _resta / _vida);   // 0 -> 1 ao longo da vida
 
 		if (_simples)
 		{

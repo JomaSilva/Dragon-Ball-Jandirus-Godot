@@ -406,6 +406,8 @@ public partial class World : Node2D
 			// METODO NOMEADO, como os vizinhos: ver a nota logo abaixo sobre as lambdas orfas.
 			cli.FuriaIrrompeu += AoIrromperFuria;
 			cli.CenaDoBioComecou += AoComecarCenaDoBio;
+			cli.ChefeChegou += AoChegarOChefe;               // (v0.3.0) a cena da chegada de um chefe de saga
+			cli.CenaDoChefeComecou += AoComecarCenaDoChefe;   // (v0.3.0) a cena do degrau de um chefe de saga
 			cli.CenaDeFusaoComecou += AoComecarCenaDeFusao;
 			cli.VizinhancaMudou += DesenharPlanetas;
 			cli.ObrasMudaram += DesenharObras;
@@ -500,6 +502,8 @@ public partial class World : Node2D
 			cli.OozaruMudou -= AoVirarOozaru;
 			cli.FuriaIrrompeu -= AoIrromperFuria;
 			cli.CenaDoBioComecou -= AoComecarCenaDoBio;
+			cli.ChefeChegou -= AoChegarOChefe;
+			cli.CenaDoChefeComecou -= AoComecarCenaDoChefe;
 			cli.CenaDeFusaoComecou -= AoComecarCenaDeFusao;
 			cli.VizinhancaMudou -= DesenharPlanetas;
 			cli.ObrasMudaram -= DesenharObras;
@@ -905,7 +909,7 @@ public partial class World : Node2D
 	/// nao o tipo de quem saltou -- e essa separacao ja existia por causa do relogio, nao do dono.
 	/// ================================================================================================
 	/// </summary>
-	private void AoPiscar(int quem, Vec2 de, bool vulto)
+	private void AoPiscar(int quem, Vec2 de, bool vulto, bool longa)
 	{
 		Node2D? corpo = Corpo(quem);
 		if (corpo == null) return;
@@ -932,12 +936,12 @@ public partial class World : Node2D
 			// so, e perguntar duas vezes daria ao borrao a marca e ao vulto a origem do pacote.
 			Vector2 deOnde = _local.OrigemDoSalto(origem);
 			_local.BorrarArranque(deOnde);
-			if (vulto) _local.DeixarVulto(deOnde);
+			if (vulto) _local.DeixarVulto(deOnde, longa);
 		}
 		else
 		{
 			if (corpo.GetNodeOrNull<RastroDeCorrida>("Rastro") is { } rastro) rastro.Arranque(origem);
-			if (vulto) Zanzoken.Deixar(_atores, corpo, origem);
+			if (vulto) Zanzoken.Deixar(_atores, corpo, origem, longa: longa);
 		}
 
 		// O SOM DE TELEPORTE SO NO TELEPORTE. Desde que o dash passou a anunciar pelo mesmo pacote,
@@ -1694,6 +1698,78 @@ public partial class World : Node2D
 		aura.Kaioken(ligado);
 		corpo.GetNodeOrNull<CargaVisual>("Carga")?.Kaioken(ligado);
 		if (ligado) Som(corpo, Trilha.Kaioken);
+	}
+
+	/// <summary>
+	/// O MAJIN DESFEITO EM PEDACOS (dono, 2026-10-15) -- irmao do <see cref="MarcarNaNave"/>: o ESTADO E O PROPRIO NODE
+	/// (<see cref="PedacosDoMajin"/>, filho do corpo) e o trabalho so acontece na virada. Desfeito: nascem os pedacos e o
+	/// corpo some; refeito: os pedacos voltam, a reconstrucao toca e o corpo reaparece. Vale pro meu corpo e pro dos outros
+	/// pela MESMA linha.
+	/// </summary>
+	/// <summary>
+	/// (v0.3.0) A SUPERNOVA DO CHEFE -- irma do <see cref="MarcarDesfeito"/>, com uma diferenca de casa: o sol NAO e filho do
+	/// corpo, porque ele sobrevive ao chefe (o servidor tira o chefe do mundo no instante da explosao, e o sol ainda esta
+	/// caindo). Ele mora nos atores e segue o corpo pela pergunta `Onde`; quem o conduz ate o estouro e ele mesmo (ver
+	/// <see cref="SupernovaDesenhada"/>). O estado acabando com o sol ainda na mao e o servidor desistindo: ele se apaga.
+	/// </summary>
+	private void MarcarSupernova(int id, bool concentrando)
+	{
+		if (SupernovaDesenhada.SolIgnoradoDeTeste) concentrando = false;
+		if (_supernovas.TryGetValue(id, out SupernovaDesenhada? ja) && !IsInstanceValid(ja))
+		{
+			_supernovas.Remove(id);
+			ja = null;
+		}
+		if (!concentrando)
+		{
+			ja?.Cancelar();
+			return;
+		}
+		if (ja != null) return;
+		var sol = new SupernovaDesenhada
+		{
+			Name = $"Supernova{id}",
+			Onde = () => Corpo(id) is { } c ? Desenhado(c) : null,
+			Estourar = EstouroNoMundo,
+		};
+		_supernovas[id] = sol;
+		_atores.AddChild(sol);
+	}
+
+	/// <summary>Os sois no ar, por corpo de quem os ergueu -- o corpo pode sair do mundo antes do sol.</summary>
+	private readonly Dictionary<int, SupernovaDesenhada> _supernovas = [];
+
+	/// <summary>O sol que este corpo ergueu, se ainda esta na tela (bancada `--diagv030`).</summary>
+	internal SupernovaDesenhada? SupernovaDeTeste(int id) =>
+		_supernovas.TryGetValue(id, out SupernovaDesenhada? s) && IsInstanceValid(s) ? s : null;
+
+	private void MarcarDesfeito(int id, bool desfeito)
+	{
+		if (id == 0 || Corpo(id) is not { } corpo) return;
+		if (PedacosDoMajin.CorpoInteiroNaTelaDeTeste) desfeito = false;
+		PedacosDoMajin? ja = corpo.GetNodeOrNull<PedacosDoMajin>(PedacosDoMajin.NomeDoNode);
+		if (!desfeito)
+		{
+			ja?.Recompor();
+			return;
+		}
+		if (ja != null && !ja.Recompondo) return;
+		if (ja != null)
+		{
+			// SE DESFEZ DE NOVO NO MEIO DA VOLTA: a volta velha sai da arvore JA -- o nome e o mesmo, e com a velha ainda
+			// pendurada o motor renomearia a nova (o tombo que o `DesenharOChao` ja levou).
+			corpo.RemoveChild(ja);
+			ja.QueueFree();
+		}
+		var pele = corpo.GetNodeOrNull<CharacterVisual>("Visual")?.CorpoParaOsPedacos();
+		corpo.AddChild(new PedacosDoMajin
+		{
+			Name = PedacosDoMajin.NomeDoNode,
+			Semente = id,
+			FolhaDoCorpo = pele?.Folha,
+			Tinta = pele?.Tinta,
+			Pele = pele?.Pele ?? Colors.White,
+		});
 	}
 
 	/// <summary>
@@ -3408,6 +3484,10 @@ public partial class World : Node2D
 				MarcarNaNave(e.Id, e.Pilotando, e.NaveGrande);
 				// E O KAIO-KEN, pela mesma frase: a aura vermelha e do corpo, e o dono dela tem que ve-la.
 				MarcarKaioken(e.Id, e.Kaioken);
+				// E O MAJIN EM PEDACOS, pela mesma frase: o dono do corpo desfeito ve os pedacos dele -- ver `MarcarDesfeito`.
+				MarcarDesfeito(e.Id, e.Ocupacao == Jandirus.Core.World.Ocupacao.Desfeito);
+				// (v0.3.0) E A SUPERNOVA, pela mesma frase (um corpo de jogador nunca a ergue, mas a regra e uma so) -- ver `MarcarSupernova`.
+				MarcarSupernova(e.Id, e.Ocupacao == Jandirus.Core.World.Ocupacao.Supernova);
 				// E O CHAO TREMENDO: quem segura o C acima de 120% sente o proprio tremor pela MESMA linha
 				// que o faz tremer pros outros -- nao ha um "tremor local" escrito a parte.
 				MarcarCargaAlta(e.Id, e.CargaAlta);
@@ -3486,6 +3566,9 @@ public partial class World : Node2D
 			// =========================================================================================================
 			MarcarSobrecarga(e.Id, e.Sobrecarregado);
 			MarcarKaioken(e.Id, e.Kaioken);
+			MarcarDesfeito(e.Id, e.Ocupacao == Jandirus.Core.World.Ocupacao.Desfeito);
+			// (v0.3.0) ...E O SOL DO ULTIMATO SOBRE O CHEFE -- ver `MarcarSupernova`.
+			MarcarSupernova(e.Id, e.Ocupacao == Jandirus.Core.World.Ocupacao.Supernova);
 			// ...E O CHAO TREMENDO EM VOLTA DELE. Mesmo molde: bit do snapshot, estado no node do corpo.
 			MarcarCargaAlta(e.Id, e.CargaAlta);
 
@@ -3895,6 +3978,16 @@ public partial class World : Node2D
 			return;
 		}
 
+		// (v0.3.0) O SPIN ATTACK DA A VOLTA INTEIRA: o desenho do corpo passa pelas quatro direcoes (`CharacterVisual.Girar`), na
+		// tela de todo mundo -- e o MEU corpo, que nao recebe pose por snapshot, segura a pose de golpe pelo relogio dele.
+		if (gesto == (byte)Protocol.GestoDoCorpo.Giro)
+		{
+			double volta = Protocol.GiroMs / 1000.0;
+			VisualDe(quem)?.Girar(volta);
+			if (_local != null && GameClient.Instance?.LocalId == quem) _local.PosarDeGolpe(volta);
+			return;
+		}
+
 		VisualDe(quem)?.RestartState("blast");
 		AudioDirector.EfeitoNoLugar(corpo, Trilha.Kiai, 0.8f);
 		if (gesto == (byte)Protocol.GestoDoCorpo.KiaiComLamina)
@@ -3919,6 +4012,11 @@ public partial class World : Node2D
 		// segurando o raio (ou ja soltou a bola), e reiniciar o `attack` dele a cada moida de 0,2 s o fazia
 		// tremer na pose. O `flick` do DM e do soco.
 		if (!h.TemPonto) VisualDe(h.Atacante)?.RestartState("attack", Protocol.AttackPoseMs / 1000.0);
+		// (2026-10-15) E O GOLPE QUE O SERVIDOR DEU POR MIM (a tecnica que soca sozinha -- o Lariat, o Zanzoken Rush): o corpo
+		// LOCAL nao recebe pose por snapshot, e o `RestartState` de cima durava um quadro (o `LerAcoes` passa por cima). Ver
+		// `LocalPlayer.GolpeDoServidor`, que nao encurta o soco do teclado.
+		if (!h.TemPonto && _local != null && quemLeva != null && GameClient.Instance is { } euSou && h.Atacante == euSou.LocalId)
+			_local.GolpeDoServidor(quemLeva.Position);
 
 		bool souEu = GameClient.Instance is { } c && (h.Atacante == c.LocalId || h.Alvo == c.LocalId);
 
@@ -4144,7 +4242,7 @@ public partial class World : Node2D
 			// fio, uma peca de 600 s no chao nao pode (e quem chega depois a recebe pelo `S2C.Pecas`).
 			// ==================================================================================================
 			// (2026-10-13) MENOS NO MAJIN: ele perde o membro e nao sangra -- ver `Feridas.NaoSangra`.
-			if (quemLeva != null && !Jandirus.Core.Combat.Feridas.NaoSangra(RacaDe(h.Alvo))) CombatFx.JatoDeSangue(_atores, quemLeva);
+			if (quemLeva != null && !NaoSangraNaTela(h.Alvo)) CombatFx.JatoDeSangue(_atores, quemLeva);
 		}
 		if (h.Morreu || h.Nocauteou)
 		{
@@ -5073,10 +5171,16 @@ public partial class World : Node2D
 	private Vector2 _tremorDe, _tremorPara;
 	private static readonly RandomNumberGenerator Sorte = new();
 
-	/// <summary>A raca de um corpo da zona, pela ficha visual dele (`_looks`); a minha, pela minha ficha. Vazio se ainda nao chegou.</summary>
-	private string RacaDe(int id) =>
-		_looks.TryGetValue(id, out var visto) ? visto.Raca
-		: GameClient.Instance is { } c && c.LocalId == id ? c.Atributos.Raca : "";
+	/// <summary>
+	/// ESTE CORPO NAO SANGRA NA TELA? O de um corpo da zona, pela ficha visual dele (`_looks`): a raca (o Majin) ou a marca que
+	/// o servidor manda (`Appearance.SemSangue`, o bio com sangue Majin -- a raca com sangue de um corpo alheio so o servidor
+	/// monta). O meu, pela minha ficha com o sangue (`AtributosState.Sangue`).
+	/// </summary>
+	private bool NaoSangraNaTela(int id) =>
+		_looks.TryGetValue(id, out var visto)
+			? visto.Ap.SemSangue || Jandirus.Core.Combat.Feridas.NaoSangra(visto.Raca)
+			: GameClient.Instance is { } c && c.LocalId == id
+			  && Jandirus.Core.Combat.Feridas.NaoSangra(Jandirus.Core.Races.SangueDoBio.RacaComSangue(c.Atributos.Raca ?? "", c.Atributos.Sangue ?? ""));
 
 	private static void Som(Node2D? onde, string caminho, float volume = 1f)
 	{
@@ -5918,6 +6022,30 @@ public partial class World : Node2D
 	/// pra ele seria pior que nao ter nenhuma.
 	/// ============================================================================================
 	/// </summary>
+	/// <summary>
+	/// (v0.3.0) UM CHEFE DE SAGA CHEGOU -- a cena vai pra tela de quem estiver no mundo, em QUALQUER planeta (o chefe nem
+	/// precisa estar nesta zona: o retrato vem no pacote). Uma chegada nova tira a anterior da tela. Ver `CenaDaChegada`.
+	/// </summary>
+	private void AoChegarOChefe(GameClient.ChegadaDeChefe chegada)
+	{
+		if (CenaDaChegada.NaTelaDeTeste is { } velha && IsInstanceValid(velha)) velha.QueueFree();
+		AddChild(new CenaDaChegada { Name = "CenaDaChegada", Chegada = chegada, Catalogo = _visual });
+	}
+
+	/// <summary>
+	/// (v0.3.0) A CENA DE UM DEGRAU DE CHEFE DE SAGA -- o Freeza que troca de corpo, o Cell que evolui. Irma da
+	/// <see cref="AoComecarCenaDoBio"/>: a cena e do Core (`Cinematicas.DoChefe`), sem forma, e o corpo novo que chega no meio
+	/// dela espera a virada (`_pendentes`).
+	/// </summary>
+	private void AoComecarCenaDoChefe(int id, Jandirus.Core.Forms.Cinematicas.CenaDeChefe qual)
+	{
+		if (Corpo(id) is not { } corpo || Jandirus.Core.Forms.Cinematicas.DoChefe(qual) is not { } cena) return;
+		Transformacao.Rodar(_atores, corpo, forma: null, cena, id == GameClient.Instance?.LocalId, NomeDe(id));
+	}
+
+	/// <summary>(v0.3.0) A cena em curso no corpo deste id, ou nula. So bancada (`--diagv030`, CS).</summary>
+	internal Transformacao? CenaEmCursoDeTeste(int id) => CenaEmCurso(id);
+
 	private void AoComecarCenaDoBio(int id, Jandirus.Core.Forms.Cinematicas.CenaBio qual)
 	{
 		if (Corpo(id) is not { } corpo) return;
@@ -6123,8 +6251,14 @@ public partial class World : Node2D
 	/// </summary>
 	private void DesenharOChao()
 	{
+		// (2026-10-15) FORA DA ARVORE JA, e nao so na fila de liberar: o desenho novo de cada coisa tem o MESMO nome do velho
+		// ("Largado" + id), e com o velho ainda pendurado o motor renomeava o novo -- a busca pelo nome achava o que ia morrer.
 		foreach (Node n in _atores.GetChildren())
-			if (n is LargadoDesenhado) n.QueueFree();
+			if (n is LargadoDesenhado)
+			{
+				_atores.RemoveChild(n);
+				n.QueueFree();
+			}
 		if (GameClient.Instance is not { } cli) return;
 
 		const int t = ZoneCollision.TileSize;
@@ -6139,6 +6273,7 @@ public partial class World : Node2D
 				Tipo = l.Tipo,
 				Item = l.Item,
 				Quantidade = l.Quantidade,
+				Arte = l.Arte,
 			});
 		}
 	}

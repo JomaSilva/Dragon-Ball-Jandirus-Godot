@@ -98,7 +98,7 @@ public partial class MenuJogo
 		// O QUE ISSO CUSTA, antes da lista: a pontaria sem braco, a recarga sem os dois, a corrida sem perna, o chao
 		// sem as duas, a guarda que cede, o passo e o poder do corpo ferido -- uma frase por pena EM VIGOR, vinda do
 		// `DebuffsDeMembro` (ver `EfeitosDoCorpo`). Corpo sem pena nenhuma nao ganha o cartao.
-		List<string> efeitos = EfeitosDoCorpo(partes, f.HP, _atributos.Raca ?? "");
+		List<string> efeitos = EfeitosDoCorpo(partes, f.HP, RacaComSangue());   // (v0.3.0) o bio com sangue Majin nao manca
 		if (efeitos.Count > 0)
 		{
 			VBoxContainer custo = Cartao("Efeitos dos ferimentos", destaque: true);

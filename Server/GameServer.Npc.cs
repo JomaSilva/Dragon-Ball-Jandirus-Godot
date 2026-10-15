@@ -396,7 +396,10 @@ public partial class GameServer
 		if (corpos.Tons.Count > 0) ap.Tom = SorteioDeNpc.Sorteador(semente, "tom").Next(corpos.Tons.Count);
 
 		if (VisualCatalog.TemCabelo(raca) && _visual.Cabelos.Count > 0)
-			ap.Cabelo = _visual.Cabelos[SorteioDeNpc.Sorteador(semente, "cabelo").Next(_visual.Cabelos.Count)].Nome;
+			// (v0.3.0) O CABELO CRAVADO NO MOLDE vence o sorteio (o Rei e o Principe de Vegeta: "Vegeta") -- se o catalogo o tem.
+			ap.Cabelo = molde.Cabelo.Length > 0 && _visual.Cabelos.Any(c => c.Nome == molde.Cabelo)
+				? molde.Cabelo
+				: _visual.Cabelos[SorteioDeNpc.Sorteador(semente, "cabelo").Next(_visual.Cabelos.Count)].Nome;
 
 		// O FROST DEMON NAO TEM CORPO NO CATALOGO: o corpo dele E a forma (ver `VisualCatalog.CorpoSprite`).
 		// Sem esta linha o Freeza nasceria desenhado como um humano palido -- pra todo mundo na zona.

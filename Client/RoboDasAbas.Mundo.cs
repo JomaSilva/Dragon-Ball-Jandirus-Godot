@@ -347,23 +347,45 @@ public partial class RoboDasAbas
 				  linhaLua ?? "(nula)");
 			Checa("...e 'Lua cheia' diz AGORA", menu.ValorDesenhado("World", "Lua cheia") == "AGORA", menu.ValorDesenhado("World", "Lua cheia") ?? "(nula)");
 
-			ceu = CartaoComTitulo(pg, "Céu");
-			await RolarAteVer(ceu);
-			Image? f2 = await Foto();
-			await Guardar("world-02-lua-cheia", f2);
-			TextureRect? disco = lua != null ? Todos(lua).OfType<TextureRect>().FirstOrDefault(t => t.Name == "Disco") : null;
-			if (disco != null)
+			// A PAGINA SE REFAZ NO MEIO DA FOTO (o caso da chapa do ceu, la em cima): o disco e o cartao lidos ANTES dos awaits
+			// podem ser de uma montagem que ja morreu -- a regressao de 2026-10-15 estourou aqui com `ObjectDisposedException` no
+			// `LuaNoCeu`. Os dois se pegam de novo a cada foto, a foto so vale se eles continuam vivos depois dela, e os
+			// retangulos se leem ANTES do proximo await. A pagina se refaz quando o TEXTO do ceu muda: o decimo de hora e a forca
+			// do clima em porcentagem inteira, que numa transicao de 45 s anda a cada ~0,45 s -- com a janela a ~4 quadros por
+			// segundo (uma tentativa = ~7 quadros = ~1,7 s) as tres tentativas podem cair numa remontagem, e entao a medida diz
+			// quantas houve e o que andou, em vez de culpar o disco.
+			Image? f2 = null;
+			bool vivos = false;
+			int remontagensAntes = menu.RemontagensDeTeste;
+			string ceuAntes = $"clima {World.Instancia?.TempoQueFaz?.Forca ?? 0:P0}, hora {(World.Instancia?.Ceu?.Hora ?? 0) * 24:00.0}";
+			for (int vez = 0; vez < 3 && !vivos; vez++)
 			{
-				Rect2I r = Caixa(disco.GetGlobalRect(), 2);
+				ceu = CartaoComTitulo(pg, "Céu");
+				lua = DiscoDoMenu(pg);
+				await RolarAteVer(ceu);
+				f2 = await Foto();
+				vivos = ceu != null && GodotObject.IsInstanceValid(ceu) && lua != null && GodotObject.IsInstanceValid(lua);
+			}
+			TextureRect? disco = vivos ? Todos(lua!).OfType<TextureRect>().FirstOrDefault(t => t.Name == "Disco") : null;
+			Rect2? caixaDoDisco = disco?.GetGlobalRect();
+			Rect2 caixaDoCeu = vivos ? ceu!.GetGlobalRect() : default;
+			await Guardar("world-02-lua-cheia", f2);
+			if (caixaDoDisco is { } cd)
+			{
+				Rect2I r = Caixa(cd, 2);
 				float limiar = Luminancia(Tema.PainelClaro) + 0.15f;
 				float clara = FracaoClara(f2, r, limiar);
 				ChecaNoPixel("o disco esta PINTADO na foto: mais de um terco do retangulo dele e mais claro que a chapa do cartao",
 							 f2 != null, clara > 0.33f, $"{clara * 100:0}% claro em {r} (limiar de luminancia {limiar:0.00})");
 				// CONTRA-EXEMPLO NA MESMA FOTO: um pedaco da chapa do cartao, longe do disco, nao e claro.
-				Rect2I chapa = new((int)ceu!.GetGlobalRect().Position.X + 4, (int)ceu.GetGlobalRect().Position.Y + 4, 30, 6);
+				Rect2I chapa = new((int)caixaDoCeu.Position.X + 4, (int)caixaDoCeu.Position.Y + 4, 30, 6);
 				ChecaNoPixel("CONTRA-EXEMPLO na mesma foto: a chapa do cartao ao lado do disco NAO e clara",
 							 f2 != null, FracaoClara(f2, chapa, limiar) < 0.2f, $"{FracaoClara(f2, chapa, limiar) * 100:0}% claro em {chapa}");
 			}
+			else if (!vivos)
+				Checa("a foto da lua cheia pegou o disco e o cartao Céu VIVOS (a pagina parou de se refazer em uma das 3 tentativas)", false,
+					  $"{menu.RemontagensDeTeste - remontagensAntes} remontagem(ns) durante as fotos; {ceuAntes} -> clima "
+					  + $"{World.Instancia?.TempoQueFaz?.Forca ?? 0:P0}, hora {(World.Instancia?.Ceu?.Hora ?? 0) * 24:00.0}");
 			else Checa("o disco (TextureRect 'Disco') existe dentro do LuaNoCeu", false);
 		}
 

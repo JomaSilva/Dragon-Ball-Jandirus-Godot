@@ -106,6 +106,31 @@ public partial class GameClient : Node
 	/// <summary>A queda foi tratada: o `Boot` ja levou o jogador de volta e mostrou o aviso.</summary>
 	public void TratarQueda() => QuedaPendente = null;
 
+	/// <summary>
+	/// (v0.3.0) O SERVIDOR ME DESPEDIU DE PROPOSITO e disse por que (`FioDaDespedida`) -- estado, como a queda, ate o `Boot`
+	/// tratar. Hoje a unica despedida e a REENCARNACAO: o personagem acabou, e o jogador volta pra criacao.
+	/// </summary>
+	public FioDaDespedida.Despedida? DespedidaPendente { get; private set; }
+
+	/// <summary>A despedida foi tratada: o `Boot` ja derrubou o mundo e discou de novo.</summary>
+	public void TomarDespedida() => DespedidaPendente = null;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv030`): a despedida de proposito vira queda comum -- o jogo de antes, em que
+	/// reencarnar jogaria o jogador no menu principal com "DESCONECTADO DO SERVIDOR".
+	/// </summary>
+	public static bool DespedidaViraQuedaDeTeste;
+
+	/// <summary>
+	/// DISCA DE NOVO no mesmo servidor, com a mesma conta -- a volta da reencarnacao (`Boot.AoSerDespedido`). Sem conexao
+	/// anterior nao ha o que repetir.
+	/// </summary>
+	public void Reconectar()
+	{
+		if (_host.Length == 0) return;
+		Conectar(_host, _porta, _conta, _senha);
+	}
+
 	/// <summary>O <see cref="Desconectar"/> foi chamado: a despedida que vem a seguir e a que EU pedi.</summary>
 	private bool _saiuPorVontade;
 
@@ -168,6 +193,10 @@ public partial class GameClient : Node
 	private readonly EventBasedNetListener _listener = new();
 	private NetPeer? _peer;
 	private string _conta = "", _senha = "";
+
+	/// <summary>(v0.3.0) ...e ONDE: a despedida que pede recomeco disca de novo no mesmo servidor (`Reconectar`).</summary>
+	private string _host = "";
+	private int _porta;
 	private readonly List<EntityState> _scratch = [];
 
 	/// <summary>
@@ -291,7 +320,18 @@ public partial class GameClient : Node
 			if (porVontade) return;
 
 			// A RECUSA POR VERSAO traz a do servidor na carga, e o motivo dela diz a direcao -- ver `MotivoDeVersao`.
-			string motivo = MotivoDeVersao(info) ?? MotivoDaQueda(info.Reason);
+			string? versao = MotivoDeVersao(info);
+
+			// (v0.3.0) A DESPEDIDA DE PROPOSITO: o servidor me tirou por uma regra do jogo e disse qual (a reencarnacao) -- nao
+			// e queda, e o `Boot` leva o jogador pra onde a regra manda. Ver `FioDaDespedida`.
+			if (versao == null && !DespedidaViraQuedaDeTeste && info.Reason == DisconnectReason.RemoteConnectionClose
+				&& FioDaDespedida.Ler(info.AdditionalData) is { } adeus)
+			{
+				GD.Print($"[client] o servidor me despediu: {adeus.Motivo} (vaga {adeus.Slot + 1})");
+				DespedidaPendente = adeus;
+				return;
+			}
+			string motivo = versao ?? MotivoDaQueda(info.Reason);
 			QuedaPendente = motivo;         // o ESTADO: fica de pe ate o `Boot` tratar
 			Caiu?.Invoke(motivo);           // o evento: pra quem so quer saber da hora
 		};
@@ -340,10 +380,14 @@ public partial class GameClient : Node
 	public void Conectar(string host, int port, string conta, string senha)
 	{
 		_conta = conta;
+		_host = host;
+		_porta = port;
+		DespedidaPendente = null;
 		_senha = senha;
 		// CONEXAO NOVA, HISTORIA NOVA: a queda da anterior ja foi (ou nao vai mais ser) contada.
 		QuedaPendente = null;
 		_saiuPorVontade = false;
+		ModoDeRacas = null;   // (v0.3.0) o modo das racas e do servidor -- o de outro nao vale aqui
 		_peer = Discar(host, port);   // a senha de entrada E a minha versao -- ver `GameClient.Versao.cs`
 		GD.Print($"[client] conectando em {host}:{port} como conta \"{conta}\"");
 	}
@@ -886,8 +930,9 @@ public partial class GameClient : Node
 	/// UMA COISA LARGADA NO CHAO DESTA ZONA -- um item, um monte de zeni ou uma bolsa de recursos (`S2C.Chao`; a
 	/// regra esta em `Core/Items/Chao.cs`). `Pos` e o centro da celula em que ela esta.
 	/// </summary>
+	/// (2026-10-15) `Arte`: a folha que a tela desenha no lugar da do item -- os pesos largados com a arte do dono deles.
 	public readonly record struct LargadoInfo(int Id, Jandirus.Core.Items.TipoDeLargado Tipo, string Item,
-											  double Quantidade, Vector2 Pos);
+											  double Quantidade, Vector2 Pos, string Arte = "");
 
 	/// <summary>O chao da zona em que eu estou: a lista inteira, trocada a cada `S2C.Chao`.</summary>
 	public List<LargadoInfo> Largados { get; private set; } = [];
@@ -943,6 +988,15 @@ public partial class GameClient : Node
 
 	/// <summary>Perto de casa so sobrou mundo pesado demais -- ver `MotivoDoRefugio.MundoPesado`.</summary>
 	public bool RefugioReserva { get; private set; }
+
+	/// <summary>(v0.3.0) A TERRA serve de refugio agora (viva e com mapa) -- a saida B3, o ponto de encontro.</summary>
+	public bool RefugioTerra { get; private set; }
+
+	/// <summary>(v0.3.0) A Terra e a saida ESCOLHIDA (o `ServerPlayer.RefugioNaTerra`, e so com ela servindo).</summary>
+	public bool RefugioTerraEscolhida { get; private set; }
+
+	/// <summary>(v0.3.0) A quantos minutos de voo a Terra fica de onde era casa.</summary>
+	public float RefugioMinutosAteATerra { get; private set; }
 
 	public event Action? RefugioMudou;
 
@@ -1305,6 +1359,13 @@ public partial class GameClient : Node
 	public List<ContaInfo> Contas { get; private set; } = [];
 	public event Action? ContasMudaram;
 
+	/// <summary>
+	/// (v0.3.0) O MODO DAS RACAS DO SERVIDOR, como o ultimo `S2C.ModoDeRacas` disse. Nulo = ainda nao perguntado -- so admin o
+	/// recebe, pro cartao da aba Admin. Ver `GameServer.ModoDeRacas.cs`.
+	/// </summary>
+	public Jandirus.Core.Races.ModoDeRacas? ModoDeRacas { get; private set; }
+	public event Action? ModoDeRacasMudou;
+
 	/// <summary>Um jogador online, como o painel de escolha de alvo o lista (ver <see cref="Protocol.S2C.Online"/>).</summary>
 	public readonly record struct OnlineInfo(int Id, string Nome, string Onde);
 
@@ -1403,6 +1464,15 @@ public partial class GameClient : Node
 	/// </summary>
 	public event Action<int, Jandirus.Core.Forms.Cinematicas.CenaBio>? CenaDoBioComecou;
 
+	/// <summary>(v0.3.0) A chegada de um chefe de saga -- ver `Protocol.S2C.ChegadaDoChefe` e `CenaDaChegada`.</summary>
+	public readonly record struct ChegadaDeChefe(int Id, string Nome, string Planeta, string Frase, string Raca, string Genero, Jandirus.Core.Appearance.Appearance Visual);
+
+	/// <summary>(v0.3.0) UM CHEFE DE SAGA CHEGOU -- pra todo jogador do mundo. Ver `Protocol.S2C.ChegadaDoChefe`.</summary>
+	public event Action<ChegadaDeChefe>? ChefeChegou;
+
+	/// <summary>(v0.3.0) A CENA DE UM DEGRAU DE CHEFE COMECOU -- irmao do <see cref="CenaDoBioComecou"/>. Ver `Protocol.S2C.CenaDoChefe`.</summary>
+	public event Action<int, Jandirus.Core.Forms.Cinematicas.CenaDeChefe>? CenaDoChefeComecou;
+
 	/// <summary>
 	/// A CINEMATICA DA FUSAO COMECOU -- e ela e a UNICA deste jogo com **dois** corpos: quem convidou
 	/// (onde a fusao vai nascer) e quem aceitou.
@@ -1499,7 +1569,10 @@ public partial class GameClient : Node
 	/// corpo que salta ganha) e a miragem da Afterimage (que so quem tem a skill deixa). Ver
 	/// `Protocol.S2C.Zanzo` e `World.AoPiscar`.
 	/// </summary>
-	public event Action<int, Vec2, bool>? Piscou;
+	///
+	/// (v0.3.0) O QUARTO CAMPO: a miragem e a LONGA, a da Zanzoken Afterimage (`Zanzoken.DuracaoDaTecnica`) -- no mesmo byte do
+	/// `vulto` (0 nenhum, 1 miragem, 2 a longa).
+	public event Action<int, Vec2, bool, bool>? Piscou;
 
 	// =====================================================================
 	// OS ATAQUES DE KI
@@ -1834,6 +1907,8 @@ public partial class GameClient : Node
 				ap.BotasDeDreno = (marcas & 8) != 0;
 				ap.NoBarco = (marcas & 16) != 0;   // o bit 4: o barco embaixo de quem veleja
 				ap.CapaceteDoRelogio = (marcas & 32) != 0;   // o bit 5: o capacete do "Henshin!"
+				ap.Gigante = (marcas & 64) != 0;   // (2026-10-15) o bit 6: a Forma Gigante -- o corpo dobra
+				ap.SemSangue = (marcas & 128) != 0;   // (v0.3.0) o bit 7: o corpo que nao sangra (o Majin, o bio com sangue Majin)
 				ap.PesosNoCorpo = reader.GetString(120);
 				PeerLooked?.Invoke(quem, nome, raca, genero, ap,
 					tipoFus == 0 ? null : (Jandirus.Core.Social.TipoDeFusao)tipoFus);
@@ -1939,7 +2014,9 @@ public partial class GameClient : Node
 				// dentro do `Invoke` junto com o `GetVec` deixaria a ordem dos argumentos decidir
 				// a ordem dos bytes -- que e o tipo de dependencia que so aparece quando alguem
 				// reordena os parametros do evento.
-				Piscou?.Invoke(quem, de, reader.GetBool());
+				// (v0.3.0) o byte e o ESTILO: 0 sem miragem, 1 a miragem, 2 a miragem longa da tecnica -- ver `GameServer.AnunciarZanzo`.
+				byte estilo = reader.GetByte();
+				Piscou?.Invoke(quem, de, estilo != 0, estilo == 2);
 				break;
 			}
 
@@ -2161,7 +2238,7 @@ public partial class GameClient : Node
 				for (int i = 0; i < n; i++)
 					l.Add(new LargadoInfo(reader.GetInt(), (Jandirus.Core.Items.TipoDeLargado)reader.GetByte(),
 						// 64, como o `GetInventario`: o livro e a roupa guardada carregam os dados NO ID.
-						reader.GetString(64), reader.GetDouble(), new Vector2(reader.GetFloat(), reader.GetFloat())));
+						reader.GetString(64), reader.GetDouble(), new Vector2(reader.GetFloat(), reader.GetFloat()), reader.GetString(160)));
 				Largados = l;
 				ChaoMudou?.Invoke();
 				break;
@@ -2218,7 +2295,7 @@ public partial class GameClient : Node
 			// O DISCO DO DRAGON RADAR -- so chega pra quem tem o aparelho. Ver `GameClient.Radar.cs`.
 			case Protocol.S2C.RadarDeEsferas: LerRadarDeEsferas(reader); break;
 
-			// O REFUGIO: o planeta natal acabou, e estas sao as duas saidas. Ver `S2C.Refugio`.
+			// O REFUGIO: o planeta natal acabou, e estas sao as saidas (dominio, vizinhanca e, desde a v0.3.0, a Terra). Ver `S2C.Refugio`.
 			case Protocol.S2C.Refugio:
 			{
 				RefugioPrecisa = reader.GetBool();
@@ -2240,6 +2317,11 @@ public partial class GameClient : Node
 				RefugioVizinhos = vizinhos;
 
 				RefugioReserva = reader.GetBool();
+
+				// (v0.3.0) A TERRA, no fim do pacote. Ver `S2C.Refugio`.
+				RefugioTerra = reader.GetBool();
+				RefugioTerraEscolhida = reader.GetBool();
+				RefugioMinutosAteATerra = reader.GetFloat();
 
 				RefugioMudou?.Invoke();
 				if (abrir) RefugioPediuAbrir?.Invoke();
@@ -2526,6 +2608,12 @@ public partial class GameClient : Node
 				break;
 			}
 
+			// (v0.3.0) O MODO DAS RACAS DO SERVIDOR, pro cartao da aba Admin -- ver `GameServer.ModoDeRacas.cs`.
+			case Protocol.S2C.ModoDeRacas:
+				ModoDeRacas = (Jandirus.Core.Races.ModoDeRacas)reader.GetByte();
+				ModoDeRacasMudou?.Invoke();
+				break;
+
 			case Protocol.S2C.Limpeza:
 			{
 				string codigo = reader.GetString(16);
@@ -2605,6 +2693,25 @@ public partial class GameClient : Node
 				int quemNoBio = reader.GetInt();
 				CenaDoBioComecou?.Invoke(
 					quemNoBio, (Jandirus.Core.Forms.Cinematicas.CenaBio)reader.GetByte());
+				break;
+			}
+
+			// (v0.3.0) UM CHEFE DE SAGA CHEGOU -- ver `Protocol.S2C.ChegadaDoChefe`. A ordem de leitura e a de escrita.
+			case Protocol.S2C.ChegadaDoChefe:
+			{
+				int idDoChefe = reader.GetInt();
+				string nomeDoChefe = reader.GetString(64), planetaDoChefe = reader.GetString(64), fraseDoChefe = reader.GetString(512);
+				string racaDoChefe = reader.GetString(24), generoDoChefe = reader.GetString(8);
+				Jandirus.Core.Appearance.Appearance visualDoChefe = reader.GetAppearance();
+				ChefeChegou?.Invoke(new ChegadaDeChefe(idDoChefe, nomeDoChefe, planetaDoChefe, fraseDoChefe, racaDoChefe, generoDoChefe, visualDoChefe));
+				break;
+			}
+
+			// (v0.3.0) A CENA DE UM DEGRAU DE CHEFE -- ver `Protocol.S2C.CenaDoChefe`.
+			case Protocol.S2C.CenaDoChefe:
+			{
+				int quemNoChefe = reader.GetInt();
+				CenaDoChefeComecou?.Invoke(quemNoChefe, (Jandirus.Core.Forms.Cinematicas.CenaDeChefe)reader.GetByte());
 				break;
 			}
 

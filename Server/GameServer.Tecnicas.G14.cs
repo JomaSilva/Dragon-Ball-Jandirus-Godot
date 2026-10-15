@@ -44,6 +44,9 @@ public sealed partial class GameServer
 	private sealed class MiragensDePeG14
 	{
 		public long Ate, ProximaEm;
+
+		/// <summary>(v0.3.0) Em que ponto da roda em volta do alvo o corpo vai aparecer na proxima (-1 = a ronda nao comecou).</summary>
+		public int Ponto = -1;
 	}
 
 	/// <summary>Quem esta sob o `effect/illusion/Afterimage`: ate quando, e quando sai a proxima miragem (relogio do servidor, ms).</summary>
@@ -82,11 +85,12 @@ public sealed partial class GameServer
 			if (!_players.TryGetValue(id, out ServerPlayer? pl)) { _miragensG14.Remove(id); continue; }
 
 			// `Ticked`: a imagem do corpo fica no tile por um segundo (`Buff Effects.dm:41-45`) -- o vulto do Zanzoken,
-			// sem deslocamento
+			// sem deslocamento. (v0.3.0) COM ALVO, A RONDA: um zanzoken pro ponto seguinte da roda em volta dele, e a miragem fica
+			// onde o corpo estava -- ver `RondarOAlvoG14`. Sem alvo, o de sempre: a miragem nasce onde o corpo esta.
 			while (agora >= m.ProximaEm && m.ProximaEm <= m.Ate)
 			{
 				m.ProximaEm += MsEntreMiragensG14;
-				AnunciarZanzo(pl, pl.Pos);
+				if (!RondarOAlvoG14(pl, m)) AnunciarZanzo(pl, pl.Pos, longa: !MiragemCurtaDeTeste);
 			}
 			if (agora < m.Ate) continue;
 
@@ -98,10 +102,10 @@ public sealed partial class GameServer
 		foreach (int id in _venenoG14.Keys.ToList())
 		{
 			VenenoG14 v = _venenoG14[id];
-			if (!_players.TryGetValue(id, out ServerPlayer? alvo) || alvo.Ficha.dead) { _venenoG14.Remove(id); continue; }
+			if (!_players.TryGetValue(id, out ServerPlayer? alvo) || EhCadaver(alvo)) { _venenoG14.Remove(id); continue; }
 
 			// `Ticked`: `target.SpreadDamage(magnitude/duration,,"Poison")` (`Alchemy Effects.dm:66-67`) -- nao letal
-			while (agora >= v.ProximoEm && v.ProximoEm <= v.Ate && !alvo.Ficha.dead)
+			while (agora >= v.ProximoEm && v.ProximoEm <= v.Ate && !EhCadaver(alvo))
 			{
 				v.ProximoEm += MsEntreTiquesDoVenenoG14;
 				EspalharDanoG3(alvo, _players.GetValueOrDefault(v.Dono) ?? alvo, DanoDoVenenoPorTiqueG14, letal: false);
@@ -187,6 +191,75 @@ public sealed partial class GameServer
 		AnunciarZanzo(pl, pl.Pos);   // o `flick('Zanzoken.dmi', usr)` da saida
 		Avisar(pl, $"voce passa a se mover rapido demais pra vista: miragens por {DuracaoDasMiragensMsG14 / 1000} s (-{custo:0.#} de energia).");
 	}
+
+	// =====================================================================
+	// 2b. (v0.3.0) A RONDA EM VOLTA DO ALVO, E A MIRAGEM QUE DURA
+	// =====================================================================
+	// O dono (2026-10-15): *"as miragens nesse caso deveriam durar mais q as miragens padroes do zanzoken, pq fica sem sentido a
+	// miragem durar milisegundos nesse caso (a miragem padrao ao dar double click se mantem igual a atual, sem alteracao
+	// alguma). e a skill de miragem agr se tiver um target o personagem vai ficar dando zanzokens em volta do target criando
+	// miragens rodeando o alvo, se n tiver target ai fica o normal, criando miragem por onde vc passa"*. DIVERGENCIA DECLARADA:
+	// o DM nao rondava ninguem (o `Ticked` so deixava a imagem no tile, `Buff Effects.dm:41-45`). A miragem longa e a do
+	// cliente (`Zanzoken.DuracaoDaTecnica`, 2 s): com uma a cada meio segundo, a roda inteira de quatro fica de pe.
+
+	/// <summary>Quantos pontos tem a roda: os quatro lados do alvo.</summary>
+	private const int PontosDaRondaG14 = 4;
+
+	/// <summary>A que distancia do alvo a roda passa, em tiles: colado o bastante pra ser "em volta dele", sem pisar nele.</summary>
+	private const int TilesDaRondaG14 = 2;
+
+	/// <summary>Ate onde o alvo pode estar pra ronda acontecer, em tiles -- o alcance do zanzoken que vai ate o marcado.</summary>
+	private const int TilesAteOAlvoDaRondaG14 = 15;
+
+	/// <summary>
+	/// UM PASSO DA RONDA: com um alvo marcado, vivo e perto, o corpo da um zanzoken pro proximo ponto da roda em volta dele
+	/// (no sentido do relogio, a partir do lado em que esta), chega olhando pra ele, e a miragem longa fica onde o corpo
+	/// estava. Devolve falso quando nao ha ronda (sem alvo, longe demais, o corpo preso, nenhum ponto livre da roda) -- e ai
+	/// quem chama deixa a miragem de sempre.
+	/// </summary>
+	private bool RondarOAlvoG14(ServerPlayer pl, MiragensDePeG14 m)
+	{
+		if (MiragemSemRondaDeTeste) return false;
+		if (Marcado(pl) is not { } alvo || alvo == pl || EhCadaver(alvo)) return false;
+		const float T = ZoneCollision.TileSize;
+		if (Vec2.Distance(alvo.Pos, pl.Pos) > TilesAteOAlvoDaRondaG14 * T) return false;
+		if (ParalisiaAtiva(pl.Id) || !PodeMexerOCorpo(pl)) return false;
+
+		// O PRIMEIRO PASSO PARTE DO LADO EM QUE O CORPO JA ESTA: o ponto da roda mais perto dele, e a ronda segue dali.
+		if (m.Ponto < 0)
+		{
+			Vec2 lado = pl.Pos - alvo.Pos;
+			double angulo = Math.Atan2(lado.Y, lado.X);
+			m.Ponto = ((int)Math.Round(angulo / (Math.PI * 2 / PontosDaRondaG14)) % PontosDaRondaG14 + PontosDaRondaG14) % PontosDaRondaG14;
+		}
+
+		ZoneCollision? mapa = MapaDoSalto(pl.Zone);
+		for (int tentativa = 1; tentativa <= PontosDaRondaG14; tentativa++)
+		{
+			int ponto = (m.Ponto + tentativa) % PontosDaRondaG14;
+			double ang = ponto * (Math.PI * 2 / PontosDaRondaG14);
+			Vec2 cru = alvo.Pos + new Vec2((float)Math.Cos(ang), (float)Math.Sin(ang)) * (TilesDaRondaG14 * T);
+			int cx = (int)MathF.Floor(cru.X / T), cy = (int)MathF.Floor(cru.Y / T);
+			// o CENTRO da celula, e so se ela serve de chao: parede, beirada e agua ficam fora da roda (a mesma pergunta do embaralho)
+			if (mapa != null && !mapa.ServeDeChao(cx, cy)) continue;
+			Vec2 destino = mapa?.CentroDaCelula(cx, cy) ?? cru;
+
+			Vec2 de = pl.Pos;
+			m.Ponto = ponto;
+			CravarPosicao(pl, destino);
+			Vec2 olhar = alvo.Pos - destino;
+			if (olhar.LengthSquared > 1e-4f) pl.Facing = MoveRules.FacingFrom(olhar, pl.Facing);
+			AnunciarZanzo(pl, de, longa: !MiragemCurtaDeTeste);
+			return true;
+		}
+		return false;
+	}
+
+	/// <summary>DEFEITO INJETADO (bancada `--v030teste`): a miragem da tecnica volta a ser a curta do zanzoken comum. Falso em jogo, sempre.</summary>
+	internal static bool MiragemCurtaDeTeste;
+
+	/// <summary>DEFEITO INJETADO (bancada `--v030teste`): com alvo, nada de ronda -- a miragem nasce onde o corpo esta, o jogo de antes. Falso em jogo, sempre.</summary>
+	internal static bool MiragemSemRondaDeTeste;
 
 	// =====================================================================
 	// 3. ACID_SPIT -- a bola que envenena

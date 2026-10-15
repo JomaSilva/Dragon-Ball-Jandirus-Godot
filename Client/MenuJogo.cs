@@ -121,6 +121,7 @@ public partial class MenuJogo : CanvasLayer
 			cli.ConhecidosMudaram += AoConhecidos;
 			cli.MestreEAlunosMudou += AoMestreEAlunos;   // o painel da aba Alunos/Mestre (`MenuJogo.Alunos.cs`)
 			cli.ContasMudaram += AoContas;
+			cli.ModoDeRacasMudou += AoContas;   // (v0.3.0) o cartao do modo das racas mora na aba Admin, como o das contas
 			cli.OnlineMudou += AoOnline;
 			cli.LimpezaMudou += AoLimpeza;
 			cli.TechMudou += AoTech;
@@ -159,6 +160,7 @@ public partial class MenuJogo : CanvasLayer
 			cli.ConhecidosMudaram -= AoConhecidos;
 			cli.MestreEAlunosMudou -= AoMestreEAlunos;
 			cli.ContasMudaram -= AoContas;
+			cli.ModoDeRacasMudou -= AoContas;
 			cli.OnlineMudou -= AoOnline;
 			cli.LimpezaMudou -= AoLimpeza;
 			cli.TechMudou -= AoTech;

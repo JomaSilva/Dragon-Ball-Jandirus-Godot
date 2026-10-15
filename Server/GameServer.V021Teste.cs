@@ -1767,14 +1767,17 @@ public sealed partial class GameServer
 				   antesDoDesejo == Jandirus.Core.Forms.RecusaForma.NaoConcedida && piccolo.Forma.Proxima(piccolo.Ficha.BP, Perfil(piccolo))?.Id != orange,
 				   antesDoDesejo.ToString());
 
-		// ---- O3) O DESEJO E DO NAMEKUSEIJIN
-		bool Lista(string raca, double sangue) =>
-			Jandirus.Core.Magic.Desejos.Menu(1e12, 1, false, false, sangue, raca).Any(d => d.Id == "potencial");
-		AfirmarV21("**O DESEJO SO APARECE PRO NAMEKUSEIJIN**: o menu do dragao o lista pra ele e nao pro humano nem pro Saiyajin",
-				   Lista("Namekian", 0) && !Lista("Human", 0) && !Lista("Saiyan", 100) && !Lista("", 0));
+		// ---- O3) O DESEJO E DE TODA RACA (v0.3.0 -- ate 2026-10-15 ele era so do Namekuseijin)
+		bool Lista(double sangue) =>
+			Jandirus.Core.Magic.Desejos.Menu(1e12, 1, false, false, sangue).Any(d => d.Id == "potencial");
+		AfirmarV21("**O DESEJO E DE TODA RACA** (v0.3.0): o menu do dragao o lista sem olhar a raca -- o Mistico e o Orange sao do Namekuseijin, e quem decide e o desejo (`PorQueNaoLiberaOPotencial`)",
+				   Lista(0) && Lista(100));
 
 		// ---- O4) O DESEJO
 		var set = new SetDeEsferas();
+		// (v0.3.0) O NAMEKUSEIJIN SO PEDE COM O PODER DO KI DIVINO DELE -- e a regra do dono de 2026-10-15; os cinco milhoes de
+		// antes ja nao bastam. Ver `GameServer.Desejos.PorQueNaoLiberaOPotencial` e a familia D da `--v030teste`.
+		piccolo.Ficha.BP = Math.Max(piccolo.Ficha.BP, RequisitoDeGodKi(piccolo));
 		double bpAntes = piccolo.Ficha.BP;
 		// O `PeerLook` LIDO COMO O CLIENTE O LE (`GameClient`, no `case S2C.PeerLook`): o byte do pacote, quem, o nome, a
 		// raca, o genero, a aparencia, o tipo de fusao, as marcas do corpo e a folha dos pesos. `Sobra` sao os bytes que
@@ -1790,8 +1793,10 @@ public sealed partial class GameServer
 		byte MarcaDe(ServerPlayer p) => (byte)(LookDe(p).Marcas & 1);
 		byte marcaAntes = MarcaDe(piccolo);
 		bool concedeu = DesejoDePotencial(piccolo, set);
-		AfirmarV21("**PEDIR AO DRAGAO LIBERA O POTENCIAL E DA O ORANGE**: o potencial desperta (uma vez por vida, com o ganho de BP dele) e a forma passa a ser do corpo",
-				   concedeu && piccolo.Ficha.unlockPotential >= 1 && piccolo.Ficha.BP > bpAntes && piccolo.Forma.Despertou(orange),
+		// (v0.3.0) SEM "O BP SOBE": no requisito do ki divino o ganho do potencial bate no teto (`CapCheck` -- medido 250 mi ->
+		// 250 mi). O ganho do desejo continua medido na familia D da `--v030teste`, num Saiyajin de cinco milhoes.
+		AfirmarV21("**PEDIR AO DRAGAO LIBERA O POTENCIAL E DA O ORANGE**: o potencial desperta (uma vez por vida) e a forma passa a ser do corpo",
+				   concedeu && piccolo.Ficha.unlockPotential >= 1 && piccolo.Forma.Despertou(orange),
 				   $"concedeu {concedeu}; potencial {piccolo.Ficha.unlockPotential}; BP {bpAntes:0} -> {piccolo.Ficha.BP:0}");
 		double bpDepois = piccolo.Ficha.BP;
 		AfirmarV21("...e pedir de novo e recusado sem gastar nada (o ganho de BP nao se repete)",
@@ -2085,8 +2090,9 @@ public sealed partial class GameServer
 		var fio = new LiteNetLib.Utils.NetDataReader(PacoteDoChao(zona).CopyData());
 		fio.GetByte();
 		int n = fio.GetUShort();
-		var lidos = new List<(int Id, byte Tipo, string Item, double Quantidade, float X, float Y)>();
-		for (int i = 0; i < n; i++) lidos.Add((fio.GetInt(), fio.GetByte(), fio.GetString(64), fio.GetDouble(), fio.GetFloat(), fio.GetFloat()));
+		var lidos = new List<(int Id, byte Tipo, string Item, double Quantidade, float X, float Y, string Arte)>();
+		// (2026-10-15) e a ARTE no fim de cada coisa (os pesos largados com a arte escolhida; vazia no resto)
+		for (int i = 0; i < n; i++) lidos.Add((fio.GetInt(), fio.GetByte(), fio.GetString(64), fio.GetDouble(), fio.GetFloat(), fio.GetFloat(), fio.GetString(160)));
 		AfirmarV21("o `S2C.Chao` leva a lista INTEIRA da zona, coisa por coisa, e se le na ordem em que foi escrito sem sobrar byte",
 				   n == chao.Count && fio.AvailableBytes == 0
 				   && lidos.Exists(x => x.Tipo == (byte)Jandirus.Core.Items.TipoDeLargado.Zeni && x.Quantidade == 1000 && x.Item.Length == 0)

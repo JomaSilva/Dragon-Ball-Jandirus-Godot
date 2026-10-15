@@ -433,7 +433,7 @@ public partial class GameServer
 				 + (jaEstava ? "  <- prolongada" : ""));
 		Avisar(enlutado, grau == NivelDeRaiva.Extrema
 			? $"{nomeDoAmigo} se foi. Alguma coisa dentro de voce se PARTE."
-			: $"{nomeDoAmigo} cai na sua frente, e voce nao chegou a tempo.");
+			: $"{nomeDoAmigo} cai na sua frente, e voce nao chegou a tempo.", Jandirus.Net.Protocol.Fala.AvisoDeRaiva);
 
 		// A CENA, DEPOIS DO AVISO -- a ordem e a do DM (`Murder.dm:119` vem depois das tres escritas
 		// de `:112-114`), e ela importa por um motivo so: a `AFuriaVaiVirarForma` la dentro le a raiva
@@ -533,7 +533,7 @@ public partial class GameServer
 		// "efetivo" do HUD so desceria no proximo tique de ficha.
 		RepercutirPoder(pl);
 		MandarFicha(pl);
-		Avisar(pl, "você se centra, e a raiva se desfaz.");
+		Avisar(pl, "você se centra, e a raiva se desfaz.", Jandirus.Net.Protocol.Fala.AvisoDeRaiva);
 		GD.Print($"[server] {pl.Name}: a meditacao desfez a raiva");
 		return true;
 	}

@@ -5,7 +5,7 @@ namespace Jandirus.Core.Races;
 /// <summary>
 /// POR QUE este corpo foi parar aqui quando o berco dele deixou de existir.
 ///
-/// Vai pro chat do jogador e pra bancada. Ele nao e enfeite: as quatro respostas sao caminhos
+/// Vai pro chat do jogador e pra bancada. Ele nao e enfeite: as cinco respostas sao caminhos
 /// DIFERENTES do <see cref="Refugios"/>, e a unica forma de a bancada afirmar "esta pessoa caiu no
 /// ultimo recurso" e o motivo dizer isso -- do contrario um refugio que sempre caisse no vacuo
 /// ficaria verde por parecer com um refugio que sempre achasse mundo.
@@ -33,10 +33,17 @@ public enum MotivoDoRefugio : byte
 	MundoPesado = 2,
 
 	/// <summary>
-	/// O ULTIMO RECURSO: nao havia dominio nem vizinhanca, e o corpo abre os olhos no ESPACO ABERTO,
+	/// O ULTIMO RECURSO: nao havia dominio, vizinhanca nem Terra viva, e o corpo abre os olhos no ESPACO ABERTO,
 	/// na coordenada de onde o natal ficava. Ver <see cref="Refugios"/>.
 	/// </summary>
 	OEspacoAberto = 3,
+
+	/// <summary>
+	/// (v0.3.0) A TERRA, O PONTO DE ENCONTRO -- a saida que o dono acrescentou (*"ele sempre tem a opcao de reviver na terra
+	/// se o planeta natal dele foi destruido. a terra seria o ponto de encontro principal do jogo"*). Escolhida pelo jogador
+	/// (`ServerPlayer.RefugioNaTerra`) ou a unica saida que sobrou -- antes do vacuo. Ver `GameServer.Refugio.cs`.
+	/// </summary>
+	Terra = 4,
 }
 
 /// <summary>

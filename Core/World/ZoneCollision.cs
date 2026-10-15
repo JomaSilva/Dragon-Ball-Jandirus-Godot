@@ -510,15 +510,33 @@ public sealed class ZoneCollision
 	/// ======================================================================================================
 	///
 	/// E QUEM VOA POR CIMA DO CENARIO (<see cref="ModoDeTravessia.PorCima"/>) so para na parede de
-	/// predio -- ver <see cref="ClasseDePredio"/>. E um ramo a parte, e nao um quarto termo do OU, porque
-	/// pra ele o `BlockedCell` sozinho NAO responde: a montanha barra quem anda e passa por baixo dele.
+	/// predio -- ver <see cref="ClasseDePredio"/> -- e na BORDA do mapa (<see cref="ForaDoMapaBarraQuemVoa"/>). E um
+	/// ramo a parte, e nao um quarto termo do OU, porque pra ele o `BlockedCell` sozinho NAO responde: a montanha barra
+	/// quem anda e passa por baixo dele.
 	/// </summary>
 	public bool Bloqueia(int cx, int cy, ModoDeTravessia modo) =>
 		modo == ModoDeTravessia.PorCima
-			? ClasseDePredio.BarraQuemVoa(this, cx, cy)
+			? ForaDoMapaBarraQuemVoa(cx, cy) || ClasseDePredio.BarraQuemVoa(this, cx, cy)
 			: BlockedCell(cx, cy)
 			  || (ClasseDeAgua.Bloqueia(modo) && EhAgua(cx, cy))
 			  || (ClasseDeNuvem.Bloqueia(modo, _nuvemDerruba) && EhNuvem(cx, cy));
+
+	/// <summary>
+	/// (2026-10-15) O LADO DE FORA DO RETANGULO BARRA QUEM VOA ALTO TAMBEM -- o dono: *"na imagem mostra q quando o planeta
+	/// ta explodindo, da pra voar pra fora da regiao do mapa"*. A pergunta do voo alto so via parede de PREDIO, e fora do
+	/// mapa nao ha predio nenhum: quem passava por cima do cenario passava por cima da borda. No planeta a volta costumava
+	/// pegar o corpo, mas ela desiste quando o outro lado nao tem chao livre (o chao se desfazendo na explosao), e o corpo
+	/// seguia pro preto. Fora do mapa e parede pra todo modo, como o <see cref="BlockedCell"/> ja dizia pra quem anda --
+	/// menos onde nao ha borda (<see cref="SemBorda"/>, a Sala do Tempo).
+	/// </summary>
+	private bool ForaDoMapaBarraQuemVoa(int cx, int cy) =>
+		!SemBorda && !QuemVoaSaiDoMapaDeTeste && (cx < 0 || cy < 0 || cx >= Width || cy >= Height);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`): quem voa alto volta a atravessar a borda do mapa -- o jogo de antes. Lido
+	/// pelo <see cref="ForaDoMapaBarraQuemVoa"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool QuemVoaSaiDoMapaDeTeste;
 
 	/// <summary>A mesma pergunta, em pixels.</summary>
 	public bool BloqueiaEm(Vec2 pos, ModoDeTravessia modo) =>

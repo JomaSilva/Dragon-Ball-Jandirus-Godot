@@ -136,7 +136,7 @@ public partial class GameServer
 
 		RepercutirPoder(pl);
 		MandarFicha(pl);
-		Avisar(pl, "a fúria faz a sua energia EXPLODIR -- o Ki salta de uma vez pro máximo que o seu corpo aguenta.");
+		Avisar(pl, "a fúria faz a sua energia EXPLODIR -- o Ki salta de uma vez pro máximo que o seu corpo aguenta.", Jandirus.Net.Protocol.Fala.AvisoDeRaiva);
 		GD.Print($"[server] {pl.Name}: a furia extrema levou o Ki de {antes:0} a {pl.Ficha.Ki:0} "
 				 + $"({pl.Ficha.Ki / Math.Max(pl.Ficha.MaxKi, 1e-9) * 100:0}% do tanque)");
 	}
@@ -256,7 +256,7 @@ public partial class GameServer
 
 		GD.Print($"[server] {pl.Name}: a RAIVA desperta {plano.Alvo.Id} sozinha (raiva {NivelDaRaivaDe(pl)}"
 				 + (plano.Degraus.Length > 0 ? $", subindo por {string.Join(" -> ", plano.Degraus.Select(d => d.Id))}" : "") + ")");
-		Avisar(pl, "a raiva rompe o que te segurava -- o seu corpo se transforma SOZINHO.");
+		Avisar(pl, "a raiva rompe o que te segurava -- o seu corpo se transforma SOZINHO.", Jandirus.Net.Protocol.Fala.AvisoDeRaiva);
 
 		// OS DEGRAUS QUE JA SAO DELE, SEM CENA: nao e gesto do jogador, e a cinematica deste instante e a da forma
 		// nova. Cada um entra pelo mesmo `EntrarNaForma` (o buff, o Ki levado na razao, o anuncio que veste o corpo

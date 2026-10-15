@@ -38,6 +38,13 @@ public partial class Boot : Node2D
 	private List<Jandirus.Net.SlotInfo> _slotsAtuais = [];
 
 	private bool _auto;
+
+	/// <summary>
+	/// (v0.3.0) A VAGA EM QUE A CRIACAO ABRE SOZINHA na proxima lista de slots, e a frase que vai em cima dela: a volta da
+	/// reencarnacao (`AoSerDespedido`). Nulo = a selecao de sempre.
+	/// </summary>
+	private int? _criarNoSlot;
+	private string _anuncioDaCriacao = "";
 	private string _autoNome = "Guerreiro", _autoRaca = "Human";
 
 	/// <summary>As preferencias desta maquina. Uma so, lida por quem precisar.</summary>
@@ -708,7 +715,8 @@ public partial class Boot : Node2D
 		// HOSPEDAR: sobe o servidor DENTRO deste processo e entra nele. E o mesmo servidor do
 		// modo dedicado -- quem hospeda joga normalmente e os amigos conectam no IP dele.
 		var hospedar = new Button { Text = "Hospedar partida (servidor local)" };
-		hospedar.Pressed += Hospedar;
+		// (v0.3.0) ...e PERGUNTA, antes, como as racas funcionam neste servidor -- ver `Boot.ModoDeRacas.cs`.
+		hospedar.Pressed += PerguntarOModoEHospedar;
 		caixa.AddChild(hospedar);
 
 		// OPCOES E SAIR, a primeira das tres telas do lobby a receber a dupla. Ver `BotoesDoLobby`
@@ -768,7 +776,7 @@ public partial class Boot : Node2D
 
 				// PERFIL DE SERVIDOR PROPRIO: sobe o servidor antes de conectar. Sem isto o
 				// jogador clica no proprio servidor e nao ha ninguem escutando.
-				if (alvo.Hospedado) { Hospedar(); return; }
+				if (alvo.Hospedado) { PerguntarOModoEHospedar(); return; }
 
 				if (alvo.Senha.Length > 0) Entrar();          // um clique so, como no Zomboid
 				else _status.Text = "digite a senha";
@@ -862,7 +870,11 @@ public partial class Boot : Node2D
 		// =============================================================================================================
 		Aquecimento.Concluir();
 
-		if (_auto) { AutoEscolher(slots); return; }
+		// A VOLTA DA REENCARNACAO (v0.3.0) vale pra UMA lista de slots: a primeira que chega depois da despedida.
+		int? vagaDoRenascer = _criarNoSlot;
+		_criarNoSlot = null;
+
+		if (_auto) { _anuncioDaCriacao = ""; AutoEscolher(slots); return; }
 
 		_painel.Visible = false;
 		_slotsAtuais = slots;
@@ -899,6 +911,11 @@ public partial class Boot : Node2D
 		}
 		_selecao.Mostrar(slots);
 		_selecao.Visible = true;
+
+		// O PERSONAGEM QUE REENCARNOU NAO PASSA PELA SELECAO: a criacao abre direto na vaga que ele deixou, com a frase do
+		// Enma em cima -- o `Reincarnate()` do DM devolve o jogador ao painel de criacao (`Reincarnation.dm:43-49`).
+		if (vagaDoRenascer is int vaga && vaga >= 0 && vaga < slots.Count && !slots[vaga].Ocupado) AbrirCriacao(vaga);
+		else _anuncioDaCriacao = "";
 
 		// MONTA A CRIACAO AGORA, escondida. O jogador esta lendo a lista de slots -- e o
 		// momento em que uns milissegundos nao custam nada. Ver CreationScreen.Reabrir().
@@ -959,7 +976,11 @@ public partial class Boot : Node2D
 
 		// se o clique chegou antes do CallDeferred (conexao muito rapida), monta aqui mesmo
 		PrepararCriacao();
-		_criacao!.Reabrir();
+		// (v0.3.0) A VAGA DO MODO DE RACAS ALEATORIAS chega com a raca sorteada (`SlotInfo.RacaSorteada`): a criacao abre com
+		// ela, sem as etapas de mundo, raca e linhagem. Ver `GameServer.ModoDeRacas.cs`.
+		Jandirus.Net.SlotInfo vaga = slot >= 0 && slot < _slotsAtuais.Count ? _slotsAtuais[slot] : default;
+		_criacao!.Reabrir(_anuncioDaCriacao, vaga.RacaSorteada ?? "", vaga.LinhagemSorteada ?? "");
+		_anuncioDaCriacao = "";
 	}
 
 	// =====================================================================
@@ -1165,6 +1186,13 @@ public partial class Boot : Node2D
 		// criacao. Modo host, sem janela, em campo aberto. Anda junto da `--v021teste` do servidor. Ver RoboDaV021.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagv021") >= 0)
 			AddChild(new RoboDaV021 { Name = "RoboDaV021" });
+
+		// --diagv030: A VERSAO 0.3.0 NA TELA (o pedido de 2026-10-15) -- a raiva embaixo da vida, o rabo que cicatriza no
+		// boneco, os avisos pintados no chat, e os pesos com a arte escolhida na mochila e no chao. Modo host, sem janela.
+		// Anda junto da `--v030teste` do servidor. Ver RoboDaV030.
+		// UM SO: a reencarnacao (familia L) derruba o mundo e o monta de novo, e esta linha roda outra vez -- ver `RoboDaV030.Vivo`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagv030") >= 0 && !RoboDaV030.Vivo)
+			AddChild(new RoboDaV030 { Name = "RoboDaV030" });
 
 		// --diagjanelas: O ARRANJO DA TELA -- o menu P arrastado, redimensionado e destacado numa janela do sistema,
 		// o chat e os dois paineis do topo em outros tamanhos, e o que mora em volta acompanhando. Modo host e com
@@ -2110,6 +2138,11 @@ public partial class Boot : Node2D
 			n.QueueFree();
 		}
 		_selecao = null;
+		// (v0.3.0) E A CRIACAO TAMBEM: o laco de cima a solta, e o campo ficava apontando pro node solto. Com ele "vivo" a
+		// proxima recusa no login virava QUEDA (`AoCairAConexao` le `_criacao != null` como "alem do login" -- a `--diagversao`
+		// com janela reprovou as secoes 9 e 10 assim), e o "Criar personagem" da volta chamava o `Reabrir` num node liberado
+		// (`PrepararCriacao` via o campo cheio e nao montava outra).
+		_criacao = null;
 		_slotsAtuais = [];
 		MontarLogin();
 		AudioDirector.Instance?.Ambiente(null);

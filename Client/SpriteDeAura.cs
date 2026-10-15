@@ -427,7 +427,7 @@ public partial class SpriteDeAura : Node2D
 		// Instinto) tem os dois DESLIGADOS mesmo com `_aceso` verdadeiro -- o estado ficou guardado
 		// esperando uma folha. Sem estas duas escritas, sair do Ultra Instinto com o C segurado
 		// remontaria o sprite invisivel e parado.
-		if (_aceso) { Montar(); Visible = true; SetProcess(true); Pintar(); }
+		if (_aceso) { Montar(); AcompanharOCorpo(); Visible = true; SetProcess(true); Pintar(); }
 	}
 
 	public void Definir(bool aceso, Color cor, float forca = 1f)
@@ -451,6 +451,7 @@ public partial class SpriteDeAura : Node2D
 		}
 
 		Montar();
+		AcompanharOCorpo();   // (2026-10-15) do tamanho do corpo ja no primeiro quadro aceso -- ver `AcompanharOCorpo`
 		_relogio = 0;
 		Visible = true;
 		SetProcess(true);
@@ -585,8 +586,42 @@ public partial class SpriteDeAura : Node2D
 	private Texture2D? Quadro() =>
 		_s?.SpriteFrames is { } f ? f.GetFrameTexture(_s.Animation, 0) : null;
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagv030`): a chama volta ao tamanho fixo de um corpo de 32 px -- o jogo de antes. Lido
+	/// pelo <see cref="AcompanharOCorpo"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool ChamaDeTamanhoFixoDeTeste;
+
+	private static readonly NodePath CaminhoDoBoneco = "Visual";
+	private CharacterVisual? _boneco;
+	private float _tamanho = 1f;
+
+	/// <summary>O tamanho em que a chama esta desenhada agora (1 = o corpo comum). Pra bancada.</summary>
+	public float TamanhoDeTeste => _tamanho;
+
+	/// <summary>
+	/// (2026-10-15) A CHAMA DO TAMANHO DO CORPO: escalada pelo `CharacterVisual.TamanhoDoCorpo` em torno da LINHA DOS PES --
+	/// o corpo grande cresce pra cima, e a chama junto, com a base no mesmo chao (a regra do <see cref="AncoraPara"/>).
+	/// Serve as duas chamas, a da forma (`Aura`) e a da carga (`CargaVisual`): as duas sao filhas de um IRMAO do boneco, e
+	/// e por ai que ele e achado. Sem boneco (fora do mundo) a chama fica do tamanho de sempre.
+	///
+	/// NESTE NODE, E NAO NO PAI: a `Position` do pai e do voo (`SubirComOVoo` levanta todo filho do corpo pela altura), e
+	/// escrever nela aqui brigaria com ele.
+	/// </summary>
+	private void AcompanharOCorpo()
+	{
+		if (_boneco == null || !IsInstanceValid(_boneco))
+			_boneco = GetParent()?.GetParent()?.GetNodeOrNull<CharacterVisual>(CaminhoDoBoneco);
+		float tamanho = ChamaDeTamanhoFixoDeTeste || _boneco == null ? 1f : _boneco.TamanhoDoCorpo;
+		if (Mathf.IsEqualApprox(tamanho, _tamanho)) return;
+		_tamanho = tamanho;
+		Scale = Vector2.One * tamanho;
+		Position = new Vector2(0, LinhaDosPes * (1f - tamanho));
+	}
+
 	public override void _Process(double delta)
 	{
+		AcompanharOCorpo();
 		if (_s == null || _quadros <= 1) return;
 		// RELOGIO PROPRIO em vez de `Play()`: o mesmo motivo das camadas do corpo -- assim a
 		// cadencia e nossa e nao depende do que o conversor de .dmi tiver escrito na folha.

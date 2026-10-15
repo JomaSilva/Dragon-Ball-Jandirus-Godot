@@ -336,10 +336,16 @@ public sealed partial class GameServer
 	{
 		GD.Print("--- 4. A PASSIVA pelo `RegenerarPassivo` (o funil do servidor) ---");
 
-		foreach ((string raca, bool curaEmCombate) in new[]
-				 { ("Namekian", false), ("Human", false), ("Saiyan", false), ("Majin", true), ("BioAndroid", true) })
+		// (v0.3.0) O BIO-ANDROIDE SOZINHO NAO CURA EM COMBATE -- o dono: *"bio androide sozinho N tem nada"*; a regeneracao dele e a
+		// da doadora que mais regenera (`SangueDoBio.RegeneracaoDoBio`). O DM dava a todo bio a do proto (`Regeneration = 30`).
+		// O par mora aqui: o bio sem sangue (nao cura) e o bio de sangue Majin (cura, como o Majin).
+		int vaga = 30;
+		foreach ((string raca, bool curaEmCombate, string sangue) in new[]
+				{ ("Namekian", false, ""), ("Human", false, ""), ("Saiyan", false, ""), ("Majin", true, ""),
+				  ("BioAndroid", false, ""), ("BioAndroid", true, "Majin") })
 		{
-			ServerPlayer pl = ForjarCorpo(30 + raca.Length, $"bancada_passiva_{raca}", raca);
+			string quem = sangue.Length > 0 ? $"{raca} de sangue {sangue}" : raca;
+			ServerPlayer pl = ForjarCorpo(vaga++, $"bancada_passiva_{raca}{sangue}", raca, sangue);
 			try
 			{
 				BodyPart braco = pl.Combate.Corpo.Achar("Braco esquerdo")!;
@@ -370,16 +376,16 @@ public sealed partial class GameServer
 				CorrerNoServidor(pl, 30, brigando: false);
 				double emPaz = braco.Vida - antes;
 
-				GD.Print($"  {raca,-12} 30 s de BRIGA -> {(emBriga > 0.01 ? $"+{emBriga:0.00}" : "NADA")}"
+				GD.Print($"  {quem,-22} 30 s de BRIGA -> {(emBriga > 0.01 ? $"+{emBriga:0.00}" : "NADA")}"
 						 + $"  |  80 s de tag ESCOANDO -> {(escoando > 0.01 ? $"+{escoando:0.00}" : "NADA")}"
 						 + $"  |  30 s de PAZ -> +{emPaz:0.00}");
 
-				AfirmarCura($"...{raca} {(curaEmCombate ? "CURA" : "NAO cura")} com a tag de combate no ar",
+				AfirmarCura($"...{quem} {(curaEmCombate ? "CURA" : "NAO cura")} com a tag de combate no ar",
 							curaEmCombate ? emBriga > 0.5 : emBriga < 1e-6, $"{emBriga:0.000}");
-				AfirmarCura($"...e {raca} {(curaEmCombate ? "continua curando" : "continua SEM curar")} "
+				AfirmarCura($"...e {quem} {(curaEmCombate ? "continua curando" : "continua SEM curar")} "
 							+ "nos 80 s em que a tag escoa (ela dura 90 s depois do ultimo soco)",
 							curaEmCombate ? escoando > 0.5 : escoando < 1e-6, $"{escoando:0.000}");
-				AfirmarCura($"...e {raca} cura em PAZ (senao o 'nao cura' acima seria vacuo)",
+				AfirmarCura($"...e {quem} cura em PAZ (senao o 'nao cura' acima seria vacuo)",
 							emPaz > 0.05, $"{emPaz:0.000}");
 			}
 			finally { RecolherCorpo(pl); }
@@ -537,7 +543,8 @@ public sealed partial class GameServer
 	/// A ZONA E A TERRA (gravidade 1x) de proposito: Vegeta esmaga (10x), e um corpo perdendo vida
 	/// por gravidade dentro de uma bancada de CURA mediria a soma das duas coisas.
 	/// </summary>
-	private ServerPlayer ForjarCorpo(int i, string nome, string raca)
+	/// <param name="sangue">(v0.3.0) A raca doadora de um bio-androide (`Fighter.bio_racas_dna`); vazio = nenhuma.</param>
+	private ServerPlayer ForjarCorpo(int i, string nome, string raca, string sangue = "")
 	{
 		var novo = new ServerPlayer
 		{
@@ -551,7 +558,11 @@ public sealed partial class GameServer
 			Pos = PontoDeNascimento(ZoneKey.Premade("Earth")),
 			Conta = $"bancada_cura_{i}",
 			Slot = 0,
-			Ficha = new Fighter { Race = raca, BP = 5_000 },
+			Ficha = new Fighter
+			{
+				Race = raca, BP = 5_000,
+				bio_racas_dna = sangue.Length > 0 ? new List<string> { sangue } : new List<string>(),
+			},
 			Livro = new Jandirus.Core.Skills.SkillBook(),
 		};
 		novo.Ficha.Class = "Normal";

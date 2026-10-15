@@ -9,10 +9,14 @@ namespace Jandirus.Client;
 /// *"quando uma raca fica sem planeta natal, o jogador pode ou spawnar em um planeta q ele
 /// conquistou ou em um planeta proximo do planeta natal dele"*.
 ///
-/// O "ou ... ou" e ESCOLHA, e esta e a tela dela. **Ela so existe quando as duas existem**: com uma
+/// O "ou ... ou" e ESCOLHA, e esta e a tela dela. **Ela so existe quando ha duas saidas ou mais**: com uma
 /// saida so, o servidor manda o corpo pra la e nao pergunta nada (`GameServer.Refugio.cs`), e a tela
 /// nem chega a ser empurrada -- abrir uma tela sem decisao e roubar o clique de quem esta morto no
 /// meio de uma briga.
+///
+/// (v0.3.0) E A TERCEIRA SAIDA E A TERRA: *"ele sempre tem a opcao de reviver na terra se o planeta natal dele foi
+/// destruido. a terra seria o ponto de encontro principal do jogo"* (o dono). Com ela viva ha sempre duas saidas (a
+/// vizinhanca e a Terra), e a tela passou a abrir pra todo mundo que perdeu o natal.
 /// ================================================================================
 ///
 /// ============================ O MOLDE E O DA CASA, E ISSO NAO E DETALHE ============================
@@ -29,13 +33,15 @@ namespace Jandirus.Client;
 /// ==============================================================================================
 ///
 /// ============================ O QUE ELA NAO FAZ ============================
-/// **NAO DECIDE NADA E NAO GUARDA NADA.** Cada botao manda um verbo (`refugio &lt;chave&gt;` ou
-/// `refugio vizinhanca`) e o servidor responde com o pacote atualizado. A marca de "escolhido" que
-/// aparece aqui e o `Dominio.EhOSpawn` do servidor, e nao um estado local que poderia divergir dele.
+/// **NAO DECIDE NADA E NAO GUARDA NADA.** Cada botao manda um verbo (`refugio &lt;chave&gt;`,
+/// `refugio vizinhanca` ou `refugio terra`) e o servidor responde com o pacote atualizado. A marca de "escolhido"
+/// que aparece aqui e o `Dominio.EhOSpawn` (ou o `RefugioNaTerra`) do servidor, e nao um estado local que poderia
+/// divergir dele.
 ///
 /// **NAO TRAVA TECLA NENHUMA** -- ela nao entra no <see cref="Foco"/>, como as irmas dela. O jogo
-/// continua correndo por baixo, o prazo de 60 s do Outro Mundo continua andando, e quem nao escolher
-/// volta a vida pelo padrao (a vizinhanca de casa) sem ficar preso em lugar nenhum.
+/// continua correndo por baixo, e quem nao escolher volta a vida pelo padrao (a vizinhanca de casa) sem
+/// ficar preso em lugar nenhum. (O "prazo de 60 s do Outro Mundo" que esta linha citava acabou: a volta
+/// passou a ser paga -- esferas, tecnica, Enma -- e a escolha fica aberta ate la.)
 /// =========================================================================
 /// </summary>
 public partial class TelaDeRefugio : CanvasLayer
@@ -199,17 +205,18 @@ public partial class TelaDeRefugio : CanvasLayer
 		{
 			_coluna.AddChild(Tema.Rotulo("ou a vizinhança de casa"));
 
-			bool nenhumDominioEscolhido = !cli.RefugioDominios.Exists(d => d.Escolhido);
+			// (v0.3.0) A VIZINHANCA E A ESCOLHIDA quando nenhuma outra e: nem um dominio, nem a Terra.
+			bool vizinhancaEscolhida = !cli.RefugioDominios.Exists(d => d.Escolhido) && !cli.RefugioTerraEscolhida;
 			var vizinhanca = new Button
 			{
-				Text = (nenhumDominioEscolhido ? "● " : "○ ")
+				Text = (vizinhancaEscolhida ? "● " : "○ ")
 					 + $"O mundo vivo mais perto — {cli.RefugioVizinhos.Count} possíve"
 					 + (cli.RefugioVizinhos.Count > 1 ? "is" : "l"),
 				TooltipText = "A mesma estrela, outro chão. Qual dos mundos sai é sorteio do berço -- "
 							+ "a gravidade de um mundo vira treino de graça, então o jogo não deixa "
 							+ "ninguém apontar qual.",
 			};
-			if (nenhumDominioEscolhido) vizinhanca.AddThemeColorOverride("font_color", Tema.Destaque);
+			if (vizinhancaEscolhida) vizinhanca.AddThemeColorOverride("font_color", Tema.Destaque);
 			vizinhanca.Pressed += () => GameClient.Instance?.SendVerbo("refugio", "vizinhanca");
 			_coluna.AddChild(vizinhanca);
 
@@ -254,6 +261,35 @@ public partial class TelaDeRefugio : CanvasLayer
 			_coluna.AddChild(vazio);
 		}
 
+		// ---- B3 (v0.3.0): A TERRA, O PONTO DE ENCONTRO -------------------
+		// Sempre na tela. Quando ela tambem acabou, a tela DIZ isso em vez de sumir com a opcao calada -- o dono pediu "sempre",
+		// e a unica coisa que tira a Terra daqui e ela nao existir.
+		_coluna.AddChild(Tema.Rotulo("ou a Terra, o ponto de encontro"));
+		if (cli.RefugioTerra)
+		{
+			var terra = new Button
+			{
+				Text = (cli.RefugioTerraEscolhida ? "● " : "○ ") + "Na Terra"
+					 + $"  —  {cli.RefugioMinutosAteATerra:0} min de onde era casa",
+				TooltipText = "Você renasce na Terra, no mesmo lugar onde nasce quem é de lá: o ponto de encontro de "
+								+ "todo mundo.",
+			};
+			if (cli.RefugioTerraEscolhida) terra.AddThemeColorOverride("font_color", Tema.Destaque);
+			terra.Pressed += () => GameClient.Instance?.SendVerbo("refugio", "terra");
+			_coluna.AddChild(terra);
+		}
+		else
+		{
+			var semTerra = new Label
+			{
+				Text = "A Terra não existe mais -- esta saída fechou.",
+				AutowrapMode = TextServer.AutowrapMode.Word,
+			};
+			semTerra.AddThemeColorOverride("font_color", Tema.Perigo);
+			semTerra.AddThemeFontSizeOverride("font_size", 12);
+			_coluna.AddChild(semTerra);
+		}
+
 		_coluna.AddChild(new HSeparator());
 
 		var fechar = new Button { Text = "Fechar (Esc)" };
@@ -261,4 +297,9 @@ public partial class TelaDeRefugio : CanvasLayer
 		_coluna.AddChild(fechar);
 	}
 
+	/// <summary>
+	/// OS BOTOES DESENHADOS AGORA -- SO PRA BANCADA (`--diagv030`, familia TR): o robo le o texto de cada um e aperta pelo
+	/// sinal, como o mouse faria. A coluna so tem os da ultima montagem (o `Redesenhar` tira os velhos da arvore).
+	/// </summary>
+	public List<Button> BotoesDeTeste() => IsInstanceValid(_coluna) ? [.. _coluna.GetChildren().OfType<Button>()] : [];
 }

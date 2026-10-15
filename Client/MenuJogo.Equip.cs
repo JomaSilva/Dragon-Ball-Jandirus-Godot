@@ -124,6 +124,18 @@ public partial class MenuJogo
 			var comRecursos = new Button { Text = $"...ou com recursos ({Recurso.PrecoEscrito(preco, Moeda.Recursos)})" };
 			comRecursos.Pressed += () => GameClient.Instance?.SendVerbo("item_melhorar", $"{CatalogoDeItens.Pesos}/{Recurso.PalavraDeRecursos}");
 			c.AddChild(comRecursos);
+
+			// (2026-10-15) ATE O LIMITE DO CORPO DE UMA VEZ, nas duas moedas -- ver `PesoDeTreino.AcaoAteOLimite`.
+			if (_atributos.PesoMelhoriasAteOLimite > 0)
+			{
+				var limite = new Button { Text = TelaDeInventario.RotuloDoLimiteDosPesos() };
+				limite.Pressed += () => GameClient.Instance?.SendVerbo($"item_{Jandirus.Core.Items.PesoDeTreino.AcaoAteOLimite}", CatalogoDeItens.Pesos);
+				c.AddChild(BotaoComDescricao(limite, "as melhorias que faltam pro peso máximo passar do que o seu corpo aguenta, de uma vez"));
+				var limiteEmRecursos = new Button { Text = TelaDeInventario.RotuloDoLimiteDosPesos(Moeda.Recursos) };
+				limiteEmRecursos.Pressed += () => GameClient.Instance?.SendVerbo($"item_{Jandirus.Core.Items.PesoDeTreino.AcaoAteOLimite}",
+					$"{CatalogoDeItens.Pesos}/{Recurso.PalavraDeRecursos}");
+				c.AddChild(limiteEmRecursos);
+			}
 		}
 
 		if (vestidos)
@@ -131,6 +143,13 @@ public partial class MenuJogo
 			var b = new Button { Text = "Tirar os pesos" };
 			b.Pressed += () => GameClient.Instance?.SendVerbo("item_tirar", CatalogoDeItens.Pesos);
 			c.AddChild(BotaoComDescricao(b, "o ganho volta a 1x e o corpo para de ranger"));
+		}
+		else if (tem && _atributos.PesoPct > 0)
+		{
+			// (v0.3.0) VESTIR DE NOVO, na porcentagem guardada -- o mesmo verbo do "Equipar" da mochila. Ver `GameServer.VestirOsPesos`.
+			var e = new Button { Text = TelaDeInventario.RotuloDoEquiparDosPesos() };
+			e.Pressed += () => GameClient.Instance?.SendVerbo("item_equipar", CatalogoDeItens.Pesos);
+			c.AddChild(BotaoComDescricao(e, "veste de novo a porcentagem que você escolheu da última vez"));
 		}
 
 		Nota(tem
@@ -233,7 +252,7 @@ public partial class MenuJogo
 	/// </summary>
 	private static TextureRect IconeDoItem(ItemDef def, int lado) => new()
 	{
-		Texture = Miniaturas.DoItem(def),
+		Texture = Miniaturas.DoItemNaMochila(def, GameClient.Instance?.Atributos.PesoArte ?? ""),   // (2026-10-15) os pesos com a arte escolhida
 		CustomMinimumSize = new Vector2(lado, lado),
 		ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
 		StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
@@ -253,7 +272,7 @@ public partial class MenuJogo
 	{
 		GameClient? c = GameClient.Instance;
 		string mochila = c == null ? "" : string.Join(',', c.Mochila.Pilhas.Select(p => $"{p.Id}x{p.Quantidade}"));
-		return $"{_atributos.Poderes}|{_atributos.PesoMult:0.##}|{_atributos.PesoMaxKg:0}|{_atributos.PesoKg:0}|{f.SocoMs}|{mochila}"
+		return $"{_atributos.Poderes}|{_atributos.PesoMult:0.##}|{_atributos.PesoMaxKg:0}|{_atributos.PesoKg:0}|{_atributos.PesoArte}|{_atributos.PesoMelhoriasAteOLimite}|{f.SocoMs}|{mochila}"
 			 + $"|{Teclas.NomeDaAcao("lethal")}|{Teclas.NomeDaAcao("guard")}"
 			 // o bloco do radio: a frequencia que o servidor guarda e as duas teclas que a nota dele ensina
 			 + $"|{c?.FrequenciaDoRadio}|{Teclas.NomeDaAcao("falar_radio")}|{Teclas.NomeDaAcao("falar_voz")}";

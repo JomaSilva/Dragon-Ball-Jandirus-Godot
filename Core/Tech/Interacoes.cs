@@ -198,12 +198,33 @@ public static class Interacoes
 		// ============================ O ENMA DAIOH, NA MESA DELE ============================
 		// No DM e um `Click()` a ate 2 tiles do NPC (`SkyNPCs.dm:242-248`) que abre um `input()` com
 		// quatro opcoes (`:159-167`). Aqui e o menu E da obra fixa que o servidor semeia no Outro Mundo
-		// (`GameServer.Alem.SemearOEnma`). So a volta paga esta portada; reencarnar a 10% e o treino
-		// com o Sr. Kaioh sao as proximas (o dono: "o treinamento do kaioh faremos depois").
+		// (`GameServer.Alem.SemearOEnma`). A volta paga e a REENCARNACAO sao as do DM; o PASSE pros vivos e do dono
+		// (v0.3.0, `GameServer.PasseEReencarnacao.cs`). O treino do DM ("Go train with King Kai") nao passa mais por
+		// aqui: a barreira do Outro Mundo abre pela alma (`APortaDoOutroMundoAbrePara`), e o Sr. Kaioh esta no planeta dele.
+		// As duas caixas de texto vao ate 24 letras: e o teto do nome de um planeta batizado (`Batismo.MaxLetras`) e o
+		// do nome que viaja no fio (`PeerLook`).
 		"Enma_Daioh" =>
 		[
 			new Acao("Ouvir o Enma", "enma_ouvir", "", "ele lê a sua ficha e diz o preço da volta"),
 			new Acao("Voltar à vida (1.000.000 de zeni)", "enma_reviver", "", "o corpo volta fraco: BP a 25% por uma hora"),
+			new Acao("Visitar os vivos (100.000 zeni, 7 dias)", "enma_passe", "",
+					 "escreva o planeta (pré-feito ou descoberto; vazio = a lista): você desce MORTO, de auréola, e volta pra cá no fim do prazo",
+					 Forma.Texto, 0, 24),
+			new Acao("Reencarnar (renascer com 10% do poder)", "enma_reencarnar", "",
+					 "este personagem acaba PARA SEMPRE e você volta pra criação -- escreva o nome dele pra confirmar",
+					 Forma.Texto, 0, 24),
+		],
+
+		// ============================ O SR. KAIOH E O KORIN (v0.3.0) ============================
+		// Os dois `Talker` do DM que faltavam (`SkyNPCs.dm:21-49`), como o Enma: obra fixa do mapa com menu E. A conversa e a
+		// do `kingkai_interact()` (`:207-226`) e a do `Korin/Click()` (`:258-264`). Ver `GameServer.NpcsDeConversa.cs`.
+		Jandirus.Core.World.NpcsDeConversa.TipoDoSrKaioh =>
+		[
+			new Acao("Falar com o Sr. Kaioh", "kaioh_falar", "", "ele ensina o Kaio-ken e a Genkidama a quem tem coração limpo"),
+		],
+		Jandirus.Core.World.NpcsDeConversa.TipoDoKorin =>
+		[
+			new Acao("Falar com o Korin", "korin_falar", "", "o guardião da Torre"),
 		],
 
 		// ============================ BILLS E WHIS, PARADOS NA CASA DELES ============================

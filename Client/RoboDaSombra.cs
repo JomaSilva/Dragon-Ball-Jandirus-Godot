@@ -317,8 +317,12 @@ public partial class RoboDaSombra : Node
 				Conferir(mundo.PorQueOCorpoNaoAnda == "na area de espera do torneio", $"o corpo local espera a vez dele (\"{mundo.PorQueOCorpoNaoAnda}\")");
 				// A ZONA CHEIA CHEGA INTEIRA NO CLIENTE (dono: "os npcs estao realmente invisiveis"): com os
 				// 31 NPCs o snapshot da Terra nao cabe num pacote e sai em partes -- ver `GameServer.Snapshot.cs`.
-				(int partes, int maiorParte, int orcamento) = servidor.UltimoSnapshotDeTeste;
-				Conferir(partes >= 2 && maiorParte <= orcamento, $"o snapshot da Terra sai em {partes} partes de ate {maiorParte} bytes (orcamento {orcamento}) -- antes era UM pacote grande demais, e nunca saia");
+				// (v0.3.0) A PERGUNTA E SOBRE A ZONA: o snapshot de UM tique pode caber num pacote so, porque o habitante longe de
+				// todo jogador so vai no tique em que pensa (`CorposDoSnapshot`) -- e o que saiu neste tique tambem tem que caber.
+				(int partes, int maiorParte, int orcamento) = servidor.PartesDaZonaInteiraDeTeste(ZoneKey.Premade("Earth"));
+				Conferir(partes >= 2 && maiorParte <= orcamento, $"o snapshot da Terra inteira sai em {partes} partes de ate {maiorParte} bytes (orcamento {orcamento}) -- antes era UM pacote grande demais, e nunca saia");
+				(int partesDoTique, int maiorDoTique, int orcamentoDoTique) = servidor.UltimoSnapshotDeTeste;
+				Conferir(partesDoTique >= 1 && maiorDoTique <= orcamentoDoTique, $"...e o que saiu de verdade no ultimo tique cabe tambem: {partesDoTique} parte(s), a maior com {maiorDoTique} bytes (orcamento {orcamentoDoTique})");
 				Conferir(mundo.CorposRemotosDeTeste >= 32, $"o cliente tem os corpos da zona inteira ({mundo.CorposRemotosDeTeste} corpos remotos, 31 deles os NPCs do torneio)");
 				Passar();
 				break;

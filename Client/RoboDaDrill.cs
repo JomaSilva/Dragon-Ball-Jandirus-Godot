@@ -180,8 +180,8 @@ public partial class RoboDaDrill : Node
 					$"a tecla E abre o menu da Drill (titulo \"{E?.TituloDesenhado}\"): {string.Join(" | ", botoes)}");
 
 				string p = Painel;
-				Conferir(p.Contains($"Nível 1 de {Drill.NivelMaximo}") && p.Contains("1 recurso por segundo"),
-					"em cima dos botoes, o PAINEL diz o nivel e a taxa");
+				Conferir(p.Contains($"Nível 1 de {Drill.NivelMaximo}") && p.Contains(Drill.TaxaEmTexto(1)),
+					$"em cima dos botoes, o PAINEL diz o nivel e a taxa ({Drill.TaxaEmTexto(1)})");
 				Conferir(p.Contains("Estoque:") && p.Contains("cheio em") && p.Contains("Reserva do planeta:"),
 					"...o estoque com o teto e o tempo pra encher, e como esta a reserva do planeta");
 				Conferir(p.Contains("zeni ou") && p.Contains("Você tem"),
@@ -190,7 +190,7 @@ public partial class RoboDaDrill : Node
 
 				_estoqueLido = EstoqueNoPainel();
 				double noServidor = srv.DrillNaFoto(cli.LocalId, _drill).Estoque;
-				Conferir(_estoqueLido >= SegundosDevidos && Math.Abs(_estoqueLido - noServidor) <= 6,
+				Conferir(_estoqueLido >= SegundosDevidos * Drill.Taxa(1) && Math.Abs(_estoqueLido - noServidor) <= 6 * Drill.Taxa(1),
 					$"o estoque que a tela mostra e o do servidor: a hora devida foi paga quando o painel perguntou (tela {_estoqueLido}, servidor {noServidor:0.#})");
 				GuardarATela("ddrill-1-menu.png", "1. a tecla E: o menu da Drill com o painel");
 				Sub(2);
@@ -201,8 +201,8 @@ public partial class RoboDaDrill : Node
 			{
 				if (_t < 3.2) return;
 				int agora = EstoqueNoPainel();
-				Conferir(agora - _estoqueLido is >= 2 and <= 5,
-					$"tres segundos de menu aberto e o estoque ANDOU na tela, um por segundo: {_estoqueLido} -> {agora}");
+				Conferir(agora - _estoqueLido >= 2 * Drill.Taxa(1) && agora - _estoqueLido <= 5 * Drill.Taxa(1),
+					$"tres segundos de menu aberto e o estoque ANDOU na tela, {Drill.TaxaEmTexto(1)}: {_estoqueLido} -> {agora}");
 				Ir(PColetar);
 				return;
 			}
@@ -226,7 +226,7 @@ public partial class RoboDaDrill : Node
 
 		var d = srv.DrillNaFoto(cli.LocalId, _drill);
 		if (d.Recursos <= _recursosAntes && _t < 3) return;
-		Conferir(d.Recursos - _recursosAntes >= SegundosDevidos && d.Estoque < 5,
+		Conferir(d.Recursos - _recursosAntes >= SegundosDevidos * Drill.Taxa(1) && d.Estoque < 5 * Drill.Taxa(1),
 			$"o estoque virou SALDO no servidor: +{d.Recursos - _recursosAntes:0} recursos, e a maquina ficou vazia ({d.Estoque:0.##})");
 		Conferir(E is not { NaTela: true }, "...e o menu fechou, como em toda acao direta");
 		Ir(PComZeni);
@@ -292,8 +292,8 @@ public partial class RoboDaDrill : Node
 			case 1:
 				if ((E is not { NaTela: true } || !Painel.Contains("Nível 2 de")) && _t < 4) return;
 				if (_t < 0.4) return;
-				Conferir(Painel.Contains($"Nível 2 de {Drill.NivelMaximo}") && Painel.Contains("2 recursos por segundo"),
-					"reaberto, o painel mostra o NIVEL 2 e a taxa nova (2 por segundo)");
+				Conferir(Painel.Contains($"Nível 2 de {Drill.NivelMaximo}") && Painel.Contains(Drill.TaxaEmTexto(2)),
+					$"reaberto, o painel mostra o NIVEL 2 e a taxa nova ({Drill.TaxaEmTexto(2)})");
 				GuardarATela("ddrill-3-nivel2.png", "3. depois da melhoria: nivel 2");
 				Conferir(Apertar("Melhorar..."), "apertei \"Melhorar...\" de novo");
 				Sub(2);

@@ -191,7 +191,10 @@ public sealed class SkillCatalog
 		void Por(string p) { if (_porPath.TryGetValue(p, out Skill? s) && !l.Contains(s)) l.Add(s); }
 
 		foreach (string p in ArvoresDeTodos) Por(p);
-		if (ArvorePorRaca.TryGetValue(NomeDoDm(raca), out List<string>? r)) foreach (string p in r) Por(p);
+		// (v0.3.0) A RACA PODE VIR COM SANGUE -- o bio de `"BioAndroid+Saiyan+Majin"` recebe a racial de cada parte: as skills
+		// das racas que o fizeram (dono, 2026-10-15). Pra quem nao e bio ha uma parte so, e a conta e a de sempre.
+		foreach (string parte in Races.SangueDoBio.Racas(raca))
+			if (ArvorePorRaca.TryGetValue(NomeDoDm(parte), out List<string>? r)) foreach (string p in r) Por(p);
 		if (ArvorePorClasse.TryGetValue(classe, out List<string>? c)) foreach (string p in c) Por(p);
 		return l;
 	}
@@ -246,8 +249,11 @@ public sealed class SkillCatalog
 		if (s.SoVilao && !vilao) return false;
 		if (s.Comum) return true;
 		if (s.Racas.Length == 0 && s.Classes.Length == 0) return true;
-		return s.Racas.Contains(raca, StringComparer.OrdinalIgnoreCase)
-			|| s.Classes.Contains(classe, StringComparer.OrdinalIgnoreCase);
+		// (v0.3.0) cada parte da RACA COM SANGUE vale -- ver `ArvoresDe`. Pelo `SangueDoBio.Tem`, que nao aloca: esta pergunta
+		// roda pra cada skill da aba e da leitura de capacidades da IA.
+		foreach (string r in s.Racas)
+			if (Races.SangueDoBio.Tem(raca, r)) return true;
+		return s.Classes.Contains(classe, StringComparer.OrdinalIgnoreCase);
 	}
 
 	/// <summary>
