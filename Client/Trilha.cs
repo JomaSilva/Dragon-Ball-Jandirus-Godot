@@ -389,6 +389,8 @@ public static class Trilha
     public const string KiEsferaDaMorte = K + "Blast.wav";
     /// <summary>`spiritbombfire.wav` -- a Genkidama partindo (`SpiritBomb.dm:173`).</summary>
     public const string KiGenkidama = K + "spiritbombfire.wav";
+    /// <summary>(v0.3.1) `spiritbomb.wav` -- a Genkidama se erguendo (`SpiritBomb.dm:41`): o gesto `ErgueAGenkidama`.</summary>
+    public const string KiGenkidamaErguida = K + "spiritbomb.wav";
     /// <summary>`kamehameha_fire.wav` -- todo raio ao sair, e ele ANDA com a cabeca (`beams.dm:283` e as irmas).</summary>
     public const string KiRaio = K + "kamehameha_fire.ogg";
     /// <summary>`basicbeam_fire.wav` -- o Final Flash (`FinalFlash.dm:38`).</summary>

@@ -893,6 +893,7 @@ public sealed partial class GameServer
 		pl.Moving = false;
 		Avisar(pl, "voce ergue as maos e sente a forca vital do planeta correr pra dentro da Genkidama!");   // `:57`
 		Falar(pl, Protocol.Fala.Emote, "ergue as duas maos ao ceu!");
+		AnunciarGesto(pl, Protocol.GestoDoCorpo.ErgueAGenkidama);   // (v0.3.1) o som de erguer, `spiritbomb.wav` (`:41`)
 		GD.Print($"[server] {pl.Name} comecou a formar a Genkidama (custo {custo:0})");
 	}
 
@@ -915,7 +916,8 @@ public sealed partial class GameServer
 			Deflectivel = false,    // `A.deflectable = 0` (`:64`)
 			Nome = "Genkidama",
 			EscalaVisual = g.Escala,
-		}, rumoDado: Vec2.Zero, deOnde: OndeAGenkidamaSeFormaG12(pl, g.Escala), verbo: "SpiritBomb");
+		}, rumoDado: Vec2.Zero, deOnde: OndeAGenkidamaSeFormaG12(pl, g.Escala), verbo: "SpiritBomb",
+		   naMao: !GenkidamaSocaAoCrescerDeTeste);   // (v0.3.1) nascer e renascer nao e atirar: o soco e o do lancamento
 		if (!p.Vivo) return null;
 		p.Inerte = true;
 		p.VidaRestante = 3600;
@@ -960,8 +962,14 @@ public sealed partial class GameServer
 					break;
 
 				case 3:
-					// `sleep(30); blasting = 0; move = 1` (`:174-176`).
-					if (_relogioG12 >= g.FaseAte) EncerrarGenkidamaG12(pl, g, null);
+					// `sleep(30); blasting = 0; move = 1` (`:174-176`). (v0.3.1) O soco do lancamento fica ate aqui, e sai junto da trava.
+					if (_relogioG12 >= g.FaseAte)
+					{
+						pl.GestoAte = Math.Min(pl.GestoAte, NowMs());
+						EncerrarGenkidamaG12(pl, g, null);
+						break;
+					}
+					SegurarOSocoDaGenkidamaG12(pl);
 					break;
 			}
 		}
@@ -1082,6 +1090,8 @@ public sealed partial class GameServer
 		// `walk(A, usr.dir)` sem lag: um tile por tique no DM -- a bola mais rapida de la, na pressa das de ca
 		p.SegundosPorTile = Projetil.AtrasoDeBolaPorLag(1);
 		p.Pressa = Projetil.PressaDeBolaPorLag(1);
+		// (v0.3.1) O SOCO DO LANCAMENTO -- e ele fica ate a trava soltar: ver `SegurarOSocoDaGenkidamaG12`.
+		SegurarOSocoDaGenkidamaG12(pl);
 		Falar(pl, Protocol.Fala.Diz, "GENKIDAMA!!");
 		// OS DOIS NUMEROS (o acumulado e o do dono) SO SAEM PRA QUEM TEM SCOUTER -- a regra principal do BP; ver
 		// `PoderNaFrase`. Sem ele a frase mede a bomba CONTRA o poder de quem a soltou, que e a comparacao que sobra.
@@ -1135,6 +1145,41 @@ public sealed partial class GameServer
 	/// sempre -- o jogo de antes, com a bola de tres tiles de raio em cima do personagem. Falso em jogo, sempre.
 	/// </summary>
 	internal static bool GenkidamaComoAntesDeTeste;
+
+	/// <summary>
+	/// (v0.3.1) O SOCO DE QUEM LANCA A GENKIDAMA, SEGURADO ATE A TRAVA SOLTAR. O dono (2026-10-16): *"a animaçao de soco é so
+	/// quando joga ela e diferente das outras técnicas, o personagem fica na animaçao de soco ate ele sair da paralisia da
+	/// genkidama"*. E a pose de tiro de toda bola (`GestoAte`, que o snapshot leva como o canal atirando -- o `blast` do
+	/// desenho), so que renovada a cada tique da fase 3: os 3 s do `sleep(30)` em que o corpo continua preso (`PresoPeloG12`).
+	/// No fim da fase o tique a tira (`TickDaGenkidamaG12`), e ela cai junto com a trava. O nascimento e os pulsos nao a armam:
+	/// a bola nasce NA MAO (o `naMao` do `Disparar`).
+	///
+	/// DIVERGENCIA DECLARADA: no DM o corpo nao faz pose nenhuma ao soltar a bola (`SpiritBomb.dm:169-176` nao escreve
+	/// `icon_state`), e o `"Planet Destroyer"` de quando ela se ergue (`:40`) vence em 5 s (`spawn(50)`).
+	/// </summary>
+	private void SegurarOSocoDaGenkidamaG12(ServerPlayer pl)
+	{
+		if (GenkidamaLancaSemSocoDeTeste) return;
+		pl.GestoAte = Math.Max(pl.GestoAte, NowMs() + FolgaDoSocoDaGenkidamaMs);
+	}
+
+	/// <summary>
+	/// A FOLGA DO SOCO SEGURADO: ele e renovado a cada tique (30 Hz), e a folga so cobre tiques atrasados -- quem o tira no fim e
+	/// o proprio tique, junto da trava.
+	/// </summary>
+	private const long FolgaDoSocoDaGenkidamaMs = 250;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--v030teste` GS, `--diagv030` GK): a Genkidama volta a nascer e renascer com o gesto de tiro -- o soco
+	/// (e o som da saida) a cada pulso, o jogo de antes. Lido pelo <see cref="NascerGenkidamaG12"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool GenkidamaSocaAoCrescerDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--v030teste` GS, `--diagv030` GK): o lancamento volta a nao segurar o soco -- o jogo de antes, sem pose
+	/// nenhuma ao lancar. Lido pela <see cref="SegurarOSocoDaGenkidamaG12"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool GenkidamaLancaSemSocoDeTeste;
 
 	private void EncerrarGenkidamaG12(ServerPlayer pl, EstadoDaGenkidamaG12 g, string? aviso)
 	{

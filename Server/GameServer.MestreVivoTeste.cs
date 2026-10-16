@@ -389,8 +389,9 @@ public partial class GameServer
 				  Math.Abs(razao - GainKnobs.MasterGainCap) < 0.02,
 				  $"razao medida {razao:0.###} (mult {sem.Mult:0.##} -> {com.Mult:0.##})");
 
-		// O PISO (dono, 2026-10-13): com o mestre so 1,1x mais forte -- ou mais FRACO que o aluno -- o soco ja rende
-		// `MasterGainMin`. No DM, abaixo de 1,2x de gap o bonus nao valia nada.
+		// O PISO (dono, 2026-10-13): com o mestre so 1,1x mais forte o soco ja rende `MasterGainMin`. No DM, abaixo de 1,2x de
+		// gap o bonus nao valia nada. (Mais FRACO que o aluno o mestre ja nao paga bonus -- o aluno o superou, regra do dono de
+		// 2026-10-16: ver a `--mestreteste`, familia 4.)
 		PorBp(mestre, bpDoAluno * 1.1);
 		Soco fraco = GanhoDeUmSoco(aluno, mestre, bpDoAluno);
 		AfirmarMv($"mestre so 1,1x mais forte ja paga o piso de {GainKnobs.MasterGainMin:0.#}x (no DM nao pagava nada)",

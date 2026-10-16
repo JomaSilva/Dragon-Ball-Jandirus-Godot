@@ -10,7 +10,7 @@ namespace Jandirus.Core.Skills;
 /// No original o vinculo de mestre e aluno faz TRES coisas, e so tres:
 ///
 ///   1. quem tem mestre GANHA MAIS treinando contra ele (ate 3x; la o bonus pedia um gap de 1,2x, e aqui ele nunca
-///      e menor que 2x -- regra do dono, `GainKnobs.MasterGainMin`);
+///      e menor que 2x -- regra do dono, `GainKnobs.MasterGainMin` -- ate o aluno SUPERAR o mestre, quando acaba);
 ///   2. o mestre pode PROVOCAR/ENSINAR um despertar de forma, e nessa tentativa o requisito
 ///      PESSOAL de BP do aluno vale METADE (`MST_HALF`);
 ///   3. o vinculo e do MUNDO (savefile `MASTER`, por assinatura) -- ele atravessa logout, morte e

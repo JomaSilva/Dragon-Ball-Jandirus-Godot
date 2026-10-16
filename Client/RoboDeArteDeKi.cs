@@ -46,6 +46,8 @@ namespace Jandirus.Client;
 ///   7. O FOGO EM VOLTA FICA ENTRE A MAO E A PONTA: desde que todo raio ganhou duas explosoes com um
 ///      leque de labaredas (o desenho geral, 2026-10-07), nenhum pixel dele pode cair atras do plano
 ///      da mao (onde esta o boneco) nem alem do plano da ponta (onde esta quem o raio empurra).
+///   8. (v0.3.1) A ENERGIA QUE CHEGA NA GENKIDAMA SO CORRE COM ELA NA MAO: duas Genkidamas, uma na mao e uma lancada, e
+///      os pontos de luz contados no anel em volta de cada uma -- com o defeito que os deixa sempre.
 ///
 /// ============================ ELA MEDE PIXEL, E ISSO E O PONTO ============================
 /// Este projeto tem registro de quatro defeitos visuais que passaram por quatro mil checagens verdes
@@ -168,6 +170,7 @@ public partial class RoboDeArteDeKi : Node2D
 	{
 		ProjetilDesenhado.DefeitoDeTeste = ProjetilDesenhado.DefeitoDoFeixe.Nenhum;
 		Feixe.AlcanceFixoDeTeste = false;
+		ProjetilDesenhado.EnergiaChegaSempreDeTeste = false;
 	}
 
 	// =====================================================================
@@ -746,6 +749,21 @@ public partial class RoboDeArteDeKi : Node2D
 
 			case 47: MedirOFogoEntreOsPlanos(); break;
 
+			// ============================ FAMILIA 8 -- A ENERGIA QUE CHEGA NA GENKIDAMA (v0.3.1) ============================
+			case 48:
+				Familia("8", "a energia que chega na Genkidama so corre com a bola NA MAO -- lancada, ela some (adendo 15)");
+				PorAsDuasGenkidamas();
+				break;
+			case 49: MedirAsDuasGenkidamas("8-1-na-mao-e-lancada", defeito: false); break;
+			case 50:
+				ProjetilDesenhado.EnergiaChegaSempreDeTeste = true;   // o jogo de antes: a energia chega sempre
+				Assentar();
+				break;
+			case 51:
+				MedirAsDuasGenkidamas("8-2-defeito-energia-sempre", defeito: true);
+				ProjetilDesenhado.EnergiaChegaSempreDeTeste = false;
+				break;
+
 			default: Encerrar(); break;
 		}
 	}
@@ -1174,6 +1192,63 @@ public partial class RoboDeArteDeKi : Node2D
 	/// 1,8 e 2,1 (ver <see cref="MedirAsEsferasGrandes"/>). Uma escala que nao chegasse ao desenho daria 1,0.
 	/// </summary>
 	private const float VezesADeathBallCresce = 1.5f;
+
+	// =====================================================================
+	// FAMILIA 8 -- A ENERGIA QUE CHEGA NA GENKIDAMA (adendo 15)
+	// =====================================================================
+	/// <summary>
+	/// O dono (2026-10-16): *"o efeito das particulas vindo deveriam so aparecer enquanto a genkidama carrega, quando lançar a
+	/// genkidama essas particuals somem"*. Duas Genkidamas na foto: a da esquerda ainda NA MAO (`ProjetilDesenhado.Inerte`, o
+	/// que o snapshot diz enquanto ela se forma) e a da direita LANCADA.
+	/// </summary>
+	private void PorAsDuasGenkidamas()
+	{
+		LimparOPalco();
+		Vector2 t = Tela;
+		NovaBola(ArteDeKi.SpiritBomb, 1f, new Vector2(t.X * 0.27f, t.Y * 0.5f), Vermelho, "Genkidama na mao").No.Inerte = true;
+		NovaBola(ArteDeKi.SpiritBomb, 1f, new Vector2(t.X * 0.73f, t.Y * 0.5f), Vermelho, "Genkidama lancada").No.Inerte = false;
+		Assentar();
+	}
+
+	/// <summary>
+	/// OS PONTOS DA ENERGIA QUE CHEGA em volta de uma bola: os pixels quase brancos (vermelho acima de 70%) no ANEL de fora da
+	/// casca, de 1,06 raio (fora do aro aceso) ate 2,3 raios (alem de onde os pontos nascem). A regua e de COR porque o anel nao
+	/// e vazio: o halo da Genkidama o enche de ciano, e ele nao passa de 46% de vermelho (a mistura do ciano forte com o claro,
+	/// `EsferaDeKi.gdshader`), enquanto os pontos sao a mistura do claro com o branco (88%).
+	/// </summary>
+	private static int PontosDeEnergia(Chapa c, TiroNoPalco b)
+	{
+		float raio = RaioDoEstilo(b);
+		float dentro = raio * 1.06f * c.PxPorMundo, fora = raio * 2.3f * c.PxPorMundo;
+		Vector2I centro = c.Pixel(b.Cabeca);
+		int n = 0;
+		for (int y = centro.Y - (int)fora; y <= centro.Y + (int)fora; y++)
+			for (int x = centro.X - (int)fora; x <= centro.X + (int)fora; x++)
+			{
+				if (!c.Dentro(x, y)) continue;
+				float d = new Vector2(x - centro.X, y - centro.Y).Length();
+				if (d < dentro || d > fora) continue;
+				if (c.Cor(x, y).R > 178) n++;
+			}
+		return n;
+	}
+
+	private void MedirAsDuasGenkidamas(string foto, bool defeito)
+	{
+		Chapa? c = Foto(foto);
+		if (c == null || _palco.Count < 2) return;
+		int naMao = PontosDeEnergia(c, _palco[0]), lancada = PontosDeEnergia(c, _palco[1]);
+		Nota($"pontos da energia que chega (px quase brancos no anel em volta): na mao {naMao}, lancada {lancada}");
+		if (defeito)
+			Ok($"[injecao] `EnergiaChegaSempreDeTeste` (o jogo de antes): a LANCADA tambem tem os pontos ({lancada} px) -- a regua sabe ficar vermelha",
+			   lancada >= PisoDosPontosDeEnergia);
+		else
+			Ok($"a energia que chega CORRE com a bola na mao ({naMao} px de pontos) e SOME com ela lancada ({lancada} px)",
+			   naMao >= PisoDosPontosDeEnergia && lancada <= TetoSemPontosDeEnergia);
+	}
+
+	/// <summary>Quantos pixels de ponto a bola na mao tem de ter, no minimo -- e quantos a lancada pode ter, no maximo.</summary>
+	private const int PisoDosPontosDeEnergia = 12, TetoSemPontosDeEnergia = 2;
 
 	/// <summary>
 	/// A CORRIDA DE TINTA QUE ATRAVESSA UM PONTO, numa direcao e na oposta, em px de mundo. Zero se o

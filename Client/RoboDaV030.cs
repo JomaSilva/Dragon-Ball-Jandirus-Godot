@@ -39,7 +39,9 @@ namespace Jandirus.Client;
 ///   KK O KAIO-KEN: o botao abre a escolha com a maestria escrita, o multiplicador escolhido acende pelo fio, a tela reabre
 ///      no ultimo aceso, e o X apaga (item 37);
 ///   GK A GENKIDAMA QUE NAO TELEPORTA: lancada, o corpo fica preso na minha tela tambem -- a tecla de andar nao o tira do
-///      lugar -- e, solto, anda de novo; com janela, as fotos dela em cima da cabeca e saindo na frente (itens 38 e 42);
+///      lugar -- e, solto, anda de novo; com janela, as fotos dela em cima da cabeca e saindo na frente (itens 38 e 42). E
+///      (adendo 15) SO SOCA AO SAIR: crescendo, o meu boneco nao soca e todo nascimento dela chega "na mao" pelo fio, com a
+///      energia chegando; na saida, o soco -- que fica ate a trava soltar e sai com ela -- e a energia para (item 46);
 ///   TR O REFUGIO PELA TERRA: o meu natal acaba, a tela do refugio abre sozinha com o botao "Na Terra" ao lado da
 ///      vizinhanca, o botao escolhe pelo fio e a vizinhanca desfaz (adendo 11) -- e a pergunta aparece UMA vez: a oferta do
 ///      login seguinte nao a empurra, o cartao do menu P a abre, e o natal que volta apaga a marca (item 39);
@@ -1288,25 +1290,86 @@ public partial class RoboDaV030 : Node
 		}
 
 		World.Instancia?.AplicarZoom(Settings.ZoomMin);   // so pras fotos: a bola de tres tiles de raio cabe melhor
+
+		// (adendo 15) OS NASCIMENTOS DA MINHA GENKIDAMA QUE CHEGAM PELO FIO: quantos, quantos "na mao", e o id do ultimo -- a bola de
+		// agora (cada pulso a renasce maior, e o lancamento leva a mesma).
+		int nascimentos = 0, naMao = 0, bola = 0;
+		void OuvirNascimento(NascimentoDeProjetil n)
+		{
+			if ((Jandirus.Core.Combat.ArteDeKi)n.Arte != Jandirus.Core.Combat.ArteDeKi.SpiritBomb || n.Dono != cli.LocalId) return;
+			nascimentos++;
+			if (n.NaMao) naMao++;
+			bola = n.Id;
+		}
+		// O MEU BONECO NA POSE DE TIRO (o `blast`, que na maioria das folhas e o proprio soco), quadro a quadro.
+		static bool Socando() => World.Instancia?.VisualLocalDeTeste?.EstadoDeTeste == "blast";
+		async System.Threading.Tasks.Task<(int Quadros, int Socos)> Amostrar(Func<bool> enquanto, double teto)
+		{
+			int q = 0, s = 0;
+			double fim = Time.GetTicksMsec() / 1000.0 + teto;
+			while (enquanto() && Time.GetTicksMsec() / 1000.0 < fim)
+			{
+				q++;
+				if (Socando()) s++;
+				await Quadros(1);
+			}
+			return (q, s);
+		}
+		bool Preso() => cli.EfeitosAtivos.Contains(Protocol.EfeitoDaTravaDeTecnica);
+		int Fase() => srv.PalcoV30_FaseDaGenkidama(cli.LocalId);
+
+		cli.TiroNasceu += OuvirNascimento;
 		try
 		{
+			// ---- (adendo 15) DO APERTO ATE ELA RENASCER MAIOR: nenhum quadro de soco, e todo nascimento chega "na mao" ----
 			cli.SendHabilidade("SpiritBomb");
-			bool formou = await Ate(() => srv.PalcoV30_FaseDaGenkidama(cli.LocalId) == 1, 8);
-			Checa("(a Genkidama se formou pela porta do jogador: o botao manda `SpiritBomb`)", formou, $"fase {srv.PalcoV30_FaseDaGenkidama(cli.LocalId)}");
+			var crescendo = await Amostrar(() => nascimentos < 2 || Fase() < 1, 9);
+			bool formou = Fase() == 1;
+			Checa("(a Genkidama se formou pela porta do jogador: o botao manda `SpiritBomb`)", formou, $"fase {Fase()}");
 			if (!formou) return;
-			await Segundos(1.0);
+			Checa("**CRESCENDO, NADA DE SOCO** (*\"sempre q a genkidama aumenta o personagem faz animaçao de soco oq n deveria ser\"*): do aperto ate ela renascer maior, o meu boneco nao passa um quadro na pose de tiro -- e cada nascimento dela chega pelo fio NA MAO",
+				  nascimentos >= 2 && naMao == nascimentos && crescendo.Socos == 0 && crescendo.Quadros > 10,
+				  $"{nascimentos} nascimento(s), {naMao} na mao; {crescendo.Socos} de {crescendo.Quadros} quadros socando");
+			ProjetilDesenhado? naMaoDesenhada = World.Instancia?.TiroDesenhadoDeTeste(bola);
+			Checa("...e a bola na mao e desenhada com a ENERGIA CHEGANDO (o `Inerte` que o fio diz, e o `chegando` do shader em 1)",
+				  naMaoDesenhada is { Inerte: true } && naMaoDesenhada.ChegandoDeTeste == 1f,
+				  $"bola {bola}: inerte {naMaoDesenhada?.Inerte}, chegando {naMaoDesenhada?.ChegandoDeTeste}");
+
+			int antes = nascimentos, naMaoAntes = naMao;
+			Jandirus.Server.GameServer.GenkidamaSocaAoCrescerDeTeste = true;
+			bool pulsou = await Ate(() => nascimentos > antes, 4);
+			var logoDepois = await Amostrar(() => true, 0.45);
+			Jandirus.Server.GameServer.GenkidamaSocaAoCrescerDeTeste = false;
+			Injeta("(o jogo de antes: renascer com o gesto de tiro) o pulso chega sem o \"na mao\" e o meu boneco soca",
+				   pulsou && naMao == naMaoAntes && logoDepois.Socos > 0,
+				   $"pulsou {pulsou}; na mao {naMao} de {nascimentos}; {logoDepois.Socos} de {logoDepois.Quadros} quadros socando");
 			await FotoSeHouverJanela("dv030-gk-1-em-cima-da-cabeca");
 
+			// ---- O DISPARO: os 2 s de espera ainda sem soco; o soco e o da saida, e a energia para de chegar ----
+			// O DESENHO E PEGO ANTES: aqui o robo nasce dentro do Banco de Vegeta, e a bola lancada estoura na parede no tique da saida
+			// -- morta, ela nem viaja no snapshot, e e o `AoMorrerTiro` quem a tira da mao. Pego depois, ela ja teria saido da tela.
+			ProjetilDesenhado? lancada = World.Instancia?.TiroDesenhadoDeTeste(bola);
 			cli.SendHabilidade("SpiritBomb");   // pede o disparo
-			bool saiu = await Ate(() => srv.PalcoV30_FaseDaGenkidama(cli.LocalId) == 3, 6);
+			var esperando = await Amostrar(() => Fase() != 3, 6);
+			bool saiu = Fase() == 3;
+			bool socou = saiu && await Ate(Socando, 0.6);
+			bool energiaParou = saiu && await Ate(() => lancada is { Inerte: false } && lancada.ChegandoDeTeste == 0f, 0.6);
+			Checa("**O SOCO E O DA SAIDA** (*\"a animaçao de soco é so quando joga ela\"*): nos 2 s entre o aperto e a saida nenhum quadro de soco -- e na saida o meu boneco entra na pose de tiro",
+				  saiu && esperando.Socos == 0 && socou,
+				  $"saiu {saiu}; {esperando.Socos} de {esperando.Quadros} quadros socando na espera; socou na saida {socou}");
+			Checa("**LANCADA, A ENERGIA PARA DE CHEGAR** (*\"quando lançar a genkidama essas particulas somem\"*): o fio diz que a bola saiu da mao (`Inerte` desligado) e o `chegando` do shader cai a 0",
+				  energiaParou, $"bola {bola}: inerte {lancada?.Inerte}, chegando {lancada?.ChegandoDeTeste}");
+			ProjetilDesenhado.EnergiaChegaSempreDeTeste = true;
+			bool sempre = lancada?.ChegandoDeTeste == 1f;
+			ProjetilDesenhado.EnergiaChegaSempreDeTeste = false;
+			Injeta("(o jogo de antes: a energia chega sempre) a bola lancada voltaria a ter a energia chegando", sempre);
 			await Quadros(3);
 			await FotoSeHouverJanela("dv030-gk-2-saindo-na-frente");
-			bool preso = saiu && await Ate(() => cli.EfeitosAtivos.Contains(Protocol.EfeitoDaTravaDeTecnica)
-																		  && eu.PorQueNaoAnda.Contains("preso pela tecnica", StringComparison.Ordinal), 2);
+			bool preso = saiu && await Ate(() => Preso() && eu.PorQueNaoAnda.Contains("preso pela tecnica", StringComparison.Ordinal), 2);
 			float andou = await SegurarD(0.5);
 			Checa("**LANCADA, O CORPO FICA PRESO NA MINHA TELA TAMBEM** (*\"o certo era so desativar inputs ate liberar o movimento\"*): a trava chega pelo fio, o meu boneco sabe por que nao anda, e a tecla de andar NAO o tira do lugar -- nada de andar e ser puxado de volta",
 				  preso && andou < 2f,
-				  $"lancada={saiu} efeito={cli.EfeitosAtivos.Contains(Protocol.EfeitoDaTravaDeTecnica)} por que nao anda=\"{eu.PorQueNaoAnda}\" andou {andou:0.#} px");
+				  $"lancada={saiu} efeito={Preso()} por que nao anda=\"{eu.PorQueNaoAnda}\" andou {andou:0.#} px");
 
 			LocalPlayer.TravaDaTecnicaSoNoServidorDeTeste = true;
 			float comDefeito = await SegurarD(0.5);
@@ -1314,13 +1377,28 @@ public partial class RoboDaV030 : Node
 			Injeta("(a trava so no servidor, o jogo de antes) o meu boneco anda com a tecla e e puxado de volta -- o \"fica te teleportando pra posiçao q vc tava\"",
 				   comDefeito > 2f, $"andou {comDefeito:0.#} px");
 
-			bool solto = await Ate(() => srv.PalcoV30_FaseDaGenkidama(cli.LocalId) == -1
-																  && !cli.EfeitosAtivos.Contains(Protocol.EfeitoDaTravaDeTecnica), 6);
+			// ---- (adendo 15) O SOCO FICA ENQUANTO A TRAVA DURA, e sai com ela ----
+			var naTrava = await Amostrar(Preso, 0.3);
+			Checa("**...E O SOCO FICA ATE A TRAVA SOLTAR** (*\"o personagem fica na animaçao de soco ate ele sair da paralisia da genkidama\"*): com a trava de pe, todo quadro na pose de tiro",
+				  naTrava.Quadros > 3 && naTrava.Socos == naTrava.Quadros, $"{naTrava.Socos} de {naTrava.Quadros} quadros socando com a trava de pe");
+			Jandirus.Server.GameServer.GenkidamaLancaSemSocoDeTeste = true;
+			bool caiuPreso = await Ate(() => !Socando() && Preso(), 0.6);
+			Jandirus.Server.GameServer.GenkidamaLancaSemSocoDeTeste = false;
+			Injeta("(o jogo de antes: o lancamento nao segura o soco) com a trava ainda de pe, o meu boneco sai da pose de tiro", caiuPreso);
+			await Ate(() => Socando() || !Preso(), 0.4);
+
+			bool solto = await Ate(() => Fase() == -1 && !Preso(), 6);
+			bool largou = solto && await Ate(() => !Socando(), 0.5);
+			Checa("...e quando a trava solta, o soco sai junto", largou, $"solto {solto}; socando agora {Socando()}");
 			float depois = await SegurarD(0.5);
 			Checa("...e quando a trava acaba o efeito sai do fio e o corpo anda de novo", solto && depois > 8f, $"solto={solto} andou {depois:0.#} px");
 		}
 		finally
 		{
+			cli.TiroNasceu -= OuvirNascimento;
+			Jandirus.Server.GameServer.GenkidamaSocaAoCrescerDeTeste = false;
+			Jandirus.Server.GameServer.GenkidamaLancaSemSocoDeTeste = false;
+			ProjetilDesenhado.EnergiaChegaSempreDeTeste = false;
 			LocalPlayer.TravaDaTecnicaSoNoServidorDeTeste = false;
 			Tecla(Key.D, false);
 			World.Instancia?.AplicarZoom(Boot.Config.Zoom);

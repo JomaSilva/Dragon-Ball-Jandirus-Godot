@@ -105,7 +105,9 @@ public static class GainKnobs
 	/// <summary>
 	/// O PISO DO BONUS DO MESTRE (dono, 2026-10-13: *"treinar com o seu mestre (do sistema de mestre e aluno) deveria
 	/// dar um bonus de ganhos de bp, alunos treinando com alunos tb deveriam ganhar um bonus de ganho mas menor do q
-	/// treinar com o mestre"*): contra o proprio mestre o ganho nunca e menor que isto, seja qual for o poder dele.
+	/// treinar com o mestre"*): contra o proprio mestre o ganho nunca e menor que isto -- enquanto o aluno nao o SUPERAR em
+	/// BP base (dono, 2026-10-16: *"se um aluno superar o mestre ele n ganha mais o bonus de bp so ganhando a troca"*; ver
+	/// <see cref="AlunoQueSuperouComBonusDeTeste"/>).
 	///
 	/// DIVERGENCIA DECLARADA. No DM o bonus do mestre so valia com ele pelo menos 1,2x mais forte em BP base
 	/// (`MST_GAIN_FLOOR`, `combatgains.dm:98`): abaixo disso treinar com o mestre rendia o mesmo que treinar com um
@@ -122,6 +124,13 @@ public static class GainKnobs
 	/// jogo, sempre.
 	/// </summary>
 	public static bool MestreSemPisoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--mestreteste`): o aluno que superou o mestre em BP base volta a ganhar o bonus dele (o piso
+	/// de <see cref="MasterGainMin"/>) -- a regra de 2026-10-13, de antes da de 2026-10-16. Lido pelo `Fighter.FightGainMult`.
+	/// Falso em jogo, sempre.
+	/// </summary>
+	public static bool AlunoQueSuperouComBonusDeTeste;
 
 	/// <summary>
 	/// O BONUS DE TREINAR COM UM COLEGA -- outro aluno do MESMO mestre (dono, 2026-10-13: *"alunos treinando com

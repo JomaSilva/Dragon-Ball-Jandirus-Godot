@@ -1093,6 +1093,20 @@ public sealed class AccountStore(string pasta)
         pl.Ficha.studying = 0;
         pl.Ficha.kibuffon = 0;
 
+        // ============================ (v0.3.1) O KAIO-KEN NUNCA ESTA ACESO NO LOGIN ============================
+        // O buff e da SESSAO (`GameServer._buffs`), e o `KaioPcnt` e o numero VIVO dele (1 = apagado, `base.dm:12`), que so
+        // ele escreve. Ate a v0.3.0 o save levava o buff aceso (ver `GameServer.FichaSemOsBuffs`), e quem saia com o
+        // Kaio-ken de pe voltava com o numero preso e sem o buff: a ficha lenta dizia "aceso", o botao mandava apagar, o
+        // servidor (sem buff) acendia OUTRO por cima, e a escolha do multiplicador nunca mais abria -- o "travado no kaioken
+        // times 6" do amigo do dono (2026-10-16). Esta linha e a CURA dos saves gravados assim. O ultimo multiplicador
+        // escolhido (`KaiokenVezes`) fica: e nele que a tela de escolha abre.
+        //
+        // SO O KAIO-KEN TEM CURA AQUI: o `KaioPcnt` e o unico numero de buff que nada alem do buff escreve, e por isso o
+        // valor de descanso dele e sabido. Os outros (`Tphysoff`, `DrainMod`, `formsBuff`...) somam com o que e permanente
+        // (forma, equipamento, skill), e um resto deles no save nao se separa do resto da ficha.
+        // ====================================================================================================
+        if (!GameServer.KaiokenAcesoAtravessaOLoginDeTeste) pl.Ficha.KaioPcnt = 1;
+
         // A IDADE PRECISA CHEGAR NA FICHA, e nao so no jogador: quem calcula poder e ela, e o
         // divisor de idade le daqui. Sem esta linha a curva de `Envelhecimento` receberia sempre o
         // 18 do valor inicial, e um ancia de 300 anos lutaria como um adulto no auge.

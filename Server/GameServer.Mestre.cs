@@ -46,7 +46,8 @@ public sealed record PedidoDeMestre(bool Despertar, string SigMestre, string Nom
 /// ==============================================================================================
 ///
 /// ============================ E O QUE ELE FAZ SAO TRES COISAS ============================
-///   1. **Ganho** -- treinar contra o proprio mestre paga de 2x a 3x (o piso e do dono: `GainKnobs.MasterGainMin`),
+///   1. **Ganho** -- treinar contra o proprio mestre paga de 2x a 3x (o piso e do dono: `GainKnobs.MasterGainMin`) ate o
+///      aluno o superar em BP base, quando o bonus acaba (dono, 2026-10-16),
 ///      e contra um COLEGA -- outro aluno do mesmo mestre -- 1,5x (<see cref="EhColegaDeMestre"/>). Ver
 ///      <see cref="EhMeuMestre"/>: e o segundo parametro do `Fighter.FightGainMult`, que estava
 ///      escrito e **orfao** desde que foi portado -- sete chamadores, todos passando um argumento
@@ -178,6 +179,7 @@ public partial class GameServer
 					 + $"({ContarAlunos(mestre.Assinatura)}/{Discipulado.MaxAlunos}).");
 		Avisar(aluno, $"{mestre.Name} agora e seu mestre. Treinar contra ele rende de "
 					+ $"{Jandirus.Core.Stats.GainKnobs.MasterGainMin:0.#}x a {Jandirus.Core.Stats.GainKnobs.MasterGainCap:0.#}x mais "
+					+ "enquanto ele for mais forte que voce "
 					+ $"(e contra outro aluno dele, {Jandirus.Core.Stats.GainKnobs.ColegaDeMestreGain:0.#}x), "
 					+ "e ele pode te guiar numa transformacao e te ensinar o que sabe.");
 	}

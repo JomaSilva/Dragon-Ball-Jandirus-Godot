@@ -1,4 +1,5 @@
 ﻿using System.Reflection;
+using System.Text.Json;
 using Godot;
 using Jandirus.Core.Stats;
 
@@ -141,9 +142,7 @@ public partial class GameServer
 		Dictionary<string, BuffAtivo> meus = BuffsDe(pl.Id);
 		if (!meus.Remove(id, out BuffAtivo? b)) return false;
 
-		foreach ((string campo, double v) in b.Somas) Somar(pl.Ficha, campo, -v);
-		foreach ((string campo, double v) in b.Fatores) Multiplicar(pl.Ficha, campo, 1 / v);
-		if (b.Dreno != 0 && b.Dreno != 1) pl.Ficha.DrainMod /= b.Dreno;
+		Desfazer(pl.Ficha, b);
 
 		SincronizarBuffDeKi(pl);   // ver `BuffsDeKi`: a chave e DERIVADA do que sobrou ligado
 		pl.Ficha.Statify();
@@ -152,6 +151,55 @@ public partial class GameServer
 		SincronizarPorte(pl, id);
 		return true;
 	}
+
+	/// <summary>DESFAZ NUMA FICHA exatamente o que um buff aplicou: a soma subtraindo, o fator e o dreno dividindo.</summary>
+	private static void Desfazer(Fighter f, BuffAtivo b)
+	{
+		foreach ((string campo, double v) in b.Somas) Somar(f, campo, -v);
+		foreach ((string campo, double v) in b.Fatores) Multiplicar(f, campo, 1 / v);
+		if (b.Dreno != 0 && b.Dreno != 1) f.DrainMod /= b.Dreno;
+	}
+
+	/// <summary>
+	/// (v0.3.1) A FICHA COMO ELA FICA SEM OS BUFFS DE AGORA -- e e ESTA que vai pro disco (`Persistir`).
+	///
+	/// ============================ O KAIO-KEN QUE FICAVA PRESO (dono, 2026-10-16) ============================
+	/// *"meu amigo ... agora ele n consegue mais escolher o kaioken, e fica travado no kaioken times 6"*. O save grava o
+	/// `Fighter` INTEIRO (`AccountStore.DeJogador`), e o buff mora nele: o `KaioPcnt` do Kaio-ken, os `T*` dos buffs de corpo,
+	/// o `DrainMod`. O registro do buff (`_buffs`) e da SESSAO e nao vai pro disco. Quem saia do jogo com um buff aceso (o
+	/// `Drop` grava sem derrubar nada, e o salvamento de dois em dois minutos grava com tudo de pe) voltava com o NUMERO do buff
+	/// na ficha e sem o buff: o Kaio-ken "aceso" pra sempre (a ficha lenta diz aceso pelo `KaioPcnt`), cada aperto do botao
+	/// acendendo outro x6 POR CIMA, e a tela de escolha nunca mais abrindo. No DM o logout derruba os buffs ANTES do save
+	/// (`clearbuffs()` no `DoLogoutStuff`, `Login.dm:204`).
+	///
+	/// AQUI, NO SAVE, E NAO SO NO LOGOUT: o salvamento periodico e os outros `Persistir` do jogo gravam no meio do buff, e um
+	/// servidor que caia ou feche entre um deles e o logout deixaria o mesmo numero preso. A copia vai pelo JSON (o caminho do
+	/// proprio save, como a do `DarCorpoProprio`), e a ficha VIVA nao e tocada: o buff segue aceso, e apagar continua devolvendo
+	/// cada numero exato.
+	/// =========================================================================================================
+	/// </summary>
+	private Fighter FichaSemOsBuffs(ServerPlayer pl)
+	{
+		Dictionary<string, BuffAtivo> meus = BuffsDe(pl.Id);
+		if (meus.Count == 0 || BuffVaiProDiscoDeTeste) return pl.Ficha;
+		Fighter copia = JsonSerializer.Deserialize<Fighter>(JsonSerializer.Serialize(pl.Ficha, CopiaDeFicha), CopiaDeFicha)!;
+		foreach (BuffAtivo b in meus.Values) Desfazer(copia, b);
+		copia.kibuffon = 0;   // a chave e DERIVADA dos buffs de pe (`SincronizarBuffDeKi`): sem nenhum, desligada
+		copia.Statify();
+		return copia;
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`, familia KP): o save volta a levar os buffs acesos na ficha -- o jogo de antes.
+	/// Lido pela <see cref="FichaSemOsBuffs"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool BuffVaiProDiscoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`, familia KP): o login volta a aceitar o Kaio-ken gravado aceso -- quem ficou
+	/// preso continua preso. Lido pelo `AccountStore.ParaJogador`. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool KaiokenAcesoAtravessaOLoginDeTeste;
 
 	/// <summary>
 	/// (2026-10-15) O TAMANHO DO CORPO E DE QUEM VE: a Forma Gigante muda o porte do corpo, e a zona inteira precisa
@@ -174,8 +222,9 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// DERRUBA TUDO. Chamado no nocaute, na morte e ao sair -- e a rede de seguranca que impede
-	/// buff de sobreviver ao corpo que o sustentava.
+	/// DERRUBA TUDO. Chamado no nocaute e na morte -- e a rede de seguranca que impede
+	/// buff de sobreviver ao corpo que o sustentava. (A SAIDA do jogo nao passa por aqui: quem impede o buff de ir pro disco e
+	/// o `Persistir`, que grava a ficha sem ele -- ver <see cref="FichaSemOsBuffs"/>.)
 	///
 	/// SEM ISTO O BUFF VIRA PATRIMONIO: um jogador que apaga com Kaioken ligado acordaria com o
 	/// multiplicador de pe e sem nada consumindo Ki. E o jeito classico de um numero temporario

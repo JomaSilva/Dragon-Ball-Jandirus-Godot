@@ -384,8 +384,8 @@ public sealed partial class Fighter
     /// e estavel comparando o poder de verdade.
     ///
     /// Nunca reduz: oponente igual ou mais fraco da 1x -- menos o MESTRE, que rende no minimo
-    /// <see cref="GainKnobs.MasterGainMin"/> seja qual for o poder dele (regra do dono, 2026-10-13; no DM, abaixo de
-    /// 1,2x de gap o bonus do mestre valia 1).
+    /// <see cref="GainKnobs.MasterGainMin"/> enquanto o aluno nao o SUPERAR em BP base (regras do dono, 2026-10-13 e
+    /// 2026-10-16; no DM, abaixo de 1,2x de gap o bonus do mestre valia 1). Quem superou fica so com o gap geral.
     ///
     /// (2026-10-13) E CONTRA UM COLEGA -- outro aluno do mesmo mestre -- o ganho nunca e menor que
     /// <see cref="GainKnobs.ColegaDeMestreGain"/>: *"alunos treinando com alunos tb deveriam ganhar um bonus de ganho
@@ -409,6 +409,12 @@ public sealed partial class Fighter
 
         // LINEAR PELA RAZAO DOS BPs BASE, entre o piso e o teto (`combatgains.dm:97-98`).
         double r = Math.Max(outro.BP, 1) / Math.Max(BP, 1);
+
+        // (2026-10-16) QUEM SUPEROU O MESTRE NAO TEM MAIS O BONUS DELE -- regra do dono: *"se um aluno superar o mestre ele n
+        // ganha mais o bonus de bp so ganhando a troca"*. Superar e passar dele em BP BASE, a mesma regua do bonus; fica o gap
+        // geral, que contra um mestre mais fraco vale 1x (e a troca PvP por cima, no servidor). O lado do mestre nao muda: o
+        // bonus nunca foi de quem ensina.
+        if (r < 1 && !GainKnobs.AlunoQueSuperouComBonusDeTeste) return geral;
         double piso = GainKnobs.MestreSemPisoDeTeste ? 1 : GainKnobs.MasterGainMin;
         double bonus = Math.Clamp(r, piso, GainKnobs.MasterGainCap);
         return Math.Max(geral, bonus);   // ter mestre nunca pode PIORAR o ganho

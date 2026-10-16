@@ -39,6 +39,9 @@ uniform float chama : hint_range(0.0, 1.0) = 0.0;       // costas e rastro em la
 uniform float escuro : hint_range(0.0, 1.0) = 0.0;      // miolo escuro, casca acesa (a Death Ball)
 uniform float fervura : hint_range(0.0, 1.0) = 0.0;     // superficie de sol (a Supernova)
 uniform float calma : hint_range(0.0, 1.0) = 0.0;       // grande, clara e mansa (a Genkidama)
+/// (v0.3.1) A ENERGIA AINDA CHEGANDO: 1 enquanto a Genkidama se forma (a bola ainda na mao, `ProjetilDesenhado.Inerte`), 0
+/// depois que ela sai -- o dono, 2026-10-16. So o bloco "A ENERGIA QUE CHEGA" le.
+uniform float chegando : hint_range(0.0, 1.0) = 0.0;
 uniform float eletrico : hint_range(0.0, 1.0) = 0.0;    // descargas pela casca
 uniform float pontilhado : hint_range(0.0, 1.0) = 0.0;  // pontos girando em volta
 uniform float pontos = 8.0;                             // quantos (1 = um satelite)
@@ -290,8 +293,9 @@ void fragment() {
 
 	// (v0.3.0) A ENERGIA QUE CHEGA: pontos de luz vindo de fora pra dentro da Genkidama -- os `Spirit.dmi` que o DM soltava em
 	// volta e mandava andar ate a bola (`SpiritBomb.dm:110-116`), e os brilhos em volta da esfera na imagem do anime. Ficam
-	// dentro do alcance do halo, que e ate onde o quad vai.
-	if (calma > 0.001) {
+	// dentro do alcance do halo, que e ate onde o quad vai. (v0.3.1) E SO ENQUANTO ELA SE FORMA (`chegando`): no DM os lacos que
+	// soltavam os pontos paravam no disparo (`while(... && holding)`, `:110` e `:132`), e o dono pediu o mesmo -- lancada, a energia ja chegou.
+	if (calma > 0.001 && chegando > 0.001) {
 		float luz_f = 0.0;
 		for (int k = 0; k < 12; k++) {
 			float sk = floor(semente * 7.0) + float(k) * 17.0;
@@ -302,7 +306,7 @@ void fragment() {
 			float vida = smoothstep(0.0, 0.12, ciclo) * (1.0 - smoothstep(0.80, 1.0, ciclo));
 			luz_f += (1.0 - smoothstep(tam * 0.4, tam, length(p - c))) * vida;
 		}
-		luz_f = clamp(luz_f, 0.0, 1.0) * calma * (1.0 - dentro);
+		luz_f = clamp(luz_f, 0.0, 1.0) * calma * chegando * (1.0 - dentro);
 		saida = mix(saida, mix(cor_manto, cor_nucleo, 0.65), luz_f);
 		alfa = max(alfa, luz_f);
 	}

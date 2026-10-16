@@ -5361,7 +5361,9 @@ public partial class GameServer : Node
 		if (acc == null && (pl.Peer == null || !_contas.TryGetValue(pl.Peer, out acc))) return;
 
 		pl.Ficha.Class = pl.Class;
-		acc.Slots[pl.Slot] = AccountStore.DeJogador(pl, NowMs());
+		CharacterSave salvo = AccountStore.DeJogador(pl, NowMs());
+		salvo.Ficha = FichaSemOsBuffs(pl);   // (v0.3.1) o que esta aceso NAO vai pro disco -- ver `FichaSemOsBuffs`
+		acc.Slots[pl.Slot] = salvo;
 		acc.VistoEm = NowMs();
 		_store.Gravar(acc);
 	}

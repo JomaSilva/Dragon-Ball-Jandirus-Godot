@@ -66,6 +66,10 @@ namespace Jandirus.Server;
 ///   F. OS ATAQUES DOS CHEFES -- o Freeza com o Death Beam e a Death Ball no arsenal da IA (item 5).
 ///   CC, GC, KK, GD. O ADENDO 12 -- o cano, a Genkidama em cima da cabeca, o Kaio-ken e a Genkidama que arrasta (itens 37 a
 ///      43): ver `GameServer.V030AdendoTeste.cs`.
+///   KP. (adendo 16, v0.3.1) O KAIO-KEN PRESO NO SAVE -- o disco nao leva o buff aceso, e o login cura quem ja ficou preso
+///      (item 47): ver `GameServer.V030AdendoTeste.cs`.
+///   GS. (adendo 15, v0.3.1) A GENKIDAMA SO SOCA AO SAIR -- nada de pose ao formar e crescer, e o soco do lancamento ate a
+///      trava soltar (item 46): ver `GameServer.V030AdendoTeste.cs`.
 /// </summary>
 public sealed partial class GameServer
 {
@@ -124,7 +128,9 @@ public sealed partial class GameServer
 			// estouro colossal da ultima racha o chao em volta.
 			OCanoV30();
 			AGenkidamaEmCimaDaCabecaV30();
+			AGenkidamaSoSocaAoSairV30();   // (adendo 15) antes da GD, pelo corredor de terra firme que ela racha
 			OKaiokenV30();
+			OKaiokenPresoNoSaveV30();   // (adendo 16) antes da GD: nao precisa de chao, mas a GD racha o que houver
 			AGenkidamaQueArrastaV30();
 		}
 		catch (Exception e)
@@ -193,6 +199,10 @@ public sealed partial class GameServer
 		GenkidamaComoAntesDeTeste = false;
 		XNaoApagaOKaiokenDeTeste = false;
 		ColossalMoiNoMuroDeTeste = false;
+		BuffVaiProDiscoDeTeste = false;
+		KaiokenAcesoAtravessaOLoginDeTeste = false;
+		GenkidamaSocaAoCrescerDeTeste = false;
+		GenkidamaLancaSemSocoDeTeste = false;
 	}
 
 	// =====================================================================

@@ -1559,6 +1559,11 @@ public static class Protocol
         /// golpe vai pelo snapshot (`AtaqueAte`); este gesto so manda o desenho girar (`CharacterVisual.Girar`).
         /// </summary>
         Giro = 4,
+        /// <summary>
+        /// (v0.3.1) A GENKIDAMA SE ERGUE: so o som, `spiritbomb.wav` (`SpiritBomb.dm:41`). A bola nasce na mao SEM o gesto de
+        /// tiro (`GameServer.Disparar`, `naMao`): o soco e o do lancamento, e a pose dele vai pelo snapshot.
+        /// </summary>
+        ErgueAGenkidama = 5,
     }
 
     /// <summary>O primeiro byte do <see cref="S2C.GodKi"/>: como esta o ki divino deste personagem.</summary>
@@ -3689,11 +3694,23 @@ public struct ProjetilState
     /// </summary>
     public float Escala;
 
+    /// <summary>
+    /// (v0.3.1) A BOLA AINDA NA MAO (`Core.Combat.Projetil.Inerte`): a Genkidama e a Death Ball se formando, o alvo de treino.
+    ///
+    /// ESTADO E NAO EVENTO, como o resto daqui: a Genkidama nasce na mao, renasce maior a cada pulso e SAI DA MAO no lancamento
+    /// sem nascer de novo -- o unico jeito de a tela saber que ela saiu e o snapshot dizer. Quem le e a energia que chega nela
+    /// (`ProjetilDesenhado.Inerte`; o dono, 2026-10-16: *"o efeito das particulas vindo deveriam so aparecer enquanto a
+    /// genkidama carrega, quando lançar a genkidama essas particuals somem"*) e o som da saida que ela guardava
+    /// (`World.AoMoverTiros`). Um bit, no byte de flags que ja existe, e pra todo tipo.
+    /// </summary>
+    public bool Inerte;
+
     private const byte MascaraDoTipo = 0x03;
     private const byte BitTemCauda = 0x04;
     private const byte BitSolto = 0x08;
     private const byte BitArrasta = 0x10;
     private const byte BitPrensado = 0x20;
+    private const byte BitInerte = 0x40;
     private const byte BitEscala = 0x80;
 
     public void Write(NetDataWriter w)
@@ -3703,7 +3720,7 @@ public struct ProjetilState
         bool cauda = (Tipo & MascaraDoTipo) == (byte)Jandirus.Core.Combat.TipoDeProjetil.Beam;
         w.Put((byte)((Tipo & MascaraDoTipo) | (cauda ? BitTemCauda : 0) | (cauda && Solto ? BitSolto : 0)
                      | (cauda && Arrasta != 0 ? BitArrasta : 0) | (cauda && Prensado ? BitPrensado : 0)
-                     | (cauda && Escala > 0f ? BitEscala : 0)));
+                     | (cauda && Escala > 0f ? BitEscala : 0) | (Inerte ? BitInerte : 0)));
         if (cauda) w.PutVec(Cauda);
         if (cauda && Arrasta != 0) w.Put(Arrasta);
         if (cauda && Escala > 0f) w.Put(Protocol.EscalaDeProjetilEmByte(Escala));
@@ -3718,6 +3735,7 @@ public struct ProjetilState
         p.Solto = (flags & BitSolto) != 0;
         p.Arrasta = (flags & BitArrasta) != 0 ? r.GetInt() : 0;
         p.Prensado = (flags & BitPrensado) != 0;
+        p.Inerte = (flags & BitInerte) != 0;
         p.Escala = (flags & BitEscala) != 0 ? Protocol.DeEscalaDeProjetil(r.GetByte()) : 0f;
         return p;
     }
@@ -3767,7 +3785,13 @@ public readonly record struct NascimentoDeProjetil(
     /// COM QUE SOM ELE SAI -- `Core.Combat.SomDeKi`, decidido no servidor pela tecnica que atirou (o cliente so
     /// conhece o tipo e a arte). Zero = calado: o tiro de bancada, o pedaco que nasce de um corte.
     /// </summary>
-    byte Som = 0);
+    byte Som = 0,
+    /// <summary>
+    /// (v0.3.1) NASCEU NA MAO, e nao foi atirado: a Genkidama se formando e renascendo maior a cada pulso
+    /// (`GameServer.Disparar`, `naMao`). O corpo nao faz o gesto de tiro, e o som da saida (`Som`) espera a bola SAIR -- o
+    /// snapshot desligar o `ProjetilState.Inerte`. Bit 1 das flags do nascimento.
+    /// </summary>
+    bool NaMao = false);
 
 /// <summary>
 /// A SERIALIZACAO DE UMA TECNICA INVENTADA -- as duas pontas, no MESMO arquivo.

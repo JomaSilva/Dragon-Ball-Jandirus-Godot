@@ -359,6 +359,36 @@ public partial class ProjetilDesenhado : Node2D
 	public bool Prensado;
 
 	/// <summary>
+	/// (v0.3.1) A BOLA AINDA NA MAO (`ProjetilState.Inerte`): a Genkidama se formando -- e a Death Ball carregando e o alvo de
+	/// treino, que nao leem isto. Nasce do pacote de nascimento (`NascimentoDeProjetil.NaMao`) e o snapshot a mantem: e ele quem
+	/// diz que ela SAIU. Quem le e a energia que chega na Genkidama (<see cref="Chegando"/>) -- o dono, 2026-10-16: *"o efeito
+	/// das particulas vindo deveriam so aparecer enquanto a genkidama carrega, quando lançar a genkidama essas particuals
+	/// somem"*.
+	/// </summary>
+	public bool Inerte;
+
+	/// <summary>
+	/// (v0.3.1) O SOM COM QUE A BOLA NASCIDA NA MAO VAI SAIR, guardado do pacote de nascimento ate ela sair
+	/// (`World.AoMoverTiros`). `Nenhum` pra todo tiro que ja saiu ao nascer.
+	/// </summary>
+	public Jandirus.Core.Combat.SomDeKi SomDaSaida;
+
+	/// <summary>A energia que chega na Genkidama corre? So com a bola na mao -- ver <see cref="Inerte"/>.</summary>
+	private float Chegando => Inerte || EnergiaChegaSempreDeTeste ? 1f : 0f;
+
+	/// <summary>O `chegando` que este node escreve no shader. So pra bancada (`--diagv030`, GK).</summary>
+	public float ChegandoDeTeste => Chegando;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--diagartedeki` familia 8, `--diagv030` GK): a energia chega na Genkidama sempre, voando ou nao -- o
+	/// jogo de antes. Lido pelo <see cref="Chegando"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool EnergiaChegaSempreDeTeste;
+
+	/// <summary>O nome do uniform, guardado: ele e escrito a cada desenho, e um `StringName` feito por quadro e lixo pro coletor.</summary>
+	private static readonly StringName UniChegando = "chegando";
+
+	/// <summary>
 	/// ONDE O NO DE UM CORPO ESTA DESENHADO, por id -- quem responde e o `World`. Nulo = sem mundo (a previa
 	/// da mesa, as bancadas sem rede), e nem a ancora nem a mao perguntam por corpo nenhum.
 	/// </summary>
@@ -874,6 +904,7 @@ public partial class ProjetilDesenhado : Node2D
 	{
 		float rastro = _estiloDaBola.Rastro * _raioDaBola * (SempreVoando ? 1f : _veloz);
 		mat.SetShaderParameter("rastro", rastro);
+		mat.SetShaderParameter(UniChegando, Chegando);   // (v0.3.1) a energia que chega na Genkidama: so com ela na mao
 
 		Vector2 eixo = _estiloDaBola.SemGiro || !_temRumo ? Vector2.Right : _rumo;
 		PintorDeKi.Quadro(this, Vector2.Zero, eixo, PintorDeKi.MeiaDaBola(_estiloDaBola, _raioDaBola), rastro);

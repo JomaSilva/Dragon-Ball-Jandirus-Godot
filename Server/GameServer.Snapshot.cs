@@ -250,6 +250,8 @@ public partial class GameServer
 			{
 				Id = p.Id, Pos = p.Pos, Tipo = (byte)p.Tipo, Cauda = p.Cauda,
 				Solto = !p.Canalizando,
+				// (v0.3.1) A BOLA AINDA NA MAO (a Genkidama se formando): ver `ProjetilState.Inerte`.
+				Inerte = p.Inerte,
 				// SO QUEM O FEIXE LEVA DE VERDADE: o arrasto ou a moida encostada. Ver `ProjetilState.Arrasta`.
 				Arrasta = p.Arrastando,
 				// A DISPUTA SE VE NO FEIXE, e por todo mundo: ver `ProjetilState.Prensado`.

@@ -522,8 +522,15 @@ public sealed partial class GameServer
 	/// VAZIO E LEGITIMO: e o que a bancada e os tiros sem tecnica passam, e a resposta e
 	/// <see cref="ArteDeKi.Nenhuma"/> -- desenho por primitiva, como antes desta funcionalidade.
 	/// </param>
+	/// <param name="naMao">
+	/// (v0.3.1) A BOLA NASCE NA MAO, e nao e atirada: a Genkidama se formando e renascendo maior a cada pulso (o "CRESCER E
+	/// RENASCER" do `GameServer.Tecnicas.G12`). O corpo NAO faz o gesto de tiro (a pose), e o pacote de nascimento diz isso
+	/// (`NascimentoDeProjetil.NaMao`): o cliente nao recomeca a pose nem toca o som da saida -- guarda o som pra quando ela
+	/// SAIR (o snapshot desligar o `Inerte`, que quem liga continua sendo quem chama). O dono, 2026-10-16: *"sempre q a
+	/// genkidama aumenta o personagem faz animaçao de soco oq n deveria ser"*.
+	/// </param>
 	private Projetil Disparar(ServerPlayer pl, ReceitaDeProjetil r,
-							  Vec2? rumoDado = null, Vec2? deOnde = null, string verbo = "")
+							  Vec2? rumoDado = null, Vec2? deOnde = null, string verbo = "", bool naMao = false)
 	{
 		// COM ALGUEM MARCADO, O TIRO SAI NELE (dono, 2026-10-09) -- e o corpo vira junto. Ver `RumoDoTiro`.
 		// Quem ja traz o rumo pronto (a rajada sorteada, a mina que nasce em volta do alvo) nao e mexido.
@@ -650,8 +657,8 @@ public sealed partial class GameServer
 
 		lista.Add(p);
 		_projeteisVivos++;
-		AnunciarProjetil(pl.Zone.Hash, Protocol.ProjetilSub.Nasceu, p);
-		FazerAPoseDeTiro(pl);
+		AnunciarProjetil(pl.Zone.Hash, Protocol.ProjetilSub.Nasceu, p, naMao);
+		if (!naMao) FazerAPoseDeTiro(pl);   // (v0.3.1) a bola na mao ainda nao e um tiro -- ver `naMao`
 		PrenderOGanhoNoTiro(pl, p);   // o ganho de ki do gesto viaja com o tiro -- ver `GameServer.Ganhos.cs`
 		return p;
 	}
@@ -2873,7 +2880,7 @@ public sealed partial class GameServer
 	/// NASCEU / MORREU pra zona inteira, no canal CONFIAVEL. Ver <see cref="Protocol.S2C.Projetil"/>
 	/// sobre por que estes dois momentos nao viajam junto da posicao.
 	/// </summary>
-	private void AnunciarProjetil(ulong hash, Protocol.ProjetilSub sub, Projetil p)
+	private void AnunciarProjetil(ulong hash, Protocol.ProjetilSub sub, Projetil p, bool naMao = false)
 	{
 		var w = Protocol.Begin(Protocol.S2C.Projetil);
 		w.Put((byte)sub);
@@ -2902,7 +2909,8 @@ public sealed partial class GameServer
 			w.PutVec(p.Pos);
 			// AS FLAGS VAO NO FIM (crescer pelo fim e o que mantem escritor e leitor faceis de conferir
 			// lado a lado): bit 0 = nasceu invisivel (a lamina de ar do Kiai). Ver `Projetil.Invisivel`.
-			w.Put((byte)(p.Invisivel ? 1 : 0));
+			// (v0.3.1) bit 1 = nasceu NA MAO (a Genkidama se formando): ver o `naMao` do `Disparar`.
+			w.Put((byte)((p.Invisivel ? 1 : 0) | (naMao ? 2 : 0)));
 			// ...E DEPOIS DELAS, O SOM (2026-10-13): com que arquivo o tiro sai. Ver `SomDeKi`.
 			w.Put((byte)p.Som);
 		}

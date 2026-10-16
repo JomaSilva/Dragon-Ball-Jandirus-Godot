@@ -1004,6 +1004,8 @@ public partial class World : Node2D
 		// invisivel -- decidido AQUI, por quem olha, porque o pacote e um so pra zona inteira.
 		no.Invisivel = n.Invisivel;
 		no.MostrarPara(VejoOInvisivel());
+		// (v0.3.1) A BOLA QUE NASCE NA MAO (a Genkidama se formando) comeca parada nela: o snapshot e quem diz quando ela sai.
+		no.Inerte = n.NaMao;
 		no.Mirar(p, p);
 		_atores.AddChild(no);
 		_tiros[n.Id] = no;
@@ -1019,18 +1021,29 @@ public partial class World : Node2D
 		// O SOM NAO SAI DA CAMERA: ouvir de onde veio e metade da leitura de uma luta a distancia.
 		// ======================================================================================================
 		var som = (Jandirus.Core.Combat.SomDeKi)n.Som;
-		string arquivo = Trilha.DoKi(som);
-		if (arquivo.Length > 0)
-		{
-			bool anda = Jandirus.Core.Combat.SonsDeKi.AndaComOAtaque(som);
-			Node2D fonte = anda ? no : Corpo(n.Dono) ?? no;
-			AudioDirector.EfeitoNoLugar(fonte, arquivo, anda ? 0.7f : 0.6f, anda ? 720f : 480f);
-		}
+		// (v0.3.1) A BOLA QUE NASCE NA MAO AINDA NAO SAIU: o som da saida espera ela sair (`AoMoverTiros`), e o corpo nao faz o
+		// gesto de tiro -- o dono, 2026-10-16: *"sempre q a genkidama aumenta o personagem faz animaçao de soco oq n deveria
+		// ser"* (cada pulso dela renasce a bola, e cada nascimento recomecava a pose).
+		if (n.NaMao) { no.SomDaSaida = som; return; }
+		TocarASaida(no, som);
 
 		// A POSE DE TIRO RECOMECA DO PRIMEIRO QUADRO (o `flick`), encaixada no tempo que o servidor a segura. So a
 		// bola: quem solta um raio ja esta na pose pelo canal, e reiniciar ali cortaria o desenho no meio.
 		if (no.Tipo != Jandirus.Core.Combat.TipoDeProjetil.Beam && !n.Invisivel)
 			VisualDe(n.Dono)?.RestartState("blast", 0.3);
+	}
+
+	/// <summary>
+	/// O SOM COM QUE UM TIRO SAI -- no nascimento de todo tiro, e no instante em que a bola que nasceu na mao SAI dela
+	/// (`AoMoverTiros`). Qual arquivo e de onde ele toca: o bloco "O SOM E O DO DM, POR TECNICA" do `AoNascerTiro`.
+	/// </summary>
+	private void TocarASaida(ProjetilDesenhado no, Jandirus.Core.Combat.SomDeKi som)
+	{
+		string arquivo = Trilha.DoKi(som);
+		if (arquivo.Length == 0) return;
+		bool anda = Jandirus.Core.Combat.SonsDeKi.AndaComOAtaque(som);
+		Node2D fonte = anda ? no : Corpo(no.Dono) ?? no;
+		AudioDirector.EfeitoNoLugar(fonte, arquivo, anda ? 0.7f : 0.6f, anda ? 720f : 480f);
 	}
 
 	/// <summary>
@@ -1042,6 +1055,17 @@ public partial class World : Node2D
 	private void AoMorrerTiro(int id, byte fim, Vec2 onde)
 	{
 		var ponto = new Vector2(onde.X, onde.Y);
+
+		// (v0.3.1) A BOLA NASCIDA NA MAO QUE MORRE DE VERDADE SAIU DELA, mesmo sem o snapshot ter dito: a Genkidama lancada contra
+		// um muro estoura no tique do lancamento, e o tiro morto nao viaja no snapshot (`GameServer.TirosDaZona`). O som da saida
+		// que ela guardava toca, e a energia que chega para. O renascer de cada pulso a mata com `Nenhum`, calado: esse nao e saida.
+		if (_tiros.TryGetValue(id, out ProjetilDesenhado? naMao) && naMao.Inerte
+			&& (Jandirus.Core.Combat.FimDeProjetil)fim != Jandirus.Core.Combat.FimDeProjetil.Nenhum)
+		{
+			if (naMao.SomDaSaida != Jandirus.Core.Combat.SomDeKi.Nenhum) TocarASaida(naMao, naMao.SomDaSaida);
+			naMao.SomDaSaida = Jandirus.Core.Combat.SomDeKi.Nenhum;
+			naMao.Inerte = false;
+		}
 
 		// ============================ A BOLA CHEGA ANTES DE ESTOURAR (2026-10-08) ============================
 		// O ponto que vem aqui e o do SERVIDOR, e o node desenhado ainda esta atras dele: pelo atraso do
@@ -1247,6 +1271,14 @@ public partial class World : Node2D
 				no.ArrastaId = t.Arrasta;
 				no.Prensado = t.Prensado;
 				no.EscalaDoServidor = t.Escala;
+				// (v0.3.1) A BOLA QUE NASCEU NA MAO SAIU DELA (o snapshot desligou o `Inerte`): e AGORA que ela sai, e o som da saida
+				// que ela guardava toca -- a Genkidama lancada (`SpiritBomb.dm:173`).
+				if (no.Inerte && !t.Inerte && no.SomDaSaida != Jandirus.Core.Combat.SomDeKi.Nenhum)
+				{
+					TocarASaida(no, no.SomDaSaida);
+					no.SomDaSaida = Jandirus.Core.Combat.SomDeKi.Nenhum;
+				}
+				no.Inerte = t.Inerte;
 			}
 	}
 
@@ -1309,6 +1341,10 @@ public partial class World : Node2D
 			if (IsInstanceValid(no))
 				yield return (id, no.Arte, no.Tipo, no.Position, no.Escala);
 	}
+
+	/// <summary>O NODE de um tiro desenhado, pelo id do servidor (nulo se nao ha). SO PRA BANCADA (`--diagv030`, GK).</summary>
+	public ProjetilDesenhado? TiroDesenhadoDeTeste(int id) =>
+		_tiros.TryGetValue(id, out ProjetilDesenhado? no) && IsInstanceValid(no) ? no : null;
 
 	/// <summary>
 	/// A COR DO TIRO DE UM CORPO DA ZONA -- o `blastR/G/B` do original, e **nao** a cor da chama.
@@ -3975,6 +4011,13 @@ public partial class World : Node2D
 		if (gesto == (byte)Protocol.GestoDoCorpo.Descer)
 		{
 			AudioDirector.EfeitoNoLugar(corpo, Trilha.Descer, 0.8f);
+			return;
+		}
+
+		// (v0.3.1) A GENKIDAMA SE ERGUE: so o som (`spiritbomb.wav`, `SpiritBomb.dm:41`) -- a bola nasce na mao, sem o gesto de tiro.
+		if (gesto == (byte)Protocol.GestoDoCorpo.ErgueAGenkidama)
+		{
+			AudioDirector.EfeitoNoLugar(corpo, Trilha.KiGenkidamaErguida, 0.6f, 480f);
 			return;
 		}
 

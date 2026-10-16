@@ -18,6 +18,11 @@ namespace Jandirus.Server;
 ///       nao o sustenta: o botao recusa no SSG, e virar SSG apaga o que estava aceso.
 ///   GD. A GENKIDAMA QUE ARRASTA -- leva o mais fraco como um raio, estoura no fim com a cratera ENORME, estoura (e nao moi)
 ///       prensando alguem num muro, e o estouro dela alcanca o dobro e meio do de uma bola comum (item 41).
+///   KP. (adendo 16, v0.3.1) O KAIO-KEN PRESO NO SAVE -- o disco nao leva o buff aceso (o Kaio-ken e as tres maos do motor de
+///       buffs), o login cura quem ja ficou preso, e a armadilha do amigo do dono reproduzida com a cura desligada (item 47).
+///   GS. (adendo 15, v0.3.1) A GENKIDAMA SO SOCA AO SAIR -- a pose de tiro nao arma ao formar nem a cada pulso (a bola nasce
+///       NA MAO, e o snapshot diz isso ate ela sair); arma no lancamento, fica a fase 3 inteira com a trava e cai com ela
+///       (item 46).
 ///
 /// A tela (a escolha do Kaio-ken, a trava da Genkidama no cliente, a pergunta do refugio uma vez so) e da `--diagv030`.
 /// </summary>
@@ -251,6 +256,96 @@ public sealed partial class GameServer
 	}
 
 	// =====================================================================
+	// GS) A GENKIDAMA SO SOCA AO SAIR (adendo 15, a v0.3.1)
+	// =====================================================================
+	/// <summary>
+	/// O dono (2026-10-16): *"eu percebi q sempre q a genkidama aumenta o personagem faz animaçao de soco oq n deveria ser, a
+	/// animaçao de soco é so quando joga ela e diferente das outras técnicas, o personagem fica na animaçao de soco ate ele
+	/// sair da paralisia da genkidama"*. Do lado do servidor, tique a tique: a pose de tiro (`ServerPlayer.GestoAte`, que o
+	/// snapshot leva como o `blast` do desenho) NAO arma ao formar nem a cada pulso -- a bola nasce NA MAO --; arma no
+	/// lancamento e fica a fase 3 inteira, junto da trava; e cai no tique em que a trava solta. E o snapshot diz que a bola esta
+	/// na mao (`ProjetilState.Inerte`) ate ela sair -- e o que apaga, na tela, a energia que chega nela (a `--diagv030` GK e a
+	/// `--diagartedeki` 8 medem a tela).
+	/// </summary>
+	private void AGenkidamaSoSocaAoSairV30()
+	{
+		GD.Print("[v030] --- GS) a Genkidama so soca ao sair: nada de pose ao formar e crescer, e o soco do lancamento ate a trava soltar (adendo 15) ---");
+
+		// UM CORREDOR SO, pras tres rodadas, e o ponteiro da varredura devolvido no fim: a Genkidama daqui nao anda nem estoura
+		// (a fase 3 corre so pelo tique da tecnica), entao o chao fica como estava -- e a GD, que vem depois, precisa de corredores.
+		int varreduraAntes = _pjProximoCorredor;
+		Vec2 lugar = CorredorDeTerraFirme(24);
+
+		(bool CresceuSemSoco, bool Lancou, string Detalhe) UmaGenkidama(string nome)
+		{
+			LimparTudoG12();
+			ServerPlayer goku = ForjarG12(nome, lugar, bp: 50_000, skills: [PathSpiritBombG12]);
+			goku.Facing = Facing.East;
+			var gestos = new List<(int Quem, byte Gesto)>();
+			EscutaDeGestos = gestos;
+			bool Posando() => goku.GestoAte > NowMs();
+			UsarHabilidade(goku, "SpiritBomb");
+			if (!_genkidamaG12.TryGetValue(goku.Id, out EstadoDaGenkidamaG12? g)) { EscutaDeGestos = null; return (false, false, "a Genkidama nao comecou"); }
+			bool ergueu = gestos.Exists(x => x.Quem == goku.Id && x.Gesto == (byte)Protocol.GestoDoCorpo.ErgueAGenkidama);
+			bool socouCrescendo = Posando();
+			bool naMao = true;
+			double escala0 = g.Escala;
+
+			// forma (3 s) e cresce dois pulsos: tique a tique, a pose e o que o snapshot diz da bola de agora
+			for (int i = 0; i < TiquesDeG12(3.1) + TiquesDeG12(4.0); i++)
+			{
+				TiquesG12(1);
+				socouCrescendo |= Posando();
+				naMao &= g.Bola is { } b && NoSnapshotV30(goku, b.Id) is { Inerte: true };
+			}
+			bool cresceu = g.Escala > escala0 + 0.15;
+			UsarHabilidade(goku, "SpiritBomb");   // pede o disparo: os 2 s da espera, e ela sai
+			for (int i = 0; i < TiquesDeG12(2.5) && g.Fase < 3; i++)
+			{
+				socouCrescendo |= Posando();
+				TickG12(Protocol.TickSeconds);
+			}
+			bool saiu = g.Fase == 3;
+			bool socou = saiu && Posando();
+			bool foraDaMao = saiu && g.Bola is { } lancada && NoSnapshotV30(goku, lancada.Id) is { Inerte: false };
+
+			// a fase 3 inteira: a pose de pe ANTES de cada tique, junto da trava -- e no tique em que a trava solta, a pose sai
+			bool segurou = saiu;
+			for (int i = 0; i < TiquesDeG12(4) && _genkidamaG12.ContainsKey(goku.Id); i++)
+			{
+				segurou &= Posando() && PresoPeloG12(goku.Id);
+				TickG12(Protocol.TickSeconds);
+			}
+			bool soltouJunto = !_genkidamaG12.ContainsKey(goku.Id) && !PresoPeloG12(goku.Id) && !Posando();
+			EscutaDeGestos = null;
+			return (cresceu && !socouCrescendo && naMao && ergueu, socou && segurou && soltouJunto && foraDaMao,
+						$"cresceu {cresceu} (escala {g.Escala:0.0}); pose ao formar/crescer {socouCrescendo}; na mao no snapshot {naMao}; "
+						+ $"som de erguer {ergueu}; saiu {saiu}; pose na saida {socou}; segurou a fase 3 com a trava {segurou}; "
+						+ $"soltou junto {soltouJunto}; fora da mao no snapshot {foraDaMao}");
+		}
+
+		var certa = UmaGenkidama("Goku GS");
+		AfirmarV30("**CRESCENDO, NADA DE SOCO** (*\"sempre q a genkidama aumenta o personagem faz animaçao de soco oq n deveria ser\"*): a pose de tiro nao arma ao formar nem a cada pulso -- a bola nasce NA MAO, e o snapshot diz isso ate ela sair; ao erguer, o som de erguer (`spiritbomb.wav`)",
+				   certa.CresceuSemSoco, certa.Detalhe);
+		AfirmarV30("**O SOCO E O DO LANCAMENTO, E FICA ATE A TRAVA SOLTAR** (*\"o personagem fica na animaçao de soco ate ele sair da paralisia da genkidama\"*): a pose arma na saida, fica de pe a fase 3 inteira junto da trava, e cai no tique em que ela solta -- e o snapshot passa a dizer que a bola saiu da mao",
+				   certa.Lancou, certa.Detalhe);
+
+		(bool CresceuSemSoco, bool Lancou, string Detalhe) socando, semSoco;
+		GenkidamaSocaAoCrescerDeTeste = true;
+		try { socando = UmaGenkidama("Goku GS que soca"); }
+		finally { GenkidamaSocaAoCrescerDeTeste = false; }
+		AfirmarV30("(defeito injetado: renascer com o gesto de tiro, o jogo de antes) a pose arma ao formar e a cada pulso -- a primeira regua REPROVA",
+				   !socando.CresceuSemSoco, socando.Detalhe);
+		GenkidamaLancaSemSocoDeTeste = true;
+		try { semSoco = UmaGenkidama("Goku GS sem soco"); }
+		finally { GenkidamaLancaSemSocoDeTeste = false; }
+		AfirmarV30("(defeito injetado: o lancamento sem soco, o jogo de antes) nenhuma pose na saida -- a segunda regua REPROVA",
+				   !semSoco.Lancou, semSoco.Detalhe);
+		LimparTudoG12();
+		_pjProximoCorredor = varreduraAntes;
+	}
+
+	// =====================================================================
 	// KK) O KAIO-KEN (item 37)
 	// =====================================================================
 	private void OKaiokenV30()
@@ -382,6 +477,94 @@ public sealed partial class GameServer
 		var noDeusComDefeito = NoDeus(defeito: true);
 		AfirmarV30("(defeito injetado: o Kaio-ken no Deus, o jogo de antes) ele acende no SSG e atravessa a entrada nele -- a regua de cima REPROVA",
 				   !noDeusComDefeito.Recusou && !noDeusComDefeito.ApagouAoEntrar, noDeusComDefeito.Detalhe);
+		LimparTudoDaBancada();
+	}
+
+	// =====================================================================
+	// KP) O KAIO-KEN PRESO NO SAVE (adendo 16, a v0.3.1)
+	// =====================================================================
+	/// <summary>
+	/// O dono (2026-10-16): *"meu amigo entrou com a versao errada do jogo, antes das mudanças de aura e kaioken, e agora ele n
+	/// consegue mais escolher o kaioken, e fica travado no kaioken times 6, faça com quem teve esse bug volte ao normal"*.
+	///
+	/// A CAUSA NAO ERA A VERSAO: o save grava a ficha inteira, com o numero do buff aceso nela, e o registro do buff e da sessao
+	/// -- quem saia (ou caia) com o Kaio-ken de pe voltava com o `KaioPcnt` preso e sem buff (ver `GameServer.FichaSemOsBuffs`).
+	/// Tres provas pela porta de producao, num disco de mentira (`PalcoDeApagamentos`, a pasta de saves nao e tocada):
+	///   (a) o SAVE nao leva o que esta aceso -- o Kaio-ken e as tres maos do motor de buffs (soma, dreno, fator) -- e a ficha
+	///       viva nao e tocada;
+	///   (b) com a cura do login desligada, a ARMADILHA do amigo, do disco gravado como antes ate o botao que nunca abre a escolha;
+	///   (c) o LOGIN da v0.3.1 cura esse mesmo disco: o Kaio-ken apagado, a escolha abrindo no x6 de sempre, e o x10 acendendo e
+	///       apagando exato.
+	/// O "login" e o funil de producao (`AccountStore.ParaJogador`) com o disco lido de novo, no MESMO corpo: a sessao nova nao
+	/// tem registro de buff nenhum, e o botao do cliente segue a ficha lenta (`TelaDeKaioken.Pedir`: aceso, manda o id nu pra
+	/// apagar; apagado, abre a escolha, que manda `Kaioken_N`).
+	/// </summary>
+	private void OKaiokenPresoNoSaveV30()
+	{
+		GD.Print("[v030] --- KP) o Kaio-ken preso no save: o disco nao leva o buff aceso, e o login cura quem ja ficou preso (adendo 16) ---");
+		LimparTudoDaBancada();
+		using PalcoDeApagamentos palco = PalcoDeApagamentosDeBancada();
+		ServerPlayer pl = ForjarKaiokenV30("Preso KP", TerraFirmeG12(4));
+		AccountSave acc = palco.Emprestar(pl.Conta, pl.Slot, AccountStore.DeJogador(pl, NowMs()));
+		double x6 = KaiokenCore.Multiplicador(6);
+		double tkioff = pl.Ficha.Tkioff, dreno = pl.Ficha.DrainMod, forms = pl.Ficha.formsBuff;
+		static bool Perto(double a, double b) => Math.Abs(a - b) < 1e-9;
+
+		// ---- (a) O SAVE NAO LEVA O QUE ESTA ACESO: o x6 do amigo, e um buff de bancada com a soma, o dreno e o fator ----
+		(bool DiscoLimpo, bool VivaIntacta, string Detalhe) Gravar(bool defeito)
+		{
+			UsarHabilidade(pl, "Kaioken_6");
+			LigarBuff(pl, "Bancada_KP", "buff de bancada", new() { ["Tkioff"] = 7 }, dreno: 3, fatores: new() { ["formsBuff"] = 2 });
+			BuffVaiProDiscoDeTeste = defeito;
+			try { Persistir(pl, acc); }
+			finally { BuffVaiProDiscoDeTeste = false; }
+			Jandirus.Core.Stats.Fighter? d = _store?.Carregar(pl.Conta)?.Slots[pl.Slot]?.Ficha;
+			bool limpo = d != null && Perto(d.KaioPcnt, 1) && Perto(d.Tkioff, tkioff) && Perto(d.DrainMod, dreno) && Perto(d.formsBuff, forms);
+			bool intacta = TemBuff(pl, BuffKaiokenG2) && Perto(pl.Ficha.KaioPcnt, x6) && Perto(pl.Ficha.Tkioff, tkioff + 7)
+							   && Perto(pl.Ficha.DrainMod, dreno * 3) && Perto(pl.Ficha.formsBuff, forms * 2);
+			UsarHabilidade(pl, "Kaioken");   // aceso, o botao apaga
+			DesligarBuff(pl, "Bancada_KP");
+			return (limpo, intacta, $"no disco: KaioPcnt {d?.KaioPcnt:0.###}, Tkioff {d?.Tkioff:0.###}, DrainMod {d?.DrainMod:0.###}, "
+								   + $"formsBuff {d?.formsBuff:0.###} (sem buff: 1 / {tkioff:0.###} / {dreno:0.###} / {forms:0.###})");
+		}
+		var certo = Gravar(defeito: false);
+		bool voltou = Perto(pl.Ficha.KaioPcnt, 1) && Perto(pl.Ficha.Tkioff, tkioff) && Perto(pl.Ficha.DrainMod, dreno) && Perto(pl.Ficha.formsBuff, forms);
+		AfirmarV30("**O SAVE NAO LEVA O QUE ESTA ACESO**: com o Kaio-ken x6 e um buff de soma, dreno e fator de pe, o disco recebe a ficha SEM eles -- e a ficha viva segue acesa, e apagar devolve cada numero exato",
+				   certo.DiscoLimpo && certo.VivaIntacta && voltou, $"{certo.Detalhe}; viva intacta {certo.VivaIntacta}; apagada voltou {voltou}");
+		var comDefeito = Gravar(defeito: true);   // e este disco, gravado como antes, e o do amigo nas duas provas de baixo
+		AfirmarV30("(defeito injetado: o save de antes, com a ficha inteira) o disco leva o x6 aceso e o buff -- a regua de cima REPROVA",
+				   !comDefeito.DiscoLimpo, comDefeito.Detalhe);
+
+		// ---- (b) e (c): o LOGIN, com o disco gravado aceso ----
+		(bool Curado, bool Armadilha, string Detalhe) Relogar(bool comCura)
+		{
+			CharacterSave? s = _store?.Carregar(pl.Conta)?.Slots[pl.Slot];   // o disco, lido de novo: o login de verdade le dele
+			if (s == null) return (false, false, "o disco nao tem o personagem");
+			KaiokenAcesoAtravessaOLoginDeTeste = !comCura;
+			try { AccountStore.ParaJogador(s, pl); }
+			finally { KaiokenAcesoAtravessaOLoginDeTeste = false; }
+			double noLogin = pl.Ficha.KaioPcnt;
+			Protocol.AtributosState? f0 = FichaLentaV30(pl);
+			bool abre = f0 is { KaiokenAceso: false, KaiokenVezes: 6 };
+			UsarHabilidade(pl, abre ? "Kaioken_10" : "Kaioken");   // o botao: apagado abre a escolha (o x10); aceso manda o id nu
+			double aceso = pl.Ficha.KaioPcnt;
+			bool x10 = TemBuff(pl, BuffKaiokenG2) && Perto(aceso, KaiokenCore.Multiplicador(10));
+			bool porCima = TemBuff(pl, BuffKaiokenG2) && Perto(aceso, 2 * x6 - 1);   // OUTRO x6 por cima do preso
+			UsarHabilidade(pl, "Kaioken");   // aceso, o botao apaga
+			Protocol.AtributosState? f1 = FichaLentaV30(pl);
+			bool apagou = f1 is { KaiokenAceso: false } && Perto(pl.Ficha.KaioPcnt, 1);
+			bool segueX6 = f1 is { KaiokenAceso: true, KaiokenVezes: 6 } && Perto(pl.Ficha.KaioPcnt, x6);
+			return (abre && x10 && apagou, f0 is { KaiokenAceso: true } && porCima && segueX6,
+						$"no login KaioPcnt {noLogin:0.###} (ficha lenta: aceso {f0?.KaiokenAceso}, x{f0?.KaiokenVezes}); o botao "
+						+ $"{(abre ? "abriu a escolha e mandou Kaioken_10" : "mandou o id nu")} -> KaioPcnt {aceso:0.###}; apertando de novo -> "
+						+ $"aceso {f1?.KaiokenAceso}, KaioPcnt {pl.Ficha.KaioPcnt:0.###}");
+		}
+		var preso = Relogar(comCura: false);
+		AfirmarV30("(defeito injetado: o login de antes, sem a cura) o disco gravado aceso e a ARMADILHA do amigo: a ficha lenta diz aceso, o botao manda apagar e o servidor -- sem buff nenhum -- acende OUTRO x6 por cima; apertar de novo devolve o x6 preso, e a escolha nunca abre",
+				   preso.Armadilha && !preso.Curado, preso.Detalhe);
+		var curado = Relogar(comCura: true);
+		AfirmarV30("**O LOGIN CURA QUEM JA FICOU PRESO** (*\"faça com quem teve esse bug volte ao normal\"*): o MESMO disco, pelo login da v0.3.1, volta com o Kaio-ken APAGADO -- a escolha abre no x6 de sempre, e o x10 acende e apaga exato",
+				   curado.Curado, curado.Detalhe);
 		LimparTudoDaBancada();
 	}
 
@@ -525,6 +708,14 @@ public sealed partial class GameServer
 				return (new Vec2(x * T + T / 2f, y * T + T / 2f), (x + livres) * T, true);
 			}
 		return (CorredorLivre(livres), 0, false);
+	}
+
+	/// <summary>O que o snapshot diz agora do tiro `id` -- pelo `TirosDaZona` de producao (nulo se ele nao viaja).</summary>
+	private ProjetilState? NoSnapshotV30(ServerPlayer pl, int id)
+	{
+		foreach (ProjetilState s in TirosDaZona(pl.Zone.Hash))
+			if (s.Id == id) return s;
+		return null;
 	}
 
 	/// <summary>Um corpo de bancada que sabe o Kaio-ken (a skill que a licao do Sr. Kaioh da).</summary>

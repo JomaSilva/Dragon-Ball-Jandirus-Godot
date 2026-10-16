@@ -451,7 +451,8 @@ public partial class MenuJogo
 
 		// A REGRA DO TREINO, com os numeros que o servidor usa (`GainKnobs`): e a linha que a aba do original tinha.
 		Nota($"Treinar lutando contra o seu mestre rende de {Jandirus.Core.Stats.GainKnobs.MasterGainMin:0.#}× a "
-			 + $"{Jandirus.Core.Stats.GainKnobs.MasterGainCap:0.#}× mais poder por golpe (quanto mais forte ele for que você), e contra um "
+			 + $"{Jandirus.Core.Stats.GainKnobs.MasterGainCap:0.#}× mais poder por golpe enquanto ele for mais forte que você (quanto mais "
+			 + "forte, mais) — quem supera o mestre perde esse bônus. Contra um "
 			 + $"colega — outro aluno dele — {Jandirus.Core.Stats.GainKnobs.ColegaDeMestreGain:0.#}×.", corpo);
 
 		if (m.Ensinamentos.Count == 0)

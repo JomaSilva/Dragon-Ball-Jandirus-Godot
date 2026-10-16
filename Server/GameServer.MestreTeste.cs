@@ -497,12 +497,32 @@ public partial class GameServer
 		// o bonus valia 1 -- ver `GainKnobs.MasterGainMin`.
 		mestre.Ficha.BP = aluno.Ficha.BP * 1.1;
 		double quaseIgual = aluno.Ficha.FightGainMult(mestre.Ficha, true);
-		mestre.Ficha.BP = aluno.Ficha.BP * 0.5;
-		double maisFraco = aluno.Ficha.FightGainMult(mestre.Ficha, true);
-		AfirmarMst($"...e o PISO e {Jandirus.Core.Stats.GainKnobs.MasterGainMin:0.#}x: treinar com o mestre rende mesmo com ele quase do mesmo poder (1,1x) ou mais fraco (0,5x)",
+		mestre.Ficha.BP = aluno.Ficha.BP;
+		double doMesmoBp = aluno.Ficha.FightGainMult(mestre.Ficha, true);
+		AfirmarMst($"...e o PISO e {Jandirus.Core.Stats.GainKnobs.MasterGainMin:0.#}x: treinar com o mestre rende mesmo com ele quase do mesmo poder (1,1x) ou do MESMO (ainda nao superado)",
 				   Math.Abs(quaseIgual - Jandirus.Core.Stats.GainKnobs.MasterGainMin) < 1e-9
-				   && Math.Abs(maisFraco - Jandirus.Core.Stats.GainKnobs.MasterGainMin) < 1e-9,
-				   $"1,1x -> {quaseIgual:0.###} | 0,5x -> {maisFraco:0.###}");
+				   && Math.Abs(doMesmoBp - Jandirus.Core.Stats.GainKnobs.MasterGainMin) < 1e-9,
+				   $"1,1x -> {quaseIgual:0.###} | 1x -> {doMesmoBp:0.###}");
+
+		// (2026-10-16) QUEM SUPEROU O MESTRE PERDE O BONUS: com o mestre na metade do BP base do aluno, o ganho volta ao de um
+		// estranho do mesmo poder expresso (1x) -- o que sobra e a troca PvP, que mora no servidor (`FatorDaLuta`).
+		(double Superado, double Estranho) Superou(bool defeito)
+		{
+			Jandirus.Core.Stats.GainKnobs.AlunoQueSuperouComBonusDeTeste = defeito;
+			try
+			{
+				mestre.Ficha.BP = aluno.Ficha.BP * 0.5;
+				return (aluno.Ficha.FightGainMult(mestre.Ficha, true), aluno.Ficha.FightGainMult(mestre.Ficha, false));
+			}
+			finally { Jandirus.Core.Stats.GainKnobs.AlunoQueSuperouComBonusDeTeste = false; }
+		}
+		var superou = Superou(defeito: false);
+		AfirmarMst("**QUEM SUPEROU O MESTRE PERDE O BONUS** (*\"se um aluno superar o mestre ele n ganha mais o bonus de bp so ganhando a troca\"*): com o mestre na metade do BP base do aluno, treinar com ele rende o que rende com um estranho (1x)",
+				   Math.Abs(superou.Superado - 1) < 1e-9 && Math.Abs(superou.Superado - superou.Estranho) < 1e-9,
+				   $"mestre 0,5x -> {superou.Superado:0.###} (estranho {superou.Estranho:0.###})");
+		var superouAntes = Superou(defeito: true);
+		AfirmarMst($"(defeito injetado: a regra de antes) o aluno que superou continua com o piso de {Jandirus.Core.Stats.GainKnobs.MasterGainMin:0.#}x -- a regua de cima REPROVA",
+				   Math.Abs(superouAntes.Superado - Jandirus.Core.Stats.GainKnobs.MasterGainMin) < 1e-9, $"mestre 0,5x -> {superouAntes.Superado:0.###}");
 
 		mestre.Ficha.BP = aluno.Ficha.BP * 2.5;
 		AfirmarMst("...e entre o piso e o teto a escala e LINEAR pela razao dos BPs base (mestre 2,5x -> 2,5x)",

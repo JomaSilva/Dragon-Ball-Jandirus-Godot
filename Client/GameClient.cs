@@ -2034,12 +2034,15 @@ public partial class GameClient : Node
 					// A ORDEM E A DO `AnunciarProjetil`: escala, altura, posicao.
 					float altura = Jandirus.Core.World.Voo.DeByte(reader.GetByte());
 					var onde = reader.GetVec();
-					// AS FLAGS VEM NO FIM: bit 0 = nasceu invisivel (a lamina de ar do Kiai).
-					bool invisivel = (reader.GetByte() & 1) != 0;
+					// AS FLAGS VEM NO FIM: bit 0 = nasceu invisivel (a lamina de ar do Kiai); bit 1 (v0.3.1) = nasceu NA MAO (a
+					// Genkidama se formando -- ver `NascimentoDeProjetil.NaMao`).
+					byte flagsDoTiro = reader.GetByte();
+					bool invisivel = (flagsDoTiro & 1) != 0;
+					bool naMao = (flagsDoTiro & 2) != 0;
 					// ...E DEPOIS DELAS, O SOM (`Core.Combat.SomDeKi`): com que arquivo o tiro sai.
 					byte som = reader.GetByte();
 					TiroNasceu?.Invoke(new NascimentoDeProjetil(
-						tiro, dono, tipo, arte, escala, altura, onde, invisivel, som));
+						tiro, dono, tipo, arte, escala, altura, onde, invisivel, som, naMao));
 				}
 				else if (sub == Protocol.ProjetilSub.Cortou)
 				{
