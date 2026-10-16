@@ -446,6 +446,14 @@ public sealed class CharacterSave
     /// E ELE E GRAVADO EM `DeJogador` (campo nao escrito e campo apagado).
     /// </summary>
     public bool RefugioNaTerra;
+
+    /// <summary>
+    /// (v0.3.0) A TELA DO REFUGIO JA FOI EMPURRADA nesta catastrofe -- a copia em disco de `ServerPlayer.RefugioPerguntado`
+    /// (o dono: a pergunta aparece UMA vez, e mudar depois e pelo menu P). Save antigo chega `false`: pergunta uma vez mais.
+    ///
+    /// E ELE E GRAVADO EM `DeJogador` (campo nao escrito e campo apagado).
+    /// </summary>
+    public bool RefugioPerguntado;
 }
 
 /// <summary>
@@ -879,6 +887,7 @@ public sealed class AccountStore(string pasta)
 
         // (v0.3.0) A ESCOLHA DO REFUGIO PELA TERRA. Ver `CharacterSave.RefugioNaTerra`.
         RefugioNaTerra = pl.RefugioNaTerra,
+        RefugioPerguntado = pl.RefugioPerguntado,
 
         // O DISCIPULADO. O VINCULO em si nao vem pra ca -- ele e do MUNDO e mora no
         // `mestres.txt` (mesmo ciclo de vida do `cargos.txt`); o que e do PERSONAGEM sao estas
@@ -1001,6 +1010,7 @@ public sealed class AccountStore(string pasta)
 
         // (v0.3.0) A ESCOLHA DO REFUGIO PELA TERRA volta do disco. Ver `CharacterSave.RefugioNaTerra`.
         pl.RefugioNaTerra = s.RefugioNaTerra;
+        pl.RefugioPerguntado = s.RefugioPerguntado;   // (v0.3.0) a pergunta do refugio, uma vez so
 
         // SAVE ANTIGO NAO TEM CONVIVIO: o `?? new()` e o que separa "nunca conheceu ninguem" de
         // uma referencia nula que estouraria no primeiro tique de proximidade.

@@ -423,7 +423,10 @@ public partial class GameServer
 	/// </summary>
 	internal static bool EstouroSemConferirAZonaDeTeste;
 
-	private int EstragarOCenarioNaExplosao(ZoneKey zona, Vec2 onde, double raioPx, double forca, ServerPlayer? autor)
+	/// <param name="colossal">(v0.3.0) A explosao da Genkidama: o chao do miolo racha quase inteiro
+	/// (`KiContraCorpo.ChanceDeChaoNaExplosaoColossal`) -- a cratera ENORME do pedido.</param>
+	private int EstragarOCenarioNaExplosao(ZoneKey zona, Vec2 onde, double raioPx, double forca, ServerPlayer? autor,
+																	   bool colossal = false)
 	{
 		if (KiContraCorpo.KiNaoEstragaCenarioDeTeste || raioPx <= 0) return 0;
 
@@ -487,7 +490,7 @@ public partial class GameServer
 
 				double chance = mapa.BlockedCell(cx, cy)
 					? KiContraCorpo.ChanceDeParedeNaExplosao
-					: KiContraCorpo.ChanceDeChaoNaExplosao(fracao);
+					: colossal ? KiContraCorpo.ChanceDeChaoNaExplosaoColossal(fracao) : KiContraCorpo.ChanceDeChaoNaExplosao(fracao);
 				if (_rng.NextDouble() >= chance) continue;
 				if (DerrubarCelula(zona, cx, cy)) cederam++;
 			}

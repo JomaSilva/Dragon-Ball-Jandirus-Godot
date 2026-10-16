@@ -136,6 +136,7 @@ public partial class Aquecimento : Node
 		"res://Assets/Shaders/Queda.gdshader",            // idem: o material do que cai (recorta o teto)
 		"res://Assets/Shaders/Personagem.gdshader",       // CharacterVisual: o corpo
 		"res://Assets/Shaders/Aura.gdshader",             // SpriteDeAura
+		"res://Assets/Shaders/ChamaDeAura.gdshader",      // ChamaDeAura: as formas divinas (adendo 13)
 		"res://Assets/Shaders/NebulosaDaForma.gdshader",  // NebulosaDaForma
 		"res://Assets/Shaders/RaioDaForma.gdshader",      // RaiosDaForma
 		"res://Assets/Shaders/Embate.gdshader",           // ClashQte, montado junto com o resto
@@ -322,6 +323,13 @@ public partial class Aquecimento : Node
 	/// e montada no quadro em que o primeiro Ultra Instinto do processo acende. Sempre falso em jogo.
 	/// </summary>
 	public static bool SemEnsaioDaNebulosaDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagestouro --avulsos`, rodada `--semensaiodachamadivina`): o aquecimento NAO ensaia a
+	/// chama das formas divinas (v0.3.0, adendo 13) -- o shader dela e compilado e a pipeline montada no quadro em que o
+	/// primeiro SSG, Blue ou Rose do processo acende. Sempre falso em jogo.
+	/// </summary>
+	public static bool SemEnsaioDaChamaDivinaDeTeste;
 
 	/// <summary>
 	/// DEFEITO INJETADO (bancada `--diagestouro --avulsos`, rodada `--semensaiodoembate`): o aquecimento NAO ensaia a tela
@@ -707,6 +715,17 @@ public partial class Aquecimento : Node
 		("a nebulosa", NebulosaDaForma.Ensaiar),
 	];
 
+	/// <summary>
+	/// (v0.3.0, adendo 13) A CHAMA DAS FORMAS DIVINAS, pelo mesmo motivo da nebulosa: o shader dela e compilado no primeiro
+	/// material e a pipeline no primeiro desenho, e os dois cairiam no quadro em que o primeiro SSG, Blue ou Rose do processo
+	/// acende -- a carga, a sobrecarga ou a cena. Sem luz propria (o `ChamaDeAura.Ensaiar` e so o quad), entao o lado escuro
+	/// do palco continua escuro. A rodada de injecao e a `--semensaiodachamadivina` (<see cref="SemEnsaioDaChamaDivinaDeTeste"/>).
+	/// </summary>
+	private static readonly (string Nome, Action<Node2D, Vector2> Monta)[] AtosDaChamaDivina =
+	[
+		("a chama divina", ChamaDeAura.Ensaiar),
+	];
+
 	/// <inheritdoc cref="AtosDaGota"/>
 	private static readonly (string Nome, Action<Node2D, Vector2> Monta)[] AtosDaNevoa =
 	[
@@ -998,6 +1017,7 @@ public partial class Aquecimento : Node
 				if (!SemEnsaioDaGotaDeTeste) atos.AddRange(AtosDaGota);
 				if (!SemEnsaioDoPlanetaDeTeste) atos.AddRange(AtosDoPlaneta);
 				if (!SemEnsaioDaNebulosaDeTeste) atos.AddRange(AtosDaNebulosa);
+				if (!SemEnsaioDaChamaDivinaDeTeste) atos.AddRange(AtosDaChamaDivina);
 				if (!SemEnsaioDaNevoaDeTeste) atos.AddRange(AtosDaNevoa);
 				if (!SemEnsaioDoEmbateDeTeste) atos.AddRange(AtosDoEmbate);
 				atos.AddRange(Atos);

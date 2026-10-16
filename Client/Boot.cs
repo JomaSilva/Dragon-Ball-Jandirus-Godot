@@ -156,6 +156,14 @@ public partial class Boot : Node2D
 			return;
 		}
 
+		// (v0.3.0, adendo 13) O LABORATORIO DA AURA POR SHADER: oito corpos com a chama nova, fotografados. Sem rede e sem
+		// mundo, mas com janela -- ver `RoboDoLaboratorioDaAura`.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--labaura") >= 0)
+		{
+			AddChild(new RoboDoLaboratorioDaAura { Name = "RoboDoLaboratorioDaAura" });
+			return;
+		}
+
 		// QUEM A FUSAO E: nome, roupa, cabelo e o vermelho do SSJ4. Mora aqui em cima com as bancadas
 		// sem mundo porque ela nao precisa de rede, de zona nem de login -- so do catalogo, das folhas
 		// e do `CharacterVisual`. E ela NAO precisa de janela: o que ela le sao caminhos de arte e o
@@ -491,6 +499,12 @@ public partial class Boot : Node2D
 		{
 			Aquecimento.SemEnsaioDaNebulosaDeTeste = true;
 			GD.Print("[aquece] SEM O ENSAIO DA NEBULOSA, por --semensaiodanebulosa (o defeito injetado da --diagestouro --avulsos)");
+		}
+		// (v0.3.0, adendo 13) `--semensaiodachamadivina`: o mesmo, pra chama das formas divinas (`Aquecimento.AtosDaChamaDivina`).
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semensaiodachamadivina") >= 0)
+		{
+			Aquecimento.SemEnsaioDaChamaDivinaDeTeste = true;
+			GD.Print("[aquece] SEM O ENSAIO DA CHAMA DIVINA, por --semensaiodachamadivina (o defeito injetado da --diagestouro --avulsos)");
 		}
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semensaiodoembate") >= 0)
 		{
@@ -1079,6 +1093,8 @@ public partial class Boot : Node2D
 		// invisivel, como o QTE do embate e pelo mesmo motivo -- ela nasce de um pacote que chega no
 		// pior momento possivel (voce acabou de morrer), e montar tela nessa hora e perder o prazo.
 		AddChild(new TelaDeRefugio { Name = "Refugio" });
+		// (v0.3.0) A ESCOLHA DO MULTIPLICADOR DO KAIO-KEN -- montada e invisivel pelo mesmo motivo: ela abre no meio da briga.
+		AddChild(new TelaDeKaioken { Name = "Kaioken" });
 
 		// ============================ A TELA DE TECLAS E A DE PAUSA JA EXISTEM -- ELAS SO VAO PRO FIM DA FILA ============================
 		// As duas nascem no `_Ready`, no lobby (ver o campo `_pause`). O que se faz aqui e devolver a

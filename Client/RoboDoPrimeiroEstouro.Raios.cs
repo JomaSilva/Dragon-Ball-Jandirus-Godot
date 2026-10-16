@@ -140,7 +140,7 @@ public partial class RoboDoPrimeiroEstouro
 	/// (<see cref="DefeitoQueReprova"/>). `Antigo` e um ato dos efeitos de ki (so o anel de choque esta nesta regua); os
 	/// seis ultimos sao os da rodada dos avulsos (o arquivo `RoboDoPrimeiroEstouro.Avulsos.cs`).
 	/// </summary>
-	private enum AtoDoEnsaio { Antigo, Raios, Relampago, Corpo, Chuva, Gota, EstouroDePlaneta, Nebulosa, Nevoa, Embate, Planeta }
+	private enum AtoDoEnsaio { Antigo, Raios, Relampago, Corpo, Chuva, Gota, EstouroDePlaneta, Nebulosa, Nevoa, Embate, Planeta, ChamaDivina }
 
 	/// <summary>
 	/// Quantos quadros A MAIS a regua olha depois dos dois de sempre (o do gesto e o seguinte). A chuva pede: o quadro
@@ -432,6 +432,7 @@ public partial class RoboDoPrimeiroEstouro
 		AtoDoEnsaio.Nebulosa => _semEnsaioDaNebulosa ? DefeitoDaNebulosa : null,
 		AtoDoEnsaio.Nevoa => _semEnsaioDaNevoa ? DefeitoDaNevoa : null,
 		AtoDoEnsaio.Embate => _semEnsaioDoEmbate ? DefeitoDoEmbate : null,
+		AtoDoEnsaio.ChamaDivina => _semEnsaioDaChamaDivina ? DefeitoDaChamaDivina : null,
 		_ => null,
 	};
 

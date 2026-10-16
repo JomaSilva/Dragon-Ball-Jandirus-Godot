@@ -560,19 +560,24 @@ public partial class GameServer
 	///     podendo escolher depois, porque a resposta e uma preferencia e nao um voto de uma vez so;
 	///   * a tela do cliente nao trava tecla nenhuma (mesmo molde da telinha de meditar).
 	///
-	/// UMA VEZ POR SESSAO. O aviso e sobre uma catastrofe, nao sobre uma morte -- empurrar a tela a
-	/// cada morte seria transformar a informacao em barulho, e barulho e o jeito mais rapido de ela
-	/// deixar de ser lida. Depois da primeira, a porta e o botao do menu (o cartao Refugio da aba World).
+	/// UMA VEZ SO (v0.3.0; era uma por sessao). O aviso e sobre uma catastrofe, nao sobre uma morte nem sobre um
+	/// login -- o dono: *"sempre q entra no jogo e essa pergunta chata q ja respondi antes"*. A marca
+	/// (`ServerPlayer.RefugioPerguntado`) vai pro disco, e o natal que volta a zera. Depois da primeira, a porta e o
+	/// cartao Refugio da aba World do menu P -- e o verb sem argumento (`pedidoDoJogador`), que abre sempre.
 	/// ==========================================================================================
 	/// </summary>
-	private void OferecerORefugio(ServerPlayer pl, bool podeAbrir)
+	private void OferecerORefugio(ServerPlayer pl, bool podeAbrir, bool pedidoDoJogador = false)
 	{
 		if (pl.Peer == null || !EhJogador(pl)) return;
-		if (!PerdeuOBerco(pl)) return;
+		if (!PerdeuOBerco(pl))
+		{
+			EsquecerAPerguntaDoRefugio(pl);
+			return;
+		}
 
 		(Vec2 ancora, List<Dominio> dominios, Arredores perto, bool escolha) = EscolhaDeRefugio(pl);
-		bool abrir = podeAbrir && escolha && !pl.RefugioJaOferecido;
-		if (abrir) pl.RefugioJaOferecido = true;
+		bool abrir = DeveAbrirORefugio(pl, podeAbrir, pedidoDoJogador, escolha);
+		if (abrir && !pl.RefugioPerguntado) { pl.RefugioPerguntado = true; Persistir(pl); }
 
 		var w = Protocol.Begin(Protocol.S2C.Refugio);
 		w.Put(true);                                     // o berco desta pessoa esta destruido
@@ -605,6 +610,33 @@ public partial class GameServer
 		w.Put(terra && pl.RefugioNaTerra);
 		w.Put((float)MinutosDeVoo(ancora, PosicaoDaTerra()));
 		pl.Peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
+	/// <summary>
+	/// (v0.3.0) A TELA SE EMPURRA AGORA? So com o que decidir (`escolha`), so onde a pergunta pode abrir (`podeAbrir`: a
+	/// chegada ao Outro Mundo, o login) e so UMA VEZ por catastrofe -- a marca gravada no personagem
+	/// (`ServerPlayer.RefugioPerguntado`). O pedido do proprio jogador (o verb sem argumento) abre sempre. Funcao propria pra
+	/// a bancada medir a regra num corpo sem tela, que nunca recebe o pacote.
+	/// </summary>
+	private static bool DeveAbrirORefugio(ServerPlayer pl, bool podeAbrir, bool pedidoDoJogador, bool escolha) =>
+		podeAbrir && escolha && (pedidoDoJogador || !pl.RefugioPerguntado || RefugioSempreAbreDeTeste);
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--bercoprova` familia 12, `--diagv030` familia TR): a tela volta a abrir a cada login -- a marca
+	/// "ja perguntei" e ignorada, o jogo de antes. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool RefugioSempreAbreDeTeste;
+
+	/// <summary>
+	/// (v0.3.0) O NATAL ESTA DE PE (ou voltou: um desejo das Esferas ressuscita mundo) -- a marca do "ja perguntei" se apaga, e a
+	/// proxima catastrofe pergunta de novo. Chamada pelas duas portas que descobrem o berco vivo: a oferta
+	/// (`OferecerORefugio`) e o verb (`ComandoDeRefugio`, o caminho do cartao do menu P).
+	/// </summary>
+	private void EsquecerAPerguntaDoRefugio(ServerPlayer pl)
+	{
+		if (!pl.RefugioPerguntado) return;
+		pl.RefugioPerguntado = false;
+		Persistir(pl);
 	}
 
 	/// <summary>
@@ -659,6 +691,7 @@ public partial class GameServer
 
 			// A TELA TEM QUE SABER QUE NAO PRECISA MAIS. Sem este pacote ela ficaria mostrando a
 			// escolha de uma catastrofe que ja passou (um planeta pode voltar por desejo das Esferas).
+			EsquecerAPerguntaDoRefugio(pl);
 			if (pl.Peer != null)
 			{
 				var limpo = Protocol.Begin(Protocol.S2C.Refugio);
@@ -677,7 +710,7 @@ public partial class GameServer
 		}
 
 		string escolha = arg.Trim();
-		if (escolha.Length == 0) { OferecerORefugio(pl, podeAbrir: true); return true; }
+		if (escolha.Length == 0) { OferecerORefugio(pl, podeAbrir: true, pedidoDoJogador: true); return true; }
 
 		// ---- (v0.3.0) B3: A TERRA ---------------------------------------------
 		if (string.Equals(escolha, "terra", StringComparison.OrdinalIgnoreCase))

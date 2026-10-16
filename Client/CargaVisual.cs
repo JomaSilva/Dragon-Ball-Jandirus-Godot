@@ -55,6 +55,14 @@ public partial class CargaVisual : Node2D
 	// ================================================================================================
 
 	private SpriteDeAura _desenho = null!;
+
+	/// <summary>
+	/// (v0.3.0, adendo 13) A CHAMA DAS FORMAS DIVINAS -- a irma de baixo do <see cref="_desenho"/>, pelo mesmo motivo da do
+	/// node <see cref="Aura"/> (o cabecalho do campo `_chama` de la conta a regra): o SSG, o Blue e o Rose carregam ki com
+	/// ela, e o sprite do Kaio-ken desenha por cima.
+	/// </summary>
+	private ChamaDeAura _chama = null!;
+
 	private AudioStreamPlayer2D? _laco;
 
 	// OS DOIS IRMAOS QUE O `Pintar` PROCURA -- e ele roda por corpo a cada snapshot (o `Definir` o chama mesmo
@@ -67,6 +75,9 @@ public partial class CargaVisual : Node2D
 
 	/// <summary>O desenho proprio deste node. Pra bancada -- ele NAO e o mesmo do node `Aura`.</summary>
 	public SpriteDeAura DesenhoDeTeste => _desenho;
+
+	/// <summary>A chama divina propria deste node. Pra bancada -- ela NAO e a do node `Aura`.</summary>
+	public ChamaDeAura ChamaDeTeste => _chama;
 
 	/// <summary>
 	/// ============================ A TESTEMUNHA INDEPENDENTE DA SOBRECARGA ============================
@@ -104,6 +115,7 @@ public partial class CargaVisual : Node2D
 	public void Folha(Jandirus.Core.Forms.FolhaDeAura f)
 	{
 		_folhaDaForma = f;
+		_chama.DefinirFolha(Aura.SimboloDaChama(f, _kaioken));
 		if (!_kaioken) _desenho.DefinirFolha(f);
 	}
 
@@ -121,6 +133,7 @@ public partial class CargaVisual : Node2D
 		if (_kaioken == ligado) return;
 		_kaioken = ligado;
 		_desenho.DefinirFolha(ligado ? Jandirus.Core.Forms.FolhaDeAura.Kaioken : _folhaDaForma);
+		_chama.DefinirFolha(Aura.SimboloDaChama(_folhaDaForma, ligado));
 	}
 
 	private bool _kaioken;
@@ -128,6 +141,9 @@ public partial class CargaVisual : Node2D
 
 	public override void _Ready()
 	{
+		// A CHAMA DIVINA ANTES DO SPRITE: irma de baixo, o Kaio-ken desenha por cima dela (ver `_chama`).
+		_chama = new ChamaDeAura { Name = "Chama" };
+		AddChild(_chama);
 		_desenho = new SpriteDeAura { Name = "Desenho" };
 		AddChild(_desenho);
 		SetProcess(false);
@@ -385,10 +401,13 @@ public partial class CargaVisual : Node2D
 		// dois nao poderem divergir num corpo montado pela metade. (Em jogo nunca acontece: os dois
 		// nodes nascem juntos, `World.cs:1241-1242`.)
 		Color cor = aura?.CorDaChama ?? Aura.CorDoKiCru;
+		// a chama DIVINA leva a cor da forma, e nunca o vermelho do Kaio-ken -- esse e do sprite, por cima dela
+		Color corDaForma = aura?.CorDaForma ?? Aura.CorDoKiCru;
 
 		if (!_ligado)
 		{
 			_desenho.Definir(false, cor);
+			_chama.Definir(false, corDaForma);
 			aura?.ChamaDaCarga(false, 0);   // devolve a vez
 			nuvem?.Carga(false, 0);         // e a nuvem volta ao papel de overlay da forma
 			return;
@@ -426,5 +445,6 @@ public partial class CargaVisual : Node2D
 		// outra forma a nuvem esta apagada e sai na primeira linha do `Carga`. Nunca as duas.
 		nuvem?.Carga(true, forca);
 		_desenho.Definir(true, cor, forca);
+		_chama.Definir(true, corDaForma, forca);
 	}
 }

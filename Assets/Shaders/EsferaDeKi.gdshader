@@ -127,6 +127,8 @@ void fragment() {
 	// a Supernova e um SOL: redonda, com a borda em labareda miuda -- e nao uma pedra de casca torta
 	float ondula = (0.10 - 0.07 * fervura) * onda * 2.0 + 0.04 * onda2 * (1.0 - calma)
 				 + fervura * 0.07 * crista(dir * 7.0 + vec2(t * 3.0, -t * 2.0) + semente);
+	// (v0.3.0) A GENKIDAMA E REDONDA: a esfera do anime nao tem a casca torta de uma bola de ki comum -- so um respiro.
+	ondula *= 1.0 - 0.92 * calma;
 
 	// ================= a FORMA =================
 	float d;                    // a distancia a casca
@@ -232,11 +234,18 @@ void fragment() {
 		rgb = mix(cor_borda, mix(cor_manto, cor_nucleo, anel), smoothstep(0.25, 0.55, anel));
 	}
 
-	// GENKIDAMA: quase toda luz, com veios mansos e so a borda da cor
+	// ============================ A GENKIDAMA (v0.3.0, com a imagem do anime) ============================
+	// O dono: *"algo esferico azul com uma bola branca no centro"*. Da imagem: o miolo BRANCO ocupando boa parte da esfera, o
+	// corpo ciano claro que firma num ciano forte perto da borda, e a BORDA ACESA -- um aro de luz colado na casca, que e o
+	// que faz a esfera parecer uma bolha de energia. Antes o miolo comia o corpo e ela saia quase toda branca.
+	// ==================================================================================================
 	if (calma > 0.001) {
-		vec3 g = mix(cor_manto, cor_nucleo, 0.35 + 0.55 * smoothstep(0.0, 0.50, fundo));
-		g *= 0.90 + 0.16 * veio;
-		g = mix(g, vec3(1.0), smoothstep(0.30, 0.90, fundo) * 0.75);
+		float rr = clamp(r / max(R, 0.0001), 0.0, 1.0);   // 0 no centro, 1 na casca
+		vec3 g = cor_nucleo;
+		g = mix(g, cor_manto, smoothstep(0.34, 0.82, rr));                          // o branco se abre no ciano claro
+		g = mix(g, cor_borda, smoothstep(0.74, 0.95, rr));                          // e o ciano firma perto da borda
+		g = mix(g, mix(cor_manto, cor_nucleo, 0.6), smoothstep(0.93, 0.995, rr));   // a borda acesa
+		g *= 0.96 + 0.08 * veio;                                                    // so um tremor de luz por dentro
 		rgb = mix(rgb, g, calma);
 	}
 
@@ -271,12 +280,32 @@ void fragment() {
 	// ================= o HALO =================
 	float alc = alcance_do_halo;
 	float h = clamp(1.0 - max(d, 0.0) / alc, 0.0, 1.0);
-	float halo = h * h * h * (0.80 + 0.30 * onda);
-	vec3 rgb_halo = mix(cor_borda, cor_manto, 0.35 + 0.4 * calma) * halo;
-	float a_halo = halo * 0.32;
+	// (v0.3.0) a Genkidama brilha MACIO e LARGO (`h * h`, e nao o cubo) e mais forte: na imagem o ceu em volta fica ciano.
+	float halo = mix(h * h * h, h * h, calma) * (0.80 + 0.30 * onda * (1.0 - calma));
+	vec3 rgb_halo = mix(cor_borda, cor_manto, 0.35 + 0.25 * calma) * halo;
+	float a_halo = halo * mix(0.32, 0.50, calma);
 
 	vec3 saida = rgb * dentro + rgb_halo * (1.0 - dentro);
 	float alfa = dentro + a_halo * (1.0 - dentro);
+
+	// (v0.3.0) A ENERGIA QUE CHEGA: pontos de luz vindo de fora pra dentro da Genkidama -- os `Spirit.dmi` que o DM soltava em
+	// volta e mandava andar ate a bola (`SpiritBomb.dm:110-116`), e os brilhos em volta da esfera na imagem do anime. Ficam
+	// dentro do alcance do halo, que e ate onde o quad vai.
+	if (calma > 0.001) {
+		float luz_f = 0.0;
+		for (int k = 0; k < 12; k++) {
+			float sk = floor(semente * 7.0) + float(k) * 17.0;
+			float ciclo = fract(tempo * (0.20 + 0.16 * h21(vec2(sk, 1.0))) + h21(vec2(sk, 2.0)));
+			float a0 = h21(vec2(sk, 3.0)) * 6.2831853 + tempo * 0.15;
+			vec2 c = vec2(cos(a0), sin(a0)) * (R + alc * 0.80 * (1.0 - ciclo));
+			float tam = 1.2 + R * 0.018;
+			float vida = smoothstep(0.0, 0.12, ciclo) * (1.0 - smoothstep(0.80, 1.0, ciclo));
+			luz_f += (1.0 - smoothstep(tam * 0.4, tam, length(p - c))) * vida;
+		}
+		luz_f = clamp(luz_f, 0.0, 1.0) * calma * (1.0 - dentro);
+		saida = mix(saida, mix(cor_manto, cor_nucleo, 0.65), luz_f);
+		alfa = max(alfa, luz_f);
+	}
 
 	// ================= os ENFEITES =================
 	// pontos girando em volta (a Esfera Teleguiada, metade das cargas)

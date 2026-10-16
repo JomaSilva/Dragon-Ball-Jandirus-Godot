@@ -72,4 +72,58 @@ public static class BocaDeCano
 		float d = Passo(rumo);
 		return d <= 0 ? centro : centro + rumo.Normalized() * d;
 	}
+
+	// =====================================================================
+	// (v0.3.0) A BOLA GRANDE: EM CIMA DA CABECA, E SAINDO NA FRENTE
+	// =====================================================================
+	/// <summary>
+	/// ONDE UMA BOLA DESENHADA GRANDE FICA ENQUANTO SE FORMA: EM CIMA DA CABECA de quem a ergue -- a beirada de baixo dela no
+	/// topo do quadro do corpo (meio tile acima do centro), o centro um raio desenhado mais acima. O dono, sobre a Genkidama:
+	/// *"enquanto carrega seria bom ficar em cima da cabeca do personagem"*. No DM ela nascia um tile ao norte
+	/// (`SpiritBomb.dm:53`), e com tres tiles de raio cobria o corpo inteiro.
+	///
+	/// A BOLA CRESCE E SOBE: o raio entra ja multiplicado pela escala, e a beirada de baixo continua no topo da cabeca.
+	/// </summary>
+	public static Vec2 EmCimaDaCabeca(Vec2 centro, float raioDesenhado)
+		=> centro + new Vec2(0, -(ZoneCollision.TileSize / 2f + raioDesenhado));
+
+	/// <summary>
+	/// A QUE DISTANCIA DO CENTRO DO CORPO UMA BOLA DESENHADA GRANDE SAI, no rumo do tiro: longe o bastante pra o desenho dela
+	/// nao cobrir quem a solta -- meio passo (a beirada do quadro do corpo, neste rumo) mais o raio desenhado --, e nunca mais
+	/// perto que a boca de sempre (<see cref="Passo"/>). O dono: *"quando lancar ela sai da frente dele"*; com 96 px de raio, a
+	/// boca de um tile deixava a Genkidama em cima do personagem inteiro.
+	/// </summary>
+	public static float AfastamentoDaBolaGrande(Vec2 rumo, float raioDesenhado)
+	{
+		float passo = Passo(rumo);
+		return MathF.Max(passo, passo / 2f + raioDesenhado);
+	}
+
+	// =====================================================================
+	// (v0.3.0) O CANO: quem esta colado leva o tiro
+	// =====================================================================
+	/// <summary>
+	/// ESTE CORPO ESTA DENTRO DO CANO -- entre o centro de quem atira e a boca, a ate `largura` de lado do eixo? Devolve em
+	/// `aoLongo` a distancia dele, pelo eixo, ao centro de quem atira.
+	///
+	/// ============================ O BURACO QUE ISTO FECHA ============================
+	/// O tiro nasce na boca e so testava corpo DEPOIS do primeiro passo: quem estava colado, entre quem atira e a boca, ficava
+	/// ATRAS dele -- *"se alguem ta mt perto de vc o ataque de ki n acerta essa pessoa, simplesmente o ki aparece atras dela e
+	/// erra ou passa por dentro dela"* (dono, v0.3.0). No DM o `step(A, A.dir)` do nascimento (o cabecalho deste arquivo) e um
+	/// Move: o mob denso no tile da frente o faz falhar com `Bump(M)`, ou seja QUEM ESTA COLADO LEVA O TIRO no tique em que ele
+	/// nasce. Quem usa isto e o servidor (`GameServer.OlharOCano`).
+	/// ==================================================================================
+	///
+	/// SO PRA FRENTE: quem esta atras do centro de quem atira nao esta no cano. Cano sem comprimento (a boca encostada num muro
+	/// volta pro proprio centro, ver `GameServer.Disparar`) nao tem ninguem dentro.
+	/// </summary>
+	public static bool NoCano(Vec2 centro, Vec2 boca, Vec2 corpo, float largura, out float aoLongo)
+	{
+		Vec2 eixo = boca - centro;
+		Vec2 u = eixo.Normalized();
+		Vec2 d = corpo - centro;
+		aoLongo = d.X * u.X + d.Y * u.Y;
+		float lado = MathF.Abs(d.X * u.Y - d.Y * u.X);
+		return eixo.LengthSquared > 1e-6f && aoLongo >= 0 && aoLongo * aoLongo <= eixo.LengthSquared && lado <= largura;
+	}
 }

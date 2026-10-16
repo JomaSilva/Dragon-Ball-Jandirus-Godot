@@ -39,7 +39,10 @@ namespace Jandirus.Client;
 ///   6. o PLANETA -- o servidor leva o corpo pro espaco (`GameServer.MoveToZone`), em cima da Terra: cada disco e um
 ///      sprite com o `PlanetaMorrendo.gdshader`. Depois a luz acende de novo, e por fim o planeta estoura
 ///      (`PlanetaDesenhado.AplicarAgonia`), com o mesmo shader do gesto 2 -- o CONTROLE: as duas casas do estouro usam
-///      as mesmas pipelines, e nenhuma nasce nele.
+///      as mesmas pipelines, e nenhuma nasce nele;
+///   7. a CHAMA DIVINA (v0.3.0, adendo 13) -- ainda no espaco, a `CargaVisual` do corpo local veste o simbolo do Blue e
+///      acende (`Folha` + `Definir`, a porta da tecla C): o quad da `ChamaDeAura` so nasce quando a primeira forma
+///      divina do processo acende. Primeiro com a luz da bancada em cima (a do gesto 6), depois sem ela.
 ///
 /// ============================ A REGUA ============================
 /// A DOS PRIMEIROS DESENHOS (o arquivo `RoboDoPrimeiroEstouro.Raios.cs`), em cada um dos onze quadros: NENHUMA
@@ -53,9 +56,10 @@ namespace Jandirus.Client;
 /// E o item de cada uso tem que estar NA TELA: item fora dela, ou invisivel, nao e desenhado, e sem desenho nao ha
 /// pipeline -- o quadro passaria pela regua sem provar nada.
 ///
-/// OS CINCO DEFEITOS QUE ELA GUARDA sao os do `Aquecimento` sem o ato (e sem o arquivo na fila) de cada um:
+/// OS SEIS DEFEITOS QUE ELA GUARDA sao os do `Aquecimento` sem o ato (e sem o arquivo na fila) de cada um:
 /// `--semensaiodagota`, `--semensaiodoplaneta` (o planeta e o estouro dele), `--semensaiodanebulosa`,
-/// `--semensaiodanevoa` e `--semensaiodoembate`. Com os cinco na linha, a mesma regua tem que reprovar os onze quadros.
+/// `--semensaiodanevoa`, `--semensaiodoembate` e (adendo 13) `--semensaiodachamadivina`. Com os seis na linha, a mesma
+/// regua tem que reprovar os treze quadros.
 ///
 /// A RODADA PRECISA DE `--mudezteste` (as fixtures do embate) E DE `--vooteste` (a skill de voo) na linha.
 /// </summary>
@@ -71,15 +75,16 @@ public partial class RoboDoPrimeiroEstouro
 	/// </summary>
 	private readonly bool _semEnsaioDaGota = Tem("--semensaiodagota"), _semEnsaioDaNevoa = Tem("--semensaiodanevoa"),
 						  _semEnsaioDaNebulosa = Tem("--semensaiodanebulosa"), _semEnsaioDoEmbate = Tem("--semensaiodoembate"),
-						  _semEnsaioDoPlaneta = Tem("--semensaiodoplaneta");
+						  _semEnsaioDoPlaneta = Tem("--semensaiodoplaneta"), _semEnsaioDaChamaDivina = Tem("--semensaiodachamadivina");
 
 	private const string DefeitoDaGota = "o aquecimento sem o shader e sem o ensaio da gota",
 						 DefeitoDaNevoa = "o aquecimento sem o shader e sem o ensaio da nevoa de altitude",
 						 DefeitoDaNebulosa = "o aquecimento sem o ensaio da nebulosa",
 						 DefeitoDoEmbate = "o aquecimento sem o ensaio da tela do embate",
-						 DefeitoDoPlaneta = "o aquecimento sem os shaders e sem o ensaio do planeta e do estouro dele";
+						 DefeitoDoPlaneta = "o aquecimento sem os shaders e sem o ensaio do planeta e do estouro dele",
+						 DefeitoDaChamaDivina = "o aquecimento sem o ensaio da chama divina";
 
-	private enum Avulso { Gota, Estouro, Nebulosa, Nevoa, Embate, Planeta, EstouroNoEspaco }
+	private enum Avulso { Gota, Estouro, Nebulosa, Nevoa, Embate, Planeta, EstouroNoEspaco, ChamaDivina }
 
 	/// <summary>Quanto dura a gota do gesto, e o `ms` do estouro (600 e o da Final Explosion: um quad de 660 px de lado), em ms.</summary>
 	private const long MsDaGota = 1200, MsDoEstouro = 600;
@@ -99,6 +104,7 @@ public partial class RoboDoPrimeiroEstouro
 			Avulso.Nebulosa => "NebulosaDaForma",
 			Avulso.Nevoa => "Altitude",
 			Avulso.Embate => "Embate",
+			Avulso.ChamaDivina => "ChamaDeAura",
 			_ => "PlanetaMorrendo",
 		};
 		return $"{PastaDosShaders}/{nome}.gdshader";
@@ -112,6 +118,7 @@ public partial class RoboDoPrimeiroEstouro
 		Avulso.Nebulosa => AtoDoEnsaio.Nebulosa,
 		Avulso.Nevoa => AtoDoEnsaio.Nevoa,
 		Avulso.Embate => AtoDoEnsaio.Embate,
+		Avulso.ChamaDivina => AtoDoEnsaio.ChamaDivina,
 		_ => AtoDoEnsaio.Planeta,
 	};
 
@@ -123,6 +130,7 @@ public partial class RoboDoPrimeiroEstouro
 		Avulso.Nevoa => "a NEVOA de altitude (o corpo decola -> `World.EfeitosDaAltura` -> `NevoaDeAltitude`: um retangulo de tela cheia com o `Altitude.gdshader`)",
 		Avulso.Embate => "a tela do EMBATE (o pacote do comeco de um ZanzoClash -> `ClashQte.Comecou`: o fundo de tela cheia com o `Embate.gdshader`)",
 		Avulso.Planeta => "o PLANETA visto do espaco (`World.DesenharPlanetas` -> `PlanetaDesenhado`: um sprite com o `PlanetaMorrendo.gdshader`)",
+		Avulso.ChamaDivina => "a CHAMA DIVINA (a `CargaVisual` do corpo local veste o Blue e acende -> `ChamaDeAura`: um quad com o `ChamaDeAura.gdshader`)",
 		_ => "o planeta ESTOURA no espaco (`PlanetaDesenhado.AplicarAgonia` -> `Estourar`: um quad com o `EstouroDePlaneta.gdshader`)",
 	};
 
@@ -132,7 +140,8 @@ public partial class RoboDoPrimeiroEstouro
 		+ (_semEnsaioDoPlaneta ? $" | DEFEITO INJETADO: {DefeitoDoPlaneta} (`--semensaiodoplaneta`)" : "")
 		+ (_semEnsaioDaNebulosa ? $" | DEFEITO INJETADO: {DefeitoDaNebulosa} (`--semensaiodanebulosa`)" : "")
 		+ (_semEnsaioDaNevoa ? $" | DEFEITO INJETADO: {DefeitoDaNevoa} (`--semensaiodanevoa`)" : "")
-		+ (_semEnsaioDoEmbate ? $" | DEFEITO INJETADO: {DefeitoDoEmbate} (`--semensaiodoembate`)" : "");
+		+ (_semEnsaioDoEmbate ? $" | DEFEITO INJETADO: {DefeitoDoEmbate} (`--semensaiodoembate`)" : "")
+		+ (_semEnsaioDaChamaDivina ? $" | DEFEITO INJETADO: {DefeitoDaChamaDivina} (`--semensaiodachamadivina`)" : "");
 
 	/// <summary>Cada primeiro uso que a rodada alcancou: qual, se a luz estava acesa, o quadro, e o que o Godot respondeu antes e depois dele.</summary>
 	private readonly List<(Avulso Qual, bool ComLuz, int Quadro, bool NaMemoriaAntes, bool NaTela, string Nota)> _usosAvulsos = [];
@@ -297,6 +306,35 @@ public partial class RoboDoPrimeiroEstouro
 				break;
 			}
 
+			// ---- (adendo 13) A CHAMA DIVINA, ainda no espaco: primeiro com a luz da bancada em cima (a do 19), depois sem ----
+			// Pela `CargaVisual` (a porta da tecla C), e nao pela `Aura`: a carga nao tem luz propria, e o quadro sem luz e sem
+			// luz mesmo -- a `Aura` acesa traria a `PointLight2D` dela, e as duas passadas usariam a mesma pipeline.
+			case 21 or 23:
+			{
+				if (_t < 1.5) return;
+				if (CargaDoCorpo(mundo, cli) is not { } carga) { Desistir("o corpo local tem o node da carga (`Carga`)"); return; }
+				bool antes = NaMemoria(Avulso.ChamaDivina);
+				carga.Folha(FolhaDeAura.DeusFrio);
+				carga.Definir(true, false);
+				AnotarOAvulso(Avulso.ChamaDivina, antes);
+				break;
+			}
+			case 22 or 24:
+				if (_t < 1.5) return;
+				if (CargaDoCorpo(mundo, cli) is { } apagada)
+				{
+					apagada.Definir(false, false);
+					apagada.Folha(FolhaDeAura.Base);
+				}
+				Marcar("a chama divina apaga");
+				if (_passoAvulso == 22)
+				{
+					ApagarALuzAvulsa();
+					_avulsosComLuz = false;
+					Marcar("a luz da bancada apaga, pra a chama divina SEM luz");
+				}
+				break;
+
 			default:
 				if (_t >= 2.6) Fechar();
 				return;
@@ -315,6 +353,9 @@ public partial class RoboDoPrimeiroEstouro
 
 	private static NebulosaDaForma? NebulosaDoCorpo(World mundo, GameClient cli) =>
 		mundo.CorpoDeTeste(cli.LocalId)?.GetNodeOrNull<NebulosaDaForma>("Nebulosa");
+
+	private static CargaVisual? CargaDoCorpo(World mundo, GameClient cli) =>
+		mundo.CorpoDeTeste(cli.LocalId)?.GetNodeOrNull<CargaVisual>("Carga");
 
 	/// <summary>
 	/// O PRIMEIRO PASSO E SO O PREPARO, um segundo e meio antes de qualquer gesto: o fato de partida de cada shader (esta
@@ -545,6 +586,7 @@ public partial class RoboDoPrimeiroEstouro
 		Avulso.Nevoa => mundo.GetNodeOrNull<CanvasItem>(CaminhoDaNevoa),
 		Avulso.Embate => GetTree().Root.FindChild("ClashQte", true, false)?.FindChildren("*", "ColorRect", true, false) is [CanvasItem fundo, ..] ? fundo : null,
 		Avulso.Planeta => PlanetaMaisPerto(mundo)?.GetNodeOrNull<CanvasItem>("Icone"),
+		Avulso.ChamaDivina => mundo.CorpoDeTeste(cli.LocalId)?.GetNodeOrNull<CanvasItem>("Carga/Chama/Quad"),
 		_ => PlanetaMaisPerto(mundo)?.GetNodeOrNull<CanvasItem>("Estouro"),
 	};
 
@@ -583,6 +625,7 @@ public partial class RoboDoPrimeiroEstouro
 		Aquecimento.SemEnsaioDaNebulosaDeTeste = false;
 		Aquecimento.SemEnsaioDoEmbateDeTeste = false;
 		Aquecimento.SemEnsaioDoPlanetaDeTeste = false;
+		Aquecimento.SemEnsaioDaChamaDivinaDeTeste = false;
 		ApagarALuzAvulsa();
 		if (!_ouvindoOEmbate) return;
 		_ouvindoOEmbate = false;
@@ -628,6 +671,7 @@ public partial class RoboDoPrimeiroEstouro
 					 (Avulso.Gota, false), (Avulso.Estouro, false), (Avulso.Nebulosa, false), (Avulso.Nevoa, false),
 					 (Avulso.Gota, true), (Avulso.Estouro, true), (Avulso.Nebulosa, true), (Avulso.Nevoa, true),
 					 (Avulso.Embate, false), (Avulso.Planeta, false), (Avulso.Planeta, true), (Avulso.EstouroNoEspaco, true),
+					 (Avulso.ChamaDivina, true), (Avulso.ChamaDivina, false),
 				 })
 			if (!_usosAvulsos.Exists(u => u.Qual == qual && u.ComLuz == comLuz))
 				Conferir(false, $"a rodada chegou no quadro de: {NomeDoAvulso(qual)}{(comLuz ? ", com luz" : ", sem luz")}");

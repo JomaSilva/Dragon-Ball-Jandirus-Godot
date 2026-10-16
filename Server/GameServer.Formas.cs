@@ -705,15 +705,25 @@ public partial class GameServer
 			return;
 		}
 
+		// ============================ (v0.3.0) O KAIO-KEN APAGA NO X ============================
+		// O dono: *"apertar X n ta saindo da forma"* -- com o Kaio-ken aceso o X nao fazia nada com ele (e, pra raca sem
+		// escada, respondia que ela nao tem escada). No DM o X e o `Revert` (`Power Control.dm:58-67`), que chama `Revert(2)`
+		// -- e o `Revert` TERMINA em `KaiokenRevert()` (`Revert.dm:45`): o Kaio-ken apaga junto com o degrau que desce, no
+		// MESMO aperto. O Ki acima de 100% continua vindo antes (o primeiro aperto so libera o excesso, como la).
+		// ====================================================================================
+		bool kaioken = !XNaoApagaOKaiokenDeTeste && TemBuff(pl, BuffKaiokenG2);
+		if (kaioken) ReverterKaiokenG2(pl, porKO: false);
+
 		if (!TemEscada(pl))
 		{
+			if (kaioken) { SoarODescer(pl); return; }
 			Avisar(pl, "sua raca nao tem essa escada de transformacao.");
 			return;
 		}
 
 		string antes = pl.Forma.Atual;
 		RecuarPara(pl, EstagioAnterior(pl.Forma, Perfil(pl)));
-		if (pl.Forma.Atual != antes) SoarODescer(pl);
+		if (kaioken || pl.Forma.Atual != antes) SoarODescer(pl);
 	}
 
 	/// <summary>
@@ -733,6 +743,12 @@ public partial class GameServer
 	/// <see cref="SoarODescer"/>. Falso em jogo, sempre.
 	/// </summary>
 	internal bool XSemSomDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--v030teste` e `--diagv030`, familia KK): o X volta a ignorar o Kaio-ken aceso -- o jogo de antes.
+	/// Lido pela propria <see cref="ReverterOuLiberar"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool XNaoApagaOKaiokenDeTeste;
 
 	/// <summary>
 	/// ============================ O ESTAGIO ANTERIOR DA LINHA -- OU A BASE ============================
@@ -1015,6 +1031,15 @@ public partial class GameServer
 	/// </param>
 	private void EntrarNaForma(ServerPlayer pl, FormaDef alvo, bool semCena = false)
 	{
+		// (v0.3.0) ENTRAR NO DEUS APAGA O KAIO-KEN, de graca (a saida voluntaria, sem a conta do nocaute) -- a outra metade da
+		// regra do dono, *"o god n pode usar kaioken junto"* (`Jandirus.Core.Skills.Kaioken.CabeNaForma`): o botao recusa
+		// acender no Deus, e quem ja estava aceso perde o buff aqui, antes de o buff da forma entrar.
+		if (!KaiokenNoDeusDeTeste && TemBuff(pl, BuffKaiokenG2) && !Jandirus.Core.Skills.Kaioken.CabeNaForma(alvo))
+		{
+			Avisar(pl, "o ki divino não sustenta o Kaio-ken.");
+			ReverterKaiokenG2(pl, porKO: false);
+		}
+
 		EstadoDeForma est = pl.Forma;
 		string anterior = est.Atual;
 		bool primeira = est.Entrar(alvo.Id);

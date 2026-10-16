@@ -108,8 +108,8 @@ public partial class TelaDeRefugio : CanvasLayer
 	// ABRIR E FECHAR
 	// =====================================================================
 	/// <summary>
-	/// ABRE A TELA. Chamada pelo servidor (uma vez por sessao, na chegada ao Outro Mundo) e pelo
-	/// botao do menu.
+	/// ABRE A TELA. Chamada pelo servidor (UMA vez so por catastrofe, desde a v0.3.0 -- na chegada ao Outro Mundo ou no
+	/// login) e pelo botao do menu, que e a porta de mudar a escolha depois.
 	///
 	/// **Ela se recusa a abrir sem motivo**: sem o berco destruido nao ha nada pra escolher, e uma
 	/// tela vazia empurrada na cara do jogador seria pior que nenhuma. O botao do menu tambem so

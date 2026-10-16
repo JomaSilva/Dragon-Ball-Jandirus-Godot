@@ -697,6 +697,22 @@ public partial class LocalPlayer : Node2D
 	private static bool PresoNoTorneio => GameClient.Instance?.EfeitosAtivos.Contains("torneio_espera") == true;
 
 	/// <summary>
+	/// (v0.3.0) PRESO POR UMA TECNICA -- o efeito `tecnica_preso` que o servidor manda enquanto a Genkidama, a Death Ball ou uma
+	/// rajada seguram o corpo (`GameServer.AvisarAsTravasG12`). O dono via o boneco andar e ser puxado de volta ("fica te
+	/// teleportando pra posicao q vc tava quando jogou a genkidama"): este cliente previa o passo que o servidor recusava.
+	/// Agora nem tenta -- o mesmo remedio do torneio, logo acima.
+	/// </summary>
+	private static bool PresoPelaTecnica =>
+		!TravaDaTecnicaSoNoServidorDeTeste
+		&& GameClient.Instance?.EfeitosAtivos.Contains(Jandirus.Net.Protocol.EfeitoDaTravaDeTecnica) == true;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--diagv030`, familia GK): o cliente ignora a trava da tecnica e preve o passo -- o boneco piscando de
+	/// antes. Lido pela propria <see cref="PresoPelaTecnica"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool TravaDaTecnicaSoNoServidorDeTeste;
+
+	/// <summary>
 	/// O EIXO DO RAIO QUE ESTE CORPO SEGURA COM AS MAOS -- a disputa de guarda, do lado sem feixe (nulo fora dela).
 	///
 	/// ============================ O UNICO EMBATE EM QUE O CORPO DA PASSO (dono, 2026-10-12) ============================
@@ -751,6 +767,7 @@ public partial class LocalPlayer : Node2D
 		: Transformacao.PrendendoOCorpo           ? "preso pela cinematica de transformacao"
 		: Prensado                                ? "prensado pela gravidade (ou pelo peso)"
 		: PresoNoTorneio                          ? "na area de espera do torneio"
+		: PresoPelaTecnica                        ? "preso pela tecnica (a Genkidama, a Death Ball, uma rajada)"
 		: NavePousada                             ? "a nave esta pousada (suba pra decolar)"
 		: SemPernasNoChao                         ? MotivoSemPernas
 		: "";

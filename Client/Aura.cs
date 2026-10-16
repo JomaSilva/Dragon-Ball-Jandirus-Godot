@@ -203,8 +203,40 @@ public partial class Aura : Node2D
     /// <summary>O desenho da chama. Pra bancada medir a ancora -- ver `SpriteDeAura.BaseDeTeste`.</summary>
     public SpriteDeAura DesenhoDeTeste => _desenho;
 
+    /// <summary>
+    /// ============================ A CHAMA DAS FORMAS DIVINAS (v0.3.0, adendo 13) ============================
+    /// O dono: *"manter a aura de sprite pras formas mortais, e manter essa aura shaders pras formas divinas, e no blue
+    /// kaioken seria a aura shaders do blue + aura sprite do kaioken por cima"*. O SSG, o Blue e o Rose acendem ESTA
+    /// chama (<see cref="ChamaDeAura"/>), e o <see cref="_desenho"/> fica mudo pra eles sozinho -- o simbolo divino nao
+    /// tem folha. As duas recebem o simbolo da FORMA (<see cref="Folha"/>), e cada uma desenha so o que e dela.
+    ///
+    /// ELA NASCE ANTES DO SPRITE, e a ordem e o pedido: irma de baixo, ela desenha primeiro e o sprite do Kaio-ken desenha
+    /// POR CIMA dela. E o Kaio-ken nao a toca (<see cref="Kaioken"/>): o buff empresta a folha so ao sprite, e a chama da
+    /// forma divina continua acesa por baixo dele -- *"uma aura em cima da outra"*.
+    /// ==========================================================================================================
+    /// </summary>
+    private ChamaDeAura _chama = null!;
+
+    /// <summary>A chama divina deste corpo. Pra bancada.</summary>
+    public ChamaDeAura ChamaDeTeste => _chama;
+
+    /// <summary>
+    /// DEFEITO INJETADO (bancada `--diagforma`): o Kaio-ken toma TAMBEM a chama divina -- o Blue apaga por baixo do sprite
+    /// vermelho, e a "aura em cima da outra" do dono vira uma aura so. Lido pelo <see cref="VestirAChama"/> (deste node e
+    /// da `CargaVisual`). Falso em jogo, sempre.
+    /// </summary>
+    public static bool KaiokenTomaADivinaDeTeste;
+
+    /// <summary>O simbolo que a chama divina veste: o da FORMA, com ou sem Kaio-ken. Ver `_chama`.</summary>
+    internal static Jandirus.Core.Forms.FolhaDeAura SimboloDaChama(Jandirus.Core.Forms.FolhaDeAura daForma, bool kaioken) =>
+        KaiokenTomaADivinaDeTeste && kaioken ? Jandirus.Core.Forms.FolhaDeAura.Kaioken : daForma;
+
+    private void VestirAChama() => _chama.DefinirFolha(SimboloDaChama(_folhaDaForma, _kaioken));
+
     public override void _Ready()
     {
+        _chama = new ChamaDeAura { Name = "Chama" };
+        AddChild(_chama);
         _desenho = new SpriteDeAura { Name = "Desenho" };
         AddChild(_desenho);
 
@@ -249,6 +281,7 @@ public partial class Aura : Node2D
     public void Folha(Jandirus.Core.Forms.FolhaDeAura f)
     {
         _folhaDaForma = f;
+        VestirAChama();
         // O KAIO-KEN ESTA COM A FOLHA EMPRESTADA: a forma guarda a dela e a recebe de volta quando ele
         // apagar (ver `Kaioken`). Sem isto, transformar-se com o Kaio-ken aceso devolveria a chama da
         // forma por baixo do buff -- e no original a `kaioaura` fica por cima de tudo enquanto durar.
@@ -282,6 +315,7 @@ public partial class Aura : Node2D
         if (_kaioken == ligado) return;
         _kaioken = ligado;
         _desenho.DefinirFolha(ligado ? Jandirus.Core.Forms.FolhaDeAura.Kaioken : _folhaDaForma);
+        VestirAChama();
         Aplicar();
     }
 
@@ -438,6 +472,8 @@ public partial class Aura : Node2D
         float forcaDaChama = _kaioken ? ForcaDoKaioken : _forcaAcesa;
         _desenho.Definir(chama && !_cargaAtiva, CorDaChama,
                          Mathf.Clamp(0.6f + forcaDaChama * 0.22f, 0.4f, 1.4f));
+        // A CHAMA DIVINA, com a cor e a forca DA FORMA -- nunca o vermelho do Kaio-ken, que e do sprite por cima dela.
+        _chama.Definir(chama && !_cargaAtiva, _corAcesa, Mathf.Clamp(0.6f + _forcaAcesa * 0.22f, 0.4f, 1.4f));
 
         // ============================ NA BASE ESTE NODE NAO ENTRA EM JOGO ============================
         // Palavras do dono, depois de ver a foto: "ao passar de 100% do ki na base o node aura liga a
@@ -558,6 +594,12 @@ public partial class Aura : Node2D
     /// ========================================================================================
     /// </summary>
     public Color CorDaChama => _kaioken ? CorDoKaioken : _corAcesa;
+
+    /// <summary>
+    /// A COR QUE A FORMA (OU A BASE) GUARDOU, sem o vermelho do Kaio-ken por cima: a da chama divina, que fica por baixo
+    /// do sprite do Kaio-ken em vez de ceder o lugar a ele. A `CargaVisual` a le pela mesma razao.
+    /// </summary>
+    public Color CorDaForma => _corAcesa;
 
     /// <summary>
     /// Apaga a aura DA FORMA. Nao apaga a luz na marra: se o C ainda estiver segurado, a chama da

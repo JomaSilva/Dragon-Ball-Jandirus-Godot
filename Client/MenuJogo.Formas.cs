@@ -127,6 +127,9 @@ public partial class MenuJogo
 			+ "As formas de uma disciplina divina são exceção: elas não têm maestria própria -- usá-las sobe a "
 			+ "proficiência da SKILL, e essa só cresce lutando.");
 
+		// (v0.3.0) O KAIO-KEN E A MAESTRIA DELE -- ver `CartaoDoKaioken`.
+		if (PosseDoCliente.Atual.SabeTecnica(TelaDeKaioken.VerboDoKaioken)) CartaoDoKaioken();
+
 		// SO O QUE JA DESPERTOU. Maestria > 0 quer dizer que este corpo ja esteve nessa forma
 		// alguma vez -- e o unico registro honesto de "eu sei fazer isto".
 		//
@@ -308,15 +311,50 @@ public partial class MenuJogo
 	}
 
 	/// <summary>
+	/// (v0.3.0) O CARTAO DO KAIO-KEN: ate onde ele esta dominado, se esta aceso, e a porta da escolha do multiplicador.
+	///
+	/// O dono: *"o kaioken ta sem maestria"* -- ela existia (o servidor a sobe com o Kaio-ken aceso e cobra por ela) e nunca
+	/// chegava a tela. O DM a escreve aqui mesmo, na aba de formas (`ui_tab_forms`: "Kaio-Ken (mastered max) xN",
+	/// `HtmlUI.dm:454`), e no painel (`Statistics.dm:294`: "Mastered up to x[round(KaiokenMastery)]" -- o `round()` de um
+	/// argumento e PISO).
+	/// </summary>
+	private void CartaoDoKaioken()
+	{
+		bool aceso = _atributos.KaiokenAceso;
+		VBoxContainer corpo = Cartao("Kaio-ken", destaque: aceso);
+		double m = _atributos.KaiokenMaestria > 0 ? _atributos.KaiokenMaestria : Jandirus.Core.Skills.Kaioken.MaestriaInicial;
+		Linha("Dominado até", $"x{Math.Floor(m):0}  (maestria x{m:0.0})", Tema.Destaque, corpo);
+		Linha("Agora", aceso
+				? $"aceso em x{_atributos.KaiokenVezes} ({Jandirus.Core.Skills.Kaioken.Multiplicador(_atributos.KaiokenVezes):0.##}x de poder)"
+				: "apagado",
+			  aceso ? Aura.CorDoKaioken : Tema.TextoFraco, corpo);
+		Nota("A maestria só cresce com o Kaio-ken aceso -- devagar até x20, e muito devagar depois. Acima dela ele cobra mais "
+			  + "Ki, vigor e carne; passar do dobro dela e ficar sem Ki despedaça o corpo.", corpo);
+		var escolher = new Button
+		{
+			Text = aceso ? "Apagar o Kaio-ken" : "Escolher o multiplicador...",
+			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+		};
+		escolher.Pressed += () => TelaDeKaioken.Instancia?.Pedir(
+			_atributos.KaiokenAceso ? TelaDeKaioken.VerboDoKaioken : "Kaioken_Settings");
+		corpo.AddChild(escolher);
+	}
+
+	/// <summary>
 	/// O PEDACO DESTA ABA NA ASSINATURA DE CACHE (ver `MenuJogo.Assinatura`): tudo que ESTA aba
 	/// desenha e que a assinatura basica (em MenuJogo.cs) nao cobre entra aqui, nos mesmos
 	/// arredondamentos em que e desenhado.
 	///
-	/// VAZIO PORQUE A BASICA JA COBRE TUDO O QUE ESTA PAGINA ESCREVE, conferido peca a peca: o nome da
+	/// A BASICA COBRE QUASE TUDO O QUE ESTA PAGINA ESCREVE, conferido peca a peca: o nome da
 	/// faixa e a pilula EM USO saem de `FormaAtual`; as barras, o dreno de cada cartao e a legenda da
 	/// faixa saem das `Maestrias` (a um decimo, que e como sao desenhadas) e de `Disciplina:DiscReal`;
 	/// as duas linhas do cartao Agora entram como o TEXTO que viram (`MultTexto`, `Inteireza:0.#`). A
 	/// legenda da base e uma frase fixa.
+	///
+	/// (v0.3.0) O QUE ELA NAO COBRE E O CARTAO DO KAIO-KEN: se ele existe (a tecnica no livro), a maestria a um decimo,
+	/// o multiplicador e o aceso -- os quatro que o `CartaoDoKaioken` escreve.
 	/// </summary>
-	private string ExtraDaAssinaturaDeFormas(SheetState f) => "";
+	private string ExtraDaAssinaturaDeFormas(SheetState f) =>
+		$"{PosseDoCliente.Atual.SabeTecnica(TelaDeKaioken.VerboDoKaioken)}|{_atributos.KaiokenMaestria:0.#}"
+		+ $"|{_atributos.KaiokenVezes}|{_atributos.KaiokenAceso}";
 }

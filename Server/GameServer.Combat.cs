@@ -1699,6 +1699,11 @@ public partial class GameServer
 			Sangue = Jandirus.Core.Races.SangueDoBio.Texto(pl.Ficha),
 			// (v0.3.0) a porcentagem guardada dos pesos -- o botao "Equipar (N%)". Ver `Fighter.pesoPct`.
 			PesoPct = (byte)Math.Clamp(Math.Round(pl.Ficha.pesoPct), 0, 100),
+			// (v0.3.0) O KAIO-KEN: a maestria (com o piso de quem o destrava), o ultimo multiplicador e se esta aceso -- o
+			// `KaioPcnt` acima de 1 e o `if(usr.KaioPcnt != 1)` do DM. Ver `AtributosState.KaiokenMaestria`.
+			KaiokenMaestria = (float)Math.Max(f.KaiokenMastery, Jandirus.Core.Skills.Kaioken.MaestriaInicial),
+			KaiokenVezes = (byte)Math.Clamp(Math.Round(f.KaiokenVezes), 0, 100),
+			KaiokenAceso = f.KaioPcnt > 1.0001,
 
 			// AINDA ZERO, e de proposito: nenhuma destas habilidades existe no port. Quem
 			// acende cada bit e a etapa que trouxer o sistema -- a skill de Sense, o scouter,
@@ -1772,7 +1777,7 @@ public partial class GameServer
 				   + $"{a.Technique:0.##}|{a.KiSkill:0.##}|{a.Speed:0.##}|{a.Esoteric:0.##}|"
 				   + $"{a.Willpower:0.##}|{a.Stamina:0.#}|{a.Poderes}|{a.Idade}|{a.FormaAtual}|"
 				   + $"{a.GanhoDeTreino:0.#}|{a.Gravidade:0.#}|{a.GravEfetiva:0.#}|{a.PesoMult:0.##}|"
-				   + $"{a.ZonaMult:0.#}|{a.Esmagamento:0.##}|{a.SalaFase}|{a.SalaMinutos:0}|{a.PesoMaxKg:0}|{a.PesoKg:0}|{a.PesoArte}|{a.PesoMelhoriasAteOLimite}|{a.Sangue}|{a.PesoPct}|"
+				   + $"{a.ZonaMult:0.#}|{a.Esmagamento:0.##}|{a.SalaFase}|{a.SalaMinutos:0}|{a.PesoMaxKg:0}|{a.PesoKg:0}|{a.PesoArte}|{a.PesoMelhoriasAteOLimite}|{a.Sangue}|{a.PesoPct}|{a.KaiokenMaestria:0.#}|{a.KaiokenVezes}|{a.KaiokenAceso}|"
 				   + string.Join(',', a.Maestrias.Select(m => $"{m.Forma}:{m.Pct:0.#}"))
 				   // AS PERICIAS ENTRAM COM UMA CASA (`0.#`), pelo mesmo motivo do ganho de treino: sao os
 				   // contadores da ficha, e os de tecnica sobem por fracao a cada tiro que rende. Com

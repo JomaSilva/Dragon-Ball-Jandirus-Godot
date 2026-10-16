@@ -29,15 +29,20 @@ namespace Jandirus.Client;
 ///   P  O MORTO NA MEDITACAO PROFUNDA: pela tecla M e pela telinha, o fantasma entra na propria mente e fica, de pe (item 26);
 ///   G  O CHUTE GIRATORIO: o meu boneco passa pelas quatro direcoes e volta pra onde olhava (item 30);
 ///   RA O MODO DAS RACAS: o cartao da aba Admin muda o modo do servidor pelo fio, e a criacao abre com a raca sorteada --
-///      no berco, sem mundo, raca nem linhagem (item 34);
+///      no berco, sem mundo, raca nem linhagem (item 34); a VAGA nao conta o sorteio, so a criacao (item 45);
 ///   CS O CHEFE DE SAGA: a cena da chegada aparece na minha tela com o chefe noutro planeta (e nao me prende), e a troca de
 ///      corpo do Freeza ao meu lado tem cena -- o corpo novo so na virada (item 35);
 ///   MI AS MIRAGENS DA TECNICA: a da Zanzoken Afterimage vive na tela mais que a do duplo clique (item 33);
 ///   F  O CHEFE DE SAGA CACA O PLANETA: o Freeza da saga me escolhe a trinta tiles (item 5);
 ///   S  A SUPERNOVA: o ultimato do Freeza, pela porta de producao -- o sol nasce, cresce, cai e explode na minha tela, e
 ///      ele intocavel o tempo todo (item 22);
+///   KK O KAIO-KEN: o botao abre a escolha com a maestria escrita, o multiplicador escolhido acende pelo fio, a tela reabre
+///      no ultimo aceso, e o X apaga (item 37);
+///   GK A GENKIDAMA QUE NAO TELEPORTA: lancada, o corpo fica preso na minha tela tambem -- a tecla de andar nao o tira do
+///      lugar -- e, solto, anda de novo; com janela, as fotos dela em cima da cabeca e saindo na frente (itens 38 e 42);
 ///   TR O REFUGIO PELA TERRA: o meu natal acaba, a tela do refugio abre sozinha com o botao "Na Terra" ao lado da
-///      vizinhanca, o botao escolhe pelo fio e a vizinhanca desfaz (adendo 11);
+///      vizinhanca, o botao escolhe pelo fio e a vizinhanca desfaz (adendo 11) -- e a pergunta aparece UMA vez: a oferta do
+///      login seguinte nao a empurra, o cartao do menu P a abre, e o natal que volta apaga a marca (item 39);
 ///   L  A REENCARNACAO: o mundo cai, o cliente disca de novo e a CRIACAO abre na vaga que vagou, com a frase do Enma; o
 ///      novo nasce com 10% do poder (item 7). E a ULTIMA familia: ela troca o personagem.
 ///
@@ -115,9 +120,13 @@ public partial class RoboDaV030 : Node
 		CharacterVisual.GiroSoNoServidorDeTeste = false;
 		Zanzoken.MiragemDaTecnicaCurtaDeTeste = false;
 		CreationScreen.EtapasDoSorteioVisiveisDeTeste = false;
+		CharacterSelect.SorteioNaVagaDeTeste = false;
 		Jandirus.Server.GameServer.ChegadaSemCenaDeTeste = false;
 		Jandirus.Server.GameServer.ChefeSemCenaDeTeste = false;
 		Jandirus.Server.GameServer.TerraForaDoRefugioDeTeste = false;
+		Jandirus.Server.GameServer.XNaoApagaOKaiokenDeTeste = false;
+		LocalPlayer.TravaDaTecnicaSoNoServidorDeTeste = false;
+		Jandirus.Server.GameServer.RefugioSempreAbreDeTeste = false;
 
 		Nota("==================================================================================");
 		Nota($" PLACAR: {_ok} OK, {_falha} FALHA(S)   |   DEFEITOS INJETADOS: {_injOk} pegos, {_injFalha} passaram batido");
@@ -160,6 +169,8 @@ public partial class RoboDaV030 : Node
 		await P_OMortoMergulha(cli, srv);
 		await F_OChefeCaca(cli, srv);
 		await S_ASupernova(cli, srv);
+		await KK_OKaioken(cli, srv);
+		await GK_AGenkidamaNaoTeleporta(cli, srv);
 		await TR_ORefugioPelaTerra(cli, srv);
 		await L_AReencarnacao(cli, srv);   // a ULTIMA: ela troca o personagem
 
@@ -785,6 +796,29 @@ public partial class RoboDaV030 : Node
 		finally { CreationScreen.EtapasDoSorteioVisiveisDeTeste = false; }
 		Injeta("(as etapas ignoram o sorteio) a criacao abre no mundo e oferece a raca, mesmo com a raca sorteada -- o jogo de antes",
 			   d.Titulo != "O BERÇO", $"etapa '{d.Titulo}'");
+
+		// ---- (adendo 14, item 45) A VAGA NAO CONTA O SORTEIO: a tela de vagas de producao, com uma vaga sorteada ----
+		async System.Threading.Tasks.Task<string> TextosDaVaga()
+		{
+			var vagas = new CharacterSelect { Name = "VagasDaBancadaRA" };
+			vagas.Mostrar([new SlotInfo { Ocupado = false, RacaSorteada = "Saiyan", LinhagemSorteada = "Primal Saiyan" }]);
+			AddChild(vagas);
+			await Quadros(2);
+			string textos = string.Join(" | ", vagas.FindChildren("*", nameof(Label), true, false).OfType<Label>().Select(l => l.Text));
+			vagas.QueueFree();
+			await Quadros(1);
+			return textos;
+		}
+		string vaga = await TextosDaVaga();
+		Checa("**A VAGA NAO CONTA O SORTEIO** (*\"vc deveria clicar pra criar um personagem e ai q vc ia descobrir oq sorteou\"*): a vaga livre avisa que a raca e sorteada, sem dizer qual -- quem revela e a criacao",
+			  vaga.Contains("descobre ao criar", StringComparison.Ordinal) && !vaga.Contains("Saiyan", StringComparison.Ordinal)
+			  && !vaga.Contains("Primal", StringComparison.Ordinal), vaga);
+		string vagaDeAntes;
+		CharacterSelect.SorteioNaVagaDeTeste = true;
+		try { vagaDeAntes = await TextosDaVaga(); }
+		finally { CharacterSelect.SorteioNaVagaDeTeste = false; }
+		Injeta("(a vaga que conta o sorteio, o jogo de antes) a vaga livre ja diz \"Saiyan (Primal Saiyan)\"",
+			   vagaDeAntes.Contains("Primal Saiyan", StringComparison.Ordinal), vagaDeAntes);
 	}
 
 	// =====================================================================
@@ -1106,6 +1140,36 @@ public partial class RoboDaV030 : Node
 			bool desfez = await Ate(() => !srv.PalcoV30_RefugioNaTerra(cli.LocalId) && !cli.RefugioTerraEscolhida && Botao("● O mundo vivo mais perto") != null, 5);
 			Checa("...e a vizinhanca desfaz: o servidor apaga a Terra e a marca volta pra ela", desfez, Botoes());
 
+			// ---- (v0.3.0, item 39) A PERGUNTA APARECE UMA VEZ ----
+			tela.Fechar();
+			bool marcou = srv.PalcoV30_RefugioPerguntado(cli.LocalId);
+			srv.PalcoV30_OfertaDoLogin(cli.LocalId);   // o login seguinte
+			await Segundos(1.0);
+			Checa("**A PERGUNTA APARECE UMA VEZ** (*\"sempre q entra no jogo é essa pergunta chata q ja respondi antes\"*): a marca ficou gravada na primeira, e a oferta do login seguinte NAO empurra a tela -- o cartao do menu P continua la",
+				  marcou && !tela.NaTela && cli.RefugioPrecisa, $"marca={marcou} na tela={tela.NaTela} precisa={cli.RefugioPrecisa}");
+
+			MenuJogo? menu = MenuJogo.Instancia;
+			menu?.Abrir();
+			menu?.IrPara("World");
+			await Quadros(4);
+			Button? cartao = menu?.PaginaDeTeste("World") is { } pg
+				? Todos(pg).OfType<Button>().FirstOrDefault(b => b.Text.Contains("Escolher para onde eu volto", StringComparison.Ordinal))
+				: null;
+			cartao?.EmitSignal(BaseButton.SignalName.Pressed);
+			bool peloMenu = cartao != null && await Ate(() => tela.NaTela, 3);
+			await FotoSeHouverJanela("dv030-tr-2b-pelo-menu-p");
+			menu?.Fechar();
+			Checa("...e quem quiser mudar acha no menu P (*\"ele vai ter q ir no menu P procurar a opçao de mudar o local\"*): o cartao Refugio da aba World abre a tela",
+				  peloMenu, cartao == null ? "o cartao nao esta na aba World" : $"na tela={tela.NaTela}");
+			tela.Fechar();
+
+			Jandirus.Server.GameServer.RefugioSempreAbreDeTeste = true;
+			srv.PalcoV30_OfertaDoLogin(cli.LocalId);
+			bool reabriu = await Ate(() => tela.NaTela, 3);
+			Jandirus.Server.GameServer.RefugioSempreAbreDeTeste = false;
+			Injeta("(a marca ignorada, o jogo de antes) a oferta do login empurra a tela de novo -- a pergunta chata", reabriu);
+			tela.Fechar();
+
 			// ---- O DEFEITO: o refugio sem a Terra (o jogo de antes) ----
 			tela.Fechar();
 			Jandirus.Server.GameServer.TerraForaDoRefugioDeTeste = true;
@@ -1125,6 +1189,162 @@ public partial class RoboDaV030 : Node
 		}
 		bool limpou = await Ate(() => !cli.RefugioPrecisa, 5);
 		Checa("(palco desfeito) Namek voltou e o cliente soube: com o berco de pe o refugio some", limpou);
+		Checa("...e com o natal de pe a marca do \"ja perguntei\" se apaga: a proxima catastrofe pergunta de novo (item 39)",
+			  !srv.PalcoV30_RefugioPerguntado(cli.LocalId));
+	}
+
+	// =====================================================================
+	// KK) O KAIO-KEN (item 37): a tela da escolha com a maestria, o multiplicador pelo fio, e o X que apaga
+	// =====================================================================
+	private async Tarefa KK_OKaioken(GameClient cli, Jandirus.Server.GameServer srv)
+	{
+		Nota("--- KK: o Kaio-ken -- a tela da escolha com a maestria, o multiplicador pelo fio e o X que apaga (item 37) ---");
+		if (TelaDeKaioken.Instancia is not { } tela) { Checa("(montagem) a tela do Kaio-ken existe", false); return; }
+		try
+		{
+			bool sabe = srv.PalcoV30_AprenderOKaioken(cli.LocalId)
+						&& await Ate(() => PosseDoCliente.Atual.SabeTecnica(TelaDeKaioken.VerboDoKaioken) && cli.Atributos.KaiokenVezes == 0, 5);
+			Checa("(palco) o corpo aprendeu o Kaio-ken pela licao do Sr. Kaioh, e o cliente soube (sem multiplicador escolhido)", sabe,
+				  $"sabe={PosseDoCliente.Atual.SabeTecnica(TelaDeKaioken.VerboDoKaioken)} ultimo=x{cli.Atributos.KaiokenVezes}");
+			if (!sabe) return;
+
+			// O BOTAO DO KAIO-KEN: o mesmo `Pedir` do botao da aba e da tecla de atalho (`MenuJogo.AbrirOControleDe`)
+			tela.Pedir(TelaDeKaioken.VerboDoKaioken);
+			await Quadros(2);
+			var aberta = tela.TextosDeTeste();
+			Checa("**O BOTAO ABRE A ESCOLHA, COM A MAESTRIA ESCRITA** (*\"o kaioken ta sem maestria\"*): a tela abre no x2 e diz ate onde o corpo domina -- x4, o piso de quem acabou de aprender",
+				  tela.NaTela && aberta.Escolhido == 2 && aberta.Maestria.Contains("até x4", StringComparison.Ordinal)
+				  && !srv.PalcoV30_Kaioken(cli.LocalId).Aceso, $"na tela={tela.NaTela} | {aberta}");
+
+			tela.ArrastarDeTeste(7);
+			await Quadros(2);
+			var x7 = tela.TextosDeTeste();
+			Checa("...arrastando pro x7 ela diz o poder do degrau e o RISCO contra a maestria x4: o nocaute com ele aceso despedaca o corpo (o DM, acima de 1,6x)",
+				  x7.Escolhido == 7 && x7.Poder.Contains("x7", StringComparison.Ordinal) && x7.Risco.Contains("nocauteado", StringComparison.Ordinal)
+				  && x7.Botao.Contains("x7", StringComparison.Ordinal), $"{x7}");
+			await FotoSeHouverJanela("dv030-kk-1-escolha");
+
+			tela.ApertarDeTeste();
+			bool acendeu = await Ate(() => srv.PalcoV30_Kaioken(cli.LocalId) is { Aceso: true, Vezes: 7 }
+															  && cli.Atributos is { KaiokenAceso: true, KaiokenVezes: 7 }, 5);
+			Checa("**O MULTIPLICADOR ESCOLHIDO ACENDE PELO FIO** (*\"n ta dando pra escolher o multiplicador\"*): o botao manda `Kaioken_7`, o servidor acende o x7 e a ficha lenta volta dizendo aceso em x7",
+				  acendeu && !tela.NaTela,
+				  $"servidor={srv.PalcoV30_Kaioken(cli.LocalId)} cliente aceso={cli.Atributos.KaiokenAceso} x{cli.Atributos.KaiokenVezes} tela={tela.NaTela}");
+			await FotoSeHouverJanela("dv030-kk-2-aceso");
+
+			await ApertarX();
+			bool apagou = await Ate(() => !srv.PalcoV30_Kaioken(cli.LocalId).Aceso && !cli.Atributos.KaiokenAceso, 5);
+			Checa("**O X APAGA O KAIO-KEN** (*\"apertar X n ta saindo da forma\"*): a tecla do reverter desliga o Kaio-ken aceso, pelo fio",
+				  apagou, $"servidor={srv.PalcoV30_Kaioken(cli.LocalId)} cliente aceso={cli.Atributos.KaiokenAceso}");
+
+			// A TELA REABRE NO ULTIMO ACESO -- e o defeito: o X de antes
+			tela.Pedir(TelaDeKaioken.VerboDoKaioken);
+			await Quadros(2);
+			int reaberta = tela.TextosDeTeste().Escolhido;
+			Checa("...e a tela reabre no ULTIMO multiplicador aceso (x7), que o servidor guarda na ficha", reaberta == 7, $"x{reaberta}");
+			tela.ApertarDeTeste();
+			bool deNovo = await Ate(() => srv.PalcoV30_Kaioken(cli.LocalId).Aceso, 5);
+			Jandirus.Server.GameServer.XNaoApagaOKaiokenDeTeste = true;
+			await ApertarX();
+			await Segundos(1.0);
+			Injeta("(o X que ignora o Kaio-ken) o Kaio-ken continua aceso depois do X -- o jogo de antes",
+				   deNovo && srv.PalcoV30_Kaioken(cli.LocalId).Aceso, $"aceso de novo={deNovo}");
+		}
+		finally
+		{
+			Jandirus.Server.GameServer.XNaoApagaOKaiokenDeTeste = false;
+			tela.Fechar();
+			srv.PalcoV30_ApagarOKaioken(cli.LocalId);
+		}
+	}
+
+	// =====================================================================
+	// GK) A GENKIDAMA QUE NAO TELEPORTA (itens 38 e 42)
+	// =====================================================================
+	private async Tarefa GK_AGenkidamaNaoTeleporta(GameClient cli, Jandirus.Server.GameServer srv)
+	{
+		Nota("--- GK: a Genkidama -- em cima da cabeca, saindo na frente, e lancada o corpo fica preso na minha tela tambem (itens 38 e 42) ---");
+		if (World.Instancia?.FindChild("LocalPlayer", true, false) is not LocalPlayer eu) { Checa("(montagem) o meu boneco existe", false); return; }
+		bool sabe = srv.PalcoV30_AprenderAGenkidama(cli.LocalId) && await Ate(() => PosseDoCliente.Atual.SabeTecnica("SpiritBomb"), 5);
+		Checa("(palco) o corpo aprendeu a Genkidama pela licao do Sr. Kaioh, com o Ki cheio, e o cliente soube", sabe);
+		if (!sabe) return;
+
+		// QUANTO O MEU BONECO SAIU DO LUGAR com a tecla de andar apertada -- o MAIOR desvio, quadro a quadro: com a trava so no
+		// servidor ele anda e e puxado de volta, e no fim da tecla ja voltou.
+		async System.Threading.Tasks.Task<float> SegurarD(double segundos)
+		{
+			Vector2 de = World.Instancia?.PosicaoLocal ?? default;
+			float maior = 0;
+			Tecla(Key.D, true);
+			double fim = Time.GetTicksMsec() / 1000.0 + segundos;
+			while (Time.GetTicksMsec() / 1000.0 < fim)
+			{
+				maior = Math.Max(maior, (World.Instancia?.PosicaoLocal ?? de).DistanceTo(de));
+				await Quadros(1);
+			}
+			Tecla(Key.D, false);
+			await Quadros(2);
+			return maior;
+		}
+
+		World.Instancia?.AplicarZoom(Settings.ZoomMin);   // so pras fotos: a bola de tres tiles de raio cabe melhor
+		try
+		{
+			cli.SendHabilidade("SpiritBomb");
+			bool formou = await Ate(() => srv.PalcoV30_FaseDaGenkidama(cli.LocalId) == 1, 8);
+			Checa("(a Genkidama se formou pela porta do jogador: o botao manda `SpiritBomb`)", formou, $"fase {srv.PalcoV30_FaseDaGenkidama(cli.LocalId)}");
+			if (!formou) return;
+			await Segundos(1.0);
+			await FotoSeHouverJanela("dv030-gk-1-em-cima-da-cabeca");
+
+			cli.SendHabilidade("SpiritBomb");   // pede o disparo
+			bool saiu = await Ate(() => srv.PalcoV30_FaseDaGenkidama(cli.LocalId) == 3, 6);
+			await Quadros(3);
+			await FotoSeHouverJanela("dv030-gk-2-saindo-na-frente");
+			bool preso = saiu && await Ate(() => cli.EfeitosAtivos.Contains(Protocol.EfeitoDaTravaDeTecnica)
+																		  && eu.PorQueNaoAnda.Contains("preso pela tecnica", StringComparison.Ordinal), 2);
+			float andou = await SegurarD(0.5);
+			Checa("**LANCADA, O CORPO FICA PRESO NA MINHA TELA TAMBEM** (*\"o certo era so desativar inputs ate liberar o movimento\"*): a trava chega pelo fio, o meu boneco sabe por que nao anda, e a tecla de andar NAO o tira do lugar -- nada de andar e ser puxado de volta",
+				  preso && andou < 2f,
+				  $"lancada={saiu} efeito={cli.EfeitosAtivos.Contains(Protocol.EfeitoDaTravaDeTecnica)} por que nao anda=\"{eu.PorQueNaoAnda}\" andou {andou:0.#} px");
+
+			LocalPlayer.TravaDaTecnicaSoNoServidorDeTeste = true;
+			float comDefeito = await SegurarD(0.5);
+			LocalPlayer.TravaDaTecnicaSoNoServidorDeTeste = false;
+			Injeta("(a trava so no servidor, o jogo de antes) o meu boneco anda com a tecla e e puxado de volta -- o \"fica te teleportando pra posiçao q vc tava\"",
+				   comDefeito > 2f, $"andou {comDefeito:0.#} px");
+
+			bool solto = await Ate(() => srv.PalcoV30_FaseDaGenkidama(cli.LocalId) == -1
+																  && !cli.EfeitosAtivos.Contains(Protocol.EfeitoDaTravaDeTecnica), 6);
+			float depois = await SegurarD(0.5);
+			Checa("...e quando a trava acaba o efeito sai do fio e o corpo anda de novo", solto && depois > 8f, $"solto={solto} andou {depois:0.#} px");
+		}
+		finally
+		{
+			LocalPlayer.TravaDaTecnicaSoNoServidorDeTeste = false;
+			Tecla(Key.D, false);
+			World.Instancia?.AplicarZoom(Boot.Config.Zoom);
+		}
+	}
+
+	/// <summary>As duas metades preenchidas, como um teclado de verdade manda (a nota da `--diagmudez`).</summary>
+	private static void Tecla(Key k, bool apertada) =>
+		Input.ParseInputEvent(new InputEventKey { Keycode = k, PhysicalKeycode = k, Pressed = apertada });
+
+	/// <summary>O X de verdade: apertado por dois quadros (o `LocalPlayer` le o `IsActionJustPressed` no quadro dele) e solto.</summary>
+	private async Tarefa ApertarX()
+	{
+		Tecla(Key.X, true);
+		await Quadros(2);
+		Tecla(Key.X, false);
+		await Quadros(2);
+	}
+
+	private static IEnumerable<Node> Todos(Node raiz)
+	{
+		yield return raiz;
+		foreach (Node f in raiz.GetChildren())
+			foreach (Node n in Todos(f)) yield return n;
 	}
 
 	/// <summary>

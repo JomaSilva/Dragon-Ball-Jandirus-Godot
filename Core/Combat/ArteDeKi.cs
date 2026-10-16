@@ -569,6 +569,15 @@ public static class ArteDeProjetil
 	// ====================================================================================
 
 	/// <summary>
+	/// (v0.3.0) O RAIO DESENHADO DA GENKIDAMA na escala 1, em pixel -- tres tiles; o porque do numero esta no estilo dela
+	/// (`ArteDeKiNoCliente`: a folha de 450 px do BYOND nao cabia na tela). Mora aqui, e nao so no estilo, porque deixou de ser
+	/// so desenho: o servidor poe a bola EM CIMA DA CABECA de quem a forma e a solta NA FRENTE dele pela borda deste raio
+	/// (`BocaDeCano.EmCimaDaCabeca`, `BocaDeCano.AfastamentoDaBolaGrande`). Uma regua, dois leitores -- como a frente da cabeca
+	/// logo abaixo.
+	/// </summary>
+	public const float RaioDaGenkidama = 96f;
+
+	/// <summary>
 	/// QUANTO A CABECA DESTA ARTE AVANCA A FRENTE DA POSICAO DO TIRO, em pixel, na escala 1.
 	///
 	/// ============================ ISTO E REGRA, E O DESENHO OBEDECE ============================

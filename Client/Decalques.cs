@@ -65,6 +65,8 @@ public partial class Decalques : Node2D
 		// A GRANDE FICA MAIS TEMPO. Ela e o buraco de uma transformacao de raiva -- some antes da
 		// luta acabar seria negar o que acabou de acontecer ali.
 		Protocol.Decal.CrateraGrande => 40,
+		// (v0.3.0) A DA GENKIDAMA FICA MAIS AINDA: e o buraco que conta o que aconteceu ali.
+		Protocol.Decal.CrateraEnorme => 90,
 		Protocol.Decal.Fumaca => 2.6,
 		// ============================ O CHAO DANIFICADO NAO SOME ============================
 		// Decisao do dono: a terra revirada FICA. Ela so desaparece quando o jogo reinicia e o
@@ -164,6 +166,8 @@ public partial class Decalques : Node2D
 		// OUTRA FOLHA, e por isso ela pode ser grande de verdade: a `Craters` so tem o recorte
 		// `small_crater`, e esticar um sprite pequeno so da borrao. A `big crater` e 96x96.
 		Protocol.Decal.CrateraGrande => ("res://Assets/Sprites/DU/Map/big crater.tres", "default"),
+		// (v0.3.0) A ENORME (a Genkidama) e a MESMA folha, aberta muito mais -- ver o crescimento no `Plantar`.
+		Protocol.Decal.CrateraEnorme => ("res://Assets/Sprites/DU/Map/big crater.tres", "default"),
 		// ============================ ESTA E TEXTURA SOLTA, NAO FOLHA ============================
 		// `dust cloud 2018.png` e um PNG de 1280x720 no DU -- arte, e nao sprite sheet com metadados.
 		// Ele nem tinha vindo na conversao: minha varredura pegou so `*.dmi`, e o DU tem 133 imagens
@@ -487,6 +491,7 @@ public partial class Decalques : Node2D
 		{
 			Protocol.Decal.Cratera => new Vector2(0.05f, 0.05f),
 			Protocol.Decal.CrateraGrande => new Vector2(0.05f, 0.05f),
+			Protocol.Decal.CrateraEnorme => new Vector2(0.05f, 0.05f),
 			Protocol.Decal.Fumaca => new Vector2(EscalaDaFumaca, EscalaDaFumaca),
 			_ => Vector2.One,
 		};
@@ -518,7 +523,7 @@ public partial class Decalques : Node2D
 			s = a;
 		}
 
-		if (tipo is Protocol.Decal.Cratera or Protocol.Decal.CrateraGrande)
+		if (tipo is Protocol.Decal.Cratera or Protocol.Decal.CrateraGrande or Protocol.Decal.CrateraEnorme)
 		{
 			// O DU sorteia 75%..115% do tamanho cheio -- duas crateras nunca sao iguais.
 			//
@@ -530,7 +535,10 @@ public partial class Decalques : Node2D
 					   // 3,0 cobria uns 15 tiles e engolia a tela (o dono fotografou). A folha ja e
 					   // 3x maior que o recorte pequeno, entao este fator MULTIPLICA aquilo -- e o
 					   // erro foi tratar os dois como se fossem um so.
-					   * (tipo == Protocol.Decal.CrateraGrande ? 1.4f : 1.0f);
+					   * (tipo == Protocol.Decal.CrateraGrande ? 1.4f : 1.0f)
+					   // (v0.3.0) A ENORME (a Genkidama): ~4,5x a folha de 96 px, uns 13 tiles de lado a lado -- o miolo da explosao
+					   // colossal, cujo raio e de 10 tiles (o resto e o chao rachado em volta, que o servidor manda celula a celula).
+					   * (tipo == Protocol.Decal.CrateraEnorme ? 4.5f : 1.0f);
 			s.CreateTween().TweenProperty(s, "scale", new Vector2(alvo, alvo), 0.35)
 				.SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.Out);
 		}

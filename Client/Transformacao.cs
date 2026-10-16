@@ -188,6 +188,16 @@ public partial class Transformacao : Node2D
 	public SpriteDeAura ChamaDaCenaDeTeste => _auraGrande;
 
 	/// <summary>
+	/// (v0.3.0, adendo 13) A CHAMA DIVINA DA CENA -- a do SSG, do Blue e do Rose, que deixaram de ter folha: a cena deles acende
+	/// a `ChamaDeAura` (shader), no mesmo pivo e com a mesma forca da `_auraGrande`, e o sprite fica mudo. Irma de baixo, como
+	/// no corpo.
+	/// </summary>
+	private ChamaDeAura _chamaGrande = null!;
+
+	/// <summary>A chama divina desta cena. Pra bancada.</summary>
+	public ChamaDeAura ChamaDivinaDaCenaDeTeste => _chamaGrande;
+
+	/// <summary>
 	/// COM QUE CARA A CHAMA DA CENA ESTA AGORA -- a cor e a densidade do degrau que o corpo veste
 	/// neste instante.
 	///
@@ -246,7 +256,11 @@ public partial class Transformacao : Node2D
 		// forma, que na linha do Ultra Instinto e o azul-prateado que a narracao promete.
 		// ==============================================================================================================
 		var f = Jandirus.Core.Forms.Catalogo.Folha(d);
-		_auraGrande.DefinirFolha(SpriteDeAura.CaminhoDa(f) is null
+		// (v0.3.0, adendo 13) AS TRES DIVINAS SAO DA CHAMA POR SHADER, e na cena tambem: a do SSG, do Blue e do Rose acende a
+		// `ChamaDeAura` deles e o sprite fica mudo com o simbolo sem folha. A `Base` por omissao continua sendo so de quem nao
+		// tem desenho nenhum -- o Ultra Instinto, a coluna de luz narrada.
+		_chamaGrande.DefinirFolha(f);
+		_auraGrande.DefinirFolha(SpriteDeAura.CaminhoDa(f) is null && !ChamaDeAura.Desenha(f)
 									 ? Jandirus.Core.Forms.FolhaDeAura.Base : f);
 		_chamaDaCena = (Aura.CorDaChamaDe(d, CorPessoalDoAlvo), Aura.ForcaDaChamaDe(d));
 	}
@@ -711,6 +725,13 @@ public partial class Transformacao : Node2D
 		// O desconto e a MESMA constante, e nao um numero solto: mudar a linha dos pes conserta os dois
 		// lados ao mesmo tempo, que e o unico jeito de eles nao divergirem.
 		// ====================================================================================================
+		// a chama divina da cena ANTES do sprite: irma de baixo, como no corpo (e com o mesmo desconto da linha dos pes)
+		_chamaGrande = new ChamaDeAura
+		{
+			Name = "ChamaDivinaDaCena",
+			Position = new Vector2(0, -SpriteDeAura.LinhaDosPes),
+		};
+		_auraPivo.AddChild(_chamaGrande);
 		_auraGrande = new SpriteDeAura
 		{
 			Name = "ChamaDaCena",
@@ -729,6 +750,8 @@ public partial class Transformacao : Node2D
 		// ====================================================================================================
 		_auraGrande.ZIndex = -1;
 		_auraGrande.ZAsRelative = false;
+		_chamaGrande.ZIndex = -1;
+		_chamaGrande.ZAsRelative = false;
 
 		// ============================ NASCE MONTADA E INVISIVEL ============================
 		// `Definir(true, ...)` com FORCA ZERO, e nao `Definir(false, ...)`: a `SpriteDeAura` so monta o
@@ -741,6 +764,7 @@ public partial class Transformacao : Node2D
 		// ==============================================================================
 		ChamaDoDegrau(_forma);
 		_auraGrande.Definir(true, _chamaDaCena.Cor, 0f);
+		_chamaGrande.Definir(true, _chamaDaCena.Cor, 0f);
 
 		_pedrasRaiz = new Node2D { Name = "Pedras", TopLevel = true };
 		AddChild(_pedrasRaiz);
@@ -1504,6 +1528,7 @@ public partial class Transformacao : Node2D
 			double restante = _cena.Segundos - _t;
 			float a = (float)(Mathf.Min(_auraT * 3.0, 1.0) * Mathf.Clamp(restante / 0.8, 0, 1));
 			_auraGrande.Definir(true, _chamaDaCena.Cor, _chamaDaCena.Forca * a * 0.8f);
+			_chamaGrande.Definir(true, _chamaDaCena.Cor, _chamaDaCena.Forca * a * 0.8f);
 			// QUEM ESCALA E O PIVO (que esta nos pes), nao o sprite (que esta centrado no peito).
 			// O CRESCIMENTO TEM TETO agora. Antes ele nao precisava: a aura morria aos 3 s e nunca
 			// passava de 1,36x. Durando a cena inteira, um SSJ3 de 35 s chegaria a 5x -- a chama

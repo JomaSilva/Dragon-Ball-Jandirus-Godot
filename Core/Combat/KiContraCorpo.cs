@@ -91,6 +91,15 @@ public static class KiContraCorpo
 	/// <summary>O teto do raio da explosao, em tiles: a esfera gigante nao varre a zona inteira.</summary>
 	public const double TetoDeTilesDaExplosao = 8;
 
+	/// <summary>
+	/// (v0.3.0) O RAIO DA EXPLOSAO COLOSSAL (a Genkidama, `Projetil.Colossal`) com escala 1, em tiles -- o dono: *"explodir no
+	/// final e ter uma cratera ENORME"*. Duas vezes e meia o de uma esfera grande; cresce com a escala ate o teto.
+	/// </summary>
+	public const double TilesDaExplosaoColossalDeEscala1 = 10;
+
+	/// <summary>(v0.3.0) O teto da explosao colossal, em tiles.</summary>
+	public const double TetoDeTilesDaExplosaoColossal = 16;
+
 	/// <summary>Quanto da explosao chega a quem esta na BEIRADA dela. No centro chega inteira; entre os dois, uma reta.</summary>
 	public const double FracaoNaBeiraDaExplosao = 0.25;
 
@@ -158,6 +167,11 @@ public static class KiContraCorpo
 	public static double TilesDaExplosao(double escalaDoTiro) =>
 		Math.Min(TilesDaExplosaoDeEscala1 * Math.Max(escalaDoTiro, 1), TetoDeTilesDaExplosao);
 
+	/// <summary>(v0.3.0) O raio da explosao, em tiles -- a COLOSSAL (a Genkidama) tem a dela, ver <see cref="TilesDaExplosaoColossalDeEscala1"/>.</summary>
+	public static double TilesDaExplosao(double escalaDoTiro, bool colossal) => colossal
+		? Math.Min(TilesDaExplosaoColossalDeEscala1 * Math.Max(escalaDoTiro, 1), TetoDeTilesDaExplosaoColossal)
+		: TilesDaExplosao(escalaDoTiro);
+
 	/// <summary>
 	/// Quanto da explosao chega a um corpo, pela distancia dele ao centro em FRACAO do raio (0 = no centro, 1 = na
 	/// beirada): uma reta de 1 a <see cref="FracaoNaBeiraDaExplosao"/>. Fora do raio, nada.
@@ -207,6 +221,18 @@ public static class KiContraCorpo
 		distanciaSobreORaio > 1
 			? 0
 			: ChanceDeChaoNoCentro - (ChanceDeChaoNoCentro - ChanceDeChaoNaBeira) * Math.Max(distanciaSobreORaio, 0);
+
+	/// <summary>
+	/// (v0.3.0) A CHANCE DE O CHAO RACHAR NA EXPLOSAO COLOSSAL: o miolo racha quase inteiro (ate 60% do raio) e dali a chance
+	/// cai ate a beirada -- e o buraco ENORME do pedido, e nao o salpicado de um Kamehameha.
+	/// </summary>
+	public static double ChanceDeChaoNaExplosaoColossal(double distanciaSobreORaio) =>
+		distanciaSobreORaio > 1 ? 0
+		: distanciaSobreORaio <= MioloDaExplosaoColossal ? ChanceDeChaoNoMioloColossal
+		: ChanceDeChaoNoMioloColossal - (ChanceDeChaoNoMioloColossal - ChanceDeChaoNaBeiraColossal)
+		  * (distanciaSobreORaio - MioloDaExplosaoColossal) / (1 - MioloDaExplosaoColossal);
+
+	public const double MioloDaExplosaoColossal = 0.6, ChanceDeChaoNoMioloColossal = 0.95, ChanceDeChaoNaBeiraColossal = 0.15;
 
 	/// <summary>
 	/// De quantos em quantos tiles uma CRATERA PEQUENA pode nascer: `if(!locate(/obj/Crater/destroyed) in range(3))

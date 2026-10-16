@@ -394,7 +394,7 @@ public partial class MenuJogo
 	/// de quem precisa dele.
 	/// ====================================================================================================
 	///
-	/// A tela e EMPURRADA uma vez por sessao (na chegada ao Outro Mundo, ver `GameServer.Refugio.cs`),
+	/// A tela e EMPURRADA uma vez so (v0.3.0: era uma por sessao -- ver `GameServer.Refugio.OferecerORefugio`),
 	/// e uma tela que so aparece sozinha e uma tela que se perde: quem a fechar sem ler nunca mais
 	/// acha o caminho de volta. **Ele so existe com o berco destruido**, e a condicao e a do SERVIDOR
 	/// (`RefugioPrecisa` vem de la, e nao de uma conta feita aqui). Cartao de DESTAQUE: no dia em que

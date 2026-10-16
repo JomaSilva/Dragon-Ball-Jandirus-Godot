@@ -418,6 +418,13 @@ public static class Protocol
         /// `GameServer.MandarDecalque`.
         /// </summary>
         Membro = 8,
+
+        /// <summary>
+        /// (v0.3.0) A CRATERA ENORME -- a da Genkidama (`Projetil.Colossal`). O dono: *"explodir no final e ter uma cratera
+        /// ENORME"*. A mesma folha da <see cref="CrateraGrande"/> (`big crater`), aberta muito mais e por mais tempo. Ver
+        /// `Client/Decalques`.
+        /// </summary>
+        CrateraEnorme = 9,
     }
 
     /// <summary>
@@ -1386,8 +1393,8 @@ public static class Protocol
         /// planeta volta (um desejo das Esferas ressuscita mundo). Sem esse caso, a escolha de uma
         /// catastrofe que ja passou ficaria na tela pra sempre.
         ///
-        /// `abrir` e o servidor PEDINDO pra tela aparecer agora (a chegada ao Outro Mundo, uma vez
-        /// por sessao). Sem ele, o mesmo pacote e so uma atualizacao de quem ja esta olhando.
+        /// `abrir` e o servidor PEDINDO pra tela aparecer agora (a chegada ao Outro Mundo ou o login -- UMA vez so por
+        /// catastrofe, desde a v0.3.0). Sem ele, o mesmo pacote e so uma atualizacao de quem ja esta olhando.
         ///
         /// (v0.3.0) NO FIM, A TERRA -- a saida B3, o ponto de encontro: `bool serve` (viva e com mapa) + `bool escolhida` +
         /// `float minutos de voo de onde era casa`. Ver `GameServer.Refugio.TerraServeDeRefugio`.
@@ -1840,6 +1847,13 @@ public static class Protocol
     public const int PericiasDeDominio = 8;
 
     /// <summary>
+    /// (v0.3.0) O EFEITO DA TRAVA DE TECNICA (`S2C.Efeito`, enquanto durar): a Genkidama, a Death Ball ou uma rajada do lote
+    /// G12 seguram o corpo, e o cliente para de prever o passo (`LocalPlayer.PorQueNaoAnda`). Quem manda e o
+    /// `GameServer.AvisarAsTravasG12`. Mesmo canal do `torneio_espera`.
+    /// </summary>
+    public const string EfeitoDaTravaDeTecnica = "tecnica_preso";
+
+    /// <summary>
     /// A FICHA QUE QUASE NAO MUDA: os oito atributos e o resto do que o painel de status
     /// mostrava. Vai num pacote separado do <see cref="SheetState"/> de proposito -- aquele sai
     /// varias vezes por segundo porque carrega vida e Ki, e atributo so muda quando se treina.
@@ -1963,6 +1977,15 @@ public static class Protocol
         /// </summary>
         public byte PesoPct;
 
+        /// <summary>
+        /// (v0.3.0) O KAIO-KEN NA FICHA: a maestria (`Fighter.KaiokenMastery`, com o piso de quem destrava a tecnica), o
+        /// ultimo multiplicador aceso (`Fighter.KaiokenVezes`; zero = nunca) e se ele esta ACESO agora. A aba Forms escreve
+        /// "dominado ate xN" e a tela de escolha (`Client/TelaDeKaioken`) parte do ultimo. No FIM do pacote, depois dos pesos.
+        /// </summary>
+        public float KaiokenMaestria;
+        public byte KaiokenVezes;
+        public bool KaiokenAceso;
+
         public readonly bool Tem(Poder p) => (Poderes & (uint)p) != 0;
 
         public readonly void Write(NetDataWriter w)
@@ -1993,6 +2016,7 @@ public static class Protocol
             w.Put(PesoMelhoriasAteOLimite);
             w.Put(Sangue ?? "");
             w.Put(PesoPct);
+            w.Put(KaiokenMaestria); w.Put(KaiokenVezes); w.Put(KaiokenAceso);
         }
 
         public static AtributosState Read(NetDataReader r) => new()
@@ -2025,6 +2049,9 @@ public static class Protocol
             PesoMelhoriasAteOLimite = r.GetByte(),
             Sangue = r.GetString(160),
             PesoPct = r.GetByte(),
+            KaiokenMaestria = r.GetFloat(),
+            KaiokenVezes = r.GetByte(),
+            KaiokenAceso = r.GetBool(),
         };
 
         private static (ushort, float)[] LerMaestrias(NetDataReader r)

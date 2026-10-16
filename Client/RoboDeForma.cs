@@ -3353,25 +3353,48 @@ public partial class RoboDeForma : Node
 		// (ou que o Godot nunca tenha importado) reprova aqui, e nao vira uma aura invisivel em jogo.
 		//
 		// ============================ E O SIMBOLO SEM ARQUIVO E COBRADO PELO AVESSO ============================
-		// A `FolhaDeAura.Nebulosa` NAO tem `.tres`, de proposito -- ela e o jeito de o Core dizer "esta
-		// forma nao usa folha" (o Ultra Instinto desenha a nuvem). Pular a entrada em silencio seria
-		// abrir um buraco do tamanho do enum: qualquer folha nova que alguem esquecesse de traduzir
-		// devolveria nulo e passaria por aqui sem uma palavra.
+		// A `FolhaDeAura.Nebulosa` NAO tem `.tres`, de proposito -- ela e o jeito de o Core dizer "esta forma nao usa folha" (o
+		// Ultra Instinto desenha a nuvem). E desde o adendo 13 as tres DIVINAS tambem nao tem: o SSG, o Blue e o Rose sao da
+		// `ChamaDeAura`, por shader (o dono: *"manter a aura de sprite pras formas mortais, e manter essa aura shaders pras
+		// formas divinas"*). Pular a entrada em silencio seria abrir um buraco do tamanho do enum: qualquer folha nova que
+		// alguem esquecesse de traduzir devolveria nulo e passaria por aqui sem uma palavra.
 		//
-		// Entao o nulo e uma AFIRMACAO e nao uma excecao: exatamente UM simbolo pode nao ter arquivo, e
-		// tem que ser a `Nebulosa`. Um `CaminhoDa` que devolvesse nulo pra qualquer outro cai aqui.
+		// Entao a regra e afirmada INTEIRA: todo simbolo tem UM desenhista so -- o sprite (tem arquivo), a chama por shader
+		// (`ChamaDeAura.Desenha`) ou a nuvem (a `Nebulosa`). Zero e uma aura que sumiu calada; dois, duas chamas empilhadas.
+		//
+		// COMO REPROVA SE A REGRA SUMIR: o `ChamaDeAura.DesenhaTudoDeTeste` (a primeira versao do adendo: a chama por shader
+		// em toda forma) da DOIS desenhistas as quatro folhas mortais -- a bancada o liga ela mesma, logo abaixo.
 		// ==================================================================================================
-		foreach (Jandirus.Core.Forms.FolhaDeAura fl in Enum.GetValues<Jandirus.Core.Forms.FolhaDeAura>())
+		static List<string> DesenhistasErrados()
 		{
-			if (SpriteDeAura.CaminhoDa(fl) is not { } cm)
+			var errados = new List<string>();
+			foreach (Jandirus.Core.Forms.FolhaDeAura fl in Enum.GetValues<Jandirus.Core.Forms.FolhaDeAura>())
 			{
-				Conferir(fl == Jandirus.Core.Forms.FolhaDeAura.Nebulosa,
-						 $"a folha {fl} nao tem arquivo, e a UNICA que pode nao ter e a Nebulosa "
-					   + "(o simbolo de 'esta forma nao usa folha')");
-				continue;
+				int quantos = (SpriteDeAura.CaminhoDa(fl) != null ? 1 : 0) + (ChamaDeAura.Desenha(fl) ? 1 : 0)
+								   + (fl == Jandirus.Core.Forms.FolhaDeAura.Nebulosa ? 1 : 0);
+				if (quantos != 1) errados.Add($"{fl}: {quantos}");
 			}
-			Conferir(ResourceLoader.Exists(cm), $"a folha {fl} existe e esta IMPORTADA ({cm.GetFile()})");
+			return errados;
 		}
+		List<string> desenhistas = DesenhistasErrados();
+		Conferir(desenhistas.Count == 0,
+					 "todo simbolo de aura tem UM desenhista so -- o sprite, a chama por shader ou a nuvem"
+				   + (desenhistas.Count > 0 ? $" (errados: {string.Join(", ", desenhistas)})" : ""));
+		Conferir(ChamaDeAura.Estilo(Jandirus.Core.Forms.FolhaDeAura.DeusQuente) is { } eq
+				  && ChamaDeAura.Estilo(Jandirus.Core.Forms.FolhaDeAura.DeusFrio) is { } ef
+				  && ChamaDeAura.Estilo(Jandirus.Core.Forms.FolhaDeAura.DeusRosa) is { } er
+				  && eq != ef && ef != er && eq != er,
+					 "e as tres DIVINAS sao da chama por shader, cada uma com o seu desenho -- o fogo do SSG, a chama do Blue e a do Rose");
+		ChamaDeAura.DesenhaTudoDeTeste = true;
+		List<string> comODefeito;
+		try { comODefeito = DesenhistasErrados(); }
+		finally { ChamaDeAura.DesenhaTudoDeTeste = false; }
+		Conferir(comODefeito.Count > 0,
+					 "(defeito injetado: a chama por shader em toda forma, a primeira versao do adendo) a regua de cima REPROVA "
+				   + $"({string.Join(", ", comODefeito)})");
+		foreach (Jandirus.Core.Forms.FolhaDeAura fl in Enum.GetValues<Jandirus.Core.Forms.FolhaDeAura>())
+			if (SpriteDeAura.CaminhoDa(fl) is { } cm)
+				Conferir(ResourceLoader.Exists(cm), $"a folha {fl} existe e esta IMPORTADA ({cm.GetFile()})");
 
 		// ============================ E "EXISTE" NAO E "IMPORTADA": ELAS TEM QUE CARREGAR ============================
 		// O `ResourceLoader.Exists` responde sobre o ARQUIVO `.tres`, e o `.tres` e so uma lista de
@@ -3418,37 +3441,28 @@ public partial class RoboDeForma : Node
 		// checagens verdes e uma silhueta preta em volta de 19 formas.
 		//
 		// ============================ O QUE ELA AFIRMA, E POR QUE NAO PODE FICAR VERDE ERRADA ============================
-		// A regra e sobre a ARTE, medida do `.png` no disco, e nao sobre o que alguem escreveu no C#:
+		// A regra e sobre a ARTE, medida do `.png` no disco, e nao sobre o que alguem escreveu no C#: TODA folha que o sprite
+		// monta tem o RGB CHAPADO (uma cor so nos pixels opacos), porque o `Aura.gdshader` so le o ALFA -- a cor vem da tinta
+		// ou e a chapada do arquivo. Uma folha nova com o desenho no RGB sairia CHAPADA na tela (o shader jogaria o desenho
+		// fora), e reprova aqui.
 		//
-		//   marcada `FormaNoAlfa`  ->  o RGB dela tem que ser CHAPADO (uma cor so nos pixels opacos),
-		//                              porque o desenho esta no alfa e o RGB nao carrega forma nenhuma;
-		//   nao marcada            ->  o RGB tem que VARIAR, porque e dele que o `i` tira a forma.
+		// (Esta medida separava DUAS classes ate o adendo 13: as tres folhas divinas tinham o desenho no RGB, e o shader um
+		// ramo pra elas. Elas sairam pra `ChamaDeAura`, o ramo morreu, e nao sobrou folha viva com o desenho no RGB.)
 		//
-		// Inverter a marca de qualquer folha reprova aqui. Trocar a folha base por outra arte preta sem
-		// marcar reprova aqui. E marcar a `colorablebigaura` por engano (que apagaria o desenho cinza
-		// dela, deixando a chama chapada) tambem reprova aqui -- os dois sentidos, e nao so um.
+		// E A MEDIDA TEM QUE ENXERGAR O RGB: o contra-exemplo e a `colorablebigaura` -- a folha de ontem, cinza, com o desenho
+		// no RGB, ainda no disco. Se a contagem de cores dela der UMA, a medida esta cega e as linhas de cima nao provam nada.
 		//
 		// A leitura e do `.png` via `Image`, e nao do `.tres`: e o unico jeito de a medida ser da ARTE.
 		// ==============================================================================================================
 		{
-			int chapadas = 0, variadas = 0;
-			foreach (Jandirus.Core.Forms.FolhaDeAura fl in Enum.GetValues<Jandirus.Core.Forms.FolhaDeAura>())
+			// O `.tres` aponta pro `.png`; a `AtlasTexture` do primeiro quadro leva ao atlas inteiro, que e a folha de verdade.
+			// UMA COR SO NOS PIXELS OPACOS = o RGB nao desenha nada (o preto puro da `Aura, Big` e o chapado colorido da
+			// `AuraSSjBig`/`AuraLSSjBig` sao a mesma natureza).
+			static (int Cores, int Opacos)? CoresDaFolha(string caminho)
 			{
-				if (SpriteDeAura.CaminhoDa(fl) is not { } caminho) continue;
-
-				// O `.tres` aponta pro `.png`; a `AtlasTexture` do primeiro quadro leva ao atlas inteiro,
-				// que e a folha de verdade. Ler o atlas (e nao o recorte) e o que faz a conta cobrir a
-				// arte toda com uma leitura so.
 				var folha = ResourceLoader.Load<SpriteFrames>(caminho);
-				Texture2D? prim = folha?.GetAnimationNames() is { Length: > 0 } ns
-					? folha!.GetFrameTexture(ns[0], 0) : null;
-				Texture2D? cheia = prim is AtlasTexture at ? at.Atlas : prim;
-				Image? img = cheia?.GetImage();
-				if (img == null) { Conferir(false, $"a folha {fl} nao devolveu imagem pra medir"); continue; }
-
-				// UMA COR SO NOS PIXELS OPACOS = o RGB nao desenha nada. Contar as cores distintas em vez
-				// de olhar so o maximo pega os DOIS casos de uma vez: o preto puro da `Aura, Big` e o
-				// chapado colorido da `AuraSSjBig`/`AuraLSSjBig`, que sao a mesma natureza.
+				Texture2D? prim = folha?.GetAnimationNames() is { Length: > 0 } ns ? folha!.GetFrameTexture(ns[0], 0) : null;
+				if ((prim is AtlasTexture at ? at.Atlas : prim)?.GetImage() is not { } img) return null;
 				var cores = new HashSet<uint>();
 				int opacos = 0;
 				for (int y = 0; y < img.GetHeight(); y++)
@@ -3458,27 +3472,30 @@ public partial class RoboDeForma : Node
 						if (p.A <= 0f) continue;
 						opacos++;
 						cores.Add(((uint)Mathf.RoundToInt(p.R * 255f) << 16)
-								| ((uint)Mathf.RoundToInt(p.G * 255f) << 8)
-								|  (uint)Mathf.RoundToInt(p.B * 255f));
-						if (cores.Count > 1 && opacos > 4096) { y = img.GetHeight(); break; }
+								  | ((uint)Mathf.RoundToInt(p.G * 255f) << 8)
+								  |  (uint)Mathf.RoundToInt(p.B * 255f));
+						if (cores.Count > 1 && opacos > 4096) return (cores.Count, opacos);
 					}
-
-				bool chapada = cores.Count == 1;
-				bool marcada = SpriteDeAura.FormaNoAlfa(fl);
-				Conferir(chapada == marcada,
-						 $"a folha {fl} tem RGB {(chapada ? "CHAPADO" : "variado")} e esta marcada "
-					   + $"`FormaNoAlfa={marcada}` ({cores.Count} cor(es) em {opacos} pixel(s) opaco(s) "
-					   + $"-- {caminho.GetFile()})");
-				if (chapada) chapadas++; else variadas++;
+				return (cores.Count, opacos);
 			}
 
-			// AS DUAS CLASSES TEM QUE EXISTIR. Sem esta linha, marcar TODAS (ou NENHUMA) passaria em
-			// todas as de cima se a arte tambem fosse toda igual -- e a folha base indo pra chapada e
-			// justamente a mudanca desta tarefa, entao o numero nao pode ser zero de nenhum lado.
-			Conferir(chapadas >= 3 && variadas >= 3,
-					 $"as duas classes de folha existem ({chapadas} com o desenho no ALFA, "
-				   + $"{variadas} com o desenho no RGB)");
-			_passos.Add($"  --     folhas: {chapadas} com desenho no alfa, {variadas} no RGB");
+			int chapadas = 0;
+			foreach (Jandirus.Core.Forms.FolhaDeAura fl in Enum.GetValues<Jandirus.Core.Forms.FolhaDeAura>())
+			{
+				if (SpriteDeAura.CaminhoDa(fl) is not { } caminho) continue;
+				if (CoresDaFolha(caminho) is not { } medida) { Conferir(false, $"a folha {fl} nao devolveu imagem pra medir"); continue; }
+				Conferir(medida.Cores == 1,
+							 $"a folha {fl} tem o desenho no ALFA: RGB chapado ({medida.Cores} cor(es) em {medida.Opacos} pixel(s) "
+						   + $"opaco(s) -- {caminho.GetFile()})");
+				if (medida.Cores == 1) chapadas++;
+			}
+
+			const string FolhaDeOntem = "res://Assets/Sprites/Auras/colorablebigaura.tres";
+			(int Cores, int Opacos)? ontem = CoresDaFolha(FolhaDeOntem);
+			Conferir(ontem is { Cores: > 1 },
+						 $"e a medida ENXERGA desenho no RGB: a `colorablebigaura` (a folha de ontem, cinza) da {ontem?.Cores} cor(es) "
+				   + "-- uma so seria a medida cega");
+			_passos.Add($"  --     folhas: {chapadas} com o desenho no alfa (e a de ontem, no RGB, com {ontem?.Cores} cores)");
 		}
 
 		// ============================ E A BASE E O MESMO DESENHO DA `AuraSSjBig` ============================
@@ -3567,13 +3584,21 @@ public partial class RoboDeForma : Node
 				// BASE tingida"). `SemFolha` e a medida certa e nao `Visible`: um sprite apagado por estar
 				// em repouso tambem daria `Visible == false`, e o que se quer saber e se ele PODE acender.
 				// ============================================================================================================
+				// (v0.3.0, adendo 13) A CHAMA POR SHADER DOS DOIS NODES: ela veste os simbolos divinos e SO eles -- o que nao e
+				// dela, ela recusa (`EstiloDeTeste` nulo).
+				int? estilo = ChamaDeAura.Estilo(fl);
+				Conferir(aura.ChamaDeTeste.EstiloDeTeste == estilo && cgt.ChamaDeTeste.EstiloDeTeste == estilo,
+							 $"pra {fl} a chama por shader dos DOIS {(estilo is { } e ? $"veste o desenho {e}" : "fica muda")} "
+						   + $"(aura {aura.ChamaDeTeste.EstiloDeTeste?.ToString() ?? "muda"}, carga {cgt.ChamaDeTeste.EstiloDeTeste?.ToString() ?? "muda"})");
+
 				if (SpriteDeAura.CaminhoDa(fl) is not { } esperado)
 				{
 					Conferir(aura.DesenhoDeTeste.SemFolha && cgt.DesenhoDeTeste.SemFolha,
-							 $"pra {fl} os DOIS desenhos ficam sem folha -- nenhuma chama pode acender "
+							 $"pra {fl} os DOIS sprites ficam sem folha -- "
+						   + (estilo != null ? "quem desenha e a chama por shader " : "nenhuma chama pode acender ")
 						   + $"(aura {aura.DesenhoDeTeste.SemFolha}, carga {cgt.DesenhoDeTeste.SemFolha})");
 					Conferir(!aura.DesenhoDeTeste.Visible && !cgt.DesenhoDeTeste.Visible,
-							 $"e nenhum dos dois esta desenhando pra {fl}");
+							 $"e nenhum dos dois sprites esta desenhando pra {fl}");
 					continue;
 				}
 
@@ -3603,38 +3628,29 @@ public partial class RoboDeForma : Node
 				   + $"(aura {aura.DesenhoDeTeste.FolhaDeTeste.GetFile()}, "
 				   + $"carga {cgt.DesenhoDeTeste.FolhaDeTeste.GetFile()})");
 
-			// ============================ O ROSE DEIXOU DE DIVIDIR O ARQUIVO ============================
-			// Esta medicao ja disse o contrario: `DeusFrio` e `DeusRosa` eram a MESMA `FieryGodBlue` e
-			// so a TINTA as separava, porque "nao havia folha Rose no repo". Havia -- o dono achou a
-			// `Supa Saiyan Rose Aura-1`, importada e nunca ligada. Com arte propria, ela entrou nas
-			// PRE-COLORIDAS e o tingimento saiu junto.
-			//
-			// O QUE ESTA LINHA MEDE AGORA e o que a antiga media pelo avesso: que as quatro folhas
-			// dedicadas apontam pra QUATRO arquivos e nenhuma delas se pinta. Um `CaminhoDa` que
-			// voltasse a mandar duas pro mesmo `.tres` cai aqui.
-			var dedicadas = new[]
-			{
-				Jandirus.Core.Forms.FolhaDeAura.Ssj, Jandirus.Core.Forms.FolhaDeAura.DeusQuente,
-				Jandirus.Core.Forms.FolhaDeAura.DeusFrio, Jandirus.Core.Forms.FolhaDeAura.DeusRosa,
-			};
+			// ============================ AS FOLHAS JA PINTADAS SAO DUAS, CADA UMA COM O SEU ARQUIVO ============================
+			// Esta medicao ja cobrou QUATRO (a `AuraSSjBig` e as tres divinas) -- e antes disso ja tinha dito o contrario, quando
+			// a `DeusRosa` dividia a `FieryGodBlue`. Desde o adendo 13 as divinas sao da chama por shader, e as folhas ja pintadas
+			// que sobram sao a dourada do SSJ e a vermelha do Kaio-ken: dois arquivos, e nenhum se tinge. Um `CaminhoDa` que
+			// voltasse a mandar as duas pro mesmo `.tres` cai aqui.
+			var dedicadas = new[] { Jandirus.Core.Forms.FolhaDeAura.Ssj, Jandirus.Core.Forms.FolhaDeAura.Kaioken };
 			var vistos = new HashSet<string>();
 			int naoSePintam = 0;
 			foreach (Jandirus.Core.Forms.FolhaDeAura fl in dedicadas)
 			{
-				// AS QUATRO TEM ARQUIVO POR DEFINICAO (sao as pre-coloridas), entao um nulo aqui derruba a
-				// contagem abaixo em vez de virar um `!` que engoliria o caso.
 				if (SpriteDeAura.CaminhoDa(fl) is { } c) vistos.Add(c);
 				aura.Folha(fl);
 				if (aura.DesenhoDeTeste.SemTinta) naoSePintam++;
 			}
 			Conferir(vistos.Count == dedicadas.Length,
-					 $"as {dedicadas.Length} folhas ja pintadas tem arquivo PROPRIO ({vistos.Count} distintos)");
+						 $"as {dedicadas.Length} folhas ja pintadas tem arquivo PROPRIO ({vistos.Count} distintos)");
 			Conferir(naoSePintam == dedicadas.Length,
-					 $"e nenhuma delas se tinge -- o `icolor = null` do DM ({naoSePintam})");
+						 $"e nenhuma delas se tinge -- o `icolor = null` do DM ({naoSePintam})");
 			aura.Folha(Jandirus.Core.Forms.FolhaDeAura.Base);
 			Conferir(!aura.DesenhoDeTeste.SemTinta, "e a folha de todo mundo continua sendo COLORIDA por fora");
-			Conferir(SpriteDeAura.PreColorida(Jandirus.Core.Forms.FolhaDeAura.DeusQuente),
-					 "e a chama quente do SSG e arte ja colorida (o `icolor = null` do DM)");
+			Conferir(SpriteDeAura.CaminhoDa(Jandirus.Core.Forms.FolhaDeAura.DeusQuente) == null
+				  && !SpriteDeAura.PreColorida(Jandirus.Core.Forms.FolhaDeAura.DeusQuente),
+						 "e a chama quente do SSG saiu das folhas pintadas: sem arquivo, ela e da chama por shader (adendo 13)");
 			// ============================ O KAIO-KEN EMPRESTA A FOLHA E DEVOLVE ============================
 			// A aura vermelha nao e de forma nenhuma: quem a veste e o BUFF (`kaioken.dm:166-169`), por
 			// cima da forma que houver, e ela fica ACESA enquanto ele durar -- sem `Acender` de ninguem.
@@ -3669,20 +3685,53 @@ public partial class RoboDeForma : Node
 			cgt.Folha(Jandirus.Core.Forms.FolhaDeAura.DeusFrio);
 			Conferir(aura.DesenhoDeTeste.FolhaDeTeste == SpriteDeAura.FolhaKaioken
 				  && cgt.DesenhoDeTeste.FolhaDeTeste == SpriteDeAura.FolhaKaioken,
-					 "transformar-se com o Kaio-ken aceso NAO tira a folha vermelha de nenhum dos dois "
+						 "transformar-se com o Kaio-ken aceso NAO tira a folha vermelha de nenhum dos dois "
 				   + $"(aura {aura.DesenhoDeTeste.FolhaDeTeste.GetFile()}, "
 				   + $"carga {cgt.DesenhoDeTeste.FolhaDeTeste.GetFile()})");
+
+			// ============================ E NO BLUE SAO DUAS CHAMAS, UMA EM CIMA DA OUTRA (adendo 13) ============================
+			// O dono: *"no blue kaioken seria a aura shaders do blue + aura sprite do kaioken por cima"*. O sprite vermelho segue
+			// la em cima (a linha acima); por BAIXO dele, a chama por shader dos dois nodes continua com o simbolo do Blue e ACESA
+			// (o buff acende sem `Acender`), na cor da FORMA -- nunca no vermelho, que e da luz e do sprite.
+			//
+			// COMO REPROVA SE A REGRA SUMIR: o `Aura.KaiokenTomaADivinaDeTeste` (o buff tomando a chama inteira, o jogo de antes do
+			// pedido) -- a bancada o liga logo abaixo.
+			// ================================================================================================================
+			bool DuasChamas() =>
+				aura.ChamaDeTeste.EstiloDeTeste == ChamaDeAura.Estilo(Jandirus.Core.Forms.FolhaDeAura.DeusFrio)
+				&& cgt.ChamaDeTeste.EstiloDeTeste == ChamaDeAura.Estilo(Jandirus.Core.Forms.FolhaDeAura.DeusFrio)
+				&& aura.ChamaDeTeste.AcesaDeTeste && aura.DesenhoDeTeste.Visible;
+			Conferir(DuasChamas() && aura.ChamaDeTeste.CorNoMaterialDeTeste is { } corDaChama
+				  && !corDaChama.IsEqualApprox(Aura.CorDoKaioken),
+						 "no BLUE com o Kaio-ken as chamas sao DUAS: a do Blue por shader, acesa por baixo "
+				   + $"(desenho {aura.ChamaDeTeste.EstiloDeTeste}, acesa {aura.ChamaDeTeste.AcesaDeTeste}, "
+				   + $"cor #{aura.ChamaDeTeste.CorNoMaterialDeTeste?.ToHtml(false)}), e o sprite vermelho por cima");
+			Aura.KaiokenTomaADivinaDeTeste = true;
+			try
+			{
+				aura.Folha(Jandirus.Core.Forms.FolhaDeAura.DeusFrio);
+				cgt.Folha(Jandirus.Core.Forms.FolhaDeAura.DeusFrio);
+				Conferir(!DuasChamas(),
+							 "(defeito injetado: o Kaio-ken tomando a chama inteira) o Blue apaga por baixo do vermelho -- a linha de cima REPROVA");
+			}
+			finally
+			{
+				Aura.KaiokenTomaADivinaDeTeste = false;
+				aura.Folha(Jandirus.Core.Forms.FolhaDeAura.DeusFrio);
+				cgt.Folha(Jandirus.Core.Forms.FolhaDeAura.DeusFrio);
+			}
 
 			aura.Kaioken(false);
 			cgt.Kaioken(false);
 			Conferir(!aura.NoKaioken
-				  && aura.DesenhoDeTeste.FolhaDeTeste == SpriteDeAura.FolhaDeusFrio
-				  && cgt.DesenhoDeTeste.FolhaDeTeste == SpriteDeAura.FolhaDeusFrio,
-					 "apagado o Kaio-ken, os dois voltam pra a folha que a FORMA pediu por ultimo "
-				   + $"(aura {aura.DesenhoDeTeste.FolhaDeTeste.GetFile()}, "
-				   + $"carga {cgt.DesenhoDeTeste.FolhaDeTeste.GetFile()})");
-			Conferir(!aura.DesenhoDeTeste.Visible,
-					 "e a chama some junto com o buff: ninguem a tinha acendido alem dele");
+				  && aura.DesenhoDeTeste.SemFolha && cgt.DesenhoDeTeste.SemFolha
+				  && aura.ChamaDeTeste.EstiloDeTeste == ChamaDeAura.Estilo(Jandirus.Core.Forms.FolhaDeAura.DeusFrio)
+				  && cgt.ChamaDeTeste.EstiloDeTeste == ChamaDeAura.Estilo(Jandirus.Core.Forms.FolhaDeAura.DeusFrio),
+						 "apagado o Kaio-ken, os dois voltam pro que a FORMA pediu por ultimo -- o Blue, que e da chama por shader "
+				   + $"(sprites sem folha: aura {aura.DesenhoDeTeste.SemFolha}, carga {cgt.DesenhoDeTeste.SemFolha}; "
+				   + $"chamas: aura {aura.ChamaDeTeste.EstiloDeTeste}, carga {cgt.ChamaDeTeste.EstiloDeTeste})");
+			Conferir(!aura.DesenhoDeTeste.Visible && !aura.ChamaDeTeste.AcesaDeTeste,
+						 "e as chamas somem junto com o buff: ninguem as tinha acendido alem dele");
 
 			aura.Folha(Jandirus.Core.Forms.FolhaDeAura.Base);
 			cgt.Folha(Jandirus.Core.Forms.FolhaDeAura.Base);
@@ -3715,9 +3764,9 @@ public partial class RoboDeForma : Node
 		// AS DIVINAS SAIRAM DA BASE COLORIVEL -- se o Blue cair na folha dourada ele fica amarelo, e se
 		// cair na colorivel ele volta a ser "a aura de todo mundo tingida", que era o estado anterior.
 		Conferir(Jandirus.Core.Forms.Catalogo.Folha(Jandirus.Core.Forms.Catalogo.Def("blue"))
-				 == Jandirus.Core.Forms.FolhaDeAura.DeusFrio, "o Blue acende a chama FRIA (FieryGodBlue)");
+				 == Jandirus.Core.Forms.FolhaDeAura.DeusFrio, "o Blue acende a chama do BLUE (por shader, adendo 13)");
 		Conferir(Jandirus.Core.Forms.Catalogo.Folha(Jandirus.Core.Forms.Catalogo.Def("ssg"))
-				 == Jandirus.Core.Forms.FolhaDeAura.DeusQuente, "o SSG acende a chama QUENTE (FieryGod)");
+				 == Jandirus.Core.Forms.FolhaDeAura.DeusQuente, "o SSG acende o FOGO (por shader, adendo 13)");
 		// ============================ E A LINHA DO MISTICO SAIU DA QUENTE ============================
 		// Esta linha dizia o CONTRARIO ate agora ("o Mistico cai na MESMA chama do SSG"), e era leitura
 		// certa do DM. O dono derrubou: *"o mistico e beast tao usando a aura de carga do ssj god"* --
@@ -7702,91 +7751,60 @@ public partial class RoboDeForma : Node
 	}
 
 	// =====================================================================
-	// 3a-ter-D. A AURA DO ROSE E A ARTE PROPRIA DELE
+	// 3a-ter-D. A AURA DO ROSE E A DELE
 	// =====================================================================
 	/// <summary>
-	/// *"a aura do Rose e a `Supa Saiyan Rose Aura-1`, e o cabelo dele e ROSA (nao loiro)"*.
+	/// *"a aura do Rose e a `Supa Saiyan Rose Aura-1`, e o cabelo dele e ROSA (nao loiro)"* -- e depois, no adendo 13, *"n
+	/// esqueca q o rose tem essa aparencia"*: violeta colado no corpo, labaredas de carmim fundo e a beirada acesa em
+	/// vermelho. Desde entao ela e a chama POR SHADER (`ChamaDeAura`), e a folha antiga ficou no disco sem consumidor.
 	///
-	/// A metade do CABELO cai no bloco de cima (o rosa e medido tom a tom sobre a arte dourada). Aqui
-	/// mora a metade da AURA, e ela tem tres perguntas que nenhuma outra varredura faz:
+	/// A metade do CABELO cai no bloco de cima. Aqui mora a metade da AURA, com as tres perguntas de sempre:
 	///
-	///   1. o simbolo da forma aponta pra a folha PROPRIA -- e nao pra a `FieryGodBlue` compartilhada,
-	///      que e como ela vivia antes de o dono achar a arte;
-	///   2. a arte carrega, e ela e mesmo ROSA (medida no pixel). "Ja vem colorida" so e uma
-	///      justificativa aceitavel pra nao tingir enquanto a cor certa estiver desenhada la;
-	///   3. o `SemTinta` do desenho responde pelo SIMBOLO e nao pelo caminho -- foi assim que a
-	///      `DeusRosa` e a `DeusFrio` deram a mesma resposta pra perguntas diferentes quando dividiam
-	///      o mesmo `.tres`.
+	///   1. o simbolo da forma e o do ROSE -- e o SSG da linha Rose fica no fogo;
+	///   2. o desenho e o DELE, e nao o do Blue com outro nome, e a paleta e violeta e carmim -- medida na cor, e nao no
+	///      nome; e ela nao vem de fora (um Blue azul nao vira um Rose azul);
+	///   3. o sprite fica MUDO pra ele, e responde pelo SIMBOLO.
 	///
-	/// COMO REPROVA SE A REGRA SUMIR: aponte a `DeusRosa` de volta pra `FieryGodBlue.tres` -- caem a
-	/// primeira e a terceira (o azul nao passa na medida de rosa). Tire a `DeusRosa` da `PreColorida` --
-	/// cai a do `SemTinta`, e em jogo a chama rosa levaria tinta rosa por cima.
+	/// COMO REPROVA SE A REGRA SUMIR: mande a `DeusRosa` pro desenho da `DeusFrio` no `ChamaDeAura.Estilo` (cai a segunda),
+	/// ou devolva a folha dela ao `SpriteDeAura.CaminhoDa` (cai a terceira).
 	/// </summary>
 	private void AAuraDoRose(SpriteDeAura desenho)
 	{
 		// --- 1. O SIMBOLO, forma a forma ---
 		foreach (string id in new[] { "rose", "rose2" })
 			Conferir(Jandirus.Core.Forms.Catalogo.Folha(Jandirus.Core.Forms.Catalogo.Def(id))
-						 == FolhaDeAura.DeusRosa,
-					 $"`{id}`: a chama e a folha ROSA propria "
+								 == FolhaDeAura.DeusRosa,
+						 $"`{id}`: a chama e a do ROSE "
 				   + $"(deu {Jandirus.Core.Forms.Catalogo.Folha(Jandirus.Core.Forms.Catalogo.Def(id))})");
 
-		// E O SSG DA LINHA ROSE FICA NA QUENTE: e o mesmo corte `ssj == 0` do DM, e ele e o que impede
-		// "toda a linha GodKiRose e rosa" de passar por engano.
+		// E O SSG DA LINHA ROSE FICA NO FOGO: e o mesmo corte `ssj == 0` do DM, e ele e o que impede "toda a linha GodKiRose
+		// e rosa" de passar por engano.
 		Conferir(Jandirus.Core.Forms.Catalogo.Folha(Jandirus.Core.Forms.Catalogo.Def("rose_ssg"))
-					 == FolhaDeAura.DeusQuente,
-				 "e o `rose_ssg` continua na chama QUENTE (o corte `ssj==0` do AuraObject.dm)");
+							 == FolhaDeAura.DeusQuente,
+					 "e o `rose_ssg` continua no FOGO do SSG (o corte `ssj==0` do AuraObject.dm)");
 
-		// `?? ""` E NAO `!`: um simbolo que perdesse o arquivo cairia nas tres linhas abaixo (nome,
-		// distincao e importacao) em vez de estourar o robo inteiro num quadro qualquer.
-		string caminho = SpriteDeAura.CaminhoDa(FolhaDeAura.DeusRosa) ?? "";
-		Conferir(caminho.GetFile() == "Supa Saiyan Rose Aura-1.tres",
-				 $"e o arquivo dela e a `Supa Saiyan Rose Aura-1` ({caminho.GetFile()})");
-		Conferir(caminho != SpriteDeAura.CaminhoDa(FolhaDeAura.DeusFrio),
-				 "e ela NAO divide mais o arquivo com a chama azul (dividia, e o `SemTinta` mentia)");
-		Conferir(ResourceLoader.Exists(caminho), "a folha do Rose esta IMPORTADA");
+		// --- 2. O DESENHO E A PALETA ---
+		Conferir(ChamaDeAura.Estilo(FolhaDeAura.DeusRosa) is { } doRose && doRose != ChamaDeAura.Estilo(FolhaDeAura.DeusFrio),
+					 $"a chama do Rose tem desenho PROPRIO, e nao o do Blue (desenho {ChamaDeAura.Estilo(FolhaDeAura.DeusRosa)} "
+				   + $"contra {ChamaDeAura.Estilo(FolhaDeAura.DeusFrio)})");
+		(Color _, Color meio, Color borda, Color aro) = ChamaDeAura.PaletaDe(FolhaDeAura.DeusRosa, new Color("ff7ac6"));
+		Conferir(meio.B > meio.G + 0.3f && meio.R > meio.G,
+					 $"o meio da chama do Rose e VIOLETA (#{meio.ToHtml(false)})");
+		Conferir(borda.R > borda.B && borda.R > borda.G + 0.2f && borda.V < 0.6f,
+					 $"a borda e CARMIM fundo (#{borda.ToHtml(false)})");
+		Conferir(aro.R > 0.7f && aro.R > aro.G + 0.5f,
+					 $"e a beirada acende em VERMELHO vivo (#{aro.ToHtml(false)})");
+		Conferir(!ChamaDeAura.PaletaDe(FolhaDeAura.DeusRosa, new Color("3ad2ff")).Meio.IsEqualApprox(new Color("3ad2ff")),
+					 "e a paleta do Rose e DELE, e nao a cor que vier de fora (um Blue azul daria um Rose azul)");
 
-		var frames = ResourceLoader.Load<SpriteFrames>(caminho);
-		int quadros = frames != null && frames.GetAnimationNames().Length > 0
-			? frames.GetFrameCount(frames.GetAnimationNames()[0]) : 0;
-		Conferir(quadros > 0, $"e ela CARREGA, com {quadros} quadro(s) (existir nao e importar)");
-
-		// --- 2. O PIXEL: a arte e rosa mesmo ---
-		(Color Cor, int Pixels)[] tons = TonsOpacosDe(PngDe(caminho));
-		Conferir(tons.Length > 0, "o PNG da chama do Rose abre pra a medicao");
-		if (tons.Length > 0)
-		{
-			// O TOM DOMINANTE **COLORIDO**: a folha tem 4090 pixels de contorno preto puro, e preto nao
-			// responde "de que cor e esta chama". Sem esta filtragem a medida dependeria de a arte ter
-			// ou nao contorno, que e outro assunto (e esta anotado como observacao pro dono).
-			Color dom = tons.First(t => t.Cor.R8 + t.Cor.G8 + t.Cor.B8 > 30).Cor;
-			_passos.Add($"  --     chama do Rose: {tons.Sum(t => t.Pixels)} px, dominante colorido "
-					  + $"#{dom.ToHtml(false)}");
-			Conferir(dom.R > dom.G + 0.2f && dom.B > dom.G + 0.1f,
-					 $"a arte da chama do Rose e ROSA/CARMESIM de verdade (#{dom.ToHtml(false)})");
-			Conferir(dom.R >= dom.B,
-					 $"-- e nao e a AZUL do original com outro nome (#{dom.ToHtml(false)})");
-		}
-
-		// --- 3. ELA NAO SE TINGE, E QUEM RESPONDE ISSO E O SIMBOLO ---
-		Conferir(SpriteDeAura.PreColorida(FolhaDeAura.DeusRosa),
-				 "a chama do Rose esta na lista das JA COLORIDAS (tingi-la jogaria a arte fora)");
-
+		// --- 3. O SPRITE MUDO, PELO SIMBOLO ---
 		desenho.DefinirFolha(FolhaDeAura.DeusRosa);
-		Conferir(desenho.SimboloDeTeste == FolhaDeAura.DeusRosa && desenho.SemTinta,
-				 $"e o desenho vivo responde pelo SIMBOLO: `{desenho.SimboloDeTeste}`, sem tinta "
-			   + $"({desenho.SemTinta})");
-		// O `NaN` E UM ESTADO REAL e nao um detalhe de C#: ele quer dizer "o sprite nao esta montado", e
-		// nesse caso a ancora nao foi medida -- a linha tem que reprovar dizendo isso, e nao passar por
-		// uma comparacao que com NaN e sempre falsa de um jeito que ninguem lê.
-		float baseDela = desenho.BaseDeTeste;
-		Conferir(!float.IsNaN(baseDela) && Mathf.Abs(baseDela - SpriteDeAura.LinhaDosPes) <= 2f,
-				 $"e ela nasce no pe como as irmas (base {baseDela:0.#}, pe {SpriteDeAura.LinhaDosPes})");
+		Conferir(desenho.SimboloDeTeste == FolhaDeAura.DeusRosa && desenho.SemFolha,
+					 $"e o sprite fica MUDO pra ele: `{desenho.SimboloDeTeste}`, sem folha ({desenho.SemFolha})");
 
-		// E DEVOLVE A FOLHA -- o resto da bancada mede este mesmo desenho, e deixa-lo em rosa poria a
-		// chama do Rose numa foto de Legendary mil linhas abaixo.
+		// E DEVOLVE A FOLHA -- o resto da bancada mede este mesmo desenho.
 		desenho.DefinirFolha(FolhaDeAura.Base);
-		Conferir(!desenho.SemTinta, "e voltando pra a folha colorivel ela volta a se tingir");
+		Conferir(!desenho.SemFolha && !desenho.SemTinta, "e voltando pra a folha colorivel ele volta a desenhar, tingido");
 	}
 
 	// =====================================================================
@@ -14835,6 +14853,12 @@ public partial class RoboDeForma : Node
 					 $"`{id}`: a ida poe as DUAS chamas na folha {esperada.GetFile()} "
 				   + $"(aura {aura.DesenhoDeTeste.FolhaDeTeste.GetFile()}, "
 				   + $"carga {carga.DesenhoDeTeste.FolhaDeTeste.GetFile()})");
+			// (adendo 13) o Blue e o SSG sao da chama POR SHADER: na ida, a das DUAS veste o desenho deles -- e o sprite, mudo,
+			// passa na linha de cima com a folha vazia
+			int? estiloDaIda = ChamaDeAura.Estilo(Jandirus.Core.Forms.Catalogo.Folha(d));
+			Conferir(aura.ChamaDeTeste.EstiloDeTeste == estiloDaIda && carga.ChamaDeTeste.EstiloDeTeste == estiloDaIda,
+					 $"`{id}`: e a chama por shader das DUAS {(estiloDaIda is { } e ? $"veste o desenho {e}" : "fica muda")} "
+				   + $"(aura {aura.ChamaDeTeste.EstiloDeTeste?.ToString() ?? "muda"}, carga {carga.ChamaDeTeste.EstiloDeTeste?.ToString() ?? "muda"})");
 
 			Mudar(id, Base, Jandirus.Core.Forms.DegrauDeCena.Nenhuma);
 			Conferir(!aura.AcesaDeTeste, $"`{id}` -> base: a aura apaga");
@@ -14847,8 +14871,9 @@ public partial class RoboDeForma : Node
 					 $"`{id}` -> base: a cor guardada volta a ser a PESSOAL deste corpo e nao a da "
 				   + $"forma ({aura.CorDaChama.ToHtml(false)}, pessoal {aura.CorPessoal.ToHtml(false)})");
 			Conferir(aura.DesenhoDeTeste.FolhaDeTeste == SpriteDeAura.FolhaBase
-				  && carga.DesenhoDeTeste.FolhaDeTeste == SpriteDeAura.FolhaBase,
-					 $"`{id}` -> base: as duas chamas voltam pra a folha colorivel "
+				  && carga.DesenhoDeTeste.FolhaDeTeste == SpriteDeAura.FolhaBase
+				  && aura.ChamaDeTeste.EstiloDeTeste == null && carga.ChamaDeTeste.EstiloDeTeste == null,
+					 $"`{id}` -> base: as duas chamas voltam pra a folha colorivel, e a por shader fica muda "
 				   + $"(aura {aura.DesenhoDeTeste.FolhaDeTeste.GetFile()}, "
 				   + $"carga {carga.DesenhoDeTeste.FolhaDeTeste.GetFile()})");
 		}
@@ -16119,14 +16144,19 @@ public partial class RoboDeForma : Node
 				// `Assumir`, 10 s depois daquele beat. Calar a chama da CENA junto com as outras duas
 				// apagaria um beat escrito -- e o buraco so apareceria pra quem assistisse a estreia.
 				// ======================================================================================================
-				string folhaEsperada = SpriteDeAura.CaminhoDa(Jandirus.Core.Forms.Catalogo.Folha(d))
-									?? SpriteDeAura.FolhaBase;
-				if (t.ChamaDaCenaDeTeste.FolhaDeTeste != folhaEsperada)
+				// (adendo 13) E AS TRES DIVINAS ACENDEM A CHAMA POR SHADER DA CENA, com o sprite mudo (folha vazia).
+				FolhaDeAura folhaDaForma = Jandirus.Core.Forms.Catalogo.Folha(d);
+				int? estiloEsperado = ChamaDeAura.Estilo(folhaDaForma);
+				string folhaEsperada = estiloEsperado != null ? ""
+									: SpriteDeAura.CaminhoDa(folhaDaForma) ?? SpriteDeAura.FolhaBase;
+				if (t.ChamaDaCenaDeTeste.FolhaDeTeste != folhaEsperada
+					|| t.ChamaDivinaDaCenaDeTeste.EstiloDeTeste != estiloEsperado)
 				{
 					chamaErrada++;
 					if (ondeChama.Length == 0)
-						ondeChama = $"`{d.Id}` desenhou `{t.ChamaDaCenaDeTeste.FolhaDeTeste.GetFile()}`, "
-								  + $"esperado `{folhaEsperada.GetFile()}`";
+						ondeChama = $"`{d.Id}` desenhou `{t.ChamaDaCenaDeTeste.FolhaDeTeste.GetFile()}` e a chama por shader "
+								  + $"{t.ChamaDivinaDaCenaDeTeste.EstiloDeTeste?.ToString() ?? "muda"}, esperado `{folhaEsperada.GetFile()}` "
+								  + $"e {estiloEsperado?.ToString() ?? "muda"}";
 				}
 
 				if (corpo.GetNodeOrNull<RaiosDaForma>("Raios") is { } r)

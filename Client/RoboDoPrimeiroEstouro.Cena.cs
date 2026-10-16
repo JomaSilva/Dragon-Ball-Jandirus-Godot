@@ -419,7 +419,6 @@ public partial class RoboDoPrimeiroEstouro
 				material.SetShaderParameter("cor", new Vector3(dourado.R, dourado.G, dourado.B));
 				material.SetShaderParameter("forca", 0f);
 				material.SetShaderParameter("tingir", false);
-				material.SetShaderParameter("forma_no_alfa", true);
 				Prender(material);
 				break;
 			}

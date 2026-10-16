@@ -401,7 +401,7 @@ public sealed partial class GameServer
 		pl.Berco = new Jandirus.Core.Races.Berco { Planeta = "Namek", PreFeito = true, Natal = "Namek" };
 		_refugioV30Palco = PalcoDeMortesDeBancada();
 		if (!MatarPlanetaNoPalco(ZoneKey.Premade("Namek"), "diagv030: o refugio pela Terra")) return false;
-		pl.RefugioJaOferecido = false;
+		pl.RefugioPerguntado = false;
 		OferecerORefugio(pl, podeAbrir: true);
 		return true;
 	}
@@ -435,4 +435,57 @@ public sealed partial class GameServer
 		if (_players.ContainsKey(u.Chefe.Id)) RemoverNpc(u.Chefe);
 		if (_players.TryGetValue(u.Quem, out ServerPlayer? pl) && !pl.Zone.Equals(u.Volta)) MoveToZone(pl.Id, u.Volta, u.VoltaPos);
 	}
+
+	// =====================================================================
+	// (v0.3.0, adendo 12) O KAIO-KEN, A GENKIDAMA E A PERGUNTA DO REFUGIO -- os palcos das familias KK, GK e TR
+	// =====================================================================
+	/// <summary>
+	/// A LICAO DO SR. KAIOH, pela porta de producao (`LicaoDeNpc`: o livro, os poderes e o pacote das skills): o corpo aprende
+	/// o Kaio-ken. E a cena comeca de quem acabou de aprender -- sem o ultimo multiplicador, na maestria inicial, apagado e com
+	/// o Ki ate 100% (acima disso o X so libera o excesso). Verdadeiro se ele sabe.
+	/// </summary>
+	internal bool PalcoV30_AprenderOKaioken(int id)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return false;
+		bool sabe = LicaoDeNpc(pl, NpcsDeConversa.SkillDoKaioken) || pl.Livro.Sabe(NpcsDeConversa.SkillDoKaioken);
+		if (TemBuff(pl, BuffKaiokenG2)) ReverterKaiokenG2(pl, porKO: false);
+		pl.Ficha.KaiokenVezes = 0;
+		pl.Ficha.KaiokenMastery = 0;
+		pl.Ficha.Ki = Math.Min(pl.Ficha.Ki, pl.Ficha.MaxKi);
+		pl.SigAtributos = "";
+		return sabe;
+	}
+
+	/// <summary>O Kaio-ken deste corpo, como o servidor o ve: aceso, em que multiplicador, e a maestria que vale.</summary>
+	internal (bool Aceso, double Vezes, double Maestria) PalcoV30_Kaioken(int id) =>
+		_players.TryGetValue(id, out ServerPlayer? pl)
+			? (TemBuff(pl, BuffKaiokenG2), _kaiokenAmtG2.GetValueOrDefault(pl.Id), MaestriaKaiokenG2(pl))
+			: default;
+
+	/// <summary>Apaga o Kaio-ken deste corpo, se aceso -- a limpeza do robo.</summary>
+	internal void PalcoV30_ApagarOKaioken(int id)
+	{
+		if (_players.TryGetValue(id, out ServerPlayer? pl) && TemBuff(pl, BuffKaiokenG2)) ReverterKaiokenG2(pl, porKO: false);
+	}
+
+	/// <summary>A outra licao do Sr. Kaioh (a Genkidama, `LicaoDeNpc`), e o Ki cheio pra erguer a bomba (ela custa 90%).</summary>
+	internal bool PalcoV30_AprenderAGenkidama(int id)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return false;
+		bool sabe = LicaoDeNpc(pl, NpcsDeConversa.SkillDaGenkidama) || pl.Livro.Sabe(NpcsDeConversa.SkillDaGenkidama);
+		pl.Ficha.Ki = pl.Ficha.MaxKi;
+		return sabe;
+	}
+
+	/// <summary>A fase da Genkidama deste corpo: -1 nenhuma; 0 formando, 1 crescendo, 2 disparo pedido, 3 lancada (a trava).</summary>
+	internal int PalcoV30_FaseDaGenkidama(int id) => _genkidamaG12.TryGetValue(id, out EstadoDaGenkidamaG12? g) ? g.Fase : -1;
+
+	/// <summary>A oferta do refugio como no LOGIN (`podeAbrir`): sem a marca a tela se empurra, com ela nao.</summary>
+	internal void PalcoV30_OfertaDoLogin(int id)
+	{
+		if (_players.TryGetValue(id, out ServerPlayer? pl)) OferecerORefugio(pl, podeAbrir: true);
+	}
+
+	/// <summary>A marca do "ja perguntei" deste corpo -- a que o disco guarda (`ServerPlayer.RefugioPerguntado`).</summary>
+	internal bool PalcoV30_RefugioPerguntado(int id) => _players.TryGetValue(id, out ServerPlayer? pl) && pl.RefugioPerguntado;
 }

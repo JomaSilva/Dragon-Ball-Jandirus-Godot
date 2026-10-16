@@ -148,6 +148,61 @@ public sealed partial class GameServer
 		TickDoSenzuG12(dt);
 		TickDosAlvosDeKiG12();
 		TickDaPrecognicaoG12(dt);
+		AvisarAsTravasG12();
+	}
+
+	// =====================================================================
+	// (v0.3.0) A TRAVA DE ANDAR VAI PRO CLIENTE
+	// =====================================================================
+	/// <summary>Quem o cliente ja sabe que esta preso por este lote -- o espelho do efeito `tecnica_preso` que saiu.</summary>
+	private readonly HashSet<int> _presosAvisadosG12 = [];
+
+	/// <summary>Os que sairam da trava neste tique -- reusada, pra o tique a 30 Hz nao alocar uma lista por volta.</summary>
+	private readonly List<int> _soltosG12 = [];
+
+	/// <summary>
+	/// **QUEM ESTA PRESO POR ESTE LOTE FICA SABENDO.** O dono: *"a genkidama quando vc lanca o jogo deixa vc andar mas fica te
+	/// teleportando pra posicao q vc tava quando jogou a genkidama, o certo era so desativar inputs ate liberar o movimento,
+	/// pq fica estranho personagem flicando"*.
+	///
+	/// ============================ O SERVIDOR SEMPRE PRENDEU; O CLIENTE NAO SABIA ============================
+	/// `PresoPeloG12` esta no `PodeMexerOCorpo` (o `move = 0` do DM) e a Genkidama ainda ancora o corpo a cada tique. Mas o
+	/// cliente previa o passo, o servidor o recusava com uma correcao, e o boneco ia e voltava -- o defeito que o torneio ja
+	/// pagou (`torneio_espera`, "teleportando de volta"), com o mesmo remedio: a trava vai pro cliente como EFEITO e ele nem
+	/// tenta andar (`LocalPlayer.PorQueNaoAnda`).
+	///
+	/// CONFERIDA AQUI, NO TIQUE, e nao em cada porta que liga ou solta a trava: sao tres tecnicas com fases proprias e outras
+	/// tantas saidas (o fim, o nocaute, a troca de zona, o logout) -- uma porta esquecida deixaria alguem preso pra sempre na
+	/// propria tela. Vale pras tres travas do lote: Death Ball, as rajadas e a Genkidama. So pra quem tem tela (`Peer`).
+	/// =================================================================================================
+	/// </summary>
+	private void AvisarAsTravasG12()
+	{
+		AvisarATravaG12(_deathBallG12);
+		AvisarATravaG12(_voleiG12);
+		AvisarATravaG12(_genkidamaG12);
+		if (_presosAvisadosG12.Count == 0) return;
+
+		_soltosG12.Clear();
+		foreach (int id in _presosAvisadosG12)
+			if (!PresoPeloG12(id) || !_players.ContainsKey(id)) _soltosG12.Add(id);
+		foreach (int id in _soltosG12)
+		{
+			_presosAvisadosG12.Remove(id);
+			if (_players.TryGetValue(id, out ServerPlayer? pl)) MandarEfeito(pl, Protocol.EfeitoDaTravaDeTecnica, 0);
+		}
+	}
+
+	/// <summary>Os presos de UM dicionario do lote que ainda nao foram avisados. Generico pra o enumerador das chaves nao alocar.</summary>
+	private void AvisarATravaG12<T>(Dictionary<int, T> presos)
+	{
+		foreach (int id in presos.Keys)
+		{
+			if (_presosAvisadosG12.Contains(id) || !PresoPeloG12(id)) continue;
+			if (!_players.TryGetValue(id, out ServerPlayer? pl) || pl.Peer == null) continue;
+			_presosAvisadosG12.Add(id);
+			MandarEfeito(pl, Protocol.EfeitoDaTravaDeTecnica, -1);
+		}
 	}
 
 	/// <summary>
@@ -174,6 +229,7 @@ public sealed partial class GameServer
 		foreach (int copia in _splitformsG12.Keys.ToList())
 			if (_splitformsG12[copia].Master == id) DesfazerSplitformG12(copia);
 		_splitformsG12.Remove(id);
+		_presosAvisadosG12.Remove(id);   // (v0.3.0) quem foi embora leva a tela junto: nao ha a quem soltar
 		if (_players.TryGetValue(id, out ServerPlayer? pl)) pl.Disfarce = null;
 	}
 
@@ -418,6 +474,7 @@ public sealed partial class GameServer
 		db.OlharDaGuia = pl.Facing;
 		p.Pos = BocaDeCano.De(pl.Pos, frente);
 		p.Cauda = p.Pos;
+		OlharOCano(pl, p, p.Pos);   // (v0.3.0) quem esta colado leva a bola -- ver `OlharOCano`
 		// NO DM, um `step()` por pulso de `Eactspeed/5` tiques: o pulso era ao mesmo tempo o PASSO da bola e a
 		// vez de ela ouvir o olhar do dono. A bola agora anda na pressa de toda bola (dono, 2026-10-08 -- ver
 		// `Projetil.AtrasoDeBolaPorLag`), e o PULSO continua no relogio do original: e ele que da a guia e o
@@ -839,7 +896,10 @@ public sealed partial class GameServer
 		GD.Print($"[server] {pl.Name} comecou a formar a Genkidama (custo {custo:0})");
 	}
 
-	/// <summary>A bola (re)nasce na escala de agora, inerte, um tile ao norte do dono. `basedamage = 30`, nao defletivel.</summary>
+	/// <summary>
+	/// A bola (re)nasce na escala de agora, inerte, EM CIMA DA CABECA do dono (v0.3.0; no DM, um tile ao norte -- ver
+	/// `OndeAGenkidamaSeFormaG12`). `basedamage = 30`, nao defletivel.
+	/// </summary>
 	private Projetil? NascerGenkidamaG12(ServerPlayer pl, EstadoDaGenkidamaG12 g)
 	{
 		Projetil p = Disparar(pl, new ReceitaDeProjetil
@@ -847,11 +907,15 @@ public sealed partial class GameServer
 			Tipo = TipoDeProjetil.Blast,
 			BaseDano = 30,          // `A.basedamage = 30` (`:67`)
 			Velocidade = 3,         // `walk(A, usr.dir)` sem lag no disparo: um tile por tique do DM, o passo da bola mais rapida
-			AlcanceTiles = 1000,    // o `Burnout(1000)` em chao, no passo do DM (100 s a 10 tiles/s); a 20 tiles/s acaba aos 50 s
+			// (v0.3.0) O ALCANCE DO RAIO (`maxdistance = 30`), e nao mais o `Burnout(1000)` do DM (que a deixava voar 50 s): o dono
+			// quer a Genkidama "arrastar assim como um beam e explodir no final" -- e o final de um beam e o alcance dele.
+			// DIVERGENCIA DECLARADA: no DM a bola (`/obj/attack/blast`) nao gasta `distance` -- so o raio gasta (`objects.dm:100-113`).
+			AlcanceTiles = 30,
+			Colossal = true,        // (v0.3.0) grande desde que nasce, estoura ao prensar, explosao e cratera ENORMES -- ver a receita
 			Deflectivel = false,    // `A.deflectable = 0` (`:64`)
 			Nome = "Genkidama",
 			EscalaVisual = g.Escala,
-		}, rumoDado: Vec2.Zero, deOnde: pl.Pos + new Vec2(0, -ZoneCollision.TileSize), verbo: "SpiritBomb");
+		}, rumoDado: Vec2.Zero, deOnde: OndeAGenkidamaSeFormaG12(pl, g.Escala), verbo: "SpiritBomb");
 		if (!p.Vivo) return null;
 		p.Inerte = true;
 		p.VidaRestante = 3600;
@@ -1011,9 +1075,10 @@ public sealed partial class GameServer
 		p.Bp = g.BpAcumulado;              // o `A.BP = expressedBP` do `:170` descartava isto -- ver o cabecalho
 		p.VidaRestante = 100;              // `A.Burnout(1000)` (`:178`)
 		Vec2 frente = RumoDoTiro(pl);   // no marcado, se houver (dono, 2026-10-09)
-		p.Pos = BocaDeCano.De(pl.Pos, frente);
+		p.Pos = BocaDaGenkidamaG12(pl, frente, g.Escala);   // (v0.3.0) NA FRENTE do corpo, e nao em cima dele
 		p.Cauda = p.Pos;
 		p.Rumo = frente;
+		OlharOCano(pl, p, p.Pos);   // (v0.3.0) quem esta entre o corpo e a bola leva a bola -- ver `OlharOCano`
 		// `walk(A, usr.dir)` sem lag: um tile por tique no DM -- a bola mais rapida de la, na pressa das de ca
 		p.SegundosPorTile = Projetil.AtrasoDeBolaPorLag(1);
 		p.Pressa = Projetil.PressaDeBolaPorLag(1);
@@ -1026,6 +1091,50 @@ public sealed partial class GameServer
 					   : $" e {Jandirus.Core.Stats.PoderNaFrase.ContraOSeu(g.BpAcumulado, f.expressedBP)}."));
 		GD.Print($"[server] Genkidama de {pl.Name}: escala {g.Escala:0.0}, {g.Doadores} doador(es), BP {g.BpAcumulado:0} (o expresso do dono e {f.expressedBP:0})");
 	}
+
+	/// <summary>
+	/// (v0.3.0) ONDE A GENKIDAMA SE FORMA: EM CIMA DA CABECA de quem a ergue, a beirada de baixo no topo do corpo
+	/// (`BocaDeCano.EmCimaDaCabeca`, com o raio desenhado dela na escala de agora: a bola cresce e sobe). O dono: *"a genkidama
+	/// enquanto carrega seria bom ficar em cima da cabeca do personagem"*. No DM, um tile ao norte (`SpiritBomb.dm:53`) -- e com
+	/// tres tiles de raio ela cobria o corpo inteiro.
+	/// </summary>
+	private static Vec2 OndeAGenkidamaSeFormaG12(ServerPlayer pl, double escala)
+		=> GenkidamaComoAntesDeTeste
+			? pl.Pos + new Vec2(0, -ZoneCollision.TileSize)
+			: BocaDeCano.EmCimaDaCabeca(pl.Pos, ArteDeProjetil.RaioDaGenkidama * (float)escala);
+
+	/// <summary>
+	/// (v0.3.0) DE ONDE A GENKIDAMA SAI: NA FRENTE de quem a lanca, longe o bastante pra o desenho dela nao cobrir o corpo
+	/// (`BocaDeCano.AfastamentoDaBolaGrande`) -- o dono: *"quando lancar ela sai da frente dele"*. No DM, `get_step(usr, usr.dir)`
+	/// (`SpiritBomb.dm:172`), a boca de sempre, e era ela que deixava a bola em cima do personagem.
+	///
+	/// O MURO NO CAMINHO PARA A BOLA ANTES DELE: a saida e andada de meio em meio tile desde o centro do corpo, e o primeiro
+	/// ponto bloqueado devolve o ultimo livre -- a regra da boca de sempre (`Disparar`: a boca no muro volta pro centro),
+	/// estendida a uma boca que fica longe. Sem ela, a bola de escala 5 (quinze tiles a frente) nasceria do outro lado de um
+	/// muro a tres. Quem voa alto passa por cima, como o tiro de sempre.
+	/// </summary>
+	private Vec2 BocaDaGenkidamaG12(ServerPlayer pl, Vec2 frente, double escala)
+	{
+		if (GenkidamaComoAntesDeTeste) return BocaDeCano.De(pl.Pos, frente);
+		Vec2 u = frente.Normalized();
+		float longe = BocaDeCano.AfastamentoDaBolaGrande(frente, ArteDeProjetil.RaioDaGenkidama * (float)escala);
+		if (Voo.AtravessaCenario(pl.Altitude) || MapaDaZonaOuCatalogo(pl.Zone) is not { } chao) return pl.Pos + u * longe;
+
+		Vec2 livre = pl.Pos;
+		for (float d = Projetil.RaioDeImpacto; ; d += Projetil.RaioDeImpacto)
+		{
+			Vec2 ponto = pl.Pos + u * MathF.Min(d, longe);
+			if (chao.BlockedAt(ponto)) return livre;
+			if (d >= longe) return ponto;
+			livre = ponto;
+		}
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--v030teste`, familia GC): a Genkidama volta a se formar um tile ao norte e a sair pela boca de
+	/// sempre -- o jogo de antes, com a bola de tres tiles de raio em cima do personagem. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool GenkidamaComoAntesDeTeste;
 
 	private void EncerrarGenkidamaG12(ServerPlayer pl, EstadoDaGenkidamaG12 g, string? aviso)
 	{

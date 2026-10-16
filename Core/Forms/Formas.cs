@@ -1539,6 +1539,16 @@ public static class Catalogo
 	};
 
 	/// <summary>
+	/// (v0.3.0) O DEGRAU DIVINO **SEM** SUPER SAIYAJIN POR BAIXO -- o SSG e o SSG da linha Rose. E o MESMO corte da
+	/// <see cref="Folha"/> (a chama quente), e nao uma lista de ids: um degrau divino novo abaixo do Blue ja nasce aqui.
+	///
+	/// QUEM PERGUNTA E O KAIO-KEN (`Jandirus.Core.Skills.Kaioken.CabeNaForma`): o dono, *"o god n pode usar kaioken
+	/// junto"*.
+	/// </summary>
+	public static bool EhDeusSemSuperSaiyajin(FormaDef? d) =>
+		d != null && (d.Linha is LinhaDeForma.GodKi or LinhaDeForma.GodKiRose) && d.Ordem < OrdemDoKiSobreOSuperSaiyajin;
+
+	/// <summary>
 	/// ============================ ESTA FORMA ACENDE A CHAMA NA COR DO **JOGADOR**? ============================
 	/// A <see cref="Folha"/> diz QUAL DESENHO a chama usa; esta diz DE QUEM E A COR dele. Sao duas
 	/// perguntas e o par <see cref="FolhaDeAura.Base"/> / "pre-colorida" nao responde a segunda: uma

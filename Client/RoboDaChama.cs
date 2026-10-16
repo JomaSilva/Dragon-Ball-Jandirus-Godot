@@ -38,11 +38,11 @@ namespace Jandirus.Client;
 ///
 /// ============================ E A PROVA QUE IMPORTA MAIS QUE "MUDOU" ============================
 /// **A chama da base nao pode sair PRETA.** `Aura, Big.png` e `rgb(0,0,0)` em 100% dos pixels opacos
-/// dela; sem o ramo `forma_no_alfa` do shader, `i = max(r,g,b)` da zero e `cor * 0` e preto -- uma
-/// silhueta preta em volta de 19 formas, com a bancada de folha VERDE.
+/// dela: o desenho mora no alfa e a cor vem da TINTA (o `tingir` do shader) -- sem ela, `c.rgb` e preto, e sai
+/// uma silhueta preta em volta de 19 formas, com a bancada de folha VERDE.
 ///
 /// Entao o laboratorio mede o BRILHO do que foi desenhado, e -- pra a medida valer -- desenha a mesma
-/// folha com o uniform ERRADO de proposito (<see cref="SpriteDeAura.ForcarDesenhoNoAlfaDeTeste"/>) e
+/// folha com o uniform ERRADO de proposito (<see cref="SpriteDeAura.ForcarTintaDeTeste"/>) e
 /// exige que ali o preto apareca. Uma medida que nao enxerga o desastre nao vale nada, e essa e a
 /// unica maneira de saber que esta enxerga.
 /// ================================================================================================
@@ -51,7 +51,8 @@ namespace Jandirus.Client;
 ///   1. a AURA/CARGA DA BASE      -- o corpo na base, com a chama acesa pela tecla C
 ///   2. o KI ACIMA DE 100%        -- o excesso, que so se distingue por `forca` e cadencia
 ///   3. uma forma que HERDA a base (o Mistico, que o dono citou pelo nome)
-///   4. o CONTRA-EXEMPLO          -- quem NAO herda continua com a sua (SSJ e a divina quente)
+///   4. o CONTRA-EXEMPLO          -- quem NAO herda continua com a sua (o SSJ, e a divina quente -- que desde o
+///                                   adendo 13 e a chama POR SHADER, e o laboratorio a desenha com a `ChamaDeAura`)
 /// ========================================================================================
 ///
 ///     Godot --path . --host --rede 7904 --kiteste --bpteste 3000000 --horateste 0.5 --diagchama \
@@ -290,10 +291,10 @@ public partial class RoboDaChama : Node
 			_brilhoCerto = Brilho(certa);
 			Conferir(_brilhoCerto > 0.15,
 					 $"1. a chama da base NAO sai preta: brilho medio {_brilhoCerto:0.000} nos pixels "
-				   + "opacos (a `Aura, Big` e rgb(0,0,0) no arquivo -- quem a acende e o `forma_no_alfa`)");
+				   + "opacos (a `Aura, Big` e rgb(0,0,0) no arquivo -- quem a acende e a TINTA, o `tingir`)");
 
 			// O DEFEITO, INJETADO AQUI DENTRO: o mesmo desenho com o uniform errado.
-			chama.ForcarDesenhoNoAlfaDeTeste(false);
+			chama.ForcarTintaDeTeste(false);
 			_etapaLab = 6;
 			_t = 0;
 			return;
@@ -302,13 +303,13 @@ public partial class RoboDaChama : Node
 		if (_etapaLab == 6)
 		{
 			if (_t < 0.2 || chama.QuadroDeTeste != QuadroDaFoto) return;
-			Image? preta = Foto("chama-lab-4-DEFEITO-sem-forma-no-alfa.png");
+			Image? preta = Foto("chama-lab-4-DEFEITO-sem-tinta.png");
 			chama.Definir(true, CorDaBase);   // o `Pintar` reescreve o uniform certo
 
 			if (preta == null) { NaoMediu("a imagem do defeito injetado"); _etapaLab = 7; return; }
 
 			double brilhoRuim = Brilho(preta);
-			Nota($"defeito injetado (`forma_no_alfa = false`): brilho {brilhoRuim:0.000} "
+			Nota($"defeito injetado (`tingir = false`): brilho {brilhoRuim:0.000} "
 			   + $"contra {_brilhoCerto:0.000} do certo");
 			Conferir(brilhoRuim < 0.05 && _brilhoCerto > brilhoRuim * 5,
 					 "1. e a MEDIDA ENXERGA o desastre: com o uniform errado a mesma folha sai PRETA "
@@ -367,12 +368,12 @@ public partial class RoboDaChama : Node
 		// `SpriteDeAura` nasce com `_folha = FolhaBase` e o simbolo fica nulo. Cobrar o simbolo era
 		// cobrar que a base fosse uma "transformacao", que ela nao e.
 		//
-		// O que precisa ser verdade e o `DesenhoNoAlfa`, porque e dele que sai o `forma_no_alfa` do
-		// shader -- e sem ele esta folha sai preta. Ele responde certo pelos DOIS caminhos (simbolo ou
+		// O que precisa ser verdade e que ela SE TINGE (`SemTinta` falso), porque e dai que sai o `tingir` do shader -- e o
+		// RGB dela e preto, entao sem a tinta ela sai preta. O `SemTinta` responde certo pelos DOIS caminhos (simbolo ou
 		// arquivo), que e exatamente o que o cabecalho dele promete.
 		// ==========================================================================================
-		Conferir(carga.DesenhoDeTeste.DesenhoNoAlfa,
-				 "2. e o node sabe que o desenho dela mora no ALFA (sem isto ela sairia preta)");
+		Conferir(!carga.DesenhoDeTeste.SemTinta,
+				 "2. e o node sabe que ela se TINGE (o RGB dela e preto -- sem a tinta ela sairia preta)");
 		Virar(3);
 	}
 
@@ -593,30 +594,46 @@ public partial class RoboDaChama : Node
 			return;
 		}
 
-		// ---------- 6b. E A DIVINA QUENTE, que e ARTE OUTRA e nao so outra cor ----------
+		// ---------- 6b. E A DIVINA QUENTE, que e OUTRO desenho e nao so outra cor ----------
+		// ============================ DESDE O ADENDO 13 ELA E POR SHADER ============================
+		// O dono: *"manter a aura de sprite pras formas mortais, e manter essa aura shaders pras formas divinas"*. O SSG
+		// deixou de ter folha: o sprite da carga fica MUDO, e quem desenha o fogo e a `ChamaDeAura` da carga. O laboratorio
+		// mede a MESMA classe de producao -- uma `ChamaDeAura` no palco transparente, no lugar do sprite, com o simbolo do SSG
+		// e a cor do catalogo -- e cobra as duas coisas que um shader mudo ou errado nao passaria: ela ACENDE pixel, e o
+		// desenho e outro.
+		// ==========================================================================================
 		if (_fase == 2)
 		{
 			if (_provouFase != 3)
 			{
 				_provouFase = 3;
 				carga.Folha(FolhaDeAura.DeusQuente);
-				lab.DefinirFolha(FolhaDeAura.DeusQuente);
-				Conferir(desenho.FolhaDeTeste == SpriteDeAura.FolhaDeusQuente,
-						 $"6. a chama divina quente tambem tem a dela ({desenho.FolhaDeTeste.GetFile()})");
+				Conferir(desenho.SemFolha && carga.ChamaDeTeste.EstiloDeTeste == ChamaDeAura.Estilo(FolhaDeAura.DeusQuente),
+						 $"6. a chama divina quente e POR SHADER: o sprite da carga fica mudo ({desenho.SemFolha}) e a chama dela "
+					   + $"veste o fogo (desenho {carga.ChamaDeTeste.EstiloDeTeste?.ToString() ?? "nenhum"})");
+				lab.Definir(false, CorDaBase);
+				_labDivina = new ChamaDeAura { Name = "ChamaDivinaDeLaboratorio", Position = lab.Position };
+				_lab!.AddChild(_labDivina);
+				_labDivina.DefinirFolha(FolhaDeAura.DeusQuente);
+				_labDivina.Definir(true, Aura.CorDaChamaDe(Catalogo.Def("ssg"), CorDaBase));
 				_t = 0;
 				return;
 			}
-			if (lab.QuadroDeTeste != QuadroDaFoto) return;
-			if (_t < 0.3) return;
-			Image? labDeus = Foto("chama-lab-7-deus-quente-arte-propria.png");
-			Retrato("chama-jogo-6-deus-quente-arte-propria.png");
+			if (_t < 0.4) return;
+			Image? labDeus = Foto("chama-lab-7-deus-quente-por-shader.png");
+			Retrato("chama-jogo-6-deus-quente-por-shader.png");
 			if (labDeus != null && _labHoje != null)
 			{
 				double sinal = Diferenca(_labHoje, labDeus);
-				Conferir(sinal > 0.05,
-						 $"6. e ela e ARTE OUTRA, nao so outra cor: {sinal * 100:0.0}% de diferenca "
-					   + "contra a chama da base");
+				double brilho = Brilho(labDeus);
+				Conferir(sinal > 0.05 && brilho > 0.15,
+						 $"6. e ela ACENDE, e e outro desenho: brilho {brilho:0.000} nos pixels opacos, {sinal * 100:0.0}% de "
+					   + "diferenca contra a chama da base");
 			}
+			else NaoMediu("a imagem da chama divina quente");
+			_labDivina?.QueueFree();
+			_labDivina = null;
+			lab.Definir(true, CorDaBase);
 			_fase = 3;
 			return;
 		}
@@ -624,8 +641,8 @@ public partial class RoboDaChama : Node
 		// A FOLHA VOLTA PRA BASE ANTES DE SAIR. A bancada nao pode deixar o corpo do dono com a chama
 		// de outra forma montada -- ela mediu, ela devolve.
 		carga.Folha(FolhaDeAura.Base);
-		Conferir(desenho.FolhaDeTeste == SpriteDeAura.FolhaBase,
-				 "6. e a folha da base voltou pro lugar no fim de tudo");
+		Conferir(desenho.FolhaDeTeste == SpriteDeAura.FolhaBase && carga.ChamaDeTeste.EstiloDeTeste == null,
+				 "6. e a folha da base voltou pro lugar no fim de tudo (e a chama por shader ficou muda)");
 		Fechar();
 	}
 
@@ -636,6 +653,9 @@ public partial class RoboDaChama : Node
 	private int _provouFase;
 
 	private Image? _labMistico;
+
+	/// <summary>A chama por shader do laboratorio, so durante a prova da divina quente (fase 6b).</summary>
+	private ChamaDeAura? _labDivina;
 
 	private static FormaDef? Forma(string id)
 	{

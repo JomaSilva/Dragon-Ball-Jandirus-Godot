@@ -452,11 +452,17 @@ public partial class ProjetilDesenhado : Node2D
 	public float RaioDoEstouro => (Tipo == TipoDeProjetil.Beam ? _medidas.Cabeca * 1.3f : _raioDaBola * 1.5f) + 4f;
 
 	/// <summary>A cor do MANTO deste tiro -- o tom do meio, ja com a tinta do ki. E a cor do estouro dele.</summary>
+	/// <summary>
+	/// A TINTA QUE ENTRA NOS TONS do desenho: a do ki de quem atirou -- ou nenhuma, na arte de cor propria, cujos tons ja sao
+	/// as cores dela (ver `EstiloDeBola.CorPropria`). A `Cor` dessas e a da LUZ, e soma-la nos tons clarearia tudo de novo.
+	/// </summary>
+	private Color TintaDosTons => Tipo != TipoDeProjetil.Beam && _estiloDaBola.CorPropria != null ? Colors.Black : Cor;
+
 	public Color CorDoManto
 	{
 		get
 		{
-			Vector3 m = (Tipo == TipoDeProjetil.Beam ? _estiloDoFeixe.Tons : _estiloDaBola.Tons).Com(Cor).Manto;
+			Vector3 m = (Tipo == TipoDeProjetil.Beam ? _estiloDoFeixe.Tons : _estiloDaBola.Tons).Com(TintaDosTons).Manto;
 			return new Color(m.X, m.Y, m.Z);
 		}
 	}
@@ -470,7 +476,7 @@ public partial class ProjetilDesenhado : Node2D
 	{
 		get
 		{
-			(Vector3 b, Vector3 m, _) = (Tipo == TipoDeProjetil.Beam ? _estiloDoFeixe.Tons : _estiloDaBola.Tons).Com(Cor);
+			(Vector3 b, Vector3 m, _) = (Tipo == TipoDeProjetil.Beam ? _estiloDoFeixe.Tons : _estiloDaBola.Tons).Com(TintaDosTons);
 			Vector3 c = b.Lerp(m, 0.4f);
 			return new Color(c.X, c.Y, c.Z);
 		}
@@ -483,6 +489,8 @@ public partial class ProjetilDesenhado : Node2D
 	/// </summary>
 	public void Tingir(Color cor)
 	{
+		// (v0.3.0) A ARTE DE COR PROPRIA NAO TROCA DE TINTA -- ver `EstiloDeBola.CorPropria`.
+		if (Tipo != TipoDeProjetil.Beam && _estiloDaBola.CorPropria != null) return;
 		Cor = cor;
 		if (Material is ShaderMaterial m)
 		{
@@ -517,6 +525,8 @@ public partial class ProjetilDesenhado : Node2D
 			_raioDaBola = _estiloDaBola.Raio * Escala;
 			// (v0.2.1) A BALA NAO E KI: a tinta de quem atira nao entra nela -- ver `EstiloDeBola.SemTinta`.
 			if (_estiloDaBola.SemTinta) Cor = Colors.Black;
+			// (v0.3.0) A ARTE DE COR PROPRIA (a Genkidama): a luz e o estouro saem da cor dela -- ver `EstiloDeBola.CorPropria`.
+			else if (_estiloDaBola.CorPropria is { } propria) Cor = propria;
 			Material = PintorDeKi.MaterialDeBola(_estiloDaBola, _raioDaBola, Cor);
 		}
 	}

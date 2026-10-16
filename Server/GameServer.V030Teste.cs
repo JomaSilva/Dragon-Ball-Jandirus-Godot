@@ -64,6 +64,8 @@ namespace Jandirus.Server;
 ///      tambem o Mistico e o Orange (item 23).
 ///   U. A SUPERNOVA -- o ultimato do Freeza: o chefe ergue o sol e fica intocavel e parado ate a explosao (item 22).
 ///   F. OS ATAQUES DOS CHEFES -- o Freeza com o Death Beam e a Death Ball no arsenal da IA (item 5).
+///   CC, GC, KK, GD. O ADENDO 12 -- o cano, a Genkidama em cima da cabeca, o Kaio-ken e a Genkidama que arrasta (itens 37 a
+///      43): ver `GameServer.V030AdendoTeste.cs`.
 /// </summary>
 public sealed partial class GameServer
 {
@@ -117,6 +119,13 @@ public sealed partial class GameServer
 			ODesejoDoPotencialV30();
 			ASupernovaV30();
 			OsAtaquesDosChefesV30();
+
+			// O ADENDO 12 (`GameServer.V030AdendoTeste.cs`), NO FIM E NESTA ORDEM: as duas primeiras precisam de muro de pe, e o
+			// estouro colossal da ultima racha o chao em volta.
+			OCanoV30();
+			AGenkidamaEmCimaDaCabecaV30();
+			OKaiokenV30();
+			AGenkidamaQueArrastaV30();
 		}
 		catch (Exception e)
 		{
@@ -180,6 +189,10 @@ public sealed partial class GameServer
 		Nutricao.KiDoChefeFinitoDeTeste = false;
 		EscutaDeChegadas = null;
 		EscutaDeCenasDeChefe = null;
+		CanoCegoDeTeste = false;
+		GenkidamaComoAntesDeTeste = false;
+		XNaoApagaOKaiokenDeTeste = false;
+		ColossalMoiNoMuroDeTeste = false;
 	}
 
 	// =====================================================================

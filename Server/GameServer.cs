@@ -1442,17 +1442,19 @@ public sealed class ServerPlayer
 	public bool PertoDeCasa;
 
 	/// <summary>
-	/// A TELA DO REFUGIO JA FOI EMPURRADA NESTA SESSAO?
+	/// A TELA DO REFUGIO JA FOI EMPURRADA PRA ESTE PERSONAGEM, NESTA CATASTROFE? Vai pro disco
+	/// (`CharacterSave.RefugioPerguntado`).
 	///
-	/// **De sessao e nao do disco, de proposito.** O que ela anuncia e uma catastrofe -- o planeta
-	/// natal deixou de existir --, e nao uma morte: empurrar a tela a cada morte transformaria a
-	/// informacao em barulho, e barulho e o jeito mais rapido de ela deixar de ser lida. Uma vez por
-	/// login basta, e um campo novo no save de todo personagem seria caro demais pra isso.
+	/// O que ela anuncia e uma catastrofe -- o planeta natal deixou de existir --, e nao uma morte. Ela era
+	/// UMA VEZ POR SESSAO, e o dono reclamou da conta: *"a pergunta do local onde vai renascer deveria aparecer
+	/// 1 vez, e caso o jogador queira mudar dps, ele vai ter q ir no menu P procurar a opcao de mudar o local, pq
+	/// sempre q entra no jogo e essa pergunta chata q ja respondi antes"* (v0.3.0). Agora e uma vez SO; o natal
+	/// que volta (desejo das Esferas) zera a marca, e a proxima destruicao pergunta de novo.
 	///
-	/// Depois da primeira, a porta continua aberta pelo botao do menu (o cartao Refugio da aba World) -- ver
+	/// Depois da primeira, a porta e o cartao Refugio da aba World do menu P -- ver
 	/// `GameServer.Refugio.OferecerORefugio`.
 	/// </summary>
-	public bool RefugioJaOferecido;
+	public bool RefugioPerguntado;
 
 	/// <summary>
 	/// (v0.3.0) ESTE PERSONAGEM ESCOLHEU VOLTAR PELA TERRA quando o planeta natal dele nao existir -- a saida B3 do refugio,

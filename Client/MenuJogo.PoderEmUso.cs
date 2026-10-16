@@ -211,6 +211,9 @@ public partial class MenuJogo
 	/// </summary>
 	public static bool AbrirOControleDe(string id)
 	{
+		// (v0.3.0) O KAIO-KEN ABRE A ESCOLHA DO MULTIPLICADOR (e, aceso, apaga) -- ver `TelaDeKaioken.Pedir`.
+		if (TelaDeKaioken.Instancia?.Pedir(id) == true) return true;
+
 		// O "MATERIALIZAR" ABRE A GRADE DE ESCOLHA: o que materializar (os pesos, ou qual roupa e de que cor) nao cabe
 		// num botao. Ver `TelaDeArmadura.AbrirPraMaterializar`.
 		if (string.Equals(id, Jandirus.Core.Items.Materializacao.Verbo, StringComparison.OrdinalIgnoreCase))

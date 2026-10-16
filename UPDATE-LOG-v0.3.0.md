@@ -1,6 +1,6 @@
 # Update log — v0.3.0 (para o Discord)
 
-10 mensagens, cada uma abaixo do limite de 2.000 caracteres do Discord. Cole uma por vez, na ordem; o texto
+12 mensagens, cada uma abaixo do limite de 2.000 caracteres do Discord. Cole uma por vez, na ordem; o texto
 dentro de cada bloco já está no formato do Discord (títulos, negrito e listas).
 
 Frases que dependem de decisão minha que você ainda não confirmou (estão no relatório da entrega; se a resposta
@@ -10,9 +10,12 @@ destinos do passe e "7 dias do jogo (2h48 de tempo real)" (mensagem 2), "pelo me
 planeta" e os ataques de cada chefe (mensagem 6), "crescendo por 10 segundos" e "nocautear o Freeza não interrompe
 mais" (mensagem 6), "o guardião Saiyajin vira Super Saiyajin com a cena cheia" e "intocável enquanto ela dura" (mensagem
 7), "uns 2 tiles por minuto, até 64" e "as outras treze raças 1% cada" (mensagem 8), "sem escolher, você continua
-voltando pelo mundo vivo mais perto de casa" (mensagem 5).
+voltando pelo mundo vivo mais perto de casa" (mensagem 5), "leva quem for mais fraco até o fim do alcance" (o alcance da
+Genkidama ficou o de um beam, 30 tiles) e "prensando alguém numa parede, ela explode ali" (mensagem 11), "quem vira God
+com ele aceso perde o Kaio-ken" (mensagem 12: o original deixa o Kaio-ken no SSG; a regra é sua, e eu escolhi apagar o
+buff ao entrar no God em vez de recusar a transformação).
 
-## Mensagem 1 de 10 (1625 caracteres)
+## Mensagem 1 de 12 (1951 caracteres)
 
 ```
 # Dragon Ball Jandirus — v0.3.0
@@ -24,6 +27,7 @@ voltando pelo mundo vivo mais perto de casa" (mensagem 5).
 - **Raças aleatórias:** quem hospeda escolhe se a raça inicial é sorteada ou escolhida.
 - **Recursos 10x** com a pá, a furadeira e a Drill.
 - **Terra, o ponto de encontro:** quem perdeu o planeta natal sempre pode escolher renascer na Terra.
+- **Kaio-ken e Genkidama novos:** escolha o multiplicador do Kaio-ken vendo a sua maestria; a Genkidama do anime arrasta como um beam e explode com uma cratera enorme.
 - **A Supernova do Freeza:** quando ele vai destruir o planeta, um sol nasce sobre ele, cresce, cai e explode — e ele fica intocável enquanto ela cresce.
 - **Chefes com os ataques deles:** Freeza com Death Beam e Death Ball, Cell com Kamehameha e Death Beam, Majin Boo com Kamehameha. O chefe da saga caça quem estiver no planeta.
 - **Reencarnar no Enma:** o personagem acaba e o próximo nasce com 10% do poder dele.
@@ -34,9 +38,10 @@ voltando pelo mundo vivo mais perto de casa" (mensagem 5).
 - **Rei Vegeta e Príncipe** nascem em Vegeta quando o trono está vago.
 - **Desejo do potencial** nas esferas (o Namekuseijin ganha também o Místico e o Orange).
 - **Formas gigantes** com o boneco e a aura do tamanho certo.
+- **Auras divinas novas:** SSJ God, Blue, Blue Evolution e Rose com aura feita em shader, contornando o corpo. As formas mortais seguem com a aura de sprite.
 ```
 
-## Mensagem 2 de 10 (1258 caracteres)
+## Mensagem 2 de 12 (1258 caracteres)
 
 ```
 ## Outro Mundo e o Enma
@@ -48,7 +53,7 @@ voltando pelo mundo vivo mais perto de casa" (mensagem 5).
 - **Korin** está no topo da Torre, com a fala dele.
 ```
 
-## Mensagem 3 de 10 (962 caracteres)
+## Mensagem 3 de 12 (962 caracteres)
 
 ```
 ## Majin, Saiyajin e androides
@@ -60,7 +65,7 @@ voltando pelo mundo vivo mais perto de casa" (mensagem 5).
 - **Rei Vegeta e Príncipe Vegeta** nascem no planeta Vegeta quando nenhum jogador tem o cargo de Rei. Um Saiyajin que matar o Rei fica com o trono.
 ```
 
-## Mensagem 4 de 10 (936 caracteres)
+## Mensagem 4 de 12 (936 caracteres)
 
 ```
 ## Combate, tela e itens
@@ -72,7 +77,7 @@ voltando pelo mundo vivo mais perto de casa" (mensagem 5).
 - **Som de Vegeta:** o planeta Vegeta tem o mesmo som ambiente da Terra.
 ```
 
-## Mensagem 5 de 10 (974 caracteres)
+## Mensagem 5 de 12 (974 caracteres)
 
 ```
 ## Planetas e esferas
@@ -82,7 +87,7 @@ voltando pelo mundo vivo mais perto de casa" (mensagem 5).
 - **Renascer na Terra:** se o seu planeta natal foi destruído, além do mundo vivo mais perto de casa (e dos planetas que você conquistou), você sempre pode escolher renascer na **Terra**, o ponto de encontro do jogo, no mesmo lugar onde nasce quem é de lá. Escolha no cartão **Refúgio** da aba **World** do menu **P** (a escolha fica guardada); sem escolher, você continua voltando pelo mundo vivo mais perto de casa.
 ```
 
-## Mensagem 6 de 10 (832 caracteres)
+## Mensagem 6 de 12 (832 caracteres)
 
 ```
 ## Os chefes
@@ -92,7 +97,7 @@ voltando pelo mundo vivo mais perto de casa" (mensagem 5).
 - **Nocautear o Freeza não interrompe mais a destruição:** a hora de derrubá-lo é antes do prazo vencer.
 ```
 
-## Mensagem 7 de 10 (822 caracteres)
+## Mensagem 7 de 12 (822 caracteres)
 
 ```
 ## Chefes de saga: chegada, ki e transformação
@@ -101,18 +106,18 @@ voltando pelo mundo vivo mais perto de casa" (mensagem 5).
 - **Transformação com cinemática, como a do jogador:** o Freeza troca de corpo com o surto do Frost Demon e chega à forma final com a cena grande; o Cell evolui pelas cenas do bio-androide e agora muda de corpo (imperfeito, semi-perfeito, perfeito); o guardião Saiyajin vira Super Saiyajin com a cena cheia (antes virava calado). O corpo novo aparece no fim da cena, e o chefe fica intocável enquanto ela dura, como o jogador.
 ```
 
-## Mensagem 8 de 10 (1149 caracteres)
+## Mensagem 8 de 12 (1200 caracteres)
 
 ```
 ## Planetas mais vivos e o modo das raças
 - **2,5x mais habitantes** nos planetas com civilização: Terra e Vegeta com 100, Namek com 80, Icer, Arlia e Makyo Star com 30.
 - **Sem pesar no servidor:** os habitantes só pensam com jogador no planeta, e quem está longe de todo jogador só vai pra rede quando se mexe (na Terra, o tráfego dos NPCs caiu uns 80%).
 - **O passeio de quem ninguém viu depende do tempo:** sair e voltar logo não mexe ninguém; quanto mais tempo o planeta fica vazio, mais longe os habitantes estão quando você volta (uns 2 tiles por minuto, até 64).
-- **Raças aleatórias:** ao hospedar, escolha **Modo padrão** (cada um escolhe a raça) ou **Raças aleatórias** (a raça inicial é sorteada: Alien 22%, Terráqueo 20%, Namekuseijin 18%, Saiyajin 15%, Frost Demon 8%, Majin 4%, as outras treze raças 1% cada). A linhagem do Saiyajin (Primal 50%) e o clã do Namekuseijin também saem no sorteio; a classe continua a de sempre. A vaga já mostra a raça sorteada, e a criação pula as etapas de mundo e raça.
+- **Raças aleatórias:** ao hospedar, escolha **Modo padrão** (cada um escolhe a raça) ou **Raças aleatórias** (a raça inicial é sorteada: Alien 22%, Terráqueo 20%, Namekuseijin 18%, Saiyajin 15%, Frost Demon 8%, Majin 4%, as outras treze raças 1% cada). A linhagem do Saiyajin (Primal 50%) e o clã do Namekuseijin também saem no sorteio; a classe continua a de sempre. A raça sorteada é surpresa: ela só aparece quando você clica pra criar o personagem, e a criação pula as etapas de mundo e raça.
 - **Servidor dedicado:** o admin muda o modo na aba **Admin** do menu **P**, a qualquer hora. Vale pros personagens criados depois.
 ```
 
-## Mensagem 9 de 10 (868 caracteres)
+## Mensagem 9 de 12 (868 caracteres)
 
 ```
 ## Bio-Androide, mortos e itens
@@ -124,11 +129,36 @@ voltando pelo mundo vivo mais perto de casa" (mensagem 5).
 - **Pesos:** a porcentagem do peso máximo que você escolheu fica guardada, e **Equipar** veste os pesos com ela.
 ```
 
-## Mensagem 10 de 10 (540 caracteres)
+## Mensagem 10 de 12 (540 caracteres)
 
 ```
 ## Técnicas e recursos
 - **Recursos 10x:** a pá rende 60 por segundo (eram 6), a furadeira 120 (eram 12) e a Drill 10 por segundo por nível (era 1). Minerar com as mãos continua igual.
 - **Chute giratório (Spin Attack):** o personagem dá um giro de 360° de verdade.
 - **Miragens da técnica:** as miragens da Zanzoken Afterimage duram 2 segundos — a miragem do duplo clique continua a mesma. Com um alvo marcado, o personagem dá zanzokens em volta dele, deixando miragens rodeando o alvo; sem alvo, deixa miragens por onde passa, como antes.
+```
+
+## Mensagem 11 de 12 (1408 caracteres)
+
+```
+## Kaio-ken, Genkidama e ki de perto
+- **Kaio-ken com escolha:** apertar o Kaio-ken abre a tela do multiplicador, de x2 a x100 (arrastando ou nos atalhos). Ela mostra até onde você domina o Kaio-ken e o risco do multiplicador escolhido, e da próxima vez abre no último que você usou. Aceso, o mesmo botão — ou o **X** — apaga.
+- **Acima da maestria, como no original:** o Kaio-ken cobra ki, vigor e um pouco do corpo, mais rápido quanto mais acima da maestria. Acima de 1,6x a maestria, cair nocauteado com ele aceso despedaça o corpo; acima do dobro, o ki acabar também. A maestria cresce com ele aceso: devagar até x20, muito devagar depois (até x50).
+- **Genkidama do anime:** a esfera azul com o miolo branco. Enquanto carrega, ela fica em cima da cabeça e cresce pra cima; lançada, sai da frente do personagem.
+- **A Genkidama arrasta como um beam:** leva quem for mais fraco até o fim do alcance e explode lá — explosão e cratera **enormes**. Prensando alguém numa parede, ela explode ali.
+- **Sem tremer no disparo:** enquanto a Genkidama sai, o seu personagem fica parado na sua tela também (antes ele andava e voltava pro lugar).
+- **Ki de perto:** quem está colado em você leva o ataque de ki — a esfera explode nele, e não atrás dele; o beam o pega na saída da mão.
+- **Refúgio:** a pergunta de onde renascer aparece uma vez só. Pra mudar depois: cartão **Refúgio** da aba **World** do menu **P**.
+```
+
+## Mensagem 12 de 12 (825 caracteres)
+
+```
+## Auras das formas divinas
+- **Aura nova pro SSJ God, Blue, Blue Evolution e Rose**, feita em shader: ela contorna o corpo, começa no pé e solta pontinhos brancos subindo.
+- **God:** fogo de desenho animado, do amarelo ao vermelho. **Blue:** chama azul com a beirada clara e quase branca perto do corpo; o **Evolution** tem o mesmo desenho, num azul mais escuro. **Rose:** violeta colado no corpo, com labaredas vermelho-escuras em volta e a beirada acesa em vermelho.
+- **As formas mortais continuam com a aura de sprite** de sempre (base, Super Saiyajin, Lendário, Kaio-ken...).
+- **Blue + Kaio-ken:** a aura do Blue, com a aura do Kaio-ken por cima.
+- **O God não usa Kaio-ken:** no Super Saiyajin God o Kaio-ken não acende, e quem vira God com ele aceso perde o Kaio-ken.
+- No voo, a aura divina deita junto com o corpo.
 ```

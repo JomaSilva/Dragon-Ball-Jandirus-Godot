@@ -27,6 +27,12 @@ public partial class CharacterSelect : CanvasLayer
     /// <summary>A confirmacao de apagar, enquanto estiver na tela. Nulo = nenhuma aberta.</summary>
     private Control? _pergunta;
 
+    /// <summary>
+    /// DEFEITO INJETADO (`--diagv030`, familia RA): a vaga livre volta a dizer a raca sorteada -- o jogo de antes. Falso em
+    /// jogo, sempre.
+    /// </summary>
+    public static bool SorteioNaVagaDeTeste;
+
     public void Mostrar(List<SlotInfo> slots)
     {
         _slots = slots;
@@ -193,13 +199,18 @@ public partial class CharacterSelect : CanvasLayer
             livre.AddThemeColorOverride("font_color", Tema.TextoFraco);
             caixa.AddChild(livre);
 
-            // (v0.3.0) O MODO DE RACAS ALEATORIAS: a vaga ja vem com a raca sorteada (`GameServer.ModoDeRacas.cs`).
+            // (v0.3.0) O MODO DE RACAS ALEATORIAS: a vaga ja vem com a raca sorteada (`GameServer.ModoDeRacas.cs`) -- e ela NAO
+            // aparece aqui. O dono: *"o jogo n deveria te falar na selecao de slot qual q ele sorteou, vc deveria clicar pra
+            // criar um personagem e ai q vc ia descobrir oq sorteou"*. A vaga so avisa que a raca e sorteada; quem a revela e a
+            // criacao (o aviso do topo dela, `CreationScreen.Reabrir`) -- e e pra ela que o sorteio continua vindo pelo fio.
             if (!string.IsNullOrEmpty(s.RacaSorteada))
             {
                 var sorteada = new Label
                 {
-                    Text = $"raça sorteada: {Jandirus.Core.Races.NomeDaRaca.Bonito(s.RacaSorteada)}"
-                         + (string.IsNullOrEmpty(s.LinhagemSorteada) ? "" : $" ({s.LinhagemSorteada})"),
+                    Text = SorteioNaVagaDeTeste
+                        ? $"raça sorteada: {Jandirus.Core.Races.NomeDaRaca.Bonito(s.RacaSorteada)}"
+                          + (string.IsNullOrEmpty(s.LinhagemSorteada) ? "" : $" ({s.LinhagemSorteada})")
+                        : "raça sorteada -- você descobre ao criar",
                     HorizontalAlignment = HorizontalAlignment.Center,
                     AutowrapMode = TextServer.AutowrapMode.Word,
                 };

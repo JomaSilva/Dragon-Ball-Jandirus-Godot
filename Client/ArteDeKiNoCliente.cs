@@ -227,6 +227,14 @@ public static class ArteDeKiNoCliente
 		/// </summary>
 		public bool SemTinta { get; init; }
 
+		/// <summary>
+		/// (v0.3.0) A ARTE TEM A COR DELA: a tinta do ki de quem atira NAO entra nos tons (o shader recebe os tons como estao), e a
+		/// LUZ e o estouro saem desta cor. Diferente do <see cref="SemTinta"/>, que apaga a luz junto (chumbo nao brilha). Hoje e
+		/// so a Genkidama: a energia do planeta, e no DM a imagem dela nunca levava `icon += rgb` (`SpiritBomb.dm:45-54`) -- ela e
+		/// azul na mao de qualquer um, como no anime. Quem obedece e o `ProjetilDesenhado.Vestir` e o `PintorDeKi.MaterialDeBola`.
+		/// </summary>
+		public Color? CorPropria { get; init; }
+
 		public Rampa Tons { get; init; } = CinzaDeBola;
 	}
 
@@ -365,8 +373,17 @@ public static class ArteDeKiNoCliente
 		// raio o jogador nao veria a borda da propria bola. 96 px (tres tiles de raio) ainda e a maior
 		// coisa que voa no jogo, e cabe na tela. A escala que o servidor manda (`+0,1` por pulso,
 		// `SpiritBomb.dm:119-121`) multiplica isto, como multiplicava a folha.
+		//
+		// (v0.3.0) A COR E DELA, E NAO DE QUEM LANCA (`CorPropria`), e os tons sao os do anime (o dono mandou a imagem: *"algo
+		// esferico azul com uma bola branca no centro"*): a borda num ciano forte, o manto claro, o miolo branco. Antes a tinta
+		// do ki somava nos tons e a bola saia quase toda branca, com o halo da cor de quem a erguia (amarelado na foto medida).
 		// =============================================================================================================
-		[ArteDeKi.SpiritBomb] = new() { Raio = 96, Calma = 1, Brancura = 0.8f, Tons = Rampa.De("3a78c8", "9fd8ff", "ffffff") },
+		[ArteDeKi.SpiritBomb] = new()
+		{
+			// (v0.3.0) O RAIO MORA NO CORE: o servidor tambem o le, pra por a bola em cima da cabeca e solta-la na frente do corpo.
+			Raio = ArteDeProjetil.RaioDaGenkidama, Calma = 1, Brancura = 0.8f, CorPropria = new Color("5fd8ff"),
+			Tons = Rampa.De("28c6ee", "a8f2ff", "ffffff"),
+		},
 
 		// ============================ AS BALAS (v0.2.1, as armas de fogo) ============================
 		// `Bullet.dmi`: doze pixels pretos -- um risco de chumbo, sem brilho nenhum.

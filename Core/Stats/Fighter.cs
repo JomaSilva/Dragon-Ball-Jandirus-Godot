@@ -541,6 +541,13 @@ public sealed partial class Fighter
 	/// porque a ficha e o que vai pro disco inteira.
 	/// </summary>
 	public double KaiokenMastery = 1;
+
+	/// <summary>
+	/// (v0.3.0) O ULTIMO MULTIPLICADOR DE KAIO-KEN ACESO -- o `kaioamount` do DM (`kaioken.dm:7`, la `tmp`); zero = nunca acendeu.
+	/// Vai pro disco porque e de onde a tela de escolha parte (`Client/TelaDeKaioken`) e o que o id nu acende: o DM guardava tres
+	/// atalhos configuraveis (`Kaioken1Set`...`3Set`, `kaioken.dm:211-214`), e aqui o atalho e o ultimo.
+	/// </summary>
+	public double KaiokenVezes;
 	public double ParanormalBPMult = 1;     // Vampiro / Lobisomem
 
 	// =====================================================================

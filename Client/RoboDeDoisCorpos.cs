@@ -1157,6 +1157,9 @@ public partial class RoboDeDoisCorpos : Node
 	/// ENTAO O QUE SE MEDE AQUI E O NODE VIVO, COM AS FOLHAS DE VERDADE -- e sao TRES ALTURAS
 	/// diferentes no disco (96 na `colorablebigaura`/`AuraSSjBig`/`AuraLSSjBig`, 64 nas duas divinas,
 	/// 101 na Rose). Um numero cravado acerta uma delas e erra as outras duas **por construcao**:
+	/// (As tres divinas sairam do JOGO no adendo 13 -- o SSG, o Blue e o Rose sao da `ChamaDeAura`, por shader --, mas os
+	/// arquivos continuam no disco, e sao justamente as alturas que tornam o Offset cravado impossivel. A ancora e regra pra
+	/// QUALQUER folha, e a bancada as monta pelo caminho cru, que existe pra isso.)
 	/// nao ha literal que faca as tres baterem. E e por isso que a bancada exige as tres alturas
 	/// distintas em vez de so passar folha por folha.
 	/// ====================================================================================
@@ -1165,8 +1168,9 @@ public partial class RoboDeDoisCorpos : Node
 	{
 		string[] folhas =
 		[
-			SpriteDeAura.FolhaBase, SpriteDeAura.FolhaLssj, SpriteDeAura.FolhaSsj,
-			SpriteDeAura.FolhaDeusQuente, SpriteDeAura.FolhaDeusFrio, SpriteDeAura.FolhaDeusRosa,
+			SpriteDeAura.FolhaBase, SpriteDeAura.FolhaLssj, SpriteDeAura.FolhaSsj, SpriteDeAura.FolhaKaioken,
+			"res://Assets/Sprites/Auras/FieryGod.tres", "res://Assets/Sprites/Auras/FieryGodBlue.tres",
+			"res://Assets/Sprites/Auras/Supa Saiyan Rose Aura-1.tres",
 		];
 
 		var alturas = new HashSet<float>();

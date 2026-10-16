@@ -1130,4 +1130,65 @@ public partial class GameServer
 			SalvarConquista();
 		}
 	}
+
+	// =====================================================================
+	// 12) A PERGUNTA UMA VEZ SO (v0.3.0, o adendo 12 do dono)
+	// =====================================================================
+	/// <summary>
+	/// *"a pergunta do local onde vai renascer deveria aparecer 1 vez, e caso o jogador queira mudar dps, ele vai ter q ir no
+	/// menu P procurar a opcao de mudar o local, pq sempre q entra no jogo e essa pergunta chata q ja respondi antes"*.
+	///
+	/// A REGRA E O DISCO: a tela so se empurra com a marca apagada (`DeveAbrirORefugio`), o pedido do proprio jogador abre
+	/// sempre, e a marca (`ServerPlayer.RefugioPerguntado`) atravessa o save. A TELA de verdade -- empurrada uma vez, calada na
+	/// oferta do login seguinte, aberta pelo cartao do menu P, e a marca que se apaga quando o natal volta -- e da `--diagv030`,
+	/// familia TR: aqui nao ha tela (o corpo de bancada nao tem `Peer`, e a oferta nem sai).
+	/// </summary>
+	private void APerguntaUmaVezSo()
+	{
+		GD.Print("[bercoprova] -- 12) A PERGUNTA UMA VEZ SO: a tela do refugio se empurra uma vez por catastrofe, e o menu P abre sempre");
+
+		CharacterSave c = SaveDeBancada("Prova Pergunta", "Namekian", LinhagemDe("Namekian"), "Normal", false, new Random(20261016));
+		ServerPlayer pl = CorpoDoSave(c, FaixaDoRefugio);
+		pl.Conta = ContaDoRefugio;
+		try
+		{
+			// ---- (1) A REGRA ----
+			pl.RefugioPerguntado = false;
+			bool primeira = DeveAbrirORefugio(pl, podeAbrir: true, pedidoDoJogador: false, escolha: true);
+			pl.RefugioPerguntado = true;
+			bool segunda = DeveAbrirORefugio(pl, podeAbrir: true, pedidoDoJogador: false, escolha: true);
+			bool pedida = DeveAbrirORefugio(pl, podeAbrir: true, pedidoDoJogador: true, escolha: true);
+			bool semEscolha = DeveAbrirORefugio(pl, podeAbrir: true, pedidoDoJogador: true, escolha: false);
+			bool semPorta = DeveAbrirORefugio(pl, podeAbrir: false, pedidoDoJogador: true, escolha: true);
+			Provar("(1) **A TELA SE EMPURRA UMA VEZ**: com a marca apagada ela abre; com a marca, a oferta do login seguinte NAO a abre "
+				  + "-- e o pedido do proprio jogador (o cartao do menu P, o verb sem argumento) abre sempre",
+					  primeira && !segunda && pedida, $"primeira={primeira} segunda={segunda} pedida={pedida}");
+			Provar("...e as duas portas de antes continuam: sem o que escolher, ou fora de onde a pergunta pode abrir, nada abre",
+					  !semEscolha && !semPorta, $"sem escolha={semEscolha} sem porta={semPorta}");
+
+			bool reabre;
+			RefugioSempreAbreDeTeste = true;
+			try { reabre = DeveAbrirORefugio(pl, podeAbrir: true, pedidoDoJogador: false, escolha: true); }
+			finally { RefugioSempreAbreDeTeste = false; }
+			Provar("(1) DEFEITO INJETADO (a marca ignorada): com ela gravada a tela volta a abrir a cada login -- a prova (1) REPROVA",
+					  reabre && pl.RefugioPerguntado);
+
+			// ---- (2) O DISCO ----
+			var opcoes = new System.Text.Json.JsonSerializerOptions { IncludeFields = true };
+			CharacterSave gravado = AccountStore.DeJogador(pl, NowMs());
+			string json = System.Text.Json.JsonSerializer.Serialize(gravado, opcoes);
+			CharacterSave lido = System.Text.Json.JsonSerializer.Deserialize<CharacterSave>(json, opcoes)!;
+			var relogado = new ServerPlayer();
+			AccountStore.ParaJogador(lido, relogado);
+			Provar("(2) a marca vai pro DISCO e volta (`DeJogador` -> JSON -> `ParaJogador`, o caminho do login): o login seguinte sabe "
+				  + "que ja perguntou",
+					  gravado.RefugioPerguntado && lido.RefugioPerguntado && relogado.RefugioPerguntado,
+					  $"save={gravado.RefugioPerguntado} lido={lido.RefugioPerguntado} corpo={relogado.RefugioPerguntado}");
+			string semCampo = json.Replace("\"RefugioPerguntado\":true,", "").Replace(",\"RefugioPerguntado\":true", "");
+			CharacterSave antigo = System.Text.Json.JsonSerializer.Deserialize<CharacterSave>(semCampo, opcoes)!;
+			Provar("...e um save ANTIGO (sem o campo) chega sem a marca: pergunta uma vez mais",
+					  semCampo != json && !antigo.RefugioPerguntado, semCampo == json ? "o campo nao estava no JSON" : "");
+		}
+		finally { Recolher(pl); }
+	}
 }

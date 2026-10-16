@@ -84,27 +84,27 @@ public partial class GameServer
 	// =====================================================================
 	private void RegistrarTecnicasG2()
 	{
-		// KAIO-KEN. O DM pergunta o multiplo num `input()` (kaioken.dm:102); aqui nao ha popup,
-		// entao o NUMERO VEM NO PROPRIO ID: `Kaioken_20` e um multiplo fixo, e a familia inteira
-		// e atendida pelo `VivoPorPrefixo` logo abaixo.
+		// KAIO-KEN. O DM pergunta o multiplo num `input()` (kaioken.dm:102); aqui a pergunta e a tela de escolha do
+		// cliente (`Client/TelaDeKaioken`, v0.3.0), e o NUMERO VEM NO PROPRIO ID: `Kaioken_37` e o x37, e a familia inteira
+		// e atendida pelo `VivoPorPrefixo` logo abaixo. O id nu acende no ultimo multiplicador (`Fighter.KaiokenVezes`).
 		//
 		// DESVIO CONSCIENTE: no DM `Kaioken_1/2/3` sao ATALHOS configuraveis (Kaioken1Set...), nao
 		// multiplos -- o jogador escolhia o valor de cada slot no `Kaioken_Settings`. Aqui o numero
-		// do id E o multiplo, porque um menu de configuracao de atalho nao tem canal no port.
+		// do id E o multiplo, e o "atalho" e o ultimo aceso, que a tela propoe e vai pro disco.
 		//
 		// OS SETE PRESETS SAO DESCRITOR PURO e por isso moram SO no espelho do Core
 		// (`Tecnicas.Portadas.cs`), escritos linha a linha: dado que sai de um laco nao da pra ler
 		// nem pra conferir. Aqui ficou so o CORPO, que e um so pra familia toda.
 		IniciarLote("G2");
 		// `Kaioken_20`, `Kaioken_Settings`: uma FAMILIA de ids, destravada pelo verb `Kaioken`. O menu de
-		// atalhos do DM (`Kaioken_Settings`) nao tem equivalente -- era popup em cima de popup -- e quem
-		// apertar recebe a explicacao em vez de um botao mudo. O portao vem ANTES: quem nao sabe Kaio-ken
-		// nao ouve nem a explicacao (achado pela `--formasteste` [cargo]).
+		// atalhos do DM (`Kaioken_Settings`) virou a tela de escolha do cliente, que o abre sem passar por aqui;
+		// quem mandar o id mesmo assim recebe a explicacao em vez de um botao mudo. O portao vem ANTES: quem
+		// nao sabe Kaio-ken nao ouve nem a explicacao (achado pela `--formasteste` [cargo]).
 		VivoPorPrefixo("Kaioken", gate: "Kaioken", (pl, id) =>
 		{
 			if (id.Equals("Kaioken_Settings", StringComparison.OrdinalIgnoreCase))
 			{
-				Avisar(pl, "os atalhos de Kaio-ken viraram botões próprios (x2, x3, x5, x10, x20, x50, x100).");
+				Avisar(pl, "o multiplicador do Kaio-ken se escolhe na tela dele: aperte o Kaio-ken (de x2 a x100).");
 				return;
 			}
 			Kaioken(pl, NumeroDoIdG2(id));
@@ -132,35 +132,19 @@ public partial class GameServer
 	// =====================================================================
 	// 1. KAIO-KEN  (kaioken.dm:98 / SetKaioken :129 / o buff :162)
 	// =====================================================================
-	/// <summary>
-	/// A TABELA DE MULTIPLICADOR REAL, literal de `kaioken.dm:11-19`.
-	///
-	/// O "x20" do nome NAO e o multiplicador: e o TIER. x2 vale 1,2x de poder, x20 vale 1,75x,
-	/// x100 vale 4x. Isso e do rework "kaioken virou multiplicador de verdade" -- antes o numero
-	/// do nome multiplicava direto e um x100 dava cem vezes o poder.
-	/// </summary>
-	private static double KaiokenMultG2(double amt)
-	{
-		if (amt <= 2) return 1.2;
-		if (amt <= 3) return 1.2 + (amt - 2) * 0.1;
-		if (amt <= 4) return 1.3 + (amt - 3) * 0.1;
-		if (amt <= 10) return 1.4 + (amt - 4) * 0.1 / 6;
-		if (amt <= 20) return 1.5 + (amt - 10) * 0.25 / 10;
-		if (amt <= 50) return 1.75 + (amt - 20) * 0.25 / 30;
-		if (amt <= 100) return 2.0 + (amt - 50) * 2.0 / 50;
-		return 4.0;
-	}
-
-	/// <summary>
-	/// A MAESTRIA INICIAL. `1` e o default da `mob/var` (kaioken.dm:3), mas quem APRENDE a skill
-	/// no nivel 1 ganha `+3` no `after_learn` (kaioken.dm:93) -- ou seja, ninguem que possa usar o
-	/// verb tem maestria 1. Comecar em 1 aqui faria x3 explodir o corpo de um novato na primeira
-	/// vez que o Ki acabasse; 4 e o numero de quem de fato destravou a tecnica.
-	/// </summary>
-	private const double KaiokenMaestriaInicialG2 = 4;
+	// A TABELA DO MULTIPLICADOR REAL (o "x20" do nome e o TIER: x2 = 1,2x de poder, x20 = 1,75x, x100 = 4x) e a MAESTRIA
+	// INICIAL (4: o `1` da `mob/var` mais os `+3` do `after_learn` -- comecar em 1 faria x3 explodir o corpo de um novato)
+	// MORAM NO CORE desde a v0.3.0, em `Jandirus.Core.Skills.Kaioken`: a tela de escolha do multiplicador as escreve antes de
+	// acender, e uma copia aqui seria a tela prometendo um poder e o servidor entregando outro.
 
 	/// <summary>Teto do Kaio-ken empilhado sobre o Blue (`GODKI_KAIOKEN_CAP`, 1A Defines.dm:57).</summary>
 	private const double KaiokenCapNoBlueG2 = 20;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--v030teste`, familia KK): o Kaio-ken volta a acender e a durar no Deus -- o jogo de antes. Lido
+	/// pelo botao (<see cref="Kaioken"/>) e pela entrada na forma (`EntrarNaForma`). Falso em jogo, sempre.
+	/// </summary>
+	internal static bool KaiokenNoDeusDeTeste;
 
 	/// <summary>
 	/// A MAESTRIA DE VERDADE: `Fighter.KaiokenMastery`, que persiste. O piso de 4 fica como rede de
@@ -168,7 +152,7 @@ public partial class GameServer
 	/// pode usar o verb nunca esta abaixo do que o `after_learn` da.
 	/// </summary>
 	private static double MaestriaKaiokenG2(ServerPlayer pl)
-		=> Math.Max(pl.Ficha.KaiokenMastery, KaiokenMaestriaInicialG2);
+		=> Math.Max(pl.Ficha.KaiokenMastery, Jandirus.Core.Skills.Kaioken.MaestriaInicial);
 
 	private void Kaioken(ServerPlayer pl, double pedido)
 	{
@@ -185,7 +169,19 @@ public partial class GameServer
 			return;
 		}
 
-		double amt = pedido > 0 ? pedido : 2;   // id nu ("Kaioken") = o x2 nativo da tecnica
+		// (v0.3.0) O DEUS NAO SUSTENTA O KAIO-KEN -- regra do dono, *"o god n pode usar kaioken junto"* (a divergencia do DM
+		// esta declarada em `Jandirus.Core.Skills.Kaioken.CabeNaForma`). A outra metade e a entrada na forma: quem ja estava
+		// aceso e vira Deus perde o buff la (`EntrarNaForma`).
+		if (!KaiokenNoDeusDeTeste && !Jandirus.Core.Skills.Kaioken.CabeNaForma(Jandirus.Core.Forms.Catalogo.Def(pl.Forma.Atual)))
+		{
+			Avisar(pl, "o Kaio-ken não acende no Super Saiyajin God: o ki divino não o sustenta.");
+			return;
+		}
+
+		// O ID NU ("Kaioken") ACENDE NO ULTIMO MULTIPLICADOR ACESO (`Fighter.KaiokenVezes`, v0.3.0) -- e no x2 nativo da
+		// tecnica pra quem nunca escolheu. O botao do jogador nao manda o id nu com ele apagado: abre a escolha
+		// (`Client/TelaDeKaioken`) e manda `Kaioken_N`.
+		double amt = pedido > 0 ? pedido : pl.Ficha.KaiokenVezes >= 2 ? pl.Ficha.KaiokenVezes : 2;
 
 		// KAIO-KEN NO BLUE (SetKaioken:141-147): dentro de forma divina COM SSJ empilhado, so
 		// Normal/Low-Class com 50% de maestria aguentam, e no maximo x20.
@@ -203,13 +199,11 @@ public partial class GameServer
 			}
 		}
 
-		// `if(src.kaioamount<2) src.kaioamount=2` e `round()` (SetKaioken:148-150). O `round()` de
-		// um argumento no DM e PISO, nao arredondamento -- por isso Math.Floor.
-		amt = Math.Floor(Math.Max(amt, 2));
-		if (amt > 100) amt = 100;
+		// `if(src.kaioamount<2) src.kaioamount=2`, o `round()` (PISO no DM) e o teto de 100 (SetKaioken:148-150) -- no Core.
+		amt = Jandirus.Core.Skills.Kaioken.Valido(amt);
 
 		double maestria = MaestriaKaiokenG2(pl);
-		double mult = KaiokenMultG2(amt);
+		double mult = Jandirus.Core.Skills.Kaioken.Multiplicador(amt);
 
 		// KaioPcnt e da familia 2 do powerlevel (soma na BASE via additiveBoost), e vale 1 quando
 		// desligado. Por isso o buff soma (mult - 1): ligado vira `mult`, desligado volta a 1.
@@ -221,13 +215,14 @@ public partial class GameServer
 
 		_kaiokenAmtG2[pl.Id] = amt;
 		pl.Ficha.KaiokenMastery = maestria;
+		pl.Ficha.KaiokenVezes = amt;   // (v0.3.0) o ultimo aceso: o id nu e a tela de escolha partem dele
 
 		Falar(pl, Protocol.Fala.Diz, amt < 3 ? "KAIOKEN!!" : $"KAIOKEN TIMES {amt:0}!!");
 		Avisar(pl, $"uma aura vermelha estoura em volta de você (x{mult:0.##} de poder).");
 
 		// O DM nao avisa: ele so explode voce quando o Ki acaba (o buff Loop:199). Avisar nao muda
 		// regra nenhuma -- so evita que a unica forma de descobrir a regra seja perder o corpo.
-		if (amt > maestria * 2)
+		if (amt > maestria * Jandirus.Core.Skills.Kaioken.RazaoQueEstouraSemKi)
 			Avisar(pl, $"x{amt:0} está acima do dobro da sua maestria (x{maestria:0.#}): se o Ki acabar, "
 					 + "seu corpo se despedaça.");
 
@@ -250,7 +245,8 @@ public partial class GameServer
 		if (!porKO) { Avisar(pl, "você para de usar o Kaio-ken."); return; }
 
 		Avisar(pl, "você está cansado demais pra continuar no Kaio-ken.");
-		if (amt > maestria * 1.6) EstourarG2(pl, "seu corpo se despedaça de dentro pra fora.");
+		// (v0.3.0) A RAZAO E A DO CORE, a mesma que a tela da escolha escreve (`Kaioken.FraseDoRisco`).
+		if (amt > maestria * Jandirus.Core.Skills.Kaioken.RazaoQueEstouraNoNocaute) EstourarG2(pl, "seu corpo se despedaça de dentro pra fora.");
 	}
 
 	// =====================================================================
@@ -761,7 +757,7 @@ public partial class GameServer
 			{
 				// aqui o DM manda a mensagem de cansaco E explode quem passou de mastery*2
 				Avisar(pl, "você está cansado demais pra continuar no Kaio-ken.");
-				if (amt > maestria * 2) EstourarG2(pl, "seu corpo se despedaça de dentro pra fora.");
+				if (amt > maestria * Jandirus.Core.Skills.Kaioken.RazaoQueEstouraSemKi) EstourarG2(pl, "seu corpo se despedaça de dentro pra fora.");
 				_kaiokenAmtG2.Remove(id);
 				DesligarBuff(pl, BuffKaiokenG2);
 				continue;

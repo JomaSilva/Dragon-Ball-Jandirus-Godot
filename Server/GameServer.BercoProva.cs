@@ -125,6 +125,9 @@ public partial class GameServer
 
 			// (v0.3.0) A 11a: a Terra, o ponto de encontro (o adendo 11 do dono) -- ver `GameServer.RefugioProva.cs`.
 			ATerraOPontoDeEncontro();
+
+			// (v0.3.0) A 12a: a pergunta do refugio uma vez so (o adendo 12) -- a regra e o disco; a tela e da `--diagv030`, TR.
+			APerguntaUmaVezSo();
 		}
 		catch (Exception ex)
 		{

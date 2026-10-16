@@ -602,6 +602,7 @@ public sealed partial class GameServer
 			Invisivel = r.Invisivel,
 			ZonaCerta = r.ZonaCerta,
 			Dom = r.Dom,
+			Colossal = r.Colossal,   // (v0.3.0) a Genkidama -- ver `ReceitaDeProjetil.Colossal`
 			// `A.transform *= wavemult` (`beams.dm:149`) -- a OUTRA metade do `wavemult`, a que
 			// engorda o sprite. Ver `Projetil.EscalaVisual` sobre por que ela nao mora no `Bp`.
 			//
@@ -639,6 +640,10 @@ public sealed partial class GameServer
 			p.Fim = FimDeProjetil.Apagou;
 			return p;
 		}
+
+		// (v0.3.0) QUEM ESTA COLADO LEVA O TIRO: o trecho do centro de quem atira ate a boca e olhado antes de o tiro nascer --
+		// ver `OlharOCano`. So o tiro que sai da MAO: o que nasce em volta do alvo (`deOnde`) nao tem cano.
+		if (deOnde == null) OlharOCano(pl, p, berco);
 
 		// O SOM COM QUE ELE SAI (dono, 2026-10-13): a tabela e do `SonsDeKi`, pela tecnica; viaja no nascimento.
 		p.Som = SonsDeKi.DoDisparo(verbo, r.Tipo);
@@ -1258,6 +1263,10 @@ public sealed partial class GameServer
 			}
 		}
 
+		// 4-ter) (v0.3.0) QUEM ESTAVA NO CANO quando o tiro saiu da mao leva o tiro AGORA, antes do primeiro passo -- ver
+		//        `OlharOCano`. O raio que o pega fica plantado na boca, moendo (ou levando); a bola acaba nele.
+		if (p.AlvoNoCano != 0 && AcertarQuemEstavaNoCano(p, corpos)) return;
+
 		// 5) A PERSEGUICAO -- SO ATE ONDE A CURVA DEIXA (dono, 2026-10-09; a regra e os numeros sao do `Teleguiado`).
 		//    O `walk_towards` do DM corrigia o rumo TODO passo, sem limite, e o tiro dava a volta em quem perseguia.
 		//    Agora ele vira uns graus por tile que anda e nunca aponta a mais de 45 do rumo em que saiu: quem sai
@@ -1417,6 +1426,15 @@ public sealed partial class GameServer
 			if (levado != null
 				&& !ArrastarComOFeixe(p, levado, p.Rumo * passo, mapa, zona, temChao))
 			{
+				// (v0.3.0) A ESFERA COLOSSAL NAO MOI: prensando o corpo num muro ela ESTOURA ali -- o dono quer a Genkidama
+				// "arrastar assim como um beam e explodir no final", e uma bola encostada num muro com alguem no meio e o final.
+				// (O raio continua moendo: isso e dele.) Sem esta linha ela moia ate a vida dela acabar -- cem segundos.
+				if (p.Colossal && !ColossalMoiNoMuroDeTeste)
+				{
+					ExplodirNoFimDoAlcance(p, levado, zona, temChao);
+					return;
+				}
+
 				// PRENSADO: a cabeca nao avanca -- **mas ela continua moendo**, e essa e a parte que
 				// a bancada teve que ensinar. A primeira versao voltava seco daqui, e o `Colidiu`
 				// nunca mais rodava: um Kamehameha segurado em cima de alguem prensado num muro
@@ -1542,6 +1560,77 @@ public sealed partial class GameServer
 		}
 		return false;
 	}
+
+	// =====================================================================
+	// O CANO (v0.3.0) -- quem esta colado leva o tiro
+	// =====================================================================
+	/// <summary>
+	/// **QUEM ESTA DENTRO DO CANO LEVA O TIRO.** O dono: *"se alguem ta mt perto de vc o ataque de ki n acerta essa pessoa,
+	/// simplesmente o ki aparece atras dela e erra ou passa por dentro dela"*. O tiro nasce na boca (`BocaDeCano`, um tile a
+	/// frente) e so testava corpo depois do primeiro passo: quem estava entre o atirador e a boca ficava atras dele.
+	///
+	/// No DM o nascimento e `A.loc = src.loc; step(A, A.dir)` (`beams.dm:177-185`, `blasts.dm:109`), e o `step` e um Move: o mob
+	/// denso no tile da frente o faz falhar com `Bump(M)` -- quem esta colado leva o tiro no tique em que ele nasce. Aqui, o
+	/// corpo mais perto dentro do cano (`BocaDeCano.NoCano`, com a largura que o `Colidiu` usa: o raio de impacto da bola, o
+	/// contato da cabeca do raio) fica marcado em `Projetil.AlvoNoCano`, e o primeiro tique o acerta antes do primeiro passo
+	/// (`AcertarQuemEstavaNoCano`). MARCADO, E NAO ACERTADO AQUI, porque quem chama o `Disparar` ainda arruma o tiro depois
+	/// dele -- o canal, a arma de fogo com o poder dela, a bola teleguiada com o alvo.
+	///
+	/// ONDE ELE APARECE: a BOLA nasce no corpo (no eixo, na altura dele) -- o estouro e desenhado em quem levou, e nao atras
+	/// dele. O RAIO nasce na boca, como sempre: a cabeca nunca fica atras da mao (`Feixe.NaoAtrasDaCauda`), e o impacto a
+	/// planta ali, moendo (ou levando) quem esta colado.
+	///
+	/// `boca` e de onde o tiro sairia sem ninguem no caminho: a boca de sempre, ja com a regra do muro (`Disparar`), ou a saida
+	/// de uma bola grande (`LancarGenkidamaG12`).
+	/// </summary>
+	private void OlharOCano(ServerPlayer pl, Projetil p, Vec2 boca)
+	{
+		if (CanoCegoDeTeste) return;
+		float largura = p.Tipo == TipoDeProjetil.Beam ? Feixe.ContatoNoCorpo(p) : Projetil.RaioDeImpacto;
+		ServerPlayer? colado = null;
+		float maisPerto = float.MaxValue;
+		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
+		{
+			// OS MESMOS QUE O `Colidiu` ACERTA: nao o dono, so corpo com combate, nao o intocavel, e na altura do tiro.
+			if (o.Id == pl.Id || o.Combate == null || o.Combate.Intocavel) continue;
+			if (!Voo.PodeAcertar(Voo.Andar(p.Altitude), Voo.Andar(o.Altitude))) continue;
+			if (!BocaDeCano.NoCano(pl.Pos, boca, o.Pos, largura, out float aoLongo) || aoLongo >= maisPerto) continue;
+			colado = o;
+			maisPerto = aoLongo;
+		}
+		if (colado == null) return;
+
+		p.AlvoNoCano = colado.Id;
+		if (p.Tipo != TipoDeProjetil.Beam) p.Pos = p.Cauda = pl.Pos + (boca - pl.Pos).Normalized() * maisPerto;
+	}
+
+	/// <summary>
+	/// O PRIMEIRO TIQUE DO TIRO QUE ACHOU ALGUEM NO CANO (`OlharOCano`): o acerta antes do primeiro passo, uma vez so. Devolve
+	/// verdadeiro quando o tiro acabou (ou parou) nele -- o `Acertar`, como no `Colidiu`. Quem deixou de ser alvo nesse meio
+	/// tique (saiu da zona, ficou intocavel, subiu alem do tiro) nao e acertado: o tiro segue o voo dele.
+	///
+	/// SO COM O TIRO AINDA NO BERCO (`Pos == Cauda`, como o `Disparar` e o `OlharOCano` o deixaram): o cano e do lugar de onde
+	/// ele saiu. Quem o pos noutro lugar depois de nascer tirou o tiro do cano -- a familia 7 da `--projetilteste` espalha os
+	/// 256 tiros de um corpo no meio da multidao numa grade longe dela, e com a marca valendo todos morriam no primeiro tique
+	/// em quem estava colado no atirador. (No raio canalizado a cauda e a boca, refeita pelo passo 3 com o corpo parado.)
+	/// </summary>
+	private bool AcertarQuemEstavaNoCano(Projetil p, List<ServerPlayer> corpos)
+	{
+		int id = p.AlvoNoCano;
+		p.AlvoNoCano = 0;
+		if ((p.Pos - p.Cauda).LengthSquared > 0.25f) return false;
+		foreach (ServerPlayer o in corpos)
+			if (o.Id == id)
+				return o.Combate is { Intocavel: false } && !p.EstaForaDaLinha(o.Id)
+					&& Voo.PodeAcertar(Voo.Andar(p.Altitude), Voo.Andar(o.Altitude)) && Acertar(p, o);
+		return false;
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--v030teste`, familia CC): o cano nao e olhado -- o tiro nasce na boca e quem estava colado fica
+	/// atras dele, o jogo de antes. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool CanoCegoDeTeste;
 
 	// =====================================================================
 	// O IMPACTO -- e ele e decidido AQUI, nunca no cliente
@@ -1970,13 +2059,13 @@ public sealed partial class GameServer
 	/// <param name="jaFerido">Quem ja levou ESTE golpe em cheio e nao entra na area, ou nulo.</param>
 	private void Estourar(Projetil p, ZoneKey zona, bool temChao, Vec2 onde, ServerPlayer? levado = null, ServerPlayer? jaFerido = null)
 	{
-		AbrirACrateraDaExplosao(zona, temChao, onde, p.Altitude);
+		AbrirACrateraDaExplosao(zona, temChao, onde, p.Altitude, enorme: p.Colossal);
 
 		// (2026-10-13) O CENARIO EM VOLTA APANHA JUNTO: paredes, construcoes, naves, blocos erguidos e o chao -- ver
 		// `EstragarOCenarioNaExplosao`. So a explosao perto do chao: a que acontece la no alto estoura no ar.
 		if (!Voo.AtravessaCenario(p.Altitude))
-			EstragarOCenarioNaExplosao(zona, onde, KiContraCorpo.TilesDaExplosao(p.EscalaVisual) * ZoneCollision.TileSize,
-									   p.Bp, _players.GetValueOrDefault(p.Dono));
+			EstragarOCenarioNaExplosao(zona, onde, KiContraCorpo.TilesDaExplosao(p.EscalaVisual, p.Colossal) * ZoneCollision.TileSize,
+									   p.Bp, _players.GetValueOrDefault(p.Dono), colossal: p.Colossal);
 
 		// SEM DONO NAO HA DANO: nao ha a quem creditar a derrota de ninguem (ver o comeco do `Acertar`).
 		if (!_players.TryGetValue(p.Dono, out ServerPlayer? dono)) return;
@@ -1984,7 +2073,7 @@ public sealed partial class GameServer
 		if (levado != null) FerirComAExplosao(p, dono, levado, 1);
 		if (KiContraCorpo.ExplosaoSemAreaDeTeste) return;
 
-		double raio = KiContraCorpo.TilesDaExplosao(p.EscalaVisual) * ZoneCollision.TileSize;
+		double raio = KiContraCorpo.TilesDaExplosao(p.EscalaVisual, p.Colossal) * ZoneCollision.TileSize;
 		int andar = Voo.Andar(p.Altitude);
 		// (uma COPIA da lista: a consequencia do dano -- um nocaute, uma morte -- pode mexer na da zona)
 		foreach (ServerPlayer o in ZoneList(zona.Hash).ToList())
@@ -2046,13 +2135,27 @@ public sealed partial class GameServer
 	/// que sobe dela. So onde ha chao pra abrir, e so pro tiro que estourou PERTO dele: no vacuo nao ha o que marcar,
 	/// e o raio disparado la do alto estoura no ar.
 	/// </summary>
-	private void AbrirACrateraDaExplosao(ZoneKey zona, bool temChao, Vec2 onde, float altitude)
+	private void AbrirACrateraDaExplosao(ZoneKey zona, bool temChao, Vec2 onde, float altitude, bool enorme = false)
 	{
 		if (!temChao || Voo.AtravessaCenario(altitude)) return;
-		MandarDecalque(zona, Protocol.Decal.CrateraGrande, onde, Facing.South);
+		MandarDecalque(zona, enorme ? Protocol.Decal.CrateraEnorme : Protocol.Decal.CrateraGrande, onde, Facing.South);
 		MandarDecalque(zona, Protocol.Decal.Fumaca, onde, Facing.South);
 		CraterasDeExplosaoDeTeste++;
+		if (!enorme) return;
+
+		// (v0.3.0) A CRATERA ENORME LEVANTA POEIRA NA BORDA TODA, e nao so no meio: quatro nuvens em volta dela.
+		float longe = 4 * ZoneCollision.TileSize;
+		for (int i = 0; i < 4; i++)
+		{
+			double a = i * Math.PI / 2 + Math.PI / 4;
+			MandarDecalque(zona, Protocol.Decal.Fumaca, new Vec2(onde.X + longe * (float)Math.Cos(a), onde.Y + longe * (float)Math.Sin(a)),
+								   Facing.South);
+		}
+		CraterasEnormesDeTeste++;
 	}
+
+	/// <summary>(v0.3.0) Quantas crateras ENORMES (a da Genkidama) foram abertas neste processo. So pra bancada (`--v030teste`, GD).</summary>
+	internal int CraterasEnormesDeTeste;
 
 	/// <summary>
 	/// **O RAIO (OU A ESFERA GRANDE) ACABOU FORA DO FIM DO ALCANCE E ESTOURA ALI** (dono, 2026-10-13: *"a explosao
@@ -2169,6 +2272,12 @@ public sealed partial class GameServer
 
 	/// <summary>Quantas bolas comuns estouraram ao acabar (alcance ou prazo) neste processo. So pra bancada (`--v021teste`).</summary>
 	internal int BolasEstouradasDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--v030teste`, familia GD): a esfera colossal prensada num muro volta a MOER como um raio (ate a vida
+	/// dela acabar) em vez de estourar -- o jogo de antes. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool ColossalMoiNoMuroDeTeste;
 
 	/// <summary>Quantas crateras pequenas de bola foram abertas neste processo. So pra bancada (`--v021teste`).</summary>
 	internal int CraterasPequenasDeTeste;

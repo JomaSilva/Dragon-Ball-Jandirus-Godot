@@ -562,10 +562,13 @@ public partial class GameServer
 		double kiAntes = f.Ki;
 		ApertarEOuvir(pl, "SpiritBomb");
 		bool ligou = _genkidamaG12.TryGetValue(pl.Id, out EstadoDaGenkidamaG12? g);
-		AfirmarG12("o aperto cobra 90% do Ki maximo, planta o corpo e pare a esfera INERTE ao norte",
+		// (v0.3.0) EM CIMA DA CABECA, e nao mais um tile ao norte (dono: "a genkidama enquanto carrega seria bom ficar em cima da
+		// cabeca do personagem") -- a regua e a de producao (`BocaDeCano.EmCimaDaCabeca`); a familia GC da `--v030teste` mede o resto.
+		AfirmarG12("o aperto cobra 90% do Ki maximo, planta o corpo e pare a esfera INERTE em cima da cabeca",
 				   ligou && Math.Abs(f.Ki - (kiAntes - 0.9 * f.MaxKi)) < 0.5 && !PodeMexerOCorpo(pl)
-				   && g!.Bola is { Vivo: true, Inerte: true } && Math.Abs(g.Bola.Pos.Y - (pl.Pos.Y - 32)) < 0.5,
-				   $"ki {kiAntes:0} -> {f.Ki:0}");
+				   && g!.Bola is { Vivo: true, Inerte: true }
+				   && (g.Bola.Pos - BocaDeCano.EmCimaDaCabeca(pl.Pos, ArteDeProjetil.RaioDaGenkidama)).Length < 0.5f,
+				   $"ki {kiAntes:0} -> {f.Ki:0}, bola em {g?.Bola?.Pos}, corpo em {pl.Pos}");
 		if (!ligou) { LimparTudoG12(); return; }
 		AfirmarG12("...com dano-base 30 e NAO defletivel", g!.Bola!.BaseDano == 30 && !g.Bola.Deflectivel);
 		ServerPlayer cansado = ForjarG12("Cansado", CorredorLivre(24), bp: 50_000, skills: [PathSpiritBombG12]);

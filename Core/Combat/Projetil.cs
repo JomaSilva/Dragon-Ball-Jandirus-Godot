@@ -230,6 +230,15 @@ public sealed class ReceitaDeProjetil
 	public double EscalaVisual;
 
 	/// <summary>
+	/// (v0.3.0) A ESFERA COLOSSAL -- a Genkidama. O dono: *"genkidama deveria arrastar assim como um beam e explodir no final e
+	/// ter uma cratera ENORME"*. Tres coisas, todas dela: e ESFERA GRANDE desde que nasce (leva o mais fraco como o raio mesmo
+	/// lancada antes de crescer -- a escala 1 dela ja tem 96 px de raio, a maior coisa que voa no jogo); prensando o corpo num
+	/// muro ela ESTOURA ali, porque bola nao moi como raio; e a explosao dela e a COLOSSAL
+	/// (`KiContraCorpo.TilesDaExplosao(escala, colossal: true)`, `Protocol.Decal.CrateraEnorme`). Ver `Projetil.Colossal`.
+	/// </summary>
+	public bool Colossal;
+
+	/// <summary>
 	/// NASCE INVISIVEL -- o `A.invisibility = 1` da lamina de ar do Kiai (`Ki2.0/Kiai.dm:40`).
 	///
 	/// E DADO DA RECEITA, e nao da arte: a folha diz COMO o tiro se desenha, isto diz PRA QUEM. O
@@ -509,6 +518,13 @@ public sealed class Projetil
 
 	/// <summary>Ja acertou alguem e esta EMPURRANDO contra ele -- a cabeca para e continua moendo.</summary>
 	public bool Encostado;
+
+	/// <summary>
+	/// (v0.3.0) QUEM ESTAVA DENTRO DO CANO quando o tiro saiu da mao -- entre o centro de quem atirou e a boca (zero = ninguem;
+	/// `BocaDeCano.NoCano`). O primeiro tique o acerta ANTES do primeiro passo (`GameServer.AcertarQuemEstavaNoCano`) e zera
+	/// isto: e o `Bump(M)` do `step` que falha no nascimento do DM. Sem ele, quem estava colado ficava atras do tiro.
+	/// </summary>
+	public int AlvoNoCano;
 
 	/// <summary>
 	/// O CORPO EM QUE ESTA CABECA ESTA BATENDO SEM FERIR (zero = ninguem) -- o ramo da PAREDE: quem tem quatro vezes
@@ -798,6 +814,9 @@ public sealed class Projetil
 	/// ========================================================================================
 	/// </summary>
 	public double EscalaVisual = 1;
+
+	/// <summary>(v0.3.0) A ESFERA COLOSSAL -- copiada da receita (<see cref="ReceitaDeProjetil.Colossal"/>): a Genkidama.</summary>
+	public bool Colossal;
 
 	// =====================================================================
 	// O RAIO CRESCE COM O PODER DE QUEM O SEGURA (dono, 2026-10-08)
@@ -1328,7 +1347,9 @@ public sealed class Projetil
 	/// ESTA BOLA E UMA ESFERA GRANDE? As bolas que CRESCEM enquanto sao formadas -- a Death Ball e a Genkidama, as
 	/// unicas que nascem com escala propria (`ReceitaDeProjetil.EscalaVisual`). O raio nao entra: ele tem regra dele.
 	/// </summary>
-	public bool EsferaGrande => Tipo != TipoDeProjetil.Beam && EscalaVisual >= EscalaDaEsferaGrande;
+	///
+	/// (v0.3.0) A COLOSSAL (a Genkidama) E GRANDE DESDE QUE NASCE -- ver <see cref="Colossal"/>.
+	public bool EsferaGrande => Tipo != TipoDeProjetil.Beam && (Colossal || EscalaVisual >= EscalaDaEsferaGrande);
 
 	/// <summary>
 	/// ESTE TIRO ESTOURA AO CHEGAR NO FIM DO ALCANCE? Todo raio e toda esfera grande -- *"explodem ao chegarem na

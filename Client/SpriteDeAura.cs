@@ -33,6 +33,14 @@ namespace Jandirus.Client;
 /// Quem faz a juncao e o `Aura.Aplicar`, num lugar so. Ligar uma e esquecer a outra ja foi defeito
 /// duas vezes ("a aura das transformaçoes n estao brilhando ao apertar C" foi a segunda).
 /// ==========================================================================================
+///
+/// ============================ E AS TRES DIVINAS SAIRAM DAQUI (v0.3.0, adendo 13) ============================
+/// O dono: *"manter a aura de sprite pras formas mortais, e manter essa aura shaders pras formas divinas"*. O SSG, o
+/// Blue e o Rose acendem a <see cref="ChamaDeAura"/> (shader), e este sprite fica MUDO pra eles pelo caminho que ja o
+/// calava no Ultra Instinto: o simbolo nao tem folha (<see cref="CaminhoDa"/> devolve nulo). As tres folhas que eles
+/// usavam (`FieryGod`, `FieryGodBlue` e `Supa Saiyan Rose Aura-1`) ficaram no disco sem consumidor -- e com elas saiu o
+/// ultimo desenho em RGB: toda folha viva tem o desenho no ALFA, e o `Aura.gdshader` perdeu o ramo que lia o RGB.
+/// ===========================================================================================================
 /// </summary>
 public partial class SpriteDeAura : Node2D
 {
@@ -62,8 +70,8 @@ public partial class SpriteDeAura : Node2D
 	/// Este e o terceiro -- 288x288, grade 3x3 com 8 quadros usados --, e e o que o dono nomeou.
 	///
 	/// ============================ E O DESENHO DELA MORA NO ALFA ============================
-	/// `rgb(0,0,0)` nos 27.248 pixels opacos, 100% deles. Ver <see cref="FormaNoAlfa"/> e o
-	/// `forma_no_alfa` do shader -- sem aquele ramo, esta linha sozinha pinta uma silhueta PRETA.
+	/// `rgb(0,0,0)` nos 27.248 pixels opacos, 100% deles: a forma e o alfa, e a cor vem da TINTA (o `tingir` do
+	/// `Aura.gdshader`) -- sem ela, esta linha sozinha pinta uma silhueta PRETA.
 	/// ==================================================================================================
 	/// </summary>
 	public const string FolhaBase = "res://Assets/Sprites/Auras/Aura, Big.tres";
@@ -73,38 +81,6 @@ public partial class SpriteDeAura : Node2D
 
 	/// <summary>A escada Saiyajin comum. Arte JA dourada -- ver `SemTinta`.</summary>
 	public const string FolhaSsj = "res://Assets/Sprites/Auras/AuraSSjBig.tres";
-
-	/// <summary>
-	/// A CHAMA QUENTE DO KI DIVINO -- `gkaura = 'FieryGod.dmi'` (`AuraObject.dm:10`). SSG e o SSG da
-	/// linha Rose, e mais ninguem. Arte ja colorida (pessego/laranja) -- medida: 10.912 pixels opacos,
-	/// tom dominante `ff411c`, a folha inteira entre 7 e 10 graus de matiz.
-	///
-	/// A LINHA PRODIGIAL ESTAVA AQUI E SAIU por ordem do dono (*"o mistico e beast tao usando a aura
-	/// de carga do ssj god"*). Ver `Catalogo.Folha` no Core -- e nao "conserte" isto de volta lendo o
-	/// `AuraObject.dm`, que de fato poe os dois aqui.
-	///
-	/// ============================ ELA ESTAVA NO DISCO E MORTA ============================
-	/// O `.png`, o `.import` e o `.tres` ja existiam e o Godot ja os tinha importado; nenhum `.cs`
-	/// citava o nome. E a segunda vez que este projeto acha arte convertida e nunca ligada (a
-	/// primeira foram os 35 atlas de animacao), e o remedio e o mesmo: a bancada confere
-	/// `ResourceLoader.Exists` folha por folha, e nao so as que alguem lembrou de testar.
-	/// ================================================================================
-	/// </summary>
-	public const string FolhaDeusQuente = "res://Assets/Sprites/Auras/FieryGod.tres";
-
-	/// <summary>
-	/// A CHAMA FRIA -- `sgkaura = 'FieryGodBlue.dmi'` (`AuraObject.dm:12`). Blue e Blue Evolution.
-	/// </summary>
-	public const string FolhaDeusFrio = "res://Assets/Sprites/Auras/FieryGodBlue.tres";
-
-	/// <summary>
-	/// A CHAMA DO ROSE, e ela e arte PROPRIA -- ver
-	/// <see cref="Jandirus.Core.Forms.FolhaDeAura.DeusRosa"/>.
-	///
-	/// ELA ESTAVA NO DISCO E MORTA, como a `FieryGod` antes dela: o `.png`, o `.import` e o `.tres` ja
-	/// existiam, o Godot ja os tinha importado, e nenhum `.cs` citava o nome. Quem a achou foi o dono.
-	/// </summary>
-	public const string FolhaDeusRosa = "res://Assets/Sprites/Auras/Supa Saiyan Rose Aura-1.tres";
 
 	/// <summary>
 	/// A CHAMA DO KAIO-KEN -- `kaioaura = 'Aura, Kaioken, Big.dmi'` (`kaioken.dm:214`). Vermelha de
@@ -125,8 +101,8 @@ public partial class SpriteDeAura : Node2D
 	///
 	/// ============================ E POR QUE ELA LE O SIMBOLO, E NAO O CAMINHO ============================
 	/// Era `_folha == FolhaSsj`, comparacao de string. Isso deixou de bastar quando duas folhas do enum
-	/// apontavam pro MESMO arquivo (a `DeusRosa` era a `FieryGodBlue` tingida), e continua nao bastando
-	/// agora que ela tem folha propria: a pergunta "esta folha se pinta?" e do SIMBOLO, e responde-la
+	/// apontavam pro MESMO arquivo (a `DeusRosa` era a `FieryGodBlue` tingida), e nao bastaria pra nenhuma
+	/// folha nova: a pergunta "esta folha se pinta?" e do SIMBOLO, e responde-la
 	/// por caminho amarra a regra ao nome do arquivo -- duas folhas novas apontando pro mesmo `.tres`
 	/// (que ja aconteceu uma vez) voltariam a dar a mesma resposta pra duas perguntas diferentes.
 	///
@@ -142,73 +118,13 @@ public partial class SpriteDeAura : Node2D
 	public bool SemTinta => _semFolha || (_simbolo is { } s ? PreColorida(s) : _folha == FolhaSsj);
 
 	/// <summary>
-	/// AS FOLHAS QUE JA VEM PINTADAS -- hoje TODAS menos a `Base` e a `Lssj`. A `AuraSSjBig` e dourada
-	/// e as duas divinas tem `icolor = null` no proprio original (`AuraObject.dm:168` e `:175`), que e
-	/// o jeito do DM dizer a mesma coisa.
-	///
-	/// A `DeusRosa` ENTROU NESTA LISTA quando ganhou arte propria: medida, a folha dela e magenta e
-	/// carmesim (`#9d1c9d`, `#93092c`, `#6d0129`). Tingi-la seria jogar esse desenho fora pra pintar
-	/// por cima -- a mesma armadilha do paragrafo acima.
+	/// AS FOLHAS QUE JA VEM PINTADAS -- a `AuraSSjBig` (dourada) e a do Kaio-ken (vermelha); a `Base` e a `Lssj` se tingem.
+	/// (As tres divinas estavam aqui -- `icolor = null` no original, `AuraObject.dm:168` e `:175` -- e sairam junto com as
+	/// folhas delas: quem as desenha hoje e a <see cref="ChamaDeAura"/>.)
 	/// </summary>
 	public static bool PreColorida(Jandirus.Core.Forms.FolhaDeAura f) =>
 		f is Jandirus.Core.Forms.FolhaDeAura.Ssj
-		  or Jandirus.Core.Forms.FolhaDeAura.DeusQuente
-		  or Jandirus.Core.Forms.FolhaDeAura.DeusFrio
-		  or Jandirus.Core.Forms.FolhaDeAura.DeusRosa
 		  or Jandirus.Core.Forms.FolhaDeAura.Kaioken;
-
-	/// <summary>
-	/// ============================ EM QUE CANAL MORA O DESENHO DESTA FOLHA? ============================
-	/// A <see cref="PreColorida"/> responde *"a cor vem de dentro do arquivo?"*. Esta responde outra
-	/// pergunta, e as duas sao INDEPENDENTES -- confundi-las e o que faz uma folha sair preta ou
-	/// chapada. Medido pixel a pixel nas seis folhas:
-	///
-	/// <code>
-	///   folha                       RGB                        alfa            desenho mora em
-	///   colorablebigaura            cinza, pico 200/255        255 niveis      RGB   (falso)
-	///   Aura, Big                   PRETO PURO (0,0,0) 100%    250 niveis      ALFA  (verdadeiro)
-	///   AuraSSjBig                  `ffff80` CHAPADO 100%      250 niveis      ALFA  (verdadeiro)
-	///   AuraLSSjBig                 `d9ff00` CHAPADO 100%      250 niveis      ALFA  (verdadeiro)
-	///   FieryGod                    variado                    CONSTANTE 160   RGB   (falso)
-	///   FieryGodBlue                1.422 cores                variado         RGB   (falso)
-	///   Supa Saiyan Rose Aura-1     5 cores                    variado         RGB   (falso)
-	/// </code>
-	///
-	/// ============================ A `Aura, Big` E A `AuraSSjBig` SAO O MESMO DESENHO ============================
-	/// Conferido canal a canal: o alfa das duas e IDENTICO nos 82.944 pixels (288x288), zero
-	/// diferenca. A `AuraSSjBig` e literalmente esta folha com um `ffff80` chapado por cima. Isso e o
-	/// que da confianca nesta troca sem precisar de foto: a chama da base vai renderizar pelo MESMO
-	/// caminho que a do Super Saiyajin ja usa e que o dono ja aprovou -- mesma arte, mesma conta,
-	/// mudando so de onde vem a cor.
-	///
-	/// ============================ E POR QUE A LSSj ENTRA NA LISTA ============================
-	/// Porque ela satisfaz a regra, e nao pra "consertar" nada: ela e chapada em `d9ff00`, entao o
-	/// `i` do shader ja vale exatamente 1,0 em todo pixel dela (`255/255 / 0,784 = 1,276`, cortado
-	/// pelo `clamp`). Marca-la aqui e um NAO-OPERACAO comprovavel -- nenhum pixel muda. Deixa-la de
-	/// fora e que seria a armadilha: duas folhas iguais em natureza respondendo diferente faria a
-	/// proxima pessoa acreditar que ha duas classes onde ha uma.
-	///
-	/// ============================ AS PRE-COLORIDAS NAO PRECISAM DISTO ============================
-	/// A `AuraSSjBig` esta aqui por HONESTIDADE, nao por necessidade: sendo pre-colorida ela sai pelo
-	/// ramo `!tingir`, que copia `c.rgb` e nunca calcula `i`. Ou seja este valor e lido e descartado
-	/// pra ela. Escreve-lo mesmo assim e o que impede a lista de virar "as folhas que precisam" --
-	/// uma lista que muda de conteudo quando alguem mexe na <see cref="PreColorida"/>, e nao quando a
-	/// ARTE muda, que e a unica coisa que esta funcao deveria acompanhar.
-	/// ==============================================================================================
-	/// </summary>
-	public static bool FormaNoAlfa(Jandirus.Core.Forms.FolhaDeAura f) =>
-		f is Jandirus.Core.Forms.FolhaDeAura.Base
-		  or Jandirus.Core.Forms.FolhaDeAura.Ssj
-		  or Jandirus.Core.Forms.FolhaDeAura.Lssj
-		  or Jandirus.Core.Forms.FolhaDeAura.Kaioken;
-
-	/// <summary>
-	/// O DESENHO DESTE SPRITE ESTA NO ALFA? Ver <see cref="FormaNoAlfa"/>. Sem simbolo (so a
-	/// bancada entra por caminho cru) responde pelo arquivo, como o <see cref="SemTinta"/> faz.
-	/// </summary>
-	public bool DesenhoNoAlfa => _simbolo is { } s
-		? FormaNoAlfa(s)
-		: _folha == FolhaBase || _folha == FolhaSsj || _folha == FolhaLssj || _folha == FolhaKaioken;
 
 	/// <summary>Qual folha esta carregada agora. Pra bancada.</summary>
 	public string FolhaDeTeste => _folha;
@@ -242,6 +158,9 @@ public partial class SpriteDeAura : Node2D
 	/// (este proprio node, ver <see cref="DefinirFolha(Jandirus.Core.Forms.FolhaDeAura)"/>) trata uma
 	/// vez pelos tres desenhistas.
 	///
+	/// E AS TRES DIVINAS TAMBEM NAO TEM (v0.3.0, adendo 13): o SSG, o Blue e o Rose sao da <see cref="ChamaDeAura"/>, por
+	/// shader. Pra este sprite e o mesmo nulo, e ele fica mudo pelo mesmo caminho.
+	///
 	/// ============================ E O `_ =>` MORREU, QUE ERA A ARMADILHA 1 ============================
 	/// Havia um `_ => FolhaBase` aqui, e ele e literalmente o defeito que esta tarefa conserta: o Ultra
 	/// Instinto nao tinha ramo no Core, caia no fallback, e acendia a `colorablebigaura` por cima da
@@ -264,9 +183,9 @@ public partial class SpriteDeAura : Node2D
 		Jandirus.Core.Forms.FolhaDeAura.Base => FolhaBase,
 		Jandirus.Core.Forms.FolhaDeAura.Lssj => FolhaLssj,
 		Jandirus.Core.Forms.FolhaDeAura.Ssj => FolhaSsj,
-		Jandirus.Core.Forms.FolhaDeAura.DeusQuente => FolhaDeusQuente,
-		Jandirus.Core.Forms.FolhaDeAura.DeusFrio => FolhaDeusFrio,
-		Jandirus.Core.Forms.FolhaDeAura.DeusRosa => FolhaDeusRosa,
+		Jandirus.Core.Forms.FolhaDeAura.DeusQuente => null,
+		Jandirus.Core.Forms.FolhaDeAura.DeusFrio => null,
+		Jandirus.Core.Forms.FolhaDeAura.DeusRosa => null,
 		Jandirus.Core.Forms.FolhaDeAura.Nebulosa => null,
 		Jandirus.Core.Forms.FolhaDeAura.Kaioken => FolhaKaioken,
 	};
@@ -286,7 +205,8 @@ public partial class SpriteDeAura : Node2D
 		_simbolo = f;
 
 		// ============================ O SIMBOLO SEM ARQUIVO APAGA O DESENHO, AQUI E SO AQUI ============================
-		// `CaminhoDa` devolvendo nulo quer dizer "esta forma nao usa folha" (hoje so o Ultra Instinto).
+		// `CaminhoDa` devolvendo nulo quer dizer "esta forma nao usa folha" (o Ultra Instinto, e as tres divinas, que sao
+		// da `ChamaDeAura`).
 		// A decisao mora NESTE node, e nao nos donos dele, porque os donos sao TRES -- o node `Aura`, a
 		// `CargaVisual` e a chama da cinematica -- e cada um deles ja mostrou, uma vez, o que custa
 		// ensinar uma regra a dois e esquecer o terceiro. Aqui a regra e uma e vale pra quem quer que
@@ -532,22 +452,23 @@ public partial class SpriteDeAura : Node2D
 	public int QuantosQuadrosDeTeste => _s == null ? 0 : _quadros;
 
 	/// <summary>
-	/// SO BANCADA -- escreve o `forma_no_alfa` do material por fora, contra o que a folha manda.
+	/// SO BANCADA -- escreve o `tingir` do material por fora, contra o que a folha manda.
 	///
 	/// ============================ ELE EXISTE PRA A MEDIDA PODER FICAR VERMELHA ============================
-	/// O desastre concreto que esta troca de folha podia produzir e UM: `Aura, Big.png` e preto puro
-	/// nos 27.248 pixels opacos, entao sem o ramo `forma_no_alfa` do shader ela sai como uma SILHUETA
-	/// PRETA em volta de 19 formas. Nao ha estado de jogo que encene isso -- o valor certo e escrito
-	/// pelo `Pintar` a cada pintura --, e uma prova que nunca ficou vermelha e uma frase.
+	/// O desastre concreto da folha base e UM: `Aura, Big.png` e preto puro nos 27.248 pixels opacos -- o desenho dela mora
+	/// no alfa e a cor vem de fora --, entao sem a TINTA ela sai como uma SILHUETA PRETA em volta de 19 formas. Nao ha
+	/// estado de jogo que encene isso -- o valor certo e escrito pelo `Pintar` a cada pintura --, e uma prova que nunca
+	/// ficou vermelha e uma frase. Com esta porta a bancada renderiza a MESMA folha com o uniform errado e mede: se o preto
+	/// nao aparecer ali, a medicao nao enxerga o desastre e nao vale nada.
 	///
-	/// Com esta porta a bancada renderiza a MESMA folha com o uniform errado e mede: se o preto nao
-	/// aparecer ali, a medicao nao enxerga o desastre e nao vale nada -- e ai e a BANCADA que reprova.
+	/// (Era `ForcarDesenhoNoAlfaDeTeste`, do tempo em que o shader tambem lia desenho no RGB -- das tres folhas divinas, que
+	/// sairam pra `ChamaDeAura` no adendo 13. Sem elas o ramo do RGB morreu, e o preto so volta pela tinta.)
 	///
-	/// Ele nao muda nada em jogo: ninguem o chama fora da `--diagchama`, e a proxima
-	/// <see cref="Pintar"/> reescreve o valor certo por cima.
+	/// Ele nao muda nada em jogo: ninguem o chama fora da `--diagchama`, e o proximo <see cref="Pintar"/> reescreve o
+	/// valor certo por cima.
 	/// ======================================================================================================
 	/// </summary>
-	public void ForcarDesenhoNoAlfaDeTeste(bool v) => _mat?.SetShaderParameter("forma_no_alfa", v);
+	public void ForcarTintaDeTeste(bool v) => _mat?.SetShaderParameter("tingir", v);
 
 	/// <summary>
 	/// ============================ A COR COMO O SHADER A VE ============================
@@ -637,9 +558,5 @@ public partial class SpriteDeAura : Node2D
 		_mat.SetShaderParameter("forca", _forca);
 		// Ver o cabecalho de `Aura.gdshader`: mandar branco NAO e o mesmo que nao tingir.
 		_mat.SetShaderParameter("tingir", !SemTinta);
-		// A SEGUNDA PERGUNTA SOBRE A MESMA FOLHA, e ela vai pelo mesmo lugar de proposito: as duas
-		// saem daqui ou nenhuma sai. Escrever `tingir` num lugar e `forma_no_alfa` noutro e como as
-		// tres chamas deste projeto ja divergiram antes. Ver `SpriteDeAura.FormaNoAlfa`.
-		_mat.SetShaderParameter("forma_no_alfa", DesenhoNoAlfa);
 	}
 }

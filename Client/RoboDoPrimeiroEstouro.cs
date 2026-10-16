@@ -731,6 +731,7 @@ namespace Jandirus.Client;
 ///                                      O DRIVER DE VIDEO NUNCA VIU NENHUM DOS SEIS: a regua tem que PASSAR (o ensaio
 ///                                      pagou no lobby as onze pipelines)
 ///     ... --avulsos --semensaiodagota --semensaiodoplaneta --semensaiodanebulosa --semensaiodanevoa --semensaiodoembate
+///         --semensaiodachamadivina     (a ultima e a chama das formas divinas, do adendo 13: o gesto 7 dos avulsos)
 ///                                      OS CINCO DEFEITOS INJETADOS NOS AVULSOS (os `Aquecimento.SemEnsaioDa...DeTeste`
 ///                                      de mesmo nome, ligados pelo `Boot`): o aquecimento sem os atos e sem os shaders
 ///                                      na fila, o jogo de antes. A regua tem que REPROVAR os onze quadros -- com o

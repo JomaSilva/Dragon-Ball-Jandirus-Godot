@@ -203,7 +203,8 @@ public static class PintorDeKi
 		mat.SetShaderParameter("pulsar", e.Pulsar);
 		mat.SetShaderParameter("brancura", e.Brancura);
 		mat.SetShaderParameter("semente", Semente());
-		Tingir(mat, e.Tons, cor);
+		// (v0.3.0) A ARTE DE COR PROPRIA (a Genkidama) vai com os tons como estao: a `cor` dela e a da luz, e nao tinta.
+		Tingir(mat, e.Tons, e.CorPropria != null ? Colors.Black : cor);
 		return mat;
 	}
 
