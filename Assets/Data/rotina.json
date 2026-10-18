@@ -107,6 +107,39 @@
       "Não posso ficar pra trás!",
       "Um dia eu chego lá.",
       "Vamos, corpo. Aguenta."
+    ],
+    "conversaDoAlem": [
+      "Faz quanto tempo que você morreu?",
+      "A fila do Enma não anda nunca...",
+      "Dizem que o Sr. Kaioh mora no fim do Caminho da Serpente.",
+      "Ainda não me acostumei com essa auréola.",
+      "Será que alguém vai juntar as esferas pra me reviver?",
+      "Aqui ninguém sente fome. É estranho.",
+      "Já tentou correr o Caminho da Serpente inteiro?",
+      "Eu morri de um jeito tão bobo...",
+      "Ouvi dizer que no Inferno tem uns monstros terríveis.",
+      "Pelo menos aqui dá pra treinar em paz.",
+      "Sinto falta da minha família.",
+      "O Enma me olhou feio, mas me deixou ficar.",
+      "Morrer não doeu tanto quanto eu pensava.",
+      "Dizem que os grandes guerreiros mantêm o corpo depois de morrer.",
+      "Um dia eu ainda luto no torneio do Outro Mundo."
+    ],
+    "conversaDoInferno": [
+      "Tira a gente daqui!",
+      "Esse calor não acaba nunca.",
+      "Eu não fiz nada de errado... quase nada.",
+      "Se eu tivesse outra chance, seria diferente.",
+      "Ouviu aquele grito? Aquele lagarto de rabo de novo.",
+      "Dizem que uns vilões de verdade aparecem por aqui às vezes.",
+      "Fica longe das poças de sangue.",
+      "Aqui ninguém dorme direito.",
+      "O Enma não teve pena de mim.",
+      "Já tentou fugir? Eles sempre te trazem de volta.",
+      "Que saudade de um céu azul...",
+      "Cuidado. Tem gente aqui que destruiu planetas inteiros.",
+      "Tô treinando pra quando sair daqui. Um dia eu saio.",
+      "Essa fumaça arde os olhos."
     ]
   }
 }

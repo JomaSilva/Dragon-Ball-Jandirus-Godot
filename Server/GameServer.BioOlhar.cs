@@ -279,12 +279,11 @@ public partial class GameServer
 			{
 				// ============================ ELES CAEM PRO LESTE, E ISSO E PRA A FOTO SE LER ============================
 				// O sprite de nocaute deste jogo e um desenho JA DEITADO com a cabeca pro LESTE, e o
-				// cliente o GIRA pela direcao da queda (`CharacterVisual.DeitarPor`). Caindo pro SUL ele
-				// gira -90 graus -- e um desenho deitado girado noventa graus fica **de pe na tela**.
+				// cliente o GIRA pela direcao da queda (`CharacterVisual.DeitarPor`). Caindo pro NORTE ou pro
+				// SUL ele gira noventa graus -- e um desenho deitado girado noventa graus fica **de pe na tela**.
 				//
-				// Isso nao e defeito: a tabela e literal do dono (*"quando o personagem ta olhando pra
-				// baixo e ele desmaia ele ta desmaiando de cabeca pra baixo"*) e quem cai, cai de costas.
-				// Mas e a unica das quatro direcoes em que a foto do cadaver e ilegivel -- a primeira
+				// Isso nao e defeito: a cabeca vai pra onde o golpe empurrou (a regra do arremesso, e a do
+				// dono pro nocaute). Mas sao as direcoes em que a foto do cadaver e ilegivel -- a primeira
 				// rodada desta bancada saiu com o corpo morto identico ao vivo no recorte, e so o
 				// `QuadroDoCorpoDeTeste` (o sprite cru, sem rotacao) mostrou que ele estava deitado.
 				//

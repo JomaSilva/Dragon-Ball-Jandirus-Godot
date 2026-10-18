@@ -13,6 +13,13 @@ public sealed class FrasesDaRotina
 	public string[] Recusa = ["Hoje nao, obrigado."];
 	public string[] FimDoSpar = ["Boa luta!"];
 	public string[] Treino = ["Hora de treinar."];
+
+	/// <summary>
+	/// (2026-10-16) A CONVERSA DOS MORTOS -- as almas do Outro Mundo e do Ceu (<see cref="ConversaDoAlem"/>) e as do Inferno
+	/// (<see cref="ConversaDoInferno"/>). O dono: *"colocar npcs no outro mundo, npcs mortos com a aureula etc, no inferno tb"*. Vazia =
+	/// a alma conversa como todo habitante (<see cref="Conversa"/>). Ver `Npc.MoldeDeNpc.Alma`.
+	/// </summary>
+	public string[] ConversaDoAlem = [], ConversaDoInferno = [];
 }
 
 /// <summary>
@@ -128,6 +135,8 @@ public sealed class RotinaConfig
 			c.Frases.Recusa = Lista(f, "recusa", c.Frases.Recusa);
 			c.Frases.FimDoSpar = Lista(f, "fimDoSpar", c.Frases.FimDoSpar);
 			c.Frases.Treino = Lista(f, "treino", c.Frases.Treino);
+			c.Frases.ConversaDoAlem = Lista(f, "conversaDoAlem", c.Frases.ConversaDoAlem);
+			c.Frases.ConversaDoInferno = Lista(f, "conversaDoInferno", c.Frases.ConversaDoInferno);
 		}
 		return c;
 	}

@@ -187,6 +187,26 @@ public readonly struct Capacidades
 	public bool KitDoDeus { get; init; }
 
 	/// <summary>
+	/// (2026-10-17) O DEMONIC SAIYAN SAI AGORA, se este corpo o pedir: o kit do Lendario Primal, a recarga vencida e as perguntas do proprio
+	/// verb (`GameServer.PorQueNaoDemonico`: o LSSJ desperto, a forma Lendaria, a luta, os 2 minutos dela). Ver `Cerebro.Raciais.cs`.
+	/// </summary>
+	public bool DemonicoPronto { get; init; }
+
+	/// <summary>
+	/// (2026-10-17) A EXECUCAO DO RUTHLESS MIND ESTA NA MAO: o kit do Frost Demon mutante, o golpe LETAL ligado (o verb exige), nenhuma
+	/// execucao correndo e a recarga vencida. Corpo sem dono no port nao mata -- derruba --, entao ela so acende pra quem foi feito letal.
+	/// </summary>
+	public bool ExecucaoRacialPronta { get; init; }
+
+	/// <summary>
+	/// (2026-10-17) O TRANSBORDAR QUE JA DA PRA DESABAFAR: o id do verb (o Overflowing Power ou o Overflowing Ki) ligado ha mais que o
+	/// prazo dele -- antes do prazo o verb recusa --, ou nulo. E <see cref="DesabafoHa"/>, ha quantos segundos o prazo venceu.
+	/// </summary>
+	public string? Desabafo { get; init; }
+
+	public double DesabafoHa { get; init; }
+
+	/// <summary>
 	/// DA PRA SUBIR UM DEGRAU AGORA, sem nenhuma pendencia? Derivado -- um campo ao lado seria a
 	/// mesma verdade duas vezes.
 	/// </summary>

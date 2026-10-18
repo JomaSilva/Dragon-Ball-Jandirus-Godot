@@ -142,14 +142,21 @@ public partial class GameServer
 		AfirmarMnt($"DENTRO da mente o ganho e {GainKnobs.MindDimensionMult}x",
 				   Math.Abs(f.zoneGainMult - GainKnobs.MindDimensionMult) < 1e-9, $"{f.zoneGainMult}");
 
-		// A MAESTRIA **NAO** MUDA la dentro (o `mind_gain_mult` do DM so entra nos `*_Gain`).
-		AfirmarMnt("a maestria de forma nao e tocada pela mente",
-				   Math.Abs(f.zoneMasteryMult - 1) < 1e-9, $"{f.zoneMasteryMult}");
+		// (2026-10-16) A MAESTRIA DE FORMA PARA LA DENTRO -- regra do dono; o original nao mexia nela (divergencia declarada no
+		// `RitmoDaZona`).
+		AfirmarMnt("**NA MENTE NAO SE MASTERIZA FORMA** (*\"faça q n é possivel masterizar forma na meditaçao profunda\"*): o ritmo de maestria da zona vai a 0",
+				   Math.Abs(f.zoneMasteryMult) < 1e-9, $"{f.zoneMasteryMult}");
+		RitmoDaZona.MenteMasterizaFormaDeTeste = true;
+		var antes = new Fighter { Race = "Saiyan", BP = 1000 };
+		try { RitmoDaZona.Aplicar(antes, DimensaoMental.De(1234)); }
+		finally { RitmoDaZona.MenteMasterizaFormaDeTeste = false; }
+		AfirmarMnt("(defeito injetado: a regra de antes) a mente volta a deixar a maestria em 1x -- a regua de cima REPROVA",
+				   Math.Abs(antes.zoneMasteryMult - 1) < 1e-9, $"{antes.zoneMasteryMult}");
 
 		// LIGAR E NAO DESLIGAR e o modo de falha nomeado no cabecalho do `RitmoDaZona`.
 		RitmoDaZona.Aplicar(f, fora);
-		AfirmarMnt("SAIR da mente devolve o ganho a 1x (nao ha 0,25 preso no bolso)",
-				   Math.Abs(f.zoneGainMult - 1) < 1e-9, $"{f.zoneGainMult}");
+		AfirmarMnt("SAIR da mente devolve o ganho a 1x (nao ha 0,25 preso no bolso) -- e a maestria tambem",
+				   Math.Abs(f.zoneGainMult - 1) < 1e-9 && Math.Abs(f.zoneMasteryMult - 1) < 1e-9, $"ganho {f.zoneGainMult}, maestria {f.zoneMasteryMult}");
 
 		// E A SALA CONTINUA VALENDO 280 -- a excecao da mente nao pode ter comido a da Sala.
 		RitmoDaZona.Aplicar(f, ZoneKey.Premade(SalaDoTempo.Zona));
@@ -169,6 +176,26 @@ public partial class GameServer
 		AfirmarMnt("o funil de producao (`AplicarGravidade`) escreve o 0,25 sozinho",
 				   Math.Abs(dentro.Ficha.zoneGainMult - GainKnobs.MindDimensionMult) < 1e-9,
 				   $"{dentro.Ficha.zoneGainMult}");
+
+		// (2026-10-16) E PELOS FUNIS DE PRODUCAO DA MAESTRIA: uma hora sustentando a forma -- a da escada (`SubirMaestriaDaZona`)
+		// e a do ki divino (`TickDaMaestriaDivina`, num SSG com o ki divino desperto) --, dentro da mente e fora dela.
+		(double Forma, double Divina) UmaHoraNaForma(ServerPlayer quem)
+		{
+			quem.Ficha.godki = new GodKiState { awakened = true, usage = true };
+			quem.Forma.Entrar("ssg");
+			SubirMaestriaDaZona(quem, "ssj", Jandirus.Core.Forms.Catalogo.MaestriaPorSegundo, 3600, out _);
+			TickDaMaestriaDivina(quem, 3600);
+			return (quem.Forma.Maestria.De("ssj"), quem.Ficha.godki.mastery);
+		}
+		var naMente = UmaHoraNaForma(dentro);
+		var foraDela = UmaHoraNaForma(new ServerPlayer
+		{
+			Id = IdBaseDaMenteDeTeste + 91, Peer = null, Name = "bancada: fora da mente", Race = "Saiyan", Genero = "Male", Idade = 25,
+			Ficha = new Fighter { Race = "Saiyan", BP = 1000 },
+		});
+		AfirmarMnt("**...E NADA SE MASTERIZA LA DENTRO**: uma hora sustentando a forma na mente nao sobe a maestria dela nem a do ki divino -- fora da mente, a mesma hora sobe as duas",
+				   naMente.Forma == 0 && naMente.Divina == 0 && foraDela.Forma > 0 && foraDela.Divina > 0,
+				   $"na mente: forma {naMente.Forma:0.###}, divina {naMente.Divina:0.###}; fora: forma {foraDela.Forma:0.###}, divina {foraDela.Divina:0.###}");
 		ZoneList(dentro.Zone.Hash).Remove(dentro);
 		_players.Remove(dentro.Id);
 	}

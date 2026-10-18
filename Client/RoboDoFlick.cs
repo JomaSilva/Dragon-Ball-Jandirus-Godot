@@ -30,6 +30,32 @@ public partial class RoboDoFlick : Node2D
 	private double _seg;
 	private int _fase, _ok, _falhou;
 
+	// ---- a fase 5 (2026-10-16): o corpo de outro jogador, de producao, socando no ar
+	private VisualCatalog _cat = null!;
+	private RemotePlayer _remoto = null!;
+	private CharacterVisual _visRemoto = null!;
+	private long _relogioDoPacote = 1_000;
+	private double _ultimoPacote;
+
+	/// <summary>
+	/// UM SNAPSHOT PRO CORPO REMOTO, pelo `Receive` de producao: voando (ou nao) pro leste, a pose separada do bit de voo -- os dois
+	/// campos que o servidor manda (`EntityState.Pose` e `EntityState.Voando`).
+	/// </summary>
+	private void Pacote(Protocol.Pose pose, bool noAr)
+	{
+		_relogioDoPacote += 50;
+		_remoto.Receive(_relogioDoPacote, 0, new Vec2(0, 0), Facing.East, moving: true, deitado: false, pose,
+							altitude: noAr ? Voo.AlturaDePairar : 0f, voando: noAr);
+	}
+
+	/// <summary>O servidor segura a pose de soco pela cadencia: o snapshot repete a cada tique (aqui, 50 ms).</summary>
+	private void RepetirOSoco()
+	{
+		if (_seg - _ultimoPacote < 0.05) return;
+		_ultimoPacote = _seg;
+		Pacote(Protocol.Pose.Atacando, noAr: true);
+	}
+
 	private void Checa(string nome, bool cond, string detalhe = "")
 	{
 		if (cond) { _ok++; GD.Print($"[flick]   OK    {nome}" + (detalhe.Length > 0 ? $"   [{detalhe}]" : "")); }
@@ -41,7 +67,7 @@ public partial class RoboDoFlick : Node2D
 		GD.Print("[flick] ================ O SOCO TOCA UMA VEZ, E O MACACO DEITA (pedido do dono, 2026-09-06) ================");
 		const string dados = "res://Assets/Data/visual.json";
 		if (!Godot.FileAccess.FileExists(dados)) { Checa("PRECONDICAO: visual.json existe", false); Encerrar(); return; }
-		VisualCatalog cat = VisualCatalog.Parse(Godot.FileAccess.GetFileAsString(dados));
+		VisualCatalog cat = _cat = VisualCatalog.Parse(Godot.FileAccess.GetFileAsString(dados));
 
 		_base = new CharacterVisual { Name = "Base" };
 		_fera = new CharacterVisual { Name = "Fera" };
@@ -132,23 +158,24 @@ public partial class RoboDoFlick : Node2D
 				// 3) O KO DO MACACO DEITA COMO O DE TODO MUNDO
 				// =====================================================================
 				GD.Print("[flick] -- 3) o KO: o mesmo quadro deitado e a mesma rotacao pra todo corpo --");
-				// (rumo, graus do corpo base, quadro do macaco, graus do macaco): os tres primeiros rumos sao
-				// iguais pros dois; no OESTE o corpo de um quadro so da meia-volta (e fica de ponta-cabeca,
-				// como sempre ficou) e o macaco, que tem o quadro espelhado, deita com ele SEM girar.
-				foreach ((Facing olhar, float grausBase, string quadroFera, float grausFera) in new[]
+				// (rumo da cabeca, graus do corpo base, quadro do macaco, graus do macaco): os tres primeiros rumos
+				// sao iguais pros dois; no OESTE o corpo de um quadro so da meia-volta (e fica de ponta-cabeca,
+				// como sempre ficou) e o macaco, que tem o quadro espelhado, deita com ele SEM girar. O SUL e +90 e
+				// o NORTE -90 desde 2026-10-16: a cabeca vai pro rumo, como no arremesso (ver o fim desta fase).
+				foreach ((Facing rumo, float grausBase, string quadroFera, float grausFera) in new[]
 				{
-					(Facing.South, -90f, "ko_west", -90f), (Facing.North, 90f, "ko_west", 90f),
+					(Facing.South, 90f, "ko_west", 90f), (Facing.North, -90f, "ko_west", -90f),
 					(Facing.East, 0f, "ko_west", 0f), (Facing.West, 180f, "ko_east", 0f),
 				})
 				{
-					_base.SetMotion(olhar, false); _fera.SetMotion(olhar, false);
+					_base.SetMotion(rumo, false); _fera.SetMotion(rumo, false);
 					_base.SetPose(Protocol.Pose.Nocauteado); _fera.SetPose(Protocol.Pose.Nocauteado);
-					_base.DeitarPor(olhar); _fera.DeitarPor(olhar);
-					Checa($"olhando pro {olhar}: o corpo base deita com o quadro unico `ko` e {grausBase:0} graus",
+					_base.DeitarPor(rumo); _fera.DeitarPor(rumo);
+					Checa($"com a cabeca pro {rumo}: o corpo base deita com o quadro unico `ko` e {grausBase:0} graus",
 						  _base.AnimacaoDeTeste == "ko" && Mathf.IsEqualApprox(_base.RotationDegrees, grausBase),
 						  $"{_base.AnimacaoDeTeste} @ {_base.RotationDegrees:0}");
-					Checa($"olhando pro {olhar}: o macaco deita com `{quadroFera}` a {grausFera:0} graus"
-						  + (olhar == Facing.West ? " (o espelho, e nao a meia-volta que o punha de ponta-cabeca)" : " (os mesmos graus do corpo base)"),
+					Checa($"com a cabeca pro {rumo}: o macaco deita com `{quadroFera}` a {grausFera:0} graus"
+						  + (rumo == Facing.West ? " (o espelho, e nao a meia-volta que o punha de ponta-cabeca)" : " (os mesmos graus do corpo base)"),
 						  _fera.AnimacaoDaFormaDeTeste == quadroFera && Mathf.IsEqualApprox(_fera.RotationDegrees, grausFera),
 						  $"{_fera.AnimacaoDaFormaDeTeste} @ {_fera.RotationDegrees:0}");
 					_base.SetPose(Protocol.Pose.Normal); _fera.SetPose(Protocol.Pose.Normal);
@@ -156,6 +183,36 @@ public partial class RoboDoFlick : Node2D
 				}
 				Checa("de pe de novo, o macaco volta ao quadro parado da direcao em que olha",
 					  Comeca(_fera.AnimacaoDaFormaDeTeste, "default") && Mathf.IsZeroApprox(_fera.RotationDegrees), _fera.AnimacaoDaFormaDeTeste);
+
+				// ============================ O KO E O ARREMESSO APONTAM A CABECA PRO MESMO LADO (dono, 2026-10-16) ============================
+				// *"nocautear a pessoa ao socar pra cima ou pra baixo, ela cai com a rotaçao do corpo invertida (...) no knock back ta tudo
+				// certo"*. As duas tabelas giram desenhos diferentes -- o `ko` tem a cabeca pro LESTE a 0 grau (a direita do quadro), o corpo
+				// acordado do arremesso tem a cabeca pro NORTE --, entao o que se compara e a CABECA na tela, e nao o angulo.
+				// ===========================================================================================================================
+				string Discordam()
+				{
+					var fora = new List<string>();
+					foreach (Facing rumo in new[] { Facing.South, Facing.North, Facing.East, Facing.West })
+					{
+						_base.SetPose(Protocol.Pose.Nocauteado); _base.DeitarPor(rumo);
+						Vector2 noKo = Vector2.Right.Rotated(_base.Rotation);
+						_base.SetPose(Protocol.Pose.Normal); _base.VoarPara(rumo);
+						Vector2 noVoo = Vector2.Up.Rotated(_base.Rotation);
+						if (noKo.Dot(noVoo) < 0.99f) fora.Add($"{rumo}: cabeca no ko {noKo.Round()}, no arremesso {noVoo.Round()}");
+					}
+					_base.GirarPara(default);
+					return string.Join("; ", fora);
+				}
+				string discordam = Discordam();
+				Checa("o KO e o ARREMESSO deitam a cabeca pro MESMO lado nos quatro rumos (pra onde o golpe empurrou)", discordam.Length == 0, discordam);
+				CharacterVisual.KoVerticalComoAntesDeTeste = true;
+				try
+				{
+					string comDefeito = Discordam();
+					Checa("[injecao] com a tabela de antes (`KoVerticalComoAntesDeTeste`) o NORTE e o SUL discordam do arremesso, e so eles -- o que o dono viu",
+						  comDefeito.Contains("South") && comDefeito.Contains("North") && !comDefeito.Contains("East") && !comDefeito.Contains("West"), comDefeito);
+				}
+				finally { CharacterVisual.KoVerticalComoAntesDeTeste = false; }
 
 				// =====================================================================
 				// 4) O GESTO DO KIAI: A POSE DE TIRO, UMA VEZ (dono, 2026-09-07)
@@ -178,6 +235,53 @@ public partial class RoboDoFlick : Node2D
 					  _base.EstadoDeTeste == "default" && Comeca(_base.AnimacaoDeTeste, "default"), $"{_base.EstadoDeTeste}/{_base.AnimacaoDeTeste}");
 				Checa("CONTRA-EXEMPLO: carregar um raio (Canalizando SEM atirar) nao veste a pose de tiro (`beams.dm:288-300`)",
 					  (_base.SetPoseDeTeste(Protocol.Pose.Canalizando, false), _base.EstadoDeTeste).Item2 == "default", _base.EstadoDeTeste);
+
+				// =====================================================================
+				// 5) NO AR, O SOCO QUE ACABA DEVOLVE O VOO (dono, 2026-10-16)
+				// =====================================================================
+				// *"ao voar e socar por uns segundos ele fica andando, ele deveria socar e logo voltar pra animaçao de voo"*. A pose
+				// `Atacando` dura a CADENCIA do golpe e o `flick` (os 0,24 s do relato) acaba antes: no ar, o fim do soco caia no
+				// parado/andando ate a cadencia vencer. O corpo aqui e um `RemotePlayer` de PRODUCAO (o `Visual` minimo que ele exige,
+				// vestido), alimentado pelo `Receive` -- e o relogio de interpolacao dele fica parado, como na `--diagfluidez`: o que se
+				// mede e a pose, que o `Receive` aplica na hora.
+				GD.Print("[flick] -- 5) no ar, o soco que acaba devolve o VOO, e nao o andar --");
+				_remoto = new RemotePlayer { Name = "RemotoNoAr" };
+				_visRemoto = new CharacterVisual { Name = "Visual" };
+				_remoto.AddChild(_visRemoto);
+				AddChild(_remoto);
+				_remoto.SetProcess(false);
+				_visRemoto.Vestir(_cat, new Appearance { Cabelo = "Goku" }, "Saiyan", "Male");
+				Pacote(Protocol.Pose.Voando, noAr: true);
+				Checa("PRECONDICAO: no ar e sem socar, o corpo remoto veste o VOO", Comeca(_visRemoto.AnimacaoDeTeste, "flight"), _visRemoto.AnimacaoDeTeste);
+				Pacote(Protocol.Pose.Atacando, noAr: true);
+				Checa("...e o pacote do soco (no ar) poe o soco", Comeca(_visRemoto.AnimacaoDeTeste, "attack"), _visRemoto.AnimacaoDeTeste);
+				_fase = 5; _seg = 0; _ultimoPacote = 0;
+				break;
+			}
+			case 5:
+			{
+				if (_seg < 0.6) { RepetirOSoco(); return; }
+				Checa("0,6 s depois, AINDA na pose do soco (a cadencia corre), o soco ja tocou -- e o corpo no ar voltou ao VOO, e nao ao andar",
+					  _visRemoto.EstadoDeTeste == "attack" && _visRemoto.FlickAcabouDeTeste && Comeca(_visRemoto.AnimacaoDeTeste, "flight"),
+					  $"{_visRemoto.EstadoDeTeste}/{_visRemoto.AnimacaoDeTeste}");
+				// POUSOU NO MEIO DA SEQUENCIA: o mesmo pacote apaga o voo, e o fim do soco vira o chao na hora
+				Pacote(Protocol.Pose.Atacando, noAr: false);
+				Checa("...e se ele POUSA ainda na pose do soco, o desenho volta ao chao no mesmo pacote", !Comeca(_visRemoto.AnimacaoDeTeste, "flight"),
+					  _visRemoto.AnimacaoDeTeste);
+
+				// O CONTRA-EXEMPLO: o fim do soco sem a regra -- o boneco andando no ceu da foto do dono
+				CharacterVisual.SocoVoltaAndandoNoArDeTeste = true;
+				Pacote(Protocol.Pose.Voando, noAr: true);
+				Pacote(Protocol.Pose.Atacando, noAr: true);
+				_fase = 6; _seg = 0; _ultimoPacote = 0;
+				break;
+			}
+			case 6:
+			{
+				if (_seg < 0.6) { RepetirOSoco(); return; }
+				Checa("[injecao] com a regra desligada (`SocoVoltaAndandoNoArDeTeste`) o soco no ar volta ao parado/andando -- a foto do dono",
+					  _visRemoto.FlickAcabouDeTeste && !Comeca(_visRemoto.AnimacaoDeTeste, "flight"), _visRemoto.AnimacaoDeTeste);
+				CharacterVisual.SocoVoltaAndandoNoArDeTeste = false;
 				Encerrar();
 				break;
 			}

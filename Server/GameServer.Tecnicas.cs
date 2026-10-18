@@ -33,7 +33,8 @@ public partial class GameServer
 	private readonly HashSet<int> _invisiveis = [];
 	private readonly Dictionary<int, double> _escudoAtivo = [];   // id -> bonus aplicado
 
-	public bool EstaOculto(int id) => _invisiveis.Contains(id);
+	public bool EstaOculto(int id) => _invisiveis.Contains(id)
+		|| Enterrado(id);   // (2026-10-17) a larva enterrada some da vista -- ver `GameServer.Larva.cs`
 
 	/// <summary>
 	/// QUEM SAIU LEVA O ESTADO DELE JUNTO -- inscrito no `EsquecerTecnicas`, porque id se reusa. So o
@@ -138,7 +139,7 @@ public partial class GameServer
 			return;
 		}
 
-		double custo = Tecnicas.EscudoCustoKi(pl.Ficha);
+		double custo = Tecnicas.EscudoCustoKi(pl.Ficha) * CustoDoEscudoPeloNivel(pl);   // (2026-10-16) o nivel da skill o barateia
 		if (pl.Ficha.Ki < custo) { Avisar(pl, $"isso pede {custo:0} de energia."); return; }
 
 		pl.Ficha.Ki -= custo;
@@ -435,6 +436,9 @@ public partial class GameServer
 		// absorveu ninguem, entao o caminho comum paga um teste de referencia. Ver `ServerPlayer.VerbosAbsorvidos`.
 		if (pl.VerbosAbsorvidos?.Contains(verb) == true) return true;
 
+		// (2026-10-16) A ATIVA DA FORMA PURA: concedida pelo estado (a Forma Pura destravada), e nao por skill. Ver `GameServer.SagaDoMajin.cs`.
+		if (verb == Jandirus.Core.Races.SagaDoMajin.VerboDaFuria && ComAFormaPura(pl)) return true;
+
 		// ============================ E OS DEGRAUS DE NIVEL, QUE NINGUEM LIA ============================
 		// COMPRAR a skill nao e o unico jeito de destravar uma habilidade: o `effector()` do DM concede
 		// verbs por NIVEL (`assignverb` dentro do degrau), e o extrator ja trazia isso -- `niveis.json`
@@ -480,6 +484,9 @@ public partial class GameServer
 		// nasce desta lista e o `SabeTecnica` aceita o verb pela outra metade.
 		if (pl.VerbosAbsorvidos != null)
 			foreach (string v in pl.VerbosAbsorvidos) if (!l.Contains(v)) l.Add(v);
+
+		// ...E A ATIVA DA FORMA PURA, pela mesma regra das duas listas iguais (`SabeTecnica`).
+		if (ComAFormaPura(pl) && !l.Contains(Jandirus.Core.Races.SagaDoMajin.VerboDaFuria)) l.Add(Jandirus.Core.Races.SagaDoMajin.VerboDaFuria);
 
 		return l;
 	}

@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://b3cvg57ogcpxm"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【Stifled Tears】 BGM OST ♠.mp3-3ddf10b93c9fcd91a6b9b510fdbf0d49.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/♠Dragon Ball Z Kakarot【Stifled Tears】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【Stifled Tears】 BGM OST ♠.mp3-3ddf10b93c9fcd91a6b9b510fdbf0d49.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

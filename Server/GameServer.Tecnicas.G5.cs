@@ -270,9 +270,10 @@ public sealed partial class GameServer
 		pl.Ficha.chargedskill += 0.05;
 		// `usr.blastcounter += 5` (`blasts.dm:100`) -- CINCO, e nao um: o tiro carregado conta por
 		// cinco no contador de exp, ainda que a pericia daqui suba os mesmos 0,05 do tiro simples.
-		// O `chargedcounter += 5` da linha seguinte do DM NAO entra: nenhuma das 30 pericias observa
-		// `chargedcounter` (ele so alimenta o somatorio do `Ki_Effusion`, que nao e uma delas).
 		CreditarContador(pl, "blastcounter", 5);
+		// `usr.chargedcounter += 5` (`blasts.dm:101`). Nenhuma das 30 pericias o observa: so o somatorio da Ki Effusion, que desde
+		// 2026-10-16 tem quem o credite (`NiveisDeSkill.ContadorDaEfusao`).
+		CreditarContador(pl, "chargedcounter", 5);
 
 		Disparar(pl, new ReceitaDeProjetil
 		{

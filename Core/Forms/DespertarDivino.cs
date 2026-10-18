@@ -332,6 +332,8 @@ public static class DespertarDivino
 	{
 		if (d == null) return false;
 		if (EhFormaDivina(d)) return true;
+		// (2026-10-17) A SUPER PERFEITA DO BIO: *"ao usar a super perfect form vc ganha maestria em god ki"* -- ver `FormaDef.DoBio`.
+		if (d.DoBio != null) return true;
 		if (d.EscalaComGodKi is not { } curva) return false;
 		foreach (string origem in curva.Origens)
 			if (string.Equals(origem, classe, StringComparison.OrdinalIgnoreCase)

@@ -211,9 +211,9 @@ public static class CargaBench
 			// COMO REPROVAM SE A REGRA SUMIR: devolva o `f.Ki = Math.Min(f.Ki + ..., f.MaxKi); return;`
 			// ao estagio 1 do `CargaDeKi.Passo` -- o clamp vira barreira absorvente no MaxKi assim que
 			// ha um dreno concorrente, e o `ssj3` (o pior dreno da linha) cai nas duas linhas: nunca
-			// cruza e para no pico de 100,0%. As outras quatro caem junto ou nao conforme o `troco` do
-			// `RegenDeKi` as empurre por cima -- e essa e a razao de as CINCO serem medidas, e nao so
-			// a reclamada: o sistema ja funcionou por acidente em quatro delas.
+			// cruza e para no pico de 100,0%. Quando isto foi escrito, as outras quatro caiam junto ou nao conforme o troco
+			// da carga (`extracharge`) as empurrasse por cima -- e essa e a razao de as CINCO serem medidas, e nao so a
+			// reclamada: o sistema ja funcionou por acidente em quatro delas. O troco saiu em 2026-10-16 (adendo 31).
 			//
 			// O TETO DE 20 s existe pra pegar o defeito LENTO, que o `cruzou >= 0` sozinho nao pega:
 			// uma carga que so cruzasse aos 45 s passaria no "cruzou em algum momento" e em jogo seria
@@ -244,23 +244,16 @@ public static class CargaBench
 
 		// AS TAXAS EM %/s DO MaxKi -- e o que explica o grafico acima sem depender dele.
 		//
-		// A COLUNA DO `troco` ESTA AQUI POR CAUSA DO DEFEITO QUE ESTE TESTE ACHOU, e e ela que o
-		// diagnostica se ele voltar. Enquanto o estagio 1 da carga clampava no MaxKi e dava `return`,
-		// a carga sozinha NAO conseguia passar dos 100% dentro de forma nenhuma -- ela reenchia ate o
-		// MaxKi cravado e parava. Quem ainda assim ultrapassava so ultrapassava por uma porta lateral:
-		// o `troco` do `RegenDeKi` (`RegenDeKi.cs:124-131`), o unico ramo do jogo inteiro que soma Ki
-		// FORA do teto de MaxKi -- e o proprio comentario de la diz isso.
+		// A COLUNA DO TROCO SAIU COM ELE (2026-10-16, adendo 31). Ela existia pelo defeito que este teste achou: enquanto o
+		// estagio 1 da carga clampava no MaxKi e dava `return`, so passava dos 100% quem o troco da carga (`extracharge`, o unico
+		// ramo que somava Ki FORA do teto) empurrava por cima -- o sistema funcionava por acidente, e o SSJ3, o pior dreno da
+		// linha, ficava cravado em 100,0%. O troco saiu inteiro (o dono: soltar o C para a subida do Ki), e quem cobra que a
+		// CARGA SOZINHA passa dos 100% sao as duas afirmacoes por forma, la em cima.
 		//
-		// Ou seja o sistema funcionava por acidente: quem tinha dreno pequeno o bastante era empurrado
-		// por cima da barreira pelo troco e caia no estagio 3; o SSJ3, que tem o pior dreno da linha,
-		// nao era -- e ficava cravado em 100,0%. Comparar `troco` com `dreno` e o que torna esse
-		// retrocesso legivel em vez de "o ssj3 e esquisito".
-		//
-		// A `regen` sai em coluna separada da do troco de proposito: ela tem teto no MaxKi (:113) e
-		// portanto NUNCA pode ultrapassar, por maior que seja. Somar as duas esconderia justamente a
-		// diferenca que importa.
+		// A `regen` tem teto no MaxKi e portanto NUNCA pode ultrapassar, por maior que seja: ela fica na tabela pra mostrar
+		// quanto do dreno a regeneracao repaga ate o teto.
 		Console.WriteLine("\n  as taxas, em %/s do MaxKi:");
-		Console.WriteLine("    forma   ganho da carga   dreno da forma   saldo    regen (tem teto)   troco (SEM teto)");
+		Console.WriteLine("    forma   ganho da carga   dreno da forma   saldo    regen (tem teto)");
 		foreach (string id in new[] { Jandirus.Core.Forms.Catalogo.IdBase, "ssj1", "ssj2", "ssj3", "ssj4" })
 		{
 			var f = new Fighter { Race = "Saiyan", BP = 3_000_000 };
@@ -280,34 +273,14 @@ public static class CargaBench
 			double ganho = (f.Ki - antes) / f.MaxKi;
 			double dreno = Jandirus.Core.Forms.Catalogo.DrenoPorSegundo(id, new Jandirus.Core.Forms.Maestrias());
 
-			// AS DUAS METADES DO `RegenDeKi`, medidas SEPARADAS -- ver o comentario do cabecalho.
-			// As duas se leem num tanque nao-cheio, porque no MaxKi o portao do regen nem abre.
-			//
-			// 1) regen puro: `extracharge` ZERADO, entao o bloco do troco nem roda.
+			// A REGENERACAO, num tanque nao-cheio -- no MaxKi o portao do regen nem abre.
 			f.Ki = f.MaxKi * 0.5;
-			f.extracharge = 0;
 			double antesRegen = f.Ki;
 			Jandirus.Core.Stats.RegenDeKi.Passo(f, 1.0, dreno);
 			double regen = (f.Ki - antesRegen) / f.MaxKi;
 
-			// 2) o troco: `extracharge` no PICO da parabola (25), que e quanto ele rende no melhor
-			// caso. Comparar o dreno com o melhor caso e o teste justo -- se nem assim o troco
-			// levantava o Ki acima do MaxKi, a forma nao tinha como escapar da barreira.
-			f.Ki = f.MaxKi * 0.5;
-			f.extracharge = 25;
-			double antesTroco = f.Ki;
-			Jandirus.Core.Stats.RegenDeKi.Passo(f, 1.0, dreno);
-			double troco = (f.Ki - antesTroco) / f.MaxKi - regen;
-
 			Console.WriteLine($"    {id,-8} {ganho * 100,10:0.000}%/s {dreno * 100,13:0.000}%/s "
-							+ $"{(ganho - dreno) * 100,7:+0.000;-0.000}%/s {regen * 100,15:0.000}%/s {troco * 100,14:0.000}%/s"
-							// O PREDITOR E A SOMA DAS DUAS, e a ordem dentro do `RegenDeKi` diz por que: a
-							// regeneracao repaga o dreno ate o MaxKi (e para la, :113) e so entao o troco
-							// soma por cima, sem teto. Entao o tique terminava acima do MaxKi quando
-							// `regen + troco > dreno`. Marcar so o troco erraria o SSJ2, que escapava por
-							// uma margem de 0,1 ponto -- e um preditor que erra um caso e um preditor que
-							// nao se pode usar pra julgar o proximo.
-							+ (dreno > regen + troco ? "   <- o dreno vencia as duas: e o caso que travava" : ""));
+							+ $"{(ganho - dreno) * 100,7:+0.000;-0.000}%/s {regen * 100,15:0.000}%/s");
 		}
 
 		Console.WriteLine(reprovadas == 0

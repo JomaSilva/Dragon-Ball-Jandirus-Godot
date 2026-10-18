@@ -206,6 +206,26 @@ public sealed class MoldeDeNpc
 	/// </summary>
 	public FichaDeAnimal? Animal;
 
+	/// <summary>
+	/// ============================ UMA ALMA DO OUTRO MUNDO (dono, 2026-10-16) ============================
+	/// *"colocar npcs no outro mundo, npcs mortos com a aureula etc, no inferno tb"*. O corpo nasce MORTO, de AUREOLA e DE PE
+	/// (`GameServer.FazerMortoDoAlem`) e continua sendo um habitante como outro qualquer: passeia, conversa -- com as frases do lugar
+	/// (`rotina.json`, `conversaDoAlem` e `conversaDoInferno`) --, treina e chama pra spar. A segunda morte dele nao o leva a mesa do
+	/// Enma como a de um jogador: ele se recompoe ali mesmo (`GameServer.AlmaSeRecompoe`). Escrito `"alma": true` no molde.
+	///
+	/// SO HABITANTE E ALMA (`Problemas`): o chefe que volta no Inferno nasce por outra porta (<see cref="ViloesDoInferno"/>), e os
+	/// outros tipos nao nascem pelo povoamento.
+	/// ===============================================================================================
+	/// </summary>
+	public bool Alma;
+
+	/// <summary>
+	/// (2026-10-16) NOMES QUE NAO SE REPETEM (`"nomesUnicos": true`): cada corpo vivo do molde tem um nome da lista que nenhum outro
+	/// usa (`GameServer.NomeLivre`). Os cinco Supremos Kaiohs do Ceu sao cinco pessoas -- o sorteio puro daria dois "Shin" em 96 de
+	/// cada 100 povoamentos.
+	/// </summary>
+	public bool NomesUnicos;
+
 	// =====================================================================
 	// QUEM ELE E
 	// =====================================================================
@@ -459,6 +479,10 @@ public sealed class MoldeDeNpc
 
 		if (BpMax > 0 && BpMin > BpMax) p.Add($"'{Id}': bpMin maior que bpMax");
 
+		if (Alma && Tipo != TipoDeNpc.Cidadao)
+			p.Add($"'{Id}': alma=true e o tipo e '{Tipo}' -- so habitante nasce alma (o chefe que volta no Inferno nasce pelo "
+				+ "evento, `ViloesDoInferno`).");
+
 		for (int i = 0; i < Estagios.Length; i++)
 		{
 			if (Estagios[i].Bp <= 0) p.Add($"'{Id}': estagio {i + 1} sem bp");
@@ -550,6 +574,8 @@ public sealed class CatalogoDeMoldes
 				Furia = Num(e, "furia", 50),
 				Cabelo = Txt(e, "cabelo"),
 				SangueDoBio = Lista(e, "sangueDoBio"),
+				Alma = Bit(e, "alma", false),
+				NomesUnicos = Bit(e, "nomesUnicos", false),
 			};
 
 			if (e.TryGetProperty("perfil", out JsonElement perfil) && perfil.ValueKind == JsonValueKind.Object)

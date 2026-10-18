@@ -1142,6 +1142,7 @@ public partial class GameServer
 		// o dano de estilo entra somado, igual ao soco comum (`dmg += compareStyles(M)`)
 		GolpeResultado r = MeleeResolver.Resolver(ca, cd, angulo, _rng, 1, addDano + DanoDeEstilo(a, d));
 		MarcarAgressao(d, a);
+		AoGolpeRacial(a, d, r);   // (v0.4.0) as passivas dos dois lados
 
 		// O bit do mestre e o peso da luta, iguais ao soco comum -- ver o bloco em `GameServer.Combat.cs`.
 		double luta = FatorDaLuta(a, d);

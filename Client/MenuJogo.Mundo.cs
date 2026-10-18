@@ -48,6 +48,8 @@ public partial class MenuJogo
 		GridContainer duas = Colunas();
 		CartaoDoCeu(duas, r, ceu);
 		CartaoDoClima(duas);
+		// (2026-10-17) O CALENDARIO, na mesma grade: a data e do mundo, e nao do lugar, mas e a mesma pergunta -- "que tempo e este?".
+		CartaoDoCalendario(duas);
 
 		// ============================ A CONQUISTA E AS ESFERAS MORAM AQUI, E NAO NA NAV ============================
 		// Elas estavam na aba Nav -- e o comentario que terminava a linha acima ("a conquista do planeta
@@ -204,6 +206,47 @@ public partial class MenuJogo
 		}
 		else Linha("Pode cair", "nada: o céu daqui não muda", null, corpo);
 	}
+
+	/// <summary>
+	/// O CARTAO DO CALENDARIO (dono, 2026-10-17: *"tinhas os meses e o ano"*): a data de hoje, quando o mes vira, e quanto falta pro proximo
+	/// aniversario de quem esta jogando. No DM a data so saia no chat (`WorldClock.dm:34`, `:112`) e no verb `Sense_Time`; aqui ela mora
+	/// tambem nesta aba, que e a do lugar e do tempo. A data e a conta do Core com o dia da Terra de agora e a origem que veio no
+	/// `S2C.Ceu`; os anos e os meses da idade chegam na ficha lenta.
+	/// </summary>
+	private void CartaoDoCalendario(Control pai)
+	{
+		VBoxContainer corpo = Cartao("Calendário", pai);
+		if (GameClient.Instance is not { TempoChegou: true } cli || World.Instancia is not { } mundo)
+		{
+			Nota("o calendário ainda não chegou.", corpo);
+			return;
+		}
+
+		Jandirus.Core.World.DataDoCalendario hoje = HojeNoCalendario(cli, mundo);
+		Linha("Hoje", hoje.Extenso, null, corpo);
+		Jandirus.Core.World.DataDoCalendario vira = hoje.ProximoMes;
+		Linha("O mês vira", (hoje.DiasAteOMesVirar == 1 ? "amanhã" : $"em {hoje.DiasAteOMesVirar} dias") + $" ({vira.Dia} de {vira.NomeDoMes})",
+			  null, corpo);
+
+		int anos = cli.Atributos.Idade, meses = cli.Atributos.MesesDaIdade;
+		int faltam = Jandirus.Core.World.Calendario.MesesPorAno - meses;
+		Linha("Sua idade", $"{anos} anos e {meses} {(meses == 1 ? "mês" : "meses")} -- faz {anos + 1} em {faltam} {(faltam == 1 ? "mês" : "meses")}",
+			  null, corpo);
+		Nota($"Um dia do jogo dura {Jandirus.Core.World.Ceu.SegundosPorDia / 60:0} minutos; o mês tem {Jandirus.Core.World.Calendario.DiasPorMes} "
+			  + $"dias e o ano, {Jandirus.Core.World.Calendario.MesesPorAno} meses. A idade anda com o calendário -- e mais depressa na Sala do Tempo.",
+			  corpo);
+	}
+
+	/// <summary>A DATA DE HOJE na tela: a mesma conta do servidor (`GameServer.Hoje`), com o dia da Terra deste cliente.</summary>
+	internal static Jandirus.Core.World.DataDoCalendario HojeNoCalendario(GameClient cli, World mundo) =>
+		Jandirus.Core.World.Calendario.De(Jandirus.Core.World.Calendario.DiaDaTerra(
+			Planetas.Relogio(Jandirus.Core.World.ZoneKey.Premade("Earth")), mundo.TempoDoMundo) - cli.OrigemDoCalendario);
+
+	/// <summary>O CALENDARIO NA ASSINATURA DA ABA: o dia, e os anos e os meses da idade -- a pagina se refaz quando um deles muda.</summary>
+	internal static string AssinaturaDoCalendario() =>
+		GameClient.Instance is { TempoChegou: true } cli && World.Instancia is { } mundo
+			? $"{HojeNoCalendario(cli, mundo).Dias}|{cli.Atributos.Idade}|{cli.Atributos.MesesDaIdade}"
+			: "-";
 
 	/// <summary>A grade de tres colunas em que os botoes de um bloco moram, todos com a mesma largura.</summary>
 	private static GridContainer GradeDeBotoes(Control pai)

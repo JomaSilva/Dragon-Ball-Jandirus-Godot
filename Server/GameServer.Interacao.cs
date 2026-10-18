@@ -24,6 +24,26 @@ public sealed partial class GameServer
 	/// deste canal -- inclusive quando ele foi RECUSADO, senao o funil seguiria adiante e o jogador
 	/// leria "comando desconhecido" depois de ja ter lido "longe demais".
 	/// </summary>
+	/// <summary>
+	/// (v0.3.2) AS ESCOLHAS DE UMA PERGUNTA DO MENU (`S2C.Escolhas`): a resposta a um verbo de `Interacoes.Forma.Lista` mandado com o
+	/// argumento vazio. So pra quem perguntou; ate 255 (o byte do tamanho), cada uma no teto do argumento de um verbo -- a escolha VOLTA
+	/// como argumento.
+	/// </summary>
+	private void MandarEscolhas(ServerPlayer pl, string verbo, IEnumerable<string> escolhas)
+	{
+		List<string> itens = [.. escolhas.Where(e => e.Length > 0 && e.Length <= Jandirus.Net.Protocol.MaxArgDeVerbo).Take(byte.MaxValue)];
+		EscutaDeEscolhas?.Add((pl.Id, verbo, itens));
+		if (pl.Peer == null) return;
+		var w = Jandirus.Net.Protocol.Begin(Jandirus.Net.Protocol.S2C.Escolhas);
+		w.Put(verbo);
+		w.Put((byte)itens.Count);
+		foreach (string e in itens) w.Put(e);
+		pl.Peer.Send(w, Jandirus.Net.Protocol.ChannelReliable, LiteNetLib.DeliveryMethod.ReliableOrdered);
+	}
+
+	/// <summary>A ESCUTA DA BANCADA (`--v030teste` J): cada lista de escolhas que sairia, com quem e o verbo. Nula em jogo.</summary>
+	internal static List<(int Quem, string Verbo, List<string> Itens)>? EscutaDeEscolhas;
+
 	private bool ComandoDeInteracao(ServerPlayer pl, string cmd, string arg)
 	{
 		switch (cmd)
@@ -233,7 +253,7 @@ public sealed partial class GameServer
 	{
 		foreach (ServerPlayer pl in _players.Values)
 		{
-			if (pl.Ficha.dead || pl.Combate is not { } c) continue;
+			if (CaidoPelaMorte(pl) || pl.Combate is not { } c) continue;
 			if (c.EmCombate > 0 || pl.Ficha.HP >= 99.99) continue;
 
 			double cura = 0;

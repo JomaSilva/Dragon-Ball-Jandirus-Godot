@@ -23,6 +23,12 @@ namespace Jandirus.Server;
 ///   GS. (adendo 15, v0.3.1) A GENKIDAMA SO SOCA AO SAIR -- a pose de tiro nao arma ao formar nem a cada pulso (a bola nasce
 ///       NA MAO, e o snapshot diz isso ate ela sair); arma no lancamento, fica a fase 3 inteira com a trava e cai com ela
 ///       (item 46).
+///   DS. (adendo 18, v0.3.2) A DEATH BALL SO SOCA AO SAIR -- a mesma cura: nada de pose ao erguer e a cada estagio (os sons de
+///       erguer e de crescer pelos gestos), e o soco do lancamento a guia inteira, caindo com ela; sem guia, o de toda bola.
+///   MZ. (adendo 18, v0.3.2) O MORTO DE PE LUTA COMO O VIVO -- no Inferno: o Zanzo Clash que sobrevive ao tique, o preso que se
+///       debate e sente o aperto, o mestre que convida, a Danca, o estilo; e a colisao de beam na guarda entre dois mortos.
+///   IT. (adendo 18, v0.3.2) A PASSAGEM DO MORTO -- a Transmissao do Outro Mundo pra um vivo: chega de pe e meio transparente,
+///       o disco grava a volta, e em 5 s a alma volta pro lugar de onde saiu; cair no meio acaba na mesa do Enma.
 ///
 /// A tela (a escolha do Kaio-ken, a trava da Genkidama no cliente, a pergunta do refugio uma vez so) e da `--diagv030`.
 /// </summary>
@@ -708,6 +714,466 @@ public sealed partial class GameServer
 				return (new Vec2(x * T + T / 2f, y * T + T / 2f), (x + livres) * T, true);
 			}
 		return (CorredorLivre(livres), 0, false);
+	}
+
+	// =====================================================================
+	// DS) A DEATH BALL SO SOCA AO SAIR (adendo 18, a v0.3.2)
+	// =====================================================================
+	/// <summary>
+	/// O dono (2026-10-16): *"death ball corrija os problemas q ele tem igual a genkidama tinha tb"*. Ela renascia a cada estagio
+	/// pelo gesto de tiro inteiro (o soco e o `Blast.wav` da saida a cada estagio) e nao fazia nada no lancamento. Pela tecla de
+	/// producao: ao erguer e a cada estagio NENHUMA pose (a bola nasce na mao, e o snapshot diz isso ate ela sair), os sons de
+	/// erguer e de crescer pelos gestos, e o soco do lancamento de pe a guia inteira junto da trava, caindo com ela no aperto que
+	/// larga a guia. Sem guia (o segundo aperto, na carga), o soco e o de toda bola e a trava nao fica.
+	/// </summary>
+	private void ADeathBallSoSocaAoSairV30()
+	{
+		GD.Print("[v030] --- DS) a Death Ball so soca ao sair: nada de pose ao erguer e a cada estagio, e o soco do lancamento ate a guia acabar (adendo 18) ---");
+
+		// UM CORREDOR SO pras rodadas, e o ponteiro da varredura devolvido no fim: a GD, que vem depois, precisa de corredores.
+		int varreduraAntes = _pjProximoCorredor;
+		Vec2 lugar = CorredorDeTerraFirme(24);
+
+		(bool CarregouSemSoco, bool Lancou, string Detalhe) UmaDeathBall(string nome, bool semGuia)
+		{
+			LimparTudoG12();
+			ServerPlayer freeza = ForjarG12(nome, lugar, bp: 50_000, skills: [PathDeathBallG12]);
+			freeza.Facing = Facing.East;
+			var gestos = new List<(int Quem, byte Gesto)>();
+			EscutaDeGestos = gestos;
+			bool Posando() => freeza.GestoAte > NowMs();
+			int Gestos(Protocol.GestoDoCorpo g) => gestos.Count(x => x.Quem == freeza.Id && x.Gesto == (byte)g);
+			try
+			{
+				UsarHabilidade(freeza, "Death_Ball");
+				if (!_deathBallG12.TryGetValue(freeza.Id, out EstadoDaDeathBallG12? db)) return (false, false, "a Death Ball nao comecou");
+				if (semGuia) UsarHabilidade(freeza, "Death_Ball");   // o segundo aperto, na carga: larga a guia
+				bool socouCarregando = Posando();
+				bool naMao = true;
+				// a carga inteira, tique a tique: os quatro estagios (1,5 s cada) e o lancamento no fim
+				for (int i = 0; i < TiquesDeG12(5.5) && !db.Lancada; i++)
+				{
+					naMao &= db.Bola is { } b && NoSnapshotV30(freeza, b.Id) is { Inerte: true };
+					TiquesG12(1);
+					socouCarregando |= Posando() && !db.Lancada;
+				}
+				bool ergueu = Gestos(Protocol.GestoDoCorpo.ErgueADeathBall) == 1;
+				int cresceu = Gestos(Protocol.GestoDoCorpo.CresceADeathBall);
+				bool lancou = db.Lancada && db.Estagio == 4;
+				bool socou = lancou && Posando();
+				bool foraDaMao = lancou && db.Bola is { } solta && NoSnapshotV30(freeza, solta.Id) is { Inerte: false };
+				bool carregou = !socouCarregando && naMao && ergueu && cresceu == 3;
+				string det = $"pose na carga {socouCarregando}; na mao no snapshot {naMao}; erguer {ergueu}; cresceu {cresceu}x; lancou {lancou}; "
+								+ $"pose na saida {socou}; fora da mao {foraDaMao}";
+
+				if (semGuia)
+				{
+					bool soltou = !_deathBallG12.ContainsKey(freeza.Id) && !PresoPeloG12(freeza.Id);
+					return (carregou, socou && soltou && foraDaMao, det + $"; sem guia a trava soltou {soltou}");
+				}
+
+				// a guia, menos de um segundo: o soco de pe junto da trava
+				bool segurou = lancou;
+				for (int i = 0; i < TiquesDeG12(0.8) && _deathBallG12.ContainsKey(freeza.Id); i++)
+				{
+					TiquesG12(1);
+					segurou &= Posando() && PresoPeloG12(freeza.Id);
+				}
+				bool guiando = _deathBallG12.ContainsKey(freeza.Id);
+				if (guiando) UsarHabilidade(freeza, "Death_Ball");   // o aperto que larga a guia
+				bool soltouJunto = guiando && !_deathBallG12.ContainsKey(freeza.Id) && !PresoPeloG12(freeza.Id) && !Posando();
+				return (carregou, socou && segurou && soltouJunto && foraDaMao,
+							det + $"; segurou a guia com a trava {segurou}; a guia durou {guiando}; soltou junto {soltouJunto}");
+			}
+			finally { EscutaDeGestos = null; }
+		}
+
+		var certa = UmaDeathBall("Freeza DS", semGuia: false);
+		AfirmarV30("**ERGUENDO E CRESCENDO, NADA DE SOCO** (*\"death ball corrija os problemas q ele tem igual a genkidama tinha tb\"*): a pose de tiro nao arma ao erguer nem a cada estagio -- a bola nasce NA MAO, e o snapshot diz isso ate ela sair; ao erguer, o som de erguer (`deathball_charge`), e a cada um dos tres estagios o de crescer (`chargeincrease.ogg`)",
+					   certa.CarregouSemSoco, certa.Detalhe);
+		AfirmarV30("**O SOCO E O DO LANCAMENTO, E FICA A GUIA INTEIRA**: a pose arma na saida, fica de pe a guia inteira junto da trava, e cai no aperto que larga a guia -- e o snapshot passa a dizer que a bola saiu da mao",
+					   certa.Lancou, certa.Detalhe);
+		var semGuia = UmaDeathBall("Freeza DS sem guia", semGuia: true);
+		AfirmarV30("...SEM GUIA (o segundo aperto, na carga), o soco e o de toda bola na saida, e a trava nao fica",
+					   semGuia.CarregouSemSoco && semGuia.Lancou, semGuia.Detalhe);
+
+		(bool CarregouSemSoco, bool Lancou, string Detalhe) socando, semSoco;
+		DeathBallSocaAoCrescerDeTeste = true;
+		try { socando = UmaDeathBall("Freeza DS que soca", semGuia: false); }
+		finally { DeathBallSocaAoCrescerDeTeste = false; }
+		AfirmarV30("(defeito injetado: renascer com o gesto de tiro, o jogo de antes) a pose arma ao erguer e a cada estagio -- a primeira regua REPROVA",
+					   !socando.CarregouSemSoco, socando.Detalhe);
+		DeathBallLancaSemSocoDeTeste = true;
+		try { semSoco = UmaDeathBall("Freeza DS sem soco", semGuia: false); }
+		finally { DeathBallLancaSemSocoDeTeste = false; }
+		AfirmarV30("(defeito injetado: o lancamento sem soco, o jogo de antes) nenhuma pose na saida nem na guia -- a segunda regua REPROVA",
+					   !semSoco.Lancou, semSoco.Detalhe);
+		LimparTudoG12();
+		_pjProximoCorredor = varreduraAntes;
+	}
+
+	// =====================================================================
+	// MZ) O MORTO DE PE LUTA COMO O VIVO (adendo 18, a v0.3.2)
+	// =====================================================================
+	/// <summary>
+	/// O dono (2026-10-16): *"n tem zanzoclash nem colisao morto? deveria ter, unica restriçao de morto deveria ser zenkai o resto
+	/// todo deveria ficar"*. Dois mortos de pe no INFERNO (onde ele estava), pelas portas de producao: o Zanzo Clash que abre e
+	/// SOBREVIVE ao tique (caia no seguinte), o preso que se debate e sente o aperto, o mestre que convida o aluno, a Danca que nao
+	/// recusa por "caido" e o estilo que rende -- cada um com o jogo de antes ao lado (`MortoComoCadaverDeTeste`). E a COLISAO: dois
+	/// mortos com o passe do Enma (o mesmo `MortoDePe`) num corredor de terra firme, o beam batendo na guarda de um igual -- o embate
+	/// de maos, que pedia a guarda que o morto nao erguia (o defeito injetado e o `MortoNaoBloqueiaDeTeste`).
+	/// </summary>
+	private void OMortoLutaComoOVivoV30()
+	{
+		GD.Print("[v030] --- MZ) o morto de pe luta como o vivo: Zanzo Clash, agarrao, mestre, Danca, estilo e a colisao de beam na guarda (adendo 18) ---");
+		const float T = ZoneCollision.TileSize;
+		LimparTudoDaBancada();
+		ZoneKey inferno = ZoneKey.Premade(Alem.ZonaDoInferno);
+		Vec2 portao = PortaoDoInferno(inferno);
+		ServerPlayer a = ForjarV2("Fantasma A", TerraFirmeG12(4), 50_000);
+		ServerPlayer d = ForjarV2("Fantasma D", TerraFirmeG12(4), 50_000);
+		// A ASSINATURA E A CONTA + O SLOT: mestre e aluno precisam de duas (o `ForjarV2` da a mesma pra todo corpo)
+		a.Conta = "bancada_mz_mestre";
+		d.Conta = "bancada_mz_aluno";
+		foreach (ServerPlayer p in new[] { a, d })
+		{
+			MoveToZone(p.Id, inferno, portao);
+			p.Ficha.dead = true;
+			p.Ficha.KO = false;
+			p.MorteJaViajou = true;
+			p.RelogioDaMorte = long.MaxValue;
+			p.Combate.Carencia = 0;
+		}
+		void Colados()
+		{
+			// O VOO PENDENTE TERMINA ANTES de os dois irem pro lugar: o golpe de saida do Zanzo Clash empurra o perdedor, e o
+			// `ProntoParaOEmbateDaMudez` roda esse empurrao ate o fim -- depois do posicionamento, ele o levava pra longe. E a CARENCIA
+			// tambem: o mesmo golpe deixa o perdedor intocavel um instante, e o agarrao nao pega intocavel.
+			foreach (ServerPlayer p in new[] { a, d }) { ProntoParaOEmbateDaMudez(p); p.Ficha.Ki = p.Ficha.MaxKi; p.Combate.Carencia = 0; }
+			a.Pos = portao;
+			d.Pos = portao + new Vec2(T * 0.9f, 0);
+			a.Facing = Facing.East;
+			d.Facing = Facing.West;
+		}
+		Colados();
+		AfirmarV30("(montagem) os dois MORTOS DE PE no Inferno, colados e de frente -- a cena da queixa",
+					   a.Zone.Equals(inferno) && d.Zone.Equals(inferno) && a.MortoDePe && d.MortoDePe && !EhCadaver(a) && !EhCadaver(d)
+					   && CorpoNaFrente(a) == d, $"zona {a.Zone.Name}/{d.Zone.Name}; de pe {a.MortoDePe}/{d.MortoDePe}; na frente {CorpoNaFrente(a)?.Name}");
+
+		// ---- (1) O ZANZO CLASH: abre E SOBREVIVE ao tique ----
+		(bool Abriu, bool Durou) UmEmbate()
+		{
+			Colados();
+			a.Livro.Dar(PathDoZanzoken);
+			d.Livro.Dar(PathDoZanzoken);
+			d.UltimoAlvo = a.Id;   // a troca: o outro acabou de me bater
+			d.UltimoSocoMs = NowMs();
+			bool sorteio = _clashSempre;
+			_clashSempre = true;
+			try
+			{
+				bool abriu = TentarEmbate(a, d);
+				TickDosEmbates();
+				return (abriu, _emEmbate.ContainsKey(a.Id) && _emEmbate.ContainsKey(d.Id));
+			}
+			finally { _clashSempre = sorteio; SoltarDoEmbate(a.Id); SoltarDoEmbate(d.Id); }
+		}
+
+		// ---- (2) O AGARRAO: o preso se debate e o pescoco aperta ----
+		string porQueNaoPegou = "";
+		(bool Pegou, bool Debateu, bool Apertou) UmAgarrao()
+		{
+			Colados();
+			List<string> disse = Ouvir(() => AlternarAgarrao(a));
+			porQueNaoPegou = "";
+			if (a.AgarrandoId != d.Id)
+			{
+				// O PORQUE, NA LINHA DA FALHA: a frase do servidor e o estado dos dois
+				porQueNaoPegou = $"| \"{Ultimos(disse)}\"; segura {a.AgarrandoId} ({a.ModoDoAgarrao}); mexe {PodeMexerOCorpo(a)}; na frente "
+								   + $"{CorpoNaFrente(a)?.Name ?? "ninguem"}; zonas {a.Zone.Name}/{d.Zone.Name}; dist {(d.Pos - a.Pos).Length:0.#}; preso por "
+								   + $"{d.AgarradoPorId}; intocavel {d.Combate.Intocavel}; KO {a.Ficha.KO}/{d.Ficha.KO}; cena {EmCena(a)}; paralisado {Paralisado(a.Id)}";
+				return (false, false, false);
+			}
+			try
+			{
+				a.Estrangulando = true;
+				d.DebatendoSe = true;
+				double vida = d.Combate.Corpo.Vida();
+				LutaPraEscapar(a, d);
+				return (true, d.ContadorDaLuta > 0 || a.AgarrandoId == 0, d.Combate.Corpo.Vida() < vida);
+			}
+			finally { if (a.AgarrandoId != 0) Soltar(a, MotivoDaSoltura.Tecla); a.Estrangulando = false; }
+		}
+
+		// ---- (3) O MESTRE CONVIDA O ALUNO ----
+		bool Convidou()
+		{
+			Colados();
+			a.Ficha.BP = 1_000_000;
+			d.Ficha.BP = 1_000;
+			d.PedidoDoMestre = null;
+			try { ConvidarAluno(a); return d.PedidoDoMestre != null; }
+			finally { d.PedidoDoMestre = null; a.Ficha.BP = d.Ficha.BP = 50_000; }
+		}
+
+		// ---- (4) A DANCA NAO RECUSA POR "CAIDO" (as outras recusas, a skill e o poder, nao sao desta familia) ----
+		Jandirus.Core.Social.RecusaDeFusao Danca()
+		{
+			Colados();
+			return AvaliarOConvite(a, d, Jandirus.Core.Social.TipoDeFusao.Danca, NowMs());
+		}
+
+		// ---- (5) O ESTILO RENDE ----
+		Estilo? estilo = Estilos.Todos.FirstOrDefault();
+		bool Treinou()
+		{
+			if (estilo == null) return false;
+			d.Ficha.EstiloAtual = estilo.Id;
+			_bufferDeEstilo[d.Id] = 0;
+			TickDosEstilos();
+			return _bufferDeEstilo.GetValueOrDefault(d.Id) > 0;
+		}
+
+		var embate = UmEmbate();
+		var agarrao = UmAgarrao();
+		string porQueAgarrao = porQueNaoPegou;
+		bool convidou = Convidou();
+		var danca = Danca();
+		bool treinou = Treinou();
+		(bool Abriu, bool Durou) embateDeAntes;
+		(bool Pegou, bool Debateu, bool Apertou) agarraoDeAntes;
+		string porQueAgarraoDeAntes = "";
+		bool convidouDeAntes, treinouDeAntes;
+		Jandirus.Core.Social.RecusaDeFusao dancaDeAntes;
+		MortoComoCadaverDeTeste = true;
+		try
+		{
+			embateDeAntes = UmEmbate();
+			agarraoDeAntes = UmAgarrao();
+			porQueAgarraoDeAntes = porQueNaoPegou;
+			convidouDeAntes = Convidou();
+			dancaDeAntes = Danca();
+			treinouDeAntes = Treinou();
+		}
+		finally { MortoComoCadaverDeTeste = false; }
+
+		AfirmarV30("**O MORTO DE PE TEM ZANZO CLASH** (*\"n tem zanzoclash nem colisao morto? deveria ter\"*): no Inferno, o embate de dois mortos abre E SOBREVIVE ao tique -- o `dead` cru o derrubava no tique seguinte",
+					   embate.Abriu && embate.Durou, $"abriu {embate.Abriu}; durou {embate.Durou}");
+		AfirmarV30("(defeito injetado: o `dead` cru de antes) o embate abre e CAI no tique -- a regua de cima REPROVA",
+					   embateDeAntes.Abriu && !embateDeAntes.Durou, $"abriu {embateDeAntes.Abriu}; durou {embateDeAntes.Durou}");
+		AfirmarV30("**O MORTO PRESO SE DEBATE E SENTE O APERTO**: o agarrao pega o fantasma, ele se debate (o contador anda) e o pescoco dele aperta",
+					   agarrao.Pegou && agarrao.Debateu && agarrao.Apertou, $"pegou {agarrao.Pegou}; debateu {agarrao.Debateu}; apertou {agarrao.Apertou} {porQueAgarrao}");
+		AfirmarV30("(defeito injetado: o `dead` cru de antes) o fantasma preso nao se debate nem sente o aperto -- a regua de cima REPROVA",
+					   agarraoDeAntes.Pegou && !agarraoDeAntes.Debateu && !agarraoDeAntes.Apertou,
+					   $"pegou {agarraoDeAntes.Pegou}; debateu {agarraoDeAntes.Debateu}; apertou {agarraoDeAntes.Apertou} {porQueAgarraoDeAntes}");
+		AfirmarV30("**MESTRE E ALUNO MORTOS**: o mestre morto convida o aluno morto (o convite chega), a Danca nao recusa por \"caido\" e o estilo do morto rende",
+					   convidou && danca != Jandirus.Core.Social.RecusaDeFusao.Caido && treinou,
+					   $"convidou {convidou}; danca {danca}; estilo {estilo?.Id ?? "(nenhum)"} rendeu {treinou}");
+		AfirmarV30("(defeito injetado: o `dead` cru de antes) \"nao da, com alguem caido\": nada de convite, a Danca recusa por caido, o estilo nao rende -- a regua de cima REPROVA",
+					   !convidouDeAntes && dancaDeAntes == Jandirus.Core.Social.RecusaDeFusao.Caido && !treinouDeAntes,
+					   $"convidou {convidouDeAntes}; danca {dancaDeAntes}; rendeu {treinouDeAntes}");
+
+		// ---- (7) (2026-10-17) LARGAR E PEGAR DO CHAO -- o dono: *"morto n ta conseguindo dropar itens nem zeni nem nada"* ----
+		// O fantasma larga 100 zeni e uma maca pelos verbos de producao (`chao_largar`, `item_largar`) e cata os dois de volta
+		// (`chao_pegar`). No jogo de antes as duas portas liam o `dead` cru: "caído, você não larga nada." e "caído, você não pega
+		// nada.". Se o largar e recusado, o monte vai pro chao pelo funil (`PorNoChao`) e o pegar e medido do mesmo jeito.
+		(bool Largou, double Zeni, int Macas, string Disse) LargaEPega()
+		{
+			Colados();
+			const string maca = Jandirus.Core.Items.CatalogoDeItens.Maca;
+			LargadosDe(a.Zone.Hash).Clear();
+			a.Ficha.Zeni = 1_000;
+			a.Mochila.Tirar(maca, a.Mochila.Quantos(maca));
+			Guardar(a, maca);
+			List<string> disse = Ouvir(() =>
+			{
+				ComandoDoChao(a, Jandirus.Core.Items.Chao.VerboLargar, $"{Jandirus.Core.Economia.Recurso.PalavraDeZeni}/100");
+				ComandoDeItem(a, "item_largar", maca);
+			});
+			bool largou = a.Ficha.Zeni == 900 && a.Mochila.Quantos(maca) == 0;
+			if (!largou)
+			{
+				a.Ficha.Zeni = 900;
+				PorNoChao(a.Zone, a.Pos, Jandirus.Core.Items.TipoDeLargado.Zeni, "", 100);
+			}
+			disse.AddRange(Ouvir(() =>
+			{
+				ComandoDoChao(a, Jandirus.Core.Items.Chao.VerboPegar, "");
+				ComandoDoChao(a, Jandirus.Core.Items.Chao.VerboPegar, "");
+			}));
+			LargadosDe(a.Zone.Hash).Clear();
+			return (largou, a.Ficha.Zeni, a.Mochila.Quantos(maca), Ultimos(disse));
+		}
+		var noChao = LargaEPega();
+		(bool Largou, double Zeni, int Macas, string Disse) noChaoDeAntes;
+		MortoComoCadaverDeTeste = true;
+		try { noChaoDeAntes = LargaEPega(); }
+		finally { MortoComoCadaverDeTeste = false; }
+		AfirmarV30("**O MORTO DE PE LARGA E PEGA DO CHAO** (*\"morto n ta conseguindo dropar itens nem zeni nem nada\"*): no Inferno o fantasma larga 100 zeni e uma maca, e cata os dois de volta",
+						   noChao.Largou && noChao.Zeni == 1_000 && noChao.Macas == 1, $"largou {noChao.Largou}; zeni {noChao.Zeni:0}; macas {noChao.Macas} | {noChao.Disse}");
+		AfirmarV30("(defeito injetado: o `dead` cru de antes) \"caído, você não larga nada.\" e \"caído, você não pega nada.\" -- a regua de cima REPROVA",
+						   !noChaoDeAntes.Largou && noChaoDeAntes.Zeni == 900 && noChaoDeAntes.Disse.Contains("não larga") && noChaoDeAntes.Disse.Contains("não pega"),
+						   $"largou {noChaoDeAntes.Largou}; zeni {noChaoDeAntes.Zeni:0} | {noChaoDeAntes.Disse}");
+
+		// ---- (6) A COLISAO: o beam na guarda de um morto vira o embate das maos ----
+		(bool Embate, string Detalhe) RaioNaGuardaDoMorto()
+		{
+			LimparEmbatesDaBancada();
+			Vec2 raia = CorredorDeTerraFirme(12);
+			ServerPlayer atira = ForjarV2("Fantasma do beam", raia, 5_000);
+			ServerPlayer guarda = ForjarV2("Fantasma de guarda", raia + new Vec2(8 * T, 0), 5_000);
+			foreach (ServerPlayer p in new[] { atira, guarda })
+			{
+				p.Ficha.dead = true;
+				p.MorteJaViajou = true;
+				p.RelogioDaMorte = long.MaxValue;
+				p.Ficha.passe_do_enma_ate = NowMs() + 3_600_000;   // o passe do Enma: de pe entre os vivos (o mesmo `MortoDePe`)
+				p.Combate.Carencia = 0;
+				p.Ficha.Ki = p.Ficha.MaxKi;
+			}
+			atira.Facing = Facing.East;
+			guarda.Facing = Facing.West;
+			ErguerAGuarda(guarda, true);   // a porta do ALT
+			for (int i = 0; i < 30 && guarda.Combate.Bloqueando && guarda.Combate.TempoDeGuarda <= MeleeResolver.JanelaContra; i++)
+				guarda.Combate.Tick(Protocol.TickSeconds);
+			bool deGuarda = guarda.Combate.Bloqueando;
+			Canalizar(atira, "Ki_Wave", 10 * atira.Ficha.BaseDrain(), QueFereUmIgual(SemDeflexao(), atira, deGuarda: true));
+			bool embate = false;
+			for (int i = 0; i < 30 * 3 && !embate; i++)
+			{
+				TickDosCanaisDeKi(Protocol.TickSeconds);
+				TickDosProjeteis(Protocol.TickSeconds);
+				TickDosEmbatesDeKi(Protocol.TickSeconds);
+				embate = _emEmbateDeKi.ContainsKey(guarda.Id);
+			}
+			bool dePe = atira.MortoDePe && guarda.MortoDePe && !EhCadaver(atira) && !EhCadaver(guarda);
+			LimparEmbatesDaBancada();
+			return (embate && dePe, $"de pe {dePe}; guarda erguida {deGuarda}; embate {embate}");
+		}
+		var colisao = RaioNaGuardaDoMorto();
+		(bool Embate, string Detalhe) colisaoDeAntes;
+		CombatState.MortoNaoBloqueiaDeTeste = true;
+		try { colisaoDeAntes = RaioNaGuardaDoMorto(); }
+		finally { CombatState.MortoNaoBloqueiaDeTeste = false; }
+		AfirmarV30("**A COLISAO DO MORTO**: dois mortos de pe (o passe do Enma, o mesmo `MortoDePe` do Outro Mundo), o beam batendo na guarda erguida de um igual -- vira o embate das maos",
+					   colisao.Embate, colisao.Detalhe);
+		AfirmarV30("(defeito injetado: o morto sem guarda, o jogo de antes) a guarda nao sobe e o beam so acerta -- nada de colisao, a regua de cima REPROVA",
+					   !colisaoDeAntes.Embate, colisaoDeAntes.Detalhe);
+		LimparTudoDaBancada();
+	}
+
+	// =====================================================================
+	// IT) A PASSAGEM DO MORTO PELA TRANSMISSAO (adendo 18, a v0.3.2)
+	// =====================================================================
+	/// <summary>
+	/// O dono (2026-10-16): *"caso um player morto use instante transmission pra alguem q ta vivo, ele aparece meio transparente e fica
+	/// 5 segundos no mundo dos vivos dps voltando pro outro mundo"*. O morto no Outro Mundo pede a Transmissao (a porta de producao,
+	/// `TeletransporteG11`), a concentracao chega no tique dela, e ele aparece ao lado do vivo na Terra: DE PE (anda, nao e cadaver,
+	/// o bit da ficha), com a aureola e o bit da passagem no pacote dela (o desenho meio transparente), e o disco gravaria a VOLTA.
+	/// Vencidos os 5 s, a alma volta pro lugar exato de onde saiu; caindo no meio, a mesa do Enma.
+	/// </summary>
+	private void APassagemDoMortoV30()
+	{
+		GD.Print("[v030] --- IT) o morto transmite pra um vivo: chega de pe e meio transparente, e em 5 s a alma volta (adendo 18) ---");
+		const float T = ZoneCollision.TileSize;
+		LimparTudoDaBancada();
+		_transmissaoG11.Clear();
+		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
+		Vec2 mesa = MesaDoEnma(alem);
+		Vec2 naTerra = TerraFirmeG12(4);
+		ServerPlayer vivo = ForjarV2("Kuririn IT", naTerra, 500_000);
+		vivo.Conta = "bancada_it_vivo";
+		ServerPlayer morto = ForjarV2("Goku IT", naTerra + new Vec2(T * 6, 0), 50_000);
+		morto.Conta = "bancada_it_morto";
+		Vec2 deOnde = mesa + new Vec2(T * 2, 0);
+
+		(bool Concentrou, bool Chegou, string Detalhe) Transmitir()
+		{
+			MoveToZone(morto.Id, alem, deOnde);
+			deOnde = morto.Pos;
+			morto.Ficha.dead = true;
+			morto.Ficha.KO = false;
+			morto.MorteJaViajou = true;
+			morto.RelogioDaMorte = long.MaxValue;
+			morto.PassagemAte = 0;
+			morto.Combate.Carencia = 0;
+			morto.Ficha.teleskill = 100;   // a espera de 1,5 s (`max(600/teleskill, 15)` decimos)
+			morto.Ficha.Ki = morto.Ficha.MaxKi;
+			List<string> pedido = Ouvir(() => TeletransporteG11(morto, vivo.Name));
+			if (!_transmissaoG11.TryGetValue(morto.Id, out TransmissaoG11? tr)) return (false, false, Ultimos(pedido));
+			tr.QuandoMs = 0;   // o relogio de parede nao anda na bancada: a concentracao vence agora
+			List<string> chegada = Ouvir(() => TickDaTransmissaoG11(morto, tr, NowMs()));
+			bool chegou = morto.Zone.Equals(vivo.Zone) && (morto.Pos - vivo.Pos).Length <= 2 * T;
+			return (true, chegou, $"{Ultimos(pedido)} / {Ultimos(chegada)}");
+		}
+
+		try
+		{
+			var ida = Transmitir();
+			LiteNetLib.Utils.NetDataWriter fio = PacoteDeAureola(morto);
+			bool transparenteNoFio = fio.Length >= 2 && fio.Data[fio.Length - 1] == 1 && fio.Data[fio.Length - 2] == 1;   // aureola, passagem
+			bool dePe = morto.Ficha.dead && morto.EmPassagem && morto.MortoDePe && !EhCadaver(morto) && PodeMexerOCorpo(morto) && !morto.Deitado
+							  && morto.Sheet().EmVisita && Alem.TemAureola(morto.Ficha.dead, morto.MorteJaViajou);
+			long prazo = morto.PassagemAte - NowMs();
+			CharacterSave noDisco = AccountStore.DeJogador(morto, NowMs());
+			GravarAVoltaDaPassagem(noDisco, morto);
+			bool discoVolta = noDisco.Zona == alem.Name && Math.Abs(noDisco.X - deOnde.X) < 1 && Math.Abs(noDisco.Y - deOnde.Y) < 1;
+			AfirmarV30("**O MORTO TRANSMITE PRA UM VIVO** (*\"caso um player morto use instante transmission pra alguem q ta vivo\"*): do Outro Mundo a concentracao sai, e ele aparece ao lado do vivo na Terra",
+						   ida.Concentrou && ida.Chegou, ida.Detalhe);
+			AfirmarV30("**...MEIO TRANSPARENTE, POR 5 s**: continua MORTO e de aureola, mas DE PE (anda, nao e cadaver, o bit da ficha), e o pacote da aureola leva o bit da passagem (o corpo meio transparente na tela de todos); o prazo e de 5 s",
+						   dePe && transparenteNoFio && prazo > 4_000 && prazo <= Alem.MsDaPassagem,
+						   $"de pe {dePe}; no fio {transparenteNoFio}; prazo {prazo} ms");
+			AfirmarV30("...e quem cai no meio dos 5 s acorda no Outro Mundo: o disco grava o lugar da VOLTA, e nao a Terra",
+						   discoVolta, $"{noDisco.Zona} ({noDisco.X:0},{noDisco.Y:0}) -- volta em {deOnde}");
+
+			morto.PassagemAte = NowMs() - 1;   // os 5 s venceram
+			List<string> volta = Ouvir(() => CumprirAPassagem(morto));
+			bool voltou = morto.Zone.Equals(alem) && (morto.Pos - deOnde).Length < T && !morto.EmPassagem && morto.MortoDePe && morto.Ficha.dead;
+			LiteNetLib.Utils.NetDataWriter fioDepois = PacoteDeAureola(morto);
+			bool opacoNoFio = fioDepois.Data[fioDepois.Length - 1] == 0;
+			AfirmarV30("**EM 5 s A ALMA VOLTA**: pro lugar exato de onde saiu no Outro Mundo -- morto, de pe e de aureola, sem a passagem (o pacote volta a dizer opaco)",
+						   voltou && opacoNoFio && Disse(volta, "Outro Mundo"), $"zona {morto.Zone.Name}; em {morto.Pos} (saiu de {deOnde}); {Ultimos(volta)}");
+
+			// CAIR ENTRE OS VIVOS NO MEIO: a mesa do Enma, e a passagem acaba ali
+			Transmitir();
+			bool foi = morto.EmPassagem && morto.Zone.Equals(vivo.Zone);
+			MorrerDeNovoNoAlem(morto);
+			bool naMesa = foi && morto.Zone.Equals(alem) && !morto.EmPassagem && morto.PassagemAte == 0;
+			morto.Combate.Levantar();
+			AfirmarV30("...e quem CAI entre os vivos no meio da passagem acorda na mesa do Enma, sem ela (o \"morrer de novo\" de sempre)",
+						   naMesa, $"foi {foi}; zona {morto.Zone.Name}; passagem {morto.PassagemAte}");
+
+			// OS CONTRA-EXEMPLOS: a Transmissao que recusa o morto, e a passagem que nao volta
+			List<string> recusa;
+			MortoNaoTransmiteDeTeste = true;
+			try
+			{
+				MoveToZone(morto.Id, alem, deOnde);
+				recusa = Ouvir(() => TeletransporteG11(morto, vivo.Name));
+			}
+			finally { MortoNaoTransmiteDeTeste = false; }
+			AfirmarV30("(defeito injetado: a Transmissao que recusa todo morto, o jogo de 2026-10-15) \"um morto nao sai do Outro Mundo por conta propria\" -- a primeira regua REPROVA",
+						   !_transmissaoG11.ContainsKey(morto.Id) && Disse(recusa, "nao sai do Outro Mundo"), Ultimos(recusa));
+			Transmitir();
+			PassagemSemVoltaDeTeste = true;
+			bool ficou;
+			try
+			{
+				morto.PassagemAte = NowMs() - 1;
+				CumprirAPassagem(morto);
+				ficou = morto.Zone.Equals(vivo.Zone) && morto.EmPassagem;
+			}
+			finally { PassagemSemVoltaDeTeste = false; }
+			AfirmarV30("(defeito injetado: a passagem que nunca vence) o morto ficaria entre os vivos pra sempre -- a regua da volta REPROVA",
+						   ficou, $"zona {morto.Zone.Name}; passagem {morto.EmPassagem}");
+		}
+		finally
+		{
+			_transmissaoG11.Remove(morto.Id);
+			morto.PassagemAte = 0;
+			morto.Ficha.dead = false;
+			LimparTudoDaBancada();
+		}
 	}
 
 	/// <summary>O que o snapshot diz agora do tiro `id` -- pelo `TirosDaZona` de producao (nulo se ele nao viaja).</summary>

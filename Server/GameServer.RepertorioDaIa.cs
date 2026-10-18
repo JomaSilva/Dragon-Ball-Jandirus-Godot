@@ -31,16 +31,17 @@ public partial class GameServer
 
 	/// <summary>
 	/// O REPERTORIO DE LUTA DESTE CORPO -- as linhas de `TecnicasDeLuta` que ele SABE, com o preco nas duas moedas
-	/// resolvido pra ficha dele. Mesma disciplina do <see cref="ArsenalDeLonge"/>: duas passadas (a primeira so anota
-	/// quem se sabe, na pilha), a mesma pergunta do jogador, e o array e o DO CORPO -- reescrito no lugar a cada
-	/// leitura, entao um corpo que sabe quarenta tecnicas nao deixa quarenta `Tiro` de lixo por segundo.
+	/// resolvido pra ficha dele, e (2026-10-17) as ATIVAS DA RACA que ele tem na mao (`AtivasRaciaisNaMao`). Mesma
+	/// disciplina do <see cref="ArsenalDeLonge"/>: duas passadas (a primeira so anota quem entra, na pilha), a mesma
+	/// pergunta do jogador, e o array e o DO CORPO -- reescrito no lugar a cada leitura, entao um corpo que sabe quarenta
+	/// tecnicas nao deixa quarenta `Tiro` de lixo por segundo.
 	/// </summary>
 	private Arsenal ArsenalDeLuta(ServerPlayer pl, out bool temInvestida, out bool sabeRebater)
 	{
 		temInvestida = sabeRebater = false;
-		if (_skills == null) return Arsenal.Vazio;
 
-		ReadOnlySpan<TecnicasDeLuta.Linha> linhas = TecnicasDeLuta.Todas;
+		// AS TECNICAS DO LIVRO, com o catalogo de skills carregado (sem ele, so as da raca)
+		ReadOnlySpan<TecnicasDeLuta.Linha> linhas = _skills != null ? TecnicasDeLuta.Todas : default;
 		Span<bool> sabe = stackalloc bool[linhas.Length];
 		int quantas = 0;
 		for (int i = 0; i < linhas.Length; i++)
@@ -48,11 +49,16 @@ public partial class GameServer
 			sabe[i] = SabeATecnicaDeLuta(pl, linhas[i].Gate);
 			if (sabe[i]) quantas++;
 		}
-		if (quantas == 0) return Arsenal.Vazio;
 
-		Tiro[] meus = pl.RepertorioDaIa is { } guardado && guardado.Length == quantas
+		// AS ATIVAS DA RACA (2026-10-17) -- ver `GameServer.RaciaisDaIa.cs`
+		ReadOnlySpan<AtivasRaciaisNaIa.Linha> raciais = AtivasRaciaisNaIa.Todas;
+		Span<byte> naMao = stackalloc byte[raciais.Length];
+		int daRaca = AtivasRaciaisNaMao(pl, naMao);
+		if (quantas + daRaca == 0) return Arsenal.Vazio;
+
+		Tiro[] meus = pl.RepertorioDaIa is { } guardado && guardado.Length == quantas + daRaca
 			? guardado
-			: (pl.RepertorioDaIa = new Tiro[quantas]);
+			: (pl.RepertorioDaIa = new Tiro[quantas + daRaca]);
 
 		Fighter f = pl.Ficha;
 		int k = 0;
@@ -78,6 +84,13 @@ public partial class GameServer
 				Ligada = l.Uso == Uso.Reforco && ReforcoDePe(pl, l.Gate),
 				Precisao = 1,
 			};
+		}
+		for (int i = 0; i < raciais.Length; i++)
+		{
+			if (naMao[i] == 0) continue;
+			AtivasRaciaisNaIa.Linha l = raciais[i];
+			// SEM PRECO E SEM JANELA: as ativas raciais nao custam Ki nem folego, e reforco e socorro nao tem distancia.
+			meus[k++] = new Tiro { Id = l.Id, Uso = l.Uso, Exige = l.Exige, Ligada = naMao[i] == 2, Precisao = 1 };
 		}
 		return new Arsenal(meus);
 	}

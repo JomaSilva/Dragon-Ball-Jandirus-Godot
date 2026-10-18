@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://bkh3f1hs0g42y"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【Unknown Jingle】 BGM OST ♠.mp3-4b87afe3c1fc5068c910d01441fec71e.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/♠Dragon Ball Z Kakarot【Unknown Jingle】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【Unknown Jingle】 BGM OST ♠.mp3-4b87afe3c1fc5068c910d01441fec71e.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

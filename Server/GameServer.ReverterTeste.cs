@@ -40,7 +40,7 @@ public partial class GameServer
 		EstadoDeForma est = pl.Forma;
 
 		// ============================ O HOST VOLTA COMO ESTAVA ============================
-		double kiDeAntes = f.Ki, extraDeAntes = f.extracharge, vigorDeAntes = f.stamina;
+		double kiDeAntes = f.Ki, vigorDeAntes = f.stamina;
 		string formaDeAntes = est.Atual;
 		HashSet<int> liberadasDeAntes = [.. est.Liberadas], estreiasDeAntes = [.. est.EstreiaVista];
 		bool? gradesDeAntes = est.GradesLigados;
@@ -72,10 +72,8 @@ public partial class GameServer
 			// =====================================================================
 			Subir();
 			f.Ki = f.MaxKi * 1.3;
-			f.extracharge = 30;
 			pl.Combate.Nocautear(12);
 			Checa("**NOCAUTEADO ACIMA DE 100%, O KI VOLTA PRA 100%**", f.KO && Math.Abs(Razao() - 1) < 1e-9, $"{Razao():P0}");
-			Checa("...e o troco da carga (`extracharge`) vai junto: sem ele nada devolve o excesso depois", f.extracharge == 0, $"{f.extracharge}");
 
 			double maior = 0;
 			for (int i = 0; i < 120; i++) { TickDaCarga(pl, 0.1); maior = Math.Max(maior, Razao()); }
@@ -99,7 +97,6 @@ public partial class GameServer
 			finally { CombatState.NocauteGuardaASobrecargaDeTeste = false; }
 			pl.Combate.Levantar();
 			f.Ki = f.MaxKi;
-			f.extracharge = 0;
 
 			// =====================================================================
 			GD.Print("[reverter] -- 8) a tecla: primeiro libera, depois recua um estagio, e na base nao faz nada --");
@@ -108,10 +105,8 @@ public partial class GameServer
 			Checa("(montagem) o corpo esta em SSJ2, tendo passado pelo SSJ1", Forma() == "ssj2" && est.JaViuAEstreia("ssj1"), Forma());
 
 			f.Ki = f.MaxKi * 1.3;
-			f.extracharge = 20;
 			List<string> falas = ApertarX();
-			Checa("**KI ACIMA DE 100%: O TOQUE LIBERA O EXCEDENTE** e o Ki volta pra 100%", Math.Abs(Razao() - 1) < 1e-9 && f.extracharge == 0,
-				  $"{Razao():P0}, troco {f.extracharge}");
+			Checa("**KI ACIMA DE 100%: O TOQUE LIBERA O EXCEDENTE** e o Ki volta pra 100%", Math.Abs(Razao() - 1) < 1e-9, $"{Razao():P0}");
 			Checa("...com PRIORIDADE: transformado, a forma nao se mexe neste toque", Forma() == "ssj2", Forma());
 			Checa("...e o jogador e avisado", Disse(falas, "libera"), Ultimos(falas));
 
@@ -222,7 +217,6 @@ public partial class GameServer
 			AplicarForma(pl);
 			pl.CenaSegundos = 0;
 			f.Ki = kiDeAntes;
-			f.extracharge = extraDeAntes;
 			f.stamina = vigorDeAntes;
 		}
 

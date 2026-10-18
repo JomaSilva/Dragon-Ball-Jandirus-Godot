@@ -54,7 +54,7 @@ public sealed partial class Fighter
         // `formaSpeed` entra AQUI e nao no `Tspeed` porque o `Tspeed` esta morto nesta linha: ele
         // multiplica `speedBuff`, que nasce em zero. Ver o cabecalho do canal em `Fighter.cs`.
         Rspeed = (Math.Max(speed, 0.1) * Math.Max(speedMod, 0.1) + Math.Max(speedBuff * Tspeed, 0.1))
-                 * speedStyle * formaSpeed * DmMath.Clamp(staminapercent * Ewillpower, 0.75, 1);
+                 * speedStyle * formaSpeed * racialSpeed * DmMath.Clamp(staminapercent * Ewillpower, 0.75, 1);
         Espeed = StatCurves.StatCap(Rspeed);
 
         if (!IsInFight) speedDIFF = 1;
@@ -78,21 +78,21 @@ public sealed partial class Fighter
         // Os `forma*` sao o canal da FORMA ATIVA (ver `Fighter.cs`): entram como fator do R inteiro,
         // no mesmo posto do `*Style`, e ficam de fora do `powerlevel()` de proposito.
         Rphysoff = (Math.Max(physoff, 0.1) * Math.Max(physoffMod, 0.1) + Math.Max(physoffBuff + Tphysoff, 0.1))
-                   * physoffStyle * formaPhysoff * fadiga * Math.Max(0.01, phys_remove);
+                   * physoffStyle * formaPhysoff * racialPhysoff * fadiga * Math.Max(0.01, phys_remove);
         // A ARMADURA DE TECH soma aqui, junto do `physdefBuff` -- que e onde o `Equip()` do DM a poe
         // (`usr.physdefBuff+=armorincrease`, `Armor.dm:29`). Ela nao e escrita NO `physdefBuff` porque o quanto ela
         // rende cai com o poder (regra do dono): ver `Items.ArmaduraDeTech.Bonus`.
         Rphysdef = (Math.Max(physdef, 0.1) * Math.Max(physdefMod, 0.1)
                     + Math.Max(physdefBuff + Tphysdef + Items.ArmaduraDeTech.Bonus(this), 0.1))
-                   * physdefStyle * formaPhysdef * fadiga;
+                   * physdefStyle * formaPhysdef * racialPhysdef * fadiga;
         Rtechnique = (Math.Max(technique, 0.1) * Math.Max(techniqueMod, 0.1) + Math.Max(techniqueBuff + Ttechnique, 0.1))
-                   * techniqueStyle * formaTecnica;
+                   * techniqueStyle * formaTecnica * racialTecnica;
         Rkioff = (Math.Max(kioff, 0.1) * Math.Max(kioffMod, 0.1) + Math.Max(kioffBuff + Tkioff, 0.1))
-                   * kioffStyle * formaKioff * fadiga;
+                   * kioffStyle * formaKioff * racialKioff * fadiga;
         Rkidef = (Math.Max(kidef, 0.1) * Math.Max(kidefMod, 0.1) + Math.Max(kidefBuff + Tkidef, 0.1))
-                   * kidefStyle * formaKidef * fadiga;
+                   * kidefStyle * formaKidef * racialKidef * fadiga;
         Rkiskill = (Math.Max(kiskill, 0.1) * Math.Max(kiskillMod, 0.1) + Math.Max(kiskillBuff + Tkiskill, 0.1))
-                   * kiskillStyle;
+                   * kiskillStyle * racialKiskill;
         Rmagiskill = (Math.Max(magiskill, 0.1) * Math.Max(magiMod, 0.1) + Math.Max(magiBuff + Tmagi, 0.1))
                    * Tmagimon * magiStyle;
 
@@ -158,7 +158,7 @@ public sealed partial class Fighter
         // bancada; em jogo ele e sempre falso.)
         MaxAnger = Math.Max(120, hdnptlmod * Ewillpower * angerMod * baseAnger)
                    + (Jandirus.Core.Combat.RaivaEmDegraus.LegendaryAngerSoNoTetoDeTeste ? 0 : legendaryAngerBonus);
-        MaxKi = baseKi * KiMod * kiAmp * trueKiMod * hdnptlmod * Math.Max(0.01, kicapacity_remove) * TMaxKi;
+        MaxKi = baseKi * KiMod * kiAmp * trueKiMod * hdnptlmod * Math.Max(0.01, kicapacity_remove) * TMaxKi * racialMaxKi;
 
         // Capacidade de concentrar Ki no corpo antes de se machucar, e o teto do power-up.
         // O max(...,1) envolve o ARGUMENTO INTEIRO do log: so o fator de skill protegido nao
@@ -183,6 +183,8 @@ public sealed partial class Fighter
         powerupcap = Jandirus.Core.Combat.CargaDeKi.TetoPelaFormulaDoDmDeTeste
             ? Math.Max(1.4 * Math.Max(DmMath.Log(7, Math.Max(skillPup, 1)), 1) * OozaruBuff, 1.4)
             : Jandirus.Core.Combat.CargaDeKi.TetoPelaPericia(kicirculationskill, kicontrolskill);
+        // (v0.4.0) O TETO RACIAL DA CARGA: o Immeasurable Potential do meio-Saiyajin leva a mesma escala a 225% -- ver `CargaDeKi.TetoDuro`.
+        powerupcap *= Math.Max(racialTetoDaCarga, 0.01);
 
         // Regeneracao de Ki: sempre passa por Ki Skill e pela MAIOR entre tecnica e esoterico.
         KIregen = kiregenMod * basekiregen * kiregenStyle * trueKiMod * hdnptlmod * Tkiregen

@@ -1055,7 +1055,7 @@ public sealed partial class GameServer
 		kan.Ficha.Idade = 25;
 		TickDoEfetorG11();
 		AfirmarG11("ao aprender, o Time Store PRENDE a idade (stuckage = 25)", Math.Abs(kan.Ficha.stuckage - 25) < 1e-9);
-		EnvelhecerG2(kan, 1.0);   // o Toque do Tempo envelheceria...
+		EnvelhecerMeses(kan, Jandirus.Core.World.Calendario.MesesPorAno);   // dez meses de Toque do Tempo envelheceriam...
 		AfirmarG11("(preparo) o corpo envelheceu um ano por fora", kan.Idade == 26);
 		TickDoEfetorG11();
 		AfirmarG11("...e o efetor devolve a idade presa (`savant.Age = stuckage`)", kan.Idade == 25 && Math.Abs(kan.Ficha.Idade - 25) < 1e-9);

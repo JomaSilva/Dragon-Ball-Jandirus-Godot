@@ -147,8 +147,18 @@ public sealed partial class GameServer
 
 		if (f.BP < f.relBPmax)
 		{
+			double antes = f.BP;
 			f.BP += f.CapCheck(f.BPMod * f.relBPmax) / AguaSagrada.DivisorDoBp;
-			Avisar(pl, "!!* O seu PODER DE LUTA aumentou *!!");
+
+			// ============================ (2026-10-16) O GANHO SE SENTE, NAO SE LE ============================
+			// O dono: *"Agua sagrada do korin mostra o bp mesmo sem scouter, resolva"*. A frase do DM (*"Battle Power has increased"*,
+			// `EarthRanks.dm:209`) contava o PODER DE LUTA a quem nao tem medidor -- e pela regra principal do BP ninguem sabe dele sem
+			// um. Fecha do jeito que o dono mandou fechar as outras frases de poder (`PoderNaFrase`, 2026-10-12): o numero so com scouter;
+			// sem ele, quanto o corpo cresceu, em porcentagem. O robo de tela (`--diagaguasagrada`) e a `--aguateste` cobram os dois lados.
+			// ==============================================================================================
+			Avisar(pl, Jandirus.Core.Stats.PoderNaFrase.EmNumero(TemScouter(pl))
+				? $"!!* O seu PODER DE LUTA aumentou: {antes:N0} -> {f.BP:N0} *!!"
+				: $"!!* Você se sente {Jandirus.Core.Stats.PoderNaFrase.QuantoMaisForte(antes, f.BP)} *!!");
 		}
 		else Avisar(pl, "você é forte demais pra tirar alguma coisa desta água...");
 

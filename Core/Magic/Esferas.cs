@@ -61,9 +61,9 @@ public static class Esferas
 	/// QUANTOS DIAS IN-GAME VALEM UM `Year` DO DM.
 	///
 	/// A conta e literal do original: `Year += 0.1` a cada mes (`WorldClock.dm:27`) e o mes tem 28
-	/// dias (`if(Days>=29)`, :19). Logo um `Year` inteiro sao 10 meses = 280 dias.
+	/// dias (`if(Days>=29)`, :19). Logo um `Year` inteiro sao 10 meses = 280 dias. (2026-10-17) E o ano do `Calendario` do mundo.
 	/// </summary>
-	public const double DiasPorAnoDoDm = 280;
+	public const double DiasPorAnoDoDm = World.Calendario.DiasPorAno;
 
 	/// <summary>
 	/// UM `Year` DO DM EM SEGUNDOS REAIS. **Derivado, nao cravado.**

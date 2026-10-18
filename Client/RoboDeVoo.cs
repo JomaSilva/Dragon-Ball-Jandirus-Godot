@@ -58,6 +58,35 @@ public partial class RoboDeVoo : Node
 	private static readonly Vector2 MuroSolto = new(248.5f * ZoneCollision.TileSize, 122.5f * ZoneCollision.TileSize);
 	private int _idaAoMuro;
 
+	// ---- a fase do soco no ar (ver os passos 32 a 39)
+	private bool _vigiandoOSoco;
+	private int _quadrosDeFimDeSoco, _quadrosAndandoNoAr, _quadrosSocando;
+	private string _comoFicou = "";
+
+	/// <summary>
+	/// SHIFT + ESPACO, o golpe PESADO, com a tecla de verdade: a cadencia triplica (`Protocol.PesoDoGolpe`) e a janela entre o fim do
+	/// soco e o fim dela fica larga o bastante pra ser vista -- a do leve, com a cadencia curta de uma ficha nova, cabe em poucos quadros.
+	/// </summary>
+	private void ComecarOSocoNoAr()
+	{
+		_quadrosDeFimDeSoco = 0;
+		_quadrosAndandoNoAr = 0;
+		_quadrosSocando = 0;
+		_comoFicou = "";
+		_vigiandoOSoco = true;
+		Godot.Input.ActionPress(Teclas.NomeNoMotor("run"));
+		Godot.Input.ActionPress(Teclas.NomeNoMotor("attack"));
+	}
+
+	private static void SoltarOSoco()
+	{
+		Godot.Input.ActionRelease(Teclas.NomeNoMotor("attack"));
+		Godot.Input.ActionRelease(Teclas.NomeNoMotor("run"));
+	}
+
+	/// <summary>O corpo local ainda esta na pose do golpe (o relogio `_ataqueAte` dele)?</summary>
+	private static bool Posando(World mundo, GameClient cli) => mundo.CorpoDeTeste(cli.LocalId) is LocalPlayer { PosandoGolpeDeTeste: true };
+
 	/// <summary>
 	/// O MENOR Ki QUE APARECEU, lido todo quadro.
 	///
@@ -239,6 +268,8 @@ public partial class RoboDeVoo : Node
 	/// <summary>Salva a tela, se houver renderizador. No headless o `GetImage` volta vazio.</summary>
 	private void Fotografar(string destino)
 	{
+		// SEM JANELA NAO HA O QUE FOTOGRAFAR, e perguntar a textura do headless so poe um erro do motor no relato.
+		if (DisplayServer.GetName() == "headless") { _passos.Add("  --     sem foto (headless nao renderiza)"); return; }
 		try
 		{
 			Image? img = GetViewport()?.GetTexture()?.GetImage();
@@ -252,6 +283,11 @@ public partial class RoboDeVoo : Node
 
 	public override void _Ready()
 	{
+		// O ROBO RODA ANTES DO CORPO EM CADA QUADRO (2026-10-16): o corpo pergunta "acabou de apertar?" no `_Process` dele, e uma tecla
+		// que o robo aperta DEPOIS dessa leitura ja e velha no quadro seguinte -- a primeira corrida da fase do soco no ar apertou e o
+		// corpo nao socou. As leituras do robo por quadro (altura, parede, Ki) viram as do quadro anterior, o que nao muda nenhuma delas.
+		ProcessPriority = -100;
+
 		// O AVISO DO TETO E UMA LINHA DE CHAT, e e a unica prova de que o portao RECUSOU (em vez de
 		// simplesmente nao ter chegado la em cima). Escutar o canal de sistema e o jeito de a
 		// bancada ver o mesmo que o jogador ve.
@@ -314,6 +350,15 @@ public partial class RoboDeVoo : Node
 			else if (_passo <= 13) _entrouVoando = true;
 		}
 		if (_contando && mundo.PosicaoLocal is { } agoraEstou && PisaNoPredio(mundo, agoraEstou)) _pisouNoPredio = true;
+
+		// (2026-10-16) O SOCO NO AR, QUADRO A QUADRO: entre o fim do `flick` e o fim da cadencia o desenho tem de estar no VOO. Uma
+		// leitura por segundo passaria por cima da janela -- ver os passos 32 a 39.
+		if (_vigiandoOSoco && mundo.VisualLocalDeTeste is { } socando && socando.EstadoDeTeste == "attack") _quadrosSocando++;
+		if (_vigiandoOSoco && mundo.VisualLocalDeTeste is { } vis && vis.EstadoDeTeste == "attack" && vis.FlickAcabouDeTeste)
+		{
+			_quadrosDeFimDeSoco++;
+			if (!vis.AnimacaoDeTeste.StartsWith("flight", StringComparison.Ordinal)) { _quadrosAndandoNoAr++; _comoFicou = vis.AnimacaoDeTeste; }
+		}
 
 		_t += delta;
 		if (_t < 1.0) return;
@@ -668,9 +713,70 @@ public partial class RoboDeVoo : Node
 			case 31:
 				break;   // pousando
 
+			// =====================================================================
+			// O SOCO NO AR VOLTA PRO VOO (2026-10-16) -- passos 32 a 39
+			// =====================================================================
+			// O dono: *"ao voar e socar por uns segundos ele fica andando, ele deveria socar e logo voltar pra animaçao de voo"*. O soco e a
+			// TECLA de verdade; o relato do golpe vem do servidor deste processo e recomeca o `flick` com os 0,24 s dele (`World.AoGolpe`)
+			// -- e isso que abre a janela, entre o fim do soco e o fim da cadencia, em que o boneco andava no ar.
+			case 32:
+			{
+				// O PALCO DE NOVO: a fase do predio pode ter deixado o corpo DENTRO do Banco (o defeito o fez entrar).
+				if (Jandirus.Server.GameServer.Instance is { } servidor)
+				{
+					servidor.RegarOKiDaVariedade(cli.LocalId);
+					servidor.MoveToZone(cli.LocalId, ZoneKey.Premade("Earth"), new Vec2(_palco.X, _palco.Y));
+				}
+				break;
+			}
+
+			case 33:
+				cli.SendHabilidade("voar");
+				break;
+
+			case 34:
+				Conferir(mundo.AlturaDeTeste > 0f && mundo.AnimacaoLocalDeTeste.StartsWith("flight"),
+					$"PRECONDICAO do soco no ar: no ar de novo ({mundo.AlturaDeTeste:0} px), na pose de voo (\"{mundo.AnimacaoLocalDeTeste}\")");
+				ComecarOSocoNoAr();
+				break;
+
+			case 35:
+				SoltarOSoco();
+				break;
+
+			case 36:
+				if (Posando(mundo, cli)) { _passo--; break; }   // a cadencia do golpe pesado ainda corre
+				Conferir(_quadrosDeFimDeSoco > 0 && _quadrosAndandoNoAr == 0,
+					$"NO AR, O SOCO VOLTA PRO VOO: {_quadrosSocando} quadro(s) na pose do soco, {_quadrosDeFimDeSoco} entre o fim do soco e o fim da cadencia, {_quadrosAndandoNoAr} fora do voo"
+					+ (_comoFicou.Length > 0 ? $" (\"{_comoFicou}\")" : ""));
+
+				// O CONTRA-EXEMPLO: o fim do soco sem a regra -- o boneco andando no ceu da foto do dono
+				CharacterVisual.SocoVoltaAndandoNoArDeTeste = true;
+				ComecarOSocoNoAr();
+				break;
+
+			case 37:
+				SoltarOSoco();
+				break;
+
+			case 38:
+				if (Posando(mundo, cli)) { _passo--; break; }
+				CharacterVisual.SocoVoltaAndandoNoArDeTeste = false;
+				_vigiandoOSoco = false;
+				Conferir(_quadrosAndandoNoAr > 0,
+					$"(defeito injetado: o soco que acaba no ar volta ao parado/andando) o boneco ANDA no ar entre o fim do soco e o fim da cadencia "
+					+ $"({_quadrosAndandoNoAr} de {_quadrosDeFimDeSoco} quadro(s), \"{_comoFicou}\")");
+				cli.SendHabilidade("voar");   // pousa
+				break;
+
+			case 39:
+				break;   // pousando
+
 			default:
 				_acabou = true;
 				ClasseDePredio.QuemVoaAtravessaDeTeste = false;
+				CharacterVisual.SocoVoltaAndandoNoArDeTeste = false;
+				SoltarOSoco();
 				Godot.Input.ActionRelease("subir");
 				Godot.Input.ActionRelease("descer");
 				Godot.Input.ActionRelease("run");

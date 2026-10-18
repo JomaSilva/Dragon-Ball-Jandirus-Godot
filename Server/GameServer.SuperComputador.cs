@@ -149,7 +149,7 @@ public sealed partial class GameServer
 		Obra? o = ObraQueAceita(pl, SuperComputador.VerboDroide);
 		if (o == null) { Avisar(pl, "não há super computador por perto."); return; }
 		if (!AbreOComputador(pl, o)) return;
-		if (pl.Ficha.KO || pl.Ficha.dead || EhCadaver(pl)) { Avisar(pl, "caído, você não monta nada."); return; }
+		if (pl.Ficha.KO || CaidoPelaMorte(pl)) { Avisar(pl, "caído, você não monta nada."); return; }
 		if (!SuperComputador.SemTetoDeDroidesDeTeste && DroidesDe(pl.Id).Count >= SuperComputador.MaxDeDroides)
 		{ Avisar(pl, $"você já tem {SuperComputador.MaxDeDroides} droides de pé: destrua algum antes (pelo computador)."); return; }
 

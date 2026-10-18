@@ -40,12 +40,11 @@ public static partial class Tecnicas
 		Por("Super_Majin", "Super Majin", Modo.Sustentada, "A forma de Super Majin: técnica, ofensiva de Ki e velocidade sobem juntas. Fora da " + "Ascensão isso custa um pedaço da sua defesa; com a Ascensão de pé não há penalidade " + "e o corpo ainda ganha poder e o dobro de capacidade de energia.");
 
 		// ---- lote G2 ----
-		Por("Kaioken", "Kaio-ken", Modo.Sustentada, "Sincroniza o Ki com o corpo e MULTIPLICA seu poder de verdade -- ao preco de queimar " + "energia, fôlego e a própria carne, continuamente. Apertar abre a escolha do multiplicador (de x2 a x100); " + "aceso, apertar de novo -- ou X -- apaga. Acima da sua maestria tudo drena mais rápido, e um " + "múltiplo acima do dobro dela com o Ki acabando despedaça o corpo.");
+		Por("Kaioken", "Kaio-ken", Modo.Sustentada, "Sincroniza o Ki com o corpo e MULTIPLICA seu poder de verdade -- ao preco de queimar " + "energia, fôlego e o próprio corpo, continuamente. Apertar abre a escolha do multiplicador (de x2 a x100); " + "aceso, apertar de novo -- ou X -- apaga. Acima da sua maestria tudo drena mais rápido, e um " + "múltiplo acima do dobro dela com o Ki acabando despedaça o corpo.");
 		Por("Giant_Form", "Forma Gigante", Modo.Sustentada, "O corpo incha até mais de quatro vezes o tamanho normal: muito mais força e defesa " + "física, e menos velocidade. Consome fôlego enquanto durar. Apertar de novo desliga.");
 		Por("Elemental", "Elemental", Modo.Sustentada, "Chama o elemento que dorme em você e o veste como armadura. O que ele soma depende de " + "QUAL elemento é. Drena Ki e fôlego, e cai sozinho quando um dos dois acaba.");
 		Por("Time_Touch", "Toque do Tempo", Modo.Instantanea, "Toca alguém ao seu lado e empurra o tempo dele: um surto curto de velocidade, pago com " + "um pedaço da idade de quem recebe.");
 		Por("Growth_Spurt", "Estirão", Modo.Instantanea, "Um Saibaman nunca para de crescer. Envelhece um mês de uma vez e, em troca, recebe uma " + "carga de energia de cerca de duas vezes o seu máximo -- e um empurrão de poder.");
-		Por("HamonBreathing", "Respiração Hamon", Modo.Instantanea, "Respiração de emergência: gasta uma fatia do Ki máximo e devolve vida ao corpo inteiro. " + "Só serve ferido, e demora muito a voltar.");
 		Por("Spirit_Fist", "Punho Espiritual", Modo.Instantanea, "Um soco carregado de espírito, que sai como golpe CRÍTICO garantido. É pago com FÔLEGO, " + "não com Ki -- e trava seus golpes normais por alguns segundos.");
 		// OS SETE PRESETS DE KAIO-KEN. No lote eles saem de um laco; aqui viram linhas, porque
 		// esta tabela e DADO -- e dado que se gera de laco nao da pra ler nem conferir.
@@ -377,5 +376,14 @@ public static partial class Tecnicas
 			+ "ensina qualquer um que ja saiba aquela habilidade e ainda esteja na METADE do seu "
 			+ "nivel ou abaixo -- some ao ser lido. Write_Teachings:parar desiste e perde o escrito.",
 			aba: "Outros");
+
+		// ---- (2026-10-16) A SAGA DO CORRUPTED MAJIN: a ativa que vem com a Forma Pura ----
+		// Do sistema do amigo do dono, sem nada no DM. Nao e skill da arvore: quem a concede e o estado (a Forma Pura destravada).
+		// Ver `Server/GameServer.SagaDoMajin.cs`.
+		Por("Sycophantic_Rage", "Sycophantic Rage", Modo.Instantanea,
+			"Só o Corrupted Majin que destravou a Forma Pura. O ataque de Ki que você está CARREGANDO agora (um raio na mão, "
+			+ "uma esfera se formando, uma rajada de pé) sai com o DOBRO de poder, sem Ki a mais -- e o preço é METADE da sua "
+			+ "sanidade. Insano, o ataque sai com o TRIPLO e custa um quarto a menos de Ki. Sem nada carregando, não faz nada. "
+			+ "Recarga de um minuto.");
 	}
 }

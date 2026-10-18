@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://do2irbbdh7ryh"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【WE GOTTA POWER】 Instrumental   BGM OST ♠.mp3-30ceca075d4598e9ac4f9c37b3e69b4f.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/Menu ost/♠Dragon Ball Z Kakarot【WE GOTTA POWER】 Instrumental   BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【WE GOTTA POWER】 Instrumental   BGM OST ♠.mp3-30ceca075d4598e9ac4f9c37b3e69b4f.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

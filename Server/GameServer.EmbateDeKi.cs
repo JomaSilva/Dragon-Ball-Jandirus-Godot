@@ -286,6 +286,10 @@ public sealed partial class GameServer
 	///
 	/// E (2026-10-12) SO SEGURA O RAIO QUEM NAO E MAIS FRACO QUE ELE: o mais fraco de guarda erguida nem
 	/// chega aqui -- o raio o leva, devagar, com o dano nos membros da guarda (`Acertar`, passos 3b, 4 e 5b).
+	///
+	/// E (v0.3.2) A GENKIDAMA TAMBEM SE SEGURA -- a unica esfera (`Projetil.SeguraNasMaos`): o dono quis o Kid Boo segurando a bomba e o
+	/// Goku se transformando pra empurra-la (*"igual goku com kid boo"*). A disputa e esta mesma, e nela a bomba vale o poder de AGORA de
+	/// quem a lancou (`LerOPoderDeAgora`).
 	/// ====================================================================================================
 	/// </summary>
 	private bool TentarEmbateDeGuarda(Projetil p, ServerPlayer alvo)
@@ -293,7 +297,9 @@ public sealed partial class GameServer
 		// UM EMBATE DE GUARDA POR FEIXE -- ver `Projetil.JaDisputou`: sem isto o vencedor que chega em quem
 		// ainda esta de guarda abriria outro, e outro.
 		if (p.JaDisputou) return false;
-		if (!PodeDisputar(p, out ServerPlayer? dono) || dono == null) return false;
+		// (v0.3.2) A ESFERA QUE SE SEGURA (a Genkidama, `Projetil.SeguraNasMaos`; quem a deixa chegar aqui e o passo 3b do `Acertar`)
+		// entra pela porta das esferas: quem a jogou na zona, de pe e com Ki -- e ele quem a empurra. O raio, pela de sempre.
+		if (!PodeDisputarComEsfera(p, alvo.Zone, out ServerPlayer? dono) || dono == null) return false;
 		if (alvo.Combate is not { Bloqueando: true }) return false;
 		if (EhCadaver(alvo) || alvo.Ficha.KO || alvo.Combate.Stun > 0) return false;
 		if (_emEmbateDeKi.ContainsKey(alvo.Id) || _emEmbate.ContainsKey(alvo.Id)) return false;
@@ -556,11 +562,17 @@ public sealed partial class GameServer
 	{
 		a.Feixe?.LerOPoderDoDono(a.Quem.Ficha.expressedBP);
 		b.Feixe?.LerOPoderDoDono(b.Quem.Ficha.expressedBP);
+		// (v0.3.2) A GENKIDAMA DISPUTA SO COM O PODER DE AGORA DE QUEM A LANCOU -- as duas linhas de cima; o acumulado nela e o do ACERTO
+		// (`Projetil.BpDoAcerto`; dono, 2026-10-16). O defeito injetado e a disputa com o acumulado, a regra que o dono corrigiu.
+		if (GenkidamaDisputaComOAcumuladoDeTeste) { a.Feixe?.VoltarAoPoderDoAcerto(); b.Feixe?.VoltarAoPoderDoAcerto(); }
 
 		double poderA = PoderDoLado(a), poderB = PoderDoLado(b);
 		a.Vantagem = EmbateDeKi.Vantagem(poderA, poderB);
 		b.Vantagem = EmbateDeKi.Vantagem(poderB, poderA);
 	}
+
+	/// <summary>DEFEITO INJETADO (`--g12teste`): a Genkidama disputa com o poder ACUMULADO nela, e nao com o de agora de quem a lancou. Falso em jogo, sempre.</summary>
+	internal static bool GenkidamaDisputaComOAcumuladoDeTeste;
 
 	/// <summary>Quanto a vantagem tem que mudar (em razao) pra as telas ouvirem de novo: 10%.</summary>
 	private const double SaltoQueSeAvisa = 1.10;
@@ -947,6 +959,9 @@ public sealed partial class GameServer
 			// multiplicador, e um Final Flash que vencesse a disputa chegava no perdedor com 1x em vez
 			// dos 4x dele. O campo nasceu junto com a releitura de poder (`Projetil.MultDeOnda`).
 			hV.Bp = venc.Quem.Ficha.expressedBP * Math.Max(hV.MultDeOnda, 1);
+			// (v0.3.2) ...MENOS QUEM FERE COM OUTRO PODER: a Genkidama disputou com o de agora do dono e acerta com o ACUMULADO nela (dono,
+			// 2026-10-16) -- ver `Projetil.BpDoAcerto`.
+			hV.VoltarAoPoderDoAcerto();
 
 			// O RUMO E PRO CORPO DO PERDEDOR, e nao o rumo original.
 			Vec2 ate = perd.Quem.Pos - hV.Pos;
@@ -1003,6 +1018,7 @@ public sealed partial class GameServer
 	{
 		p.Dono = novoDono.Id;
 		p.Bp = novoDono.Ficha.expressedBP;
+		p.BpDoAcerto = 0;   // (v0.3.2) a Genkidama devolvida e de quem a devolveu, com o poder DELE (a regra de todo devolvido)
 		p.Letal = novoDono.Combate?.Letal ?? p.Letal;
 		p.Nome = $"{p.Nome} (devolvido)";
 
@@ -1112,6 +1128,7 @@ public sealed partial class GameServer
 			{
 				l.Feixe.EmEmbate = false;
 				l.Feixe.JaDisputou = true;
+				l.Feixe.VoltarAoPoderDoAcerto();   // (v0.3.2) o estouro e um acerto: a Genkidama estoura com o acumulado (`Projetil.BpDoAcerto`)
 				l.Feixe.Vivo = false;
 				l.Feixe.Fim = FimDeProjetil.Acertou;   // estouro, e nao "apagou": houve impacto
 			}
@@ -1346,6 +1363,7 @@ public sealed partial class GameServer
 		Fechar(d);
 		raio.EmEmbate = false;
 		raio.JaDisputou = true;
+		raio.VoltarAoPoderDoAcerto();   // (v0.3.2) a Genkidama segue viagem com o acumulado (`Projetil.BpDoAcerto`)
 
 		double prazo = KiContraCorpo.SaidaDeLadoSemPrazoDeTeste
 			? 0
@@ -1377,6 +1395,9 @@ public sealed partial class GameServer
 	// =====================================================================
 	// A IA: O CONTRA-FEIXE
 	// =====================================================================
+	/// <summary>DEFEITO INJETADO (bancada `--torneioteste`, secao 4): o reflexo volta a responder feixe na area de espera do torneio.</summary>
+	internal static bool ContraFeixeNaEsperaDeTeste;
+
 	/// <summary>
 	/// HA UM FEIXE INIMIGO VINDO NA MINHA DIRECAO? `bcl_incoming_beam` (`BeamClash.dm:399`).
 	///
@@ -1439,6 +1460,15 @@ public sealed partial class GameServer
 		if (npc.Peer != null && npc.Cerebro == null) return;
 		if (_canais.ContainsKey(npc.Id)) return;                       // ja esta com um raio na mao
 		if (npc.Ficha.KO || EhCadaver(npc)) return;
+		// QUEM ESPERA A VEZ NO TORNEIO NAO REAGE (2026-10-17, o dono: *"o torneio do outro mundo TA TODO BUGADO"*, com a foto
+		// da roda de espera inteira gritando "Onda de Ki!!"). O `apply_hold` do DM fecha soco, skill e blast (`canfight = 0`,
+		// `Tournament.dm:318-335`), e este reflexo e um blast que passava por baixo das duas travas do port: chama o
+		// `UsarTecnica` direto (a do jogador mora no `UsarHabilidade`) e roda no passo 0,5 do `TicarUmCorpo`, ANTES da trava do
+		// ramo do habitante. Na arena de 10x9 do Outro Mundo todo feixe da luta passa pela roda de espera: cada preso que
+		// sabia o Ki Wave respondia, e o feixe dele chegava no vizinho, que respondia tambem. E o lutador da vez antes do "COMECEM!"
+		// tambem nao: no DM este reflexo exige um alvo (`if(!target) return` no topo do `npc_combat_action`), e o de torneio so
+		// tem alvo depois do `tourney_engage` -- ver `ForaDaVezNoTorneio`.
+		if (ForaDaVezNoTorneio(npc) && !ContraFeixeNaEsperaDeTeste) return;
 		if (_emEmbateDeKi.ContainsKey(npc.Id) || _emEmbate.ContainsKey(npc.Id)) return;
 		if (_contraFeixeLivreEm.TryGetValue(npc.Id, out long livre) && agora < livre) return;
 

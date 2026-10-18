@@ -407,8 +407,11 @@ public sealed partial class GameServer
 		pl.SigAtributos = "";
 
 		// O ANO VIROU PRA ELE -- e no DM e exatamente isso que chama o `AgeCheck` (`WorldClock.dm:92`,
-		// o `proc/Years()`). A Sala do Tempo e o unico calendario que este port tem, entao ela e o
-		// lugar certo pra pergunta "o corpo aguentou mais um ano?". Ver `ConferirMorteDeVelhice`.
+		// o `proc/Years()`), entao e o lugar certo pra pergunta "o corpo aguentou mais um ano?". Ver
+		// `ConferirMorteDeVelhice`. (2026-10-17) O CALENDARIO DE FORA SEGUE CONTANDO os meses de quem esta
+		// aqui dentro (`GameServer.Calendario.cs`): a sala soma anos inteiros, o calendario soma meses, e as
+		// duas contas se somam -- o dono: *"nas salas do tempo a pessoa envelhece mais rapido mesmo com esse
+		// sistema de calendario"*.
 		ConferirMorteDeVelhice(pl);
 	}
 

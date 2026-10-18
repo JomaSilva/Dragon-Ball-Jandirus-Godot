@@ -90,9 +90,6 @@ public static class CargaDeKi
 	private const double UltrapassaAndando = PorSegundo / 200.0;
 	private const double FolegoUltrapassando = PorSegundo / 590.0;
 
-	/// <summary>Teto do `extracharge` no DM.</summary>
-	private const double TetoDaCarga = 50;
-
 	/// <summary>
 	/// Segurar C exige folego. O DM checa `stamina > 1` antes de sequer acender a aura
 	/// (`Meditate.dm:180`), e o proprio dreno de folego de cada estagio faz esse piso ser
@@ -138,9 +135,10 @@ public static class CargaDeKi
 	/// cai no ramo "ja no maximo" do <see cref="Passo"/>, que nao escorre nem reenche o troco: o resto dele -- ate 208
 	/// vezes o `KIregen` -- entrava ACIMA do teto e ficava la. MEDIDO: com a regeneracao em 0,09% do tanque por chamada,
 	/// soltar cinco segundos no teto e segurar de novo levava o Ki de 140% a 158,4% (a tela do dono mostrava 158,7% com
-	/// "Teto de carga 140% do tanque"); com o dobro dela, a 170%.
+	/// "Teto de carga 140% do tanque"); com o dobro dela, a 170%. (2026-10-16) O TROCO SAIU INTEIRO -- ver `Stats.RegenDeKi` --, e o
+	/// teto continua duro pros outros caminhos: um presente, uma tecnica, um tiro engolido.
 	/// </summary>
-	public static double TetoDuro(Fighter f) => f.MaxKi * Math.Min(Math.Max(f.powerupcap, 1), TetoDoJogo);
+	public static double TetoDuro(Fighter f) => f.MaxKi * Math.Min(Math.Max(f.powerupcap, 1), TetoDoJogo * Math.Max(f.racialTetoDaCarga, 1));
 
 	/// <summary>
 	/// DEFEITO INJETADO (bancada `--v021teste`): o teto de carga volta a valer so pra tecla C -- o troco da carga (e
@@ -222,9 +220,8 @@ public static class CargaDeKi
 		if (!TemControle(f))
 		{
 			if (f.Ki >= f.MaxKi) return EstagioDaCarga.Nada;
-			f.Ki = Math.Min(f.Ki + f.MaxKi * EncheSemControle * dt, f.MaxKi);
+			f.Ki = Math.Min(f.Ki + f.MaxKi * EncheSemControle * f.racialRegenKiAtiva * dt, f.MaxKi);   // (v0.4.0) a regen ATIVA
 			f.stamina -= f.maxstamina * FolegoEnchendoSemControle * dt;
-			f.extracharge = Math.Min(f.extracharge + 0.5 * PorSegundo * dt, TetoDaCarga);
 			return EstagioDaCarga.Enchendo;
 		}
 
@@ -250,7 +247,7 @@ public static class CargaDeKi
 		// ==========================================================================================
 		if (f.Ki < f.MaxKi)
 		{
-			double taxa = f.MaxKi * EncheComControle;                 // por segundo
+			double taxa = f.MaxKi * EncheComControle * f.racialRegenKiAtiva;   // por segundo -- (v0.4.0) vezes a regen ATIVA racial
 			double atePassar = (f.MaxKi - f.Ki) / Math.Max(taxa, 1e-9);
 			// CLAMP e nao `Min`: um MaxKi degenerado (zero) faria `atePassar` sair negativo, e um
 			// `gasto` negativo devolveria folego e ALONGARIA o tique em vez de encurta-lo.
@@ -258,7 +255,6 @@ public static class CargaDeKi
 
 			f.Ki = Math.Min(f.Ki + taxa * gasto, f.MaxKi);
 			f.stamina -= f.maxstamina * FolegoEnchendoComControle * gasto;
-			f.extracharge = Math.Min(f.extracharge + PorSegundo * gasto, TetoDaCarga);
 
 			// nao encheu dentro deste tique: o tanque e mesmo o assunto do momento
 			if (gasto >= dt) return EstagioDaCarga.Enchendo;
@@ -294,10 +290,9 @@ public static class CargaDeKi
 		double divisorH = mexendo ? 10 : 10;
 		double denominador = mexendo ? 3 : 2.5;
 
-		double ganho = f.MaxKi * baseTaxa * (Habilidade(f, divisorH) / denominador / (3 * razao)) * dt;
+		double ganho = f.MaxKi * baseTaxa * (Habilidade(f, divisorH) / denominador / (3 * razao)) * f.racialRegenKiAtiva * dt;
 		f.Ki = Math.Min(f.Ki + ganho, teto);
 		f.stamina -= f.maxstamina * FolegoUltrapassando * dt;
-		f.extracharge = Math.Min(f.extracharge + PorSegundo * dt, TetoDaCarga);
 		return EstagioDaCarga.Ultrapassando;
 	}
 

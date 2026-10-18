@@ -288,6 +288,43 @@ public partial class RoboDasAbas
 			  !PilulasEm(pg).Contains("EM USO") && CartoesDeSecao(pg, "forma").Count() == FormasDespertasNaFicha(cli),
 			  $"{CartoesDeSecao(pg, "forma").Count()} cartao(oes), {FormasDespertasNaFicha(cli)} na ficha");
 
+		// ---------------- 3b. A ACLIMATACAO (dono, 2026-10-16) ----------------
+		// *"essa parte do aclimado q vc comentou, deveria aparecer na aba de formas, aparecendo quando vc sofre do buff de aclimado,
+		// falando quantos % vc ta ganhando de multiplicador nessa gravidade"*. A maestria de gravidade e cravada no servidor deste processo
+		// (10x a do chao), a ficha lenta traz o bonus (`AtributosState.Aclimatacao`) e a linha aparece; devolvida, ela some.
+		if (Jandirus.Server.GameServer.Instance is { } servidor)
+		{
+			// A PREMISSA E CRAVADA, e nao suposta (2026-10-17): o Saiyajin da bancada nasce aclimatado a Vegeta (10x), e o de classe
+			// BAIXA nasce despejado na Terra (`Berco.Onde`) -- com o chao a 1x ele ja chegava "aclimatado" e a primeira linha reprovava
+			// conforme a classe sorteada. A maestria vai a gravidade do chao antes da pergunta, e a de nascenca volta no fim.
+			float chao = Math.Max(cli.Atributos.Gravidade, 1f);
+			double maestriaDeAntes = servidor.CravarMaestriaDeGravidadeDeTeste(cli.LocalId, chao);
+			await Ate(() => cli.Atributos.Aclimatacao <= 1.005f, 8);
+			menu.ForcarRedesenho();
+			await Quadros(3);
+			Checa("sem dominar mais gravidade que a do chao, a aba NAO tem a linha 'Aclimatado'", menu.ValorDesenhado("Forms", "Aclimatado") == null,
+				  menu.ValorDesenhado("Forms", "Aclimatado") ?? "");
+			servidor.CravarMaestriaDeGravidadeDeTeste(cli.LocalId, chao * 10);
+			bool chegou = await Ate(() => cli.Atributos.Aclimatacao > 1.005f, 8);
+			menu.ForcarRedesenho();
+			await Quadros(3);
+			string? aclimatado = menu.ValorDesenhado("Forms", "Aclimatado");
+			double esperado = Jandirus.Core.Stats.StatCurves.GravFelt(chao * 10, chao);
+			PanelContainer? agoraDeNovo = CartaoComTitulo(pg, "Agora");
+			Checa($"DOMINANDO 10x A GRAVIDADE DO CHAO: a linha 'Aclimatado' aparece no cartao Agora com o bonus de poder (+{(esperado - 1) * 100:0}%, o `gravFelt`)",
+				  chegou && aclimatado != null && aclimatado == MenuJogo.TextoDaAclimatacao(cli.Atributos.Aclimatacao)
+				  && Math.Abs(cli.Atributos.Aclimatacao - esperado) < 0.01 && DentroDoCartao(LinhaEscrita(pg, "Aclimatado"), agoraDeNovo),
+				  $"'{aclimatado}', no fio {cli.Atributos.Aclimatacao:0.####}, esperado {esperado:0.####}");
+			servidor.CravarMaestriaDeGravidadeDeTeste(cli.LocalId, chao);
+			bool sumiu = await Ate(() => cli.Atributos.Aclimatacao <= 1.005f, 8);
+			menu.ForcarRedesenho();
+			await Quadros(3);
+			Checa("...e com a maestria devolvida, a linha some", sumiu && menu.ValorDesenhado("Forms", "Aclimatado") == null,
+				  menu.ValorDesenhado("Forms", "Aclimatado") ?? "");
+			servidor.CravarMaestriaDeGravidadeDeTeste(cli.LocalId, maestriaDeAntes);
+		}
+		else Checa("PRECONDICAO: o servidor neste processo (`--host`) pra cravar a maestria", false);
+
 		// ---------------- 4. AS INJECOES: cada regra recebe uma amostra estragada ----------------
 		Injeta("a regra do multiplicador reprova o texto sem o × ('1,09')", !MultiplicadorBemEscrito("1,09", 1.09));
 		Injeta("...e reprova o numero que nao bate com a ficha ('×1,09' contra 2,0)", !MultiplicadorBemEscrito("×1,09", 2.0));

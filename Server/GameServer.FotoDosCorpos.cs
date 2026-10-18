@@ -53,6 +53,20 @@ public sealed partial class GameServer
 	///
 	/// O que muda aqui e so o REGISTRO: os corpos desta bancada saem na limpeza dela.
 	/// </summary>
+	/// <summary>(2026-10-17, `--diagtrava`) O alvo deste corpo NO SERVIDOR (-1 = nao achei o corpo).</summary>
+	internal int AlvoNaFotoDeCorpos(int id) => _players.TryGetValue(id, out ServerPlayer? pl) ? pl.AlvoId : -1;
+
+	/// <summary>(2026-10-17, `--diagtrava`) Quantos corpos de pe, fora os da lista, estao a menos de <paramref name="tiles"/> deste.</summary>
+	internal int OutrosPertoNaFotoDeCorpos(int idDono, float tiles, params int[] menos)
+	{
+		if (!_players.TryGetValue(idDono, out ServerPlayer? dono)) return -1;
+		int n = 0;
+		foreach (ServerPlayer o in ZoneList(dono.Zone.Hash))
+			if (o != dono && Array.IndexOf(menos, o.Id) < 0 && !o.Ficha.KO && !EhCadaver(o)
+				&& (o.Pos - dono.Pos).Length < tiles * ZoneCollision.TileSize) n++;
+		return n;
+	}
+
 	internal int ForjarParaAFotoDeCorpos(int idDono, Vec2 desloc, string nome, double bp)
 	{
 		int id = ForjarCorpoDeFoto(idDono, desloc, nome, bp, comEscada: false);

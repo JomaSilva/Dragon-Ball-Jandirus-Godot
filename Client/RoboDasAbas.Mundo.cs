@@ -143,6 +143,21 @@ public partial class RoboDasAbas
 			  clima != null && DentroDoCartao(LinhaEscrita(pg, "Clima"), clima) && PilulasEm(clima).Count > 0,
 			  clima == null ? "sem cartao" : $"Clima='{menu.ValorDesenhado("World", "Clima")}' pode cair [{string.Join("|", PilulasEm(clima))}]");
 
+		// ---------------- 1a. O CALENDARIO (dono, 2026-10-17) ----------------
+		// A data na tela e a do servidor DESTE processo (`--host`): a mesma conta do Core, com a origem que chegou no `S2C.Ceu`. A idade com os
+		// meses e a da ficha lenta, e ela tem que bater com o corpo do servidor.
+		PanelContainer? calendario = CartaoComTitulo(pg, "Calendário");
+		string? hoje = menu.ValorDesenhado("World", "Hoje");
+		string hojeNoServidor = Jandirus.Server.GameServer.Instance is { } srvDoCalendario ? srvDoCalendario.Hoje.Extenso : "(sem servidor)";
+		Checa("o cartao 'Calendário' existe, com a data de HOJE do servidor (o dia da semana, o dia, o mes e o ano)",
+			  calendario != null && hoje == hojeNoServidor && DentroDoCartao(LinhaEscrita(pg, "Hoje"), calendario),
+			  $"tela '{hoje}' | servidor '{hojeNoServidor}'");
+		string? idade = menu.ValorDesenhado("World", "Sua idade");
+		Checa("...com 'O mês vira' e 'Sua idade' -- os anos e os meses da ficha lenta, que sao os do corpo no servidor",
+			  calendario != null && DentroDoCartao(LinhaEscrita(pg, "O mês vira"), calendario) && DentroDoCartao(LinhaEscrita(pg, "Sua idade"), calendario)
+			  && idade != null && idade.StartsWith($"{cli.Atributos.Idade} anos e {cli.Atributos.MesesDaIdade} ", StringComparison.Ordinal),
+			  $"Sua idade='{idade}' ficha {cli.Atributos.Idade}a{cli.Atributos.MesesDaIdade}m");
+
 		// ---------------- 1b. O MAPA DO LUGAR (dono, 2026-10-10) ----------------
 		// O contrato do cartao novo: o quadro do mapa, o nome e o tamanho do mundo, e as COORDENADAS do corpo --
 		// que sao as do cliente (a celula dos pes), e nao um texto parado. O desenho, o custo de quadro e os
@@ -236,6 +251,28 @@ public partial class RoboDasAbas
 		await Quadros(2);
 		Image? f1 = await Foto();
 		await Guardar("world-01-meio-dia", f1);
+
+		// A FOTO DO CALENDARIO (o dono, 2026-10-17: *"n esqueça de checar tudo com print"*): o cartao rolado ate a vista, inteiro dentro da janela.
+		// O CARTAO DA PAGINA DE AGORA, e nao o guardado na secao 1a: entre as duas a pagina pode ter sido REMONTADA (o relogio do mundo a
+		// redesenha), e com a janela sem foco -- 4 quadros por segundo -- o roteiro anda devagar o bastante pra pegar uma remontagem no meio (job85:
+		// o cartao guardado ja estava descartado). Tres tentativas: pega, rola, espera, e confere que ele ainda e o da tela.
+		for (int tentativa = 0; tentativa < 3 && calendario != null; tentativa++)
+		{
+			calendario = CartaoComTitulo(pg, "Calendário");
+			if (calendario == null) break;
+			await RolarAteVer(calendario);
+			await Quadros(2);
+			if (IsInstanceValid(calendario)) break;
+		}
+		if (calendario != null && IsInstanceValid(calendario))
+		{
+			Rect2 doCartao = calendario.GetGlobalRect();
+			Checa("a FOTO do cartao 'Calendário': rolado ate a vista, ele cabe inteiro dentro da janela",
+				  GetViewport().GetVisibleRect().Encloses(doCartao), $"cartao {doCartao}, janela {GetViewport().GetVisibleRect()}");
+			await Guardar("world-03-calendario", await Foto());
+			if (Ancestral<ScrollContainer>(pg) is { } volta) volta.ScrollVertical = 0;
+			await Quadros(2);
+		}
 
 		// ---- A FRASE DO CEU NAO PODE NEGAR A TERRA NA TERRA (o segundo relato do dono) ----
 		// "a hora e o ceu daqui nao sao os da Terra" saia em TODO planeta -- inclusive na Terra. A frase

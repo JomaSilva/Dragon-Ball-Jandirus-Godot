@@ -268,7 +268,9 @@ public partial class GameServer
 		//
 		// `||` E CURTO-CIRCUITO, e e por isso que a ordem basta: quem despertou o SSJ2 nao chega a
 		// gastar a aura, e quem nao e bio cai direto no segundo como sempre caiu.
-		pl.Combate.NegarMorte = _ => DespertarSsj2DoBio(pl) || TentarNegarMorte(pl);
+		// (v0.4.0) E AS RACIAIS POR ULTIMO: o Sheer Willpower e a Legendary Resurrection (`GameServer.Passivas.NegarMorteRacial`).
+		// (2026-10-17) E O NUCLEO DO BIO-ANDROIDE, o ultimo de todos (o adendo do dono: a volta do Majin vem antes -- e ela ja e antes do `Morrer`).
+		pl.Combate.NegarMorte = _ => DespertarSsj2DoBio(pl) || TentarNegarMorte(pl) || NegarMorteRacial(pl) || NegarMortePeloNucleo(pl);
 
 		// E QUEM OUVE A MORTE QUE ACONTECEU -- o outro lado da mesma porta. E ele que marca o prazo
 		// do cadaver e, no fim dele, a viagem pro Outro Mundo. Ver `GameServer.Alem.cs`.
@@ -644,6 +646,7 @@ public partial class GameServer
 		GolpeResultado r = MeleeResolver.Resolver(ca, cd, angulo, _rng, tipo, DanoDeEstilo(a, alvo));
 		if (GolpeDeBichoNaoTreina(a)) cd.LutandoDeVerdade = lutaDoAlvo;
 		MarcarAgressao(alvo, a);
+		AoGolpeRacial(a, alvo, r);   // (v0.4.0) as passivas dos dois lados -- `GameServer.Passivas.cs`
 		if (_diagGolpe) ExplicarGolpe(a, alvo, r, angulo, investiu);
 
 		// ============================ OS GANCHOS DAS DISCIPLINAS DIVINAS ============================
@@ -1693,6 +1696,7 @@ public partial class GameServer
 			Speed = (float)f.Rspeed, Esoteric = (float)f.Rmagiskill,
 			Willpower = (float)f.Ewillpower, Stamina = (float)f.staminapercent,
 			Idade = pl.Idade,
+			MesesDaIdade = (byte)Math.Clamp(pl.MesesDaIdade, 0, 9),   // (2026-10-17) o calendario -- ver `GameServer.Calendario.cs`
 			Raca = pl.Race,
 			Classe = pl.Class,
 			// (v0.3.0) o sangue do bio: a aba de aprendizado abre as arvores raciais das doadoras -- ver `SangueDoBio`
@@ -1704,6 +1708,10 @@ public partial class GameServer
 			KaiokenMaestria = (float)Math.Max(f.KaiokenMastery, Jandirus.Core.Skills.Kaioken.MaestriaInicial),
 			KaiokenVezes = (byte)Math.Clamp(Math.Round(f.KaiokenVezes), 0, 100),
 			KaiokenAceso = f.KaioPcnt > 1.0001,
+			// (2026-10-17) AS SKILLS DOS KITS DE RACA: as que valem neste corpo e as que o sangue do bio da pra escolher -- os botoes das ativas e os
+			// da escolha do DNA, na aba Skills. Ver `Races.SkillsRaciais`.
+			SkillsRaciais = (uint)SkillsDoCorpo(pl),
+			SkillsDoSangue = (uint)Jandirus.Core.Races.SkillsRaciais.DoSangue(f),
 
 			// AINDA ZERO, e de proposito: nenhuma destas habilidades existe no port. Quem
 			// acende cada bit e a etapa que trouxer o sistema -- a skill de Sense, o scouter,
@@ -1741,7 +1749,8 @@ public partial class GameServer
 			// ================================================================================================
 			GanhoDeTreino = (float)f.MultiplicadorDeGanho(),
 			Gravidade = (float)Jandirus.Core.Stats.Esmagamento.Gravidade(f),
-			GravEfetiva = (float)f.GravidadeEfetiva(),
+			// (2026-10-16) A ACLIMATACAO E PODER, e nao treino: o bonus do `gravFelt` (>= 1) -- a linha "Aclimatado" da aba de Formas.
+			Aclimatacao = (float)Math.Max(f.gravBuff, 1),
 			PesoMult = (float)Math.Max(f.weight, 1),
 			ZonaMult = (float)f.zoneGainMult,
 			Esmagamento = (float)Jandirus.Core.Stats.Esmagamento.Razao(f),
@@ -1775,9 +1784,9 @@ public partial class GameServer
 		// passaria a sair 30x por segundo pra qualquer um que estivesse treinando.
 		string sig = $"{a.PhysOff:0.##}|{a.PhysDef:0.##}|{a.KiOff:0.##}|{a.KiDef:0.##}|"
 				   + $"{a.Technique:0.##}|{a.KiSkill:0.##}|{a.Speed:0.##}|{a.Esoteric:0.##}|"
-				   + $"{a.Willpower:0.##}|{a.Stamina:0.#}|{a.Poderes}|{a.Idade}|{a.FormaAtual}|"
-				   + $"{a.GanhoDeTreino:0.#}|{a.Gravidade:0.#}|{a.GravEfetiva:0.#}|{a.PesoMult:0.##}|"
-				   + $"{a.ZonaMult:0.#}|{a.Esmagamento:0.##}|{a.SalaFase}|{a.SalaMinutos:0}|{a.PesoMaxKg:0}|{a.PesoKg:0}|{a.PesoArte}|{a.PesoMelhoriasAteOLimite}|{a.Sangue}|{a.PesoPct}|{a.KaiokenMaestria:0.#}|{a.KaiokenVezes}|{a.KaiokenAceso}|"
+				   + $"{a.Willpower:0.##}|{a.Stamina:0.#}|{a.Poderes}|{a.Idade}|{a.MesesDaIdade}|{a.FormaAtual}|"
+				   + $"{a.GanhoDeTreino:0.#}|{a.Gravidade:0.#}|{a.Aclimatacao:0.##}|{a.PesoMult:0.##}|"
+				   + $"{a.ZonaMult:0.#}|{a.Esmagamento:0.##}|{a.SalaFase}|{a.SalaMinutos:0}|{a.PesoMaxKg:0}|{a.PesoKg:0}|{a.PesoArte}|{a.PesoMelhoriasAteOLimite}|{a.Sangue}|{a.PesoPct}|{a.KaiokenMaestria:0.#}|{a.KaiokenVezes}|{a.KaiokenAceso}|{a.SkillsRaciais}|{a.SkillsDoSangue}|"
 				   + string.Join(',', a.Maestrias.Select(m => $"{m.Forma}:{m.Pct:0.#}"))
 				   // AS PERICIAS ENTRAM COM UMA CASA (`0.#`), pelo mesmo motivo do ganho de treino: sao os
 				   // contadores da ficha, e os de tecnica sobem por fracao a cada tiro que rende. Com
@@ -1872,6 +1881,23 @@ public partial class GameServer
 	/// (`ServerPlayer.MortoDePe`) e alvo, socador e paciente como um vivo -- `Death()` nao olha `dead`.
 	/// </summary>
 	private static bool EhCadaver(ServerPlayer o) => o.Ficha.dead && !o.MortoDePe;
+
+	/// <summary>
+	/// (2026-10-16) O MORTO QUE CONTA COMO CAIDO -- so o cadaver (<see cref="EhCadaver"/>). O dono: *"n tem zanzoclash nem colisao
+	/// morto? deveria ter, unica restriçao de morto deveria ser zenkai o resto todo deveria ficar"*. Estas portas ainda liam o `dead`
+	/// cru, de antes de o fantasma ficar de pe (e no Outro Mundo TODO MUNDO esta morto): o Zanzo Clash caia no tique seguinte, o preso
+	/// nao se debatia nem sentia o aperto, mestre e aluno mortos nao se vinculavam, a Danca recusava, o estilo nao rendia maestria,
+	/// ninguem nadava, estudava nem virava Oozaru. O que continua do morto e o que e da MORTE: o Zenkai (que nao paga a quem esta
+	/// morto), o Outro Mundo e as saidas dele (o Enma, o passe, a transmissao de 5 s) e o reviver.
+	/// Com o defeito injetado, o `dead` cru de antes.
+	/// </summary>
+	private static bool CaidoPelaMorte(ServerPlayer p) => MortoComoCadaverDeTeste ? p.Ficha.dead : EhCadaver(p);
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--v030teste` MZ): as portas do adendo 18 voltam a ler o `dead` cru -- o fantasma de pe tratado como
+	/// cadaver, o jogo de antes. Lido pelo <see cref="CaidoPelaMorte"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool MortoComoCadaverDeTeste;
 
 	/// <summary>
 	/// QUEM LOGA MORTO JA VIAJOU? -- o palpite do login, pelo lugar: no Outro Mundo, ou entre os vivos com o passe do Enma

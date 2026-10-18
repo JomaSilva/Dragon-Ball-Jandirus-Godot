@@ -951,6 +951,7 @@ public sealed partial class Cerebro
 		if (_carenciaDaCarga > 0) _carenciaDaCarga -= dt;
 		TicarOKit(p, dt);
 		TicarORepertorio(p, dt);
+		TicarARaca(dt);
 
 		// A FRASE E DESTE TIQUE E DE MAIS NENHUM. Zerada aqui, no topo, antes de qualquer ponto de
 		// fala poder escrever: sem isto uma frase recusada pelo `Comando` (um corpo caido, por
@@ -967,6 +968,10 @@ public sealed partial class Cerebro
 		// corpo nocauteado, mas mandar o comando mesmo assim seria a IA apertando teclas que a
 		// tela do jogador nem aceita. **E nem fala**: quem esta no chao nao provoca ninguem.
 		if (p.Caido) { Atual = Plano.Nada; Porque = "caido"; return Comando.Nenhum; }
+
+		// A RACA PRENDE O CORPO NO LUGAR (2026-10-17) -- a esfera do Demonic, a execucao do Ruthless Mind: andar as desfaz, entao nada de
+		// passo e nada de plano ate elas acabarem. Ver `Cerebro.Raciais.cs`.
+		if (ParadoPelaRaca(p) is { } parado) { Porque = "parado pela raca"; return parado; }
 
 		// ---- OS AVISOS DE RECURSO, no relogio proprio deles (0,5 s pra OLHAR, 30 s pra FALAR) ----
 		// Eles ficam ANTES da decisao de proposito: no DM quem os chama e o `checkState`, que roda em
@@ -1008,10 +1013,14 @@ public sealed partial class Cerebro
 		// --- 3. O COMANDO, montado do plano + reflexos ------------------------
 		// A AGUA VEM POR CIMA DA ARENA, e as duas sao filtros pela mesma razao (ver `Travessia`): o
 		// plano decide o que fazer, e elas decidem so o MODO de atravessar o chao que o plano pisa.
+		// O DEMONIC SAIYAN POR CIMA DO PLANO (2026-10-17), quando da pra ficar parado -- ver `Cerebro.Raciais.cs`.
+		if (DemonicoAgora(p) is { } demonico) return demonico;
+
 		Comando pronto = Travessia.Atravessar(p, Poderes, NaArena(p, Montar(p, rng)), ref _carenciaDeAgua,
 											  pousarNoSeco: false, out string? naAgua);
 		if (naAgua != null) Porque = naAgua;
-		return pronto;
+		// O DESABAFO DO TRANSBORDAR (2026-10-17) vai por cima do gesto, como um pulso do repertorio -- ver `Cerebro.Raciais.cs`.
+		return ComODesabafo(p, pronto);
 	}
 
 	/// <summary>
@@ -1263,7 +1272,13 @@ public sealed partial class Cerebro
 		// Antes do "alvo no chao" de proposito: e no chao que o criterio costuma se cumprir (o torso em 15% ja
 		// derrubou o corpo), e sem esta linha o Deus deixaria deitado justamente quem o Hakai existe pra apagar.
 		// Ver `Cerebro.Kit.cs`.
-		if (ExecutaOAlvo(p)) { _finalizando = false; Porque = "executar: o Hakai pega o alvo"; return Plano.Executar; }
+		// (2026-10-17) E a execucao do Ruthless Mind entra pela mesma porta: o alvo caido, e ela na mao.
+		if (ExecutaOAlvo(p))
+		{
+			_finalizando = false;
+			Porque = Poderes.KitDoDeus && p.HakaiPegaOAlvo ? "executar: o Hakai pega o alvo" : "executar: o Ruthless Mind no caido";
+			return Plano.Executar;
+		}
 
 		// ---- O ALVO CAIU: a fala da vitoria, e ela sai UMA vez ----
 		// `if(target && (target.KO || target.HP <= 0) && IsInFight)` no fim do `attackState`

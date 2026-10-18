@@ -316,6 +316,21 @@ public sealed class Body
 	public const string ZonaDoRabo = "rabo";
 	public const string NomeDoRabo = "Rabo";
 
+	/// <summary>O tronco -- a parte que o Mindless Gambit protege (`/obj/bodyparts/Torso`).</summary>
+	public const string NomeDoTronco = "Torso";
+
+	/// <summary>
+	/// (2026-10-16) MINDLESS GAMBIT -- A FRACAO DO DANO NO TRONCO QUE ESTE CORPO IGNORA, de 0 a 1. O sistema do amigo do dono:
+	/// *"Reduces the damage to a Corrupted Majin's Torso when they are missing sanity up to a reduction of 20% when sane and up
+	/// to a reduction of 40% when insane"*. Zero em todo corpo que nao e um Corrupted Majin com a Forma Pura; quem escreve e a
+	/// saga (`GameServer.SagaDoMajin.cs`), a conta e a `Races.SagaDoMajin.ReducaoNoTronco`. Quem aplica e o <see cref="Ferir"/>,
+	/// que e a porta de todo dano num membro -- soco, ki, tecnica, o preco do excesso de Ki.
+	/// </summary>
+	public double ReducaoNoTronco;
+
+	/// <summary>DEFEITO INJETADO (bancada `--sagamajinteste`): o tronco volta a levar o dano inteiro. Falso em jogo, sempre.</summary>
+	public static bool GambitoDesligadoDeTeste;
+
 	/// <summary>O peso do rabo no sorteio quando e ELE que se mira: o de um braco (`Chance` 60).</summary>
 	public const double PesoDoRaboMirado = 60;
 
@@ -361,6 +376,11 @@ public sealed class Body
 	public void Ferir(BodyPart alvo, double dano, bool letal)
 	{
 		if (alvo.Decepado || dano <= 0) return;
+
+		// (2026-10-16) O MINDLESS GAMBIT, antes de tudo -- e a propagacao pros aninhados (os orgaos) leva o golpe JA reduzido,
+		// porque e o mesmo golpe. Ver `ReducaoNoTronco`.
+		if (ReducaoNoTronco > 0 && alvo.Nome == NomeDoTronco && !GambitoDesligadoDeTeste)
+			dano *= 1 - Math.Clamp(ReducaoNoTronco, 0, 1);
 
 		alvo.Vida -= dano;
 

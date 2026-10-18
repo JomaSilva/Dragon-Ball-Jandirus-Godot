@@ -491,7 +491,7 @@ public sealed partial class GameServer
 			// segundos em que nenhum dos dois esta fundido nem dancando.
 			algumJaFundido: OcupadoPorFusao(pl.Id) || OcupadoPorFusao(outro.Id),
 			algumNaRecarga: NaRecargaDeFusao(pl, agora) || NaRecargaDeFusao(outro, agora),
-			algumCaido: pl.Ficha.KO || pl.Ficha.dead || outro.Ficha.KO || outro.Ficha.dead,
+			algumCaido: pl.Ficha.KO || CaidoPelaMorte(pl) || outro.Ficha.KO || CaidoPelaMorte(outro),   // (2026-10-16) o morto de pe funde
 			mesmaZona: pl.Zone.Hash == outro.Zone.Hash,
 			// A DISTANCIA NA MOEDA DO BYOND (`get_dist`, tabuleiro), e nao a linha reta que estava aqui.
 			// Com o portao da Danca valendo UM tile, o vizinho de DIAGONAL esta a 1,41 em linha reta e a
@@ -703,7 +703,7 @@ public sealed partial class GameServer
 			mesmaPessoa: quem == pl,
 			algumJaFundido: OcupadoPorFusao(quem.Id) || OcupadoPorFusao(pl.Id),
 			algumNaRecarga: NaRecargaDeFusao(quem, agora) || NaRecargaDeFusao(pl, agora),
-			algumCaido: quem.Ficha.KO || quem.Ficha.dead || pl.Ficha.KO || pl.Ficha.dead,
+			algumCaido: quem.Ficha.KO || CaidoPelaMorte(quem) || pl.Ficha.KO || CaidoPelaMorte(pl),
 			mesmaZona: quem.Zone.Hash == pl.Zone.Hash,
 			// A MESMA MOEDA DO CONVITE (`get_dist`) -- ver o `Convidar`. E o DU cobra a distancia nos
 			// DOIS momentos tambem: `Metamoran Fusion.dm:92` antes da caixa de pergunta e `:122` depois
@@ -1162,7 +1162,7 @@ public sealed partial class GameServer
 
 			if (!_players.ContainsKey(a.Id) || !_players.ContainsKey(b.Id))
 			{ AbortarOPuxaoDeFusao(p, "um dos dois saiu do mundo."); continue; }
-			if (a.Ficha.dead || b.Ficha.dead)
+			if (CaidoPelaMorte(a) || CaidoPelaMorte(b))
 			{ AbortarOPuxaoDeFusao(p, "um dos dois morreu."); continue; }
 			if (a.Ficha.KO || b.Ficha.KO)
 			{ AbortarOPuxaoDeFusao(p, "um dos dois foi derrubado."); continue; }
@@ -1455,7 +1455,7 @@ public sealed partial class GameServer
 			{
 				if (!_players.ContainsKey(c.Dono.Id) || !_players.ContainsKey(c.Passageiro.Id))
 				{ AbortarACenaDeFusao(c, "um dos dois saiu do mundo."); continue; }
-				if (c.Dono.Ficha.dead || c.Passageiro.Ficha.dead)
+				if (CaidoPelaMorte(c.Dono) || CaidoPelaMorte(c.Passageiro))
 				{ AbortarACenaDeFusao(c, "um dos dois morreu."); continue; }
 				if (c.Dono.Ficha.KO || c.Passageiro.Ficha.KO)
 				{ AbortarACenaDeFusao(c, "um dos dois foi derrubado."); continue; }
@@ -2295,7 +2295,7 @@ public sealed partial class GameServer
 
 				// O CONVIDADO SUMIU, MORREU OU CAIU: o pedido cai junto. Aceitar deitado ja seria
 				// recusado la na revalidacao -- tirar aqui e so nao deixar lixo no dicionario.
-				bool morreu = quem == null || quem.Ficha.dead || quem.Ficha.KO;
+				bool morreu = quem == null || CaidoPelaMorte(quem) || quem.Ficha.KO;
 				if (agora <= p.Ate && !morreu) continue;
 
 				_pedidosDeFusao.Remove(id);
@@ -2313,7 +2313,7 @@ public sealed partial class GameServer
 
 			if (!_players.ContainsKey(d.A.Id) || !_players.ContainsKey(d.B.Id))
 			{ AbortarADanca(d, "um dos dois saiu do mundo."); continue; }
-			if (d.A.Ficha.dead || d.B.Ficha.dead) { AbortarADanca(d, "um dos dois morreu."); continue; }
+			if (CaidoPelaMorte(d.A) || CaidoPelaMorte(d.B)) { AbortarADanca(d, "um dos dois morreu."); continue; }
 			if (d.A.Ficha.KO || d.B.Ficha.KO) { AbortarADanca(d, "um dos dois foi derrubado."); continue; }
 			if (d.A.Zone.Hash != d.B.Zone.Hash) { AbortarADanca(d, "voces nao estao mais no mesmo lugar."); continue; }
 
@@ -2340,7 +2340,7 @@ public sealed partial class GameServer
 			if (!_players.ContainsKey(f.Dono.Id) || !_players.ContainsKey(f.Passageiro.Id))
 			{ Separar(f, "um dos dois deixou o mundo"); continue; }
 
-			if (f.Dono.Ficha.dead) { Separar(f, "o corpo fundido caiu de vez"); continue; }
+			if (CaidoPelaMorte(f.Dono)) { Separar(f, "o corpo fundido caiu de vez"); continue; }
 
 			// ============================ E O PULO DA PERMANENTE TAMBEM SAIU ============================
 			// Havia um `if (f.EnergiaMax <= 0) { f.UltimoDreno = agora; continue; }` aqui, com o

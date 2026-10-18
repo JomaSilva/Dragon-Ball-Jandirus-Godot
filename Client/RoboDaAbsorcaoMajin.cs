@@ -206,7 +206,7 @@ public partial class RoboDaAbsorcaoMajin : Node
 	/// Na primeira corrida a foto de fora mostrava o corpo "de pe" um segundo depois do nocaute, e a de dentro
 	/// o mostrava deitado dois segundos depois de acordar. NENHUMA das duas era atraso, e foi esta sonda que
 	/// disse: as quatro pontas viram no mesmo quadro.
-	///   * la fora o corpo estava deitado, sim -- caido "pro sul", que e de cabeca pra cima (`DeitarPor`), e
+	///   * la fora o corpo estava deitado, sim -- caido na vertical (`DeitarPor` gira noventa graus), e
 	///     na foto isso se le como um corpo de pe. Hoje o nocaute da cena tem autor (`DerrubarNaFotoDoMajin`);
 	///   * la dentro a imagem do Majin tinha me nocauteado DE NOVO. A luta e de verdade.
 	/// ========================================================================================================

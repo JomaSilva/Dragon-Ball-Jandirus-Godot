@@ -102,7 +102,7 @@ public partial class GameServer
 					{
 						// FICHA DE CARGO QUE NAO EXISTE MAIS (ou que perdeu os deveres) E LIXO, e ela
 						// GRITA em vez de dormir: e save de outra versao da tabela.
-						if (Cargos.Get(k) is not { TemDeveres: true })
+						if (Cargos.Get(CargoDaVaga(k)) is not { TemDeveres: true })   // (2026-10-16) a ficha e da VAGA (`kaioshin#2`)
 						{
 							GD.PushWarning($"[server] missoes: ficha de '{k}', que nao e cargo com deveres -- descartada");
 							continue;
@@ -191,23 +191,25 @@ public partial class GameServer
 		_proximaVoltaDasMissoes = agora + MissoesDeCargo.SegundosDoLaco;
 
 		bool mexeu = false;
-		foreach (RankDef r in MissoesDeCargo.ComDeveres.ToList())
+		// (2026-10-16) POR VAGA, e nao por cargo: os cinco Kaioshins tem cinco fichas, cinco prazos e cinco renomes (ver
+		// `RankDef.Vagas`). Num cargo de uma vaga so a vaga e a propria chave, e nada muda.
+		foreach ((RankDef r, string vaga) in MissoesDeCargo.ComDeveres.ToList().SelectMany(c => VagasDe(c).Select(v => (c, v))))
 		{
-			string dono = _tronos.TryGetValue(r.Chave, out string? d) ? d : "";
+			string dono = _tronos.TryGetValue(vaga, out string? d) ? d : "";
 
 			// TRONO VAGO: a ficha morre com ele (`if(rq_state[key]) rq_state -= key`, `:636`).
 			if (dono.Length == 0)
 			{
-				if (_missoes.Remove(r.Chave)) mexeu = true;
+				if (_missoes.Remove(vaga)) mexeu = true;
 				continue;
 			}
 
 			// A FICHA E DO TRONO, MAS ELA ZERA QUANDO O TRONO TROCA DE DONO. Ver `FichaDeMissao.Dono`.
-			if (!_missoes.TryGetValue(r.Chave, out FichaDeMissao? f)
+			if (!_missoes.TryGetValue(vaga, out FichaDeMissao? f)
 				|| !string.Equals(f.Dono, dono, StringComparison.OrdinalIgnoreCase))
 			{
 				f = new FichaDeMissao { Dono = dono, Proxima = agora + MissoesDeCargo.SegundosDeIntervalo };
-				_missoes[r.Chave] = f;
+				_missoes[vaga] = f;
 				mexeu = true;
 			}
 
@@ -228,7 +230,7 @@ public partial class GameServer
 
 			if (f.Tarefa == TipoDeTarefa.Nenhuma)
 			{
-				if (agora >= f.Proxima && AtribuirTarefa(r, f, portador, agora)) mexeu = true;
+				if (agora >= f.Proxima && AtribuirTarefa(r, vaga, f, portador, agora)) mexeu = true;
 				continue;
 			}
 
@@ -263,7 +265,7 @@ public partial class GameServer
 	/// Sorteia a tarefa deste cargo. Devolve `false` quando nada foi escrito em disco (so o adiamento
 	/// por falta de alvo, que e o `st["next"] = ... RQ_TASK_RETRY` do original).
 	/// </summary>
-	private bool AtribuirTarefa(RankDef r, FichaDeMissao f, ServerPlayer portador, double agora)
+	private bool AtribuirTarefa(RankDef r, string vaga, FichaDeMissao f, ServerPlayer portador, double agora)
 	{
 		// O PLANETA DO CARGO ESTA SOB BANDEIRA ALHEIA? A pergunta e por ASSINATURA porque dominio e do
 		// personagem (ver `Dominio.Assinatura`), enquanto cargo e da conta -- os dois so se encontram
@@ -322,7 +324,7 @@ public partial class GameServer
 				break;
 		}
 
-		_missoes[r.Chave] = nova;
+		_missoes[vaga] = nova;
 		Avisar(portador, $"{r.Nome}: NOVA TAREFA -- {MissoesDeCargo.Descricao(nova)}. "
 					   + $"Prazo: {MissoesDeCargo.TextoDeTempo(MissoesDeCargo.SegundosDePrazo)}. "
 					   + $"Falhar corrói o trono ({nova.Falhas}/{MissoesDeCargo.FalhasQueDestituem}).");
@@ -510,8 +512,7 @@ public partial class GameServer
 		// degrau certo vagasse.
 		// ==================================================================================================
 		if (!MissoesDeCargo.PodeAscender(f.Cumpridas)) return;
-		bool haVaga = MissoesDeCargo.DegrausAcima(r.Chave).Any(
-			a => !_tronos.TryGetValue(a.Chave, out string? dn) || dn.Length == 0);
+		bool haVaga = MissoesDeCargo.DegrausAcima(r.Chave).Any(a => VagaLivre(a) != null);
 
 		if (!haVaga) { f.AvisouAscensao = false; return; }
 		if (f.AvisouAscensao) return;
@@ -541,7 +542,7 @@ public partial class GameServer
 		Anunciar($"{r.Nome} FALHOU em seu dever ({f.Falhas}/{MissoesDeCargo.FalhasQueDestituem}).");
 
 		if (f.Falhas >= MissoesDeCargo.FalhasQueDestituem)
-			Destronar(r.Chave, "negligenciou os deveres do cargo");
+			Destronar(r.Chave, "negligenciou os deveres do cargo", f.Dono);   // (2026-10-16) a vaga DESTE portador
 	}
 
 	// =====================================================================
@@ -554,10 +555,11 @@ public partial class GameServer
 	/// segundo em que o trono trocou de mao: herdar o renome de quem serviu antes seria comprar
 	/// promocao com o trabalho alheio.
 	/// </summary>
-	private int RenomeDe(string chave)
+	/// <param name="vaga">(2026-10-16) A VAGA, e nao o cargo: o renome e de cada Kaioshin. Num cargo de uma vaga so, a chave dele.</param>
+	private int RenomeDe(string vaga)
 	{
-		if (!_missoes.TryGetValue(chave, out FichaDeMissao? f)) return 0;
-		string dono = _tronos.TryGetValue(chave, out string? d) ? d : "";
+		if (!_missoes.TryGetValue(vaga, out FichaDeMissao? f)) return 0;
+		string dono = _tronos.TryGetValue(vaga, out string? d) ? d : "";
 		return string.Equals(f.Dono, dono, StringComparison.OrdinalIgnoreCase) ? f.Cumpridas : 0;
 	}
 
@@ -592,8 +594,9 @@ public partial class GameServer
 		}
 
 		double agora = TempoDoMundo;
-		_missoes.TryGetValue(chave, out FichaDeMissao? f);
-		int renome = RenomeDe(chave);
+		string vaga = VagaDaConta(pl.Conta);   // (2026-10-16) a ficha e da vaga
+		_missoes.TryGetValue(vaga, out FichaDeMissao? f);
+		int renome = RenomeDe(vaga);
 
 		Avisar(pl, $"-- {r.Nome} ({(r.Sabedoria ? "vocação de SABEDORIA: serviço" : "vocação de PODER")}) --");
 		Avisar(pl, TextoDeRenome(r, f ?? new FichaDeMissao()));
@@ -609,7 +612,7 @@ public partial class GameServer
 			Avisar(pl, $"degrau acima: {MissoesDeCargo.TextoDosDegraus(chave)} "
 					 + $"(faltam {MissoesDeCargo.TarefasParaAscender - renome} tarefa(s) de renome).");
 		}
-		else if (acima.Any(a => !_tronos.TryGetValue(a.Chave, out string? dn) || dn.Length == 0))
+		else if (acima.Any(a => VagaLivre(a) != null))
 		{
 			Avisar(pl, $"ASCENSÃO LIBERADA: {MissoesDeCargo.TextoDosDegraus(chave)} -- reivindique o cargo.");
 		}
@@ -644,8 +647,7 @@ public partial class GameServer
 	/// </summary>
 	private void VerboDepositarVerba(ServerPlayer pl)
 	{
-		string chave = CargoDe(pl.Conta);
-		if (!_missoes.TryGetValue(chave, out FichaDeMissao? f) || f.Tarefa != TipoDeTarefa.Verba)
+		if (!_missoes.TryGetValue(VagaDaConta(pl.Conta), out FichaDeMissao? f) || f.Tarefa != TipoDeTarefa.Verba)
 		{
 			Avisar(pl, "você não tem uma tarefa de verba em aberto.");
 			return;

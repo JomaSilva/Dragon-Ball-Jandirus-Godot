@@ -1272,6 +1272,10 @@ public sealed partial class GameServer
 			if (c.AgarrandoId != 0) Soltar(c, MotivoDaSoltura.Tecla);
 			if (c.AgarradoPorId != 0) LimparPreso(c);
 			c.Ficha.train = c.Ficha.med = false;
+			// (v0.4.0) A CARGA DO DEMONIC SAIYAN (a linha dela na tabela de ocupacoes), desfeita -- e o estado racial que a ocupacao le.
+			c.Racial.DemonicoCargaDesde = c.Racial.DemonicoDesde = -1;
+			// (2026-10-17) O GRITO DO DESABAFO (a linha dele na tabela), calado.
+			c.Racial.GritoDesde = -1;
 			c.CenaSegundos = 0;
 			c.SupernovaDesde = 0;
 			c.FuriaExtremaAte = 0;
@@ -1283,6 +1287,8 @@ public sealed partial class GameServer
 			c.TiquesDeVoo = 0;
 			c.Combate.Stun = 0;
 			if (c.Ficha.KO || c.Ficha.dead) c.Combate.Reviver();
+			// (2026-10-17) A EXECUCAO DO BIO (a linha `Secando`): a vitima de pe a desfaz -- pelo tique de producao, que e quem a desfaz em jogo.
+			TickDasExecucoesDoBio();
 			c.Ficha.Statify();
 			c.Ficha.PowerLevel();
 			c.Combate.SincronizarVida();
@@ -1368,6 +1374,11 @@ public sealed partial class GameServer
 		// CADA LINHA LIGA O ESTADO **PELO CAMINHO DE PRODUCAO**, e o caminho esta escrito no texto que
 		// vai pro console: se um dia alguem trocar `Nocautear` por `Ficha.KO = true`, a linha continua
 		// verde e a frase passa a mentir -- por isso a frase cita a funcao, e nao o campo.
+		// (v0.4.0) QUEM BETA ERA ANTES DA LINHA DA CARGA DEMONIACA -- ela o veste de Lendario Primal (o canal de producao pede o sangue), e
+		// ele volta a ser quem era depois da tabela.
+		(string Raca, string Classe, string Linhagem, string Conta, int Slot)? betaDeAntes = null;
+		// (2026-10-17) E QUEM GAMA ERA ANTES DA LINHA `Secando` -- ela o veste de bio-androide (a raca e o portao do verb de absorver).
+		string? gamaDeAntes = null;
 		(Ocupacao Qual, string Como, Action Ligar, Action? PorTique, float Tiles, int Tiques)[] tabela =
 		[
 			// ---- DESFEITO (v0.3.0): o Majin em pedacos -- caido como o nocauteado, e por isso o palco curto tambem ----
@@ -1377,12 +1388,36 @@ public sealed partial class GameServer
 			 "se desfez em pedacos (`CombatState.Desfazer`, a porta do golpe que mataria o Majin)",
 			 () => b.Combate!.Desfazer(), null, 1.5f, 12),
 
+			// ---- (2026-10-17) SECANDO: a vitima da execucao do bio-androide -- caida como o nocauteado, e por isso o palco curto tambem ----
+			// Gama vira o bio (a raca e o portao do verb, `TemOrgaosDeAbsorcao`) e fica DE LADO e no mesmo andar, como no agarrao; Beta cai pelo
+			// `Nocautear` de producao e Gama aperta o `absorver` (`UsarHabilidade` -> `AbsorverBio`), que abre a execucao de 5 s.
+			(Ocupacao.Secando,
+			 "esta sendo bebido por um bio-androide (`Nocautear`, e `UsarHabilidade` -> `AbsorverBio`: a execucao de 5 s)",
+			 () =>
+			 {
+				gamaDeAntes ??= gama.Race;
+				gama.Race = gama.Ficha.Race = Jandirus.Core.Races.BioAndroids.Raca;
+				if (!NoTeto(gama)) PorNoTeto(gama);
+				gama.Pos = b.Pos + lado * (0.75f * T);
+				gama.Altitude = b.Altitude;
+				gama.Facing = MoveRules.FacingFrom(lado * -1, gama.Facing);
+				Nocautear(b);
+				gama.AlvoId = b.Id;
+				UsarHabilidade(gama, "absorver");
+			 }, null, 1.5f, 12),
+
 			// ---- SUPERNOVA (v0.3.0): o chefe concentrando o ultimato -- parado e intocavel como na cena ----
 			// `ComecarASupernova` e a porta que o ultimato da saga abre. A bancada a chama direto num corpo comum: o que se mede
 			// aqui e o ESTADO, e nao quem tem direito a ele.
 			(Ocupacao.Supernova,
 			 "ergueu a Supernova (`ComecarASupernova`, a porta do ultimato da saga)",
 			 () => ComecarASupernova(b), null, 3f, TiquesDoPasseio),
+
+			// ---- (2026-10-17) A DEATH BALL DO ULTIMATO: a MESMA porta da Supernova, com a outra esfera (o Freeza de Namek) ----
+			// Faltava aqui desde que ela entrou -- e a precondicao da tabela inteira acusou quando a carga demoniaca da v0.4.0 chegou.
+			(Ocupacao.DeathBallDoUltimato,
+			 "ergueu a Death Ball do ultimato (`ComecarASupernova` com a esfera de Namek)",
+			 () => ComecarASupernova(b, Jandirus.Core.Npc.AtaqueDoUltimato.DeathBall), null, 3f, TiquesDoPasseio),
 
 			// ---- NOCAUTEADO: o outro que TIRA o voo (com o desfeito, logo acima), e por isso o palco dele e curto ----
 			// `Nocautear` (o verb de admin) chama `CombatState.Nocautear`, que e o MESMO que o
@@ -1475,6 +1510,29 @@ public sealed partial class GameServer
 			(Ocupacao.Meditando,
 			 "esta meditando (`C2S.Activity` -> `Ficha.med`)",
 			 () => { b.Ficha.med = true; }, null, 3f, TiquesDoPasseio),
+
+			// ---- (v0.4.0) A CARGA DO DEMONIC SAIYAN: os 15 s parado dentro da esfera verde ----
+			// Pela porta de producao (`UsarHabilidade` -> `UsarAtivaRacial`), com Beta posto no ponto de carregar -- Lendario Primal, o LSSJ
+			// desperto e dominado, na forma, em combate ha mais de 2 min (`CarregarODemonicoDeTeste`, o mesmo gancho do robo `--diagesfera`).
+			// O passeio inteiro cabe na carga (40 tiques contra 15 s), e Beta parado nao a desfaz.
+			(Ocupacao.CargaDemoniaca,
+			 "carrega o Demonic Saiyan (`UsarHabilidade` -> `UsarAtivaRacial`, a esfera verde)",
+			 () =>
+			 {
+				 betaDeAntes ??= (b.Race, b.Class, b.Ficha.SaiyanLineage, b.Conta, b.Slot);
+				 CarregarODemonicoDeTeste(b.Id);
+			 }, null, 3f, TiquesDoPasseio),
+
+			// ---- (2026-10-17) O GRITO DO DESABAFO: os 3 s do Lendario plantado dentro da esfera verde ----
+			// Pela porta de producao (`UsarHabilidade` -> `DesabafarRacial`), com Beta posto no ponto de desabafar -- Lendario, o Overflowing Power
+			// ligado ha mais que o prazo (`GritarODesabafoDeTeste`, o gancho da `--passivasteste`). O passeio inteiro cabe no grito.
+			(Ocupacao.GritoDoDesabafo,
+			 "grita o desabafo do Overflowing Power (`UsarHabilidade` -> `DesabafarRacial`, a esfera verde)",
+			 () =>
+			 {
+				 betaDeAntes ??= (b.Race, b.Class, b.Ficha.SaiyanLineage, b.Conta, b.Slot);
+				 GritarODesabafoDeTeste(b.Id);
+			 }, null, 3f, TiquesDoPasseio),
 		];
 
 		// (v0.3.0) CONTADO PELO PROPRIO `enum` (todos menos o `Livre`), e nao pelo ultimo nome: o `Meditando` deixou de ser
@@ -1580,6 +1638,22 @@ public sealed partial class GameServer
 			AfirmarDc($"[{qual}] (desmontagem) Beta voltou a ser LIVRE -- o estado nao vaza pro proximo",
 					  OcupacaoDe(b) == Ocupacao.Livre,
 					  $"ficou '{CorpoOcupado.Nome(OcupacaoDe(b))}'");
+		}
+
+		// (2026-10-17) GAMA VOLTA A SER QUEM ERA: a linha `Secando` o vestiu de bio-androide.
+		if (gamaDeAntes is { } eraGama) gama.Race = gama.Ficha.Race = eraGama;
+
+		// (v0.4.0) BETA VOLTA A SER QUEM ERA: a linha da carga demoniaca o vestiu de Lendario Primal (raca, classe, linhagem e a conta que
+		// faz dele uma pessoa) -- o resto da bancada mede o corpo de antes.
+		if (betaDeAntes is { } eraBeta)
+		{
+			b.Race = b.Ficha.Race = eraBeta.Raca;
+			b.Class = b.Ficha.Class = eraBeta.Classe;
+			b.Ficha.SaiyanLineage = eraBeta.Linhagem;
+			b.Conta = eraBeta.Conta;
+			b.Slot = eraBeta.Slot;
+			b.Ficha.Statify();
+			b.Ficha.PowerLevel();
 		}
 
 		// ---------------- O DEFEITO INJETADO ----------------

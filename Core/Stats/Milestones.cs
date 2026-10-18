@@ -22,10 +22,10 @@ namespace Jandirus.Core.Stats;
 ///   * `bio1`/`bio2`/`bio3`/`bio_ssj2`: `GameServer.Tech.cs` e `GameServer.Absorcao.cs`.
 ///   * `asc5`/`asc10`/`asc20`: <see cref="Fighter.CheckAscensionMilestone"/>.
 ///   * `potential`: `GameServer.Tecnicas.G11.cs`. `godki`: `Core/Forms/DespertarDivino.cs`.
+///   * `majin2`/`majin3`: `GameServer.SagaDoMajin.cs` -- o `majin_advance_form` (`Magic/MajinSaga.dm:416-417`), desde que a
+///     saga do Corrupted Majin foi portada (2026-10-16).
 ///
-/// QUATRO CONTINUAM SEM NINGUEM, e nao por esquecimento -- nao ha o que as conceda neste port:
-///   * `majin2`/`majin3` -- o `majin_advance_form` (`Magic/MajinSaga.dm:416-417`). A saga do Majin
-///     (as formas 1 a 4) nao foi portada: ver o cabecalho do `GameServer.AbsorcaoMajin.cs`.
+/// DUAS CONTINUAM SEM NINGUEM, e nao por esquecimento -- nao ha o que as conceda neste port:
 ///   * `frost_golden` -- o `Buff()` da Golden Form (`IcerTransform.dm:276`). A Golden nao foi portada
 ///     (`CensoDeSkills`: "a camada Golden do Frost Demon").
 ///   * `lssj4` -- NEM O DM A CONCEDE: o `LSSj_Controlled()` (`lssjbuff.dm:447-461`) faz `lssj=4` e nao

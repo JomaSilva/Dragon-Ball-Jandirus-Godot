@@ -7,11 +7,11 @@ using Jandirus.Net;
 namespace Jandirus.Server;
 
 /// <summary>
-/// LOTE G2 -- FORMAS, CURA E TEMPO.
+/// LOTE G2 -- FORMAS E TEMPO.
 ///
-/// Sete tecnicas do DM que tem em comum a forma de agir sobre o PROPRIO corpo (ou, no caso do
-/// Time Touch, sobre o corpo de quem esta do lado): multiplicam poder, somam stat, curam,
-/// envelhecem, ou trocam folego por um soco. Nenhuma delas atira nada.
+/// Seis tecnicas do DM que tem em comum a forma de agir sobre o PROPRIO corpo (ou, no caso do
+/// Time Touch, sobre o corpo de quem esta do lado): multiplicam poder, somam stat, envelhecem,
+/// ou trocam folego por um soco. Nenhuma delas atira nada.
 ///
 /// TRES COISAS QUE VALE LER ANTES DE MEXER AQUI:
 ///
@@ -66,18 +66,6 @@ public partial class GameServer
 
 	private readonly Dictionary<int, long> _prontoTimeTouchG2 = [];
 	private readonly Dictionary<int, long> _prontoGrowthG2 = [];
-	private readonly Dictionary<int, long> _prontoHamonG2 = [];
-
-	/// <summary>`hamon_skill` e `hamon_skill_buffer` (Spirit.dm:263-267). Tambem so de sessao.</summary>
-	private readonly Dictionary<int, double> _hamonSkillG2 = [];
-	private readonly Dictionary<int, double> _hamonBufferG2 = [];
-
-	/// <summary>
-	/// A FRACAO DE ANO acumulada pelas tecnicas que envelhecem (`Age += 0.1`). `ServerPlayer.Idade`
-	/// e INTEIRO, entao somar 0,1 nele nao faria nada; o resto fica aqui e vira +1 ano quando
-	/// fecha. E o mais perto de fiel que da sem mexer na ficha alheia.
-	/// </summary>
-	private readonly Dictionary<int, double> _idadeFracaoG2 = [];
 
 	// =====================================================================
 	// REGISTRO
@@ -113,7 +101,6 @@ public partial class GameServer
 		Vivo("Giant_Form", FormaGigante);
 		Vivo("Time_Touch", ToqueDoTempo);
 		Vivo("Growth_Spurt", Estirao);
-		Vivo("HamonBreathing", RespiracaoHamon);
 		Vivo("Spirit_Fist", PunhoEspiritual);
 	}
 
@@ -256,11 +243,10 @@ public partial class GameServer
 	private const long GiganteTravaMsG2 = 1000;
 
 	/// <summary>
-	/// `giant_form_efficiency` (Giant Form.dm:49). Ela cai pra 0,5 no nivel 1 e 0,15 no nivel 2 da
-	/// skill; o port NAO tem niveis de skill, entao fica no valor de nivel 0. Efeito pratico: o
-	/// gigante consome mais folego aqui do que consumiria pra quem treinou a forma la.
+	/// `giant_form_efficiency` (Giant Form.dm:49) -- a da ficha (`Fighter.giant_form_efficiency`), que os degraus 1 e 2 da skill
+	/// baixam pra 0,5 e 0,15 (2026-10-16: o nivel da forma passou a subir, ver `GameServer.NiveisQueNaoSubiam.cs`).
 	/// </summary>
-	private const double GiganteEficienciaG2 = 1;
+	private static double EficienciaDoGigante(ServerPlayer pl) => EfeitosDeNivelCravadosDeTeste ? 1 : pl.Ficha.giant_form_efficiency;
 
 	/// <summary>
 	/// Segundos medios entre dois drenos de folego do gigante.
@@ -427,9 +413,9 @@ public partial class GameServer
 			return;
 		}
 
-		// O PRECO SAI EM IDADE, no ALVO (`m.Age += 0.1`). Ver o comentario do dicionario:
-		// ServerPlayer.Idade e inteiro, entao a fracao se acumula e vira ano fechado.
-		EnvelhecerG2(alvo, 0.1);
+		// O PRECO SAI EM IDADE, no ALVO (`m.Age += 0.1`): um mes, nos meses da idade dele, que viram ano quando fecham (2026-10-17, o
+		// calendario -- ver `EnvelhecerMeses`).
+		EnvelhecerMeses(alvo, 1);
 
 		_prontoTimeTouchG2[pl.Id] = agora + TimeTouchRecargaMsG2;
 		Avisar(pl, $"você toca {alvo.Name} e empurra o tempo dele.");
@@ -439,8 +425,7 @@ public partial class GameServer
 
 	/// <summary>
 	/// QUEM SAIU LEVA O ESTADO DELE JUNTO -- inscrito no `EsquecerTecnicas`, porque id se reusa e
-	/// nenhum destes dicionarios vai pro disco: a fracao de idade e o progresso do Hamon ja morriam
-	/// com a sessao; o que muda e que nao renascem em cima do proximo dono do id.
+	/// nenhum destes dicionarios vai pro disco: o estado nao pode renascer em cima do proximo dono do id.
 	/// </summary>
 	private void EsquecerG2(int id)
 	{
@@ -449,10 +434,6 @@ public partial class GameServer
 		_elementoG2.Remove(id);
 		_prontoTimeTouchG2.Remove(id);
 		_prontoGrowthG2.Remove(id);
-		_prontoHamonG2.Remove(id);
-		_hamonSkillG2.Remove(id);
-		_hamonBufferG2.Remove(id);
-		_idadeFracaoG2.Remove(id);
 	}
 
 	// =====================================================================
@@ -480,7 +461,7 @@ public partial class GameServer
 		// port, sobra o unico gate que da pra checar: estar morto.
 		if (pl.Ficha.dead) { Avisar(pl, "um cadáver não cresce."); return; }
 
-		EnvelhecerG2(pl, 0.1);          // "um mês de idade" -- o texto do proprio verb
+		EnvelhecerMeses(pl, 1);         // "um mês de idade" -- o texto do proprio verb
 		pl.Ficha.Ki += pl.Ficha.MaxKi * 2;
 		pl.Ficha.AttackGain(_rng, 5);   // `Attack_Gain(5)`
 
@@ -490,106 +471,8 @@ public partial class GameServer
 		GD.Print($"[server] {pl.Name}: Growth Spurt (Ki {pl.Ficha.Ki:0})");
 	}
 
-	/// <summary>
-	/// `Age += fracao`. `ServerPlayer.Idade` e INTEIRO -- a fracao se acumula aqui e so vira ano
-	/// quando fecha. Sem isto, todo `Age += 0.1` do DM seria silenciosamente descartado.
-	/// </summary>
-	private void EnvelhecerG2(ServerPlayer pl, double fracao)
-	{
-		double acc = _idadeFracaoG2.GetValueOrDefault(pl.Id) + fracao;
-		bool virouAno = false;
-		while (acc >= 1) { acc -= 1; pl.Idade++; virouAno = true; }
-		_idadeFracaoG2[pl.Id] = acc;
-		pl.SigAtributos = "";   // a idade vai no pacote de atributos: forca o proximo a sair
-
-		// SO QUANDO O ANO FECHA, e nao a cada fracao: o `AgeCheck` do DM sai cedo se o ano nao mudou
-		// (`Aging.dm:113`, `if(LastYear == Year) return`), e a fracao acumulada aqui e justamente o
-		// que ainda nao virou ano. Ver `ConferirMorteDeVelhice`.
-		if (virouAno) ConferirMorteDeVelhice(pl);
-	}
-
 	// =====================================================================
-	// 6. RESPIRACAO HAMON  (Spirit.dm:246)
-	// =====================================================================
-	/// <summary>
-	/// `mob/var/HBCost = 25` (Spirit.dm:242). O nivel 1 da skill baixa pra 12 e o nivel 2 pra 5 --
-	/// aqui fica o de nivel 0: a cura mais CARA das tres.
-	///
-	/// ============================ NAO E "O PORT NAO TEM NIVEIS". A ESCADA EXISTE E CAI NO VAZIO ============================
-	/// Este texto dizia *"o port nao tem niveis de skill"*, e isso CADUCOU:
-	/// `Core/Skills/NiveisDeSkill.cs` esta no jogo, e o `Assets/Data/niveis.json` traz a escada
-	/// DESTA skill inteira -- `/datum/skill/HamonBreathing`, degrau 1 com `flags: ["HBCost=12"]` e
-	/// degrau 2 com `["HBCost=5"]`, exatamente os dois numeros do original.
-	///
-	/// O QUE ACONTECE HOJE COM ELES: `NiveisDeSkill.Aplicar` manda cada flag pro `Escrever`, que
-	/// procura um campo `HBCost` no <see cref="Jandirus.Core.Stats.Fighter"/>. **Nao existe** --
-	/// entao `Escrever` devolve `false` e a flag some sem uma linha de aviso. O divisor abaixo
-	/// continua cravado em 25 porque nada o contradiz, e nao porque a escada nao chegou.
-	///
-	/// E A MESMA FAMILIA DE DEFEITO do `canPower` e do `bonusShots`: dado extraido, carregado e sem
-	/// consumidor. Fechar isto e dar um campo ao lutador (ou uma leitura de `Nivel(caminho)` aqui) --
-	/// e esta anotado como DEFEITO e nao como divida de porte, que e o que este comentario dizia antes.
-	/// ==================================================================================================================
-	/// </summary>
-	private const double HamonCustoDivisorG2 = 25;
-
-	/// <summary>Quantos usos enchem o `hamon_skill_buffer` ate destravar +1 (Spirit.dm:264).</summary>
-	private const double HamonUsosPraSkillG2 = 25;
-
-	private void RespiracaoHamon(ServerPlayer pl)
-	{
-		if (EmEspera(pl, _prontoHamonG2, "sua respiração Hamon ainda está se refazendo")) return;
-		long agora = NowMs();
-
-		double kireq = pl.Ficha.MaxKi / HamonCustoDivisorG2;
-
-		// `usr.Ki>=kireq && usr.HP<100 && !usr.blasting && !usr.KO` -- Spirit.dm:250.
-		// (`blasting` nao existe no port: nao ha projeteis. Cai fora sozinho.)
-		if (pl.Ficha.Ki < kireq) { Avisar(pl, $"isso pede pelo menos {kireq:0} de energia."); return; }
-		if (pl.Ficha.KO || EhCadaver(pl)) { Avisar(pl, "você não está em condições."); return; }
-		if (pl.Combate == null || pl.Ficha.HP >= 100) { Avisar(pl, "seu corpo já está inteiro."); return; }
-
-		double skill = _hamonSkillG2.GetValueOrDefault(pl.Id);
-
-		// `HBcooldown = 180 - hamon_skill*8` (Spirit.dm:256).
-		//
-		// UNIDADE -- e aqui o DM se contradiz. A mensagem diz "[HBcooldown] seconds" (180), mas o
-		// laco que conta faz `HBcooldown -= 10` a cada `sleep(10)` (Spirit.dm:258-261): subtrai
-		// DEZ por segundo, entao a espera REAL no jogo antigo e um decimo disso -- 18 s.
-		//
-		// VALE O COMPORTAMENTO, NAO O TEXTO. Portar 180 s seria dez vezes a espera que qualquer
-		// jogador daquele jogo ja sentiu, e ninguem reconheceria a tecnica. Entre o numero escrito
-		// e o numero que o jogo entrega, quem manda e o que o jogo entrega -- o texto era o bug.
-		double recargaS = Math.Max((180 - skill * 8) / 10.0, 1);
-
-		// `usr.SpreadHeal(1*willpowerMod + hamon_skill)` -- Spirit.dm:270. A cura vai pra CADA
-		// membro; como o HP do port e a media dos membros, o efeito no HP e o mesmo numero.
-		double cura = 1 * pl.Ficha.willpowerMod + skill;
-		pl.Combate.Corpo.Curar(cura);
-		pl.Combate.SincronizarVida();
-
-		pl.Ficha.Ki -= kireq;
-		_prontoHamonG2[pl.Id] = agora + (long)(recargaS * 1000);
-
-		// USAR ENSINA: `hamon_skill_buffer += 1`, e aos 25 usos `hamon_skill += 1` UMA unica vez
-		// (a condicao `&& !usr.hamon_skill` trava em 1). Portado com a trava.
-		if (skill == 0)
-		{
-			double buffer = _hamonBufferG2.GetValueOrDefault(pl.Id) + 1;
-			if (buffer >= HamonUsosPraSkillG2)
-			{
-				_hamonBufferG2[pl.Id] = 0;
-				_hamonSkillG2[pl.Id] = 1;
-				Avisar(pl, "seu corpo ondula: a respiração ficou mais profunda.");
-			}
-			else _hamonBufferG2[pl.Id] = buffer;
-		}
-
-		Avisar(pl, $"você respira fundo e a luz corre pelo corpo (+{cura:0.##} de vida).");
-	}
-
-	// =====================================================================
-	// 7. PUNHO ESPIRITUAL  (Spirit.dm:441)
+	// 6. PUNHO ESPIRITUAL  (Spirit.dm:441)
 	// =====================================================================
 	// `SpiritFistCost` e `SpiritFistDamage` ERAM DUAS CONSTANTES AQUI ("sem niveis no port, fica 2").
 	// Agora sao `Fighter.SpiritFistCost` / `SpiritFistDamage` (Spirit.dm:436-439), que os degraus 1 e 2
@@ -678,6 +561,9 @@ public partial class GameServer
 
 		pl.Ficha.stamina -= custo;
 		MarcarAgressao(alvo, pl);
+		AoGolpeRacial(pl, alvo, r);   // (v0.4.0) as passivas dos dois lados
+		// (2026-10-16) O PONTO DA SKILL: `if(MeleeAttack(...)) SpiritFistFireCount += 1` (`Spirit.dm:447`) -- o punho que achou alguem.
+		if (!NiveisDeSkill.FontesDoAdendo18DesligadasDeTeste) pl.Niveis.Creditar(PathDoSpiritFist, 1);
 
 		if (r.Encostou) ca.SomarCombo(); else ca.ZerarCombo();
 
@@ -787,8 +673,10 @@ public partial class GameServer
 
 			// MAESTRIA: 0,001 por volta ate x20, e cem vezes mais devagar depois (teto 50). O
 			// comentario do DM e literal: "kaioken is long as fuck to master".
-			if (maestria < 20) maestria += 0.001 * amt / LoopDmG2;
-			else maestria = Math.Min(maestria + 0.00001 * amt / LoopDmG2, 50);
+			// (2026-10-16) o ECHOED INSANITY do Corrupted Majin com a Forma Pura -- ver `FatorDeMaestriaDoCorpo`
+			double eco = FatorDeMaestriaDoCorpo(pl);
+			if (maestria < 20) maestria += 0.001 * amt / LoopDmG2 * eco;
+			else maestria = Math.Min(maestria + 0.00001 * amt / LoopDmG2 * eco, 50);
 			pl.Ficha.KaiokenMastery = maestria;   // na ficha: e o que vai pro disco
 		}
 	}
@@ -809,10 +697,10 @@ public partial class GameServer
 			// serrilhado do buffer. O primeiro pulso do DM demora (o buffer enche), e essa
 			// carencia inicial nao existe mais -- e diferenca de um pulso, nao de escala.
 			double porDreno = TransDrainG2
-							* Math.Max(0.001, pl.Ficha.maxstamina * GiganteEficienciaG2 * 0.005) / 2;
+							* Math.Max(0.001, pl.Ficha.maxstamina * EficienciaDoGigante(pl) * 0.005) / 2;
 			double porSegundo = porDreno / VoltasPorCobrancaG2;
 
-			double minimo = pl.Ficha.maxstamina * 0.005 * TransDrainG2 * GiganteEficienciaG2;
+			double minimo = pl.Ficha.maxstamina * 0.005 * TransDrainG2 * EficienciaDoGigante(pl);
 			if (pl.Ficha.stamina < minimo && !EhCadaver(pl))
 			{
 				// O DM nao desliga o gigante por falta de folego: o `if` simplesmente para de

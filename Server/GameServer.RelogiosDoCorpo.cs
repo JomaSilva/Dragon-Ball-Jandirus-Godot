@@ -148,6 +148,27 @@ public partial class GameServer
 		//     valem no mesmo quadro em que foram decididos.
 		foreach (ServerPlayer pl in _players.Values) TickDaFuriaLendaria(pl, dt);
 
+		// (2026-10-16) A SAGA DO CORRUPTED MAJIN: a sanidade, a loucura e o sono. DEPOIS da forma (que cobra Ki e paga maestria) e das
+		// duas possessoes (a fera e a furia escrevem no mesmo `Cerebro`), e ANTES do `TickDosCorposSemDono` que executa -- a loucura
+		// toma o corpo no mesmo quadro em que acontece. Ver `TickDaLoucuraDoMajin`.
+		//
+		// POR UMA LISTA REUSADA, e nao pelo `_players.Values` direto: o fim de um degrau poe a outra metade no mundo e a loucura cospe
+		// quem estava dentro -- as duas mexem no `_players` NO MEIO da volta. Direto, o laco estourava ("Collection was modified"), o
+		// tique inteiro abortava e a outra metade nascia de novo no seguinte; a `--diagsagamajin` pegou. O desenho e o do
+		// `_noEspaco` logo abaixo: a lista e do tamanho de quem anda na saga (quase sempre zero), e nao aloca.
+		if (SagaNoDicionarioDeTeste)
+		{
+			foreach (ServerPlayer pl in _players.Values) TickDaLoucuraDoMajin(pl, dt);   // o defeito da bancada: direto no dicionario
+		}
+		else
+		{
+			_majinsDaSaga.Clear();
+			foreach (ServerPlayer pl in _players.Values)
+				if (pl.Ficha.majin_saga_form != 0 || pl.Ficha.majin_pure_unlocked) _majinsDaSaga.Add(pl);
+			foreach (ServerPlayer pl in _majinsDaSaga)
+				if (_players.ContainsKey(pl.Id)) TickDaLoucuraDoMajin(pl, dt);   // um da volta pode ter tirado outro do mundo
+		}
+
 		// AS DISCIPLINAS DIVINAS: dreno/regeneracao das duas energias, maestria por combate, o
 		// Unbound Ego (que le o corpo a cada tique) e a queda das pilhas de esquiva.
 		foreach (ServerPlayer pl in _players.Values)
@@ -162,6 +183,13 @@ public partial class GameServer
 		// POR ULTIMO, depois de todo relogio acima que gasta (a forma, a carga, o voo, o nado): o que eles cobraram neste
 		// tique volta no mesmo tique, e a ficha que sai pro cliente ja sai cheia.
 		// ===========================================================================================================
+		// (v0.4.0) AS PASSIVAS E ATIVAS RACIAIS (`GameServer.Passivas.cs`), numa copia da lista: a Legendary Resurrection e a Ruthless
+		// Mind podem MATAR um corpo dentro do tique, e quem ouve a morte pode mexer no dicionario.
+		_corposDasRaciais.Clear();
+		_corposDasRaciais.AddRange(_players.Values);
+		foreach (ServerPlayer pl in _corposDasRaciais)
+			if (_players.ContainsKey(pl.Id)) TickDasRaciais(pl, dt);
+
 		foreach (ServerPlayer pl in _players.Values) Jandirus.Core.Stats.Nutricao.ManterOsInfinitos(pl.Ficha);
 	}
 
@@ -185,6 +213,12 @@ public partial class GameServer
 	/// ============================================================================================
 	/// </summary>
 	private readonly List<ServerPlayer> _noEspaco = [];
+
+	/// <summary>(2026-10-16) Os corpos que andam na saga do Corrupted Majin, reusada a cada tique -- ver a volta deles no `TickDosRelogiosDoCorpo`.</summary>
+	private readonly List<ServerPlayer> _majinsDaSaga = [];
+
+	/// <summary>(v0.4.0) A copia da lista de corpos do tique racial, reaproveitada.</summary>
+	private readonly List<ServerPlayer> _corposDasRaciais = [];
 
 	/// <summary>
 	/// Troca de chunk e pouso por encostar, so pra quem esta la em cima. Ver <see cref="_noEspaco"/>.

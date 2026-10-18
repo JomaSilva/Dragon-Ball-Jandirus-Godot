@@ -44,9 +44,6 @@ public static class RegenDeKi
 	/// </summary>
 	private const double RegenEmFormaComDreno = 0.2;
 
-	/// <summary>Teto do `extracharge`, igual ao do DM.</summary>
-	public const double TetoDaCarga = 50;
-
 	/// <summary>
 	/// UM PASSO DE REGENERACAO.
 	///
@@ -71,12 +68,12 @@ public static class RegenDeKi
 			// impede alguem de ficar preso sem Ki nenhum -- do fundo do poco sempre se sai.
 			if (f.Ki <= f.MaxKi * 0.1 && f.stamina >= piso)
 			{
-				f.Ki += f.KIregen * 3 * sp * PorSegundo * dt;
+				f.Ki += f.KIregen * 3 * sp * f.racialRegenKiPassiva * PorSegundo * dt;
 				f.stamina -= f.KIregen * sp / 4 * PorSegundo * dt;
 			}
 			else if (f.stamina >= piso)
 			{
-				f.Ki += f.KIregen * sp / 6 * formRegen * PorSegundo * dt;
+				f.Ki += f.KIregen * sp / 6 * formRegen * f.racialRegenKiPassiva * PorSegundo * dt;
 				f.stamina -= f.KIregen * sp / maxKi / 9 * PorSegundo * dt;
 			}
 
@@ -85,7 +82,7 @@ public static class RegenDeKi
 			// `+0.05` e valor de graca -- meditar rende mesmo pra quem nao tem stat nenhum.
 			if (f.med && f.MeditateGivesKiRegen != 0)
 			{
-				f.Ki += (f.KIregen * sp * 6 + 0.05) * PorSegundo * dt;
+				f.Ki += (f.KIregen * sp * 6 + 0.05) * f.racialRegenKiAtiva * PorSegundo * dt;   // (v0.4.0) meditar e a regen ATIVA
 				f.stamina -= f.KIregen * sp / maxKi / 6 * PorSegundo * dt;
 			}
 
@@ -93,12 +90,12 @@ public static class RegenDeKi
 			// recurso DENTRO da briga em vez de um poco sem fundo.
 			if (f.IsInFight)
 			{
-				f.Ki += f.KIregen * sp / 2 * formRegen * PorSegundo * dt;
+				f.Ki += f.KIregen * sp / 2 * formRegen * f.racialRegenKiPassiva * PorSegundo * dt;
 				f.stamina -= f.KIregen * sp / maxKi / 8 * PorSegundo * dt;
 			}
 			else
 			{
-				f.Ki += f.KIregen * sp * formRegen * PorSegundo * dt;
+				f.Ki += f.KIregen * sp * formRegen * f.racialRegenKiPassiva * PorSegundo * dt;
 				f.stamina -= f.KIregen * sp / maxKi / 3 * PorSegundo * dt;
 			}
 
@@ -113,27 +110,13 @@ public static class RegenDeKi
 			f.Ki = Math.Min(f.MaxKi, f.Ki);
 		}
 
-		// ============================ O TROCO DA CARGA ============================
-		// FORA do portao acima, de proposito: e o unico ramo do DM que pode passar do MaxKi, e
-		// vem DEPOIS do teto. E o que sobra da energia que se comprimiu segurando o C -- ela
-		// volta como Ki ao longo dos segundos seguintes, em vez de sumir ao soltar a tecla.
-		//
-		// DO TETO DE CARGA DO CORPO ELE NAO PASSA (dono, 2026-10-13): quem soltava o C no teto e voltava a segurar
-		// recebia o resto do troco ACIMA dele (o ramo "ja no maximo" da carga nao escorre). O corte e do funil -- o
-		// `GameServer.TickDaCarga`, unico chamador daqui, apara o Ki no `Combat.CargaDeKi.TetoDuro` no fim do mesmo tique.
-		//
-		// A PARABOLA `-(x-25)^2/100 + 6.25` vale ZERO nas pontas (0 e 50) e 6,25 no meio: carga
-		// pouca quase nao rende, carga media rende o maximo, e carga cheia rende pouco -- e vai
-		// rendendo mais conforme decai pro meio. Nao e curva arbitraria, e a do original.
-		if (f.extracharge > 0)
-		{
-			f.extracharge = Math.Clamp(f.extracharge, 0, TetoDaCarga);
-			double x = f.extracharge - 25;
-			f.Ki += f.KIregen * (-(x * x) / 100 + 6.25) * PorSegundo * dt;
-			f.stamina -= f.KIregen * sp / maxKi / 3 * PorSegundo * dt;
-			f.extracharge = Math.Max(0, f.extracharge - PorSegundo * dt);
-		}
-
+		// ============================ O TROCO DA CARGA SAIU (dono, 2026-10-16) ============================
+		// No DM o que se comprimiu segurando o C volta como Ki nos ~15 s depois de soltar (`extracharge`, `Ki.dm:46-50`: uma
+		// parabola que paga ate 208 vezes o `KIregen`, FORA do teto de 100%). O dono jogou e chamou de defeito: *"com o C mesmo
+		// se passar de 100% o ki continua subindo por uns segundos mesmo eu tendo largado o C"* -- e abaixo dos 100% o mesmo troco
+		// fazia o tanque "subir sozinho" depois de soltar. DIVERGENCIA DECLARADA: soltar o C para a subida; dali em diante so a
+		// regeneracao de cima (que para nos 100%) e o vazamento do excesso (`CargaDeKi.PrecoDoExcesso`).
+		// ==================================================================================================
 		f.stamina = Math.Max(0, f.stamina);
 	}
 }

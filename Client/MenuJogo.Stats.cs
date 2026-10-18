@@ -205,11 +205,7 @@ public partial class MenuJogo
 
 		var partes = new List<(string Texto, Color Cor)>();
 		if (_atributos.Gravidade > 0) partes.Add(($"{_atributos.Gravidade:0.#}x grav", Tema.Texto));
-		// A ACLIMATACAO SO APARECE QUANDO EXISTE: quem domina mais gravidade do que sente treina com
-		// parte da folga (`GravAccustomWeight`), e sem esta pista o jogador nao entenderia por que
-		// rende 3x num chao de 1x.
-		if (_atributos.GravEfetiva > _atributos.Gravidade + 0.05f)
-			partes.Add(($"aclimatado → {_atributos.GravEfetiva:0.#}", Tema.Bom));
+		// (A ACLIMATACAO NAO ENTRA AQUI desde 2026-10-16: ela e PODER, e nao treino -- a linha dela mora na aba de Formas.)
 		if (_atributos.PesoMult > 1.001f) partes.Add(($"{_atributos.PesoMult:0.##}x pesos", Tema.Destaque));
 		if (_atributos.ZonaMult > 1.001f) partes.Add(($"Sala {_atributos.ZonaMult:0}x", Tema.Destaque));
 		else if (_atributos.ZonaMult < 0.999f) partes.Add(($"zona {_atributos.ZonaMult:0.##}x", Tema.Perigo));

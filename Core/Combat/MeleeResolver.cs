@@ -179,7 +179,7 @@ public static class MeleeResolver
 		// VALE PRA TODO CORPO, NPC incluso: o `hitProc` e um so pros dois. A regra e os numeros moram no
 		// `DebuffsDeMembro`, que e de onde a aba Body tira a frase "N% menos chance de acertar".
 		// =============================================================================================================
-		if (!DebuffsDeMembro.DesligadosDeTeste) bhit *= DebuffsDeMembro.FatorDePontaria(DebuffsDeMembro.De(a.Corpo));
+		if (!DebuffsDeMembro.DesligadosDeTeste) bhit *= DebuffsDeMembro.FatorDePontaria(DebuffsDeMembro.De(a.Corpo), a.EscalaDosMembros);
 
 		if (!indefeso && !d.Bloqueando && !Sorteou(rng, bhit))
 		{
@@ -337,7 +337,8 @@ public static class MeleeResolver
 		dmg *= CombatMath.BpModulus(a.F.expressedBP, d.F.expressedBP);
 		dmg = CombatMath.Armadura(dmg, d.F.Esuperkiarmor);
 
-		return Math.Max(dmg, 0);
+		// (v0.4.0) O DANO RACIAL DE QUEM BATE (Primal Evolution, Primal Bloodlust, Sadistic Nature, Long-Awaited) -- o golpe aparado leva junto.
+		return Math.Max(dmg * a.DanoDadoRacial, 0);
 	}
 
 	/// <summary>
@@ -413,6 +414,16 @@ public static class MeleeResolver
 	private static void AplicarNoMembro(CombatState d, BodyPart membro, double dano, bool letal, bool porKi,
 										ref GolpeResultado r)
 	{
+		// ============================ (v0.4.0) A DEFESA RACIAL DE QUEM APANHA ============================
+		// AQUI, e nao no `Resolver`: e por este metodo que passa TODO dano que o resolvedor aplica -- o soco, o golpe aparado e o dano
+		// pronto do ki (`AplicarDanoPronto`). O dano recebido (Primal Bloodlust), a reducao racial (Saiyan's Resolve, Unstoppable Force,
+		// Blazing Spirit) e a do MEMBRO (Extreme Tenacity, que depende da vida dele -- por isso vem depois do sorteio).
+		// ================================================================================================
+		dano *= d.DanoRecebidoRacial;
+		if (d.ReducaoRacial > 0) dano *= 1 - Math.Clamp(d.ReducaoRacial, 0, 100) / 100.0;
+		if (d.Tenaz) dano *= 1 - Races.Passivas.ReducaoTenaz(membro.Fracao) / 100.0;
+		r.Dano = dano;
+
 		bool eraQuebrado = membro.Quebrado;
 		// PELO FUNIL (`CombatState.Ferir`), e nao pelo corpo direto: as duas portas de melee ja
 		// recusam quem esta <see cref="CombatState.Intocavel"/> la em cima, mas o dia em que uma

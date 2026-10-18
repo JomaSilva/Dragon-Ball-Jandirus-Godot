@@ -126,7 +126,15 @@ public sealed partial class GameServer
 			// (2026-10-15) O MAJIN EM PEDACOS: a tela desenha os pedacos por este valor -- ver `CombatState.Desfeito`.
 			Desfeito = pl.Combate?.Desfeito == true,
 			// (v0.3.0) O CHEFE ERGUENDO O SOL DO ULTIMATO: a tela desenha a Supernova por este valor -- ver `ComecarASupernova`.
-			Supernova = pl.SupernovaDesde != 0,
+			Supernova = pl.SupernovaDesde != 0 && pl.AtaqueDoUltimato == Jandirus.Core.Npc.AtaqueDoUltimato.Supernova,
+			// (2026-10-17) ...e a Death Ball do Freeza de Namek, pela mesma porta (`ComecarASupernova` com a outra esfera).
+			DeathBall = pl.SupernovaDesde != 0 && pl.AtaqueDoUltimato == Jandirus.Core.Npc.AtaqueDoUltimato.DeathBall,
+			// (v0.4.0) A CARGA DO DEMONIC SAIYAN: a tela desenha a esfera verde por este valor -- ver `GameServer.Passivas.cs`.
+			CargaDemoniaca = pl.Racial.DemonicoCargaDesde >= 0,
+			// (2026-10-17) O GRITO DO DESABAFO: a tela desenha a esfera verde (mais furiosa) por este valor -- ver `AndarOGrito`.
+			GritoDoDesabafo = pl.Racial.GritoDesde >= 0,
+			// (2026-10-17) A VITIMA DA EXECUCAO DO BIO: a tela a desenha secando por este valor -- ver `SendoBebido`.
+			Secando = SendoBebido(pl.Id),
 			Nocauteado = pl.Ficha.KO || (pl.Ficha.dead && !pl.MortoDePe),
 			NoEmbate = _emEmbate.ContainsKey(pl.Id) || _emEmbateDeKi.ContainsKey(pl.Id),
 			EmCena = EmCena(pl),
@@ -175,7 +183,9 @@ public sealed partial class GameServer
 	///     Tirar da grade e a resposta honesta: quem esta no colo ja e barrado pelo corpo que o leva.
 	/// ========================================================================================================================
 	/// </summary>
-	private bool EntraNaGrade(ServerPlayer pl) => !SendoCarregado(pl);
+	private bool EntraNaGrade(ServerPlayer pl) => !SendoCarregado(pl)
+		// (2026-10-17) E A LARVA ENTERRADA: ela esta debaixo da terra, e quem anda passa por cima -- ver `GameServer.Larva.cs`.
+		&& pl.EnterradoDesde < 0;
 
 	/// <summary>
 	/// A <see cref="Vizinhanca"/> DESTE CORPO -- o unico jeito de alguem no servidor pegar a grade.

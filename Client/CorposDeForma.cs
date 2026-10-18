@@ -135,6 +135,11 @@ public static class CorposDeForma
 		// `dnl_bio_hatch` esquece de preenche-lo).
 		CorpoDeForma.BioSuperPerfeito => Jandirus.Core.Races.BioAndroids.CorpoSuperPerfeito,
 
+		// (2026-10-16) A FORMA PURA DO CORRUPTED MAJIN, pelo mesmo argumento da Super Perfeita: uma folha so, constante do Core
+		// (`MajinSaga.dm:536`, `icon = 'MajinForm5.dmi'`). A cor que o jogador escolheu tinge por cima -- quem pinta e o
+		// `CharacterVisual.PintarCorpoDaForma`, pela regra do Core (`Catalogo.CorpoDaFormaLevaAPele`).
+		CorpoDeForma.MajinPuro => Jandirus.Core.Races.SagaDoMajin.FolhaDaFormaPura,
+
 		_ => null,
 	};
 

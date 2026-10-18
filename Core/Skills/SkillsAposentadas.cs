@@ -75,6 +75,13 @@ public static class SkillsAposentadas
 			"tirada em 2026-10-13: nao fazia nada (a maestria do Max Power sobe sozinha)"),
 		new("/datum/skill/heran/MstedTMXPWR", "Mastered true Max Power", 2,
 			"tirada em 2026-10-13: nao fazia nada (a maestria do True Max Power sobe sozinha)"),
+
+		// A RESPIRACAO HAMON (dono, 2026-10-16: *"pergunta vc colocou respiraçao de hamon? coisas nao oficiais de dragon ball nem eram
+		// pra entrar nesse port, se colocou favor remover qualquer traço disso"*). Vinha do DM (`Skill Trees/Core Trees/Spirit.dm`) -- e e
+		// de JoJo, nao de Dragon Ball. Era COMUM (tier 3, qualquer um comprava depois da `ControlledBreathing`) e custava 2 marcos. O efeito
+		// saiu do servidor junto: o verb do lote G2, a regra de nivel, o divisor da cura na ficha e o socorro da IA.
+		new("/datum/skill/HamonBreathing", "Hamon Breathing", 2,
+			"tirada em 2026-10-16: nao e de Dragon Ball"),
 	];
 
 	/// <summary>Esta skill saiu do jogo?</summary>

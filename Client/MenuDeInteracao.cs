@@ -60,6 +60,32 @@ public partial class MenuDeInteracao : CanvasLayer
 	public override void _ExitTree()
 	{
 		if (Instancia == this) Instancia = null;
+		// O `-=` DO PAR: o menu pode morrer (a volta ao menu principal) e o `GameClient` nao.
+		if (_ouvindoEscolhas is { } cli) cli.EscolhasChegaram -= AoChegaremEscolhas;
+		_ouvindoEscolhas = null;
+	}
+
+	/// <summary>(v0.3.2) A pergunta de `Forma.Lista` aberta agora -- nula fora da pagina de escolhas.</summary>
+	private Interacoes.Acao? _perguntando;
+
+	/// <summary>(v0.3.2) Quando a pergunta saiu: lista de ANTES dela e de outra pergunta, e a pagina segue consultando.</summary>
+	private ulong _perguntouEm;
+
+	/// <summary>(v0.3.2) O cliente cujas escolhas este menu ouve (a inscricao e preguicosa: o menu nasce antes da conexao).</summary>
+	private GameClient? _ouvindoEscolhas;
+
+	private void OuvirEscolhas()
+	{
+		if (GameClient.Instance is not { } cli || ReferenceEquals(cli, _ouvindoEscolhas)) return;
+		if (_ouvindoEscolhas != null) _ouvindoEscolhas.EscolhasChegaram -= AoChegaremEscolhas;
+		cli.EscolhasChegaram += AoChegaremEscolhas;
+		_ouvindoEscolhas = cli;
+	}
+
+	/// <summary>(v0.3.2) As escolhas chegaram: se a pergunta delas e a pagina aberta, ela se redesenha com os botoes.</summary>
+	private void AoChegaremEscolhas(string verbo)
+	{
+		if (NaTela && _perguntando is { } p && p.Verbo == verbo && _pagina == verbo) Desenhar(_tipoDoAlvo);
 	}
 
 	// =====================================================================
@@ -498,6 +524,7 @@ public partial class MenuDeInteracao : CanvasLayer
 	private void Abrir()
 	{
 		_pagina = "";
+		_perguntando = null;
 
 		_naPorta = false;
 
@@ -585,7 +612,11 @@ public partial class MenuDeInteracao : CanvasLayer
 	private void Desenhar(string tipo)
 	{
 		string chave = _pagina.Length == 0 ? tipo : $"{tipo}/{_pagina}";
-		_titulo.Text = _pagina.Length == 0 ? NomeDoAlvo() : NomeDoAlvo() + " — melhorias";
+		// (v0.3.2) a pagina de escolhas so vale enquanto e ela que esta aberta: o Voltar a deixa pra tras
+		if (_perguntando is { } p0 && _pagina != p0.Verbo) _perguntando = null;
+		_titulo.Text = _pagina.Length == 0 ? NomeDoAlvo()
+			: _perguntando is { } p1 ? $"{NomeDoAlvo()} — {p1.Rotulo}"
+			: NomeDoAlvo() + " — melhorias";
 
 		foreach (Node n in _lista.GetChildren()) n.QueueFree();
 
@@ -606,6 +637,25 @@ public partial class MenuDeInteracao : CanvasLayer
 				Desenhar(tipo);
 			};
 			_lista.AddChild(voltar);
+		}
+
+		// (v0.3.2) A PAGINA DE ESCOLHAS DO SERVIDOR (`Forma.Lista`): um botao por escolha, e o clique manda o MESMO verbo com ela. Ate a
+		// resposta chegar (`S2C.Escolhas`, `GameClient.Escolhas`), a pagina diz que esta consultando.
+		if (_perguntando is { } pergunta)
+		{
+			if (GameClient.Instance?.Escolhas is { } e && e.Verbo == pergunta.Verbo && e.ChegouEm >= _perguntouEm)
+			{
+				if (e.Itens.Count == 0) _lista.AddChild(new Label { Text = "nenhuma escolha agora." });
+				foreach (string escolha in e.Itens)
+				{
+					string arg = escolha;
+					var b = new Button { Text = escolha, TooltipText = pergunta.Dica };
+					b.Pressed += () => { GameClient.Instance?.SendVerbo(pergunta.Verbo, arg); Fechar(); };
+					_lista.AddChild(b);
+				}
+			}
+			else _lista.AddChild(new Label { Text = "consultando..." });
+			return;
 		}
 
 		// A MESMA TELA, OUTRA TABELA: montado num veiculo o que se pode fazer com ele e outra coisa
@@ -657,6 +707,16 @@ public partial class MenuDeInteracao : CanvasLayer
 
 			case Interacoes.Forma.Texto:
 				AbrirCaixaDeTexto(acao);
+				break;
+
+			case Interacoes.Forma.Lista:
+				// (v0.3.2) A PERGUNTA VAI AO SERVIDOR: o verbo com o argumento vazio, e a resposta redesenha esta pagina (`AoChegaremEscolhas`).
+				_perguntando = acao;
+				_perguntouEm = Time.GetTicksMsec();
+				_pagina = acao.Verbo;
+				OuvirEscolhas();
+				GameClient.Instance?.SendVerbo(acao.Verbo, "");
+				Desenhar(tipo);
 				break;
 
 			case Interacoes.Forma.Roupa:
@@ -734,6 +794,7 @@ public partial class MenuDeInteracao : CanvasLayer
 		FecharTeclado();
 		_raiz.Visible = false;
 		_pagina = "";
+		_perguntando = null;
 		_tipoDoAlvo = "";
 		_nomeDoAlvo = "";
 		_noVeiculo = false;

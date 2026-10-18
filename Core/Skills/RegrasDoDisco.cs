@@ -74,7 +74,14 @@ public static class RegrasDoDisco
 					// SO E "POR TEMPO" QUEM SOBE SOZINHO. O extrator marca `contador` quando o
 					// exp vem de uma acao contada (golpes disparados, blasts); nesse caso quem
 					// credita e o evento, nao o relogio -- ver `NiveisDeSkill.Creditar`.
-					bool porContador = Str(bloco, "contador").Length > 0;
+					//
+					// (2026-10-16) O SOMATORIO DA EFUSAO VIRA CONTADOR: `exp += KiSkillGains(10*(effusioncounter-attackcounter))` e a
+					// marca-d'agua dos outros 30, so que sobre uma SOMA -- e o extrator so marca `contador` pra um contador do mob. Ver
+					// `NiveisDeSkill.ContadorDaEfusao`.
+					string contador = Str(bloco, "contador");
+					if (contador.Length == 0 && Str(bloco, "cond").Replace(" ", "") == "attackcounter<effusioncounter")
+						contador = NiveisDeSkill.ContadorDaEfusao;
+					bool porContador = contador.Length > 0;
 					if (!porContador && Num(bloco, "prob", 0) > 0)
 					{
 						r.GanhoPorTempo = true;
@@ -92,7 +99,7 @@ public static class RegrasDoDisco
 						if (porEvento <= 0) break;
 						r.PorContador.Add(new RegraDeNivel.GanhoPorContador
 						{
-							Contador = Str(bloco, "contador"),
+							Contador = contador,
 							Quanto = porEvento,
 						});
 						_porContador++;
@@ -139,6 +146,12 @@ public static class RegrasDoDisco
 						"savant.Ki!=lastki&&diffki<0" => RegraDeNivel.Estado.GastandoKi,
 						"(savant.Ki/savant.MaxKi)<0.9" => RegraDeNivel.Estado.TanqueAbaixoDe90,
 						"savant.deepmeditation" => RegraDeNivel.Estado.MeditacaoProfunda,
+
+						// ---- (2026-10-16) as quatro do adendo 18: a Rapid Movement e as tres ferramentas da Cultivation ----
+						"savant.dir!=lastdir" => RegraDeNivel.Estado.Virando,
+						"savant.KiBladeOn" => RegraDeNivel.Estado.ComLaminaDeKi,
+						"savant.KiSwordOn" => RegraDeNivel.Estado.ComEspadaDeKi,
+						"savant.KiShieldOn" => RegraDeNivel.Estado.ComEscudoDeKi,
 						_ => null,
 					};
 
@@ -158,13 +171,26 @@ public static class RegrasDoDisco
 
 					double quanto = Num(bloco, "quanto", 0);
 					if (quanto <= 0) break;
+					int nivelMinimo = (int)Num(bloco, "nivelmin", 0);
+
+					// (2026-10-16) OS QUATRO DO ADENDO 18 MORAM NUM `switch(level)`: a Rapid Movement (`speedy.dm:96-106`) e a lamina, a
+					// espada e o escudo de Ki (`Cultivation.dm:63-79`) escrevem o MESMO `exp += 1` no ramo do nivel 0 e no do nivel 1 -- e o do
+					// nivel 2 nao rende. O extrator nao guarda o ramo; a ordem guarda: a i-esima ocorrencia da condicao na skill e o ramo do
+					// nivel i. Sem isto os dois ramos renderiam juntos -- o dobro, e pra sempre.
+					if (q is RegraDeNivel.Estado.Virando or RegraDeNivel.Estado.ComLaminaDeKi or RegraDeNivel.Estado.ComEspadaDeKi
+						or RegraDeNivel.Estado.ComEscudoDeKi)
+					{
+						nivelMinimo = r.PorEstado.Count(g => g.Quando == q);
+						nivelMenorQue = nivelMinimo + 1;
+					}
+
 					r.PorEstado.Add(new RegraDeNivel.GanhoPorEstado
 					{
 						Quanto = quanto,
 						Quando = q,
 						Cadeia = cadeia,
 						NivelMenorQue = nivelMenorQue,
-						NivelMinimo = (int)Num(bloco, "nivelmin", 0),
+						NivelMinimo = nivelMinimo,
 						// `curva: 1` = passou pelo `KiSkillGains` do DM. Ver `GanhoPorEstado.Curva`.
 						Curva = Num(bloco, "curva", 0) > 0,
 					});

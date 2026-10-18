@@ -678,9 +678,10 @@ public sealed partial class GameServer
 		{
 			Embate e = _embates[i];
 
-			// alguem caiu, morreu ou saiu do mundo no meio: o embate acaba onde esta
+			// alguem caiu, morreu ou saiu do mundo no meio: o embate acaba onde esta. (2026-10-16) MORRER E VIRAR CADAVER: o fantasma
+			// de pe do Outro Mundo tem Zanzo Clash como o vivo -- era o `dead` cru, e o embate entre dois mortos caia no tique seguinte.
 			if (!_players.ContainsKey(e.A.Id) || !_players.ContainsKey(e.B.Id)
-				|| e.A.Ficha.dead || e.B.Ficha.dead || agora >= e.Acaba)
+				|| CaidoPelaMorte(e.A) || CaidoPelaMorte(e.B) || agora >= e.Acaba)
 			{
 				Terminar(e);
 				_embates.RemoveAt(i);

@@ -140,8 +140,12 @@ public static class PoderEmUso
 	// LER
 	// =====================================================================
 
-	/// <summary>RELAXADO: o corpo soltou o proprio poder (`Fighter.relaxado`).</summary>
-	public static bool Relaxado(Fighter f) => f.relaxado;
+	/// <summary>
+	/// RELAXADO: o corpo soltou o proprio poder (`Fighter.relaxado`) -- ou (2026-10-17) e uma LARVA de bio-androide, que fica sempre assim (o
+	/// dono: *"ela fica sempre no modo 'relaxado' com 5 de bp e escondido do sense e rastreadores"*). A larva nao precisa do botao e nem a raiva
+	/// nem a carga a acordam: quem a solta e amadurecer (`Races.BioAndroids.EmLarva`).
+	/// </summary>
+	public static bool Relaxado(Fighter f) => f.relaxado || Races.BioAndroids.EmLarva(f);
 
 	/// <summary>
 	/// **O PODER DESTE CORPO ESTA ESCONDIDO?** -- travado em 5 (`Fighter.Power.cs`), fora do Sense, do scouter e
@@ -149,7 +153,7 @@ public static class PoderEmUso
 	/// Zanzoken: `isconcealed`) e relaxar. E a unica pergunta que quem LE o sigilo faz -- a trava do poder, o corte
 	/// do multiplicador (`GameServer.Sigilo.cs`) e o denominador do Sense (`GameServer.PoderEmUso.cs`).
 	/// </summary>
-	public static bool Escondido(Fighter f) => f.isconcealed || (f.relaxado && !RelaxadoNaoEscondeDeTeste);
+	public static bool Escondido(Fighter f) => f.isconcealed || (Relaxado(f) && !RelaxadoNaoEscondeDeTeste);
 
 	/// <summary>
 	/// **O PODER QUE O CORPO EXPRESSARIA SEM A BARRA** -- o dono: *"vc mudar teu poder na barra de % n esconde o ki
@@ -203,7 +207,7 @@ public static class PoderEmUso
 	public static double FatorDeDescanso(Fighter f)
 	{
 		if (DescansoNaoRendeDeTeste) return 1;
-		if (f.relaxado) return DescansoRelaxado;
+		if (Relaxado(f)) return DescansoRelaxado;
 		double contido = (Cheio - Math.Clamp(f.powerMod, Piso, Cheio)) / (Cheio - Piso);   // 0 = poder inteiro, 1 = no piso
 		return 1 + (DescansoNoPiso - 1) * contido;
 	}
@@ -220,7 +224,7 @@ public static class PoderEmUso
 	/// expressa); depois a tecnica de sumir; depois a barra.
 	/// </summary>
 	public static EstadoDoPoder Estado(Fighter f) =>
-		f.relaxado ? EstadoDoPoder.Relaxado
+		Relaxado(f) ? EstadoDoPoder.Relaxado
 		: f.isconcealed ? EstadoDoPoder.Escondendo
 		: f.powerMod < Cheio ? EstadoDoPoder.Contendo
 		: EstadoDoPoder.PoderTotal;
@@ -298,7 +302,8 @@ public static class PoderEmUso
 	/// </summary>
 	public static bool ARaivaAcorda(Fighter f)
 	{
-		if (!f.relaxado || !IrritadoDemaisPraRelaxar(f)) return false;
+		// (2026-10-17) a LARVA nao acorda: ela e relaxada pela carapaca, e nao pelo botao.
+		if (!f.relaxado || Races.BioAndroids.EmLarva(f) || !IrritadoDemaisPraRelaxar(f)) return false;
 		f.relaxado = false;
 		f.powerMod = Cheio;
 		return true;
@@ -315,7 +320,7 @@ public static class PoderEmUso
 	/// </summary>
 	public static bool ACargaAcorda(Fighter f)
 	{
-		if (!f.relaxado || CargaNaoAcordaDeTeste) return false;
+		if (!f.relaxado || Races.BioAndroids.EmLarva(f) || CargaNaoAcordaDeTeste) return false;   // (2026-10-17) a larva nao acorda
 		f.relaxado = false;
 		f.powerMod = Piso;
 		return true;

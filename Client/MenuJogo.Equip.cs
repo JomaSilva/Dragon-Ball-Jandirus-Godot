@@ -220,6 +220,7 @@ public partial class MenuJogo
 		// AS TECLAS SAEM DO REGISTRO (`Teclas`), e nao escritas a mao: quem religou o letal pro J tem
 		// que ler J aqui, senao a nota ensina errado justamente quem mudou.
 		Nota($"Letal alterna com {Teclas.NomeDaAcao("lethal")}. A guarda é {Teclas.NomeDaAcao("guard")}: apara com braço ou perna, e na hora certa vira contra-ataque.", c);
+		Nota($"Duplo clique marca o alvo; {Teclas.NomeDaAcao("travar_alvo")} trava no mais perto (de novo: o próximo).", c);
 	}
 
 	// =====================================================================
@@ -273,7 +274,7 @@ public partial class MenuJogo
 		GameClient? c = GameClient.Instance;
 		string mochila = c == null ? "" : string.Join(',', c.Mochila.Pilhas.Select(p => $"{p.Id}x{p.Quantidade}"));
 		return $"{_atributos.Poderes}|{_atributos.PesoMult:0.##}|{_atributos.PesoMaxKg:0}|{_atributos.PesoKg:0}|{_atributos.PesoArte}|{_atributos.PesoMelhoriasAteOLimite}|{f.SocoMs}|{mochila}"
-			 + $"|{Teclas.NomeDaAcao("lethal")}|{Teclas.NomeDaAcao("guard")}"
+			 + $"|{Teclas.NomeDaAcao("lethal")}|{Teclas.NomeDaAcao("guard")}|{Teclas.NomeDaAcao("travar_alvo")}"
 			 // o bloco do radio: a frequencia que o servidor guarda e as duas teclas que a nota dele ensina
 			 + $"|{c?.FrequenciaDoRadio}|{Teclas.NomeDaAcao("falar_radio")}|{Teclas.NomeDaAcao("falar_voz")}";
 	}

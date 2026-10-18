@@ -129,6 +129,10 @@ public partial class RoboDaV030 : Node
 		Jandirus.Server.GameServer.XNaoApagaOKaiokenDeTeste = false;
 		LocalPlayer.TravaDaTecnicaSoNoServidorDeTeste = false;
 		Jandirus.Server.GameServer.RefugioSempreAbreDeTeste = false;
+		Jandirus.Server.GameServer.DeathBallSocaAoCrescerDeTeste = false;
+		Jandirus.Server.GameServer.DeathBallLancaSemSocoDeTeste = false;
+		Jandirus.Server.GameServer.PasseSemListaDeTeste = false;
+		CharacterVisual.PassagemOpacaDeTeste = false;
 
 		Nota("==================================================================================");
 		Nota($" PLACAR: {_ok} OK, {_falha} FALHA(S)   |   DEFEITOS INJETADOS: {_injOk} pegos, {_injFalha} passaram batido");
@@ -168,11 +172,14 @@ public partial class RoboDaV030 : Node
 		await X_OGiganteEAChama(cli, srv);
 		await A_OGolpeAutomatico(cli, srv);
 		await J_OPasseDoEnma(cli, srv);
+		await IT_APassagemDoMorto(cli, srv);   // (adendo 18) logo depois: o mesmo morto ao lado do Enma
 		await P_OMortoMergulha(cli, srv);
 		await F_OChefeCaca(cli, srv);
 		await S_ASupernova(cli, srv);
+		await S2_ADeathBallDeNamek(cli, srv);   // (2026-10-17) a mesma logica, a outra esfera
 		await KK_OKaioken(cli, srv);
 		await GK_AGenkidamaNaoTeleporta(cli, srv);
+		await DB_ADeathBall(cli, srv);   // (adendo 18) a mesma cura da Genkidama
 		await TR_ORefugioPelaTerra(cli, srv);
 		await L_AReencarnacao(cli, srv);   // a ULTIMA: ela troca o personagem
 
@@ -426,27 +433,40 @@ public partial class RoboDaV030 : Node
 		try
 		{
 			SpriteFrames? folhaDoCorpo = Boneco()?.CorpoParaOsPedacos()?.Folha;
+			// (2026-10-16) AS CAMADAS ACESAS -- o dono: *"o conserto na regeneraçao do majin é pra todos, nao so o corrupted"*. O figurante e
+			// um Majin comum de NPC, visto de fora: o boneco inteiro (olhos e roupa inclusive) sai da tela e volta como era.
+			string[] acesasAntes = Boneco()?.CamadasAcesasDeTeste() ?? [];
+			Nota($"o figurante Majin, antes do soco: camadas acesas [{string.Join(", ", acesasAntes)}]");
 
 			srv.PalcoV30_Desfazer(id);
 			bool emPedacos = await Ate(() => Pedacos()?.PedacosDeTeste().Count == PedacosDoMajin.Quantos && Boneco() is { Visible: false }, 3);
 			List<string> anims = Pedacos()?.PedacosDeTeste() ?? [];
-			Checa("**O MAJIN SE DESFAZ NA TELA**: o corpo some e cinco pedacos da `Majin1` (os tres desenhos de pedaco) ficam espalhados em volta",
-				  emPedacos && anims.All(a => a.StartsWith("chunk", StringComparison.Ordinal)),
-				  $"pedacos [{string.Join(", ", anims)}]; boneco visivel {Boneco()?.Visible}");
+			string[] acesasNosPedacos = Boneco()?.CamadasAcesasDeTeste() ?? [];
+			Checa("**O MAJIN SE DESFAZ NA TELA**: o corpo some -- e os OLHOS e a ROUPA com ele, nenhuma camada do boneco acesa -- e cinco pedacos da `Majin1` (os tres desenhos de pedaco) ficam espalhados em volta",
+				  emPedacos && anims.All(a => a.StartsWith("chunk", StringComparison.Ordinal)) && acesasNosPedacos.Length == 0,
+				  $"pedacos [{string.Join(", ", anims)}]; boneco visivel {Boneco()?.Visible}; camadas acesas [{string.Join(", ", acesasNosPedacos)}]");
 
 			// A VOLTA: os pedacos andam pro corpo, a reconstrucao toca, e o corpo reaparece
 			srv.PalcoV30_Refazer(id);
 			(SpriteFrames? Folha, string Anim) refazendo = (null, "");
+			string[] acesasNaVolta = [];
 			bool tocou = await Ate(() =>
 			{
-				if (Pedacos() is { } p && p.RefazendoDeTeste.Anim.Length > 0) refazendo = p.RefazendoDeTeste;
+				if (Pedacos() is { } p && p.RefazendoDeTeste.Anim.Length > 0)
+				{
+					refazendo = p.RefazendoDeTeste;
+					acesasNaVolta = Boneco()?.CamadasAcesasDeTeste() ?? [];
+				}
 				return refazendo.Anim.Length > 0;
 			}, 3);
 			bool voltou = await Ate(() => Pedacos() == null && Boneco() is { Visible: true }, 4);
+			string[] acesasDepois = Boneco()?.CamadasAcesasDeTeste() ?? [];
 			SpriteFrames? esperada = PedacosDoMajin.FolhaDaReconstrucao(folhaDoCorpo);
-			Checa("**O CORPO SE REFAZ**: os pedacos voltam, a `regenerate` da folha do corpo toca uma vez no lugar dele, e ele reaparece",
-				  tocou && refazendo.Anim == PedacosDoMajin.AnimDaReconstrucao && esperada != null && ReferenceEquals(refazendo.Folha, esperada) && voltou,
-				  $"tocou {tocou} ({refazendo.Folha?.ResourcePath} '{refazendo.Anim}'); esperada {esperada?.ResourcePath}; voltou {voltou}");
+			Checa("**O CORPO SE REFAZ**: os pedacos voltam, a `regenerate` da folha do corpo toca uma vez no lugar dele (sem olho nem roupa por cima), e ele reaparece com as MESMAS camadas acesas de antes",
+				  tocou && refazendo.Anim == PedacosDoMajin.AnimDaReconstrucao && esperada != null && ReferenceEquals(refazendo.Folha, esperada) && voltou
+				  && acesasNaVolta.Length == 0 && acesasDepois.ToHashSet().SetEquals(acesasAntes),
+				  $"tocou {tocou} ({refazendo.Folha?.ResourcePath} '{refazendo.Anim}'); esperada {esperada?.ResourcePath}; voltou {voltou}; "
+				  + $"acesas antes [{string.Join(", ", acesasAntes)}], na reconstrucao [{string.Join(", ", acesasNaVolta)}], depois [{string.Join(", ", acesasDepois)}]");
 
 			// A FOLHA SEM A ANIMACAO: a reconstrucao troca pra da `Majin1`
 			SpriteFrames? semAnimacao = FolhasPresas.Carregar("res://Assets/Sprites/Character Icons/Majins/Majin - Form 3.tres");
@@ -458,8 +478,8 @@ public partial class RoboDaV030 : Node
 			PedacosDoMajin.CorpoInteiroNaTelaDeTeste = true;
 			srv.PalcoV30_Desfazer(id);
 			await Segundos(1.0);
-			Injeta("(a tela ignora o desfeito) o Majin \"morto\" por soco fica desenhado inteiro, caido -- sem os pedacos e sem a volta",
-				   Pedacos() == null && Boneco() is { Visible: true });
+			Injeta("(a tela ignora o desfeito) o Majin \"morto\" por soco fica desenhado inteiro, caido -- sem os pedacos e sem a volta, com as camadas acesas (a regua das camadas reprova)",
+				   Pedacos() == null && Boneco() is { Visible: true } && (Boneco()?.CamadasAcesasDeTeste().Length ?? 0) > 0);
 		}
 		finally
 		{
@@ -610,10 +630,37 @@ public partial class RoboDaV030 : Node
 		if (!morto) { srv.PalcoV30_Reviver(cli.LocalId); return; }
 		try
 		{
-			// o que o menu E manda: o verbo do passe com o nome escrito na caixa de texto
-			cli.SendVerbo("enma_passe", "Terra");
+			// (adendo 18) O QUE O JOGADOR FAZ: a tecla E na mesa do Enma, "Visitar os vivos", e o mundo da LISTA -- nada de digitar (*"ao
+			// escolher um planeta pra ficar por 7 dias deveria ser uma lista e nao ter q digitar o nome"*). Os botoes sao os que o menu
+			// DESENHOU (`BotoesDesenhados`), apertados pelo mesmo sinal do dedo (`ApertarDesenhado`).
+			if (MenuDeInteracao.Instancia is not { } menu) { Checa("(montagem) o menu da tecla E existe", false); return; }
+			string rotulo = Jandirus.Core.Tech.Interacoes.De(Jandirus.Core.World.Alem.TipoDoEnma).First(a => a.Verbo == "enma_passe").Rotulo;
+			async System.Threading.Tasks.Task<bool> AbrirOPasse()
+			{
+				if (menu.NaTela) { GetViewport().PushInput(new InputEventKey { PhysicalKeycode = Key.Escape, Keycode = Key.Escape, Pressed = true }); await Quadros(3); }
+				// a tecla so vale com o Enma AO ALCANCE na minha tela -- a dica do pe dela ("[E] Enma Daioh") diz que o Outro Mundo ja carregou
+				await Ate(() => menu.DicaNaTela.Contains("Enma"), 10);
+				GetViewport().PushInput(new InputEventKey { PhysicalKeycode = Key.E, Keycode = Key.E, Pressed = true });
+				return await Ate(() => menu.NaTela && menu.BotoesDesenhados().Contains(rotulo), 5) && menu.ApertarDesenhado(rotulo);
+			}
+
+			// O JOGO DE ANTES PRIMEIRO (o livro so no chat): a pagina abre e fica "consultando", sem mundo nenhum pra apertar
+			Jandirus.Server.GameServer.PasseSemListaDeTeste = true;
+			bool abriuSemLista = await AbrirOPasse();
+			await Segundos(1.5);
+			bool semMundos = abriuSemLista && !menu.BotoesDesenhados().Contains("Terra");
+			Jandirus.Server.GameServer.PasseSemListaDeTeste = false;
+			Injeta("(o livro so no chat, o jogo de antes) a pagina do passe abre sem mundo nenhum pra apertar", semMundos,
+				   $"botoes: {string.Join(" | ", menu.BotoesDesenhados())}");
+
+			bool abriu = await AbrirOPasse();
+			bool lista = abriu && await Ate(() => menu.BotoesDesenhados().Contains("Terra"), 5);
+			Checa("**A LISTA DOS MUNDOS NA MINHA TELA** (*\"deveria ser uma lista e nao ter q digitar o nome\"*): no menu do Enma, \"Visitar os vivos\" abre uma pagina com um botao por mundo (a Terra, Namek...) -- e nenhuma caixa de texto",
+				  lista && menu.BotoesDesenhados().Contains("Namek") && !menu.CaixaDeTextoNaTela,
+				  $"abriu {abriu}; botoes: {string.Join(" | ", menu.BotoesDesenhados())}");
+			menu.ApertarDesenhado("Terra");
 			bool desceu = await Ate(() => cli.Zone.Name == "Earth" && cli.Sheet.Morto && cli.Sheet.EmVisita, 20);
-			Checa("**O PASSE NA MINHA TELA**: o verbo do menu E (\"Terra\") me poe na Terra MORTO, com o bit do passe na ficha -- e o meu corpo nao se ve deitado (`LocalPlayer.Caido`)",
+			Checa("**O PASSE NA MINHA TELA**: o botao \"Terra\" da lista me poe na Terra MORTO, com o bit do passe na ficha -- e o meu corpo nao se ve deitado (`LocalPlayer.Caido`)",
 				  desceu && !LocalPlayer.Caido(cli.Sheet),
 				  $"zona {cli.Zone.Name}; morto {cli.Sheet.Morto}; visita {cli.Sheet.EmVisita}; caido {LocalPlayer.Caido(cli.Sheet)}");
 
@@ -626,6 +673,56 @@ public partial class RoboDaV030 : Node
 		{
 			LocalPlayer.VisitaDeitaDeTeste = false;
 			srv.PalcoV30_Reviver(cli.LocalId);
+			await Ate(() => !cli.Sheet.Morto, 10);
+		}
+	}
+
+	// =====================================================================
+	// IT) O MORTO DE PASSAGEM NA MINHA TELA (adendo 18)
+	// =====================================================================
+	/// <summary>
+	/// O dono (2026-10-16): *"caso um player morto use instante transmission pra alguem q ta vivo, ele aparece meio transparente e fica
+	/// 5 segundos no mundo dos vivos dps voltando pro outro mundo"*. Pela tecla de producao (`Instant_Transmission:<nome>`, o que o
+	/// botao manda): o morto chega na Terra de pe, o meu boneco fica a meia opacidade, e em 5 s eu volto pro Outro Mundo, opaco. A
+	/// opacidade medida e o `Modulate` do visual -- a INTENCAO: esta bancada roda sem janela (a foto e a do `dv030j`).
+	/// </summary>
+	private async Tarefa IT_APassagemDoMorto(GameClient cli, Jandirus.Server.GameServer srv)
+	{
+		Nota("--- IT: o morto transmite pra um vivo -- na minha tela, meio transparente por 5 s, e de volta ao Outro Mundo (adendo 18) ---");
+		string alvo = srv.PalcoV30_MortoComUmVivoNaTerra(cli.LocalId);
+		bool pronto = alvo.Length > 0 && await Ate(() => cli.Sheet.Morto && Jandirus.Core.World.Alem.EhOAlem(cli.Zone.Name)
+																	  && PosseDoCliente.Atual.SabeTecnica("Instant_Transmission"), 15);
+		Checa("(montagem) morto no Outro Mundo, sabendo a Transmissao, com um vivo na Terra pra mirar", pronto, $"alvo '{alvo}'; zona {cli.Zone.Name}");
+		if (!pronto) { srv.PalcoV30_Reviver(cli.LocalId); srv.PalcoV30_LimparOsCorposDaBancada(); return; }
+		static float Alfa() => World.Instancia?.VisualLocalDeTeste?.Modulate.A ?? -1f;
+		try
+		{
+			cli.SendHabilidade($"Instant_Transmission:{alvo}");
+			bool chegou = await Ate(() => cli.Zone.Name == "Earth" && cli.Sheet.Morto && cli.Sheet.EmVisita, 8);
+			ulong chegouEm = Time.GetTicksMsec();
+			bool transparente = chegou && await Ate(() => Math.Abs(Alfa() - CharacterVisual.AlfaDaPassagem) < 0.01f, 2);
+			Checa("**O MORTO TRANSMITE PRA UM VIVO, MEIO TRANSPARENTE**: na Terra, morto e DE PE (o bit da ficha, nao me vejo deitado), e o meu boneco a meia opacidade",
+				  chegou && transparente && !LocalPlayer.Caido(cli.Sheet),
+				  $"zona {cli.Zone.Name}; morto {cli.Sheet.Morto}; de pe {cli.Sheet.EmVisita}; alfa {Alfa():0.##}");
+
+			CharacterVisual.PassagemOpacaDeTeste = true;
+			World.Instancia?.VisualLocalDeTeste?.MostrarDePassagem(true);
+			bool opacoComODefeito = Math.Abs(Alfa() - 1f) < 0.01f;
+			CharacterVisual.PassagemOpacaDeTeste = false;
+			World.Instancia?.VisualLocalDeTeste?.MostrarDePassagem(GameClient.Instance?.DePassagem.Contains(cli.LocalId) == true);
+			Injeta("(o desenho sem a passagem, o jogo de antes) o meu boneco ficaria opaco entre os vivos", opacoComODefeito, $"alfa {Alfa():0.##}");
+
+			bool voltou = await Ate(() => Jandirus.Core.World.Alem.EhOAlem(cli.Zone.Name), 9);
+			double durou = (Time.GetTicksMsec() - chegouEm) / 1000.0;
+			bool opaco = voltou && await Ate(() => Math.Abs(Alfa() - 1f) < 0.01f, 2);
+			Checa("**EM 5 s A ALMA VOLTA**: de volta ao Outro Mundo, e o meu boneco opaco de novo",
+				  voltou && opaco && durou > 4.0 && durou < 7.5, $"voltou {voltou} em {durou:0.#} s; alfa {Alfa():0.##}");
+		}
+		finally
+		{
+			CharacterVisual.PassagemOpacaDeTeste = false;
+			srv.PalcoV30_Reviver(cli.LocalId);
+			srv.PalcoV30_LimparOsCorposDaBancada();
 			await Ate(() => !cli.Sheet.Morto, 10);
 		}
 	}
@@ -1107,6 +1204,59 @@ public partial class RoboDaV030 : Node
 	}
 
 	// =====================================================================
+	// S2) A DEATH BALL DO FREEZA DE NAMEK (2026-10-17)
+	// =====================================================================
+	/// <summary>
+	/// O dono: *"a super nova e so quando ele explode o planeta vegeta, namek e death ball ao qual ele joga pra baixo seguindo a mesma
+	/// logica da super nova"*. O mesmo palco do sol (o Outro Mundo, que nao e planeta), com a saga de Namek: a esfera na minha tela e
+	/// a da DEATH BALL, cresce sobre ele, sai da mao, desce e explode -- e ele concentra intocavel e parado. Com janela, duas fotos.
+	/// </summary>
+	private async Tarefa S2_ADeathBallDeNamek(GameClient cli, Jandirus.Server.GameServer srv)
+	{
+		Nota("--- S2: o ultimato do Freeza de NAMEK -- a Death Ball cresce sobre ele, cai tres tiles e explode, a mesma logica do sol (dono, 2026-10-17) ---");
+		int chefe = srv.PalcoV30_Ultimato(cli.LocalId, "freeza_namek");
+		bool chegou = chefe != 0 && await Ate(() => World.Instancia?.SupernovaDeTeste(chefe) != null, 10);
+		Checa("(montagem) um Freeza de NAMEK com o ultimato vencido perto de mim -- e a esfera apareceu na minha tela", chegou, $"chefe {chefe}");
+		if (!chegou) { srv.PalcoV30_DesfazerOUltimato(); return; }
+		try
+		{
+			SupernovaDesenhada bola = World.Instancia!.SupernovaDeTeste(chefe)!;
+			Checa("**A ESFERA DE NAMEK E A DEATH BALL**: a folha desenhada e a da tecnica (a esfera roxa), e nao o sol de Vegeta",
+				  bola.Ataque == Jandirus.Core.Npc.AtaqueDoUltimato.DeathBall && bola.Folha == SupernovaDesenhada.FolhaDaDeathBall,
+				  $"{bola.Ataque}: {bola.Folha}");
+			float d0 = bola.DiametroDeTeste;
+			for (int i = 0; i < 6; i++) { await Segundos(0.5); srv.PalcoV30_TiqueDoUltimato(); }
+			float d1 = bola.DiametroDeTeste;
+			(bool concentra, bool intocavel, bool parado) = srv.PalcoV30_ComoEstaOChefe(chefe);
+			await FotoSeHouverJanela("v030-deathball-crescendo");
+			Checa("**A DEATH BALL CRESCE SOBRE O FREEZA**: brasa no comeco, bem maior tres segundos depois -- e ele concentra INTOCAVEL e PARADO",
+				  d1 > d0 * 2 && !bola.SoltoDeTeste && concentra && intocavel && parado,
+				  $"diametro {d0:0} -> {d1:0} px; concentra {concentra}; intocavel {intocavel}; parado {parado}");
+
+			int estourosAntes = SupernovaDesenhada.EstourosDeTeste;
+			Vector2 antesDeCair = bola.CentroDeTeste;
+			bool caiu = false, fotografou = false;
+			float desceu = 0;
+			for (int i = 0; i < 40 && srv.PalcoV30_TiqueDoUltimato(); i++)
+			{
+				await Segundos(0.5);
+				if (IsInstanceValid(bola) && bola.SoltoDeTeste)
+				{
+					caiu = true;
+					desceu = Math.Max(desceu, bola.CentroDeTeste.Y - antesDeCair.Y);
+					if (!fotografou) { fotografou = true; await FotoSeHouverJanela("v030-deathball-caindo"); }
+				}
+			}
+			bool saiu = !srv.PalcoV30_TiqueDoUltimato();
+			bool estourou = await Ate(() => SupernovaDesenhada.EstourosDeTeste > estourosAntes, 6);
+			Checa("**ELE JOGA A DEATH BALL PRA BAIXO**: a esfera deixa a mao, desce na direcao do chao e explode -- e o Freeza sai do mundo, o instante em que a destruicao comeca",
+				  caiu && desceu > 16 && saiu && estourou, $"caiu {caiu}; desceu {desceu:0} px; saiu {saiu}; estourou {estourou}");
+		}
+		finally { srv.PalcoV30_DesfazerOUltimato(); }
+		await Segundos(1.0);
+	}
+
+	// =====================================================================
 	// O RELOGIO
 	// =====================================================================
 	// =====================================================================
@@ -1402,6 +1552,110 @@ public partial class RoboDaV030 : Node
 			LocalPlayer.TravaDaTecnicaSoNoServidorDeTeste = false;
 			Tecla(Key.D, false);
 			World.Instancia?.AplicarZoom(Boot.Config.Zoom);
+		}
+	}
+
+	// =====================================================================
+	// DB) A DEATH BALL NA MINHA TELA (adendo 18)
+	// =====================================================================
+	/// <summary>
+	/// O dono (2026-10-16): *"death ball corrija os problemas q ele tem igual a genkidama tinha tb"*. Pela tecla de producao: do aperto
+	/// ate ela sair (quatro estagios) o meu boneco nao passa um quadro na pose de tiro, e todo nascimento dela chega NA MAO; lancada e
+	/// guiada, o soco fica de pe; o aperto que larga a guia o tira junto. E os dois jogos de antes, cada um numa Death Ball inteira.
+	/// </summary>
+	private async Tarefa DB_ADeathBall(GameClient cli, Jandirus.Server.GameServer srv)
+	{
+		Nota("--- DB: a Death Ball -- nada de soco ao erguer e crescer, e o soco do lancamento fica a guia inteira (adendo 18) ---");
+		bool sabe = srv.PalcoV30_AprenderADeathBall(cli.LocalId) && await Ate(() => PosseDoCliente.Atual.SabeTecnica("Death_Ball"), 5);
+		Checa("(palco) o corpo aprendeu a Death Ball pelo livro, com o Ki cheio, e o cliente soube", sabe);
+		if (!sabe) return;
+
+		int nascimentos = 0, naMao = 0;
+		// O QUE O SERVIDOR DISSE AO APERTO: quando a bola nao sai, a recusa diz por que (o "0 de 0 quadros" nao dizia).
+		var ditas = new List<string>();
+		void OuvirAFala(Protocol.Fala canal, string quem, string texto) => ditas.Add(texto);
+		void OuvirNascimento(NascimentoDeProjetil n)
+		{
+			if ((Jandirus.Core.Combat.ArteDeKi)n.Arte != Jandirus.Core.Combat.ArteDeKi.DeathBall2017Purple2 || n.Dono != cli.LocalId) return;
+			nascimentos++;
+			if (n.NaMao) naMao++;
+		}
+		static bool Socando() => World.Instancia?.VisualLocalDeTeste?.EstadoDeTeste == "blast";
+		async System.Threading.Tasks.Task<(int Quadros, int Socos)> Amostrar(Func<bool> enquanto, double teto)
+		{
+			int q = 0, s = 0;
+			double fim = Time.GetTicksMsec() / 1000.0 + teto;
+			while (enquanto() && Time.GetTicksMsec() / 1000.0 < fim)
+			{
+				q++;
+				if (Socando()) s++;
+				await Quadros(1);
+			}
+			return (q, s);
+		}
+		int Estado() => srv.PalcoV30_EstadoDaDeathBall(cli.LocalId);
+
+		// UMA DEATH BALL INTEIRA: a carga (ate ela sair), a guia (ate 0,3 s) e o aperto que larga a guia
+		async System.Threading.Tasks.Task<(bool Saiu, int Nascimentos, int NaMao, (int Quadros, int Socos) Carga, (int Quadros, int Socos) Guia, bool Largou)> Uma()
+		{
+			srv.PalcoV30_AprenderADeathBall(cli.LocalId);
+			await Ate(() => !Socando(), 1.5);
+			nascimentos = naMao = 0;
+			ditas.Clear();
+			cli.SendHabilidade("Death_Ball");
+			if (!await Ate(() => Estado() == 0, 2))
+				Nota($"a Death Ball NAO saiu do aperto -- o servidor disse: {(ditas.Count == 0 ? "nada" : string.Join(" | ", ditas.TakeLast(3)))}");
+			var carga = await Amostrar(() => Estado() == 0, 8);
+			bool saiu = Estado() == 1;
+			// A POSE CHEGA PELO FIO um quadro (ou dois) depois de o servidor lancar: a guia e medida dali. A espera e CURTA e acaba com a
+			// guia -- sem soco (o defeito injetado) a pose nunca vem, e uma espera longa comeria a guia inteira (0 de 0 quadros); se ela nao
+			// chegar em 0,15 s, a amostra comeca sem ela e a regua reprova do mesmo jeito.
+			if (saiu) await Ate(() => Socando() || Estado() != 1, 0.15);
+			var guia = saiu ? await Amostrar(() => Estado() == 1, 0.3) : (0, 0);
+			srv.PalcoV30_LargarAGuiaDaDeathBall(cli.LocalId);
+			bool acabou = await Ate(() => Estado() == -1, 3);
+			bool largou = acabou && await Ate(() => !Socando(), 0.35);
+			return (saiu, nascimentos, naMao, carga, guia, largou);
+		}
+
+		cli.TiroNasceu += OuvirNascimento;
+		cli.Falou += OuvirAFala;
+		try
+		{
+			var certa = await Uma();
+			Checa("**ERGUENDO E CRESCENDO, NADA DE SOCO** (*\"death ball corrija os problemas q ele tem igual a genkidama tinha tb\"*): do aperto ate ela sair, o meu boneco nao passa um quadro na pose de tiro -- e os nascimentos dela (um por estagio) chegam todos NA MAO",
+				  certa.Saiu && certa.Carga.Quadros > 30 && certa.Carga.Socos == 0 && certa.Nascimentos >= 4 && certa.NaMao == certa.Nascimentos,
+				  $"saiu {certa.Saiu}; {certa.Carga.Socos} de {certa.Carga.Quadros} quadros socando na carga; {certa.Nascimentos} nascimento(s), {certa.NaMao} na mao");
+			Checa("**O SOCO DO LANCAMENTO FICA A GUIA INTEIRA**: lancada e guiada (o corpo preso), todo quadro na pose de tiro -- e o aperto que larga a guia o tira junto",
+				  certa.Saiu && certa.Guia.Quadros > 3 && certa.Guia.Socos == certa.Guia.Quadros && certa.Largou,
+				  $"{certa.Guia.Socos} de {certa.Guia.Quadros} quadros socando na guia; largou {certa.Largou}");
+
+			Jandirus.Server.GameServer.DeathBallSocaAoCrescerDeTeste = true;
+			var socando = await Uma();
+			// A AMOSTRA VAZIA NAO E MEDIDA (a bola que nem saiu do aperto -- o job18): ate tres Death Balls, so enquanto a carga vier VAZIA.
+			for (int vez = 1; vez < 3 && socando.Carga.Quadros == 0; vez++) socando = await Uma();
+			Jandirus.Server.GameServer.DeathBallSocaAoCrescerDeTeste = false;
+			Injeta("(o jogo de antes: renascer com o gesto de tiro) o meu boneco soca na carga, e os nascimentos chegam sem o \"na mao\"",
+				   socando.Carga.Socos > 0 && socando.NaMao == 0, $"{socando.Carga.Socos} de {socando.Carga.Quadros} quadros socando; {socando.NaMao} na mao");
+			Jandirus.Server.GameServer.DeathBallLancaSemSocoDeTeste = true;
+			var semSoco = await Uma();
+			// A AMOSTRA VAZIA NAO E MEDIDA. Sem soco, a espera curta pela pose (0,15 s) corre inteira, e a bola guiada morre no primeiro
+			// obstaculo: quando ela morria antes de a amostra comecar -- ou nem saia do aperto (o job18) --, saia "0 de 0 quadros" e a regua
+			// dava o defeito por nao pego (os job9, job16, job17 e job18, com o resto verde). Ate tres Death Balls, so enquanto a guia vier
+			// VAZIA -- a regua e a mesma.
+			for (int vez = 1; vez < 3 && semSoco.Guia.Quadros == 0; vez++) semSoco = await Uma();
+			Jandirus.Server.GameServer.DeathBallLancaSemSocoDeTeste = false;
+			Injeta("(o jogo de antes: o lancamento sem soco) guiada, o meu boneco nao fica na pose de tiro",
+				   semSoco.Saiu && semSoco.Guia.Quadros > 0 && semSoco.Guia.Socos < semSoco.Guia.Quadros,
+				   $"{semSoco.Guia.Socos} de {semSoco.Guia.Quadros} quadros socando na guia");
+		}
+		finally
+		{
+			cli.TiroNasceu -= OuvirNascimento;
+			cli.Falou -= OuvirAFala;
+			Jandirus.Server.GameServer.DeathBallSocaAoCrescerDeTeste = false;
+			Jandirus.Server.GameServer.DeathBallLancaSemSocoDeTeste = false;
+			srv.PalcoV30_LargarAGuiaDaDeathBall(cli.LocalId);
 		}
 	}
 

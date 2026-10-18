@@ -175,6 +175,33 @@ public enum LinhaDeForma
 	/// ================================================================================================
 	/// </summary>
 	DeusDaDestruicao,
+
+	/// <summary>
+	/// ============================ A FORMA PURA DO CORRUPTED MAJIN (2026-10-16) ============================
+	/// Duas entradas: a SA (56x) e a INSANA (56x subindo a 76x). `Magic/MajinSaga.dm:510-577` e o sistema que o amigo do dono
+	/// escreveu por cima (ver `Races.SagaDoMajin`).
+	///
+	/// NAO SE SOBE PRA ELA: a `AbrirLinhas` nao abre esta linha pra perfil nenhum, entao o `EstadoDeForma.Avaliar` a recusa
+	/// pra todo mundo -- a tecla C, a tecla de forma e o seletor nunca a oferecem. Quem poe o corpo nela e a SAGA
+	/// (`GameServer.SagaDoMajin.cs`), e ela e o REPOUSO do Majin que a destravou (*"Corrupted Majin's have their base form
+	/// replaced with Pure Form"* -- ver `PerfilDeFormas.PisoProprio`). Estando nela, nenhuma outra forma entra pela escada
+	/// (`Catalogo.FormaDoMajinPuro`).
+	///
+	/// NO FIM DO ENUM pelo mesmo motivo da Fury: os valores anteriores nao mudam de numero.
+	/// =====================================================================================================
+	/// </summary>
+	MajinPuro,
+
+	/// <summary>
+	/// ============================ (v0.4.0) A TENSAO -- AS FORMAS DO HUMANO ============================
+	/// Tres degraus: High Tension (1,5x), Extreme Tension (6x a 12x pela maestria) e Godly Tension (32x, com o ki divino). NAO
+	/// EXISTEM NO DM -- la o Humano nao tem forma nenhuma; a linha e da lista do amigo do dono (2026-10-17). Os numeros, as portas e
+	/// o que e escolha minha estao no bloco das entradas, no `Catalogo.Todas`.
+	///
+	/// NO FIM DO ENUM pelo mesmo motivo da Fury e da Forma Pura: os valores anteriores nao mudam de numero.
+	/// ==================================================================================================
+	/// </summary>
+	Tensao,
 }
 
 /// <summary>
@@ -272,6 +299,14 @@ public enum CorpoDeForma
 	/// campo pra alguem esquecer de preencher.
 	/// </summary>
 	BioSuperPerfeito,
+
+	/// <summary>
+	/// (2026-10-16) O CORPO DA FORMA PURA DO CORRUPTED MAJIN -- `MajinForm5.dmi`, *"o corpo do BOSS Majin Boo (Kid Boo) -- era
+	/// MajinForm11; a cor do proprio Majin tinge por cima"* (`MajinSaga.dm:536`). Folha fixa, como a do Super Perfeito; e o UNICO
+	/// corpo de forma que leva a TINTA DA FICHA (a cor que o jogador escolheu pro Majin na criacao, `icon += majin_color`) --
+	/// ver <see cref="Catalogo.CorpoDaFormaLevaAPele"/>.
+	/// </summary>
+	MajinPuro,
 }
 
 /// <summary>Como a maestria vira multiplicador.</summary>
@@ -367,6 +402,12 @@ public sealed class FormaDef
 	public CurvaDeGodKi? EscalaComGodKi;
 
 	/// <summary>
+	/// (2026-10-17) A CURVA DA SUPER PERFEITA DO BIO: o multiplicador e ABSOLUTO sobre o imperfeito e sobe com o ki divino -- e como o degrau
+	/// do bio ja mora no BP base, a forma vale o que falta ate ele. Ver <see cref="Catalogo.MultDoBio"/>. Nulo = nao e dela.
+	/// </summary>
+	public CurvaDoBio? DoBio;
+
+	/// <summary>
 	/// RAMO LATERAL: esta forma sai do tronco e nao volta pra ele.
 	///
 	/// ============================ OS GRADES SAO UM DESVIO, NAO UM DEGRAU ============================
@@ -423,16 +464,25 @@ public sealed class FormaDef
 	public IReadOnlyDictionary<string, double>? BaseDaClasse;
 
 	/// <summary>
-	/// RAMPA DE COMBATE ESTILO LSSJ: `max(piso pela maestria, rampa do combate)`. A luta continua
-	/// sobe o multiplicador do minimo ao maximo em ~3 min (`LSSJ_RAMP_TICKS 600`), e a maestria so
-	/// define um PISO. lssjbuff.dm:184.
+	/// (2026-10-16) A FORMA SOBE COM A LOUCURA -- do primeiro valor do <see cref="Mult"/> ao ultimo, ACELERANDO, pelo tempo que o
+	/// corpo passa nela (`EstadoDeForma.LoucuraSegundos`), e mais depressa com a maestria. So a Forma Pura INSANA do Corrupted
+	/// Majin: *"an accelerating rising form bp 76x"*, *"Form mastery affects the rate of the rising bp"*. A curva e do
+	/// `Races.SagaDoMajin.SubidaDaLoucura`; quem a aplica e o <see cref="Catalogo.Multiplicador"/>, antes de tudo o mais.
 	/// </summary>
-	public bool CombateSobeAoMaximo;
+	public bool SobeNaLoucura;
 
 	/// <summary>
-	/// BONUS DE COMBATE ESTILO LEGENDARY PRIMAL: `. *= 1 + min(combatTime/720,1) * 0.2`. E OUTRA
-	/// mecanica -- aqui o combate MULTIPLICA por cima do que a maestria ja deu.
-	/// supersaiyanbuff.dm:572.
+	/// BONUS DE COMBATE DAS DUAS LINHAS LENDARIAS: `. *= 1 + min(combate / relogio, 1) * bonus`. O combate MULTIPLICA por cima do
+	/// que a maestria ja deu, no relogio da linha (<see cref="FuriaLendaria.SegundosDaLinha"/>): o Legendary Primal no do DM
+	/// (`combatTime / 720`, 216 s, supersaiyanbuff.dm:572) e o Legendary no `LSSJ_RAMP_TICKS 600` (180 s).
+	///
+	/// ============================ (v0.4.0) O LEGENDARY GANHOU ISTO, E PERDEU A RAMPA DO DM ============================
+	/// DIVERGENCIA DECLARADA. No DM a linha Legendary nao tem bonus: ela tem `max(piso pela maestria, rampa do combate)`
+	/// (lssjbuff.dm:184) -- 180 s de luta levavam a forma ao TOPO sem maestria nenhuma, e a maestria era so um piso. O dono trocou
+	/// (2026-10-17, a lista do amigo): *"o multiplicador do poder subia ate o maximo da forma durante a luta vai mudar pra esse
+	/// sistema novo"* -- a MAESTRIA leva do minimo ao maximo (Wrathful 1,5x a 10x, C-Type 12x a 20x, Full Power 25x a 50x), e a
+	/// luta continua soma ate +20% por cima, em 180 s. E o mesmo mecanismo do Primal, entao e o mesmo campo.
+	/// =================================================================================================================
 	/// </summary>
 	public double BonusDeCombate;
 
@@ -933,6 +983,14 @@ public sealed record CurvaDeGodKi(string[] Origens, double SemGodKi, double AoDe
 								  double NoTopo, double TopoEm);
 
 /// <summary>
+/// (2026-10-17) OS QUATRO NUMEROS DA SUPER PERFEITA DO BIO -- o adendo do dono: *"se o bio tiver a super perfect form e liberar o god ki, a
+/// super perfect form ganha novos multiplicadores com base na maestria [...] ao atingir o nivel do blue o multiplicador sobe pra 32x e ao
+/// atingir o nivel do blue evolved vc fica com 56x"*. DEGRAUS e nao rampa (a tabela dele: God Form 1, 2 e 3), nas portas do Blue e do
+/// Blue Evolution (<see cref="Catalogo.GodkiBluePct"/>, <see cref="Catalogo.GodkiRoyalePct"/>). Todos ABSOLUTOS sobre o imperfeito.
+/// </summary>
+public sealed record CurvaDoBio(double Sem, double AoDespertar, double NoBlue, double NaEvolution);
+
+/// <summary>
 /// ============================ DE QUE RAIVA UMA FORMA NASCE ============================
 /// Dois degraus, e eles sao ORDENADOS de proposito: o gate pergunta `perfil.Raiva >= exigida`, e
 /// nunca `==`. Quem viu um amigo MORRER certamente viu um amigo cair -- com igualdade estrita, o
@@ -1095,6 +1153,13 @@ public enum NivelDeRaiva
 /// (`DNALabs.dm:478`), e o "mais fraco" tem endereco -- ver <see cref="FormaDef.MultDiluido"/> e o
 /// <c>SangueDiluido</c> do servidor, onde a decisao de reusar a linha diluida esta declarada.
 /// </param>
+/// <param name="PisoProprio">
+/// (2026-10-16) O REPOUSO QUE O SERVIDOR IMPOE A ESTE CORPO, por cima do que o catalogo derivaria (<see cref="Catalogo.PisoDaEscada"/>).
+/// Vazio pra todo mundo menos o Corrupted Majin que destravou a Forma Pura: *"Corrupted Majin's have their base form replaced
+/// with Pure Form"*. Quem escreve e a saga (`GameServer.SagaDoMajin.cs`), porque a resposta depende do que so o servidor sabe --
+/// se ha alguem absorvido, se a cabeca aguentou, se o corpo esta dormindo. E com o repouso no lugar dela, cair, reverter (X)
+/// e entrar no jogo levam o Majin pra Forma Pura pelos MESMOS caminhos que levam todo mundo pro proprio repouso.
+/// </param>
 public readonly record struct PerfilDeFormas(
 	string Raca = "",
 	string Classe = "",
@@ -1108,7 +1173,10 @@ public readonly record struct PerfilDeFormas(
 	NivelDeRaiva Raiva = NivelDeRaiva.Nenhuma,
 	IReadOnlyDictionary<string, double>? FlagsDeSkill = null,
 	int EstagioBio = 0,
-	bool CanSsj = false)
+	int MarcoBio = 0,
+	bool CanSsj = false,
+	string PisoProprio = "",
+	bool EmLarva = false)
 {
 	/// <summary>
 	/// QUANTO VALE ESTA FLAG DE SKILL NESTE CORPO. Zero quando ele nao sabe a skill que a escreve --
@@ -2584,7 +2652,7 @@ public static class Catalogo
 	/// saem os tres vermelhos, pelo mesmo motivo e nao por tres coincidencias.
 	///
 	/// O IRMAO DA OUTRA LINHA NAO ENTRA. O `primal_legendary4_limit_breaker` tambem pede
-	/// `GodkiRoyalePct`, mas a guarda do vermelho e (Saiyajin ou Futuro) -- exatamente como no
+	/// ki divino, mas a guarda do vermelho e (Saiyajin ou Futuro) -- exatamente como no
 	/// contorno, onde ele sai VERDE com o resto da linha dele. O dono nomeou um Limit Breaker.
 	/// ============================================================================================
 	/// </summary>
@@ -3039,6 +3107,31 @@ public static class Catalogo
 	/// ============================================================================================================
 	/// </summary>
 	public static bool SoPeloTitulo(FormaDef? d) => d != null && d.Linha == LinhaDeForma.DeusDaDestruicao;
+
+	/// <summary>
+	/// (2026-10-16) ESTA E A FORMA PURA DO CORRUPTED MAJIN, sa ou insana? Irma do <see cref="SoPeloTitulo"/> e pelo mesmo motivo
+	/// de nao ser a mesma pergunta: a Fury nao treina e atravessa a queda; a Forma Pura TREINA (a maestria dela e o que acelera
+	/// a insana) e e o REPOUSO do corpo. O que as duas tem em comum e o que sai daqui: a tecla C nunca a oferece (a linha nao
+	/// abre pra perfil nenhum) e, ESTANDO NELA, nenhuma outra forma entra pela escada (`EstadoDeForma.Avaliar`, passo 0a) --
+	/// quem a troca e so a saga: absorver alguem, enlouquecer, dormir.
+	/// </summary>
+	public static bool FormaDoMajinPuro(FormaDef? d) => d != null && d.Linha == LinhaDeForma.MajinPuro;
+
+	/// <summary>
+	/// (2026-10-16) O CORPO DESTA FORMA LEVA A COR DA FICHA? So o da Forma Pura do Majin: `if(majin_color) icon += majin_color`
+	/// (`MajinSaga.dm:537`) -- o Kid Boo sai na cor que o jogador escolheu, como todo corpo de Majin. Os outros corpos de forma
+	/// tem cor propria (a pelagem do SSJ4, o macaco, a carapaca do bio) e a tinta da ficha os estragaria.
+	/// </summary>
+	public static bool CorpoDaFormaLevaAPele(CorpoDeForma c) => c == CorpoDeForma.MajinPuro;
+
+	/// <summary>
+	/// (2026-10-16) O CORPO DESTA FORMA ESCONDE O CORPO DE BAIXO? So o da Forma Pura do Majin. O dono: *"na pure forme ta bugado o
+	/// sprite, ta com 2 sprites um em cima do outro"* -- o Kid Boo e MENOR que o corpo da forma 4 no mesmo quadro de 32, e desenhado por
+	/// cima ele deixava o de baixo aparecendo em volta. O DM troca o `icon` (`MajinSaga.dm:536`): o corpo de antes some, e o que fica por
+	/// cima (roupa, olhos) fica, como os `overlays`. Os outros corpos de forma (a pelagem do SSJ4, o musculoso, o macaco, o bio) cobrem o
+	/// de baixo inteiro, ou ja o apagam pelo tamanho (`_criatura`), e nao precisam disto.
+	/// </summary>
+	public static bool CorpoDaFormaEscondeOBase(CorpoDeForma c) => c == CorpoDeForma.MajinPuro;
 	// ==================================================================================
 	// OS `initial()` DA CONTA -- e NAO o limiar de ninguem (ver LimiaresPessoais)
 	// ==================================================================================
@@ -3072,6 +3165,14 @@ public static class Catalogo
 	public const double PortaSsj2 = Ssj2atInicial / Ssj1GateMult;
 	public const double PortaSsj3 = Ssj3atInicial / Ssj2GateMult;
 	public const double PortaSsj4 = RawSsj4atInicial;
+
+	/// <summary>
+	/// (v0.4.0) A HIGH TENSION DO HUMANO pede a METADE do limiar do SSJ1 -- *"req half of SSJ1"* (a lista do amigo do dono). A
+	/// fracao e da PORTA e nao do limiar: quem a aplica e o `LimiaresPessoais.Porta` (chave `ssjat_tensao`), em cima do `ssjat` que
+	/// o Humano sorteia ao nascer.
+	/// </summary>
+	public const double FracaoDaAltaTensao = 0.5;
+	public const double PortaAltaTensao = SsjatInicial * FracaoDaAltaTensao;
 
 	// ============================ O AGIO DA RAIVA COMUM -- os literais do `if("Angry")` ============================
 	// Por quanto a porta de BP e multiplicada pra quem desperta a forma so com a raiva comum. Ver
@@ -3297,6 +3398,9 @@ public static class Catalogo
 	/// <summary>O id do ORANGE -- a forma que o dragao da ao Namekuseijin que pede pra liberar o potencial. Ver a entrada.</summary>
 	public const string IdOrange = "orange";
 
+	/// <summary>(2026-10-16) As duas entradas da Forma Pura do Corrupted Majin -- quem as diz em voz alta e a saga, no servidor.</summary>
+	public const string IdDaFormaPura = "majin_pura", IdDaFormaPuraInsana = "majin_pura_insana";
+
 	/// <summary>
 	/// O SUPER SAIYAJIN COMUM. Constante porque ele e o unico degrau com DOIS estados de
 	/// apresentacao -- ver <see cref="DominouOSuperSaiyajin"/>, que e quem usa isto.
@@ -3463,6 +3567,9 @@ public static class Catalogo
 	/// </summary>
 	public const string RacaMeioSaiyajin = "Halfbreed";
 
+	/// <summary>(v0.4.0) O HUMANO, como o `races.json` o escreve -- a raca da linha da Tensao (<see cref="LinhaDeForma.Tensao"/>).</summary>
+	public const string RacaHumano = "Human";
+
 	/// <summary>`snamekmult` -- 5x. `Super_Namek.dm:5`.</summary>
 	public const double SuperNamekMult = 5;
 
@@ -3500,8 +3607,12 @@ public static class Catalogo
 	// =====================================================================
 	// A SUPER PERFEITA -- `CellFormBuff.dm`
 	// =====================================================================
-	/// <summary>`cell4mult` -- 8x. `CellFormBuff.dm:56`.</summary>
-	public const double SuperPerfeitoMult = 8;
+	/// <summary>
+	/// (2026-10-17) OS NUMEROS DA SUPER PERFEITA, do adendo do dono -- ABSOLUTOS sobre o BP do imperfeito: 20x; com o ki divino desperto 22x,
+	/// no nivel do Blue (33% de maestria divina) 32x, no do Blue Evolution (50%) 56x. No DM ela era `cell4mult` = 8x por cima do perfeito
+	/// (`CellFormBuff.dm:56`). Ver <see cref="CurvaDoBio"/>.
+	/// </summary>
+	public static readonly CurvaDoBio SuperPerfeitoDoBio = new(Sem: 20, AoDespertar: 22, NoBlue: 32, NaEvolution: 56);
 
 	/// <summary>`cell4drain` -- 1,0% do Ki maximo por segundo. `CellFormBuff.dm:57`.</summary>
 	public const double SuperPerfeitoDreno = 0.010;
@@ -4097,7 +4208,10 @@ public static class Catalogo
 				Nome = "Super Saiyajin 4 Limit Breaker", NumeroDm = 6, Intensidade = 5,
 				Mult = [56], Dreno = [0.085], PisoSobreAnterior = 2,
 				PortaBp = PortaSsj4, ChaveDoLimiar = "rawssj4at",
-				PedeLinhagem = Oozaru.LinhagemPrimal, PedeMaestria = 100, PedeGodKi = GodkiRoyalePct,
+				// (2026-10-16) KI DIVINO DESPERTO, e nao 50% de maestria -- o dono: *"limit breaker era pra liberar quando o personagem
+				// libera o god ki e domina 100% do full power"*; e o `God_Ki()` do Primal no DM (`godki.dm:191-195`). Os 50% nunca chegavam: a
+				// maestria divina so sobe numa forma divina, e a unica do Primal e esta. O `0` e o "desperto" (o mesmo do SSG).
+				PedeLinhagem = Oozaru.LinhagemPrimal, PedeMaestria = 100, PedeGodKi = 0,
 				// VERMELHA, e ela VOLTOU a ser: eu a tinha dourado quando o dono disse que o SSJ4
 				// conta como Super Saiyajin, e ele corrigiu -- a regra do dourado e do CONTORNO
 				// (`CorDoContorno`), nao da aura. A aura do Limit Breaker e a assinatura dele.
@@ -4124,13 +4238,13 @@ public static class Catalogo
 		// ---------------------------------------------------------------------------
 		// LINHA LEGENDARY -- lssjbuff.dm:162-180
 		// ---------------------------------------------------------------------------
-		// Todas com CombateSobeAoMaximo: `max(piso pela maestria, rampa do combate)`. A maestria e
-		// so um PISO; quem lutar 180 s seguidos chega ao maximo sem maestria nenhuma. E o que faz o
-		// Legendary ser a linha da FURIA e nao a do treino.
+		// (v0.4.0) A MAESTRIA SOBE A FORMA, E A LUTA SOMA POR CIMA -- o dono, 2026-10-17. No DM era `max(piso pela maestria,
+		// rampa do combate)` (lssjbuff.dm:184): quem lutasse 180 s seguidos chegava ao maximo sem maestria nenhuma. Agora o `Mult` e
+		// so da maestria, e o combate continuo da ate +20% em 180 s (`BonusDeCombate`, o mesmo da linha Primal). Ver o doc do campo.
 		new() { Id = IdWrathful, IdRede = 110, Linha = LinhaDeForma.Legendary, Ordem = 10,
 				Nome = "Wrathful", NumeroDm = 1, Intensidade = 2,
 				Marco = Stats.Milestones.Lssj1,   // `Restrained_SSj()`, `lssjbuff.dm:196` e `:210`
-				Como = Curva.Rampa, Mult = [1.5, 10], CombateSobeAoMaximo = true,
+				Como = Curva.Rampa, Mult = [1.5, 10], BonusDeCombate = 0.2,
 				Dreno = [0.02, 0.015, 0.01],
 				PortaBp = LimiaresPessoais.RestSsjatInicial, ChaveDoLimiar = "restssjat",
 				AgioNaRaivaComum = AgioComumDoLegendary,   // o `"Angry"` do `supersaiyan.dm:68`
@@ -4164,12 +4278,12 @@ public static class Catalogo
 				// Se ele quiser mesmo o Wrathful inchado, e uma palavra: `Corpo = CorpoDeForma.Musculoso`.
 				// ======================================================================================
 				Aura = "76ff7a",
-				Desc = "A furia sem forma. 1,5x, e ate 10x com a luta ou a maestria." },
+				Desc = "A fúria sem forma. 1,5x, e até 10x com a maestria; a luta soma até +20% por cima." },
 
 		new() { Id = "c_type", IdRede = 120, Linha = LinhaDeForma.Legendary, Ordem = 20,
 				Nome = "Super Saiyajin C-Type", NumeroDm = 2, Intensidade = 3,
 				Marco = Stats.Milestones.Lssj2,   // `Unrestrained_SSj()`, `lssjbuff.dm:299`, `:313` e `:372`
-				Como = Curva.Rampa, Mult = [12, 20], CombateSobeAoMaximo = true, PisoSobreAnterior = 2,
+				Como = Curva.Rampa, Mult = [12, 20], BonusDeCombate = 0.2, PisoSobreAnterior = 2,
 				Dreno = [0.04, 0.03, 0.02],
 				PortaBp = LimiaresPessoais.UnrestSsjatInicial, ChaveDoLimiar = "unrestssjat",
 				AgioNaRaivaComum = AgioComumDoLegendary,   // o `"Angry"` do `supersaiyan.dm:94`
@@ -4207,12 +4321,9 @@ public static class Catalogo
 		//      forma ser UMA: uma reta que termina em 50 passa mais alto no meio, e a alternativa
 		//      (reta ate 40 e um pulo pra 50 no ultimo ponto) seria o degrau separado outra vez,
 		//      escrito com outro nome.
-		//   2. A FURIA SOZINHA ALCANCA O TOPO. O `CombateSobeAoMaximo` le `Mult[0]` e `Mult[^1]`,
-		//      entao 180 s de luta agora levam a 50x sem maestria nenhuma -- e isso e a REGRA DESTA
-		//      LINHA, escrita no cabecalho do bloco Legendary desde o porte: *"a maestria e so um
-		//      PISO; quem lutar 180 s seguidos chega ao maximo sem maestria nenhuma. E o que faz o
-		//      Legendary ser a linha da FURIA e nao a do treino"*. Quem quebrava a regra era o Full
-		//      Power, que ficava fora do alcance da furia por ser outra entrada.
+		//   2. O TOPO E DA MAESTRIA. Na fusao a furia sozinha alcancava os 50x (a rampa do DM levava 180 s de luta ao
+		//      `Mult[^1]`); desde a v0.4.0 o dono trocou a rampa pelo bonus de luta (ver o cabecalho do bloco), e o Full Power
+		//      so chega a 50x com 100% de maestria -- 60x com a luta inteira por cima.
 		//
 		// E O DRENO FICA O DAQUI (`[0.07, 0.05, 0.035]`, que CAI com a maestria) e nao o `[0.06]`
 		// fixo do Full Power. Ele ja dizia a mesma coisa que a fusao diz: dominar a lenda e gastar
@@ -4242,7 +4353,7 @@ public static class Catalogo
 		new() { Id = "legendary", IdRede = 130, Linha = LinhaDeForma.Legendary, Ordem = 30,
 				Nome = "Super Saiyajin Full Power", NumeroDm = 3, Intensidade = 4,
 				Marco = Stats.Milestones.Lssj3,   // `LSSj()`, `lssjbuff.dm:395`, `:407` e `:430`
-				Como = Curva.Rampa, Mult = [25, 50], CombateSobeAoMaximo = true, PisoSobreAnterior = 2,
+				Como = Curva.Rampa, Mult = [25, 50], BonusDeCombate = 0.2, PisoSobreAnterior = 2,
 				Dreno = [0.07, 0.05, 0.035],
 				PortaBp = LimiaresPessoais.LssjatInicial, ChaveDoLimiar = "lssjat",
 				AgioNaRaivaComum = AgioComumDoLegendary,   // o `"Angry"` do `supersaiyan.dm:102`
@@ -4374,7 +4485,10 @@ public static class Catalogo
 				Nome = "Legendary Super Saiyajin 4 Limit Breaker", NumeroDm = 6, Intensidade = 5,
 				Mult = [60], BonusDeCombate = 0.2, PisoSobreAnterior = 2, Dreno = [0.085],
 				PortaBp = PortaSsj4, ChaveDoLimiar = "rawssj4at",
-				PedeLinhagem = Oozaru.LinhagemPrimal, PedeMaestria = 100, PedeGodKi = GodkiRoyalePct,
+				// (2026-10-16) KI DIVINO DESPERTO, e nao 50% de maestria -- o dono: *"limit breaker era pra liberar quando o personagem
+				// libera o god ki e domina 100% do full power"*; e o `God_Ki()` do Primal no DM (`godki.dm:191-195`). Os 50% nunca chegavam: a
+				// maestria divina so sobe numa forma divina, e a unica do Primal e esta. O `0` e o "desperto" (o mesmo do SSG).
+				PedeLinhagem = Oozaru.LinhagemPrimal, PedeMaestria = 100, PedeGodKi = 0,
 				Aura = "4aff0a", SufixoDoCabelo = "SSJ4", Corpo = CorpoDeForma.Ssj4, Desc = "Forma divina da lenda: 60x fixo." },
 
 		// ---------------------------------------------------------------------------
@@ -5011,7 +5125,8 @@ public static class Catalogo
 		// caem no azul do `CorDosRaios` por nao serem de nenhuma linha nomeada la.
 		new() { Id = "super_perfect", IdRede = 850, Linha = LinhaDeForma.BioAndroide, Ordem = 10,
 				Nome = "Super Perfeito", NumeroDm = 1, Intensidade = 5, Raios = 2,
-				Mult = [SuperPerfeitoMult],
+				// (2026-10-17) 20x ABSOLUTO, e 22/32/56 com o ki divino -- a curva do adendo do dono (o `Mult` e o numero de quem nao despertou).
+				Mult = [SuperPerfeitoDoBio.Sem], DoBio = SuperPerfeitoDoBio,
 				Dreno = [SuperPerfeitoDreno],
 				PortaBp = PortaSuperPerfeito,
 				PedeEstagioBio = Races.BioAndroids.Perfeito,
@@ -5020,9 +5135,78 @@ public static class Catalogo
 					 "ssj4_full_power", "ssj4_limit_breaker"],
 				Corpo = CorpoDeForma.BioSuperPerfeito,
 				Aura = "9fe8a8",
-				Desc = "8x, e o corpo se enche de eletricidade. Exige a FORMA PERFEITA e 750 milhoes "
-					 + "de poder base -- e nao entra por cima de nenhum Super Saiyajin. Drena 1% do "
-					 + "Ki por segundo e cai sozinha quando o folego acaba." },
+				Desc = "20x o imperfeito, e o corpo se enche de eletricidade. Exige a FORMA PERFEITA e 750 milhoes de poder base -- e nao "
+					 + "entra por cima de nenhum Super Saiyajin. Com o ki divino desperto vai a 22x, a 32x no nivel do Blue e a 56x no do Blue "
+					 + "Evolution -- e e nela que o bio amadurece o ki divino. Drena 1% do Ki por segundo e cai sozinha quando o folego acaba." },
+
+		// ==================================================================================
+		// A FORMA PURA DO CORRUPTED MAJIN -- `Magic/MajinSaga.dm:510-577` e o sistema do amigo do dono (2026-10-16)
+		// ==================================================================================
+		// DUAS ENTRADAS, E A LINHA INTEIRA E DA SAGA -- ver o cabecalho de `LinhaDeForma.MajinPuro`: nenhuma porta aqui, porque
+		// ninguem SOBE pra ela. O que separa as duas e a CABECA do Majin, e quem decide em qual o corpo esta e a sanidade
+		// (`Races.SagaDoMajin`), no servidor.
+		//
+		// O QUE MUDOU DO DM, POR ORDEM DO DONO: la ela era `transBuff = 18` (`:535`), cobrava 2% do Ki e 1,5% do folego a cada
+		// 1,2 s (`:542-550`) e caia quando um dos dois acabava, de volta a forma 4. Aqui ela E o repouso -- 56x e sem dreno na sa
+		// (*"Highest achieved non-Endgame Form 56x bp"*) -- e o preco dela passou a ser a sanidade.
+		//
+		// A AURA E O ROSA DAS FRASES DA FORMA PURA no DM (`<font color=#ff70d0>`, `:521` e `:539`); a da insana, um carmesim
+		// escuro -- escolha minha, pra quem ve saber de longe que aquela cabeca ja se foi.
+		new() { Id = IdDaFormaPura, IdRede = 860, Linha = LinhaDeForma.MajinPuro, Ordem = 10,
+				Nome = "Forma Pura", NumeroDm = -1, Intensidade = 5,
+				Mult = [Races.SagaDoMajin.MultDaPura], Dreno = [0],
+				PedeClasseUmaDe = [Races.SagaDoMajin.Classe],
+				Corpo = CorpoDeForma.MajinPuro,
+				Aura = "ff70d0",
+				Desc = "56x. O poder cru do Corrupted Majin, sem nada emprestado: é o corpo dele agora. Só absorver alguém o tira "
+					  + "dela -- e viver nela gasta a sanidade." },
+		new() { Id = IdDaFormaPuraInsana, IdRede = 861, Linha = LinhaDeForma.MajinPuro, Ordem = 20,
+				Nome = "Forma Pura (Insana)", NumeroDm = -1, Intensidade = 5,
+				Mult = [Races.SagaDoMajin.MultDaPura, Races.SagaDoMajin.MultInsanoNoTopo], SobeNaLoucura = true, Dreno = [0],
+				PedeClasseUmaDe = [Races.SagaDoMajin.Classe],
+				Corpo = CorpoDeForma.MajinPuro,
+				Aura = "c8102e",
+				Desc = "56x subindo até 76x, cada vez mais depressa. A sanidade acabou: o corpo luta sozinho, grita como bicho e "
+					  + "o Ki cai sem voltar -- até ele apagar e dormir." },
+
+		// ==================================================================================
+		// (v0.4.0) A LINHA DA TENSAO -- O HUMANO (a lista do amigo do dono, 2026-10-17)
+		// ==================================================================================
+		// NAO EXISTE NO DM: la o Humano nao tem uma unica forma (ver o `else` do `AbrirLinhas`). Os tres degraus sao os do texto do
+		// amigo, e o que ele nao disse esta marcado como escolha minha:
+		//
+		//   * HIGH TENSION -- *"1.5x bp, req half of SSJ1"*: 1,5x fixo; a porta e a METADE do limiar pessoal do SSJ1 (`ssjat_tensao`).
+		//   * EXTREME TENSION -- *"6x-12x by mastery, req ~SSJ2"*: rampa de 6x a 12x pela maestria; a porta e a do SSJ2 (`ssj2at`).
+		//   * GODLY TENSION -- *"32x at SSJB level, needs god ki"*: 32x, o numero do Blue. Abre com o ki divino DESPERTO (`PedeGodKi = 0`)
+		//     e nao com os 33% do Blue: a maestria divina so sobe DENTRO de uma forma divina (`DespertarDivino.UsaOKiDivino`), e o Humano
+		//     nao tem um SSG de 22x pra treina-la -- pedir 33% deixaria a forma inalcancavel pra sempre (o mesmo buraco que o Limit
+		//     Breaker do Primal ja teve; ver a entrada dele). E nela que o Humano amadurece o ki divino.
+		//
+		// ESCOLHAS MINHAS, todas no relatorio: os drenos (a High Tension mais barata que o SSJ1, o Extreme Tension com o do SSJ2, o
+		// Godly com o do Blue), as cores das auras, a intensidade das cenas e nenhum corpo ou cabelo proprio. Nenhuma nasce da raiva: a
+		// linha cai no `_` do `DespertaPelaRaiva`, como as raciais que nao a pedem. Sem marco de ganho: nao ha proc do DM pra citar.
+		// ==================================================================================
+		new() { Id = "alta_tensao", IdRede = 900, Linha = LinhaDeForma.Tensao, Ordem = 10,
+				Nome = "High Tension", Intensidade = 2,
+				Mult = [1.5], Dreno = [0.01, 0.005, 0],
+				PortaBp = PortaAltaTensao, ChaveDoLimiar = "ssjat_tensao",
+				Aura = "fff1c9",
+				Desc = "1,5x. O corpo inteiro se retesa e o Humano passa do ponto em que costuma parar. Abre com a metade do poder "
+					+ "que um Super Saiyajin pede." },
+		new() { Id = "tensao_extrema", IdRede = 910, Linha = LinhaDeForma.Tensao, Ordem = 20,
+				Nome = "Extreme Tension", Intensidade = 3,
+				Como = Curva.Rampa, Mult = [6, 12], Dreno = [0.045, 0.03, 0.015],
+				PortaBp = PortaSsj2, ChaveDoLimiar = "ssj2at",
+				Aura = "ff6a2a",
+				Desc = "6x, e até 12x com a maestria. A tensão vai ao extremo: o corpo aguenta o que nenhum Humano deveria. Abre perto "
+					+ "de onde o Super Saiyajin 2 abre." },
+		new() { Id = "tensao_divina", IdRede = 920, Linha = LinhaDeForma.Tensao, Ordem = 30,
+				Nome = "Godly Tension", Intensidade = 4,
+				Mult = [32], Absoluta = true, Dreno = [0.045],
+				PedeGodKi = 0,
+				Aura = "e6f0ff",
+				Desc = "32x, o patamar do Super Saiyajin Blue. A tensão de um Humano que despertou o ki divino -- e é nela que ele "
+					+ "amadurece esse ki." },
 	];
 
 	// ==================================================================================
@@ -5168,6 +5352,10 @@ public static class Catalogo
 	/// </summary>
 	public static FormaDef? PisoDaEscada(PerfilDeFormas p)
 	{
+		// (2026-10-16) O REPOUSO IMPOSTO PELO SERVIDOR VENCE A DERIVACAO -- a Forma Pura do Corrupted Majin. Ver o
+		// `PerfilDeFormas.PisoProprio`, e o `is` e nao o `.Length`: o `default` de um record struct traz o texto NULO.
+		if (p.PisoProprio is { Length: > 0 } proprio && Def(proprio) is { } imposto) return imposto;
+
 		HashSet<LinhaDeForma> abertas = LinhasAbertas(p);
 		FormaDef? melhor = null;
 
@@ -5279,8 +5467,8 @@ public static class Catalogo
 
 	/// <summary>
 	/// ============================ EM QUE CHAVE A MAESTRIA DESTA FORMA E GUARDADA ============================
-	/// Pra 31 das 38 entradas a resposta e "no proprio id", e nao ha nada a dizer. A linha do Frost
-	/// Demon e a excecao, e ela e do original: la NAO EXISTE maestria por forma -- existe **uma so**,
+	/// Pra quase todas as entradas a resposta e "no proprio id", e nao ha nada a dizer. A linha do Frost
+	/// Demon e a excecao (a Forma Pura do Corrupted Majin e a outra -- ver o braco dela), e ela e do original: la NAO EXISTE maestria por forma -- existe **uma so**,
 	/// o `fd_base_mastery` (`IcerTransform.dm:27`), e ela mede uma coisa que nao e "quanto voce domina
 	/// a 2a Evolucao": mede quanto do PROPRIO CORPO o Frost Demon ja consegue destrancar. E a mesma
 	/// barra que decide ate que casca ele se segura pra sempre (`FormasDeFrost.DegrauEstavel`).
@@ -5293,8 +5481,15 @@ public static class Catalogo
 	/// oitava forma de Frost Demon que alguem acrescentar ja compartilha a mesma barra sozinha.
 	/// ====================================================================================================
 	/// </summary>
-	public static string ChaveDaMaestria(string? id) =>
-		Def(id) is { Linha: LinhaDeForma.FrostDemon } ? IdDaBaseDoFrost : id ?? IdBase;
+	public static string ChaveDaMaestria(string? id) => Def(id) switch
+	{
+		{ Linha: LinhaDeForma.FrostDemon } => IdDaBaseDoFrost,
+		// (2026-10-16) A FORMA PURA SA E A INSANA SAO UMA BARRA SO: a maestria que a insana le pra subir mais depressa (*"Form
+		// mastery affects the rate of the rising bp"*) e a que o Majin junta vivendo na sa. Duas barras deixariam a insana sem
+		// maestria nenhuma pra sempre -- ela so dura o tempo de um tanque de Ki.
+		{ Linha: LinhaDeForma.MajinPuro } => IdDaFormaPura,
+		_ => id ?? IdBase,
+	};
 
 	/// <summary>
 	/// ============================ SUSTENTAR **ESTA** FORMA TREINA ALGUMA COISA? ============================
@@ -5371,7 +5566,7 @@ public static class Catalogo
 	}
 
 	/// <summary>
-	/// UM BIT POR LINHA, na pilha. `LinhaDeForma` tem 15 valores (0..14) e o `ulong` tem 64. Passar disso seria
+	/// UM BIT POR LINHA, na pilha. `LinhaDeForma` tem 18 valores (0..17) e o `ulong` tem 64. Passar disso seria
 	/// um defeito CALADO -- em C# o deslocamento de 64 da a volta e acenderia o bit de outra linha --, entao o
 	/// `Add` reprova em voz alta.
 	/// </summary>
@@ -5422,6 +5617,9 @@ public static class Catalogo
 		else if (EhDaRaca(p.Raca, RacaNamekuseijin)) abertas.Add(LinhaDeForma.Namekuseijin);
 		else if (EhDaRaca(p.Raca, RacaHeran)) abertas.Add(LinhaDeForma.Heran);
 		else if (EhDaRaca(p.Raca, RacaAlien)) abertas.Add(LinhaDeForma.Alien);
+		// (v0.4.0) O HUMANO GANHOU A ESCADA DELE -- a da Tensao, pela lista do amigo do dono. Na MESMA cascata das linhas raciais e
+		// pelo mesmo motivo: ela e a escada da raca, e nao se soma a outra.
+		else if (EhDaRaca(p.Raca, RacaHumano)) abertas.Add(LinhaDeForma.Tensao);
 
 		// O BIO-ANDROIDE entra na MESMA cascata, e nao por simetria: a Super Perfeita e a escada
 		// Saiyajin brigam pela mesma vaga no original (as duas escrevem `mob/var/ssj`). Aqui elas
@@ -5448,8 +5646,9 @@ public static class Catalogo
 		// fechar isto seria portar codigo morto.
 		//
 		// **O QUE SE PERDE, DITO EM VOZ ALTA:** as racas que nao tem transformacao no DM ficam sem
-		// transformacao nenhuma aqui -- Humano, Majin, Bio-Androide, Gray, Makyo, Demonio, Android, Kai,
-		// Tsujin, Meta, Kanassa, Yardrat, Arlian, Shapeshifter, Spirit Doll, Saibaman e Demigod. Isso E
+		// transformacao nenhuma aqui -- Majin, Bio-Androide, Gray, Makyo, Demonio, Android, Kai,
+		// Tsujin, Meta, Kanassa, Yardrat, Arlian, Shapeshifter, Spirit Doll, Saibaman e Demigod (o Humano estava nesta lista ate a
+		// v0.4.0, quando ganhou a linha da Tensao -- ver o ramo dele logo acima). Isso E
 		// o DM (nenhuma delas tem `slot=sFORM` na propria arvore alem do que ficou de fora deste porte),
 		// mas ate ontem elas tinham a escada Saiyajin de graca, e quem estava jogando com elas VAI
 		// notar. As que tem forma no original e ainda nao a tem aqui estao nomeadas no relatorio desta
@@ -5497,7 +5696,9 @@ public static class Catalogo
 
 			// ULTRA INSTINCT e ULTRA EGO sao EXCLUSIVOS ENTRE SI (memoria do projeto: "PATHS
 			// EXCLUSIVOS (UI xor UE)"). Quem ja tem energia de Ego escolheu o Ego.
-			if (p.GodKi >= GodkiUiUePct)
+			// (2026-10-16) ...MENOS PRAS CLASSES RARAS, que nao aprendem nenhuma das duas disciplinas (o dono) -- ver
+			// `Disciplinas.ClassesSemDisciplinaDivina`. A forma de uma disciplina que nunca vai abrir nao aparece na escada.
+			if (p.GodKi >= GodkiUiUePct && !Disciplinas.ClasseSemDisciplinaDivina(p.Classe))
 			{
 				if (p.EnergiaUe > 0) abertas.Add(LinhaDeForma.UltraEgo);
 				else if (p.ProficienciaUi > 0) abertas.Add(LinhaDeForma.UltraInstinct);
@@ -5598,6 +5799,16 @@ public static class Catalogo
 	/// sangue (`ssj1base` 2 -> 1,35), e o Mistico nao e sangue: e um dom concedido, igual pra toda
 	/// raca. Nerfar o meio-Saiyajin aqui seria punir a raca por uma coisa que a raca nao deu.
 	/// </summary>
+	public static double MultDoBio(CurvaDoBio c, PerfilDeFormas p)
+	{
+		double absoluto = p.GodKi < 0 ? c.Sem
+			: p.GodKi >= GodkiRoyalePct ? c.NaEvolution
+			: p.GodKi >= GodkiBluePct ? c.NoBlue
+			: c.AoDespertar;
+		// O DEGRAU DO BIO JA MORA NO BP BASE (o perfeito do marco 3 e 10x ali): a forma vale o que falta ate o absoluto.
+		return absoluto / Math.Max(Races.BioAndroids.MultAbsoluto(p.EstagioBio, p.MarcoBio), 1);
+	}
+
 	public static double MultPorGodKi(FormaDef d, CurvaDeGodKi c, PerfilDeFormas p)
 	{
 		// A ORIGEM CASA COM LINHAGEM **OU** CLASSE, pelo mesmo motivo do `PedeOrigemUmaDe`: o
@@ -5639,8 +5850,10 @@ public static class Catalogo
 	/// Trocar o TIPO do parametro foi o compilador achando os 46 chamadores por mim.
 	/// ====================================================================================
 	/// </summary>
+	/// <param name="loucuraSegundos">(2026-10-16) Ha quanto tempo o corpo esta numa forma que sobe com a loucura (a Forma Pura
+	/// insana do Corrupted Majin, `FormaDef.SobeNaLoucura`); 0 fora dela.</param>
 	public static double Multiplicador(string id, Maestrias m, PerfilDeFormas perfil,
-									   double combateSegundos = 0)
+									   double combateSegundos = 0, double loucuraSegundos = 0)
 	{
 		FormaDef? d = Def(id);
 		if (d == null || d.Id == IdBase) return 1;
@@ -5649,9 +5862,16 @@ public static class Catalogo
 		// manda no multiplicador (ver `FormaDef.EscalaComGodKi`). O resto do metodo -- rampa de
 		// combate, bonus e piso -- continua valendo por cima, e e de graca: nenhuma forma de curva
 		// externa usa esses campos hoje, e a que usar um dia ja acha a conta pronta.
-		double v = d.EscalaComGodKi is { } curva
-			? MultPorGodKi(d, curva, perfil)
-			: MultBruto(d, m.De(d.Id), perfil.Diluido);
+		//
+		// (2026-10-16) A SUBIDA DA LOUCURA e a terceira curva de fora: o primeiro valor do `Mult` ao ultimo, pelo tempo de
+		// loucura e mais depressa com a maestria -- ver `FormaDef.SobeNaLoucura`.
+		double v = d.SobeNaLoucura && d.Mult.Length > 1
+			? d.Mult[0] + (d.Mult[^1] - d.Mult[0]) * Races.SagaDoMajin.SubidaDaLoucura(loucuraSegundos, m.De(d.Id))
+			: d.EscalaComGodKi is { } curva
+				? MultPorGodKi(d, curva, perfil)
+				: d.DoBio is { } doBio
+					? MultDoBio(doBio, perfil)
+					: MultBruto(d, m.De(d.Id), perfil.Diluido);
 
 		// ============================ A ESCALA DA CLASSE -- ver FormaDef.BaseDaClasse ============================
 		// Depois da curva de maestria e ANTES de tudo o mais, porque e assim no DM: o
@@ -5671,21 +5891,14 @@ public static class Catalogo
 			v *= baseDaClasse;
 		}
 
-		// LSSJ: a luta sobe do MINIMO ao MAXIMO, e a maestria e so um piso. `max` dos dois.
-		if (d.CombateSobeAoMaximo && d.Mult.Length > 1)
-		{
-			double rampa = d.Mult[0] + (d.Mult[^1] - d.Mult[0])
-						 * Math.Min(combateSegundos / RampaLssjSegundos, 1);
-			v = Math.Max(v, rampa);
-		}
-
-		// LEGENDARY PRIMAL: o combate MULTIPLICA por cima. Outra mecanica.
-		if (d.BonusDeCombate > 0)
-			v *= 1 + Math.Min(combateSegundos / RampaPrimalSegundos, 1) * d.BonusDeCombate;
+		// AS DUAS LINHAS LENDARIAS: o combate MULTIPLICA por cima do que a maestria deu, cada uma no relogio dela (Legendary 180 s,
+		// Primal 216 s). Uma forma com bonus fora das duas linhas nao teria relogio -- a `FormasBench` cobra que nenhuma exista.
+		if (d.BonusDeCombate > 0 && FuriaLendaria.SegundosDaLinha(d) is double relogio and > 0)
+			v *= 1 + Math.Min(combateSegundos / relogio, 1) * d.BonusDeCombate;
 
 		// PISO SOBRE A ANTERIOR -- e a anterior EFETIVA, nao a crua.
 		if (d.PisoSobreAnterior > 0 && Anterior(d) is { } ant)
-			v = Math.Max(v, Multiplicador(ant.Id, m, perfil, combateSegundos) + d.PisoSobreAnterior);
+			v = Math.Max(v, Multiplicador(ant.Id, m, perfil, combateSegundos, loucuraSegundos) + d.PisoSobreAnterior);
 
 		// O PISO CONTA OS RAMOS TAMBEM: `max(SSJ1, maior grade DESBLOQUEADO) + 2`
 		// (supersaiyanbuff.dm:729). O grade nao e o anterior do SSJ2 -- os dois saem do SSJ1 -- entao

@@ -137,6 +137,37 @@ public static class Disciplinas
 	/// </summary>
 	public const double GodKiParaAprender = Catalogo.GodkiUiUePct;
 
+	/// <summary>
+	/// (2026-10-16) AS CLASSES QUE NAO APRENDEM NENHUMA DAS DUAS -- o dono: *"lembrando q toda classe lendaria, corrupted majin,
+	/// golden apple (kaio) etc nao podem aprender ultra ego nem ultra instinto"*. O "etc" dele, por extenso, pra ele conferir: as
+	/// classes que o `races.json` sorteia a 5% ou menos (Legendary 1%, Mutant Frost Demon 1%, Corrupted Majin 5%, Golden Apple 5%,
+	/// Omega 5%, Hermano 5%, Ancient Hermit 5%) e o Legendary Primal, que nasce da linhagem e nao do sorteio. O ELITE (4%) FICA DE
+	/// FORA de proposito: e classe de linhagem e nao de lenda -- e o Vegeta do Ultra Ego e Elite. (Confirmado pelo dono, 2026-10-16:
+	/// *"Elite fica fora das classes raras"*.)
+	///
+	/// O CARGO NAO PASSA POR CIMA: *"se uma classe rara virar deus da destruiçao ele n ganha os paths nem nada, no maximo a forma fury"*
+	/// -- e, perguntado se o "nem nada" levava o kit do titulo, SO OS CAMINHOS: a Fury e o resto do kit (Hakai, Flick, os tiros, a
+	/// Anulacao, o Temper, o folego no vacuo) ficam com ela. Vale pros dois tronos (o Anjo raro tambem).
+	///
+	/// Quem le: o ensino (`GameServer.PodeAprender`), o cargo que entrega a disciplina (`ConcederADisciplinaDoCargo`), o cargo que a
+	/// ENSINA (`SabeDisciplina`: o portador raro nao ensina o caminho que nao pode ter), e a escada (`Catalogo.AbrirLinhas` nao abre as
+	/// duas linhas pra essas classes -- a aba de formas nao oferece o que nunca vai abrir).
+	/// </summary>
+	public static readonly string[] ClassesSemDisciplinaDivina =
+	[
+		"Legendary", "Legendary Primal Saiyan", "Corrupted Majin", "Golden Apple",
+		"Mutant Frost Demon", "Omega", "Hermano", "Ancient Hermit",
+	];
+
+	/// <summary>Esta classe nao aprende Ultra Instinto nem Ultra Ego? Laco cru: quem pergunta e a `AbrirLinhas`, que nao aloca.</summary>
+	public static bool ClasseSemDisciplinaDivina(string? classe)
+	{
+		if (string.IsNullOrEmpty(classe)) return false;
+		foreach (string c in ClassesSemDisciplinaDivina)
+			if (string.Equals(c, classe, StringComparison.OrdinalIgnoreCase)) return true;
+		return false;
+	}
+
 	// ==================================================================================
 	// ULTRA INSTINCT -- a tecnica dos Anjos
 	// ==================================================================================

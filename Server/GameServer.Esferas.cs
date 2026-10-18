@@ -1080,8 +1080,9 @@ public sealed partial class GameServer
 	private void PegarEsfera(ServerPlayer pl)
 	{
 		// `if(usr.KO) return` (:346). Quem esta no chao nao cata nada -- e a mesma linha que faz o
-		// nocaute derrubar as que ele ja tinha (ver o funil do tique).
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "você não consegue nem se levantar."); return; }
+		// nocaute derrubar as que ele ja tinha (ver o funil do tique). O morto DE PE cata (2026-10-17): o chao e o do
+		// cadaver (`CaidoPelaMorte`), e nao o `dead` cru.
+		if (pl.Ficha.KO || CaidoPelaMorte(pl)) { Avisar(pl, "você não consegue nem se levantar."); return; }
 
 		if (EsferaPerto(pl) is not { } e) { Avisar(pl, "não há nenhuma Esfera do Dragão ao seu alcance."); return; }
 

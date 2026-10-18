@@ -116,6 +116,12 @@ public sealed class Rotina
 	private readonly Random _rng;
 
 	/// <summary>
+	/// (2026-10-16) A CONVERSA DESTE CORPO, quando ela nao e a de todo habitante: a da alma do Outro Mundo ou do Inferno (ver
+	/// `FrasesDaRotina.ConversaDoAlem`). Nulo = <see cref="FrasesDaRotina.Conversa"/>. O convite, o aceite e o resto sao os de todos.
+	/// </summary>
+	private readonly string[]? _conversas;
+
+	/// <summary>
 	/// SO OCIO E PASSEIO: e a rotina de quem NAO e habitante (chefe, inimigo) quando esta sem presa.
 	/// Eles herdam o passeio que o corpo antigo tinha (o `idle_wander_loop`), e nada mais: um chefe
 	/// nao puxa conversa com o povo, nao treina na praca e nao convida ninguem pra spar. A bancada
@@ -130,9 +136,10 @@ public sealed class Rotina
 	private bool _iniciei, _convidei, _esperandoResposta;
 	private string? _fraseAgendada;
 
-	public Rotina(RotinaConfig cfg, ulong semente, int meuId, bool soPasseia = false)
+	public Rotina(RotinaConfig cfg, ulong semente, int meuId, bool soPasseia = false, string[]? conversas = null)
 	{
 		_cfg = cfg;
+		_conversas = conversas is { Length: > 0 } ? conversas : null;
 		MeuId = meuId;
 		SoPasseia = soPasseia;
 		_rng = Jandirus.Core.Npc.SorteioDeNpc.Sorteador(semente, "rotina");
@@ -317,7 +324,7 @@ public sealed class Rotina
 		if (!_esperandoResposta && NoAfazer >= _proximaFala)
 		{
 			_proximaFala += 2 * _cfg.SegundosEntreFalas;   // os dois alternam
-			fala ??= Frase(_cfg.Frases.Conversa);
+			fala ??= Frase(_conversas ?? _cfg.Frases.Conversa);
 		}
 		return new Ordem { Olhar = olhar, Falar = fala };
 	}

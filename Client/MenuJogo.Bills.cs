@@ -24,6 +24,13 @@ public partial class MenuJogo
 		!p.Premade && GameClient.Instance is { CasaDeBills: { Revelada: true } casa } && casa.Semente == p.Seed;
 
 	/// <summary>
+	/// (2026-10-16) A MESMA PERGUNTA PELA ZONA em que o corpo esta: o mundo gerado leva a semente do planeta na chave
+	/// (`ZoneKey.Procedural(nome, semente)`). E o que decide a musica da casa (`World.MusicaDoLugar`).
+	/// </summary>
+	internal static bool CasaDeBills(ZoneKey z) =>
+		z.Kind == ZoneKey.KindProcedural && GameClient.Instance is { CasaDeBills: { Revelada: true } casa } && casa.Semente == z.Seed;
+
+	/// <summary>
 	/// O MUNDO DA CASA, achado pelo ENDERECO que o servidor mandou (sistema + orbita) -- ou nulo antes da revelacao.
 	/// A semente confere o endereco: se a celula nao der naquele mundo (semente de universo ainda nao chegou, ou
 	/// de outro servidor), a resposta e "nao sei", e nao um mundo errado.

@@ -286,6 +286,7 @@ public partial class GameServer
 		// interacao principal do Mafuba no jogo original: quem quer o preso de volta nao precisa
 		// bater no preso, precisa achar o pote. Ver `GameServer.Selo.cs`.
 		PoteFoiAoChao(o);
+		OOvoQuebrou(o);   // (2026-10-17) o ovo leva o filho que ia nascer dele -- `GameServer.Filhos.cs`
 		OQueEstavaGuardadoCai(o);   // (v0.2.1) o deposito destruido larga no chao o que guardava -- `GameServer.TechDeBolso.cs`
 
 		_noChao.Remove(o);

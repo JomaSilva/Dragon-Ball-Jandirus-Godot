@@ -152,7 +152,7 @@ public partial class GameServer
 		foreach (ServerPlayer pl in _players.Values)
 		{
 			Estilo? atual = Estilos.Get(pl.Ficha.EstiloAtual);
-			if (atual == null || pl.Ficha.dead) continue;
+			if (atual == null || CaidoPelaMorte(pl)) continue;   // (2026-10-16) o morto de pe treina o estilo como o vivo
 
 			double buffer = _bufferDeEstilo.GetValueOrDefault(pl.Id) + 1;
 			if (buffer < Estilos.SegundosPorGanho) { _bufferDeEstilo[pl.Id] = buffer; continue; }

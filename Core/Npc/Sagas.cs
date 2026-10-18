@@ -191,6 +191,12 @@ public sealed class EloDaSaga
 	public bool UltimatoSoNoUltimoDegrau;
 
 	public string AnuncioDoUltimato = "";
+
+	/// <summary>
+	/// (2026-10-17) A ESFERA DO ULTIMATO (`"ataqueDoUltimato"`): a Supernova (o padrao) ou a Death Ball. Os prazos e a regra sao os
+	/// mesmos -- ver <see cref="Jandirus.Core.Npc.AtaqueDoUltimato"/>. Nulo = um nome que nao existe (acusado no boot).
+	/// </summary>
+	public AtaqueDoUltimato? AtaqueDoUltimato = Jandirus.Core.Npc.AtaqueDoUltimato.Supernova;
 }
 
 /// <summary>O estado VIVO de um chefe dentro de um elo. Vai pro disco.</summary>
@@ -340,6 +346,7 @@ public static class Sagas
 				MinutosDeOcio = Num(e, "minutosDeOcio", 18),
 				MinutosDeLuta = Num(e, "minutosDeLuta", 6),
 				UltimatoSoNoUltimoDegrau = Bit(e, "ultimatoSoNoUltimoDegrau", false),
+				AtaqueDoUltimato = Supernova.AtaquePorNome(Txt(e, "ataqueDoUltimato")),
 			};
 
 			if (e.TryGetProperty("chefes", out JsonElement chefes) && chefes.ValueKind == JsonValueKind.Array)
@@ -466,6 +473,8 @@ public static class Sagas
 			// O ULTIMATO SO EXISTE PRA QUEM DESTROI. Um prazo sem consequencia venceria calado.
 			if (!e.DestroiPlaneta && e.AnuncioDoUltimato.Length > 0)
 				p.Add($"saga '{e.Id}': tem anuncio de ultimato e destroiPlaneta=false -- o prazo venceria calado");
+			if (e.AtaqueDoUltimato == null)
+				p.Add($"saga '{e.Id}': ataqueDoUltimato desconhecido -- vale 'supernova' ou 'deathball'");
 		}
 		return p;
 	}

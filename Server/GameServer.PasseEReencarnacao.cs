@@ -26,6 +26,9 @@ public sealed partial class GameServer
 	/// <summary>DEFEITO INJETADO (`--v030teste`): o passe nunca vence -- o morto fica entre os vivos pra sempre.</summary>
 	internal static bool PasseSemVoltaDeTeste;
 
+	/// <summary>DEFEITO INJETADO (`--v030teste` J, `--diagv030` J): o livro dos mundos so sai no chat -- o menu fica sem a lista, o jogo de antes.</summary>
+	internal static bool PasseSemListaDeTeste;
+
 	// =====================================================================
 	// 1. A REENCARNACAO (item 7)
 	// =====================================================================
@@ -148,6 +151,8 @@ public sealed partial class GameServer
 		{
 			Avisar(pl, $"Enma Daioh abre o livro dos mundos: \"Por {Alem.PrecoDoPasseDoEnma:N0} zeni, {Alem.DiasDoPasseDoEnma} dias "
 					 + $"entre os vivos -- morto, de auréola. Escolha o mundo: {lista}.\"");
+			// (v0.3.2) E A MESMA LISTA VAI PRO MENU, um botao por mundo -- o dono: *"deveria ser uma lista e nao ter q digitar o nome"*.
+			if (!PasseSemListaDeTeste) MandarEscolhas(pl, "enma_passe", destinos.Select(d => d.Nome));
 			return;
 		}
 

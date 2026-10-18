@@ -744,10 +744,12 @@ public partial class GameServer
 		{
 			ec.Carregando = true;
 			ec.UltimatoEm = _relogioDoMundo + Jandirus.Core.Npc.Supernova.SegundosAteAExplosao;
-			ComecarASupernova(corpo);
+			// (2026-10-17) A ESFERA E DA SAGA: Vegeta ergue a Supernova, Namek a Death Ball (`"ataqueDoUltimato"` do `npcs.json`).
+			Jandirus.Core.Npc.AtaqueDoUltimato ataque = elo.AtaqueDoUltimato ?? Jandirus.Core.Npc.AtaqueDoUltimato.Supernova;
+			ComecarASupernova(corpo, ataque);
 			AnunciarNoMundo(elo.AnuncioDoUltimato.Length > 0
 				? elo.AnuncioDoUltimato.Replace("{planeta}", NomeDoPlaneta(elo.Planeta))
-				: $"{corpo.Name} ergue uma SUPERNOVA sobre {NomeDoPlaneta(elo.Planeta)}! Nada o atinge enquanto ela cresce...");
+				: $"{corpo.Name} ergue uma {(ataque == Jandirus.Core.Npc.AtaqueDoUltimato.DeathBall ? "DEATH BALL" : "SUPERNOVA")} sobre {NomeDoPlaneta(elo.Planeta)}! Nada o atinge enquanto ela cresce...");
 			return;
 		}
 

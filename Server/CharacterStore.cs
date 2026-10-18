@@ -36,6 +36,13 @@ public sealed class CharacterSave
     public int Idade = 18;
 
     /// <summary>
+    /// (2026-10-17) OS MESES DA IDADE e O MES DO CALENDARIO JA CONTADO -- ver `ServerPlayer.MesesDaIdade`. O save de antes do calendario
+    /// volta com zero e zero: o calendario nasce no mes zero, e a idade dele comeca a contar dali.
+    /// </summary>
+    public int MesesDaIdade;
+    public long MesDaIdade;
+
+    /// <summary>
     /// A HISTORIA que o jogador escreveu na criacao. Sem efeito mecanico -- e identidade, e o verb
     /// `Backstory` do original existia justamente pra ela poder ser LIDA depois.
     /// </summary>
@@ -524,6 +531,14 @@ public sealed class AccountSave
     /// </summary>
     public RacaSorteada?[] Sorteios = new RacaSorteada?[AccountStore.Slots];
 
+    /// <summary>
+    /// (2026-10-16) O PROXIMO PERSONAGEM DESTA CONTA NASCE COM A CLASSE MAIS RARA DA RACA -- o verb de admin `admin_classe_rara` (o
+    /// dono: *"o proximo personagem criado por essa conta vai garantidamente ser da classe mais rara dessa raça, no modo aleatorio a
+    /// raça vem aleatoria mas sempre da classe mais rara, e no modo q escolhe a raça a classe tb vem a mais rara"*). Gasto no
+    /// nascimento que o aplicou (`GameServer.CreateChar`); uma raca sem classe rara nao o gasta. Ver `Birth.ClasseMaisRara`.
+    /// </summary>
+    public bool ProximaClasseRara;
+
     /// <summary>(v0.3.0) Quantos sorteios esta conta ja fez -- entra na semente, pra vaga esvaziada nao repetir o sorteio velho.</summary>
     public int SorteiosFeitos;
 }
@@ -846,6 +861,8 @@ public sealed class AccountStore(string pasta)
         Genero = pl.Genero,
         Linhagem = pl.Linhagem,
         Idade = pl.Idade,
+        MesesDaIdade = pl.MesesDaIdade,
+        MesDaIdade = pl.MesDaIdade,
         Historia = pl.Historia,
         Porte = pl.Porte,
         Mochila = pl.Mochila,
@@ -985,6 +1002,8 @@ public sealed class AccountStore(string pasta)
         pl.Genero = s.Genero;
         pl.Linhagem = s.Linhagem;
         pl.Idade = s.Idade;
+        pl.MesesDaIdade = s.MesesDaIdade;
+        pl.MesDaIdade = s.MesDaIdade;
         pl.Historia = s.Historia;
         pl.Porte = s.Porte.Length > 0 ? s.Porte : "Medium";
 

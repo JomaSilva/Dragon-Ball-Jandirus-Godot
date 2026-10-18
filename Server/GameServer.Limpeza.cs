@@ -423,6 +423,30 @@ public sealed partial class GameServer
 			Zerar = ZerarTorneio,
 		});
 
+		// ---------------------------------------------------------- os bebes a caminho (2026-10-17)
+		// Um bebe e de um casal DESTE mundo: no mundo novo os pais nem existem, e a oferta da criacao apontaria pra eles. Ver
+		// `GameServer.Filhos.cs`.
+		_sistemasDoMundo.Add(new SistemaDoMundo
+		{
+			Nome = "os bebes a caminho (os filhos que ainda nao nasceram)",
+			Arquivos = [NomeDoArquivoDosBebes],
+			Unidade = "bebe a caminho",
+			Contar = () => _bebes.Bebes.Count,
+			Zerar = ZerarBebes,
+		});
+
+		// ---------------------------------------------------------- o calendario (2026-10-17)
+		// A origem e o 1 de Luty do ano 1 DESTE mundo: o mundo novo comeca hoje -- o `fdel("Year")` da limpeza do DM (`SettingsDatum.dm:225`).
+		// A CONTAGEM E BINARIA: zero e o primeiro dia de um mundo novo. Ver `GameServer.Calendario.cs`.
+		_sistemasDoMundo.Add(new SistemaDoMundo
+		{
+			Nome = "o calendario (o dia, o mes e o ano deste mundo)",
+			Arquivos = [NomeDoArquivoDoCalendario],
+			Unidade = "calendario em curso",
+			Contar = () => CalendarioAndou ? 1 : 0,
+			Zerar = ZerarCalendario,
+		});
+
 		// ---------------------------------------------------------- a visita do Bills
 		// O arquivo guarda so a FASE da historia (dormindo, a caminho, na Terra, em casa): os corpos e a casa sao
 		// deduzidos -- a casa sai da semente do universo, que a limpeza troca, entao ela muda de lugar sozinha. Sem

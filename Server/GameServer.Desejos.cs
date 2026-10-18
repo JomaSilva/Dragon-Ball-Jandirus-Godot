@@ -128,8 +128,8 @@ public sealed partial class GameServer
 	private bool EhKaioshinDoCorpo(ServerPlayer pl) =>
 		string.Equals(pl.Race, "Kai", StringComparison.OrdinalIgnoreCase)
 		&& string.Equals(pl.Class, "Golden Apple", StringComparison.OrdinalIgnoreCase)
-		&& _tronos.TryGetValue("kaioshin", out string? dono)
-		&& string.Equals(dono, pl.Conta, StringComparison.OrdinalIgnoreCase);
+		// (2026-10-16) POR VAGA: o Kaioshin tem cinco (`RankDef.Vagas`), e qualquer um deles e "o Kaioshin de agora"
+		&& string.Equals(CargoDe(pl.Conta), "kaioshin", StringComparison.OrdinalIgnoreCase);
 
 	// =====================================================================
 	// O PEDIDO
@@ -442,10 +442,14 @@ public sealed partial class GameServer
 		return true;
 	}
 
-	/// <summary>OS DOIS CAMPOS DE IDADE, num lugar so -- ver `DesejoDeJuventude`.</summary>
+	/// <summary>
+	/// OS CAMPOS DE IDADE, num lugar so -- ver `DesejoDeJuventude`. (2026-10-17) Os meses do calendario zeram: o `Age = N` do DM nao guarda
+	/// decimo.
+	/// </summary>
 	private void PorIdade(ServerPlayer quem, int idade)
 	{
 		quem.Idade = idade;
+		quem.MesesDaIdade = 0;
 		quem.Ficha.Idade = idade;
 		quem.Ficha.Statify();
 		AplicarPoderes(quem);
@@ -903,6 +907,7 @@ public sealed partial class GameServer
 		// corpo Saiyajin (vida ~120) morreria de velhice na hora"*. Neste port isso e literal: o
 		// `Envelhecimento.MorreuDeVelhice` compara a idade com o auge DA RACA, e o auge do Kai e outro.
 		int idade = Math.Min(k.Idade, (int)Jandirus.Core.Races.Envelhecimento.IdadeAdulta);
+		if (idade < k.Idade) k.MesesDaIdade = 0;   // (2026-10-17) cortada no teto, a idade fica redonda, como o `min()` do DM
 		k.Idade = idade;
 		k.Ficha.Idade = idade;
 

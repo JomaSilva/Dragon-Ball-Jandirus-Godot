@@ -441,23 +441,29 @@ public partial class GameServer
 		GD.Print("[arvores] -- 6) meditar e as skills de Ki: a medicao --");
 		if (RegrasDeNivel.Get(ArvKiUnlocked) is not { } regra) { AfirmarArv("o Ki Unlocked tem regra de nivel", false); return; }
 
+		// A MEDIDA RODA NUM NIVEL ALTO (2026-10-17), onde a barreira (~39 mil) passa do que o minuto rende mesmo com o peso em 3. Uma
+		// SUBIDA no meio da medida a estragava: ela recalcula a ficha, o `Statify` devolve o Ki maximo de VERDADE do corpo (a medida
+		// forca 1000, e o corpo forjado tem perto de 100 -- a curva do recem-nascido, um trigesimo) e zera o banco adiantado. Com a taxa
+		// do DM ninguem subia no minuto; com a do dono (5x, `GainKnobs.GlobalKiExpRate`) o corpo formado sobe. O ganho por tique NAO
+		// depende do nivel (`Mind.dm:126-131`), e o tempo ate o nivel 2 continua contado pela barreira do nivel 1.
+		const int NivelDaMedida = 70;
 		double Medir(double kiMaximo, bool meditando, double peso = 1, int tiques = 300)
 		{
 			ServerPlayer c = Forjar("Medido", CorredorLivre(4), bp: 1000);
 			c.Livro.Dar(ArvKiUnlocked);
-			c.Niveis.Por(ArvKiUnlocked, 1);
+			c.Niveis.Por(ArvKiUnlocked, NivelDaMedida);
 			c.Ficha.MaxKi = kiMaximo;
 			c.Ficha.med = meditando;
 			Jandirus.Core.Stats.GainKnobs.MeditacaoNasSkillsDeKi = peso;
 			try { for (int i = 0; i < tiques; i++) TicarNiveisDe(c); }
 			finally { Jandirus.Core.Stats.GainKnobs.MeditacaoNasSkillsDeKi = 1; }
-			return c.Niveis.Nivel(ArvKiUnlocked) == 1 ? c.Niveis.Exp(ArvKiUnlocked) : double.NaN;
+			return c.Niveis.Nivel(ArvKiUnlocked) == NivelDaMedida ? c.Niveis.Exp(ArvKiUnlocked) : double.NaN;
 		}
 
 		double barreira = regra.BarreiraEm(1);
 		double paradoNovo = Medir(100, false), meditaNovo = Medir(100, true);
 		double paradoFormado = Medir(1000, false), meditaFormado = Medir(1000, true);
-		GD.Print($"[arvores]         MEDIDO (Ki Unlocked nivel 1, barreira {barreira:N0} de exp, 1 minuto de jogo):");
+		GD.Print($"[arvores]         MEDIDO (Ki Unlocked no nivel {NivelDaMedida}, 1 minuto de jogo; a barreira do nivel 1 e {barreira:N0} de exp):");
 		GD.Print($"[arvores]           recem-nascido (Ki max 100):  parado {paradoNovo:0.#} exp/min | meditando {meditaNovo:0.#} exp/min "
 			   + $"({meditaNovo / Math.Max(paradoNovo, 1e-9):0.#}x) -> {barreira / Math.Max(meditaNovo, 1e-9):0} min meditando ate o nivel 2");
 		GD.Print($"[arvores]           corpo formado  (Ki max 1000): parado {paradoFormado:0.#} exp/min | meditando {meditaFormado:0.#} exp/min "
@@ -469,8 +475,8 @@ public partial class GameServer
 		AfirmarArv("...e o que faz o comeco parecer parado e a CURVA do original, nao a falta do bonus: com Ki maximo 100 o mesmo minuto rende perto de um trigesimo (Ki max / 3000)",
 				   paradoFormado / paradoNovo is > 20 and < 45, $"formado/novo parado = {paradoFormado / paradoNovo:0.#}x");
 
-		// 100 TIQUES (20 s) E NAO O MINUTO: com o peso em 3 o corpo formado PASSA DA BARREIRA dentro do minuto
-		// (2.428 x 3 contra 5.150), e a regua de cima so sabe ler exp dentro de um nivel -- ela devolvia NaN.
+		// 100 TIQUES (20 s) E NAO O MINUTO: com o peso em 3 o minuto inteiro do corpo formado chega perto da barreira do nivel da
+		// medida, e uma subida a estragaria (ver o `NivelDaMedida`).
 		double semPeso = Medir(1000, true, tiques: 100), comPeso = Medir(1000, true, peso: 3, tiques: 100);
 		AfirmarArv("**O PESO E AJUSTAVEL** (`GainKnobs.MeditacaoNasSkillsDeKi`): em 3, meditar rende perto do triplo -- e parado nao muda nada",
 				   comPeso / semPeso is > 2.2 and < 3.8 && Math.Abs(Medir(1000, false, peso: 3) - paradoFormado) < paradoFormado * 0.25,

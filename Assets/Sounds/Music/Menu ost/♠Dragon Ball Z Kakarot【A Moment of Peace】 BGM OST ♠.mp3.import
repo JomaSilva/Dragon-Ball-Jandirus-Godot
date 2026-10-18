@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://vxpwijxdqa5m"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【A Moment of Peace】 BGM OST ♠.mp3-202164ab77d7a24d2dde21e3ca9a6be7.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/Menu ost/♠Dragon Ball Z Kakarot【A Moment of Peace】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【A Moment of Peace】 BGM OST ♠.mp3-202164ab77d7a24d2dde21e3ca9a6be7.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

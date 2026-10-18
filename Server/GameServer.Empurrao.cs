@@ -149,6 +149,7 @@ public sealed partial class GameServer
 	/// <param name="tiques">O `kbdur`, em tiques de 0,1 s. O efeito ja aplica o teto de 10.</param>
 	private void Arremessar(ServerPlayer d, Vec2 rumo, double forca, int tiques)
 	{
+		if (d.Combate is { Inabalavel: true }) return;   // (v0.4.0) sem recuo -- Unstoppable Force, Primal Bloodlust
 		tiques = Math.Clamp(tiques, 1, Empurrao.TiquesMax);
 		_arremessosFeitos++;
 
@@ -939,9 +940,14 @@ public sealed partial class GameServer
 		// da destruicao -- todos passam por ESTA funcao). O dono viu gente derrubando a parede pra sair
 		// do Outro Mundo sem pagar: *"nao deixe players destruirem paredes no outro mundo, pq com isso
 		// eles conseguem burlar a barreira do enma"*. A regra e por ZONA e mora no unico ponto por onde
-		// uma celula cai, entao vale pro Ceu e pro Inferno tambem (`Alem.EhOAlem`).
+		// uma celula cai.
+		//
+		// (2026-10-16) SO O OUTRO MUNDO, e nao o Ceu e o Inferno: valendo pros tres (`Alem.EhOAlem`), nada quebrava la -- nem o
+		// chao que racha no soco --, e o dono reclamou: *"n ta dando pra destruir o cenario no outro mundo/heaven /inferno etc"*.
+		// Perguntado, decidiu: *"blz outro mundo pode deixar indestrutivel, mas hell e heaven pode deixar destruir"*. A barreira
+		// do Enma e a mesa dele moram no Outro Mundo; o Ceu e o Inferno nao tem o que burlar quebrando parede.
 		// ==================================================================================
-		if (Alem.EhOAlem(zona.Name)) return false;
+		if (string.Equals(zona.Name, Alem.ZonaDoOutroMundo, StringComparison.OrdinalIgnoreCase)) return false;
 
 		// A ARVORE QUE REBROTOU CAI NO LUGAR DA CELULA: ela e uma camada por cima do arquivo e do estrago, e sem
 		// esta linha o arremesso e o chao que racha parariam numa arvore que nada derruba. Ver `GameServer.Lenha.cs`.

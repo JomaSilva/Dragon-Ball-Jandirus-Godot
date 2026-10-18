@@ -193,6 +193,20 @@ public partial class Fighter
 	/// </summary>
 	public double SpiritFistCost = 2, SpiritFistDamage = 1;
 
+	/// <summary>
+	/// (2026-10-16) A EFICIENCIA DA FORMA GIGANTE -- `mob/var/giant_form_efficiency = 1` (`Giant Form.dm:49`): multiplica o folego
+	/// que o gigante come e o exp que ele rende. Os degraus 1 e 2 do `/datum/skill/namek/bigform` o escrevem (0,5 e 0,15), e o G2
+	/// usava um 1 cravado (`GameServer.EficienciaDoGigante`).
+	/// </summary>
+	public double giant_form_efficiency = 1;
+
+	/// <summary>
+	/// (2026-10-16) QUANDO A GENKIDAMA PODE SER REUNIDA DE NOVO -- hora de parede (ms, a do `GameServer.NowMs`); zero = pronta. O dono:
+	/// *"ja q a genkidama é mt forte coloque um cooldown grande nela de 1 hora q so acontece quando vc lança ela"*. Vai pro disco com a
+	/// ficha: relogar nao zera a espera. Nao existe no DM.
+	/// </summary>
+	public long genkidama_pronta_em;
+
 	/// <summary>Modificadores de dreno: `P` e permanente, o outro e o de agora.</summary>
 	public double PDrainMod = 1, DrainMod = 1;
 
@@ -216,6 +230,7 @@ public partial class Fighter
 	{
 		double num = Math.Max(MaxKi, 1);
 		double eff = Math.Log(Math.Max(kiefficiencyskill, 5)) / Math.Log(9);
-		return Math.Sqrt(num / 140) * PDrainMod * GlobalKiDrainMod * DrainMod / eff;
+		// (v0.4.0) vezes o consumo racial (Primal Evolution, Mindless Beast) -- e o fator de custo de TODA tecnica, entao vale pra todas.
+		return Math.Sqrt(num / 140) * PDrainMod * GlobalKiDrainMod * DrainMod / eff * racialCustoKi;
 	}
 }

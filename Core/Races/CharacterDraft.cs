@@ -73,6 +73,13 @@ public sealed class CharacterDraft
 	/// </summary>
 	public bool PertoDeCasa;
 
+	/// <summary>
+	/// (2026-10-17) O BEBE DE QUEM ESTE PERSONAGEM NASCE (`BebeACaminho.Id`), ou 0 -- a criacao comum. O servidor confere que ele ainda
+	/// esta a caminho e crava raca, mundo, idade (zero) e a classe pelos pais; a linhagem tem que ser uma das do bebe. Ver
+	/// `GameServer.Filhos.cs`.
+	/// </summary>
+	public int FilhoDe;
+
 	public static readonly string[] Portes = ["Medium", "Small", "Large"];
 
 	/// <summary>Raças que NAO passam pelo passo de genero (o BYOND forcava Male).</summary>
@@ -129,9 +136,10 @@ public sealed class CharacterDraft
 		if (Race.Length == 0) return "escolha uma raca";
 
 		// A FAIXA E DA RACA, e nao do jogo. O original valida contra o `DeclineAge` pelo mesmo
-		// motivo: ninguem nasce ja em declinio.
-		if (Age < 1 || Age > IdadeMaxima)
-			return $"a idade tem que ficar entre 1 e {IdadeMaxima} para esta raça";
+		// motivo: ninguem nasce ja em declinio. (2026-10-17) O FILHO nasce com zero -- pedido do dono.
+		int idadeMinima = FilhoDe > 0 ? 0 : 1;
+		if (Age < idadeMinima || Age > IdadeMaxima)
+			return $"a idade tem que ficar entre {idadeMinima} e {IdadeMaxima} para esta raça";
 
 		if (PrecisaEscolherClasse && ChosenClass.Length == 0) return "escolha a linhagem";
 		if (Array.IndexOf(Portes, Porte) < 0) return "escolha o porte do corpo";

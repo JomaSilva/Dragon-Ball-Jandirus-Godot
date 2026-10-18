@@ -397,6 +397,14 @@ public sealed class ServerPlayer
 	/// </summary>
 	public double BpDoGuardiao;
 
+	/// <summary>
+	/// (2026-10-16) O REPOUSO QUE A SAGA DO CORRUPTED MAJIN IMPOE A ESTE CORPO -- o id da Forma Pura (sa ou insana), ou vazio = o
+	/// repouso de sempre. Quem escreve e o zelador da saga (`GameServer.SagaDoMajin.AjustarFormaDoMajin`); quem le e o `Perfil`, que o
+	/// entrega ao catalogo como `PerfilDeFormas.PisoProprio`. E derivado (sanidade, quem esta dentro, o sono), e mora aqui so porque
+	/// o `Perfil` e estatico e a resposta depende do que so o servidor sabe.
+	/// </summary>
+	public string PisoDoMajin = "";
+
 	/// <summary>O clone que este jogador invocou (0 = nenhum), e de onde ele veio.</summary>
 	public int CloneId;
 	public ZoneKey ZonaDeOrigem;
@@ -565,6 +573,21 @@ public sealed class ServerPlayer
 	/// pinado por `GameServer.Ensino.cs:120` (`new PedidoDeLicao(...)`).
 	/// </summary>
 	public PedidoDeLicao? PedidoDeLicao;
+
+	/// <summary>(2026-10-17) O PEDIDO DE FILHO NA MESA DESTE JOGADOR (nulo = ninguem pediu). Ver `GameServer.Filhos.cs`.</summary>
+	public PedidoDeFilho? PedidoDeFilho;
+
+	/// <summary>
+	/// (v0.4.0) O ESTADO RACIAL: as janelas das ativas, os degraus que se acumulam e os debuffs de skill inimiga. FORA do save (as
+	/// recargas e que vao, na ficha). Todo corpo tem um. Ver `GameServer.Passivas.cs`.
+	/// </summary>
+	public readonly Jandirus.Core.Races.EstadoRacial Racial = new();
+
+	/// <summary>(v0.4.0) Onde o corpo estava no tique racial anterior -- a carga PARADA do Demonic Saiyan e da Ruthless Mind.</summary>
+	public Vec2 PosDoTiqueRacial;
+
+	/// <summary>(v0.4.0) As linhas raciais do HUD, montadas no tique da ficha e lidas pela `Sheet()`.</summary>
+	public string RaciaisNaFicha = "";
 
 	/// <summary>
 	/// QUANDO ESTE MESTRE PODE ENSINAR UMA SKILL DE NOVO (`NowMs()`). RECONSTRUIDO; tipo pinado por
@@ -739,6 +762,9 @@ public sealed class ServerPlayer
 	/// </summary>
 	public long SupernovaDesde;
 
+	/// <summary>(2026-10-17) Qual esfera o <see cref="SupernovaDesde"/> ergue: a Supernova ou a Death Ball do ultimato (`Core.Npc.AtaqueDoUltimato`).</summary>
+	public Jandirus.Core.Npc.AtaqueDoUltimato AtaqueDoUltimato;
+
 	/// <summary>
 	/// ATE QUANDO ESTE ATACANTE NAO PRECISA OUVIR DE NOVO que o golpe atravessou quem esta em
 	/// cinematica. Instante de relogio de servidor, em ms.
@@ -784,12 +810,41 @@ public sealed class ServerPlayer
 	/// </summary>
 	public bool SumiuAbsorvido;
 
+	/// <summary>
+	/// (2026-10-17) A LARVA ENTERRADA: desde quando (-1 = na superficie) e quantos minutos inteiros ela ja ouviu -- ver `GameServer.Larva.cs`.
+	/// Estado de servidor e nao de ficha: quem sai do jogo enterrado volta na superficie, e a conta dos 5 min recomeca.
+	/// </summary>
+	public long EnterradoDesde = -1;
+	public int MinutosEnterradoAvisados;
+
 	/// <summary>(2026-10-15) A ilha do Outro Mundo debaixo deste corpo (nulo fora delas) -- ver `GameServer.TickDasIlhas`.</summary>
 	public string? IlhaDoOutroMundo;
 
 	/// <summary>O VOO em curso: quantos tiques faltam, pra onde, e com que forca. Ver GameServer.Empurrao.cs.</summary>
-	/// <summary>A direcao pra onde ele estava olhando quando caiu. Congelada -- ver Sheet().</summary>
-	public Facing FacingDaQueda;
+	/// <summary>
+	/// PRA ONDE A CABECA VAI SE O CORPO CAIR SEM GOLPE -- a reserva do <see cref="DirecaoDeitado"/> quando nao ha rumo de golpe
+	/// nem de voo. Escrita a cada passo de pe (o olhar, traduzido por <see cref="CabecaDeQuemCaiOlhando"/>), na foto do cadaver
+	/// e no pouso de quem foi jogado caido (<see cref="CongelarDirecaoDeitada"/>, que ja recebem cabeca).
+	///
+	/// O PADRAO E O NORTE, e e a cabeca do olhar padrao (o sul): o corpo que nunca deu um passo -- o NPC, que anda pelo cerebro e
+	/// nao por esta porta -- cai de cabeca pra cima, como sempre caiu.
+	/// </summary>
+	public Facing FacingDaQueda = Facing.North;
+
+	/// <summary>
+	/// (2026-10-16) O OLHAR DE QUEM CAI SEM GOLPE, EM CABECA: leste e oeste ficam (a cabeca pro lado que ele olhava), norte e sul
+	/// trocam (olhando pra camera ele cai de costas, a cabeca pra cima). E a tabela que o dono ditou pro olhar -- *"pra cima gira 90
+	/// pra baixo; pra baixo gira 90 pra cima"* -- escrita agora como rumo de CABECA, porque o cliente passou a deitar todo rumo
+	/// com a cabeca pra ele (o soco vertical estava invertido -- ver `CharacterVisual.DeitarPor`). Sem esta traducao, consertar o
+	/// soco desconsertaria quem desmaia de fome ou no esmagamento olhando pra baixo: a queixa antiga (*"quando o personagem ta
+	/// olhando pra baixo e ele desmaia ele ta desmaiando de cabeca pra baixo"*) voltaria.
+	/// </summary>
+	public static Facing CabecaDeQuemCaiOlhando(Facing olhar) => olhar switch
+	{
+		Facing.South => Facing.North,
+		Facing.North => Facing.South,
+		_ => olhar,
+	};
 
 	/// <summary>
 	/// PRA ONDE O CORPO ESTA DEITADO -- e o unico angulo que o cliente desenha.
@@ -804,13 +859,29 @@ public sealed class ServerPlayer
 	///
 	/// Falso pra quem esta vivo, entao ela serve sozinha como "estou no alem, morto".
 	/// </summary>
-	public bool MortoDePe => Jandirus.Core.World.Alem.MortoDePe(Ficha.dead, Zone.Name) || EmVisita;
+	public bool MortoDePe => Jandirus.Core.World.Alem.MortoDePe(Ficha.dead, Zone.Name) || EmVisita || EmPassagem;
 
 	/// <summary>
 	/// (v0.3.0) MORTO COM O PASSE DO ENMA, entre os vivos (`Alem.EmVisita`): de pe e de aureola fora do Outro Mundo ate o
 	/// prazo vencer -- a outra metade do <see cref="MortoDePe"/>. Ver `GameServer.PasseEReencarnacao.cs`.
 	/// </summary>
 	public bool EmVisita => !GameServer.PasseDeitaDeTeste && Jandirus.Core.World.Alem.EmVisita(Ficha.dead, Ficha.passe_do_enma_ate);
+
+	/// <summary>
+	/// (v0.3.2) A PASSAGEM DE 5 s: quando ela acaba (hora de parede, `NowMs`); zero = nenhuma. O morto que chegou aos vivos pela
+	/// Transmissao Instantanea -- ver `Alem.SegundosDaPassagem` e `GameServer.PassagemDoMorto.cs`. Nao vai pro disco: quem cai no
+	/// meio e gravado no lugar da volta (`GravarAVoltaDaPassagem`).
+	/// </summary>
+	public long PassagemAte;
+
+	/// <summary>(v0.3.2) Pra onde a alma de passagem volta: o lugar do Outro Mundo de onde ela saiu.</summary>
+	public ZoneKey PassagemZona;
+
+	/// <summary>(v0.3.2) O ponto de <see cref="PassagemZona"/> de onde ela saiu.</summary>
+	public Vec2 PassagemPos;
+
+	/// <summary>(v0.3.2) Morto DE PASSAGEM entre os vivos: de pe, meio transparente, por <see cref="Jandirus.Core.World.Alem.SegundosDaPassagem"/>.</summary>
+	public bool EmPassagem => Ficha.dead && PassagemAte != 0;
 
 	/// <summary>(v0.3.0) Ja ouviu "falta um dia" deste passe -- o aviso sai uma vez so.</summary>
 	public bool AvisadoDoFimDoPasse;
@@ -848,7 +919,8 @@ public sealed class ServerPlayer
 	/// passam a ser um so.
 	///
 	/// O OLHAR SOBROU DE RESERVA, pra quem cai sem ter apanhado: `FacingFrom` devolve o olhar
-	/// anterior quando o vetor e nulo, e ai a direcao antiga e a unica resposta que existe.
+	/// anterior quando o vetor e nulo, e ai a direcao antiga e a unica resposta que existe (ja em
+	/// cabeca -- ver <see cref="CabecaDeQuemCaiOlhando"/>).
 	/// ===========================================================================================
 	/// </summary>
 	public Facing DirecaoDeitado => MoveRules.FacingFrom(
@@ -1226,6 +1298,9 @@ public sealed class ServerPlayer
 	public int EnvEstado3 = -1;
 	public int EnvEscape = -1;
 
+	/// <summary>(v0.4.0) As linhas raciais enviadas -- comparadas como os outros campos (uma contagem que muda tem que chegar).</summary>
+	public string EnvRaciais = "\u0001";
+
 	/// <summary>Ultimo estagio de carga anunciado. So se avisa o jogador quando o estagio MUDA.</summary>
 	public Jandirus.Core.Combat.EstagioDaCarga EstagioDaCarga;
 
@@ -1334,6 +1409,9 @@ public sealed class ServerPlayer
 	/// </summary>
 	public bool EnvAureola;
 
+	/// <summary>(v0.3.2) A ultima PASSAGEM enviada pra zona -- viaja no pacote da aureola. Mesma disciplina do <see cref="EnvAureola"/>.</summary>
+	public bool EnvPassagem;
+
 	/// <summary>
 	/// DEBRUCADO NUMA RESEARCH STATION. Nao entra no <see cref="Protocol.Activity"/> junto de
 	/// treinar e meditar de proposito: aqueles dois sao POSES que os outros veem, e a pose vai no
@@ -1420,6 +1498,13 @@ public sealed class ServerPlayer
 	public Jandirus.Core.Appearance.Appearance Visual = new();
 	public string Planeta = "Earth", Genero = "Male", Linhagem = "";
 	public int Idade = 18;
+
+	/// <summary>
+	/// (2026-10-17) OS MESES VIVIDOS RUMO AO PROXIMO ANO (0 a 9) e O MES DO CALENDARIO ATE O QUAL A IDADE JA FOI CONTADA -- os decimos do
+	/// `Age` e o `LastYear` do DM. Vao pro disco. Ver `GameServer.Calendario.cs` e `Envelhecimento.ContarMeses`.
+	/// </summary>
+	public int MesesDaIdade;
+	public long MesDaIdade;
 	public long CriadoEm;
 
 	/// <summary>
@@ -1811,7 +1896,12 @@ public sealed class ServerPlayer
 						 | (AgarrandoId != 0 ? 64 : 0) | (Estrangulando && AgarrandoId != 0 ? 128 : 0)),
 		Escape = AgarradoPorId != 0 ? EscapeNaFicha : (byte)0,
 		// (v0.3.0) O TERCEIRO BYTE: o morto com o passe do Enma, de pe entre os vivos -- o cliente nao se deita (`LocalPlayer.Caido`).
-		Estado3 = (byte)(EmVisita ? 1 : 0),
+		// (v0.3.2) E o de passagem pela Transmissao, que tambem esta de pe entre os vivos.
+		Estado3 = (byte)((EmVisita || EmPassagem ? 1 : 0)
+							  // (2026-10-17) a larva enterrada: o cliente a desenha meio transparente sobre o montinho de terra e nao tenta andar
+							  | (EnterradoDesde >= 0 ? 2 : 0)),
+		// (v0.4.0) o que as passivas e ativas raciais estao fazendo agora (o HUD as poe nos avisos do corpo)
+		Raciais = RaciaisNaFicha,
 	};
 }
 
@@ -1956,6 +2046,9 @@ public partial class GameServer : Node
 	{
 		if (vezes <= 0 || pl.Livro == null || !EhJogador(pl)) return;
 		pl.Niveis.CreditarPorContador(contador, vezes, pl.Ficha);
+		// (2026-10-16) A EFUSAO SOMA OITO DELES (`Effusion.dm:74`) -- ver `NiveisDeSkill.ContadorDaEfusao`.
+		if (!Jandirus.Core.Skills.NiveisDeSkill.FontesDoAdendo18DesligadasDeTeste && Jandirus.Core.Skills.NiveisDeSkill.ContaNaEfusao(contador))
+			pl.Niveis.CreditarPorContador(Jandirus.Core.Skills.NiveisDeSkill.ContadorDaEfusao, vezes, pl.Ficha);
 	}
 
 	/// <summary>
@@ -1966,15 +2059,11 @@ public partial class GameServer : Node
 	/// (`WorldClock.dm:92`, o `proc/Years()`, uma vez por ano do mundo) -- e ele ainda sai cedo se
 	/// `LastYear == Year` (`Aging.dm:113`). Ou seja: quem manda e o RELOGIO DE ANO, nao o tique.
 	///
-	/// Este port nao tem relogio de ano (`WorldClock.dm` nao foi portado -- `CatalogoDePlanetas.cs:35`
-	/// e `Ceu.cs:89` ja dizem isso por escrito), e a idade so anda por GESTO: a Sala do Tempo
-	/// (`EnvelhecerNaSala`) e o Growth Spurt do Saibaman (`EnvelhecerG2`). Entao os pontos fieis sao
-	/// esses dois mais o login -- que e exatamente onde o original pergunta. Poe-lo no `TickFichas`
-	/// seria perguntar 5x por segundo uma coisa que so muda quando alguem envelhece.
-	///
-	/// CONSEQUENCIA HONESTA: enquanto nao houver calendario, so envelhece quem entra na Sala do
-	/// Tempo. Um Saiyajin precisa de ~120 sessoes de Sala pra chegar aqui. Isto NAO e uma torneira
-	/// que abre sozinha -- e a torneira certa ligada no cano que existe hoje.
+	/// (2026-10-17) O CALENDARIO CHEGOU (`GameServer.Calendario.cs`): a idade anda sozinha, um mes por mes
+	/// do mundo, e os pontos fieis sao os que mexem nela -- a virada do mes (`ContarOCalendario`), o login,
+	/// a Sala do Tempo (`EnvelhecerNaSala`) e os meses de fora do calendario (`EnvelhecerMeses`: o Growth
+	/// Spurt e o Toque do Tempo). Poe-lo no `TickFichas` seria perguntar 5x por segundo uma coisa que so
+	/// muda quando alguem envelhece.
 	/// =======================================================================================
 	///
 	/// MEDIDO ANTES DE LIGAR: nos 67 saves de hoje, 56 personagens tem idade e raca, e ZERO cruzam
@@ -2759,6 +2848,12 @@ public partial class GameServer : Node
 		_vilaoDeTeste = Array.IndexOf(args, "--vilaoteste") >= 0;
 		if (_vilaoDeTeste) GD.Print("[server] BANCADA: viloes avulsos no 1o login");
 
+		// `--infernoteste` (2026-10-16): as ALMAS do Outro Mundo e os VILOES DE SAGA que voltam no Inferno. No 1o login pelo mesmo
+		// motivo da de cima: "gente no Outro Mundo", a media que da a forca do vilao e "quem derrotou" pedem um corpo com `Peer`. Ver
+		// `GameServer.InfernoTeste.cs`.
+		_infernoDeTeste = Array.IndexOf(args, "--infernoteste") >= 0;
+		if (_infernoDeTeste) GD.Print("[server] BANCADA: almas e viloes do Inferno no 1o login");
+
 		// `--lenhateste`: A ARVORE QUE CAI A SOCO, PAGA RECURSO E REBROTA (pedido do dono de 2026-10-10). No 1o
 		// login: quem recebe e JOGADOR, e jogador e corpo com `Peer`. Ver `GameServer.LenhaTeste.cs`.
 		_lenhaDeTeste = Array.IndexOf(args, "--lenhateste") >= 0;
@@ -2988,6 +3083,16 @@ public partial class GameServer : Node
 			// prisioneiro e as cinco saidas. No boot pelos mesmos motivos das de cima: os corpos dela nascem
 			// sem `Peer`. Ver `GameServer.AbsorcaoMajinTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--majinteste") >= 0) RodarBancadaDaAbsorcaoMajin();
+			// (2026-10-16) a SAGA do Corrupted Majin e a Forma Pura -- ver `GameServer.SagaDoMajinTeste.cs`
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--sagamajinteste") >= 0) RodarBancadaDaSagaDoMajin();
+			// (2026-10-16) os cinco SUPREMOS KAIOHS do Ceu e as cinco vagas do Kaioshin -- ver `GameServer.KaioshinsTeste.cs`
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--kaioshinteste") >= 0) RodarBancadaDosKaioshins();
+			// (2026-10-16) a CLASSE MAIS RARA garantida pelo admin no proximo personagem -- ver `GameServer.ClasseRaraTeste.cs`
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--classerarateste") >= 0) RodarBancadaDaClasseRara();
+			// (v0.4.0) as PASSIVAS E ATIVAS RACIAIS da lista do amigo do dono -- ver `GameServer.PassivasTeste.cs`
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--passivasteste") >= 0) RodarBancadaDasPassivas();
+			// (2026-10-17) a IA com as passivas e as ativas da RACA -- o povo do mundo e os chefes de saga. Ver `GameServer.IaRaciaisTeste.cs`
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--iaraciaisteste") >= 0) RodarBancadaDaIaRacial();
 
 			// `--pecateste`: O MEMBRO QUE CAI DO CORPO. Dois corpos brigam pelo `Atacar` de producao
 			// e a bancada le os DOIS pacotes que saem da amputacao -- o `S2C.Hit` (de onde o jato de
@@ -3686,6 +3791,10 @@ public partial class GameServer : Node
 		CarregarMoldes();
 		CarregarRotina();
 		CarregarTorneio();
+		CarregarBebes();   // (2026-10-17) os filhos a caminho -- ver `GameServer.Filhos.cs`
+		// (2026-10-17) O CALENDARIO -- a origem deste mundo (`calendario.json`). Depois dos planetas (a data conta os dias da Terra) e da
+		// semente (que pergunta antes dele se a pasta e de um mundo velho). Ver `GameServer.Calendario.cs`.
+		CarregarCalendario();
 
 		// DEPOIS do `CarregarMoldes`: a cadeia de sagas vive no MESMO arquivo e cita os moldes pelo id
 		// -- a conferencia dela (`Sagas.Problemas`) precisa do catalogo montado. E a reputacao vem
@@ -3804,6 +3913,9 @@ public partial class GameServer : Node
 
 		// O `Planet_Destroy` -- a unica tecnica so-de-vilao do catalogo. Ver `GameServer.Destruicao.cs`.
 		RegistrarTecnicasDaDestruicao();
+
+		// (2026-10-16) A ATIVA DA FORMA PURA DO CORRUPTED MAJIN, a Sycophantic Rage. Ver `GameServer.SagaDoMajin.cs`.
+		RegistrarTecnicasDaSagaDoMajin();
 		CarregarCargos();
 		// O DISCIPULADO tem o MESMO ciclo de vida dos cargos: arquivo de texto ao lado dos saves,
 		// lido UMA VEZ aqui e gravado na hora em cada mudanca. Ver `GameServer.Mestre.cs`.
@@ -4239,6 +4351,8 @@ public partial class GameServer : Node
 		var w = Protocol.Begin(Protocol.S2C.SlotList);
 		w.Put((byte)AccountStore.Slots);
 		foreach (SlotInfo s in SlotsVisiveisDe(acc)) s.Write(w);
+		// (2026-10-17) O BEBE A CAMINHO que a criacao oferece (o mais antigo), ou nada. Ver `GameServer.Filhos.cs`.
+		w.PutOfertaDeBebe(OfertaDaCriacao);
 		peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
@@ -4308,6 +4422,29 @@ public partial class GameServer : Node
 		MandarSlots(peer, acc);
 	}
 
+	/// <summary>
+	/// (2026-10-16) A CLASSE QUE O ADMIN GARANTIU pra este nascimento (`AccountSave.ProximaClasseRara`), ou vazio -- e a garantia
+	/// GASTA quando aplicada. E a mais rara da raca da ficha (`Birth.ClasseMaisRara`). Quando a linhagem escolhida E a classe (o cla do
+	/// Namekuseijin), a ficha passa a levar a rara -- a linhagem gravada nao pode desmentir a classe. Raca sem classe rara: vazio, e a
+	/// garantia fica GUARDADA pro proximo personagem (gastar a toa um presente do admin num Alien seria o pior jeito de cumprir "o
+	/// proximo vai ser da mais rara"). Quem grava a conta e o `CreateChar`, logo depois.
+	///
+	/// NADA DISTO FALA COM O JOGADOR: a classe e segredo dele (so a dica de classe insinua), e a garantia tambem. Quem ve e o admin,
+	/// no painel de contas.
+	/// </summary>
+	private string GastarAClasseGarantida(AccountSave acc, CharacterDraft ficha)
+	{
+		if (!acc.ProximaClasseRara || _racas == null || ClasseRaraIgnoradaDeTeste) return "";
+		string rara = Birth.ClasseMaisRara(_racas, ficha.Race, ficha.ChosenClass, _rng);
+		if (rara.Length == 0) return "";   // a raca nao tem classe rara: a garantia fica guardada
+		if (ficha.Race != "Saiyan" && ficha.ChosenClass.Length > 0) ficha.ChosenClass = rara;
+		acc.ProximaClasseRara = false;
+		return rara;
+	}
+
+	/// <summary>DEFEITO INJETADO (`--classerarateste`): a garantia do admin e ignorada no nascimento -- a classe sai do sorteio.</summary>
+	internal static bool ClasseRaraIgnoradaDeTeste;
+
 	private void CreateChar(NetPeer peer, int slot, CharacterDraft ficha,
 						   Jandirus.Core.Appearance.Appearance visual)
 	{
@@ -4315,11 +4452,25 @@ public partial class GameServer : Node
 		if (slot < 0 || slot >= AccountStore.Slots) { Recusar(peer, "slot invalido"); return; }
 		if (acc.Slots[slot] != null) { Recusar(peer, "esse slot ja tem um personagem"); return; }
 
+		// (2026-10-17) O FILHO: quem aceitou nascer de um bebe a caminho tem raca, mundo, idade e linhagem cravados pelos pais -- e o
+		// sorteio do modo aleatorio NAO vale pra ele (o dono: *"mesmo q seja no modo de raça random"*). O bebe que ja nasceu de outro
+		// devolve a selecao com a oferta de agora. Ver `GameServer.Filhos.cs`.
+		BebeACaminho? bebe = null;
+		if (ficha.FilhoDe > 0)
+		{
+			bebe = BebeParaNascer(ficha);
+			if (bebe == null)
+			{
+				Recusar(peer, "esse bebê já nasceu -- outra pessoa foi mais rápida. Escolha de novo.");
+				MandarSlots(peer, acc);
+				return;
+			}
+		}
 		// (v0.3.0) NO MODO DE RACAS ALEATORIAS a ficha nasce com a raca SORTEADA da vaga, diga o cliente o que disser. Antes
 		// da conferencia de proposito: a idade e o genero se ajustam a raca que vale. Ver `GameServer.ModoDeRacas.cs`.
-		AplicarOSorteio(acc, slot, ficha);
+		else AplicarOSorteio(acc, slot, ficha);
 
-		string motivo = ValidarFicha(ficha);
+		string motivo = ValidarFicha(ficha, doBebe: bebe != null);
 		if (motivo.Length > 0) { Recusar(peer, motivo); GD.Print($"[server] ficha recusada: {motivo}"); return; }
 
 		string nome = ficha.Name.Trim();
@@ -4329,7 +4480,11 @@ public partial class GameServer : Node
 			return;
 		}
 
-		Fighter lutador = Nascer(ficha, nome);
+		// (2026-10-16) A CLASSE MAIS RARA GARANTIDA PELO ADMIN (`admin_classe_rara`), ou vazio -- e a garantia gasta, se aplicada. AQUI,
+		// depois de todas as recusas da criacao (ficha, nome): daqui pra baixo o personagem nasce, e nao ha como gastar sem nascer.
+		// O FILHO NAO GASTA A GARANTIA DO ADMIN: a classe dele e a dos pais (a mais rara dos dois), e o presente fica pro proximo.
+		string classeRara = bebe == null ? GastarAClasseGarantida(acc, ficha) : "";
+		Fighter lutador = bebe == null ? Nascer(ficha, nome, classeRara) : NascerDoBebe(ficha, nome, bebe);
 
 		// (v0.3.0) A REENCARNACAO PELO ENMA: quem nasce numa conta com eco leva 10% do BP de quem reencarnou -- o
 		// `CheckIncarnate` do DM, chamado no mesmo ponto da criacao (`CharacterCreation.dm:208`). Consumido aqui, antes do
@@ -4340,6 +4495,14 @@ public partial class GameServer : Node
 		// fora da faixa vira o padrao em vez de derrubar a conexao. O que NAO se aceita e
 		// caminho de sprite fora do catalogo -- isso e o cliente inventando arquivo.
 		string ajuste = _visual?.Sanear(visual, ficha.Race, ficha.Gender) ?? "";
+
+		// (2026-10-16) NINGUEM NASCE NUMA FORMA DA SAGA DO MAJIN: o `Sanear` aceita a faixa reservada (o corpo da saga e estado
+		// permanente, e ele roda em todo saneamento), e um cliente mexido que a mandasse aqui pularia a saga inteira no espelho.
+		if (Jandirus.Core.Races.SagaDoMajin.EhCorpoDaSaga(visual.Corpo))
+		{
+			visual.Corpo = 0;
+			GD.Print($"[server] aparencia de {nome} ajustada: o corpo da saga do Majin nao se escolhe na criacao");
+		}
 		if (ajuste.Length > 0) GD.Print($"[server] aparencia de {nome} ajustada: {ajuste}");
 
 		// NINGUEM NASCE DE ARMADURA: ela se fabrica (ou se rouba). O `Sanear` aceita as folhas de armadura porque e
@@ -4373,6 +4536,9 @@ public partial class GameServer : Node
 		{
 			Nome = nome, Raca = ficha.Race, Planeta = ficha.Planet, Genero = ficha.Gender,
 			Linhagem = ficha.ChosenClass, Idade = ficha.Age, Visual = visual, Ficha = lutador,
+			// (2026-10-17) O CALENDARIO CONTA A IDADE DELE A PARTIR DE HOJE: sem isto o primeiro mes que virasse lhe somaria os meses de antes
+			// de ele nascer. Ver `GameServer.Calendario.cs`.
+			MesDaIdade = MesDoCalendario,
 			Historia = ficha.Backstory.Trim(), Porte = ficha.Porte,
 			CriadoEm = nasceuEm,
 			// O PEDIDO DO JOGADOR VAI PRO DISCO, e nao so pro nascimento: o RENASCIMENTO sai da
@@ -4389,6 +4555,8 @@ public partial class GameServer : Node
 		// ======================================================================================
 		Jandirus.Core.Races.Berco berco = BercoDe(novo);
 		AplicarBercoNoSave(novo, berco);
+		// (2026-10-17) O FILHO NASCE DO LADO DA MAE quando ela esta no jogo (`SpawnPoints.dm:137`). Ver `PorAoLadoDaMae`.
+		bool aoLadoDaMae = bebe != null && PorAoLadoDaMae(novo, bebe);
 
 		// OS LIMIARES SAO SORTEADOS AGORA, uma vez, e vao pro disco junto do personagem.
 		// Cada Saiyajin tem o proprio BP de SSJ (o `rand(9,13)/10` do `statsaiyan.dm:50-56`).
@@ -4400,6 +4568,7 @@ public partial class GameServer : Node
 		acc.Slots[slot] = novo;
 		acc.Sorteios[slot] = null;   // (v0.3.0) o sorteio da vaga foi gasto neste personagem
 		_store?.Gravar(acc);
+		if (bebe != null) TirarOBebeDaFila(bebe);   // (2026-10-17) ele nasceu -- junto com a gravacao do filho
 
 		// E DE NOVO NA CRIACAO, e nao e redundancia: um save de antes desta limpeza (ou um slot
 		// esvaziado por fora do jogo) deixaria vinculo pendurado numa assinatura que este
@@ -4407,6 +4576,8 @@ public partial class GameServer : Node
 		// pela mesma razao (`RankAssign.dm:28`).
 		PurgarAssinatura(ServerPlayer.AssinaturaDe(acc.Conta, slot));
 		GD.Print($"[server] {acc.Conta} criou '{nome}' no slot {slot + 1} | {novo.Raca}/{lutador.Class} "
+			+ (classeRara.Length > 0 ? "(a CLASSE RARA garantida pelo admin) " : acc.ProximaClasseRara ? "(garantia de classe rara GUARDADA: a raca nao tem classe rara) " : "")
+			+ (bebe != null ? $"(FILHO de {bebe.Pai} e {bebe.Mae}, bebe #{bebe.Id}{(aoLadoDaMae ? ", ao lado da mae" : "")}) " : "")
 			+ $"| berco {berco.Planeta} ({berco.Motivo}{(berco.Despejado ? ", despejado" : "")})");
 
 		Entrar(peer, acc, slot, novo);
@@ -4420,7 +4591,9 @@ public partial class GameServer : Node
 			// A HISTORIA DO BERCO VEM ANTES DA DICA DE CLASSE, e a ordem e a da narrativa: primeiro
 			// onde voce acordou, depois quem voce parece ser. Ver `HistoriaDoBerco` pro porque de
 			// nenhuma das duas frases dizer a classe.
-			Avisar(recem, HistoriaDoBerco(berco));
+			// (2026-10-17) O FILHO conta o proprio parto, e so conta o berco quando nao nasceu do lado da mae. Ver `NasceuDoBebe`.
+			if (bebe != null) NasceuDoBebe(recem, bebe, aoLadoDaMae, berco);
+			else Avisar(recem, HistoriaDoBerco(berco));
 			DicaDeClasse(recem);
 			// O ECO, com a frase do DM (`Reincarnation.dm:10`) -- sem numero: e uma razao, nao uma leitura de poder.
 			if (eco != null) Avisar(recem, "você renasce, carregando um eco fraco do seu poder antigo. (Reencarnação)");
@@ -4542,10 +4715,10 @@ public partial class GameServer : Node
 
 		// ============================ O CORPO AINDA AGUENTA? ============================
 		// `AgeCheck()` no login (`Login.dm:345`) -- a SEGUNDA das duas portas do original, ao lado do
-		// virar do ano. Aqui ela vale por um motivo diferente do de la: neste port a idade nao anda
-		// sozinha (nao ha calendario), entao o login nunca vai encontrar alguem que envelheceu
-		// offline. O que ele PEGA e o save que ja estava do outro lado da linha -- idade posta por
-		// admin, personagem importado, ou a propria Sala do Tempo num servidor que caiu no meio.
+		// virar do mes. (2026-10-17) Desde o calendario a idade anda sozinha, e e aqui que chegam os
+		// meses que o personagem passou FORA (`ContarOCalendarioNoLogin`, logo abaixo da divida). Ela
+		// tambem pega o save que ja estava do outro lado da linha -- idade posta por admin, personagem
+		// importado, ou a propria Sala do Tempo num servidor que caiu no meio.
 		// DEPOIS do `PrepararCombate` e do `AplicarPoderes`, e nao antes: `Morrer()` precisa do
 		// `pl.Combate`, e a primeira versao de checagens assim neste arquivo saiu calada por rodar
 		// cedo demais (ver o comentario do `--feridateste` logo abaixo).
@@ -4556,6 +4729,10 @@ public partial class GameServer : Node
 		// marcam `aged_out`, e a que cobra a divida tem que ser a que anuncia o porque.
 		// ============================================================================================
 		ConferirDividaDoSupremo(pl);
+
+		// (2026-10-17) OS MESES QUE PASSARAM COM ELE FORA -- o `Age += Year - LastYear` do `AgeCheck` do login. O aviso sai depois, com o
+		// mundo ja na tela (`AvisarDoCalendarioNoLogin`). Ver `GameServer.Calendario.cs`.
+		int anosLaFora = ContarOCalendarioNoLogin(pl);
 
 		ConferirMorteDeVelhice(pl);
 
@@ -4638,6 +4815,10 @@ public partial class GameServer : Node
 		// `--mestrevivo` precisa RELOGAR de verdade, e um segundo caminho de "save -> corpo" seria a
 		// duplicata que a PARTE 3 da spec chama de "duas casas pra uma formula": a bancada mediria a
 		// copia dela e o jogo continuaria com a sua.
+		// (2026-10-16) O REPOUSO DA SAGA DO MAJIN ANTES DA FORMA VOLTAR: o `RestaurarFormaEDisciplina` pergunta pelo piso, e o
+		// Corrupted Majin com a Forma Pura relogga NELA (o dono: *"quando ele entrar no jogo novamente ele vai estar na pure form
+		// novamente"*). Ver `PrepararOMajinPuroNoLogin`.
+		PrepararOMajinPuroNoLogin(pl);
 		List<string> maestriasDescartadas = RestaurarFormaEDisciplina(pl, c);
 
 		_logados.Remove(peer);
@@ -4796,6 +4977,7 @@ public partial class GameServer : Node
 
 		// A DOS VILOES: o host e o "planeta com gente", e e ele quem derrota. Ver `GameServer.ViloesTeste.cs`.
 		if (_vilaoDeTeste) { _vilaoDeTeste = false; RodarBancadaDosViloes(pl); }
+		if (_infernoDeTeste) { _infernoDeTeste = false; RodarBancadaDoInferno(pl); }
 
 		// A DA LENHA: o host soca as arvores da Terra (e de um mundo sorteado), e tudo volta. Ver `GameServer.LenhaTeste.cs`.
 		if (_lenhaDeTeste) { _lenhaDeTeste = false; RodarBancadaDaLenha(pl); }
@@ -5022,6 +5204,8 @@ public partial class GameServer : Node
 		// original (PlanetConquest.dm:208), e ele existe porque quase tudo o que acontece com um
 		// dominio -- invasao, perda, revolta do povo -- acontece com o dono offline.
 		EntregarRecadosDeConquista(pl);
+		// (2026-10-17) A DATA DE HOJE, e os anos que passaram com ele fora -- o `src<<checkthetimeidiot()` do `AgeCheck` (`Aging.dm:112`).
+		AvisarDoCalendarioNoLogin(pl, anosLaFora);
 		AvisarDasAposentadas(pl);   // a skill que saiu do jogo e o marco que voltou -- ver GameServer.Skills.cs
 		AvisarDosItensAposentados(pl);   // o item que saiu do jogo, e por que -- ver GameServer.ItensAposentados.cs
 
@@ -5083,10 +5267,12 @@ public partial class GameServer : Node
 	/// A ficha e DADO DO CLIENTE. Raca fora da lista do planeta, ou linhagem escolhida numa
 	/// raca que nao escolhe, seria personagem forjado.
 	/// </summary>
-	private static string ValidarFicha(CharacterDraft ficha)
+	private static string ValidarFicha(CharacterDraft ficha, bool doBebe = false)
 	{
 		string motivo = ficha.Validar();
-		if (motivo.Length == 0 && Array.IndexOf(CharacterDraft.RacasDoPlaneta(ficha.Planet), ficha.Race) < 0)
+		// (2026-10-17) O FILHO NAO PASSA PELA ETAPA DO MUNDO: a raca dele e a dos pais, e o meio-Saiyajin nao esta na lista de planeta
+		// nenhum -- ele nao se escolhe no menu (`CreationUI.dm:305-309`), so nasce de gravidez.
+		if (motivo.Length == 0 && !doBebe && Array.IndexOf(CharacterDraft.RacasDoPlaneta(ficha.Planet), ficha.Race) < 0)
 			motivo = "raca nao pertence a esse planeta";
 		if (motivo.Length == 0 && ficha.ChosenClass.Length > 0
 			&& Array.IndexOf(CharacterDraft.EscolhasDeClasse(ficha.Race), ficha.ChosenClass) < 0)
@@ -5363,6 +5549,7 @@ public partial class GameServer : Node
 		pl.Ficha.Class = pl.Class;
 		CharacterSave salvo = AccountStore.DeJogador(pl, NowMs());
 		salvo.Ficha = FichaSemOsBuffs(pl);   // (v0.3.1) o que esta aceso NAO vai pro disco -- ver `FichaSemOsBuffs`
+		if (pl.EmPassagem) GravarAVoltaDaPassagem(salvo, pl);   // (v0.3.2) quem cai no meio dos 5 s acorda no Outro Mundo
 		acc.Slots[pl.Slot] = salvo;
 		acc.VistoEm = NowMs();
 		_store.Gravar(acc);
@@ -5373,11 +5560,15 @@ public partial class GameServer : Node
 	/// escolheu identidade e, nas tres racas que escolhem, a linhagem. Sorteio no cliente
 	/// seria sorteio ate sair o resultado desejado.
 	/// </summary>
-	private Fighter Nascer(CharacterDraft ficha, string nome)
+	/// <param name="classeForcada">(2026-10-16) A classe que nao se sorteia -- a mais rara, garantida pelo admin (`ClasseGarantida`).
+	/// Vazia = o sorteio de sempre.</param>
+	/// <param name="bpPai">(2026-10-17) A heranca de poder do filho (`GameServer.Filhos.cs`); zero na criacao comum.</param>
+	/// <param name="bpMae">Idem.</param>
+	private Fighter Nascer(CharacterDraft ficha, string nome, string classeForcada = "", double bpPai = 0, double bpMae = 0)
 	{
 		Fighter f = _racas == null
 			? new Fighter { Name = nome, Race = ficha.Race, BP = 1 }
-			: Birth.Nascer(_racas, ficha.Race, ficha.ChosenClass, _rng, nome);
+			: Birth.Nascer(_racas, ficha.Race, ficha.ChosenClass, _rng, nome, bpPai, bpMae, classeForcada);
 
 		// A IDADE E O PORTE SAO DA FICHA, e nao so do cadastro. A idade alimenta a curva de
 		// `Envelhecimento` (que multiplica o BP) e o porte mexe direto nos mods -- as duas coisas
@@ -5611,8 +5802,8 @@ public partial class GameServer : Node
 		// =================================================================================
 		// A DIRECAO DA QUEDA E A ULTIMA DE PE. So chega aqui quem esta em pe -- o guarda de
 		// nocaute la em cima ja devolveu quem caiu --, entao guardar a cada passo deixa
-		// congelado, no instante do nocaute, exatamente pra onde ele encarava.
-		pl.FacingDaQueda = facing;
+		// congelado, no instante do nocaute, exatamente pra onde ele encarava (ja em CABECA: ver `CabecaDeQuemCaiOlhando`).
+		pl.FacingDaQueda = ServerPlayer.CabecaDeQuemCaiOlhando(facing);
 
 		if (pl.TiquesDeVoo > 0)
 		{
@@ -5771,6 +5962,9 @@ public partial class GameServer : Node
 		// A ABSORCAO DO MAJIN SE DESFAZ ANTES DO SAVE, pelo mesmo motivo das duas linhas de cima: o
 		// absorvido esta num bolso `Interior` que morre com a sessao, e o Majin carrega poder emprestado.
 		// E o `DoLogoutStuff` do DM (`Login.dm:198-202`). Ver `DesfazerAAbsorcaoAoSair`.
+		// (2026-10-16) A SAGA DO MAJIN ANTES DA ABSORCAO: quem sai dormindo acorda (o sono e de sessao) e a outra metade sai do mundo
+		// com o mestre. Ver `SairDoJogoSagaDoMajin`.
+		SairDoJogoSagaDoMajin(pl);
 		DesfazerAAbsorcaoAoSair(pl);
 
 		// O ZANZOCLASH SE DESFAZ ANTES DO SAVE, E SEM VENCEDOR -- pelo mesmo motivo das linhas de cima (o embate
@@ -5905,6 +6099,8 @@ public partial class GameServer : Node
 		_aoEsquecer.Add(EsquecerG14);
 		_aoEsquecer.Add(EsquecerRepertorioDaIa);
 		_aoEsquecer.Add(EsquecerOKitDoDeus);
+		_aoEsquecer.Add(EsquecerNiveisDoAdendo18);
+		_aoEsquecer.Add(EsquecerOMajinPuro);
 	}
 
 	// ---------------------------------------------------------------------
@@ -5937,6 +6133,7 @@ public partial class GameServer : Node
 		// MENSURAVEL: e daqui que sai a maior fatia do custo de um servidor com o mundo povoado e
 		// ninguem online -- e ela e MUNDO, entao nao tem (e nao pode ter) porta de plateia.
 		TickDosRelogiosDoCorpo(Protocol.TickSeconds);
+		TickDasExecucoesDoBio();   // (2026-10-17) a absorcao de EXECUCAO do bio: 5 s parado junto do caido, e um passo desfaz -- ver `GameServer.Absorcao.cs`
 		TickDeBills(Protocol.TickSeconds);   // BILLS E WHIS (dono, 2026-10-11): a visita a Terra, quem existe, e as lutas da casa -- DEPOIS dos relogios do corpo (a precisao do Whis volta ao cheio logo apos drenar). Ver `GameServer.Bills.cs`
 
 		// O POVOAMENTO VEM ANTES DE OS CORPOS PENSAREM, e a ordem e a mesma razao do bloco acima: um
@@ -6150,6 +6347,7 @@ public partial class GameServer : Node
 		// 200 ms la tem que custar 200 ms de dano; ninguem "roça" o vacuo. Ver `GameServer.Vacuo.cs`.
 		if (_tickCount % TicksPorSegundo == 0)
 			{ TickDasTecnicas(); TickDasTecnicasG6(); TickDoEstudo(); TickDaGestacao(); TickDaLarva(); TickDoPalcoDoBio(); TickDoOlharDoBio(); TickDoFilmeDoBio(); TickDoNucleoInfinito(); TickDaPostura(); TickDosEstilos(); TickDosBuffs(); TickTecnicasG2(); TickDoCeu(); TickDoConvivio(); TickDoRoteiro(); TickDasSagas(); TickDoPalcoDaAgonia(1); TickDaDestruicao(1); TickDasInvasoes(); TickDaConquista(); TickDasEsferas(); TickDasSuperEsferas(); TickDoChao(); TickDosCargos(); TickDoEsmagamento(); TickDoVacuo(); TickDaFusao(); }
+			if (_tickCount % TicksPorSegundo == 0) TickDosViloesDoInferno();   // (2026-10-16) OS VILOES DE SAGA NO INFERNO -- ver `GameServer.ViloesDoInferno.cs`
 			if (_tickCount % TicksPorSegundo == 0) TickDosViloes();     // OS VILOES AVULSOS (item 12 do playtest de 2026-10-10): o relogio de cada planeta com gente, e o prazo de quem esta de pe -- ver `GameServer.Viloes.cs`
 			if (_tickCount % TicksPorSegundo == 0) TickDosAnimais();    // OS ANIMAIS (dono, 2026-10-10): a fauna de cada planeta com gente -- quem nasce, quem some, a forca fixa e as carcacas. Ver `GameServer.Animais.cs`
 			if (_tickCount % TicksPorSegundo == 0) TickDosSentidos();   // OS SENTIDOS (a aba Sense/Scan) ANDAM A 1 Hz: a lista de quem eu sinto so muda quando alguem anda um tile, e so sai quando muda -- ver `GameServer.Sentidos.cs`
@@ -6243,6 +6441,7 @@ public partial class GameServer : Node
 			Treinar(pl);
 			CumprirPenaNoInferno(pl);   // o `afterlife_alignment_check()` do DM, no laco de fichas
 			CumprirOPasseDoEnma(pl);    // (v0.3.0) e o relogio do passe pros vivos, ao lado -- `GameServer.PasseEReencarnacao.cs`
+			CumprirAPassagem(pl);       // (v0.3.2) e a passagem de 5 s do morto que transmitiu -- `GameServer.PassagemDoMorto.cs`
 
 			// A RAIVA ANDA AQUI, e este e o tique CERTO e nao um qualquer: `TicksPorFicha` da 5 Hz,
 			// que e exatamente o `sleep(sleep_tiem)` com `sleep_tiem = 2` do `mob/proc/Stats()`
@@ -6292,6 +6491,7 @@ public partial class GameServer : Node
 			// Mesma familia do bug da barra de Ki: a lista de campos comparados era menor que a
 			// lista de campos ENVIADOS. Todo campo que vai no pacote precisa estar aqui, senao ele
 			// so chega de carona quando outro muda.
+			pl.RaciaisNaFicha = pl.Racial.LinhasDoHud(NowMs());   // (v0.4.0) as linhas raciais deste tique
 			SheetState ficha = pl.Sheet();
 			if (pl.EnvBP == pl.Ficha.expressedBP && pl.EnvKi == pl.Ficha.Ki
 				&& pl.EnvHp == pl.Ficha.HP && pl.EnvAct == pl.Ficha.Eactspeed
@@ -6300,7 +6500,7 @@ public partial class GameServer : Node
 				&& pl.EnvTetoKi == Jandirus.Core.Combat.CargaDeKi.TetoEmRazao(pl.Ficha)
 				&& pl.EnvMaxKi == ficha.MaxKi && pl.EnvSpeed == ficha.SpeedStat && pl.EnvMembros == ficha.MembrosRuins
 				&& pl.EnvEstado == ficha.Estado && pl.EnvEstado2 == ficha.Estado2 && pl.EnvEstado3 == ficha.Estado3
-				&& pl.EnvEscape == ficha.Escape) continue;
+				&& pl.EnvEscape == ficha.Escape && pl.EnvRaciais == ficha.Raciais) continue;
 
 			MandarFicha(pl);
 		}
@@ -6337,6 +6537,7 @@ public partial class GameServer : Node
 		pl.EnvMaxKi = enviada.MaxKi;
 		pl.EnvSpeed = enviada.SpeedStat;
 		pl.EnvMembros = enviada.MembrosRuins;
+		pl.EnvRaciais = enviada.Raciais;
 
 		var w = Protocol.Begin(Protocol.S2C.Stats);
 		FichaVisivel(pl).Write(w);

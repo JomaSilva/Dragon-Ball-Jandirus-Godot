@@ -63,6 +63,7 @@ public static class FormasBench
 		UmDegrauNovoEmCadaLinha();
 		OsGanchosQueFicaram();
 		ORequisitoPessoalDoSuperNamekuseijin();
+		ALinhaDaTensao();
 
 		Console.WriteLine($"\n=== {_ok} OK, {_falhou} FALHA ===");
 		return _falhou == 0 ? 0 : 1;
@@ -330,6 +331,47 @@ public static class FormasBench
 		Checa("...e liberado com a fera DOMINADA",
 			  trilhaLp.Avaliar("primal_legendary4", bpDeSobra, 1, false, lp) == RecusaForma.Pode,
 			  trilhaLp.Avaliar("primal_legendary4", bpDeSobra, 1, false, lp).ToString());
+
+		// ============================ O LIMIT BREAKER: KI DIVINO DESPERTO + FULL POWER 100% (dono, 2026-10-16) ============================
+		// *"limit breaker era pra liberar quando o personagem libera o god ki e domina 100% do full power"* -- o `God_Ki()` do Primal no DM
+		// (`godki.dm:191-195`: `ssj==5 && ssj4fpmastery>=100`). O catalogo pedia 50% de MAESTRIA divina, e ela so sobe numa forma divina
+		// (`DespertarDivino.UsaOKiDivino`) -- pro Primal, so o proprio Limit Breaker: ninguem chegava. As DUAS linhas, a comum e a lendaria
+		// (*"ssj4 fplb do primal comum tb é liberado com god ki"*).
+		// ================================================================================================================================
+		(string Lb, string Fp, PerfilDeFormas SemKiDivino)[] limites =
+		[
+			("ssj4_limit_breaker", "ssj4_full_power", saiyajin),
+			("primal_legendary4_limit_breaker", "primal_legendary4_full_power", lp),
+		];
+		foreach ((string lb, string fp, PerfilDeFormas semKiDivino) in limites)
+		{
+			PerfilDeFormas desperto = semKiDivino with { GodKi = 0 };   // o ki divino DESPERTO, com 0% de maestria
+			var noFullPower = new EstadoDeForma { Atual = fp };
+			noFullPower.Maestria.Por(fp, 100);
+			Checa($"{lb}: com o ki divino DESPERTO (0% de maestria) e o Full Power 100% dominado, ele LIBERA -- e a tecla C o oferece",
+				  noFullPower.Avaliar(lb, bpDeSobra, 1, false, desperto) == RecusaForma.Pode && noFullPower.Proxima(bpDeSobra, desperto)?.Id == lb,
+				  $"{noFullPower.Avaliar(lb, bpDeSobra, 1, false, desperto)}; C -> {noFullPower.Proxima(bpDeSobra, desperto)?.Id}");
+			Checa($"{lb}: SEM o ki divino desperto, recusa pelo ki divino",
+				  noFullPower.Avaliar(lb, bpDeSobra, 1, false, semKiDivino) == RecusaForma.SemGodKi,
+				  noFullPower.Avaliar(lb, bpDeSobra, 1, false, semKiDivino).ToString());
+			noFullPower.Maestria.Por(fp, 99);
+			Checa($"{lb}: com o Full Power a 99%, recusa pela maestria",
+				  noFullPower.Avaliar(lb, bpDeSobra, 1, false, desperto) == RecusaForma.SemMaestria,
+				  noFullPower.Avaliar(lb, bpDeSobra, 1, false, desperto).ToString());
+			noFullPower.Maestria.Por(fp, 100);
+
+			// O JOGO DE ANTES (os 50% de maestria divina), na mesma ficha: a primeira regua o pega
+			FormaDef def = Catalogo.Def(lb)!;
+			double pedia = def.PedeGodKi;
+			def.PedeGodKi = Catalogo.GodkiRoyalePct;
+			try
+			{
+				Checa($"(defeito injetado: os 50% de antes) {lb}: a mesma ficha e RECUSADA pelo ki divino -- a primeira regua REPROVA",
+					  noFullPower.Avaliar(lb, bpDeSobra, 1, false, desperto) == RecusaForma.SemGodKi,
+					  noFullPower.Avaliar(lb, bpDeSobra, 1, false, desperto).ToString());
+			}
+			finally { def.PedeGodKi = pedia; }
+		}
 
 		// ============================ A LINHA DO OOZARU NAO SE SOBE ============================
 		// "n transforma apertando C, ele n e da linha do ssj". A entrada `oozaru` nao tem porta
@@ -639,21 +681,35 @@ public static class FormasBench
 			Perto($"Future SSJ a {m:0}% = {esperado:0}x", Catalogo.Multiplicador("future_ssj", f, PerfilDeFormas.Comum), esperado);
 		}
 
-		// LEGENDARY: rampa por maestria E rampa por combate, o maior dos dois.
+		// (v0.4.0) LEGENDARY: a MAESTRIA leva do minimo ao maximo, e a luta MULTIPLICA por cima (+20% em 180 s). O dono trocou a
+		// rampa do DM (`max(piso pela maestria, rampa do combate)`, lssjbuff.dm:184) -- antes, 180 s de luta davam 10x a um Wrathful
+		// sem maestria nenhuma, e as duas primeiras linhas abaixo reprovariam com a regra velha.
 		Perto("Wrathful cru = 1,5x", Catalogo.Multiplicador("wrathful", zero, PerfilDeFormas.Comum), 1.5);
 		var w100 = new Maestrias(); w100.Por("wrathful", 100);
 		Perto("Wrathful dominado = 10x", Catalogo.Multiplicador("wrathful", w100, PerfilDeFormas.Comum), 10);
-		Perto("Wrathful cru + 100s de luta = 10x (rampa de combate)",
-			  Catalogo.Multiplicador("wrathful", zero, PerfilDeFormas.Comum, Catalogo.RampaLssjSegundos), 10);
-		Perto("Wrathful cru + 50s de luta = 5,75x (metade da rampa)",
-			  Catalogo.Multiplicador("wrathful", zero, PerfilDeFormas.Comum, Catalogo.RampaLssjSegundos / 2),
-			  1.5 + (10 - 1.5) * 0.5);
+		Perto("Wrathful cru + 180 s de luta = 1,8x (a luta nao leva mais ao topo: so +20%)",
+			  Catalogo.Multiplicador("wrathful", zero, PerfilDeFormas.Comum, Catalogo.RampaLssjSegundos), 1.5 * 1.2);
+		Perto("Wrathful cru + 90 s de luta = 1,65x (metade do bonus)",
+			  Catalogo.Multiplicador("wrathful", zero, PerfilDeFormas.Comum, Catalogo.RampaLssjSegundos / 2), 1.5 * 1.1);
+		// O RELOGIO E O DA LINHA: no relogio do Primal (216 s) os 180 s dariam 11,67x, e nao 12x.
+		Perto("Wrathful dominado + 180 s de luta = 12x (10x da maestria e +20% da luta)",
+			  Catalogo.Multiplicador("wrathful", w100, PerfilDeFormas.Comum, Catalogo.RampaLssjSegundos), 12);
+		Perto("C-Type cru + 180 s de luta = 14,4x (12x e +20%)",
+			  Catalogo.Multiplicador("c_type", zero, PerfilDeFormas.Comum, Catalogo.RampaLssjSegundos), 12 * 1.2);
+		// NENHUMA FORMA COM BONUS FICA SEM RELOGIO: o `Multiplicador` so aplica o bonus de quem tem `SegundosDaLinha > 0`, e uma
+		// forma nova com bonus fora das duas linhas lendarias ficaria sem ele, calada.
+		foreach (FormaDef comBonus in Catalogo.Todas)
+			if (comBonus.BonusDeCombate > 0)
+				Checa($"`{comBonus.Id}` tem bonus de luta E relogio pra ele",
+					  FuriaLendaria.SegundosDaLinha(comBonus) > 0);
 		// O FULL POWER VIROU O FIM DA RAMPA DO LEGENDARY, e a bancada tem que provar as DUAS pontas --
 		// senao a fusao passaria com a rampa antiga (`[25, 40]`) intacta e ninguem veria.
 		Perto("Legendary cru = 25x", Catalogo.Multiplicador("legendary", zero, PerfilDeFormas.Comum), 25);
 		var l100 = new Maestrias(); l100.Por("legendary", 100);
 		Perto("Legendary dominado = 50x (era o `legendary_full_power`)",
 			  Catalogo.Multiplicador("legendary", l100, PerfilDeFormas.Comum), 50);
+		Perto("Legendary dominado + 180 s de luta = 60x (o topo da linha desde a v0.4.0)",
+			  Catalogo.Multiplicador("legendary", l100, PerfilDeFormas.Comum, Catalogo.RampaLssjSegundos), 60);
 		// E A FORMA APAGADA NAO PODE VOLTAR PELA PORTA DOS FUNDOS: `Def` de um id que nao existe
 		// devolve nulo e o `Multiplicador` responde 1x. Isto reprova se alguem reescrever a entrada.
 		Perto("`legendary_full_power` nao e mais forma nenhuma",
@@ -1965,6 +2021,7 @@ public static class FormasBench
 			(Catalogo.RacaNamekuseijin, LinhaDeForma.Namekuseijin),
 			(Catalogo.RacaHeran,        LinhaDeForma.Heran),
 			(Catalogo.RacaAlien,        LinhaDeForma.Alien),
+			(Catalogo.RacaHumano,       LinhaDeForma.Tensao),   // (v0.4.0) a lista do amigo do dono
 		];
 
 		foreach ((string raca, LinhaDeForma linha) in donos)
@@ -1989,15 +2046,15 @@ public static class FormasBench
 		Checa("o Saiyajin continua com a escada Saiyajin",
 			  Catalogo.LinhasAbertas(new PerfilDeFormas(Raca: "Saiyan")).Contains(LinhaDeForma.Saiyajin));
 
-		// E A RACA SEM TRANSFORMACAO FICA SEM NENHUMA -- o preco declarado do conserto do
-		// `LinhasAbertas`. O Humano e o caso puro: no DM ele nao tem uma unica forma.
-		HashSet<LinhaDeForma> humano = Catalogo.LinhasAbertas(new PerfilDeFormas(Raca: "Human"));
-		Checa("o Humano SEM ki divino nao tem escada nenhuma", humano.Count == 0,
-			  string.Join(", ", humano));
+		// E A RACA SEM TRANSFORMACAO FICA SEM NENHUMA -- o preco declarado do conserto do `LinhasAbertas`. O caso puro era o
+		// Humano ate a v0.4.0, quando ele ganhou a linha da Tensao (ver [25]); o Tsujin continua sem uma unica forma, no DM e aqui.
+		HashSet<LinhaDeForma> semForma = Catalogo.LinhasAbertas(new PerfilDeFormas(Raca: "Tsujin"));
+		Checa("o Tsujin SEM ki divino nao tem escada nenhuma", semForma.Count == 0,
+			  string.Join(", ", semForma));
 
 		// ...mas as DIVINAS nao sao de raca, e continuam nao sendo: elas se aprendem.
-		Checa("o Humano COM ki divino continua tendo a escada divina",
-			  Catalogo.LinhasAbertas(new PerfilDeFormas(Raca: "Human", GodKi: 80))
+		Checa("o Tsujin COM ki divino continua tendo a escada divina",
+			  Catalogo.LinhasAbertas(new PerfilDeFormas(Raca: "Tsujin", GodKi: 80))
 					  .Contains(LinhaDeForma.GodKi));
 
 		// --- 2. A FORMA QUE SE COMPRA -----------------------------------------------------
@@ -2557,6 +2614,91 @@ public static class FormasBench
 	/// borda de baixo, a de cima, o centro e o espalhamento.
 	/// ============================================================================================================
 	/// </summary>
+	// =====================================================================
+	// 25. (v0.4.0) A LINHA DA TENSAO -- as formas do Humano
+	// =====================================================================
+	/// <summary>
+	/// A LISTA DO AMIGO DO DONO, MEDIDA: *"High Tension 1.5x bp, req half of SSJ1"*, *"Extreme Tension 6x-12x by mastery, req
+	/// ~SSJ2"*, *"Godly Tension 32x at SSJB level, needs god ki"*. Cada numero do texto vira uma checagem, e cada porta e
+	/// perguntada pelo MESMO funil da tecla C (`EstadoDeForma.Avaliar`), dos dois lados -- a recusa e a abertura.
+	/// </summary>
+	private static void ALinhaDaTensao()
+	{
+		Console.WriteLine("\n[25] (v0.4.0) A LINHA DA TENSAO -- as formas do Humano");
+
+		// ---- 1. OS NUMEROS DO TEXTO ----
+		var zero = new Maestrias();
+		var humano = new PerfilDeFormas(Raca: Catalogo.RacaHumano);
+		Perto("High Tension = 1,5x", Catalogo.Multiplicador("alta_tensao", zero, humano), 1.5);
+		Perto("Extreme Tension cru = 6x", Catalogo.Multiplicador("tensao_extrema", zero, humano), 6);
+		var meio = new Maestrias(); meio.Por("tensao_extrema", 50);
+		Perto("Extreme Tension a 50% de maestria = 9x (e rampa, nao degrau)",
+			  Catalogo.Multiplicador("tensao_extrema", meio, humano), 9);
+		var cheio = new Maestrias(); cheio.Por("tensao_extrema", 100);
+		Perto("Extreme Tension dominado = 12x", Catalogo.Multiplicador("tensao_extrema", cheio, humano), 12);
+		Perto("Godly Tension = 32x (o numero do Blue)",
+			  Catalogo.Multiplicador("tensao_divina", zero, humano with { GodKi = 0 }), 32);
+		Checa("nenhuma das tres nasce da raiva",
+			  Catalogo.DaLinha(LinhaDeForma.Tensao).All(d => !Catalogo.NasceDaRaiva(d)),
+			  string.Join(", ", Catalogo.DaLinha(LinhaDeForma.Tensao).Where(Catalogo.NasceDaRaiva).Select(d => d.Id)));
+
+		// ---- 2. AS PORTAS, pelo funil da tecla C ----
+		LimiaresPessoais lim = LimiaresPessoais.Rolar(Catalogo.RacaHumano, "",
+			LimiaresPessoais.SementeDe("humano_da_tensao", 1_700_000_000_000));
+		var est = new EstadoDeForma { Limiares = lim };
+		double portaAlta = est.PortaDeBp(Catalogo.Def("alta_tensao")!);
+		Perto("a porta da High Tension e a METADE do `ssjat` que o Humano sorteou", portaAlta, lim.ssjat / 2, 1e-6);
+		Perto("a do Extreme Tension e a do SSJ2 (`ssj2at / 6`)",
+			  est.PortaDeBp(Catalogo.Def("tensao_extrema")!), lim.ssj2at / Catalogo.Ssj1GateMult, 1e-6);
+		Checa("um fio abaixo da porta: RECUSA por poder",
+			  est.Avaliar("alta_tensao", portaAlta * 0.99, 1, false, humano) == RecusaForma.SemPoder,
+			  est.Avaliar("alta_tensao", portaAlta * 0.99, 1, false, humano).ToString());
+		Checa("na porta: ABRE, sem raiva nenhuma",
+			  est.Avaliar("alta_tensao", portaAlta, 1, false, humano) == RecusaForma.Pode,
+			  est.Avaliar("alta_tensao", portaAlta, 1, false, humano).ToString());
+
+		// O DEGRAU ANTERIOR: o Extreme sai da High, e o Godly do Extreme -- nao se pula.
+		const double bpDeSobra = 1e12;
+		Checa("da BASE nao se pula pro Extreme Tension",
+			  est.Avaliar("tensao_extrema", bpDeSobra, 1, false, humano) == RecusaForma.ForaDeOrdem,
+			  est.Avaliar("tensao_extrema", bpDeSobra, 1, false, humano).ToString());
+		est.Atual = "alta_tensao";
+		Checa("da High Tension, com o poder, o Extreme Tension abre",
+			  est.Avaliar("tensao_extrema", bpDeSobra, 1, false, humano) == RecusaForma.Pode,
+			  est.Avaliar("tensao_extrema", bpDeSobra, 1, false, humano).ToString());
+		est.Atual = "tensao_extrema";
+		Checa("sem o ki divino desperto, o Godly Tension RECUSA pelo ki divino",
+			  est.Avaliar("tensao_divina", bpDeSobra, 1, false, humano) == RecusaForma.SemGodKi,
+			  est.Avaliar("tensao_divina", bpDeSobra, 1, false, humano).ToString());
+		Checa("com o ki divino DESPERTO (0%) ele abre -- nao pede os 33% do Blue, que o Humano nao teria onde treinar",
+			  est.Avaliar("tensao_divina", bpDeSobra, 1, false, humano with { GodKi = 0 }) == RecusaForma.Pode,
+			  est.Avaliar("tensao_divina", bpDeSobra, 1, false, humano with { GodKi = 0 }).ToString());
+		Checa("...e ele e forma divina: e nele que o Humano amadurece o ki divino",
+			  DespertarDivino.UsaOKiDivino(Catalogo.Def("tensao_divina"), "", ""));
+
+		// ---- 3. O LIMIAR E PESSOAL, e e o do Saiyajin Normal ----
+		// O Humano sorteia o `ssjat` com a faixa do `else` do Saiyajin (`statsaiyan.dm:75-77`, `rand(10,12)/10`): TRES valores, 1,0x a
+		// 1,2x -- os mesmos de um Saiyajin Normal. (O criterio de dispersao do Super Namekuseijin junta varias classes; uma classe so
+		// do DM nunca passou nele.)
+		double[] portas = new double[300], doNormal = new double[300];
+		for (int i = 0; i < portas.Length; i++)
+		{
+			ulong semente = LimiaresPessoais.SementeDe($"humano{i}", 1_700_000_000_000 + i);
+			portas[i] = new EstadoDeForma { Limiares = LimiaresPessoais.Rolar(Catalogo.RacaHumano, "", semente) }
+				.PortaDeBp(Catalogo.Def("alta_tensao")!);
+			doNormal[i] = LimiaresPessoais.Rolar("Saiyan", "Normal", semente).ssjat * Catalogo.FracaoDaAltaTensao;
+		}
+		double[] distintas = [.. portas.Distinct().OrderBy(x => x)], doSaiyajin = [.. doNormal.Distinct().OrderBy(x => x)];
+		Checa("a porta da High Tension e PESSOAL: cada Humano sorteia a sua, com as faixas do Saiyajin Normal (a metade do `ssjat` dele)",
+			  distintas.Length >= 3 && distintas.SequenceEqual(doSaiyajin),
+			  $"humano: {string.Join(", ", distintas.Select(x => x.ToString("N0")))} | Saiyajin Normal: {string.Join(", ", doSaiyajin.Select(x => x.ToString("N0")))}");
+
+		// ---- 4. E E SO DO HUMANO ----
+		foreach (string raca in new[] { "Saiyan", Catalogo.RacaNamekuseijin, Catalogo.RacaMeioSaiyajin, "Tsujin" })
+			Checa($"{raca} NAO tem a linha da Tensao",
+				  !Catalogo.LinhasAbertas(new PerfilDeFormas(Raca: raca)).Contains(LinhaDeForma.Tensao));
+	}
+
 	private static void ORequisitoPessoalDoSuperNamekuseijin()
 	{
 		Console.WriteLine("\n[20] N5: O REQUISITO PESSOAL DO SUPER NAMEKUSEIJIN (dispersao, nao media)");

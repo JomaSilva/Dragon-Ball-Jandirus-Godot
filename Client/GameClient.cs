@@ -150,6 +150,12 @@ public partial class GameClient : Node
 
 	/// <summary>Os tres slots da conta -- e a tela de selecao.</summary>
 	public event Action<List<SlotInfo>>? SlotsRecebidos;
+
+	/// <summary>
+	/// (2026-10-17) O BEBE A CAMINHO que veio no fim do ultimo `S2C.SlotList` -- a criacao o oferece --, ou nulo. Lido ANTES do
+	/// `SlotsRecebidos`: e de la que o lobby monta a selecao. Ver `CharacterSelect.PerguntarSeNasceDoBebe`.
+	/// </summary>
+	public OfertaDeBebe? BebeACaminho { get; private set; }
 	/// <summary>Um golpe foi resolvido pelo servidor. Vale pra som, piscada e musica de luta.</summary>
 	public event Action<Protocol.HitEvent>? Golpe;
 
@@ -1051,8 +1057,23 @@ public partial class GameClient : Node
 	/// </summary>
 	public readonly HashSet<int> ComAureola = [];
 
+	/// <summary>
+	/// (v0.3.2) QUEM ESTA DE PASSAGEM entre os vivos -- o morto que chegou pela Transmissao Instantanea e volta em 5 s. Vem no mesmo
+	/// pacote da aureola (`S2C.Aureola`), e o desenho e o corpo meio transparente.
+	/// </summary>
+	public readonly HashSet<int> DePassagem = [];
+
 	/// <summary>Alguem morreu ou voltou a vida: id.</summary>
 	public event Action<int>? AureolaMudou;
+
+	/// <summary>(v0.3.2) As escolhas que o servidor mandou pra uma pergunta do menu da tecla E (`S2C.Escolhas`): o verbo, a lista e QUANDO chegou.</summary>
+	public sealed record ListaDeEscolhas(string Verbo, List<string> Itens, ulong ChegouEm);
+
+	/// <summary>(v0.3.2) A ultima lista de escolhas que chegou. Ver <see cref="ListaDeEscolhas"/>.</summary>
+	public ListaDeEscolhas? Escolhas { get; private set; }
+
+	/// <summary>(v0.3.2) Chegou uma lista de escolhas: o verbo dela.</summary>
+	public event Action<string>? EscolhasChegaram;
 
 	/// <summary>Uma celula do cenario caiu (knockback contra parede): virou chao.</summary>
 	public event Action<int, int>? CenarioCaiu;
@@ -1301,7 +1322,15 @@ public partial class GameClient : Node
 	/// listava trinta cargos e **nao dizia o que nenhum deles entrega**. Ver `OQueOCargoEntrega`, no
 	/// servidor -- a lista sai da tabela que a dadiva executa, com o que ainda e botao mudo marcado.
 	/// </summary>
-	public readonly record struct CargoInfo(string Chave, string Dono, string Falta, string Desc, string Da);
+	/// <param name="Dono">Os donos, separados por virgula -- o cargo de varias vagas (o Kaioshin) tem ate cinco (2026-10-16).</param>
+	/// <param name="Vagas">Quantas almas carregam o cargo ao mesmo tempo (1 pra quase todos).</param>
+	/// <param name="Livres">Quantas vagas estao livres agora: e o que decide o "Reivindicar".</param>
+	public readonly record struct CargoInfo(string Chave, string Dono, string Falta, string Desc, string Da, int Vagas = 1, int Livres = 0)
+	{
+		/// <summary>Este nome e um dos donos? A lista vem separada por virgula.</summary>
+		public bool TemDono(string nome) =>
+			nome.Length > 0 && Dono.Split(", ").Contains(nome, StringComparer.Ordinal);
+	}
 
 	public List<CargoInfo> Cargos { get; private set; } = [];
 	public event Action? CargosMudaram;
@@ -1354,7 +1383,8 @@ public partial class GameClient : Node
 	/// Uma conta do servidor, como o painel de admin a desenha. Sem senha: o servidor nunca manda
 	/// sal nem hash (ver <see cref="Protocol.S2C.Contas"/>).
 	/// </summary>
-	public readonly record struct ContaInfo(string Conta, bool Admin, bool Banida, bool Online, string Personagens);
+	/// <param name="ClasseRara">(2026-10-16) O proximo personagem da conta nasce com a classe mais rara (o verb `admin_classe_rara`).</param>
+	public readonly record struct ContaInfo(string Conta, bool Admin, bool Banida, bool Online, string Personagens, bool ClasseRara = false);
 
 	public List<ContaInfo> Contas { get; private set; } = [];
 	public event Action? ContasMudaram;
@@ -1473,6 +1503,15 @@ public partial class GameClient : Node
 	/// <summary>(v0.3.0) A CENA DE UM DEGRAU DE CHEFE COMECOU -- irmao do <see cref="CenaDoBioComecou"/>. Ver `Protocol.S2C.CenaDoChefe`.</summary>
 	public event Action<int, Jandirus.Core.Forms.Cinematicas.CenaDeChefe>? CenaDoChefeComecou;
 
+	/// <summary>(2026-10-16) UM DEGRAU DA SAGA DO CORRUPTED MAJIN COMECOU -- irmao do <see cref="CenaDoChefeComecou"/>. Ver `Protocol.S2C.CenaDoMajin`.</summary>
+	public event Action<int, Jandirus.Core.Forms.Cinematicas.CenaMajin>? CenaDoMajinComecou;
+
+	/// <summary>
+	/// (2026-10-16) A SANIDADE DO MEU CORRUPTED MAJIN MUDOU: de 0 a 100 (`LoucuraNaTela.SemBarra` = este corpo nao tem a barra), e
+	/// se a cabeca ja se foi. So o dono do corpo recebe. Ver `Protocol.S2C.Loucura` e o `LoucuraNaTela`.
+	/// </summary>
+	public event Action<byte, bool>? LoucuraMudou;
+
 	/// <summary>
 	/// A CINEMATICA DA FUSAO COMECOU -- e ela e a UNICA deste jogo com **dois** corpos: quem convidou
 	/// (onde a fusao vai nascer) e quem aceitou.
@@ -1509,6 +1548,12 @@ public partial class GameClient : Node
 	/// </summary>
 	public double TempoDoMundo { get; private set; }
 	public bool TempoChegou { get; private set; }
+
+	/// <summary>
+	/// (2026-10-17) O DIA DA TERRA EM QUE ESTE MUNDO NASCEU -- a origem do calendario, que chega junto com a hora (`S2C.Ceu`). A data de
+	/// hoje e a conta do Core (`Calendario`) com o dia da Terra de agora: ver `MenuJogo.HojeNoCalendario`.
+	/// </summary>
+	public long OrigemDoCalendario { get; private set; }
 	public event Action<double>? HoraDoMundo;
 
 	/// <summary>
@@ -1878,7 +1923,11 @@ public partial class GameClient : Node
 				int n = reader.GetByte();
 				var slots = new List<SlotInfo>(n);
 				for (int i = 0; i < n; i++) slots.Add(SlotInfo.Read(reader));
-				GD.Print($"[client] conta aceita | {slots.Count(x => x.Ocupado)} de {n} slots ocupados");
+				BebeACaminho = reader.GetOfertaDeBebe();
+				GD.Print($"[client] conta aceita | {slots.Count(x => x.Ocupado)} de {n} slots ocupados"
+						   + (BebeACaminho is { } bebe
+							  ? bebe.DeOvo ? $" | um ovo a caminho: de {bebe.Mae}" : $" | um bebe a caminho: filho de {bebe.Pai} e {bebe.Mae}"
+							  : ""));
 				SlotsRecebidos?.Invoke(slots);
 				break;
 			}
@@ -2447,6 +2496,7 @@ public partial class GameClient : Node
 			case Protocol.S2C.Ceu:
 			{
 				TempoDoMundo = reader.GetDouble();
+				OrigemDoCalendario = reader.GetLong();
 				TempoChegou = true;
 				HoraDoMundo?.Invoke(TempoDoMundo);
 				break;
@@ -2535,8 +2585,9 @@ public partial class GameClient : Node
 				int n = reader.GetByte();
 				var lista = new List<CargoInfo>(n);
 				for (int i = 0; i < n; i++)
-					lista.Add(new CargoInfo(reader.GetString(32), reader.GetString(32), reader.GetString(160),
-											reader.GetString(200), reader.GetString(400)));
+					// (2026-10-16) o dono com limite 200 (ate cinco nomes, no cargo de varias vagas) e, no fim, as vagas e as livres
+					lista.Add(new CargoInfo(reader.GetString(32), reader.GetString(200), reader.GetString(160),
+											reader.GetString(200), reader.GetString(400), reader.GetByte(), reader.GetByte()));
 				Cargos = lista;
 				CargosMudaram?.Invoke();
 				break;
@@ -2580,11 +2631,26 @@ public partial class GameClient : Node
 				break;
 			}
 
+			// (v0.3.2) A RESPOSTA DE UMA PERGUNTA DO MENU DA TECLA E: um botao por escolha (`MenuDeInteracao`, `Forma.Lista`).
+			case Protocol.S2C.Escolhas:
+			{
+				string verbo = reader.GetString(64);
+				int n = reader.GetByte();
+				var itens = new List<string>(n);
+				for (int i = 0; i < n; i++) itens.Add(reader.GetString(Protocol.MaxArgDeVerbo));
+				Escolhas = new ListaDeEscolhas(verbo, itens, Time.GetTicksMsec());
+				EscolhasChegaram?.Invoke(verbo);
+				break;
+			}
+
 			case Protocol.S2C.Aureola:
 			{
 				int quem = reader.GetInt();
 				if (reader.GetBool()) ComAureola.Add(quem);
 				else ComAureola.Remove(quem);
+				// (v0.3.2) o morto de passagem pela Transmissao -- meio transparente (`CharacterVisual.MostrarDePassagem`)
+				if (reader.GetBool()) DePassagem.Add(quem);
+				else DePassagem.Remove(quem);
 				AureolaMudou?.Invoke(quem);
 				break;
 			}
@@ -2605,7 +2671,7 @@ public partial class GameClient : Node
 				var lista = new List<ContaInfo>(n);
 				for (int i = 0; i < n; i++)
 					lista.Add(new ContaInfo(reader.GetString(48), reader.GetBool(), reader.GetBool(),
-											reader.GetBool(), reader.GetString(160)));
+											reader.GetBool(), reader.GetString(160), reader.GetBool()));
 				Contas = lista;
 				ContasMudaram?.Invoke();
 				break;
@@ -2715,6 +2781,24 @@ public partial class GameClient : Node
 			{
 				int quemNoChefe = reader.GetInt();
 				CenaDoChefeComecou?.Invoke(quemNoChefe, (Jandirus.Core.Forms.Cinematicas.CenaDeChefe)reader.GetByte());
+				break;
+			}
+
+			// (2026-10-16) UM DEGRAU DA SAGA DO CORRUPTED MAJIN -- ver `Protocol.S2C.CenaDoMajin`. O byte vira o enum sem crivo, como o do
+			// bio: o `Cinematicas.DoMajin` devolve nulo pro valor que este lado nao conhece.
+			case Protocol.S2C.CenaDoMajin:
+			{
+				int quemNoMajin = reader.GetInt();
+				CenaDoMajinComecou?.Invoke(quemNoMajin, (Jandirus.Core.Forms.Cinematicas.CenaMajin)reader.GetByte());
+				break;
+			}
+
+			// (2026-10-16) A SANIDADE DO MEU MAJIN -- ver `Protocol.S2C.Loucura`. As duas leituras antes de qualquer decisao.
+			case Protocol.S2C.Loucura:
+			{
+				byte sanidade = reader.GetByte();
+				bool insano = reader.GetBool();
+				LoucuraMudou?.Invoke(sanidade, insano);
 				break;
 			}
 

@@ -507,6 +507,10 @@ public partial class GameServer
 		// E EM LUTA (`IsInFight`, o relogio curto do combate): a unica fonte de exp da Holy Trinity
 		// (Bodybuilding.dm:176) e das artes marciais do corpo -- sem ela a Trindade nunca chegava ao
 		// nivel 2 e o verb da casa escolhida nunca vinha.
+		// (2026-10-16) AS DUAS FONTES DE EXP COM ESTADO PROPRIO (o Ki queimado do Full Power, o banco do gigante), ANTES do efetor:
+		// o ponto deste tique conta na subida deste tique. Ver `GameServer.NiveisQueNaoSubiam.cs`.
+		FontesDeExpComEstado(pl);
+
 		List<NiveisDeSkill.Subida> subiu =
 			pl.Niveis.Efetor(_rng, _skills, pl.Livro,
 				new NiveisDeSkill.EstadoDoCorpo(
@@ -523,7 +527,11 @@ public partial class GameServer
 					// Ver `RegraDeNivel.Estado.MeditacaoProfunda`.
 					MeditacaoProfunda: false,
 					// A FICHA: `kiratio`, `Ki/MaxKi` e a curva do `KiSkillGains` sao CONTA, nao chave.
-					Ficha: pl.Ficha));
+					Ficha: pl.Ficha,
+					// ---- (2026-10-16) os quatro do adendo 18: virar o corpo (a Rapid Movement) e as tres ferramentas da Cultivation ----
+					Direcao: (int)pl.Facing,
+					LaminaDeKi: TemBuff(pl, "Ki_Blade"), EspadaDeKi: TemBuff(pl, "Ki_Sword"),
+					EscudoDeKi: _escudoAtivo.ContainsKey(pl.Id)));
 		if (subiu.Count == 0) return false;
 
 		pl.Niveis.Aplicar(pl.Ficha);
@@ -751,6 +759,9 @@ public partial class GameServer
 			if (s.Nome.Contains("Sense", StringComparison.OrdinalIgnoreCase)
 				|| path.Contains("/sense", StringComparison.OrdinalIgnoreCase)) p |= Protocol.Poder.Sense;
 		}
+		// (2026-10-16) O FRAGMENTED MIND: o Corrupted Majin insano perde o Sense (*"lose the ability to use Ki Sense"*). Quem chama
+		// este metodo de novo na entrada e na saida da loucura e a saga (`Enlouquecer`, `Acordar`).
+		if (MenteFragmentada(pl)) p &= ~Protocol.Poder.Sense;
 		pl.Poderes = p | pl.PoderesConcedidos;
 		pl.SigAtributos = "";   // forca o proximo pacote de atributos a sair com o bit novo
 	}

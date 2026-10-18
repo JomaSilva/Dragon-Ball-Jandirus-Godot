@@ -70,9 +70,11 @@ public sealed class AbsorvidoPeloMajin
 /// de mandar -- ha dezenas de caminhos que derrubam, matam ou teleportam um corpo neste port.
 ///
 /// ============================ DIVERGENCIAS DECLARADAS ============================
-///   * A SAGA DO CORRUPTED MAJIN NAO FOI PORTADA (as formas 1 a 4, a outra metade que se devora, a Forma
-///     Pura: `:124-130`, `:146-148`, `:227-234`, `:395-577`). Os tres ganchos dela dentro da absorcao ficam
-///     de fora; a absorcao em si nao depende deles.
+///   * (2026-10-16) A SAGA DO CORRUPTED MAJIN mora no `GameServer.SagaDoMajin.cs`. Os ganchos dela aqui sao os do DM: a
+///     OUTRA METADE antes de qualquer alvo (`TentarAbsorverAOutraMetade`, `:124-130`), o Kai e os tres jogadores da forma 3
+///     depois do registro (`SagaAoAbsorver`, `:146-148` e `:227-234`), e a lista que esvazia conferindo a Forma Pura
+///     (`AoSoltarDoMajin`, `:278`). E um que o DM nao tem, do sistema do amigo do dono: a FUGA do primeiro absorvido custa
+///     sanidade -- e expulsar nao (o parametro `fuga` do `CuspirDoMajin`).
 ///   * O RAMO DE QUEM NAO E MAJIN (`Absorption.dm:88-101`, o `AbsorbDatum` antigo) nao foi portado: fora do
 ///     corpo de um Majin o verb recusa.
 ///   * `M.absorbable` (`Absorption.dm:81`) nao existe no port -- o `absorbproc` que o desliga so e chamado
@@ -145,6 +147,10 @@ public partial class GameServer
 		_prontoAbsorver[pl.Id] = agora + AbsorcaoMajin.RecargaMs;
 		f.AbsorbDeterminesBP = true;
 
+		// (2026-10-16) A OUTRA METADE PRIMEIRO -- a primeira coisa do `majin_absorb` (`MajinSaga.dm:124-130`): vencida, ela volta pra
+		// dentro e a saga sobe; de pe, a recusa e dela e o verb para aqui. Ver `GameServer.SagaDoMajin.cs`.
+		if (TentarAbsorverAOutraMetade(pl)) return;
+
 		ServerPlayer? alvo = AlvoDeTecnica(pl, RaioDaAbsorcao, PodeSerAbsorvidoPeloMajin);
 		if (alvo == null)
 		{ Avisar(pl, "o alvo precisa estar NOCAUTEADO, vivo, e ao seu lado."); return; }
@@ -189,6 +195,26 @@ public partial class GameServer
 	/// </summary>
 	internal static bool AbsorvidoDeixaCorpoDeTeste;
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`): a regra de 2026-10-15 -- so o NPC DO MUNDO some; o corpo sem papel (a fera solta, o
+	/// corpo forjado) fica morto no chao, pra sempre. Lido pelo <see cref="SomeAoSerAbsorvido"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool SoNpcDoMundoSomeDeTeste;
+
+	/// <summary>
+	/// ============================ O ABSORVIDO SOME, SEJA QUE CORPO FOR (dono, 2026-10-16) ============================
+	/// *"lembrando q majin absorver npc faz ele sumir sem deixar um corpo"*. A regra de 10-15 so tirava o NPC DO MUNDO (o que tem
+	/// papel: cidadao, rei, chefe, bicho); o corpo SEM papel (a fera solta, o corpo forjado) morria e ficava caido -- a triagem da
+	/// morte desarma o relogio dele (o terceiro grupo do `VenceuOPrazoDaMorte`), entao era um morto no chao pra sempre, com o
+	/// "[E] revistar" em cima. Foi o que as fotos da saga mostraram: a vitima forjada caida depois do "absorve ... por inteiro!".
+	///
+	/// FICA DE FORA SO O CORPO QUE A MENTE ERGUEU (o reflexo, o chefe convocado -- `DonoDoClone`): a morte dele encerra o transe, e
+	/// quem o desfaz e o `ComecarAVoltaDaMente`, no tique dele. Tira-lo por aqui deixaria o dono na mente sem ninguem pra vencer.
+	/// ==============================================================================================================
+	/// </summary>
+	private static bool SomeAoSerAbsorvido(ServerPlayer npc) =>
+		SoNpcDoMundoSomeDeTeste ? EhNpcDoMundo(npc) : npc.Peer == null && npc.DonoDoClone == 0;
+
 	private void DevorarPeloMajin(ServerPlayer pl, ServerPlayer npc)
 	{
 		var rec = new AbsorvidoPeloMajin
@@ -207,9 +233,9 @@ public partial class GameServer
 
 		// ============================ ABSORVIDO, E NAO DEVORADO (dono, 2026-10-15) ============================
 		// *"majin quando absorve um npc o npc so morre dando pra enterrar, o certo seria o npc absorvido so sumir e o jogo
-		// falar q ele foi absorvido (pq atualmente fala q ele foi devorado, oq e estranho)"*. O NPC do mundo SAI do mundo sem
-		// cadaver (`SumiuAbsorvido`, lido no dreno `TirarOsNpcsMortos`), e as frases dizem "absorve". O resto da morte
-		// continua (a reputacao, o rancor, a bolsa): ela e a porta de toda consequencia.
+		// falar q ele foi absorvido (pq atualmente fala q ele foi devorado, oq e estranho)"*. O absorvido SAI do mundo sem
+		// cadaver (`SumiuAbsorvido`, lido no dreno `TirarOsNpcsMortos`; quem sai: `SomeAoSerAbsorvido`), e as frases dizem
+		// "absorve". O resto da morte continua (a reputacao, o rancor, a bolsa): ela e a porta de toda consequencia.
 		// =====================================================================================================
 		bool comoAntes = AbsorvidoDeixaCorpoDeTeste;
 		Falar(pl, Protocol.Fala.Emote, comoAntes ? $"devora {rec.Nome} por inteiro!" : $"absorve {rec.Nome} por inteiro!");
@@ -224,9 +250,8 @@ public partial class GameServer
 		MarcarAgressao(npc, pl);
 		if (npc.Combate.Morrer(ignorarSeguro: true)) AoPerderALuta(npc, pl, morreu: true);
 		// O CORPO SAI JUNTO, no dreno do fim do tique (a absorcao pode chegar de dentro de um laco da IA, e mexer no
-		// `_players` dali derruba o tique). So o NPC DO MUNDO: o clone, a fera e o corpo forjado tem o proprio ciclo, e
-		// morrem como sempre morreram.
-		if (!comoAntes && EhNpcDoMundo(npc))
+		// `_players` dali derruba o tique). Todo corpo sem jogador, menos o que a mente ergueu -- ver `SomeAoSerAbsorvido`.
+		if (!comoAntes && SomeAoSerAbsorvido(npc))
 		{
 			npc.SumiuAbsorvido = true;
 			if (!_npcsPraTirar.Contains(npc)) _npcsPraTirar.Add(npc);
@@ -235,6 +260,10 @@ public partial class GameServer
 		RecalcularOMajin(pl);
 		Avisar(pl, $"voce {(comoAntes ? "devora" : "absorve")} {rec.Nome} (+{GanhoDoMajinNaFrase(pl, rec.BonusDeBp, npc.Ficha.BP)}, enquanto voce nao cair).");
 		GD.Print($"[server] {pl.Name} (Majin) ABSORVEU {rec.Nome}: +{rec.BonusDeBp:0} de BP emprestado");
+
+		// (2026-10-16) A SAGA: *"um Kai NPC tambem serve pro primeiro passo da saga do Corrupted Majin"* (`:145-148`) -- e absorver
+		// tira da Forma Pura. Ver `SagaAoAbsorver`.
+		SagaAoAbsorver(pl, npc, jogador: false);
 	}
 
 	// =====================================================================
@@ -245,7 +274,7 @@ public partial class GameServer
 		// QUEM E ABSORVIDO SEGURANDO GENTE SOLTA ESSA GENTE ANTES. No DM isso ja aconteceu: o `KO()` dele
 		// chamou o `majin_escape_all()` (`KO.dm:13-14`). Aqui a borda e do tique, e a absorcao pode chegar
 		// no mesmo tique do nocaute.
-		CuspirTodosDoMajin(m.Id, "");
+		CuspirTodosDoMajin(m.Id, "", fuga: true);
 
 		var rec = new AbsorvidoPeloMajin
 		{
@@ -302,6 +331,9 @@ public partial class GameServer
 		Falar(pl, Protocol.Fala.Emote, $"absorve {rec.Nome}!");
 		GD.Print($"[server] {pl.Name} (Majin) ABSORVEU {rec.Nome}: +{rec.BonusDeBp:0} de BP, {rec.Verbos.Count} verb(s), "
 				 + $"guardiao id {rec.Guardiao} com BP {AbsorcaoMajin.BpDoGuardiao(pl.Ficha.expressedBP):0}");
+
+		// (2026-10-16) A SAGA: o Kai e os tres jogadores da forma 3 (`:226-234`) -- e absorver tira da Forma Pura. Ver `SagaAoAbsorver`.
+		SagaAoAbsorver(pl, m, jogador: true);
 	}
 
 	/// <summary>
@@ -567,7 +599,7 @@ public partial class GameServer
 			bool caiu = majin == null || majin.Ficha.KO || majin.Ficha.dead;
 			if (caiu && !AbsorcaoMajin.NocauteNaoSoltaDeTeste)
 			{
-				CuspirTodosDoMajin(majinId, "todos os que voce segurava dentro de si se libertaram!");
+				CuspirTodosDoMajin(majinId, "todos os que voce segurava dentro de si se libertaram!", fuga: true);
 				continue;
 			}
 
@@ -583,7 +615,7 @@ public partial class GameServer
 
 				// (2) MORREU LA DENTRO -- `if(absorbed_into) absorbed_into.majin_release_by_mob(src)`, a
 				// primeira linha util do `Death()` (`Death.dm:9`). A morte segue o caminho dela do lado de fora.
-				if (preso.Ficha.dead) { CuspirDoMajin(majinId, rec); continue; }
+				if (preso.Ficha.dead) { CuspirDoMajin(majinId, rec, fuga: true); continue; }
 
 				if (!olhar) continue;
 
@@ -598,7 +630,7 @@ public partial class GameServer
 					continue;
 				}
 				if (majin != null) Avisar(majin, "um prisioneiro venceu a sua imagem e se libertou!");   // `:291`
-				CuspirDoMajin(majinId, rec);
+				CuspirDoMajin(majinId, rec, fuga: true);
 			}
 		}
 	}
@@ -613,9 +645,18 @@ public partial class GameServer
 	/// outra condicao. Sai NOCAUTEADO so quando o proprio Majin esta caido (`if(KO) ... M.KO()`, `:272`) --
 	/// *"vencer o guardiao interno / expulsao voluntaria = sai ACORDADO e de pe"*.
 	/// </summary>
-	private void CuspirDoMajin(int majinId, AbsorvidoPeloMajin rec)
+	/// <param name="fuga">
+	/// (2026-10-16) O ABSORVIDO SAIU FUGINDO -- venceu a imagem, morreu la dentro, ou o Majin caiu. Pra saga do Corrupted Majin: a
+	/// fuga do PRIMEIRO custa sanidade (*"having their first absorb freed"*), e expulsar ou sair do jogo nao (o padrao `false`; o
+	/// dono: *"expulsar n conta como jogador fugir pra ele perder sanidade"*). Ver `AoSoltarDoMajin`.
+	/// </param>
+	private void CuspirDoMajin(int majinId, AbsorvidoPeloMajin rec, bool fuga = false)
 	{
-		if (!_dentroDoMajin.TryGetValue(majinId, out List<AbsorvidoPeloMajin>? lista) || !lista.Remove(rec)) return;
+		// O LUGAR NA FILA E LIDO ANTES DE SAIR: "o primeiro absorvido" e o mais antigo que ainda estava dentro.
+		if (!_dentroDoMajin.TryGetValue(majinId, out List<AbsorvidoPeloMajin>? lista)) return;
+		int ondeEstava = lista.IndexOf(rec);
+		if (ondeEstava < 0) return;
+		lista.RemoveAt(ondeEstava);
 		if (lista.Count == 0) _dentroDoMajin.Remove(majinId);
 		_players.TryGetValue(majinId, out ServerPlayer? majin);
 
@@ -648,15 +689,20 @@ public partial class GameServer
 					 + (majinCaido ? " (nocauteado: o Majin caiu)" : ""));
 		}
 
-		// `spawn majin_check_pure_unlock()` (`:278`) e da saga, que nao foi portada -- ver o cabecalho.
-		if (majin != null) RecalcularOMajin(majin);
+		if (majin != null)
+		{
+			RecalcularOMajin(majin);
+			// (2026-10-16) A SAGA: a fuga do primeiro custa sanidade, e a lista que esvazia confere a Forma Pura (`spawn
+			// majin_check_pure_unlock()`, `:278`) e devolve o corpo a ela. Ver `AoSoltarDoMajin` (`GameServer.SagaDoMajin.cs`).
+			AoSoltarDoMajin(majin, oPrimeiroFugiu: fuga && ondeEstava == 0 && rec.Quem != 0);
+		}
 	}
 
 	/// <summary>`majin_escape_all()` (`MajinSaga.dm:389-393`), e o "Todos" do `Absorb_Expel()`.</summary>
-	private void CuspirTodosDoMajin(int majinId, string aviso)
+	private void CuspirTodosDoMajin(int majinId, string aviso, bool fuga = false)
 	{
 		if (!_dentroDoMajin.TryGetValue(majinId, out List<AbsorvidoPeloMajin>? lista)) return;
-		foreach (AbsorvidoPeloMajin rec in lista.ToArray()) CuspirDoMajin(majinId, rec);
+		foreach (AbsorvidoPeloMajin rec in lista.ToArray()) CuspirDoMajin(majinId, rec, fuga);
 		if (aviso.Length > 0 && _players.TryGetValue(majinId, out ServerPlayer? majin)) Avisar(majin, aviso);
 	}
 
@@ -702,14 +748,15 @@ public partial class GameServer
 
 		if (qual.Length == 0)
 		{
-			CuspirTodosDoMajin(pl.Id, "voce expulsa todos que estavam dentro de voce.");
+			CuspirTodosDoMajin(pl.Id, "voce expulsa todos que estavam dentro de voce.", fuga: ExpelirCustaSanidadeDeTeste);
 			return;
 		}
 
 		AbsorvidoPeloMajin? rec = int.TryParse(qual, out int numero) ? lista.Find(r => r.Numero == numero) : null;
 		if (rec == null) { Avisar(pl, "esse ja nao esta dentro de voce."); return; }
 
-		CuspirDoMajin(pl.Id, rec);
+		// EXPULSAR NAO E FUGA (o dono, 2026-10-16) -- o `fuga` fica falso, menos na bancada que injeta o defeito.
+		CuspirDoMajin(pl.Id, rec, fuga: ExpelirCustaSanidadeDeTeste);
 		Avisar(pl, $"voce expulsa {rec.Nome} do seu corpo.");
 	}
 

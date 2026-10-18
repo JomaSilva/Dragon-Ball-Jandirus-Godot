@@ -26,6 +26,14 @@ namespace Jandirus.Server;
 /// ele com um BP mil vezes maior (o funil `Atacar` do jogador). E o unico jeito de um premio
 /// chegar a um jogador nesta bancada, e o premio e a unica coisa que so um jogador pode receber.
 /// =========================================================================================
+///
+/// ============================ 2026-10-17: OS TIROS DE VERDADE E O CENSO DA ARENA ============================
+/// O dono: *"o torneio do outro mundo TA TODO BUGADO"* -- a roda de espera inteira respondendo feixe com feixe. A bancada
+/// passava verde porque os tiques dela nao andavam os ATAQUES DE KI: nenhum feixe nascia, e o reflexo do NPC
+/// (`TickDoContraFeixe`) nunca tinha o que responder. Agora o `Tiques` anda o bloco de Ki do tique de producao, na mesma
+/// ordem, e as duas chaves (Terra e Outro Mundo) passam tique a tique pelo <see cref="ContarNaArena"/>: so os dois da luta
+/// dentro da arena, a espera na roda em volta, e ninguem fora da luta carregando feixe, atirando ou gritando.
+/// ===========================================================================================================
 /// </summary>
 public sealed partial class GameServer
 {
@@ -45,8 +53,10 @@ public sealed partial class GameServer
 		var agendaAntes = new AgendaDeTorneios
 		{
 			ProximoDaTerraMs = _agenda.ProximoDaTerraMs, ProximoDoAlemMs = _agenda.ProximoDoAlemMs, UltimoDaTerraMs = _agenda.UltimoDaTerraMs,
+			DiasDoJogo = _agenda.DiasDoJogo,
 		};
 		List<string>? escutaAntes = EscutaDoTorneio;
+		List<(int Quem, Protocol.Fala Canal, string Texto)>? falasAntes = EscutaDeFalas;
 		List<string>? avisosAntes = EscutaDeAvisos;
 		ZoneKey zonaDoHost = pl.Zone;
 		Vec2 posDoHost = pl.Pos;
@@ -77,21 +87,24 @@ public sealed partial class GameServer
 				TickDoEmpurrao();
 				TickDosCorposSemDono(Protocol.TickSeconds);
 				TickDoTorneio(Protocol.TickSeconds);
+				// OS ATAQUES DE KI, o bloco do tique de producao na mesma ordem (`GameServer.cs`: canal, G12, tiros, embates, prazo e
+				// segundo aperto da IA). Sem ele nenhum feixe nascia aqui, e o caos do Outro Mundo passava verde (2026-10-17).
+				TickDosCanaisDeKi(Protocol.TickSeconds);
+				TickG12(Protocol.TickSeconds);
+				TickDosProjeteis(Protocol.TickSeconds);
+				TickDosEmbatesDeKi(Protocol.TickSeconds);
+				TickDoPrazoDeRaioDaIa(Protocol.TickSeconds);
+				TickDoSegundoApertoDaIa();
 			}
 		}
 		void PularSegundos(double s) => AdiantoDoRelogioDeTeste = (long)(relogioAndado += s * 1000);
-		int TiquesAte(Func<bool> pronto, int teto)
-		{
-			int n = 0;
-			while (n < teto && !pronto()) { Tiques(1); n++; }
-			return n;
-		}
 		static Vec2 Tiles(float x, float y) => new(x * ZoneCollision.TileSize, y * ZoneCollision.TileSize);
 
 		try
 		{
 			EscutaDoTorneio = [];
 			EscutaDeAvisos = [];
+			EscutaDeFalas = [];
 			var cfg = new TorneioConfig
 			{
 				Vagas = original.Vagas, InscricaoSegundos = 5, ConviteSegundos = 5, LutaSegundosMax = 20,
@@ -125,6 +138,31 @@ public sealed partial class GameServer
 			Checa("[injecao] uma config com vagas 30 (nao e potencia de 2) e W.O. negativo e apontada",
 				  new TorneioConfig { Vagas = 30, WoSegundos = -1 }.Problemas().Count >= 2);
 
+			// AS CADEIRAS DO CEU (2026-10-17): a lista do torneio.json e a do DM (`Tournament.dm:650-654`, pela conta do cabecalho do
+			// `TorneioConfig`), cada uma chao livre no mapa de verdade e FORA da arena -- e o olhar que o servidor da a quem senta e o da
+			// fileira do DM, escrito aqui como o DM o escreve.
+			{
+				List<Cadeira> doDm = TorneioConfig.CadeirasDoCeu();
+				List<Cadeira> lidas = original.Alem.Cadeiras;
+				ZoneCollision? mapaDoAlem = MapaDaZonaOuCatalogo(ZoneKey.Premade(original.Alem.Zona));
+				int foraDoChao = lidas.Count(cad => mapaDoAlem?.ServeDeChao(cad.X, cad.Y) != true);
+				int naArena = lidas.Count(cad => original.Alem.Arena.Contem(cad.X, cad.Y));
+				Checa("as CADEIRAS do Outro Mundo no torneio.json sao as 32 do DM (o `seats` do ceu, na ordem), chao livre no mapa de verdade e FORA da arena",
+					  doDm.Count == 32 && lidas.SequenceEqual(doDm) && foraDoChao == 0 && naArena == 0,
+					  $"{lidas.Count} lida(s), {doDm.Count} do DM; {foraDoChao} fora do chao; {naArena} dentro da arena");
+				Facing[] daFileira = [Facing.East, Facing.South, Facing.North, Facing.West];   // as quatro fileiras do DM, de 8 em 8
+				int viradas = doDm.Where((cad, ix) => cad.OlharPara(original.Alem.Arena) == daFileira[ix / 8]).Count();
+				Checa("...e quem senta olha pra arena: a direcao que o servidor da (pro centro do palco) e a de cada fileira do DM (EAST, SOUTH, NORTH, WEST)",
+					  viradas == 32, $"{viradas} de 32");
+				Checa("a Terra nao tem cadeiras: a espera dela e a roda sorteada (o DM deixa `seats = null`)", original.Terra.Cadeiras.Count == 0);
+				List<string> torta = new TorneioConfig
+				{
+					Alem = new PalcoDeTorneio { Zona = "Afterlife", Arena = new Arena(110, 346, 125, 360), Cadeiras = [new(115, 350), new(108, 346), new(108, 346)] },
+				}.Problemas();
+				Checa("[injecao] uma cadeira DENTRO da arena e uma repetida sao apontadas",
+					  torta.Any(x => x.Contains("DENTRO da arena")) && torta.Any(x => x.Contains("repetida")), string.Join(" | ", torta));
+			}
+
 			// =====================================================================
 			// 1) INSCRICOES E CONVITE
 			// =====================================================================
@@ -154,10 +192,12 @@ public sealed partial class GameServer
 			Avisos();
 			ComandoDeTorneio(pl, "trn_iniciar", "terra");
 			Checa("o admin abre o torneio da Terra na marra (`trn_iniciar terra`) e as inscricoes abrem", TorneioAtivo && FaseDoTorneioDeTeste == "Inscricao");
-			Checa("...e a agenda do proximo da Terra e do Outro Mundo e marcada NO COMECO (30 e 15 dias) e gravada",
-				  Math.Abs(AgendaDeTeste.ProximoDaTerraMs - (NowMs() + 30 * 86_400_000L)) < 5000
-				  && Math.Abs(AgendaDeTeste.ProximoDoAlemMs - (NowMs() + 15 * 86_400_000L)) < 5000
-				  && System.IO.File.Exists(CaminhoDaAgenda));
+			long diaDoJogo = (long)(Espaco.SegundosPorDiaInGame * 1000);
+			Checa("...e a agenda do proximo da Terra e do Outro Mundo e marcada NO COMECO (30 e 15 DIAS DO JOGO: 12 h e 6 h de relogio) e gravada",
+				  Math.Abs(AgendaDeTeste.ProximoDaTerraMs - (NowMs() + 30 * diaDoJogo)) < 5000
+				  && Math.Abs(AgendaDeTeste.ProximoDoAlemMs - (NowMs() + 15 * diaDoJogo)) < 5000
+				  && System.IO.File.Exists(CaminhoDaAgenda),
+				  $"Terra em {(AgendaDeTeste.ProximoDaTerraMs - NowMs()) / 3_600_000.0:0.##} h, Outro Mundo em {(AgendaDeTeste.ProximoDoAlemMs - NowMs()) / 3_600_000.0:0.##} h de relogio");
 			Checa("o anuncio de abertura saiu pra todo mundo", Ouvidos().Any(x => x.Contains("inscricoes")));
 			ComandoDeTorneio(pl, "trn_participar", "");
 			Checa("`trn_participar` inscreve o host (1/32)", InscritosDeTeste == 1 && Ouvidos().Any(x => x.Contains("se inscreveu")));
@@ -302,10 +342,13 @@ public sealed partial class GameServer
 			string ultimoPar = "", nomeDoVoador = "-";
 			int maiorAndar = 0, tiquesAltoDemais = 0, tiquesAltoSobreOChao = 0, tiquesPresoNoAr = 0;
 			const int teto = 90_000;   // 50 min de mundo: o dobro do pior caso (32 lutas de 20 s + folgas)
+			var censoTerra = new CensoDaArena();
+			int[] participantesTerra = [.. npcs, pl.Id];
 			while (TorneioAtivo && tiques < teto)
 			{
 				Tiques(1);
 				tiques++;
+				ContarNaArena(censoTerra, participantesTerra);
 				if (FaseDoTorneioDeTeste != "Luta") { lutaAtualEmTiques = 0; continue; }
 				lutaAtualEmTiques++;
 				maiorLutaEmTiques = Math.Max(maiorLutaEmTiques, lutaAtualEmTiques);
@@ -428,6 +471,14 @@ public sealed partial class GameServer
 				  chave != null && string.Join(" > ", chave.Rodadas.Select(r => r.Nome)) == "16-avos de final > oitavas de final > quartas de final > semifinal > disputa do 3o lugar > final",
 				  chave == null ? "" : string.Join(" > ", chave.Rodadas.Select(r => r.Nome)));
 			Checa("em toda luta os dois da vez estavam soltos e todo o resto da chave estava preso", invariantesOk);
+			GD.Print($"[torneio]   censo da arena da Terra: {censoTerra}");
+			Checa("CENSO (Terra): tique a tique, so os dois da luta DENTRO da arena; quem nao lutava estava preso, na roda em volta (1 a 6 celulas da linha)",
+				  censoTerra.Amostras > 0 && censoTerra.DentroSemLutar == 0 && censoTerra.SoltosForaDaLuta == 0 && censoTerra.EsperaLonge == 0, censoTerra.ToString());
+			Checa("CENSO (Terra): os tiros da luta andaram de verdade, e ninguem fora da luta carregou feixe, atirou ou gritou",
+				  censoTerra.TirosDaLuta > 0 && censoTerra.CanaisForaDaLuta == 0 && censoTerra.TirosForaDaLuta == 0 && censoTerra.FalasForaDaLuta == 0,
+				  censoTerra.ToString());
+			Checa("CENSO (Terra): na CONTAGEM os NPCs da vez ficam no lugar, sem atirar nem falar (so o \"COMECEM!\" os solta um contra o outro)",
+				  censoTerra.TirosNaContagem == 0 && censoTerra.FalasNaContagem == 0 && censoTerra.AndouNaContagem == 0, censoTerra.ToString());
 			Checa($"nenhuma luta passou do tempo maximo ({cfg.LutaSegundosMax:0} s + folga)", maiorLutaEmTiques <= (cfg.LutaSegundosMax + 3) * Protocol.TickHz, $"{maiorLutaEmTiques / (double)Protocol.TickHz:0.0} s");
 			// O DETALHE CONTA COMO CADA LUTA DO HOST ACABOU, e quem foi o voador da bancada: esta linha caiu uma vez
 			// em dez so com "5 lutas do host", e o numero sozinho nao dizia se foi ring-out, tempo ou W.O.
@@ -484,11 +535,235 @@ public sealed partial class GameServer
 			}
 			Checa("os 31 NPCs do Outro Mundo nascem MORTOS DE PE, na zona do alem, com aureola", todosMortosDePe && comAureola && naZonaCerta, $"{mortos.Count} NPCs");
 			int tiquesAlem = 0;
-			while (TorneioAtivo && tiquesAlem < teto) { Tiques(1); tiquesAlem++; }
+			// O CENSO DO OUTRO MUNDO (2026-10-17) -- o dono: *"o torneio do outro mundo TA TODO BUGADO"*, com a foto da roda de espera
+			// inteira gritando "Onda de Ki!!". A arena celeste e pequena: todo feixe da luta passa pela plateia.
+			var censoAlem = new CensoDaArena();
+			int[] participantesAlem = [.. mortos, pl.Id];
+			bool reflexoMedido = false, contagemMedida = false, povoMedido = false, cadeiraMedida = false;
+			while (TorneioAtivo && tiquesAlem < teto)
+			{
+				Tiques(1);
+				tiquesAlem++;
+				ContarNaArena(censoAlem, participantesAlem);
+
+				// ============================ O CONTRA-EXEMPLO DO POVO NO PALCO ============================
+				// Uma alma do Outro Mundo (o molde do povoamento) nasce no MEIO do palco, com o torneio no ar. A regra e lida na porta dela
+				// (`ForaDoPalcoDoTorneio`, o rumo que a rotina recebe): parada no meio, o rumo e pra fora; vindo de fora pra dentro, o passo
+				// para. E o mundo anda: em 4 s ela esta fora do palco. Com o defeito (o povo no palco) a porta nao mexe em rumo nenhum.
+				// ===========================================================================================
+				if (!povoMedido && FaseDoTorneioDeTeste == "Luta")
+				{
+					povoMedido = true;
+					Arena palco = PisoDoPalco(_torneio!.Arena);
+					Vec2 meio = new Vec2((palco.X1 + palco.X2) / 2f + 0.5f, palco.Y1 + 1.5f) * ZoneCollision.TileSize;
+					ServerPlayer? alma = NascerNpc("alma", alem, meio, 9_377);
+					if (alma == null) Checa("PRECONDICAO: uma alma nasceu no palco pro contra-exemplo", false);
+					else
+					{
+						var parada = new Jandirus.Core.Ai.Ordem();
+						var praDentro = new Jandirus.Core.Ai.Ordem { Rumo = new Vec2(0, 1) };
+						Vec2 naBorda = new Vec2(meio.X, (palco.Y1 - 0.4f) * ZoneCollision.TileSize);
+						Vec2 antes = alma.Pos;
+						alma.Pos = naBorda;
+						Jandirus.Core.Ai.Ordem barrada = ForaDoPalcoDoTorneio(alma, praDentro);
+						alma.Pos = antes;
+						Jandirus.Core.Ai.Ordem saindo = ForaDoPalcoDoTorneio(alma, parada);
+						PovoNoPalcoDeTeste = true;
+						Jandirus.Core.Ai.Ordem saindoComDefeito;
+						try { saindoComDefeito = ForaDoPalcoDoTorneio(alma, parada); }
+						finally { PovoNoPalcoDeTeste = false; }
+						for (int i = 0; i < 120 && palco.ContemEm(alma.Pos); i++) Tiques(1);
+						bool saiu = !palco.ContemEm(alma.Pos);
+						Checa("**O POVO SAI DO PALCO**: a alma no meio do palco recebe o rumo pra fora, a que vinha entrando para na borda -- e em 4 s ela esta fora",
+							  saindo.Rumo.LengthSquared > 0.5f && barrada.Rumo.LengthSquared < 1e-6f && saiu,
+							  $"rumo de saida {saindo.Rumo}; o passo pra dentro virou {barrada.Rumo}; fora do palco {saiu}");
+						Checa("CONTRA-EXEMPLO (defeito injetado: o povo no palco): a mesma alma parada no meio fica parada -- ninguem a tira de la",
+							  saindoComDefeito.Rumo.LengthSquared < 1e-6f, $"rumo {saindoComDefeito.Rumo}");
+						RemoverNpc(alma);
+						EsquecerAteAqui(censoAlem);
+					}
+				}
+
+				// ============================ O CONTRA-EXEMPLO DA CONTAGEM ============================
+				// Na primeira contagem com um NPC entre os dois da vez, um feixe do OUTRO nasce a tres celulas dele, vindo pra cima, e so
+				// o tique dos corpos anda (o reflexo e o do `TicarUmCorpo`; o relogio do torneio fica parado, a contagem nao acaba no
+				// meio). COM O DEFEITO (o lutador da vez solto na contagem) ele responde -- e o jogo de antes; SEM ele, nada ate o
+				// "COMECEM!".
+				// ======================================================================================
+				if (!contagemMedida && FaseDoTorneioDeTeste == "Contagem"
+					&& _players.TryGetValue(LutadoresDeTeste.A, out ServerPlayer? daVezA) && _players.TryGetValue(LutadoresDeTeste.B, out ServerPlayer? daVezB))
+				{
+					contagemMedida = true;
+					(ServerPlayer vez, ServerPlayer outroDaVez) = EhJogador(daVezA) ? (daVezB, daVezA) : (daVezA, daVezB);
+					if (!SabeTecnica(vez, "Ki_Wave")) DarSkillDoRaio(vez);
+					foreach (bool comDefeito in new[] { true, false })
+					{
+						vez.Ficha.Ki = vez.Ficha.MaxKi;
+						_contraFeixeLivreEm.Remove(vez.Id);
+						Vec2 rumo = (vez.Pos - outroDaVez.Pos).Normalized();
+						Projetil feixe = Disparar(outroDaVez, RaioDeTeste(), rumoDado: rumo, deOnde: vez.Pos - rumo * (3 * ZoneCollision.TileSize));
+						ContagemSoltaDeTeste = comDefeito;
+						bool respondeu = false;
+						try
+						{
+							for (int i = 0; i < 4 && !respondeu; i++)
+							{
+								TickDosCorposSemDono(Protocol.TickSeconds);
+								respondeu = _canais.ContainsKey(vez.Id);
+							}
+						}
+						finally { ContagemSoltaDeTeste = false; }
+						feixe.Vivo = false;
+						SoltarDoRaio(vez.Id);
+						EsquecerAteAqui(censoAlem);
+						if (comDefeito)
+							Checa($"CONTRA-EXEMPLO (defeito injetado: o lutador da vez solto na contagem): {vez.Name}, antes do \"COMECEM!\", ve o feixe e RESPONDE",
+								  respondeu, $"fase {FaseDoTorneioDeTeste}");
+						else
+							Checa($"...e sem o defeito, na contagem {vez.Name} fica parado: nao responde feixe (o `tourney_lock` do DM -- sem oponente designado, nada)",
+								  !respondeu, $"fase {FaseDoTorneioDeTeste}");
+					}
+				}
+
+				// ============================ O CONTRA-EXEMPLO DO REFLEXO, NA PRIMEIRA LUTA ============================
+				// Um feixe do lutador da vez nasce a tres celulas de um preso da roda, vindo pra cima dele, e o mundo anda pelos
+				// `Tiques` da bancada -- o reflexo e o do `TicarUmCorpo`, e nao uma chamada direta. COM O DEFEITO (o reflexo de volta
+				// na espera) o preso responde e o censo acusa; SEM ele o mesmo feixe passa e ninguem responde. O preso ganha o Ki
+				// Wave se nao o tiver: o que se mede e a trava, e nao o sorteio das tecnicas do molde. O que a cena fez (o feixe
+				// dela, o grito do preso) sai da conta do torneio de verdade (`EsquecerAteAqui`).
+				// =====================================================================================================
+				if (!reflexoMedido && FaseDoTorneioDeTeste == "Luta" && _players.TryGetValue(LutadoresDeTeste.A, out ServerPlayer? atirador))
+				{
+					reflexoMedido = true;
+					ServerPlayer? alvo = participantesAlem.Select(id => _players.GetValueOrDefault(id))
+						.FirstOrDefault(n => n != null && !EhJogador(n) && PresosDeTeste.Contains(n.Id));
+					if (alvo == null) Checa("PRECONDICAO: ha um NPC preso na roda pro contra-exemplo do reflexo", false);
+					else
+					{
+						if (!SabeTecnica(alvo, "Ki_Wave")) DarSkillDoRaio(alvo);
+						foreach (bool comDefeito in new[] { true, false })
+						{
+							alvo.Ficha.Ki = alvo.Ficha.MaxKi;
+							_contraFeixeLivreEm.Remove(alvo.Id);
+							var vem = new Vec2(1, 0);
+							Projetil feixe = Disparar(atirador, RaioDeTeste(), rumoDado: vem, deOnde: alvo.Pos - vem * (3 * ZoneCollision.TileSize));
+							var censoDaCena = new CensoDaArena();
+							ContarNaArena(censoDaCena, participantesAlem);
+							ContraFeixeNaEsperaDeTeste = comDefeito;
+							try
+							{
+								for (int i = 0; i < 4 && !_canais.ContainsKey(alvo.Id); i++)
+								{
+									Tiques(1);
+									ContarNaArena(censoDaCena, participantesAlem);
+								}
+							}
+							finally { ContraFeixeNaEsperaDeTeste = false; }
+							bool respondeu = _canais.ContainsKey(alvo.Id);
+							feixe.Vivo = false;
+							// COM O DEFEITO, QUALQUER PRESO QUE VIU UM FEIXE RESPONDEU (nao so o alvo da cena): a roda inteira larga o raio, senao
+							// o canal de um vizinho seguia aberto os 12 s do prazo e o censo do torneio de verdade o contava como dele.
+							// E QUEM RESPONDEU VIROU PRO FEIXE: de volta a cadeira, olhando pro palco, pelo `Segurar` de producao -- senao o censo o
+							// contava sentado de costas pra arena pelo resto do torneio.
+							foreach (int id in participantesAlem)
+								if (id != LutadoresDeTeste.A && id != LutadoresDeTeste.B)
+								{
+									SoltarDoRaio(id);
+									if (PresosDeTeste.Contains(id) && _players.TryGetValue(id, out ServerPlayer? preso)) Segurar(_torneio!, preso);
+								}
+							EsquecerAteAqui(censoAlem);
+							if (comDefeito)
+								Checa($"CONTRA-EXEMPLO (defeito injetado: o reflexo de volta na espera): {alvo.Name}, preso na roda, ve o feixe de {atirador.Name} e RESPONDE -- e o censo acusa",
+									  respondeu && censoDaCena.CanaisForaDaLuta > 0, censoDaCena.ToString());
+							else
+								Checa($"...e sem o defeito o mesmo feixe passa por {alvo.Name} e ele NAO responde: a trava da espera vale pro reflexo",
+									  !respondeu && censoDaCena.CanaisForaDaLuta == 0 && censoDaCena.FalasForaDaLuta == 0, censoDaCena.ToString());
+						}
+
+						// ============================ O EMBALO QUE SOBRA DA LUTA ============================
+						// O golpe que decide uma luta ainda carrega o perdedor quando o `TerminarLuta` o devolve a espera. A cena: o mesmo preso
+						// e arremessado PRA FORA da roda (longe da luta, que segue) pelo `Arremessar` de producao, e o `Segurar` de producao o
+						// devolve ao lugar; o mundo anda meio segundo. A regua e o MECANISMO (o voo que sobra no corpo devolvido), e o quanto
+						// ele andou vai no detalhe: quanto o corpo voa depende do chao que houver do lado de fora da roda.
+						// ====================================================================================
+						Vec2 lugarDeEspera = alvo.Pos;
+						Vec2 praFora = (alvo.Pos - _torneio!.Arena.Centro).Normalized();
+						foreach (bool comDefeito in new[] { true, false })
+						{
+							Arremessar(alvo, praFora, 1, 8);
+							TransporteLevaOEmbaloDeTeste = comDefeito;
+							try { Segurar(_torneio!, alvo); }
+							finally { TransporteLevaOEmbaloDeTeste = false; }
+							int embalo = alvo.TiquesDeVoo;
+							Tiques(15);
+							float saiu = Vec2.Distance(alvo.Pos, lugarDeEspera) / ZoneCollision.TileSize;
+							Segurar(_torneio!, alvo);   // de volta ao lugar, pelo transporte que para (o de producao)
+							if (comDefeito)
+								Checa($"CONTRA-EXEMPLO (defeito injetado: o transporte de antes): {alvo.Name}, arremessado e devolvido a espera, continua VOANDO de la",
+									  embalo > 0, $"{embalo} tique(s) de voo sobrando; andou {saiu:0.##} tiles em meio segundo");
+							else
+								Checa($"...e sem o defeito o transporte o poe PARADO no lugar de espera: o arremesso que sobrou da luta acaba ali",
+									  embalo == 0 && saiu < 0.1f, $"{embalo} tique(s) de voo; {saiu:0.##} tiles fora do lugar");
+						}
+
+						// ============================ A CADEIRA (2026-10-17) ============================
+						// O dono: *"coloque os participantes do torneio do outro mundo pra esperarem onde tem os bancos ali"*. O mesmo preso devolve
+						// a cadeira (o lugar sai do `LugarDeEspera`) e o `Segurar` de producao o poe de novo, virado de costas pro palco antes. COM
+						// O DEFEITO (a roda sorteada de antes) ele cai fora delas -- ou na de outro -- e o censo acusa; a roda e sorteada e pode cair
+						// justo na cadeira que ele devolveu (uma vez em ~250), entao sao ate 5 sorteios. SEM ele, a primeira livre e a que ele
+						// acabou de devolver: senta nela, olhando pra arena.
+						// ===============================================================================
+						cadeiraMedida = true;
+						Vec2 cadeiraDele = _torneio!.LugarDeEspera[alvo.Id];
+						Cadeira? sentou = _torneio!.Palco.CadeiraEm((int)MathF.Floor(cadeiraDele.X / ZoneCollision.TileSize), (int)MathF.Floor(cadeiraDele.Y / ZoneCollision.TileSize));
+						if (sentou is not { } suaCadeira) Checa($"PRECONDICAO: {alvo.Name}, preso, estava numa cadeira", false, $"lugar {cadeiraDele}");
+						else
+						{
+							var censoComDefeito = new CensoDaArena();
+							for (int sorteio = 0; sorteio < 5 && censoComDefeito.ForaDaCadeira == 0; sorteio++)
+							{
+								_torneio!.LugarDeEspera.Remove(alvo.Id);
+								EsperaSemCadeiraDeTeste = true;
+								try { Segurar(_torneio!, alvo); }
+								finally { EsperaSemCadeiraDeTeste = false; }
+								ContarNaArena(censoComDefeito, participantesAlem);
+							}
+							Checa($"CONTRA-EXEMPLO (defeito injetado: a espera sem cadeira): {alvo.Name}, posto de novo na espera, fica FORA das cadeiras do palco -- e o censo acusa",
+								  censoComDefeito.ForaDaCadeira > 0, censoComDefeito.ToString());
+							Facing praArena = suaCadeira.OlharPara(_torneio!.Arena);
+							_torneio!.LugarDeEspera.Remove(alvo.Id);
+							alvo.Facing = praArena switch { Facing.East => Facing.West, Facing.West => Facing.East, Facing.North => Facing.South, _ => Facing.North };
+							Segurar(_torneio!, alvo);
+							var censoSemDefeito = new CensoDaArena();
+							ContarNaArena(censoSemDefeito, participantesAlem);
+							Checa($"...e sem o defeito {alvo.Name} senta na cadeira que devolveu (a primeira livre), virado pra arena ({praArena}), e o censo fica limpo",
+								  Vec2.Distance(_torneio!.LugarDeEspera[alvo.Id], cadeiraDele) < 0.5f && alvo.Facing == praArena && censoSemDefeito is { ForaDaCadeira: 0, Sentados: > 0 },
+								  $"lugar {_torneio!.LugarDeEspera[alvo.Id]} (era {cadeiraDele}), olhando {alvo.Facing}; {censoSemDefeito}");
+						}
+						EsquecerAteAqui(censoAlem);
+					}
+				}
+			}
+			GD.Print($"[torneio]   censo da arena do Outro Mundo: {censoAlem}");
 			double nutricaoDepois = 0;
 			foreach (int id in mortos) if (_players.TryGetValue(id, out ServerPlayer? n)) nutricaoDepois += n.Ficha.CurrentNutrition;
 			Checa($"o torneio do Outro Mundo roda ate o fim ({tiquesAlem * Protocol.TickSeconds / 60:0.0} min de mundo) com os mortos lutando", !TorneioAtivo && tiquesAlem < teto, FaseDoTorneioDeTeste);
 			Checa("...e a chave fechou com campeao (32 lutas)", ChaveDeTeste == null && chave != null);
+			Checa("CENSO (Outro Mundo): tique a tique, so os dois da luta DENTRO da arena; quem nao lutava estava preso, na roda em volta (1 a 6 celulas da linha)",
+				  censoAlem.Amostras > 0 && censoAlem.DentroSemLutar == 0 && censoAlem.SoltosForaDaLuta == 0 && censoAlem.EsperaLonge == 0, censoAlem.ToString());
+			Checa("CENSO (Outro Mundo): os feixes da luta andaram de verdade, e NINGUEM fora da luta carregou feixe, atirou ou gritou (o \"Onda de Ki!!\" da roda)",
+				  censoAlem.TirosDaLuta > 0 && censoAlem.CanaisForaDaLuta == 0 && censoAlem.TirosForaDaLuta == 0 && censoAlem.FalasForaDaLuta == 0,
+				  censoAlem.ToString());
+			Checa("CENSO (Outro Mundo): na CONTAGEM os NPCs da vez ficam no lugar, sem atirar nem falar (so o \"COMECEM!\" os solta um contra o outro)",
+				  censoAlem.TirosNaContagem == 0 && censoAlem.FalasNaContagem == 0 && censoAlem.AndouNaContagem == 0, censoAlem.ToString());
+			Checa("CENSO (Outro Mundo): nenhuma alma do alem (ninguem de fora do torneio) de pe no palco durante o torneio",
+				  censoAlem.IntrusosNaArena == 0, censoAlem.ToString());
+			Checa("CENSO (Outro Mundo): quem esperava estava SENTADO numa das 32 cadeiras em volta do palco (as do DM), cada um na sua, e os NPCs virados pra arena",
+				  censoAlem.Sentados > 0 && censoAlem.ForaDaCadeira == 0, censoAlem.ToString());
+			Checa("o contra-exemplo da cadeira rodou", cadeiraMedida);
+			Checa("o contra-exemplo do povo no palco rodou", povoMedido);
+			Checa("o contra-exemplo do reflexo rodou (houve luta no Outro Mundo)", reflexoMedido);
+			Checa("o contra-exemplo da contagem rodou (houve contagem com um NPC da vez)", contagemMedida);
 			Checa("o host continua morto no fim: o campeao do Outro Mundo NAO revive (config `campeaoRevive: false`)", pl.Ficha.dead);
 			Checa("a agenda do Outro Mundo foi consumida (o proximo e a Terra quem marca)", AgendaDeTeste.ProximoDoAlemMs == 0);
 
@@ -501,7 +776,54 @@ public sealed partial class GameServer
 			Checa("o torneio.json da pasta de saves guarda o proximo da Terra e o ultimo (reler do disco da o mesmo)",
 				  AgendaDeTeste.ProximoDaTerraMs == terraGravada && AgendaDeTeste.UltimoDaTerraMs > 0);
 			ComandoDeTorneio(pl, "trn_status", "");
-			Checa("`trn_status` sem torneio diz quando e o proximo", Avisos().Any(x => x.Contains("Terra em")));
+			List<string> status = Avisos();
+			Checa("`trn_status` sem torneio diz quando e o proximo EM DIAS DO JOGO, com a espera de relogio ao lado (o \"28.5d\" do dono era dia de parede)",
+				  status.Any(x => x.Contains("Terra em") && x.Contains("do jogo") && x.Contains("reais")), string.Join(" | ", status));
+
+			// A AGENDA DE ANTES (dias de PAREDE, sem a marca) PASSA PRA DIAS DO JOGO NO BOOT, uma vez -- o mundo do dono, que tinha o
+			// proximo da Terra a 28,4 dias. O `CarregarAgenda` e o do boot, lendo um arquivo escrito como o antigo era.
+			{
+				long agora = NowMs();
+				long ultimo = agora - 2 * 86_400_000L;
+				System.IO.File.WriteAllText(CaminhoDaAgenda,
+					$"{{ \"ProximoDaTerraMs\": {ultimo + 30 * 86_400_000L}, \"ProximoDoAlemMs\": {ultimo + 15 * 86_400_000L}, \"UltimoDaTerraMs\": {ultimo} }}");
+				_agenda = new AgendaDeTorneios();
+				CarregarAgenda();
+				long terraLida = AgendaDeTeste.ProximoDaTerraMs, alemLido = AgendaDeTeste.ProximoDoAlemMs;
+				RecarregarAgendaDeTeste();
+				Checa("o torneio.json de ANTES (dias de parede, sem a marca) passa pra DIAS DO JOGO no boot: o proximo da Terra fica 30 dias do jogo depois do ultimo, o do Outro Mundo 15 -- e o arquivo volta gravado com a marca",
+					  terraLida == ultimo + 30 * diaDoJogo && alemLido == ultimo + 15 * diaDoJogo
+					  && AgendaDeTeste.DiasDoJogo && AgendaDeTeste.ProximoDaTerraMs == terraLida && AgendaDeTeste.ProximoDoAlemMs == alemLido,
+					  $"Terra a {(terraLida - agora) / 3_600_000.0:0.##} h e Outro Mundo a {(alemLido - agora) / 3_600_000.0:0.##} h de relogio (negativo = atrasado, abre no proximo tique)");
+
+				System.IO.File.WriteAllText(CaminhoDaAgenda, $"{{ \"ProximoDaTerraMs\": {agora + 86_400_000L}, \"ProximoDoAlemMs\": 0, \"UltimoDaTerraMs\": 0 }}");
+				_agenda = new AgendaDeTorneios();
+				CarregarAgenda();
+				Checa("...e o mundo que nunca teve torneio (so o primeiro marcado, a 1 dia de parede) passa a te-lo a 1 dia DO JOGO (24 min)",
+					  Math.Abs(AgendaDeTeste.ProximoDaTerraMs - (agora + diaDoJogo)) < 5000 && AgendaDeTeste.DiasDoJogo,
+					  $"{(AgendaDeTeste.ProximoDaTerraMs - agora) / 60_000.0:0.#} min");
+
+				System.IO.File.WriteAllText(CaminhoDaAgenda,
+					$"{{ \"ProximoDaTerraMs\": {agora + 10 * 86_400_000L}, \"ProximoDoAlemMs\": 0, \"UltimoDaTerraMs\": {ultimo}, \"DiasDoJogo\": true }}");
+				_agenda = new AgendaDeTorneios();
+				CarregarAgenda();
+				Checa("...e a conversao e UMA VEZ: o arquivo ja marcado volta como esta (uma data longe, marcada na mao, nao e mexida)",
+					  AgendaDeTeste.ProximoDaTerraMs == agora + 10 * 86_400_000L && AgendaDeTeste.DiasDoJogo);
+
+				AgendaEmDiasReaisDeTeste = true;
+				try
+				{
+					_agenda = new AgendaDeTorneios { DiasDoJogo = true };
+					Reagendar(TipoDeTorneio.Terra, agora);
+					Checa("CONTRA-EXEMPLO (defeito injetado: a agenda em dias de PAREDE): o `Reagendar` poe o proximo da Terra 30 dias de calendario adiante -- o \"28.5d\" que nao andava",
+						  AgendaDeTeste.ProximoDaTerraMs == agora + 30 * 86_400_000L, $"{(AgendaDeTeste.ProximoDaTerraMs - agora) / 86_400_000.0:0.##} dia(s) de parede");
+				}
+				finally { AgendaEmDiasReaisDeTeste = false; }
+				_agenda = new AgendaDeTorneios { DiasDoJogo = true };
+				Reagendar(TipoDeTorneio.Terra, agora);
+				Checa("...e sem o defeito o MESMO `Reagendar` marca 30 dias do jogo (12 h de relogio) e o do Outro Mundo 15 (6 h)",
+					  AgendaDeTeste.ProximoDaTerraMs == agora + 30 * diaDoJogo && AgendaDeTeste.ProximoDoAlemMs == agora + 15 * diaDoJogo);
+			}
 
 			// =====================================================================
 			// 6) CANCELAR SOLTA TODO MUNDO
@@ -684,6 +1006,7 @@ public sealed partial class GameServer
 			SalvarAgenda();
 			EscutaDoTorneio = escutaAntes;
 			EscutaDeAvisos = avisosAntes;
+			EscutaDeFalas = falasAntes;
 			pl.Ficha.BP = bpDoHost;
 			pl.Ficha.Statify();
 			pl.Ficha.PowerLevel();
@@ -702,5 +1025,195 @@ public sealed partial class GameServer
 			if (puseu) naZona.Remove(pl);
 		}
 		GD.Print($"[torneio] ================ {ok} OK, {falhou} FALHA(S) ================");
+	}
+
+	/// <summary>
+	/// (2026-10-17) O HOST MORTO NO OUTRO MUNDO, pro robo `--diagtorneio` fotografar a roda de espera do torneio celeste: o mesmo
+	/// preparo da secao 4 desta bancada -- morto, com a viagem ja feita, levado a mesa do Enma pelo `MoveToZone` de producao.
+	/// </summary>
+	internal void PorNoOutroMundoDeTeste(int id)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return;
+		var alem = ZoneKey.Premade(_torneioCfg.Alem.Zona);
+		pl.Ficha.dead = true;
+		pl.MorteJaViajou = true;
+		MoveToZone(pl.Id, alem, MesaDoEnma(alem));
+		MandarFicha(pl);
+	}
+
+	// =====================================================================
+	// O CENSO DA ARENA (2026-10-17)
+	// =====================================================================
+	/// <summary>
+	/// QUEM ESTA ONDE, E QUEM AGE FORA DA LUTA -- o pedido do dono depois do caos do Outro Mundo: *"so os dois q estao lutando
+	/// estao dentro dela, e os outros participantes nao estao usando ki e lutando fora de hora"*. Uma amostra por chamada de
+	/// <see cref="ContarNaArena"/>: a bancada (`--torneioteste`) chama a cada tique, o robo `--diagtorneio` a cada quadro.
+	///
+	/// "FORA DA LUTA" E DE QUEM NAO LUTAVA NA AMOSTRA ANTERIOR NEM NESTA: os dois da luta que acabou de comecar ou de terminar
+	/// ficam de fora, e um tiro dado DENTRO da luta, que segue voando depois dela, nao conta -- conta o tiro que NASCEU com o
+	/// dono fora da luta (cada tiro e olhado uma vez, quando aparece).
+	/// </summary>
+	internal sealed class CensoDaArena
+	{
+		public int Amostras, DentroSemLutar, SoltosForaDaLuta, EsperaLonge, CanaisForaDaLuta, TirosForaDaLuta, FalasForaDaLuta, TirosDaLuta;
+		/// <summary>A CONTAGEM ("5... 4..."): os dois da vez ja estao soltos e na arena, e nenhum NPC deles atira, fala ou sai do lugar.</summary>
+		public int TirosNaContagem, FalasNaContagem, AndouNaContagem;
+		/// <summary>
+		/// O POVO NO PALCO: um NPC de fora do torneio (a alma, o habitante) de pe no piso do palco -- a arena e a borda dela
+		/// (`PisoDoPalco`) --, da primeira contagem em diante.
+		/// </summary>
+		public int IntrusosNaArena;
+		/// <summary>
+		/// AS CADEIRAS (o palco do ceu): quem espera fora delas, dois na mesma, ou o NPC sentado de costas pra arena; e as amostras de
+		/// gente sentada certa (zero = a regua nao viu ninguem sentar, e o zero do outro nao prova nada).
+		/// </summary>
+		public int ForaDaCadeira, Sentados;
+		public int MenorFolga = int.MaxValue, MaiorFolga = int.MinValue;
+		/// <summary>O PRIMEIRO CASO DE CADA TIPO -- um so pra tudo escondia o tiro de fora atras do primeiro que pisou na arena.</summary>
+		public string PrimeiroDentro = "", PrimeiroSolto = "", PrimeiroLonge = "", PrimeiroCanal = "", PrimeiroTiro = "", PrimeiraFala = "";
+		public string PrimeiroNaContagem = "", PrimeiroIntruso = "", PrimeiroForaDaCadeira = "";
+		internal int FaseAntes = -1;   // a `FaseDoTorneio` da amostra anterior (o enum e privado do servidor)
+		internal readonly HashSet<int> ForaAntes = [];
+		internal readonly HashSet<int> TirosVistos = [];
+		internal int FalasLidas;
+
+		/// <summary>Tudo zerado: ninguem dentro sem lutar, ninguem solto, a roda no lugar, e nada de Ki nem grito de fora.</summary>
+		public bool Limpo => DentroSemLutar == 0 && SoltosForaDaLuta == 0 && EsperaLonge == 0
+									  && CanaisForaDaLuta == 0 && TirosForaDaLuta == 0 && FalasForaDaLuta == 0
+									  && TirosNaContagem == 0 && FalasNaContagem == 0 && AndouNaContagem == 0 && IntrusosNaArena == 0 && ForaDaCadeira == 0;
+
+		internal static void Anotar(ref string primeiro, string oque) { if (primeiro.Length == 0) primeiro = oque; }
+
+		public override string ToString() =>
+			$"{Amostras} amostra(s): {DentroSemLutar} dentro da arena sem lutar, {SoltosForaDaLuta} solto(s) fora da luta, {EsperaLonge} longe da roda; "
+			+ $"de quem nao lutava {CanaisForaDaLuta} feixe(s) na mao, {TirosForaDaLuta} tiro(s) e {FalasForaDaLuta} fala(s); {TirosDaLuta} tiro(s) da luta; "
+			+ $"na contagem {TirosNaContagem} tiro(s), {FalasNaContagem} fala(s) e {AndouNaContagem} amostra(s) fora do lugar; "
+			+ $"{IntrusosNaArena} amostra(s) de gente de fora do torneio no palco; {ForaDaCadeira} fora da cadeira ({Sentados} sentado(s) certo); "
+			+ (MaiorFolga >= MenorFolga ? $"a roda de {MenorFolga} a {MaiorFolga} celula(s) da linha" : "ninguem na roda")
+			+ string.Concat(new[] { PrimeiroDentro, PrimeiroSolto, PrimeiroLonge, PrimeiroCanal, PrimeiroTiro, PrimeiraFala, PrimeiroNaContagem, PrimeiroIntruso, PrimeiroForaDaCadeira }
+				.Where(p => p.Length > 0).Select(p => $" || {p}"));
+	}
+
+	/// <summary>A roda de espera: de 1 a 6 celulas FORA da linha da arena (o `PontoDaRoda` sorteia de 2 a 5; o recuo dele, 3 acima; as cadeiras do ceu ficam a 2).</summary>
+	internal const int FolgaMaximaDaEspera = 6;
+
+	/// <summary>Uma amostra do <see cref="CensoDaArena"/>. Sem torneio, ou com as inscricoes abertas (ninguem foi posto ainda), nao conta.</summary>
+	internal void ContarNaArena(CensoDaArena c, IReadOnlyCollection<int> participantes)
+	{
+		if (_torneio is not { } t || t.Fase == FaseDoTorneio.Inscricao) return;
+		c.Amostras++;
+		(int la, int lb) = LutadoresDeTeste;
+		Arena a = t.Arena;
+		var foraAgora = new HashSet<int>();
+		var sentadas = new Dictionary<(int, int), string>();   // cadeira -> quem esta nela, nesta amostra
+		foreach (int id in participantes)
+		{
+			if (id == la || id == lb || !_players.TryGetValue(id, out ServerPlayer? p) || p.Zone.Hash != t.Zona.Hash) continue;
+			foraAgora.Add(id);
+			int cx = (int)MathF.Floor(p.Pos.X / ZoneCollision.TileSize), cy = (int)MathF.Floor(p.Pos.Y / ZoneCollision.TileSize);
+			if (a.Contem(cx, cy)) { c.DentroSemLutar++; CensoDaArena.Anotar(ref c.PrimeiroDentro, $"{p.Name} DENTRO da arena sem lutar (fase {t.Fase}, celula {cx},{cy})"); }
+			if (!t.Presos.Contains(id)) { c.SoltosForaDaLuta++; CensoDaArena.Anotar(ref c.PrimeiroSolto, $"{p.Name} SOLTO fora da luta (fase {t.Fase})"); }
+			else
+			{
+				int folga = Math.Max(Math.Max(a.X1 - cx, cx - a.X2), Math.Max(a.Y1 - cy, cy - a.Y2));   // celulas ate a linha
+				c.MenorFolga = Math.Min(c.MenorFolga, folga);
+				c.MaiorFolga = Math.Max(c.MaiorFolga, folga);
+				if (folga < 1 || folga > FolgaMaximaDaEspera)
+				{
+					c.EsperaLonge++;
+					CensoDaArena.Anotar(ref c.PrimeiroLonge, $"{p.Name} espera a {folga} celula(s) da linha (fase {t.Fase}; arremesso {p.TiquesDeVoo}, agarrado por {p.AgarradoPorId})");
+				}
+				// AS CADEIRAS (o palco do ceu): quem espera esta SENTADO numa delas, cada um na sua, e o NPC olha pra arena (o jogador vira
+				// pra onde quiser, parado).
+				if (t.Palco.Cadeiras.Count > 0)
+				{
+					if (t.Palco.CadeiraEm(cx, cy) is not { } cadeira)
+					{
+						c.ForaDaCadeira++;
+						CensoDaArena.Anotar(ref c.PrimeiroForaDaCadeira, $"{p.Name} espera FORA das cadeiras (celula {cx},{cy}, fase {t.Fase})");
+					}
+					else if (!sentadas.TryAdd((cx, cy), p.Name))
+					{
+						c.ForaDaCadeira++;
+						CensoDaArena.Anotar(ref c.PrimeiroForaDaCadeira, $"{p.Name} e {sentadas[(cx, cy)]} na MESMA cadeira ({cx},{cy})");
+					}
+					else if (!EhJogador(p) && p.Facing != cadeira.OlharPara(a))
+					{
+						c.ForaDaCadeira++;
+						CensoDaArena.Anotar(ref c.PrimeiroForaDaCadeira, $"{p.Name} sentado em ({cx},{cy}) olhando {p.Facing}, e nao pra arena ({cadeira.OlharPara(a)}; fase {t.Fase})");
+					}
+					else c.Sentados++;
+				}
+			}
+			if (c.ForaAntes.Contains(id) && _canais.ContainsKey(id)) { c.CanaisForaDaLuta++; CensoDaArena.Anotar(ref c.PrimeiroCanal, $"{p.Name} com um feixe NA MAO fora da luta (fase {t.Fase})"); }
+		}
+		// O POVO NO PALCO: NPC de pe de fora do torneio no piso do palco -- a arena e a borda clara dela (o jogador espectador e livre,
+		// como no DM; o cadaver e coisa). NA PREPARACAO NAO CONTA: a alma que estava no palco quando o torneio abriu SAI ANDANDO
+		// (`ForaDoPalcoDoTorneio`), e leva um ou dois segundos dos dez da preparacao -- a `--diagtorneio` pegou uma (47 quadros). Da
+		// primeira contagem em diante, um pe la dentro reprova.
+		Arena piso = PisoDoPalco(a);
+		if (t.Fase != FaseDoTorneio.Preparando)
+			foreach (ServerPlayer b in ZoneList(t.Zona.Hash))
+			{
+				if (b.Id == la || b.Id == lb || EhJogador(b) || EhCadaver(b) || participantes.Contains(b.Id) || !piso.ContemEm(b.Pos)) continue;
+				c.IntrusosNaArena++;
+				int bx = (int)MathF.Floor(b.Pos.X / ZoneCollision.TileSize), by = (int)MathF.Floor(b.Pos.Y / ZoneCollision.TileSize);
+				CensoDaArena.Anotar(ref c.PrimeiroIntruso, $"{b.Name} (de fora do torneio) NO PALCO (fase {t.Fase}, celula {bx},{by})");
+			}
+		// NA CONTAGEM, OS DOIS DA VEZ (os NPCs: o jogador anda e bate no DM tambem, o `release_hold` vem antes do "5...") FICAM NO
+		// LUGAR em que o `ProximaLuta` os pos -- frente a frente, `PontoDoLutador`.
+		bool naContagem = t.Fase == FaseDoTorneio.Contagem && c.FaseAntes == (int)FaseDoTorneio.Contagem;
+		if (naContagem)
+			foreach ((int id, int lado) in new[] { (la, 1), (lb, 2) })
+			{
+				if (!_players.TryGetValue(id, out ServerPlayer? f) || EhJogador(f)) continue;
+				float fora = Vec2.Distance(f.Pos, PontoDoLutador(t, lado)) / ZoneCollision.TileSize;
+				if (fora <= 0.25f) continue;
+				c.AndouNaContagem++;
+				CensoDaArena.Anotar(ref c.PrimeiroNaContagem, $"{f.Name} saiu do lugar na CONTAGEM ({fora:0.#} tiles)");
+			}
+		if (_projeteis.TryGetValue(t.Zona.Hash, out List<Projetil>? tiros))
+			foreach (Projetil k in tiros)
+			{
+				if (!c.TirosVistos.Add(k.Id)) continue;
+				if (k.Dono == la || k.Dono == lb)
+				{
+					if (!naContagem) { c.TirosDaLuta++; continue; }
+					c.TirosNaContagem++;
+					CensoDaArena.Anotar(ref c.PrimeiroNaContagem, $"{_players.GetValueOrDefault(k.Dono)?.Name ?? $"#{k.Dono}"} ATIROU na CONTAGEM: '{k.Nome}' ({k.Tipo})");
+					continue;
+				}
+				if (!c.ForaAntes.Contains(k.Dono) || !foraAgora.Contains(k.Dono)) continue;
+				c.TirosForaDaLuta++;
+				CensoDaArena.Anotar(ref c.PrimeiroTiro, $"{_players.GetValueOrDefault(k.Dono)?.Name ?? $"#{k.Dono}"} ATIROU fora da luta: '{k.Nome}' ({k.Tipo}, fase {t.Fase})");
+			}
+		if (EscutaDeFalas is { } falas)
+			for (; c.FalasLidas < falas.Count; c.FalasLidas++)
+			{
+				(int quem, _, string texto) = falas[c.FalasLidas];
+				if (naContagem && (quem == la || quem == lb) && _players.TryGetValue(quem, out ServerPlayer? falante) && !EhJogador(falante))
+				{
+					c.FalasNaContagem++;
+					CensoDaArena.Anotar(ref c.PrimeiroNaContagem, $"{falante.Name} disse \"{texto}\" na CONTAGEM");
+					continue;
+				}
+				if (!c.ForaAntes.Contains(quem) || !foraAgora.Contains(quem)) continue;
+				c.FalasForaDaLuta++;
+				CensoDaArena.Anotar(ref c.PrimeiraFala, $"{_players.GetValueOrDefault(quem)?.Name ?? $"#{quem}"} disse \"{texto}\" fora da luta (fase {t.Fase})");
+			}
+		c.ForaAntes.Clear();
+		c.ForaAntes.UnionWith(foraAgora);
+		c.FaseAntes = (int)t.Fase;
+	}
+
+	/// <summary>
+	/// O que uma cena da bancada fez ate aqui (o feixe que ela disparou, o grito do preso que respondeu) sai da conta do torneio
+	/// de verdade: os tiros vivos ficam como ja vistos e as falas como ja lidas.
+	/// </summary>
+	internal void EsquecerAteAqui(CensoDaArena c)
+	{
+		if (_torneio is { } t && _projeteis.TryGetValue(t.Zona.Hash, out List<Projetil>? tiros))
+			foreach (Projetil k in tiros) c.TirosVistos.Add(k.Id);
+		c.FalasLidas = EscutaDeFalas?.Count ?? 0;
 	}
 }

@@ -210,6 +210,7 @@ public sealed partial class GameServer
 			// branco onde deviam estar os personagens da conta.
 			string personagens = string.Join(", ", a.Slots.Where(s => s != null).Select(s => $"{s!.Nome} ({s.Raca})"));
 			w.Put(personagens.Length <= 156 ? personagens : personagens[..156] + "...");
+			w.Put(a.ProximaClasseRara);   // (2026-10-16) a garantia de classe rara pendente -- o painel a mostra e alterna
 		}
 		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
@@ -320,6 +321,48 @@ public sealed partial class GameServer
 		GD.Print($"[server] conta '{a.Conta}' {(virar ? "promovida" : "rebaixada")}"
 				 + $" -- {online} personagem(ns) online receberam o bit na hora");
 		return online;
+	}
+
+	/// <summary>
+	/// (2026-10-16) A CLASSE MAIS RARA NO PROXIMO PERSONAGEM DA CONTA -- o dono: *"adicione um verb pra adm q faz com q eu possa escolher
+	/// uma conta ja feita no server, e o proximo personagem criado por essa conta vai garantidamente ser da classe mais rara dessa raça,
+	/// no modo aleatorio a raça vem aleatoria mas sempre da classe mais rara, e no modo q escolhe a raça a classe tb vem a mais rara"*.
+	///
+	/// ALTERNA: o mesmo botao concede e cancela. Gravada na conta e na copia viva de quem esta logado (a de `MarcarAdmin`), e gasta no
+	/// nascimento (`ClasseGarantida`). Conceder ou cancelar REFAZ os sorteios pendentes das vagas vazias: no modo aleatorio, com a
+	/// garantia, a raca so sai entre as que TEM classe rara (`PrepararVagas`) -- e quem esta na tela de vagas recebe a lista nova.
+	/// </summary>
+	private void AdminClasseRara(ServerPlayer adm, string quem)
+	{
+		if (_store == null) { Avisar(adm, "este servidor nao guarda contas em disco."); return; }
+		AccountSave? a = AcharConta(adm, quem);
+		if (a == null) return;
+
+		bool conceder = !a.ProximaClasseRara;
+		MarcarClasseRara(a, conceder);
+		Registrar(adm, $"{(conceder ? "concedeu" : "cancelou")} a classe mais rara no proximo personagem da conta '{a.Conta}'");
+		Avisar(adm, conceder
+			? $"conta '{a.Conta}': o PROXIMO personagem dela nasce com a classe mais rara da raça"
+			  + (ModoDeRacas == Jandirus.Core.Races.ModoDeRacas.Aleatorio ? " (e a raça sorteada sai só entre as que têm classe rara)." : ".")
+			: $"conta '{a.Conta}': a garantia de classe rara foi cancelada.");
+		MandarContas(adm);
+	}
+
+	/// <summary>A GARANTIA GRAVADA E LIGADA: o disco, as copias vivas da conta, e os sorteios das vagas vazias refeitos.</summary>
+	private void MarcarClasseRara(AccountSave a, bool sim)
+	{
+		void Aplicar(AccountSave c)
+		{
+			c.ProximaClasseRara = sim;
+			for (int i = 0; i < AccountStore.Slots; i++)
+				if (c.Slots[i] == null) c.Sorteios[i] = null;
+		}
+		Aplicar(a);
+		_store!.Gravar(a);
+		EmTodaCopiaViva(a.Conta, Aplicar);
+		foreach ((LiteNetLib.NetPeer peer, AccountSave v) in _logados.ToList())
+			if (string.Equals(v.Conta, a.Conta, StringComparison.OrdinalIgnoreCase)) MandarSlots(peer, v);
+		GD.Print($"[server] conta '{a.Conta}': classe mais rara no proximo personagem = {sim}");
 	}
 
 	/// <summary>
@@ -462,6 +505,8 @@ public sealed partial class GameServer
 
 			// ---------------------------------------------------------- morte de planeta (GameServer.Destruicao.cs)
 			case "admin_vilao": AdminVilao(pl, arg); break;
+			// (2026-10-16) chama um vilao de saga no Inferno AGORA -- ver `GameServer.ViloesDoInferno.cs`
+			case "admin_inferno": AdminVilaoDoInferno(pl); break;
 			case "admin_morte_lenta": AdminMorteLenta(pl); break;
 			case "admin_destruir_planeta": AdminDestruirPlaneta(pl); break;
 			case "admin_abortar_morte": AdminAbortarMorte(pl); break;
@@ -490,6 +535,7 @@ public sealed partial class GameServer
 			case "admin_rebaixar": AdminPromover(pl, arg, virar: false); break;
 			case "admin_banir": AdminBanir(pl, arg, banir: true); break;
 			case "admin_perdoar": AdminBanir(pl, arg, banir: false); break;
+			case "admin_classe_rara": AdminClasseRara(pl, arg); break;   // (2026-10-16) o proximo personagem nasce com a mais rara
 
 			// ---------------------------------------------------------- a limpeza total (dois passos)
 			// SAO DOIS VERBS E NAO UM, e essa e a confirmacao inteira: o primeiro so MOSTRA (a lista
@@ -1207,13 +1253,17 @@ public sealed partial class GameServer
 				x => string.Equals(x.Nome, chave, StringComparison.OrdinalIgnoreCase));
 		if (r == null) { Avisar(adm, $"nao existe cargo '{chave}'."); return; }
 
-		if (!Destronar(r.Chave, $"decisao de um administrador ({adm.Name})"))
+		// (2026-10-16) NUM CARGO DE VARIAS VAGAS (o Kaioshin), o ALVO do painel diz QUAL dono sai; sem alvo -- ou com um alvo que nao o
+		// carrega --, sai o da primeira vaga. Ver `Destronar`.
+		string quem = partes.Length > 1 && int.TryParse(partes[0], out int alvoId) && _players.TryGetValue(alvoId, out ServerPlayer? alvo)
+			? alvo.Conta : "";
+		if (!Destronar(r.Chave, $"decisao de um administrador ({adm.Name})", quem))
 		{
 			Avisar(adm, $"{r.Nome} ja estava vago.");
 			return;
 		}
 		Registrar(adm, $"destituiu o cargo '{r.Nome}'");
-		Avisar(adm, $"{r.Nome} esta vago.");
+		Avisar(adm, r.Vagas > 1 ? $"uma vaga de {r.Nome} esta livre." : $"{r.Nome} esta vago.");
 	}
 
 	/// <summary>

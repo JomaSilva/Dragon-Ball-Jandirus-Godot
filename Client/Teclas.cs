@@ -109,6 +109,12 @@ public static class Teclas
 		new("aim_legs", "mirar as pernas", GrupoDeTecla.Combate, [Key.Key5]),
 		new("aim_tail", "mirar o rabo", GrupoDeTecla.Combate, [Key.Key6]),
 
+		// TRAVAR O ALVO (dono, 2026-10-17: *"adicione um botao q ao apertar vc da lock in no player ou npc mais perto de vc, bom pra
+		// enfrentar boss q se move mt"*). O **L** de "lock": das letras livres e a unica que nenhuma bancada usa como tecla vaga
+		// (Z, J, Y, U e H sao das bancadas de tecla e de voz, ver o `falar_radio`). A preocupacao do vizinho K (o letal) era de
+		// tecla SEGURADA; esta e um toque. Ver `World.TravarNoMaisPerto`.
+		new("travar_alvo", "travar o alvo no mais perto (de novo: o próximo)", GrupoDeTecla.Combate, [Key.L]),
+
 			// ============================ O AGARRAO E O **Q**, E O DM NAO PODIA EMPRESTAR A TECLA DELE ============================
 			// No original o `Grab()` e o **T** (`skin.dmf:191-192`). Aqui o T ja e "treinar" desde o
 			// primeiro dia, e treinar e a acao que mais se aperta no jogo -- mover o T seria trocar o

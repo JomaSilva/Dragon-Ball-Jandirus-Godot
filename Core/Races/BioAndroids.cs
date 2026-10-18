@@ -112,6 +112,23 @@ public static class BioAndroids
 	/// </summary>
 	public static bool CorpoTemRosto(int indiceDoCorpo) => indiceDoCorpo != IndiceDoCorpo(Larva);
 
+	/// <summary>
+	/// (2026-10-17) ESTE CORPO E UMA LARVA? -- a recem-nascida (`bio_stage == Larva`, sem degrau maduro ainda) ou a vestida por vontade
+	/// (`bio_larva`, o adendo do dono). Pras duas vale o mesmo: o poder selado -- SEMPRE RELAXADA, 5 de poder, fora do Sense e do scouter
+	/// (`PoderEmUso.Relaxado`; o dono: *"fica sempre no modo 'relaxado' com 5 de bp e escondido do sense e rastreadores"*) --, sem absorver,
+	/// sem forma nenhuma, voando sem a skill, e so sai dela enterrada.
+	/// </summary>
+	public static bool EmLarva(Stats.Fighter f) => f.bio_lab_born && (f.bio_stage == Larva || f.bio_larva);
+
+	/// <summary>O degrau que o CORPO mostra: a larva enquanto ela durar, senao o degrau maduro.</summary>
+	public static int EstagioDoCorpo(Stats.Fighter f) => EmLarva(f) ? Larva : f.bio_stage;
+
+	/// <summary>
+	/// (2026-10-17) QUANTO TEMPO ENTERRADA A LARVA AMADURECE -- o adendo: 5 minutos debaixo da terra, e ela amadurece e volta na forma de antes.
+	/// Sair da terra antes ZERA a conta (ESCOLHA: "5 minutos enterrada" e um so trecho).
+	/// </summary>
+	public const double SegundosEnterradoPraAmadurecer = 5 * 60;
+
 	// =====================================================================
 	// OS NUMEROS DA EVOLUCAO -- `DNALabs.dm:39-47`
 	// =====================================================================
@@ -121,36 +138,124 @@ public static class BioAndroids
 	/// <summary>`DNL_BIO_MAX_DNA`: quantas amostras cabem numa fornada.</summary>
 	public const int MaxDna = 4;
 
-	/// <summary>`DNL_BIO_EVO_PLAYERS`: dez JOGADORES absorvidos evoluem um degrau.</summary>
-	public const double JogadoresPraEvoluir = 10;
+	// =====================================================================
+	// (2026-10-17) OS MARCOS DO BIO -- o adendo do dono
+	// =====================================================================
+	/// <summary>
+	/// ============================ A ESCADA DO BIO PASSOU A SER DE MARCOS ============================
+	/// O dono (2026-10-17): *"conforme vc vai absorvendo mais seres organicos mais multiplicador de bp sua nova forma te da, [...] ao absorver
+	/// materia organica (npcs ou players, com npcs dando bem menos progresso) vc começa a ganhar "xp" ate ir pro proximo milestone, se vc
+	/// atingir o ultimo milestone da sua forma e continuar absorvendo ate chegar no "sexto" vc vai pro proximo estagio de evoluçao"*. A tabela
+	/// dele, em multiplicador ABSOLUTO sobre o imperfeito:
+	///
+	///   Imperfeito      1x -- o comeco. O dono nao deu marcos a ele: os passos andam, o multiplicador nao.
+	///   Semi-Perfeito   2x -> marcos 2,2 / 2,4 / 2,6 / 2,8 / 3
+	///   Perfeito        4x -> marcos 6 / 8 / 10 / 12 / 14
+	///
+	/// No DM a escada era de CONTAGEM: dez jogadores (o NPC valendo meio) ou UM androide por degrau (`DNALabs.dm:39-47`), e o degrau
+	/// multiplicava o BP base -- 2x e depois 4x por cima, o perfeito valendo 8x. Do DM ficou: o multiplicador MORA NO BP BASE (cada passo da
+	/// escada multiplica pela razao; o porque esta em `Fighter.bio_stage`), e o androide como atalho -- agora so o de ENERGIA INFINITA, e ele
+	/// pula pra forma seguinte (no perfeito, pro marco 5: *"se vc absorver um androide dps de virar perfeito vc vai pro perfect form milestone
+	/// 5"*).
+	///
+	/// OS PASSOS: um jogador absorvido vale um passo, e um NPC um quinto (ESCOLHA -- o dono: "bem menos"). Cinco passos fazem os cinco marcos,
+	/// e o sexto sobe a forma. No perfeito o marco 5 e o teto: dali pra cima e a Super Perfeita, que e forma e tem os requisitos dela.
+	/// ========================================================================================================================================
+	/// </summary>
+	public const int MarcosPorForma = 5;
 
-	/// <summary>`DNL_BIO_EVO_NPC_WEIGHT`: um NPC vale METADE de um jogador (vinte NPCs).</summary>
-	public const double PesoDoNpc = 0.5;
+	/// <summary>Os passos de cada absorcao (ESCOLHA: o NPC vale um quinto do jogador).</summary>
+	public const double PassoDoJogador = 1, PassoDoNpc = 0.2;
 
-    /// <summary>`DNL_BIO_EVO_ANDROIDS`: **um** androide de verdade evolui sozinho -- o atalho do Cell.</summary>
-	public const double AndroidesPraEvoluir = 1;
-
-	/// <summary>`DNL_BIO_EVO2_MULT` e `DNL_BIO_EVO3_MULT`: o BP BASE dobra e depois quadruplica.</summary>
+	/// <summary>O multiplicador da forma semi-perfeita e o da perfeita, no marco zero -- a porta da Super Perfeita le o segundo.</summary>
 	public const double MultDoSemiPerfeito = 2, MultDoPerfeito = 4;
 
+	private static readonly double[] DoSemiPerfeito = [MultDoSemiPerfeito, 2.2, 2.4, 2.6, 2.8, 3];
+	private static readonly double[] DoPerfeito = [MultDoPerfeito, 6, 8, 10, 12, 14];
+
 	/// <summary>
-	/// QUANTO FALTA PRO PROXIMO DEGRAU, ou 0 quando ja da. Devolve JOGADORES (o NPC ja entrou com
-	/// peso meio na contagem) -- e a mesma frase que o original manda no chat (`DNALabs.dm:545`).
+	/// O MULTIPLICADOR ABSOLUTO deste degrau neste marco (sobre o BP do imperfeito). A larva conta pelo degrau a que ela volta -- quem
+	/// pergunta passa o MADURO.
 	/// </summary>
-	public static double FaltamJogadores(double jogadores) =>
-		Math.Max(JogadoresPraEvoluir - jogadores, 0);
-
-	/// <summary>A contagem ja fecha um degrau? `bio_note_absorb`, `DNALabs.dm:541`.</summary>
-	public static bool EvoluiAgora(double jogadores, double androides) =>
-		androides >= AndroidesPraEvoluir || jogadores >= JogadoresPraEvoluir;
-
-	/// <summary>O que o BP BASE vira ao chegar neste degrau. 1 = nao mexe.</summary>
-	public static double MultDoDegrau(int estagio) => estagio switch
+	public static double MultAbsoluto(int estagio, int marco) => estagio switch
 	{
-		SemiPerfeito => MultDoSemiPerfeito,
-		Perfeito => MultDoPerfeito,
+		SemiPerfeito => DoSemiPerfeito[Math.Clamp(marco, 0, MarcosPorForma)],
+		Perfeito => DoPerfeito[Math.Clamp(marco, 0, MarcosPorForma)],
 		_ => 1,
 	};
+
+	/// <summary>
+	/// ONDE A ESCADA FICA depois de um ganho de passos: (degrau, marco, passos que sobram rumo ao proximo). Pura -- quem aplica o BP pela
+	/// razao, o corpo e a cena e o servidor. A folga de 1e-9 e o ponto flutuante: cinco NPCs a 0,2 tem que fechar um passo.
+	/// </summary>
+	public static (int Estagio, int Marco, double Passos) Andar(int estagio, int marco, double passos, double ganho)
+	{
+		estagio = Math.Clamp(estagio, Imperfeito, Perfeito);
+		marco = Math.Clamp(marco, 0, MarcosPorForma);
+		passos = Math.Max(passos, 0) + Math.Max(ganho, 0);
+		while (passos >= 1 - 1e-9)
+		{
+			if (marco < MarcosPorForma) { marco++; passos -= 1; continue; }
+			if (estagio >= Perfeito) break;                 // o teto: o marco 5 do perfeito
+			estagio++;
+			marco = 0;
+			passos -= 1;
+		}
+		if (estagio >= Perfeito && marco >= MarcosPorForma) passos = 0;
+		return (estagio, marco, Math.Max(passos, 0));
+	}
+
+	/// <summary>
+	/// O ATALHO DO ANDROIDE DE ENERGIA INFINITA: a forma seguinte no marco zero, sem os marcos -- e no perfeito, o marco 5.
+	/// </summary>
+	public static (int Estagio, int Marco) PeloAndroide(int estagio, int marco) =>
+		estagio >= Perfeito ? (Perfeito, MarcosPorForma) : (Math.Clamp(estagio + 1, SemiPerfeito, Perfeito), 0);
+
+	/// <summary>
+	/// A ABSORCAO DE EXECUCAO (o adendo do dono): o prazo -- 5 segundos -- e o que ela devolve a quem absorve, 20% da
+	/// vida (em cada membro), do folego e do Ki maximos. AQUI NO CORE porque a TELA le o mesmo prazo: e nele que o corpo da vitima seca
+	/// (`Client/CorpoSecando.cs`).
+	/// </summary>
+	public const double SegundosDaExecucao = 5, DevolveAExecucao = 0.20;
+
+	/// <summary>
+	/// (2026-10-17) A ORDEM DA CAUDA NA ABSORCAO DE COMBATE -- o adendo do dono: braco esquerdo, braco direito, perna esquerda, perna direita,
+	/// cabeca, e por fim o tronco. Cada estocada fura o primeiro desta lista que ainda NAO esta
+	/// ferido (quebrado ou decepado -- a mesma leitura de "ferido" do nucleo); com os cinco feridos, o tronco.
+	/// </summary>
+	public static readonly string[] OrdemDaEstocada = ["Braco esquerdo", "Braco direito", "Perna esquerda", "Perna direita", "Cabeca"];
+
+	/// <summary>
+	/// O QUE UMA ESTOCADA TIRA E DEVOLVE: a quem fura, 5% do tronco, do Ki e do folego (o adendo). ESCOLHAS (o dono deu so os 5%): ela tira 30%
+	/// do membro furado (tres estocadas o quebram) e 5% do Ki e do folego de quem e furado; e e uma por segundo.
+	/// </summary>
+	public const double FracaoDaEstocada = 0.30, DrenoDaEstocada = 0.05, DevolveAEstocada = 0.05, SegundosEntreEstocadas = 1;
+
+	/// <summary>O MEMBRO DA PROXIMA ESTOCADA: o primeiro inteiro da ordem, ou o tronco. Nulo sem tronco -- nao ha mais o que beber.</summary>
+	/// <summary>
+	/// (2026-10-17) ONDE O NUCLEO PODE MORAR (o adendo do dono), pelos nomes do corpo (`Combat.Body`): os bracos, as pernas e a cabeca.
+	/// </summary>
+	public static readonly string[] LugaresDoNucleo = ["Braco esquerdo", "Braco direito", "Perna esquerda", "Perna direita", "Cabeca"];
+
+	/// <summary>
+	/// As vezes que o nucleo reergue o corpo (a ultima ja detona), o quanto de tudo ele devolve (5%, o adendo) e quanto tempo o corpo reerguido
+	/// fica no chao (ESCOLHA: o nocaute curto de quem se refaz -- o teto do nocaute de soco, `MeleeResolver.TetoDoNocaute`, e de minutos).
+	/// </summary>
+	public const int RevividasDoNucleo = 2;
+	public const double RefilDoNucleo = 0.05, SegundosNoChaoPeloNucleo = 10;
+
+	/// <summary>
+	/// O NUCLEO ESTA INTEIRO? -- desligado se o membro dele estiver ferido (o adendo). "Ferido" e QUEBRADO (abaixo de 20%) ou decepado, a
+	/// mesma leitura da cauda (<see cref="MembroDaEstocada"/>).
+	/// </summary>
+	public static bool NucleoInteiro(Combat.Body corpo, string lugar) => corpo.Achar(lugar) is { Decepado: false, Quebrado: false };
+
+	public static Combat.BodyPart? MembroDaEstocada(Combat.Body corpo)
+	{
+		foreach (string nome in OrdemDaEstocada)
+			if (corpo.Achar(nome) is { Decepado: false, Quebrado: false } membro) return membro;
+		return corpo.Achar(Combat.Body.NomeDoTronco) is { Decepado: false } tronco ? tronco : null;
+	}
 
 	/// <summary>O marco de ganho de BP que este degrau concede (`LinearGain.dm:22`).</summary>
 	public static string MarcoDoDegrau(int estagio) => estagio switch

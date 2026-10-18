@@ -141,6 +141,87 @@ public sealed partial class GameServer
 
 			AfirmarCidade("CONTRA-EXEMPLO: `abrir_tech` (a grade morta) nao e mais tratado por interacao nenhuma",
 						  !ComandoDeInteracao(pl, "abrir_tech", ""));
+
+			// ============================ 6b. A MESA DA MOCHILA NASCE APARAFUSADA (2026-10-17) ============================
+			// Um jogador: *"research table n da pra parafusar no chao ent o jogo n deixa eu estudar nela sem ser a q ja ta no spawn"*; o
+			// dono, depois do botao: *"mesa de pesquisa ja vem soldada, ao colocar no chao ela fica soldada direto"* (o `Bolted = 1` do
+			// tipo no DM). O caminho inteiro de quem comprou a mesa: ela sai da mochila (`posicionar`) JA APARAFUSADA e rende estudo na
+			// hora; o botao do parafuso continua no MESMO menu que a tecla E desenha -- solta, ela para de render; aparafusada de novo,
+			// volta. Com os defeitos: a mesa assentada solta (o assento de antes) nao rende estudo; o menu de antes nao tem o botao.
+			// ==============================================================================================================
+			// O CHAO DE VERDADE: o `CorredorLivre` desta bancada nao tem mapa (cai na linha do topo, a beirada, onde nada se
+			// assenta) -- o corredor da mesa e achado no mapa da zona do corpo, e o ajudante volta como estava.
+			(ZoneCollision? mapaAntes, int corredorAntes) = (_pjMapa, _pjProximoCorredor);
+			_pjMapa = MapaDaZonaOuCatalogo(pl.Zone);
+			pl.Pos = CorredorLivre(4);
+			(_pjMapa, _pjProximoCorredor) = (mapaAntes, corredorAntes);
+			List<string> doAssento = [];
+			Obra? AssentarDaMochila()
+			{
+				Guardar(pl, "Research_Station");
+				doAssento = Ouvir(() => ComandoDeTech(pl, "posicionar", $"Research_Station/{pl.Pos.X:0}/{pl.Pos.Y:0}"));
+				return _noChao.LastOrDefault(o => o.Tipo == "Research_Station" && !o.DoMapa && o.Zona.Equals(pl.Zone));
+			}
+			Obra? daMochila = null;
+			try
+			{
+				// O ASSENTO DE ANTES, PRIMEIRO: a mesa sai solta e o estudo nao rende -- o que o jogador do chat via.
+				Jandirus.Core.Tech.Interacoes.MesaNasceSoltaDeTeste = true;
+				try { daMochila = AssentarDaMochila(); }
+				finally { Jandirus.Core.Tech.Interacoes.MesaNasceSoltaDeTeste = false; }
+				ComandoDeInteracao(pl, "estudar", "");
+				TickDoEstudo();
+				AfirmarCidade("CONTRA-EXEMPLO (defeito injetado: o assento de antes): a mesa sai da mochila SOLTA, e solta ela nao rende estudo (o `if(!Bolted)` do `Experiment()`)",
+								  daMochila is { Aparafusada: false } && !pl.Estudando,
+								  daMochila == null ? $"nao assentou: {Ultimos(doAssento)}" : $"#{daMochila.Id} aparafusada={daMochila.Aparafusada} estudando={pl.Estudando}");
+				// Sai do chao (e da colisao: densa, ela barrava o mesmo lugar) -- o assento de verdade e ali mesmo.
+				if (daMochila != null) _noChao.Remove(daMochila);
+				AplicarColisaoDasObras(pl.Zone);
+
+				daMochila = AssentarDaMochila();
+				AfirmarCidade("6b. a mesa sai da mochila e e assentada JA APARAFUSADA (o `Bolted = 1` do tipo no DM)",
+								  daMochila is { Aparafusada: true }, daMochila == null ? $"nao assentou: {Ultimos(doAssento)}" : $"#{daMochila.Id}: {Ultimos(doAssento)}");
+				double xpDaMesaNova = pl.Ficha.techXp;
+				ComandoDeInteracao(pl, "estudar", "");
+				TickDoEstudo();
+				AfirmarCidade("...e rende estudo NA HORA, sem passar pelo botao, igual a mesa do mapa",
+								  pl.Estudando && pl.Ficha.techXp > xpDaMesaNova, $"xp {xpDaMesaNova:0.##} -> {pl.Ficha.techXp:0.##}");
+				ComandoDeInteracao(pl, "estudar", "");
+				AfirmarCidade("...e o menu dela continua com parafuso: o contorno de \"solta\" pisca se alguem a soltar (`Interacoes.PedeParafuso`)",
+								  Jandirus.Core.Tech.Interacoes.PedeParafuso("Research_Station"));
+
+				Jandirus.Core.Tech.Interacoes.Acao BotaoDoParafuso() => Jandirus.Core.Tech.Interacoes.De("Research_Station")
+					.FirstOrDefault(a => a.Verbo == Jandirus.Core.Tech.Interacoes.VerboDoParafuso);
+				Jandirus.Core.Tech.Interacoes.MesaSemParafusoDeTeste = true;
+				try
+				{
+					AfirmarCidade("CONTRA-EXEMPLO (defeito injetado: o menu de antes): a mesa nao tem botao de parafuso -- a assentada solta nao teria conserto",
+									  BotaoDoParafuso().Verbo == null, string.Join(",", Jandirus.Core.Tech.Interacoes.De("Research_Station").Select(a => a.Verbo)));
+				}
+				finally { Jandirus.Core.Tech.Interacoes.MesaSemParafusoDeTeste = false; }
+
+				Jandirus.Core.Tech.Interacoes.Acao botao = BotaoDoParafuso();
+				bool soltou = botao.Verbo != null && ComandoDeInteracao(pl, botao.Verbo, botao.Arg);
+				ComandoDeInteracao(pl, "estudar", "");
+				TickDoEstudo();
+				AfirmarCidade("o menu E da mesa tem 'Aparafusar / soltar': o botao SOLTA a mesa, e solta ela para de render estudo",
+								  soltou && daMochila is { Aparafusada: false } && !pl.Estudando,
+								  $"botao '{botao.Rotulo}', aparafusada: {daMochila?.Aparafusada}, estudando: {pl.Estudando}");
+				bool aparafusou = botao.Verbo != null && ComandoDeInteracao(pl, botao.Verbo, botao.Arg);
+				double xpDepoisDoBotao = pl.Ficha.techXp;
+				ComandoDeInteracao(pl, "estudar", "");
+				TickDoEstudo();
+				AfirmarCidade("...e apertado de novo ele a aparafusa, e o estudo volta (a mesa assentada solta antes desta versao se conserta assim)",
+								  aparafusou && daMochila is { Aparafusada: true } && pl.Estudando && pl.Ficha.techXp > xpDepoisDoBotao,
+								  $"aparafusada: {daMochila?.Aparafusada}, xp {xpDepoisDoBotao:0.##} -> {pl.Ficha.techXp:0.##}");
+				ComandoDeInteracao(pl, "estudar", "");
+			}
+			finally
+			{
+				if (daMochila != null) _noChao.Remove(daMochila);
+				GravarMundo();
+				AplicarColisaoDasObras(pl.Zone);
+			}
 		}
 		finally
 		{

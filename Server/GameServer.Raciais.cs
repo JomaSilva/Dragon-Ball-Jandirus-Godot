@@ -249,6 +249,12 @@ public partial class GameServer
 			// skill do livro -- entao o `UsarTecnica` nunca a acharia.
 			case "absorver_ki": AlternarPosturaDeKi(pl); break;
 			case "oozaru_olhar": OlharParaALua(pl); break;
+			// (2026-10-17) A LARVA DO BIO-ANDROIDE (o adendo do dono): vestir a carapaca e se enterrar -- verbs do CORPO, como o absorver. Ver
+			// `GameServer.Larva.cs`.
+			case "larva": VirarLarva(pl); break;
+			case "enterrar": AlternarEnterrar(pl); break;
+			// (2026-10-17) O NUCLEO DO BIO (o adendo do dono): `nucleo:<membro>` escolhe; o `nucleo` sozinho e o aperto de quem nao tem o botao.
+			case "nucleo": EscolherNucleo(pl, ""); break;
 			// AS TECNICAS DE SKILL entram pelo mesmo cano, pelo nome do verb do DM
 			// ("Solar_Flare"). Ver GameServer.Tecnicas.cs.
 			default:
@@ -258,6 +264,11 @@ public partial class GameServer
 				// Ver `GameServer.Mente.cs`.
 				if (id.StartsWith("mente_chefe:", StringComparison.Ordinal))
 				{ ChamarChefe(pl, id["mente_chefe:".Length..]); break; }
+				if (id.StartsWith("nucleo:", StringComparison.Ordinal))
+				{ EscolherNucleo(pl, id["nucleo:".Length..]); break; }
+				// (2026-10-17) AS SKILLS DO DNA DO BIO (o adendo do dono): `dna:<skill>` escolhe uma. Ver `GameServer.SkillsDoDna.cs`.
+				if (id.StartsWith(Jandirus.Core.Races.SkillsRaciais.PrefixoDaEscolha, StringComparison.Ordinal))
+				{ EscolherSkillDoDna(pl, id[Jandirus.Core.Races.SkillsRaciais.PrefixoDaEscolha.Length..]); break; }
 				// EXPELIR UM SO de dentro do Majin: um botao por absorvido, no mesmo molde do de cima.
 				if (id.StartsWith("expelir:", StringComparison.Ordinal))
 				{ ExpelirDoMajin(pl, id["expelir:".Length..]); break; }
@@ -281,6 +292,10 @@ public partial class GameServer
 				// de convidar, aceitar e passar o controle nao esta no livro que o `UsarTecnica`
 				// varre. Ver `GameServer.Fusao.cs`.
 				if (UsarVerboDeFusao(pl, id)) break;
+				// OS FILHOS (2026-10-17): pedir e responder nao sao skill nenhuma -- o mesmo motivo das de cima. Ver `GameServer.Filhos.cs`.
+				if (UsarVerboDeFilho(pl, id)) break;
+				// (v0.4.0) AS ATIVAS RACIAIS -- vem com a raca, e nao do livro. Ver `GameServer.Passivas.cs`.
+				if (UsarAtivaRacial(pl, id)) break;
 				if (!UsarTecnica(pl, id)) Avisar(pl, $"habilidade desconhecida: {id}");
 				break;
 		}

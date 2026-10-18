@@ -45,9 +45,11 @@ public sealed partial class GameServer
 	/// e pegar carne"*). Ela e cadaver, e entra por aqui e nao pelo menu de enterrar: a carne esta na mochila
 	/// dela, e sai pelo mesmo verbo, um pedaco por vez. Ver `AnimalVirouCarcaca` (`GameServer.Animais.cs`).
 	/// </summary>
+	// (2026-10-16) O MORTO DE PE NOCAUTEADO SE REVISTA -- a alma do alem (e o jogador morto la). O dono: *"n ta dando pra revistar
+	// npcs mortos quando vc nocauteia eles, diz q n tem ninguem no alcance"*. Era o `!dead` cru; o cadaver continua de fora.
 	private bool PodeSerSaqueado(ServerPlayer o) =>
 		o.Combate != null
-		&& (EhCarcaca(o) || (o.Ficha.KO && !o.Ficha.dead && !o.ECadaver && o.DonoDoCorpoLargado == 0));
+		&& (EhCarcaca(o) || (o.Ficha.KO && !MortoCaido(o) && !o.ECadaver && o.DonoDoCorpoLargado == 0));
 
 	/// <summary>
 	/// O CAIDO MAIS PERTO, dentro do alcance da tecla E -- a mesma caixa que o cliente usa pra oferecer o

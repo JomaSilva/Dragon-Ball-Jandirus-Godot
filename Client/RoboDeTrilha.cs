@@ -64,6 +64,17 @@ namespace Jandirus.Client;
 /// e e o par delas que prova que quem manda ali e o pedido de LUGAR e nao acaso.
 /// ==============================================================================================================
 ///
+/// ============================ (2026-10-16) A REGRA DE BAIXO MUDOU: A MUSICA DOS PLANETAS ============================
+/// O dono: *"musicas q vao tocar quando n ta em combate nem em cinematica de transformaçao, elas tocam como musica padrao
+/// nos planetas do jogo"* -- e *"o inferno pode manter a musica atual, o resto vai usar o planet ambience music"*. Zona SEM
+/// tema nao e mais silencio: e a MUSICA DOS PLANETAS, um rodizio da pasta `Ambience/Planet Ambience Music` (cada faixa toca
+/// uma vez e o fim dela puxa a seguinte). O <see cref="ConferirOQueSobra"/> cobra isso; as esperas de 45 s deixam passar SO
+/// o rodizio encadeando (<see cref="EhORodizio"/>) -- qualquer outra troca continua intrusa; e o roteiro 1 adianta a faixa do
+/// berco pro fim: no rodizio entra a SEGUINTE da pasta, e o tema do Inferno volta em laco sem troca nenhuma. O CONTROLE e
+/// `--lugaremlaco` (`AudioDirector.LugarEmLacoDeTeste`, lido pelo proprio `AudioDirector` na partida -- este robo nasce
+/// depois do login, tarde pra primeira faixa): com a musica dos planetas presa em laco o roteiro 1 reprova.
+/// ==============================================================================================================
+///
 /// SEM `--bpteste`, DE PROPOSITO. As formas dos roteiros 4 e 5 entram pelo `World.AoMudarForma`, que
 /// e o lado CLIENTE do pacote e nao pergunta BP a ninguem -- e BP alto tem um custo aqui: o clone da
 /// mente nasce com o MEU BP, entao BP alto de os dois lados so encurta a briga. Com o BP de nascenca
@@ -319,9 +330,9 @@ public partial class RoboDeTrilha : Node
 	/// dia em que o dono jogasse um .ogg novo em `battle ost` -- e envelheceria calada, dando FALHA
 	/// numa faixa legitima.
 	/// </summary>
-	private static List<string> Pasta(string sub)
+	private static List<string> Pasta(string sub, string raiz = "res://Assets/Sounds/Music")
 	{
-		string caminho = $"res://Assets/Sounds/Music/{sub}";
+		string caminho = $"{raiz}/{sub}";
 		var achados = new List<string>();
 		foreach (string bruto in DirAccess.GetFilesAt(caminho))
 		{
@@ -432,8 +443,55 @@ public partial class RoboDeTrilha : Node
 				 forasteirasMenu.Count == 0
 					? "e o sorteio de MENU so devolve faixa de `Menu ost` (o contra-exemplo: audio vivo)"
 					: $"o sorteio de menu so devolve faixa de `Menu ost` (fora: {string.Join(", ", forasteirasMenu)})");
+
+		OsPlanetasEOsTemasDeLugar(combate, menu);
 		Nota("");
 	}
+
+	/// <summary>
+	/// (2026-10-16) A TERCEIRA PASTA E A TABELA DOS TEMAS. A musica dos planetas e o terceiro saco que o jogo sorteia, e a
+	/// pergunta e a das duas de cima: so faixa DELA, o que se espia e o que sai, e em rodadas. E a tabela dos temas de lugar --
+	/// funcao pura -- tem de apontar pra arquivos que EXISTEM (os nomes do dono trazem ♠ e 【】, achados por trecho) e que nao
+	/// estao no rodizio: um tema que caisse no saco tocaria de vez em quando em qualquer planeta.
+	/// </summary>
+	private void OsPlanetasEOsTemasDeLugar(List<string> combate, List<string> menu)
+	{
+		List<string> planetas = Pasta("Planet Ambience Music", RaizDoAmbiente);
+		Conferir(planetas.Count >= 2, $"a pasta `Planet Ambience Music` tem faixa pra rodar ({planetas.Count})");
+		var misturadas = planetas.FindAll(c => combate.Contains(c) || menu.Contains(c));
+		Conferir(misturadas.Count == 0, $"...e nenhuma faixa dela esta tambem em `battle ost` ou `Menu ost` ({misturadas.Count})");
+
+		var saidas = new List<string>();
+		int fora = 0, espiouOutra = 0;
+		for (int i = 0; i < planetas.Count * 2 + 3; i++)
+		{
+			string espiada = Trilha.ProximaDePlaneta();
+			string saiu = Trilha.Planeta();
+			if (espiada != saiu) espiouOutra++;
+			if (!planetas.Contains(saiu)) fora++;
+			saidas.Add(saiu);
+		}
+		Conferir(fora == 0, $"{saidas.Count} sorteios da musica dos planetas e todos sairam de `Planet Ambience Music` ({fora} de fora)");
+		Conferir(espiouOutra == 0, $"...o que o `ProximaDePlaneta` ESPIA e o que o `Planeta` entrega ({espiouOutra} diferente(s))");
+		Conferir(SaiEmRodadas(saidas, planetas), "...e o saco sai em RODADAS: cada volta entrega a pasta inteira, uma vez cada faixa");
+
+		(string Zona, bool Casa, string Trecho)[] temas =
+		[
+			("Hell", false, "Demon World"), ("Lookout", false, "Sacred Land of Korin"),
+			("Heaven", false, "Sacred Land of the Kais"), ("Earth", true, "Skies above Beerus"),
+		];
+		foreach ((string zona, bool casa, string trecho) in temas)
+		{
+			string tema = Trilha.MusicaDe(zona, casa);
+			Conferir(tema.Contains(trecho, StringComparison.Ordinal) && ResourceLoader.Exists(tema) && !planetas.Contains(tema),
+					$"o tema de `{(casa ? "a casa do Bills" : zona)}` e `{trecho}`, o arquivo EXISTE e nao esta no rodizio (`{tema.GetFile()}`)");
+		}
+		Conferir(Trilha.MusicaDe("Earth").Length == 0 && Trilha.MusicaDe("Namek").Length == 0 && Trilha.MusicaDe("Afterlife").Length == 0,
+				"a Terra, Namek e o Outro Mundo NAO tem tema proprio: la toca a musica dos planetas");
+	}
+
+	/// <summary>A pasta de cima da musica dos planetas e dos temas novos do dono.</summary>
+	private const string RaizDoAmbiente = "res://Assets/Sounds/Ambience";
 
 	/// <summary>
 	/// A SEQUENCIA E A DE UM SACO DE SORTEIO? Tem que existir um ponto de corte a partir do qual cada bloco do
@@ -467,6 +525,36 @@ public partial class RoboDeTrilha : Node
 
 	private bool EhDeCombate(string caminho) => (_daBatalha ??= Pasta("battle ost")).Contains(caminho);
 	private bool EhDeMenu(string caminho) => (_doMenu ??= Pasta("Menu ost")).Contains(caminho);
+
+	/// <summary>(2026-10-16) A pasta da musica dos planetas, lida uma vez. Ver <see cref="Pasta"/>.</summary>
+	private List<string>? _dosPlanetas;
+
+	private bool EhDosPlanetas(string caminho) => (_dosPlanetas ??= Pasta("Planet Ambience Music", RaizDoAmbiente)).Contains(caminho);
+
+	/// <summary>
+	/// (2026-10-16) UMA TROCA QUE NAO E INTRUSA: o rodizio da musica dos planetas encadeando a faixa seguinte -- camada `Lugar`,
+	/// faixa da pasta, o motivo do fim de faixa. E a regra do dono funcionando (*"musica padrao nos planetas"*), e nao alguma
+	/// coisa assumindo o tocador.
+	/// </summary>
+	private bool EhORodizio(Troca x) =>
+		!x.Silencio && x.Camada == AudioDirector.Camada.Lugar && EhDosPlanetas(x.Faixa) && x.Motivo.Contains("rodizio");
+
+	/// <summary>
+	/// AS TROCAS DEPOIS DE <paramref name="desde"/> QUE SAO INTRUSAS -- todas, menos o rodizio encadeando (<see cref="EhORodizio"/>).
+	/// Cada uma e impressa, intrusa ou nao: o diario e a prova.
+	/// </summary>
+	private int ContarIntrusos(int desde)
+	{
+		int n = 0;
+		for (int i = desde; i < _diario.Count; i++)
+		{
+			Troca x = _diario[i];
+			if (EhORodizio(x)) { Nota($"  --     (o rodizio encadeou aos {x.T:0.0}s: `{x.Nome}`)"); continue; }
+			n++;
+			Nota($"  --     INTRUSO: {x.T:0.00}s `{x.Nome}` camada={x.Camada} <- {x.Motivo}");
+		}
+		return n;
+	}
 
 	// =====================================================================
 	// O QUE A ZONA PEDE -- a camada de baixo de tudo
@@ -505,7 +593,10 @@ public partial class RoboDeTrilha : Node
 		string tema = TemaDoLugar();
 		if (tema.Length == 0)
 		{
-			Conferir(t.Silencio, $"{quando}: `{NomeDaZona()}` nao tem tema de lugar -> SILENCIO (entrou `{t.Nome}`)");
+			// (2026-10-16) SEM TEMA E A MUSICA DOS PLANETAS, e nao mais o silencio -- ver o cabecalho
+			Conferir(!t.Silencio && t.Camada == AudioDirector.Camada.Lugar && EhDosPlanetas(t.Faixa),
+					 $"{quando}: `{NomeDaZona()}` nao tem tema de lugar -> VOLTOU a musica dos planetas "
+			   + $"(entrou `{t.Nome}`, camada {t.Dono})");
 			return;
 		}
 
@@ -527,10 +618,11 @@ public partial class RoboDeTrilha : Node
 	{
 		if (AudioDirector.Instance is not { } audio) { Conferir(false, $"achei o AudioDirector pra conferir o ar em {onde}"); return; }
 		bool temTema = TemaDoLugar().Length > 0;
-		Conferir(audio.TocandoDeTeste == temTema,
+		// (2026-10-16) DOS DOIS LADOS HA SOM: o tema do lugar em laco, ou a musica dos planetas em rodizio
+		Conferir(audio.TocandoDeTeste,
 				 temTema
 					? $"...e ha som SAINDO dos dois tocadores ({onde}) -- e o tema de `{NomeDaZona()}`, que toca em laco"
-					: $"...e os DOIS tocadores estao mesmo parados ({onde}) -- nao so o diario");
+					: $"...e ha som SAINDO dos dois tocadores ({onde}) -- e a musica dos planetas, em rodizio");
 	}
 
 	// METODOS NOMEADOS e nao lambdas: o `EspiaoDeMusica` e `static`, entao um lambda esquecido aqui
@@ -711,9 +803,11 @@ public partial class RoboDeTrilha : Node
 
 			if (tema.Length == 0)
 			{
-				Conferir(!audio.TocandoDeTeste && audio.FaixaDeTeste.Length == 0,
-						 $"`{NomeDaZona()}` nao tem tema de lugar -> o jogo entra CALADO "
-					   + $"(esta `{(audio.FaixaDeTeste.Length == 0 ? "SILENCIO" : audio.FaixaDeTeste.GetFile())}`)");
+				// (2026-10-16) SEM TEMA, A MUSICA DOS PLANETAS: ja no ar, na camada `Lugar`, e saida da pasta do dono
+				Conferir(audio.CamadaDeTeste == AudioDirector.Camada.Lugar && EhDosPlanetas(audio.FaixaDeTeste),
+						 $"`{NomeDaZona()}` nao tem tema de lugar -> o jogo entra com a MUSICA DOS PLANETAS "
+					   + $"(esta `{(audio.FaixaDeTeste.Length == 0 ? "SILENCIO" : audio.FaixaDeTeste.GetFile())}`, camada {audio.CamadaDeTeste})");
+				Conferir(audio.TocandoDeTeste, "...e ha som SAINDO de verdade (nao e so o pedido escrito)");
 			}
 			else
 			{
@@ -726,6 +820,20 @@ public partial class RoboDeTrilha : Node
 				Conferir(audio.TocandoDeTeste, "...e ha som SAINDO de verdade (nao e so o pedido escrito)");
 			}
 
+			// (2026-10-16) A FAIXA DO BERCO VAI AO FIM -- o `Finished` de verdade. Ver <see cref="ConferirOFimDaFaixaDoBerco"/>.
+			_faixaDoBerco = audio.FaixaDeTeste;
+			if (!audio.AdiantarParaOFimDeTeste()) Conferir(false, $"deu pra adiantar a faixa do berco pro fim (`{_faixaDoBerco.GetFile()}`)");
+			_marcoDoFim = _diario.Count;
+			_esperandoOFimDoBerco = true;
+			_t = 0;
+			return;
+		}
+
+		if (_esperandoOFimDoBerco)
+		{
+			if (_t < 3.0) return;   // a faixa adiantada acaba em 0,4 s; o resto e folga pro encadeamento (ou pro laco)
+			_esperandoOFimDoBerco = false;
+			ConferirOFimDaFaixaDoBerco(audio);
 			_marcoDoFim = _diario.Count;
 			EntrarNaMente();   // o mergulho que o roteiro 2 precisa e a alavanca da segunda metade deste
 			_t = 0;
@@ -766,19 +874,22 @@ public partial class RoboDeTrilha : Node
 
 		if (_temaDoBerco.Length == 0)
 		{
-			// nao havia o que tirar do ar: o certo aqui e o diario NAO ter linha nenhuma -- a maquina
-			// nem reavalia quando o pedido novo e igual ao que ja estava (vazio)
-			Conferir(doLugar.Count == 0,
-					 doLugar.Count == 0
-						? "vim de uma zona SEM tema: mudar de zona nao mexeu na camada `Lugar` (0 trocas)"
-						: $"vim de uma zona sem tema e mudar de zona nao devia mexer na camada `Lugar` ({doLugar.Count} troca(s))");
+			// (2026-10-16) DE RODIZIO PRA RODIZIO A FAIXA SEGUE: o pedido do lugar e o mesmo (a musica dos planetas), e a maquina
+			// nao troca a faixa que esta no ar so porque a zona mudou. A unica troca aceita e o rodizio encadeando.
+			List<Troca> novas = doLugar.FindAll(x => !EhORodizio(x));
+			Conferir(novas.Count == 0,
+					 novas.Count == 0
+						? "vim de uma zona em RODIZIO: mudar de zona nao trocou a faixa dos planetas (a mesma segue tocando)"
+						: $"vim de uma zona em rodizio e mudar de zona nao devia trocar a faixa ({novas.Count} troca(s): `{novas[0].Nome}` <- {novas[0].Motivo})");
 		}
 		else
 		{
-			Conferir(doLugar.Count > 0 && doLugar[0].Silencio && doLugar[0].Motivo.Contains("cheguei em"),
+			// (2026-10-16) O TEMA DO BERCO SAI, E ENTRA A MUSICA DOS PLANETAS: a mente nao tem tema proprio
+			Conferir(doLugar.Count > 0 && !doLugar[0].Silencio && doLugar[0].Camada == AudioDirector.Camada.Lugar
+						&& EhDosPlanetas(doLugar[0].Faixa) && doLugar[0].Motivo.Contains("cheguei em"),
 					 doLugar.Count > 0
-						? $"mergulhar na mente TIRA o tema do berco do ar: `{doLugar[0].Nome}` <- {doLugar[0].Motivo}"
-						: "mergulhar na mente tira o tema do berco do ar (a camada `Lugar` nao mudou de estado)");
+						? $"mergulhar na mente TROCA o tema do berco pela musica dos planetas: `{doLugar[0].Nome}` <- {doLugar[0].Motivo}"
+						: "mergulhar na mente troca o tema do berco pela musica dos planetas (a camada `Lugar` nao mudou de estado)");
 		}
 
 		// o ar so responde a esta pergunta se ninguem estiver por cima da camada `Lugar`
@@ -801,6 +912,44 @@ public partial class RoboDeTrilha : Node
 	}
 
 	private bool _olheiOPlaneta;
+
+	/// <summary>(2026-10-16) A faixa do berco foi adiantada pro fim e o roteiro 1 espera o `Finished` dela.</summary>
+	private bool _esperandoOFimDoBerco;
+
+	/// <summary>A faixa que estava no ar no berco quando ela foi adiantada pro fim.</summary>
+	private string _faixaDoBerco = "";
+
+	/// <summary>
+	/// (2026-10-16) A FAIXA DO BERCO CHEGOU AO FIM SOZINHA -- o `Finished` do Godot, pelo `AdiantarParaOFimDeTeste`. As duas
+	/// respostas certas sao opostas, e e o par delas que prova quem manda:
+	///
+	///   * zona SEM tema (o rodizio): entrou a SEGUINTE da pasta dos planetas, na camada `Lugar`, pelo motivo do rodizio. Com
+	///     `--lugaremlaco` a faixa volta ao comeco e nada entra -- e e AQUI que o controle reprova;
+	///   * zona COM tema (o Inferno): o tema volta ao comeco SEM troca nenhuma no diario -- laco nao escreve linha.
+	///
+	/// Nos dois casos o som continua saindo: o fim de uma faixa nunca e silencio enquanto o lugar pede musica.
+	/// </summary>
+	private void ConferirOFimDaFaixaDoBerco(AudioDirector audio)
+	{
+		List<Troca> depois = _diario.GetRange(_marcoDoFim, _diario.Count - _marcoDoFim);
+		if (_temaDoBerco.Length == 0)
+		{
+			Troca? seguinte = depois.Count > 0 ? depois[0] : null;
+			Conferir(seguinte is { } s && EhORodizio(s) && (s.Faixa != _faixaDoBerco || (_dosPlanetas?.Count ?? 0) < 2),
+					 seguinte is { } s2
+						? $"a faixa dos planetas ACABOU e entrou a SEGUINTE do rodizio: `{_faixaDoBerco.GetFile()}` -> `{s2.Nome}` <- {s2.Motivo}"
+						: $"a faixa dos planetas acabou e entrou a seguinte do rodizio (nada entrou: `{_faixaDoBerco.GetFile()}` presa em laco?)");
+			Conferir(depois.Count <= 1, $"...e foi UMA troca so ({depois.Count})");
+		}
+		else
+		{
+			Conferir(depois.Count == 0, $"o tema de `{NomeDaZona()}` chegou ao fim e voltou ao comeco EM LACO, sem troca nenhuma ({depois.Count})");
+			Conferir(audio.FaixaDeTeste == _temaDoBerco, $"...e continua sendo ele no ar (`{audio.FaixaDeTeste.GetFile()}`)");
+		}
+		Conferir(audio.TocandoDeTeste, "...e ha som SAINDO dos tocadores depois do fim da faixa");
+		Despejar("ROTEIRO 1 -- o fim da faixa do berco");
+		Marcar();
+	}
 
 	/// <summary>O tema do planeta onde nasci, lido uma vez. Ver <see cref="OTemaDoLugarEDaZona"/>.</summary>
 	private string _temaDoBerco = "";
@@ -1038,10 +1187,9 @@ public partial class RoboDeTrilha : Node
 
 		// TUDO O QUE VEIO DEPOIS e intruso -- e nada devia ter vindo. E esta a pergunta do dono: nao
 		// "parou?", e "e depois de parar, ficou parado?".
-		int intrusos = _diario.Count - _marcoDoFim;
-		Conferir(intrusos == 0, $"45s depois de a tag cair, NADA assumiu o tocador ({intrusos} troca(s) depois dela)");
-		for (int i = _marcoDoFim; i < _diario.Count; i++)
-			Nota($"  --     INTRUSO: {_diario[i].T:0.00}s `{_diario[i].Nome}` camada={_diario[i].Camada} <- {_diario[i].Motivo}");
+		// (2026-10-16) o rodizio da musica dos planetas encadeando nao e intruso -- ver `ContarIntrusos`
+		int intrusos = ContarIntrusos(_marcoDoFim);
+		Conferir(intrusos == 0, $"45s depois de a tag cair, NADA assumiu o tocador ({intrusos} troca(s) depois dela, fora o rodizio)");
 		ConferirOArDaZona("45s depois da tag cair");
 
 		Despejar("ROTEIRO 3 -- a tag caindo e os 45s seguintes");
@@ -1129,10 +1277,8 @@ public partial class RoboDeTrilha : Node
 	{
 		if (_t < 45) return;
 
-		int intrusos = _diario.Count - _marcoDoFim;
-		for (int i = _marcoDoFim; i < _diario.Count; i++)
-			Nota($"  --     INTRUSO: {_diario[i].T:0.00}s `{_diario[i].Nome}` <- {_diario[i].Motivo}");
-		Conferir(intrusos == 0, $"45s depois, o que sobrou da transformacao se sustenta ({intrusos} intruso(s))");
+		int intrusos = ContarIntrusos(_marcoDoFim);
+		Conferir(intrusos == 0, $"45s depois, o que sobrou da transformacao se sustenta ({intrusos} intruso(s), fora o rodizio)");
 		ConferirOArDaZona("45s depois do tema da forma acabar");
 
 		Despejar("ROTEIRO 4 -- transformacao fora da briga e os 45s seguintes");

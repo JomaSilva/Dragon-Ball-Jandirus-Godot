@@ -5,7 +5,7 @@ using Jandirus.Server;
 namespace Jandirus.Client;
 
 /// <summary>
-/// O ROBO DO CONVITE DO TORNEIO (`--diagtorneio`).
+/// O ROBO DO CONVITE DO TORNEIO (`--diagtorneio`) -- e, desde 2026-10-17, o do TORNEIO DO OUTRO MUNDO na tela.
 ///
 /// O pedido do dono (2026-09-06): *"notificacao de convite (canto inferior direito) com Participar/
 /// Recusar e tempo limite"*. Roda com `--host`: o servidor esta NESTE processo, entao o robo abre um
@@ -13,6 +13,12 @@ namespace Jandirus.Client;
 /// (`S2C.Torneio`) como chegaria a qualquer jogador, o painel aparece, o botao manda o verbo, e o
 /// servidor -- lido pelo gancho `InscritosDeTeste` -- confirma que a inscricao entrou. So a contagem
 /// vencida usa o convite injetado (um torneio de verdade levaria 90 s).
+///
+/// O OUTRO MUNDO (dono, 2026-10-17: *"testar o torneio e printar pra ver se os participantes estao certos rodeando a arena,
+/// so os dois q estao lutando estao dentro dela, e os outros participantes nao estao usando ki e lutando fora de hora"*): o
+/// host vai morto pro Outro Mundo, entra no torneio celeste e assiste duas lutas pela camera de espectador. A cada quadro o
+/// servidor deste processo passa pelo censo da bancada (`GameServer.ContarNaArena`); as fotos (com janela) sao
+/// `torneio-4-alem-luta`, `torneio-5-alem-intervalo` e `torneio-6-alem-luta2`.
 ///
 /// COMO RODAR (uma janela so, ou headless):
 ///     Godot --path . --host --rede 7932 --diagtorneio --raca Human --conta &lt;NOVA&gt; --nome Zx
@@ -211,9 +217,116 @@ public partial class RoboDeTorneio : Node
 				if (_t < 1.2) return;
 				Conferir((World.Instancia?.DeslocamentoDaCameraDeTeste.Length() ?? 999f) < 20f,
 						 $"...e a camera voltou pra cima de mim (deslocamento {World.Instancia?.DeslocamentoDaCameraDeTeste.Length():0} px)");
+				Passar();
+				break;
+
+			// =====================================================================
+			// O TORNEIO DO OUTRO MUNDO NA TELA (dono, 2026-10-17): a roda em volta, so os dois na arena, ninguem de fora com Ki
+			// =====================================================================
+			case 16:
+				GD.Print("[diagtorneio] ===== O TORNEIO DO OUTRO MUNDO: A RODA DE ESPERA E SO OS DOIS NA ARENA =====");
+				servidor.PorNoOutroMundoDeTeste(cli.LocalId);
+				Passar();
+				break;
+			case 17:
+				if (cli.Zone.Name != "Afterlife" && _t < 15) return;
+				Conferir(cli.Zone.Name == "Afterlife", $"em {_t:0.0}s o host, morto, chegou ao Outro Mundo (zona {cli.Zone.Name})");
+				cli.SendVerbo("trn_iniciar", "alem");
+				Passar();
+				break;
+			case 18:
+				if (!painel.VisivelDeTeste && _t < 5) return;
+				Conferir(painel.VisivelDeTeste && painel.TipoDeTeste == 2, $"o convite do torneio do OUTRO MUNDO chegou pela rede (\"{painel.TituloDeTeste}\")");
+				painel.ClicarParticiparDeTeste();
+				Passar();
+				break;
+			case 19:
+				if (servidor.InscritosDeTeste == 0 && _t < 5) return;
+				Conferir(servidor.InscritosDeTeste == 1, "o morto esta inscrito");
+				GameServer.EscutaDeFalas = [];
+				cli.SendVerbo("trn_avancar");   // fecha as inscricoes: a chave nasce e todo mundo vai pra roda
+				Passar();
+				break;
+			case 20:
+			{
+				PainelDeAssistir? assistir = hud.FindChild("Assistir", true, false) as PainelDeAssistir;
+				if ((assistir == null || !assistir.VisivelDeTeste) && _t < 6) return;
+				Conferir(assistir?.VisivelDeTeste == true, "a chave nasceu e o canto 'Assistir torneio' apareceu");
+				Conferir(servidor.NpcsDoTorneioDeTeste.Count == 31, $"os 31 lutadores mortos nasceram ({servidor.NpcsDoTorneioDeTeste.Count})");
+				assistir?.ClicarAssistirDeTeste();
+				// O CHAVEAMENTO ABRE SOZINHO (uma vez por chave) e cobre a arena: a foto e da roda, entao ele sai da frente.
+				(hud.FindChild("Chave", true, false) as PainelDaChave)?.Fechar();
+				// O ZOOM MAIS ABERTO (sem gravar a preferencia): a roda de espera inteira cabe na foto, em volta da arena.
+				World.Instancia?.AplicarZoom(1);
+				_participantes = [.. servidor.NpcsDoTorneioDeTeste, cli.LocalId];
+				_censo = new GameServer.CensoDaArena();
+				Passar();
+				break;
+			}
+			case 21:
+				// A PRIMEIRA LUTA: a contagem regressiva, e o censo a cada quadro desde ja.
+				Contar(servidor);
+				if (servidor.FaseDoTorneioDeTeste != "Luta" && _t < 20) return;
+				Conferir(servidor.FaseDoTorneioDeTeste == "Luta", $"em {_t:0.0}s a primeira luta do Outro Mundo comecou");
+				Passar();
+				break;
+			case 22:
+				Contar(servidor);
+				if (_t < 6 && servidor.FaseDoTorneioDeTeste == "Luta") return;
+				Fotografar("torneio-4-alem-luta");
+				// A LUTA PODE TER ACABADO SOZINHA (nocaute, ring-out) nos 6 s: so a que segue e encerrada pelos juizes. Mandar o
+				// `trn_avancar` no intervalo PULARIA o intervalo -- e a foto dele.
+				if (servidor.FaseDoTorneioDeTeste == "Luta") cli.SendVerbo("trn_avancar");
+				Passar();
+				break;
+			case 23:
+				Contar(servidor);
+				if (servidor.FaseDoTorneioDeTeste != "Intervalo" && _t < 3) return;
+				if (_t < 1.5) return;
+				Conferir(servidor.FaseDoTorneioDeTeste == "Intervalo", $"a primeira luta acabou e a chave foi pro intervalo ({servidor.FaseDoTorneioDeTeste})");
+				Fotografar("torneio-5-alem-intervalo");
+				cli.SendVerbo("trn_avancar");   // pula o intervalo: a segunda luta e chamada
+				Passar();
+				break;
+			case 24:
+				Contar(servidor);
+				if (servidor.FaseDoTorneioDeTeste != "Luta" && _t < 12) return;
+				Conferir(servidor.FaseDoTorneioDeTeste == "Luta", $"em {_t:0.0}s a segunda luta comecou");
+				Passar();
+				break;
+			case 25:
+				Contar(servidor);
+				if (_t < 6) return;
+				Fotografar("torneio-6-alem-luta2");
+				GD.Print($"[diagtorneio]   censo do Outro Mundo: {_censo}");
+				Conferir(_censo is { Amostras: > 0, DentroSemLutar: 0, SoltosForaDaLuta: 0, EsperaLonge: 0 },
+						 "a cada quadro so os dois da luta estavam DENTRO da arena, e quem esperava ficava preso na roda em volta dela");
+				Conferir(_censo is { CanaisForaDaLuta: 0, TirosForaDaLuta: 0, FalasForaDaLuta: 0 },
+						 "ninguem fora da luta carregou feixe, atirou ou gritou");
+				Conferir(_censo is { IntrusosNaArena: 0 }, "e nenhuma alma do alem (gente de fora do torneio) entrou no palco");
+				Conferir(_censo is { Sentados: > 0, ForaDaCadeira: 0 },
+								  "quem esperava estava SENTADO numa das 32 cadeiras em volta do palco, cada um na sua, e os NPCs virados pra arena");
+				Conferir(_censo is { TirosNaContagem: 0, FalasNaContagem: 0, AndouNaContagem: 0 },
+						 "na contagem (\"5... 4...\") os NPCs da vez ficaram no lugar, sem atirar nem falar");
+				GameServer.EscutaDeFalas = null;
+				cli.SendVerbo("trn_cancelar");
+				Passar();
+				break;
+			case 26:
+				if (servidor.TorneioAtivo && _t < 5) return;
+				Conferir(!servidor.TorneioAtivo, "o torneio do Outro Mundo foi cancelado");
 				Fechar();
 				break;
 		}
+	}
+
+	private GameServer.CensoDaArena? _censo;
+	private int[] _participantes = [];
+
+	/// <summary>Uma amostra do censo da arena, no servidor deste processo (o mesmo da `--torneioteste`).</summary>
+	private void Contar(GameServer servidor)
+	{
+		if (_censo != null) servidor.ContarNaArena(_censo, _participantes);
 	}
 
 	private float _pulso, _pulsoMin, _pulsoMax;

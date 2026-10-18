@@ -51,7 +51,14 @@ public partial class CreationScreen : CanvasLayer
 	/// <summary>DEFEITO INJETADO (`--diagv030`, RA): a tela ignora o sorteio na hora de esconder as etapas -- o jogo de antes.</summary>
 	internal static bool EtapasDoSorteioVisiveisDeTeste;
 
-	private bool Sorteada => _racaSorteada.Length > 0 && !EtapasDoSorteioVisiveisDeTeste;
+	/// <summary>
+	/// (2026-10-17) O BEBE de quem este personagem nasce -- a criacao do filho (<see cref="ReabrirComoFilho"/>) --, ou nulo. Como no
+	/// sorteio, a raca vem dada; a linhagem so aparece quando o bebe oferece mais de uma, e o berco nao se escolhe.
+	/// </summary>
+	private OfertaDeBebe? _filho;
+
+	/// <summary>A RACA JA VEM DADA -- pelo sorteio da vaga ou pelo bebe --, e as etapas de mundo e raca somem (`Etapa.Cabe`).</summary>
+	private bool RacaDada => (_racaSorteada.Length > 0 || _filho != null) && !EtapasDoSorteioVisiveisDeTeste;
 
 	/// <summary>Qual dos corpos do Frost Demon a grade esta editando (0 = base).</summary>
 	private int _slotDeForma;
@@ -295,16 +302,16 @@ public partial class CreationScreen : CanvasLayer
 		// ==========================================================================================
 		_etapas.Add(new Etapa("DE ONDE VEM O SEU POVO?",
 			"O mundo que você escolhe aqui decide quais povos podem te gerar -- onde você "
-			+ "vai acordar quem diz é o seu povo, mais adiante.", PaginaDePlaneta(), () => !Sorteada));
+			+ "vai acordar quem diz é o seu povo, mais adiante.", PaginaDePlaneta(), () => !RacaDada));
 
 		// (v0.3.0) AS TRES PRIMEIRAS SOMEM COM A RACA SORTEADA: no modo de racas aleatorias do servidor quem decide mundo, raca e
 		// linhagem e o sorteio da vaga (`GameServer.ModoDeRacas.cs`), e uma etapa sem escolha seria um passo a mais sem motivo.
 		_etapas.Add(new Etapa("ESCOLHA SUA RAÇA",
-			"O que você é importa mais que tudo o que vier depois.", PaginaDeRaca(), () => !Sorteada));
+			"O que você é importa mais que tudo o que vier depois.", PaginaDeRaca(), () => !RacaDada));
 
 		_etapas.Add(new Etapa("LINHAGEM",
 			"O sangue de onde você vem, dentro do seu próprio povo.", PaginaDeLinhagem(),
-			() => !Sorteada && CharacterDraft.EscolhasDeClasse(_ficha.Race).Length > 0));
+			() => _filho != null ? _filho.Linhagens.Length > 1 : !RacaDada && CharacterDraft.EscolhasDeClasse(_ficha.Race).Length > 0));
 
 		// O BERCO VEM DEPOIS DA LINHAGEM, e a ordem e a da regra: o planeta e funcao da RACA (e, nas
 		// duas excecoes, da classe que ainda vai ser sorteada). Perguntar antes de a raca existir
@@ -312,7 +319,8 @@ public partial class CreationScreen : CanvasLayer
 		// descricao da raca (ver `DescreverRacasDoPlaneta`).
 		_etapas.Add(new Etapa("O BERÇO",
 			"Onde o seu povo te põe no mundo -- e se você prefere acordar longe dele.",
-			PaginaDeBerco(), () => true));
+			// (2026-10-17) O FILHO NAO ESCOLHE BERCO: nasce do lado da mae (ou, com ela fora do jogo, no berco da raca).
+			PaginaDeBerco(), () => _filho == null));
 
 		_etapas.Add(new Etapa("GÊNERO", "", PaginaDeGenero(), () => _ficha.TemGenero));
 
@@ -1222,18 +1230,7 @@ public partial class CreationScreen : CanvasLayer
 
 		// LINHAGEM: so nas tres racas em que o jogador escolhe de verdade. A pagina inteira e
 		// pulada quando nao ha o que escolher (ver `Etapa.Cabe`), entao aqui so se monta a lista.
-		foreach (Node n in _caixaLinhagem.GetChildren()) n.QueueFree();
-		string[] opcoes = CharacterDraft.EscolhasDeClasse(raca);
-		_ficha.ChosenClass = opcoes.Length > 0 ? opcoes[0] : "";
-
-		for (int i = 0; i < opcoes.Length; i++)
-		{
-			string o = opcoes[i];
-			Button b = CartaoLargo(o, DescreverLinhagem(o));
-			b.Pressed += () => { MarcarSelecionado(_caixaLinhagem, b); _ficha.ChosenClass = o; };
-			_caixaLinhagem.AddChild(b);
-			if (i == 0) b.ButtonPressed = true;
-		}
+		MontarLinhagens(CharacterDraft.EscolhasDeClasse(raca));
 
 		// AS RACAS SEM GENERO CRAVAM MASCULINO -- a etapa some, e o valor tem que ir junto.
 		if (!_ficha.TemGenero) _generoEscolhido = "Male";
@@ -1392,11 +1389,14 @@ public partial class CreationScreen : CanvasLayer
 
 		double bp = p.MiscStat("Starting BP");
 		string classes = p.ClassSpread.Count > 0
-			? $"Linhagens possiveis: {string.Join(", ", p.ClassSpread.Select(c => c.Classe))}."
-			: "Sem variacao de linhagem.";
-		string escolhe = CharacterDraft.EscolhasDeClasse(raca).Length > 0
-			? " Voce escolhe a sua."
-			: " A sua e revelada quando o combate mostrar do que voce e feito.";
+			? $"Linhagens possíveis: {string.Join(", ", p.ClassSpread.Select(c => c.Classe))}."
+			: "Sem variação de linhagem.";
+		// (2026-10-17) O FILHO COM A LINHAGEM DADA -- uma so, a de quem o gerou (o cla do ovo de Namekuseijin, os dois Saiyajins da mesma
+		// linhagem) -- nao escolhe: a tela nem mostra a etapa.
+		string escolhe = _filho is { Linhagens.Length: 1 } filho ? $" A sua vem de quem te gerou: {filho.Linhagens[0]}."
+			: CharacterDraft.EscolhasDeClasse(raca).Length > 0
+			? " Você escolhe a sua."
+			: " A sua é revelada quando o combate mostrar do que você é feito.";
 
 		// SEM O NUMERO. Eu tinha decidido manter ("e ficha de RACA, nao BP de ninguem"), mas o
 		// dono pediu TODA referencia de BP escondida, e ele tem razao pelo lado que importa: o
@@ -1404,10 +1404,10 @@ public partial class CreationScreen : CanvasLayer
 		// poder de luta na tela e aprende que numero de poder e coisa que se le.
 		//
 		// A FAIXA continua servindo pra comparar raca com raca, que era o unico uso legitimo.
-		string inicio = bp >= 400 ? "Comeca MUITO forte."
-					   : bp >= 100 ? "Comeca forte."
-					   : bp >= 30 ? "Comeca mediano."
-					   : "Comeca fraco.";
+		string inicio = bp >= 400 ? "Começa MUITO forte."
+					   : bp >= 100 ? "Começa forte."
+					   : bp >= 30 ? "Começa mediano."
+					   : "Começa fraco.";
 		return $"{inicio} {classes}{escolhe}";
 	}
 
@@ -1448,6 +1448,14 @@ public partial class CreationScreen : CanvasLayer
 	/// <param name="linhagemSorteada">(v0.3.0) A sub-raca sorteada junto (Primal Saiyan, o cla do Namekuseijin), ou vazia.</param>
 	public void Reabrir(string anuncio = "", string racaSorteada = "", string linhagemSorteada = "")
 	{
+		// (2026-10-17) A CRIACAO COMUM NAO E A DO FILHO: a tela nao e destruida, e sem isto o bebe de uma criacao desistida -- e a
+		// idade travada em zero -- ficavam colados na proxima. Ver `ReabrirComoFilho`.
+		_filho = null;
+		_ficha.FilhoDe = 0;
+		_idade.MinValue = 1;
+		_idade.Editable = true;
+		if (_idade.Value < 1) _idade.Value = 18;
+
 		// ZERA O GUARDA-ROUPA. Esta tela nao e destruida (e o que tira a travadinha de abrir) e a
 		// `Appearance` dela e um campo unico: sem isto, criar um segundo personagem comecava com a
 		// roupa, as cores e os botoes marcados do primeiro.
@@ -1484,6 +1492,67 @@ public partial class CreationScreen : CanvasLayer
 		_anuncio.Visible = texto.Length > 0;
 		Visible = true;
 	}
+
+	/// <summary>
+	/// (2026-10-17) A CRIACAO DO FILHO -- o "Nascer como filho(a)" da pergunta do bebe (`CharacterSelect.PerguntarSeNasceDoBebe`). O
+	/// dono: *"assim nascendo com 0 anos, ele claro escolhe o cabelo etc"*. A raca e a dos pais e nao se escolhe; a linhagem so
+	/// aparece quando o bebe oferece mais de uma (o meio-Saiyajin escolhe uma das tres; o filho de Saiyajins de linhagens diferentes,
+	/// uma das duas); a idade e ZERO, travada; o berco nao se escolhe. Genero, corpo, cabelo, roupa, porte, nome e historia sao dele.
+	/// O servidor confere tudo de novo (`GameServer.BebeParaNascer`).
+	/// </summary>
+	public void ReabrirComoFilho(OfertaDeBebe bebe, string anuncio = "")
+	{
+		Reabrir(anuncio);
+		_filho = bebe;
+		// O BEBE ENTRA NA FICHA JA AQUI, e nao no `Confirmar`: o "Entrar no mundo" confere a etapa antes (`ConferirIdentidade`), e a
+		// idade 0 so vale pro filho (`CharacterDraft.Validar`) -- escrito so no fim, filho nenhum nascia pela tela.
+		_ficha.FilhoDe = bebe.Id;
+		string planeta = SorteioDeRaca.PlanetaDaRaca(bebe.Raca);
+		EscolherPlaneta(planeta.Length > 0 ? planeta : "Earth");   // o meio-Saiyajin nao esta em lista de planeta nenhum
+		EscolherRaca(bebe.Raca);
+		MontarLinhagens(bebe.Linhagens);
+		_ficha.PertoDeCasa = false;
+		_idade.MinValue = 0;
+		_idade.Value = 0;
+		_idade.Editable = false;
+		_notaDaIdade.Text = "o bebê nasce com 0 anos.";
+
+		_passo = 0;
+		while (_passo < _etapas.Count - 1 && !_etapas[_passo].Cabe()) _passo++;
+		MostrarEtapa();
+
+		string linhagem = bebe.Linhagens.Length == 1 ? $" ({bebe.Linhagens[0]})" : "";
+		string texto = bebe.DeOvo
+			? $"Você vai nascer do ovo de {bebe.Mae}: {NomeBonito(bebe.Raca)}{linhagem}, com 0 anos."
+			: $"Você vai nascer como filho(a) de {bebe.Pai} e {bebe.Mae}: {NomeBonito(bebe.Raca)}{linhagem}, com 0 anos.";
+		_anuncio.Text = anuncio.Length > 0 ? anuncio + "\n" + texto : texto;
+		_anuncio.Visible = true;
+	}
+
+	/// <summary>
+	/// OS CARTOES DE LINHAGEM, com o primeiro marcado: as da raca na criacao comum, e (2026-10-17) as do bebe na do filho
+	/// (<see cref="ReabrirComoFilho"/>).
+	/// </summary>
+	private void MontarLinhagens(string[] opcoes)
+	{
+		foreach (Node n in _caixaLinhagem.GetChildren()) n.QueueFree();
+		_ficha.ChosenClass = opcoes.Length > 0 ? opcoes[0] : "";
+
+		for (int i = 0; i < opcoes.Length; i++)
+		{
+			string o = opcoes[i];
+			Button b = CartaoLargo(o, DescreverLinhagem(o));
+			b.Pressed += () => { MarcarSelecionado(_caixaLinhagem, b); _ficha.ChosenClass = o; };
+			_caixaLinhagem.AddChild(b);
+			if (i == 0) b.ButtonPressed = true;
+		}
+	}
+
+	/// <summary>(2026-10-17) A idade e a ficha do filho na tela. Pra o robo `--diagfilho`.</summary>
+	internal (int Idade, bool IdadeTravada, int FilhoDe, string Linhagem) FilhoDeTeste => ((int)_idade.Value, !_idade.Editable, _ficha.FilhoDe, _ficha.ChosenClass);
+
+	/// <summary>(2026-10-17) A recusa que a tela mostra agora (vazio = nenhuma). Pro rodape do robo `--diagfilho`.</summary>
+	internal string ErroDeTeste => _erro.Text;
 
 	/// <summary>(v0.3.0) O titulo da etapa na tela, a trilha e a raca/linhagem da ficha. Pra bancada `--diagv030` (RA).</summary>
 	internal string TituloDaEtapaDeTeste => _tituloEtapa.Text;

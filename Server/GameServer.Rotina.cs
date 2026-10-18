@@ -117,9 +117,11 @@ public sealed partial class GameServer
 		// QUEM NAO E HABITANTE so passeia (ver `Rotina.SoPasseia`): o chefe sem presa anda por ai,
 		// como o corpo antigo andava, e nao entra na vida social do povo.
 		Rotina r = npc.Rotina ??= new Rotina(_rotina, npc.Papel?.Semente ?? (ulong)npc.Id, npc.Id,
-											 soPasseia: npc.Papel is not { Pacifico: true });
+											 soPasseia: npc.Papel is not { Pacifico: true }, conversas: ConversaDaAlma(npc));
 		Arredores a = LerArredores(npc, r);
 		Ordem o = r.Tique(dtDaMente, a);
+		// (2026-10-17) COM TORNEIO NO AR, O PALCO E SO DOS DOIS DA VEZ: o passeio desvia dele -- ver `ForaDoPalcoDoTorneio`.
+		o = ForaDoPalcoDoTorneio(npc, o);
 
 		// PAREAMENTO -- as duas chamadas que so o servidor pode fazer, porque so ele ve os dois.
 		if (o.Chamar != 0)
@@ -143,7 +145,7 @@ public sealed partial class GameServer
 			GD.Print($"[rotina] {npc.Name}: {r.Afazer} ({r.Porque})" + (r.Parceiro != 0 ? $" com #{r.Parceiro}" : ""));
 		}
 
-		if (o.Lutar != 0 && CorpoNaZona(npc, o.Lutar) is { } parceiro && !parceiro.Ficha.dead)
+		if (o.Lutar != 0 && CorpoNaZona(npc, o.Lutar) is { } parceiro && !EhCadaver(parceiro))
 		{
 			presa = parceiro;
 			destino = parceiro.Pos;
@@ -178,7 +180,7 @@ public sealed partial class GameServer
 		var p = new Percepcao
 		{
 			Minha = npc.Pos, EstouVoando = npc.Voando, Ki = npc.Ficha.Ki,
-			Caido = npc.Ficha.KO || npc.Ficha.dead, Arremessado = npc.TiquesDeVoo > 0,
+			Caido = npc.Ficha.KO || EhCadaver(npc), Arremessado = npc.TiquesDeVoo > 0,
 			NaAgua = naAgua, EstouNadando = npc.Nadando, BarradoPelaAgua = npc.BarradoPelaAgua,
 			RumoDaMargem = RumoDaMargem(npc),
 		};
@@ -201,6 +203,15 @@ public sealed partial class GameServer
 		return pronto;
 	}
 
+	/// <summary>
+	/// (2026-10-16) A CONVERSA DA ALMA: a do Inferno pra quem nasceu la, a do alem pra quem nasceu no Outro Mundo ou no Ceu; nulo (a de
+	/// todo habitante) pra quem nao e alma. Pelo BERCO e nao pela zona de agora: a rotina e montada uma vez so.
+	/// </summary>
+	private string[]? ConversaDaAlma(ServerPlayer npc) =>
+		npc.Papel is not { Molde.Alma: true } ? null
+		: string.Equals(npc.Berco.Natal, Alem.ZonaDoInferno, StringComparison.OrdinalIgnoreCase) ? _rotina.Frases.ConversaDoInferno
+		: _rotina.Frases.ConversaDoAlem;
+
 	private Arredores LerArredores(ServerPlayer npc, Rotina r)
 	{
 		Fighter f = npc.Ficha;
@@ -213,14 +224,16 @@ public sealed partial class GameServer
 			Minha = npc.Pos,
 			VidaFrac = f.HP / 100.0,
 			MeuPoder = Finito(f.expressedBP),
-			Caido = f.KO || f.dead,
+			// (2026-10-16) CAIDO E O NOCAUTEADO E O CADAVER -- e nao todo morto. A ALMA do Outro Mundo e um morto de pe (`EhCadaver` e a
+			// regra do "morto luta como vivo" da v0.3.2): lendo o `dead` cru, ela ficaria parada pra sempre e ninguem conversaria com ela.
+			Caido = f.KO || EhCadaver(npc),
 			Bloqueado = npc.QuisAndar && !npc.Moving,
 			VizinhoLivre = vizinho,
 			DoVizinho = doVizinho,
-			ParceiroPresente = parceiro != null && !parceiro.Ficha.dead,
+			ParceiroPresente = parceiro != null && !EhCadaver(parceiro),
 			DoParceiro = parceiro?.Pos ?? npc.Pos,
 			VidaDoParceiro = (parceiro?.Ficha.HP ?? 100) / 100.0,
-			ParceiroCaido = parceiro is { } pc && (pc.Ficha.KO || pc.Ficha.dead),
+			ParceiroCaido = parceiro is { } pc && (pc.Ficha.KO || EhCadaver(pc)),
 			AfazerDoParceiro = parceiro?.Rotina?.Afazer ?? Afazer.Ocioso,
 			ParceiroDoParceiro = parceiro?.Rotina?.Parceiro ?? 0,
 		};
@@ -238,7 +251,7 @@ public sealed partial class GameServer
 		foreach (ServerPlayer o in ZoneList(npc.Zone.Hash))
 		{
 			if (o.Id == npc.Id || !EhNpcDoMundo(o) || o.Papel is not { Pacifico: true }) continue;
-			if (o.Ficha.dead || o.Ficha.KO || o.DonoDoClone != 0) continue;
+			if (EhCadaver(o) || o.Ficha.KO || o.DonoDoClone != 0) continue;
 			if (o.Rotina is not { Afazer: Afazer.Ocioso or Afazer.Passeando }) continue;
 			// QUEM TEM PRESA NAO ESTA LIVRE: o habitante provocado por um jogador esta "ocioso" so na
 			// rotina (ela foi interrompida); o corpo esta lutando. Chama-lo pra conversa o faria aceitar

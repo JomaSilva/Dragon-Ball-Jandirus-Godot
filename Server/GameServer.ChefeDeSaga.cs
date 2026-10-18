@@ -36,7 +36,9 @@ public partial class GameServer
 	/// A CENA DA CHEGADA, pra todo jogador do mundo: o id do corpo, o nome, o planeta (o nome bonito), a frase da chegada e o
 	/// que desenha o retrato -- a raca, o genero e a aparencia inteira (o mesmo boneco em camadas do mundo).
 	/// </summary>
-	private void AnunciarChegadaDoChefe(ServerPlayer chefe, string planeta, string frase)
+	/// <param name="quemVe">(2026-10-16) Quem ve a cena. Nulo = todo jogador (o chefe de saga); o vilao que volta no Inferno a mostra so
+	/// a quem esta no Outro Mundo (`GameServer.ViloesDoInferno`).</param>
+	private void AnunciarChegadaDoChefe(ServerPlayer chefe, string planeta, string frase, Func<ServerPlayer, bool>? quemVe = null)
 	{
 		if (ChegadaSemCenaDeTeste) return;
 		var w = Protocol.Begin(Protocol.S2C.ChegadaDoChefe);
@@ -51,7 +53,7 @@ public partial class GameServer
 		int para = 0;
 		foreach (ServerPlayer o in Jogadores)
 		{
-			if (o.Peer == null) continue;
+			if (o.Peer == null || (quemVe != null && !quemVe(o))) continue;
 			o.Peer.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 			para++;
 		}

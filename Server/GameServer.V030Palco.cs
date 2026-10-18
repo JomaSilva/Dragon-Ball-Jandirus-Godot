@@ -327,10 +327,11 @@ public sealed partial class GameServer
 	/// o planeta trocado pelo Outro Mundo, que NAO e um planeta: na explosao o `ComecarDestruicao` recusa, e nada e
 	/// destruido. Devolve o id do chefe (0 = nao montou).
 	/// </summary>
-	internal int PalcoV30_Ultimato(int id)
+	internal int PalcoV30_Ultimato(int id, string saga = "freeza_vegeta")
 	{
 		PalcoV30_DesfazerOUltimato();
-		if (!_players.TryGetValue(id, out ServerPlayer? pl) || _moldes?.Cadeia.FirstOrDefault(e => e.Id == "freeza_vegeta") is not { } vegeta)
+		// (2026-10-17) A SAGA E ESCOLHIDA: o Freeza de Namek ergue a Death Ball pela mesma porta (`ataqueDoUltimato` da saga).
+		if (!_players.TryGetValue(id, out ServerPlayer? pl) || _moldes?.Cadeia.FirstOrDefault(e => e.Id == saga) is not { } vegeta)
 			return 0;
 		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
 		ZoneKey volta = pl.Zone;
@@ -338,7 +339,7 @@ public sealed partial class GameServer
 		if (!pl.Zone.Equals(alem)) MoveToZone(pl.Id, alem, MesaDoEnma(alem));
 		Vec2 onde = MapaDaZonaOuCatalogo(alem)?.PontoLivrePerto(pl.Pos + new Vec2(5 * ZoneCollision.TileSize, 0))
 					?? pl.Pos + new Vec2(5 * ZoneCollision.TileSize, 0);
-		ServerPlayer? chefe = NascerNpc("freeza_vegeta", alem, onde, 9_300);
+		ServerPlayer? chefe = NascerNpc(vegeta.Chefes[0].Molde, alem, onde, 9_300);
 		if (chefe?.Papel == null) return 0;
 		chefe.Papel.DaSaga = true;
 
@@ -346,11 +347,11 @@ public sealed partial class GameServer
 		{
 			Id = "bancada_supernova", Nome = vegeta.Nome, Planeta = alem.Name, DestroiPlaneta = true,
 			MinutosDeLuta = vegeta.MinutosDeLuta, MinutosDeOcio = vegeta.MinutosDeOcio,
-			AnuncioDoUltimato = vegeta.AnuncioDoUltimato, Chefes = vegeta.Chefes,
+			AnuncioDoUltimato = vegeta.AnuncioDoUltimato, Chefes = vegeta.Chefes, AtaqueDoUltimato = vegeta.AtaqueDoUltimato,
 		};
 		var ec = new EstadoDoChefe
 		{
-			Molde = "freeza_vegeta", Fase = FaseDoChefe.NoMundo, Corpo = chefe.Id, Engajou = true,
+			Molde = vegeta.Chefes[0].Molde, Fase = FaseDoChefe.NoMundo, Corpo = chefe.Id, Engajou = true,
 			UltimatoEm = _relogioDoMundo - 1,
 		};
 		var est = new EstadoDoElo { Id = elo.Id, Fase = FaseDaSaga.EmCurso, Chefes = [ec] };
@@ -376,10 +377,10 @@ public sealed partial class GameServer
 			? (u.VidaAntes >= 0 && !pl.Ficha.KO && pl.Ficha.HP >= u.VidaAntes - 0.5, u.VidaAntes, pl.Ficha.HP)
 			: default;
 
-	/// <summary>O chefe esta concentrando a Supernova? Intocavel? Parado?</summary>
+	/// <summary>O chefe esta concentrando a esfera do ultimato (a Supernova ou a Death Ball)? Intocavel? Parado?</summary>
 	internal (bool Supernova, bool Intocavel, bool Parado) PalcoV30_ComoEstaOChefe(int id) =>
 		_players.TryGetValue(id, out ServerPlayer? c)
-			? (OcupacaoDe(c) == Ocupacao.Supernova, c.Combate?.Intocavel == true, !PodeMexerOCorpo(c))
+			? (CorpoOcupado.NoUltimato(OcupacaoDe(c)), c.Combate?.Intocavel == true, !PodeMexerOCorpo(c))
 			: default;
 
 	// =====================================================================
@@ -488,4 +489,46 @@ public sealed partial class GameServer
 
 	/// <summary>A marca do "ja perguntei" deste corpo -- a que o disco guarda (`ServerPlayer.RefugioPerguntado`).</summary>
 	internal bool PalcoV30_RefugioPerguntado(int id) => _players.TryGetValue(id, out ServerPlayer? pl) && pl.RefugioPerguntado;
+
+	/// <summary>(adendo 18) A Death Ball pelo livro de verdade (a skill de cargo do Freeza), o Ki cheio e a mao livre.</summary>
+	internal bool PalcoV30_AprenderADeathBall(int id)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return false;
+		if (!pl.Livro.Sabe(PathDeathBallG12)) { pl.Livro.Dar(PathDeathBallG12); MandarSkills(pl); }
+		// o Ki do aperto e o dos estagios: a Death Ball pede 150 x o dreno-base -- mais que o tanque inteiro do personagem novo da bancada
+		pl.Ficha.Ki = Math.Max(pl.Ficha.MaxKi, 150 * pl.Ficha.BaseDrain() * 2);
+		_blastPronto.Remove(pl.Id);
+		return true;
+	}
+
+	/// <summary>A Death Ball deste corpo: -1 nenhuma; 0 carregando; 1 lancada e guiada (a trava).</summary>
+	internal int PalcoV30_EstadoDaDeathBall(int id) =>
+		_deathBallG12.TryGetValue(id, out EstadoDaDeathBallG12? db) ? (db.Lancada ? 1 : 0) : -1;
+
+	/// <summary>O aperto que larga a guia, pela porta de producao -- so com a bola lancada e guiada (nunca abre outra).</summary>
+	internal void PalcoV30_LargarAGuiaDaDeathBall(int id)
+	{
+		if (_players.TryGetValue(id, out ServerPlayer? pl) && _deathBallG12.TryGetValue(id, out EstadoDaDeathBallG12? db)
+			&& db.Lancada && db.Guiando)
+			DeathBallG12(pl);
+	}
+
+	/// <summary>
+	/// (adendo 18) O MORTO NO OUTRO MUNDO COM A TRANSMISSAO (a skill de verdade, e a pericia em 100: 1,5 s de concentracao) e um VIVO
+	/// na Terra pra mirar, dez vezes mais forte (a assinatura alcanca). Devolve o nome do vivo, ou vazio.
+	/// </summary>
+	internal string PalcoV30_MortoComUmVivoNaTerra(int id)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl) || !PalcoV30_MortoAoLadoDoEnma(id, 0)) return "";
+		if (!pl.Livro.Sabe("/datum/skill/shunkanido")) { pl.Livro.Dar("/datum/skill/shunkanido"); MandarSkills(pl); }
+		pl.Ficha.teleskill = 100;
+		pl.Ficha.Ki = pl.Ficha.MaxKi;
+		ZoneKey terra = ZoneKey.Premade("Earth");
+		ServerPlayer vivo = ForjarV2("Kuririn", PontoDeNascimento(terra) + new Vec2(ZoneCollision.TileSize * 3, 0), Math.Max(pl.Ficha.BP, 1) * 10);
+		vivo.Conta = "bancada_dvtrinta_vivo";   // a ASSINATURA: a transmissao so mira pessoa
+		return vivo.Name;
+	}
+
+	/// <summary>Os corpos forjados pela bancada saem do mundo (o vivo da transmissao) -- o jogador nao e um deles.</summary>
+	internal void PalcoV30_LimparOsCorposDaBancada() => LimparTudoDaBancada();
 }

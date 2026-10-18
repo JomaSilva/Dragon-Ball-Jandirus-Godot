@@ -79,8 +79,12 @@ public sealed partial class Cerebro
 	// QUANDO EXECUTA -- o Hakai, e a Destroyer Sphere como Hakai a distancia
 	// =====================================================================
 
-	/// <summary>O alvo esta no ponto do Hakai, e este corpo carrega o kit? E a pergunta do <see cref="Escolher"/>.</summary>
-	private bool ExecutaOAlvo(in Percepcao p) => Poderes.KitDoDeus && p.HakaiPegaOAlvo;
+	/// <summary>
+	/// O alvo esta no ponto do Hakai, e este corpo carrega o kit? E a pergunta do <see cref="Escolher"/>. (2026-10-17) Ou o alvo esta CAIDO
+	/// e a execucao do Ruthless Mind esta na mao -- a mesma porta, a mesma receita (`Cerebro.Raciais.cs`).
+	/// </summary>
+	private bool ExecutaOAlvo(in Percepcao p) =>
+		(Poderes.KitDoDeus && p.HakaiPegaOAlvo) || (Poderes.ExecucaoRacialPronta && p.TemAlvo && p.AlvoCaido);
 
 	/// <summary>
 	/// A RECEITA DE EXECUTAR, e ela tem tres degraus, do mais certo pro mais longe:
@@ -99,9 +103,13 @@ public sealed partial class Cerebro
 	{
 		if (p.AlcancoPelaAltura && p.Distancia <= AlcanceDaMao)
 		{
-			if (_pausaDoKit > 0) return new Comando { Guardar = guarda };
+			if (_pausaDoKit > 0) return new Comando { Guardar = guarda, Olhar = p.Direcao };
 			_pausaDoKit = PausaDoGestoDoKit;
-			return new Comando { Habilidade = KitDoDeus.VerbHakai };
+			// O HAKAI pra quem o carrega; senao, a execucao do RUTHLESS MIND (2026-10-17) -- de frente pro caido, porque o verb executa quem
+			// esta NA FRENTE (`GameServer.QuemEstaNaFrente`).
+			return Poderes.KitDoDeus && p.HakaiPegaOAlvo
+				? new Comando { Habilidade = KitDoDeus.VerbHakai }
+				: new Comando { Habilidade = Races.Passivas.MenteCruel, Olhar = p.Direcao };
 		}
 
 		if (EsferaNaJanela(p, out Tiro esfera))

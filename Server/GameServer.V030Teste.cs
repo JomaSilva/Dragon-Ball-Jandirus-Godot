@@ -131,7 +131,11 @@ public sealed partial class GameServer
 			AGenkidamaSoSocaAoSairV30();   // (adendo 15) antes da GD, pelo corredor de terra firme que ela racha
 			OKaiokenV30();
 			OKaiokenPresoNoSaveV30();   // (adendo 16) antes da GD: nao precisa de chao, mas a GD racha o que houver
+			ADeathBallSoSocaAoSairV30();   // (adendo 18) antes da GD, pelo corredor de terra firme devolvido no fim
 			AGenkidamaQueArrastaV30();
+			// (adendo 18) DEPOIS da GD, porque nao precisam de muro: o Inferno, o Outro Mundo e um corredor novo
+			OMortoLutaComoOVivoV30();
+			APassagemDoMortoV30();
 		}
 		catch (Exception e)
 		{
@@ -157,6 +161,7 @@ public sealed partial class GameServer
 		Nutricao.VigorDoMajinComPisoDeTeste = false;
 		Nutricao.KiDoAndroideSemPisoDeTeste = false;
 		AbsorvidoDeixaCorpoDeTeste = false;
+		SoNpcDoMundoSomeDeTeste = false;
 		AvisoSemTomDeTeste = false;
 		Feridas.RaboPerdidoSangraPraSempreDeTeste = false;
 		Jandirus.Core.Items.PesoDeTreino.SoDobrandoDeTeste = false;
@@ -175,6 +180,7 @@ public sealed partial class GameServer
 		ReiNpcNaoEntregaOTronoDeTeste = false;
 		RequisitoDoPotencialIgnoradoDeTeste = false;
 		SupernovaSemImunidadeDeTeste = false;
+		UltimatoSoSupernovaDeTeste = false;
 		SupernovaComAsMaosLivresDeTeste = false;
 		ChefeComRaioComumDeTeste = false;
 		Nutricao.MortoComMeioTanqueDeTeste = false;
@@ -203,6 +209,14 @@ public sealed partial class GameServer
 		KaiokenAcesoAtravessaOLoginDeTeste = false;
 		GenkidamaSocaAoCrescerDeTeste = false;
 		GenkidamaLancaSemSocoDeTeste = false;
+		CombatState.MortoNaoBloqueiaDeTeste = false;
+		DeathBallSocaAoCrescerDeTeste = false;
+		DeathBallLancaSemSocoDeTeste = false;
+		MortoComoCadaverDeTeste = false;
+		MortoNaoTransmiteDeTeste = false;
+		PassagemSemVoltaDeTeste = false;
+		PasseSemListaDeTeste = false;
+		EscutaDeEscolhas = null;
 	}
 
 	// =====================================================================
@@ -272,9 +286,67 @@ public sealed partial class GameServer
 		AfirmarV30("   DEFEITO INJETADO (a Supernova sem imunidade): o chefe concentraria o sol tomando golpe -- a afirmacao de cima ficaria vermelha (defeito injetado: o chefe tocavel)",
 				   tocavel);
 
-		AfirmarV30("...e o byte do fio conhece o estado novo (`CorpoOcupado.DeByte`) -- e um valor acima dele continua lendo Livre, nunca um estado inventado",
+		// ============================ (2026-10-17) A DEATH BALL DE NAMEK, PELA MESMA PORTA ============================
+		// O dono: *"a super nova e so quando ele explode o planeta vegeta, namek e death ball ao qual ele joga pra baixo seguindo a
+		// mesma logica da super nova"*. Quem diz a esfera e a saga (`ataqueDoUltimato` no `npcs.json`); o resto e o mesmo metodo.
+		// =================================================================================================================
+		EloDaSaga? deVegeta = _moldes?.Cadeia.FirstOrDefault(e => e.Id == "freeza_vegeta");
+		EloDaSaga? deNamek = _moldes?.Cadeia.FirstOrDefault(e => e.Id == "freeza_namek");
+		AfirmarV30("**CADA SAGA COM A SUA ESFERA** (o `npcs.json`): o Freeza de Vegeta ergue a SUPERNOVA, o de Namek a DEATH BALL -- e o anuncio de Namek diz Death Ball",
+				   deVegeta?.AtaqueDoUltimato == AtaqueDoUltimato.Supernova && deNamek?.AtaqueDoUltimato == AtaqueDoUltimato.DeathBall
+				   && deNamek.AnuncioDoUltimato.Contains("DEATH BALL", StringComparison.Ordinal),
+				   $"Vegeta {deVegeta?.AtaqueDoUltimato}; Namek {deNamek?.AtaqueDoUltimato}: \"{deNamek?.AnuncioDoUltimato}\"");
+		List<string> falaDaBola = Ouvir(() => ComecarASupernova(chefe, AtaqueDoUltimato.DeathBall));
+		bool bola = OcupacaoDe(chefe) == Ocupacao.DeathBallDoUltimato && chefe.Combate!.Intocavel && !PodeMexerOCorpo(chefe)
+							  && chefe.CenaSegundos >= Supernova.SegundosAteAExplosao;
+		AfirmarV30("**A DEATH BALL DE NAMEK**: a mesma regra da Supernova -- o chefe a ergue e fica `DeathBallDoUltimato` (o que a tela le pra desenhar a esfera roxa), INTOCAVEL e PARADO ate a explosao",
+				   bola, $"ocupacao {OcupacaoDe(chefe)}; intocavel {chefe.Combate.Intocavel}; anda {PodeMexerOCorpo(chefe)}; cena {chefe.CenaSegundos:0.#} | {Ultimos(falaDaBola)}");
+		AcabarASupernova(chefe);
+		UltimatoSoSupernovaDeTeste = true;
+		bool soOSol;
+		try
+		{
+			ComecarASupernova(chefe, AtaqueDoUltimato.DeathBall);
+			soOSol = OcupacaoDe(chefe) == Ocupacao.Supernova;
+		}
+		finally
+		{
+			AcabarASupernova(chefe);
+			UltimatoSoSupernovaDeTeste = false;
+		}
+		AfirmarV30("   DEFEITO INJETADO (todo ultimato e Supernova): o Freeza de Namek ergueria o sol de Vegeta -- a afirmacao de cima ficaria vermelha (defeito injetado: a ocupacao e Supernova)",
+				   soOSol);
+
+		AfirmarV30("...e o byte do fio conhece os estados novos (`CorpoOcupado.DeByte`) -- e um valor acima deles continua lendo Livre, nunca um estado inventado",
 				   CorpoOcupado.DeByte((byte)Ocupacao.Supernova) == Ocupacao.Supernova
-				   && CorpoOcupado.DeByte((byte)Ocupacao.Supernova + 1) == Ocupacao.Livre);
+				   && CorpoOcupado.DeByte((byte)Ocupacao.DeathBallDoUltimato) == Ocupacao.DeathBallDoUltimato
+				   && CorpoOcupado.DeByte((byte)Ocupacao.CargaDemoniaca) == Ocupacao.CargaDemoniaca
+				   && CorpoOcupado.DeByte((byte)Ocupacao.Secando) == Ocupacao.Secando
+				   // (2026-10-17) o ULTIMO hoje e o grito do desabafo do Lendario -- os de 15 pra cima viajam pela porta da ocupacao estendida
+				   && CorpoOcupado.DeByte((byte)Ocupacao.GritoDoDesabafo) == Ocupacao.GritoDoDesabafo
+				   && CorpoOcupado.DeByte((byte)Ocupacao.GritoDoDesabafo + 1) == Ocupacao.Livre);
+
+		// (2026-10-17) A PORTA DA OCUPACAO ESTENDIDA, NO FIO: com 15 nos 4 bits o valor de verdade vai num byte no FIM do pacote, depois da
+		// altitude, do canal e de quem leva no colo -- e so quem esta num estado de 15 pra cima o paga.
+		static EntityState Volta(EntityState e, out int bytes)
+		{
+			var w = new LiteNetLib.Utils.NetDataWriter();
+			e.Write(w);
+			bytes = w.Length;
+			return EntityState.Read(new LiteNetLib.Utils.NetDataReader(w.CopyData()));
+		}
+		EntityState Cheio(Ocupacao o) => new()
+		{
+			Id = 7, Voando = true, Altitude = 64, Pose = Protocol.Pose.Canalizando, Canal = 3, LevadoPor = 9, Ocupacao = o, Kaioken = true,
+		};
+		EntityState demonico = Volta(Cheio(Ocupacao.CargaDemoniaca), out int bytesDoDemonico);
+		EntityState secando = Volta(Cheio(Ocupacao.Secando), out int bytesDoSecando);
+		EntityState grito = Volta(Cheio(Ocupacao.GritoDoDesabafo), out int bytesDoGrito);
+		AfirmarV30("...e a PORTA DA OCUPACAO ESTENDIDA vai e volta pelo fio: o 15 e o 16 chegam inteiros (junto da altitude, do canal, do colo e do "
+				   + "Kaio-ken), e custam UM byte a mais que o 14 -- so pra quem esta neles",
+				   demonico.Ocupacao == Ocupacao.CargaDemoniaca && secando.Ocupacao == Ocupacao.Secando && grito.Ocupacao == Ocupacao.GritoDoDesabafo
+				   && grito.LevadoPor == 9 && grito.Canal == 3 && grito.Voando && grito.Kaioken
+				   && bytesDoSecando == bytesDoDemonico + 1 && bytesDoGrito == bytesDoDemonico + 1);
 	}
 
 	// =====================================================================
@@ -523,6 +595,23 @@ public sealed partial class GameServer
 			List<string> livro = Ouvir(() => EnmaPasse(pl, ""));
 			List<string> pobre = Ouvir(() => EnmaPasse(pl, "Terra"));
 			List<string> ninguem = Ouvir(() => EnmaPasse(pl, "Mundo Que Nao Existe"));
+			// (adendo 18) A MESMA LISTA VAI PRO MENU (`S2C.Escolhas`): um botao por mundo, e o clique manda o nome -- nada de digitar
+			var escolhas = new List<(int Quem, string Verbo, List<string> Itens)>();
+			EscutaDeEscolhas = escolhas;
+			try { Ouvir(() => EnmaPasse(pl, "")); }
+			finally { EscutaDeEscolhas = null; }
+			List<string> nomes = [.. DestinosDoPasse().Select(x => x.Nome)];
+			bool lista = escolhas.Count == 1 && escolhas[0].Quem == pl.Id && escolhas[0].Verbo == "enma_passe"
+							  && escolhas[0].Itens.SequenceEqual(nomes) && nomes.Contains("Terra") && nomes.Contains("Namek");
+			var semLista = new List<(int Quem, string Verbo, List<string> Itens)>();
+			EscutaDeEscolhas = semLista;
+			PasseSemListaDeTeste = true;
+			try { Ouvir(() => EnmaPasse(pl, "")); }
+			finally { PasseSemListaDeTeste = false; EscutaDeEscolhas = null; }
+			AfirmarV30("**A LISTA DOS MUNDOS VAI PRO MENU** (*\"deveria ser uma lista e nao ter q digitar o nome\"*): a pergunta sem nome manda as escolhas (`S2C.Escolhas`) -- exatamente os destinos do passe, a Terra e Namek entre eles",
+						   lista, escolhas.Count == 0 ? "nada saiu" : string.Join(", ", escolhas[0].Itens));
+			AfirmarV30("   DEFEITO INJETADO (o livro so no chat, o jogo de antes): nenhuma lista sai -- a afirmacao de cima ficaria vermelha (defeito injetado: o passe sem lista)",
+						   semLista.Count == 0);
 			AfirmarV30("o Enma abre o livro dos mundos (a Terra pelo nome que se le, Namek) e cobra em zeni: sem os 100.000 ninguem desce -- e mundo desconhecido e recusado",
 					   Disse(livro, "Terra") && Disse(livro, "Namek") && Disse(livro, "zeni") && Disse(pobre, "custa") && Disse(ninguem, "Não conheço")
 					   && Alem.EhOAlem(pl.Zone) && pl.Ficha.passe_do_enma_ate == 0 && pl.Ficha.Zeni == Alem.PrecoDoPasseDoEnma - 1,
@@ -712,6 +801,9 @@ public sealed partial class GameServer
 		a.Ficha.dead = true;
 		bool cadaverAtira = PodeAtirar(a, 0, out string porqueDoCadaver);
 		bool cadaverGolpeia = ProntoPraGolpeG3(a, out _);
+		ErguerAGuarda(a, true);   // (2026-10-16) a porta do ALT, a mesma do jogador e da IA
+		bool cadaverGuarda = a.Combate.Bloqueando;
+		ErguerAGuarda(a, false);
 		a.Ficha.dead = false;
 		d.Ficha.dead = true;
 		a.AlvoId = d.Id;
@@ -731,6 +823,13 @@ public sealed partial class GameServer
 		bool dePe = a.MortoDePe && d.MortoDePe;
 		bool fantasmaAtira = PodeAtirar(a, 0, out string porqueDoFantasma);
 		bool fantasmaGolpeia = ProntoPraGolpeG3(a, out string porqueDoGolpe);
+		ErguerAGuarda(a, true);
+		bool fantasmaGuarda = a.Combate.Bloqueando;
+		ErguerAGuarda(a, false);
+		CombatState.MortoNaoBloqueiaDeTeste = true;
+		bool guardaComODefeito;
+		try { ErguerAGuarda(a, true); guardaComODefeito = a.Combate.Bloqueando; ErguerAGuarda(a, false); }
+		finally { CombatState.MortoNaoBloqueiaDeTeste = false; }
 
 		// O TIRO DE VERDADE, pela tecla de producao: a bola basica sai da mao do fantasma.
 		List<Projetil> noAlem = ProjeteisDaZona(alem.Hash);
@@ -768,6 +867,10 @@ public sealed partial class GameServer
 						   !salta && porqueDoSalto.Contains("Outro Mundo"), porqueDoSalto);
 		AfirmarV30("(defeito injetado: o tiro pula todo morto) o fantasma volta a ouvir \"voce esta morto\" -- *\"n ta dando pra usar ataques de ki tb como morto\"*",
 						   dePe && !atiraComODefeito && porqueComODefeito.Contains("morto"), porqueComODefeito);
+		AfirmarV30("**O MORTO DE PE ERGUE A GUARDA** (*\"n tem como dar bloqueio morto? deveria\"*): no Outro Mundo o fantasma levanta o braco pelo ALT (a mesma porta do jogador e da IA) -- o cadaver dos vivos continua sem",
+						   dePe && fantasmaGuarda && !cadaverGuarda, $"fantasma {fantasmaGuarda}; cadaver {cadaverGuarda}");
+		AfirmarV30("(defeito injetado: a guarda pula todo morto, o jogo de antes) o fantasma volta a nao erguer a guarda -- a regua de cima REPROVA",
+						   dePe && !guardaComODefeito);
 
 		a.Ficha.dead = false;
 		d.Ficha.dead = false;
@@ -1326,6 +1429,35 @@ public sealed partial class GameServer
 					   !saiu2 && Disse(ouvido2, "devora"), $"saiu {saiu2}; ouvido: {string.Join(" | ", ouvido2)}");
 		}
 		finally { AbsorvidoDeixaCorpoDeTeste = false; }
+		UsarHabilidade(majin, "expelir");
+
+		// (2026-10-16) O CORPO SEM PAPEL TAMBEM SOME -- *"lembrando q majin absorver npc faz ele sumir sem deixar um corpo"*. A fera solta e o
+		// corpo forjado nao sao NPC do mundo (nao tem papel), e a regra de 10-15 os deixava mortos no chao pra sempre: as fotos da saga
+		// mostravam a vitima caida, com o "[E] revistar" em cima. Ver `SomeAoSerAbsorvido`.
+		(bool Saiu, int NovosCadaveres, bool Morto) AbsorverSemPapel(string nome)
+		{
+			ServerPlayer corpo = ForjarMj(nome, praca + new Vec2(ZoneCollision.TileSize, 0), 80_000, pessoa: false);
+			DerrubarMj(corpo);
+			int antes = Cadaveres();
+			ApertarAbsorver(majin);
+			TirarOsNpcsMortos();
+			bool saiu = !_players.ContainsKey(corpo.Id) && !ZoneList(zona.Hash).Contains(corpo);
+			return (saiu, Cadaveres() - antes, corpo.Ficha.dead);
+		}
+
+		var semPapel = AbsorverSemPapel("bancada v030: o corpo sem papel");
+		AfirmarV30("**O CORPO SEM PAPEL TAMBEM SOME** (a fera solta, o corpo forjado): sai do mundo no fim do tique e NAO deixa cadaver -- *\"lembrando q majin absorver npc faz ele sumir sem deixar um corpo\"*",
+						   semPapel.Saiu && semPapel.NovosCadaveres == 0, $"saiu {semPapel.Saiu}; cadaveres novos {semPapel.NovosCadaveres}");
+		UsarHabilidade(majin, "expelir");
+
+		SoNpcDoMundoSomeDeTeste = true;
+		try
+		{
+			var deAntes = AbsorverSemPapel("bancada v030: o corpo sem papel de antes");
+			AfirmarV30("(defeito injetado: a regra de 10-15, so o NPC do mundo some) o corpo sem papel fica MORTO NO CHAO -- o \"[E] revistar\" das fotos da saga",
+							   !deAntes.Saiu && deAntes.Morto, $"saiu {deAntes.Saiu}; morto {deAntes.Morto}");
+		}
+		finally { SoNpcDoMundoSomeDeTeste = false; }
 		UsarHabilidade(majin, "expelir");
 	}
 

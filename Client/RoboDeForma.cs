@@ -897,6 +897,36 @@ public partial class RoboDeForma : Node
 						 $"cena de '{rotulo}': a folha `{c.Silhueta}` esta importada "
 					   + $"({SilhuetasDeCena.CaminhoDa(c.Silhueta) ?? "sem caminho"})");
 
+			// ============================ (2026-10-16) A PASSAGEM E DA FAMILIA DA SILHUETA: UM BEAT, E COM PAR ============================
+			// As mesmas afirmacoes da silhueta logo acima, pela mesma razao: o beat ARMA e quem apaga e o `Assumir` (ver
+			// `Efeito.Passagem`), e o beat e a folha andam juntos. E duas a mais, que sao dela:
+			//   * a ANIMACAO TEM QUE ESTAR NA FOLHA -- o DM pedia nomes que a folha nao tinha (`flick("thin transform")` contra o estado
+			//     `thin_transform`), e a metamorfose nunca tocou la. Aqui o nome errado reprova, em vez de virar silencio;
+			//   * ela ACENDE ANTES DA VIRADA, e nao nela: a metamorfose acontece com o corpo velho na tela, e a virada a apaga.
+			//
+			// COMO REPROVA SE A REGRA SUMIR: apague o `FolhaDaPassagem` da fabrica `MajinEvoluindo` e cai a segunda; escreva o estado com
+			// o nome do DM (`thin transform`) e cai a terceira; ponha o bit no beat do `Assumir` e cai a quarta.
+			// ================================================================================================================================
+			int passagens = c.Beats.Count(b => b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.Passagem));
+			bool temPassagem = c.FolhaDaPassagem.Length > 0 || c.EstadoDaPassagem.Length > 0;
+			Conferir(passagens <= 1, $"cena de '{rotulo}': no maximo UM beat que ARMA a passagem ({passagens})");
+			Conferir(passagens == (temPassagem ? 1 : 0),
+					$"cena de '{rotulo}': o beat da passagem e a folha andam juntos "
+			   + $"(folha `{c.FolhaDaPassagem.GetFile()}` `{c.EstadoDaPassagem}`, {passagens} beat(s) que a acendem)");
+			if (temPassagem)
+			{
+				SpriteFrames? folhaDaPassagem = ResourceLoader.Exists(c.FolhaDaPassagem)
+					? ResourceLoader.Load<SpriteFrames>(c.FolhaDaPassagem) : null;
+				Conferir(folhaDaPassagem != null && folhaDaPassagem.HasAnimation(c.EstadoDaPassagem)
+						  && folhaDaPassagem.GetFrameCount(c.EstadoDaPassagem) > 0,
+						 $"cena de '{rotulo}': a passagem `{c.EstadoDaPassagem}` esta na folha `{c.FolhaDaPassagem.GetFile()}`");
+				int ondePassa = Array.FindIndex(c.Beats, b => b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.Passagem));
+				Conferir(ondePassa >= 0 && !c.Beats[ondePassa].Faz.HasFlag(Jandirus.Core.Forms.Efeito.Assumir)
+						  && c.Beats[ondePassa].Em < c.SegundosAteAVirada,
+						 $"cena de '{rotulo}': a passagem acende ANTES da virada "
+						   + $"({(ondePassa >= 0 ? c.Beats[ondePassa].Em : -1):0.##}s, virada aos {c.SegundosAteAVirada:0.##}s)");
+			}
+
 			int claroes = c.Beats.Count(b => b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.ClaraoDeTela));
 			Conferir(claroes <= 1, $"cena de '{rotulo}': no maximo UM clarao de tela ({claroes})");
 			Conferir(c.Beats.All(b => !b.Faz.HasFlag(Jandirus.Core.Forms.Efeito.ClaraoDeTela)
@@ -1076,6 +1106,22 @@ public partial class RoboDeForma : Node
 		ConferirRoteiro(Jandirus.Core.Forms.Cinematicas.BioSemiPerfeito, "bio semi-perfeito");
 		ConferirRoteiro(Jandirus.Core.Forms.Cinematicas.BioPerfeito, "bio perfeito");
 		ConferirRoteiro(Jandirus.Core.Forms.Cinematicas.BioSsj2, "bio ssj2 pela morte", prendeOCorpo: false);
+
+		// ============================ (2026-10-16) E OS QUATRO DEGRAUS DA SAGA DO CORRUPTED MAJIN, PELA MESMA REGUA ============================
+		// Avulsos pelo mesmo motivo dos do bio (degrau de corpo, e nao forma -- ver o bloco deles no Core), e eles PRENDEM o corpo a
+		// cena inteira: `move = 0` na largada do `MajinSagaCinematic` e `move = 1` so no fim (`MajinSaga.dm:434` e `:469`). Sem
+		// encurtada: cada degrau acontece uma vez na vida do personagem. E A MUSICA, que a varredura das formas confere e esta nao:
+		// as quatro tocam o `Super Buu Theme`, e um arquivo que faltasse daria uma saga muda sem ninguem notar.
+		// ======================================================================================================================================
+		foreach (Jandirus.Core.Forms.Cinematicas.CenaMajin q in Enum.GetValues<Jandirus.Core.Forms.Cinematicas.CenaMajin>())
+		{
+			Jandirus.Core.Forms.Cinematica? cm = Jandirus.Core.Forms.Cinematicas.DoMajin(q);
+			Conferir(cm != null, $"a cena do degrau `{q}` da saga do Majin existe");
+			if (cm == null) continue;
+			ConferirRoteiro(cm, $"majin {q}");
+			Conferir(ResourceLoader.Exists($"res://Assets/Sounds/Music/{cm.Musica}"),
+					$"cena de 'majin {q}': a musica existe ({cm.Musica})");
+		}
 
 		// E A FOLHA DO ROMPIMENTO TAMBEM TEM QUE ESTAR IMPORTADA. Ela e a unica das tres que nao
 		// pertence a cena nenhuma (o `flick` de `dnl_larva_mature` nao e cinematica -- ver
@@ -1746,6 +1792,10 @@ public partial class RoboDeForma : Node
 		("frost5",                       25, "IcerTransform.dm:186 (`fd_burst_fx`, spawn(25))"),
 		("frost6",                      280, "IcerTransform.dm:196 (`fd_grand_cinematic`)"),
 		("frost7",                      280, "IcerTransform.dm:196 (`fd_grand_cinematic`)"),
+
+		// (2026-10-16) A FORMA PURA DO CORRUPTED MAJIN: `for(var/cyc = 1 to 12)` com `sleep(10)` (`MajinSaga.dm:568-572`) -- 120 tiques.
+		// Faltava aqui desde que a saga entrou (a bancada acusava "sem classificacao: majin_pura").
+		("majin_pura",                  120, "Magic/MajinSaga.dm:568 (`for(cyc = 1 to 12)`, sleep(10))"),
 	];
 
 	/// <summary>
@@ -1806,6 +1856,16 @@ public partial class RoboDeForma : Node
 		// O ORANGE (2026-10-13) nao tem proc NENHUM no DM -- a forma e regra do dono, sem par la. A cena e o surto curto
 		// das de cima, com o mesmo piso (`Cinematicas.Orange`).
 		("orange",                          "forma nova do dono (2026-10-13), sem par no DM: nao ha proc de cena pra portar"),
+
+		// (v0.4.0) A LINHA DA TENSAO DO HUMANO tambem nao tem proc NENHUM no DM -- la o Humano nao tem forma. Sao as fabricas que ja
+		// existem, uma por tamanho de degrau (ver o bloco delas em `Cinematicas`).
+		("alta_tensao",                     "forma nova (v0.4.0, a lista do amigo do dono), sem par no DM: o surto curto"),
+		("tensao_extrema",                  "forma nova (v0.4.0), sem par no DM: o surto curto"),
+		("tensao_divina",                   "forma nova (v0.4.0), sem par no DM: o surto curto"),
+
+		// (2026-10-16) A FORMA PURA INSANA nao tem cena no DM -- a insanidade e do sistema do amigo do dono. E o surto curto, e em jogo
+		// ela nem toca (o corpo enlouquece sem cena, `semCena`); ela existe pela regra de que toda forma tem cena propria.
+		("majin_pura_insana",               "a insanidade e do sistema do amigo do dono: nao ha cena no DM -- o surto curto"),
 	];
 
 	/// <summary>
@@ -9779,6 +9839,16 @@ public partial class RoboDeForma : Node
 		// tem), em rabo nem em olho. O que ele muda e a PELE e o PORTE do corpo -- outros dois canais (`Catalogo.PeleDaForma`,
 		// `PorteDaForma`), cobrados na `--v021teste` e na `--diagv021`.
 		("orange",                          ModoCabelo.Base,             null,     null),
+
+		// (2026-10-16) A FORMA PURA DO MAJIN (as duas): o que ela troca e o CORPO inteiro (`CorpoDeForma.MajinPuro`, o Kid Boo tingido com
+		// a cor do Majin) -- nao ha penteado (o Majin nao tem cabelo), rabo nem tinta de olho. Faltavam aqui desde a saga.
+		("majin_pura",                      ModoCabelo.Base,             null,     null),
+		("majin_pura_insana",               ModoCabelo.Base,             null,     null),
+
+		// (v0.4.0) AS TRES FORMAS DE TENSAO DO HUMANO: nenhuma encosta em cabelo, rabo ou olho -- a forma e a chama e o numero.
+		("alta_tensao",                     ModoCabelo.Base,             null,     null),
+		("tensao_extrema",                  ModoCabelo.Base,             null,     null),
+		("tensao_divina",                   ModoCabelo.Base,             null,     null),
 	];
 
 	/// <summary>

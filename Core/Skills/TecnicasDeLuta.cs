@@ -176,7 +176,6 @@ public static class TecnicasDeLuta
 		// =====================================================================
 		// O REGENERAR e do corpo do Namekuseijin ou da skill -- quem responde e o `PodeRegenerar`, pela porta `regenerar`.
 		new("regenerar", "Regenerate", Uso.Socorro, 0, 0, f => f.MaxKi * 0.7, Descanso: 12),
-		new("HamonBreathing", "HamonBreathing", Uso.Socorro, 0, 0, f => f.MaxKi / 25, Descanso: 10),
 		// O ESTIRAO devolve Ki (dois tanques, a cada dois minutos) e cobra um mes de idade: e o socorro de quem secou.
 		new("Growth_Spurt", "Growth_Spurt", Uso.Socorro, 0, 0, DeGraca, null, Exige.KiNoFim, Descanso: 120),
 	];
@@ -279,5 +278,8 @@ public static class TecnicasDeLuta
 
 		// ---- o que ja tem receita propria no cerebro ----
 		["Kiai"] = "tem receita propria: o sopro de quem esta encurralado (`Capacidades.SabeSopro`)",
+		// (2026-10-16) a ativa da Forma Pura do Corrupted Majin -- quem a aperta e a loucura, e nao a tabela
+		["Sycophantic_Rage"] = "tem receita propria: a loucura do Corrupted Majin a aperta quando ha um tiro carregando "
+			+ "(`GameServer.SagaDoMajin`, no tique da insana)",
 	};
 }

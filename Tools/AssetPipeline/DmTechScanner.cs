@@ -269,6 +269,22 @@ public static class DmTechScanner
 				 + "tem o corpo pra ela. So funciona uma vez na vida.",
 			Custo = -1, TechNecessario = -1,
 		},
+
+		// ============================ O OVO (dono, 2026-10-17: *"tinha um sprite de ovo"*) ============================
+		// O `mob/Egg` do DM (`NPClist.dm:15-25`: `icon = 'Egg.dmi'`), que o `Lay_Egg` poe no chao (`Mating.dm:230`) e de onde o filho nasce
+		// (`SpawnPoints.dm:136-147`). No DM ele e um MOB, e nao um obj -- e a arvore de tipos deste extrator so le `/turf` e `/obj`
+		// (`DmTurfScanner.Interessa`), entao o icone e a densidade vem escritos aqui: o `Egg.dmi` declarado, e a densidade de todo mob do
+		// BYOND (1; o `mob/Egg` nao a muda). Ninguem o constroi (custo -1) e ele nao tem verbo: e um ovo no chao, e cai num soco.
+		// =================================================================================================================
+		new()
+		{
+			Id = "Egg", Nome = "Ovo",
+			CreateType = "/mob/Egg",
+			Desc = "O ovo de alguém de uma raça que põe ovo. Ele choca quando alguém criar um personagem novo e aceitar nascer dele -- "
+				 + "o filho sai do lado dele. Um soco o quebra, e o filho se perde.",
+			Custo = -1, TechNecessario = -1,
+			Icone = "Egg.dmi", Densa = true,
+		},
 	];
 
 	private static void Ler(string arq, List<ConstrucaoDef> saida)

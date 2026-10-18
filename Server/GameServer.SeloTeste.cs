@@ -672,10 +672,12 @@ public partial class GameServer
 		for (int i = 0; i < n; i++)
 		{
 			string ch = r.GetString(32);
-			r.GetString(32);        // dono
+			r.GetString(200);       // os donos (2026-10-16: ate cinco, separados por virgula)
 			r.GetString(160);       // o que falta PRA MIM
 			r.GetString(200);       // o que o cargo E
 			string da = r.GetString(400);   // o que o cargo DA
+			r.GetByte();            // as vagas (2026-10-16)
+			r.GetByte();            // ...e quantas estao livres
 			lidos++;
 			if (string.Equals(ch, chave, StringComparison.OrdinalIgnoreCase)) achado = da;
 		}

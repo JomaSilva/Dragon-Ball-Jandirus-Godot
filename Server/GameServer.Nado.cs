@@ -192,9 +192,9 @@ public partial class GameServer
 			return;
 		}
 
-		// O `if(!usr.KO)` do original (`Swim.dm:11`). Morto entra junto: no DM um cadaver nao chega
-		// a chamar verb nenhum.
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "nao da pra nadar assim."); return; }
+		// O `if(!usr.KO)` do original (`Swim.dm:11`). O cadaver entra junto: no DM um cadaver nao chega a chamar verb nenhum.
+		// (2026-10-16) So o cadaver -- o morto de pe nada (`CaidoPelaMorte`).
+		if (pl.Ficha.KO || CaidoPelaMorte(pl)) { Avisar(pl, "nao da pra nadar assim."); return; }
 
 		// ============================ SEM FOLEGO NAO SE COMECA -- E E UMA ARMADILHA FECHADA ============================
 		// O tique da exaustao faz DUAS coisas: para o nado e **zera o Ki** (`f.Ki = 0`, literal do
@@ -303,7 +303,7 @@ public partial class GameServer
 		// pelo escape do `MoveRules`", e era verdade ate o escape virar dirigido (`MoveRules.Escapar`).
 		// Nao ha o que consertar: quem esta nocauteado nao anda de qualquer jeito, e quem acorda liga o
 		// nado de novo -- a agua e um lugar que exige outro modo, nao um lugar que prende.
-		if (pl.Ficha.KO || pl.Ficha.dead) { PararDeNadar(pl, null); return; }
+		if (pl.Ficha.KO || CaidoPelaMorte(pl)) { PararDeNadar(pl, null); return; }
 
 		// ============================ A AGUA ACABOU EMBAIXO DELE ============================
 		// `if(!T.Water && swim)` -- o `unitimer` do DM, 10 vezes por segundo, com a mesma mensagem.

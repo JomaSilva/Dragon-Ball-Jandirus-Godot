@@ -113,7 +113,7 @@ public partial class GameServer
 	///
 	/// O NOCAUTE DA CENA TEM AUTOR: <paramref name="deOnde"/> e o rumo de quem bateu, e o corpo cai virado
 	/// pra ele (`M.dir = get_dir(M,src)`, o `ApontarRumoDoGolpe` que todo golpe chama). Sem isto ele cai
-	/// "pro sul" -- deitado de cabeca pra cima, que e o desenho certo do jogo e na foto parece um corpo
+	/// na vertical -- deitado de cabeca pra cima, que e o desenho certo do jogo e na foto parece um corpo
 	/// DE PE. A primeira foto desta bancada saiu assim.
 	/// </summary>
 	internal bool DerrubarNaFotoDoMajin(int id, Vec2 deOnde)

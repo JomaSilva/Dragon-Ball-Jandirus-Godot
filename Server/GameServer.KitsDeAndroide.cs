@@ -34,7 +34,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void RepararComOKit(ServerPlayer pl)
 	{
-		if (pl.Ficha.KO || pl.Ficha.dead || EhCadaver(pl)) { Avisar(pl, "caído, você não consegue."); return; }
+		if (pl.Ficha.KO || CaidoPelaMorte(pl)) { Avisar(pl, "caído, você não consegue."); return; }
 		if (!OsKitsServemA(pl))
 		{ Avisar(pl, "o kit de reparo só conserta o corpo de um androide de absorção -- o resto do mundo se cura no regenerador."); return; }
 		if (pl.Combate is not { } c) return;
@@ -73,7 +73,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void RefazerComOKit(ServerPlayer pl)
 	{
-		if (pl.Ficha.KO || pl.Ficha.dead || EhCadaver(pl)) { Avisar(pl, "caído, você não consegue."); return; }
+		if (pl.Ficha.KO || CaidoPelaMorte(pl)) { Avisar(pl, "caído, você não consegue."); return; }
 		ServerPlayer alvo = QuemEstaNaFrente(pl, o => o.Ficha.KO && !o.Ficha.dead && OsKitsServemA(o) && MembroQueOKitRefaz(o) != null) ?? pl;
 		if (!OsKitsServemA(alvo))
 		{ Avisar(pl, "o kit mecânico só refaz o membro de um androide de absorção -- o seu, ou o de um caído à sua frente."); return; }

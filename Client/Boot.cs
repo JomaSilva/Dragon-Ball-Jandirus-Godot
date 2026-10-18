@@ -346,6 +346,14 @@ public partial class Boot : Node2D
 			return;
 		}
 
+		// `--diagfilho` (2026-10-17): a PERGUNTA DO BEBE na selecao e a CRIACAO DO FILHO, apertadas como o dedo do jogador aperta,
+		// com foto. Vive aqui pelo motivo da `--diagapagar`: as telas que ele dirige somem quando o mundo comeca. Ver RoboDoFilho.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagfilho") >= 0)
+		{
+			AddChild(new RoboDoFilho { Name = "RoboDoFilho" });
+			return;
+		}
+
 		// `--diagki`: a METADE VIVA da bancada do sistema de ki -- conta nova pelo fio, tecnica
 		// montada por verbo de rede, o cliente MENTINDO e o relogin. Anda junto do `--kideponta` do
 		// servidor, que mede a outra metade e deixa o boneco de pe.
@@ -911,6 +919,7 @@ public partial class Boot : Node2D
 				GameClient.Instance?.PedirSlot(slot);
 			};
 			_selecao.Criar += AbrirCriacao;
+			_selecao.CriarComoFilho += AbrirCriacaoComoFilho;   // (2026-10-17) ver `CharacterSelect.PerguntarSeNasceDoBebe`
 			_selecao.Sair += () =>
 			{
 				GameClient.Instance?.Desconectar();
@@ -923,12 +932,19 @@ public partial class Boot : Node2D
 			};
 			AddChild(_selecao);
 		}
+		// (2026-10-17) O BEBE A CAMINHO veio junto com a lista: e o "Criar personagem" que pergunta por ele.
+		_selecao.Bebe = GameClient.Instance?.BebeACaminho;
 		_selecao.Mostrar(slots);
 		_selecao.Visible = true;
 
 		// O PERSONAGEM QUE REENCARNOU NAO PASSA PELA SELECAO: a criacao abre direto na vaga que ele deixou, com a frase do
 		// Enma em cima -- o `Reincarnate()` do DM devolve o jogador ao painel de criacao (`Reincarnation.dm:43-49`).
-		if (vagaDoRenascer is int vaga && vaga >= 0 && vaga < slots.Count && !slots[vaga].Ocupado) AbrirCriacao(vaga);
+		// (2026-10-17) Com um bebe a caminho, quem reencarna tambem ouve a pergunta -- e uma criacao como outra qualquer.
+		if (vagaDoRenascer is int vaga && vaga >= 0 && vaga < slots.Count && !slots[vaga].Ocupado)
+		{
+			if (_selecao.Bebe is { } bebe) _selecao.PerguntarSeNasceDoBebe(vaga, bebe);
+			else AbrirCriacao(vaga);
+		}
 		else _anuncioDaCriacao = "";
 
 		// MONTA A CRIACAO AGORA, escondida. O jogador esta lendo a lista de slots -- e o
@@ -980,6 +996,19 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--semcobertura") >= 0) return;
 
 		_carga?.Levantar(quem.Trim().Length > 0 ? quem.Trim() : "entrando no mundo", "preparando o mundo...");
+	}
+
+	/// <summary>
+	/// (2026-10-17) Slot vazio, NASCENDO DE UM BEBE: a mesma criacao, aberta no bebe -- a raca e as linhagens dos pais, zero anos. Ver
+	/// `CreationScreen.ReabrirComoFilho`.
+	/// </summary>
+	private void AbrirCriacaoComoFilho(int slot, Jandirus.Core.Races.OfertaDeBebe bebe)
+	{
+		_slotAlvo = slot;
+		if (_selecao != null) _selecao.Visible = false;
+		PrepararCriacao();
+		_criacao!.ReabrirComoFilho(bebe, _anuncioDaCriacao);
+		_anuncioDaCriacao = "";
 	}
 
 	/// <summary>Slot vazio: a criacao roda JA CONECTADO, e sabe em qual slot vai cair.</summary>
@@ -1332,6 +1361,22 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmajin") >= 0)
 			AddChild(new RoboDaAbsorcaoMajin { Name = "RoboDaAbsorcaoMajin" });
 
+		// --diagsagamajin: A SAGA DO CORRUPTED MAJIN NA TELA (2026-10-16) -- as quatro cenas pelo gatilho de verdade, a metamorfose, o
+		// corpo novo, a outra metade, a Forma Pura (o Kid Boo na cor do jogador), a vinheta e o tunel da loucura, os gritos, o sono, a
+		// Sycophantic Rage e o relog de verdade. Modo host + JANELA + `--raca Majin`. Ver RoboDaSagaMajin.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagsagamajin") >= 0)
+			AddChild(new RoboDaSagaMajin { Name = "RoboDaSagaMajin" });
+
+		// --diagaguasagrada: A AGUA ULTRA DIVINA NA TELA, ATRAS DO BP (2026-10-16) -- um corpo sem scouter bebe no jarro do Mirante e a
+		// bancada varre todo texto visivel atras do numero. Modo host + JANELA. Ver RoboDaAguaSagrada.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagaguasagrada") >= 0)
+			AddChild(new RoboDaAguaSagrada { Name = "RoboDaAguaSagrada" });
+
+		// --diaginferno: O OUTRO MUNDO POVOADO E O VILAO DO INFERNO, NA TELA (2026-10-16) -- as almas de aureola no Outro Mundo e no
+		// Inferno, e o vilao de saga que escapa e cai. Modo host + JANELA. Ver RoboDoInferno.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaginferno") >= 0)
+			AddChild(new RoboDoInferno { Name = "RoboDoInferno" });
+
 		// --diagmaquinas: O REGENERADOR E A MAQUINA DE GRAVIDADE NA TELA -- o tanque ligado pelo menu da tecla E
 		// (a campanula, a vida subindo), a gravidade ajustada no teclado numerico, e a tinta do campo com a forma
 		// da sala. Modo host + `--campoteste` + JANELA. Ver RoboDasMaquinas.
@@ -1550,6 +1595,45 @@ public partial class Boot : Node2D
 		// botoes e o prazo, com o torneio aberto de verdade pelo servidor deste processo. Ver RoboDeTorneio.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtorneio") >= 0)
 			AddChild(new RoboDeTorneio { Name = "RoboDeTorneio" });
+
+		// --diagtrava (2026-10-17): a TECLA DE TRAVAR O ALVO no mais perto, apertada de verdade, conferida no cliente e no servidor
+		// deste processo. Ver RoboDaTrava.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtrava") >= 0)
+			AddChild(new RoboDaTrava { Name = "RoboDaTrava" });
+
+		// --diagsomui (2026-10-17): o SOM DO ULTRA INSTINTO fora da estreia, pelo `World.AoMudarForma` e contado no espiao do audio.
+		// Ver RoboDoSomDoInstinto.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagsomui") >= 0)
+			AddChild(new RoboDoSomDoInstinto { Name = "RoboDoSomDoInstinto" });
+
+		// --diagesfera (v0.4.0): a ESFERA VERDE DO DEMONIC SAIYAN na tela -- no meu corpo e no de quem esta ao lado, e apagando quando a
+		// carga se desfaz. Ver RoboDaEsferaDemoniaca.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagesfera") >= 0)
+			AddChild(new RoboDaEsferaDemoniaca { Name = "RoboDaEsferaDemoniaca" });
+
+		// --diagovo (2026-10-17): o OVO NO CHAO -- o "Pôr um ovo" desenha o ovo do DM do lado do corpo, e um soco o quebra. Ver RoboDoOvo.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagovo") >= 0)
+			AddChild(new RoboDoOvo { Name = "RoboDoOvo" });
+
+		// --diagiaraciais (2026-10-17): a IA usando as ATIVAS DA RACA na tela -- a Ira do Freeza, o desabafo do Lendario e o Demonic do Lendario
+		// Primal, pelo laco de producao e com foto de cada uma. Ver RoboDaIaRacial.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagiaraciais") >= 0)
+			AddChild(new RoboDaIaRacial { Name = "RoboDaIaRacial" });
+
+		// --diagexecucao (2026-10-17): a ABSORCAO DE EXECUCAO do bio-androide na tela -- a vitima secando nos 5 s e se desfazendo em po, com o
+		// contra-exemplo da tela cega e foto de cada passo. Ver RoboDaExecucaoDoBio.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagexecucao") >= 0)
+			AddChild(new RoboDaExecucaoDoBio { Name = "RoboDaExecucaoDoBio" });
+
+		// --diaglarva (2026-10-17): a LARVA do bio-androide na tela -- vestida, voando, enterrada (com o contra-exemplo da tela cega) e
+		// amadurecida de volta ao degrau, com foto de cada passo. Ver RoboDaLarva.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaglarva") >= 0)
+			AddChild(new RoboDaLarva { Name = "RoboDaLarva" });
+
+		// --diagdnabio (2026-10-17): as SKILLS DO DNA do bio-androide no menu (a escolha pelo botao, com o contra-exemplo do sangue inteiro), a
+		// ativa e a passiva escolhidas, a ESTOCADA e o NUCLEO, com foto de cada passo. Ver RoboDoDnaDoBio.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagdnabio") >= 0)
+			AddChild(new RoboDoDnaDoBio { Name = "RoboDoDnaDoBio" });
 
 		// --diagsombra: a SOMBRA VISTA NA TELA -- o portao com muro (a foto do dono de 2026-09-07) e a
 		// camera do espectador do torneio, com foto e medida (furos, dobra do leque, lutadores a vista).
@@ -1830,9 +1914,10 @@ public partial class Boot : Node2D
 		// bater, deixar a tag cair, transformar, transformar DENTRO da briga, deixar a tag cair com o
 		// ESC aberto -- e escreve o diario de trocas de faixa. E a unica que exercita o FIM NATURAL de
 		// uma faixa (o `Finished` do Godot), que e o caminho de onde a queixa da musica de menu em
-		// laco nasceu. Rode-a DUAS vezes, com `--raca Saiyan` e com `--raca Demon`: a segunda nasce no
-		// Inferno, a unica zona com tema de lugar, e e o par das duas que prova de quem e a camada de
-		// baixo. Ver RoboDeTrilha.
+		// laco nasceu. Rode-a DUAS vezes, com `--raca Saiyan` e com `--raca Demon`: a primeira nasce num
+		// lugar com a musica dos planetas (o rodizio, 2026-10-16) e a segunda no Inferno, que tem tema
+		// proprio -- e e o par das duas que prova de quem e a camada de baixo. `--lugaremlaco` e o controle
+		// do rodizio. Ver RoboDeTrilha.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtrilha") >= 0)
 			AddChild(new RoboDeTrilha { Name = "RoboDeTrilha" });
 

@@ -284,6 +284,11 @@ public partial class GameServer
 			// um mestre pudesse disparar. Ver o cabecalho de `Discipulado.Ensinaveis`.
 			"future_ssj", "c_type", "legendary", "primal_c_type", "primal_legendary",
 			"primal_legendary2",
+
+			// (v0.4.0) AS DUAS TENSOES DO HUMANO COM PORTA DE BP (a lista do amigo do dono) -- decidido: um mestre humano guia o aluno a
+			// High Tension e ao Extreme Tension como guia o SSJ1, pela metade da porta. O Godly Tension fica de fora sozinho: nao tem porta
+			// de BP (a porta dele e o ki divino). Ver o cabecalho de `Discipulado.Ensinaveis`.
+			"alta_tensao", "tensao_extrema",
 		];
 
 		string[] hoje = [.. Discipulado.Ensinaveis.Select(d => d.Id).OrderBy(x => x, StringComparer.Ordinal)];

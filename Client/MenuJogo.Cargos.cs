@@ -48,9 +48,9 @@ public partial class MenuJogo
 		int vagos = 0, aptos = 0, seus = 0;
 		foreach (GameClient.CargoInfo c in cli.Cargos)
 		{
-			if (c.Dono.Length == 0) vagos++;
+			if (c.Livres > 0) vagos++;   // (2026-10-16) VAGA LIVRE, e nao "sem dono": o Kaioshin com dois de cinco ainda se disputa
 			if (c.Falta.Length == 0) aptos++;
-			if (c.Dono.Length > 0 && c.Dono == cli.LocalName) seus++;
+			if (c.TemDono(cli.LocalName)) seus++;
 		}
 		Faixa("Cargos", $"{vagos} vago{(vagos == 1 ? "" : "s")}",
 			  $"de {cli.Cargos.Count} no mundo  ·  você cumpre os requisitos de {aptos}"
@@ -61,8 +61,8 @@ public partial class MenuJogo
 		GridContainer grade = Colunas();
 		foreach (GameClient.CargoInfo c in cli.Cargos) CartaoDeCargo(cli, c, grade);
 
-		Nota("Um cargo tem UM dono no mundo, e uma alma carrega UM cargo. A escada dos Kaios é a exceção: "
-			 + "subir larga o cargo anterior.", _conteudo);
+		Nota("Um cargo tem UM dono no mundo (o Kaioshin tem cinco vagas), e uma alma carrega UM cargo. A escada dos Kaios é a "
+			 + "exceção: subir larga o cargo anterior.", _conteudo);
 	}
 
 	/// <summary>
@@ -86,7 +86,8 @@ public partial class MenuJogo
 	/// </summary>
 	private void CartaoDeCargo(GameClient cli, GameClient.CargoInfo c, Control pai)
 	{
-		bool vago = c.Dono.Length == 0;
+		bool vago = c.Livres > 0;   // (2026-10-16) ha VAGA LIVRE -- num cargo de varias vagas, mesmo com dono
+		bool meu = c.TemDono(cli.LocalName);
 		bool apto = c.Falta.Length == 0;
 		string nome = NomeDoCargo(c.Chave);
 
@@ -94,14 +95,16 @@ public partial class MenuJogo
 		MarcarCartaoDeItem(corpo, "cargo", nome);
 
 		corpo.AddChild(Cabecalho(nome, vago && apto ? Tema.Destaque : Tema.Texto,
-			vago ? ("VAGO", Tema.Bom) : (c.Dono, c.Dono == cli.LocalName ? Tema.Destaque : Tema.Texto),
+			c.Dono.Length == 0 ? ("VAGO", Tema.Bom)
+				: c.Vagas > 1 ? ($"{c.Dono} · {c.Livres} de {c.Vagas} vagas livres", meu ? Tema.Destaque : Tema.Texto)
+				: (c.Dono, meu ? Tema.Destaque : Tema.Texto),
 			apto ? ("você cumpre os requisitos", Tema.Bom) : ("requisitos em falta", Tema.TextoFraco)));
 
 		if (c.Desc.Length > 0) Nota(c.Desc, corpo);
 		if (c.Da.Length > 0) LinhaDeTextoLongo("dá", c.Da, Tema.Texto, corpo);
 		if (!apto) LinhaDeTextoLongo("exige", c.Falta, Tema.Perigo, corpo);
 
-		if (!vago || !apto) return;
+		if (!vago || !apto || meu) return;
 
 		var b = new Button
 		{

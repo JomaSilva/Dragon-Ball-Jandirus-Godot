@@ -408,6 +408,27 @@ public sealed class Projetil
 	/// </summary>
 	public void LerOPoderDoDono(double expressedBpDeAgora) => Bp = expressedBpDeAgora * MultDeOnda;
 
+	/// <summary>
+	/// (v0.3.2) O PODER COM QUE ESTE TIRO FERE, QUANDO E OUTRO QUE O DA DISPUTA -- a Genkidama. O dono (2026-10-16): *"pro clash usa
+	/// apenas o poder atual do usuario dela, mas na hora q ela acerta o alvo o dano é baseado no poder acumulado nela"*. Zero = o mesmo
+	/// da disputa (todos os outros tiros). Numa disputa o <see cref="Bp"/> segue o dono (<see cref="LerOPoderDoDono"/>); quando ela acaba
+	/// e o tiro continua sendo dele, volta a este (<see cref="VoltarAoPoderDoAcerto"/>).
+	/// </summary>
+	public double BpDoAcerto;
+
+	/// <summary>(v0.3.2) A disputa acabou e o tiro continua sendo do mesmo dono: o que fere com outro poder (<see cref="BpDoAcerto"/>) volta a ele.</summary>
+	public void VoltarAoPoderDoAcerto()
+	{
+		if (BpDoAcerto > 0) Bp = BpDoAcerto;
+	}
+
+	/// <summary>
+	/// (v0.3.2) ESTA ESFERA SE SEGURA NAS MAOS -- o embate de guarda, que ate aqui era so do raio (`GameServer.TentarEmbateDeGuarda`). A
+	/// Genkidama: *"o inimigo defenda e tente se defender dela dps de lançar, vc pode se transformar pra ganhar vantagem nesses casos
+	/// (igual goku com kid boo)"* (o dono, 2026-10-16).
+	/// </summary>
+	public bool SeguraNasMaos;
+
 	public double BaseDano = 0.8, MaxDano;
 
 	/// <summary>`murderToggle` de quem atirou: este tiro pode matar?</summary>
@@ -1222,7 +1243,8 @@ public sealed class Projetil
 		// treinado CARGA, e quem subiu a de carga nao ganhava nada. Ver `Fighter.chargedskill`.
 		// =============================================================================
 		double div = Math.Log(Math.Max(f.chargedskill + f.beamskill, 10)) / Math.Log(10);
-		return Math.Max(cargaMinima / Math.Max(div, 1) * 2.0 / 3.0, 0.05);
+		// (v0.4.0) a carga racial (o Perfect Control do Frost Demon: 2x mais rapida)
+		return Math.Max(cargaMinima / Math.Max(div, 1) * 2.0 / 3.0 / Math.Max(f.racialCargaDeTecnica, 0.05), 0.05);
 	}
 
 	/// <summary>

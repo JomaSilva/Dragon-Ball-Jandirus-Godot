@@ -21,6 +21,17 @@ namespace Jandirus.Core.Npc;
 /// </summary>
 public static class Supernova
 {
+	/// <summary>
+	/// O NOME QUE O `npcs.json` ESCREVE (`"ataqueDoUltimato"` da saga) -> a esfera. Vazio = a Supernova (a de sempre); nulo = um
+	/// nome que nao existe (o `Sagas.Problemas` acusa no boot, em vez de a saga virar Supernova calada).
+	/// </summary>
+	public static AtaqueDoUltimato? AtaquePorNome(string nome) => nome switch
+	{
+		"" or "supernova" => AtaqueDoUltimato.Supernova,
+		"deathball" => AtaqueDoUltimato.DeathBall,
+		_ => null,
+	};
+
 	/// <summary>Quanto o sol leva crescendo sobre a cabeca do chefe -- o chefe imune e parado.</summary>
 	public const double SegundosDeCarga = 10;
 
@@ -47,4 +58,20 @@ public static class Supernova
 	/// <summary>Quanto da queda ja andou (0 a 1), por segundo desde que o sol deixou a mao.</summary>
 	public static float ProgressoDaQueda(double segundosDesdeOSolto) =>
 		(float)Math.Clamp(segundosDesdeOSolto / SegundosDaQueda, 0, 1);
+}
+
+/// <summary>
+/// (2026-10-17) QUAL ESFERA O CHEFE ERGUE NO ULTIMATO. O dono: *"a super nova e so quando ele explode o planeta vegeta, namek e
+/// death ball ao qual ele joga pra baixo seguindo a mesma logica da super nova"*. As duas seguem a classe de cima inteira -- o chefe
+/// imune e parado enquanto ela cresce, a queda de tres tiles pro sul, a explosao que acende a destruicao --; muda a esfera
+/// desenhada e o que o mundo ouve. No DM as duas sagas erguiam a MESMA bola (`cast_planet_destroy`, o `15.dmi` carregando e o
+/// `16.dmi` jogado pro sul, `BossEvents.dm:780-830`); a Supernova do Freeza de Vegeta e do dono (v0.3.0).
+/// </summary>
+public enum AtaqueDoUltimato : byte
+{
+	/// <summary>O sol do `MegaSupernova2018.dmi` -- o Freeza de Vegeta.</summary>
+	Supernova = 0,
+
+	/// <summary>A esfera roxa da Death Ball (`deathball2017purple2`, a arte da tecnica, `DeathBall.dm:53`) -- o Freeza de Namek.</summary>
+	DeathBall = 1,
 }

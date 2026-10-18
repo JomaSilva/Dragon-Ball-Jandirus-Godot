@@ -188,12 +188,14 @@ public partial class MenuJogo : CanvasLayer
 	private void AoAtributos(Protocol.AtributosState a)
 	{
 		bool trocouRaca = _atributos.Raca != a.Raca;
+		// (2026-10-17) A SKILL DO DNA ESCOLHIDA tambem remonta: a passiva escolhida vira uma linha da aba Skills (`Habilidades.DoDna`)
+		bool trocouSkills = _atributos.SkillsRaciais != a.SkillsRaciais;
 		_atributos = a;
 		// A BUSCA TAMBEM PRECISA SABER. Ela varre todas as categorias de proposito, entao
 		// esconder a aba nao bastava pra esconder os verbs de admin de quem nao e admin.
 		Verbos.DefinirAdmin(a.Tem(Protocol.Poder.Admin));
 		// a RACA so chega na ficha lenta, e e ela que diz quais habilidades existem
-		if (trocouRaca) Habilidades.Montar(a.Raca ?? "");
+		if (trocouRaca || trocouSkills) Habilidades.Montar(a.Raca ?? "");
 		if (Visible) Redesenhar();
 	}
 
@@ -621,7 +623,7 @@ public partial class MenuJogo : CanvasLayer
 					 + $"|{_atributos.PhysOff:0.##}|{_atributos.PhysDef:0.##}|{_atributos.KiOff:0.##}"
 					 + $"|{_atributos.Speed:0.##}|{_atributos.Idade}|{f.Class}"
 					 + $"|{_atributos.GanhoDeTreino:0.##}|{_atributos.Gravidade:0.#}"
-					 + $"|{_atributos.GravEfetiva:0.#}|{_atributos.PesoMult:0.##}"
+					 + $"|{_atributos.PesoMult:0.##}"
 					 + $"|{_atributos.ZonaMult:0.#}|{_atributos.Esmagamento:0.##}",
 			"Body" => $"{comum}|{string.Join(',', CorpoDaAba().Select(p => p.Nome + p.Vida + (p.Decepado ? "x" : "")))}",
 			// AS DUAS ABAS DE SKILLS ASSINAM POR PECAS NOMEADAS (ver `AssinaturaDeSkills`). Foi uma
@@ -642,7 +644,7 @@ public partial class MenuJogo : CanvasLayer
 					 + $"|{_atributos.Disciplina}:{_atributos.DiscReal:0.#}"
 					 + $"|{MultTexto(f.MultTotal)}|{f.Inteireza * 100:0.#}",
 			"Tech" => $"{comum}|{c?.TechNivel:0.#}|{c?.Zeni:0}|{c?.TechXp:0}|{c?.Obras.Count}|{c?.Catalogo.Count}",
-			"Cargos" => $"{comum}|{string.Join(',', (c?.Cargos ?? []).Select(r => r.Chave + r.Dono + r.Falta))}",
+			"Cargos" => $"{comum}|{string.Join(',', (c?.Cargos ?? []).Select(r => r.Chave + r.Dono + r.Falta + r.Livres))}",
 			// A ABA ADMIN TEM CAIXAS DE TEXTO, e uma remontagem as recria vazias. Por isso a
 			// assinatura dela e so o que o painel DESENHA (a lista de contas e as marcas de cada
 			// uma) -- nada que mude a cada tick. O que o admin digitou fica fora da pagina, em
@@ -708,7 +710,7 @@ public partial class MenuJogo : CanvasLayer
 			// nao o double faz a remontagem acontecer exatamente quando a tela muda, e nao a cada oscilacao
 			// invisivel. A zona cobre os dois blocos novos de uma vez (os dois so mudam de forma ao trocar
 			// de lugar); as duas linhas vivas das esferas entram pelo mesmo motivo que entravam na Nav.
-			"World" => $"{comum}|{c?.Zone.Hash}|{c?.MinhasSupers}|{c?.SinalDourado}|{AssinaturaDoCeu()}",
+			"World" => $"{comum}|{c?.Zone.Hash}|{c?.MinhasSupers}|{c?.SinalDourado}|{AssinaturaDoCeu()}|{AssinaturaDoCalendario()}",
 			// AS QUE DEPENDEM DE QUEM ESTA NA TELA refazem sempre: People lista corpos que entram e saem a
 			// cada snapshot, e uma assinatura que os cobrisse custaria o mesmo que remontar. Devolver vazio
 			// e dizer "nao ha cache pra esta".

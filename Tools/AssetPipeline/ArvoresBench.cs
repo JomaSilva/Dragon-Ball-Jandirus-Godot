@@ -575,7 +575,8 @@ public static class ArvoresBench
 		// (Eram 43: a 43a era a `CustomAttacks/ki/beam/Beam`, de um arquivo que o `.dme` nao inclui -- saiu do catalogo
 		// em 2026-10-11 com as outras duas do sistema velho de ataques customizados.)
 		// (...e voltaram a ser 43 em 2026-10-13: a Rapid Movement ganhou o pre-requisito que o port deu a ela.)
-		Conferir("43 delas um pre-requisito acende", r.TrancadasPorPreReq == 43, $"{r.TrancadasPorPreReq}");
+		// (...e 42 em 2026-10-16: a Respiracao Hamon, que pendia da `ControlledBreathing`, saiu do jogo -- ver `SkillsAposentadas`.)
+		Conferir("42 delas um pre-requisito acende", r.TrancadasPorPreReq == 42, $"{r.TrancadasPorPreReq}");
 		// SEM O `niveis.json` NA MAO (este censo nao o carrega), as folhas de arvore que sobram sem acendedor sao as
 		// que um DEGRAU acende: as Advanced_* e Perfect_* (o nivel 100 da anterior) e a Full Power (o nivel 3 da
 		// Meditate Power). Com ele, nenhuma -- ver a `niveis` e a `--v021teste`.
@@ -585,8 +586,8 @@ public static class ArvoresBench
 				 !r.SemAcendedor.Contains("Basic Buff Mastery") && semDegrau.Count == 0 && r.SemAcendedorEmArvore.Contains("Full Power"),
 				 string.Join(", ", semDegrau));
 		CensoDeSkills.Relatorio cru = CensoDeSkills.Levantar(_cru);
-		Conferir("(defeito injetado: o catalogo sem as correcoes do port) a Basic Buff Mastery volta a ser nomeada como SEM ACENDEDOR, e sao 42 por pre-requisito",
-				 cru.SemAcendedor.Contains("Basic Buff Mastery") && cru.TrancadasPorPreReq == 42,
+		Conferir("(defeito injetado: o catalogo sem as correcoes do port) a Basic Buff Mastery volta a ser nomeada como SEM ACENDEDOR, e sao 41 por pre-requisito",
+				 cru.SemAcendedor.Contains("Basic Buff Mastery") && cru.TrancadasPorPreReq == 41,
 				 $"{cru.TrancadasPorPreReq}; {string.Join(", ", cru.SemAcendedorEmArvore)}");
 		Conferir("a Golden Form esta como acendedor FORA DO ALCANCE (le `godki_at`, `KOcount`, `Age`)",
 				 r.AcendedorForaDoPort.Any(x => x.Nome == "Golden Form"),

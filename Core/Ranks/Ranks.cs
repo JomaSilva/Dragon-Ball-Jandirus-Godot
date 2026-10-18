@@ -210,6 +210,15 @@ public sealed class RankDef
 	/// ============================================================================================
 	/// </summary>
 	public string[] Pendencias = [];
+
+	/// <summary>
+	/// (2026-10-16) QUANTAS ALMAS CARREGAM ESTE CARGO AO MESMO TEMPO. 1 = o "um dono por cargo" de sempre (todos menos um). O
+	/// KAIOSHIN tem 5 -- o dono: *"o cargo de supremo kaioh pode ter ate 5 players no cargo, e cada player no cargo faz 1 npc
+	/// sumir desses 5"* (os cinco Supremos Kaiohs NPC do Ceu, `npcs.json`). DIVERGENCIA DECLARADA: no DM o `Supreme_Kai` e UMA
+	/// global (`Modules/Ranks/RankQuests.dm`). Cada vaga e um trono inteiro -- requisito, deveres, renome e destituicao sao POR
+	/// VAGA (ver `GameServer.Ranks.cs`, `VagasDe`).
+	/// </summary>
+	public int Vagas = 1;
 }
 
 /// <summary>
@@ -432,6 +441,8 @@ public static class Cargos
 		{
 			Chave = "kaioshin", Global = "Supreme_Kai", Nome = "Kaioshin", Porta = PortaDoCargo.Prova,
 			Desc = "O topo da escada divina. Concede o Místico sem prazo e toma aprendizes.",
+			// (2026-10-16) CINCO VAGAS -- dono: *"o cargo de supremo kaioh pode ter ate 5 players no cargo"*. Ver `RankDef.Vagas`.
+			Vagas = 5,
 			TemDeveres = true, Sabedoria = true, DoOutroMundo = true,
 			// o rq_promo_targets (RankQuests.dm:167) deixa os 4 Kaios cardeais pularem direto pra ca,
 			// alem do Grand Kai -- o degrau de baixo some ao subir, seja ele qual for.

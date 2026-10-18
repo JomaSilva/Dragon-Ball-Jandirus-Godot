@@ -235,6 +235,7 @@ public sealed partial class GameServer
 		pl.Ficha.Statify();
 		pl.Ficha.Ki = pl.Ficha.MaxKi;
 		pl.Ficha.stamina = pl.Ficha.maxstamina;
+		pl.Ficha.genkidama_pronta_em = 0;   // (v0.3.2) a hora de recarga da Genkidama: a sessao de fotos solta varias
 
 		// O SANGUE tambem: o Kikoho cobra VIDA (`o Kikoho cobra 2 de sangue seu`), e vinte disparos
 		// numa rodada matariam o corpo no meio da sessao de fotos.

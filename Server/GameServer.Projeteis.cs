@@ -190,6 +190,9 @@ public sealed partial class GameServer
 		/// <summary>Quanto Ki cada ciclo de 0,2 s cobra enquanto o raio esta de pe.</summary>
 		public double CustoPorCiclo;
 
+		/// <summary>(v0.4.0) O SHATTERING THE LIMIT desta carga: 2 quando ela custou 10%+ do Ki de entao (`EstadoRacial.FatorDoLimite`), 1 no resto.</summary>
+		public double Limite = 1;
+
 		/// <summary>Quanto falta pro proximo ciclo cobrar.</summary>
 		public double AteOProximoCiclo;
 
@@ -470,6 +473,8 @@ public sealed partial class GameServer
 		if (_canais.ContainsKey(pl.Id)) { porque = "voce ja esta com um raio na mao."; return false; }
 		// O `blasting` das tecnicas sustentadas do lote G12 (Death Ball, Buster Barrage, as rajadas, a Genkidama).
 		if (BlastingG12(pl.Id)) { porque = "voce ja esta com uma tecnica de ki no ar."; return false; }
+		// (2026-10-17) ...e o do grito do desabafo: os 3 s em que o ki sai sozinho, pra todo lado (`AndarOGrito`).
+		if (pl.Racial.GritoDesde >= 0) { porque = "você está desabafando: o ki sai sozinho, pra todo lado."; return false; }
 		// ...e o dos dois tiros do Deus da Destruicao, enquanto a carga deles corre (`GameServer.KitDoDeus.cs`).
 		if (CarregandoTiroDoKit(pl.Id)) { porque = "voce ja esta com uma tecnica de ki no ar."; return false; }
 		if (pl.Ficha.Ki < custo) { porque = $"isso pede pelo menos {custo:0} de energia."; return false; }
@@ -636,6 +641,11 @@ public sealed partial class GameServer
 					? Projetil.PressaDeRaio
 					: Projetil.PressaDeBolaPorLag(Projetil.LagDeBolaNoDm(r.Velocidade)),
 		};
+
+		// (2026-10-16) A SYCOPHANTIC RAGE ARMADA: o ataque que estava carregando sai com o poder multiplicado. Ver `FuriaNoDisparo`.
+		FuriaNoDisparo(pl, p);
+		// (v0.4.0) o Hidden Talent do meio-Saiyajin: a tecnica dominada, e a mesma duas vezes seguidas -- `GameServer.Passivas.cs`
+		FatorRacialDoDisparo(pl, p, verbo);
 
 		// O TETO DE NOVO, AGORA COMO ULTIMA PORTA. `PodeAtirar` ja recusou, mas quem chama `Disparar`
 		// direto (a bancada, e amanha a tecnica customizada) tem que esbarrar no mesmo limite -- um
@@ -831,6 +841,8 @@ public sealed partial class GameServer
 	{
 		if (!PodeAtirar(pl, custo, out string porque)) { Avisar(pl, porque); return; }
 
+		// (v0.4.0) O SHATTERING THE LIMIT pergunta o custo contra o Ki de ANTES de pagar.
+		double limite = pl.Racial.FatorDoLimite(custo, pl.Ficha.Ki);
 		pl.Ficha.Ki -= custo;
 
 		// O CORPO JA VIRA PRO MARCADO AO COMECAR A CARGA (dono, 2026-10-09): quem reune energia encara em quem
@@ -856,6 +868,7 @@ public sealed partial class GameServer
 			// arte do Kamehameha e a cor da aura ja consomem: sem campo no save, e por isso vale pro
 			// NPC e pro clone tambem.
 			Carga = Jandirus.Core.Combat.ArteDeProjetil.CargaDeRaio(pl.Race, pl.Class, SementeDeArte(pl)),
+			Limite = limite,
 		};
 
 		// ============================ O PRAZO DE QUEM NAO TEM TECLADO NASCE ZERADO COM O CANAL (2026-10-07) ============================
@@ -921,6 +934,7 @@ public sealed partial class GameServer
 		}
 		raio.Canalizando = true;
 		c.Raio = raio;
+		FatorRacialDoDisparo(pl, raio, "", c.Limite);   // (v0.4.0) o Shattering the Limit (o Hidden Talent ja veio do `Disparar`)
 
 		// O GRITO DA TECNICA INVENTADA, quando o jogador escreveu um e ligou a caixinha (`if (S.doshout == 1)
 		// voice(S.shout)`, `customattacks.dm:412-413`). Este metodo so sabia gritar o NOME da receita, e o grito
@@ -930,8 +944,9 @@ public sealed partial class GameServer
 		// (0,13 s) cabe inteira dentro do intervalo entre duas falas (`MsEntreFalas`). So o grito ESCRITO passa por
 		// cima do intervalo, uma vez por raio -- e cada raio paga o Ki e a carga dele, entao isto nao vira megafone.
 		if (c.Grito is { Length: > 0 }) _ultimaFala.Remove(pl.Id);
-		Falar(pl, Protocol.Fala.Diz,
-			  c.Grito is { Length: > 0 } grito && !GritoDaMesaIgnoradoDeTeste ? grito : c.Receita.Nome + "!!");
+		// (v0.4.0) o tiro do Shattering the Limit grita com o "10x " na frente
+		Falar(pl, Protocol.Fala.Diz, (c.Limite > 1 ? Jandirus.Core.Races.Passivas.PrefixoDoLimite : "")
+			  + (c.Grito is { Length: > 0 } grito && !GritoDaMesaIgnoradoDeTeste ? grito : c.Receita.Nome + "!!"));
 	}
 
 	/// <summary>
@@ -1720,6 +1735,7 @@ public sealed partial class GameServer
 		// 2e) O PODER DA DESTRUICAO -- `dmg = ue_blast_mitigate(M, src, dmg)` (`objects.dm:333`): a Hakai Infusion de
 		//     quem atirou penetra, e a Aura of Destruction de quem leva devora parte do ki e reduz o resto.
 		dano = DanoDeKiPelaDestruicao(alvo, dono, dano);
+		dano = DanoDeKiRacial(p, dono, alvo, dano);   // (v0.4.0) as raciais de quem atira e o rugido de quem leva -- `GameServer.Passivas.cs`
 
 		// A ESCADA POR DIFERENCA DE PODER (dono, 2026-10-12) -- ver `KiContraCorpo`. A razao e medida UMA vez por
 		// impacto: o poder expresso de quem leva contra o poder do tiro.
@@ -1853,7 +1869,10 @@ public sealed partial class GameServer
 		//
 		//     (2026-10-12) SO QUEM NAO E MAIS FRACO QUE O RAIO O SEGURA NAS MAOS. O mais fraco que defende e levado por
 		//     ele, devagar, com o dano nos membros da guarda -- o passo 4 e o 5, e `KiContraCorpo`.
-		if (p.Tipo == TipoDeProjetil.Beam && !p.EstouraComoBola
+		//
+		//     (v0.3.2) E A GENKIDAMA (`Projetil.SeguraNasMaos`): a esfera que se segura -- o Kid Boo do dono. A disputa e a mesma, e nela a
+		//     bomba vale o poder de AGORA de quem a lancou: transformar-se no meio vira o cabo de guerra.
+		if (((p.Tipo == TipoDeProjetil.Beam && !p.EstouraComoBola) || (p.SeguraNasMaos && !GenkidamaNaoESeguradaDeTeste))
 			&& (KiContraCorpo.RegraDeAntesDeTeste || !KiContraCorpo.Arrasta(razao)) && TentarEmbateDeGuarda(p, alvo)) return true;
 
 		// 3c) O CAMPO DE FORCA (v0.2.1) -- `if(M.hasForcefield&&isobj(M.forcefieldID)) M.forcefieldID.takeDamage(...)`
@@ -1892,6 +1911,7 @@ public sealed partial class GameServer
 			? MeleeResolver.AplicarDanoProntoNaGuarda(cd, dano, p.Letal, _rng, zonaDoTiro, porKi: !p.Fisico)
 			: MeleeResolver.AplicarDanoPronto(cd, dano, p.Letal, _rng, zonaDoTiro, porKi: !p.Fisico);
 		ResolverDesfecho(dono, alvo, r);
+		AoTiroRacial(p, alvo, r, dano, cd.Bloqueando);   // (v0.4.0) o Limitless Power na guarda, o Saiyan's Resolve fora dela
 		// O `OnSucCollWMob(M)` DO DM (`objects.dm:440`), logo depois do `DamageLimb` do impacto que feriu: o que este
 		// tiro faz A MAIS em quem acertou. Ver `DomDeProjetil`.
 		if (p.Dom == DomDeProjetil.Veneno) EnvenenarG14(dono, alvo);   // o Cuspe Acido -- lote G14
@@ -2563,6 +2583,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void Arremessar(ServerPlayer alvo, Projetil p, double forca)
 	{
+		if (alvo.Combate is { Inabalavel: true }) return;   // (v0.4.0) sem recuo -- Unstoppable Force, Primal Bloodlust
 		int tiques = (int)Math.Clamp(Math.Round(forca), 1, Empurrao.TiquesMax);
 		alvo.ArrastoRestante = 0;   // arremesso ganha do arrasto -- a razao inteira esta no `Arremessar` do `GameServer.Empurrao.cs`
 		alvo.TiquesDeVoo = tiques;
@@ -2618,7 +2639,8 @@ public sealed partial class GameServer
 	/// ==========================================================================================================
 	/// </summary>
 	private bool PodeSerLevadoPeloFeixe(ServerPlayer alvo)
-		=> alvo.TiquesDeVoo <= 0
+		=> alvo.Combate is not { Inabalavel: true }   // (v0.4.0) sem recuo: o feixe nao o arrasta (Unstoppable Force, Primal Bloodlust)
+		   && alvo.TiquesDeVoo <= 0
 		   // QUEM ESTA NUMA DISPUTA DE KI NAO E LEVADO (2026-10-07): o feixe de um terceiro pesa no medidor dele
 		   // (`AoLevarGolpeComRaioNaMao`), mas nao tira do lugar um corpo que a disputa plantou. Mesma regra, e
 		   // mesmo motivo, do `Arremessar`.

@@ -91,9 +91,9 @@ public static class Kaioken
 		return RiscoDe(vezes, maestria) switch
 		{
 			Risco.NaMaestria =>
-				"Dentro da sua maestria: o corpo aguenta. O Kaio-ken cobra Ki, vigor e um pouco da carne enquanto estiver aceso.",
+				"Dentro da sua maestria: o corpo aguenta. O Kaio-ken cobra Ki, vigor e um pouco do corpo enquanto estiver aceso.",
 			Risco.AcimaDaMaestria =>
-				$"Acima da sua maestria: o Ki, o vigor e a carne vão embora {razao:0.#}x mais rápido.",
+				$"Acima da sua maestria: o Ki, o vigor e o corpo se gastam {razao:0.#}x mais rápido.",
 			Risco.QuebraNoNocaute =>
 				$"Bem acima da sua maestria ({razao:0.#}x mais dreno): se você cair nocauteado com ele aceso, o corpo se despedaça.",
 			_ =>

@@ -33,6 +33,13 @@ public sealed class LinhaDePovoamento
 	/// <see cref="Povoamento.LinhaVale"/> e `GameServer.ReiDeVegeta.cs`.
 	/// </summary>
 	public string TronoVago = "";
+
+	/// <summary>
+	/// (2026-10-16) CADA DONO DESTE CARGO TIRA UM: a chave de um cargo de varias vagas (`"kaioshin"`) -- o alvo da linha cai um por
+	/// jogador que o carrega, e quem sobra do alvo SOME (`GameServer.AparaOPovoDoCargo`). O dono: *"cada player no cargo faz 1 npc
+	/// sumir desses 5"*. Vazio = o alvo e o <see cref="Quantos"/>. Ver <see cref="Povoamento.AlvoDaLinha"/>.
+	/// </summary>
+	public string CadaDonoTiraUm = "";
 }
 
 /// <summary>
@@ -98,6 +105,17 @@ public static class Povoamento
 
 	/// <summary>DEFEITO INJETADO (`--v030teste`): o trono e ignorado -- o Rei NPC nasceria com um jogador no trono (dois reis).</summary>
 	public static bool TronoIgnoradoDeTeste;
+
+	/// <summary>
+	/// (2026-10-16) O ALVO DESTA LINHA AGORA: o `Quantos`, menos um por dono do cargo de <see cref="LinhaDePovoamento.CadaDonoTiraUm"/>
+	/// -- quem conta os donos e o servidor (`donos`). Nunca abaixo de zero. Os cinco Supremos Kaiohs do Ceu sao a linha de hoje.
+	/// </summary>
+	public static int AlvoDaLinha(LinhaDePovoamento linha, Func<string, int> donos) =>
+		linha.CadaDonoTiraUm.Length == 0 || DonosIgnoradosDeTeste ? linha.Quantos
+		: Math.Max(0, linha.Quantos - donos(linha.CadaDonoTiraUm));
+
+	/// <summary>DEFEITO INJETADO (`--kaioshinteste`): os donos do cargo nao tiram ninguem -- os cinco ficam com o cargo cheio.</summary>
+	public static bool DonosIgnoradosDeTeste;
 
 	/// <summary>Por que este molde nao nasce. Vazio = nasce. Existe pra o console dizer o motivo.</summary>
 	public static string PorQueNaoNasce(TipoDeNpc tipo) =>
@@ -306,6 +324,7 @@ public static class Povoamento
 				Quantos = e.TryGetProperty("quantos", out JsonElement q) && q.ValueKind == JsonValueKind.Number
 					? q.GetInt32() : 0,
 				TronoVago = e.TryGetProperty("tronoVago", out JsonElement tv) ? tv.GetString() ?? "" : "",
+				CadaDonoTiraUm = e.TryGetProperty("cadaDonoTiraUm", out JsonElement cd) ? cd.GetString() ?? "" : "",
 			};
 			if (linha.Planeta.Length > 0 && linha.Molde.Length > 0) l.Add(linha);
 		}

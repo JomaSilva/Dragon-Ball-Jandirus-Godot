@@ -1774,8 +1774,9 @@ public partial class RoboDoPrimeiroEstouro : Node
 		// (a rodada dos temas nao atira em ninguem: nao ha alvo pra forjar -- nem a dos avulsos)
 		if (_temas || _avulsos)
 		{
-			// O TEMA DO LUGAR, se este berco tem um (hoje so o Inferno, o de `--raca Demon`): ele entrou no ar na
-			// chegada na zona, dentro da carga dela, antes de haver base pra cobrar o quadro -- sai como numero.
+			// A MUSICA DO LUGAR -- o tema proprio do berco (o Inferno, o de `--raca Demon`) ou, desde 2026-10-16, a musica dos
+			// planetas: ela entrou no ar na chegada na zona, dentro da carga dela, antes de haver base pra cobrar o quadro -- sai
+			// como numero.
 			if (AudioDirector.Instance is { CamadaDeTeste: AudioDirector.Camada.Lugar, FaixaDeTeste.Length: > 0 } audio
 				&& audio.UltimaEntradaDeTeste.Faixa == audio.FaixaDeTeste)
 			{

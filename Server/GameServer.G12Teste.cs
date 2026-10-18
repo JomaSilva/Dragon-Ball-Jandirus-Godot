@@ -35,8 +35,11 @@ namespace Jandirus.Server;
 ///     quando a energia nao paga a proxima e ao apertar de novo; a Giratoria nasce em volta e sai nos
 ///     OITO rumos (o DM soltava tudo pra frente: o contra-exemplo e 1 rumo);
 ///  5. GENKIDAMA: 90% do Ki, 3 s de forma, pulsos de +0,1; SEM doador a escala e X, COM um doador
-///     meditando e X + 0,1; o disparo leva o poder ACUMULADO -- sem doador X, com doador X mais a
-///     doacao (o DM descartava tudo em `:170`);
+///     X + 0,1; o disparo leva o poder ACUMULADO -- sem doador X, com doador X mais o poder INTEIRO dele
+///     (o DM descartava tudo em `:170`). E as regras do dono (v0.3.2): uma hora de recarga depois de
+///     LANCADA; o convite pra todo mundo do planeta; o POVO doa com reputacao amigavel; so na FORMA BASE;
+///     e, lancada, ela se SEGURA nas maos -- a disputa le o poder de agora do dono (transformar-se vira o
+///     cabo de guerra) e o acerto, o acumulado;
 ///  6. SOUL ABSORB: a alma sai, o poder entra, a vitima MORRE um segundo depois, e a alma so sai uma vez;
 ///  7. DRENO DE ENERGIA: o androide caido e absorvido; o humano caido e drenado 10% a cada 0,7 s, e o
 ///     dreno para no golpe, no aperto e mata quem fica sem um decimo;
@@ -606,6 +609,22 @@ public partial class GameServer
 		AfirmarG12("...e o corpo continua preso por 3 s depois do disparo", !PodeMexerOCorpo(pl));
 		TiquesG12(TiquesDeG12(3.1));
 		AfirmarG12("...e se solta aos 3 s", PodeMexerOCorpo(pl) && !_genkidamaG12.ContainsKey(pl.Id));
+
+		// ---- (v0.3.2) UMA HORA DE RECARGA, E SO DEPOIS DE LANCADA (dono, 2026-10-16) ----
+		long recarga = pl.Ficha.genkidama_pronta_em - NowMs();
+		pl.Ficha.Ki = pl.Ficha.MaxKi;
+		List<string> deNovo = ApertarEOuvir(pl, "SpiritBomb");
+		AfirmarG12("**A GENKIDAMA LANCADA SO VOLTA EM UMA HORA** (*\"coloque um cooldown grande nela de 1 hora q so acontece quando vc lança ela\"*): o lancamento arma a recarga, e o aperto seguinte e recusado dizendo quanto falta",
+				   recarga > MsDeRecargaDaGenkidama - 60_000 && recarga <= MsDeRecargaDaGenkidama && !_genkidamaG12.ContainsKey(pl.Id) && Disse(deNovo, "faltam"),
+				   $"recarga {recarga / 60_000.0:0.#} min | {Ultimos(deNovo)}");
+		GenkidamaSemRecargaDeTeste = true;
+		try
+		{
+			ApertarEOuvir(pl, "SpiritBomb");
+			AfirmarG12("(defeito injetado: a Genkidama sem recarga, o jogo de antes) o mesmo aperto forma outra na hora -- a regua de cima REPROVA",
+					   _genkidamaG12.ContainsKey(pl.Id));
+		}
+		finally { GenkidamaSemRecargaDeTeste = false; }
 		LimparTudoG12();
 
 		// ---- A FRASE DO DISPARO NAO DIZ PODER EM NUMERO SEM SCOUTER (dono, 2026-10-12) ----
@@ -618,6 +637,7 @@ public partial class GameServer
 		var (semScouter, comScouter, comDefeito) = AsTresLeiturasDoPoder(leitor, () =>
 		{
 			leitor.Ficha.Ki = leitor.Ficha.MaxKi;
+			leitor.Ficha.genkidama_pronta_em = 0;   // (v0.3.2) tres bombas seguidas: a hora de recarga e medida na primeira, acima
 			UsarHabilidade(leitor, "SpiritBomb");
 			TiquesG12(TiquesDeG12(3.1));   // a esfera se forma
 			TiquesG12(TiquesDeG12(4.0));   // dois pulsos de crescimento
@@ -635,24 +655,24 @@ public partial class GameServer
 				   bombas.Count == 3 && TrazOPoder(comDefeito, bombas[2]), Ultimos(comDefeito));
 		LimparTudoG12();
 
-		// ---- COM UM DOADOR MEDITANDO ----
+		// ---- COM UM DOADOR (v0.3.2: todo mundo do planeta e convidado, meditando ou nao) ----
 		ServerPlayer dono = ForjarG12("Goku2", CorredorLivre(24), bp: 50_000, skills: [PathSpiritBombG12]);
 		ServerPlayer doador = ForjarG12("Krillin", CorredorLivre(24), bp: 20_000);
-		ServerPlayer distraido = ForjarG12("Yamcha", CorredorLivre(24), bp: 20_000);
-		doador.Ficha.med = true;
-		double kiDoador = doador.Ficha.Ki;
+		ServerPlayer longe = ForjarG12("Yamcha", CorredorLivre(24), bp: 20_000);
+		MoveToZone(longe.Id, ZoneKey.Premade("Namek"), PontoDeNascimento(ZoneKey.Premade("Namek")));   // em outro planeta
+		double kiDoador = doador.Ficha.Ki, bpDoador = doador.Ficha.expressedBP;
 		ApertarEOuvir(dono, "SpiritBomb");
 		TiquesG12(TiquesDeG12(3.1));
-		AfirmarG12("ao formar, quem MEDITA no mundo e convidado; quem nao medita, nao",
-				   _ofertasDeGenkidamaG12.ContainsKey(doador.Id) && !_ofertasDeGenkidamaG12.ContainsKey(distraido.Id));
+		AfirmarG12("**AO FORMAR, TODO MUNDO DO PLANETA E CONVIDADO** (*\"todos q estao no planeta recebem um pedido [...] n precisa meditar mais\"*): quem esta de pe, sem meditar, recebe a pergunta; quem esta em outro planeta, nao",
+				   !doador.Ficha.med && _ofertasDeGenkidamaG12.ContainsKey(doador.Id) && !_ofertasDeGenkidamaG12.ContainsKey(longe.Id));
 		EstadoDaGenkidamaG12 g2 = _genkidamaG12[dono.Id];
 		double bpAntes = g2.BpAcumulado;
-		AfirmarG12("quem nao foi convidado e responde ouve 'ninguem esta pedindo'",
-				   ApertarVerboG12(distraido, "genkidama_doar", "ninguem esta pedindo"));
-		AfirmarG12("o doador aceita pelo verb da aba Other: perde 10% do Ki e a bomba acumula expressedBP x Ki x 0,1",
+		AfirmarG12("quem nao foi convidado (o de outro planeta) e responde ouve 'ninguem esta pedindo'",
+				   ApertarVerboG12(longe, "genkidama_doar", "ninguem esta pedindo"));
+		AfirmarG12("**A DOACAO SOMA O PODER INTEIRO DO DOADOR** (*\"100% seria bom\"*): o doador aceita pelo verb da aba Other, perde 10% do Ki, e a bomba acumula o poder expresso dele -- e nao o `expressedBP x Ki x 0,1` do DM (o Ki absoluto: os 600 milhoes)",
 				   ApertarVerboG12(doador, "genkidama_doar", "um decimo") && Math.Abs(doador.Ficha.Ki - kiDoador * 0.9) < 1e-6
-				   && Math.Abs(g2.BpAcumulado - bpAntes - doador.Ficha.expressedBP * (kiDoador * 0.1)) < 1e-3,
-				   $"ki {kiDoador:0} -> {doador.Ficha.Ki:0}, acumulado {bpAntes:0} -> {g2.BpAcumulado:0}");
+				   && Math.Abs(g2.BpAcumulado - bpAntes - bpDoador) < 1e-3,
+				   $"ki {kiDoador:0} -> {doador.Ficha.Ki:0}, acumulado {bpAntes:0} -> {g2.BpAcumulado:0} (o poder do doador e {bpDoador:0})");
 		TiquesG12(TiquesDeG12(4.0));
 		AfirmarG12("COM um doador, os mesmos 4 s de crescimento dao X + 0,1: escala 1,3 contra 1,2",
 				   Math.Abs(g2.Escala - (semDoador + 0.1)) < 1e-9, $"escala {g2.Escala:0.00} (sem doador: {semDoador:0.00})");
@@ -666,12 +686,12 @@ public partial class GameServer
 		AfirmarG12("...e 30 s dentro da espera ela continua na mesma escala", Math.Abs(g2.Escala - 3.1) < 1e-9);
 
 		// O DISPARO COM DOADOR: a bola vale o acumulado -- X (o disparo sem doador) MAIS a doacao, pelo menos.
-		double doacao = doador.Ficha.expressedBP * (kiDoador * 0.1);
+		double doacao = bpDoador;
 		double acumuladoComDoador = g2.BpAcumulado;
 		ApertarEOuvir(dono, "SpiritBomb");
 		TiquesG12(TiquesDeG12(2.0) + 1);
 		Projetil? bombaComDoador = g2.Bola;
-		AfirmarG12("COM um doador o disparo leva o acumulado: o BP da bola e exatamente o `BpAcumulado` e passa do disparo sem doador por pelo menos a doacao (expressedBP x Ki x 0,1)",
+		AfirmarG12("COM um doador o disparo leva o acumulado: o BP da bola e exatamente o `BpAcumulado` e passa do disparo sem doador por pelo menos a doacao (o poder do doador)",
 				   g2.Fase == 3 && bombaComDoador is { Vivo: true, Inerte: false }
 				   && Math.Abs(bombaComDoador.Bp - acumuladoComDoador) < 1e-6
 				   && bombaComDoador.Bp >= bpSemDoador + doacao - 1e-6,
@@ -685,6 +705,216 @@ public partial class GameServer
 		DerrubarG12(caido);
 		TiquesG12(2);
 		AfirmarG12("o nocaute desfaz a Genkidama e apaga a bola", !_genkidamaG12.ContainsKey(caido.Id) && TirosDeG12(caido).Count == 0);
+		AfirmarG12("...e a que se desfaz ANTES de sair nao arma a recarga de uma hora (*\"so acontece quando vc lança ela\"*)",
+				   caido.Ficha.genkidama_pronta_em == 0, $"{caido.Ficha.genkidama_pronta_em}");
+		LimparTudoG12();
+
+		// ---- (v0.3.2) OS DOIS JOGOS DE ANTES: a pergunta so pra quem medita, e a doacao pelo Ki absoluto ----
+		ServerPlayer dono3 = ForjarG12("Goku4", CorredorLivre(24), bp: 50_000, skills: [PathSpiritBombG12]);
+		ServerPlayer doador3 = ForjarG12("Krillin4", CorredorLivre(24), bp: 20_000);
+		double kiDoador3 = doador3.Ficha.Ki, bpDoador3 = doador3.Ficha.expressedBP;
+		GenkidamaSoConvidaQuemMeditaDeTeste = true;
+		GenkidamaDoacaoComoODmDeTeste = true;
+		try
+		{
+			ApertarEOuvir(dono3, "SpiritBomb");
+			TiquesG12(TiquesDeG12(3.1));
+			bool semConvite = !_ofertasDeGenkidamaG12.ContainsKey(doador3.Id);
+			AfirmarG12("(defeito injetado: so quem medita, o jogo de antes) quem esta de pe sem meditar nao recebe a pergunta -- a regua do convite REPROVA",
+					   semConvite);
+			_ofertasDeGenkidamaG12[doador3.Id] = dono3.Id;   // a pergunta que so quem medita receberia
+			EstadoDaGenkidamaG12 g3 = _genkidamaG12[dono3.Id];
+			double antes3 = g3.BpAcumulado;
+			ApertarVerboG12(doador3, "genkidama_doar", "um decimo");
+			double soma = g3.BpAcumulado - antes3;
+			AfirmarG12("(defeito injetado: a doacao do DM) a bomba soma `expressedBP x Ki x 0,1` (o Ki absoluto), e nao o poder do doador -- a regua da doacao REPROVA",
+					   Math.Abs(soma - bpDoador3 * (kiDoador3 * 0.1)) < 1e-3 && Math.Abs(soma - bpDoador3) > 1,
+					   $"somou {soma:0} (o poder do doador e {bpDoador3:0}, o Ki dele {kiDoador3:0})");
+		}
+		finally { GenkidamaSoConvidaQuemMeditaDeTeste = false; GenkidamaDoacaoComoODmDeTeste = false; }
+		LimparTudoG12();
+
+		// ---- (v0.3.2) SO NA FORMA BASE: o coracao puro (dono, 2026-10-16) ----
+		Vec2 praca = CorredorLivre(24);
+		ServerPlayer transformado = ForjarG12("GokuSsj", praca, bp: 50_000, skills: [PathSpiritBombG12]);
+		VestirForma(transformado, "ssj1");
+		double kiTransformado = transformado.Ficha.Ki;
+		List<string> recusa = ApertarEOuvir(transformado, "SpiritBomb");
+		AfirmarG12("**SO NA FORMA BASE** (*\"so daria pra usar a genkidama na forma base, pois necessita do coraçao puro\"*): transformado, o aperto e recusado pelo coracao puro -- e nao cobra o Ki",
+				   !transformado.Forma.NaBase && !_genkidamaG12.ContainsKey(transformado.Id) && Disse(recusa, "coracao puro")
+				   && Math.Abs(transformado.Ficha.Ki - kiTransformado) < 1e-6,
+				   $"forma {transformado.Forma.Atual} | {Ultimos(recusa)}");
+		GenkidamaEmQualquerFormaDeTeste = true;
+		try
+		{
+			ApertarEOuvir(transformado, "SpiritBomb");
+			AfirmarG12("(defeito injetado: em qualquer forma, o jogo de antes) o mesmo aperto, transformado, forma a bomba -- a regua de cima REPROVA",
+					   _genkidamaG12.ContainsKey(transformado.Id));
+		}
+		finally { GenkidamaEmQualquerFormaDeTeste = false; }
+		LimparTudoG12();
+
+		ServerPlayer noMeio = ForjarG12("GokuMeio", praca, bp: 50_000, skills: [PathSpiritBombG12]);
+		ApertarEOuvir(noMeio, "SpiritBomb");
+		TiquesG12(TiquesDeG12(3.1));   // formada, crescendo
+		Projetil? bolaDoMeio = _genkidamaG12.TryGetValue(noMeio.Id, out EstadoDaGenkidamaG12? gMeio) ? gMeio.Bola : null;
+		VestirForma(noMeio, "ssj1");
+		List<string> desfez = Ouvir(() => TiquesG12(2));
+		AfirmarG12("transformar-se COM ELA NA MAO desfaz a bomba (o coracao deixou de ser puro) e apaga a bola",
+				   bolaDoMeio is { Vivo: false } && !_genkidamaG12.ContainsKey(noMeio.Id) && Disse(desfez, "coracao puro"),
+				   $"bola {(bolaDoMeio == null ? "nenhuma" : bolaDoMeio.Vivo ? "viva" : "apagada")} | {Ultimos(desfez)}");
+		LimparTudoG12();
+
+		// ---- (v0.3.2) O POVO DOA A QUEM ELE GOSTA (dono, 2026-10-16) ----
+		// *"se vc tem uma boa reputaçao no planeta, todos os npcs doariam o bp deles pra genkidama tb"*. Tres habitantes de 1 milhao de pe e
+		// um de 1 bilhao NOCAUTEADO; o que o convite soma e o que o povo deu (o primeiro pulso so vem 1,5 s depois). O povo do proprio mapa
+		// doa junto, e por isso a regua e "pelo menos os tres de pe, e nunca o caido".
+		(double Somou, double Tres, double Caido, List<string> Ouviu) OPovoDa(double reputacao)
+		{
+			const string conta = "bancada_g12_heroi";
+			ServerPlayer heroi = ForjarG12("GokuHeroi", praca, bp: 50_000, skills: [PathSpiritBombG12]);
+			heroi.Conta = conta;
+			string planeta = heroi.Zone.Name;
+			if (!_reputacao.TryGetValue(planeta, out Dictionary<string, double>? livro))
+				_reputacao[planeta] = livro = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+			livro[conta] = reputacao;
+			try
+			{
+				double tres = 0;
+				foreach (string nome in new[] { "PovoUm", "PovoDois", "PovoTres" })
+					tres += ForjarHabitanteEm(heroi.Zone, nome, 1_000_000)?.Ficha.expressedBP ?? double.NaN;
+				ServerPlayer? caido = ForjarHabitanteEm(heroi.Zone, "PovoCaido", 1e9);
+				if (caido != null) DerrubarG12(caido);
+				ApertarEOuvir(heroi, "SpiritBomb");
+				if (!_genkidamaG12.TryGetValue(heroi.Id, out EstadoDaGenkidamaG12? gh)) return (double.NaN, tres, double.NaN, new List<string>());
+				double antes = gh.BpAcumulado;
+				List<string> ouviu = Ouvir(() => TiquesG12(TiquesDeG12(3.1)));
+				return (gh.BpAcumulado - antes, tres, caido?.Ficha.expressedBP ?? double.NaN, ouviu);
+			}
+			finally { livro.Remove(conta); LimparTudoG12(); }
+		}
+		var amigavel = OPovoDa(Jandirus.Core.Social.Reputacao.LimiarDeAmigavel);
+		AfirmarG12("**COM REPUTACAO AMIGAVEL O POVO DOA SOZINHO** (*\"se vc tem uma boa reputaçao no planeta, todos os npcs doariam o bp deles pra genkidama tb\"*): os habitantes de pe somam o poder deles a bomba ao formar -- e o caido, nao",
+				   amigavel.Somou >= amigavel.Tres - 1e-6 && amigavel.Somou < amigavel.Tres + amigavel.Caido && Disse(amigavel.Ouviu, "habitante"),
+				   $"somou {amigavel.Somou:0}; os tres de pe {amigavel.Tres:0}; o caido {amigavel.Caido:0} | {Ultimos(amigavel.Ouviu)}");
+		var morna = OPovoDa(Jandirus.Core.Social.Reputacao.LimiarDeAmigavel - 5);
+		AfirmarG12("...e abaixo de amigavel o povo nao doa nada (a bomba so tem o dono)",
+				   morna.Somou == 0 && !Disse(morna.Ouviu, "habitante"), $"somou {morna.Somou:0}");
+		PovoNaoDoaDeTeste = true;
+		(double Somou, double Tres, double Caido, List<string> Ouviu) semPovo;
+		try { semPovo = OPovoDa(Jandirus.Core.Social.Reputacao.LimiarDeAmigavel); }
+		finally { PovoNaoDoaDeTeste = false; }
+		AfirmarG12("(defeito injetado: o povo nao doa, o jogo de antes) com a mesma reputacao amigavel a bomba nao recebe nada -- a regua de cima REPROVA",
+				   semPovo.Somou == 0, $"somou {semPovo.Somou:0}");
+
+		// ---- (v0.3.2) LANCADA, ELA SE SEGURA NAS MAOS: o Kid Boo do dono ----
+		// *"caso tenha um clash com a genkidama ou o inimigo defenda e tente se defender dela dps de lançar, vc pode se transformar pra
+		// ganhar vantagem nesses casos (igual goku com kid boo)"* e *"pro clash usa apenas o poder atual do usuario dela, mas na hora q ela
+		// acerta o alvo o dano é baseado no poder acumulado nela"*. A cena: a bomba vale 1,5 vez quem a lanca (as doacoes -- a soma delas e
+		// medida acima), e o Kid Boo tem o DOBRO dela: nem e levado nem e parede (`KiContraCorpo.Posto`), segura. Numeros perto um do
+		// outro de proposito: o dano da bomba nas maos e o que pesa na disputa (`EmbateDeKi.PoderDeSegurar`), e longe demais ele vira zero.
+		// A regua e a RAZAO dos dois poderes, que nao tem teto -- a vantagem e cortada entre 1/6 e 6 (`EmbateDeKi.TetoDaVantagem`).
+		Vec2 pista = TerraFirmeG12(24);
+		(ServerPlayer Goku, ServerPlayer Boo, Projetil Bomba, double Acumulado)? CenaDoKidBoo(string sufixo)
+		{
+			ServerPlayer goku = ForjarG12("GokuKid" + sufixo, pista, bp: 50_000, skills: [PathSpiritBombG12]);
+			goku.Facing = Facing.East;
+			ApertarEOuvir(goku, "SpiritBomb");
+			if (!_genkidamaG12.TryGetValue(goku.Id, out EstadoDaGenkidamaG12? gk)) return null;
+			TiquesG12(TiquesDeG12(3.1));
+			gk.BpAcumulado = 1.5 * goku.Ficha.expressedBP;
+			double acumulado = gk.BpAcumulado;
+			ServerPlayer boo = ForjarG12("KidBoo" + sufixo, pista + new Vec2(12 * ZoneCollision.TileSize, 0), bp: 50_000);
+			boo.Facing = Facing.West;
+			SegurarAGuarda(boo);
+			boo.Ficha.expressedBP = 2 * acumulado;
+			ApertarEOuvir(goku, "SpiritBomb");
+			TiquesG12(TiquesDeG12(2.0) + 1);   // sai
+			Projetil? bomba = gk.Bola;
+			for (int i = 0; i < TiquesDeG12(3.0) && bomba is { Vivo: true } && !_emEmbateDeKi.ContainsKey(boo.Id); i++) TiquesG12(1);
+			return bomba == null ? null : (goku, boo, bomba, acumulado);
+		}
+		double RazaoDaBomba(DisputaDeKi d) => PoderDoLado(d.A) / Math.Max(PoderDoLado(d.B), 1e-300);
+		void FecharADisputaDe(ServerPlayer quem) { if (_emEmbateDeKi.TryGetValue(quem.Id, out DisputaDeKi? aberta)) Fechar(aberta); }
+
+		var cena = CenaDoKidBoo("A");
+		DisputaDeKi? dk = null;
+		bool segurou = cena is { } c0 && _emEmbateDeKi.TryGetValue(c0.Boo.Id, out dk) && dk.Tipo == Protocol.TipoDeEmbate.FeixeContraGuarda
+						   && ReferenceEquals(dk.A.Feixe, c0.Bomba) && dk.B.DeMaos;
+		AfirmarG12("**A GENKIDAMA SE SEGURA NAS MAOS** (*\"o inimigo defenda e tente se defender dela [...] igual goku com kid boo\"*): quem tem o dobro dela e esta de guarda a SEGURA -- o embate de guarda, que era so do raio",
+				   segurou, cena is { } c1 ? $"bomba viva {c1.Bomba.Vivo}; em disputa {_emEmbateDeKi.ContainsKey(c1.Boo.Id)}" : "sem bomba");
+		if (segurou && cena is { } c && dk != null)
+		{
+			double donoNaHora = c.Goku.Ficha.expressedBP;
+			AfirmarG12("**NA DISPUTA ELA VALE O PODER DE AGORA DE QUEM A LANCOU** (*\"pro clash usa apenas o poder atual do usuario dela\"*), e nao o acumulado nela",
+					   Math.Abs(c.Bomba.Bp - donoNaHora * c.Bomba.MultDeOnda) < 1e-6 * donoNaHora && c.Bomba.Bp < c.Acumulado / 1.2,
+					   $"bomba {c.Bomba.Bp:0}; o dono agora {donoNaHora:0}; o acumulado {c.Acumulado:0}");
+
+			// TRANSFORMAR-SE DEPOIS DE LANCAR: a forma nova entra na disputa no tique seguinte (a disputa rele o poder a cada tique). As duas
+			// medidas saem da mesma conta de poder (`PowerLevel`), com o mesmo tanque.
+			c.Goku.Ficha.PowerLevel(agoraMs: NowMs());
+			TickDosEmbatesDeKi(Protocol.TickSeconds);
+			double antes = c.Goku.Ficha.expressedBP, razaoAntes = RazaoDaBomba(dk);
+			VestirForma(c.Goku, "ssj1");
+			c.Goku.Ficha.PowerLevel(agoraMs: NowMs());
+			double depois = c.Goku.Ficha.expressedBP;
+			TiquesG12(1);
+			TickDosEmbatesDeKi(Protocol.TickSeconds);
+			double razaoDepois = RazaoDaBomba(dk);
+			AfirmarG12("**TRANSFORMAR-SE DEPOIS DE LANCAR VIRA O CABO DE GUERRA** (*\"vc pode se transformar pra ganhar vantagem nesses casos\"*): a bomba nao se desfaz, continua na disputa, e a forca dela contra as maos sobe com a forma nova",
+					   depois > antes * 1.1 && c.Bomba.Vivo && _emEmbateDeKi.ContainsKey(c.Boo.Id) && razaoDepois > razaoAntes * 1.1
+					   && Math.Abs(c.Bomba.Bp - depois * c.Bomba.MultDeOnda) < 1e-6 * depois,
+					   $"o dono {antes:0} -> {depois:0} ({c.Goku.Forma.Atual}); bomba contra as maos {razaoAntes:0.####} -> {razaoDepois:0.####}; vantagem {dk.A.Vantagem:0.###}");
+
+			// A BOMBA VENCE E SEGUE PRO ALVO: com o ACUMULADO
+			Resolver(dk, dk.A, dk.B, "a bancada");
+			AfirmarG12("**QUANDO ELA ACERTA O ALVO, O DANO E O DO ACUMULADO** (*\"na hora q ela acerta o alvo o dano é baseado no poder acumulado nela\"*): a bomba que vence a disputa segue pro Kid Boo com o poder acumulado, e nao com o do dono",
+					   !c.Bomba.EmEmbate && Math.Abs(c.Bomba.Bp - c.Acumulado) < 1e-6 * c.Acumulado,
+					   $"bomba {c.Bomba.Bp:0}; acumulado {c.Acumulado:0}; o dono {c.Goku.Ficha.expressedBP:0}");
+		}
+		LimparTudoG12();
+
+		// os tres jogos de antes, cada um numa cena propria
+		GenkidamaNaoESeguradaDeTeste = true;
+		try
+		{
+			var semMaos = CenaDoKidBoo("B");
+			AfirmarG12("(defeito injetado: a Genkidama nao se segura, o jogo de antes) ela chega no Kid Boo de guarda e ninguem a segura -- a regua do embate de guarda REPROVA",
+					   semMaos is { } sm && !_emEmbateDeKi.ContainsKey(sm.Boo.Id), semMaos is { } sm1 ? $"bomba viva {sm1.Bomba.Vivo}" : "sem bomba");
+			if (semMaos is { } sm2) FecharADisputaDe(sm2.Boo);
+		}
+		finally { GenkidamaNaoESeguradaDeTeste = false; }
+		LimparTudoG12();
+
+		GenkidamaDisputaComOAcumuladoDeTeste = true;
+		try
+		{
+			var comAcumulado = CenaDoKidBoo("C");
+			AfirmarG12("(defeito injetado: a disputa com o acumulado, a regra que o dono corrigiu) na disputa a bomba vale o acumulado -- a regua do poder de agora REPROVA",
+					   comAcumulado is { } ca && _emEmbateDeKi.ContainsKey(ca.Boo.Id) && Math.Abs(ca.Bomba.Bp - ca.Acumulado) < 1e-6 * ca.Acumulado,
+					   comAcumulado is { } ca1 ? $"bomba {ca1.Bomba.Bp:0}; acumulado {ca1.Acumulado:0}" : "sem bomba");
+			if (comAcumulado is { } ca2) FecharADisputaDe(ca2.Boo);
+		}
+		finally { GenkidamaDisputaComOAcumuladoDeTeste = false; }
+		LimparTudoG12();
+
+		GenkidamaPerdeOAcumuladoNaDisputaDeTeste = true;
+		try
+		{
+			var semAcumulado = CenaDoKidBoo("D");
+			bool reprova = false;
+			string visto = "a disputa nao abriu";
+			if (semAcumulado is { } sa && _emEmbateDeKi.TryGetValue(sa.Boo.Id, out DisputaDeKi? dd))
+			{
+				Resolver(dd, dd.A, dd.B, "a bancada");
+				double doDono = sa.Goku.Ficha.expressedBP * Math.Max(sa.Bomba.MultDeOnda, 1);
+				reprova = Math.Abs(sa.Bomba.Bp - doDono) < 1e-6 * doDono && sa.Bomba.Bp < sa.Acumulado / 1.2;
+				visto = $"bomba {sa.Bomba.Bp:0}; acumulado {sa.Acumulado:0}; o dono {doDono:0}";
+			}
+			AfirmarG12("(defeito injetado: o acumulado se perde na disputa, o jogo de antes) a bomba que vence segue com o poder do DONO -- a regua do acerto REPROVA",
+					   reprova, visto);
+		}
+		finally { GenkidamaPerdeOAcumuladoNaDisputaDeTeste = false; }
 		LimparTudoG12();
 	}
 

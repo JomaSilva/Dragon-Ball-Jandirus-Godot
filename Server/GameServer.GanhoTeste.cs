@@ -20,6 +20,9 @@ namespace Jandirus.Server;
 ///      mesmo errando, abre a troca pra ele.
 ///   4. OS CONTRA-EXEMPLOS: `SocoNoArRendeDeTeste`, `KiRendeNoDisparoDeTeste` e `PvpSemTrocaDeTeste` poem cada regra
 ///      antiga de volta, e a prova de cada uma sabe reprovar.
+///   6. (2026-10-16) O LUGAR MULTIPLICA O TIQUE: um minuto de `Treinar` de producao em 1x, 10x e 100x, com peso, meditando e
+///      no espaco, e o soco de producao em 10x -- o BP medido segue o numero do painel (1x sem nada); a aclimatacao NAO mexe no
+///      ganho (e PODER: o `gravFelt`, que o pacote da aba de Formas leva). Contra-exemplo: `GainKnobs.GravidadeNaoMultiplicaDeTeste`.
 ///
 /// AS RAZOES SAO DO SOCO, E NAO DO TIRO: o `Attack_Gain` e linear no multiplicador com o estado zerado (o mesmo
 /// preparo da `GanhoDeUmSoco`), e por isso 0,1 e 2 se medem como razao. O `Blast_Gain` tem janela de tiro e sorteio
@@ -224,6 +227,149 @@ public partial class GameServer
 			double razaoDeAntes = noNpcA.Ganho > 0 ? semTrocaDeAntes.Ganho / noNpcA.Ganho : 0;
 			AfirmarGn("(defeito injetado: o PvP de antes) **BATER EM QUEM NAO REVIDA RENDE COMO NUM NPC**. A prova da troca sabe reprovar",
 					  semTrocaDeAntes.Acertou && Math.Abs(razaoDeAntes - 1) < 0.03, $"razao {razaoDeAntes:0.###}; {semTrocaDeAntes}");
+
+			// ---------------------------------------------------------------- 5. o ritmo do jogo
+			// O dono (2026-10-16): *"diminuir os ganhos em 20x do jogo em si"*. O MESMO soco de producao no NPC, medido duas vezes: na
+			// taxa do jogo e na do DM (`BPTickDoDm` -- o contra-exemplo e o jogo de antes, com a taxa global de volta).
+			GD.Print("[ganho] -- 5) O RITMO DO JOGO: o ganho de BP 20x menor que o do DM (dono, 2026-10-16) --");
+			Estacionar(b);
+			SocoMedido agora = SocoEm(a, n);
+			Estacionar(n);
+			double ritmo = GainKnobs.BPTick;
+			SocoMedido doDm;
+			GainKnobs.BPTick = GainKnobs.BPTickDoDm;
+			try { doDm = SocoEm(a, n); }
+			finally { GainKnobs.BPTick = ritmo; }
+			Estacionar(n);
+			double vezes = agora.Ganho > 0 ? doDm.Ganho / agora.Ganho : 0;
+			AfirmarGn("**O GANHO DE BP E 20x MENOR QUE O DO DM** (*\"diminuir os ganhos em 20x do jogo em si\"*): o mesmo soco no mesmo NPC rende "
+					  + "um vinte avos do que rendia com a taxa global do DM -- o jogo de antes, que e o contra-exemplo",
+					  agora.Acertou && doDm.Acertou && agora.Ganho > 0 && Math.Abs(vezes - 20) < 0.5,
+					  $"agora {agora.Ganho:0.##########} | na taxa do DM {doDm.Ganho:0.##########} | {vezes:0.###}x");
+
+			// ---------------------------------------------------------------- 6. o lugar multiplica o tique
+			// O dono (2026-10-16): *"em 1x gravidade diz 4,8x e em 10x diz 15,63x oq daria uma grande diferença, pq eu lembro q no DM esses
+			// valores realmente multiplicavam o bp gain e aqui deveria ser assim tb"*. UM MINUTO de treino pelo `Treinar` de producao (300
+			// passadas, o `TickFichas` a 5 Hz) com tudo que nao e o lugar congelado -- o preparo da `--salateste` (`OQuantoRendeDeVerdade`) --
+			// e o potencial escondido do tamanho do BP: em quem tem idade ele e quase o ganho inteiro, e se ele nao seguisse o lugar o painel
+			// mentiria de novo.
+			GD.Print("[ganho] -- 6) A GRAVIDADE E O PESO MULTIPLICAM O TIQUE, E A ACLIMATACAO E PODER: o painel diz o que o treino paga (dono, 2026-10-16) --");
+			Estacionar(b, n);
+			(double Bp, double Painel) UmMinuto(double gravidade, double maestria, string peso = "0", bool meditando = false)
+			{
+				Fighter f = a.Ficha;
+				PrepararParaMedir(a, bp);
+				// AS FAMILIAS DE CIMA SOCARAM: o corpo ainda esta "em briga", e a briga interrompe o treino (`PorQueNaoTreinaNemMedita`).
+				a.Combate.LutandoDeVerdade = a.Combate.EmCombate = a.Combate.BrigandoComAlguem = 0;
+				f.IsInFight = false;
+				f.Tick(agoraMs: NowMs());          // o recorde do corpo pro peso (`weight_cap_hw`) sai do `WeightTick`
+				f.hiddenpotential = bp;
+				f.UPMod = 1e6;                     // o teto pessoal fora da conta (ver a `--salateste`)
+				f.bp_milestone_mult = 1;
+				f.BPBuffer = 0;
+				f.Gaintimer = 0;
+				f.Planetgrav = gravidade;
+				f.gravmult = 0;
+				f.GravMastered = maestria;
+				f.zoneGainMult = 1;
+				f.pesoMaximoKg = f.weight_cap_hw * GainKnobs.WeightItemCapMult;
+				AjustarPeso(a, peso);
+				f.Statify();
+				f.PowerLevel();                    // o teto pessoal com o UPMod novo, e o `WeightTick` com o peso novo
+				f.stamina = f.maxstamina;
+				f.Statify();                       // o `StamBPGainMod` no teto
+				f.train = !meditando;
+				f.med = meditando;
+				double painel = f.MultiplicadorDeGanho();
+				double antes = f.BP;
+				for (int i = 0; i < 300; i++)
+				{
+					f.stamina = f.maxstamina;      // o treino cansa (`PagarOVigorDoTreino`), e o folego nao e o assunto
+					Treinar(a);
+				}
+				double ganho = f.BP - antes;
+				f.train = f.med = false;
+				AjustarPeso(a, "0");
+				f.pesoMaximoKg = 0;
+				return (ganho, painel);
+			}
+			static double Vezes(double x, double y) => y > 0 ? x / y : 0;
+			static bool Bate(double real, double esperado) => esperado > 0 && Math.Abs(real / esperado - 1) < 0.02;
+
+			var em1 = UmMinuto(1, 1);
+			var em10 = UmMinuto(10, 10);
+			var em100 = UmMinuto(100, 100);
+			AfirmarGn("**SEM NADA, O PAINEL DIZ 1x** (*\"o bp gain mais baixo quando vc n tem aclimation nem nada deveria ser 1x e nao 1,25\"*): o vigor cheio e o multiplicador da raca pagam no tique, mas sao do corpo",
+					  Math.Abs(em1.Painel - 1) < 1e-9, $"{em1.Painel:0.###}x");
+			AfirmarGn("**TREINAR EM 10x RENDE 10x O DE 1x** -- e o painel diz o mesmo: o numero da tela e o que o tique paga",
+					  Bate(Vezes(em10.Bp, em1.Bp), 10) && Bate(Vezes(em10.Painel, em1.Painel), 10),
+					  $"1x: {em1.Bp:0.####} BP/min, painel {em1.Painel:0.##}x | 10x: {em10.Bp:0.####} BP/min, painel {em10.Painel:0.##}x | {Vezes(em10.Bp, em1.Bp):0.###}x");
+			AfirmarGn("...e em 100x, 100x", Bate(Vezes(em100.Bp, em1.Bp), 100) && Bate(Vezes(em100.Painel, em1.Painel), 100),
+					  $"{Vezes(em100.Bp, em1.Bp):0.###}x; painel {Vezes(em100.Painel, em1.Painel):0.###}x");
+
+			var aclimatado = UmMinuto(1, 10);
+			AfirmarGn("**A ACLIMATACAO NAO MEXE NO GANHO** (*\"fora isso ele n deveria dar ganho de bp eterno\"*): dominando 10x, treinar em 1x rende o mesmo que sem dominar -- e o painel diz 1x",
+					  Bate(Vezes(aclimatado.Bp, em1.Bp), 1) && Math.Abs(aclimatado.Painel - 1) < 1e-9,
+					  $"{Vezes(aclimatado.Bp, em1.Bp):0.###}x; painel {aclimatado.Painel:0.###}x");
+
+			// ...ELA E PODER: o `gravFelt` do DM (soma na base), e o pacote da aba de Formas o leva (a linha "Aclimatado")
+			double PoderAclimatado(double maestria)
+			{
+				a.Ficha.Planetgrav = 1;
+				a.Ficha.gravmult = 0;
+				a.Ficha.GravMastered = maestria;
+				a.Ficha.Statify();
+				a.Ficha.PowerLevel();
+				var ouvidos = new List<Protocol.AtributosState>();
+				List<Protocol.AtributosState>? escutaAntes = EscutaDeAtributos;
+				EscutaDeAtributos = ouvidos;
+				try { a.SigAtributos = ""; MandarAtributos(a); }
+				finally { EscutaDeAtributos = escutaAntes; }
+				return ouvidos.Count > 0 ? ouvidos[^1].Aclimatacao : -1;
+			}
+			double doGravFelt = Jandirus.Core.Stats.StatCurves.GravFelt(10, 1);
+			double noFio = PoderAclimatado(10);
+			AfirmarGn($"**...ELA E PODER**: dominando 10x num chao de 1x o corpo ganha +{(doGravFelt - 1) * 100:0}% na base (o `gravFelt`), e o pacote da aba de Formas leva o bonus",
+					  Math.Abs(a.Ficha.gravBuff - doGravFelt) < 1e-6 && Math.Abs(noFio - doGravFelt) < 1e-3, $"gravBuff {a.Ficha.gravBuff:0.####}; no fio {noFio:0.####}");
+			double semDominio = PoderAclimatado(1);
+			AfirmarGn("...e sem dominar mais que o chao, o pacote leva 1 (a linha da aba nao existe)", Math.Abs(semDominio - 1) < 1e-6, $"{semDominio:0.####}");
+
+			var comPeso = UmMinuto(1, 1, "50");
+			AfirmarGn("**O PESO PAGA**: no limite do corpo (50% do peso maximo, razao 1) o treino rende 2x -- e o painel diz 2x",
+					  Bate(Vezes(comPeso.Bp, em1.Bp), 2) && Bate(Vezes(comPeso.Painel, em1.Painel), 2),
+					  $"{Vezes(comPeso.Bp, em1.Bp):0.###}x; painel {Vezes(comPeso.Painel, em1.Painel):0.###}x");
+
+			var medita1 = UmMinuto(1, 1, meditando: true);
+			var medita10 = UmMinuto(10, 10, meditando: true);
+			AfirmarGn("**MEDITAR EM 10x RENDE 10x O DE 1x** (a gravidade multiplica a meditacao tambem; o painel e do treino, que leva ainda o peso e a zona)",
+					  medita1.Bp > 0 && Bate(Vezes(medita10.Bp, medita1.Bp), 10), $"{medita1.Bp:0.####} -> {medita10.Bp:0.####} BP/min ({Vezes(medita10.Bp, medita1.Bp):0.###}x)");
+
+			var noEspaco = UmMinuto(0, 1);
+			AfirmarGn("no ESPACO (gravidade zero) o treino rende o de 1x: a gravidade nao ajuda, mas nao zera",
+					  Bate(Vezes(noEspaco.Bp, em1.Bp), 1), $"{Vezes(noEspaco.Bp, em1.Bp):0.###}x");
+
+			// A LUTA: o mesmo soco de producao no mesmo NPC, em 10x e em 1x (a bancada roda num quadro so: nada reescreve a gravidade no meio)
+			a.Ficha.Planetgrav = 10;
+			a.Ficha.GravMastered = 10;
+			SocoMedido soco10 = SocoEm(a, n);
+			Estacionar(n);
+			a.Ficha.Planetgrav = 1;
+			a.Ficha.GravMastered = 1;
+			SocoMedido soco1 = SocoEm(a, n);
+			Estacionar(n);
+			AfirmarGn("**LUTAR EM 10x RENDE 10x**: o mesmo soco de producao no mesmo NPC",
+					  soco10.Acertou && soco1.Acertou && Bate(Vezes(soco10.Ganho, soco1.Ganho), 10),
+					  $"1x {soco1.Ganho:0.##########} | 10x {soco10.Ganho:0.##########} | {Vezes(soco10.Ganho, soco1.Ganho):0.###}x");
+
+			GainKnobs.GravidadeNaoMultiplicaDeTeste = true;
+			try
+			{
+				var comODefeito = UmMinuto(10, 10);
+				AfirmarGn("(defeito injetado: a gravidade nao multiplica -- o jogo de antes) treinar em 10x rende o mesmo que em 1x: a queixa do dono, com o painel ainda dizendo 10x",
+						  Bate(Vezes(comODefeito.Bp, em1.Bp), 1), $"{Vezes(comODefeito.Bp, em1.Bp):0.###}x");
+			}
+			finally { GainKnobs.GravidadeNaoMultiplicaDeTeste = false; }
+			AplicarGravidade(a);   // a gravidade do chao de volta
 		}
 		catch (Exception e)
 		{
@@ -232,6 +378,7 @@ public partial class GameServer
 		finally
 		{
 			GainKnobs.SocoNoArRendeDeTeste = GainKnobs.KiRendeNoDisparoDeTeste = GainKnobs.PvpSemTrocaDeTeste = false;
+			GainKnobs.GravidadeNaoMultiplicaDeTeste = false;
 			LimparTudoDaBancada();
 			mesa.Fecha();
 			ApagarContasDaBancadaDeGanho();

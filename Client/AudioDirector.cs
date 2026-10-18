@@ -33,6 +33,14 @@ namespace Jandirus.Client;
 /// Ver <see cref="AoTerminar"/>, que e o unico lugar que decide isso.
 /// ==============================================================================================
 ///
+/// ============================ (2026-10-16) O CHAO DEIXOU DE SER O SILENCIO ============================
+/// O dono mudou a regra de baixo: *"musicas q vao tocar quando n ta em combate nem em cinematica de transformaçao, elas
+/// tocam como musica padrao nos planetas do jogo"*. A tag caindo e o tema da forma acabando agora devolvem a MUSICA DO
+/// LUGAR -- o tema proprio dele (Inferno, Lookout, Ceu, a casa do Bills) ou a musica dos planetas em rodizio. A maquina
+/// continua sem "faixa padrao": quem pede e o LUGAR, pela camada `Lugar` (ver <see cref="MusicaDoLugar"/>), e o silencio
+/// continua sendo um estado -- o que sobra quando nem o lugar pede nada (a tela de login, <see cref="Silenciar"/>).
+/// ==============================================================================================
+///
 /// Autoload: a musica nao pode parar quando a cena troca (login -> selecao -> mundo).
 /// </summary>
 public partial class AudioDirector : Node
@@ -112,6 +120,16 @@ public partial class AudioDirector : Node
     /// </summary>
     private readonly string[] _pedidos = ["", "", "", "", ""];
 
+    /// <summary>
+    /// O PEDIDO DE `Lugar` E A MUSICA DOS PLANETAS, em rodizio? (dono, 2026-10-16) Falso = e o tema PROPRIO do lugar (o
+    /// Inferno, o Lookout, o Ceu, a casa do Bills), que toca em laco. Quem escreve e o <see cref="MusicaDoLugar"/>; quem le e o
+    /// laco (<see cref="EmLaco"/>), o saco (<see cref="SacoDe"/>) e o fim da faixa (<see cref="AoTerminar"/>).
+    ///
+    /// NASCE VERDADEIRO porque o rodizio e o padrao do jogo: e o que deixa o `World._Ready` ler a primeira faixa dos planetas
+    /// numa thread de carga antes de a primeira zona chegar (<see cref="Adiantar"/>).
+    /// </summary>
+    private bool _lugarEmRodizio = true;
+
     private Camada _camadaAtual = Camada.Lugar;
     private string _faixaAtual = "";
 
@@ -188,6 +206,21 @@ public partial class AudioDirector : Node
     /// passado o cruzamento de <see cref="DuracaoFade"/> segundos tem que sobrar UM.
     /// </summary>
     public int TocadoresNoArDeTeste => (_musicaA.Playing ? 1 : 0) + (_musicaB.Playing ? 1 : 0);
+
+    /// <summary>
+    /// O QUE O LUGAR ESTA PEDINDO, toque ou nao (`--diagbills`). A camada de cima pode estar no ar -- a tag de combate de pe,
+    /// um tema de forma --, e a pergunta "a casa do Bills tem o tema dela?" e sobre o pedido do LUGAR, que espera por baixo.
+    /// </summary>
+    public string PedidoDoLugarDeTeste => _pedidos[(int)Camada.Lugar];
+
+    /// <summary>
+    /// DEFEITO INJETADO (`--diagtrilha --lugaremlaco`): a musica dos planetas toca em LACO, como um tema -- a mesma faixa pra
+    /// sempre, o jeito que a camada `Lugar` era antes do rodizio. Sempre falso em jogo.
+    ///
+    /// LIDO NA PARTIDA, como o <see cref="Diario"/>, e nao pela bancada: o robo da trilha nasce DEPOIS do login, e a primeira
+    /// faixa dos planetas ja entrou no ar em rodizio quando ele existe -- a primeira rodada do controle passou verde por isso.
+    /// </summary>
+    public static readonly bool LugarEmLacoDeTeste = Array.IndexOf(OS.GetCmdlineArgs(), "--lugaremlaco") >= 0;
 
     public override void _Ready()
     {
@@ -401,6 +434,28 @@ public partial class AudioDirector : Node
         Adiantar(camada);
     }
 
+    /// <summary>
+    /// O LUGAR EM QUE O CORPO ESTA PEDE A MUSICA DELE (dono, 2026-10-16): o TEMA PROPRIO (<paramref name="tema"/>, em laco) ou,
+    /// sem tema, a MUSICA DOS PLANETAS em rodizio (`Trilha.Planeta`). Quem chama e o `World`, na chegada a toda zona.
+    ///
+    /// O RODIZIO NAO RECOMECA NA TROCA DE ZONA: de um lugar sem tema pra outro sem tema (a Terra, o espaco, Namek) a faixa que
+    /// tocava segue tocando, e quem a troca e o fim dela (<see cref="AoTerminar"/>). So a passagem entre um tema e o rodizio
+    /// troca a faixa -- sair do Inferno pra Terra, ou pousar na casa do Bills.
+    /// </summary>
+    /// <inheritdoc cref="Musica" path="/param[@name='motivo']"/>
+    public void MusicaDoLugar(string tema, string motivo)
+    {
+        if (tema.Length > 0)
+        {
+            _lugarEmRodizio = false;
+            Musica(tema, Camada.Lugar, motivo);
+            return;
+        }
+        if (_lugarEmRodizio && _pedidos[(int)Camada.Lugar].Length > 0) return;
+        _lugarEmRodizio = !LugarEmLacoDeTeste;
+        Musica(Trilha.Planeta(), Camada.Lugar, $"{motivo}: musica dos planetas");
+    }
+
     /// <summary>Esta camada nao quer mais nada. Se era a que tocava, a maquina reavalia.</summary>
     /// <inheritdoc cref="Musica" path="/param[@name='motivo']"/>
     public void PararCamada(Camada camada, string motivo = "camada desistiu")
@@ -429,6 +484,7 @@ public partial class AudioDirector : Node
     public void Silenciar(string motivo = "zerado de proposito")
     {
         for (int i = 0; i < _pedidos.Length; i++) _pedidos[i] = "";
+        _lugarEmRodizio = true;   // sem lugar nenhum, o padrao volta a ser o rodizio (o proximo `World._Ready` ja le a 1a faixa)
         Reavaliar(motivo: motivo);
     }
 
@@ -469,7 +525,7 @@ public partial class AudioDirector : Node
     /// que o dono pediu, e uma linha que so aparece quando ALGO comeca nunca provaria que nada
     /// comecou. Ver <see cref="Diario"/>.
     /// </summary>
-    private static void Anotar(Camada camada, string faixa, string motivo)
+    private void Anotar(Camada camada, string faixa, string motivo)
     {
         double t = Time.GetTicksMsec() / 1000.0;
         EspiaoDeMusica?.Invoke(t, camada, faixa, motivo);
@@ -514,8 +570,12 @@ public partial class AudioDirector : Node
     ///
     /// Era um `bool repetir` que cada chamador passava, e um chamador so passava `false`. Duas pontas
     /// escolhendo a mesma coisa e o comeco de duas pontas discordando.
+    ///
+    /// (2026-10-16) E, NO `Lugar`, DE O LUGAR TER TEMA. O pedido continua permanente, mas a MUSICA DOS PLANETAS e um rodizio:
+    /// cada faixa toca uma vez e o fim dela puxa a seguinte do saco (<see cref="AoTerminar"/>), como a de combate. Em laco so
+    /// o tema proprio de um lugar (ver <see cref="_lugarEmRodizio"/>).
     /// </summary>
-    private static bool EmLaco(Camada camada) => camada <= Camada.Menu;
+    private bool EmLaco(Camada camada) => camada == Camada.Menu || (camada == Camada.Lugar && !_lugarEmRodizio);
 
     private void AoTerminarA() => AoTerminar(_musicaA);
     private void AoTerminarB() => AoTerminar(_musicaB);
@@ -555,6 +615,11 @@ public partial class AudioDirector : Node
     /// soco de uma briga la seria um silencio permanente que ninguem pediu. E o `Menu` e a segunda
     /// metade da frase do dono: o painel de ESC aberto e um estado, nao um acontecimento, entao a tag
     /// caindo com ele aberto cai NELE e nao no silencio.
+    ///
+    /// (2026-10-16) E HOJE O `Lugar` QUASE NUNCA ESTA VAZIO: o dono pediu musica nos planetas fora de combate e de cinematica
+    /// de transformacao, entao "fora de combate nao ha nada embaixo" virou "fora de combate volta a musica do lugar". O
+    /// silencio do *"N TOCA MAIS NADA"* so sobra onde nem o lugar pede nada. E a MUSICA DOS PLANETAS acabando tambem e decidida
+    /// aqui: ela e um rodizio, e o fim dela puxa a seguinte (ver <see cref="EmLaco"/>).
     /// </summary>
     private void AoTerminar(AudioStreamPlayer quem)
     {
@@ -574,6 +639,16 @@ public partial class AudioDirector : Node
             _pedidos[(int)Camada.Combate] = Trilha.Combate();
             Reavaliar(forcar: true, motivo: "faixa de COMBATE acabou com a tag de pe -> encadeia outra");
             Adiantar(Camada.Combate);   // o saco andou de novo: a seguinte ja vem vindo
+            return;
+        }
+
+        // (2026-10-16) A MUSICA DOS PLANETAS E UM RODIZIO, como a de combate: a faixa acabou com o lugar sem tema -> entra a
+        // seguinte do saco. O pedido de `Lugar` e permanente; o que muda e so a faixa dele.
+        if (acabou == Camada.Lugar && _lugarEmRodizio)
+        {
+            _pedidos[(int)Camada.Lugar] = Trilha.Planeta();
+            Reavaliar(forcar: true, motivo: "faixa dos PLANETAS acabou -> a seguinte do rodizio");
+            Adiantar(Camada.Lugar);   // o saco andou: a seguinte ja vem vindo
             return;
         }
 
@@ -663,18 +738,20 @@ public partial class AudioDirector : Node
     /// QUEM ESPIA O SACO DE SORTEIO DESTA CAMADA -- a faixa que ele vai entregar em seguida, sem tira-la de la.
     /// Nulo = a camada nao tem saco.
     ///
-    /// SO DUAS TEM: o tema de MENU e a musica de COMBATE saem cada um de uma pasta embaralhada (ver `Trilha`), e
-    /// por isso a faixa seguinte ja esta escolhida antes de alguem a pedir. O tema de um LUGAR, o da RAIVA e o de
-    /// uma TRANSFORMACAO so se conhecem no instante em que sao pedidos.
+    /// SO TRES TEM: o tema de MENU, a musica de COMBATE e -- desde 2026-10-16 -- a MUSICA DOS PLANETAS (o `Lugar` sem tema
+    /// proprio, ver <see cref="_lugarEmRodizio"/>) saem cada um de uma pasta embaralhada (ver `Trilha`), e por isso a faixa
+    /// seguinte ja esta escolhida antes de alguem a pedir. O tema PROPRIO de um lugar, o da RAIVA e o de uma TRANSFORMACAO so
+    /// se conhecem no instante em que sao pedidos.
     ///
     /// E ESSA DIFERENCA QUE DECIDE COMO O ARQUIVO CHEGA, nos dois lugares que perguntam: quem tem saco tem a
     /// proxima faixa lida ANTES da hora (<see cref="Adiantar"/>); quem nao tem pede na hora, e a faixa ENTRA
     /// QUANDO CHEGA (<see cref="Cruzar"/>). Uma tabela so, pra as duas respostas nao discordarem sobre uma camada.
     /// </summary>
-    private static Func<string>? SacoDe(Camada camada) => camada switch
+    private Func<string>? SacoDe(Camada camada) => camada switch
     {
         Camada.Menu => Trilha.ProximaDeMenu,
         Camada.Combate => Trilha.ProximaDeCombate,
+        Camada.Lugar when _lugarEmRodizio => Trilha.ProximaDePlaneta,
         _ => null,
     };
 

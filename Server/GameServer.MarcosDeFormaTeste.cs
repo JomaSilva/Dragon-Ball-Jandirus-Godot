@@ -407,15 +407,28 @@ public partial class GameServer
 	{
 		GD.Print("[marcos] -- 6) quem nao tem a forma nao ganha nada --");
 
-		ServerPlayer humano = GkForjar("HumanoDaBancada", "Human", pl.Zone, pl.Pos + new Vec2(96, 64), 1e13, forjados);
-		humano.Ficha.SaiyanLineage = "";
-		humano.Peer = pl.Peer;   // um jogador de verdade, pra a recusa ser a da RACA e nao a de "corpo sem dono"
-		List<string> gesto = Ouvir(() => Transformar(humano, subir: true));
-		List<string> tique = Ouvir(() => { Treinar(humano); Treinar(humano); });
-		AfirmarMf("o HUMANO com poder de sobra aperta C: a raca nao tem a escada, ele fica na base, e o ganho continua x1 sem etiqueta nenhuma",
-				  humano.Forma.NaBase && humano.Ficha.bp_milestone_mult == 1 && humano.Ficha.bp_milestones_done.Count == 0
+		// O TSUJIN e a raca sem escada desde a v0.4.0 -- ate entao era o Humano, que ganhou a linha da Tensao (logo abaixo).
+		ServerPlayer semEscada = GkForjar("TsujinDaBancada", "Tsujin", pl.Zone, pl.Pos + new Vec2(96, 64), 1e13, forjados);
+		semEscada.Ficha.SaiyanLineage = "";
+		semEscada.Peer = pl.Peer;   // um jogador de verdade, pra a recusa ser a da RACA e nao a de "corpo sem dono"
+		List<string> gesto = Ouvir(() => Transformar(semEscada, subir: true));
+		List<string> tique = Ouvir(() => { Treinar(semEscada); Treinar(semEscada); });
+		AfirmarMf("o TSUJIN com poder de sobra aperta C: a raca nao tem a escada, ele fica na base, e o ganho continua x1 sem etiqueta nenhuma",
+				  semEscada.Forma.NaBase && semEscada.Ficha.bp_milestone_mult == 1 && semEscada.Ficha.bp_milestones_done.Count == 0
 				  && Disse(gesto, "nao tem essa escada") && !Disse(tique, "MARCO DE PODER"),
-				  $"forma {humano.Forma.Atual} | {Ultimos(gesto)}");
+				  $"forma {semEscada.Forma.Atual} | {Ultimos(gesto)}");
+
+		// (v0.4.0) E O HUMANO, que ganhou a linha da Tensao (a lista do amigo do dono): ele SOBE -- e a forma nao tem marco, porque nao
+		// ha proc do DM pra citar (ver o bloco das entradas em `Formas.cs`). O ganho continua x1.
+		ServerPlayer humano = GkForjar("HumanoDaBancada", "Human", pl.Zone, pl.Pos + new Vec2(128, 64), 1e13, forjados);
+		humano.Ficha.SaiyanLineage = "";
+		humano.Peer = pl.Peer;
+		Ouvir(() => Transformar(humano, subir: true));
+		List<string> tiqueH = Ouvir(() => { Treinar(humano); Treinar(humano); });
+		AfirmarMf("o HUMANO aperta C e vira High Tension -- e a Tensao nao da marco: o ganho continua x1 sem etiqueta nenhuma",
+				  humano.Forma.Atual == "alta_tensao" && humano.Ficha.bp_milestone_mult == 1 && humano.Ficha.bp_milestones_done.Count == 0
+				  && !Disse(tiqueH, "MARCO DE PODER"),
+				  $"forma {humano.Forma.Atual}, marco x{humano.Ficha.bp_milestone_mult:0.##} | {Ultimos(tiqueH)}");
 
 		ServerPlayer comum = MfForjarSaiyajin("ComumDaBancada", pl, forjados);
 		comum.Forma.Liberar(Catalogo.IdWrathful);

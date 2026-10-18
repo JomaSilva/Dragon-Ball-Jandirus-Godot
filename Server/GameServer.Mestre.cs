@@ -326,7 +326,7 @@ public partial class GameServer
 			alunoJaTemMestre: MestreDe(aluno.Assinatura).Length > 0,
 			alunosDoMestre: ContarAlunos(mestre.Assinatura),
 			bpMestre: mestre.Ficha.BP, bpAluno: aluno.Ficha.BP,
-			algumCaido: mestre.Ficha.KO || mestre.Ficha.dead || aluno.Ficha.KO || aluno.Ficha.dead,
+			algumCaido: mestre.Ficha.KO || CaidoPelaMorte(mestre) || aluno.Ficha.KO || CaidoPelaMorte(aluno),   // (2026-10-16) o morto de pe nao esta caido
 			distanciaTiles: Vec2.Distance(mestre.Pos, aluno.Pos) / ZoneCollision.TileSize);
 
 		if (r != Discipulado.RecusaDeVinculo.Pode) { Avisar(mestre, PorQueNaoVincula(r, aluno)); return; }
@@ -394,7 +394,7 @@ public partial class GameServer
 			alunoJaTemMestre: MestreDe(aluno.Assinatura).Length > 0,
 			alunosDoMestre: ContarAlunos(mestre.Assinatura),
 			bpMestre: mestre.Ficha.BP, bpAluno: aluno.Ficha.BP,
-			algumCaido: mestre.Ficha.KO || mestre.Ficha.dead || aluno.Ficha.KO || aluno.Ficha.dead,
+			algumCaido: mestre.Ficha.KO || CaidoPelaMorte(mestre) || aluno.Ficha.KO || CaidoPelaMorte(aluno),   // (2026-10-16) o morto de pe nao esta caido
 			// A DISTANCIA VOLTA A SER CONFERIDA, agora pelo `MST_RANGE` (4 tiles) e nao pelo tile da
 			// frente: entre a oferta e o "sim" os dois se mexeram, e exigir que continuem colados
 			// faria o aceite falhar por um passo. E o afrouxamento que o proprio DM faz (`:452`).
@@ -476,7 +476,7 @@ public partial class GameServer
 		// quem recusa e o "sim" dele (`DespertarAssistido`, o `mst_form_blocked` do DM).
 		ServerPlayer? aluno = PessoaNaFrente(mestre, soMeusAlunos: true);
 		if (aluno == null) { Avisar(mestre, "fique de frente para um aluno seu."); return; }
-		if (aluno.Ficha.KO || aluno.Ficha.dead) { Avisar(mestre, $"{aluno.Name} esta caido."); return; }
+		if (aluno.Ficha.KO || CaidoPelaMorte(aluno)) { Avisar(mestre, $"{aluno.Name} esta caido."); return; }
 
 		FormaDef? alvo = idPedido.Length > 0 ? Catalogo.Def(idPedido) : null;
 		if (idPedido.Length > 0 && (alvo == null || !Discipulado.EhEnsinavel(alvo.Id)))
@@ -591,7 +591,7 @@ public partial class GameServer
 
 		PerfilDeFormas perfil = Perfil(aluno);
 		double kiFrac = aluno.Ficha.MaxKi > 0 ? aluno.Ficha.Ki / aluno.Ficha.MaxKi : 1;
-		bool caido = aluno.Ficha.KO || aluno.Ficha.dead;
+		bool caido = aluno.Ficha.KO || CaidoPelaMorte(aluno);
 
 		RecusaForma r = aluno.Forma.Avaliar(d.Id, aluno.Ficha.BP, kiFrac, caido, perfil,
 											Discipulado.FatorAssistido);

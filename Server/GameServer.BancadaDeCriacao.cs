@@ -45,7 +45,7 @@ public sealed partial class GameServer
 		if (o == null) { Avisar(pl, "não há bancada de criação por perto."); return null; }
 		if (!o.Aparafusada && !BancadaDeCriacao.TrabalhaSoltaDeTeste)
 		{ Avisar(pl, $"aparafuse {NomeDaObra(o)} antes de usá-la."); return null; }
-		if (pl.Ficha.KO || pl.Ficha.dead || EhCadaver(pl)) { Avisar(pl, "caído, você não faz nada na bancada."); return null; }
+		if (pl.Ficha.KO || CaidoPelaMorte(pl)) { Avisar(pl, "caído, você não faz nada na bancada."); return null; }
 		return o;
 	}
 
@@ -105,7 +105,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void Pentear(ServerPlayer pl, string pedido)
 	{
-		if (pl.Ficha.KO || pl.Ficha.dead || EhCadaver(pl)) { Avisar(pl, "caído, você não se penteia."); return; }
+		if (pl.Ficha.KO || CaidoPelaMorte(pl)) { Avisar(pl, "caído, você não se penteia."); return; }
 		if (!VisualCatalog.TemCabelo(pl.Race)) { Avisar(pl, "este corpo não tem cabelo pra pentear."); return; }
 		string[] p = pedido.Split('/');
 		string penteado = p[0].Trim();
@@ -134,7 +134,7 @@ public sealed partial class GameServer
 	/// <summary>O `Change_Eye_Color()` (`usr.Eyes()`): a cor dos olhos. O pedido e `<RRGGBB>`.</summary>
 	private void TingirOsOlhos(ServerPlayer pl, string pedido)
 	{
-		if (pl.Ficha.KO || pl.Ficha.dead || EhCadaver(pl)) { Avisar(pl, "caído, você não consegue."); return; }
+		if (pl.Ficha.KO || CaidoPelaMorte(pl)) { Avisar(pl, "caído, você não consegue."); return; }
 		if (!VisualCatalog.CorpoTemRosto(pl.Visual, pl.Race)) { Avisar(pl, "este corpo não tem olhos pra tingir."); return; }
 		if (pedido.Trim().Length == 0) { Avisar(pl, "escolha a cor na tela que a tinta abre."); return; }
 		if (!BancadaDeCriacao.LerCor(pedido.Trim(), out Rgb cor)) { Avisar(pl, "essa cor não existe: são seis dígitos (RRGGBB)."); return; }

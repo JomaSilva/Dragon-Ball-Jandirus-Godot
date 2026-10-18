@@ -871,10 +871,11 @@ public sealed partial class GameServer
 		_prontoG3[pl.Id] = agora + (long)(tiques * TempoDoDm.MsPorTique);
 
 		// `usr.Attack_Gain()` -- ela treina PUNHO, e nao tiro, e isso e coerente: o `mods` dela sai do
-		// `Ephysoff`. O `SpiritBallFireCount++` do DM NAO veio: ele so alimenta o `exp+=1` do efetor
-		// (`niveis.json`, `"cond": "savant.SpiritBallFireCount"`), e o port ainda nao le condicao de
-		// efetor. Um campo escrito e nunca lido e exatamente o codigo morto que a casa proibe -- fica
-		// catalogado, e volta junto com o consumidor.
+		// `Ephysoff`.
+		//
+		// (2026-10-16) E O PONTO DA SKILL: `SpiritBallFireCount += 1` (`Spirit.dm:352`), que o efetor consome um por tique como `exp += 1`
+		// -- o mesmo total creditado no tiro. Sem ele o Spirit Gun nunca subia de nivel (e os degraus cortam o custo e dobram o dano).
+		if (!NiveisDeSkill.FontesDoAdendo18DesligadasDeTeste) pl.Niveis.Creditar(PathDoSpiritGun, 1);
 		GanhoDeKi(pl, dePunho: true);   // e, como todo tiro, so quando ela encosta em algo (`GameServer.Ganhos.cs`)
 
 		Disparar(pl, new ReceitaDeProjetil

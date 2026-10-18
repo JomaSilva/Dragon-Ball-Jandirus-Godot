@@ -330,6 +330,25 @@ public partial class RoboDeBills : Node
 		Afirmar("ao pousar no mundo deles o jogador le o RUMO: pra que lado, e a quantos passos, os dois estao",
 				Disse(BillsEWhis.RumoDosDois[..BillsEWhis.RumoDosDois.IndexOf('{')]), Ultimas());
 
+		// (2026-10-16) A MUSICA DA CASA -- o dono: *"skies above beerus vai tocar no planeta onde o bills mora"*. Le-se o PEDIDO DO
+		// LUGAR, e nao o que esta no ar: a tag de combate da briga da Terra pode ainda estar de pe por cima dele. E a segunda
+		// pergunta e a do endereco chegando DEPOIS da zona (quem entra no jogo ja la): esquecida a casa, o lugar volta pra musica
+		// dos planetas; ouvida de novo -- pela mesma porta do pacote --, o tema volta na hora, sem sair do planeta.
+		if (AudioDirector.Instance is { } som)
+		{
+			string temaDaCasa = Trilha.MusicaDe(cli.Zone.Name, casaDeBills: true);
+			Afirmar("**A CASA TEM A MUSICA DELA**: pousado no mundo do Bills, o lugar pede o \"Skies above Beerus's Planet\"",
+				temaDaCasa.Contains("Skies above Beerus", StringComparison.Ordinal) && som.PedidoDoLugarDeTeste == temaDaCasa,
+				$"pedido do lugar: '{som.PedidoDoLugarDeTeste.GetFile()}'");
+			GameClient.CasaDeBillsVista sabida = cli.CasaDeBills;
+			cli.CasaDeBillsDeTeste(default);
+			string semCasa = som.PedidoDoLugarDeTeste;
+			cli.CasaDeBillsDeTeste(sabida);
+			Afirmar("...e quem decide e o ENDERECO, chegue ele quando chegar: sem a casa sabida o lugar toca a musica dos planetas, e o endereco chegando com o corpo ja la devolve o tema na hora",
+				semCasa.Length > 0 && semCasa != temaDaCasa && som.PedidoDoLugarDeTeste == temaDaCasa,
+				$"sem a casa: '{semCasa.GetFile()}' -> com ela: '{som.PedidoDoLugarDeTeste.GetFile()}'");
+		}
+
 		vb = VisualDe(ids.Bills);
 		vw = VisualDe(ids.Whis);
 		Afirmar("em casa os dois estao NA TELA, com a mesma cara da visita: o Bills de traje, o Whis na folha dele",

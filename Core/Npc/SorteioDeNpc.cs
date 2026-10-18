@@ -125,6 +125,9 @@ public static class SorteioDeNpc
 		{
 			f.bio_racas_dna = [.. molde.SangueDoBio];
 			f.bio_dna_respira = molde.SangueDoBio.Any(r => Vacuo.RespiraNoVacuo(r));
+			// (2026-10-17) AS SEIS SKILLS DO DNA do bio NPC: ele escolhe sozinho, ao nascer -- o rodizio das racas do sangue, as ativas primeiro
+			// (`Races.SkillsRaciais.EscolhaDoNpc`). O adendo do dono da a escolha ao bio; o Cell nao tem quem aperte os botoes.
+			f.bio_skills = (uint)Races.SkillsRaciais.EscolhaDoNpc(f.bio_racas_dna);
 		}
 
 		// --- 2. A IDADE, NO PLATO EM QUE ELA NAO COBRA NADA -----------------

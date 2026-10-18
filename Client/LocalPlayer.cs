@@ -481,6 +481,12 @@ public partial class LocalPlayer : Node2D
 		_agarrado = ficha.Agarrado;     // ...e este diz que alguem o segura: a tecla de andar vira a luta. Ver `Debatendo`
 		_segurando = ficha.Segurando;           // ...EU seguro alguem: o soco nao e soco, e o aperto. Ver `LerAcoes`
 		_estrangulando = ficha.Estrangulando;   // ...e apertando o pescoco dele eu fico plantado. Ver `PorQueNaoAnda`
+		// (2026-10-17) ...e enterrado (a larva do bio-androide) tambem -- e me vejo meio transparente sobre a terra. Ver `MostrarEnterrado`.
+		if (ficha.Enterrado != _enterrado)
+		{
+			_enterrado = ficha.Enterrado;
+			MostrarEnterrado(_enterrado);
+		}
 		_puxadoNaFusao = ficha.PuxadoNaFusao;   // ...e este diz que ele NAO esta sendo arremessado
 		_nadando = ficha.Nadando;       // ...e este diz por ONDE ele passa: ver _nadando
 		_visual.MostrarRabo(ficha.Rabo);
@@ -658,6 +664,32 @@ public partial class LocalPlayer : Node2D
 	/// <summary>EU ESTOU APERTANDO O PESCOCO DE ALGUEM (`SheetState.Estrangulando`): o corpo fica plantado.</summary>
 	private bool _estrangulando;
 
+	/// <summary>(2026-10-17) A MINHA LARVA ESTA ENTERRADA (`SheetState.Enterrado`): plantada, e so eu a vejo.</summary>
+	private bool _enterrado;
+
+	/// <summary>
+	/// (2026-10-17) A LARVA ENTERRADA NA MINHA TELA: o corpo meio transparente sobre o montinho de terra (<see cref="MonteDeTerra"/>). Os outros
+	/// nao me veem (o `Oculto` do snapshot); eu preciso saber onde estou e que estou la embaixo.
+	/// </summary>
+	private void MostrarEnterrado(bool enterrado)
+	{
+		bool sinal = enterrado && !EnterradoSemSinalDeTeste;
+		_visual.MostrarEnterrado(sinal);
+		MonteDeTerra? monte = GetNodeOrNull<MonteDeTerra>(MonteDeTerra.NomeDoNode);
+		if (sinal && monte == null) AddChild(new MonteDeTerra { Name = MonteDeTerra.NomeDoNode });
+		else if (!sinal && monte != null)
+		{
+			RemoveChild(monte);
+			monte.QueueFree();
+		}
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (robo `--diaglarva`): enterrada, a larva se ve como na superficie -- opaca e sem o montinho. Lido pelo
+	/// <see cref="MostrarEnterrado"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool EnterradoSemSinalDeTeste;
+
 	/// <summary>
 	/// QUEM ME LEVA NO COLO (o node do corpo que me carrega), ou nulo -- do `EntityState.LevadoPor`, pelo `World`.
 	/// Enquanto vale, o meu corpo e desenhado onde ELE e desenhado: o servidor crava a minha posicao na dele todo
@@ -759,6 +791,7 @@ public partial class LocalPlayer : Node2D
 		: _caido                                 ? "caido (nocaute ou morte)"
 		: _agarrado                              ? "agarrado (a tecla de andar e a luta pra se soltar)"
 		: _estrangulando && !EstranguladorAndaDeTeste ? "estrangulando alguem (afrouxe o aperto pra andar)"
+		: _enterrado                             ? "enterrado (saia da terra pra andar -- e a conta dos 5 min zera)"
 		: _carregando                            ? "carregando Ki (C)"
 		: _canalDeKi                             ? "com um canal de Ki de pe"
 		: Foco.Digitando                         ? "campo de texto em foco"
@@ -1529,6 +1562,10 @@ public partial class LocalPlayer : Node2D
 
 		LerAtividade(andando);
 
+		// (2026-10-16) NO AR, O SOCO VOLTA PRO VOO: a mesma pergunta da pose de voo (`PorAPoseDoCorpo`), feita ANTES da trava do
+		// soco -- e durante ela que o `flick` acaba. Ver `CharacterVisual.EmVoo`.
+		_visual.EmVoo = _altitude > 0f || _nadando;
+
 		// a pose de soco tem prioridade enquanto dura
 		if (_ataqueAte > 0) return;
 
@@ -2137,6 +2174,7 @@ public partial class LocalPlayer : Node2D
 		if (zona.HasValue) cli.SendAim(zona.Value);
 
 		if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("lethal"))) cli.SendLethal(!cli.Letal);
+		if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("travar_alvo"))) World.Instancia?.TravarNoMaisPerto();   // (2026-10-17) o lock-on
 	}
 
 	/// <summary>

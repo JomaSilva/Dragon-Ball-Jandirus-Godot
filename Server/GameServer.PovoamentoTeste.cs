@@ -186,7 +186,12 @@ public partial class GameServer
 			// AS RACAS QUE DE FATO NASCERAM, por planeta
 			foreach (LinhaDePovoamento l in _moldes.Plano)
 			{
-				string[] permitidas = Bercos.RacasNascidasEm(l.Planeta, todasAsRacas);
+				// (2026-10-16) A REGRA E A DO SORTEIO DE PRODUCAO (`SorteioDeNpc`): o molde que CRAVA as racas usa as dele -- a ALMA do
+				// Outro Mundo e um morto vindo de qualquer planeta, e o berco do Ceu e do Inferno e o dos VIVOS de la (Kai, Demonio) --; so o
+				// habitante sem raca cravada sai do berco.
+				string[] permitidas = _moldes!.Get(l.Molde) is { Racas.Length: > 0 } cravadas
+					? cravadas.Racas
+					: Bercos.RacasNascidasEm(l.Planeta, todasAsRacas);
 				// SO OS HABITANTES DO PLANO. A secao 3 desta bancada forjou um saibaman e um Freeza
 				// numa zona pre-feita vazia -- que pode ser justamente uma do plano --, e os dois
 				// tem o berco daquele mapa. Contar tudo faria a checagem reprovar por causa das
@@ -612,10 +617,10 @@ public partial class GameServer
 		string[] doPlano = [.. _moldes!.Plano.Select(l => l.Planeta)
 			.Distinct(StringComparer.OrdinalIgnoreCase)];
 
-		// Paraiso e Inferno entram junto de proposito: eles NAO estao no plano (ninguem povoa o alem),
-		// e sao os dois planetas que um crivo global alcancaria sem ninguem perceber, porque nenhum
-		// censo os mede.
-		string[] outros = [.. doPlano.Concat(["Heaven", "Hell"])
+		// Paraiso e Inferno entram junto de proposito: sao os dois planetas que um crivo global alcancaria sem ninguem perceber. Desde
+		// 2026-10-16 eles ESTAO no plano (as almas), mas por um molde que crava as racas -- o berco deles continua sendo o dos vivos de la,
+		// e e ele que este crivo mede. O `Distinct` e porque agora eles vem duas vezes (do plano e daqui).
+		string[] outros = [.. doPlano.Concat(["Heaven", "Hell"]).Distinct(StringComparer.OrdinalIgnoreCase)
 			.Where(p => Bercos.PovoDoPlaneta(p).Length == 0)];
 
 		Checa($"o crivo e SELETIVO: {Bercos.Povos.Count} planetas tem povo unico "
@@ -651,7 +656,10 @@ public partial class GameServer
 			  outros.Length == 0 ? "NAO SOBROU planeta livre -- o crivo virou global"
 								 : $"{tocados} planeta(s) mudaram");
 
-		string[] vazios = [.. doPlano.Where(p => Bercos.RacasNascidasEm(p, todasAsRacas).Length == 0)];
+		// SO CONTA O PLANETA DE ONDE ALGUEM PRECISA DO BERCO: a linha cujo molde crava as racas (a alma) nasce sem ele.
+		string[] vazios = [.. doPlano.Where(p => _moldes!.Plano.Any(l => string.Equals(l.Planeta, p, StringComparison.OrdinalIgnoreCase)
+																													 && _moldes!.Get(l.Molde) is not { Racas.Length: > 0 })
+																			&& Bercos.RacasNascidasEm(p, todasAsRacas).Length == 0)];
 		Checa($"nenhum dos {doPlano.Length} planetas do plano ficou sem NINGUEM pra nascer nele "
 			+ "(o modo de falha do recorte e o planeta vazio, e ele nao grita sozinho)",
 			  vazios.Length == 0, string.Join(", ", vazios));
@@ -944,7 +952,12 @@ public partial class GameServer
 			// (v0.3.0) O VAZAMENTO ACOMPANHA A POPULACAO: com 2,5x mais habitantes o tique base ficou 2,5x mais caro, e os 60
 			// por tique de antes viraram ruido dentro do criterio relativo (1,5x). A injecao cresce na mesma proporcao daquilo
 			// de que ela tem que se destacar -- os mesmos 60 com a populacao de antes (~150 corpos).
-			int zumbisPorTique = Math.Max(60, vivos.Count * 2 / 5);
+			// (2026-10-16) A CONTA DO TAMANHO, e nao mais "acompanhar a populacao". Com a lista crescendo `k` por tique, o terco inicial
+			// (tiques 0-300) custa `B + 150ck` e o final (600-900) `B + 750ck`; passar de 2x a base -- folga sobre o 1,5x do criterio, num
+			// relogio que oscila 20% entre janelas com o PC em uso -- pede `ck >= B/450`. Com `B` ~800 us (as almas do Outro Mundo
+			// levaram a populacao a ~465 corpos) e `c` ~1,5 ns por item varrido, `k` passa de mil: tres por corpo. Os 2/5 de antes subiam
+			// 1,36x e os 4/5 1,42x -- o vazamento existia, a regua e que nao o enxergava.
+			int zumbisPorTique = Math.Max(60, vivos.Count * 3);
 			if (vivos.Count > 0)
 			{
 				for (int j = 0; j < janelas; j++)

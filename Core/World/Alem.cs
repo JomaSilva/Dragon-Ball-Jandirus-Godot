@@ -257,6 +257,17 @@ public static class Alem
 	/// </summary>
 	public static bool EmVisita(bool morto, long passeAte) => morto && passeAte != 0;
 
+	/// <summary>
+	/// (v0.3.2) A PASSAGEM DO MORTO PELA TRANSMISSAO: quantos segundos o morto que chegou aos vivos pela Transmissao Instantanea fica la
+	/// -- meio transparente -- antes de a alma ser puxada de volta pro Outro Mundo. O dono, 2026-10-16: *"caso um player morto use
+	/// instante transmission pra alguem q ta vivo, ele aparece meio transparente e fica 5 segundos no mundo dos vivos dps voltando pro
+	/// outro mundo"*. Nao existe no DM: la a transmissao nao pergunta `dead` (`yardrat.dm:100-160`), e o morto chegava e ficava.
+	/// </summary>
+	public const double SegundosDaPassagem = 5;
+
+	/// <summary>A passagem em milissegundos (`SegundosDaPassagem`).</summary>
+	public const long MsDaPassagem = (long)(SegundosDaPassagem * 1000);
+
 	// =====================================================================
 	// AS ILHAS DO OUTRO MUNDO PUXAM 10x (dono, 2026-10-15)
 	// =====================================================================

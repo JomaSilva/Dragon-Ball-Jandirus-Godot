@@ -320,6 +320,7 @@ public partial class MenuJogo
 		Jandirus.Core.Forms.LinhaDeForma.Namekuseijin => "Namekuseijin",
 		Jandirus.Core.Forms.LinhaDeForma.Heran => "Heran",
 		Jandirus.Core.Forms.LinhaDeForma.Alien => "Alien",
+		Jandirus.Core.Forms.LinhaDeForma.Tensao => "Tensão (Humano)",
 		_ => l.ToString(),
 	};
 
@@ -672,7 +673,7 @@ public partial class MenuJogo
 				var nome = new Label
 				{
 					Text = (a.Online ? "● " : "○ ") + a.Conta
-						 + (a.Admin ? "   [admin]" : "") + (a.Banida ? "   [banida]" : ""),
+						 + (a.Admin ? "   [admin]" : "") + (a.Banida ? "   [banida]" : "") + (a.ClasseRara ? "   [classe rara no próximo]" : ""),
 					SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
 					VerticalAlignment = VerticalAlignment.Center,
 					TooltipText = a.Personagens.Length > 0 ? a.Personagens : "sem personagens",
@@ -704,6 +705,18 @@ public partial class MenuJogo
 				bBan.Pressed += () => cli.SendVerbo(eraBanida ? "admin_perdoar" : "admin_banir", conta);
 				h.AddChild(bBan);
 
+				// (2026-10-16) A CLASSE MAIS RARA NO PROXIMO PERSONAGEM DESTA CONTA -- o mesmo botao concede e cancela (`admin_classe_rara`)
+				bool tinhaRara = a.ClasseRara;
+				var bRara = new Button
+				{
+					Text = tinhaRara ? "cancelar classe rara" : "classe rara",
+					TooltipText = tinhaRara
+						? "tira a garantia: o proximo personagem desta conta volta a sortear a classe"
+						: "o PROXIMO personagem desta conta nasce com a classe mais rara da raca (no modo aleatorio, a raca sai so entre as que tem classe rara)",
+				};
+				bRara.Pressed += () => cli.SendVerbo("admin_classe_rara", conta);
+				h.AddChild(bRara);
+
 				corpo.AddChild(h);
 				// OS PERSONAGENS DA CONTA, recuados e menores: sao dado da lista, nao explicacao.
 				if (a.Personagens.Length > 0) Nota("      " + a.Personagens, corpo).AddThemeFontSizeOverride("font_size", 11);
@@ -727,7 +740,7 @@ public partial class MenuJogo
 		foreach ((string rotulo, string cmd) in new[]
 		{
 			("promover", "admin_promover"), ("rebaixar", "admin_rebaixar"),
-			("banir", "admin_banir"), ("perdoar", "admin_perdoar"),
+			("banir", "admin_banir"), ("perdoar", "admin_perdoar"), ("classe rara", "admin_classe_rara"),
 		})
 		{
 			var b = new Button { Text = rotulo };

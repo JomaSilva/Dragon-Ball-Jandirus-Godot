@@ -225,6 +225,8 @@ public sealed partial class GameServer
 	{
 		var w = Protocol.Begin(Protocol.S2C.Ceu);
 		w.Put(TempoDoMundo);
+		// (2026-10-17) A ORIGEM DO CALENDARIO: o cliente refaz a data com a conta do Core (`Calendario`), sem pacote nenhum por dia.
+		w.Put(OrigemDoCalendario);
 		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
@@ -241,6 +243,7 @@ public sealed partial class GameServer
 		double agora = TempoDoMundo;
 		TickDoClima();
 		TickDoRaio(agora);
+		TickDoCalendario();   // (2026-10-17) o dia e o mes que viram -- ver `GameServer.Calendario.cs`
 
 		// O PALCO DA FOTO (`--macacovivo`), e ele mora AQUI e não num relógio próprio: o que ele faz é
 		// abrir o corpo do Saiyajin de cena no segundo combinado, e o gatilho que vai lê-lo é o laço

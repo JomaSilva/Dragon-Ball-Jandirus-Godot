@@ -84,7 +84,7 @@ public partial class GameServer
 	{
 		int n = 0;
 		foreach (ServerPlayer p in _players.Values)
-			if (EhNpcDoMundo(p) && !p.Ficha.dead
+			if (EhNpcDoMundo(p) && HabitanteDePe(p)
 				&& string.Equals(p.Papel!.Molde.Id, moldeId, StringComparison.OrdinalIgnoreCase)
 				&& string.Equals(p.Berco.Natal, planeta, StringComparison.OrdinalIgnoreCase))
 				n++;
@@ -102,7 +102,7 @@ public partial class GameServer
 	{
 		int n = 0;
 		foreach (ServerPlayer p in ZoneList(zona.Hash))
-			if (EhNpcDoMundo(p) && !p.Ficha.dead) n++;
+			if (EhNpcDoMundo(p) && HabitanteDePe(p)) n++;
 		return n;
 	}
 
@@ -111,9 +111,59 @@ public partial class GameServer
 	{
 		int n = 0;
 		foreach (ServerPlayer p in _players.Values)
-			if (EhNpcDoMundo(p) && !p.Ficha.dead) n++;
+			if (EhNpcDoMundo(p) && HabitanteDePe(p)) n++;
 		return n;
 	}
+
+	/// <summary>
+	/// ESTE CORPO DO MUNDO CONTA COMO HABITANTE? Vivo -- **ou ALMA** (2026-10-16, ver `GameServer.Almas.cs`): a alma nasce morta e e
+	/// habitante assim mesmo. Sem ela na conta do alvo, o Outro Mundo nunca chegaria nos 40 e a manutencao poria mais almas a cada cinco
+	/// minutos, pra sempre; sem ela nos tetos, a lotacao nao as veria. O morto comum continua fora: ele esta saindo do mundo.
+	/// </summary>
+	/// <summary>
+	/// (2026-10-16) CADA DONO DO CARGO TIRA UM -- o dono: *"o cargo de supremo kaioh pode ter ate 5 players no cargo, e cada player no
+	/// cargo faz 1 npc sumir desses 5"*. Chamado quando alguem ASSUME um cargo (reivindicar, outorga, entronizar): toda linha do plano
+	/// marcada com ele (`cadaDonoTiraUm`) perde os corpos que sobram do alvo novo -- eles SOMEM, sem cadaver, e a zona le quem saiu.
+	/// Quem devolve um quando a vaga abre de novo e a manutencao (ela completa ate o alvo; nunca mata).
+	///
+	/// SAI PRIMEIRO QUEM NAO ESTA BRIGANDO: um Supremo Kaioh que some no meio de uma luta tiraria a presa da mao de alguem. E os
+	/// pedidos ainda na fila do povoamento saem junto -- senao nasceriam depois, por cima do alvo novo.
+	/// </summary>
+	private void AparaOPovoDoCargo(string cargo)
+	{
+		if (_moldes == null) return;
+		foreach (LinhaDePovoamento linha in _moldes.Plano)
+		{
+			if (!string.Equals(linha.CadaDonoTiraUm, cargo, StringComparison.OrdinalIgnoreCase)) continue;
+			ZoneKey zona = ZoneKey.Premade(linha.Planeta);
+			int alvo = Povoamento.AlvoDaLinha(linha, QuantosDonos);
+
+			var resto = _filaDoPovoamento.Where(x => !(x.Zona.Hash == zona.Hash
+				&& string.Equals(x.Molde, linha.Molde, StringComparison.OrdinalIgnoreCase))).ToList();
+			if (resto.Count != _filaDoPovoamento.Count)
+			{
+				_filaDoPovoamento.Clear();
+				foreach (var x in resto) _filaDoPovoamento.Enqueue(x);
+			}
+
+			List<ServerPlayer> deles = [.. ZoneList(zona.Hash)
+				.Where(p => EhNpcDoMundo(p) && HabitanteDePe(p)
+					&& string.Equals(p.Papel!.Molde.Id, linha.Molde, StringComparison.OrdinalIgnoreCase))
+				.OrderBy(p => p.Combate.EmCombate > 0 ? 1 : 0)];
+			foreach (ServerPlayer sai in deles.Take(Math.Max(0, deles.Count - alvo)).ToList())
+			{
+				foreach (ServerPlayer o in ZoneList(zona.Hash))
+					if (o.Peer != null) Avisar(o, $"{sai.Name} se retira: um novo Kaioshin tomou o lugar dele.");
+				GD.Print($"[server] povoamento: '{sai.Name}' ({linha.Molde}) some -- '{cargo}' tem {QuantosDonos(cargo)} dono(s), alvo {alvo}");
+				RemoverNpc(sai);
+			}
+		}
+	}
+
+	private static bool HabitanteDePe(ServerPlayer p) => !p.Ficha.dead || (!AlmaForaDaContaDeTeste && p.Papel is { Molde.Alma: true });
+
+	/// <summary>DEFEITO INJETADO (bancada `--infernoteste`): a alma fica fora da conta -- o "morto nao conta" de antes. Falso em jogo, sempre.</summary>
+	internal static bool AlmaForaDaContaDeTeste;
 
 	/// <summary>
 	/// **CABE MAIS UM CORPO?** O teto, numa funcao so.
@@ -235,12 +285,14 @@ public partial class GameServer
 					naFila++;
 
 			// COMPLETA ATE O ALVO, e nunca mata pra chegar nele: o `for(var/i = have + 1 to POP_*)`
-			// do original nao tem ramo de "sobrou gente".
-			for (int i = vivos + naFila; i < linha.Quantos; i++)
+			// do original nao tem ramo de "sobrou gente". (2026-10-16) O ALVO PODE CAIR COM UM CARGO: os Supremos Kaiohs do Ceu sao
+			// cinco menos os Kaioshins jogadores (`cadaDonoTiraUm`) -- e quem sobra quando alguem assume sai pelo `AparaOPovoDoCargo`.
+			int alvo = Povoamento.AlvoDaLinha(linha, QuantosDonos);
+			for (int i = vivos + naFila; i < alvo; i++)
 			{
 				if (!CabeMaisUmCorpo(zona, tetoZona, tetoServidor, out string porque))
 				{
-					GD.Print($"[server] povoamento: {porque} -- {linha.Quantos - i} cidadao(s) de "
+					GD.Print($"[server] povoamento: {porque} -- {alvo - i} cidadao(s) de "
 						   + $"'{linha.Planeta}' nao nascem");
 					break;
 				}

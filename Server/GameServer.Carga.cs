@@ -130,8 +130,7 @@ public sealed partial class GameServer
 		//
 		// A CARGA (tecla C) PARA JUNTO porque ela e o mesmo tanque por outra porta: o corpo esta preso,
 		// mas so o MOVIMENTO e bloqueado no cliente (`LocalPlayer`: "SO O MOVIMENTO E BLOQUEADO"),
-		// entao segurar C durante a cena continuaria enchendo o Ki -- e o `extracharge` acumulado
-		// voltaria como Ki depois, pelo troco do `RegenDeKi`. Suspensa, e nao cancelada: e o mesmo
+		// entao segurar C durante a cena continuaria enchendo o Ki. Suspensa, e nao cancelada: e o mesmo
 		// tratamento que andar ja recebe, e retomar sozinho e o que evita brigar com o controle.
 		//
 		// O QUE **NAO** PARA E O PRECO DO EXCESSO, la embaixo. Ele e DANO, e dano tem que continuar
@@ -149,7 +148,11 @@ public sealed partial class GameServer
 		// o Core: forma nao masterizada derruba a regeneracao a 20% pra que o dreno fique liquido
 		// negativo. Sem isso a regeneracao passa o dreno e o Super Saiyajin nunca cai.
 		double drenoDaForma = pl.Forma.NaBase ? 0 : pl.Forma.DrenoPorSegundo();
-		if (!emCena) RegenDeKi.Passo(f, dt, drenoDaForma);
+		// (2026-10-16) A LOUCURA DO CORRUPTED MAJIN NAO REGENERA -- o dono: *"desativa regen de ki passiva e faz o ki cair bem
+		// devagar"*, senao *"o ki nunca vai acabar e ele nunca vai sair da loucura se ninguem o vencer"*. Quem faz o Ki cair e o
+		// `TickDaInsana` (`GameServer.SagaDoMajin.cs`).
+		bool semRegenPelaLoucura = InsanoDaSaga(pl) && !LoucuraComRegenDeTeste;
+		if (!emCena && !semRegenPelaLoucura) RegenDeKi.Passo(f, dt, drenoDaForma);
 
 		// (2026-10-13) REUNINDO ENERGIA NESTE TIQUE? E o que segura o Ki acima de 100% -- ver `CargaDeKi.PrecoDoExcesso`.
 		bool reunindo = false;

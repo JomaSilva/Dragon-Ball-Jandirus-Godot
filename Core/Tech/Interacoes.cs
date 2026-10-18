@@ -78,6 +78,13 @@ public static class Interacoes
 		/// tingir -- vira o ARGUMENTO do verbo (`&lt;folha&gt;` ou `&lt;folha&gt;/&lt;RRGGBB&gt;`).
 		/// </summary>
 		Roupa = 4,
+
+		/// <summary>
+		/// (v0.3.2) Abre uma pagina com as ESCOLHAS QUE O SERVIDOR MANDA -- o `input() in list()` do DM, quando a lista e viva e so o
+		/// servidor sabe monta-la (os mundos do passe do Enma). O menu manda o verbo com o argumento VAZIO, o servidor responde com as
+		/// escolhas (`S2C.Escolhas`), e cada uma vira um botao que manda o MESMO verbo com ela.
+		/// </summary>
+		Lista = 5,
 	}
 
 	private static readonly Acao[] Nenhuma = [];
@@ -189,9 +196,21 @@ public static class Interacoes
 		// SEM "Fabricar..." desde 2026-09-03: fabricar mora na aba Tech do menu P (o catalogo com icone,
 		// custo e o motivo de cada recusa). A bancada e onde se ESTUDA -- e o que se fabrica sai da
 		// tecnologia estudada, nao do lugar em que se esta.
+		//
+		// O PARAFUSO (2026-10-17) -- um jogador: *"research table n da pra parafusar no chao ent o jogo n deixa eu estudar nela
+		// sem ser a q ja ta no spawn"*. O estudo exige a mesa aparafusada (`TickDoEstudo`; o `if(!Bolted)` do `Experiment()`,
+		// `TechResearch.dm:41`), a da mochila era assentada solta e o botao nao existia -- de quebra, sem o verbo aqui, o
+		// `PedeParafuso` dizia que ela nao pedia parafuso e o contorno de "solta" nem piscava. Hoje ela NASCE aparafusada, como no DM
+		// (`NasceAparafusada`), e o botao fica: e por ele que se solta a mesa, e se aparafusa a que foi assentada solta antes.
+		"Research_Station" when MesaSemParafusoDeTeste =>
+		[
+			new Acao("Estudar", "estudar", "", "fica debruçado na bancada ganhando tecnologia"),
+			new Acao("Pegar", "pegar", "", "recolhe a bancada pra mochila (só a sua)"),
+		],
 		"Research_Station" =>
 		[
 			new Acao("Estudar", "estudar", "", "fica debruçado na bancada ganhando tecnologia"),
+			new Acao("Aparafusar / soltar", "aparafusar", "", "só se estuda nela aparafusada"),
 			new Acao("Pegar", "pegar", "", "recolhe a bancada pra mochila (só a sua)"),
 		],
 
@@ -208,8 +227,8 @@ public static class Interacoes
 			new Acao("Ouvir o Enma", "enma_ouvir", "", "ele lê a sua ficha e diz o preço da volta"),
 			new Acao("Voltar à vida (1.000.000 de zeni)", "enma_reviver", "", "o corpo volta fraco: BP a 25% por uma hora"),
 			new Acao("Visitar os vivos (100.000 zeni, 7 dias)", "enma_passe", "",
-					 "escreva o planeta (pré-feito ou descoberto; vazio = a lista): você desce MORTO, de auréola, e volta pra cá no fim do prazo",
-					 Forma.Texto, 0, 24),
+					 "escolha o planeta (pré-feito ou descoberto): você desce MORTO, de auréola, e volta pra cá no fim do prazo",
+					 Forma.Lista),
 			new Acao("Reencarnar (renascer com 10% do poder)", "enma_reencarnar", "",
 					 "este personagem acaba PARA SEMPRE e você volta pra criação -- escreva o nome dele pra confirmar",
 					 Forma.Texto, 0, 24),
@@ -1069,6 +1088,26 @@ public static class Interacoes
 	/// a macieira plantada (que nunca teve `Bolt`) volta a piscar de "solta" e a ganhar a pilula. Falso em jogo.
 	/// </summary>
 	public static bool TudoPedeParafusoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--cidadeteste`, passo 6b): a mesa de pesquisa volta a nao ter o botao do parafuso -- a de antes
+	/// de 2026-10-17, em que so a mesa do mapa (que nasce aparafusada) servia pra estudar. Falso em jogo.
+	/// </summary>
+	public static bool MesaSemParafusoDeTeste;
+
+	/// <summary>
+	/// A OBRA QUE JA SAI DA MOCHILA APARAFUSADA (2026-10-17): a mesa de pesquisa. No DM ela tem `Bolted = 1` no proprio tipo
+	/// (`TechResearch.dm:33`) -- assentada, ja e uma instalacao --, e as outras maquinas nascem soltas e se aparafusam pelo `Bolt`.
+	/// O dono: *"mesa de pesquisa ja vem soldada, ao colocar no chao ela fica soldada direto"*. Quem pergunta e o assento
+	/// (`GameServer.Posicionar`).
+	/// </summary>
+	public static bool NasceAparafusada(string tipo) => tipo == "Research_Station" && !MesaNasceSoltaDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--cidadeteste`, passo 6b): a mesa volta a ser assentada solta, como ate 2026-10-17 -- e solta
+	/// ela nao rende estudo ate alguem achar o botao. Falso em jogo.
+	/// </summary>
+	public static bool MesaNasceSoltaDeTeste;
 
 	/// <summary>
 	/// ESTE TIPO SE APARAFUSA? So o que tem o verbo do parafuso no proprio menu: a macieira, a Drill, o banco e a

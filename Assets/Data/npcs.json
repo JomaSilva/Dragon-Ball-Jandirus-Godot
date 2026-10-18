@@ -64,9 +64,13 @@
     { "planeta": "Arlia",      "molde": "cidadao", "quantos": 30 },
     { "planeta": "Makyo_Star", "molde": "cidadao", "quantos": 30 },
     { "planeta": "Vegeta",     "molde": "rei_vegeta",      "quantos": 1, "tronoVago": "kov" },
-    { "planeta": "Vegeta",     "molde": "principe_vegeta", "quantos": 1, "tronoVago": "kov" }
+    { "planeta": "Vegeta",     "molde": "principe_vegeta", "quantos": 1, "tronoVago": "kov" },
+    { "planeta": "Afterlife",  "molde": "alma",            "quantos": 40 },
+    { "planeta": "Heaven",     "molde": "alma",            "quantos": 20 },
+    { "planeta": "Hell",       "molde": "alma_condenada",  "quantos": 30 },
+    { "planeta": "Heaven",     "molde": "supremo_kaioh",   "quantos": 5, "cadaDonoTiraUm": "kaioshin" }
   ],
-  "_povoamento": "(v0.3.0) OS NUMEROS: o dono pediu mais gente nos planetas civilizados ('a galera reclamou q os planetas q tem civilizacoes estao mt desertos') -- os seis foram a 2,5x (Terra e Vegeta 100, Namek 80, Icer, Arlia e Makyo Star 30). O fio aguenta porque o habitante longe de todo jogador so vai no snapshot no tique em que pensa (Server/GameServer.Snapshot.cs, CorposDoSnapshot), e a mente dele so roda com jogador no planeta. (v0.3.0) 'tronoVago' e a chave de um cargo: a linha so nasce enquanto nenhum JOGADOR o carrega. O Rei Vegeta e o Principe sao do PlanetPopulation.dm (populate_vegeta, :432-436): o dono quer os dois so com o trono de Vegeta vago (no DM o Principe nascia sempre). Matar o Rei sendo Saiyajin toma o trono -- ver Server/GameServer.ReiDeVegeta.cs.",
+  "_povoamento": "(v0.3.0) OS NUMEROS: o dono pediu mais gente nos planetas civilizados ('a galera reclamou q os planetas q tem civilizacoes estao mt desertos') -- os seis foram a 2,5x (Terra e Vegeta 100, Namek 80, Icer, Arlia e Makyo Star 30). O fio aguenta porque o habitante longe de todo jogador so vai no snapshot no tique em que pensa (Server/GameServer.Snapshot.cs, CorposDoSnapshot), e a mente dele so roda com jogador no planeta. (v0.3.0) 'tronoVago' e a chave de um cargo: a linha so nasce enquanto nenhum JOGADOR o carrega. O Rei Vegeta e o Principe sao do PlanetPopulation.dm (populate_vegeta, :432-436): o dono quer os dois so com o trono de Vegeta vago (no DM o Principe nascia sempre). Matar o Rei sendo Saiyajin toma o trono -- ver Server/GameServer.ReiDeVegeta.cs. (2026-10-16) AS ALMAS: o dono pediu 'npcs no outro mundo, npcs mortos com a aureula etc, no inferno tb' -- 40 no Outro Mundo e 20 no Ceu (molde 'alma'), 30 no Inferno ('alma_condenada'). Os tres numeros sao escolha minha. Elas nascem mortas e contam no alvo assim mesmo (Server/GameServer.Povoamento.cs, ContarHabitantes). (2026-10-16) OS CINCO SUPREMOS KAIOHS do Ceu (molde 'supremo_kaioh'): 'cadaDonoTiraUm' e a chave de um cargo de varias vagas -- o alvo da linha cai um por jogador que o carrega, e quem sobra some na hora em que alguem assume (o dono: 'cada player no cargo faz 1 npc sumir desses 5').",
 
   "sagas": [
     {
@@ -96,18 +100,19 @@
       "gatilhoBp": 100000,
       "destroiPlaneta": true,
       "ultimatoSoNoUltimoDegrau": true,
+      "ataqueDoUltimato": "deathball",
       "minutosDeLuta": 5,
       "minutosDeOcio": 5,
       "anuncioDoMarco": "Freeza partiu em direcao a Namek atras das Esferas do Dragao! Ele chegara em {dias} dias.",
       "anuncioDiario": "Freeza se aproxima de Namek... chegada em {dias} dia(s).",
-      "anuncioDoUltimato": "FREEZA vai destruir {planeta}: uma SUPERNOVA cresce sobre ele, e nada o atinge enquanto ela cresce!",
+      "anuncioDoUltimato": "FREEZA vai destruir {planeta}: uma DEATH BALL cresce sobre ele, e nada o atinge enquanto ela cresce!",
       "anuncioDaVitoria": "FREEZA FOI DERROTADO EM NAMEK! As Esferas do Dragao estao seguras!",
       "chefes": [
         { "molde": "freeza_namek", "diasMin": 7, "diasMax": 7, "recompensa": 100,
           "anuncioDaChegada": "Freeza chegou a Namek atras das Esferas do Dragao! Os Namekuseijins estao em perigo!",
           "anuncioDaQueda": "O corpo de Freeza se desfaz sobre a terra verde de Namek." }
       ],
-      "_nota": "BEV_M2_TRIGGER_BP 100000, BEV_M2_DAYS 7. O prazo de 5 min (BEV_FREEZA2_FINAL_TIMER) so passa a correr na FORMA FINAL -- e por isso 'ultimatoSoNoUltimoDegrau'."
+      "_nota": "BEV_M2_TRIGGER_BP 100000, BEV_M2_DAYS 7. O prazo de 5 min (BEV_FREEZA2_FINAL_TIMER) so passa a correr na FORMA FINAL -- e por isso 'ultimatoSoNoUltimoDegrau'. (2026-10-17) 'ataqueDoUltimato: deathball' -- o dono: 'a super nova e so quando ele explode o planeta vegeta, namek e death ball ao qual ele joga pra baixo seguindo a mesma logica da super nova' (Core/Npc/Supernova.cs, AtaqueDoUltimato)."
     },
     {
       "id": "cell",
@@ -185,6 +190,85 @@
       },
       "_notaNomes": "As TRES primeiras pools sao literais do npc_random_name (PlanetPopulation.dm:340-354). As outras treze sao NOVAS: o DM so povoava Terra, Vegeta e Namek, entao ele nunca precisou de nome pra Icer, Arlia, Makyo_Star nem pras racas que so o berco deste port poe num planeta. Onde havia nome canonico do desenho ele foi usado; o resto e inventado. Raca sem pool cai no 'nome' do molde -- o 'Stranger' do original com outro texto.",
       "_nota": "SEM 'racas' e SEM 'nomes' de proposito: a raca vem do berco do planeta onde ele nasce, e o nome vem do sorteio da propria raca. A faixa de BP cobre as tres do DM de uma vez (make_human 500-3500, make_saiyan_commoner 800-5000, make_namekian 1500-4000: PlanetPopulation.dm:362,390,407). O temperamento e o behavior_vals = list(80,70,5,50) do mob/npc/Citizen (:74) -- coragem 80 (nao foge), furia 70 (barragem), agressividade alta porque o chase_speed dele e 2 e nao 3. escadaAutomatica: false porque um habitante nao e um Super Saiyajin dormente."
+    },
+
+    {
+      "id": "alma",
+      "nome": "Alma",
+      "tipo": "cidadao",
+      "alma": true,
+      "racas": ["Human", "Human", "Human", "Saiyan", "Namekian", "Alien", "Tsujin", "Yardrat", "Kanassa", "Arlian"],
+      "talentos": ["/datum/skill/ki/Ki_Wave", "/datum/skill/mind/Ki_Unlocked@35", "/datum/skill/ki/Scattering_Bullet", "/datum/skill/mind/Basic_Ki_Control@30", "/datum/skill/ki/Afterimage"],
+      "quantosTalentos": 0.8,
+      "generos": ["Male", "Male", "Female"],
+      "bpMin": 500, "bpMax": 5000,
+      "marcosBase": 2, "marcosPorDecada": 1.2,
+      "vocacao": ["/datum/skill/tree/Body", "/datum/skill/tree/Mind"],
+      "nivelDasSkills": 20,
+      "escadaAutomatica": false,
+      "inteligencia": 50, "agressividade": 40, "coragem": 70, "furia": 40,
+      "perfil": { "voa": 0.6, "ki": 0.5 },
+      "nomesPorRaca": {
+        "Human":    ["Olibu", "Arqua", "Chapuchai", "Papoi", "Tapkar", "Lena", "Mira", "Otto", "Suno", "Upa", "Bora", "Annin"],
+        "Saiyan":   ["Bardock", "Gine", "Toma", "Fasha", "Celipa", "Borgos", "Shugesh", "Totepo", "Panbukin", "Tsumuri"],
+        "Namekian": ["Nail", "Katas", "Tsuno", "Moori", "Esca", "Maima", "Saichi", "Muri"],
+        "Alien":    ["Pikkon", "Torbie", "Caterpy", "Froug", "Maraikoh", "Orlen"],
+        "Tsujin":   ["Kaji", "Renbu", "Sora", "Hakuto", "Iwane", "Yura"],
+        "Yardrat":  ["Pybara", "Selipa", "Nunn", "Kamin"],
+        "Kanassa":  ["Toolo", "Kanas", "Vidente", "Ohme"],
+        "Arlian":   ["Lesoy", "Atla", "Moah", "Quilha"]
+      },
+      "_nota": "(2026-10-16) A ALMA do Outro Mundo e do Ceu -- o dono: 'colocar npcs no outro mundo, npcs mortos com a aureula etc'. 'alma': true faz o habitante nascer MORTO, de AUREOLA e DE PE (Server/GameServer.Almas.cs); a conversa e a de quem morreu ('conversaDoAlem' no rotina.json). 'racas' crava as racas MORTAIS: sem ela o sorteio usaria o berco do lugar, e quem nasce no Ceu sao os Kai e os Semideuses VIVOS. Os nomes sao de mortos da obra: a tripulacao do Bardock e os lutadores do torneio do Outro Mundo (Pikkon, Olibu, Arqua, Torbie, Caterpy...)."
+    },
+
+    {
+      "id": "alma_condenada",
+      "nome": "Alma Condenada",
+      "tipo": "cidadao",
+      "alma": true,
+      "racas": ["Alien", "Alien", "Icer", "Saiyan", "Heran", "Makyo", "Majin", "Human"],
+      "talentos": ["/datum/skill/ki/Ki_Wave", "/datum/skill/mind/Ki_Unlocked@35", "/datum/skill/ki/Scattering_Bullet", "/datum/skill/mind/Basic_Ki_Control@30", "/datum/skill/ki/Afterimage"],
+      "quantosTalentos": 0.8,
+      "generos": ["Male", "Male", "Male", "Female"],
+      "bpMin": 500, "bpMax": 5000,
+      "marcosBase": 2, "marcosPorDecada": 1.2,
+      "vocacao": ["/datum/skill/tree/Body", "/datum/skill/tree/Mind"],
+      "nivelDasSkills": 20,
+      "escadaAutomatica": false,
+      "inteligencia": 45, "agressividade": 70, "coragem": 75, "furia": 75,
+      "perfil": { "voa": 0.5, "ki": 0.6 },
+      "nomesPorRaca": {
+        "Alien":  ["Ginyu", "Recoome", "Burter", "Jeice", "Guldo", "Zarbon", "Dodoria", "Cui", "Appule", "Raspberry", "Blueberry"],
+        "Icer":   ["Salza", "Neiz", "Dore", "Kuriza", "Chilled", "Frost"],
+        "Saiyan": ["Nappa", "Raditz", "Turles", "Paragus", "Daikon", "Leek"],
+        "Heran":  ["Bojack", "Zangya", "Bido", "Bujin", "Kogu"],
+        "Makyo":  ["Garlic", "Nicky", "Ginger", "Sansho", "Spice", "Vinegar"],
+        "Majin":  ["Spopovich", "Yamu", "Pui Pui", "Yakon"],
+        "Human":  ["Tao", "General Blue", "Coronel Silver", "General White", "Murasaki", "Sargento Metallic"]
+      },
+      "_nota": "(2026-10-16) A ALMA do Inferno -- o dono: 'npcs mortos com a aureula etc, no inferno tb'. Mesmo molde de habitante da 'alma', com a conversa de quem esta preso la ('conversaDoInferno') e um temperamento mais quente. Os nomes sao dos capangas e viloes menores que a obra mandou pro Inferno: a Forca Ginyu, os soldados do Freeza e do Cooler, o bando do Bojack, a Red Ribbon. Os VILOES DE SAGA (Freeza, Cell, Boo) NAO entram aqui: eles aparecem as vezes como luta de chefe (Core/Npc/ViloesDoInferno.cs)."
+    },
+
+    {
+      "id": "supremo_kaioh",
+      "nome": "Supremo Kaioh",
+      "tipo": "cidadao",
+      "racas": ["Kai"],
+      "generos": ["Male"],
+      "nomes": ["Shin", "Kaioshin do Norte", "Kaioshin do Sul", "Kaioshin do Oeste", "Grande Kaioshin"],
+      "nomesUnicos": true,
+      "bpMin": 47500000, "bpMax": 52500000,
+      "talentos": ["/datum/skill/ki/Ki_Wave", "/datum/skill/mind/Ki_Unlocked@35", "/datum/skill/ki/Scattering_Bullet",
+                   "/datum/skill/mind/Basic_Ki_Control@30", "/datum/skill/ki/Afterimage", "/datum/skill/ki/Heal",
+                   "/datum/skill/ki/EnergyShield"],
+      "quantosTalentos": 1.0,
+      "marcosBase": 4, "marcosPorDecada": 1.5,
+      "vocacao": ["/datum/skill/tree/Body", "/datum/skill/tree/Mind"],
+      "nivelDasSkills": 50,
+      "escadaAutomatica": false,
+      "inteligencia": 80, "agressividade": 30, "coragem": 90, "furia": 50,
+      "perfil": { "voa": 0.8, "ki": 0.7 },
+      "_nota": "(2026-10-16) OS CINCO SUPREMOS KAIOHS DO CEU -- o dono: 'no heaven coloque npcs q sao supremos, 5 npcs q sao supremos kaios (se o majin caotic absorver eles, ele pode comecar a majin saga), eles sao mt fortes, em torno de 50 milhoes cada um deles (podendo ter variacoes pequenas)' e 'esses npcs vao ser da raca kaio claro'. Raca Kai: a saga do Corrupted Majin comeca por raca (Core/Races/SagaDoMajin.cs, EhKai), entao absorver um deles e o primeiro degrau. 47,5 a 52,5 milhoes (o sorteio e linear) -- os +-5% sao a 'variacao pequena', escolha minha. Cidadao: nao ataca ninguem e revida quem o ataca. Os nomes sao os cinco Supremos Kaiohs do universo 7 e nao se repetem ('nomesUnicos'). A linha do povoamento tem 'cadaDonoTiraUm': cada jogador no cargo de Kaioshin (5 vagas, Core/Ranks/Ranks.cs) faz um deles sumir (Server/GameServer.Povoamento.cs, AparaOPovoDoCargo)."
     },
 
     {

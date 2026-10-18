@@ -305,6 +305,17 @@ public partial class RoboDaV020 : Node
 			  && Hud.AvisosDoCorpo(limpa with { Estado2 = 8 | 32 })[0].Texto.StartsWith("ESTRANGULADO"));
 		Checa("quem segura alguem le o que o soco e o passo fazem", Hud.AvisosDoCorpo(limpa with { Estado2 = 64 })[0].Texto.Contains("estrangula"));
 		Checa("caido nao ha aviso: o corpo no chao ja e a leitura", Hud.AvisosDoCorpo(limpa with { Estado = 1 | 4, Estado2 = 4 }).Count == 0);
+		// (2026-10-16) O MORTO DE PE TEM AVISO: *"n aparece a informaçao de guarda levantada quando vc defende quando morto"*. De visita (o
+		// bit do passe) o morto esta de pe em qualquer zona -- e a mesma pergunta do Outro Mundo (`LocalPlayer.Caido`).
+		Checa("MORTO DE PE (de visita) com a guarda erguida -> \"GUARDA LEVANTADA\"",
+			  Hud.AvisosDoCorpo(limpa with { Estado = 2 | 4, Estado3 = 1 }).Select(a => a.Texto).SequenceEqual([Hud.AvisoDeGuarda]));
+		LocalPlayer.VisitaDeitaDeTeste = true;
+		try
+		{
+			Injeta("(o passe ignorado: o morto de visita conta como cadaver) o mesmo corpo fica sem aviso -- o corte de antes, pro morto de pe",
+				   Hud.AvisosDoCorpo(limpa with { Estado = 2 | 4, Estado3 = 1 }).Count == 0);
+		}
+		finally { LocalPlayer.VisitaDeitaDeTeste = false; }
 
 		// ---- pelo fio: a tecla de guarda de verdade
 		Input.ActionPress(Teclas.NomeNoMotor("guard"));

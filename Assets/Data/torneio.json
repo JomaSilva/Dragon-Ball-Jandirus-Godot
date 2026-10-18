@@ -8,12 +8,20 @@
     "NPC e a media dos jogadores inscritos x rand(60..140)%), npc.bpPiso (TRN_NPC_BP_FLOOR).",
     "",
     "O QUE E DO PORT: conviteSegundos (o convite na tela vence; o alert() do DM nao vencia), woSegundos (quem",
-    "desconecta no meio da luta tem N s pra voltar, senao perde por W.O.), a agenda em DIAS de tempo real (o DM",
-    "usava a virada de mes do relogio do jogo) e a disputa do 3o lugar antes da final (o DM premiava os dois",
+    "desconecta no meio da luta tem N s pra voltar, senao perde por W.O.), a agenda em DIAS DO JOGO (o dia do ceu,",
+    "24 min de relogio: 30 dias = 12 h reais; o DM abria os dois na virada de mes do relogio do jogo) e a disputa do",
+    "3o lugar antes da final (o DM premiava os dois",
     "semifinalistas sem luta). alem.campeaoRevive: o campeao do Outro Mundo volta a vida? Padrao: nao, so o zeni.",
     "",
     "ARENAS em celulas do port (x - 1, altura - y das coordenadas BYOND), retangulo inclusivo [x1, y1, x2, y2].",
-    "Terra: TRN_ARENA 220..276 x 11..68 (z1). Outro Mundo: TRNH_ARENA 117..126 x 140..148 (z6 = Afterlife)."
+    "Terra: TRN_ARENA 220..276 x 11..68 (z1). Outro Mundo: o PALCO INTEIRO, 16 x 15 celulas (110..125 x 346..360) -- o",
+    "TRNH_ARENA do DM (117..126 x 140..148, z6) e so o canto de baixo-direita do piso claro (10 x 9), e com ele a roda de",
+    "espera caia em cima do palco (2026-10-17, o dono: 'so os dois q estao lutando estao dentro dela').",
+    "",
+    "CADEIRAS [x, y] (celulas do port): onde quem espera fica sentado, virado pra arena, na ordem em que sao ocupadas (a",
+    "primeira livre). As do Outro Mundo sao as 32 do DM (Tournament.dm:650-654, o seats do torneio do ceu: fileiras",
+    "esquerda, de cima, de baixo e direita, uma a cada 2 celulas, em volta do palco). Sem a lista, ou com todas tomadas,",
+    "quem espera vai pra roda sorteada de 2 a 5 celulas em volta da arena (o rest_turf), como na Terra."
   ],
 
   "vagas": 32,
@@ -41,7 +49,13 @@
 
   "alem": {
     "zona": "Afterlife",
-    "arena": [116, 352, 125, 360],
+    "arena": [110, 346, 125, 360],
+    "cadeiras": [
+      [108, 346], [108, 348], [108, 350], [108, 352], [108, 354], [108, 356], [108, 358], [108, 360],
+      [110, 344], [112, 344], [114, 344], [116, 344], [118, 344], [120, 344], [122, 344], [124, 344],
+      [110, 362], [112, 362], [114, 362], [116, 362], [118, 362], [120, 362], [122, 362], [124, 362],
+      [127, 346], [127, 348], [127, 350], [127, 352], [127, 354], [127, 356], [127, 358], [127, 360]
+    ],
     "diasDepoisDaTerra": 15,
     "campeaoRevive": false
   }

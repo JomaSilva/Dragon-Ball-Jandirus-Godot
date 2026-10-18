@@ -119,6 +119,10 @@ public partial class MenuJogo
 			  f.MultTotal > 1.01 ? Tema.Destaque : Tema.Texto, agora);
 		Linha("Poder efetivo", $"{f.Inteireza * 100:0.#}%",
 			  f.Inteireza >= 0.9 ? Tema.Bom : f.Inteireza <= 0.5 ? Tema.Perigo : Tema.Texto, agora);
+		// (2026-10-16) A ACLIMATACAO, QUANDO EXISTE: o corpo que domina mais gravidade do que a do chao rende mais PODER aqui (o
+		// `gravFelt` do DM, que soma na base). O dono: *"essa parte do aclimado q vc comentou, deveria aparecer na aba de formas,
+		// aparecendo quando vc sofre do buff de aclimado, falando quantos % vc ta ganhando de multiplicador nessa gravidade"*.
+		if (TextoDaAclimatacao(_atributos.Aclimatacao) is { } aclimatado) Linha("Aclimatado", aclimatado, Tema.Bom, agora);
 		NotaComDica(Nota("O multiplicador é o que o seu BP base virou agora; o poder efetivo é quanto dele o corpo "
 						 + "consegue botar pra fora.", agora),
 			"Transformar mexe no multiplicador e NÃO no poder efetivo: a forma multiplica os dois lados dessa conta.\n"
@@ -353,8 +357,17 @@ public partial class MenuJogo
 	///
 	/// (v0.3.0) O QUE ELA NAO COBRE E O CARTAO DO KAIO-KEN: se ele existe (a tecnica no livro), a maestria a um decimo,
 	/// o multiplicador e o aceso -- os quatro que o `CartaoDoKaioken` escreve.
+	///
+	/// (2026-10-16) E A LINHA "Aclimatado": o bonus de poder, a duas casas -- sem ele aqui, a linha so apareceria (ou sumiria) no
+	/// proximo redesenho por outro motivo.
 	/// </summary>
 	private string ExtraDaAssinaturaDeFormas(SheetState f) =>
 		$"{PosseDoCliente.Atual.SabeTecnica(TelaDeKaioken.VerboDoKaioken)}|{_atributos.KaiokenMaestria:0.#}"
-		+ $"|{_atributos.KaiokenVezes}|{_atributos.KaiokenAceso}";
+		+ $"|{_atributos.KaiokenVezes}|{_atributos.KaiokenAceso}|{_atributos.Aclimatacao:0.##}";
+
+	/// <summary>
+	/// O TEXTO DA LINHA "Aclimatado": o bonus de poder da aclimatacao (`AtributosState.Aclimatacao`, o `gravFelt`) em porcentagem,
+	/// ou nulo quando nao ha -- e a linha nao existe. Publico pra bancada das abas comparar a tela com o fio.
+	/// </summary>
+	public static string? TextoDaAclimatacao(float bonus) => bonus > 1.005f ? $"+{(bonus - 1) * 100:0}% nesta gravidade" : null;
 }

@@ -128,7 +128,10 @@ public sealed partial class GameServer
 	/// de VETOR -- o input continua chegando (senao nao daria pra apertar o verb de novo).
 	/// </summary>
 	private bool PresoPeloG12(int id) =>
-		_deathBallG12.ContainsKey(id) || _voleiG12.ContainsKey(id) || _genkidamaG12.ContainsKey(id);
+		_deathBallG12.ContainsKey(id) || _voleiG12.ContainsKey(id) || _genkidamaG12.ContainsKey(id)
+		// (2026-10-17) E O GRITO DO DESABAFO do Lendario (`GameServer.Passivas.cs`): os 3 s plantado, com a mesma trava e o mesmo aviso
+		// pro cliente -- quem a liga e o aperto (`DesabafarRacial`), quem a solta e o laco abaixo.
+		|| GritandoODesabafo(id);
 
 	/// <summary>
 	/// O TIQUE DO LOTE, a 30 Hz. Roda ANTES do `TickDosProjeteis`, pra a bola que nasce neste quadro
@@ -264,6 +267,8 @@ public sealed partial class GameServer
 		/// <summary>O `usr.Guiding`: nasce LIGADO junto com a carga (`:34`).</summary>
 		public bool Guiando = true;
 		public bool Lancada;
+		/// <summary>(v0.3.2) O soco do lancamento esta sendo segurado pela guia: o fim dela o tira (`EncerrarDeathBallG12`).</summary>
+		public bool SocoSegurado;
 		public double ProximoPulsoDeGuiaEm;
 		/// <summary>Pra onde o dono olhava no ultimo pulso de guia que a bola ouviu. Ver `TickDaDeathBallG12`.</summary>
 		public Facing OlharDaGuia;
@@ -360,6 +365,7 @@ public sealed partial class GameServer
 		Avisar(pl, "voce ergue as maos e uma esfera de morte comeca a se formar sobre a sua cabeca. "
 				   + "Cada 1,5 s ela cresce um estagio (ate quatro); aperte de novo pra largar a guia.");
 		Falar(pl, Protocol.Fala.Emote, "ergue uma esfera escura sobre a cabeca!");
+		AnunciarGesto(pl, Protocol.GestoDoCorpo.ErgueADeathBall);   // (v0.3.2) o som de erguer, `deathball_charge` (`:39`)
 		GD.Print($"[server] {pl.Name} comecou a carregar a Death Ball (custo {kiReq:0})");
 	}
 
@@ -385,7 +391,8 @@ public sealed partial class GameServer
 			AlcanceTiles = 1000,
 			Nome = "Death Ball",
 			EscalaVisual = 1 + db.Estagio / 4.0,   // `nA.Scale(1+movestrength/4, ...)` (`:81`); o estagio 1 e a matriz identidade
-		}, rumoDado: Vec2.Zero, deOnde: pl.Pos + new Vec2(0, -ZoneCollision.TileSize), verbo: "Death_Ball");
+		}, rumoDado: Vec2.Zero, deOnde: pl.Pos + new Vec2(0, -ZoneCollision.TileSize), verbo: "Death_Ball",
+		   naMao: !DeathBallSocaAoCrescerDeTeste);   // (v0.3.2) nascer e renascer nao e atirar: o soco e o som sao os do lancamento
 		if (!p.Vivo) return null;
 		p.Inerte = true;
 		p.VidaRestante = 3600;   // enquanto carrega ela nao envelhece de verdade; o prazo real chega no disparo
@@ -426,6 +433,7 @@ public sealed partial class GameServer
 					if (db.Bola is { Vivo: true }) Matar(db.Bola, FimDeProjetil.Nenhum);
 					db.Bola = NascerDeathBallG12(pl, db);
 					if (db.Bola == null) { EncerrarDeathBallG12(pl, db, aviso: "nao ha espaco pra mais energia solta aqui."); continue; }
+					AnunciarGesto(pl, Protocol.GestoDoCorpo.CresceADeathBall);   // (v0.3.2) `chargeincrease.ogg` (`:83`)
 					Avisar(pl, $"a esfera cresce: estagio {db.Estagio} de 4.");
 					continue;
 				}
@@ -440,6 +448,8 @@ public sealed partial class GameServer
 			// e `while(A && A.loc && usr.Guiding) { sleep(Eactspeed/5); Blast_Gain(); blastcounter+=3;
 			// guidedcounter+=3; step(A, A.dir) }` (`:93-102`).
 			if (!db.Guiando) { EncerrarDeathBallG12(pl, db); continue; }
+			// (v0.3.2) O SOCO DO LANCAMENTO FICA A GUIA INTEIRA -- o tempo em que o corpo esta preso (`PresoPeloG12`). Ver `SegurarOSocoG12`.
+			if (!DeathBallLancaSemSocoDeTeste) { SegurarOSocoG12(pl); db.SocoSegurado = true; }
 			if (_relogioG12 < db.ProximoPulsoDeGuiaEm) continue;
 			db.ProximoPulsoDeGuiaEm = _relogioG12 + Math.Max(f.Eactspeed / 5, 1) * TempoDoDm.SegundosPorTique;
 			// A GUIA SO REAPONTA QUANDO O DONO VIRA. A bola parte no rumo EXATO do marcado (`RumoDoTiro`, dono
@@ -475,6 +485,8 @@ public sealed partial class GameServer
 		p.Pos = BocaDeCano.De(pl.Pos, frente);
 		p.Cauda = p.Pos;
 		OlharOCano(pl, p, p.Pos);   // (v0.3.0) quem esta colado leva a bola -- ver `OlharOCano`
+		// (v0.3.2) O SOCO E O DO LANCAMENTO (a bola nasceu na mao): guiada, a guia o segura ate acabar; sem guia, e o de toda bola.
+		if (!DeathBallLancaSemSocoDeTeste) FazerAPoseDeTiro(pl);
 		// NO DM, um `step()` por pulso de `Eactspeed/5` tiques: o pulso era ao mesmo tempo o PASSO da bola e a
 		// vez de ela ouvir o olhar do dono. A bola agora anda na pressa de toda bola (dono, 2026-10-08 -- ver
 		// `Projetil.AtrasoDeBolaPorLag`), e o PULSO continua no relogio do original: e ele que da a guia e o
@@ -503,6 +515,7 @@ public sealed partial class GameServer
 	private void EncerrarDeathBallG12(ServerPlayer pl, EstadoDaDeathBallG12 db, string? aviso = null)
 	{
 		_deathBallG12.Remove(pl.Id);
+		if (db.SocoSegurado) pl.GestoAte = Math.Min(pl.GestoAte, NowMs());   // (v0.3.2) o soco segurado cai junto da trava
 		if (db.Bola is { Vivo: true } && db.Lancada)
 		{
 			db.Bola.Rumo = Vec2.Zero;
@@ -832,6 +845,14 @@ public sealed partial class GameServer
 	///     Quem diz sim: `A.BP += M.expressedBP*(M.Ki*0.1); M.Ki *= 0.9` (`:85-86`) e, 2,5 s depois, `+0,1`
 	///     de escala (`:132-147`). Aqui a pergunta e um aviso e a resposta e um verb da aba Other
 	///     (`genkidama_doar`/`genkidama_negar`) -- o mesmo desenho da oferta de juventude do G8.
+	///     (v0.3.2, dono 2026-10-16) DUAS DIVERGENCIAS DECLARADAS: a pergunta vai pra TODO MUNDO do planeta, meditando ou nao (*"n
+	///     precisa meditar mais"*), e a doacao soma o PODER INTEIRO do doador (*"100% seria bom"*) -- a linha do DM multiplica pelo Ki
+	///     ABSOLUTO, e um doador de 500 mil com 12 mil de Ki somava 600 milhoes. E a Genkidama LANCADA so volta em uma hora
+	///     (`Fighter.genkidama_pronta_em`).
+	///     E MAIS TRES REGRAS DO DONO (2026-10-16), nenhuma no DM: so se forma na FORMA BASE (`CoracaoPuroG12`: *"necessita do coraçao
+	///     puro"*); com reputacao AMIGAVEL no planeta o POVO doa sozinho (`ConvidarDoadoresG12`); e, LANCADA, ela disputa com o poder de
+	///     AGORA de quem a lancou e fere com o ACUMULADO (`Projetil.BpDoAcerto`) -- e se segura nas maos (`Projetil.SeguraNasMaos`), o
+	///     Kid Boo: transformar-se depois de lancar e o que vira o cabo de guerra.
 	///  6. O CRESCIMENTO (`:105-131`): tres voltas. `SpiritsGivenPower` comeca em 10 e ganha +10 por volta;
 	///     cada pulso (a cada 1,5 s) da `+0,1` de escala e `A.BP += A.BP*0.01`. Volta 1 = 20 pulsos (30 s);
 	///     depois `sleep(1100)` = 110 s e a frase do "universo inteiro" (`:130-131`); volta 2 = 10 pulsos;
@@ -873,6 +894,18 @@ public sealed partial class GameServer
 		}
 
 		Fighter f = pl.Ficha;
+
+		// (v0.3.2) UMA HORA ENTRE UMA GENKIDAMA LANCADA E A PROXIMA -- ver `Fighter.genkidama_pronta_em`. A que se desfaz antes de sair
+		// (o nocaute, o planeta trocado) nao conta: a recarga so comeca no lancamento (`LancarGenkidamaG12`).
+		long falta = f.genkidama_pronta_em - NowMs();
+		if (falta > 0 && !GenkidamaSemRecargaDeTeste)
+		{
+			Avisar(pl, $"a Genkidama ainda nao pode ser reunida de novo: faltam {Math.Ceiling(falta / 60_000.0):0} min.");
+			return;
+		}
+		// (v0.3.2) SO NA FORMA BASE -- ver `CoracaoPuroG12`.
+		if (!CoracaoPuroG12(pl)) { Avisar(pl, "a Genkidama so aceita um coracao puro: volte a forma base."); return; }
+
 		double custo = f.MaxKi * 0.9;   // `if(usr.Ki >= usr.MaxKi*0.9)` (`:180`) -- e o `PodeAtirar` quem recusa, com o numero
 		if (!PodeAtirar(pl, custo, out string porque)) { Avisar(pl, porque); return; }
 
@@ -936,6 +969,14 @@ public sealed partial class GameServer
 				EncerrarGenkidamaG12(pl, g, "a Genkidama se desfaz no ar.");
 				continue;
 			}
+			// (v0.3.2) TRANSFORMAR-SE COM ELA NA MAO A DESFAZ: o coracao deixou de ser puro (`CoracaoPuroG12`). Lancada (fase 3), ela e do
+			// mundo -- e transformar-se e o que vira o cabo de guerra (ver `Projetil.SeguraNasMaos`).
+			if (g.Fase < 3 && !CoracaoPuroG12(pl))
+			{
+				if (g.Bola is { Vivo: true }) Matar(g.Bola, FimDeProjetil.Nenhum);
+				EncerrarGenkidamaG12(pl, g, "a Genkidama se desfaz: ela so aceita um coracao puro, na forma base.");
+				continue;
+			}
 			if (g.Fase < 3) Ancorar(pl, g.Ancora);
 
 			switch (g.Fase)
@@ -969,7 +1010,7 @@ public sealed partial class GameServer
 						EncerrarGenkidamaG12(pl, g, null);
 						break;
 					}
-					SegurarOSocoDaGenkidamaG12(pl);
+					if (!GenkidamaLancaSemSocoDeTeste) SegurarOSocoG12(pl);
 					break;
 			}
 		}
@@ -1030,21 +1071,51 @@ public sealed partial class GameServer
 		if (g.Bola == null) EncerrarGenkidamaG12(pl, g, "nao ha espaco pra mais energia solta aqui.");
 	}
 
-	/// <summary>`for(var/mob/M in player_list) if(M.client && M.med && M.z == usr.z && M != usr)` (`:78-79`) -- o convite.</summary>
+	/// <summary>
+	/// `for(var/mob/M in player_list) if(M.client && M.med && M.z == usr.z && M != usr)` (`:78-79`) -- o convite. (v0.3.2) Pra todo mundo
+	/// do planeta, meditando ou nao; e o POVO doa sozinho a quem ele gosta.
+	/// </summary>
 	private void ConvidarDoadoresG12(ServerPlayer pl, EstadoDaGenkidamaG12 g)
 	{
 		int convidados = 0;
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
 		{
-			// "GENTE" AQUI E QUEM TEM FICHA PROPRIA E MEDITA: jogador (com tela) ou corpo de bancada; nunca um
-			// NPC do mundo nem o reflexo da mente. O `M.client` do DM existia porque so gente medita.
-			if (o == pl || o.Papel != null || o.DonoDoClone != 0 || !o.Ficha.med || EhCadaver(o) || o.Ficha.KO) continue;
+			// "GENTE" AQUI E QUEM TEM FICHA PROPRIA: jogador (com tela) ou corpo de bancada; nunca um NPC do mundo (nem bicho) nem o
+			// reflexo da mente. (v0.3.2) MEDITANDO OU NAO -- o dono: *"todos q estao no planeta recebem um pedido ao qual podem aceitar pra
+			// doar pra genkidama (n precisa meditar mais)"*. No DM so quem meditava (`M.med`, `:79`).
+			if (o == pl || o.Papel != null || o.DonoDoClone != 0 || (GenkidamaSoConvidaQuemMeditaDeTeste && !o.Ficha.med)
+				|| EhCadaver(o) || o.Ficha.KO) continue;
 			_ofertasDeGenkidamaG12[o.Id] = pl.Id;
-			Avisar(o, $"{pl.Name} esta formando uma GENKIDAMA. Doar custa um decimo do seu Ki -- responda na aba Other "
-					  + "(Doar a Genkidama / Negar).");
+			Avisar(o, $"{pl.Name} esta formando uma GENKIDAMA. Doar custa um decimo do seu Ki e soma o seu poder inteiro a ela -- "
+					  + "responda na aba Other (Doar a Genkidama / Negar).");
 			convidados++;
 		}
-		if (convidados > 0) Avisar(pl, $"{convidados} pessoa(s) meditando neste mundo sentem a Genkidama e podem doar energia.");
+		if (convidados > 0) Avisar(pl, $"{convidados} pessoa(s) neste mundo sentem a Genkidama e podem doar energia.");
+
+		// (v0.3.2) O POVO DOA SOZINHO A QUEM ELE GOSTA -- o dono, 2026-10-16: *"se vc tem uma boa reputaçao no planeta, todos os npcs
+		// doariam o bp deles pra genkidama tb, assim pessoas do bem teriam uma genkidama mais poderosa"*. Com reputacao AMIGAVEL ou melhor
+		// com este planeta (`Reputacao.LimiarDeAmigavel`), cada HABITANTE de pe (`TipoDeNpc.Cidadao`) soma o poder dele, sem pergunta (NPC
+		// nao responde aba). A escala cresce UMA doacao pelo povo inteiro: dezenas de +0,1 fariam a bomba do tamanho do mapa. Nao existe
+		// no DM.
+		if (!PovoNaoDoaDeTeste && ReputacaoDe(pl.Zone.Name, pl.Conta) >= Jandirus.Core.Social.Reputacao.LimiarDeAmigavel)
+		{
+			int povo = 0;
+			double soma = 0;
+			foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
+			{
+				if (o.Papel is not { Tipo: Jandirus.Core.Npc.TipoDeNpc.Cidadao } || EhCadaver(o) || o.Ficha.KO) continue;
+				soma += o.Ficha.expressedBP;
+				povo++;
+			}
+			if (povo > 0)
+			{
+				g.BpAcumulado += soma;
+				g.DoacoesPendentes++;
+				g.Doadores += povo;
+				Avisar(pl, $"o povo deste planeta confia em voce: {povo} habitante(s) mandam a energia deles pra Genkidama!");
+				GD.Print($"[server] o povo de {pl.Zone.Name} doou a Genkidama de {pl.Name}: {povo} habitante(s), {soma:0} de poder");
+			}
+		}
 	}
 
 	/// <summary>A resposta do doador -- o `alert("Give power?...")` (`:81-99`), do lado de quem recebe.</summary>
@@ -1060,7 +1131,10 @@ public sealed partial class GameServer
 		if (!aceitou) { Avisar(pl, "voce guarda a sua energia."); return; }
 
 		// `if(choice=="Yes" && holding==1 && A)` (`:82-91`).
-		g.BpAcumulado += pl.Ficha.expressedBP * (pl.Ficha.Ki * 0.1);   // `A.BP += M.expressedBP*(M.Ki*0.1)` -- literal, unidades e tudo
+		// (v0.3.2) O PODER INTEIRO DO DOADOR -- o dono, 2026-10-16: *"100% seria bom"*. A linha do DM (`A.BP += M.expressedBP*(M.Ki*0.1)`,
+		// `:85`) multiplica pelo Ki ABSOLUTO (um doador de 500 mil com 12 mil de Ki somava 600 milhoes); no DM ela nunca pesou, porque
+		// o `:170` jogava o acumulado fora no disparo -- ver o cabecalho.
+		g.BpAcumulado += GenkidamaDoacaoComoODmDeTeste ? pl.Ficha.expressedBP * (pl.Ficha.Ki * 0.1) : pl.Ficha.expressedBP;
 		pl.Ficha.Ki *= 0.9;
 		g.DoacoesPendentes++;
 		g.Doadores++;
@@ -1081,6 +1155,11 @@ public sealed partial class GameServer
 		g.FaseAte = _relogioG12 + 3.0;
 		p.Inerte = false;
 		p.Bp = g.BpAcumulado;              // o `A.BP = expressedBP` do `:170` descartava isto -- ver o cabecalho
+		f.genkidama_pronta_em = NowMs() + MsDeRecargaDaGenkidama;   // (v0.3.2) a hora de recarga comeca quando ela SAI
+		// (v0.3.2) LANCADA, A DISPUTA E O ACERTO VALEM PODERES DIFERENTES -- o dono: *"pro clash usa apenas o poder atual do usuario dela,
+		// mas na hora q ela acerta o alvo o dano é baseado no poder acumulado nela"*. E ela se segura nas maos (o Kid Boo).
+		p.BpDoAcerto = GenkidamaPerdeOAcumuladoNaDisputaDeTeste ? 0 : g.BpAcumulado;
+		p.SeguraNasMaos = true;
 		p.VidaRestante = 100;              // `A.Burnout(1000)` (`:178`)
 		Vec2 frente = RumoDoTiro(pl);   // no marcado, se houver (dono, 2026-10-09)
 		p.Pos = BocaDaGenkidamaG12(pl, frente, g.Escala);   // (v0.3.0) NA FRENTE do corpo, e nao em cima dele
@@ -1090,8 +1169,8 @@ public sealed partial class GameServer
 		// `walk(A, usr.dir)` sem lag: um tile por tique no DM -- a bola mais rapida de la, na pressa das de ca
 		p.SegundosPorTile = Projetil.AtrasoDeBolaPorLag(1);
 		p.Pressa = Projetil.PressaDeBolaPorLag(1);
-		// (v0.3.1) O SOCO DO LANCAMENTO -- e ele fica ate a trava soltar: ver `SegurarOSocoDaGenkidamaG12`.
-		SegurarOSocoDaGenkidamaG12(pl);
+		// (v0.3.1) O SOCO DO LANCAMENTO -- e ele fica ate a trava soltar: ver `SegurarOSocoG12`.
+		if (!GenkidamaLancaSemSocoDeTeste) SegurarOSocoG12(pl);
 		Falar(pl, Protocol.Fala.Diz, "GENKIDAMA!!");
 		// OS DOIS NUMEROS (o acumulado e o do dono) SO SAEM PRA QUEM TEM SCOUTER -- a regra principal do BP; ver
 		// `PoderNaFrase`. Sem ele a frase mede a bomba CONTRA o poder de quem a soltou, que e a comparacao que sobra.
@@ -1147,27 +1226,56 @@ public sealed partial class GameServer
 	internal static bool GenkidamaComoAntesDeTeste;
 
 	/// <summary>
-	/// (v0.3.1) O SOCO DE QUEM LANCA A GENKIDAMA, SEGURADO ATE A TRAVA SOLTAR. O dono (2026-10-16): *"a animaçao de soco é so
-	/// quando joga ela e diferente das outras técnicas, o personagem fica na animaçao de soco ate ele sair da paralisia da
-	/// genkidama"*. E a pose de tiro de toda bola (`GestoAte`, que o snapshot leva como o canal atirando -- o `blast` do
-	/// desenho), so que renovada a cada tique da fase 3: os 3 s do `sleep(30)` em que o corpo continua preso (`PresoPeloG12`).
-	/// No fim da fase o tique a tira (`TickDaGenkidamaG12`), e ela cai junto com a trava. O nascimento e os pulsos nao a armam:
-	/// a bola nasce NA MAO (o `naMao` do `Disparar`).
+	/// O SOCO DE QUEM LANCA, SEGURADO ATE A TRAVA SOLTAR -- o da Genkidama (v0.3.1) e o da Death Ball (v0.3.2). O dono (2026-10-16):
+	/// *"a animaçao de soco é so quando joga ela e diferente das outras técnicas, o personagem fica na animaçao de soco ate ele sair
+	/// da paralisia da genkidama"*, e depois *"death ball corrija os problemas q ele tem igual a genkidama tinha tb"*. E a pose de
+	/// tiro de toda bola (`GestoAte`, que o snapshot leva como o canal atirando -- o `blast` do desenho), so que renovada a cada tique
+	/// em que o corpo continua preso pela tecnica (`PresoPeloG12`): a fase 3 da Genkidama (os 3 s do `sleep(30)`) e a guia da Death
+	/// Ball. Quando a trava solta, quem a segurava a tira (`Math.Min`), e o soco cai junto. O nascimento e o crescimento das duas nao
+	/// o armam: a bola nasce NA MAO (o `naMao` do `Disparar`).
 	///
-	/// DIVERGENCIA DECLARADA: no DM o corpo nao faz pose nenhuma ao soltar a bola (`SpiritBomb.dm:169-176` nao escreve
-	/// `icon_state`), e o `"Planet Destroyer"` de quando ela se ergue (`:40`) vence em 5 s (`spawn(50)`).
+	/// DIVERGENCIA DECLARADA: no DM nenhuma das duas soca ao sair -- a Genkidama nao escreve `icon_state` no lancamento
+	/// (`SpiritBomb.dm:169-176`; o `"Planet Destroyer"` de quando ela se ergue, `:40`, vence em 5 s), e a Death Ball fica no
+	/// `"Planet Destroyer"` da carga (`DeathBall.dm:37`) ate depois da guia (`:109`).
 	/// </summary>
-	private void SegurarOSocoDaGenkidamaG12(ServerPlayer pl)
-	{
-		if (GenkidamaLancaSemSocoDeTeste) return;
-		pl.GestoAte = Math.Max(pl.GestoAte, NowMs() + FolgaDoSocoDaGenkidamaMs);
-	}
+	private void SegurarOSocoG12(ServerPlayer pl) => pl.GestoAte = Math.Max(pl.GestoAte, NowMs() + FolgaDoSocoSeguradoMs);
+
+	/// <summary>(v0.3.2) A recarga da Genkidama depois de LANCADA: uma hora (dono, 2026-10-16). Ver `Fighter.genkidama_pronta_em`.</summary>
+	internal const long MsDeRecargaDaGenkidama = 60 * 60 * 1000;
+
+	/// <summary>DEFEITO INJETADO (`--g12teste`): a Genkidama sem recarga -- o jogo de antes, uma atras da outra. Falso em jogo, sempre.</summary>
+	internal static bool GenkidamaSemRecargaDeTeste;
+
+	/// <summary>DEFEITO INJETADO (`--g12teste`): a doacao volta a ser a linha do DM (`expressedBP x Ki x 0,1`, o Ki absoluto). Falso em jogo, sempre.</summary>
+	internal static bool GenkidamaDoacaoComoODmDeTeste;
+
+	/// <summary>DEFEITO INJETADO (`--g12teste`): a pergunta da doacao volta a ir so pra quem medita. Falso em jogo, sempre.</summary>
+	internal static bool GenkidamaSoConvidaQuemMeditaDeTeste;
+
+	/// <summary>
+	/// (v0.3.2) O CORACAO PURO DA GENKIDAMA: a forma base, sem transformacao nenhuma -- nem a fera (o Oozaru). O dono, 2026-10-16: *"so
+	/// daria pra usar a genkidama na forma base, pois necessita do coraçao puro"*. Os buffs (o Kaio-ken) nao sao forma e ficam de fora.
+	/// </summary>
+	private static bool CoracaoPuroG12(ServerPlayer pl) =>
+		GenkidamaEmQualquerFormaDeTeste || (pl.Forma.NaBase && pl.Oozaru == Jandirus.Core.Forms.FormaOozaru.Nao);
+
+	/// <summary>DEFEITO INJETADO (`--g12teste`): a Genkidama em qualquer forma -- o jogo de antes. Falso em jogo, sempre.</summary>
+	internal static bool GenkidamaEmQualquerFormaDeTeste;
+
+	/// <summary>DEFEITO INJETADO (`--g12teste`): o povo nao doa, com reputacao nenhuma -- o jogo de antes. Falso em jogo, sempre.</summary>
+	internal static bool PovoNaoDoaDeTeste;
+
+	/// <summary>DEFEITO INJETADO (`--g12teste`): a Genkidama nao se segura nas maos -- o jogo de antes, em que ela estourava em quem a defendia. Falso em jogo, sempre.</summary>
+	internal static bool GenkidamaNaoESeguradaDeTeste;
+
+	/// <summary>DEFEITO INJETADO (`--g12teste`): o acumulado se perde na disputa -- o jogo de antes, em que a bomba saia dela com o poder do dono. Falso em jogo, sempre.</summary>
+	internal static bool GenkidamaPerdeOAcumuladoNaDisputaDeTeste;
 
 	/// <summary>
 	/// A FOLGA DO SOCO SEGURADO: ele e renovado a cada tique (30 Hz), e a folga so cobre tiques atrasados -- quem o tira no fim e
-	/// o proprio tique, junto da trava.
+	/// quem segura a trava, junto com ela.
 	/// </summary>
-	private const long FolgaDoSocoDaGenkidamaMs = 250;
+	private const long FolgaDoSocoSeguradoMs = 250;
 
 	/// <summary>
 	/// DEFEITO INJETADO (`--v030teste` GS, `--diagv030` GK): a Genkidama volta a nascer e renascer com o gesto de tiro -- o soco
@@ -1177,9 +1285,21 @@ public sealed partial class GameServer
 
 	/// <summary>
 	/// DEFEITO INJETADO (`--v030teste` GS, `--diagv030` GK): o lancamento volta a nao segurar o soco -- o jogo de antes, sem pose
-	/// nenhuma ao lancar. Lido pela <see cref="SegurarOSocoDaGenkidamaG12"/>. Falso em jogo, sempre.
+	/// nenhuma ao lancar. Lido onde a Genkidama segura o soco (o lancamento e a fase 3). Falso em jogo, sempre.
 	/// </summary>
 	internal static bool GenkidamaLancaSemSocoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--v030teste` DS, `--diagv030` DB): a Death Ball volta a nascer e renascer com o gesto de tiro -- o soco e o
+	/// `Blast.wav` da saida a cada estagio, o jogo de antes. Lido pelo <see cref="NascerDeathBallG12"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool DeathBallSocaAoCrescerDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--v030teste` DS, `--diagv030` DB): o lancamento da Death Ball volta a sair sem soco -- o jogo de antes.
+	/// Lido no lancamento e na guia (`LancarDeathBallG12`, `TickDaDeathBallG12`). Falso em jogo, sempre.
+	/// </summary>
+	internal static bool DeathBallLancaSemSocoDeTeste;
 
 	private void EncerrarGenkidamaG12(ServerPlayer pl, EstadoDaGenkidamaG12 g, string? aviso)
 	{
@@ -1556,7 +1676,7 @@ public sealed partial class GameServer
 
 		if (_rng.NextDouble() * 100 < 50.0 / (skill * 5))   // `prob(50/(Splitformskill*5))`
 		{
-			f.splitformMastery += 0.2;
+			f.splitformMastery += 0.2 * FatorDeMaestriaDoCorpo(pl);   // (2026-10-16) o Echoed Insanity, ver `FatorDeMaestriaDoCorpo`
 			Avisar(pl, "sua pericia de divisao aumentou.");
 		}
 		Avisar(pl, "voce divide o seu corpo em dois! (ordens na aba Other: seguir, parar, atacar o alvo, atacar o mais perto, desfazer)");

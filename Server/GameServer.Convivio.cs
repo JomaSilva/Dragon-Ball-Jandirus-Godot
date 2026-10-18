@@ -371,7 +371,13 @@ public partial class GameServer
 			// Ele devolve TRUE so na ERUPCAO (ver `AmigoAbatido`): quem ja estava em luto so tem o
 			// prazo renovado, e o anuncio pra zona nao se repete. E o `wasRaging` do DM
 			// (`Murder.dm:111`), que existe pra a cena de raiva nao tocar duas vezes seguidas.
-			if (!AmigoAbatido(o, vitima.Name, grau)) continue;
+			bool erupcao = AmigoAbatido(o, vitima.Name, grau);
+
+			// (2026-10-16) A SAGA DO CORRUPTED MAJIN: o amigo MORTO por um inimigo parte a forma 1 em duas (`Death/Death.dm:82`). Fora do
+			// teste de erupcao, como no DM -- la o `Do_Anger_Stuff` e o `majin_advance_form` sao duas linhas independentes, e quem ja
+			// estava furioso tambem se parte. Ver `SagaNaFuriaDaMorte`.
+			if (morreu) SagaNaFuriaDaMorte(o);
+			if (!erupcao) continue;
 
 			// O QUE OS OUTROS VEEM. Uma frase por degrau -- as do DM sao `Death.dm:83` ("EXTREMELY
 			// enraged") e `KO.dm:38` ("very angry"), e a do nocaute desceu um tom com o degrau dele
@@ -462,6 +468,8 @@ public partial class GameServer
 		// O VILAO AVULSO QUE CAIU: nocauteado ou morto por um jogador, o karma vai pra esse jogador e o evento
 		// acaba. Sai na primeira linha quando a vitima nao e vilao de evento nenhum. Ver `GameServer.Viloes.cs`.
 		VilaoFoiDerrotado(vitima, algoz, morreu);
+		// (2026-10-16) E O VILAO DE SAGA QUE VOLTOU NO INFERNO -- o mesmo funil, a mesma primeira linha. Ver `GameServer.ViloesDoInferno.cs`.
+		VilaoDoInfernoFoiDerrotado(vitima, algoz);
 
 		// ============================ CAIR SEPARA A FUSAO ============================
 		// `defuse_on_downed()` (`Fusion.dm:75`), chamado do `KO()` do original. Ela entra AQUI e nao

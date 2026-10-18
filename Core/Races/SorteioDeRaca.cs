@@ -64,9 +64,12 @@ public static class SorteioDeRaca
 	/// O SORTEIO: a raca pela tabela e a sub-raca pela regra de cima. Funcao PURA da semente -- quem escolhe a semente e
 	/// o servidor (uma que so ele conhece), e a bancada roda milhares delas pra medir as porcentagens.
 	/// </summary>
-	public static (string Raca, string Linhagem) Sortear(ulong semente)
+	/// <param name="so">(2026-10-16) Quando nao nulo, a tabela fica so com as racas que ele aprova -- a garantia de classe rara do
+	/// admin (`Birth.TemClasseRara`). Os pesos das que ficam nao mudam; se nenhuma passar, vale a tabela inteira.</param>
+	public static (string Raca, string Linhagem) Sortear(ulong semente, Func<string, bool>? so = null)
 	{
 		(string Raca, int Peso)[] tabela = PesosDeTeste ?? Pesos;
+		if (so != null && tabela.Where(x => so(x.Raca)).ToArray() is { Length: > 0 } filtrada) tabela = filtrada;
 		int soma = 0;
 		foreach ((_, int p) in tabela) soma += p;
 

@@ -41,11 +41,15 @@ public partial class GameServer
 		public string? Recusa { get; private set; }
 		/// <summary>O ultimo `S2C.SlotList`, lido pelo leitor de producao, ou nulo.</summary>
 		public List<SlotInfo>? Slots { get; private set; }
+		/// <summary>(2026-10-17) O bebe a caminho que veio no fim do ultimo `S2C.SlotList` (o leitor de producao), ou nulo.</summary>
+		public Jandirus.Core.Races.OfertaDeBebe? Bebe { get; private set; }
 		/// <summary>Quantas fichas lentas (`S2C.Atributos`, o pacote que leva os PODERES) chegaram nesta conexao.</summary>
 		public int FichasLentas { get; private set; }
 		/// <summary>Os poderes da ultima ficha lenta, e a soma de todos os que ja chegaram nesta conexao (nem um pacote escapa).</summary>
 		public uint UltimosPoderes { get; private set; }
 		public uint PoderesJaVistos { get; private set; }
+		/// <summary>(2026-10-17) A ultima ficha lenta inteira, como chegou pelo leitor de producao -- a idade e os meses dela (`--calendarioteste`).</summary>
+		public Protocol.AtributosState? UltimaFicha { get; private set; }
 		public int PortaLocal => Rede.LocalPort;
 
 		/// <summary>
@@ -77,12 +81,15 @@ public partial class GameServer
 					int n = r.GetByte();
 					var slots = new List<SlotInfo>(n);
 					for (int i = 0; i < n; i++) slots.Add(SlotInfo.Read(r));
+					Bebe = r.GetOfertaDeBebe();
 					Slots = slots;
 					break;
 				}
 				case Protocol.S2C.Atributos:
 				{
-					uint poderes = Protocol.AtributosState.Read(r).Poderes;   // o leitor de producao
+					Protocol.AtributosState ficha = Protocol.AtributosState.Read(r);   // o leitor de producao
+					UltimaFicha = ficha;
+					uint poderes = ficha.Poderes;
 					FichasLentas++;
 					UltimosPoderes = poderes;
 					PoderesJaVistos |= poderes;

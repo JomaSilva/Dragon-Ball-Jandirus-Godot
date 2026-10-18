@@ -162,9 +162,14 @@ public static class Envelhecimento
 		return IdadeAdulta - (idade - auge) * 0.5 * declinioPorAno;
 	}
 
-	/// <summary>Morreu de velhice? E o `Body < 0.1` do `AgeCheck` (Aging.dm:176-178).</summary>
+	/// <summary>
+	/// Morreu de velhice? E o `Body < 0.1` do `AgeCheck` (Aging.dm:176-178) -- SO DEPOIS DO AUGE. O corpo de quem ainda cresce tambem e
+	/// pequeno (ele E a idade, ver <see cref="IdadeDoCorpo"/>), e o DM nunca viu um de zero: la todo mundo nascia com 1 ano
+	/// (`startingage`, `CharacterCreation.dm:41-44`). O filho nasce com 0 (pedido do dono, 2026-10-17), e sem a porta do auge morreria de
+	/// velhice no primeiro login.
+	/// </summary>
 	public static bool MorreuDeVelhice(string raca, double idade) =>
-		!NaoEnvelhece(raca) && IdadeDoCorpo(raca, idade) < 0.1;
+		!NaoEnvelhece(raca) && idade > AugeDaRaca(raca) && IdadeDoCorpo(raca, idade) < 0.1;
 
 	/// <summary>
 	/// COMO O JOGADOR LE A PROPRIA IDADE. Serve a criacao (que precisa explicar o teto) e a ficha.
@@ -176,4 +181,58 @@ public static class Envelhecimento
 		if (idade <= IdadeAdulta) return "ainda crescendo";
 		return idade >= auge ? "em declínio" : "no auge";
 	}
+
+	// =====================================================================
+	// O CALENDARIO (dono, 2026-10-17)
+	// =====================================================================
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--calendarioteste`): o calendario nao envelhece ninguem -- o port de antes, em que so a Sala do Tempo e
+	/// o Growth Spurt mexiam na idade. Lido por <see cref="ContarMeses"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool CalendarioParadoDeTeste;
+
+	/// <summary>
+	/// O CALENDARIO ENVELHECE -- o `AgeCheck` que o `Years()` chama a cada mes pra todo mundo no jogo (`WorldClock.dm:86-92`) e que o
+	/// login chama (`Login.dm:345`): `Age += Year - LastYear` (`Aging.dm:143-146`), um decimo de ano por mes vivido. O dono: *"a idade
+	/// avança quando apssar 1 ano ingame"*.
+	///
+	/// ============================ A IDADE DO PORT E INTEIRA, E OS DECIMOS MORAM EM `meses` ============================
+	/// `ServerPlayer.Idade` e um inteiro -- o mesmo numero que o DM mostrava (`round(Age)`, `Statistics.dm:13`) --, e os decimos do
+	/// `Age` do DM ficam em `meses`, de 0 a 9. O ano entra quando o personagem completa dez meses: cada um faz aniversario contado de
+	/// quando nasceu, e nao todo mundo junto no 1 de Luty.
+	///
+	/// QUEM NAO ENVELHECE DEIXA O TEMPO PASSAR POR ELE (`envelhece` falso): o morto e o Deus da Destruicao com o titulo
+	/// (`if(!dead && !IsAVampire && !god_is_god(src))`, `Aging.dm:145`) -- o mes e contado, a idade nao anda, e ninguem recupera depois
+	/// os meses em que estava morto. (O vampiro do DM nao existe no port.)
+	///
+	/// O RELOGIO QUE ANDOU PRA TRAS nao desenvelhece ninguem: a conta espera o calendario passar de novo do mes ja contado -- o
+	/// `if(SAge <= newage)` do DM (`:144`), que guarda contra o `Year` mexido pelo admin.
+	/// ====================================================================================================================
+	/// </summary>
+	/// <param name="mesContado">O ultimo mes do calendario ja contado (o `LastYear` do DM).</param>
+	/// <param name="mesAgora">O mes do calendario de agora.</param>
+	public static ContaDosMeses ContarMeses(int idade, int meses, long mesContado, long mesAgora, bool envelhece)
+	{
+		if (mesAgora <= mesContado) return new(idade, meses, mesContado, 0);
+		if (!envelhece || CalendarioParadoDeTeste) return new(idade, meses, mesAgora, 0);
+		(int novaIdade, int novosMeses, int anos) = MaisMeses(idade, meses, mesAgora - mesContado);
+		return new(novaIdade, novosMeses, mesAgora, anos);
+	}
+
+	/// <summary>
+	/// MESES DE IDADE A MAIS: os do calendario, e os de fora dele -- o `Age += 0.1` do Growth Spurt do Saibaman e do Toque do Tempo
+	/// (`saibaman.dm`), que e exatamente um mes. Dez meses viram um ano.
+	/// </summary>
+	public static (int Idade, int Meses, int AnosFechados) MaisMeses(int idade, int meses, long quantos)
+	{
+		long total = Math.Max(0, meses) + Math.Max(0, quantos);
+		int anos = (int)(total / World.Calendario.MesesPorAno);
+		return (idade + anos, (int)(total % World.Calendario.MesesPorAno), anos);
+	}
 }
+
+/// <summary>
+/// A CONTA DOS MESES DE UM PERSONAGEM (<see cref="Envelhecimento.ContarMeses"/>): a idade e os meses de agora, o mes do calendario ate o
+/// qual ja se contou, e quantos anos fecharam nesta conta.
+/// </summary>
+public readonly record struct ContaDosMeses(int Idade, int Meses, long MesContado, int AnosFechados);

@@ -15,8 +15,18 @@ public static class GainKnobs
 	/// <summary>
 	/// A TAXA GLOBAL. Multiplica praticamente todo ganho de BP do jogo: mexer aqui acelera
 	/// ou freia o servidor inteiro de uma vez.
+	///
+	/// (2026-10-16) VINTE VEZES MENOR QUE A DO DM -- o dono: *"o bp gain ta MUITO alto ... diminuir os ganhos em 20x do jogo em
+	/// si"* (tres lutas de menos de 3 minutos na Terra, sem bonus nenhum, davam mais de 1k de BP; ele quer uns 50). DIVERGENCIA
+	/// DECLARADA. Os multiplicadores (gap, mestre, troca, gravidade, peso, Sala do Tempo) continuam os mesmos, por cima dela.
+	/// Passa por aqui todo ganho de BP -- treino, meditacao, luta, ki, gravidade, andar e voar, o buffer de ocio, o potencial
+	/// escondido, as gotas das absorcoes -- e nada mais: desejos, itens e Zenkai nao a leem. A maestria de GRAVIDADE tambem a
+	/// lia, e ela nao e BP: ficou no ritmo do DM (<see cref="BPTickDoDm"/>).
 	/// </summary>
-	public static double BPTick = 0.000056;
+	public static double BPTick = BPTickDoDm / 20;
+
+	/// <summary>A taxa global do DM (`BPTick = 0.000056`). So a maestria de gravidade anda nela -- ver <see cref="BPTick"/>.</summary>
+	public const double BPTickDoDm = 0.000056;
 
 	/// <summary>Base FIXA de ganho. Substituiu o `relBPmax` nas formulas de treino -- com o
 	/// relBPmax ali o treino compunha como juros e a Sala do Tempo virava bilhoes.</summary>
@@ -47,8 +57,18 @@ public static class GainKnobs
 	/// Ela NAO e irma das quatro de cima: aquelas multiplicam ganho de BP, esta multiplica o exp das
 	/// arvores de Ki, dentro do `KiSkillGains` (`Mind.dm:859-871`). Ficam no mesmo lugar porque as
 	/// duas familias sao knobs de admin do mesmo painel (`BalanceSettings.dm:20-22`).
+	///
+	/// (2026-10-17) CINCO VEZES A DO DM -- o dono: *"faça as skills de ki evolurem mais rapido, estamos quase nivel super saiyajin e
+	/// nem liberamos o beam ainda"*. DIVERGENCIA DECLARADA. O beam basico e o nivel 25 da Basic Ki Effusion, que so ganha exp com
+	/// tiro de Ki; antes dele vem o Ki Unlocked 35 (a bola, que abre a arvore Effusive Mastery). Na taxa do DM, com pericia de Ki
+	/// perto de 3: o Ki Unlocked 35 em ~3 h parado (~1,5 h meditando) e a Efusao 25 em ~3.100 bolas; aqui, ~35 min (~17 meditando)
+	/// e ~630 bolas. Vale pra TODA skill de Ki (as tres familias da Mente e as maestrias de tiro), e o banco de exp adiantado
+	/// (`100 * GlobalKiExpRate`, `Mind.dm:43`) cresce junto. O BP nao le esta taxa (ver <see cref="BPTick"/>).
 	/// </summary>
-	public static double GlobalKiExpRate = 1;
+	public static double GlobalKiExpRate = GlobalKiExpRateDoDm * 5;
+
+	/// <summary>A taxa do DM (`GlobalKiExpRate = 1`). A `--niveisteste` mede a de agora contra ela, pela bola de producao.</summary>
+	public const double GlobalKiExpRateDoDm = 1;
 
 	/// <summary>
 	/// O PESO DA MEDITACAO NO EXP DAS SKILLS DE KI (a arvore da Mente). **1 = o original, sem tirar nem por.**
@@ -66,15 +86,13 @@ public static class GainKnobs
 	/// </summary>
 	public static double MeditacaoNasSkillsDeKi = 1;
 
-	/// <summary>Quanto MAIS lento e o ganho por gravidade. Ganho por tick = gravidade/isto.</summary>
-	public static double GravGainDiv = 1500;
-
 	/// <summary>
-	/// Fracao da folga (maestria - gravidade atual) que vira bonus quando se treina ABAIXO
-	/// da propria maestria. 0,2 mantem o premio de estar aclimatado sem deixar farmar
-	/// gravidade baixa no lugar de encarar gravidade alta.
+	/// DEFEITO INJETADO (bancada `--ganhoteste`, familia 6): a gravidade nao multiplica o ganho -- o jogo de antes de 2026-10-16, em
+	/// que treinar em 10x rendia o mesmo que em 1x (a parcela que ela somava era ~2% do treino) com o painel dizendo "10x". Lido por
+	/// `Fighter.FatorDaGravidade`. Falso em jogo, sempre.
 	/// </summary>
-	public static double GravAccustomWeight = 0.2;
+	public static bool GravidadeNaoMultiplicaDeTeste;
+
 
 	/// <summary>Teto absoluto de maestria de gravidade.</summary>
 	public static double GravityCap = 500;

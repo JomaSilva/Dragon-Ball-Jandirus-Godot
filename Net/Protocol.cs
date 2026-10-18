@@ -1202,7 +1202,8 @@ public static class Protocol
         /// <summary>
         /// ESTE CORPO ESTA MORTO -- e o desenho disso e a AUREOLA sobre a cabeca.
         ///
-        /// Formato: `int id` + `bool tem`. Dois campos, cinco bytes.
+        /// Formato: `int id` + `bool tem` + (v0.3.2) `bool passagem` -- o morto DE PASSAGEM pela Transmissao, meio transparente na tela
+        /// de todos (`ServerPlayer.EmPassagem`, `CharacterVisual.MostrarDePassagem`). Tres campos, seis bytes.
         ///
         /// ============================ POR QUE NAO E UM BIT DO SNAPSHOT ============================
         /// Os dois bytes de flags do <see cref="EntityState"/> estao CHEIOS -- o primeiro com direcao
@@ -1503,6 +1504,29 @@ public static class Protocol
         /// da aparencia nova, e o corpo novo espera a virada no cliente. Ver `GameServer.ChefeDeSaga.cs`.
         /// </summary>
         CenaDoChefe = 120,
+
+        /// <summary>
+        /// (v0.3.2) AS ESCOLHAS DE UMA PERGUNTA DO MENU DA TECLA E -- o `input() in list()` do DM com a lista VIVA, a que so o servidor
+        /// sabe montar: `string verbo` + `byte n` + n x `string escolha`. E a resposta a um verbo de `Interacoes.Forma.Lista` mandado
+        /// com o argumento vazio; o menu desenha um botao por escolha, e o clique manda o MESMO verbo com ela. A primeira: os mundos do
+        /// passe do Enma (o dono, 2026-10-16: *"deveria ser uma lista e nao ter q digitar o nome"*). So pra quem perguntou.
+        /// </summary>
+        Escolhas = 121,
+
+        /// <summary>
+        /// (2026-10-16) UM DEGRAU DA SAGA DO CORRUPTED MAJIN COMECOU: `int id` + `byte cena` (`Core.Forms.Cinematicas.CenaMajin`, o
+        /// numero da forma 1 a 4). Irmao do <see cref="CenaDoBio"/> e do <see cref="CenaDoChefe"/>: acontecimento de zona, sem prazo
+        /// nem arte no pacote (a cena mora no Core). Sai ANTES da aparencia nova, e o corpo novo espera a virada no cliente. Ver
+        /// `GameServer.SagaDoMajin.cs`.
+        /// </summary>
+        CenaDoMajin = 122,
+
+        /// <summary>
+        /// (2026-10-16) A SANIDADE DO CORRUPTED MAJIN, so pro dono do corpo: `byte sanidade` (0 a 100; 255 = este corpo nao tem a
+        /// barra) + `bool insano`. Nao ha barra na tela -- o dono: *"esquece a barra na tela kkkk eu esqueci q ele ja falou q a tela
+        /// vai tendo um efeito q representa a loucura"* --, quem desenha e o `Client/LoucuraNaTela.cs`. So sai quando muda de um ponto.
+        /// </summary>
+        Loucura = 123,
     }
 
     /// <summary>
@@ -1564,6 +1588,13 @@ public static class Protocol
         /// tiro (`GameServer.Disparar`, `naMao`): o soco e o do lancamento, e a pose dele vai pelo snapshot.
         /// </summary>
         ErgueAGenkidama = 5,
+        /// <summary>
+        /// (v0.3.2) A DEATH BALL SE ERGUE: so o som, `deathball_charge` (`DeathBall.dm:39`). Como a Genkidama, a bola nasce na mao
+        /// SEM o gesto de tiro: o soco e o do lancamento, e a pose dele vai pelo snapshot.
+        /// </summary>
+        ErgueADeathBall = 6,
+        /// <summary>(v0.3.2) A DEATH BALL CRESCEU UM ESTAGIO: so o som, `chargeincrease.ogg` (`DeathBall.dm:83`).</summary>
+        CresceADeathBall = 7,
     }
 
     /// <summary>O primeiro byte do <see cref="S2C.GodKi"/>: como esta o ki divino deste personagem.</summary>
@@ -1872,6 +1903,12 @@ public static class Protocol
         public float Willpower, Stamina;
         public uint Poderes;
         public int Idade;
+
+        /// <summary>
+        /// (2026-10-17) OS MESES VIVIDOS RUMO AO PROXIMO ANO, de 0 a 9 -- os decimos do `Age` do DM, que o calendario conta
+        /// (`Envelhecimento.ContarMeses`). O cartao do calendario da aba World diz quanto falta pro aniversario.
+        /// </summary>
+        public byte MesesDaIdade;
         public string Raca;
 
         /// <summary>
@@ -1908,8 +1945,8 @@ public static class Protocol
         /// SERVIDOR: quantas vezes o treino de agora rende, comparado com uma sessao neutra
         /// (gravidade 1, sem peso, fora de zona especial).
         ///
-        /// **Ele vem pronto, e nao em pedacos pro cliente montar.** Peso, gravidade, aclimatacao,
-        /// folego e Sala do Tempo entram numa formula que ja existe uma vez no `Core`
+        /// **Ele vem pronto, e nao em pedacos pro cliente montar.** Peso, gravidade e Sala do Tempo
+        /// entram numa formula que ja existe uma vez no `Core`
         /// (`Fighter.MultiplicadorDeGanho`); refaze-la aqui seria a segunda copia que a PARTE 3 do
         /// plano manda evitar -- e a copia do CLIENTE e sempre a que envelhece calada, porque so o
         /// servidor tem `Egains`, `GravMastered` e `zoneGainMult`.
@@ -1924,7 +1961,14 @@ public static class Protocol
         /// mesmo campo pra parar de tentar andar, em vez de brigar com as correcoes do servidor.
         /// ==================================================================================================
         /// </summary>
-        public float GanhoDeTreino, Gravidade, GravEfetiva, PesoMult, ZonaMult, Esmagamento;
+        public float GanhoDeTreino, Gravidade, PesoMult, ZonaMult, Esmagamento;
+
+        /// <summary>
+        /// (2026-10-16) O BONUS DE PODER DA ACLIMATACAO -- o `gravFelt` do corpo quando ele domina mais gravidade do que a do
+        /// chao (1 = nenhum). A aba de Formas o mostra como "Aclimatado +N% nesta gravidade". Ocupa no fio o lugar da antiga
+        /// `GravEfetiva` (a gravidade com a folga da aclimatacao), que saiu quando a aclimatacao deixou de mexer no treino.
+        /// </summary>
+        public float Aclimatacao;
 
         /// <summary>
         /// O PESO MAXIMO DOS PESOS DE TREINO, em kg -- o que o jogador ja pagou pra poder vestir (`PesoDeTreino`). A
@@ -1991,6 +2035,14 @@ public static class Protocol
         public byte KaiokenVezes;
         public bool KaiokenAceso;
 
+        /// <summary>
+        /// (2026-10-17) AS SKILLS DOS KITS DE RACA, uma por bit (`Core.Races.SkillRacial`): <see cref="SkillsRaciais"/> sao as que valem neste
+        /// corpo -- o kit inteiro da raca, ou as que o BIO-ANDROIDE escolheu do sangue --, e <see cref="SkillsDoSangue"/> as que o sangue do
+        /// bio da pra escolher (zero pra quem nao e bio). A aba Skills le as duas: os botoes das ativas e os da escolha do DNA. No FIM do
+        /// pacote, depois do Kaio-ken.
+        /// </summary>
+        public uint SkillsRaciais, SkillsDoSangue;
+
         public readonly bool Tem(Poder p) => (Poderes & (uint)p) != 0;
 
         public readonly void Write(NetDataWriter w)
@@ -2000,6 +2052,7 @@ public static class Protocol
             w.Put(Willpower); w.Put(Stamina);
             w.Put(Poderes);
             w.Put(Idade);
+            w.Put(MesesDaIdade);
             w.Put(Raca ?? "");
             w.Put(Classe ?? "");
             w.Put(FormaAtual);
@@ -2007,7 +2060,7 @@ public static class Protocol
             w.Put((byte)Math.Min(ms.Length, 255));
             for (int i = 0; i < ms.Length && i < 255; i++) { w.Put(ms[i].Item1); w.Put(ms[i].Item2); }
             w.Put(Disciplina); w.Put(DiscReal); w.Put(DiscAtual); w.Put(DiscLigada);
-            w.Put(GanhoDeTreino); w.Put(Gravidade); w.Put(GravEfetiva);
+            w.Put(GanhoDeTreino); w.Put(Gravidade); w.Put(Aclimatacao);
             w.Put(PesoMult); w.Put(ZonaMult); w.Put(Esmagamento); w.Put(PesoMaxKg); w.Put(PesoKg);
             w.Put(SalaFase); w.Put(SalaMinutos);
 
@@ -2022,6 +2075,7 @@ public static class Protocol
             w.Put(Sangue ?? "");
             w.Put(PesoPct);
             w.Put(KaiokenMaestria); w.Put(KaiokenVezes); w.Put(KaiokenAceso);
+            w.Put(SkillsRaciais); w.Put(SkillsDoSangue);
         }
 
         public static AtributosState Read(NetDataReader r) => new()
@@ -2031,6 +2085,7 @@ public static class Protocol
             Willpower = r.GetFloat(), Stamina = r.GetFloat(),
             Poderes = r.GetUInt(),
             Idade = r.GetInt(),
+            MesesDaIdade = r.GetByte(),
             Raca = r.GetString(24),
             Classe = r.GetString(24),
             FormaAtual = r.GetUShort(),
@@ -2041,7 +2096,7 @@ public static class Protocol
             DiscLigada = r.GetBool(),
             GanhoDeTreino = r.GetFloat(),
             Gravidade = r.GetFloat(),
-            GravEfetiva = r.GetFloat(),
+            Aclimatacao = r.GetFloat(),
             PesoMult = r.GetFloat(),
             ZonaMult = r.GetFloat(),
             Esmagamento = r.GetFloat(),
@@ -2057,6 +2112,8 @@ public static class Protocol
             KaiokenMaestria = r.GetFloat(),
             KaiokenVezes = r.GetByte(),
             KaiokenAceso = r.GetBool(),
+            SkillsRaciais = r.GetUInt(),
+            SkillsDoSangue = r.GetUInt(),
         };
 
         private static (ushort, float)[] LerMaestrias(NetDataReader r)
@@ -2363,6 +2420,8 @@ public static class Protocol
         w.Put(d.Backstory);
         // O PEDIDO DE BERCO. Um bit, e nao um planeta: ver `CharacterDraft.PertoDeCasa`.
         w.Put(d.PertoDeCasa);
+        // (2026-10-17) O BEBE DE QUEM ELE NASCE (0 = criacao comum). Ver `CharacterDraft.FilhoDe`.
+        w.Put(d.FilhoDe);
     }
 
     public static CharacterDraft GetDraft(this NetDataReader r) => new()
@@ -2377,7 +2436,32 @@ public static class Protocol
         // sabe dizer o motivo certo.
         Backstory = r.GetString(CharacterDraft.BackstoryMax * 2),
         PertoDeCasa = r.GetBool(),
+        FilhoDe = r.GetInt(),
     };
+
+    /// <summary>
+    /// (2026-10-17) O BEBE A CAMINHO que a criacao oferece, no fim do `S2C.SlotList`: um byte de presenca e, se houver, os pais, a
+    /// raca, as linhagens que o filho pode ter e se e um OVO (um pai so, no lugar da mae). Ver `GameServer.Filhos.cs`.
+    /// </summary>
+    public static void PutOfertaDeBebe(this NetDataWriter w, OfertaDeBebe? b)
+    {
+        w.Put(b != null);
+        if (b == null) return;
+        w.Put(b.Id); w.Put(b.Pai); w.Put(b.Mae); w.Put(b.Raca);
+        w.Put((byte)Math.Min(b.Linhagens.Length, 8));
+        for (int i = 0; i < Math.Min(b.Linhagens.Length, 8); i++) w.Put(b.Linhagens[i]);
+        w.Put(b.DeOvo);
+    }
+
+    public static OfertaDeBebe? GetOfertaDeBebe(this NetDataReader r)
+    {
+        if (r.AvailableBytes < 1 || !r.GetBool()) return null;
+        int id = r.GetInt();
+        string pai = r.GetString(24), mae = r.GetString(24), raca = r.GetString(24);
+        var linhagens = new string[Math.Min((int)r.GetByte(), 8)];
+        for (int i = 0; i < linhagens.Length; i++) linhagens[i] = r.GetString(32);
+        return new OfertaDeBebe(id, pai, mae, raca, linhagens, r.GetBool());
+    }
 
     /// <summary>Cor OPCIONAL: um byte de presenca antes. Ausente = a cor natural do sprite.</summary>
     public static void PutRgb(this NetDataWriter w, Rgb? c)
@@ -2729,6 +2813,12 @@ public struct SheetState
     public double MultTotal;
 
     /// <summary>
+    /// (v0.4.0) O QUE AS PASSIVAS E ATIVAS RACIAIS ESTAO FAZENDO AGORA -- uma linha por coisa, separadas por `\n` (vazio = nada).
+    /// Ja vem escrito do servidor (`Races.EstadoRacial.LinhasDoHud`): o cliente nao tem o estado racial, e o HUD so as mostra.
+    /// </summary>
+    public string Raciais;
+
+    /// <summary>
     /// ATE ONDE O KI PODE IR CARREGANDO, em RAZAO sobre o <see cref="MaxKi"/> (o `powerupcap`).
     ///
     /// A barra de Ki precisa dele pra ter pra onde crescer: de fabrica o teto e 1,4 (140% do
@@ -2876,16 +2966,24 @@ public struct SheetState
     public byte Escape;
 
     /// <summary>
-    /// (v0.3.0) O TERCEIRO BYTE DO CORPO -- os dois primeiros estao cheios. Bit 0: <see cref="EmVisita"/>; sete livres.
+    /// (v0.3.0) O TERCEIRO BYTE DO CORPO -- os dois primeiros estao cheios. Bit 0: <see cref="EmVisita"/>; bit 1 (2026-10-17):
+    /// <see cref="Enterrado"/>; seis livres.
     /// </summary>
     public byte Estado3;
 
     /// <summary>
-    /// ESTOU MORTO COM O PASSE DO ENMA, entre os vivos (`Alem.EmVisita`): de pe, e nao o cadaver. O cliente precisa saber
+    /// ESTOU MORTO COM O PASSE DO ENMA, entre os vivos (`Alem.EmVisita`) -- ou (v0.3.2) DE PASSAGEM pela Transmissao
+    /// (`ServerPlayer.EmPassagem`): de pe, e nao o cadaver. O cliente precisa saber
     /// pra NAO se deitar (`LocalPlayer.Caido`): fora do Outro Mundo o lugar diria "cadaver", e quem sabe do passe e o
     /// servidor. Vem pela ficha pelo motivo do nado: e estado do MEU corpo que muda como eu ando.
     /// </summary>
     public bool EmVisita => (Estado3 & 1) != 0;
+
+    /// <summary>
+    /// (2026-10-17) ESTOU ENTERRADO -- a larva do bio-androide debaixo da terra (`GameServer.Larva.cs`): o corpo nao anda e os outros nao o
+    /// veem (o `Oculto` do snapshot). Vem pela ficha pelo motivo do nado: e estado do MEU corpo que muda como eu ando -- e como eu me vejo.
+    /// </summary>
+    public bool Enterrado => (Estado3 & 2) != 0;
 
     /// <summary>Nem anda nem golpeia: caido ou morto.</summary>
     public bool Imobilizado => KO || Morto;
@@ -2928,6 +3026,7 @@ public struct SheetState
         w.Put(SpeedStat);
         w.Put(SocoMs); w.Put(MembrosRuins); w.Put(Estado); w.Put(Estado2); w.Put(Escape);
         w.Put(Estado3);
+        w.Put(Raciais ?? "");
     }
 
     public static SheetState Read(NetDataReader r) => new()
@@ -2942,6 +3041,7 @@ public struct SheetState
         Estado2 = r.GetByte(),
         Escape = r.GetByte(),
         Estado3 = r.GetByte(),
+        Raciais = r.GetString(2048),
     };
 }
 
@@ -3276,6 +3376,13 @@ public struct EntityState
     /// <summary>
     /// Os 4 bits de baixo do terceiro byte. Os 4 de cima ficam livres -- e e onde o proximo estado de
     /// mundo entra, em vez de espremer os dois primeiros bytes (ver <see cref="Ocupacao"/>).
+    ///
+    /// ============================ (2026-10-17) E O 15 E A PORTA DA OCUPACAO ESTENDIDA ============================
+    /// Os dezesseis valores encheram com a vitima secando da execucao do bio (`Ocupacao.Secando`), e o grito do desabafo
+    /// do Lendario chegou logo depois. Em vez de um byte a mais por corpo por tique, o valor 15 nos 4 bits diz "o valor de
+    /// verdade vem num byte no FIM do pacote" -- e so quem esta num estado de 15 pra cima paga esse byte. A leitura e a
+    /// mesma ordem da escrita: o byte estendido e o ultimo.
+    /// ==============================================================================================================
     /// </summary>
     private const byte MascaraDaOcupacao = 0x0F;
 
@@ -3440,7 +3547,9 @@ public struct EntityState
                    | (NaveGrande ? BitNaveGrande : 0)));
         // O TERCEIRO BYTE: o que este corpo esta FAZENDO. Ver `Ocupacao` -- ele e o unico do pacote
         // que nao e opcional porque nao sobrou bit nenhum pra servir de porta.
-        w.Put((byte)(((byte)Ocupacao & MascaraDaOcupacao) | (Kaioken ? BitKaioken : 0)
+        byte ocupacao = (byte)Ocupacao;
+        bool estendida = ocupacao >= MascaraDaOcupacao;   // (2026-10-17) a porta: o valor de verdade vai no fim
+        w.Put((byte)((estendida ? MascaraDaOcupacao : ocupacao) | (Kaioken ? BitKaioken : 0)
                    | (Reunindo ? BitReunindo : 0) | (CargaAlta ? BitCargaAlta : 0)
                    | (LevadoPor != 0 ? BitLevado : 0)));
         if (Voando) w.Put(Jandirus.Core.World.Voo.ParaByte(Altitude));
@@ -3449,6 +3558,8 @@ public struct EntityState
         if (Pose == Protocol.Pose.Canalizando) w.Put(Canal);
         // ...E POR ULTIMO QUEM ME LEVA NO COLO, so pra quem esta no colo de alguem -- ver `LevadoPor`.
         if (LevadoPor != 0) w.Put(LevadoPor);
+        // (2026-10-17) ...E A OCUPACAO ESTENDIDA, so pra quem esta num estado de 15 pra cima -- ver `MascaraDaOcupacao`.
+        if (estendida) w.Put(ocupacao);
     }
 
     public static EntityState Read(NetDataReader r)
@@ -3472,13 +3583,15 @@ public struct EntityState
         // A ORDEM E A MESMA DA ESCRITA: ocupacao, altitude, canal. Um valor que este binario nao
         // conhece vira `Livre` em vez de virar estado inventado -- ver `CorpoOcupado.DeByte`.
         byte terceiro = r.GetByte();
-        e.Ocupacao = Jandirus.Core.World.CorpoOcupado.DeByte((byte)(terceiro & MascaraDaOcupacao));
+        byte ocupacao = (byte)(terceiro & MascaraDaOcupacao);
         e.Kaioken = (terceiro & BitKaioken) != 0;
         e.Reunindo = (terceiro & BitReunindo) != 0;
         e.CargaAlta = (terceiro & BitCargaAlta) != 0;
         if (e.Voando) e.Altitude = Jandirus.Core.World.Voo.DeByte(r.GetByte());
         if (e.Pose == Protocol.Pose.Canalizando) e.Canal = r.GetByte();
         if ((terceiro & BitLevado) != 0) e.LevadoPor = r.GetInt();
+        // (2026-10-17) A PORTA DA OCUPACAO ESTENDIDA: com 15 nos 4 bits, o valor de verdade e o ultimo byte -- ver `MascaraDaOcupacao`.
+        e.Ocupacao = Jandirus.Core.World.CorpoOcupado.DeByte(ocupacao == MascaraDaOcupacao ? r.GetByte() : ocupacao);
         return e;
     }
 }

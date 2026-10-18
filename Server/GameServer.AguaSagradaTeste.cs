@@ -139,8 +139,14 @@ public partial class GameServer
 			AfirmarAg("**O VIGOR MAXIMO SOBE 20%** (`maxstamina *= 1.2`)", Math.Abs(forte.Ficha.maxstamina - vigorAntes * 1.2) < 1e-6,
 					  $"{vigorAntes:0.##} -> {forte.Ficha.maxstamina:0.##}");
 			AfirmarAg("**E O BP SOBE** pela porta de ganho do treino: um quinto do `capcheck(BPMod * relBPmax)`",
-					  forte.Ficha.BP > bpAntes && forte.Ficha.BP <= bpAntes + ganhoEsperado / 5 * 1.3 + 1e-6 && Disse(falas, "PODER DE LUTA"),
+					  forte.Ficha.BP > bpAntes && forte.Ficha.BP <= bpAntes + ganhoEsperado / 5 * 1.3 + 1e-6,
 					  $"{bpAntes:0.#} -> {forte.Ficha.BP:0.#} (o cheio seria +{ganhoEsperado / 5:0.#})");
+
+			// (2026-10-16) O DONO: *"Agua sagrada do korin mostra o bp mesmo sem scouter"*. Sem medidor o ganho se SENTE (porcentagem) e o
+			// poder de luta nao e citado; o numero so com scouter (`PoderNaFrase`). O corpo da bancada nao tem scouter.
+			AfirmarAg("**SEM SCOUTER A AGUA NAO FALA DO PODER DE LUTA**: so a sensacao (\"cerca de N% mais forte\"), sem numero nenhum",
+					  Disse(falas, "mais forte") && !Disse(falas, "PODER DE LUTA") && !TrazOPoder(falas, forte.Ficha.BP) && !TrazOPoder(falas, bpAntes),
+					  Ultimos(falas));
 			AfirmarAg("...e o gole acabou", _golesDeAgua.Count == 0);
 
 			// ---------------------------------------------------------------- 6. uma vez na vida
@@ -159,6 +165,31 @@ public partial class GameServer
 
 			falas = Ouvir(() => Verbo(forte, AguaSagrada.VerboSobre, ""));
 			AfirmarAg("o `Description()` diz o que ela da e o que ela cobra", Disse(falas, "resistência") && Disse(falas, "uma vez"), Ultimos(falas));
+
+			// ---------------------------------------------------------------- 6b. o medidor
+			GD.Print("[agua] -- 6b) com scouter o numero; sem ele, nunca --");
+			List<string> GoleInteiro(ServerPlayer quem)
+			{
+				quem.Ficha.BP = quem.Ficha.relBPmax * 0.5;
+				SorteioDaAguaDeTeste = 0.9;   // quem salva e a resistencia (o corpo nasce com 1)
+				return Ouvir(() => { Verbo(quem, AguaSagrada.VerboBeber, ""); Passar(3000); Passar(3000); Passar(3000); Passar(30_000); Passar(3000); });
+			}
+
+			ServerPlayer medido = Forjar("Medido", aoLado, 1);
+			ScouterDeBancada(medido, true);
+			falas = GoleInteiro(medido);
+			AfirmarAg("COM SCOUTER a fala traz o poder de luta em numero (o aparelho e a porta de leitura)",
+					  Disse(falas, "PODER DE LUTA") && TrazOPoder(falas, medido.Ficha.BP), Ultimos(falas));
+
+			Jandirus.Core.Stats.PoderNaFrase.NumeroSemMedidorDeTeste = true;
+			try
+			{
+				ServerPlayer espiado = Forjar("Espiado", aoLado, 1);
+				falas = GoleInteiro(espiado);
+				AfirmarAg("(defeito injetado: o numero sem medidor) a fala traz o poder de luta a quem nao tem scouter -- a regua de cima REPROVA",
+						  Disse(falas, "PODER DE LUTA") && TrazOPoder(falas, espiado.Ficha.BP), Ultimos(falas));
+			}
+			finally { Jandirus.Core.Stats.PoderNaFrase.NumeroSemMedidorDeTeste = false; }
 
 			// ---------------------------------------------------------------- 7. quem sai no meio
 			GD.Print("[agua] -- 7) quem sai no meio do gole --");
@@ -188,6 +219,7 @@ public partial class GameServer
 		finally
 		{
 			AguaSagrada.SemGarantiaDeTeste = false;
+			Jandirus.Core.Stats.PoderNaFrase.NumeroSemMedidorDeTeste = false;
 			SorteioDaAguaDeTeste = null;
 			_golesDeAgua.Clear();
 			foreach (ServerPlayer c in forjados) RemoverNpc(c);

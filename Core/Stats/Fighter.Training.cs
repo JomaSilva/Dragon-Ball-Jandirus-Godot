@@ -56,14 +56,18 @@ public sealed partial class Fighter
     public void TrainGain(Random rng, double mult = 1)
     {
         if (mult == 0) mult = 1;
-        mult *= GainKnobs.GlobalTrainGain * zoneGainMult;
+        mult *= GainKnobs.GlobalTrainGain * zoneGainMult * racialGanhoDeTreino;   // (v0.4.0) o Persistence -- `Fighter.racialGanhoDeTreino`
+
+        // (2026-10-16) O LUGAR MULTIPLICA O TIQUE INTEIRO: a gravidade efetiva na parcela da atividade (que ja levava o peso e a
+        // zona) E na do potencial escondido (que passa a levar os tres). E o numero do painel -- ver `FatorDaGravidade`.
+        double lugar = FatorDaGravidade();
 
         if (BP < relBPmax)
         {
             // empurraozinho pra quem esta comecando do zero absoluto
             if (BP < 10 && (KiUnlockPercent == 1 || DmMath.Prob(rng, 25)) && DmMath.Prob(rng, 10)) BP += 1;
 
-            double amount = BpGainBase() * GainKnobs.BPTick * TrainMod * Egains * weight * (1.0 / 9) * mult;
+            double amount = BpGainBase() * GainKnobs.BPTick * TrainMod * Egains * weight * (1.0 / 9) * mult * lugar;
 
             if (missedtrain != 0) tmp_activ_gains++;
             else if (tmp_activ_gains > 0)
@@ -79,7 +83,8 @@ public sealed partial class Fighter
             else BP += CapCheck(amount);
 
             // potencial escondido vira poder sozinho, mais rapido se ja passou do BP atual
-            BP += CapCheck(hiddenpotential * GainKnobs.BPTick * (hiddenpotential >= BP ? 1.0 / 32 : 1.0 / 64));
+            BP += CapCheck(hiddenpotential * GainKnobs.BPTick * (hiddenpotential >= BP ? 1.0 / 32 : 1.0 / 64)
+                           * lugar * weight * zoneGainMult);
         }
 
         if (DmMath.Prob(rng, 10)) maxstamina += 0.01 * weight;
@@ -91,6 +96,7 @@ public sealed partial class Fighter
     public void MedGain(Random rng, double multi = 1)
     {
         if (multi == 0) multi = 1;
+        double lugar = FatorDaGravidade();   // (2026-10-16) a gravidade multiplica a meditacao tambem -- ver `FatorDaGravidade`
 
         if (BP < relBPmax)
         {
@@ -100,13 +106,13 @@ public sealed partial class Fighter
             // multiplicador de zona -- so o treino e o spar levam. E assim no DM.)
             // (2026-10-13) MEDITAR RENDE MENOS QUE TREINAR, nas duas parcelas -- ver `GainKnobs.MeditarRende`.
             double amount = CapCheck(BpGainBase() * GainKnobs.BPTick * GainKnobs.GlobalMedGain * multi
-                                     * Egains * MedMod * (1.0 / 24) * GainKnobs.MeditarRende);
+                                     * Egains * MedMod * (1.0 / 24) * GainKnobs.MeditarRende * lugar);
 
             if (train_med_to_hp) hiddenpotential += amount / 4;
             else BP += amount;
 
             BP += CapCheck(hiddenpotential * GainKnobs.BPTick * (hiddenpotential >= BP ? 1.0 / 30 : 1.0 / 50)
-                           * GainKnobs.MeditarRende);
+                           * GainKnobs.MeditarRende * lugar);
         }
 
         if (baseKi <= baseKiMax)
@@ -138,8 +144,10 @@ public sealed partial class Fighter
             if (BP < 10 && (KiUnlockPercent == 1 || DmMath.Prob(rng, 50))
                 && DmMath.Prob(rng, 1) && DmMath.Prob(rng, 50)) BP += 1;
 
-            BP += CapCheck(GainKnobs.BPTick * BpGainBase() * Etechnique * SparMod * Egains * weight * mult);
-            BP += CapCheck(hiddenpotential * GainKnobs.BPTick * (hiddenpotential >= BP ? 1.0 / 6 : 1.0 / 12));
+            // (2026-10-16) a gravidade multiplica a luta -- ver `FatorDaGravidade`
+            double lugar = FatorDaGravidade();
+            BP += CapCheck(GainKnobs.BPTick * BpGainBase() * Etechnique * SparMod * Egains * weight * mult * lugar);
+            BP += CapCheck(hiddenpotential * GainKnobs.BPTick * (hiddenpotential >= BP ? 1.0 / 6 : 1.0 / 12) * lugar);
         }
 
         if (DmMath.Prob(rng, 20)) maxstamina += 0.01 * weight;
@@ -155,7 +163,7 @@ public sealed partial class Fighter
         if (mult == 0) mult = 1;
         mult *= zoneGainMult;
 
-        double amount = GainKnobs.BPTick * BpGainBase() * Ekiskill * Egains * mult;
+        double amount = GainKnobs.BPTick * BpGainBase() * Ekiskill * Egains * mult * FatorDaGravidade();   // (2026-10-16) o lugar multiplica
         double kamount = 0.055 * BPrestriction * KiMod * baseKiMax / Math.Max(baseKi, 1e-9);
 
         // DEFEITO VIVO PORTADO 1:1: gainscale e DIVISOR aqui, e MULTIPLICADOR nos alvos de
@@ -231,53 +239,57 @@ public sealed partial class Fighter
     // GRAVIDADE
     // =====================================================================
     /// <summary>
-    /// A gravidade nao treina sozinha: ela MULTIPLICA o treino. Parado em 500x nao se ganha
-    /// nada -- e preciso estar treinando, meditando ou lutando.
+    /// QUANTO A GRAVIDADE MULTIPLICA O TIQUE -- a gravidade de verdade do chao (o planeta mais o campo de maquina), nunca abaixo
+    /// de 1: o espaco (gravidade zero) nao zera o treino, so nao ajuda. Multiplica a parcela da atividade E a do potencial
+    /// escondido, no treino, na meditacao, na luta e no ki. Parado nao se ganha nada em gravidade nenhuma: ela multiplica o
+    /// que a atividade paga, e quem nao faz nada nao recebe nada pra multiplicar.
     ///
-    /// O ganho segue a gravidade ABSOLUTA, nao a razao com a maestria. O sistema antigo de
-    /// tiers zerava o ganho no instante em que a maestria alcancava a gravidade, o que
-    /// empurrava todo mundo pra salas muito acima do que o corpo aguentava.
+    /// ============================ ELA SO SOMAVA, E SOMAVA QUASE NADA (dono, 2026-10-16) ============================
+    /// *"em 1x gravidade diz 4,8x e em 10x diz 15,63x oq daria uma grande diferença, pq eu lembro q no DM esses valores
+    /// realmente multiplicavam o bp gain e aqui deveria ser assim tb"*. O `Grav_Gain` do DM e uma parcela A PARTE --
+    /// `gravidade/1500` da base por chamada -- e la ela pesava: o treino pagava no maximo a cada 4 s (`trainproc`, o
+    /// `spawn(40)`) e a gravidade umas 8 vezes por segundo (o `statify` a chama duas vezes por volta, `sleep(3)`), entao 10x
+    /// rendia ~+50% e 100x ~6x o treino. Aqui o treino paga a 5 Hz e a parcela da gravidade ficou no mesmo tique: em 10x ela
+    /// era +2% do treino, enquanto o painel dizia "10x". DIVERGENCIA DECLARADA: a gravidade agora MULTIPLICA, e o painel
+    /// (`MultiplicadorDeGanho`) e este fator vezes a area, o peso e a zona -- o que o tique de treino paga.
     ///
-    /// ACLIMATACAO: quem ja domina mais gravidade do que sente ainda treina com a folga, mas
-    /// so uma fracao dela -- estar de verdade na gravidade alta e sempre melhor.
+    /// `GlobalGravGain` (o botao de admin) escala o EXCESSO acima de 1: 1 = a gravidade inteira, 0 = a gravidade nao conta.
+    /// ===========================================================================================================
+    ///
+    /// ============================ A ACLIMATACAO NAO ENTRA AQUI (dono, 2026-10-16) ============================
+    /// *"o aclmiation deveria so ter a parte q da um pequeno multiplicador de bp quando vc vai pra uma gravidade abaixo da sua
+    /// masterizada, fora isso ele n deveria dar ganho de bp eterno, isso quebra um pouco as coisas"*. No DM a folga da maestria
+    /// (`(GravMastered - gravidade) x 0,2`) somava na gravidade do `Grav_Gain`; com a gravidade multiplicando, ela virava um
+    /// multiplicador ETERNO de treino (dominar 100x num chao de 1x valia 20,8x). Saiu: a aclimatacao e so o bonus de PODER do
+    /// `gravFelt` (`Fighter.Power`, `StatCurves.GravFelt`), que a aba de Formas mostra. DIVERGENCIA DECLARADA.
+    /// =======================================================================================================
+    /// </summary>
+    public double FatorDaGravidade()
+    {
+        if (GainKnobs.GravidadeNaoMultiplicaDeTeste) return 1;
+        double gravidade = Planetgrav + gravmult;
+        return 1 + Math.Max(gravidade - 1, 0) * Math.Max(GainKnobs.GlobalGravGain, 0);
+    }
+
+    /// <summary>
+    /// A MAESTRIA DE GRAVIDADE: o teto de aclimatacao so sobe encarando gravidade ACIMA dele -- no passe do treino e da
+    /// meditacao (`GameServer.Treinar`). O BP que este metodo pagava (a parcela `gravidade/1500`) saiu em 2026-10-16: a
+    /// gravidade agora multiplica o tique, ver <see cref="FatorDaGravidade"/>.
+    ///
+    /// A maestria segue a gravidade ABSOLUTA, nao a razao. O sistema antigo de tiers zerava o ganho no instante em que a
+    /// maestria alcancava a gravidade, o que empurrava todo mundo pra salas muito acima do que o corpo aguentava.
     /// </summary>
     public void GravGain()
     {
         double gravidade = gravmult + Planetgrav;
 
-        // A CONTA DA ACLIMATACAO SAIU DAQUI e virou `GravidadeEfetiva()` -- ver la: ela e lida
-        // tambem pelo `MultiplicadorDeGanho()`, que e o numero que a TELA mostra, e as duas copias
-        // divergiriam no dia em que alguem mexesse no peso da aclimatacao.
-        double effgrav = GravidadeEfetiva();
-
-        bool treinando = train || med || IsInFight || minuteshot;
-        if (effgrav > 0 && gravidade >= 1 && treinando)
-            BP += CapCheck(BpGainBase() * GainKnobs.BPTick * TrainMod * Egains * GainKnobs.GlobalGravGain
-                           * (effgrav / GainKnobs.GravGainDiv) * zoneGainMult);
-
         // o teto de aclimatacao so sobe encarando gravidade ACIMA dele
         if (gravidade > GravMastered)
         {
-            GravMastered += 0.001 + GainKnobs.BPTick * 10 * gravidade * GravMod * GainKnobs.GlobalGravGain * 0.02;
+            // a maestria de gravidade nao e BP: o ganho de BP ficou 20x menor (2026-10-16), ela segue no ritmo do DM
+            GravMastered += 0.001 + GainKnobs.BPTickDoDm * 10 * gravidade * GravMod * GainKnobs.GlobalGravGain * 0.02;
             GravMastered = Math.Min(Math.Min(gravidade, GravMastered), GainKnobs.GravityCap);
         }
-    }
-
-    /// <summary>
-    /// A GRAVIDADE EFETIVA que o ganho enxerga: a de verdade, mais a folga da aclimatacao.
-    ///
-    /// Existe como metodo porque a mesma conta era escrita em DOIS lugares -- dentro do
-    /// <see cref="GravGain"/> (onde ela paga BP) e dentro do <see cref="MultiplicadorDeGanho"/>
-    /// (onde ela e MOSTRADA). Sao exatamente as duas copias que a PARTE 3 do plano manda evitar: no
-    /// dia em que alguem mexesse na aclimatacao, a tela passaria a mentir sobre o proprio ganho.
-    /// </summary>
-    public double GravidadeEfetiva()
-    {
-        double gravidade = Planetgrav + gravmult;
-        if (gravidade < 1) return 0;   // gravidade zero de verdade (o espaco) nao treina nada
-        return GravMastered > gravidade
-            ? gravidade + (GravMastered - gravidade) * GainKnobs.GravAccustomWeight
-            : gravidade;
     }
 
     /// <summary>
@@ -292,9 +304,14 @@ public sealed partial class Fighter
     /// ==========================================================================================
     ///
     /// A conta e a razao entre o ganho de agora e o de uma sessao neutra (gravidade 1, sem peso,
-    /// fora de zona especial): os termos `BpGainBase * BPTick * TrainMod * GravGainDiv` aparecem nos
-    /// dois lados e se cancelam, sobrando `Egains * StamBPGainMod * GainsRate * GlobalGravGain *
-    /// effgrav * weight`. Gravidade e LINEAR, entao 10x de gravidade le ~10x.
+    /// fora de zona especial) DO MESMO CORPO: `FatorDaGravidade * weight * zona`. Gravidade e LINEAR,
+    /// entao 10x de gravidade le 10x -- e desde 2026-10-16 e isso que o tique de treino PAGA (antes a
+    /// gravidade so somava uma parcela de `gravidade/1500`, e o painel mentia).
+    ///
+    /// SEM NADA, 1x (dono, 2026-10-16: *"o bp gain mais baixo quando vc n tem aclimation nem nada deveria
+    /// ser 1x e nao 1,25"*). A AREA -- `Egains` (o multiplicador de treino da raca, do rabo, da Sala),
+    /// `StamBPGainMod` (o vigor: 1,25x cheio, 0,5x no fundo) e o `GainsRate` -- continua pagando no tique,
+    /// mas e do CORPO e nao do lugar, e entrava aqui como o 1,25 que o dono via parado em 1x.
     ///
     /// ============================ UMA DIVERGENCIA DELIBERADA DO DM ============================
     /// O `bp_gain_mult()` original **nao inclui o `htc_gain_mult()`**: dentro da Sala do Tempo o
@@ -305,8 +322,7 @@ public sealed partial class Fighter
     /// </summary>
     public double MultiplicadorDeGanho()
     {
-        double area = Math.Max(Egains, 0) * Math.Max(StamBPGainMod, 0) * Math.Max(GainsRate, 0);
-        double gmult = area * Math.Max(GainKnobs.GlobalGravGain, 0) * GravidadeEfetiva();
+        double gmult = FatorDaGravidade();   // o MESMO fator que o tique paga (2026-10-16)
 
         // O PESO MULTIPLICA O TREINO, e so pra cima: `weight` nasce em 1 e o `WeightTick` ja o
         // prende entre 1 e 8.

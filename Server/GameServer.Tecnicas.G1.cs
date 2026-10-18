@@ -55,16 +55,6 @@ public partial class GameServer
 	private const double BonusDosQuatroG1 = 5;
 
 	/// <summary>
-	/// `KiBladeDrain` / `KiSwordDrain`, que comecam em 1 (Cultivation.dm:88 e :207).
-	///
-	/// NO DM ELE CAI COM O USO: o `effector()` da skill baixa pra 0,5 no nivel 1 e pra 0 no nivel 2
-	/// (Cultivation.dm:69-79). O port nao tem exp/nivel POR SKILL -- o <c>SkillBook</c> so sabe se
-	/// a skill foi aprendida -- entao a mordida fica sempre no preco cheio. Quando o nivel de skill
-	/// existir, e este numero que vira variavel.
-	/// </summary>
-	private const double MordidaDaArmaG1 = 1;
-
-	/// <summary>
 	/// OS SEIS QUE BRIGAM PELO MESMO SLOT (`slot=sBUFF`). Ver o cabecalho: no DM `startbuff`
 	/// recusa quando o slot ja esta ocupado, entao eles nunca se somaram.
 	/// </summary>
@@ -175,7 +165,7 @@ public partial class GameServer
 		// KiMod nasce protegido contra zero no `Fighter.FromGenome`, mas um save antigo pode
 		// trazer qualquer coisa -- e uma divisao por zero aqui viraria custo infinito.
 		double kiMod = Math.Max(pl.Ficha.KiMod, 0.01);
-		double custo = pl.Ficha.MaxKi / divisorDaMordida * MordidaDaArmaG1 / kiMod;
+		double custo = pl.Ficha.MaxKi / divisorDaMordida * MordidaDaArmaDeKi(pl, id) / kiMod;   // `KiBladeDrain`/`KiSwordDrain`
 
 		if (pl.Ficha.Ki < custo)
 		{

@@ -300,16 +300,33 @@ public partial class RoboDeVerbs : Node
 			return p;
 		}
 
+		// (2026-10-17) o bio da escolha do DNA: o sangue que ele carrega e as skills que ja escolheu (`Races.SkillsRaciais`)
+		static PosseEscrita ComSangue(PosseEscrita p, Jandirus.Core.Races.SkillRacial sangue, Jandirus.Core.Races.SkillRacial escolhidas)
+		{
+			p.SkillsDoSangue = sangue;
+			p.SkillsRaciais = escolhidas;
+			return p;
+		}
+		Jandirus.Core.Races.SkillRacial sangueInteiro = Jandirus.Core.Races.SkillsRaciais.Todas.Aggregate(
+			Jandirus.Core.Races.SkillRacial.Nenhuma, (s, d) => s | d.Bit);
+
 		const Fatos ofertas = Fatos.ConviteDeMestre | Fatos.ConviteDeFusao | Fatos.ConviteDeAbsorcao | Fatos.LicaoOferecida
 							| Fatos.OfertaDeJuventude | Fatos.OfertaDePotencial | Fatos.PedidoDeGenkidama | Fatos.OfertaDeAssento
-							| Fatos.DesafioAoTitulo;
+							| Fatos.DesafioAoTitulo | Fatos.PedidoDeFilho;
 		(string Nome, PosseEscrita Quem)[] elenco =
 		[
 			("humano novato", Gente("Human", "Normal", terra)),
 			("Saiyajin novato", Gente("Saiyan", "Low-Class", terra)),
+			// (v0.4.0) OS SANGUES COM ATIVA RACIAL -- as treze linhas da aba Skills tem quem as desenhe (o humano e o Namekuseijin ja estao aqui).
+			("Saiyajin Lendário", Gente("Saiyan", "Legendary", terra)),
+			("Saiyajin Primal", Gente("Saiyan", "Normal Primal Saiyan", terra)),
+			("Lendário Primal", Gente("Saiyan", "Legendary Primal Saiyan", terra)),
+			("Frost Demon", Gente("Icer", "Frost Demon", terra)),
+			("Frost Demon mutante", Gente("Icer", "Mutant Frost Demon", terra)),
 			// (2026-10-13) A FUSAO NAMEKUSEIJIN PEDE A SKILL DELA (`Fusion- Namek Style`): o guerreiro e o do Cla a
 			// aprenderam; o "Cla do Dragao que nao aprendeu a estatua" e o Namekuseijin que so tem o que e da raca.
-			("Namekuseijin guerreiro", Gente("Namekian", "Warrior clan", terra, skills: [RequisitosDosVerbos.SkillDaFusaoNamek])),
+			// (2026-10-17) E ELE E ADULTO: poe ovo (`Fatos.PoeOvo`) -- as racas de ovo tem filho sozinhas.
+			("Namekuseijin guerreiro", Gente("Namekian", "Warrior clan", terra, Fatos.PoeOvo, skills: [RequisitosDosVerbos.SkillDaFusaoNamek])),
 			// (2026-10-13) A ESTATUA PEDE A SKILL DELA (`Make Dragon Statue`): o do Cla que a aprendeu, e o que ainda nao.
 			("Namekuseijin do Clã do Dragão", Gente("Namekian", "Dragon clan", terra,
 				skills: [Jandirus.Core.Skills.AcendedoresDoPort.EstatuaDoDragao, RequisitosDosVerbos.SkillDaFusaoNamek])),
@@ -323,11 +340,22 @@ public partial class RoboDeVerbs : Node
 			("Majin com Buu Absorb", Gente("Majin", "Normal", terra, tecnicas: [Jandirus.Core.Combat.AbsorcaoMajin.Verbo])),
 			("bio-androide", Gente(Jandirus.Core.Races.BioAndroids.Raca, "Normal", terra)),
 			("bio-androide de DNA Saiyajin", Gente(Jandirus.Core.Races.BioAndroids.Raca, "Normal", terra, Fatos.EscadaSuperSaiyajin)),
+			// (2026-10-17) O BIO QUE SAIU DE UM TANQUE veste a larva (`Fatos.BioDeLaboratorio`), e so a LARVA se enterra (`Fatos.EmLarva`).
+			("bio-androide de laboratório", Gente(Jandirus.Core.Races.BioAndroids.Raca, "Normal", terra, Fatos.BioDeLaboratorio | Fatos.NucleoPorEscolher)),
+			("larva de bio-androide", Gente(Jandirus.Core.Races.BioAndroids.Raca, "Normal", terra, Fatos.BioDeLaboratorio | Fatos.EmLarva)),
+			// (2026-10-17) AS SKILLS DO DNA (`Fatos.SkillDoDnaPorEscolher`): o bio com vaga e o sangue das cinco racas de kit (os vinte botoes da
+			// escolha), e o que ja escolheu Warrior Race e Second Wind de um sangue Saiyajin + Humano (sete botoes, e o da ativa escolhida).
+			("bio-androide com o DNA por escolher", ComSangue(Gente(Jandirus.Core.Races.BioAndroids.Raca, "Normal", terra, Fatos.SkillDoDnaPorEscolher),
+				sangueInteiro, Jandirus.Core.Races.SkillRacial.Nenhuma)),
+			("bio-androide que já escolheu Warrior Race e Second Wind",
+				ComSangue(Gente(Jandirus.Core.Races.BioAndroids.Raca, "Normal", terra, Fatos.SkillDoDnaPorEscolher),
+					Jandirus.Core.Races.SkillsRaciais.DoKit(Jandirus.Core.Races.KitRacial.Saiyajin | Jandirus.Core.Races.KitRacial.Humano),
+					Jandirus.Core.Races.SkillRacial.RacaGuerreira | Jandirus.Core.Races.SkillRacial.SegundoFolego)),
 			("androide de absorção", Gente("Android", "Normal", terra, Fatos.AndroideDeAbsorcao)),
 			("humano no espaço", Gente("Human", "Normal", Lugar.Espaco)),
-			("humano com tudo na mesa (ofertas, mestre, aluno, fusão, cópias, God Ki, arma de fogo)",
+			("humano com tudo na mesa (ofertas, mestre, aluno, fusão, cópias, God Ki, arma de fogo, um amor)",
 				Gente("Human", "Normal", terra, ofertas | Fatos.TemMestre | Fatos.TemAluno | Fatos.DirigeUmaFusao | Fatos.TemCopias | Fatos.GodKiDesperto
-											 | Fatos.TemArmaDeFogo)),
+											 | Fatos.TemArmaDeFogo | Fatos.TemUmAmor)),
 			("dono deste planeta", Gente("Human", "Normal", terra, Fatos.DominaEstePlaneta | Fatos.DominaAlgum)),
 			("Grande Ancião de Namek", Gente("Namekian", "Dragon clan", terra, cargos: ["elder"])),
 			("Rei de Vegeta", Gente("Saiyan", "Elite", terra, cargos: ["kov"])),
@@ -398,6 +426,18 @@ public partial class RoboDeVerbs : Node
 		Checa("...e os graus sao de quem tem a ESCADA: o bio-androide de DNA Saiyajin ve Toggle SSJ Grades; o bio comum e o Namekuseijin nao",
 			  Tem("bio-androide de DNA Saiyajin", Verbos.Outros, "Toggle SSJ Grades") && NaoTem("bio-androide", Verbos.Outros, "Toggle SSJ Grades")
 			  && NaoTem("Namekuseijin guerreiro", Verbos.Outros, "Toggle SSJ Grades"));
+		string[] doDna = [.. Jandirus.Core.Races.SkillsRaciais.Todas.Select(s => $"DNA: {s.Nome}")];
+		const string jaEscolheu = "bio-androide que já escolheu Warrior Race e Second Wind";
+		Checa("AS SKILLS DO DNA (o adendo do dono): o bio com vaga e o sangue das cinco racas de kit ve os VINTE botoes da escolha; o que ja escolheu "
+			  + "Warrior Race e Second Wind (sangue Saiyajin + Humano) ve os SETE que sobram do sangue dele e o botao da ativa escolhida -- e nao o "
+			  + "Max Power, que nao escolheu; ninguem mais do elenco ve botao de DNA",
+			  Tem("bio-androide com o DNA por escolher", Verbos.Skills, doDna)
+			  && telas[jaEscolheu][Verbos.Skills].Count(t => t.StartsWith("DNA: ", StringComparison.Ordinal)) == 7
+			  && Tem(jaEscolheu, Verbos.Skills, "Second Wind") && NaoTem(jaEscolheu, Verbos.Skills, "Max Power", "DNA: Warrior Race", "DNA: Second Wind",
+																										   "DNA: Perfect Control")
+			  && elenco.Where(e => !e.Nome.StartsWith("bio-androide com o DNA", StringComparison.Ordinal) && e.Nome != jaEscolheu)
+						   .All(e => NaoTem(e.Nome, Verbos.Skills, doDna)),
+			  string.Join(" | ", telas[jaEscolheu][Verbos.Skills].Where(t => t.StartsWith("DNA: ", StringComparison.Ordinal))));
 		Checa("AS SUPER ESFERAS: os tres botoes so pra quem esta no espaco",
 			  Tem("humano no espaço", "World", "Super Esferas: placar", "Reivindicar Super Esfera", "Chamar o Super Shenron")
 			  && NaoTem("humano novato", "World", "Super Esferas: placar", "Reivindicar Super Esfera", "Chamar o Super Shenron"));

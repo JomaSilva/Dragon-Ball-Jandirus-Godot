@@ -234,6 +234,7 @@ public sealed partial class GameServer
 				if (pl.Idade >= 10)
 				{
 					pl.Idade = 10;
+					pl.MesesDaIdade = 0;   // (2026-10-17) o `usr.Age = 10` do DM nao guarda decimo
 					f.Idade = 10;
 					Avisar(pl, "o corpo volta no tempo: você tem dez anos de novo.");
 				}
@@ -329,7 +330,7 @@ public sealed partial class GameServer
 	private void InjetarEmOutro(ServerPlayer pl, ItemDef def)
 	{
 		if (def.Id != Sintetizador.MorteCerta) return;
-		if (pl.Ficha.KO || pl.Ficha.dead || EhCadaver(pl)) { Avisar(pl, "caído, você não consegue."); return; }
+		if (pl.Ficha.KO || CaidoPelaMorte(pl)) { Avisar(pl, "caído, você não consegue."); return; }
 		ServerPlayer? alvo = QuemEstaNaFrente(pl, o => !o.Ficha.dead);
 		if (alvo == null) { Avisar(pl, "não há ninguém à sua frente."); return; }
 		int idDoAlvo = alvo.Id;

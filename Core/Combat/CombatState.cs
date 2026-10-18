@@ -63,6 +63,39 @@ public sealed class CombatState
 	/// </summary>
 	public double ReducaoDeDano;
 
+	// ============================ O CANAL RACIAL (v0.4.0) ============================
+	// Escrito a cada tique pelo `GameServer.Passivas` a partir do `Races.EfeitoRacial` do corpo -- e so por ele. Fica SEPARADO da
+	// reducao da aura de proposito: as duas sao escritas por donos diferentes a cada tique, e uma por cima da outra apagaria a outra.
+	// ===================================================================================
+
+	/// <summary>(v0.4.0) A REDUCAO DE DANO DAS PASSIVAS RACIAIS, em %, combinada com a da aura no <see cref="MeleeResolver"/>.</summary>
+	public double ReducaoRacial;
+
+	/// <summary>(v0.4.0) O dano que ESTE corpo DA (soco; o de ki o servidor multiplica no tiro) e o que ele RECEBE antes da reducao.</summary>
+	public double DanoDadoRacial = 1, DanoRecebidoRacial = 1;
+
+	/// <summary>(v0.4.0) EXTREME TENACITY: cada membro com pouca vida apanha menos (`Races.Passivas.ReducaoTenaz`).</summary>
+	public bool Tenaz;
+
+	/// <summary>(v0.4.0) SEM RECUO: nem arremesso nem atordoamento (Unstoppable Force, Primal Bloodlust).</summary>
+	public bool Inabalavel;
+
+	/// <summary>(v0.4.0) SEM EFEITOS NEGATIVOS: debuffs de membro, atordoamento e debuffs de skill inimiga (Unmatched Ferocity, Sheer
+	/// Willpower, Blazing Spirit).</summary>
+	public bool SemEfeitosNegativos;
+
+	/// <summary>(v0.4.0) INVULNERAVEL -- a animacao da Legendary Resurrection. Entra no <see cref="Intocavel"/>.</summary>
+	public bool Invulneravel;
+
+	/// <summary>(v0.4.0) A escala racial dos debuffs de membro (Warrior's Vitality 0,5; o Demonic 1,1) -- `DebuffsDeMembro.Escalar`.</summary>
+	public double FatorDosMembros = 1;
+
+	/// <summary>(v0.4.0) O RITMO DO NOCAUTE: 0,5 = os relogios do nocaute andam no dobro (Namekian Resilience, Extreme Tenacity).</summary>
+	public double FatorDoNocaute = 1;
+
+	/// <summary>A escala de membro que vale agora: a racial, ou ZERO sem efeitos negativos.</summary>
+	public double EscalaDosMembros => SemEfeitosNegativos ? 0 : FatorDosMembros;
+
 	/// <summary>Zona que este lutador esta mirando: "cabeca", "torso", "bracos", "pernas".</summary>
 	public string? ZonaMirada;
 
@@ -279,7 +312,13 @@ public sealed class CombatState
 	/// a imunidade de cinematica significaria visitar os dezoito e acertar todos -- e o que sobrasse
 	/// seria o "as vezes" que ninguem consegue reproduzir.
 	/// </summary>
-	public bool Intocavel => Carencia > 0 || Desfeito || EmCinematica?.Invoke() == true;
+	public bool Intocavel => Carencia > 0 || Desfeito || Invulneravel || Enterrado || EmCinematica?.Invoke() == true;
+
+	/// <summary>
+	/// (2026-10-17) A LARVA ENTERRADA (`GameServer.Larva.cs`): debaixo da terra ninguem a alcanca -- a quinta razao do <see cref="Intocavel"/>.
+	/// Quem a escreve e o servidor, ao enterrar e ao sair da terra.
+	/// </summary>
+	public bool Enterrado;
 
 	/// <summary>
 	/// ============================ ESTE CORPO ESTA SENDO ARREMESSADO AGORA? ============================
@@ -487,7 +526,8 @@ public sealed class CombatState
 		if (RecargaContra > 0) RecargaContra = Math.Max(0, RecargaContra - dt);
 		if (ComboAte > 0 && (ComboAte = Math.Max(0, ComboAte - dt)) == 0) Combo = 0;
 		if (Carencia > 0) Carencia = Math.Max(0, Carencia - dt);
-		if (Stun > 0) Stun = Math.Max(0, Stun - dt);
+		// (v0.4.0) SEM RECUO E SEM NEGATIVOS, o atordoamento cai no tique: e um funil so pros vinte lugares que o escrevem.
+		if (Stun > 0) Stun = Inabalavel || SemEfeitosNegativos ? 0 : Math.Max(0, Stun - dt);
 		if (EmCombate > 0) EmCombate = Math.Max(0, EmCombate - dt);
 		if (LutandoDeVerdade > 0) LutandoDeVerdade = Math.Max(0, LutandoDeVerdade - dt);
 		if (BrigandoComAlguem > 0) BrigandoComAlguem = Math.Max(0, BrigandoComAlguem - dt);
@@ -502,9 +542,11 @@ public sealed class CombatState
 		// que escreve `Ficha.KO = true` na mao continua com o corpo caido ate mandar levanta-lo, que
 		// e o que ela quis dizer.
 		bool armado = NocauteRestante > 0;
-		if (armado) NocauteRestante = Math.Max(0, NocauteRestante - dt);
+		// (v0.4.0) O RITMO RACIAL DO NOCAUTE: 0,5 = os dois relogios andam no dobro -- ver `FatorDoNocaute`.
+		double dtDoNocaute = dt / Math.Max(FatorDoNocaute, 0.05);
+		if (armado) NocauteRestante = Math.Max(0, NocauteRestante - dtDoNocaute);
 		// O PISO DO DESMAIO anda junto -- ver `SegundosMinimosDoDesmaio`.
-		if (DesmaioMinimo > 0) DesmaioMinimo = Math.Max(0, DesmaioMinimo - dt);
+		if (DesmaioMinimo > 0) DesmaioMinimo = Math.Max(0, DesmaioMinimo - dtDoNocaute);
 
 		// ============================ QUEM ACORDA O CORPO E A CURA, E DEPOIS O TETO ============================
 		// A ordem e a de `Injuries.dm:277-289`, e ela e ESTA e nao a inversa: o coma por nucleo acaba
@@ -541,9 +583,17 @@ public sealed class CombatState
 			TempoDeGuarda = 0;
 			ContraPronto = RecargaContra <= 0;
 		}
-		Bloqueando = erguida && !F.KO && !F.dead;
+		// (2026-10-16) O FANTASMA DE PE TAMBEM ERGUE A GUARDA -- o dono: *"n tem como dar bloqueio morto? deveria"*. A mesma
+		// regra do `PodeAtacar`: o cadaver nao, o morto de pe do Outro Mundo sim (ver `MortoDePe`).
+		Bloqueando = erguida && !F.KO && (!F.dead || (!MortoNaoBloqueiaDeTeste && MortoDePe?.Invoke(this) == true));
 		if (!Bloqueando) ContraPronto = false;
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`, familia G): a guarda volta a recusar TODO morto, inclusive o de pe no Outro Mundo
+	/// -- o jogo de antes. Lido pelo <see cref="Guardar"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool MortoNaoBloqueiaDeTeste;
 
 	/// <summary>Marca o inicio (ou a renovacao) da luta pros dois lados.</summary>
 	/// <param name="comAlguem">
@@ -593,18 +643,10 @@ public sealed class CombatState
 		// entra no BP expresso (`Fighter.PowerLevel`), o corpo ficava deitado com o bonus de poder de quem
 		// ainda estava carregado.
 		//
-		// O `extracharge` VAI JUNTO, e nao e detalhe: e o "troco" da carga, que o `RegenDeKi.Passo` devolve
-		// como Ki nos segundos seguintes FORA do teto de 100% -- e ele paga mesmo nocauteado. Sem zera-lo, o
-		// corpo cairia em 100% e levantaria acima disso.
-		//
 		// AQUI E NAO NO SERVIDOR porque este e o funil unico do nocaute: soco, raio, dano em area, a propria
 		// sobrecarga, o verb de admin, o reflexo da mente -- todos passam por esta linha.
 		// ==========================================================================================
-		if (!NocauteGuardaASobrecargaDeTeste)
-		{
-			if (F.Ki > F.MaxKi) F.Ki = F.MaxKi;
-			F.extracharge = 0;
-		}
+		if (!NocauteGuardaASobrecargaDeTeste && F.Ki > F.MaxKi) F.Ki = F.MaxKi;
 
 		F.KO = true;
 		F.train = false;   // `KO.dm:57-58`: o nocaute desliga o treino e a meditacao

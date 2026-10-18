@@ -94,7 +94,8 @@ public static class StatBench
         Console.WriteLine("\n  -- familia 3 e debuffs: no FIM de tudo --");
         Caso("nocauteado", "100 (10% do base)", f => { f.KO = true; f.ssjBuff = 6; f.Anger = 999; });
         Caso("peso 2x", "500", f => f.weight = 2);
-        Caso("larva de bio-androide", "10 (1% do base)", f => { f.bio_lab_born = true; f.bio_stage = 1; f.ssjBuff = 6; });
+        // (2026-10-17) a larva e sempre RELAXADA (o dono): 5, pela trava do relaxado -- que le o expresso do tique anterior (2 ticks)
+        Caso("larva de bio-androide (sempre relaxada)", "5", f => { f.bio_lab_born = true; f.bio_stage = 1; f.ssjBuff = 6; }, ticks: 2);
         Caso("Frost mutante vazando (0.3)", "300", f => f.fd_release = 0.3);
         Caso("revive por Zeni (1a hora)", "250", f => f.zeni_revive_debuff_until = 1);
         Caso("poder escondido (2 ticks)", "5", f => f.isconcealed = true, ticks: 2);

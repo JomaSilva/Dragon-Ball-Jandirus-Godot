@@ -289,6 +289,7 @@ public static class RaivaBench
 			LinhaDeForma.Namekuseijin => Catalogo.RacaNamekuseijin,
 			LinhaDeForma.Heran => Catalogo.RacaHeran,
 			LinhaDeForma.Alien => Catalogo.RacaAlien,
+			LinhaDeForma.Tensao => Catalogo.RacaHumano,
 			_ => "Saiyan",
 		};
 
@@ -1075,6 +1076,9 @@ public static class RaivaBench
 			// nenhum da entrada -- e o TITULO, que mora na conta, e quem a liga e o servidor
 			// (`GameServer.KitDoDeus`). O funil recusa a escada inteira pra todo mundo, e a passada B confere.
 			if (Catalogo.SoPeloTitulo(d)) portas.Add("o titulo de Deus da Destruicao (nao se sobe)");
+			// (2026-10-16) A FORMA PURA DO CORRUPTED MAJIN: a porta e a SAGA (as quatro formas e o BP base), e o corpo vai pra ela como
+			// repouso -- o C nao a alcanca (`EstadoDeForma.Avaliar` recusa a linha inteira). A passada B confere.
+			if (Catalogo.FormaDoMajinPuro(d)) portas.Add("a saga do Corrupted Majin (nao se sobe)");
 
 			// ============================ E HA UM DEGRAU QUE NAO SE CONQUISTA: O REPOUSO ============================
 			// A forma BASE do Frost Demon nao cobra nada, e nao e um esquecimento: e onde o corpo dele

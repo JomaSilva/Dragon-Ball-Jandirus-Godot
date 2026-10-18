@@ -35,7 +35,7 @@ public partial class RoboDasAbas
 		string[] botoes =
 		[
 			"Anunciar", "Forcar", "Voltar ao natural", "Lua cheia agora", "Meio-dia agora",
-			"Voltar ao normal", "Liberar skills de Ki", "promover", "rebaixar", "banir", "perdoar",
+			"Voltar ao normal", "Liberar skills de Ki", "promover", "rebaixar", "banir", "perdoar", "classe rara",
 			"atualizar lista", "dar skill", "tirar skill", "dar cargo", "tirar cargo", "PM",
 		];
 		List<string> faltando = botoes.Where(t => BotaoDeTextoExato(pg, t) == null).ToList();

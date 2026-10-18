@@ -120,8 +120,8 @@ public partial class GameServer
 		double piso = Voo.HabilidadeDoNivel(NivelDeVoo(pl));
 		// QUEM DESTRAVOU PELA MAESTRIA DE KI entra com o piso do nivel 1 do DM. Sem isto ele voaria
 		// com `flightability = 1`, e 80/1 = 80 de Ki so pra sair do chao -- um portao que se abre
-		// mas nao deixa passar.
-		if (piso < Voo.HabilidadeNivel1 && DestravouPelaMaestria(pl)) piso = Voo.HabilidadeNivel1;
+		// mas nao deixa passar. (E o NPC que voa pelo PODER tambem -- ver `VoaPeloPoder`.)
+		if (piso < Voo.HabilidadeNivel1 && (DestravouPelaMaestria(pl) || VoaPeloPoder(pl))) piso = Voo.HabilidadeNivel1;
 		if (pl.Ficha.flightability < piso) pl.Ficha.flightability = piso;
 		return pl.Ficha.flightability;
 	}
@@ -160,10 +160,24 @@ public partial class GameServer
 	/// ============================================================================================
 	/// </summary>
 	private static bool PodeVoar(ServerPlayer pl)
-		=> NivelDeVoo(pl) >= 1 || DestravouPelaMaestria(pl);
+		=> NivelDeVoo(pl) >= 1 || DestravouPelaMaestria(pl) || VoaPeloPoder(pl) || VoaPelaCarapaca(pl);
+
+	/// <summary>
+	/// (2026-10-17) A LARVA DO BIO-ANDROIDE VOA -- o adendo do dono (ela se enterra pra se esconder, e voa). Sem a skill e sem a maestria: e da
+	/// carapaca.
+	/// </summary>
+	private static bool VoaPelaCarapaca(ServerPlayer pl) => Jandirus.Core.Races.BioAndroids.EmLarva(pl.Ficha);
 
 	private static bool DestravouPelaMaestria(ServerPlayer pl)
 		=> pl.Niveis.Nivel(SkillDoKi) >= MaestriaQueDestravaVoo;
+
+	/// <summary>
+	/// (2026-10-16) O NPC DO MUNDO DE 2 MIL DE BP PRA CIMA SABE VOAR -- a metade da PORTA da regra do dono (a outra e o perfil, no
+	/// nascimento: `PerfilDeCombate.PeloPoder`). Perguntada a cada vez, entao o NPC que cresce passando da linha aprende ali. So o NPC
+	/// do mundo (`EhNpcDoMundo`): o jogador continua abrindo o voo pela maestria de Ki, e o clone pelo que o dono dele sabe.
+	/// </summary>
+	private static bool VoaPeloPoder(ServerPlayer pl)
+		=> EhNpcDoMundo(pl) && Jandirus.Core.Ai.PerfilDeCombate.VoaPeloPoder(pl.Ficha.BP);
 
 	/// <summary>
 	/// O NIVEL QUE VALE pra tudo que o DM decidia pelo nivel da skill `flying` -- inclusive o
@@ -179,7 +193,7 @@ public partial class GameServer
 	/// =========================================================================================================
 	/// </summary>
 	private static int NivelEfetivoDeVoo(ServerPlayer pl)
-		=> Math.Max(NivelDeVoo(pl), DestravouPelaMaestria(pl) ? 1 : 0);
+		=> Math.Max(NivelDeVoo(pl), DestravouPelaMaestria(pl) || VoaPeloPoder(pl) || VoaPelaCarapaca(pl) ? 1 : 0);
 
 	/// <summary>
 	/// LIGAR E DESLIGAR O VOO -- o verb `Fly` (`flying.dm:84-96`).

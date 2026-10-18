@@ -109,7 +109,8 @@ public partial class GameServer
 	/// </summary>
 	private void TelepatiaG4(ServerPlayer pl, string arg)
 	{
-		if (pl.Ficha.dead) { Avisar(pl, "sua mente está longe demais do mundo dos vivos."); return; }
+		// (2026-10-16) O MORTO DE PE FALA NA MENTE como o vivo (o DM nao tem trava de morto aqui, `Communication.dm`); so o cadaver nao.
+		if (CaidoPelaMorte(pl)) { Avisar(pl, "sua mente está longe demais do mundo dos vivos."); return; }
 
 		if (arg.Length == 0) { ListarMentesG4(pl); return; }
 

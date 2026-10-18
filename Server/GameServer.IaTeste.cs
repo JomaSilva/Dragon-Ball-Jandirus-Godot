@@ -2463,6 +2463,10 @@ public partial class GameServer
 					// `hasAI=1` e herda o tempero de todo `mob/npc` -- o default e o literal, como na copia do Split Form. Nao e
 					// POSSE: e um corpo sem dono de tela que obedece a ordem de quem o montou.
 					["GameServer.SuperComputador.cs"] = 1,
+					// (2026-10-16) A SAGA DO CORRUPTED MAJIN, DUAS: a OUTRA METADE (`SoltarAOutraMetade`), um `mob/npc/MajinClone` que nao
+					// declara tempero -- o default e o literal, como a copia do Split Form, que sai do mesmo `makeCopy` --; e a POSSE da
+					// loucura (`TomarAsRedeasDaLoucura`), com guarda e carga DESLIGADAS como a fera e a furia.
+					["GameServer.SagaDoMajin.cs"] = 2,
 				};
 
 				static int LinhasQueFabricam(string[] linhas) => linhas.Count(linhaCrua =>
@@ -4301,21 +4305,34 @@ public partial class GameServer
 					{
 						int primeira = -1, comVisada = 0, t = 0, raios = 0;
 						bool enraizado = EnraizadoPorKi(lutador.Id);
-						for (; t < TiquesDeBriga; t++)
+						// ============================ A CENA E A DA BOCA: SEM AS ATIVAS DA RACA (2026-10-17) ============================
+						// Desde que o chefe tem o kit da raca dele, a IA liga a Unrestrained Wrath do Freeza logo no comeco da briga -- e o
+						// kiai da Ira GRITA pelo `Falar` ("HAAAAAAA!!"), como o "GENKIDAMA!!" e o "KAIOKEN!!" de todo verb que grita. Era um
+						// grito de verdade, e a armadilha la embaixo o pegou: o "chefe falou aos 0,8 s" ja nao era do `Falatorio`. O que esta
+						// cena mede e a BOCA do cerebro, entao as ativas raciais ficam fora dela (`AtivasRaciaisNaIa.IaSemAtivasDeTeste`); a
+						// IA com elas e da `--iaraciaisteste`.
+						// ================================================================================================================
+						bool semAsAtivasAntes = AtivasRaciaisNaIa.IaSemAtivasDeTeste;
+						AtivasRaciaisNaIa.IaSemAtivasDeTeste = true;
+						try
 						{
-							pancada.Ficha.HP = 100; pancada.Ficha.KO = false;
-							pancada.Pos = ondeOSaco;   // ANCORADO no bloco, e nao no corpo -- ver o palco
-							if (LinhaDeVisaoLivre(lutador, pancada)) comVisada++;
-							TickDosCorposSemDono(Protocol.TickSeconds);
-							bool agora = EnraizadoPorKi(lutador.Id);
-							if (agora && !enraizado) raios++;
-							enraizado = agora;
-							if (primeira < 0 && _ultimaFala.ContainsKey(lutador.Id))
+							for (; t < TiquesDeBriga; t++)
 							{
-								primeira = t;
-								if (paraNaFala) { t++; break; }
+								pancada.Ficha.HP = 100; pancada.Ficha.KO = false;
+								pancada.Pos = ondeOSaco;   // ANCORADO no bloco, e nao no corpo -- ver o palco
+								if (LinhaDeVisaoLivre(lutador, pancada)) comVisada++;
+								TickDosCorposSemDono(Protocol.TickSeconds);
+								bool agora = EnraizadoPorKi(lutador.Id);
+								if (agora && !enraizado) raios++;
+								enraizado = agora;
+								if (primeira < 0 && _ultimaFala.ContainsKey(lutador.Id))
+								{
+									primeira = t;
+									if (paraNaFala) { t++; break; }
+								}
 							}
 						}
+						finally { AtivasRaciaisNaIa.IaSemAtivasDeTeste = semAsAtivasAntes; }
 						return (primeira, comVisada, t, raios);
 					}
 

@@ -286,6 +286,11 @@ public static class Discipulado
 	/// devolve nulo com o buff dela (`MasterStudent.dm:196`). Ela ficou DENTRO desta lista desde que
 	/// entrou no catalogo, sem ninguem decidir, ate a bancada acusar.
 	///
+	/// **`alta_tensao` e `tensao_extrema` ENTRARAM (v0.4.0)** -- as duas formas de Tensao do Humano com porta de BP. Nao sao do DM (la
+	/// o Humano nao tinha forma), e entraram pelo funil de todo mundo sem uma linha nova aqui: tronco, porta de BP com limiar pessoal,
+	/// sem maestria de outra linha. Decidido, e nao descuido: o mestre humano guia o aluno a elas como guia o SSJ1. O `tensao_divina`
+	/// fica de fora sozinho -- nao tem porta de BP (a porta dele e o ki divino desperto).
+	///
 	/// UMA DIVERGENCIA MEDIDA NO HERAN, e ela e do proprio DM consigo mesmo: `mst_form_power_ok`
 	/// cobra `ssj2at / 6` pro `heran2` (`MasterStudent.dm:303`) enquanto o gate real da forma cobra
 	/// `ssj2at / 50` (`heran.dm:38`). O port usa o gate REAL nos dois caminhos -- o mestre nao pode

@@ -110,10 +110,16 @@ public partial class GameServer
 	///
 	/// A segunda metade importa: sem ela o primeiro Anjo do servidor nao teria de quem aprender, e a
 	/// cadeia inteira nunca comecaria -- a disciplina existiria no codigo e em lugar nenhum no jogo.
+	///
+	/// (2026-10-16) **MENOS PRA CLASSE RARA.** O dono: *"se uma classe rara virar deus da destruiçao ele n ganha os paths nem nada, no
+	/// maximo a forma fury"* -- perguntado, so os caminhos (a Fury e o kit do titulo ficam). O caminho que ela nao pode ter
+	/// (`PodeAprender`, `ConcederADisciplinaDoCargo`) ela tambem nao ensina; vale pros dois tronos. Consequencia aceita: com um Deus raro
+	/// no trono, o Poder da Destruicao so corre por quem ja o tinha aprendido antes.
 	/// </summary>
 	private bool SabeDisciplina(ServerPlayer pl, TipoDeDisciplina tipo)
 	{
 		if (EstadoDe(pl, tipo).Aprendida) return true;
+		if (!CargoEnsinaClasseRaraDeTeste && Disciplinas.ClasseSemDisciplinaDivina(pl.Ficha.Class)) return false;
 		DisciplinaDef def = Disciplinas.Def(tipo)!;
 		return string.Equals(CargoDe(pl.Conta), def.RankQueEnsina, StringComparison.OrdinalIgnoreCase);
 	}
@@ -134,9 +140,18 @@ public partial class GameServer
 	/// Idempotente, chamada da reconciliacao do cargo (login, 1 Hz, toda troca de trono): a frase sai uma vez so,
 	/// porque depois dela o corpo ja aprendeu.
 	/// </summary>
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--sagamajinteste`): o cargo volta a fazer da classe rara uma PROFESSORA -- o Deus da Destruicao raro
+	/// ensina o Poder da Destruicao que nao pode ter. Lido pelo <see cref="SabeDisciplina"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool CargoEnsinaClasseRaraDeTeste;
+
 	private void ConcederADisciplinaDoCargo(ServerPlayer pl)
 	{
 		if (pl.UltraInstinct.Aprendida || pl.PoderDaDestruicao.Aprendida || pl.Conta.Length == 0) return;
+		// (2026-10-16) NEM O CARGO ENTREGA A DISCIPLINA A UMA CLASSE RARA: e a mesma regra do ensino (`PodeAprender`), e o titulo e
+		// so outro professor. E ele tambem nao a deixa ENSINAR (`SabeDisciplina`) -- o dono: *"ele n ganha os paths nem nada"*.
+		if (Disciplinas.ClasseSemDisciplinaDivina(pl.Ficha.Class)) return;
 
 		foreach (DisciplinaDef def in Disciplinas.Todas)
 		{
@@ -194,12 +209,17 @@ public partial class GameServer
 		SemGodKi,
 		OutraDisciplina,   // as duas se excluem
 		Caido,
+		ClasseRara,         // (2026-10-16) classe lendaria/rara: ver `Disciplinas.ClassesSemDisciplinaDivina`
 	}
 
 	private RecusaDeDisciplina PodeAprender(ServerPlayer pl, TipoDeDisciplina tipo)
 	{
 		if (pl.Ficha.KO || EhCadaver(pl)) return RecusaDeDisciplina.Caido;
 		if (EstadoDe(pl, tipo).Aprendida) return RecusaDeDisciplina.JaSabe;
+
+		// (2026-10-16) O DONO: *"lembrando q toda classe lendaria, corrupted majin, golden apple (kaio) etc nao podem aprender ultra
+		// ego nem ultra instinto"*. Antes do resto: e definitivo, e "falta maestria divina" mandaria a pessoa treinar atras de nada.
+		if (Disciplinas.ClasseSemDisciplinaDivina(pl.Ficha.Class)) return RecusaDeDisciplina.ClasseRara;
 
 		// AS DUAS SE EXCLUEM. Ja valia pras FORMAS (`Catalogo.LinhasAbertas`); aqui vale pra skill,
 		// que e onde a escolha de verdade acontece -- quem aprendeu uma nunca mais aprende a outra.
@@ -217,6 +237,8 @@ public partial class GameServer
 	{
 		RecusaDeDisciplina.JaSabe => $"{aluno.Name} ja domina o {def.Nome}.",
 		RecusaDeDisciplina.Caido => $"{aluno.Name} nao esta em condicoes de aprender nada.",
+		RecusaDeDisciplina.ClasseRara =>
+			$"{aluno.Name} é de uma classe rara ({aluno.Ficha.Class}), e classe rara não aprende o {def.Nome}.",
 		// A MENSAGEM DIZ O QUE ACONTECEU. "Nao pode aprender" manda a pessoa procurar um requisito
 		// que ela nunca vai achar -- as duas disciplinas se excluem e isso e definitivo.
 		RecusaDeDisciplina.OutraDisciplina =>

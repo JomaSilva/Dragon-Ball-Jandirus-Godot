@@ -101,7 +101,7 @@ public partial class GameServer
 			Avisar(pl, "voce desativa os coletores de energia e volta a se mover.");
 			return;
 		}
-		if (f.KO || f.dead) { Avisar(pl, "nao da, caido."); return; }
+		if (f.KO || CaidoPelaMorte(pl)) { Avisar(pl, "nao da, caido."); return; }
 
 		f.ki_absorb_stance = true;
 		Avisar(pl, $"voce finca os pes e abre os coletores: qualquer ataque de ki que te acertar "
@@ -124,7 +124,7 @@ public partial class GameServer
 		{
 			Fighter f = pl.Ficha;
 			if (!f.ki_absorb_stance) continue;
-			if (!f.AndroideAbsorcao || f.KO || f.dead)
+			if (!f.AndroideAbsorcao || f.KO || CaidoPelaMorte(pl))
 			{
 				f.ki_absorb_stance = false;
 				if (f.AndroideAbsorcao) Avisar(pl, "os coletores se fecham sozinhos.");

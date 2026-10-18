@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://dmtcgt0bfdyo6"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【City Living】 BGM OST ♠.mp3-6b8203f0f96f123de40146b75e136b4c.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Ambience/Planet Ambience Music/♠Dragon Ball Z Kakarot【City Living】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【City Living】 BGM OST ♠.mp3-6b8203f0f96f123de40146b75e136b4c.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

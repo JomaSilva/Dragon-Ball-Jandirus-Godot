@@ -302,6 +302,8 @@ public partial class World : Node2D
 		// quadro em que o menu de pause abria -- ver `AudioDirector.Adiantar`.
 		AudioDirector.Instance?.Adiantar(AudioDirector.Camada.Combate);
 		AudioDirector.Instance?.Adiantar(AudioDirector.Camada.Menu);
+		// (2026-10-16) ...e a PRIMEIRA DA MUSICA DOS PLANETAS, que entra no ar na chegada a primeira zona (ver `MusicaDoLugar`)
+		AudioDirector.Instance?.Adiantar(AudioDirector.Camada.Lugar);
 
 		const string dados = "res://Assets/Data/visual.json";
 		if (Godot.FileAccess.FileExists(dados))
@@ -408,6 +410,8 @@ public partial class World : Node2D
 			cli.CenaDoBioComecou += AoComecarCenaDoBio;
 			cli.ChefeChegou += AoChegarOChefe;               // (v0.3.0) a cena da chegada de um chefe de saga
 			cli.CenaDoChefeComecou += AoComecarCenaDoChefe;   // (v0.3.0) a cena do degrau de um chefe de saga
+			cli.CenaDoMajinComecou += AoComecarCenaDoMajin;   // (2026-10-16) um degrau da saga do Corrupted Majin
+			cli.LoucuraMudou += AoMudarALoucura;               // (2026-10-16) a sanidade do meu Majin -- a tela da loucura
 			cli.CenaDeFusaoComecou += AoComecarCenaDeFusao;
 			cli.VizinhancaMudou += DesenharPlanetas;
 			cli.ObrasMudaram += DesenharObras;
@@ -418,6 +422,7 @@ public partial class World : Node2D
 			cli.EfeitoCaiu += AoCairEfeito;
 			cli.Piscou += AoPiscar;
 			cli.ClashBaque += AoBaqueDeEmbate;
+			cli.CasaDeBillsMudou += AoSaberDaCasaDeBills;   // (2026-10-16) a musica da casa do Bills -- ver `MusicaDoLugar`
 
 			// OS ATAQUES DE KI: dois eventos (nasceu/morreu) e a lista de posicoes por snapshot.
 			// Metodos nomeados, como todo o resto daqui -- ver a nota das lambdas orfas abaixo.
@@ -504,8 +509,11 @@ public partial class World : Node2D
 			cli.CenaDoBioComecou -= AoComecarCenaDoBio;
 			cli.ChefeChegou -= AoChegarOChefe;
 			cli.CenaDoChefeComecou -= AoComecarCenaDoChefe;
+			cli.CenaDoMajinComecou -= AoComecarCenaDoMajin;
+			cli.LoucuraMudou -= AoMudarALoucura;
 			cli.CenaDeFusaoComecou -= AoComecarCenaDeFusao;
 			cli.VizinhancaMudou -= DesenharPlanetas;
+			cli.CasaDeBillsMudou -= AoSaberDaCasaDeBills;
 			cli.ObrasMudaram -= DesenharObras;
 			cli.EsferasMudaram -= DesenharEsferas;
 			cli.ChaoMudou -= DesenharOChao;
@@ -634,6 +642,8 @@ public partial class World : Node2D
 		// primeiro snapshot, que vem no tique seguinte.
 		// ================================================================================================
 		EsvaziarRemotos();
+		// (2026-10-17) E O MEU CORPO SECO PELA EXECUCAO DO BIO: ele viaja pro Outro Mundo inteiro (`IrProAlem`), e nao meio seco.
+		_local?.GetNodeOrNull<CorpoSecando>(CorpoSecando.NomeDoNode)?.Sumir();
 
 		// A TELA DE CARREGAMENTO ENTRA ANTES DO TRABALHO. Ver `TelaDeCarregamento`: a
 		// montagem do tilemap bloqueia a thread principal por quase um segundo, e sem uma
@@ -1748,8 +1758,10 @@ public partial class World : Node2D
 	/// caindo). Ele mora nos atores e segue o corpo pela pergunta `Onde`; quem o conduz ate o estouro e ele mesmo (ver
 	/// <see cref="SupernovaDesenhada"/>). O estado acabando com o sol ainda na mao e o servidor desistindo: ele se apaga.
 	/// </summary>
-	private void MarcarSupernova(int id, bool concentrando)
+	private void MarcarSupernova(int id, Jandirus.Core.World.Ocupacao ocupacao)
 	{
+		// (2026-10-17) AS DUAS ESFERAS DO ULTIMATO: o sol (Vegeta) e a Death Ball (Namek), o mesmo desenho com a folha de cada uma.
+		bool concentrando = Jandirus.Core.World.CorpoOcupado.NoUltimato(ocupacao);
 		if (SupernovaDesenhada.SolIgnoradoDeTeste) concentrando = false;
 		if (_supernovas.TryGetValue(id, out SupernovaDesenhada? ja) && !IsInstanceValid(ja))
 		{
@@ -1765,6 +1777,8 @@ public partial class World : Node2D
 		var sol = new SupernovaDesenhada
 		{
 			Name = $"Supernova{id}",
+			Ataque = ocupacao == Jandirus.Core.World.Ocupacao.DeathBallDoUltimato
+				? Jandirus.Core.Npc.AtaqueDoUltimato.DeathBall : Jandirus.Core.Npc.AtaqueDoUltimato.Supernova,
 			Onde = () => Corpo(id) is { } c ? Desenhado(c) : null,
 			Estourar = EstouroNoMundo,
 		};
@@ -1778,6 +1792,71 @@ public partial class World : Node2D
 	/// <summary>O sol que este corpo ergueu, se ainda esta na tela (bancada `--diagv030`).</summary>
 	internal SupernovaDesenhada? SupernovaDeTeste(int id) =>
 		_supernovas.TryGetValue(id, out SupernovaDesenhada? s) && IsInstanceValid(s) ? s : null;
+
+	/// <summary>
+	/// (v0.4.0) A ESFERA VERDE DO DEMONIC SAIYAN, enquanto a carga parada dura (`Ocupacao.CargaDemoniaca`). O molde do Kaio-ken: estado
+	/// do corpo no snapshot, desenho no node dele -- o dono e quem esta em volta a veem, e quem chega no meio da carga tambem.
+	/// </summary>
+	private void MarcarEsferaDemoniaca(int id, Jandirus.Core.World.Ocupacao ocupacao)
+	{
+		if (id == 0 || Corpo(id) is not { } corpo) return;
+		// (2026-10-17) DUAS COISAS ACENDEM A ESFERA: a carga do Demonic e o GRITO DO DESABAFO do Lendario -- este, furioso.
+		bool grito = ocupacao == Jandirus.Core.World.Ocupacao.GritoDoDesabafo;
+		bool carregando = grito || ocupacao == Jandirus.Core.World.Ocupacao.CargaDemoniaca;
+		if (EsferaDemoniacaApagadaDeTeste) carregando = false;
+		EsferaDemoniaca? ja = corpo.GetNodeOrNull<EsferaDemoniaca>(EsferaDemoniaca.NomeDoNode);
+		if (!carregando)
+		{
+			ja?.Apagar();
+			return;
+		}
+		// O GRITO SOA: o `powerup.wav` que o DM toca nas racas (o desabafo nao tem arquivo de grito no DM) -- uma vez, quando ele comeca.
+		if (grito && ja is not { Apagando: false, Furiosa: true }) Som(corpo, Trilha.PowerUp);
+		if (ja is { Apagando: false })
+		{
+			ja.Furiosa = grito;
+			return;
+		}
+		if (ja != null)
+		{
+			// RECOMECOU NO MEIO DO APAGAR: a velha sai da arvore JA -- o nome e o mesmo (o tombo que o `MarcarDesfeito` ja conta).
+			corpo.RemoveChild(ja);
+			ja.QueueFree();
+		}
+		corpo.AddChild(new EsferaDemoniaca { Name = EsferaDemoniaca.NomeDoNode, Furiosa = grito });
+	}
+
+	/// <summary>DEFEITO INJETADO (bancada `--diagesfera`): a tela ignora a carga do Demonic Saiyan -- a esfera nunca acende. Falso em jogo.</summary>
+	internal static bool EsferaDemoniacaApagadaDeTeste;
+
+	/// <summary>
+	/// (2026-10-17) A VITIMA DA EXECUCAO DO BIO-ANDROIDE SECANDO (`Ocupacao.Secando`) -- o molde da esfera do Demonic: estado do corpo no
+	/// snapshot, desenho no node dele (<see cref="CorpoSecando"/>). Ligou: o corpo comeca a secar e o `absorb.wav` do DM toca nele; desligou:
+	/// a cor volta (e o corpo ja seco espera um pouco, porque ele esta pra sumir -- ver `CorpoSecando.Desfazer`).
+	/// </summary>
+	private void MarcarSecando(int id, bool secando)
+	{
+		if (id == 0 || Corpo(id) is not { } corpo) return;
+		if (SecandoIgnoradoDeTeste) secando = false;
+		CorpoSecando? ja = corpo.GetNodeOrNull<CorpoSecando>(CorpoSecando.NomeDoNode);
+		if (!secando)
+		{
+			ja?.Desfazer();
+			return;
+		}
+		if (ja is { Voltando: false }) return;
+		if (ja != null)
+		{
+			// UMA EXECUCAO NOVA COM A COR AINDA VOLTANDO: a velha sai da arvore JA -- o nome e o mesmo (o tombo que o `MarcarDesfeito` ja conta).
+			corpo.RemoveChild(ja);
+			ja.QueueFree();
+		}
+		corpo.AddChild(new CorpoSecando { Name = CorpoSecando.NomeDoNode });
+		Som(corpo, Trilha.Absorcao);
+	}
+
+	/// <summary>DEFEITO INJETADO (bancada `--diagbio`): a tela ignora a vitima secando -- o corpo fica inteiro ate sumir. Falso em jogo.</summary>
+	internal static bool SecandoIgnoradoDeTeste;
 
 	private void MarcarDesfeito(int id, bool desfeito)
 	{
@@ -1966,8 +2045,8 @@ public partial class World : Node2D
 	// rede -> cena
 	// ---------------------------------------------------------------------
 	/// <summary>
-	/// O SOM DO LUGAR EM QUE O CORPO ACABOU DE CHEGAR: o ambiente (vento, mar, cidade -- ou nada) e o TEMA da
-	/// zona, que pra quase todas e nenhum (`Trilha.MusicaDe`).
+	/// O SOM DO LUGAR EM QUE O CORPO ACABOU DE CHEGAR: o ambiente (vento, mar, cidade -- ou nada) e a MUSICA do
+	/// lugar: o tema proprio dele ou, pra quase todos, a musica dos planetas em rodizio (ver <see cref="MusicaDoLugar"/>).
 	///
 	/// ============================ TODO RAMO DO `CarregarZona` PASSA POR AQUI ============================
 	/// O pedido de tema era escrito so no fim do ramo do planeta PRE-FEITO. Os outros quatro -- o espaco, o
@@ -1976,15 +2055,35 @@ public partial class World : Node2D
 	/// `Demon World` la pra dentro (e pro espaco, e pra nave), em laco, e a `--diagtrilha --raca Demon`
 	/// reprovava por isso desde que a mente ganhou ramo proprio.
 	///
-	/// "O lugar novo NAO tem musica" tambem e um pedido, e precisa ser escrito: caminho vazio apaga o da camada
-	/// (ver `AudioDirector.Musica`). Um funil so, pra o proximo ramo novo nao esquecer metade do som -- foi um
-	/// ramo esquecido que gerou o defeito do `ReaplicarEstrago` contado la embaixo.
+	/// "O lugar novo NAO tem tema" tambem e um pedido, e precisa ser escrito: sem tema, o pedido e a musica dos
+	/// planetas (ver `AudioDirector.MusicaDoLugar`). Um funil so, pra o proximo ramo novo nao esquecer metade do som --
+	/// foi um ramo esquecido que gerou o defeito do `ReaplicarEstrago` contado la embaixo.
 	/// ================================================================================================
 	/// </summary>
-	private static void SomDoLugar(string? ambiente, string zona)
+	/// <param name="chave">A zona inteira, e nao so o nome: a casa do Bills e um mundo GERADO, e se reconhece pela semente.</param>
+	private static void SomDoLugar(string? ambiente, string zona, ZoneKey chave)
 	{
 		AudioDirector.Instance?.Ambiente(ambiente);
-		AudioDirector.Instance?.Musica(Trilha.MusicaDe(zona), AudioDirector.Camada.Lugar, $"cheguei em `{zona}`");
+		MusicaDoLugar(zona, chave);
+	}
+
+	/// <summary>
+	/// (2026-10-16) A MUSICA DO LUGAR -- o dono: *"o inferno pode manter a musica atual, o resto vai usar o planet ambience
+	/// music, a nao ser as excessoes q comentei"* (o Lookout, o Ceu e o planeta onde o Bills mora). A tabela e da `Trilha`
+	/// (`MusicaDe`), e o laco/rodizio e do `AudioDirector` (`MusicaDoLugar`). Separada do ambiente porque tem um segundo
+	/// chamador: o endereco do Bills chegando DEPOIS da zona (<see cref="AoSaberDaCasaDeBills"/>).
+	/// </summary>
+	private static void MusicaDoLugar(string zona, ZoneKey chave) =>
+		AudioDirector.Instance?.MusicaDoLugar(Trilha.MusicaDe(zona, MenuJogo.CasaDeBills(chave)), $"cheguei em `{zona}`");
+
+	/// <summary>
+	/// (2026-10-16) O ENDERECO DA CASA DO BILLS CHEGOU OU MUDOU (`S2C.CasaDeBills`). Ele vem num tique do servidor, e nao junto
+	/// da zona: quem entra no jogo ja no planeta deles recebe a zona ANTES -- e ouviria a musica dos planetas ate sair e voltar.
+	/// So a musica e reavaliada, e so fora de mapa pre-feito: a casa e sempre um mundo gerado.
+	/// </summary>
+	private void AoSaberDaCasaDeBills()
+	{
+		if (_zonaDoAtual.Kind != ZoneKey.KindPremade) MusicaDoLugar(_zonaDoAtual.Name, _zonaDoAtual);
 	}
 
 	/// <summary>
@@ -2071,7 +2170,7 @@ public partial class World : Node2D
 			if (_local != null) _local.Mapa = null;
 			_zonaDoAtual = zona;   // ver o comentario no ramo pre-feito
 			DesenharPlanetas();
-			SomDoLugar("", zona.Name);
+			SomDoLugar("", zona.Name, zona);
 			GD.Print("[world] zona: ESPACO (gerado por chunk)");
 			Chat.Sistema("voce esta no espaco. Encoste num planeta pra pousar.");
 			return;
@@ -2125,7 +2224,7 @@ public partial class World : Node2D
 			DesenharEsferas();
 			ReaplicarEstrago();
 			ReaplicarBlocos();
-			SomDoLugar("", zona.Name);
+			SomDoLugar("", zona.Name, zona);
 			GD.Print($"[world] zona: INTERIOR da nave #{idDaNave} "
 					 + $"({Jandirus.Core.Tech.NaveGrande.Lado}x{Jandirus.Core.Tech.NaveGrande.Lado})");
 			Chat.Sistema("você está dentro da nave. A ponte fica no canto superior esquerdo; "
@@ -2180,7 +2279,7 @@ public partial class World : Node2D
 			DesenharEsferas();
 			ReaplicarEstrago();
 			ReaplicarBlocos();
-			SomDoLugar("", zona.Name);
+			SomDoLugar("", zona.Name, zona);
 			// A CHAPA E SO A ORIGEM: dali pra fora o branco continua pra sempre, pintado por pedaco
 			// pelo modo sem beirada da `FonteDoTerreno`. O log conta os dois numeros de proposito --
 			// "100x100" sozinho voltaria a soar como o tamanho do lugar, que e o que ele deixou de ser.
@@ -2224,7 +2323,7 @@ public partial class World : Node2D
 			DesenharEsferas();
 			ReaplicarEstrago();
 			ReaplicarBlocos();
-			SomDoLugar("", zona.Name);
+			SomDoLugar("", zona.Name, zona);
 			GD.Print($"[world] zona: INTERIOR do Majin #{zona.Seed} "
 					 + $"({Jandirus.Core.World.InteriorDoMajin.Lado}x{Jandirus.Core.World.InteriorDoMajin.Lado})");
 			Chat.Sistema("você está DENTRO de quem te absorveu. Vença a imagem dele pra sair.");
@@ -2274,7 +2373,7 @@ public partial class World : Node2D
 			DesenharEsferas();
 			ReaplicarEstrago();
 			ReaplicarBlocos();
-			SomDoLugar("", zona.Name);
+			SomDoLugar("", zona.Name, zona);
 			GD.Print($"[world] zona GERADA: {gerado.Ficha()}");
 			Chat.Sistema(gerado.Ficha());
 			return;
@@ -2421,7 +2520,7 @@ public partial class World : Node2D
 		Chat.Sistema($"voce esta em {GameClient.Instance?.NomeDaZona(zona) ?? e.Zona}.");
 
 		// o som do LUGAR: vento, mar, cidade, e o tema da zona. Troca junto com o planeta -- ver `SomDoLugar`.
-		SomDoLugar(Trilha.AmbienteDe(e.Zona), e.Zona);
+		SomDoLugar(Trilha.AmbienteDe(e.Zona), e.Zona, zona);
 
 		ulong tLuz = Time.GetTicksUsec();
 		// fogueiras, tochas e lava do planeta novo (as do anterior somem junto com ele)
@@ -3523,7 +3622,12 @@ public partial class World : Node2D
 				// E O MAJIN EM PEDACOS, pela mesma frase: o dono do corpo desfeito ve os pedacos dele -- ver `MarcarDesfeito`.
 				MarcarDesfeito(e.Id, e.Ocupacao == Jandirus.Core.World.Ocupacao.Desfeito);
 				// (v0.3.0) E A SUPERNOVA, pela mesma frase (um corpo de jogador nunca a ergue, mas a regra e uma so) -- ver `MarcarSupernova`.
-				MarcarSupernova(e.Id, e.Ocupacao == Jandirus.Core.World.Ocupacao.Supernova);
+				MarcarSupernova(e.Id, e.Ocupacao);
+				// (v0.4.0) E A ESFERA VERDE DO DEMONIC SAIYAN, pela mesma frase: quem carrega ve a propria carga -- ver `MarcarEsferaDemoniaca`.
+				// (2026-10-17) ...e quem grita o desabafo ve o proprio grito.
+				MarcarEsferaDemoniaca(e.Id, e.Ocupacao);
+				// (2026-10-17) E O MEU CORPO SECANDO, pela mesma frase: a vitima da execucao do bio ve o proprio corpo secar -- ver `MarcarSecando`.
+				MarcarSecando(e.Id, e.Ocupacao == Jandirus.Core.World.Ocupacao.Secando);
 				// E O CHAO TREMENDO: quem segura o C acima de 120% sente o proprio tremor pela MESMA linha
 				// que o faz tremer pros outros -- nao ha um "tremor local" escrito a parte.
 				MarcarCargaAlta(e.Id, e.CargaAlta);
@@ -3604,7 +3708,11 @@ public partial class World : Node2D
 			MarcarKaioken(e.Id, e.Kaioken);
 			MarcarDesfeito(e.Id, e.Ocupacao == Jandirus.Core.World.Ocupacao.Desfeito);
 			// (v0.3.0) ...E O SOL DO ULTIMATO SOBRE O CHEFE -- ver `MarcarSupernova`.
-			MarcarSupernova(e.Id, e.Ocupacao == Jandirus.Core.World.Ocupacao.Supernova);
+			MarcarSupernova(e.Id, e.Ocupacao);
+			// (v0.4.0) ...E A ESFERA VERDE DE QUEM CARREGA O DEMONIC SAIYAN (e, 2026-10-17, de quem grita o desabafo) -- ver `MarcarEsferaDemoniaca`.
+			MarcarEsferaDemoniaca(e.Id, e.Ocupacao);
+			// (2026-10-17) ...E A VITIMA DA EXECUCAO DO BIO SECANDO -- ver `MarcarSecando`.
+			MarcarSecando(e.Id, e.Ocupacao == Jandirus.Core.World.Ocupacao.Secando);
 			// ...E O CHAO TREMENDO EM VOLTA DELE. Mesmo molde: bit do snapshot, estado no node do corpo.
 			MarcarCargaAlta(e.Id, e.CargaAlta);
 
@@ -3888,6 +3996,10 @@ public partial class World : Node2D
 	/// </remarks>
 	internal void AoSair(int id)
 	{
+		// (2026-10-17) O CORPO JA SECO PELA EXECUCAO DO BIO NAO SOME A SECO: ele se desfaz em PO no lugar -- ver `CorpoSecando`.
+		if (_remotos.TryGetValue(id, out RemotePlayer? seco) && seco.GetNodeOrNull<CorpoSecando>(CorpoSecando.NomeDoNode) is { } s
+			&& s.Quanto >= CorpoSecando.SecoOBastante)
+			PoeiraDeEstrago.Soltar(_atores, seco.Position, default, CorpoSecando.DoPo);
 		if (_remotos.Remove(id, out RemotePlayer? r)) r.QueueFree();
 		SombraDeQuemVoaAlto(id, null, mostrar: false);
 		_looks.Remove(id);
@@ -4018,6 +4130,15 @@ public partial class World : Node2D
 		if (gesto == (byte)Protocol.GestoDoCorpo.ErgueAGenkidama)
 		{
 			AudioDirector.EfeitoNoLugar(corpo, Trilha.KiGenkidamaErguida, 0.6f, 480f);
+			return;
+		}
+
+		// (v0.3.2) A DEATH BALL SE ERGUE (`deathball_charge`, `DeathBall.dm:39`) E CRESCE (`chargeincrease.ogg`, `:83`): so o som -- ela
+		// nasce e renasce na mao, sem o gesto de tiro.
+		if (gesto is (byte)Protocol.GestoDoCorpo.ErgueADeathBall or (byte)Protocol.GestoDoCorpo.CresceADeathBall)
+		{
+			AudioDirector.EfeitoNoLugar(corpo, gesto == (byte)Protocol.GestoDoCorpo.ErgueADeathBall
+				? Trilha.KiDeathBallErguida : Trilha.KiDeathBallCresce, 0.6f, 480f);
 			return;
 		}
 
@@ -5348,9 +5469,22 @@ public partial class World : Node2D
 	private Transformacao? CenaEmCurso(int id)
 	{
 		if (Corpo(id) is not { } corpo) return null;
+
+		// ============================ (2026-10-16) DUAS CENAS NO MESMO CORPO: A DA VIRADA MAIS LONGE ============================
+		// A morte de um amigo acende a FURIA e o DEGRAU 2 da saga do Corrupted Majin no mesmo instante (`Death.dm:80-81`: o
+		// `Do_Anger_Stuff(1)` e o `majin_advance_form(2)`, um do lado do outro), e esta funcao devolvia a PRIMEIRA cena do corpo -- a
+		// furia, que vira em segundos. O corpo da forma 2 pendurava na virada dela e entrava ANTES da metamorfose, que e o defeito
+		// "o corpo troca antes da cinematica acabar" que o dono ja cobrou do bio. A `--diagsagamajin` fotografou.
+		//
+		// QUEM GUARDA A APARENCIA E A CENA QUE AINDA VAI VIRAR POR ULTIMO -- e a regra serve nos dois sentidos: uma furia no meio de
+		// uma transformacao longa tambem nao adianta o corpo da transformacao.
+		// =====================================================================================================================
+		Transformacao? escolhida = null;
 		foreach (Node n in _atores.GetChildren())
-			if (n is Transformacao t && t.Rodando && t.AlvoDaCena == corpo) return t;
-		return null;
+			if (n is Transformacao t && t.Rodando && t.AlvoDaCena == corpo
+				&& (escolhida == null || t.FaltaPraVirada > escolhida.FaltaPraVirada))
+				escolhida = t;
+		return escolhida;
 	}
 
 	/// <summary>
@@ -5584,6 +5718,10 @@ public partial class World : Node2D
 			// que ele tem que passar por aqui: um dia a condicao muda e ninguem vai lembrar desta linha.)
 			if (souEu && degrau == Jandirus.Core.Forms.DegrauDeCena.Estreia)
 				Chat.Sistema($"** {Jandirus.Core.Forms.Catalogo.NomeDe(def, dominada)} **");
+
+			// O SOM PROPRIO DA FORMA NA CENA ENCURTADA (o do Ultra Instinto): toca na chegada, junto com o primeiro beat. Na estreia a
+			// regra devolve vazio -- la quem fala e o tema.
+			if (de != para) TocarSomDaForma(corpo, def, degrau);
 			return;
 		}
 
@@ -5619,7 +5757,22 @@ public partial class World : Node2D
 		// transformacoes que aconteceram antes de eu por o pe ali -- a mesma mentira da cinematica,
 		// so que no ouvido. E ela nao tira o som de ninguem: "de X pra X" nao e uma mudanca que exista.
 		// ====================================================================================
-		if (de != para) AudioDirector.EfeitoNoLugar(corpo, Trilha.Dash, 0.9f);
+		//
+		// E QUANDO A FORMA TEM SOM PROPRIO (o do Ultra Instinto, 2026-10-17), ELE TOMA O LUGAR DO SWOOSH -- os dois juntos seriam dois
+		// instantes no mesmo instante.
+		if (de != para && !TocarSomDaForma(corpo, def, degrau)) AudioDirector.EfeitoNoLugar(corpo, Trilha.Dash, 0.9f);
+	}
+
+	/// <summary>
+	/// O SOM PROPRIO DA TRANSFORMACAO, quando a forma tem um (`Cinematicas.SomDoDegrau`: hoje o do Ultra Instinto, fora da estreia).
+	/// Devolve se tocou -- na instantanea ele toma o lugar do swoosh.
+	/// </summary>
+	private static bool TocarSomDaForma(Node2D corpo, Jandirus.Core.Forms.FormaDef def, Jandirus.Core.Forms.DegrauDeCena degrau)
+	{
+		string nome = Jandirus.Core.Forms.Cinematicas.SomDoDegrau(def, degrau);
+		if (nome.Length == 0 || Transformacao.CaminhoDoSom(nome) is not { } caminho) return false;
+		AudioDirector.EfeitoNoLugar(corpo, caminho, 0.9f);
+		return true;
 	}
 
 	/// <summary>
@@ -6085,6 +6238,38 @@ public partial class World : Node2D
 		if (Corpo(id) is not { } corpo || Jandirus.Core.Forms.Cinematicas.DoChefe(qual) is not { } cena) return;
 		Transformacao.Rodar(_atores, corpo, forma: null, cena, id == GameClient.Instance?.LocalId, NomeDe(id));
 	}
+
+	/// <summary>
+	/// (2026-10-16) UM DEGRAU DA SAGA DO CORRUPTED MAJIN -- irma da <see cref="AoComecarCenaDoChefe"/>: a cena e do Core
+	/// (`Cinematicas.DoMajin`), sem forma, e o corpo novo que chega no meio dela espera a virada (`_pendentes`). A metamorfose
+	/// (`Efeito.Passagem`) toca a folha do corpo VELHO -- que e o que continua vestido ate la.
+	/// </summary>
+	private void AoComecarCenaDoMajin(int id, Jandirus.Core.Forms.Cinematicas.CenaMajin qual)
+	{
+		if (Corpo(id) is not { } corpo || Jandirus.Core.Forms.Cinematicas.DoMajin(qual) is not { } cena) return;
+		Transformacao.Rodar(_atores, corpo, forma: null, cena, id == GameClient.Instance?.LocalId, NomeDe(id));
+	}
+
+	/// <summary>
+	/// (2026-10-16) A TELA DA LOUCURA do Corrupted Majin -- nasce no primeiro pacote de quem TEM a barra (quem nunca destravou a
+	/// Forma Pura nao paga o node), e fica ate o mundo sair. Ver `LoucuraNaTela`.
+	/// </summary>
+	private LoucuraNaTela? _loucura;
+
+	/// <inheritdoc cref="_loucura"/>
+	private void AoMudarALoucura(byte sanidade, bool insano)
+	{
+		if (_loucura == null || !IsInstanceValid(_loucura))
+		{
+			if (sanidade == LoucuraNaTela.SemBarra) return;
+			_loucura = new LoucuraNaTela { Name = "LoucuraNaTela" };
+			AddChild(_loucura);
+		}
+		_loucura.Mostrar(sanidade, insano);
+	}
+
+	/// <summary>A tela da loucura, ou nula. So bancada e o robo de fotos (`--diagsagamajin`).</summary>
+	internal LoucuraNaTela? LoucuraDeTeste => _loucura != null && IsInstanceValid(_loucura) ? _loucura : null;
 
 	/// <summary>(v0.3.0) A cena em curso no corpo deste id, ou nula. So bancada (`--diagv030`, CS).</summary>
 	internal Transformacao? CenaEmCursoDeTeste(int id) => CenaEmCurso(id);
@@ -6697,6 +6882,48 @@ public partial class World : Node2D
 	/// <summary>Só bancada: o gesto do duplo clique num ponto do mundo, sem mouse (`--diagcorpos`).</summary>
 	public void DuploCliqueDeTeste(Vector2 alvoNoMundo) { if (GameClient.Instance is { } cli) DuploClique(alvoNoMundo, cli); }
 
+	// =====================================================================
+	// A TRAVA DE ALVO (dono, 2026-10-17)
+	// =====================================================================
+	/// <summary>
+	/// A TECLA DE TRAVAR O ALVO (`travar_alvo`, o L) -- o dono: *"adicione um botao q ao apertar vc da lock in no player ou npc mais
+	/// perto de vc, bom pra enfrentar boss q se move mt"*. Marca, pelo MESMO caminho do duplo clique (`SendAlvo` e o anel no chao), o
+	/// corpo DE PE mais perto de mim que eu VEJO -- o veu decide (atras da parede nao conta), e caido (nocaute ou cadaver) fica de fora:
+	/// quem trava quer o que luta. Marcado, o soco vira pra ele e o ki sai nele, mesmo correndo atras de um chefe que nao para.
+	///
+	/// APERTAR DE NOVO PASSA PRO SEGUINTE, por distancia, e da a volta -- e o jeito de largar o lacaio da frente e pegar o chefe atras
+	/// dele. So enquanto a marca e a que esta tecla pos: quem marcou outro no duplo clique volta pro mais perto no toque seguinte.
+	/// Ninguem de pe a vista: nada muda, e o chat diz.
+	/// </summary>
+	public void TravarNoMaisPerto()
+	{
+		if (GameClient.Instance is not { } cli || _local == null || !IsInstanceValid(_local)) return;
+		Vector2 eu = _local.GlobalPosition;
+		_naTrava.Clear();
+		foreach ((int id, RemotePlayer r) in _remotos)
+		{
+			if (!IsInstanceValid(r) || r.Deitado || !_veu.Ve(r.GlobalPosition)) continue;
+			_naTrava.Add((id, (r.GlobalPosition - eu).LengthSquared()));
+		}
+		if (_naTrava.Count == 0) { Chat.Sistema("ninguém de pé à vista pra travar o alvo."); return; }
+
+		_naTrava.Sort(TravaDoMaisLongeDeTeste ? (a, b) => b.Distancia.CompareTo(a.Distancia) : (a, b) => a.Distancia.CompareTo(b.Distancia));
+		int atual = cli.AlvoId != 0 && cli.AlvoId == _ultimoDaTrava ? _naTrava.FindIndex(p => p.Id == cli.AlvoId) : -1;
+		int escolhido = _naTrava[(atual + 1) % _naTrava.Count].Id;
+		_ultimoDaTrava = escolhido;
+		cli.SendAlvo(escolhido);
+		MarcarNaCena(escolhido);
+	}
+
+	/// <summary>Os candidatos de um toque, reusada -- e a distancia vai AO QUADRADO (so serve pra ordenar).</summary>
+	private readonly List<(int Id, float Distancia)> _naTrava = [];
+
+	/// <summary>Quem o ultimo toque da trava marcou: so a partir dele o toque seguinte avanca na fila.</summary>
+	private int _ultimoDaTrava;
+
+	/// <summary>DEFEITO INJETADO (`--diagtrava`): a fila da trava em ordem ao contrario -- o primeiro toque pega o MAIS LONGE. Falso em jogo.</summary>
+	public static bool TravaDoMaisLongeDeTeste;
+
 	/// <summary>Quantas piscadas (Zanzoken por duplo clique) este cliente ja pediu ao servidor. Só bancada.</summary>
 	public int ZanzokensPedidosDeTeste { get; private set; }
 
@@ -6816,6 +7043,7 @@ public partial class World : Node2D
 		// snapshot, por outro canal). Sem esta linha, entrar no Outro Mundo desenharia todos os
 		// mortos de la sem auréola, e eles so a ganhariam se morressem de novo -- o que nao acontece.
 		v.MostrarAureola(GameClient.Instance?.ComAureola.Contains(id) == true);
+		v.MostrarDePassagem(GameClient.Instance?.DePassagem.Contains(id) == true);   // (v0.3.2) e a passagem, pelo mesmo pacote
 
 		// ============================ E A FORMA, QUE ERA O TERCEIRO DESENCONTRO ============================
 		// O servidor manda o estado de forma de todo mundo assim que eu entro na zona
@@ -6885,8 +7113,11 @@ public partial class World : Node2D
 	/// pergunta -- duas fontes pro mesmo desenho e o defeito que este cliente ja pagou no angulo do
 	/// corpo caido, onde uma escrevia por quadro e a outra desfazia.
 	/// </summary>
-	private void AoMudarAureola(int id) =>
+	private void AoMudarAureola(int id)
+	{
 		VisualDe(id)?.MostrarAureola(GameClient.Instance?.ComAureola.Contains(id) == true);
+		VisualDe(id)?.MostrarDePassagem(GameClient.Instance?.DePassagem.Contains(id) == true);   // (v0.3.2) o mesmo pacote
+	}
 
 	/// <summary>
 	/// O `CharacterVisual` de um id -- o meu ou o de qualquer um da zona.

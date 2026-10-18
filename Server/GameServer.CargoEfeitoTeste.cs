@@ -155,7 +155,7 @@ public partial class GameServer
 		// ---- os doze que os lotes G9/G11/G12 puseram de pe (2026-09-02), provados nas bancadas deles ----
 		["BusterBarrage"] = "a barragem LIGA e passa a cuspir esferas em rumos sorteados drenando Ki; desliga sem Ki e no nocaute (`BusterBarrage.dm:26-87`)",
 		["Death_Ball"] = "a bola nasce e CARREGA em ate quatro estagios (1,5 s cada, `DeathBall.dm:75`), guiada pelo olhar; o nocaute a desfaz",
-		["SpiritBomb"] = "a Genkidama se forma com 90% do Ki, cresce com quem doa meditando e SAI dois segundos depois do segundo aperto (`SpiritBomb.dm:169-173`)",
+		["SpiritBomb"] = "a Genkidama se forma com 90% do Ki, cresce com quem doa no planeta e SAI dois segundos depois do segundo aperto (`SpiritBomb.dm:169-173`)",
 		["Grow_Senzu_Bean"] = "um minuto depois do aperto (`sleep(600)`, `Food.dm:7`) a Semente Senzu BROTA NO CHAO, um passo ao sul de quem cultivou (v0.2.1: o que se cria nasce no chao)",
 		// ---- a danca da fusao: o verb do DM virou a habilidade `fus_danca` (`GameServer.Fusao.cs`), e o censo a conta viva desde a v0.2.1 ----
 		["Fusion_dance"] = "os dois acertando as tres letras da danca, os corpos se FUNDEM: BP base (A+B)x2 e o convidado vai pro selo (`Fusion.dm:513`)",

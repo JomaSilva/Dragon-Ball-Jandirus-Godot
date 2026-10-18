@@ -701,8 +701,9 @@ public sealed partial class GameServer
 		//      `Agarrao.EstrangulamentoPorSegundo` pra a divergencia declarada.
 		if (a.Estrangulando) ApertarOPescoco(a, d);
 
-		// CAIDO NINGUEM SE DEBATE: o aperto pode ter acabado de nocautear, e um corpo no chao nao luta.
-		if (d.Ficha.KO || d.Ficha.dead) d.DebatendoSe = false;
+		// CAIDO NINGUEM SE DEBATE: o aperto pode ter acabado de nocautear, e um corpo no chao nao luta. (2026-10-16) O morto de pe
+		// se debate: so o cadaver nao -- ver `CaidoPelaMorte`.
+		if (d.Ficha.KO || CaidoPelaMorte(d)) d.DebatendoSe = false;
 		if (!d.DebatendoSe) return;
 		d.DebatendoSe = false;
 
@@ -745,7 +746,7 @@ public sealed partial class GameServer
 	/// de pe e acordado. O boneco de quem esta em transe e o cadaver nao tem cerebro: ficam onde foram postos.
 	/// </summary>
 	private static bool SeDebateSozinho(ServerPlayer d) =>
-		d.Peer == null && d.Cerebro != null && !d.Ficha.KO && !d.Ficha.dead && !NpcNaoSeDebateDeTeste;
+		d.Peer == null && d.Cerebro != null && !d.Ficha.KO && !CaidoPelaMorte(d) && !NpcNaoSeDebateDeTeste;
 
 	/// <summary>DEFEITO INJETADO (bancada `--v020teste`): o NPC agarrado nao se debate -- o jogo de antes de 2026-10-12. Falso em jogo, sempre.</summary>
 	internal static bool NpcNaoSeDebateDeTeste;
@@ -765,7 +766,7 @@ public sealed partial class GameServer
 		}
 
 		CombatState? c = d.Combate;
-		if (c == null || d.Ficha.dead || c.Intocavel) return;
+		if (c == null || CaidoPelaMorte(d) || c.Intocavel) return;   // (2026-10-16) o pescoco do fantasma de pe aperta
 		BodyPart? pescoco = c.Corpo.Achar("Cabeca") is { Decepado: false } cabeca ? cabeca : c.Corpo.Sortear("cabeca", _rng);
 		if (pescoco == null) return;
 

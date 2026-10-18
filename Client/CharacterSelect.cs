@@ -19,7 +19,14 @@ public partial class CharacterSelect : CanvasLayer
 {
     public event Action<int>? Jogar;         // slot ocupado escolhido
     public event Action<int>? Criar;         // slot vazio escolhido
+    public event Action<int, OfertaDeBebe>? CriarComoFilho;   // (2026-10-17) slot vazio, nascendo de um bebe a caminho
     public event Action? Sair;
+
+    /// <summary>
+    /// (2026-10-17) O BEBE A CAMINHO que o servidor oferece (o fim do `S2C.SlotList`), ou nulo. Com ele, "Criar personagem" pergunta
+    /// antes se a pessoa quer nascer dele. Ver <see cref="PerguntarSeNasceDoBebe"/>.
+    /// </summary>
+    public OfertaDeBebe? Bebe;
 
     private VisualCatalog? _cat;
     private List<SlotInfo> _slots = [];
@@ -221,7 +228,11 @@ public partial class CharacterSelect : CanvasLayer
             caixa.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
             var criar = new Button { Text = "Criar personagem" };
             int alvo = indice;
-            criar.Pressed += () => Criar?.Invoke(alvo);
+            criar.Pressed += () =>
+            {
+                if (Bebe is { } bebe) PerguntarSeNasceDoBebe(alvo, bebe);
+                else Criar?.Invoke(alvo);
+            };
             caixa.AddChild(criar);
         }
 
@@ -398,6 +409,108 @@ public partial class CharacterSelect : CanvasLayer
         if (evento is not InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape }) return;
         FecharPergunta();
         GetViewport().SetInputAsHandled();
+    }
+
+    /// <summary>
+    /// (2026-10-17) A PERGUNTA DO BEBE -- o dono: *"o proximo jogador q for entrar criar um personagem mesmo q seja no modo de raça
+    /// random, vai aparecer uma mensagem perguntando se ele quer ser o filho do jogador x e y"*.
+    ///
+    /// No DM era uma opcao da tela de planeta ("Nascer de Gravidez/Ovo", `CreationUI.dm:345-381`), e so pra quem a procurasse.
+    /// Aqui e uma caixa no caminho de TODA criacao enquanto houver um bebe a caminho, no molde da de apagar (ver
+    /// <see cref="PerguntarSeApaga"/>): o fundo escuro, a coluna centrada pelas ancoras. "Nascer como filho(a)" abre a criacao do
+    /// bebe; "Criar outro personagem", a de sempre. O OVO (a resposta do dono, 2026-10-17: *"as raças q poe ovos podem ter filhos
+    /// sozinhos"*) tem um pai so, e a caixa fala dele.
+    /// </summary>
+    public void PerguntarSeNasceDoBebe(int slot, OfertaDeBebe bebe)
+    {
+        FecharPergunta();
+
+        var fundo = new ColorRect
+        {
+            Color = new Color(0, 0, 0, 0.72f),
+            AnchorRight = 1, AnchorBottom = 1,
+            GrowHorizontal = Control.GrowDirection.Both,
+            GrowVertical = Control.GrowDirection.Both,
+        };
+        Tema.Aplicar(fundo);
+        AddChild(fundo);
+        _pergunta = fundo;
+
+        var centro = new CenterContainer
+        {
+            AnchorRight = 1, AnchorBottom = 1,
+            GrowHorizontal = Control.GrowDirection.Both,
+            GrowVertical = Control.GrowDirection.Both,
+        };
+        fundo.AddChild(centro);
+
+        PanelContainer painel = Tema.Painel1(20);
+        centro.AddChild(painel);
+
+        var col = new VBoxContainer { CustomMinimumSize = new Vector2(440, 0) };
+        col.AddThemeConstantOverride("separation", 12);
+        painel.AddChild(col);
+
+        var titulo = new Label { Text = bebe.DeOvo ? "UM OVO VAI CHOCAR" : "UM BEBÊ ESTÁ A CAMINHO", HorizontalAlignment = HorizontalAlignment.Center };
+        titulo.AddThemeFontSizeOverride("font_size", 22);
+        titulo.AddThemeColorOverride("font_color", Tema.Destaque);
+        col.AddChild(titulo);
+        col.AddChild(new HSeparator());
+
+        var pais = new Label { Text = bebe.DeOvo ? bebe.Mae : $"{bebe.Pai} e {bebe.Mae}", HorizontalAlignment = HorizontalAlignment.Center };
+        pais.AddThemeFontSizeOverride("font_size", 26);
+        pais.AddThemeColorOverride("font_color", Tema.Destaque);
+        col.AddChild(pais);
+
+        string linhagem = bebe.Linhagens.Length switch
+        {
+            0 => "",
+            1 => $", da linhagem {bebe.Linhagens[0]}",
+            _ => $", e escolhe a linhagem entre {string.Join(", ", bebe.Linhagens[..^1])} e {bebe.Linhagens[^1]}",
+        };
+        var texto = new Label
+        {
+            Text = bebe.DeOvo
+                ? $"pôs um ovo. Quer nascer dele? Você nasce {NomeDaRaca.Bonito(bebe.Raca)}, com 0 anos{linhagem}. O nome, o corpo e a "
+                  + "história são seus."
+                : $"esperam um bebê {NomeDaRaca.Bonito(bebe.Raca)}. Quer nascer como o filho deles? Você nasce com 0 anos, "
+                  + $"da raça dos pais{linhagem}. O nome, o corpo, o cabelo e a história são seus.",
+            AutowrapMode = TextServer.AutowrapMode.Word,
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        texto.AddThemeColorOverride("font_color", Tema.TextoFraco);
+        col.AddChild(texto);
+
+        col.AddChild(new HSeparator());
+
+        var linha = new HBoxContainer();
+        linha.AddThemeConstantOverride("separation", 10);
+        col.AddChild(linha);
+
+        var outro = new Button { Text = "Criar outro personagem", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        outro.Pressed += () => { FecharPergunta(); Criar?.Invoke(slot); };
+        linha.AddChild(outro);
+
+        var filho = new Button { Text = "Nascer como filho(a)", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        filho.AddThemeColorOverride("font_color", Tema.Destaque);
+        filho.Pressed += () => { FecharPergunta(); CriarComoFilho?.Invoke(slot, bebe); };
+        linha.AddChild(filho);
+    }
+
+    /// <summary>(2026-10-17) A pergunta do bebe esta na tela? E o botao de cada resposta. Pra o robo `--diagfilho`.</summary>
+    internal bool PerguntaDoBebeAbertaDeTeste => BotaoDaPerguntaDeTeste("Nascer como filho(a)") != null;
+
+    /// <summary>(2026-10-17) Os textos da pergunta na tela, um rotulo por linha (vazio = sem pergunta). Pra o robo `--diagfilho` (o ovo).</summary>
+    internal string TextoDaPerguntaDeTeste =>
+        _pergunta == null || !IsInstanceValid(_pergunta) ? ""
+        : string.Join("\n", _pergunta.FindChildren("*", "Label", true, false).OfType<Label>().Select(l => l.Text));
+
+    internal Button? BotaoDaPerguntaDeTeste(string texto)
+    {
+        if (_pergunta == null || !IsInstanceValid(_pergunta)) return null;
+        foreach (Node n in _pergunta.FindChildren("*", "Button", true, false))
+            if (n is Button b && b.Text == texto) return b;
+        return null;
     }
 
     private void FecharPergunta()

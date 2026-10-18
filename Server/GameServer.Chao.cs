@@ -55,10 +55,14 @@ public sealed partial class GameServer
 	/// DA PRA LARGAR AGORA? Caido nao larga, a fera nao larga, e dentro de uma mente nada e real: o que se largasse
 	/// la sairia da mochila DE VERDADE (a mochila de quem esta na mente e a de fora -- ver `Saquear`) pra um chao que
 	/// some com o transe.
+	///
+	/// CAIDO E O NOCAUTE E O CADAVER (2026-10-17), nao o morto DE PE: o dono, *"morto n ta conseguindo dropar itens nem zeni
+	/// nem nada"*. A porta lia o `dead` cru, e no Outro Mundo (ou com o passe do Enma) todo mundo esta morto. E a regra do
+	/// adendo 18: do morto so sai o Zenkai (`CaidoPelaMorte`).
 	/// </summary>
 	private bool PodeLargar(ServerPlayer pl)
 	{
-		if (pl.Ficha.KO || pl.Ficha.dead || EhCadaver(pl)) { Avisar(pl, "caído, você não larga nada."); return false; }
+		if (pl.Ficha.KO || CaidoPelaMorte(pl)) { Avisar(pl, "caído, você não larga nada."); return false; }
 		if (SemAsRedeas(pl)) { Avisar(pl, "a fera não larga nada."); return false; }
 		if (NaMente(pl)) { Avisar(pl, "aqui dentro nada é real: não há onde largar."); return false; }
 		return true;
@@ -217,7 +221,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void PegarDoChao(ServerPlayer pl, string arg)
 	{
-		if (pl.Ficha.KO || pl.Ficha.dead || EhCadaver(pl)) { Avisar(pl, "caído, você não pega nada."); return; }
+		if (pl.Ficha.KO || CaidoPelaMorte(pl)) { Avisar(pl, "caído, você não pega nada."); return; }   // (2026-10-17) o morto de pe cata, como larga
 		if (SemAsRedeas(pl)) { Avisar(pl, "a fera não cata nada do chão."); return; }
 		if (Voo.AtravessaCenario(pl.Altitude)) { Avisar(pl, "daqui de cima você não alcança o chão: desça."); return; }
 

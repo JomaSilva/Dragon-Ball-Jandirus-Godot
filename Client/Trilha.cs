@@ -62,6 +62,23 @@ public static class Trilha
     /// </summary>
     public static string ProximaDeMenu() => MenuOst.Espiar();
 
+    /// <summary>
+    /// A MUSICA DOS PLANETAS (dono, 2026-10-16): *"musicas q vao tocar quando n ta em combate nem em cinematica de
+    /// transformaçao, elas tocam como musica padrao nos planetas do jogo"*. E o fundo de todo lugar sem tema proprio (ver
+    /// <see cref="MusicaDe"/>), sorteado como o de combate: cada faixa toca UMA vez e a seguinte sai do saco. A pasta e dele --
+    /// jogar uma faixa la ja a poe no rodizio.
+    /// </summary>
+    private static readonly Saco PlanetOst = new(A + "Planet Ambience Music");
+
+    /// <summary>Uma faixa da musica dos planetas, diferente da anterior. Vazio se a pasta nao existir.</summary>
+    public static string Planeta() => PlanetOst.Proxima();
+
+    /// <summary>
+    /// A faixa que o proximo <see cref="Planeta"/> vai devolver, SEM tira-la do saco -- vazio se a pasta nao existir. Irma da
+    /// <see cref="ProximaDeCombate"/>: e o que deixa o `AudioDirector` le-la numa thread de carga antes de ela entrar no ar.
+    /// </summary>
+    public static string ProximaDePlaneta() => PlanetOst.Espiar();
+
     /// <summary>O som de fundo de cada planeta. Vazio = silencio.</summary>
     public static string? AmbienteDe(string zona) => zona switch
     {
@@ -77,12 +94,43 @@ public static class Trilha
         _ => A + "windy.ogg",
     };
 
-    /// <summary>A musica do lugar. Silencio ("") deixa o ambiente falar sozinho.</summary>
-    public static string MusicaDe(string zona) => zona switch
+    /// <summary>
+    /// O TEMA PROPRIO DO LUGAR, que toca em LACO enquanto se esta la. Vazio = o lugar nao tem tema proprio, e o que toca la e a
+    /// musica dos planetas em rodizio (<see cref="Planeta"/>) -- quem decide e o `AudioDirector.MusicaDoLugar`.
+    ///
+    /// O dono (2026-10-16): *"sacred land of korin vai tocar no mapa do lookout, skies above beerus vai tocar no planeta onde o
+    /// bills mora, e sacred land of the kais vai tocar no mapa heaven"*, e *"o inferno pode manter a musica atual, o resto vai
+    /// usar o planet ambience music"*. Os tres arquivos sao dele, na pasta do ambiente, e se acham por um TRECHO do nome
+    /// (<see cref="TemaDaPasta"/>): os nomes trazem ♠ e 【】, e transcreve-los na mao e o erro de digitacao que so aparece como
+    /// silencio.
+    /// </summary>
+    /// <param name="casaDeBills">Este lugar e o mundo gerado onde o Bills mora, e o cliente ja ouviu o endereco (ver
+    /// `MenuJogo.CasaDeBills`). Antes de o Bills o revelar ninguem sabe qual mundo e -- e a musica nao o entrega.</param>
+    public static string MusicaDe(string zona, bool casaDeBills = false) =>
+        casaDeBills ? TemaDaPasta("Skies above Beerus")
+        : zona switch
+        {
+            "Hell" => M + "Demon World.mp3",
+            "Lookout" => TemaDaPasta("Sacred Land of Korin"),
+            "Heaven" => TemaDaPasta("Sacred Land of the Kais"),
+            _ => "",
+        };
+
+    /// <summary>
+    /// O ARQUIVO DA PASTA DO AMBIENTE CUJO NOME TRAZ <paramref name="trecho"/>, procurado uma vez e guardado. So a pasta de
+    /// cima: a subpasta do rodizio nao entra. Vazio -- com aviso -- se nenhum trouxer: o lugar fica com a musica dos planetas, e
+    /// o aviso diz qual tema sumiu.
+    /// </summary>
+    private static string TemaDaPasta(string trecho)
     {
-        "Hell" => M + "Demon World.mp3",
-        _ => "",
-    };
+        if (TemasAchados.TryGetValue(trecho, out string? achado)) return achado;
+        achado = ArquivosDeAudio(A.TrimEnd('/')).Find(c => c.GetFile().Contains(trecho, StringComparison.OrdinalIgnoreCase)) ?? "";
+        if (achado.Length == 0) GD.PushWarning($"[audio] tema de lugar ausente na pasta do ambiente: '{trecho}'");
+        TemasAchados[trecho] = achado;
+        return achado;
+    }
+
+    private static readonly Dictionary<string, string> TemasAchados = [];
 
     // =====================================================================
     // SOCO
@@ -208,6 +256,12 @@ public static class Trilha
     /// <summary>Membro arrancado.</summary>
     public const string Decepou = E + "swordkill.ogg";
 
+    /// <summary>
+    /// (2026-10-17) A CAUDA DO BIO-ANDROIDE CRAVADA, BEBENDO -- o `emit_Sound('absorb.wav')` do `Bio_Absorb` (`Absorption.dm:157`), um toque
+    /// so, no instante em que a vitima comeca a secar (`World.MarcarSecando`). Estava importado e nenhum `.cs` o citava.
+    /// </summary>
+    public const string Absorcao = E + "absorb.wav";
+
     // =====================================================================
     // MOVIMENTO E ESTADO
     // =====================================================================
@@ -331,6 +385,12 @@ public static class Trilha
     public const string Rugido = E + "Roar.wav";
 
     /// <summary>
+    /// O SOM DO ULTRA INSTINTO (2026-10-17, pedido do dono): toda transformacao numa forma da linha do instinto, menos a estreia
+    /// (que tem a cena cheia e o tema). Nao e do DM -- la o despertar so tinha tema. Ver `Cinematicas.SomDoDegrau`.
+    /// </summary>
+    public const string UltraInstinto = E + "UltraInstinctSoundEffect.ogg";
+
+    /// <summary>
     /// A EXPLOSAO -- o `explosion.wav` do original (`Tech/Bombs.dm:42`).
     ///
     /// ============================ ELE MUDA DE PAPEL AQUI, E ESTA MARCADO ============================
@@ -391,6 +451,10 @@ public static class Trilha
     public const string KiGenkidama = K + "spiritbombfire.wav";
     /// <summary>(v0.3.1) `spiritbomb.wav` -- a Genkidama se erguendo (`SpiritBomb.dm:41`): o gesto `ErgueAGenkidama`.</summary>
     public const string KiGenkidamaErguida = K + "spiritbomb.wav";
+    /// <summary>(v0.3.2) `deathball_charge` -- a Death Ball se erguendo (`DeathBall.dm:39`): o gesto `ErgueADeathBall`.</summary>
+    public const string KiDeathBallErguida = K + "deathball_charge.ogg";
+    /// <summary>(v0.3.2) `chargeincrease.ogg` -- a Death Ball crescendo um estagio (`DeathBall.dm:83`): o gesto `CresceADeathBall`.</summary>
+    public const string KiDeathBallCresce = K + "chargeincrease.ogg";
     /// <summary>`kamehameha_fire.wav` -- todo raio ao sair, e ele ANDA com a cabeca (`beams.dm:283` e as irmas).</summary>
     public const string KiRaio = K + "kamehameha_fire.ogg";
     /// <summary>`basicbeam_fire.wav` -- o Final Flash (`FinalFlash.dm:38`).</summary>

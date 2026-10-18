@@ -83,6 +83,8 @@ public sealed partial class GameServer
 			pl.Conta.Length > 0 && string.Equals(servidor.CargoDe(pl.Conta), chave, StringComparison.OrdinalIgnoreCase);
 		public Fatos Fatos => servidor.FatosDe(pl);
 		public Lugar Lugar => servidor.LugarDe(pl);
+		public Jandirus.Core.Races.SkillRacial SkillsRaciais => SkillsDoCorpo(pl);
+		public Jandirus.Core.Races.SkillRacial SkillsDoSangue => Jandirus.Core.Races.SkillsRaciais.DoSangue(pl.Ficha);
 	}
 
 	private IPosse PosseDe(ServerPlayer pl) => new PosseDoServidor(this, pl);
@@ -359,6 +361,16 @@ public sealed partial class GameServer
 			ServerPlayer bio = Gente("BioAndroide", Jandirus.Core.Races.BioAndroids.Raca);
 			ServerPlayer bioSaiyajin = Gente("BioDeDnaSaiyajin", Jandirus.Core.Races.BioAndroids.Raca);
 			bioSaiyajin.Ficha.canSSJ = true;   // o `canSSJ` que o DNA Saiyajin da ao bio de laboratorio: a escada sem a raca
+			// (2026-10-17) O BIO QUE SAIU DE UM TANQUE veste a larva quando quer; e a LARVA se enterra (o adendo do dono, `GameServer.Larva.cs`).
+			ServerPlayer bioDeLab = Gente("BioDeLaboratorio", Jandirus.Core.Races.BioAndroids.Raca);
+			bioDeLab.Ficha.bio_lab_born = true;
+			bioDeLab.Ficha.bio_stage = Jandirus.Core.Races.BioAndroids.Imperfeito;
+			// (2026-10-17) O SANGUE QUE DA AS SKILLS DO DNA (`Races.SkillsRaciais`): quatro dos cinco kits de raca -- o quinto, o Namekuseijin, e do
+			// casulo da secao 6, e assim toda linha da escolha tem quem a veja.
+			bioDeLab.Ficha.bio_racas_dna = ["Saiyan", "Human", "Halfbreed", "Icer"];
+			ServerPlayer larvaDeBio = Gente("LarvaDeBio", Jandirus.Core.Races.BioAndroids.Raca);
+			larvaDeBio.Ficha.bio_lab_born = true;
+			larvaDeBio.Ficha.bio_stage = Jandirus.Core.Races.BioAndroids.Larva;
 			ServerPlayer coletor = Gente("AndroideDeAbsorcao", "Android");
 			coletor.Ficha.AndroideAbsorcao = true;
 			ServerPlayer infinito = Gente("AndroideInfinito", "Android");
@@ -372,6 +384,13 @@ public sealed partial class GameServer
 			// (o `Power_Control` vem do DEGRAU 5 de Basic Ki Control -- e ele que abre a barra de poder e o relaxar)
 			ServerPlayer controlado = Gente("HumanoComControleDeKi", "Human", skills: ["/datum/skill/mind/Ki_Unlocked", SkillKiControl],
 											degraus: [(SkillKiControl, 5)]);
+			// (v0.4.0) OS SANGUES COM ATIVA RACIAL (o humano e o Namekuseijin ja estao no elenco): o Lendario, o Primal, o Lendario Primal,
+			// o Frost Demon e o mutante -- as treze linhas da aba Skills tem quem as veja.
+			ServerPlayer lendario = Gente("SaiyajinLendario", "Saiyan", "Legendary");
+			ServerPlayer primal = Gente("SaiyajinPrimal", "Saiyan", "Normal Primal Saiyan");
+			ServerPlayer lendarioPrimal = Gente("LendarioPrimal", "Saiyan", "Legendary Primal Saiyan");
+			ServerPlayer frost = Gente("FrostDemon", "Icer", "Frost Demon");
+			ServerPlayer mutante = Gente("FrostMutante", "Icer", "Mutant Frost Demon");
 			ServerPlayer noEspaco = Gente("HumanoNoEspaco", "Human");
 			noEspaco.Zone = espaco;
 			noEspaco.Pos = naSuper;
@@ -395,10 +414,13 @@ public sealed partial class GameServer
 			(string Nome, ServerPlayer Corpo)[] elenco =
 			[
 				("humano novato", novato), ("Saiyajin novato", saiyajin), ("Namekuseijin guerreiro", guerreiro),
+				("Saiyajin Lendário", lendario), ("Saiyajin Primal", primal), ("Lendário Primal", lendarioPrimal),
+				("Frost Demon", frost), ("Frost Demon mutante", mutante),
 				("Namekuseijin do Clã do Dragão", doCla), ("humano com Split Form", divisor),
 				("humano com Dragon Radar", comRadarNaMao), ("humano que sabe a Dança", dancarino),
 				("Majin com Buu Absorb", majin), ("Majin sem a skill", majinCru), ("bio-androide", bio),
 				("bio-androide de DNA Saiyajin", bioSaiyajin), ("androide de absorção", coletor), ("androide de energia infinita", infinito),
+				("bio-androide de laboratório", bioDeLab), ("larva de bio-androide", larvaDeBio),
 				("humano com God Ki", divino), ("humano com o estudo da Mente", mentalista), ("humano com controle de ki", controlado),
 				("humano no espaço", noEspaco), ("Grande Ancião de Namek", anciao), ("Rei de Vegeta", rei),
 				("Presidente da Terra", presidente), ("Guardião da Terra", guardiao), ("Mestre Korin", korin),
@@ -415,6 +437,25 @@ public sealed partial class GameServer
 			}
 
 			// ---- o caso do dono, palavra por palavra ----
+			// (2026-10-17) A LARVA (o adendo do dono): o bio de LABORATORIO ve a forma de larva, so a LARVA ve o enterrar, e o bio que nao saiu de
+			// um tanque nao ve nenhum dos dois.
+			Checa("A LARVA: o bio de LABORATORIO ve a \"Forma de larva\", so a LARVA ve o \"Enterrar-se\", e o bio que nao saiu de um tanque nao ve "
+				  + "nenhum dos dois",
+				  VeChave(bioDeLab, "hab:larva") && !VeChave(bioDeLab, "hab:enterrar") && VeChave(larvaDeBio, "hab:enterrar")
+				  && VeChave(larvaDeBio, "hab:larva") && !VeChave(bio, "hab:larva") && !VeChave(bio, "hab:enterrar")
+				  && (FatosDe(bioDeLab) & Fatos.BioDeLaboratorio) != 0 && (FatosDe(larvaDeBio) & Fatos.EmLarva) != 0
+				  && (FatosDe(bioDeLab) & Fatos.EmLarva) == 0);
+			// (2026-10-17) AS SKILLS DO DNA (o adendo do dono): o bio de laboratorio de sangue Saiyajin + Humano + meio-Saiyajin + Frost Demon ve os
+			// DEZESSETE botoes da escolha (as skills dos quatro kits), e ninguem mais do elenco ve um.
+			string[] doDna = [.. Jandirus.Core.Races.SkillsRaciais.Todas.Select(s => RequisitosDosVerbos.PrefixoDeHabilidade + s.IdDaEscolha)];
+			Checa("AS SKILLS DO DNA: o bio de laboratorio de sangue Saiyajin + Humano + meio-Saiyajin + Frost Demon ve os DEZESSETE botoes da escolha "
+				  + "(os dos quatro kits) e nenhum do Namekuseijin, que ele nao carrega -- e ninguem mais do elenco ve um",
+				  doDna.Count(ch => VeChave(bioDeLab, ch)) == 17 && (FatosDe(bioDeLab) & Fatos.SkillDoDnaPorEscolher) != 0
+				  && !VeChave(bioDeLab, RequisitosDosVerbos.PrefixoDeHabilidade + Jandirus.Core.Races.SkillsRaciais.PrefixoDaEscolha
+											   + Jandirus.Core.Races.SkillRacial.Resiliencia)
+				  && elenco.Where(e => e.Corpo != bioDeLab).All(e => doDna.All(ch => !VeChave(e.Corpo, ch))),
+				  string.Join(", ", doDna.Where(ch => VeChave(bioDeLab, ch))));
+
 			string[] doClaDoDragao = ["verbo:db_estatua", "verbo:db_estatua supremo", "verbo:db_reviver"];
 			string[] doSplitForm = [.. tabela.Where(v => v.Chave.StartsWith("verbo:splitform_", StringComparison.Ordinal)).Select(v => v.Chave)];
 			Checa("**O SAIYAJIN DA FOTO**: sem radar ele nao ve a linha do RADAR nem o botao; nao e do Cla do Dragao e nao ve "
@@ -496,15 +537,21 @@ public sealed partial class GameServer
 				  && !VeChave(novato, "verbo:sala_autorizar"));
 
 			// O que sobra pro humano novato sao as oito linhas do mainframe de androides -- que e maquina DE humano
-			// e so aparece na tecla E, com a maquina na frente. No menu P, nenhuma. (Eram seis ate 2026-10-10: as duas
-			// conversoes ganharam a gemea paga em recursos, e as gemeas pedem a mesma raca.)
+			// e so aparece na tecla E, com a maquina na frente -- e, desde a v0.4.0, as TRES ATIVAS DO SANGUE HUMANO (Second Wind,
+			// Sheer Willpower e Max Power), na aba Skills. Nenhuma outra. (Eram seis ate 2026-10-10: as duas conversoes ganharam a
+			// gemea paga em recursos, e as gemeas pedem a mesma raca.)
 			List<VerbDeclarado> doNovato = [.. tabela.Where(v => Ve(novato, v))];
-			Checa($"O HUMANO NOVATO nao ve NENHUMA linha com requisito no menu P ({tabela.Count} na tabela): so lhe sobram as "
-				  + $"{doNovato.Count} do mainframe de androides, na tecla E",
-				  doNovato.Count == 8 && doNovato.All(v => v.Onde.StartsWith("Tecla E", StringComparison.Ordinal)),
+			List<VerbDeclarado> doSangue = [.. doNovato.Where(v => v.Chave.StartsWith("hab:rc_", StringComparison.Ordinal))];
+			List<VerbDeclarado> daMaquina = [.. doNovato.Except(doSangue)];
+			Checa($"O HUMANO NOVATO nao ve NENHUMA outra linha com requisito ({tabela.Count} na tabela): so as {doSangue.Count} ativas do "
+				  + $"sangue humano (aba Skills) e as {daMaquina.Count} do mainframe de androides, na tecla E",
+				  doSangue.Count == 3 && doSangue.All(v => v.Onde == "Skills")
+				  && daMaquina.Count == 8 && daMaquina.All(v => v.Onde.StartsWith("Tecla E", StringComparison.Ordinal)),
 				  $"ve {doNovato.Count}: {string.Join("; ", doNovato.Select(v => v.Rotulo))}");
-			Checa("...e essas oito NAO aparecem pra quem nao e humano: Saiyajin, Namekuseijin, Majin, bio-androide e o proprio androide (ja convertido)",
-				  doNovato.All(v => !Ve(saiyajin, v) && !Ve(guerreiro, v) && !Ve(majin, v) && !Ve(bio, v) && !Ve(coletor, v)));
+			Checa("...e as oito da maquina NAO aparecem pra quem nao e humano: Saiyajin, Namekuseijin, Majin, bio-androide e o proprio androide (ja convertido)",
+				  daMaquina.All(v => !Ve(saiyajin, v) && !Ve(guerreiro, v) && !Ve(majin, v) && !Ve(bio, v) && !Ve(coletor, v)));
+			Checa("...nem as tres do sangue: elas sao do kit HUMANO (o androide ja convertido tambem nao as ve -- *\"Only available when they are not an android\"*)",
+				  doSangue.All(v => !Ve(saiyajin, v) && !Ve(guerreiro, v) && !Ve(majin, v) && !Ve(bio, v) && !Ve(coletor, v)));
 
 			Requisito.MostrarTudoDeTeste = true;
 			try
@@ -616,7 +663,7 @@ public sealed partial class GameServer
 			AbsorcaoSemPortaoDeTeste = true;
 			try
 			{
-				Ouvir(() => UsarHabilidade(novato, "absorver"));
+				Ouvir(() => AbsorverAteOFimBio(novato));   // (2026-10-17) a execucao leva 5 s: o relogio anda ate ela se consumar
 				Checa("(defeito injetado: sem o portao) a prova de cima REPROVA -- o humano CONSOME a vitima, que era o que qualquer cliente mexido fazia",
 					  v1.Ficha.dead && novato.Ficha.AbsorbBP > bpAntes, $"morta {v1.Ficha.dead}, AbsorbBP {novato.Ficha.AbsorbBP:0}");
 			}
@@ -631,8 +678,9 @@ public sealed partial class GameServer
 			ServerPlayer v2 = Vitima("VitimaDoBio");
 			bio.Pos = palco;
 			bio.AlvoId = v2.Id;
-			Ouvir(() => UsarHabilidade(bio, "absorver"));
-			Checa("...e o BIO-ANDROIDE continua absorvendo: a vitima morre e o poder dela entra nele", v2.Ficha.dead && bio.Ficha.AbsorbBP > 0,
+			Ouvir(() => AbsorverAteOFimBio(bio));
+			Checa("...e o BIO-ANDROIDE continua absorvendo: ao fim dos 5 s da execucao a vitima morre e o poder dela entra nele",
+				  v2.Ficha.dead && bio.Ficha.AbsorbBP > 0,
 				  $"morta {v2.Ficha.dead}, AbsorbBP {bio.Ficha.AbsorbBP:0}");
 			bio.Pos = estacionamento;
 			bio.AlvoId = 0;
@@ -645,6 +693,51 @@ public sealed partial class GameServer
 			GD.Print("[verbs] -- 6) os fatos: cada um nasce pela porta do sistema dele, liga o botao e some quando o motivo acaba --");
 			bool Tem(ServerPlayer quem, Fatos f) => (FatosDe(quem) & f) != 0;
 			long agora = NowMs();
+
+			// ---- (2026-10-17) A LARVA: vestir -> o enterrar aparece; amadurecer -> some ----
+			{
+				ServerPlayer casulo = Gente("CasuloDaBancada", Jandirus.Core.Races.BioAndroids.Raca);
+				casulo.Ficha.bio_lab_born = true;
+				casulo.Ficha.bio_stage = Jandirus.Core.Races.BioAndroids.SemiPerfeito;
+				Checa("(antes) o bio de laboratorio fora da larva nao ve o enterrar", !Tem(casulo, Fatos.EmLarva) && !VeChave(casulo, "hab:enterrar"));
+				// (2026-10-17) O NUCLEO: os botoes da escolha acendem pro bio de laboratorio que ainda nao escolheu, e somem com a escolha.
+				Checa("O BIO DE LABORATORIO SEM NUCLEO ve os botoes da escolha (`Fatos.NucleoPorEscolher`)",
+					  Tem(casulo, Fatos.NucleoPorEscolher) && VeChave(casulo, "hab:nucleo"));
+				List<string> escolheu = Ouvir(() => UsarHabilidade(casulo, "nucleo:Perna direita"));
+				Checa("...ESCOLHEU (pelo verb de producao): os botoes somem -- e uma vez so",
+					  !Tem(casulo, Fatos.NucleoPorEscolher) && !VeChave(casulo, "hab:nucleo") && casulo.Ficha.bio_nucleo == "Perna direita", Ultimos(escolheu));
+				// (2026-10-17) AS SKILLS DO DNA: um bio de sangue SO Namekuseijin -- tres skills no sangue, menos que as seis vagas. Cada escolha tira o
+				// botao dela (e a ativa escolhida ganha o seu); a terceira ESGOTA o sangue e o fato apaga, com tres vagas ainda livres.
+				casulo.Ficha.bio_racas_dna = ["Namekian"];
+				static string Dna(Jandirus.Core.Races.SkillRacial s) =>
+					RequisitosDosVerbos.PrefixoDeHabilidade + Jandirus.Core.Races.SkillsRaciais.PrefixoDaEscolha + s;
+				Checa("O BIO DE SANGUE NAMEKUSEIJIN ve os TRES botoes da escolha do DNA (`Fatos.SkillDoDnaPorEscolher`), e nao o da ativa Spirit Disruption",
+					  Tem(casulo, Fatos.SkillDoDnaPorEscolher) && VeChave(casulo, Dna(Jandirus.Core.Races.SkillRacial.Resiliencia))
+					  && VeChave(casulo, Dna(Jandirus.Core.Races.SkillRacial.Disrupcao)) && VeChave(casulo, Dna(Jandirus.Core.Races.SkillRacial.Vitalidade))
+					  && !VeChave(casulo, "hab:" + Jandirus.Core.Races.Passivas.Disrupcao));
+				List<string> umaDoDna = Ouvir(() => UsarHabilidade(casulo, Jandirus.Core.Races.SkillsRaciais.PrefixoDaEscolha + Jandirus.Core.Races.SkillRacial.Disrupcao));
+				Checa("...ESCOLHEU A SPIRIT DISRUPTION (pelo verb de producao): o botao da escolha some, o da ATIVA aparece, e os outros dois ficam",
+					  !VeChave(casulo, Dna(Jandirus.Core.Races.SkillRacial.Disrupcao)) && VeChave(casulo, "hab:" + Jandirus.Core.Races.Passivas.Disrupcao)
+					  && VeChave(casulo, Dna(Jandirus.Core.Races.SkillRacial.Resiliencia)) && VeChave(casulo, Dna(Jandirus.Core.Races.SkillRacial.Vitalidade)),
+					  Ultimos(umaDoDna));
+				UsarHabilidade(casulo, Jandirus.Core.Races.SkillsRaciais.PrefixoDaEscolha + Jandirus.Core.Races.SkillRacial.Resiliencia);
+				UsarHabilidade(casulo, Jandirus.Core.Races.SkillsRaciais.PrefixoDaEscolha + Jandirus.Core.Races.SkillRacial.Vitalidade);
+				Checa("...e a terceira ESGOTA o sangue: o fato apaga e nenhum botao de DNA sobra -- com tres das seis vagas ainda livres",
+					  !Tem(casulo, Fatos.SkillDoDnaPorEscolher) && doDna.All(ch => !VeChave(casulo, ch))
+					  && Jandirus.Core.Races.SkillsRaciais.Quantas(Jandirus.Core.Races.SkillsRaciais.EscolhidasDoBio(casulo.Ficha)) == 3);
+				List<string> vestiu = Ouvir(() => UsarHabilidade(casulo, "larva"));
+				Checa("O BIO VESTE A LARVA (pelo verb de producao) e o ENTERRAR aparece (`Fatos.EmLarva`)",
+					  Tem(casulo, Fatos.EmLarva) && VeChave(casulo, "hab:enterrar"), Ultimos(vestiu));
+				UsarHabilidade(casulo, "enterrar");
+				// O RELOGIO VOLTA DEPOIS: o resto desta secao marca prazos pelo `agora` guardado la em cima (o pedido de filho, por exemplo).
+				long relogioDeAntes = AdiantoDoRelogioDeTeste;
+				AdiantoDoRelogioDeTeste += (long)(Jandirus.Core.Races.BioAndroids.SegundosEnterradoPraAmadurecer * 1000) + 1_000;
+				TickDaLarva();
+				AdiantoDoRelogioDeTeste = relogioDeAntes;
+				Checa("...e AMADURECEU (5 min enterrada): o enterrar some, e o degrau e o de antes",
+					  !Tem(casulo, Fatos.EmLarva) && !VeChave(casulo, "hab:enterrar")
+					  && casulo.Ficha.bio_stage == Jandirus.Core.Races.BioAndroids.SemiPerfeito);
+			}
 
 			// ---- o discipulado: convite -> vinculo -> fim ----
 			ServerPlayer mestre = Gente("Mestre", "Human");
@@ -695,6 +788,23 @@ public sealed partial class GameServer
 				  Tem(aluno, Fatos.LicaoOferecida) && VeChave(aluno, "hab:ens_licao_sim") && VeChave(aluno, "hab:ens_licao_nao")
 				  && !Recusou(Ouvir(() => UsarHabilidade(aluno, "ens_licao_nao")), RequisitosDosVerbos.Linha("hab:ens_licao_nao")!)
 				  && !Tem(aluno, Fatos.LicaoOferecida) && !VeChave(aluno, "hab:ens_licao_sim"));
+
+			// ---- (2026-10-17) os filhos: o amor correspondido acende "Ter um filho"; o pedido na mesa, as duas respostas ----
+			ServerPlayer amante = Gente("Amante", "Human");
+			ServerPlayer amado = Gente("Amado", "Saiyan");
+			bool antesDoAmor = !VeChave(amante, "hab:filho_pedir") && !VeChave(amado, "hab:filho_pedir");
+			foreach ((ServerPlayer de, ServerPlayer por) in new[] { (amante, amado), (amado, amante) })
+			{
+				de.Social.Fotografar(por.Assinatura, por.Name, por.Race, por.Genero, por.Idade, agora);
+				de.Social.Ficha(por.Assinatura)!.Familiaridade = Convivio.FamiliaridadeExigida(Relacao.Amor);
+				de.Social.Declarar(por.Assinatura, Relacao.Amor);
+			}
+			amado.PedidoDeFilho = new PedidoDeFilho(amante.Assinatura, amante.Name, agora + 20_000);
+			Checa("O AMOR CORRESPONDIDO acende 'Ter um filho' pros dois (sem amor, pra ninguem); o PEDIDO NA MESA acende 'Aceitar o filho' e 'Recusar o filho' -- e o Recusar de producao o tira de la",
+				  antesDoAmor && Tem(amante, Fatos.TemUmAmor) && VeChave(amante, "hab:filho_pedir") && VeChave(amado, "hab:filho_pedir")
+				  && VeChave(amado, "hab:filho_sim") && VeChave(amado, "hab:filho_nao")
+				  && !Recusou(Ouvir(() => UsarHabilidade(amado, "filho_nao")), RequisitosDosVerbos.Linha("hab:filho_nao")!)
+				  && !Tem(amado, Fatos.PedidoDeFilho) && !VeChave(amado, "hab:filho_sim"));
 
 			// ---- a fusao: a Danca e a absorcao Namekuseijin ----
 			ServerPlayer d1 = Gente("DancarinoA", "Human", skills: ["/datum/skill/rank/Fusion_Dance"]);

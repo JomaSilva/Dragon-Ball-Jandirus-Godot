@@ -25,6 +25,12 @@ public partial class GameClient
 
 	public CasaDeBillsVista CasaDeBills { get; private set; }
 
+	/// <summary>
+	/// (2026-10-16) A CASA DO BILLS MUDOU: chegou, mudou de mundo ou foi esquecida. Quem escuta e o `World` -- a musica da casa
+	/// (`World.AoSaberDaCasaDeBills`) tem de reconhece-la mesmo com o endereco chegando DEPOIS da zona.
+	/// </summary>
+	public event Action? CasaDeBillsMudou;
+
 	/// <summary>O corpo divino que a minha tecla E alcanca agora. Zero = nenhum.</summary>
 	public int DivinoPerto { get; private set; }
 
@@ -37,14 +43,25 @@ public partial class GameClient
 	/// <summary>`S2C.CasaDeBills`: `bool revelada` e, so se revelada, `int sx`, `int sy`, `byte orbita`, `ulong semente`.</summary>
 	private void LerCasaDeBills(NetDataReader reader)
 	{
-		if (!reader.GetBool()) { CasaDeBills = default; return; }
+		if (!reader.GetBool()) { PorACasaDeBills(default); return; }
 
 		int sx = reader.GetInt();
 		int sy = reader.GetInt();
 		int orbita = reader.GetByte();
 		ulong semente = reader.GetULong();
-		CasaDeBills = new CasaDeBillsVista(true, sx, sy, orbita, semente);
+		PorACasaDeBills(new CasaDeBillsVista(true, sx, sy, orbita, semente));
 	}
+
+	/// <summary>A CASA COMO O CLIENTE A SABE, e o aviso de que ela mudou -- uma porta so, pro pacote e pra bancada.</summary>
+	private void PorACasaDeBills(CasaDeBillsVista casa)
+	{
+		if (casa == CasaDeBills) return;
+		CasaDeBills = casa;
+		CasaDeBillsMudou?.Invoke();
+	}
+
+	/// <summary>BANCADA (`--diagbills`): a casa como se o pacote tivesse chegado agora -- inclusive "nao revelada".</summary>
+	internal void CasaDeBillsDeTeste(CasaDeBillsVista casa) => PorACasaDeBills(casa);
 
 	/// <summary>`S2C.DivinoPerto`: `int corpo` (0 = nenhum), `string tipo`, `string nome`.</summary>
 	private void LerDivinoPerto(NetDataReader reader)

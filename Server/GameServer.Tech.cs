@@ -389,19 +389,6 @@ public partial class GameServer
 	/// <summary>`DNL_BIO_MAX_DNA`.</summary>
 	private const int BioMaxDna = Jandirus.Core.Races.BioAndroids.MaxDna;
 
-	/// <summary>
-	/// QUANTO A LARVA FICA LARVA -- `bio_mature_realtime = world.realtime + DAY_REAL_MINUTES * 600`,
-	/// ou seja **um dia in-game** contado em relogio REAL.
-	///
-	/// Na escala deste port o dia in-game tem <see cref="Espaco.SegundosPorDiaInGame"/> de relogio.
-	/// Sai daquela constante e nao de um numero digitado pelo mesmo motivo que a gestacao: os dois
-	/// prazos deste sistema sao "um dia" e "um mes" do MESMO calendario, e um deles escrito a mao
-	/// deixaria de acompanhar o outro no dia em que o dia in-game mudar de tamanho.
-	/// </summary>
-	private double MaturacaoDaLarvaSegundos => _gestacaoDeTeste > 0
-		? _gestacaoDeTeste
-		: Espaco.SegundosPorDiaInGame;
-
 	private string CaminhoDoMundo => System.IO.Path.Combine(_store?.Pasta ?? ".", "mundo.json");
 
 	private void CarregarTech()
@@ -900,6 +887,8 @@ public partial class GameServer
 			DonoConta = pl.Conta,
 			DonoNome = pl.Name,
 			ErguidaEm = NowMs(),
+			// A MESA DE PESQUISA JA SAI APARAFUSADA (o `Bolted = 1` do tipo no DM); o resto nasce solto. Ver `Interacoes.NasceAparafusada`.
+			Aparafusada = Interacoes.NasceAparafusada(c.Id),
 
 			// A ARMADURA NASCE DO BP DE QUEM ERGUEU -- `built.maxarmor = intBPcap`
 			// (`buildable.dm:414`). E o que faz a bancada de um lutador forte ser dificil de
@@ -920,7 +909,7 @@ public partial class GameServer
 		GD.Print($"[server] {pl.Name} {(plantio ? "plantou" : "assentou")} {c.Nome} (#{obra.Id}) em {obra.Zona} @ ({x:0},{y:0})");
 		Avisar(pl, plantio
 			? "você planta a semente. Uma macieira nasce ali -- já dá pra colher."
-			: $"você assenta {c.Nome} no chão.");
+			: $"você assenta {c.Nome} no chão{(obra.Aparafusada ? ", já aparafusada" : "")}.");
 		MandarObras(pl.Zone);
 	}
 
@@ -1035,7 +1024,7 @@ public partial class GameServer
 	{
 		foreach (ServerPlayer pl in _players.Values)
 		{
-			if (!pl.Estudando || pl.Ficha.KO || pl.Ficha.dead) continue;
+			if (!pl.Estudando || pl.Ficha.KO || CaidoPelaMorte(pl)) continue;
 
 			Obra? est = _noChao.FirstOrDefault(o => o.Tipo == "Research_Station" && o.Aparafusada
 				&& o.Zona.Equals(pl.Zone)
@@ -1463,8 +1452,9 @@ public partial class GameServer
 		pl.Ficha.BP = bp;
 		pl.Ficha.bio_lab_born = true;
 		pl.Ficha.bio_stage = Jandirus.Core.Races.BioAndroids.Larva;
-		pl.Ficha.bio_abs_players = 0;
-		pl.Ficha.bio_abs_androids = 0;
+		pl.Ficha.bio_marco = 0;
+		pl.Ficha.bio_passos = 0;
+		pl.Ficha.bio_tabela = 1;
 		pl.Ficha.bio_saiyan_dna = g.TemSaiyajin;
 
 		// ============================ O FOLEGO NO VACUO VEM DO DNA -- E TEM QUE SER GRAVADO AQUI ============================
@@ -1486,7 +1476,9 @@ public partial class GameServer
 
 		pl.Ficha.form3cantrevert = false;
 		pl.Ficha.bio_ssj2_by_death = false;
-		pl.Ficha.bio_mature_em = NowMs() + (long)(MaturacaoDaLarvaSegundos * 1000);
+		pl.Ficha.bio_larva = false;   // (2026-10-17) a larva de nascenca e o degrau Larva, e nao a vestida
+		pl.Ficha.bio_nucleo = "";      // (2026-10-17) o nucleo se escolhe na criacao -- os botoes acendem agora (`GameServer.Nucleo.cs`)
+		pl.Ficha.bio_nucleo_usos = 0;
 
 		// A ASCENSAO MORRE COM ELE. `NoAscension = 1` (`statbiodroid.dm:2`) e o `BPBoost = 1` do
 		// re-hook de login (`DNALabs.dm:709-711`): o bio e raca de FORMAS, entao ele nao acumula o
@@ -1536,9 +1528,16 @@ public partial class GameServer
 
 		Avisar(pl, "a criatura atravessa o seu peito com a cauda. Voce morre... e seus olhos "
 				   + "continuam abertos, agora DENTRO dela.");
-		Avisar(pl, $"Voce abre os olhos pela primeira vez. Fraco. Uma LARVA -- voce expressa 1% do "
-				   + $"proprio poder ({bp:N0} de base). Em cerca de {MaturacaoDaLarvaSegundos / 60:0} "
-				   + "minutos sua carapaca vai se romper.");
+		Avisar(pl, "Você abre os olhos pela primeira vez. Fraco. Uma LARVA -- o seu poder está selado na carapaça: você expressa 5, e nem o "
+				   + "sense nem o scouter te acham. Enterre-se (Enterrar-se) e fique "
+				   + $"{Jandirus.Core.Races.BioAndroids.SegundosEnterradoPraAmadurecer / 60:0} min debaixo da terra: a carapaça se rompe.");
+		Avisar(pl, "escolha onde mora o seu NÚCLEO (aba Skills): braço esquerdo, braço direito, perna esquerda, perna direita ou cabeça. É "
+				   + "uma vez só -- e é ele que te reergue da morte.");
+		// (2026-10-17) AS SKILLS DO DNA (o adendo do dono) -- ver `GameServer.SkillsDoDna.cs`
+		int vagas = Jandirus.Core.Races.SkillsRaciais.AindaEscolhe(pl.Ficha);
+		if (vagas > 0)
+			Avisar(pl, $"o seu sangue guarda as skills das raças que te fizeram: escolha {vagas} delas na aba Skills (\"DNA: ...\"). Cada escolha é "
+					   + "pra sempre.");
 		if (herdadas > 0)
 			Avisar(pl, $"memórias fluem do DNA: você nasce sabendo {herdadas} skill(s) dos seus doadores, no nível em que eles "
 					   + "as tinham -- e não sabe ENSINAR nenhuma delas.");
@@ -1556,10 +1555,11 @@ public partial class GameServer
 	}
 
 	/// <summary>
-	/// A LARVA AMADURECE -- `dnl_larva_mature()` (`DNALabs.dm:503-518`).
+	/// AS REGRAS RETROATIVAS DO BIO E A LARVA ENTERRADA, a cada segundo.
 	///
-	/// UM DIA IN-GAME (`world.realtime + DAY_REAL_MINUTES * 600`), que na escala deste port sao os
-	/// minutos reais de um dia -- ver <see cref="MaturacaoDaLarvaSegundos"/>.
+	/// (2026-10-17) A LARVA SO AMADURECE ENTERRADA (o adendo do dono -- ver `GameServer.Larva.cs`). Era o `dnl_larva_mature()` do DM
+	/// (`DNALabs.dm:503-518`): um dia in-game na superficie e a carapaca rompia sozinha. A porta do rompimento continua a mesma
+	/// (`SubirDegrauDoBio`); o que mudou e quem a abre.
 	///
 	/// ============================ O ORIGINAL TEM DUAS VIAS PORQUE A DELE MORRE ============================
 	/// La ha um `spawn dnl_larva_watch()` (um laco que dorme) **e** um fallback dentro do
@@ -1611,60 +1611,54 @@ public partial class GameServer
 			if (f.bio_lab_born && f.bio_saiyan_dna && pl.Forma.Liberar("ssj1"))
 				Avisar(pl, "celulas SAIYAJIN pulsam no seu nucleo: o Super Saiyajin ja corre no seu DNA.");
 
-			if (!f.bio_lab_born || f.bio_stage != Jandirus.Core.Races.BioAndroids.Larva) continue;
-			if (f.dead) continue;
-
-			// SAVE SEM O RELOGIO ARMA AGORA -- o `if(!bio_mature_realtime)` do original. Cobre a
-			// larva que nasceu antes deste campo existir e, principalmente, a que ficou meses
-			// offline: o prazo e de relogio real, e comeca a contar de quando o corpo esta em jogo.
-			if (f.bio_mature_em == 0)
+			// ============================ A ESCADA NOVA E RETROATIVA (2026-10-17) ============================
+			// O perfeito do DM levava o BP base a 8x o imperfeito (2x e depois 4x por cima); na tabela do dono o perfeito e 4x e o MARCO 2 dele
+			// e 8x -- entao o perfeito antigo vira o marco 2 e o BP nao se mexe. O semi do DM (2x) ja e o semi novo no marco zero.
+			// ================================================================================================
+			if (f.bio_tabela < 1)
 			{
-				f.bio_mature_em = agora + (long)(MaturacaoDaLarvaSegundos * 1000);
-				continue;
+				if (f.bio_lab_born && f.bio_stage == Jandirus.Core.Races.BioAndroids.Perfeito) f.bio_marco = 2;
+				f.bio_tabela = 1;
 			}
-			if (agora < f.bio_mature_em) continue;
 
-			SubirDegrauDoBio(pl, Jandirus.Core.Races.BioAndroids.Imperfeito);
+			// (2026-10-17) A LARVA AMADURECE ENTERRADA, e so assim -- a recem-nascida e a vestida. Ver `GameServer.Larva.cs`.
+			AndarALarva(pl, agora);
 		}
 	}
 
 	/// <summary>
-	/// ABSORVEU ALGUEM: CONTA, E EVOLUI QUANDO FECHA. Porte de `bio_note_absorb`
-	/// (`DNALabs.dm:534-546`).
+	/// ABSORVEU ALGUEM: A ESCADA ANDA. Era o `bio_note_absorb` do DM (`DNALabs.dm:534-546`: dez jogadores, o NPC valendo meio, ou UM
+	/// androide por degrau); desde o adendo do dono (2026-10-17) e a escada de MARCOS -- ver `BioAndroids.Andar`: o jogador vale um passo, o
+	/// NPC um quinto, cinco passos fazem os cinco marcos e o sexto sobe a forma. O ANDROIDE DE ENERGIA INFINITA e o atalho: a forma seguinte
+	/// direto, e no perfeito o marco 5. (O androide de ABSORCAO nem chega aqui: a execucao o recusa -- `AbsorverBio`.)
 	///
-	/// UM ANDROIDE VALE UMA EVOLUCAO INTEIRA e dez jogadores valem o mesmo -- e o atalho classico do
-	/// Cell, e ele e literal. O NPC vale METADE de um jogador (vinte NPCs), que e o freio contra
-	/// evoluir varrendo a populacao de um planeta: a `Manutencao` repoe cidadao de graca a cada 5
-	/// minutos, entao sem o peso o degrau sairia sem ninguem apanhar.
-	///
-	/// SO ENTRE O IMPERFEITO E O PERFEITO. Larva nao absorve (`Absorption.dm:111-113`: "os orgaos de
-	/// absorcao so se formam ao amadurecer") e a forma perfeita e o teto -- dali pra cima o que ha e
-	/// a Super Perfeita, que e forma e nao degrau.
+	/// Larva nao absorve (`Absorption.dm:111-113`) e o marco 5 do perfeito e o teto -- dali pra cima o que ha e a Super Perfeita, que e forma.
 	/// </summary>
 	private void ContarAbsorcaoDoBio(ServerPlayer pl, ServerPlayer vitima)
 	{
 		Fighter f = pl.Ficha;
-		if (!f.bio_lab_born) return;
-		if (f.bio_stage < Jandirus.Core.Races.BioAndroids.Imperfeito
-			|| f.bio_stage >= Jandirus.Core.Races.BioAndroids.Perfeito) return;
+		if (!f.bio_lab_born || f.bio_stage < Jandirus.Core.Races.BioAndroids.Imperfeito) return;
 
-		bool androide = vitima.Race == "Android" || vitima.Ficha.AndroideAbsorcao || vitima.Ficha.AndroideInfinito;
-		if (androide) f.bio_abs_androids++;
-		else if (!EhJogador(vitima)) f.bio_abs_players += Jandirus.Core.Races.BioAndroids.PesoDoNpc;
-		else f.bio_abs_players++;
-
-		if (!Jandirus.Core.Races.BioAndroids.EvoluiAgora(f.bio_abs_players, f.bio_abs_androids))
+		if (vitima.Ficha.AndroideInfinito)
 		{
-			double faltam = Jandirus.Core.Races.BioAndroids.FaltamJogadores(f.bio_abs_players);
-			Avisar(pl, $"seu nucleo processa a nova biomassa... (faltam {faltam:0.#} jogadores -- "
-					   + $"NPC vale {Jandirus.Core.Races.BioAndroids.PesoDoNpc:0.#} -- OU 1 androide "
-					   + "para a evolucao)");
+			(int estagio, int marco) = Jandirus.Core.Races.BioAndroids.PeloAndroide(f.bio_stage, f.bio_marco);
+			f.bio_passos = 0;
+			Avisar(pl, "um ANDROIDE DE ENERGIA INFINITA: o motor dele reescreve o seu núcleo de uma vez só.");
+			MudarDegrauDoBio(pl, estagio, marco);
 			return;
 		}
 
-		f.bio_abs_players = 0;
-		f.bio_abs_androids = 0;
-		SubirDegrauDoBio(pl, f.bio_stage + 1);
+		double ganho = EhJogador(vitima) ? Jandirus.Core.Races.BioAndroids.PassoDoJogador : Jandirus.Core.Races.BioAndroids.PassoDoNpc;
+		(int novoEstagio, int novoMarco, double passos) = Jandirus.Core.Races.BioAndroids.Andar(f.bio_stage, f.bio_marco, f.bio_passos, ganho);
+		f.bio_passos = passos;
+		if (novoEstagio == f.bio_stage && novoMarco == f.bio_marco)
+		{
+			Avisar(pl, f.bio_stage >= Jandirus.Core.Races.BioAndroids.Perfeito && f.bio_marco >= Jandirus.Core.Races.BioAndroids.MarcosPorForma
+				? "a sua forma perfeita está no topo da escada: dali pra cima é a Super Perfeita."
+				: $"seu núcleo processa a nova biomassa... ({passos * 100:0}% do próximo marco -- um jogador vale um marco inteiro, um NPC um quinto)");
+			return;
+		}
+		MudarDegrauDoBio(pl, novoEstagio, novoMarco);
 	}
 
 	/// <summary>
@@ -1690,24 +1684,45 @@ public partial class GameServer
 	///      PIXEL muda na virada da cena** -- ver o bloco da ordem dos dois pacotes la embaixo.
 	/// =============================================================================================
 	/// </summary>
-	private void SubirDegrauDoBio(ServerPlayer pl, int alvo)
+	private void SubirDegrauDoBio(ServerPlayer pl, int alvo) => MudarDegrauDoBio(pl, alvo, 0);
+
+	/// <summary>
+	/// (2026-10-17) A ESCADA SOBE -- um degrau, ou so um marco dentro dele. O BP base anda pela RAZAO entre os multiplicadores absolutos da
+	/// tabela do dono (`BioAndroids.MultAbsoluto`): do semi no marco 5 (3x) pro perfeito (4x) e 4/3, e nao os 4x do DM. Marco dentro do mesmo
+	/// degrau e so o BP e a frase; DEGRAU NOVO e a lista inteira de baixo (o corpo, a cena, o marco de treino, o Ki cheio).
+	/// </summary>
+	private void MudarDegrauDoBio(ServerPlayer pl, int estagio, int marco)
 	{
-		alvo = Math.Clamp(alvo, Jandirus.Core.Races.BioAndroids.Imperfeito,
-						  Jandirus.Core.Races.BioAndroids.Perfeito);
-		if (pl.Ficha.bio_stage >= alvo) return;
-
+		estagio = Math.Clamp(estagio, Jandirus.Core.Races.BioAndroids.Imperfeito, Jandirus.Core.Races.BioAndroids.Perfeito);
+		marco = Math.Clamp(marco, 0, Jandirus.Core.Races.BioAndroids.MarcosPorForma);
 		Fighter f = pl.Ficha;
-		f.bio_stage = alvo;
-		f.bio_mature_em = 0;
+		int antes = f.bio_stage, marcoAntes = f.bio_marco;
+		bool degrauNovo = estagio > antes;
+		if (!degrauNovo && (estagio < antes || marco <= marcoAntes)) return;   // a escada so sobe
 
-		double mult = Jandirus.Core.Races.BioAndroids.MultDoDegrau(alvo);
-		if (mult > 1) f.BP *= mult;
+		double razao = Jandirus.Core.Races.BioAndroids.MultAbsoluto(estagio, marco) / Jandirus.Core.Races.BioAndroids.MultAbsoluto(antes, marcoAntes);
+		f.bio_stage = estagio;
+		f.bio_marco = marco;
+		if (razao > 1) f.BP *= razao;
+
+		if (!degrauNovo)
+		{
+			f.Statify();
+			AplicarForma(pl);
+			pl.SigAtributos = "";
+			Persistir(pl);
+			Avisar(pl, $"a biomassa assenta no seu núcleo: MARCO {marco} da {Jandirus.Core.Races.BioAndroids.NomeDoDegrau(estagio)} -- o seu corpo agora "
+						   + $"vale {Jandirus.Core.Races.BioAndroids.MultAbsoluto(estagio, marco):0.#}x o imperfeito.");
+			GD.Print($"[server] {pl.Name}: marco {marco} do degrau {estagio} (BP {f.BP:N0})");
+			return;
+		}
+		int alvo = estagio;
 
 		if (alvo == Jandirus.Core.Races.BioAndroids.Perfeito) f.form3cantrevert = true;
 
 		// O MARCO -- e ele e concedido pela porta de producao (`ReachMilestone`), nao escrito na mao.
-		string marco = Jandirus.Core.Races.BioAndroids.MarcoDoDegrau(alvo);
-		double novo = marco.Length > 0 ? f.ReachMilestone(marco) : 0;
+		string marcoDeTreino = Jandirus.Core.Races.BioAndroids.MarcoDoDegrau(alvo);
+		double novo = marcoDeTreino.Length > 0 ? f.ReachMilestone(marcoDeTreino) : 0;
 
 		pl.Visual.Corpo = Jandirus.Core.Races.BioAndroids.IndiceDoCorpo(alvo);
 		f.Statify();
@@ -1751,16 +1766,16 @@ public partial class GameServer
 
 		string nome = Jandirus.Core.Races.BioAndroids.NomeDoDegrau(alvo);
 		GD.Print($"[server] {pl.Name} evoluiu pro degrau {alvo} ({nome}): BP {f.BP:N0}"
-				 + (novo > 0 ? $", marco {marco} = {novo:0.#}x" : ""));
+				 + (novo > 0 ? $", marco de treino {marcoDeTreino} = {novo:0.#}x" : ""));
 
 		Avisar(pl, alvo switch
 		{
 			Jandirus.Core.Races.BioAndroids.Imperfeito =>
 				"sua carapaca larval se rompe e voce emerge INTEIRO. 100% do seu poder foi liberado.",
 			Jandirus.Core.Races.BioAndroids.SemiPerfeito =>
-				"o poder deles agora e SEU. Seu poder base DOBROU -- mas voce sente que ainda nao e a forma final.",
+				$"o poder deles agora e SEU: {Jandirus.Core.Races.BioAndroids.MultAbsoluto(alvo, marco):0.#}x o imperfeito -- mas voce sente que ainda nao e a forma final.",
 			_ =>
-				"PERFEICAO. Seu poder base QUADRUPLICOU, e esta forma e sua para sempre.",
+				$"PERFEICAO. O seu corpo vale {Jandirus.Core.Races.BioAndroids.MultAbsoluto(alvo, marco):0.#}x o imperfeito, e esta forma e sua para sempre.",
 		});
 		if (novo > 0) Avisar(pl, $"voce rompeu um patamar: daqui pra frente treinar rende {novo:0.#}x.");
 

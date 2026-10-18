@@ -135,16 +135,20 @@ public sealed partial class GameServer
 	/// DENTRO DA FAIXA, uma ao acaso. SEM NENHUMA na faixa (alguem sozinho num canto do mapa), a mais proxima
 	/// que respeite o minimo: o aviso diz pra que lado e a quantos passos, entao longe ainda e achavel -- e
 	/// "nunca em cima de ninguem" e a metade da regra que nao se afrouxa. Nulo so sem habitat ou sem gente.
+	///
+	/// (2026-10-16) <paramref name="perto"/>: de QUEM a faixa e medida. Nulo = dos jogadores vivos da zona (o vilao avulso); o vilao de
+	/// saga que volta no Inferno passa os mortos de pe de la -- ou o portao, se ninguem esta la (`GameServer.ViloesDoInferno`).
 	/// </summary>
-	private Vec2? LugarDeVilao(ZoneKey zona)
+	private Vec2? LugarDeVilao(ZoneKey zona, List<Vec2>? perto = null)
 	{
 		ZoneCollision? mapa = MapaDaZonaOuCatalogo(zona);
 		Habitat? h = mapa == null ? null : HabitatDaZona(zona);
 		if (mapa == null || h == null || h.Vagas == 0) return null;
 
-		List<Vec2> gente = [];
-		foreach (ServerPlayer p in ZoneList(zona.Hash))
-			if (EhJogador(p) && !p.Ficha.dead) gente.Add(p.Pos);
+		List<Vec2> gente = perto ?? [];
+		if (perto == null)
+			foreach (ServerPlayer p in ZoneList(zona.Hash))
+				if (EhJogador(p) && !p.Ficha.dead) gente.Add(p.Pos);
 		if (gente.Count == 0) return null;
 
 		float min = VilaoAvulso.DistanciaMinTiles * ZoneCollision.TileSize, max = VilaoAvulso.DistanciaMaxTiles * ZoneCollision.TileSize;

@@ -84,6 +84,29 @@ public enum Fatos : uint
 	/// uma arma leva o estado dela (`Handgun|28|30|...`) e a pergunta da mochila e por id inteiro.
 	/// </summary>
 	TemArmaDeFogo = 1u << 20,
+
+	// ---- (2026-10-17) a familia ----
+	/// <summary>Declarou AMOR a alguem que esta no jogo e foi correspondido: o verb de ter um filho e dele.</summary>
+	TemUmAmor = 1u << 21,
+	/// <summary>Alguem pediu pra ter um filho com ele e espera a resposta.</summary>
+	PedidoDeFilho = 1u << 22,
+	/// <summary>A raca poe ovo e o corpo ja tem idade pra gerar (`Filhos.IdadeParaGerar`): o verb de por um ovo e dele.</summary>
+	PoeOvo = 1u << 23,
+
+	// ---- (2026-10-17) o bio-androide de laboratorio e a larva ----
+	/// <summary>Nasceu no laboratorio de DNA (`Fighter.bio_lab_born`): veste a forma de larva quando quiser.</summary>
+	BioDeLaboratorio = 1u << 24,
+	/// <summary>E uma LARVA agora (`BioAndroids.EmLarva`): so ela se enterra -- e enterrada 5 min, amadurece.</summary>
+	EmLarva = 1u << 25,
+	/// <summary>Bio de laboratorio que ainda nao escolheu onde mora o NUCLEO: os cinco botoes da escolha sao dele (uma vez, pra sempre).</summary>
+	NucleoPorEscolher = 1u << 26,
+
+	// ---- (2026-10-17) as skills do DNA do bio-androide ----
+	/// <summary>
+	/// Bio-androide com VAGA no DNA: o sangue ainda tem skill de raca pra dar e ele escolheu menos de seis -- os botoes da escolha sao dele
+	/// (`Races.SkillsRaciais`).
+	/// </summary>
+	SkillDoDnaPorEscolher = 1u << 27,
 }
 
 /// <summary>
@@ -133,6 +156,15 @@ public interface IPosse
 
 	Fatos Fatos { get; }
 	Lugar Lugar { get; }
+
+	/// <summary>
+	/// (2026-10-17) As skills dos kits de RACA que valem pra este corpo (`Races.SkillRacial`): o kit inteiro da raca, ou as que o bio-androide
+	/// escolheu do sangue. No cliente, a ficha lenta (`AtributosState.SkillsRaciais`).
+	/// </summary>
+	Races.SkillRacial SkillsRaciais { get; }
+
+	/// <summary>(2026-10-17) As skills que o SANGUE do bio-androide da pra escolher (zero pra quem nao e bio).</summary>
+	Races.SkillRacial SkillsDoSangue { get; }
 }
 
 /// <summary>Uma posse escrita a mao -- as bancadas montam personagens com ela, e o servidor tira o retrato de um corpo.</summary>
@@ -146,6 +178,17 @@ public sealed class PosseEscrita : IPosse
 	public HashSet<string> Cargos { get; } = new(StringComparer.OrdinalIgnoreCase);
 	public Fatos Fatos { get; set; }
 	public Lugar Lugar { get; set; }
+
+	/// <summary>Escritas a mao; sem escrever, as do kit da raca e da classe -- o que o servidor da a quem nao e bio.</summary>
+	public Races.SkillRacial SkillsRaciais
+	{
+		get => _skillsRaciais ?? Races.SkillsRaciais.DoKit(Races.Passivas.KitDe(Raca, Classe, ""));
+		set => _skillsRaciais = value;
+	}
+
+	private Races.SkillRacial? _skillsRaciais;
+
+	public Races.SkillRacial SkillsDoSangue { get; set; }
 
 	public bool SabeTecnica(string verbo) => Tecnicas.Contains(verbo);
 	public bool SabeSkill(string typepath) => Skills.Contains(typepath);
@@ -235,6 +278,20 @@ public sealed class Requisito
 
 	/// <summary>Ao menos um destes fatos e verdade agora (ver <see cref="Fatos"/>).</summary>
 	public static Requisito Fato(Fatos algum, string texto) => new(texto, p => (p.Fatos & algum) != 0);
+
+	/// <summary>(v0.4.0) O KIT RACIAL que a raca e a classe dao (`Races.Passivas.KitDe`) -- as ativas dos kits de CLASSE.</summary>
+	public static Requisito Kit(Races.KitRacial kit, string texto) =>
+		new(texto, p => (Races.Passivas.KitDe(p.Raca, p.Classe, "") & kit) != 0);
+
+	/// <summary>
+	/// (2026-10-17) Esta skill de kit de RACA vale pra este corpo (`Races.SkillRacial`): o kit inteiro da raca, ou a escolha do bio-androide --
+	/// as ativas dos cinco kits de raca (Second Wind, Sheer Willpower, Max Power, Spirit Disruption, Unrestrained Wrath).
+	/// </summary>
+	public static Requisito DoKitDeRaca(Races.SkillRacial skill, string texto) => new(texto, p => (p.SkillsRaciais & skill) != 0);
+
+	/// <summary>(2026-10-17) O sangue do bio-androide da esta skill e ele ainda nao a tem -- um botao da escolha do DNA.</summary>
+	public static Requisito NoSangueSemEscolher(Races.SkillRacial skill, string texto) =>
+		new(texto, p => (p.SkillsDoSangue & skill) != 0 && (p.SkillsRaciais & skill) == 0);
 
 	/// <summary>Esta num lugar que tem TODOS estes tracos.</summary>
 	public static Requisito Em(Lugar todos, string texto) => new(texto, p => (p.Lugar & todos) == todos);

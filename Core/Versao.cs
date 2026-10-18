@@ -44,7 +44,7 @@ public static class Versao
 	//   do fio mudam a digital sozinhos, e ai o aviso e "mesma versao, mas builds diferentes". Ela NAO ve
 	//   regra do `Core` nem campo novo escrito a mao dentro de um pacote -- pra isso, so subindo a versao.
 	// =========================================================================================================
-	public const int Maior = 0, Menor = 3, Remendo = 1;
+	public const int Maior = 0, Menor = 4, Remendo = 0;
 
 	/// <summary>Teto de cada uma das tres partes. Tres digitos por parte: o numero ordenavel cabe folgado num `int`.</summary>
 	public const int TetoDaParte = 999;

@@ -493,6 +493,8 @@ public partial class GameServer
 		// PLANTADO POR UMA TECNICA DO LOTE G12 (`usr.move = 0` da Death Ball e da Genkidama, `canmove = 0`
 		// das rajadas). Mesmo funil, pela mesma razao de tudo acima.
 		&& !PresoPeloG12(pl.Id)
+		// (2026-10-17) A LARVA ENTERRADA NAO ANDA: pra andar, sai da terra (e a conta dos 5 min zera). Ver `GameServer.Larva.cs`.
+		&& pl.EnterradoDesde < 0
 		// A AREA DE ESPERA DO TORNEIO (`move = 0` do `apply_hold`, `Tournament.dm:331`). Entra AQUI, no
 		// funil de vetor, e nao so na ancora por tique: a ancora devolvia o corpo depois de ele ter
 		// andado, e o dono via o proprio boneco "teleportando de volta" (2026-09-07). Recusado na
@@ -564,6 +566,12 @@ public partial class GameServer
 
 			// O KIT DO DEUS DA DESTRUICAO, so pra corpo sem dono consagrado -- ver `GameServer.KitDoDeusNaIa.cs`.
 			KitDoDeus = KitNaMaoDaIa(pl),
+
+			// (2026-10-17) AS ATIVAS RACIAIS DE RECEITA PROPRIA -- as outras ja estao no `DeLuta`. Ver `GameServer.RaciaisDaIa.cs`.
+			DemonicoPronto = DemonicoNaMaoDaIa(pl),
+			ExecucaoRacialPronta = ExecucaoNaMaoDaIa(pl),
+			Desabafo = DesabafoNaMaoDaIa(pl, out double desabafoHa),
+			DesabafoHa = desabafoHa,
 		};
 	}
 
@@ -700,6 +708,8 @@ public partial class GameServer
 			Estrangulando = npc.Estrangulando && npc.AgarrandoId != 0,   // (v0.2.1) campos do proprio corpo -- ver `Percepcao`
 			CarregandoAPresa = npc.AgarrandoId != 0 && npc.ModoDoAgarrao == ModoDeAgarrao.Carregando,
 			HakaiPegaOAlvo = comOKit && alvo != null && OHakaiPega(npc, alvo),
+			// (2026-10-17) A RACA PRENDE O CORPO: a esfera do Demonic carregando, a execucao do Ruthless Mind correndo -- estado do proprio corpo.
+			ParadoPelaRaca = npc.Racial.DemonicoCargaDesde >= 0 || npc.Racial.ExecucaoAlvo != 0 || npc.Racial.GritoDesde >= 0,
 			HaKiPraAnular = comOKit && HaKiPraAnular(npc),
 			// (v0.2.1) SO PRA QUEM SABE REBATER: e uma varredura dos tiros da zona, a 30 Hz -- ver `HaTiroVindo`.
 			HaTiroVindo = npc.Cerebro is { } quemPensa && quemPensa.Poderes.SabeRebater && HaTiroVindo(npc),

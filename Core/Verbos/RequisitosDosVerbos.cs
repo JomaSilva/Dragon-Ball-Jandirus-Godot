@@ -129,6 +129,7 @@ public static class RequisitosDosVerbos
 	private static readonly Requisito ConviteDeMestre = Fato(Fatos.ConviteDeMestre, "convite (ou ensinamento) de mestre pendente");
 	private static readonly Requisito ConviteDeFusao = Fato(Fatos.ConviteDeFusao, "convite de fusão pendente");
 	private static readonly Requisito ConviteDeAbsorcao = Fato(Fatos.ConviteDeAbsorcao, "convite de absorção Namekuseijin pendente");
+	private static readonly Requisito PedidoDeFilhoNaMesa = Fato(Fatos.PedidoDeFilho, "pedido de filho pendente");
 	private static readonly Requisito Licao = Fato(Fatos.LicaoOferecida, "lição oferecida");
 	private static readonly Requisito Juventude = Fato(Fatos.OfertaDeJuventude, "oferta de juventude pendente");
 	private static readonly Requisito Potencial = Fato(Fatos.OfertaDePotencial, "oferta de despertar o potencial pendente");
@@ -149,6 +150,25 @@ public static class RequisitosDosVerbos
 	private static readonly Requisito KitEmprestado =
 		Fato(Fatos.KitDaDestruicaoEmprestado, "Deus da Destruição que trilha o Ultra Instinto");
 
+	/// <summary>(2026-10-17) Uma ativa de kit de RACA: o kit inteiro da raca, ou o bio-androide que a escolheu do sangue (`Races.SkillsRaciais`).</summary>
+	private static Requisito AtivaDeRaca(Races.SkillRacial skill, string sangue) => DoKitDeRaca(skill, $"{sangue} (ou o bio-androide que a escolheu)");
+
+	/// <summary>(2026-10-17) O bio-androide com vaga no DNA (menos de seis escolhidas, e o sangue ainda tem o que dar).</summary>
+	private static readonly Requisito ComVagaNoDna = Fato(Fatos.SkillDoDnaPorEscolher, "bio-androide com vaga no DNA");
+
+	/// <summary>(2026-10-17) Os pedacos das recusas da escolha do DNA (`Races.SkillsRaciais.PorQueNaoEscolhe`) -- o que a `--verbsteste` cobra.</summary>
+	private const string RecusaDaEscolhaDoDna = "só o bio-androide|não vem de nenhuma raça do seu sangue|já tem essa skill|já escolheu as";
+
+	/// <summary>
+	/// (2026-10-17) AS VINTE LINHAS DA ESCOLHA DO DNA, uma por skill (`hab:dna:&lt;bit&gt;`): o botao aparece pro bio com vaga cujo sangue da a
+	/// skill e que ainda nao a tem -- e some com a escolha.
+	/// </summary>
+	private static IEnumerable<VerbDeclarado> DaEscolhaDoDna() =>
+		Races.SkillsRaciais.Todas.Select(s => new VerbDeclarado(
+			PrefixoDeHabilidade + s.IdDaEscolha, $"DNA: {s.Nome}", AbaSkills,
+			ComVagaNoDna.E(NoSangueSemEscolher(s.Bit, $"o sangue dá {s.Nome} e ele ainda não a tem")),
+			RecusaDaEscolhaDoDna));
+
 	// =====================================================================
 	// A TABELA
 	// =====================================================================
@@ -165,6 +185,9 @@ public static class RequisitosDosVerbos
 	private const string AbaOther = "Other";
 	private const string AbaLearning = "Learning";
 	private const string AbaSkills = "Skills";
+
+	/// <summary>(v0.4.0) O pedaco da recusa das ativas raciais (`GameServer.RecusaDoSangue`) -- o que a `--verbsteste` cobra.</summary>
+	private const string RecusaDoSangue = "não é do seu sangue";
 
 	/// <summary>
 	/// A ABA DO DISCIPULADO do menu P ("Alunos" pra quem guia alguem, "Mestre" pra quem so e guiado --
@@ -290,6 +313,16 @@ public static class RequisitosDosVerbos
 		new(ChaveDoVerbo("sala_soltar"), "Time Chamber: Release", AbaOther, Cargo("guardian"),
 			"só o Guardião da Terra tira"),
 
+		// (2026-10-17) OS FILHOS -- o `Have_Child` do "Other" do DM (`Mating.dm:139`). Pedir e de quem tem um amor correspondido no
+		// jogo; responder, de quem foi pedido. E o `Lay_Egg` (`Mating.dm:222`): as racas de ovo, sozinhas, ja com idade pra gerar. Ver
+		// `GameServer.Filhos.cs`.
+		new("hab:filho_pedir", "Ter um filho", AbaOther, Fato(Fatos.TemUmAmor, "tem um amor correspondido"),
+			"ninguém no jogo te ama de volta (os dois declaram AMOR na aba People)"),
+		new("hab:filho_sim", "Aceitar o filho", AbaOther, PedidoDeFilhoNaMesa, "ninguém te pediu um filho"),
+		new("hab:filho_nao", "Recusar o filho", AbaOther, PedidoDeFilhoNaMesa, "ninguém te pediu um filho"),
+		new("hab:filho_ovo", "Pôr um ovo", AbaOther, Fato(Fatos.PoeOvo, "a raça põe ovo, e já tem idade pra gerar"),
+			"não põe ovo|jovem demais"),
+
 		// ---------------------------------------------------------- Learning
 		new("hab:mst_aceitar", "Aceitar", AbaLearning, ConviteDeMestre, "ninguem te ofereceu nada"),
 		new("hab:mst_recusar", "Recusar", AbaLearning, ConviteDeMestre, "ninguem te ofereceu nada"),
@@ -347,9 +380,37 @@ public static class RequisitosDosVerbos
 			Raca(Races.BioAndroids.Raca, Races.BioAndroids.RacaDoDm).Ou(Tecnica("Bio_Absorb")).Ou(Tecnica(Combat.AbsorcaoMajin.Verbo)),
 			"nao tem como absorver ninguem|ainda nao sabe absorver"),
 		new("hab:expelir", "Expelir todos", AbaSkills, Tecnica(Combat.AbsorcaoMajin.Verbo), "nao ha ninguem dentro de voce"),
+		// (2026-10-17) A LARVA DO BIO-ANDROIDE (o adendo do dono): a forma de barata que o bio de laboratorio veste quando quer, e o enterrar,
+		// que e so dela -- e o unico jeito de sair dela (5 min enterrada). Ver `GameServer.Larva.cs`.
+		new("hab:larva", "Forma de larva", AbaSkills, Fato(Fatos.BioDeLaboratorio, "bio-androide de laboratório"), "não tem forma de larva"),
+		new("hab:enterrar", "Enterrar-se / Sair da terra", AbaSkills, Fato(Fatos.EmLarva, "na forma de larva"), "só a larva se enterra"),
+		// (2026-10-17) O NUCLEO DO BIO (o adendo do dono): uma linha pra FAMILIA -- o menu tem um botao por lugar (bracos, pernas, cabeca), e os
+		// cinco somem com a escolha, que e uma so. Ver `GameServer.Nucleo.cs`.
+		new("hab:nucleo", "Núcleo: <membro>", AbaSkills, Fato(Fatos.NucleoPorEscolher, "bio-androide que ainda não escolheu onde mora o núcleo"),
+			"não tem núcleo|já tem lugar"),
+		// (2026-10-17) AS SKILLS DO DNA (o adendo do dono): um botao por skill que o sangue do bio da e que ele ainda nao tem, enquanto houver vaga
+		// (ate seis). Uma por vez, pra sempre. Ver `Races.SkillsRaciais` e `GameServer.SkillsDoDna.cs`.
+		.. DaEscolhaDoDna(),
 		// `PodeRegenerar` (`GameServer.Raciais.cs`): o Namekuseijin pela raca, e quem COMPROU a skill `Regenerate`
 		// (arvores de Alien, Android e Demonio) -- esse ja tem o botao da propria skill, com o mesmo nome.
 		new("hab:regenerar", "Regenerar", AbaSkills, Raca("Namekian").Ou(Tecnica("Regenerate")), "seu corpo nao regenera assim"),
+
+		// (v0.4.0) AS ATIVAS RACIAIS -- vem com a raca (dono, 2026-10-17), uma linha por ativa, pelo KIT da raca e da classe
+		// (`Races.Passivas.KitDe`). Quem nao tem o sangue ouve a recusa do `GameServer.Passivas.UsarAtivaRacial`. (2026-10-17) As cinco dos kits
+		// de RACA vao pela skill (`Races.SkillRacial`): o kit inteiro, ou a escolha do bio-androide.
+		new($"hab:{Races.Passivas.Ferocidade}", "Unmatched Ferocity", AbaSkills, Kit(Races.KitRacial.Primal, "sangue Primal"), RecusaDoSangue),
+		new($"hab:{Races.Passivas.Transbordar}", "Overflowing Power", AbaSkills, Kit(Races.KitRacial.Lendario, "o Saiyajin Lendário"), RecusaDoSangue),
+		new($"hab:{Races.Passivas.ForcaImparavel}", "Unstoppable Force", AbaSkills, Kit(Races.KitRacial.Lendario, "o Saiyajin Lendário"), RecusaDoSangue),
+		new($"hab:{Races.Passivas.TransbordarKi}", "Overflowing Ki", AbaSkills, Kit(Races.KitRacial.LendarioPrimal, "o Lendário Primal"), RecusaDoSangue),
+		new($"hab:{Races.Passivas.SedeDeSangue}", "Primal Bloodlust", AbaSkills, Kit(Races.KitRacial.LendarioPrimal, "o Lendário Primal"), RecusaDoSangue),
+		new($"hab:{Races.Passivas.Demonico}", "Demonic Saiyan", AbaSkills, Kit(Races.KitRacial.LendarioPrimal, "o Lendário Primal"), RecusaDoSangue),
+		new($"hab:{Races.Passivas.SegundoFolego}", "Second Wind", AbaSkills, AtivaDeRaca(Races.SkillRacial.SegundoFolego, "sangue humano"), RecusaDoSangue),
+		new($"hab:{Races.Passivas.ForcaDeVontade}", "Sheer Willpower", AbaSkills, AtivaDeRaca(Races.SkillRacial.ForcaDeVontade, "sangue humano"), RecusaDoSangue),
+		new($"hab:{Races.Passivas.PoderMaximo}", "Max Power", AbaSkills, AtivaDeRaca(Races.SkillRacial.PoderMaximo, "sangue humano"), RecusaDoSangue),
+		new($"hab:{Races.Passivas.Disrupcao}", "Spirit Disruption", AbaSkills, AtivaDeRaca(Races.SkillRacial.Disrupcao, "sangue Namekuseijin"), RecusaDoSangue),
+		new($"hab:{Races.Passivas.Ira}", "Unrestrained Wrath", AbaSkills, AtivaDeRaca(Races.SkillRacial.Ira, "sangue Frost Demon"), RecusaDoSangue),
+		new($"hab:{Races.Passivas.MenteCruel}", "Ruthless Mind", AbaSkills, Kit(Races.KitRacial.Mutante, "o Frost Demon mutante"), RecusaDoSangue),
+		new($"hab:{Races.Passivas.Sadismo}", "Sadistic Nature", AbaSkills, Kit(Races.KitRacial.Mutante, "o Frost Demon mutante"), RecusaDoSangue),
 		// RELAXAR PEDE CONTROLE DE KI (regra do dono, 2026-10-12: *"relaxar e o poder cair deveria ser somente pra
 		// quem sabe controlar o proprio poder"*): o mesmo `Power_Control` do degrau 5 de Basic Ki Control que abre a
 		// barra. No DM o `ReadyUp` e de todo corpo (`Power Control.dm:39`). Ver `GameServer.AlternarProntidao`.

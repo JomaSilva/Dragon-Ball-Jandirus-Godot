@@ -79,7 +79,7 @@ public sealed partial class GameServer
 			return;
 		}
 
-		if (pl.Ficha.KO || pl.Ficha.dead || EhCadaver(pl)) { Avisar(pl, "caído, você não treina com ninguém."); return; }
+		if (pl.Ficha.KO || CaidoPelaMorte(pl)) { Avisar(pl, "caído, você não treina com ninguém."); return; }
 		EstadoDeTech e = EstadoDoSimulador(o);
 		// `if(Energy>=0.1)`. (com folga de arredondamento: dez simulacoes de 0,1 somam 0,9999...)
 		if (e.Num(Simulador.ChaveEnergia) < Simulador.EnergiaPorSimulacao - 1e-9)

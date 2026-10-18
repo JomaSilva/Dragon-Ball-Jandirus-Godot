@@ -34,6 +34,33 @@ public readonly record struct PerfilDeCombate(bool Voa, bool UsaKi)
 	}
 
 	/// <summary>
+	/// (2026-10-16) O PODER ENSINA A VOAR. O dono: *"npcs acima de um certo nivel de poder (2k por ai) sempre vao saber voar, é
+	/// estranho ver um kaioshin com 5 milhoes de bp n sabendo voar"*. Da linha pra cima o NPC do mundo VOA, pelas duas metades: o
+	/// sorteio do perfil nao o deixa no chao (<see cref="PeloPoder"/>, no nascimento) e a porta do voo abre sem a maestria de Ki
+	/// (`GameServer.VoaPeloPoder`, perguntada a cada vez -- quem cresce passando da linha aprende ali).
+	///
+	/// O numero e o do dono ("2k por ai"), e o BP e o BASE (`Fighter.BP`): a forma acesa nao ensina a voar quem a apaga. E regra do
+	/// PORT -- o NPC do DM nao voa (ver `Cerebro`, "ALCANCAR: o DM nao voa").
+	/// </summary>
+	public const double BpQueSempreVoa = 2_000;
+
+	/// <summary>Este BP ja ensina a voar? A regra pura, lida pelas duas metades (o perfil e a porta).</summary>
+	public static bool VoaPeloPoder(double bp) => !PoderNaoEnsinaAVoarDeTeste && bp >= BpQueSempreVoa;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--kaioshinteste`, familia 10): o poder nao ensina nada -- o mundo de antes de 2026-10-16, em que um
+	/// Supremo Kaioh em cinco nascia no chao (o molde sorteia `voa` 0,8). Lido por <see cref="VoaPeloPoder"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool PoderNaoEnsinaAVoarDeTeste;
+
+	/// <summary>
+	/// O PERFIL DEPOIS DA REGRA DO PODER: com <paramref name="bp"/> na linha ou acima, voa; o ki fica como saiu. Um passo SEPARADO do
+	/// <see cref="Sortear"/> de proposito: o sorteio continua sendo so a semente e as chances (a `--arenaiateste` mede ele cru), e quem
+	/// escolhe o perfil a mao -- o torneio (a regra dele e de quem esta na arena), o trailer -- nao passa por aqui.
+	/// </summary>
+	public PerfilDeCombate PeloPoder(double bp) => !Voa && VoaPeloPoder(bp) ? this with { Voa = true } : this;
+
+	/// <summary>
 	/// As capacidades DEPOIS do perfil. So desliga: voo, arsenal de longe e sopro. Reunir Ki
 	/// (carregar) fica, porque e coisa do corpo -- um lutador "so corpo" ainda se recupera.
 	/// </summary>

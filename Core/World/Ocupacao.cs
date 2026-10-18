@@ -121,6 +121,38 @@ public enum Ocupacao : byte
 	/// intocavel ate a explosao. E por este valor que a tela desenha o sol sobre ele (`Client/SupernovaDesenhada.cs`).
 	/// </summary>
 	Supernova = 12,
+
+	/// <summary>
+	/// (2026-10-17) O CHEFE ERGUENDO A DEATH BALL DO ULTIMATO -- a mesma regra da <see cref="Supernova"/> (parado e intocavel ate a
+	/// explosao), com a outra esfera: e por este valor que a tela desenha a Death Ball sobre ele. O Freeza de Namek.
+	/// </summary>
+	DeathBallDoUltimato = 13,
+
+	/// <summary>
+	/// (v0.4.0) O LENDARIO PRIMAL CARREGANDO O DEMONIC SAIYAN -- os 15 s parado dentro da esfera verde (a lista do amigo do dono:
+	/// *"Activating this skill creates a green orb visual effect around the player, signaling the start of a charge-up"*). E por este
+	/// valor que a tela desenha a esfera (`Client/EsferaDemoniaca.cs`), pro dono e pra quem esta em volta. Andar desfaz a carga, e com
+	/// ela o valor.
+	/// </summary>
+	CargaDemoniaca = 14,
+
+	/// <summary>
+	/// (2026-10-17) SENDO BEBIDO PELA EXECUCAO DE UM BIO-ANDROIDE -- o adendo do dono: *"causing their body to dry up and vanish"*. Um corpo
+	/// caido que a tela desenha SECANDO (`Client/CorpoSecando.cs`) nos 5 s da execucao, pro dono do corpo e pra quem esta em volta; quem
+	/// absorve e desfeito por um passo, e a vitima volta a ser so <see cref="Nocauteado"/>.
+	///
+	/// **E O PRIMEIRO VALOR ESTENDIDO**: a ocupacao viaja em 4 bits (`EntityState.MascaraDaOcupacao`), e o 15 virou a PORTA -- daqui pra
+	/// cima o valor de verdade vai num byte no fim do pacote, pago so por quem esta num destes estados.
+	/// </summary>
+	Secando = 15,
+
+	/// <summary>
+	/// (2026-10-17) O LENDARIO GRITANDO O DESABAFO -- os 3 s do segundo aperto do Overflowing Power (ou do Ki), dentro da esfera verde, com os
+	/// tiros saindo pra todo lado (`GameServer.AndarOGrito`). O dono: *"seriam 3 segundos do personagem gritando e uma esfera de energia verde
+	/// parecendo com a do demonic em volta do personagem"*. E por este valor que a tela desenha a esfera (a do Demonic, mais furiosa --
+	/// `Client/EsferaDemoniaca.cs`); o corpo fica plantado (a trava de tecnica).
+	/// </summary>
+	GritoDoDesabafo = 16,
 }
 
 /// <summary>
@@ -142,6 +174,9 @@ public static class CorpoOcupado
 
 		/// <summary>(v0.3.0) `ServerPlayer.SupernovaDesde` -- o chefe erguendo o sol do ultimato.</summary>
 		public bool Supernova;
+
+		/// <summary>(2026-10-17) O mesmo, com a Death Ball (`ServerPlayer.AtaqueDoUltimato`) -- o Freeza de Namek.</summary>
+		public bool DeathBall;
 
 		/// <summary>`Ficha.KO` ou morto ainda deitado no mundo dos vivos.</summary>
 		public bool Nocauteado;
@@ -172,6 +207,15 @@ public static class CorpoOcupado
 
 		/// <summary>`Ficha.med`.</summary>
 		public bool Meditando;
+
+		/// <summary>(2026-10-17) Alguma execucao de absorcao de bio-androide tem este corpo como vitima (`GameServer.SendoBebido`).</summary>
+		public bool Secando;
+
+		/// <summary>(2026-10-17) `EstadoRacial.GritoDesde` -- o grito do desabafo do Lendario.</summary>
+		public bool GritoDoDesabafo;
+
+		/// <summary>(v0.4.0) `EstadoRacial.DemonicoCargaDesde` -- a carga parada do Demonic Saiyan.</summary>
+		public bool CargaDemoniaca;
 	}
 
 	/// <summary>
@@ -188,10 +232,19 @@ public static class CorpoOcupado
 	/// </summary>
 	public static Ocupacao De(in Sinais s) =>
 		  s.Desfeito      ? Ocupacao.Desfeito
+		// (2026-10-17) ANTES do nocaute, como o desfeito: a vitima da execucao do bio ESTA nocauteada (e a condicao da execucao), e o nome
+		// tem que dizer o que acontece com ela -- e por este valor que a tela a desenha secando.
+		: s.Secando       ? Ocupacao.Secando
 		: s.Nocauteado    ? Ocupacao.Nocauteado
 		// (v0.3.0) DEPOIS do nocaute (o chefe derrubado ja nao concentra nada: o KO e o que interrompe o ultimato) e ANTES
 		// da cena -- a Supernova escreve o `CenaSegundos` pra prender o chefe, e sem esta linha ele leria "em cena".
 		: s.Supernova     ? Ocupacao.Supernova
+		: s.DeathBall     ? Ocupacao.DeathBallDoUltimato
+		// (v0.4.0) A CARGA DO DEMONIC SAIYAN, logo depois dos ultimatos e pela mesma razao: a esfera e o desenho do corpo enquanto ela
+		// dura. O nocaute vem antes porque ele desfaz a carga (o corpo caido nao carrega nada).
+		: s.CargaDemoniaca ? Ocupacao.CargaDemoniaca
+		// (2026-10-17) O GRITO DO DESABAFO, irmao da carga do Demonic: a mesma esfera, e o nocaute vem antes porque ele cala o grito.
+		: s.GritoDoDesabafo ? Ocupacao.GritoDoDesabafo
 		: s.NoEmbate      ? Ocupacao.NoEmbate
 		: s.EmCena        ? Ocupacao.EmCena
 		: s.CanalizandoKi ? Ocupacao.CanalizandoKi
@@ -218,6 +271,7 @@ public static class CorpoOcupado
 	{
 		Ocupacao.Desfeito      => "desfeito em pedacos (o Majin se refazendo)",
 		Ocupacao.Supernova     => "concentrando a Supernova (o ultimato do chefe)",
+		Ocupacao.DeathBallDoUltimato => "concentrando a Death Ball (o ultimato do chefe)",
 		Ocupacao.Nocauteado    => "nocauteado (ou morto no chao)",
 		Ocupacao.NoEmbate      => "num embate",
 		Ocupacao.EmCena        => "numa cinematica de transformacao",
@@ -228,6 +282,9 @@ public static class CorpoOcupado
 		Ocupacao.Agarrando     => "segurando alguem",
 		Ocupacao.Treinando     => "treinando",
 		Ocupacao.Meditando     => "meditando",
+		Ocupacao.CargaDemoniaca => "carregando o Demonic Saiyan (a esfera verde)",
+		Ocupacao.Secando      => "secando (bebido pela execucao de um bio-androide)",
+		Ocupacao.GritoDoDesabafo => "gritando o desabafo do Lendario (a esfera verde)",
 		_ => "",
 	};
 
@@ -236,5 +293,8 @@ public static class CorpoOcupado
 	/// corrompido) vira <see cref="Ocupacao.Livre"/> e nao um estado inventado -- errar pro lado de
 	/// "nao barra" e o unico erro que nao prende ninguem.
 	/// </summary>
-	public static Ocupacao DeByte(byte b) => b <= (byte)Ocupacao.Supernova ? (Ocupacao)b : Ocupacao.Livre;   // o ULTIMO valor do `enum`
+	public static Ocupacao DeByte(byte b) => b <= (byte)Ocupacao.GritoDoDesabafo ? (Ocupacao)b : Ocupacao.Livre;   // o ULTIMO valor do `enum`
+
+	/// <summary>(2026-10-17) O chefe esta erguendo a esfera de um ultimato -- a Supernova ou a Death Ball (as duas tem o mesmo desenho).</summary>
+	public static bool NoUltimato(Ocupacao o) => o is Ocupacao.Supernova or Ocupacao.DeathBallDoUltimato;
 }

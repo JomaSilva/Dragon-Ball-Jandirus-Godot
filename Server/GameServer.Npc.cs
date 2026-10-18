@@ -244,11 +244,15 @@ public partial class GameServer
 			SeedDoUniverso, molde.Id, Espaco.Misturar(zona.Hash, lugar, 0));
 		FichaSorteada s = SorteioDeNpc.Sortear(molde, semente, _racas, _skills, zona.Name, MediaDoServidor());
 
+		// (2026-10-16) O NOME QUE NAO SE REPETE, se o molde pede (`nomesUnicos`): os cinco Supremos Kaiohs do Ceu sao cinco pessoas.
+		string nome = molde.NomesUnicos ? NomeLivre(molde, s.Raca, s.Nome) : s.Nome;
+		s.Ficha.Name = nome;
+
 		var npc = new ServerPlayer
 		{
 			Id = _nextId++,
 			Peer = null,                    // e o que faz dele um NPC -- a mesma definicao do clone
-			Name = s.Nome,
+			Name = nome,
 			Zone = zona,
 			Pos = pos,
 			Race = s.Raca,
@@ -283,7 +287,8 @@ public partial class GameServer
 
 			// O PERFIL DE COMBATE sai do molde e da MESMA semente do resto da ficha: o corpo que
 			// nasce voador nasce voador em todo reinicio. Ver `Core/Ai/PerfilDeCombate.cs`.
-			Perfil = Jandirus.Core.Ai.PerfilDeCombate.Sortear(molde.ChanceDeVoar, molde.ChanceDeKi, semente),
+			// (2026-10-16) E DE 2 MIL DE BP PRA CIMA ELE VOA, saia o que sair no sorteio -- `PeloPoder`, a regra do dono.
+			Perfil = Jandirus.Core.Ai.PerfilDeCombate.Sortear(molde.ChanceDeVoar, molde.ChanceDeKi, semente).PeloPoder(s.Ficha.BP),
 
 			// ============================ O BERCO DELE E ONDE ELE NASCEU ============================
 			// Um NPC nao tem save, entao ele nao tinha berco -- e `Berco.Planeta` vazio faz o
@@ -310,6 +315,10 @@ public partial class GameServer
 		npc.Ficha.Zeni = BolsaDeNpc.Zeni(molde.Tipo, semente);
 
 		PorNoMundo(npc);
+
+		// (2026-10-16) A ALMA DO OUTRO MUNDO nasce morta, de aureola e de pe -- logo depois do corpo existir (o gancho da segunda morte
+		// pede o `Combate`) e antes da aparencia sair pra zona (a aureola vai junto). Ver `GameServer.Almas.cs`.
+		if (molde.Alma) FazerAlma(npc);
 
 		// AS FORMAS SO DEPOIS DO CORPO EXISTIR, porque o gate delas le o `PerfilDeFormas`, que e
 		// derivado do `ServerPlayer` -- e `Perfil()` e o funil unico dos gates
@@ -348,6 +357,20 @@ public partial class GameServer
 	/// Avisa a zona com `PeerLeft`: sem isso o boneco fica congelado na tela de quem estava vendo --
 	/// o mesmo defeito que o `RemoverClone` ja tratava, agora pra qualquer corpo sem dono.
 	/// </summary>
+	/// <summary>
+	/// (2026-10-16) O NOME SORTEADO, se nenhum corpo vivo do mesmo molde o usa; senao o primeiro da lista que ninguem usa (a da raca,
+	/// ou a do molde). Com todos em uso fica o sorteado. Ver `MoldeDeNpc.NomesUnicos`.
+	/// </summary>
+	private string NomeLivre(MoldeDeNpc molde, string raca, string sorteado)
+	{
+		var usados = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		foreach (ServerPlayer p in _players.Values)
+			if (!p.Ficha.dead && string.Equals(p.Papel?.Molde.Id, molde.Id, StringComparison.OrdinalIgnoreCase)) usados.Add(p.Name);
+		if (!usados.Contains(sorteado)) return sorteado;
+		string[] lista = molde.NomesPorRaca.TryGetValue(raca, out string[]? pr) && pr.Length > 0 ? pr : molde.Nomes;
+		return Array.Find(lista, n => !usados.Contains(n)) ?? sorteado;
+	}
+
 	private void RemoverNpc(ServerPlayer npc)
 	{
 		if (npc.Peer != null) return;   // corpo de jogador nao se remove, se solta (ver DevolverAsRedeas)

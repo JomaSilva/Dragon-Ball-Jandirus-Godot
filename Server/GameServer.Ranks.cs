@@ -67,9 +67,62 @@ public partial class GameServer
 		catch (Exception e) { GD.PushWarning($"[server] nao gravei os cargos: {e.Message}"); }
 	}
 
-	/// <summary>Qual cargo esta conta carrega ("" = nenhum).</summary>
-	private string CargoDe(string conta) =>
+	/// <summary>
+	/// Qual cargo esta conta carrega ("" = nenhum). A CHAVE DO CARGO, e nao a da vaga (2026-10-16): quem esta na 3a vaga do
+	/// Kaioshin responde `kaioshin`, e por isso os leitores de cargo do servidor (o kit, os verbs, o vacuo...) nao mudaram.
+	/// </summary>
+	private string CargoDe(string conta) => CargoDaVaga(VagaDaConta(conta));
+
+	// =====================================================================
+	// AS VAGAS (2026-10-16) -- o cargo de varias almas
+	// =====================================================================
+	/// <summary>
+	/// A CHAVE DE `_tronos` DA VAGA <paramref name="i"/> (0-based) do cargo. A primeira e a propria chave do cargo -- o arquivo de
+	/// sempre e os cargos de uma vaga so nao mudam em nada --, e as outras sao `chave#2` ... `chave#N` (`RankDef.Vagas`; hoje so
+	/// o Kaioshin tem 5). Cada vaga e um trono inteiro: tem dono, deveres, renome e destituicao proprios.
+	/// </summary>
+	private static string Vaga(RankDef r, int i) => i == 0 ? r.Chave : $"{r.Chave}#{i + 1}";
+
+	/// <summary>Todas as vagas do cargo, da primeira a ultima.</summary>
+	private static IEnumerable<string> VagasDe(RankDef r)
+	{
+		int n = VagasIgnoradasDeTeste ? 1 : Math.Max(1, r.Vagas);
+		for (int i = 0; i < n; i++) yield return Vaga(r, i);
+	}
+
+	/// <summary>O cargo de uma chave de vaga: `kaioshin#3` -> `kaioshin`.</summary>
+	private static string CargoDaVaga(string vaga)
+	{
+		int i = vaga.IndexOf('#');
+		return i < 0 ? vaga : vaga[..i];
+	}
+
+	/// <summary>A VAGA que esta conta ocupa ("" = nenhuma) -- a chave crua de `_tronos`. Quem tira alguem de um trono tira DAQUI.</summary>
+	private string VagaDaConta(string conta) =>
 		_tronos.FirstOrDefault(kv => string.Equals(kv.Value, conta, StringComparison.OrdinalIgnoreCase)).Key ?? "";
+
+	/// <summary>As contas que carregam este cargo agora, na ordem das vagas.</summary>
+	private List<string> DonosDe(RankDef r)
+	{
+		var donos = new List<string>();
+		foreach (string v in VagasDe(r))
+			if (_tronos.TryGetValue(v, out string? d) && d.Length > 0) donos.Add(d);
+		return donos;
+	}
+
+	/// <summary>A primeira vaga livre do cargo, ou nulo com todas ocupadas.</summary>
+	private string? VagaLivre(RankDef r)
+	{
+		foreach (string v in VagasDe(r))
+			if (!_tronos.TryGetValue(v, out string? d) || d.Length == 0) return v;
+		return null;
+	}
+
+	/// <summary>Quantos jogadores carregam o cargo <paramref name="chave"/> -- o que o povoamento pergunta (`cadaDonoTiraUm`).</summary>
+	private int QuantosDonos(string chave) => Cargos.Get(chave) is { } r ? DonosDe(r).Count : 0;
+
+	/// <summary>DEFEITO INJETADO (`--kaioshinteste`): todo cargo tem UMA vaga -- o "um dono por cargo" de antes. Falso em jogo.</summary>
+	internal static bool VagasIgnoradasDeTeste;
 
 	private FichaDeRank Ficha(ServerPlayer pl) => new()
 	{
@@ -120,11 +173,11 @@ public partial class GameServer
 			{ Avisar(pl, $"um morto so reivindica cargo do Outro Mundo -- {r.Nome} e do mundo dos vivos."); return; }
 		}
 
-		if (_tronos.TryGetValue(r.Chave, out string? dono) && dono.Length > 0)
+		// (2026-10-16) POR VAGA: o cargo de varias vagas (o Kaioshin, `RankDef.Vagas`) so recusa com TODAS ocupadas.
+		if (DonosDe(r).Contains(pl.Conta, StringComparer.OrdinalIgnoreCase)) { Avisar(pl, $"voce JA e {r.Nome}."); return; }
+		if (VagaLivre(r) is not { } vaga)
 		{
-			Avisar(pl, string.Equals(dono, pl.Conta, StringComparison.OrdinalIgnoreCase)
-				? $"voce JA e {r.Nome}."
-				: $"{r.Nome} ja tem dono.");
+			Avisar(pl, r.Vagas > 1 && !VagasIgnoradasDeTeste ? $"as {r.Vagas} vagas de {r.Nome} estao ocupadas." : $"{r.Nome} ja tem dono.");
 			return;
 		}
 
@@ -147,9 +200,9 @@ public partial class GameServer
 		// O RENOME E DE QUEM CARREGA O CARGO AGORA, e nao do trono: ver `RenomeDe`. Herdar o servico de
 		// quem veio antes seria comprar promocao com o trabalho alheio.
 		// ======================================================================================
-		if (subindo && !MissoesDeCargo.PodeAscender(RenomeDe(atual)))
+		if (subindo && !MissoesDeCargo.PodeAscender(RenomeDe(VagaDaConta(pl.Conta))))
 		{
-			int tem = RenomeDe(atual);
+			int tem = RenomeDe(VagaDaConta(pl.Conta));
 			Avisar(pl, $"ainda falta RENOME para almejar algo maior: {tem}/{MissoesDeCargo.TarefasParaAscender} "
 					 + $"tarefas cumpridas como {Cargos.Get(atual)?.Nome ?? atual}. Sirva ao cargo primeiro "
 					 + "(verb Rank Duty).");
@@ -162,8 +215,8 @@ public partial class GameServer
 			return;
 		}
 
-		if (subindo) _tronos.Remove(atual);
-		_tronos[r.Chave] = pl.Conta;
+		if (subindo) _tronos.Remove(VagaDaConta(pl.Conta));
+		_tronos[vaga] = pl.Conta;
 		SalvarCargos();
 
 		GD.Print($"[server] {pl.Name} ({pl.Conta}) assumiu o cargo '{r.Nome}'"
@@ -187,6 +240,7 @@ public partial class GameServer
 		ReconciliarDadiva(pl);
 
 		AnunciarCargo(r, pl, subindo ? atual : "");
+		AparaOPovoDoCargo(r.Chave);   // (2026-10-16) cada Kaioshin jogador tira um Supremo Kaioh NPC do Ceu
 	}
 
 	/// <summary>
@@ -202,13 +256,17 @@ public partial class GameServer
 	/// </summary>
 	private void Outorgar(RankDef r, ServerPlayer pl)
 	{
-		string largou = CargoDe(pl.Conta);
-		if (largou.Length > 0) _tronos.Remove(largou);
+		string vagaVelha = VagaDaConta(pl.Conta);
+		string largou = CargoDaVaga(vagaVelha);
+		if (vagaVelha.Length > 0) _tronos.Remove(vagaVelha);
+
+		// (2026-10-16) A VAGA: a livre, se o cargo tiver (o Kaioshin, `RankDef.Vagas`); com todas ocupadas, a PRIMEIRA troca de dono.
+		string vaga = VagaLivre(r) ?? r.Chave;
 
 		// O EX-DONO E GUARDADO PRA DEPOIS DO `_tronos[...] =`: a reconciliacao dele so responde certo
 		// com o trono JA trocado, senao ela leria o cargo velho e devolveria o mesmo kit.
 		string perdeu = "";
-		if (_tronos.TryGetValue(r.Chave, out string? antigo) && antigo.Length > 0
+		if (_tronos.TryGetValue(vaga, out string? antigo) && antigo.Length > 0
 			&& !string.Equals(antigo, pl.Conta, StringComparison.OrdinalIgnoreCase))
 		{
 			perdeu = antigo;
@@ -217,7 +275,7 @@ public partial class GameServer
 					Avisar(o, $"voce nao e mais {r.Nome}.");
 		}
 
-		_tronos[r.Chave] = pl.Conta;
+		_tronos[vaga] = pl.Conta;
 		SalvarCargos();
 		GD.Print($"[server] {pl.Name} ({pl.Conta}) recebeu o cargo '{r.Nome}' por outorga de admin");
 
@@ -230,6 +288,7 @@ public partial class GameServer
 		ReconciliarDadiva(pl);
 
 		AnunciarCargo(r, pl, largou);
+		AparaOPovoDoCargo(r.Chave);
 	}
 
 	/// <summary>
@@ -265,8 +324,9 @@ public partial class GameServer
 		foreach (RankDef r in Cargos.Todos)
 		{
 			w.Put(r.Chave);
-			_tronos.TryGetValue(r.Chave, out string? dono);
-			w.Put(NomeDoDono(dono));
+			// (2026-10-16) OS DONOS, separados por virgula: o cargo de varias vagas tem ate cinco (ver `RankDef.Vagas`)
+			List<string> donos = DonosDe(r);
+			w.Put(string.Join(", ", donos.Select(NomeDoDono)));
 			// o que falta PRA MIM: e a unica parte que muda de jogador pra jogador
 			w.Put(Cargos.OqueFalta(r, f) ?? "");
 
@@ -281,6 +341,12 @@ public partial class GameServer
 			// ==========================================================================================
 			w.Put(r.Desc);
 			w.Put(OQueOCargoEntrega(r.Chave));
+
+			// (2026-10-16) AS VAGAS E QUANTAS ESTAO LIVRES, no FIM do cargo: e o que deixa a aba oferecer "Reivindicar" num cargo que
+			// ja tem dono (o Kaioshin com dois de cinco) -- o "dono vazio = vago" de antes so sabia responder pra uma vaga.
+			int vagas = VagasDe(r).Count();
+			w.Put((byte)vagas);
+			w.Put((byte)Math.Max(0, vagas - donos.Count));
 		}
 
 		// A BANCADA ESCUTA AQUI, e o lugar e o ponto todo: e ESTE writer que vira os bytes do fio.

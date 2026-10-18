@@ -209,6 +209,12 @@ public readonly struct Percepcao
 	public bool HakaiPegaOAlvo { get; init; }
 
 	/// <summary>
+	/// (2026-10-17) A RACA PRENDE O CORPO NO LUGAR: a esfera do Demonic carregando (15 s) ou a execucao do Ruthless Mind correndo (3 s) --
+	/// andar desfaz as duas. Campo do proprio corpo (o estado racial), custo zero. Ver `Cerebro.Raciais.cs`.
+	/// </summary>
+	public bool ParadoPelaRaca { get; init; }
+
+	/// <summary>
 	/// HA KI ALHEIO VINDO PRA CIMA DE MIM QUE A ENERGY NULLIFICATION APAGARIA AGORA? -- as perguntas do proprio verb
 	/// (recarga vencida, ataque de outro dono, ao alcance, com menos poder que o meu), mais o rumo: so conta o tiro
 	/// que vem pra ca. E a unica varredura deste bloco, e ela e paga so por quem carrega o kit -- um punhado de

@@ -313,7 +313,9 @@ public partial class GameServer
 	// 3. A LINHA DO TEMPO
 	// =====================================================================
 
-	private bool TronoVago(string cargo) => !_tronos.TryGetValue(cargo, out string? dono) || dono.Length == 0;
+	/// <summary>NINGUEM carrega este cargo -- nenhuma vaga ocupada (2026-10-16: o Kaioshin tem cinco, `RankDef.Vagas`).</summary>
+	private bool TronoVago(string cargo) =>
+		Jandirus.Core.Ranks.Cargos.Get(cargo) is { } r ? DonosDe(r).Count == 0 : !_tronos.TryGetValue(cargo, out string? dono) || dono.Length == 0;
 
 	private bool BillsExiste => BillsEWhis.Existe(TronoVago(BillsEWhis.CargoDoBills));
 	private bool WhisExiste => BillsEWhis.Existe(TronoVago(BillsEWhis.CargoDoWhis));

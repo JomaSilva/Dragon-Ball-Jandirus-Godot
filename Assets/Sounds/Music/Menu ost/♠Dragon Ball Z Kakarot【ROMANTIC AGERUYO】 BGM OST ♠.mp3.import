@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://yrxg4ljseww1"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【ROMANTIC AGERUYO】 BGM OST ♠.mp3-3d3a7864f6ff56c7fe7d6155a395fa7b.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/Menu ost/♠Dragon Ball Z Kakarot【ROMANTIC AGERUYO】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【ROMANTIC AGERUYO】 BGM OST ♠.mp3-3d3a7864f6ff56c7fe7d6155a395fa7b.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

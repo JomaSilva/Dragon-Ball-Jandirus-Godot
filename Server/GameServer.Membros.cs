@@ -79,7 +79,7 @@ public sealed partial class GameServer
 	private static double RitmoDaRecargaDe(ServerPlayer pl) =>
 		DebuffsDeMembro.DesligadosDeTeste || !DirigidoPeloDono(pl) || pl.Combate is not { } c
 			? 1
-			: DebuffsDeMembro.RitmoDaRecarga(DebuffsDeMembro.De(c.Corpo));
+			: DebuffsDeMembro.RitmoDaRecarga(DebuffsDeMembro.De(c.Corpo), c.EscalaDosMembros);
 
 	/// <summary>
 	/// QUANTO DO PASSO SOBRA A ESTE CORPO FERIDO -- `if(HP>0&amp;&amp;!undelayed) mobTime*=HP/100` (`movement
@@ -89,7 +89,7 @@ public sealed partial class GameServer
 	private static double FatorDeVidaNoPasso(ServerPlayer pl) =>
 		DebuffsDeMembro.DesligadosDeTeste || !DirigidoPeloDono(pl)
 			? 1
-			: DebuffsDeMembro.FatorDoPasso(pl.Ficha.HP, RacaComSangue(pl));
+			: DebuffsDeMembro.FatorDoPasso(pl.Ficha.HP, RacaComSangue(pl), pl.Combate?.EscalaDosMembros ?? 1);
 
 	/// <summary>
 	/// ERGUER (OU BAIXAR) A GUARDA -- o `holdblock()` do DM, com a recusa dele (`CombatMovement.dm:73-82`):

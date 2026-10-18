@@ -60,6 +60,12 @@ public sealed class PosseDoCliente : IPosse
 
 	public Fatos Fatos => C?.Fatos ?? Fatos.Nenhum;
 
+	/// <summary>(2026-10-17) As skills dos kits de raca que valem pra mim -- da ficha lenta (`AtributosState.SkillsRaciais`), como o servidor as conta.</summary>
+	public Jandirus.Core.Races.SkillRacial SkillsRaciais => (Jandirus.Core.Races.SkillRacial)(C?.Atributos.SkillsRaciais ?? 0);
+
+	/// <summary>(2026-10-17) As que o meu sangue de bio-androide da pra escolher (`AtributosState.SkillsDoSangue`).</summary>
+	public Jandirus.Core.Races.SkillRacial SkillsDoSangue => (Jandirus.Core.Races.SkillRacial)(C?.Atributos.SkillsDoSangue ?? 0);
+
 	public Lugar Lugar
 	{
 		get

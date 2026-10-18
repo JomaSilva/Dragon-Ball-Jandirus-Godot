@@ -141,7 +141,7 @@ public partial class GameServer
 		//
 		// `MaxKi` E O TETO, e nao o teto de carga: isto e regeneracao passiva, nao power-up. Quem
 		// passa dos 100% e a tecla C, e ela cobra folego.
-		if (maestria >= 100 && forma < FormasDeFrost.Base && !f.dead && f.Ki < f.MaxKi)
+		if (maestria >= 100 && forma < FormasDeFrost.Base && !CaidoPelaMorte(pl) && f.Ki < f.MaxKi)
 			f.Ki = Math.Min(f.MaxKi,
 				f.Ki + f.MaxKi * (FormasDeFrost.RegeneracaoPorGrauPct / 100)
 					 * (FormasDeFrost.Base - forma) * dt);
@@ -159,7 +159,7 @@ public partial class GameServer
 		// pelo `TickDaForma` (que reverte pro piso, e o piso e SEMPRE estavel). Esta guarda cobre a
 		// janela de um tique entre cair e reverter -- sem ela, um nocaute de meio segundo poderia
 		// travar o ki de quem ja esta no chao.
-		if (f.KO || f.dead) return;
+		if (f.KO || CaidoPelaMorte(pl)) return;
 
 		pl.FrostInstavelSegundos += dt;
 

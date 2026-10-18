@@ -290,7 +290,7 @@ public partial class GameServer
 				  pl.Zone.Equals(zona) && _zonasGeradas.ContainsKey(zona.Hash), $"{pl.Zone}");
 		GcConferir(pl, $"pousado, o chao puxa {p.G:0}x", p.G);
 		AfirmarGc("...e o servidor DISSE isso a ele (\"o chao de ... puxa ... vezes mais forte\")", Disse(falas, "puxa"), Ultimos(falas));
-		double efetivaPousado = pl.Ficha.GravidadeEfetiva();
+		double efetivaPousado = pl.Ficha.FatorDaGravidade();
 
 		// (b) MORRE, E SOBE.
 		GcMorrerESubir(pl);
@@ -304,8 +304,8 @@ public partial class GameServer
 		GcConferir(pl, $"**DEPOIS DE MORRER E VOLTAR PELO `spawn`, O PLANETA DE {p.G:0}x CONTINUA {p.G:0}x**", p.G);
 		AfirmarGc("...e o servidor avisa do peso de novo (ele vinha do 1x do Outro Mundo)", Disse(falas, "puxa"), Ultimos(falas));
 		AfirmarGc("...e a gravidade que o TREINO enxerga e a mesma de antes de morrer (o numero da tela e o do jogo)",
-				  Math.Abs(pl.Ficha.GravidadeEfetiva() - efetivaPousado) < 1e-9 && Math.Abs(Esmagamento.Gravidade(pl.Ficha) - p.G) < 1e-9,
-				  $"efetiva {efetivaPousado:0.##} -> {pl.Ficha.GravidadeEfetiva():0.##}");
+				  Math.Abs(pl.Ficha.FatorDaGravidade() - efetivaPousado) < 1e-9 && Math.Abs(Esmagamento.Gravidade(pl.Ficha) - p.G) < 1e-9,
+				  $"fator do treino {efetivaPousado:0.##} -> {pl.Ficha.FatorDaGravidade():0.##}");
 		float ganhoDaVolta = _gcGanhoNaTela;
 
 		// (d) O DEFEITO: a mesma volta, com o funil lendo so o catalogo.

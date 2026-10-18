@@ -170,15 +170,22 @@ public static class DebuffsDeMembro
 	/// VALE PRA TODO CORPO, NPC incluso: a linha mora no `hitProc`, que o DM divide entre jogador e NPC, e o
 	/// `HealthSync` reconta os bracos de qualquer mob com alvo (`Injuries.dm:217`).
 	/// </summary>
-	public static double FatorDePontaria(Perdas p) =>
-		p.Bracos <= 0 ? 1 : Math.Max(1 - p.Bracos * PontariaPorBraco, PisoDaPontaria);
+	public static double FatorDePontaria(Perdas p, double escala = 1) =>
+		Escalar(p.Bracos <= 0 ? 1 : Math.Max(1 - p.Bracos * PontariaPorBraco, PisoDaPontaria), escala);
 
 	/// <summary>
 	/// COM QUE RITMO A RECARGA DO SOCO ESCORRE -- `attacking = max(0, attacking - (armsLost>=2 ? 0.5 : 1))`
 	/// (`movement handler.dm:167`). 1 = normal; 0,5 = o soco leva o dobro pra voltar. Um braco so nao muda nada.
 	/// </summary>
-	public static double RitmoDaRecarga(Perdas p) =>
-		p.Bracos >= BracosQueAtrasamOSoco ? RitmoSemOsBracos : 1;
+	public static double RitmoDaRecarga(Perdas p, double escala = 1) =>
+		Escalar(p.Bracos >= BracosQueAtrasamOSoco ? RitmoSemOsBracos : 1, escala);
+
+	/// <summary>
+	/// (v0.4.0) A ESCALA RACIAL DE UM DEBUFF DE MEMBRO: o que o fator TIRA, vezes a escala -- 0,5 tira metade (Warrior's Vitality), 1,1
+	/// tira 10% a mais (o Primitive Rage do Demonic Saiyan), 0 nao tira nada (sem efeitos negativos, `CombatState.EscalaDosMembros`).
+	/// So os fatores CONTINUOS escalam: sem as pernas o corpo continua sem correr e sem voar.
+	/// </summary>
+	public static double Escalar(double fator, double escala) => Math.Clamp(1 - (1 - fator) * Math.Max(escala, 0), 0.01, 1);
 
 	/// <summary>
 	/// ESTE CORPO CORRE? -- `if(legsLost) { "You can't dash with a leg torn off!"; return }` (`speedy.dm:36-38`,
@@ -210,10 +217,10 @@ public static class DebuffsDeMembro
 	/// Devolve o FATOR DE VIDA do acumulador, e nao a velocidade: quem o encaixa na ordem do original (antes do
 	/// peso, antes do esmagamento, com o piso de `mobTime` no fim) e o `Esmagamento.FatorDePasso`.
 	/// </summary>
-	public static double FatorDoPasso(double hp, string raca)
+	public static double FatorDoPasso(double hp, string raca, double escala = 1)
 	{
 		if (hp <= 0 || SemAtrasoDeFerimento(raca)) return 1;
-		return 1 - (1 - Math.Min(hp / 100, 1)) * PesoDaLentidaoDoFerido;
+		return Escalar(1 - (1 - Math.Min(hp / 100, 1)) * PesoDaLentidaoDoFerido, escala);
 	}
 
 	/// <summary>O `hpratio` (`base.dm:76`) -- ver <see cref="PisoDoPoderFerido"/>. So a tela usa isto.</summary>

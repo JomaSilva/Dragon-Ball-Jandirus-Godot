@@ -510,6 +510,24 @@ public enum Efeito
 	/// =====================================================================================================
 	/// </summary>
 	SilhuetaBranca = 524288,
+
+	/// <summary>
+	/// ============================ A PASSAGEM -- A ANIMACAO DE TRANSFORMACAO QUE A FOLHA JA TRAZ (2026-10-16) ============================
+	/// O corpo inteiro toca UMA animacao de outra folha -- a metamorfose desenhada quadro a quadro -- e fica parado no ultimo
+	/// quadro ate a virada da cena, quando o corpo novo entra. Nasceu pela saga do Corrupted Majin: as quatro folhas da saga
+	/// trazem a passagem pra forma seguinte (`thin transform`, `super majin transform`, `super 2 transform`, `kid trans`), e o
+	/// `flick(animstate, src)` do DM (`MajinSaga.dm:455-460`, `:567`) e este efeito.
+	///
+	/// QUAL FOLHA E QUAL ANIMACAO SAO DA CENA, e nao do beat (<see cref="Cinematica.FolhaDaPassagem"/>,
+	/// <see cref="Cinematica.EstadoDaPassagem"/>), pelo mesmo motivo da <see cref="SilhuetaDoCorpo"/>: uma cena toca uma passagem
+	/// so. E como ela, o beat ARMA e quem desliga e o <see cref="Assumir"/> -- o corpo novo entra no mesmo instante em que a
+	/// metamorfose sai, sem quadro de corpo velho no meio.
+	///
+	/// O RELOGIO E O DA CENA: a folha toca no ritmo dela e, se a virada vier antes de ela acabar (a ENCURTADA comprime tudo pelo
+	/// mesmo `k`), ela acelera pra caber -- o corpo nunca pula a metade da metamorfose.
+	/// ================================================================================================================================
+	/// </summary>
+	Passagem = 1048576,
 }
 
 /// <summary>
@@ -628,6 +646,15 @@ public sealed class Cinematica
 	/// a bancada cobra o par (ver `RoboDeForma.ConferirRoteiro`).
 	/// </summary>
 	public FolhaDeSilhueta Silhueta = FolhaDeSilhueta.Nenhuma;
+
+	/// <summary>
+	/// (2026-10-16) A FOLHA DA <see cref="Efeito.Passagem"/> desta cena (`res://`), e a animacao dela que toca. Vazias = a cena nao
+	/// tem passagem. As duas andam juntas com o beat que as acende, como a <see cref="Silhueta"/> -- a bancada cobra o trio.
+	///
+	/// O CAMINHO MORA NO CORE como o dos corpos do bio (`Races.BioAndroids.Corpos`) e da saga (`Races.SagaDoMajin.Corpos`): e um
+	/// texto, e quem o abre e o cliente.
+	/// </summary>
+	public string FolhaDaPassagem = "", EstadoDaPassagem = "";
 
 	/// <summary>
 	/// ESTA CENA NAO TEM COR PROPRIA: o que ela pinta (o anel de choque, os feixes) sai na cor do KI DE QUEM ELA
@@ -2245,16 +2272,11 @@ public static class Cinematicas
 	/// <summary>
 	/// SUPER SAIYAJIN 4 LIMIT BREAKER. Fala e narracao do `SSj4FPLB` (`:834`, `:848`).
 	///
-	/// ============================ A MUSICA E INVENCAO ============================
-	/// O `SSj4FPLB()` e mudo no DM. O catalogo chama esta forma de "God Form" (`ssj4fplbmult = 56`)
-	/// e ela e o fim da linha Saiyajin comum -- subir o degrau mais caro do jogo em silencio le
-	/// como bug, nao como contencao. `Godhand.ogg` estava no disco do original e NENHUM `.dm` a
-	/// referencia; o nome e o que ela e. **Apagar esta string devolve o silencio do DM sem mexer em
-	/// mais nada.**
-	/// =========================================================================
+	/// MUDA, COMO NO DM: nenhum commit do original toca tema no `SSj4FPLB()`. Ate 2026-10-16 tocava aqui o `Godhand.ogg`, um arquivo
+	/// solto no disco do original que nenhum `.dm` citava (e que nao e de Dragon Ball); a musica dele o dono escolhe.
 	/// </summary>
 	public static readonly Cinematica Ssj4LimitBreaker = SurtoCurto(
-		"ssj4_limit_breaker", "Godhand.ogg", 3.0,
+		"ssj4_limit_breaker", "", 3.0,
 		// "[src]: HAAAAAAAAAAAAAAAAAHHHHHHHHHHHHHHH!!!!"
 		"HAAAAAAAAAAAAAAAAAHHHHHHHHHHHHHHH!!!!",
 		// "*A blinding crimson aura erupts around [src] as they shatter their limit!*"
@@ -2388,14 +2410,11 @@ public static class Cinematicas
 	/// <summary>
 	/// LEGENDARY SSJ4 LIMIT BREAKER. `SSj4FPLB()` pela linhagem Legendary Primal.
 	///
-	/// ============================ A MUSICA E INVENCAO ============================
-	/// Mudo no DM, pelo mesmo motivo do `ssj4_limit_breaker` -- e com a mesma saida:
-	/// `fightinggold.ogg` estava no disco do original e nenhum `.dm` a referencia. Apagar a string
-	/// devolve o silencio.
-	/// =========================================================================
+	/// MUDA, COMO NO DM -- ver o `ssj4_limit_breaker`. Ate 2026-10-16 tocava aqui o `fightinggold.ogg`, outro arquivo solto no disco
+	/// do original (e que nao e de Dragon Ball); a musica dele o dono escolhe.
 	/// </summary>
 	public static readonly Cinematica PrimalLegendary4LimitBreaker = SurtoCurto(
-		"primal_legendary4_limit_breaker", "fightinggold.ogg", 3.0,
+		"primal_legendary4_limit_breaker", "", 3.0,
 		"HAAAAAAAAAAAAAAAAAHHHHHHHHHHHHHHH!!!!",
 		"o verde vira luz, e o teto do corpo lendário se parte.");
 
@@ -2693,6 +2712,32 @@ public static class Cinematicas
 		"alien2", "", SurtoInstantaneo,
 		"E ainda tem mais.",
 		"o segundo e último degrau se fecha -- dobro do que ele já era.");
+
+	// ---------------------------------------------------------------------------
+	// (v0.4.0) A LINHA DA TENSAO -- o Humano, pela lista do amigo do dono
+	// ---------------------------------------------------------------------------
+	// NAO HA PROC NO DM pra portar: la o Humano nao tem forma nenhuma. As tres sao o SURTO CURTO, com o piso das formas que o
+	// original troca no mesmo tique (`SurtoInstantaneo`, 2,5 s) -- e e regra, nao preguica: a `--diagforma` cobra que nenhuma cena
+	// INVENTADA dure mais que a menor cena que o DM realmente tem (2,5 s), porque a invencao perigosa e a longa (o jogador apanhando
+	// parado). Cada uma com a sua fala e a sua narracao.
+	// ---------------------------------------------------------------------------
+	/// <summary>HIGH TENSION (1,5x).</summary>
+	public static readonly Cinematica AltaTensao = SurtoCurto(
+		"alta_tensao", "", SurtoInstantaneo,
+		"Ainda não acabou!",
+		"cada músculo se retesa de uma vez, e o poder passa do ponto em que um Humano costuma parar.");
+
+	/// <summary>EXTREME TENSION (6x a 12x).</summary>
+	public static readonly Cinematica TensaoExtrema = SurtoCurto(
+		"tensao_extrema", "", SurtoInstantaneo,
+		"AAAAAAAAH!!",
+		"o chão treme em volta: a tensão vai ao extremo -- e o corpo, contra tudo, aguenta.");
+
+	/// <summary>GODLY TENSION (32x, com o ki divino).</summary>
+	public static readonly Cinematica TensaoDivina = SurtoCurto(
+		"tensao_divina", "", SurtoInstantaneo,
+		"Um Humano também chega lá!",
+		"o ki divino entra na tensão, e o corpo de um Humano alcança o patamar dos deuses.");
 
 	/// <summary>
 	/// FURY, a forma do Deus da Destruicao. No DM ela e MUDA e instantanea: o `Buff()`
@@ -3383,6 +3428,163 @@ public static class Cinematicas
 		_ => null,
 	};
 
+	// ==================================================================================
+	// (2026-10-16) A SAGA DO CORRUPTED MAJIN -- `MajinSagaCinematic()` e `MajinSagaCinematicPure()` (`Magic/MajinSaga.dm:432-577`)
+	// ==================================================================================
+	// ============================ QUATRO CENAS AVULSAS (OS DEGRAUS) E DUAS DE FORMA (A FORMA PURA) ============================
+	// Os quatro degraus da saga sao ESTADO PERMANENTE do corpo (`Fighter.majin_saga_form`, o corpo trocado pra sempre), como o
+	// degrau do bio-androide -- entao as cenas deles ficam FORA da `Todas`, sem versao encurtada (cada degrau acontece uma vez na
+	// vida do personagem), e o servidor as chama pelo byte do `S2C.CenaDoMajin`. A Forma Pura e FORMA (o catalogo tem as duas
+	// entradas) e entra na `Todas` como qualquer outra.
+	//
+	// E O CORPO TROCA NA VIRADA, como no bio: a cena sai antes da aparencia nova, no mesmo canal ordenado, e o cliente guarda o
+	// corpo novo ate o `Assumir`. A passagem (`Efeito.Passagem`) e a ponte entre os dois.
+	// ======================================================================================================================
+
+	/// <summary>
+	/// UM DEGRAU DA SAGA -- o molde das quatro cenas (`MajinSagaCinematic(newform, animstate)`, `MajinSaga.dm:432-471`).
+	///
+	/// ============================ 25,5 s, E O RELOGIO E O DO DM ============================
+	/// `for(cyc = 1 to 14)` com `sleep(10)` = **14,0 s** de raios e poeira pela vista, com `Quake()` nos ciclos multiplos de 4 (o
+	/// efeito do ciclo N cai em N-1: aos 3, 7 e 11 s). Aos 14 s: a aura (`Aurabigcombined`), `chargeaura.wav`, dois `Quake()`, o
+	/// anel e a cratera -- e o `flick` da passagem com `sleep(15)`. Depois `for(cyc = 1 to 10)` = mais **10,0 s**, `Quake()` nos
+	/// multiplos de 3 (aos 17,5, 20,5 e 23,5 s), e no fim (**25,5 s**) o anel menor e `powerup.wav`.
+	///
+	/// O QUE MUDOU, E POR QUE:
+	///   * os raios do DM sao `createLightningmisc` pelo chao; aqui sao a <see cref="Efeito.DescargaNoCeu"/> nos instantes do
+	///     `Quake()` -- a faisca rasteira (<see cref="Efeito.Raios"/>) e da FORMA, e esta cena nao tem forma;
+	///   * a `Aurabigcombined` e a aura do PROPRIO corpo (<see cref="Efeito.AuraBase"/>) -- a troca que o dono mandou fazer em
+	///     todas as cinematicas;
+	///   * a cratera cai na VIRADA, e nao aos 14 s: e a regra da casa (`Efeito.Cratera`), e o corpo novo tambem so entra la;
+	///   * a passagem COMECA aos 14 s, como o `flick` do DM, e fica no ultimo quadro ate a virada -- as folhas medem de 9,2 a
+	///     9,9 s, e o resto dos 11,5 s e o corpo parado na forma nova esperando o chao abrir.
+	///
+	/// O CORPO FICA PRESO A CENA INTEIRA: `move = 0` na largada e `move = 1` so no fim (`:434`, `:469`).
+	/// =================================================================================================
+	/// </summary>
+	private static Cinematica MajinEvoluindo(int destino, string vira)
+	{
+		(string Folha, string Estado)? passagem = Races.SagaDoMajin.PassagemPara(destino);
+		// A FORMA 1 NAO TEM PASSAGEM: o `majin_advance_form(1, null)` do Kai (`MajinSaga.dm:148`) passa `animstate` nulo. Sem
+		// folha, o bit fica de fora -- a bancada cobra o par.
+		Efeito passa = passagem != null ? Efeito.Passagem : Efeito.Nada;
+		return new Cinematica
+		{
+			// SEM FORMA, como as do bio: um degrau da saga nao e uma entrada do catalogo.
+			Forma = "",
+			Musica = Races.SagaDoMajin.TemaDaSaga,
+			SegundosPreso = 25.5,
+			FolhaDaPassagem = passagem?.Folha ?? "",
+			EstadoDaPassagem = passagem?.Estado ?? "",
+			Beats =
+			[
+				// `emit_Sound('rockmoving.wav')` e a frase do `to_chat(view(src), ...)` (`:436-438`).
+				new(0.0, Efeito.Tremor, Som: "rockmoving",
+					Narra: "uma onda de energia rosa explode em volta do corpo!"),
+				new(3.0, Efeito.Tremor | Efeito.DescargaNoCeu),
+				new(7.0, Efeito.Tremor | Efeito.DescargaNoCeu),
+				new(11.0, Efeito.Tremor | Efeito.DescargaNoCeu),
+
+				// OS 14 s: a aura, o `chargeaura.wav`, o anel -- e a metamorfose comeca (`:445-460`).
+				new(14.0, Efeito.AuraBase | Efeito.Tremor | Efeito.AnelDeChoque | passa, Som: "chargeaura",
+					Narra: "a carne rosa se contorce e muda de forma..."),
+				new(17.5, Efeito.Tremor | Efeito.DescargaNoCeu),
+				new(20.5, Efeito.Tremor | Efeito.DescargaNoCeu),
+				new(23.5, Efeito.Tremor | Efeito.DescargaNoCeu),
+
+				// O FIM: `createShockwavemisc(loc,2)` e `emit_Sound('powerup.wav')` (`:466-471`). A cratera sai do funil.
+				new(25.5, Efeito.Assumir | Efeito.Tremor | Efeito.AnelDeChoque | Efeito.ClaraoDeTela, Som: "powerup", Narra: vira),
+
+				// A CAUDA, e ela e a unica -- a poeira baixando.
+				new(27.5, Efeito.Poeira),
+			],
+		};
+	}
+
+	/// <summary>A forma 1 -- o Kai absorvido (`majin_advance_form(1, null)`, `:148` e `:230`). Sem passagem.</summary>
+	public static readonly Cinematica MajinForma1 = MajinEvoluindo(1,
+		"a essência do Kai se espalha pela carne: um corpo Majin novo, de verdade.");
+
+	/// <summary>A forma 2 -- o amigo morto (`Death.dm:82`). A passagem e o `thin transform` da folha da forma 1.</summary>
+	public static readonly Cinematica MajinForma2 = MajinEvoluindo(2,
+		"a dor parte o corpo ao meio -- e o que sobra dele é mais magro, e mais cruel.");
+
+	/// <summary>A forma 3 -- a outra metade devorada (`:129`). A passagem e o `super majin transform` da folha da forma 2.</summary>
+	public static readonly Cinematica MajinForma3 = MajinEvoluindo(3,
+		"a outra metade volta pra dentro, e o corpo explode de poder: o SUPER MAJIN.");
+
+	/// <summary>A forma 4 -- os tres jogadores (`:234`). A passagem e o `super 2 transform` da folha da forma 3.</summary>
+	public static readonly Cinematica MajinForma4 = MajinEvoluindo(4,
+		"três almas assentam na carne: a forma final da saga.");
+
+	/// <summary>
+	/// QUAL CENA DA SAGA -- o conteudo do `S2C.CenaDoMajin`, e o vocabulario das duas pontas. O byte E o numero da forma (1 a 4):
+	/// o pacote nomeia o degrau que acabou de acontecer, e o roteiro dele mora no Core dos dois lados.
+	/// </summary>
+	public enum CenaMajin : byte
+	{
+		Forma1 = 1,
+		Forma2 = 2,
+		Forma3 = 3,
+		Forma4 = 4,
+	}
+
+	/// <summary>A cena deste degrau da saga. Nulo = um byte que este lado nao conhece (silencio, e nao a cena errada).</summary>
+	public static Cinematica? DoMajin(CenaMajin q) => q switch
+	{
+		CenaMajin.Forma1 => MajinForma1,
+		CenaMajin.Forma2 => MajinForma2,
+		CenaMajin.Forma3 => MajinForma3,
+		CenaMajin.Forma4 => MajinForma4,
+		_ => null,
+	};
+
+	/// <summary>
+	/// A FORMA PURA -- `MajinSagaCinematicPure()` (`MajinSaga.dm:559-577`).
+	///
+	/// ============================ 12,0 s, E A MUSICA E A DO DM ============================
+	/// `rockmoving.wav`, `emit_TransformMusic('Buu Is Fighting.mp3', 1060)`, a frase da carne fervendo, o corpo virando o
+	/// `MajinForm5.dmi` com o `flick("kid trans")` -- e `for(cyc = 1 to 12)` com `sleep(10)` = **12,0 s** de raios, `Quake()` nos
+	/// multiplos de 3 (aos 2, 5, 8 e 11 s). No fim, `createShockwavemisc(loc,3)`, `createCrater(loc,3)` e `powerup.wav`.
+	///
+	/// **DIVERGENCIA DECLARADA, A MUSICA:** no DM ela tocava TODA vez (*"plays EVERY time Pure Form is activated"*, `:563`). Aqui a
+	/// Forma Pura virou o repouso do Majin -- ela volta toda vez que ele solta quem estava dentro, e toda vez que acorda --, e a
+	/// regra de todas as formas do port vale pra ela: a cena cheia (com o tema) na estreia, a encurtada ate os 50% de maestria, e
+	/// depois instantanea.
+	/// ===========================================================================
+	/// </summary>
+	public static readonly Cinematica MajinPura = new()
+	{
+		Forma = Catalogo.IdDaFormaPura,
+		Musica = Races.SagaDoMajin.TemaDaPura,
+		SegundosPreso = 12.0,
+		FolhaDaPassagem = Races.SagaDoMajin.PassagemDaPura.Folha,
+		EstadoDaPassagem = Races.SagaDoMajin.PassagemDaPura.Estado,
+		Beats =
+		[
+			new(0.0, Efeito.Tremor | Efeito.Passagem, Som: "rockmoving",
+				Narra: "a carne ferve e encolhe -- um poder antigo e puro sobe à superfície!"),
+			new(2.0, Efeito.Tremor | Efeito.DescargaNoCeu),
+			new(5.0, Efeito.Tremor | Efeito.DescargaNoCeu),
+			new(8.0, Efeito.Tremor | Efeito.DescargaNoCeu),
+			new(11.0, Efeito.Tremor | Efeito.DescargaNoCeu),
+			new(12.0, Efeito.Assumir | Efeito.Tremor | Efeito.AnelDeChoque | Efeito.ClaraoDeTela, Som: "powerup",
+				Narra: "tudo o que era emprestado queimou: a FORMA PURA."),
+			new(13.5, Efeito.Poeira),
+		],
+	};
+
+	/// <summary>
+	/// A FORMA PURA INSANA. **Nao ha cena dela no DM** (a insanidade e do sistema do amigo do dono), e em jogo ela nunca toca: o
+	/// corpo enlouquece SEM cena (o servidor a liga com `semCena`), porque a loucura nao espera ninguem assistir. Ela existe pela
+	/// regra de que toda forma do catalogo tem cena propria -- e e o surto, a familia de quem ja esta na forma e so muda de
+	/// intensidade, com o grito de bicho da insana.
+	/// </summary>
+	public static readonly Cinematica MajinPuraInsana = SurtoCurto(
+		Catalogo.IdDaFormaPuraInsana, "", 2.5,
+		"GRAAAAAAAAH!!",
+		"a cabeça se parte -- a FORMA PURA INSANA.");
+
 	// ---------------------------------------------------------------------------
 	// (v0.3.0) OS CHEFES DE SAGA QUE MUDAM DE CORPO -- o pedido de 2026-10-15
 	// ---------------------------------------------------------------------------
@@ -3481,10 +3683,17 @@ public static class Cinematicas
 		// a forma do titulo de Deus da Destruicao
 		GodFury,
 
+		// (v0.4.0) a linha da Tensao do Humano
+		AltaTensao, TensaoExtrema, TensaoDivina,
+
 		// e o BIO-ANDROIDE, a unica forma do catalogo que estava sem cena nenhuma -- as tres cenas
 		// avulsas dele (os dois degraus e o SSJ2 pela morte) NAO entram aqui, pelo motivo escrito
 		// junto delas.
 		SuperPerfeito,
+
+		// (2026-10-16) A FORMA PURA DO CORRUPTED MAJIN, as duas. As quatro cenas dos degraus da saga NAO entram aqui, pelo motivo
+		// escrito junto delas.
+		MajinPura, MajinPuraInsana,
 	];
 
 	/// <summary>
@@ -3801,6 +4010,25 @@ public static class Cinematicas
 	}
 
 	/// <summary>
+	/// O SOM PROPRIO DE UMA TRANSFORMACAO (2026-10-17) -- o dono: *"dps da primeira cinematica do ultra instinto, sempre q se
+	/// transformar em qualquer forma do ultra instinto (pressagio ou perfeito) vai tocar esse audio"*
+	/// (`Effects/UltraInstinctSoundEffect.ogg`, 4,2 s).
+	///
+	/// Devolve o NOME do som -- o cliente o leva ao arquivo pelo mesmo `Transformacao.CaminhoDoSom` dos beats; vazio = o de sempre
+	/// (o swoosh da instantanea; a encurtada so com os beats dela). PELA LINHA e nao por id, pelo motivo da excecao do Oozaru do
+	/// <see cref="Degrau"/>: a forma do instinto que entrar no catalogo depois ja nasce soando. A ESTREIA nao o leva: ela e a cena
+	/// cheia, com o tema da forma -- o "depois da primeira cinematica" da frase.
+	/// </summary>
+	public static string SomDoDegrau(FormaDef? d, DegrauDeCena degrau) =>
+		!SomDoInstintoMudoDeTeste && d is { Linha: LinhaDeForma.UltraInstinct } && degrau != DegrauDeCena.Estreia ? SomDoUltraInstinto : "";
+
+	/// <summary>O nome do som do instinto (a familia do `Beat.Som`).</summary>
+	public const string SomDoUltraInstinto = "ultrainstinto";
+
+	/// <summary>DEFEITO INJETADO (bancada `--diagsomui`): o instinto volta a se transformar com o swoosh comum. Falso em jogo.</summary>
+	public static bool SomDoInstintoMudoDeTeste;
+
+	/// <summary>
 	/// A CENA A TOCAR NESTE DEGRAU. Nulo = instantanea, sem cena e sem corpo preso.
 	///
 	/// E o funil unico: quem quiser saber "quanto tempo esta transformacao demora" pergunta aqui, e
@@ -3942,6 +4170,10 @@ public static class Cinematicas
 			// veio junto no `beats`. Sem esta linha a versao curta acenderia `FolhaDeSilhueta.Nenhuma`
 			// e o beat viraria um instante vazio, calado.
 			Silhueta = cheia.Silhueta,
+			// (2026-10-16) A PASSAGEM ATRAVESSA pelo mesmo motivo da silhueta: e o corpo se reescrevendo, que e o que a cena MOSTRA.
+			// Sem estas duas linhas a curta acenderia uma passagem sem folha -- o beat vazio, calado.
+			FolhaDaPassagem = cheia.FolhaDaPassagem,
+			EstadoDaPassagem = cheia.EstadoDaPassagem,
 			Beats = [.. beats],
 		};
 	}

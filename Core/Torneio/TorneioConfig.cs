@@ -10,11 +10,39 @@ public enum TipoDeTorneio : byte
 	Alem = 2,
 }
 
-/// <summary>Onde um torneio acontece: a zona e o retangulo da arena (`TRN_ARENA_*` / `TRNH_ARENA_*`).</summary>
+/// <summary>Onde um torneio acontece: a zona, o retangulo da arena (`TRN_ARENA_*` / `TRNH_ARENA_*`) e as cadeiras de quem espera.</summary>
 public sealed class PalcoDeTorneio
 {
 	public string Zona = "";
 	public Arena Arena;
+
+	/// <summary>
+	/// AS CADEIRAS DA PLATEIA (`seats`, `Tournament.dm:219`), na ordem em que o `rest_place` as ocupa: quem espera senta na
+	/// primeira livre. Vazia = a roda sorteada em volta da arena (`rest_turf`) -- a da Terra, onde o DM deixa `seats = null`.
+	/// </summary>
+	public List<Cadeira> Cadeiras = new();
+
+	/// <summary>A cadeira desta celula, se houver uma.</summary>
+	public Cadeira? CadeiraEm(int cx, int cy)
+	{
+		foreach (Cadeira c in Cadeiras)
+			if (c.X == cx && c.Y == cy) return c;
+		return null;
+	}
+}
+
+/// <summary>Uma cadeira da plateia do torneio, em celulas do port.</summary>
+public readonly record struct Cadeira(int X, int Y)
+{
+	/// <summary>Onde quem senta fica: o meio da celula, em pixels.</summary>
+	public Vec2 Lugar => new Vec2(X + 0.5f, Y + 0.5f) * ZoneCollision.TileSize;
+
+	/// <summary>
+	/// PRA ONDE QUEM SENTA OLHA: o centro da arena (o `M.dir = S[3]` do `rest_place`). O DM escreve a direcao de cada fileira
+	/// (`EAST`, `SOUTH`, `NORTH`, `WEST`), sempre a que encara o palco; aqui ela sai da conta, e a `--torneioteste` confere que as
+	/// duas batem nas 32.
+	/// </summary>
+	public Facing OlharPara(Arena a) => MoveRules.FacingFrom(a.Centro - Lugar, Facing.South);
 }
 
 /// <summary>
@@ -29,6 +57,18 @@ public sealed class PalcoDeTorneio
 /// a celula do port e `(x - 1, altura - y)`: a arena da Terra vira (219, 432)-(275, 489) num mapa
 /// de 500, e a celeste (`TRNH 117..126 x 140..148`, z6 = Afterlife) vira (116, 352)-(125, 360).
 /// A bancada confere que os dois retangulos sao chao livre no `.col` de verdade.
+///
+/// A CELESTE E O PALCO INTEIRO, E NAO O RETANGULO DO DM (2026-10-17, divergencia declarada). O piso claro do palco no mapa vai
+/// de (110, 346) a (125, 360) -- 16 x 15 celulas --, e o retangulo do DM e so o canto de baixo-direita dele (10 x 9): divide o
+/// canto e erra o tamanho. Com ele a roda de espera (2 a 5 celulas fora da linha) caia EM CIMA do palco pelos lados norte e
+/// oeste, e o lutador levava ring-out pisando no piso claro. O dono: *"so os dois q estao lutando estao dentro dela"*.
+///
+/// AS CADEIRAS DO CEU (2026-10-17). O DM senta quem espera o torneio do Outro Mundo em 32 cadeiras fixas, uma a cada 2 celulas em
+/// volta do palco, todas viradas pra arena (o `New()` do `datum/tournament/heaven`, `Tournament.dm:650-654`, e o `rest_place`,
+/// `:256`); o port tinha so a roda sorteada, a da Terra, e o dono viu: *"coloque os participantes do torneio do outro mundo pra
+/// esperarem onde tem os bancos ali"*. Pela mesma conta, a fileira esquerda do DM (x 109, y 154..140) e a coluna 108 de 346 a 360,
+/// e assim por diante (`CadeirasDoCeu`) -- e as cadeiras do proprio DM cercam o palco INTEIRO, a 2 celulas da beirada dele: mais
+/// uma prova de que o `TRNH_ARENA` e que estava errado.
 /// ==================================================================================
 /// </summary>
 public sealed class TorneioConfig
@@ -67,13 +107,33 @@ public sealed class TorneioConfig
 	public string MoldeDoNpc = "lutador_de_torneio";
 
 	public PalcoDeTorneio Terra = new() { Zona = "Earth", Arena = new Arena(219, 432, 275, 489) };
-	public PalcoDeTorneio Alem = new() { Zona = "Afterlife", Arena = new Arena(116, 352, 125, 360) };
+	public PalcoDeTorneio Alem = new() { Zona = "Afterlife", Arena = new Arena(110, 346, 125, 360), Cadeiras = CadeirasDoCeu() };   // o palco inteiro (ver o cabecalho)
 
-	/// <summary>A agenda: de quantos em quantos dias (tempo real) a Terra tem torneio, e quando e o primeiro.</summary>
+	/// <summary>
+	/// AS 32 CADEIRAS DO CEU como o DM as monta (`Tournament.dm:650-654`), em coordenada BYOND e pela conta do cabecalho (`x - 1`,
+	/// `500 - y`): as fileiras esquerda, de cima, de baixo e direita, nesta ordem -- a do `rest_place`.
+	/// </summary>
+	public static List<Cadeira> CadeirasDoCeu()
+	{
+		var c = new List<Cadeira>();
+		for (int yy = 154; yy >= 140; yy -= 2) c.Add(DoByond(109, yy));   // fileira esquerda (EAST)
+		for (int xx = 111; xx <= 125; xx += 2) c.Add(DoByond(xx, 156));   // fileira de cima (SOUTH)
+		for (int xx = 111; xx <= 125; xx += 2) c.Add(DoByond(xx, 138));   // fileira de baixo (NORTH)
+		for (int yy = 154; yy >= 140; yy -= 2) c.Add(DoByond(128, yy));   // fileira direita (WEST)
+		return c;
+
+		static Cadeira DoByond(int x, int y) => new(x - 1, 500 - y);
+	}
+
+	/// <summary>
+	/// A agenda: de quantos em quantos DIAS DO JOGO a Terra tem torneio, e quando e o primeiro. O dia do jogo e o do ceu, 24 min
+	/// de relogio (`Espaco.SegundosPorDiaInGame`): 30 dias sao 12 h reais. Ate 2026-10-17 era o dia de parede (o dono: *"o tempo
+	/// de torneio n ta em dias do jogo ta em dias da vida real"*).
+	/// </summary>
 	public double IntervaloDaTerraDias = 30;
 	public double PrimeiroDaTerraDias = 1;
 
-	/// <summary>O do Outro Mundo acontece N dias depois de cada torneio da Terra.</summary>
+	/// <summary>O do Outro Mundo acontece N dias DO JOGO depois de cada torneio da Terra.</summary>
 	public double AlemDepoisDaTerraDias = 15;
 
 	/// <summary>O campeao do Outro Mundo volta a vida? Decisao do port: nao -- so o dinheiro.</summary>
@@ -128,6 +188,9 @@ public sealed class TorneioConfig
 		palco.Zona = Txt(e, "zona", palco.Zona);
 		if (e.TryGetProperty("arena", out JsonElement a) && a.ValueKind == JsonValueKind.Array && a.GetArrayLength() == 4)
 			palco.Arena = new Arena(a[0].GetInt32(), a[1].GetInt32(), a[2].GetInt32(), a[3].GetInt32());
+		// [x, y] cada uma; uma mal escrita derruba a leitura inteira (o `torneio.json ilegivel` do boot), como a arena.
+		if (e.TryGetProperty("cadeiras", out JsonElement cs) && cs.ValueKind == JsonValueKind.Array)
+			palco.Cadeiras = [.. cs.EnumerateArray().Select(c => new Cadeira(c[0].GetInt32(), c[1].GetInt32()))];
 	}
 
 	public List<string> Problemas()
@@ -148,6 +211,12 @@ public sealed class TorneioConfig
 		{
 			if (palco.Zona.Length == 0) p.Add($"torneio.{nome}.zona vazia");
 			if (palco.Arena.Largura < 3 || palco.Arena.Altura < 3) p.Add($"torneio.{nome}.arena pequena demais ({palco.Arena})");
+			var vistas = new HashSet<Cadeira>();
+			foreach (Cadeira c in palco.Cadeiras)
+			{
+				if (palco.Arena.Contem(c.X, c.Y)) p.Add($"torneio.{nome}.cadeiras: ({c.X},{c.Y}) fica DENTRO da arena -- quem espera estaria na luta");
+				if (!vistas.Add(c)) p.Add($"torneio.{nome}.cadeiras: ({c.X},{c.Y}) repetida");
+			}
 		}
 		if (IntervaloDaTerraDias <= 0) p.Add("torneio.terra.intervaloDias precisa ser > 0");
 		if (PrimeiroDaTerraDias < 0) p.Add("torneio.terra.primeiroEmDias precisa ser >= 0");

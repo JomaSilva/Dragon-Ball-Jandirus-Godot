@@ -66,6 +66,10 @@ public sealed partial class GameServer
 			&& _genkidamaG12.TryGetValue(daBomba, out EstadoDaGenkidamaG12? bomba) && bomba.Fase == 1)
 			saida.Add(new(Fatos.PedidoDeGenkidama, $"{NomeVisivel(dono)} pede a sua energia pra Genkidama.", 0));
 
+		// O PEDIDO DE FILHO -- Filhos.cs (2026-10-17)
+		if (pl.PedidoDeFilho is { } filho && agora <= filho.Ate)
+			saida.Add(new(Fatos.PedidoDeFilho, $"{filho.Nome} quer ter um filho com você.", SegundosAte(filho.Ate, agora)));
+
 		// (as de baixo sao guardadas por CONTA, e um corpo sem conta nao recebe oferta nenhuma)
 		if (pl.Conta.Length > 0)
 		{

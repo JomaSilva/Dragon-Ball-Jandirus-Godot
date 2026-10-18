@@ -237,7 +237,7 @@ public sealed partial class GameServer
 				(int ox, int oy) = CatalogoDeObras.Celula(o.X, o.Y);
 				foreach (ServerPlayer pl in naZona)
 				{
-					if (pl.Ficha.dead || CelulaDoPonto(pl.Pos) != (ox, oy)) continue;
+					if (CaidoPelaMorte(pl) || CelulaDoPonto(pl.Pos) != (ox, oy)) continue;
 					if (pl.Race != "Android" && !EstacaoDeRecarga.RecarregaQualquerUmDeTeste) break;
 					Jandirus.Core.Stats.Fighter f = pl.Ficha;
 					double custo = EstacaoDeRecarga.CustoPorRecarga(eficiencia);
@@ -427,7 +427,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void OlharALuaArtificial(ServerPlayer pl, Obra lua, bool negra)
 	{
-		if (pl.Combate is not { } cd || pl.Ficha.dead || pl.Oozaru != FormaOozaru.Nao) return;
+		if (pl.Combate is not { } cd || CaidoPelaMorte(pl) || pl.Oozaru != FormaOozaru.Nao) return;
 
 		if (LuaArtificial.DevolveORabo(lua.Tipo) && string.Equals(pl.Race, "Saiyan", StringComparison.OrdinalIgnoreCase)
 			&& cd.Corpo.Achar("Rabo") is { Decepado: true } rabo && cd.Corpo.Regenerar(rabo))

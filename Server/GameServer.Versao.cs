@@ -256,6 +256,15 @@ public partial class GameServer
 		// `--ganhoteste`: de onde o poder da luta vem -- o soco no ar, o objeto, a troca entre jogadores e o ki que so
 		// rende encostando. Os jogadores entram pela porta. Ver `GameServer.GanhoTeste.cs`.
 		if (Array.IndexOf(args, "--ganhoteste") >= 0) RodarBancadaDeGanho(porta);
+		// `--niveisteste`: (adendo 18) as skills que nao subiam de nivel -- a Ki Effusion, o Spirit Gun e o Fist, a Rapid
+		// Movement, a lamina/espada/escudo de Ki, o Full Power e o gigante. O jogador entra pela porta. Ver `GameServer.NiveisQueNaoSubiamTeste.cs`.
+		if (Array.IndexOf(args, "--niveisteste") >= 0) RodarBancadaDosNiveis(porta);
+		// `--filhosteste`: (adendo 42) os filhos -- o amor correspondido, o pedido e o "sim", a fila dos bebes e o parto pela criacao. Os
+		// pais e o filho entram pela porta. Ver `GameServer.FilhosTeste.cs`.
+		if (Array.IndexOf(args, "--filhosteste") >= 0) RodarBancadaDosFilhos(porta);
+		// `--calendarioteste`: (2026-10-17) o calendario e a idade que anda com ele -- a data, o dia e o mes que viram, os meses de quem esta
+		// no jogo e de quem volta, a velhice, a Sala do Tempo por cima. O jogador entra pela porta. Ver `GameServer.CalendarioTeste.cs`.
+		if (Array.IndexOf(args, "--calendarioteste") >= 0) RodarBancadaDoCalendario(porta);
 	}
 
 	/// <summary>

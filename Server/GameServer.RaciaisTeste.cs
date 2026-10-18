@@ -66,6 +66,10 @@ public partial class GameServer
 			"/datum/skill/namek/SuperNamek"),
 		new(Catalogo.RacaAlien, "", LinhaDeForma.Alien, "/datum/skill/alien/transformation"),
 
+		// (v0.4.0) O HUMANO E A LINHA DA TENSAO (a lista do amigo do dono). Sem skill e sem raiva: a porta e o BP, contra o limiar
+		// que ele sorteia ao nascer (`LimiaresPessoais.RolarHumano`). A classe vazia e a do Humano comum.
+		new(Catalogo.RacaHumano, "", LinhaDeForma.Tensao, ""),
+
 		// O HERAN E A UNICA LINHA RACIAL QUE PEDE RAIVA (`heran.dm:20-52`). A classe importa aqui
 		// mais do que em qualquer outra: o multiplicador dele SAI dela (`FormaDef.BaseDaClasse`).
 		new(Catalogo.RacaHeran, "Omega", LinhaDeForma.Heran, ""),
@@ -483,21 +487,22 @@ public partial class GameServer
 	/// O PRECO DECLARADO do conserto do `LinhasAbertas`, medido em vez de prometido: quem nao tem
 	/// transformacao no DM nao tem nenhuma aqui, e o jogo DIZ isso em vez de nao fazer nada.
 	///
-	/// O Humano e o caso puro -- ele nao tem uma unica forma no original --, e o `TemEscada` e a
+	/// O Tsujin e o caso puro -- ele nao tem uma unica forma no original --, e o `TemEscada` e a
 	/// guarda que responde por ele. Uma guarda que apenas devolvesse sem avisar passaria na primeira
 	/// metade desta checagem e deixaria o jogador apertando C sem entender por que nada acontece.
+	/// (Ate a v0.4.0 o caso puro era o Humano; ele ganhou a linha da Tensao e entrou na tabela de cima.)
 	/// </summary>
 	private void ARacaSemEscada(ServerPlayer pl, Action<string, bool, string> Checa)
 	{
-		VestirCorpoRacial(pl, new EscadaRacial("Human", "Normal", LinhaDeForma.Saiyajin, ""));
+		VestirCorpoRacial(pl, new EscadaRacial("Tsujin", "", LinhaDeForma.Saiyajin, ""));
 		AmigoAbatido(pl, "um amigo de bancada", NivelDeRaiva.Extrema);   // ate com luto na mao
 
-		Checa("o Humano nao tem escada nenhuma",
+		Checa("o Tsujin nao tem escada nenhuma",
 			  !Catalogo.LinhasAbertas(Perfil(pl)).Any(l => Catalogo.DaLinha(l).Any(d => !Catalogo.NaoSeSobePraEla(d))),
 			  string.Join(", ", Catalogo.LinhasAbertas(Perfil(pl))));
 
 		List<string> ditos = ApertarCEOuvir(pl);
-		Checa("o Humano aperta C e continua na base, com BP de 1e13 e luto na mao",
+		Checa("o Tsujin aperta C e continua na base, com BP de 1e13 e luto na mao",
 			  pl.Forma.NaBase, pl.Forma.Atual);
 		Checa("...e o jogo DIZ que a raca dele nao tem essa escada",
 			  ditos.Any(a => a.Contains("escada", StringComparison.OrdinalIgnoreCase)),

@@ -243,7 +243,11 @@ public sealed class VisualCatalog
         int quantos = Races.BioAndroids.EhBio(raca) ? Races.BioAndroids.Corpos.Length
                     : Npc.Animais.EhAnimal(raca) ? Npc.Animais.Folhas.Length
                     : lista.Count;
-        if (ap.Corpo < 0 || ap.Corpo >= quantos)
+        // (2026-10-16) O CORPO DA SAGA DO MAJIN e estado permanente do corpo e mora numa faixa reservada do mesmo indice
+        // (`Races.SagaDoMajin.PrimeiroCorpo`): zera-lo aqui devolveria o Majin da forma 4 ao corpo de criacao em todo
+        // saneamento. Quem impede um cliente de NASCER com ele e a criacao (`GameServer`), e nao este saneamento.
+        bool daSaga = raca == "Majin" && Races.SagaDoMajin.EhCorpoDaSaga(ap.Corpo);
+        if (!daSaga && (ap.Corpo < 0 || ap.Corpo >= quantos))
         {
             if (ap.Corpo != 0) erros.Add("corpo fora da lista da raca");
             ap.Corpo = 0;
@@ -337,6 +341,13 @@ public sealed class VisualCatalog
         // sem roupa e sem olhos por cima (ver `TemCabelo` e `CorpoTemRosto`).
         // =======================================================================================
         if (Npc.Animais.EhAnimal(raca)) return Npc.Animais.CaminhoDaFolha(ap.Corpo);
+
+        // ============================ (2026-10-16) E O CORRUPTED MAJIN NA SAGA, PELO MESMO ARGUMENTO DO BIO ============================
+        // O corpo dele E o degrau da saga em que ele esta (`majin_apply_form_icon`, `Magic/MajinSaga.dm:404-408`: o `icon` trocado
+        // e nunca devolvido), e o indice mora numa faixa reservada de `ap.Corpo` -- ver `Races.SagaDoMajin.PrimeiroCorpo`. A cor
+        // que ele escolheu na criacao continua tingindo por cima (`icon += majin_color`), pelo canal de sempre (`TintaDoCorpo`).
+        // ======================================================================================================================
+        if (Races.SagaDoMajin.FolhaDoCorpo(ap.Corpo) is { } folhaDaSaga) return folhaDaSaga;
 
         // ============================ E O BILLS E O WHIS, UMA FOLHA POR PERSONAGEM ============================
         // A "raca" de cada um (fora do `races.json`, como a do bicho) E a chave da folha dele. A diferenca pro bicho

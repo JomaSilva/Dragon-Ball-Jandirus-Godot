@@ -318,6 +318,27 @@ public sealed class RegraDeNivel
 		/// <see cref="GanhoPorEstado.Cadeia"/>, que so o deixa render se nenhum ramo anterior rendeu.
 		/// </summary>
 		Senao,
+
+		// ============================ AS QUATRO DO ADENDO 18 (2026-10-16) ============================
+		// O dono: *"tem varias skills q n tem como subir de nivel, traga pro port formas de upar elas"*. Sem elas a Rapid Movement e as
+		// tres ferramentas de Ki da Cultivation tinham ZERO fonte de exp: compraveis e congeladas no nivel 0.
+		// ============================================================================================
+
+		/// <summary>
+		/// `savant.dir != lastdir` -- o corpo VIROU desde o tique anterior: e como a Rapid Movement treina (`speedy.dm:99`, *"Wow, I
+		/// just spin a bunch and get faster?"*). O `lastdir` do DM e `var/tmp` de cada skill, atualizado no mesmo tique; um por corpo
+		/// diz o mesmo -- quem guarda e o proprio <see cref="NiveisDeSkill"/>, como o `lastki` do <see cref="GastandoKi"/>.
+		/// </summary>
+		Virando,
+
+		/// <summary>`savant.KiBladeOn` -- com a lamina de Ki na mao (`Cultivation.dm:63`): treina a `Blade_Runner`.</summary>
+		ComLaminaDeKi,
+
+		/// <summary>`savant.KiSwordOn` -- com a espada de Ki na mao (`Cultivation.dm:181`): treina a `Ki_Knight`.</summary>
+		ComEspadaDeKi,
+
+		/// <summary>`savant.KiShieldOn` -- com o escudo de Ki de pe (`Cultivation.dm:318`): treina a `Ki_Shield`.</summary>
+		ComEscudoDeKi,
 	}
 
 	/// <summary>Os ganhos por estado desta skill.</summary>
@@ -511,6 +532,28 @@ public sealed class NiveisDeSkill
 	/// </summary>
 	private double _ultimoKi;
 
+	/// <summary>(2026-10-16) A direcao do tique anterior -- o `var/tmp/lastdir` da Rapid Movement (`speedy.dm:92`). Nao vai pro save.</summary>
+	private int _ultimaDirecao = -1;
+
+	/// <summary>
+	/// (2026-10-16) O CONTADOR DA EFUSAO: as tres Ki Effusion treinam pelo SOMATORIO `effusioncounter = blastcounter + beamcounter +
+	/// chargedcounter + kiaicounter + guidedcounter + homingcounter + targetedcounter + volleycounter` (`Effusion.dm:74`), que o
+	/// extrator nao le como contador -- elas ficavam com ZERO fonte de exp (o dono: *"tipo ki effusion"*). O carregador o transforma
+	/// num contador (`RegrasDoDisco`), e quem credita qualquer um dos oito credita este junto (`GameServer.CreditarContador`).
+	/// </summary>
+	public const string ContadorDaEfusao = "effusioncounter";
+
+	/// <summary>Os oito contadores que a Efusao soma (`Effusion.dm:74`).</summary>
+	public static bool ContaNaEfusao(string contador) => contador is "blastcounter" or "beamcounter" or "chargedcounter"
+		or "kiaicounter" or "guidedcounter" or "homingcounter" or "targetedcounter" or "volleycounter";
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--niveisteste`): as fontes de exp do adendo 18 somem juntas (os quatro estados, o somatorio da Efusao, o
+	/// ponto por uso do Spirit Gun e do Spirit Fist, o Ki queimado do Full Power e o banco do gigante) -- o jogo de antes,
+	/// com essas skills congeladas no nivel 0. Falso em jogo, sempre.
+	/// </summary>
+	public static bool FontesDoAdendo18DesligadasDeTeste;
+
 	public struct Progresso
 	{
 		public int Nivel;
@@ -542,6 +585,13 @@ public sealed class NiveisDeSkill
 	/// e avisa o que acendeu.
 	/// </summary>
 	public readonly record struct Subida(string Path, string Nome, int Nivel, Degrau? Degrau, Degrau[]? Degraus = null);
+
+	/// <summary>
+	/// (2026-10-16) POR QUANTO A EXP DE NIVEL ENTRA NESTE CORPO -- 1 pra todo mundo; 0,8 no Corrupted Majin com a Forma Pura (o
+	/// Echoed Insanity: *"Corrupted Majins master everything 20% slower"*). De sessao, nao vai pro disco (o `ParaSave` nao o leva):
+	/// quem o escreve a cada tique e a saga (`GameServer.SagaDoMajin.cs`). Vale nas duas portas da exp (o efetor e o `Creditar`).
+	/// </summary>
+	public double FatorDeGanho = 1;
 
 	public int Nivel(string path) => _p.TryGetValue(path, out Progresso pr) ? pr.Nivel : 0;
 	public double Exp(string path) => _p.TryGetValue(path, out Progresso pr) ? pr.Exp : 0;
@@ -598,7 +648,9 @@ public sealed class NiveisDeSkill
 	public readonly record struct EstadoDoCorpo(bool Meditando, bool Voando, bool Treinando, bool Lutando = false,
 											    bool Estudando = false, bool Observando = false,
 											    bool ComBuffDeKi = false, bool MeditacaoProfunda = false,
-											    Fighter? Ficha = null);
+											    Fighter? Ficha = null,
+											    int Direcao = -1, bool LaminaDeKi = false, bool EspadaDeKi = false,
+											    bool EscudoDeKi = false);
 
 	public List<Subida> Efetor(Random rng, SkillCatalog cat, SkillBook livro,
 							   EstadoDoCorpo corpo = default)
@@ -616,6 +668,11 @@ public sealed class NiveisDeSkill
 			gastouKi = fichaDoTique.Ki < _ultimoKi;
 			_ultimoKi = fichaDoTique.Ki;
 		}
+
+		// (2026-10-16) "VIROU DESDE O ULTIMO TIQUE" -- o `var/tmp/lastdir` da Rapid Movement (`speedy.dm:92`), pelo motivo do `lastki`
+		// de cima: um por corpo diz o mesmo que um por skill. Direcao negativa e "nao sei" (o efetor chamado sem corpo).
+		bool virou = corpo.Direcao >= 0 && _ultimaDirecao >= 0 && corpo.Direcao != _ultimaDirecao;
+		_ultimaDirecao = corpo.Direcao;
 
 		foreach (string path in _p.Keys.ToList())
 		{
@@ -656,12 +713,12 @@ public sealed class NiveisDeSkill
 					if (g.NivelMenorQue > 0 && pr.Nivel >= g.NivelMenorQue) continue;
 					if (pr.Nivel < g.NivelMinimo) continue;
 
-					if (Escala(g.Quando, corpo, gastouKi) is not { } escala) continue;
+					if (Escala(g.Quando, corpo, gastouKi, virou) is not { } escala) continue;
 					double ganho = g.Quanto * escala;
 					// O PESO DA MEDITACAO (`GainKnobs.MeditacaoNasSkillsDeKi`; 1 = o original): so no ganho de
 					// CURVA de skill da Mente, e so com o dono meditando -- ver o cabecalho do botao.
 					if (g.Curva && r.Mental && corpo.Meditando) ganho *= GainKnobs.MeditacaoNasSkillsDeKi;
-					pr.Exp += g.Curva ? GastarDoBuffer(ref pr, KiSkillGains(ganho, corpo.Ficha)) : ganho;
+					pr.Exp += (g.Curva ? GastarDoBuffer(ref pr, KiSkillGains(ganho, corpo.Ficha)) : ganho) * FatorDeGanho;
 					if (g.Cadeia != 0) jaRendeu = true;
 				}
 			}
@@ -766,7 +823,7 @@ public sealed class NiveisDeSkill
 	/// `KiSkillGains(3*(2-(savant.Ki/savant.MaxKi)))`. O extrator so guarda o primeiro numero da
 	/// expressao (`1` e `3`); o resto e a assinatura do estado, e mora aqui.
 	/// </summary>
-	private static double? Escala(RegraDeNivel.Estado quando, EstadoDoCorpo corpo, bool gastouKi)
+	private static double? Escala(RegraDeNivel.Estado quando, EstadoDoCorpo corpo, bool gastouKi, bool virou)
 	{
 		switch (quando)
 		{
@@ -783,6 +840,12 @@ public sealed class NiveisDeSkill
 			case RegraDeNivel.Estado.ComBuffDeKi: return corpo.ComBuffDeKi ? 1 : null;
 			case RegraDeNivel.Estado.MeditacaoProfunda: return corpo.MeditacaoProfunda ? 1 : null;
 			case RegraDeNivel.Estado.GastandoKi: return gastouKi ? 1 : null;
+
+			// (2026-10-16) as quatro do adendo 18 -- ver `RegraDeNivel.Estado.Virando`; o defeito injetado as desliga juntas
+			case RegraDeNivel.Estado.Virando: return virou && !FontesDoAdendo18DesligadasDeTeste ? 1 : null;
+			case RegraDeNivel.Estado.ComLaminaDeKi: return corpo.LaminaDeKi && !FontesDoAdendo18DesligadasDeTeste ? 1 : null;
+			case RegraDeNivel.Estado.ComEspadaDeKi: return corpo.EspadaDeKi && !FontesDoAdendo18DesligadasDeTeste ? 1 : null;
+			case RegraDeNivel.Estado.ComEscudoDeKi: return corpo.EscudoDeKi && !FontesDoAdendo18DesligadasDeTeste ? 1 : null;
 
 			case RegraDeNivel.Estado.KiAcimaDoNormal:
 				return corpo.Ficha is { kiratio: > 1 } f ? f.kiratio : null;
@@ -809,7 +872,7 @@ public sealed class NiveisDeSkill
 	public bool Creditar(string path, double quanto)
 	{
 		if (quanto <= 0 || !_p.TryGetValue(path, out Progresso pr)) return false;
-		pr.Exp += quanto;
+		pr.Exp += quanto * FatorDeGanho;
 		_p[path] = pr;
 		return true;
 	}

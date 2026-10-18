@@ -61,7 +61,17 @@ public sealed partial class GameServer
 	/// <summary>A carencia que faz o corpo INTOCAVEL na area de espera (o `attackable = 0`).</summary>
 	private const double CarenciaDeEspera = 1e6;
 
-	private const double MsPorDia = 86_400_000;
+	/// <summary>
+	/// O DIA DA AGENDA E O DIA DO JOGO (2026-10-17): o dia do ceu, 24 min de relogio (`Espaco.SegundosPorDiaInGame`). O dono:
+	/// *"o tempo de torneio n ta em dias do jogo ta em dias da vida real, a gente estranhou jogar por horas e o dia n mudar
+	/// nada, ele mudou de 28.5d pra 28.4"*. E tambem o mais perto do DM, que abria os dois torneios na virada de MES do
+	/// relogio do jogo (`Tourney_Month_Check`, `Tournament.dm:751-758`). Antes era o dia de parede, e 30 dias eram um mes de
+	/// calendario. A agenda gravada no formato antigo e convertida no boot: <see cref="MigrarAgendaPraDiasDoJogo"/>.
+	/// </summary>
+	private static double MsPorDia => AgendaEmDiasReaisDeTeste ? 86_400_000 : Espaco.SegundosPorDiaInGame * 1000;
+
+	/// <summary>DEFEITO INJETADO (bancada `--torneioteste`, secao 5): a agenda volta a contar dias de PAREDE.</summary>
+	internal static bool AgendaEmDiasReaisDeTeste;
 
 	private string CaminhoDaAgenda => System.IO.Path.Combine(_store?.Pasta ?? ".", "torneio.json");
 
@@ -71,6 +81,12 @@ public sealed partial class GameServer
 		public long ProximoDaTerraMs;
 		public long ProximoDoAlemMs;
 		public long UltimoDaTerraMs;
+
+		/// <summary>
+		/// As datas acima foram marcadas em DIAS DO JOGO (2026-10-17). Falso = arquivo de antes, marcado em dias de parede: o boot
+		/// o converte uma vez (<see cref="MigrarAgendaPraDiasDoJogo"/>) e grava com a marca.
+		/// </summary>
+		public bool DiasDoJogo;
 	}
 
 	private enum FaseDoTorneio : byte { Inscricao, Preparando, Contagem, Luta, Intervalo }
@@ -146,11 +162,41 @@ public sealed partial class GameServer
 		}
 		catch (Exception e) { GD.PushWarning($"[server] torneio.json (agenda) ilegivel: {e.Message}"); }
 
+		bool mudou = false;
+		if (!_agenda.DiasDoJogo)
+		{
+			MigrarAgendaPraDiasDoJogo();
+			mudou = true;
+		}
 		if (_agenda.ProximoDaTerraMs == 0)
 		{
 			MarcarOPrimeiroDaTerra();
-			SalvarAgenda();
+			mudou = true;
 		}
+		if (mudou) SalvarAgenda();
+	}
+
+	/// <summary>
+	/// A AGENDA GRAVADA EM DIAS DE PAREDE PASSA PRA DIAS DO JOGO, uma vez, no boot (2026-10-17). A data nova e a da regra do
+	/// <see cref="Reagendar"/>, ancorada no ultimo torneio da Terra que COMECOU -- o mundo do dono, com o proximo a 28,4 dias
+	/// de parede, passa a te-lo 30 dias do jogo depois do ultimo. Sem torneio nenhum ainda (so o primeiro marcado), a ancora
+	/// e agora com o `primeiroEmDias`. So ADIANTA: uma data marcada na mao (`trn_agenda`, em minutos) que ja fica antes do
+	/// teto continua onde esta. Data que ja passou e "atrasado": comeca no proximo tique, como qualquer atraso.
+	/// </summary>
+	private void MigrarAgendaPraDiasDoJogo()
+	{
+		long agora = NowMs();
+		long ancora = _agenda.UltimoDaTerraMs > 0 ? _agenda.UltimoDaTerraMs : agora;
+		long tetoDaTerra = ancora + (long)((_agenda.UltimoDaTerraMs > 0 ? _torneioCfg.IntervaloDaTerraDias : _torneioCfg.PrimeiroDaTerraDias) * MsPorDia);
+		long tetoDoAlem = ancora + (long)(_torneioCfg.AlemDepoisDaTerraDias * MsPorDia);
+		long terraAntes = _agenda.ProximoDaTerraMs, alemAntes = _agenda.ProximoDoAlemMs;
+		if (_agenda.ProximoDaTerraMs > 0) _agenda.ProximoDaTerraMs = Math.Min(_agenda.ProximoDaTerraMs, tetoDaTerra);
+		if (_agenda.ProximoDoAlemMs > 0) _agenda.ProximoDoAlemMs = Math.Min(_agenda.ProximoDoAlemMs, tetoDoAlem);
+		_agenda.DiasDoJogo = true;
+		if (terraAntes > 0 || alemAntes > 0)
+			GD.Print($"[server] torneios: a agenda gravada em dias de PAREDE passou pra dias do JOGO -- Terra a "
+				   + $"{(terraAntes - agora) / 86_400_000.0:0.0} dia(s) de parede -> {QuandoEm(_agenda.ProximoDaTerraMs)}"
+				   + (alemAntes > 0 ? $"; Outro Mundo a {(alemAntes - agora) / 86_400_000.0:0.0} dia(s) de parede -> {QuandoEm(_agenda.ProximoDoAlemMs)}" : ""));
 	}
 
 	/// <summary>
@@ -162,10 +208,15 @@ public sealed partial class GameServer
 	private void MarcarOPrimeiroDaTerra() =>
 		_agenda.ProximoDaTerraMs = NowMs() + (long)(_torneioCfg.PrimeiroDaTerraDias * MsPorDia);
 
+	/// <summary>Quanto falta em DIAS DO JOGO (a unidade da agenda) e, entre parenteses, no relogio de parede -- a espera de verdade.</summary>
 	private string QuandoEm(long ms)
 	{
-		double dias = (ms - NowMs()) / MsPorDia;
-		return dias >= 1 ? $"{dias:0.0} dia(s)" : dias >= 0 ? $"{dias * 24:0.0} h" : "atrasado (comeca no proximo tique)";
+		long falta = ms - NowMs();
+		if (falta < 0) return "atrasado (comeca no proximo tique)";
+		double dias = falta / MsPorDia;
+		string noJogo = dias >= 1 ? $"{dias:0.0} dia(s) do jogo" : $"{dias * 24:0.0} h do jogo";
+		double horas = falta / 3_600_000.0;
+		return noJogo + (horas >= 1 ? $" (~{horas:0.#} h reais)" : $" (~{falta / 60_000.0:0} min reais)");
 	}
 
 	private void SalvarAgenda()
@@ -218,7 +269,7 @@ public sealed partial class GameServer
 	private void ZerarTorneio()
 	{
 		if (_torneio != null) EncerrarTorneio(_torneio);
-		_agenda = new AgendaDeTorneios();
+		_agenda = new AgendaDeTorneios { DiasDoJogo = true };
 		MarcarOPrimeiroDaTerra();
 		_lugarDoTorneio = PrimeiroLugarDoTorneio;
 	}
@@ -652,7 +703,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private ServerPlayer? NascerLutador(TorneioVivo t, double mediaDeBp)
 	{
-		Vec2 onde = PontoDeEspera(t);
+		Vec2 onde = PontoDaRoda(t);   // o `spawn_filler` nasce no `rest_turf`; quem o senta e o `Segurar`
 		ServerPlayer? npc = NascerNpc(_torneioCfg.MoldeDoNpc, t.Zona, onde, ++_lugarDoTorneio);
 		if (npc == null) return null;
 
@@ -689,8 +740,38 @@ public sealed partial class GameServer
 	// A AREA DE ESPERA (`apply_hold` / `release_hold` / `rest_turf`)
 	// =====================================================================
 
-	/// <summary>`rest_turf`: uma celula livre na BEIRADA (2 a 5 celulas fora do retangulo), 40 tentativas.</summary>
+	/// <summary>DEFEITO INJETADO (bancada `--torneioteste`, Outro Mundo): a espera ignora as cadeiras -- a roda sorteada de antes de 2026-10-17. Falso em jogo.</summary>
+	internal static bool EsperaSemCadeiraDeTeste;
+
+	/// <summary>
+	/// `rest_place`: onde quem nao luta espera. No palco com CADEIRAS (o do ceu, `seats`) senta na PRIMEIRA livre da lista, na
+	/// ordem do DM; sem cadeira livre -- ou no palco sem elas, o da Terra -- vai pra roda (<see cref="PontoDaRoda"/>).
+	///
+	/// LIVRE E A CADEIRA QUE NENHUM CORPO DO TORNEIO RECEBEU. O DM olhava quem estava EM CIMA dela na hora (`for(var/mob/O in T)`)
+	/// e sentava de novo a cada volta de luta; aqui cada corpo guarda o lugar dele o torneio inteiro (`LugarDeEspera`), entao o
+	/// lutador volta pra MESMA cadeira, e uma alma que passe por cima nao a toma. Quem saiu do jogo a devolve: o jogador que reloga
+	/// volta noutro corpo, e o lugar do corpo velho ficaria preso.
+	/// </summary>
 	private Vec2 PontoDeEspera(TorneioVivo t)
+	{
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(t.Zona);
+		if (!EsperaSemCadeiraDeTeste)
+			foreach (Cadeira c in t.Palco.Cadeiras)
+			{
+				if (mapa != null && !mapa.ServeDeChao(c.X, c.Y)) continue;
+				bool tomada = false;
+				foreach ((int id, Vec2 lugar) in t.LugarDeEspera)
+					if (_players.ContainsKey(id) && CelulaDe(lugar) == (c.X, c.Y)) { tomada = true; break; }
+				if (!tomada) return c.Lugar;
+			}
+		return PontoDaRoda(t);
+	}
+
+	private static (int X, int Y) CelulaDe(Vec2 p) =>
+		((int)MathF.Floor(p.X / ZoneCollision.TileSize), (int)MathF.Floor(p.Y / ZoneCollision.TileSize));
+
+	/// <summary>`rest_turf`: uma celula livre na BEIRADA (2 a 5 celulas fora do retangulo), 40 tentativas. E onde o NPC nasce, e onde espera quem nao tem cadeira.</summary>
+	private Vec2 PontoDaRoda(TorneioVivo t)
 	{
 		ZoneCollision? mapa = MapaDaZonaOuCatalogo(t.Zona);
 		Arena a = t.Arena;
@@ -734,6 +815,10 @@ public sealed partial class GameServer
 		}
 		bool novo = t.Presos.Add(corpo.Id);
 		Transportar(corpo, t.Zona, lugar);
+		// SENTADO, OLHANDO PRO PALCO (o `M.dir = S[3]` do `rest_place`): toda volta pra cadeira vira o corpo pra arena -- o do jogador
+		// tambem, pelo olhar cravado (`S2C.Olhar`); parado, ele vira pra onde quiser depois.
+		(int cx, int cy) = CelulaDe(lugar);
+		if (t.Palco.CadeiraEm(cx, cy) is { } cadeira) CravarOlhar(corpo, cadeira.OlharPara(t.Arena));
 		corpo.Combate.Carencia = CarenciaDeEspera;
 		// NO CHAO E QUIETO (o `move = 0` do `apply_hold`, `Tournament.dm:331`): quem espera nao sobe --
 		// um `QuerSubir` velho, de um cerebro que parou de pensar, era o `TickDoVoo` subindo sozinho
@@ -777,6 +862,7 @@ public sealed partial class GameServer
 
 	private void Transportar(ServerPlayer c, ZoneKey zona, Vec2 pos)
 	{
+		ParadoPraViagem(c);
 		if (c.Zone.Hash != zona.Hash) { MoveToZone(c.Id, zona, pos); return; }
 
 		// NINGUEM LEVA UM RAIO NA MAO PRO OUTRO LADO DA ARENA (2026-10-07). O `MoveToZone` ali em cima ja solta
@@ -793,7 +879,89 @@ public sealed partial class GameServer
 		c.Moving = false;
 	}
 
+	/// <summary>DEFEITO INJETADO (bancada `--torneioteste`, secao 4): o transporte volta a deixar no corpo o embalo da luta.</summary>
+	internal static bool TransporteLevaOEmbaloDeTeste;
+
+	/// <summary>
+	/// (2026-10-17) QUEM E POSTO NA ESPERA (OU NA ARENA) CHEGA PARADO E SOLTO. O censo da `--torneioteste` achou o que a foto do
+	/// dono mostrava -- gente da roda DENTRO da arena, e gente longe dela: o golpe que decidiu a luta ainda carregava o perdedor (o
+	/// arremesso anda 2 tiles por tique ate o prazo, `TickDoEmpurrao`), e o transporte so trocava a posicao. O corpo saia voando do
+	/// lugar de espera -- de volta pra arena, se o golpe empurrava pro meio. Saem junto as outras tres coisas que escrevem a
+	/// posicao de um corpo: o agarrao (quem segura carrega quem e segurado), o feixe que o arrastava e o Zanzo Clash (que
+	/// reposiciona os dois a cada cruzamento). Vale pras duas pontas do transporte: a mesma zona e a troca de zona.
+	/// </summary>
+	private void ParadoPraViagem(ServerPlayer c)
+	{
+		if (TransporteLevaOEmbaloDeTeste) return;
+		c.TiquesDeVoo = 0;
+		c.VooNoTique = 0;
+		c.ForcaDoVoo = 0;
+		c.ArremessadoNoAr = false;
+		c.ArrastoRestante = 0;
+		if (_projeteis.TryGetValue(c.Zone.Hash, out List<Projetil>? tiros))
+			foreach (Projetil p in tiros)
+				if (p.Arrastando == c.Id) p.Arrastando = 0;
+		if (c.AgarradoPorId != 0 && CorpoNaMinhaZona(c, c.AgarradoPorId) is { } quemSegura) Soltar(quemSegura, MotivoDaSoltura.Tecla);
+		if (c.AgarrandoId != 0) Soltar(c, MotivoDaSoltura.Tecla);
+		SoltarDoEmbate(c.Id);
+		// E O TIRO DA LUTA QUE ACABOU SAI JUNTO -- a limpeza da troca de zona (`LimparProjeteisDeUmDono`). O feixe do fim da luta
+		// seguia voando pela arena, e cortado por um corpo (o "FEIXE CORTADO" do log) a parte de la virava um tiro NOVO do dono ja
+		// preso, no meio da contagem da luta seguinte -- um tiro de fora da vez, contado pelo censo da `--torneioteste`.
+		LimparProjeteisDeUmDono(c.Id, c.Zone.Hash);
+	}
+
 	internal bool PresoNoTorneio(int id) => _torneio?.Presos.Contains(id) == true;
+
+	/// <summary>DEFEITO INJETADO (bancada `--torneioteste`, secao 4): o lutador da vez volta a agir na contagem -- so o preso fica parado.</summary>
+	internal static bool ContagemSoltaDeTeste;
+
+	/// <summary>DEFEITO INJETADO (bancada `--torneioteste`, secao 4): o povo volta a passear pelo palco no meio do torneio.</summary>
+	internal static bool PovoNoPalcoDeTeste;
+
+	/// <summary>
+	/// O PISO DO PALCO, que e o que o povo nao pisa: a arena e mais a BORDA em volta dela. No Outro Mundo o piso claro vai de
+	/// (109, 345) a (126, 361) no `.cel` -- a arena e a parte quadriculada de dentro, e a borda de 1 celula fica entre ela e as
+	/// cadeiras. A foto da `--diagtorneio` (2026-10-17) mostrou uma alma parada na borda: fora da arena pela conta, EM CIMA do palco
+	/// pra quem olha. Na Terra o chao em volta da arena e o mesmo piso, e a celula a mais nao muda nada que se veja.
+	/// </summary>
+	internal const int BordaDoPalco = 1;
+
+	internal static Arena PisoDoPalco(Arena a) => new(a.X1 - BordaDoPalco, a.Y1 - BordaDoPalco, a.X2 + BordaDoPalco, a.Y2 + BordaDoPalco);
+
+	/// <summary>
+	/// (2026-10-17) COM TORNEIO NO AR, O PALCO E SO DOS DOIS DA VEZ -- o passeio de um habitante da zona dele, corrigido. As almas
+	/// do Outro Mundo (o povoamento de 2026-10-16) andavam pela arena celeste no meio das lutas; no DM o alem nao tinha povo, e o
+	/// caso nao existia. Dentro do piso do palco (a arena e a borda, <see cref="PisoDoPalco"/>), o rumo e o do lado mais perto (ele
+	/// sai); fora dele, o passo que entraria fica parado -- a rotina ve o corpo barrado e escolhe outro rumo. Quem e do torneio nao
+	/// passa por aqui (o lutador tem a propria trava).
+	/// </summary>
+	private Ordem ForaDoPalcoDoTorneio(ServerPlayer npc, Ordem o)
+	{
+		if (PovoNoPalcoDeTeste || _torneio is not { } t || npc.Zone.Hash != t.Zona.Hash || t.Npcs.Contains(npc.Id)) return o;
+		Arena a = PisoDoPalco(t.Arena);
+		const int T = ZoneCollision.TileSize;
+		int cx = (int)MathF.Floor(npc.Pos.X / T), cy = (int)MathF.Floor(npc.Pos.Y / T);
+		if (a.Contem(cx, cy))
+		{
+			// O LADO MAIS PERTO: a borda de menor distancia, e o rumo reto pra ela.
+			(int folga, Vec2 rumo)[] lados = [(cx - a.X1, new Vec2(-1, 0)), (a.X2 - cx, new Vec2(1, 0)), (cy - a.Y1, new Vec2(0, -1)), (a.Y2 - cy, new Vec2(0, 1))];
+			Vec2 saida = lados.MinBy(l => l.folga).rumo;
+			return o with { Rumo = saida, Olhar = saida };
+		}
+		return a.ContemEm(npc.Pos + o.Rumo * (T * 0.5f)) ? o with { Rumo = Vec2.Zero } : o;
+	}
+
+	/// <summary>
+	/// (2026-10-17) ESTE CORPO E DO TORNEIO E NAO TEM COM QUEM LUTAR AGORA: preso na espera, ou um NPC dos dois da vez antes do
+	/// "COMECEM!" (o oponente so e dado no `Engajar`). E o `tourney_lock` do DM: o lutador de torneio so encara o oponente designado
+	/// (`foundTarget`, `NPCAI.dm:120`) e, sem ele, fica parado no lugar (`lostTarget`, `:144-152`) -- e o reflexo do feixe mora DENTRO
+	/// do `npc_combat_action`, que comeca com `if(!target) return` (`:369-378`). O dono viu as duas metades: a roda de espera
+	/// gritando "Onda de Ki!!" e, na foto da bancada, o lutador da vez atirando na contagem e saindo da arena antes de a luta comecar.
+	/// Quem pergunta: o reflexo (`TickDoContraFeixe`) e o ramo do habitante (`TicarUmCorpo`).
+	/// </summary>
+	internal bool ForaDaVezNoTorneio(ServerPlayer npc) =>
+		_torneio is { } t && (t.Presos.Contains(npc.Id)
+			|| (!ContagemSoltaDeTeste && t.Npcs.Contains(npc.Id) && npc.Papel is { PresaDoRoteiro: 0 }));
 
 	// =====================================================================
 	// AS LUTAS (`run_match`)

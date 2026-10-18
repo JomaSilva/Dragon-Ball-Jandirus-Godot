@@ -225,6 +225,10 @@ public partial class GameServer
 			"precisa de um MORTO ao lado -- e matar o boneco tem o mesmo problema do de cima",
 		["Bite"] =
 			"NAO TEM PORTA neste port -- ver `SemPortaNestePort`. A recusa e do gate, e nao do efeito",
+		// (2026-10-16) a porta dela e o ESTADO, e nao skill -- ver `PortaPeloEstado`.
+		["Sycophantic_Rage"] =
+			"so o Corrupted Majin que destravou a Forma Pura a sabe (`PortaPeloEstado`), e o corpo da varredura nao fez a saga -- "
+			+ "faze-la trocaria o corpo, o BP e a forma da cena dos outros verbos. Quem prova o efeito e a `--sagamajinteste` [11]",
 
 		// O ATALHO DE FORMA E ATALHO: ele so abre depois de a escada ter sido subida uma vez, e um
 		// corpo recem-forjado nunca despertou nada. Arma-lo aqui seria transformar (e a forma muda a
@@ -380,6 +384,18 @@ public partial class GameServer
 		// deles daqui -- exatamente o que ela existe pra fazer. Ver `RecusamPorCondicao` (a casa).
 	};
 
+	/// <summary>
+	/// (2026-10-16) OS VERBOS COM CORPO QUE O **ESTADO** CONCEDE -- nem skill nem degrau --, e cada um diz qual estado. Nao sao "sem
+	/// porta" (ha porta, e ela funciona): a porta so nao mora no catalogo de skills, e sim no servidor (o `SabeTecnica`).
+	///
+	/// SO A SYCOPHANTIC RAGE HOJE: ela vem do sistema do amigo do dono, sem nada no DM, e chega com a Forma Pura destravada do
+	/// Corrupted Majin. A lista e conferida nas duas direcoes, como a de cima -- o dia em que uma skill a conceder, ela sai daqui.
+	/// </summary>
+	private static readonly Dictionary<string, string> PortaPeloEstado = new(StringComparer.OrdinalIgnoreCase)
+	{
+		["Sycophantic_Rage"] = "a Forma Pura destravada do Corrupted Majin (`GameServer.SagaDoMajin.ComAFormaPura`, no `SabeTecnica`)",
+	};
+
 	/// <summary>As tres frases com que o despacho responde "isto nao existe". Nenhuma conta como resposta.</summary>
 	private static readonly string[] FrasesDeAusencia =
 	[
@@ -495,6 +511,7 @@ public partial class GameServer
 		{
 			if (comPorta.Contains(id)) continue;
 			if (SemPortaNestePort.ContainsKey(id)) continue;
+			if (PortaPeloEstado.ContainsKey(id)) continue;   // (2026-10-16) ver `PortaPeloEstado`
 			// OS SETE MULTIPLOS DE KAIO-KEN entram pelo verb-MAE: o cliente manda `Kaioken_20` e o
 			// lote G2 confere o `Kaioken`, que a skill concede. Porta ha; ela so tem outro nome.
 			if (id.StartsWith("Kaioken_", StringComparison.OrdinalIgnoreCase) && comPorta.Contains("Kaioken")) continue;
@@ -508,6 +525,13 @@ public partial class GameServer
 		var jaTemPorta = SemPortaNestePort.Keys.Where(comPorta.Contains).ToList();
 		AfirmarCat("...e nenhum dos declarados SEM PORTA ganhou uma sem que a lista soubesse",
 				   jaTemPorta.Count == 0, string.Join(" | ", jaTemPorta));
+
+		// (2026-10-16) E A LISTA DOS QUE TEM PORTA PELO ESTADO, PELA MESMA REGUA NAS DUAS DIRECOES: cada um ainda e verb com corpo, e
+		// nenhum ganhou uma skill que o conceda sem que a lista soubesse (ai a porta passou pro catalogo, e a linha daqui sobra).
+		var estadoVelho = PortaPeloEstado.Keys
+			.Where(v => comPorta.Contains(v) || !vivos.Contains(v, StringComparer.OrdinalIgnoreCase)).ToList();
+		AfirmarCat("...e os de porta PELO ESTADO continuam vivos e sem skill que os conceda",
+				   estadoVelho.Count == 0, string.Join(" | ", estadoVelho));
 
 		GD.Print($"[catalogo]    sem porta neste port, e DECLARADOS: "
 			   + $"{string.Join(" | ", SemPortaNestePort.Select(p => $"{p.Key} <- {p.Value}"))}");
@@ -601,8 +625,8 @@ public partial class GameServer
 		d.AlvoId = a.Id;
 		d.Combate.Bloqueando = false;
 
-		// UM MEMBRO FERIDO EM CADA UM. Sem isto o Regenerar e a Respiracao Hamon respondem "seu corpo
-		// ja esta inteiro", que e recusa correta -- e a varredura estaria medindo a cena, nao o verb.
+		// UM MEMBRO FERIDO EM CADA UM. Sem isto o Regenerar responde "seu corpo ja esta inteiro", que e
+		// recusa correta -- e a varredura estaria medindo a cena, nao o verb.
 		foreach (ServerPlayer p in new[] { a, d })
 			if (p.Combate.Corpo.Partes.Find(x => x.Papel == Jandirus.Core.Combat.Vitalidade.Membro) is { } m)
 			{
@@ -1237,13 +1261,16 @@ public partial class GameServer
 		// (A QUARTA e de 2026-10-13: as cinco maestrias de forma por skill, legado que o proprio DM trocou pela
 		// maestria em % -- pendiam de arvore sem acender por caminho nenhum. Ver `SkillsAposentadas`.)
 		//
-		// SAO QUINZE LINHAS DE QUATRO DONOS: a arvore comentada so tinha regra de nivel (uma linha), a skill
+		// (A QUINTA e de 2026-10-16: a Respiracao Hamon, que nao e de Dragon Ball -- o dono mandou tirar qualquer traco dela.)
+		//
+		// SAO DEZESSETE LINHAS DE CINCO DONOS: a arvore comentada so tinha regra de nivel (uma linha), a skill
 		// aposentada sumiu do catalogo E perdeu as regras de nivel (duas), as tres do arquivo fora do `.dme` so sumiram
-		// do catalogo (tres: nenhuma tinha regra de nivel), e as cinco maestrias sumiram do catalogo (cinco) e quatro
-		// delas perderam as regras de nivel (quatro: a `forms/mssj` nunca teve).
+		// do catalogo (tres: nenhuma tinha regra de nivel), as cinco maestrias sumiram do catalogo (cinco) e quatro
+		// delas perderam as regras de nivel (quatro: a `forms/mssj` nunca teve), e a Hamon sumiu do catalogo e das regras (duas).
 		string[] maestrias = ["/forms/ssj ", "/forms/mssj ", "/forms/lssjm ", "/heran/MstedMXPWR ", "/heran/MstedTMXPWR "];
-		AfirmarCat("as perdas contra o marco tem QUATRO donos e nenhum outro: a arvore comentada, a skill que o dono aposentou, as tres do arquivo fora do .dme e as cinco maestrias legadas",
-				   d.Explicadas.Count == 15
+		AfirmarCat("as perdas contra o marco tem CINCO donos e nenhum outro: a arvore comentada, a skill que o dono aposentou, as tres do arquivo fora do .dme, as cinco maestrias legadas e a Respiracao Hamon",
+				   d.Explicadas.Count == 17
+				   && d.Explicadas.Count(e => e.Contains("/HamonBreathing", StringComparison.Ordinal)) == 2
 				   && d.Explicadas.Count(e => e.Contains("Focused", StringComparison.Ordinal)) == 1
 				   && d.Explicadas.Count(e => e.Contains("Saiyan_Power", StringComparison.Ordinal)) == 2
 				   && d.Explicadas.Count(e => e.Contains("/CustomAttacks/ki/", StringComparison.Ordinal)) == 2
@@ -1505,6 +1532,26 @@ public partial class GameServer
 				   !pl.Livro.Sabe(raio) && !pl.Livro.Sabe(bola) && pl.Livro.Sabe(dura) && pl.Livro.MarcosLivres == 2
 				   && Disse(falasDasDuas, "Beam") && Disse(falasDasDuas, "Blast"),
 				   $"livres {pl.Livro.MarcosLivres}; {string.Join(" | ", falasDasDuas)}");
+
+		// A RESPIRACAO HAMON (dono, 2026-10-16: *"coisas nao oficiais de dragon ball nem eram pra entrar nesse port, se colocou favor
+		// remover qualquer traço disso"*): era COMUM, de 2 marcos. Saiu do catalogo, das regras de nivel e do servidor -- o verb dela nao e
+		// mais tecnica de ninguem --, e quem a comprou recebe os 2 de volta. (A pergunta da tecnica e a lista das VIVAS: o `Tecnicas.Get`
+		// nunca devolve nulo -- ele cria a entrada nao portada de quem pergunta.)
+		const string hamon = "/datum/skill/HamonBreathing";
+		AfirmarCat("a Respiracao Hamon (nao e de Dragon Ball) esta entre as aposentadas com o custo que tinha (2 marcos), NAO esta no catalogo, nada a cita, nao tem regra de nivel, e o verb dela nao e mais tecnica",
+				   SkillsAposentadas.Todas.Any(a => a.Path == hamon && a.Custo == 2) && _skills.Get(hamon) == null
+				   && !_skills.Todas.Any(s => s.Galhos.Concat(s.PreReqs).Any(p => string.Equals(p, hamon, StringComparison.OrdinalIgnoreCase)))
+				   && RegrasDeNivel.Get(hamon) == null && !Tecnicas.Vivas.Contains("HamonBreathing", StringComparer.OrdinalIgnoreCase),
+				   $"aposentada {SkillsAposentadas.Saiu(hamon)}; no catalogo {_skills.Get(hamon) != null}; regra de nivel {RegrasDeNivel.Get(hamon) != null}; tecnica viva {Tecnicas.Vivas.Contains("HamonBreathing", StringComparer.OrdinalIgnoreCase)}");
+		CharacterSave comHamon = Antigo();
+		comHamon.Skills = [dura, hamon];
+		comHamon.MarcosLivres = 0;
+		PrepararSkills(pl, comHamon);
+		List<string> falasDoHamon = Ouvir(() => AvisarDasAposentadas(pl));
+		AfirmarCat("quem a comprou a perde no login e recebe os 2 marcos de volta (0 livres -> 2), com o recado",
+				   !pl.Livro.Sabe(hamon) && pl.Livro.Sabe(dura) && pl.Livro.MarcosLivres == 2
+				   && Disse(falasDoHamon, "Hamon Breathing") && Disse(falasDoHamon, "2 marco"),
+				   $"livres {pl.Livro.MarcosLivres}; {string.Join(" | ", falasDoHamon)}");
 
 		try
 		{

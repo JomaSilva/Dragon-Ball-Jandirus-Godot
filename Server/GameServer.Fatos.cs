@@ -68,6 +68,11 @@ public sealed partial class GameServer
 		if (ficha.splitformCount > 0) f |= Fatos.TemCopias;                 // `OrdenarSplitformsG12`, Tecnicas.G12.cs:1603
 		if (ficha.canSSJ) f |= Fatos.EscadaSuperSaiyajin;                   // `PerfilDeFormas.CanSsj`, Formas.cs:88
 		if (TemArmaDeFogo(pl)) f |= Fatos.TemArmaDeFogo;                    // `ComandoDeArma`, Armas.cs
+		if (PoeOvoAgora(pl)) f |= Fatos.PoeOvo;                             // `PorOvo`, Filhos.cs (2026-10-17)
+		if (ficha.bio_lab_born) f |= Fatos.BioDeLaboratorio;               // `VirarLarva`, Larva.cs (2026-10-17)
+		if (Jandirus.Core.Races.BioAndroids.EmLarva(ficha)) f |= Fatos.EmLarva;   // `AlternarEnterrar`, Larva.cs
+		if (ficha.bio_lab_born && ficha.bio_nucleo.Length == 0) f |= Fatos.NucleoPorEscolher;   // `EscolherNucleo`, Nucleo.cs (2026-10-17)
+		if (Jandirus.Core.Races.SkillsRaciais.AindaEscolhe(ficha) > 0) f |= Fatos.SkillDoDnaPorEscolher;   // `EscolherSkillDoDna`, SkillsDoDna.cs
 		if (pl.UltraInstinct.Aprendida && !pl.PoderDaDestruicao.Aprendida && EhDeusDaDestruicao(pl))
 			f |= Fatos.KitDaDestruicaoEmprestado;                           // `UsarOKitEmprestado`, KitDoDeus.cs
 
@@ -86,6 +91,8 @@ public sealed partial class GameServer
 			foreach (SetDeEsferas s in _sets)                               // `ReviverOSet`, Esferas.cs:1440-1442
 				if (s.Zona.Hash == pl.Zone.Hash && string.Equals(s.CriadorSig, sig, StringComparison.Ordinal))
 				{ f |= Fatos.CriouAEstatuaDaqui; break; }
+
+			if (TemAmorCorrespondido(pl)) f |= Fatos.TemUmAmor;            // `PedirFilho`, Filhos.cs (2026-10-17)
 		}
 
 		if (FusaoDe(pl.Id) is { } fusao && fusao.Dono == pl) f |= Fatos.DirigeUmaFusao;   // `PassarOControle`, Fusao.cs:2057-2058

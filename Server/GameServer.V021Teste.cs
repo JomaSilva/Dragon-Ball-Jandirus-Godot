@@ -1327,16 +1327,27 @@ public sealed partial class GameServer
 			double seguro = f.Ki / f.MaxKi, vigorGasto = 1 - f.stamina / f.maxstamina;
 			AfirmarV21("**SEGURAR O C SUSTENTA O EXCESSO, E QUEM PAGA E O VIGOR**: dez segundos no teto, o Ki nao desce e o vigor cai uns 17%",
 					   cheio.Carregando && seguro > CargaDeKi.TetoEmRazao(f) - 0.01 && vigorGasto is > 0.12 and < 0.22, $"ki {seguro:P1}; vigor -{vigorGasto:P1}");
-			CargaDeKi.SegurarNoTetoDeGracaDeTeste = true;
-			try
+			// O RAMO "JA NO MAXIMO", ISOLADO: o Ki CRAVADO no teto antes de cada tique. Ate 2026-10-16 quem o devolvia ao teto a cada
+			// tique era o troco da carga (que saiu -- ver a V6c); sem ele o vazamento do excesso poe o Ki um fio abaixo e a carga normal
+			// cobra o mesmo vigor, entao o contra-exemplo precisa cravar o Ki pra cair so neste ramo.
+			double VigorCravadoNoTeto(bool deGraca)
 			{
-				f.stamina = f.maxstamina;
-				for (int i = 0; i < 30 * 10; i++) TickDaCarga(cheio, Protocol.TickSeconds);
-				double barato = 1 - f.stamina / f.maxstamina;
-				AfirmarV21("(defeito injetado: segurar no teto de graca) os mesmos dez segundos gastam menos da metade do vigor (so os tiques em que o Ki escorregou do teto cobravam)",
-						   barato < vigorGasto * 0.5, $"vigor -{barato:P2} contra -{vigorGasto:P2}");
+				CargaDeKi.SegurarNoTetoDeGracaDeTeste = deGraca;
+				try
+				{
+					f.stamina = f.maxstamina;
+					for (int i = 0; i < 30 * 10; i++)
+					{
+						f.Ki = f.MaxKi * CargaDeKi.TetoEmRazao(f);
+						TickDaCarga(cheio, Protocol.TickSeconds);
+					}
+					return 1 - f.stamina / f.maxstamina;
+				}
+				finally { CargaDeKi.SegurarNoTetoDeGracaDeTeste = false; }
 			}
-			finally { CargaDeKi.SegurarNoTetoDeGracaDeTeste = false; }
+			double cobradoNoTeto = VigorCravadoNoTeto(false), barato = VigorCravadoNoTeto(true);
+			AfirmarV21("(defeito injetado: segurar no teto de graca) com o Ki cravado no teto, os mesmos dez segundos gastam menos da metade do vigor -- o ramo \"ja no maximo\" e quem cobra",
+						   cobradoNoTeto is > 0.12 and < 0.22 && barato < cobradoNoTeto * 0.5, $"vigor -{barato:P2} contra -{cobradoNoTeto:P2}");
 			Carregar(cheio, false);
 		}
 
@@ -1384,6 +1395,8 @@ public sealed partial class GameServer
 		// CARGA (`extracharge`), no gesto de SOLTAR O C E VOLTAR A SEGURAR: solto, o troco comeca a voltar como Ki pelo
 		// `RegenDeKi.Passo`; segurando de novo com o Ki no teto, a carga cai no ramo "ja no maximo", que nao escorre nem
 		// reenche o troco -- e o resto dele entra acima do teto. (Segurando sem parar ele fica cheio e nao paga nada.)
+		// (2026-10-16) O TROCO SAIU INTEIRO (ver a V6c): o gesto continua aqui como regressao, e o contra-exemplo do teto passou a ser
+		// o Ki que chega POR FORA -- um presente, uma tecnica, um tiro engolido --, o caminho que o teto duro continua barrando.
 		LimparTudoDaBancada();
 		{
 			ServerPlayer firme = ForjarV2("Firme", chao, 10_000);
@@ -1399,7 +1412,6 @@ public sealed partial class GameServer
 			double PicoSoltandoEVoltando()
 			{
 				f.Ki = f.MaxKi * 0.2;
-				f.extracharge = 0;
 				f.powerMod = 1;
 				double pico = 0;
 				void Tiques(int segundos)
@@ -1426,15 +1438,16 @@ public sealed partial class GameServer
 			CargaDeKi.TetoDeCargaNaoEDuroDeTeste = true;
 			try
 			{
-				double furado = PicoSoltandoEVoltando();
-				AfirmarV21("(defeito injetado: o teto de carga so vale pra tecla C) o mesmo gesto leva o Ki a mais de 150% com o teto em 140% -- *\"so carrego meu ki com C e ele passa do teto do meu personagem\"*, e a tela dele mostrava 158,7%",
-						   furado > teto + 0.10 && furado < CargaDeKi.TetoDoJogo, $"pico {furado:P2}; teto {teto:P0}");
+				f.Ki = f.MaxKi * 1.9;                          // um presente: o Ki que chega por fora
+				TickDaCarga(firme, Protocol.TickSeconds);
+				double furado = f.Ki / f.MaxKi;
+				AfirmarV21("(defeito injetado: o teto de carga so vale pra tecla C) o Ki que chega por fora fica acima do teto do personagem (140%) -- *\"so carrego meu ki com C e ele passa do teto do meu personagem\"*, e a tela dele mostrava 158,7%",
+						   furado > teto + 0.10 && furado <= CargaDeKi.TetoDoJogo, $"{furado:P2}; teto {teto:P0}");
 			}
 			finally { CargaDeKi.TetoDeCargaNaoEDuroDeTeste = false; }
 			Carregar(firme, false);
 
 			// ...e venha o Ki de onde vier: um presente, uma tecnica, um tiro engolido
-			f.extracharge = 0;
 			f.Ki = f.MaxKi * 1.9;
 			TickDaCarga(firme, Protocol.TickSeconds);
 			double aparado = f.Ki / f.MaxKi;
@@ -1447,6 +1460,71 @@ public sealed partial class GameServer
 			double dentro = f.Ki / f.MaxKi;
 			AfirmarV21("...e VENHA O KI DE ONDE VIER: o que chega acima do teto do personagem e aparado no mesmo tique (190% vira 140%), o teto e o DELE (com o teto em 170%, os mesmos 190% viram 170%) e quem esta abaixo dele so perde o que escorre (160% continua em 160%)",
 					   Math.Abs(aparado - 1.4) < 1e-9 && Math.Abs(noTetoDele - 1.7) < 1e-9 && dentro is > 1.595 and < 1.6, $"{aparado:P1}; {noTetoDele:P1}; {dentro:P2}");
+		}
+
+		// ---------------------------------------------------------------- V6c) SOLTAR O C PARA A SUBIDA (dono, 2026-10-16)
+		// *"com o C mesmo se passar de 100% o ki continua subindo por uns segundos mesmo eu tendo largado o C, e ai ele vai caindo
+		// normalmente dps"* -- e, abaixo dos 100%, *"o ki continua subindo sozinho"*. Era o troco da carga (`extracharge`), que saiu. A
+		// regua: dois corpos IGUAIS, um que segurou o C e um que nunca segurou, soltos no mesmo Ki -- dali em diante os dois tanques
+		// andam juntos (a regeneracao normal, que para nos 100%). E acima dos 100%, quem soltou nunca passa do Ki de quando soltou.
+		LimparTudoDaBancada();
+		{
+			ServerPlayer carregou = ForjarV2("Carregou", chao, 10_000);
+			ServerPlayer nunca = ForjarV2("NuncaCarregou", chao + new Vec2(3 * ZoneCollision.TileSize, 0), 10_000);
+			foreach (ServerPlayer p in new[] { carregou, nunca })
+			{
+				p.Ficha.MeditateGivesKiRegen = 1;
+				p.Ficha.canPower = 1;
+				p.Ficha.KIregen = p.Ficha.MaxKi * 0.0009;   // a regeneracao de um personagem treinado (a da V6b)
+			}
+			Fighter fc = carregou.Ficha, fn = nunca.Ficha;
+			void TiquesDosDois(double segundos, Action? aCadaTique = null)
+			{
+				for (int i = 0; i < (int)Math.Round(30 * segundos); i++)
+				{
+					fc.stamina = fc.maxstamina;   // (o folego nao e o assunto)
+					fn.stamina = fn.maxstamina;
+					TickDaCarga(carregou, Protocol.TickSeconds);
+					TickDaCarga(nunca, Protocol.TickSeconds);
+					aCadaTique?.Invoke();
+				}
+			}
+			double Razao(Fighter f) => f.Ki / Math.Max(f.MaxKi, 1e-9);
+
+			// ABAIXO DOS 100%: segura o C de 20% ate 60% e solta; o gemeo, parado, comeca no mesmo Ki
+			fc.Ki = fc.MaxKi * 0.2;
+			fc.powerMod = 1;
+			Carregar(carregou, true);
+			for (int g = 0; Razao(fc) < 0.6 && g < 30 * 30; g++) TiquesDosDois(1.0 / 30);
+			Carregar(carregou, false);
+			fn.Ki = fc.Ki;
+			double soltouAbaixo = Razao(fc), maiorDiferenca = 0;
+			TiquesDosDois(8, () => maiorDiferenca = Math.Max(maiorDiferenca, Razao(fc) - Razao(fn)));
+			AfirmarV21("**SOLTAR O C PARA A SUBIDA**: abaixo dos 100%, quem segurou o C e soltou anda IGUAL a quem nunca segurou -- so a regeneracao normal, nos 8 s seguintes",
+						   soltouAbaixo is > 0.55 and < 0.65 && maiorDiferenca < 0.0005,
+						   $"soltou em {soltouAbaixo:P1}; maior diferenca {maiorDiferenca:P3}; agora {Razao(fc):P1} x {Razao(fn):P1}");
+
+			// ACIMA DOS 100%: carrega ate 130% e solta -- dali o Ki so desce (o vazamento do excesso)
+			fc.Ki = fc.MaxKi;
+			fc.powerMod = 1;
+			Carregar(carregou, true);
+			for (int g = 0; Razao(fc) < 1.3 && g < 90 * 30; g++) TiquesDosDois(1.0 / 30);
+			Carregar(carregou, false);
+			double soltouAcima = Razao(fc), pico = soltouAcima;
+			TiquesDosDois(8, () => pico = Math.Max(pico, Razao(fc)));
+			AfirmarV21("**...E ACIMA DOS 100% ELE SO DESCE**: carregou ate 130% e soltou -- nos 8 s seguintes o Ki nunca passa do que tinha ao soltar",
+						   soltouAcima >= 1.29 && pico <= soltouAcima + 1e-9 && Razao(fc) < soltouAcima,
+						   $"soltou em {soltouAcima:P2}, pico {pico:P2}, agora {Razao(fc):P2}");
+
+			// O CONTRA-EXEMPLO, montado aqui: a tecla "solta" e a carga continua (o servidor ignorando o soltar) -- o mesmo criterio ve a subida
+			fc.Ki = fc.MaxKi * 1.1;
+			fc.powerMod = 1;
+			Carregar(carregou, true);
+			double soltouDeMentira = Razao(fc), picoDeMentira = soltouDeMentira;
+			TiquesDosDois(3, () => picoDeMentira = Math.Max(picoDeMentira, Razao(fc)));
+			Carregar(carregou, false);
+			AfirmarV21("(contra-exemplo: a carga que nao para ao soltar) a mesma regua ve o Ki subindo depois do \"soltar\" -- ela sabe reprovar",
+						   picoDeMentira > soltouDeMentira + 0.01, $"{soltouDeMentira:P2} -> {picoDeMentira:P2}");
 		}
 
 		LimparEmbatesDaBancada();

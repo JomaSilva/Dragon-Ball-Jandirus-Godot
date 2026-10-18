@@ -75,8 +75,8 @@ public static class FuriaLendaria
 	///
 	/// Em vez de inventar uma constante, isto le o relogio que a PROPRIA LINHA ja tem: os
 	/// <see cref="Catalogo.RampaLssjSegundos"/> (180 s) e <see cref="Catalogo.RampaPrimalSegundos"/>
-	/// (216 s) em que o combate continuo leva o multiplicador do minimo ao maximo
-	/// (`LSSJ_RAMP_TICKS 600` e `combatTime / 720`). Tres razoes:
+	/// (216 s) em que o combate continuo enche o bonus de luta da linha (`LSSJ_RAMP_TICKS 600` e
+	/// `combatTime / 720`; ate a v0.3 o do Legendary levava o multiplicador do minimo ao maximo). Tres razoes:
 	///
 	///   1. E o unico relogio que o DM da a esta linha, e ele mede exatamente a coisa certa -- quanto
 	///      tempo a furia leva pra ferver por inteiro;

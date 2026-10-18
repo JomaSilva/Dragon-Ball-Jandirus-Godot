@@ -24,10 +24,22 @@ namespace Jandirus.Client;
 public partial class SupernovaDesenhada : Node2D
 {
 	/// <summary>A folha do sol: `MegaSupernova2018.dmi`, oito quadros de 348 x 370.</summary>
-	public const string Folha = "res://Assets/Sprites/Blasts/MegaSupernova2018.tres";
+	public const string FolhaDoSol = "res://Assets/Sprites/Blasts/MegaSupernova2018.tres";
+
+	/// <summary>
+	/// (2026-10-17) A folha da Death Ball do Freeza de Namek: a da tecnica (`deathball2017purple2`, quatro quadros de 98 x 89). Ela
+	/// cresce, cai e explode pelo MESMO relogio do sol -- *"seguindo a mesma logica da super nova"*, o dono.
+	/// </summary>
+	public const string FolhaDaDeathBall = "res://Assets/Sprites/Blasts/deathball2017purple2.tres";
+
+	/// <summary>Qual esfera esta e -- o servidor diz pela ocupacao do corpo (`Ocupacao.Supernova` / `DeathBallDoUltimato`).</summary>
+	public AtaqueDoUltimato Ataque = AtaqueDoUltimato.Supernova;
+
+	/// <summary>A folha DESTA esfera.</summary>
+	public string Folha => Ataque == AtaqueDoUltimato.DeathBall ? FolhaDaDeathBall : FolhaDoSol;
 
 	/// <summary>A largura de um quadro da folha -- e por ela que o diametro vira escala.</summary>
-	private const float LadoDaFolha = 348f;
+	private float LadoDaFolha => Ataque == AtaqueDoUltimato.DeathBall ? 98f : 348f;
 
 	/// <summary>O sol no fim da carga: seis tiles de diametro -- maior que qualquer corpo, e ainda sobre a cabeca.</summary>
 	public const float DiametroNoFimDaCarga = 6 * 32f;

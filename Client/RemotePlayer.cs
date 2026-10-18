@@ -213,6 +213,8 @@ public partial class RemotePlayer : Node2D
 	{
 		_ocupacao = ocupacao;
 		_visual.MostrarRabo(rabo);
+		// (2026-10-16) O BIT DE VOO, e nao a pose: socando no ar a pose e `Atacando` e o voo viaja separado. Ver `CharacterVisual.EmVoo`.
+		_visual.EmVoo = voando;
 		OuvirODecolar(voando);
 		var alvo = new Vector2(pos.X, pos.Y);
 		Vector2 ultima = _linha.Count > 0 ? _linha[^1].Pos : alvo;
@@ -400,6 +402,9 @@ public partial class RemotePlayer : Node2D
 	/// colisao pergunta.
 	/// </summary>
 	public Vector2 PosicaoDesenhada => GlobalPosition + new Vector2(0, -_altitude * Voo.EscalaNaTela);
+
+	/// <summary>Deitado no chao: nocauteado ou cadaver (a pose que o servidor manda pros dois). A trava de alvo pula quem esta assim.</summary>
+	public bool Deitado => _pose == Protocol.Pose.Nocauteado;
 
 	/// <summary>
 	/// PRA ONDE O CORPO ESTA OLHANDO NA TELA -- o olhar do instante desenhado, e nao o do ultimo pacote

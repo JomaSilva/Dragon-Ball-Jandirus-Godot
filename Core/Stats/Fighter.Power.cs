@@ -14,17 +14,15 @@ namespace Jandirus.Core.Stats;
 ///                        Entram como `BP*m - BP`, entao NAO se multiplicam entre si. Um
 ///                        valor abaixo de 1 aqui e PENALIDADE, mesmo parecendo buff.
 ///
-///  3) APLICAM NO FIM     debuff do revive por Zeni (25%), carapaca da larva bio, vazamento
-///                        do Frost mutante, e o corte de nocaute.
+///  3) APLICAM NO FIM     debuff do revive por Zeni (25%), vazamento do Frost mutante, e o corte
+///                        de nocaute. (A larva bio saiu daqui em 2026-10-17: ela e RELAXADA -- 5 --, e o
+///                        relaxado trava no topo, como o poder escondido.)
 ///
 /// Trocar um fator de familia nao quebra compilacao e nao aparece em teste raso -- aparece
 /// meses depois como numero esquisito em forma + Kaio-ken + God Ki ao mesmo tempo.
 /// </summary>
 public sealed partial class Fighter
 {
-	/// <summary>Larva de bio-androide expressa no maximo 1/100 do BP base.</summary>
-	private const double BioLarvaRestrict = 100;
-
 	/// <summary>
 	/// `additiveBoost` -- converte um multiplicador em SOMA sobre o BP base. E o que impede
 	/// os buffs da familia 2 de se multiplicarem uns pelos outros (que era impossivel de
@@ -155,7 +153,9 @@ public sealed partial class Fighter
 			gravDiv = baseSemGrav > 0 ? Math.Min(tempBP / baseSemGrav, 1) : 1;
 
 			// familia 1 -- multiplicam
-			tempBP *= BPBoost * formBuff;
+			// (v0.4.0) O FATOR RACIAL entra na familia 1, junto da forma: Seasoned Warrior, Escalating Power, Overflowing Power, a ira do
+			// Frost, e a SOMA na forma (False Advantage, Prodigy) convertida em razao -- ver `Fighter.racialBp`.
+			tempBP *= BPBoost * formBuff * racialBp;
 			tempBP *= GodKiFactor();
 
 			expressedBP = (DmMath.Round(Math.Max(tempBP, 1) * nnetBuff * angerBuff) + expressedAdd) * powerMod;
@@ -164,12 +164,6 @@ public sealed partial class Fighter
 			if (zeni_revive_debuff_until != 0 && agoraMs < zeni_revive_debuff_until)
 				expressedBP = DmMath.Round(expressedBP * 0.25);
 
-			// larva de bio-androide: TETO DURO em 1% do base. Raiva, Ki alto, forma e buff
-			// nao furam a carapaca -- o divisor sozinho nao bastava, os multiplicadores
-			// empilhavam por cima dele. (O rompimento da carapaca no tempo certo e do sistema
-			// bio, que vem depois; aqui so mora o teto.)
-			if (bio_lab_born && bio_stage == 1 && expressedBP > BP / BioLarvaRestrict)
-				expressedBP = DmMath.Round(Math.Max(BP / BioLarvaRestrict, 1));
 		}
 
 		// Frost mutante sem controle: o poder VAZA ate o piso enquanto a supressao nao firma.

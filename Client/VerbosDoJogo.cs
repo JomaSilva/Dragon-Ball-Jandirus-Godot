@@ -233,7 +233,7 @@ public static class VerbosDoJogo
 		// `alert("Give power? It'll drain 10% of your Ki.")` em quem MEDITA (`SpiritBomb.dm:81`): os dois
 		// botoes sao de quem recebe o pedido, pelo mesmo desenho da oferta de juventude acima.
 		Verbos.Registrar(new Verbo("Give Power to Spirit Bomb", Verbos.Outros,
-			"Doa um decimo do seu Ki a Genkidama que alguem esta formando neste mundo (so meditando).",
+			"Doa um decimo do seu Ki -- e o seu poder inteiro -- a Genkidama que alguem esta formando neste mundo.",
 			() => C?.SendVerbo("genkidama_doar")) { Requisito = Do("genkidama_doar") });
 		Verbos.Registrar(new Verbo("Refuse Spirit Bomb", Verbos.Outros,
 			"Guarda a sua energia.",
@@ -600,6 +600,12 @@ public static class VerbosDoJogo
 			"Liga/desliga o bit de VILAO do alvo marcado. E o unico jeito de alguem aprender "
 			+ "Planet Destroy -- no original tambem e o admin quem designa.",
 			() => C?.SendVerbo("admin_vilao", (C?.AlvoId ?? 0).ToString())));
+
+		// (2026-10-16) O VILAO DE SAGA NO INFERNO, sem esperar o sorteio -- ver `Server/GameServer.ViloesDoInferno.cs`.
+		Verbos.Registrar(new Verbo("Summon Hell Villain", Verbos.Admin,
+			"Faz um vilão de saga já derrotado escapar no Inferno agora (sem nenhum derrotado ainda, vem um da cadeia, pro teste). "
+			+ "Quem o derrotar ganha zeni e karma. Um por vez.",
+			() => C?.SendVerbo("admin_inferno")));
 
 		Verbos.Registrar(new Verbo("Kill This Planet (slow)", Verbos.Admin,
 			"Acende o pavio lento deste planeta: 20 minutos em quatro estagios, e no fim ele explode. "

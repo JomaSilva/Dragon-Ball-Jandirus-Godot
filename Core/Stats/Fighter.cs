@@ -351,13 +351,6 @@ public sealed partial class Fighter
 	public double MeditateGivesKiRegen, canPower;
 
 	/// <summary>
-	/// Carga acumulada da sessao de power-up (`extracharge`, tetado em 50 no DM). Ela nao entra em
-	/// formula nenhuma do original -- e um CONTADOR de quanto se carregou, que outras coisas leem.
-	/// Guardado porque zerar a cada tick esconderia esforco que o jogo mede.
-	/// </summary>
-	public double extracharge;
-
-	/// <summary>
 	/// Ja passou do teto seguro e ESTA pagando por isso. No DM (`Power Control.dm:118-130`) esta
 	/// var desarma o dano enquanto o Ki desce sozinho: sem ela, quem ultrapassa leva dano em todo
 	/// tick ate voltar, em vez de vazar energia e se estabilizar.
@@ -736,22 +729,47 @@ public sealed partial class Fighter
 	/// </summary>
 	public bool bio_dna_infinito;
 
-	/// <summary>Quantos JOGADORES absorvidos desde a ultima evolucao. NPC vale meio.</summary>
-	public double bio_abs_players;
+	/// <summary>
+	/// (2026-10-17) O MARCO DO DEGRAU (0 = a propria forma; 1..5) e os PASSOS ja andados rumo ao proximo -- a escada do adendo do dono, que
+	/// trocou a contagem do DM (dez jogadores ou um androide por degrau). Ver `Races.BioAndroids.Andar`.
+	/// </summary>
+	public int bio_marco;
+	public double bio_passos;
 
-	/// <summary>Quantos ANDROIDES absorvidos desde a ultima evolucao. Um so ja evolui.</summary>
-	public double bio_abs_androids;
+	/// <summary>
+	/// (2026-10-17) A VERSAO DA ESCADA neste save: 0 = a do DM (o perfeito multiplicado 2x e depois 4x = 8x no BP base), 1 = a dos marcos.
+	/// O perfeito antigo vira o MARCO 2 do perfeito novo (que e 8x), sem mexer no BP -- `GameServer.TickDaLarva`.
+	/// </summary>
+	public int bio_tabela;
 
 	/// <summary>O SSJ2 ja foi despertado PELA MORTE. Uma vez na vida (`bio_ssj2_by_death`).</summary>
 	public bool bio_ssj2_by_death;
 
 	/// <summary>
-	/// QUANDO A CARAPACA LARVAL SE ROMPE, em ms de relogio REAL -- `bio_mature_realtime`.
+	/// (2026-10-17) A LARVA VESTIDA -- o adendo do dono: a larva e uma transformacao que o bio usa a qualquer hora. A forma
+	/// de barata POR CIMA do degrau: o `bio_stage` continua sendo o degrau maduro (e o BP base, com o multiplicador dele dentro, nao se mexe), e
+	/// e pra ele que o corpo volta ao amadurecer -- enterrado 5 min (`BioAndroids.SegundosEnterradoPraAmadurecer`). A larva RECEM-NASCIDA e o
+	/// `bio_stage == Larva`; pras duas vale o mesmo (`BioAndroids.EmLarva`).
 	///
-	/// Relogio real e nao in-game porque o original tambem usa (`world.realtime + DAY_REAL_MINUTES
-	/// * 600`): um dia in-game, que na escala deste port sao ~24 minutos de relogio.
+	/// DIVERGENCIA DECLARADA do `bio_mature_realtime` do DM (`DNALabs.dm:494-518`, o relogio de um dia in-game que rompia a carapaca sozinho):
+	/// pela regra do dono a larva so sai da carapaca ENTERRADA, a recem-nascida tambem.
 	/// </summary>
-	public long bio_mature_em;
+	public bool bio_larva;
+
+	/// <summary>
+	/// (2026-10-17) O NUCLEO DO BIO-ANDROIDE (o adendo do dono): o membro onde ele mora -- braco esquerdo, braco direito, perna esquerda, perna
+	/// direita ou cabeca; vazio = ainda nao escolhido, e a escolha e uma so, pra sempre -- e quantas vezes ele ja reergueu o corpo (duas no
+	/// maximo: na segunda ele detona e destroi o membro). Ver `GameServer.Nucleo.cs`.
+	/// </summary>
+	public string bio_nucleo = "";
+	public int bio_nucleo_usos;
+
+	/// <summary>
+	/// (2026-10-17) AS SKILLS RACIAIS QUE O BIO ESCOLHEU DO SANGUE -- o adendo do dono: *"o bio androide pode escolher dentre as raças de seu dna
+	/// quais skills (passivas e ativas) ele quer, com limite de 6 skills"*. Os bits de `Races.SkillRacial`, ate seis, PRA SEMPRE (uma por vez,
+	/// na aba Skills). O bio NPC sai do molde com a dele (`SkillsRaciais.EscolhaDoNpc`). Ver `Races.SkillsRaciais`.
+	/// </summary>
+	public uint bio_skills;
 
 	/// <summary>
 	/// A FORMA PERFEITA E PERMANENTE (`form3cantrevert`). No lab-bio ela vem de graca no degrau 4;

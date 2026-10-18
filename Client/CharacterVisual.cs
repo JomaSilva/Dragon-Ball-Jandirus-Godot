@@ -240,8 +240,8 @@ public partial class CharacterVisual : Node2D
 	/// </summary>
 	private string Familia()
 	{
-		// O SOCO QUE JA TOCOU volta a ser o corpo parado ou andando -- ver `_flickAcabou`.
-		string estado = _flickAcabou ? "default" : _state;
+		// O SOCO QUE JA TOCOU volta a ser o corpo parado ou andando -- ver `_flickAcabou`. NO AR, volta ao VOO (ver `EmVoo`).
+		string estado = _flickAcabou ? (_emVoo && !SocoVoltaAndandoNoArDeTeste ? "flight" : "default") : _state;
 		return estado == "default" ? (_moving ? "walk" : "default") : estado;
 	}
 
@@ -776,13 +776,55 @@ public partial class CharacterVisual : Node2D
 		_corpo != null && IsInstanceValid(_corpo) ? TintaDoMaterial(_corpo.Material) : null;
 
 	/// <summary>
+	/// (2026-10-16) A TINTA DO CORPO DE FORMA -- a do corpo base quando a folha da forma LEVA A PELE, e nenhuma quando nao.
+	///
+	/// So a Forma Pura do Corrupted Majin leva hoje: *"if(majin_color) icon += majin_color"* (`MajinSaga.dm:537` e `:566`), a cor
+	/// livre que ele escolheu na criacao somada ao Kid Boo. A pergunta e do Core (`Catalogo.CorpoDaFormaLevaAPele`); a conta da
+	/// cor e a MESMA do corpo base (`VisualCatalog.TintaDoCorpo`), pela mesma porta (<see cref="Tinta"/>).
+	///
+	/// O CASO "NAO LEVA" ESCREVE A TINTA NEUTRA, e nao fica quieto: a camada e reciclada entre formas (`_corpoDaForma ??=`), e o
+	/// material sobrevive a troca -- sem a linha, o corpo de uma forma seguinte herdaria a cor da anterior (o mesmo cuidado da
+	/// <see cref="SilhuetaDeCena"/>).
+	/// </summary>
+	private void PintarCorpoDaForma()
+	{
+		if (_corpoDaForma is not { } forma || !IsInstanceValid(forma)) return;
+		if (!Jandirus.Core.Forms.Catalogo.CorpoDaFormaLevaAPele(_simboloDoCorpo))
+		{
+			forma.SelfModulate = Colors.White;
+			Tingir(forma, Tinta.Nenhuma);
+			return;
+		}
+
+		(Rgb? soma, float brilho) = _ficha is { } f && _catalogoDaFicha is { } cat
+			? cat.TintaDoCorpo(f, _racaDaFicha) : (null, 1f);
+		forma.SelfModulate = new Color(brilho, brilho, brilho);
+		Tingir(forma, Tinta.DaFicha(soma));
+	}
+
+	/// <summary>
+	/// (2026-10-16) O CORPO DA FORMA ESTA VESTIDO E SUBSTITUI O DE BAIXO (o Kid Boo da Forma Pura) -- ver
+	/// `Catalogo.CorpoDaFormaEscondeOBase`. Lido pela <see cref="Escondida"/> e pelo <see cref="CorpoParaOsPedacos"/>.
+	/// </summary>
+	private bool CorpoDaFormaSubstitui =>
+		_corpoDaForma != null && IsInstanceValid(_corpoDaForma)
+		&& Jandirus.Core.Forms.Catalogo.CorpoDaFormaEscondeOBase(_simboloDoCorpo);
+
+	/// <summary>A tinta que o CORPO DE FORMA realmente recebeu, lida do material. Pra bancada -- irma da <see cref="TintaDoCorpoDeTeste"/>.</summary>
+	public (Vector3 Cor, int Modo)? TintaDoCorpoDaFormaDeTeste =>
+		_corpoDaForma != null && IsInstanceValid(_corpoDaForma) ? TintaDoMaterial(_corpoDaForma.Material) : null;
+
+	/// <summary>
 	/// (2026-10-15) A PELE DO CORPO PRA FORA DO BONECO -- os pedacos do Majin desfeito (<see cref="PedacosDoMajin"/>): a
 	/// folha da camada do corpo, um material NOVO com o mesmo shader e a mesma tinta (o do corpo carrega tambem a caixa do
 	/// quadro e as feridas DELE), e o brilho do `SelfModulate`. Nulo sem corpo montado.
 	/// </summary>
 	public (SpriteFrames Folha, ShaderMaterial? Tinta, Color Pele)? CorpoParaOsPedacos()
 	{
-		if (_corpo is not { } corpo || !IsInstanceValid(corpo) || corpo.SpriteFrames is not { } folha) return null;
+		// (2026-10-16) QUEM SE REFAZ E O CORPO QUE ESTA NA TELA: com o corpo da forma escondendo o de baixo (o Kid Boo da Forma Pura), os
+		// pedacos e a reconstrucao saem dele -- e nao do corpo da forma 4, que nem aparece.
+		AnimatedSprite2D? fonte = CorpoDaFormaSubstitui ? _corpoDaForma : _corpo;
+		if (fonte is not { } corpo || !IsInstanceValid(corpo) || corpo.SpriteFrames is not { } folha) return null;
 		ShaderMaterial? tinta = null;
 		if (corpo.Material is ShaderMaterial m && m.Shader == ShaderTinta)
 		{
@@ -1550,6 +1592,50 @@ public partial class CharacterVisual : Node2D
 	/// caminho de 13 roupas sem pose de ataque e 68 sem pose de treino.
 	/// ================================================================================================
 	/// </summary>
+	/// <summary>
+	/// (v0.3.2) O MORTO DE PASSAGEM ENTRE OS VIVOS: o corpo inteiro meio transparente -- o dono, 2026-10-16: *"ele aparece meio
+	/// transparente e fica 5 segundos no mundo dos vivos"*. Chega no pacote da aureola (`S2C.Aureola`). E o ALFA do `Modulate` da raiz
+	/// deste visual (o RGB e do corpo secando, <see cref="Secar"/>; o impacto mora no shader -- ver IMPACTO), e ele multiplica todas as
+	/// camadas: corpo, roupa, cabelo e aureola, cada uma a meia opacidade -- como os `overlays` de um `alpha` no BYOND.
+	/// </summary>
+	public void MostrarDePassagem(bool dePassagem)
+	{
+		Color c = Modulate;
+		c.A = dePassagem && !PassagemOpacaDeTeste ? AlfaDaPassagem : 1f;
+		Modulate = c;
+	}
+
+	/// <summary>
+	/// (2026-10-17) O CORPO SECANDO NA EXECUCAO DO BIO-ANDROIDE (<see cref="CorpoSecando"/>): o RGB do `Modulate` da raiz, de branco ate a
+	/// palha, nas camadas todas de uma vez. So o RGB -- o alfa e da passagem do morto (<see cref="MostrarDePassagem"/>), e as duas convivem
+	/// no mesmo canal sem se pisar.
+	/// </summary>
+	public void Secar(float quanto)
+	{
+		Color seco = Colors.White.Lerp(CorpoSecando.Seco, Math.Clamp(quanto, 0f, 1f));
+		Modulate = new Color(seco.R, seco.G, seco.B, Modulate.A);
+	}
+
+	/// <summary>(v0.3.2) Quanto do morto de passagem se ve: metade.</summary>
+	public const float AlfaDaPassagem = 0.5f;
+
+	/// <summary>
+	/// (2026-10-17) A LARVA ENTERRADA NA TELA DO DONO (`LocalPlayer.MostrarEnterrado`): meio transparente -- os outros nao a veem (o `Oculto`
+	/// do snapshot). O ALFA do `Modulate` da raiz, como a passagem do morto, e as duas nunca se cruzam (morto nao se enterra).
+	/// </summary>
+	public void MostrarEnterrado(bool enterrado)
+	{
+		Color c = Modulate;
+		c.A = enterrado ? AlfaDoEnterrado : 1f;
+		Modulate = c;
+	}
+
+	/// <summary>(2026-10-17) Quanto da larva enterrada o dono ve de si.</summary>
+	public const float AlfaDoEnterrado = 0.35f;
+
+	/// <summary>DEFEITO INJETADO (`--diagv030` IT): o morto de passagem aparece opaco, o jogo de antes. Falso em jogo, sempre.</summary>
+	public static bool PassagemOpacaDeTeste;
+
 	public void MostrarAureola(bool tem)
 	{
 		if (_temAureola == tem) return;
@@ -1790,21 +1876,23 @@ public partial class CharacterVisual : Node2D
 	/// `Small_Impact`.
 	/// ====================================================================
 	///
-	/// A CONTA E A QUE O DONO DITOU: olhando pra direita cai como hoje (0 graus); pra esquerda gira
-	/// 180; pra cima gira 90 pra baixo; pra baixo gira 90 pra cima.
+	/// O RUMO RECEBIDO E PRA ONDE A CABECA VAI (`ServerPlayer.DirecaoDeitado`): o rumo do golpe que derrubou, o do voo, ou --
+	/// pra quem caiu sem golpe -- o olhar ja traduzido pelo servidor (`ServerPlayer.CabecaDeQuemCaiOlhando`). A 0 grau a
+	/// cabeca do sprite de nocaute aponta pro LESTE (o quadro `ko` das folhas de corpo: cabeca a direita, pes a esquerda), e
+	/// giro positivo e horario (o Y cresce pra baixo): +90 leva a cabeca pra BAIXO e -90 leva pra CIMA. Dai a tabela: leste 0,
+	/// oeste 180, sul +90, norte -90 -- a cabeca sempre pro rumo, como no arremesso (<see cref="VoarPara"/>).
 	///
-	/// ============================ OS DOIS EIXOS VERTICAIS ESTAVAM TROCADOS ============================
-	/// A tabela dizia uma coisa e fazia a outra: `South` mandava +90 e `North` -90, que e o inverso
-	/// exato da linha acima. O efeito so aparecia num dos quatro casos, e o dono achou: "quando o
-	/// personagem ta olhando pra baixo e ele desmaia ele ta desmaiando de cabeca pra baixo".
-	///
-	/// A 0 grau a cabeca do sprite de nocaute aponta pro LESTE, e giro positivo e horario (o Y
-	/// cresce pra baixo). Entao +90 leva a cabeca pra BAIXO e -90 leva pra CIMA. Quem cai, cai de
-	/// COSTAS: olhando pra baixo (pra camera), a cabeca termina pra cima; olhando pra cima, termina
-	/// pra baixo. Leste e oeste ja estavam certos, e e por isso que so metade da queixa existia.
-	/// ==================================================================================================
+	/// ============================ O NORTE E O SUL ESTAVAM INVERTIDOS NO NOCAUTE (dono, 2026-10-16) ============================
+	/// *"nocautear a pessoa ao socar pra cima ou pra baixo, ela cai com a rotaçao do corpo invertida, é so trocar , no knock back
+	/// ta tudo certo, problema é so no KO mesmo"*. A tabela nasceu quando o rumo era o OLHAR (o dono ditou: "pra cima gira 90 pra
+	/// baixo; pra baixo gira 90 pra cima"), e depois o rumo passou a ser o do GOLPE -- que, pra quem apanha de frente (`M.dir =
+	/// get_dir(M,src)`), e o OPOSTO do olhar. O dono redisse o eixo horizontal ("um soco que joga pra leste deita o corpo pra
+	/// leste") e o vertical ficou com o sinal da era do olhar: o soco pra baixo jogava o corpo voando de cabeca pra BAIXO e o
+	/// deitava de cabeca pra CIMA, virado pra quem bateu. Agora os dois eixos seguem o golpe; o olhar de quem cai sem golpe e
+	/// traduzido no servidor, e por isso ele continua deitando como deitava.
+	/// ========================================================================================================================
 	/// </summary>
-	public void DeitarPor(Facing olhando)
+	public void DeitarPor(Facing cabeca)
 	{
 		// ============================ A FOLHA QUE NAO TEM DESENHO DE NOCAUTE (o bicho) ============================
 		// A tabela abaixo supoe o quadro de `ko`, que ja e um desenho DEITADO com a cabeca pro leste. As folhas
@@ -1813,9 +1901,9 @@ public partial class CharacterVisual : Node2D
 		// de um lobo que caiu olhando pro leste ficaria a zero grau -- um lobo de pe, parado, igual a um vivo.
 		// Quem nao tem o desenho deitado tomba de LADO: um quarto de volta, o focinho pra baixo da tela.
 		// ==========================================================================================================
-		if (SemDesenhoDeNocaute) { Girar(olhando == Facing.West ? -90f : 90f); return; }
+		if (SemDesenhoDeNocaute) { Girar(cabeca == Facing.West ? -90f : 90f); return; }
 
-		Girar(olhando switch
+		Girar(cabeca switch
 		{
 			Facing.East => 0f,
 			// ============================ O OESTE E O ESPELHO, NAO A VOLTA INTEIRA ============================
@@ -1828,10 +1916,16 @@ public partial class CharacterVisual : Node2D
 			// quadro so continuam dando a meia-volta, que e o que sempre deram.
 			// ==================================================================================================
 			Facing.West => DeitaPelosDoisLados ? 0f : 180f,
-			Facing.South => -90f,
-			_ => 90f,
+			Facing.South => KoVerticalComoAntesDeTeste ? -90f : 90f,
+			_ => KoVerticalComoAntesDeTeste ? 90f : -90f,   // norte
 		});
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagflick`): o norte e o sul do nocaute voltam ao sinal de antes de 2026-10-16 -- o soco pra
+	/// baixo deita a cabeca pra CIMA, o contrario do arremesso. Lido pelo <see cref="DeitarPor"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool KoVerticalComoAntesDeTeste;
 
 	/// <summary>
 	/// A folha que este corpo veste NAO traz desenho de nocaute nenhum (`ko`, `ko_west`, `ko_east`)? E o caso
@@ -2076,6 +2170,41 @@ public partial class CharacterVisual : Node2D
 	/// </summary>
 	public static bool SocoTocaUmaVezDeTeste = true;
 
+	/// <summary>
+	/// (2026-10-16) O CORPO ESTA NO AR -- ou na agua, que veste a mesma folha (`Pose.Nadando` -> "flight"). E pra onde o SOCO QUE JA
+	/// TOCOU devolve o desenho (<see cref="Familia"/>), como o `flick` do DM devolve o `icon_state` de antes (`prev_state`,
+	/// `CombatMovement.dm:134`): quem socava no ar estava no "Flight".
+	///
+	/// ============================ O BONECO ANDANDO NO CEU ============================
+	/// O dono: *"ao voar e socar por uns segundos ele fica andando, ele deveria socar e logo voltar pra animaçao de voo"*. A pose
+	/// `Atacando` dura a CADENCIA do golpe, e o `flick` acaba antes dela -- no corpo dos outros (esticado pros 0,24 s do relato do
+	/// golpe) e no meu tambem, porque o mesmo relato (`World.AoGolpe`) recomeca o meu soco com os 0,24 s. Do fim do `flick` ao fim
+	/// da cadencia o desenho caia no parado/ANDANDO, e numa sequencia de socos isso sao segundos.
+	///
+	/// QUEM ESCREVE E O DONO DO CORPO, com a mesma pergunta da pose de voo dele: o `LocalPlayer` pela altura (e o nado), o
+	/// `RemotePlayer` pelo bit de voo do snapshot (`EntityState.Voando`). Mudar com o soco ja acabado troca o desenho na hora: quem
+	/// pousa no meio da sequencia volta ao chao sem esperar o proximo golpe.
+	/// ===============================================================================
+	/// </summary>
+	public bool EmVoo
+	{
+		get => _emVoo;
+		set
+		{
+			if (_emVoo == value) return;
+			_emVoo = value;
+			if (_flickAcabou) Aplicar(force: true);
+		}
+	}
+
+	private bool _emVoo;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--diagflick` e `--diagvoo`): o soco que acaba no ar volta ao parado/andando -- o boneco andando no ceu
+	/// da foto do dono (2026-10-16). Lido por <see cref="Familia"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool SocoVoltaAndandoNoArDeTeste;
+
 	/// <summary>O estado pedido ao corpo (a pose), mesmo depois de o `flick` acabar -- so pras bancadas.</summary>
 	public string EstadoDeTeste => _state;
 	/// <summary>O soco ja tocou uma vez e o corpo voltou ao parado? -- so pras bancadas.</summary>
@@ -2317,8 +2446,9 @@ public partial class CharacterVisual : Node2D
 	public float RitmoDoPasso { get; set; } = 1f;
 
 	/// <summary>O multiplicador do relogio da pose neste quadro: a corrida acelera o passo, o corpo lento o atrasa.</summary>
+	/// (A pernada e a do ANDAR, e a pergunta e a da pose desenhada: o soco que acaba no ar volta ao VOO, que nao anda -- ver `EmVoo`.)
 	private double RitmoDaPernada() =>
-		!_moving || !(_state == "default" || _flickAcabou) ? 1 : _correndo ? RitmoDaCorrida : RitmoDoPasso;
+		Familia() != "walk" ? 1 : _correndo ? RitmoDaCorrida : RitmoDoPasso;
 
 	/// <summary>Quanto o relogio da pose anda por segundo agora. So pra bancada (`--diagv020`).</summary>
 	public double RitmoDaPernadaDeTeste => RitmoDaPernada();
@@ -2737,6 +2867,10 @@ public partial class CharacterVisual : Node2D
 		_corpoDaForma ??= NovaCamada(1);
 		_corpoDaForma.SpriteFrames = frames;
 
+		// (2026-10-16) E A COR, NA MESMA HORA: a Forma Pura do Majin leva a da ficha, as outras nenhuma. O `Vestir` passa por aqui
+		// no fim (a ficha pode ter mudado), entao trocar a cor no guarda-roupa repinta o Kid Boo tambem. Ver `PintarCorpoDaForma`.
+		PintarCorpoDaForma();
+
 		// ============================ ALINHAR PELOS PES, NAO PELO CENTRO ============================
 		// Toda camada e `Centered = true`, o que poe o MEIO do quadro na origem do node. Num quadro
 		// de 32 os pes caem em +16; num de 96 cairiam em +48 -- o macaco nasceria 32 px enterrado no
@@ -3061,6 +3195,121 @@ public partial class CharacterVisual : Node2D
 		_silhuetaDeCena != null && IsInstanceValid(_silhuetaDeCena)
 			? _silhuetaDeCena.GetMeta("src", "").AsString() : null;
 
+	// =====================================================================
+	// (2026-10-16) A PASSAGEM -- `Efeito.Passagem`: a metamorfose que a folha ja traz desenhada
+	// =====================================================================
+	/// <summary>
+	/// A METAMORFOSE QUE TOCA NO LUGAR DO CORPO -- o `flick(animstate, src)` da saga do Corrupted Majin (`MajinSaga.dm:455-460` e
+	/// `:567`). Ver <see cref="Jandirus.Core.Forms.Efeito.Passagem"/>.
+	///
+	/// ============================ ELA NAO E CAMADA, E POR ISSO MORA FORA DA `_camadas` ============================
+	/// A silhueta de cena (logo acima) veste o corpo pose por pose, e por isso e camada: o `Aplicar` escolhe a direcao dela. A
+	/// passagem e o contrario -- UMA animacao, sem direcao (`thin_transform` e um estado so, e o corpo inteiro e ela), no relogio
+	/// da CENA e nao no da folha. Dentro da `_camadas` o `Escolher` procuraria `walk_south` nela, e o compasso a faria ciclar (as
+	/// quatro folhas foram convertidas com `loop`, e o `flick` toca uma vez). Fora dela, quem manda no quadro e o
+	/// <see cref="AndarAPassagem"/>, e ela PARA no ultimo quadro ate a virada.
+	///
+	/// ENQUANTO ELA ESTA ACESA, O BONECO INTEIRO SOME (<see cref="Escondida"/>): o `flick` troca o desenho do mob inteiro pela
+	/// animacao, e roupa, cabelo e olhos nao tem quadro na metamorfose.
+	///
+	/// A COR E A DO CORPO: o `flick` toca o `icon` do mob, que ja leva o `majin_color` somado (`:408`). A passagem copia a tinta e
+	/// o brilho que o corpo base esta usando agora.
+	/// </summary>
+	private AnimatedSprite2D? _passagem;
+
+	/// <summary>A animacao da passagem e quantos quadros ela tem -- lidos uma vez, no acender (o `_Process` nao fabrica `StringName`).</summary>
+	private StringName? _passagemAnim;
+	private int _passagemQuadros;
+
+	/// <summary>O relogio da passagem, e quanto ela dura: o da folha, ou menos se a virada da cena vier antes.</summary>
+	private double _passagemT, _passagemDur;
+
+	/// <summary>
+	/// ACENDE A PASSAGEM: a animacao <paramref name="estado"/> da <paramref name="folha"/> toca UMA vez e para no ultimo quadro.
+	/// Ela dura o que a folha dura (os quadros no ritmo dela) -- ou <paramref name="teto"/>, se for menos: a cena encurtada
+	/// comprime tudo pelo mesmo `k`, e a metamorfose ACELERA pra caber, em vez de ser cortada no meio.
+	///
+	/// Quem apaga e o <see cref="EncerrarPassagem"/>, na virada da cena (ou no `Soltar` de quem morreu no meio). Falso = a folha
+	/// ou a animacao nao existe: a cena segue sem metamorfose e o corpo fica a vista, que e degradacao e nao defeito.
+	/// </summary>
+	public bool TocarPassagem(string folha, string estado, double teto)
+	{
+		EncerrarPassagem();
+		if (string.IsNullOrEmpty(folha) || string.IsNullOrEmpty(estado)) return false;
+		if (FolhasPresas.Carregar(folha) is not { } frames)
+		{
+			GD.PushWarning($"[visual] a passagem nao carregou: {folha}");
+			return false;
+		}
+		var anim = new StringName(estado);
+		int quadros = frames.HasAnimation(anim) ? frames.GetFrameCount(anim) : 0;
+		if (quadros <= 0)
+		{
+			GD.PushWarning($"[visual] a passagem `{estado}` nao existe em {folha}");
+			return false;
+		}
+
+		// O PRAZO DA FOLHA SAI DA PROPRIA FOLHA -- a soma das duracoes no ritmo dela --, e nao de um numero escrito aqui: as quatro
+		// medem de 9,2 a 9,9 s, e uma reconversao do `.dmi` com outro delay mudaria a metamorfose sem ninguem tocar neste arquivo.
+		double soma = 0;
+		for (int i = 0; i < quadros; i++) soma += frames.GetFrameDuration(anim, i);
+		double ritmo = frames.GetAnimationSpeed(anim);
+		double daFolha = ritmo > 0 ? soma / ritmo : quadros * 0.1;
+
+		var s = new AnimatedSprite2D { Name = "Passagem", Centered = true, SpriteFrames = frames, Animation = anim, Frame = 0 };
+		if (_corpo is { } corpo && IsInstanceValid(corpo))
+		{
+			s.SelfModulate = corpo.SelfModulate;
+			if (corpo.Material is ShaderMaterial m && m.Shader == ShaderTinta)
+			{
+				var tinta = new ShaderMaterial { Shader = ShaderTinta };
+				Tinta.Do(m).Escrever(tinta);
+				s.Material = tinta;
+			}
+		}
+		if (!Mathf.IsEqualApprox(_porte, 1f)) PorNoPorte(s);
+		AddChild(s);
+
+		_passagem = s;
+		_passagemAnim = anim;
+		_passagemQuadros = quadros;
+		_passagemT = 0;
+		_passagemDur = Math.Max(0.1, Math.Min(daFolha, teto));
+		Aplicar(force: true);   // o boneco some -- ver `Escondida`
+		return true;
+	}
+
+	/// <summary>APAGA A PASSAGEM e devolve o boneco. Sem passagem acesa, nao faz nada.</summary>
+	public void EncerrarPassagem()
+	{
+		if (_passagem == null) return;
+		if (IsInstanceValid(_passagem))
+		{
+			RemoveChild(_passagem);
+			_passagem.QueueFree();
+		}
+		_passagem = null;
+		_passagemAnim = null;
+		Aplicar(force: true);
+	}
+
+	/// <summary>O quadro da passagem pelo relogio dela -- ate o ultimo, e la fica. Ver <see cref="_passagem"/>.</summary>
+	private void AndarAPassagem(double delta)
+	{
+		if (_passagem is not { } s) return;
+		if (!IsInstanceValid(s)) { _passagem = null; return; }
+		_passagemT += delta;
+		int q = Math.Min(_passagemQuadros - 1, (int)(_passagemT / _passagemDur * _passagemQuadros));
+		if (s.Frame != q) s.Frame = q;
+	}
+
+	/// <summary>A passagem acesa agora (a animacao), ou nulo. Pra bancada e pro robo de fotos.</summary>
+	public string? PassagemDeTeste =>
+		_passagem != null && IsInstanceValid(_passagem) ? _passagemAnim?.ToString() : null;
+
+	/// <summary>O quadro em que a passagem esta, ou -1. Pra bancada.</summary>
+	public int QuadroDaPassagemDeTeste => _passagem != null && IsInstanceValid(_passagem) ? _passagem.Frame : -1;
+
 	/// <summary>Quantas camadas coladas estao instaladas agora. Pra bancada.</summary>
 	public int ColadasDeTeste => _coladas.Count;
 
@@ -3249,7 +3498,12 @@ public partial class CharacterVisual : Node2D
 	/// </summary>
 	private bool Escondida(AnimatedSprite2D s)
 	{
+		// (2026-10-16) A PASSAGEM ACESA E O CORPO INTEIRO -- o `flick` do DM troca o desenho do mob pela metamorfose. Ver `_passagem`.
+		if (_passagem != null) return true;
 		if (ReferenceEquals(s, _corpoDaForma)) return false;
+		// (2026-10-16) O CORPO DE BAIXO SOME quando o corpo da forma o substitui (o Kid Boo da Forma Pura) -- sem isto eram dois corpos,
+		// um em cima do outro. Ver `Catalogo.CorpoDaFormaEscondeOBase`.
+		if (ReferenceEquals(s, _corpo) && CorpoDaFormaSubstitui) return true;
 		if (_criatura) return true;
 		if (ReferenceEquals(s, _olhos)) return !CorpoComRosto;
 		return ReferenceEquals(s, _rabo)
@@ -3627,6 +3881,13 @@ public partial class CharacterVisual : Node2D
 	}
 
 	/// <summary>
+	/// AS CAMADAS QUE ESTAO NA TELA AGORA -- as da <see cref="CamadasDeTeste"/> que o motor desenha (`IsVisibleInTree`: o boneco escondido
+	/// inteiro, como os pedacos do Majin o escondem, apaga todas). Pra bancada -- o dono: *"quando tiver na regeneraçao de morte, o
+	/// sprite do olho e overlays (roupa etc) vao sumir"*.
+	/// </summary>
+	public string[] CamadasAcesasDeTeste() => [.. CamadasDeTeste().Where(c => c.Sprite.IsVisibleInTree()).Select(c => c.Nome)];
+
+	/// <summary>
 	/// O cabelo esta DESENHADO na tela? Pra bancada.
 	///
 	/// Diferente do <see cref="TemCabeloDeTeste"/>, e a diferenca e o Oozaru: a camada continua
@@ -3988,6 +4249,7 @@ public partial class CharacterVisual : Node2D
 		}
 
 		AnimarContorno(delta);
+		AndarAPassagem(delta);   // (2026-10-16) a metamorfose da saga do Majin -- ver `_passagem`
 
 		if (_corpo?.SpriteFrames == null) return;
 
@@ -4200,7 +4462,7 @@ public partial class CharacterVisual : Node2D
 		string dir = corpoSemDirecao ? "south" : MoveRules.FacingSuffix(_facing);
 
 		// ============================ O CORPO DEITADO E UM QUADRO SO, E E O "OESTE" ============================
-		// As folhas de corpo tem UM quadro de KO, sem direcao, deitado com a cabeca pra esquerda -- e
+		// As folhas de corpo tem UM quadro de KO, sem direcao, deitado com a cabeca pra DIREITA -- e
 		// quem o vira pro rumo da queda e a rotacao do node (`DeitarPor`, pedido do dono). A folha do
 		// Oozaru (`oozaruhayate.dmi`) tem QUATRO: o do sul e um macaco enrolado, uma bola que rodada
 		// fica igual; o do norte e um macaco de costas, EM PE. Escolher pela direcao e depois rodar

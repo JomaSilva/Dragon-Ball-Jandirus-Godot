@@ -116,8 +116,11 @@ public partial class GameServer
 			if (ModoDeRacas == ModoDeRacas.Aleatorio && acc.Slots[i] == null)
 			{
 				if (acc.Sorteios[i] != null) continue;
+				// (2026-10-16) COM A CLASSE RARA GARANTIDA PELO ADMIN, so entre as racas que TEM classe rara: *"no modo aleatorio a
+				// raça vem aleatoria mas sempre da classe mais rara"*. Ver `GameServer.Admin.cs`, `AdminClasseRara`.
 				(string raca, string linhagem) = SorteioDeRaca.Sortear(
-					SorteioDeRaca.SementeDe(SeedDoUniverso, acc.Conta, i, acc.SorteiosFeitos));
+					SorteioDeRaca.SementeDe(SeedDoUniverso, acc.Conta, i, acc.SorteiosFeitos),
+					acc.ProximaClasseRara && _racas != null ? r => Birth.TemClasseRara(_racas, r) : null);
 				acc.Sorteios[i] = new RacaSorteada { Raca = raca, Linhagem = linhagem };
 				acc.SorteiosFeitos++;
 				mudou = true;

@@ -729,7 +729,7 @@ public sealed partial class GameServer
 		{
 			Ouvir(() => UsarHabilidade(demonio, "Soul_Absorb"));
 			_prontoAbsorver.Remove(bio.Id);
-			Ouvir(() => UsarHabilidade(bio, "absorver"));
+			Ouvir(() => AbsorverAteOFimBio(bio));   // (2026-10-17) a execucao do bio leva 5 s: o relogio anda ate ela se consumar
 			ValCheca("(defeito injetado: o corpo derivado vale como gente) as provas de cima REPROVAM -- a alma da copia e tomada, ela e "
 					 + "consumida e o poder dela (o do proprio dono) entra em quem absorveu, sem vitima nenhuma",
 					 !copia.Ficha.HasSoul && demonio.Ficha.AbsorbBP > almaAntes && copia.Ficha.dead && bio.Ficha.AbsorbBP > absorvidoAntes,
@@ -748,8 +748,9 @@ public sealed partial class GameServer
 		bio.Facing = Facing.East;
 		bio.AlvoId = vitima.Id;
 		double antesDaVitima = bio.Ficha.AbsorbBP;
-		List<string> legitimo = Ouvir(() => UsarHabilidade(bio, "absorver"));
-		ValCheca("O CAMINHO LEGITIMO: uma PESSOA nocauteada ao lado continua sendo absorvida -- ela morre e o poder dela entra no bio-androide",
+		List<string> legitimo = Ouvir(() => AbsorverAteOFimBio(bio));
+		ValCheca("O CAMINHO LEGITIMO: uma PESSOA nocauteada ao lado continua sendo absorvida -- ao fim dos 5 s da execucao ela morre e o poder "
+				  + "dela entra no bio-androide",
 				 vitima.Ficha.dead && bio.Ficha.AbsorbBP > antesDaVitima, $"morta {vitima.Ficha.dead}, AbsorbBP {antesDaVitima:0}->{bio.Ficha.AbsorbBP:0} | {Ultimos(legitimo)}");
 		_prontoAbsorver.Remove(bio.Id);
 		_prontoAbsorver.Remove(demonio.Id);
@@ -1144,6 +1145,9 @@ public sealed partial class GameServer
 		// (esta vigia pegou a linha abaixo no dia em que nasceu: o `GameServer.GodKi.cs` foi publicado com um
 		// `PorNome` novo enquanto a bancada rodava. Conferido: e o `admin_godki`, alcancado so pelo funil de admin.)
 		["GameServer.GodKi.cs"] = 1,           // `AdminDespertarOGodKi` (`admin_godki`), depois do `EhAdmin`
+		// (2026-10-17) o console do servidor dedicado: quem digita e o dono da maquina, e nao um jogador (`TerminalExpulsar`, o `expulsar`).
+		// A vigia o acusava desde que ele entrou (2026-10-14), em toda rodada.
+		["GameServer.Terminal.cs"] = 1,
 	};
 
 	private static List<string> PorNomeForaDaLista(IEnumerable<(string Nome, string[] Linhas)> fontes)

@@ -110,6 +110,9 @@ public static class MarcoDoCatalogo
 		["/datum/skill/forms/lssjm"] = "maestria de forma por skill, legado do DM; tirada em 2026-10-13 (ver SkillsAposentadas)",
 		["/datum/skill/heran/MstedMXPWR"] = "effector() vazio no DM (maestria em %); tirada em 2026-10-13 (ver SkillsAposentadas)",
 		["/datum/skill/heran/MstedTMXPWR"] = "effector() vazio no DM (maestria em %); tirada em 2026-10-13 (ver SkillsAposentadas)",
+
+		// A RESPIRACAO HAMON (2026-10-16, ver `SkillsAposentadas`): nao e de Dragon Ball, e o dono a tirou. Tinha regra de nivel: duas linhas.
+		["/datum/skill/HamonBreathing"] = "nao e de Dragon Ball; tirada pelo dono em 2026-10-16 (ver SkillsAposentadas)",
 	};
 
 	/// <summary>

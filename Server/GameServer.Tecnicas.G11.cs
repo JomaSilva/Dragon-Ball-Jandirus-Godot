@@ -70,6 +70,17 @@ public sealed partial class GameServer
 	/// `effector()`/`after_learn()` e nao botao -- o efeito delas mora no <see cref="TickDoEfetorG11"/>
 	/// e nos ganchos do agarrao. Registra-las como tecnica inflaria o "portadas" sem botao nenhum.
 	/// </summary>
+	/// <summary>
+	/// (2026-10-16) O FRAGMENTED MIND NOS TELETRANSPORTES -- *"lose the ability to use ... all variants of Instant Transmission"*: a
+	/// Transmissao Instantanea e as duas de planeta (Kai Kai, Devil Bringer). Ver `GameServer.SagaDoMajin.MenteFragmentada`.
+	/// </summary>
+	private bool RecusarPelaMenteFragmentada(ServerPlayer pl)
+	{
+		if (!MenteFragmentada(pl)) return false;
+		Avisar(pl, "a sua mente partida não acha caminho nenhum: sem teletransporte enquanto a loucura durar.");
+		return true;
+	}
+
 	private void RegistrarTecnicasG11()
 	{
 		IniciarLote("G11");
@@ -493,6 +504,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void TeleporteDePlanetaG11(ServerPlayer pl, string destino, string[] lista, string verbo, bool demoniaco)
 	{
+		if (RecusarPelaMenteFragmentada(pl)) return;
 		// `demon.dm` nao tem o Ceu na lista, e a recusa e propria: um poder demoniaco nao entra la.
 		if (demoniaco && destino.Equals("Heaven", StringComparison.OrdinalIgnoreCase))
 		{
@@ -554,11 +566,13 @@ public sealed partial class GameServer
 	/// </summary>
 	private void TeletransporteG11(ServerPlayer pl, string arg)
 	{
+		if (RecusarPelaMenteFragmentada(pl)) return;
 		Fighter f = pl.Ficha;
 		if (f.KO || EhCadaver(pl)) { Avisar(pl, "nao da, caido."); return; }
-		// (2026-10-15) o fantasma de pe nao esta caido, mas a transmissao e um SALTO: o morto nao sai do Outro Mundo por ela
-		// (a mesma porta fechada do `PodeSaltarDePlaneta`).
-		if (f.dead) { Avisar(pl, "um morto nao sai do Outro Mundo por conta propria."); return; }
+		// (v0.3.2) O MORTO DE PE TRANSMITE -- e quem sai do Outro Mundo chega entre os vivos DE PASSAGEM: 5 s, meio transparente, e a
+		// alma volta (dono, 2026-10-16; ver `GameServer.PassagemDoMorto.cs`). De 2026-10-15 ate aqui ele ouvia a frase abaixo, a porta
+		// do `PodeSaltarDePlaneta` -- que continua fechada pro salto de planeta e pras naves.
+		if (f.dead && MortoNaoTransmiteDeTeste) { Avisar(pl, "um morto nao sai do Outro Mundo por conta propria."); return; }
 		if (pl.Combate is { Stun: > 0 }) { Avisar(pl, "voce ainda esta atordoado."); return; }
 		if (Agarrado(pl)) { Avisar(pl, "preso num agarrao voce nao se concentra."); return; }
 		if (f.med || f.train || NaMente(pl) || pl.Selo.Preso || _canais.ContainsKey(pl.Id))
@@ -678,8 +692,13 @@ public sealed partial class GameServer
 
 		// `for(var/mob/nnM in oview(1)) if(M.client)` (`:151`) -- so ha carona quando se chega numa PESSOA
 		List<ServerPlayer> caronas = EhPessoa(alvo) ? LevarCaronas(pl) : [];
+		// (v0.3.2) QUEM SAI DO OUTRO MUNDO MORTO CHEGA DE PASSAGEM -- o dono e cada carona morta; armada ANTES do salto, pra a zona de
+		// chegada ja o receber meio transparente (a apresentacao da aureola, `TrocarAureolas`). Ver `GameServer.PassagemDoMorto.cs`.
+		List<ServerPlayer> dePassagem = [.. caronas.Prepend(pl).Where(q => q.Ficha.dead && Alem.EhOAlem(q.Zone) && !Alem.EhOAlem(alvo.Zone))];
+		foreach (ServerPlayer quem in dePassagem) ArmarAPassagem(quem);
 		AvisarPertoG3(pl, RaioDaVista, $"{pl.Name} desaparece num clarao!", excetoCentro: true);
 		Saltar(pl, alvo.Zone, PontoAoLadoG11(alvo), caronas, "te leva junto no Teletransporte.");
+		foreach (ServerPlayer quem in dePassagem) AvisarSePessoa(quem, FraseDaPassagem);
 		MandarEfeito(pl, "zanzoken", 500);
 
 		Avisar(pl, "voce localiza a assinatura e aparece num instante!");
@@ -1310,9 +1329,11 @@ public sealed partial class GameServer
 			if (_transmissaoG11.TryGetValue(pl.Id, out TransmissaoG11? t)) TickDaTransmissaoG11(pl, t, agora);
 			if (_doacaoG11.TryGetValue(pl.Id, out DoacaoG11? d)) TickDaDoacaoG11(pl, d, agora);
 
-			if (f.dead) continue;
+			if (CaidoPelaMorte(pl)) continue;
 
-			ZenkaiEmCombateG11(pl, f);
+			// (2026-10-16) O ZENKAI E A UNICA REGRA DE MORTO QUE FICA (dono: *"unica restriçao de morto deveria ser zenkai"*): o resto
+			// deste laco (os astros do Makyo, o Time Store, a meditacao dos Grays, o metabolismo, o Expand) roda no morto de pe.
+			if (!f.dead) ZenkaiEmCombateG11(pl, f);
 			AstrosDoMakyoG11(pl, f);
 			TimeStoreG11(pl, f);
 			MeditacaoDosGraysG11(pl, f);
@@ -1648,7 +1669,7 @@ public sealed partial class GameServer
 	private void TickDaTransmissaoG11(ServerPlayer pl, TransmissaoG11 t, long agora)
 	{
 		// `if(src.loc == loctest)` -- saiu do tile, "You moved!" (`yardrat.dm:137`, `:160-164`)
-		if (Vec2.Distance(pl.Pos, t.Ancora) > 4 || pl.Ficha.KO || pl.Ficha.dead)
+		if (Vec2.Distance(pl.Pos, t.Ancora) > 4 || pl.Ficha.KO || CaidoPelaMorte(pl))   // (v0.3.2) o morto de pe se concentra
 		{
 			_transmissaoG11.Remove(pl.Id);
 			MandarEfeito(pl, "transmissao", 0);

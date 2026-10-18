@@ -81,11 +81,19 @@ public partial class GameServer
 		// O DEGRAU DO BIO-ANDROIDE -- a metade "forma perfeita" do gate da Super Perfeita. Zero pra
 		// todo mundo que nao saiu de um tanque, que e o lado seguro (ver `PerfilDeFormas.EstagioBio`).
 		EstagioBio: pl.Ficha.bio_stage,
+		// (2026-10-17) E O MARCO DELE: a Super Perfeita vale o absoluto dela sobre o degrau que ja mora no BP base -- `Catalogo.MultDoBio`.
+		MarcoBio: pl.Ficha.bio_marco,
+		// (2026-10-17) A LARVA ESTA SELADA: nenhuma forma por cima da carapaca (`EstadoDeForma.Avaliar`).
+		EmLarva: Jandirus.Core.Races.BioAndroids.EmLarva(pl.Ficha),
 
 		// E O BYPASS DE SUPER SAIYAJIN. Ele nao e "tem sangue Saiyajin": e o `canSSJ` do DM, que hoje
 		// so o bio nascido de DNA Saiyajin recebe. Um Saiyajin de verdade continua entrando pela
 		// raca, duas linhas acima do consumidor disto.
-		CanSsj: pl.Ficha.canSSJ);
+		CanSsj: pl.Ficha.canSSJ,
+
+		// (2026-10-16) O REPOUSO QUE A SAGA DO CORRUPTED MAJIN IMPOE -- a Forma Pura, quando ela e o corpo dele. Ver
+		// `ServerPlayer.PisoDoMajin` e `PerfilDeFormas.PisoProprio`.
+		PisoProprio: PuraSemPisoDeTeste ? "" : pl.PisoDoMajin);
 
 	/// <summary>
 	/// EM QUE RAIVA ESTE CORPO ESTA -- a mais alta das duas janelas que ainda estiver aberta.
@@ -697,9 +705,6 @@ public partial class GameServer
 		if (!ReverterNaoLiberaDeTeste && ficha.Ki > ficha.MaxKi)
 		{
 			ficha.Ki = ficha.MaxKi;
-			// O TROCO DA CARGA VAI JUNTO: o `RegenDeKi.Passo` o devolveria como Ki ACIMA do teto nos segundos
-			// seguintes, e o jogador veria o tanque subir sozinho depois de ter liberado.
-			ficha.extracharge = 0;
 			Avisar(pl, "você libera a energia que excedia: o Ki volta a 100%.");
 			SoarODescer(pl);
 			return;
@@ -713,6 +718,16 @@ public partial class GameServer
 		// ====================================================================================
 		bool kaioken = !XNaoApagaOKaiokenDeTeste && TemBuff(pl, BuffKaiokenG2);
 		if (kaioken) ReverterKaiokenG2(pl, porKO: false);
+
+		// (2026-10-16) A FORMA PURA DO CORRUPTED MAJIN NAO SE DESFAZ NO X -- ela e o corpo dele (o repouso imposto: recuar ate o piso
+		// e ficar onde esta). O aviso e o que impede o "nao funcionou" calado; a escada da raca nem chega a ser perguntada (o Majin
+		// nao tem escada, e a frase de baixo diria isso de uma forma que ele TEM).
+		if (Catalogo.FormaDoMajinPuro(pl.Forma.Def))
+		{
+			if (kaioken) SoarODescer(pl);
+			else Avisar(pl, "a Forma Pura é o seu corpo agora: só absorver alguém tira você dela.");
+			return;
+		}
 
 		if (!TemEscada(pl))
 		{
@@ -826,6 +841,7 @@ public partial class GameServer
 		}
 
 		if (CaidoPraForma(pl)) { Avisar(pl, "nao da, caido."); return; }
+		if (LarvaRecusaAForma(pl)) return;   // (2026-10-17) a carapaca sela -- ver `GameServer.Larva.cs`
 
 		// ============================ O CHEFE TEM A FORMA E NAO A USA ============================
 		// Vale so pra corpo com ficha ROTEIRIZADA (`ServerPlayer.Papel`): jogador nao tem papel e
@@ -946,6 +962,7 @@ public partial class GameServer
 
 		if (Catalogo.Def(id) is not { } d) { Avisar(pl, "essa forma nao existe."); return; }
 		if (CaidoPraForma(pl)) { Avisar(pl, "nao da, caido."); return; }
+		if (LarvaRecusaAForma(pl)) return;   // (2026-10-17) a carapaca sela
 		if (!AscendePorDecisao(pl)) return;
 
 		EstadoDeForma est = pl.Forma;
@@ -1203,7 +1220,10 @@ public partial class GameServer
 				$"{nome} exige que voce ja tenha assumido "
 				+ $"{(Catalogo.Def(candidato.PedeFormaDespertada) is { } exigida
 					   ? Catalogo.NomeDe(exigida, est.Maestria) : "outra forma")} ao menos uma vez.",
-			RecusaForma.SemGodKi => $"{nome} pede {candidato.PedeGodKi:0}% de maestria no ki divino.",
+			// (2026-10-16) O `0` E O KI DIVINO DESPERTO (o SSG, o Limit Breaker do Primal): a frase diz isso, e nao "0% de maestria"
+			RecusaForma.SemGodKi => candidato.PedeGodKi <= 0
+				? $"{nome} pede o ki divino desperto."
+				: $"{nome} pede {candidato.PedeGodKi:0}% de maestria no ki divino.",
 			// ESTA FRASE TEM QUE DESENSINAR, e por isso ela nao diz "falta X": quem a ouve ja tem
 			// tudo o que se treina (poder, degrau anterior, ki divino) e a unica coisa que falta
 			// nao se busca. Dizer "voce precisa de furia" mandaria a pessoa procurar briga; dizer
@@ -1580,7 +1600,8 @@ public partial class GameServer
 		// ========================================================================================
 		if (EmCena(pl)) return;
 
-		double dreno = est.DrenoPorSegundo() * pl.Ficha.MaxKi * dt;
+		// (v0.4.0) vezes o dreno racial (False Advantage 0,5; Unmatched Ferocity 0; Primal Evolution; o Demonic 1,1) -- `GameServer.Passivas`
+		double dreno = est.DrenoPorSegundo() * pl.Ficha.MaxKi * dt * pl.Racial.Efeito.Dreno;
 		pl.Ficha.Ki -= dreno;
 
 		if (pl.Ficha.Ki <= 0 && !FuryAtravessaAQueda(pl))   // a Fury nao cobra Ki, entao nao cai por falta dele
@@ -1658,7 +1679,7 @@ public partial class GameServer
 	/// </summary>
 	private static bool SubirMaestriaDaZona(ServerPlayer pl, string id, double porSegundo, double dt,
 											out string marco) =>
-		pl.Forma.Maestria.Subir(id, porSegundo * dt * Math.Max(pl.Ficha.zoneMasteryMult, 0), out marco);
+		pl.Forma.Maestria.Subir(id, porSegundo * dt * Math.Max(pl.Ficha.zoneMasteryMult, 0) * FatorDeMaestriaDoCorpo(pl), out marco);
 
 	/// <summary>
 	/// A FORMA SE DESFAZ (Ki zerado, nocaute). Vai direto ao PISO e nao um degrau -- ver

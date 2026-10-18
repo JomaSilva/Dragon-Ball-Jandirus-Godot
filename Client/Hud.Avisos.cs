@@ -79,13 +79,17 @@ public partial class Hud
 	public const string AvisoDeAtordoado = "ATORDOADO";
 
 	/// <summary>
-	/// O QUE O PAINEL DIZ DESTE CORPO AGORA, de cima pra baixo. Caido ou morto nao ha aviso: o corpo no chao ja
-	/// e a leitura, e "atordoado" por cima de um nocaute seria ruido.
+	/// O QUE O PAINEL DIZ DESTE CORPO AGORA, de cima pra baixo. Caido (o nocaute, o cadaver) nao ha aviso: o corpo no chao ja e
+	/// a leitura, e "atordoado" por cima de um nocaute seria ruido.
+	///
+	/// O MORTO DE PE TEM AVISO (dono, 2026-10-16): *"n aparece a informaçao de guarda levantada quando vc defende quando morto"*. O
+	/// corte era o `Imobilizado` cru (`KO || Morto`), e o morto de pe -- no Outro Mundo, de visita, de passagem -- anda, luta e ergue a
+	/// guarda desde 2026-09-04. A regra e a do corpo local (`LocalPlayer.Caido`): o nocaute e o cadaver.
 	/// </summary>
 	public static List<(string Texto, Color Cor)> AvisosDoCorpo(SheetState f)
 	{
 		List<(string, Color)> l = [];
-		if (f.Imobilizado) return l;
+		if (LocalPlayer.Caido(f)) return l;
 
 		if (f.Agarrado)
 		{
@@ -96,6 +100,9 @@ public partial class Hud
 		if (f.Guarda) l.Add((AvisoDeGuarda, Tema.Ki));
 		if (f.Estrangulando) l.Add(("ESTRANGULANDO · parado enquanto aperta · o soco afrouxa", Tema.Destaque));
 		else if (f.Segurando) l.Add(("SEGURANDO ALGUÉM · ande pra arremessar · o soco estrangula", Tema.Destaque));
+		// (v0.4.0) AS PASSIVAS E ATIVAS RACIAIS -- ja vem escritas do servidor, uma por linha (`SheetState.Raciais`).
+		if (!string.IsNullOrEmpty(f.Raciais))
+			foreach (string linha in f.Raciais.Split('\n', StringSplitOptions.RemoveEmptyEntries)) l.Add((linha, Tema.Ki));
 		return l;
 	}
 }

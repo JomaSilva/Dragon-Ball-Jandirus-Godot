@@ -47,11 +47,15 @@ public partial class GameServer
 			foreach (ServerPlayer o in _players.Values)
 				Mandar(o, Protocol.Fala.Sistema, "", via, falante: null);
 
-		string antigo = _tronos.TryGetValue(r.Chave, out string? d) ? d : "";
-		string largou = CargoDe(pl.Conta);
-		if (largou.Length > 0) _tronos.Remove(largou);
+		string vagaVelha = VagaDaConta(pl.Conta);
+		string largou = CargoDaVaga(vagaVelha);
+		if (vagaVelha.Length > 0) _tronos.Remove(vagaVelha);
 
-		_tronos[r.Chave] = pl.Conta;
+		// (2026-10-16) A VAGA LIVRE, se o cargo tiver (o Kaioshin, `RankDef.Vagas`); senao a primeira, e o dono dela sai.
+		string vaga = VagaLivre(r) ?? r.Chave;
+		string antigo = _tronos.TryGetValue(vaga, out string? d) ? d : "";
+
+		_tronos[vaga] = pl.Conta;
 		SalvarCargos();
 
 		// O EX-DONO PERDE O KIT NA HORA. Sem esta linha ele so o perderia no proximo tique de
@@ -66,6 +70,7 @@ public partial class GameServer
 		ReconciliarDadiva(pl);
 		GD.Print($"[server] {pl.Name} ({pl.Conta}) assumiu '{r.Nome}' -- {(via.Length > 0 ? via : "porta especial")}");
 		AnunciarCargo(r, pl, largou);
+		AparaOPovoDoCargo(r.Chave);
 	}
 
 	/// <summary>
@@ -78,13 +83,18 @@ public partial class GameServer
 	///
 	/// Devolve `false` quando o trono ja estava vago -- quem chama decide se isso e erro ou rotina.
 	/// </summary>
-	private bool Destronar(string chave, string motivo)
+	/// <param name="quem">(2026-10-16) A CONTA a destituir num cargo de varias vagas (o Kaioshin): a vaga DELA vaga, e so ela. Vazio
+	/// (ou uma conta que nao carrega o cargo) = a primeira vaga ocupada -- o "dono do cargo" de sempre.</param>
+	private bool Destronar(string chave, string motivo, string quem = "")
 	{
 		RankDef? r = Cargos.Get(chave);
 		if (r == null) return false;
-		if (!_tronos.TryGetValue(r.Chave, out string? conta) || conta.Length == 0) return false;
+		string vaga = quem.Length > 0 && string.Equals(CargoDe(quem), r.Chave, StringComparison.OrdinalIgnoreCase)
+			? VagaDaConta(quem)
+			: VagasDe(r).FirstOrDefault(v => _tronos.TryGetValue(v, out string? x) && x.Length > 0) ?? "";
+		if (vaga.Length == 0 || !_tronos.TryGetValue(vaga, out string? conta) || conta.Length == 0) return false;
 
-		_tronos.Remove(r.Chave);
+		_tronos.Remove(vaga);
 		SalvarCargos();
 
 		// O TITULO EM DISPUTA TEM RELOGIO PROPRIO (carencia, adiamentos, tarefas), e ele nao pode
@@ -589,7 +599,7 @@ public partial class GameServer
 			}
 
 		// 3. NINGUEM: o trono VAGA (`else King_of_Vegeta=null`).
-		Destronar(cargo, $"o portador foi morto por {algoz.Name} e nao havia herdeiro");
+		Destronar(cargo, $"o portador foi morto por {algoz.Name} e nao havia herdeiro", vitima.Conta);
 	}
 
 	// =====================================================================

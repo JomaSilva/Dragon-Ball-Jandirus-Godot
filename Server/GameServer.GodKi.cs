@@ -452,10 +452,14 @@ public partial class GameServer
 	private void TickDaMaestriaDivina(ServerPlayer pl, double dt)
 	{
 		if (MaestriaDivinaParadaDeTeste) return;
+		// (2026-10-16) A ZONA QUE NAO DEIXA MASTERIZAR FORMA (a mente -- `RitmoDaZona`) para a do ki divino tambem: ela e a
+		// maestria das formas divinas. So o "nao" vale aqui -- o ritmo de zona (a Sala do Tempo, 4x) nunca acelerou esta.
+		if (pl.Ficha.zoneMasteryMult <= 0) return;
 		if (!DespertarDivino.JaDespertou(pl.Ficha) || EhCadaver(pl) || pl.Ficha.KO) return;
 		if (!DespertarDivino.UsaOKiDivino(Catalogo.Def(pl.Forma.Atual), pl.Ficha.Class, pl.Ficha.SaiyanLineage)) return;
 
-		double marco = DespertarDivino.SubirMaestria(pl.Ficha, dt, emCombate: pl.Combate is { EmCombate: > 0 });
+		// (2026-10-16) O ECHOED INSANITY do Corrupted Majin com a Forma Pura: *"master everything 20% slower"*. Ver `FatorDeMaestriaDoCorpo`.
+		double marco = DespertarDivino.SubirMaestria(pl.Ficha, dt * FatorDeMaestriaDoCorpo(pl), emCombate: pl.Combate is { EmCombate: > 0 });
 		if (marco <= 0) return;
 
 		string classe = pl.Ficha.Class;

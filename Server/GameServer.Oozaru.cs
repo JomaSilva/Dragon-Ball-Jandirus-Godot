@@ -38,7 +38,7 @@ public partial class GameServer
 	private void OlharParaALua(ServerPlayer pl)
 	{
 		if (pl.Oozaru != Jandirus.Core.Forms.FormaOozaru.Nao) { Avisar(pl, "você já é a fera."); return; }
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "você não consegue nem levantar a cabeça."); return; }
+		if (pl.Ficha.KO || CaidoPelaMorte(pl)) { Avisar(pl, "você não consegue nem levantar a cabeça."); return; }
 
 		if (!TemRaboInteiro(pl))
 		{
@@ -79,7 +79,7 @@ public partial class GameServer
 			?? (string.Equals(pl.Race, "Saiyan", StringComparison.OrdinalIgnoreCase) ? 100 : 0);
 
 		RecusaOozaru r = Oozaru.PodeVirar(genoma, TemRaboInteiro(pl),
-			pl.Ficha.KO || pl.Ficha.dead, pl.Oozaru);
+			pl.Ficha.KO || CaidoPelaMorte(pl), pl.Oozaru);
 		if (r != RecusaOozaru.Pode) return;
 
 		bool emSsj = !pl.Forma.NaBase;
@@ -426,7 +426,7 @@ public partial class GameServer
 		//    Saiyajin, e ela funciona NO MEIO da forma, nao so na entrada.
 		if (!TemRaboInteiro(pl)) { DesfazerOozaru(pl, "seu rabo se foi, e com ele a besta."); return; }
 		if (!AFonteDaFera(pl)) { DesfazerOozaru(pl, "a lua se foi, e com ela a besta."); return; }
-		if (pl.Ficha.dead) { DesfazerOozaru(pl, "o corpo cede."); return; }
+		if (CaidoPelaMorte(pl)) { DesfazerOozaru(pl, "o corpo cede."); return; }   // (2026-10-16) o cadaver; a fera de pe do Outro Mundo fica
 
 		// 2. O PRAZO. `spawn(3000)` / `spawn(1000)`.
 		if (NowMs() >= pl.OozaruAte)

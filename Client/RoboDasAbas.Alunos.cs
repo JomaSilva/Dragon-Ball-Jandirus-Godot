@@ -43,6 +43,8 @@ public partial class RoboDasAbas
 		public bool TemCargo(string chave) => real.TemCargo(chave);
 		public Fatos Fatos => (real.Fatos & ~(Fatos.TemMestre | Fatos.TemAluno)) | doVinculo;
 		public Lugar Lugar => real.Lugar;
+		public Jandirus.Core.Races.SkillRacial SkillsRaciais => real.SkillsRaciais;
+		public Jandirus.Core.Races.SkillRacial SkillsDoSangue => real.SkillsDoSangue;
 	}
 
 	private async System.Threading.Tasks.Task F17_Alunos(MenuJogo menu, GameClient cli)

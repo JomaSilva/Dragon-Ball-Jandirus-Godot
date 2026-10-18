@@ -135,7 +135,7 @@ public sealed partial class GameServer
 			return;
 		}
 
-		if (pl.Ficha.KO || pl.Ficha.dead || EhCadaver(pl)) { Avisar(pl, "caído, você não solta ninguém."); return; }
+		if (pl.Ficha.KO || CaidoPelaMorte(pl)) { Avisar(pl, "caído, você não solta ninguém."); return; }
 		if (ZonaFechadaAoTeleporte(pl.Zone) || PresoNoTorneio(pl.Id)) { Avisar(pl, "aqui a cápsula não abre."); return; }
 		// `usr.out_mobs.len <= 1`.
 		if (!Companheiros.SemTetoDeSoltosDeTeste && _companheiros.Values.Count(s => s.Dono == pl.Id) >= Companheiros.MaxSoltos)
@@ -223,7 +223,7 @@ public sealed partial class GameServer
 	{
 		// `"Already have a mob type."`.
 		if (Companheiros.Gaveta(def.Id) > 0) { Avisar(pl, "esta bola já guarda uma criatura."); return; }
-		if (pl.Ficha.KO || pl.Ficha.dead || EhCadaver(pl)) { Avisar(pl, "caído, você não captura ninguém."); return; }
+		if (pl.Ficha.KO || CaidoPelaMorte(pl)) { Avisar(pl, "caído, você não captura ninguém."); return; }
 		// `for(var/mob/npc/M in get_step(src,dir)) if(!istype(M,/mob/npc/pet) && !M.sim && M.quality && M.KO)`.
 		ServerPlayer? alvo = QuemEstaNaFrente(pl, o => o.Ficha.KO && !o.Ficha.dead && PodeSerCapturado(o));
 		if (alvo == null) { Avisar(pl, "não há criatura nocauteada à sua frente que a bola possa capturar."); return; }   // `"No target!"`

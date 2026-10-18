@@ -186,6 +186,10 @@ public sealed class LimiaresPessoais
 		// ==================================================================================================
 		"ssj2at_heran" => ssj2at / Catalogo.HeranGateMult2,
 
+		// (v0.4.0) A HIGH TENSION DO HUMANO: a METADE do limiar do SSJ1 (*"req half of SSJ1"*, a lista do amigo do dono). A var e a
+		// MESMA `ssjat` -- o Humano a sorteia no `RolarHumano` --, entao o que muda e o gate, e por isso e chave e nao campo.
+		"ssjat_tensao" => ssjat * Catalogo.FracaoDaAltaTensao,
+
 		"ssj3at" => ssj3at / Catalogo.Ssj2GateMult,
 		"rawssj4at" => rawssj4at,
 		"ultrassjat" => ultrassjat,
@@ -219,6 +223,7 @@ public sealed class LimiaresPessoais
 		// O CLA ENTRA AQUI, e ele nao entrava: `RolarNamek()` nao recebia argumento nenhum enquanto a
 		// margem era um +-5% plano. Ver `RolarNamek(classe)`.
 		else if (raca == "Namekian") l.RolarNamek(classe);
+		else if (raca == Catalogo.RacaHumano) l.RolarHumano();
 
 		return l;
 	}
@@ -350,6 +355,18 @@ public sealed class LimiaresPessoais
 			"Dragon clan" => Faixa("snamekat", 9, 12),
 			_ => Faixa("snamekat", 10, 12),
 		});
+
+	/// <summary>
+	/// (v0.4.0) O HUMANO SORTEIA OS DOIS LIMIARES QUE A LINHA DA TENSAO LE: o `ssjat` (a High Tension pede a METADE dele) e o
+	/// `ssj2at` (o Extreme Tension pede o mesmo que o SSJ2). No DM o Humano nao tem forma e nao sorteia nada; a linha e da lista do
+	/// amigo do dono (*"req half of SSJ1"*, *"req ~SSJ2"*). As faixas sao as do `else` do Saiyajin (`statsaiyan.dm:75-77`) -- a mesma
+	/// ideia que o dono ditou pro Super Namekuseijin: *"cada um ter um requisito pessoal, mas em torno de um valor"*.
+	/// </summary>
+	private void RolarHumano()
+	{
+		ssjat = Catalogo.SsjatInicial * Faixa("ssjat", 10, 12);
+		ssj2at = Catalogo.Ssj2atInicial * Faixa("ssj2at", 9, 12);
+	}
 
 	// =====================================================================
 	// O GERADOR

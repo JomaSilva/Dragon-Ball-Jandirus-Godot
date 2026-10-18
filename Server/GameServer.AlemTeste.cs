@@ -1017,7 +1017,7 @@ public partial class GameServer
 		// ...E CONTINUA REUNINDO DEPOIS DO TIQUE. O `Carregar` aceitava e o `TickDaCarga` derrubava no
 		// tique seguinte pelo `dead` cru: a checagem de cima passava com a tecla morta em jogo.
 		{
-			double kiDeAntes = pl.Ficha.Ki, vigorDeAntes = pl.Ficha.stamina, extraDeAntes = pl.Ficha.extracharge;
+			double kiDeAntes = pl.Ficha.Ki, vigorDeAntes = pl.Ficha.stamina;
 			bool movendoDeAntes = pl.Moving;
 			pl.Moving = false;
 			pl.Ficha.Ki = pl.Ficha.MaxKi * 0.5;
@@ -1038,7 +1038,6 @@ public partial class GameServer
 			pl.Moving = movendoDeAntes;
 			pl.Ficha.Ki = kiDeAntes;
 			pl.Ficha.stamina = vigorDeAntes;
-			pl.Ficha.extracharge = extraDeAntes;
 		}
 		Carregar(pl, false);
 		if (cadaver != null)
@@ -1177,6 +1176,28 @@ public partial class GameServer
 		{
 			mapaT!.Fechar(tx, ty);
 			_cenarioCaido[ChaveDeEstado(terra)].Remove((tx, ty));
+		}
+
+		// (2026-10-16) O CEU E O INFERNO QUEBRAM -- o dono: *"blz outro mundo pode deixar indestrutivel, mas hell e heaven pode deixar
+		// destruir"*. A recusa e SO do Outro Mundo; numa parede quebravel de cada um a mesma funcao derruba (e a bancada devolve).
+		foreach (string nome in new[] { Alem.ZonaDoCeu, Alem.ZonaDoInferno })
+		{
+			ZoneKey z = ZoneKey.Premade(nome);
+			ZoneCollision? m = MapaDaZonaOuCatalogo(z);
+			(int qx, int qy) = (-1, -1);
+			if (m != null)
+				for (int y = 8; y < m.Height - 8 && qx < 0; y++)
+					for (int x = 8; x < m.Width - 8 && qx < 0; x++)
+						if (m.BlockedCell(x, y) && !m.NaBorda(x, y) && !m.Indestrutivel(x, y)
+							&& !(_cenarioCaido.TryGetValue(ChaveDeEstado(z), out HashSet<(int X, int Y)>? hz) && hz.Contains((x, y))))
+							(qx, qy) = (x, y);
+			bool caiu2 = qx >= 0 && DerrubarCelula(z, qx, qy);
+			AfirmarAlem($"...e no {nome} a parede CAI: so o Outro Mundo e indestrutivel", caiu2, $"({qx},{qy})");
+			if (caiu2)
+			{
+				m!.Fechar(qx, qy);
+				_cenarioCaido[ChaveDeEstado(z)].Remove((qx, qy));
+			}
 		}
 	}
 

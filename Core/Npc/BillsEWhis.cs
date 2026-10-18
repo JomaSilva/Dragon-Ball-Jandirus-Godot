@@ -266,9 +266,9 @@ public static class BillsEWhis
 	/// <summary>
 	/// UM MES IN-GAME EM DIAS. O calendario do original tem meses de 28 dias (`if(Days>=29)`, `WorldClock.dm:19`),
 	/// e este port ja conta o `Year` do DM por essa regua (`Magic.Esferas.DiasPorAnoDoDm` = 10 meses = 280 dias).
-	/// Com o dia de 24 minutos (`Ceu.SegundosPorDia`), o mes sao 11,2 horas reais.
+	/// Com o dia de 24 minutos (`Ceu.SegundosPorDia`), o mes sao 11,2 horas reais. (2026-10-17) E o mes do `Calendario` do mundo.
 	/// </summary>
-	public const int DiasPorMes = 28;
+	public const int DiasPorMes = World.Calendario.DiasPorMes;
 
 	/// <summary>"1 mes in game dps o bills ira pra terra": quantos dias in-game entre Boo cair e ele pousar.</summary>
 	public const int DiasAteAVisita = 1 * DiasPorMes;

@@ -60,6 +60,21 @@ public partial class GameServer
 	/// mudaria o numero que elas conferem. E uma diferenca de verdade entre as bancadas -- por isso ela
 	/// tem nome aqui em vez de morar escondida numa quarta copia da forja.
 	/// </param>
+	/// <summary>
+	/// (2026-10-16) CRAVA a maestria de gravidade de um corpo -- pra cima OU pra baixo -- e faz a ficha lenta sair de novo. A bancada
+	/// das abas mede a linha "Aclimatado" da aba de Formas com ela e devolve o corpo como estava. Devolve a maestria de antes.
+	/// </summary>
+	internal double CravarMaestriaDeGravidadeDeTeste(int id, double maestria)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return 0;
+		double antes = pl.Ficha.GravMastered;
+		pl.Ficha.GravMastered = maestria;
+		pl.Ficha.Statify();
+		pl.Ficha.PowerLevel();
+		pl.SigAtributos = "";
+		return antes;
+	}
+
 	private ServerPlayer ForjarComSkills(string nome, Vec2 onde, double bp,
 										 string[]? skills = null, (string Path, int Nivel)[]? degraus = null,
 										 double kiMin = 0, double staminaMin = 0,

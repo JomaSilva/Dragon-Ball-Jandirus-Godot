@@ -617,6 +617,12 @@ public partial class GameServer
 			// `GuiarODroide` (`GameServer.SuperComputador.cs`).
 			if (!GuiarODroide(npc, droideDoComputador, out presa, out destino)) return;
 		}
+		else if (_outrasMetades.TryGetValue(npc.Id, out OutraMetade? metade))
+		{
+			// (2026-10-16) A OUTRA METADE DE UM CORRUPTED MAJIN: a presa e o mestre, e so ele -- nem molde, nem fera. Ver
+			// `GuiarAOutraMetade` (`GameServer.SagaDoMajin.cs`).
+			if (!GuiarAOutraMetade(npc, metade, out presa, out destino)) return;
+		}
 		else if (npc.PresoGuardado != 0)
 		{
 			// A IMAGEM DE UM MAJIN, dentro dele: a presa e o prisioneiro que ela guarda, e so ele -- nem
@@ -654,8 +660,9 @@ public partial class GameServer
 
 			// MORTO SAI DO MUNDO, e nao renasce (ver o `TickCombate`). Aqui so se para de dirigir:
 			// quem o remove e o laco de combate, no proximo tique, com a lista ja materializada.
-			// O TORNEIO SEGURA quem espera a vez (o `apply_hold` do DM): imovel ate ser chamado.
-			if (PresoNoTorneio(npc.Id)) { npc.Moving = false; return; }
+			// O TORNEIO SEGURA quem espera a vez (o `apply_hold` do DM): imovel ate ser chamado. E o lutador da vez fica parado ate o
+			// "COMECEM!" (o `tourney_lock`: sem oponente designado, nada de vida diaria, de spar nem de passeio pra fora da arena).
+			if (ForaDaVezNoTorneio(npc)) { npc.Moving = false; return; }
 			// Morto DE PE (o lutador do Outro Mundo) continua vivo pra IA; o cadaver deitado, nao.
 			if (npc.Ficha.dead && !npc.MortoDePe) { npc.Moving = false; return; }
 
@@ -950,6 +957,15 @@ public partial class GameServer
 		&& imposta.Zone.Hash == npc.Zone.Hash
 			? imposta : null;
 
+	/// <summary>
+	/// (2026-10-16) ESTE CORPO E UM MORTO NO CHAO -- o cadaver, e nao o morto de pe do alem (`EhCadaver`). E a pergunta que o rancor
+	/// do habitante e o saque faziam com o `dead` cru: no alem todo mundo esta morto, e a alma nao revidava nem se revistava.
+	/// </summary>
+	private static bool MortoCaido(ServerPlayer o) => MortoDePeComoCadaverDeTeste ? o.Ficha.dead : EhCadaver(o);
+
+	/// <summary>DEFEITO INJETADO (`--infernoteste`): o morto de pe volta a contar como cadaver no rancor e no saque -- o `dead` cru de antes.</summary>
+	internal static bool MortoDePeComoCadaverDeTeste;
+
 	private ServerPlayer? PresaDoNpc(ServerPlayer npc)
 	{
 		// O ALVO IMPOSTO PELO ROTEIRO VEM ANTES DE TUDO -- ver `PresaImpostaPeloRoteiro`.
@@ -968,9 +984,12 @@ public partial class GameServer
 		// Sem isto, um chefe de saga que encostasse num cidadao punha o vilarejo pra revidar NELE, e
 		// esse revide marcava a saga como "engajada" (ver `MonitorarChefe`) -- o ultimato de destruicao
 		// do planeta encurtando por uma briga entre dois robos.
+		// (2026-10-16) O MORTO DE PE E PRESA -- so o cadaver fica de fora. O dono: *"npcs mortos n estao lutando mesmo q eu bata
+		// neles"*. Era o `dead` cru: no alem TODO jogador esta morto, e a alma (e o habitante vivo do Ceu e do Inferno) nunca tinha
+		// em quem revidar. E a regra do "morto luta como vivo" (v0.3.2), a mesma do `PresaDoHostil`.
 		if (_players.TryGetValue(npc.UltimoAgressor, out ServerPlayer? quem)
 			&& quem.Id != npc.Id && EhJogador(quem) && quem.Zone.Hash == npc.Zone.Hash
-			&& !quem.Ficha.dead && !quem.Ficha.KO)
+			&& !MortoCaido(quem) && !quem.Ficha.KO)
 			return quem;
 
 		// O AGRESSOR SUMIU e o rancor ainda vale: procura outro por perto. O raio e o `oview(12)` do
@@ -983,7 +1002,7 @@ public partial class GameServer
 			// SO GENTE DE VERDADE. O `provoke()` do DM exige `P.client` em toda a busca alargada, e a
 			// razao aparece no jogo: sem isso, dois cidadaos que se esbarrassem numa briga passariam
 			// a se cacar e o vilarejo inteiro viraria uma rinha depois do primeiro soco de um jogador.
-			if (!EhJogador(o) || o.Ficha.dead || o.Ficha.KO) continue;
+			if (!EhJogador(o) || MortoCaido(o) || o.Ficha.KO) continue;
 			float d2 = (o.Pos - npc.Pos).LengthSquared;
 			if (d2 >= perto) continue;
 			perto = d2; melhor = o;
@@ -1064,7 +1083,7 @@ public partial class GameServer
 		if (npc.PresaEngajada != 0
 			&& _players.TryGetValue(npc.PresaEngajada, out ServerPlayer? engajada)
 			&& engajada.Id != npc.Id && EhJogador(engajada)
-			&& !engajada.Ficha.dead && !engajada.Ficha.KO
+			&& !EhCadaver(engajada) && !engajada.Ficha.KO
 			&& engajada.Zone.Hash == npc.Zone.Hash
 			&& (CacaOPlaneta(npc) || (engajada.Pos - npc.Pos).LengthSquared <= RaioDePerseguicao * RaioDePerseguicao))
 			return engajada;
@@ -1075,7 +1094,10 @@ public partial class GameServer
 		float perto = CacaOPlaneta(npc) ? float.MaxValue : RaioDeAgressao * RaioDeAgressao;
 		foreach (ServerPlayer o in ZoneList(npc.Zone.Hash))
 		{
-			if (o.Id == npc.Id || !EhJogador(o) || o.Ficha.dead || o.Ficha.KO) continue;
+			// (2026-10-16) O MORTO DE PE E PRESA -- so o cadaver fica de fora. E a regra do "morto luta como vivo" (v0.3.2) e da presa
+			// imposta logo abaixo (`PresaImpostaPeloRoteiro`); com o `dead` cru, o vilao de saga que volta no Inferno (`GameServer.ViloesDoInferno`)
+			// ignoraria justamente os mortos que foram la lutar com ele.
+			if (o.Id == npc.Id || !EhJogador(o) || EhCadaver(o) || o.Ficha.KO) continue;
 			float d2 = (o.Pos - npc.Pos).LengthSquared;
 			if (d2 >= perto) continue;
 			perto = d2; melhor = o;

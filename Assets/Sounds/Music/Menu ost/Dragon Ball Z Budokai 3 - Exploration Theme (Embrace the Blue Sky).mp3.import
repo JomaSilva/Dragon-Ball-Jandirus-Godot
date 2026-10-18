@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://bot5t2ryf8rac"
+path="res://.godot/imported/Dragon Ball Z Budokai 3 - Exploration Theme (Embrace the Blue Sky).mp3-b7e06aa152288ed57e83601c8e13ab8f.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/Menu ost/Dragon Ball Z Budokai 3 - Exploration Theme (Embrace the Blue Sky).mp3"
+dest_files=["res://.godot/imported/Dragon Ball Z Budokai 3 - Exploration Theme (Embrace the Blue Sky).mp3-b7e06aa152288ed57e83601c8e13ab8f.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

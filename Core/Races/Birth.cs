@@ -79,15 +79,15 @@ public static class Birth
 	{
 		if (raca == "Saiyan")
 		{
-			if (linhagem == "Primal Saiyan")
-				return rng.Next(1, 1001) <= 20 ? "Legendary Primal Saiyan" : "Normal Primal Saiyan";
-
-			// 1% Legendary, 4% Elite, 45% Low-Class, 50% Normal -- a tabela literal do statsaiyan
-			int roll = rng.Next(1, 1001);
-			if (roll <= 10) return "Legendary";
-			if (roll <= 50) return "Elite";
-			if (roll <= 500) return "Low-Class";
-			return "Normal";
+			// A TABELA DA LINHAGEM, em milesimos e na ordem do `statsaiyan` -- um sorteio de 1 a 1000 cai na primeira faixa que o cobre.
+			(string Classe, int Milesimos)[] tabela = TabelaSaiyajin(linhagem);
+			int roll = rng.Next(1, 1001), soma = 0;
+			foreach ((string classe, int milesimos) in tabela)
+			{
+				soma += milesimos;
+				if (roll <= soma) return classe;
+			}
+			return tabela[^1].Classe;
 		}
 
 		// Namekuseijin (cla) e Half-Saiyan (linhagem): a escolha JA e a classe
@@ -96,6 +96,56 @@ public static class Birth
 		RaceProto? proto = cat.Get(raca);
 		return proto != null ? proto.RollClass(rng) : "None";
 	}
+
+	/// <summary>
+	/// (2026-10-16) A CLASSE MAIS RARA DESTA RACA -- a de menor chance no sorteio dela (o `Class_Spread` do proto; o Saiyajin pela
+	/// tabela propria do <see cref="RollClass"/>: o Lendario, ou o Lendario Primal na linhagem Primal). O verb de admin
+	/// `admin_classe_rara` a garante no proximo personagem de uma conta (`AccountSave.ProximaClasseRara`).
+	///
+	/// VAZIO = A RACA NAO TEM CLASSE RARA: sem sorteio, uma classe so, ou todas com a mesma chance (o Semideus: tres de 33).
+	/// EMPATE ENTRE AS MAIS RARAS (o Namekuseijin: Guerreiro e Demonio, 25 cada) = a que o jogador escolheu, se for uma delas; senao
+	/// uma delas pelo <paramref name="rng"/>.
+	/// </summary>
+	public static string ClasseMaisRara(RaceCatalog cat, string raca, string linhagem, Random rng)
+	{
+		if (raca == "Saiyan") return linhagem == "Primal Saiyan" ? "Legendary Primal Saiyan" : "Legendary";
+		if (cat.Get(raca) is not { ClassSpread.Count: > 1 } proto) return "";
+		int menor = proto.ClassSpread.Min(c => c.Chance), maior = proto.ClassSpread.Max(c => c.Chance);
+		if (menor == maior) return "";
+		List<string> raras = [.. proto.ClassSpread.Where(c => c.Chance == menor).Select(c => c.Classe)];
+		return raras.Contains(linhagem) ? linhagem : raras[rng.Next(raras.Count)];
+	}
+
+	/// <summary>
+	/// AS DUAS TABELAS DO SAIYAJIN, em milesimos (`statsaiyan.dm`): 1% Legendary, 4% Elite, 45% Low-Class, 50% Normal; na linhagem
+	/// Primal, 2% Legendary Primal e 98% Normal Primal. Uma copia so -- o sorteio (<see cref="RollClass"/>) e a regua do filho
+	/// (<see cref="ChanceDaClasse"/>) leem a mesma.
+	/// </summary>
+	private static (string Classe, int Milesimos)[] TabelaSaiyajin(string linhagem) => linhagem == "Primal Saiyan"
+		? [("Legendary Primal Saiyan", 20), ("Normal Primal Saiyan", 980)]
+		: [("Legendary", 10), ("Elite", 40), ("Low-Class", 450), ("Normal", 500)];
+
+	/// <summary>
+	/// (2026-10-17) A CHANCE DE UMA CLASSE NASCER NESTA RACA, em milesimos -- a regua da "mais rara entre os pais" do filho
+	/// (`Filhos.ClasseDoFilho`). O Saiyajin pela tabela da linhagem; o resto pelo `Class_Spread` do proto. Zero = essa classe nao nasce
+	/// aqui (ou nesta linhagem).
+	/// </summary>
+	public static double ChanceDaClasse(RaceCatalog cat, string raca, string linhagem, string classe)
+	{
+		if (raca == "Saiyan")
+		{
+			foreach ((string c, int milesimos) in TabelaSaiyajin(linhagem))
+				if (c == classe) return milesimos;
+			return 0;
+		}
+		if (cat.Get(raca) is not { } proto) return 0;
+		foreach ((string c, int chance) in proto.ClassSpread)
+			if (c == classe) return chance * 10;
+		return 0;
+	}
+
+	/// <summary>(2026-10-16) Esta raca TEM classe rara? E por ela que o sorteio de raca da garantia filtra. Ver <see cref="ClasseMaisRara"/>.</summary>
+	public static bool TemClasseRara(RaceCatalog cat, string raca) => ClasseMaisRara(cat, raca, "", new Random(0)).Length > 0;
 
 	/// <summary>
 	/// Monta o lutador completo: genoma, stats, BP e os ajustes de berco que nao moram no

@@ -1562,6 +1562,7 @@ public partial class Transformacao : Node2D
 		// aparencia nova entrar (`icon = ...`) -- `DNALabs.dm:614-617`. Quem entra depois e o `Virar`,
 		// no fim deste metodo.
 		ApagarSilhueta();
+		ApagarPassagem();   // (2026-10-16) a metamorfose da saga do Majin, pela mesma regra da silhueta
 
 		// E A LUZ DA FUSAO E O QUARTO EMPRESTIMO, pela mesma regra dos tres. Ver `ApagarALuzDaFusao`:
 		// no fim BOM o ultimo estouro ja se apagou sozinho e tirar o node e formalidade; nos outros
@@ -1630,6 +1631,21 @@ public partial class Transformacao : Node2D
 		_silhuetaAcesa = false;
 		if (IsInstanceValid(_alvo))
 			_alvo.GetNodeOrNull<CharacterVisual>("Visual")?.SilhuetaDeCena(null);
+	}
+
+	/// <summary>
+	/// (2026-10-16) A CENA ACENDEU A PASSAGEM? Irma da <see cref="_silhuetaAcesa"/>, pelo mesmo motivo: so quem acendeu apaga -- o
+	/// `Soltar` de uma cena qualquer nao pode apagar a metamorfose de outra que estiver rodando no mesmo corpo.
+	/// </summary>
+	private bool _passagemAcesa;
+
+	/// <inheritdoc cref="_passagemAcesa"/>
+	private void ApagarPassagem()
+	{
+		if (!_passagemAcesa) return;
+		_passagemAcesa = false;
+		if (IsInstanceValid(_alvo))
+			_alvo.GetNodeOrNull<CharacterVisual>("Visual")?.EncerrarPassagem();
 	}
 
 	// ======================================================================================
@@ -2213,6 +2229,18 @@ public partial class Transformacao : Node2D
 			vs.SilhuetaDeCena(folhaDaSilhueta);
 		}
 
+		// ============================ (2026-10-16) A PASSAGEM -- O BEAT SO ACENDE ============================
+		// Irma da silhueta logo acima: a folha e a animacao sao da CENA (`Cinematica.FolhaDaPassagem`), o beat arma, e quem apaga e
+		// o `Assumir` (e o `Soltar`, pra cena que morrer no meio). Ver `Efeito.Passagem`.
+		//
+		// O TETO E O QUE FALTA ATE A VIRADA: a metamorfose nunca passa do instante em que o corpo novo entra -- na encurtada ela
+		// acelera pra caber (ver `CharacterVisual.TocarPassagem`).
+		// =====================================================================================================
+		if (b.Faz.HasFlag(Efeito.Passagem)
+			&& _alvo.GetNodeOrNull<CharacterVisual>("Visual") is { } vp
+			&& vp.TocarPassagem(_cena.FolhaDaPassagem, _cena.EstadoDaPassagem, Math.Max(0.1, _cena.SegundosAteAVirada - _t)))
+			_passagemAcesa = true;
+
 		// AQUI HAVIA `Efeito.PedrasSubindo` -> `SoltarPedras()`. A pedra deixou de ser um beat: ela
 		// corre por baixo da cena inteira agora, no `TocarPedras`. Ver o bloco do CHAO SOLTO.
 
@@ -2523,6 +2551,9 @@ public partial class Transformacao : Node2D
 		// `overlaychanged = 1`). Aqui quem apaga e a virada, entao nao ha versao que esqueca.
 		// ==========================================================================================================================
 		ApagarSilhueta();
+		// (2026-10-16) E A PASSAGEM, pela mesma regra: a metamorfose sai no MESMO quadro em que o corpo novo entra (o `Vestir` e o
+		// `Virar` logo abaixo) -- nenhum quadro de corpo velho no meio. Ver `Efeito.Passagem`.
+		ApagarPassagem();
 
 		// ============================ E QUANDO NAO HA FORMA, A VIRADA NAO VESTE NINGUEM ============================
 		// Este e o ponto em que o <see cref="Efeito.Assumir"/> deixa de ser "assumir a forma" e passa a
@@ -2615,6 +2646,12 @@ public partial class Transformacao : Node2D
 	/// <summary>Esta cena ainda esta rodando? DERIVADO do <see cref="_fim"/>, pela mesma razao do
 	/// <see cref="AcabouDeTeste"/>.</summary>
 	public bool Rodando => _fim == FimDaCena.Rodando;
+
+	/// <summary>
+	/// (2026-10-16) QUANTO FALTA PRA VIRADA desta cena, em segundos do relogio dela -- zero se ja virou. E por ele que o `World` escolhe,
+	/// entre duas cenas no mesmo corpo, a que guarda a aparencia nova (ver `World.CenaEmCurso`).
+	/// </summary>
+	public double FaltaPraVirada => _virou ? 0 : Math.Max(0, _cena.SegundosAteAVirada - _t);
 
 	/// <summary>
 	/// VESTE O DEGRAU SEGUINTE DA ESCADA -- o <see cref="Efeito.VesteDegrau"/>.
@@ -3342,6 +3379,10 @@ public partial class Transformacao : Node2D
 		// mesmo tipo: estava importado e sem um leitor no repositorio inteiro.
 		"fusao" => Trilha.Fusao,
 
+		// O DO ULTRA INSTINTO (2026-10-17) -- nao e beat de cena nenhuma: e o som que a transformacao toca fora da estreia
+		// (`Cinematicas.SomDoDegrau`, `World.TocarSomDaForma`). Mora aqui pra nao existir uma segunda tabela de nomes.
+		Jandirus.Core.Forms.Cinematicas.SomDoUltraInstinto => Trilha.UltraInstinto,
+
 		_ => null,
 	};
 
@@ -3367,6 +3408,11 @@ public partial class Transformacao : Node2D
 			foreach (Beat beat in cena.Beats)
 				if (beat.Som.Length > 0 && CaminhoDoSom(beat.Som) is { Length: > 0 } caminho && vistos.Add(caminho))
 					yield return caminho;
+
+		// E O SOM PROPRIO DA TRANSFORMACAO (o do Ultra Instinto, `Cinematicas.SomDoDegrau`, 2026-10-17): nao e beat, mas toca no mesmo
+		// gesto -- e lido na hora, ele pararia a thread principal no quadro da transformacao como os beats paravam.
+		if (CaminhoDoSom(Cinematicas.SomDoUltraInstinto) is { Length: > 0 } doInstinto && vistos.Add(doInstinto))
+			yield return doInstinto;
 	}
 
 	private void Som(string nome)

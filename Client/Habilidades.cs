@@ -176,9 +176,9 @@ public static class Habilidades
 		// CONSUMIR (o bio-androide) e SELAR (o Majin) e a raca de quem aperta (`Absorption.dm:83`). Aqui
 		// a raca escolhe so o TEXTO; quem tem o botao e o requisito de `hab:absorver` na tabela:
 		//
-		//   * o BIO-ANDROIDE pela raca, LARVA INCLUSIVE. A larva que aperta ouve "sua carapaca ainda nao
-		//     desenvolveu os orgaos de absorcao" -- a frase do original, e e ela que ENSINA que a evolucao
-		//     existe e por onde vem. (O meio-sangue de pai bio o ganha comprando "Tail Absorb".)
+		//   * o BIO-ANDROIDE pela raca, LARVA INCLUSIVE. A larva que aperta ouve que a carapaca nao tem os
+		//     orgaos de absorcao e que amadurece enterrada -- e essa frase que ENSINA que a evolucao existe e
+		//     por onde vem. (O meio-sangue de pai bio o ganha comprando "Tail Absorb".)
 		//   * o MAJIN depois de comprar Buu Absorb na arvore dele (`Race Trees/majin.dm:38-40`): o servidor
 		//     so sela pra quem tem a skill, e botao de skill que ainda nao se tem nao aparece -- a arvore,
 		//     na aba Learning, e onde se descobre que ela existe.
@@ -197,13 +197,17 @@ public static class Habilidades
 				  + "Ele ESCAPA se vencer a imagem, se morrer lá dentro, se você for nocauteado ou se você o "
 				  + "expelir -- e você perde na hora o que tinha por causa dele.\n\n"
 				  + "Um NPC é devorado por inteiro: morre, e rende os mesmos 10% até você cair."
-				: "Consome por inteiro alguém NOCAUTEADO e vivo ao seu lado. A vítima MORRE -- nada "
-				  + "resta dela, e nada pode ser regurgitado depois.\n\n"
-				  + "Você cura por completo, enche o Ki e ganha o poder dela -- mas ele entra pela "
-				  + "MÉDIA com o seu, e não pela soma: absorver serve pra compensar, não pra treinar.\n\n"
-				  + "E é assim que você EVOLUI: 10 jogadores (NPC vale meio) OU 1 androide levam você "
-				  + "ao próximo degrau -- semi-perfeito, e depois a forma PERFEITA. A larva ainda não "
-				  + "tem os órgãos pra isso.",
+				// (2026-10-17) A EXECUCAO E A ESCADA DE MARCOS -- o adendo do dono (`GameServer.Absorcao.cs`, `BioAndroids.Andar`).
+				: "Uma EXECUÇÃO: você crava a cauda em alguém NOCAUTEADO e vivo ao seu lado e o bebe por 5 segundos, parado -- andar, "
+				  + "cair ou ele se levantar desfaz. A vítima SECA, morre e some, sem cadáver.\n\n"
+				  + "Você recupera 20% da vida, do fôlego e do Ki, e ganha o poder dela -- mas ele entra pela MÉDIA com o seu, e não "
+				  + "pela soma: absorver serve pra compensar, não pra treinar.\n\n"
+				  + "E é assim que você EVOLUI: cada jogador vale um marco, e um NPC um quinto; cinco marcos por forma, e o sexto sobe a "
+				  + "forma -- semi-perfeito, depois a PERFEITA. Um androide de energia infinita pula direto pra forma seguinte; o de "
+				  + "absorção é máquina por dentro e não se bebe. A larva não tem os órgãos pra isso.\n\n"
+				  // (2026-10-17) A ABSORCAO DE COMBATE (`GameServer.EstocadaDeAbsorcao`)
+				  + "AGARRANDO alguém, o absorver vira uma ESTOCADA: a cauda fura um membro por vez -- braço esquerdo, braço direito, perna "
+				  + "esquerda, perna direita, cabeça e por fim o tronco -- e devolve 5% do seu tronco, do Ki e do fôlego. Uma por segundo.",
 			() => GameClient.Instance?.SendHabilidade("absorver")) { Chave = "hab:absorver" });
 
 		Verbos.Registrar(new Verbo(
@@ -213,6 +217,37 @@ public static class Habilidades
 			+ "as técnicas e o que mais tinha por causa deles.",
 			() => GameClient.Instance?.SendHabilidade("expelir"),
 			() => GameClient.Instance is { AbsorvidosDoMajin.Count: > 0 }) { Chave = "hab:expelir" });
+
+		// (2026-10-17) A LARVA DO BIO-ANDROIDE (o adendo do dono) -- a forma de barata que o bio de LABORATORIO veste quando quer, e o enterrar,
+		// que e so dela. Quem tem os botoes e a tabela (`hab:larva`, `hab:enterrar`); quem decide e o servidor (`GameServer.Larva.cs`).
+		Verbos.Registrar(new Verbo(
+			"Forma de larva",
+			Verbos.Skills,
+			"Você se recolhe na carapaça de LARVA, por cima do seu degrau: o poder fica selado (5 -- sempre relaxada), nem o sense nem "
+			+ "o scouter te acham, você voa sem esforço e se enterra pra se esconder. Não absorve nem se transforma.\n\n"
+			+ "Pra sair, enterre-se e fique 5 minutos debaixo da terra sem sair: a carapaça se rompe e você volta ao degrau em que estava.",
+			() => GameClient.Instance?.SendHabilidade("larva")) { Chave = "hab:larva" });
+
+		Verbos.Registrar(new Verbo(
+			"Enterrar-se / Sair da terra",
+			Verbos.Skills,
+			"Só a larva: você cava e some na terra -- ninguém te vê nem te alcança, e você não anda. Cinco minutos sem sair e a "
+			+ "carapaça amadurece. Sair antes zera a conta.",
+			() => GameClient.Instance?.SendHabilidade("enterrar")) { Chave = "hab:enterrar" });
+
+		// (2026-10-17) O NUCLEO DO BIO-ANDROIDE (o adendo do dono): onde ele mora, escolhido UMA vez -- um botao por lugar, e os cinco somem com a
+		// escolha (`Fatos.NucleoPorEscolher`). Quem decide e o servidor (`GameServer.Nucleo.cs`).
+		foreach ((string lugar, string rotulo) in new[]
+			{ ("Braco esquerdo", "braço esquerdo"), ("Braco direito", "braço direito"), ("Perna esquerda", "perna esquerda"),
+			  ("Perna direita", "perna direita"), ("Cabeca", "cabeça") })
+			Verbos.Registrar(new Verbo(
+				$"Núcleo: {rotulo}",
+				Verbos.Skills,
+				"Escolha UMA vez, pra sempre, onde mora o seu núcleo. Enquanto esse membro estiver inteiro (nem quebrado nem decepado), o núcleo te "
+				+ "reergue da morte com 5% de tudo -- duas vezes; na segunda ele detona e destrói o membro.",
+				() => GameClient.Instance?.SendHabilidade("nucleo:" + lugar)) { Chave = "hab:nucleo" });
+
+		DoDna();
 
 		DosAbsorvidosDoMajin();
 
@@ -243,6 +278,8 @@ public static class Habilidades
 
 		DoDiscipulado();
 		DaFusao();
+		DosFilhos();
+		DasRaciais();
 		DoEnsinoDeSkill();
 		DoEstudoDaMente();
 		HabilidadesDoDeus.Registrar();
@@ -367,6 +404,166 @@ public static class Habilidades
 			Verbos.Aprendizado,
 			"Segue o proprio caminho. O ganho extra de treinar contra ele acaba junto.",
 			() => GameClient.Instance?.SendHabilidade("mst_largar")) { Chave = "hab:mst_largar" });
+	}
+
+	/// <summary>
+	/// (2026-10-17) OS FILHOS -- o `Have_Child` do "Other" do DM (`Mating.dm:139`). "Ter um filho" so aparece pra quem tem um amor
+	/// correspondido no jogo; "Aceitar o filho" e "Recusar o filho", pra quem foi pedido (o cartao do pedido mostra os dois tambem). E o
+	/// `Lay_Egg` (`Mating.dm:222`): "Pôr um ovo", das racas de ovo ja crescidas -- elas tem filho sozinhas. Quem decide e a tabela de
+	/// requisitos (`RequisitosDosVerbos`), pelos fatos. Ver `GameServer.Filhos.cs`.
+	/// </summary>
+	/// <summary>
+	/// (v0.4.0) AS ATIVAS RACIAIS -- vem com a raca (dono, 2026-10-17). A aba Skills so as mostra pra quem tem o sangue
+	/// (`RequisitosDosVerbos`, pelo kit); o servidor decide o resto (recarga, forma, combate). Ver `GameServer.Passivas.cs`.
+	/// </summary>
+	/// <summary>
+	/// (2026-10-17) AS SKILLS DO DNA DO BIO-ANDROIDE -- o adendo do dono: *"o bio androide pode escolher dentre as raças de seu dna quais skills
+	/// (passivas e ativas) ele quer, com limite de 6 skills"*.
+	///
+	/// Os vinte botoes da ESCOLHA, um por skill dos cinco kits de raca: a tabela so mostra os que o sangue dele da e que ele ainda nao tem,
+	/// enquanto houver vaga (`hab:dna:&lt;bit&gt;`). E as PASSIVAS ja escolhidas viram texto, sem acao -- passiva que ninguem sabe que ganhou e
+	/// indistinguivel de passiva quebrada; as ATIVAS escolhidas ja tem o botao delas (<see cref="DasRaciais"/>). Quem decide e o servidor
+	/// (`GameServer.SkillsDoDna.cs`).
+	/// </summary>
+	private static void DoDna()
+	{
+		foreach (Jandirus.Core.Races.SkillDeRaca s in Jandirus.Core.Races.SkillsRaciais.Todas)
+		{
+			string id = s.IdDaEscolha;
+			Verbos.Registrar(new Verbo(
+				$"DNA: {s.Nome}",
+				Verbos.Skills,
+				$"{DescricaoDaSkillDeRaca(s.Bit)}\n\nUma escolha do seu DNA: vale pra sempre, e são seis no máximo.",
+				() => GameClient.Instance?.SendHabilidade(id)) { Chave = "hab:" + id });
+		}
+
+		if (GameClient.Instance is not { } cli || !Jandirus.Core.Races.BioAndroids.EhBio(cli.Atributos.Raca)) return;
+		var minhas = (Jandirus.Core.Races.SkillRacial)cli.Atributos.SkillsRaciais;
+		foreach (Jandirus.Core.Races.SkillDeRaca s in Jandirus.Core.Races.SkillsRaciais.Todas)
+			if (!s.EhAtiva && (minhas & s.Bit) != 0)
+				Verbos.Registrar(new Verbo($"{s.Nome}  (do seu DNA)", Verbos.Skills,
+					$"{DescricaoDaSkillDeRaca(s.Bit)}\n\nUma das skills que você escolheu do seu sangue. Passiva: vale sozinha.", null)
+					{ Chave = $"passiva:dna:{s.Bit}" });
+	}
+
+	/// <summary>(2026-10-17) O que cada skill de kit de raca faz -- o botao da escolha do DNA e a linha da passiva escolhida.</summary>
+	private static string DescricaoDaSkillDeRaca(Jandirus.Core.Races.SkillRacial s) => s switch
+	{
+		Jandirus.Core.Races.SkillRacial.GuerreiroVeterano =>
+			"Saiyajin: em combate, cada forma de maestria que você sustenta (10 s a primeira, 20 s a segunda, 30 s a terceira...) vale +10% de "
+			+ "BP, até +60%. Descer pra uma forma mais fraca zera a conta.",
+		Jandirus.Core.Races.SkillRacial.RacaGuerreira => "Saiyajin: abaixo de 20% de vida, ataque físico +20% e defesa física +30%.",
+		Jandirus.Core.Races.SkillRacial.Resolucao =>
+			"Saiyajin: do 2º golpe seguido do MESMO tipo em diante (soco, lâmina ou ki), cada um dói 2% menos, até -20%, por 10 s.",
+		Jandirus.Core.Races.SkillRacial.Orgulho =>
+			"Saiyajin: em combate, com o poder abaixo de 75%, 50% ou 25% da barra, a regen de Ki e de fôlego e o ataque e a defesa físicos "
+			+ "sobem -- e o Ki Skill cai.",
+		Jandirus.Core.Races.SkillRacial.FalsaVantagem =>
+			"Saiyajin: com Ki, fôlego ou vida abaixo da metade, a forma mortal (a base inclusive) SOMA no multiplicador -- +0,5x, ou +1x, +2x, "
+			+ "+4x pela maior forma dominada -- e todo dreno cai pela metade.",
+		Jandirus.Core.Races.SkillRacial.Prodigio =>
+			"Meio-Saiyajin: forma mortal nova já começa com 50% de maestria; dominada, ela soma +0,5x (+2x nas divinas) e a regen ativa de Ki "
+			+ "sobe 25%.",
+		Jandirus.Core.Races.SkillRacial.Potencial => "Meio-Saiyajin: o teto da carga de Ki vai a 225% em vez de 200%.",
+		Jandirus.Core.Races.SkillRacial.Talento =>
+			"Meio-Saiyajin: técnica de ki dominada rende +10%, e a mesma usada duas vezes seguidas rende o dobro na segunda.",
+		Jandirus.Core.Races.SkillRacial.Espirito =>
+			"Meio-Saiyajin: quando um membro cai abaixo da metade, você apanha 20% menos por 1 min e fica sem efeitos negativos por 10 s.",
+		Jandirus.Core.Races.SkillRacial.Persistencia => "Humano: o treino seguido rende mais -- +1x a cada 10 min sem parar, até 3x.",
+		Jandirus.Core.Races.SkillRacial.SegundoFolego =>
+			"Humano (ativa): 20 s recuperando Ki e fôlego (metade de cada, no total). Recarga: 2 min.",
+		Jandirus.Core.Races.SkillRacial.ForcaDeVontade =>
+			"Humano (ativa): por 15 s, sem efeitos negativos e sem morrer -- o golpe fatal te deixa de pé por um fio. Recarga: 10 min.",
+		Jandirus.Core.Races.SkillRacial.PoderMaximo =>
+			"Humano (ativa, liga e desliga): ataque físico, defesa física e velocidade 1,5x, somando com qualquer forma; gasta Ki.",
+		Jandirus.Core.Races.SkillRacial.Resiliencia => "Namekuseijin: você se levanta do nocaute na metade do tempo.",
+		Jandirus.Core.Races.SkillRacial.Disrupcao =>
+			"Namekuseijin (ativa): cada golpe limpo tira 10% do Ki máximo de quem leva, até 40%, por 30 s. Recarga: 3 min.",
+		Jandirus.Core.Races.SkillRacial.Vitalidade =>
+			"Namekuseijin: membro ferido ou perdido pesa a metade; com todos inteiros, a regen passiva de Ki e de fôlego sobe 25%.",
+		Jandirus.Core.Races.SkillRacial.Controle => "Frost Demon: a carga das técnicas de ki é 2x mais rápida, e o dano de ki sobe 15%.",
+		Jandirus.Core.Races.SkillRacial.Tenacidade =>
+			"Frost Demon: o nocaute na metade do tempo, e cada membro com pouca vida apanha menos (até -25% abaixo de 10%).",
+		Jandirus.Core.Races.SkillRacial.Ira =>
+			"Frost Demon (ativa): um kiai joga quem está perto pra longe, e a ira toma conta -- BP +20%, Ki máximo -20%. Recarga: 3 min.",
+		Jandirus.Core.Races.SkillRacial.Metamorfose =>
+			"Frost Demon: transformar com o tronco ferido cura os membros (+20%), devolve os decepados (com 10%) e acelera a carga de Ki por "
+			+ "1 min -- no bio-androide, ao entrar na Super Perfeita. Recarga: 3 min.",
+		_ => "",
+	};
+
+	private static void DasRaciais()
+	{
+		void Ativa(string id, string nome, string desc) =>
+			Verbos.Registrar(new Verbo(nome, Verbos.Skills, desc, () => GameClient.Instance?.SendHabilidade(id)) { Chave = "hab:" + id });
+
+		Ativa(Jandirus.Core.Races.Passivas.Ferocidade, "Unmatched Ferocity",
+			"Primal: por 1 min nada te segura -- sem efeitos negativos, com o poder inteiro e sem o dreno da forma (+30/60/90 s no "
+			+ "SSJ4, no Full Power e no Limit Breaker). Recarga: 6 min.");
+		Ativa(Jandirus.Core.Races.Passivas.Transbordar, "Overflowing Power",
+			"Lendário: o BP sobe 5% a cada 10 s, até +30%, e o corpo paga no tronco -- cada vez mais depois de 30 s. Aperte de novo "
+			+ "(depois de 30 s) pra DESABAFAR: o buff sai num GRITO de 3 s -- plantado dentro de uma esfera verde, com tiros de ki saindo "
+			+ "pra todo lado em rumos e ritmos sorteados.");
+		Ativa(Jandirus.Core.Races.Passivas.ForcaImparavel, "Unstoppable Force",
+			"Lendário: 30 s sem recuo (nem arremesso nem atordoamento) e apanhando 10% menos. Recarga: 2 min.");
+		Ativa(Jandirus.Core.Races.Passivas.TransbordarKi, "Overflowing Ki",
+			"Lendário Primal: o Ki máximo sobe 10% a cada 10 s, até +100%, e o corpo paga no tronco -- cada vez mais depois de 60 s. "
+			+ "Aperte de novo (depois de 60 s) pra DESABAFAR num GRITO de 3 s, com tiros de ki saindo pra todo lado.");
+		Ativa(Jandirus.Core.Races.Passivas.SedeDeSangue, "Primal Bloodlust",
+			"Lendário Primal: 15 golpes sem recuo (20/25/30 no SSJ4, no Full Power e no Limit Breaker), apanhando 5% mais. Cada golpe "
+			+ "que você leva vira +2% de dano seu, por 2 min. Recarga: 10 min.");
+		Ativa(Jandirus.Core.Races.Passivas.Demonico, "Demonic Saiyan",
+			"Lendário Primal, numa forma Lendária e depois de 2 min de luta: fique PARADO 15 s dentro da esfera verde. Depois, a cada "
+			+ "15 s, o seu Ki e o seu fôlego vão a 300% por 10 s, até a luta acabar. Enquanto dura, o Ki custa 10% mais e os "
+			+ "membros feridos pesam 10% mais. Recarga: 20 min.");
+		Ativa(Jandirus.Core.Races.Passivas.SegundoFolego, "Second Wind",
+			"Humano: 20 s recuperando Ki e vigor (metade de cada, no total). Recarga: 2 min.");
+		Ativa(Jandirus.Core.Races.Passivas.ForcaDeVontade, "Sheer Willpower",
+			"Humano: por 15 s, sem efeitos negativos e sem morrer -- o golpe fatal te deixa de pé por um fio. Recarga: 10 min.");
+		Ativa(Jandirus.Core.Races.Passivas.PoderMaximo, "Max Power",
+			"Humano: liga e desliga. Ataque físico, defesa física e velocidade 1,5x, somando com qualquer forma; gasta Ki enquanto "
+			+ "ligado e a cada soco.");
+		Ativa(Jandirus.Core.Races.Passivas.Disrupcao, "Spirit Disruption",
+			"Namekuseijin: os seus punhos e pernas carregam ki. Cada golpe limpo (sem guarda) tira 10% do Ki máximo de quem leva, até "
+			+ "40%, por 30 s; quatro golpes bloqueados ou errados a desfazem. Recarga: 3 min.");
+		Ativa(Jandirus.Core.Races.Passivas.Ira, "Unrestrained Wrath",
+			"Frost Demon: um kiai joga quem está perto pra longe, e a ira toma conta -- BP +20%, Ki máximo -20%, sem prazo. Dá pra "
+			+ "engolir de volta depois de 30 s (aí começa a recarga de 3 min).");
+		Ativa(Jandirus.Core.Races.Passivas.MenteCruel, "Ruthless Mind",
+			"Frost Demon mutante, com o golpe letal ligado: executa quem está caído na sua frente (3 s parado). Quem não é seu amigo, "
+			+ "a 50 tiles, leva -10% em todos os stats por 2 min. Recarga: 5 min.");
+		Ativa(Jandirus.Core.Races.Passivas.Sadismo, "Sadistic Nature",
+			"Frost Demon mutante: por 1 min, cada golpe que entra sem guarda soma +5% de dano, até +100%. Recarga: 5 min.");
+	}
+
+	private static void DosFilhos()
+	{
+		Verbos.Registrar(new Verbo(
+			"Ter um filho",
+			Verbos.Outros,
+			"Pede pra quem está na sua frente terem um filho. Os dois precisam ter declarado AMOR um pelo outro (aba People) e ser de "
+			+ "sexos opostos. Mesma raça dá a mesma raça; Humano, Saiyajin e meio-Saiyajin se misturam num meio-Saiyajin (o androide "
+			+ "de energia infinita conta como Humano). O bebê nasce como o próximo personagem que alguém criar.",
+			() => GameClient.Instance?.SendHabilidade("filho_pedir")) { Chave = "hab:filho_pedir" });
+
+		Verbos.Registrar(new Verbo(
+			"Aceitar o filho",
+			Verbos.Outros,
+			"Aceita o pedido de filho de quem te ama.",
+			() => GameClient.Instance?.SendHabilidade("filho_sim")) { Chave = "hab:filho_sim" });
+
+		Verbos.Registrar(new Verbo(
+			"Recusar o filho",
+			Verbos.Outros,
+			"Recusa o pedido de filho.",
+			() => GameClient.Instance?.SendHabilidade("filho_nao")) { Chave = "hab:filho_nao" });
+
+		Verbos.Registrar(new Verbo(
+			"Pôr um ovo",
+			Verbos.Outros,
+			"As raças de ovo têm filho sozinhas: o ovo choca como o próximo personagem que alguém criar, da sua raça e da sua "
+			+ "linhagem. Um ovo por vez, e só depois de crescer.",
+			() => GameClient.Instance?.SendHabilidade("filho_ovo")) { Chave = "hab:filho_ovo" });
 	}
 
 	/// <summary>

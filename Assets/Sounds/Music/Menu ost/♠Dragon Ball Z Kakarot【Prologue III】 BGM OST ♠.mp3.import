@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://bb4opyr1skd3p"
+path="res://.godot/imported/♠Dragon Ball Z Kakarot【Prologue III】 BGM OST ♠.mp3-47e6c44ba1c12a2d03f055b54578098f.mp3str"
+
+[deps]
+
+source_file="res://Assets/Sounds/Music/Menu ost/♠Dragon Ball Z Kakarot【Prologue III】 BGM OST ♠.mp3"
+dest_files=["res://.godot/imported/♠Dragon Ball Z Kakarot【Prologue III】 BGM OST ♠.mp3-47e6c44ba1c12a2d03f055b54578098f.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

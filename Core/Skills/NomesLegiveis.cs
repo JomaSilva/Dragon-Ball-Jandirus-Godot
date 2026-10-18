@@ -199,7 +199,6 @@ public static class NomesLegiveis
 			"KiSpecialty" => "especialidade de Ki",
 
 			// ---- tecnicas e golpes ----
-			"HBCost" => $"custo do Hell Ball = {n}",
 			"rushmod" => $"golpes por rush = {n}",
 			"giant_form_efficiency" => $"eficiência da Forma Gigante = {n}",
 			"canbigform" => "libera a Forma Gigante",
@@ -253,7 +252,7 @@ public static class NomesLegiveis
 	{
 		"didbodychange" or "legAngerMigrated" or "gravitatecheck" or "expbarrier"
 		or "KiUnlockPercent" or "MeditateGivesKiRegen" or "canPower" or "buffregen" or "effusionspecial"
-		or "effspec" or "KiSpecialty" or "HBCost" or "rushmod" or "giant_form_efficiency" or "canbigform"
+		or "effspec" or "KiSpecialty" or "rushmod" or "giant_form_efficiency" or "canbigform"
 		or "cangivepower" or "kiforceful" or "kiinterfere" or "kishock" or "CanViewFrozenTime" or "GotWeaponBuff"
 		or "haszanzo" or "can_stretch_arms" or "partplant" or "psythre" or "word_power" or "ritual_power"
 		or "can_sup_el" or "magiBuff" or "hasayyform" or "snamek" or "hellstar_disabled" or "hasFPLB" or "ismssj"

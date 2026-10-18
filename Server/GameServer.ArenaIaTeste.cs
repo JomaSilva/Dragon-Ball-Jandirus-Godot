@@ -244,7 +244,8 @@ public sealed partial class GameServer
 						nascidosAqui++;
 						if (c.Perfil != PerfilDeCombate.Completo) diferentesDeCompleto++;
 						ulong semente = Jandirus.Core.Npc.SorteioDeNpc.SementeDe(SeedDoUniverso, molde.Id, Espaco.Misturar(zona.Hash, lugar, 0));
-						if (c.Perfil == PerfilDeCombate.Sortear(molde.ChanceDeVoar, molde.ChanceDeKi, semente)) batem++;
+						// (2026-10-16) o sorteio E a regra do poder: de 2 mil pra cima o nascido voa -- ver `PerfilDeCombate.PeloPoder`
+						if (c.Perfil == PerfilDeCombate.Sortear(molde.ChanceDeVoar, molde.ChanceDeKi, semente).PeloPoder(c.Ficha.BP)) batem++;
 					}
 					Checa("o habitante nascido pelo funil carrega o perfil sorteado do molde (`perfil` do npcs.json: voa 0,5 / ki 0,6)",
 						  nascidosAqui == 6 && batem == 6, $"{batem} de {nascidosAqui} batem com o sorteio");

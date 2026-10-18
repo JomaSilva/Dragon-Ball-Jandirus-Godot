@@ -250,7 +250,9 @@ public partial class GameServer
 		// morte ja passou da etapa de cadaver", que e o que a aureola pergunta. E exatamente o caso
 		// que o `Alem.TemAureola` previu por escrito ao escolher o crivo temporal em vez do por lugar.
 		// =================================================================================================================
-		if (pl.Ficha.KeepsBody && pl.Ficha.Ki > pl.Ficha.MaxKi / 6)
+		// (2026-10-17) QUEM FOI BEBIDO ATE SECAR NAO TEM CORPO PRA GUARDAR (`SumiuAbsorvido`, a execucao do bio): o corpo se desfez, e o
+		// `Keep_Body` nao o devolve -- ele viaja como todo morto.
+		if (pl.Ficha.KeepsBody && !pl.SumiuAbsorvido && pl.Ficha.Ki > pl.Ficha.MaxKi / 6)
 		{
 			// A AUREOLA ACENDE AQUI, e este e o unico lugar do jogo em que ela acende sem viagem: o
 			// morto que anda entre os vivos e denunciado por ela, e o proprio DM faz piada com isso na
@@ -343,7 +345,9 @@ public partial class GameServer
 		// ordem -- o cadaver e fotografado antes de o `overlayList += 'Halo.dmi'` existir --, e e o bug
 		// que o dono relatou, agora fechado dos dois lados.
 		// ==========================================================================================================
-		DeixarOCadaver(pl);
+		// (2026-10-17) O BEBIDO PELO BIO NAO DEIXA CORPO: ele secou e se desfez (`ConsumirPelaExecucao`). A marca se gasta aqui.
+		if (!pl.SumiuAbsorvido) DeixarOCadaver(pl);
+		pl.SumiuAbsorvido = false;
 
 		// ============================ A CHEGADA CURA -- `Death.dm:86-88` + `:111` ============================
 		// `RegrowLimb` em cada membro decepado e `SpreadHeal(100,1,1)` na linha do `loc =`: o morto acorda
@@ -408,6 +412,7 @@ public partial class GameServer
 		c.Corpo.Restaurar();
 		c.SincronizarVida();
 		MandarFeridas(pl);
+		pl.PassagemAte = 0;   // (v0.3.2) a passagem de 5 s pela Transmissao acaba na mesa do Enma, como o passe
 		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
 		MoveToZone(pl.Id, alem, MesaDoEnma(alem));
 		c.Nocautear(Alem.SegundosDeComaDoMortoDeNovo);
@@ -471,8 +476,10 @@ public partial class GameServer
 		foreach (ServerPlayer pl in _players.Values)
 		{
 			bool agora = Alem.TemAureola(pl.Ficha.dead, pl.MorteJaViajou);
-			if (agora == pl.EnvAureola) continue;
+			bool passagem = pl.EmPassagem;   // (v0.3.2) a passagem de 5 s viaja no mesmo pacote
+			if (agora == pl.EnvAureola && passagem == pl.EnvPassagem) continue;
 			pl.EnvAureola = agora;
+			pl.EnvPassagem = passagem;
 			MandarAureola(pl);
 		}
 	}
@@ -490,6 +497,7 @@ public partial class GameServer
 		var w = Protocol.Begin(Protocol.S2C.Aureola);
 		w.Put(de.Id);
 		w.Put(Alem.TemAureola(de.Ficha.dead, de.MorteJaViajou));
+		w.Put(de.EmPassagem);   // (v0.3.2) o morto de passagem pela Transmissao: meio transparente na tela de todos
 		return w;
 	}
 
@@ -504,6 +512,7 @@ public partial class GameServer
 	private void TrocarAureolas(ServerPlayer novo)
 	{
 		novo.EnvAureola = Alem.TemAureola(novo.Ficha.dead, novo.MorteJaViajou);
+		novo.EnvPassagem = novo.EmPassagem;
 
 		List<ServerPlayer> zona = ZoneList(novo.Zone.Hash);
 		NetDataWriter minha = PacoteDeAureola(novo);

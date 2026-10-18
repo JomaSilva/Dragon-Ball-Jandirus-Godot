@@ -679,6 +679,13 @@ public partial class GameServer
 
 		// O COFRE DA TECH DE BOLSO (v0.2.1). O leitor esvazia antes de ler -- ver `CarregarOCofreDeTech`.
 		CarregarOCofreDeTech();
+
+		// OS BEBES A CAMINHO (2026-10-17). O leitor esvazia antes de ler -- ver `CarregarBebes`.
+		CarregarBebes();
+
+		// O CALENDARIO (2026-10-17). O leitor esvazia antes de ler; numa pasta sem o arquivo e mundo novo, e ele grava a origem -- depois
+		// da semente, como no boot. Ver `CarregarCalendario`.
+		CarregarCalendario();
 	}
 
 	// =====================================================================
@@ -800,6 +807,10 @@ public partial class GameServer
 		// O COFRE DA TECH DE BOLSO (v0.2.1): em producao ele vai pro disco quando alguem escreve num livro ou guarda uma
 		// amostra; aqui e a mesma antecipacao dos outros.
 		GravarOCofreDeTech();
+		// OS BEBES A CAMINHO (2026-10-17): em producao eles vao pro disco quando alguem engravida ou nasce; aqui e a mesma antecipacao.
+		SalvarBebes();
+		// O CALENDARIO (2026-10-17): em producao ele so vai pro disco quando o mundo nasce; aqui e a mesma antecipacao.
+		SalvarCalendario();
 		// AS CONTAS NAO TEM ESCRITOR COLETIVO -- cada uma e gravada por `Persistir`/`_store.Gravar`,
 		// e o `Persistir` esta medido na secao 3. Quem semeia conta aqui grava na hora.
 	}
@@ -1106,6 +1117,22 @@ public partial class GameServer
 		// conteudo nos tres retratos e o `Zerar` do cofre passaria sem ser medido.
 		_cofreDeTech.Textos[_cofreDeTech.Proximo++] = "o que o jogador do wipe escreveu";
 		_cofreDeTech.Amostras[_cofreDeTech.Proximo++] = [];
+
+		// ---------------------------------------------------------- 20. um BEBE A CAMINHO (2026-10-17)
+		// A gravidez que espera alguem nascer dela. Sem isto o `bebes.json` teria o mesmo conteudo nos tres retratos e o `ZerarBebes`
+		// passaria sem ser medido.
+		_bebes.Bebes.Add(new BebeACaminho
+		{
+			Id = _bebes.Proximo++, ConcebidoEm = NowMs(),
+			Pai = "JogadorDoWipe", Mae = "JogadoraDoWipe", SigPai = "assinatura_do_wipe", SigMae = "assinatura_da_mae_do_wipe",
+			RacaDoPai = "Saiyan", RacaDaMae = "Human", BpDoPai = 1_000, BpDaMae = 2_000,
+			Raca = Filhos.MeioSaiyajin, Linhagens = Filhos.LinhagensDoFilho(Filhos.MeioSaiyajin, "", ""),
+		});
+
+		// ---------------------------------------------------------- 21. o CALENDARIO que ja correu (2026-10-17)
+		// A origem 300 dias atras: o mundo esta no ano 2. Sem isto o `calendario.json` teria o mesmo conteudo nos tres retratos e o
+		// `ZerarCalendario` passaria sem ser medido. (O tamanho do arquivo nao muda: o dia da Terra tem sete digitos.)
+		PorAOrigemDoCalendario(DiaDaTerraAgora - 300);
 
 		ForcarGravacaoDeTudo();
 	}

@@ -116,6 +116,7 @@ public sealed partial class GameServer
 		if (pl.Ficha.KO) return "caído você não controla o próprio poder.";
 		if (EhCadaver(pl)) return "um corpo sem vida não controla poder nenhum.";
 		if (SemAsRedeas(pl)) return "você não manda neste corpo agora.";
+		if (Jandirus.Core.Races.BioAndroids.EmLarva(pl.Ficha)) return FraseDaLarvaSelada;   // (2026-10-17) a barra tambem
 		return "";
 	}
 

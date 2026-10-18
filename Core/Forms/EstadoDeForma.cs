@@ -170,6 +170,13 @@ public sealed class EstadoDeForma
 	public double CombateSegundos;
 
 	/// <summary>
+	/// (2026-10-16) HA QUANTO TEMPO ESTE CORPO ESTA NUMA FORMA QUE SOBE COM A LOUCURA, em segundos -- a Forma Pura insana do
+	/// Corrupted Majin (`FormaDef.SobeNaLoucura`). Irmao do <see cref="CombateSegundos"/> e pelo mesmo motivo de morar aqui: so a
+	/// forma o consome. Quem o anda e quem o zera e a saga (`GameServer.SagaDoMajin.cs`); fora da insana ele vale zero.
+	/// </summary>
+	public double LoucuraSegundos;
+
+	/// <summary>
 	/// A TECLA C PASSA PELOS GRADES DO SSJ1? E preferencia do JOGADOR -- o verb `graus` (aba Other,
 	/// ver `GameServer.Formas.cs`) e o pedido do dono: *"com eles LIGADOS, no ssj1 (masterizado ou
 	/// nao) apertar C duas vezes passa pelos grades antes do ssj2; DESLIGADOS, pula direto pro
@@ -229,7 +236,7 @@ public sealed class EstadoDeForma
 	/// que era o unico jeito de garantir que o Prodigial nao ganhasse 16x calado.
 	/// </summary>
 	public double Multiplicador(PerfilDeFormas perfil) =>
-		NaBase ? 1 : Catalogo.Multiplicador(Atual, Maestria, perfil, CombateSegundos);
+		NaBase ? 1 : Catalogo.Multiplicador(Atual, Maestria, perfil, CombateSegundos, LoucuraSegundos);
 
 	public double DrenoPorSegundo() => Catalogo.DrenoPorSegundo(Atual, Maestria);
 
@@ -374,6 +381,11 @@ public sealed class EstadoDeForma
 		if (alvo == Catalogo.IdBase) return RecusaForma.Pode;   // descer sempre pode
 		if (caido) return RecusaForma.Caido;
 
+		// (2026-10-17) A LARVA DO BIO-ANDROIDE ESTA SELADA (o adendo do dono: o poder selado; e ela fica sempre relaxada): nenhuma forma entra
+		// por cima da carapaca -- nem pela tecla, nem pela raiva, nem pelo admin. Descer continua podendo (logo acima). `FormaErrada` e a recusa
+		// que ja quer dizer "o corpo nao esta no estado que essa forma pede".
+		if (perfil.EmLarva) return RecusaForma.FormaErrada;
+
 		FormaDef? d = Catalogo.Def(alvo);
 		if (d == null) return RecusaForma.ForaDeOrdem;
 
@@ -405,6 +417,11 @@ public sealed class EstadoDeForma
 		//     linha dela pra perfil nenhum (o portao e o titulo, que o catalogo nao conhece), entao o passo 1 a
 		//     recusa por `LinhaFechada`. Quem a liga e o servidor (`GameServer.KitDoDeus.EntrarNaFury`).
 		if (!SaiDaFuryPelaEscadaDeTeste && Catalogo.SoPeloTitulo(Def)) return RecusaForma.FormaErrada;
+
+		// 0a'. (2026-10-16) A FORMA PURA DO CORRUPTED MAJIN TAMBEM NAO SE TROCA PELA ESCADA: ela e o corpo dele agora, e quem a
+		//      troca e a saga (absorver alguem, enlouquecer, dormir). Ver `Catalogo.FormaDoMajinPuro`. Descer continua podendo
+		//      (a linha do `IdBase`, la em cima) -- e e o REPOUSO dele que responde pra onde se desce (`PerfilDeFormas.PisoProprio`).
+		if (Catalogo.FormaDoMajinPuro(Def)) return RecusaForma.FormaErrada;
 
 		// 0b. A FORMA CONCEDIDA. Ver `FormaDef.SoPorConcessao`.
 		//

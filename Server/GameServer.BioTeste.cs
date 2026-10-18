@@ -106,9 +106,8 @@ public partial class GameServer
 				return;
 			}
 
-			// A gestacao e a maturacao da larva passam a valer UM segundo. As duas leem esta mesma
-			// chave (ver `MaturacaoDaLarvaSegundos`), o que ja e uma medida: se alguem separar os
-			// dois prazos, esta bancada trava esperando o segundo.
+			// A gestacao passa a valer UM segundo. (A larva amadurece ENTERRADA -- 5 min de relogio, que esta bancada anda pelo
+			// `AdiantoDoRelogioDeTeste`: ver `GameServer.Larva.cs`.)
 			_gestacaoDeTeste = 1;
 
 			ServerPlayer? cientista = ForjarCorpo(host, "Human", "Dr. Bancada", forjados);
@@ -120,8 +119,12 @@ public partial class GameServer
 
 			MedirALarva(Checa, bio);
 			MedirAEscadaPorAbsorcao(Checa, host, bio, forjados);
+			MedirAAbsorcaoDeCombate(Checa, host, bio, forjados);
 			MedirAsFormasDoBio(Checa, bio);
+			MedirALarvaQuandoQuiser(Checa, bio);
 			MedirOSsj2PelaMorte(Checa, bio);
+			MedirONucleo(Checa, host, forjados);
+			MedirAsSkillsDoDna(Checa, host, forjados);
 			MedirAsClassesDeAndroide(Checa, host, forjados, obras);
 			MedirOLaboratorioDestruido(Checa, host, forjados, obras);
 
@@ -447,35 +450,73 @@ public partial class GameServer
 	{
 		GD.Print("--- 3. A LARVA ---");
 
-		// A CARAPACA E TETO DURO E NAO DIVISOR: raiva, Ki alto e buff nao a furam. Aqui isso e
-		// medido com o `angerBuff` no maximo -- o caminho por onde o teto vazaria se fosse divisor.
+		// (2026-10-17) A LARVA E SEMPRE RELAXADA -- o dono: *"ela fica sempre no modo 'relaxado' com 5 de bp e escondido do sense e
+		// rastreadores"*. O poder expresso trava em 5, e nem a RAIVA nem o Ki alto furam a carapaca. (Era o teto de 1% do DM.) Duas
+		// repercussoes: a trava do relaxado le o expresso do tique anterior (`Fighter.Power.cs`).
 		bio.Ficha.angerBuff = 3;
 		bio.Ficha.Ki = bio.Ficha.MaxKi;
 		RepercutirPoder(bio);
-		double esperado = Math.Max(bio.Ficha.BP / 100, 1);
-		Checa("a larva expressa 1% do proprio poder, e nem a RAIVA fura a carapaca (o teto e DURO; "
-			  + "os tres comentarios do DM que dizem 5% e 10% e que estao desatualizados)",
-			  Math.Abs(bio.Ficha.expressedBP - Math.Round(esperado)) <= 1,
-			  $"{bio.Ficha.expressedBP:N0} != {esperado:N0}");
+		RepercutirPoder(bio);
+		Checa("a LARVA e sempre RELAXADA: expressa 5 de poder, e nem a RAIVA fura a carapaca (o dono; era o teto de 1% do DM)",
+			  bio.Ficha.expressedBP == 5 && PoderEmUso.Relaxado(bio.Ficha), $"{bio.Ficha.expressedBP:N0}");
+		Checa("...e ninguem a sente: nem o Sense, nem o scouter, nem a telepatia (`TemEnergiaQueSeSente`, a porta do relaxado)",
+			  !TemEnergiaQueSeSente(bio));
 		bio.Ficha.angerBuff = 1;
+		// ...e NADA a acorda: nem a raiva (o `RelaxCheck`) nem a carga -- as duas portas que soltam quem relaxou pelo botao. (O botao de ficar
+		// pronto recusa no servidor, `PorQueNaoMexeNoPoder`; este corpo forjado nao tem redeas, e e por elas que o botao responde primeiro.)
+		bio.Ficha.relaxado = true;
+		double raiva = bio.Ficha.Anger;
+		bio.Ficha.Anger = 1e9;
+		bool acordou = PoderEmUso.ARaivaAcorda(bio.Ficha) || PoderEmUso.ACargaAcorda(bio.Ficha);
+		bio.Ficha.Anger = raiva;
+		Checa("...e nada a ACORDA: nem a furia nem a tecla de carregar soltam a larva (quem a solta e amadurecer)",
+			  !acordou && bio.Ficha.relaxado && PoderEmUso.Relaxado(bio.Ficha));
+		bio.Ficha.relaxado = false;
 
-		// A larva nao absorve -- e e por isso que a escada dela e o TEMPO e nao a boca.
-		bio.Ficha.bio_abs_players = 0;
+		// A larva nao absorve.
+		bio.Ficha.bio_passos = 0;
 		UsarHabilidade(bio, "absorver");
-		Checa("a LARVA nao absorve (os orgaos so se formam ao amadurecer)",
-			  bio.Ficha.bio_abs_players == 0);
+		Checa("a LARVA nao absorve (o dono: *\"A forma de barata do bio androide n consegue absorver\"*): a execucao nem abre, e a escada nao anda",
+			  bio.Ficha.bio_passos == 0 && !_execucoesDoBio.ContainsKey(bio.Id));
 
-		// ---- o tempo rompe a carapaca ----
+		// Nem se transforma: a carapaca sela -- nem o Super Saiyajin que o DNA lhe deu.
+		List<string> forma = Ouvir(() => Transformar(bio, subir: true));
+		Checa("...nem se transforma: a carapaca SELA (nem o Super Saiyajin que o DNA lhe deu)", bio.Forma.NaBase && Disse(forma, "não se transforma"),
+			  Ultimos(forma));
+		Checa("...e VOA sem a skill de voo (o adendo: a larva voa)", PodeVoar(bio));
+
+		// ---- o tempo na superficie nao rompe mais a carapaca (a gestacao desta bancada vale 1 s: era tambem o prazo da larva) ----
 		double bpAntes = bio.Ficha.BP;
-		bio.Ficha.bio_mature_em = NowMs() - 1;
+		AdiantoDoRelogioDeTeste += 3_000;
 		TickDaLarva();
-		Checa("passado o prazo, a carapaca ROMPE e ele vira IMPERFEITO",
-			  bio.Ficha.bio_stage == BioAndroids.Imperfeito, $"{bio.Ficha.bio_stage}");
+		Checa("o TEMPO na superficie nao rompe mais a carapaca (era o dia in-game do DM): so ENTERRADA (o adendo do dono)",
+			  bio.Ficha.bio_stage == BioAndroids.Larva, $"{bio.Ficha.bio_stage}");
+
+		// ---- enterrada ----
+		List<string> cava = Ouvir(() => UsarHabilidade(bio, "enterrar"));
+		Checa("ENTERRADA, ninguem a ve (o `Oculto` do snapshot) nem a alcanca (`Intocavel`); ela nao anda, e sai da grade de corpos (passam por cima)",
+			  bio.EnterradoDesde >= 0 && EstaOculto(bio.Id) && bio.Combate!.Intocavel && !PodeMexerOCorpo(bio) && !EntraNaGrade(bio), Ultimos(cava));
+		AdiantoDoRelogioDeTeste += 240_000;
+		TickDaLarva();
+		Checa("...aos 4 minutos ela ainda e larva", bio.Ficha.bio_stage == BioAndroids.Larva && bio.EnterradoDesde >= 0);
+		Ouvir(() => UsarHabilidade(bio, "enterrar"));
+		Checa("SAIR DA TERRA antes dos 5 min a devolve a superficie: vista, alcancavel e andando",
+			  bio.EnterradoDesde < 0 && !EstaOculto(bio.Id) && !bio.Combate.Intocavel && PodeMexerOCorpo(bio) && EntraNaGrade(bio));
+		Ouvir(() => UsarHabilidade(bio, "enterrar"));
+		AdiantoDoRelogioDeTeste += 240_000;
+		TickDaLarva();
+		Checa("...e a conta ZERA: enterrada de novo, mais 4 min (8 ao todo) e ela ainda nao amadureceu", bio.Ficha.bio_stage == BioAndroids.Larva,
+			  $"{bio.Ficha.bio_stage}");
+		AdiantoDoRelogioDeTeste += 61_000;
+		TickDaLarva();
+		Checa("CINCO MINUTOS ENTERRADA SEM SAIR e a carapaca ROMPE: ela vira IMPERFEITO e sai da terra (o adendo: 5 minutos enterrada e ela "
+			  + "amadurece)",
+			  bio.Ficha.bio_stage == BioAndroids.Imperfeito && bio.EnterradoDesde < 0 && !EstaOculto(bio.Id), $"{bio.Ficha.bio_stage}");
 		Checa("...sem mexer no BP BASE (o que ele ganha e a carapaca SAINDO, nao poder novo)",
 			  Math.Abs(bio.Ficha.BP - bpAntes) < 1, $"{bio.Ficha.BP:N0} != {bpAntes:N0}");
 		RepercutirPoder(bio);
-		Checa("...e agora ele expressa o poder INTEIRO (o teto de 1% morreu com o degrau)",
-			  bio.Ficha.expressedBP > bio.Ficha.BP * 0.5,
+		Checa("...e agora ele expressa o poder INTEIRO e volta a ser sentido (o selo morreu com a carapaca)",
+			  bio.Ficha.expressedBP > bio.Ficha.BP * 0.5 && TemEnergiaQueSeSente(bio),
 			  $"expresso {bio.Ficha.expressedBP:N0} contra base {bio.Ficha.BP:N0}");
 		// O MARCO SE LE NO `bp_milestone_mult` E NAO NO `MultiplicadorDeGanho()` -- o segundo mostra
 		// os fatores de AMBIENTE (gravidade, peso, zona) e o marco entra por outro cano, o
@@ -487,6 +528,345 @@ public partial class GameServer
 			  $"{bio.Ficha.bp_milestone_mult}");
 		Checa("...e o CORPO acompanhou o degrau",
 			  bio.Visual.Corpo == BioAndroids.IndiceDoCorpo(BioAndroids.Imperfeito));
+	}
+
+	/// <summary>
+	/// (2026-10-17) 6b. O NUCLEO -- o adendo do dono: escolhido uma vez (bracos, pernas ou cabeca -- o tronco nao); reergue o corpo com 5% de tudo
+	/// DUAS vezes, e a segunda detona e destroi o membro; com o membro dele ferido ele nao faz nada; a terceira morte e morte.
+	/// </summary>
+	private void MedirONucleo(Checagem Checa, ServerPlayer host, List<ServerPlayer> forjados)
+	{
+		GD.Print("--- 6b. O NUCLEO (o adendo do dono) ---");
+		ServerPlayer? b = ForjarCorpo(host, BioAndroids.Raca, "Bio do nucleo", forjados);
+		if (b == null) { Checa("PRECONDICAO: o bio do nucleo nasceu", false); return; }
+		b.Ficha.bio_lab_born = true;
+		b.Ficha.bio_stage = BioAndroids.Imperfeito;
+		Checa("(antes) o bio de laboratorio sem nucleo tem o fato que acende os botoes da escolha", (FatosDe(b) & Jandirus.Core.Verbos.Fatos.NucleoPorEscolher) != 0);
+		List<string> errado = Ouvir(() => UsarHabilidade(b, "nucleo:Torso"));
+		Checa("o TRONCO nao e lugar de nucleo (o adendo: os bracos, as pernas e a cabeca)", b.Ficha.bio_nucleo.Length == 0 && Disse(errado, "escolha onde"),
+			  Ultimos(errado));
+		UsarHabilidade(b, "nucleo:Perna direita");
+		Checa("ESCOLHIDO: o nucleo mora na perna direita -- e os botoes somem",
+			  b.Ficha.bio_nucleo == "Perna direita" && (FatosDe(b) & Jandirus.Core.Verbos.Fatos.NucleoPorEscolher) == 0);
+		List<string> deNovo = Ouvir(() => UsarHabilidade(b, "nucleo:Cabeca"));
+		Checa("...e e PRA SEMPRE: escolher de novo e recusado", b.Ficha.bio_nucleo == "Perna direita" && Disse(deNovo, "já tem lugar"), Ultimos(deNovo));
+
+		void Inteiro(ServerPlayer x)
+		{
+			x.Combate!.Reviver();
+			x.Combate.Corpo.Restaurar();
+			x.Combate.SincronizarVida();
+			x.Ficha.Ki = x.Ficha.MaxKi;
+			x.Ficha.stamina = x.Ficha.maxstamina;
+		}
+
+		// ---- a primeira morte ----
+		Inteiro(b);
+		List<string> primeira = Ouvir(() => b.Combate!.Morrer());
+		Checa("A MORTE CHEGA E O NUCLEO A NEGA: o corpo volta NOCAUTEADO, com 5% em cada membro e 5% de Ki e de folego",
+			  !b.Ficha.dead && b.Ficha.KO && b.Ficha.bio_nucleo_usos == 1
+			  && b.Combate!.Corpo.Partes.Where(p => !p.Decepado).All(p => Math.Abs(p.Fracao - BioAndroids.RefilDoNucleo) < 0.005)
+			  && Math.Abs(b.Ficha.Ki / b.Ficha.MaxKi - BioAndroids.RefilDoNucleo) < 0.005
+			  && Math.Abs(b.Ficha.stamina / b.Ficha.maxstamina - BioAndroids.RefilDoNucleo) < 0.005,
+			  $"morto {b.Ficha.dead}, KO {b.Ficha.KO}, usos {b.Ficha.bio_nucleo_usos} | {Ultimos(primeira)}");
+
+		// ---- a segunda: ele reergue e DETONA ----
+		Inteiro(b);
+		List<string> segunda = Ouvir(() => b.Combate!.Morrer());
+		Checa("A SEGUNDA vez ele reergue -- e DETONA: a perna direita (o lugar dele) e destruida",
+			  !b.Ficha.dead && b.Ficha.bio_nucleo_usos == 2 && b.Combate!.Corpo.Achar("Perna direita") is { Decepado: true },
+			  $"morto {b.Ficha.dead}, usos {b.Ficha.bio_nucleo_usos} | {Ultimos(segunda)}");
+
+		// ---- a terceira e morte ----
+		Inteiro(b);
+		bool morreuDeVez = b.Combate!.Morrer();
+		Checa("...e a TERCEIRA morte e MORTE: o nucleo ja detonou", morreuDeVez && b.Ficha.dead);
+
+		// ---- com o membro do nucleo FERIDO ele nao faz nada ----
+		ServerPlayer? b2 = ForjarCorpo(host, BioAndroids.Raca, "Bio do nucleo ferido", forjados);
+		if (b2 != null)
+		{
+			b2.Ficha.bio_lab_born = true;
+			b2.Ficha.bio_stage = BioAndroids.Imperfeito;
+			UsarHabilidade(b2, "nucleo:Cabeca");
+			Inteiro(b2);
+			Jandirus.Core.Combat.BodyPart cabeca = b2.Combate!.Corpo.Achar("Cabeca")!;
+			cabeca.Vida = cabeca.VidaMax * 0.1;   // QUEBRADA (abaixo de 20%)
+			b2.Combate.SincronizarVida();
+			bool morreu = false;
+			List<string> ferido = Ouvir(() => morreu = b2.Combate.Morrer());
+			Checa("COM O MEMBRO DO NUCLEO FERIDO (a cabeca quebrada) ele NAO reergue: a morte e morte (o adendo: desligado se o membro estiver ferido)",
+				  morreu && b2.Ficha.dead && b2.Ficha.bio_nucleo_usos == 0 && Disse(ferido, "estava ferido"), Ultimos(ferido));
+		}
+	}
+
+	/// <summary>
+	/// (2026-10-17) 6c. AS SKILLS DO DNA -- o adendo do dono: *"o bio androide pode escolher dentre as raças de seu dna quais skills (passivas e
+	/// ativas) ele quer, com limite de 6 skills"*. O bio de sangue Saiyajin + Humano + Namekuseijin escolhe pelo canal do botao; o que ele nao
+	/// escolheu NAO vale; a escolha e uma por vez e pra sempre; a sexta fecha; a ficha lenta a leva pro cliente; e o Cell (NPC) sai com as seis
+	/// dele. Contra-exemplo: `SkillsRaciais.BioComOSangueInteiroDeTeste` (a uniao automatica que o adendo trocou pela escolha).
+	///
+	/// O BIO DESTA FAMILIA NAO TEM O `Peer` EMPRESTADO E TEM SLOT: o kit racial e de PESSOA (`TemKitRacial` -- a assinatura pede conta E slot),
+	/// e com o `Peer` do host o `Persistir` da escolha gravaria este boneco DENTRO da conta de quem roda a bancada. Sem `Peer`, ele devolve na
+	/// primeira linha.
+	/// </summary>
+	private void MedirAsSkillsDoDna(Checagem Checa, ServerPlayer host, List<ServerPlayer> forjados)
+	{
+		GD.Print("--- 6c. AS SKILLS DO DNA (o adendo do dono) ---");
+		ServerPlayer? b = ForjarCorpo(host, BioAndroids.Raca, "Bio do DNA", forjados);
+		ServerPlayer? humano = ForjarCorpo(host, "Human", "Humano sem DNA", forjados);
+		if (b == null || humano == null) { Checa("PRECONDICAO: o bio e o humano nasceram", false); return; }
+		foreach (ServerPlayer x in new[] { b, humano })
+		{
+			x.Peer = null;
+			x.Conta = x == b ? "bancada_bio_dna" : "bancada_bio_humano";
+			x.Slot = 0;
+		}
+		Fighter f = b.Ficha;
+		f.bio_lab_born = true;
+		f.bio_stage = BioAndroids.Imperfeito;
+		f.bio_racas_dna = ["Saiyan", "Human", "Namekian"];
+		Jandirus.Core.Combat.CombatState c = b.Combate!;
+		const Jandirus.Core.Verbos.Fatos Vaga = Jandirus.Core.Verbos.Fatos.SkillDoDnaPorEscolher;
+
+		// ---- o sangue e a vaga ----
+		SkillRacial sangue = SkillsRaciais.DoSangue(f);
+		Checa("O SANGUE DA AS SKILLS DOS KITS DE RACA DAS DOADORAS: Saiyajin (5), Humano (4) e Namekuseijin (3) -- nenhuma do Frost Demon nem do "
+			  + "meio-Saiyajin",
+			  sangue == (SkillsRaciais.DoKit(KitRacial.Saiyajin) | SkillsRaciais.DoKit(KitRacial.Humano) | SkillsRaciais.DoKit(KitRacial.Namekuseijin))
+			  && SkillsRaciais.Quantas(sangue) == 12, SkillsRaciais.Nomes(sangue));
+		TickDasRaciais(b, 0.1);
+		Checa("(antes) SOZINHO O BIO NAO TEM NADA: nenhuma skill vale antes da escolha -- e o fato da vaga acende os botoes dela",
+			  b.Racial.Entrada.Skills == SkillRacial.Nenhuma && SkillsRaciais.AindaEscolhe(f) == SkillsRaciais.LimiteDoBio
+			  && (FatosDe(b) & Vaga) != 0 && (FatosDe(humano) & Vaga) == 0, b.Racial.Entrada.Skills.ToString());
+
+		// ---- as recusas ----
+		List<string> deFora = Ouvir(() => UsarHabilidade(b, SkillsRaciais.PrefixoDaEscolha + SkillRacial.Controle));
+		List<string> doHumano = Ouvir(() => UsarHabilidade(humano, SkillsRaciais.PrefixoDaEscolha + SkillRacial.RacaGuerreira));
+		Checa("SO O QUE O SANGUE DA: o Perfect Control (Frost Demon) e recusado -- e quem nao e bio nao escolhe nada",
+			  f.bio_skills == 0 && humano.Ficha.bio_skills == 0
+			  && Disse(deFora, "não vem de nenhuma raça do seu sangue") && Disse(doHumano, "só o bio-androide"), $"{Ultimos(deFora)} || {Ultimos(doHumano)}");
+
+		// ---- a escolha: uma passiva e uma ativa, pelo canal do botao ----
+		List<string> escolheu = Ouvir(() =>
+		{
+			UsarHabilidade(b, SkillsRaciais.PrefixoDaEscolha + SkillRacial.RacaGuerreira);
+			UsarHabilidade(b, SkillsRaciais.PrefixoDaEscolha + SkillRacial.SegundoFolego);
+		});
+		Checa("ESCOLHIDAS: Warrior Race e Second Wind entram na ficha, e o servidor diz o que ainda falta",
+			  (SkillRacial)f.bio_skills == (SkillRacial.RacaGuerreira | SkillRacial.SegundoFolego) && Disse(escolheu, "desperta Warrior Race")
+			  && Disse(escolheu, "Ainda dá pra escolher 4"), Ultimos(escolheu));
+
+		// ---- o que vale: a Warrior Race acende, o Prideful (do mesmo sangue, NAO escolhido) nao ----
+		// TODA PARTE, os orgaos de dentro tambem: a vida do corpo e a MEDIA delas (`Body.Vida`), e so os membros de fora a 10% deixavam a media
+		// acima dos 20% da Warrior Race (a primeira rodada leu ataque x1).
+		foreach (Jandirus.Core.Combat.BodyPart p in c.Corpo.Partes)
+			if (!p.Decepado) p.Vida = p.VidaMax * 0.10;
+		c.SincronizarVida();
+		c.EmCombate = 60;
+		f.relaxado = false;
+		f.powerMod = 0.20;   // a barra a 20%: o Prideful, se valesse, estaria no degrau 3 (ataque e defesa x1,3)
+		TickDasRaciais(b, 0.1);
+		EfeitoRacial o = b.Racial.Efeito;
+		bool soAEscolhida = Math.Abs(o.Physoff - Passivas.AtaqueDoGuerreiro) < 1e-9 && Math.Abs(o.Physdef - Passivas.DefesaDoGuerreiro) < 1e-9
+										   && o.Orgulho == 0;
+		Checa("O QUE VALE E O QUE FOI ESCOLHIDO: com 10% de vida e a barra a 20%, a Warrior Race acende (ataque x1,2, defesa x1,3) e o Prideful, que "
+			  + "o sangue Saiyajin tambem da mas ele NAO escolheu, fica apagado",
+			  soAEscolhida, $"ataque {o.Physoff:0.###}, defesa {o.Physdef:0.###}, orgulho {o.Orgulho}, skills {b.Racial.Entrada.Skills}");
+		SkillsRaciais.BioComOSangueInteiroDeTeste = true;
+		try
+		{
+			TickDasRaciais(b, 0.1);
+			Checa("(defeito injetado: o bio ganha o sangue INTEIRO -- a uniao automatica) o Prideful nao escolhido acende -- a regua de cima reprovaria",
+				  b.Racial.Efeito.Orgulho == 3 && b.Racial.Efeito.Physoff > Passivas.AtaqueDoGuerreiro + 0.1, $"orgulho {b.Racial.Efeito.Orgulho}");
+		}
+		finally { SkillsRaciais.BioComOSangueInteiroDeTeste = false; }
+		TickDasRaciais(b, 0.1);
+
+		// ---- a ativa escolhida aperta; a do mesmo sangue que ele nao escolheu, nao ----
+		List<string> folego = Ouvir(() => UsarHabilidade(b, Passivas.SegundoFolego));
+		List<string> maximo = Ouvir(() => UsarHabilidade(b, Passivas.PoderMaximo));
+		Checa("A ATIVA ESCOLHIDA APERTA (Second Wind) -- e a que o sangue humano tambem da e ele NAO escolheu (Max Power) ouve a recusa do sangue",
+			  b.Racial.FolegoAte > NowMs() && !b.Racial.PoderMaximo && Disse(maximo, RecusaDoSangue),
+			  $"{Ultimos(folego)} || {Ultimos(maximo)}");
+
+		// ---- uma por vez, e pra sempre ----
+		List<string> deNovo = Ouvir(() => UsarHabilidade(b, SkillsRaciais.PrefixoDaEscolha + SkillRacial.RacaGuerreira));
+		Checa("...e ela e PRA SEMPRE: escolher de novo a mesma e recusado", Disse(deNovo, "já tem essa skill"), Ultimos(deNovo));
+		foreach (SkillRacial s in new[] { SkillRacial.GuerreiroVeterano, SkillRacial.Persistencia, SkillRacial.Resiliencia, SkillRacial.Disrupcao })
+			UsarHabilidade(b, SkillsRaciais.PrefixoDaEscolha + s);
+		SkillRacial seis = SkillRacial.RacaGuerreira | SkillRacial.SegundoFolego | SkillRacial.GuerreiroVeterano | SkillRacial.Persistencia
+								   | SkillRacial.Resiliencia | SkillRacial.Disrupcao;
+		List<string> setima = Ouvir(() => UsarHabilidade(b, SkillsRaciais.PrefixoDaEscolha + SkillRacial.Vitalidade));
+		TickDasRaciais(b, 0.1);
+		Checa("A SEXTA FECHA: com seis escolhidas, a setima (Warrior's Vitality) e recusada, o fato da vaga apaga e o corpo vale EXATAMENTE as seis",
+			  (SkillRacial)f.bio_skills == seis && b.Racial.Entrada.Skills == seis && SkillsRaciais.AindaEscolhe(f) == 0
+			  && (FatosDe(b) & Vaga) == 0 && Disse(setima, "já escolheu as 6"), $"{SkillsRaciais.Nomes((SkillRacial)f.bio_skills)} || {Ultimos(setima)}");
+
+		// ---- o fio e o save ----
+		EscutaDeAtributos = [];
+		try
+		{
+			b.SigAtributos = "";
+			MandarAtributos(b);
+			Jandirus.Net.Protocol.AtributosState saiu = EscutaDeAtributos.Count > 0 ? EscutaDeAtributos[^1] : default;
+			var w = new LiteNetLib.Utils.NetDataWriter();
+			saiu.Write(w);
+			Jandirus.Net.Protocol.AtributosState lido = Jandirus.Net.Protocol.AtributosState.Read(new LiteNetLib.Utils.NetDataReader(w.CopyData()));
+			Checa("NO FIO: a ficha lenta leva as seis que valem e as doze que o sangue da (o cliente desenha os botoes por elas), e volta igual da leitura",
+				  lido.SkillsRaciais == (uint)seis && lido.SkillsDoSangue == (uint)sangue, $"{lido.SkillsRaciais} / {lido.SkillsDoSangue}");
+		}
+		finally { EscutaDeAtributos = null; }
+		var opcoes = new System.Text.Json.JsonSerializerOptions { IncludeFields = true };
+		Fighter? volta = System.Text.Json.JsonSerializer.Deserialize<Fighter>(System.Text.Json.JsonSerializer.Serialize(f, opcoes), opcoes);
+		Checa("...e a escolha vai pro SAVE (`Fighter.bio_skills`): quem reloga volta com as mesmas seis", volta?.bio_skills == (uint)seis,
+			  $"{volta?.bio_skills}");
+
+		// ---- o Cell escolhe sozinho ----
+		SkillRacial doCell = SkillRacial.GuerreiroVeterano | SkillRacial.Disrupcao | SkillRacial.Ira | SkillRacial.SegundoFolego
+									   | SkillRacial.RacaGuerreira | SkillRacial.Resiliencia;
+		ServerPlayer? cell = NascerNpc("cell", host.Zone, host.Pos + new Vec2(0, 60 * Jandirus.Core.World.ZoneCollision.TileSize), ++_lugarDaBancadaDeBio);
+		if (cell == null) { Checa("PRECONDICAO: o Cell nasceu", false); return; }
+		try
+		{
+			Span<byte> naMao = stackalloc byte[Jandirus.Core.Ai.AtivasRaciaisNaIa.Todas.Length];
+			AtivasRaciaisNaMao(cell, naMao);
+			var naMaoDoCell = new List<string>();
+			for (int i = 0; i < naMao.Length; i++)
+				if (naMao[i] != 0) naMaoDoCell.Add(Jandirus.Core.Ai.AtivasRaciaisNaIa.Todas[i].Id);
+			Checa("O CELL (NPC) ESCOLHE SOZINHO, ao nascer: o rodizio do sangue dele (Saiyajin, Namekuseijin, Icer, Humano), as ativas primeiro -- "
+				  + "Seasoned Warrior, Spirit Disruption, Unrestrained Wrath, Second Wind, Warrior Race e Namekian Resilience",
+				  (SkillRacial)cell.Ficha.bio_skills == doCell && SkillsRaciais.EscolhaDoNpc(["Saiyan", "Namekian", "Icer", "Human"]) == doCell,
+				  SkillsRaciais.Nomes((SkillRacial)cell.Ficha.bio_skills));
+			Checa("...e a IA dele poe na mao as TRES ativas escolhidas (Spirit Disruption, Unrestrained Wrath, Second Wind) e nenhuma outra",
+				  naMaoDoCell.Count == 3 && naMaoDoCell.Contains(Passivas.Disrupcao) && naMaoDoCell.Contains(Passivas.Ira)
+				  && naMaoDoCell.Contains(Passivas.SegundoFolego), string.Join(", ", naMaoDoCell));
+		}
+		finally { RemoverNpc(cell); }
+	}
+
+	/// <summary>
+	/// (2026-10-17) 4b. A ABSORCAO DE COMBATE -- o adendo do dono: agarrado, cada aperto do absorver e uma ESTOCADA da cauda, na ordem braco
+	/// esquerdo, braco direito, perna esquerda, perna direita, cabeca e tronco (o primeiro ainda inteiro); 5% do tronco, do Ki e do folego pra
+	/// quem fura, 5% do Ki e do folego de quem e furado; uma por segundo; o androide de absorcao e imune.
+	/// </summary>
+	private void MedirAAbsorcaoDeCombate(Checagem Checa, ServerPlayer host, ServerPlayer bio, List<ServerPlayer> forjados)
+	{
+		GD.Print("--- 4b. A ABSORCAO DE COMBATE (o adendo do dono) ---");
+		ServerPlayer? presa = ForjarCorpo(host, "Human", "Presa da cauda", forjados);
+		if (presa == null) { Checa("PRECONDICAO: a presa nasceu", false); return; }
+		// LADO A LADO, o bio olhando pra ela: o agarrao pega quem esta NA FRENTE (`CorpoNaFrente`).
+		presa.Pos = bio.Pos + new Vec2(0.8f * ZoneCollision.TileSize, 0);
+		bio.Facing = Facing.East;
+		bio.CenaSegundos = 0;   // a cena da ultima evolucao ainda o prendia (o relogio dela anda no tique, e a bancada nao espera)
+		// OS CORPOS QUE SOBRARAM DA ESCADA (o androide de absorcao caido, a frase do scouter) ficam a dois tiles do bio: o agarrao pega quem esta
+		// NA FRENTE, e a primeira rodada pegou um deles. Vao pra longe.
+		foreach (ServerPlayer outro in ZoneList(bio.Zone.Hash).ToList())
+			if (outro != bio && outro != presa && Vec2.Distance(outro.Pos, bio.Pos) < 3 * ZoneCollision.TileSize)
+				outro.Pos = bio.Pos + new Vec2(0, 40 * ZoneCollision.TileSize);
+		presa.Combate!.Corpo.Restaurar();
+		presa.Combate.SincronizarVida();
+		AlternarAgarrao(bio);
+		Checa("(palco) o bio AGARRA a presa pela porta de producao", bio.AgarrandoId == presa.Id, $"agarrando {bio.AgarrandoId}");
+		if (bio.AgarrandoId != presa.Id) return;
+
+		// metade de tudo no bio, a presa cheia -- pra medir o que vai e o que volta
+		Jandirus.Core.Combat.BodyPart tronco = bio.Combate!.Corpo.Achar(Jandirus.Core.Combat.Body.NomeDoTronco)!;
+		tronco.Vida = tronco.VidaMax * 0.5;
+		bio.Combate.SincronizarVida();
+		bio.Ficha.Ki = bio.Ficha.MaxKi * 0.5;
+		bio.Ficha.stamina = bio.Ficha.maxstamina * 0.5;
+		presa.Ficha.Ki = presa.Ficha.MaxKi;
+		presa.Ficha.stamina = presa.Ficha.maxstamina;
+		_prontoEstocar.Remove(bio.Id);
+		Jandirus.Core.Combat.BodyPart bracoE = presa.Combate.Corpo.Achar("Braco esquerdo")!;
+
+		UsarHabilidade(bio, "absorver");
+		Checa("AGARRADO, o absorver vira ESTOCADA: a cauda fura o BRACO ESQUERDO primeiro (30% dele) -- e nao abre execucao nenhuma",
+			  Math.Abs(bracoE.Fracao - 0.7) < 0.01 && !_execucoesDoBio.ContainsKey(bio.Id), $"braco esquerdo {bracoE.Fracao:P0}");
+		Checa("...bebe 5% do Ki e do folego da presa",
+			  Math.Abs(presa.Ficha.Ki / presa.Ficha.MaxKi - 0.95) < 0.005 && Math.Abs(presa.Ficha.stamina / presa.Ficha.maxstamina - 0.95) < 0.005,
+			  $"Ki {presa.Ficha.Ki / presa.Ficha.MaxKi:P1}, folego {presa.Ficha.stamina / presa.Ficha.maxstamina:P1}");
+		Checa("...e devolve 5% do TRONCO, do Ki e do folego a quem fura (o adendo)",
+			  Math.Abs(tronco.Fracao - 0.55) < 0.005 && Math.Abs(bio.Ficha.Ki / bio.Ficha.MaxKi - 0.55) < 0.005
+			  && Math.Abs(bio.Ficha.stamina / bio.Ficha.maxstamina - 0.55) < 0.005,
+			  $"tronco {tronco.Fracao:P1}, Ki {bio.Ficha.Ki / bio.Ficha.MaxKi:P1}, folego {bio.Ficha.stamina / bio.Ficha.maxstamina:P1}");
+		UsarHabilidade(bio, "absorver");
+		Checa("...uma por SEGUNDO: o segundo aperto no mesmo instante nao fura", Math.Abs(bracoE.Fracao - 0.7) < 0.01, $"{bracoE.Fracao:P0}");
+
+		// ---- a ORDEM: braco esquerdo, braco direito, perna esquerda, perna direita, cabeca, e o tronco ----
+		var ordem = new List<string>();
+		for (int i = 0; i < 16; i++)
+		{
+			AdiantoDoRelogioDeTeste += 1_050;
+			if (BioAndroids.MembroDaEstocada(presa.Combate.Corpo) is { } proximo && (ordem.Count == 0 || ordem[^1] != proximo.Nome))
+				ordem.Add(proximo.Nome);
+			UsarHabilidade(bio, "absorver");
+		}
+		string esperada = "Braco esquerdo > Braco direito > Perna esquerda > Perna direita > Cabeca > Torso";
+		Checa("A CAUDA SEGUE A ORDEM do adendo -- cada membro ate quebrar (tres estocadas), e o tronco por ultimo",
+			  string.Join(" > ", ordem) == esperada, string.Join(" > ", ordem));
+		Checa("...e os cinco membros da ordem ficaram QUEBRADOS",
+			  BioAndroids.OrdemDaEstocada.All(n => presa.Combate.Corpo.Achar(n) is { Quebrado: true } or { Decepado: true }));
+		Soltar(bio, MotivoDaSoltura.Tecla);
+
+		// ---- o androide de ABSORCAO e maquina por dentro ----
+		ServerPlayer? maquina = ForjarCorpo(host, "Android", "Androide de absorcao da cauda", forjados);
+		if (maquina != null)
+		{
+			maquina.Ficha.AndroideAbsorcao = true;
+			maquina.Pos = bio.Pos + new Vec2(0.8f * ZoneCollision.TileSize, 0);
+			presa.Pos = bio.Pos + new Vec2(0, 6 * ZoneCollision.TileSize);
+			AlternarAgarrao(bio);
+			_prontoEstocar.Remove(bio.Id);
+			double antes = maquina.Combate!.Corpo.Achar("Braco esquerdo")!.Fracao;
+			List<string> metal = Ouvir(() => UsarHabilidade(bio, "absorver"));
+			Checa("o ANDROIDE DE ABSORCAO e imune (o adendo: membro mecanico e imune): agarrado, a cauda bate em metal e nao bebe nada",
+				  bio.AgarrandoId == maquina.Id && Math.Abs(maquina.Combate.Corpo.Achar("Braco esquerdo")!.Fracao - antes) < 1e-9
+				  && Disse(metal, "máquina por dentro"), Ultimos(metal));
+			Soltar(bio, MotivoDaSoltura.Tecla);
+		}
+		bio.Combate.Corpo.Restaurar();
+		bio.Combate.SincronizarVida();
+		bio.Ficha.Ki = bio.Ficha.MaxKi;
+		bio.Ficha.stamina = bio.Ficha.maxstamina;
+	}
+
+	/// <summary>
+	/// (2026-10-17) 5b. A LARVA VESTIDA -- o adendo do dono: a larva a qualquer hora, e *"mesmo se vc virar uma larva, vc quando ficar maduro
+	/// volta pro estagio onde estava"*. O bio PERFEITO veste a larva pelo verb de
+	/// producao, fica selado e voa, se enterra 5 min e volta PERFEITO -- com o BP base e o marco onde estavam.
+	/// </summary>
+	private void MedirALarvaQuandoQuiser(Checagem Checa, ServerPlayer bio)
+	{
+		GD.Print("--- 5b. A LARVA QUANDO QUISER (o adendo do dono) ---");
+		int estagio = bio.Ficha.bio_stage, marco = bio.Ficha.bio_marco;
+		double bp = bio.Ficha.BP;
+		List<string> vira = Ouvir(() => UsarHabilidade(bio, "larva"));
+		RepercutirPoder(bio);
+		RepercutirPoder(bio);
+		Checa("o bio PERFEITO veste a LARVA quando quer: a forma de barata POR CIMA do degrau -- o degrau maduro, o marco e o BP base nao se mexem",
+			  estagio == BioAndroids.Perfeito && BioAndroids.EmLarva(bio.Ficha) && bio.Ficha.bio_larva && bio.Ficha.bio_stage == estagio
+			  && bio.Ficha.bio_marco == marco && Math.Abs(bio.Ficha.BP - bp) < 1, $"degrau {bio.Ficha.bio_stage}, marco {bio.Ficha.bio_marco} | {Ultimos(vira)}");
+		Checa("...com o CORPO de larva, SELADA (5 de poder, fora do Sense) e voando sem a skill",
+			  bio.Visual.Corpo == BioAndroids.IndiceDoCorpo(BioAndroids.Larva) && bio.Ficha.expressedBP == 5 && !TemEnergiaQueSeSente(bio) && PodeVoar(bio),
+			  $"expresso {bio.Ficha.expressedBP:N0}");
+		List<string> forma = Ouvir(() => Transformar(bio, subir: true));
+		RecusaForma super = bio.Forma.Avaliar("super_perfect", bio.Ficha.BP, 1, false, Perfil(bio));
+		Checa("...e NENHUMA forma entra por cima dela -- nem a Super Perfeita que o degrau perfeito abre (`EstadoDeForma.Avaliar`)",
+			  bio.Forma.NaBase && super == RecusaForma.FormaErrada && Disse(forma, "não se transforma"), $"{super} | {Ultimos(forma)}");
+		List<string> deNovo = Ouvir(() => UsarHabilidade(bio, "larva"));
+		Checa("...e a larva nao se veste duas vezes: pra sair, so enterrada", Disse(deNovo, "enterre-se"), Ultimos(deNovo));
+
+		UsarHabilidade(bio, "enterrar");
+		AdiantoDoRelogioDeTeste += (long)(BioAndroids.SegundosEnterradoPraAmadurecer * 1000) + 1_000;
+		TickDaLarva();
+		RepercutirPoder(bio);
+		Checa("ENTERRADA 5 MIN, ela amadurece de volta ao PERFEITO -- o corpo dele, o poder inteiro e sentido, o BP base e o marco onde estavam "
+			  + "(o dono: *\"vc quando ficar maduro volta pro estagio onde estava\"*)",
+			  !BioAndroids.EmLarva(bio.Ficha) && bio.Ficha.bio_stage == estagio && bio.Ficha.bio_marco == marco && Math.Abs(bio.Ficha.BP - bp) < 1
+			  && bio.Visual.Corpo == BioAndroids.IndiceDoCorpo(estagio) && bio.Ficha.expressedBP > 5 && TemEnergiaQueSeSente(bio) && bio.EnterradoDesde < 0,
+			  $"degrau {bio.Ficha.bio_stage}, marco {bio.Ficha.bio_marco}, expresso {bio.Ficha.expressedBP:N0}");
 	}
 
 	// =====================================================================
@@ -502,77 +882,142 @@ public partial class GameServer
 	{
 		GD.Print("--- 4. A ESCADA POR ABSORCAO ---");
 
-		// ---- um NPC vale MEIO jogador ----
+		// ---- A ABSORCAO DE EXECUCAO (o adendo do dono, 2026-10-17): 5 s junto do caido, e so entao ele morre ----
 		ServerPlayer? npc = NascerNpc("cidadao", bio.Zone, bio.Pos + new Vec2(8, 0),
-									  ++_lugarDaBancadaDeBio);
+													  ++_lugarDaBancadaDeBio);
 		if (npc != null)
 		{
 			forjados.Add(npc);
 			npc.Ficha.KO = true;
 			bio.AlvoId = npc.Id;
+			bio.Ficha.bio_passos = 0;
+			// METADE DE TUDO, pra medir o que ela devolve
+			foreach (Jandirus.Core.Combat.BodyPart parte in bio.Combate!.Corpo.Partes)
+				if (!parte.Decepado) parte.Vida = parte.VidaMax * 0.5;
+			bio.Combate.SincronizarVida();
+			bio.Ficha.Ki = bio.Ficha.MaxKi * 0.5;
+			bio.Ficha.stamina = bio.Ficha.maxstamina * 0.5;
 			UsarHabilidade(bio, "absorver");
-			Checa("um NPC absorvido vale METADE de um jogador (20 NPCs = um degrau; e o freio contra "
-				  + "evoluir varrendo a populacao de graca de um planeta)",
-				  Math.Abs(bio.Ficha.bio_abs_players - BioAndroids.PesoDoNpc) < 1e-9,
-				  $"{bio.Ficha.bio_abs_players}");
-			Checa("...e ele MORREU: o bio CONSOME, nao sela (o Majin e que sela)", npc.Ficha.dead);
+			Checa("a ABSORCAO DE EXECUCAO abre e NAO consuma na hora (o adendo do dono: ela leva 5 segundos) -- o caido segue vivo",
+				  _execucoesDoBio.ContainsKey(bio.Id) && !npc.Ficha.dead);
+			AdiantoDoRelogioDeTeste += 2_000;
+			TickDasExecucoesDoBio();
+			Checa("...aos dois segundos ela ainda corre", _execucoesDoBio.ContainsKey(bio.Id) && !npc.Ficha.dead);
+			AdiantoDoRelogioDeTeste += 3_100;
+			TickDasExecucoesDoBio();
+			Checa("...e aos cinco ela se CONSUMA: o NPC morre", !_execucoesDoBio.ContainsKey(bio.Id) && npc.Ficha.dead);
+			Checa("...e o corpo dele SOME sem cadaver (seca e se desfaz -- `SumiuAbsorvido`)", npc.SumiuAbsorvido);
+			Checa("um NPC absorvido vale UM QUINTO de passo (o jogador vale um marco inteiro; o dono: *\"npcs dando bem menos progresso\"*)",
+				  Math.Abs(bio.Ficha.bio_passos - BioAndroids.PassoDoNpc) < 1e-9, $"{bio.Ficha.bio_passos}");
+			Checa("...e ela devolve 20% de vida, folego e Ki (de 50% a 70%, e nao o corpo inteiro e o tanque cheio do DM)",
+				  Math.Abs(bio.Ficha.HP - 70) < 1.5 && Math.Abs(bio.Ficha.Ki / bio.Ficha.MaxKi - 0.7) < 0.01
+				  && Math.Abs(bio.Ficha.stamina / bio.Ficha.maxstamina - 0.7) < 0.01,
+				  $"vida {bio.Ficha.HP:0.#}, Ki {bio.Ficha.Ki / bio.Ficha.MaxKi:P0}, folego {bio.Ficha.stamina / bio.Ficha.maxstamina:P0}");
 			Checa("...e o `AbsorbBP` passou a existir -- ele e `AbsorbDeterminesBP` nunca eram "
 				  + "escritos por ninguem, com a formula da MEDIA ja portada e sem consumidor",
 				  bio.Ficha.AbsorbBP > 0 && bio.Ficha.AbsorbDeterminesBP);
+			bio.Combate.Corpo.Restaurar();
+			bio.Combate.SincronizarVida();
+			bio.Ficha.Ki = bio.Ficha.MaxKi;
+			bio.Ficha.stamina = bio.Ficha.maxstamina;
 		}
 
-		// ---- UM ANDROIDE vale um degrau inteiro: o atalho do Cell ----
-		bio.Ficha.bio_abs_players = 0;
-		bio.Ficha.bio_abs_androids = 0;
-		double bpAntes = bio.Ficha.BP;
+		// ---- UM PASSO DESFAZ ----
+		ServerPlayer? fujao = NascerNpc("cidadao", bio.Zone, bio.Pos + new Vec2(8, 0), ++_lugarDaBancadaDeBio);
+		if (fujao != null)
+		{
+			forjados.Add(fujao);
+			fujao.Ficha.KO = true;
+			bio.AlvoId = fujao.Id;
+			_prontoAbsorver.Remove(bio.Id);
+			UsarHabilidade(bio, "absorver");
+			bool abriu = _execucoesDoBio.ContainsKey(bio.Id);
+			Vec2 onde = bio.Pos;
+			bio.Pos += new Vec2(6, 0);
+			TickDasExecucoesDoBio();
+			Checa("...e um PASSO de quem absorve DESFAZ a execucao: o caido continua vivo (como a execucao do Ruthless Mind)",
+				  abriu && !_execucoesDoBio.ContainsKey(bio.Id) && !fujao.Ficha.dead);
+			bio.Pos = onde;
+		}
 
+		// ---- O ANDROIDE DE ENERGIA INFINITA e o atalho: a forma seguinte, direto ----
+		bio.Ficha.bio_passos = 0;
+		double bpAntes = bio.Ficha.BP;
 		ServerPlayer? androide = ForjarCorpo(host, "Android", "Androide 1", forjados);
 		if (androide == null) { Checa("PRECONDICAO: o androide forjado nasceu", false); return; }
+		androide.Ficha.AndroideInfinito = true;
 		androide.Ficha.KO = true;
 		bio.AlvoId = androide.Id;
 		_prontoAbsorver.Remove(bio.Id);
-		UsarHabilidade(bio, "absorver");
+		AbsorverAteOFimBio(bio);
 
-		Checa("UM androide absorvido ja evolui -- o atalho classico do Cell",
-			  bio.Ficha.bio_stage == BioAndroids.SemiPerfeito, $"{bio.Ficha.bio_stage}");
-		Checa("...e o BP BASE DOBRA (`BP *= 2`, permanente -- por isso o degrau nao e uma forma: o "
-			  + "teto de treino, o do Zenkai e o CapCheck leem o BP base)",
+		Checa("UM ANDROIDE DE ENERGIA INFINITA absorvido pula pra forma seguinte -- o atalho do Cell (o adendo: so o de energia infinita)",
+			  bio.Ficha.bio_stage == BioAndroids.SemiPerfeito && bio.Ficha.bio_marco == 0, $"{bio.Ficha.bio_stage} marco {bio.Ficha.bio_marco}");
+		Checa("...e o BP BASE vai a 2x o imperfeito (a RAZAO da tabela, permanente -- por isso o degrau nao e uma forma: o teto de treino, o "
+			  + "do Zenkai e o CapCheck leem o BP base)",
 			  Math.Abs(bio.Ficha.BP - bpAntes * BioAndroids.MultDoSemiPerfeito) < 1,
 			  $"{bio.Ficha.BP:N0} != {bpAntes * 2:N0}");
-		Checa("...o contador ZEROU pro proximo degrau", bio.Ficha.bio_abs_androids == 0);
 		Checa("...e o marco `bio2` subiu o ganho de treino",
 			  Math.Abs(bio.Ficha.bp_milestone_mult - Milestones.Valor("bio2")) < 1e-9,
 			  $"{bio.Ficha.bp_milestone_mult}");
 
-		// ---- e o segundo androide leva a FORMA PERFEITA ----
+		// ---- o segundo leva a FORMA PERFEITA ----
 		bpAntes = bio.Ficha.BP;
 		ServerPlayer? androide2 = ForjarCorpo(host, "Android", "Androide 2", forjados);
 		if (androide2 == null) { Checa("PRECONDICAO: o segundo androide nasceu", false); return; }
+		androide2.Ficha.AndroideInfinito = true;
 		androide2.Ficha.KO = true;
 		bio.AlvoId = androide2.Id;
 		_prontoAbsorver.Remove(bio.Id);
-		UsarHabilidade(bio, "absorver");
+		AbsorverAteOFimBio(bio);
 
 		Checa("o segundo androide leva a FORMA PERFEITA",
-			  bio.Ficha.bio_stage == BioAndroids.Perfeito, $"{bio.Ficha.bio_stage}");
-		Checa("...com o BP BASE QUADRUPLICANDO em cima do degrau anterior",
-			  Math.Abs(bio.Ficha.BP - bpAntes * BioAndroids.MultDoPerfeito) < 1,
-			  $"{bio.Ficha.BP:N0} != {bpAntes * 4:N0}");
+			  bio.Ficha.bio_stage == BioAndroids.Perfeito && bio.Ficha.bio_marco == 0, $"{bio.Ficha.bio_stage} marco {bio.Ficha.bio_marco}");
+		Checa("...com o BP BASE a 4x o imperfeito: do semi (2x) ao perfeito (4x), a razao e 2 -- e nao os 4x do DM por cima",
+			  Math.Abs(bio.Ficha.BP - bpAntes * BioAndroids.MultDoPerfeito / BioAndroids.MultDoSemiPerfeito) < 1,
+			  $"{bio.Ficha.BP:N0} != {bpAntes * 2:N0}");
 		Checa("...e ela e PERMANENTE (`form3cantrevert`)", bio.Ficha.form3cantrevert);
 
-		// ---- o teto: absorver nao evolui alem do perfeito ----
-		bio.Ficha.bio_abs_androids = 0;
+		// ---- e o terceiro, ja no perfeito, leva ao MARCO 5 (*"vc vai pro perfect form milestone 5"*) ----
+		bpAntes = bio.Ficha.BP;
+		ServerPlayer? androide3 = ForjarCorpo(host, "Android", "Androide 3", forjados);
+		if (androide3 == null) { Checa("PRECONDICAO: o terceiro androide nasceu", false); return; }
+		androide3.Ficha.AndroideInfinito = true;
+		androide3.Ficha.KO = true;
+		bio.AlvoId = androide3.Id;
+		_prontoAbsorver.Remove(bio.Id);
+		AbsorverAteOFimBio(bio);
+		Checa("o androide absorvido DEPOIS do perfeito leva ao MARCO 5 do perfeito (o dono, literal) -- 14x o imperfeito",
+			  bio.Ficha.bio_stage == BioAndroids.Perfeito && bio.Ficha.bio_marco == BioAndroids.MarcosPorForma
+			  && Math.Abs(bio.Ficha.BP - bpAntes * BioAndroids.MultAbsoluto(BioAndroids.Perfeito, 5) / BioAndroids.MultDoPerfeito) < 1,
+			  $"{bio.Ficha.bio_stage} marco {bio.Ficha.bio_marco}, BP {bio.Ficha.BP:N0} contra {bpAntes * 3.5:N0}");
+
+		// ---- o teto: absorver nao anda alem do marco 5 do perfeito ----
 		ServerPlayer? sobra = ForjarCorpo(host, "Human", "Sobra", forjados);
 		if (sobra != null)
 		{
 			sobra.Ficha.KO = true;
 			bio.AlvoId = sobra.Id;
 			_prontoAbsorver.Remove(bio.Id);
-			UsarHabilidade(bio, "absorver");
-			Checa("passado o PERFEITO a contagem para (dali pra cima o que ha e a Super Perfeita, "
-				  + "que e forma e nao degrau)",
-				  bio.Ficha.bio_stage == BioAndroids.Perfeito && bio.Ficha.bio_abs_players == 0,
-				  $"estagio {bio.Ficha.bio_stage}, jogadores {bio.Ficha.bio_abs_players}");
+			bpAntes = bio.Ficha.BP;
+			AbsorverAteOFimBio(bio);
+			Checa("no MARCO 5 do perfeito a escada para (dali pra cima o que ha e a Super Perfeita, que e forma e nao degrau)",
+				  bio.Ficha.bio_stage == BioAndroids.Perfeito && bio.Ficha.bio_marco == BioAndroids.MarcosPorForma
+				  && bio.Ficha.bio_passos == 0 && Math.Abs(bio.Ficha.BP - bpAntes) < 1,
+				  $"estagio {bio.Ficha.bio_stage}, marco {bio.Ficha.bio_marco}, passos {bio.Ficha.bio_passos}");
+		}
+
+		// ---- O ANDROIDE DE ABSORCAO e maquina por dentro: imune ----
+		ServerPlayer? maquina = ForjarCorpo(host, "Android", "Androide de absorcao", forjados);
+		if (maquina != null)
+		{
+			maquina.Ficha.AndroideAbsorcao = true;
+			maquina.Ficha.KO = true;
+			bio.AlvoId = maquina.Id;
+			_prontoAbsorver.Remove(bio.Id);
+			List<string> recusa = Ouvir(() => UsarHabilidade(bio, "absorver"));
+			Checa("o ANDROIDE DE ABSORCAO e imune (o dono: *\"nao funciona em androides de absorçao de energia\"*): a execucao nem abre, e ele segue vivo",
+				  !_execucoesDoBio.ContainsKey(bio.Id) && !maquina.Ficha.dead && Disse(recusa, "máquina por dentro"), Ultimos(recusa));
 		}
 
 		// ============================ A FRASE NAO DIZ O PODER DA VITIMA SEM SCOUTER (dono, 2026-10-12) ============================
@@ -592,7 +1037,7 @@ public partial class GameServer
 			leitor.AlvoId = prato.Id;
 			_prontoAbsorver.Remove(leitor.Id);
 			comidos.Add(prato.Ficha.BP);
-			UsarHabilidade(leitor, "absorver");
+			AbsorverAteOFimBio(leitor);
 		});
 		Checa("SEM scouter, a absorcao do bio diz que entrou TODO o poder dele -- e nao o BP da vitima em numero",
 			  comidos.Count == 3 && Disse(semScouter, "todo o poder dele") && !TrazOPoder(semScouter, comidos[0]),
@@ -639,8 +1084,31 @@ public partial class GameServer
 		TransformarPara(bio, "super_perfect");
 		Checa("ele ENTRA na Super Perfeita pelo funil de producao (`TransformarPara`)",
 			  bio.Forma.Atual == "super_perfect", bio.Forma.Atual);
-		Checa("...e o multiplicador e 8x", Math.Abs(bio.Ficha.ssjBuff - Catalogo.SuperPerfeitoMult) < 1e-6,
-			  $"{bio.Ficha.ssjBuff}");
+		double degrau = BioAndroids.MultAbsoluto(bio.Ficha.bio_stage, bio.Ficha.bio_marco);
+		Checa("...e o multiplicador e 20x ABSOLUTO sobre o imperfeito (o adendo do dono; era 8x por cima do perfeito) -- a forma vale o que "
+			  + "falta ate ele sobre o degrau que ja mora no BP base",
+			  Math.Abs(bio.Ficha.ssjBuff * degrau - Catalogo.SuperPerfeitoDoBio.Sem) < 1e-6,
+			  $"forma {bio.Ficha.ssjBuff:0.###} x degrau {degrau:0.#} = {bio.Ficha.ssjBuff * degrau:0.###}");
+
+		// ---- E COM O KI DIVINO: 22x desperto, 32x no nivel do Blue, 56x no do Blue Evolution ----
+		GodKiState? kiDivinoGuardado = bio.Ficha.godki;
+		foreach ((double maestria, double esperado, string nivel) in new[]
+			{ (0.0, Catalogo.SuperPerfeitoDoBio.AoDespertar, "o ki divino DESPERTO"),
+			  (Catalogo.GodkiBluePct, Catalogo.SuperPerfeitoDoBio.NoBlue, "o nivel do Blue (33%)"),
+			  (Catalogo.GodkiRoyalePct, Catalogo.SuperPerfeitoDoBio.NaEvolution, "o nivel do Blue Evolution (50%)") })
+		{
+			bio.Ficha.godki = new GodKiState { awakened = true, mastery = maestria };
+			AplicarForma(bio);
+			Checa($"...com {nivel}, a Super Perfeita vale {esperado:0}x o imperfeito (o adendo: *\"ao atingir o nivel do blue o multiplicador "
+				  + "sobe pra 32x e ao atingir o nivel do blue evolved vc fica com 56x\"*)",
+				  Math.Abs(bio.Ficha.ssjBuff * degrau - esperado) < 1e-6, $"{bio.Ficha.ssjBuff * degrau:0.###}");
+		}
+		bio.Ficha.godki = new GodKiState { awakened = true, mastery = 0 };
+		TickDaMaestriaDivina(bio, 60);
+		Checa("...e e NELA que o bio amadurece o ki divino: um minuto na Super Perfeita sobe a maestria divina (`UsaOKiDivino`)",
+			  bio.Ficha.godki.mastery > 0, $"{bio.Ficha.godki.mastery:0.####}%");
+		bio.Ficha.godki = kiDivinoGuardado;
+		AplicarForma(bio);
 
 		// ---- o conserto do bug do DM: o SSJ nao atropela a Super Perfeita ----
 		bio.Forma.Liberar("ssj1");
@@ -1047,18 +1515,19 @@ public partial class GameServer
 		// ============================ A ESCADA POR JOGADORES, OS DOIS SENTIDOS EM CADA DEGRAU ============================
 		ServerPlayer bio = cientista;
 
-		// --- degrau 1: LARVA -> IMPERFEITO, e o requisito e TEMPO ---
-		bio.Ficha.bio_mature_em = NowMs() + 600_000;
+		// --- degrau 1: LARVA -> IMPERFEITO, e o requisito e ENTERRADA 5 MIN (o adendo do dono; era o dia in-game do DM) ---
+		UsarHabilidade(bio, "enterrar");
+		AdiantoDoRelogioDeTeste += (long)(BioAndroids.SegundosEnterradoPraAmadurecer * 1000) - 30_000;
 		TickDaLarva();
-		Checa("LARVA -> IMPERFEITO **NAO** acontece antes do prazo (o degrau e o relogio, e nao o "
-			  + "tique) -- sem esta metade, um relogio zerado na conta daria a mesma linha verde",
+		Checa("LARVA -> IMPERFEITO **NAO** acontece antes dos 5 min enterrada -- sem esta metade, uma conta zerada daria a mesma linha "
+			  + "verde",
 			  bio.Ficha.bio_stage == BioAndroids.Larva, $"{bio.Ficha.bio_stage}");
-		bio.Ficha.bio_mature_em = NowMs() - 1;
+		AdiantoDoRelogioDeTeste += 31_000;
 		TickDaLarva();
-		Checa("...e acontece depois dele", bio.Ficha.bio_stage == BioAndroids.Imperfeito,
+		Checa("...e acontece neles", bio.Ficha.bio_stage == BioAndroids.Imperfeito,
 			  $"{bio.Ficha.bio_stage}");
 
-		// --- degrau 2: IMPERFEITO -> SEMI, e o requisito sao DEZ JOGADORES ---
+		// --- degrau 2: IMPERFEITO -> SEMI, e o requisito e o SEXTO PASSO (o adendo do dono) ---
 		ServerPlayer? Cidadao(string nome)
 		{
 			ServerPlayer? n = NascerNpc("cidadao", bio.Zone, bio.Pos, ++_lugarDaBancadaDeBio);
@@ -1071,48 +1540,70 @@ public partial class GameServer
 			return n;
 		}
 
-		bio.Ficha.bio_abs_players = 8.5;
-		bio.Ficha.bio_abs_androids = 0;
+		bio.Ficha.bio_marco = BioAndroids.MarcosPorForma;
+		bio.Ficha.bio_passos = 0.6;
 		double bpAntes = bio.Ficha.BP;
-		if (Cidadao("Nono") != null)
+		if (Cidadao("Quinto") != null)
 		{
-			UsarHabilidade(bio, "absorver");
-			Checa("IMPERFEITO -> SEMI-PERFEITO **NAO** acontece no NONO jogador (8,5 + meio NPC = 9) "
-				  + "-- o numero e dez, e sem esta metade a escada estaria aberta a qualquer contagem",
-				  bio.Ficha.bio_stage == BioAndroids.Imperfeito
-				  && Math.Abs(bio.Ficha.bio_abs_players - 9) < 1e-9,
-				  $"estagio {bio.Ficha.bio_stage}, contagem {bio.Ficha.bio_abs_players}");
-			Checa("...e o BP BASE nao se mexeu junto",
+			AbsorverAteOFimBio(bio);
+			Checa("IMPERFEITO -> SEMI-PERFEITO **NAO** acontece antes do SEXTO passo (marco 5 e 0,6 + um NPC = 0,8) -- sem esta metade a "
+				  + "escada estaria aberta a qualquer contagem",
+				  bio.Ficha.bio_stage == BioAndroids.Imperfeito && bio.Ficha.bio_marco == BioAndroids.MarcosPorForma
+				  && Math.Abs(bio.Ficha.bio_passos - 0.8) < 1e-9,
+				  $"estagio {bio.Ficha.bio_stage}, marco {bio.Ficha.bio_marco}, passos {bio.Ficha.bio_passos}");
+			Checa("...e o BP BASE nao se mexeu (o imperfeito nao tem marcos: os passos andam, o multiplicador nao)",
 				  Math.Abs(bio.Ficha.BP - bpAntes) < 1, $"{bio.Ficha.BP:N0}");
 		}
 
-		bio.Ficha.bio_abs_players = 9.5;
 		bpAntes = bio.Ficha.BP;
-		if (Cidadao("Decimo") != null)
+		if (Cidadao("Sexto") != null)
 		{
-			UsarHabilidade(bio, "absorver");
-			Checa("...e ACONTECE no decimo (`DNL_BIO_EVO_PLAYERS`), pelo mesmo verbo",
-				  bio.Ficha.bio_stage == BioAndroids.SemiPerfeito, $"{bio.Ficha.bio_stage}");
-			Checa("...com o BP BASE DOBRANDO (`DNL_BIO_EVO2_MULT`)",
-				  Math.Abs(bio.Ficha.BP - bpAntes * BioAndroids.MultDoSemiPerfeito) < 1,
-				  $"{bio.Ficha.BP:N0} != {bpAntes * 2:N0}");
-			Checa("...e a contagem ZERADA -- sem isto o decimo primeiro jogador daria o degrau "
-				  + "seguinte de brinde", bio.Ficha.bio_abs_players == 0);
+			AbsorverAteOFimBio(bio);
+			Checa("...e ACONTECE no passo que fecha o sexto (0,8 + 0,2), pelo mesmo verbo",
+				  bio.Ficha.bio_stage == BioAndroids.SemiPerfeito && bio.Ficha.bio_marco == 0, $"{bio.Ficha.bio_stage} marco {bio.Ficha.bio_marco}");
+			Checa("...com o BP BASE dobrando (do imperfeito, 1x, ao semi, 2x)",
+				  Math.Abs(bio.Ficha.BP - bpAntes * BioAndroids.MultDoSemiPerfeito) < 1, $"{bio.Ficha.BP:N0} != {bpAntes * 2:N0}");
+			Checa("...e os passos ZERADOS -- sem isto o proximo NPC daria o marco seguinte de brinde", bio.Ficha.bio_passos < 1e-9);
 		}
 
-		// --- degrau 3: SEMI -> PERFEITO, mesma regra, outro multiplicador ---
-		bio.Ficha.bio_abs_players = 9.5;
+		// --- um MARCO dentro do semi: 2x -> 2,2x ---
+		bio.Ficha.bio_passos = 0.8;
+		bpAntes = bio.Ficha.BP;
+		if (Cidadao("Marco") != null)
+		{
+			AbsorverAteOFimBio(bio);
+			Checa("um MARCO dentro do semi-perfeito: o marco 1 leva o corpo de 2x a 2,2x -- o BP base anda pela RAZAO (1,1)",
+				  bio.Ficha.bio_stage == BioAndroids.SemiPerfeito && bio.Ficha.bio_marco == 1
+				  && Math.Abs(bio.Ficha.BP - bpAntes * 1.1) < 1, $"marco {bio.Ficha.bio_marco}, BP {bio.Ficha.BP:N0} contra {bpAntes * 1.1:N0}");
+		}
+
+		// --- degrau 3: SEMI -> PERFEITO, a mesma escada, e a razao do marco 5 do semi (3x) pro perfeito (4x) ---
+		bio.Ficha.bio_marco = BioAndroids.MarcosPorForma;
+		bio.Ficha.bio_passos = 0.8;
 		bpAntes = bio.Ficha.BP;
 		if (Cidadao("Vigesimo") != null)
 		{
-			UsarHabilidade(bio, "absorver");
-			Checa("SEMI -> PERFEITO pela MESMA regra de dez",
-				  bio.Ficha.bio_stage == BioAndroids.Perfeito, $"{bio.Ficha.bio_stage}");
-			Checa("...com o BP BASE QUADRUPLICANDO (`DNL_BIO_EVO3_MULT`), e nao dobrando de novo",
-				  Math.Abs(bio.Ficha.BP - bpAntes * BioAndroids.MultDoPerfeito) < 1,
-				  $"{bio.Ficha.BP:N0} != {bpAntes * 4:N0}");
+			AbsorverAteOFimBio(bio);
+			Checa("SEMI -> PERFEITO pela mesma escada (o sexto passo depois do marco 5)",
+				  bio.Ficha.bio_stage == BioAndroids.Perfeito && bio.Ficha.bio_marco == 0, $"{bio.Ficha.bio_stage} marco {bio.Ficha.bio_marco}");
+			Checa("...com o BP BASE pela razao do semi no marco 5 (3x) pro perfeito (4x): 4/3 -- e nao os 4x do DM",
+				  Math.Abs(bio.Ficha.BP - bpAntes * BioAndroids.MultDoPerfeito / BioAndroids.MultAbsoluto(BioAndroids.SemiPerfeito, 5)) < 1,
+				  $"{bio.Ficha.BP:N0} != {bpAntes * 4 / 3:N0}");
 		}
 		return bio;
+	}
+
+	/// <summary>
+	/// (2026-10-17) A ABSORCAO DE EXECUCAO, PELA PORTA E ATE O FIM: o verb abre os 5 s (`AbsorverBio`), o relogio anda e o tique de producao a
+	/// consuma (`TickDasExecucoesDoBio`). Devolve se ela se consumou.
+	/// </summary>
+	private bool AbsorverAteOFimBio(ServerPlayer bio)
+	{
+		UsarHabilidade(bio, "absorver");
+		if (!_execucoesDoBio.ContainsKey(bio.Id)) return false;
+		AdiantoDoRelogioDeTeste += (long)(BioAndroids.SegundosDaExecucao * 1000) + 50;
+		TickDasExecucoesDoBio();
+		return !_execucoesDoBio.ContainsKey(bio.Id);
 	}
 
 	// =====================================================================
@@ -1674,13 +2165,20 @@ public partial class GameServer
 		Numero("`DNL_BIO_BP_SHARE` (o bio nasce com metade do doador mais forte)",
 			   BioAndroids.FracaoDoDoador, 0.5);
 		Numero("`DNL_BIO_MAX_DNA` (amostras por tanque)", BioAndroids.MaxDna, 4);
-		Numero("`DNL_BIO_EVO_PLAYERS` (jogadores por degrau)", BioAndroids.JogadoresPraEvoluir, 10);
-		Numero("`DNL_BIO_EVO_NPC_WEIGHT` (um NPC vale meio jogador)", BioAndroids.PesoDoNpc, 0.5);
-		Numero("`DNL_BIO_EVO_ANDROIDS` (o atalho do Cell: UM androide)",
-			   BioAndroids.AndroidesPraEvoluir, 1);
-		Numero("`DNL_BIO_EVO2_MULT` (semi-perfeito dobra o BP BASE)", BioAndroids.MultDoSemiPerfeito, 2);
-		Numero("`DNL_BIO_EVO3_MULT` (perfeito quadruplica)", BioAndroids.MultDoPerfeito, 4);
-		Numero("`cell4mult` (a Super Perfeita)", Catalogo.SuperPerfeitoMult, 8);
+		// (2026-10-17) A ESCADA E A SUPER PERFEITA SAO DO ADENDO DO DONO, e nao mais do DM (`DNL_BIO_EVO_*`, `cell4mult = 8`).
+		Numero("o PASSO de um jogador absorvido (o adendo: um marco inteiro)", BioAndroids.PassoDoJogador, 1);
+		Numero("o PASSO de um NPC (o adendo: *\"bem menos\"* -- escolha: um quinto)", BioAndroids.PassoDoNpc, 0.2);
+		Numero("os MARCOS por forma (o sexto passo sobe a forma)", BioAndroids.MarcosPorForma, 5);
+		Numero("o semi-perfeito no marco 0", BioAndroids.MultAbsoluto(BioAndroids.SemiPerfeito, 0), 2);
+		Numero("o semi-perfeito no marco 5", BioAndroids.MultAbsoluto(BioAndroids.SemiPerfeito, 5), 3);
+		Numero("o perfeito no marco 0", BioAndroids.MultAbsoluto(BioAndroids.Perfeito, 0), 4);
+		Numero("o perfeito no marco 5", BioAndroids.MultAbsoluto(BioAndroids.Perfeito, 5), 14);
+		Numero("a SUPER PERFEITA, absoluta sobre o imperfeito", Catalogo.SuperPerfeitoDoBio.Sem, 20);
+		Numero("...com o ki divino desperto", Catalogo.SuperPerfeitoDoBio.AoDespertar, 22);
+		Numero("...no nivel do Blue", Catalogo.SuperPerfeitoDoBio.NoBlue, 32);
+		Numero("...no nivel do Blue Evolution", Catalogo.SuperPerfeitoDoBio.NaEvolution, 56);
+		Numero("a EXECUCAO de absorcao, em segundos", BioAndroids.SegundosDaExecucao, 5);
+		Numero("...e o que ela devolve (vida, folego e Ki)", BioAndroids.DevolveAExecucao, 0.2);
 		Numero("`nerfSSJ()` no SSJ1 de quem chegou por `canSSJ`", Catalogo.Ssj1BaseDiluido, 1.35);
 		Numero("o marco `bio1` (imperfeito)", Milestones.Valor("bio1"), 1.5);
 		Numero("o marco `bio2` (semi-perfeito)", Milestones.Valor("bio2"), 2);
@@ -1693,12 +2191,10 @@ public partial class GameServer
 		Numero("o androide de ENERGIA INFINITA, em zeni", CustoAndroideInfinito, 2_000_000);
 		Numero("`DNL_BIO_BREW_MONTHS 0.1` de ano, em DIAS in-game", DiasDeGestacao, 30);
 
-		// ============================ A CARAPACA DA LARVA SE MEDE NA FICHA, E NAO NO `const` ============================
-		// `BioLarvaRestrict` e privado do `Fighter`, e abrir a visibilidade dele pra uma bancada seria
-		// trocar o desenho da classe pra medir um numero -- exatamente o tipo de conserto que deixa a
-		// medida verde e o sistema pior. O numero se le pelo EFEITO, numa ficha crua de um milhao: se
-		// o teto for 1%, sai dez mil, e nao ha segunda leitura possivel.
-		// ==========================================================================================================
+		// ============================ A LARVA SE MEDE NA FICHA ============================
+		// (2026-10-17) A larva e SEMPRE RELAXADA (o dono) -- 5 de poder, pela mesma trava do relaxado. Era o teto de 1% do DM. O numero se le
+		// pelo EFEITO, numa ficha crua de um milhao: duas leituras, porque a trava le o expresso da anterior.
+		// ================================================================================
 		var cru = new Fighter
 		{
 			Race = BioAndroids.Raca, ParentRace = BioAndroids.Raca,
@@ -1706,9 +2202,11 @@ public partial class GameServer
 		};
 		cru.Statify();
 		cru.PowerLevel();
-		Checa("a LARVA expressa 1% do proprio poder -- um milhao de base vira DEZ MIL na tela. Os "
-			  + "tres comentarios do DM que dizem 5% e 10% estao desatualizados; o define e o juiz",
-			  Math.Abs(cru.expressedBP - 10_000) <= 1, $"{cru.expressedBP:N0}");
+		cru.PowerLevel();
+		Checa("a LARVA expressa 5 -- SEMPRE RELAXADA (o dono, 2026-10-17: *\"fica sempre no modo 'relaxado' com 5 de bp\"*); um milhao de base "
+			  + "vira 5 na tela (era o 1% do DM)",
+			  cru.expressedBP == 5, $"{cru.expressedBP:N0}");
+		Numero("os minutos ENTERRADA pra larva amadurecer (o adendo)", BioAndroids.SegundosEnterradoPraAmadurecer / 60, 5);
 	}
 
 	// =====================================================================
@@ -1779,10 +2277,17 @@ public partial class GameServer
 		bool nascidoGuardado = bio.Ficha.bio_lab_born;
 		double bpGuardado = bio.Ficha.BP;
 		bio.Ficha.BP = 1_000_000;
-		Injetar("o teto de 1% da LARVA (com o degrau em larva o poder expresso TEM que cair)",
+		Injetar("o SELO da LARVA (com o degrau em larva o poder expresso TEM que cair -- a 5, ela e sempre relaxada)",
 				() => { bio.Ficha.bio_stage = BioAndroids.Larva; RepercutirPoder(bio); },
 				() => bio.Ficha.expressedBP > bio.Ficha.BP * 0.5,
 				() => { bio.Ficha.bio_stage = estagioGuardado; RepercutirPoder(bio); });
+
+		// (2026-10-17) O ESCONDERIJO DA LARVA E O DO RELAXADO: com o relaxado deixando de esconder (`RelaxadoNaoEscondeDeTeste`), a larva
+		// vestida volta a ser sentida -- e a prova da familia 5b ("selada, fora do Sense") cai.
+		Injetar("o esconderijo da LARVA (a carapaca sem a trava do relaxado: ela apareceria no Sense e no scouter)",
+				() => { bio.Ficha.bio_larva = true; PoderEmUso.RelaxadoNaoEscondeDeTeste = true; RepercutirPoder(bio); RepercutirPoder(bio); },
+				() => bio.Ficha.expressedBP == 5 && !TemEnergiaQueSeSente(bio),
+				() => { bio.Ficha.bio_larva = false; PoderEmUso.RelaxadoNaoEscondeDeTeste = false; RepercutirPoder(bio); });
 
 		// ============================ 3. O ZENKAI -- E ELE PRECISA DO BIO **SEM** DNA ============================
 		// A primeira rodada desta injecao ficou VERDE, e a bancada estava certa: o `HasZenkai` tem SEIS
@@ -1859,14 +2364,13 @@ public partial class GameServer
 		if (semDna != null)
 		{
 			int est2 = semDna.Ficha.bio_stage;
-			Injetar("a contagem de ABSORCOES (com o degrau ja no PERFEITO a contagem para -- o teto "
-					+ "da escada por absorcao)",
-					() => { semDna.Ficha.bio_stage = BioAndroids.Perfeito;
-							semDna.Ficha.bio_abs_players = 0; semDna.Ficha.bio_abs_androids = 0; },
+			int marco2 = semDna.Ficha.bio_marco;
+			Injetar("a escada por ABSORCAO (com o degrau no MARCO 5 do perfeito ela para -- o teto da escada)",
+					() => { semDna.Ficha.bio_stage = BioAndroids.Perfeito; semDna.Ficha.bio_marco = BioAndroids.MarcosPorForma;
+							semDna.Ficha.bio_passos = 0; },
 					() => { ContarAbsorcaoDoBio(semDna, semDna);
-							return semDna.Ficha.bio_abs_players > 0
-								   || semDna.Ficha.bio_abs_androids > 0; },
-					() => semDna.Ficha.bio_stage = est2);
+							return semDna.Ficha.bio_passos > 0 || semDna.Ficha.bio_marco != BioAndroids.MarcosPorForma; },
+					() => { semDna.Ficha.bio_stage = est2; semDna.Ficha.bio_marco = marco2; semDna.Ficha.bio_passos = 0; });
 		}
 
 		bio.Ficha.BP = bpGuardado;
