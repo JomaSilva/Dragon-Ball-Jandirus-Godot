@@ -203,6 +203,14 @@ public partial class LocalPlayer : Node2D
 		AoLeme && !_voando && GameClient.Instance is { } cli && !Jandirus.Core.World.Espaco.EhEspaco(cli.Zone);
 
 	/// <summary>
+	/// (2026-10-18) A NAVE ESTA DE TANQUE SECO: ao leme, com a barra dizendo zero -- a pergunta do `GameServer.ParadoPorFaltaDeCombustivel`.
+	/// O dono escolheu que ela PARA DE VEZ; o servidor recusa o passo, e aqui ele nem e tentado (uma correcao por pacote seria o corpo
+	/// tremendo). Abastecida, a barra volta e o corpo anda.
+	/// </summary>
+	private static bool NaveSemCombustivel =>
+		AoLeme && GameClient.Instance is { Tanque: { Modo: 1, Capacidade: > 0, Nivel: <= 0 } };
+
+	/// <summary>
 	/// O DESTINO QUE ESPERA A DECOLAGEM (v0.2.1) -- coordenada de GALAXIA, e nao deste planeta.
 	///
 	/// Dono (2026-10-13): *"se a nave estiver pousada e vc colocar no nav system pra ir no piloto automatico pra algum
@@ -363,6 +371,8 @@ public partial class LocalPlayer : Node2D
 		}
 
 		_semRedeas = semRedeas;
+		// (2026-10-18) O OLHO DE QUEM OBSERVA UMA NAVE persegue o mesmo ponto: e o servidor que o leva com o casco -- ver `SeguirANaveObservada`.
+		if (!semRedeas && Observando) _alvoDaPosse = pos;
 		if (!semRedeas) return;
 
 		_alvoDaPosse = pos;
@@ -387,6 +397,87 @@ public partial class LocalPlayer : Node2D
 	/// <summary>Andando e pose ditados por quem dirige. A animacao sai daqui, e nao do teclado.</summary>
 	private bool _andandoNaPosse;
 	private Protocol.Pose _poseDaPosse = Protocol.Pose.Normal;
+
+	// =====================================================================
+	// (2026-10-18) O OLHO DE QUEM OBSERVA UMA NAVE DE FORA
+	// =====================================================================
+	/// <summary>
+	/// ESTOU OBSERVANDO UMA NAVE DE FORA? O corpo de verdade ficou de pe na ponte; este e so o olho, e ele anda com a nave. Quem diz e o
+	/// servidor (`S2C.Observando`, `GameClient.Observando`). Ver `GameServer.NaveObservar.cs`.
+	/// </summary>
+	private static bool Observando => GameClient.Instance?.Observador == true;
+
+	/// <summary>
+	/// (2026-10-18) O MEU CORPO ESTA POSSUIDO PELO NEO TUFFLE? Quem anda no meu lugar e o corpo dele, com a minha cara; o meu esta escondido
+	/// andando junto, e eu so assisto (`S2C.Possuido`, `GameClient.PossuidoPor`). Ver `GameServer.NeoTuffle.cs`.
+	/// </summary>
+	private static bool Possuido => GameClient.Instance?.PossuidoPor > 0;
+
+	/// <summary>Fui eu que escondi o boneco por estar observando (ou possuido)? (Pra devolve-lo ao acabar, e so entao.)</summary>
+	private bool _escondidoPeloOlho;
+
+	/// <summary>
+	/// (2026-10-18) O DONO DO CORPO POSSUIDO ASSISTE: o boneco dele some (quem o mundo ve e o Tuffle, com a cara dele), e a camera fica onde o
+	/// corpo do possessor esta DESENHADO -- o mesmo "onde ele esta desenhado" do olho da nave com piloto. Sem o corpo dele na tela ainda
+	/// (o pacote do possessor nao chegou), persegue o ponto que o servidor manda.
+	/// </summary>
+	private void SeguirOPossessor(double delta)
+	{
+		if (_visual.Visible) { _visual.Visible = false; _escondidoPeloOlho = true; }
+
+		if (World.Instancia?.CorpoDoPossessor() is { } corpo)
+		{
+			_pos = new Vec2(corpo.Position.X, corpo.Position.Y);
+			_alvoDaPosse = _pos;
+		}
+		else
+		{
+			Vec2 falta = _alvoDaPosse - _pos;
+			_pos = falta.LengthSquared > SaltoDoOlho * SaltoDoOlho
+				? _alvoDaPosse
+				: _pos + falta * MathF.Min(1f, (float)(delta * PerseguicaoDaPosse));
+		}
+		Desenhar();
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--diagcapital`, C10): o olho de quem observa continua com o boneco desenhado -- um personagem de pe no meio do
+	/// espaco, ao lado do casco. Lido pela propria linha que esconde. Falso em jogo, sempre.
+	/// </summary>
+	public static bool OlhoComCorpoDeTeste;
+
+	/// <summary>
+	/// O SALTO QUE O OLHO NAO PERSEGUE: o casco de 39x anda ~208 px entre dois snapshots, mais que o corte da posse (160 px) -- com aquele
+	/// corte o olho cravaria a cada pacote e o mundo andaria aos trancos. A troca de zona (o pouso, a decolagem) chega por outro caminho
+	/// (`Teleportar`), entao aqui so sobra o salto de verdade: o leme trocou de mao no meio da viagem.
+	/// </summary>
+	private const float SaltoDoOlho = 1500f;
+
+	/// <summary>
+	/// O OLHO SEGUE A NAVE: com alguem ao leme, fica onde o corpo do piloto esta DESENHADO -- e nele que a nave e desenhada, e e o mesmo
+	/// "onde ele esta desenhado" do colo (`_carregador`), sem um quadro de atraso; sem piloto (parada, a deriva, seguindo sozinha),
+	/// persegue o ponto que o servidor manda, como o corpo sem redeas -- e a nave e desenhada no proprio olho (`World.AtualizarNaveObservada`).
+	/// O boneco some: o olho nao tem corpo.
+	/// </summary>
+	private void SeguirANaveObservada(double delta)
+	{
+		if (_visual.Visible && !OlhoComCorpoDeTeste) { _visual.Visible = false; _escondidoPeloOlho = true; }
+
+		if (World.Instancia?.CorpoDoPilotoObservado() is { } piloto)
+		{
+			_pos = new Vec2(piloto.Position.X, piloto.Position.Y);
+			_alvoDaPosse = _pos;   // quando o leme ficar vazio, o olho segue dali, sem pulo
+		}
+		else
+		{
+			Vec2 falta = _alvoDaPosse - _pos;
+			_pos = falta.LengthSquared > SaltoDoOlho * SaltoDoOlho
+				? _alvoDaPosse
+				: _pos + falta * MathF.Min(1f, (float)(delta * PerseguicaoDaPosse));
+		}
+		Desenhar();
+		_visual.SetMotion(_facing, false);
+	}
 
 	/// <summary>
 	/// Quanto o corpo persegue, por segundo, o ponto que o servidor mandou.
@@ -470,7 +561,7 @@ public partial class LocalPlayer : Node2D
 		// diferentes -- ver `CharacterVisual.VoarPara`.
 		var dir = (Facing)((ficha.Estado >> 6) & 3);
 		_dirDoCorpo = dir;   // a folha do voo tambem sai daqui -- ver _Process
-		if (_caido) _visual.DeitarPor(dir);
+		if (_caido || Dormindo) _visual.DeitarPor(dir);
 		// O PUXAO DA FUSAO NAO GIRA O CORPO. Ele e dirigido pelo servidor como o arremesso (mesmo bit
 		// `Empurrado`, mesma correcao, mesmo deslize), mas quem esta sendo puxado pro outro esta DE PE
 		// -- com a rotacao do arremesso, dois lutadores atraidos no eixo vertical apareceriam de cabeca
@@ -592,6 +683,12 @@ public partial class LocalPlayer : Node2D
 
 	/// <summary>Ao leme, a nave nao anda com as pernas do piloto: as duas regras de perna nao valem (como no servidor).</summary>
 	private static bool AoLeme => GameClient.Instance is { VeiculoMontado.Length: > 0 };
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--diagcapital`): ao leme, a pose volta a ser a de voo -- o jogo de antes de 2026-10-18 (*"o personagem fica voando quando
+	/// eu piloto a nave"*). Falso em jogo, sempre.
+	/// </summary>
+	public static bool AoLemeVoaDeTeste;
 
 	/// <summary>
 	/// SEM AS DUAS PERNAS, NO CHAO -- `legsLost >= 2 && !flight` (`movement handler.dm:133`): a pergunta do
@@ -787,6 +884,8 @@ public partial class LocalPlayer : Node2D
 
 	public string PorQueNaoAnda =>
 		  _semRedeas                             ? "sem as redeas (o servidor dirige)"
+		: Observando                             ? "observando a nave de fora (E pra voltar ao corpo)"
+		: Possuido                               ? "possuido por um Neo Tuffle (voce so assiste)"
 		: _empurrado                             ? "arremessado"
 		: _caido                                 ? "caido (nocaute ou morte)"
 		: _agarrado                              ? "agarrado (a tecla de andar e a luta pra se soltar)"
@@ -801,6 +900,7 @@ public partial class LocalPlayer : Node2D
 		: Prensado                                ? "prensado pela gravidade (ou pelo peso)"
 		: PresoNoTorneio                          ? "na area de espera do torneio"
 		: PresoPelaTecnica                        ? "preso pela tecnica (a Genkidama, a Death Ball, uma rajada)"
+		: NaveSemCombustivel                      ? "a nave esta sem combustivel (E > Abastecer)"
 		: NavePousada                             ? "a nave esta pousada (suba pra decolar)"
 		: SemPernasNoChao                         ? MotivoSemPernas
 		: "";
@@ -818,6 +918,22 @@ public partial class LocalPlayer : Node2D
 	/// fotografou nas duas telas.
 	/// </summary>
 	private Facing _dirDoCorpo = Facing.South;
+
+	/// <summary>
+	/// (2026-10-18) ESTOU DORMINDO O SLEEP DO MAJIN? Vem do snapshot do meu corpo (`Ocupacao.Dormindo`, pelo `World`): o corpo local escolhe
+	/// a propria pose (ver <see cref="PorAPoseDoCorpo"/>), e quem dorme DEITA -- a folha nao tem pose de sono, e a de nocaute e o corpo no
+	/// chao, a mesma que os outros veem. Acordar endireita o sprite na hora.
+	/// </summary>
+	public bool Dormindo { get; private set; }
+
+	/// <summary>O `World` diz se o meu corpo dorme. Ver <see cref="Dormindo"/>.</summary>
+	public void Dormir(bool dormindo)
+	{
+		if (dormindo == Dormindo) return;
+		Dormindo = dormindo;
+		if (dormindo) _visual.DeitarPor(_dirDoCorpo);
+		else if (!_caido) _visual.GirarPara(default);
+	}
 
 	/// <summary>
 	/// PRA ONDE ESTE CORPO ESTA VIRADO -- o mesmo nome que o `RemotePlayer` ja publicava, pra que
@@ -882,6 +998,14 @@ public partial class LocalPlayer : Node2D
 		// nos casos estranhos, que sao os que produzem o defeito.
 		// ================================================================================================
 		Transformacao.VigiarTranca(delta);
+
+		// ============================ (2026-10-18) OBSERVANDO UMA NAVE, ESTE CORPO E SO UM OLHO ============================
+		// O corpo de verdade ficou de pe na ponte (`GameServer.NaveObservar.cs`); o que esta aqui fora nao aparece, nao le tecla e nao
+		// declara posicao -- anda com a nave. Mesma forma do ramo "sem as redeas" logo abaixo: nenhuma tecla, nenhum `SendState`.
+		if (Observando) { SeguirANaveObservada(delta); return; }
+		// (2026-10-18) POSSUIDO PELO NEO TUFFLE, IDEM: o corpo de verdade anda escondido dentro do Tuffle, e eu so assisto -- nenhuma tecla.
+		if (Possuido) { SeguirOPossessor(delta); return; }
+		if (_escondidoPeloOlho) { _escondidoPeloOlho = false; _visual.Visible = true; }
 
 		// ============================ SEM AS REDEAS, ESTE CORPO E PASSAGEIRO ============================
 		// Enquanto o servidor dirige (a fera solta, e qualquer possessao que venha depois) este quadro
@@ -1625,7 +1749,21 @@ public partial class LocalPlayer : Node2D
 		// esta reunindo energia cai na escada normal e fica no idle, com o brilho da
 		// `CargaDeRaioVisual` por cima. Ver `Protocol.Pose.Canalizando`.
 		// ===================================================================================================
+		// (2026-10-18) QUEM DORME O SLEEP DO MAJIN DEITA -- a mesma pose que os outros veem (a `Pose.Nocauteado` que o servidor manda). Ver
+		// `Dormindo`.
+		if (Dormindo) { _visual.SetState("ko"); return; }
+
 		if (_raioSaindo) { _visual.SetPose(Protocol.Pose.Canalizando, canalAtirando: true); return; }
+
+		// (2026-10-18) AO LEME A POSE NAO E A DE VOO -- o dono: *"o personagem fica voando quando eu piloto a nave , ele deveria so ficar parado na
+		// capital ship e meditando na pod"*. Pilotar liga o voo e o corpo paira (e a altura que faz a nave cruzar agua, lava e cenario), mas quem
+		// esta dentro esta SENTADO: na nave grande, parado; no pod e no foguete, meditando. A mesma escolha que o servidor faz pros outros
+		// (`GameServer.PoseNoSnapshot`).
+		if (AoLeme && !AoLemeVoaDeTeste)
+		{
+			_visual.SetState(GameClient.Instance?.VeiculoMontado == Jandirus.Core.Tech.NaveGrande.Tipo ? "default" : "meditate");
+			return;
+		}
 
 		if (_altitude > 0f || _nadando) { _visual.SetState("flight"); return; }
 
@@ -2194,6 +2332,10 @@ public partial class LocalPlayer : Node2D
 		// a fera assumir) vira ALVO. Aplicada crua, ela teleportaria o corpo entre dois quadros e
 		// desfaria a perseguicao -- que e o proprio deslize voltando por outra porta.
 		if (_semRedeas) { _alvoDaPosse = pos; return; }
+		// (2026-10-18) OBSERVANDO UMA NAVE, IDEM: o olho persegue a nave (`SeguirANaveObservada`), e a correcao que ainda estiver no ar e so
+		// mais um ponto dela.
+		if (Observando) { _alvoDaPosse = pos; return; }
+		if (Possuido) { _alvoDaPosse = pos; return; }   // (2026-10-18) e possuido pelo Neo Tuffle, idem: e so mais um ponto do corpo que eu sigo
 		// NO COLO, a posicao e a do corpo que me leva, DESENHADO (2026-10-13): a correcao crua me poria a frente dele.
 		if (LevadoNoColo) return;
 		_pos = pos;

@@ -540,6 +540,9 @@ public partial class MenuJogo
 		// ------------------------------------------------- os planetas destruidos
 		PainelDosPlanetasDestruidos(cli);
 
+		// ------------------------------------------------- (2026-10-18) as sagas: resetar uma
+		PainelDasSagas(cli);
+
 		// ------------------------------------------------- o que precisa de alvo E de texto
 		PainelDoAlvo(cli);
 
@@ -782,6 +785,60 @@ public partial class MenuJogo
 	/// `S2C.Mortos` vai pra todo mundo, por causa da carta estelar --, entao este cartao nao pede nada ao
 	/// servidor: ele desenha o que chegou e devolve a CHAVE do escolhido.
 	/// </summary>
+	/// <summary>
+	/// (2026-10-18) AS SAGAS -- *"adicione um verb pra adm q permite ele resetar uma saga, pra eu poder resetar a do freeza de namek ja q ele morreu
+	/// antes da hora"*. A lista vem do servidor (o cliente nao le o `npcs.json`): o botao pergunta (`admin_sagas`) e a resposta chega pelas
+	/// escolhas (`S2C.Escolhas`, "id|nome -- estado"), uma linha por saga com o botao de resetar (`admin_saga_resetar id`). Ver
+	/// `GameServer.SagaAdmin.cs`.
+	///
+	/// (2026-10-18) E O "CHEGAR AGORA" ao lado (`admin_saga_agora id`): o pedido do dono de o admin pular os dias de aviso do chefe e ele nascer
+	/// agora. Mesmo metadado do Resetar, pra a bancada achar o botao DESTA saga.
+	/// </summary>
+	private void PainelDasSagas(GameClient cli)
+	{
+		VBoxContainer corpo = Cartao("Sagas");
+		Nota("Resetar recomeça a saga do marco: os chefes dela saem do mundo e a contagem em dias volta ao começo -- eles chegam de novo na "
+		   + "forma 1. Chegar agora pula os dias de aviso: os chefes a caminho chegam já (a saga que não começou dispara do marco e chega "
+		   + "na hora). As outras sagas ficam como estão.", corpo);
+		var pedir = new Button { Text = "Ver as sagas", TooltipText = "pergunta ao servidor o estado de cada saga da cadeia" };
+		pedir.Pressed += () => cli.SendVerbo("admin_sagas", "");
+		corpo.AddChild(pedir);
+		if (cli.Escolhas is not { Verbo: "admin_sagas" } lista) return;
+
+		foreach (string item in lista.Itens)
+		{
+			string[] partes = item.Split('|', 2);
+			string id = partes[0];
+			var h = new HBoxContainer();
+			h.AddThemeConstantOverride("separation", 6);
+			var rotulo = new Label
+			{
+				Text = partes.Length > 1 ? partes[1] : item,
+				AutowrapMode = TextServer.AutowrapMode.WordSmart,
+				SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+			};
+			h.AddChild(rotulo);
+			var b = new Button { Text = "Resetar", TooltipText = $"recomeça a saga \"{id}\" do marco" };
+			// A CHAVE VAI EM METADADO, como a do planeta: a bancada acha o botao DESTA saga por ela.
+			b.SetMeta("resetar_saga", id);
+			b.Pressed += () =>
+			{
+				cli.SendVerbo("admin_saga_resetar", id);
+				cli.SendVerbo("admin_sagas", "");   // a lista volta com o estado novo
+			};
+			h.AddChild(b);
+			var agora = new Button { Text = "Chegar agora", TooltipText = $"pula os dias de aviso da saga \"{id}\": os chefes a caminho chegam já" };
+			agora.SetMeta("agora_saga", id);
+			agora.Pressed += () =>
+			{
+				cli.SendVerbo("admin_saga_agora", id);
+				cli.SendVerbo("admin_sagas", "");   // a lista volta com o estado novo
+			};
+			h.AddChild(agora);
+			corpo.AddChild(h);
+		}
+	}
+
 	private void PainelDosPlanetasDestruidos(GameClient cli)
 	{
 		List<Jandirus.Core.World.EstadoDaMorte> destruidos = PlanetasDestruidos(cli.Mortos);
@@ -1061,5 +1118,7 @@ public partial class MenuJogo
 	private string ExtraDaAssinaturaDeAdmin(SheetState f) =>
 		$"{_alvoPedido?.Cmd ?? ""}|{string.Join(",", (GameClient.Instance?.Online ?? []).Select(o => o.Id))}"
 		+ $"|{(GameClient.Instance is { } c ? string.Join(",", PlanetasDestruidos(c.Mortos).Select(e => e.Chave)) : "")}"
-		+ $"|{GameClient.Instance?.ModoDeRacas}";
+		+ $"|{GameClient.Instance?.ModoDeRacas}"
+		// (2026-10-18) E A LISTA DAS SAGAS, pela mesma razao: ela chega pelas escolhas sem mexer em mais nada desta assinatura.
+		+ $"|{(GameClient.Instance?.Escolhas is { Verbo: "admin_sagas" } sagas ? sagas.ChegouEm : 0)}";
 }

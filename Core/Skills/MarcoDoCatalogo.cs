@@ -113,6 +113,9 @@ public static class MarcoDoCatalogo
 
 		// A RESPIRACAO HAMON (2026-10-16, ver `SkillsAposentadas`): nao e de Dragon Ball, e o dono a tirou. Tinha regra de nivel: duas linhas.
 		["/datum/skill/HamonBreathing"] = "nao e de Dragon Ball; tirada pelo dono em 2026-10-16 (ver SkillsAposentadas)",
+
+		// O SUPER MAJIN (2026-10-18, ver `SkillsAposentadas`): o dono o achou inutil e mandou tirar. Nao tinha regra de nivel: uma linha.
+		["/datum/skill/majin/Super_Majin"] = "inutil no jogo; tirado pelo dono em 2026-10-18 (ver SkillsAposentadas)",
 	};
 
 	/// <summary>

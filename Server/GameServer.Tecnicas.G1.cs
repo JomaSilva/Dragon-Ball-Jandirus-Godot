@@ -4,7 +4,7 @@ using Jandirus.Core.Skills;
 namespace Jandirus.Server;
 
 /// <summary>
-/// LOTE G1 -- OS SETE TOGGLES DE BUFF.
+/// LOTE G1 -- OS SEIS TOGGLES DE BUFF.
 ///
 /// Sao as tecnicas que nao "acontecem": elas FICAM. O jogador liga, alguma coisa sobe num `T*`, e
 /// o Ki passa a ir embora mais rapido ate ele desligar. Todo o desfazer mora no alicerce
@@ -12,12 +12,13 @@ namespace Jandirus.Server;
 /// entram o PRECO, a RECUSA e os numeros do DM.
 ///
 /// A DESCOBERTA QUE MUDOU O LOTE: no original todo buff ocupa um SLOT, e `startbuff` recusa
-/// calado quando o slot ja esta tomado (`buffs.dm:112-118`). Os SEIS primeiros aqui declaram
+/// calado quando o slot ja esta tomado (`buffs.dm:112-118`). Os SEIS daqui declaram
 /// `slot=sBUFF` -- ou seja, no jogo antigo eles NUNCA se somam: quem esta com Fighting Power
 /// ligado simplesmente nao consegue ligar Extreme Burst. Sem isso portado, os quatro +5 e as duas
 /// laminas empilhariam num unico personagem (+20 de stat e duas somas logaritmicas), que e
-/// exatamente o "liga tudo e nunca desliga" que o dreno multiplicativo tenta impedir. O Super
-/// Majin declara `slot=sFORM`, entao ele E cumulativo com um dos seis -- e isso tambem e do DM.
+/// exatamente o "liga tudo e nunca desliga" que o dreno multiplicativo tenta impedir. (O setimo do
+/// lote, o Super Majin -- `slot=sFORM`, cumulativo com um dos seis --, o dono tirou do jogo em
+/// 2026-10-18: ver `SkillsAposentadas`.)
 ///
 /// O QUE O ALICERCE JA FAZ E NAO SE REPETE AQUI: derrubar tudo no nocaute e na morte, cobrar o
 /// dreno via `DrainMod`, e derrubar o que tem dreno quando o Ki zera.
@@ -27,7 +28,7 @@ public partial class GameServer
 	// =====================================================================
 	// REGISTRO
 	// =====================================================================
-	/// <summary>Anuncia as sete no catalogo. Chamado uma vez, no boot do servidor.</summary>
+	/// <summary>Anuncia as seis no catalogo. Chamado uma vez, no boot do servidor.</summary>
 	private void RegistrarTecnicasG1()
 	{
 		IniciarLote("G1");
@@ -41,7 +42,6 @@ public partial class GameServer
 			"seu corpo vira algo como aço!", "seu corpo perde a densidade."));
 		Vivo("Ki_Blade", pl => ArmaDeKiG1(pl, "Ki_Blade", "Ki Blade", baseDoLog: 8.3, divisorDaMordida: 10));
 		Vivo("Ki_Sword", pl => ArmaDeKiG1(pl, "Ki_Sword", "Ki Sword", baseDoLog: 8, divisorDaMordida: 9));
-		Vivo("Super_Majin", SuperMajinG1);
 	}
 
 	// =====================================================================
@@ -179,75 +179,6 @@ public partial class GameServer
 
 		Avisar(pl, $"o Ki toma forma: {nome} (+{bonus:0.##} de ofensiva física e de Ki).");
 		GD.Print($"[G1] {pl.Name} formou {nome} (+{bonus:0.##}, custou {custo:0} de Ki)");
-	}
-
-	// =====================================================================
-	// SUPER MAJIN
-	// =====================================================================
-	/// <summary>
-	/// SUPER MAJIN (majin.dm:112-147). Toggle de FORMA, nao de buff de corpo: no DM ele ocupa o
-	/// `slot=sFORM`, entao ele convive com um dos seis de cima -- e por isso nao entra na
-	/// checagem de slot.
-	///
-	/// OS DOIS RAMOS, os dois portados:
-	///   COM Ascensao: `transBuff=3`, `trueKiMod=2` (e o MaxKi dobra por consequencia) e NENHUMA
-	///     penalidade de defesa.
-	///   SEM Ascensao: `Tphysdef -= 0.1` e `Tkidef -= 0.1`, e nada de poder extra.
-	/// Nos dois: `Ttechnique += 1.2`, `Tkioff += 1.2`, `Tspeed += 1.2` (majin.dm:133-135).
-	///
-	/// O QUE E "ESTAR ASCENDIDO" AQUI: no DM, `AscensionStarted` e uma flag GLOBAL do mundo que o
-	/// admin liga (ascensioncontrols.dm:33) e que faz o `Auto_Gain` levantar o `BPBoost` de cada
-	/// personagem. O port nao tem esse evento de mundo; o que ele tem e o resultado dele, o
-	/// `BPBoost` por personagem. Entao `BPBoost > 1` E o estado de ascensao aqui -- e a leitura
-	/// que bate com a descricao da propria skill ("If you're ascended...").
-	///
-	/// POR QUE SOMA E NAO ATRIBUICAO em `transBuff` e `trueKiMod`: os dois valem 1 em repouso,
-	/// entao +2 e +1 dao exatamente os 3 e 2 do DM -- so que compondo com quem mais estiver
-	/// mexendo neles, e desfazendo exatamente o que somaram. O DM atribui (`transBuff=3`,
-	/// e no DeBuff `transBuff=1`, `trueKiMod=1`) -- isso APAGA o fator de qualquer outra forma
-	/// ativa, e o DeBuff zera ate o que ele nunca ligou (o ramo sem Ascensao nunca tocou o
-	/// trueKiMod e mesmo assim o forca pra 1 ao sair).
-	///
-	/// O `container.MaxKi *= 2` do DM (majin.dm:128) NAO foi portado por ser redundante: o
-	/// `UpdateMaxKi` recalcula `MaxKi = baseKi * KiMod * kiAmp * trueKiMod * ...`
-	/// (Fighter.Statify.cs:118) a cada tick, entao o trueKiMod ja dobra o MaxKi sozinho. No DM
-	/// aquilo era uma dobra a mais, desfeita na mao pela divisao do DeBuff.
-	/// </summary>
-	private void SuperMajinG1(ServerPlayer pl)
-	{
-		const string id = "Super_Majin";
-		if (EsperandoG1(pl)) return;
-
-		if (DesligarBuff(pl, id)) { Avisar(pl, "você relaxa e volta ao normal."); return; }
-
-		if (pl.Ficha.KO || EhCadaver(pl)) { Avisar(pl, "você não está em condições de assumir a forma."); return; }
-
-		bool ascendido = pl.Ficha.BPBoost > 1;
-
-		var somas = new Dictionary<string, double>
-		{
-			["Ttechnique"] = 1.2,
-			["Tkioff"] = 1.2,
-			["Tspeed"] = 1.2,
-		};
-
-		if (ascendido)
-		{
-			somas["transBuff"] = 2;    // 1 -> 3
-			somas["trueKiMod"] = 1;    // 1 -> 2 (e o MaxKi dobra no proximo Statify)
-		}
-		else
-		{
-			somas["Tphysdef"] = -0.1;
-			somas["Tkidef"] = -0.1;
-		}
-
-		LigarBuff(pl, id, "Super Majin", somas);
-
-		Avisar(pl, ascendido
-			? "você se torna um Super Majin! A Ascensão paga a conta: nada de perda de defesa, e sua energia dobra."
-			: "você se torna um Super Majin! Sem a Ascensão, a força vem às custas da sua defesa.");
-		GD.Print($"[G1] {pl.Name} virou Super Majin (ascendido: {ascendido})");
 	}
 
 	// =====================================================================

@@ -327,7 +327,7 @@ public partial class GameServer
 
 		// O NUMERO E O BP INTEIRO DA VITIMA, e so sai pra quem tem scouter (a regra principal do BP; ver `PoderNaFrase`). Sem ele a frase
 		// diz a REGRA -- entrou o poder dele todo (`AbsorbBP += alvo.BP`).
-		string absorvido = Jandirus.Core.Stats.PoderNaFrase.EmNumero(TemScouter(pl))
+		string absorvido = Jandirus.Core.Stats.PoderNaFrase.EmNumero(ScouterMostra(pl, alvo, bpAlvo))
 			? $"+{bpAlvo:N0} de poder absorvido"
 			: $"{Jandirus.Core.Stats.PoderNaFrase.ParteDoPoderDele(bpAlvo, bpAlvo)} absorvido";
 		Avisar(pl, $"você absorve {alvo.Name} por inteiro ({absorvido} -- "

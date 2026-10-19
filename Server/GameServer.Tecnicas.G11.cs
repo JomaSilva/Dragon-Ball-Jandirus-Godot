@@ -652,6 +652,8 @@ public sealed partial class GameServer
 			if (m.Ficha.expressedBP <= m.Ficha.BP / 3) continue;   // "weak or concealing"
 			if (m.Zone.Name is "Hell" or "Afterlife" or "Heaven") continue;   // `!canAL`, que nunca liga
 			if (m.Zone.Name == "Hyperbolic_Time_Chamber" || m.Selo.Preso) continue;
+			// (2026-10-18) O KI DIVINO SO SE TRAVA COM KI DIVINO -- a regra do Sense (`AchoAEnergia`): quem nao o tem nao o sente, e nao tem onde mirar.
+			if (KiDivinoEscondido(m) && !SenteKiDivino(pl)) continue;
 
 			lista.Add((m, conhecido ? m.Name : m.Assinatura, conhecido));
 		}
@@ -1045,7 +1047,7 @@ public sealed partial class GameServer
 			}
 			var nomes = new List<string>();
 			foreach (ServerPlayer o in _players.Values)
-				if (o != pl && EhPessoa(o) && AchoAEnergiaG4(o)) nomes.Add(o.Name);
+				if (o != pl && EhPessoa(o) && AchoAEnergia(pl, o)) nomes.Add(o.Name);
 			Avisar(pl, nomes.Count == 0
 				? "nao ha nenhuma energia que de pra seguir agora."
 				: $"energias que voce consegue seguir: {string.Join(", ", nomes)}. Use Observe:<nome>.");
@@ -1056,7 +1058,7 @@ public sealed partial class GameServer
 		foreach (ServerPlayer o in _players.Values)
 			if (EhPessoa(o) && string.Equals(o.Name, arg, StringComparison.OrdinalIgnoreCase)) { alvo = o; break; }
 		if (alvo == null) { Avisar(pl, $"nao ha ninguem chamado '{arg}' no mundo agora."); return; }
-		if (!AchoAEnergiaG4(alvo)) { Avisar(pl, "voce nao consegue achar a energia dessa pessoa!"); return; }
+		if (!AchoAEnergia(pl, alvo)) { Avisar(pl, "voce nao consegue achar a energia dessa pessoa!"); return; }   // (2026-10-18) e o ki divino
 
 		pl.Ficha.observingnow = 1;
 		EstadoDoCeu ceu = CeuDe(alvo);

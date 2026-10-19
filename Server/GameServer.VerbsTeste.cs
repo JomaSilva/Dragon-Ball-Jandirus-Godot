@@ -375,6 +375,9 @@ public sealed partial class GameServer
 			coletor.Ficha.AndroideAbsorcao = true;
 			ServerPlayer infinito = Gente("AndroideInfinito", "Android");
 			infinito.Ficha.AndroideInfinito = true;
+			// (2026-10-18) O NEO TUFFLE: o Tsufurujin que passou pela maquina -- ve o laboratorio dele e o "Possuir" (`GameServer.NeoTuffle.cs`).
+			ServerPlayer neoTuffle = Gente("NeoTuffle", "Tsujin");
+			neoTuffle.Ficha.NeoTuffle = true;
 			ServerPlayer divino = Gente("HumanoComGodKi", "Human");
 			divino.Ficha.godki = new GodKiState { awakened = true, mastery = 10 };
 			// (Write_Teachings vem da COMPRA da Ki Unlocked; Focus_Skill, do nivel 10 da Basic Ki Awareness)
@@ -424,6 +427,7 @@ public sealed partial class GameServer
 				("humano com God Ki", divino), ("humano com o estudo da Mente", mentalista), ("humano com controle de ki", controlado),
 				("humano no espaço", noEspaco), ("Grande Ancião de Namek", anciao), ("Rei de Vegeta", rei),
 				("Presidente da Terra", presidente), ("Guardião da Terra", guardiao), ("Mestre Korin", korin),
+				("Neo Tuffle", neoTuffle),
 			];
 
 			Checa("(montagem) a Terra desta bancada NAO tem Estatua do Dragao, e os personagens estao nela (menos o do espaco)",
@@ -584,7 +588,8 @@ public sealed partial class GameServer
 				  tabela.Where(v => v.Recusa.Length == 0).Select(v => v.Chave).Order().SequenceEqual(
 					  // (o `sdb_invocar` saiu daqui em 2026-10-10: o servidor passou a recusar quem o manda de terra firme)
 					  new[] { RequisitosDosVerbos.LinhaDoRadar, "verbo:cargo_herdeiros", "verbo:graus", "verbo:sdb_status",
-							  "verbo:lab_menu labs", "verbo:and_menu androide" }.Order()),
+							  "verbo:lab_menu labs", "verbo:and_menu androide",
+							  "verbo:tuffle_menu tuffle" }.Order()),   // (2026-10-18) a pagina da conversao do Neo Tuffle, irma das duas de cima
 				  string.Join(", ", tabela.Where(v => v.Recusa.Length == 0).Select(v => v.Chave)));
 
 			// ---- a tecla E: com o mainframe NA FRENTE, e a raca que recusa (e nao a falta da maquina) ----

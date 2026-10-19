@@ -717,8 +717,10 @@ public partial class CharacterVisual : Node2D
 	{
 		// O `CabeloNatural` e a mesma pergunta da linha do cabelo no `Vestir`: raca de cabelo natural
 		// nao aceita a cor escolhida, e a base dela e o desenho.
-		CamadaTingida.Cabelo => _ficha is { } f && !VisualCatalog.CabeloNatural(_racaDaFicha)
-			? Tinta.DaFicha(f.CorCabelo) : Tinta.Nenhuma,
+		// (2026-10-18) MENOS O CORPO QUE O NEO TUFFLE VESTE: o cabelo dele fica branco-acinzentado em toda raca, o Saiyajin inclusive -- a cor
+		// nao e escolha de ninguem, e a marca da posse (`Appearance.CabeloDoTuffle`).
+		CamadaTingida.Cabelo => _ficha is { CabeloDoTuffle: true } ? Tinta.DaFicha(Appearance.CinzaDoTuffle)
+			: _ficha is { } f && !VisualCatalog.CabeloNatural(_racaDaFicha) ? Tinta.DaFicha(f.CorCabelo) : Tinta.Nenhuma,
 		CamadaTingida.Olho => _ficha is { } f2 ? Tinta.DaFicha(f2.CorOlho) : Tinta.Nenhuma,
 		CamadaTingida.Rabo => !RaboSemACorDoCabeloDeTeste && _ficha is { CorCabelo: { } cc }
 							  && !VisualCatalog.CabeloNatural(_racaDaFicha)
@@ -3500,6 +3502,10 @@ public partial class CharacterVisual : Node2D
 	{
 		// (2026-10-16) A PASSAGEM ACESA E O CORPO INTEIRO -- o `flick` do DM troca o desenho do mob pela metamorfose. Ver `_passagem`.
 		if (_passagem != null) return true;
+		// (2026-10-18) O BEBE NAO VESTE NADA -- o dono: *"na forma de bebe eles so vao ser o sprite sem overlay"*. O corpo ja e a folha do
+		// bebe (`VisualCatalog.CorpoSprite`); some a roupa e o cabelo da criacao, o que ele usa, o rabo, os olhos de gente (a folha traz o
+		// rosto) e o corpo e as coladas de forma. A AUREOLA FICA: ela nao e roupa, e o aviso de que o corpo esta morto.
+		if (_ficha is { Bebe: true } && !BebeVesteTudoDeTeste) return !ReferenceEquals(s, _corpo) && !ReferenceEquals(s, _aureola);
 		if (ReferenceEquals(s, _corpoDaForma)) return false;
 		// (2026-10-16) O CORPO DE BAIXO SOME quando o corpo da forma o substitui (o Kid Boo da Forma Pura) -- sem isto eram dois corpos,
 		// um em cima do outro. Ver `Catalogo.CorpoDaFormaEscondeOBase`.
@@ -3509,6 +3515,12 @@ public partial class CharacterVisual : Node2D
 		return ReferenceEquals(s, _rabo)
 			&& Jandirus.Core.Forms.Catalogo.FolhaTrazORabo(_simboloDoCorpo);
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--diagbebe`): o bebe volta a vestir o que a ficha manda -- a roupa, o cabelo e os olhos de gente por cima da
+	/// folha do bebe. Falso em jogo, sempre.
+	/// </summary>
+	public static bool BebeVesteTudoDeTeste;
 
 	/// <summary>
 	/// O CORPO QUE ESTE BONECO VESTE AGORA DESENHA UM ROSTO? -- e a pergunta que apaga os olhos da

@@ -74,6 +74,28 @@ public static class DmAppearanceScanner
     ///
     /// Quem NAO aparece aqui cai no corpo padrao -- e Frost Demon e Bio-Android nem tem passo
     /// de corpo no jogo: eles escolhem FORMA, que e outro sistema.
+    ///
+    /// ============================ (2026-10-18) AS RACAS QUE CAIAM NO CORPO HUMANO ============================
+    /// O dono: *"a raça saibamen n ta com o icone do saibamen, ta com de humano, (talvez outras raças tb, resolva isso)"*. Elas nao tinham
+    /// linha aqui e caiam no corpo padrao. No DM o `Skin()` manda estas pro `genome.returnIcons()` (`Genetic_Icons.dm:5-97`), que monta a
+    /// lista pelas FLAGS da raca (`alternate_icon_flags`, `RaceStats/stat*.dm`):
+    ///   * Saibamen -> `Saibaman - Form 1`; Makyo -> `Makyojin`; Android -> `GochekAndroid`. O "Human" que o Makyo e o Androide tambem
+    ///     tem nao soma nada: o `if(!v in list(...))` do DM e sempre falso (o `!` pega o `v`, e `0 in list` nunca e verdade);
+    ///   * Alien, Arlian, Kanassa e Gray (a flag "Alien") -> a lista dos 23 alienigenas do DM.
+    /// E QUATRO DESVIOS DECLARADOS, todos pro lado de a raca parecer a raca:
+    ///   * HERAN, META, YARDRAT e SPIRIT DOLL tem o corpo proprio NO `returnIcons` (`spacepirate`, `MetaM`/`MetaF`, `Yardrat`,
+    ///     `Spirit Doll`), mas a flag delas e so "Human" e o ramo nunca roda: no DM elas ganham os corpos humanos de sempre. Aqui o corpo
+    ///     proprio vem NA FRENTE -- e o retrato do card da raca (`IconesDeRaca`) --, seguido dos humanos que o DM dava;
+    ///   * ALIEN, ARLIAN, KANASSA e GRAY ganham o PROPRIO retrato na frente da lista dos alienigenas (`Konatsu`, `Arlian`, `Kanassan`,
+    ///     `Jiren` -- o card de cada uma);
+    ///   * os quatro BICHOS da lista dos alienigenas (`cat`, `dog`, `bat`, `bunny`) ficam de fora: sao folhas de animal sem golpe, sem
+    ///     queda e sem nocaute -- o boneco de quem as escolhesse sumiria em toda luta;
+    ///   * o ANDROIDE leva os tres corpos humanos DEPOIS do `GochekAndroid`: o humano que vira androide no laboratorio (`VirarAndroide`)
+    ///     continua com a mesma cara -- o indice dele anda um (`GameServer.Tech.cs`), e o save de antes e acertado no login
+    ///     (`CharacterSave.CorposVersao`).
+    /// FICAM COMO ESTAVAM: Tsujin e Shapeshifter (humanos no DM tambem; o gato do card do Shapeshifter e um bicho) e o Demigod (o
+    /// `Custom_Icon` do DM e uma silhueta preta -- o molde do icone customizado --, e nao um corpo).
+    /// =========================================================================================================
     /// </summary>
     public static Dictionary<string, BodySet> Corpos() => new(StringComparer.Ordinal)
     {
@@ -101,7 +123,56 @@ public static class DmAppearanceScanner
             Masculino = ["Base_Skully", "Demon - Form 1", "Demon4", "DemonForm1", "Satan"],
             Feminino = ["Base_Skully", "Demon - Form 1", "Demon4", "DemonForm1", "Satan"],
         },
+        // (2026-10-18) as racas que caiam no corpo humano -- ver o cabecalho
+        ["Saibaman"] = Unico("Saibaman - Form 1"),
+        ["Makyo"] = Unico("Makyojin"),
+        ["Android"] = new BodySet
+        {
+            Masculino = ["GochekAndroid", .. Humanoide().Masculino],
+            Feminino = ["GochekAndroid", .. Humanoide().Feminino],
+        },
+        ["Alien"] = Alienigenas("Konatsu"),
+        ["Arlian"] = Alienigenas("Arlian"),
+        ["Kanassa"] = Alienigenas("Kanassan"),
+        ["Gray"] = Alienigenas("Jiren"),
+        ["Heran"] = ComOsHumanosDoDm("spacepirate", null),
+        ["Meta"] = ComOsHumanosDoDm("MetaM", "MetaF"),
+        ["Yardrat"] = ComOsHumanosDoDm("Yardrat", "Yardrat"),
+        ["SpiritDoll"] = ComOsHumanosDoDm("Spirit Doll", "Spirit Doll"),
     };
+
+    /// <summary>(2026-10-18) Um corpo so, pros dois sexos.</summary>
+    private static BodySet Unico(string corpo) => new() { Masculino = [corpo], Feminino = [corpo] };
+
+    /// <summary>(2026-10-18) OS 23 ALIENIGENAS DO DM (`Genetic_Icons.dm:13-35`), na ordem dele.</summary>
+    private static readonly string[] OsAlienigenasDoDm =
+    [
+        "Metamori", "Konatsu", "Yukenojin", "Hatchiyack", "Bio Experiment", "Immecka", "BuffFrog", "Kratos", "Goron", "Zora", "Base_Skully",
+        "cat", "dog", "bat", "bunny", "Demon1", "Demon2", "Demon3", "Majin1", "Jiren", "El Hermano", "Kanassan", "Arlian",
+    ];
+
+    /// <summary>(2026-10-18) Os quatro bichos da lista do DM: folhas de animal, sem golpe, queda nem nocaute -- ver o cabecalho de <see cref="Corpos"/>.</summary>
+    private static readonly string[] BichosSemLuta = ["cat", "dog", "bat", "bunny"];
+
+    /// <summary>(2026-10-18) A lista dos alienigenas do DM sem os bichos, com o retrato da raca na frente.</summary>
+    private static BodySet Alienigenas(string retrato)
+    {
+        List<string> lista = [retrato, .. OsAlienigenasDoDm.Where(c => c != retrato && !BichosSemLuta.Contains(c))];
+        return new BodySet { Masculino = lista, Feminino = [.. lista] };
+    }
+
+    /// <summary>
+    /// (2026-10-18) OS HUMANOS DE SEMPRE DO DM -- o `if(!skin_list.len)` do `returnIcons()` (`Genetic_Icons.dm:83-96`), seis masculinos e
+    /// quatro femininos -- com o corpo proprio da raca na frente (nulo = sem corpo proprio naquele sexo).
+    /// </summary>
+    private static BodySet ComOsHumanosDoDm(string? masculino, string? feminino)
+    {
+        List<string> m = ["White Male", "Tan Male", "Black Male", "BaseWhiteMale", "BaseTanMale", "BaseBlackMale"];
+        List<string> f = ["Whitefemale", "BaseWhiteFemale", "BaseTanFemale", "BaseBlackFemale"];
+        if (masculino != null) m.Insert(0, masculino);
+        if (feminino != null) f.Insert(0, feminino);
+        return new BodySet { Masculino = m, Feminino = f };
+    }
 
     /// <summary>Os tres tons aprovados de Saiyajin/Humano, por sexo.</summary>
     private static BodySet Humanoide() => new()

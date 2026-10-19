@@ -323,6 +323,10 @@ public static class RequisitosDosVerbos
 		new("hab:filho_ovo", "Pôr um ovo", AbaOther, Fato(Fatos.PoeOvo, "a raça põe ovo, e já tem idade pra gerar"),
 			"não põe ovo|jovem demais"),
 
+		// (2026-10-18) O NEO TUFFLE -- entrar no corpo de um jogador nocauteado. Ver `GameServer.NeoTuffle.cs`.
+		new("hab:tuffle_possuir", "Possuir um nocauteado", AbaOther, Fato(Fatos.NeoTuffle, "é um Neo Tuffle, no próprio corpo"),
+			"não é um Neo Tuffle"),
+
 		// ---------------------------------------------------------- Learning
 		new("hab:mst_aceitar", "Aceitar", AbaLearning, ConviteDeMestre, "ninguem te ofereceu nada"),
 		new("hab:mst_recusar", "Recusar", AbaLearning, ConviteDeMestre, "ninguem te ofereceu nada"),
@@ -437,7 +441,9 @@ public static class RequisitosDosVerbos
 		// A MAQUINA E DE HUMANO: instalar o laboratorio e converter o proprio corpo pedem a raca
 		// (`InstalarLab` e `VirarAndroide`, `GameServer.Tech.cs`). As duas primeiras linhas so ABREM uma pagina
 		// do menu -- nao viajam, e por isso nao ha recusa a cobrar delas; as quatro de dentro viajam.
-		new(ChaveDoVerbo("lab_menu", "labs"), "Instalar laboratório...", TeclaEMainframe, Raca("Human")),
+		// (2026-10-18) A PAGINA DOS LABORATORIOS E TAMBEM DO TSUFURUJIN: o Neo Tuffle Lab e dele (`GameServer.NeoTuffle.cs`). Dentro dela cada
+		// laboratorio continua pedindo a raca dele -- o humano nao ve o do Tsufurujin, e o Tsufurujin nao ve os dois do humano.
+		new(ChaveDoVerbo("lab_menu", "labs"), "Instalar laboratório...", TeclaEMainframe, Raca("Human", "Tsujin")),
 		new(ChaveDoVerbo("and_menu", "androide"), "Converter meu corpo...", TeclaEMainframe, Raca("Human")),
 		new(ChaveDoVerbo("lab_androide"), "Android Lab", TeclaEMainframe, Raca("Human"),
 			"perto de um mainframe|a instalacao pede um humano"),
@@ -453,6 +459,14 @@ public static class RequisitosDosVerbos
 			"dentro de um Android Lab|fisiologia humana"),
 		new(ChaveDoVerbo("androide_infinito", Economia.Recurso.PalavraDeRecursos), "Androide de Energia Infinita (4.000.000 recursos)",
 			TeclaEMainframe, Raca("Human"), "dentro de um Android Lab|fisiologia humana"),
+		// (2026-10-18) O NEO TUFFLE LAB E A CONVERSAO DENTRO DELE: do Tsufurujin (`InstalarLab` e `VirarNeoTuffle`, `GameServer.NeoTuffle.cs`).
+		new(ChaveDoVerbo("lab_tuffle"), "Neo Tuffle Lab", TeclaEMainframe, Raca("Tsujin"),
+			"perto de um mainframe|o Neo Tuffle Lab pede um Tsufurujin"),
+		new(ChaveDoVerbo("tuffle_menu", "tuffle"), "Virar Neo Tuffle...", TeclaEMainframe, Raca("Tsujin")),
+		new(ChaveDoVerbo("virar_tuffle"), "Neo Tuffle (1.000.000 zeni)", TeclaEMainframe, Raca("Tsujin"),
+			"dentro de um Neo Tuffle Lab|corpo de um Tsufurujin"),
+		new(ChaveDoVerbo("virar_tuffle", Economia.Recurso.PalavraDeRecursos), "Neo Tuffle (2.000.000 recursos)",
+			TeclaEMainframe, Raca("Tsujin"), "dentro de um Neo Tuffle Lab|corpo de um Tsufurujin"),
 	];
 
 	private static readonly Dictionary<string, VerbDeclarado> _porChave =

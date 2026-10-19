@@ -425,6 +425,13 @@ public static class Protocol
         /// `Client/Decalques`.
         /// </summary>
         CrateraEnorme = 9,
+
+        /// <summary>
+        /// (2026-10-18) A CRATERA DO POD que pousa vindo do espaco -- o dono: *"e a pod quando pousa faz uma cratera grande"*. A folha da
+        /// <see cref="CrateraGrande"/> (`big crater`), aberta mais que ela. E o unico decalque que tambem SOA e SACODE a tela ao ser plantado
+        /// (`World.EstrondoDoPod`). Ver `GameServer.PousoDaNave.cs`.
+        /// </summary>
+        CrateraDoPod = 10,
     }
 
     /// <summary>
@@ -1527,6 +1534,31 @@ public static class Protocol
         /// vai tendo um efeito q representa a loucura"* --, quem desenha e o `Client/LoucuraNaTela.cs`. So sai quando muda de um ponto.
         /// </summary>
         Loucura = 123,
+
+        /// <summary>
+        /// (2026-10-18) O TANQUE DA NAVE QUE EU VEJO, so pra mim: `byte modo` (0 = nenhuma -- a barra some; 1 = estou ao leme; 2 = estou
+        /// observando) + `string nome da nave` + `float nivel` + `float capacidade` + `float porSegundo` (o que a ultima volta de um
+        /// segundo gastou -- como a <see cref="Mineracao"/> mostra o que o ultimo segundo rendeu). Sai ao embarcar e ao desembarcar, ao
+        /// abastecer, no instante em que o tanque seca e uma vez por segundo enquanto se pilota ou observa. Quem desenha e o
+        /// `Client/PainelDeCombustivel.cs`; a regra mora no `GameServer.Combustivel.cs`.
+        /// </summary>
+        Combustivel = 124,
+
+        /// <summary>
+        /// (2026-10-18) ESTOU OBSERVANDO UMA NAVE DE FORA: `int nave` (0 = acabou) + `string tipo` + `int piloto` (0 = ninguem ao leme). O
+        /// corpo ficou de pe na ponte; o cliente esconde o meu, larga o teclado e segue a nave -- o corpo do piloto quando ha um (e nele
+        /// que a nave e desenhada), ou o ponto que o servidor manda, com a nave desenhada no proprio olho (e a dela, parada no pacote de
+        /// <see cref="Construcoes"/> com o id `-nave`, sai da tela). Sai ao comecar, ao acabar e quando o leme troca de mao. Ver
+        /// `GameServer.NaveObservar.cs`.
+        /// </summary>
+        Observando = 125,
+
+        /// <summary>
+        /// (2026-10-18) O MEU CORPO FOI POSSUIDO PELO NEO TUFFLE: `int possessor` (0 = acabou). Quem anda no meu lugar e o corpo dele, com
+        /// a minha cara e o cabelo branco-acinzentado; o meu fica escondido. O cliente esconde o meu boneco, larga o teclado e segue o
+        /// corpo do possessor -- eu so assisto. Sai ao entrar e ao sair. Ver `GameServer.NeoTuffle.cs`.
+        /// </summary>
+        Possuido = 126,
     }
 
     /// <summary>
@@ -1970,12 +2002,6 @@ public static class Protocol
         /// </summary>
         public float Aclimatacao;
 
-        /// <summary>
-        /// O PESO MAXIMO DOS PESOS DE TREINO, em kg -- o que o jogador ja pagou pra poder vestir (`PesoDeTreino`). A
-        /// aba Equip e o botao "Melhorar" da mochila escrevem o proximo degrau e o preco a partir dele.
-        /// </summary>
-        public float PesoMaxKg;
-
         /// <summary>Quantos kg dos pesos estao NO CORPO agora (`Fighter.Weighted`): a aba Equip escreve "vestindo X kg".</summary>
         public float PesoKg;
 
@@ -2005,13 +2031,17 @@ public static class Protocol
         public float[] Pericias;
 
         /// <summary>
-        /// (2026-10-15) A ARTE ESCOLHIDA PROS PESOS (`Fighter.pesoArte`; vazia = a de fabrica): o icone deles na mochila e
-        /// na aba Equip. Vai no FIM do pacote, depois das pericias.
+        /// (2026-10-18) QUAL PESO ESTA NO CORPO -- o id inteiro dele (`Fighter.pesoVestido`; vazio = nenhum). O maximo e a arte de cada
+        /// peso viajam no id dele (`PesoDeTreino`): a mochila e a aba Equip os leem de la, e daqui so sai qual deles esta vestido. Vai no
+        /// FIM do pacote, depois das pericias, no lugar da arte unica de antes.
         /// </summary>
-        public string PesoArte;
+        public string PesoVestido;
 
-        /// <summary>(2026-10-15) Quantas melhorias faltam pro maximo dos pesos passar do limite do corpo -- o botao "Ate o limite".</summary>
-        public byte PesoMelhoriasAteOLimite;
+        /// <summary>
+        /// (2026-10-18) Quantas melhorias, DESDE A FABRICA, levam o maximo de um peso a passar do limite do corpo (`PesoDeTreino.DegrausDoCorpo`)
+        /// -- cada peso desconta o proprio nivel pro botao "Ate o limite" dele.
+        /// </summary>
+        public byte PesoDegrausDoCorpo;
 
         /// <summary>
         /// (v0.3.0) O SANGUE DO BIO-ANDROIDE: as racas doadoras, `"Saiyan+Majin"` (vazio pra quem nao e bio). E o que a aba de
@@ -2061,7 +2091,7 @@ public static class Protocol
             for (int i = 0; i < ms.Length && i < 255; i++) { w.Put(ms[i].Item1); w.Put(ms[i].Item2); }
             w.Put(Disciplina); w.Put(DiscReal); w.Put(DiscAtual); w.Put(DiscLigada);
             w.Put(GanhoDeTreino); w.Put(Gravidade); w.Put(Aclimatacao);
-            w.Put(PesoMult); w.Put(ZonaMult); w.Put(Esmagamento); w.Put(PesoMaxKg); w.Put(PesoKg);
+            w.Put(PesoMult); w.Put(ZonaMult); w.Put(Esmagamento); w.Put(PesoKg);
             w.Put(SalaFase); w.Put(SalaMinutos);
 
             // AS PERICIAS VAO NO FIM, DEPOIS DE TUDO QUE JA EXISTIA: o layout antigo fica intacto e um
@@ -2070,8 +2100,8 @@ public static class Protocol
             // do tamanho do que o escritor tinha em maos.
             float[] ps = Pericias ?? [];
             for (int i = 0; i < PericiasDeKi.Length; i++) w.Put(i < ps.Length ? ps[i] : 0f);
-            w.Put(PesoArte ?? "");
-            w.Put(PesoMelhoriasAteOLimite);
+            w.Put(PesoVestido ?? "");
+            w.Put(PesoDegrausDoCorpo);
             w.Put(Sangue ?? "");
             w.Put(PesoPct);
             w.Put(KaiokenMaestria); w.Put(KaiokenVezes); w.Put(KaiokenAceso);
@@ -2100,13 +2130,12 @@ public static class Protocol
             PesoMult = r.GetFloat(),
             ZonaMult = r.GetFloat(),
             Esmagamento = r.GetFloat(),
-            PesoMaxKg = r.GetFloat(),
             PesoKg = r.GetFloat(),
             SalaFase = r.GetByte(),
             SalaMinutos = r.GetFloat(),
             Pericias = LerPericias(r),
-            PesoArte = r.GetString(64),
-            PesoMelhoriasAteOLimite = r.GetByte(),
+            PesoVestido = r.GetString(80),
+            PesoDegrausDoCorpo = r.GetByte(),
             Sangue = r.GetString(160),
             PesoPct = r.GetByte(),
             KaiokenMaestria = r.GetFloat(),
@@ -2238,20 +2267,23 @@ public static class Protocol
     /// <summary>A marca de "distancia nao informada" em <see cref="PresencaState.Distancia"/> (a galaxia so diz o lugar).</summary>
     public const ushort DistanciaDesconhecida = ushort.MaxValue;
 
-    public static void PutSentidos(this NetDataWriter w, bool scan, IReadOnlyList<PresencaState> lista)
+    /// <param name="nivel">(2026-10-18) o NIVEL DO SENSE de quem le (`SenseEmNiveis`; 0 no modo Scan) -- a aba diz o alcance que ele tem.</param>
+    public static void PutSentidos(this NetDataWriter w, bool scan, byte nivel, IReadOnlyList<PresencaState> lista)
     {
         w.Put(scan);
+        w.Put(nivel);
         w.Put((byte)Math.Min(lista.Count, 255));
         for (int i = 0; i < lista.Count && i < 255; i++) lista[i].Write(w);
     }
 
-    public static (bool Scan, List<PresencaState> Lista) GetSentidos(this NetDataReader r)
+    public static (bool Scan, byte Nivel, List<PresencaState> Lista) GetSentidos(this NetDataReader r)
     {
         bool scan = r.GetBool();
+        byte nivel = r.GetByte();
         int n = r.GetByte();
         var l = new List<PresencaState>(n);
         for (int i = 0; i < n; i++) l.Add(PresencaState.Read(r));
-        return (scan, l);
+        return (scan, nivel, l);
     }
 
     /// <summary>

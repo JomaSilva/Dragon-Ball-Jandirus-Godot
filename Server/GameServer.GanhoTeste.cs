@@ -272,8 +272,10 @@ public partial class GameServer
 				f.gravmult = 0;
 				f.GravMastered = maestria;
 				f.zoneGainMult = 1;
-				f.pesoMaximoKg = f.weight_cap_hw * GainKnobs.WeightItemCapMult;
-				AjustarPeso(a, peso);
+				// (2026-10-18) os pesos de bancada sao um ITEM, com o maximo no id (o dobro do limite do corpo -- a escala do verbo)
+				string pesos = Jandirus.Core.Items.PesoDeTreino.IdDe(f.weight_cap_hw * GainKnobs.WeightItemCapMult, "");
+				a.Mochila.Guardar(pesos);
+				AjustarPeso(a, pesos, peso);
 				f.Statify();
 				f.PowerLevel();                    // o teto pessoal com o UPMod novo, e o `WeightTick` com o peso novo
 				f.stamina = f.maxstamina;
@@ -289,8 +291,8 @@ public partial class GameServer
 				}
 				double ganho = f.BP - antes;
 				f.train = f.med = false;
-				AjustarPeso(a, "0");
-				f.pesoMaximoKg = 0;
+				AjustarPeso(a, pesos, "0");
+				a.Mochila.Tirar(pesos);
 				return (ganho, painel);
 			}
 			static double Vezes(double x, double y) => y > 0 ? x / y : 0;

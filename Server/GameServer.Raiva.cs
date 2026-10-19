@@ -18,7 +18,11 @@ namespace Jandirus.Server;
 ///     e degrau NOVO, e a cena e dele;
 ///   * o DESPERTAR AUTOMATICO: a raiva que abre uma forma NOVA transforma o personagem sozinho -- subindo antes,
 ///     sem cena, pelos degraus que ja sao dele -- e a cinematica e a da transformacao, nunca as duas
-///     (<see cref="DespertarPelaRaiva"/>). Sem forma nova a estrear, a cena e a da raiva e ele fica como esta.
+///     (<see cref="DespertarPelaRaiva"/>). Sem forma nova a estrear, a cena e a da raiva e ele fica como esta;
+///   * (2026-10-18) o GRITO da erupcao, com o NOME do amigo -- e na furia a frase logo em seguida, que precisa de
+///     relogio (<see cref="GritarNaErupcao"/>);
+///   * (2026-10-18) a FURIA AO ACHAR O CORPO do amigo que morreu longe: o nome chamado, e so depois o gancho de
+///     sempre -- `GameServer.RaivaDoCorpo.cs`.
 ///
 /// O QUE ACALMA mora ao lado de quem acende (`AcalmarPelaMeditacao`, `GameServer.Formas.cs`): sentar pra meditar
 /// fecha os dois degraus na hora.
@@ -71,6 +75,16 @@ public partial class GameServer
 	/// <param name="nivelDeAntes">A raiva em que o corpo estava ANTES deste evento.</param>
 	private bool JaEstavaNaFuriaDaCena(NivelDeRaiva nivelDeAntes) =>
 		CenaSoSaiDaCalmaDeTeste ? nivelDeAntes != NivelDeRaiva.Nenhuma : nivelDeAntes == NivelDeRaiva.Extrema;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--raivateste`, familia 12): a raiva volta a perguntar so a lista da VITIMA -- o jogo de antes, em que o amigo que derruba
+	/// o outro amigo enfurecia quem assistia. Lido pelo `LutoNaVizinhanca`, pelo `LutoPelaAbsorcao` e pelo corpo achado (`QuemAchaAgora`, familia
+	/// 13). Falso em jogo, sempre.
+	/// </summary>
+	internal static bool RaivaSoPelaVitimaDeTeste;
+
+	/// <summary>DEFEITO INJETADO (`--raivateste`, familia 12): a raiva nao grita -- o jogo de antes. Lido pelo `AmigoAbatido`. Falso em jogo, sempre.</summary>
+	internal static bool RaivaMudaDeTeste;
 
 	// =====================================================================
 	// 2. QUEM RECEBE A CENA E O TEMA
@@ -264,5 +278,82 @@ public partial class GameServer
 		foreach (FormaDef degrau in plano.Degraus) EntrarNaForma(pl, degrau, semCena: true);
 		EntrarNaForma(pl, plano.Alvo);
 		return true;
+	}
+
+	// =====================================================================
+	// 6. O GRITO -- O NOME DO AMIGO, E NA FURIA A FRASE LOGO EM SEGUIDA (2026-10-18)
+	// =====================================================================
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--raivateste`, familia 12): o grito da raiva obedece o teto de fala do CLIENTE (`MsEntreFalas`, 400 ms) -- o jogo
+	/// de antes. Com ele, o amigo que cai e morre no mesmo golpe leva junto o nome com o "NAO": o grito do nocaute acabou de gastar a vez.
+	/// Lido pelo <see cref="GritarDaRaiva"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool GritoNoTetoDaFalaDeTeste;
+
+	/// <summary>
+	/// A ERUPCAO GRITA. O que se diz e do Core (<see cref="RaivaEmDegraus.GritosDaErupcao"/>): na raiva comum uma fala (o nome do amigo, numa
+	/// chance, ou a frase), na furia duas -- o nome com o "NAO" agora, e a frase da furia <see cref="RaivaEmDegraus.SegundosAteAFraseDaFuria"/>
+	/// depois. O nome e o que o chamador do `AmigoAbatido` deu, o mesmo da mensagem do enlutado.
+	/// </summary>
+	private void GritarNaErupcao(ServerPlayer pl, string nomeDoAmigo, NivelDeRaiva grau)
+	{
+		string[] gritos = RaivaEmDegraus.GritosDaErupcao(grau, nomeDoAmigo, _rng);
+		GritarDaRaiva(pl, gritos[0]);
+		if (gritos.Length > 1) GritarDepois(pl, gritos[1], RaivaEmDegraus.SegundosAteAFraseDaFuria);
+	}
+
+	/// <summary>
+	/// UM GRITO DA RAIVA, pela boca dele (`Fala.Diz`: quem esta a vista ouve, e o "!" da a fala o alcance do grito).
+	///
+	/// O TETO DE 400 MS ENTRE FALAS NAO VALE AQUI: ele e contra o cliente tagarela (`GameServer.Chat.cs`), e esta fala e do servidor. Com ele, o
+	/// amigo que cai e morre no mesmo golpe -- o nocaute e a morte chegam no mesmo quadro -- perdia o nome com o "NAO" da furia, porque o grito
+	/// do nocaute tinha acabado de gastar a vez; e a frase adiada se perdia se o jogador tivesse digitado algo logo antes. E o gesto do roteiro
+	/// do Bills (`DizerDivino`). Quem fala depois dele continua no teto: o `Falar` volta a marcar a hora.
+	/// </summary>
+	private void GritarDaRaiva(ServerPlayer pl, string texto)
+	{
+		if (!GritoNoTetoDaFalaDeTeste) _ultimaFala.Remove(pl.Id);
+		Falar(pl, Jandirus.Net.Protocol.Fala.Diz, texto);
+	}
+
+	/// <summary>
+	/// A FALA QUE FICOU PRA DEPOIS, uma por corpo: uma erupcao nova troca a que estava esperando. Guarda o CORPO, e nao so o id: quem saiu do
+	/// mundo no meio do intervalo leva a fala junto (<see cref="SoltarOsGritosQueFaltam"/>).
+	/// </summary>
+	private readonly Dictionary<int, (ServerPlayer Quem, long Em, string Texto)> _gritosQueFaltam = [];
+
+	private bool _pulsoDosGritosInscrito;
+
+	/// <summary>
+	/// AGENDA UMA FALA no pulso de 10 Hz (`InscreverNoPulso`, `GameServer.Tecnicas.G3.cs`) -- o mesmo relogio do kit do deus, que se desliga
+	/// sozinho quando ninguem tem nada a dizer: fora de uma furia isto nao custa nada a ninguem.
+	/// </summary>
+	private void GritarDepois(ServerPlayer pl, string texto, double segundos)
+	{
+		_gritosQueFaltam[pl.Id] = (pl, NowMs() + (long)(segundos * 1000), texto);
+		if (!_pulsoDosGritosInscrito)
+		{
+			_pulsoDosGritosInscrito = true;
+			InscreverNoPulso(() => _gritosQueFaltam.Count > 0, SoltarOsGritosQueFaltam);
+		}
+		LigarPulso();
+	}
+
+	/// <summary>
+	/// A AGENDA DOS GRITOS: o que venceu sai, pela mesma boca. So se o corpo que gritou e o MESMO que esta no mundo. Chamada pelo pulso, e
+	/// tambem pela bancada, que avanca o relogio na mao (o pulso nao bate no meio de uma bancada que roda inteira num quadro).
+	/// </summary>
+	internal void SoltarOsGritosQueFaltam()
+	{
+		if (_gritosQueFaltam.Count == 0) return;
+		long agora = NowMs();
+		foreach (int id in _gritosQueFaltam.Keys.ToList())
+		{
+			(ServerPlayer quem, long em, string texto) = _gritosQueFaltam[id];
+			if (agora < em) continue;
+			_gritosQueFaltam.Remove(id);
+			if (_players.TryGetValue(id, out ServerPlayer? p) && ReferenceEquals(p, quem)) GritarDaRaiva(p, texto);
+		}
 	}
 }

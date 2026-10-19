@@ -99,13 +99,14 @@ public sealed partial class GameServer
 			case "acudir": AcudirComSenzuG12(pl, def); break;
 			case "comer": ComerItem(pl, def); break;
 			// (v0.3.0) OS PESOS VESTEM A PORCENTAGEM GUARDADA (dono, 2026-10-15) -- ver `VestirOsPesos`.
-			case "equipar" when def.Id == CatalogoDeItens.Pesos: VestirOsPesos(pl); break;
+			// (2026-10-18) CADA PESO E UM ITEM COM ESTADO: as acoes dos pesos levam o id INTEIRO do peso clicado. Ver `PesoDeTreino`.
+			case "equipar" when PesoDeTreino.EhPeso(def.Id): VestirOsPesos(pl, def.Id); break;
 			case "equipar": Equipar(pl, def); break;
-			case "ajustar": AjustarPeso(pl, arg2); break;
-			case "melhorar": MelhorarOsPesos(pl, arg2); break;
-			case PesoDeTreino.AcaoAteOLimite: LevarOsPesosAoLimite(pl, arg2); break;
+			case "ajustar": AjustarPeso(pl, def.Id, arg2); break;
+			case "melhorar": MelhorarOsPesos(pl, def.Id, arg2); break;
+			case PesoDeTreino.AcaoAteOLimite: LevarOsPesosAoLimite(pl, def.Id, arg2); break;
 			// OS PESOS GANHAM A FOLHA que o jogador escolheu na grade (dono, 2026-10-13). Ver `EscolherAArteDosPesos`.
-			case PesoDeTreino.AcaoArte: EscolherAArteDosPesos(pl, arg2); break;
+			case PesoDeTreino.AcaoArte: EscolherAArteDosPesos(pl, def.Id, arg2); break;
 			// A ARMADURA CRUA GANHA A ARTE que o jogador escolheu na tela (dono, 2026-10-12). Ver `MoldarAArmadura`.
 			case ArmaduraDeTech.AcaoMoldar: MoldarAArmadura(pl, arg2); break;
 			case "tirar": TirarPeso(pl); break;
@@ -157,6 +158,7 @@ public sealed partial class GameServer
 	private static bool PodeMexerNaRoupa(ServerPlayer pl, out string porque)
 	{
 		porque = pl.LookDeFusao != null ? "fundido, o corpo veste a roupa da fusão -- espere a fusão acabar."
+			: pl.CorpoDaPosse != null ? "dentro de outro corpo, o que o mundo vê é a roupa dele."   // (2026-10-18) o Neo Tuffle
 			: pl.Disfarce != null ? "disfarçado, o que você veste é a roupa de quem você imita."
 			: "";
 		return porque.Length == 0;
@@ -356,27 +358,40 @@ public sealed partial class GameServer
 	// pesos vem com 50 kg e o maximo se COMPRA -- `PesoDeTreino`. O limite do corpo continua onde estava (o
 	// `weight_ratio` do `WeightTick` e o `Esmagamento`): vestir mais do que ele aguenta esmaga, como sempre.
 	// ==============================================================================================
-	private static double TetoDePeso(Jandirus.Core.Stats.Fighter f) =>
+	private static double TetoDePeso(Jandirus.Core.Stats.Fighter f, string pesos) =>
 		PesoDeTreino.TetoDoCorpoDeGracaDeTeste
 			? Math.Max(f.weight_cap_hw, 1) * Jandirus.Core.Stats.GainKnobs.WeightItemCapMult
-			: PesoDeTreino.Maximo(f.pesoMaximoKg);
+			: PesoDeTreino.MaximoDe(pesos);
+
+	/// <summary>
+	/// (2026-10-18) UM PESO MUDA DE ESTADO -- a melhoria, a arte: o id dele troca NO MESMO SLOT (`Inventario.Trocar`), e se era o vestido, o
+	/// vestido passa a ser o novo. Devolve o id novo.
+	/// </summary>
+	private string TrocarOPeso(ServerPlayer pl, string de, string para)
+	{
+		if (!pl.Mochila.Trocar(de, para)) return de;
+		if (pl.Ficha.pesoVestido == de) pl.Ficha.pesoVestido = para;
+		MandarMochila(pl);
+		pl.SigAtributos = "";
+		return para;
+	}
 
 	/// <summary>
 	/// A MELHORIA PAGA DOS PESOS: o maximo dobra, por zeni ou (o dobro) por recursos. Quem cobra e o contrato de toda
 	/// melhoria de maquina (`CobrarOuExplicar`). O que se VESTE nao muda sozinho: continua a mesma quantidade de kg, e
 	/// quem quiser mais ajusta a porcentagem.
 	/// </summary>
-	private void MelhorarOsPesos(ServerPlayer pl, string comQue)
+	private void MelhorarOsPesos(ServerPlayer pl, string pesos, string comQue)
 	{
 		Moeda moeda = string.Equals(comQue, Recurso.PalavraDeRecursos, StringComparison.OrdinalIgnoreCase) ? Moeda.Recursos : Moeda.Zeni;
-		double antes = PesoDeTreino.Maximo(pl.Ficha.pesoMaximoKg);
-		double custo = PesoDeTreino.PrecoEmZeni(pl.Ficha.pesoMaximoKg);
+		double antes = PesoDeTreino.MaximoDe(pesos);
+		double custo = PesoDeTreino.PrecoEmZeni(antes);
 		if (!CobrarOuExplicar(pl, custo, moeda, "melhorar os pesos")) return;
 
-		pl.Ficha.pesoMaximoKg = PesoDeTreino.ProximoMaximo(pl.Ficha.pesoMaximoKg);
-		pl.SigAtributos = "";
+		string novo = TrocarOPeso(pl, pesos, PesoDeTreino.IdDe(PesoDeTreino.ProximoMaximo(antes), PesoDeTreino.ArteDe(pesos)));
+		double depois = PesoDeTreino.MaximoDe(novo);
 		Avisar(pl, $"você melhora os pesos por {Recurso.PrecoEscrito(custo, moeda)}: o peso máximo vai de {antes:N0} kg pra "
-				   + $"{pl.Ficha.pesoMaximoKg:N0} kg. A próxima melhoria custa {Recurso.PrecoEscrito(PesoDeTreino.PrecoEmZeni(pl.Ficha.pesoMaximoKg), Moeda.Zeni)}. "
+				   + $"{depois:N0} kg. A próxima melhoria custa {Recurso.PrecoEscrito(PesoDeTreino.PrecoEmZeni(depois), Moeda.Zeni)}. "
 				   + $"Ajuste quanto vestir pela mochila. Restam {CarteiraEscrita(pl)}.");
 	}
 
@@ -384,27 +399,26 @@ public sealed partial class GameServer
 	/// ATE O LIMITE DO CORPO, DE UMA VEZ (dono, 2026-10-15) -- ver `PesoDeTreino.AcaoAteOLimite`. As melhorias que faltam pro
 	/// maximo passar do que o corpo aguenta, pelo preco de cada uma somado, numa moeda so (recursos e o dobro, como sempre).
 	/// </summary>
-	private void LevarOsPesosAoLimite(ServerPlayer pl, string comQue)
+	private void LevarOsPesosAoLimite(ServerPlayer pl, string pesos, string comQue)
 	{
-		int n = PesoDeTreino.MelhoriasAteOLimite(pl.Ficha.pesoMaximoKg, pl.Ficha.weight_cap_hw);
+		int n = PesoDeTreino.MelhoriasAteOLimite(PesoDeTreino.MaximoDe(pesos), pl.Ficha.weight_cap_hw);
 		if (n <= 0)
 		{
 			Avisar(pl, "os seus pesos já chegam ao que o seu corpo aguenta -- daqui pra cima, só dobrando (Melhorar).");
 			return;
 		}
 		Moeda moeda = string.Equals(comQue, Recurso.PalavraDeRecursos, StringComparison.OrdinalIgnoreCase) ? Moeda.Recursos : Moeda.Zeni;
-		double antes = PesoDeTreino.Maximo(pl.Ficha.pesoMaximoKg);
-		double custo = PesoDeTreino.PrecoDeVariasEmZeni(pl.Ficha.pesoMaximoKg, n);
+		double antes = PesoDeTreino.MaximoDe(pesos);
+		double custo = PesoDeTreino.PrecoDeVariasEmZeni(antes, n);
 		if (!CobrarOuExplicar(pl, custo, moeda, "levar os pesos ao limite do corpo")) return;
 
-		pl.Ficha.pesoMaximoKg = PesoDeTreino.MaximoDepoisDe(pl.Ficha.pesoMaximoKg, n);
-		pl.SigAtributos = "";
-		Avisar(pl, $"você paga {Recurso.PrecoEscrito(custo, moeda)} e leva os pesos de {antes:N0} kg a {pl.Ficha.pesoMaximoKg:N0} kg de uma vez "
+		string novo = TrocarOPeso(pl, pesos, PesoDeTreino.IdDe(PesoDeTreino.MaximoDepoisDe(antes, n), PesoDeTreino.ArteDe(pesos)));
+		Avisar(pl, $"você paga {Recurso.PrecoEscrito(custo, moeda)} e leva os pesos de {antes:N0} kg a {PesoDeTreino.MaximoDe(novo):N0} kg de uma vez "
 				   + $"({n} melhoria{(n > 1 ? "s" : "")}): já passam do que o seu corpo aguenta hoje. Ajuste quanto vestir pela mochila; "
 				   + $"dobrar continua valendo. Restam {CarteiraEscrita(pl)}.");
 	}
 
-	private void AjustarPeso(ServerPlayer pl, string valor)
+	private void AjustarPeso(ServerPlayer pl, string pesos, string valor)
 	{
 		if (!double.TryParse(valor, out double pct) || !NumeroFinito(pct)) { Avisar(pl, "número inválido."); return; }
 		pct = Math.Clamp(pct, 0, PesoMaximoPct);
@@ -418,7 +432,10 @@ public sealed partial class GameServer
 		// `WeightTick` reescrevia no tique seguinte -- duas contas pro mesmo campo, e a que o jogador
 		// via era a que morria. Quem escreve `weight` e o `WeightTick`, tres linhas abaixo, e so ele.
 		bool vestia = pl.Ficha.Weighted > 0;
-		pl.Ficha.Weighted = pct / 100.0 * TetoDePeso(pl.Ficha);
+		string vestidoAntes = pl.Ficha.pesoVestido;
+		pl.Ficha.Weighted = pct / 100.0 * TetoDePeso(pl.Ficha, pesos);
+		// (2026-10-18) E ESTE O PESO NO CORPO -- o id inteiro, com o maximo e a arte dele. Tirar (o zero) o apaga.
+		pl.Ficha.pesoVestido = pct > 0 ? pesos : "";
 
 		// (v0.3.0) A PORCENTAGEM ESCOLHIDA FICA GUARDADA -- e e com ela que o "equipar" veste (`VestirOsPesos`). Tirar (o zero) nao
 		// a apaga: e justamente o que se quer de volta da proxima vez.
@@ -426,7 +443,7 @@ public sealed partial class GameServer
 
 		// (2026-10-13) VESTIR E TIRAR APARECEM NO CORPO -- `usr.overlayList += icon` / `-= icon` (`Tier 1.dm:124` e
 		// `:132`). So quando o corpo passa de sem peso pra com peso (ou o contrario): mudar a porcentagem nao muda o desenho.
-		if (vestia != pl.Ficha.Weighted > 0) ReapresentarOCorpo(pl);
+		if (vestia != pl.Ficha.Weighted > 0 || vestidoAntes != pl.Ficha.pesoVestido) ReapresentarOCorpo(pl);
 
 		// ============================ O TIQUE INTEIRO, E NAO `Statify` + `WeightTick` ============================
 		// "Cada passo pesa" era uma frase VAZIA ate a camada 2: o peso nao custava nada. Agora custa
@@ -461,7 +478,7 @@ public sealed partial class GameServer
 		string noCorpo = pl.Ficha.weight_ratio > 1 ? "mais do que o seu corpo aguenta nesta gravidade"
 					   : pl.Ficha.weight > 1 ? "pesa de verdade no seu corpo"
 					   : "leve demais pro seu corpo -- o treino só rende mais com pesos mais pesados (melhore o peso máximo)";
-		Avisar(pl, $"você veste {pct:0}% do peso máximo ({pl.Ficha.Weighted:N0} de {TetoDePeso(pl.Ficha):N0} kg): {noCorpo}, "
+		Avisar(pl, $"você veste {pct:0}% do peso máximo ({pl.Ficha.Weighted:N0} de {TetoDePeso(pl.Ficha, pesos):N0} kg): {noCorpo}, "
 				   + $"e {pl.Ficha.weight:0.##}x de ganho no treino.");
 
 		// E O AVISO DE QUE PASSOU DO PONTO. O peso esmaga pela MESMA regra da gravidade (a pior das
@@ -474,7 +491,7 @@ public sealed partial class GameServer
 				: "seu corpo range sob o peso: você vai perder vida e velocidade enquanto estiver assim.");
 	}
 
-	private void TirarPeso(ServerPlayer pl) => AjustarPeso(pl, "0");
+	private void TirarPeso(ServerPlayer pl) => AjustarPeso(pl, pl.Ficha.pesoVestido, "0");
 
 	/// <summary>
 	/// VESTE OS PESOS NA PORCENTAGEM GUARDADA (dono, 2026-10-15): *"dps de setar a % do peso maximo ele salvaria aquele valor e
@@ -486,14 +503,14 @@ public sealed partial class GameServer
 	/// PELO MESMO CAMINHO DO AJUSTE, e nao uma segunda conta: a frase, o desenho no corpo, o tique e o aviso de esmagamento
 	/// sao os do <see cref="AjustarPeso"/>.
 	/// </summary>
-	private void VestirOsPesos(ServerPlayer pl)
+	private void VestirOsPesos(ServerPlayer pl, string pesos)
 	{
 		if (pl.Ficha.pesoPct <= 0)
 		{
 			Avisar(pl, "escolha antes quanto vestir (\"Ajustar o peso\", na mochila): a porcentagem fica guardada pro Equipar.");
 			return;
 		}
-		AjustarPeso(pl, pl.Ficha.pesoPct.ToString(System.Globalization.CultureInfo.CurrentCulture));
+		AjustarPeso(pl, pesos, pl.Ficha.pesoPct.ToString(System.Globalization.CultureInfo.CurrentCulture));
 	}
 
 	/// <summary>
@@ -504,14 +521,15 @@ public sealed partial class GameServer
 	/// SEM O `if(!equipped)` DO DM: la a folha so se troca com os pesos fora do corpo porque o overlay antigo teria de
 	/// ser tirado da lista a mao. Aqui o desenho e derivado a cada pacote, e trocar vestido nao deixa nada pra tras.
 	/// </summary>
-	private void EscolherAArteDosPesos(ServerPlayer pl, string arte)
+	private void EscolherAArteDosPesos(ServerPlayer pl, string pesos, string arte)
 	{
 		if (_visual?.Peca(arte) == null) { Avisar(pl, "essa arte não existe."); return; }
 
-		pl.Ficha.pesoArte = arte == PesoDeTreino.ArtePadrao ? "" : arte;
-		pl.SigAtributos = "";   // (2026-10-15) o icone da mochila acompanha: ele le a arte na ficha lenta
-		if (pl.Ficha.Weighted > 0) ReapresentarOCorpo(pl);
-		Avisar(pl, $"os pesos agora têm a aparência de {arte}" + (pl.Ficha.Weighted > 0 ? "." : ": ela aparece no corpo quando você os vestir."));
+		// (2026-10-18) A ARTE E DO PESO CLICADO, e vai no id dele -- o icone da mochila, o do chao e o do corpo leem de la.
+		string novo = TrocarOPeso(pl, pesos, PesoDeTreino.IdDe(PesoDeTreino.MaximoDe(pesos), arte));
+		bool vestido = pl.Ficha.Weighted > 0 && pl.Ficha.pesoVestido == novo;
+		if (vestido) ReapresentarOCorpo(pl);
+		Avisar(pl, $"os pesos agora têm a aparência de {arte}" + (vestido ? "." : ": ela aparece no corpo quando você os vestir."));
 	}
 
 	// =====================================================================

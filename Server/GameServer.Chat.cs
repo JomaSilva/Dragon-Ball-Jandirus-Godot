@@ -39,6 +39,12 @@ public partial class GameServer
 	/// <summary>Gancho de bancada: toda fala que passou pelo funil (quem, canal, texto). Nulo fora de teste.</summary>
 	internal static List<(int Quem, Protocol.Fala Canal, string Texto)>? EscutaDeFalas;
 
+	/// <summary>
+	/// (2026-10-18) Gancho de bancada: toda linha ENTREGUE (pra quem, o autor, o texto), ja depois do desvio do corpo da ponte -- e o que diz
+	/// QUEM OUVIU, que a `EscutaDeFalas` (de quem falou) nao diz. Nulo fora de teste. Ver `--naveteste`, camadas 10 e 11.
+	/// </summary>
+	internal static List<(int Para, string Autor, string Texto)>? EscutaDeEntregas;
+
 	private readonly Dictionary<int, long> _ultimaFala = [];
 
 	private void Falar(ServerPlayer a, Protocol.Fala canal, string texto)
@@ -62,6 +68,13 @@ public partial class GameServer
 		_ultimaFala[a.Id] = agora;
 		EscutaDeFalas?.Add((a.Id, canal, texto));
 
+		// (2026-10-18) QUEM ESTA AO LEME DA NAVE GRANDE, OU A OBSERVANDO DE FORA, FALA TAMBEM LA DENTRO -- pela boca do corpo que ficou na
+		// ponte, medido de onde ele esta (*"igual como se vc n tivesse pilotando"*). Quem OBSERVA fala SO la dentro: o olho do lado de fora
+		// nao tem boca (ninguem o ve). O piloto continua falando tambem do lado de fora, como sempre falou -- e la ele ja se ouve, entao o
+		// corpo da ponte dele fica fora da volta de dentro (senao a frase chegaria duas vezes). Ver `GameServer.NaveObservar.cs`.
+		ServerPlayer? daPonte = LemeMudoPraDentroDeTeste ? null : CorpoNaPonteDe(a);
+		bool soDentro = daPonte != null && EhOlhoDeFora(a);
+
 		switch (canal)
 		{
 			case Protocol.Fala.Ooc:
@@ -72,39 +85,56 @@ public partial class GameServer
 				break;
 
 			case Protocol.Fala.Sussurro:
-				// DOIS ENVIOS, como no original: quem esta colado ouve o que foi dito, e quem
-				// esta em volta recebe a fala VAZIA -- que o cliente desenha como "Fulano
-				// sussurra alguma coisa...". Saber que houve um sussurro faz parte da cena.
-				foreach (ServerPlayer o in ZoneList(a.Zone.Hash))
-				{
-					float d = (o.Pos - a.Pos).Length;
-					if (d <= RaioDoSussurro) Mandar(o, canal, a.Name, texto, a);
-					// QUEM SO VIU QUE HOUVE UM SUSSURRO NAO CONVIVEU: nao chegou palavra nenhuma,
-					// entao o `falante` vai nulo e a familiaridade nao anda.
-					else if (d <= RaioDaVista) Mandar(o, canal, a.Name, "", falante: null);
-				}
+				if (!soDentro) Sussurrar(a, a.Zone, a.Pos, texto, excetoEste: null);
+				if (daPonte != null) Sussurrar(a, daPonte.Zone, daPonte.Pos, texto, excetoEste: soDentro ? null : daPonte);
 				break;
 
 			case Protocol.Fala.Diz:
 			{
 				float raio = texto.Contains('!') ? RaioDoGrito : RaioDaVista;
-				PorPerto(a, raio, canal, texto);
+				if (!soDentro) PorPerto(a, a.Zone, a.Pos, raio, canal, texto, excetoEste: null);
+				if (daPonte != null) PorPerto(a, daPonte.Zone, daPonte.Pos, raio, canal, texto, excetoEste: soDentro ? null : daPonte);
 				break;
 			}
 
 			default:   // Pensa, Emote, Looc: todos no alcance da vista
-				PorPerto(a, RaioDaVista, canal, texto);
+				if (!soDentro) PorPerto(a, a.Zone, a.Pos, RaioDaVista, canal, texto, excetoEste: null);
+				if (daPonte != null) PorPerto(a, daPonte.Zone, daPonte.Pos, RaioDaVista, canal, texto, excetoEste: soDentro ? null : daPonte);
 				break;
 		}
 	}
 
-	private void PorPerto(ServerPlayer a, float raio, Protocol.Fala canal, string texto)
+	/// <summary>
+	/// A FALA DE <paramref name="a"/> SAINDO DE UM PONTO -- o dele, ou o do corpo dele na ponte. <paramref name="excetoEste"/> nao ouve (o
+	/// corpo da ponte de quem ja se ouviu do lado de fora). O OLHO de quem observa uma nave nao ouve o lado de fora: ele esta la so pra ver,
+	/// e o corpo dele, que ouve, esta la dentro.
+	/// </summary>
+	private void PorPerto(ServerPlayer a, ZoneKey zona, Vec2 de, float raio, Protocol.Fala canal, string texto, ServerPlayer? excetoEste)
 	{
 		float raio2 = raio * raio;
-		foreach (ServerPlayer o in ZoneList(a.Zone.Hash))
+		foreach (ServerPlayer o in ZoneList(zona.Hash))
 		{
-			Vec2 dd = o.Pos - a.Pos;
+			if (o == excetoEste || EhOlhoDeFora(o)) continue;
+			Vec2 dd = o.Pos - de;
 			if (dd.X * dd.X + dd.Y * dd.Y <= raio2) Mandar(o, canal, a.Name, texto, a);
+		}
+	}
+
+	/// <summary>
+	/// O SUSSURRO, DE UM PONTO -- DOIS ENVIOS, como no original: quem esta colado ouve o que foi dito, e quem esta em volta recebe a fala
+	/// VAZIA, que o cliente desenha como "Fulano sussurra alguma coisa...". Saber que houve um sussurro faz parte da cena. Os mesmos dois
+	/// crivos do <see cref="PorPerto"/>.
+	/// </summary>
+	private void Sussurrar(ServerPlayer a, ZoneKey zona, Vec2 de, string texto, ServerPlayer? excetoEste)
+	{
+		foreach (ServerPlayer o in ZoneList(zona.Hash))
+		{
+			if (o == excetoEste || EhOlhoDeFora(o)) continue;
+			float d = (o.Pos - de).Length;
+			if (d <= RaioDoSussurro) Mandar(o, Protocol.Fala.Sussurro, a.Name, texto, a);
+			// QUEM SO VIU QUE HOUVE UM SUSSURRO NAO CONVIVEU: nao chegou palavra nenhuma,
+			// entao o `falante` vai nulo e a familiaridade nao anda.
+			else if (d <= RaioDaVista) Mandar(o, Protocol.Fala.Sussurro, a.Name, "", falante: null);
 		}
 	}
 
@@ -123,6 +153,12 @@ public partial class GameServer
 	private void Mandar(ServerPlayer para, Protocol.Fala canal, string autor, string texto,
 						ServerPlayer? falante)
 	{
+		// (2026-10-18) O CORPO DA PONTE OUVE PELO DONO: a fala (e o aviso) que chega no boneco de quem esta ao leme da nave grande, ou a
+		// observando de fora, chega NELE -- *"enquanto vc pilota, deveria dar pra escutar e ver o chat q rola dentro da nave"*. Ver
+		// `DonoQueOuvePeloBoneco`, `GameServer.NaveObservar.cs`.
+		if (para.Peer == null && DonoQueOuvePeloBoneco(para) is { } dono) para = dono;
+		EscutaDeEntregas?.Add((para.Id, autor, texto));
+
 		if (falante != null) Ouviu(para, falante);
 
 		var w = Protocol.Begin(Protocol.S2C.Chat);

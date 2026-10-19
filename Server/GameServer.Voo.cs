@@ -357,8 +357,11 @@ public partial class GameServer
 		//
 		// A ALTURA, LOGO ABAIXO, CONTINUA SENDO CUIDADA: corpo preso nao pode cair do ceu, e descer
 		// nao custa Ki nenhum.
+		//
+		// (2026-10-18) E AO LEME TAMBEM NAO: quem paga o voo da nave e o tanque dela (o dono escolheu "so combustivel"), entao
+		// nem o Ki desce nem a proficiencia sobe -- ver `AoLemeQuemPagaEANave`, `GameServer.Combustivel.cs`.
 		// =======================================================================================
-		if (!EmCena(pl))
+		if (!EmCena(pl) && !AoLemeQuemPagaEANave(pl))
 		{
 			// ============================ O CUSTO, LITERAL ============================
 			// `Stats.dm:411-427`. O gasto so acontece com `Ki > 5`; abaixo disso o original desliga o

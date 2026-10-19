@@ -22,8 +22,8 @@ namespace Jandirus.Core.Items;
 /// decide ate onde vale a pena melhorar e o proprio corpo.
 /// ====================================================================================================
 ///
-/// O MAXIMO MORA NA FICHA (`Fighter.pesoMaximoKg`), e nao no item: a mochila guarda id e quantidade, e o item nao
-/// tem estado proprio. Zero quer dizer "nunca melhorou" -- o de fabrica.
+/// O MAXIMO MORA NO ITEM (2026-10-18): cada peso carrega o seu, no id -- ver <see cref="IdDe"/>. Ate esse dia ele morava na
+/// ficha (`Fighter.pesoMaximoKg`), e era o de TODO peso da mochila.
 /// </summary>
 public static class PesoDeTreino
 {
@@ -42,8 +42,91 @@ public static class PesoDeTreino
 	/// </summary>
 	public static bool TetoDoCorpoDeGracaDeTeste;
 
-	/// <summary>O maximo que vale: o da ficha, e nunca menos que o de fabrica.</summary>
+	/// <summary>O maximo que vale: o do peso, e nunca menos que o de fabrica.</summary>
 	public static double Maximo(double daFicha) => Math.Max(daFicha, KgDeFabrica);
+
+	// =====================================================================
+	// CADA PESO E UM ITEM COM ESTADO -- O DADO VAI NO ID (dono, 2026-10-18)
+	// =====================================================================
+	// *"tem um bug q quando vc tem 2 itens do mesmo tipo no inventario o jogo acha q os dois sao o mesmo item"*, *"fiz um peso pra um amigo
+	// e quando fui dropar veio com o mesmo peso do meu ate o icone, meio q clona o item"*, *"mas quando ele pega ele mostra 50kg"*. O maximo
+	// e a arte moravam na FICHA (`Fighter.pesoMaximoKg`, `Fighter.pesoArte`) e o item era so um id: todo peso de uma mochila mostrava o maximo
+	// e a arte do dono dela, o que caia no chao saia com a arte de quem o largou, e quem o pegava via o maximo DELE (os 50 kg de fabrica) --
+	// a melhoria paga ficava pra tras. Agora cada peso carrega o seu no id, como a roupa (`RoupaGuardada`) e o livro (`LivroDeEnsinamentos`):
+	// `Weights|<kg maximo>|<arte>`, e o `Weights` puro e o de fabrica (50 kg, a camisa). Trocar de dono, cair no chao, ir pro bau: o id vai
+	// inteiro, e o peso e o mesmo. Na FICHA ficam so QUAL peso esta no corpo (`Fighter.pesoVestido`) e a porcentagem que se veste
+	// (`Fighter.pesoPct`, a escolha de quem veste).
+
+	/// <summary>O comeco do id de um peso com estado: `Weights|`. Sem BARRA, que o canal de itens usa pra separar o argumento.</summary>
+	public const string PrefixoDoId = CatalogoDeItens.Pesos + "|";
+
+	/// <summary>Este id e de um peso de treino -- o de fabrica ou um com estado?</summary>
+	public static bool EhPeso(string id) => id == CatalogoDeItens.Pesos || id.StartsWith(PrefixoDoId, StringComparison.Ordinal);
+
+	/// <summary>O id do peso com este maximo e esta arte. O de fabrica (50 kg, a arte de fabrica) e o `Weights` puro.</summary>
+	public static string IdDe(double maxKg, string arte)
+	{
+		if (EstadoForaDoIdDeTeste) return CatalogoDeItens.Pesos;
+		double max = Maximo(maxKg);
+		string a = arte == ArtePadrao ? "" : arte;
+		return max <= KgDeFabrica && a.Length == 0
+			? CatalogoDeItens.Pesos
+			: $"{PrefixoDoId}{max.ToString("0", System.Globalization.CultureInfo.InvariantCulture)}|{a}";
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--pesosteste`): o peso volta a ser um item SEM estado -- todo id e o `Weights` puro, e o maximo e a arte nao
+	/// moram em lugar nenhum (o jogo de antes os guardava na ficha, e todo peso de uma mochila era o mesmo). Lido pelo <see cref="IdDe"/>. Falso
+	/// em jogo, sempre.
+	/// </summary>
+	public static bool EstadoForaDoIdDeTeste;
+
+	/// <summary>O maximo e a arte deste peso; nulo se o id nao e de peso (ou e um peso torto, que o `Sanear` da carga joga fora).</summary>
+	public static (double MaxKg, string Arte)? Ler(string id)
+	{
+		if (id == CatalogoDeItens.Pesos) return (KgDeFabrica, "");
+		if (!id.StartsWith(PrefixoDoId, StringComparison.Ordinal)) return null;
+		string[] p = id[PrefixoDoId.Length..].Split('|');
+		if (p.Length != 2
+			|| !double.TryParse(p[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double max)
+			|| !(max >= KgDeFabrica) || double.IsInfinity(max)) return null;
+		return (max, p[1]);
+	}
+
+	/// <summary>O maximo deste peso, em kg (o de fabrica pra um id que nao e de peso).</summary>
+	public static double MaximoDe(string id) => Ler(id)?.MaxKg ?? KgDeFabrica;
+
+	/// <summary>A arte deste peso (vazia = a de fabrica).</summary>
+	public static string ArteDe(string id) => Ler(id)?.Arte ?? "";
+
+	/// <summary>A ficha deste peso: a do catalogo com o id inteiro e o maximo no NOME -- "Pesos (200 kg)" --, que e o que separa dois pesos na mochila.</summary>
+	public static ItemDef Ficha(string id, ItemDef dosPesos) => dosPesos with { Id = id, Nome = $"{dosPesos.Nome} ({MaximoDe(id):N0} kg)" };
+
+	/// <summary>
+	/// O SAVE DE ANTES DE 2026-10-18: o maximo e a arte moravam na ficha. Cada peso de fabrica (`Weights`) desta mochila vira um peso com o
+	/// estado da ficha -- o que o jogador tinha pago continua dele, agora no item. Devolve o id que eles viraram (o de fabrica, se a ficha nao
+	/// tinha nada), pra quem estava vestido continuar vestido com ELE.
+	/// </summary>
+	public static string MigrarDaFicha(Inventario mochila, double maxDaFicha, string arteDaFicha)
+	{
+		string novo = IdDe(maxDaFicha, arteDaFicha);
+		if (novo == CatalogoDeItens.Pesos) return novo;
+		for (int i = 0; i < mochila.Pilhas.Count; i++)
+			if (mochila.Pilhas[i].Id == CatalogoDeItens.Pesos) mochila.Pilhas[i] = mochila.Pilhas[i] with { Id = novo };
+		return novo;
+	}
+
+	/// <summary>
+	/// QUANTAS MELHORIAS DESDE A FABRICA leva o maximo a passar do limite do corpo -- o numero que a ficha lenta manda pro cliente (o limite
+	/// em si entregaria o poder). Sem teto (ate 255): quem quer o de UM peso desconta o nivel dele (<see cref="MelhoriasAteOLimitePorDegraus"/>).
+	/// </summary>
+	public static int DegrausDoCorpo(double limiteDoCorpoKg) =>
+		SoDobrandoDeTeste || limiteDoCorpoKg <= KgDeFabrica ? 0
+		: Math.Clamp((int)Math.Ceiling(Math.Log(limiteDoCorpoKg / KgDeFabrica, VezesPorMelhoria) - 1e-9), 0, 255);
+
+	/// <summary>As melhorias que faltam pra ESTE peso passar do limite do corpo, a partir dos degraus do corpo (`DegrausDoCorpo`).</summary>
+	public static int MelhoriasAteOLimitePorDegraus(double maxKg, int degrausDoCorpo) =>
+		Math.Clamp(degrausDoCorpo - Nivel(maxKg), 0, MaximoDeMelhoriasDeUmaVez);
 
 	/// <summary>Quantas melhorias este maximo ja levou (0 = de fabrica).</summary>
 	public static int Nivel(double daFicha) =>

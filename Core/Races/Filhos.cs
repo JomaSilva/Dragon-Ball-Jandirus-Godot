@@ -202,6 +202,19 @@ public static class Filhos
 
 	private static bool DoSangueSaiyajinHumano(string raca) => raca is "Human" or "Saiyan" or MeioSaiyajin;
 
+	/// <summary>
+	/// (2026-10-18) O FILHO QUE NASCE BEBE. O dono: *"faça com q Saiyajins, meio saiyajins, e humanos filhos de players tenham sempre esse
+	/// sprite por 1 hora no jogo, mostrando q eles acabaram de nascer"*. Sao as tres racas do sangue de cima; o filho das outras (o
+	/// Namekuseijin do ovo, o Majin) nasce no corpo dele.
+	/// </summary>
+	public static bool NasceBebe(string racaDoFilho) => DoSangueSaiyajinHumano(racaDoFilho);
+
+	/// <summary>
+	/// A HORA DE BEBE, em segundos de relogio CONTADOS COM ELE NO JOGO (`GameServer.TickDosBebes`; o que falta vai no save). Nao e a
+	/// hora do ceu: o dia do mundo dura 24 minutos (`World.Ceu.SegundosPorDia`), e uma hora dele -- um minuto -- nao daria pra ver o bebe.
+	/// </summary>
+	public const double SegundosDeBebe = 3600;
+
 	public static bool SexosOpostos(string a, string b) => (a, b) is ("Male", "Female") or ("Female", "Male");
 
 	/// <summary>

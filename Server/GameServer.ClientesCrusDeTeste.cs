@@ -138,6 +138,12 @@ public partial class GameServer
 		/// <summary>Sai por vontade propria, como quem fecha o jogo: o servidor recebe a queda do par e roda o `Drop` de sempre.</summary>
 		public void Sair() => _par?.Disconnect();
 
+		/// <summary>
+		/// (2026-10-18) UM PACOTE DE JOGO montado pela bancada, pelo canal de sempre -- a `--tuffleteste` manda a guarda erguida pelo dono de
+		/// um corpo possuido, que o `Handle` tem de engolir.
+		/// </summary>
+		public void Mandar(NetDataWriter w) => _par?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+
 		public void Fechar() => Rede.Stop();
 	}
 

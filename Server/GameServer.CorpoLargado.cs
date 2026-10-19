@@ -263,6 +263,9 @@ public partial class GameServer
 	private void AcordarNoCorpo(ServerPlayer boneco)
 	{
 		if (boneco.DonoDoCorpoLargado != 0) PorNaFilaDeVolta(boneco.DonoDoCorpoLargado);
+		// (2026-10-18) ...E O OLHO DE QUEM OBSERVA UMA NAVE TAMBEM: ninguem o ve, mas um tiro perdido existe -- e a ficha e a mesma do corpo
+		// na ponte, entao o golpe ja caiu no corpo de verdade. Quem foi tocado volta pra ele. Ver `GameServer.NaveObservar.cs`.
+		else if (EhOlhoDeFora(boneco)) PorNaFilaDeVolta(boneco.Id);
 	}
 
 	/// <summary>
@@ -345,6 +348,8 @@ public partial class GameServer
 		if (NaMente(pl)) { SairDaMente(pl, motivo); return; }
 		if (NaveDoPiloto(pl) is { } nave && Jandirus.Core.Tech.NaveGrande.EhNaveGrande(nave.Tipo))
 		{ PararDePilotar(pl, nave, motivo); return; }
+		// (2026-10-18) QUEM OBSERVA UMA NAVE DE FORA desfaz o que era seu (o olho, a barra do tanque) -- ver `GameServer.NaveObservar.cs`.
+		if (EhOlhoDeFora(pl)) { PararDeObservar(pl, motivo); return; }
 		VoltarProCorpo(pl, motivo);
 	}
 

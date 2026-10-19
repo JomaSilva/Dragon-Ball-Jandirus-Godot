@@ -317,6 +317,11 @@ public partial class GameServer
 			// =====================================================================
 			MedirAAbsorcao(Checa);
 
+			// =====================================================================
+			// 10. A FICHA NOVA NA SAGA QUE JA DISPAROU (2026-10-18)
+			// =====================================================================
+			MedirOPisoDaFichaNova(Checa);
+
 			Checa("a bancada chegou ao fim (ver o `catch`: sem ele, abortar no meio reportava '0 falhas')",
 				  true);
 		}
@@ -398,7 +403,10 @@ public partial class GameServer
 			  corpo.Papel.Proximo == null, $"degrau {corpo.Papel.Estagio + 1}");
 
 		EscutaDasSagas = [];
-		int habitantesAntes = _players.Values.Count(p => p.Peer == null && p.Papel is { EhChefe: false });
+		// (2026-10-18) A TROPA NAO E HABITANTE: os soldados do Freeza (`GameServer.TropaDaSaga.cs`) chegam com ele, um a cada vinte segundos, e
+		// vao embora quando ele vence -- nascer e sair do mundo nao e "o habitante morreu". A conta e do POVO, e o tipo do molde e quem diz.
+		int Habitantes() => _players.Values.Count(p => p.Peer == null && p.Papel is { EhChefe: false, Tipo: not TipoDeNpc.Soldado });
+		int habitantesAntes = Habitantes();
 
 		// ============================ O PRAZO SO NASCE QUANDO ELE CHEGA NO ULTIMO DEGRAU ============================
 		// E o `s2_deadline = world.time + BEV_FREEZA2_FINAL_TIMER` escrito DENTRO do `freeza_transform`
@@ -467,7 +475,7 @@ public partial class GameServer
 
 		// E OS HABITANTES SO MORREM NO COMMIT, cinco minutos depois -- nao no instante do ultimato.
 		Checa("...e os habitantes ainda estao vivos: o commit e daqui a 5 min, nao agora",
-			  _players.Values.Count(p => p.Peer == null && p.Papel is { EhChefe: false }) == habitantesAntes);
+			  Habitantes() == habitantesAntes, $"{Habitantes()} agora, {habitantesAntes} antes");
 
 		// ============================ E A SAGA VAI ATE O FIM, PELO MESMO COMMIT ============================
 		// Ate aqui esta bancada parava em "Explodindo" -- ou seja, ela provava que a saga ACENDE o
@@ -617,6 +625,109 @@ public partial class GameServer
 			  voltou != null && voltou.Papel!.Estagio == 3
 			  && Math.Abs(voltou.Ficha.BP - 5_000_000_000) < 1,
 			  $"{voltou?.Papel?.Estagio} / {voltou?.Ficha.BP:N0}");
+	}
+
+	// =====================================================================
+	// A FICHA NOVA NA SAGA QUE JA DISPAROU
+	// =====================================================================
+	/// <summary>
+	/// (2026-10-18) O dono: *"dobre o bp da quarta e quinta forma do freeza namek"*. A ficha mudou no `npcs.json` -- mas a saga que disparou
+	/// antes do update tem o vetor pinado da ficha VELHA no `sagas.json`, e o Freeza dela voltaria do reinicio com os 3 e 4 milhoes. Aqui o
+	/// save de antes do update e PLANTADO (pelo `SalvarSagas` de producao) e o servidor "reinicia" pelas duas funcoes do boot: a carga ergue o
+	/// pino ate a ficha (`ErguerOsPinosAteAFicha`) e o Freeza volta com a ficha nova. O 1o degrau do save fica ACIMA da ficha, como um
+	/// `bpRelativo` o pinaria -- e o piso nao pode baixa-lo.
+	/// </summary>
+	private void MedirOPisoDaFichaNova(Checagem Checa)
+	{
+		MoldeDeNpc? molde = _moldes?.Get("freeza_namek");
+		EloDaSaga? elo = Array.Find(_cadeia, e => e.Id == "freeza_namek");
+		if (molde is not { Estagios.Length: 5 } || elo == null)
+		{
+			Checa("(montagem) o Freeza de Namek e a saga dele, com a ficha de cinco degraus", false);
+			return;
+		}
+
+		double[] ficha = [.. molde.Estagios.Select(s => s.Bp)];
+		Checa("**A FICHA NOVA** (*\"dobre o bp da quarta e quinta forma do freeza namek\"*): a 4a forma com 6 milhoes e a 5a com 8 milhoes -- o "
+			  + "dobro dos 3 e 4 do DM (`BEV_FREEZA2_BPS`) --, e as tres primeiras como no DM (530 mil, 1 e 2 milhoes)",
+			  ficha.SequenceEqual([530_000, 1_000_000, 2_000_000, 2 * 3_000_000, 2 * 4_000_000]), string.Join(" / ", ficha.Select(b => b.ToString("N0"))));
+
+		// O SAVE DE ANTES DO UPDATE: o vetor que o disparo pinou com a ficha velha -- e o 1o degrau acima dela, o que um `bpRelativo` pinaria.
+		double[] doSaveVelho = [900_000, 1_000_000, 2_000_000, 3_000_000, 4_000_000];
+
+		// O SAVE PLANTADO: os elos de antes vencidos (a cadeia e sequencial), a de Namek disparada, e o Freeza dela na fase pedida.
+		EstadoDoChefe Plantar(FaseDaSaga faseDaSaga, FaseDoChefe faseDoChefe)
+		{
+			Zerar();
+			foreach (EloDaSaga e in _cadeia)
+			{
+				if (e.Id == elo.Id) break;
+				Elo(e.Id).Disparou = true;
+				Elo(e.Id).Fase = FaseDaSaga.Vencida;
+			}
+			var ec = new EstadoDoChefe { Molde = molde.Id, Fase = faseDoChefe, Degrau = 3, DiasRestantes = 5, Bps = [.. doSaveVelho] };
+			EstadoDoElo est = Elo(elo.Id);
+			est.Disparou = true;
+			est.Fase = faseDaSaga;
+			est.Chefes.Add(ec);
+			SalvarSagas();
+			return ec;
+		}
+
+		// O REINICIO: o mundo esquece tudo e le do disco, pelas duas funcoes que o servidor chama no boot e no primeiro tique.
+		(EstadoDoChefe? Estado, ServerPlayer? Corpo) Reiniciar()
+		{
+			foreach (ServerPlayer c in ChefesNoMundo()) RemoverNpc(c);
+			_sagas = new EstadoDasSagas();
+			CarregarSagas();
+			TickDasSagas();
+			EstadoDoChefe? ec = Elo(elo.Id).Chefes.FirstOrDefault();
+			return (ec, ec == null ? null : Corpo(ec));
+		}
+
+		try
+		{
+			// ---- o Freeza que estava NO MUNDO, na forma 4, quando o servidor caiu ----
+			Plantar(FaseDaSaga.EmCurso, FaseDoChefe.NoMundo);
+			(EstadoDoChefe? ec, ServerPlayer? freeza) = Reiniciar();
+			Checa("**O FREEZA DA SAGA QUE JA DISPAROU VOLTA COM A FICHA NOVA**: o save tinha os 3 milhoes da 4a forma, e ele volta do reinicio "
+				  + "na forma 4 com os 6 milhoes de agora",
+				  freeza?.Papel?.Estagio == 3 && Math.Abs(freeza.Ficha.BP - ficha[3]) < 1, $"forma {freeza?.Papel?.Estagio + 1}; BP {freeza?.Ficha.BP:N0}");
+			Checa("...e o pino ergueu SO o que ficou abaixo da ficha: a 4a e a 5a forma sobem pra 6 e 8 milhoes, a 2a e a 3a (iguais a ficha) ficam -- "
+				  + "e o 1o degrau, pinado ACIMA dela (900 mil), nao desce pros 530 mil",
+				  ec != null && ec.Bps.SequenceEqual([900_000, 1_000_000, 2_000_000, ficha[3], ficha[4]]),
+				  ec == null ? "sem estado" : string.Join(" / ", ec.Bps.Select(b => b.ToString("N0"))));
+			if (freeza?.Papel is { } papel)
+			{
+				// A FORMA FINAL pelo caminho de producao: o roteiro le o pior membro e pina o degrau novo pelo vetor.
+				PorPiorMembroEm(freeza, papel.GatilhoAtual - 0.01);
+				TickDoRoteiro();
+				Checa("...e a FORMA FINAL, quando ele chega nela, tem os 8 milhoes", papel.Estagio == 4 && Math.Abs(freeza.Ficha.BP - ficha[4]) < 1,
+					  $"forma {papel.Estagio + 1}; BP {freeza.Ficha.BP:N0}");
+			}
+
+			// ---- o que ainda estava A CAMINHO (a saga contando os dias) ----
+			Plantar(FaseDaSaga.Contando, FaseDoChefe.ACaminho);
+			(EstadoDoChefe? aCaminho, _) = Reiniciar();
+			Checa("...e o que ainda esta A CAMINHO (a saga contando os dias) tambem: o vetor que o nascimento vai ler ja tem os 6 e 8 milhoes",
+				  aCaminho is { Fase: FaseDoChefe.ACaminho } && aCaminho.Bps.Length == 5 && aCaminho.Bps[3] == ficha[3] && aCaminho.Bps[4] == ficha[4],
+				  aCaminho == null ? "sem estado" : $"{aCaminho.Fase}: " + string.Join(" / ", aCaminho.Bps.Select(b => b.ToString("N0"))));
+
+			// ---- o contra-exemplo: a carga de antes ----
+			Plantar(FaseDaSaga.EmCurso, FaseDoChefe.NoMundo);
+			PinoAbaixoDaFichaDeTeste = true;
+			ServerPlayer? velho;
+			try { velho = Reiniciar().Corpo; }
+			finally { PinoAbaixoDaFichaDeTeste = false; }
+			Checa("(defeito injetado: a carga sem o piso, o jogo de antes) o Freeza volta do reinicio com os 3 milhoes do save velho -- a regua de "
+				  + "cima REPROVA",
+				  velho?.Papel?.Estagio == 3 && Math.Abs(velho.Ficha.BP - doSaveVelho[3]) < 1, $"BP {velho?.Ficha.BP:N0}");
+		}
+		finally
+		{
+			PinoAbaixoDaFichaDeTeste = false;
+			foreach (ServerPlayer c in ChefesNoMundo()) RemoverNpc(c);
+		}
 	}
 
 	// =====================================================================

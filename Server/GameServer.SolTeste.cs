@@ -89,6 +89,7 @@ public partial class GameServer
 		SairFunciona(Checa);
 		APortaDaMorteEUnica(Checa);
 		OArremessoAndaNoEspaco(Checa);
+		OPilotoNaoQueima(Checa);   // (2026-10-18)
 
 		GD.Print($"===== BANCADA DO SOL: {ok} OK, {falhou} FALHA(S) =====\n");
 	}
@@ -588,5 +589,62 @@ public partial class GameServer
 	{
 		_players.Remove(pl.Id);
 		ZoneList(pl.Zone.Hash).Remove(pl);
+	}
+
+	// =====================================================================
+	// 8) O PILOTO NAO QUEIMA, E MEDITA NO POD (dono, 2026-10-18)
+	// =====================================================================
+	/// <summary>
+	/// *"pilotar nave dentro de estrela causa dano ao piloto, resolva"*. Um pod parado DENTRO de uma estrela amarela (a meio raio do centro): o
+	/// corpo embarca pela porta de producao (`UsarNave`) e passa dois segundos de tique la dentro -- a vida nao anda e nenhum aviso de calor sai.
+	/// Contra-exemplo (`PilotoQueimaNaEstrelaDeTeste`, o jogo de antes): o mesmo piloto queima. E ao leme do pod a pose que vai pros outros e a de
+	/// MEDITAR, e nao a de voo (*"ele deveria so ficar parado na capital ship e meditando na pod"*); contra-exemplo `PilotoNaPoseDeVooDeTeste`.
+	/// </summary>
+	private void OPilotoNaoQueima(Action<string, bool, string> Checa)
+	{
+		GD.Print("--- 8) O PILOTO NAO QUEIMA, E MEDITA NO POD (dono, 2026-10-18) ---");
+
+		Estrela e = EstrelaDeTeste(ClasseDeEstrela.Amarela, out _);
+		Vec2 dentro = NoRaio(e, 0.5f);
+		ServerPlayer pl = Forjar(80, "bancada: piloto na estrela", dentro, 5_000_000);
+		var pod = new Nave { Id = _proximaNaveId++, Tipo = "Spacepod", X = dentro.X + 12, Y = dentro.Y, DonoConta = pl.Conta, DonoNome = pl.Name };
+		pod.PorZona(ZonaDoEspaco);
+		_naves.Add(pod);
+		try
+		{
+			UsarNave(pl);
+			Checa("(montagem) o corpo embarcou no pod parado dentro da estrela, pela porta de producao", pod.PilotoId == pl.Id, $"piloto {pod.PilotoId}");
+
+			double antes = pl.Combate!.Corpo.Vida();
+			List<string> ditos = Ouvir(() => { for (int i = 0; i < 60; i++) TickDoEspaco(pl); });
+			Checa("**O PILOTO NAO QUEIMA** (*\"pilotar nave dentro de estrela causa dano ao piloto, resolva\"*): dois segundos ao leme dentro da estrela, "
+				  + "e a vida nao anda", Math.Abs(pl.Combate.Corpo.Vida() - antes) < 1e-9, $"{antes:0.###} -> {pl.Combate.Corpo.Vida():0.###}");
+			Checa("...e nenhum aviso de calor sai -- avisar que vai queimar quem nao queima seria mandar fugir de nada",
+				  ditos.Count == 0, string.Join(" | ", ditos));
+
+			pl.Voando = true;   // o pod no espaco voa -- e era o voo que vestia a pose
+			Protocol.Pose pose = EstadoDe(pl, NowMs()).Pose;
+			Checa("**AO LEME DO POD A POSE E A DE MEDITAR** (*\"ele deveria so ficar parado na capital ship e meditando na pod\"*), e nao a de voo",
+				  pose == Protocol.Pose.Meditando, $"pose {pose}");
+			PilotoNaPoseDeVooDeTeste = true;
+			try { pose = EstadoDe(pl, NowMs()).Pose; }
+			finally { PilotoNaPoseDeVooDeTeste = false; }
+			Checa("   DEFEITO INJETADO (a pose de antes): ao leme, a de voo -- a regua de cima reprovaria", pose == Protocol.Pose.Voando, $"pose {pose}");
+
+			PilotoQueimaNaEstrelaDeTeste = true;
+			try { for (int i = 0; i < 60; i++) TickDoEspaco(pl); }
+			finally { PilotoQueimaNaEstrelaDeTeste = false; }
+			Checa("   DEFEITO INJETADO (o piloto queimando como um corpo solto, o jogo de antes): os mesmos dois segundos tiram vida -- a regua de cima reprovaria",
+				  pl.Combate.Corpo.Vida() < antes - 1e-9, $"{antes:0.###} -> {pl.Combate.Corpo.Vida():0.###}");
+		}
+		finally
+		{
+			PilotoQueimaNaEstrelaDeTeste = false;
+			PilotoNaPoseDeVooDeTeste = false;
+			if (NaveDoPiloto(pl) is { } n) Desembarcar(pl, n);
+			_naves.Remove(pod);
+			GravarNaves();
+			Recolher(pl);
+		}
 	}
 }

@@ -582,10 +582,11 @@ public partial class GameServer
 	/// PASSAR PERTO (E POR DENTRO) DE UMA ESTRELA, A PE E DE NAVE.
 	///
 	/// ============================ TRES PERGUNTAS, TRES MEDIDAS ============================
-	/// 1. **Quem esta AO LEME queima?** Hoje sim -- o corpo dele esta na zona do espaco. Isto nao e
-	///    uma escolha deste port: e o que sai de graca do desenho, e o dono ainda nao decidiu se quer
-	///    mudar. A bancada AFIRMA o comportamento de hoje pra que trocar de ideia custe uma linha
-	///    vermelha, e nao um bug descoberto meses depois.
+	/// 1. **Quem esta AO LEME queima?** Nao, desde 2026-10-18 -- o dono decidiu: *"pilotar nave dentro de
+	///    estrela causa dano ao piloto, resolva"*. Ate ali sim (o corpo dele esta na zona do espaco), e esta
+	///    bancada afirmava o comportamento de entao justamente pra que trocar de ideia custasse uma linha
+	///    vermelha -- e custou: foi ela que acusou a mudanca (o job96). Hoje o casco cobre o piloto
+	///    (`TickDoSol`, o `spacesuit` do leme no DM), e quem atravessa A PE continua queimando.
 	/// 2. **Quem esta DENTRO do casco queima?** Nao -- o interior e `ZoneKey.Interior`, e o
 	///    `TickDoEspaco` devolve na primeira linha pra quem nao esta no espaco. A camada 2 afirmava
 	///    isso por uma pergunta de Core (`!Espaco.EhEspaco(dentro)`); aqui um corpo fica dentro de uma
@@ -647,13 +648,13 @@ public partial class GameServer
 					 + $"{dentroDeNave,4} tiques dentro do raio letal, {perdeuDeNave,7:0.0} de vida perdida");
 
 			// ============================ AS TRES AFIRMACOES QUE DECIDEM A PERGUNTA ============================
-			Checa("QUEM PILOTA QUEIMA: o corpo esta na zona do espaco, e o casco nao o protege hoje",
-				  perdeuDeNave > 0, $"perdeu {perdeuDeNave:0.0}");
-			Checa("...mas a VELOCIDADE protege: de nave se perde menos vida que a pe na mesma travessia",
-				  perdeuDeNave < perdeuAPe, $"nave {perdeuDeNave:0.0} contra pe {perdeuAPe:0.0}");
+			Checa("QUEM PILOTA NAO QUEIMA (dono, 2026-10-18: *\"pilotar nave dentro de estrela causa dano ao piloto, resolva\"*): o casco "
+				  + "o cobre na travessia inteira", perdeuDeNave <= 1e-9, $"perdeu {perdeuDeNave:0.0}");
+			Checa("...e quem atravessa A PE continua queimando -- a protecao e o casco, e nao a estrada",
+				  perdeuAPe > 0, $"a pe perdeu {perdeuAPe:0.0}");
 			Checa("...e a nave rapida NAO atravessa sem ser vista (a amostragem a pega dentro)",
 				  dentroDeNave > 0, $"{dentroDeNave} tiques dentro");
-			Checa("...e o corpo a pe sofre muito mais tiques de fogo",
+			Checa("...e o corpo a pe passa muito mais tiques dentro do raio letal",
 				  dentroAPe > dentroDeNave * 5, $"{dentroAPe} contra {dentroDeNave}");
 
 			// ---------------------------------------------------------------- 2) O CASCO DA CAPITAL SHIP

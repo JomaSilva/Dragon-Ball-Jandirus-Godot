@@ -68,6 +68,9 @@ public sealed partial class GameServer
 		{
 			// QUEM ESTA FORA DO CORPO VOLTA PRO CORPO ANTES DE VIAJAR (a mente, o leme) -- a mesma linha do `AcabarOPasse`.
 			if (pl.BonecoLargado != null) VoltarDeOndeEstiver(pl, "");
+			// (2026-10-18) E QUEM ESTA NUMA NAVE DESEMBARCA ANTES: a nave segue o piloto pra qualquer zona (`TickDasNaves`), e o morto pilota
+			// agora (`NaoPilota`) -- sem esta linha o pod iria junto pro Outro Mundo. Ele fica entre os vivos, onde estava.
+			if (NaveDoPiloto(pl) is { } nave) Desembarcar(pl, nave);
 			if (!Alem.EhOAlem(zona))
 			{
 				zona = ZoneKey.Premade(Alem.ZonaDoOutroMundo);

@@ -169,8 +169,9 @@ public partial class GameServer
 	/// de fora: o primeiro ja morreu; o segundo carrega a ficha de alguem que esta noutro lugar (na mente, no
 	/// leme), e absorve-lo seria absorver essa pessoa por uma porta lateral.
 	/// </summary>
+	// (2026-10-18) E o corpo escondido de quem o Neo Tuffle possui tambem fica de fora: o dono dele so assiste -- `GameServer.NeoTuffle.cs`.
 	private static bool PodeSerAbsorvidoPeloMajin(ServerPlayer o) =>
-		o.Ficha.KO && !o.Ficha.dead && !o.ECadaver && o.DonoDoCorpoLargado == 0 && o.Combate != null;
+		o.Ficha.KO && !o.Ficha.dead && !o.ECadaver && o.DonoDoCorpoLargado == 0 && o.Combate != null && o.PossuidoPor == 0;
 
 	// =====================================================================
 	// O NPC -- DEVORADO POR INTEIRO (`MajinSaga.dm:132-151`)
@@ -184,8 +185,8 @@ public partial class GameServer
 	/// poder dele". O numero e uma fracao do BP da vitima, e a regra principal do BP so deixa numero com medidor
 	/// (ver `PoderNaFrase`). Uma funcao pras duas frases (o NPC devorado e o jogador selado).
 	/// </summary>
-	private static string GanhoDoMajinNaFrase(ServerPlayer majin, double bonus, double poderDele) =>
-		Jandirus.Core.Stats.PoderNaFrase.EmNumero(TemScouter(majin))
+	private string GanhoDoMajinNaFrase(ServerPlayer majin, double bonus, double poderDele) =>
+		Jandirus.Core.Stats.PoderNaFrase.EmNumero(ScouterMostra(majin, majin, bonus))
 			? $"{bonus:N0} de poder"
 			: Jandirus.Core.Stats.PoderNaFrase.ParteDoPoderDele(bonus, poderDele);
 
@@ -453,6 +454,8 @@ public partial class GameServer
 			if (o == vitima || o == majin || !EhPessoa(o)) continue;   // `A == M || A == src || A.isNPC`
 			if ((o.Pos - vitima.Pos).LengthSquared > raio2) continue;
 			if (!o.Social.LutoPorAbsorcao(vitima.Assinatura)) continue;
+			// (2026-10-18) e o Majin tem de ser inimigo aos olhos de quem assiste: o amigo que absorve outro amigo nao enfurece (`LutoNaVizinhanca`, (4))
+			if (!RaivaSoPelaVitimaDeTeste && !o.Social.AlgozEhInimigo(majin.Assinatura)) continue;
 
 			if (AmigoAbatido(o, vitima.Name, NivelDeRaiva.Extrema)) AnunciarRaiva(o, extrema: true);
 		}

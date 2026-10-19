@@ -280,6 +280,27 @@ public sealed class SkillBook
 		_versao++;
 	}
 
+	/// <summary>
+	/// (2026-10-18) TROCA UMA SKILL POR OUTRA NO LIVRO, guardando como ela entrou: comprada continua comprada (e devolve o marco no dia em que
+	/// for esquecida), ensinada continua ensinada, e o que a compra somou na ficha passa a ser da nova -- quem a esquecer desfaz o mesmo. Nao
+	/// cobra nem devolve nada. E a migracao de quando o port poe uma skill no lugar de outra: a `Regenerate` do Majin que virou o Sleep
+	/// (`Races.SonoDoMajin`). Devolve se trocou (falso sem a velha, ou com a nova ja no livro).
+	/// </summary>
+	public bool Trocar(string de, string para)
+	{
+		if (!Sabe(de) || Sabe(para)) return false;
+		bool comprada = _compradas.Contains(de), ensinada = _ensinadas.Contains(de);
+		_ganhos.TryGetValue(de, out Dictionary<string, double>? ganho);
+		Esquecer(de);
+		_ganhos.Remove(de);
+		_aprendidas.Add(para);
+		if (ensinada) _ensinadas.Add(para);
+		if (comprada) _compradas.Add(para);
+		if (ganho != null) _ganhos[para] = ganho;
+		_versao++;
+		return true;
+	}
+
 	public void Carregar(IEnumerable<string> paths)
 	{
 		_aprendidas.Clear();

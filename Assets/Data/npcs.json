@@ -112,6 +112,16 @@
           "anuncioDaChegada": "Freeza chegou a Namek atras das Esferas do Dragao! Os Namekuseijins estao em perigo!",
           "anuncioDaQueda": "O corpo de Freeza se desfaz sobre a terra verde de Namek." }
       ],
+      "tropa": {
+        "molde": "soldado_do_freeza",
+        "quantos": 12,
+        "chegamJuntos": 6,
+        "segundosEntre": 20,
+        "caca": "Namekian",
+        "anuncioDaChegada": "Os soldados do Freeza se espalham por Namek -- caçando os Namekuseijins e as Esferas do Dragão!",
+        "anuncioDaPartida": "Sem o Freeza, os soldados dele fogem de Namek.",
+        "_nota": "(2026-10-18) A TROPA (`Core/Npc/Sagas.cs`, TropaDaSaga): enquanto o Freeza esta em Namek, ate 'quantos' soldados de pe pelo planeta -- 'chegamJuntos' no desembarque e um a cada 'segundosEntre' depois, que e tambem a reposicao de quem cai. Eles cacam a raca 'caca', pegam as esferas do chao e so as soltam derrotados. Quando o Freeza cai (ou a saga acaba), a tropa vai embora e o que ela carregava cai no chao."
+      },
       "_nota": "BEV_M2_TRIGGER_BP 100000, BEV_M2_DAYS 7. O prazo de 5 min (BEV_FREEZA2_FINAL_TIMER) so passa a correr na FORMA FINAL -- e por isso 'ultimatoSoNoUltimoDegrau'. (2026-10-17) 'ataqueDoUltimato: deathball' -- o dono: 'a super nova e so quando ele explode o planeta vegeta, namek e death ball ao qual ele joga pra baixo seguindo a mesma logica da super nova' (Core/Npc/Supernova.cs, AtaqueDoUltimato)."
     },
     {
@@ -364,6 +374,30 @@
     },
 
     {
+      "id": "soldado_do_freeza",
+      "nome": "Soldado do Freeza",
+      "tipo": "soldado",
+      "racas": ["Alien"],
+      "nomes": ["Appule", "Cui", "Orlen", "Banan", "Raspberry", "Blueberry", "Tagoma", "Shisami", "Kikono", "Sorbet", "Napple", "Mint", "Ledgic", "Abo", "Kado", "Rozie"],
+      "nomesUnicos": true,
+      "generos": ["Male", "Male", "Male", "Female"],
+      "bpRelativo": 0.3,
+      "bpPiso": 15000,
+      "marcosBase": 3,
+      "marcosPorDecada": 1.5,
+      "dadas": ["/datum/skill/ki/Ki_Wave"],
+      "vocacao": ["/datum/skill/tree/Body", "/datum/skill/tree/Mind"],
+      "nivelDasSkills": 30,
+      "maestria": 15,
+      "perfil": { "voa": 1, "ki": 0.7 },
+      "inteligencia": 45,
+      "agressividade": 80,
+      "coragem": 70,
+      "furia": 60,
+      "_nota": "(2026-10-18) O SOLDADO DO FREEZA -- a tropa da saga de Namek (bloco 'tropa' do elo 'freeza_namek'; quem os poe no mundo, dirige e tira e o `GameServer.TropaDaSaga.cs`). Tipo proprio ('soldado'): nasce so pelo evento, enquanto o Freeza esta em Namek. A RACA e 'Alien' e a ARMADURA vem dela: a tabela de roupa ja veste o Alien com a armadura de batalha do exercito, a mesma do Saiyajin, com a 'Armor 8' tingida (`RoupaDeNpc`, o case 'Alien'). A FORCA e um terco da media dos jogadores online ('bpRelativo' 0.3, +-15%), com 15 mil por baixo: forte pro povo de Namek (500 a 5 mil), vencivel por quem chega na saga (o marco e 100 mil de BP base). Todos voam ('perfil.voa' 1): o soldado do desenho atravessa o planeta voando, e a pe ele empacaria na agua de Namek."
+    },
+
+    {
       "id": "animal_galinha",
       "nome": "Galinha",
       "tipo": "animal",
@@ -570,12 +604,13 @@
           "anuncio": "Freeza TRANSFORMOU-SE! Sua nova forma pulsa com um poder ainda maior! (Forma 2)" },
         { "bp": 2000000,  "gatilhoMembro": 0.35, "cura": 0.5, "corpo": "Changling - Form 3", "cena": "corpo_novo",
           "anuncio": "Freeza TRANSFORMOU-SE! Sua nova forma pulsa com um poder ainda maior! (Forma 3)" },
-        { "bp": 3000000,  "gatilhoMembro": 0.25, "cura": 0.5, "corpo": "Changeling Form 4", "cena": "corpo_novo",
+        { "bp": 6000000,  "gatilhoMembro": 0.25, "cura": 0.5, "corpo": "Changeling Form 4", "cena": "corpo_novo",
           "anuncio": "Freeza TRANSFORMOU-SE! Sua nova forma pulsa com um poder ainda maior! (Forma 4)" },
-        { "bp": 4000000,  "cura": 0.5, "corpo": "Changeling Frieza 100% 3", "cena": "forma_final",
+        { "bp": 8000000,  "cura": 0.5, "corpo": "Changeling Frieza 100% 3", "cena": "forma_final",
           "anuncio": "FREEZA ATINGIU SUA FORMA FINAL! Derrotem-no antes que ele destrua o planeta!" }
       ],
       "_nota": "BEV_FREEZA2_BPS e BEV_FREEZA2_THRESHOLDS (BossEvents.dm:54,67). O ULTIMO degrau nao tem gatilho: nada o encerra.",
+      "_bp": "(2026-10-18, dono: 'dobre o bp da quarta e quinta forma do freeza namek') A 4a e a 5a forma tem o DOBRO do DM: 6 e 8 milhoes, e nao os 3e6 e 4e6 do BEV_FREEZA2_BPS. As tres primeiras sao as do DM. A saga que ja disparou antes desta mudanca tem o BP velho pinado no sagas.json: a carga ergue todo degrau pinado que ficou abaixo da ficha (GameServer.Sagas.cs, ErguerOsPinosAteAFicha).",
       "_cena": "(v0.3.0, dono: 'quando boss se transoforma ele tem cinematica igual um player') A 'cena' de cada degrau e a cena de jogador que ele toca ao trocar de corpo: 'corpo_novo' e o surto da escada do Frost Demon, 'forma_final' a cena grande das evolucoes dele (Core/Forms/Cinematicas.cs, CenaDeChefe). O corpo novo so aparece na virada da cena."
     },
 

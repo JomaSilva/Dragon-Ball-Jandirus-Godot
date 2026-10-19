@@ -638,6 +638,14 @@ public partial class GameServer
 			// `GuiarOAnimal` (`GameServer.Animais.cs`).
 			if (!GuiarOAnimal(npc, dt, out presa, out destino)) return;
 		}
+		else if (npc.Papel is { Tipo: Jandirus.Core.Npc.TipoDeNpc.Soldado } && npc.CerebroDaPosse == null && !SoldadoComoHostilComumDeTeste)
+		{
+			// (2026-10-18) O SOLDADO DE SAGA (a tropa do Freeza em Namek): nem habitante, nem hostil comum. Ele caca o POVO do planeta -- NPC
+			// inclusive: o "AI nao ataca AI" do DM e a regra do hostil, e a tropa existe justamente pra atacar o povo --, vai atras das esferas do
+			// chao e de quem as carrega, revida quem o ataca e foge quando e derrotado. ANTES do ramo do habitante de proposito: aquele o
+			// entregaria ao `PresaDoHostil`, que so ve jogador. Ver `GuiarOSoldado` (`GameServer.TropaDaSaga.cs`).
+			if (!GuiarOSoldado(npc, out presa, out destino)) return;
+		}
 		else if (npc.Papel != null && npc.CerebroDaPosse == null)
 		{
 			// ============================ O HABITANTE. ELE NAO E A FERA. ============================
@@ -1083,7 +1091,10 @@ public partial class GameServer
 		if (npc.PresaEngajada != 0
 			&& _players.TryGetValue(npc.PresaEngajada, out ServerPlayer? engajada)
 			&& engajada.Id != npc.Id && EhJogador(engajada)
-			&& !EhCadaver(engajada) && !engajada.Ficha.KO
+			&& !EhCadaver(engajada)
+			// (2026-10-18) QUEM MATA NAO LARGA O CAIDO -- o `if(src.target.KO && !src.murderToggle) lostTarget()` do DM (`NPCAI.dm:161`). O chefe de saga
+			// (letal, `NascerChefeDaSaga`) fica com a presa nocauteada ate acabar com ela; o hostil comum a larga, como sempre.
+			&& (!engajada.Ficha.KO || npc.Combate.Letal)
 			&& engajada.Zone.Hash == npc.Zone.Hash
 			&& (CacaOPlaneta(npc) || (engajada.Pos - npc.Pos).LengthSquared <= RaioDePerseguicao * RaioDePerseguicao))
 			return engajada;
@@ -1207,6 +1218,8 @@ public partial class GameServer
 			// de quem se dividiu: desde que o corpo possuido usa as tecnicas do dono, a fera fazia a copia e passava a
 			// luta batendo nela. A copia e o proprio corpo, dividido -- e nao outro corpo que ela ve.
 			if (EhCopiaDeG12(o.Id, fera.Id)) continue;
+			// (2026-10-18) O OLHO DE QUEM OBSERVA UMA NAVE nao e presa: ninguem o ve, e o corpo dele esta na ponte -- ver `GameServer.NaveObservar.cs`.
+			if (EhOlhoDeFora(o)) continue;
 			// `!M.attackable` -- so a furia pergunta (`lssjbuff.dm:618`); o laco do macaco nao (`Oozaru.dm:191`).
 			if (!macaco && o.Combate is { Intocavel: true }) continue;
 			if (Jandirus.Core.Social.Fusao.DistanciaEmTilesDoDm(fera.Pos, o.Pos, ZoneCollision.TileSize) > raio) continue;

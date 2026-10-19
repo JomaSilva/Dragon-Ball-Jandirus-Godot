@@ -145,6 +145,47 @@ public partial class MenuDeInteracao : CanvasLayer
 	/// </summary>
 	public static bool PegarDoChaoSoPeloVerboDeTeste;
 
+	// =====================================================================
+	// A ESFERA DO DRAGAO NO CHAO -- a SETIMA fonte de alvo da tecla E (dono, 2026-10-18)
+	// =====================================================================
+	/// <summary>
+	/// A ESFERA DO DRAGAO MAIS PERTO, ao alcance de pegar, se ela for o alvo. O dono: *"n to conseguindo pegar a esfera do dragao"* e *"seria
+	/// bom aparecer a mensagem de pegar a esfera assim como pega um item dropado"* -- ela so se pegava pelo botao "Pegar esfera" da aba World,
+	/// e a tecla E, que pega tudo o que esta largado, nao a enxergava. Como a coisa largada, ela nao esta em `cli.Obras` -- vem no
+	/// `S2C.Esferas` (`cli.Esferas`) -- e disputa pela regra de sempre, a distancia: a mobilia e a coisa largada MAIS PERTO ganham dela.
+	///
+	/// O CORTE E O DO SERVIDOR: a caixa de `Esferas.AlcanceDePegar` (um tile e meio, o `oview(1)` do `Get()`) em volta do corpo -- a
+	/// pergunta do `GameServer.EsferaPerto`. O E PEGA, sem menu: o `db_pegar` de producao, que leva a mais perto.
+	/// </summary>
+	private static GameClient.EsferaInfo? EsferaGanha(GameClient.ObraInfo? obra, GameClient.LargadoInfo? largado)
+	{
+		if (EsferaSoPeloMenuDeTeste) return null;
+		if (GameClient.Instance is not { } cli || World.Instancia?.PosicaoDesenhadaDe(cli.LocalId) is not { } eu) return null;
+
+		const float alcance = Jandirus.Core.Magic.Esferas.AlcanceDePegar;
+		GameClient.EsferaInfo? melhor = null;
+		float melhorDist = float.MaxValue;
+		foreach (GameClient.EsferaInfo e in cli.Esferas)
+		{
+			if (e.Tipo != Jandirus.Net.Protocol.CoisaDeEsfera.Esfera) continue;
+			if (Math.Abs(e.Pos.X - eu.X) > alcance || Math.Abs(e.Pos.Y - eu.Y) > alcance) continue;
+			float d = eu.DistanceSquaredTo(e.Pos);
+			if (d >= melhorDist) continue;
+			melhorDist = d;
+			melhor = e;
+		}
+		if (melhor == null) return null;
+		if (obra is { } o && eu.DistanceSquaredTo(o.Pos) <= melhorDist) return null;
+		if (largado is { } l && eu.DistanceSquaredTo(l.Pos) < melhorDist) return null;
+		return melhor;
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagesferae`): a tecla E nao enxerga a esfera -- o jogo de antes de 2026-10-18, em que ela so se pegava
+	/// pelo botao da aba World. Lido pela propria <see cref="EsferaGanha"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool EsferaSoPeloMenuDeTeste;
+
 	private void Montar()
 	{
 		_raiz = new Control { AnchorRight = 1, AnchorBottom = 1, Visible = false };
@@ -245,6 +286,14 @@ public partial class MenuDeInteracao : CanvasLayer
 		{
 			_dica.Visible = true;
 			_dica.Text = $"[E] {NomeDaPorta(porta)}";
+			return;
+		}
+
+		// A ESFERA DO DRAGAO NO CHAO, pela mesma regra (e a coisa largada mais perto ganha dela). Ver `EsferaGanha`.
+		if (EsferaGanha(perto, NoChaoGanha(perto)) is { } esfera)
+		{
+			_dica.Visible = true;
+			_dica.Text = $"[E] pegar a {Jandirus.Core.Magic.Esferas.NomeDaEsfera(esfera.Numero)}";
 			return;
 		}
 
@@ -380,6 +429,9 @@ public partial class MenuDeInteracao : CanvasLayer
 	private static string VeiculoMontado()
 	{
 		if (GameClient.Instance is not { } cli) return "";
+		// (2026-10-18) OBSERVANDO UMA NAVE DE FORA, a pagina e a do olho (`Interacoes.TipoDoOlho`): o console esta a um mundo de distancia,
+		// e por ela se volta ao corpo -- pela mesma porta do veiculo montado, a "distancia zero" de sempre.
+		if (cli.Observador) return Interacoes.TipoDoOlho;
 		return Interacoes.DoVeiculo(cli.VeiculoMontado).Length > 0 ? cli.VeiculoMontado : "";
 	}
 
@@ -387,6 +439,7 @@ public partial class MenuDeInteracao : CanvasLayer
 	private static string NomeDoVeiculo()
 	{
 		if (GameClient.Instance is not { } cli) return "";
+		if (cli.Observador) return "Observando a nave";
 		return cli.NomeDoVeiculo.Length > 0 ? cli.NomeDoVeiculo : cli.VeiculoMontado.Replace('_', ' ');
 	}
 
@@ -575,6 +628,13 @@ public partial class MenuDeInteracao : CanvasLayer
 			return;
 		}
 
+		// A ESFERA DO DRAGAO NO CHAO: o E PEGA, sem menu -- o `db_pegar` de producao. Ver `EsferaGanha`.
+		if (EsferaGanha(perto, NoChaoGanha(perto)) is not null)
+		{
+			GameClient.Instance?.SendVerbo("db_pegar", "");
+			return;
+		}
+
 		// O QUE ESTA LARGADO NO CHAO: o E PEGA, sem menu nenhum -- ver `NoChaoGanha`.
 		if (NoChaoGanha(perto) is { } noChao)
 		{
@@ -730,11 +790,29 @@ public partial class MenuDeInteracao : CanvasLayer
 				// TUDO PELO CANAL DE VERBOS. O `abrir_tech` abria a grade da bancada de pesquisa por
 				// aqui; a grade morreu (fabricar e na aba Tech do menu P) e com ela o unico desvio que
 				// este `default` tinha.
-				GameClient.Instance?.SendVerbo(acao.Verbo, acao.Arg);
+				if (RumoQueVaiComOLeme(acao) is { } rumo)
+				{
+					// (2026-10-18) LARGAR O LEME DA NAVE GRANDE COM O NAV SYSTEM LIGADO: o destino vai junto e a nave segue sozinha
+					// (`GameServer.NaveRumo.cs`). O piloto automatico DESTE cliente sai calado -- quem conta da viagem agora e o servidor.
+					GameClient.Instance?.SendVerbo(acao.Verbo, rumo);
+					World.Instancia?.SoltarPiloto();
+				}
+				else GameClient.Instance?.SendVerbo(acao.Verbo, acao.Arg);
 				Fechar();
 				break;
 		}
 	}
+
+	/// <summary>
+	/// O RUMO QUE VAI COM O LEME (dono, 2026-10-18: *"permita q na capital ship ao colocar pra ela ir pra um planeta com nav system e o jogador
+	/// sair do piloto, ela ainda continua"*): ao leme da NAVE GRANDE, com o piloto automatico ligado, o "voltar a ponte" leva o destino do nav
+	/// system em coordenada de galaxia ("x/y"). O piloto automatico mora neste cliente (`LocalPlayer.Destino`, e o `RumoDepoisDeDecolar` de quem
+	/// ainda esta pousado), e por isso e daqui que o destino tem de sair. Nulo = nada a levar: o verbo sai como a tabela o escreveu.
+	/// </summary>
+	internal static string? RumoQueVaiComOLeme(Interacoes.Acao acao) =>
+		acao.Verbo == "nave_pilotar" && GameClient.Instance?.VeiculoMontado == NaveGrande.Tipo && World.Instancia?.DestinoDoPiloto is { } d
+			? $"{d.X:0}/{d.Y:0}"
+			: null;
 
 	/// <summary>
 	/// O NOME NO ALTO DO MENU. Guardado ao abrir, e nao relido: o alvo pode ser um veiculo, que nao

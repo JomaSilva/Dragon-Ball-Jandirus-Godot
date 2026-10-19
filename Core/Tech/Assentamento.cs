@@ -18,6 +18,9 @@ public enum RecusaDeAssento
 
 	/// <summary>Ja tem construcao ou nave neste pedaco de chao.</summary>
 	LugarOcupado,
+
+	/// <summary>(2026-10-18) Uma passagem do interior da nave grande: a plataforma, a chegada, a porta da ponte. Ver <see cref="NaveGrande.EhPassagem"/>.</summary>
+	PassagemDaNave,
 }
 
 /// <summary>
@@ -95,7 +98,9 @@ public static class Assentamento
 	/// <see cref="TemCoisaEm"/>, que o cliente tambem chama com a lista que ele recebeu) e as regras
 	/// de posse. Ver `GameServer.Posicionar`.
 	/// </summary>
-	public static RecusaDeAssento DoLugar(ZoneCollision? mapa, Vec2 dePos, int cx, int cy)
+	/// <param name="zona">A zona do lugar. So as PASSAGENS da nave grande perguntam por ela (<see cref="NaveGrande.EhPassagem"/>); quem nao
+	/// a passa nao as enxerga.</param>
+	public static RecusaDeAssento DoLugar(ZoneCollision? mapa, Vec2 dePos, int cx, int cy, ZoneKey zona = default)
 	{
 		// A CAIXA E QUADRADA (Chebyshev) e nao redonda -- e a conta que o servidor sempre fez, e
 		// trocar por distancia euclidiana mudaria o alcance nas diagonais sem ninguem ter pedido.
@@ -103,6 +108,9 @@ public static class Assentamento
 						  cy * ZoneCollision.TileSize + ZoneCollision.TileSize / 2f);
 		if (Math.Abs(centro.X - dePos.X) > Alcance || Math.Abs(centro.Y - dePos.Y) > Alcance)
 			return RecusaDeAssento.LongeDemais;
+
+		// AS PASSAGENS DA NAVE GRANDE (2026-10-18) vem antes do mapa: pro mapa elas sao chao -- e sao, so que de passar.
+		if (NaveGrande.EhInterior(zona, out _) && NaveGrande.EhPassagem(cx, cy)) return RecusaDeAssento.PassagemDaNave;
 
 		// SEM MAPA NAO HA O QUE CONFERIR. Acontece em zona gerada que ainda nao carregou e no
 		// cliente antes do primeiro pacote de colisao -- e "nao sei" nao pode virar "nao pode",
@@ -151,6 +159,7 @@ public static class Assentamento
 		RecusaDeAssento.EmCimaDeNuvem => "não dá pra assentar em cima de nuvem.",
 		RecusaDeAssento.BeiradaDoMapa => "é a beirada do mundo -- escolha um lugar mais pra dentro.",
 		RecusaDeAssento.LugarOcupado => "já tem coisa demais neste ponto.",
+		RecusaDeAssento.PassagemDaNave => "aqui é passagem da nave (a plataforma, a chegada ou a porta da ponte) -- escolha outro lugar.",
 		_ => "não deu pra assentar aí.",
 	};
 }

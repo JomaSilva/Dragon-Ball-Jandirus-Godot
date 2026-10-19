@@ -179,6 +179,11 @@ public static partial class Tecnicas
 		Por("Regenerate", "Regenerar", Modo.Instantanea,
 			"Faz um membro decepado voltar a crescer, ou cura por inteiro o mais ferido.");
 
+		// (2026-10-18) O SLEEP DO MAJIN -- a skill do port que tomou o lugar da `Regenerate` na arvore dele (`Races.SonoDoMajin`).
+		Por(Races.SonoDoMajin.Verbo, "Sleep", Modo.Instantanea,
+			"Deita e dorme 5 s. Sem ser incomodado, cada membro se refaz em boa parte (60% da vida dele). Andar, agir ou apanhar acorda, "
+			+ "e o sono se perde. Espera de 1 min, dormindo inteiro ou acordado antes.");
+
 		Por("Space_Flight", "Decolar", Modo.Instantanea,
 			"Deixa a superficie e sobe ao espaco.", aba: "Outros");
 

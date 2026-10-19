@@ -128,6 +128,13 @@ public sealed partial class GameServer
 	private long _arremessosFeitos;
 
 	/// <summary>
+	/// (2026-10-18) DEFEITO INJETADO (robo `--diagpedacos`): o corpo DESFEITO volta a ser arremessado e arrastado pelo feixe -- o jogo de antes,
+	/// em que o golpe no lugar do Majin em pedacos levava os pedacos junto. Lido pelas duas portas do arremesso (esta e a do tiro, em
+	/// `GameServer.Projeteis.cs`) e pela do arrasto (`PodeSerLevadoPeloFeixe`). Falso em jogo, sempre.
+	/// </summary>
+	internal static bool DesfeitoVoaDeTeste;
+
+	/// <summary>
 	/// PoE O CORPO NO AR -- o `AddEffect(/effect/knockback)` do original, e a UNICA porta pra isso.
 	///
 	/// ============================ POR QUE ISTO VIROU METODO ============================
@@ -150,6 +157,9 @@ public sealed partial class GameServer
 	private void Arremessar(ServerPlayer d, Vec2 rumo, double forca, int tiques)
 	{
 		if (d.Combate is { Inabalavel: true }) return;   // (v0.4.0) sem recuo -- Unstoppable Force, Primal Bloodlust
+		// (2026-10-18) O MAJIN DESFEITO NAO VOA: os pedacos sao o corpo espalhado no chao, e o golpe no lugar dele nao leva nada -- o dono:
+		// *"se eu bater onde estava o corpo do majin eles viajam juntos [...] tinham q ser separados e imunes a golpes"*. Ver `DesfeitoVoaDeTeste`.
+		if (d.Combate is { Desfeito: true } && !DesfeitoVoaDeTeste) return;
 		tiques = Math.Clamp(tiques, 1, Empurrao.TiquesMax);
 		_arremessosFeitos++;
 

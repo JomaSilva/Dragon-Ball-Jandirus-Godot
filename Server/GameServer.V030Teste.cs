@@ -322,9 +322,12 @@ public sealed partial class GameServer
 				   && CorpoOcupado.DeByte((byte)Ocupacao.DeathBallDoUltimato) == Ocupacao.DeathBallDoUltimato
 				   && CorpoOcupado.DeByte((byte)Ocupacao.CargaDemoniaca) == Ocupacao.CargaDemoniaca
 				   && CorpoOcupado.DeByte((byte)Ocupacao.Secando) == Ocupacao.Secando
-				   // (2026-10-17) o ULTIMO hoje e o grito do desabafo do Lendario -- os de 15 pra cima viajam pela porta da ocupacao estendida
+				   // (2026-10-17) o grito do desabafo do Lendario -- os de 15 pra cima viajam pela porta da ocupacao estendida
 				   && CorpoOcupado.DeByte((byte)Ocupacao.GritoDoDesabafo) == Ocupacao.GritoDoDesabafo
-				   && CorpoOcupado.DeByte((byte)Ocupacao.GritoDoDesabafo + 1) == Ocupacao.Livre);
+				   // (2026-10-18) e o Sleep do Majin, que veio depois dele. O "acima deles" e o MAIOR do `enum`, e nao um nome cravado: a regua
+				   // cravava o 17, e o 17 virou o `Dormindo`.
+				   && CorpoOcupado.DeByte((byte)Ocupacao.Dormindo) == Ocupacao.Dormindo
+				   && CorpoOcupado.DeByte((byte)((byte)Enum.GetValues<Ocupacao>().Max() + 1)) == Ocupacao.Livre);
 
 		// (2026-10-17) A PORTA DA OCUPACAO ESTENDIDA, NO FIO: com 15 nos 4 bits o valor de verdade vai num byte no FIM do pacote, depois da
 		// altitude, do canal e de quem leva no colo -- e so quem esta num estado de 15 pra cima o paga.
@@ -1600,36 +1603,39 @@ public sealed partial class GameServer
 		LimparTudoDaBancada();
 		ServerPlayer p = ForjarV2("Halterofilista", TerraFirmeG12(4), 10_000);
 		p.Mochila.Guardar(Jandirus.Core.Items.CatalogoDeItens.Pesos);
-		p.Ficha.pesoMaximoKg = 0;
 		p.Ficha.weight_cap_hw = 1000;   // o limite do corpo, escrito: e um recorde que so a luta sobe
 		p.Ficha.Zeni = 12_000;
-		List<string> Fazer(string acao) => Ouvir(() => ComandoDeItem(p, "item_" + acao, Jandirus.Core.Items.CatalogoDeItens.Pesos));
+		// (2026-10-18) o peso e um item com estado: melhorar e trocar de arte mudam o id dele -- a bancada segue o de AGORA
+		string Pesos() => p.Mochila.Pilhas.FindLast(x => Jandirus.Core.Items.PesoDeTreino.EhPeso(x.Id)).Id ?? "";
+		double Max() => Jandirus.Core.Items.PesoDeTreino.MaximoDe(Pesos());
+		List<string> Fazer(string acao) => Ouvir(() => ComandoDeItem(p, "item_" + acao, Pesos()));
 
 		Jandirus.Core.Items.PesoDeTreino.SoDobrandoDeTeste = true;
 		List<string> semABotao;
 		try { semABotao = Fazer(Jandirus.Core.Items.PesoDeTreino.AcaoAteOLimite); }
 		finally { Jandirus.Core.Items.PesoDeTreino.SoDobrandoDeTeste = false; }
-		bool soDobrando = Jandirus.Core.Items.PesoDeTreino.Maximo(p.Ficha.pesoMaximoKg) == 50 && p.Ficha.Zeni == 12_000;
+		bool soDobrando = Max() == 50 && p.Ficha.Zeni == 12_000;
 
 		Fazer(Jandirus.Core.Items.PesoDeTreino.AcaoAteOLimite);
-		double depois = p.Ficha.pesoMaximoKg, zeni = p.Ficha.Zeni;
+		double depois = Max(), zeni = p.Ficha.Zeni;
 		List<string> deNovo = Fazer(Jandirus.Core.Items.PesoDeTreino.AcaoAteOLimite);
 		Fazer("melhorar");
 		AfirmarV30("**ATE O LIMITE DO CORPO PELA MOCHILA**: um clique leva os pesos de 50 a 1.600 kg por 7.500 zeni; o segundo diz que ja chegou; e dobrar continua valendo (3.200 kg por mais 3.000)",
-				   depois == 1600 && zeni == 4500 && Disse(deNovo, "já chegam") && p.Ficha.pesoMaximoKg == 3200 && p.Ficha.Zeni == 1500,
-				   $"depois {depois}; zeni {zeni}; de novo: {string.Join(" | ", deNovo)}; agora {p.Ficha.pesoMaximoKg} kg e {p.Ficha.Zeni} zeni");
+				   depois == 1600 && zeni == 4500 && Disse(deNovo, "já chegam") && Max() == 3200 && p.Ficha.Zeni == 1500,
+				   $"depois {depois}; zeni {zeni}; de novo: {string.Join(" | ", deNovo)}; agora {Max()} kg e {p.Ficha.Zeni} zeni");
 		AfirmarV30("(defeito injetado: so dobrando) o botao nao leva a lugar nenhum -- *\"sem ter q ficar dobrando o peso varias vezes ate chegar no q vc quer\"*",
 				   soDobrando && Disse(semABotao, "já chegam"), string.Join(" | ", semABotao));
 
 		// A ARTE QUE CAI NO CHAO: escolhida pela grade (a porta de producao) e largada pela mochila
 		(string nome, string caminho) = PalcoV30_ArteDosPesos(p.Id);
 		Fazer("largar");
-		Largado? comArte = LargadosDe(p.Zone.Hash).FindLast(l => l.Item == Jandirus.Core.Items.CatalogoDeItens.Pesos);
-		p.Mochila.Guardar(Jandirus.Core.Items.CatalogoDeItens.Pesos);
+		Largado? comArte = LargadosDe(p.Zone.Hash).FindLast(l => Jandirus.Core.Items.PesoDeTreino.EhPeso(l.Item));
+		// o segundo peso tem a MESMA arte (no id dele): com o defeito, ele cai sem ela -- sem o defeito, cairia com ela
+		p.Mochila.Guardar(Jandirus.Core.Items.PesoDeTreino.IdDe(Jandirus.Core.Items.PesoDeTreino.KgDeFabrica, nome));
 		Jandirus.Core.Items.PesoDeTreino.ArteSoNoCorpoDeTeste = true;
 		try { Fazer("largar"); }
 		finally { Jandirus.Core.Items.PesoDeTreino.ArteSoNoCorpoDeTeste = false; }
-		Largado? semArte = LargadosDe(p.Zone.Hash).FindLast(l => l.Item == Jandirus.Core.Items.CatalogoDeItens.Pesos);
+		Largado? semArte = LargadosDe(p.Zone.Hash).FindLast(l => Jandirus.Core.Items.PesoDeTreino.EhPeso(l.Item));
 		AfirmarV30("**OS PESOS CAEM COM A ARTE QUE O DONO ESCOLHEU**: a folha vai no monte do chao (e dali pro fio e pro desenho)",
 				   nome.Length > 0 && comArte != null && comArte.Arte == caminho, $"arte '{nome}' ({caminho}); no chao '{comArte?.Arte}'");
 		AfirmarV30("(defeito injetado: a arte so no corpo) os pesos largados caem com a camisa de fabrica",
@@ -1645,8 +1651,7 @@ public sealed partial class GameServer
 		GD.Print("[v030] --- W) os pesos que lembram a porcentagem: o \"equipar\" veste a ultima escolhida (item 28) ---");
 		LimparTudoDaBancada();
 		ServerPlayer p = ForjarV2("Pesista", TerraFirmeG12(4), 10_000);
-		p.Mochila.Guardar(CatalogoDeItens.Pesos);
-		p.Ficha.pesoMaximoKg = 0;   // os 50 kg de fabrica
+		p.Mochila.Guardar(CatalogoDeItens.Pesos);   // os 50 kg de fabrica
 		List<string> Fazer(ServerPlayer quem, string acao, string valor = "") =>
 			Ouvir(() => ComandoDeItem(quem, "item_" + acao, valor.Length > 0 ? $"{CatalogoDeItens.Pesos}/{valor}" : CatalogoDeItens.Pesos));
 		double quarenta = 0.4 * PesoDeTreino.Maximo(0);

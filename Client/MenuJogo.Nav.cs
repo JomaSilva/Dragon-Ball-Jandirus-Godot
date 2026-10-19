@@ -371,6 +371,15 @@ public partial class MenuJogo
 	private static bool AoLemeDeUmaNave => GameClient.Instance is { VeiculoMontado.Length: > 0 };
 
 	/// <summary>
+	/// (2026-10-18) AO LEME DA NAVE GRANDE o piloto automatico sobrevive ao leme largado: a nave segue sozinha e avisa quando chegar
+	/// (`GameServer.NaveRumo.cs`). A frase vai no fim do aviso de rumo -- e o unico lugar em que o jogador descobre que pode.
+	/// </summary>
+	private static string DaPraLargarOLeme =>
+		GameClient.Instance?.VeiculoMontado == Jandirus.Core.Tech.NaveGrande.Tipo
+			? " Na nave grande dá pra largar o leme (E > Voltar à ponte): ela segue sozinha e avisa quando chegar."
+			: "";
+
+	/// <summary>
 	/// (v0.2.1) FORA DO ESPACO E AO LEME: o piloto que DECOLA. Devolve se assumiu a viagem -- o destino fica guardado
 	/// (em coordenada de galaxia) ate a nave romper a atmosfera. Ver `LocalPlayer.RumoDepoisDeDecolar`.
 	/// </summary>
@@ -378,7 +387,7 @@ public partial class MenuJogo
 	{
 		if (!AoLemeDeUmaNave) return false;
 		LocalPlayer.DecolarERumar(new Jandirus.Core.World.Vec2(destinoNoEspaco.X, destinoNoEspaco.Y));
-		Chat.Sistema($"a nave decola sozinha: sobe até o espaço e segue {praOnde}. Qualquer tecla de movimento desliga o piloto.");
+		Chat.Sistema($"a nave decola sozinha: sobe até o espaço e segue {praOnde}. Qualquer tecla de movimento desliga o piloto.{DaPraLargarOLeme}");
 		Fechar();
 		return true;
 	}
@@ -388,7 +397,7 @@ public partial class MenuJogo
 		if (!noEspaco && DecolarERumar(new Vector2(p.Pos.X, p.Pos.Y), $"pra {GameClient.Instance?.NomeDoPlaneta(p) ?? p.Nome}")) return;
 		if (!noEspaco) { Chat.Sistema("voce precisa estar no espaco pra viajar."); return; }
 		World.Instancia?.Pilotar(new Vector2(p.Pos.X, p.Pos.Y));
-		Chat.Sistema($"rumo a {GameClient.Instance?.NomeDoPlaneta(p) ?? p.Nome}. Qualquer tecla de movimento desliga o piloto.");
+		Chat.Sistema($"rumo a {GameClient.Instance?.NomeDoPlaneta(p) ?? p.Nome}. Qualquer tecla de movimento desliga o piloto.{DaPraLargarOLeme}");
 		Fechar();
 	}
 
@@ -409,7 +418,7 @@ public partial class MenuJogo
 		if (!noEspaco) { Chat.Sistema("voce precisa estar no espaco pra viajar."); return; }
 		World.Instancia?.Pilotar(destino);
 		Chat.Sistema("rumo ao porto do sistema. A chegada e um ponto vazio -- abra o mapa do sistema "
-					 + "(aba Nav) pra escolher o mundo. Qualquer tecla de movimento desliga o piloto.");
+					 + "(aba Nav) pra escolher o mundo. Qualquer tecla de movimento desliga o piloto." + DaPraLargarOLeme);
 		Fechar();
 	}
 

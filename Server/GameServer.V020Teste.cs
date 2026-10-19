@@ -1067,55 +1067,58 @@ public sealed partial class GameServer
 		// ---- pela porta de producao (`item_ajustar`, `item_melhorar`)
 		ServerPlayer pl = ForjarV2("Pesado", TerraFirmeG12(4), 5_000);
 		Guardar(pl, CatalogoDeItens.Pesos);
+		// (2026-10-18) O PESO E UM ITEM COM ESTADO: melhorar troca o id dele (o maximo vai no id). A bancada segue o id de AGORA.
+		string Pesos() => pl.Mochila.Pilhas.Find(p => PesoDeTreino.EhPeso(p.Id)).Id ?? "";
+		double Max() => PesoDeTreino.MaximoDe(Pesos());
 		pl.Ficha.Zeni = 2_000;
 		pl.Ficha.Recursos = 0;
 		double limiteDoCorpo = pl.Ficha.weight_cap_hw;
 
-		ComandoDeItem(pl, "item_ajustar", $"{CatalogoDeItens.Pesos}/100");
+		ComandoDeItem(pl, "item_ajustar", $"{Pesos()}/100");
 		AfirmarV2("**OS PESOS VEM LEVES**: recem-fabricados, 100% do maximo sao 50 kg no corpo",
 				  Math.Abs(pl.Ficha.Weighted - 50) < 1e-6, $"{pl.Ficha.Weighted:0.###} kg (o corpo aguenta {limiteDoCorpo:0})");
 		AfirmarV2("...e 50 kg num corpo de 5 mil de poder nao rendem nada: o ganho de treino fica em 1x (falta melhorar)",
 				  Math.Abs(pl.Ficha.weight - 1) < 1e-9 && pl.Ficha.weight_ratio < 0.5, $"ganho {pl.Ficha.weight:0.##}x, razao do peso {pl.Ficha.weight_ratio:0.####}");
-		List<string> doAjuste = Ouvir(() => ComandoDeItem(pl, "item_ajustar", $"{CatalogoDeItens.Pesos}/100"));
+		List<string> doAjuste = Ouvir(() => ComandoDeItem(pl, "item_ajustar", $"{Pesos()}/100"));
 		AfirmarV2("...a frase do ajuste diz os quilos e que estao LEVES DEMAIS -- em palavra, e nao numa razao que entregaria o poder de quem le",
 				  Disse(doAjuste, "50 de 50 kg") && Disse(doAjuste, "leve demais") && !Disse(doAjuste, "x o que seu corpo"), Ultimos(doAjuste));
-		ComandoDeItem(pl, "item_ajustar", $"{CatalogoDeItens.Pesos}/40");
+		ComandoDeItem(pl, "item_ajustar", $"{Pesos()}/40");
 		AfirmarV2("**A PORCENTAGEM E DO MAXIMO**: 40% de 50 kg sao 20 kg", Math.Abs(pl.Ficha.Weighted - 20) < 1e-6, $"{pl.Ficha.Weighted:0.###} kg");
 
-		List<string> falas = Ouvir(() => ComandoDeItem(pl, "item_melhorar", CatalogoDeItens.Pesos));
-		AfirmarV2("**O MAXIMO SE COMPRA**: a primeira melhoria custa 500 zeni e leva o maximo a 100 kg",
-				  pl.Ficha.pesoMaximoKg == 100 && pl.Ficha.Zeni == 1_500 && Disse(falas, "100 kg"), $"max {pl.Ficha.pesoMaximoKg}, zeni {pl.Ficha.Zeni} | {Ultimos(falas)}");
+		List<string> falas = Ouvir(() => ComandoDeItem(pl, "item_melhorar", Pesos()));
+		AfirmarV2("**O MAXIMO SE COMPRA**: a primeira melhoria custa 500 zeni e leva o maximo a 100 kg -- o maximo DESTE peso, no id dele",
+				  Max() == 100 && Pesos() == PesoDeTreino.IdDe(100, "") && pl.Ficha.Zeni == 1_500 && Disse(falas, "100 kg"), $"{Pesos()}, zeni {pl.Ficha.Zeni} | {Ultimos(falas)}");
 		AfirmarV2("...e o que esta NO CORPO nao muda sozinho: continuam os 20 kg ate o jogador ajustar",
 				  Math.Abs(pl.Ficha.Weighted - 20) < 1e-6, $"{pl.Ficha.Weighted:0.###} kg");
-		ComandoDeItem(pl, "item_melhorar", CatalogoDeItens.Pesos);
-		AfirmarV2("a segunda custa 1.000 e leva a 200 kg", pl.Ficha.pesoMaximoKg == 200 && pl.Ficha.Zeni == 500, $"max {pl.Ficha.pesoMaximoKg}, zeni {pl.Ficha.Zeni}");
+		ComandoDeItem(pl, "item_melhorar", Pesos());
+		AfirmarV2("a segunda custa 1.000 e leva a 200 kg", Max() == 200 && pl.Ficha.Zeni == 500, $"max {Max()}, zeni {pl.Ficha.Zeni}");
 
-		falas = Ouvir(() => ComandoDeItem(pl, "item_melhorar", CatalogoDeItens.Pesos));
+		falas = Ouvir(() => ComandoDeItem(pl, "item_melhorar", Pesos()));
 		AfirmarV2("**SEM ZENI NAO MELHORA**: a terceira (1.500) e recusada com o preco nas duas moedas, e o maximo fica onde estava",
-				  pl.Ficha.pesoMaximoKg == 200 && pl.Ficha.Zeni == 500 && Disse(falas, "custa") && Disse(falas, "recursos"), Ultimos(falas));
+				  Max() == 200 && pl.Ficha.Zeni == 500 && Disse(falas, "custa") && Disse(falas, "recursos"), Ultimos(falas));
 
 		pl.Ficha.Recursos = Recurso.CustoEmRecursos(1_500);
-		ComandoDeItem(pl, "item_melhorar", $"{CatalogoDeItens.Pesos}/{Recurso.PalavraDeRecursos}");
+		ComandoDeItem(pl, "item_melhorar", $"{Pesos()}/{Recurso.PalavraDeRecursos}");
 		AfirmarV2("**OU COM RECURSOS**, pelo dobro: a mesma melhoria sai dos recursos e o zeni fica intacto",
-				  pl.Ficha.pesoMaximoKg == 400 && pl.Ficha.Zeni == 500 && pl.Ficha.Recursos == 0, $"max {pl.Ficha.pesoMaximoKg}, zeni {pl.Ficha.Zeni}, recursos {pl.Ficha.Recursos}");
+				  Max() == 400 && pl.Ficha.Zeni == 500 && pl.Ficha.Recursos == 0, $"max {Max()}, zeni {pl.Ficha.Zeni}, recursos {pl.Ficha.Recursos}");
 
-		ComandoDeItem(pl, "item_ajustar", $"{CatalogoDeItens.Pesos}/100");
+		ComandoDeItem(pl, "item_ajustar", $"{Pesos()}/100");
 		AfirmarV2("com o maximo em 400 kg, 100% sao 400 kg", Math.Abs(pl.Ficha.Weighted - 400) < 1e-6, $"{pl.Ficha.Weighted:0.###} kg");
 
 		// ---- o limite do CORPO continua onde estava: com pesos a altura dele, o treino rende e o excesso esmaga
-		pl.Ficha.pesoMaximoKg = limiteDoCorpo * 2;
-		ComandoDeItem(pl, "item_ajustar", $"{CatalogoDeItens.Pesos}/50");
+		TrocarOPeso(pl, Pesos(), PesoDeTreino.IdDe(limiteDoCorpo * 2, ""));
+		ComandoDeItem(pl, "item_ajustar", $"{Pesos()}/50");
 		AfirmarV2("com pesos a altura do corpo, a metade do maximo poe o corpo no limite dele: o treino rende 2x (a conta do DM, intacta)",
 				  Math.Abs(Esmagamento.Razao(pl.Ficha) - 1) < 0.01 && Math.Abs(pl.Ficha.weight - 2) < 0.02,
 				  $"razao {Esmagamento.Razao(pl.Ficha):0.###}, ganho {pl.Ficha.weight:0.###}x");
 
 		// ---- quem ja vestia mais do que os pesos dele aguentam volta com o que eles aguentam
-		pl.Ficha.pesoMaximoKg = 0;
+		TrocarOPeso(pl, Pesos(), CatalogoDeItens.Pesos);   // o vestido volta a ser o de fabrica (o `TrocarOPeso` segue o vestido)
 		pl.Ficha.Weighted = 80_000;
 		PrepararCombate(pl, null);
 		AfirmarV2("**O PERSONAGEM DE ANTES** (que vestia o dobro do limite do corpo, de graca) entra com o que os pesos dele aguentam: 50 kg",
 				  Math.Abs(pl.Ficha.Weighted - 50) < 1e-6, $"{pl.Ficha.Weighted:0.###} kg");
-		pl.Ficha.pesoMaximoKg = 200;
+		TrocarOPeso(pl, Pesos(), PesoDeTreino.IdDe(200, ""));
 		pl.Ficha.Weighted = 150;
 		PrepararCombate(pl, null);
 		AfirmarV2("CONTRA-EXEMPLO: quem veste MENOS que o maximo pago (150 de 200 kg) entra com os mesmos 150",
@@ -1125,14 +1128,14 @@ public sealed partial class GameServer
 		PesoDeTreino.TetoDoCorpoDeGracaDeTeste = true;
 		try
 		{
-			pl.Ficha.pesoMaximoKg = 0;
-			ComandoDeItem(pl, "item_ajustar", $"{CatalogoDeItens.Pesos}/100");
+			TrocarOPeso(pl, Pesos(), CatalogoDeItens.Pesos);
+			ComandoDeItem(pl, "item_ajustar", $"{Pesos()}/100");
 			AfirmarV2("(defeito injetado: o teto do corpo, de graca) sem pagar nada, 100% voltam a ser o DOBRO do limite do corpo -- a regua de cima reprovaria",
 					  pl.Ficha.Weighted > 50 * 100 && Esmagamento.Razao(pl.Ficha) > 1.9, $"{pl.Ficha.Weighted:0} kg, razao {Esmagamento.Razao(pl.Ficha):0.##}");
 		}
 		finally { PesoDeTreino.TetoDoCorpoDeGracaDeTeste = false; }
 
-		ComandoDeItem(pl, "item_tirar", CatalogoDeItens.Pesos);
+		ComandoDeItem(pl, "item_tirar", Pesos());
 		TirarDoMundoV2(pl);
 	}
 

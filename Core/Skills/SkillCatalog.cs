@@ -179,6 +179,16 @@ public sealed class SkillCatalog
 
 	public Skill? Get(string path) => _porPath.GetValueOrDefault(path);
 
+	/// <summary>
+	/// (2026-10-18) UMA SKILL DO PORT entra no catalogo -- a que nao existe no DM e por isso nao vem no `skills.json` (o Sleep do Majin,
+	/// `Races.SonoDoMajin`). So a carga a chama, depois do JSON e pelo mesmo motivo dos `AcendedoresDoPort`: o que o port escreve por cima do
+	/// DM mora em codigo, com o porque ao lado, e uma re-extracao nao o apaga.
+	/// </summary>
+	internal void Acrescentar(Skill s)
+	{
+		if (s.Path.Length > 0) _porPath[s.Path] = s;
+	}
+
 	public IEnumerable<Skill> Arvores => _porPath.Values.Where(s => s.Arvore);
 
 	/// <summary>
@@ -354,6 +364,10 @@ public sealed class SkillCatalog
 		AcendedoresDoPort.Aplicar(cat);
 		// ...E OS VERBS QUE O PORT DA A QUEM, NO DM, AGIA POR UM SISTEMA QUE AQUI NAO EXISTE (a Materialize e o ritual dela).
 		VerbosDoPort.Aplicar(cat);
+		// ...E O SLEEP DO MAJIN, a skill do port que toma o lugar da `Regenerate` na arvore dele (dono, 2026-10-18).
+		Races.SonoDoMajin.Aplicar(cat);
+		// ...E O SENSE COM CINCO NIVEIS, e nao o um do DM (dono, 2026-10-18).
+		SenseEmNiveis.Aplicar(cat);
 		return cat;
 	}
 

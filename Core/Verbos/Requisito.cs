@@ -107,6 +107,10 @@ public enum Fatos : uint
 	/// (`Races.SkillsRaciais`).
 	/// </summary>
 	SkillDoDnaPorEscolher = 1u << 27,
+
+	// ---- (2026-10-18) o Neo Tuffle ----
+	/// <summary>Passou pela maquina do Neo Tuffle Lab (`Fighter.NeoTuffle`), e esta no proprio corpo: o verb de possuir um nocauteado e dele.</summary>
+	NeoTuffle = 1u << 28,
 }
 
 /// <summary>

@@ -181,6 +181,15 @@ public static class Interacoes
 			"o mesmo conserto, por 200.000 recursos");
 
 	/// <summary>
+	/// (2026-10-18) ABASTECER -- o combustivel do pod e da Capital Ship (`Combustivel`). Um botao so, em toda porta da nave: parada, ao leme,
+	/// no console e observando. Vale em qualquer lugar, ate no espaco (o dono: com o tanque seco a nave para de vez *"ate alguem trazer
+	/// recursos"*), e paga com os recursos de quem aperta.
+	/// </summary>
+	private static readonly Acao Abastecer =
+		new("Abastecer", "nave_abastecer", "",
+			$"enche o tanque com os seus recursos ({Combustivel.RecursosPorUnidade:0.#} recurso por unidade) -- vale em qualquer lugar, até no espaço");
+
+	/// <summary>
 	/// AS ACOES DE UM TIPO DE OBRA. O `tipo` e o id do catalogo, que e a folha do typepath do DM
 	/// ("Bank", "Research_Station", "AppleTree").
 	/// </summary>
@@ -349,12 +358,24 @@ public static class Interacoes
 			new Acao("Converter meu corpo...", "and_menu", "androide", "só no Android Lab", Forma.Submenu),
 			new Acao("Colher DNA de um nocauteado", "colher_dna", "", "só no Bio-Android Lab"),
 			new Acao("Gestar bio-androide", "gestar", "", "leva um mês in-game"),
+			// (2026-10-18) O NEO TUFFLE: o laboratorio dos Tsufurujins -- ver `GameServer.NeoTuffle.cs`.
+			new Acao("Virar Neo Tuffle...", "tuffle_menu", "tuffle", "só no Neo Tuffle Lab", Forma.Submenu),
 		],
 
 		"Android_Creation_Mainframe/labs" =>
 		[
 			new Acao("Android Lab", "lab_androide", "", "transforma VOCÊ em androide"),
 			new Acao("Bio-Android Lab", "lab_bio", "", "cria um bio-androide a partir de DNAs"),
+			new Acao("Neo Tuffle Lab", "lab_tuffle", "", "só um Tsufurujin instala: transforma VOCÊ em Neo Tuffle"),
+		],
+
+		// (2026-10-18) A CONVERSAO DO TSUFURUJIN, nas duas moedas como as de cima (`GameServer.CustoNeoTuffle`, e o dobro em recursos).
+		"Android_Creation_Mainframe/tuffle" =>
+		[
+			new Acao("Neo Tuffle (1.000.000 zeni)", "virar_tuffle", "",
+					 "entra no corpo de um jogador nocauteado e o dirige com o poder dele"),
+			new Acao("Neo Tuffle (2.000.000 recursos)", "virar_tuffle", Economia.Recurso.PalavraDeRecursos,
+					 "a mesma conversão, paga em recursos (o dobro)"),
 		],
 
 		// CADA CONVERSAO NAS DUAS MOEDAS (dono, 2026-10-10): o preco e fixo, entao ele esta escrito no botao
@@ -690,10 +711,11 @@ public static class Interacoes
 		"Spacepod" or "Personal_Spacepod" =>
 		[
 			new Acao("Entrar", "nave_usar", "", "pilotando, a nave anda com você e atravessa água e lava"),
+			Abastecer,
 			MelhorarVelocidade,
 			MelhorarVelocidadeComRecursos,
-			new Acao("Ver estado", "nave_info", "", "velocidade, o quanto ela corta a viagem, e o próximo preço"),
-			new Acao("Pegar", "nave_pegar", "", "recolhe a nave pra mochila (só a sua)"),
+			new Acao("Ver estado", "nave_info", "", "velocidade, combustível, o quanto ela corta a viagem, e o próximo preço"),
+			new Acao("Pegar", "nave_pegar", "", "recolhe a nave pra mochila (só a sua, e de tanque cheio)"),
 		],
 
 		// ============================ O FOGUETE, POUSADO ============================
@@ -726,7 +748,8 @@ public static class Interacoes
 		NaveGrande.Tipo =>
 		[
 			new Acao("Embarcar", "nave_embarcar", "", "entra no interior -- a ponte fica no canto"),
-			new Acao("Ver estado", "nave_info", "", "casco, dono, e onde ela está"),
+			Abastecer,
+			new Acao("Ver estado", "nave_info", "", "casco, dono, combustível, e onde ela está"),
 			// A SENHA E UM NUMERO, e o DM pede TEXTO (`input(...) as text|null`, `ShipVessel.dm:65`).
 			// A troca nao e gosto: o menu deste port sabe fazer duas perguntas -- escolher da lista e
 			// digitar numero (ver `Forma`) -- e nao sabe pedir texto. Inventar um terceiro tipo de
@@ -734,19 +757,20 @@ public static class Interacoes
 			// custaria mais do que um cadeado de nave vale. ZERO DESTRANCA.
 			new Acao("Trancar com senha", "nave_senha", "", "um código de até 6 dígitos -- 0 destranca (o dono nunca precisa dele)",
 					 Forma.Numero, 0, 999999),
-			new Acao("Pegar", "nave_pegar", "", "recolhe a nave pra mochila (só a sua, e só vazia)"),
+			new Acao("Pegar", "nave_pegar", "", "recolhe a nave pra mochila (só a sua, só vazia, e de tanque cheio)"),
 		],
 
 		// ============================ O COMPUTADOR DA PONTE ============================
 		// Os tres verbs do `obj/ShipControl` (`ShipVessel.dm:295, 305, 350`), na ordem em que ele os
-		// declara. Ver `GameServer.NaveGrande.cs` pro que cada um virou aqui -- em especial o
-		// `Observe`, que no DM e uma camera (`client.eye = ship`) e aqui e a carta estelar.
+		// declara. Ver `GameServer.NaveGrande.cs` pro que cada um virou aqui -- o `Observe` voltou a ser
+		// a camera do DM (`client.eye = ship`) em 2026-10-18, pelo `GameServer.NaveObservar.cs`.
 		"Ship_Control" =>
 		[
-			new Acao("Observar", "nave_observar", "", "de fora da nave: onde ela está na galáxia"),
+			new Acao("Observar", "nave_observar", "", "o seu corpo fica aqui e você assiste a nave de fora, sem pilotar (E pra voltar)"),
 			new Acao("Pilotar", "nave_pilotar", "", "você assume o leme e a nave anda com você"),
 			new Acao("Lançar", "nave_lancar", "", "do chão de um planeta pro espaço, em 10 segundos"),
-			new Acao("Ver estado", "nave_info", "", "casco, dono e velocidade"),
+			Abastecer,
+			new Acao("Ver estado", "nave_info", "", "casco, dono, velocidade e combustível"),
 			MelhorarVelocidade,
 			MelhorarVelocidadeComRecursos,
 		],
@@ -987,13 +1011,14 @@ public static class Interacoes
 		// assumiu o leme o larga, e o servidor ja sabe disso (ver o escape do `ComandoDaNaveGrande`).
 		//
 		// "Observar" NAO ESTA AQUI: ele e do CONSOLE (`set src in oview(1)`, :296), e do leme voce
-		// esta do lado de fora do casco -- de onde a carta estelar ja mostra voce mesmo. Oferecer o
-		// botao aqui seria oferecer a recusa.
+		// esta do lado de fora do casco -- vendo a nave de fora ja. Oferecer o botao aqui seria
+		// oferecer a recusa.
 		NaveGrande.Tipo =>
 		[
 			new Acao("Voltar à ponte", "nave_pilotar", "", "larga o leme e devolve você pra dentro, ao lado do console"),
 			new Acao("Lançar", "nave_lancar", "", "sobe ao espaço com a nave inteira e quem estiver dentro dela"),
-			new Acao("Ver estado", "nave_info", "", "casco, dono e velocidade"),
+			Abastecer,
+			new Acao("Ver estado", "nave_info", "", "casco, dono, velocidade e combustível"),
 			MelhorarVelocidade,
 			MelhorarVelocidadeComRecursos,
 		],
@@ -1006,9 +1031,10 @@ public static class Interacoes
 		[
 			new Acao("Sair da nave", "nave_usar", "", "a nave fica pousada onde você estiver"),
 			new Acao("Lançar", "nave_lancar", "", "sobe ao espaço -- a espera encurta com a velocidade"),
+			Abastecer,
 			MelhorarVelocidade,
 			MelhorarVelocidadeComRecursos,
-			new Acao("Ver estado", "nave_info", "", "velocidade, o quanto ela corta a viagem, e o próximo preço"),
+			new Acao("Ver estado", "nave_info", "", "velocidade, combustível, o quanto ela corta a viagem, e o próximo preço"),
 		],
 
 		// ============================ DENTRO DO FOGUETE ============================
@@ -1024,8 +1050,25 @@ public static class Interacoes
 			new Acao("Ver estado", "nave_info", "", "se ele ainda está inteiro, e o que a viagem faz"),
 		],
 
+		// ============================ OBSERVANDO A NAVE GRANDE DE FORA (2026-10-18) ============================
+		// O corpo ficou na ponte e o olho anda com o casco (`GameServer.NaveObservar.cs`): o console esta a um mundo de distancia, e
+		// esta pagina e a porta de volta -- o mesmo `nave_observar` que comecou, como o `nave_pilotar` larga o leme. O cliente a abre
+		// pelo tipo <see cref="TipoDoOlho"/>, que nenhum objeto do mundo tem.
+		TipoDoOlho =>
+		[
+			new Acao("Voltar ao corpo", "nave_observar", "", "o olho volta pro seu corpo, de pé na ponte"),
+			Abastecer,
+			new Acao("Ver estado", "nave_info", "", "casco, dono, velocidade e combustível"),
+		],
+
 		_ => Nenhuma,
 	};
+
+	/// <summary>
+	/// (2026-10-18) A PAGINA DA TECLA E DE QUEM OBSERVA UMA NAVE DE FORA -- um "tipo" que nenhum objeto do mundo tem, e que o cliente pede ao
+	/// <see cref="DoVeiculo"/> enquanto observa (`MenuDeInteracao.VeiculoMontado`). Ver `GameServer.NaveObservar.cs`.
+	/// </summary>
+	public const string TipoDoOlho = "Observando_Nave";
 
 	/// <summary>
 	/// O TETO DE GRAVIDADE DO MUNDO -- o `gravitycap = 500` do original (Gravity.dm:352).

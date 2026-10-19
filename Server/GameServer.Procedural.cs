@@ -329,10 +329,14 @@ public partial class GameServer
 		// que consertava DEPOIS o 1x que o funil acabara de cravar -- e este era o UNICO chamador que
 		// o fazia: toda outra porta de entrada num mundo gerado ficava em 1x. Ver
 		// `GameServer.GravidadeDoChao.cs`.
-		MoveToZone(pl.Id, zona, viva.Chegada);
+		// (2026-10-18) QUEM PILOTA POUSA NUM LUGAR SORTEADO, em terra firme, e o pod abre cratera -- ver `GameServer.PousoDaNave.cs`. Sem
+		// lugar que sirva (e pra quem voa sozinho), na chegada que o gerador garantiu livre.
+		Vec2? sorteado = PousoDeQuemPilota(pl, zona);
+		MoveToZone(pl.Id, zona, sorteado ?? viva.Chegada);
+		AoPousarDoEspaco(pl);
 
 		Avisar(pl, $"voce pousa em {NomeDoMundo(destino)} — {viva.Ficha.Descricao()}.");
-		if (viva.ClareiraEscavada)
+		if (viva.ClareiraEscavada && sorteado == null)
 			Avisar(pl, "nao havia campo aberto aqui: o pouso abriu um na rocha.");
 		GD.Print($"[server] {pl.Name} pousou em {destino.Nome} ({viva.Ficha.Descricao()})");
 		return true;

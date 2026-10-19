@@ -274,6 +274,23 @@ public sealed partial class GameServer
 	private const double DanoDoVenenoPorTiqueG14 = 2.0 / 30;
 
 	/// <summary>
+	/// ============================ O NERF DO DONO (2026-10-18) -- DIVERGENCIA DECLARADA ============================
+	/// *"acido do saibaman ta meio op, da uma nerfada"*. No DM a bola do cuspe e a do Kikoho -- `basedamage = 40`, o maior do jogo
+	/// (`arlian.dm:52`) -- com a recarga de uma bola comum (`sleep(10)`, 1 s) e o preco de uma (`12*BaseDrain`). A bola basica, nessa fase do
+	/// jogo, tem dano-base de 1 a 4 (`Ekioff * log10(blastskill)`): o cuspe valia de 10 a 40 bolas por tiro, um tiro por segundo. Agora a bola
+	/// e a METADE e a recarga o DOBRO -- um quarto do dano por segundo --, e o veneno e o preco continuam os mesmos. Vale pro Arlian tambem: o
+	/// verb e um so (`arlian.dm:42`, que a arvore do Saibaman empresta).
+	/// ===========================================================================================================
+	/// </summary>
+	internal const double DanoDoCuspeG14 = 20;
+
+	/// <summary>A recarga do cuspe, em ms -- ver <see cref="DanoDoCuspeG14"/> (no DM, `sleep(10)`: 1 s).</summary>
+	internal const long MsDaRecargaDoCuspeG14 = 2000;
+
+	/// <summary>DEFEITO INJETADO (`--chefesteste`): o cuspe volta a ser o do DM -- 40 de dano-base e 1 s de recarga. Falso em jogo, sempre.</summary>
+	internal static bool CuspeComoNoDmDeTeste;
+
+	/// <summary>
 	/// ACID SPIT (`Race Trees/arlian.dm:42-63`): `if(!med && !train && !KO && Ki >= MaxKi*0.1 && HP >= 10 &&
 	/// !blasting)`; `Ki -= 12*BaseDrain`; `Blast_Gain()`; uma bola de `basedamage = 40` (a do Kikoho), `mods =
 	/// Ekioff*Ekiskill`, que anda reta (`walk(A, usr.dir)`) e vive `Burnout(50)`; `sleep(10)` de `blasting`. Quem ela
@@ -295,13 +312,13 @@ public sealed partial class GameServer
 		if (!PodeAtirar(pl, Math.Max(custo, f.MaxKi * 0.1), out string porque)) { Avisar(pl, porque); return; }
 		if (f.HP < 10) { Avisar(pl, "voce esta ferido demais pra isso."); return; }
 
-		_cuspeProntoG14[pl.Id] = NowMs() + 1000;
+		_cuspeProntoG14[pl.Id] = NowMs() + (CuspeComoNoDmDeTeste ? 1000 : MsDaRecargaDoCuspeG14);
 		f.Ki -= custo;
 		GanhoDeKi(pl);
 		Disparar(pl, new ReceitaDeProjetil
 		{
 			Tipo = TipoDeProjetil.Blast,
-			BaseDano = 40,              // `A.basedamage = 40`
+			BaseDano = CuspeComoNoDmDeTeste ? 40 : DanoDoCuspeG14,   // `A.basedamage = 40` no DM -- ver `DanoDoCuspeG14`
 			Velocidade = 1,             // `walk(A, usr.dir)`: sem atraso
 			AlcanceTiles = 30,          // `Burnout(50)`, o mesmo da bola comum
 			Nome = "Cuspe Acido",

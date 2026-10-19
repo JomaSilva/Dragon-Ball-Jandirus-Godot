@@ -80,8 +80,10 @@ public partial class RoboDasAbas
 				string? poder = menu.ValorDesenhado("Sense", "poder relativo");
 				Checa("cada presenca traz 'poder relativo' em % inteiro, o numero da lista",
 					  poder != null && poder == $"{lista[0].PoderRelativo:0}%", poder ?? "(nulo)");
-				int pilulas = Todos(pg).OfType<PanelContainer>().Count(x => x.HasMeta("pilula") && x.GetMeta("pilula").AsString() is "perto" or "neste mundo" or "na galáxia");
-				Checa("...e a pilula do alcance (perto / neste mundo / na galáxia)", pilulas == lista.Count, $"{pilulas}");
+				// (2026-10-18) os cinco alcances do Sense (`SenseEmNiveis`) -- os tres do DM sairam
+				int pilulas = Todos(pg).OfType<PanelContainer>().Count(x => x.HasMeta("pilula")
+					&& x.GetMeta("pilula").AsString() is "campo de visão" or "região" or "planeta" or "sistema" or "universo");
+				Checa("...e a pilula do alcance (campo de visão / região / planeta / sistema / universo)", pilulas == lista.Count, $"{pilulas}");
 			}
 
 			Image? foto = await Foto();

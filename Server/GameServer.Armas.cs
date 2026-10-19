@@ -141,7 +141,7 @@ public sealed partial class GameServer
 	/// funcao do poder dele: em numero so pra quem tem medidor; pros outros, medido contra o proprio poder.
 	/// </summary>
 	private string PoderEscrito(ServerPlayer leitor, double poder) =>
-		Jandirus.Core.Stats.PoderNaFrase.EmNumero(TemScouter(leitor))
+		Jandirus.Core.Stats.PoderNaFrase.EmNumero(ScouterMostra(leitor, null, poder))
 			? poder.ToString("N0")
 			: Jandirus.Core.Stats.PoderNaFrase.ContraOSeu(poder, leitor.Ficha.expressedBP);
 

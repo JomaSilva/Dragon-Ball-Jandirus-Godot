@@ -160,6 +160,13 @@ public sealed partial class Fighter
                    + (Jandirus.Core.Combat.RaivaEmDegraus.LegendaryAngerSoNoTetoDeTeste ? 0 : legendaryAngerBonus);
         MaxKi = baseKi * KiMod * kiAmp * trueKiMod * hdnptlmod * Math.Max(0.01, kicapacity_remove) * TMaxKi * racialMaxKi;
 
+        // (2026-10-18) O TANQUE DO CHEFE DE SAGA TEM PISO -- o dono: *"o freeza n ta usando death beam"*. O Ki sem fim do chefe (o
+        // cadeado `Nutricao.KiSempreCheio`) reenchia um tanque de NPC -- 259 no Freeza de Namek --, e o Death Beam cobra `kireq*25` por
+        // ciclo (`DeathBeam.dm:46`): 975 desse tanque, quase quatro dele inteiro. A IA nunca o achava pagavel (nem a Death Ball, 279), e
+        // o verb o recusaria. Com o piso, o tiro mais caro que um chefe sabe cabe num terco do tanque, e o cadeado o devolve no fim do
+        // tique. Ver `PisoDoTanqueDeChefe`.
+        if (KiDeChefe && !ChefeSemPisoDeTanqueDeTeste) MaxKi = Math.Max(MaxKi, PisoDoTanqueDeChefe);
+
         // Capacidade de concentrar Ki no corpo antes de se machucar, e o teto do power-up.
         // O max(...,1) envolve o ARGUMENTO INTEIRO do log: so o fator de skill protegido nao
         // bastava -- um KiMod zerado fazia log(8, 0) derrubar o statify a cada tick.

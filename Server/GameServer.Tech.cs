@@ -354,7 +354,8 @@ public partial class GameServer
 	/// TECH MINIMO PRO LABORATORIO DE DNA (`DNL_INT_REQ`). Setenta pontos: e o numero que faz um
 	/// humano precisar de uma vida de estudo pra chegar onde um Saiyajin chega nascendo.
 	/// </summary>
-	private const double TechDoLaboratorio = 70;
+	// (2026-10-18) O MESMO NUMERO DE CONSTRUIR O MAINFRAME -- ver `CatalogoDeObras.TechDoMainframe`.
+	private const double TechDoLaboratorio = CatalogoDeObras.TechDoMainframe;
 
 	private const double CustoAndroideAbsorcao = 1_000_000;
 	private const double CustoAndroideInfinito = 2_000_000;
@@ -635,7 +636,7 @@ public partial class GameServer
 			if (l != null) _noChao.AddRange(l);
 			_proximaObraId = _noChao.Count > 0 ? _noChao.Max(o => o.Id) + 1 : 1;
 
-			// A OBRA GRAVADA NUM LUGAR EM QUE NAO SE CONSTROI (mente, bolso da fusao, selo, interior de Majin, nave --
+			// A OBRA GRAVADA NUM LUGAR EM QUE NAO SE CONSTROI (mente, bolso da fusao, selo, interior de Majin --
 			// `LugarDeObra`) e de antes da recusa. Ela NAO VOLTA PRO MUNDO: a chave desses lugares e um id de sessao,
 			// e de pe ela apareceria -- desenhada e barrando -- na mente de quem tivesse aquele numero agora. E NAO
 			// SAI DO ARQUIVO: fica guardada a parte e e regravada como veio (`GravarMundoEm`). O id dela continua
@@ -801,6 +802,10 @@ public partial class GameServer
 		Construcao? c = _obras?.Get(Jandirus.Core.Items.CatalogoDeItens.OQueAssenta(p[0]));
 		if (c == null || item == null) { Avisar(pl, "isso não existe."); return; }
 		if (pl.Mochila.Quantos(item.Id) <= 0) { Avisar(pl, $"você não tem {item.Nome}."); return; }
+
+		// (2026-10-18) AO LEME NAO SE CONSTROI: o corpo de quem pilota esta do lado de fora do casco, e o assento cairia no chao de fora --
+		// a nave grande se monta por DENTRO. Ver `Naves.AoLemeNaoSeConstroi`.
+		if (NaveDoPiloto(pl) is { } aoLeme && !ConstruirAoLemeDeTeste) { Avisar(pl, Naves.AoLemeNaoSeConstroi(aoLeme.Tipo)); return; }
 		bool plantio = !string.Equals(item.Id, c.Id, StringComparison.OrdinalIgnoreCase);
 
 		// ============================ A REGRA 2, DO LADO DO SERVIDOR ============================
@@ -830,25 +835,30 @@ public partial class GameServer
 		// desenha. Ver `CatalogoDeObras.Celula`.
 		// ======================================================================================================
 		(int cx, int cy) = CatalogoDeObras.Celula(x, y);
-		RecusaDeAssento rl = Assentamento.DoLugar(MapaDaZonaOuCatalogo(pl.Zone), pl.Pos, cx, cy);
+		RecusaDeAssento rl = Assentamento.DoLugar(MapaDaZonaOuCatalogo(pl.Zone), pl.Pos, cx, cy, pl.Zone);
 		if (rl != RecusaDeAssento.Pode) { Avisar(pl, Assentamento.Motivo(rl, item.Nome)); return; }
 
 		// ============================ ONDE NAO SE CONSTROI -- POR TIPO DE ZONA, NUM LUGAR SO ============================
-		// A recusa da NAVE nasceu de um defeito da chave (a `Obra` guardava a zona como nome puro, e a bancada
-		// erguida na nave #7 apareceria na #8) e ficou por outra razao, a do CICLO DE VIDA: o interior existe
-		// enquanto a nave existe, e o `mundo.json` nao sabe quando ela acaba -- a obra ficaria de pe pra sempre
-		// numa zona onde ninguem mais entra.
-		//
-		// A MESMA RAZAO VALE PRA MENTE, PRO BOLSO DA FUSAO, PRO SELO E PRO INTERIOR DE UM MAJIN (dono, 2026-10-11:
-		// *"n deveria ser possivel contruir nada dentro desses interiores"*), e neles e pior: a chave e o id de
-		// SESSAO de alguem, entao a maquina gravada na "mente #5" apareceria na mente de quem fosse o #5 depois de
-		// um reinicio. A Sala do Tempo ACEITA -- a chave dela e a seed do mundo, e a obra fica gravada so naquela
-		// Sala. Quem responde, com a frase de cada lugar, e o Core: `LugarDeObra`. Vem antes de tirar o item da
-		// mochila, e vale pra tudo o que este verbo assenta: maquina, semente e NAVE.
+		// A MENTE, O BOLSO DA FUSAO, O SELO E O INTERIOR DE UM MAJIN recusam (dono, 2026-10-11: *"n deveria ser possivel
+		// contruir nada dentro desses interiores"*): a chave deles e o id de SESSAO de alguem, entao a maquina gravada na
+		// "mente #5" apareceria na mente de quem fosse o #5 depois de um reinicio. A Sala do Tempo ACEITA -- a chave dela e a
+		// seed do mundo, e a obra fica gravada so naquela Sala. E A NAVE GRANDE ACEITA desde 2026-10-18 (o dono: *"permita
+		// construir dentro da capital ship"*): ela recusava pelo CICLO DE VIDA -- o `mundo.json` nao sabia quando a nave acaba,
+		// e a obra ficaria de pe pra sempre numa zona onde ninguem mais entra --, e agora o fim dela tira o que esta dentro
+		// (`TirarAsObrasDaNave`). Quem responde, com a frase de cada lugar, e o Core: `LugarDeObra`. Vem antes de tirar o item
+		// da mochila, e vale pra tudo o que este verbo assenta: maquina, semente e NAVE.
 		// =============================================================================================================
 		if (LugarDeObra.PorQueNaoSeConstroi(pl.Zone) is { } aquiNao)
 		{
 			Avisar(pl, aquiNao);
+			return;
+		}
+
+		// UMA NAVE NAO CABE DENTRO DE OUTRA (2026-10-18). Ela tem casco, piloto e decolagem proprios, e um interior nao e planeta de onde
+		// se suba; o que a nave grande aceita sao as maquinas.
+		if (Naves.EhNave(c.Id) && NaveGrande.EhInterior(pl.Zone, out _))
+		{
+			Avisar(pl, $"{c.Nome} não cabe dentro de outra nave -- assente do lado de fora.");
 			return;
 		}
 
@@ -862,9 +872,13 @@ public partial class GameServer
 		// A FOLGA E A DO CORE (`Assentamento.FolgaEntreObras`) porque o fantasma do cliente faz esta
 		// mesma conferencia com a lista que ele recebeu -- e duas copias do numero 24 eram uma
 		// chance de o fantasma ficar branco onde o servidor recusa.
+		//
+		// ...E A MOBILIA DA NAVE GRANDE (o console e a plataforma, 2026-10-18): o fantasma do cliente ja a contava -- ela chega no mesmo
+		// pacote das obras (`MandarObras`) --, e o servidor nao.
 		if (Assentamento.TemCoisaEm(
 				_noChao.Where(o => o.Zona.Equals(pl.Zone)).Select(o => new Vec2((float)o.X, (float)o.Y))
-					   .Concat(NavesParadasEm(pl.Zone).Select(n => new Vec2(n.X, n.Y))),
+					   .Concat(NavesParadasEm(pl.Zone).Select(n => new Vec2(n.X, n.Y)))
+					   .Concat(MobiliaDoInterior(pl.Zone).Select(m => NaveGrande.PixelDe(m.Peca.Cel))),
 				new Vec2(x, y)))
 		{ Avisar(pl, Assentamento.Motivo(RecusaDeAssento.LugarOcupado, item.Nome)); return; }
 
@@ -995,6 +1009,12 @@ public partial class GameServer
 		MandarObras(pl.Zone);
 	}
 
+	/// <summary>
+	/// DEFEITO INJETADO (`--naveteste`, camada 7): o `Posicionar` volta a assentar com o corpo ao leme -- no chao de FORA da nave, o jogo de
+	/// antes de 2026-10-18. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool ConstruirAoLemeDeTeste;
+
 	private Obra? ObraPerto(ServerPlayer pl) => _noChao
 		.Where(o => o.Zona.Equals(pl.Zone))
 		.OrderBy(o => (o.X - pl.Pos.X) * (o.X - pl.Pos.X) + (o.Y - pl.Pos.Y) * (o.Y - pl.Pos.Y))
@@ -1094,6 +1114,11 @@ public partial class GameServer
 		double piso = infinito ? BpAndroideInfinito : BpAndroideAbsorcao;
 		pl.Ficha.BP = pl.Ficha.BP < piso ? piso : pl.Ficha.BP + piso;
 		pl.Race = "Android";
+		// (2026-10-18) A MESMA CARA: a lista de corpos do Androide e o `GochekAndroid` seguido dos tres corpos humanos (`DmAppearanceScanner.
+		// Corpos`), entao o corpo humano `i` e o `i + 1` dela. Sem esta linha o convertido acordaria com a cara do GochekAndroid. E todo mundo
+		// em volta fica sabendo pelo `TrocarAparencias` -- o pacote leva a raca, e a cara e raca + indice.
+		pl.Visual.Corpo += 1;
+		TrocarAparencias(pl);
 		pl.Ficha.AndroideInfinito = infinito;
 		pl.Ficha.AndroideAbsorcao = !infinito;
 		pl.Ficha.Statify();
@@ -1130,7 +1155,8 @@ public partial class GameServer
 		if (LabTrancadoPra(pl, lab)) return;
 
 		ServerPlayer? vitima = _players.Values
-			.Where(o => o != pl && EhJogador(o) && o.Zone.Equals(pl.Zone) && (o.Ficha.KO || o.Ficha.dead))
+			// (2026-10-18) menos o corpo escondido de quem o Neo Tuffle possui -- ver `GameServer.NeoTuffle.cs`
+			.Where(o => o != pl && EhJogador(o) && o.Zone.Equals(pl.Zone) && (o.Ficha.KO || o.Ficha.dead) && o.PossuidoPor == 0)
 			.OrderBy(o => Vec2.Distance(o.Pos, pl.Pos))
 			.FirstOrDefault(o => Vec2.Distance(o.Pos, pl.Pos) <= AlcanceDeUso);
 
@@ -1321,7 +1347,9 @@ public partial class GameServer
 		if (!o.Aparafusada) { Avisar(pl, "aparafuse o mainframe no chao antes de instalar."); return; }
 		if (o.DonoConta != pl.Conta) { Avisar(pl, "isso nao e seu."); return; }
 		if (o.Lab != 0) { Avisar(pl, "este mainframe ja foi convertido -- ergue outro."); return; }
-		if (pl.Race != "Human") { Avisar(pl, "a instalacao pede um humano."); return; }
+		// (2026-10-18) O NEO TUFFLE LAB E DOS TSUFURUJINS, e os outros dois dos humanos -- ver `GameServer.NeoTuffle.cs`.
+		if (qual == LabDoNeoTuffle && pl.Race != RacaDoTuffle) { Avisar(pl, "o Neo Tuffle Lab pede um Tsufurujin."); return; }
+		if (qual != LabDoNeoTuffle && pl.Race != "Human") { Avisar(pl, "a instalacao pede um humano."); return; }
 		if (pl.Ficha.techskill < TechDoLaboratorio)
 		{
 			Avisar(pl, $"instalar pede {TechDoLaboratorio:0} de tecnologia -- voce tem {pl.Ficha.techskill:0}.");
@@ -1330,8 +1358,8 @@ public partial class GameServer
 
 		o.Lab = qual;
 		GravarMundo();
-		Avisar(pl, qual == 1
-			? "o mainframe vira um Android Lab. Agora da pra entrar nele."
+		Avisar(pl, qual == 1 ? "o mainframe vira um Android Lab. Agora da pra entrar nele."
+			: qual == LabDoNeoTuffle ? "o mainframe vira um Neo Tuffle Lab. Agora dá pra entrar nele."
 			: "o mainframe vira um Bio-Android Lab. Agora falta o DNA.");
 		MandarObras(pl.Zone);
 	}
@@ -2062,6 +2090,9 @@ public partial class GameServer
 			case "androide_infinito": VirarAndroide(pl, infinito: true, Recurso.LerPedidoPago(arg).Moeda); break;
 			case "lab_androide": InstalarLab(pl, 1); break;
 			case "lab_bio": InstalarLab(pl, 2); break;
+			// (2026-10-18) o Neo Tuffle Lab e a conversao dentro dele -- ver `GameServer.NeoTuffle.cs`
+			case "lab_tuffle": InstalarLab(pl, LabDoNeoTuffle); break;
+			case "virar_tuffle": VirarNeoTuffle(pl, Recurso.LerPedidoPago(arg).Moeda); break;
 			case "colher_dna": ColherDna(pl); break;
 			case "gestar": GestarBio(pl); break;
 			default: Avisar(pl, $"comando de tecnologia desconhecido: {cmd}"); break;

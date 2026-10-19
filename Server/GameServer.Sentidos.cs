@@ -20,7 +20,16 @@ namespace Jandirus.Server;
 /// pelo SIGILO (`GameServer.Sigilo`) e vai pronta, do mesmo jeito que o `ui_tab_*` do DM montava o HTML
 /// no servidor e mandava a pagina.
 ///
-/// ============================ O QUE CADA ALCANCE VE (Sense2.0.dm:20-35) ============================
+/// ============================ (2026-10-18) OS CINCO NIVEIS DO SENSE -- e o que veio do DM, logo abaixo ============================
+/// *"adicione niveis na skill de sense, assim aumentando a area de efeito, começando no campo de visao, dps regiao, dps planeta, dps
+/// sistema, e dps o universo (no caso do universo o player so vai sentir chefes e jogadores...)"*. O alcance passou a ser o NIVEL DA SKILL
+/// (`SenseEmNiveis`): campo de visao (15 tiles), regiao (60 tiles) -- os dois com NPC --, planeta (a zona inteira), sistema (os outros
+/// planetas da mesma estrela e o espaco dela) e universo -- os tres so jogador e chefe. O contador `kiawarenessskill` da arvore da Mente
+/// ficou como PISO (`NivelDoSense`). O bloco de baixo e o desenho do DM, que este substitui: os tres alcances pelo contador, o NPC so no
+/// perto, e o piso dos 5 milhoes da galaxia -- que saiu.
+/// =================================================================================================================================
+///
+/// ============================ O QUE CADA ALCANCE VIA NO DM (Sense2.0.dm:20-35) ============================
 /// A skill Sense tem UM nivel so (`maxlevel = 1`, `Sense2.0.dm:8`); os tres alcances acendem pelo
 /// CONTADOR `kiawarenessskill` da arvore da Mente, e nao pelo nivel dela:
 ///   * `gotsense`  -- `kiawarenessskill >= 1`  (`:22`): PERTO -- a mesma zona, ate 15 tiles (`HtmlUI.dm:371`);
@@ -66,6 +75,15 @@ namespace Jandirus.Server;
 ///     indo sem nome, com a assinatura.
 /// ==========================================================================================================
 ///
+/// ============================ O TETO DO SCOUTER E O KI DIVINO (dono, 2026-10-18) ============================
+/// *"coloque um bp maximo no scouter de 100m de bp, acima disso o scouter marca com ???, e pessoas q estao em formas com godki, ou estao em
+/// constante uso de ki divino (...) n podem ter o poder lido com scouter ou ter o ki sentido. somente pessoas q tb tem ki divino podem dar
+/// sense em outras pessoas com ki divino"*. DUAS DIVERGENCIAS DECLARADAS das linhas de cima:
+///   * no SCAN, o BP acima de 100 milhoes vai NaN (a aba escreve "???"), e quem esta com o ki divino em uso NAO entra na lista -- o aparelho
+///     nao o detecta, seja quem for o dono dele (`KiDivinoEscondido`, `Core/Stats/Scouter.cs`);
+///   * no SENSE, nos tres alcances, o ki divino em uso so e sentido por quem tambem tem ki divino (`AchoAEnergia`, `SenteKiDivino`).
+/// ===========================================================================================================
+///
 /// ============================ O SIGILO ============================
 /// No modo Sense o BP absoluto NUNCA vai no pacote: o campo sai como <see cref="SemLeitura"/> (NaN) e so
 /// a RAZAO viaja (`round((D.expressedBP/max(expressedBP,1))*100, 1)`, `HtmlUI.dm:374`) -- que e
@@ -81,23 +99,25 @@ namespace Jandirus.Server;
 /// </summary>
 public partial class GameServer
 {
-	/// <summary>PERTO: ate quantos tiles o primeiro alcance enxerga -- `get_dist(src, D) > 15` (`HtmlUI.dm:371`).</summary>
-	public const int TilesDoSensePerto = 15;
-
 	/// <summary>Quem expressa isto de BP ou menos nao tem energia pra sentir -- `D.expressedBP <= 5` (`HtmlUI.dm:370`).</summary>
 	public const double BpMinimoSentivel = 5;
 
-	/// <summary>NA GALAXIA so quem passa disto -- `D.expressedBP <= 5000000` (`HtmlUI.dm:389`).</summary>
-	public const double BpDaGalaxia = 5_000_000;
-
-	/// <summary>O `kiawarenessskill` que acende o segundo alcance (`Sense2.0.dm:27`).</summary>
+	/// <summary>
+	/// (2026-10-18) O PISO PELA ARVORE DA MENTE: o `kiawarenessskill` que no DM acendia o segundo alcance (`Sense2.0.dm:27`) da no minimo o
+	/// nivel do PLANETA -- ver `SenseEmNiveis`.
+	/// </summary>
 	public const double PericiaDoPlaneta = 20;
 
-	/// <summary>...e o terceiro (`Sense2.0.dm:32`).</summary>
+	/// <summary>...e o que acendia o terceiro (`Sense2.0.dm:32`) da no minimo o do SISTEMA.</summary>
 	public const double PericiaDaGalaxia = 60;
 
-	/// <summary>Os tres alcances, como o pacote os nomeia (`PresencaState.Alcance`).</summary>
-	public const byte AlcancePerto = 1, AlcanceMundo = 2, AlcanceGalaxia = 3;
+	/// <summary>Os cinco alcances, como o pacote os nomeia (`PresencaState.Alcance`) -- os niveis do `SenseEmNiveis`.</summary>
+	public const byte AlcanceVisao = Jandirus.Core.Skills.SenseEmNiveis.CampoDeVisao, AlcanceRegiao = Jandirus.Core.Skills.SenseEmNiveis.Regiao,
+						  AlcancePlaneta = Jandirus.Core.Skills.SenseEmNiveis.Planeta, AlcanceSistema = Jandirus.Core.Skills.SenseEmNiveis.Sistema,
+						  AlcanceUniverso = Jandirus.Core.Skills.SenseEmNiveis.Universo;
+
+	/// <summary>DEFEITO INJETADO (`--sentidosteste`): o nivel da skill nao abre alcance nenhum -- so o contador, o jogo de antes. Falso em jogo, sempre.</summary>
+	internal static bool SenseSemNiveisDeTeste;
 
 	/// <summary>Ate quantos tiles o scouter le um NPC comum (o chefe, de qualquer distancia). Ver o cabecalho.</summary>
 	public const int TilesDoScanDeNpc = 40;
@@ -151,20 +171,21 @@ public partial class GameServer
 	private void MandarSentidos(ServerPlayer pl, bool scan)
 	{
 		(_, List<Protocol.PresencaState> lista) = SentidosDe(pl);
-		string sig = AssinaturaDosSentidos(scan, lista);
+		byte nivel = scan ? (byte)0 : (byte)NivelDoSense(pl);
+		string sig = AssinaturaDosSentidos(scan, nivel, lista);
 		if (_sigSentidos.TryGetValue(pl.Id, out string? antiga) && antiga == sig) return;
 		_sigSentidos[pl.Id] = sig;
 
-		NetDataWriter w = PacoteDeSentidos(scan, lista);
+		NetDataWriter w = PacoteDeSentidos(scan, nivel, lista);
 		EscutaDeSentidos?.Add((pl.Id, w));
 		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
-	/// <summary>O pacote, pronto pro fio: `S2C.Sentidos` + `bool scan` + a lista. Separado pra bancada abrir com o leitor do cliente.</summary>
-	private static NetDataWriter PacoteDeSentidos(bool scan, List<Protocol.PresencaState> lista)
+	/// <summary>O pacote, pronto pro fio: `S2C.Sentidos` + `bool scan` + o nivel do Sense + a lista. Separado pra bancada abrir com o leitor do cliente.</summary>
+	private static NetDataWriter PacoteDeSentidos(bool scan, byte nivel, List<Protocol.PresencaState> lista)
 	{
 		NetDataWriter w = Protocol.Begin(Protocol.S2C.Sentidos);
-		w.PutSentidos(scan, lista);
+		w.PutSentidos(scan, nivel, lista);
 		return w;
 	}
 
@@ -173,10 +194,10 @@ public partial class GameServer
 	/// arredondados como o DM arredonda), entao assinar o valor e assinar o que a tela vai escrever --
 	/// nem mais fino (remandaria por ruido), nem mais grosso (seguraria uma mudanca visivel).
 	/// </summary>
-	private static string AssinaturaDosSentidos(bool scan, List<Protocol.PresencaState> lista)
+	private static string AssinaturaDosSentidos(bool scan, byte nivel, List<Protocol.PresencaState> lista)
 	{
 		var sb = new System.Text.StringBuilder();
-		sb.Append(scan ? 'S' : 'K');
+		sb.Append(scan ? 'S' : 'K').Append(nivel);   // (o nivel tambem: subir de nivel com a lista igual muda a aba)
 		foreach (Protocol.PresencaState p in lista)
 			sb.Append('|').Append(p.Nome).Append('/').Append(p.Assinatura).Append('/').Append(p.Alcance)
 			  .Append('/').Append(p.PoderRelativo).Append('/').Append(p.Bp)
@@ -185,11 +206,33 @@ public partial class GameServer
 		return sb.ToString();
 	}
 
-	/// <summary>Em que alcance este corpo sente: pelo contador, como o `effector` do `Sense2.0.dm:20-35`.</summary>
-	private static byte AlcanceDoSense(ServerPlayer pl) =>
-		pl.Ficha.kiawarenessskill >= PericiaDaGalaxia ? AlcanceGalaxia
-		: pl.Ficha.kiawarenessskill >= PericiaDoPlaneta ? AlcanceMundo
-		: AlcancePerto;
+	/// <summary>
+	/// (2026-10-18) O NIVEL DO SENSE DESTE CORPO -- o alcance dele (`SenseEmNiveis`): o nivel da skill, com o PISO da arvore da Mente (o
+	/// contador que abria os alcances do DM: 20 = o planeta, 60 = o sistema), e nunca abaixo do campo de visao (a skill comprada nasce no 0).
+	/// </summary>
+	internal static int NivelDoSense(ServerPlayer pl) =>
+		Math.Max(Math.Max(SenseSemNiveisDeTeste ? 0 : pl.Niveis.Nivel(Jandirus.Core.Skills.SenseEmNiveis.Path), AlcanceVisao),
+					pl.Ficha.kiawarenessskill >= PericiaDaGalaxia ? AlcanceSistema
+					: pl.Ficha.kiawarenessskill >= PericiaDoPlaneta ? AlcancePlaneta
+					: AlcanceVisao);
+
+	/// <summary>
+	/// (2026-10-18) EM QUE SISTEMA ESTELAR ESTE CORPO ESTA: o do planeta (pre-feito ou gerado) ou o do ponto do espaco. Um sistema cabe inteiro
+	/// na sua celula (`Sistemas`), entao a celula e o sistema. Nulo onde nao ha sistema (o Outro Mundo, os interiores, a mente).
+	/// </summary>
+	private SistemaId? SistemaDe(ServerPlayer o)
+	{
+		if (Espaco.EhEspaco(o.Zone)) return SistemaId.De(o.Pos);
+		if (EhZonaProcedural(o.Zone))
+			return _zonasGeradas.TryGetValue(o.Zone.Hash, out ZonaGerada? viva) ? SistemaId.De(viva.NoEspaco.Pos) : null;
+		if (o.Zone.Kind != ZoneKey.KindPremade) return null;
+		foreach (PlanetaNoEspaco p in Espaco.PreFeitos())
+			if (string.Equals(p.Nome, o.Zone.Name, StringComparison.OrdinalIgnoreCase)) return SistemaId.De(p.Pos);
+		return null;
+	}
+
+	/// <summary>(2026-10-18) DE LONGE SO SE SENTE JOGADOR E CHEFE -- o NPC comum, so no campo de visao e na regiao.</summary>
+	private static bool GenteOuChefe(ServerPlayer o) => !Gente.EhNpcDoMundo(o.Peer != null, o.Papel) || o.Papel?.EhChefe == true;
 
 	/// <summary>
 	/// A LISTA DE QUEM `eu` SENTE (ou le), e em que modo. E o corpo do `ui_tab_sense`/`ui_tab_scan`, e a
@@ -214,19 +257,23 @@ public partial class GameServer
 			// tiles; NPC so se for chefe; o piso dos 5 de BP; e o BP exato, `FullNum(round(expressedBP,1))`.
 			foreach (ServerPlayer o in zona)
 			{
-				if (o == eu || o.ECadaver) continue;
+				// (2026-10-18) nem o corpo escondido de quem o Neo Tuffle possui -- `GameServer.NeoTuffle.cs`
+				if (o == eu || o.ECadaver || HospedeEscondido(o)) continue;
 				// (2026-10-13) O NPC COMUM TAMBEM, ate `TilesDoScanDeNpc`; o chefe, de qualquer distancia.
 				bool npc = Gente.EhNpcDoMundo(o.Peer != null, o.Papel);
 				if (npc && o.Papel?.EhChefe != true
 					&& (NpcSemNomeNemLeituraDeTeste || DistanciaEmTiles(eu, o) > TilesDoScanDeNpc)) continue;
 				if (!TemEnergiaQueSeSente(o)) continue;   // o piso dos 5, SEM a barra: quem se segura fica; quem relaxa sai
+				if (KiDivinoEscondido(o)) continue;   // (2026-10-18) o scouter nunca detecta o ki divino -- ver o cabecalho
+				double lido = Math.Round(o.Ficha.expressedBP, MidpointRounding.AwayFromZero);
 				(int ox, int oy) = TileDe(o.Pos);
 				achados.Add((new Protocol.PresencaState
 				{
 					Nome = o.Name, Assinatura = "",
-					Alcance = AlcanceMundo,
+					Alcance = AlcancePlaneta,   // (o scouter le a zona inteira)
 					PoderRelativo = float.NaN,
-					Bp = Math.Round(o.Ficha.expressedBP, MidpointRounding.AwayFromZero),
+					// (2026-10-18) ACIMA DO TETO O VIDRO MARCA "???": no modo Scan, NaN e o numero que o scouter nao alcanca.
+					Bp = Jandirus.Core.Stats.Scouter.Le(lido) ? lido : SemLeitura,
 					Distancia = DistanciaEmTiles(eu, o),
 					Rumo = RumoDoDm(ox - mx, oy - my),
 					X = (short)Math.Clamp(ox, -1, short.MaxValue), Y = (short)Math.Clamp(oy, -1, short.MaxValue),
@@ -237,43 +284,44 @@ public partial class GameServer
 			return (true, Ordenada(achados));
 		}
 
-		byte alcance = AlcanceDoSense(eu);
+		// (2026-10-18) OS CINCO NIVEIS -- ver o cabecalho e `SenseEmNiveis`.
+		int nivel = NivelDoSense(eu);
+		SistemaId? meuSistema = nivel >= AlcanceSistema ? SistemaDe(eu) : null;
+		// De longe (alem da regiao): o mesmo sistema ou o universo. Na zona do ESPACO (uma so pro universo inteiro) quem passa da regiao tambem
+		// cai aqui -- o "planeta" de quem esta no espaco nao existe.
+		byte Longe(ServerPlayer o) => meuSistema is { } ms && SistemaDe(o) is { } os && os == ms ? AlcanceSistema : AlcanceUniverso;
 		var vistos = new HashSet<int>();
 
-		// PERTO (HtmlUI.dm:366-375): a mesma zona, ate 15 tiles, todo mob -- NPC inclusive.
+		// A MESMA ZONA: campo de visao (15 tiles) e regiao (60) com todo mundo, NPC inclusive -- o `current_area.contents` do DM; o planeta
+		// (a zona inteira), so jogador e chefe -- o `player_list` do mesmo z, mais o chefe.
+		bool noEspaco = Espaco.EhEspaco(eu.Zone);
 		foreach (ServerPlayer o in zona)
 		{
-			if (o == eu || o.ECadaver || !AchoAEnergiaG4(o)) continue;
+			if (o == eu || o.ECadaver || !AchoAEnergia(eu, o)) continue;
 			ushort dist = DistanciaEmTiles(eu, o);
-			if (dist > TilesDoSensePerto) continue;
+			byte alcance = dist <= Jandirus.Core.Skills.SenseEmNiveis.TilesDoCampoDeVisao ? AlcanceVisao
+				: dist <= Jandirus.Core.Skills.SenseEmNiveis.TilesDaRegiao ? AlcanceRegiao
+				: noEspaco ? Longe(o) : AlcancePlaneta;
+			if (alcance > nivel || (alcance > AlcanceRegiao && !GenteOuChefe(o))) continue;
 			vistos.Add(o.Id);
-			achados.Add((Presenca(eu, o, AlcancePerto, dist, mx, my), o.Id));
+			achados.Add((Presenca(eu, o, alcance, dist, mx, my), o.Id));
 		}
 
-		// NESTE MUNDO (HtmlUI.dm:377-384): `player_list` do mesmo z -- so gente, com distancia e rumo.
-		if (alcance >= AlcanceMundo)
-			foreach (ServerPlayer o in zona)
-			{
-				if (o == eu || o.ECadaver || vistos.Contains(o.Id)) continue;
-				if (Gente.EhNpcDoMundo(o.Peer != null, o.Papel) || !AchoAEnergiaG4(o)) continue;
-				vistos.Add(o.Id);
-				achados.Add((Presenca(eu, o, AlcanceMundo, DistanciaEmTiles(eu, o), mx, my), o.Id));
-			}
-
-		// NA GALAXIA (HtmlUI.dm:386-393): `player_list` inteira, so acima de 5 milhoes, so o lugar -- e a
-		// razao e a dos BPs BASE (`D.BP/max(BP,1)`), como o DM escreve, e nao a dos expressos.
-		if (alcance >= AlcanceGalaxia)
+		// AS OUTRAS ZONAS: o sistema (os planetas da mesma estrela e o espaco dela) e o universo -- so jogador e chefe, so o lugar (sem
+		// coordenada nem distancia), e a razao dos BPs BASE (`D.BP/max(BP,1)`), como a galaxia do DM (`HtmlUI.dm:386-393`).
+		if (nivel >= AlcanceSistema)
 			foreach (ServerPlayer o in _players.Values)
 			{
-				if (o == eu || o.ECadaver || vistos.Contains(o.Id)) continue;
-				if (Gente.EhNpcDoMundo(o.Peer != null, o.Papel)) continue;
-				if (o.Race == "Android" || Jandirus.Core.Stats.PoderEmUso.SemABarra(o.Ficha) <= BpDaGalaxia) continue;
+				if (o == eu || o.ECadaver || vistos.Contains(o.Id) || o.Zone.Hash == eu.Zone.Hash) continue;
+				if (!GenteOuChefe(o) || !AchoAEnergia(eu, o)) continue;
+				byte alcance = Longe(o);
+				if (alcance > nivel) continue;
 				vistos.Add(o.Id);
 				(string nome, string sig) = IdentidadePara(eu, o);
 				achados.Add((new Protocol.PresencaState
 				{
 					Nome = nome, Assinatura = sig,
-					Alcance = AlcanceGalaxia,
+					Alcance = alcance,
 					PoderRelativo = Porcento(o.Ficha.BP, eu.Ficha.BP),
 					Bp = SemLeitura,
 					Distancia = Protocol.DistanciaDesconhecida,
@@ -286,7 +334,7 @@ public partial class GameServer
 		return (false, Ordenada(achados));
 	}
 
-	/// <summary>Uma presenca dos dois primeiros alcances: razao de poder, nunca numero; vida so perto.</summary>
+	/// <summary>Uma presenca da MESMA zona (os tres primeiros alcances, e o espaco): razao de poder, nunca numero.</summary>
 	private static Protocol.PresencaState Presenca(ServerPlayer eu, ServerPlayer o, byte alcance, ushort dist,
 												   int mx, int my)
 	{

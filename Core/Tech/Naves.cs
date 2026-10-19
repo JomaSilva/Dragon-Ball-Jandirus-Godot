@@ -128,6 +128,17 @@ public static class Naves
 	/// </summary>
 	public static bool EhFoguete(string tipo) => tipo == "Rocket_Ship";
 
+	/// <summary>
+	/// (2026-10-18) AO LEME NAO SE CONSTROI -- a frase, uma so pras duas pontas (o `GameServer.Posicionar` e o fantasma do cliente,
+	/// `TelaDeConstrucao.Segurar`). O dono: *"n era pra construir fora da nave com vc pilotando ela, seria vc construir dentro da nave"* -- quem
+	/// pilota esta com o corpo do lado de fora do casco, e o assento caia no chao de fora. Na nave grande se volta a ponte e se constroi la
+	/// dentro; no pod e no foguete, desembarca-se.
+	/// </summary>
+	/// <param name="tipo">O tipo da nave ao leme.</param>
+	public static string AoLemeNaoSeConstroi(string tipo) => NaveGrande.EhNaveGrande(tipo)
+		? "você está ao leme: volte à ponte (E > Voltar à ponte) e construa lá dentro da nave."
+		: "você está pilotando: desembarque pra construir.";
+
 	// =====================================================================
 	// O FOGUETE -- os tres numeros que ele tem a mais
 	// =====================================================================

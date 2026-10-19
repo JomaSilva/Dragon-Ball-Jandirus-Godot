@@ -51,12 +51,18 @@ public partial class MenuJogo
 		// e uma ausencia, nao um valor -- e o numero de verdade sai no laranja da casa. A porta de
 		// bancada le a faixa como "grande + legenda", que e exatamente o texto de antes.
 		bool scouter = _atributos.Tem(Protocol.Poder.Scouter);
+		// (2026-10-18) COM O SCOUTER, O QUE O VIDRO NAO ALCANCA CHEGA NaN: acima de 100 milhoes, ou o ki divino do proprio dono -- e a faixa
+		// escreve "???" (`Core/Stats/Scouter.cs`).
+		static string Lido(double bp) => double.IsNaN(bp) ? "???" : $"{bp:N0}";
+		bool estourou = scouter && (double.IsNaN(f.ExpressedBP) || double.IsNaN(f.BP));
 		PanelContainer faixa = scouter
-			? Faixa("Battle Power", $"{f.ExpressedBP:N0}", $"(base {f.BP:N0})")
+			? Faixa("Battle Power", Lido(f.ExpressedBP), $"(base {Lido(f.BP)})", double.IsNaN(f.ExpressedBP) ? Tema.TextoFraco : null)
 			: Faixa("Battle Power", "???", "(sem scouter)", Tema.TextoFraco);
-		faixa.TooltipText = scouter
-			? "O poder que o mundo lê (expresso) e o que o treino sobe (base). Só existe em número com o scouter ligado."
-			: "Ninguém lê o próprio poder de luta sem um aparelho que meça. Ligue um scouter na aba Equip.";
+		faixa.TooltipText = !scouter
+			? "Ninguém lê o próprio poder de luta sem um aparelho que meça. Ligue um scouter na aba Equip."
+			: estourou
+				? "O scouter não lê poder acima de 100 milhões, nem ki divino: o que ele não alcança aparece como ???."
+				: "O poder que o mundo lê (expresso) e o que o treino sobe (base). Só existe em número com o scouter ligado.";
 
 		// A ORDEM E POR ALTURA E POR ASSUNTO. A grade da cada linha a altura do cartao mais alto dela,
 		// entao os pares tem que ter alturas parecidas: Vitais (cinco barras) com Treino em cima --

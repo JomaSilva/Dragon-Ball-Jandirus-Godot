@@ -51,10 +51,13 @@ public static class Foco
 	/// ENCERRA o lado de quem segura um feixe com as maos (`LadoOk`), e ler a tecla como solta seria
 	/// perder a disputa de ki por causa do portao.
 	///
-	/// E O SILENCIO E DERIVADO, nao guardado: `EmClash` mora num PRAZO que se vence sozinho (ver
-	/// `GameClient.EmClash`), pra que um embate que acabe mal -- nocaute, morte, troca de zona,
+	/// E O SILENCIO E DERIVADO, nao guardado: ele mora num PRAZO que se vence sozinho (ver
+	/// `GameClient.QteMudo`), pra que um embate que acabe mal -- nocaute, morte, troca de zona,
 	/// logout, o outro sumindo -- nao deixe o teclado do jogador mudo pra sempre.
+	///
+	/// (2026-10-18) E ELE VAI UMA FOLGA ALEM DO FIM: a ultima letra do embate chegava ao jogo depois do `Acabou` e tirava o jogador da
+	/// mente (o M), abria a mochila (o I). Ver `GameClient.QteMudo` -- o portao continua sendo um so, e e ele que segura a folga.
 	/// =========================================================================================
 	/// </summary>
-	public static bool AtalhosMudos => Digitando || GameClient.Instance?.EmClash == true;
+	public static bool AtalhosMudos => Digitando || GameClient.Instance?.QteMudo == true;
 }

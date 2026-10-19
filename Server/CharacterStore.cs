@@ -43,6 +43,12 @@ public sealed class CharacterSave
     public long MesDaIdade;
 
     /// <summary>
+    /// (2026-10-18) O QUE FALTA DA HORA DE BEBE, em segundos de jogo -- ver `ServerPlayer.BebeRestanteS`. O save de antes volta com zero:
+    /// ninguem que ja existia vira bebe.
+    /// </summary>
+    public double BebeRestanteS;
+
+    /// <summary>
     /// A HISTORIA que o jogador escreveu na criacao. Sem efeito mecanico -- e identidade, e o verb
     /// `Backstory` do original existia justamente pra ela poder ser LIDA depois.
     /// </summary>
@@ -65,6 +71,27 @@ public sealed class CharacterSave
     /// <see cref="RazaoVersao"/>.
     /// </summary>
     public int ItensVersao;
+
+    /// <summary>
+    /// (2026-10-18) ATE QUE VERSAO DAS LISTAS DE CORPOS POR RACA ESTE VISUAL JA FOI ACERTADO (`VersaoDosCorpos`). Zero = save de antes das
+    /// listas de 2026-10-18 -- em que o Androide nao tinha lista e caia no corpo padrao humano. O login acerta UMA vez (`ParaJogador`): o humano
+    /// convertido no laboratorio guardava o indice da lista HUMANA, e a do Androide agora comeca pelo `GochekAndroid`. Mesmo padrao do
+    /// <see cref="ItensVersao"/>.
+    /// </summary>
+    public int CorposVersao;
+
+    /// <summary>(2026-10-18) A versao das listas de corpos que este servidor grava. Ver <see cref="CorposVersao"/>.</summary>
+    public const int VersaoDosCorpos = 1;
+
+    /// <summary>
+    /// (2026-10-18) ATE QUE VERSAO A INTELIGENCIA DA RACA JA ENTROU NESTA FICHA (`VersaoDaInteligencia`). Zero = save de antes, em que o `techmod`
+    /// nascia 1 pra toda raca: o login soma a diferenca UMA vez (`GameServer.MigrarInteligencia`). Mesmo padrao do <see cref="CorposVersao"/> --
+    /// so que quem a escreve no disco e o JOGADOR (`DeJogador` grava a dele), porque so o servidor de jogo tem o catalogo de racas pra migrar.
+    /// </summary>
+    public int InteligenciaVersao;
+
+    /// <summary>(2026-10-18) A versao da inteligencia da raca que este servidor grava. Ver <see cref="InteligenciaVersao"/>.</summary>
+    public const int VersaoDaInteligencia = 1;
 
     public Appearance Visual = new();
 
@@ -863,6 +890,7 @@ public sealed class AccountStore(string pasta)
         Idade = pl.Idade,
         MesesDaIdade = pl.MesesDaIdade,
         MesDaIdade = pl.MesDaIdade,
+        BebeRestanteS = pl.BebeRestanteS,
         Historia = pl.Historia,
         Porte = pl.Porte,
         Mochila = pl.Mochila,
@@ -870,6 +898,8 @@ public sealed class AccountStore(string pasta)
         // versao de hoje -- e e isto que impede a limpeza de rodar de novo e levar o `Staff` comprado depois.
         // Ver `CharacterSave.ItensVersao`.
         ItensVersao = Jandirus.Core.Items.ItensAposentados.VersaoAtual,
+        CorposVersao = CharacterSave.VersaoDosCorpos,   // (2026-10-18) o visual de quem esta em jogo ja foi acertado no login
+        InteligenciaVersao = pl.InteligenciaVersao,     // (2026-10-18) a do jogador: so o login (que tem o catalogo de racas) a sobe
         Visual = pl.Visual,
         Ficha = pl.Ficha,
         Membros = pl.Combate != null ? GameServer.FotografarCorpo(pl.Combate) : [],
@@ -1001,9 +1031,11 @@ public sealed class AccountStore(string pasta)
         pl.Planeta = s.Planeta;
         pl.Genero = s.Genero;
         pl.Linhagem = s.Linhagem;
+        pl.InteligenciaVersao = s.InteligenciaVersao;   // (2026-10-18) a migracao e do servidor -- ver `GameServer.MigrarInteligencia`
         pl.Idade = s.Idade;
         pl.MesesDaIdade = s.MesesDaIdade;
         pl.MesDaIdade = s.MesDaIdade;
+        pl.BebeRestanteS = s.BebeRestanteS;
         pl.Historia = s.Historia;
         pl.Porte = s.Porte.Length > 0 ? s.Porte : "Medium";
 
@@ -1049,6 +1081,11 @@ public sealed class AccountStore(string pasta)
         pl.Karma = Jandirus.Core.Social.Karma.Somar(Jandirus.Core.Social.Karma.Neutro, s.Karma);
 
         pl.Visual = s.Visual;
+        // (2026-10-18) O ANDROIDE CONVERTIDO DE ANTES DAS LISTAS POR RACA: o indice dele e da lista humana, e a do Androide agora tem o
+        // `GochekAndroid` na frente -- ele anda um pra continuar com a mesma cara. Uma vez, pela versao. Ver `CharacterSave.CorposVersao`.
+        if (s.CorposVersao < CharacterSave.VersaoDosCorpos && s.Raca == "Android" && s.Ficha is { } fichaDeAntes
+            && (fichaDeAntes.AndroideInfinito || fichaDeAntes.AndroideAbsorcao))
+            pl.Visual.Corpo += 1;
 
         // ============================ A COR DA AURA: SAVE ANTIGO NAO TEM, E NAO PRECISA TER ============================
         // O `??=` E A MIGRACAO INTEIRA. Nao ha ramo "personagem velho" nenhum: a cor e uma funcao
@@ -1092,6 +1129,19 @@ public sealed class AccountStore(string pasta)
 
         pl.Ficha = s.Ficha;
         pl.Class = s.Ficha.Class;
+
+        // (2026-10-18) OS PESOS DE ANTES: o maximo e a arte moravam na ficha (`Fighter.pesoMaximoKg`/`pesoArte`) -- agora moram no id de cada
+        // peso (`PesoDeTreino`). Os pesos de fabrica da mochila levam o que a ficha tinha (o que o jogador pagou continua dele), e quem estava
+        // vestido continua vestido com um deles. Os campos da ficha zeram: a migracao roda uma vez. AQUI, com a ficha do disco ja no corpo (a
+        // mochila foi lida antes dela).
+        if (pl.Ficha.pesoMaximoKg > 0 || pl.Ficha.pesoArte.Length > 0)
+        {
+            string migrado = Jandirus.Core.Items.PesoDeTreino.MigrarDaFicha(pl.Mochila, pl.Ficha.pesoMaximoKg, pl.Ficha.pesoArte);
+            pl.Ficha.pesoMaximoKg = 0;
+            pl.Ficha.pesoArte = "";
+            if (pl.Ficha.Weighted > 0 && pl.Ficha.pesoVestido.Length == 0) pl.Ficha.pesoVestido = migrado;
+        }
+        else if (pl.Ficha.Weighted > 0 && pl.Ficha.pesoVestido.Length == 0) pl.Ficha.pesoVestido = Jandirus.Core.Items.CatalogoDeItens.Pesos;
 
         // ============================ O QUE E `tmp` NO DM NAO PODE VOLTAR DO DISCO ============================
         // A ficha inteira e serializada de proposito (ver `CharacterSave.Ficha`), e o preco disso e

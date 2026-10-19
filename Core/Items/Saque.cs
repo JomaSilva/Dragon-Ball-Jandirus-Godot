@@ -113,21 +113,32 @@ public static class Saque
 		return leva;
 	}
 
-	/// <summary>Este item esta em uso (e por isso fica com o dono)?</summary>
-	public static bool EmUso(string id, bool scouterLigado, bool comPesos) =>
-		(scouterLigado && id == CatalogoDeItens.Scouter) || (comPesos && id == CatalogoDeItens.Pesos);
+	/// <summary>
+	/// Este item esta em uso (e por isso fica com o dono)? (2026-10-18) O peso em uso e O VESTIDO (`Fighter.pesoVestido`, vazio = nenhum), e
+	/// nao todo peso: cada um e um item com estado -- ver `PesoDeTreino`.
+	/// </summary>
+	public static bool EmUso(string id, bool scouterLigado, string pesoVestido) =>
+		(scouterLigado && id == CatalogoDeItens.Scouter) || (pesoVestido.Length > 0 && id == pesoVestido);
 
 	/// <summary>
 	/// O QUE DA PRA LEVAR desta mochila: tudo, menos o que esta em uso. A ordem e a da mochila -- e a que o
 	/// dono dela ve.
 	/// </summary>
-	public static List<Pilha> OQueDaPraLevar(Inventario mochila, bool scouterLigado, bool comPesos)
+	public static List<Pilha> OQueDaPraLevar(Inventario mochila, bool scouterLigado, string pesoVestido)
 	{
 		var leva = new List<Pilha>();
+		bool pesoFicou = false;
 		foreach (Pilha p in mochila.Pilhas)
 		{
 			if (p.Quantidade <= 0) continue;
-			if (!EquipadoTambemSaiDeTeste && EmUso(p.Id, scouterLigado, comPesos)) continue;
+			if (!EquipadoTambemSaiDeTeste && EmUso(p.Id, scouterLigado, pesoVestido))
+			{
+				// O PESO VESTIDO E UMA UNIDADE: um gemeo dele (o mesmo id, noutro slot) pode sair. O scouter ligado fica inteiro, como sempre.
+				if (p.Id != pesoVestido || pesoFicou) { if (p.Id == pesoVestido) leva.Add(p); continue; }
+				pesoFicou = true;
+				if (p.Quantidade > 1) leva.Add(p with { Quantidade = p.Quantidade - 1 });
+				continue;
+			}
 			leva.Add(p);
 		}
 		return leva;

@@ -60,7 +60,8 @@ public sealed partial class GameServer
 		if (!_players.TryGetValue(id, out ServerPlayer? pl) || _visual == null) return ("", "");
 		(string Nome, string Caminho) outra = PesoDeTreino.Escolhiveis(_visual).Find(e => e.Nome != PesoDeTreino.ArtePadrao);
 		if (string.IsNullOrEmpty(outra.Nome)) return ("", "");
-		EscolherAArteDosPesos(pl, outra.Nome);
+		if (pl.Mochila.Pilhas.Find(p => PesoDeTreino.EhPeso(p.Id)).Id is not { Length: > 0 } pesos) return ("", "");
+		EscolherAArteDosPesos(pl, pesos, outra.Nome);
 		return outra;
 	}
 
@@ -68,7 +69,9 @@ public sealed partial class GameServer
 	internal void PalcoV30_SemArteDosPesos(int id)
 	{
 		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return;
-		pl.Ficha.pesoArte = "";
+		// (2026-10-18) a arte mora no id de cada peso: todo peso da mochila volta a de fabrica
+		foreach (Jandirus.Core.Items.Pilha p in pl.Mochila.Pilhas.Where(p => PesoDeTreino.EhPeso(p.Id)).ToList())
+			TrocarOPeso(pl, p.Id, PesoDeTreino.IdDe(PesoDeTreino.MaximoDe(p.Id), ""));
 		pl.SigAtributos = "";
 	}
 
@@ -85,6 +88,32 @@ public sealed partial class GameServer
 	{
 		if (_players.TryGetValue(id, out ServerPlayer? pl) && pl.Combate is { Desfeito: true } c) c.Levantar();
 	}
+
+	/// <summary>
+	/// (2026-10-18) UM GOLPE QUE ARREMESSA, no corpo `alvo`, vindo de `deQuem` -- pela porta de producao do soco pesado (`Arremessar`), com a
+	/// forca e a duracao do teto. Devolve se o corpo saiu voando. E o "e se eu bater onde estava o Majin?" do robo `--diagpedacos`.
+	/// </summary>
+	internal bool PalcoV30_Arremessar(int deQuem, int alvo)
+	{
+		if (!_players.TryGetValue(deQuem, out ServerPlayer? a) || !_players.TryGetValue(alvo, out ServerPlayer? d)) return false;
+		Vec2 rumo = d.Pos - a.Pos;
+		Arremessar(d, rumo.LengthSquared > 0 ? rumo.Normalized() : new Vec2(1, 0), Math.Max(a.Ficha.expressedBP, 1) * 10, Empurrao.TiquesMax);
+		return d.TiquesDeVoo > 0;
+	}
+
+	/// <summary>(2026-10-18) Desloca o corpo `id` no servidor, sem colisao -- o "e se o corpo andasse?" da tela dos pedacos.</summary>
+	internal void PalcoV30_Deslocar(int id, Vec2 quanto)
+	{
+		if (_players.TryGetValue(id, out ServerPlayer? pl)) pl.Pos += quanto;
+	}
+
+	/// <summary>(2026-10-18) Quantos segundos do nocaute ainda faltam pro corpo `id` levantar, no relogio do SERVIDOR (o desfeito inclusive).</summary>
+	internal double PalcoV30_RestoDoNocaute(int id) =>
+		_players.TryGetValue(id, out ServerPlayer? pl) && pl.Combate is { } c ? c.NocauteRestante : 0;
+
+	/// <summary>(2026-10-18) Onde o corpo `id` esta no servidor, e se ele esta voando (o arremesso em curso).</summary>
+	internal (Vec2 Pos, bool Voando) PalcoV30_OndeEsta(int id) =>
+		_players.TryGetValue(id, out ServerPlayer? pl) ? (pl.Pos, pl.TiquesDeVoo > 0) : (default, false);
 
 	/// <summary>
 	/// (2026-10-15) Alterna a Forma Gigante deste corpo pela tecnica de producao (`FormaGigante`), sem a trava de quem
@@ -495,8 +524,18 @@ public sealed partial class GameServer
 	{
 		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return false;
 		if (!pl.Livro.Sabe(PathDeathBallG12)) { pl.Livro.Dar(PathDeathBallG12); MandarSkills(pl); }
-		// o Ki do aperto e o dos estagios: a Death Ball pede 150 x o dreno-base -- mais que o tanque inteiro do personagem novo da bancada
-		pl.Ficha.Ki = Math.Max(pl.Ficha.MaxKi, 150 * pl.Ficha.BaseDrain() * 2);
+		// O TANQUE QUE PAGA A BOLA INTEIRA: o aperto pede 150 x o dreno-base e cada estagio mais um terco disso -- mais que o tanque inteiro
+		// do personagem novo da bancada (Ki maximo ~140 contra 205). O Ki ACIMA de 100% nao serve de tanque: o excesso escorre
+		// (`CargaDeKi.PrecoDoExcesso`, acima do teto seguro a 10% por segundo dividido pela pericia) e o aperto chegava ao servidor com o Ki
+		// ja abaixo do preco -- "isso pede pelo menos 205 de energia" (os job94 e job95; antes passava pela folga de uns quadros). O tanque
+		// cresce pelo caminho de que ele sai, o `baseKi` (ver `FotoDaVariedade`); o preco cresce com a RAIZ do tanque, entao dobrar o tanque
+		// ate caberem tres apertos termina.
+		for (int i = 0; i < 16 && pl.Ficha.MaxKi < 3 * 150 * pl.Ficha.BaseDrain(); i++)
+		{
+			pl.Ficha.baseKi = Math.Max(pl.Ficha.baseKi, 1) * 2;
+			pl.Ficha.Statify();
+		}
+		pl.Ficha.Ki = pl.Ficha.MaxKi;
 		_blastPronto.Remove(pl.Id);
 		return true;
 	}

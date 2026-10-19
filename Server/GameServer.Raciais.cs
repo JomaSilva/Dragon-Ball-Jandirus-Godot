@@ -189,6 +189,9 @@ public partial class GameServer
 	{
 		// A AREA DE ESPERA DO TORNEIO (`canfight = 0` do `apply_hold`) fecha as habilidades tambem.
 		if (PresoNoTorneio(pl.Id)) { Avisar(pl, "voce esta na area de espera do torneio: sem tecnicas ate a sua vez."); return; }
+		// (2026-10-18) QUEM DORME E APERTA OUTRA COISA ACORDA ANTES -- e o sono se perde. Ver `GameServer.SonoDoMajin.cs`.
+		if (pl.SonoDesde >= 0 && !string.Equals(id, Jandirus.Core.Races.SonoDoMajin.Verbo, StringComparison.Ordinal))
+			AcordarDoSono(pl, "você se levanta pra agir.");
 		switch (id)
 		{
 			case "regenerar": Regenerar(pl); break;
@@ -294,6 +297,8 @@ public partial class GameServer
 				if (UsarVerboDeFusao(pl, id)) break;
 				// OS FILHOS (2026-10-17): pedir e responder nao sao skill nenhuma -- o mesmo motivo das de cima. Ver `GameServer.Filhos.cs`.
 				if (UsarVerboDeFilho(pl, id)) break;
+				// (2026-10-18) O NEO TUFFLE: possuir nao e skill do livro -- vem da maquina. Ver `GameServer.NeoTuffle.cs`.
+				if (UsarVerboDoTuffle(pl, id)) break;
 				// (v0.4.0) AS ATIVAS RACIAIS -- vem com a raca, e nao do livro. Ver `GameServer.Passivas.cs`.
 				if (UsarAtivaRacial(pl, id)) break;
 				if (!UsarTecnica(pl, id)) Avisar(pl, $"habilidade desconhecida: {id}");

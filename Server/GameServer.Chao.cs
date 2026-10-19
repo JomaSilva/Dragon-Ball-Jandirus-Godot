@@ -101,10 +101,12 @@ public sealed partial class GameServer
 	{
 		if (!PodeLargar(pl)) return;
 
-		if (Saque.EmUso(def.Id, (pl.PoderesConcedidos & Protocol.Poder.Scouter) != 0, pl.Ficha.Weighted > 0))
-		{ Avisar(pl, $"você está usando {def.Nome}: tire antes de largar."); return; }
+		// (2026-10-18) O PESO EM USO E O VESTIDO (uma unidade): um gemeo dele, com o mesmo id, pode cair.
+		int livres = pl.Mochila.Quantos(def.Id)
+					   - (Saque.EmUso(def.Id, (pl.PoderesConcedidos & Protocol.Poder.Scouter) != 0, pl.Ficha.Weighted > 0 ? pl.Ficha.pesoVestido : "") ? 1 : 0);
+		if (livres <= 0) { Avisar(pl, $"você está usando {def.Nome}: tire antes de largar."); return; }
 
-		int n = (int)Chao.Quanto(quantos, pl.Mochila.Quantos(def.Id));
+		int n = (int)Chao.Quanto(quantos, livres);
 		if (n <= 0) { Avisar(pl, "quantos? Diga um número (ou \"tudo\")."); return; }
 
 		int saiu = pl.Mochila.Tirar(def.Id, n);
@@ -113,10 +115,10 @@ public sealed partial class GameServer
 
 		if (Chao.LargarApagaDeTeste) { Avisar(pl, $"você joga fora {def.Nome}."); return; }
 
-		// (2026-10-15) OS PESOS CAEM COM A ARTE QUE O DONO ESCOLHEU (o item nao a carrega: ela mora na ficha). Os pesos nao
-		// empilham, entao o monte e so deles. Ver `Largado.Arte`.
-		string arte = def.Id == CatalogoDeItens.Pesos && !PesoDeTreino.ArteSoNoCorpoDeTeste && pl.Ficha.pesoArte.Length > 0
-			? PesoDeTreino.Folha(pl.Ficha.pesoArte, _visual) ?? "" : "";
+		// (2026-10-15) OS PESOS CAEM COM A ARTE DELES -- (2026-10-18) a do PROPRIO peso, que vai no id dele, e nao mais a da ficha de quem o
+		// largou: o peso feito pra um amigo caia com a cara do peso do dono. Os pesos nao empilham, entao o monte e so deles. Ver `Largado.Arte`.
+		string arte = PesoDeTreino.EhPeso(def.Id) && !PesoDeTreino.ArteSoNoCorpoDeTeste && PesoDeTreino.ArteDe(def.Id) is { Length: > 0 } dela
+			? PesoDeTreino.Folha(dela, _visual) ?? "" : "";
 		PorNoChao(pl.Zone, OndeCaiOQueSeLarga(pl), TipoDeLargado.Item, def.Id, saiu, arte);
 		// TODO MUNDO A VISTA FICA SABENDO: `to_chat(view(TargetMob), "[TargetMob] drops [src].")` (`:294`).
 		Falar(pl, Protocol.Fala.Emote, $"larga {Chao.Nome(TipoDeLargado.Item, def.Id, saiu)} no chão.");

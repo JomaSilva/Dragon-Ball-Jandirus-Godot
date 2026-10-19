@@ -1276,6 +1276,8 @@ public sealed partial class GameServer
 			c.Racial.DemonicoCargaDesde = c.Racial.DemonicoDesde = -1;
 			// (2026-10-17) O GRITO DO DESABAFO (a linha dele na tabela), calado.
 			c.Racial.GritoDesde = -1;
+			// (2026-10-18) O SLEEP DO MAJIN (a linha `Dormindo`), acordado -- sem recado: e a bancada desmontando a cena.
+			c.SonoDesde = -1;
 			c.CenaSegundos = 0;
 			c.SupernovaDesde = 0;
 			c.FuriaExtremaAte = 0;
@@ -1533,6 +1535,13 @@ public sealed partial class GameServer
 				 betaDeAntes ??= (b.Race, b.Class, b.Ficha.SaiyanLineage, b.Conta, b.Slot);
 				 GritarODesabafoDeTeste(b.Id);
 			 }, null, 3f, TiquesDoPasseio),
+
+			// ---- (2026-10-18) O SLEEP DO MAJIN: os 5 s deitado ----
+			// Pela porta de producao (`UsarHabilidade` -> `Dormir`), com Beta posto no ponto de dormir (`DormirDeTeste`: a skill no livro, a
+			// recarga livre). O passeio inteiro cabe no sono, e o esbarrao do andador nao o acorda: um corpo ocupado nao sai do lugar.
+			(Ocupacao.Dormindo,
+			 "dorme o Sleep do Majin (`UsarHabilidade` -> `Dormir`)",
+			 () => DormirDeTeste(b.Id), null, 3f, TiquesDoPasseio),
 		];
 
 		// (v0.3.0) CONTADO PELO PROPRIO `enum` (todos menos o `Livre`), e nao pelo ultimo nome: o `Meditando` deixou de ser
@@ -1601,11 +1610,17 @@ public sealed partial class GameServer
 			float voou = (b.Pos - antesDoBaque).Length;
 			AfirmarDc($"[{qual}] PRECONDICAO: o soco caiu num corpo que ESTAVA '{nome}' naquele instante",
 					  noBaque == qual, $"a producao respondeu '{CorpoOcupado.Nome(noBaque)}'");
-			AfirmarDc($"[{qual}] PRECONDICAO: o soco pesado de Alfa armou o arremesso de um corpo '{nome}'",
-					  armou, $"TiquesDeVoo={b.TiquesDeVoo}");
-			AfirmarDc($"[{qual}] **O ARREMESSO CONTINUA EMPURRANDO**: o mesmo corpo '{nome}' que o ombro "
-					+ $"nao move VOA {voou:0} px pelo knockback",
-					  voou > 2 * T, $"andou {voou:0.0} px");
+			// (2026-10-18) ...MENOS O MAJIN DESFEITO, a pedido do dono: *"tinham q ser separados e imunes a golpes"*. O golpe no lugar dele nao arma
+			// arremesso nenhum (o `Arremessar` recusa o desfeito, `GameServer.Empurrao.cs`) -- a regua se inverte so pra ele, com o mesmo soco.
+			bool imune = qual == Ocupacao.Desfeito;
+			AfirmarDc(imune
+							? $"[{qual}] **O DESFEITO NAO VOA** (dono, 2026-10-18): o soco pesado garantido de Alfa NAO arma o arremesso do corpo '{nome}'"
+							: $"[{qual}] PRECONDICAO: o soco pesado de Alfa armou o arremesso de um corpo '{nome}'",
+						  imune ? !armou : armou, $"TiquesDeVoo={b.TiquesDeVoo}");
+			AfirmarDc(imune
+							? $"[{qual}] ...e o corpo '{nome}' NAO sai do lugar pelo knockback (os pedacos nao viajam juntos)"
+							: $"[{qual}] **O ARREMESSO CONTINUA EMPURRANDO**: o mesmo corpo '{nome}' que o ombro nao move VOA {voou:0} px pelo knockback",
+						  imune ? voou < 1f : voou > 2 * T, $"andou {voou:0.0} px");
 
 			// ---------------- 3. E SOBREPOSTOS NINGUEM FICA PRESO ----------------
 			// A regra nova e do tipo que reabre travamento: se ela desligasse o escape do

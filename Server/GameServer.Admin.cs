@@ -507,6 +507,11 @@ public sealed partial class GameServer
 			case "admin_vilao": AdminVilao(pl, arg); break;
 			// (2026-10-16) chama um vilao de saga no Inferno AGORA -- ver `GameServer.ViloesDoInferno.cs`
 			case "admin_inferno": AdminVilaoDoInferno(pl); break;
+			// (2026-10-18) as sagas: a lista pro painel e o reset de uma -- ver `GameServer.SagaAdmin.cs`
+			case "admin_sagas": AdminSagas(pl); break;
+			case "admin_saga_resetar": AdminResetarSaga(pl, arg); break;
+			// (2026-10-18) e o "chegar agora": os dias de aviso pulados, os chefes no mundo ja
+			case "admin_saga_agora": AdminSagaAgora(pl, arg); break;
 			case "admin_morte_lenta": AdminMorteLenta(pl); break;
 			case "admin_destruir_planeta": AdminDestruirPlaneta(pl); break;
 			case "admin_abortar_morte": AdminAbortarMorte(pl); break;
@@ -1392,6 +1397,7 @@ public sealed partial class GameServer
 		GravarMundo();
 		GravarBasesSeMudou();
 		SalvarCargos();
+		SalvarSagas();   // (2026-10-18) e as sagas -- ver `GameServer.Sagas.cs`
 		return n;
 	}
 

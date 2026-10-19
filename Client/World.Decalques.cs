@@ -27,6 +27,9 @@ public partial class World : Node2D
 {
 	private Decalques? _decalques;
 
+	/// <summary>O node dos decalques -- so pras bancadas (o `--diagcapital` conta as crateras do pod no chao).</summary>
+	public Decalques? DecalquesDeTeste => _decalques;
+
 	/// <summary>
 	/// AS FOLHAS QUE SAO AGUA, pelo NOME.
 	///
@@ -101,13 +104,97 @@ public partial class World : Node2D
 	{
 		var ponto = new Vector2(onde.X, onde.Y);
 
+		// (2026-10-18) O QUE CHEGA COM O CHAO NOVO AINDA FORA DA TELA ESPERA POR ELE -- ver `_daZonaNova`.
+		if (ChaoNovoAindaPorMontar())
+		{
+			if (_daZonaNova.Count >= Decalques.MaxVivos) _daZonaNova.RemoveAt(0);
+			_daZonaNova.Add((tipo, ponto, dir, peca));
+			return;
+		}
+		PlantarDoServidor(tipo, ponto, dir, peca);
+	}
+
+	/// <summary>Planta um decalque que veio do servidor, com o chao dele ja na tela.</summary>
+	private void PlantarDoServidor(Protocol.Decal tipo, Vector2 ponto, Facing dir, PecaDeCorpo peca)
+	{
 		// O SULCO PASSA PELA FILA: se foi um raio que o riscou, ele espera a cabeca DESENHADA chegar nele. O
 		// `TickDosSulcosEsperando` roda neste mesmo quadro, e planta na hora o que nao espera ninguem.
 		if (tipo == Protocol.Decal.Sulco && !ProjetilDesenhado.AnuncioSemEsperaDeTeste)
 			_sulcosEsperando.Add((ponto, dir, _relogioDecal));
-		else
-			_decalques?.Plantar(tipo, ponto, dir, peca);
+		else if (_decalques?.Plantar(tipo, ponto, dir, peca) is { } no && tipo == Protocol.Decal.CrateraDoPod)
+			EstrondoDoPod(no);
 	}
+
+	/// <summary>
+	/// ============================ O DECALQUE QUE CHEGA COM A TROCA DE ZONA ESPERA O CHAO NOVO (2026-10-18) ============================
+	/// O pacote nao diz de que zona ele e: o servidor so o manda pra quem esta nela, e o canal confiavel garante a ordem -- o que chega
+	/// DEPOIS do `ZoneChanged` e da zona NOVA. So que o mapa novo so monta dois quadros depois, atras da tela de carregamento
+	/// (`TelaDeCarregamento.Cobrir`), e a carga trava a thread por quase um segundo. Plantado na chegada, o decalque nascia ATRAS da tela: a
+	/// cratera aparecia pronta, e o estrondo e o tremor -- que SAO o pouso -- aconteciam com a tela preta (e chegando ao espaco, a carga ainda
+	/// limpa o chao). Nenhum decalque chegava nesse vao enquanto todos eram de briga; a cratera do pod chega EXATAMENTE nele: o servidor a abre
+	/// no mesmo tique em que pousa o piloto, e o piloto e quem mais tem de ve-la.
+	///
+	/// Entao o que chega com o chao novo fora da tela (o mapa montado e de outra zona, ou a tela de carregamento esta no ar) espera aqui, e
+	/// nasce no primeiro quadro em que ele aparece (`PlantarOsDaZonaNova`). Uma troca de zona no meio descarta a fila (era de um chao que
+	/// nunca chegou a montar). O teto e o dos decalques vivos: mais que isso nao caberia no chao de qualquer jeito.
+	/// ==============================================================================================================================
+	/// </summary>
+	private readonly List<(Protocol.Decal Tipo, Vector2 Onde, Facing Dir, PecaDeCorpo Peca)> _daZonaNova = [];
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--diagcapital`): o decalque que chega com a troca de zona nasce na hora, atras da tela de carregamento -- o jogo de
+	/// antes. Falso em jogo, sempre.
+	/// </summary>
+	public static bool DecalqueSemEsperaDoChaoDeTeste;
+
+	/// <summary>O chao da zona em que o `GameClient` esta ainda nao esta na tela? (o mapa montado e de outra zona, ou a tela de carregamento esta no ar)</summary>
+	private bool ChaoNovoForaDaTela() =>
+		GameClient.Instance is { } cli && !string.IsNullOrEmpty(cli.Zone.Name)
+		&& (string.IsNullOrEmpty(_zonaDoAtual.Name) || cli.Zone.Hash != _zonaDoAtual.Hash || TelaDeCarregamento.Instancia?.NoAr == true);
+
+	/// <summary>O decalque que chega agora espera o chao? -- a pergunta de cima, menos com o defeito injetado.</summary>
+	private bool ChaoNovoAindaPorMontar() => !DecalqueSemEsperaDoChaoDeTeste && ChaoNovoForaDaTela();
+
+	/// <summary>Planta o que esperava o chao novo, assim que ele esta na tela. Roda no tique dos decalques.</summary>
+	private void PlantarOsDaZonaNova()
+	{
+		if (_daZonaNova.Count == 0 || ChaoNovoAindaPorMontar()) return;
+		foreach ((Protocol.Decal tipo, Vector2 onde, Facing dir, PecaDeCorpo peca) in _daZonaNova) PlantarDoServidor(tipo, onde, dir, peca);
+		_daZonaNova.Clear();
+	}
+
+	/// <summary>
+	/// (2026-10-18) O POD CAIU DO CEU: o estrondo no lugar da cratera, e o chao sacode pra quem esta perto -- mais forte quanto mais perto, e
+	/// nada a partir de <see cref="AlcanceDoTremorDoPod"/>. Roda ao PLANTAR a `CrateraDoPod`, e com a fila de cima quem acabou de pousar ouve
+	/// e sente junto com a cratera crescendo. O som e o `explosion.ogg` (o do estouro no mundo), posicionado: do outro lado do mapa nao se
+	/// ouve. O tremor e a `Sacudir` de sempre, com a queda lenta da cinematica -- um baque que dura, e nao o solavanco seco do soco.
+	/// </summary>
+	private void EstrondoDoPod(Node2D cratera)
+	{
+		EstrondosDoPodDeTeste++;
+		UltimoEstrondoAtrasDaTelaDeTeste = ChaoNovoForaDaTela();
+		AudioDirector.EfeitoNoLugar(cratera, Trilha.Explosao, 1f, AlcanceDoEstrondoDoPod);
+		if (_local == null) return;
+		float perto = 1f - Mathf.Clamp(_local.GlobalPosition.DistanceTo(cratera.GlobalPosition) / AlcanceDoTremorDoPod, 0f, 1f);
+		if (perto <= 0f) return;
+		Sacudir(SegundosDoTremorDoPod * Jandirus.Core.Forms.Cinematicas.QuedaDoTremor * perto, 1f,
+				Jandirus.Core.Forms.Cinematicas.QuedaDoTremor, Jandirus.Core.Forms.Cinematicas.CadenciaDoTremor);
+	}
+
+	/// <summary>Ate onde o estrondo do pod se ouve: 30 tiles.</summary>
+	private const float AlcanceDoEstrondoDoPod = 30 * ZoneCollision.TileSize;
+
+	/// <summary>Ate onde o chao sacode: 20 tiles -- quem esta na mesma tela sente.</summary>
+	private const float AlcanceDoTremorDoPod = 20 * ZoneCollision.TileSize;
+
+	/// <summary>Quanto o tremor dura em cima da cratera, em segundos (cai com a distancia).</summary>
+	private const float SegundosDoTremorDoPod = 0.8f;
+
+	/// <summary>Quantas vezes o estrondo do pod soou neste cliente -- so pras bancadas.</summary>
+	public int EstrondosDoPodDeTeste { get; private set; }
+
+	/// <summary>O ultimo estrondo soou com o chao novo fora da tela? -- a regua da fila do chao novo (`--diagcapital`).</summary>
+	public bool UltimoEstrondoAtrasDaTelaDeTeste { get; private set; }
 
 	/// <summary>Os sulcos que ja chegaram do servidor e ainda nao nasceram. Ver <see cref="TickDosSulcosEsperando"/>.</summary>
 	private readonly List<(Vector2 Onde, Facing Dir, double Chegou)> _sulcosEsperando = [];
@@ -181,6 +268,7 @@ public partial class World : Node2D
 	{
 		LimparMarcasDoChao();
 		_retratoDePecasPendente = false;
+		_daZonaNova.Clear();   // (o que esperava um chao que nunca chegou a montar)
 	}
 
 	/// <summary>As celulas cuja terra revirada ja foi plantada nesta visita. Ver <see cref="ChaoDanificadoEmVolta"/>.</summary>
@@ -345,6 +433,7 @@ public partial class World : Node2D
 		if (_decalques == null) return;
 		_relogioDecal += delta;
 
+		PlantarOsDaZonaNova();      // o que chegou com a troca de zona: nasce quando o chao novo esta na tela
 		TickDosSulcosEsperando();   // os sulcos que chegaram: nascem agora, ou esperam a cabeca do raio que os riscou
 		PlantarORetratoDePecas();   // so faz algo quando ha retrato pendente E a zona dele e esta
 

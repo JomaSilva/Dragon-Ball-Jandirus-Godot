@@ -840,7 +840,7 @@ public sealed partial class GameServer
 				 + "de quem encostasse)", double.IsFinite(pl.Ficha.powerMod) && Math.Abs(pl.Ficha.powerMod - 1) < 1e-9, $"powerMod {pl.Ficha.powerMod} | {Ultimos(controle)}");
 
 		pl.Ficha.Weighted = 0;
-		List<string> peso = Ouvir(() => AjustarPeso(pl, "NaN"));
+		List<string> peso = Ouvir(() => AjustarPeso(pl, Jandirus.Core.Items.CatalogoDeItens.Pesos, "NaN"));
 		ValCheca("**`item_ajustar Weights/NaN` E RECUSADO**: o peso vestido continua um numero (um NaN na ficha quebra a gravacao da conta)",
 				 double.IsFinite(pl.Ficha.Weighted) && Disse(peso, "inválido"), $"Weighted {pl.Ficha.Weighted} | {Ultimos(peso)}");
 
@@ -852,7 +852,7 @@ public sealed partial class GameServer
 		try
 		{
 			Ouvir(() => ControleDePoderG9(pl, "NaN"));
-			Ouvir(() => AjustarPeso(pl, "NaN"));
+			Ouvir(() => AjustarPeso(pl, Jandirus.Core.Items.CatalogoDeItens.Pesos, "NaN"));
 			List<string> passou = Ouvir(() => Posicionar(pl, "ItemQueNaoExisteDaBancada/NaN/NaN"));
 			ValCheca("(defeito injetado: NaN vale como numero) as tres provas de cima REPROVAM -- `powerMod` e `Weighted` viram NaN, e o "
 					 + "ponto NaN passa da porta do `posicionar`",

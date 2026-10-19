@@ -22,6 +22,9 @@ namespace Jandirus.Server;
 ///   L. LAMINA E ESCUDO DE KI -- um ponto por tique com a ferramenta; no nivel 1 a lamina morde a metade, e o escudo custa a metade.
 ///   P. FULL POWER -- o Ki queimado: o primeiro ponto aos 1000.
 ///   G. A FORMA GIGANTE -- o banco do gigante rende pontos; o nivel 1 baixa a eficiencia pra 0,5.
+///   M. (2026-10-18) O MORTO DE PE -- *"alguns players relataram n estar dando pra upar ki effusion morto (e talvez outras skills)"*: morto pela
+///      porta, levado ao Outro Mundo pela porta, a bola do fantasma rende na Efusao o MESMO que de vivo, e a meditacao paga a Ki Unlocked no
+///      tique de producao. Contra-exemplo: o tiro que recusa todo morto (`MortoNaoAtiraDeTeste`, o jogo de antes de 2026-10-15).
 /// </summary>
 public sealed partial class GameServer
 {
@@ -125,6 +128,65 @@ public sealed partial class GameServer
 			AfirmarNv("**AS SKILLS DE KI SOBEM 5x MAIS RAPIDO QUE NO DM** (*\"nem liberamos o beam ainda\"*): a mesma bola rende 5x na Efusao",
 						   naTaxaDoDm > 0 && Math.Abs(daBola / naTaxaDoDm - 5) < 1e-6,
 						   $"bola {daBola:0.##} contra {naTaxaDoDm:0.##} na taxa do DM; o beam (Efusao 25, {ateOBeam:N0} de exp) sai em {Math.Ceiling(ateOBeam / daBola):N0} bolas desta ficha, contra {Math.Ceiling(ateOBeam / naTaxaDoDm):N0}");
+
+			// ------------------------------------------------------------ M) o morto de pe (2026-10-18)
+			// A INVESTIGACAO, escrita: nenhuma porta da exp pergunta o `dead` cru. O tiro recusa so o CADAVER (`PodeAtirar`, desde 2026-10-15 -- o
+			// dono: *"n ta dando pra usar ataques de ki tb como morto"*), o funil dos contadores so pergunta se e jogador (`CreditarContador`) e o tique
+			// dos niveis pula so o cadaver (`TickDosNiveis`). Esta familia prova o caminho inteiro, pelas portas de producao.
+			GD.Print("[niveis] -- M) o morto de pe no Outro Mundo: a Ki Effusion e a meditacao sobem como de vivo --");
+			Pronto();
+			double vivo0 = Exp(Efusao);
+			BasicBlast(pl);
+			double daBolaViva = Exp(Efusao) - vivo0;
+			pl.Combate.Morrer();
+			IrProAlem(pl);
+			bool dePe = f.dead && pl.MortoDePe && Alem.EhOAlem(pl.Zone) && !EhCadaver(pl) && EhJogador(pl);
+			AfirmarNv("(montagem) morto pela porta (`Combate.Morrer`) e levado ao Outro Mundo pela porta (`IrProAlem`): de pe la, e jogador",
+							   dePe, $"zona {pl.Zone.Name}; morto {f.dead}; de pe {pl.MortoDePe}");
+			_blastPronto.Remove(pl.Id);
+			f.Ki = f.MaxKi;
+			double morto0 = Exp(Efusao);
+			List<string> falasDoTiro = Ouvir(() => BasicBlast(pl));
+			double daBolaMorta = Exp(Efusao) - morto0;
+			AfirmarNv("**O MORTO DE PE UPA A KI EFFUSION** (*\"n estar dando pra upar ki effusion morto\"*): a bola sai da mao do fantasma e rende na "
+							+ "Efusao o MESMO que de vivo",
+							   daBolaMorta > 0 && Math.Abs(daBolaMorta - daBolaViva) < 1e-9,
+							   $"morto {daBolaMorta:0.#####}; vivo {daBolaViva:0.#####}; {Ultimos(falasDoTiro)}");
+
+			// A DE ESTADO (*"e talvez outras skills"*): meditando no Outro Mundo, o tique de PRODUCAO dos niveis -- o das guardas de jogador e de
+			// cadaver -- paga a Ki Unlocked (2 por tique meditando, `Mind.dm`).
+			const string KiUnlocked = "/datum/skill/mind/Ki_Unlocked";
+			if (!pl.Livro.Sabe(KiUnlocked)) Dar(KiUnlocked);
+			f.med = true;
+			double medit0 = Exp(KiUnlocked);
+			int nivelAntes = pl.Niveis.Nivel(KiUnlocked);
+			for (int i = 0; i < 10; i++) TickDosNiveis();
+			double daMeditacao = Exp(KiUnlocked) - medit0;
+			f.med = false;
+			AfirmarNv("...e a de ESTADO tambem (*\"e talvez outras skills\"*): meditando no Outro Mundo, o tique de producao dos niveis paga a Ki Unlocked",
+							   daMeditacao > 0 || pl.Niveis.Nivel(KiUnlocked) > nivelAntes, $"{daMeditacao:0.##} de exp em 10 tiques");
+
+			MortoNaoAtiraDeTeste = true;
+			double daBolaComODefeito;
+			try
+			{
+				_blastPronto.Remove(pl.Id);
+				f.Ki = f.MaxKi;
+				double doMortoAntes = Exp(Efusao);
+				BasicBlast(pl);
+				daBolaComODefeito = Exp(Efusao) - doMortoAntes;
+			}
+			finally { MortoNaoAtiraDeTeste = false; }
+			AfirmarNv("(defeito injetado: o tiro recusa todo morto, o jogo de antes de 2026-10-15) a bola do fantasma nao sai e a Efusao congela -- a "
+							+ "regua de cima REPROVA", daBolaComODefeito == 0, $"{daBolaComODefeito}");
+
+			// DE VOLTA A VIDA, na Terra: as familias seguintes medem um vivo -- e SEM O CADAVER que a viagem deixou na pista (`IrProAlem` deixa o
+			// corpo no mundo dos vivos): o punho "no vazio" do Spirit Fist, logo abaixo, acertava ele.
+			pl.Combate.Reviver();
+			pl.MorteJaViajou = false;
+			MoveToZone(pl.Id, terra, PontoDeNascimento(terra));
+			foreach (ServerPlayer cadaver in ZoneList(terra.Hash).Where(c => c.ECadaver && c.NomeDeQuemMorreu == pl.Name).ToList())
+				DesfazerOCadaver(cadaver);
 
 			// ------------------------------------------------------------ S) o Spirit Gun
 			GD.Print("[niveis] -- S) o Spirit Gun: um ponto por tiro, e o degrau corta o custo e dobra o dano --");

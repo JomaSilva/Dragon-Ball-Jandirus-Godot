@@ -22,6 +22,12 @@ public partial class GameClient : Node
 	public ZoneKey Zone { get; private set; }
 
 	/// <summary>
+	/// (2026-10-18) O NEO TUFFLE QUE POSSUI O MEU CORPO (o id dele), ou 0: eu so assisto, seguindo o corpo dele -- ver `Protocol.S2C.Possuido`
+	/// e `LocalPlayer.SeguirOPossessor`.
+	/// </summary>
+	public int PossuidoPor { get; private set; }
+
+	/// <summary>
 	/// A ZONA DESTA TELA, ESCRITA A MAO. So a bancada -- ver `--diagforma`.
 	///
 	/// ============================ ISTO NAO E FORJAR A REGRA, E FORJAR O LUGAR ============================
@@ -1368,6 +1374,9 @@ public partial class GameClient : Node
 	/// </summary>
 	public List<Protocol.PresencaState> Sentidos { get; private set; } = [];
 	public bool SentidosSaoDoScouter { get; private set; }
+
+	/// <summary>(2026-10-18) O NIVEL DO MEU SENSE -- o alcance que eu tenho (`SenseEmNiveis`); 0 no modo Scan.</summary>
+	public int NivelDoSense { get; private set; }
 	public event Action? SentidosMudaram;
 
 	/// <summary>Chave vazia = so me manda a lista; com chave = reivindico aquele cargo.</summary>
@@ -1678,6 +1687,34 @@ public partial class GameClient : Node
 	private ulong _clashAte;
 
 	/// <summary>
+	/// (2026-10-18) O SILENCIO DO QUICK TIME EVENT, que vai uma FOLGA ALEM do fim. O dono: *"QTE contra seu clone na sua mente ao meditar
+	/// profundamente, caso o botao q o jogo pede seja M vc acaba saindo da meditaçao, dnv vou pedir pra q quando tenha QTE o jogo apenas veja o
+	/// input pro QTE e nada mais, pra n abrir menus e n fazer isso q ta acontecendo"*.
+	///
+	/// O QUE VAZAVA: o silencio dos atalhos (`Foco.AtalhosMudos`) era o proprio <see cref="EmClash"/>, e ele cai no `Acabou`. A ultima letra do
+	/// embate e apertada no fim dele -- o tempo de reacao de quem le a letra, mais a ida e a volta do pacote --, e chegava ao jogo DEPOIS do
+	/// `Acabou`: o M tirava da mente (`SaidaDaMente`), o I abria a mochila, o P o menu. Todo leitor de atalho ja perguntava pelo portao; o
+	/// portao e que abria cedo demais.
+	///
+	/// SAO DOIS PRAZOS DE PROPOSITO: este cala os ATALHOS ate <see cref="FolgaDepoisDoQte"/> depois do fim; o `EmClash` -- a trava do corpo, que
+	/// zera o vetor do andar -- continua caindo no `Acabou`, porque andar logo depois do embate e o que o jogador quer. No `Comecou` os dois
+	/// nascem iguais, e sem `Acabou` (o embate que o servidor esqueceu) os dois morrem juntos no prazo.
+	/// </summary>
+	public bool QteMudo => _qteMudoAte > 0 && Time.GetTicksMsec() < _qteMudoAte;
+
+	/// <summary>Ate quando os atalhos ficam mudos pelo embate, no relogio local. Ver <see cref="QteMudo"/>.</summary>
+	private ulong _qteMudoAte;
+
+	/// <summary>(2026-10-18) A folga do silencio depois do fim do embate, em ms: o tempo de quem ainda responde a ultima letra.</summary>
+	public const ulong FolgaDepoisDoQte = 1_200;
+
+	/// <summary>
+	/// (2026-10-18) DEFEITO INJETADO (`--diagmudez`, familia F9): o silencio volta a cair junto com o `Acabou` -- o jogo de antes. Lido pela
+	/// propria linha do `Acabou`. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool SemFolgaDoQteDeTeste;
+
+	/// <summary>
 	/// O EIXO DO RAIO QUE EU SEGURO COM AS MAOS (unitario) -- so existe pro lado das maos de uma disputa de guarda, e
 	/// so enquanto ela esta de pe (`Protocol.ClashSub.SaidaDeLado`). E a licenca de SAIR DE LADO (dono, 2026-10-12):
 	/// com ele o `LocalPlayer` da o passo atravessado ao raio, pela mesma pergunta com que o servidor fecha a disputa
@@ -1876,6 +1913,8 @@ public partial class GameClient : Node
 			case Protocol.S2C.JoinAccepted:
 			{
 				LocalId = reader.GetInt();
+				// (2026-10-18) QUEM ENTRA, ENTRA NO PROPRIO CORPO: a posse e de sessao, e um servidor que caiu no meio dela nao mandou o fim.
+				PossuidoPor = 0;
 				Zone = reader.GetZone();
 				Vec2 spawn = reader.GetVec();
 				string nome = reader.GetString();
@@ -1959,6 +1998,11 @@ public partial class GameClient : Node
 				ap.Gigante = (marcas & 64) != 0;   // (2026-10-15) o bit 6: a Forma Gigante -- o corpo dobra
 				ap.SemSangue = (marcas & 128) != 0;   // (v0.3.0) o bit 7: o corpo que nao sangra (o Majin, o bio com sangue Majin)
 				ap.PesosNoCorpo = reader.GetString(120);
+				// (2026-10-18) O SEGUNDO BYTE DE MARCAS, depois da folha dos pesos: o bit 0 e o BEBE -- o recem-nascido anda na folha do
+				// bebe, sem nada por cima (`Appearance.Bebe`).
+				byte marcas2 = reader.GetByte();
+				ap.Bebe = (marcas2 & 1) != 0;
+				ap.CabeloDoTuffle = (marcas2 & 2) != 0;   // o bit 1: o corpo que o Neo Tuffle veste, de cabelo branco-acinzentado
 				PeerLooked?.Invoke(quem, nome, raca, genero, ap,
 					tipoFus == 0 ? null : (Jandirus.Core.Social.TipoDeFusao)tipoFus);
 				break;
@@ -2121,6 +2165,8 @@ public partial class GameClient : Node
 						// O PRAZO NASCE AQUI. Ver `EmClash` -- e ele que garante que o silencio dos
 						// atalhos acaba mesmo que o `Acabou` nunca chegue.
 						_clashAte = Time.GetTicksMsec() + (ulong)Math.Max(ms, 0) + FolgaDoEmbate;
+						// ...E O SILENCIO DOS ATALHOS NASCE COM ELE, no mesmo prazo -- ver `QteMudo`.
+						_qteMudoAte = _clashAte;
 						// EMBATE NOVO, LICENCA NENHUMA: o eixo da saida de lado, se houver, chega no pacote seguinte.
 						_eixoDoRaioNasMaos = null;
 						ClashComecou?.Invoke(tipo, a, b, ms, meu, dele);
@@ -2163,6 +2209,8 @@ public partial class GameClient : Node
 						// (`Terminar` e `Anunciar` mandam so aos dois), senao o fim do embate alheio na
 						// mesma zona destravaria o teclado de quem ainda esta preso no seu.
 						_clashAte = 0;
+						// (2026-10-18) ...E O SILENCIO DOS ATALHOS GANHA A FOLGA: a letra atrasada do fim nao vaza pro jogo -- ver `QteMudo`.
+						_qteMudoAte = SemFolgaDoQteDeTeste ? 0 : Time.GetTicksMsec() + FolgaDepoisDoQte;
 						_eixoDoRaioNasMaos = null;
 						ClashAcabou?.Invoke(venc, perd);
 						break;
@@ -2616,8 +2664,9 @@ public partial class GameClient : Node
 			{
 				// A LISTA INTEIRA, como os conhecidos: o servidor so a manda quando ela muda, e ela SUBSTITUI
 				// a anterior -- quem saiu do alcance simplesmente nao esta mais nela.
-				(bool scan, List<Protocol.PresencaState> lista) = reader.GetSentidos();
+				(bool scan, byte nivel, List<Protocol.PresencaState> lista) = reader.GetSentidos();
 				SentidosSaoDoScouter = scan;
+				NivelDoSense = nivel;
 				Sentidos = lista;
 				SentidosMudaram?.Invoke();
 				break;
@@ -2946,6 +2995,13 @@ public partial class GameClient : Node
 				VeiculoMontado = reader.GetString(48);
 				NomeDoVeiculo = reader.GetString(64);
 				break;
+
+			// (2026-10-18) O TANQUE DA NAVE QUE EU VEJO, e a nave que eu observo de fora -- ver `GameClient.Naves.cs`.
+			case Protocol.S2C.Combustivel: LerCombustivel(reader); break;
+			case Protocol.S2C.Observando: LerObservacao(reader); break;
+
+			// (2026-10-18) O MEU CORPO FOI POSSUIDO PELO NEO TUFFLE (0 = acabou) -- ver `GameServer.NeoTuffle.cs`.
+			case Protocol.S2C.Possuido: PossuidoPor = reader.GetInt(); break;
 
 			// QUAL CORPO ESTA AOS MEUS PES -- o alvo da tecla E pra enterrar. Zero = nenhum.
 			case Protocol.S2C.Cadaver:

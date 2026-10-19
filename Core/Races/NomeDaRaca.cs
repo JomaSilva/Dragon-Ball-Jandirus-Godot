@@ -32,6 +32,8 @@ public static class NomeDaRaca
 		"BioAndroid" => "Bio-Android",   // `CreationUI.dm:288`
 		"SpiritDoll" => "Spirit Doll",   // `CreationUI.dm:287`
 		"Halfbreed" => "Half-Saiyan",    // `CreationUI.dm:104`
+		// (2026-10-18) o dono: *"a raça tsujin (q deveria ser tsufurujin no jogo)"* -- a chave continua a do DM (`stattsujin.dm`), o nome e o da serie
+		"Tsujin" => "Tsufurujin",
 		_ => raca,
 	};
 

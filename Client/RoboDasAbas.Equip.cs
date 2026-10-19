@@ -94,12 +94,14 @@ public partial class RoboDasAbas
 			  ganho == $"{cli.Atributos.PesoMult:0.##}x" && BarrasDaAba(pg).Any(b => b.GetMeta("barra").AsString() == "Ganho no treino"), ganho);
 		Checa("o botao 'Tirar os pesos' so existe com pesos vestidos", (Botao(pg, "Tirar os pesos") != null) == vestidos, $"vestidos={vestidos} (PesoMult {cli.Atributos.PesoMult:0.##})");
 		PanelContainer? cPesos = CartaoPorTitulo(pg, "Pesos");
-		string pesoEsperado = vestidos ? "VESTIDOS" : mochila.Quantos(CatalogoDeItens.Pesos) > 0 ? "guardados" : "não tem";
+		// (2026-10-18) cada peso e um item com estado (o maximo e a arte no id) -- o primeiro da mochila e o primeiro bloco do cartao
+		string primeiroPeso = mochila.Pilhas.Find(p => Jandirus.Core.Items.PesoDeTreino.EhPeso(p.Id)).Id ?? "";
+		string pesoEsperado = vestidos ? "VESTIDOS" : primeiroPeso.Length > 0 ? "guardados" : "não tem";
 		Checa($"a pilula dos pesos diz '{pesoEsperado}'", cPesos != null && PilulasDaAba(cPesos).Contains(pesoEsperado), cPesos == null ? "sem cartao" : string.Join(",", PilulasDaAba(cPesos)));
 
 		// O PESO MAXIMO SE COMPRA (dono, 2026-10-12): a linha e o botao so existem com os pesos na mochila, e o numero
-		// e o do servidor (`AtributosState.PesoMaxKg`).
-		bool temPesos = mochila.Quantos(CatalogoDeItens.Pesos) > 0;
+		// e o do PESO -- (2026-10-18) o maximo vai no id dele (`PesoDeTreino.MaximoDe`).
+		bool temPesos = primeiroPeso.Length > 0;
 		string? maximoNaTela = menu.ValorDesenhado("Equip", "Peso máximo");
 		Button? bMelhorar = Botao(pg, "Melhorar:");
 		Checa("o PESO MAXIMO e o botao 'Melhorar' so existem com os pesos na mochila",
@@ -107,8 +109,8 @@ public partial class RoboDasAbas
 			  $"tem={temPesos} linha='{maximoNaTela ?? "(nula)"}' botao='{bMelhorar?.Text ?? "(nulo)"}'");
 		if (temPesos)
 			Checa("...o maximo escrito e o da ficha lenta, e o botao diz o proximo degrau e o preco",
-				  maximoNaTela == $"{Jandirus.Core.Items.PesoDeTreino.Maximo(cli.Atributos.PesoMaxKg):N0} kg"
-				  && bMelhorar?.Text == TelaDeInventario.RotuloDaMelhoriaDosPesos(), $"'{maximoNaTela}' / '{bMelhorar?.Text}'");
+				  maximoNaTela == $"{Jandirus.Core.Items.PesoDeTreino.MaximoDe(primeiroPeso):N0} kg"
+				  && bMelhorar?.Text == TelaDeInventario.RotuloDaMelhoriaDosPesos(primeiroPeso), $"'{maximoNaTela}' / '{bMelhorar?.Text}'");
 
 		// ---- os aparelhos: cada linha com o nome do catalogo, o icone e a pilula que a mochila manda ----
 		var erros = new List<string>();

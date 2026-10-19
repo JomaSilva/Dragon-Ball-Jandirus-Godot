@@ -67,6 +67,8 @@ public partial class Decalques : Node2D
 		Protocol.Decal.CrateraGrande => 40,
 		// (v0.3.0) A DA GENKIDAMA FICA MAIS AINDA: e o buraco que conta o que aconteceu ali.
 		Protocol.Decal.CrateraEnorme => 90,
+		// (2026-10-18) A DO POD tambem fica: e o buraco que conta que alguem caiu do ceu ali.
+		Protocol.Decal.CrateraDoPod => 90,
 		Protocol.Decal.Fumaca => 2.6,
 		// ============================ O CHAO DANIFICADO NAO SOME ============================
 		// Decisao do dono: a terra revirada FICA. Ela so desaparece quando o jogo reinicia e o
@@ -168,6 +170,8 @@ public partial class Decalques : Node2D
 		Protocol.Decal.CrateraGrande => ("res://Assets/Sprites/DU/Map/big crater.tres", "default"),
 		// (v0.3.0) A ENORME (a Genkidama) e a MESMA folha, aberta muito mais -- ver o crescimento no `Plantar`.
 		Protocol.Decal.CrateraEnorme => ("res://Assets/Sprites/DU/Map/big crater.tres", "default"),
+		// (2026-10-18) A DO POD, a mesma folha de novo -- ver o crescimento no `Plantar`.
+		Protocol.Decal.CrateraDoPod => ("res://Assets/Sprites/DU/Map/big crater.tres", "default"),
 		// ============================ ESTA E TEXTURA SOLTA, NAO FOLHA ============================
 		// `dust cloud 2018.png` e um PNG de 1280x720 no DU -- arte, e nao sprite sheet com metadados.
 		// Ele nem tinha vindo na conversao: minha varredura pegou so `*.dmi`, e o DU tem 133 imagens
@@ -278,6 +282,14 @@ public partial class Decalques : Node2D
 	/// <inheritdoc cref="MembrosDeTeste"/>
 	public static PecaDeCorpo UltimaPecaDeTeste;
 
+	/// <summary>
+	/// (2026-10-18) Quantas CRATERAS foram pedidas, a pequena e a GRANDE separadas. So pra bancada (`--diagraiva`, passo 7), e separado do
+	/// contador geral pelo mesmo motivo do sangue -- e as duas separadas entre si porque a pergunta e QUAL abriu: a cena da furia abre a
+	/// pequena, a estreia de uma forma de raiva a grande (`Catalogo.NasceDaRaiva`, no `Transformacao`). Contam PEDIDOS e nunca descem, como o
+	/// `MembrosDeTeste`: o teto de decalques despeja as velhas, e um contador de vivas ficaria igual com uma cratera nova no chao.
+	/// </summary>
+	public static int CraterasDeTeste, CraterasGrandesDeTeste;
+
 	public static Decalques? Instancia { get; private set; }
 
 	public override void _Ready()
@@ -363,6 +375,9 @@ public partial class Decalques : Node2D
 	/// <summary>Quantas ondas de agua estao no chao agora. So pra bancada -- ver <see cref="MaxAgua"/>.</summary>
 	public int AguasVivasDeTeste => Contar(Protocol.Decal.Agua);
 
+	/// <summary>Quantas crateras de pod estao no chao agora. So pra bancada (`--diagcapital`).</summary>
+	public int CraterasDoPodVivasDeTeste => Contar(Protocol.Decal.CrateraDoPod);
+
 	/// <summary>Quantos decalques deste tipo estao no chao agora. Ver <see cref="Cota"/>.</summary>
 	private int Contar(Protocol.Decal tipo)
 	{
@@ -416,17 +431,20 @@ public partial class Decalques : Node2D
 	/// de um braco no chao precisa ve-lo sumir no minuto 10, e nao dez minutos depois de ter chegado.
 	/// Zero ou menos nao planta nada -- e a peca que venceu entre o retrato sair e chegar.
 	/// </param>
-	public void Plantar(Protocol.Decal tipo, Vector2 onde, Facing dir,
+	/// <returns>O node plantado -- ou nulo, quando nada nasceu. A cratera do pod ancora nele o estrondo (`World.EstrondoDoPod`).</returns>
+	public Node2D? Plantar(Protocol.Decal tipo, Vector2 onde, Facing dir,
 						PecaDeCorpo peca = PecaDeCorpo.Nenhuma, double? restaSegundos = null)
 	{
-		if (restaSegundos is <= 0) return;
+		if (restaSegundos is <= 0) return null;
 		// (o ensaio do lobby planta por esta mesma porta e nao entra na conta de bancada nenhuma)
 		if (!_deEnsaio) PedidosDeTeste++;
 		if (tipo == Protocol.Decal.Sangue) { SangueDeTeste++; OndeSangrouDeTeste = onde; }
 		if (tipo == Protocol.Decal.Membro) { MembrosDeTeste++; UltimaPecaDeTeste = peca; }
+		if (tipo == Protocol.Decal.Cratera) CraterasDeTeste++;
+		if (tipo == Protocol.Decal.CrateraGrande) CraterasGrandesDeTeste++;
 
 		(string caminho, string prefixo) = Arte(tipo);
-		if (caminho.Length == 0) return;
+		if (caminho.Length == 0) return null;
 
 		bool solta = caminho.EndsWith(".png", StringComparison.OrdinalIgnoreCase);
 		SpriteFrames? folha = null;
@@ -436,14 +454,14 @@ public partial class Decalques : Node2D
 		{
 			if (!_folhas.TryGetValue(caminho, out folha))
 				_folhas[caminho] = folha = FolhasPresas.Carregar(caminho);
-			if (folha == null) return;
+			if (folha == null) return null;
 
 			// A PECA ESCOLHE PELO NOME, nao pelo sorteio do `Escolher`: a folha tem dez recortes que
 			// sao dez COISAS diferentes, e sortear entre eles derrubaria um pe quando arrancaram um
 			// braco. Peca sem recorte (`Nenhuma`) nao planta nada, e e o certo -- e o unico caso em
 			// que o servidor nao disse o que caiu.
 			anim = tipo == Protocol.Decal.Membro ? Recorte(peca) : Escolher(folha, prefixo, dir, tipo);
-			if (anim.Length == 0) return;
+			if (anim.Length == 0) return null;
 		}
 
 		double prazo = restaSegundos ?? Prazo(tipo);
@@ -492,6 +510,7 @@ public partial class Decalques : Node2D
 			Protocol.Decal.Cratera => new Vector2(0.05f, 0.05f),
 			Protocol.Decal.CrateraGrande => new Vector2(0.05f, 0.05f),
 			Protocol.Decal.CrateraEnorme => new Vector2(0.05f, 0.05f),
+			Protocol.Decal.CrateraDoPod => new Vector2(0.05f, 0.05f),
 			Protocol.Decal.Fumaca => new Vector2(EscalaDaFumaca, EscalaDaFumaca),
 			_ => Vector2.One,
 		};
@@ -500,7 +519,7 @@ public partial class Decalques : Node2D
 		if (solta)
 		{
 			Texture2D? tex = TexturaSolta(caminho);
-			if (tex == null) return;
+			if (tex == null) return null;
 			s = new Sprite2D { Texture = tex, Position = onde, Scale = escala, Modulate = new Color(1, 1, 1, 0.75f) };
 
 			// ============================ A FUMACA FICA ACIMA DO CORPO ============================
@@ -523,7 +542,7 @@ public partial class Decalques : Node2D
 			s = a;
 		}
 
-		if (tipo is Protocol.Decal.Cratera or Protocol.Decal.CrateraGrande or Protocol.Decal.CrateraEnorme)
+		if (tipo is Protocol.Decal.Cratera or Protocol.Decal.CrateraGrande or Protocol.Decal.CrateraEnorme or Protocol.Decal.CrateraDoPod)
 		{
 			// O DU sorteia 75%..115% do tamanho cheio -- duas crateras nunca sao iguais.
 			//
@@ -538,7 +557,10 @@ public partial class Decalques : Node2D
 					   * (tipo == Protocol.Decal.CrateraGrande ? 1.4f : 1.0f)
 					   // (v0.3.0) A ENORME (a Genkidama): ~4,5x a folha de 96 px, uns 13 tiles de lado a lado -- o miolo da explosao
 					   // colossal, cujo raio e de 10 tiles (o resto e o chao rachado em volta, que o servidor manda celula a celula).
-					   * (tipo == Protocol.Decal.CrateraEnorme ? 4.5f : 1.0f);
+					   * (tipo == Protocol.Decal.CrateraEnorme ? 4.5f : 1.0f)
+					   // (2026-10-18) A DO POD: ~1,8x a folha de 96 px, uns 4 a 6 tiles de lado a lado em volta de um pod de um tile. O dono pediu
+					   // "uma cratera grande", e ela abre mais que a grande da raiva (1,4x) -- e bem menos que a da Genkidama.
+					   * (tipo == Protocol.Decal.CrateraDoPod ? 1.8f : 1.0f);
 			s.CreateTween().TweenProperty(s, "scale", new Vector2(alvo, alvo), 0.35)
 				.SetTrans(Tween.TransitionType.Back).SetEase(Tween.EaseType.Out);
 		}
@@ -562,7 +584,7 @@ public partial class Decalques : Node2D
 		{
 			_permanentes.Add(s);
 			PermanentesDeTeste = _permanentes.Count;
-			return;
+			return s;
 		}
 
 		// APAGA ESMAECENDO. Sumir de uma vez le como bug de desenho; esmaecer le como marca velha.
@@ -579,6 +601,7 @@ public partial class Decalques : Node2D
 
 		_vivos.Add((s, _relogio + prazo, tipo));
 		if (!_deEnsaio) VivosDeTeste = _vivos.Count;
+		return s;
 	}
 
 	/// <summary>

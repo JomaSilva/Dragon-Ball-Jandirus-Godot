@@ -153,6 +153,13 @@ public enum Ocupacao : byte
 	/// `Client/EsferaDemoniaca.cs`); o corpo fica plantado (a trava de tecnica).
 	/// </summary>
 	GritoDoDesabafo = 16,
+
+	/// <summary>
+	/// (2026-10-18) DORMINDO O SLEEP DO MAJIN -- os 5 s deitado da skill (`Races.SonoDoMajin`, `GameServer.SonoDoMajin.cs`). E por este valor
+	/// que a tela desenha o "z" subindo sobre o corpo (`Client/SonoDesenhado.cs`); o corpo fica no chao (nao e empurrado), e qualquer outra
+	/// ocupacao o acorda -- por isso ele e o ULTIMO da cadeia do <see cref="CorpoOcupado.De"/>.
+	/// </summary>
+	Dormindo = 17,
 }
 
 /// <summary>
@@ -216,6 +223,9 @@ public static class CorpoOcupado
 
 		/// <summary>(v0.4.0) `EstadoRacial.DemonicoCargaDesde` -- a carga parada do Demonic Saiyan.</summary>
 		public bool CargaDemoniaca;
+
+		/// <summary>(2026-10-18) `ServerPlayer.SonoDesde` -- o Sleep do Majin.</summary>
+		public bool Dormindo;
 	}
 
 	/// <summary>
@@ -254,6 +264,9 @@ public static class CorpoOcupado
 		: s.Agarrando     ? Ocupacao.Agarrando
 		: s.Treinando     ? Ocupacao.Treinando
 		: s.Meditando     ? Ocupacao.Meditando
+		// (2026-10-18) O SONO E O ULTIMO, de proposito: se o corpo esta ocupado com QUALQUER outra coisa, ele ja nao esta so dormindo -- e e
+		// assim que o servidor sabe que o sono foi interrompido (`GameServer.PorQueAcorda`).
+		: s.Dormindo      ? Ocupacao.Dormindo
 		: Ocupacao.Livre;
 
 	/// <summary>Ocupado e "qualquer coisa menos livre". Uma linha, e ela mora aqui pra ninguem
@@ -285,6 +298,7 @@ public static class CorpoOcupado
 		Ocupacao.CargaDemoniaca => "carregando o Demonic Saiyan (a esfera verde)",
 		Ocupacao.Secando      => "secando (bebido pela execucao de um bio-androide)",
 		Ocupacao.GritoDoDesabafo => "gritando o desabafo do Lendario (a esfera verde)",
+		Ocupacao.Dormindo     => "dormindo (o Sleep do Majin)",
 		_ => "",
 	};
 
@@ -293,7 +307,7 @@ public static class CorpoOcupado
 	/// corrompido) vira <see cref="Ocupacao.Livre"/> e nao um estado inventado -- errar pro lado de
 	/// "nao barra" e o unico erro que nao prende ninguem.
 	/// </summary>
-	public static Ocupacao DeByte(byte b) => b <= (byte)Ocupacao.GritoDoDesabafo ? (Ocupacao)b : Ocupacao.Livre;   // o ULTIMO valor do `enum`
+	public static Ocupacao DeByte(byte b) => b <= (byte)Ocupacao.Dormindo ? (Ocupacao)b : Ocupacao.Livre;   // o ULTIMO valor do `enum`
 
 	/// <summary>(2026-10-17) O chefe esta erguendo a esfera de um ultimato -- a Supernova ou a Death Ball (as duas tem o mesmo desenho).</summary>
 	public static bool NoUltimato(Ocupacao o) => o is Ocupacao.Supernova or Ocupacao.DeathBallDoUltimato;

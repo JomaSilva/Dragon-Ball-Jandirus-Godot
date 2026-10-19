@@ -135,6 +135,8 @@ public sealed partial class GameServer
 			GritoDoDesabafo = pl.Racial.GritoDesde >= 0,
 			// (2026-10-17) A VITIMA DA EXECUCAO DO BIO: a tela a desenha secando por este valor -- ver `SendoBebido`.
 			Secando = SendoBebido(pl.Id),
+			// (2026-10-18) O SLEEP DO MAJIN: a tela desenha o "z" por este valor -- ver `GameServer.SonoDoMajin.cs`.
+			Dormindo = pl.SonoDesde >= 0,
 			Nocauteado = pl.Ficha.KO || (pl.Ficha.dead && !pl.MortoDePe),
 			NoEmbate = _emEmbate.ContainsKey(pl.Id) || _emEmbateDeKi.ContainsKey(pl.Id),
 			EmCena = EmCena(pl),
@@ -185,7 +187,13 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool EntraNaGrade(ServerPlayer pl) => !SendoCarregado(pl)
 		// (2026-10-17) E A LARVA ENTERRADA: ela esta debaixo da terra, e quem anda passa por cima -- ver `GameServer.Larva.cs`.
-		&& pl.EnterradoDesde < 0;
+		&& pl.EnterradoDesde < 0
+		// (2026-10-18) E O OLHO de quem observa uma nave de fora: nao e corpo, e o casco da nave e que ocupa aquele chao -- ver
+		// `GameServer.NaveObservar.cs`.
+		&& !EhOlhoDeFora(pl)
+		// (2026-10-18) E O CORPO DE QUEM O NEO TUFFLE POSSUI: escondido, ele anda com o Tuffle, e o chao e do corpo que o Tuffle veste -- ver
+		// `GameServer.NeoTuffle.cs`.
+		&& pl.PossuidoPor == 0;
 
 	/// <summary>
 	/// A <see cref="Vizinhanca"/> DESTE CORPO -- o unico jeito de alguem no servidor pegar a grade.

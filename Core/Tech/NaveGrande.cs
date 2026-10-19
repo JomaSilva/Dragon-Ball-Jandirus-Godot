@@ -165,6 +165,15 @@ public static class NaveGrande
 	/// </summary>
 	public static readonly (int X, int Y) CelDoConsole = (4, 4);
 
+	/// <summary>
+	/// AS PASSAGENS DO INTERIOR, onde nenhuma obra se assenta (2026-10-18, quando a nave passou a aceitar obra): a PLATAFORMA (a unica
+	/// saida), a CHEGADA (onde quem embarca aparece -- uma maquina densa ali poria o corpo dentro dela) e a PORTA da sala da ponte com a
+	/// celula de cada lado (uma maquina no vao trancaria o leme, e um passageiro com o codigo poderia prender o dono fora da ponte). Quem
+	/// pergunta e o <see cref="Assentamento.DoLugar"/>, nas duas pontas.
+	/// </summary>
+	public static bool EhPassagem(int cx, int cy) =>
+		(cx, cy) == CelDaPlataforma || (cx, cy) == CelDaChegada || (cx == ColunaDoVao && Math.Abs(cy - AlturaDaSala) <= 1);
+
 	// A DISTANCIA PRA ALCANCAR O CONSOLE OU A PLATAFORMA **NAO MORA MAIS AQUI**.
 	//
 	// Havia um `AlcanceDaPeca = 48f` proprio, com o comentario dizendo que ele era "o mesmo

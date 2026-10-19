@@ -1263,14 +1263,18 @@ public partial class GameServer
 		//
 		// (A QUINTA e de 2026-10-16: a Respiracao Hamon, que nao e de Dragon Ball -- o dono mandou tirar qualquer traco dela.)
 		//
-		// SAO DEZESSETE LINHAS DE CINCO DONOS: a arvore comentada so tinha regra de nivel (uma linha), a skill
+		// (A SEXTA e de 2026-10-18: o Super Majin, que o dono achou inutil.)
+		//
+		// SAO DEZOITO LINHAS DE SEIS DONOS: a arvore comentada so tinha regra de nivel (uma linha), a skill
 		// aposentada sumiu do catalogo E perdeu as regras de nivel (duas), as tres do arquivo fora do `.dme` so sumiram
 		// do catalogo (tres: nenhuma tinha regra de nivel), as cinco maestrias sumiram do catalogo (cinco) e quatro
-		// delas perderam as regras de nivel (quatro: a `forms/mssj` nunca teve), e a Hamon sumiu do catalogo e das regras (duas).
+		// delas perderam as regras de nivel (quatro: a `forms/mssj` nunca teve), a Hamon sumiu do catalogo e das regras (duas), e o
+		// Super Majin so do catalogo (uma: nunca teve regra de nivel).
 		string[] maestrias = ["/forms/ssj ", "/forms/mssj ", "/forms/lssjm ", "/heran/MstedMXPWR ", "/heran/MstedTMXPWR "];
-		AfirmarCat("as perdas contra o marco tem CINCO donos e nenhum outro: a arvore comentada, a skill que o dono aposentou, as tres do arquivo fora do .dme, as cinco maestrias legadas e a Respiracao Hamon",
-				   d.Explicadas.Count == 17
+		AfirmarCat("as perdas contra o marco tem SEIS donos e nenhum outro: a arvore comentada, a skill que o dono aposentou, as tres do arquivo fora do .dme, as cinco maestrias legadas, a Respiracao Hamon e o Super Majin",
+				   d.Explicadas.Count == 18
 				   && d.Explicadas.Count(e => e.Contains("/HamonBreathing", StringComparison.Ordinal)) == 2
+				   && d.Explicadas.Count(e => e.Contains("/majin/Super_Majin", StringComparison.Ordinal)) == 1
 				   && d.Explicadas.Count(e => e.Contains("Focused", StringComparison.Ordinal)) == 1
 				   && d.Explicadas.Count(e => e.Contains("Saiyan_Power", StringComparison.Ordinal)) == 2
 				   && d.Explicadas.Count(e => e.Contains("/CustomAttacks/ki/", StringComparison.Ordinal)) == 2
@@ -1552,6 +1556,25 @@ public partial class GameServer
 				   !pl.Livro.Sabe(hamon) && pl.Livro.Sabe(dura) && pl.Livro.MarcosLivres == 2
 				   && Disse(falasDoHamon, "Hamon Breathing") && Disse(falasDoHamon, "2 marco"),
 				   $"livres {pl.Livro.MarcosLivres}; {string.Join(" | ", falasDoHamon)}");
+
+		// O SUPER MAJIN (dono, 2026-10-18: *"a skill super majin dos majins é inutil, podendo remove-la completamente do codigo e do jogo"*):
+		// tier 1 da Majin Racials, 2 marcos. A mesma regua da Hamon -- fora do catalogo, de toda arvore, das regras e das tecnicas vivas --, e
+		// o login de quem o comprou devolve os 2.
+		const string superMajin = "/datum/skill/majin/Super_Majin";
+		AfirmarCat("o Super Majin (o dono: inutil) esta entre as aposentadas com o custo que tinha (2 marcos), NAO esta no catalogo, nenhuma arvore o cita (a Majin Racials ficou sem o galho), nao tem regra de nivel, e o verb dele nao e mais tecnica",
+				   SkillsAposentadas.Todas.Any(a => a.Path == superMajin && a.Custo == 2) && _skills.Get(superMajin) == null
+				   && !_skills.Todas.Any(s => s.Galhos.Concat(s.PreReqs).Any(p => string.Equals(p, superMajin, StringComparison.OrdinalIgnoreCase)))
+				   && RegrasDeNivel.Get(superMajin) == null && !Tecnicas.Vivas.Contains("Super_Majin", StringComparer.OrdinalIgnoreCase),
+				   $"aposentada {SkillsAposentadas.Saiu(superMajin)}; no catalogo {_skills.Get(superMajin) != null}; regra de nivel {RegrasDeNivel.Get(superMajin) != null}; tecnica viva {Tecnicas.Vivas.Contains("Super_Majin", StringComparer.OrdinalIgnoreCase)}");
+		CharacterSave comSuperMajin = Antigo();
+		comSuperMajin.Skills = [dura, superMajin];
+		comSuperMajin.MarcosLivres = 0;
+		PrepararSkills(pl, comSuperMajin);
+		List<string> falasDoSuperMajin = Ouvir(() => AvisarDasAposentadas(pl));
+		AfirmarCat("quem o comprou o perde no login e recebe os 2 marcos de volta (0 livres -> 2), com o recado",
+				   !pl.Livro.Sabe(superMajin) && pl.Livro.Sabe(dura) && pl.Livro.MarcosLivres == 2
+				   && Disse(falasDoSuperMajin, "Super Majin") && Disse(falasDoSuperMajin, "2 marco"),
+				   $"livres {pl.Livro.MarcosLivres}; {string.Join(" | ", falasDoSuperMajin)}");
 
 		try
 		{

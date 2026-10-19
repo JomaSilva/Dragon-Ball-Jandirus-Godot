@@ -28,7 +28,15 @@ namespace Jandirus.Client;
 ///     que ja era dele, sem cena, e a estreia -- e a cinematica no corpo e a da forma nova;
 ///   * a raiva COMUM (o amigo so cai) tambem transforma sozinha, mas cobra mais poder (dono, 2026-10-11): entre
 ///     os dois precos nada muda; com o preco pago chega a estreia -- sem pacote de furia, sem tema da raiva e sem
-///     o Ki no teto.
+///     o Ki no teto;
+///   * (2026-10-18) O GRITO COM O NOME DO AMIGO, no chat e no balao: o amigo cai e ele grita o nome (a moeda cravada no
+///     nome pra foto: a chance e da `--raivateste`); o amigo morre e ele grita o nome com o "NAO" e, uns 1,5 s depois,
+///     a frase da furia. Contra-exemplo: sem o nome (o jogo da manha), a morte grita so a frase;
+///   * (2026-10-18) O CORPO ACHADO: o amigo morre LONGE (fora da vista), e nada chega na hora; ao achar o corpo, os
+///     chamados pelo nome chegam ao chat e ao balao, e so DEPOIS a cena da furia -- ou, com o requisito, a da
+///     transformacao (fotos `raiva-10` a `raiva-13`). A regra e os contra-exemplos sao da `--raivateste` (familia 13).
+///     E A CRATERA DE CADA UMA: a cena da furia abre a PEQUENA aos 3 s; a estreia pela furia segura o corpo 25 s e so
+///     no fim abre a GRANDE (foto `raiva-13b`) -- ele nao vira na hora.
 ///
 /// O palco e do servidor (`GameServer.PalcoDaRaivaDeTeste`): um amigo declarado e um algoz ao lado do host. Dai
 /// pra frente e o jogo: o funil da derrota, o gancho da raiva, o fio, o `World.AoIrromperFuria`, o `AudioDirector`.
@@ -99,6 +107,44 @@ public partial class RoboDaRaiva : Node
 
 	private void AoIrromper(int id) => _furias.Add(id);
 
+	/// <summary>
+	/// (2026-10-18) O NOME DO AMIGO DO PALCO (`GameServer.PalcoDaRaivaDeTeste`) -- o que o grito tem de dizer. A montagem confere que e com ele
+	/// que o amigo chegou a ESTE cliente.
+	/// </summary>
+	private const string NomeDoAmigo = "Kuririn";
+
+	/// <summary>(2026-10-18) O que o DONO disse em voz alta (`Fala.Diz`) e chegou a este chat, na ordem, com a hora de chegada em segundos.</summary>
+	private readonly List<(string Texto, double Em)> _gritos = [];
+
+	private void AoOuvir(Jandirus.Net.Protocol.Fala canal, string quem, string texto)
+	{
+		if (canal == Jandirus.Net.Protocol.Fala.Diz && GameClient.Instance is { } cli && quem == cli.LocalName)
+			_gritos.Add((texto, Time.GetTicksMsec() / 1000.0));
+	}
+
+	private string Gritos() => _gritos.Count == 0 ? "nada" : string.Join(" | ", _gritos.Select(g => g.Texto));
+
+	/// <summary>
+	/// (2026-10-18) EM QUE SEGUNDO DA CENA O CHAO ABRIU, e de que cena (a forma dela; "" = a da furia) -- anotado pelo espiao da
+	/// `Transformacao` (`EspiaoDePedaco`, o pedaco "a cratera"). O dono perguntou se a estreia pela furia "vira na hora", porque nas fotos a
+	/// cratera parecia pequena: a resposta e QUANDO e QUAL cratera cai, e isto e o que a mede.
+	/// </summary>
+	private readonly List<(string Forma, double Segundo)> _crateras = [];
+
+	private void AoPedacoDaCena(string qual, double _)
+	{
+		if (qual != "a cratera" || GameClient.Instance is not { } cli) return;
+		foreach (Transformacao t in CenasEm(cli.LocalId)) _crateras.Add((t.CenaDeTeste.Forma, t.TempoDeTeste));
+	}
+
+	private string Crateras() => _crateras.Count == 0 ? "nenhuma" : string.Join(" | ", _crateras.Select(c => $"'{c.Forma}' aos {c.Segundo:0.0} s"));
+
+	/// <summary>(2026-10-18) O que o balao em cima deste corpo diz agora, com os espacos da quebra de linha normalizados ("" = calado).</summary>
+	private static string BalaoDe(int id) =>
+		World.Instancia?.CorpoDeTeste(id)?.GetNodeOrNull<BalaoDeFala>("Balao") is { Visible: true } b
+			? string.Join(' ', b.TextoDeTeste.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+			: "";
+
 	private void AoMudarForma(int quem, int de, int para, DegrauDeCena degrau, bool dominada)
 	{
 		if (quem != GameClient.Instance?.LocalId) return;
@@ -111,9 +157,15 @@ public partial class RoboDaRaiva : Node
 		Transformacao.CorDoCorpoIgnoradaDeTeste = false;
 		CargaVisual.ChamaSoComOCDeTeste = false;
 		Iluminacao.MeioDiaDeTeste = false;
+		// (2026-10-18) ...e os dois do grito: o defeito do nome e a moeda cravada no nome
+		Jandirus.Core.Combat.RaivaEmDegraus.GritoSemONomeDeTeste = false;
+		Jandirus.Core.Combat.RaivaEmDegraus.RaivaComumSempreONomeDeTeste = false;
+		// (2026-10-18) ...e o espiao da cratera (passo 7), que e estatico tambem
+		Transformacao.EspiaoDePedaco -= AoPedacoDaCena;
 		if (!_assinou || GameClient.Instance is not { } cli) return;
 		cli.FuriaIrrompeu -= AoIrromper;
 		cli.FormaMudou -= AoMudarForma;
+		cli.Falou -= AoOuvir;
 	}
 
 	public override void _Process(double delta)
@@ -124,6 +176,7 @@ public partial class RoboDaRaiva : Node
 		{
 			cli.FuriaIrrompeu += AoIrromper;
 			cli.FormaMudou += AoMudarForma;
+			cli.Falou += AoOuvir;
 			_assinou = true;
 			TravarALuzDoPalco();
 		}
@@ -335,6 +388,9 @@ public partial class RoboDaRaiva : Node
 		Afirmar("(montagem) o palco pos o amigo declarado e o algoz ao lado do host, e os dois estao na tela",
 				palco != null && mundo.CorpoDeTeste(palco.Value.Amigo) != null && mundo.CorpoDeTeste(palco.Value.Algoz) != null);
 		if (palco == null) yield break;
+		Afirmar($"(montagem) o amigo chegou a este cliente com o nome que o grito vai dizer ('{NomeDoAmigo}'), e o dono e quem fala no chat",
+				mundo.IdPeloNome(NomeDoAmigo) == palco.Value.Amigo && cli.LocalName.Length > 0,
+				$"id pelo nome {mundo.IdPeloNome(NomeDoAmigo)} (o do palco e {palco.Value.Amigo}), dono '{cli.LocalName}'");
 		Afirmar("(montagem) em paz: nenhuma cena de furia, o tema da raiva calado, e o Ki do dono em ~20% do tanque",
 				CenaDaFuriaEm(eu) == null && !TemaDaRaivaNoAr(som) && RazaoDeKiNaFicha(cli) < 0.6,
 				$"camada {som.CamadaDeTeste}, Ki {RazaoDeKiNaFicha(cli) * 100:0}%");
@@ -466,7 +522,12 @@ public partial class RoboDaRaiva : Node
 		yield return 1.0;
 		Afirmar("(montagem) com o Ki de volta abaixo do tanque a aura normal APAGA (ela e do Ki)", !AuraNormal(eu).Acesa);
 
-		srv.AbaterOAmigoDeTeste(morreu: false);
+		// (2026-10-18) A MOEDA DO NOME CRAVADA NO NOME (o palco `RaivaComumSempreONomeDeTeste`, so durante o golpe): a raiva comum grita o nome
+		// do amigo numa chance, e a foto deste passo e a do nome. A chance em si e medida pela `--raivateste` (familia 12), com a moeda solta.
+		_gritos.Clear();
+		Jandirus.Core.Combat.RaivaEmDegraus.RaivaComumSempreONomeDeTeste = true;
+		try { srv.AbaterOAmigoDeTeste(morreu: false); }
+		finally { Jandirus.Core.Combat.RaivaEmDegraus.RaivaComumSempreONomeDeTeste = false; }
 		yield return 1.2;
 		(NivelDeRaiva Nivel, double Raiva, double RazaoDeKi, double Teto)? comum = srv.RaivaDeTeste(eu);
 		Afirmar("o amigo CAI: o servidor diz raiva COMUM, e ela vale MENOS que a extrema",
@@ -475,9 +536,14 @@ public partial class RoboDaRaiva : Node
 		Afirmar("**...e NADA acende: nenhum pacote de furia, nenhuma cena, o tema calado, o Ki onde estava, nenhuma aura**",
 				_furias.Count == 0 && CenaDaFuriaEm(eu) == null && !TemaDaRaivaNoAr(som) && RazaoDeKiNaFicha(cli) < 0.6 && !AuraNormal(eu).Acesa,
 				$"{_furias.Count} pacote(s), camada {som.CamadaDeTeste}, Ki {RazaoDeKiNaFicha(cli) * 100:0}%");
+		string[] oNomeNaComum = Jandirus.Core.Combat.RaivaEmDegraus.FormasDoNome(NivelDeRaiva.Comum, NomeDoAmigo);
+		Afirmar("**...e ele GRITA O NOME DO AMIGO** (*\"kuririn!\"*): uma fala so chegou ao chat, e e o nome -- e o balao em cima dele diz o mesmo",
+				_gritos.Count == 1 && oNomeNaComum.Contains(_gritos[0].Texto) && BalaoDe(eu) == _gritos[0].Texto,
+				$"chat: {Gritos()}; balao: '{BalaoDe(eu)}'");
 		Fotografar("raiva-03-o-amigo-caido-so-raiva-comum");
 
 		_picoDoKi = 0;
+		_gritos.Clear();
 		srv.AbaterOAmigoDeTeste(morreu: true);
 		yield return 0.5;
 		cena = CenaDaFuriaEm(eu);
@@ -485,19 +551,37 @@ public partial class RoboDaRaiva : Node
 				_furias.Count == 1 && cena != null && TemaDaRaivaNoAr(som),
 				$"{_furias.Count} pacote(s), cena {(cena != null ? "viva" : "nenhuma")}, camada {som.CamadaDeTeste}");
 		Afirmar("...e o Ki salta pro teto de novo", OKiSaltouProTeto(cli), OKiEmTexto(cli));
-		for (int i = 0; i < 40 && cena != null && IsInstanceValid(cena) && cena.TempoDeTeste < 1.5; i++) yield return 0.05;
+		string[] oNomeNaFuria = Jandirus.Core.Combat.RaivaEmDegraus.FormasDoNome(NivelDeRaiva.Extrema, NomeDoAmigo);
+		Afirmar("**...e ele GRITA O NOME DO AMIGO COM O NAO** (*\"KURIRIN NAO!\"*) -- e so ele, por enquanto: a frase da furia espera",
+				_gritos.Count == 1 && oNomeNaFuria.Contains(_gritos[0].Texto) && BalaoDe(eu) == _gritos[0].Texto,
+				$"chat: {Gritos()}; balao: '{BalaoDe(eu)}'");
+		// (a foto ANTES da frase: 1,0 s de cena, com o nome ainda no balao -- a frase chega aos 1,5 s)
+		for (int i = 0; i < 40 && cena != null && IsInstanceValid(cena) && cena.TempoDeTeste < 1.0; i++) yield return 0.05;
 		Fotografar("raiva-04-caiu-e-morreu-a-cena-vem");
+		for (int i = 0; i < 60 && _gritos.Count < 2; i++) yield return 0.05;
+		yield return 0.3;
+		double entreOsDois = _gritos.Count >= 2 ? _gritos[1].Em - _gritos[0].Em : -1;
+		double prometido = Jandirus.Core.Combat.RaivaEmDegraus.SegundosAteAFraseDaFuria;
+		Afirmar("**...E LOGO EM SEGUIDA A FRASE DA FURIA** (*\"'KURIRIN NAO!' e logo em seguida 'SEU DESGRACADO!'\"*): a segunda fala chega ao chat "
+				+ $"uns {prometido:0.0#} s depois do nome, e e uma das da furia -- e o balao troca pra ela",
+				_gritos.Count == 2 && Jandirus.Core.Combat.RaivaEmDegraus.GritosDaFuria.Contains(_gritos[1].Texto)
+				&& Math.Abs(entreOsDois - prometido) < 0.45 && BalaoDe(eu) == _gritos[1].Texto,
+				$"chat: {Gritos()}; {entreOsDois:0.00} s entre os dois; balao: '{BalaoDe(eu)}'");
+		Fotografar("raiva-04b-o-nome-com-o-nao-e-logo-em-seguida-a-frase-da-furia");
 		foreach (object passo in EsperarACenaDaFuriaAcabar(eu)) yield return passo;
 
 		// ------------------------------------------------------------ 2b. os dois contra-exemplos da tela
 		// A MESMA cena, com os dois defeitos de volta: os aneis no vermelho das cenas sem forma (o port ate
 		// 2026-10-11) e a chama de carga so com a tecla C (a regra antiga da `CargaVisual`).
-		GD.Print("[draiva] -- 2b) contra-exemplos: a cena VERMELHA e a aura SO com a tecla C --");
+		// (2026-10-18) ...e o terceiro, o do grito: sem o nome do amigo (o jogo da manha), a morte grita uma fala so -- a frase.
+		GD.Print("[draiva] -- 2b) contra-exemplos: a cena VERMELHA, a aura SO com a tecla C e o grito SEM o nome --");
 		srv.AcalmarDeTeste(eu, kiEm: 0.2);
 		yield return 1.0;
 		(int Vermelhos, float DaCorDoKi)? antesDoDefeito = PixelsEmVoltaDeMim();
 		Transformacao.CorDoCorpoIgnoradaDeTeste = true;
 		CargaVisual.ChamaSoComOCDeTeste = true;
+		Jandirus.Core.Combat.RaivaEmDegraus.GritoSemONomeDeTeste = true;
+		_gritos.Clear();
 		try
 		{
 			srv.AbaterOAmigoDeTeste(morreu: true);
@@ -520,12 +604,19 @@ public partial class RoboDaRaiva : Node
 			Afirmar("(o mesmo defeito, NA TELA) nao ha chama da cor do ki em cima do corpo -- a checagem da tela REPROVA, e a regua enxerga a falta",
 					corDoKi[0] >= 0 && corDoKi[0] < kiNaTelaEmPaz + 0.06f,
 					$"{corDoKi[0] * 100:0.0}% com o defeito, contra {kiNaTelaComAAura * 100:0.0}% com a aura acesa");
+			// (a esta altura a cena ja anda ha mais que o intervalo da frase: sem o defeito, o nome e a frase ja teriam chegado)
+			Afirmar("(defeito injetado: o grito sem o nome, o jogo da manha) a morte grita uma fala so -- a frase, sem o nome do amigo e sem nada "
+					+ "depois -- a checagem do nome com o NAO e da frase em seguida REPROVA",
+					_gritos.Count == 1 && Jandirus.Core.Combat.RaivaEmDegraus.GritosDaFuria.Contains(_gritos[0].Texto)
+					&& !oNomeNaFuria.Contains(_gritos[0].Texto),
+					$"chat: {Gritos()}");
 			foreach (object passo in EsperarACenaDaFuriaAcabar(eu)) yield return passo;
 		}
 		finally
 		{
 			Transformacao.CorDoCorpoIgnoradaDeTeste = false;
 			CargaVisual.ChamaSoComOCDeTeste = false;
+			Jandirus.Core.Combat.RaivaEmDegraus.GritoSemONomeDeTeste = false;
 		}
 
 		// ------------------------------------------------------------ 2c. SEM controle de ki: a cena, e nenhuma aura
@@ -716,6 +807,123 @@ public partial class RoboDaRaiva : Node
 				$"Ki {RazaoDeKiNaFicha(cli) * 100:0}% do tanque (teto {cli.Sheet.TetoKi * 100:0}%)");
 		yield return 2.5;
 		Fotografar("raiva-09-o-amigo-so-cai-e-a-raiva-comum-transforma-com-o-bp-maior");
+		for (int i = 0; i < 450 && CenasEm(eu).Count > 0; i++) yield return 0.1;   // (a estreia corre ate o fim: o passo 7 comeca com o corpo solto)
+
+		// ------------------------------------------------------------ 7. (2026-10-18) o CORPO ACHADO: o nome, e so depois a cena
+		// O dono: *"caso seu amigo morra pra outra pessoa (...) e vc ache o corpo morto dele pela primeira vez, seu personagem vai entrar em furia
+		// e vai falar algo relacionando tipo chamar pelo nome algumas vezes e dps disso comeca a cinematica de furia podendo começar a cinematica de
+		// transformação caso a furia desperte a transformação"*. O host vai pra 30 tiles (fora da vista) e o amigo MORRE la; o host chega ao corpo,
+		// e o resto e o pulso de producao do servidor (`PulsoDoCorpoAchado`): os chamados no chat e no balao, e so depois a cena.
+		GD.Print("[draiva] -- 7) o amigo morre LONGE: ao achar o corpo ele chama o nome, e so DEPOIS vem a cena da furia (e, com o requisito, a da transformacao) --");
+		srv.LimparPalcoDaRaivaDeTeste(eu);
+		srv.EsquecerAsFormasDeTeste(eu);
+		palco = srv.PalcoDaRaivaDeTeste(eu);   // um Kuririn novo, vivo, e o algoz; o host com BP 1 (a furia nao vira forma) e o Ki em 20%
+		yield return 1.5;
+		string[] chamados = Jandirus.Core.Combat.RaivaEmDegraus.ChamadosAoAcharOCorpo(NomeDoAmigo);
+		_furias.Clear();
+		_formas.Clear();
+		_gritos.Clear();
+		bool longe = srv.MatarOAmigoLongeDeTeste(eu, tiles: 30);
+		yield return 1.2;
+		Afirmar("(montagem) o host foi pra 30 tiles do amigo (fora da vista, 22) e o amigo MORREU la -- de verdade, e o corpo ficou no chao",
+				longe && palco != null, $"morreu={longe}");
+		Afirmar("**LONGE, NADA**: o host nao viu a morte -- nenhuma fala dele, nenhum pacote de furia, e a raiva calma",
+				_gritos.Count == 0 && _furias.Count == 0 && srv.RaivaDeTeste(eu)?.Nivel == NivelDeRaiva.Nenhuma,
+				$"chat: {Gritos()}; {_furias.Count} pacote(s); {srv.RaivaDeTeste(eu)?.Nivel}");
+
+		// A CRATERA DE CADA CENA, contada daqui: o espiao anota EM QUE SEGUNDO da cena o chao abriu, e os contadores do `Decalques` QUAL
+		// arte caiu (a pequena ou a grande).
+		int pequenas7 = Decalques.CraterasDeTeste, grandes7 = Decalques.CraterasGrandesDeTeste;
+		_crateras.Clear();
+		Transformacao.EspiaoDePedaco += AoPedacoDaCena;
+		srv.LevarOHostAoCorpoDeTeste(eu);
+		for (int i = 0; i < 40 && _gritos.Count < 1; i++) yield return 0.05;
+		yield return 0.4;
+		Afirmar("**ACHOU O CORPO: ELE CHAMA O NOME** -- o primeiro chamado chega ao chat e ao balao em cima dele, e a cena da furia AINDA nao veio",
+				_gritos.Count == 1 && _gritos[0].Texto == chamados[0] && BalaoDe(eu) == chamados[0] && _furias.Count == 0 && CenaDaFuriaEm(eu) == null,
+				$"chat: {Gritos()}; balao: '{BalaoDe(eu)}'; {_furias.Count} pacote(s)");
+		Fotografar("raiva-10-o-amigo-morreu-longe-e-ao-achar-o-corpo-ele-chama-o-nome");
+
+		for (int i = 0; i < 100 && _gritos.Count < chamados.Length; i++) yield return 0.05;
+		yield return 0.3;
+		Afirmar($"...os {chamados.Length} chamados, na ordem e um a cada ~{Jandirus.Core.Combat.RaivaEmDegraus.SegundosEntreChamados:0.0} s -- e a furia AINDA nao veio",
+				_gritos.Count == chamados.Length && _gritos.Select(g => g.Texto).SequenceEqual(chamados) && _furias.Count == 0,
+				$"chat: {Gritos()}; {_furias.Count} pacote(s)");
+		Fotografar("raiva-11-os-chamados-antes-da-furia");
+
+		double ultimoChamado = _gritos.Count > 0 ? _gritos[^1].Em : 0;
+		for (int i = 0; i < 80 && !_furias.Contains(eu); i++) yield return 0.05;
+		double chegouAFuria = Time.GetTicksMsec() / 1000.0;
+		Transformacao? cenaDoCorpo = null;
+		for (int i = 0; i < 20 && (cenaDoCorpo = CenaDaFuriaEm(eu)) == null; i++) yield return 0.0;
+		Afirmar("**...E SO DEPOIS A CENA DA FURIA**: o pacote chega DEPOIS do ultimo chamado, e a cinematica nasce em cima do corpo",
+				_furias.Contains(eu) && chegouAFuria > ultimoChamado && cenaDoCorpo != null,
+				$"{_furias.Count} pacote(s); a furia {chegouAFuria - ultimoChamado:0.00} s depois do ultimo chamado; cena {(cenaDoCorpo != null ? "sim" : "nao")}");
+		for (int i = 0; i < 40 && _gritos.Count <= chamados.Length; i++) yield return 0.05;
+		string[] oNomeNaFuriaDoCorpo = Jandirus.Core.Combat.RaivaEmDegraus.FormasDoNome(NivelDeRaiva.Extrema, NomeDoAmigo);
+		Afirmar("...e o grito da furia, com o nome e o \"NAO\", vem depois dos chamados",
+				_gritos.Count > chamados.Length && oNomeNaFuriaDoCorpo.Contains(_gritos[chamados.Length].Texto), $"chat: {Gritos()}");
+		for (int i = 0; i < 40 && cenaDoCorpo != null && IsInstanceValid(cenaDoCorpo) && cenaDoCorpo.TempoDeTeste < 1.0; i++) yield return 0.05;
+		Fotografar("raiva-12-so-depois-dos-chamados-a-cena-da-furia");
+		foreach (object passo in EsperarACenaDaFuriaAcabar(eu)) yield return passo;
+		// O CONTRASTE da regua da cratera la de baixo: a cena da furia, sem forma a estrear, abre na virada dela (aos 3 s) a cratera PEQUENA
+		// -- a grande e so de quem nasce da raiva (`Catalogo.NasceDaRaiva`). Uma regua que confundisse as duas reprovaria aqui.
+		// A CENA E QUEM O ESPIAO DIZ, E A ARTE E A QUE O CONTADOR GRANDE NAO VIU: as pequenas nao se contam exatas, porque o servidor abre
+		// pequenas por conta propria (o corpo arremessado que para no chao, `Empurrao`; o estouro de uma bola) -- a primeira rodada contou
+		// +2 numa cena que so abriu uma.
+		Afirmar("(o contraste) a cena da FURIA, sem forma a estrear, abre a cratera PEQUENA, aos ~3 s dela -- e nenhuma grande",
+				Decalques.CraterasDeTeste > pequenas7 && Decalques.CraterasGrandesDeTeste == grandes7
+				&& _crateras.Count == 1 && _crateras[0].Forma.Length == 0 && Math.Abs(_crateras[0].Segundo - 3.0) < 0.5,
+				$"pequenas +{Decalques.CraterasDeTeste - pequenas7}, grandes +{Decalques.CraterasGrandesDeTeste - grandes7}; {Crateras()}");
+
+		// ---- com o requisito do Super Saiyajin: depois dos chamados, a cena e a da TRANSFORMACAO ----
+		srv.LimparPalcoDaRaivaDeTeste(eu);
+		srv.EsquecerAsFormasDeTeste(eu);
+		palco = srv.PalcoDaRaivaDeTeste(eu);
+		yield return 1.0;
+		srv.DarPoderPraFormaDeTeste(eu, "ssj1", "ssj2");
+		yield return 0.6;
+		_furias.Clear();
+		_formas.Clear();
+		_gritos.Clear();
+		bool longe2 = srv.MatarOAmigoLongeDeTeste(eu, tiles: 30);
+		yield return 1.2;
+		int pequenas7b = Decalques.CraterasDeTeste, grandes7b = Decalques.CraterasGrandesDeTeste;
+		_crateras.Clear();
+		srv.LevarOHostAoCorpoDeTeste(eu);
+		for (int i = 0; i < 120 && _gritos.Count < chamados.Length; i++) yield return 0.05;
+		double ultimo2 = _gritos.Count > 0 ? _gritos[^1].Em : 0;
+		for (int i = 0; i < 80 && _formas.Count == 0; i++) yield return 0.05;
+		double chegouAForma = Time.GetTicksMsec() / 1000.0;
+		yield return 2.5;
+		(string Forma, bool Despertou)? virouNoCorpo = srv.FormaDeTeste(eu, "ssj1");
+		List<Transformacao> cenasDoCorpo = CenasEm(eu);
+		Afirmar("**A FURIA DO CORPO ACHADO DESPERTA A FORMA**: depois dos chamados ele vira Super Saiyajin SOZINHO, com a cinematica da TRANSFORMACAO (a estreia) -- e nenhum pacote de furia",
+				longe2 && _gritos.Take(chamados.Length).Select(g => g.Texto).SequenceEqual(chamados) && chegouAForma > ultimo2
+				&& virouNoCorpo is { Forma: "ssj1", Despertou: true } && _formas.Count >= 1 && _formas[^1] is { Para: "ssj1", Degrau: DegrauDeCena.Estreia }
+				&& _furias.Count == 0 && cenasDoCorpo.Exists(t => t.CenaDeTeste.Forma == "ssj1"),
+				$"chat: {Gritos()}; forma {virouNoCorpo?.Forma}; "
+				+ (_formas.Count == 0 ? "nenhum pacote de forma" : string.Join(" | ", _formas.Select(p => $"{p.De}->{p.Para}/{p.Degrau}")))
+				+ $"; {_furias.Count} pacote(s) de furia");
+		Fotografar("raiva-13-o-corpo-achado-e-a-furia-desperta-o-super-saiyajin");
+
+		// ELE NAO VIRA NA HORA -- a pergunta do dono (2026-10-18), porque na foto de cima a cratera parecia pequena: a de cima e a do passo
+		// anterior (a grande dura 40 s no chao). A estreia do Super Saiyajin segura o corpo 25 s, o cabelo pisca, e so quando a forma ASSUME o
+		// chao abre -- com a cratera GRANDE, a de quem nasce da raiva (`Efeito.Cratera` cai no beat do `Assumir`, por regra do funil).
+		Afirmar("...e ele NAO vira na hora: aos 2,5 s da estreia a cena ainda segura o corpo, e o chao ainda nao abriu (a forma assume aos 25 s)",
+				_crateras.Count == 0 && Decalques.CraterasGrandesDeTeste == grandes7b && CenasEm(eu).Exists(t => t.CenaDeTeste.Forma == "ssj1"),
+				$"{Crateras()}; {CenasEm(eu).Count} cena(s) no corpo");
+		for (int i = 0; i < 320 && Decalques.CraterasGrandesDeTeste == grandes7b && CenasEm(eu).Count > 0; i++) yield return 0.1;
+		yield return 2.5;   // (a fumaca da cratera dura 2,6 s: a foto sai com o buraco ja limpo)
+		// (as pequenas de fora da cena -- o arremesso e o estouro do servidor -- continuam caindo enquanto ela corre: so a conta grande e exata)
+		Afirmar("**A ESTREIA PELA FURIA ABRE A CRATERA GRANDE -- NO FIM**: a cena abre o chao UMA vez, quando a forma assume, aos ~25 s, e e a "
+				+ "cratera GRANDE (a de quem nasce da raiva)",
+				Decalques.CraterasGrandesDeTeste == grandes7b + 1
+				&& _crateras.Count == 1 && _crateras[0].Forma == "ssj1" && _crateras[0].Segundo >= 24.5,
+				$"grandes +{Decalques.CraterasGrandesDeTeste - grandes7b}, pequenas +{Decalques.CraterasDeTeste - pequenas7b} (de fora da cena); {Crateras()}");
+		Fotografar("raiva-13b-no-fim-da-estreia-a-cratera-grande");
+		Transformacao.EspiaoDePedaco -= AoPedacoDaCena;
+		for (int i = 0; i < 450 && CenasEm(eu).Count > 0; i++) yield return 0.1;   // a estreia corre ate o fim
 
 		srv.LimparPalcoDaRaivaDeTeste(eu);
 	}

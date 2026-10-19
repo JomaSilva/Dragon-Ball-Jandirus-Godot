@@ -204,7 +204,7 @@ public sealed partial class GameServer
 
 		// O NUMERO SO PRA QUEM TEM SCOUTER (a regra principal do BP; ver `PoderNaFrase`): os outros ouvem o quanto
 		// cresceram. Lido DEPOIS do `AplicarPoderes` de cima, que e quem refaz o bit do scouter.
-		string cresceu = Jandirus.Core.Stats.PoderNaFrase.EmNumero(TemScouter(dono))
+		string cresceu = Jandirus.Core.Stats.PoderNaFrase.EmNumero(ScouterMostra(dono, dono, bpAntes, dono.Ficha.BP))
 			? $"BP {bpAntes:N0} -> {dono.Ficha.BP:N0}"
 			: $"voce ficou {Jandirus.Core.Stats.PoderNaFrase.QuantoMaisForte(bpAntes, dono.Ficha.BP)}";
 		Avisar(dono, ehJogador

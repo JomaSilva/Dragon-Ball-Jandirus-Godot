@@ -1858,15 +1858,17 @@ public sealed partial class GameServer
 		piccolo.Ficha.BP = Math.Max(piccolo.Ficha.BP, RequisitoDeGodKi(piccolo));
 		double bpAntes = piccolo.Ficha.BP;
 		// O `PeerLook` LIDO COMO O CLIENTE O LE (`GameClient`, no `case S2C.PeerLook`): o byte do pacote, quem, o nome, a
-		// raca, o genero, a aparencia, o tipo de fusao, as marcas do corpo e a folha dos pesos. `Sobra` sao os bytes que
-		// ficaram sem leitor.
+		// raca, o genero, a aparencia, o tipo de fusao, as marcas do corpo, a folha dos pesos e o segundo byte de marcas (o bebe,
+		// 2026-10-18). `Sobra` sao os bytes que ficaram sem leitor.
 		(byte Fusao, byte Marcas, string Pesos, int Sobra) LookDe(ServerPlayer p)
 		{
 			var fio = new LiteNetLib.Utils.NetDataReader(PacoteDeAparencia(p).CopyData());
 			fio.GetByte();
 			fio.GetInt(); fio.GetString(24); fio.GetString(24); fio.GetString(8);
 			fio.GetAppearance();
-			return (fio.GetByte(), fio.GetByte(), fio.GetString(120), fio.AvailableBytes);
+			(byte fusao, byte marcas, string pesos) = (fio.GetByte(), fio.GetByte(), fio.GetString(120));
+			fio.GetByte();
+			return (fusao, marcas, pesos, fio.AvailableBytes);
 		}
 		byte MarcaDe(ServerPlayer p) => (byte)(LookDe(p).Marcas & 1);
 		byte marcaAntes = MarcaDe(piccolo);
@@ -2023,7 +2025,9 @@ public sealed partial class GameServer
 			fio.GetAppearance();
 			fio.GetByte();
 			byte marcas = fio.GetByte();
-			return ((marcas & 2) != 0, fio.GetString(120), fio.AvailableBytes);
+			string pesos = fio.GetString(120);
+			fio.GetByte();   // (2026-10-18) o segundo byte de marcas -- o bebe
+			return ((marcas & 2) != 0, pesos, fio.AvailableBytes);
 		}
 		Jandirus.Core.Items.ItemDef scouter = Jandirus.Core.Items.CatalogoDeItens.Get(Jandirus.Core.Items.CatalogoDeItens.Scouter)!;
 		string folhaDeFabrica = _visual?.Peca(Jandirus.Core.Items.PesoDeTreino.ArtePadrao) ?? "";
@@ -2033,7 +2037,7 @@ public sealed partial class GameServer
 				   !nu.Scouter && nu.Pesos.Length == 0 && nu.Sobra == 0 && folhaDeFabrica.Length > 0, $"scouter {nu.Scouter}, pesos '{nu.Pesos}', folha '{folhaDeFabrica}'");
 
 		Equipar(goku, scouter);
-		AjustarPeso(goku, "50");
+		AjustarPeso(goku, Jandirus.Core.Items.CatalogoDeItens.Pesos, "50");
 		var vestido = Usando(goku);
 		AfirmarV21("**O SCOUTER LIGADO E OS PESOS VESTIDOS VIAJAM NA APARENCIA**: a marca do scouter acende e a folha dos pesos (a de fabrica, a camisa do DM) vai junto",
 				   vestido.Scouter && vestido.Pesos == folhaDeFabrica && vestido.Sobra == 0 && goku.Ficha.Weighted > 0,
@@ -2043,12 +2047,14 @@ public sealed partial class GameServer
 		string outraArte = (_visual?.Roupas ?? []).Select(Jandirus.Core.Appearance.VisualCatalog.NomeDoArquivo)
 			.FirstOrDefault(n => n != Jandirus.Core.Items.PesoDeTreino.ArtePadrao && _visual!.Peca(n) != null) ?? "";
 		bool aceitou = ComandoDeItem(goku, $"item_{Jandirus.Core.Items.PesoDeTreino.AcaoArte}", $"{Jandirus.Core.Items.CatalogoDeItens.Pesos}/{outraArte}");
-		AfirmarV21("**O JOGADOR ESCOLHE A ARTE DOS PESOS**: o verbo da mochila troca a folha que o corpo mostra, e a escolha fica na ficha (vai pro save)",
-				   aceitou && outraArte.Length > 0 && Usando(goku).Pesos == _visual!.Peca(outraArte) && goku.Ficha.pesoArte == outraArte
+		AfirmarV21("**O JOGADOR ESCOLHE A ARTE DOS PESOS**: o verbo da mochila troca a folha que o corpo mostra, e a escolha fica no PESO -- no id dele (vai pro save com a mochila)",
+				   aceitou && outraArte.Length > 0 && Usando(goku).Pesos == _visual!.Peca(outraArte)
+				   && Jandirus.Core.Items.PesoDeTreino.ArteDe(goku.Ficha.pesoVestido) == outraArte && goku.Mochila.Quantos(goku.Ficha.pesoVestido) == 1
 				   && Array.IndexOf(Jandirus.Core.Items.CatalogoDeItens.Get(Jandirus.Core.Items.CatalogoDeItens.Pesos)!.AcoesDoItem, Jandirus.Core.Items.PesoDeTreino.AcaoArte) >= 0,
-				   $"arte '{outraArte}', no corpo '{Usando(goku).Pesos}', na ficha '{goku.Ficha.pesoArte}'");
-		ComandoDeItem(goku, $"item_{Jandirus.Core.Items.PesoDeTreino.AcaoArte}", $"{Jandirus.Core.Items.CatalogoDeItens.Pesos}/arte_que_nao_existe");
-		AfirmarV21("...e uma arte que nao existe e recusada: a escolha de antes continua", goku.Ficha.pesoArte == outraArte);
+				   $"arte '{outraArte}', no corpo '{Usando(goku).Pesos}', o peso vestido '{goku.Ficha.pesoVestido}'");
+		ComandoDeItem(goku, $"item_{Jandirus.Core.Items.PesoDeTreino.AcaoArte}", $"{goku.Ficha.pesoVestido}/arte_que_nao_existe");
+		AfirmarV21("...e uma arte que nao existe e recusada: a escolha de antes continua",
+				   Jandirus.Core.Items.PesoDeTreino.ArteDe(goku.Ficha.pesoVestido) == outraArte);
 
 		Jandirus.Core.Items.EquipamentoNoCorpo.NaoApareceNoCorpoDeTeste = true;
 		try
@@ -3341,8 +3347,10 @@ public sealed partial class GameServer
 			double kiDoSaiba = saiba.Ficha.Ki, precoDoCuspe = 12 * saiba.Ficha.BaseDrain();
 			ApertarEOuvir(saiba, "Acid_Spit");
 			Projetil? cuspe = TirosDeG12(saiba).FirstOrDefault();
-			AfirmarV21("**O CUSPE ACIDO** (`arlian.dm:42-63`): quem aprendeu a skill solta uma bola de `basedamage` 40 que carrega o veneno, por `12 x BaseDrain` de Ki -- e quem nao aprendeu ouve que nao sabe",
-					   Disse(semSaber, "voce nao sabe") && cuspe is { Dom: DomDeProjetil.Veneno, Tipo: TipoDeProjetil.Blast } && Math.Abs(cuspe.BaseDano - 40) < 1e-6
+			// (2026-10-18) o `basedamage` e o do NERF do dono (*"acido do saibaman ta meio op, da uma nerfada"*): 20, e nao os 40 do DM -- ver
+			// `DanoDoCuspeG14`. A regua do nerf mora na `--chefesteste`.
+			AfirmarV21("**O CUSPE ACIDO** (`arlian.dm:42-63`): quem aprendeu a skill solta uma bola de `basedamage` 20 (o nerf do dono; o DM: 40) que carrega o veneno, por `12 x BaseDrain` de Ki -- e quem nao aprendeu ouve que nao sabe",
+					   Disse(semSaber, "voce nao sabe") && cuspe is { Dom: DomDeProjetil.Veneno, Tipo: TipoDeProjetil.Blast } && Math.Abs(cuspe.BaseDano - DanoDoCuspeG14) < 1e-6
 					   && Math.Abs(kiDoSaiba - saiba.Ficha.Ki - precoDoCuspe) < 1e-6 && precoDoCuspe > 0,
 					   $"{Ultimos(semSaber)}; bola {(cuspe == null ? "nenhuma" : $"dano base {cuspe.BaseDano:0.#}, dom {cuspe.Dom}")}; ki -{kiDoSaiba - saiba.Ficha.Ki:0.###} (preco {precoDoCuspe:0.###})");
 

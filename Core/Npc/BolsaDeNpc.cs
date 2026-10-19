@@ -50,7 +50,9 @@ public static class BolsaDeNpc
 		if (NpcSemBolsaDeTeste) return 0;
 		(double min, double max) = tipo switch
 		{
-			TipoDeNpc.Cidadao or TipoDeNpc.Inimigo => (ZeniMinDoCidadao, ZeniMaxDoCidadao),
+			// (2026-10-18) O SOLDADO DO FREEZA leva a bolsa do mob comum: ele e muitos, volta a nascer enquanto o chefe esta no planeta, e o
+			// premio de derrota-lo e a esfera que ele carrega, e nao o bolso.
+			TipoDeNpc.Cidadao or TipoDeNpc.Inimigo or TipoDeNpc.Soldado => (ZeniMinDoCidadao, ZeniMaxDoCidadao),
 			TipoDeNpc.Vilao => (ZeniMinDoVilao, ZeniMaxDoVilao),
 			TipoDeNpc.Chefe => (ZeniMinDoChefe, ZeniMaxDoChefe),
 			_ => (0, 0),

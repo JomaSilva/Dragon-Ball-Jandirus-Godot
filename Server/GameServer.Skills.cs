@@ -90,6 +90,9 @@ public partial class GameServer
 		pl.SkillsQueSairam = SkillsAposentadas.Limpar(pl.Livro);
 		// ...e as FECHADAS que ele tinha comprado (o verb delas nao existe aqui): os marcos voltam. Ver `SkillsFechadas`.
 		pl.SkillsQueFecharam = SkillsFechadas.Limpar(pl.Livro);
+		// (2026-10-18) ...e o MAJIN que tinha a `Regenerate` troca pelo Sleep, sem pagar nem receber marco: a compra continua compra. Ver
+		// `Races.SonoDoMajin`.
+		pl.SonoTrocado = Jandirus.Core.Races.SonoDoMajin.Migrar(pl.Livro, pl.Race);
 
 		MigrarRazao(pl, save);
 	}
@@ -106,6 +109,9 @@ public partial class GameServer
 				  + $"voltaram: você tem {pl.Livro.MarcosLivres} livre(s) pra gastar na aba de aprendizado."
 				: $"a habilidade {skill.Nome} saiu do jogo e foi tirada do seu livro.");
 		pl.SkillsQueSairam = [];
+
+		if (pl.SonoTrocado) Avisar(pl, Jandirus.Core.Races.SonoDoMajin.AvisoDaTroca);
+		pl.SonoTrocado = false;
 
 		foreach ((SkillsFechadas.Fechada skill, int devolvidos) in pl.SkillsQueFecharam)
 			Avisar(pl, $"a habilidade {skill.Nome} ainda não existe neste jogo (falta {skill.Falta}) e saiu do seu livro. "

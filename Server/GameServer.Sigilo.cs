@@ -165,10 +165,18 @@ public partial class GameServer
 	/// tanque, e o DM ja a imprimia direto (`Statistics.dm:349`).
 	/// ==============================================================================================
 	/// </summary>
-	public static SheetState FichaVisivel(ServerPlayer pl)
+	public SheetState FichaVisivel(ServerPlayer pl)
 	{
 		SheetState s = pl.Sheet();
-		if (!TemScouter(pl))
+		// (2026-10-18) COM O SCOUTER, O QUE O VIDRO NAO LE CHEGA "???" -- cada numero sozinho: acima do teto, ou o ki divino do proprio dono (o
+		// aparelho nao o sente). Ver `Core/Stats/Scouter.cs`.
+		if (TemScouter(pl))
+		{
+			bool divino = KiDivinoEscondido(pl);
+			if (divino || !Jandirus.Core.Stats.Scouter.Le(s.BP)) s.BP = SemLeitura;
+			if (divino || !Jandirus.Core.Stats.Scouter.Le(s.ExpressedBP)) s.ExpressedBP = SemLeitura;
+		}
+		else
 		{
 			s.BP = SemLeitura;
 			s.ExpressedBP = SemLeitura;
@@ -207,7 +215,57 @@ public partial class GameServer
 	/// quem le, entao ate o proprio BP passa por este funil.
 	/// </summary>
 	public static string BpEmTexto(ServerPlayer quemLe, double bp) =>
-		TemScouter(quemLe) ? bp.ToString("N0") : "???";
+		TemScouter(quemLe) && Jandirus.Core.Stats.Scouter.Le(bp) ? bp.ToString("N0") : "???";
+
+	/// <summary>
+	/// (2026-10-18) O SCOUTER DE <paramref name="leitor"/> MOSTRA ESTES NUMEROS DE PODER DE <paramref name="dono"/>? O aparelho ligado no olho de
+	/// quem le, o ki do dono que NAO e divino (<see cref="KiDivinoEscondido"/>; dono nulo = o numero nao e ki de ninguem, como o poder de uma
+	/// arma) e CADA numero dentro do teto (`Scouter.TetoDeLeitura`). Toda frase do servidor que diz poder em numero pergunta aqui
+	/// (`PoderNaFrase.EmNumero(ScouterMostra(...))`): o que o vidro nao le, a frase diz sem numero.
+	/// </summary>
+	internal bool ScouterMostra(ServerPlayer leitor, ServerPlayer? dono, params double[] numeros) =>
+		TemScouter(leitor) && (dono == null || !KiDivinoEscondido(dono)) && Array.TrueForAll(numeros, Jandirus.Core.Stats.Scouter.Le);
+
+	/// <summary>
+	/// (2026-10-18) O DEUS DE OFICIO USA O KI DIVINO SEMPRE: o Bills e o Whis (os NPCs, e quem tem os cargos deles -- Deus da Destruicao e
+	/// Anjo) e os Supremos Kaiohs NPC do Ceu. O jogador no cargo de Kaioshin nao entra (o dono nomeou os NPCs); se for da classe dourada, entra
+	/// por ela (`DespertarDivino.ClasseDeKiDivino`).
+	/// </summary>
+	private bool UsaKiDivinoSempre(ServerPlayer o) =>
+		o.Papel?.Molde.Id is "bills" or "whis" or "supremo_kaioh"
+		|| (!string.IsNullOrEmpty(o.Conta)
+			&& CargoDe(o.Conta) is Jandirus.Core.Ranks.KitDoDeus.Cargo or Jandirus.Core.Npc.BillsEWhis.CargoDoWhis);
+
+	/// <summary>(2026-10-18) O KI DIVINO EM USO NESTE CORPO AGORA -- a forma, a classe e o oficio. Ver `DespertarDivino.KiDivinoEmUso`.</summary>
+	private bool KiDivinoEmUso(ServerPlayer o) =>
+		Jandirus.Core.Forms.DespertarDivino.KiDivinoEmUso(Jandirus.Core.Forms.Catalogo.Def(o.Forma.Atual), o.Ficha.Class, o.Ficha.SaiyanLineage,
+																										  UsaKiDivinoSempre(o));
+
+	/// <summary>
+	/// (2026-10-18) ESTE CORPO SE ESCONDE DO SCOUTER E DO SENSE DE MORTAL: o ki divino em uso. O scouter nunca o le nem o lista; o Sense (e a
+	/// telepatia, o Observe e o Instant Transmission, que tambem procuram ENERGIA) so o acha quem tambem tem ki divino (<see cref="SenteKiDivino"/>).
+	/// </summary>
+	internal bool KiDivinoEscondido(ServerPlayer o) => !KiDivinoAparecerDeTeste && KiDivinoEmUso(o);
+
+	/// <summary>
+	/// (2026-10-18) QUEM SENTE O KI DIVINO: quem tambem o tem -- *"somente pessoas q tb tem ki divino podem dar sense em outras pessoas com ki
+	/// divino"*. Despertado (`DespertarDivino.CarregaKiDivino`, que tambem cobre quem esta numa forma divina) ou usando-o sempre.
+	/// </summary>
+	internal bool SenteKiDivino(ServerPlayer eu) => Jandirus.Core.Forms.DespertarDivino.CarregaKiDivino(eu.Ficha, eu.Forma.Atual) || KiDivinoEmUso(eu);
+
+	/// <summary>
+	/// (2026-10-18) <paramref name="eu"/> ACHA A ENERGIA DE <paramref name="o"/>? Os tres testes do DM (<see cref="AchoAEnergiaG4"/>: escondido,
+	/// Android, o piso dos 5) e o ki divino, que so quem tambem o tem sente. A pergunta de toda tecnica que procura energia: o Sense, a
+	/// telepatia e o Observe. (2026-10-18) E o corpo escondido de quem o Neo Tuffle possui nao se acha -- ver `GameServer.NeoTuffle.cs`.
+	/// </summary>
+	internal bool AchoAEnergia(ServerPlayer eu, ServerPlayer o) =>
+		AchoAEnergiaG4(o) && (!KiDivinoEscondido(o) || SenteKiDivino(eu)) && !HospedeEscondido(o);
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--sentidosteste`): o ki divino volta a aparecer no scouter e no Sense de qualquer um -- o jogo de antes. Falso em jogo,
+	/// sempre.
+	/// </summary>
+	internal static bool KiDivinoAparecerDeTeste;
 
 	// =====================================================================
 	// A DICA DE CLASSE -- a unica pista, e ela e uma frase

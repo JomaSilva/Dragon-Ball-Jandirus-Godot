@@ -1235,7 +1235,7 @@ public sealed partial class Cerebro
 	/// explicar o comportamento pra quem esta jogando contra.
 	/// </summary>
 	private bool Interrompe(in Percepcao p, Plano novo) =>
-		!p.TemAlvo || p.AlvoCaido                                        // o alvo saiu de cena
+		!p.TemAlvo || (p.AlvoCaido && !Finaliza(p))                     // o alvo saiu de cena (o letal fica, pra acabar com ele)
 		|| novo == Plano.Nada
 		|| novo == Plano.Executar || Atual == Plano.Executar             // o kit: o alvo entrou no (ou saiu do) ponto do Hakai
 		|| novo == Plano.Fugir                                           // quase morto: nao se "termina o plano" primeiro
@@ -1248,6 +1248,16 @@ public sealed partial class Cerebro
 		|| (Atual == Plano.Escalar && !Poderes.PodeSubirForma && !Poderes.FormaSoFaltaKi);
 	// O TIRO NAO APARECE NESTA LISTA de proposito: ele e abortado ANTES da escolha (ver `Repensar`),
 	// porque a morte dele nao muda o plano escolhido -- e uma linha aqui seria codigo inalcancavel.
+
+	/// <summary>
+	/// (2026-10-18) QUEM MATA ACABA COM QUEM CAIU -- o `if(src.target.KO && !src.murderToggle) lostTarget()` do DM (`NPCAI.dm:161`): so quem
+	/// NAO mata larga o caido. Com o golpe letal (o chefe de saga), o alvo nocauteado e a briga que falta: o corpo vai ate ele e bate, e o golpe
+	/// letal mata. O dono: *"faça os chefes das sagas sempre estarem no modo letal, pq eles so estavam nocauteando e nao matando"*.
+	/// </summary>
+	private static bool Finaliza(in Percepcao p) => p.Letal && p.AlvoNocauteado && !LetalLargaOCaidoDeTeste;
+
+	/// <summary>DEFEITO INJETADO (`--chefesteste`, familia L): quem mata volta a largar o caido -- o jogo de antes. Falso em jogo, sempre.</summary>
+	public static bool LetalLargaOCaidoDeTeste;
 
 	/// <summary>
 	/// A ORDEM DAS PERGUNTAS. E a mesma do `chaseState` do DM (`NPCAI.dm:510-529`): fugir/escalar
@@ -1287,6 +1297,15 @@ public sealed partial class Cerebro
 		//
 		// E ela sai uma vez so por consequencia, e nao por um bit de "ja falei": na decisao seguinte
 		// o plano ja e `Nada`, e `Nada` nao esta nesta lista.
+		// ---- (2026-10-18) O ALVO CAIU, E O GOLPE E LETAL: acaba com ele -- ver `Finaliza`. Depois do kit (o Hakai e a execucao racial no caido
+		// vem antes) e antes da fala da vitoria, que fica pro morto. ----
+		if (Finaliza(p))
+		{
+			_finalizando = true;
+			Porque = "finalizar: o alvo caiu, e o golpe e letal";
+			return Plano.Pressionar;
+		}
+
 		if (p.AlvoCaido)
 		{
 			if (Atual is Plano.Pressionar or Plano.Alcancar or Plano.Atirar or Plano.Circular)

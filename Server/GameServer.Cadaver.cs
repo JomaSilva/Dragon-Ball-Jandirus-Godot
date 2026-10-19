@@ -256,6 +256,10 @@ public sealed partial class GameServer
 		GD.Print($"[server] {morto.Name} deixou o corpo em {morto.Zone.Name} @ "
 			   + $"({morto.Pos.X:0},{morto.Pos.Y:0}) -- cadaver #{corpo.Id}");
 
+		// (2026-10-18) E A MORTE DE UM AMIGO VAI COM O CORPO: quem achar o cadaver depois o chora como acharia o morto dos 2 s. Ver
+		// `GameServer.RaivaDoCorpo.cs`.
+		PassarAMorteProCadaver(morto, corpo);
+
 		// O CADAVER DE UM BICHO E UMA CARCACA (2026-10-10): leva a carne na mochila, se revista pela tecla E e
 		// tem prazo e teto proprios. Ver `AnimalVirouCarcaca` (`GameServer.Animais.cs`).
 		if (EhAnimal(morto)) AnimalVirouCarcaca(morto, corpo);
@@ -527,9 +531,10 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool ErguerALapide(ServerPlayer quemCava, ServerPlayer corpo, string epitafio)
 	{
-		// A LAPIDE E OBRA GRAVADA, e onde nao se constroi nao se abre cova: a nave, a mente, o bolso da fusao, o selo
-		// e o interior de um Majin acabam com quem os sustenta, e a lapide ficaria gravada num lugar onde ninguem
-		// mais entra (ou apareceria na mente de outra pessoa). A mesma pergunta do `Posicionar`: `LugarDeObra`.
+		// A LAPIDE E OBRA GRAVADA, e onde nao se constroi nao se abre cova: a mente, o bolso da fusao, o selo e o interior de
+		// um Majin acabam com quem os sustenta, e a lapide ficaria gravada num lugar onde ninguem mais entra (ou apareceria na
+		// mente de outra pessoa). A mesma pergunta do `Posicionar`: `LugarDeObra`. A nave grande aceita desde 2026-10-18: quando
+		// ela acaba, a lapide sai pro lado do casco com o resto (`TirarAsObrasDaNave`).
 		if (!Jandirus.Core.World.LugarDeObra.Aceita(corpo.Zone))
 		{
 			Avisar(quemCava, "não dá pra abrir uma cova aqui: este lugar não fica, e a lápide se perderia com ele.");

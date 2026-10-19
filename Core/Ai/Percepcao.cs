@@ -74,6 +74,16 @@ public readonly struct Percepcao
 	public float AltitudeDoAlvo { get; init; }
 	public bool AlvoVoando { get; init; }
 	public bool AlvoCaido { get; init; }
+
+	/// <summary>(2026-10-18) O ALVO ESTA SO NOCAUTEADO: caido e ainda vivo -- o que um golpe letal acaba. O morto e o cadaver ficam de fora.</summary>
+	public bool AlvoNocauteado { get; init; }
+
+	/// <summary>
+	/// (2026-10-18) ESTE CORPO LUTA PRA MATAR -- o `murderToggle` dele (`CombatState.Letal`). Quem mata nao larga o alvo caido: acaba com ele
+	/// (`Cerebro.Finaliza`). E o chefe de saga (o dono: *"eles so estavam nocauteando e nao matando"*).
+	/// </summary>
+	public bool Letal { get; init; }
+
 	public double VidaDoAlvo { get; init; }
 	public double PoderDoAlvo { get; init; }
 

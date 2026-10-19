@@ -272,23 +272,25 @@ public partial class GameServer
 		}
 		finally { PoderEmUso.BarraEscondeDeTeste = false; }
 
-		// ---- ...nem do Sense da galaxia: o piso dos 5 milhoes tambem e medido sem ela ----
-		ServerPlayer tita = StCorpoEm("TitaContido", "Namek", 60_000_000);
-		vidente.Ficha.kiawarenessskill = PericiaDaGalaxia;
+		// ---- ...nem do Sense de LONGE (o universo, o nivel 5): o piso dos 5 de BP la tambem e medido sem a barra ----
+		// (2026-10-18) O piso dos 5 milhoes da galaxia do DM saiu com os cinco niveis do Sense (`SenseEmNiveis`): de outro planeta o corte e o
+		// mesmo de perto -- e a barra continua sem esconder ninguem.
+		ServerPlayer tita = StCorpoEm("TitaContido", "Namek", 300);
+		vidente.Niveis.Por(Jandirus.Core.Skills.SenseEmNiveis.Path, Jandirus.Core.Skills.SenseEmNiveis.Universo);
 		bool naGalaxiaAntes = Acha(SentidosDe(vidente).Lista, tita) != null;
-		tita.Ficha.powerMod = 0.05;
+		tita.Ficha.powerMod = 0.01;
 		PwTique(tita);
-		AfirmarPw("o forte que se segura continua no SENSE DA GALAXIA: a 5% ele expressa menos que os 5 milhoes do piso (HtmlUI.dm:389), e segue na lista de outro planeta",
-				  naGalaxiaAntes && tita.Ficha.expressedBP <= BpDaGalaxia && Acha(SentidosDe(vidente).Lista, tita) != null,
-				  $"antes {naGalaxiaAntes}; expresso {tita.Ficha.expressedBP:0}");
+		AfirmarPw("o que se segura continua no SENSE DE LONGE (o universo): a 1% ele expressa 5 ou menos, e segue na lista de outro planeta",
+				  naGalaxiaAntes && tita.Ficha.expressedBP <= BpMinimoSentivel && Acha(SentidosDe(vidente).Lista, tita) != null,
+				  $"antes {naGalaxiaAntes}; expresso {tita.Ficha.expressedBP:0.##}");
 		PoderEmUso.BarraEscondeDeTeste = true;
 		try
 		{
-			AfirmarPw("(defeito injetado: o piso medido COM a barra) a prova de cima REPROVA -- contido, ele some do Sense da galaxia",
+			AfirmarPw("(defeito injetado: o piso medido COM a barra) a prova de cima REPROVA -- contido, ele some do Sense de longe",
 					  Acha(SentidosDe(vidente).Lista, tita) == null);
 		}
 		finally { PoderEmUso.BarraEscondeDeTeste = false; }
-		vidente.Ficha.kiawarenessskill = 0;
+		vidente.Niveis.Por(Jandirus.Core.Skills.SenseEmNiveis.Path, 0);
 	}
 
 	// =====================================================================

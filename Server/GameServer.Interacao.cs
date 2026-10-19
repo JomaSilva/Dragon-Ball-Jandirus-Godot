@@ -89,6 +89,8 @@ public sealed partial class GameServer
 			case "androide_infinito":
 			case "colher_dna":
 			case "gestar":
+			case "lab_tuffle":     // (2026-10-18) o Neo Tuffle Lab, e a conversao dentro dele -- `GameServer.NeoTuffle.cs`
+			case "virar_tuffle":
 				ComandoDeTech(pl, cmd, arg);
 				return true;
 
@@ -127,6 +129,7 @@ public sealed partial class GameServer
 			case "nave_info":
 			case "nave_pegar":
 			case "nave_recondicionar":
+			case "nave_abastecer":   // (2026-10-18) o combustivel -- ver `GameServer.Combustivel.cs`
 			// A CAMADA 2 entra pelo MESMO canal, e nao por um paralelo: `nave_embarcar` e
 			// `nave_pilotar` sao a mesma familia de "mexer com a nave" que `nave_usar`, e o despacho
 			// de la ja sabe separar as tres naves. Um segundo `case` aqui pra cada verbo novo faria

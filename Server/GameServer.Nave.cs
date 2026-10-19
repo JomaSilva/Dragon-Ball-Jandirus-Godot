@@ -99,6 +99,32 @@ public sealed class Nave
 	public bool Usada;
 
 	/// <summary>
+	/// (2026-10-18) O RUMO DA NAVE GRANDE SEM NINGUEM AO LEME: o ponto da GALAXIA que o nav system do ultimo piloto apontava quando ele largou
+	/// o leme -- o centro do planeta escolhido, ou o porto de um sistema. O dono: *"permita q na capital ship ao colocar pra ela ir pra um
+	/// planeta com nav system e o jogador sair do piloto, ela ainda continua, e avisa no chat quando chegar"*. PERSISTE: a viagem atravessa o
+	/// reinicio, como a tripulacao dentro dela. Ver `GameServer.NaveRumo.cs`.
+	/// </summary>
+	public bool TemRumo;
+	public float RumoX, RumoY;
+
+	/// <summary>A CONTA de quem largou o leme com o rumo: ouve a chegada mesmo fora da nave, como o dono.</summary>
+	public string RumoPor = "";
+
+	/// <summary>
+	/// (2026-10-18) O TANQUE, em unidades de combustivel (`Combustivel`, no Core). NEGATIVO = CHEIO DE FABRICA: a nave recem-assentada e a
+	/// que voltou do disco de antes do combustivel existir (o campo nem estava no `naves.json`) nascem cheias, e o primeiro passo grava o
+	/// numero de verdade. Quem le e o `NivelDoTanque`, nunca o campo cru. PERSISTE: um tanque que enchesse no reinicio faria de reiniciar
+	/// o servidor o posto de gasolina do jogo -- o mesmo argumento do casco.
+	/// </summary>
+	public double Tanque = -1;
+
+	/// <summary>O que a nave gastou desde a ultima volta de um segundo (`TickDoCombustivel`). Sessao, nao disco.</summary>
+	[JsonIgnore] public double GastoNoSegundo;
+
+	/// <summary>O gasto da ULTIMA volta de um segundo: e o "por segundo" que a barra mostra (como a mineracao mostra o que rendeu).</summary>
+	[JsonIgnore] public double GastoPorSegundo;
+
+	/// <summary>
 	/// QUANDO O FOGUETE VOLTA (ms de relogio real). Zero = nao esta la em cima.
 	///
 	/// E o `sleep(150)` + `sleep(100)` do `verb/Launch` (:276-279) virado prazo, pelo mesmo motivo
@@ -174,10 +200,11 @@ public sealed class Nave
 ///                   porque ela copia a zona do piloto. Nao ha um segundo caminho de pouso.
 /// ==============================================================================================================
 ///
-/// ============================ O QUE **NAO** FOI INVENTADO ============================
-/// **Combustivel nao existe.** Nenhuma das tres naves do original consome nada (`grep fuel` no DM:
-/// zero), e inventar um recurso novo seria design sem pedido. O que segura o abuso e o preco: 100
-/// mil pra ter, 741 mil pra chegar ao teto de velocidade.
+/// ============================ O COMBUSTIVEL (dono, 2026-10-18) ============================
+/// Nenhuma das tres naves do original consome nada (`grep fuel` no DM: zero), e este bloco dizia que
+/// inventar um recurso novo seria design sem pedido. O pedido veio: o pod e a Capital Ship gastam
+/// combustivel pela distancia andada e se abastecem com recursos -- ver `Core/Tech/Combustivel.cs` e
+/// `GameServer.Combustivel.cs`. O foguete continua sem tanque (ele nao viaja: e uma janela de 25 s).
 /// ===================================================================================
 /// </summary>
 public partial class GameServer
@@ -298,8 +325,10 @@ public partial class GameServer
 	//     (`RomperAAtmosferaComANave`).
 	// O `nave_lancar` do menu continua: e a mesma subida, sem precisar segurar a tecla.
 	//
-	// O PRECO DO VOO NAO MUDOU: pilotar conta como voar e gasta o Ki do voo (`Stats.dm:411-427`, com o `flight = 1` do
-	// pod). Sem Ki a nave desce e pousa -- e so levanta de novo com o piloto recuperado.
+	// O PRECO DO VOO MUDOU DE DONO (2026-10-18): pilotar ainda conta como voar (a altura, a agua, o cenario), mas quem paga
+	// e a NAVE, em combustivel -- o dono escolheu *"so combustivel"*: o Ki do piloto nao desce por estar ao leme (antes era
+	// o Ki do voo, `Stats.dm:411-427` com o `flight = 1` do pod, e quem nao treinou voo cansava em um segundo). Sem
+	// combustivel a nave desce e pousa, e so levanta de novo abastecida (`GameServer.Combustivel.cs`).
 	//
 	// QUEM CHEGA DO ESPACO CHEGA POUSADO: a troca de zona zera o voo de todo corpo (`MoveToZone`), entao a nave que
 	// desce num planeta ja esta no chao, parada -- e o piloto ouve o mesmo aviso do pouso. NO ESPACO NAO HA POUSO: la
@@ -326,19 +355,20 @@ public partial class GameServer
 	/// <summary>
 	/// A TECLA DE SUBIR, COM A NAVE NO CHAO: ela decola. Sem a porta do treino de voo (o voo e da nave, como ao
 	/// embarcar) e sem a taxa de decolagem do corpo (`Voo.CustoParaLigar` e do gesto de quem voa sozinho); o que ela
-	/// pede e o que o voo pede pra continuar de pe -- Ki acima do que derruba (`Voo.KiQueDerruba`).
+	/// pede e o que a nave pede pra andar -- combustivel no tanque (2026-10-18; antes era o Ki do piloto, que nao paga
+	/// mais o voo ao leme -- ver `GameServer.Combustivel.cs`).
 	/// </summary>
 	private void DecolarANavePousada(ServerPlayer pl)
 	{
 		if (NavePousadaNaoDecolaDeTeste || NaveDoPiloto(pl) is not { } n) return;
-		if (pl.Ficha.KO || pl.Ficha.dead || AlturaPresaPeloKi(pl) || PresoNoTorneio(pl.Id)) return;
+		if (NaoPilota(pl) || AlturaPresaPeloKi(pl) || PresoNoTorneio(pl.Id)) return;
 
-		if (pl.Ficha.Ki <= Voo.KiQueDerruba)
+		if (TanqueVazio(n))
 		{
 			long agora = NowMs();
 			if (agora < pl.AvisoDeTetoAte) return;   // (a tecla fica apertada: um aviso a cada quatro segundos)
 			pl.AvisoDeTetoAte = agora + 4000;
-			Avisar(pl, $"você está sem energia pra tirar {NomeDaNave(n)} do chão.");
+			Avisar(pl, FraseDoTanqueVazio(n));
 			return;
 		}
 
@@ -557,6 +587,16 @@ public partial class GameServer
 			return;
 		}
 
+		// (2026-10-18) SO DE TANQUE CHEIO: o item da mochila nao guarda estado (ver a velocidade logo abaixo), e a nave assentada de novo
+		// nasce cheia -- recolher e assentar seria abastecer de graca, em qualquer lugar, e o combustivel que o dono pediu pra obrigar o
+		// pouso estrategico deixaria de obrigar qualquer coisa. Ver `GameServer.Combustivel.cs`.
+		if (!RecolheComTanqueFuradoDeTeste && Combustivel.TemTanque(n.Tipo) && !Combustivel.Cheio(n.Tipo, NivelDoTanque(n)))
+		{
+			Avisar(pl, $"{NomeDaNave(n)} só vai pra mochila de tanque cheio (faltam {Combustivel.Capacidade(n.Tipo) - NivelDoTanque(n):N0}): "
+					   + "abasteça antes -- assentada de novo ela volta cheia, e é por isso.");
+			return;
+		}
+
 		// A VELOCIDADE COMPRADA SE PERDE, e isso e deliberado: o item da mochila e uma linha do
 		// catalogo ("Spacepod"), sem estado proprio. Guardar o degrau exigiria item COM ESTADO, que
 		// e um sistema que este port nao tem -- e fingir que tem seria pior. O aviso diz em voz alta,
@@ -564,23 +604,43 @@ public partial class GameServer
 		if (n.Velocidade > Naves.VelocidadeInicial)
 			Avisar(pl, $"ao desmontar, os {n.Velocidade - 1} degraus de velocidade se perdem.");
 
+		// (2026-10-18) O QUE ESTA MONTADO DENTRO DA NAVE GRANDE SAI PRO LADO, SOLTO -- a mesma porta da explosao, e ANTES de a nave sair da
+		// lista. A recusa de cima e pra GENTE; uma maquina nao esta treinando. Ver `TirarAsObrasDaNave`.
+		int obras = TirarAsObrasDaNave(n);
+
 		_naves.Remove(n);
 		GravarNaves();
 		Guardar(pl, n.Tipo);
 		Avisar(pl, $"você recolhe {NomeDaNave(n)}.");
+		if (obras > 0)
+			Avisar(pl, obras == 1
+				? "a construção que estava lá dentro fica no chão, ao lado -- solta."
+				: $"as {obras} construções que estavam lá dentro ficam no chão, ao lado -- soltas.");
 		MandarObras(pl.Zone);
 	}
 
 	// =====================================================================
 	// EMBARCAR E DESEMBARCAR -- o `verb/Use` (PlanetTech.dm:119)
 	// =====================================================================
+	/// <summary>
+	/// (2026-10-18) QUEM NAO PILOTA: o caido e o CADAVER -- o morto de pe (o fantasma do Outro Mundo, o do passe do Enma, o da passagem)
+	/// pilota como um vivo. O dono: *"n da pra pilotas naves nem pods quando estamos mortos, permita isso"* -- a regra dele de 2026-10-16,
+	/// *"unica restriçao de morto deveria ser zenkai"*. As quatro portas (embarcar no pod, decolar o pousado, embarcar na nave grande e pegar o
+	/// leme dela) perguntavam o `dead` cru. A nave NAO vira saida do Outro Mundo: de la nao se decola (`Decolar` so sobe de planeta do mapa do
+	/// universo), e quem e puxado de volta pra la desembarca antes (`AcabarOPasse`, `AcabarAPassagem`).
+	/// </summary>
+	private bool NaoPilota(ServerPlayer pl) => pl.Ficha.KO || (NaveRecusaOMortoDePeDeTeste ? pl.Ficha.dead : EhCadaver(pl));
+
+	/// <summary>DEFEITO INJETADO (`--naveteste`): o morto de pe volta a nao pilotar -- o `dead` cru, o jogo de antes. Falso em jogo, sempre.</summary>
+	internal static bool NaveRecusaOMortoDePeDeTeste;
+
 	private void UsarNave(ServerPlayer pl)
 	{
 		if (NaveDoPiloto(pl) is { } minha) { Desembarcar(pl, minha); return; }
 
 		Nave? n = NavePerto(pl);
 		if (n == null) { Avisar(pl, "não há nenhuma nave por perto."); return; }
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "você não está em condições de pilotar."); return; }
+		if (NaoPilota(pl)) { Avisar(pl, "você não está em condições de pilotar."); return; }
 
 		// A NAVE GRANDE NAO SE VESTE, SE HABITA: o `Click()` dela chama `board()` e nao `Use()`
 		// (`ShipVessel.dm:91-99`). Um jogador que apertasse E nela e saisse cavalgando um casco de
@@ -615,6 +675,7 @@ public partial class GameServer
 		// porta pela outra, e ela tem que ser no mesmo instante -- senao ha um piscar em que nem o
 		// objeto nem o veiculo respondem. Ver `MandarVeiculo`.
 		MandarVeiculo(pl);
+		MandarCombustivel(pl);   // (2026-10-18) a barra do tanque aparece no mesmo instante -- ver `GameServer.Combustivel.cs`
 
 		// A NAVE SAI DA LISTA DE PARADAS na hora, e com ela sai a parede: e o `density = 0` do
 		// original (:137). Sem isto o piloto ficaria preso dentro do proprio veiculo.
@@ -653,6 +714,7 @@ public partial class GameServer
 		// Sem ele o menu do pod continuaria abrindo pra quem acabou de descer -- e o pod esta ali,
 		// aos seus pes, ja de volta na lista de construcoes. Duas portas pra mesma coisa.
 		MandarVeiculo(pl);
+		MandarCombustivel(pl);   // (2026-10-18) ...e a barra do tanque some junto
 
 		Avisar(pl, $"você sai de {NomeDaNave(n)}.");
 		GD.Print($"[server] {pl.Name} desembarcou da nave #{n.Id} em {pl.Zone}");
@@ -691,6 +753,9 @@ public partial class GameServer
 			Avisar(pl, $"{NomeDaNave(n)} já foi usado. Recondicionar custa {Naves.CustoDeRecondicionar:N0} zeni.");
 			return;
 		}
+
+		// (2026-10-18) DE TANQUE VAZIO NAO SE SOBE: no espaco a nave vazia para de vez (o dono), e lancar seria largar o piloto la em cima.
+		if (TanqueVazio(n)) { Avisar(pl, FraseDoTanqueVazio(n)); return; }
 
 		double s = Naves.SegundosDeLancamento(n.Velocidade);
 		n.LancaEm = NowMs() + (long)(s * 1000);
@@ -757,6 +822,7 @@ public partial class GameServer
 	{
 		long agora = NowMs();
 		bool mudouAlgo = false;
+		bool rumou = false;   // (2026-10-18) alguma nave grande andou sozinha neste tique -- ver o fim
 
 		foreach (Nave n in _naves.ToList())
 		{
@@ -771,6 +837,15 @@ public partial class GameServer
 			// defeito que este arquivo ja evitou duas vezes com `[JsonIgnore]`.
 			// ================================================================================================
 			if (n.VoltaEm > 0 && n.PilotoId == 0) { ReentradaSemPiloto(n, agora, ref mudouAlgo); continue; }
+
+			// (2026-10-18) A NAVE GRANDE COM RUMO E SEM NINGUEM AO LEME SEGUE SOZINHA -- ver `GameServer.NaveRumo.cs`. No espaco, anda pro
+			// destino; pousada, LANCA pela sequencia da ponte (o ramo de baixo) -- e se um reinicio comeu a contagem (ela nao vai pro disco), a
+			// contagem recomeca aqui.
+			if (n.PilotoId == 0 && n.TemRumo && NaveGrande.EhNaveGrande(n.Tipo))
+			{
+				if (Espaco.EhEspaco(n.Zona)) { rumou |= RumarSozinha(n); continue; }
+				if (n.LancaEm == 0) n.LancaEm = agora + (long)(NaveGrande.SegundosDeLancamento * 1000);
+			}
 
 			// ============================ E A NAVE GRANDE TAMBEM SOBE SEM NINGUEM AO LEME ============================
 			// O `do_launch` do DM (`ShipVessel.dm:179`) nao olha `pilot_mob` uma vez sequer: quem
@@ -789,10 +864,14 @@ public partial class GameServer
 				mudouAlgo = true;
 				ZoneKey dentro = NaveGrande.ZonaDoInterior(n.Id);
 				bool subiu = SubirNaveSozinha(n);
+				// (2026-10-18) COM RUMO ela nao espera ninguem: segue sozinha pro destino (`RumarSozinha`). Sem subir, o rumo morre aqui.
+				if (!subiu) n.TemRumo = false;
 				foreach (ServerPlayer abordo in ZoneList(dentro.Hash))
-					Avisar(abordo, subiu
-						? $"{NomeDaNave(n)}: agora no espaço. Assuma a ponte pra pilotar."
-						: $"{NomeDaNave(n)}: lançamento abortado -- este lugar não fica no mapa do universo.");
+					Avisar(abordo, !subiu
+						? $"{NomeDaNave(n)}: lançamento abortado -- este lugar não fica no mapa do universo."
+						: n.TemRumo
+							? $"{NomeDaNave(n)}: agora no espaço, seguindo sozinha rumo a {NomeDoRumo(n)}."
+							: $"{NomeDaNave(n)}: agora no espaço. Assuma a ponte pra pilotar.");
 				continue;
 			}
 
@@ -811,6 +890,9 @@ public partial class GameServer
 			}
 
 			ZoneKey zonaAntes = n.Zona;
+			// (2026-10-18) O QUE A NAVE ANDOU NESTE TIQUE PAGA O TANQUE -- so dentro da mesma zona: trocar de zona (decolar, pousar, a
+			// reentrada) e salto, e nao viagem. Ver `GameServer.Combustivel.cs`.
+			if (zonaAntes.Equals(pl.Zone)) GastarCombustivel(n, (pl.Pos - new Vec2(n.X, n.Y)).Length);
 			n.PorZona(pl.Zone);
 			n.X = pl.Pos.X;
 			n.Y = pl.Pos.Y;
@@ -854,6 +936,23 @@ public partial class GameServer
 				if (Espaco.EhEspaco(zonaAntes)) AvisarDoPousoDaNave(pl);
 			}
 		}
+
+		// (2026-10-18) A NAVE QUE SEGUE SOZINHA ANDA A CADA TIQUE, e o pacote de construcoes (que a desenha pra quem esta no espaco) e o disco
+		// so saem quando algo muda: uma vez por segundo basta pra ninguem ver o casco congelado no ponto de partida, nem perder a viagem num
+		// reinicio.
+		if (rumou && agora >= _proximoPassoDoRumo)
+		{
+			_proximoPassoDoRumo = agora + 1000;
+			MandarObras(ZonaDoEspaco);
+			mudouAlgo = true;
+		}
+
+		// (2026-10-18) OS OLHOS DE QUEM OBSERVA vao pra onde as naves ficaram neste tique -- ver `GameServer.NaveObservar.cs`.
+		TickDosObservadores();
+
+		// (2026-10-18) A BARRA DO TANQUE, uma vez por segundo, pra quem pilota e pra quem observa -- e o tanque vai pro disco de tempos em
+		// tempos enquanto alguem gasta. Ver `GameServer.Combustivel.cs`.
+		mudouAlgo |= TickDoCombustivel(agora);
 
 		if (mudouAlgo) GravarNaves();
 	}
@@ -981,14 +1080,19 @@ public partial class GameServer
 	private void InfoDaNave(ServerPlayer pl)
 	{
 		// O `MinhaNaveOuPerto` NAO ALCANCA QUEM ESTA DENTRO: a nave grande esta noutra zona que o
-		// corpo. `NaveDaPonteDe` responde por ela -- ver `GameServer.NaveGrande.cs`.
-		Nave? n = NaveDaPonteDe(pl) ?? NaveDesteInterior(pl) ?? MinhaNaveOuPerto(pl);
+		// corpo. `NaveDaPonteDe` responde por ela -- ver `GameServer.NaveGrande.cs`. (2026-10-18) Nem
+		// quem a observa de fora quando ela tem piloto (ela nao esta parada): `NaveQueObservo`.
+		Nave? n = NaveDaPonteDe(pl) ?? NaveDesteInterior(pl) ?? NaveQueObservo(pl) ?? MinhaNaveOuPerto(pl);
 		if (n == null) { Avisar(pl, "não há nenhuma nave por perto."); return; }
 
 		double d = Espaco.DistanciaTerraNamek;
 		Avisar(pl, $"-- {NomeDaNave(n)} #{n.Id} --");
 		Avisar(pl, $"  dono: {(n.DonoNome.Length > 0 ? n.DonoNome : "ninguém")}");
 		Avisar(pl, $"  velocidade: {n.Velocidade}x  (teto {Naves.VelocidadeMaxima}x)");
+		// (2026-10-18) O TANQUE, so em quem tem: o foguete nao viaja, e "0 de combustivel" nele diria que ele esta seco.
+		if (Combustivel.TemTanque(n.Tipo))
+			Avisar(pl, $"  combustível: {NivelDoTanque(n):N0} de {Combustivel.Capacidade(n.Tipo):N0} "
+					   + $"(um tanque leva {Combustivel.TilesDeAlcance(n.Tipo):N0} tiles; abastecer custa {Combustivel.RecursosPorUnidade:0.#} recurso por unidade)");
 		Avisar(pl, $"  Terra→Namek: {Naves.SegundosDeViagem(d, n.Velocidade) / 60:0.#} min reais "
 				   + $"({Naves.DiasInGame(d, n.Velocidade):0.##} dias in-game)");
 		Avisar(pl, $"  espera do lançamento: {SegundosDeLancamentoDe(n):0.#} s");
@@ -1043,6 +1147,7 @@ public partial class GameServer
 			case "nave_info": InfoDaNave(pl); return true;
 			case "nave_pegar": PegarNave(pl); return true;
 			case "nave_recondicionar": RecondicionarNave(pl, arg); return true;
+			case "nave_abastecer": Abastecer(pl); return true;   // (2026-10-18) ver `GameServer.Combustivel.cs`
 
 			// A CAMADA 2 -- arquivo proprio (`GameServer.NaveGrande.cs`) pela mesma razao que a
 			// camada 1 nao mora no `GameServer.Tech.cs`: interior, ponte e ejecao sao um sistema, e

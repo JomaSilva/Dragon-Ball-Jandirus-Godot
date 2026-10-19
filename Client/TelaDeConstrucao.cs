@@ -111,10 +111,23 @@ public partial class TelaDeConstrucao : CanvasLayer
 	/// </summary>
 	internal static RecusaDeAssento RecusaEm(int cx, int cy) => Recusa(cx, cy);
 
+	/// <summary>
+	/// DEFEITO INJETADO (`--diagcapital`): o fantasma pergunta sem a zona -- o de antes de 2026-10-18, que nao enxergava as passagens da nave
+	/// grande (a chegada ficava branca). Falso em jogo, sempre.
+	/// </summary>
+	internal static bool SemZonaDeTeste;
+
 	public void Segurar(string id)
 	{
 		Largar();
 		if (Jandirus.Core.Items.CatalogoDeItens.Get(id) is not { } def) return;
+
+		// (2026-10-18) AO LEME NAO SE CONSTROI -- a mesma recusa do servidor, dita antes do fantasma. Ver `Naves.AoLemeNaoSeConstroi`.
+		if (GameClient.Instance is { VeiculoMontado.Length: > 0 } aoLeme)
+		{
+			Chat.Sistema(Naves.AoLemeNaoSeConstroi(aoLeme.VeiculoMontado));
+			return;
+		}
 
 		// A MESMA PERGUNTA DO SERVIDOR (regra 2). O menu do inventario nem desenha o botao pra item
 		// pessoal -- as duas coisas leem `AcoesDoItem` --, mas quem SEGURA tem que conferir: este
@@ -194,7 +207,9 @@ public partial class TelaDeConstrucao : CanvasLayer
 		if (mundo.PosicaoDesenhadaDe(GameClient.Instance?.LocalId ?? 0) is not { } eu)
 			return RecusaDeAssento.Pode;
 
-		RecusaDeAssento r = Assentamento.DoLugar(mundo.Colisao, new Vec2(eu.X, eu.Y), cx, cy);
+		// A ZONA VAI JUNTO (2026-10-18): as passagens da nave grande (a plataforma, a chegada, a porta da ponte) sao chao pro mapa.
+		RecusaDeAssento r = Assentamento.DoLugar(mundo.Colisao, new Vec2(eu.X, eu.Y), cx, cy,
+			SemZonaDeTeste ? default : GameClient.Instance?.Zone ?? default);
 		if (r != RecusaDeAssento.Pode) return r;
 
 		const int t = ZoneCollision.TileSize;

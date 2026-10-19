@@ -34,7 +34,11 @@ public partial class GameServer
 	private readonly Dictionary<int, double> _escudoAtivo = [];   // id -> bonus aplicado
 
 	public bool EstaOculto(int id) => _invisiveis.Contains(id)
-		|| Enterrado(id);   // (2026-10-17) a larva enterrada some da vista -- ver `GameServer.Larva.cs`
+		|| Enterrado(id)    // (2026-10-17) a larva enterrada some da vista -- ver `GameServer.Larva.cs`
+		// (2026-10-18) e o OLHO de quem observa uma nave de fora: ele esta la so pra ver -- ver `GameServer.NaveObservar.cs`
+		|| (!OlhoAVistaDeTeste && _observadores.Contains(id))
+		// (2026-10-18) e o corpo de verdade de quem o Neo Tuffle possui: quem anda no lugar dele e o Tuffle -- ver `GameServer.NeoTuffle.cs`
+		|| EhHospedeDeTuffle(id);
 
 	/// <summary>
 	/// QUEM SAIU LEVA O ESTADO DELE JUNTO -- inscrito no `EsquecerTecnicas`, porque id se reusa. So o

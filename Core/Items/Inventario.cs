@@ -406,6 +406,9 @@ public static class CatalogoDeItens
 	/// </summary>
 	public static ItemDef? Get(string id)
 	{
+		// (2026-10-18) OS PESOS TEM ESTADO NO ID -- o de fabrica tambem passa por aqui, pra ter o maximo no nome como os outros. Ver `PesoDeTreino`.
+		if (PesoDeTreino.Ler(id) is not null && Tudo.TryGetValue(Pesos, out ItemDef? dosPesos)) return PesoDeTreino.Ficha(id, dosPesos);
+
 		if (Tudo.TryGetValue(id, out ItemDef? mao))
 		{
 			mao = ComAArteDaObra(mao);
@@ -611,6 +614,23 @@ public sealed class Inventario
 			else Pilhas.RemoveAt(i);
 		}
 		return levou;
+	}
+
+	/// <summary>
+	/// (2026-10-18) TROCA UMA UNIDADE deste item por outra, NO MESMO SLOT -- o item com estado que muda de estado (o peso que melhora, que
+	/// troca de arte). Tirar e guardar mandaria o item pro fim da mochila. Falso se nao ha o que trocar.
+	/// </summary>
+	public bool Trocar(string de, string para)
+	{
+		int i = Pilhas.FindIndex(p => string.Equals(p.Id, de, StringComparison.OrdinalIgnoreCase));
+		if (i < 0) return false;
+		if (Pilhas[i].Quantidade > 1)
+		{
+			Pilhas[i] = Pilhas[i] with { Quantidade = Pilhas[i].Quantidade - 1 };
+			Pilhas.Insert(i + 1, new Pilha(para, 1));
+		}
+		else Pilhas[i] = new Pilha(para, 1);
+		return true;
 	}
 
 	/// <summary>

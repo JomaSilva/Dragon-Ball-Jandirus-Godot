@@ -27,6 +27,12 @@ namespace Jandirus.Client;
 /// </summary>
 public partial class ObraDesenhada : Node2D
 {
+	/// <summary>
+	/// (2026-10-18) O ID QUE VEIO NO PACOTE (a nave parada vem com `-nave`). Campo, e nao o nome do node: o pacote refaz os nodes inteiros, o
+	/// velho sai por `QueueFree` (no fim do quadro) e o novo, com o MESMO nome, ganha um nome sorteado do Godot -- a busca pelo nome falhava
+	/// no quadro seguinte. Quem pergunta e o olho de quem observa a nave (`World.AtualizarNaveObservada`).
+	/// </summary>
+	public int Id;
 	public string Tipo = "";
 	public string Dono = "";
 	public bool Aparafusada;

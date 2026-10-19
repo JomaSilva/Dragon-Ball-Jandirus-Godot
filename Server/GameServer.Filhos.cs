@@ -205,7 +205,7 @@ public sealed partial class GameServer
 		if (BebeDaMae(pl.Assinatura) is { } jaVem)
 		{ Avisar(pl, jaVem.DeOvo ? "você já tem um ovo a caminho." : $"você já espera um bebê de {jaVem.Pai}."); return; }
 
-		// O CHAO DO OVO, antes de o ovo existir. Nos lugares em que nada se assenta (mente, nave, o interior de um Majin -- `LugarDeObra`)
+		// O CHAO DO OVO, antes de o ovo existir. Nos lugares em que nada se assenta (mente, bolso da fusao, selo, o interior de um Majin -- `LugarDeObra`)
 		// ele nao cai, pelo mesmo motivo de uma construcao nao cair: a chave daquela zona e de sessao, e o ovo gravado ali voltaria noutro lugar.
 		Vec2? chao = null;
 		if (!Filhos.OvoSemCorpoDeTeste)
@@ -231,7 +231,8 @@ public sealed partial class GameServer
 	/// ONDE O OVO CAI: a primeira celula livre em volta de quem o poe -- a da frente primeiro, depois as dos lados, a de tras e as diagonais.
 	/// No DM ele nascia no tile de quem o pos (`new(usr.loc)`, `Mating.dm:230`); aqui ele e SOLIDO -- o `mob/Egg` e denso, como todo mob do
 	/// BYOND -- e nao pode nascer dentro de um corpo. As guardas sao as de assentar qualquer coisa: o alcance e a parede
-	/// (`Assentamento.DoLugar`) e nao empilhar (`Assentamento.TemCoisaEm`; as naves paradas contam). Nulo = nao ha chao.
+	/// (`Assentamento.DoLugar`, com as passagens da nave grande) e nao empilhar (`Assentamento.TemCoisaEm`; as naves paradas e a mobilia da
+/// nave grande contam). Nulo = nao ha chao.
 	/// </summary>
 	private Vec2? ChaoDoOvo(ServerPlayer pl)
 	{
@@ -241,11 +242,12 @@ public sealed partial class GameServer
 		(int Dx, int Dy)[] volta = [(fx, fy), (fy, fx), (-fy, -fx), (-fx, -fy), (1, 1), (1, -1), (-1, 1), (-1, -1)];
 		ZoneCollision? mapa = MapaDaZonaOuCatalogo(pl.Zone);
 		List<Vec2> ocupados = [.. _noChao.Where(o => o.Zona.Equals(pl.Zone)).Select(o => new Vec2(o.X, o.Y))
-			.Concat(NavesParadasEm(pl.Zone).Select(n => new Vec2(n.X, n.Y)))];
+			.Concat(NavesParadasEm(pl.Zone).Select(n => new Vec2(n.X, n.Y)))
+			.Concat(MobiliaDoInterior(pl.Zone).Select(m => Jandirus.Core.Tech.NaveGrande.PixelDe(m.Peca.Cel)))];
 		foreach ((int dx, int dy) in volta)
 		{
 			int x = cx + dx, y = cy + dy;
-			if (Jandirus.Core.Tech.Assentamento.DoLugar(mapa, pl.Pos, x, y) != Jandirus.Core.Tech.RecusaDeAssento.Pode) continue;
+			if (Jandirus.Core.Tech.Assentamento.DoLugar(mapa, pl.Pos, x, y, pl.Zone) != Jandirus.Core.Tech.RecusaDeAssento.Pode) continue;
 			var ponto = new Vec2(x * t + t / 2f, y * t + t / 2f - MoveRules.FeetOffsetY);
 			if (!Jandirus.Core.Tech.Assentamento.TemCoisaEm(ocupados, ponto)) return ponto;
 		}

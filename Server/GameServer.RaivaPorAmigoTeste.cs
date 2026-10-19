@@ -1024,6 +1024,14 @@ public partial class GameServer
 			ParaABase(esquecerAsFormas: true);
 			EmPaz();
 			f.BP = 1;
+
+			// ============================ 12. (2026-10-18) O AMIGO QUE DERRUBA O AMIGO, E O GRITO ============================
+			// Ver `GameServer.RaivaGritoTeste.cs`.
+			OAmigoQueDerrubaEOGrito(pl, amigo, Checa, forjados);
+
+			// ============================ 13. (2026-10-18) A FURIA AO ACHAR O CORPO DO AMIGO ============================
+			// Ver `GameServer.RaivaDoCorpoTeste.cs`.
+			AFuriaAoAcharOCorpo(pl, Checa, forjados);
 		}
 		catch (Exception e)
 		{

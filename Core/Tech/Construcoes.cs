@@ -346,6 +346,20 @@ public sealed class CatalogoDeObras
 			: (saldo >= custoEmZeni ? RecusaObra.Pode : RecusaObra.SemZeni);
 	}
 
+	/// <summary>O id do mainframe de criacao de androides.</summary>
+	public const string Mainframe = "Android_Creation_Mainframe";
+
+	/// <summary>
+	/// (2026-10-18) O MAINFRAME DE ANDROIDES SO SE CONSTROI COM A TECNOLOGIA QUE A INSTALACAO PEDE -- o dono: *"vi uns jogadores reclamando q a
+	/// maquina q faz os androides vc pode construir com tech 50 mas so pode soldar /transformar em um laboratorio com 70 de tech oq n faz
+	/// sentido, faça q so posa construir com tech 70"*. O `construcoes.json` traz o 50; a regra do port mora aqui, em codigo, e o laboratorio
+	/// pergunta pelo MESMO numero (`GameServer.TechDoLaboratorio`).
+	/// </summary>
+	public const double TechDoMainframe = 70;
+
+	/// <summary>DEFEITO INJETADO (`--inteligenciateste`): o mainframe com o tech do `construcoes.json` (50) -- o jogo de antes. Falso em jogo, sempre.</summary>
+	public static bool MainframeComOTechDoDmDeTeste;
+
 	public static CatalogoDeObras Parse(string json)
 	{
 		var cat = new CatalogoDeObras();
@@ -380,6 +394,10 @@ public sealed class CatalogoDeObras
 			// barata -- que e a que faz sentido um mapa ter espalhado.
 			if (c.Tipo.Length > 0) cat._porTipo.TryAdd(c.Tipo, c);
 		}
+
+		// (2026-10-18) o mainframe de androides pede a tecnologia da instalacao -- ver `TechDoMainframe`
+		if (!MainframeComOTechDoDmDeTeste && cat._porId.TryGetValue(Mainframe, out Construcao? mainframe))
+			mainframe.Tech = Math.Max(mainframe.Tech, TechDoMainframe);
 		return cat;
 	}
 

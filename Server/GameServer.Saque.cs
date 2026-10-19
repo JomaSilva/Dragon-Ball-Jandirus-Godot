@@ -87,7 +87,7 @@ public sealed partial class GameServer
 	{
 		List<Pilha> leva = Saque.OQueDaPraLevar(alvo.Mochila,
 												scouterLigado: (alvo.PoderesConcedidos & Protocol.Poder.Scouter) != 0,
-												comPesos: alvo.Ficha.Weighted > 0);
+												pesoVestido: alvo.Ficha.Weighted > 0 ? alvo.Ficha.pesoVestido : "");
 		if (!EhCarcaca(alvo) && PodeMexerNaRoupa(alvo, out _)) leva.AddRange(Saque.PecasQueDaPraLevar(alvo.Visual.Roupa));
 		return leva;
 	}

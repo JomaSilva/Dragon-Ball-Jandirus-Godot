@@ -202,6 +202,10 @@ public partial class GameServer
 	{
 		if (NaMente(pl)) { SairDaMente(pl, "voce abre os olhos."); return; }
 
+		// (2026-10-18) QUEM OBSERVA UMA NAVE DE FORA nao esta em transe, mas tambem esta fora do corpo: volta pela porta dele, que desfaz o
+		// olho e a barra do tanque -- o ramo de baixo devolveria o corpo e deixaria o olho registrado. Ver `GameServer.NaveObservar.cs`.
+		if (EhOlhoDeFora(pl)) { PararDeObservar(pl, "voce volta pro proprio corpo, na ponte."); return; }
+
 		if (pl.BonecoLargado != null && NaveDoPiloto(pl) == null)
 		{
 			RestaurarDaMente(pl);

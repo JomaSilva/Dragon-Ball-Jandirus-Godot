@@ -178,4 +178,147 @@ public static class RaivaEmDegraus
 		f.overcharge = true;
 		return true;
 	}
+
+	/// <summary>
+	/// (2026-10-18) O GRITO DA RAIVA COMUM -- o dono: *"faça tb q caso um jogador sinta raiva ele fale no chat algo do tipo como : "miseravel",
+	/// "seu desgraçado", "vou acabar com vc" etc"*. Sai da boca de quem se enfurece, na ERUPCAO (`GameServer.AmigoAbatido`).
+	/// </summary>
+	public static readonly string[] GritosDaRaivaComum =
+	[
+		"Miserável!", "Seu desgraçado!", "Vou acabar com você!", "Você vai pagar por isso!", "Como você ousa?!",
+	];
+
+	/// <summary>(2026-10-18) ...e o da FURIA (a morte do amigo, o degrau extremo): os mesmos, aos berros.</summary>
+	public static readonly string[] GritosDaFuria =
+	[
+		"MISERÁVEL!!", "SEU DESGRAÇADO!!", "EU VOU ACABAR COM VOCÊ!!", "EU NUNCA VOU TE PERDOAR!!", "VOCÊ VAI PAGAR CARO POR ISSO!!",
+	];
+
+	/// <summary>(2026-10-18) Uma fala sorteada do grau: a furia grita a dela; a raiva comum, a dela.</summary>
+	public static string Grito(NivelDeRaiva grau, Random sorte)
+	{
+		string[] l = grau == NivelDeRaiva.Extrema ? GritosDaFuria : GritosDaRaivaComum;
+		return l[sorte.Next(l.Length)];
+	}
+
+	// =====================================================================
+	// 3. O NOME DO AMIGO NO GRITO (2026-10-18)
+	// =====================================================================
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--raivateste` familia 12, e a `--diagraiva`): o grito nao diz o nome do amigo -- o jogo da manha de 2026-10-18, em
+	/// que a raiva comum e a furia gritavam so a frase, uma fala so. Lido pelo <see cref="GritosDaErupcao"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool GritoSemONomeDeTeste;
+
+	/// <summary>
+	/// O PALCO DAS BANCADAS (`--raivateste` familia 12, e a `--diagraiva`): a moeda da raiva comum cai SEMPRE no nome -- a foto do nome e a
+	/// conferencia do amigo jogador nao podem depender do sorteio (a chance em si e medida a parte, com a moeda solta). Lido pelo
+	/// <see cref="GritosDaErupcao"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool RaivaComumSempreONomeDeTeste;
+
+	/// <summary>
+	/// A CHANCE DE A RAIVA COMUM GRITAR O NOME DO AMIGO no lugar da frase. DECISAO MINHA, declarada (o dono pediu "uma chance" e nao disse
+	/// qual): MEIO A MEIO -- o nome e a frase saem com a mesma frequencia, e nenhum dos dois vira a regra. AJUSTE DO DONO: 0 = nunca, 1 = sempre.
+	/// A furia nao tira moeda: o nome com o "NAO" sai sempre (*"quando o amigo morre ele fala algo 'KURIRIN NAO!'"*).
+	/// </summary>
+	public const double ChanceDoNomeNaRaivaComum = 0.5;
+
+	/// <summary>
+	/// QUANTO A FRASE DA FURIA ESPERA DEPOIS DO NOME, em segundos. DECISAO MINHA: 1,5 s -- o balao do primeiro grito fica na tela o bastante
+	/// pra ser lido (o cliente segura toda frase por no minimo 0,9 s, `BalaoDeFala.PisoDeLeitura`, e so depois a troca pela seguinte) e os
+	/// dois ainda soam como um desabafo so. AJUSTE DO DONO.
+	/// </summary>
+	public const double SegundosAteAFraseDaFuria = 1.5;
+
+	/// <summary>
+	/// O NOME NA RAIVA COMUM, os moldes: `{0}` e o nome como ele e, `{1}` em caixa alta, `{2}` em caixa alta e esticado (<see cref="Esticado"/>).
+	/// Com o Kuririn: "Kuririn!", "KURIRIN!!", "Kuririn...!", "KURIRIIIN!!".
+	/// </summary>
+	public static readonly string[] NomeNaRaivaComum = ["{0}!", "{1}!!", "{0}...!", "{2}!!"];
+
+	/// <summary>
+	/// ...e o NOME NA FURIA, sempre com o "NAO" (com til, e as vezes alongado) e nos mesmos tres jeitos de escrever o nome. Com o Kuririn, sem
+	/// os tis (o comentario e ASCII): "KURIRIN NAO!", "KURIRIN NAAAO!!", "KURIRIIIN!! NAAO!!", "NAO... KURIRIN!!".
+	/// </summary>
+	public static readonly string[] NomeNaFuria = ["{1} NÃO!", "{1} NÃÃÃO!!", "{2}!! NÃÃO!!", "NÃO... {1}!!"];
+
+	/// <summary>
+	/// O QUE SAI DA BOCA NA ERUPCAO -- o dono: *"adicionar na raiva uma chance do personagem gritar o nome do amigo derrubado tipo "kuririn!" e
+	/// coisas do tipo, e na furia quando o amigo morre ele fala algo "KURIRIN NAO!" e fala as frases normais em sequencia tipo "KURIRIN NAO!" e
+	/// logo em seguida "SEU DESGRACADO!" e coisas do tipo"*.
+	///
+	///   * na raiva COMUM (o amigo caiu) e uma moeda (<see cref="ChanceDoNomeNaRaivaComum"/>): o nome OU a frase -- uma fala so;
+	///   * na FURIA (o amigo morreu ou foi absorvido) sao DUAS, sempre: o nome com o "NAO" na hora, e a frase da furia
+	///     <see cref="SegundosAteAFraseDaFuria"/> depois. Quem espaca as duas e o servidor: o Core nao tem relogio.
+	///
+	/// O NOME E O QUE QUEM GRITA CONHECE DO AMIGO, e quem o da e o chamador: o servidor passa o mesmo que ja vai na mensagem do enlutado
+	/// (*"Kuririn cai na sua frente..."*). Nome em branco grita so a frase.
+	/// </summary>
+	/// <returns>As falas na ordem: a primeira sai na erupcao, a segunda (so na furia) depois do intervalo.</returns>
+	public static string[] GritosDaErupcao(NivelDeRaiva grau, string nomeDoAmigo, Random sorte)
+	{
+		string frase = Grito(grau, sorte);
+		string nome = nomeDoAmigo.Trim();
+		if (GritoSemONomeDeTeste || nome.Length == 0) return [frase];
+		if (grau == NivelDeRaiva.Extrema) return [Preencher(NomeNaFuria[sorte.Next(NomeNaFuria.Length)], nome), frase];
+		bool oNome = RaivaComumSempreONomeDeTeste || sorte.NextDouble() < ChanceDoNomeNaRaivaComum;
+		return [oNome ? Preencher(NomeNaRaivaComum[sorte.Next(NomeNaRaivaComum.Length)], nome) : frase];
+	}
+
+	/// <summary>TODAS AS FORMAS DO NOME que este grau grita -- a pergunta das bancadas ("esta fala e o nome do amigo?"). Nome em branco: nenhuma.</summary>
+	public static string[] FormasDoNome(NivelDeRaiva grau, string nomeDoAmigo)
+	{
+		string nome = nomeDoAmigo.Trim();
+		if (nome.Length == 0) return [];
+		return [.. (grau == NivelDeRaiva.Extrema ? NomeNaFuria : NomeNaRaivaComum).Select(m => Preencher(m, nome))];
+	}
+
+	/// <summary>Um molde preenchido com os tres jeitos de escrever o nome (ver <see cref="NomeNaRaivaComum"/>).</summary>
+	private static string Preencher(string molde, string nome)
+	{
+		string alto = nome.ToUpperInvariant();
+		return string.Format(molde, nome, alto, Esticado(alto));
+	}
+
+	/// <summary>
+	/// O NOME ESTICADO, como se grita: a ULTIMA vogal vira tres ("KURIRIN" -> "KURIRIIIN", "GOKU" -> "GOKUUU", "BULMA" -> "BULMAAA"). Nome
+	/// sem vogal fica como esta.
+	/// </summary>
+	public static string Esticado(string nome)
+	{
+		int i = nome.LastIndexOfAny(Vogais);
+		return i < 0 ? nome : nome.Insert(i, new string(nome[i], 2));
+	}
+
+	/// <summary>As vogais que o grito estica, com e sem acento, nas duas caixas.</summary>
+	private static readonly char[] Vogais = "AEIOUaeiouÁÉÍÓÚÂÊÔÃÕáéíóúâêôãõ".ToCharArray();
+
+	// =====================================================================
+	// 4. O CORPO ACHADO -- O NOME CHAMADO ANTES DA FURIA (2026-10-18)
+	// =====================================================================
+
+	/// <summary>
+	/// O QUE QUEM ACHA O CORPO DO AMIGO DIZ ANTES DA FURIA -- o dono: *"vc ache o corpo morto dele pela primeira vez, seu personagem vai entrar
+	/// em furia e vai falar algo relacionando tipo chamar pelo nome algumas vezes e dps disso comeca a cinematica de furia"*. Na ordem, um a
+	/// cada <see cref="SegundosEntreChamados"/>: a duvida, o chamado, o grito -- nos moldes do nome no grito (<see cref="NomeNaRaivaComum"/>).
+	/// Com o Kuririn: "Kuririn...?", "Kuririn?! Fala comigo, Kuririn!", "KURIRIIIN!!". Depois do ultimo vem a furia, e com ela o grito dela
+	/// ("KURIRIN NAO!" e a frase). Quem acha, quando e o resto e do servidor (`GameServer.RaivaDoCorpo.cs`).
+	/// </summary>
+	public static readonly string[] MoldesDosChamados = ["{0}...?", "{0}?! Fala comigo, {0}!", "{2}!!"];
+
+	/// <summary>
+	/// QUANTO TEMPO ENTRE UM CHAMADO E O SEGUINTE -- e entre o ultimo e a furia --, em segundos. DECISAO MINHA: 1,2 s, o bastante pro balao de
+	/// cada um ser lido (o piso de leitura do balao e 0,9 s, `BalaoDeFala.PisoDeLeitura`) com os tres chamados e a furia cabendo em uns 3,6 s.
+	/// AJUSTE DO DONO.
+	/// </summary>
+	public const double SegundosEntreChamados = 1.2;
+
+	/// <summary>Os chamados pelo nome do amigo cujo corpo foi achado, na ordem. Nome em branco: nenhum -- a furia vem direto.</summary>
+	public static string[] ChamadosAoAcharOCorpo(string nomeDoAmigo)
+	{
+		string nome = nomeDoAmigo.Trim();
+		return nome.Length == 0 ? [] : [.. MoldesDosChamados.Select(m => Preencher(m, nome))];
+	}
 }

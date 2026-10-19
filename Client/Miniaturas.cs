@@ -39,12 +39,12 @@ public static class Miniaturas
 	public static Texture2D? DoItem(ItemDef def) => De(def.Arte, def.Estado);
 
 	/// <summary>
-	/// (2026-10-15) O ICONE DE UM ITEM COMO O DONO DA MOCHILA O VE: os PESOS de treino com a arte que ele escolheu pra eles
+	/// (2026-10-15) O ICONE DE UM ITEM COMO O DONO DA MOCHILA O VE: os PESOS de treino com a arte que escolheram pra eles
 	/// (dono: *"o icone do peso no inventario e o q vc dropa n muda quando vc muda a aparencia do peso, so muda quando vc
-	/// veste"*); todo o resto, o <see cref="DoItem"/>.
+	/// veste"*); todo o resto, o <see cref="DoItem"/>. (2026-10-18) A arte e a do PROPRIO peso, que vai no id dele -- dois pesos, dois icones.
 	/// </summary>
-	public static Texture2D? DoItemNaMochila(ItemDef def, string arteDosPesos) =>
-		def.Id == CatalogoDeItens.Pesos && DosPesos(arteDosPesos) is { } tex ? tex : DoItem(def);
+	public static Texture2D? DoItemNaMochila(ItemDef def) =>
+		PesoDeTreino.EhPeso(def.Id) && DosPesos(PesoDeTreino.ArteDe(def.Id)) is { } tex ? tex : DoItem(def);
 
 	/// <summary>O retrato dos pesos numa arte escolhida, na pose do icone de fabrica. Nulo sem escolha (ou com o defeito ligado).</summary>
 	public static Texture2D? DosPesos(string arteDosPesos) =>

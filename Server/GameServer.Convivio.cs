@@ -314,6 +314,8 @@ public partial class GameServer
 	///   2. **QUEM DERRUBOU NAO SE ENFURECE COM O PROPRIO CRIME** (`Death.dm:78`, `KO.dm:35`) --
 	///      e a declaracao pode ser de mao unica, entao nao adianta confiar na lista dele.
 	///   3. **TEM QUE ESTAR VENDO** -- o <see cref="RaioDeTestemunha"/>, e na MESMA zona.
+	///   4. (2026-10-18) **O ALGOZ TAMBEM E INIMIGO AOS OLHOS DE QUEM ASSISTE** -- regra do dono, e nao do DM (la so a lista da vitima e
+	///      perguntada): *"se um amigo seu derruba seu outro amigo, n deveria triggar raiva"*. Ver `Convivio.AlgozEhInimigo`.
 	/// =========================================================================================
 	///
 	/// ============================ E QUEM RESPONDE E A DECLARACAO DE CADA UM ============================
@@ -352,6 +354,10 @@ public partial class GameServer
 		NivelDeRaiva grau = morreu ? NivelDeRaiva.Extrema : NivelDeRaiva.Comum;
 		float raio2 = RaioDeTestemunha * RaioDeTestemunha;
 
+		// (2026-10-18) A MORTE DEIXA O CORPO PRA SER ACHADO: quem nao estava vendo e o encontrar depois entra no mesmo luto, chamando o nome
+		// antes (dono). Depois da condicao 1, que e a do registro; as do observador sao perguntadas a quem achar. Ver `GameServer.RaivaDoCorpo.cs`.
+		if (morreu) DeixarAMortePraSerAchada(vitima, algoz);
+
 		foreach (ServerPlayer o in ZoneList(vitima.Zone.Hash).ToList())
 		{
 			if (o == vitima || o == algoz) continue;              // (2)
@@ -366,6 +372,10 @@ public partial class GameServer
 				? o.Social.LutoPorMorte(vitima.Assinatura)
 				: o.Social.LutoPorQueda(vitima.Assinatura);
 			if (!sente) continue;
+
+			// (4) O ALGOZ E INIMIGO AOS OLHOS DE QUEM ASSISTE TAMBEM: o amigo dele (ou o rival bom) derrubando outro amigo nao o enfurece. A
+			// mesma pergunta da condicao 1, feita a lista do observador -- desconhecido, neutro e rival ruim pra baixo contam.
+			if (!RaivaSoPelaVitimaDeTeste && !o.Social.AlgozEhInimigo(algoz.Assinatura)) continue;
 
 			// ============================ O GANCHO, ENFIM CHAMADO ============================
 			// Ele devolve TRUE so na ERUPCAO (ver `AmigoAbatido`): quem ja estava em luto so tem o

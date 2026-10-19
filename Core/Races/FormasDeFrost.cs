@@ -264,6 +264,25 @@ public static class FormasDeFrost
 	}
 
 	/// <summary>
+	/// (2026-10-18) OS CORPOS DE UM FROST DEMON DE NPC, sorteados: um por degrau do Frost Demon normal (a base, a evolucao e a segunda), do
+	/// <see cref="Catalogo"/> inteiro menos o <see cref="ForaDoSorteio"/>. O dono: *"e no torneio os frost demons tao sempre usando o mesmo
+	/// sprite, coloca mais variaçao, tem varios sprites de frost"*. A lista do jogador e livre (o DM deixa montar qualquer escada -- ver o
+	/// <see cref="Catalogo"/>), e o sorteio faz o mesmo pelo NPC: antes ele nascia com a lista PADRAO (o <see cref="Sanear"/> de nada), e todo
+	/// Frost de NPC era o mesmo "Changeling Frieza 2".
+	/// </summary>
+	public static List<string> SortearParaNpc(Random sorte)
+	{
+		string[] livres = [.. Catalogo.Where(c => Array.IndexOf(ForaDoSorteio, c) < 0)];
+		return [.. DegrausDe(ClasseNormal).Select(_ => livres[sorte.Next(livres.Length)])];
+	}
+
+	/// <summary>
+	/// (2026-10-18) O QUE O NPC NAO SORTEIA: o `GoldIcer` e a arte da transformacao DOURADA (mora em `Transformations/`, ver <see cref="Caminho"/>),
+	/// e um Frost de NPC parado em dourado pareceria transformado. O jogador continua podendo escolhe-lo.
+	/// </summary>
+	public static readonly string[] ForaDoSorteio = ["GoldIcer"];
+
+	/// <summary>
 	/// ============================ QUAL SLOT DA LISTA DESENHA ESTE DEGRAU ============================
 	/// A lista de corpos e SANEADA (<see cref="Sanear"/>) e por isso o tamanho dela ja diz de que
 	/// classe ela e: sete corpos = Mutante (degraus 1..7), tres = normal (degraus 5..7). O primeiro

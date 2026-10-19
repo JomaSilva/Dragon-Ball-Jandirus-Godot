@@ -297,19 +297,21 @@ public partial class RoboDaV030 : Node
 		srv.PalcoV21_Dar(cli.LocalId, pesos);
 		bool temPesos = await Ate(() => cli.Mochila.Quantos(pesos) == 1, 4);
 		(string nome, string caminho) = srv.PalcoV30_ArteDosPesos(cli.LocalId);
-		bool chegouAArte = await Ate(() => cli.Atributos.PesoArte == nome, 4);
-		Checa("(montagem) os pesos na mochila, e uma arte que nao e a de fabrica escolhida pela grade (chegou pela ficha lenta)",
-			  temPesos && nome.Length > 0 && chegouAArte, $"pesos {temPesos}; arte '{nome}' ({caminho}); na ficha '{cli.Atributos.PesoArte}'");
+		// (2026-10-18) a arte vai no ID do peso: ele vira `Weights|50|<arte>` na mochila
+		string comArte = PesoDeTreino.IdDe(PesoDeTreino.KgDeFabrica, nome);
+		bool chegouAArte = await Ate(() => nome.Length > 0 && cli.Mochila.Quantos(comArte) == 1, 4);
+		Checa("(montagem) os pesos na mochila, e uma arte que nao e a de fabrica escolhida pela grade (chegou no id do peso, pela mochila)",
+			  temPesos && nome.Length > 0 && chegouAArte, $"pesos {temPesos}; arte '{nome}' ({caminho}); na mochila '{string.Join(",", cli.Mochila.Pilhas.Select(p => p.Id))}'");
 		if (!temPesos || nome.Length == 0) return;
 
-		ItemDef def = CatalogoDeItens.Get(pesos)!;
+		ItemDef def = CatalogoDeItens.Get(comArte)!;
 		Texture2D? daArte = Miniaturas.De(caminho, PesoDeTreino.PoseDoIcone), deFabrica = Miniaturas.DoItem(def);
 		try
 		{
 			mochila.Abrir();
 			await Quadros(3);
-			Texture2D? noSlot = mochila.IconeDoSlotDeTeste(pesos);
-			bool limite = mochila.AbrirAcoesDeTeste(pesos)
+			Texture2D? noSlot = mochila.IconeDoSlotDeTeste(comArte);
+			bool limite = mochila.AbrirAcoesDeTeste(comArte)
 							  && mochila.AcoesAbertasDeTeste().Exists(a => a.Texto.StartsWith("Até o limite do corpo", StringComparison.Ordinal));
 			mochila.Fechar();
 			await Quadros(2);
@@ -320,7 +322,7 @@ public partial class RoboDaV030 : Node
 			PesoDeTreino.ArteSoNoCorpoDeTeste = true;
 			mochila.Abrir();
 			await Quadros(3);
-			Texture2D? comODefeito = mochila.IconeDoSlotDeTeste(pesos);
+			Texture2D? comODefeito = mochila.IconeDoSlotDeTeste(comArte);
 			mochila.Fechar();
 			PesoDeTreino.ArteSoNoCorpoDeTeste = false;
 			await Quadros(2);
@@ -330,10 +332,10 @@ public partial class RoboDaV030 : Node
 			// O CHAO: largar pela mochila, como o jogador
 			mochila.Abrir();
 			await Quadros(3);
-			bool largou = mochila.AbrirAcoesDeTeste(pesos) && mochila.ApertarAcaoDeTeste("Largar no chão");
+			bool largou = mochila.AbrirAcoesDeTeste(comArte) && mochila.ApertarAcaoDeTeste("Largar no chão");
 			mochila.Fechar();
-			bool caiu = await Ate(() => cli.Largados.Exists(l => l.Item == pesos), 4);
-			GameClient.LargadoInfo noChao = cli.Largados.Find(l => l.Item == pesos);
+			bool caiu = await Ate(() => cli.Largados.Exists(l => l.Item == comArte), 4);
+			GameClient.LargadoInfo noChao = cli.Largados.Find(l => l.Item == comArte);
 			await Quadros(3);
 			var desenho = World.Instancia?.FindChild("Largado" + noChao.Id, true, false) as LargadoDesenhado;
 			Checa("**OS PESOS LARGADOS CAEM COM A ARTE ESCOLHIDA**: a folha viaja na lista do chao, e o desenho no mundo a usa",
@@ -379,7 +381,7 @@ public partial class RoboDaV030 : Node
 			bool apertou = abriu && mochila.ApertarAcaoDeTeste("Equipar");
 			mochila.Fechar();
 			bool vestiu = await Ate(() => cli.Atributos.PesoKg > 0, 6);
-			double esperado = 0.4 * PesoDeTreino.Maximo(cli.Atributos.PesoMaxKg);
+			double esperado = 0.4 * PesoDeTreino.MaximoDe(pesos);
 			Checa("**O \"EQUIPAR\" DA MOCHILA DIZ A PORCENTAGEM E VESTE COM ELA** (*\"vc so precisaria clicar na opcao 'equipar' pra por o peso ao inves de colocar a % toda vez\"*): \"Equipar (40% do máximo)\", e um clique veste os mesmos 40%",
 				  rotulo == "Equipar (40% do máximo)" && apertou && vestiu && Math.Abs(cli.Atributos.PesoKg - esperado) < 0.6,
 				  $"rotulo '{rotulo}'; apertou {apertou}; vestindo {cli.Atributos.PesoKg:N1} de {esperado:N1} kg");
@@ -1596,7 +1598,7 @@ public partial class RoboDaV030 : Node
 		int Estado() => srv.PalcoV30_EstadoDaDeathBall(cli.LocalId);
 
 		// UMA DEATH BALL INTEIRA: a carga (ate ela sair), a guia (ate 0,3 s) e o aperto que larga a guia
-		async System.Threading.Tasks.Task<(bool Saiu, int Nascimentos, int NaMao, (int Quadros, int Socos) Carga, (int Quadros, int Socos) Guia, bool Largou)> Uma()
+		async System.Threading.Tasks.Task<(bool Saiu, int Nascimentos, int NaMao, (int Quadros, int Socos) Carga, (int Quadros, int Socos) Guia, bool Largou)> Uma(bool esperarAPose = true)
 		{
 			srv.PalcoV30_AprenderADeathBall(cli.LocalId);
 			await Ate(() => !Socando(), 1.5);
@@ -1610,7 +1612,7 @@ public partial class RoboDaV030 : Node
 			// A POSE CHEGA PELO FIO um quadro (ou dois) depois de o servidor lancar: a guia e medida dali. A espera e CURTA e acaba com a
 			// guia -- sem soco (o defeito injetado) a pose nunca vem, e uma espera longa comeria a guia inteira (0 de 0 quadros); se ela nao
 			// chegar em 0,15 s, a amostra comeca sem ela e a regua reprova do mesmo jeito.
-			if (saiu) await Ate(() => Socando() || Estado() != 1, 0.15);
+			if (saiu && esperarAPose) await Ate(() => Socando() || Estado() != 1, 0.15);
 			var guia = saiu ? await Amostrar(() => Estado() == 1, 0.3) : (0, 0);
 			srv.PalcoV30_LargarAGuiaDaDeathBall(cli.LocalId);
 			bool acabou = await Ate(() => Estado() == -1, 3);
@@ -1638,12 +1640,12 @@ public partial class RoboDaV030 : Node
 			Injeta("(o jogo de antes: renascer com o gesto de tiro) o meu boneco soca na carga, e os nascimentos chegam sem o \"na mao\"",
 				   socando.Carga.Socos > 0 && socando.NaMao == 0, $"{socando.Carga.Socos} de {socando.Carga.Quadros} quadros socando; {socando.NaMao} na mao");
 			Jandirus.Server.GameServer.DeathBallLancaSemSocoDeTeste = true;
-			var semSoco = await Uma();
-			// A AMOSTRA VAZIA NAO E MEDIDA. Sem soco, a espera curta pela pose (0,15 s) corre inteira, e a bola guiada morre no primeiro
-			// obstaculo: quando ela morria antes de a amostra comecar -- ou nem saia do aperto (o job18) --, saia "0 de 0 quadros" e a regua
-			// dava o defeito por nao pego (os job9, job16, job17 e job18, com o resto verde). Ate tres Death Balls, so enquanto a guia vier
-			// VAZIA -- a regua e a mesma.
-			for (int vez = 1; vez < 3 && semSoco.Guia.Quadros == 0; vez++) semSoco = await Uma();
+			// SEM A ESPERA PELA POSE (2026-10-18): o jogo de antes nao a manda, e a espera curta (0,15 s) corria inteira -- a bola guiada
+			// morria no primeiro obstaculo antes de a amostra comecar, e saia "0 de 0 quadros" (os job9, job16, job17, job18, job94 e job96;
+			// com o tanque grande do palco a bola custa 1072 e morre mais cedo). O defeito e "nenhum quadro na pose de tiro", e isso se mede
+			// do primeiro quadro guiado. A AMOSTRA VAZIA continua nao sendo medida: ate tres Death Balls, so enquanto a guia vier VAZIA.
+			var semSoco = await Uma(esperarAPose: false);
+			for (int vez = 1; vez < 3 && semSoco.Guia.Quadros == 0; vez++) semSoco = await Uma(esperarAPose: false);
 			Jandirus.Server.GameServer.DeathBallLancaSemSocoDeTeste = false;
 			Injeta("(o jogo de antes: o lancamento sem soco) guiada, o meu boneco nao fica na pose de tiro",
 				   semSoco.Saiu && semSoco.Guia.Quadros > 0 && semSoco.Guia.Socos < semSoco.Guia.Quadros,

@@ -122,6 +122,10 @@ public partial class GameServer
 			MandarSupers(pl);
 		}
 
+		// (2026-10-18) O OLHO DE QUEM OBSERVA UMA NAVE so ve: os planetas por perto chegam (o bloco de cima), mas a estrela nao o queima e a
+		// nave que passa por cima de um planeta sem pousar nao o pousa la -- quem decide onde o olho vai e a nave (`TickDosObservadores`).
+		if (EhOlhoDeFora(pl) && !OlhoPousaDeTeste) return;
+
 		// O SOL VEM ANTES DO POUSO, e as duas perguntas sao IRMAS e nao uma dentro da outra: a
 		// estrela nao entra em `PlanetaSob` porque o que aparece la e um lugar onde se POUSA.
 		// Ver o cabecalho de `GameServer.Sol.cs`.
@@ -166,7 +170,10 @@ public partial class GameServer
 		// espaco passam a chegar no mesmo lugar, que e o que "o funil e unico" quer dizer.
 		// ==============================================================================================
 		var zonaDoPouso = ZoneKey.Premade(destino.Nome);
-		MoveToZone(pl.Id, zonaDoPouso, PontoDeNascimento(zonaDoPouso));
+		// (2026-10-18) QUEM PILOTA POUSA NUM LUGAR SORTEADO, em terra firme, e o pod abre cratera -- ver `GameServer.PousoDaNave.cs`. Quem voa
+		// sozinho continua chegando no berco.
+		MoveToZone(pl.Id, zonaDoPouso, PousoDeQuemPilota(pl, zonaDoPouso) ?? PontoDeNascimento(zonaDoPouso));
+		AoPousarDoEspaco(pl);
 		Avisar(pl, $"voce pousa em {NomeDoMundo(destino)}.");
 		GD.Print($"[server] {pl.Name} pousou em {destino.Nome}");
 	}

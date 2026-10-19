@@ -1,0 +1,360 @@
+using Godot;
+using Jandirus.Core.Combat;
+using Jandirus.Core.Economia;
+using Jandirus.Core.Races;
+using Jandirus.Core.Tech;
+using Jandirus.Core.Verbos;
+using Jandirus.Core.World;
+using Jandirus.Net;
+using LiteNetLib.Utils;
+
+namespace Jandirus.Server;
+
+/// <summary>
+/// BANCADA `--tuffleteste` -- O NEO TUFFLE (2026-10-18). O pedido inteiro esta no cabecalho de `GameServer.NeoTuffle.cs`. Os tres
+/// personagens entram pela porta (clientes crus): o Baby (Tsufurujin), o Vegeta (Saiyajin) e a Bulma (Humana).
+///
+///   A. ANTES DA MAQUINA: o Tsufurujin comum nao possui ninguem -- e o CONTRA-EXEMPLO `PosseSemAMaquinaDeTeste` (a maquina nao serviria pra
+///      nada).
+///   M. A MAQUINA: o menu do mainframe (o laboratorio e a conversao nas duas moedas), o Neo Tuffle Lab que so o Tsufurujin instala (com a
+///      tecnologia do laboratorio), a conversao que so o Tsufurujin faz e que cobra, o disco e o verb que acende.
+///   P. A POSSE: as recusas (de pe, longe); a entrada (o poder e os stats do Vegeta, o corpo levantado, o lugar dele); o que o mundo ve (o
+///      nome, a raca e o cabelo branco-acinzentado -- CONTRA-EXEMPLO `TuffleSemCabeloBrancoDeTeste`); o corpo de verdade do Vegeta escondido,
+///      fora da grade, intocavel e fora das buscas de quem pega um nocauteado (CONTRA-EXEMPLO `HospedeAVistaDeTeste`), andando com o Tuffle; o
+///      dono dele sem as redeas -- a guarda que ele manda pelo fio e engolida (CONTRA-EXEMPLO `HospedeComAsRedeasDeTeste`); o Tuffle fora do
+///      disco enquanto esta dentro; e o verb apagado (ninguem possui duas vezes).
+///   F. O FIM: o corpo possuido cai e o Tuffle e expulso -- de volta ao proprio corpo, um tile ao lado --, e o Vegeta volta a ser corpo onde o
+///      emprestado caiu, nocauteado e com a perna que o emprestado perdeu (CONTRA-EXEMPLO `PosseNaoAcabaNoNocauteDeTeste`).
+///   S. A SAIDA DO JOGO no meio da posse, pelos dois lados: o que vai pro disco e a pessoa.
+///   D. A MORTE do corpo possuido e a do Vegeta, pelas regras dele.
+/// </summary>
+public sealed partial class GameServer
+{
+	private bool _tuffleJaRodou;
+	private int _tfOk, _tfFalhou;
+
+	/// <summary>O comeco dos ids das maquinas que esta bancada poe no chao.</summary>
+	private const int IdDoPalcoDoTuffle = 986_100;
+
+	private static readonly string[] ContasDaBancadaDoTuffle = ["bancada_tuffle_baby", "bancada_tuffle_vegeta", "bancada_tuffle_bulma"];
+
+	private void AfirmarTf(string nome, bool cond, string detalhe = "")
+	{
+		if (cond) { _tfOk++; GD.Print($"[tuffle]   OK    {nome}" + (detalhe.Length > 0 ? $"   [{detalhe}]" : "")); }
+		else { _tfFalhou++; GD.PrintErr($"[tuffle]   FALHA {nome}   [{detalhe}]"); }
+	}
+
+	private void ApagarContasDoTuffle()
+	{
+		if (_store == null) return;
+		foreach (string conta in ContasDaBancadaDoTuffle)
+			try
+			{
+				string caminho = System.IO.Path.Combine(_store.Pasta, conta + ".json");
+				if (System.IO.File.Exists(caminho)) System.IO.File.Delete(caminho);
+			}
+			catch (Exception e) { GD.PushWarning($"[tuffle] nao apaguei '{conta}': {e.Message}"); }
+	}
+
+	public void RodarBancadaDoTuffle(int porta)
+	{
+		if (_tuffleJaRodou) return;
+		_tuffleJaRodou = true;
+		_tfOk = _tfFalhou = 0;
+		GD.Print("[tuffle] ================ O NEO TUFFLE (dono, 2026-10-18) ================");
+
+		const float T = ZoneCollision.TileSize;
+		ApagarContasDoTuffle();
+		var c = new ClienteCruDeTeste[ContasDaBancadaDoTuffle.Length];
+		for (int i = 0; i < c.Length; i++) c[i] = new ClienteCruDeTeste();
+		var mesa = new MesaDeClientesCrus(this, porta, c);
+		try
+		{
+			// ------------------------------------------------------------ as pecas
+			CharacterDraft Ficha(string nome, string raca, string genero) => new()
+			{
+				Name = nome, Race = raca, Planet = SorteioDeRaca.PlanetaDaRaca(raca), Gender = genero, Age = 18,
+				ChosenClass = CharacterDraft.EscolhasDeClasse(raca) is { Length: > 0 } linhas ? linhas[0] : "",
+				Porte = "Medium", Backstory = "Personagem da bancada do Neo Tuffle, criado por um cliente cru.",
+			};
+			ServerPlayer? Entrar(int i, CharacterDraft ficha)
+			{
+				if (!mesa.Entra(c[i]) || !mesa.Loga(c[i], ContasDaBancadaDoTuffle[i])) return null;
+				c[i].CriarPersonagem(0, ficha);
+				return mesa.Bombeia(() => c[i].NoMundo || c[i].Recusa != null, 8000) && c[i].NoMundo ? mesa.CorpoDe(ContasDaBancadaDoTuffle[i]) : null;
+			}
+			// O NOCAUTEADO DO LADO DE QUEM VAI POSSUIR: na mesma zona, um tile a leste, os dois de frente.
+			void LadoALado(ServerPlayer a, ServerPlayer b)
+			{
+				if (b.Zone.Hash != a.Zone.Hash) MoveToZone(b.Id, a.Zone, a.Pos + new Vec2(T, 0));
+				b.Pos = a.Pos + new Vec2(T, 0);
+				a.Facing = Facing.East;
+				b.Facing = Facing.West;
+			}
+			bool VeOVerb(ServerPlayer quem, string chave) => RequisitosDosVerbos.Linha(chave) is { } l && l.Requisito.Atende(PosseDe(quem));
+			Obra NoChao(ServerPlayer aosPesDe, int n)
+			{
+				var o = new Obra
+				{
+					Id = IdDoPalcoDoTuffle + n, Tipo = "Android_Creation_Mainframe", Aparafusada = true,
+					X = aosPesDe.Pos.X, Y = aosPesDe.Pos.Y, DonoConta = aosPesDe.Conta, DonoNome = aosPesDe.Name,
+				};
+				o.PorZona(aosPesDe.Zone);
+				_noChao.Add(o);
+				return o;
+			}
+			// O PACOTE DE APARENCIA LIDO COMO O CLIENTE O LE (`GameClient`, no `case S2C.PeerLook`): o nome, a raca, o segundo byte de marcas
+			// (o bit 1 e o cabelo do Neo Tuffle) e os bytes que sobraram.
+			(string Nome, string Raca, bool CabeloBranco, int Sobra) Look(ServerPlayer p)
+			{
+				var fio = new NetDataReader(PacoteDeAparencia(p).CopyData());
+				fio.GetByte();
+				fio.GetInt();
+				string nome = fio.GetString(24), raca = fio.GetString(24);
+				fio.GetString(8);
+				fio.GetAppearance();
+				fio.GetByte(); fio.GetByte(); fio.GetString(120);
+				bool branco = (fio.GetByte() & 2) != 0;
+				return (nome, raca, branco, fio.AvailableBytes);
+			}
+			ServerPlayer? Possuir(ServerPlayer tuffle, out List<string> ouvi)
+			{
+				ouvi = Ouvir(() => UsarHabilidade(tuffle, "tuffle_possuir"));
+				return PosseDoTuffleDe(tuffle.Id)?.Hospede;
+			}
+
+			ServerPlayer? baby = Entrar(0, Ficha("Baby", "Tsujin", "Male"));
+			ServerPlayer? vegeta = Entrar(1, Ficha("Vegeta", "Saiyan", "Male"));
+			ServerPlayer? bulma = Entrar(2, Ficha("Bulma", "Human", "Female"));
+			AfirmarTf("(montagem) o Baby (Tsufurujin), o Vegeta (Saiyajin) e a Bulma (Humana) entram pela porta",
+				baby != null && vegeta != null && bulma != null, $"{c[0].Recusa} | {c[1].Recusa} | {c[2].Recusa}");
+			if (baby == null || vegeta == null || bulma == null) return;
+			LadoALado(baby, vegeta);
+			if (bulma.Zone.Hash != baby.Zone.Hash) MoveToZone(bulma.Id, baby.Zone, baby.Pos - new Vec2(4 * T, 0));
+			bulma.Pos = baby.Pos - new Vec2(4 * T, 0);
+			baby.Ficha.BP = 1_000;
+			vegeta.Ficha.BP = 5_000_000;
+			baby.Ficha.Statify();
+			vegeta.Ficha.Statify();
+
+			// ============================================================ A) ANTES DA MAQUINA
+			GD.Print("[tuffle] -- A) antes da maquina: o Tsufurujin comum nao possui ninguem --");
+			vegeta.Combate.Nocautear(600);
+			Possuir(baby, out List<string> comum);
+			AfirmarTf("O TSUFURUJIN COMUM NAO POSSUI: com o Vegeta nocauteado do lado, o aperto diz que ele nao e um Neo Tuffle -- e nada muda",
+				PosseDoTuffleDe(baby.Id) == null && comum.Any(x => x.Contains("não é um Neo Tuffle")), Ultimos(comum));
+			PosseSemAMaquinaDeTeste = true;
+			try { Possuir(baby, out _); }
+			finally { PosseSemAMaquinaDeTeste = false; }
+			AfirmarTf("CONTRA-EXEMPLO (defeito injetado: o Tsufurujin comum possui como o Neo Tuffle): ele entra no Vegeta -- a regua da maquina REPROVA",
+				PosseDoTuffleDe(baby.Id)?.Hospede == vegeta);
+			SoltarDaPosse(baby);
+			vegeta.Combate.Levantar();
+
+			// ============================================================ M) A MAQUINA
+			GD.Print("[tuffle] -- M) a maquina: o Neo Tuffle Lab e a conversao --");
+			Interacoes.Acao[] labs = Interacoes.De("Android_Creation_Mainframe/labs");
+			Interacoes.Acao[] conversao = Interacoes.De("Android_Creation_Mainframe/tuffle");
+			AfirmarTf("O MENU DO MAINFRAME: o Neo Tuffle Lab entre os laboratorios, e a conversao nas duas moedas -- um milhao de zeni ou o dobro em recursos",
+				labs.Any(a => a.Verbo == "lab_tuffle") && conversao.Length == 2 && conversao.All(a => a.Verbo == "virar_tuffle")
+				&& conversao[0].Rotulo.Contains("1.000.000 zeni") && conversao[1].Rotulo.Contains("2.000.000 recursos") && CustoNeoTuffle == 1_000_000
+				&& Interacoes.Aceita("Android_Creation_Mainframe", "virar_tuffle") && Interacoes.Aceita("Android_Creation_Mainframe", "lab_tuffle"),
+				string.Join(" | ", conversao.Select(a => a.Rotulo)));
+
+			Obra daBulma = NoChao(bulma, 1);
+			bulma.Ficha.techskill = 80;
+			List<string> humana = Ouvir(() => ComandoDeTech(bulma, "lab_tuffle", ""));
+			AfirmarTf("O NEO TUFFLE LAB E DO TSUFURUJIN: a Bulma (Humana, com tecnologia) ouve que ele pede um Tsufurujin, e o mainframe continua cru",
+				daBulma.Lab == 0 && humana.Any(x => x.Contains("pede um Tsufurujin")), Ultimos(humana));
+
+			Obra doBaby = NoChao(baby, 2);
+			baby.Ficha.techskill = 10;
+			List<string> semTech = Ouvir(() => ComandoDeTech(baby, "lab_tuffle", ""));
+			List<string> androide = Ouvir(() => ComandoDeTech(baby, "lab_androide", ""));
+			AfirmarTf("...com a tecnologia do laboratorio (70): sem ela o Baby nao instala -- e o Android Lab continua sendo dos humanos",
+				doBaby.Lab == 0 && semTech.Any(x => x.Contains("tecnologia")) && androide.Any(x => x.Contains("pede um humano")),
+				$"{Ultimos(semTech)} || {Ultimos(androide)}");
+			baby.Ficha.techskill = 80;
+			List<string> instalou = Ouvir(() => ComandoDeTech(baby, "lab_tuffle", ""));
+			AfirmarTf("...e com ela o mainframe vira um Neo Tuffle Lab (o laboratorio 3)",
+				doBaby.Lab == LabDoNeoTuffle && instalou.Any(x => x.Contains("Neo Tuffle Lab")), Ultimos(instalou));
+
+			bulma.Pos = baby.Pos;
+			List<string> bulmaConverte = Ouvir(() => ComandoDeTech(bulma, "virar_tuffle", ""));
+			bulma.Pos = baby.Pos - new Vec2(4 * T, 0);
+			baby.Ficha.Zeni = 0;
+			List<string> semZeni = Ouvir(() => ComandoDeTech(baby, "virar_tuffle", ""));
+			AfirmarTf("A CONVERSAO E DO TSUFURUJIN E COBRA: a Humana dentro do lab ouve que a maquina e pro corpo de um Tsufurujin; o Baby sem zeni nao vira",
+				!bulma.Ficha.NeoTuffle && bulmaConverte.Any(x => x.Contains("Tsufurujin")) && !baby.Ficha.NeoTuffle && semZeni.Count > 0,
+				$"{Ultimos(bulmaConverte)} || {Ultimos(semZeni)}");
+			bool viaOVerbAntes = VeOVerb(baby, "hab:tuffle_possuir");
+			baby.Ficha.Zeni = 1_500_000;
+			List<string> virou = Ouvir(() => ComandoDeTech(baby, "virar_tuffle", ""));
+			AfirmarTf("...com um milhao de zeni, o Baby vira NEO TUFFLE: a marca na ficha, o zeni descontado, e a frase que aponta o verb",
+				baby.Ficha.NeoTuffle && baby.Ficha.Zeni == 500_000 && virou.Any(x => x.Contains("Possuir um nocauteado")), Ultimos(virou));
+			AfirmarTf("...e vai pro disco, e o verb \"Possuir um nocauteado\" acende so pra ele (antes apagado; a Bulma nao ve)",
+				mesa.NoDisco(ContasDaBancadaDoTuffle[0])?.Ficha.NeoTuffle == true && !viaOVerbAntes && VeOVerb(baby, "hab:tuffle_possuir")
+				&& !VeOVerb(bulma, "hab:tuffle_possuir"));
+			_noChao.RemoveAll(o => o.Id >= IdDoPalcoDoTuffle && o.Id < IdDoPalcoDoTuffle + 100);
+
+			// ============================================================ P) A POSSE
+			GD.Print("[tuffle] -- P) a posse: o Neo Tuffle entra no Vegeta nocauteado --");
+			Possuir(baby, out List<string> dePe);
+			vegeta.Pos = baby.Pos + new Vec2(6 * T, 0);
+			vegeta.Combate.Nocautear(600);
+			Possuir(baby, out List<string> longe);
+			AfirmarTf("AS RECUSAS: o Vegeta de pe nao e possuido, e nocauteado a seis tiles tambem nao -- o Tuffle ouve que nao ha nocauteado ao alcance",
+				PosseDoTuffleDe(baby.Id) == null && dePe.Any(x => x.Contains("nenhum jogador nocauteado")) && longe.Any(x => x.Contains("nenhum jogador nocauteado")),
+				$"{Ultimos(dePe)} || {Ultimos(longe)}");
+
+			LadoALado(baby, vegeta);
+			Vec2 ondeOVegetaCaiu = vegeta.Pos;
+			Jandirus.Core.Stats.Fighter fichaDoBaby = baby.Ficha;
+			double bpDoDisco = mesa.NoDisco(ContasDaBancadaDoTuffle[0])?.Ficha.BP ?? -1;
+			ServerPlayer? hospede = Possuir(baby, out List<string> entrou);
+			AfirmarTf("A POSSE: o Neo Tuffle entra no Vegeta nocauteado e ouve que o corpo e dele ate cair",
+				hospede == vegeta && entrou.Any(x => x.Contains("você entra no corpo de Vegeta")), Ultimos(entrou));
+			if (hospede == null) return;
+			AfirmarTf("...COM O PODER DELE: a ficha que o Baby carrega e uma copia da do Vegeta -- o BP (5.000.000) e os oito stats --, e nao a dele",
+				!ReferenceEquals(baby.Ficha, fichaDoBaby) && !ReferenceEquals(baby.Ficha, vegeta.Ficha) && baby.Ficha.BP == vegeta.Ficha.BP
+				&& StatsDe(baby.Ficha).SequenceEqual(StatsDe(vegeta.Ficha)),
+				$"BP {baby.Ficha.BP:N0} (o dele {fichaDoBaby.BP:N0}, o do Vegeta {vegeta.Ficha.BP:N0})");
+			AfirmarTf("...O CORPO LEVANTADO, no lugar do Vegeta: o nocaute sai, a vida volta, o Ki enche -- e o Baby esta onde o Vegeta caiu",
+				!baby.Ficha.KO && baby.Ficha.HP >= 99 && baby.Ficha.Ki >= baby.Ficha.MaxKi - 0.5 && Vec2.Distance(baby.Pos, ondeOVegetaCaiu) < 1,
+				$"KO {baby.Ficha.KO}, vida {baby.Ficha.HP:0.#}, Ki {baby.Ficha.Ki:N0}/{baby.Ficha.MaxKi:N0}, a {Vec2.Distance(baby.Pos, ondeOVegetaCaiu):0.#} px");
+
+			var visto = Look(baby);
+			AfirmarTf("O QUE O MUNDO VE: o corpo do Baby vai pro mundo como o Vegeta -- o nome, a raca -- e com o CABELO BRANCO-ACINZENTADO, sem sobrar byte",
+				visto is { Nome: "Vegeta", Raca: "Saiyan", CabeloBranco: true, Sobra: 0 }, $"{visto}");
+			TuffleSemCabeloBrancoDeTeste = true;
+			bool semBranco;
+			try { semBranco = !Look(baby).CabeloBranco; }
+			finally { TuffleSemCabeloBrancoDeTeste = false; }
+			AfirmarTf("CONTRA-EXEMPLO (defeito injetado: o pacote sem o cabelo do Tuffle): o corpo possuido sai com o cabelo de sempre -- a regua do pacote REPROVA",
+				semBranco);
+
+			bulma.Pos = ondeOVegetaCaiu - new Vec2(T, 0);
+			bulma.Facing = Facing.East;
+			ServerPlayer? naFrente = QuemEstaNaFrente(bulma, o => o.Ficha.KO && !o.Ficha.dead);
+			ServerPlayer? deTecnica = AlvoDeTecnica(bulma, 5 * T, o => o.Ficha.KO && !o.Ficha.dead);
+			AfirmarTf("O CORPO DE VERDADE DO VEGETA SOME: escondido do snapshot, fora da grade, intocavel, fora do Sense -- e quem procura um nocauteado na frente nao o acha",
+				vegeta.PossuidoPor == baby.Id && EstaOculto(vegeta.Id) && !EntraNaGrade(vegeta) && vegeta.Combate.Intocavel
+				&& !AchoAEnergia(bulma, vegeta) && naFrente == null && deTecnica == null,
+				$"oculto {EstaOculto(vegeta.Id)}, na grade {EntraNaGrade(vegeta)}, intocavel {vegeta.Combate.Intocavel}, sentido {AchoAEnergia(bulma, vegeta)}, "
+				+ $"na frente {naFrente?.Name}, de tecnica {deTecnica?.Name}");
+			HospedeAVistaDeTeste = true;
+			bool aVista;
+			try { aVista = !EstaOculto(vegeta.Id) && AchoAEnergia(bulma, vegeta); }
+			finally { HospedeAVistaDeTeste = false; }
+			AfirmarTf("CONTRA-EXEMPLO (defeito injetado: o corpo do hospede a vista): o mundo ve -- e sente -- dois Vegetas -- a regua do esconderijo REPROVA", aVista);
+
+			CravarPosicao(baby, baby.Pos + new Vec2(3 * T, 0));
+			TickDasPosses();
+			AfirmarTf("...E ANDA COM O TUFFLE: o Baby da tres passos, e o corpo de verdade do Vegeta vai junto -- e dele que o dono assiste",
+				Vec2.Distance(vegeta.Pos, baby.Pos) < 1, $"a {Vec2.Distance(vegeta.Pos, baby.Pos):0.#} px");
+
+			vegeta.Combate.Levantar();   // acordado la dentro: so a posse o segura
+			bool mexe = PodeMexerOCorpo(vegeta);
+			NetDataWriter guarda = Protocol.Begin(Protocol.C2S.Guard);
+			guarda.Put(true);
+			c[1].Mandar(guarda);
+			mesa.Bombeia(() => false, 150);
+			bool guardou = vegeta.Combate.Bloqueando;
+			AfirmarTf("O DONO SO ASSISTE: mesmo acordado, o Vegeta nao anda (o funil do vetor) e a guarda que ele manda pelo fio e engolida",
+				!mexe && !guardou, $"anda {mexe}, guarda {guardou}");
+			HospedeComAsRedeasDeTeste = true;
+			try
+			{
+				NetDataWriter deNovo = Protocol.Begin(Protocol.C2S.Guard);
+				deNovo.Put(true);
+				c[1].Mandar(deNovo);
+				mesa.Bombeia(() => vegeta.Combate.Bloqueando, 1000);
+			}
+			finally { HospedeComAsRedeasDeTeste = false; }
+			AfirmarTf("CONTRA-EXEMPLO (defeito injetado: o dono com as redeas): a mesma guarda pelo fio sobe no corpo escondido -- a regua das redeas REPROVA",
+				vegeta.Combate.Bloqueando);
+			vegeta.Combate.Guardar(false);
+			vegeta.Combate.Nocautear(600);
+
+			Persistir(baby);
+			double bpGravado = mesa.NoDisco(ContasDaBancadaDoTuffle[0])?.Ficha.BP ?? -1;
+			AfirmarTf("O TUFFLE NAO VAI PRO DISCO DENTRO DO OUTRO: o save pedido no meio da posse nao grava o BP emprestado (5.000.000) na conta do Baby",
+				bpGravado == bpDoDisco && bpGravado != vegeta.Ficha.BP, $"disco {bpGravado:N0} (antes {bpDoDisco:N0})");
+			AfirmarTf("...e ninguem possui duas vezes: dentro do Vegeta o verb do Baby apaga, e o aperto cru diz que ele ja esta noutro corpo",
+				!VeOVerb(baby, "hab:tuffle_possuir") && Ouvir(() => UsarHabilidade(baby, "tuffle_possuir")).Any(x => x.Contains("já está dentro")));
+
+			// ============================================================ F) O FIM
+			GD.Print("[tuffle] -- F) o fim: o corpo possuido cai e o Tuffle e expulso --");
+			if (baby.Combate.Corpo.Achar("Perna esquerda") is { } perna) { perna.Decepado = true; perna.Vida = 0; baby.Combate.SincronizarVida(); }
+			Vec2 ondeCaiu = baby.Pos;
+			baby.ApontarRumoDoGolpe(new Vec2(T, 0));   // o golpe que derruba vem do leste: e ele que deita o corpo
+			baby.Combate.Nocautear(30);
+			Facing caiuPara = baby.DirecaoDeitado;
+			PosseNaoAcabaNoNocauteDeTeste = true;
+			try { TickDasPosses(); }
+			finally { PosseNaoAcabaNoNocauteDeTeste = false; }
+			AfirmarTf("CONTRA-EXEMPLO (defeito injetado: a posse que nao acaba no nocaute): o corpo cai e o Tuffle continua dentro -- a regua do fim REPROVA",
+				PosseDoTuffleDe(baby.Id) != null);
+			List<string> expulso = Ouvir(TickDasPosses);
+			AfirmarTf("O CORPO POSSUIDO CAI E O TUFFLE E EXPULSO: de volta a PROPRIA ficha (Neo Tuffle, BP dele), de pe, sem a cara do Vegeta, um tile ao lado",
+				PosseDoTuffleDe(baby.Id) == null && ReferenceEquals(baby.Ficha, fichaDoBaby) && baby.Ficha.NeoTuffle && !baby.Ficha.KO
+				&& baby.CorpoDaPosse == null && Vec2.Distance(baby.Pos, ondeCaiu) is > 1 and <= 2 * T && expulso.Any(x => x.Contains("você é expulso")),
+				$"BP {baby.Ficha.BP:N0}, a {Vec2.Distance(baby.Pos, ondeCaiu):0.#} px de onde caiu | {Ultimos(expulso)}");
+			AfirmarTf("...E O VEGETA VOLTA A SER CORPO onde o emprestado caiu: a vista, nocauteado, deitado pro mesmo rumo, e com a perna que o emprestado perdeu -- e ele ouve que o Tuffle saiu",
+				vegeta.PossuidoPor == 0 && !EstaOculto(vegeta.Id) && !vegeta.Combate.Intocavel && vegeta.Ficha.KO && Vec2.Distance(vegeta.Pos, ondeCaiu) < 1
+				&& vegeta.DirecaoDeitado == caiuPara && vegeta.Combate.Corpo.Achar("Perna esquerda")?.Decepado == true
+				&& expulso.Any(x => x.Contains("o Neo Tuffle saiu do seu corpo")),
+				$"KO {vegeta.Ficha.KO}, oculto {EstaOculto(vegeta.Id)}, deitado pra {vegeta.DirecaoDeitado} (o emprestado: {caiuPara}), "
+				+ $"perna {vegeta.Combate.Corpo.Achar("Perna esquerda")?.Decepado}");
+			var deVolta = Look(baby);
+			AfirmarTf("...e o mundo volta a ver o Baby: o nome dele, a raca dele, o cabelo de sempre",
+				deVolta is { Nome: "Baby", Raca: "Tsujin", CabeloBranco: false, Sobra: 0 }, $"{deVolta}");
+
+			// ============================================================ S) A SAIDA DO JOGO NO MEIO
+			GD.Print("[tuffle] -- S) a saida do jogo no meio da posse --");
+			LadoALado(baby, vegeta);
+			ServerPlayer? deNovoNoVegeta = Possuir(baby, out _);
+			bool saiu = deNovoNoVegeta != null && mesa.SaiDoJogo(c[0], ContasDaBancadaDoTuffle[0]);
+			var noDisco = mesa.NoDisco(ContasDaBancadaDoTuffle[0]);
+			AfirmarTf("O TUFFLE SAI DO JOGO DENTRO DO VEGETA: e expulso ANTES do save -- o disco guarda o Neo Tuffle com o BP dele -- e o Vegeta volta caido",
+				saiu && noDisco?.Ficha.NeoTuffle == true && noDisco.Ficha.BP == fichaDoBaby.BP && vegeta.PossuidoPor == 0 && !EstaOculto(vegeta.Id)
+				&& vegeta.Ficha.KO && _posses.Count == 0,
+				$"saiu {saiu}, disco: Neo Tuffle {noDisco?.Ficha.NeoTuffle}, BP {noDisco?.Ficha.BP:N0}");
+			ServerPlayer? baby2 = mesa.EntraNoMundo(c[0], ContasDaBancadaDoTuffle[0], "Baby");
+			if (baby2 == null) { AfirmarTf("(montagem) o Baby volta ao jogo", false, c[0].Recusa ?? ""); return; }
+			LadoALado(baby2, vegeta);
+			ServerPlayer? doVolta = Possuir(baby2, out _);
+			bool vegetaSaiu = doVolta != null && mesa.SaiDoJogo(c[1], ContasDaBancadaDoTuffle[1]);
+			AfirmarTf("O DONO DO CORPO SAI DO JOGO NO MEIO: o Tuffle e expulso pro proprio corpo, e o Vegeta vai pro disco (a posse acaba com ele)",
+				vegetaSaiu && baby2.CorpoDaPosse == null && baby2.Ficha.NeoTuffle && _posses.Count == 0
+				&& mesa.NoDisco(ContasDaBancadaDoTuffle[1]) != null, $"saiu {vegetaSaiu}, posses {_posses.Count}");
+
+			// ============================================================ D) A MORTE DO CORPO POSSUIDO
+			GD.Print("[tuffle] -- D) a morte do corpo possuido e a do Vegeta --");
+			ServerPlayer? vegeta2 = mesa.EntraNoMundo(c[1], ContasDaBancadaDoTuffle[1], "Vegeta");
+			if (vegeta2 == null) { AfirmarTf("(montagem) o Vegeta volta ao jogo", false, c[1].Recusa ?? ""); return; }
+			LadoALado(baby2, vegeta2);
+			vegeta2.Combate.Nocautear(600);
+			Possuir(baby2, out _);
+			bool dentro = PosseDoTuffleDe(baby2.Id)?.Hospede == vegeta2;
+			baby2.Combate.Morrer();
+			TickDasPosses();
+			AfirmarTf("O GOLPE QUE MATA O CORPO POSSUIDO MATA O VEGETA, pelas regras dele (o `Morrer` do corpo dele) -- e o Tuffle sai vivo e de pe",
+				dentro && vegeta2.Ficha.dead && !baby2.Ficha.dead && !baby2.Ficha.KO && baby2.CorpoDaPosse == null && _posses.Count == 0,
+				$"dentro {dentro}, Vegeta morto {vegeta2.Ficha.dead}, Baby morto {baby2.Ficha.dead}");
+		}
+		catch (Exception e)
+		{
+			AfirmarTf("a bancada rodou ate o fim", false, e.ToString());
+		}
+		finally
+		{
+			PosseSemAMaquinaDeTeste = HospedeAVistaDeTeste = HospedeComAsRedeasDeTeste = TuffleSemCabeloBrancoDeTeste = PosseNaoAcabaNoNocauteDeTeste = false;
+			foreach (PosseDoTuffle p in _posses.Values.Distinct().ToList()) Expulsar(p, "");
+			_noChao.RemoveAll(o => o.Id >= IdDoPalcoDoTuffle && o.Id < IdDoPalcoDoTuffle + 100);
+			mesa.Fecha();
+			ApagarContasDoTuffle();
+			GD.Print($"[tuffle] ================ {_tfOk} OK, {_tfFalhou} FALHA(S) ================");
+		}
+	}
+}

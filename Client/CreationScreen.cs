@@ -1388,15 +1388,21 @@ public partial class CreationScreen : CanvasLayer
 		if (p == null) return "";
 
 		double bp = p.MiscStat("Starting BP");
-		string classes = p.ClassSpread.Count > 0
-			? $"Linhagens possíveis: {string.Join(", ", p.ClassSpread.Select(c => c.Classe))}."
+		// (2026-10-18) O "None" DO DM E A FALTA DE LINHAGEM, NAO UM NOME: o `spread` do Saibaman, do Makyo, do Kanassa, do Shapeshifter e da
+		// Spirit Doll e `"None" = 100` (o do Bio-Androide, `"None" = 80`), e a tela escrevia "Linhagens possíveis: None." -- a foto da criacao do
+		// Saibaman (robo `--diagcorposderaca`). Ele sai da lista, e quem fica sem nenhuma nao ouve que "a sua e revelada".
+		string[] linhagens = [.. p.ClassSpread.Select(c => c.Classe).Where(c => NoneNaListaDeTeste || c != "None")];
+		string classes = linhagens.Length > 0
+			? $"Linhagens possíveis: {string.Join(", ", linhagens)}{(linhagens.Length < p.ClassSpread.Count ? " (ou nenhuma)" : "")}."
 			: "Sem variação de linhagem.";
 		// (2026-10-17) O FILHO COM A LINHAGEM DADA -- uma so, a de quem o gerou (o cla do ovo de Namekuseijin, os dois Saiyajins da mesma
 		// linhagem) -- nao escolhe: a tela nem mostra a etapa.
-		string escolhe = _filho is { Linhagens.Length: 1 } filho ? $" A sua vem de quem te gerou: {filho.Linhagens[0]}."
+		string escolhe = _filho is { Linhagens.Length: 1 } filho && filho.Linhagens[0] != "None" ? $" A sua vem de quem te gerou: {filho.Linhagens[0]}."
 			: CharacterDraft.EscolhasDeClasse(raca).Length > 0
 			? " Você escolhe a sua."
-			: " A sua é revelada quando o combate mostrar do que você é feito.";
+			: linhagens.Length > 0
+			? " A sua é revelada quando o combate mostrar do que você é feito."
+			: "";
 
 		// SEM O NUMERO. Eu tinha decidido manter ("e ficha de RACA, nao BP de ninguem"), mas o
 		// dono pediu TODA referencia de BP escondida, e ele tem razao pelo lado que importa: o
@@ -1556,6 +1562,15 @@ public partial class CreationScreen : CanvasLayer
 
 	/// <summary>(v0.3.0) O titulo da etapa na tela, a trilha e a raca/linhagem da ficha. Pra bancada `--diagv030` (RA).</summary>
 	internal string TituloDaEtapaDeTeste => _tituloEtapa.Text;
+
+	/// <summary>(robo `--diagcorposderaca`) O texto da raca na etapa aberta -- o `Descrever`.</summary>
+	internal string DescricaoDeTeste => _descricao.Text;
+
+	/// <summary>
+	/// DEFEITO INJETADO (robo `--diagcorposderaca`): o "None" do DM volta pra lista de linhagens -- "Linhagens possíveis: None.", o jogo de
+	/// antes. Lido pelo `Descrever`. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool NoneNaListaDeTeste;
 	internal string TrilhaDeTeste => _trilha.Text;
 	internal (string Raca, string Linhagem) FichaDeTeste => (_ficha.Race, _ficha.ChosenClass);
 

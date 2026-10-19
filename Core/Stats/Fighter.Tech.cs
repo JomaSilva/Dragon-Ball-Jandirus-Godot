@@ -35,6 +35,12 @@ public partial class Fighter
 	public bool AndroideAbsorcao, AndroideInfinito;
 
 	/// <summary>
+	/// (2026-10-18) NEO TUFFLE: o Tsufurujin que passou pela maquina do Neo Tuffle Lab (`GameServer.NeoTuffle.cs`). Ele entra no corpo de
+	/// um jogador nocauteado e o dirige com o poder dele. Vai pro disco com a ficha, como as duas de cima.
+	/// </summary>
+	public bool NeoTuffle;
+
+	/// <summary>
 	/// A POSTURA DOS COLETORES ABERTOS (`ki_absorb_stance`) -- o verb `Absorb Ki`.
 	///
 	/// Enquanto ela esta de pe o corpo NAO ANDA (`canmove = 0` no laco do original) e todo ataque de

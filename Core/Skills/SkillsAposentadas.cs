@@ -82,6 +82,13 @@ public static class SkillsAposentadas
 		// saiu do servidor junto: o verb do lote G2, a regra de nivel, o divisor da cura na ficha e o socorro da IA.
 		new("/datum/skill/HamonBreathing", "Hamon Breathing", 2,
 			"tirada em 2026-10-16: nao e de Dragon Ball"),
+
+		// O SUPER MAJIN (dono, 2026-10-18: *"a skill super majin dos majins é inutil, podendo remove-la completamente do codigo e do jogo"*).
+		// No DM (`majin.dm:112-147`) era um toggle de forma -- tecnica, ofensiva de Ki e velocidade +1,2, pagos com defesa fora da Ascensao --,
+		// e a Ascensao, o evento de mundo que o tornava bom, este port nao tem. Tier 1 da arvore `Majin Racials`, 2 marcos. O efeito saiu do
+		// servidor junto: o toggle do lote G1, a linha dos reforcos e a ficha portada.
+		new("/datum/skill/majin/Super_Majin", "Super Majin", 2,
+			"tirada pelo dono em 2026-10-18: nao tinha uso no jogo"),
 	];
 
 	/// <summary>Esta skill saiu do jogo?</summary>

@@ -52,9 +52,12 @@ public partial class MenuJogo
 		bool scan = cli?.SentidosSaoDoScouter ?? false;
 
 		// A FAIXA: quantas presencas, e de que jeito elas foram lidas.
+		// (2026-10-18) O SENSE TEM CINCO NIVEIS: a faixa diz em qual o meu esta, e ate onde ele alcanca (`SenseEmNiveis`).
+		int nivel = Math.Max(cli?.NivelDoSense ?? 1, 1);
 		Faixa(scan ? "Leituras" : "Presenças", $"{lista.Count}",
-			  scan ? "leitura exata do scouter · quem está neste mundo"
-				   : "por alcance: perto · neste mundo · na galáxia", Tema.Ki);
+			  scan ? "leitura exata do scouter (até 100 milhões) · quem está neste mundo"
+				   : $"Sense nível {nivel} de {Jandirus.Core.Skills.SenseEmNiveis.NivelMaximo} · alcance: "
+					+ Jandirus.Core.Skills.SenseEmNiveis.NomeDoAlcance(nivel), Tema.Ki);
 
 		if (lista.Count == 0)
 		{
@@ -73,17 +76,22 @@ public partial class MenuJogo
 		VBoxContainer c = Cartao("", destaque: p.Chefe);
 		bool conhecido = p.Nome.Length > 0;
 		string nome = conhecido ? p.Nome : p.Assinatura.Length > 0 ? $"??? ({p.Assinatura})" : "???";
+		// (2026-10-18) os cinco alcances do Sense -- a pilula diz de que distancia a presenca foi sentida
 		(string Texto, Color Cor) alcance = p.Alcance switch
 		{
-			1 => ("perto", Tema.Bom),
-			2 => ("neste mundo", Tema.Ki),
-			_ => ("na galáxia", Tema.Destaque),
+			<= 1 => (Jandirus.Core.Skills.SenseEmNiveis.NomeDoAlcance(1), Tema.Bom),
+			2 => (Jandirus.Core.Skills.SenseEmNiveis.NomeDoAlcance(2), Tema.Bom),
+			3 => (Jandirus.Core.Skills.SenseEmNiveis.NomeDoAlcance(3), Tema.Ki),
+			4 => (Jandirus.Core.Skills.SenseEmNiveis.NomeDoAlcance(4), Tema.Destaque),
+			_ => (Jandirus.Core.Skills.SenseEmNiveis.NomeDoAlcance(5), Tema.Destaque),
 		};
 		c.AddChild(Cabecalho(nome, conhecido ? Tema.Texto : Tema.TextoFraco, alcance, (p.Chefe ? "CHEFE" : "", Tema.Perigo)));
 
 		// O NUMERO SO EXISTE NO SCAN: no Sense ele chega NaN e a linha nao nasce (o sigilo e do servidor;
 		// aqui so se respeita a ausencia).
 		if (!double.IsNaN(p.Bp)) Linha("Battle Power", $"{p.Bp:N0}", Tema.Destaque, c);
+		// (2026-10-18) NO SCAN, NaN E O VIDRO QUE NAO ALCANCA: acima de 100 milhoes o scouter marca "???" (`Core/Stats/Scouter.cs`).
+		else if (GameClient.Instance?.SentidosSaoDoScouter == true) Linha("Battle Power", "???", Tema.TextoFraco, c);
 
 		if (!float.IsNaN(p.PoderRelativo)) LinhaDoPoderRelativo(p.PoderRelativo, c);
 
@@ -125,7 +133,7 @@ public partial class MenuJogo
 	private string ExtraDaAssinaturaDeSentidos(SheetState f)
 	{
 		GameClient? c = GameClient.Instance;
-		return $"{(c?.SentidosSaoDoScouter == true ? 'S' : 'K')}|" + string.Join(',', (c?.Sentidos ?? []).Select(p =>
+		return $"{(c?.SentidosSaoDoScouter == true ? 'S' : 'K')}{c?.NivelDoSense}|" + string.Join(',', (c?.Sentidos ?? []).Select(p =>
 			$"{p.Nome}/{p.Assinatura}/{p.Alcance}/{p.PoderRelativo:0}/{p.Bp:0}/{p.Distancia}/{p.Rumo}/{p.X}/{p.Y}/{p.Zona}/{p.Chefe}"));
 	}
 }

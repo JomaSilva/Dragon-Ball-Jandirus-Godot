@@ -64,6 +64,10 @@ public partial class GameServer
 		// do colega nao apaga de quem e o rancor (nem de quem e a morte, que a reputacao cobra pelo mesmo campo).
 		// ================================================================================================================
 		if (vitima.Papel is { Pacifico: true } && agressor.Papel is { Pacifico: true } && !TreinoDeHabitanteProvocaDeTeste) return;
+		// (2026-10-18) E O POVO NAO GUARDA RANCOR DO SOLDADO DE SAGA, pelo mesmo motivo: o habitante so revida GENTE (`PresaDoNpc`), e o rancor de
+		// um agressor que nao e gente cai na mesma busca alargada -- o Namekuseijin que apanhou do soldado do Freeza sairia batendo no JOGADOR mais
+		// perto, que tinha vindo ajudar. Quem enfrenta a tropa sao os jogadores. Ver `GameServer.TropaDaSaga.cs`.
+		if (vitima.Papel is { Pacifico: true } && EhSoldado(agressor) && !SoldadoProvocaOPovoDeTeste) return;
 		vitima.UltimoAgressor = agressor.Id;
 		vitima.RancorAte = NowMs() + (long)(Jandirus.Core.Npc.Povoamento.SegundosDeRancor * 1000);
 
@@ -101,6 +105,12 @@ public partial class GameServer
 	/// mais perto. Ver <see cref="MarcarAgressao"/>.
 	/// </summary>
 	internal static bool TreinoDeHabitanteProvocaDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--chefesteste`, familia T): o golpe do soldado de saga num habitante marca rancor -- e a busca alargada manda o
+	/// habitante atras do jogador mais perto. Ver <see cref="MarcarAgressao"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool SoldadoProvocaOPovoDeTeste;
 
 	/// <summary>Segundos de carencia de quem acabou de renascer (ver CombatState.Carencia).</summary>
 	private const double SegundosDeCarencia = 6;
@@ -270,7 +280,9 @@ public partial class GameServer
 		// gastar a aura, e quem nao e bio cai direto no segundo como sempre caiu.
 		// (v0.4.0) E AS RACIAIS POR ULTIMO: o Sheer Willpower e a Legendary Resurrection (`GameServer.Passivas.NegarMorteRacial`).
 		// (2026-10-17) E O NUCLEO DO BIO-ANDROIDE, o ultimo de todos (o adendo do dono: a volta do Majin vem antes -- e ela ja e antes do `Morrer`).
-		pl.Combate.NegarMorte = _ => DespertarSsj2DoBio(pl) || TentarNegarMorte(pl) || NegarMorteRacial(pl) || NegarMortePeloNucleo(pl);
+		// (2026-10-18) E O CHEFE COM FORMA POR VIR, ANTES DE TODOS: o golpe que o mataria vira a transformacao -- ver `NegarMorteDoChefe`.
+		pl.Combate.NegarMorte = _ => NegarMorteDoChefe(pl) || DespertarSsj2DoBio(pl) || TentarNegarMorte(pl) || NegarMorteRacial(pl)
+													   || NegarMortePeloNucleo(pl);
 
 		// E QUEM OUVE A MORTE QUE ACONTECEU -- o outro lado da mesma porta. E ele que marca o prazo
 		// do cadaver e, no fim dele, a viagem pro Outro Mundo. Ver `GameServer.Alem.cs`.
@@ -338,8 +350,9 @@ public partial class GameServer
 		pl.Ficha.raboPresoMod = 1;
 
 		// OS PESOS VESTIDOS NAO PASSAM DO MAXIMO PAGO (dono, 2026-10-12): o personagem de antes vestia ate o dobro do
-		// limite do corpo de graca, e volta com o que os pesos dele aguentam hoje -- 50 kg, ate ele melhorar.
-		pl.Ficha.Weighted = Math.Min(pl.Ficha.Weighted, TetoDePeso(pl.Ficha));
+		// limite do corpo de graca, e volta com o que os pesos dele aguentam hoje -- 50 kg, ate ele melhorar. (2026-10-18) O maximo e o
+		// do peso VESTIDO (`Fighter.pesoVestido`).
+		pl.Ficha.Weighted = Math.Min(pl.Ficha.Weighted, TetoDePeso(pl.Ficha, pl.Ficha.pesoVestido));
 
 		pl.Combate.SincronizarVida();
 		AjustarGanhoDoRabo(pl);
@@ -1105,7 +1118,9 @@ public partial class GameServer
 		float melhorDist = float.MaxValue;
 		foreach (ServerPlayer o in ZoneList(a.Zone.Hash))
 		{
-			if (o == a || EhCadaver(o) || !conta(o)) continue;
+			// (2026-10-18) o corpo escondido de quem o Neo Tuffle possui nao esta "na frente" de ninguem: ele anda dentro do Tuffle
+			// (`GameServer.NeoTuffle.cs`), e quem pega um nocauteado -- a captura, os kits, a absorcao -- pegaria um corpo invisivel.
+			if (o == a || EhCadaver(o) || o.PossuidoPor != 0 || !conta(o)) continue;
 			if (!AlcancaPelaAltura(a, o) || !MeleeArea.NoAlcance(a.Pos, a.Facing, o.Pos)) continue;
 			if (o.Id == a.AlvoId) return o;
 
@@ -1754,12 +1769,11 @@ public partial class GameServer
 			PesoMult = (float)Math.Max(f.weight, 1),
 			ZonaMult = (float)f.zoneGainMult,
 			Esmagamento = (float)Jandirus.Core.Stats.Esmagamento.Razao(f),
-			PesoMaxKg = (float)Jandirus.Core.Items.PesoDeTreino.Maximo(f.pesoMaximoKg),
 			PesoKg = (float)f.Weighted,
-			// (2026-10-15) A ARTE DOS PESOS e quantas melhorias faltam pro limite do corpo: o icone da mochila e o botao "Ate o
-			// limite do corpo". Ver `PesoDeTreino`.
-			PesoArte = f.pesoArte,
-			PesoMelhoriasAteOLimite = (byte)Math.Min(255, Jandirus.Core.Items.PesoDeTreino.MelhoriasAteOLimite(f.pesoMaximoKg, f.weight_cap_hw)),
+			// (2026-10-18) QUAL PESO ESTA NO CORPO, e os degraus do corpo desde a fabrica -- o maximo e a arte de cada peso viajam no id
+			// dele, na mochila. Ver `PesoDeTreino`.
+			PesoVestido = f.pesoVestido,
+			PesoDegrausDoCorpo = (byte)Jandirus.Core.Items.PesoDeTreino.DegrausDoCorpo(f.weight_cap_hw),
 
 			// A SESSAO DA SALA DO TEMPO, na mesma ficha lenta e pelo mesmo criterio: ela muda de
 			// fase tres vezes numa visita inteira, e os minutos so precisam de resolucao de MINUTO
@@ -1786,7 +1800,7 @@ public partial class GameServer
 				   + $"{a.Technique:0.##}|{a.KiSkill:0.##}|{a.Speed:0.##}|{a.Esoteric:0.##}|"
 				   + $"{a.Willpower:0.##}|{a.Stamina:0.#}|{a.Poderes}|{a.Idade}|{a.MesesDaIdade}|{a.FormaAtual}|"
 				   + $"{a.GanhoDeTreino:0.#}|{a.Gravidade:0.#}|{a.Aclimatacao:0.##}|{a.PesoMult:0.##}|"
-				   + $"{a.ZonaMult:0.#}|{a.Esmagamento:0.##}|{a.SalaFase}|{a.SalaMinutos:0}|{a.PesoMaxKg:0}|{a.PesoKg:0}|{a.PesoArte}|{a.PesoMelhoriasAteOLimite}|{a.Sangue}|{a.PesoPct}|{a.KaiokenMaestria:0.#}|{a.KaiokenVezes}|{a.KaiokenAceso}|{a.SkillsRaciais}|{a.SkillsDoSangue}|"
+				   + $"{a.ZonaMult:0.#}|{a.Esmagamento:0.##}|{a.SalaFase}|{a.SalaMinutos:0}|{a.PesoKg:0}|{a.PesoVestido}|{a.PesoDegrausDoCorpo}|{a.Sangue}|{a.PesoPct}|{a.KaiokenMaestria:0.#}|{a.KaiokenVezes}|{a.KaiokenAceso}|{a.SkillsRaciais}|{a.SkillsDoSangue}|"
 				   + string.Join(',', a.Maestrias.Select(m => $"{m.Forma}:{m.Pct:0.#}"))
 				   // AS PERICIAS ENTRAM COM UMA CASA (`0.#`), pelo mesmo motivo do ganho de treino: sao os
 				   // contadores da ficha, e os de tecnica sobem por fracao a cada tiro que rende. Com

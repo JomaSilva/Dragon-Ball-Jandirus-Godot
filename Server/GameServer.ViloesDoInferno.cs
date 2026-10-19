@@ -102,9 +102,19 @@ public sealed partial class GameServer
 	/// POE UM VILAO DERROTADO NO INFERNO e avisa o Outro Mundo. <paramref name="qualquerDaCadeia"/> e do ADMIN: sem vilao derrotado
 	/// ainda, o verb sorteia entre todos os chefes da cadeia, pra quem testa nao depender de vencer uma saga antes. Devolve o corpo.
 	/// </summary>
-	private ServerPlayer? NascerVilaoDoInferno(long agora, bool qualquerDaCadeia = false)
+	private ServerPlayer? NascerVilaoDoInferno(long agora, bool qualquerDaCadeia = false, VilaoGuardado? retomado = null)
 	{
 		var candidatos = ViloesDoInferno.Candidatos(_cadeia, _sagas);
+		// (2026-10-18) O VILAO QUE VOLTA DO REINICIO E O MESMO: o elo, o molde e o degrau gravados, e nao um sorteio novo.
+		if (retomado != null)
+		{
+			candidatos.Clear();
+			foreach (EloDaSaga elo in _cadeia)
+				if (string.Equals(elo.Id, retomado.Elo, StringComparison.OrdinalIgnoreCase))
+					foreach (ChefeDaSaga ficha in elo.Chefes)
+						if (ficha.Molde == retomado.Molde)
+							candidatos.Add((elo, ficha, new EstadoDoChefe { Molde = ficha.Molde, Fase = FaseDoChefe.Derrotado, Degrau = retomado.Degrau }));
+		}
 		if (candidatos.Count == 0 && qualquerDaCadeia)
 			foreach (EloDaSaga elo in _cadeia)
 				foreach (ChefeDaSaga ficha in elo.Chefes)
@@ -129,7 +139,8 @@ public sealed partial class GameServer
 
 		// O BP DE AGORA E O DEGRAU EM QUE ELE CAIU, os dois antes de qualquer outra coisa tocar a ficha -- a ordem do nascimento de
 		// saga (`NascerChefeDaSaga`) e da lembranca na mente (`ChamarChefe`).
-		npc.Papel.BpsPinados = InfernoComOBpDaSagaDeTeste
+		npc.Papel.BpsPinados = retomado is { Bps.Length: > 0 } ? retomado.Bps
+			: InfernoComOBpDaSagaDeTeste
 			? Sagas.Pinar(molde, MediaDoServidor())
 			: ViloesDoInferno.Bps(molde, MediaDoServidor());
 		npc.Papel.Estagio = Math.Clamp(ec.Degrau, 0, Math.Max(molde.Estagios.Length - 1, 0));
@@ -148,33 +159,61 @@ public sealed partial class GameServer
 		};
 
 		// O PREMIO VIAJA NA BOLSA DELE, como o do vilao avulso -- quem o derrota fica com ela.
-		npc.Ficha.Zeni = ViloesDoInferno.Premio(ficha2);
+		npc.Ficha.Zeni = retomado?.Zeni ?? ViloesDoInferno.Premio(ficha2);
 
 		_vilaoDoInferno = new VilaoNoInferno
 		{
 			Npc = npc.Id, Molde = ficha2.Molde, Elo = eloSorteado.Id, Nome = npc.Name,
 			Ela = string.Equals(npc.Genero, "Female", StringComparison.OrdinalIgnoreCase),
-			Ate = agora + (long)(ViloesDoInferno.DuracaoS * 1000),
+			Ate = agora + (retomado?.RestanteMs ?? (long)(ViloesDoInferno.DuracaoS * 1000)),
 		};
 
-		string frase = $"{npc.Name.ToUpperInvariant()} ESCAPOU DAS PROFUNDEZAS DO INFERNO!";
+		string frase = retomado != null
+			? $"{npc.Name.ToUpperInvariant()} CONTINUA NO INFERNO -- a ameaça não passou."
+			: $"{npc.Name.ToUpperInvariant()} ESCAPOU DAS PROFUNDEZAS DO INFERNO!";
 		foreach (ServerPlayer p in _players.Values)
 		{
 			if (p.Peer == null || !Alem.EhOAlem(p.Zone)) continue;
 			string onde2 = p.Zone.Equals(zona) ? RumoDe(p.Pos, onde) : "no Inferno";
 			bool ela = _vilaoDoInferno.Ela;
 			Avisar(p, $"{frase} {(ela ? "Ela" : "Ele")} está {onde2}, à procura de briga. Quem {(ela ? "a" : "o")} derrotar ganha "
-						+ $"{npc.Ficha.Zeni:N0} zeni e karma (+{Jandirus.Core.Social.Karma.PorDerrotarChefe}). Em {ViloesDoInferno.DuracaoS / 60:0} minutos "
+						+ $"{npc.Ficha.Zeni:N0} zeni e karma (+{Jandirus.Core.Social.Karma.PorDerrotarChefe}). Em {Math.Max(1, Math.Round((_vilaoDoInferno.Ate - agora) / 60_000.0)):0} minutos "
 						+ $"{(ela ? "ela" : "ele")} afunda de volta.");
 		}
 		// A CENA DE CHEGADA DE CHEFE, so pra quem esta no Outro Mundo: e la que a luta e.
-		AnunciarChegadaDoChefe(npc, Alem.ZonaDoInferno, frase, p => Alem.EhOAlem(p.Zone));
+		// Quem RETOMA nao chegou: ele ja estava la antes do reinicio (a mesma regra do chefe de saga).
+		if (retomado == null) AnunciarChegadaDoChefe(npc, Alem.ZonaDoInferno, frase, p => Alem.EhOAlem(p.Zone));
 
 		GD.Print($"[inferno] {npc.Name} ('{ficha2.Molde}', da saga '{eloSorteado.Id}') voltou no Inferno em ({onde.X:0}, {onde.Y:0}) | "
 			   + $"degrau {npc.Papel.Estagio + 1}/{molde.Estagios.Length} | BP {npc.Ficha.BP:N0} (media {MediaDoServidor():N0}) | "
 			   + $"premio {npc.Ficha.Zeni:N0} zeni");
 		return npc;
 	}
+
+	/// <summary>
+	/// (2026-10-18) O VILAO DE AGORA, pro `sagas.json` -- nulo sem vilao, ou com ele ja derrotado (o premio foi pago; so falta tirar o corpo),
+	/// ou com o prazo vencido. Chamado pelo `SalvarSagas`.
+	/// </summary>
+	private VilaoGuardado? GuardarOVilaoDoInferno()
+	{
+		if (_vilaoDoInferno is not { Derrotado: false } v || !_players.TryGetValue(v.Npc, out ServerPlayer? npc) || npc.Papel == null) return null;
+		long falta = v.Ate - NowMs();
+		if (falta <= 0) return null;
+		return new VilaoGuardado
+		{
+			Molde = v.Molde, Elo = v.Elo, Degrau = npc.Papel.Estagio, Bps = npc.Papel.BpsPinados, Zeni = npc.Ficha.Zeni, RestanteMs = falta,
+		};
+	}
+
+	/// <summary>
+	/// (2026-10-18) O VILAO GRAVADO VOLTA AO INFERNO, IGUAL -- o mesmo molde, a mesma forma, o mesmo BP e o mesmo premio -- com o tempo que lhe
+	/// faltava. Chamado pelo `RetomarSagas`, no primeiro tique.
+	/// </summary>
+	private ServerPlayer? RetomarOVilaoDoInferno(VilaoGuardado g) =>
+		g.RestanteMs > 0 && !VilaoSoNaMemoriaDeTeste ? NascerVilaoDoInferno(NowMs(), retomado: g) : null;
+
+	/// <summary>DEFEITO INJETADO (`--chefesteste`): o vilao do Inferno nao volta do reinicio -- o jogo de antes. Falso em jogo, sempre.</summary>
+	internal static bool VilaoSoNaMemoriaDeTeste;
 
 	/// <summary>
 	/// ONDE ELE APARECE: na FAIXA JOGAVEL do vilao avulso (de 10 a 30 tiles, pela mesma `LugarDeVilao`) de quem esta no Inferno --

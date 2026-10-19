@@ -433,6 +433,15 @@ public sealed class ServerPlayer
 	public ServerPlayer? BonecoLargado;
 
 	/// <summary>
+	/// (2026-10-18) A NAVE QUE ESTE JOGADOR OBSERVA DE FORA (0 = nenhuma) -- o corpo ficou na ponte (`BonecoLargado`) e o olho anda com o
+	/// casco. Sessao, nao disco. Ver `GameServer.NaveObservar.cs`.
+	/// </summary>
+	public int ObservaNave;
+
+	/// <summary>O piloto que a nave observada tinha no ultimo pacote de observacao -- o olho segue o corpo dele (0 = ninguem ao leme).</summary>
+	public int PilotoDaNaveObservada;
+
+	/// <summary>
 	/// EU SOU O BONECO DE QUEM (0 = nao sou boneco de ninguem). RECONSTRUIDO; tipo pinado por
 	/// `CorpoLargado.cs:87` (`DonoDoCorpoLargado = pl.Id`).
 	///
@@ -688,6 +697,43 @@ public sealed class ServerPlayer
 	public long RegenLivreEm;
 
 	/// <summary>
+	/// (2026-10-18) O SLEEP DO MAJIN: desde quando este corpo dorme (`NowMs()`; -1 = acordado). Quem liga e desliga e o
+	/// `GameServer.SonoDoMajin.cs` (`Dormir`, `AcordarDoSono`, `FecharOSono`); a pose (<see cref="Pose"/>) e a ocupacao (`OcupacaoDe`) o leem.
+	/// Nao vai pro disco: quem sai do jogo dormindo acorda.
+	/// </summary>
+	public long SonoDesde = -1;
+
+	/// <summary>(2026-10-18) Quando o Sleep volta a ficar disponivel (relogio real, ms) -- 1 min depois do fim, completo ou interrompido.</summary>
+	public long SonoLivreEm;
+
+	/// <summary>(2026-10-18) Onde o corpo deitou -- sair dali acorda.</summary>
+	public Vec2 SonoOnde;
+
+	/// <summary>(2026-10-18) O retrato do sono: os golpes que o corpo ja tinha levado ao deitar e o relogio de luta do tique anterior.</summary>
+	public long SonoGolpes;
+	public double SonoLuta;
+
+	/// <summary>(2026-10-18) Como o corpo deitou: no ar ou no chao, e a que altura -- subir, descer ou cair acorda.</summary>
+	public bool SonoVoando;
+	public float SonoAltura;
+
+	/// <summary>
+	/// (2026-10-18) Pra onde vai a cabeca de quem dorme -- leste, ou oeste pra quem olhava pro oeste: SEMPRE NA HORIZONTAL (ver
+	/// `GameServer.CabecaDeQuemDorme`). Escrita pelo `Dormir`; lida pelo <see cref="DirecaoDeitado"/> enquanto o corpo dorme.
+	/// </summary>
+	public Facing SonoCabeca = Facing.East;
+
+	/// <summary>
+	/// (2026-10-18) O corpo e DESENHADO deitado: o <see cref="Deitado"/> (caido ou voando) ou dormindo o Sleep. E o que vai no fio (o bit
+	/// `Deitado` e o `Facing` do snapshot): sem o sono aqui, quem olhava de fora via o quadro de nocaute sem giro nenhum, e o dono do corpo o
+	/// via girado -- duas telas, dois corpos.
+	/// </summary>
+	public bool DesenhadoDeitado => Deitado || SonoDesde >= 0;
+
+	/// <summary>(2026-10-18) O login trocou a `Regenerate` deste Majin pelo Sleep -- esperando o recado (`AvisarDasAposentadas`). Nao vai pro save.</summary>
+	public bool SonoTrocado;
+
+	/// <summary>
 	/// O que o login tirou do meu livro porque saiu do jogo (`SkillsAposentadas.Limpar`), esperando o
 	/// recado. So vive do `PrepararSkills` ate o `AvisarDasAposentadas` -- nao vai pro save.
 	/// </summary>
@@ -923,8 +969,8 @@ public sealed class ServerPlayer
 	/// cabeca -- ver <see cref="CabecaDeQuemCaiOlhando"/>).
 	/// ===========================================================================================
 	/// </summary>
-	public Facing DirecaoDeitado => MoveRules.FacingFrom(
-		TiquesDeVoo > 0 ? RumoDoVoo : RumoDoGolpe, FacingDaQueda);
+	public Facing DirecaoDeitado => SonoDesde >= 0 && !Deitado ? SonoCabeca   // (2026-10-18) quem dorme o Sleep: ver `SonoCabeca`
+		: MoveRules.FacingFrom(TiquesDeVoo > 0 ? RumoDoVoo : RumoDoGolpe, FacingDaQueda);
 
 	/// <summary>
 	/// ============================ DE ONDE VEIO O GOLPE -- escrito por quem bate, e O MORTO NAO GIRA ============================
@@ -1499,6 +1545,9 @@ public sealed class ServerPlayer
 	public string Planeta = "Earth", Genero = "Male", Linhagem = "";
 	public int Idade = 18;
 
+	/// <summary>(2026-10-18) A versao da inteligencia da raca nesta ficha -- ver `CharacterSave.InteligenciaVersao` e `GameServer.MigrarInteligencia`.</summary>
+	public int InteligenciaVersao;
+
 	/// <summary>
 	/// (2026-10-17) OS MESES VIVIDOS RUMO AO PROXIMO ANO (0 a 9) e O MES DO CALENDARIO ATE O QUAL A IDADE JA FOI CONTADA -- os decimos do
 	/// `Age` e o `LastYear` do DM. Vao pro disco. Ver `GameServer.Calendario.cs` e `Envelhecimento.ContarMeses`.
@@ -1506,6 +1555,21 @@ public sealed class ServerPlayer
 	public int MesesDaIdade;
 	public long MesDaIdade;
 	public long CriadoEm;
+
+	/// <summary>
+	/// (2026-10-18) OS SEGUNDOS DE JOGO QUE FALTAM PRA ESTE BEBE CRESCER -- zero em quem nao nasceu bebe ou ja cresceu. Nasce no parto
+	/// (`CreateChar`, `Races.Filhos.NasceBebe`), desce so com ele no mundo (`GameServer.TickDosBebes`) e vai pro disco.
+	/// </summary>
+	public double BebeRestanteS;
+
+	/// <summary>(2026-10-18) O NEO TUFFLE QUE POSSUI ESTE CORPO agora (o id dele), ou 0 -- ver `GameServer.NeoTuffle.cs`. Estado de sessao.</summary>
+	public int PossuidoPor;
+
+	/// <summary>
+	/// (2026-10-18) O CORPO QUE ESTE NEO TUFFLE VESTE enquanto possui alguem -- o nome, a raca, o genero e a cara do hospede, pelo funil do
+	/// disfarce (`GameServer.DisfarceDe`) -- ou nulo. Estado de sessao, como o `Disfarce`.
+	/// </summary>
+	public DisfarceG12? CorpoDaPosse;
 
 	/// <summary>
 	/// O BERCO DESTE CORPO, calculado UMA VEZ no `Entrar` e lido por todo mundo que precisa mandar
@@ -1775,6 +1839,9 @@ public sealed class ServerPlayer
 		// desenha deitado; no Outro Mundo ele levanta e volta a ter poses -- e o `Un_KO()` que o DM
 		// chama ANTES de mover (`Death.dm:89`). Ver <see cref="MortoDePe"/>.
 		if (Ficha.KO || (Ficha.dead && !MortoDePe)) return Protocol.Pose.Nocauteado;
+		// (2026-10-18) QUEM DORME O SLEEP DO MAJIN DEITA -- a folha nao tem pose de sono, e a de nocaute e o corpo no chao. O que separa o sono do
+		// nocaute na tela e o "z" (`Ocupacao.Dormindo`, `Client/SonoDesenhado.cs`).
+		if (SonoDesde >= 0) return Protocol.Pose.Nocauteado;
 		if (agoraMs < AtaqueAte) return Protocol.Pose.Atacando;
 
 		// ============================ O RAIO NA MAO, E ELE VEM DEPOIS DO SOCO DE PROPOSITO ============================
@@ -3371,6 +3438,8 @@ public partial class GameServer : Node
 			// inteira pelo mesmo funil, e ela e a unica que exercita a cadeia de tres degraus
 			// (Basic 100 -> Advanced 100 -> Perfect). Ver `GameServer.MenteSkillsTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--menteskills") >= 0) RodarBancadaDasSkillsDaMente();
+			// (2026-10-18) `--inteligenciateste`: a inteligencia da raca, o nome Tsufurujin e o mainframe em tech 70. Ver `GameServer.Inteligencia.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--inteligenciateste") >= 0) RodarBancadaDaInteligencia();
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--sentidosteste") >= 0) RodarBancadaDosSentidos();   // `--sentidosteste`: a aba Sense/Scan -- alcances, identidade, sigilo do BP no fio e reenvio so na mudanca; vizinha da mente porque os alcances acendem pelo contador dela. Ver `GameServer.SentidosTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--poderteste") >= 0) RodarBancadaDoPoder();   // `--poderteste`: POWER UP E POWER DOWN -- baixar, subir com C, relaxar, esconder (e o que o Sense, o scouter e a IA dos outros leem); vizinha dos sentidos porque usa os corpos e a leitura dela. Ver `GameServer.PoderTeste.cs`.
 
@@ -3565,7 +3634,9 @@ public partial class GameServer : Node
 			GravarMundo();
 			GravarBasesSeMudou();
 			SalvarCargos();
-			GD.Print($"[server] fechando: {n} personagem(ns), o mundo e os cargos gravados");
+			// (2026-10-18) E AS SAGAS: a forma de cada chefe, quem volta do alem, o vilao do Inferno -- ver `GameServer.Sagas.cs`.
+			SalvarSagas();
+			GD.Print($"[server] fechando: {n} personagem(ns), o mundo, os cargos e as sagas gravados");
 		}
 		catch (Exception e)
 		{
@@ -3916,6 +3987,9 @@ public partial class GameServer : Node
 
 		// (2026-10-16) A ATIVA DA FORMA PURA DO CORRUPTED MAJIN, a Sycophantic Rage. Ver `GameServer.SagaDoMajin.cs`.
 		RegistrarTecnicasDaSagaDoMajin();
+
+		// (2026-10-18) O SLEEP DO MAJIN, a skill do port que tomou o lugar da `Regenerate` na arvore dele. Ver `GameServer.SonoDoMajin.cs`.
+		RegistrarTecnicasDoSono();
 		CarregarCargos();
 		// O DISCIPULADO tem o MESMO ciclo de vida dos cargos: arquivo de texto ao lado dos saves,
 		// lido UMA VEZ aqui e gravado na hora em cada mudanca. Ver `GameServer.Mestre.cs`.
@@ -4010,7 +4084,12 @@ public partial class GameServer : Node
 		// O movimento continua com o portao dele la embaixo: ele nao so recusa, ele tambem preserva o
 		// `Moving` que a IA escreveu e responde a posicao. Ver `Input`.
 		// ============================================================================================
-		if (ComandoDeCorpo(id) && _byPeer.TryGetValue(peer, out ServerPlayer? tomado) && SemAsRedeas(tomado))
+		// (2026-10-18) E QUEM OBSERVA UMA NAVE DE FORA TAMBEM NAO: o corpo dele esta de pe na ponte, e o que esta do lado de fora e so um
+		// olho -- sem soco, sem tecnica, sem atividade (minerar, treinar). Os verbos passam: e por eles que ele volta e abastece. Ver
+		// `GameServer.NaveObservar.cs`.
+		// (2026-10-18) E O DONO DE UM CORPO POSSUIDO PELO NEO TUFFLE: ele so assiste -- ver `GameServer.NeoTuffle.cs`.
+		if (ComandoDeCorpo(id) && _byPeer.TryGetValue(peer, out ServerPlayer? tomado)
+			&& (SemAsRedeas(tomado) || EhOlhoDeFora(tomado) || (tomado.PossuidoPor != 0 && !HospedeComAsRedeasDeTeste)))
 			return;
 
 		// ...E QUEM ESTA MINERANDO E AGE, PARA DE MINERAR (ver `GameServer.Recursos.cs`).
@@ -4534,6 +4613,8 @@ public partial class GameServer : Node
 		long nasceuEm = NowMs();
 		var novo = new CharacterSave
 		{
+			// (2026-10-18) a ficha acabou de nascer com a inteligencia da raca (`Fighter.FromGenome`): nada a migrar
+			InteligenciaVersao = CharacterSave.VersaoDaInteligencia,
 			Nome = nome, Raca = ficha.Race, Planeta = ficha.Planet, Genero = ficha.Gender,
 			Linhagem = ficha.ChosenClass, Idade = ficha.Age, Visual = visual, Ficha = lutador,
 			// (2026-10-17) O CALENDARIO CONTA A IDADE DELE A PARTIR DE HOJE: sem isto o primeiro mes que virasse lhe somaria os meses de antes
@@ -4541,6 +4622,9 @@ public partial class GameServer : Node
 			MesDaIdade = MesDoCalendario,
 			Historia = ficha.Backstory.Trim(), Porte = ficha.Porte,
 			CriadoEm = nasceuEm,
+			// (2026-10-18) O FILHO DE SANGUE HUMANO OU SAIYAJIN NASCE BEBE, por uma hora de jogo. Ver `GameServer.Bebe.cs`.
+			BebeRestanteS = bebe != null && Jandirus.Core.Races.Filhos.NasceBebe(ficha.Race) && !FilhoNasceGrandeDeTeste
+				? Jandirus.Core.Races.Filhos.SegundosDeBebe : 0,
 			// O PEDIDO DO JOGADOR VAI PRO DISCO, e nao so pro nascimento: o RENASCIMENTO sai da
 			// mesma funcao, e sem este bit gravado quem escolheu o vizinho ressuscitaria no natal.
 			PertoDeCasa = ficha.PertoDeCasa,
@@ -4626,6 +4710,8 @@ public partial class GameServer : Node
 
 		var pl = new ServerPlayer { Id = _nextId++, Peer = peer, LastInputMs = NowMs() };
 		AccountStore.ParaJogador(c, pl);
+		// (2026-10-18) A INTELIGENCIA DA RACA, UMA VEZ: quem nasceu antes dela ganha a diferenca -- ver `InteligenciaDaRaca`.
+		if (c != null) MigrarInteligencia(pl);
 		pl.Conta = acc.Conta;
 		pl.Slot = slot;
 		// A ZONA VOLTA INTEIRA: tipo + nome + seed. Ver `CharacterSave.ZonaTipo`.
@@ -5206,6 +5292,7 @@ public partial class GameServer : Node
 		EntregarRecadosDeConquista(pl);
 		// (2026-10-17) A DATA DE HOJE, e os anos que passaram com ele fora -- o `src<<checkthetimeidiot()` do `AgeCheck` (`Aging.dm:112`).
 		AvisarDoCalendarioNoLogin(pl, anosLaFora);
+		AvisarDoBebeNoLogin(pl);   // (2026-10-18) quanto falta pro bebe crescer -- ver GameServer.Bebe.cs
 		AvisarDasAposentadas(pl);   // a skill que saiu do jogo e o marco que voltou -- ver GameServer.Skills.cs
 		AvisarDosItensAposentados(pl);   // o item que saiu do jogo, e por que -- ver GameServer.ItensAposentados.cs
 
@@ -5312,9 +5399,10 @@ public partial class GameServer : Node
 		// precisa aparecer. (O `JoinAccepted` fica com o `Name` cru de proposito: ninguem entra
 		// no mundo ja fundido -- a fusao e desfeita antes do save.)
 		w.Put(NomeVisivel(p));
-		// A RACA E O GENERO TAMBEM PASSAM PELO DISFARCE (lote G12): o corpo desenhado sai da raca.
-		w.Put(p.Disfarce?.Raca ?? p.Race);
-		w.Put(p.Disfarce?.Genero ?? p.Genero);
+		// A RACA E O GENERO TAMBEM PASSAM PELO DISFARCE (lote G12): o corpo desenhado sai da raca. (2026-10-18) E pelo corpo que o Neo
+		// Tuffle veste -- o mesmo funil, `DisfarceDe`.
+		w.Put(DisfarceDe(p)?.Raca ?? p.Race);
+		w.Put(DisfarceDe(p)?.Genero ?? p.Genero);
 		// A APARENCIA QUE O MUNDO VE, e nao a do save -- gemea da linha do nome logo acima, e pelo
 		// mesmo motivo. Ver `ServerPlayer.LookDeFusao`: a roupa e o cabelo da fusao NAO podem
 		// encostar em `pl.Visual`, que vai pro disco a cada 2 minutos.
@@ -5363,7 +5451,7 @@ public partial class GameServer : Node
 		// *"equipar o scouter e o peso n aparece no sprite do personagem como overlay (oq deveria)"*. Ver
 		// `Items.EquipamentoNoCorpo`. FUNDIDO OU DISFARCADO o corpo que o mundo ve nao e o de quem joga, e o que ele
 		// usa nao aparece -- a mesma fronteira do `PodeMexerNaRoupa`.
-		bool corpoProprio = p.LookDeFusao == null && p.Disfarce == null;
+		bool corpoProprio = p.LookDeFusao == null && DisfarceDe(p) == null;
 		bool scouter = corpoProprio && Jandirus.Core.Items.EquipamentoNoCorpo.ScouterNoRosto((p.PoderesConcedidos & Protocol.Poder.Scouter) != 0);
 		// (v0.2.1) OS BITS 2 E 3 SAO AS LUVAS E AS BOTAS DE DRENO vestidas -- `usr.overlayList += icon` no `Equip()` das duas
 		// (`Tier 1.5.dm:273` e `:309`). O estado mora no item da mochila (`DrenoDeEnergia.Vestida`).
@@ -5380,7 +5468,13 @@ public partial class GameServer : Node
 					 // (v0.3.0) O BIT 7 E O CORPO QUE NAO SANGRA: o Majin, e o bio com sangue Majin -- a raca com sangue que so o
 					 // servidor sabe montar (`Feridas.NaoSangra`). E o que o jato de sangue do golpe pergunta (`World.NaoSangraNaTela`).
 					 | (corpoProprio && Jandirus.Core.Combat.Feridas.NaoSangra(RacaComSangue(p)) ? 128 : 0)));
-		w.Put(corpoProprio ? Jandirus.Core.Items.EquipamentoNoCorpo.PesosNoCorpo(p.Ficha.Weighted, p.Ficha.pesoArte, _visual) : "");
+		w.Put(corpoProprio ? Jandirus.Core.Items.EquipamentoNoCorpo.PesosNoCorpo(p.Ficha.Weighted, Jandirus.Core.Items.PesoDeTreino.ArteDe(p.Ficha.pesoVestido), _visual) : "");
+		// (2026-10-18) O SEGUNDO BYTE DE MARCAS, porque o primeiro acabou no bit 7. O bit 0 e o BEBE: o recem-nascido anda na folha do
+		// bebe e sem nada por cima (`Appearance.Bebe`, `GameServer.Bebe.cs`). So no corpo proprio -- fundido ou disfarcado, o mundo ve outro.
+		// (2026-10-18) O BIT 1 E O CABELO DO NEO TUFFLE: o corpo que ele veste anda de cabelo branco-acinzentado (`Appearance.CabeloDoTuffle`,
+		// `GameServer.NeoTuffle.cs`).
+		w.Put((byte)((corpoProprio && EhBebe(p) && !BebeSemMarcaNoPacoteDeTeste ? 1 : 0)
+					 | (p.CorpoDaPosse != null && !TuffleSemCabeloBrancoDeTeste ? 2 : 0)));
 		return w;
 	}
 
@@ -5390,7 +5484,7 @@ public partial class GameServer : Node
 	/// </summary>
 	private static bool PotencialNaPele(ServerPlayer p) =>
 		Jandirus.Core.Forms.Catalogo.PotencialMarcaAPele(
-			p.Disfarce?.Raca ?? p.Race, p.Ficha.unlockPotential,
+			DisfarceDe(p)?.Raca ?? p.Race, p.Ficha.unlockPotential,
 			p.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico));
 
 	/// <summary>
@@ -5533,6 +5627,9 @@ public partial class GameServer : Node
 		if (_store == null || pl.Slot < 0) return;
 		if (_limpezaEmCurso) return;
 		if (EstaFundido(pl.Id)) return;   // ver o item 3 do <remarks>
+		// (2026-10-18) O NEO TUFFLE DENTRO DE OUTRO CORPO, pelo mesmo motivo da fusao: a ficha que ele carrega e a copia do corpo do hospede.
+		// Sair do jogo o expulsa ANTES desta linha (o `Drop`), entao o que vai pro disco e ele. Ver `GameServer.NeoTuffle.cs`.
+		if (pl.CorpoDaPosse != null) return;
 
 		// ============================ 4. PERSONAGEM CONSUMIDO NAO SE GRAVA -- ELE NAO EXISTE MAIS ============================
 		// Da familia das duas linhas acima, e a mais grave das tres: aqui o save **ja foi apagado do
@@ -5959,6 +6056,10 @@ public partial class GameServer : Node
 		// morreu com a sessao de quem caiu. Ver `SoltarDaFusao`.
 		SoltarDaFusao(pl.Id);
 
+		// (2026-10-18) A POSSE DO NEO TUFFLE TAMBEM, e pelos dois lados: o Tuffle carrega a copia do corpo alheio, e o hospede esta escondido
+		// andando com ele. Ver `SoltarDaPosse`.
+		SoltarDaPosse(pl);
+
 		// A ABSORCAO DO MAJIN SE DESFAZ ANTES DO SAVE, pelo mesmo motivo das duas linhas de cima: o
 		// absorvido esta num bolso `Interior` que morre com a sessao, e o Majin carrega poder emprestado.
 		// E o `DoLogoutStuff` do DM (`Login.dm:198-202`). Ver `DesfazerAAbsorcaoAoSair`.
@@ -6134,6 +6235,7 @@ public partial class GameServer : Node
 		// ninguem online -- e ela e MUNDO, entao nao tem (e nao pode ter) porta de plateia.
 		TickDosRelogiosDoCorpo(Protocol.TickSeconds);
 		TickDasExecucoesDoBio();   // (2026-10-17) a absorcao de EXECUCAO do bio: 5 s parado junto do caido, e um passo desfaz -- ver `GameServer.Absorcao.cs`
+		TickDosSonos();   // (2026-10-18) o SLEEP do Majin: 5 s deitado, e qualquer incomodo acorda -- ver `GameServer.SonoDoMajin.cs`
 		TickDeBills(Protocol.TickSeconds);   // BILLS E WHIS (dono, 2026-10-11): a visita a Terra, quem existe, e as lutas da casa -- DEPOIS dos relogios do corpo (a precisao do Whis volta ao cheio logo apos drenar). Ver `GameServer.Bills.cs`
 
 		// O POVOAMENTO VEM ANTES DE OS CORPOS PENSAREM, e a ordem e a mesma razao do bloco acima: um
@@ -6282,6 +6384,9 @@ public partial class GameServer : Node
 		// zona ANTERIOR -- um quadro em que o pod ainda esta em orbita e o dono ja esta no chao.
 		// Ver `GameServer.Nave.cs`.
 		TickDasNaves();
+		// (2026-10-18) AS POSSES DO NEO TUFFLE, com os corpos ja onde ficaram neste tique: o hospede anda com o Tuffle (e troca de zona com ele),
+		// e o corpo emprestado que caiu o expulsa. Ver `GameServer.NeoTuffle.cs`.
+		TickDasPosses();
 
 		// O TIQUE DAS SKILLS anda junto do da ficha, e nao por acaso: `NiveisDeSkill` foi
 		// calibrado em 0,2 s por tique (5 Hz) e `TicksPorFicha` da exatamente isso a 30 Hz.
@@ -6355,11 +6460,15 @@ public partial class GameServer : Node
 			if (_tickCount % TicksPorSegundo == 0) TickDasIlhas();          // (2026-10-15) AS ILHAS DO OUTRO MUNDO puxam 10x: quem pisa numa (ou sai dela) ganha a gravidade do lugar -- ver `GameServer.GravidadeDoChao.cs`
 			if (_tickCount % TicksPorSegundo == 0) TickDaFeridaDoRabo(1.0);   // (2026-10-15) A FERIDA DO RABO QUE NAO VOLTA fecha em dez minutos de relogio -- ver `GameServer.Combat.cs`
 			if (_tickCount % TicksPorSegundo == 0) TickDoGodKi();       // O KI DIVINO (dono, 2026-10-10): quem respira uma atmosfera divina enche o medidor do despertar, e a maestria de quem ja e deus sobe -- as constantes sao por segundo. Ver `GameServer.GodKi.cs`
+			if (_tickCount % TicksPorSegundo == 0) TickDosBebes(1.0);   // (2026-10-18) O BEBE CRESCE depois de uma hora no jogo -- ver `GameServer.Bebe.cs`
 
 		// SALVAMENTO PERIODICO: sem isto, uma queda do servidor custa tudo desde o login.
 		// Dois minutos e o maximo de treino que alguem pode perder.
 		if (_tickCount % TicksPorSave == 0)
+		{
 			foreach (ServerPlayer pl in _players.Values) Persistir(pl);
+			SalvarSagas();   // (2026-10-18) e as sagas, pela mesma razao: uma queda nao pode levar a forma do chefe nem o vilao do Inferno
+		}
 
 		long agora = NowMs();
 		// O CARIMBO DO SNAPSHOT, lido UMA vez por tique e o mesmo pra todas as zonas: e o zero de
@@ -6597,6 +6706,20 @@ public partial class GameServer : Node
 		// =========================================================================================================
 		ConferirODespertarDoSuperNamekuseijin(pl);
 
+		// (2026-10-18) O PESO VESTIDO TEM DE ESTAR NA MOCHILA: se ele saiu por outra porta (o saque de um gemeo, o admin, uma troca), sai do
+		// corpo junto -- senao o corpo continuaria pesando com um peso que nao tem. Ver `Fighter.pesoVestido`.
+		if (f.pesoVestido.Length > 0 && pl.Mochila.Quantos(f.pesoVestido) <= 0) TirarPeso(pl);
+
+		// ============================ A MAESTRIA DE GRAVIDADE NAO PEDE TREINO (dono, 2026-10-18) ============================
+		// *"usar peso na gravidade aparentemente n ta deixando a gravidade ser masterizada"*. No DM a maestria sobe em todo `Grav_Gain`
+		// (`Gravity.dm:30-33`, que o `statify` chama umas quatro vezes por segundo); o portao de atividade de la (`train || med || IsInFight`,
+		// a linha 27) e so do BP. Aqui ela tinha ido parar no FIM deste metodo, depois do vigor do treino -- e o treino com peso cansa pelo
+		// QUADRADO do peso (`Cansaco.VigorDoTreino`, `Train.dm:88`), que na gravidade chega a 8x: o treino parava em segundos, e a maestria
+		// junto. Agora ela sobe a cada passe, treinando ou nao, como no DM: o corpo se acostuma a gravidade estando nela (e o esmagamento
+		// continua sendo o preco de ficar acima dela). So jogador, como o `Grav_Gain` do DM (que roda pelo `HandleLevel`, de quem tem cliente).
+		// ===================================================================================================================
+		if (!MaestriaSoNoTreinoDeTeste && EhJogador(pl)) f.GravGain();
+
 		// O CLIENTE DECLARA, O SERVIDOR CONFERE ANTES DE PAGAR (2026-10-11) -- ver `GameServer.Atividade.cs`.
 		if (!AtividadeValendo(pl)) { f.BufferTick(); return; }
 
@@ -6614,8 +6737,14 @@ public partial class GameServer : Node
 		else if (f.med) f.MedGain(_rng);
 		else { f.BufferTick(); return; }   // parado: so acumula pro proximo treino
 
-		f.GravGain();
+		if (MaestriaSoNoTreinoDeTeste) f.GravGain();   // o jogo de antes (o defeito injetado): a maestria so no passe do treino
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--pesosteste`): a maestria de gravidade volta a subir so no passe do treino e da meditacao -- o jogo de antes, em
+	/// que o peso a travava. Lido pelo <see cref="Treinar"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool MaestriaSoNoTreinoDeTeste;
 
 	/// <summary>O tempo que uma passada do `Treinar` cobre: o tique de ficha, a 5 Hz.</summary>
 	private const double SegundosPorFicha = TicksPorFicha * Protocol.TickSeconds;
@@ -6852,6 +6981,25 @@ public partial class GameServer : Node
 	/// </summary>
 	internal bool AgarradoNaoViraDeTeste;
 
+	/// <summary>
+	/// A POSE QUE VAI NO SNAPSHOT: a do corpo (`ServerPlayer.Pose`), menos a de quem esta AO LEME (dono, 2026-10-18: *"o personagem fica voando
+	/// quando eu piloto a nave , ele deveria so ficar parado na capital ship e meditando na pod"*). Pilotar liga o voo -- e a altura dele que deixa
+	/// a nave cruzar agua, lava e cenario (`PilotarDaPonte`, `ModoDeTravessiaDe`) --, e o voo vestia a pose de voo. Ao leme da nave grande o corpo
+	/// fica PARADO; no pod e no foguete, MEDITANDO. So a pose de voo e trocada: o soco e o raio vem antes dela no `Pose`, como sempre. O corpo
+	/// LOCAL faz a mesma escolha sozinho (`LocalPlayer.PorAPoseDoCorpo`).
+	/// </summary>
+	private Protocol.Pose PoseNoSnapshot(ServerPlayer pl, long agora, bool canal)
+	{
+		Protocol.Pose pose = pl.Pose(agora, canal);
+		if (pose != Protocol.Pose.Voando || PilotoNaPoseDeVooDeTeste || !EstaPilotando(pl.Id)) return pose;
+		return PilotaNaveGrande(pl.Id) ? Protocol.Pose.Normal : Protocol.Pose.Meditando;
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--solteste` cena 8 e `--naveteste` camada 7): ao leme, a pose de voo -- o jogo de antes de 2026-10-18. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool PilotoNaPoseDeVooDeTeste;
+
 	private EntityState EstadoDe(ServerPlayer pl, long agora)
 	{
 		// O CANAL E PERGUNTADO UMA VEZ SO, e as duas leituras abaixo (a pose e o byte do canal) saem
@@ -6877,17 +7025,18 @@ public partial class GameServer : Node
 			IdadeMs = pl.PosVemDoCliente
 				? (sbyte)Math.Clamp(_relogioDoSnapshot - pl.PosMs, sbyte.MinValue, EntityState.IdadeSaturada)
 				: (sbyte)0,
-			// DE PE, e pra onde olha; DEITADO, e pra onde a cabeca aponta. Mesmo campo.
-			Facing = (byte)(pl.Deitado ? pl.DirecaoDeitado : pl.Facing),
+			// DE PE, e pra onde olha; DEITADO, e pra onde a cabeca aponta. Mesmo campo. (2026-10-18) Quem DORME o Sleep tambem: a pose dele e a
+			// deitada sem ele estar caido, e a cabeca e a do sono -- ver `ServerPlayer.DesenhadoDeitado`.
+			Facing = (byte)(pl.DesenhadoDeitado ? pl.DirecaoDeitado : pl.Facing),
 			Moving = pl.Moving,
-			Pose = pl.Pose(agora, canal),
+			Pose = PoseNoSnapshot(pl, agora, canal),   // (2026-10-18) ao leme, parado ou meditando -- ver `PoseNoSnapshot`
 			// A VIDA NAO VAI MAIS NO SNAPSHOT, e a linha nao voltou junto com o resto do arquivo: o dono
 			// mandou tirar o HP alheio do jogo, e o campo foi DELETADO do `EntityState` junto com a
 			// barrinha por cima da cabeca. Ver `GameServer.Sigilo.cs` -- a vida que ainda sai no fio e a
 			// SUA, pelo `MandarFicha`, e ela nao passa por aqui.
 			Rabo = pl.TemRaboAgora(),
 			Oculto = EstaOculto(pl.Id),
-			Deitado = pl.Deitado,
+			Deitado = pl.DesenhadoDeitado,
 			// CORRER E DADO, NAO DEDUCAO. O cliente media a velocidade entre snapshots e comparava com
 			// a velocidade BASE do jogo -- entao quem tinha velocidade alta deixava rastro de corrida
 			// ANDANDO. Ver `EntityState.Correndo`.
@@ -6995,7 +7144,7 @@ public partial class GameServer : Node
 	/// Ver <see cref="ServerPlayer.NomeDeFusao"/> pra saber por que os dois nao sao o mesmo campo.
 	/// </summary>
 	private static string NomeVisivel(ServerPlayer p) =>
-		p.NomeDeFusao.Length > 0 ? p.NomeDeFusao : p.Disfarce?.Nome ?? p.Name;
+		p.NomeDeFusao.Length > 0 ? p.NomeDeFusao : DisfarceDe(p)?.Nome ?? p.Name;
 
 	/// <summary>
 	/// A APARENCIA QUE O MUNDO VE: a da fusao enquanto ela dura, a do personagem no resto do tempo.
@@ -7007,5 +7156,5 @@ public partial class GameServer : Node
 	/// e a UNICA excecao de propósito e ela esta comentada la -- ninguem entra no mundo ja fundido.
 	/// </summary>
 	private static Jandirus.Core.Appearance.Appearance VisualVisivel(ServerPlayer p) =>
-		p.LookDeFusao ?? p.Disfarce?.Visual ?? p.LookDoMajin ?? p.Visual;
+		p.LookDeFusao ?? DisfarceDe(p)?.Visual ?? p.LookDoMajin ?? p.Visual;
 }

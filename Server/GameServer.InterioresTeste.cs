@@ -48,14 +48,15 @@ public sealed partial class GameServer
 	///   * majin: o bolsao e inteiro duro (`DefinirDuro`): nada cai, nem parede nem chao. A borda cega.
 	///   * nave: as paredes da sala de controle e o console caem; o casco (a beirada) nao.
 	///   * arquivo: a Sala do Tempo de um mundo (o z13) -- 168 celulas que barram, todas podem cair.
-	/// `AceitaObra`: so a Sala do Tempo. Nos outros nao se constroi nada (`LugarDeObra`): morrem com quem os sustenta.
+	/// `AceitaObra`: a Sala do Tempo e a nave (desde 2026-10-18: o fim dela tira o que esta dentro -- `TirarAsObrasDaNave`). Nos outros nao
+/// se constroi nada (`LugarDeObra`): morrem com quem os sustenta.
 	/// </summary>
 	private static readonly Dictionary<string, LinhaDaVigia> LinhasDaVigia = new()
 	{
 		["mente"] = new(DimensaoMental.De, ParedeCai: false, ChaoRacha: true, Cega: false, AceitaObra: false),
 		["selo"] = new(ZonaDoSelo, ParedeCai: false, ChaoRacha: true, Cega: false, AceitaObra: false),
 		["majin"] = new(InteriorDoMajin.De, ParedeCai: false, ChaoRacha: false, Cega: true, AceitaObra: false),
-		["nave"] = new(NaveGrande.ZonaDoInterior, ParedeCai: true, ChaoRacha: true, Cega: true, AceitaObra: false),
+		["nave"] = new(NaveGrande.ZonaDoInterior, ParedeCai: true, ChaoRacha: true, Cega: true, AceitaObra: true),
 		[TipoDeArquivo] = new(id => SalaDePlaneta.Interior((ulong)id), ParedeCai: true, ChaoRacha: true, Cega: true, AceitaObra: true),
 	};
 
@@ -100,7 +101,7 @@ public sealed partial class GameServer
 		finally
 		{
 			EstadoDeZonaPorNomeDeTeste = false;
-			LugarDeObra.SoANaveRecusaDeTeste = false;
+			LugarDeObra.InterioresDeSessaoAceitamDeTeste = false;
 			_tiposDeInterior = null;
 			SoltarInterioresVazios();
 			GD.Print($"[interiores] ================ {_intrOk} OK, {_intrFalhou} FALHA(S) ================   "
@@ -191,18 +192,15 @@ public sealed partial class GameServer
 			AfirmarIntr($"[{nome}] ...e nao se abre cova aqui (a lapide e obra gravada)",
 						!abriu && disseNaCova.Contains("não dá pra abrir uma cova", StringComparison.Ordinal), disseNaCova);
 
-			if (nome != "nave")   // a nave ja recusava: o jogo de antes e "so a nave recusa"
+			LugarDeObra.InterioresDeSessaoAceitamDeTeste = true;
+			try
 			{
-				LugarDeObra.SoANaveRecusaDeTeste = true;
-				try
-				{
-					(Obra? deAntes, string disseAntes) = IntrAssentar(a, ondeAssentar);
-					DefeitoIntr($"[{nome}] so a nave recusa (o jogo de antes): a maquina e ACEITA e fica gravada num lugar que morre com o dono",
-								deAntes != null && deAntes.Zona.Equals(a), disseAntes);
-					if (deAntes != null) IntrTirarObra(deAntes);
-				}
-				finally { LugarDeObra.SoANaveRecusaDeTeste = false; }
+				(Obra? deAntes, string disseAntes) = IntrAssentar(a, ondeAssentar);
+				DefeitoIntr($"[{nome}] os interiores de sessao aceitam (o jogo de antes de 2026-10-11): a maquina e ACEITA e fica gravada num lugar que morre com o dono",
+							deAntes != null && deAntes.Zona.Equals(a), disseAntes);
+				if (deAntes != null) IntrTirarObra(deAntes);
 			}
+			finally { LugarDeObra.InterioresDeSessaoAceitamDeTeste = false; }
 		}
 
 		if (!linha.ParedeCai && !linha.ChaoRacha)
@@ -559,18 +557,18 @@ public sealed partial class GameServer
 						foraDoMundo && _obrasSemLugar.Count(o => o.Zona.Equals(mente)) == 1 && ObrasEm(mente) == 0,
 						$"fora do mundo {foraDoMundo}; guardadas a parte {_obrasSemLugar.Count}");
 
-			LugarDeObra.SoANaveRecusaDeTeste = true;
+			LugarDeObra.InterioresDeSessaoAceitamDeTeste = true;
 			_noChao.RemoveAll(o => !o.DoMapa);
 			_obrasSemLugar.Clear();
 			SoltarInterioresVazios();
 			CarregarMundoDeDisco(caminho);
-			DefeitoIntr("so a nave recusa (o jogo de antes): a obra gravada na mente #5 volta pro mundo -- esta na lista e BARRA na mente de quem for o #5 depois do reinicio",
+			DefeitoIntr("os interiores de sessao aceitam (o jogo de antes de 2026-10-11): a obra gravada na mente #5 volta pro mundo -- esta na lista e BARRA na mente de quem for o #5 depois do reinicio",
 						ObrasEm(mente) == 1 && MapaDaZonaOuCatalogo(mente)!.BlockedCell(50, 50));
-			LugarDeObra.SoANaveRecusaDeTeste = false;
+			LugarDeObra.InterioresDeSessaoAceitamDeTeste = false;
 		}
 		finally
 		{
-			LugarDeObra.SoANaveRecusaDeTeste = false;
+			LugarDeObra.InterioresDeSessaoAceitamDeTeste = false;
 			EstadoDeZonaPorNomeDeTeste = false;
 			_noChao.Clear();
 			_noChao.AddRange(noChaoDeAntes);

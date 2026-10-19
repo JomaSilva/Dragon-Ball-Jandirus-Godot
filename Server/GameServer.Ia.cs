@@ -451,6 +451,8 @@ public partial class GameServer
 		(!pl.Ficha.dead || pl.MortoDePe) && !pl.Ficha.KO && !pl.Carregando && !_emEmbate.ContainsKey(pl.Id)
 		&& !_emEmbateDeKi.ContainsKey(pl.Id) && !EnraizadoPorKi(pl.Id) && !Paralisado(pl.Id)
 		&& !EmCena(pl)
+		// (2026-10-18) O CORPO POSSUIDO PELO NEO TUFFLE: quem anda e o Tuffle, no corpo que ele veste; o de verdade so vai junto (`GameServer.NeoTuffle.cs`).
+		&& pl.PossuidoPor == 0
 		// OS COLETORES ABERTOS DO ANDROIDE DE ABSORCAO (`canmove = 0`, `DNALabs.dm:227`). E o preco
 		// da imunidade a ki: fincado no chao ate desligar o verb. Entra AQUI e nao no `Input` porque
 		// este e o funil de vetor -- e assim ela vale pra IA tambem, de graca.
@@ -505,7 +507,11 @@ public partial class GameServer
 		// anda e a nave, e a nave so anda voando: no chao ela esta estacionada, e pra sair do lugar se decola (a tecla
 		// de subir -- `DecolarANavePousada`). Por ULTIMO na lista: so e perguntado a quem ja passou em tudo acima, e a
 		// primeira metade (`!pl.Voando`) ja e falsa pra todo piloto no ar.
-		&& !NavePousada(pl);
+		&& !NavePousada(pl)
+		// (2026-10-18) A NAVE DE TANQUE SECO PARA DE VEZ (o dono) -- ver `GameServer.Combustivel.cs`. E quem OBSERVA a nave de fora nao
+		// anda: quem anda e a nave, e o olho vai com ela (`GameServer.NaveObservar.cs`).
+		&& !ParadoPorFaltaDeCombustivel(pl)
+		&& pl.ObservaNave == 0;
 
 	/// <summary>
 	/// O QUE O JOGO RESPONDE QUE ESTE CORPO PODE FAZER. Lido a 1 Hz por corpo (ver
@@ -742,6 +748,9 @@ public partial class GameServer
 			AltitudeDoAlvo = alvo?.Altitude ?? 0f,
 			AlvoVoando = alvo?.Voando ?? false,
 			AlvoCaido = alvo is { } a && (a.Ficha.KO || (a.Ficha.dead && !a.MortoDePe)),
+			// (2026-10-18) o caido ainda VIVO, e o golpe letal deste corpo: quem mata acaba com ele (`Cerebro.Finaliza`)
+			AlvoNocauteado = alvo != null && alvo.Ficha.KO && !alvo.Ficha.dead && !EhCadaver(alvo),
+			Letal = npc.Combate.Letal,
 			VidaDoAlvo = (alvo?.Ficha.HP ?? 100) / 100.0,
 			PoderDoAlvo = Finito(alvo?.Ficha.expressedBP ?? 0),
 

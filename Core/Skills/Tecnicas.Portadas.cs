@@ -37,7 +37,6 @@ public static partial class Tecnicas
 		Por("Ultradense_Body", "Ultradense Body", Modo.Sustentada, "O corpo vira algo parecido com aço e a defesa física sobe muito. O dreno de energia " + "fica cinco vezes maior enquanto você segurar essa densidade. Uma dessas por vez.");
 		Por("Ki_Blade", "Ki Blade", Modo.Sustentada, "Molda uma lâmina de Ki na mão: soma o mesmo bônus na ofensiva física E na de Ki. " + "Cobra uma mordida de energia só para nascer, e depois não drena nada. Ocupa a mão -- " + "não dá para manter a lâmina e outro buff de corpo ao mesmo tempo.");
 		Por("Ki_Sword", "Ki Sword", Modo.Sustentada, "A lâmina vira uma espada longa: o mesmo bônus do Ki Blade, só que mais generoso, e uma " + "mordida de energia maior para invocar. Ocupa a mão como a lâmina, e as duas não " + "convivem.");
-		Por("Super_Majin", "Super Majin", Modo.Sustentada, "A forma de Super Majin: técnica, ofensiva de Ki e velocidade sobem juntas. Fora da " + "Ascensão isso custa um pedaço da sua defesa; com a Ascensão de pé não há penalidade " + "e o corpo ainda ganha poder e o dobro de capacidade de energia.");
 
 		// ---- lote G2 ----
 		Por("Kaioken", "Kaio-ken", Modo.Sustentada, "Sincroniza o Ki com o corpo e MULTIPLICA seu poder de verdade -- ao preco de queimar " + "energia, fôlego e o próprio corpo, continuamente. Apertar abre a escolha do multiplicador (de x2 a x100); " + "aceso, apertar de novo -- ou X -- apaga. Acima da sua maestria tudo drena mais rápido, e um " + "múltiplo acima do dobro dela com o Ki acabando despedaça o corpo.");

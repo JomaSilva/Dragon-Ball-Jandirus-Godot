@@ -441,6 +441,10 @@ public sealed class Convivio
 	///
 	/// INIMIGO E O PADRAO: quem eu nao declarei amigo (nem rival amigo) e inimigo aos olhos da furia,
 	/// conheca eu ou nao. Declarar alguem "inimigo" nao muda esta resposta -- ela ja era sim.
+	///
+	/// (2026-10-18) E A MESMA PERGUNTA E FEITA A QUEM ASSISTE -- o dono: *"se um amigo seu derruba seu outro amigo, n deveria triggar raiva,
+	/// somente pessoas q vc n conhece/neutras ou rivais ruins pra baixo q contam pra vc ficar com raiva"*. Desconhecido, sem declaracao,
+	/// neutro, rival ruim, ruim, muito ruim e odio respondem sim; amigo e rival bom, nao. Ver `GameServer.LutoNaVizinhanca`.
 	/// </summary>
 	public bool AlgozEhInimigo(string sig) => !EhAmigo(sig) && !LutaEhTreino(RelacaoCom(sig));
 

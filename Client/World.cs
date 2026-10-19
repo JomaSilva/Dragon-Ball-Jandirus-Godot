@@ -1858,6 +1858,28 @@ public partial class World : Node2D
 	/// <summary>DEFEITO INJETADO (bancada `--diagbio`): a tela ignora a vitima secando -- o corpo fica inteiro ate sumir. Falso em jogo.</summary>
 	internal static bool SecandoIgnoradoDeTeste;
 
+	/// <summary>
+	/// (2026-10-18) O SLEEP DO MAJIN (`Ocupacao.Dormindo`): o "z" subindo sobre o corpo que dorme (<see cref="SonoDesenhado"/>) -- o molde do
+	/// <see cref="MarcarSecando"/>, estado do corpo no snapshot. O corpo DEITADO e a pose: `Pose.Nocauteado` pros outros (o servidor a manda),
+	/// e o `LocalPlayer.Dormindo` pro meu (o ramo do corpo local o liga junto). O "z" e o que separa o sono do nocaute.
+	/// </summary>
+	private void MarcarDormindo(int id, bool dormindo)
+	{
+		if (id == 0 || Corpo(id) is not { } corpo) return;
+		if (SonoIgnoradoDeTeste) dormindo = false;
+		SonoDesenhado? ja = corpo.GetNodeOrNull<SonoDesenhado>(SonoDesenhado.NomeDoNode);
+		if (!dormindo)
+		{
+			// SAI DA ARVORE JA: o nome e o mesmo, e um sono novo no tique seguinte renomearia o node novo (o tombo que o `MarcarDesfeito` conta).
+			if (ja != null) { corpo.RemoveChild(ja); ja.QueueFree(); }
+			return;
+		}
+		if (ja == null) corpo.AddChild(new SonoDesenhado { Name = SonoDesenhado.NomeDoNode });
+	}
+
+	/// <summary>DEFEITO INJETADO (robo `--diagsono`): a tela ignora o sono -- nem o "z" nem o corpo local deitado. Falso em jogo, sempre.</summary>
+	internal static bool SonoIgnoradoDeTeste;
+
 	private void MarcarDesfeito(int id, bool desfeito)
 	{
 		if (id == 0 || Corpo(id) is not { } corpo) return;
@@ -3628,6 +3650,9 @@ public partial class World : Node2D
 				MarcarEsferaDemoniaca(e.Id, e.Ocupacao);
 				// (2026-10-17) E O MEU CORPO SECANDO, pela mesma frase: a vitima da execucao do bio ve o proprio corpo secar -- ver `MarcarSecando`.
 				MarcarSecando(e.Id, e.Ocupacao == Jandirus.Core.World.Ocupacao.Secando);
+				// (2026-10-18) E O MEU SONO, pela mesma frase: quem dorme o Sleep ve o proprio "z" -- e o corpo local, que escolhe a propria pose, deita.
+				MarcarDormindo(e.Id, e.Ocupacao == Jandirus.Core.World.Ocupacao.Dormindo);
+				_local?.Dormir(e.Ocupacao == Jandirus.Core.World.Ocupacao.Dormindo && !SonoIgnoradoDeTeste);
 				// E O CHAO TREMENDO: quem segura o C acima de 120% sente o proprio tremor pela MESMA linha
 				// que o faz tremer pros outros -- nao ha um "tremor local" escrito a parte.
 				MarcarCargaAlta(e.Id, e.CargaAlta);
@@ -3713,6 +3738,8 @@ public partial class World : Node2D
 			MarcarEsferaDemoniaca(e.Id, e.Ocupacao);
 			// (2026-10-17) ...E A VITIMA DA EXECUCAO DO BIO SECANDO -- ver `MarcarSecando`.
 			MarcarSecando(e.Id, e.Ocupacao == Jandirus.Core.World.Ocupacao.Secando);
+			// (2026-10-18) ...E QUEM DORME O SLEEP DO MAJIN -- ver `MarcarDormindo`.
+			MarcarDormindo(e.Id, e.Ocupacao == Jandirus.Core.World.Ocupacao.Dormindo);
 			// ...E O CHAO TREMENDO EM VOLTA DELE. Mesmo molde: bit do snapshot, estado no node do corpo.
 			MarcarCargaAlta(e.Id, e.CargaAlta);
 
@@ -4476,6 +4503,7 @@ public partial class World : Node2D
 		}
 
 		TickDoEspectador(delta);
+		AtualizarNaveObservada();   // (2026-10-18) o casco desenhado no olho de quem observa uma nave sem piloto
 		TickDoTremor(delta);
 		TickDaAgonia();
 		SincronizarSombrasDosAltos();
@@ -4928,6 +4956,86 @@ public partial class World : Node2D
 		if (id == 0) return null;
 		if (GameClient.Instance is { } c && id == c.LocalId) return _local;
 		return _remotos.TryGetValue(id, out RemotePlayer? r) ? r : null;
+	}
+
+	// =====================================================================
+	// (2026-10-18) O OLHO DE QUEM OBSERVA UMA NAVE DE FORA
+	// =====================================================================
+	/// <summary>
+	/// O CORPO DE QUEM PILOTA A NAVE QUE EU OBSERVO, ja na tela -- e nele que a nave e desenhada, entao o olho fica onde ele esta (ver
+	/// `LocalPlayer.SeguirANaveObservada`). Nulo sem piloto, ou com o corpo dele ainda fora da vista.
+	/// </summary>
+	public Node2D? CorpoDoPilotoObservado() =>
+		GameClient.Instance is { Observador: true } c && c.Observando.Piloto != 0
+		&& _remotos.TryGetValue(c.Observando.Piloto, out RemotePlayer? r) && IsInstanceValid(r) ? r : null;
+
+	/// <summary>
+	/// (2026-10-18) O CORPO DO NEO TUFFLE QUE POSSUI O MEU, ja na tela -- e nele que eu assisto (ver `LocalPlayer.SeguirOPossessor`). Nulo
+	/// sem posse, ou com o corpo dele ainda fora da vista.
+	/// </summary>
+	public Node2D? CorpoDoPossessor() =>
+		GameClient.Instance is { PossuidoPor: > 0 } c
+		&& _remotos.TryGetValue(c.PossuidoPor, out RemotePlayer? r) && IsInstanceValid(r) ? r : null;
+
+	/// <summary>O nome do casco desenhado no olho. Uma casa so: quem cria e quem destroi procuram por ele.</summary>
+	private const string NomeDaNaveObservada = "NaveObservada";
+
+	/// <summary>A construcao (a nave parada) que o olho esconde agora, pra devolve-la quando ele deixar de carrega-la.</summary>
+	private ObraDesenhada? _obraEscondidaPeloOlho;
+
+	/// <summary>
+	/// O CASCO NO OLHO, quando a nave observada nao tem piloto (parada, a deriva, seguindo sozinha pelo nav system): ela so existe no
+	/// pacote de construcoes, que nao sai por tique (a que segue sozinha atualiza uma vez por segundo, `TickDasNaves`) -- e o olho a veria
+	/// andar aos saltos. Entao o olho a CARREGA, como o corpo do piloto carrega a dele (`NaveDesenhada`), e a copia parada sai da tela
+	/// enquanto isso. Com piloto, nada disto: o olho fica no corpo dele, e a nave ja esta desenhada la.
+	/// </summary>
+	private void AtualizarNaveObservada()
+	{
+		if (_local == null || !IsInstanceValid(_local)) return;
+		GameClient? cli = GameClient.Instance;
+		bool carrega = cli is { Observador: true } && cli.Observando.Piloto == 0;
+
+		NaveDesenhada? noOlho = _local.GetNodeOrNull<NaveDesenhada>(NomeDaNaveObservada);
+		if (carrega && noOlho == null)
+			_local.AddChild(new NaveDesenhada { Name = NomeDaNaveObservada, Grande = cli!.Observando.Tipo == Jandirus.Core.Tech.NaveGrande.Tipo });
+		else if (!carrega && noOlho != null)
+		{
+			_local.RemoveChild(noOlho);
+			noOlho.QueueFree();
+		}
+
+		// A COPIA PARADA: a nave parada viaja no pacote de construcoes com o id `-nave` (`MandarObras`), e o pacote refaz os nodes inteiros
+		// -- por isso a busca e por quadro, e nao uma vez. PELO ID, e nao pelo nome do node: o node novo nasce no mesmo quadro em que o velho
+		// e liberado, e o Godot da a ele um nome sorteado (a primeira versao procurava "Obra-N" e deixava a copia na tela -- duas naves, uma
+		// atras da outra, na foto do `--diagcapital`).
+		ObraDesenhada? parada = null;
+		if (carrega && !CopiaParadaNaTelaDeTeste)
+		{
+			int id = -cli!.Observando.Nave;
+			foreach (ObraDesenhada o in _obrasNaCena)
+				if (IsInstanceValid(o) && o.Id == id) { parada = o; break; }
+		}
+		if (parada != null && parada.Visible) parada.Visible = false;
+		if (_obraEscondidaPeloOlho != null && _obraEscondidaPeloOlho != parada && IsInstanceValid(_obraEscondidaPeloOlho))
+			_obraEscondidaPeloOlho.Visible = true;
+		_obraEscondidaPeloOlho = parada;
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--diagcapital`, C10): a copia parada da nave observada fica na tela -- duas naves, a que o olho carrega e a do pacote
+	/// de construcoes, parada um segundo atras. Lido pela propria busca da copia. Falso em jogo, sempre.
+	/// </summary>
+	public static bool CopiaParadaNaTelaDeTeste;
+
+	/// <summary>O casco desenhado no olho agora (so pras bancadas): nulo se o olho nao carrega nave.</summary>
+	public Node2D? NaveNoOlhoDeTeste => _local?.GetNodeOrNull<NaveDesenhada>(NomeDaNaveObservada);
+
+	/// <summary>A copia parada da nave <paramref name="nave"/> (a do pacote de construcoes) esta desenhada? So pras bancadas.</summary>
+	public bool CopiaParadaVisivelDeTeste(int nave)
+	{
+		foreach (ObraDesenhada o in _obrasNaCena)
+			if (IsInstanceValid(o) && o.Id == -nave && o.Visible) return true;
+		return false;
 	}
 
 	/// <summary>
@@ -6414,6 +6522,7 @@ public partial class World : Node2D
 			var obra = new ObraDesenhada
 			{
 				Name = "Obra" + o.Id,
+				Id = o.Id,
 				Position = new Vector2(cx * t, (cy + 1) * t),
 				Tipo = o.Tipo,
 				Dono = o.Dono,

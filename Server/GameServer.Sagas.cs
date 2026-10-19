@@ -46,6 +46,9 @@ public partial class GameServer
 	/// </summary>
 	private bool _sagasPorRetomar;
 
+	/// <summary>(2026-10-18) O vilao do Inferno lido do disco na carga, esperando o `RetomarSagas` -- nulo depois dele.</summary>
+	private VilaoGuardado? _vilaoPorRetomar;
+
 	/// <summary>
 	/// O CONTADOR DE LUGARES dos chefes -- o terceiro argumento da semente, como no povoamento. Comeca
 	/// alto pra nao encostar na numeracao dos habitantes (que comeca em 1 por planeta) e **nao
@@ -116,15 +119,57 @@ public partial class GameServer
 							 + "npcs.json -- estado descartado");
 
 		_sagas.Elos = vivos;
+		ErguerOsPinosAteAFicha();   // (2026-10-18) a ficha nova vale tambem pra saga que ja disparou -- ver o metodo
 		_sagasPorRetomar = true;
+		_vilaoPorRetomar = _sagas.VilaoDoInferno;   // (2026-10-18) o vilao do Inferno gravado, pro `RetomarSagas`
 
 		GD.Print($"[server] sagas: {_cadeia.Length} elo(s) na cadeia | "
 			   + string.Join(", ", _sagas.Elos.Select(e => $"{e.Id}={e.Fase}")));
 	}
 
+	/// <summary>
+	/// ============================ O PINO NAO FICA ABAIXO DA FICHA DE AGORA (dono, 2026-10-18) ============================
+	/// *"dobre o bp da quarta e quinta forma do freeza namek"*. O vetor pinado (`EstadoDoChefe.Bps`) e resolvido no disparo do marco e vai
+	/// pro `sagas.json`: sem isto, a saga que disparou ANTES de o dono mudar o `npcs.json` traria o Freeza de volta com os 3 e 4 milhoes
+	/// velhos -- em todo reinicio, ate ela acabar --, e o que ainda esta a caminho chegaria com eles.
+	///
+	/// Na carga, todo degrau pinado ABAIXO do que o `Sagas.Pinar` daria hoje com o servidor vazio (o degrau escrito na ficha, o piso dele)
+	/// sobe ate ele. SO PRA CIMA: o pino ACIMA da ficha e o de um `bpRelativo` (a media do servidor no disparo) -- o numero anunciado, que
+	/// a regra do pino guarda --, e fica. Baixar a ficha, portanto, so vale pra saga que disparar depois. O vilao do Inferno gravado
+	/// (`VilaoGuardado.Bps`) nao passa por aqui: o BP dele e a media do servidor, sem piso na ficha (`ViloesDoInferno.Bps`).
+	/// ======================================================================================================================
+	/// </summary>
+	private void ErguerOsPinosAteAFicha()
+	{
+		foreach (EstadoDoElo est in _sagas.Elos)
+			foreach (EstadoDoChefe ec in est.Chefes)
+			{
+				if (_moldes?.Get(ec.Molde) is not { } molde) continue;
+				double[] piso = Sagas.Pinar(molde, 0);
+				for (int i = 0; i < ec.Bps.Length && i < piso.Length; i++)
+				{
+					if (ec.Bps[i] >= piso[i] || PinoAbaixoDaFichaDeTeste) continue;
+					GD.Print($"[server] sagas: '{ec.Molde}' ({est.Id}), degrau {i + 1}: o BP pinado {ec.Bps[i]:N0} ficou abaixo da ficha "
+						   + $"de agora -- sobe pra {piso[i]:N0}");
+					ec.Bps[i] = piso[i];
+				}
+			}
+	}
+
+	/// <summary>DEFEITO INJETADO (`--sagateste`, familia 10): a carga deixa o pino abaixo da ficha -- o jogo de antes. Lido pelo <see cref="ErguerOsPinosAteAFicha"/>. Falso em jogo, sempre.</summary>
+	internal static bool PinoAbaixoDaFichaDeTeste;
+
 	private void SalvarSagas()
 	{
 		if (_store == null) return;
+
+		// (2026-10-18) O QUE SO VIVE NA MEMORIA VAI JUNTO: o tempo que falta pra quem volta do alem (o relogio do mundo nao atravessa o
+		// reinicio -- ver `EstadoDoChefe.RessurgeFaltamS`) e o vilao que esta no Inferno agora.
+		foreach (EstadoDoElo e in _sagas.Elos)
+			foreach (EstadoDoChefe c in e.Chefes)
+				c.RessurgeFaltamS = c.RessurgeEm > 0 ? Math.Max(c.RessurgeEm - _relogioDoMundo, 1) : 0;
+		// O vilao gravado e ainda nao retomado (o boot, antes do primeiro tique) continua no arquivo: gravar agora nao pode apaga-lo.
+		_sagas.VilaoDoInferno = GuardarOVilaoDoInferno() ?? _vilaoPorRetomar;
 		try
 		{
 			string tmp = CaminhoDasSagas + ".tmp";
@@ -156,6 +201,9 @@ public partial class GameServer
 			ContarOsDias();
 			ConferirMarcos();
 			MonitorarElos();
+			// (2026-10-18) A TROPA DEPOIS DOS CHEFES: o `MonitorarElos` acabou de dizer quem caiu, e a tropa de um chefe que caiu vai embora
+			// neste mesmo tique. Ver `GameServer.TropaDaSaga.cs`.
+			TickDaTropa();
 		}
 		catch (Exception e) { GD.PushError($"[server] cadeia de sagas quebrou neste tique: {e}"); }
 	}
@@ -194,12 +242,15 @@ public partial class GameServer
 	/// rabo do mestico -- ver `TemRabo`). Entao a equivalencia e escrita aqui, uma vez.
 	/// ==========================================================================================
 	/// </summary>
-	private static bool ContaProMarco(ServerPlayer pl, string raca)
+	private static bool ContaProMarco(ServerPlayer pl, string raca) => RacaContaProMarco(pl.Race, raca);
+
+	/// <summary>(2026-10-18) A mesma pergunta pela RACA escrita: a auditoria do boot le personagens do disco, que nao sao corpos.</summary>
+	private static bool RacaContaProMarco(string dele, string raca)
 	{
 		if (raca.Length == 0) return true;
-		if (string.Equals(pl.Race, raca, StringComparison.OrdinalIgnoreCase)) return true;
+		if (string.Equals(dele, raca, StringComparison.OrdinalIgnoreCase)) return true;
 		return string.Equals(raca, "Saiyan", StringComparison.OrdinalIgnoreCase)
-			&& string.Equals(pl.Race, "Halfbreed", StringComparison.OrdinalIgnoreCase);
+			&& string.Equals(dele, "Halfbreed", StringComparison.OrdinalIgnoreCase);
 	}
 
 	private void ConferirMarcos()
@@ -210,37 +261,65 @@ public partial class GameServer
 			EstadoDoElo? est = _sagas.Do(elo.Id);
 			if (est == null || est.Disparou) continue;
 
+			// (2026-10-18) QUEM BATEU O MARCO FICA REGISTRADO, mesmo com a cadeia esperando a saga anterior -- ver `EstadoDoElo.MarcoBatidoPor`.
+			ServerPlayer? quem = QuemBateOMarco(elo);
+			if (quem != null && est.MarcoBatidoPor.Length == 0)
+			{
+				est.MarcoBatidoPor = quem.Name;
+				est.MarcoBatidoComBp = quem.Ficha.BP;
+				SalvarSagas();
+			}
+
 			// A CADEIA E SEQUENCIAL. O marco continua sendo conferido -- ele nao se perde, ele espera.
 			if (!Sagas.PodeComecar(_cadeia, _sagas, i)) continue;
 
-			foreach (ServerPlayer pl in _players.Values)
-			{
-				// ============================ SO JOGADOR, VIVO -- E A PERGUNTA E UMA SO ============================
-				// O `check_triggers` do DM tem DUAS defesas: a colecao ja e so de jogadores
-				// (`for(var/mob/M in player_list)`) E o `!M.client` por cima (BossEvents.dm:373-374).
-				// Aqui `_players` guarda tudo, entao a segunda defesa e a unica -- e por isso ela e o
-				// funil do `Core` (<see cref="Gente.EhJogador"/>) e nao um `Peer != null` escrito a mao.
-				//
-				// A razao pratica aparece com o povoamento ligado: um chefe de saga (que e NPC de 530
-				// mil) dispararia o marco SEGUINTE sozinho, que nasce um chefe maior, que dispara o
-				// proximo -- a cadeia inteira num servidor vazio. E "nem por ninguem que ele traga
-				// junto": o cidadao com Zenkai, o clone da mente (que carrega o `expressedBP` do dono)
-				// e o boneco do corpo largado (que COMPARTILHA a ficha do dono) tambem saem daqui pela
-				// mesma linha, e nao por tres guardas escritas em tres dias diferentes.
-				// ==========================================================================================
-				if (!EhJogador(pl) || pl.Ficha.dead) continue;
-
-				// **BP BASE**, e nao `expressedBP`. Armadilha 6 da PARTE 3: o expresso e outra escala.
-				if (pl.Ficha.BP < elo.GatilhoBp) continue;
-				if (!ContaProMarco(pl, elo.GatilhoRaca)) continue;
-
-				DispararElo(elo, est, pl);
-				break;
-			}
+			// QUEM ESTA AQUI dispara; sem ninguem aqui, dispara o REGISTRO -- quem bateu o marco antes, mesmo fora do jogo agora (o dono, 2026-10-18:
+			// *"caso ... tenham cumprido o requisito dela ela inicie"*). O DM so olhava os online (`player_list`), e o marco de quem saiu esperava
+			// ele voltar: a saga seguinte de um servidor cujo heroi parou de jogar nunca vinha.
+			if (quem != null) DispararElo(elo, est, quem);
+			else if (est.MarcoBatidoPor.Length > 0 && !MarcoSoDeQuemEstaAquiDeTeste) DispararElo(elo, est, est.MarcoBatidoPor, est.MarcoBatidoComBp);
 		}
 	}
 
-	private void DispararElo(EloDaSaga elo, EstadoDoElo est, ServerPlayer culpado)
+	/// <summary>O PRIMEIRO JOGADOR DE AGORA que passa do marco deste elo -- nulo = ninguem. Era o laco de dentro do <see cref="ConferirMarcos"/>.</summary>
+	private ServerPlayer? QuemBateOMarco(EloDaSaga elo)
+	{
+		foreach (ServerPlayer pl in _players.Values)
+		{
+			// ============================ SO JOGADOR, VIVO -- E A PERGUNTA E UMA SO ============================
+			// O `check_triggers` do DM tem DUAS defesas: a colecao ja e so de jogadores
+			// (`for(var/mob/M in player_list)`) E o `!M.client` por cima (BossEvents.dm:373-374).
+			// Aqui `_players` guarda tudo, entao a segunda defesa e a unica -- e por isso ela e o
+			// funil do `Core` (<see cref="Gente.EhJogador"/>) e nao um `Peer != null` escrito a mao.
+			//
+			// A razao pratica aparece com o povoamento ligado: um chefe de saga (que e NPC de 530
+			// mil) dispararia o marco SEGUINTE sozinho, que nasce um chefe maior, que dispara o
+			// proximo -- a cadeia inteira num servidor vazio. E "nem por ninguem que ele traga
+			// junto": o cidadao com Zenkai, o clone da mente (que carrega o `expressedBP` do dono)
+			// e o boneco do corpo largado (que COMPARTILHA a ficha do dono) tambem saem daqui pela
+			// mesma linha, e nao por tres guardas escritas em tres dias diferentes.
+			// ==========================================================================================
+			if (!EhJogador(pl) || pl.Ficha.dead) continue;
+
+			// **BP BASE**, e nao `expressedBP`. Armadilha 6 da PARTE 3: o expresso e outra escala.
+			if (pl.Ficha.BP < elo.GatilhoBp) continue;
+			if (!ContaProMarco(pl, elo.GatilhoRaca)) continue;
+			return pl;
+		}
+		return null;
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--chefesteste`): o marco so dispara com quem o bateu ONLINE -- o registro e ignorado, o jogo de antes. Lido pelo
+	/// <see cref="ConferirMarcos"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool MarcoSoDeQuemEstaAquiDeTeste;
+
+	private void DispararElo(EloDaSaga elo, EstadoDoElo est, ServerPlayer culpado) =>
+		DispararElo(elo, est, culpado.Name, culpado.Ficha.BP);
+
+	/// <summary>(2026-10-18) O disparo pelo NOME: quem bateu o marco pode estar fora do jogo agora (`EstadoDoElo.MarcoBatidoPor`).</summary>
+	private void DispararElo(EloDaSaga elo, EstadoDoElo est, string culpado, double bpDoCulpado)
 	{
 		est.Disparou = true;
 
@@ -290,7 +369,7 @@ public partial class GameServer
 		if (primeiraChegada == int.MaxValue) primeiraChegada = 0;
 
 		AnunciarNoMundo(elo.AnuncioDoMarco.Replace("{dias}", primeiraChegada.ToString()));
-		GD.Print($"[server] SAGA '{elo.Id}' disparada por {culpado.Name} (BP {culpado.Ficha.BP:N0}) | "
+		GD.Print($"[server] SAGA '{elo.Id}' disparada por {culpado} (BP {bpDoCulpado:N0}) | "
 			   + $"media {media:N0} | BP pinado: "
 			   + string.Join(" / ", est.Chefes.Select(c => $"{c.Molde} {c.Bps.FirstOrDefault():N0}")));
 
@@ -356,6 +435,9 @@ public partial class GameServer
 	/// </summary>
 	private enum ComoChegou { Agora, Retomando, Ressurgindo }
 
+	/// <summary>DEFEITO INJETADO (`--chefesteste`, familia L): o chefe de saga nasce nao-letal -- o jogo de antes. Falso em jogo, sempre.</summary>
+	internal static bool ChefeNaoLetalDeTeste;
+
 	private void NascerChefeDaSaga(EloDaSaga elo, EstadoDoElo est, EstadoDoChefe ec,
 								   ComoChegou como = ComoChegou.Agora)
 	{
@@ -383,6 +465,10 @@ public partial class GameServer
 		// (v0.3.0) E O KI DELE NAO ACABA (*"faça boss de saga de ki infinito pra deixar mais desafiador"*): quem segura e o
 		// cadeado do corpo, no fim de todo tique (`Nutricao.KiSempreCheio`). Ver `GameServer.ChefeDeSaga.cs`.
 		npc.Ficha.KiDeChefe = true;
+		// (2026-10-18) E ELE LUTA PRA MATAR -- o dono: *"faça os chefes das sagas sempre estarem no modo letal, pq eles so estavam nocauteando e nao
+		// matando"*. O golpe de todo corpo sem dono nasce nao-letal; o do chefe de saga, letal -- e quem mata nao larga o caido (`Cerebro.Finaliza`,
+		// `PresaDoHostil`). Vale tambem pro que volta de um reinicio, que nasce por aqui.
+		npc.Combate.Letal = !ChefeNaoLetalDeTeste;
 		npc.Papel.Estagio = Math.Clamp(ec.Degrau, 0, Math.Max(npc.Papel.Molde.Estagios.Length - 1, 0));
 		EntrarNoDegrau(npc, cura: 0, anunciar: false);
 
@@ -431,6 +517,8 @@ public partial class GameServer
 	/// </summary>
 	private void RetomarSagas()
 	{
+		AuditarSagasNoBoot();
+
 		int voltaram = 0;
 		foreach (EloDaSaga elo in _cadeia)
 		{
@@ -439,14 +527,119 @@ public partial class GameServer
 
 			foreach (EstadoDoChefe ec in est.Chefes.ToList())
 			{
+				// (2026-10-18) QUEM ESTAVA VOLTANDO DO ALEM volta no tempo que lhe faltava: o relogio do mundo recomecou do zero, e o `RessurgeEm`
+				// gravado e do relogio velho. Sem o tempo gravado (o save de antes), o prazo inteiro de novo -- "do comeco", nas palavras do dono.
+				if (ec.Fase == FaseDoChefe.Derrotado && ec.RessurgeEm > 0 && !RessurgeNoRelogioVelhoDeTeste)
+				{
+					double faltam = ec.RessurgeFaltamS > 0 ? ec.RessurgeFaltamS
+						: Array.Find(elo.Chefes, c => c.Molde == ec.Molde)?.RessurgeEmSegundos ?? 60;
+					ec.RessurgeEm = _relogioDoMundo + faltam;
+					continue;
+				}
 				if (ec.Fase != FaseDoChefe.NoMundo) continue;
 				ec.Corpo = 0;                    // o corpo antigo nao atravessou o reinicio
 				NascerChefeDaSaga(elo, est, ec, ComoChegou.Retomando);
 				voltaram++;
 			}
 		}
+
+		// (2026-10-18) E O VILAO DO INFERNO, que tambem e chefe -- ver `GameServer.ViloesDoInferno.cs`. Ele vem do campo da CARGA, e nao do
+		// estado de agora: a auditoria acima pode ter gravado as sagas, e a gravacao le o vilao vivo (nenhum, no boot).
+		if (_vilaoPorRetomar is { } vilao)
+		{
+			_vilaoPorRetomar = null;
+			if (RetomarOVilaoDoInferno(vilao) != null) voltaram++;
+		}
 		if (voltaram > 0) GD.Print($"[server] sagas: {voltaram} chefe(s) voltaram ao mundo depois do reinicio");
 	}
+
+	/// <summary>
+	/// ============================ A AUDITORIA DO BOOT (dono, 2026-10-18) ============================
+	/// *"caso eu feche o server agora sem esse update, faça o server checar se o freeza ou outro boss teve sua saga concluida pra caso n tenha
+	/// sido concluida mas tenha sido iniciada ou tenham cumprido o requisito dela ela inicie novamente de onde parou ou do começo caso o jogo
+	/// atualmente n salve muitas informaçoes da saga"*. Roda no primeiro tique, antes de os chefes voltarem, e responde por elo:
+	///   * CONCLUIDA (vencida, consumada, cancelada): fica como esta.
+	///   * INICIADA (contando ou em curso): continua de onde parou -- a contagem dos dias segue, o chefe no mundo volta no degrau gravado
+	///     (<see cref="RetomarSagas"/>). O que o jogo de antes NAO gravava -- a forma de quem se transformou desde o ultimo evento da cadeia --
+	///     volta do ultimo gravado: no pior caso, do comeco da ficha.
+	///   * MARCADA E NUNCA COMECADA (o `Disparou` sem fase, que so um save cortado deixa): volta a esperar o marco, e dispara do comeco.
+	///   * ADORMECIDA COM O REQUISITO CUMPRIDO: o jogo de antes so conferia o marco nos ONLINE. A auditoria procura no DISCO quem ja passou
+	///     dele (vivo) e registra (`EstadoDoElo.MarcoBatidoPor`); o <see cref="ConferirMarcos"/> a dispara na vez dela.
+	/// =================================================================================================
+	/// </summary>
+	private void AuditarSagasNoBoot()
+	{
+		if (SemAuditoriaDeTeste) return;
+		bool mudou = false;
+		List<(string Nome, string Raca, double Bp)>? doDisco = null;
+		foreach (EloDaSaga elo in _cadeia)
+		{
+			EstadoDoElo? est = _sagas.Do(elo.Id);
+			if (est == null) continue;
+
+			if (est.Disparou && est.Fase == FaseDaSaga.Adormecida)
+			{
+				est.Disparou = false;
+				est.Chefes.Clear();
+				mudou = true;
+				GD.PushWarning($"[server] sagas: '{elo.Id}' estava marcada como disparada sem ter comecado -- volta a esperar o marco, do comeco");
+			}
+
+			if (est.Disparou || est.MarcoBatidoPor.Length > 0) continue;
+			doDisco ??= QuemEstaNoDisco();
+			foreach ((string nome, string raca, double bp) in doDisco)
+			{
+				if (bp < elo.GatilhoBp || !RacaContaProMarco(raca, elo.GatilhoRaca)) continue;
+				est.MarcoBatidoPor = nome;
+				est.MarcoBatidoComBp = bp;
+				mudou = true;
+				GD.Print($"[server] sagas: o marco de '{elo.Id}' ja tinha sido batido por {nome} (BP {bp:N0}, no disco) -- a saga comeca na vez dela");
+				break;
+			}
+		}
+		GD.Print("[server] sagas (auditoria do boot): " + string.Join(", ", _sagas.Elos.Select(e =>
+			$"{e.Id}={e.Fase}" + (!e.Disparou && e.MarcoBatidoPor.Length > 0 ? $" (marco batido por {e.MarcoBatidoPor})" : ""))));
+		if (mudou) SalvarSagas();
+	}
+
+	/// <summary>
+	/// (2026-10-18) OS PERSONAGENS GRAVADOS -- nome, raca e BP BASE -- de toda conta do servidor. Os MORTOS ficam de fora (o marco e de quem
+	/// esta vivo, como no <see cref="ConferirMarcos"/>), e as contas de bancada tambem: o save de um servidor de verdade pode ter sobra de
+	/// bancada antiga, e um "bancada_x" de BP inventado nao pode disparar a saga de ninguem. Lido UMA vez, pela auditoria do boot.
+	/// </summary>
+	private List<(string Nome, string Raca, double Bp)> QuemEstaNoDisco()
+	{
+		var l = new List<(string, string, double)>();
+		if (_store == null) return l;
+		foreach (AccountSave a in _store.Todas())
+		{
+			if (!DiscoComAsBancadasDeTeste && a.Conta.StartsWith("bancada", StringComparison.OrdinalIgnoreCase)) continue;
+			foreach (CharacterSave? s in a.Slots)
+				if (s is { Ficha.dead: false }) l.Add((s.Nome, s.Raca, s.Ficha.BP));
+		}
+		return l;
+	}
+
+	/// <summary>DEFEITO INJETADO (`--chefesteste`): o boot nao audita as sagas -- o jogo de antes. Lido pela <see cref="AuditarSagasNoBoot"/>. Falso em jogo, sempre.</summary>
+	internal static bool SemAuditoriaDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--chefesteste`): quem volta do alem fica com o `RessurgeEm` do relogio de antes do reinicio -- o jogo de antes. Lido
+	/// pelo <see cref="RetomarSagas"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool RessurgeNoRelogioVelhoDeTeste;
+
+	/// <summary>
+	/// (`--chefesteste`) A auditoria do boot ENXERGA as contas de bancada -- e a unica forma de a bancada plantar um personagem no disco sem
+	/// tocar no save de ninguem. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool DiscoComAsBancadasDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--chefesteste`): a forma nova do chefe so vai pro disco no proximo evento da cadeia -- o jogo de antes. Lido pelo
+	/// <see cref="MonitorarChefe"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool DegrauSoNoProximoEventoDeTeste;
 
 	// =====================================================================
 	// O MONITOR
@@ -509,7 +702,13 @@ public partial class GameServer
 
 		// O DEGRAU DA FICHA E DO PAPEL; aqui so se COPIA pro save. Escrever nos dois lados faria o
 		// `TickDoRoteiro` e este monitor discordarem no primeiro degrau que um deles perdesse.
+		//
+		// (2026-10-18) E A COPIA VAI PRO DISCO NA HORA. Antes ela so era gravada no proximo evento da cadeia (a virada do dia, uma morte, uma
+		// absorcao), e o fechamento do servidor nao gravava as sagas: o Freeza que se transformava e via o servidor fechar voltava na forma de
+		// antes. O dono: *"ele deveria voltar na forma q ele estava (isso pra todos os chefes n so o freeza)"*.
+		bool mudouDeForma = ec.Degrau != corpo.Papel.Estagio;
 		ec.Degrau = corpo.Papel.Estagio;
+		if (mudouDeForma && !DegrauSoNoProximoEventoDeTeste) SalvarSagas();
 
 		if (corpo.Ficha.dead) { MorreuOChefe(elo, est, ec, corpo); return; }
 

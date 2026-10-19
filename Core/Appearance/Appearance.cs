@@ -218,6 +218,28 @@ public sealed class Appearance
     [System.Text.Json.Serialization.JsonIgnore]
     public bool SemSangue;
 
+    /// <summary>
+    /// (2026-10-18) ESTE CORPO ACABOU DE NASCER: o filho Humano, Saiyajin ou meio-Saiyajin de dois jogadores anda como BEBE na
+    /// primeira hora de jogo (`Races.Filhos.NasceBebe`). O dono: *"na forma de bebe eles so vao ser o sprite sem overlay"* -- o corpo
+    /// vira a folha do bebe (`VisualCatalog.CorpoSprite`) e o boneco nao veste nada por cima (`CharacterVisual.Escondida`).
+    ///
+    /// Fora do disco pelo motivo dos irmaos de cima: quem conta o tempo e o SERVIDOR (`ServerPlayer.BebeRestanteS`, que vai no save
+    /// do personagem), e o fato chega no segundo byte de marcas do `S2C.PeerLook`.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool Bebe;
+
+    /// <summary>
+    /// (2026-10-18) ESTE CORPO ESTA POSSUIDO PELO NEO TUFFLE: o cabelo fica branco-acinzentado (<see cref="CinzaDoTuffle"/>), de toda
+    /// raca -- o Saiyajin tambem, que nao aceita a cor escolhida na criacao. Irmao do <see cref="Bebe"/>: o bit 1 do segundo byte de marcas
+    /// do `S2C.PeerLook`, e o servidor e quem sabe (`GameServer.NeoTuffle.cs`).
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool CabeloDoTuffle;
+
+    /// <summary>O branco-acinzentado do cabelo possuido -- SOMADO ao molde quase preto do cabelo, como toda cor de cabelo.</summary>
+    public static readonly Rgb CinzaDoTuffle = new(196, 196, 204);
+
     public Appearance Copiar() => new()
     {
         Corpo = Corpo, Tom = Tom, CorPele = CorPele,
@@ -241,6 +263,8 @@ public sealed class Appearance
         CapaceteDoRelogio = CapaceteDoRelogio,
         Gigante = Gigante,
         SemSangue = SemSangue,
+        Bebe = Bebe,
+        CabeloDoTuffle = CabeloDoTuffle,
     };
 }
 

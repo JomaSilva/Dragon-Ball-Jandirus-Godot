@@ -33,6 +33,10 @@ namespace Jandirus.Server;
 ///      `mundo.json`; o filho nasce do lado do OVO (com quem o pos longe) e o ovo some; um soco quebra o ovo e o bebe se perde. Com o
 ///      CONTRA-EXEMPLO `Filhos.OvoSemCorpoDeTeste` (o ovo de antes, guardado como a gravidez).
 ///   H. O DISCO: o bebe a caminho volta igual do `bebes.json`.
+///   I. O BEBE (2026-10-18; o dono: *"Saiyajins, meio saiyajins, e humanos filhos de players tenham sempre esse sprite por 1 hora no
+///      jogo"*): quem nasce bebe e quem nao, a folha do menino e a da menina, a marca no pacote de aparencia, o relogio que so anda com
+///      ele no mundo (e o disco, e o aviso do login), e o crescer. Com os CONTRA-EXEMPLOS `FilhoNasceGrandeDeTeste`,
+///      `BebeNaoCresceDeTeste` e `BebeSemMarcaNoPacoteDeTeste`.
 /// </summary>
 public sealed partial class GameServer
 {
@@ -44,6 +48,7 @@ public sealed partial class GameServer
 		"bancada_filhos_goku", "bancada_filhos_chichi", "bancada_filhos_bulma", "bancada_filhos_gohan", "bancada_filhos_atrasado",
 		"bancada_filhos_vegeta", "bancada_filhos_gine", "bancada_filhos_tarble", "bancada_filhos_cru",
 		"bancada_filhos_piccolo", "bancada_filhos_dende", "bancada_filhos_videl", "bancada_filhos_lapis",
+		"bancada_filhos_pan",
 	];
 
 	/// <summary>
@@ -548,6 +553,102 @@ public sealed partial class GameServer
 				antes != null && lido != null && lido.Id == antes.Id && lido.Pai == antes.Pai && lido.Raca == antes.Raca
 				&& lido.Linhagens.SequenceEqual(antes.Linhagens) && lido.BpDoPai == antes.BpDoPai && lido.BpDaMae == antes.BpDaMae
 				&& _bebes.Proximo == proximoAntes, lido != null ? $"#{lido.Id} {lido.Pai} e {lido.Mae}" : "nada voltou");
+
+			// ============================================================ I) O BEBE (2026-10-18)
+			GD.Print("[filhos] -- I) o bebe: o filho de sangue Humano ou Saiyajin anda como bebe na primeira hora de jogo --");
+			// O PACOTE DE APARENCIA LIDO COMO O CLIENTE O LE (`GameClient`, no `case S2C.PeerLook`) ate o segundo byte de marcas -- o bit 0
+			// e o bebe. `Sobra` sao os bytes que ficaram sem leitor.
+			(bool Bebe, int Sobra) MarcaDoBebe(ServerPlayer p)
+			{
+				var fio = new LiteNetLib.Utils.NetDataReader(PacoteDeAparencia(p).CopyData());
+				fio.GetByte();
+				fio.GetInt(); fio.GetString(24); fio.GetString(24); fio.GetString(8);
+				fio.GetAppearance();
+				fio.GetByte(); fio.GetByte(); fio.GetString(120);
+				return ((fio.GetByte() & 1) != 0, fio.AvailableBytes);
+			}
+
+			AfirmarFl("QUEM NASCE BEBE (o dono: *\"Saiyajins, meio saiyajins, e humanos filhos de players\"*): o Humano, o Saiyajin e o meio-Saiyajin; o Namekuseijin e o Majin nao",
+				Filhos.NasceBebe("Human") && Filhos.NasceBebe("Saiyan") && Filhos.NasceBebe(Filhos.MeioSaiyajin)
+				&& !Filhos.NasceBebe("Namekian") && !Filhos.NasceBebe("Majin"));
+			AfirmarFl("O PARTO NASCE BEBE: o Gohan (meio-Saiyajin) e o Tarble (Saiyajin) estao no mundo com a hora cheia (3.600 s de jogo), e o pacote de aparencia leva a marca sem sobrar byte",
+				gohan.BebeRestanteS == Filhos.SegundosDeBebe && tarble?.BebeRestanteS == Filhos.SegundosDeBebe
+				&& MarcaDoBebe(gohan) is { Bebe: true, Sobra: 0 } && tarble != null && MarcaDoBebe(tarble).Bebe,
+				$"Gohan {gohan.BebeRestanteS:0} s, Tarble {tarble?.BebeRestanteS:0} s");
+			AfirmarFl("...e QUEM NAO NASCE BEBE: o Dende (Namekuseijin, do ovo) e o Goku (criado na tela, sem pais) nao tem hora nenhuma, e o pacote deles vai sem a marca",
+				dende is { BebeRestanteS: 0 } && goku.BebeRestanteS == 0 && !MarcaDoBebe(dende).Bebe && MarcaDoBebe(goku) is { Bebe: false, Sobra: 0 },
+				$"Dende {dende?.BebeRestanteS:0} s, Goku {goku.BebeRestanteS:0} s");
+
+			var aparenciaDeBebe = new Jandirus.Core.Appearance.Appearance { Bebe = true, Cabelo = "Goku" };
+			string? folhaDoMenino = _visual?.CorpoSprite(aparenciaDeBebe, "Saiyan", "Male");
+			string? folhaDaMenina = _visual?.CorpoSprite(aparenciaDeBebe, "Human", "Female");
+			string? folhaCrescida = _visual?.CorpoSprite(new Jandirus.Core.Appearance.Appearance { Cabelo = "Goku" }, "Saiyan", "Male");
+			AfirmarFl("A FOLHA DO BEBE (o dono: *\"Baby boy se o personagem for homem e baby girls se for mulher\"*): o menino veste a `Baby Boy`, a menina a `Baby Girl` -- as duas existem no disco --, e sem a marca o mesmo corpo volta a folha da criacao",
+				folhaDoMenino == Jandirus.Core.Appearance.VisualCatalog.CorpoDeBebeM && folhaDaMenina == Jandirus.Core.Appearance.VisualCatalog.CorpoDeBebeF
+				&& ResourceLoader.Exists(Jandirus.Core.Appearance.VisualCatalog.CorpoDeBebeM) && ResourceLoader.Exists(Jandirus.Core.Appearance.VisualCatalog.CorpoDeBebeF)
+				&& folhaCrescida is { Length: > 0 } && folhaCrescida != folhaDoMenino,
+				$"{folhaDoMenino} | {folhaDaMenina} | {folhaCrescida}");
+
+			bool semMarca;
+			BebeSemMarcaNoPacoteDeTeste = true;
+			try { semMarca = !MarcaDoBebe(gohan).Bebe; }
+			finally { BebeSemMarcaNoPacoteDeTeste = false; }
+			AfirmarFl("CONTRA-EXEMPLO (defeito injetado: o pacote sem a marca do bebe): o Gohan vai pro mundo sem ela -- a regua do pacote REPROVA", semMarca);
+
+			// ---- o relogio anda com ele no mundo ----
+			double antesDoTique = gohan.BebeRestanteS;
+			TickDosBebes(10);
+			double depoisDoTique = gohan.BebeRestanteS;
+			AfirmarFl("O RELOGIO ANDA COM ELE NO MUNDO: dez segundos de tique descontam dez segundos de bebe",
+				depoisDoTique == antesDoTique - 10, $"{antesDoTique:0} -> {depoisDoTique:0}");
+			BebeNaoCresceDeTeste = true;
+			try { TickDosBebes(10); }
+			finally { BebeNaoCresceDeTeste = false; }
+			AfirmarFl("CONTRA-EXEMPLO (defeito injetado: o relogio parado): o mesmo tique nao desconta nada -- a regua do relogio REPROVA",
+				gohan.BebeRestanteS == depoisDoTique, $"{gohan.BebeRestanteS:0}");
+
+			// ---- deslogado nao cresce: o Tarble sai, o tempo passa sem ele, e ele volta com o mesmo tanto -- pelo disco ----
+			if (tarble != null)
+			{
+				double faltavaAoTarble = tarble.BebeRestanteS;
+				bool saiu = mesa.SaiDoJogo(c[7], ContasDaBancadaDosFilhos[7]);
+				double noDisco = mesa.NoDisco(ContasDaBancadaDosFilhos[7])?.BebeRestanteS ?? -1;
+				TickDosBebes(600);   // dez minutos com ele fora
+				ServerPlayer? deVolta = null;
+				List<string> naVolta = Ouvir(() => deVolta = mesa.EntraNoMundo(c[7], ContasDaBancadaDosFilhos[7], "Tarble"));
+				AfirmarFl("DESLOGADO NAO CRESCE: o Tarble sai, o disco guarda o que faltava, dez minutos de tique passam com ele fora, e ele volta com o mesmo tanto -- ainda bebe no pacote",
+					saiu && noDisco == faltavaAoTarble && deVolta != null && deVolta.BebeRestanteS == faltavaAoTarble && MarcaDoBebe(deVolta).Bebe,
+					$"saiu {saiu}, faltava {faltavaAoTarble:0}, disco {noDisco:0}, de volta {deVolta?.BebeRestanteS:0}");
+				AfirmarFl("...e NO LOGIN ele le quanto falta, em minutos de jogo",
+					naVolta.Any(x => x.Contains("Você é um bebê") && x.Contains($"faltam {(int)Math.Ceiling(faltavaAoTarble / 60)} minutos")), Ultimos(naVolta));
+			}
+
+			// ---- a hora acaba: ele cresce, a zona volta a ve-lo como ele se fez na criacao, e ele le que cresceu ----
+			gohan.BebeRestanteS = 1.5;   // o fim da hora, sem esperar a hora
+			TickDosBebes(1);
+			bool aindaBebe = EhBebe(gohan);
+			List<string> cresceu = Ouvir(() => TickDosBebes(1));
+			AfirmarFl("A HORA ACABA E ELE CRESCE: com meio segundo sobrando ainda e bebe; no tique seguinte a hora zera, o pacote vai sem a marca (a roupa e o cabelo da ficha voltam no mesmo pacote) e ele le que cresceu",
+				aindaBebe && gohan.BebeRestanteS == 0 && MarcaDoBebe(gohan) is { Bebe: false, Sobra: 0 } && cresceu.Any(x => x.Contains("Você cresceu")),
+				Ultimos(cresceu));
+
+			// ---- CONTRA-EXEMPLO do parto: a Pan nasce com o defeito ----
+			ServerPlayer? panGrande = null;
+			if (pan != null && mesa.Entra(c[13]) && mesa.Loga(c[13], ContasDaBancadaDosFilhos[13]))
+			{
+				CharacterDraft daPan = Ficha("Pan", "Human", "Female");
+				daPan.FilhoDe = pan.Id;
+				FilhoNasceGrandeDeTeste = true;
+				try
+				{
+					c[13].CriarPersonagem(0, daPan);
+					mesa.Bombeia(() => c[13].NoMundo || c[13].Recusa != null, 8000);
+				}
+				finally { FilhoNasceGrandeDeTeste = false; }
+				panGrande = mesa.CorpoDe(ContasDaBancadaDosFilhos[13]);
+			}
+			AfirmarFl("CONTRA-EXEMPLO (defeito injetado: o filho nasce grande, como antes do pedido): a Pan (meio-Saiyajin) nasce sem hora de bebe -- a regua do parto REPROVA",
+				panGrande is { BebeRestanteS: 0 } && panGrande.Race == Filhos.MeioSaiyajin, $"{c[13].Recusa} | {panGrande?.Race} {panGrande?.BebeRestanteS:0} s");
 		}
 		catch (Exception e)
 		{
@@ -558,6 +659,7 @@ public sealed partial class GameServer
 			AmorDeUmLadoSoDeTeste = false;
 			FilhoSemHerancaDeTeste = false;
 			Filhos.FilhosComoAntesDeTeste = false;
+			FilhoNasceGrandeDeTeste = BebeNaoCresceDeTeste = BebeSemMarcaNoPacoteDeTeste = false;
 			if (ModoDeRacas != modoAntes) EscolherModoDeRacas(modoAntes, "bancada dos filhos (volta)");
 			_bebes = new BebesNoDisco();
 			SalvarBebes();

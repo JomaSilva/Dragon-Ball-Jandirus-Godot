@@ -29,8 +29,8 @@ public sealed class BuffAtivo
 ///
 /// POR QUE ISTO EXISTE EM VEZ DE CADA TECNICA FAZER O SEU: metade das tecnicas ativas do jogo tem
 /// exatamente a mesma forma -- liga, soma alguma coisa num `T*`, multiplica o dreno de Ki, e
-/// desliga desfazendo. Sao sete so no primeiro lote (Brutal Clarity, Extreme Burst, Fighting
-/// Power, Ultradense Body, Ki Blade, Ki Sword, Super Majin). Sem um lugar comum, seriam sete
+/// desliga desfazendo. Sao seis so no primeiro lote (Brutal Clarity, Extreme Burst, Fighting
+/// Power, Ultradense Body, Ki Blade, Ki Sword). Sem um lugar comum, seriam seis
 /// copias da mesma logica de desfazer -- e basta UMA delas desfazer errado pra virar poder
 /// permanente de graca.
 ///

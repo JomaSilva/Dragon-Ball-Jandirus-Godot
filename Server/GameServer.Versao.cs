@@ -262,9 +262,22 @@ public partial class GameServer
 		// `--filhosteste`: (adendo 42) os filhos -- o amor correspondido, o pedido e o "sim", a fila dos bebes e o parto pela criacao. Os
 		// pais e o filho entram pela porta. Ver `GameServer.FilhosTeste.cs`.
 		if (Array.IndexOf(args, "--filhosteste") >= 0) RodarBancadaDosFilhos(porta);
+		// `--tuffleteste`: (2026-10-18) o Neo Tuffle -- o laboratorio do Tsufurujin, a conversao, a posse de um jogador nocauteado e a expulsao
+		// quando o corpo cai. Os jogadores entram pela porta. Ver `GameServer.TuffleTeste.cs`.
+		if (Array.IndexOf(args, "--tuffleteste") >= 0) RodarBancadaDoTuffle(porta);
 		// `--calendarioteste`: (2026-10-17) o calendario e a idade que anda com ele -- a data, o dia e o mes que viram, os meses de quem esta
 		// no jogo e de quem volta, a velhice, a Sala do Tempo por cima. O jogador entra pela porta. Ver `GameServer.CalendarioTeste.cs`.
 		if (Array.IndexOf(args, "--calendarioteste") >= 0) RodarBancadaDoCalendario(porta);
+		// `--sonoteste`: (2026-10-18) o Sleep do Majin -- o catalogo (a skill no lugar da `Regenerate`, so na arvore dele), a troca no login, os 5 s
+		// inteiros e cada coisa que acorda, com a recarga de 1 min. O jogador entra pela porta. Ver `GameServer.SonoTeste.cs`.
+		if (Array.IndexOf(args, "--sonoteste") >= 0) RodarBancadaDoSono(porta);
+		// `--chefesteste`: (2026-10-18) os chefes e os dois nerfs -- o cuspe acido e o Spirit Gun, o Death Beam do Freeza numa luta, a forma do
+		// chefe no disco e o reinicio, o Cell que volta do alem, o vilao do Inferno, o marco batido e a auditoria do boot. O jogador entra pela
+		// porta. Ver `GameServer.ChefesTeste.cs`.
+		if (Array.IndexOf(args, "--chefesteste") >= 0) RodarBancadaDosChefes(porta);
+		// `--pesosteste`: (2026-10-18) os pesos com estado no id (dois pesos, dois itens; o que cai e o que se pega e o mesmo peso; a migracao do
+		// save de antes) e a maestria de gravidade que o peso travava. O jogador entra pela porta. Ver `GameServer.PesosTeste.cs`.
+		if (Array.IndexOf(args, "--pesosteste") >= 0) RodarBancadaDosPesos(porta);
 	}
 
 	/// <summary>

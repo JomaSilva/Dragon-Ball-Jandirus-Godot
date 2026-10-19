@@ -342,6 +342,22 @@ public static class DespertarDivino
 	}
 
 	/// <summary>
+	/// (2026-10-18) A CLASSE QUE USA O KI DIVINO SEMPRE: o Kaioshin nascido do fruto dourado. O dono: *"estao em constante uso de ki divino
+	/// (deuses da destruiçao, anjos, supremo kaioshins npcs e golden apple)"*. Os outros tres sao cargo e papel de NPC, e quem sabe deles e o
+	/// servidor (`GameServer.UsaKiDivinoSempre`).
+	/// </summary>
+	public const string ClasseDeKiDivino = "Golden Apple";
+
+	/// <summary>
+	/// (2026-10-18) O KI DIVINO EM USO AGORA -- o que o scouter nao detecta e o Sense so sente com ki divino (`Core/Stats/Scouter.cs`): o corpo
+	/// numa forma que usa o ki divino (<see cref="UsaOKiDivino"/>), da classe <see cref="ClasseDeKiDivino"/>, ou deus de oficio
+	/// (<paramref name="usaSempre"/>). Quem so DESPERTOU e esta na forma base nao esta usando: ele e lido e sentido como qualquer um -- e e
+	/// ele que sente os outros (`GameServer.SenteKiDivino`, pelo <see cref="CarregaKiDivino"/>).
+	/// </summary>
+	public static bool KiDivinoEmUso(FormaDef? forma, string classe, string linhagem, bool usaSempre) =>
+		usaSempre || string.Equals(classe, ClasseDeKiDivino, StringComparison.OrdinalIgnoreCase) || UsaOKiDivino(forma, classe, linhagem);
+
+	/// <summary>
 	/// SOBE A MAESTRIA DIVINA por <paramref name="dt"/> segundos de uso. Devolve o maior dos
 	/// <see cref="MarcosDeMaestria"/> que este passo atravessou, ou 0.
 	///

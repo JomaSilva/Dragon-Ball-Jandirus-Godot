@@ -235,6 +235,37 @@ public sealed partial class GameServer
 			IReadOnlyList<int> npcs = NpcsDoTorneioDeTeste;
 			Checa("as 31 vagas restantes viram NPCs nascidos na hora", npcs.Count == 31, $"{npcs.Count}");
 
+			// (2026-10-18) OS FROST DEMONS DO TORNEIO NAO SAO MAIS UM SO -- o dono: *"e no torneio os frost demons tao sempre usando o mesmo sprite,
+			// coloca mais variaçao, tem varios sprites de frost"*. O lutador sai do molde (`lutador_de_torneio`: Humano, Saiyajin, Namekuseijin, Icer), e
+			// o Frost de NPC nascia com a lista PADRAO do DM -- todo um "Changeling Frieza 2". A regua pela porta de producao (`AparenciaDeNpc`, a que o
+			// `NascerNpc` chama), em doze sementes de Icer; e os Frost que ESTE torneio nasceu, de verdade.
+			{
+				Jandirus.Core.Npc.MoldeDeNpc molde = _moldes!.Get(cfg.MoldeDoNpc)!;
+				string[] Bases() => [.. Enumerable.Range(0, 12).Select(i => AparenciaDeNpc(molde, "Icer", "Male", (ulong)(1000 + 37 * i)).FormasDeFrost[0])];
+				string[] bases = Bases();
+				Checa("OS FROST DEMONS DE NPC VARIAM (*\"tem varios sprites de frost\"*): doze sementes de Icer pela `AparenciaDeNpc` saem com corpos de "
+					  + "repouso diferentes, todos do catalogo e nenhum o dourado",
+					  bases.Distinct().Count() >= 6 && bases.All(c => Array.IndexOf(Jandirus.Core.Races.FormasDeFrost.Catalogo, c) >= 0 && c != "GoldIcer"),
+					  $"{bases.Distinct().Count()} diferentes: {string.Join(", ", bases.Distinct().Take(6))}...");
+				FrostNpcSemVariedadeDeTeste = true;
+				string[] comODefeito;
+				try { comODefeito = Bases(); }
+				finally { FrostNpcSemVariedadeDeTeste = false; }
+				Checa("(defeito injetado: a lista padrao do DM, o jogo de antes) as doze saem com o MESMO corpo -- a regua de cima REPROVA",
+					  comODefeito.Distinct().Count() == 1, string.Join(", ", comODefeito.Distinct()));
+				Checa("...e o CHEFE de saga (o Freeza de Vegeta) continua com a escada padrao: o roteiro crava o corpo de cada estagio dele",
+					  _moldes.Get("freeza_vegeta") is { } freeza && AparenciaDeNpc(freeza, "Icer", "Male", 7).FormasDeFrost
+						  .SequenceEqual(Jandirus.Core.Races.FormasDeFrost.Sanear(Jandirus.Core.Races.FormasDeFrost.ClasseNormal, null)));
+				string[] doTorneio = [.. npcs.Select(i => _players.GetValueOrDefault(i))
+					.Where(n => n != null && Jandirus.Core.Races.FormasDeFrost.EhFrost(n.Race) && n.Visual.FormasDeFrost.Count > 0)
+					.Select(n => n!.Visual.FormasDeFrost[0])];
+				GD.Print($"[torneio]      os Frost Demons deste torneio: {doTorneio.Length}, com {doTorneio.Distinct().Count()} corpo(s) de repouso: "
+					   + string.Join(", ", doTorneio));
+				// TRES OU MAIS, e nao dois: com 53 corpos no sorteio, dois iguais por acaso e 2%; tres iguais, 0,04%.
+				if (doTorneio.Length >= 3)
+					Checa("...e os Frost Demons DESTE torneio nao sao todos iguais", doTorneio.Distinct().Count() > 1, string.Join(", ", doTorneio));
+			}
+
 			// =====================================================================
 			// 2b) O SNAPSHOT DA ZONA CHEIA (dono, 2026-09-07: "os npcs estao realmente invisiveis")
 			// =====================================================================

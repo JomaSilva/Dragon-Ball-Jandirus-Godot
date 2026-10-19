@@ -814,6 +814,9 @@ public sealed partial class GameServer
 		Avisar(alvo, $"{saiu} esferas de {pl.Name} se acendem em volta dele -- e todas olham pra voce.");
 	}
 
+	/// <summary>DEFEITO INJETADO (`--chefesteste`): a bola do Spirit Gun volta a carregar o BP multiplicado -- o jogo de antes. Falso em jogo, sempre.</summary>
+	internal static bool SpiritGunComoNoDmDeTeste;
+
 	/// <summary>
 	/// SPIRIT GUN (`Core Trees/Spirit.dm:344`).
 	///
@@ -884,7 +887,13 @@ public sealed partial class GameServer
 			BaseDano = 1 * pl.Ficha.SpiritBallDamage,
 			Velocidade = 1,
 			AlcanceTiles = AlcanceDeBolaG5,
-			MultDeOnda = pl.Ficha.SpiritBallDamage,   // `passbp = expressedBP * SpiritBallDamage`
+			// (2026-10-18) O NERF DO DONO -- DIVERGENCIA DECLARADA: *"spirit gun tb ta absurdo"*. No DM o `SpiritBallDamage` entra DUAS vezes
+			// (`Spirit.dm:354` e `:364`): no dano-base E no BP que a bola carrega (`passbp = expressedBP * SpiritBallDamage`). O dano de ki e linear
+			// na razao dos poderes (`BpModulus`), entao o tiro crescia pelo QUADRADO do multiplicador -- x4 no nivel 1, x6,25 no 2, x25 com o nivel
+			// 1 do Spirit Fist (que no DM tambem dobra o `SpiritBallDamage`, `:419`) --, e a bola de quem tinha o quintuplo do proprio poder passava
+			// pela regra das paredes (`KiContraCorpo`): ele feria quem tinha vinte vezes o poder dele. Agora a bola carrega o BP de quem atira, como
+			// todo tiro, e o multiplicador fica so no dano-base: x2, x2,5, x5.
+			MultDeOnda = SpiritGunComoNoDmDeTeste ? pl.Ficha.SpiritBallDamage : 1,
 			Nome = "Spirit Gun",
 		}, verbo: "Spirit_Gun");
 

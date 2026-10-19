@@ -133,6 +133,15 @@ public enum TipoDeNpc
 	/// povoamento. Nao e <see cref="Inimigo"/> de proposito: aquele continua desligado, e este e outra regra.
 	/// </summary>
 	Animal,
+
+	/// <summary>
+	/// (2026-10-18) O SOLDADO DE SAGA -- a TROPA que um chefe traz (`TropaDaSaga`): os soldados do Freeza em Namek. O pedido do dono, em
+	/// resumo: com o Freeza em Namek, muitos soldados NPC de raca alienigena pelo planeta, atacando os Namekuseijins e pegando as Esferas do
+	/// Dragao do chao -- que so voltam derrotando quem as pegou --, de armadura Saiyajin / do exercito do Freeza. Nasce pelo EVENTO, enquanto o
+	/// chefe dele esta no planeta, e vai embora com ele -- nunca pelo povoamento. Nao e <see cref="Inimigo"/> de proposito (aquele e o inimigo de AMBIENTE, que o recorte do
+	/// dono mantem desligado), nem <see cref="Vilao"/> (sem prazo nem karma): quem o dirige e `GameServer.GuiarOSoldado`.
+	/// </summary>
+	Soldado,
 }
 
 /// <summary>
@@ -600,6 +609,7 @@ public sealed class CatalogoDeMoldes
 				case "lutador": m.Tipo = TipoDeNpc.Lutador; m.TipoDeclarado = true; break;
 				case "vilao": m.Tipo = TipoDeNpc.Vilao; m.TipoDeclarado = true; break;
 				case "animal": m.Tipo = TipoDeNpc.Animal; m.TipoDeclarado = true; break;
+				case "soldado": m.Tipo = TipoDeNpc.Soldado; m.TipoDeclarado = true; break;
 			}
 			m.Animal = FichaDeAnimal.Ler(e);
 

@@ -1104,6 +1104,8 @@ public partial class Boot : Node2D
 		AddChild(new SaidaDaMente { Name = "SaidaDaMente" });
 		// A FAIXA DA MINERACAO: logo acima do chat, so enquanto o corpo minera (o verb "Minerar"). Ver `PainelDeMineracao`.
 		AddChild(new PainelDeMineracao { Name = "Mineracao" });
+		// (2026-10-18) A BARRA DO COMBUSTIVEL: o mesmo canto, ao leme de uma nave com tanque (ou observando uma). Ver `PainelDeCombustivel`.
+		AddChild(new PainelDeCombustivel { Name = "Combustivel" });
 		// A GRADE DA BANCADA e o fantasma de assentar construcao.
 		AddChild(new TelaDeConstrucao { Name = "Construcao" });
 		// A TECLA B: o modo de construir base (paredes, pisos e portas). Ver `ModoDeConstruir`.
@@ -1634,6 +1636,44 @@ public partial class Boot : Node2D
 		// ativa e a passiva escolhidas, a ESTOCADA e o NUCLEO, com foto de cada passo. Ver RoboDoDnaDoBio.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagdnabio") >= 0)
 			AddChild(new RoboDoDnaDoBio { Name = "RoboDoDnaDoBio" });
+		// --diagpedacos (2026-10-18): o MAJIN DESFEITO, os 30 s inteiros na tela -- os pedacos presos ao chao e o golpe que nao os leva, o arrasto
+		// ate o encontro, a `regenerate` e o laco dos quatro ultimos quadros, com foto de cada passo e os dois defeitos injetados. Ver RoboDosPedacos.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagpedacos") >= 0)
+			AddChild(new RoboDosPedacos { Name = "RoboDosPedacos" });
+		// --diagsono (2026-10-18): o SLEEP DO MAJIN na tela -- a loja e a ficha, o botao, o corpo deitado com o "z", os 5 s de relogio de verdade,
+		// o sono interrompido e o contra-exemplo da tela que ignora o sono, com foto de cada passo. Ver RoboDoSono.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagsono") >= 0)
+			AddChild(new RoboDoSono { Name = "RoboDoSono" });
+		// --diagcorposderaca (2026-10-18): os CORPOS DE RACA (uma fila de figurantes, cada um com o seu; a criacao do Saibaman) e os FROST DO
+		// TORNEIO (oito vestidos pela porta dos NPCs), com os dois contra-exemplos e foto de cada passo. Ver RoboDosCorposDeRaca.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcorposderaca") >= 0)
+			AddChild(new RoboDosCorposDeRaca { Name = "RoboDosCorposDeRaca" });
+		// --diagpesosfreeza (2026-10-18): os PESOS COM ESTADO (dois pesos, dois itens; a aba Equip; o largado com a cara dele) e o DEATH BEAM DO
+		// FREEZA numa luta, com os dois contra-exemplos e foto de cada passo. Ver RoboDosPesosEDoFreeza.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagpesosfreeza") >= 0)
+			AddChild(new RoboDosPesosEDoFreeza { Name = "RoboDosPesosEDoFreeza" });
+		// --diagcapital (2026-10-18): a CAPITAL SHIP -- as maquinas dentro, a explosao que as solta, o leme parado, o rumo sozinho com o aviso de
+		// chegada, Namek pela plataforma e o pod meditando; foto de cada passo. Ver RoboDaCapitalShip.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcapital") >= 0)
+			AddChild(new RoboDaCapitalShip { Name = "RoboDaCapitalShip" });
+		// --diagesferae (2026-10-18): a ESFERA DO DRAGAO pela tecla E -- a dica de pegar, o contra-exemplo e o E de verdade. Ver RoboDaEsferaNaTeclaE.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagesferae") >= 0)
+			AddChild(new RoboDaEsferaNaTeclaE { Name = "RoboDaEsferaNaTeclaE" });
+		// --diagsentidos (2026-10-18): o SCOUTER com teto e sem ki divino, e os CINCO NIVEIS do Sense -- fotos e contra-exemplos. Ver RoboDosSentidos.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagsentidos") >= 0)
+			AddChild(new RoboDosSentidos { Name = "RoboDosSentidos" });
+		// --diagtropa (2026-10-18): o "CHEGAR AGORA" do admin e a TROPA DO FREEZA em Namek -- a armadura, o povo atacado, a esfera pega e a que
+		// cai do derrotado, com o contra-exemplo do hostil comum. Ver RoboDaTropa.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtropa") >= 0)
+			AddChild(new RoboDaTropa { Name = "RoboDaTropa" });
+		// --diagbebe (2026-10-18): o FILHO QUE NASCE BEBE -- a `Baby Boy` e a `Baby Girl` sem nada por cima, o contra-exemplo do boneco que
+		// veste tudo, e o crescer quando a hora acaba. Ver RoboDoBebe.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagbebe") >= 0)
+			AddChild(new RoboDoBebe { Name = "RoboDoBebe" });
+		// --diagtuffle (2026-10-18): o NEO TUFFLE -- o laboratorio no menu do mainframe, a posse vista pelo dono do corpo (o cabelo
+		// branco-acinzentado, a camera que vai junto) e a expulsao quando o corpo cai. Ver RoboDoTuffle.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtuffle") >= 0)
+			AddChild(new RoboDoTuffle { Name = "RoboDoTuffle" });
 
 		// --diagsombra: a SOMBRA VISTA NA TELA -- o portao com muro (a foto do dono de 2026-09-07) e a
 		// camera do espectador do torneio, com foto e medida (furos, dobra do leque, lutadores a vista).

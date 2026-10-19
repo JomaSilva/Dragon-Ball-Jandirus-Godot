@@ -998,7 +998,9 @@ public sealed partial class GameServer
 			// zona carregando as sete (o corpo entra numa nave, na Sala do Tempo, no Outro Mundo).
 			// ==============================================================================
 			ServerPlayer? quem = _players.GetValueOrDefault(e.Portador);
-			bool podeCarregar = quem is { Peer: not null } && !quem.Ficha.dead && !quem.Ficha.KO;
+			// (2026-10-18) ...e o SOLDADO DE SAGA, que nao e jogador, segura a que pegou (`CarregaComoSoldado`, `GameServer.TropaDaSaga.cs`) -- com
+			// a mesma regra de pe: nocauteado ou morto, ela cai, e e so assim que ela volta pros jogadores.
+			bool podeCarregar = quem != null && (quem.Peer != null || CarregaComoSoldado(quem)) && !quem.Ficha.dead && !quem.Ficha.KO;
 
 			if (podeCarregar && quem!.Zone.Hash == e.Zona.Hash) continue;
 
@@ -1010,6 +1012,8 @@ public sealed partial class GameServer
 			// perguntar, e inventar a origem da zona a poria dentro de uma parede.
 			e.Portador = 0;
 			if (quem != null) { e.X = quem.Pos.X; e.Y = quem.Pos.Y; e.PorZona(quem.Zone); }
+			// O SOLDADO DERROTADO SOLTA A ESFERA, e o planeta ouve -- e a recompensa de quem o derrubou (`GameServer.TropaDaSaga.cs`).
+			if (quem != null && EhSoldado(quem)) AvisarQueOSoldadoSoltou(quem, e);
 			mexeu = true;
 			zonasPraAvisar.Add(e.Zona.Hash);
 		}
@@ -1112,6 +1116,37 @@ public sealed partial class GameServer
 		MandarEsferas(pl.Zone);
 		Avisar(pl, $"você põe {minhas.Count} esfera(s) no chão.");
 	}
+
+	/// <summary>
+	/// (2026-10-18) O CORPO QUE SAI DO MUNDO SOLTA O QUE CARREGAVA, ONDE ESTAVA. Chamado pelo `RemoverNpc` -- o soldado de saga e o unico corpo
+	/// sem dono que carrega esfera (`GameServer.TropaDaSaga.cs`), e ele sai do mundo morto ou com a tropa indo embora. Sem isto a esfera ficaria
+	/// no ponto em que ele a PEGOU: o funil das tres quedas (`TickDasEsferas`) poe a esfera onde o corpo esta, e um corpo que ja saiu nao esta
+	/// em lugar nenhum.
+	/// </summary>
+	private void SoltarAsEsferasDoCorpo(ServerPlayer corpo)
+	{
+		if (EsferaSomeComOSoldadoDeTeste || !_esferas.Exists(e => e.Portador == corpo.Id)) return;
+		foreach (Esfera e in _esferas.Where(e => e.Portador == corpo.Id))
+		{
+			e.Portador = 0;
+			e.X = corpo.Pos.X;
+			e.Y = corpo.Pos.Y;
+			e.PorZona(corpo.Zone);
+			if (EhSoldado(corpo)) AvisarQueOSoldadoSoltou(corpo, e);
+		}
+		SalvarEsferas();
+		MandarEsferas(corpo.Zone);
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--chefesteste`, familia T): o soldado que sai do mundo leva a esfera junto pro lugar em que a pegou. Lido pelo
+	/// <see cref="SoltarAsEsferasDoCorpo"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool EsferaSomeComOSoldadoDeTeste;
+
+	/// <summary>A esfera caiu do soldado derrotado: o planeta ouve, e quem estiver perto vai buscar.</summary>
+	private void AvisarQueOSoldadoSoltou(ServerPlayer soldado, Esfera e) =>
+		AnunciarNoPlaneta(soldado.Zone, $"A {Jandirus.Core.Magic.Esferas.NomeDaEsfera(e.Numero)} cai de {soldado.Name}! Ela está no chão, onde ele estava.");
 
 	// =====================================================================
 	// A INVOCACAO -- `D_Wish` (:183-243)

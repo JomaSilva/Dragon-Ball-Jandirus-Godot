@@ -1532,5 +1532,8 @@ public static class RegrasDeNivel
 		Tempo("/datum/skill/Wrestling/Superstar", 100, (2, "Clench", "Clench liberado."));    // :53
 		Tempo("/datum/skill/Wrestling/Rasslin", 100, (2, "Power_Slam", "Power Slam liberado."));// :84
 		Tempo("/datum/skill/Wrestling/Main_Event", 100, (2, "Suplex", "Suplex liberado."));   // :115
+
+		// (2026-10-18) O SENSE EM CINCO NIVEIS -- regra do dono, e do port: no DM a skill tem um nivel so. Ver `SenseEmNiveis`.
+		Registrar(SenseEmNiveis.Regra());
 	}
 }

@@ -1277,7 +1277,9 @@ public partial class GameServer
 	{
 		serve ??= AlvoVivoETocavel;
 
-		if (CorpoNaMinhaZona(pl, pl.AlvoId) is { } mira && serve(mira) && AlcancaPelaAltura(pl, mira)
+		// (2026-10-18) o corpo escondido de quem o Neo Tuffle possui nao e alvo de tecnica nenhuma -- ver `GameServer.NeoTuffle.cs` (e o
+		// mesmo crivo do `QuemEstaNaFrente`).
+		if (CorpoNaMinhaZona(pl, pl.AlvoId) is { PossuidoPor: 0 } mira && serve(mira) && AlcancaPelaAltura(pl, mira)
 			&& Vec2.Distance(mira.Pos, pl.Pos) <= raioPx)
 			return mira;
 
@@ -1285,7 +1287,7 @@ public partial class GameServer
 		float melhorDist = float.MaxValue;
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
 		{
-			if (o == pl || !serve(o) || !AlcancaPelaAltura(pl, o)) continue;
+			if (o == pl || o.PossuidoPor != 0 || !serve(o) || !AlcancaPelaAltura(pl, o)) continue;
 			float d2 = (o.Pos - pl.Pos).LengthSquared;
 			if (d2 > raioPx * raioPx || d2 >= melhorDist) continue;
 			melhorDist = d2;

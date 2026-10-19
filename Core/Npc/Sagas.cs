@@ -197,6 +197,47 @@ public sealed class EloDaSaga
 	/// mesmos -- ver <see cref="Jandirus.Core.Npc.AtaqueDoUltimato"/>. Nulo = um nome que nao existe (acusado no boot).
 	/// </summary>
 	public AtaqueDoUltimato? AtaqueDoUltimato = Jandirus.Core.Npc.AtaqueDoUltimato.Supernova;
+
+	/// <summary>
+	/// (2026-10-18) A TROPA DESTE ELO (`"tropa"`) -- os soldados que o chefe espalha pelo planeta enquanto esta nele. Nulo = o elo nao traz
+	/// ninguem (todos menos o do Freeza em Namek, hoje). Ver <see cref="TropaDaSaga"/>.
+	/// </summary>
+	public TropaDaSaga? Tropa;
+}
+
+/// <summary>
+/// (2026-10-18) A TROPA QUE UM ELO TRAZ. O pedido do dono, em resumo: com o Freeza em Namek, muitos soldados NPC de raca alienigena pelo
+/// planeta, atacando os Namekuseijins e pegando as Esferas do Dragao do chao -- que so voltam derrotando quem as pegou --, de armadura
+/// Saiyajin / do exercito do Freeza.
+///
+/// DADO, E NAO CODIGO, como o resto da cadeia: o bloco `"tropa"` de um elo no `npcs.json`. Quem poe os soldados no mundo, os dirige e os
+/// tira e o `GameServer.TropaDaSaga.cs`. A armadura nao mora aqui: o molde e da raca `Alien`, e a tabela de roupa ja veste essa raca com a
+/// armadura de batalha do exercito (`RoupaDeNpc`, o `case "Alien"`).
+///
+/// DIVERGENCIA DECLARADA: o DM nao tem tropa -- la a saga de Namek e o Freeza sozinho (`spawn_freeza_namek`, BossEvents.dm).
+/// </summary>
+public sealed class TropaDaSaga
+{
+	/// <summary>O molde dos soldados. Tem que ser do tipo <see cref="TipoDeNpc.Soldado"/>.</summary>
+	public string Molde = "";
+
+	/// <summary>Quantos de pe ao mesmo tempo, no maximo, enquanto o chefe esta no planeta.</summary>
+	public int Quantos = 12;
+
+	/// <summary>Quantos desembarcam JUNTOS com o chefe; o resto chega um a um, a cada <see cref="SegundosEntre"/>.</summary>
+	public int ChegamJuntos = 6;
+
+	/// <summary>Segundos entre um soldado e o proximo depois do desembarque -- e a reposicao de quem caiu.</summary>
+	public double SegundosEntre = 20;
+
+	/// <summary>A RACA que eles cacam -- o povo do planeta ("Namekian"). Vazio = so as esferas e quem os ataca.</summary>
+	public string Caca = "";
+
+	/// <summary>O que o planeta ouve no desembarque. Vazio = calado.</summary>
+	public string AnuncioDaChegada = "";
+
+	/// <summary>O que o planeta ouve quando a tropa vai embora (o chefe caiu, a saga acabou). Vazio = calado.</summary>
+	public string AnuncioDaPartida = "";
 }
 
 /// <summary>O estado VIVO de um chefe dentro de um elo. Vai pro disco.</summary>
@@ -230,6 +271,13 @@ public sealed class EstadoDoChefe
 
 	/// <summary>Quando ele volta do alem, em segundos do relogio do mundo. Zero = nao esta voltando.</summary>
 	public double RessurgeEm;
+
+	/// <summary>
+	/// (2026-10-18) QUANTO FALTAVA PRA ELE VOLTAR DO ALEM quando o estado foi gravado, em segundos. O <see cref="RessurgeEm"/> e do relogio
+	/// do mundo, que NAO atravessa o reinicio (ele recomeca do zero a cada subida do servidor): sem isto o Cell que voltaria em 60 s, gravado
+	/// com o relogio em uma hora de jogo, so voltaria uma hora depois do boot. Escrito no `SalvarSagas`; lido no `RetomarSagas`.
+	/// </summary>
+	public double RessurgeFaltamS;
 
 	/// <summary>Id do corpo no `_players`. **NAO PERSISTE** -- corpo nao atravessa reinicio.</summary>
 	[System.Text.Json.Serialization.JsonIgnore]
@@ -274,6 +322,17 @@ public sealed class EstadoDoElo
 	/// bancada precisa poder afirmar "o gancho disparou" sem que nada no mundo tenha mudado.
 	/// </summary>
 	public bool Condenado;
+
+	/// <summary>
+	/// (2026-10-18) QUEM JA BATEU O MARCO DESTE ELO. Escrito na primeira vez que alguem passa do marco -- mesmo com a cadeia esperando a saga
+	/// anterior -- e pela auditoria do boot, que procura no DISCO quem ja tinha passado dele (o jogo de antes so olhava quem estava online).
+	/// Com ele o elo dispara NA VEZ DELE mesmo com essa pessoa fora do jogo. O dono: *"caso ... tenham cumprido o requisito dela ela
+	/// inicie"*. Vazio = ninguem bateu ainda.
+	/// </summary>
+	public string MarcoBatidoPor = "";
+
+	/// <summary>(2026-10-18) O BP de quem bateu o marco, no instante em que bateu -- so pro registro do console.</summary>
+	public double MarcoBatidoComBp;
 }
 
 /// <summary>Tudo o que a cadeia guarda entre reinicios. E o savefile "BossEvents" do original.</summary>
@@ -293,8 +352,29 @@ public sealed class EstadoDasSagas
 	/// </summary>
 	public long UltimoDiaVisto = -1;
 
+	/// <summary>
+	/// (2026-10-18) O VILAO QUE ESTAVA NO INFERNO quando o estado foi gravado -- nulo = nenhum. Ele volta no boot com o tempo que lhe faltava
+	/// (`GameServer.RetomarOVilaoDoInferno`). O dono: *"se o freeza boss spawnar mas fechar o server ele volta? se n ele deveria voltar na
+	/// forma q ele estava (isso pra todos os chefes n so o freeza)"*.
+	/// </summary>
+	public VilaoGuardado? VilaoDoInferno;
+
 	public EstadoDoElo? Do(string id) =>
 		Elos.Find(e => string.Equals(e.Id, id, StringComparison.OrdinalIgnoreCase));
+}
+
+/// <summary>
+/// (2026-10-18) O VILAO DO INFERNO GRAVADO: o que ele precisa pra voltar IGUAL depois de um reinicio -- o molde, o elo de onde veio, o
+/// degrau (a forma em que caiu), o BP pinado no nascimento (a media de AGORA, no boot, e outra -- quase sempre a de ninguem online), o premio
+/// na bolsa e o tempo que lhe faltava pra afundar.
+/// </summary>
+public sealed class VilaoGuardado
+{
+	public string Molde = "", Elo = "";
+	public int Degrau;
+	public double[] Bps = [];
+	public double Zeni;
+	public long RestanteMs;
 }
 
 /// <summary>
@@ -367,6 +447,19 @@ public static class Sagas
 					});
 				elo.Chefes = [.. cl];
 			}
+
+			// (2026-10-18) A TROPA -- ver `TropaDaSaga`. Ausente = o elo nao traz soldado nenhum.
+			if (e.TryGetProperty("tropa", out JsonElement tr) && tr.ValueKind == JsonValueKind.Object)
+				elo.Tropa = new TropaDaSaga
+				{
+					Molde = Txt(tr, "molde"),
+					Quantos = (int)Num(tr, "quantos", 12),
+					ChegamJuntos = (int)Num(tr, "chegamJuntos", 6),
+					SegundosEntre = Num(tr, "segundosEntre", 20),
+					Caca = Txt(tr, "caca"),
+					AnuncioDaChegada = Txt(tr, "anuncioDaChegada"),
+					AnuncioDaPartida = Txt(tr, "anuncioDaPartida"),
+				};
 
 			if (elo.Id.Length > 0) l.Add(elo);
 		}
@@ -475,6 +568,19 @@ public static class Sagas
 				p.Add($"saga '{e.Id}': tem anuncio de ultimato e destroiPlaneta=false -- o prazo venceria calado");
 			if (e.AtaqueDoUltimato == null)
 				p.Add($"saga '{e.Id}': ataqueDoUltimato desconhecido -- vale 'supernova' ou 'deathball'");
+
+			// (2026-10-18) A TROPA CITA UM MOLDE DE SOLDADO. Um molde de cidadao aqui poria o povo do planeta pra cacar o proprio povo; um
+			// que nao existe faria a saga chegar sem ninguem, calada.
+			if (e.Tropa is { } t)
+			{
+				MoldeDeNpc? mt = moldes.Get(t.Molde);
+				if (mt == null) p.Add($"saga '{e.Id}': a tropa cita o molde '{t.Molde}', que nao existe");
+				else if (mt.Tipo != TipoDeNpc.Soldado)
+					p.Add($"saga '{e.Id}': o molde da tropa '{t.Molde}' e do tipo '{mt.Tipo}' -- tropa e do tipo 'soldado'");
+				if (t.Quantos <= 0 || t.ChegamJuntos < 0 || t.ChegamJuntos > t.Quantos)
+					p.Add($"saga '{e.Id}': tropa com quantos={t.Quantos} e chegamJuntos={t.ChegamJuntos} -- precisa de 0 <= chegamJuntos <= quantos e quantos > 0");
+				if (t.SegundosEntre <= 0) p.Add($"saga '{e.Id}': tropa com segundosEntre={t.SegundosEntre} -- precisa ser positivo");
+			}
 		}
 		return p;
 	}

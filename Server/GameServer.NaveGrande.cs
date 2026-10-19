@@ -67,7 +67,7 @@ public partial class GameServer
 	private void EmbarcarNaNaveGrande(ServerPlayer pl, Nave n)
 	{
 		if (pl.Peer == null) return;   // corpo dirigido nao embarca
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "você não está em condições de embarcar."); return; }
+		if (NaoPilota(pl)) { Avisar(pl, "você não está em condições de embarcar."); return; }   // (2026-10-18) o morto de pe embarca
 
 		bool dono = string.Equals(n.DonoConta, pl.Conta, StringComparison.OrdinalIgnoreCase);
 		if (!dono && n.Senha.Length > 0)
@@ -276,50 +276,17 @@ public partial class GameServer
 	// A PONTE -- `obj/ShipControl` (`ShipVessel.dm:285-355`)
 	// =====================================================================
 	/// <summary>
-	/// OBSERVAR -- `verb/Observe` (:295-303).
+	/// OBSERVAR -- `verb/Observe` (:295-303): `client.perspective = EYE_PERSPECTIVE` e `client.eye = ship_ref`, o olho do jogador passa a ser
+	/// a nave e ele ve o mundo em volta dela.
 	///
-	/// ============================ NO DM E UMA CAMERA; AQUI E A CARTA ESTELAR ============================
-	/// La sao duas linhas: `client.perspective = EYE_PERSPECTIVE` e `client.eye = ship_ref`. O olho
-	/// do jogador passa a ser a nave e ele ve o mundo em volta dela.
-	///
-	/// Este port nao tem olho remoto, e dar um a ele nao seria uma linha: o corte de interesse do
-	/// servidor e POR ZONA (so quem compartilha o hash recebe snapshot), entao "ver de fora" exigiria
-	/// entregar a um corpo os pacotes de uma zona em que ele nao esta -- um segundo canal de
-	/// snapshot, com um segundo recorte, e a certeza de que um dos dois envelheceria.
-	///
-	/// O que a pergunta REALMENTE quer saber -- *"onde minha nave esta, e o que tem em volta"* -- ja
-	/// tem tela neste port, e ela e melhor que a camera do DM pra isso: a CARTA ESTELAR (menu P, aba
-	/// Nav). Entao Observar manda a posicao da nave NA GALAXIA, e a carta passa a se centrar nela
-	/// enquanto voce esta a bordo (ver `MapaEstelar.MinhaPosicaoNaGalaxia`). O jogador dentro de uma
-	/// sala sem janela deixa de estar perdido, que era o problema.
-	///
-	/// O QUE SE PERDEU: nao da pra ver um corpo passando do lado de fora do casco. O que se ganhou:
-	/// o unico jeito de saber a que distancia de Namek a nave esta -- e a camera do DM tambem nao
-	/// dizia isso.
-	/// ================================================================================================
+	/// ============================ ERA A CARTA ESTELAR; VOLTOU A SER A CAMERA (dono, 2026-10-18) ============================
+	/// Este port nao tinha olho remoto, e Observar so escrevia onde a nave estava e centrava a carta estelar nela. O dono pediu a camera:
+	/// *"deveria 'assistir' o exterior da nave sem pode controla-la, bom pros jogadores q querem ver a nave ir pelo espaco"*. Agora o corpo
+	/// fica de pe na ponte e o olho vai pro lado de fora, andando com o casco -- o mesmo caminho do leme, sem o leme. A carta continua
+	/// centrando na nave quando o olho volta (ver `PararDeObservar`). Tudo em `GameServer.NaveObservar.cs`.
+	/// ===========================================================================================================
 	/// </summary>
-	private void ObservarDaPonte(ServerPlayer pl, Nave n)
-	{
-		Vec2? galaxia = PosicaoNaGalaxia(n.Zona, new Vec2(n.X, n.Y));
-
-		Avisar(pl, $"-- de fora de {NomeDaNave(n)} --");
-		Avisar(pl, Espaco.EhEspaco(n.Zona)
-			? "  o casco flutua no vazio."
-			: $"  o casco está pousado em {n.Zona.Name}.");
-
-		if (galaxia is { } g)
-		{
-			Avisar(pl, $"  posição na galáxia: ({g.X:N0}, {g.Y:N0}).");
-			if (Sistemas.EstrelaPerto(SeedDoUniverso, g, out Estrela e, out double dist))
-				Avisar(pl, $"  há uma estrela a {dist:N0} px -- o raio dela é {e.Raio:N0}.");
-			MandarNaveVista(pl, n, g);
-			Avisar(pl, "  a carta estelar (menu P, aba Nav) agora mostra a NAVE, e não você.");
-		}
-		else Avisar(pl, "  não dá pra situar este lugar no mapa do universo.");
-
-		if (n.ArmaduraMax > 0)
-			Avisar(pl, $"  casco: {n.Armadura / n.ArmaduraMax * 100:0}% inteiro.");
-	}
+	private void ObservarDaPonte(ServerPlayer pl, Nave n) => ComecarAObservar(pl, n);
 
 	/// <summary>
 	/// MANDA A MARCACAO DA NAVE pra a carta estelar de quem pediu -- ver <see cref="Protocol.S2C.Nave"/>.
@@ -397,7 +364,7 @@ public partial class GameServer
 	{
 		if (n.PilotoId == pl.Id) { PararDePilotar(pl, n); return; }
 		if (n.PilotoId != 0) { Avisar(pl, "alguém já está no leme."); return; }
-		if (pl.Ficha.KO || pl.Ficha.dead) { Avisar(pl, "você não está em condições de pilotar."); return; }
+		if (NaoPilota(pl)) { Avisar(pl, "você não está em condições de pilotar."); return; }   // (2026-10-18) o morto de pe pilota
 
 		// O CORPO FICA NA PONTE, de pe, e a atencao vai pro leme. A RECUSA VEM ANTES de registrar o
 		// piloto: na ordem inversa, um pedido negado (ja esta fora do corpo, ou esta possuido pela
@@ -420,6 +387,12 @@ public partial class GameServer
 		n.PilotoId = pl.Id;
 		n.LancaEm = 0;
 
+		// (2026-10-18) QUEM ASSUME O LEME DESLIGA O RUMO da nave que seguia sozinha: piloto que ignora o piloto e um sequestro (o mesmo do
+		// piloto automatico do cliente). Ver `GameServer.NaveRumo.cs`.
+		bool seguiaSozinha = n.TemRumo;
+		n.TemRumo = false;
+		if (seguiaSozinha) GravarNaves();
+
 		// PILOTAR CONTA COMO VOO, o mesmo `pilot.flight = 1` da camada 1: sem isso a nave grande nao
 		// atravessaria agua nem lava, e a `Nave` inteira ja passa por esse bit.
 		pl.NaveDevolveVoo = voavaAntesDoLeme;
@@ -433,9 +406,11 @@ public partial class GameServer
 		// numa zona em que o corpo nao esta --, entao sem isto nao haveria botao nenhum pra largar o
 		// leme. Ver `Interacoes.DoVeiculo`.
 		MandarVeiculo(pl);
+		MandarCombustivel(pl);   // (2026-10-18) e a barra do tanque aparece -- ver `GameServer.Combustivel.cs`
 
 		Avisar(pl, $"você assume o leme de {NomeDaNave(n)}. Ande pra dirigir; "
 				   + "encoste num planeta pra pousar. Aperte E pra voltar à ponte.");
+		if (seguiaSozinha) Avisar(pl, "o piloto automático da nave desliga: agora quem dirige é você.");
 		GD.Print($"[server] {pl.Name} assumiu o leme da nave #{n.Id}");
 	}
 
@@ -482,6 +457,7 @@ public partial class GameServer
 		// SAIU DO LEME: o alvo da tecla E deixa de ser o casco. Dentro da ponte quem responde ao E e
 		// o CONSOLE, que e mobilia do interior e ja viaja no pacote de construcoes.
 		MandarVeiculo(pl);
+		MandarCombustivel(pl);   // (2026-10-18) ...e a barra do tanque some
 
 		GD.Print($"[server] {pl.Name} largou o leme da nave #{n.Id}");
 	}
@@ -510,6 +486,8 @@ public partial class GameServer
 			Avisar(pl, $"o lançamento já está em curso ({(n.LancaEm - NowMs()) / 1000.0:0.#} s).");
 			return;
 		}
+		// (2026-10-18) DE TANQUE SECO A NAVE NAO SOBE: la em cima ela pararia de vez com a tripulacao dentro. Ver `GameServer.Combustivel.cs`.
+		if (TanqueVazio(n) && !TanqueVazioAndaDeTeste) { Avisar(pl, FraseDoTanqueVazio(n)); return; }
 
 		n.LancaEm = NowMs() + (long)(NaveGrande.SegundosDeLancamento * 1000);
 
@@ -619,6 +597,8 @@ public partial class GameServer
 	///      corpos numa coordenada so o jogador le como bug, e nao como explosao. O boneco de quem
 	///      largou o corpo e o cadaver, que moram SO na `ZoneList`, saem do mundo pela porta de cada
 	///      um -- ver o bloco do passo 2 no corpo da funcao;
+	///   2b. AS OBRAS DO INTERIOR SAEM SOLTAS (dono, 2026-10-18) -- `TirarAsObrasDaNave`. Depois dos corpos (a obra nao cai em
+	///      cima de quem acabou de ser ejetado) e antes de a nave sair da lista;
 	///   3. O PILOTO VOLTA PRO PROPRIO CORPO, ali mesmo -- o resto do `end_pilot` (:211-227). DEPOIS
 	///      do passo 2 e nao antes: com o corpo dele ainda de pe na ponte, a volta o levaria pra
 	///      DENTRO da nave que esta explodindo;
@@ -689,6 +669,9 @@ public partial class GameServer
 			else if (t.DonoDoCorpoLargado != 0) { RemoverNpc(t); tirados++; }
 		}
 
+		// 2b. as obras do interior -- pro lado do casco, soltas
+		int obras = TirarAsObrasDaNave(n);
+
 		// 3. o piloto volta pro PROPRIO corpo, ali mesmo
 		// ============================ O RESTO DO `end_pilot` (`ShipVessel.dm:211-227`) ============================
 		// O corpo dele saiu do mundo no passo 2, entao o `VoltarProCorpo` cai no ramo "o corpo nao estava
@@ -724,8 +707,24 @@ public partial class GameServer
 			// abrindo pra quem estava ao leme -- botoes de um veiculo que acabou de virar destroco,
 			// e todos eles cairiam na recusa "não há nenhuma nave por perto".
 			MandarVeiculo(piloto);
+			MandarCombustivel(piloto);   // (2026-10-18) e a barra do tanque morre junto
 
 			Avisar(piloto, $"{nome} se despedaça sob os seus pés.");
+		}
+
+		// 3b. (2026-10-18) QUEM OBSERVAVA ESTA NAVE DE FORA volta a si ALI MESMO, como o piloto: o olho ja estava onde o casco estava, e o
+		// corpo dele (o boneco da ponte) saiu do mundo no passo 2. Sem isto a borda "o corpo sumiu" (`BordasDeQuemEstaFora`) o mandaria pro
+		// destino de emergencia -- a Terra, do meio do espaco. Ver `GameServer.NaveObservar.cs`.
+		foreach (int id in _observadores.ToList())
+		{
+			if (!_players.TryGetValue(id, out ServerPlayer? obs) || obs.ObservaNave != n.Id) continue;
+			obs.ObservaNave = 0;
+			obs.PilotoDaNaveObservada = 0;
+			_observadores.Remove(id);
+			MandarObservacao(obs, null);
+			VoltarProCorpo(obs, "", obs.Zone, obs.Pos);
+			MandarCombustivel(obs);
+			Avisar(obs, $"{nome} explode diante dos seus olhos -- e você volta a si do lado de fora, onde o casco estava.");
 		}
 
 		// 4. a nave
@@ -738,9 +737,108 @@ public partial class GameServer
 
 		GD.Print($"[server] {nome} (#{n.Id}) foi destruida em {fora} -- {ejetados} ejetado(s)"
 				 + (tirados > 0 ? $", {tirados} corpo(s) largado(s)/cadaver(es) tirado(s) do mundo" : "")
+				 + (obras > 0 ? $", {obras} obra(s) arremessada(s) pra fora, solta(s)" : "")
 				 + (autor != null ? $", por {autor.Name}" : ""));
 		if (autor != null) Avisar(autor, $"{nome} vem abaixo.");
 	}
+
+	// =====================================================================
+	// O QUE ESTAVA MONTADO DENTRO (dono, 2026-10-18)
+	// =====================================================================
+	/// <summary>
+	/// ============================ QUANDO A NAVE ACABA, O QUE ESTAVA DENTRO SAI SOLTO ============================
+	/// O dono: *"permita construir dentro da capital ship (gravidade , research etc mas nao paredes etc) e se ela explodir esses itens saem
+	/// da nave sem estarem parafusados"*. Toda obra do interior vai pra zona de fora, ao lado do casco -- uma celula de chao livre por obra
+	/// (<see cref="ChaoLivrePerto"/>, do primeiro anel em volta do casco) -- e sai SOLTA: o que tem parafuso no menu (`Interacoes.PedeParafuso`) o perde, e so volta a
+	/// trabalhar quando quem a ergueu a aparafusar de novo; a lapide, a macieira e a Drill nao tem parafuso e ficam como estavam. O CAMPO DE
+	/// GRAVIDADE DESLIGA: ele nao pede parafuso pra pulsar (`LerOsCampos`), e uma maquina de 50x arremessada pros destrocos esmagaria quem
+	/// estivesse em volta. O resto do estado vai junto, porque a obra e a MESMA (o id, o deposito, a fornada, o pote com o preso -- a volta
+	/// dele segue o pote, `PassoDosPotes`).
+	///
+	/// A MESMA PORTA SERVE A NAVE RECOLHIDA (`PegarNave`). La a recusa e pra GENTE (*"recusar e melhor que ejetar"*); uma maquina nao esta
+	/// treinando, e recusar por ela travaria o recolher sempre que um passageiro com o codigo assentasse uma -- a obra so sai do chao pela
+	/// mao de quem a ergueu (`PegarObra`).
+	///
+	/// A ORDEM E O QUE IMPEDE A OBRA ORFA: quem chama faz isto ANTES de tirar a nave da lista e do `naves.json`, e o mundo e gravado aqui
+	/// mesmo -- se o servidor cair no meio, a obra ja esta do lado de fora e a nave ainda existe; nunca o contrario (obra gravada num
+	/// interior sem nave, onde ninguem mais entra).
+	///
+	/// DIVERGENCIA DECLARADA: no DM a nave nao se recolhe, e o `testDestroy` so tira `mob` do z do interior (:249-260) -- o que estivesse
+	/// construido la ficava num z que nenhum save carrega.
+	/// ============================================================================================================
+	/// </summary>
+	/// <returns>Quantas obras sairam.</returns>
+	private int TirarAsObrasDaNave(Nave n)
+	{
+		ZoneKey dentro = NaveGrande.ZonaDoInterior(n.Id);
+		List<Obra> deDentro = [.. _noChao.Where(o => o.Zona.Equals(dentro))];
+		if (deDentro.Count == 0 || ObrasFicamNaNaveDeTeste) return 0;
+
+		ZoneKey fora = n.Zona;
+		ZoneCollision? mapa = MapaDaZonaOuCatalogo(fora);
+		List<Vec2> ocupados = [.. _noChao.Where(o => o.Zona.Equals(fora)).Select(o => new Vec2(o.X, o.Y))
+			.Concat(NavesParadasEm(fora).Select(x => new Vec2(x.X, x.Y)))];
+		List<ServerPlayer> corpos = ZoneList(fora.Hash);
+		// AS ARREMESSADAS FICAM A TRES TILES UMA DA OUTRA: a mesa de pesquisa tem tres de largura, e a maquina que caisse na celula vizinha sumia
+		// embaixo do desenho dela (a foto do `--diagcapital` no job96: o servidor dizia duas, a tela mostrava uma).
+		List<Vec2> soltas = [];
+		foreach (Obra o in deDentro)
+		{
+			Vec2 ponto = ChaoLivrePerto(fora, new Vec2(n.X, n.Y), 1, mapa, ocupados, corpos, soltas);
+			ocupados.Add(ponto);
+			soltas.Add(ponto);
+			o.PorZona(fora);
+			o.X = ponto.X;
+			o.Y = ponto.Y;
+			if (Interacoes.PedeParafuso(o.Tipo)) o.Aparafusada = false;
+			if (o.Gravidade is { } g) { g.Grav = 0; g.MudaEm = 0; g.Cheias = null; }
+		}
+		GravarMundo();
+		return deDentro.Count;
+	}
+
+	/// <summary>
+	/// A CELULA DE CHAO LIVRE MAIS PERTO DE UM PONTO, pra uma coisa DENSA que vai ficar ali: a obra que sai da nave (do primeiro anel em volta
+	/// do casco) e a nave que pousa sozinha (do proprio ponto, ao lado do berco -- `GameServer.NaveRumo.cs`). Anel por anel (a borda do
+	/// quadrado de raio r em volta da celula do ponto), a primeira que serve de chao pela pergunta do assento (`Assentamento.DoLugar`, medida
+	/// da propria celula: o alcance do braco nao conta aqui), sem obra nem nave a meio tile (`Assentamento.TemCoisaEm`) e sem corpo de pe nela
+	/// ou encostado -- uma coisa densa em cima de alguem o prenderia. No espaco nao ha mapa e o vazio serve, como no
+	/// <see cref="PontoAoLadoDaNave"/>. Sem nenhuma nos aneis, o proprio ponto: o ultimo recurso do DM pra gente (`if(!dest) dest =
+	/// locate(src.x, src.y, src.z)`). O PONTO E O CENTRO DA CELULA, o mesmo que o fantasma do cliente manda pro `Posicionar`.
+	/// </summary>
+	/// <param name="espacadas">Coisas das quais a celula tem de ficar a <see cref="EspacoEntreObrasSoltas"/> (Chebyshev) -- as obras ja arremessadas.</param>
+	private static Vec2 ChaoLivrePerto(ZoneKey zona, Vec2 perto, int doAnel, ZoneCollision? mapa, List<Vec2> ocupados, List<ServerPlayer> corpos,
+		List<Vec2>? espacadas = null)
+	{
+		const int t = ZoneCollision.TileSize;
+		(int hx, int hy) = CatalogoDeObras.Celula(perto.X, perto.Y);
+		for (int r = doAnel; r <= AneisDeChaoLivre; r++)
+			for (int dy = -r; dy <= r; dy++)
+				for (int dx = -r; dx <= r; dx++)
+				{
+					if (Math.Abs(dx) != r && Math.Abs(dy) != r) continue;
+					int cx = hx + dx, cy = hy + dy;
+					var centro = new Vec2(cx * t + t / 2f, cy * t + t / 2f);
+					if (Assentamento.DoLugar(mapa, centro, cx, cy, zona) != RecusaDeAssento.Pode) continue;
+					if (Assentamento.TemCoisaEm(ocupados, centro)) continue;
+					if (corpos.Any(c => Math.Abs(c.Pos.X - centro.X) < t && Math.Abs(c.Pos.Y + MoveRules.FeetOffsetY - centro.Y) < t)) continue;
+					if (espacadas != null && espacadas.Any(s => Math.Max(Math.Abs(s.X - centro.X), Math.Abs(s.Y - centro.Y)) < EspacoEntreObrasSoltas)) continue;
+					return centro;
+				}
+		return perto;
+	}
+
+	/// <summary>Quantos aneis o <see cref="ChaoLivrePerto"/> tenta: doze dao 624 celulas, mais do que uma nave cheia precisa.</summary>
+	private const int AneisDeChaoLivre = 12;
+
+	/// <summary>A distancia entre duas obras arremessadas da nave: tres tiles, a largura da mesa de pesquisa (o maior desenho de obra).</summary>
+	private const float EspacoEntreObrasSoltas = 3 * ZoneCollision.TileSize;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--naveteste`, camada 6): a obra fica dentro da nave que acabou -- o DM, cujo `testDestroy` so tira `mob`: presa num
+	/// interior onde ninguem mais entra. Lido pelo <see cref="TirarAsObrasDaNave"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool ObrasFicamNaNaveDeTeste;
 
 	// =====================================================================
 	// O RESGATE DE QUEM ENTROU E O SERVIDOR CAIU
@@ -803,9 +901,16 @@ public partial class GameServer
 					// PILOTANDO, O CONSOLE ESTA A UM MUNDO DE DISTANCIA: quem esta ao leme nao esta na
 					// ponte, e sem esta linha ele nao teria como LARGAR o leme -- exatamente o mesmo
 					// buraco que fez a camada 1 precisar da aba Nav.
+					//
+					// (2026-10-18) ...E SE O NAV SYSTEM ESTAVA LIGADO, o destino vem no argumento e a nave segue sozinha (`ComecarARumarSozinha`).
 					if (cmd == "nave_pilotar" && NaveDoPiloto(pl) is { } minha
 						&& NaveGrande.EhNaveGrande(minha.Tipo))
-					{ PararDePilotar(pl, minha); return true; }
+					{ PararDePilotar(pl, minha); ComecarARumarSozinha(pl, minha, arg); return true; }
+
+					// (2026-10-18) OBSERVANDO, o console tambem esta a um mundo de distancia: o mesmo verbo devolve o olho ao corpo na ponte
+					// (a pagina da tecla E de quem observa -- `Interacoes.DoObservador`). Ver `GameServer.NaveObservar.cs`.
+					if (cmd == "nave_observar" && EhOlhoDeFora(pl))
+					{ PararDeObservar(pl, "você volta ao seu corpo, na ponte."); return true; }
 
 					Avisar(pl, "você precisa estar no console da ponte, no canto da nave.");
 					return true;

@@ -370,7 +370,7 @@ public sealed partial class GameServer
 		AnunciarDesejo($"{pl.Name} pede PODER a {s.NomeDoDragao}!");
 		// O NUMERO SO PRA QUEM TEM SCOUTER (a regra principal do BP; ver `PoderNaFrase`): os outros ouvem o quanto
 		// cresceram -- e o `Dragonballs.dm:64` do original, que esconde ate o anuncio do upgrade.
-		Avisar(pl, Jandirus.Core.Stats.PoderNaFrase.EmNumero(TemScouter(pl))
+		Avisar(pl, Jandirus.Core.Stats.PoderNaFrase.EmNumero(ScouterMostra(pl, pl, antes, pl.Ficha.BP))
 			? $"o seu poder de luta sobe de {antes:N0} para {pl.Ficha.BP:N0}."
 			: $"o seu poder de luta sobe: você está {Jandirus.Core.Stats.PoderNaFrase.QuantoMaisForte(antes, pl.Ficha.BP)}.");
 		return true;
@@ -795,7 +795,7 @@ public sealed partial class GameServer
 		AnunciarDesejo($"{quem.Name} trocou a própria VIDA por poder absoluto -- o ser mais forte do "
 					 + $"universo caminha entre nós... por um ano. ({dragao})");
 		// O NUMERO SO PRA QUEM TEM SCOUTER, como no desejo de poder -- ver `PoderNaFrase`.
-		string poder = Jandirus.Core.Stats.PoderNaFrase.EmNumero(TemScouter(quem))
+		string poder = Jandirus.Core.Stats.PoderNaFrase.EmNumero(ScouterMostra(quem, quem, quem.Ficha.BP))
 			? $"{quem.Ficha.BP:N0}"
 			: $"você está {Jandirus.Core.Stats.PoderNaFrase.QuantoMaisForte(antes, quem.Ficha.BP)}";
 		Avisar(quem, $"o poder absoluto queima nas suas veias: {poder}. O seu corpo tem "

@@ -358,6 +358,84 @@ public partial class GameServer
 		// estrela e um jeito de a bancada matar quem a rodou.
 		RodarBancadaDaViagem(pl, Checa);
 
+		// A CAMADA 5 (2026-10-18): o morto pilota -- ver `RodarBancadaDoMortoQuePilota`.
+		RodarBancadaDoMortoQuePilota(pl, Checa);
+
+		// A CAMADA 6 (2026-10-18): a obra dentro da nave grande -- ver `GameServer.NaveObraTeste.cs`.
+		RodarBancadaDaObraNaNave(pl, Checa);
+
+		// A CAMADA 7 (2026-10-18): a nave grande segue sozinha, e a pose de quem esta ao leme -- ver `GameServer.NaveRumoTeste.cs`.
+		RodarBancadaDoRumoSozinho(pl, Checa);
+
+		// A CAMADA 8 (2026-10-18): o pouso num lugar sorteado e a cratera do pod -- ver `GameServer.PousoTeste.cs`.
+		RodarBancadaDoPousoSorteado(pl, Checa);
+
+		// AS CAMADAS 9, 10 E 11 (2026-10-18): o combustivel, o chat de dentro da nave ao leme e o observar de fora -- ver
+		// `GameServer.NaveCombustivelTeste.cs`.
+		RodarBancadaDoCombustivel(pl, Checa);
+		RodarBancadaDaPonteQueOuve(pl, Checa);
+		RodarBancadaDoObservar(pl, Checa);
+
 		GD.Print($"===== BANCADA DA NAVE: {ok} OK, {falhou} FALHA(S) =====\n");
+	}
+
+	/// <summary>
+	/// A CAMADA 5 (2026-10-18): O MORTO PILOTA. O dono: *"n da pra pilotas naves nem pods quando estamos mortos, permita isso"* -- a regra dele de
+	/// 2026-10-16 (*"unica restriçao de morto deveria ser zenkai"*). Ela empresta o corpo do dono como as camadas 1 a 3, e o devolve vivo e sem
+	/// passe no fim:
+	///   * o morto DE PE (com o passe do Enma, entre os vivos) embarca no pod pela porta de producao (`UsarNave`) e pega o leme;
+	///   * o passe vence (`AcabarOPasse`): a alma volta pro Outro Mundo DESEMBARCADA, e o pod fica entre os vivos, sem piloto;
+	///   * contra-exemplo (`NaveRecusaOMortoDePeDeTeste`, o `dead` cru de antes): o mesmo morto ouve que nao esta em condicoes.
+	/// </summary>
+	private void RodarBancadaDoMortoQuePilota(ServerPlayer pl, Action<string, bool, string> checa)
+	{
+		GD.Print("  -- 5) o morto pilota (dono, 2026-10-18) --");
+		ZoneKey zonaAntes = pl.Zone;
+		Vec2 posAntes = pl.Pos;
+		bool mortoAntes = pl.Ficha.dead;
+		long passeAntes = pl.Ficha.passe_do_enma_ate;
+		if (NaveDoPiloto(pl) is { } jaPilotava) Desembarcar(pl, jaPilotava);
+		var pod = new Nave { Id = _proximaNaveId++, Tipo = "Spacepod", X = pl.Pos.X + 12, Y = pl.Pos.Y };
+		pod.PorZona(pl.Zone);
+		_naves.Add(pod);
+		try
+		{
+			pl.Ficha.dead = true;
+			pl.Ficha.passe_do_enma_ate = NowMs() + 600_000;
+			checa("(montagem) o dono esta MORTO e de pe entre os vivos (o passe do Enma), com um pod ao alcance da mao",
+				  pl.MortoDePe && !EhCadaver(pl) && NavePerto(pl) == pod, $"morto de pe {pl.MortoDePe}; pod perto {NavePerto(pl) == pod}");
+
+			List<string> embarque = Ouvir(() => UsarNave(pl));
+			checa("**O MORTO PILOTA** (*\"n da pra pilotas naves nem pods quando estamos mortos, permita isso\"*): o morto de pe embarca no pod pela "
+				  + "porta de producao e pega o leme", pod.PilotoId == pl.Id && EstaPilotando(pl.Id), $"piloto {pod.PilotoId}; {string.Join(" | ", embarque)}");
+
+			ZoneKey dosVivos = pl.Zone;
+			AcabarOPasse(pl, "a bancada vence o passe.");
+			checa("...e quando o passe vence a alma volta pro Outro Mundo DESEMBARCADA: o pod fica entre os vivos, sem piloto -- a nave nao vira "
+				  + "bagagem do alem", Jandirus.Core.World.Alem.EhOAlem(pl.Zone) && pod.PilotoId == 0 && pod.Zona.Equals(dosVivos),
+				  $"o morto em {pl.Zone.Name}; o pod em {pod.Zona.Name}, piloto {pod.PilotoId}");
+
+			MoveToZone(pl.Id, dosVivos, new Vec2(pod.X - 12, pod.Y));
+			pl.Ficha.passe_do_enma_ate = NowMs() + 600_000;
+			NaveRecusaOMortoDePeDeTeste = true;
+			List<string> recusa;
+			try { recusa = Ouvir(() => UsarNave(pl)); }
+			finally { NaveRecusaOMortoDePeDeTeste = false; }
+			checa("   DEFEITO INJETADO (o `dead` cru de antes): o mesmo morto ouve que nao esta em condicoes, e o pod fica vazio -- a regua de cima reprovaria",
+				  pod.PilotoId == 0 && recusa.Any(f => f.Contains("condições", StringComparison.Ordinal)), string.Join(" | ", recusa));
+		}
+		finally
+		{
+			NaveRecusaOMortoDePeDeTeste = false;
+			if (NaveDoPiloto(pl) is { } ainda) Desembarcar(pl, ainda);
+			_naves.Remove(pod);
+			GravarNaves();
+			pl.Ficha.dead = mortoAntes;
+			pl.Ficha.passe_do_enma_ate = passeAntes;
+			if (!pl.Zone.Equals(zonaAntes)) MoveToZone(pl.Id, zonaAntes, posAntes);
+			else pl.Pos = posAntes;
+			RecalcularVelocidade(pl);
+			MandarFicha(pl);
+		}
 	}
 }

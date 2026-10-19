@@ -375,6 +375,10 @@ public partial class GameServer
 	{
 		if (npc.Peer != null) return;   // corpo de jogador nao se remove, se solta (ver DevolverAsRedeas)
 
+		// (2026-10-18) A ESFERA QUE ELE CARREGAVA CAI ONDE ELE ESTAVA -- antes de ele sair: o soldado de saga morto, ou indo embora com a tropa.
+		// Ver `SoltarAsEsferasDoCorpo` (`GameServer.Esferas.cs`).
+		SoltarAsEsferasDoCorpo(npc);
+
 		List<ServerPlayer> zona = ZoneList(npc.Zone.Hash);
 		zona.Remove(npc);
 		_players.Remove(npc.Id);
@@ -408,6 +412,12 @@ public partial class GameServer
 	/// </summary>
 	internal static bool NpcSemCorDeKiDeTeste;
 
+	/// <summary>
+	/// (2026-10-18) DEFEITO INJETADO (`--torneioteste`, robo `--diagcorposderaca`): o Frost Demon de NPC volta a nascer com a lista padrao -- todo
+	/// um "Changeling Frieza 2", o jogo de antes. Lido pela propria <see cref="AparenciaDeNpc"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool FrostNpcSemVariedadeDeTeste;
+
 	private Appearance AparenciaDeNpc(MoldeDeNpc molde, string raca, string genero, ulong semente)
 	{
 		var ap = new Appearance();
@@ -426,9 +436,14 @@ public partial class GameServer
 
 		// O FROST DEMON NAO TEM CORPO NO CATALOGO: o corpo dele E a forma (ver `VisualCatalog.CorpoSprite`).
 		// Sem esta linha o Freeza nasceria desenhado como um humano palido -- pra todo mundo na zona.
+		//
+		// (2026-10-18) E CADA UM COM O SEU: a lista vazia caia nos padroes do DM, e todo Frost de NPC nascia o MESMO "Changeling Frieza 2" -- o dono
+		// viu no torneio (*"tem varios sprites de frost"*). O NPC sorteia os corpos (`FormasDeFrost.SortearParaNpc`), pela mesma semente por campo do
+		// corpo e do cabelo. O CHEFE DE SAGA fica com os padroes: o roteiro crava o corpo de cada estagio dele (`EstagioDeChefe.Corpo`).
 		if (Jandirus.Core.Races.FormasDeFrost.EhFrost(raca))
-			ap.FormasDeFrost = Jandirus.Core.Races.FormasDeFrost.Sanear(
-				Jandirus.Core.Races.FormasDeFrost.ClasseNormal, null);
+			ap.FormasDeFrost = molde.EhChefe || FrostNpcSemVariedadeDeTeste
+				? Jandirus.Core.Races.FormasDeFrost.Sanear(Jandirus.Core.Races.FormasDeFrost.ClasseNormal, null)
+				: Jandirus.Core.Races.FormasDeFrost.SortearParaNpc(SorteioDeNpc.Sorteador(semente, "frost"));
 
 		// A COR DA CHAMA DELE, do MESMO sorteio dos jogadores (`min(255, 200 + rand(0,255))` por
 		// canal) e da mesma semente por campo que o corpo e o cabelo acabaram de usar. Um NPC nao

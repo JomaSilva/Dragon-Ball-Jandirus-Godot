@@ -48,6 +48,12 @@ public sealed partial class GameServer
 	private const long MsEntreBerrosDeCalor = 2000;
 
 	/// <summary>
+	/// DEFEITO INJETADO (`--solteste`, cena 8): o piloto queima dentro da estrela como um corpo solto -- o jogo de antes de 2026-10-18. Falso
+	/// em jogo, sempre.
+	/// </summary>
+	internal static bool PilotoQueimaNaEstrelaDeTeste;
+
+	/// <summary>
 	/// O TIQUE DO SOL -- roda dentro do <see cref="TickDoEspaco"/>, que ja e por jogador e por tique
 	/// e ja devolveu quem nao esta no espaco.
 	///
@@ -68,6 +74,14 @@ public sealed partial class GameServer
 		// MORTO NAO QUEIMA. Sem esta linha o cadaver continuaria "recebendo dano" ate renascer, e o
 		// `Morrer()` seria chamado a cada tique so pra devolver false.
 		if (pl.Ficha.dead || pl.Combate == null) { EsfriarDeVez(pl); return; }
+
+		// ============================ QUEM ESTA AO LEME NAO QUEIMA (dono, 2026-10-18) ============================
+		// *"pilotar nave dentro de estrela causa dano ao piloto, resolva"*. O casco o cobre: no DM quem assume o leme ganha `spacesuit = 1`
+		// (`ShipVessel.dm:318`, *"survive space while at the helm"*), e o espaco fica do lado de fora. Aqui o calor e a unica coisa do espaco
+		// que machuca, e ele fica do lado de fora do casco tambem: nem dano nem aviso (avisar "voce vai queimar" a quem nao queima seria mandar
+		// fugir de nada). Saltar da nave dentro da estrela continua queimando -- o corpo saiu do casco.
+		// ==========================================================================================================
+		if (EstaPilotando(pl.Id) && !PilotoQueimaNaEstrelaDeTeste) { EsfriarDeVez(pl); return; }
 
 		if (!Sistemas.EstrelaPerto(SeedDoUniverso, pl.Pos, out Estrela e, out double dist))
 		{ EsfriarDeVez(pl); return; }

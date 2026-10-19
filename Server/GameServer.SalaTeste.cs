@@ -818,8 +818,10 @@ public sealed partial class GameServer
 		// (2026-10-12) O TETO E O QUE FOI PAGO (`PesoDeTreino`): esta secao mede a ESCALA do verbo, e por isso da ao
 		// corpo uns pesos cujo maximo e duas vezes o limite dele -- o teto que o DM dava de graca. A regra nova (50 kg
 		// de fabrica, a melhoria paga) e medida na `--v020teste`, familia 10.
-		f.pesoMaximoKg = f.weight_cap_hw * GainKnobs.WeightItemCapMult;
-		AjustarPeso(b, "50");
+		// (2026-10-18) os pesos de bancada sao um ITEM, com o maximo no id
+		string pesos = Jandirus.Core.Items.PesoDeTreino.IdDe(f.weight_cap_hw * GainKnobs.WeightItemCapMult, "");
+		b.Mochila.Guardar(pesos);
+		AjustarPeso(b, pesos, "50");
 
 		AfirmarSala("50% do peso maximo poe o corpo EXATAMENTE no limite dele (razao 1)",
 					Math.Abs(Esmagamento.Razao(f) - 1) < 0.01, $"{Esmagamento.Razao(f):0.###}");
@@ -835,7 +837,7 @@ public sealed partial class GameServer
 		// Vestir o maximo deixou de ser escolha obvia: ele rende 4x e cobra vida por segundo. E o
 		// numero do DM (`WEIGHT_ITEM_CAP_MULT = 2` -> razao 2 no maximo, na Terra).
 		// ========================================================================================
-		AjustarPeso(b, "100");
+		AjustarPeso(b, pesos, "100");
 		AfirmarSala("VESTIR O MAXIMO JA ESMAGA (razao 2) -- deixou de ser decisao obvia",
 					Esmagamento.Esmaga(f) && Esmagamento.DanoPorSegundo(f) > 0,
 					$"razao {Esmagamento.Razao(f):0.##}, {Esmagamento.DanoPorSegundo(f):0.###} de dano/s");
@@ -850,11 +852,11 @@ public sealed partial class GameServer
 		AfirmarSala("mesmo com peso absurdo o passo nao chega a zero (o piso do `movement handler`)",
 					Esmagamento.AtrasoDoPeso(f) > 0, $"{Esmagamento.AtrasoDoPeso(f):0.####}");
 
-		AjustarPeso(b, "0");
+		AjustarPeso(b, pesos, "0");
 		AfirmarSala("tirar os pesos devolve o passo inteiro",
 					Math.Abs(Esmagamento.FatorDePasso(f) - 1) < 1e-9 && Math.Abs(f.weight - 1) < 1e-9,
 					$"fator {Esmagamento.FatorDePasso(f):0.###}, peso {f.weight:0.##}x");
-		f.pesoMaximoKg = 0;   // os pesos de bancada saem com a secao
+		b.Mochila.Tirar(pesos);   // os pesos de bancada saem com a secao
 	}
 
 	// =====================================================================

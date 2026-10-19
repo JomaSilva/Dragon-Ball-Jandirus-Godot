@@ -602,7 +602,8 @@ public sealed partial class GameServer
 		if (Deposito.SoComida(o.Tipo) && def.Nutricao <= 0) { Avisar(pl, $"{NomeDaObra(o)} só guarda comida."); return; }
 		if (def.Id == CatalogoDeItens.Scouter && (pl.PoderesConcedidos & Protocol.Poder.Scouter) != 0)
 		{ Avisar(pl, "desligue o scouter antes de guardar."); return; }
-		if (def.Id == CatalogoDeItens.Pesos && pl.Ficha.Weighted > 0) { Avisar(pl, "tire os pesos antes de guardar."); return; }
+		// (2026-10-18) so o peso VESTIDO fica: cada peso e um item com estado (`Fighter.pesoVestido`)
+		if (pl.Ficha.Weighted > 0 && def.Id == pl.Ficha.pesoVestido) { Avisar(pl, "tire os pesos antes de guardar."); return; }
 
 		int quantos = pl.Mochila.Quantos(def.Id);
 		if (quantos <= 0) return;

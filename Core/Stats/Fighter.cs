@@ -868,17 +868,21 @@ public sealed partial class Fighter
 	public double Weighted = 0;        // quanto de peso o personagem esta vestindo
 
 	/// <summary>
-	/// O PESO MAXIMO DOS PESOS DE TREINO deste personagem, em kg -- o que ele ja PAGOU pra poder vestir (dono,
-	/// 2026-10-12). Zero = nunca melhorou: vale o de fabrica (`PesoDeTreino.KgDeFabrica`, 50 kg). Vai pro save com
-	/// a ficha. Ver `Core/Items/PesoDeTreino.cs`.
+	/// (LEGADO, ate 2026-10-18) O peso maximo dos pesos MORAVA AQUI, e era o de todo peso da mochila. Hoje ele mora no ID de cada peso
+	/// (`PesoDeTreino.IdDe`): este campo so e lido UMA vez, pela migracao do login (`CharacterStore.ParaJogador`), que o passa pros pesos de
+	/// fabrica da mochila e o zera.
 	/// </summary>
 	public double pesoMaximoKg;
 
-	/// <summary>
-	/// A ARTE QUE OS PESOS DESTE PERSONAGEM USAM NO CORPO -- o nome do arquivo de uma folha do guarda-roupa (dono,
-	/// 2026-10-13). Vazio = a de fabrica (`PesoDeTreino.ArtePadrao`). Vai pro save com a ficha, como o peso maximo.
-	/// </summary>
+	/// <summary>(LEGADO, ate 2026-10-18) A arte dos pesos -- o mesmo caminho do <see cref="pesoMaximoKg"/>: so a migracao do login a le.</summary>
 	public string pesoArte = "";
+
+	/// <summary>
+	/// (2026-10-18) QUAL PESO ESTA NO CORPO -- o id inteiro dele (o maximo e a arte vao junto, `PesoDeTreino.IdDe`); vazio = nenhum. Escrito
+	/// pelo "ajustar"/"equipar" e apagado pelo "tirar" (`GameServer.AjustarPeso`). Dele saem o teto do quanto se veste, a folha no corpo e o
+	/// que o saque, o chao e o bau nao levam. Vai pro save com a ficha, como o `Weighted`.
+	/// </summary>
+	public string pesoVestido = "";
 
 	/// <summary>
 	/// (v0.3.0) A PORCENTAGEM DO PESO MAXIMO QUE O JOGADOR ESCOLHEU da ultima vez (0 a 100; zero = nunca escolheu) -- o `pounds`
@@ -893,6 +897,15 @@ public sealed partial class Fighter
 	/// (`Nutricao.KiSempreCheio`). E de corpo de NPC: jogador nenhum nasce com ele.
 	/// </summary>
 	public bool KiDeChefe;
+
+	/// <summary>
+	/// (2026-10-18) O PISO DO TANQUE DO CHEFE DE SAGA, em Ki -- ver o `Statify`. Com ele o tiro mais caro que um chefe sabe (o Dodon Ray,
+	/// `21*29` BaseDrain por ciclo) custa perto de um terco do tanque, e o Death Beam do Freeza (`21*25`) um pouco menos.
+	/// </summary>
+	public const double PisoDoTanqueDeChefe = 50_000;
+
+	/// <summary>DEFEITO INJETADO (`--chefesteste`): o chefe de saga volta ao tanque de NPC -- o jogo de antes. Falso em jogo, sempre.</summary>
+	public static bool ChefeSemPisoDeTanqueDeTeste;
 
 	/// <summary>
 	/// ESTE CORPO VESTE UMA ARMADURA QUE O PROTEGE? Quem escreve e o servidor, a cada tique de ficha, olhando a roupa
@@ -1053,6 +1066,10 @@ public sealed partial class Fighter
 			MedMod = bloco.Misc.GetValueOrDefault("Med Mod", 1),
 			SparMod = bloco.Misc.GetValueOrDefault("Spar Mod", 1),
 			GravMod = bloco.Misc.GetValueOrDefault("Gravity Mod", 1),
+
+			// (2026-10-18) A INTELIGENCIA DA RACA -- o `savant.techmod = misc_stats["Tech Modifier"]` do DM (`Genetic_Datum.dm:302`), que o port nao
+			// escrevia: toda raca nascia com 1. Ver `InteligenciaDaRaca`.
+			techmod = InteligenciaDaRaca.DoBloco(bloco),
 
 			Genoma = genoma,
 		};

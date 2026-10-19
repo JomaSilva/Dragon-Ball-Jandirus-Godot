@@ -137,6 +137,42 @@ public partial class GameServer
 	}
 
 	/// <summary>
+	/// ============================ O CHEFE COM FORMA POR VIR NAO MORRE ANTES DA HORA (dono, 2026-10-18) ============================
+	/// *"faça com q viloes q tenham transformaçoes q ainda n ativaram nao possam ser mortos antes da hora (menos o cell) pq acabei matando o
+	/// freeza na terceira forma antes dele virar a forma final e com isso a saga n acabou e bugou, ao o jogo detectar q o vilao morreu ele deveria
+	/// iniciar a cinematica de transformaçao e recuperar toda a vida"*.
+	///
+	/// O roteiro sobe o degrau pelo membro mais ferido, uma vez por segundo (<see cref="TickDoRoteiro"/>) -- e NAO com o corpo nocauteado (a
+	/// janela de finalizacao do DM, `!boss2.KO`). Era nessa janela, ou num golpe so que passava do limiar direto pra morte, que o Freeza morria na
+	/// forma 3. Agora o golpe que o mataria e a TRANSFORMACAO: o degrau seguinte com a cena dele (<see cref="AvancarEstagio"/>) e a vida INTEIRA de
+	/// volta, de pe (`CombatState.Curar`). So morre quem esta no ultimo degrau -- o fim que a saga espera.
+	///
+	/// QUEM ENTRA: o chefe com degrau de DANO por vir (`GatilhoAtual >= 0`), menos os moldes de <see cref="ChefesQueMorremAntesDaHora"/> (o Cell,
+	/// pelo nome, como o dono pediu). Instalado no `NegarMorte` (`PrepararCombate`) ANTES dos seguros de jogador; o verb de admin de matar
+	/// (`ignorarSeguro`) continua matando. DIVERGENCIA DECLARADA: no DM o Freeza morto na forma 3 morria (o `freeza_transform` so roda pelo
+	/// limiar, BossEvents.dm:588).
+	/// ===========================================================================================================================
+	/// </summary>
+	private bool NegarMorteDoChefe(ServerPlayer npc)
+	{
+		if (ChefeMorreAntesDaHoraDeTeste || npc.Papel is not { EhChefe: true } papel || papel.GatilhoAtual < 0) return false;
+		if (ChefesQueMorremAntesDaHora.Contains(papel.Molde.Id)) return false;
+		AvancarEstagio(npc);
+		npc.Combate.Curar();
+		GD.Print($"[server] ROTEIRO: '{npc.Name}' nao morre antes da hora -- o golpe letal virou a transformacao (degrau {papel.Estagio + 1})");
+		return true;
+	}
+
+	/// <summary>
+	/// OS CHEFES QUE MORREM EM QUALQUER DEGRAU: o Cell (o dono: *"menos o cell"*) -- ele tem a propria volta da morte (`RessurgeNoDegrau`, o
+	/// Super Perfeito) e os degraus dele sobem tambem por absorcao.
+	/// </summary>
+	private static readonly HashSet<string> ChefesQueMorremAntesDaHora = new(StringComparer.OrdinalIgnoreCase) { "cell" };
+
+	/// <summary>DEFEITO INJETADO (`--chefesteste`, familia H): o chefe morre em qualquer degrau -- o jogo de antes de 2026-10-18. Falso em jogo, sempre.</summary>
+	internal static bool ChefeMorreAntesDaHoraDeTeste;
+
+	/// <summary>
 	/// ENTRA NO DEGRAU EM QUE O PAPEL JA ESTA. Separado do <see cref="AvancarEstagio"/> porque ha
 	/// **dois** jeitos de um corpo chegar num degrau, e o segundo nasceu com a cadeia de sagas:
 	///

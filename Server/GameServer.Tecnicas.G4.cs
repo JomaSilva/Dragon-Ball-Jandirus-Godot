@@ -125,7 +125,7 @@ public partial class GameServer
 
 		if (alvo == null) { Avisar(pl, $"não ha ninguém chamado '{nome}' no mundo agora."); return; }
 		if (alvo == pl) { Avisar(pl, "você ja sabe o que está pensando."); return; }
-		if (!AchoAEnergiaG4(alvo)) { Avisar(pl, $"não consigo achar a energia de {alvo.Name}!"); return; }
+		if (!AchoAEnergia(pl, alvo)) { Avisar(pl, $"não consigo achar a energia de {alvo.Name}!"); return; }   // (2026-10-18) e o ki divino
 
 		if (texto.Length == 0)
 		{
@@ -165,7 +165,7 @@ public partial class GameServer
 			// NPC nao tem mente pra alcancar -- e nem o clone nem o boneco do corpo largado, que sao
 			// ECOS de uma mente que ja esta na lista. O crivo e o do `Core` (ver `Gente.EhJogador`).
 			if (o == pl || !EhJogador(o)) continue;
-			if (!AchoAEnergiaG4(o)) continue;
+			if (!AchoAEnergia(pl, o)) continue;
 			achados.Add(o.Name);
 		}
 

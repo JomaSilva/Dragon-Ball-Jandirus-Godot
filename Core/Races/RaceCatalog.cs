@@ -51,6 +51,8 @@ public sealed class RaceCatalog
 			cat._protos[p.Name] = p;
 		}
 
+		// (2026-10-18) A INTELIGENCIA DO DONO por cima do DM: o Humano dobrada, o Tsufurujin o dobro dela. Ver `InteligenciaDaRaca`.
+		InteligenciaDaRaca.Aplicar(cat);
 		return cat;
 	}
 

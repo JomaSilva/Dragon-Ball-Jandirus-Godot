@@ -312,13 +312,20 @@ public sealed class CombatState
 	/// a imunidade de cinematica significaria visitar os dezoito e acertar todos -- e o que sobrasse
 	/// seria o "as vezes" que ninguem consegue reproduzir.
 	/// </summary>
-	public bool Intocavel => Carencia > 0 || Desfeito || Invulneravel || Enterrado || EmCinematica?.Invoke() == true;
+	public bool Intocavel => Carencia > 0 || Desfeito || Invulneravel || Enterrado || Possuido || EmCinematica?.Invoke() == true;
 
 	/// <summary>
 	/// (2026-10-17) A LARVA ENTERRADA (`GameServer.Larva.cs`): debaixo da terra ninguem a alcanca -- a quinta razao do <see cref="Intocavel"/>.
 	/// Quem a escreve e o servidor, ao enterrar e ao sair da terra.
 	/// </summary>
 	public bool Enterrado;
+
+	/// <summary>
+	/// (2026-10-18) O CORPO DE VERDADE DE QUEM FOI POSSUIDO pelo Neo Tuffle (`GameServer.NeoTuffle.cs`): enquanto o Tuffle anda no lugar
+	/// dele, este fica escondido com o dono assistindo, e ninguem o alcanca -- a sexta razao do <see cref="Intocavel"/>. Quem a escreve e o
+	/// servidor, ao entrar e ao sair.
+	/// </summary>
+	public bool Possuido;
 
 	/// <summary>
 	/// ============================ ESTE CORPO ESTA SENDO ARREMESSADO AGORA? ============================
@@ -433,6 +440,7 @@ public sealed class CombatState
 	{
 		if (Intocavel || dano <= 0) return false;
 		Corpo.Ferir(membro, dano, letal);
+		GolpesQueFeriram++;
 
 		// O `if(health <= 0 && !nonlethal) LopLimb()` do DM, com as regras que o port ja tinha no
 		// soco: so golpe LETAL arranca, so um membro que ZEROU, so `Vitalidade.Membro` (nucleo zerado
@@ -447,6 +455,13 @@ public sealed class CombatState
 
 		return true;
 	}
+
+	/// <summary>
+	/// (2026-10-18) QUANTAS VEZES UM DANO ENCOSTOU NESTE CORPO pelo funil unico (<see cref="Ferir"/>) -- so sobe. Quem quer saber "apanhou
+	/// desde entao?" guarda o numero e compara: o Sleep do Majin (`GameServer.SonoDoMajin.cs`). Uma regua pela vida somada das partes acusava o
+	/// que nao era golpe; esta so conta o que passou pelo funil.
+	/// </summary>
+	public long GolpesQueFeriram;
 
 	/// <summary>
 	/// ESTE CORPO NAO PERDE MEMBRO. Ligado pelo servidor no corpo de um ANIMAL (`GameServer.Animais.cs`), e so

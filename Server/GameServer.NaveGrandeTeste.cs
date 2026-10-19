@@ -37,6 +37,7 @@ public partial class GameServer
 		var forjados = new List<ServerPlayer>();
 		Nave? nave = null;
 		Action? tirarOVoo = null;
+		Obra? mesaDeDentro = null;   // a mesa da secao 3: a secao 8 a acha do lado de fora
 
 		try
 		{
@@ -100,23 +101,19 @@ public partial class GameServer
 				  $"console: \"{_obras?.Get("Ship_Control")?.Nome ?? "-"}\", "
 				  + $"plataforma: \"{_obras?.Get("Ship_Pad")?.Nome ?? "-"}\"");
 
-			// ---------------------------------------------------------------- 3. CONSTRUIR DENTRO E RECUSADO
-			// ============================ A RECUSA FICA; O MOTIVO DELA MUDOU ============================
-			// Aqui estava escrito "a `Obra` filtra a zona por NOME PURO, e o nome do interior de TODA nave
-			// e 'Nave'". **Isso deixou de ser verdade**: a `Obra` guarda as tres partes da `ZoneKey` (ver
-			// `Obra.ZonaTipo`) e a secao 5 da `--obrateste` prova que o interior da #7 e o da #8 sao zonas
-			// distintas. Deixar a frase de pe faria a proxima pessoa "consertar" um defeito que ja morreu.
-			//
-			// O QUE SUSTENTA A RECUSA HOJE E O CICLO DE VIDA, e nao a chave: a nave se recolhe e se
-			// destroi, e o `mundo.json` nao sabe disso -- a bancada erguida dentro dela ficaria de pe pra
-			// sempre numa zona onde ninguem mais entra. Ver o comentario no `Posicionar`.
-			// ========================================================================================
-			int obrasAntes = _noChao.Count;
+			// ---------------------------------------------------------------- 3. CONSTRUIR DENTRO E ACEITO (dono, 2026-10-18)
+			// *"permita construir dentro da capital ship (gravidade , research etc mas nao paredes etc)"*. Ate 2026-10-18 esta secao provava a
+			// RECUSA, e o motivo dela era o CICLO DE VIDA: a nave se recolhe e se destroi, e o `mundo.json` nao sabia disso -- a obra ficaria de
+			// pe pra sempre numa zona onde ninguem mais entra. Agora o fim da nave tira o que esta dentro (`TirarAsObrasDaNave`), e a secao 8
+			// prova, com ESTA mesa, que a explosao a cospe pro lado do casco, solta. As passagens, a parede, a nave dentro da nave, o recolher e
+			// os contra-exemplos sao a camada 6 (`GameServer.NaveObraTeste.cs`).
 			ComandoDeTech(pl, "construir", "Research_Station");
-			ComandoDeTech(pl, "posicionar", $"Research_Station/{pl.Pos.X:0}/{pl.Pos.Y:0}");
-			Checa("construir DENTRO da nave e recusado (a nave morre, e a obra ficaria presa la)",
-				  _noChao.Count == obrasAntes, $"obras: {obrasAntes} -> {_noChao.Count}");
-			pl.Mochila.Tirar("Research_Station");
+			Vec2 ondeAMesa = NaveGrande.PixelDe((NaveGrande.CelDaChegada.X + 2, NaveGrande.CelDaChegada.Y));
+			ComandoDeTech(pl, "posicionar", $"Research_Station/{ondeAMesa.X:0}/{ondeAMesa.Y:0}");
+			mesaDeDentro = _noChao.FirstOrDefault(o => o.Zona.Equals(dentro) && o.Tipo == "Research_Station");
+			Checa("construir DENTRO da nave e ACEITO: a mesa de pesquisa vai pro chao do interior DESTA nave, ja aparafusada",
+				  mesaDeDentro is { Aparafusada: true }, $"obras no interior: {_noChao.Count(o => o.Zona.Equals(dentro))}");
+			if (pl.Mochila.Quantos("Research_Station") > 0) pl.Mochila.Tirar("Research_Station");
 
 			// ---------------------------------------------------------------- 4. A PONTE
 			Checa("longe do console, a ponte nao responde", NaveDaPonteDe(pl) == null);
@@ -145,8 +142,14 @@ public partial class GameServer
 				  NaveDaPonteDe(pl) == null);
 			pl.Pos = NaveGrande.PixelDe((NaveGrande.CelDoConsole.X, NaveGrande.CelDoConsole.Y + 1));
 
+			// (2026-10-18) OBSERVAR VIROU CAMERA: o olho sai pro lado de fora (com a nave pousada, o chao do planeta) e o MESMO verbo o devolve
+			// ao corpo -- a camada 11 mede o resto (`GameServer.NaveCombustivelTeste.cs`). Aqui so a ida e a volta, antes do leme.
 			ComandoDeInteracao(pl, "nave_observar", "");
-			Checa("observar nao explode fora do espaco (a nave esta pousada)", true);
+			bool olhouDeFora = pl.ObservaNave == nave.Id && pl.Zone.Equals(nave.Zona);
+			ComandoDeInteracao(pl, "nave_observar", "");
+			Checa("observar com a nave POUSADA leva o olho pro chao do planeta, ao lado do casco -- e o mesmo verbo o devolve a ponte",
+				  olhouDeFora && pl.ObservaNave == 0 && pl.Zone.Equals(dentro) && NaveDaPonteDe(pl)?.Id == nave.Id,
+				  $"olhou de fora {olhouDeFora}; observa {pl.ObservaNave}; zona {pl.Zone}");
 
 			// ---------------------------------------------------------------- 5. O LEME
 			float velANdando = pl.SpeedStat;
@@ -390,6 +393,16 @@ public partial class GameServer
 			Checa("...e nao empilhados no MESMO pixel",
 				  passageiro == null || (passageiro.Pos - pl.Pos).Length > 1f,
 				  passageiro == null ? "" : $"distancia {(passageiro.Pos - pl.Pos).Length:0.0} px");
+
+			// (2026-10-18) A MESA DA SECAO 3 SAI JUNTO, SOLTA -- *"se ela explodir esses itens saem da nave sem estarem parafusados"*. Se a secao 6
+			// lancou a nave, ela caiu no ESPACO: no vazio nao ha chao a procurar, e a mesa fica flutuando ao lado do casco.
+			if (mesaDeDentro != null)
+				Checa("**A MESA DE DENTRO SAI PRO LADO DO CASCO, SOLTA** (*\"se ela explodir esses itens saem da nave sem estarem parafusados\"*): na "
+					  + "zona em que o casco estava, perto dele, sem o parafuso -- e nenhuma obra ficou no interior",
+					  mesaDeDentro.Zona.Equals(ondeCaiu) && !mesaDeDentro.Aparafusada && _noChao.All(o => !o.Zona.Equals(dentro))
+					  && (new Vec2(mesaDeDentro.X, mesaDeDentro.Y) - ondeOCascoEstava).Length < 6 * ZoneCollision.TileSize,
+					  $"mesa em {mesaDeDentro.Zona} ({mesaDeDentro.X:0},{mesaDeDentro.Y:0}), aparafusada {mesaDeDentro.Aparafusada}; casco em "
+					  + $"({ondeOCascoEstava.X:0},{ondeOCascoEstava.Y:0})");
 			if (noLeme)
 			{
 				Checa("o piloto foi solto do leme antes de a nave sumir (senao o tique procuraria uma nave morta)",
@@ -442,6 +455,7 @@ public partial class GameServer
 		}
 		finally
 		{
+			if (mesaDeDentro != null && _noChao.Remove(mesaDeDentro)) { GravarMundo(); MandarObras(mesaDeDentro.Zona); }
 			foreach (ServerPlayer f in forjados) RemoverPassageiro(f);
 			if (nave != null) _naves.Remove(nave);
 			pl.Mochila.Tirar(NaveGrande.Tipo);

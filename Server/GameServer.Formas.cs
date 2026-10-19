@@ -443,6 +443,12 @@ public partial class GameServer
 			? $"{nomeDoAmigo} se foi. Alguma coisa dentro de voce se PARTE."
 			: $"{nomeDoAmigo} cai na sua frente, e voce nao chegou a tempo.", Jandirus.Net.Protocol.Fala.AvisoDeRaiva);
 
+		// (2026-10-18) E ELE GRITA -- o dono: *"caso um jogador sinta raiva ele fale no chat algo do tipo como : "miseravel", "seu desgraçado",
+		// "vou acabar com vc" etc"*. So na ERUPCAO (a renovacao do prazo nao grita de novo), pela boca dele (`Fala.Diz`: quem esta a vista ouve). As
+		// falas sao do Core (`RaivaEmDegraus.GritosDaErupcao`); a da morte, aos berros. E O NOME DO AMIGO VAI JUNTO (o dono, no mesmo dia): numa chance
+		// na raiva comum, e na furia o nome com o "NAO" e a frase logo em seguida. O nome e o desta mensagem logo acima -- o que quem grita conhece.
+		if (!jaEstava && !RaivaMudaDeTeste) GritarNaErupcao(enlutado, nomeDoAmigo, grau);
+
 		// A CENA, DEPOIS DO AVISO -- a ordem e a do DM (`Murder.dm:119` vem depois das tres escritas
 		// de `:112-114`), e ela importa por um motivo so: a `AFuriaVaiVirarForma` la dentro le a raiva
 		// que acabou de ser escrita, exatamente como o `anger_will_transform()` do original.

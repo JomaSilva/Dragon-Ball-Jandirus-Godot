@@ -1779,7 +1779,7 @@ public partial class GameServer
 			// O PODER DE QUEM PEDE SO SAI EM NUMERO COM SCOUTER (a regra principal do BP; ver `PoderNaFrase`). Sem
 			// ele NAO vai porcentagem: o limiar e do MUNDO e esta escrito nesta mesma frase -- limiar vezes fracao
 			// seria o BP. Diz-se so de que lado o corpo esta, que e o que a recusa ja conta.
-			string meuPoder = Jandirus.Core.Stats.PoderNaFrase.EmNumero(TemScouter(pl))
+			string meuPoder = Jandirus.Core.Stats.PoderNaFrase.EmNumero(ScouterMostra(pl, pl, pl.Ficha.expressedBP))
 				? $"{pl.Ficha.expressedBP:0} de BP"
 				: pl.Ficha.expressedBP < bpExigido ? "um poder que ainda não alcança isso" : "um poder que alcança";
 			Avisar(pl, $"você não tem energia. São {MortePlanetaria.KiDaDestruicao:0} de Ki e "

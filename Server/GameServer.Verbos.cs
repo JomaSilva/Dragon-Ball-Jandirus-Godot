@@ -46,7 +46,8 @@ public sealed partial class GameServer
 		if (!pl.EmSessao) { Avisar(pl, "comece uma sessao primeiro."); return; }
 
 		double ganho = pl.Ficha.BP - pl.BpDaSessao;
-		if (TemScouter(pl))
+		// (2026-10-18) o numero so dentro do teto do scouter, e nunca de ki divino -- ver `ScouterMostra`
+		if (ScouterMostra(pl, pl, pl.BpDaSessao, pl.Ficha.BP))
 			Avisar(pl, $"nesta sessao voce ganhou {ganho:N0} de poder base ({pl.BpDaSessao:N0} -> {pl.Ficha.BP:N0}).");
 		else if (pl.BpDaSessao > 0)
 			Avisar(pl, $"voce esta cerca de {ganho / pl.BpDaSessao * 100:0.#}% mais forte do que quando comecou.");

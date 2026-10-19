@@ -272,8 +272,9 @@ public sealed partial class Fighter
     }
 
     /// <summary>
-    /// A MAESTRIA DE GRAVIDADE: o teto de aclimatacao so sobe encarando gravidade ACIMA dele -- no passe do treino e da
-    /// meditacao (`GameServer.Treinar`). O BP que este metodo pagava (a parcela `gravidade/1500`) saiu em 2026-10-16: a
+    /// A MAESTRIA DE GRAVIDADE: o teto de aclimatacao so sobe encarando gravidade ACIMA dele -- a cada passe de ficha de todo jogador
+    /// (`GameServer.Treinar`), treinando ou nao, como no DM (`Gravity.dm:30-33`; ate 2026-10-18 so no passe do treino e da meditacao, e o
+    /// peso, que cansa o treino pelo quadrado, a travava). O BP que este metodo pagava (a parcela `gravidade/1500`) saiu em 2026-10-16: a
     /// gravidade agora multiplica o tique, ver <see cref="FatorDaGravidade"/>.
     ///
     /// A maestria segue a gravidade ABSOLUTA, nao a razao. O sistema antigo de tiers zerava o ganho no instante em que a

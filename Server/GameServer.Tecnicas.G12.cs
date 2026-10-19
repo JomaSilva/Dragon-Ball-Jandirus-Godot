@@ -1175,7 +1175,7 @@ public sealed partial class GameServer
 		// OS DOIS NUMEROS (o acumulado e o do dono) SO SAEM PRA QUEM TEM SCOUTER -- a regra principal do BP; ver
 		// `PoderNaFrase`. Sem ele a frase mede a bomba CONTRA o poder de quem a soltou, que e a comparacao que sobra.
 		Avisar(pl, $"a Genkidama parte com escala {g.Escala:0.0} ({g.Doadores} doador(es)) e o poder acumulado na espera"
-				   + (Jandirus.Core.Stats.PoderNaFrase.EmNumero(TemScouter(pl))
+				   + (Jandirus.Core.Stats.PoderNaFrase.EmNumero(ScouterMostra(pl, pl, g.BpAcumulado, f.expressedBP))
 					   ? $": {g.BpAcumulado:N0} (o seu proprio e {f.expressedBP:N0})."
 					   : $" e {Jandirus.Core.Stats.PoderNaFrase.ContraOSeu(g.BpAcumulado, f.expressedBP)}."));
 		GD.Print($"[server] Genkidama de {pl.Name}: escala {g.Escala:0.0}, {g.Doadores} doador(es), BP {g.BpAcumulado:0} (o expresso do dono e {f.expressedBP:0})");

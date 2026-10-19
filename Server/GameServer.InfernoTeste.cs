@@ -94,8 +94,8 @@ public partial class GameServer
 			double topo = 1_000_000 * ViloesDoInferno.FatorDaMedia;
 			Checa($"**O BP E O DA MEDIA DE AGORA**: o degrau mais forte vale {ViloesDoInferno.FatorDaMedia:0}x a media (1 milhao -> {topo:N0})",
 				  Math.Abs(bps[^1] - topo) < 1e-6, $"{bps[^1]:N0}");
-			Checa("...e os outros degraus guardam a proporcao da ficha (a 1a forma: 530 mil de 4 milhoes)",
-				  Math.Abs(bps[0] - topo * 530_000 / 4_000_000) < 1e-3, $"{bps[0]:N0}");
+			Checa("...e os outros degraus guardam a proporcao da ficha (a 1a forma: 530 mil de 8 milhoes, a forma final que o dono dobrou)",
+				  Math.Abs(bps[0] - topo * 530_000 / 8_000_000) < 1e-3, $"{bps[0]:N0}");
 			Checa("...SEM PISO no BP da saga: com a media baixa ele volta mais fraco do que era (a escolha do dono, 'pela media de agora')",
 				  ViloesDoInferno.Bps(freeza, 1_000)[^1] < freeza.Estagios[^1].Bp, $"{ViloesDoInferno.Bps(freeza, 1_000)[^1]:N0}");
 			Checa("...e com a media zero (servidor vazio) nenhum degrau fica abaixo de 1", ViloesDoInferno.Bps(freeza, 0).All(b => b >= 1));

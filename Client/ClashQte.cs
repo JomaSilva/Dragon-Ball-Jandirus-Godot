@@ -635,13 +635,22 @@ public partial class ClashQte : CanvasLayer
 	/// </summary>
 	public override void _UnhandledInput(InputEvent evento)
 	{
-		if (!_ligado || Foco.Digitando) return;
+		if (Foco.Digitando) return;
 		if (evento is not InputEventKey { Pressed: true, Echo: false } k) return;
 
 		// A LETRA FISICA. `Keycode` muda com o layout do teclado; `PhysicalKeycode` e a tecla onde
 		// o dedo esta -- e o que o resto do jogo usa (ver `Boot.RegistrarTeclas`).
 		Key t = k.PhysicalKeycode != Key.None ? k.PhysicalKeycode : k.Keycode;
 		if (t < Key.A || t > Key.Z) return;
+
+		// (2026-10-18) A FOLGA DEPOIS DO FIM: a letra atrasada -- a resposta que chegou depois do `Acabou` -- morre aqui. Nao vai pro servidor, que
+		// ja fechou o embate, nem pra tecla de jogo nenhuma (o portao delas e o `Foco.AtalhosMudos`, que segura a mesma folga). Ver
+		// `GameClient.QteMudo`.
+		if (!_ligado)
+		{
+			if (GameClient.Instance?.QteMudo == true) GetViewport().SetInputAsHandled();
+			return;
+		}
 
 		GameClient.Instance?.SendClashTecla((char)('A' + (t - Key.A)));
 		_respondi = true;

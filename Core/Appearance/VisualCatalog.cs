@@ -50,6 +50,14 @@ public sealed class VisualCatalog
     public const string CorpoPadraoF = "res://Assets/Sprites/Character Icons/NewPaleFemale.tres";
 
     /// <summary>
+    /// (2026-10-18) AS FOLHAS DO BEBE -- `Baby Boy.dmi` e `Baby Girl.dmi` do DU (`Icons/Mobs`). O dono: *"Baby boy se o personagem for
+    /// homem e baby girls se for mulher"*. Sao as duas com o vocabulario de um lutador (andar, voar, KO, meditar, treinar, soco e
+    /// raio); a `Baby.dmi` tem so o andar.
+    /// </summary>
+    public const string CorpoDeBebeM = "res://Assets/Sprites/DU/Mobs/Baby Boy.tres";
+    public const string CorpoDeBebeF = "res://Assets/Sprites/DU/Mobs/Baby Girl.tres";
+
+    /// <summary>
     /// Racas que NAO passam pelo passo de cabelo -- as mesmas seis do jogo. Nao e cosmetico:
     /// um Namekuseijin de cabelo espetado seria outra coisa.
     /// </summary>
@@ -71,11 +79,26 @@ public sealed class VisualCatalog
     /// </summary>
     public static bool CabeloNatural(string raca) => raca == "Saiyan";
 
-    public BodyOptions CorposDe(string raca) => Corpos.GetValueOrDefault(raca) ?? new BodyOptions
+    public BodyOptions CorposDe(string raca) =>
+        (SemOsCorposDasRacasNovasDeTeste && Array.IndexOf(RacasComCorpoDesde20261018, raca) >= 0 ? null : Corpos.GetValueOrDefault(raca))
+        ?? new BodyOptions
     {
         Masculino = [CorpoPadraoM],
         Feminino = [CorpoPadraoF],
     };
+
+    /// <summary>
+    /// (2026-10-18) AS RACAS QUE GANHARAM CORPO PROPRIO NO CATALOGO -- o dono: *"a raça saibamen n ta com o icone do saibamen, ta com de
+    /// humano, (talvez outras raças tb, resolva isso)"*. Ver `DmAppearanceScanner.Corpos`. So o defeito injetado le esta lista.
+    /// </summary>
+    public static readonly string[] RacasComCorpoDesde20261018 =
+        ["Saibaman", "Makyo", "Android", "Alien", "Arlian", "Kanassa", "Gray", "Heran", "Meta", "Yardrat", "SpiritDoll"];
+
+    /// <summary>
+    /// (2026-10-18) DEFEITO INJETADO (robo `--diagcorposderaca`): o catalogo volta a nao ter os corpos dessas racas -- o humano palido de
+    /// antes. Lido pelo <see cref="CorposDe"/>. Falso em jogo, sempre.
+    /// </summary>
+    public static bool SemOsCorposDasRacasNovasDeTeste;
 
     public bool TemCabeloChamado(string nome) => Cabelos.Any(c => c.Nome == nome);
 
@@ -307,6 +330,10 @@ public sealed class VisualCatalog
     /// </summary>
     public string CorpoSprite(Appearance ap, string raca, string genero)
     {
+        // (2026-10-18) O RECEM-NASCIDO ANDA NA FOLHA DO BEBE, antes de qualquer regra de raca: o corpo de quem acabou de nascer e o do
+        // bebe, e o que ele escolheu na criacao volta quando ele cresce (`Appearance.Bebe`). O resto do boneco some na `Escondida`.
+        if (ap.Bebe) return genero == "Female" ? CorpoDeBebeF : CorpoDeBebeM;
+
         // ============================ O FROST DEMON NAO TEM CORPO NO CATALOGO ============================
         // E de proposito, e nao um buraco: o corpo dele E a forma em que ele esta, e as formas sao
         // escolhidas na criacao (ver `Races.FormasDeFrost`). Sem esta saida ele caia no

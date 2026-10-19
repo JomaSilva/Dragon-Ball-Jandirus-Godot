@@ -107,14 +107,20 @@ public partial class GameServer
 	/// Devolve falso quando o gatilho de producao recusou -- e ai a bancada do cliente reprova
 	/// dizendo isso, em vez de medir o silencio de um embate que nunca houve.
 	/// </summary>
-	public bool EmbateDeVelocidadeDeTeste(int idDoJogador)
+	public bool EmbateDeVelocidadeDeTeste(int idDoJogador) => EmbateDeVelocidadeDeTeste(idDoJogador, 1);
+
+	/// <summary>
+	/// (2026-10-18) O MESMO EMBATE, com o rival forjado a uma FRACAO do poder do jogador: no desempate do 0x0 quem ganha e o jogador, e o golpe
+	/// de saida nao o derruba -- as familias que medem o que vem DEPOIS do fim (a F2, a F9) precisam do corpo de pe.
+	/// </summary>
+	public bool EmbateDeVelocidadeDeTeste(int idDoJogador, double fracaoDoRival)
 	{
 		if (!_mudezDeTeste || !_players.TryGetValue(idDoJogador, out ServerPlayer? eu)) return false;
 
 		SoltarDoEmbate(eu.Id);
 		ProntoParaOEmbateDaMudez(eu);
 
-		ServerPlayer rival = ForjarRivalDaMudez(eu, dx: 28, bp: Math.Max(eu.Ficha.BP, 1));
+		ServerPlayer rival = ForjarRivalDaMudez(eu, dx: 28, bp: Math.Max(eu.Ficha.BP * fracaoDoRival, 1));
 		ProntoParaOEmbateDaMudez(rival);
 
 		// A CONDICAO DA SKILL NAO E PULADA POR FLAG NENHUMA (`haszanzo && M.haszanzo`): os dois
@@ -129,6 +135,17 @@ public partial class GameServer
 		bool foi = TentarEmbate(eu, rival);
 		GD.Print($"[mudez] embate de VELOCIDADE armado contra {rival.Name}: {(foi ? "comecou" : "RECUSADO")}");
 		return foi;
+	}
+
+	/// <summary>
+	/// (2026-10-18) A BRIGA ACABA AGORA: os tres relogios de luta deste corpo zerados. *"nao da pra meditar no meio de uma briga"* -- e a familia
+	/// F9 mergulha na mente depois de varios embates.
+	/// </summary>
+	public void SemBrigaDeTeste(int id)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl) || pl.Combate is not { } c) return;
+		c.EmCombate = c.LutandoDeVerdade = c.BrigandoComAlguem = 0;
+		pl.Ficha.IsInFight = false;
 	}
 
 	// =====================================================================

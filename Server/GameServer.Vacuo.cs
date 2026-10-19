@@ -219,6 +219,12 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
+	/// DEFEITO INJETADO (`--naveteste`, camada 11): o olho de quem observa uma nave sufoca no vazio como um corpo do lado de fora -- e a ficha e a
+	/// do corpo abrigado na ponte. Lido pelo <see cref="SufocaAgora"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool OlhoSufocaDeTeste;
+
+	/// <summary>
 	/// ============================ A PERGUNTA, E ELA E UMA SO ============================
 	/// Tres negativas, na ordem do mais barato pro mais caro: esta no espaco? nao esta pilotando?
 	/// nao respira? A ultima e a unica que abre a mochila.
@@ -241,6 +247,10 @@ public sealed partial class GameServer
 
 		// ABRIGO 2, o unico que precisou de linha: dentro da pod, a zona e a do espaco.
 		if (s.Pilotando(pl.Id)) return false;
+
+		// (2026-10-18) E O OLHO DE QUEM OBSERVA UMA NAVE: o corpo esta de pe na ponte, la dentro -- o que esta no vazio e so um olho, e a ficha
+		// e a mesma do corpo, entao sufocar aqui seria matar quem esta abrigado. Ver `GameServer.NaveObservar.cs`.
+		if (EhOlhoDeFora(pl) && !OlhoSufocaDeTeste) return false;
 
 		// ABRIGO 1 + a raca + o CARGO + o DNA DO BIO, numa pergunta so.
 		//

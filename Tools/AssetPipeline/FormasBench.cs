@@ -2396,8 +2396,8 @@ public static class FormasBench
 		Console.WriteLine("[21] OS GANCHOS QUE FICARAM (inertes hoje, provaveis amanha)");
 
 		// --- 1. A ASCENSAO (`Fighter.BPBoost`) ------------------------------
-		// E o sistema que falta em QUATRO das onze dividas (Gray Full Power, Super Majin, Purification
-		// e o teto de 2,8x do Frost Demon). O port nao o tem; o que ele tem e o ponto onde o numero
+		// E o sistema que falta em TRES das dividas (Gray Full Power, Purification e o teto de 2,8x do
+		// Frost Demon; a quarta, o Super Majin, o dono tirou do jogo em 2026-10-18). O port nao o tem; o que ele tem e o ponto onde o numero
 		// entraria, e e esse ponto que esta secao exercita.
 		var corpo = new Jandirus.Core.Stats.Fighter { BP = 1000, Name = "gancho" };
 		corpo.Tick();

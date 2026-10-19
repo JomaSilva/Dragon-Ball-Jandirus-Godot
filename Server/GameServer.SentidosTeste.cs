@@ -10,9 +10,9 @@ namespace Jandirus.Server;
 /// BANCADA `--sentidosteste` -- A ABA SENSE/SCAN PELO FUNIL DO SERVIDOR.
 ///
 /// ============================ O QUE ELA MEDE, E POR QUE CADA PARTE ============================
-///   1. OS TRES ALCANCES do Sense (`Sense2.0.dm:20-35`), e quem fica de fora de cada um: os 15 tiles, o
-///      escondido, o Android, o piso de 5 de BP, o NPC (fora do "neste mundo"), o piso de 5 milhoes da
-///      galaxia; o nome so de quem se conhece; o poder RELATIVO (e nunca o absoluto); o rumo do `get_dir`;
+///   1. (2026-10-18) OS CINCO NIVEIS do Sense (`SenseEmNiveis`) -- campo de visao, regiao, planeta, sistema e universo -- e quem fica de
+///      fora de cada um: o escondido, o Android, o piso de 5 de BP, o NPC (so ate a regiao; de longe, so jogador e chefe); o nome so de
+///      quem se conhece; o poder RELATIVO (e nunca o absoluto); o rumo do `get_dir`; o piso da arvore da Mente; e como a skill sobe;
 ///   2. O SCOUTER (Scan): a area inteira com BP EXATO e coordenadas, NPC so se for chefe, e o scouter
 ///      vencendo a skill quando os dois existem;
 ///   3. O SIGILO NO FIO: o pacote aberto com o LEITOR DO CLIENTE -- no Sense todo BP e NaN, no Scan e
@@ -66,6 +66,8 @@ public partial class GameServer
 			OSigiloNoFio();
 			LimparTudoDaBancada();
 			OReenvioSoNaMudanca();
+			LimparTudoDaBancada();
+			OScouterTemTetoEKiDivino();   // (2026-10-18) ver `GameServer.SentidosDivinoTeste.cs`
 		}
 		catch (Exception e)
 		{
@@ -127,15 +129,17 @@ public partial class GameServer
 										   + $"[a{p.Alcance} d{p.Distancia} r{Protocol.NomeDoRumo(p.Rumo)} {p.PoderRelativo}% bp={p.Bp}]"));
 
 	// =====================================================================
-	// 1) OS TRES ALCANCES
+	// 1) OS CINCO NIVEIS DO SENSE (dono, 2026-10-18)
 	// =====================================================================
 	private void OsAlcancesDoSense()
 	{
-		GD.Print("[sentidos] -- 1) OS TRES ALCANCES DO SENSE, e quem fica de fora de cada um");
+		GD.Print("[sentidos] -- 1) OS CINCO NIVEIS DO SENSE (dono, 2026-10-18), e quem fica de fora de cada um");
+		const string sense = Jandirus.Core.Skills.SenseEmNiveis.Path;
 		Vec2 c = CorredorLivre(28);
 		ServerPlayer eu = StCorpo("Vidente", c, 10_000, sense: true);
 		ServerPlayer perto = StCorpo("Perto", Em(c, 5, 0), 8_500);
 		ServerPlayer longe = StCorpo("Longe", Em(c, 20, 0), 12_000);
+		ServerPlayer distante = StCorpo("Distante", Em(c, 80, 0), 9_000);
 		ServerPlayer escondido = StCorpo("Escondido", Em(c, 2, 0), 9_000);
 		escondido.Ficha.isconcealed = true;
 		ServerPlayer maquina = StCorpo("Maquina", Em(c, 3, 0), 9_000);
@@ -145,28 +149,44 @@ public partial class GameServer
 		ServerPlayer diagonal = StCorpo("Diagonal", Em(c, -3, -3), 7_000);
 		ServerPlayer tita = StCorpoEm("Tita", "Namek", 6_000_000);
 		ServerPlayer forte = StCorpoEm("Forte", "Namek", 100_000);
+		// NO ESPACO, PERTO DA TERRA: o mesmo sistema estelar dela (cada pre-feito ancora o seu, e um sistema cabe inteiro na celula dele).
+		PlanetaNoEspaco terraNoEspaco = Espaco.PreFeitos().First(p => string.Equals(p.Nome, "Earth", StringComparison.OrdinalIgnoreCase));
+		ServerPlayer astronauta = StCorpo("Astronauta", c, 9_000);
+		ZoneList(astronauta.Zone.Hash).Remove(astronauta);
+		astronauta.Zone = ZonaDoEspaco;
+		astronauta.Pos = terraNoEspaco.Pos + new Vec2((float)terraNoEspaco.Raio * 2, 0);
+		ZoneList(astronauta.Zone.Hash).Add(astronauta);
 		eu.Social.Fotografar(amigo.Assinatura, amigo.Name, amigo.Race, "Male", 25, NowMs());
 
-		AfirmarSn("preparo: o Vidente tem `Poder.Sense` (a skill no livro acende o bit) e nao tem scouter",
-				  TemSense(eu) && !TemScouter(eu));
+		AfirmarSn("preparo: o Vidente tem `Poder.Sense` (a skill no livro acende o bit), nao tem scouter, e a Sense tem cinco niveis no catalogo",
+				  TemSense(eu) && !TemScouter(eu) && _skills!.Get(sense)?.MaxNivel == Jandirus.Core.Skills.SenseEmNiveis.NivelMaximo,
+				  $"max {_skills!.Get(sense)?.MaxNivel}");
 		AfirmarSn("preparo: o Fraco expressa 5 de BP ou menos (o piso do DM)",
 				  fraco.Ficha.expressedBP <= BpMinimoSentivel, $"{fraco.Ficha.expressedBP:0.##}");
-		AfirmarSn("preparo: o Tita expressa mais de 5 milhoes e o Forte nao",
-				  tita.Ficha.expressedBP > BpDaGalaxia && forte.Ficha.expressedBP <= BpDaGalaxia,
-				  $"{tita.Ficha.expressedBP:0} / {forte.Ficha.expressedBP:0}");
 		AfirmarSn("preparo: cada corpo tem a propria assinatura, e o Vidente conhece SO o Amigo",
 				  amigo.Assinatura != perto.Assinatura && eu.Social.Conhece(amigo.Assinatura) && !eu.Social.Conhece(perto.Assinatura));
+		AfirmarSn("preparo: o Astronauta esta no espaco, no sistema da Terra; Namek e outro sistema",
+				  SistemaDe(astronauta) is { } sa && SistemaDe(eu) is { } se && sa == se && SistemaDe(tita) is { } sn && sn != se, "");
 
-		// ---- ALCANCE 1: kiawarenessskill abaixo de 20 ----
-		(bool scan, List<Protocol.PresencaState> l1) = SentidosDe(eu);
-		AfirmarSn("alcance 1 (kiawarenessskill < 20): o modo e Sense, nao Scan", !scan);
+		List<Protocol.PresencaState> NoNivel(int n)
+		{
+			eu.Niveis.Por(sense, n);
+			(bool scan, List<Protocol.PresencaState> l) = SentidosDe(eu);
+			return scan ? [] : l;
+		}
+
+		// ---- NIVEL 1: O CAMPO DE VISAO (e o 0, a skill comprada e nao treinada) ----
+		List<Protocol.PresencaState> l0 = NoNivel(0);
+		AfirmarSn("nivel 0 (a skill comprada, ainda nao treinada): sente como o 1 -- o Perto aparece, o Longe nao",
+				  Acha(l0, perto) != null && Acha(l0, longe) == null && NivelDoSense(eu) == AlcanceVisao, Nomes(l0));
+		List<Protocol.PresencaState> l1 = NoNivel(1);
 		Protocol.PresencaState? pp = Acha(l1, perto);
-		AfirmarSn("...o Perto (5 tiles) aparece, com alcance 'perto'", pp is { Alcance: AlcancePerto }, Nomes(l1));
+		AfirmarSn("**NIVEL 1, O CAMPO DE VISAO**: o Perto (5 tiles) aparece, com o alcance 1", pp is { Alcance: AlcanceVisao }, Nomes(l1));
 		AfirmarSn("...o Longe (20 tiles) NAO aparece: 15 e o limite (HtmlUI.dm:371)", Acha(l1, longe) == null, Nomes(l1));
 		AfirmarSn("...o Escondido (isconcealed) NAO aparece (HtmlUI.dm:369)", Acha(l1, escondido) == null);
 		AfirmarSn("...o Android NAO aparece (HtmlUI.dm:369)", Acha(l1, maquina) == null);
 		AfirmarSn("...quem expressa <= 5 de BP NAO aparece (HtmlUI.dm:370)", Acha(l1, fraco) == null);
-		AfirmarSn("...o Tita de outro planeta NAO aparece no alcance 1", Acha(l1, tita) == null);
+		AfirmarSn("...nem o Tita de outro planeta, nem o Astronauta do espaco", Acha(l1, tita) == null && Acha(l1, astronauta) == null);
 		AfirmarSn("o desconhecido vem SEM nome e com a assinatura -- o \"??? (assinatura)\" do HtmlUI.dm:374",
 				  pp is { Nome: "" } d && d.Assinatura == perto.Assinatura && d.Assinatura.Length == 10, $"{pp?.Nome}/{pp?.Assinatura}");
 		AfirmarSn("o Amigo (fotografado no convivio) vem COM nome e sem assinatura",
@@ -177,7 +197,6 @@ public partial class GameServer
 		AfirmarSn("...e nao e o BP absoluto do outro",
 				  pp is { } p2 && Math.Abs(p2.PoderRelativo - perto.Ficha.expressedBP) > 1, $"{pp?.PoderRelativo} vs {perto.Ficha.expressedBP:0}");
 		AfirmarSn("o BP absoluto vai como NaN (SemLeitura) em TODA presenca do modo Sense", l1.Count > 0 && l1.All(p => double.IsNaN(p.Bp)));
-		// (a vida deixou de viajar em 2026-09-04, a pedido do dono -- o registro nem tem o campo; ver `Presenca`)
 		AfirmarSn("a distancia e o `get_dist` (5 tiles) e o rumo e E", pp is { Distancia: 5, Rumo: 3 }, $"d{pp?.Distancia} r{pp?.Rumo}");
 		Protocol.PresencaState? pd = Acha(l1, diagonal);
 		AfirmarSn("o Diagonal (3 tiles a noroeste) vem com rumo NW e distancia 3 -- o `get_dir` junta os dois eixos, o `get_dist` e o maior deles",
@@ -185,51 +204,106 @@ public partial class GameServer
 		int iD = l1.FindIndex(p => p.Assinatura == diagonal.Assinatura), iP = l1.FindIndex(p => p.Assinatura == perto.Assinatura), iA = l1.FindIndex(p => p.Nome == "Amigo");
 		AfirmarSn("a lista vem em ordem de distancia: Diagonal (3), Perto (5), Amigo (6)", iD >= 0 && iD < iP && iP < iA, Nomes(l1));
 
-		// ---- ALCANCE 2: Basic Ki Awareness no 100 escreve kiawarenessskill 20 -- pelo motor de niveis ----
+		// ---- NIVEL 2: A REGIAO (60 tiles), com NPC ----
+		MoldeDeNpc? moldeComum = _moldes?.Todos.FirstOrDefault(m => !m.EhChefe);
+		MoldeDeNpc? moldeChefe = _moldes?.Todos.FirstOrDefault(m => m.EhChefe);
+		ServerPlayer? cidadao = null, povoLonge = null, chefeLonge = null, povoDeNamek = null, chefeDeNamek = null;
+		ServerPlayer Npc(string nome, ServerPlayer corpo, MoldeDeNpc molde, ulong semente)
+		{
+			corpo.Papel = new PapelDeNpc(molde, semente);
+			corpo.Conta = "";   // NPC: papel e sem conta, como o do mundo
+			return corpo;
+		}
+		if (moldeComum != null && moldeChefe != null)
+		{
+			cidadao = Npc("Cidadao", StCorpo("Cidadao", Em(c, 18, 0), 9_000), moldeComum, 7);
+			povoLonge = Npc("PovoLonge", StCorpo("PovoLonge", Em(c, 75, 0), 9_000), moldeComum, 8);
+			chefeLonge = Npc("ChefeLonge", StCorpo("ChefeLonge", Em(c, 78, 0), 50_000), moldeChefe, 9);
+			povoDeNamek = Npc("PovoDeNamek", StCorpoEm("PovoDeNamek", "Namek", 9_000), moldeComum, 10);
+			chefeDeNamek = Npc("ChefeDeNamek", StCorpoEm("ChefeDeNamek", "Namek", 50_000), moldeChefe, 11);
+		}
+		AfirmarSn("preparo: o catalogo de NPCs tem molde comum e de chefe (os NPCs de cada alcance)", cidadao != null, "");
+		List<Protocol.PresencaState> l2 = NoNivel(2);
+		AfirmarSn("**NIVEL 2, A REGIAO**: o Longe (20 tiles) aparece, com o alcance 2, a 20 tiles a E",
+				  Acha(l2, longe) is { Alcance: AlcanceRegiao, Distancia: 20, Rumo: 3 }, Nomes(l2));
+		AfirmarSn("...o Perto continua com o alcance 1 (o mais perto vence, como o `shown |= D` do DM)", Acha(l2, perto) is { Alcance: AlcanceVisao });
+		AfirmarSn("...e o NPC a 18 tiles TAMBEM (na regiao o NPC entra, com o nome dele)",
+				  cidadao != null && l2.Any(p => p.Distancia == 18 && p.Alcance == AlcanceRegiao && p.Nome == "Cidadao"), Nomes(l2));
+		AfirmarSn("...o Distante (80 tiles) NAO: 60 e o limite da regiao", Acha(l2, distante) == null, Nomes(l2));
+
+		// ---- NIVEL 3: O PLANETA -- a zona inteira, so jogador e chefe ----
+		List<Protocol.PresencaState> l3 = NoNivel(3);
+		AfirmarSn("**NIVEL 3, O PLANETA**: o Distante (80 tiles) aparece, com o alcance 3, distancia e rumo",
+				  Acha(l3, distante) is { Alcance: AlcancePlaneta, Distancia: 80, Rumo: 3 }, Nomes(l3));
+		AfirmarSn("...o CHEFE a 78 tiles tambem, marcado como chefe -- e o POVO a 75 tiles NAO (alem da regiao, so jogador e chefe)",
+				  chefeLonge != null && povoLonge != null && l3.Any(p => p.Distancia == 78 && p.Chefe && p.Alcance == AlcancePlaneta)
+				  && !l3.Any(p => p.Distancia == 75), Nomes(l3));
+		AfirmarSn("...e nada de fora da zona: nem o Astronauta, nem Namek", Acha(l3, astronauta) == null && Acha(l3, tita) == null, Nomes(l3));
+
+		// ---- NIVEL 4: O SISTEMA ----
+		List<Protocol.PresencaState> l4 = NoNivel(4);
+		AfirmarSn("**NIVEL 4, O SISTEMA**: o Astronauta (no espaco, no sistema da Terra) aparece, com o alcance 4, o lugar e sem coordenada nem distancia",
+				  Acha(l4, astronauta) is { Alcance: AlcanceSistema, X: -1, Y: -1, Distancia: Protocol.DistanciaDesconhecida } pa && pa.Zona.Length > 0,
+				  Nomes(l4));
+		AfirmarSn("...e Namek (outro sistema) ainda NAO", Acha(l4, tita) == null && Acha(l4, forte) == null, Nomes(l4));
+
+		// ---- NIVEL 5: O UNIVERSO -- so jogadores e chefes ----
+		List<Protocol.PresencaState> l5 = NoNivel(5);
+		Protocol.PresencaState? pt = Acha(l5, tita);
+		AfirmarSn("**NIVEL 5, O UNIVERSO**: o Tita de Namek aparece, com o alcance 5, o lugar e sem coordenada nem distancia",
+				  pt is { Alcance: AlcanceUniverso, Zona: "Namek", X: -1, Y: -1, Distancia: Protocol.DistanciaDesconhecida }, Nomes(l5));
+		AfirmarSn("...e o Forte (100 mil) tambem: o piso dos 5 milhoes da galaxia do DM saiu -- no universo o corte e jogador ou chefe",
+				  Acha(l5, forte) is { Alcance: AlcanceUniverso }, Nomes(l5));
+		AfirmarSn("**...SO JOGADORES E CHEFES** (*\"o player so vai sentir chefes e jogadores\"*): o chefe de Namek entra, o povo de Namek NAO",
+				  chefeDeNamek != null && povoDeNamek != null && l5.Any(p => p.Chefe && p.Zona == "Namek") && !l5.Any(p => p.Nome == "PovoDeNamek"),
+				  Nomes(l5));
+		float esperadoTita = (float)Math.Round(tita.Ficha.BP / Math.Max(eu.Ficha.BP, 1) * 100, MidpointRounding.AwayFromZero);
+		AfirmarSn("...o poder de longe e a razao dos BPs BASE (`D.BP/max(BP,1)`, a galaxia do DM, :393), nao dos expressos",
+				  pt is { } t && Math.Abs(t.PoderRelativo - esperadoTita) < 1e-6, $"{pt?.PoderRelativo} vs {esperadoTita}");
+		AfirmarSn("...e o BP absoluto continua NaN em todos os alcances", l5.Count >= 5 && l5.All(p => double.IsNaN(p.Bp)));
+		SenseSemNiveisDeTeste = true;
+		List<Protocol.PresencaState> semNiveis;
+		try { semNiveis = SentidosDe(eu).Lista; }
+		finally { SenseSemNiveisDeTeste = false; }
+		AfirmarSn("   DEFEITO INJETADO (o Sense de antes, so pelo contador da Mente): no nivel 5 ele so ve o campo de visao -- a regua de cima reprovaria",
+				  Acha(semNiveis, tita) == null && Acha(semNiveis, longe) == null && Acha(semNiveis, perto) != null, Nomes(semNiveis));
+
+		// ---- O PISO PELA ARVORE DA MENTE: Basic Ki Awareness no 100 escreve kiawarenessskill 20 -- pelo motor de niveis ----
+		eu.Niveis.Por(sense, 1);
 		eu.Livro.Dar(StBasicAwareness);
 		eu.Niveis.Por(StBasicAwareness, 100);
 		MnLogin(eu);
+		eu.Niveis.Por(sense, 1);
 		AfirmarSn("preparo: Basic Ki Awareness no nivel 100 escreve kiawarenessskill 20 (o motor de niveis, como a --arvoreteste prova)",
 				  Math.Abs(eu.Ficha.kiawarenessskill - 20) < 1e-9, $"{eu.Ficha.kiawarenessskill}");
-		(_, List<Protocol.PresencaState> l2) = SentidosDe(eu);
-		Protocol.PresencaState? pl2 = Acha(l2, longe);
-		AfirmarSn("alcance 2 (kiawarenessskill >= 20, Sense2.0.dm:27): o Longe aparece, 'neste mundo', 20 tiles a E",
-				  pl2 is { Alcance: AlcanceMundo, Distancia: 20, Rumo: 3 }, Nomes(l2));
-		AfirmarSn("...o Perto continua 'perto' (o mais proximo vence, como o `shown |= D` do DM)", Acha(l2, perto) is { Alcance: AlcancePerto });
-		AfirmarSn("...Escondido, Android e Fraco continuam fora; o Tita de outro planeta tambem",
-				  Acha(l2, escondido) == null && Acha(l2, maquina) == null && Acha(l2, fraco) == null && Acha(l2, tita) == null, Nomes(l2));
-
-		MoldeDeNpc? moldeComum = _moldes?.Todos.FirstOrDefault(m => !m.EhChefe);
-		if (moldeComum != null)
-		{
-			// NPC DO MUNDO: tem papel e NAO tem conta (a assinatura sai de conta+slot, e cidadao nasce sem
-			// conta -- ver o cabecalho de `GameServer.Convivio.cs`). A forja daqui da conta a todos; tira-se.
-			ServerPlayer cidadao = StCorpo("Cidadao", Em(c, 18, 0), 9_000);
-			cidadao.Papel = new PapelDeNpc(moldeComum, 7);
-			cidadao.Conta = "";
-			ServerPlayer vizinho = StCorpo("Vizinho", Em(c, 7, 0), 9_000);
-			vizinho.Papel = new PapelDeNpc(moldeComum, 8);
-			vizinho.Conta = "";
-			(_, List<Protocol.PresencaState> l2b) = SentidosDe(eu);
-			// NPC nao tem assinatura: acha-se pela distancia
-			AfirmarSn("...um NPC do mundo a 18 tiles NAO entra no 'neste mundo' (o DM varre `player_list`, so jogador)",
-					  !l2b.Any(p => p.Distancia == 18), Nomes(l2b));
-			AfirmarSn("...mas um NPC a 7 tiles ENTRA no 'perto' (o DM varre `current_area.contents`, todo mob), com o NOME dele e sem assinatura (dono, 2026-10-13)",
-					  l2b.Any(p => p.Distancia == 7 && p.Alcance == AlcancePerto && p.Nome == "Vizinho" && p.Assinatura == ""), Nomes(l2b));
-		}
-		else GD.Print("[sentidos]   --    (sem catalogo de NPCs: a peneira de NPC do alcance 2 nao foi medida)");
-
-		// ---- ALCANCE 3: o contador no 60. Como ele chega la e assunto da arvore da Mente (--menteskills) ----
+		List<Protocol.PresencaState> lm20 = SentidosDe(eu).Lista;
+		AfirmarSn("O PISO DA ARVORE DA MENTE: com o Sense no nivel 1 e o contador em 20 (o segundo alcance do DM), ele sente o PLANETA",
+				  NivelDoSense(eu) == AlcancePlaneta && Acha(lm20, distante) != null && Acha(lm20, astronauta) == null, Nomes(lm20));
 		eu.Ficha.kiawarenessskill = PericiaDaGalaxia;
-		(_, List<Protocol.PresencaState> l3) = SentidosDe(eu);
-		Protocol.PresencaState? pt = Acha(l3, tita);
-		AfirmarSn("alcance 3 (kiawarenessskill >= 60, Sense2.0.dm:32): o Tita de Namek aparece 'na galaxia', com o lugar e sem coordenada nem distancia",
-				  pt is { Alcance: AlcanceGalaxia, Zona: "Namek", X: -1, Y: -1, Distancia: Protocol.DistanciaDesconhecida }, Nomes(l3));
-		AfirmarSn("...e o Forte (100 mil) de Namek NAO: 5 milhoes e o piso da galaxia (HtmlUI.dm:389)", Acha(l3, forte) == null, Nomes(l3));
-		float esperadoTita = (float)Math.Round(tita.Ficha.BP / Math.Max(eu.Ficha.BP, 1) * 100, MidpointRounding.AwayFromZero);
-		AfirmarSn("...o poder do Tita e a razao dos BPs BASE (`D.BP/max(BP,1)`, :393), nao dos expressos",
-				  pt is { } t && Math.Abs(t.PoderRelativo - esperadoTita) < 1e-6, $"{pt?.PoderRelativo} vs {esperadoTita}");
-		AfirmarSn("...e o BP absoluto continua NaN nos tres alcances", l3.Count >= 3 && l3.All(p => double.IsNaN(p.Bp)));
+		List<Protocol.PresencaState> lm60 = SentidosDe(eu).Lista;
+		AfirmarSn("...e com o contador em 60 (a galaxia do DM), o SISTEMA -- o universo so pelo nivel 5 da skill",
+				  NivelDoSense(eu) == AlcanceSistema && Acha(lm60, astronauta) != null && Acha(lm60, tita) == null, Nomes(lm60));
+		eu.Ficha.kiawarenessskill = 0;
+
+		// ---- COMO SOBE: sozinha, com o tempo; o triplo meditando ----
+		ServerPlayer aprendiz = StCorpo("Aprendiz", Em(c, 0, 12), 10_000, sense: true);
+		double Ganho(bool meditando)
+		{
+			aprendiz.Niveis.Por(sense, 1, 0);
+			var sorte = new Random(7);
+			for (int i = 0; i < 400; i++)
+				aprendiz.Niveis.Efetor(sorte, _skills!, aprendiz.Livro!, new Jandirus.Core.Skills.NiveisDeSkill.EstadoDoCorpo(meditando, false, false));
+			return aprendiz.Niveis.Exp(sense);
+		}
+		double parado = Ganho(false), meditando = Ganho(true);
+		AfirmarSn("COMO SOBE: sozinha, com o tempo (400 tiques parados rendem ~200 de exp, o `prob(50)`), e o TRIPLO meditando",
+				  parado is > 150 and < 250 && meditando > 2.5 * parado && meditando < 3.5 * parado, $"parado {parado}, meditando {meditando}");
+		aprendiz.Niveis.Por(sense, 1, Jandirus.Core.Skills.SenseEmNiveis.BarreiraInicial * Jandirus.Core.Skills.SenseEmNiveis.CrescimentoPorNivel - 1);
+		var sorte2 = new Random(1);
+		for (int i = 0; i < 50 && aprendiz.Niveis.Nivel(sense) < 2; i++)
+			aprendiz.Niveis.Efetor(sorte2, _skills!, aprendiz.Livro!, new Jandirus.Core.Skills.NiveisDeSkill.EstadoDoCorpo(false, false, false));
+		AfirmarSn("...e com a barreira do nivel 1 cheia (1000 x 3) ela sobe pro 2 -- a REGIAO", aprendiz.Niveis.Nivel(sense) == 2,
+				  $"nivel {aprendiz.Niveis.Nivel(sense)}, exp {aprendiz.Niveis.Exp(sense)}");
 
 		// ---- CONTRA-EXEMPLO: sem a skill nao ha lista ----
 		ServerPlayer cego = StCorpo("Cego", Em(c, 8, 0), 10_000);
@@ -307,11 +381,12 @@ public partial class GameServer
 		ServerPlayer outro = StCorpo("Outro", Em(c, 3, 0), 20_000);
 
 		(bool scan, List<Protocol.PresencaState> lista) = SentidosDe(eu);
-		NetDataWriter w = PacoteDeSentidos(scan, lista);
+		NetDataWriter w = PacoteDeSentidos(scan, (byte)NivelDoSense(eu), lista);
 		var r = new NetDataReader(w.CopyData());
 		byte opcode = r.GetByte();
-		(bool scanLido, List<Protocol.PresencaState> lido) = r.GetSentidos();
+		(bool scanLido, byte nivelLido, List<Protocol.PresencaState> lido) = r.GetSentidos();
 		AfirmarSn("o opcode e S2C.Sentidos e o modo lido e Sense", opcode == (byte)Protocol.S2C.Sentidos && !scanLido);
+		AfirmarSn("(2026-10-18) ...e o NIVEL do Sense de quem le viaja junto (a aba diz o alcance)", nivelLido == NivelDoSense(eu), $"{nivelLido}");
 		AfirmarSn("o pacote acabou exatamente onde o leitor parou (nenhum byte sobrando ou faltando)", r.EndOfData, $"{r.AvailableBytes} sobrando");
 		AfirmarSn("o que foi lido e o que foi escrito (mesma contagem; nome, assinatura, alcance, %, distancia, rumo iguais)",
 				  lido.Count == lista.Count && lido.Count > 0 && lido.Zip(lista).All(par => Igual(par.First, par.Second)));
@@ -322,21 +397,21 @@ public partial class GameServer
 				  po is { } p && Math.Abs(p.PoderRelativo - esperado) < 1e-6 && Math.Abs(p.PoderRelativo - outro.Ficha.expressedBP) > 1,
 				  $"{po?.PoderRelativo}");
 
-		// o mesmo leitor, no alcance da galaxia: continua sem numero
-		eu.Ficha.kiawarenessskill = PericiaDaGalaxia;
+		// o mesmo leitor, no universo (o nivel 5): continua sem numero
+		eu.Niveis.Por(Jandirus.Core.Skills.SenseEmNiveis.Path, Jandirus.Core.Skills.SenseEmNiveis.Universo);
 		(scan, lista) = SentidosDe(eu);
-		r = new NetDataReader(PacoteDeSentidos(scan, lista).CopyData());
+		r = new NetDataReader(PacoteDeSentidos(scan, (byte)NivelDoSense(eu), lista).CopyData());
 		r.GetByte();
-		(_, lido) = r.GetSentidos();
-		AfirmarSn("...mesmo no alcance da galaxia, sem scouter: nada de numero absoluto no fio", lido.Count > 0 && lido.All(p => double.IsNaN(p.Bp)) && r.EndOfData);
+		(_, _, lido) = r.GetSentidos();
+		AfirmarSn("...mesmo no universo (nivel 5), sem scouter: nada de numero absoluto no fio", lido.Count > 0 && lido.All(p => double.IsNaN(p.Bp)) && r.EndOfData);
 
 		// o scouter: o numero vai
 		eu.PoderesConcedidos |= Protocol.Poder.Scouter;
 		AplicarPoderes(eu);
 		(scan, lista) = SentidosDe(eu);
-		r = new NetDataReader(PacoteDeSentidos(scan, lista).CopyData());
+		r = new NetDataReader(PacoteDeSentidos(scan, 0, lista).CopyData());
 		r.GetByte();
-		(scanLido, lido) = r.GetSentidos();
+		(scanLido, _, lido) = r.GetSentidos();
 		po = Acha(lido, outro);
 		AfirmarSn("no pacote de Scan o BP viaja EXATO (o scouter e a porta de leitura, GameServer.Sigilo)",
 				  scanLido && po is { } s && Math.Abs(s.Bp - Math.Round(outro.Ficha.expressedBP, MidpointRounding.AwayFromZero)) < 1e-9 && r.EndOfData,

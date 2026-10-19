@@ -815,7 +815,7 @@ public sealed partial class GameServer
 			// O PODER DELE SO ENTRA NA FICHA COM SCOUTER (a regra principal do BP; ver `PoderNaFrase`). Sem scouter
 			// a linha sai sem ele: aqui nao ha crescimento nem limiar pra dizer em porcentagem -- e nome, raca e
 			// idade ja dizem QUEM esta sendo apagado, que e o que este aviso existe pra dizer.
-			string poderDele = Jandirus.Core.Stats.PoderNaFrase.EmNumero(TemScouter(pl)) ? $", poder {pl.Ficha.BP:N0}" : "";
+			string poderDele = Jandirus.Core.Stats.PoderNaFrase.EmNumero(ScouterMostra(pl, pl, pl.Ficha.BP)) ? $", poder {pl.Ficha.BP:N0}" : "";
 			Avisar(pl, $"PARE E LEIA. Aceitar isto APAGA {pl.Name} -- {Jandirus.Core.Races.NomeDaRaca.Bonito(pl.Race)}, {pl.Idade} anos"
 					 + $"{poderDele} -- para sempre. Ele nao vira passageiro, nao volta "
 					 + $"depois e nao pode ser revivido: ele deixa de existir, e {p.Nome} fica com o "

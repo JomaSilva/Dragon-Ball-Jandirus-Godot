@@ -156,7 +156,7 @@ public sealed partial class GameServer
 			// um. Fecha do jeito que o dono mandou fechar as outras frases de poder (`PoderNaFrase`, 2026-10-12): o numero so com scouter;
 			// sem ele, quanto o corpo cresceu, em porcentagem. O robo de tela (`--diagaguasagrada`) e a `--aguateste` cobram os dois lados.
 			// ==============================================================================================
-			Avisar(pl, Jandirus.Core.Stats.PoderNaFrase.EmNumero(TemScouter(pl))
+			Avisar(pl, Jandirus.Core.Stats.PoderNaFrase.EmNumero(ScouterMostra(pl, pl, antes, f.BP))
 				? $"!!* O seu PODER DE LUTA aumentou: {antes:N0} -> {f.BP:N0} *!!"
 				: $"!!* Você se sente {Jandirus.Core.Stats.PoderNaFrase.QuantoMaisForte(antes, f.BP)} *!!");
 		}

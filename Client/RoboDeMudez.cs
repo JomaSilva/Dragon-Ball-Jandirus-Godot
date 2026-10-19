@@ -473,7 +473,7 @@ public partial class RoboDeMudez : Node
 	/// pra acabar) no meio dela, a bancada arma outro e continua de onde parou, em vez de medir o
 	/// silencio de um embate que ja terminou.
 	/// </summary>
-	private IEnumerable<double> GarantirEmbate(bool deKi, int msMinimos = MsMinimosDeEmbate)
+	private IEnumerable<double> GarantirEmbate(bool deKi, int msMinimos = MsMinimosDeEmbate, double fracaoDoRival = 1)
 	{
 		if (C is not { } cli || Servidor is not { } srv) yield break;
 
@@ -499,7 +499,7 @@ public partial class RoboDeMudez : Node
 		{
 			bool armou = deKi
 				? srv.EmbateDeKiDeTeste(cli.LocalId)
-				: srv.EmbateDeVelocidadeDeTeste(cli.LocalId);
+				: srv.EmbateDeVelocidadeDeTeste(cli.LocalId, fracaoDoRival);
 			if (!armou) { Nota("  --     o servidor NAO armou o embate"); yield break; }
 
 			// ESPERA O PACOTE, e nao um numero de quadros: quem diz que o embate comecou e o `Comecou`
@@ -573,6 +573,7 @@ public partial class RoboDeMudez : Node
 		foreach (double d in F6_OQueOEscNaoQuebrou()) yield return d;
 		foreach (double d in F7_ATelaDePausaDentroDoJogo()) yield return d;
 		foreach (double d in F8_AGuardaAndaEOPassoDeLadoSolta()) yield return d;
+		foreach (double d in F9_AFolgaDepoisDoFim()) yield return d;
 		foreach (double d in Fechamento()) yield return d;
 	}
 
@@ -1041,7 +1042,8 @@ public partial class RoboDeMudez : Node
 	{
 		Nota("--- F2: acabado o embate, as teclas VOLTAM ---");
 
-		foreach (double d in GarantirEmbate(deKi: false)) yield return d;
+		// (2026-10-18) COM O RIVAL FRACO: no desempate do 0x0 o golpe de saida e do jogador, e o "o corpo anda de novo" mede um corpo de pe.
+		foreach (double d in GarantirEmbate(deKi: false, fracaoDoRival: 0.2)) yield return d;
 		int fins = _fins;
 		Servidor?.SoltarEmbateDeTeste(C?.LocalId ?? 0);
 		for (int i = 0; i < 80 && _fins == fins; i++) yield return 0.05;
@@ -1280,9 +1282,113 @@ public partial class RoboDeMudez : Node
 	/// o titulo, o rotulo do botao de voltar, o `Desconectar` VISIVEL e o botao de teclas VIVO.
 	/// ==================================================================================
 	/// </summary>
+	// =====================================================================
+	// F9 -- A FOLGA DEPOIS DO FIM (2026-10-18)
+	// =====================================================================
+	/// <summary>
+	/// O DONO, DE NOVO: *"QTE contra seu clone na sua mente ao meditar profundamente, caso o botao q o jogo pede seja M vc acaba saindo da
+	/// meditaçao, dnv vou pedir pra q quando tenha QTE o jogo apenas veja o input pro QTE e nada mais, pra n abrir menus e n fazer isso q ta
+	/// acontecendo"*. As familias de cima mediam o silencio DURANTE o embate, e ele estava inteiro; o que vazava era o fim: o silencio caia
+	/// junto com o `Acabou`, e a ultima letra -- apertada no fim, chegando depois dele -- ia pro jogo. Tres medidas:
+	///   (a) logo depois do fim (o corpo ja livre), o P apertado nao abre o menu -- a FOLGA; passada a folga, ele volta a abrir;
+	///   (b) DENTRO DA MENTE: o M apertado logo depois do fim de um embate NAO tira da meditacao profunda -- foto `mudez-9-mente.png`;
+	///   (c) CONTRA-EXEMPLO (`GameClient.SemFolgaDoQteDeTeste`, o jogo de antes): o mesmo M, no mesmo instante, TIRA da mente -- foto
+	///       `mudez-9-defeito.png`.
+	/// </summary>
+	private IEnumerable<double> F9_AFolgaDepoisDoFim()
+	{
+		Nota("--- F9: logo DEPOIS do fim do embate as teclas continuam mudas (a FOLGA), e o M na mente nao tira de la ---");
+		if (C is not { } cli || Servidor is not { } srv) yield break;
+		int eu = cli.LocalId;
+		Botao p = Botoes()[0];
+
+		// ---- (a) a folga, fora da mente ----
+		foreach (double d in GarantirEmbate(deKi: false, fracaoDoRival: 0.2)) yield return d;
+		int fins = _fins;
+		srv.SoltarEmbateDeTeste(eu);
+		foreach (double d in AteQue(() => _fins > fins, 4.0)) yield return d;
+		Checa("(a) o embate acabou (`Acabou`): o corpo esta livre (`EmClash` caiu) e os atalhos continuam MUDOS -- a folga",
+			  _fins > fins && !cli.EmClash && Foco.AtalhosMudos, $"EmClash {cli.EmClash}, mudos {Foco.AtalhosMudos}");
+		foreach (double d in Apertar(p)) yield return d;
+		bool vazou = _disparou;
+		Fotografar("user://mudez-9-folga.png");
+		if (vazou) { p.Fechar?.Invoke(); yield return 0.12; }
+		Checa("...e o P apertado na folga NAO abre o menu: a letra atrasada nao vaza", !vazou, vazou ? "ABRIU" : "mudo");
+		foreach (double d in AteQue(() => !Foco.AtalhosMudos, 4.0)) yield return d;
+		Checa("...e a folga acaba sozinha", !Foco.AtalhosMudos);
+		foreach (double d in Apertar(p)) yield return d;
+		bool abriu = _disparou;
+		if (abriu) { p.Fechar?.Invoke(); yield return 0.15; }
+		Checa("...e passada a folga o P volta a abrir o menu", abriu);
+
+		// ---- (b) dentro da mente ----
+		// A BRIGA DOS EMBATES DE ANTES ACABA: *"nao da pra meditar no meio de uma briga"*. No jogo o dono medita em paz e o embate acontece LA DENTRO.
+		srv.SemBrigaDeTeste(eu);
+		yield return 0.2;
+		cli.SendActivity(Protocol.Activity.Meditando);
+		yield return 0.3;
+		cli.SendHabilidade("mente");
+		foreach (double d in AteQue(() => srv.NaMenteNoTeste(eu) && SaidaDaMente.NaMente, 10.0)) yield return d;
+		bool dentro = srv.NaMenteNoTeste(eu) && SaidaDaMente.NaMente;
+		Checa("(b) (preparo) o corpo mergulhou na mente (meditar + mergulhar, os pacotes da telinha)", dentro);
+		if (!dentro) yield break;
+		yield return 1.0;   // a mente assenta: o reflexo nasce, a tela troca de zona
+
+		foreach (double d in OMNoFimDoEmbate()) yield return d;
+		bool ficou = srv.NaMenteNoTeste(eu);
+		Fotografar("user://mudez-9-mente.png");
+		Checa("...e o M apertado logo depois do fim de um embate DENTRO da mente NAO tira da meditacao profunda -- *\"caso o botao q o jogo pede "
+			  + "seja M vc acaba saindo da meditaçao\"*", ficou);
+
+		// ---- (c) o contra-exemplo: o jogo de antes ----
+		GameClient.SemFolgaDoQteDeTeste = true;
+		bool saiu;
+		try
+		{
+			foreach (double d in OMNoFimDoEmbate()) yield return d;
+			saiu = !srv.NaMenteNoTeste(eu);
+			Fotografar("user://mudez-9-defeito.png");
+		}
+		finally { GameClient.SemFolgaDoQteDeTeste = false; }
+		Injeta("(o silencio cai junto com o `Acabou`, o jogo de antes) o MESMO M, no mesmo instante, TIRA o jogador da mente", saiu);
+
+		if (srv.NaMenteNoTeste(eu)) cli.SendHabilidade("sairdamente");
+		foreach (double d in AteQue(() => !srv.NaMenteNoTeste(eu), 6.0)) yield return d;
+		cli.SendActivity(Protocol.Activity.Parado);
+		yield return 0.5;
+	}
+
+	/// <summary>
+	/// UM EMBATE NA MENTE, O FIM, E O M NA HORA: arma o embate (o rival nasce ao lado, na mesma zona), solta, e aperta o M assim que o `Acabou`
+	/// chega -- a letra atrasada. Espera o que a saida levaria (a onda de 1,8 s e a viagem) antes de devolver.
+	/// </summary>
+	private IEnumerable<double> OMNoFimDoEmbate()
+	{
+		if (C is not { } cli || Servidor is not { } srv) yield break;
+		foreach (double d in GarantirEmbate(deKi: false, fracaoDoRival: 0.2)) yield return d;
+		int fins = _fins;
+		srv.SoltarEmbateDeTeste(cli.LocalId);
+		foreach (double d in AteQue(() => _fins > fins, 4.0)) yield return d;
+		Toque(Key.M);
+		foreach (double d in AteQue(() => !srv.NaMenteNoTeste(cli.LocalId), 4.0)) yield return d;
+	}
+
+	/// <summary>A foto da tela como esta (so com janela -- o headless nao renderiza).</summary>
+	private void Fotografar(string destino)
+	{
+		Image? img = GetViewport()?.GetTexture()?.GetImage();
+		if (img == null || img.IsEmpty()) { Nota("  --     sem foto (headless nao renderiza)"); return; }
+		string caminho = ProjectSettings.GlobalizePath(destino);
+		img.SavePng(caminho);
+		Nota("  --     foto salva em " + caminho);
+	}
+
 	private IEnumerable<double> F7_ATelaDePausaDentroDoJogo()
 	{
 		Nota("--- F7: dentro do jogo, a tela de pausa continua sendo a de PAUSA ---");
+
+		// (2026-10-18) A FOLGA DO FIM DA FAMILIA DE ANTES TEM QUE TER PASSADO: o ESC daqui e um atalho, e na folga ele e mudo (ver a F9).
+		foreach (double d in AteQue(() => !Foco.AtalhosMudos, 4.0)) yield return d;
 
 		if (PauseMenu.Instancia is not { } menu)
 		{

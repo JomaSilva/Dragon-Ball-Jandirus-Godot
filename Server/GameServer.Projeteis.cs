@@ -2584,6 +2584,8 @@ public sealed partial class GameServer
 	private void Arremessar(ServerPlayer alvo, Projetil p, double forca)
 	{
 		if (alvo.Combate is { Inabalavel: true }) return;   // (v0.4.0) sem recuo -- Unstoppable Force, Primal Bloodlust
+		// (2026-10-18) O MAJIN DESFEITO NAO VOA, pelo tiro tambem -- a razao inteira esta no `Arremessar` do `GameServer.Empurrao.cs`.
+		if (alvo.Combate is { Desfeito: true } && !DesfeitoVoaDeTeste) return;
 		int tiques = (int)Math.Clamp(Math.Round(forca), 1, Empurrao.TiquesMax);
 		alvo.ArrastoRestante = 0;   // arremesso ganha do arrasto -- a razao inteira esta no `Arremessar` do `GameServer.Empurrao.cs`
 		alvo.TiquesDeVoo = tiques;
@@ -2640,6 +2642,8 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool PodeSerLevadoPeloFeixe(ServerPlayer alvo)
 		=> alvo.Combate is not { Inabalavel: true }   // (v0.4.0) sem recuo: o feixe nao o arrasta (Unstoppable Force, Primal Bloodlust)
+		   // (2026-10-18) ...nem o Majin desfeito em pedacos: o feixe passa pelo lugar dele sem levar nada (ver o `Arremessar`).
+		   && (alvo.Combate is not { Desfeito: true } || DesfeitoVoaDeTeste)
 		   && alvo.TiquesDeVoo <= 0
 		   // QUEM ESTA NUMA DISPUTA DE KI NAO E LEVADO (2026-10-07): o feixe de um terceiro pesa no medidor dele
 		   // (`AoLevarGolpeComRaioNaMao`), mas nao tira do lugar um corpo que a disputa plantou. Mesma regra, e

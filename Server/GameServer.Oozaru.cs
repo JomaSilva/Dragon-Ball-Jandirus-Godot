@@ -112,7 +112,7 @@ public partial class GameServer
 				// porta: ela e pessoal e secreta, entao a porcentagem nao deixa refazer o BP de ninguem.
 				RecusaOozaru.SemPoder =>
 					"a lua ferve o seu sangue, mas o seu corpo ainda nao aguenta o que ela pede ("
-					+ (Jandirus.Core.Stats.PoderNaFrase.EmNumero(TemScouter(pl))
+					+ (Jandirus.Core.Stats.PoderNaFrase.EmNumero(ScouterMostra(pl, pl, pl.Ficha.BP, PortaDoDourado(pl)))
 						? $"BP base {pl.Ficha.BP:N0} de {PortaDoDourado(pl):N0}"
 						: $"voce tem {Jandirus.Core.Stats.PoderNaFrase.FracaoDoLimiar(pl.Ficha.BP, PortaDoDourado(pl))}")
 					+ ").",

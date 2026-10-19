@@ -118,7 +118,7 @@ public partial class TelaDeArmadura : CanvasLayer
 	private bool OQueAGradePedeEstaNaMochila() => _para switch
 	{
 		Para.Armadura => Cruas() > 0,
-		Para.Pesos => Pesos() > 0,
+		Para.Pesos => Tem(_pesosDaArte),
 		Para.Pentear => Tem(BancadaDeCriacao.Pente),
 		Para.Olhos => Tem(BancadaDeCriacao.TintaDeOlhos),
 		_ => true,
@@ -240,17 +240,19 @@ public partial class TelaDeArmadura : CanvasLayer
 			   "Escolher depois (Esc) -- a armadura fica na mochila");
 	}
 
-	private static int Pesos() => GameClient.Instance?.Mochila.Quantos(CatalogoDeItens.Pesos) ?? 0;
+	/// <summary>(2026-10-18) O peso cuja arte a grade aberta escolhe -- o id inteiro dele (cada peso e um item com estado, `PesoDeTreino`).</summary>
+	private string _pesosDaArte = "";
 
 	/// <summary>
 	/// A MESMA GRADE, PROS PESOS -- o `verb/Icon()` deles (`Tier 1.dm:167-175`). Oferece o guarda-roupa inteiro
 	/// (`PesoDeTreino.Escolhiveis`): os pesos SAO roupa no original, e a folha de fabrica e uma camisa. O clique manda
-	/// `item_arte Weights/&lt;arte&gt;`; quem guarda a escolha e reapresenta o corpo e o servidor
-	/// (`GameServer.EscolherAArteDosPesos`).
+	/// `item_arte <id do peso>/&lt;arte&gt;` -- (2026-10-18) a arte e DESTE peso, e vai no id dele --; quem a grava e reapresenta o corpo e o
+	/// servidor (`GameServer.EscolherAArteDosPesos`).
 	/// </summary>
-	public void AbrirPraPesos()
+	public void AbrirPraPesos(string pesos)
 	{
-		if (Pesos() == 0 || VistosDeGente.Catalogo is not { } cat) return;
+		if (!PesoDeTreino.EhPeso(pesos) || !Tem(pesos) || VistosDeGente.Catalogo is not { } cat) return;
+		_pesosDaArte = pesos;
 		_para = Para.Pesos;
 		Encher(PesoDeTreino.Escolhiveis(cat), "A ARTE DOS PESOS",
 			   "Escolha como os pesos aparecem no corpo quando você os veste.",
@@ -323,7 +325,7 @@ public partial class TelaDeArmadura : CanvasLayer
 		switch (_para)
 		{
 			case Para.Pesos:
-				GameClient.Instance?.SendVerbo($"item_{PesoDeTreino.AcaoArte}", $"{CatalogoDeItens.Pesos}/{arte}");
+				GameClient.Instance?.SendVerbo($"item_{PesoDeTreino.AcaoArte}", $"{_pesosDaArte}/{arte}");
 				break;
 			case Para.Materializar:
 				string cor = _tingir.ButtonPressed ? "/" + _cor.Color.ToHtml(false).ToUpperInvariant() : "";

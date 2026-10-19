@@ -54,8 +54,8 @@ public partial class GameServer
 			mochila.Guardar(CatalogoDeItens.Maca, 3);
 			mochila.Guardar(CatalogoDeItens.Scouter);
 			mochila.Guardar(CatalogoDeItens.Pesos);
-			List<Pilha> tudo = Saque.OQueDaPraLevar(mochila, scouterLigado: false, comPesos: false);
-			List<Pilha> emUso = Saque.OQueDaPraLevar(mochila, scouterLigado: true, comPesos: true);
+			List<Pilha> tudo = Saque.OQueDaPraLevar(mochila, scouterLigado: false, pesoVestido: "");
+			List<Pilha> emUso = Saque.OQueDaPraLevar(mochila, scouterLigado: true, pesoVestido: CatalogoDeItens.Pesos);
 			AfirmarSq("guardado, tudo sai: a maca, o scouter desligado e os pesos fora do corpo", tudo.Count == 3, $"{tudo.Count}");
 			AfirmarSq("**O QUE ESTA EM USO FICA**: com o scouter ligado e os pesos no corpo, so a maca sai",
 					  emUso.Count == 1 && emUso[0].Id == CatalogoDeItens.Maca && emUso[0].Quantidade == 3,
@@ -71,6 +71,7 @@ public partial class GameServer
 			vitima.Mochila.Guardar(CatalogoDeItens.Pesos);
 			vitima.PoderesConcedidos |= Protocol.Poder.Scouter;   // o scouter LIGADO
 			vitima.Ficha.Weighted = 10;                            // os pesos NO CORPO
+			vitima.Ficha.pesoVestido = CatalogoDeItens.Pesos;     // (2026-10-18) e quais: o peso vestido e um id (`Fighter.pesoVestido`)
 
 			// ---------------------------------------------------------------- 4a. de pe nao se saqueia
 			GD.Print("[saque] -- 2) a pergunta, e quem pode ser revistado --");
