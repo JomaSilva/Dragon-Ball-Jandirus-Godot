@@ -110,7 +110,7 @@ public sealed partial class GameServer
 				var fio = new NetDataReader(PacoteDeAparencia(p).CopyData());
 				fio.GetByte();
 				fio.GetInt();
-				string nome = fio.GetString(24), raca = fio.GetString(24);
+				string nome = fio.GetString(Protocol.MaxNomeNoFio), raca = fio.GetString(24);
 				fio.GetString(8);
 				fio.GetAppearance();
 				fio.GetByte(); fio.GetByte(); fio.GetString(120);
@@ -160,6 +160,15 @@ public sealed partial class GameServer
 				&& conversao[0].Rotulo.Contains("1.000.000 zeni") && conversao[1].Rotulo.Contains("2.000.000 recursos") && CustoNeoTuffle == 1_000_000
 				&& Interacoes.Aceita("Android_Creation_Mainframe", "virar_tuffle") && Interacoes.Aceita("Android_Creation_Mainframe", "lab_tuffle"),
 				string.Join(" | ", conversao.Select(a => a.Rotulo)));
+			// AS LINHAS DA TABELA DOS VERBOS e que tiram o laboratorio e as duas conversoes da tela de quem nao e Tsufurujin: sem elas o menu E
+			// mostraria os tres botoes pra todo mundo, o servidor recusaria do mesmo jeito, e nenhuma outra regua veria a falta (a contraprova
+			// por mutacao de 2026-10-19 achou).
+			Requisito[] doTsufurujin =
+				[RequisitosDosVerbos.DoVerbo("lab_tuffle"), RequisitosDosVerbos.DoVerbo("virar_tuffle"),
+				 RequisitosDosVerbos.DoVerbo("virar_tuffle", Recurso.PalavraDeRecursos)];
+			AfirmarTf("...E SO PRO TSUFURUJIN: a tabela dos verbos esconde o Neo Tuffle Lab e as duas conversoes da Bulma (Humana) e as mostra pro Baby",
+				doTsufurujin.All(r => !r.Livre && r.Atende(PosseDe(baby)) && !r.Atende(PosseDe(bulma))),
+				string.Join(" | ", doTsufurujin.Select(r => r.Texto)));
 
 			Obra daBulma = NoChao(bulma, 1);
 			bulma.Ficha.techskill = 80;
@@ -199,6 +208,7 @@ public sealed partial class GameServer
 
 			// ============================================================ P) A POSSE
 			GD.Print("[tuffle] -- P) a posse: o Neo Tuffle entra no Vegeta nocauteado --");
+			bool sentiaOVegeta = AchoAEnergia(bulma, vegeta);   // o controle do Sense: de pe e sem posse, a Bulma o sente
 			Possuir(baby, out List<string> dePe);
 			vegeta.Pos = baby.Pos + new Vec2(6 * T, 0);
 			vegeta.Combate.Nocautear(600);
@@ -237,16 +247,20 @@ public sealed partial class GameServer
 			bulma.Facing = Facing.East;
 			ServerPlayer? naFrente = QuemEstaNaFrente(bulma, o => o.Ficha.KO && !o.Ficha.dead);
 			ServerPlayer? deTecnica = AlvoDeTecnica(bulma, 5 * T, o => o.Ficha.KO && !o.Ficha.dead);
-			AfirmarTf("O CORPO DE VERDADE DO VEGETA SOME: escondido do snapshot, fora da grade, intocavel, fora do Sense -- e quem procura um nocauteado na frente nao o acha",
+			// E MARCADO NA MIRA TAMBEM: o alvo marcado e o primeiro degrau do `AlvoDeTecnica`, antes da busca pela zona.
+			bulma.AlvoId = vegeta.Id;
+			ServerPlayer? marcado = AlvoDeTecnica(bulma, 5 * T, o => o.Ficha.KO && !o.Ficha.dead);
+			bulma.AlvoId = 0;
+			AfirmarTf("O CORPO DE VERDADE DO VEGETA SOME: escondido do snapshot, fora da grade, intocavel -- e quem procura um nocauteado na frente, ou o tem marcado na mira, nao o acha",
 				vegeta.PossuidoPor == baby.Id && EstaOculto(vegeta.Id) && !EntraNaGrade(vegeta) && vegeta.Combate.Intocavel
-				&& !AchoAEnergia(bulma, vegeta) && naFrente == null && deTecnica == null,
-				$"oculto {EstaOculto(vegeta.Id)}, na grade {EntraNaGrade(vegeta)}, intocavel {vegeta.Combate.Intocavel}, sentido {AchoAEnergia(bulma, vegeta)}, "
-				+ $"na frente {naFrente?.Name}, de tecnica {deTecnica?.Name}");
+				&& naFrente == null && deTecnica == null && marcado == null,
+				$"oculto {EstaOculto(vegeta.Id)}, na grade {EntraNaGrade(vegeta)}, intocavel {vegeta.Combate.Intocavel}, "
+				+ $"na frente {naFrente?.Name}, de tecnica {deTecnica?.Name}, marcado {marcado?.Name}");
 			HospedeAVistaDeTeste = true;
 			bool aVista;
-			try { aVista = !EstaOculto(vegeta.Id) && AchoAEnergia(bulma, vegeta); }
+			try { aVista = !EstaOculto(vegeta.Id); }
 			finally { HospedeAVistaDeTeste = false; }
-			AfirmarTf("CONTRA-EXEMPLO (defeito injetado: o corpo do hospede a vista): o mundo ve -- e sente -- dois Vegetas -- a regua do esconderijo REPROVA", aVista);
+			AfirmarTf("CONTRA-EXEMPLO (defeito injetado: o corpo do hospede a vista): o mundo ve dois Vegetas -- a regua do esconderijo REPROVA", aVista);
 
 			CravarPosicao(baby, baby.Pos + new Vec2(3 * T, 0));
 			TickDasPosses();
@@ -254,6 +268,19 @@ public sealed partial class GameServer
 				Vec2.Distance(vegeta.Pos, baby.Pos) < 1, $"a {Vec2.Distance(vegeta.Pos, baby.Pos):0.#} px");
 
 			vegeta.Combate.Levantar();   // acordado la dentro: so a posse o segura
+
+			// O SENSE MEDIDO COM O VEGETA ACORDADO: nocauteado, a energia dele pode cair abaixo do piso de 5 e o Sense nao o acharia nem sem a
+			// posse -- a regua ficava cega numa rodada em oito (a contraprova por mutacao de 2026-10-19 mediu). Acordado ele tem energia de sobra.
+			bool sentido = AchoAEnergia(bulma, vegeta);
+			HospedeAVistaDeTeste = true;
+			bool sentidoNoDefeito;
+			try { sentidoNoDefeito = AchoAEnergia(bulma, vegeta); }
+			finally { HospedeAVistaDeTeste = false; }
+			AfirmarTf("O SENSE NAO ACHA O CORPO ESCONDIDO: de pe e sem posse a Bulma o sentia (o controle), e acordado dentro da posse nao o sente mais",
+				sentiaOVegeta && !sentido, $"antes {sentiaOVegeta}, na posse {sentido}");
+			AfirmarTf("CONTRA-EXEMPLO (defeito injetado: o corpo do hospede a vista): a Bulma sente o Vegeta escondido -- a regua do Sense REPROVA",
+				sentidoNoDefeito);
+
 			bool mexe = PodeMexerOCorpo(vegeta);
 			NetDataWriter guarda = Protocol.Begin(Protocol.C2S.Guard);
 			guarda.Put(true);

@@ -46,6 +46,13 @@ public static class Reputacao
 	/// </summary>
 	public const double LimiarDeAmigavel = 15;
 
+	/// <summary>
+	/// (2026-10-19) O piso da faixa "Malvisto" do `planet_rep_label` (:72). Era um -10 solto dentro da <see cref="Faixa"/>, pelo
+	/// mesmo caminho do <see cref="LimiarDeAmigavel"/>: virou constante quando ganhou um segundo leitor -- o Grande Patriarca de Namek
+	/// manda embora quem esta nela ou abaixo (`Npc.Patriarca.Recusa`, o `<= -10` do PlanetPopulation.dm:226).
+	/// </summary>
+	public const double LimiarDeMalvisto = -10;
+
 	/// <summary>`BEV_HERO_REP`: o que derrotar um chefe de saga vale (BossEvents.dm:92).</summary>
 	public const double HeroiPorChefe = 100;
 
@@ -62,7 +69,7 @@ public static class Reputacao
 		: pontos >= LimiarDeAmigavel ? "Amigável"
 		: pontos <= LimiarDeCacado ? "CAÇADO pelo povo"
 		: pontos <= LimiarDeVilao ? "Inimigo do povo"
-		: pontos <= -10 ? "Malvisto"
+		: pontos <= LimiarDeMalvisto ? "Malvisto"
 		: "Neutro";
 
 	/// <summary>

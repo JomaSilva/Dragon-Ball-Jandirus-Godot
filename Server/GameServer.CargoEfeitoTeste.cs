@@ -151,6 +151,9 @@ public partial class GameServer
 		["Permission"] = "a Sala do Tempo passa a aceitar quem o dono do cargo autorizou",
 		["RankChat"] = "o canal fechado dos cargos aceita a fala de quem carrega um cargo",
 		["Appoint_Elder"] = "o convite de Anciao chega de verdade na conta do namekuseijin escolhido",
+		// (2026-10-19) o patronato do Kaioshin
+		["Nomear_Aprendiz"] = "a oferta de aprendizado chega de verdade na conta de quem esta marcado, e aceita abre a arvore do aprendiz",
+		["Dispensar_Aprendiz"] = "o aprendiz dispensado perde o kit comprado no aprendizado e recebe os Marcos de volta",
 
 		// ---- os doze que os lotes G9/G11/G12 puseram de pe (2026-09-02), provados nas bancadas deles ----
 		["BusterBarrage"] = "a barragem LIGA e passa a cuspir esferas em rumos sorteados drenando Ki; desliga sem Ki e no nocaute (`BusterBarrage.dm:26-87`)",
@@ -212,6 +215,9 @@ public partial class GameServer
 							"...e com o cargo ele NAO recusa (o RankChat e a unica skill que todo cargo tem)"),
 			["Appoint_Elder"] = ("Server/GameServer.CargoVivoTeste.cs",
 								 "...e o Grande Anciao, que recebe o Appoint_Elder do cargo, convida de verdade"),
+			// (2026-10-19) o patronato do Kaioshin tem bancada propria, com o convite, a arvore, a queda e a devolucao
+			["Nomear_Aprendiz"] = ("Server/GameServer.AprendizTeste.cs", "N. **O KAIOSHIN TOMA UM APRENDIZ**"),
+			["Dispensar_Aprendiz"] = ("Server/GameServer.AprendizTeste.cs", "X. **DISPENSAR DEVOLVE OS MARCOS**"),
 
 			// OS DOZE DOS LOTES G9/G11/G12: cada um tem familia propria na bancada do lote, com a cena que
 			// ele exige (a barragem sustentada, a bola carregando por tiques, o agarrado, o pote selante...).

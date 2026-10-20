@@ -1326,6 +1326,11 @@ public partial class GameServer
 			ComandoDaNaveGrande(a, "nave_observar");
 			AfirmarMvv("OBSERVAR da ponte nao tira ninguem do corpo (nao ha camera pra mandar embora)",
 					   a.BonecoLargado == null && a.Zone.Hash == ponte.Hash, a.Zone.ToString());
+			// (2026-10-19) OBSERVAR LARGA O CORPO desde 2026-10-18 (o pedido do dono, `GameServer.NaveObservar.cs`), e a afirmacao de cima e a
+			// regra de antes -- ela reprova, e nao e desta tarefa reescreve-la. Mas o olho que ficava la fora levava o resto da familia junto: o
+			// `nave_pilotar` de baixo era recusado (o console fica a um mundo do olho), o leme nunca era pego, e o soco caia no corpo de quem
+			// OBSERVA. O mesmo verbo devolve o olho ao corpo na ponte; so entao o leme se pega.
+			if (EhOlhoDeFora(a)) ComandoDaNaveGrande(a, "nave_observar");
 
 			// O COMANDO DE PRODUCAO -- o mesmo `nave_pilotar` que a tecla E dispara.
 			ComandoDaNaveGrande(a, "nave_pilotar");
@@ -1349,24 +1354,37 @@ public partial class GameServer
 			AfirmarMvv("...e o bit `SemRedeas` continua FALSO nele (aquilo e o olho da fera, nao isto)",
 					   !noFio.SemRedeas);
 
-			// BATER NA PONTE TRAZ O PILOTO DE VOLTA.
+			// (2026-10-19) AO LEME, BATER NA PONTE NAO TRAZ MAIS O PILOTO DE VOLTA: o casco blinda quem pilota, e o corpo da ponte divide o
+			// `Combate` com ele -- o dono escolheu "blindar os dois ao leme" (`GameServer.Leme.cs`). O mecanismo da volta e o mesmo da mente (a
+			// familia de cima o mede), e a regra de antes segue medida aqui como CONTRA-EXEMPLO: sem o casco, bater na ponte traz o piloto.
 			b.Pos = corpo.Pos + new Vec2(24, 0);
 			b.Facing = MoveRules.FacingFrom(corpo.Pos - b.Pos, b.Facing);
 			b.Combate.Recarga = 0;
 			_acordar.Clear();
 
-			AfirmarMvv("o corpo do piloto tambem e um alvo do soco", AlvoNaFrente(b) == corpo,
+			AfirmarMvv("ao leme, o corpo do piloto NAO e alvo do soco (o casco blinda os dois)", AlvoNaFrente(b) != corpo,
 					   AlvoNaFrente(b)?.Name ?? "ninguem");
 			Atacar(b, Protocol.Golpe.Leve);
-			AfirmarMvv("bater nele enfileira a volta do piloto (o MESMO `MarcarAgressao`)",
-					   _acordar.Contains(a.Id), $"fila: [{string.Join(",", _acordar)}]");
+			AfirmarMvv("...e o soco nao enfileira volta nenhuma: A segue ao leme, com o corpo de pe na ponte",
+					   !_acordar.Contains(a.Id) && nave.PilotoId == a.Id && a.BonecoLargado == corpo, $"fila: [{string.Join(",", _acordar)}]");
 
-			TickDeQuemVolta();
-			AfirmarMvv("drenada a fila, A esta de volta na PONTE, no proprio corpo",
+			LemeApanhaDeTeste = true;
+			try
+			{
+				b.Combate.Recarga = 0;   // o soco de cima saiu (no ar): a recarga dele barraria este
+				AfirmarMvv("(defeito injetado: o casco nao blinda) o corpo do piloto volta a ser alvo do soco -- a regua de cima REPROVA",
+						   AlvoNaFrente(b) == corpo, AlvoNaFrente(b)?.Name ?? "ninguem");
+				Atacar(b, Protocol.Golpe.Leve);
+				AfirmarMvv("   ...e bater nele enfileira a volta do piloto (o MESMO `MarcarAgressao`)",
+						   _acordar.Contains(a.Id), $"fila: [{string.Join(",", _acordar)}]");
+				TickDeQuemVolta();
+			}
+			finally { LemeApanhaDeTeste = false; }
+			AfirmarMvv("   ...drenada a fila, A esta de volta na PONTE, no proprio corpo",
 					   a.Zone.Hash == ponte.Hash && a.BonecoLargado == null, a.Zone.ToString());
-			AfirmarMvv("...e o leme ficou LIVRE (senao a nave fica trancada pra todo mundo)",
+			AfirmarMvv("   ...e o leme ficou LIVRE (senao a nave fica trancada pra todo mundo)",
 					   nave.PilotoId == 0, $"{nave.PilotoId}");
-			AfirmarMvv("...e nao sobrou corpo de pe na ponte",
+			AfirmarMvv("   ...e nao sobrou corpo de pe na ponte",
 					   !ZoneList(ponte.Hash).Any(p => p.DonoDoCorpoLargado != 0));
 
 			// ============================ O TERCEIRO RAMO: A VOLTA DERIVADA ============================

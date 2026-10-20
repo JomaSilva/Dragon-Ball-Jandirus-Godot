@@ -48,6 +48,8 @@ public partial class GameServer
 	private void CarregarCargos()
 	{
 		_tronos.Clear();
+		CarregarAusencias();   // (2026-10-19) a ausencia de cada dono, que vaga o trono de quem sumiu -- ver `GameServer.CargoLivre.cs`
+		CarregarAprendizes();   // (2026-10-19) os vinculos de aprendiz de Kaioshin -- ver `GameServer.AprendizDeKaioshin.cs`
 		if (!System.IO.File.Exists(ArquivoDeCargos)) return;
 		foreach (string linha in System.IO.File.ReadAllLines(ArquivoDeCargos))
 		{
@@ -150,17 +152,26 @@ public partial class GameServer
 		// errada com um numero plausivel.
 		ReputacaoDePlaneta = ReputacaoDe(pl.Conta),
 		PlanetasDominados = QuantosDomina(pl.Assinatura),
+
+		// (2026-10-19) OS DOIS CAMPOS DOS CARGOS QUE SAIRAM DO ADMIN: o planeta pre-feito que o King of Acronia pede (Arconia), e o
+		// Vegeta condenado que abre o trono vago do Rei -- ver `GameServer.CargoLivre.cs`.
+		PlanetasQueDomina = PreFeitosQueDomina(pl.Assinatura),
+		VegetaCondenado = VegetaCondenado,
 	};
 
 	/// <summary>
 	/// REIVINDICAR. Tres portas, nesta ordem, e a ordem decide a mensagem que o jogador le:
 	/// o trono precisa estar VAGO, a alma nao pode carregar outro cargo, e os requisitos tem
 	/// que estar cumpridos.
+	///
+	/// (2026-10-19) E A CONCESSAO, E NAO MAIS A PORTA DO JOGADOR: o pacote `C2S.Cargo` chama a PROVA DO ESPIRITO DO CARGO
+	/// (`PedirAProvaDoCargo`, `GameServer.ProvaDoCargo.cs`), que passa por aqui DUAS vezes -- com `conceder` falso pra conferir
+	/// tudo (as mesmas mensagens) antes de erguer o espirito, e de verdade quando ele cai. Verdadeiro = passou nas portas.
 	/// </summary>
-	private void ReivindicarCargo(ServerPlayer pl, string chave)
+	private bool ReivindicarCargo(ServerPlayer pl, string chave, bool conceder = true)
 	{
 		RankDef? r = Cargos.Get(chave);
-		if (r == null) { Avisar(pl, "esse cargo nao existe."); return; }
+		if (r == null) { Avisar(pl, "esse cargo nao existe."); return false; }
 
 		// `if(!usr.client || !usr.signature || usr.KO) return` (`RankQuests.dm:272`), e o morto so reivindica cargo
 		// do Outro Mundo: `if(usr.dead && !(key in RQ_SKY))` (`:299`, `:320` -- o `RQ_SKY` e o `DoOutroMundo`
@@ -168,17 +179,17 @@ public partial class GameServer
 		// o pacote e saia Guardiao da Terra, com o kit na hora.
 		if (!CaidoAgeDeTeste)
 		{
-			if (pl.Ficha.KO) { Avisar(pl, "nao da pra reivindicar cargo nenhum caido."); return; }
+			if (pl.Ficha.KO) { Avisar(pl, "nao da pra reivindicar cargo nenhum caido."); return false; }
 			if (pl.Ficha.dead && !r.DoOutroMundo)
-			{ Avisar(pl, $"um morto so reivindica cargo do Outro Mundo -- {r.Nome} e do mundo dos vivos."); return; }
+			{ Avisar(pl, $"um morto so reivindica cargo do Outro Mundo -- {r.Nome} e do mundo dos vivos."); return false; }
 		}
 
 		// (2026-10-16) POR VAGA: o cargo de varias vagas (o Kaioshin, `RankDef.Vagas`) so recusa com TODAS ocupadas.
-		if (DonosDe(r).Contains(pl.Conta, StringComparer.OrdinalIgnoreCase)) { Avisar(pl, $"voce JA e {r.Nome}."); return; }
+		if (DonosDe(r).Contains(pl.Conta, StringComparer.OrdinalIgnoreCase)) { Avisar(pl, $"voce JA e {r.Nome}."); return false; }
 		if (VagaLivre(r) is not { } vaga)
 		{
 			Avisar(pl, r.Vagas > 1 && !VagasIgnoradasDeTeste ? $"as {r.Vagas} vagas de {r.Nome} estao ocupadas." : $"{r.Nome} ja tem dono.");
-			return;
+			return false;
 		}
 
 		// UMA ALMA, UM TRONO. A escada e a excecao: subir de Kaio a Grande Kaio LARGA o cargo
@@ -188,7 +199,7 @@ public partial class GameServer
 		if (atual.Length > 0 && !subindo)
 		{
 			Avisar(pl, $"voce ja carrega {Cargos.Get(atual)?.Nome ?? atual}. Uma alma, um trono.");
-			return;
+			return false;
 		}
 
 		// ============================ O PEDAGIO DA ASCENSAO E O RENOME ============================
@@ -206,18 +217,30 @@ public partial class GameServer
 			Avisar(pl, $"ainda falta RENOME para almejar algo maior: {tem}/{MissoesDeCargo.TarefasParaAscender} "
 					 + $"tarefas cumpridas como {Cargos.Get(atual)?.Nome ?? atual}. Sirva ao cargo primeiro "
 					 + "(verb Rank Duty).");
-			return;
+			return false;
 		}
 
 		if (Cargos.OqueFalta(r, Ficha(pl)) is { } falta)
 		{
 			Avisar(pl, $"{r.Nome} exige: {falta}.");
-			return;
+			return false;
 		}
+
+		if (!conceder) return true;
 
 		if (subindo) _tronos.Remove(VagaDaConta(pl.Conta));
 		_tronos[vaga] = pl.Conta;
 		SalvarCargos();
+
+		// (2026-10-19) A CAMPANHA: `if(key == "president") M.zenni -= RQ_PRESIDENT_CAMPAIGN //a campanha cobra ao VENCER`
+		// (`RankQuests.dm:405`). O requisito so conferia o bolso; quem cobrava era o fim da prova, que nao existia -- e o
+		// Presidente saia de graca. A porta de cima ja garantiu que o dinheiro esta la.
+		if (r.Campanha > 0 && !ProvaDoCargo.CampanhaDeGracaDeTeste)
+		{
+			pl.Ficha.Zeni -= r.Campanha;
+			MandarCarteira(pl);
+			Avisar(pl, $"a campanha custou {r.Campanha:N0} zeni.");
+		}
 
 		GD.Print($"[server] {pl.Name} ({pl.Conta}) assumiu o cargo '{r.Nome}'"
 				 + (subindo ? $" (largou {atual})" : ""));
@@ -241,6 +264,7 @@ public partial class GameServer
 
 		AnunciarCargo(r, pl, subindo ? atual : "");
 		AparaOPovoDoCargo(r.Chave);   // (2026-10-16) cada Kaioshin jogador tira um Supremo Kaioh NPC do Ceu
+		return true;
 	}
 
 	/// <summary>
@@ -328,7 +352,8 @@ public partial class GameServer
 			List<string> donos = DonosDe(r);
 			w.Put(string.Join(", ", donos.Select(NomeDoDono)));
 			// o que falta PRA MIM: e a unica parte que muda de jogador pra jogador
-			w.Put(Cargos.OqueFalta(r, f) ?? "");
+			// (2026-10-19) ...ou que o espirito dele esta sendo enfrentado agora -- e o botao "Reivindicar" some (`ProvaQueOcupa`)
+			w.Put(Cargos.OqueFalta(r, f) ?? ProvaQueOcupa(r, pl) ?? "");
 
 			// ============================ E O QUE O CARGO DA, QUE NUNCA SAIU DAQUI ============================
 			// O painel mandava chave, dono e o que falta -- e mais nada. **Ninguem no jogo conseguia

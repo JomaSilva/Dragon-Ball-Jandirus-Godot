@@ -11,10 +11,10 @@ namespace Jandirus.Client;
 ///
 /// ============================ UMA LINHA POR ATALHO, COM O NOME ============================
 /// "Nenhum menu abriu" ficaria verde apertando UM botao. Sao **dezoito** teclas de jogador, e
-/// **quatorze delas estao entre as 22 letras que o embate sorteia** (C, E, F, G, I, K, M, N, P, Q, R,
-/// T, V, X) -- entao a bancada aperta as dezoito, uma por uma, e escreve o nome de cada uma na
-/// linha dela. Foi assim que se descobriu que cinco caminhos vazavam e que o V (o microfone) era um
-/// deles sem ninguem ter visto.
+/// **quatorze delas estavam entre as 22 letras que o embate sorteava** (C, E, F, G, I, K, M, N, P, Q,
+/// R, T, V, X; desde 2026-10-19 ele e so WASD, e o silencio ficou) -- entao a bancada aperta as
+/// dezoito, uma por uma, e escreve o nome de cada uma na linha dela. Foi assim que se descobriu que
+/// cinco caminhos vazavam e que o V (o microfone) era um deles sem ninguem ter visto.
 /// =====================================================================================
 ///
 /// ============================ E O CONTRA-EXEMPLO E O DEFEITO INJETADO ============================
@@ -25,7 +25,8 @@ namespace Jandirus.Client;
 /// ==========================================================================================
 ///
 /// ============================ O QUE ELA NAO PODE DEIXAR QUEBRAR ============================
-///   * **O QUICK TIME EVENT.** As 22 letras do embate continuam chegando ao servidor -- calar o
+///   * **O QUICK TIME EVENT.** As letras do embate (so W, A, S e D desde 2026-10-19: ver
+///     <see cref="SoOWasdResponde"/>) continuam chegando ao servidor -- calar o
 ///     `ClashQte` seria desligar o embate pra consertar os menus. O defeito injetado desta familia e
 ///     exatamente a tentacao que foi recusada no desenho: pendurar o embate no `Foco.Digitando`. Com
 ///     um campo de texto em foco a letra para de sair, e e o que a injecao mostra.
@@ -284,6 +285,7 @@ public partial class RoboDeMudez : Node
 			cli.ClashTeclaPedida += Pediu;
 			cli.ClashAcabou += Acabou;
 			cli.SnapshotReceived += ContarSnapshot;
+			cli.Falou += AoOuvir;
 		}
 
 		// O MICROFONE SEM MICROFONE: a maquina de bancada roda headless, onde o driver de audio e o
@@ -300,11 +302,24 @@ public partial class RoboDeMudez : Node
 	{
 		Jandirus.Server.GameServer.EspiaoDeEntrada = null;
 		Microfone.FonteDeTeste = null;
+		// (2026-10-19) os dois botoes de defeito do quick time event so de WASD -- o `finally` de cada um ja os desliga;
+		// isto e pro processo que morre no meio de uma familia.
+		Jandirus.Core.Combat.LetrasDoEmbate.TecladoInteiroDeTeste = false;
+		LocalPlayer.LetraDoQteAndaNaGuardaDeTeste = false;
 		if (C is not { } cli) return;
 		cli.ClashComecou -= Comecou;
 		cli.ClashTeclaPedida -= Pediu;
 		cli.ClashAcabou -= Acabou;
 		cli.SnapshotReceived -= ContarSnapshot;
+		cli.Falou -= AoOuvir;
+	}
+
+	/// <summary>(2026-10-19) Os avisos do servidor no chat -- a `F8` le neles o convite de sair de lado pelas setas.</summary>
+	private readonly List<string> _avisos = [];
+
+	private void AoOuvir(Protocol.Fala canal, string autor, string texto)
+	{
+		if (canal == Protocol.Fala.Sistema) _avisos.Add(texto);
 	}
 
 	/// <summary>
@@ -321,7 +336,21 @@ public partial class RoboDeMudez : Node
 		Nota($"...o embate COMECOU ({tipo}, {ms} ms)");
 	}
 
-	private void Pediu(char c, int ms) { _letraPedida = c; _letras++; }
+	private void Pediu(char c, int ms)
+	{
+		_letraPedida = c;
+		_letras++;
+		if (_contandoLetras) { _letrasVistas.Add(c); _contadas++; }
+	}
+
+	/// <summary>
+	/// (2026-10-19) AS LETRAS QUE O SERVIDOR PEDIU NESTA RODADA, e quantas -- dos tres embates que ela arma (o Zanzo Clash, a
+	/// colisao de ki e a disputa de guarda), conferidas no <see cref="Fechamento"/>. Fora da janela do botao do teclado
+	/// inteiro (<see cref="SoOWasdResponde"/>), que pede letra de fora de proposito.
+	/// </summary>
+	private readonly HashSet<char> _letrasVistas = [];
+	private int _contadas;
+	private bool _contandoLetras = true;
 
 	private void Acabou(int venc, int perd) { _fins++; _letraPedida = '\0'; _ultimoVenc = venc; _ultimoPerd = perd; }
 
@@ -583,6 +612,12 @@ public partial class RoboDeMudez : Node
 		Servidor?.LimparAMudezDeTeste();
 		yield return 0.2;
 
+		// (2026-10-19) O ALFABETO DA RODADA INTEIRA: *"faça os quick time event do jogo usar apenas wasd"* -- toda letra que o
+		// servidor pediu, nos tres embates. O contra-exemplo e o do `SoOWasdResponde` (o teclado inteiro de antes).
+		string vistas = string.Concat(_letrasVistas.OrderBy(l => l));
+		Checa($"o servidor so pediu W, A, S ou D: {_contadas} letras nesta rodada, todas de \"{vistas}\"",
+			  _contadas >= 4 && _letrasVistas.All(l => "WASD".IndexOf(l) >= 0), vistas);
+
 		Nota("==========================================================");
 		Nota($"PLACAR: {_ok} OK, {_falha} FALHA");
 		if (_falha > 0) foreach (string f in _reprovadas) Nota($"   falhou: {f}");
@@ -680,6 +715,9 @@ public partial class RoboDeMudez : Node
 		// ---- O QUICK TIME EVENT CONTINUA VIVO ----
 		foreach (double d in GarantirEmbate(deKi: false)) yield return d;
 		foreach (double d in ALetraChega("NO ZANZO CLASH")) yield return d;
+
+		// ---- (2026-10-19) ...E SO O WASD RESPONDE ----
+		foreach (double d in SoOWasdResponde("NO ZANZO CLASH")) yield return d;
 
 		// ---- O MOVIMENTO ----
 		//
@@ -788,6 +826,66 @@ public partial class RoboDeMudez : Node
 
 	/// <summary>A tecla fisica de uma letra do alfabeto do embate.</summary>
 	private static Key TeclaDaLetra(char c) => Key.A + (c - 'A');
+
+	/// <summary>
+	/// (2026-10-19) O QUICK TIME EVENT E SO WASD -- *"faça os quick time event do jogo usar apenas wasd e nao o teclado todo pq
+	/// a galera ta reclamando muito"*. Duas pontas, uma lista (`LetrasDoEmbate`): o servidor so pede W, A, S ou D (as letras
+	/// da rodada inteira sao conferidas no <see cref="Fechamento"/>), e a tela so manda W, A, S ou D -- uma letra de fora (o
+	/// H, que nao e atalho de nada) e engolida e NAO vai pro servidor: nao e resposta, e nao custa o ponto do erro.
+	///
+	/// O CONTRA-EXEMPLO E O TECLADO INTEIRO DE ANTES (`LetrasDoEmbate.TecladoInteiroDeTeste`), e ele vale nas duas pontas: o
+	/// servidor volta a pedir letra de fora do WASD, e o mesmo H volta a ir pro servidor como resposta. As letras pedidas
+	/// com o botao ligado nao entram na conta da rodada: o embate em que elas nasceram acaba aqui, e a conta volta no proximo.
+	/// </summary>
+	private IEnumerable<double> SoOWasdResponde(string prefixo)
+	{
+		// (a) O JOGO DE AGORA. Refeita se o embate vencer no meio: com ele acabado o H tambem nao sairia, e o verde seria
+		//     de graca (a mesma premissa conferida no fim do `ApertarNoEmbate`).
+		bool hSaiu = true, valeu = false;
+		for (int tentativa = 0; tentativa < 4 && !valeu; tentativa++)
+		{
+			foreach (double d in GarantirEmbate(deKi: false)) yield return d;
+			foreach (double d in AteQue(() => _letraPedida != '\0', 3.0)) yield return d;
+			if (tentativa == 0) { yield return 0.15; Fotografar("user://mudez-1-wasd.png"); }   // o anel com a letra (so com janela)
+			Marcar();
+			Toque(Key.H);
+			// AFIRMACAO NEGATIVA => ESTRADA PROVADA.
+			foreach (double d in AteOFatoOuAsEstradas(() => Saiu(Protocol.C2S.ClashTecla), VoltasEmBaixo + VoltasDepoisDeSoltar))
+				yield return d;
+			hSaiu = Saiu(Protocol.C2S.ClashTecla);
+			valeu = C?.EmClash == true;
+			if (!valeu) Nota("  --     o embate venceu no meio da medida do H: refazendo");
+		}
+		Checa($"{prefixo}: uma letra FORA do WASD (o H) nao e resposta -- a tela a engole e ela NAO vai pro servidor",
+			  valeu && !hSaiu, $"em embate {valeu}, H no fio {hSaiu}");
+
+		// (b) O CONTRA-EXEMPLO: o teclado inteiro de antes.
+		_contandoLetras = false;
+		char pedidaDeAntes = '\0';
+		bool hSaiuDeAntes = false;
+		Jandirus.Core.Combat.LetrasDoEmbate.TecladoInteiroDeTeste = true;
+		try
+		{
+			foreach (double d in GarantirEmbate(deKi: false)) yield return d;
+			// A LETRA QUE ESTAVA NA TELA PODE TER NASCIDO ANTES DO BOTAO; a seguinte, nao. Espera-se uma de fora do WASD -- o
+			// que o jogo de agora nunca pede, e por isso so o botao a faz chegar.
+			foreach (double d in AteQue(() => _letraPedida != '\0' && "WASD".IndexOf(_letraPedida) < 0, 4.0)) yield return d;
+			pedidaDeAntes = _letraPedida;
+			Marcar();
+			Toque(Key.H);
+			foreach (double d in AteQue(() => Saiu(Protocol.C2S.ClashTecla), 3.0)) yield return d;
+			hSaiuDeAntes = Saiu(Protocol.C2S.ClashTecla);
+		}
+		finally { Jandirus.Core.Combat.LetrasDoEmbate.TecladoInteiroDeTeste = false; }
+		Injeta($"{prefixo}: (o teclado inteiro de antes) o servidor volta a pedir letra FORA do WASD",
+			   pedidaDeAntes != '\0' && "WASD".IndexOf(pedidaDeAntes) < 0, $"pediu '{pedidaDeAntes}'");
+		Injeta($"{prefixo}: (o teclado inteiro de antes) o MESMO H volta a ir pro servidor como resposta", hSaiuDeAntes);
+
+		// (o `Acabou` vem pelo mesmo canal ordenado das letras: depois dele nao chega mais nenhuma deste embate)
+		Servidor?.SoltarEmbateDeTeste(C?.LocalId ?? 0);
+		foreach (double d in AteQue(() => C?.EmClash != true, 4.0)) yield return d;
+		_contandoLetras = true;
+	}
 
 	// =====================================================================
 	// O QUE O PORTAO **NAO** PODE CALAR
@@ -1433,12 +1531,15 @@ public partial class RoboDeMudez : Node
 	///   1. ALT + DIRECAO: o corpo anda e a guarda NAO desce (nenhum `Guard` sai no fio enquanto ele anda; no servidor
 	///      ela continua erguida). O contra-exemplo e o jogo de antes (`LocalPlayer.AndarBaixaAGuardaDeTeste`);
 	///   2. NA DISPUTA DE GUARDA (um raio de verdade contra a guarda do jogador, `GameServer.EmbateDeGuardaDeTeste`): o
-	///      eixo do raio chega e a tela convida a sair; a tecla AO LONGO do raio nao e passo (o cliente nem pede: nao
-	///      ha correcao por pacote); a tecla DE LADO solta -- o fim chega sem vencedor, o corpo anda de guarda erguida,
-	///      ileso, e a tela do quick time event diz que ele saiu e fecha. O contra-exemplo e a porta fechada no
-	///      servidor (`KiContraCorpo.SemSaidaDeLadoDeTeste`): a mesma tecla, e a disputa continua de pe.
+	///      eixo do raio chega e a tela convida a sair PELAS SETAS; a seta AO LONGO do raio nao e passo (o cliente nem
+	///      pede: nao ha correcao por pacote); o W -- de lado, mas letra do quick time event desde 2026-10-19 -- so
+	///      responde: a letra chega ao servidor e o corpo fica; a seta DE LADO solta -- o fim chega sem vencedor, o corpo
+	///      anda de guarda erguida, ileso, e a tela do quick time event diz que ele saiu e fecha. Os contra-exemplos: a
+	///      porta fechada no servidor (`KiContraCorpo.SemSaidaDeLadoDeTeste`: a mesma seta, e a disputa continua de pe) e
+	///      o WASD andando na disputa (`LocalPlayer.LetraDoQteAndaNaGuardaDeTeste`: o mesmo W tira da disputa).
 	///
-	/// O RAIO VEM DO LESTE (o rival nasce oito tiles a direita, como o da `F3`): D e A sao ao longo dele, W e S de lado.
+	/// O RAIO VEM DO LESTE (o rival nasce oito tiles a direita, como o da `F3`): as setas pra direita e pra esquerda sao ao
+	/// longo dele, as pra cima e pra baixo de lado -- e o W e o S tambem seriam, se ainda fossem passo ali.
 	/// </summary>
 	private IEnumerable<double> F8_AGuardaAndaEOPassoDeLadoSolta()
 	{
@@ -1506,6 +1607,7 @@ public partial class RoboDeMudez : Node
 		foreach (double d in AteQue(() => srv.GuardaErguidaDeTeste(cli.LocalId), 3.0)) yield return d;
 		yield return 0.7;
 
+		_avisos.Clear();   // (o aviso que conta e o desta disputa)
 		bool armou = srv.EmbateDeGuardaDeTeste(cli.LocalId);
 		foreach (double d in AteQue(() => cli.EmClash && _tipo == Protocol.TipoDeEmbate.FeixeContraGuarda, 8.0)) yield return d;
 		bool dePe = cli.EmClash && _tipo == Protocol.TipoDeEmbate.FeixeContraGuarda;
@@ -1522,34 +1624,52 @@ public partial class RoboDeMudez : Node
 			  cli.EixoDoRaioNasMaos != null && Math.Abs(eixoDoRaio.Length - 1f) < 1e-3f && Math.Abs(eixoDoRaio.X) > 0.9f, $"eixo {eixoDoRaio}");
 		yield return 0.2;
 		bool Na(string trecho) => Achar("ClashQte") is { } q && Todos<Label>(q).Any(l => l.IsVisibleInTree() && l.Text.Contains(trecho));
-		Checa("...e a tela do quick time event convida a sair de lado", TelaAberta("ClashQte") && Na("ande de lado"));
+		Checa("...e a tela do quick time event convida a sair de lado PELAS SETAS", TelaAberta("ClashQte") && Na("ande de lado pelas setas"));
+		Checa("...e o aviso do servidor no chat tambem manda sair PELAS SETAS",
+			  _avisos.Exists(a => a.Contains("ande de lado pelas setas")), string.Join(" | ", _avisos));
+		Fotografar("user://mudez-8-setas.png");   // a letra e o convite (so com janela)
 
-		// (a) AO LONGO DO RAIO: nao e passo.
+		// (a) A SETA AO LONGO DO RAIO: nao e passo.
 		Vector2 antes = Onde();
 		Marcar();
-		Tecla(Key.D, true);
+		Tecla(Key.Right, true);
 		foreach (double d in AsEstradasAndaram(VoltasEmBaixo + VoltasDepoisDeSoltar)) yield return d;
 		bool pediuAoLongo = BitDeInput(Protocol.InputAndando);
 		float andouAoLongo = (Onde() - antes).Length();
-		Tecla(Key.D, false);
+		Tecla(Key.Right, false);
 		yield return 0.1;
-		Checa("NA DISPUTA DE GUARDA a tecla AO LONGO do raio nao e passo: o corpo fica, o cliente nem pede (nao ha correcao por pacote) e a disputa continua",
+		Checa("NA DISPUTA DE GUARDA a seta AO LONGO do raio nao e passo: o corpo fica, o cliente nem pede (nao ha correcao por pacote) e a disputa continua",
 			  cli.EmClash && !pediuAoLongo && andouAoLongo < 0.5f, $"em disputa {cli.EmClash}, pediu {pediuAoLongo}, andou {andouAoLongo:0.0} px");
 
-		// (b) O CONTRA-EXEMPLO PRIMEIRO, enquanto a disputa esta de pe: com a porta fechada no SERVIDOR, a tecla de lado
+		// (a2) (2026-10-19) O W E DE LADO, MAS E LETRA DO QUICK TIME EVENT: so responde. A letra chega ao servidor, o corpo
+		//      fica e a disputa continua -- com o WASD andando, o toque que responde seria o mesmo que tira da disputa.
+		antes = Onde();
+		Marcar();
+		Tecla(Key.W, true);
+		foreach (double d in AsEstradasAndaram(VoltasEmBaixo + VoltasDepoisDeSoltar)) yield return d;
+		bool letraDoW = Saiu(Protocol.C2S.ClashTecla);
+		bool pediuComW = BitDeInput(Protocol.InputAndando);
+		float andouComW = (Onde() - antes).Length();
+		Tecla(Key.W, false);
+		yield return 0.1;
+		Checa("NA DISPUTA DE GUARDA o W (de lado ao raio) e do QUICK TIME EVENT: a letra chega ao servidor, o corpo fica e a disputa continua",
+			  cli.EmClash && letraDoW && !pediuComW && andouComW < 0.5f,
+			  $"em disputa {cli.EmClash}, letra no fio {letraDoW}, pediu passo {pediuComW}, andou {andouComW:0.0} px");
+
+		// (b) O CONTRA-EXEMPLO PRIMEIRO, enquanto a disputa esta de pe: com a porta fechada no SERVIDOR, a seta de lado
 		//     nao solta nada. (O cliente da o passo e o servidor o devolve -- e o corpo tremendo que a regra evita.)
 		Jandirus.Core.Combat.KiContraCorpo.SemSaidaDeLadoDeTeste = true;
 		bool continuou;
 		try
 		{
 			int finsDaInjecao = _fins;
-			Tecla(Key.S, true);
+			Tecla(Key.Down, true);
 			foreach (double d in AsEstradasAndaram(VoltasEmBaixo + VoltasDepoisDeSoltar)) yield return d;
-			Tecla(Key.S, false);
+			Tecla(Key.Down, false);
 			continuou = cli.EmClash && _fins == finsDaInjecao;
 		}
 		finally { Jandirus.Core.Combat.KiContraCorpo.SemSaidaDeLadoDeTeste = false; }
-		Injeta("com a porta da saida fechada no servidor (o jogo de antes), a tecla de lado NAO solta a disputa", continuou);
+		Injeta("com a porta da saida fechada no servidor (o jogo de antes), a seta de lado NAO solta a disputa", continuou);
 		if (!cli.EmClash)
 		{
 			Checa("a disputa de guarda continuou de pe ate a medida da saida", false, "acabou antes");
@@ -1559,12 +1679,12 @@ public partial class RoboDeMudez : Node
 		// (o passo da injecao foi devolvido pelo servidor: espera o corpo assentar antes de medir a saida de verdade)
 		foreach (double d in AsEstradasAndaram(VoltasEmBaixo)) yield return d;
 
-		// (c) DE LADO: solta.
+		// (c) A SETA DE LADO: solta.
 		antes = Onde();
 		int fins = _fins;
 		double vida = srv.VidaDoCorpoDeTeste(cli.LocalId);
 		Marcar();
-		Tecla(Key.W, true);
+		Tecla(Key.Up, true);
 		foreach (double d in AteQue(() => !cli.EmClash, 4.0)) yield return d;
 		bool soltou = !cli.EmClash && _fins > fins;
 		bool disseQueSaiu = false;
@@ -1577,9 +1697,9 @@ public partial class RoboDeMudez : Node
 		float andouDeLado = Math.Abs(Onde().Y - antes.Y);
 		bool guardaDesceu = Saiu(Protocol.C2S.Guard);
 		bool guardaNoServidor = srv.GuardaErguidaDeTeste(cli.LocalId);
-		Tecla(Key.W, false);
+		Tecla(Key.Up, false);
 
-		Checa("a tecla DE LADO solta a disputa: o fim chega SEM vencedor e comigo no lugar de quem saiu",
+		Checa("a SETA de lado solta a disputa: o fim chega SEM vencedor e comigo no lugar de quem saiu",
 			  soltou && _ultimoVenc == 0 && _ultimoPerd == cli.LocalId, $"soltou {soltou}, venc {_ultimoVenc}, perd {_ultimoPerd} (eu sou {cli.LocalId})");
 		Checa("...o corpo ANDA de lado, de guarda erguida (nenhum `Guard` desceu; no servidor ela continua de pe)",
 			  andouDeLado > 8 && !guardaDesceu && guardaNoServidor, $"andou {andouDeLado:0} px, `Guard` no fio {guardaDesceu}, guarda no servidor {guardaNoServidor}");
@@ -1588,6 +1708,33 @@ public partial class RoboDeMudez : Node
 		Checa("...e a tela diz VOCE SAIU DA FRENTE", disseQueSaiu);
 		foreach (double d in AteQue(() => !TelaAberta("ClashQte"), 6.0)) yield return d;
 		Checa("...e FECHA", !TelaAberta("ClashQte"));
+
+		// (d) (2026-10-19) O CONTRA-EXEMPLO DO W: o jogo de antes, com o WASD andando na disputa. Uma disputa nova (a de cima
+		//     fechou), com a guarda ainda erguida -- e o mesmo W da (a2) tira o jogador dela.
+		yield return 0.7;   // a guarda envelhece de novo: a que acabou de assentar e o gesto do deflect
+		bool rearmou = srv.EmbateDeGuardaDeTeste(cli.LocalId);
+		foreach (double d in AteQue(() => cli.EmClash && _tipo == Protocol.TipoDeEmbate.FeixeContraGuarda && cli.EixoDoRaioNasMaos != null, 8.0))
+			yield return d;
+		bool emDisputa = cli.EmClash && cli.EixoDoRaioNasMaos != null;
+		bool saiuComW = false;
+		if (rearmou && emDisputa)
+		{
+			int finsDoW = _fins;
+			LocalPlayer.LetraDoQteAndaNaGuardaDeTeste = true;
+			try
+			{
+				Tecla(Key.W, true);
+				foreach (double d in AteQue(() => !cli.EmClash, 4.0)) yield return d;
+				saiuComW = !cli.EmClash && _fins > finsDoW && _ultimoVenc == 0 && _ultimoPerd == cli.LocalId;
+			}
+			finally
+			{
+				Tecla(Key.W, false);
+				LocalPlayer.LetraDoQteAndaNaGuardaDeTeste = false;
+			}
+		}
+		Injeta("(o WASD andando na disputa, o jogo de antes) o MESMO W tira o jogador da disputa de guarda", saiuComW,
+			   $"rearmou {rearmou}, em disputa {emDisputa}");
 
 		Tecla(Key.Alt, false);
 		srv.SoltarEmbateDeTeste(cli.LocalId);

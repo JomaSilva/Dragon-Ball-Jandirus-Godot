@@ -268,6 +268,9 @@ public sealed partial class GameServer
 		if (EhOSelo(pl.Zone)) return "daqui de dentro não: você é o passageiro de uma fusão.";
 		if (NaMente(pl)) return "primeiro saia do transe.";
 		if (PresoNoTorneio(pl.Id)) return "você está na área de espera do torneio.";
+		// (2026-10-19) CARREGANDO ESFERA DO DRAGAO -- ela nao sai do planeta (dono), e esta pergunta nao sabe o destino: recusar e o que
+		// nunca a perde. Ver `GameServer.EsferasNaMochila.cs`.
+		if (PorQueAsEsferasPrendem(pl) is { Length: > 0 } esferas) return esferas;
 		return "";
 	}
 

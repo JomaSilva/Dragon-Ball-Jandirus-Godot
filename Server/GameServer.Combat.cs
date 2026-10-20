@@ -325,6 +325,10 @@ public partial class GameServer
 		// `PrepararCombate`. Nao ha crivo por tipo de corpo em lugar nenhum desta regra.
 		pl.Combate.EmCinematica = () => EmCena(pl);
 
+		// (2026-10-19) E QUEM RESPONDE "ESTE CORPO ESTA AO LEME DE UMA NAVE?" -- o casco blinda quem pilota. A resposta e o `PilotoId` das
+		// naves (`CascoIsola`), derivada como a de cima: largar o leme derruba o escudo sem linha pra lembrar. Ver `GameServer.Leme.cs`.
+		pl.Combate.AoLeme = () => !LemeApanhaDeTeste && CascoIsola(pl);
+
 		// E QUEM RESPONDE "ESTE CORPO ESTA SENDO ARREMESSADO AGORA?" -- o `canfight -= 1` do efeito de
 		// knockback do DM (`Movement Effects.dm:40`), lido pelo `testAttack()` (`attack_bck.dm:175`).
 		//
@@ -1677,10 +1681,12 @@ public partial class GameServer
 		Jandirus.Core.Stats.Nutricao.Digerir(pl.Ficha);
 
 		// PASSAR FOME MACHUCA, e o dano vai pelo mesmo caminho do combate -- espalhado pelo corpo.
+		// NAO-LETAL: `SpreadDamage(abs(stamina) * stamina_accum)` (`StaminaDrain.dm:69`) cai no ramo nao-letal do DM. A fome
+		// derruba, e nao deixa a cabeca zerada pro primeiro soco de alguem acabar o servico. Ver `Espalhar`.
 		double acumulado = _fomeAcumulada.GetValueOrDefault(pl.Id);
 		double dano = Jandirus.Core.Stats.Nutricao.DanoDaFome(pl.Ficha, ref acumulado);
 		_fomeAcumulada[pl.Id] = acumulado;
-		if (dano > 0) Espalhar(pl, dano);   // ele ja sincroniza a vida
+		if (dano > 0) Espalhar(pl, dano, letal: false);   // ele ja sincroniza a vida
 
 		// O BARRIGAO RONCA UMA VEZ, e nao a cada tres segundos. O `Hungry` da ficha e o que impede
 		// o aviso de virar spam; ele so volta a zero quando o personagem come.

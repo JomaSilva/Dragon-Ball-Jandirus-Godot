@@ -453,7 +453,13 @@ public static class MeleeResolver
 		//
 		// (2026-10-15) QUEM DECIDE O QUE O NUCLEO PERDIDO FAZ e o `CombatState.QuandoONucleoCede`: o corpo comum morre, a
 		// raca que refaz membro cai em coma, e o Majin se desfaz em pedacos -- a nao ser que tenha sido o KI (`porKi`).
-		if (d.Corpo.DeveMorrer())
+		//
+		// (2026-10-19) E SO O GOLPE LETAL CHEGA NESSA PERGUNTA -- o dono: *"modo nao letal ainda ta matando as vezes"*. O
+		// `DeveMorrer` le o corpo INTEIRO, e o piso do nao-letal so segura o membro que ESTE golpe pegou: um nucleo que outra
+		// coisa ja tinha zerado fazia do soco nao-letal no braco o golpe que matava. No DM esse corpo nem chega vivo ao golpe
+		// -- o laco do corpo o mata no tique em que o nucleo zera (`Injuries.dm:278`) --, entao quem matou foi quem zerou. O
+		// nao-letal que o encontra assim so derruba: o ramo do nocaute, logo abaixo, ja pega o `DeveMorrer`. Ver `NaoLetal`.
+		if ((letal || NaoLetal.MataPeloEstadoDeTeste) && d.Corpo.DeveMorrer())
 		{
 			switch (d.QuandoONucleoCede(porKi))
 			{

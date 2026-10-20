@@ -183,15 +183,26 @@ public sealed partial class GameServer
 	/// OS PRECOS SAO DO ESTADO ATUAL -- mudam a cada melhoria comprada, e por isso saem daqui e nao do catalogo
 	/// de interacoes. NAS DUAS MOEDAS (dono, 2026-10-10): cada melhoria se paga em zeni ou, pelo dobro, em
 	/// recursos; e o SALDO vai junto, que e com ele que se escolhe.
+	///
+	/// (2026-10-19) E O TETO DE QUEM PERGUNTA: ate onde a tecnologia dele leva cada melhoria (`TetoPorTecnologia`).
 	/// </summary>
 	private void DizerOsPrecosDoRegenerador(ServerPlayer pl, RegeneradorDaObra r)
 	{
+		double tech = pl.Ficha.techskill;
+		int bateria = TetoPorTecnologia.BateriaDoRegenerador(tech);
+		int velocidade = TetoPorTecnologia.VelocidadeDoRegenerador(tech);
+		int nanites = TetoPorTecnologia.NanitesDoRegenerador(tech);
+		static string AteOnde(int teto, string escrito) => teto == TetoPorTecnologia.SemTeto ? "" : $" (a sua tecnologia leva até {escrito})";
+
 		Avisar(pl, "-- melhorias (em zeni, ou o dobro em recursos) --");
 		Avisar(pl, $"  recarregar a bateria: {Recurso.DoisPrecos(Regenerador.CustoDeRecarga(r.EnergiaMax))}");
-		Avisar(pl, $"  bateria maior: {Recurso.DoisPrecos(Regenerador.CustoDeBateria(r.EnergiaMax))}");
-		Avisar(pl, $"  velocidade de cura: {Recurso.DoisPrecos(Regenerador.CustoDeVelocidade(r.Eficiencia))}");
+		Avisar(pl, r.EnergiaMax >= bateria ? $"  bateria maior: no teto da sua tecnologia ({(double)bateria * 100:N0})"
+			: $"  bateria maior: {Recurso.DoisPrecos(Regenerador.CustoDeBateria(r.EnergiaMax))}{AteOnde(bateria, $"{(double)bateria * 100:N0}")}");
+		Avisar(pl, r.Eficiencia >= velocidade ? $"  velocidade de cura: no teto da sua tecnologia ({velocidade})"
+			: $"  velocidade de cura: {Recurso.DoisPrecos(Regenerador.CustoDeVelocidade(r.Eficiencia))}{AteOnde(velocidade, $"{velocidade}")}");
 		Avisar(pl, r.CuraFerimentos ? "  tratar ferimentos: já comprada" : $"  tratar ferimentos: {Recurso.DoisPrecos(Regenerador.CustoDeFerimentos)}");
-		Avisar(pl, $"  nanites: {Recurso.DoisPrecos(Regenerador.CustoDeNanites(r.Nanites))} (pede {Regenerador.TechDosNanites:0} de tecnologia)");
+		Avisar(pl, r.Nanites >= nanites ? $"  nanites: no teto da sua tecnologia ({nanites})"
+			: $"  nanites: {Recurso.DoisPrecos(Regenerador.CustoDeNanites(r.Nanites))} (pede {Regenerador.TechDosNanites:0} de tecnologia){AteOnde(nanites, $"{nanites}")}");
 		Avisar(pl, $"  você tem {CarteiraEscrita(pl)}.");
 	}
 
@@ -208,6 +219,9 @@ public sealed partial class GameServer
 		(string qual, Moeda moeda) = Recurso.LerPedidoPago(pedido);
 		double custo;
 		string feito;
+		// (2026-10-19) O TETO DE QUEM PAGA (`TetoPorTecnologia`): a recusa vem antes da cobranca, e o tanque que ja passou dele
+		// continua como esta.
+		double tech = pl.Ficha.techskill;
 
 		switch (qual)
 		{
@@ -222,6 +236,9 @@ public sealed partial class GameServer
 				break;
 
 			case "bateria":
+				int bateria = TetoPorTecnologia.BateriaDoRegenerador(tech);
+				if (r.EnergiaMax >= bateria)
+				{ Avisar(pl, TetoPorTecnologia.Recusa("a bateria do regenerador", tech, $"{(double)bateria * 100:N0} de carga", proporcional: false)); return; }
 				custo = Regenerador.CustoDeBateria(r.EnergiaMax);
 				if (!CobrarOuExplicar(pl, custo, moeda, "a bateria maior")) return;
 				r.EnergiaMax += 1;
@@ -230,6 +247,9 @@ public sealed partial class GameServer
 				break;
 
 			case "velocidade":
+				int velocidade = TetoPorTecnologia.VelocidadeDoRegenerador(tech);
+				if (r.Eficiencia >= velocidade)
+				{ Avisar(pl, TetoPorTecnologia.Recusa("a velocidade de cura", tech, $"velocidade {velocidade}", proporcional: false)); return; }
 				custo = Regenerador.CustoDeVelocidade(r.Eficiencia);
 				if (!CobrarOuExplicar(pl, custo, moeda, "a velocidade de cura")) return;
 				r.Eficiencia += 1;
@@ -250,6 +270,8 @@ public sealed partial class GameServer
 					Avisar(pl, $"nanites pedem {Regenerador.TechDosNanites:0} de tecnologia -- você tem {pl.Ficha.techskill:0}.");
 					return;
 				}
+				int nanites = TetoPorTecnologia.NanitesDoRegenerador(tech);
+				if (r.Nanites >= nanites) { Avisar(pl, TetoPorTecnologia.Recusa("a regeneração de nanites", tech, $"{nanites}", proporcional: false)); return; }
 				custo = Regenerador.CustoDeNanites(r.Nanites);
 				if (!CobrarOuExplicar(pl, custo, moeda, "a regeneração de nanites")) return;
 				r.Nanites += 1;

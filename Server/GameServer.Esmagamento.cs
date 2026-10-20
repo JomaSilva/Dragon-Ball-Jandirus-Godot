@@ -68,6 +68,17 @@ public sealed partial class GameServer
 		(!pl.Ficha.dead || pl.Ficha.KeepsBody) && Esmagamento.Prende(pl.Ficha);
 
 	/// <summary>
+	/// ESTE CORPO ESTA SENDO ESMAGADO AGORA? -- a pergunta que o <see cref="TickDoEsmagamento"/> faz antes de ferir: acima do limite
+	/// (<see cref="Esmagamento.Esmaga"/>) e com corpo (`!dead || KeepsBody`, o mesmo `||` do <see cref="PrensadoPelaGravidade"/>).
+	///
+	/// (2026-10-19) NUMA CASA SO porque ganhou um segundo leitor: o Sleep do Majin recusa o corpo esmagado, e acorda quem passa a ser esmagado
+	/// dormindo (`GameServer.SonoDoMajin.cs`) -- o corpo que o castigo fere e o corpo que nao dorme, e duas copias da conta divergiriam no dia
+	/// em que alguem mexesse numa.
+	/// </summary>
+	private static bool EsmagadoAgora(ServerPlayer pl) =>
+		(!pl.Ficha.dead || pl.Ficha.KeepsBody) && Esmagamento.Esmaga(pl.Ficha);
+
+	/// <summary>
 	/// UMA VEZ POR SEGUNDO -- chamado do bloco de 1 Hz do <see cref="Tick"/>.
 	///
 	/// A CADENCIA E A REGRA, e nao arredondamento: as constantes do DM sao **por segundo**
@@ -85,8 +96,8 @@ public sealed partial class GameServer
 			// so um comentario nesta sessao: quem recebeu o `Keep_Body` de um cargo ficou com o corpo,
 			// e o corpo e esmagado. Ver `PrensadoPelaGravidade` logo acima, que faz a mesma pergunta
 			// pro andar. Nem quem esta com a razao dentro do limite -- que e a esmagadora maioria dos
-			// corpos do servidor, e por isso o teste barato vem primeiro.
-			if ((f.dead && !f.KeepsBody) || !Esmagamento.Esmaga(f))
+			// corpos do servidor, e por isso o teste barato vem primeiro. A conta mora no `EsmagadoAgora`.
+			if (!EsmagadoAgora(pl))
 			{
 				_avisoDeEsmagamento.Remove(pl.Id);
 				continue;

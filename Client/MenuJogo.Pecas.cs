@@ -150,21 +150,22 @@ public partial class MenuJogo
 	/// le), a barra e o que o olho pega antes de ler.
 	///
 	/// `teto` acima de 1 e o trilho do Ki: a barra tem pra onde crescer alem do tanque, como a do HUD.
+	///
+	/// DEVOLVE AS PECAS VIVAS da linha (o valor e a barra), pra quem quiser reescreve-la no lugar a cada ficha em vez
+	/// de remontar a pagina -- ver <see cref="LinhaViva"/> e o `Viva` (MenuJogo.cs).
 	/// </summary>
-	private static void LinhaComBarra(string rotulo, string valor, double razao, Color cor, Control pai,
-									  Color? corDoValor = null, double teto = 1)
+	private static LinhaViva LinhaComBarra(string rotulo, string valor, double razao, Color cor, Control pai,
+										   Color? corDoValor = null, double teto = 1)
 	{
 		var caixa = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
 		caixa.AddThemeConstantOverride("separation", 2);
-		caixa.AddChild(LinhaSolta(rotulo, valor, corDoValor));
+		HBoxContainer linha = LinhaSolta(rotulo, valor, corDoValor);
+		caixa.AddChild(linha);
 
-		double max = Math.Max(teto, 1e-9);
 		var b = new ProgressBar
 		{
 			CustomMinimumSize = new Vector2(0, 6),
 			ShowPercentage = false,
-			MaxValue = max,
-			Value = Math.Clamp(double.IsNaN(razao) ? 0 : razao, 0, max),
 			MouseFilter = Control.MouseFilterEnum.Ignore,
 		};
 		var cheio = new StyleBoxFlat { BgColor = cor };
@@ -173,6 +174,47 @@ public partial class MenuJogo
 		b.SetMeta("barra", rotulo);
 		caixa.AddChild(b);
 		pai.AddChild(caixa);
+
+		var viva = new LinhaViva(linha.GetChild<Label>(1), b, cheio, corDoValor ?? Tema.Texto);
+		viva.Encher(razao, teto);
+		return viva;
+	}
+
+	/// <summary>
+	/// AS PECAS DE UMA <see cref="LinhaComBarra"/> QUE MUDAM COM O NUMERO: o texto do valor (e a cor dele), a barra e
+	/// a chapa cheia dela. `Escrever` troca so o que mudou -- o texto pela propria guarda do `Label`, e a cor so quando
+	/// e outra: trocar um override de tema avisa a arvore inteira de baixo, e a ficha chega cinco vezes por segundo.
+	/// </summary>
+	private sealed class LinhaViva(Label valor, ProgressBar barra, StyleBoxFlat cheio, Color corDoValor)
+	{
+		private Color _corDoValor = corDoValor;
+
+		/// <summary>A barra na razao dada, com o teto (o trilho do Ki) -- a conta que a montagem sempre fez.</summary>
+		public void Encher(double razao, double teto)
+		{
+			double max = Math.Max(teto, 1e-9);
+			barra.MaxValue = max;
+			barra.Value = Math.Clamp(double.IsNaN(razao) ? 0 : razao, 0, max);
+		}
+
+		public void Escrever(string texto, double razao, Color corDaBarra, Color? corDoTexto = null, double teto = 1)
+		{
+			valor.Text = texto;
+			Color c = corDoTexto ?? Tema.Texto;
+			if (c != _corDoValor) { valor.AddThemeColorOverride("font_color", c); _corDoValor = c; }
+			if (cheio.BgColor != corDaBarra) cheio.BgColor = corDaBarra;
+			Encher(razao, teto);
+		}
+	}
+
+	/// <summary>
+	/// O NUMERO GRANDE E A LEGENDA DE UMA <see cref="Faixa"/>, pra reescrever no lugar (ver `Viva`, MenuJogo.cs). A
+	/// faixa e sempre rotulo, grande, legenda -- nessa ordem, numa linha so.
+	/// </summary>
+	private static (Label Grande, Label Legenda) PartesDaFaixa(PanelContainer faixa)
+	{
+		var linha = faixa.GetChild<HBoxContainer>(0);
+		return (linha.GetChild<Label>(1), linha.GetChild<Label>(2));
 	}
 
 	/// <summary>

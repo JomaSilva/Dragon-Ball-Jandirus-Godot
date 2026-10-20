@@ -734,7 +734,9 @@ public partial class GameServer
 	/// </summary>
 	private Nave? AssentarPodDeTeste(ServerPlayer pl)
 	{
-		pl.Ficha.techskill = 60;
+		// (2026-10-19) 100, e nao os 60 que a Spacepod pede: as secoes desta camada sobem o pod ate o teto do DM (39x), e a
+		// velocidade tem teto pela tecnologia de quem paga (`TetoPorTecnologia.VelocidadeDaNave` -- com 60, 24x).
+		pl.Ficha.techskill = TetoPorTecnologia.TechSemTeto;
 		if (pl.Ficha.Zeni < 1_000_000) pl.Ficha.Zeni = 10_000_000;
 
 		ComandoDeTech(pl, "construir", "Spacepod");

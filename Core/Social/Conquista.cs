@@ -125,11 +125,18 @@ public static class Conquista
 	public const double RepPorArrancarBandeira = 15;
 
 	/// <summary>
-	/// `REP_KILL_CITIZEN` (PlanetReputation.dm:20). Nao e da conquista -- e o gancho generico de
+	/// `REP_KILL_CITIZEN` (PlanetReputation.dm:19). Nao e da conquista -- e o gancho generico de
 	/// "matar habitante", que era o item 1 do <see cref="Reputacao.OqueFalta"/> e que a conquista
 	/// obrigou a existir: o defensor tem delta PROPRIO (-6/-15) justamente porque ele PULA este.
 	/// </summary>
 	public const double RepPorMatarHabitante = -10;
+
+	/// <summary>
+	/// `REP_KILL_ROYAL` (PlanetReputation.dm:20, "realeza doi mais"): o mesmo gancho, quando quem morreu
+	/// e a REALEZA do planeta -- o Rei e o Principe de Vegeta, o Guru de Namek. Quem e realeza, o
+	/// `GameServer.MorreuUmCorpoSemDono` decide pelo molde.
+	/// </summary>
+	public const double RepPorMatarRealeza = -25;
 
 	// =====================================================================
 	// AS ONDAS -- `conq_waves_pop` / `conq_waves_proc` (:58-59)

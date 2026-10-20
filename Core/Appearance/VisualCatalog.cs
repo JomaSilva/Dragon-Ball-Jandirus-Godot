@@ -358,6 +358,9 @@ public sealed class VisualCatalog
         // AQUI SAI O CORPO DE REPOUSO, como no ramo do Frost logo acima. A Super Perfeita e forma e
         // sai por `Client.CorposDeForma`.
         // =============================================================================================================
+        // (2026-10-19) O CELL JR do torneio do Cell: um corpo RESERVADO do bio (`Npc.TorneioDoCell.CorpoDoCellJr`), fora dos degraus -- a folha
+        // dele e a do pedido do dono (`Cell Jr.png`). A criacao saneia o indice pra dentro da lista: so o NPC o tem.
+        if (Races.BioAndroids.EhBio(raca) && ap.Corpo == Npc.TorneioDoCell.CorpoDoCellJr) return Npc.TorneioDoCell.FolhaDoCellJr;
         if (Races.BioAndroids.EhBio(raca))
             return Races.BioAndroids.Corpos[
                 Math.Clamp(ap.Corpo, 0, Races.BioAndroids.Corpos.Length - 1)];
@@ -375,6 +378,10 @@ public sealed class VisualCatalog
         // que ele escolheu na criacao continua tingindo por cima (`icon += majin_color`), pelo canal de sempre (`TintaDoCorpo`).
         // ======================================================================================================================
         if (Races.SagaDoMajin.FolhaDoCorpo(ap.Corpo) is { } folhaDaSaga) return folhaDaSaga;
+
+        // (2026-10-19) E O GRANDE PATRIARCA DE NAMEK, pelo mesmo caminho: a folha dele num indice reservado de `ap.Corpo` -- o
+        // `M.icon = 'NamekOld - Guru Style.dmi'` da fabrica do DM. Ver `Npc.Patriarca.Corpo`.
+        if (Npc.Patriarca.FolhaDoCorpo(ap.Corpo) is { } folhaDoPatriarca) return folhaDoPatriarca;
 
         // ============================ E O BILLS E O WHIS, UMA FOLHA POR PERSONAGEM ============================
         // A "raca" de cada um (fora do `races.json`, como a do bicho) E a chave da folha dele. A diferenca pro bicho
@@ -421,8 +428,24 @@ public sealed class VisualCatalog
         // O BICHO e o segundo que responde "nao": a folha dele ja traz a cara desenhada, e os olhos de gente
         // ficariam flutuando em cima do lobo -- o mesmo defeito da larva.
         // (o BILLS e o WHIS sao o terceiro e o quarto, pela mesma razao do bicho -- ver `Npc.BillsEWhis`.)
+        // (2026-10-19) E O SAIBAMAN, pela mesma razao -- ver `OlhosNaFolhaDaRaca`.
         !Npc.Animais.EhAnimal(raca) && !Npc.BillsEWhis.EhRacaDivina(raca) && !Tech.Companheiros.EhDeFolha(raca)
+        && !OlhosNaFolhaDaRaca(raca)
         && (!Races.BioAndroids.EhBio(raca) || Races.BioAndroids.CorpoTemRosto(ap.Corpo));
+
+    /// <summary>
+    /// (2026-10-19) A RACA CUJA FOLHA DE CORPO JA TRAZ OS OLHOS DESENHADOS: o Saibaman (`Saibaman - Form 1`, a folha de NPC que virou o corpo
+    /// dele em 2026-10-18), com os olhos vermelhos na arte. A camada de olhos de gente caia por cima, dois pontos pretos na testa acima dos
+    /// olhos dele -- o dono: *"o overlay de olho no saibaman pode tirar, pq ele fica bugado"*. Por RACA e nao por folha porque a raca so tem
+    /// essa folha (`visual.json`, a mesma nos dois generos). Tambem tira o "Colorir os olhos" da criacao dele: nao ha camada pra tingir.
+    /// </summary>
+    public static bool OlhosNaFolhaDaRaca(string raca) => raca == "Saibaman" && !SaibamanComOlhosDeGenteDeTeste;
+
+    /// <summary>
+    /// (2026-10-19) DEFEITO INJETADO (robo `--diagcorposderaca`): o Saibaman volta a vestir os olhos de gente por cima dos dele -- o jogo de
+    /// antes. Lido pela <see cref="OlhosNaFolhaDaRaca"/>. Falso em jogo, sempre.
+    /// </summary>
+    public static bool SaibamanComOlhosDeGenteDeTeste;
 
     /// <summary>
     /// Como tingir o corpo. Duas coisas diferentes:
@@ -437,6 +460,9 @@ public sealed class VisualCatalog
         BodyOptions b = CorposDe(raca);
         if (b.CorLivre) return (ap.CorPele, 1f);
         if (raca != "Namekian") return (null, 1f);
+        // (2026-10-19) A FOLHA DO GRANDE PATRIARCA SAI COMO FOI DESENHADA: os tons clareiam e escurecem o corpo do povo, e a folha dele
+        // ja tem a cor dela (`Npc.Patriarca`). O tom sorteado na aparencia do NPC continua na ficha, sem efeito.
+        if (Npc.Patriarca.FolhaDoCorpo(ap.Corpo) != null) return (null, 1f);
 
         return ap.Tom switch
         {

@@ -21,8 +21,11 @@ namespace Jandirus.Server;
 ///
 ///   A. O KIT -- quem tem qual; a pessoa e (2026-10-17) o corpo do mundo tem, a copia nao; e a recusa da ativa de outro sangue.
 ///      CONTRA-EXEMPLOS: `Passivas.SemKitDeTeste` e `Passivas.SoPessoaTemKitDeTeste` (o portao da v0.4.0).
-///   B. SAIYAJIN -- Seasoned Warrior, Warrior Race, Saiyan's Resolve, Prideful, False Advantage.
-///   C. PRIMAL -- Primal Evolution, Unmatched Ferocity, Limitless Power, Shattering the Limit, Roaring Evolution.
+///   B. SAIYAJIN -- Seasoned Warrior, Warrior Race (2026-10-19: pelo tronco ou pela cabeca, e nao pela vida; CONTRA-EXEMPLO
+///      `Passivas.GuerreiroPelaVidaDeTeste`), Saiyan's Resolve, Prideful, False Advantage.
+///   C. PRIMAL -- Primal Evolution, Unmatched Ferocity, Limitless Power, Shattering the Limit (2026-10-19: so no degrau SSJ4, a carga e o
+///      raio vermelhos, e o Kamehameha x10 sem os 10%; CONTRA-EXEMPLOS `Passivas.LimiteEmQualquerFormaDeTeste`,
+///      `Passivas.LimiteSemVermelhoDeTeste` e `Passivas.KamehamehaPedeOPisoDeTeste`), Roaring Evolution.
 ///   D. LENDARIO -- Overflowing Power (e o desabafo), Unstoppable Force, Escalating Power.
 ///   E. LENDARIO PRIMAL -- Overflowing Ki, Primal Bloodlust, Demonic Saiyan (as recusas, a carga parada, o tanque 3x), Legendary
 ///      Resurrection.
@@ -77,6 +80,10 @@ public partial class GameServer
 		{
 			Passivas.SemKitDeTeste = false;
 			Passivas.SoPessoaTemKitDeTeste = false;
+			Passivas.LimiteEmQualquerFormaDeTeste = false;
+			Passivas.LimiteSemVermelhoDeTeste = false;
+			Passivas.KamehamehaPedeOPisoDeTeste = false;
+			Passivas.GuerreiroPelaVidaDeTeste = false;
 			AdiantoDoRelogioDeTeste = relogioDeAntes;
 			LimparABancadaDasPassivas();
 		}
@@ -404,12 +411,44 @@ public partial class GameServer
 		AfirmarPs("...e descer pra base ZERA as veteranas", s.Racial.FormasVeteranas == 0 && PertoPs(s.Ficha.racialBp, 1),
 				  $"veteranas {s.Racial.FormasVeteranas}, racialBp {s.Ficha.racialBp:0.###}");
 
-		// ---- Warrior Race + False Advantage (a vida baixa liga as duas) ----
+		// ---- Warrior Race (o tronco ou a cabeca abaixo de 20%) + False Advantage (a vida baixa) ----
+		// (2026-10-19) O dono: *"mudar de 20% de vida pra 20% do tronco ou cabeça"*. A vida e o `Fighter.HP` (a do corpo inteiro); o tronco e a
+		// cabeca sao as partes do corpo de verdade, lidas pela entrada racial de producao (`MontarEntradaRacial`).
+		BodyPart tronco = s.Combate.Corpo.Achar(Body.NomeDoTronco)!, cabeca = s.Combate.Corpo.Achar("Cabeca")!;
+		bool Guerreiro() => PertoPs(s.Ficha.racialPhysoff, 1.2) && PertoPs(s.Ficha.racialPhysdef, 1.3);
+		string Fisico() => $"physoff {s.Ficha.racialPhysoff:0.###}, physdef {s.Ficha.racialPhysdef:0.###}";
+		void Partes(double doTronco, double daCabeca)
+		{
+			tronco.Vida = tronco.VidaMax * doTronco;
+			cabeca.Vida = cabeca.VidaMax * daCabeca;
+		}
+		Partes(0.15, 1);
+		AndarPs(s, 0.1);
+		bool peloTronco = Guerreiro();
+		string doTronco = Fisico();
+		Partes(1, 0.15);
+		AndarPs(s, 0.1);
+		bool pelaCabeca = Guerreiro();
+		string daCabeca = Fisico();
+		AfirmarPs("WARRIOR RACE PELO TRONCO OU PELA CABECA (dono, 2026-10-19): o tronco a 15% acende (ataque fisico +20%, defesa fisica +30%), e a "
+				  + "cabeca a 15% com o tronco inteiro tambem", peloTronco && pelaCabeca, $"tronco: {doTronco}; cabeca: {daCabeca}");
+		Partes(0.25, 0.25);
+		AndarPs(s, 0.1);
+		AfirmarPs("...e o tronco e a cabeca a 25% nao acendem", PertoPs(s.Ficha.racialPhysoff, 1) && PertoPs(s.Ficha.racialPhysdef, 1), Fisico());
+		Partes(1, 1);
 		s.Ficha.HP = 15;
 		AndarPs(s, 0.1);
-		AfirmarPs("Warrior Race: abaixo de 20% de vida, ataque fisico +20% e defesa fisica +30%",
-				  PertoPs(s.Ficha.racialPhysoff, 1.2) && PertoPs(s.Ficha.racialPhysdef, 1.3),
-				  $"physoff {s.Ficha.racialPhysoff:0.###}, physdef {s.Ficha.racialPhysdef:0.###}");
+		AfirmarPs("...nem a VIDA a 15% com o tronco e a cabeca inteiros (era a regra de antes)",
+				  PertoPs(s.Ficha.racialPhysoff, 1) && PertoPs(s.Ficha.racialPhysdef, 1), Fisico());
+		Passivas.GuerreiroPelaVidaDeTeste = true;
+		try
+		{
+			AndarPs(s, 0.1);
+			AfirmarPs("   (defeito injetado: `GuerreiroPelaVidaDeTeste`, a regra de antes) a vida a 15% acende com o tronco e a cabeca inteiros -- a regua "
+					  + "de cima REPROVA", Guerreiro(), Fisico());
+		}
+		finally { Passivas.GuerreiroPelaVidaDeTeste = false; }
+		AndarPs(s, 0.1);
 		AfirmarPs("False Advantage: abaixo de 50% de vida e nada dominado, +0,5x na forma (a base vale 1,5x) e o dreno pela metade",
 				  PertoPs(s.Ficha.racialBp, 1.5) && PertoPs(s.Racial.Efeito.Dreno, 0.5),
 				  $"racialBp {s.Ficha.racialBp:0.###}, dreno {s.Racial.Efeito.Dreno:0.###}");
@@ -458,8 +497,8 @@ public partial class GameServer
 				  $"regen {s.Ficha.racialRegenKiPassiva:0.##}");
 		s.Ficha.powerMod = 1;
 
-		// O CONTRA-EXEMPLO da secao: sem kit, o guerreiro ferido e um ferido qualquer.
-		s.Ficha.HP = 15;
+		// O CONTRA-EXEMPLO da secao: sem kit, o guerreiro ferido e um ferido qualquer (o tronco quebrado, que acende o Warrior Race).
+		Partes(0.15, 1);
 		Passivas.SemKitDeTeste = true;
 		try
 		{
@@ -467,7 +506,7 @@ public partial class GameServer
 			AfirmarPs("   DEFEITO INJETADO (`SemKitDeTeste`): o Warrior Race some -- a prova de cima reprovaria",
 					  PertoPs(s.Ficha.racialPhysoff, 1) && PertoPs(s.Ficha.racialPhysdef, 1), $"physoff {s.Ficha.racialPhysoff:0.##}");
 		}
-		finally { Passivas.SemKitDeTeste = false; s.Ficha.HP = 100; }
+		finally { Passivas.SemKitDeTeste = false; Partes(1, 1); }
 		LimparABancadaDasPassivas();
 	}
 
@@ -527,15 +566,18 @@ public partial class GameServer
 
 		// ---- Shattering the Limit ----
 		AfirmarPs("Shattering the Limit: na base, nao", PertoPs(p.Racial.FatorDoLimite(50, 100), 1));
-		EntrarPs(p, "ssj1");
+		EntrarPs(p, "ssj4");
 		AndarPs(p, 0.1);
-		AfirmarPs("...numa forma Saiyajin, o tiro que custa 10% ou mais do Ki de agora sai 2x, e o de 9% nao",
+		AfirmarPs("...no SSJ4, o tiro que custa 10% ou mais do Ki de agora sai 2x, e o de 9% nao",
 				  PertoPs(p.Racial.FatorDoLimite(10, 100), 2) && PertoPs(p.Racial.FatorDoLimite(9, 100), 1));
 		var carregado = new Projetil { Nome = "Kamehameha", Dono = p.Id, Bp = 1000 };
 		FatorRacialDoDisparo(p, carregado, "", p.Racial.FatorDoLimite(20, 100));
 		AfirmarPs("...e o disparo de producao (`FatorRacialDoDisparo`) dobra o BP do tiro E o fator da onda",
 				  PertoPs(carregado.Bp, 2000) && PertoPs(carregado.MultDeOnda, 2), $"bp {carregado.Bp:0}, onda {carregado.MultDeOnda:0.##}");
 		AfirmarPs("...e o grito ganha o prefixo", Passivas.PrefixoDoLimite == "10x ");
+		OLimiteSoNoSsj4(p);
+		EntrarPs(p, "ssj1");
+		AndarPs(p, 0.1);
 
 		// ---- Roaring Evolution ----
 		p.Combate.EmCombate = 90;
@@ -555,6 +597,156 @@ public partial class GameServer
 		double depois = DanoDeKiRacial(new Projetil { Nome = "Kamehameha", Dono = humano.Id }, humano, p, 100);
 		AfirmarPs("...e a tag de combate acabando zera os rugidos", PertoPs(depois, 100), $"{depois:0}");
 		LimparABancadaDasPassivas();
+	}
+
+	/// <summary>
+	/// (2026-10-19) O SHATTERING THE LIMIT SO NO DEGRAU SSJ4 -- e o raio dele sai VERMELHO. O dono: *"faça q esse "transformado" seja
+	/// apenas no ssj4, ssj4 fp e ssj4 lb (pra lendario primal é a mesma coisa mas a diferença q seria no lssj4 dele etc)"*, *"lendario tb
+	/// tem as lssj4 fp e lssj4 lb n esqueça delas"* e *"faça com q a técnica de ki em questao saia vermelha"*.
+	///
+	///   1. a escada INTEIRA das duas linhas, forma por forma (o tiro de 20% do Ki): 2x so nas seis do degrau SSJ4;
+	///   2. o tiro de verdade (`Canalizar` -> o tique dos canais -> `NascerORaio`): no SSJ4 o raio nasce marcado (`Projetil.DoLimite`), com
+	///      a onda 2x e o grito "10x"; o mesmo tiro no SSJ1 sai comum;
+	///   3. o feixe cortado: a parte de la do raio vermelho continua vermelha;
+	///   4. o Kamehameha x10: no SSJ4 o Kamehameha pronto dobra mesmo custando 1% do Ki, e o Galick Ho de 1% nao;
+	///   5. CONTRA-EXEMPLOS: `Passivas.LimiteEmQualquerFormaDeTeste` (o SSJ1 volta a dobrar), `Passivas.LimiteSemVermelhoDeTeste` (o raio do
+	///      SSJ4 sai 2x sem a marca) e `Passivas.KamehamehaPedeOPisoDeTeste` (o Kamehameha de 1% volta a sair 1x).
+	/// O vermelho na TELA (o bit no fio e a cor do desenho) e da `--diaglimite`, com fotos.
+	/// </summary>
+	private void OLimiteSoNoSsj4(ServerPlayer p)
+	{
+		ServerPlayer lp = ForjarPs("Lendario Primal", "Saiyan", Passivas.ClasseLendariaPrimal, bp: 5e8, linhagem: "Primal Saiyan");
+		(ServerPlayer Corpo, string Forma, bool Dobra)[] escada =
+		[
+			(p, "ssj1", false), (p, "ssj2", false), (p, "ssj3", false),
+			(p, "ssj4", true), (p, "ssj4_full_power", true), (p, "ssj4_limit_breaker", true),
+			(lp, "primal_c_type", false), (lp, "primal_legendary", false), (lp, "primal_legendary2", false), (lp, "primal_legendary3", false),
+			(lp, "primal_legendary4", true), (lp, "primal_legendary4_full_power", true), (lp, "primal_legendary4_limit_breaker", true),
+		];
+		List<string> Erradas()
+		{
+			var erradas = new List<string>();
+			foreach ((ServerPlayer corpo, string forma, bool dobra) in escada)
+			{
+				EntrarPs(corpo, forma);
+				AndarPs(corpo, 0.1);
+				double f = corpo.Racial.FatorDoLimite(20, 100);
+				if (!PertoPs(f, dobra ? 2 : 1)) erradas.Add($"{forma} {f:0.##}x");
+			}
+			return erradas;
+		}
+		List<string> certo = Erradas();
+		AfirmarPs("LIMITE SO NO SSJ4 (dono, 2026-10-19): forma por forma, o tiro de 20% do Ki sai 2x SO no SSJ4, SSJ4 FP e SSJ4 LB -- e, no "
+				  + "Lendario Primal, so no LSSJ4, LSSJ4 FP e LSSJ4 LB; o SSJ1-3, o C-Type e o LSSJ1-3 ficam 1x",
+				  certo.Count == 0, certo.Count == 0 ? $"{escada.Length} formas certas" : string.Join(", ", certo));
+		Passivas.LimiteEmQualquerFormaDeTeste = true;
+		try
+		{
+			List<string> antiga = Erradas();
+			AfirmarPs("   (defeito injetado: `LimiteEmQualquerFormaDeTeste`, a regra de antes) o SSJ1-3 e o LSSJ1-3 voltam a dobrar o tiro -- a "
+					  + "regua de cima REPROVA", antiga.Exists(e => e.StartsWith("ssj1 ")) && antiga.Exists(e => e.StartsWith("primal_legendary3 ")),
+					  string.Join(", ", antiga));
+		}
+		finally { Passivas.LimiteEmQualquerFormaDeTeste = false; }
+
+		// O TIRO DE VERDADE: o Kamehameha que custa 20% do Ki, carregado pelo tique dos canais de producao. `carga` = a marca vermelha da
+		// CARGA na mao (`CargaDoLimite`, o bit do snapshot), lida com o canal aberto e o raio por nascer.
+		bool carga = false;
+		Projetil? Atirar(ServerPlayer corpo, string forma, List<string> falas, string verbo = Passivas.VerboDoKamehameha, string nome = "Kamehameha",
+						 double fracao = 0.2)
+		{
+			EntrarPs(corpo, forma);
+			AndarPs(corpo, 0.1);
+			double custo = 10 * corpo.Ficha.BaseDrain();
+			corpo.Ficha.Ki = custo / fracao;
+			_ultimaFala.Remove(corpo.Id);   // (a fala de uma cena de cima nao engole o grito -- `MsEntreFalas`)
+			var ouvidas = new List<(int Quem, Jandirus.Net.Protocol.Fala Canal, string Texto)>();
+			var antes = EscutaDeFalas;
+			EscutaDeFalas = ouvidas;
+			try
+			{
+				Canalizar(corpo, verbo, custo, new ReceitaDeProjetil
+				{
+					Tipo = TipoDeProjetil.Beam, BaseDano = 1, Velocidade = 1, AlcanceTiles = 30, CargaMinima = 1,
+					Deflectivel = false, Nome = nome,
+				});
+				carga = CargaDoLimite(corpo.Id);
+				for (int i = 0; i < 200 && _canais.TryGetValue(corpo.Id, out CanalDeKi? c) && c.Raio == null; i++)
+				{
+					AdiantoDoRelogioDeTeste += 50;
+					TickDosCanaisDeKi(0.05);
+				}
+			}
+			finally { EscutaDeFalas = antes; }
+			falas.AddRange(ouvidas.Where(o => o.Quem == corpo.Id).Select(o => o.Texto));
+			return _canais.TryGetValue(corpo.Id, out CanalDeKi? canal) ? canal.Raio : null;
+		}
+		static string Raio(Projetil? r) => r == null ? "o raio nao nasceu" : $"raio #{r.Id}, marca {r.DoLimite}, onda {r.MultDeOnda:0.##}";
+
+		var falas4 = new List<string>();
+		Projetil? r4 = Atirar(p, "ssj4", falas4);
+		bool carga4 = carga;
+		AfirmarPs("O TIRO DE VERDADE NO SSJ4 (`Canalizar` -> tique dos canais -> `NascerORaio`): a carga e o raio nascem MARCADOS pro vermelho "
+				  + "(`CargaDoLimite`, `Projetil.DoLimite`), com a onda 2x e o grito \"10x Kamehameha!!\"",
+				  carga4 && r4 is { DoLimite: true } && PertoPs(r4.MultDeOnda, 2) && Disse(falas4, "10x Kamehameha!!"),
+				  $"carga marcada {carga4}; {Raio(r4)} | {Ultimos(falas4)}");
+
+		// O FEIXE CORTADO: um corpo pisa no tronco do raio vermelho e a parte de la nasce pelo `Cortar` de producao
+		if (r4 != null)
+		{
+			float t = ZoneCollision.TileSize;
+			List<Projetil> lista = ProjeteisDaZona(p.Zone.Hash);
+			r4.Cauda = p.Pos + r4.Rumo * t;
+			r4.Pos = p.Pos + r4.Rumo * (12 * t);
+			ServerPlayer intruso = ForjarPs("intruso no feixe", "Human", onde: p.Pos + r4.Rumo * (6 * t));
+			Cortar(r4, intruso, intruso.Pos, lista, p.Zone.Hash);
+			Projetil? deLa = lista.Find(x => x.NascidoDoCorte == r4.Id);
+			AfirmarPs("...e CORTADO (alguem pisou no tronco), a parte de la do raio continua vermelha",
+					  deLa is { DoLimite: true }, deLa == null ? "a parte de la nao nasceu" : $"parte de la #{deLa.Id}, marca {deLa.DoLimite}");
+		}
+		SoltarDoRaio(p.Id);
+
+		var falas1 = new List<string>();
+		Projetil? r1 = Atirar(p, "ssj1", falas1);
+		bool carga1 = carga;
+		AfirmarPs("...e o MESMO tiro no SSJ1 sai comum: a carga e o raio sem a marca, a onda 1x e o grito sem o \"10x\"",
+				  !carga1 && r1 is { DoLimite: false } && PertoPs(r1.MultDeOnda, 1) && Disse(falas1, "Kamehameha!!") && !Disse(falas1, "10x"),
+				  $"carga marcada {carga1}; {Raio(r1)} | {Ultimos(falas1)}");
+		SoltarDoRaio(p.Id);
+
+		Passivas.LimiteSemVermelhoDeTeste = true;
+		try
+		{
+			var falasD = new List<string>();
+			Projetil? rd = Atirar(p, "ssj4", falasD);
+			AfirmarPs("   (defeito injetado: `LimiteSemVermelhoDeTeste`) o tiro do SSJ4 sai 2x com a carga e o raio SEM a marca -- a regua do vermelho "
+					  + "REPROVA", !carga && rd is { DoLimite: false } && PertoPs(rd.MultDeOnda, 2), $"carga marcada {carga}; {Raio(rd)} | {Ultimos(falasD)}");
+		}
+		finally { Passivas.LimiteSemVermelhoDeTeste = false; SoltarDoRaio(p.Id); }
+
+		// O KAMEHAMEHA X10 (dono, 2026-10-19): no degrau SSJ4 o Kamehameha PRONTO dobra seja qual for o custo -- o tiro de 1% do Ki. As outras
+		// tecnicas continuam pedindo os 10% (o Galick Ho de 1%). So o fator e o grito: a marca vermelha vem do mesmo `CanalDeKi.Limite`, e quem
+		// a mede e o tiro de 20% acima.
+		var falasK = new List<string>();
+		Projetil? rk = Atirar(p, "ssj4", falasK, fracao: 0.01);
+		SoltarDoRaio(p.Id);
+		var falasG = new List<string>();
+		Projetil? rg = Atirar(p, "ssj4", falasG, "GalicGun", "Galick Ho", 0.01);
+		SoltarDoRaio(p.Id);
+		AfirmarPs("O KAMEHAMEHA X10 (dono, 2026-10-19): no SSJ4 o Kamehameha pronto que custa so 1% do Ki sai 2x e com o \"10x\" -- e o Galick Ho "
+				  + "de 1% continua 1x (so o Kamehameha dispensa os 10%)",
+				  rk != null && PertoPs(rk.MultDeOnda, 2) && Disse(falasK, "10x Kamehameha!!")
+				  && rg != null && PertoPs(rg.MultDeOnda, 1) && Disse(falasG, "Galick Ho!!") && !Disse(falasG, "10x"),
+				  $"Kamehameha: {Raio(rk)} | {Ultimos(falasK)} || Galick Ho: {Raio(rg)} | {Ultimos(falasG)}");
+		Passivas.KamehamehaPedeOPisoDeTeste = true;
+		try
+		{
+			var falasKd = new List<string>();
+			Projetil? rkd = Atirar(p, "ssj4", falasKd, fracao: 0.01);
+			AfirmarPs("   (defeito injetado: `KamehamehaPedeOPisoDeTeste`, a regra de antes) o Kamehameha de 1% no SSJ4 sai 1x e sem o \"10x\" -- a regua do "
+					  + "Kamehameha x10 REPROVA", rkd != null && PertoPs(rkd.MultDeOnda, 1) && !Disse(falasKd, "10x"), $"{Raio(rkd)} | {Ultimos(falasKd)}");
+		}
+		finally { Passivas.KamehamehaPedeOPisoDeTeste = false; SoltarDoRaio(p.Id); }
 	}
 
 	// =====================================================================

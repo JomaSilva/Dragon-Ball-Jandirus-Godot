@@ -533,9 +533,9 @@ public partial class RoboDoVelorio : Node
 				{ Conferir(false, "o meu corpo tem o filho `Balao`"); Passar(); return; }
 
 				// PELO CAMINHO DO EVENTO (`World.AoFalar`), e nao pelo `Dizer` na mao: o portao de
-				// canal e a busca do corpo pelo NOME sao regras, e sao elas que um morto poderia
+				// canal e a busca do corpo pelo id da boca sao regras, e sao elas que um morto poderia
 				// perder sem ninguem notar (basta um `if (dead) return` numa camada acima).
-				World.Instancia?.AoFalar(Protocol.Fala.Diz, cli.LocalName, "estou morto, e falo");
+				World.Instancia?.AoFalar(Protocol.Fala.Diz, cli.LocalName, "estou morto, e falo", cli.LocalId);
 
 				Conferir(balao.Visible && balao.TextoDeTeste == "estou morto, e falo",
 						 $"MORTO eu continuo falando, e a fala chega no balao (\"{balao.TextoDeTeste}\")");

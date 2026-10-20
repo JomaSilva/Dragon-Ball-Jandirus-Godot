@@ -135,6 +135,7 @@ public static class RequisitosDosVerbos
 	private static readonly Requisito Potencial = Fato(Fatos.OfertaDePotencial, "oferta de despertar o potencial pendente");
 	private static readonly Requisito Genkidama = Fato(Fatos.PedidoDeGenkidama, "uma Genkidama pedindo a sua energia");
 	private static readonly Requisito Assento = Fato(Fatos.OfertaDeAssento, "assento de Ancião oferecido");
+	private static readonly Requisito Aprendizado = Fato(Fatos.OfertaDeAprendiz, "aprendizado de Kaioshin oferecido");
 	private static readonly Requisito Desafio = Fato(Fatos.DesafioAoTitulo, "desafio ao título pendente");
 
 	/// <summary>Carregar o titulo de Deus da Destruicao AGORA -- o `god_is_god(usr)` que abre todo verb do kit dele.</summary>
@@ -222,9 +223,11 @@ public static class RequisitosDosVerbos
 			"Erguer + gravar o SUPREMO (4.000.000 recursos)", AbaWorldEsferas,
 			EscultorDaEstatua.E(SemEstatua),
 			"apenas Namekuseijins do Clã do Dragão|ainda não aprendeu a moldar a Estátua|só pode erguer uma Estátua|somente o Guardião da Terra"),
+		// (2026-10-19) ...e a estatua que perdeu o criador (apagado ou reencarnado) e despertada por OUTRO do Cla do Dragao -- o dono.
 		new(ChaveDoVerbo("db_reviver"), "Despertar as esferas", AbaWorldEsferas,
-			Fato(Fatos.CriouAEstatuaDaqui, "ergueu a estátua deste mundo"),
-			"não há Estátua do Dragão neste mundo|só quem ergueu a estátua"),
+			Fato(Fatos.CriouAEstatuaDaqui, "ergueu a estátua deste mundo")
+				.Ou(ClaDoDragao.E(Fato(Fatos.EstatuaSemCriadorAqui, "a estátua deste mundo perdeu o criador"))),
+			"não há Estátua do Dragão neste mundo|só quem ergueu a estátua|só um Namekuseijin do Clã do Dragão"),
 		// O RECORTE DE LUGAR QUE JA EXISTIA: as Super Esferas so se reivindicam (e so se invocam) no espaco. O
 		// servidor cobra os dois: o dragao so e chamado AO LADO de uma delas (`set src in oview(2)`,
 		// `ProceduralSpace.dm:1580`) -- ate 2026-10-10 o invocar era recorte so do menu, sem recusa nenhuma.
@@ -267,6 +270,10 @@ public static class RequisitosDosVerbos
 		new(ChaveDoVerbo("graus"), "Toggle SSJ Grades", AbaOther,
 			Raca("Saiyan", "Halfbreed").Ou(Fato(Fatos.EscadaSuperSaiyajin, "escada do Super Saiyajin aberta (DNA Saiyajin)"))),
 
+		// (2026-10-19) OS CORPOS DAS FORMAS DO FROST DEMON -- o `Icer_Form_Settings` do DM, de todo Frost Demon (`fd_login_check`,
+		// `IcerTransform.dm:148`). Quem recusa quem nao e um e o servidor (`GameServer.Frost.ComandoDasFormasDoFrost`).
+		new(ChaveDoVerbo("formas_frost"), "Icer Form Settings", AbaOther, Raca(Races.FormasDeFrost.Raca), "só um Frost Demon"),
+
 		new(ChaveDoVerbo("splitform_seguir"), "Split Form: Follow", AbaOther, Copias, "nenhuma copia de pe"),
 		new(ChaveDoVerbo("splitform_parar"), "Split Form: Stop", AbaOther, Copias, "nenhuma copia de pe"),
 		new(ChaveDoVerbo("splitform_alvo"), "Split Form: Attack Target", AbaOther, Copias, "nenhuma copia de pe"),
@@ -287,10 +294,15 @@ public static class RequisitosDosVerbos
 		new(ChaveDoVerbo("genkidama_negar"), "Refuse Spirit Bomb", AbaOther, Genkidama, "ninguem esta pedindo a sua energia"),
 		new(ChaveDoVerbo("cargo_nomear_aceitar"), "Accept Elder Seat", AbaOther, Assento, "ninguem te ofereceu um assento"),
 		new(ChaveDoVerbo("cargo_nomear_recusar"), "Decline Elder Seat", AbaOther, Assento, "ninguem te ofereceu um assento"),
+		new(ChaveDoVerbo("aprendiz_aceitar"), "Accept Apprenticeship", AbaOther, Aprendizado, "ninguém te ofereceu aprendizado"),
+		new(ChaveDoVerbo("aprendiz_recusar"), "Decline Apprenticeship", AbaOther, Aprendizado, "ninguém te ofereceu aprendizado"),
 
 		// OS DE CARGO. As chaves sao as de `Core/Ranks/Ranks.cs`.
 		new(ChaveDoVerbo("cargo_nomear"), "Appoint Elder", AbaOther, Cargo("elder"),
 			"marque o Namekuseijin|só o Grande Ancião"),
+		// (2026-10-19) o patronato do Kaioshin: os dois verbos da skill `Kaioshin Apprenticeship`, que o censo tinha como mudos
+		new(ChaveDoVerbo("aprendiz_nomear"), "Name Apprentice", AbaOther, Cargo("kaioshin"), "só o Kaioshin no trono"),
+		new(ChaveDoVerbo("aprendiz_dispensar"), "Dismiss Apprentice", AbaOther, Cargo("kaioshin"), "só o Kaioshin no trono"),
 		new(ChaveDoVerbo("cargo_herdeiro"), "Name Heir", AbaOther, Cargo("kov"), "so o Rei de Vegeta"),
 		new(ChaveDoVerbo("cargo_herdeiro_tirar"), "Remove Heir", AbaOther, Cargo("kov"), "so o Rei de Vegeta"),
 		// A linha de sucessao e LEITURA: o servidor a mostra a quem pedir. Ela aparece pro Rei e pros
@@ -436,6 +448,13 @@ public static class RequisitosDosVerbos
 			KitEmprestado, RecusaDoKit + "|a quem trilha o Instinto"),
 		new(DoKit(Ranks.KitDoDeus.VerbInfusaoEmprestada), "Hakai Infusion (emprestada pelo título)", AbaSkills,
 			KitEmprestado, RecusaDoKit + "|a quem trilha o Instinto"),
+
+		// (2026-10-19) A TRAVESSIA DO KING YEMMA: ir ao Outro Mundo (a mesa do Enma, onde os mortos chegam) e voltar pro lugar EXATO de
+		// onde saiu. E do TRONO, como o kit do Deus; e quem perdeu o trono do lado de la continua vendo o botao enquanto a volta guardada
+		// for dele. Ver `GameServer.TravessiaDoJuiz.cs`.
+		new(PrefixoDeHabilidade + World.TravessiaDoJuiz.Verbo, World.TravessiaDoJuiz.Rotulo, AbaSkills,
+			Cargo(World.TravessiaDoJuiz.Cargo).Ou(Fato(Fatos.VoltaDoOutroMundo, "vivo no Outro Mundo, com a volta guardada")),
+			"só o King Yemma"),
 
 		// ---------------------------------------------------------- Tecla E: o mainframe de androides
 		// A MAQUINA E DE HUMANO: instalar o laboratorio e converter o proprio corpo pedem a raca

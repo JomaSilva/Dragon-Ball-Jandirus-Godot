@@ -224,7 +224,9 @@ public partial class GameServer
 	/// (`PoderNaFrase.EmNumero(ScouterMostra(...))`): o que o vidro nao le, a frase diz sem numero.
 	/// </summary>
 	internal bool ScouterMostra(ServerPlayer leitor, ServerPlayer? dono, params double[] numeros) =>
-		TemScouter(leitor) && (dono == null || !KiDivinoEscondido(dono)) && Array.TrueForAll(numeros, Jandirus.Core.Stats.Scouter.Le);
+		TemScouter(leitor) && (dono == null || !KiDivinoEscondido(dono))
+		&& (dono == null || dono == leitor || !AndroideSemKi(dono))   // (2026-10-19) o vidro nao le o androide alheio -- ver `AndroideSemKi`
+		&& Array.TrueForAll(numeros, Jandirus.Core.Stats.Scouter.Le);
 
 	/// <summary>
 	/// (2026-10-18) O DEUS DE OFICIO USA O KI DIVINO SEMPRE: o Bills e o Whis (os NPCs, e quem tem os cargos deles -- Deus da Destruicao e
@@ -266,6 +268,26 @@ public partial class GameServer
 	/// sempre.
 	/// </summary>
 	internal static bool KiDivinoAparecerDeTeste;
+
+	/// <summary>
+	/// (2026-10-19) ESTE CORPO E UM ANDROIDE: nao ha ki nele que o Sense sinta ou que o scouter leia. O dono: *"androides nem deveriam aparecer
+	/// no sense ou scouter por serem androides (faça isso pra player androide tb, ambos os tipos de androide)"*. Quem entra:
+	///   * o JOGADOR dos dois tipos -- o de absorcao e o de energia infinita, que o Android Lab escreve com a raca "Android" e o bit do tipo
+	///     (`CorpoDeAndroide`, a mesma pergunta do supercomputador);
+	///   * os ANDROIDES NPC da saga do Cell, pelo molde: eles nascem "Human" (o `init_event_boss` do DM os cria Human e so DEPOIS escreve
+	///     `Race = "Android"` -- ver o `_nota` do `androide_17` no `npcs.json`), entao a raca nao os acha. Androide NPC novo entra nesta lista.
+	/// O Sense ja deixava de fora a raca "Android" (`AchoAEnergiaG4`, literal do DM); o scouter nao deixava ninguem, e o NPC passava nos dois.
+	/// O PROPRIO androide de scouter ligado continua lendo O PROPRIO poder (a ficha e as frases sobre ele mesmo, `ScouterMostra`): o dono
+	/// pediu que ele nao APARECA pros outros, e apagar a leitura de si seria outra regra.
+	/// </summary>
+	internal static bool AndroideSemKi(ServerPlayer o) =>
+		!AndroideAparecerDeTeste && (CorpoDeAndroide(o) || o.Papel?.Molde.Id is "androide_17" or "androide_18");
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--sentidosteste`, familia 6): o androide volta a aparecer no scouter (e o NPC androide no Sense) -- o jogo de antes de
+	/// 2026-10-19. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool AndroideAparecerDeTeste;
 
 	// =====================================================================
 	// A DICA DE CLASSE -- a unica pista, e ela e uma frase

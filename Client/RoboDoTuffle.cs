@@ -142,7 +142,10 @@ public partial class RoboDoTuffle : Node
 		bool converteu = duasMoedas && Apertar("Neo Tuffle (1.000.000 zeni)")
 						 && await Ate(() => srv.PalcoN_AMaquina(eu).NeoTuffle && Disse("a máquina se fecha sobre você"), 6);
 		await Fechado();
-		bool verbAceso = await Ate(() => RequisitosDosVerbos.Linha("hab:tuffle_possuir") is { } l && l.Requisito.Atende(PosseDoCliente.Atual), 6);
+		// O BOTAO, e nao so a linha da tabela: a aba Other desenha os verbs REGISTRADOS no cliente (`Habilidades`), e a tabela so os esconde
+		// -- a primeira versao desta regua olhava so a tabela e passou com o botao faltando (a contraprova por mutacao de 2026-10-19 achou).
+		bool verbAceso = await Ate(() => Verbos.Todos.Any(v => v.Chave == "hab:tuffle_possuir" && v.Categoria == Verbos.Outros)
+										 && RequisitosDosVerbos.Linha("hab:tuffle_possuir") is { } l && l.Requisito.Atende(PosseDoCliente.Atual), 6);
 		await Segundos(0.4);
 		Fotografar("user://tuffle-2b-virou.png");
 		Conferir(foiAConversao && duasMoedas && converteu && verbAceso,

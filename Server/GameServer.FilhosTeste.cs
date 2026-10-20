@@ -562,7 +562,7 @@ public sealed partial class GameServer
 			{
 				var fio = new LiteNetLib.Utils.NetDataReader(PacoteDeAparencia(p).CopyData());
 				fio.GetByte();
-				fio.GetInt(); fio.GetString(24); fio.GetString(24); fio.GetString(8);
+				fio.GetInt(); fio.GetString(Protocol.MaxNomeNoFio); fio.GetString(24); fio.GetString(8);
 				fio.GetAppearance();
 				fio.GetByte(); fio.GetByte(); fio.GetString(120);
 				return ((fio.GetByte() & 1) != 0, fio.AvailableBytes);

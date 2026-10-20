@@ -50,6 +50,11 @@ public partial class GameServer
 		public uint PoderesJaVistos { get; private set; }
 		/// <summary>(2026-10-17) A ultima ficha lenta inteira, como chegou pelo leitor de producao -- a idade e os meses dela (`--calendarioteste`).</summary>
 		public Protocol.AtributosState? UltimaFicha { get; private set; }
+		/// <summary>
+		/// (2026-10-19) A ULTIMA LISTA DA ABA PEOPLE (`S2C.Conhecidos`), como o servidor a escreveu (`MandarConhecidos`): por pessoa a
+		/// assinatura, o nome, o convivio e a declaracao. Nulo ate a primeira chegar nesta conexao. Ver `--recicladoteste`.
+		/// </summary>
+		public List<(string Sig, string Nome, int Convivio, byte Relacao)>? Conhecidos { get; private set; }
 		public int PortaLocal => Rede.LocalPort;
 
 		/// <summary>
@@ -95,6 +100,19 @@ public partial class GameServer
 					PoderesJaVistos |= poderes;
 					break;
 				}
+				case Protocol.S2C.Conhecidos:
+				{
+					int n = r.GetUShort();
+					var lista = new List<(string, string, int, byte)>(n);
+					for (int i = 0; i < n; i++)
+					{
+						string sig = r.GetString(), nome = r.GetString();
+						r.GetString();   // a raca
+						lista.Add((sig, nome, r.GetUShort(), r.GetByte()));
+					}
+					Conhecidos = lista;
+					break;
+				}
 			}
 		}
 
@@ -104,6 +122,7 @@ public partial class GameServer
 			Conectado = VersaoChegou = NoMundo = false;
 			Caiu = Recusa = null;
 			Slots = null;
+			Conhecidos = null;
 			FichasLentas = 0;
 			UltimosPoderes = PoderesJaVistos = 0;
 			_par = Rede.Connect("127.0.0.1", porta, FioDaVersao.PedidoDeConexao(versao, ProvaAoDiscar?.Invoke()));
@@ -132,6 +151,16 @@ public partial class GameServer
 		{
 			NetDataWriter w = Protocol.Begin(Protocol.C2S.PickSlot);
 			w.Put((byte)slot);
+			_par?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		}
+
+		/// <summary>(2026-10-19) Apaga o personagem do slot pela tela de selecao, digitando o nome -- o `SendDeleteChar` do jogo.</summary>
+		public void ApagarPersonagem(int slot, string nome)
+		{
+			Slots = null;
+			NetDataWriter w = Protocol.Begin(Protocol.C2S.DeleteChar);
+			w.Put((byte)slot);
+			w.Put(nome);
 			_par?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 		}
 

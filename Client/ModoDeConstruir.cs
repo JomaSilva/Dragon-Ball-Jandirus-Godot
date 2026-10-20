@@ -620,7 +620,7 @@ public partial class ModoDeConstruir : CanvasLayer
 				return;
 			}
 
-			// O "B" E UMA DAS LETRAS QUE O EMBATE SORTEIA -- ver `Foco.AtalhosMudos`.
+			// NO MEIO DE UM EMBATE O "B" NAO LIGA NADA (ate 2026-10-19 ele era uma das letras sorteadas) -- ver `Foco.AtalhosMudos`.
 			if (Foco.AtalhosMudos) return;
 
 			if (Teclas.Bate("ui_construir", k))

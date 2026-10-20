@@ -185,6 +185,13 @@ public partial class ProjetilDesenhado : Node2D
 	/// <summary>A cor do ki de QUEM ATIROU -- ver <see cref="World.CorDoKiDe"/>. Nao vem no pacote.</summary>
 	public Color Cor = Aura.CorDoKiCru;
 
+	/// <summary>
+	/// (2026-10-19) O RAIO DO SHATTERING THE LIMIT (`NascimentoDeProjetil.DoLimite`): ele se desenha com os tons vermelhos
+	/// (`ArteDeKiNoCliente.TonsDoLimite`) no lugar dos da arte -- a `Cor` vermelha (a da luz e do estouro) somada aos tons do Kamehameha
+	/// nao o deixava vermelho. Escrito ANTES do `Vestir`.
+	/// </summary>
+	public bool DoLimite;
+
 	/// <summary>QUAL ARTE ESTE TIRO USA -- ela veio no pacote de nascimento, e escolhe o estilo.</summary>
 	public ArteDeKi Arte;
 
@@ -547,7 +554,7 @@ public partial class ProjetilDesenhado : Node2D
 		{
 			_estiloDoFeixe = EstiloDoFeixe(arte);
 			_medidas = PintorDeKi.Medir(arte, Escala);
-			Material = PintorDeKi.MaterialDeFeixe(arte, Escala, Cor);
+			Material = PintorDeKi.MaterialDeFeixe(arte, Escala, Cor, DoLimite ? TonsDoLimite : null);
 		}
 		else
 		{

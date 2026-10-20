@@ -103,6 +103,15 @@ public sealed class ChefeDaSaga
 	/// <summary>`BEV_CELL_REVIVE_DELAY` -- 600 decimos = 60 s.</summary>
 	public double RessurgeEmSegundos = 60;
 
+	/// <summary>
+	/// (2026-10-19) CHEGANDO NESTE DEGRAU (1-based) ELE PARA A LUTA E MARCA O TORNEIO DELE -- o Cell Perfeito, o dono: *"se ele virar perfeito,
+	/// ele avisa q em 5 dias tera um torneio do cell"*. Zero = sem torneio. Ver `Npc.TorneioDoCell` e `GameServer.TorneioDoCell.cs`.
+	/// </summary>
+	public int TorneioNoDegrau;
+
+	/// <summary>(2026-10-19) Dias in-game entre o anuncio do torneio e a abertura dele na arena -- o dono: *"em 5 dias"*.</summary>
+	public int DiasAteOTorneio = 5;
+
 	/// <summary>O que a chegada dele anuncia. Vazio = chegada silenciosa (o Cell, no original).</summary>
 	public string AnuncioDaChegada = "";
 
@@ -279,6 +288,12 @@ public sealed class EstadoDoChefe
 	/// </summary>
 	public double RessurgeFaltamS;
 
+	/// <summary>
+	/// (2026-10-19) ELE FOI PRO TORNEIO DELE (`ChefeDaSaga.TorneioNoDegrau`): a caminho, ele nasce NA ARENA da Terra e espera os desafiantes;
+	/// voltando do alem, encerra o torneio e apaga a marca. Vai pro disco: o torneio marcado atravessa o reinicio.
+	/// </summary>
+	public bool NoTorneio;
+
 	/// <summary>Id do corpo no `_players`. **NAO PERSISTE** -- corpo nao atravessa reinicio.</summary>
 	[System.Text.Json.Serialization.JsonIgnore]
 	public int Corpo;
@@ -442,6 +457,8 @@ public static class Sagas
 						Absorve = Bit(c, "absorve", false),
 						RessurgeNoDegrau = (int)Num(c, "ressurgeNoDegrau", 0),
 						RessurgeEmSegundos = Num(c, "ressurgeEmSegundos", 60),
+						TorneioNoDegrau = (int)Num(c, "torneioNoDegrau", 0),
+						DiasAteOTorneio = (int)Num(c, "diasAteOTorneio", 5),
 						AnuncioDaChegada = Txt(c, "anuncioDaChegada"),
 						AnuncioDaQueda = Txt(c, "anuncioDaQueda"),
 					});
@@ -555,6 +572,16 @@ public static class Sagas
 				if (c.RessurgeNoDegrau > m.Estagios.Length)
 					p.Add($"saga '{e.Id}' / '{c.Molde}': ressurgeNoDegrau {c.RessurgeNoDegrau} passa dos "
 						+ $"{m.Estagios.Length} degraus da ficha -- ele nunca voltaria.");
+
+				// (2026-10-19) O TORNEIO PRECISA DE DEGRAU PRA ACONTECER, e a volta Super Perfeita e o que o encerra: sem ela o torneio nunca acabaria
+				// pela vitoria de alguem (so pelo Kamehameha).
+				if (c.TorneioNoDegrau > m.Estagios.Length)
+					p.Add($"saga '{e.Id}' / '{c.Molde}': torneioNoDegrau {c.TorneioNoDegrau} passa dos {m.Estagios.Length} degraus da ficha");
+				if (c.TorneioNoDegrau > 0 && c.RessurgeNoDegrau != c.TorneioNoDegrau)
+					p.Add($"saga '{e.Id}' / '{c.Molde}': torneioNoDegrau {c.TorneioNoDegrau} sem ressurgeNoDegrau no mesmo degrau -- nocauteado no x1 "
+						+ "ele morreria de vez, sem a volta que encerra o torneio");
+				if (c.TorneioNoDegrau > 0 && c.DiasAteOTorneio < 1)
+					p.Add($"saga '{e.Id}' / '{c.Molde}': diasAteOTorneio {c.DiasAteOTorneio} -- o torneio e marcado pra pelo menos um dia depois");
 
 				// ABSORVER PRECISA DE QUEM ABSORVER, e de degrau pra onde subir.
 				if (c.Absorve && e.Chefes.Length < 2)

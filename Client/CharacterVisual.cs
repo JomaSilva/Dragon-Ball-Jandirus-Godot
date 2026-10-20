@@ -206,7 +206,8 @@ public partial class CharacterVisual : Node2D
 	private static readonly StringName
 		UniFlashCor = "flash_cor", UniContornoCor = "contorno_cor", UniFlash = "flash", UniAchatar = "achatar",
 		UniEmpurrao = "empurrao", UniContorno = "contorno", UniAuraCor = "aura_cor", UniAura = "aura",
-		UniQuadroMin = "quadro_min", UniQuadroMax = "quadro_max", MetaSync = "sync";
+		UniQuadroMin = "quadro_min", UniQuadroMax = "quadro_max", MetaSync = "sync",
+		UniFeridaModo = "ferida_modo", UniAmpSoltoTem = "amp_solto_tem", UniAmpSolto = "amp_solto", MetaSolto = "solto";
 
 	/// <summary>
 	/// A ANIMACAO QUE ESTA TOCANDO no corpo agora. So pras bancadas.
@@ -365,10 +366,53 @@ public partial class CharacterVisual : Node2D
 		int quadro = s.Frame;
 		if (!c.TemAnimacao || c.Animacao is not { } anim || quadro < 0 || quadro >= c.Quadros) return;
 
-		(Vector2 min, Vector2 max) = BorraoDirecional.Caixa(sf.GetFrameTexture(anim, quadro));
+		Texture2D? tex = sf.GetFrameTexture(anim, quadro);
+		(Vector2 min, Vector2 max) = BorraoDirecional.Caixa(tex);
 		m.SetShaderParameter(UniQuadroMin, min);
 		m.SetShaderParameter(UniQuadroMax, max);
+		AtualizarSoltos(s, m, tex);
 	}
+
+	/// <summary>
+	/// ============================ O PEDACO QUE O CORTE SOLTA SOME JUNTO (dono, 2026-10-19) ============================
+	/// O corte de membro do shader e por FAIXA (medida no corpo de gente), e nas folhas de outra proporcao a faixa atravessa
+	/// o que nao e o membro: o rabo do Frost Demon passa pela lateral e pelo chao, e perder a perna (ou o braco do lado do
+	/// rabo) deixava o resto do rabo FLUTUANDO -- conta de papel nas 49 folhas do Frost: pedaco solto em 21, ate 39 pixels. O
+	/// dono escolheu que o pedaco some junto com o membro (e vai desenhar, um dia, a mascara de membro de cada folha).
+	///
+	/// AQUI, E SO AQUI: este metodo roda a cada troca de quadro e de pose (os sinais da camada) e no fim de toda ferida
+	/// aplicada (`AplicarFerida`), que sao as tres coisas de que o pedaco solto depende -- o desenho do quadro, o membro
+	/// arrancado e o lado da imagem em que ele cai. A virada troca o lado junto com a animacao (`SetMotion` escreve o
+	/// `_facing` antes do `Aplicar`), entao ela passa pelo sinal tambem -- menos nas poses de uma direcao so (`ko`, `kb`,
+	/// `meditate`), em que a mascara espera a proxima troca de quadro. A conta e da <see cref="PedacosSoltos"/>.
+	///
+	/// So escreve no material de quem tem ou TEVE mascara (a marca `MetaSolto`): sem membro arrancado, o metodo custa uma
+	/// pergunta por troca de quadro.
+	/// ================================================================================================================
+	/// </summary>
+	private void AtualizarSoltos(AnimatedSprite2D s, ShaderMaterial m, Texture2D? quadro)
+	{
+		ImageTexture? mascara = null;
+		if (!PedacoSoltoFicaDeTeste && quadro != null && _temFeridas && _feridas.Amputados != Jandirus.Core.Combat.MascaraDeFeridas.Membro.Nenhum
+			&& m.GetShaderParameter(UniFeridaModo).AsInt32() > 0)
+		{
+			(Vector2 braco, Vector2 perna) = LadosDaAmputacao();
+			// DEITADO PELA POSE DO CORPO, e nao pelo `_deitadoEnviado`: o `Aplicar` troca a animacao das camadas (e o sinal
+			// chega aqui) ANTES de avisar o shader que o corpo deitou (`AvisarSeDeitado`, no fim dele).
+			mascara = PedacosSoltos.Mascara(quadro, braco, perna, PoseDeitada(_corpo?.Animation.ToString()));
+		}
+		bool tinha = s.HasMeta(MetaSolto);
+		if (mascara == null && !tinha) return;
+		if (mascara == null) s.RemoveMeta(MetaSolto); else s.SetMeta(MetaSolto, true);
+		m.SetShaderParameter(UniAmpSoltoTem, mascara != null);
+		m.SetShaderParameter(UniAmpSolto, mascara!);   // (nula de proposito: solta a mascara do membro que voltou)
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (robo `--diagferidafrost`): o pedaco que o corte de membro solta do corpo fica na tela, flutuando -- o
+	/// jogo de antes. Lido pelo <see cref="AtualizarSoltos"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool PedacoSoltoFicaDeTeste;
 
 	/// <summary>
 	/// Poe as camadas na arvore na ordem da pilha.
@@ -956,6 +1000,7 @@ public partial class CharacterVisual : Node2D
 	///
 	/// ============================ QUEM RECEBE O QUE ============================
 	///   * CORPO -> hematoma e sangue. E a pele: ela fica roxa e depois sangra.
+	///   * CORPO DA FORMA -> o mesmo da pele (2026-10-19). Ver <see cref="CorpoDaFormaQueSeFere"/>.
 	///   * ROUPA -> rasgo. Pano nao fica roxo, ele abre -- e o buraco mostra a pele ferida que a
 	///     camada de baixo ja pintou, que e o encaixe que faz o efeito valer a pena.
 	///   * CABELO, OLHOS, RABO -> nada. Foi o que o dono pediu, e faz sentido: cabelo nao
@@ -983,8 +1028,36 @@ public partial class CharacterVisual : Node2D
 		}
 
 		if (_corpo != null) AplicarFerida(_corpo, ModoPele, hema, sang);
+		if (CorpoDaFormaQueSeFere is { } forma) AplicarFerida(forma, _criatura ? ModoNada : ModoPele, hema, sang);
 		foreach (AnimatedSprite2D r in _roupa) AplicarFerida(r, ModoPano, hema, sang);
 	}
+
+	/// <summary>
+	/// ============================ O CORPO DA FORMA TAMBEM E PELE (2026-10-19) ============================
+	/// A camada de corpo proprio da forma (<see cref="_corpoDaForma"/>: o Frost Demon em TODA forma, o repouso inclusive -- a camada
+	/// do degrau de repouso e a mesma folha do corpo --, o Kid Boo da Forma Pura, o Super Perfeito, a pelagem do SSJ4, o corpo
+	/// musculoso) e um corpo INTEIRO e opaco desenhado POR CIMA do da base, e no Frost e no Kid Boo o da base ainda some debaixo
+	/// dela (`Catalogo.CorpoDaFormaEscondeOBase`). So o `_corpo` recebia a ferida: um Frost Demon nunca mostrava roxo, sangue nem
+	/// membro decepado, e o corpo musculoso do Grade 2 (opaco, do tamanho do de baixo) cobria a pele ferida do mesmo jeito. Ela
+	/// recebe agora a MESMA mascara da pele, pelas tres portas por onde a pele a recebe: o `Ferir` (a mascara mudou), o
+	/// <see cref="SeguirDirecaoNaAmputacao"/> (o boneco virou) e o fim do <see cref="CorpoDaForma(Jandirus.Core.Forms.CorpoDeForma)"/>
+	/// (a camada NASCEU -- com material novo, que nao sabe de ferida nenhuma: e o caso de quem entra na zona e ve o Frost ja ferido,
+	/// porque o `World.VestirCorpoInteiro` pinta a ferida ANTES de vestir a forma).
+	///
+	/// O MACACO NAO SE FERE (<see cref="_criatura"/>, modo nada): as faixas do shader (cabeca, tronco, bracos, pernas) foram
+	/// medidas no corpo de 32 px de gente, e no Oozaru de 96 a faixa do "braco" cortaria o flanco do bicho. A camada passa pela
+	/// porta mesmo assim, pra o modo nada APAGAR a ferida que uma forma anterior deixou no material reciclado (`_corpoDaForma ??=`).
+	/// ========================================================================================================
+	/// </summary>
+	private AnimatedSprite2D? CorpoDaFormaQueSeFere =>
+		!FeridaSoNoCorpoDeTeste && _corpoDaForma is { } s && IsInstanceValid(s) ? s : null;
+
+	/// <summary>
+	/// DEFEITO INJETADO (robo `--diagferidafrost`): a ferida e a amputacao voltam a ir SO no corpo da base e na roupa, e o corpo da
+	/// forma (o do Frost Demon, por cima do da base escondido) fica limpo e inteiro -- o jogo de antes. Lido pelo
+	/// <see cref="CorpoDaFormaQueSeFere"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool FeridaSoNoCorpoDeTeste;
 
 	private void AplicarFerida(AnimatedSprite2D s, int modo, float[] hema, float[] sang)
 	{
@@ -1011,17 +1084,27 @@ public partial class CharacterVisual : Node2D
 	{
 		if (!IsInstanceValid(s) || s.Material is not ShaderMaterial m) return;
 
+		(Vector2 braco, Vector2 perna) = LadosDaAmputacao();
+		m.SetShaderParameter("amp_braco", braco);
+		m.SetShaderParameter("amp_perna", perna);
+	}
+
+	/// <summary>
+	/// O braco e a perna que faltam, ja no lado da IMAGEM (x = metade esquerda, y = direita) -- a traducao do bloco acima. Um
+	/// metodo so porque dois leem: o material (<see cref="AplicarAmputacao"/>) e a mascara do pedaco solto (<see cref="AtualizarSoltos"/>),
+	/// e duas copias da troca de lado discordariam na primeira mexida.
+	/// </summary>
+	private (Vector2 Braco, Vector2 Perna) LadosDaAmputacao()
+	{
 		bool espelha = _facing is Facing.South;
 		Vector2 Lados(bool esq, bool dir) => espelha
 			? new Vector2(dir ? 1 : 0, esq ? 1 : 0)
 			: new Vector2(esq ? 1 : 0, dir ? 1 : 0);
 
-		m.SetShaderParameter("amp_braco", Lados(
-			_feridas.Perdeu(Jandirus.Core.Combat.MascaraDeFeridas.Membro.BracoEsq),
-			_feridas.Perdeu(Jandirus.Core.Combat.MascaraDeFeridas.Membro.BracoDir)));
-		m.SetShaderParameter("amp_perna", Lados(
-			_feridas.Perdeu(Jandirus.Core.Combat.MascaraDeFeridas.Membro.PernaEsq),
-			_feridas.Perdeu(Jandirus.Core.Combat.MascaraDeFeridas.Membro.PernaDir)));
+		return (Lados(_feridas.Perdeu(Jandirus.Core.Combat.MascaraDeFeridas.Membro.BracoEsq),
+					  _feridas.Perdeu(Jandirus.Core.Combat.MascaraDeFeridas.Membro.BracoDir)),
+				Lados(_feridas.Perdeu(Jandirus.Core.Combat.MascaraDeFeridas.Membro.PernaEsq),
+					  _feridas.Perdeu(Jandirus.Core.Combat.MascaraDeFeridas.Membro.PernaDir)));
 	}
 
 	/// <summary>
@@ -1032,6 +1115,7 @@ public partial class CharacterVisual : Node2D
 	{
 		if (!_temFeridas || _feridas.Amputados == Jandirus.Core.Combat.MascaraDeFeridas.Membro.Nenhum) return;
 		if (_corpo != null) AplicarAmputacao(_corpo);
+		if (CorpoDaFormaQueSeFere is { } forma) AplicarAmputacao(forma);
 		foreach (AnimatedSprite2D r in _roupa) AplicarAmputacao(r);
 	}
 
@@ -2923,6 +3007,11 @@ public partial class CharacterVisual : Node2D
 		// Chamar sempre e o que o `Vestir` ja faz no fim dele.
 		Aplicar(force: true);
 		Reordenar();
+
+		// (2026-10-19) E A FERIDA, DEPOIS DE TUDO: a camada que acabou de nascer tem material novo, que nao sabe de ferida nenhuma, e
+		// a mascara so volta a ser escrita quando MUDA. No fim porque a porta le o `_criatura` e a caixa do quadro le a animacao que o
+		// `Aplicar` acabou de escolher. Ver `CorpoDaFormaQueSeFere`.
+		ReaplicarFeridas();
 	}
 
 	/// <summary>
@@ -3017,7 +3106,8 @@ public partial class CharacterVisual : Node2D
 	/// </summary>
 	public void ColadasDaForma(Jandirus.Core.Forms.FormaDef? d)
 	{
-		Jandirus.Core.Forms.Colada[] quero = Jandirus.Core.Forms.Catalogo.Coladas(d);
+		_formaDasColadas = d;
+		Jandirus.Core.Forms.Colada[] quero = ComAsDoCorpo(Jandirus.Core.Forms.Catalogo.Coladas(d));
 
 		// SOBRA SE DESCARTA. A lista encolhe quando a forma nova pede menos camadas que a anterior --
 		// sair do Legendary (duas) pro Blue (uma) tem que APAGAR a segunda, senao a fagulha verde fica
@@ -3084,6 +3174,59 @@ public partial class CharacterVisual : Node2D
 		Aplicar(force: true);
 		Reordenar();
 	}
+
+	// =====================================================================
+	// (2026-10-19) AS DUAS COLADAS QUE NAO SAO DA FORMA -- o descontrole do Mutante e a da cena
+	// =====================================================================
+	/// <summary>A forma que as coladas vestem agora -- guardada pra as duas de baixo acenderem e apagarem sem ninguem repetir a forma.</summary>
+	private Jandirus.Core.Forms.FormaDef? _formaDasColadas;
+
+	/// <summary>O ki deste corpo esta descontrolado -- ver <see cref="MarcarDescontrole"/>.</summary>
+	private bool _descontrolado;
+
+	/// <summary>A camada que a cena em curso veste ate a virada (`Cinematica.ColadaDaCena`), ou nula -- ver <see cref="VestirColadaDaCena"/>.</summary>
+	private Jandirus.Core.Forms.Colada? _coladaDaCena;
+
+	/// <summary>
+	/// O KI DESTE CORPO ESTA DESCONTROLADO: a aura ameacadora VERMELHA do Frost Demon Mutante fica colada nele, por cima do que a forma
+	/// vestir (`fd_menacing_red`, `IcerTransform.dm:166-169`; acende quando o ki trava, `icer.dm:62`, e apaga quando o controle volta,
+	/// `:50`). E ESTADO DO CORPO e nao da forma -- ele recua da forma base pra 4a, pra 3a, e a aura continua ate a liberacao encher --,
+	/// e por isso ela nao mora no `Catalogo.Coladas` (que responde por forma) e sim aqui, somada a ele. Quem marca e o `World`, pelo bit
+	/// do `S2C.Forma` (`Protocol.MarcaDescontrolado`).
+	/// </summary>
+	public void MarcarDescontrole(bool sim)
+	{
+		if (_descontrolado == sim) return;
+		_descontrolado = sim;
+		ColadasDaForma(_formaDasColadas);
+	}
+
+	/// <summary>
+	/// A CAMADA QUE A CENA VESTE do primeiro instante ate a virada (`Cinematica.ColadaDaCena`) -- a aura vermelha que a cena grande do
+	/// descontrole poe na largada e tira no climax (`IcerTransform.dm:202`, `:256`). Nula apaga. Quem chama e a `Transformacao`.
+	/// </summary>
+	public void VestirColadaDaCena(Jandirus.Core.Forms.Colada? c)
+	{
+		if (Nullable.Equals(_coladaDaCena, c)) return;
+		_coladaDaCena = c;
+		ColadasDaForma(_formaDasColadas);
+	}
+
+	/// <summary>
+	/// AS COLADAS DA FORMA COM AS DO CORPO POR CIMA: a do descontrole e a da cena. As duas sao a MESMA folha na mesma cor quando a cena
+	/// e a do descontrole com o ki ja travado -- e ai entra uma camada so, senao a mesma aura seria desenhada duas vezes no mesmo pixel.
+	/// </summary>
+	private Jandirus.Core.Forms.Colada[] ComAsDoCorpo(Jandirus.Core.Forms.Colada[] daForma)
+	{
+		if (!_descontrolado && _coladaDaCena == null) return daForma;
+		var todas = new List<Jandirus.Core.Forms.Colada>(daForma);
+		if (_descontrolado) todas.Add(Jandirus.Core.Races.FormasDeFrost.ColadaDoDescontrole);
+		if (_coladaDaCena is { } daCena && !todas.Contains(daCena)) todas.Add(daCena);
+		return [.. todas];
+	}
+
+	/// <summary>O ki deste corpo esta marcado como descontrolado? Pra bancada.</summary>
+	public bool DescontroladoDeTeste => _descontrolado;
 
 	/// <summary>
 	/// ESTA CAMADA E UMA COLADA? Derivada da lista, como o <see cref="EhSilhueta"/> e a

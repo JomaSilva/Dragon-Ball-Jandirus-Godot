@@ -155,6 +155,7 @@ public sealed partial class GameServer
 				BatendoSemFerir = p.BatendoSemFerir,
 				Esvaziando = p.Esvaziando, FimPendente = p.FimPendente, JaDisputou = p.JaDisputou,
 				Nome = p.Nome, Arte = p.Arte, EscalaVisual = p.EscalaVisual, Invisivel = p.Invisivel,
+				DoLimite = p.DoLimite,   // (2026-10-19) a parte de la do raio vermelho do Shattering the Limit continua vermelha
 				UltimoSulco = p.UltimoSulco,
 				NascidoDoCorte = p.Id,
 				// quem raspou no feixe inteiro continua fora da linha da parte de la: ela e o mesmo raio, e ele pode

@@ -16,6 +16,8 @@ namespace Jandirus.Server;
 ///   KK. O KAIO-KEN -- a maestria na ficha lenta, o multiplicador escolhido (`Kaioken_N`), o X que apaga, e o corpo acima
 ///       da maestria fazendo o que a tela promete: quebrar no nocaute, quebrar sem Ki (item 37). E (adendo 13) o Deus que
 ///       nao o sustenta: o botao recusa no SSG, e virar SSG apaga o que estava aceso.
+///   KS. (v0.4.2) O KAIO-KEN NAS FORMAS DE SUPER SAIYAJIN -- so no Blue, e so pra classe baixa e media com 50% de maestria
+///       divina, ate x20: a tabela do dono contra o catalogo, o botao, a entrada na forma, o tique e o aviso dos 50%.
 ///   GD. A GENKIDAMA QUE ARRASTA -- leva o mais fraco como um raio, estoura no fim com a cratera ENORME, estoura (e nao moi)
 ///       prensando alguem num muro, e o estouro dela alcanca o dobro e meio do de uma bola comum (item 41).
 ///   KP. (adendo 16, v0.3.1) O KAIO-KEN PRESO NO SAVE -- o disco nao leva o buff aceso (o Kaio-ken e as tres maos do motor de
@@ -443,10 +445,12 @@ public sealed partial class GameServer
 				   $"sem Ki x9: {semKi9.Falas} || sem Ki x7: {semKi7.Falas} || caido x7: {caido7.Falas} || caido x6: {caido6.Falas}");
 
 		// ---- (e) O DEUS NAO SUSTENTA O KAIO-KEN (adendo 13 do dono: *"o god n pode usar kaioken junto"*) ----
-		AfirmarV30("a regra do Core (`Kaioken.CabeNaForma`): o Kaio-ken cabe na base, no Blue e no Rose, e NAO no SSG nem no SSG da linha Rose",
-				   KaiokenCore.CabeNaForma(null) && KaiokenCore.CabeNaForma(Jandirus.Core.Forms.Catalogo.Def(Jandirus.Core.Forms.Catalogo.IdBase))
-				   && KaiokenCore.CabeNaForma(Jandirus.Core.Forms.Catalogo.Def("blue")) && KaiokenCore.CabeNaForma(Jandirus.Core.Forms.Catalogo.Def("rose"))
-				   && !KaiokenCore.CabeNaForma(Jandirus.Core.Forms.Catalogo.Def("ssg")) && !KaiokenCore.CabeNaForma(Jandirus.Core.Forms.Catalogo.Def("rose_ssg")));
+		// (v0.4.2) o Blue e o Rose sairam daqui: o Kaio-ken nas formas de Super Saiyajin e a familia KS, logo abaixo
+		AfirmarV30("a regra do Core (`Kaioken.VetoDaForma`): o SSG e o SSG da linha Rose sao o veto do Deus pra qualquer classe, e a base nao veta nada",
+				   KaiokenCore.VetoDaForma(null, "Low-Class", 100) == KaiokenCore.Veto.Nenhum
+				   && KaiokenCore.VetoDaForma(Jandirus.Core.Forms.Catalogo.Def(Jandirus.Core.Forms.Catalogo.IdBase), "Elite", 0) == KaiokenCore.Veto.Nenhum
+				   && KaiokenCore.VetoDaForma(Jandirus.Core.Forms.Catalogo.Def("ssg"), "Low-Class", 100) == KaiokenCore.Veto.Deus
+				   && KaiokenCore.VetoDaForma(Jandirus.Core.Forms.Catalogo.Def("rose_ssg"), Jandirus.Core.Forms.Catalogo.ClasseRose, 100) == KaiokenCore.Veto.Deus);
 		(bool Recusou, bool ApagouAoEntrar, bool NoBlue, string Detalhe) NoDeus(bool defeito)
 		{
 			KaiokenNoDeusDeTeste = defeito;
@@ -467,8 +471,10 @@ public sealed partial class GameServer
 				bool apagou = estava && !TemBuff(aceso, BuffKaiokenG2) && aceso.Ficha.KaioPcnt <= 1.0001;
 				if (TemBuff(aceso, BuffKaiokenG2)) UsarHabilidade(aceso, "Kaioken");
 
-				// e o Blue continua aceitando (o teto x20 dele e da familia de cima)
+				// e o Blue continua aceitando (o teto x20 dele e da familia KS) -- (v0.4.2) com os 50% de maestria divina que ele pede;
+				// a classe ja e a que ele aceita (o `Normal` da forja e a classe media)
 				ServerPlayer blue = ForjarKaiokenV30("Blue KK", c);
+				blue.Ficha.godki = new Jandirus.Core.Stats.GodKiState { awakened = true, mastery = Jandirus.Core.Forms.Catalogo.GodkiRoyalePct };
 				blue.Forma.Entrar("blue");
 				UsarHabilidade(blue, "Kaioken_5");
 				bool noBlue = TemBuff(blue, BuffKaiokenG2);
@@ -484,6 +490,183 @@ public sealed partial class GameServer
 		AfirmarV30("(defeito injetado: o Kaio-ken no Deus, o jogo de antes) ele acende no SSG e atravessa a entrada nele -- a regua de cima REPROVA",
 				   !noDeusComDefeito.Recusou && !noDeusComDefeito.ApagouAoEntrar, noDeusComDefeito.Detalhe);
 		LimparTudoDaBancada();
+	}
+
+	// =====================================================================
+	// KS) O KAIO-KEN NAS FORMAS DE SUPER SAIYAJIN (v0.4.2)
+	// =====================================================================
+	/// <summary>
+	/// O dono (2026-10-19): *"faca com q n de pra usar kaioken nas formas de super saiyajin, somente no ssj blue pra quem e saiyajin
+	/// de classe baixa e media"*. A regra e uma so (`Kaioken.VetoDaForma`), e cada porta do servidor e medida pela de producao:
+	///   (a) A TABELA: o catalogo inteiro contra a lista do dono ESCRITA AQUI, e nao derivada -- os Super Saiyajin vetam menos o
+	///       Blue, o SSG e o SSG Rose seguem no veto do Deus, e toda outra forma nao veta. Um degrau novo numa linha de Super
+	///       Saiyajin cai fora da lista e reprova ate alguem decidir o que ele faz com o Kaio-ken.
+	///   (b) O BOTAO: o corpo que o Blue aceita (classe baixa, 50% de maestria divina) acende no Blue e NAO acende em nenhum outro
+	///       Super Saiyajin -- cada recusa dizendo que so o Blue o aguenta.
+	///   (c) O BLUE: a classe media acende; o Elite e o New Generation, com 100% de maestria, nao (a classe); a classe baixa com 49%
+	///       nao (os 50% do DM do dono); e o pedido de x50 acende x20 (o teto do DM).
+	///   (d) A ENTRADA NA FORMA: aceso na base, virar SSJ1 pelo funil de toda transformacao apaga o Kaio-ken na hora; virar Mistico
+	///       (que nao e Super Saiyajin) o deixa aceso.
+	///   (e) O TIQUE: aceso na base e com o SSJ2 escrito direto -- o caminho do admin e da saga, que nao passa pela entrada --, o tique
+	///       seguinte o apaga; no Blue de classe baixa a 50%, o tique o deixa aceso.
+	///   (f) O AVISO DOS 50% DE MAESTRIA DIVINA: a classe baixa ouve que o corpo aguenta o Kaio-ken por cima do Blue; o New
+	///       Generation, que tambem chega no Blue, cruza os mesmos 50% sem a promessa.
+	/// E o contra-exemplo: com `KaiokenNoSuperSaiyajinDeTeste` (o jogo de antes) as reguas de (b) a (f) REPROVAM. Os corpos sao os da
+	/// KK com a classe e o ki divino trocados (<see cref="ForjarDaClasseKS"/>).
+	/// </summary>
+	private void OKaiokenNoSuperSaiyajinV30()
+	{
+		GD.Print("[v030] --- KS) o Kaio-ken nas formas de Super Saiyajin: so no Blue, e so pra classe baixa e media com 50% de maestria divina (v0.4.2) ---");
+		LimparTudoDaBancada();
+		// A VARREDURA VOLTA NO FIM, como na GS e na DS: a KS nao estraga chao nenhum, e gastar um corredor empurraria as familias
+		// seguintes (a DS e a GD vivem do que a varredura acha) pra outro chao.
+		int varreduraAntes = _pjProximoCorredor;
+		Vec2 c = TerraFirmeG12(4);
+		double meia = Jandirus.Core.Forms.Catalogo.GodkiRoyalePct;
+		string blue = Jandirus.Core.Forms.Catalogo.IdBlue;
+
+		// ---- (a) A TABELA DO DONO: a lista escrita aqui, contra o catalogo inteiro ----
+		string[] superSaiyajin =
+		[
+			"ssj1", "grade2", "grade3", "ssj2", "ssj3", "ssj4", "ssj4_full_power", "ssj4_limit_breaker", "future_ssj",
+			"wrathful", "c_type", "legendary", "primal_c_type", "primal_legendary", "primal_legendary2", "primal_legendary3",
+			"primal_legendary4", "primal_legendary4_full_power", "primal_legendary4_limit_breaker",
+			"blue", "blue_evolution", "rose", "rose2",
+		];
+		string[] deus = ["ssg", "rose_ssg"];
+		List<string> erradas = superSaiyajin.Concat(deus).Where(id => Jandirus.Core.Forms.Catalogo.Def(id) == null)
+			.Select(id => $"{id} nao existe no catalogo").ToList();
+		int outras = 0;
+		foreach (Jandirus.Core.Forms.FormaDef d in Jandirus.Core.Forms.Catalogo.Todas)
+		{
+			KaiokenCore.Veto esperado = deus.Contains(d.Id) ? KaiokenCore.Veto.Deus
+				: superSaiyajin.Contains(d.Id) && d.Id != blue ? KaiokenCore.Veto.SuperSaiyajin
+				: KaiokenCore.Veto.Nenhum;
+			if (!deus.Contains(d.Id) && !superSaiyajin.Contains(d.Id)) outras++;
+			KaiokenCore.Veto veto = KaiokenCore.VetoDaForma(d, "Low-Class", meia);
+			if (veto != esperado) erradas.Add($"{d.Id}: {veto} (o dono: {esperado})");
+		}
+		AfirmarV30($"**A TABELA DO DONO**: no catalogo inteiro, pra classe baixa com 50% de maestria divina, os {superSaiyajin.Length - 1} Super "
+				   + $"Saiyajin que nao sao o Blue vetam o Kaio-ken, o Blue nao, o SSG e o SSG Rose seguem no veto do Deus e as outras {outras} formas nao vetam",
+				   erradas.Count == 0, string.Join(" | ", erradas));
+
+		(bool Botao, bool Classe, bool Maestria, bool Teto, bool Entrada, bool Tique, bool Aviso, string Detalhe) Medir(bool defeito)
+		{
+			KaiokenNoSuperSaiyajinDeTeste = defeito;
+			try
+			{
+				// ---- (b) O BOTAO: o corpo que o Blue aceita, em cada Super Saiyajin ----
+				ServerPlayer baixa = ForjarDaClasseKS("Baixa KS", c, "Low-Class", meia);
+				baixa.Forma.Entrar(blue);
+				List<string> falasNoBlue = ApertarEOuvir(baixa, "Kaioken_5");
+				bool acendeuNoBlue = TemBuff(baixa, BuffKaiokenG2) && _kaiokenAmtG2.GetValueOrDefault(baixa.Id) == 5;
+				if (TemBuff(baixa, BuffKaiokenG2)) UsarHabilidade(baixa, "Kaioken");
+				List<string> acenderam = [], semPorque = [];
+				foreach (string id in superSaiyajin)
+				{
+					if (id == blue) continue;
+					baixa.Forma.Entrar(id);
+					List<string> falas = ApertarEOuvir(baixa, "Kaioken_5");
+					if (TemBuff(baixa, BuffKaiokenG2)) { acenderam.Add(id); UsarHabilidade(baixa, "Kaioken"); }
+					else if (!Disse(falas, "só o Blue o aguenta")) semPorque.Add($"{id}: {Ultimos(falas)}");
+				}
+				baixa.Forma.Entrar(Jandirus.Core.Forms.Catalogo.IdBase);
+				bool botao = acendeuNoBlue && acenderam.Count == 0 && semPorque.Count == 0;
+
+				// ---- (c) O BLUE: a classe, a maestria e o teto ----
+				(bool Aceso, double Vezes, List<string> Falas) NoBlue(string nome, string classe, double maestria, string pedido)
+				{
+					ServerPlayer b = ForjarDaClasseKS(nome, c, classe, maestria);
+					b.Forma.Entrar(blue);
+					List<string> falas = ApertarEOuvir(b, pedido);
+					bool aceso = TemBuff(b, BuffKaiokenG2);
+					double vezes = _kaiokenAmtG2.GetValueOrDefault(b.Id);
+					if (aceso) UsarHabilidade(b, "Kaioken");
+					return (aceso, vezes, falas);
+				}
+				var media = NoBlue("Media KS", "Normal", meia, "Kaioken_5");
+				var elite = NoBlue("Elite KS", Jandirus.Core.Forms.Catalogo.ClasseElite, 100, "Kaioken_5");
+				var meio = NoBlue("Meio KS", "New Generation", 100, "Kaioken_5");
+				var crua = NoBlue("Crua KS", "Low-Class", meia - 1, "Kaioken_5");
+				var teto = NoBlue("Teto KS", "Low-Class", meia, "Kaioken_50");
+				bool daClasse = media.Aceso && !elite.Aceso && Disse(elite.Falas, "no Blue, só o Saiyajin")
+								&& !meio.Aceso && Disse(meio.Falas, "no Blue, só o Saiyajin");
+				bool daMaestria = !crua.Aceso && Disse(crua.Falas, "maestria divina");
+				bool noTeto = teto.Aceso && teto.Vezes == KaiokenCapNoBlueG2 && Disse(teto.Falas, $"até x{KaiokenCapNoBlueG2:0}");
+
+				// ---- (d) A ENTRADA NA FORMA, pelo funil de toda transformacao ----
+				(bool Estava, bool Ficou, List<string> Falas) Virar(string nome, string forma)
+				{
+					ServerPlayer e = ForjarDaClasseKS(nome, c, "Low-Class", meia);
+					UsarHabilidade(e, "Kaioken_3");
+					bool estava = TemBuff(e, BuffKaiokenG2);
+					List<string> falas = Ouvir(() => EntrarNaForma(e, Jandirus.Core.Forms.Catalogo.Def(forma)!, semCena: true));
+					bool ficou = TemBuff(e, BuffKaiokenG2) && e.Ficha.KaioPcnt > 1.0001;
+					if (TemBuff(e, BuffKaiokenG2)) UsarHabilidade(e, "Kaioken");
+					return (estava, ficou, falas);
+				}
+				var noSsj1 = Virar("SSJ1 KS", Jandirus.Core.Forms.Catalogo.IdSsj1);
+				var noMistico = Virar("Mistico KS", Jandirus.Core.Forms.Catalogo.IdMistico);
+				bool entrada = noSsj1.Estava && !noSsj1.Ficou && Disse(noSsj1.Falas, "só o Blue o aguenta") && noMistico.Estava && noMistico.Ficou;
+
+				// ---- (e) O TIQUE: a forma escrita direto nao passa pela entrada ----
+				ServerPlayer direto = ForjarDaClasseKS("Direto KS", c, "Low-Class", meia);
+				UsarHabilidade(direto, "Kaioken_3");
+				direto.Forma.Entrar("ssj2");
+				bool atravessou = TemBuff(direto, BuffKaiokenG2);   // escrever a forma nao apaga nada: e o caso que so o tique pega
+				ServerPlayer azul = ForjarDaClasseKS("Azul KS", c, "Low-Class", meia);
+				azul.Forma.Entrar(blue);
+				UsarHabilidade(azul, "Kaioken_3");
+				bool azulAceso = TemBuff(azul, BuffKaiokenG2);
+				List<string> noTique = Ouvir(TickTecnicasG2);
+				bool apagouNoTique = !TemBuff(direto, BuffKaiokenG2) && !_kaiokenAmtG2.ContainsKey(direto.Id);
+				bool azulFicou = azulAceso && TemBuff(azul, BuffKaiokenG2);
+				if (TemBuff(direto, BuffKaiokenG2)) UsarHabilidade(direto, "Kaioken");
+				if (TemBuff(azul, BuffKaiokenG2)) UsarHabilidade(azul, "Kaioken");
+				bool tique = atravessou && apagouNoTique && Disse(noTique, "Super Saiyajin 2") && azulFicou;
+
+				// ---- (f) O AVISO DOS 50% DE MAESTRIA DIVINA, pelo tique de producao dela ----
+				List<string> AvisoDos50(string nome, string classeDoCorpo)
+				{
+					ServerPlayer m = ForjarDaClasseKS(nome, c, classeDoCorpo, meia - 0.01);
+					m.Forma.Entrar(blue);
+					return Ouvir(() => TickDaMaestriaDivina(m, 60));
+				}
+				List<string> avisoDaBaixa = AvisoDos50("Aviso Baixa KS", "Low-Class");
+				List<string> avisoDoMeio = AvisoDos50("Aviso Meio KS", "New Generation");
+				bool aviso = Disse(avisoDaBaixa, "aguenta o Kaio-ken por cima do Blue")
+							 && Disse(avisoDoMeio, $"({meia:0}%)") && !Disse(avisoDoMeio, "Kaio-ken");
+
+				return (botao, daClasse, daMaestria, noTeto, entrada, tique, aviso,
+						$"(b) no Blue {acendeuNoBlue} [{Ultimos(falasNoBlue)}]; acenderam [{string.Join(", ", acenderam)}]; sem o porque [{string.Join(" || ", semPorque)}]"
+						+ $" (c) media {media.Aceso}; elite {elite.Aceso} [{Ultimos(elite.Falas)}]; meio {meio.Aceso}; 49% {crua.Aceso} [{Ultimos(crua.Falas)}]; x50 -> x{teto.Vezes} [{Ultimos(teto.Falas)}]"
+						+ $" (d) SSJ1 {noSsj1.Estava} -> {noSsj1.Ficou} [{Ultimos(noSsj1.Falas)}]; Mistico {noMistico.Estava} -> {noMistico.Ficou}"
+						+ $" (e) atravessou {atravessou}; apagou no tique {apagouNoTique}; o Blue ficou {azulFicou} [{Ultimos(noTique)}]"
+						+ $" (f) baixa [{Ultimos(avisoDaBaixa)}]; meio [{Ultimos(avisoDoMeio)}]");
+			}
+			finally { KaiokenNoSuperSaiyajinDeTeste = false; }
+		}
+		var limpo = Medir(defeito: false);
+		AfirmarV30($"**SO O BLUE ACENDE O KAIO-KEN** (*\"somente no ssj blue\"*): o corpo que o Blue aceita (classe baixa, 50% de maestria divina) acende no Blue, e o botao RECUSA nos outros {superSaiyajin.Length - 1} Super Saiyajin -- cada recusa dizendo que so o Blue o aguenta",
+				   limpo.Botao, limpo.Detalhe);
+		AfirmarV30("**NO BLUE, SO A CLASSE BAIXA E A MEDIA** (*\"pra quem e saiyajin de classe baixa e media\"*): a classe media acende; o Elite e o New Generation, mesmo com 100% de maestria divina, sao recusados pela classe",
+				   limpo.Classe, limpo.Detalhe);
+		AfirmarV30("**...E COM 50% DE MAESTRIA DIVINA** (o DM do dono, `kaioken.dm:138-147`: *\"so Normal/Low-Class com maestria 50%+ aguentam o Kaioken por cima\"*): a classe baixa com 49% e recusada, e a frase diz o que falta",
+				   limpo.Maestria, limpo.Detalhe);
+		AfirmarV30("**O TETO DO BLUE E X20** (`GODKI_KAIOKEN_CAP`): a classe baixa a 50% pede x50 e acende x20, avisada -- o bloco que fazia isto perguntava pelo `Fighter.ssj` e nunca rodou",
+				   limpo.Teto, limpo.Detalhe);
+		AfirmarV30("**VIRAR SUPER SAIYAJIN APAGA O KAIO-KEN**: aceso na base, o corpo vira SSJ1 pelo funil de toda transformacao (`EntrarNaForma`) e perde o buff na hora, dizendo por que; virar Mistico (que nao e Super Saiyajin) o deixa aceso",
+				   limpo.Entrada, limpo.Detalhe);
+		AfirmarV30("**O TIQUE EXPULSA O KAIO-KEN DO SUPER SAIYAJIN** (o `Loop()` do DM ja fazia isto pro Blue): aceso na base e com o SSJ2 escrito direto -- o caminho do admin e da saga, que nao passa pela entrada --, o tique seguinte o apaga; no Blue de classe baixa a 50%, o tique o deixa aceso",
+				   limpo.Tique, limpo.Detalhe);
+		AfirmarV30("**O AVISO DOS 50% SO PROMETE O KAIO-KEN A QUEM O BLUE AGUENTA**: a classe baixa que cruza os 50% de maestria divina ouve que aguenta o Kaio-ken por cima do Blue; o New Generation, que tambem chega no Blue, cruza os mesmos 50% sem a promessa",
+				   limpo.Aviso, limpo.Detalhe);
+		var comDefeito = Medir(defeito: true);
+		AfirmarV30("(defeito injetado: o Kaio-ken em todo Super Saiyajin, o jogo de antes) ele acende no SSJ e no Blue de qualquer classe e maestria, sem teto, atravessa a entrada e o tique, e o aviso o promete a todos -- as sete reguas de cima REPROVAM",
+				   !comDefeito.Botao && !comDefeito.Classe && !comDefeito.Maestria && !comDefeito.Teto && !comDefeito.Entrada && !comDefeito.Tique
+				   && !comDefeito.Aviso, comDefeito.Detalhe);
+		LimparTudoDaBancada();
+		_pjProximoCorredor = varreduraAntes;
 	}
 
 	// =====================================================================
@@ -1187,6 +1370,22 @@ public sealed partial class GameServer
 	/// <summary>Um corpo de bancada que sabe o Kaio-ken (a skill que a licao do Sr. Kaioh da).</summary>
 	private ServerPlayer ForjarKaiokenV30(string nome, Vec2 onde) =>
 		ForjarComSkills(nome, onde, 50_000, skills: [NpcsDeConversa.SkillDoKaioken]);
+
+	/// <summary>
+	/// (v0.4.2) UM CORPO DA KS: o da KK, com a classe pedida e o ki divino desperto na maestria pedida -- as duas coisas que o Blue
+	/// pergunta. A raca fica a da forja: a regra le a CLASSE, como o `SetKaioken` do DM (`kaioken.dm:142`).
+	///
+	/// E UM TANQUE DE VERDADE (o `baseKi` do lote G12): o da forja e o de novato, e ele nasce NO piso de folego do Kaio-ken
+	/// (`100 / KiMod`, `kaioken.dm:189`) -- o primeiro tique apaga o Kaio-ken de cansaco. Foi o que a rodada r1 mediu: no (e) o corpo
+	/// de controle no Blue saia "cansado demais", e nos mutantes sem o veto o do SSJ2 tambem, a regua reprovando pelo motivo errado.
+	/// </summary>
+	private ServerPlayer ForjarDaClasseKS(string nome, Vec2 onde, string classe, double maestriaDivina)
+	{
+		ServerPlayer pl = ForjarComSkills(nome, onde, 50_000, skills: [NpcsDeConversa.SkillDoKaioken], baseKi: 5_000);
+		pl.Ficha.Class = classe;
+		pl.Ficha.godki = new Jandirus.Core.Stats.GodKiState { awakened = true, mastery = maestriaDivina };
+		return pl;
+	}
 
 	/// <summary>A FICHA LENTA QUE SAI AGORA pra este corpo (`MandarAtributos`, pela escuta da bancada): a assinatura e apagada pra ela sair.</summary>
 	private static Protocol.AtributosState? FichaLentaV30(ServerPlayer pl)

@@ -12,6 +12,10 @@ namespace Jandirus.Server;
 /// observar, teu corpo vai ficar la parado enquanto vc controla a nave, e caso alguem te bata vc
 /// volta pro corpo principal."* -- o dono, sobre os DOIS sistemas na mesma frase.
 ///
+/// (2026-10-19) AO LEME, O CORPO DA PONTE FICA FORA DE ALCANCE: o casco blinda quem pilota, e este corpo divide o `Combate` com ele -- o
+/// dono escolheu "blindar os dois ao leme" (`GameServer.Leme.cs`, `CombatState.AoLeme`). Largado o leme, bater nele volta a trazer o
+/// dono; na mente e no observar nada mudou.
+///
 /// E UM MECANISMO SO, e este arquivo e ele. A mente (`GameServer.Clone.cs`) e o leme da nave grande
 /// (`GameServer.NaveGrande.cs`) sao dois CHAMADORES; nao ha uma segunda copia disto em lugar nenhum.
 /// O DM tambem escreveu uma vez so -- `mob/npc/mind_dummy` (`MindMeditate.dm:127-167`) nasce na

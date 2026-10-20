@@ -670,7 +670,9 @@ public sealed partial class GameServer
 		// `damage_mob(grabbee, dmg*BPModulus(...)/4)` (`Throw.dm:27`) -- espalhado pelo corpo, que e
 		// o que o `damage_mob` do original faz. O baque do FIM do voo e outro, e sai do `Espalhar`
 		// do proprio funil de arremesso.
-		Espalhar(d, dano);
+		// E O GOLPE E O DE QUEM JOGA (2026-10-19): o `damage_mob` leva o `murderToggle` dele (`calcs.dm:176`), entao quem luta
+		// sem matar joga sem matar -- o arremesso para no piso do nao-letal. Ver `Espalhar`.
+		Espalhar(d, dano, a.Combate?.Letal == true);
 
 		Arremessar(d, MeleeArea.Frente(a.Facing), forca, tiques);
 
@@ -760,8 +762,8 @@ public sealed partial class GameServer
 	{
 		if (Agarrao.EstrangulamentoPorSorteioDeTeste)
 		{
-			if (_rng.NextDouble() * 100 < Agarrao.ChanceDeAfogar)
-				Espalhar(d, Agarrao.DanoDeAfogamento(a.Ficha, d.Ficha, d.ContadorDaLuta));
+			if (_rng.NextDouble() * 100 < Agarrao.ChanceDeAfogar)   // `damage_m(..., grabber.murderToggle, ...)` (`movement handler.dm:197`)
+				Espalhar(d, Agarrao.DanoDeAfogamento(a.Ficha, d.Ficha, d.ContadorDaLuta), a.Combate?.Letal == true);
 			return;
 		}
 
@@ -772,10 +774,11 @@ public sealed partial class GameServer
 
 		c.EntrarEmCombate(comAlguem: true);
 		a.Combate?.EntrarEmCombate();
-		c.Ferir(pescoco, Agarrao.EstrangulamentoPorSegundo(a.Ficha, d.Ficha) * Empurrao.SegundosPorTique, a.Combate?.Letal == true);
+		bool letal = a.Combate?.Letal == true;
+		c.Ferir(pescoco, Agarrao.EstrangulamentoPorSegundo(a.Ficha, d.Ficha) * Empurrao.SegundosPorTique, letal);
 		c.SincronizarVida();
 		MarcarAgressao(d, a);
-		ConsequenciaDoDano(d, a, "estrangulado");
+		ConsequenciaDoDano(d, a, "estrangulado", letal);
 	}
 
 	/// <summary>

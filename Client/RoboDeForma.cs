@@ -216,6 +216,19 @@ public partial class RoboDeForma : Node
 			// do teto). E o `Posar` vem DEPOIS dela porque a ida e volta termina na base, apagada --
 			// quem repoe o corpo aceso pra a foto e ele.
 			case 2:
+				// ============================ (2026-10-19) AS DUAS REGRAS DO BRILHO DA FORMA FICAM DE FORA DESTE PASSO ============================
+				// O dono pediu, no mesmo dia: a transformacao INSTANTANEA da um brilho branco de 0,3 s, e a cinematica de forma CALA a aura de
+				// carga enquanto dura. As duas sao medidas pela `--diagbrilhoforma`; aqui elas atrapalham a medida de outra coisa, por dois motivos
+				// deste passo:
+				//   * ele roda num quadro so, entao o `_Process` do boneco nao corre entre um bloco e outro: o brilho da ultima instantanea fica
+				//     no PICO pro resto do passo, e as fotos de tinta (`AgendarFoto` congela o material na hora) sairiam de um boneco branco;
+				//   * ele roda com cenas vivas em cima do corpo DE PROPOSITO (a do teto, do passo 1, e a que o `CenaDepois` confere no passo 9),
+				//     e a carga calada por elas apagaria todas as medidas de chama da `AIdaEAVolta`.
+				// Entao os DOIS defeitos injetados ficam ligados so aqui, e o jogo deste passo e o de antes daquele pedido -- e o mesmo uso que a
+				// `--solteste` faz do `LemeApanhaDeTeste`: ligar o defeito da regra vizinha pra medir a propria linha sozinha.
+				// ==================================================================================================================================
+				World.InstantaneaSecaDeTeste = true;
+				CargaVisual.CargaPorCimaDaCenaDeTeste = true;
 				NoCorpo(); AIdaEAVolta();
 				// DEPOIS DA IDA E VOLTA E PELO MESMO MOTIVO QUE ELA VEM DEPOIS DO `NoCorpo`: as duas
 				// dirigem o corpo local pelo `World.AoMudarForma`, e esta precisa achar o boneco na BASE
@@ -246,6 +259,8 @@ public partial class RoboDeForma : Node
 				// repositorio inteiro e sobre uma arte que nao pode ter dono nenhum.
 				AArteVelhaNaoTemDono();
 				Posar("primal_legendary2");
+				World.InstantaneaSecaDeTeste = false;   // (2026-10-19) as duas regras do brilho da forma voltam -- ver o comeco do passo
+				CargaVisual.CargaPorCimaDaCenaDeTeste = false;
 				break;
 			// DUAS FOTOS, e a segunda e a que prova alguma coisa. O SSJ3 tem aura quase branca
 			// (`fff08a`): uma foto so dele nao distingue "o halo esta na cor da forma" de "o halo e
@@ -7961,9 +7976,10 @@ public partial class RoboDeForma : Node
 		// que usam DUAS tem a razao escrita ao lado; qualquer outra que passe a usar duas reprova.
 		(LinhaDeForma Linha, int Cores, string PorQue)[] esperado =
 		[
-			// A escada Saiyajin usa duas: o verde da escada e o amarelado dos TRES SSJ4 (corte por
-			// `FormaDef.Corpo`). A base nao conta -- ela nao e forma e devolve nulo.
-			(LinhaDeForma.Saiyajin, 2, "o verde da escada mais o amarelado dos tres SSJ4"),
+			// A escada Saiyajin usa tres: o verde da escada, o amarelado dos TRES SSJ4 (corte por
+			// `FormaDef.Corpo`) e o branco sem iris do Grade 3 (pedido do dono, 2026-10-19). A base nao
+			// conta -- ela nao e forma e devolve nulo.
+			(LinhaDeForma.Saiyajin, 3, "o verde da escada, o amarelado dos tres SSJ4 e o branco do Grade 3"),
 			(LinhaDeForma.Futuro, 1, "a escada do futuro e verde inteira"),
 			// AS DUAS LENDARIAS SAO CONTADAS **COM AS REDEAS NA MAO** (o `CorDoOlho` de um argumento so),
 			// que e o estado normal delas. O branco sem iris da posse nao entra nesta conta de proposito:
@@ -9689,10 +9705,12 @@ public partial class RoboDeForma : Node
 
 		// --- ESCADA SAIYAJIN: arte propria dourada, ZERO tinta (o veto do dono), rabo dourado ---
 		// E OLHO VERDE ESMERALDA, a linha inteira -- eixo NOVO, e o dono ditou a tabela. Estes cinco
-		// sao os degraus SEM corpo proprio; os tres do SSJ4 estao logo abaixo com outra cor.
+		// sao os degraus SEM corpo proprio; os tres do SSJ4 estao logo abaixo com outra cor. O GRADE 3
+		// e o branco sem iris do LSSJ possuido, sempre (*"super saiyajin grade 3 ficar com as pupilas
+		// brancas"*, o dono, 2026-10-19).
 		("ssj1",                            ModoCabelo.Trocar,           "dada26", "40a060"),
 		("grade2",                          ModoCabelo.Trocar,           "dada26", "40a060"),
-		("grade3",                          ModoCabelo.Trocar,           "dada26", "40a060"),
+		("grade3",                          ModoCabelo.Trocar,           "dada26", "fcfdfd"),
 		("ssj2",                            ModoCabelo.Trocar,           "dada26", "40a060"),
 		("ssj3",                            ModoCabelo.Trocar,           "dada26", "40a060"),
 		// OS TRES DO SSJ4 NAO PINTAM RABO: a folha do CORPO deles ja desenha o rabo vermelho
@@ -9943,24 +9961,26 @@ public partial class RoboDeForma : Node
 		// mao dissesse a mesma coisa** -- e o jeito de a tabela dizer a mesma coisa e alguem "arrumar"
 		// as linhas vermelhas uma a uma sem olhar o boneco. Estas duas linhas nao arrumam: elas contam.
 		//
-		// SAO NOVE CORES por construcao (verde da escada, amarelado do SSJ4, amarelo do Wrathful,
-		// vermelho do SSG, azul, rosa, prata do UI, roxo do UE, vermelho da Fera) e o numero esta
-		// ESCRITO: uma cor nova entra aqui de proposito, junto com a linha da tabela.
+		// SAO DEZ CORES por construcao (verde da escada, amarelado do SSJ4, amarelo do Wrathful,
+		// vermelho do SSG, azul, rosa, prata do UI, roxo do UE, vermelho da Fera, branco sem iris do
+		// Grade 3) e o numero esta ESCRITO: uma cor nova entra aqui de proposito, junto com a linha da
+		// tabela.
 		//
-		// O BRANCO SEM IRIS NAO ESTA NA CONTA -- nao porque alguem o apagou, mas porque ele deixou de
-		// ser cor de FORMA: ele e a cor de um corpo que a furia lendaria esta dirigindo, e esta tabela
-		// mede a forma com as redeas na mao. Quem o conta hoje e o `OOlhoDaLinhaLendaria`.
+		// O BRANCO SEM IRIS VOLTOU A CONTA PELO GRADE 3 (2026-10-19, *"super saiyajin grade 3 ficar com
+		// as pupilas brancas"*): nele o branco e cor de FORMA, com as redeas na mao. O da furia lendaria
+		// continua fora desta tabela -- ele e a cor de um corpo que a furia esta dirigindo, e quem o
+		// conta e o `OOlhoDaLinhaLendaria`.
 		//
 		// O NONO E O `e5282a` DA FERA (*"o olho do beast era pra ser vermelho"*), e o numero subir
 		// AQUI e o ponto do bloco: se alguem "simplificar" reusando o `ff2d2f` do Limit Breaker -- que
-		// esta a um passo -- a contagem fica em nove do mesmo jeito, e por isso ha uma linha nomeada
+		// esta a um passo -- a contagem nao muda do mesmo jeito, e por isso ha uma linha nomeada
 		// contra isso no `OOlhoDaLinhaLendaria`, no bloco 3. Aqui se conta; la se diz qual.
 		// ============================================================================================
 		Conferir(pintamOlho > 0 && pintamOlho < OQueCadaFormaFazNoCabelo.Length,
 				 $"e o olho se pinta em ALGUMAS e nao em todas ({pintamOlho} de "
 			   + $"{OQueCadaFormaFazNoCabelo.Length})");
-		Conferir(coresDeOlho.Count == 9,
-				 $"e sao NOVE cores de olho diferentes no catalogo ({coresDeOlho.Count}: "
+		Conferir(coresDeOlho.Count == 10,
+				 $"e sao DEZ cores de olho diferentes no catalogo ({coresDeOlho.Count}: "
 			   + string.Join(", ", coresDeOlho.Order().Select(c => "#" + c)) + ")");
 
 		// ============================ "SEM IRIS" E A COR DA ESCLEROTICA DO CORPO ============================
@@ -15709,8 +15729,11 @@ public partial class RoboDeForma : Node
 		Conferir(quente != null && quente.FimDeTeste == Transformacao.FimDaCena.Sozinha,
 				 $"a MESMA cena chega ao fim sozinha com o Ki acima de 100% "
 			   + $"(fim: {quente?.FimDeTeste.ToString() ?? "nem nasceu"})");
+		// (2026-10-19) "NAO E ASSUNTO DA CINEMATICA" DEIXOU DE SER VERDADE NO MEIO DA CENA: o dono pediu que a cena de forma cale a aura de
+		// carga ENQUANTO dura, e isso e medido na `--diagbrilhoforma` (este bloco roda no passo 2, com aquela regra desligada -- ver o
+		// comeco do passo). O que continua valendo aqui e o FIM: acabada a cena, o Ki acima de 100% acende a carga como sempre.
 		Conferir(carga.DesenhoDeTeste.Visible,
-				 "e a chama FICA -- passar dos 100% nao e assunto da cinematica, e ela nao apaga nada");
+				 "e a chama FICA depois da cena -- acabada a cinematica, o Ki acima de 100% acende a carga como sempre");
 		Conferir(aura.EnergiaDeTeste > 0,
 				 $"-- e agora ela ILUMINA, porque no fim ha FORMA vestida ({aura.EnergiaDeTeste:0.##})");
 
@@ -16533,6 +16556,13 @@ public partial class RoboDeForma : Node
 			// que e o caminho de quem JA estava na tela quando a furia comeca.
 			("CharacterVisual.MarcarSemRedeas", "World.VestirAFormaSemCena", false,
 			 "o gemeo do `MarcarFormaDominada`; tambem escrito pela virada de posse"),
+
+			// (2026-10-19) A AURA VERMELHA DO MUTANTE DESCONTROLADO, da mesma familia das duas de cima: um estado do CORPO (o ki
+			// travado, a `MarcaDescontrolado` do `S2C.Forma`) que o funil sem cena marca pra quem nasce na tela DEPOIS do pacote.
+			// A cena nao a escreve, e nao e esquecimento: quem acende e apaga e a virada do pacote (`World.MarcarODescontrole`,
+			// chamada no `AoMudarForma` com cena ou sem). Sem `SoDele` pelo motivo do `MarcarSemRedeas`: a virada tambem escreve.
+			("CharacterVisual.MarcarDescontrole", "World.VestirAFormaSemCena", false,
+			 "a aura do Mutante descontrolado; tambem escrita pela virada do pacote (`World.MarcarODescontrole`)"),
 
 			// O INTERRUPTOR DA AURA. Na cena quem faz esse trabalho e a guarda da luz do `Preparar`
 			// (`!ehBase`), e nao um `Apagar` -- por isso ele so aparece de um lado. Sem `SoDele`: e

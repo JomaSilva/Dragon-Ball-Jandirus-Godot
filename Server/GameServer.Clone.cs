@@ -605,6 +605,12 @@ public partial class GameServer
 			// nem fera. Ver `GuiarASimulacao` (`GameServer.MaquinasGrandes.cs`).
 			if (!GuiarASimulacao(npc, donoDaSimulacao, out presa, out destino)) return;
 		}
+		else if (_espiritosDoCargo.TryGetValue(npc.Id, out ProvaEmCurso? provaDoCargo))
+		{
+			// (2026-10-19) O ESPIRITO DO CARGO: caca quem o invocou, e so ele -- nem molde, nem fera. Ver `GuiarOEspirito`
+			// (`GameServer.ProvaDoCargo.cs`).
+			if (!GuiarOEspirito(npc, provaDoCargo, out presa, out destino)) return;
+		}
 		else if (_companheiros.TryGetValue(npc.Id, out CompanheiroSolto? criaturaSolta))
 		{
 			// (v0.2.1) A CRIATURA DE UMA CAPSULA DE COMPANHEIRO: segue o dono e persegue quem ele manda -- nem molde, nem

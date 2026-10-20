@@ -36,9 +36,11 @@ public static class Foco
 	/// ============================ POR QUE ELA NAO E O `Digitando` ============================
 	/// O dono: *"durante os clashs apertar os botoes ta ABRINDO MENUS etc. faca q enquanto ta tendo
 	/// QUALQUER CLASH (ki ou zanzoclash) as HOTKEYS SAO DESATIVADAS pra n ficar abrindo varios
-	/// menus"*. E medido por que doi tanto: o servidor sorteia a letra do quick time event em
-	/// "BCEFGHIJKLMNOPQRTUVXYZ", e **14 dessas 22 letras ja tem acao de jogo** (C, E, F, G, I, K, M,
+	/// menus"*. E medido por que doia tanto: o servidor sorteava a letra do quick time event em
+	/// "BCEFGHIJKLMNOPQRTUVXYZ", e **14 dessas 22 letras tinham acao de jogo** (C, E, F, G, I, K, M,
 	/// N, P, Q, R, T, V, X). Responder ao embate abria a mochila, ligava o voo, mandava meditar.
+	/// Desde 2026-10-19 o embate pede so W, A, S e D (`LetrasDoEmbate`), e o silencio ficou: o dono
+	/// pediu QUALQUER hotkey calada durante o embate, e nao so as que eram letra dele.
 	///
 	/// O EMBATE NAO PODE ENTRAR NO `Digitando`, e essa e a linha que nao se cruza: quem le o
 	/// `Digitando` inclui o PROPRIO quick time event (`ClashQte._UnhandledInput`), entao pendura-lo

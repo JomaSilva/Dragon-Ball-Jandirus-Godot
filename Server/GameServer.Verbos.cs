@@ -75,6 +75,10 @@ public sealed partial class GameServer
 	/// </summary>
 	private void Verbo(ServerPlayer pl, string cmd, string arg)
 	{
+		// (2026-10-19) AO LEME NAO SE USA PODER, e alguns poderes viajam por este canal (a tecla de uma forma, o gatilho da arma, o
+		// Materializar, a Genkidama, as ordens das copias): a lista e o portao moram em `GameServer.Leme.cs`.
+		if (VerboDePoder(cmd) && RecusarAoLeme(pl)) return;
+
 		// O BANCO ANTES DO RESTO. Sao tres comandos com prefixo proprio e uma guarda so (estar
 		// perto de um caixa), entao eles moram num arquivo separado -- ver GameServer.Banco.cs.
 		if (ComandoDeBanco(pl, cmd, arg)) return;
@@ -132,6 +136,7 @@ public sealed partial class GameServer
 		// sao um sistema com estado compartilhado (tronos, convites, linha de sucessao, o relogio do
 		// titulo) e nao meia duzia de `case`.
 		if (ComandoDeCargo(pl, cmd, arg)) return;
+		if (ComandoDosServicosDoAlem(pl, cmd, arg)) return;   // (2026-10-19) os servicos do Outro Mundo: pedir, entregar, desistir -- ver GameServer.ServicosDoAlem.cs
 		// AS ORDENS DAS COPIAS DO SPLIT FORM E A RESPOSTA A GENKIDAMA (lote G12).
 		if (ComandoG12(pl, cmd, arg)) return;
 
@@ -213,6 +218,10 @@ public sealed partial class GameServer
 			// sessao porque atrapalhar o treino do parceiro e temporario; por onde a sua escada
 			// sobe, nao.
 			case "graus": VerboGrades(pl); break;
+
+			// (2026-10-19) OS CORPOS DAS FORMAS DO FROST DEMON, RE-ESCOLHIDOS EM JOGO -- o `Icer_Form_Settings` do DM. Ver
+			// `GameServer.Frost.ComandoDasFormasDoFrost`: quem confere a raca e a lista e ele.
+			case "formas_frost": ComandoDasFormasDoFrost(pl, arg); break;
 
 			// A ASSINATURA DO UNIVERSO PELA PONTA DO SERVIDOR -- ver GameServer.Universo.cs.
 			//

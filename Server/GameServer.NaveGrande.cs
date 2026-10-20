@@ -68,6 +68,8 @@ public partial class GameServer
 	{
 		if (pl.Peer == null) return;   // corpo dirigido nao embarca
 		if (NaoPilota(pl)) { Avisar(pl, "você não está em condições de embarcar."); return; }   // (2026-10-18) o morto de pe embarca
+		// (2026-10-19) A ESFERA DO DRAGAO NAO EMBARCA (dono): o interior da nave nao e o planeta. Ver `GameServer.EsferasNaMochila.cs`.
+		if (PorQueAsEsferasPrendem(pl) is { Length: > 0 } presas) { Avisar(pl, presas); return; }
 
 		bool dono = string.Equals(n.DonoConta, pl.Conta, StringComparison.OrdinalIgnoreCase);
 		if (!dono && n.Senha.Length > 0)
@@ -366,9 +368,14 @@ public partial class GameServer
 		if (n.PilotoId != 0) { Avisar(pl, "alguém já está no leme."); return; }
 		if (NaoPilota(pl)) { Avisar(pl, "você não está em condições de pilotar."); return; }   // (2026-10-18) o morto de pe pilota
 
-		// O CORPO FICA NA PONTE, de pe, e a atencao vai pro leme. A RECUSA VEM ANTES de registrar o
-		// piloto: na ordem inversa, um pedido negado (ja esta fora do corpo, ou esta possuido pela
-		// fera) deixaria a nave com um piloto que nunca saiu da ponte e o leme trancado pra todos.
+		// O CORPO FICA NA PONTE, de pe, e a atencao vai pro leme. A RECUSA DESFAZ O REGISTRO do piloto na
+		// mesma linha: sem isso um pedido negado (ja esta fora do corpo, ou esta possuido pela fera)
+		// deixaria a nave com um piloto que nunca saiu da ponte e o leme trancado pra todos.
+		//
+		// (2026-10-19) E O REGISTRO VEM ANTES DA VIAGEM, e nao depois como era: o `MoveToZone` do
+		// `LargarOCorpo` passa pela gravidade (`AplicarGravidade`), e quem chega la fora ja chega dentro
+		// do casco. Registrado depois, o piloto sentiria o chao de fora por um instante e ouviria "o chao
+		// de Vegeta puxa 10 vezes mais forte" ao pegar o leme. Ver `GameServer.Leme.cs`.
 		//
 		// O destino e o exterior, exatamente como o `usr.loc = locate(ship...)` do DM: sem isto o
 		// `TickDasNaves` copiaria a posicao de alguem que esta DENTRO da nave pra a propria nave, e
@@ -382,9 +389,9 @@ public partial class GameServer
 		// duas saidas (`PararDePilotar` e `DestruirNave`), e o `end_pilot` do DM (:217-218) devolve o voo.
 		// ==================================================================================================
 		bool voavaAntesDoLeme = pl.Voando;
-		if (!LargarOCorpo(pl, n.Zona, new Vec2(n.X, n.Y))) return;
-
 		n.PilotoId = pl.Id;
+		if (!LargarOCorpo(pl, n.Zona, new Vec2(n.X, n.Y))) { n.PilotoId = 0; return; }
+
 		n.LancaEm = 0;
 
 		// (2026-10-18) QUEM ASSUME O LEME DESLIGA O RUMO da nave que seguia sozinha: piloto que ignora o piloto e um sequestro (o mesmo do
@@ -411,6 +418,7 @@ public partial class GameServer
 		Avisar(pl, $"você assume o leme de {NomeDaNave(n)}. Ande pra dirigir; "
 				   + "encoste num planeta pra pousar. Aperte E pra voltar à ponte.");
 		if (seguiaSozinha) Avisar(pl, "o piloto automático da nave desliga: agora quem dirige é você.");
+		TomarOLeme(pl);   // (2026-10-19) o casco isola o piloto, e as tecnicas acesas se apagam -- ver `GameServer.Leme.cs`
 		GD.Print($"[server] {pl.Name} assumiu o leme da nave #{n.Id}");
 	}
 
@@ -702,6 +710,9 @@ public partial class GameServer
 			VoltarProCorpo(piloto, "", piloto.Zone, piloto.Pos);
 			RecalcularVelocidade(piloto);
 			MandarFicha(piloto);
+			// (2026-10-19) E O CHAO VOLTA A PESAR: aqui nao ha viagem (acima), e a gravidade so e reescrita na troca de zona -- sem esta linha o
+			// piloto seguiria sentindo a do casco ate a proxima porta. Ver `GameServer.Leme.cs`.
+			LargarOLeme(piloto);
 
 			// O ALVO DA TECLA E MORRE JUNTO COM A NAVE. Sem esta linha o menu do casco continuaria
 			// abrindo pra quem estava ao leme -- botoes de um veiculo que acabou de virar destroco,

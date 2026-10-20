@@ -227,8 +227,8 @@ public static class TecnicasDeLuta
 		["Soul_Absorb"] = "e execucao de quem ja caiu",
 		["Absorb_Android"] = "so age em quem ja caiu",
 		["Kaioken"] = "a dose acima da maestria quebra o corpo quando o Ki acaba: e aposta de quem joga",
-		// (2026-10-18) o Sleep do Majin: 5 s deitado no meio da briga e entregar o corpo -- e decisao de quem joga (e NPC nenhum o tem)
-		["Sleep"] = "dormir 5 s deitado no meio da briga e entregar o corpo: e decisao de quem joga (e NPC nenhum o tem)",
+		// (2026-10-18) o Sleep do Majin: 5 s dormindo no meio da briga e entregar o corpo -- e decisao de quem joga (e NPC nenhum o tem)
+		["Sleep"] = "dormir 5 s parado no meio da briga e entregar o corpo: e decisao de quem joga (e NPC nenhum o tem)",
 		["Chrono_Trigger"] = "crava e volta um ponto no tempo: e decisao de quem joga",
 		["Unlock_Potential"] = "uma vez por vida, e depende de o outro aceitar",
 		["Restore_Youth"] = "mexe na idade de outra pessoa, que precisa aceitar",

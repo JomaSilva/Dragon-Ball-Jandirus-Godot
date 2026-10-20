@@ -80,8 +80,17 @@ public sealed class CharacterSave
     /// </summary>
     public int CorposVersao;
 
-    /// <summary>(2026-10-18) A versao das listas de corpos que este servidor grava. Ver <see cref="CorposVersao"/>.</summary>
-    public const int VersaoDosCorpos = 1;
+    /// <summary>
+    /// (2026-10-18) A versao das listas de corpos que este servidor grava. Ver <see cref="CorposVersao"/>. (2026-10-19) 2: a lista de
+    /// corpos do Frost Demon Mutante criado antes do `FormasDeFrost.Sanear` casar por degrau -- ver `ParaJogador`.
+    /// </summary>
+    public const int VersaoDosCorpos = 2;
+
+    /// <summary>
+    /// A versao de cada migracao, e nao a de agora: quem ja passou da 1 (o Androide acertado) NAO pode passar por ela de novo quando a
+    /// versao do servidor sobe pra 2 -- o `Corpo += 1` dele andaria mais um.
+    /// </summary>
+    public const int VersaoDasListasPorRaca = 1, VersaoDaListaDoMutante = 2;
 
     /// <summary>
     /// (2026-10-18) ATE QUE VERSAO A INTELIGENCIA DA RACA JA ENTROU NESTA FICHA (`VersaoDaInteligencia`). Zero = save de antes, em que o `techmod`
@@ -568,6 +577,13 @@ public sealed class AccountSave
 
     /// <summary>(v0.3.0) Quantos sorteios esta conta ja fez -- entra na semente, pra vaga esvaziada nao repetir o sorteio velho.</summary>
     public int SorteiosFeitos;
+
+    /// <summary>
+    /// (2026-10-19) A CLASSE DE FROST DEMON DE CADA VAGA VAZIA -- `"Frost Demon"` ou `"Mutant Frost Demon"` --, sorteada quando a
+    /// lista de vagas sai e GRAVADA aqui pra que reabrir a criacao, sair ou reiniciar o servidor nao sorteie de novo. Nula = ainda
+    /// nao sorteada; gasta quando um Frost Demon nasce na vaga. Ver `GameServer.ClasseDoFrost.cs`.
+    /// </summary>
+    public string?[] ClassesDoFrost = new string?[AccountStore.Slots];
 }
 
 /// <summary>(v0.3.0) O sorteio de uma vaga vazia: a raca e a sub-raca (Primal Saiyan, o cla do Namekuseijin; vazia nas outras).</summary>
@@ -1083,9 +1099,18 @@ public sealed class AccountStore(string pasta)
         pl.Visual = s.Visual;
         // (2026-10-18) O ANDROIDE CONVERTIDO DE ANTES DAS LISTAS POR RACA: o indice dele e da lista humana, e a do Androide agora tem o
         // `GochekAndroid` na frente -- ele anda um pra continuar com a mesma cara. Uma vez, pela versao. Ver `CharacterSave.CorposVersao`.
-        if (s.CorposVersao < CharacterSave.VersaoDosCorpos && s.Raca == "Android" && s.Ficha is { } fichaDeAntes
+        if (s.CorposVersao < CharacterSave.VersaoDasListasPorRaca && s.Raca == "Android" && s.Ficha is { } fichaDeAntes
             && (fichaDeAntes.AndroideInfinito || fichaDeAntes.AndroideAbsorcao))
             pl.Visual.Corpo += 1;
+
+        // (2026-10-19) O FROST DEMON MUTANTE QUE NASCEU COM A LISTA TORTA -- o `Sanear` antigo casava os tres corpos da criacao pela
+        // POSICAO, e o da base foi parar na 1a supressao. Uma vez, pela versao; a marca e o conserto moram no Core
+        // (`FormasDeFrost.ListaTortaDoMutante`). Personagem novo ja nasce na versao de agora (`GameServer.CreateChar`), e por isso a
+        // lista legitima de um Mutante novo -- que pode casar com a mesma marca -- nunca passa por aqui.
+        if (s.CorposVersao < CharacterSave.VersaoDaListaDoMutante && !GameServer.ListaTortaFicaDeTeste
+            && Jandirus.Core.Races.FormasDeFrost.EhFrost(s.Raca)
+            && s.Ficha?.Class == Jandirus.Core.Races.FormasDeFrost.ClasseMutante)
+            pl.Visual.FormasDeFrost = Jandirus.Core.Races.FormasDeFrost.DesentortarDoMutante(pl.Visual.FormasDeFrost);
 
         // ============================ A COR DA AURA: SAVE ANTIGO NAO TEM, E NAO PRECISA TER ============================
         // O `??=` E A MIGRACAO INTEIRA. Nao ha ramo "personagem velho" nenhum: a cor e uma funcao

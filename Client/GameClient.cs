@@ -201,6 +201,13 @@ public partial class GameClient : Node
 	public event Action<int, string, string, string, Jandirus.Core.Appearance.Appearance,
 					   Jandirus.Core.Social.TipoDeFusao?>? PeerLooked;
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagbalao`, "O NOME COMPRIDO NO FIO"): o nome do `PeerLook` e o autor do chat voltam a
+	/// ser lidos com os tetos de antes (24 e 32), e o nome derivado comprido chega VAZIO. Ver `Protocol.MaxNomeNoFio`.
+	/// Falso em jogo, sempre.
+	/// </summary>
+	public static bool NomeComTetoVelhoDeTeste;
+
 	private readonly NetManager _net;
 	private readonly EventBasedNetListener _listener = new();
 	private NetPeer? _peer;
@@ -540,15 +547,35 @@ public partial class GameClient : Node
 		MiraMudou?.Invoke(zona);
 	}
 
-	/// <summary>O `murderToggle`: lutar pra valer (arranca membro e mata) ou nao.</summary>
+	/// <summary>
+	/// O `murderToggle`: lutar pra valer (arranca membro e mata) ou nao.
+	///
+	/// (2026-10-19) SO PEDE: quem diz o que vale e a ficha que volta (<see cref="SeguirOLetalDaFicha"/>). Este metodo escrevia o
+	/// <see cref="Letal"/> aqui mesmo, e o HUD e a tecla liam esse palpite -- e o SERVIDOR troca o golpe por conta propria: o fim do
+	/// treino com o Whis e do torneio devolvem o de antes, a saida da meditacao profunda tambem (`MindMeditate.dm:375-376`), e a
+	/// posse do Neo Tuffle troca o corpo de luta inteiro. Quem tinha apertado a tecla no meio ficava com a tela dizendo
+	/// "nao-letal" e o servidor matando -- o dono: *"modo nao letal ainda ta matando as vezes"* --, e a tecla seguinte alternava a
+	/// partir do palpite errado.
+	/// </summary>
 	public void SendLethal(bool letal)
 	{
 		if (!Connected) return;
-		Letal = letal;
+		if (RoboDoGolpe.LetalPeloPalpiteDeTeste) { Letal = letal; LetalidadeMudou?.Invoke(letal); }
 		var w = Protocol.Begin(Protocol.C2S.Lethal);
 		w.Put(letal);
 		_peer!.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
-		LetalidadeMudou?.Invoke(letal);
+	}
+
+	/// <summary>
+	/// O GOLPE QUE VALE E O DA FICHA (`SheetState.Letal`, o bit que o servidor escreve do `Combate.Letal`): chamado a cada ficha
+	/// que chega -- a do login e as do tique -- e so avisa a tela quando muda. Ver <see cref="SendLethal"/>. (O botao de defeito das duas
+	/// linhas, `RoboDoGolpe.LetalPeloPalpiteDeTeste`, mora no robo que as mede.)
+	/// </summary>
+	private void SeguirOLetalDaFicha()
+	{
+		if (RoboDoGolpe.LetalPeloPalpiteDeTeste || Sheet.Letal == Letal) return;
+		Letal = Sheet.Letal;
+		LetalidadeMudou?.Invoke(Letal);
 	}
 
 	/// <summary>
@@ -566,6 +593,13 @@ public partial class GameClient : Node
 
 	/// <summary>Alguem falou e eu estou no alcance: canal, quem falou, o que foi dito.</summary>
 	public event Action<Protocol.Fala, string, string>? Falou;
+
+	/// <summary>
+	/// A MESMA FALA, e mais o id do corpo de onde ela saiu (0 = nenhum: recado do servidor, OOC). Um evento a parte
+	/// porque so o balao precisa do id (`World.AoFalar`) -- o chat e as dezenas de bancadas que ouvem o `Falou`
+	/// continuam com o trio de sempre.
+	/// </summary>
+	public event Action<Protocol.Fala, string, string, int>? FalouPelaBoca;
 
 	/// <summary>
 	/// CHEGOU UM QUADRO DE VOZ: (id de quem fala, sequencia, distancia 0-255, ha parede, buffer, tamanho).
@@ -1456,6 +1490,27 @@ public partial class GameClient : Node
 	/// </summary>
 	public event Action<int, int, int, Jandirus.Core.Forms.DegrauDeCena, bool>? FormaMudou;
 
+	/// <summary>(2026-10-19) As marcas do Frost Demon Mutante do ultimo `S2C.Forma` de cada corpo -- ver <see cref="FrostInstavel"/>.</summary>
+	private readonly Dictionary<int, byte> _marcasDoFrost = [];
+
+	/// <summary>
+	/// (2026-10-19) A FORMA EM QUE ESTE CORPO ACABOU DE ENTRAR NAO SE SEGURA -- o Mutante subindo pro descontrole: a cena e a vermelha
+	/// (`Cinematicas.NoDegrau`). Vem do ultimo `S2C.Forma` dele, lido antes do <see cref="FormaMudou"/>.
+	/// </summary>
+	public bool FrostInstavel(int quem) =>
+		_marcasDoFrost.TryGetValue(quem, out byte m) && (m & Protocol.MarcaInstavel) != 0;
+
+	/// <summary>(2026-10-19) O KI DESTE CORPO ESTA DESCONTROLADO -- a aura vermelha colada (`fd_menacing_red`). Idem.</summary>
+	public bool FrostDescontrolado(int quem) =>
+		_marcasDoFrost.TryGetValue(quem, out byte m) && (m & Protocol.MarcaDescontrolado) != 0;
+
+	/// <summary>
+	/// (2026-10-19) O DESCONTROLE DESTE CORPO MUDOU AGORA (e nao "ja estava assim quando eu cheguei") -- e o que toca o `chargeaura`.
+	/// Ver `Protocol.MarcaViradaDoDescontrole`.
+	/// </summary>
+	public bool FrostDescontroleVirou(int quem) =>
+		_marcasDoFrost.TryGetValue(quem, out byte m) && (m & Protocol.MarcaViradaDoDescontrole) != 0;
+
 	/// <summary>
 	/// ALGUEM VIROU (OU DEIXOU DE SER) OOZARU: quem, qual macaco, se foi a PRIMEIRA vez, e QUANTA
 	/// cena isso merece.
@@ -1936,6 +1991,9 @@ public partial class GameClient : Node
 				EsquecerDetalhes();
 				EsquecerMestreEAlunos();   // ...nem com o discipulado dele (o mestre, os alunos). Ver `GameClient.Alunos.cs`.
 				Sheet = SheetState.Read(reader);
+				// O GOLPE DO PERSONAGEM QUE ENTROU E O DELE: o corpo nasce nao-letal no servidor, e o palpite do personagem anterior
+				// (o mesmo cliente, outro slot) nao segue. Ver `SeguirOLetalDaFicha`.
+				SeguirOLetalDaFicha();
 				Visual = reader.GetAppearance();   // o servidor devolve a versao SANEADA
 				// A seed do universo vem JUNTO: a carta estelar precisa dela em terra firme, e nao
 				// so depois de decolar. Ver `MapaEstelar`.
@@ -1974,7 +2032,9 @@ public partial class GameClient : Node
 			case Protocol.S2C.PeerLook:
 			{
 				int quem = reader.GetInt();
-				string nome = reader.GetString(24);
+				// O NOME COM O TETO DO NOME NO FIO, e nao o 24 da criacao: o derivado ("corpo de X", "Bio-Androide de X") passa
+				// dele e chegava VAZIO -- ver `Protocol.MaxNomeNoFio`.
+				string nome = reader.GetString(NomeComTetoVelhoDeTeste ? 24 : Protocol.MaxNomeNoFio);
 				string raca = reader.GetString(24);
 				string genero = reader.GetString(8);
 				// A ORDEM DE LEITURA E A DE ESCRITA, e o tipo da fusao e o ULTIMO -- ver
@@ -2024,6 +2084,7 @@ public partial class GameClient : Node
 						? "algo se rompe por dentro: seu poder deu um salto que voce nao esperava."
 						: "voce se sente mais forte do que ontem.");
 				}
+				SeguirOLetalDaFicha();   // o golpe que o servidor aplica, e nao o que a tecla pediu por ultimo
 				SheetUpdated?.Invoke(Sheet);
 				break;
 			}
@@ -2068,8 +2129,13 @@ public partial class GameClient : Node
 			case Protocol.S2C.Chat:
 			{
 				var canal = (Protocol.Fala)reader.GetByte();
-				string autor = reader.GetString(32);
-				Falou?.Invoke(canal, autor, reader.GetString(Protocol.MaxFala));
+				// O AUTOR E UM NOME DE CORPO, e le com o mesmo teto do `PeerLook` -- ver `Protocol.MaxNomeNoFio`.
+				string autor = reader.GetString(NomeComTetoVelhoDeTeste ? 32 : Protocol.MaxNomeNoFio);
+				string texto = reader.GetString(Protocol.MaxFala);
+				// O CORPO DE ONDE A FALA SAIU, o ultimo campo -- ver `GameServer.Mandar`, parametro `boca`.
+				int boca = reader.GetInt();
+				Falou?.Invoke(canal, autor, texto);
+				FalouPelaBoca?.Invoke(canal, autor, texto, boca);
 				break;
 			}
 
@@ -2132,10 +2198,12 @@ public partial class GameClient : Node
 					byte flagsDoTiro = reader.GetByte();
 					bool invisivel = (flagsDoTiro & 1) != 0;
 					bool naMao = (flagsDoTiro & 2) != 0;
+					// (2026-10-19) bit 2 = o raio do Shattering the Limit, pintado de vermelho -- ver `NascimentoDeProjetil.DoLimite`.
+					bool doLimite = (flagsDoTiro & 4) != 0;
 					// ...E DEPOIS DELAS, O SOM (`Core.Combat.SomDeKi`): com que arquivo o tiro sai.
 					byte som = reader.GetByte();
 					TiroNasceu?.Invoke(new NascimentoDeProjetil(
-						tiro, dono, tipo, arte, escala, altura, onde, invisivel, som, naMao));
+						tiro, dono, tipo, arte, escala, altura, onde, invisivel, som, naMao, doLimite));
 				}
 				else if (sub == Protocol.ProjetilSub.Cortou)
 				{
@@ -2365,7 +2433,7 @@ public partial class GameClient : Node
 			}
 
 			case Protocol.S2C.Fatos:
-				Fatos = (Jandirus.Core.Verbos.Fatos)reader.GetUInt();
+				Fatos = (Jandirus.Core.Verbos.Fatos)reader.GetULong();
 				FatosMudaram?.Invoke();
 				break;
 
@@ -2375,7 +2443,7 @@ public partial class GameClient : Node
 				int n = reader.GetByte();
 				var l = new List<PedidoInfo>(n);
 				for (int i = 0; i < n; i++)
-					l.Add(new PedidoInfo((Jandirus.Core.Verbos.Fatos)reader.GetUInt(), reader.GetString(240), reader.GetUShort()));
+					l.Add(new PedidoInfo((Jandirus.Core.Verbos.Fatos)reader.GetULong(), reader.GetString(240), reader.GetUShort()));
 				Pedidos = l;
 				PedidosMudaram?.Invoke();
 				break;
@@ -2385,6 +2453,7 @@ public partial class GameClient : Node
 			// Quem le os dois e `GameClient.GodKi.cs`.
 			case Protocol.S2C.GodKi: LerGodKi(reader); break;
 			case Protocol.S2C.GodKiDespertou: LerGodKiDespertou(reader); break;
+			case Protocol.S2C.DandoPoder: LerDandoPoder(reader); break;   // (2026-10-19) um folego da corrente de poder do DU -- ver `GameClient.CorrenteDePoder.cs`
 			case Protocol.S2C.PoderEmUso: LerPoderEmUso(reader); break;   // quanto do proprio poder o meu corpo usa, e se o esconde -- ver `GameClient.PoderEmUso.cs`
 
 			// O BILLS E O WHIS: onde eles moram (so depois de revelado) e qual dos dois a minha tecla E alcanca.
@@ -2394,6 +2463,8 @@ public partial class GameClient : Node
 
 			// O DISCO DO DRAGON RADAR -- so chega pra quem tem o aparelho. Ver `GameClient.Radar.cs`.
 			case Protocol.S2C.RadarDeEsferas: LerRadarDeEsferas(reader); break;
+			// (2026-10-19) O CARTAO DOS SERVICOS DO OUTRO MUNDO -- ver `GameClient.ServicoDoAlem.cs`.
+			case Protocol.S2C.ServicoDoAlem: LerServicoDoAlem(reader); break;
 
 			// O REFUGIO: o planeta natal acabou, e estas sao as saidas (dominio, vizinhanca e, desde a v0.3.0, a Terra). Ver `S2C.Refugio`.
 			case Protocol.S2C.Refugio:
@@ -2765,6 +2836,10 @@ public partial class GameClient : Node
 				// por causa do `Enum.IsDefined` tres linhas acima: um bit alto ali derrubaria o
 				// pacote inteiro pra `Nenhuma`. Ver `GameServer.PacoteDeForma`.
 				bool dominada = reader.GetBool();
+				// (2026-10-19) AS MARCAS DO FROST DEMON MUTANTE (`Protocol.MarcaInstavel`/`MarcaDescontrolado`), GUARDADAS ANTES DE
+				// AVISAR -- o idioma do `MeuOozaru` logo abaixo: quem escuta o evento (`World.AoMudarForma`) as consulta no mesmo
+				// quadro. Num campo e nao no evento porque o evento tem cinco ouvintes (tres robos) que nao precisam delas.
+				_marcasDoFrost[quem] = reader.AvailableBytes > 0 ? reader.GetByte() : (byte)0;
 				FormaMudou?.Invoke(quem, de, para, degrau, dominada);
 				break;
 			}

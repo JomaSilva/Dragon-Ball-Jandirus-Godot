@@ -87,12 +87,32 @@ public partial class LuaNoCeu : VBoxContainer
 	private Button _olhar = null!;
 	private ShaderMaterial _tinta = null!;
 
+	/// <summary>
+	/// O SHADER E UM SO PRO PROCESSO (2026-10-19). Cada disco ganha o PROPRIO material (a fase e o brilho sao dele),
+	/// mas o codigo e constante -- e um `new Shader { Code }` por disco era uma compilacao por disco. O do HUD nasce
+	/// uma vez; o da aba World nascia a cada remontagem dela (a hora entra na assinatura em decimos: uma a cada ~6 s
+	/// com a aba aberta), e cada uma compilava o shader de novo no meio do jogo.
+	/// </summary>
+	private static Shader? _shaderDaFase;
+
+	private static Shader ShaderDaFase =>
+		LuaCompilaACadaDiscoDeTeste ? new Shader { Code = CodigoDaFase } : _shaderDaFase ??= new Shader { Code = CodigoDaFase };
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagmenuleve`): cada disco volta a compilar o proprio shader, como antes de
+	/// 2026-10-19. Lido pelo <see cref="ShaderDaFase"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool LuaCompilaACadaDiscoDeTeste;
+
+	/// <summary>O shader que este disco usa. SO PRA BANCADA: dois discos com o mesmo provam que ninguem compilou de novo.</summary>
+	public Shader? ShaderDeTeste => _tinta?.Shader;
+
 	public override void _Ready()
 	{
 		AddThemeConstantOverride("separation", 1);
 		Alignment = AlignmentMode.Center;
 
-		_tinta = new ShaderMaterial { Shader = new Shader { Code = CodigoDaFase } };
+		_tinta = new ShaderMaterial { Shader = ShaderDaFase };
 		_disco = new TextureRect
 		{
 			Name = "Disco",

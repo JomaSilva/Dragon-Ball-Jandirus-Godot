@@ -35,7 +35,7 @@ public static class PedidosPendentes
 	[
 		Fatos.ConviteDeMestre, Fatos.LicaoOferecida, Fatos.ConviteDeFusao, Fatos.ConviteDeAbsorcao,
 		Fatos.OfertaDePotencial, Fatos.OfertaDeJuventude, Fatos.PedidoDeGenkidama, Fatos.OfertaDeAssento,
-		Fatos.DesafioAoTitulo, Fatos.PedidoDeFilho,
+		Fatos.DesafioAoTitulo, Fatos.PedidoDeFilho, Fatos.OfertaDeAprendiz,
 	];
 
 	/// <summary>
@@ -54,6 +54,7 @@ public static class PedidosPendentes
 		Fatos.OfertaDeAssento => (RequisitosDosVerbos.ChaveDoVerbo("cargo_nomear_aceitar"), RequisitosDosVerbos.ChaveDoVerbo("cargo_nomear_recusar")),
 		Fatos.DesafioAoTitulo => (RequisitosDosVerbos.ChaveDoVerbo("cargo_duelo_aceitar"), RequisitosDosVerbos.ChaveDoVerbo("cargo_duelo_adiar")),
 		Fatos.PedidoDeFilho => (RequisitosDosVerbos.PrefixoDeHabilidade + "filho_sim", RequisitosDosVerbos.PrefixoDeHabilidade + "filho_nao"),
+		Fatos.OfertaDeAprendiz => (RequisitosDosVerbos.ChaveDoVerbo("aprendiz_aceitar"), RequisitosDosVerbos.ChaveDoVerbo("aprendiz_recusar")),
 		_ => ("", ""),
 	};
 

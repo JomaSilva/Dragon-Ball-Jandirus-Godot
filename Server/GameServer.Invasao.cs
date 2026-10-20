@@ -675,6 +675,16 @@ public partial class GameServer
 	// =====================================================================
 	// A MORTE DE UM CORPO SEM DONO
 	// =====================================================================
+	/// <summary>DEFEITO INJETADO (`--patriarcateste`, familia R): a realeza morre como habitante comum -- os -10 do plebeu, e nao os -25.</summary>
+	internal static bool RealezaComoPlebeDeTeste;
+
+	/// <summary>
+	/// A REALEZA DO PLANETA: quem no DM nao e "commoner" -- o Rei de Vegeta (`King`, `pop_role = "king"`, PlanetPopulation.dm:187-188), o
+	/// Principe (`make_saiyan_elite(..., "prince", ...)`, :372-376 e :433) e o Guru de Namek (`pop_role = "guru"`, :218). La o papel e campo
+	/// do mob; aqui o que um corpo e vem do molde de onde ele saiu.
+	/// </summary>
+	private static bool EhRealeza(string molde) => molde is MoldeDoReiVegeta or MoldeDoPrincipeVegeta or Patriarca.Molde;
+
 	/// <summary>
 	/// ============================ MATAR CUSTA; NOCAUTEAR NAO ============================
 	/// Chamado do MESMO lugar que ja tira um NPC morto do mundo (o `_npcsPraTirar` do `TickCombate`),
@@ -686,9 +696,9 @@ public partial class GameServer
 	///     e o `rep_death_counted = 1` do `Defender.mobDeath` (:627), com o comentario dizendo
 	///     exatamente isso. Guarnicao de OCUPANTE (`Nativa` falsa) nao custa NADA: matar o capanga de
 	///     um tirano nao ofende o povo;
-	///   * qualquer outro CIDADAO cai no generico (-10, `REP_KILL_CITIZEN`), que era o item 1 do
-	///     <see cref="Reputacao.OqueFalta"/> e que a conquista obrigou a existir -- o defensor so pode
-	///     "pular o generico" se o generico existir.
+	///   * qualquer outro CIDADAO cai no generico (-10, `REP_KILL_CITIZEN`; -25, `REP_KILL_ROYAL`, se for a
+	///     realeza), que era o item 1 do <see cref="Reputacao.OqueFalta"/> e que a conquista obrigou a
+	///     existir -- o defensor so pode "pular o generico" se o generico existir.
 	///
 	/// SO O `UltimoAgressor` COM DONO CONTA, e so dentro do prazo de rancor -- e o
 	/// `(C.IsInFight || world.time &lt;= C.combatTagExpire) ? C.lastDamager : null` (PlanetReputation.dm:114),
@@ -722,12 +732,16 @@ public partial class GameServer
 		if (morto.Papel.Tipo != TipoDeNpc.Cidadao || matador == null) return;
 
 		string planeta = morto.Berco.Natal.Length > 0 ? morto.Berco.Natal : morto.Zone.Name;
-		SomarReputacao(planeta, matador, Conquista.RepPorMatarHabitante, "matou-habitante");
+		// A REALEZA DOI MAIS: `(C.pop_role == "commoner") ? REP_KILL_CITIZEN : REP_KILL_ROYAL` (PlanetReputation.dm:124). O motivo
+		// continua um so, como o "citizen-kill" de la: e o mesmo gancho, so o preco muda.
+		bool realeza = !RealezaComoPlebeDeTeste && EhRealeza(morto.Papel.Molde.Id);
+		SomarReputacao(planeta, matador, realeza ? Conquista.RepPorMatarRealeza : Conquista.RepPorMatarHabitante, "matou-habitante");
 
 		// E A ALMA PAGA JUNTO. No original as duas contas saem da MESMA linha
 		// (`lose_npc_kill_karma`, pendurado no `PlanetReputation.dm:113`) e sao coisas diferentes: a
 		// reputacao e o que ESTE planeta pensa de voce e some quando voce muda de mundo; o karma e o
-		// que a sua alma virou e te segue ate a mesa do Enma. Ver `GameServer.Karma.cs`.
+		// que a sua alma virou e te segue ate a mesa do Enma. Ver `GameServer.Karma.cs`. E o karma NAO separa
+		// a realeza: o `lose_npc_kill_karma` (SkyNPCs.dm:120-122) e o mesmo pra qualquer cidadao.
 		KarmaPorMatarHabitante(matador);
 	}
 }

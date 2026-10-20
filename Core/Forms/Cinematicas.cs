@@ -670,6 +670,24 @@ public sealed class Cinematica
 	/// </summary>
 	public bool NaCorDoCorpo { get; init; }
 
+	/// <summary>
+	/// (2026-10-19) A COR PROPRIA DESTA CENA (hexa sem `#`), POR CIMA da cor da forma: o anel, os feixes, o clarao, a chama da
+	/// cena e o banho saem nela. Vazia em toda cena menos as duas do DESCONTROLE do Frost Demon Mutante, que no original sao
+	/// VERMELHAS -- a `Aurabigcombined.dmi` tingida de `rgb(255,70,50)` pelo `fd_red_aura_icon()` (`IcerTransform.dm:172-176`).
+	///
+	/// DA CENA E NAO DA FORMA: a mesma forma (a 2a Forma, a forma base) tem a cena de sempre pra quem a SEGURA e a vermelha pra
+	/// quem nao segura -- o corpo e o mesmo, o que muda e o estado dele.
+	/// </summary>
+	public string CorPropria { get; init; } = "";
+
+	/// <summary>
+	/// (2026-10-19) A CAMADA COLADA QUE ESTA CENA VESTE do primeiro instante ate a virada -- nula em toda cena menos a grande do
+	/// descontrole do Mutante, que veste a aura ameacadora VERMELHA na largada e a tira no climax (`updateOverlay` e
+	/// `removeOverlay(/obj/overlay/effects/fd_menacing_red)`, `IcerTransform.dm:202` e `:256`). DA CENA pelo motivo da
+	/// <see cref="Silhueta"/>: uma cena veste uma camada so, do comeco ao climax.
+	/// </summary>
+	public Colada? ColadaDaCena { get; init; }
+
 	/// <summary>Duracao total da cena, em segundos.</summary>
 	public double Segundos => _beats.Length == 0 ? 0 : _beats[^1].Em + 1.0;
 
@@ -1851,14 +1869,18 @@ public static class Cinematicas
 	/// (somar `sleep` e dividir por 10) chega no numero certo.
 	/// </summary>
 	/// <param name="grita">O `RRRAAAAAAAGH!!!` -- a unica fala da cena, e ela vai no climax.</param>
+	/// <param name="cor">(2026-10-19) A <see cref="Cinematica.CorPropria"/> -- vazia em todas menos a do descontrole do Mutante.</param>
+	/// <param name="colada">(2026-10-19) A <see cref="Cinematica.ColadaDaCena"/> -- idem.</param>
 	private static Cinematica LendaGrande(
-		string forma, string musica, string abre, string grita, string vira)
+		string forma, string musica, string abre, string grita, string vira, string cor = "", Colada? colada = null)
 	{
 		Efeito f = Faisca(forma);
 		return new Cinematica
 		{
 			Forma = forma,
 			Musica = musica,
+			CorPropria = cor,
+			ColadaDaCena = colada,
 			SegundosPreso = 28.0,
 			Beats =
 			[
@@ -2182,14 +2204,16 @@ public static class Cinematicas
 	/// ===================================================================================
 	/// </summary>
 	/// <param name="assumeEm">Em que segundo a forma fica. Tem que ser MAIOR que 2,0 (ver acima).</param>
+	/// <param name="cor">(2026-10-19) A <see cref="Cinematica.CorPropria"/> -- vazia em todos menos o surto do descontrole do Mutante.</param>
 	private static Cinematica SurtoCurto(
-		string forma, string musica, double assumeEm, string grita, string vira)
+		string forma, string musica, double assumeEm, string grita, string vira, string cor = "")
 	{
 		Efeito f = Faisca(forma);
 		return new Cinematica
 		{
 			Forma = forma,
 			Musica = musica,
+			CorPropria = cor,
 			SegundosPreso = assumeEm,
 			Beats =
 			[
@@ -2612,6 +2636,56 @@ public static class Cinematicas
 		"o ar em volta congela e racha ao mesmo tempo; o que vem agora não tem nome.",
 		"RRRAAAAAAAAAAAGH!!!",
 		"a evolução final se fecha em volta dele -- vinte vezes, e nenhuma casca sobrando.");
+
+	// ---------------------------------------------------------------------------
+	// (2026-10-19) O DESCONTROLE DO MUTANTE -- as duas cenas que o DM tem e o port nao tinha
+	// ---------------------------------------------------------------------------
+	// ============================ A CENA E DO ESTADO, E NAO DA FORMA ============================
+	// `Frost_Demon_Forms` (`IcerTransform.dm:97-107`): quando o MUTANTE sobe pra uma forma que ele NAO segura pra sempre (acima
+	// do `fd_stable_gate`), a primeira vez naquela forma e a `fd_grand_cinematic()` -- a cena grande da lenda recolorida de
+	// VERMELHO, com o tema da linha e a aura ameacadora vermelha colada no corpo -- e as seguintes sao o `fd_burst_fx()`, um
+	// surto vermelho de 2,5 s. O port so tinha as cenas por forma (os cinco surtos e as duas da lenda, na cor do jogador), e o
+	// Mutante abria a casca sem o vermelho, sem o tema e sem a aura. O dono: *"ta todo bugado e sem as cinematicas q deveriam
+	// ter assim como era no Finale-master"*.
+	//
+	// QUEM DIZ "ELE NAO SEGURA" E O SERVIDOR, no mesmo gesto do degrau (`GameServer.AnunciarForma`), e o que viaja e um bit no
+	// `S2C.Forma`; as duas pontas escolhem a cena pela MESMA funcao (<see cref="NoDegrau"/>, com o `instavel`). Os tres degraus
+	// do dono continuam valendo por cima: a estreia e a cena grande, a encurtada E o surto (que ja e a versao curta que o DM
+	// escreveu), e a partir de 50% de maestria da base a transformacao e instantanea como qualquer outra.
+	//
+	// SEM FORMA NO `Forma`, como as cenas dos chefes: as duas servem a sete degraus, e quem diz qual corpo a virada veste e a
+	// forma que o tocador recebe junto (`Transformacao.Rodar`). Fora da <see cref="Todas"/> pelo mesmo motivo -- a varredura de
+	// la cobra "a forma existe no catalogo" e a versao encurtada, e estas nao tem nenhuma das duas.
+	// ==========================================================================================================
+	/// <summary>
+	/// A COR DAS DUAS CENAS -- o `rgb(255, 70, 50)` com que o `fd_red_aura_icon()` tinge a aura grande (`IcerTransform.dm:175`).
+	/// A aura colada e de outro vermelho, o do `fd_menacing_red` -- ver `Races.FormasDeFrost.VermelhoDoDescontrole`.
+	/// </summary>
+	public const string VermelhoDaCenaDoDescontrole = "ff4632";
+
+	/// <summary>
+	/// A CENA GRANDE DO DESCONTROLE -- `fd_grand_cinematic()` (`IcerTransform.dm:192-259`), a primeira vez do Mutante numa forma
+	/// que ele nao segura. O proprio DM diz de onde ela veio: *"receita da lssj_grand_cinematic, recolorida"* -- por isso ela sai
+	/// da MESMA fabrica das cenas Legendary: 28 s de corpo preso, a aura grande e os feixes aos 16 s, o grito no climax.
+	/// </summary>
+	public static readonly Cinematica FrostDescontrole = LendaGrande(
+		"", TemaFrost,
+		// "*Uma aura VERMELHA e violenta serpenteia em volta de [src] -- um poder incontrolavel comeca a vir a tona...*" (:203)
+		"uma aura VERMELHA e violenta serpenteia em volta -- um poder incontrolável começa a vir à tona...",
+		// "[src]: RRRAAAAAAAAGH!!!" (:248)
+		"RRRAAAAAAAAGH!!!",
+		"o poder rasga a casca de dentro pra fora -- e é demais para segurar por muito tempo.",
+		VermelhoDaCenaDoDescontrole, Races.FormasDeFrost.ColadaDoDescontrole);
+
+	/// <summary>
+	/// O SURTO DO DESCONTROLE -- `fd_burst_fx()` (`IcerTransform.dm:178-190`), as voltas seguintes numa forma que ele nao segura:
+	/// `chargeaura.wav`, um `Quake()`, o anel de raio 3 e a aura grande VERMELHA por 2,5 s (`spawn(25)`). E o surto curto de
+	/// sempre, na cor do descontrole e sem fala (o `fd_burst_fx` nao grita).
+	/// </summary>
+	public static readonly Cinematica FrostSurtoDoDescontrole = SurtoCurto(
+		"", "", SurtoDoFrost, "",
+		"o vermelho escapa de novo pela casca.",
+		VermelhoDaCenaDoDescontrole);
 
 	// ---------------------------------------------------------------------------
 	// AS TRES LINHAS RACIAIS -- Namekuseijin, Heran e Alien
@@ -4037,13 +4111,26 @@ public static class Cinematicas
 	/// FORMA SEM CENA CAI EM NULO -- ou seja, em transformacao instantanea. E o pior caso certo: a
 	/// bancada ja reprovou antes de o jogo subir (`Para` devolve nulo e "toda forma tem cena" acusa),
 	/// e o jogador que mesmo assim chegar aqui perde a cena em vez de assistir a de outra forma.
+	///
+	/// (2026-10-19) <paramref name="instavel"/>: o Frost Demon MUTANTE esta entrando numa forma que ele nao segura -- quem diz e o
+	/// servidor (`GameServer.AnunciarForma`) e o bit viaja no `S2C.Forma`. A estreia vira a <see cref="FrostDescontrole"/> e a
+	/// encurtada vira o <see cref="FrostSurtoDoDescontrole"/>, as duas cenas do `Frost_Demon_Forms` do DM. A instantanea continua
+	/// instantanea: o terceiro degrau do dono vale pra toda forma do jogo.
 	/// </summary>
-	public static Cinematica? NoDegrau(FormaDef d, DegrauDeCena degrau) => degrau switch
+	public static Cinematica? NoDegrau(FormaDef d, DegrauDeCena degrau, bool instavel = false) => degrau switch
 	{
 		DegrauDeCena.Nenhuma => null,
+		_ when instavel && !DescontroleSemCenaDeTeste => degrau == DegrauDeCena.Estreia ? FrostDescontrole : FrostSurtoDoDescontrole,
 		DegrauDeCena.Estreia => Para(d),
 		_ => Para(d) is { } cheia ? Encurtada(cheia) : null,
 	};
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--frostteste` e `--diagmutante`): o bit do descontrole e ignorado e o Mutante volta a abrir a
+	/// casca com a cena de sempre da forma, e sem o aviso -- o jogo de antes. Lido pelo proprio <see cref="NoDegrau"/> e pelo aviso do
+	/// servidor (`GameServer.AoMudarFormaDoFrost`). Falso em jogo, sempre.
+	/// </summary>
+	public static bool DescontroleSemCenaDeTeste;
 
 	/// <summary>
 	/// OS DEGRAUS QUE UMA CENA ATRAVESSA ATE ESTA FORMA -- da base pra cima, sem incluir a forma.
@@ -4174,6 +4261,11 @@ public static class Cinematicas
 			// Sem estas duas linhas a curta acenderia uma passagem sem folha -- o beat vazio, calado.
 			FolhaDaPassagem = cheia.FolhaDaPassagem,
 			EstadoDaPassagem = cheia.EstadoDaPassagem,
+			// (2026-10-19) A COR E A COLADA ATRAVESSAM pelo motivo da silhueta: sao o que a cena MOSTRA, e nao da estreia. Hoje
+			// nenhuma cena com elas e encurtada (a curta do descontrole e o surto, ver `NoDegrau`), e a linha existe pra que a
+			// primeira que for nao saia na cor da forma, calada.
+			CorPropria = cheia.CorPropria,
+			ColadaDaCena = cheia.ColadaDaCena,
 			Beats = [.. beats],
 		};
 	}

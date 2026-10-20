@@ -74,8 +74,10 @@ public sealed partial class GameServer
 		if (Jandirus.Core.Races.BioAndroids.EmLarva(ficha)) f |= Fatos.EmLarva;   // `AlternarEnterrar`, Larva.cs
 		if (ficha.bio_lab_born && ficha.bio_nucleo.Length == 0) f |= Fatos.NucleoPorEscolher;   // `EscolherNucleo`, Nucleo.cs (2026-10-17)
 		if (Jandirus.Core.Races.SkillsRaciais.AindaEscolhe(ficha) > 0) f |= Fatos.SkillDoDnaPorEscolher;   // `EscolherSkillDoDna`, SkillsDoDna.cs
+		if (TemAVoltaDoJuiz(pl)) f |= Fatos.VoltaDoOutroMundo;              // `AtravessarOOutroMundo`, TravessiaDoJuiz.cs (2026-10-19)
 		if (pl.UltraInstinct.Aprendida && !pl.PoderDaDestruicao.Aprendida && EhDeusDaDestruicao(pl))
 			f |= Fatos.KitDaDestruicaoEmprestado;                           // `UsarOKitEmprestado`, KitDoDeus.cs
+		if (Nutricao.VigorInfinitoDaRaca(ficha)) f |= Fatos.VigorInfinito;  // `ComprarNaMesa`, Customizadas.cs (2026-10-19): sem folego na mesa
 
 		// ---- o que ele tem no mundo (tudo por ASSINATURA: e do personagem, nao da conta) ----
 		string sig = pl.Assinatura;
@@ -92,6 +94,7 @@ public sealed partial class GameServer
 			foreach (SetDeEsferas s in _sets)                               // `ReviverOSet`, Esferas.cs:1440-1442
 				if (s.Zona.Hash == pl.Zone.Hash && string.Equals(s.CriadorSig, sig, StringComparison.Ordinal))
 				{ f |= Fatos.CriouAEstatuaDaqui; break; }
+			if (EstatuaSemCriadorAqui(pl.Zone)) f |= Fatos.EstatuaSemCriadorAqui;   // `ReviverOSet` pelo Cla do Dragao, VagaReciclada.cs (2026-10-19)
 
 			if (TemAmorCorrespondido(pl)) f |= Fatos.TemUmAmor;            // `PedirFilho`, Filhos.cs (2026-10-17)
 		}
@@ -145,7 +148,7 @@ public sealed partial class GameServer
 		EscutaDeFatos?.Add((pl.Id, f));
 
 		var w = Protocol.Begin(Protocol.S2C.Fatos);
-		w.Put((uint)f);
+		w.Put((ulong)f);   // (2026-10-19) `ulong`: o 33o fato (o aprendiz de Kaioshin)
 		tela.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 }

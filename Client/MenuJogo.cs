@@ -341,10 +341,11 @@ public partial class MenuJogo : CanvasLayer
 		// ==============================================================================================
 		if (Teclas.Bate("ui_menu", k))
 		{
-			// `AtalhosMudos` e nao `Digitando`: o P e uma das 22 letras que o quick time event sorteia,
-			// e esta tela le em `_Input` -- ANTES do `ClashQte`. Ou seja, responder "P" ao embate abria
-			// o menu E comia a letra (o `SetInputAsHandled` logo abaixo). Sair aqui sem consumir deixa
-			// o evento seguir ate o embate, que e de quem a tecla e naquele momento.
+			// `AtalhosMudos` e nao `Digitando`: o P era uma das 22 letras que o quick time event sorteava
+			// (desde 2026-10-19 ele e so WASD, e o P continua calado no embate), e esta tela le em `_Input`
+			// -- ANTES do `ClashQte`. Ou seja, responder "P" ao embate abria o menu E comia a letra (o
+			// `SetInputAsHandled` logo abaixo). Sair aqui sem consumir deixa o evento seguir ate o embate,
+			// que e de quem o teclado e naquele momento.
 			if (Foco.AtalhosMudos) return;
 			Alternar();
 			GetViewport().SetInputAsHandled();
@@ -414,6 +415,9 @@ public partial class MenuJogo : CanvasLayer
 		Aberto = false;
 		_busca.ReleaseFocus();
 		FecharAJanela();
+		// MENU FECHADO, NENHUMA PAGINA RODA -- ver `Processar`. O `Visible = false` do menu so tira o desenho.
+		foreach (VBoxContainer pg in _paginas.Values)
+			if (IsInstanceValid(pg)) Processar(pg, false);
 	}
 
 	// =====================================================================
@@ -609,17 +613,28 @@ public partial class MenuJogo : CanvasLayer
 	private string AssinaturaBasica(string aba, SheetState f)
 	{
 		GameClient? c = GameClient.Instance;
-		string comum = $"{_busca.Text.Trim()}|{_arvoreAberta}|{f.Estado}";
+		// ============================ O CORPO NAO ENTRA NO `comum` (2026-10-19) ============================
+		// Ele carregava o `f.Estado` inteiro -- e os dois bits de cima do `Estado` sao a DIRECAO DO CORPO
+		// (`DirecaoDeitado << 6`, a direcao em que ele cairia), que o servidor reescreve a cada passo de pe
+		// (`FacingDaQueda`) e manda numa ficha nova. Ou seja: cada VIRADA andando remontava a pagina de toda aba
+		// que passa por aqui -- a Tech com os cem cards do catalogo (~1.600 nos), a Admin com os botoes de verb e
+		// de forma (~500) -- e em luta a guarda, o arremesso e cada golpe recebido faziam o mesmo. Foi esse o
+		// "jogo extremamente lagado com o menu P aberto" que o dono sentiu (*"principalmente a de adm, tech,
+		// nav"*), e os quadros longos dele ainda faziam o servidor puxar o corpo pela parede.
+		//
+		// Quem DESENHA o corpo assina so o que desenha: a Stats (condicao e golpe) e a Equip (golpe e guarda),
+		// pelo `CorpoNaAssinatura`. As outras abas nem leem o `f`.
+		// ====================================================================================================
+		string comum = ComumComOCorpoDeTeste ? $"{_busca.Text.Trim()}|{_arvoreAberta}|{f.Estado}" : $"{_busca.Text.Trim()}|{_arvoreAberta}";
 		return aba switch
 		{
 			// A SECAO DE TREINO ENTRA AQUI, e sem isto ela seria uma linha CONGELADA: o multiplicador
 			// muda ao trocar de planeta, ao mexer no peso e ao atravessar a porta da Sala, e nenhum
 			// desses eventos mexe nos outros numeros desta assinatura. O painel mostraria o ganho do
 			// mapa anterior ate o jogador levar um soco.
-			// A INTEIREZA ENTRA AQUI, e nao e redundante com o BP expresso: gravidade e peso a mexem
-			// por caminhos que passam ao largo dos outros campos desta linha.
-			"Stats" => $"{comum}|{f.Inteireza:0.###}"
-					 + $"|{f.ExpressedBP:0}|{f.Ki:0}|{f.MaxKi:0}|{f.HP:0}|{f.Vigor:0}|{f.Nutricao:0}"
+			// OS VITAIS NAO ENTRAM (2026-10-19): poder efetivo, vida, Ki, vigor e nutricao mudam a cada ficha em
+			// luta, e eles se reescrevem NO LUGAR (`Viva`) em vez de remontar a pagina -- ver `MenuJogo.Stats.cs`.
+			"Stats" => $"{comum}{CorpoNaAssinatura(f.KO, f.Morto, f.Letal)}{VitaisNaAssinatura(f)}"
 					 + $"|{_atributos.PhysOff:0.##}|{_atributos.PhysDef:0.##}|{_atributos.KiOff:0.##}"
 					 + $"|{_atributos.Speed:0.##}|{_atributos.Idade}|{f.Class}"
 					 + $"|{_atributos.GanhoDeTreino:0.##}|{_atributos.Gravidade:0.#}"
@@ -629,9 +644,9 @@ public partial class MenuJogo : CanvasLayer
 			// AS DUAS ABAS DE SKILLS ASSINAM POR PECAS NOMEADAS (ver `AssinaturaDeSkills`). Foi uma
 			// variavel fora desta linha que produziu a gaveta que nao abria (o clique invertia a flag,
 			// a pagina era reaproveitada) -- e a bancada `--diagskills` tira uma peca por vez pra
-			// provar que cada uma e necessaria. Elas NAO passam pelo `comum`: ele carrega `f.Estado`,
-			// cujos bits altos sao a direcao do corpo, e virar pra esquerda com a arvore aberta
-			// remontaria a pagina e jogaria a rolagem de volta pro topo.
+			// provar que cada uma e necessaria. Elas NAO passam pelo `comum`: ele carregava `f.Estado`
+			// (ate 2026-10-19), cujos bits altos sao a direcao do corpo, e virar pra esquerda com a arvore
+			// aberta remontava a pagina e jogava a rolagem de volta pro topo.
 			"Learning" or "Skills" => AssinaturaDeSkills(aba),
 			// A PROFICIENCIA DA DISCIPLINA ENTRA AQUI porque a aba passou a DESENHA-LA: as quatro
 			// formas divinas relatam a proficiencia da skill no lugar da maestria, e sem este pedaco
@@ -643,7 +658,10 @@ public partial class MenuJogo : CanvasLayer
 			"Forms" => $"{comum}|{_atributos.FormaAtual}|{string.Join(',', (_atributos.Maestrias ?? []).Select(m => $"{m.Forma}:{m.Pct:0.#}"))}"
 					 + $"|{_atributos.Disciplina}:{_atributos.DiscReal:0.#}"
 					 + $"|{MultTexto(f.MultTotal)}|{f.Inteireza * 100:0.#}",
-			"Tech" => $"{comum}|{c?.TechNivel:0.#}|{c?.Zeni:0}|{c?.TechXp:0}|{c?.Obras.Count}|{c?.Catalogo.Count}",
+			// O ZENI E O XP NAO ENTRAM (2026-10-19): a faixa e a barra do estudo se reescrevem NO LUGAR (`Viva`). Com
+			// eles aqui, quem minerava com a aba aberta remontava os cem cards do catalogo a cada segundo de pa. O
+			// que a carteira muda NOS CARDS (o "pode construir" de cada oferta) continua entrando, pelo extra da aba.
+			"Tech" => $"{comum}|{c?.TechNivel:0.#}|{c?.Obras.Count}|{c?.Catalogo.Count}{CarteiraNaAssinatura(c)}",
 			"Cargos" => $"{comum}|{string.Join(',', (c?.Cargos ?? []).Select(r => r.Chave + r.Dono + r.Falta + r.Livres))}",
 			// A ABA ADMIN TEM CAIXAS DE TEXTO, e uma remontagem as recria vazias. Por isso a
 			// assinatura dela e so o que o painel DESENHA (a lista de contas e as marcas de cada
@@ -653,9 +671,9 @@ public partial class MenuJogo : CanvasLayer
 			// dela NAO passa pelo `comum`.
 			//
 			// Uma assinatura vazia mandaria remontar a pagina a cada pacote de ficha e o mapa
-			// nasceria de novo, enquadrado no padrao, no meio do arrasto. Mas o `comum` tambem nao
-			// serve: ele carrega `f.Estado`, cujos dois bits altos sao a DIRECAO DO CORPO -- e ela
-			// e reescrita a cada pacote de input enquanto se anda. Com o menu aberto o personagem
+			// nasceria de novo, enquadrado no padrao, no meio do arrasto. E o `comum` tambem nao
+			// servia: ele carregava `f.Estado` (ate 2026-10-19), cujos dois bits altos sao a DIRECAO DO CORPO
+			// -- e ela e reescrita a cada pacote de input enquanto se anda. Com o menu aberto o personagem
 			// continua andando (o `Foco.Digitando` so vale se a BUSCA tiver foco), entao virar pra
 			// esquerda remontava a aba e jogava fora o zoom que o jogador acabou de ajustar.
 			//
@@ -692,14 +710,16 @@ public partial class MenuJogo : CanvasLayer
 			// clica. E a MESMA armadilha que o bloco do Admin acima descreve, e ela mordeu este projeto
 			// uma vez.
 			//
-			// ELA NAO PASSA PELO `comum`, pelo motivo escrito nas abas de skills: ele carrega `f.Estado`,
-			// cujos bits altos sao a direcao do corpo, e virar pra esquerda com a aba aberta remontaria a
+			// ELA NAO PASSA PELO `comum`, pelo motivo escrito nas abas de skills: ele carregava `f.Estado`,
+			// cujos bits altos sao a direcao do corpo, e virar pra esquerda com a aba aberta remontava a
 			// lista inteira debaixo do mouse. Daqui so entra a busca (que troca a pagina toda); o que a aba
 			// DESENHA -- os conhecidos e os nomes por perto -- mora no `ExtraDaAssinaturaDeGente`.
 			"People" => _busca.Text.Trim(),
 			// As abas fixas sem dado proprio (Equip, Other) sao texto parado: uma assinatura
-			// so ja basta pra elas nunca mais serem remontadas.
-			"Equip" or Verbos.Outros => comum,
+			// so ja basta pra elas nunca mais serem remontadas. A Equip desenha o golpe e a guarda em
+			// pilulas, e por isso assina esses dois bits do corpo (ver o `comum` acima).
+			"Equip" => $"{comum}{CorpoNaAssinatura(f.Guarda, f.Letal)}",
+			Verbos.Outros => comum,
 			// WORLD PASSOU A TER BOTOES (dominio e esferas vieram da Nav), e por isso ela precisou de
 			// assinatura. Ela caia no `_ => ""` -- remonta a cada pacote de ficha --, e isso era inofensivo
 			// enquanto a aba era so texto: com botao, uma pagina refeita cinco vezes por segundo destroi o
@@ -717,6 +737,109 @@ public partial class MenuJogo : CanvasLayer
 			_ => "",
 		};
 	}
+
+	/// <summary>
+	/// OS BITS DO CORPO QUE UMA ABA DESENHA, e so eles -- ver o bloco do `comum` em <see cref="AssinaturaBasica"/>.
+	/// A direcao do corpo (os bits de cima do `Estado`) nunca entra: nenhuma aba a desenha.
+	/// </summary>
+	private static string CorpoNaAssinatura(params bool[] bits) =>
+		CorpoForaDaAssinaturaDeTeste ? "" : "|" + string.Concat(bits.Select(b => b ? '1' : '0'));
+
+	/// <summary>
+	/// O QUE OS VITAIS DA STATS ESCREVIAM NA ASSINATURA -- vazio desde que eles se reescrevem no lugar (`Viva`). So
+	/// volta com o defeito injetado, que e o jeito de a bancada ver a pagina remontando a cada ficha de novo.
+	/// </summary>
+	private static string VitaisNaAssinatura(SheetState f) =>
+		!VivasNaAssinaturaDeTeste ? ""
+		: $"|{f.Inteireza:0.###}|{f.ExpressedBP:0}|{f.Ki:0}|{f.MaxKi:0}|{f.HP:0}|{f.Vigor:0}|{f.Nutricao:0}|{f.BP:0}|{f.TetoKi:0.##}|{f.SocoMs}"
+		  + $"|{GameClient.Instance?.Zeni:0}|{GameClient.Instance?.Recursos:0}";
+
+	/// <summary>O mesmo pra carteira e o xp da Tech (a faixa e a barra do estudo). Vazio em jogo.</summary>
+	private static string CarteiraNaAssinatura(GameClient? c) =>
+		!VivasNaAssinaturaDeTeste ? "" : $"|{c?.Zeni:0}|{c?.TechXp:0}|{c?.Recursos:0}|{c?.TechXpAlvo:0}";
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagmenuleve`): o corpo inteiro (`f.Estado`, com a direcao) volta pro `comum` -- o
+	/// menu de antes de 2026-10-19, que remontava a pagina da Tech e da Admin a cada virada andando. Lido pela propria
+	/// linha do `comum`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool ComumComOCorpoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagmenuleve`): a Stats e a Equip param de assinar os bits do corpo que desenham --
+	/// a pilula do golpe e da condicao congelaria. E o contra-exemplo de que tirar o corpo do `comum` nao calou quem o
+	/// mostra. Lido pelo <see cref="CorpoNaAssinatura"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool CorpoForaDaAssinaturaDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagmenuleve`): os valores vivos (os vitais da Stats, a carteira e o xp da Tech)
+	/// voltam pra assinatura -- e a pagina volta a ser remontada a cada ficha em luta e a cada segundo de mineracao.
+	/// Lido pelo <see cref="VitaisNaAssinatura"/> e pelo <see cref="CarteiraNaAssinatura"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool VivasNaAssinaturaDeTeste;
+
+	// =====================================================================
+	// OS VALORES VIVOS -- o que muda sem mudar a pagina
+	// =====================================================================
+	/// <summary>
+	/// ============================ REESCREVER NO LUGAR, EM VEZ DE REMONTAR ============================
+	/// A assinatura so sabe dizer "refaz a pagina inteira". Pra um numero que muda a cada ficha -- o Ki em luta,
+	/// o zeni de quem minera -- isso era destruir e montar de novo ~140 nos (a Stats) ou ~1.600 (a Tech) cinco
+	/// vezes por segundo, pra trocar o texto de um `Label`.
+	///
+	/// Uma VIVA e o outro caminho: quem monta a pagina guarda o `Label` (ou a barra) e registra aqui como
+	/// reescreve-lo; a cada pedido de redesenho em que a pagina e REAPROVEITADA, as vivas da aba rodam e trocam so o
+	/// texto. Remontar continua sendo o caminho de quando a FORMA da pagina muda (uma linha nasce, um card some), e
+	/// e por isso que o valor vivo sai da assinatura: ele nao muda forma nenhuma.
+	///
+	/// AS PORTAS DE BANCADA NAO MUDAM: o `Label` e o mesmo, com o mesmo metadado `linha`, e o `ValorDesenhado` le o
+	/// texto de agora. A pagina remontada nasce com as vivas novas (a lista da aba e trocada antes do `Montar`).
+	/// ================================================================================================
+	/// </summary>
+	private readonly Dictionary<string, List<Action>> _vivas = [];
+
+	/// <summary>A aba cuja pagina esta sendo montada agora -- e nela que a <see cref="Viva"/> se pendura.</summary>
+	private string _abaEmMontagem = "";
+
+	/// <summary>Registra um valor vivo na pagina que esta sendo montada. Ver <see cref="_vivas"/>.</summary>
+	private void Viva(Action reescrever)
+	{
+		if (!_vivas.TryGetValue(_abaEmMontagem, out List<Action>? lista)) _vivas[_abaEmMontagem] = lista = [];
+		lista.Add(reescrever);
+	}
+
+	/// <summary>
+	/// A PAGINA ESCONDIDA NAO RODA (2026-10-19). Toda pagina continua viva na arvore (e o cache que existe pra nao
+	/// remontar), e um `Visible = false` tira o desenho, mas nao o `_Process`: os retratos vestidos da People
+	/// animavam escondidos, e a carta estelar pedia um redesenho por quadro com a aba Nav nem na tela -- com o menu
+	/// FECHADO, inclusive, a sessao inteira depois da primeira visita. Escondida, a pagina para; na tela, volta.
+	/// </summary>
+	private static void Processar(Node pagina, bool naTela) =>
+		pagina.ProcessMode = naTela || PaginaEscondidaProcessaDeTeste ? ProcessModeEnum.Inherit : ProcessModeEnum.Disabled;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagmenuleve`): a pagina escondida continua processando, como antes de 2026-10-19.
+	/// Lido pelo <see cref="Processar"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool PaginaEscondidaProcessaDeTeste;
+
+	/// <summary>Quantas vezes a pagina de cada aba foi remontada, e quantos ms isso custou. SO PRA BANCADA (`--diagmenuleve`).</summary>
+	private readonly Dictionary<string, int> _remontagensPorAba = [];
+	private readonly Dictionary<string, double> _msPorAba = [];
+
+	/// <summary>Os ms gastos remontando a pagina DESTA aba desde que o menu nasceu. SO PRA BANCADA.</summary>
+	public double MsRemontandoDaAbaDeTeste(string aba) => _msPorAba.GetValueOrDefault(aba);
+
+	/// <summary>
+	/// Quantas vezes a pagina DESTA aba foi remontada desde que o menu nasceu. SO PRA BANCADA -- o total de todas mora no
+	/// `RemontagensDeTeste` (MenuJogo.Skills.cs).
+	/// </summary>
+	public int RemontagensDaAbaDeTeste(string aba) => _remontagensPorAba.GetValueOrDefault(aba);
+
+	/// <summary>A pagina desta aba pode processar agora? SO PRA BANCADA -- e a pergunta do <see cref="Processar"/>.</summary>
+	public bool PaginaProcessaDeTeste(string aba) =>
+		_paginas.TryGetValue(aba, out VBoxContainer? p) && IsInstanceValid(p) && p.CanProcess();
 
 	/// <summary>
 	/// O CEU E O CLIMA DA ABA WORLD, resumidos -- a parte VIVA da assinatura dela.
@@ -817,7 +940,7 @@ public partial class MenuJogo : CanvasLayer
 		// e uma troca de `Visible`, e nao uma remontagem.
 		_conteudo = PaginaDe(_aba);
 		foreach ((string nome, VBoxContainer pg) in _paginas)
-			if (IsInstanceValid(pg)) pg.Visible = nome == _aba;
+			if (IsInstanceValid(pg)) { pg.Visible = nome == _aba; Processar(pg, nome == _aba); }
 
 		// A FAIXA DE MARCOS E FIXA (fora da rolagem) e so existe na aba de aprendizado sem busca. A
 		// visibilidade se decide AQUI, antes do desvio de cache logo abaixo: trocar de aba com a
@@ -832,19 +955,27 @@ public partial class MenuJogo : CanvasLayer
 			&& antiga == sig && _conteudo.GetChildCount() > 0)
 		{
 			_reaproveitadas++;
+			// ...MAS O QUE E VIVO SE REESCREVE -- o Ki, o zeni, o xp. Ver `_vivas`.
+			if (_vivas.TryGetValue(_aba, out List<Action>? vivas)) foreach (Action reescrever in vivas) reescrever();
 			return;
 		}
 		_assinaturas[_aba] = sig;
 
 		ulong t0 = Time.GetTicksUsec();
 		_remontagens++;
+		_remontagensPorAba[_aba] = _remontagensPorAba.GetValueOrDefault(_aba) + 1;
+		// A PAGINA NOVA NASCE COM AS VIVAS DELA: as da montagem velha apontam pra nos que vao embora.
+		_vivas.Remove(_aba);
+		_abaEmMontagem = _aba;
 
 		// O CAMPO EM QUE SE ESCREVE ATRAVESSA A REMONTAGEM -- ver `CampoQueAtravessa`.
 		CampoQueAtravessa? escrevendo = FocoMorreNaRemontagemDeTeste ? null : CampoQueAtravessa.De(CampoComOFoco(), _conteudo);
 		foreach (Node n in _conteudo.GetChildren()) { _conteudo.RemoveChild(n); n.QueueFree(); }
 		Montar(f);
 		escrevendo?.Devolver(_conteudo);
-		_msRemontando += (Time.GetTicksUsec() - t0) / 1000.0;
+		double ms = (Time.GetTicksUsec() - t0) / 1000.0;
+		_msRemontando += ms;
+		_msPorAba[_aba] = _msPorAba.GetValueOrDefault(_aba) + ms;
 	}
 
 	/// <summary>

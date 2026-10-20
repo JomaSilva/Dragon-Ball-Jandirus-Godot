@@ -78,7 +78,8 @@ public static class CargaBench
 	///
 	/// Por isso este teste repete a ordem inteira do servidor:
 	///   1) dreno da forma (`GameServer.Formas.cs:285`)
-	///   2) regeneracao, com o `formRegen` de 20% que o dreno liga (`GameServer.Carga.cs:120-121`)
+	///   2) regeneracao -- que, na forma de maestria zero que drena, NAO tem a parte passiva desde 2026-10-19
+	///      (`GameServer.FormaSemRegenPassiva`: forma nao dominada que consome Ki nao regenera sozinha)
 	///   3) a tecla C (`CargaDeKi.Passo`)
 	///   4) o preco do excesso
 	///   5) `Statify`
@@ -155,8 +156,8 @@ public static class CargaBench
 				double dreno = drenoFrac * f.MaxKi * dt;
 				f.Ki -= dreno;
 
-				// 2) regeneracao (com o corte de 20% que o dreno liga), 3) a tecla C, 4) o preco
-				Jandirus.Core.Stats.RegenDeKi.Passo(f, dt, drenoFrac);
+				// 2) regeneracao (maestria zero com dreno = forma nao dominada: sem a passiva), 3) a tecla C, 4) o preco
+				Jandirus.Core.Stats.RegenDeKi.Passo(f, dt, drenoFrac, semPassiva: drenoFrac > 0);
 				EstagioDaCarga e = CargaDeKi.Passo(f, dt, mexendo: false);
 				double dano = CargaDeKi.PrecoDoExcesso(f, dt);
 				f.Statify();
@@ -195,7 +196,7 @@ public static class CargaBench
 			for (int t = 0; t < (int)(TetoDaMedida / dt) && cruzou < 0; t++)
 			{
 				g.Ki -= drenoFrac * g.MaxKi * dt;
-				Jandirus.Core.Stats.RegenDeKi.Passo(g, dt, drenoFrac);
+				Jandirus.Core.Stats.RegenDeKi.Passo(g, dt, drenoFrac, semPassiva: drenoFrac > 0);
 				CargaDeKi.Passo(g, dt, mexendo: false);
 				CargaDeKi.PrecoDoExcesso(g, dt);
 				g.Statify();
@@ -273,10 +274,11 @@ public static class CargaBench
 			double ganho = (f.Ki - antes) / f.MaxKi;
 			double dreno = Jandirus.Core.Forms.Catalogo.DrenoPorSegundo(id, new Jandirus.Core.Forms.Maestrias());
 
-			// A REGENERACAO, num tanque nao-cheio -- no MaxKi o portao do regen nem abre.
+			// A REGENERACAO, num tanque nao-cheio -- no MaxKi o portao do regen nem abre. Maestria zero: nas formas
+			// que drenam a coluna sai 0, porque a passiva da forma nao dominada se desliga (2026-10-19).
 			f.Ki = f.MaxKi * 0.5;
 			double antesRegen = f.Ki;
-			Jandirus.Core.Stats.RegenDeKi.Passo(f, 1.0, dreno);
+			Jandirus.Core.Stats.RegenDeKi.Passo(f, 1.0, dreno, semPassiva: dreno > 0);
 			double regen = (f.Ki - antesRegen) / f.MaxKi;
 
 			Console.WriteLine($"    {id,-8} {ganho * 100,10:0.000}%/s {dreno * 100,13:0.000}%/s "

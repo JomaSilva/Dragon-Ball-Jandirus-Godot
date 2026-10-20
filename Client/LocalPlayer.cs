@@ -561,7 +561,7 @@ public partial class LocalPlayer : Node2D
 		// diferentes -- ver `CharacterVisual.VoarPara`.
 		var dir = (Facing)((ficha.Estado >> 6) & 3);
 		_dirDoCorpo = dir;   // a folha do voo tambem sai daqui -- ver _Process
-		if (_caido || Dormindo) _visual.DeitarPor(dir);
+		if (_caido) _visual.DeitarPor(dir);
 		// O PUXAO DA FUSAO NAO GIRA O CORPO. Ele e dirigido pelo servidor como o arremesso (mesmo bit
 		// `Empurrado`, mesma correcao, mesmo deslize), mas quem esta sendo puxado pro outro esta DE PE
 		// -- com a rotacao do arremesso, dois lutadores atraidos no eixo vertical apareceriam de cabeca
@@ -854,15 +854,55 @@ public partial class LocalPlayer : Node2D
 	/// mandou (`GameClient.EixoDoRaioNasMaos`). A tecla que nao e atravessada nem vira intencao de andar (o `_Process`
 	/// a zera), e o passo que o cenario entortou pra ao longo do raio e desfeito: o servidor recusaria qualquer um dos
 	/// dois, e passo dado aqui e recusado la e uma correcao por pacote -- o corpo tremendo.
+	///
+	/// (2026-10-19) O PASSO E PELAS SETAS: o WASD virou o quick time event, e ali ele so responde a letra -- ver
+	/// <see cref="TeclasDeAndarSemAsLetras"/>.
 	/// ================================================================================================================
 	/// </summary>
 	private static Vec2? EixoDoRaioQueSeguro => GameClient.Instance?.EixoDoRaioNasMaos;
+
+	/// <summary>
+	/// (2026-10-19) O VETOR DE ANDAR SEM AS LETRAS DO QUICK TIME EVENT -- o de quem segura um raio com as maos.
+	///
+	/// ============================ NA DISPUTA DE GUARDA, O WASD E DO EMBATE (dono, 2026-10-19) ============================
+	/// O quick time event passou a pedir so W, A, S e D (`LetrasDoEmbate`), e esta e a unica disputa em que o corpo da
+	/// passo: com o WASD andando, a letra pedida que fosse atravessada ao raio tiraria o jogador da disputa no mesmo toque
+	/// que a responde (`GameServer.SairDeLadoDaDisputa`). Perguntado, o dono escolheu: o WASD so responde, e quem quer
+	/// sair de lado sai pelas SETAS.
+	///
+	/// TECLA A TECLA, e nao pela forca da acao: o W e a seta pra cima sao a MESMA acao (`move_up`, `Teclas.Todas`), e so
+	/// aqui elas se separam. E pelas teclas de AGORA, e nao pela seta cravada -- quem religou o andar sai de lado pela tecla
+	/// dele, menos a que for uma das quatro letras.
+	/// ==================================================================================================================
+	/// </summary>
+	private static Vector2 TeclasDeAndarSemAsLetras() => new(
+		ForcaSemAsLetras("move_right") - ForcaSemAsLetras("move_left"),
+		ForcaSemAsLetras("move_down") - ForcaSemAsLetras("move_up"));
+
+	/// <summary>Alguma tecla desta acao de andar, que nao seja letra do embate, esta apertada? Ver <see cref="TeclasDeAndarSemAsLetras"/>.</summary>
+	private static float ForcaSemAsLetras(string acao)
+	{
+		foreach (Key k in Teclas.Teclado(acao))
+		{
+			bool letraDoEmbate = k >= Key.A && k <= Key.Z
+								 && Jandirus.Core.Combat.LetrasDoEmbate.EhLetra((char)('A' + (k - Key.A)));
+			if (!letraDoEmbate && Godot.Input.IsPhysicalKeyPressed(k)) return 1f;
+		}
+		return 0f;
+	}
 
 	/// <summary>
 	/// DEFEITO INJETADO (bancada `--diagmudez`, familia F8): o jogo de antes de 2026-10-12 -- apertar uma direcao baixa
 	/// a guarda. Lido pela propria linha da guarda (`LerAcoes`). Falso em jogo, sempre.
 	/// </summary>
 	public static bool AndarBaixaAGuardaDeTeste;
+
+	/// <summary>
+	/// (2026-10-19) DEFEITO INJETADO (bancada `--diagmudez`, familia F8): segurando um raio com as maos, o WASD volta a
+	/// andar -- o jogo de antes de o quick time event ser so WASD, em que responder a letra de lado tira da disputa. Lido
+	/// pela propria linha do vetor de andar, no `_Process`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool LetraDoQteAndaNaGuardaDeTeste;
 
 	/// <summary>
 	/// DEFEITO INJETADO (bancada `--diagv021`): agarrado, a tecla de andar volta a nao virar o boneco -- a v0.2.0, em que
@@ -920,22 +960,6 @@ public partial class LocalPlayer : Node2D
 	private Facing _dirDoCorpo = Facing.South;
 
 	/// <summary>
-	/// (2026-10-18) ESTOU DORMINDO O SLEEP DO MAJIN? Vem do snapshot do meu corpo (`Ocupacao.Dormindo`, pelo `World`): o corpo local escolhe
-	/// a propria pose (ver <see cref="PorAPoseDoCorpo"/>), e quem dorme DEITA -- a folha nao tem pose de sono, e a de nocaute e o corpo no
-	/// chao, a mesma que os outros veem. Acordar endireita o sprite na hora.
-	/// </summary>
-	public bool Dormindo { get; private set; }
-
-	/// <summary>O `World` diz se o meu corpo dorme. Ver <see cref="Dormindo"/>.</summary>
-	public void Dormir(bool dormindo)
-	{
-		if (dormindo == Dormindo) return;
-		Dormindo = dormindo;
-		if (dormindo) _visual.DeitarPor(_dirDoCorpo);
-		else if (!_caido) _visual.GirarPara(default);
-	}
-
-	/// <summary>
 	/// PRA ONDE ESTE CORPO ESTA VIRADO -- o mesmo nome que o `RemotePlayer` ja publicava, pra que
 	/// quem le a direcao de um corpo na tela leia a MESMA coisa nos dois.
 	///
@@ -980,6 +1004,19 @@ public partial class LocalPlayer : Node2D
 
 	/// <summary>SHIFT segurado AGORA -- o modificador do golpe, independente de estar andando.</summary>
 	private bool _shift;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagmenuleve`): o quadro longo volta a andar o passo inteiro (ate o `MaxDeltaSeconds`),
+	/// como antes de 2026-10-19 -- e o corpo rapido volta a passar do orcamento do servidor depois de um engasgo. Lido pela
+	/// propria linha do teto, no `_Process`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool PassoSemTetoNoQuadroLongoDeTeste;
+
+	/// <summary>
+	/// O MAIOR dt com que um quadro andou desde que a bancada zerou este campo, ja com o teto do quadro longo. SO PRA
+	/// BANCADA (`--diagmenuleve`): o quadro do engasgo passa entre duas olhadas do robo, e o maior e o que guarda ele.
+	/// </summary>
+	public static float MaiorDtDoPassoDeTeste;
 
 	/// <summary>
 	/// Anda no QUADRO DE RENDER, nao no passo de fisica.
@@ -1127,8 +1164,11 @@ public partial class LocalPlayer : Node2D
 			if (apertado.LengthSquared > 1e-6f) _facing = MoveRules.FacingFrom(apertado, _facing);
 		}
 
+		Vec2? eixoDoRaio = EixoDoRaioQueSeguro;
 		var input = porQueNaoAnda.Length > 0
 			? Vector2.Zero   // no chao nao se anda: ver OnSheet
+			// (2026-10-19) SEGURANDO UM RAIO COM AS MAOS, O WASD E DO QUICK TIME EVENT: o passo de lado e pelas setas.
+			: eixoDoRaio != null && !LetraDoQteAndaNaGuardaDeTeste ? TeclasDeAndarSemAsLetras()
 			: new Vector2(
 				Godot.Input.GetActionStrength(Teclas.NomeNoMotor("move_right")) - Godot.Input.GetActionStrength(Teclas.NomeNoMotor("move_left")),
 				Godot.Input.GetActionStrength(Teclas.NomeNoMotor("move_down")) - Godot.Input.GetActionStrength(Teclas.NomeNoMotor("move_up")));
@@ -1137,7 +1177,6 @@ public partial class LocalPlayer : Node2D
 		// SEGURANDO UM RAIO COM AS MAOS, A TECLA QUE NAO E ATRAVESSADA A ELE NAO E TECLA (ver `EixoDoRaioQueSeguro`):
 		// zerada AQUI, ela nao vira o olhar nem liga a corrida -- o corpo continua plantado de frente pro raio, como em
 		// qualquer outro embate.
-		Vec2? eixoDoRaio = EixoDoRaioQueSeguro;
 		if (eixoDoRaio is { } eixoDaTecla && !Jandirus.Core.Combat.KiContraCorpo.PassoAtravessado(dir, eixoDaTecla)) dir = Vec2.Zero;
 		bool tentandoAndar = dir.LengthSquared > 1e-6f;
 
@@ -1275,7 +1314,13 @@ public partial class LocalPlayer : Node2D
 		// (`ClasseDePredio`). A altura e a CRUA do servidor (`_altitude`, e nao a suavizada do desenho):
 		// e a mesma pergunta que ele faz no `Input`, pelo mesmo numero, e suavizar aqui poria as duas
 		// pontas em desacordo.
-		_pos = MoveRules.Advance(_pos, dir, (float)delta, SpeedStat,
+		// O QUADRO LONGO ANDA MENOS, E NAO MAIS LONGE (2026-10-19). Um engasgo chega aqui como um quadro de ate ~0,14 s, e
+		// o passo de um corpo rapido nesse quadro passa do orcamento do servidor, que o recusava e puxava o corpo (pela
+		// parede, ate o conserto do `ValidateStep`). Com o teto, o corpo perde um pedaco do passo naquele quadro e as duas
+		// pontas concordam. Ver `MoveRules.TetoDoQuadroDoCliente`; o passo do quadro e o MESMO dt no `SaiuDoLugar` abaixo.
+		float dtDoPasso = (float)Math.Min(delta, PassoSemTetoNoQuadroLongoDeTeste ? MoveRules.MaxDeltaSeconds : MoveRules.TetoDoQuadroDoCliente);
+		if (dtDoPasso > MaiorDtDoPassoDeTeste) MaiorDtDoPassoDeTeste = dtDoPasso;
+		_pos = MoveRules.Advance(_pos, dir, dtDoPasso, SpeedStat,
 			Mapa, out _, _correndo, Voo.ModoNaAltura(_altitude, ModoDoCorpo), vizinhos);
 		// ...E SEGURANDO UM RAIO COM AS MAOS, SO FICA O PASSO QUE SAIU ATRAVESSADO A ELE (ver `EixoDoRaioQueSeguro`). A
 		// tecla ja foi peneirada la em cima; isto e pro passo que uma quina (ou um corpo) entortou pra ao longo do raio,
@@ -1287,7 +1332,7 @@ public partial class LocalPlayer : Node2D
 		// fica parado de pe em vez de marchar sem sair do lugar.
 		// (a medida e contra o passo que ESTE corpo daria neste quadro, e nao um decimo de pixel fixo: o corpo no
 		// piso da velocidade ficava abaixo do corte em taxa de quadros alta e deslizava -- `MoveRules.SaiuDoLugar`.)
-		bool andando = MoveRules.SaiuDoLugar(antes, _pos, (float)delta, SpeedStat, _correndo);
+		bool andando = MoveRules.SaiuDoLugar(antes, _pos, dtDoPasso, SpeedStat, _correndo);
 
 		// ============================ A CINEMATICA MANDA NA POSE, E MANDA TODO QUADRO ============================
 		// Durante a cena de estreia o corpo fica PARADO e virado pra frente -- o `move = 0;
@@ -1360,9 +1405,10 @@ public partial class LocalPlayer : Node2D
 		// `SetInputAsHandled` do quick time event NAO as alcanca -- o unico lugar onde da pra barrar
 		// uma sonda e o ponto de LEITURA. Por isso todas elas trocaram `Foco.Digitando` por
 		// `Foco.AtalhosMudos`: o R (subir), o G (descer), o F (voar), o N (nadar), o Q (agarrar), o C
-		// (carga), o X (reverter), o T (treinar), o M (meditar) e o K (letal) **sao dez das 22 letras
-		// que o embate sorteia**, e sem isto responder a letra pedida ligava o voo, mandava meditar ou
-		// carregava Ki no meio do embate. Era a queixa do dono, medida.
+		// (carga), o X (reverter), o T (treinar), o M (meditar) e o K (letal) **eram dez das 22 letras
+		// que o embate sorteava**, e sem isto responder a letra pedida ligava o voo, mandava meditar ou
+		// carregava Ki no meio do embate. Era a queixa do dono, medida. (Desde 2026-10-19 o embate pede
+		// so WASD, e o silencio fica: com embate na tela o jogo so ve o embate.)
 		//
 		// O QUE **NAO** ENTROU, e por que: o vetor de ANDAR (ele ja tem a sua propria trava, logo acima,
 		// e mexer nele foi o erro que o dono cobrou uma vez), a GUARDA (soltar o ALT ENCERRA o lado de
@@ -1749,10 +1795,8 @@ public partial class LocalPlayer : Node2D
 		// esta reunindo energia cai na escada normal e fica no idle, com o brilho da
 		// `CargaDeRaioVisual` por cima. Ver `Protocol.Pose.Canalizando`.
 		// ===================================================================================================
-		// (2026-10-18) QUEM DORME O SLEEP DO MAJIN DEITA -- a mesma pose que os outros veem (a `Pose.Nocauteado` que o servidor manda). Ver
-		// `Dormindo`.
-		if (Dormindo) { _visual.SetState("ko"); return; }
-
+		// (2026-10-19) QUEM DORME O SLEEP DO MAJIN NAO TEM POSE AQUI: dorme em pe, pela escada de baixo (parado, ou pairando no ar) -- a mesma
+		// escolha do `ServerPlayer.Pose` pros outros. O que mostra o sono e o "z" (`World.MarcarDormindo`).
 		if (_raioSaindo) { _visual.SetPose(Protocol.Pose.Canalizando, canalAtirando: true); return; }
 
 		// (2026-10-18) AO LEME A POSE NAO E A DE VOO -- o dono: *"o personagem fica voando quando eu piloto a nave , ele deveria so ficar parado na
@@ -1834,7 +1878,7 @@ public partial class LocalPlayer : Node2D
 			}
 		}
 		// "treinar" e "meditar" sao T e M -- no meio de uma frase, nao; e no meio de um embate tambem
-		// nao, que as duas estao entre as 22 letras sorteadas. Ver `Foco.AtalhosMudos`.
+		// nao (eram letras do embate ate ele virar so WASD, e o silencio ficou). Ver `Foco.AtalhosMudos`.
 		else if (Foco.AtalhosMudos) { }
 		else if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("train")))
 			nova = _atividade == Protocol.Activity.Treinando ? Protocol.Activity.Parado : Protocol.Activity.Treinando;

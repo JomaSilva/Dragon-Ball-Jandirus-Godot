@@ -41,8 +41,8 @@ public static class ViloesDoInferno
 	/// <summary>
 	/// A FORCA: o degrau mais forte da ficha vale este tanto vezes a MEDIA de BP base dos jogadores online (a mesma media que pina
 	/// todo chefe de saga, `GameServer.MediaDoServidor`). 25 e a razao TIPICA dos chefes do `npcs.json` contra o marco de BP que acorda
-	/// a saga deles -- o Freeza de Vegeta 26,5x os 20 mil, os androides e o Boo 20x, o Freeza de Namek 80x (40x no DM: o dono dobrou a forma
-	/// final em 2026-10-18) --: o vilao volta tao
+	/// a saga deles -- o Freeza de Vegeta 26,5x os 20 mil, o Boo 20x, os androides 40x (20x no DM: o dono os dobrou em 2026-10-19), o Freeza
+	/// de Namek 80x (40x no DM: o dono dobrou a forma final em 2026-10-18) --: o vilao volta tao
 	/// dificil quanto foi na saga dele, so que contra o servidor de hoje.
 	/// </summary>
 	public const double FatorDaMedia = 25;

@@ -1864,7 +1864,7 @@ public sealed partial class GameServer
 		{
 			var fio = new LiteNetLib.Utils.NetDataReader(PacoteDeAparencia(p).CopyData());
 			fio.GetByte();
-			fio.GetInt(); fio.GetString(24); fio.GetString(24); fio.GetString(8);
+			fio.GetInt(); fio.GetString(Protocol.MaxNomeNoFio); fio.GetString(24); fio.GetString(8);
 			fio.GetAppearance();
 			(byte fusao, byte marcas, string pesos) = (fio.GetByte(), fio.GetByte(), fio.GetString(120));
 			fio.GetByte();
@@ -2021,7 +2021,7 @@ public sealed partial class GameServer
 		{
 			var fio = new LiteNetLib.Utils.NetDataReader(PacoteDeAparencia(p).CopyData());
 			fio.GetByte();
-			fio.GetInt(); fio.GetString(24); fio.GetString(24); fio.GetString(8);
+			fio.GetInt(); fio.GetString(Protocol.MaxNomeNoFio); fio.GetString(24); fio.GetString(8);
 			fio.GetAppearance();
 			fio.GetByte();
 			byte marcas = fio.GetByte();

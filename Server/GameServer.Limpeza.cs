@@ -198,7 +198,7 @@ public sealed partial class GameServer
 			Arquivos = [ArquivoDoCofreDeTech],
 			Unidade = "registro(s)",
 			Contar = () => _cofreDeTech.Textos.Count + _cofreDeTech.Amostras.Count + _cofreDeTech.Numeros.Count + _cofreDeTech.Plantas.Count
-						   + _cofreDeTech.Biblioteca.Count + _cofreDeTech.Companheiros.Count,
+						   + _cofreDeTech.Biblioteca.Count + _cofreDeTech.Companheiros.Count + _cofreDeTech.Maquinas.Count,
 			Zerar = () => { _cofreDeTech = new CofreDeTech(); _pescarias.Clear(); _bauAberto.Clear(); },
 		});
 
@@ -373,6 +373,16 @@ public sealed partial class GameServer
 			Unidade = "discipulado(s)",
 			Contar = () => _mestreDe.Count,
 			Zerar = () => { _mestreDe.Clear(); _nomePorAssinatura.Clear(); ZerarDiarios(); },
+		});
+
+		// ---------------------------------------------------------- aprendizes de Kaioshin (2026-10-19)
+		_sistemasDoMundo.Add(new SistemaDoMundo
+		{
+			Nome = "aprendizes de Kaioshin",
+			Arquivos = [ArquivoDosAprendizes],
+			Unidade = "vinculo(s)",
+			Contar = () => _aprendizes.Count,
+			Zerar = () => { _aprendizes.Clear(); _ofertasDeAprendiz.Clear(); },
 		});
 
 		// ---------------------------------------------------------- herdeiros

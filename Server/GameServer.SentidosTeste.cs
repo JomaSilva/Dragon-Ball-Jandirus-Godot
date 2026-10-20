@@ -19,6 +19,9 @@ namespace Jandirus.Server;
 ///      o numero; nenhum byte sobrando. E a familia que a INJECAO tem que derrubar (um BP absoluto
 ///      escrito no ramo do Sense de `GameServer.Sentidos.cs` a deixa vermelha);
 ///   4. O REENVIO: a 1 Hz, so pra quem sente, e so quando a lista muda.
+///   5. (2026-10-18) O TETO DO SCOUTER E O KI DIVINO -- `GameServer.SentidosDivinoTeste.cs`;
+///   6. (2026-10-19) O ANDROIDE NAO TEM KI: os dois tipos do jogador e o NPC da saga do Cell, fora do Sense e do scouter --
+///      `GameServer.SentidosAndroideTeste.cs`.
 ///
 /// CORPOS FORJADOS, sem cliente, como as bancadas vizinhas (`ForjarComSkills`, `CorredorLivre`); cada um
 /// com a PROPRIA conta, porque "conhecido" e por assinatura e a forja de projetil da a mesma conta a todos.
@@ -68,6 +71,8 @@ public partial class GameServer
 			OReenvioSoNaMudanca();
 			LimparTudoDaBancada();
 			OScouterTemTetoEKiDivino();   // (2026-10-18) ver `GameServer.SentidosDivinoTeste.cs`
+			LimparTudoDaBancada();
+			OsAndroidesSemKi();   // (2026-10-19) ver `GameServer.SentidosAndroideTeste.cs`
 		}
 		catch (Exception e)
 		{

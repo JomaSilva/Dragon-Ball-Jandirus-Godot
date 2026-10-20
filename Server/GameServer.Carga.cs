@@ -50,6 +50,10 @@ public sealed partial class GameServer
 		// `dead` cru daqui, com o do `CargaDeKi.Passo`, deixava a tecla C do morto muda (2026-09-04).
 		if (pl.Ficha.KO || EhCadaver(pl)) return;
 
+		// (2026-10-19) O MUTANTE COM O KI DESCONTROLADO NAO REUNE NADA, e ouve por que -- o `Energy_Draw` do DM sai aqui. Ver
+		// `GameServer.Frost.RecusaACargaDoDescontrole`.
+		if (RecusaACargaDoDescontrole(pl)) return;
+
 		// REUNIR ENERGIA ACORDA QUEM RELAXA (regra de 2026-10-12): segurar C e o contrario de soltar o corpo. O
 		// relaxado volta a aparecer e a barra comeca do piso -- o estagio `Retomando` a sobe. Ver `AcordarPelaCarga`.
 		AcordarPelaCarga(pl);
@@ -115,6 +119,24 @@ public sealed partial class GameServer
 	internal bool CargaDoMortoCaiNoTiqueDeTeste;
 
 	/// <summary>
+	/// ============================ (2026-10-19) FORMA NAO DOMINADA NAO REGENERA SOZINHA ============================
+	/// O dono: *"enquanto usa formas nao masterizadas q tem consumo de ki, a regeneracao passiva de ki deveria ser
+	/// desativada ate masterizar a forma"*. As duas condicoes sao as dele, e cada uma pergunta ao funil que ja existe:
+	///   * CONSOME KI -- o dreno que o `TickDaForma` cobra DE VERDADE: o do catalogo vezes o racial
+	///     (`Racial.Efeito.Dreno`; a Unmatched Ferocity zera, a False Advantage corta pela metade). Forma que nao custa
+	///     nada nao tem dreno pra pagar, e travar o Ki dela o deixaria parado pra sempre;
+	///   * NAO DOMINADA -- o <see cref="Dominou"/>: 100% de maestria, e nas quatro formas de disciplina a proficiencia
+	///     REAL da skill. E o mesmo que da o nome, o cabelo e o anuncio de "forma DOMINADA".
+	/// Dominada, a forma volta ao que era antes: regenera inteira se parou de drenar (o SSJ1 aos 100%) e a 20% se ainda
+	/// drena (o SSJ2 e o SSJ3 aos 100%, `RegenDeKi.RegenEmFormaComDreno`). Vale pra qualquer corpo, NPC inclusive: e o
+	/// mesmo tique. A meditacao e a tecla C continuam enchendo -- ver o `RegenDeKi.Passo`. O defeito injetado
+	/// (<see cref="FormaNaoDominadaRegeneraDeTeste"/>) mora na bancada, `GameServer.RegenDaFormaTeste.cs`.
+	/// ==============================================================================================================
+	/// </summary>
+	private bool FormaSemRegenPassiva(ServerPlayer pl, double drenoDaForma) =>
+		drenoDaForma * pl.Racial.Efeito.Dreno > 0 && !Dominou(pl, pl.Forma.Atual) && !FormaNaoDominadaRegeneraDeTeste;
+
+	/// <summary>
 	/// O TIQUE. Roda pra todo mundo -- inclusive pra quem NAO esta carregando, porque o preco de
 	/// ter passado dos 100% continua sendo cobrado depois que a tecla e solta. Foi isso que fez a
 	/// funcao ter duas metades: uma so pra quem segura C, outra pra quem tem Ki demais.
@@ -145,14 +167,15 @@ public sealed partial class GameServer
 		// teto de MaxKi, e so depois a tecla C empurra dali pra cima.
 		//
 		// O DRENO DA FORMA entra como parametro porque quem conhece a escada e este arquivo, nao
-		// o Core: forma nao masterizada derruba a regeneracao a 20% pra que o dreno fique liquido
-		// negativo. Sem isso a regeneracao passa o dreno e o Super Saiyajin nunca cai.
+		// o Core: forma que drena derruba a regeneracao a 20% pra que o dreno fique liquido
+		// negativo -- e a que ainda nao foi dominada desliga a passiva inteira (ver
+		// `FormaSemRegenPassiva`). Sem isso a regeneracao passa o dreno e o Super Saiyajin nunca cai.
 		double drenoDaForma = pl.Forma.NaBase ? 0 : pl.Forma.DrenoPorSegundo();
 		// (2026-10-16) A LOUCURA DO CORRUPTED MAJIN NAO REGENERA -- o dono: *"desativa regen de ki passiva e faz o ki cair bem
 		// devagar"*, senao *"o ki nunca vai acabar e ele nunca vai sair da loucura se ninguem o vencer"*. Quem faz o Ki cair e o
 		// `TickDaInsana` (`GameServer.SagaDoMajin.cs`).
 		bool semRegenPelaLoucura = InsanoDaSaga(pl) && !LoucuraComRegenDeTeste;
-		if (!emCena && !semRegenPelaLoucura) RegenDeKi.Passo(f, dt, drenoDaForma);
+		if (!emCena && !semRegenPelaLoucura) RegenDeKi.Passo(f, dt, drenoDaForma, FormaSemRegenPassiva(pl, drenoDaForma));
 
 		// (2026-10-13) REUNINDO ENERGIA NESTE TIQUE? E o que segura o Ki acima de 100% -- ver `CargaDeKi.PrecoDoExcesso`.
 		bool reunindo = false;

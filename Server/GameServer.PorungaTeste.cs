@@ -262,6 +262,13 @@ public partial class GameServer
 					Checa("(montagem) passada a espera, o set ETERNO esta ACORDADO", SetAtivo(eterno),
 						  $"faltam {(eterno.AtivoEm - TempoDoMundo) / 3600.0:0.#} h");
 
+					// (2026-10-19) O TESTADOR VAI A NAMEK PRA INVOCAR: o dragao so se ergue no mundo do set (`InvocarODragao`, desde que a
+					// esfera entra em caverna e no Lookout -- ver `GameServer.EsferasNaMochila.cs`). Ele volta pra Terra antes do tiro da
+					// familia 4, que e onde ela sempre o deixou.
+					ZoneKey ondeEstava = pl.Zone;
+					Vec2 posEstava = pl.Pos;
+					MoveToZone(pl.Id, namek, PontoDeNascimento(namek));
+
 					// AS SETE DE NAMEK NA MAO (pra invocar) E UMA DA TERRA JUNTO (a montagem da familia 4:
 					// so com uma de cada set no MESMO corpo, no MESMO instante, "a esfera do mundo morto
 					// some" deixa de ficar verde num sistema que esvazia a mao de todo mundo).
@@ -291,6 +298,19 @@ public partial class GameServer
 					Checa("...e o mundo ouve o nome dele (o anuncio, e nao a intencao)",
 						  anunciou.Exists(a => a.Contains("PORUNGA", StringComparison.Ordinal)),
 						  string.Join(" | ", anunciou));
+
+					// (2026-10-19) A INVOCACAO TIRA AS SETE DA MAO (dono): elas ficaram no chao de Namek. De volta a Terra, elas voltam
+					// pra mao pela montagem de antes -- e a mao que a familia 4 mede (o "vira po" so e dito a quem a CARREGA).
+					MoveToZone(pl.Id, ondeEstava, posEstava);
+					foreach (Esfera e in _esferas.Where(x => x.Set == eterno.Id).ToList())
+					{
+						e.Portador = pl.Id;
+						e.PorZona(pl.Zone);
+						e.X = pl.Pos.X;
+						e.Y = pl.Pos.Y;
+					}
+					Checa($"(montagem) de volta a Terra, as {Esferas.Total} de Namek voltam pra mao, junto da da Terra",
+						  QuantasCarrega(pl.Id) == Esferas.Total + 1 && pl.Zone.Equals(ondeEstava), $"{QuantasCarrega(pl.Id)} em {pl.Zone.Name}");
 
 					// =====================================================================
 					// 4. A MORTE, PELO COMMIT DE PRODUCAO

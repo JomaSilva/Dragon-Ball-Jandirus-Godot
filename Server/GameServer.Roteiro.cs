@@ -106,6 +106,10 @@ public partial class GameServer
 				npc.SigAtributos = "";
 			}
 
+			// (2026-10-19) O CELL DO TORNEIO NAO TROCA DE FORMA POR DANO: no x1 ele cai nocauteado, e a volta Super Perfeita e a da morte -- o dono:
+			// *"se ele for derrotado por nocaute o jogo vai falar q ele foi morto na luta e volta super perfeito"*. Ver `GameServer.TorneioDoCell.cs`.
+			if (CellNoTorneio(npc)) continue;
+
 			double gatilho = papel.GatilhoAtual;
 			if (gatilho < 0) continue;                     // ultimo degrau: nada o encerra
 			if (PiorMembro(npc) > gatilho) continue;
@@ -155,6 +159,8 @@ public partial class GameServer
 	/// </summary>
 	private bool NegarMorteDoChefe(ServerPlayer npc)
 	{
+		// (2026-10-20) O SUPER PERFEITO, ANTES DE TUDO: o golpe que o mataria vira o Kamehameha que explode a Terra -- ver `GameServer.TorneioDoCell.cs`
+		if (NegarAMorteDoSuperPerfeito(npc)) return true;
 		if (ChefeMorreAntesDaHoraDeTeste || npc.Papel is not { EhChefe: true } papel || papel.GatilhoAtual < 0) return false;
 		if (ChefesQueMorremAntesDaHora.Contains(papel.Molde.Id)) return false;
 		AvancarEstagio(npc);

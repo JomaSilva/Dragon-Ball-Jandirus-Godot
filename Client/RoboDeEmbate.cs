@@ -179,13 +179,14 @@ public partial class RoboDeEmbate : Node
 		// nova, e a foto sairia no unico quadro em que a letra anterior ja sumiu e a nova ainda nao
 		// apareceu. Foi o que aconteceu na primeira tentativa.
 		if (_letras == 3) _fotoEm = 0.25;
+		// (2026-10-19) SO W, A, S OU D -- o pedido do dono (`LetrasDoEmbate`). Ate esse dia era o contrario: o
+		// WASD ficava de fora por ser o andar, e esta linha conferia isso.
 		if (_letras == 1)
-			Conferir(c >= 'A' && c <= 'Z' && "WASD".IndexOf(c) < 0,
-				$"a letra e uma LETRA e nao e de andar: '{c}'");
+			Conferir("WASD".IndexOf(c) >= 0, $"a letra e uma das quatro de andar (W, A, S, D): '{c}'");
 
 		// A PRIMEIRA VEZ EU ERRO DE PROPOSITO. E a unica maneira de provar que martelar o teclado
-		// nao vence o quick time event: se a letra errada nao custasse a vez, bastaria varrer o
-		// alfabeto que uma hora sai a certa.
+		// nao vence o quick time event: se a letra errada nao custasse a vez, bastaria varrer as
+		// quatro letras que uma hora sai a certa.
 		_erreiDeProposito = _letras == 1;
 		_espera = 0.08;
 	}
@@ -327,10 +328,11 @@ public partial class RoboDeEmbate : Node
 			_espera -= delta;
 			if (_espera <= 0 && _pedida != '\0')
 			{
-				// ERRA DE PROPOSITO NA PRIMEIRA: manda uma letra que garantidamente nao e a pedida.
+				// ERRA DE PROPOSITO NA PRIMEIRA: manda uma das OUTRAS letras de andar -- o erro que um
+				// jogador de verdade comete, ja que a tela nem manda letra de fora do WASD.
 				// Dali em diante a vez esta PERDIDA -- o servidor manda uma letra nova, e e nela que
 				// se responde. Reusar a letra velha seria responder a pergunta anterior.
-				char manda = _erreiDeProposito ? (_pedida == 'Z' ? 'Y' : 'Z') : _pedida;
+				char manda = _erreiDeProposito ? (_pedida == 'W' ? 'A' : 'W') : _pedida;
 				cli.SendClashTecla(manda);
 				_erreiDeProposito = false;
 				_pedida = '\0';

@@ -33,6 +33,8 @@ namespace Jandirus.Server;
 ///   R. RESETAR UMA SAGA (2026-10-18) -- o verb de admin lista as sagas pelas escolhas e reseta a do Freeza de Namek (o Freeza morto na forma
 ///      3): os chefes saem do mundo e ela recomeca do marco, com a contagem.
 ///   P. PULAR OS DIAS (2026-10-18) -- o verb de admin poe no mundo, na hora, o chefe que estava a caminho. Contra: `AgoraEsperaAViradaDeTeste`.
+///   N. NAMEK SALVA (2026-10-19) -- o Freeza caido quando o prazo vence nao ergue a Death Ball; morto nessa janela, a saga fecha vencida e o
+///      planeta fica. As familias estao em `GameServer.NamekSalvaTeste.cs`. Contra: `EsferaSobeNoChaoDeTeste`.
 ///   T. A TROPA DO FREEZA EM NAMEK (2026-10-18) -- o desembarque, a esfera do chao, o povo, quem carrega, o derrotado e a partida com o
 ///      chefe. As familias estao em `GameServer.TropaTeste.cs`, com os contra-exemplos de cada uma.
 ///
@@ -85,6 +87,7 @@ public sealed partial class GameServer
 			OMarcoBatido(pl);
 			AHoraDoChefe();
 			OChefeDeSagaMata();
+			NamekSalvaDoFreezaCaido();   // (2026-10-19) ver `GameServer.NamekSalvaTeste.cs`
 			ResetarUmaSaga(pl);
 			PularOsDiasDaSaga(pl);
 			ATropaDoFreeza(pl);

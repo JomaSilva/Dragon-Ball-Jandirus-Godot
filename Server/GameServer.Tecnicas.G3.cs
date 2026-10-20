@@ -1197,7 +1197,7 @@ public partial class GameServer
 		}
 		c.SincronizarVida();
 		if (autor != vitima) MarcarAgressao(vitima, autor);
-		ConsequenciaDoDano(vitima, autor, "com dano em area", porKi);
+		ConsequenciaDoDano(vitima, autor, "com dano em area", letal, porKi);
 	}
 
 	/// <summary>
@@ -1215,8 +1215,10 @@ public partial class GameServer
 	/// cai pra uma bomba sumiria calado.
 	/// </summary>
 	/// <param name="relato">O que sai no log quando mata: "com dano em area", "com dano direto (braco)".</param>
+	/// <param name="letal">(2026-10-19) o dano era LETAL -- so ele mata; o nao-letal que acha um nucleo ja zerado so derruba (ver
+	/// `MeleeResolver.AplicarNoMembro`). Obrigatorio de proposito: cada fonte diz o que e, e uma nova nao herda o lado errado calada.</param>
 	/// <param name="porKi">(2026-10-15) o dano era de ki -- ver `CombatState.QuandoONucleoCede`.</param>
-	private void ConsequenciaDoDano(ServerPlayer vitima, ServerPlayer autor, string relato, bool porKi = false)
+	private void ConsequenciaDoDano(ServerPlayer vitima, ServerPlayer autor, string relato, bool letal, bool porKi = false)
 	{
 		if (vitima.Combate is not { } c) return;
 		// O GOD'S TEMPER conta tambem o dano DIRETO de outro corpo (explosao em area, tecnica de corpo) -- ver
@@ -1224,7 +1226,9 @@ public partial class GameServer
 		if (autor != vitima) ContarGolpeNoTemper(vitima);
 		// (2026-10-15) O NUCLEO PERDIDO, PELA MESMA PERGUNTA do soco e do tiro (`CombatState.QuandoONucleoCede`): o corpo
 		// comum morre, a raca que refaz membro cai em coma, e o Majin se desfaz em pedacos -- menos no ki (`porKi`).
-		FimDoNucleo? fim = c.Corpo.DeveMorrer() ? c.QuandoONucleoCede(porKi) : null;
+		// (2026-10-19) E SO NO DANO LETAL, pela mesma regra do soco e do tiro (`MeleeResolver.AplicarNoMembro`): o nao-letal que
+		// encontra um nucleo que OUTRA coisa zerou nao mata -- cai no nocaute la embaixo.
+		FimDoNucleo? fim = (letal || NaoLetal.MataPeloEstadoDeTeste) && c.Corpo.DeveMorrer() ? c.QuandoONucleoCede(porKi) : null;
 		if (fim == FimDoNucleo.Morre && c.Morrer())
 		{
 			if (autor != vitima) AoPerderALuta(vitima, autor, morreu: true);

@@ -84,6 +84,14 @@ namespace Jandirus.Server;
 ///   * no SENSE, nos tres alcances, o ki divino em uso so e sentido por quem tambem tem ki divino (`AchoAEnergia`, `SenteKiDivino`).
 /// ===========================================================================================================
 ///
+/// ============================ O ANDROIDE NAO TEM KI (dono, 2026-10-19) ============================
+/// *"androides nem deveriam aparecer no sense ou scouter por serem androides (faça isso pra player androide tb, ambos os tipos de
+/// androide)"*. O jogador androide dos dois tipos (absorcao e energia infinita) e os androides NPC da saga do Cell (`AndroideSemKi`):
+///   * no SCAN ninguem deles entra -- DIVERGENCIA DECLARADA do `ui_tab_scan`, que nao testava raca (`HtmlUI.dm:407-414`);
+///   * no SENSE (e na telepatia e no Observe) o jogador androide ja ficava de fora pela raca, literal do DM (`HtmlUI.dm:369`); o NPC, que
+///     nasce "Human" pelo molde, era sentido -- e chefe, entao do planeta ao universo. Agora nao (`AchoAEnergiaG4`).
+/// ===================================================================================================
+///
 /// ============================ O SIGILO ============================
 /// No modo Sense o BP absoluto NUNCA vai no pacote: o campo sai como <see cref="SemLeitura"/> (NaN) e so
 /// a RAZAO viaja (`round((D.expressedBP/max(expressedBP,1))*100, 1)`, `HtmlUI.dm:374`) -- que e
@@ -265,6 +273,7 @@ public partial class GameServer
 					&& (NpcSemNomeNemLeituraDeTeste || DistanciaEmTiles(eu, o) > TilesDoScanDeNpc)) continue;
 				if (!TemEnergiaQueSeSente(o)) continue;   // o piso dos 5, SEM a barra: quem se segura fica; quem relaxa sai
 				if (KiDivinoEscondido(o)) continue;   // (2026-10-18) o scouter nunca detecta o ki divino -- ver o cabecalho
+				if (AndroideSemKi(o)) continue;   // (2026-10-19) nem o androide: nao ha ki nele pro vidro detectar -- ver o cabecalho
 				double lido = Math.Round(o.Ficha.expressedBP, MidpointRounding.AwayFromZero);
 				(int ox, int oy) = TileDe(o.Pos);
 				achados.Add((new Protocol.PresencaState

@@ -1610,11 +1610,29 @@ public static class Catalogo
 	/// (v0.3.0) O DEGRAU DIVINO **SEM** SUPER SAIYAJIN POR BAIXO -- o SSG e o SSG da linha Rose. E o MESMO corte da
 	/// <see cref="Folha"/> (a chama quente), e nao uma lista de ids: um degrau divino novo abaixo do Blue ja nasce aqui.
 	///
-	/// QUEM PERGUNTA E O KAIO-KEN (`Jandirus.Core.Skills.Kaioken.CabeNaForma`): o dono, *"o god n pode usar kaioken
+	/// QUEM PERGUNTA E O KAIO-KEN (`Jandirus.Core.Skills.Kaioken.VetoDaForma`): o dono, *"o god n pode usar kaioken
 	/// junto"*.
 	/// </summary>
 	public static bool EhDeusSemSuperSaiyajin(FormaDef? d) =>
 		d != null && (d.Linha is LinhaDeForma.GodKi or LinhaDeForma.GodKiRose) && d.Ordem < OrdemDoKiSobreOSuperSaiyajin;
+
+	/// <summary>
+	/// (v0.4.2) A FORMA E UM SUPER SAIYAJIN? A escada Saiyajin e a do futuro (menos a base, que mora na linha sem ser
+	/// transformacao), as duas lendarias e os degraus divinos COM Super Saiyajin por baixo -- Blue, Blue Evolution, Rose e Rose 2,
+	/// cortados pela MESMA <see cref="OrdemDoKiSobreOSuperSaiyajin"/> da <see cref="Folha"/>. E o `ssj || lssj` do DM lido pela
+	/// LINHA, e nao por uma lista de ids: um degrau novo numa destas linhas ja nasce aqui. O SSG fica de fora porque e o ki divino
+	/// sobre a BASE (`ssj == 0` la) -- esse e o <see cref="EhDeusSemSuperSaiyajin"/>.
+	///
+	/// QUEM PERGUNTA E O KAIO-KEN (`Jandirus.Core.Skills.Kaioken.VetoDaForma`): o dono, *"faca com q n de pra usar kaioken nas
+	/// formas de super saiyajin, somente no ssj blue pra quem e saiyajin de classe baixa e media"*.
+	/// </summary>
+	public static bool EhSuperSaiyajin(FormaDef? d) => d != null && d.Linha switch
+	{
+		LinhaDeForma.Saiyajin or LinhaDeForma.Futuro => d.Id != IdBase,
+		LinhaDeForma.Legendary or LinhaDeForma.LegendaryPrimal => true,
+		LinhaDeForma.GodKi or LinhaDeForma.GodKiRose => d.Ordem >= OrdemDoKiSobreOSuperSaiyajin,
+		_ => false,
+	};
 
 	/// <summary>
 	/// ============================ ESTA FORMA ACENDE A CHAMA NA COR DO **JOGADOR**? ============================
@@ -2183,11 +2201,19 @@ public static class Catalogo
 		// prazo dela.
 		if (semRedeas && FuriaLendaria.EhDescontrolavel(d)) return BrancoSemIris;
 
-		// A UNICA EXCECAO POR ID DESTE ARQUIVO INTEIRO, e ela foi nomeada pelo dono. Vem ANTES do
+		// A PRIMEIRA DAS DUAS EXCECOES POR ID DESTE ARQUIVO, e ela foi nomeada pelo dono. Vem ANTES do
 		// `switch` porque a linha dela devolve o verde da escada: escrita como um `when` la dentro ela
 		// viraria mais um corte por campo, e nao ha campo que a explique -- o Wrathful e a forma que
 		// nao muda nada no corpo, e "nada" nao e um valor que se derive.
 		if (d.Id == IdWrathful) return AmareloDoOlhoDoWrathful;
+
+		// (2026-10-19) A SEGUNDA, TAMBEM NOMEADA PELO DONO: *"super saiyajin grade 3 ficar com as pupilas
+		// brancas (igual no lssj descontrolado)"*. E o MESMO `fcfdfd` da furia (a iris pintada da cor da
+		// esclerotica encostada nela -- ver o cabecalho), so que SEMPRE: o Grade 3 nao foge do controle,
+		// entao nao ha posse pra perguntar, e o branco e a cor da forma, como o amarelo e a do Wrathful.
+		// Por id e nao por campo pelo mesmo motivo da linha de cima: nada separa o Grade 3 do Grade 2
+		// (mesma linha, mesmo cabelo `USSj`, mesmo corpo musculoso), e o dono nomeou so o 3.
+		if (d.Id == IdGrade3 && !Grade3DeIrisVerdeDeTeste) return BrancoSemIris;
 
 		return d.Linha switch
 		{
@@ -2238,8 +2264,8 @@ public static class Catalogo
 
 			// SO O BEAST DA LINHA DO MISTICO, no MESMO corte que o `ParDoContorno` e a `RaivaExigida`
 			// ja usam pra isolar ele: dos dois degraus, so a Fera pede ki divino MADURO
-			// (`GodkiRoyalePct`). Nao ha `if` por id nesta funcao alem do Wrathful, que o dono nomeou,
-			// e este nao seria o segundo.
+			// (`GodkiRoyalePct`). Nao ha `if` por id nesta funcao alem do Wrathful e do Grade 3, que o
+			// dono nomeou, e este nao seria o terceiro.
 			//
 			// PEDIDO LITERAL DO DONO -- *"o olho do beast era pra ser vermelho"* -- e ele e o unico
 			// canal da Fera que nao deriva de nada: nenhuma cor que ela ja tem e vermelha (cabelo
@@ -3130,8 +3156,22 @@ public static class Catalogo
 	/// cima ele deixava o de baixo aparecendo em volta. O DM troca o `icon` (`MajinSaga.dm:536`): o corpo de antes some, e o que fica por
 	/// cima (roupa, olhos) fica, como os `overlays`. Os outros corpos de forma (a pelagem do SSJ4, o musculoso, o macaco, o bio) cobrem o
 	/// de baixo inteiro, ou ja o apagam pelo tamanho (`_criatura`), e nao precisam disto.
+	///
+	/// (2026-10-19) E O DO FROST DEMON TAMBEM, nos sete degraus. O dono, com um print: *"a segunda forma fica por cima da forma base no frost
+	/// demon"* e *"descobri q sao todas as formas de frost q estao com esse bug"*. Cada forma do Frost e um CORPO INTEIRO -- o que o jogador
+	/// escolheu pra aquele degrau -- e o DM troca o `icon` do mob (`icer_poll_icon()`, `IcerTransform.dm:130-139`): o corpo de antes some.
+	/// Aqui o corpo da forma e uma camada por cima do corpo da base, e os dois nao tem o mesmo contorno: o "Changeling Full Power" e mais
+	/// estreito que o "Changeling Frieza 2", e os chifres, o rabo e os pontos amarelos da base apareciam em volta da 1a Evolucao (o print). No
+	/// repouso a camada e o mesmo arquivo do corpo (ver `CorpoDeForma.FrostEscolhido`), entao esconder o de baixo ali nao muda o desenho.
 	/// </summary>
-	public static bool CorpoDaFormaEscondeOBase(CorpoDeForma c) => c == CorpoDeForma.MajinPuro;
+	public static bool CorpoDaFormaEscondeOBase(CorpoDeForma c) =>
+		c == CorpoDeForma.MajinPuro || (c == CorpoDeForma.FrostEscolhido && !FrostPorCimaDaBaseDeTeste);
+
+	/// <summary>
+	/// DEFEITO INJETADO (robo `--diagcorpofrost`): o corpo da forma do Frost Demon volta a ser desenhado POR CIMA do corpo da base, sem
+	/// esconde-lo -- o print do dono. Lido pelo <see cref="CorpoDaFormaEscondeOBase"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool FrostPorCimaDaBaseDeTeste;
 	// ==================================================================================
 	// OS `initial()` DA CONTA -- e NAO o limiar de ninguem (ver LimiaresPessoais)
 	// ==================================================================================
@@ -3379,7 +3419,7 @@ public static class Catalogo
 	public const string IdBase = "base";
 
 	/// <summary>
-	/// O WRATHFUL. Ele e o unico degrau do jogo que aparece por ID em uma derivacao
+	/// O WRATHFUL. Ele e um dos dois degraus do jogo que aparecem por ID em uma derivacao
 	/// (<see cref="CorDoOlho"/>), e por isso o id tem nome: um `d.Id == "wrathful"` solto no meio de
 	/// um `switch` e uma string que ninguem acha quando o id mudar, e o compilador nao ajuda.
 	///
@@ -3387,6 +3427,19 @@ public static class Catalogo
 	/// AMARELO"*. Ela nao sai de campo nenhum de proposito: ver a <see cref="CorDoOlho"/>.
 	/// </summary>
 	public const string IdWrathful = "wrathful";
+
+	/// <summary>
+	/// (2026-10-19) O SUPER SAIYAJIN GRADE 3 -- o outro degrau que a <see cref="CorDoOlho"/> pergunta por id
+	/// (*"super saiyajin grade 3 ficar com as pupilas brancas"*, o dono). Nome pelo mesmo motivo do
+	/// <see cref="IdWrathful"/>.
+	/// </summary>
+	public const string IdGrade3 = "grade3";
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `formas` do AssetPipeline e robo `--diagpupilagrade3`): o Grade 3 volta ao verde da escada, como era
+	/// antes do pedido do dono. Lido pela <see cref="CorDoOlho(FormaDef?, bool)"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool Grade3DeIrisVerdeDeTeste;
 
 	/// <summary>
 	/// O MISTICO. Constante porque ele e o unico id que o SERVIDOR precisa dizer em voz alta: e
@@ -3406,6 +3459,12 @@ public static class Catalogo
 	/// apresentacao -- ver <see cref="DominouOSuperSaiyajin"/>, que e quem usa isto.
 	/// </summary>
 	public const string IdSsj1 = "ssj1";
+
+	/// <summary>
+	/// (v0.4.2) O BLUE. Constante porque ele e o unico Super Saiyajin em que o dono deixa o Kaio-ken (*"somente no ssj blue"*) --
+	/// ver `Jandirus.Core.Skills.Kaioken.VetoDaForma`, que e quem usa isto.
+	/// </summary>
+	public const string IdBlue = "blue";
 
 	/// <summary>
 	/// ============================ O SSJ1 A 100% TEM NOME E CABELO PROPRIOS, E NAO E OUTRA FORMA ============================
@@ -3882,8 +3941,9 @@ public static class Catalogo
 	/// aparece. Em 100% ele fica a 168 e o olho vira uma mancha verde-clara sobre branco.
 	/// ==============================================================================================
 	///
-	/// COBRE OS CINCO DEGRAUS SEM CORPO PROPRIO (`ssj1`, `grade2`, `grade3`, `ssj2`, `ssj3`) mais o
-	/// `future_ssj`. Os tres SSJ4 saem por <see cref="AmareloDoOlhoDoSsj4"/>.
+	/// COBRE OS QUATRO DEGRAUS SEM CORPO PROPRIO (`ssj1`, `grade2`, `ssj2`, `ssj3`) mais o
+	/// `future_ssj`. Os tres SSJ4 saem por <see cref="AmareloDoOlhoDoSsj4"/>, e o `grade3` pelo
+	/// <see cref="BrancoSemIris"/> (pedido do dono de 2026-10-19).
 	/// </summary>
 	private const string VerdeDoOlhoSuperSaiyajin = "40a060";
 
@@ -3923,7 +3983,7 @@ public static class Catalogo
 	/// exatamente a forma que se queria sumir -- e ninguem olhando de longe saberia dizer por que o
 	/// olho do Legendary "parece ter alguma coisa".
 	///
-	/// COBRE AS DUAS LINHAS LENDARIAS INTEIRAS, menos o `wrathful`.
+	/// COBRE AS DUAS LINHAS LENDARIAS INTEIRAS enquanto a furia dirige, e o Super Saiyajin Grade 3 SEMPRE.
 	/// ==================================================================================
 	/// </summary>
 	private const string BrancoSemIris = "fcfdfd";
@@ -4103,7 +4163,7 @@ public static class Catalogo
 				Desc = "Musculatura inchada: soca um pouco mais forte e fica um pouco mais lento. "
 					 + "Nao se compra: abre com 50% de maestria no SSJ1." },
 
-		new() { Id = "grade3", IdRede = 16, Linha = LinhaDeForma.Saiyajin, Ordem = 16,
+		new() { Id = IdGrade3, IdRede = 16, Linha = LinhaDeForma.Saiyajin, Ordem = 16,
 				Nome = "Super Saiyajin Grade 3", NumeroDm = 1.5, Intensidade = 2,
 				Marco = Stats.Milestones.SsjGrau3,   // idem: o topo dos graus vale o que o USSJ valia
 				Mult = [Ssj1Base * Grade3Fator], MultDiluido = [Ssj1BaseDiluido * Grade3Fator],
@@ -4270,8 +4330,8 @@ public static class Catalogo
 				//   * o DM -- `lssjbuff.dm:84-89`, o caso `if(1)` do `switch(container.lssj)`, e o UNICO
 				//     dos quatro que nao tem linha de `container.icon`. O inchaco comeca no `if(2)`;
 				//   * o proprio dono, no acerto dos olhos: o Wrathful e *"a forma que fica com o corpo e
-				//     o cabelo da base"* -- ver a `CorDoOlho`, onde ele e a unica excecao por id do
-				//     arquivo inteiro;
+				//     o cabelo da base"* -- ver a `CorDoOlho`, onde ele e uma das duas excecoes por id
+				//     do arquivo inteiro;
 				//   * a `Desc` desta entrada, que ja dizia "a furia SEM FORMA", contra "o corpo incha"
 				//     do C-Type e "o corpo mal cabe em si" do Legendary.
 				//

@@ -145,7 +145,11 @@ public static class PintorDeKi
 	/// O MATERIAL DE UM RAIO desta arte, nesta escala, com a cor de ki de quem atirou. Um por tiro: os
 	/// uniforms do instante (comprimento, tempo, solto) sao de cada um.
 	/// </summary>
-	public static ShaderMaterial? MaterialDeFeixe(ArteDeKi arte, float escala, Color cor)
+	/// <param name="tons">
+	/// (2026-10-19) TONS NO LUGAR DOS DA ARTE, sem tinta somada -- o raio do Shattering the Limit (`ArteDeKiNoCliente.TonsDoLimite`).
+	/// Nulo = os da arte com a cor do ki somada, como sempre.
+	/// </param>
+	public static ShaderMaterial? MaterialDeFeixe(ArteDeKi arte, float escala, Color cor, Rampa? tons = null)
 	{
 		if (ResourceLoader.Load<Shader>(ShaderDoFeixe) is not { } sh) return null;
 
@@ -163,7 +167,7 @@ public static class PintorDeKi
 		mat.SetShaderParameter("pulsar", e.Pulsar);
 		mat.SetShaderParameter("brancura", e.Brancura);
 		mat.SetShaderParameter("semente", Semente());
-		TingirFeixe(mat, e.Tons, cor);
+		TingirFeixe(mat, tons ?? e.Tons, tons != null ? Colors.Black : cor);
 		return mat;
 	}
 

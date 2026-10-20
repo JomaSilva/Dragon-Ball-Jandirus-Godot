@@ -24,9 +24,13 @@ namespace Jandirus.Client;
 ///   0. (dono, 2026-10-12) A MESA ABRE POR PARTES: o personagem novo, que nao sabe soltar ki, ve o botao de
 ///      inventar APAGADO com o motivo escrito, e o `ca_criar` mandado na mao e recusado pelo servidor. So entao
 ///      o palco lhe da as tres genericas e o resto do roteiro segue.
+///   4. (dono, 2026-10-19) QUEM NUNCA CANSA NAO VENDE FOLEGO: no fim do roteiro o corpo vira MAJIN; o fato do vigor
+///      infinito chega pelo tique dos fatos, a caixinha do folego SOME (a frase do porque no lugar dela, e a nota do
+///      orcamento sem o folego na lista), e o `ca_comprar StaminaLigar` mandado na mao e recusado pelo servidor --
+///      com o defeito injetado (`TecnicaCustomizada.FolegoSemPortaoDeTeste`) a caixinha volta e a regua reprova.
 ///
-/// As tres fotos: `mesa-0-fechada.png` (o personagem novo, com o botao de inventar apagado) e a mesa aberta nos
-/// dois tipos (`mesa-1-raio.png`, `mesa-2-bola.png`).
+/// As quatro fotos: `mesa-0-fechada.png` (o personagem novo, com o botao de inventar apagado), a mesa aberta nos
+/// dois tipos (`mesa-1-raio.png`, `mesa-2-bola.png`) e a do Majin rolada ate o folego (`mesa-3-sem-folego.png`).
 /// ==============================================================================
 ///
 /// COMO RODAR -- um processo so, com `--host` (a cor guardada e lida do servidor) e JANELA (as fotos):
@@ -60,6 +64,15 @@ public partial class RoboDaMesaDeKi : Node
 	/// </summary>
 	private int _fasePalco;
 
+	/// <summary>Onde o passo 10 esta: 0 = esperando o fato do vigor infinito, 1 = a coluna se medindo, 2 = rolada (a foto).</summary>
+	private int _faseDoFolego;
+
+	/// <summary>
+	/// O pedaco da nota do orcamento intacto que lista o folego entre as desvantagens. Nao e so "gastar fôlego": a frase de quem
+	/// nunca cansa (`TecnicaCustomizada.SemFolegoNaTela`) tambem diz isso.
+	/// </summary>
+	private const string ListaComOFolego = "tiro mais lento, gastar fôlego";
+
 	private void Conferir(bool ok, string oque)
 	{
 		_passos.Add((ok ? "  ok   " : "  FALHA") + "  " + oque);
@@ -69,7 +82,11 @@ public partial class RoboDaMesaDeKi : Node
 	private void Nota(string oque) => _passos.Add("  --     " + oque);
 
 	public override void _Ready() { if (C is { } cli) cli.Falou += AoOuvir; }
-	public override void _ExitTree() { if (C is { } cli) cli.Falou -= AoOuvir; }
+	public override void _ExitTree()
+	{
+		if (C is { } cli) cli.Falou -= AoOuvir;
+		TecnicaCustomizada.FolegoSemPortaoDeTeste = false;   // o defeito do passo 10 nunca sobrevive ao robo
+	}
 
 	private void AoOuvir(Protocol.Fala canal, string autor, string texto)
 	{
@@ -103,7 +120,11 @@ public partial class RoboDaMesaDeKi : Node
 			case 6: ACorAplicada(tela, srv, cli, mundo); break;
 			case 7: ACorRecusada(tela, srv, cli); break;
 			case 8: OSorteio(tela, srv, cli); break;
-			case 9: ODescarte(tela, cli); break;
+			case 9: OFolegoDeQuemCansa(tela, srv, cli); break;
+			case 10: OFolegoDeQuemNaoCansa(tela, cli); break;
+			case 11: OPedidoDeFolego(cli); break;
+			case 12: ARecusaDoFolego(tela, srv, cli); break;
+			case 13: ODescarte(tela, cli); break;
 			default: Fechar(); break;
 		}
 	}
@@ -317,12 +338,108 @@ public partial class RoboDaMesaDeKi : Node
 		Jandirus.Core.Appearance.Rgb? s = srv.CorDoKiDeFoto(cli.LocalId);
 		Conferir(s != null && !(s.Value.R == 200 && s.Value.G == 40 && s.Value.B == 40),
 				 $"'Sortear' deu outra cor no servidor ({s?.R},{s?.G},{s?.B}) -- o rand(0,255) da criacao");
-		Conferir(tela.ClicarBotao("Descartar"), "o botao 'Descartar' existe e foi apertado");
 		Virar(9);
 	}
 
 	// =====================================================================
-	// 9) O DESCARTE
+	// 9) O FOLEGO DE QUEM CANSA (o controle) -- e o corpo vira Majin
+	// =====================================================================
+	private void OFolegoDeQuemCansa(TelaDeTecnicas tela, Jandirus.Server.GameServer srv, GameClient cli)
+	{
+		if (_t < 0.6) return;
+
+		Conferir(!TelaDeTecnicas.VigorInfinito() && tela.TemBotao(TelaDeTecnicas.RotuloDoFolego)
+				 && !tela.TemTexto(TecnicaCustomizada.SemFolegoNaTela),
+				 "(controle) o HUMANO cansa: a caixinha do folego esta na mesa, sem a frase de quem nunca cansa");
+		Conferir(cli.Mesa is { Gasto: 0 } && tela.TemTexto(ListaComOFolego),
+				 "(controle) ...e a nota do orcamento intacto lista o folego entre as desvantagens");
+		Conferir(srv.MajinNaMesaDeBancada(cli.LocalId, majin: true), "(palco) o servidor faz do corpo um MAJIN, de vigor infinito");
+		Virar(10);
+	}
+
+	// =====================================================================
+	// 10) O FOLEGO DE QUEM NUNCA CANSA (dono, 2026-10-19) + O DEFEITO INJETADO
+	// =====================================================================
+	/// <summary>
+	/// Tres tempos: o fato chega e a tela redesenha; a coluna (ja medida) rola ate o folego; a foto, a regua e o contra-exemplo.
+	/// O fato vem pelo tique dos fatos, cinco por segundo: espera ate 4 s, e se nao chegar e a primeira afirmacao que reprova.
+	/// </summary>
+	private void OFolegoDeQuemNaoCansa(TelaDeTecnicas tela, GameClient cli)
+	{
+		if (_faseDoFolego == 0)
+		{
+			if (!TelaDeTecnicas.VigorInfinito() && _t < 4) return;
+			Conferir(TelaDeTecnicas.VigorInfinito(), "**O FATO DO VIGOR INFINITO CHEGOU** pelo tique dos fatos (`Fatos.VigorInfinito`)");
+			tela.ForcarRedesenho();
+			_faseDoFolego = 1;
+			_t = 0;
+			return;
+		}
+		if (_faseDoFolego == 1)
+		{
+			if (_t < 0.4) return;
+			tela.RolarAteOFim();
+			_faseDoFolego = 2;
+			_t = 0;
+			return;
+		}
+		if (_t < 0.4) return;
+
+		bool SemACaixa() => !tela.TemBotao(TelaDeTecnicas.RotuloDoFolego) && tela.TemTexto(TecnicaCustomizada.SemFolegoNaTela);
+		Conferir(SemACaixa(), "**A CAIXINHA DO FOLEGO SOME** na mesa do Majin, e no lugar dela vem a frase do porque");
+		Conferir(cli.Mesa is { Gasto: 0 } && !tela.TemTexto(ListaComOFolego), "**A NOTA DO ORCAMENTO NAO PROMETE O FOLEGO** a quem nunca cansa");
+		Fotografar("user://mesa-3-sem-folego.png", "a mesa do MAJIN rolada ate o folego: sem a caixinha, com o motivo");
+
+		// O DEFEITO INJETADO: a mesa volta a vender folego a todos. A regua tem que ficar VERMELHA.
+		TecnicaCustomizada.FolegoSemPortaoDeTeste = true;
+		try
+		{
+			tela.ForcarRedesenho();
+			Conferir(!SemACaixa() && tela.TemBotao(TelaDeTecnicas.RotuloDoFolego),
+					 "(defeito injetado: a mesa vende folego a quem nunca cansa) a caixinha volta pro Majin -- a mesma regua REPROVA");
+		}
+		finally
+		{
+			TecnicaCustomizada.FolegoSemPortaoDeTeste = false;
+			tela.ForcarRedesenho();
+		}
+		Conferir(SemACaixa(), "**SEM O DEFEITO A CAIXINHA SOME DE NOVO** (controle do contra-exemplo)");
+
+		// DOIS PONTOS GASTOS: o folego so rende, e com o orcamento intacto o piso o recusaria por OUTRO motivo
+		cli.SendVerbo("ca_comprar", nameof(Compra.DanoMais));
+		cli.SendVerbo("ca_comprar", nameof(Compra.DanoMais));
+		Virar(11);
+	}
+
+	// =====================================================================
+	// 11) O FOLEGO PEDIDO PELO FIO -- o que a tela nao oferece mais, e um cliente mexido mandaria
+	// =====================================================================
+	private void OPedidoDeFolego(GameClient cli)
+	{
+		if (_t < 1.0) return;
+
+		Conferir(cli.Mesa is { Gasto: 2, UsaStamina: false }, "(palco) dois pontos gastos em potencia: o folego teria o que devolver");
+		_avisos.Clear();
+		cli.SendVerbo("ca_comprar", nameof(Compra.StaminaLigar));
+		Virar(12);
+	}
+
+	// =====================================================================
+	// 12) A RECUSA DO SERVIDOR
+	// =====================================================================
+	private void ARecusaDoFolego(TelaDeTecnicas tela, Jandirus.Server.GameServer srv, GameClient cli)
+	{
+		if (_t < 1.0) return;
+
+		Conferir(cli.Mesa is { UsaStamina: false, Gasto: 2 } && Ouviu(TecnicaCustomizada.SemFolegoPraVender),
+				 "**O FOLEGO PEDIDO PELO FIO E RECUSADO** pelo servidor, com o motivo, e os 2 pontos continuam gastos");
+		Conferir(srv.MajinNaMesaDeBancada(cli.LocalId, majin: false), "(palco) o corpo volta a ser Humano");
+		Conferir(tela.ClicarBotao("Descartar"), "o botao 'Descartar' existe e foi apertado");
+		Virar(13);
+	}
+
+	// =====================================================================
+	// 13) O DESCARTE
 	// =====================================================================
 	private void ODescarte(TelaDeTecnicas tela, GameClient cli)
 	{

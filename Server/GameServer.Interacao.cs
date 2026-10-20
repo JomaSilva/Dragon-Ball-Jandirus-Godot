@@ -64,6 +64,9 @@ public sealed partial class GameServer
 			// O SR. KAIOH E O KORIN (v0.3.0, `GameServer.NpcsDeConversa.cs`): a conversa do DM, pelo menu E.
 			case "kaioh_falar": SrKaiohFalar(pl); return true;
 			case "korin_falar": KorinFalar(pl); return true;
+			// (2026-10-19) O GRANDE PATRIARCA DE NAMEK (`GameServer.Patriarca.cs`): falar com ele desperta o potencial. Corpo e nao obra,
+			// como o Bills e o Whis -- o alcance e o estado dele sao conferidos la dentro.
+			case Jandirus.Core.Npc.Patriarca.VerboFalar: FalarComOPatriarca(pl); return true;
 
 			// OS VERBOS DE TECNOLOGIA JA EXISTIAM -- o menu so virou uma segunda porta pra eles. Por
 			// isso o reenvio pro canal de sempre em vez de uma copia da logica aqui: duas copias
@@ -258,6 +261,8 @@ public sealed partial class GameServer
 		{
 			if (CaidoPelaMorte(pl) || pl.Combate is not { } c) continue;
 			if (c.EmCombate > 0 || pl.Ficha.HP >= 99.99) continue;
+			// (2026-10-19) AO LEME A TORRE NAO ALCANCA: o casco isola quem pilota, do que fere e do que cura -- ver `GameServer.Leme.cs`.
+			if (!LemeNoCampoBioDeTeste && CascoIsola(pl)) continue;
 
 			double cura = 0;
 			foreach (Obra o in _noChao)

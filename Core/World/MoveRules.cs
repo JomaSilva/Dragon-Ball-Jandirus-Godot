@@ -40,6 +40,20 @@ public static class MoveRules
 	public const float MinCorrectionPx = 6f;   // erro abaixo disto nao vale corrigir (evita briga cliente-servidor)
 
 	/// <summary>
+	/// O MAIOR PEDACO DE TEMPO QUE O CLIENTE ANDA NUM QUADRO SO. Abaixo do `MaxDeltaSeconds` (0,25 s) de proposito.
+	///
+	/// O orcamento do servidor guarda no maximo `PassosDeFolga` tiques de 1/30 s com a folga `SpeedTolerance` --
+	/// 0,135 s de passo, mais os `MinCorrectionPx` (ver o `ValidateStep` com orcamento). E um engasgo no cliente chega
+	/// ao `_Process` como um quadro de ate ~0,14 s: MEDIDO em 2026-10-20 (`--diagmenuleve`, engasgos de 0,3 s e de 1,5 s
+	/// deram 0,137 a 0,143 s) -- com a fisica padrao do projeto (60 Hz, 8 passos por quadro) o Godot nao entrega mais
+	/// que isso num quadro so. Esse passo passa do orcamento de quem corre a mais de ~1.200 px/s (o corpo treinado
+	/// chega a 1.760): o servidor recusava e puxava o corpo de volta (pela parede, ate o conserto do `ValidateStep`).
+	/// Com o teto em 0,1 s o quadro longo anda MENOS (o corpo perde um pedaco do passo naquele quadro) e o servidor
+	/// aceita o que chegou em qualquer velocidade. Acima de 10 quadros por segundo o teto nem encosta.
+	/// </summary>
+	public const float TetoDoQuadroDoCliente = 0.1f;
+
+	/// <summary>
 	/// A CAIXA DOS PES. O personagem tem 32px de altura mas so a base dele ocupa chao -- a
 	/// cabeca passa por cima do muro no desenho, como no BYOND. O centro do sprite fica no
 	/// meio do corpo, entao a caixa desce <see cref="FeetOffsetY"/> pra encostar no chao.
@@ -610,7 +624,28 @@ public static class MoveRules
 		ZoneCollision? mapa, ref float orcamentoPx, out Vec2 corrected, bool correndo = false,
 		ModoDeTravessia modo = ModoDeTravessia.APe)
 	{
-		if (!ValidateStep(from, claimed, dtSeconds, speedStat, ref orcamentoPx, out corrected, correndo)) return false;
+		if (!ValidateStep(from, claimed, dtSeconds, speedStat, ref orcamentoPx, out corrected, correndo))
+		{
+			// ============================ O PASSO PUXADO TAMBEM NAO ATRAVESSA PAREDE ============================
+			// O dono (2026-10-19): *"esses lags causam problemas de sync com o server as vezes, fazendo personagem
+			// atravessar parede"*. Era aqui. Recusado pela VELOCIDADE, o passo nao voltava pra `from`: ele era
+			// PUXADO ate o limite do orcamento, na direcao pedida -- e esse ponto saia daqui sem passar pela
+			// pergunta da parede logo abaixo, e o servidor o gravava (`GameServer.AplicarInput`, `pl.Pos = ok`).
+			// Um engasgo no cliente (o menu remontando) e o caminho: os pacotes param e depois chegam AMONTOADOS, cada
+			// um com quase nenhum tempo de orcamento, e o passo de um corpo rapido ja passa do orcamento num quadro so
+			// (ver `TetoDoQuadroDoCliente`). O servidor recusava pela velocidade e arrastava o corpo ate 0,135 s de
+			// corrida na direcao pedida -- pra dentro do muro e, com o `Escapar` do tique seguinte, pro outro lado.
+			//
+			// A pergunta e a MESMA do passo aceito (o `PathOccupied`, que o cliente tambem usa): o puxao que cruza
+			// parede fica onde estava. O puxao em campo aberto continua andando o orcamento, como antes -- devolver
+			// `from` em todo passo rapido seria um tranco pra tras a cada pacote atrasado, em jogo honesto. E QUEM JA
+			// ESTA PRESO (o corpo dentro do muro, empurrado) fica de fora: o caminho dele pra fora tambem passa por
+			// parede, e prende-lo ali por um pacote rapido trocaria um defeito por outro -- ele segue o de sempre.
+			// =====================================================================================================
+			if (mapa != null && !PassoRapidoAtravessaParedeDeTeste && !Occupied(mapa, from, modo)
+				&& PathOccupied(mapa, from, corrected, modo)) corrected = from;
+			return false;
+		}
 		if (mapa == null) return true;
 
 		// ============================ JA ESTAVA PRESO: A MESMA REGRA DO `Advance`, E TEM QUE SER ============================
@@ -668,6 +703,13 @@ public static class MoveRules
 		}
 		return true;
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--passorapidoteste`): o passo recusado pela VELOCIDADE volta a sair puxado sem
+	/// perguntar pela parede -- o jogo de antes de 2026-10-19, em que um quadro longo no cliente levava o corpo pra
+	/// dentro do muro. Lido pela propria linha do conserto, no comeco do `ValidateStep` com mapa. Falso em jogo, sempre.
+	/// </summary>
+	public static bool PassoRapidoAtravessaParedeDeTeste;
 
 	/// <summary>
 	/// Quantos passos de folga o orcamento acumula, no maximo.

@@ -486,7 +486,7 @@ public partial class MenuDeInteracao : CanvasLayer
 
 	public override void _UnhandledInput(InputEvent evento)
 	{
-		// O "E" E UMA DAS LETRAS QUE O EMBATE SORTEIA -- ver `Foco.AtalhosMudos`.
+		// NO MEIO DE UM EMBATE O "E" NAO ABRE NADA (ate 2026-10-19 ele era uma das letras sorteadas) -- ver `Foco.AtalhosMudos`.
 		if (Foco.AtalhosMudos) return;
 		if (evento is not InputEventKey { Pressed: true, Echo: false } k) return;
 

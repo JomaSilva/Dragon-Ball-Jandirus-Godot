@@ -11,11 +11,16 @@ namespace Jandirus.Client;
 ///
 /// Com janela e com `--host`, nascendo Humano no campo aberto da Terra:
 ///   1. uma fila de figurantes, um por raca, cada um com o corpo de repouso que o catalogo da (o primeiro da lista: o retrato da raca) -- o
-///      Humano no comeco, de referencia -- foto `racas-1-corpos.png`;
+///      Humano no comeco, de referencia -- foto `racas-1-corpos.png`; e (2026-10-19) o Saibaman SEM os olhos de gente por cima dos dele (*"o
+///      overlay de olho no saibaman pode tirar, pq ele fica bugado"*), com o Humano de referencia vestindo os seus;
+///   1c. CONTRA-EXEMPLO (`VisualCatalog.SaibamanComOlhosDeGenteDeTeste`): um Saibaman novo com os olhos de gente, o jogo de antes -- foto
+///      `racas-1c-defeito-olhos.png`;
 ///   2. CONTRA-EXEMPLO (`VisualCatalog.SemOsCorposDasRacasNovasDeTeste`): a mesma fila com o catalogo de antes, todos humanos palidos -- foto
 ///      `racas-2-defeito.png`;
-///   3. a CRIACAO do Saibaman, na etapa da aparencia, sem o "None" do DM no texto -- foto `racas-3-criacao-saibaman.png`; e o contra-exemplo
-///      (`CreationScreen.NoneNaListaDeTeste`, "Linhagens possíveis: None.") -- foto `racas-3b-criacao-defeito.png`;
+///   3. a CRIACAO do Saibaman, na etapa da aparencia, sem o "None" do DM no texto e (2026-10-19) sem os olhos de gente na previa nem o
+///      "Colorir os olhos" -- foto `racas-3-criacao-saibaman.png`; e os contra-exemplos (`CreationScreen.NoneNaListaDeTeste`, "Linhagens
+///      possíveis: None.") -- foto `racas-3b-criacao-defeito.png` -- e (`VisualCatalog.SaibamanComOlhosDeGenteDeTeste`) -- foto
+///      `racas-3c-criacao-olhos-defeito.png`;
 ///   4. oito Frost Demons vestidos pela porta dos NPCs (`AparenciaDeNpc`, com o molde do torneio) -- foto `frost-1-variedade.png`;
 ///   5. CONTRA-EXEMPLO (`GameServer.FrostNpcSemVariedadeDeTeste`): os oito iguais, o "Changeling Frieza 2" de antes -- foto `frost-2-defeito.png`.
 ///
@@ -93,8 +98,30 @@ public partial class RoboDosCorposDeRaca : Node
 				 "1. CADA RACA COM O SEU CORPO (*\"a raça saibamen n ta com o icone do saibamen, ta com de humano\"*): o Saibaman de Saibaman, o Makyo, o "
 				 + "Androide, os alienigenas (Alien, Arlian, Kanassa, Gray) e as quatro do corpo proprio que o DM nao alcancava (Heran, Meta, Yardrat, "
 				 + $"Spirit Doll) -- e o Humano de referencia, de humano{(erradas.Count > 0 ? $" (erradas: {string.Join(", ", erradas)})" : "")}");
+		CharacterVisual? saibaman = Boneco(fila[Array.IndexOf(Racas, "Saibaman")]), humano = Boneco(fila[0]);
+		Conferir(saibaman is { OlhosVisiveisDeTeste: false } && humano is { OlhosVisiveisDeTeste: true },
+				 "1b. (2026-10-19) O SAIBAMAN SEM OS OLHOS DE GENTE (*\"o overlay de olho no saibaman pode tirar, pq ele fica bugado\"*): a folha dele ja traz "
+				 + "os olhos vermelhos, e a camada de olhos fica apagada nele -- e acesa no Humano de referencia "
+				 + $"(Saibaman {saibaman?.OlhosVisiveisDeTeste}, Humano {humano?.OlhosVisiveisDeTeste})");
 		Fotografar("user://racas-1-corpos.png");
 		srv.PalcoCorpos_Tirar(fila);
+		await Segundos(0.8);
+
+		// ---- 1c. o contra-exemplo dos olhos ----
+		VisualCatalog.SaibamanComOlhosDeGenteDeTeste = true;
+		try
+		{
+			List<int> comOlhos = srv.PalcoCorpos_Fila(eu, ["Saibaman"], [(0, -2)]);
+			bool vestido = await Ate(() => comOlhos.All(i => Folha(i).Length > 0), 10);
+			await Segundos(0.6);
+			CharacterVisual? defeito = comOlhos.Count > 0 ? Boneco(comOlhos[0]) : null;
+			Conferir(vestido && defeito is { OlhosVisiveisDeTeste: true },
+					 "CONTRA-EXEMPLO (defeito injetado: o Saibaman com os olhos de gente, o jogo de antes): um Saibaman novo nasce com a camada de olhos acesa "
+					 + $"por cima dos dele ({defeito?.OlhosVisiveisDeTeste}) -- a regua do passo 1b reprovaria");
+			Fotografar("user://racas-1c-defeito-olhos.png");
+			srv.PalcoCorpos_Tirar(comOlhos);
+		}
+		finally { VisualCatalog.SaibamanComOlhosDeGenteDeTeste = false; }
 		await Segundos(0.8);
 
 		// ---- 2. o contra-exemplo ----
@@ -119,14 +146,7 @@ public partial class RoboDosCorposDeRaca : Node
 		var tela = new CreationScreen { Name = "CriacaoDoSaibaman" };
 		AddChild(tela);
 		await Quadros(2);
-		tela.Reabrir("", "Saibaman", "");
-		await Quadros(2);
-		for (int i = 0; i < 5 && tela.TituloDaEtapaDeTeste != "APARÊNCIA"; i++)
-		{
-			tela.FindChildren("*", nameof(Button), true, false).OfType<Button>()
-				.FirstOrDefault(b => b.Text == "Avançar" && b.IsVisibleInTree() && !b.Disabled)?.EmitSignal(BaseButton.SignalName.Pressed);
-			await Segundos(0.3);
-		}
+		await ReabrirNaAparencia(tela);
 		List<CanvasLayer> apagadas = ApagarAInterfaceMenos(tela);
 		try
 		{
@@ -136,20 +156,16 @@ public partial class RoboDosCorposDeRaca : Node
 			Conferir(titulo == "APARÊNCIA" && corpo.Contains("Saibaman - Form 1") && texto.Contains("Sem variação de linhagem") && !texto.Contains("None"),
 						   $"3. A CRIACAO do Saibaman chega a etapa da aparencia ('{titulo}') com o corpo dele na previa ({System.IO.Path.GetFileNameWithoutExtension(corpo)}), "
 						   + $"e o texto da raca sem o \"None\" do DM (\"{texto}\")");
+			Conferir(!tela.ColorirOsOlhosDeTeste && !tela.OlhosNaPreviaDeTeste,
+						   "3b. (2026-10-19) ...e SEM OS OLHOS DE GENTE: a previa do Saibaman sem a camada de olhos, e a etapa sem o \"Colorir os olhos\" (nao ha o "
+						   + $"que tingir) -- linha {tela.ColorirOsOlhosDeTeste}, olhos na previa {tela.OlhosNaPreviaDeTeste}");
 			await Segundos(0.5);
 			Fotografar("user://racas-3-criacao-saibaman.png");
 
 			CreationScreen.NoneNaListaDeTeste = true;
 			try
 			{
-				tela.Reabrir("", "Saibaman", "");
-				await Quadros(2);
-				for (int i = 0; i < 5 && tela.TituloDaEtapaDeTeste != "APARÊNCIA"; i++)
-				{
-					tela.FindChildren("*", nameof(Button), true, false).OfType<Button>()
-						.FirstOrDefault(b => b.Text == "Avançar" && b.IsVisibleInTree() && !b.Disabled)?.EmitSignal(BaseButton.SignalName.Pressed);
-					await Segundos(0.3);
-				}
+				await ReabrirNaAparencia(tela);
 				string comODefeito = tela.DescricaoDeTeste;
 				Conferir(comODefeito.Contains("Linhagens possíveis: None"),
 							   $"CONTRA-EXEMPLO (defeito injetado: o \"None\" do DM na lista, o jogo de antes): o texto volta a dizer \"{comODefeito}\" -- a regua do "
@@ -158,6 +174,18 @@ public partial class RoboDosCorposDeRaca : Node
 				Fotografar("user://racas-3b-criacao-defeito.png");
 			}
 			finally { CreationScreen.NoneNaListaDeTeste = false; }
+
+			VisualCatalog.SaibamanComOlhosDeGenteDeTeste = true;
+			try
+			{
+				await ReabrirNaAparencia(tela);
+				Conferir(tela.ColorirOsOlhosDeTeste && tela.OlhosNaPreviaDeTeste,
+							   "CONTRA-EXEMPLO (defeito injetado: o Saibaman com os olhos de gente, o jogo de antes): a previa volta a vestir os olhos e a etapa volta a "
+							   + $"oferecer o \"Colorir os olhos\" (linha {tela.ColorirOsOlhosDeTeste}, olhos {tela.OlhosNaPreviaDeTeste}) -- a regua do passo 3b reprovaria");
+				await Segundos(0.4);
+				Fotografar("user://racas-3c-criacao-olhos-defeito.png");
+			}
+			finally { VisualCatalog.SaibamanComOlhosDeGenteDeTeste = false; }
 		}
 		finally { DevolverAInterface(apagadas); }
 		tela.QueueFree();
@@ -191,6 +219,19 @@ public partial class RoboDosCorposDeRaca : Node
 		}
 		finally { Jandirus.Server.GameServer.FrostNpcSemVariedadeDeTeste = false; }
 		await Segundos(0.5);
+	}
+
+	/// <summary>Reabre a criacao do Saibaman e avanca ate a etapa da aparencia (cinco "Avançar" no maximo).</summary>
+	private async Tarefa ReabrirNaAparencia(CreationScreen tela)
+	{
+		tela.Reabrir("", "Saibaman", "");
+		await Quadros(2);
+		for (int i = 0; i < 5 && tela.TituloDaEtapaDeTeste != "APARÊNCIA"; i++)
+		{
+			tela.FindChildren("*", nameof(Button), true, false).OfType<Button>()
+				.FirstOrDefault(b => b.Text == "Avançar" && b.IsVisibleInTree() && !b.Disabled)?.EmitSignal(BaseButton.SignalName.Pressed);
+			await Segundos(0.3);
+		}
 	}
 
 	/// <summary>
@@ -255,6 +296,7 @@ public partial class RoboDosCorposDeRaca : Node
 	private void Fechar()
 	{
 		VisualCatalog.SemOsCorposDasRacasNovasDeTeste = false;
+		VisualCatalog.SaibamanComOlhosDeGenteDeTeste = false;
 		Jandirus.Server.GameServer.FrostNpcSemVariedadeDeTeste = false;
 		CreationScreen.NoneNaListaDeTeste = false;
 		foreach (string l in _linhas) GD.Print("[dcorpos] " + l);

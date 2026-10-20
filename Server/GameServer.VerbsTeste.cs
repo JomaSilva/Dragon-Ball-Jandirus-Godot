@@ -404,11 +404,14 @@ public sealed partial class GameServer
 			ServerPlayer presidente = Gente("Presidente", "Human");
 			ServerPlayer guardiao = Gente("Guardiao", "Namekian", "Dragon clan", skills: ["/datum/skill/rank/Permission"]);
 			ServerPlayer korin = Gente("MestreKorin", "Human", skills: ["/datum/skill/rank/Permission"]);
+			// (2026-10-19) O KING YEMMA: a travessia pro Outro Mundo e do trono dele (`GameServer.TravessiaDoJuiz.cs`).
+			ServerPlayer juiz = Gente("KingYemma", "Human");
 			_tronos["elder"] = anciao.Conta;
 			_tronos["kov"] = rei.Conta;
 			_tronos["president"] = presidente.Conta;
 			_tronos["guardian"] = guardiao.Conta;
 			_tronos["korin"] = korin.Conta;
+			_tronos[TravessiaDoJuiz.Cargo] = juiz.Conta;
 			// O TRONO DO DEUS TEM DONO (fora do elenco): com ele vago o desafio recusaria por "nao ha Deus", e o
 			// que a tabela promete ver recusado e a FALTA DO GOD KI.
 			ServerPlayer deus = Gente("DeusDaDestruicao", "Human");
@@ -427,7 +430,7 @@ public sealed partial class GameServer
 				("humano com God Ki", divino), ("humano com o estudo da Mente", mentalista), ("humano com controle de ki", controlado),
 				("humano no espaço", noEspaco), ("Grande Ancião de Namek", anciao), ("Rei de Vegeta", rei),
 				("Presidente da Terra", presidente), ("Guardião da Terra", guardiao), ("Mestre Korin", korin),
-				("Neo Tuffle", neoTuffle),
+				("Neo Tuffle", neoTuffle), ("King Yemma", juiz),
 			];
 
 			Checa("(montagem) a Terra desta bancada NAO tem Estatua do Dragao, e os personagens estao nela (menos o do espaco)",
@@ -893,6 +896,21 @@ public sealed partial class GameServer
 				  && !VeChave(guerreiro, "verbo:cargo_nomear_aceitar"), Ultimos(nomeacao));
 			Ouvir(() => Verbo(novico, "cargo_nomear_recusar", ""));
 			Checa("...recusou: somem", !Tem(novico, Fatos.OfertaDeAssento) && !VeChave(novico, "verbo:cargo_nomear_aceitar"));
+
+			// (2026-10-20) O APRENDIZ DE KAIOSHIN -- as quatro linhas do `ag/aprendiz` (o convite pelo verb e o aceite estao provados na
+			// `--aprendizteste`; aqui e a plateia da familia 7): o Kaioshin no trono ve Name/Dismiss Apprentice, e quem tem o convite na mesa
+			// ve Accept/Decline Apprenticeship.
+			ServerPlayer kaioshin = Gente("Kaioshin", "Kai");
+			ServerPlayer convidado = Gente("ConvidadoDoKaioshin", "Human");
+			_tronos[Jandirus.Core.Ranks.AprendizDeKaioshin.CargoDoMestre] = kaioshin.Conta;
+			_ofertasDeAprendiz[convidado.Conta] = (kaioshin.Conta, kaioshin.Name, NowMs() + 60_000);
+			Checa("O APRENDIZ DE KAIOSHIN: o Kaioshin no trono ve Name/Dismiss Apprentice, quem tem o convite na mesa ve Accept/Decline "
+				  + "Apprenticeship -- e o novato, nenhum dos quatro",
+				  VeChave(kaioshin, "verbo:aprendiz_nomear") && VeChave(kaioshin, "verbo:aprendiz_dispensar")
+				  && Tem(convidado, Fatos.OfertaDeAprendiz) && VeChave(convidado, "verbo:aprendiz_aceitar") && VeChave(convidado, "verbo:aprendiz_recusar")
+				  && !VeChave(novato, "verbo:aprendiz_nomear") && !VeChave(novato, "verbo:aprendiz_aceitar"));
+			_ofertasDeAprendiz.Remove(convidado.Conta);
+			_tronos.Remove(Jandirus.Core.Ranks.AprendizDeKaioshin.CargoDoMestre);
 
 			Checa("(antes) o Deus da Destruicao sem desafio pendente nao ve Accept Challenge / Postpone Challenge",
 				  !Tem(deus, Fatos.DesafioAoTitulo) && !VeChave(deus, "verbo:cargo_duelo_aceitar"));

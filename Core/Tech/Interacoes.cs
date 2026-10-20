@@ -246,10 +246,16 @@ public static class Interacoes
 		// ============================ O SR. KAIOH E O KORIN (v0.3.0) ============================
 		// Os dois `Talker` do DM que faltavam (`SkyNPCs.dm:21-49`), como o Enma: obra fixa do mapa com menu E. A conversa e a
 		// do `kingkai_interact()` (`:207-226`) e a do `Korin/Click()` (`:258-264`). Ver `GameServer.NpcsDeConversa.cs`.
+		// (2026-10-19) O Sr. Kaioh tambem e doador dos servicos do Outro Mundo (os dois botoes de `ServicosDoAlem.AcoesDoDoador`).
 		Jandirus.Core.World.NpcsDeConversa.TipoDoSrKaioh =>
 		[
 			new Acao("Falar com o Sr. Kaioh", "kaioh_falar", "", "ele ensina o Kaio-ken e a Genkidama a quem tem coração limpo"),
+			.. Jandirus.Core.World.ServicosDoAlem.AcoesDoDoador,
 		],
+		// (2026-10-19) OS TRES DOADORES NOVOS DOS SERVICOS DO OUTRO MUNDO -- o Oni da recepcao, a Princesa Serpente e o Oni do Inferno, obras
+		// fixas como o Sr. Kaioh. So os dois botoes do servico. Ver `Core/World/ServicosDoAlem.cs`.
+		Jandirus.Core.World.ServicosDoAlem.TipoDaRecepcao or Jandirus.Core.World.ServicosDoAlem.TipoDaPrincesa
+			or Jandirus.Core.World.ServicosDoAlem.TipoDoOniDoInferno => Jandirus.Core.World.ServicosDoAlem.AcoesDoDoador,
 		Jandirus.Core.World.NpcsDeConversa.TipoDoKorin =>
 		[
 			new Acao("Falar com o Korin", "korin_falar", "", "o guardião da Torre"),
@@ -279,6 +285,15 @@ public static class Interacoes
 		Npc.BillsEWhis.TipoEmDesafio =>
 		[
 			new Acao("Desistir do desafio", Npc.BillsEWhis.VerboParar, "", "entrega o duelo: o título fica com ele"),
+		],
+
+		// ============================ O GRANDE PATRIARCA DE NAMEK (2026-10-19) ============================
+		// O `Guru/Click()` do DM (`PlanetPopulation.dm:220-234`). Ele e um CORPO, como o Bills e o Whis, e o servidor o aponta pelo
+		// mesmo canal (`S2C.DivinoPerto`); a distancia, a reputacao e o "uma vez na vida" sao conferidos la (`GameServer.Patriarca.cs`).
+		Npc.Patriarca.Tipo =>
+		[
+			new Acao("Falar com o Grande Patriarca", Npc.Patriarca.VerboFalar, "",
+					 "ele desperta o poder oculto de quem o povo de Namek não vê com maus olhos -- uma vez na vida"),
 		],
 
 		"AppleTree" =>
@@ -314,7 +329,7 @@ public static class Interacoes
 			// has to be bolted"): quem a assentava e apertava E lia "aparafuse a máquina antes de usá-la"
 			// num menu que nao tinha onde aparafusar -- so o verb Bolt do menu P chegava la.
 			new Acao("Aparafusar / soltar", "aparafusar", "", "ela só liga aparafusada"),
-			new Acao("Pegar", "pegar", "", "recolhe a máquina pra mochila (só a sua)"),
+			new Acao("Pegar", "pegar", "", "recolhe a máquina pra mochila (só a sua) -- as melhorias vão junto"),
 		],
 
 		// O SUBMENU DE MELHORIAS -- a lista do `verb/Upgrade` do DM (Gravity.dm:224-276).
@@ -328,9 +343,9 @@ public static class Interacoes
 		// fim do caminho e o mesmo da Drill -- "Pagar com zeni" / "Pagar com recursos". Ver `DuasFormasDePagar`.
 		"Gravity/upgrades" =>
 		[
-			EscolherComoPagar("Força do campo", "grav_como", "upgrades/forca", "multiplica por 1,2 o teto desta máquina"),
+			EscolherComoPagar("Força do campo", "grav_como", "upgrades/forca", "multiplica por 1,2 o teto desta máquina (até o do mundo, e o da sua tecnologia)"),
 			EscolherComoPagar("Bateria", "grav_como", "upgrades/bateria", "dobra a carga e enche na hora"),
-			EscolherComoPagar("Alcance", "grav_como", "upgrades/alcance", "o campo cresce um tile de lado (o teto é 10) -- sem alcance ela não pega ninguém"),
+			EscolherComoPagar("Alcance", "grav_como", "upgrades/alcance", "o campo cresce um tile de lado (o teto é 10, e o da sua tecnologia) -- sem alcance ela não pega ninguém"),
 			EscolherComoPagar("Estabilização", "grav_como", "upgrades/estabilidade", "uma vez só, e cara"),
 			EscolherComoPagar("Regeneração de nanites", "grav_como", "upgrades/nanites", "recarrega sozinha quando desligada"),
 		],
@@ -574,7 +589,7 @@ public static class Interacoes
 			new Acao("Ver a energia", EstacaoDeRecarga.VerboInfo, "", "a energia, o nível, a eficiência e os preços das melhorias"),
 			new Acao("Melhorar...", "recarga_upgrades", "upgrades", "gasta zeni ou recursos", Forma.Submenu),
 			new Acao("Aparafusar / soltar", "aparafusar", "", "ela só funciona aparafusada"),
-			new Acao("Pegar", "pegar", "", "recolhe a estação pra mochila (só a sua) -- as melhorias não vêm junto"),
+			new Acao("Pegar", "pegar", "", "recolhe a estação pra mochila (só a sua) -- as melhorias vão junto"),
 		],
 		EstacaoDeRecarga.Tipo + "/upgrades" =>
 		[
@@ -611,7 +626,7 @@ public static class Interacoes
 					 Forma.Texto, 0, Teleporte.MaxDeCanal),
 			new Acao("Reforçar", Teleporte.VerboReforcarOTelepad, "", "a armadura dele sobe pro teto da sua tecnologia"),
 			new Acao("Aparafusar / soltar", "aparafusar", "", "só aparafusado ele é destino"),
-			new Acao("Pegar", "pegar", "", "recolhe o telepad pra mochila (só o seu) -- o canal não vem junto"),
+			new Acao("Pegar", "pegar", "", "recolhe o telepad pra mochila (só o seu) -- o canal vai junto"),
 		],
 
 		// A CAMERA (`Camera.dm:117-124`). A regra esta em `Vigilancia`.
@@ -620,7 +635,7 @@ public static class Interacoes
 			new Acao("Definir a frequência", Vigilancia.VerboFrequencia, "", "quem consulta essa frequência fica sabendo quem ela vê",
 					 Forma.Texto, 0, Vigilancia.MaxDeFrequencia),
 			new Acao("Aparafusar / soltar", "aparafusar", "", "só aparafusada ela transmite"),
-			new Acao("Pegar", "pegar", "", "recolhe a câmera pra mochila (só a sua) -- a frequência não vem junto"),
+			new Acao("Pegar", "pegar", "", "recolhe a câmera pra mochila (só a sua) -- a frequência vai junto"),
 		],
 
 		// O COMUNICADOR (`Communicator.dm`).
@@ -636,7 +651,7 @@ public static class Interacoes
 			new Acao("Melhorar...", "com_upgrades", "upgrades", "megafone, difusor e câmera -- em zeni ou recursos", Forma.Submenu),
 			new Acao("Travar / destravar o DNA", Vigilancia.VerboDna, "", "travado, só quem travou vê as câmeras e lê o histórico"),
 			new Acao("Aparafusar / soltar", "aparafusar", ""),
-			new Acao("Pegar", "pegar", "", "recolhe o comunicador pra mochila (só o seu) -- as melhorias e as frequências não vêm junto"),
+			new Acao("Pegar", "pegar", "", "recolhe o comunicador pra mochila (só o seu) -- as melhorias e as frequências vão junto"),
 		],
 		Vigilancia.Comunicador + "/frequencias" =>
 		[
@@ -662,7 +677,7 @@ public static class Interacoes
 			new Acao("Ver estado", Simulador.VerboInfo, "", "o teto de poder, a energia e os preços das melhorias"),
 			new Acao("Melhorar...", "sim_upgrades", "upgrades", "gasta zeni ou recursos", Forma.Submenu),
 			new Acao("Aparafusar / soltar", "aparafusar", ""),
-			new Acao("Pegar", "pegar", "", "recolhe o simulador pra mochila (só o seu) -- as melhorias não vêm junto"),
+			new Acao("Pegar", "pegar", "", "recolhe o simulador pra mochila (só o seu) -- as melhorias vão junto"),
 		],
 		Simulador.Tipo + "/upgrades" =>
 		[
@@ -684,7 +699,7 @@ public static class Interacoes
 			new Acao("Pôr uma senha (1.000 zeni)", MaquinaDeClonagem.VerboSenha, "", "permanente: só quem a souber reprograma a máquina",
 					 Forma.Texto, 0, MaquinaDeClonagem.MaxDeSenha),
 			new Acao("Aparafusar / soltar", "aparafusar", ""),
-			new Acao("Pegar", "pegar", "", "recolhe a máquina pra mochila (só a sua) -- as melhorias e a programação não vêm junto"),
+			new Acao("Pegar", "pegar", "", "recolhe a máquina pra mochila (só a sua) -- as melhorias e a programação vão junto"),
 		],
 		MaquinaDeClonagem.Tipo + "/upgrades" =>
 		[
@@ -715,7 +730,7 @@ public static class Interacoes
 			MelhorarVelocidade,
 			MelhorarVelocidadeComRecursos,
 			new Acao("Ver estado", "nave_info", "", "velocidade, combustível, o quanto ela corta a viagem, e o próximo preço"),
-			new Acao("Pegar", "nave_pegar", "", "recolhe a nave pra mochila (só a sua, e de tanque cheio)"),
+			new Acao("Pegar", "nave_pegar", "", "recolhe a nave pra mochila (só a sua, e de tanque cheio) -- a velocidade vai junto"),
 		],
 
 		// ============================ O FOGUETE, POUSADO ============================
@@ -757,7 +772,7 @@ public static class Interacoes
 			// custaria mais do que um cadeado de nave vale. ZERO DESTRANCA.
 			new Acao("Trancar com senha", "nave_senha", "", "um código de até 6 dígitos -- 0 destranca (o dono nunca precisa dele)",
 					 Forma.Numero, 0, 999999),
-			new Acao("Pegar", "nave_pegar", "", "recolhe a nave pra mochila (só a sua, só vazia, e de tanque cheio)"),
+			new Acao("Pegar", "nave_pegar", "", "recolhe a nave pra mochila (só a sua, só vazia, e de tanque cheio) -- a velocidade vai junto"),
 		],
 
 		// ============================ O COMPUTADOR DA PONTE ============================
@@ -1174,6 +1189,13 @@ public static class Interacoes
 	public const byte MelhoriaNoTeto = 2;
 
 	/// <summary>
+	/// (2026-10-19) Bit do estado de UMA maquina de gravidade: a forca do campo chegou ao teto do MUNDO
+	/// (<see cref="TetoDeGravidade"/>) -- dali nao sobe pra ninguem, como o alcance no 10. O teto da TECNOLOGIA nao entra
+	/// aqui: ele e de quem olha, e este byte viaja igual pra zona inteira (quem esta abaixo dele ouve a recusa).
+	/// </summary>
+	public const byte ForcaNoTetoDoMundo = 4;
+
+	/// <summary>
 	/// DEFEITO INJETADO (bancada `--v020teste`): a melhoria ja comprada continua na lista -- o menu de antes de
 	/// 2026-10-12, em que o botao so sabia recusar depois do clique. Falso em jogo, sempre.
 	/// </summary>
@@ -1185,15 +1207,16 @@ public static class Interacoes
 	/// comprar ele deveria sumir do menu de upgrades"*.
 	///
 	/// A tabela de botoes e estatica (vale pra toda maquina do tipo); o que e de UMA maquina viaja com ela no pacote
-	/// de construcoes, num byte (`GameServer.MelhoriasFeitas`), e e por ele que o menu filtra. Hoje sao tres casos:
-	/// "tratar ferimentos" do regenerador e "estabilizacao" da maquina de gravidade (uma vez so), e o "alcance" dela
-	/// quando chega ao teto.
+	/// de construcoes, num byte (`GameServer.MelhoriasFeitas`), e e por ele que o menu filtra. Hoje sao quatro casos:
+	/// "tratar ferimentos" do regenerador e "estabilizacao" da maquina de gravidade (uma vez so), e o "alcance" e a
+	/// "forca do campo" dela quando chegam ao teto do jogo.
 	/// </summary>
 	public static byte BitQueEsconde(string tipo, string argDaAcao) => (tipo, argDaAcao) switch
 	{
 		(Regenerador.Tipo, "upgrades/ferimentos") => MelhoriaUnicaFeita,
 		("Gravity", "upgrades/estabilidade") => MelhoriaUnicaFeita,
 		("Gravity", "upgrades/alcance") => MelhoriaNoTeto,
+		("Gravity", "upgrades/forca") => ForcaNoTetoDoMundo,
 		(SuperComputador.Tipo, "melhorias/ressurreicao") => MelhoriaUnicaFeita,
 		_ => 0,
 	};

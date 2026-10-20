@@ -184,8 +184,9 @@ public partial class GameServer
 		ctx.Contador = nome => ContadorDoServidor(pl, nome) ?? daFicha(nome);
 		// (v0.3.0) a RACA COM SANGUE: o bio abre as arvores raciais das doadoras -- ver `SangueDoBio`
 		pl.Livro.Recalcular(_skills, ctx, RacaComSangue(pl), pl.Class);
+		// (2026-10-20) a arvore do Aprendiz de Kaioshin nao vem de treino: quem a anuncia e o vinculo (`VincularAoKaioshin`), uma frase so
 		foreach (string p in pl.Livro.Destravadas)
-			if (!abertasAntes.Contains(p) && _skills.Get(p) is { } arv)
+			if (!abertasAntes.Contains(p) && _skills.Get(p) is { } arv && (Jandirus.Core.Ranks.AprendizDeKaioshin.TreinoAnunciaDeTeste || !string.Equals(p, Jandirus.Core.Ranks.AprendizDeKaioshin.Arvore, StringComparison.OrdinalIgnoreCase)))
 				Avisar(pl, $"o que voce treinou abriu um caminho novo: {arv.Nome} -- olhe a aba de aprendizado.");
 
 		// O EIXO DA CURA E REFEITO: as skills que somam no `Regeneration` do genoma (Doll
@@ -207,9 +208,13 @@ public partial class GameServer
 	///
 	/// `temOndeErguerAEstatua` -- `savant.signature == Earth_Guardian || conq_owns_any(savant.signature)`
 	/// (`namekian.dm:24`): as duas perguntas de territorio que a propria estatua ja fazia (`ErguerEstatua`).
+	///
+	/// (2026-10-19) `comMestreKaioshin` -- o vinculo de aprendiz de Kaioshin de pe (`GameServer.AprendizDeKaioshin.cs`): abre a arvore dele.
 	/// </summary>
 	private double? ContadorDoServidor(ServerPlayer pl, string nome) =>
-		nome == AcendedoresDoPort.TemOndeErguer ? (EhGuardiao(pl) || DominaAlgum(pl.Assinatura) ? 1 : 0) : null;
+		nome == AcendedoresDoPort.TemOndeErguer ? (EhGuardiao(pl) || DominaAlgum(pl.Assinatura) ? 1 : 0)
+		: nome == AcendedoresDoPort.ComMestreKaioshin ? (EAprendizDeKaioshin(pl) ? 1 : 0)
+		: null;
 
 	// =====================================================================
 	// O KI LIBERADO -- as duas pecas que a tecla C exige
@@ -354,6 +359,7 @@ public partial class GameServer
 		Skill s = _skills.Get(path)!;
 		GD.Print($"[server] {pl.Name} aprendeu '{s.Nome}' ({SkillCatalog.CustoDe(s)} marcos, restam {pl.Livro.MarcosLivres})");
 		Avisar(pl, EfeitoEmTexto(s));
+		AnotarACompraDoAprendiz(pl, path);   // (2026-10-19) a compra feita pelo aprendizado de Kaioshin -- ver `GameServer.AprendizDeKaioshin.cs`
 		AplicarNiveisDeTeste(pl, so: path);   // `--nivelteste`: a skill comprada ja nasce no nivel pedido (so bancada)
 
 		// O GANHO NA COMPRA COM EXPRESSAO -- `BP += max(1, BP*0.01)`, `hiddenpotential += relBPmax*2`

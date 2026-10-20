@@ -366,6 +366,13 @@ public partial class Boot : Node2D
 			return;
 		}
 
+		// `--diagmutante` (2026-10-19): o FROST DEMON MUTANTE da criacao ao mundo -- a vaga com a classe, a etapa das formas com sete
+		// corpos, o C duplo e o X pelo teclado, a cena vermelha do descontrole, a aura do ki travado e o `Icer Form Settings`, com foto.
+		// Nasce aqui em cima, como a `--diagfilho`, mas SEM o `return`: ele passa pelas telas de producao deste `Boot` (o login montado
+		// logo abaixo, a selecao, a criacao) e continua no mundo que elas abrem. Ver RoboDoMutante.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmutante") >= 0)
+			AddChild(new RoboDoMutante { Name = "RoboDoMutante" });
+
 		// AS OPCOES ANTES DA PRIMEIRA TELA. A ordem importa em duas pontas: os botoes do lobby
 		// procuram a `PauseMenu.Instancia` na hora de montar, e a `PauseMenu` pergunta pela
 		// `TelaDeTeclas.Instancia` pra decidir se o botao de teclas fica vivo.
@@ -1022,7 +1029,8 @@ public partial class Boot : Node2D
 		// (v0.3.0) A VAGA DO MODO DE RACAS ALEATORIAS chega com a raca sorteada (`SlotInfo.RacaSorteada`): a criacao abre com
 		// ela, sem as etapas de mundo, raca e linhagem. Ver `GameServer.ModoDeRacas.cs`.
 		Jandirus.Net.SlotInfo vaga = slot >= 0 && slot < _slotsAtuais.Count ? _slotsAtuais[slot] : default;
-		_criacao!.Reabrir(_anuncioDaCriacao, vaga.RacaSorteada ?? "", vaga.LinhagemSorteada ?? "");
+		// (2026-10-19) E A CLASSE DE FROST DEMON DA VAGA (`SlotInfo.ClasseDoFrost`): a etapa de formas abre com sete corpos pro Mutante.
+		_criacao!.Reabrir(_anuncioDaCriacao, vaga.RacaSorteada ?? "", vaga.LinhagemSorteada ?? "", vaga.ClasseDoFrost ?? "");
 		_anuncioDaCriacao = "";
 	}
 
@@ -1097,6 +1105,9 @@ public partial class Boot : Node2D
 		// A ARTE DA ARMADURA: abre sozinha depois de fabricar uma na aba Tech, ou pela acao da armadura crua na
 		// mochila. Vive montada e invisivel. Ver `TelaDeArmadura`.
 		AddChild(new TelaDeArmadura { Name = "Armadura" });
+		// (2026-10-19) OS CORPOS DAS FORMAS DO FROST DEMON, re-escolhidos em jogo -- o `Icer_Form_Settings` do DM, aberto pelo verb da
+		// aba Other. Vive montada e invisivel. Ver `TelaDeFormasDoFrost`.
+		AddChild(new TelaDeFormasDoFrost { Name = "FormasDoFrost" });
 		// A TECLA M: meditar normal ou mergulhar na propria mente. Ver `TelaDeMeditacao` -- ela vive
 		// montada e invisivel, e e o `LocalPlayer` que a abre (a atividade e dele).
 		AddChild(new TelaDeMeditacao { Name = "Meditacao" });
@@ -1158,6 +1169,11 @@ public partial class Boot : Node2D
 		// depois do cache de paginas. Ver RoboDeMenu.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmenu") >= 0)
 			AddChild(new RoboDeMenu { Name = "RoboDeMenu" });
+		// --diagmenuleve: (2026-10-19) o menu P aberto sem pesar no jogo -- o corpo que nao remonta as abas, os valores
+		// vivos, a carta que so redesenha quando muda, a arte dos planetas na Nav e o quadro longo que o servidor nao
+		// puxa. Hospedando, com janela. Ver RoboDoMenuLeve.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmenuleve") >= 0)
+			AddChild(new RoboDoMenuLeve { Name = "RoboDoMenuLeve" });
 
 		// --diagmuda: A PAREDE INVISIVEL, FOTOGRAFADA. O censo fecha em zero e a `--socoteste` mede a
 		// recusa em numero -- e as duas ficariam verdes num mundo em que nada disso chega a tela, que e
@@ -1198,10 +1214,20 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagvizinho") >= 0)
 			AddChild(new RoboDosVizinhos { Name = "RoboDosVizinhos" });
 
+		// --diaglimite: (2026-10-19) o SHATTERING THE LIMIT so no degrau SSJ4 (e LSSJ4), e o raio dele VERMELHO -- o mesmo Kamehameha em dez
+		// formas, em foto, com os dois defeitos injetados (so com `--host`). Ver RoboDoLimite.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaglimite") >= 0)
+			AddChild(new RoboDoLimite { Name = "RoboDoLimite" });
+
 		// --diagraiva: A RAIVA POR AMIGO NA TELA E NO SOM -- a cinematica da furia extrema, o tema dela, o Ki do
 		// dono saltando pro teto, e a transformacao cortando o tema (so com `--host`). Ver RoboDaRaiva.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagraiva") >= 0)
 			AddChild(new RoboDaRaiva { Name = "RoboDaRaiva" });
+
+		// --diagtorneiocell: (2026-10-19) O TORNEIO DO CELL NA TELA -- o Cell esperando na arena, o x1 e o Kamehameha que explode a
+		// Terra (so com `--host`). Ver RoboDoTorneioDoCell.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtorneiocell") >= 0)
+			AddChild(new RoboDoTorneioDoCell { Name = "RoboDoTorneioDoCell" });
 
 		// --radiovivo: O RADIO DO SCOUTER PELO FIO -- os tres pacotes novos, o menu que troca a frequencia e as
 		// teclas, contra um segundo corpo forjado no servidor (so com `--host`). Ver RoboDoRadioVivo.
@@ -1258,6 +1284,11 @@ public partial class Boot : Node2D
 		// a arvore do menu. Anda junto da `--godkiteste` do servidor. Ver RoboDoGodKi.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaggodki") >= 0)
 			AddChild(new RoboDoGodKi { Name = "RoboDoGodKi" });
+
+		// --diagcorrente: (2026-10-19) A CORRENTE DE PODER DO DU -- quem da poder a um amigo, visto por quem esta em volta: os folegos, as
+		// bolinhas em fluxo do doador ao amigo, o fim e os dois contra-exemplos. Modo host; com janela, as fotos. Ver RoboDaCorrenteDePoder.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcorrente") >= 0)
+			AddChild(new RoboDaCorrenteDePoder { Name = "RoboDaCorrenteDePoder" });
 
 		// --diagpoder: POWER UP E POWER DOWN NA TELA -- a faixa "Poder em uso" da aba Ki (o deslizador, relaxar, esconder),
 		// a linha do HUD em cada estado, e o botao da aba Skills que abre o controle. Modo host; com janela, fotografa.
@@ -1446,6 +1477,11 @@ public partial class Boot : Node2D
 		// que faz o corpo nascer com uma escada de estrago.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagferida") >= 0)
 			AddChild(new RoboDeFerida { Name = "RoboDeFerida" });
+		// --diagferidafrost (2026-10-19): a FERIDA E O MEMBRO DECEPADO NO CORPO DA FORMA -- o Frost Demon ferido, de frente e de costas, na
+		// evolucao e no repouso, e a camada da forma que renasce com o corpo ja ferido, com o contra-exemplo da regra de antes (so o corpo
+		// da base, escondido, recebia). Ver RoboDaFeridaDoFrost.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagferidafrost") >= 0)
+			AddChild(new RoboDaFeridaDoFrost { Name = "RoboDaFeridaDoFrost" });
 
 		// --diagchao: A AGONIA DE UM PLANETA VISTA DE DENTRO -- a irma da `--diagagonia`, que ve o
 		// mesmo mundo morrer do espaco. Aquela roda num laboratorio sem rede (o efeito la e do
@@ -1558,6 +1594,11 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcena") >= 0)
 			AddChild(new RoboDeCena { Name = "RoboDeCena" });
 
+		// --diagbrilhoforma: (2026-10-19) o BRILHO BRANCO da transformacao instantanea e a AURA DE CARGA calada durante a cinematica de
+		// forma (e de volta no fim), em foto, com os dois defeitos injetados. Ver RoboDoBrilhoDaForma.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagbrilhoforma") >= 0)
+			AddChild(new RoboDoBrilhoDaForma { Name = "RoboDoBrilhoDaForma" });
+
 		// --diagnebulosa: bancada da NUVEM DE GALAXIA do Ultra Instinto. Separada do `--diagforma` de
 		// proposito: aquela mede catalogo e texto (e o `Posar` dela pinta o node direto, sem rede),
 		// esta veste a forma PELA REDE e tira a foto. Ver RoboDeNebulosa.
@@ -1640,8 +1681,9 @@ public partial class Boot : Node2D
 		// ate o encontro, a `regenerate` e o laco dos quatro ultimos quadros, com foto de cada passo e os dois defeitos injetados. Ver RoboDosPedacos.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagpedacos") >= 0)
 			AddChild(new RoboDosPedacos { Name = "RoboDosPedacos" });
-		// --diagsono (2026-10-18): o SLEEP DO MAJIN na tela -- a loja e a ficha, o botao, o corpo deitado com o "z", os 5 s de relogio de verdade,
-		// o sono interrompido e o contra-exemplo da tela que ignora o sono, com foto de cada passo. Ver RoboDoSono.
+		// --diagsono (2026-10-18): o SLEEP DO MAJIN na tela -- a loja e a ficha, o botao, o corpo dormindo EM PE com o "z" (2026-10-19), os 5 s de
+		// relogio de verdade, o sono interrompido e os contra-exemplos (a tela que ignora o sono, o corpo deitado da 0.4.1), com foto de cada passo.
+		// Ver RoboDoSono.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagsono") >= 0)
 			AddChild(new RoboDoSono { Name = "RoboDoSono" });
 		// --diagcorposderaca (2026-10-18): os CORPOS DE RACA (uma fila de figurantes, cada um com o seu; a criacao do Saibaman) e os FROST DO
@@ -1662,6 +1704,14 @@ public partial class Boot : Node2D
 		// --diagsentidos (2026-10-18): o SCOUTER com teto e sem ki divino, e os CINCO NIVEIS do Sense -- fotos e contra-exemplos. Ver RoboDosSentidos.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagsentidos") >= 0)
 			AddChild(new RoboDosSentidos { Name = "RoboDosSentidos" });
+		// --diagsenserastro (2026-10-19): a BUSCA e o RASTRO do Sense -- o filtro sem acento, o nome que segue, o selo e a seta do HUD, a pessoa e nao
+		// a linha, o rastro que se perde e volta; fotos e contra-exemplos. Ver RoboDoRastro.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagsenserastro") >= 0)
+			AddChild(new RoboDoRastro { Name = "RoboDoRastro" });
+		// --diagprovacargo (2026-10-19): a PROVA DO ESPIRITO DO CARGO na tela -- o cartao com a frase da prova, o espirito que se ergue (de
+		// aureola, meio transparente), a luta, a vitoria e a derrota com a vergonha; fotos. Ver RoboDaProvaDoCargo.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagprovacargo") >= 0)
+			AddChild(new RoboDaProvaDoCargo { Name = "RoboDaProvaDoCargo" });
 		// --diagtropa (2026-10-18): o "CHEGAR AGORA" do admin e a TROPA DO FREEZA em Namek -- a armadura, o povo atacado, a esfera pega e a que
 		// cai do derrotado, com o contra-exemplo do hostil comum. Ver RoboDaTropa.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtropa") >= 0)
@@ -1670,10 +1720,30 @@ public partial class Boot : Node2D
 		// veste tudo, e o crescer quando a hora acaba. Ver RoboDoBebe.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagbebe") >= 0)
 			AddChild(new RoboDoBebe { Name = "RoboDoBebe" });
+		// --diagpatriarca (2026-10-19): o GRANDE PATRIARCA DE NAMEK na tela -- a folha dele perto do berco, a dica "[E] Guru", o menu e o
+		// despertar no chat. Ver RoboDoPatriarca.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagpatriarca") >= 0)
+			AddChild(new RoboDoPatriarca { Name = "RoboDoPatriarca" });
+		// --diagservicos (2026-10-19): os SERVICOS DO OUTRO MUNDO na tela -- os tres doadores no lugar deles, o menu E com a lista, o cartao da
+		// aba World (que remonta sozinho) e a entrega no Sr. Kaioh; fotos e contra-exemplo. Ver RoboDosServicos.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagservicos") >= 0)
+			AddChild(new RoboDosServicos { Name = "RoboDosServicos" });
 		// --diagtuffle (2026-10-18): o NEO TUFFLE -- o laboratorio no menu do mainframe, a posse vista pelo dono do corpo (o cabelo
 		// branco-acinzentado, a camera que vai junto) e a expulsao quando o corpo cai. Ver RoboDoTuffle.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtuffle") >= 0)
 			AddChild(new RoboDoTuffle { Name = "RoboDoTuffle" });
+		// --diaggolpe (2026-10-19): o GOLPE NA TELA E O DO SERVIDOR -- o rotulo "GOLPE LETAL"/"nao-letal" e a tecla seguem a ficha quando o
+		// servidor troca o golpe sozinho (o fim do treino, do torneio, da meditacao profunda), com o contra-exemplo do palpite. Ver RoboDoGolpe.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaggolpe") >= 0)
+			AddChild(new RoboDoGolpe { Name = "RoboDoGolpe" });
+		// --diagcorpofrost (2026-10-19): o CORPO DA FORMA DO FROST DEMON no lugar do da base -- a 1a e a 2a Evolucao pelo C, sem o corpo de
+		// baixo aparecendo em volta, e o contra-exemplo do print do dono. Ver RoboDoCorpoDoFrost.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcorpofrost") >= 0)
+			AddChild(new RoboDoCorpoDoFrost { Name = "RoboDoCorpoDoFrost" });
+		// --diagpupilagrade3 (2026-10-19): a pupila BRANCA sem iris do Super Saiyajin Grade 3 na tela, contra o verde do Grade 2, e o
+		// contra-exemplo do verde de antes. Ver RoboDaPupilaDoGrade3.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagpupilagrade3") >= 0)
+			AddChild(new RoboDaPupilaDoGrade3 { Name = "RoboDaPupilaDoGrade3" });
 
 		// --diagsombra: a SOMBRA VISTA NA TELA -- o portao com muro (a foto do dono de 2026-09-07) e a
 		// camera do espectador do torneio, com foto e medida (furos, dobra do leque, lutadores a vista).
@@ -1706,6 +1776,10 @@ public partial class Boot : Node2D
 		// embates de verdade de pe. Ver RoboDeMudez.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmudez") >= 0)
 			AddChild(new RoboDeMudez { Name = "RoboDeMudez" });
+		// --diagaprendiz (2026-10-19): o APRENDIZ DE KAIOSHIN na tela -- o cartao do convite, a arvore na aba Learning, a lista do
+		// Dismiss Apprentice e o fim do vinculo; fotos. Ver RoboDoAprendiz.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagaprendiz") >= 0)
+			AddChild(new RoboDoAprendiz { Name = "RoboDoAprendiz" });
 
 		// --porta: bancada AO VIVO das portas. Anda contra a porta mais proxima e narra o que
 		// mede -- fechada bloqueia e cega, abriu ao encostar, atravessou, fechou sozinha. Sobe

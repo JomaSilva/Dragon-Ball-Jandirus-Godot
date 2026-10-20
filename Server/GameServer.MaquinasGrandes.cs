@@ -197,7 +197,15 @@ public sealed partial class GameServer
 				   + $"{e.Num(Simulador.ChaveEnergia) * 100:0} de {e.Num(Simulador.ChaveEnergiaMax) * 100:0} (cada simulação gasta {Simulador.EnergiaPorSimulacao * 100:0}).");
 		Avisar(pl, $"melhorias: dobrar o teto de poder por {Recurso.DoisPrecos(Simulador.CustoDoPoder(e.Num(Simulador.ChaveTeto)))}; "
 				   + $"expandir (e encher) a energia por {Recurso.DoisPrecos(Simulador.CustoDaEnergia(e.Num(Simulador.ChaveEnergiaMax)))}.");
+		// (2026-10-19) O TETO DE QUEM PERGUNTA (`TetoPorTecnologia`), em DOBRAS e nao em poder -- ver `DobrasDoSimulador`.
+		if (!TetoPorTecnologia.Livre(pl.Ficha.techskill))
+			Avisar(pl, $"a sua tecnologia dobra o teto de poder até {TetoPorTecnologia.DobrasDoSimulador(pl.Ficha.techskill)} vez(es) "
+					   + $"(esta já dobrou {DobrasDoTetoDoSimulador(e)}) e leva a energia até {TetoPorTecnologia.EnergiaDoSimulador(pl.Ficha.techskill) * 100:0}.");
 	}
+
+	/// <summary>Quantas vezes o teto de poder deste simulador ja dobrou desde os 500 de fabrica.</summary>
+	private static int DobrasDoTetoDoSimulador(EstadoDeTech e) =>
+		(int)Math.Round(Math.Log2(Math.Max(e.Num(Simulador.ChaveTeto), Simulador.TetoDeFabrica) / Simulador.TetoDeFabrica));
 
 	/// <summary>`verb/Upgrade()`: o teto de poder e a energia -- em zeni ou (o dobro) em recursos.</summary>
 	private void MelhorarOSimulador(ServerPlayer pl, string arg)
@@ -207,14 +215,22 @@ public sealed partial class GameServer
 		if (pl.Ficha.KO || EhCadaver(pl)) { Avisar(pl, "caído, você não melhora nada."); return; }
 		(string oQue, Moeda moeda) = Recurso.LerPedidoPago(arg);
 		EstadoDeTech e = EstadoDoSimulador(o);
+		// (2026-10-19) O TETO DE QUEM PAGA (`TetoPorTecnologia`): a recusa vem antes da cobranca.
+		double tech = pl.Ficha.techskill;
 		switch (oQue)
 		{
 			case Simulador.Poder:
+				int dobras = TetoPorTecnologia.DobrasDoSimulador(tech);
+				if (DobrasDoTetoDoSimulador(e) >= dobras)
+				{ Avisar(pl, TetoPorTecnologia.Recusa("o teto de poder do simulador", tech, $"{dobras} dobra(s)", proporcional: false)); return; }
 				if (!CobrarOuExplicar(pl, Simulador.CustoDoPoder(e.Num(Simulador.ChaveTeto)), moeda, "o teto de poder do simulador")) return;
 				e.N[Simulador.ChaveTeto] = e.Num(Simulador.ChaveTeto) * 2;   // `maxbp*=2`
 				Avisar(pl, "o poder da simulação aumentou.");
 				break;
 			case Simulador.Energia:
+				int energia = TetoPorTecnologia.EnergiaDoSimulador(tech);
+				if (e.Num(Simulador.ChaveEnergiaMax) >= energia)
+				{ Avisar(pl, TetoPorTecnologia.Recusa("a energia do simulador", tech, $"{(double)energia * 100:0}", proporcional: false)); return; }
 				if (!CobrarOuExplicar(pl, Simulador.CustoDaEnergia(e.Num(Simulador.ChaveEnergiaMax)), moeda, "a energia do simulador")) return;
 				e.N[Simulador.ChaveEnergiaMax] = e.Num(Simulador.ChaveEnergiaMax) + 1;   // `MaxEnergy+=1; Energy=MaxEnergy`
 				e.N[Simulador.ChaveEnergia] = e.Num(Simulador.ChaveEnergiaMax);
@@ -371,6 +387,11 @@ public sealed partial class GameServer
 				   + $"menos falha por {Recurso.DoisPrecos(MaquinaDeClonagem.CustoDaFalha(falha))}; "
 				   + $"bateria (+1, e enche) por {Recurso.DoisPrecos(MaquinaDeClonagem.CustoDaBateria(e.Num(MaquinaDeClonagem.ChaveEnergiaMax)))}; "
 				   + $"senha por {MaquinaDeClonagem.CustoDaSenha:N0} zeni.");
+		// (2026-10-19) O TETO DE QUEM PERGUNTA (`TetoPorTecnologia`).
+		double tech = pl.Ficha.techskill;
+		if (!TetoPorTecnologia.Livre(tech))
+			Avisar(pl, $"a sua tecnologia leva a sessão mais curta até o nível {TetoPorTecnologia.VelocidadeDaClonagem(tech)}, "
+					   + $"a menos falha até o nível {TetoPorTecnologia.FalhaDaClonagem(tech)} e a bateria até {TetoPorTecnologia.BateriaDaClonagem(tech)}.");
 	}
 
 	/// <summary>`verb/Upgrade()`: o tempo, a falha e a bateria -- em zeni ou (o dobro) em recursos.</summary>
@@ -381,19 +402,30 @@ public sealed partial class GameServer
 		if (pl.Ficha.KO || EhCadaver(pl)) { Avisar(pl, "caído, você não melhora nada."); return; }
 		(string oQue, Moeda moeda) = Recurso.LerPedidoPago(arg);
 		EstadoDeTech e = EstadoDaClonagem(o);
+		// (2026-10-19) O TETO DE QUEM PAGA (`TetoPorTecnologia`): a recusa vem antes da cobranca.
+		double tech = pl.Ficha.techskill;
 		switch (oQue)
 		{
 			case MaquinaDeClonagem.Tempo:
+				int tempo = TetoPorTecnologia.VelocidadeDaClonagem(tech);
+				if (e.Num(MaquinaDeClonagem.ChaveVelocidade) >= tempo)
+				{ Avisar(pl, TetoPorTecnologia.Recusa("a sessão mais curta", tech, $"nível {tempo}", proporcional: false)); return; }
 				if (!CobrarOuExplicar(pl, MaquinaDeClonagem.CustoDoTempo(e.Num(MaquinaDeClonagem.ChaveVelocidade)), moeda, "a sessão mais curta")) return;
 				e.N[MaquinaDeClonagem.ChaveVelocidade] = e.Num(MaquinaDeClonagem.ChaveVelocidade) + 1;
 				Avisar(pl, "o tempo de clonagem diminuiu.");
 				break;
 			case MaquinaDeClonagem.Falha:
+				int falha = TetoPorTecnologia.FalhaDaClonagem(tech);
+				if (e.Num(MaquinaDeClonagem.ChaveFalha) >= falha)
+				{ Avisar(pl, TetoPorTecnologia.Recusa("a menos falha", tech, $"nível {falha}", proporcional: false)); return; }
 				if (!CobrarOuExplicar(pl, MaquinaDeClonagem.CustoDaFalha(e.Num(MaquinaDeClonagem.ChaveFalha)), moeda, "a chance de falha menor")) return;
 				e.N[MaquinaDeClonagem.ChaveFalha] = e.Num(MaquinaDeClonagem.ChaveFalha) + 1;
 				Avisar(pl, "a chance de falha diminuiu.");
 				break;
 			case MaquinaDeClonagem.Bateria:
+				int bateria = TetoPorTecnologia.BateriaDaClonagem(tech);
+				if (e.Num(MaquinaDeClonagem.ChaveEnergiaMax) >= bateria)
+				{ Avisar(pl, TetoPorTecnologia.Recusa("a bateria da máquina", tech, $"{bateria} de energia", proporcional: false)); return; }
 				if (!CobrarOuExplicar(pl, MaquinaDeClonagem.CustoDaBateria(e.Num(MaquinaDeClonagem.ChaveEnergiaMax)), moeda, "a bateria da máquina")) return;
 				e.N[MaquinaDeClonagem.ChaveEnergiaMax] = e.Num(MaquinaDeClonagem.ChaveEnergiaMax) + 1;
 				e.N[MaquinaDeClonagem.ChaveEnergia] = e.Num(MaquinaDeClonagem.ChaveEnergiaMax);

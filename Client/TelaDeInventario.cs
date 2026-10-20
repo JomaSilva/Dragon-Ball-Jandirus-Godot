@@ -30,6 +30,18 @@ public partial class TelaDeInventario : CanvasLayer
 	/// <summary>O lado de cada slot, em pixels. O sprite tem 32; o dobro se le sem esforco.</summary>
 	private const int LadoDoSlot = 64;
 
+	/// <summary>
+	/// (2026-10-19) O LADO MAXIMO DA ESFERA DO DRAGAO NO SLOT: dois tercos dele (42 px), a mesma area em que o `Icon` do botao desenha o
+	/// quadro de qualquer item (o de 32 sai com ~43 px). Ver <see cref="PorAEsferaAmpliada"/>.
+	/// </summary>
+	private const int LadoDaEsfera = LadoDoSlot * 2 / 3;
+
+	/// <summary>
+	/// DEFEITO DE TESTE (`--diagesferae`): a esfera volta pro `Icon` do botao com o quadro inteiro, o jogo de antes -- a bola de 9x9 da
+	/// Terra sai com 12 px num slot de 64, e a regua do tamanho tem que reprovar.
+	/// </summary>
+	public static bool EsferaPequenaNoSlotDeTeste;
+
 	/// <summary>A tela viva, ou nula antes do mundo. SO PRA BANCADA.</summary>
 	public static TelaDeInventario? Instancia { get; private set; }
 
@@ -221,8 +233,8 @@ public partial class TelaDeInventario : CanvasLayer
 	{
 		if (EscSoDepoisDaPausaDeTeste && FecharComOEsc(evento)) return;
 
-		// O "I" E UMA DAS LETRAS QUE O EMBATE SORTEIA -- ver `Foco.AtalhosMudos`. Sem esta troca,
-		// responder ao quick time event abria a mochila por cima dele.
+		// NO MEIO DE UM EMBATE O "I" NAO ABRE A MOCHILA -- ver `Foco.AtalhosMudos`. Ate 2026-10-19 o I era
+		// uma das letras sorteadas, e responder ao quick time event abria a mochila por cima dele.
 		if (Foco.AtalhosMudos) return;
 		if (evento is not InputEventKey { Pressed: true, Echo: false } k) return;
 
@@ -292,7 +304,10 @@ public partial class TelaDeInventario : CanvasLayer
 		_titulo.Text = _deposito != null ? $"MOCHILA -- guardar em {_deposito.ToUpperInvariant()}" : "MOCHILA";
 		_rotuloDoCorpo.Text = "VESTINDO";
 		Inventario inv = GameClient.Instance?.Mochila ?? new Inventario();
-		_contagem.Text = $"{inv.Ocupados} de {Inventario.Slots} espaços";
+		// (2026-10-19) AS ESFERAS DO DRAGAO NA MAO vem no fim da lista e NAO ocupam espaco da mochila (`EsferaNaMochila`): a conta e so dos itens.
+		int esferas = inv.Pilhas.Count(p => Jandirus.Core.Magic.EsferaNaMochila.Ler(p.Id) != null);
+		_contagem.Text = $"{inv.Ocupados - esferas} de {Inventario.Slots} espaços"
+						 + (esferas > 0 ? $" · {esferas} Esfera{(esferas > 1 ? "s" : "")} do Dragão" : "");
 
 		// A FILEIRA DO QUE ESTA NO CORPO -- ver `_vestindo`. A lista vem no MESMO pacote da mochila.
 		IReadOnlyList<Jandirus.Core.Appearance.PecaDeRoupa> noCorpo = GameClient.Instance?.Vestindo ?? [];
@@ -304,7 +319,9 @@ public partial class TelaDeInventario : CanvasLayer
 
 		// A GRADE TEM SEMPRE OS 30 SLOTS, cheios ou nao. Desenhar so o que existe faria a caixa
 		// mudar de tamanho a cada maca colhida, e a tela inteira dancaria embaixo do mouse.
-		for (int i = 0; i < Inventario.Slots; i++)
+		// (2026-10-19) ...menos com a mochila cheia E esfera na mao: elas nao ocupam os 30, e abrem fileira embaixo.
+		int celulas = Math.Max(Inventario.Slots, (inv.Pilhas.Count + Colunas - 1) / Colunas * Colunas);
+		for (int i = 0; i < celulas; i++)
 		{
 			if (i < inv.Pilhas.Count) _grade.AddChild(SlotCheio(inv.Pilhas[i]));
 			else _grade.AddChild(SlotVazio());
@@ -418,7 +435,8 @@ public partial class TelaDeInventario : CanvasLayer
 			IconAlignment = HorizontalAlignment.Center,
 		};
 
-		PorIcone(botao, def, RoupaGuardada.Ler(pilha.Id)?.Cor);
+		// (2026-10-19) A ESFERA DO DRAGAO VAI AMPLIADA (ver `PorAEsferaAmpliada`); todo o resto, pelo `Icon` de sempre.
+		if (EsferaPequenaNoSlotDeTeste || !PorAEsferaAmpliada(botao, def)) PorIcone(botao, def, RoupaGuardada.Ler(pilha.Id)?.Cor);
 
 		botao.SetMeta("item", pilha.Id);   // o id do slot, pra bancada achar o icone (`IconeDoSlotDeTeste`)
 		botao.Pressed += () => AbrirAcoes(pilha, botao);
@@ -483,6 +501,35 @@ public partial class TelaDeInventario : CanvasLayer
 			TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
 			MouseFilter = Control.MouseFilterEnum.Ignore,
 		});
+	}
+
+	/// <summary>
+	/// (2026-10-19) A ESFERA DO DRAGAO AMPLIADA NO SLOT -- dono: *"Pode ampliar o ícone da esfera no slot da mochila, com o mesmo sprite
+	/// (pedra ou laranja), só maior."*
+	///
+	/// O QUADRO DELA E QUASE TODO VAZIO: uma bola de 9x9 (a da Terra) ou 16x16 (a de Namek) no meio de 32x32, e o `Icon` do botao amplia o
+	/// quadro inteiro -- a da Terra saia com 12 px num slot de 64. Aqui vai SO a bola (<see cref="Miniaturas.Recortada"/>: os mesmos pixels
+	/// do quadro do chao, pedra ou acesa), na maior escala INTEIRA que cabe em <see cref="LadoDaEsfera"/>: cada pixel do sprite vira um
+	/// quadrado do mesmo tamanho, sem borrao -- 4x a da Terra (36 px) e 2x a de Namek (32 px). Falso pra quem nao e esfera.
+	/// </summary>
+	private static bool PorAEsferaAmpliada(Button botao, ItemDef? def)
+	{
+		if (def == null || Jandirus.Core.Magic.EsferaNaMochila.Ler(def.Id) == null) return false;
+		if (Miniaturas.Recortada(def.Arte, def.Estado) is not { } bola) return false;
+		Vector2 lado = bola.GetSize();
+		float vezes = Math.Max(1, LadoDaEsfera / (int)Math.Max(lado.X, lado.Y));   // divisao de INTEIROS: a escala nao quebra o pixel
+		Vector2 tam = lado * vezes, meio = (tam / 2).Floor();
+		botao.AddChild(new TextureRect
+		{
+			Texture = bola,
+			AnchorLeft = 0.5f, AnchorTop = 0.5f, AnchorRight = 0.5f, AnchorBottom = 0.5f,
+			OffsetLeft = -meio.X, OffsetTop = -meio.Y, OffsetRight = tam.X - meio.X, OffsetBottom = tam.Y - meio.Y,
+			ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+			StretchMode = TextureRect.StretchModeEnum.Scale,
+			TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
+			MouseFilter = Control.MouseFilterEnum.Ignore,
+		});
+		return true;
 	}
 
 	/// <summary>
@@ -559,7 +606,8 @@ public partial class TelaDeInventario : CanvasLayer
 		// seria uma chance por item de esquecer. Ver `ItemDef.AcoesDoItem`.
 		// (v0.2.1) COM UM DEPOSITO ABERTO, "guardar" vem primeiro: vale pra todo item, como "largar".
 		IEnumerable<string> acoesDoMenu = def.AcoesDoItem.Append("largar");
-		if (_deposito != null) acoesDoMenu = acoesDoMenu.Prepend(TechDeBolso.AcaoGuardar);
+		// (2026-10-19) ...menos a Esfera do Dragao, que nao se guarda: ou fica na mao, ou no chao (`EsferaNaMochila`).
+		if (_deposito != null && Jandirus.Core.Magic.EsferaNaMochila.Ler(def.Id) == null) acoesDoMenu = acoesDoMenu.Prepend(TechDeBolso.AcaoGuardar);
 		foreach (string acao in acoesDoMenu)
 		{
 			string a = acao;
@@ -905,6 +953,19 @@ public partial class TelaDeInventario : CanvasLayer
 			if (n is Button b && b.HasMeta("item") && b.GetMeta("item").AsString() == itemId)
 				return b.Icon ?? b.GetChildren().OfType<TextureRect>().FirstOrDefault()?.Texture;
 		return null;
+	}
+
+	/// <summary>
+	/// (2026-10-19) O retangulo na tela do slot deste item (vazio sem slot) -- o no vivo, nao o que o redesenho acabou de soltar. SO PRA
+	/// BANCADA (`--diagesferae`: a regua do tamanho da esfera mede a foto ali dentro).
+	/// </summary>
+	public Rect2 RetanguloDoSlotDeTeste(string itemId)
+	{
+		if (!IsInstanceValid(_grade)) return new Rect2();
+		foreach (Node n in _grade.FindChildren("*", "Button", true, false))
+			if (n is Button b && !b.IsQueuedForDeletion() && b.HasMeta("item") && b.GetMeta("item").AsString() == itemId)
+				return b.GetGlobalRect();
+		return new Rect2();
 	}
 
 	public List<(string Texto, string Moeda)> AcoesAbertasDeTeste()

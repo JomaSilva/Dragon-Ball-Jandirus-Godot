@@ -806,7 +806,9 @@ public partial class GameServer
 		// (2026-10-18) AO LEME NAO SE CONSTROI: o corpo de quem pilota esta do lado de fora do casco, e o assento cairia no chao de fora --
 		// a nave grande se monta por DENTRO. Ver `Naves.AoLemeNaoSeConstroi`.
 		if (NaveDoPiloto(pl) is { } aoLeme && !ConstruirAoLemeDeTeste) { Avisar(pl, Naves.AoLemeNaoSeConstroi(aoLeme.Tipo)); return; }
-		bool plantio = !string.Equals(item.Id, c.Id, StringComparison.OrdinalIgnoreCase);
+		// (2026-10-19) PLANTIO E SO A SEMENTE: a maquina recolhida com as melhorias tambem assenta um id diferente do dela
+		// (`Gravity|c12|500x` vira `Gravity`), e e instalada. A pergunta e a mesma do fantasma do cliente.
+		bool plantio = Jandirus.Core.Items.CatalogoDeItens.EhPlantio(item.Id);
 
 		// ============================ A REGRA 2, DO LADO DO SERVIDOR ============================
 		// *"item de uso pessoal (scouter, armaduras, pesos) NAO ganha [instalar] -- ele e equipavel."*
@@ -890,7 +892,7 @@ public partial class GameServer
 		// elas sao sobre o chao e valem pra qualquer coisa que se assente. O que muda e o RESTO da
 		// vida dela: ela se pilota, viaja entre mundos, tem casco, senha e piloto -- ver o cabecalho
 		// de `Nave`. A chave de zona deixou de ser o motivo da separacao: as duas guardam a mesma.
-		if (Naves.EhNave(c.Id)) { AssentarNave(pl, c, x, y); return; }
+		if (Naves.EhNave(c.Id)) { AssentarNave(pl, c, x, y, item.Id); return; }
 
 		var obra = new Obra
 		{
@@ -917,13 +919,17 @@ public partial class GameServer
 		// A ZONA INTEIRA, e nao o nome dela: e o que faz esta bancada voltar do disco no MESMO mundo
 		// em que ela foi erguida, inclusive num sorteado homonimo de outro. Ver `Obra.ZonaTipo`.
 		obra.PorZona(pl.Zone);
+		// (2026-10-19) A MAQUINA RECOLHIDA COM AS MELHORIAS volta como estava: o estado sai da gaveta do item. Ver `DevolverAsMelhorias`.
+		bool voltou = DevolverAsMelhorias(obra, item.Id);
 		_noChao.Add(obra);
 		GravarMundo();
 
-		GD.Print($"[server] {pl.Name} {(plantio ? "plantou" : "assentou")} {c.Nome} (#{obra.Id}) em {obra.Zona} @ ({x:0},{y:0})");
+		GD.Print($"[server] {pl.Name} {(plantio ? "plantou" : "assentou")} {c.Nome} (#{obra.Id}) em {obra.Zona} @ ({x:0},{y:0})"
+				 + (voltou ? " -- com o estado da gaveta" : ""));
 		Avisar(pl, plantio
 			? "você planta a semente. Uma macieira nasce ali -- já dá pra colher."
-			: $"você assenta {c.Nome} no chão{(obra.Aparafusada ? ", já aparafusada" : "")}.");
+			: $"você assenta {c.Nome} no chão{(obra.Aparafusada ? ", já aparafusada" : "")}"
+			  + (voltou ? ", com as melhorias e os ajustes que ela tinha." : "."));
 		MandarObras(pl.Zone);
 	}
 
@@ -954,10 +960,10 @@ public partial class GameServer
 		if (o.DonoConta.Length > 0 && !string.Equals(o.DonoConta, pl.Conta, StringComparison.OrdinalIgnoreCase))
 		{ Avisar(pl, $"{NomeDaObra(o)} é de {o.DonoNome}."); return; }
 		if (pl.Mochila.Cheio) { Avisar(pl, "sua mochila está cheia."); return; }
-		// (v0.2.1) COM COISA DENTRO NAO SE RECOLHE: a obra recolhida vira um item sem identidade, e o que ela guardava
-		// sumiria com ela. Ver `Deposito`.
+		// (v0.2.1) COM COISA DENTRO NAO SE RECOLHE: o que ela guardava sumiria com ela -- a gaveta da maquina recolhida
+		// (`IdAoRecolher`) leva o estado dela, e nao os itens. Ver `Deposito`.
 		if (o.Tech is { Itens.Count: > 0 }) { Avisar(pl, $"esvazie {NomeDaObra(o)} antes de recolher."); return; }
-		// (v0.2.1) A LUA ACESA NAO SE RECOLHE: recolhida, ela voltaria pra mochila nova em folha -- e acenderia de novo.
+		// (v0.2.1) A LUA ACESA NAO SE RECOLHE: ela arde onde foi acesa, ate se apagar e sumir.
 		if (LuaArtificial.EhFonte(o.Tipo) && o.Tech?.Num(LuaArtificial.ChaveAcesaAte) > 0)
 		{ Avisar(pl, $"{NomeDaObra(o)} está acesa: não dá pra recolher."); return; }
 
@@ -965,18 +971,19 @@ public partial class GameServer
 		// Ver `GameServer.Drill.AoRecolherADrill`.
 		if (o.Tipo == Drill.Tipo) AoRecolherADrill(pl, o);
 
+		// (2026-10-19) AS OUTRAS TAMBEM NAO: a maquina mexida volta pra mochila como um item com estado, e o estado dela fica
+		// numa gaveta do cofre ate ela ser assentada de novo (dono: *"todos os upgrades sao removidos e vc tem q pagar todo
+		// o upgrade dnv"*). A de fabrica volta com o id cru. Ver `IdAoRecolher` e `MaquinaGuardada`.
+		string recolhida = IdAoRecolher(o);
 		_noChao.Remove(o);
 		GravarMundo();
-		Guardar(pl, o.Tipo);
+		Guardar(pl, recolhida);
 
 		// A COLISAO E REFEITA PELA LISTA INTEIRA (ver `AplicarColisaoDasObras`): tirar a obra sem
 		// isto deixaria a parede dela no lugar, e o jogador levaria correcao num ponto vazio.
 		AplicarColisaoDasObras(pl.Zone);
 		Avisar(pl, $"você recolhe {NomeDaObra(o)}.");
-		// (v0.2.1) A MAQUINA RECOLHIDA VIRA UM ITEM SEM IDENTIDADE: o que as maquinas do lote da tech guardam em `Obra.Tech`
-		// (as melhorias, a programacao) fica pra tras, e quem recolhe e avisado.
-		if (o.Tech is { N.Count: > 0 } or { S.Count: > 0 })
-			Avisar(pl, "as melhorias e os ajustes dela ficaram pra trás: recolhida, ela volta a ser a de fábrica.");
+		if (recolhida != o.Tipo) Avisar(pl, "as melhorias e os ajustes dela vão junto: assentada de novo, ela volta como estava.");
 		MandarObras(pl.Zone);
 	}
 
@@ -1985,7 +1992,7 @@ public partial class GameServer
 	/// </summary>
 	/// <summary>
 	/// AS MELHORIAS QUE ESTA OBRA JA TEM e que saem do menu dela, nos bits do `Interacoes` (`MelhoriaUnicaFeita`,
-	/// `MelhoriaNoTeto`). Le o estado sem cria-lo: a maquina que nunca foi mexida nao tem nenhuma -- menos o tanque
+	/// `MelhoriaNoTeto`, `ForcaNoTetoDoMundo`). Le o estado sem cria-lo: a maquina que nunca foi mexida nao tem nenhuma -- menos o tanque
 	/// do MAPA, que nasce turbinado (`RegeneradorDaObra.DaCidade`) e por isso ja nasce sem a opcao.
 	/// </summary>
 	private static byte MelhoriasFeitas(Obra o) => o.Tipo switch
@@ -1994,7 +2001,9 @@ public partial class GameServer
 			(byte)((o.Regenerador ?? (o.DoMapa ? RegeneradorDaObra.DaCidade() : null))?.CuraFerimentos == true
 				? Jandirus.Core.Tech.Interacoes.MelhoriaUnicaFeita : 0),
 		"Gravity" => (byte)((o.Gravidade?.Estavel == true ? Jandirus.Core.Tech.Interacoes.MelhoriaUnicaFeita : 0)
-						   | (o.Gravidade?.Range >= AlcanceMaximo ? Jandirus.Core.Tech.Interacoes.MelhoriaNoTeto : 0)),
+						   | (o.Gravidade?.Range >= AlcanceMaximo ? Jandirus.Core.Tech.Interacoes.MelhoriaNoTeto : 0)
+						   // (2026-10-19) a forca no teto do mundo: dali nao sobe pra ninguem (`TetoDaForca`)
+						   | (o.Gravidade?.Max >= Jandirus.Core.Tech.Interacoes.TetoDeGravidade ? Jandirus.Core.Tech.Interacoes.ForcaNoTetoDoMundo : 0)),
 		// (v0.2.1) a ressurreicao de androide do super computador: comprada uma vez, sai do menu dele.
 		Jandirus.Core.Tech.SuperComputador.Tipo =>
 			(byte)(o.Tech?.Ligado(Jandirus.Core.Tech.SuperComputador.ChaveRessurreicao) == true

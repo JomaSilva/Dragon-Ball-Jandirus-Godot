@@ -244,6 +244,15 @@ public static class ArteDeKiNoCliente
 	/// <summary>Os tres cinzas da `1.dmi`, a bola padrao (`race.dm:62`).</summary>
 	private static readonly Rampa CinzaDeBola = Rampa.De("464646", "696969", "afafaf");
 
+	/// <summary>
+	/// (2026-10-19) OS TONS DO RAIO DO SHATTERING THE LIMIT, no lugar dos tons da arte -- o dono: *"a técnica de ki em questao saia
+	/// vermelha"*. A soma do DM (<see cref="Rampa.Com"/>) nao vence uma folha que JA tem cor: o vermelho somado ao azul do Kamehameha saia
+	/// branco-rosado com as bordas azuis, e ao roxo do Galick Ho saia magenta (medido nas fotos da `--diaglimite`). Por isso o raio marcado
+	/// (`ProjetilDesenhado.DoLimite`) troca a rampa inteira, como a arte de cor propria (a Genkidama). ESCOLHA: a casca vermelho-sangue, o
+	/// manto vermelho vivo e o nucleo quase branco -- o desenho de toda arte guarda o miolo claro.
+	/// </summary>
+	public static readonly Rampa TonsDoLimite = Rampa.De("b00000", "ff2a1a", "ffd6cc");
+
 	// =====================================================================
 	// OS RAIOS
 	// =====================================================================

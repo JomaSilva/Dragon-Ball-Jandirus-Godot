@@ -299,6 +299,8 @@ public partial class GameServer
 				if (UsarVerboDeFilho(pl, id)) break;
 				// (2026-10-18) O NEO TUFFLE: possuir nao e skill do livro -- vem da maquina. Ver `GameServer.NeoTuffle.cs`.
 				if (UsarVerboDoTuffle(pl, id)) break;
+				// (2026-10-19) A TRAVESSIA DO KING YEMMA: e do trono, e nao do livro. Ver `GameServer.TravessiaDoJuiz.cs`.
+				if (UsarVerboDoJuiz(pl, id)) break;
 				// (v0.4.0) AS ATIVAS RACIAIS -- vem com a raca, e nao do livro. Ver `GameServer.Passivas.cs`.
 				if (UsarAtivaRacial(pl, id)) break;
 				if (!UsarTecnica(pl, id)) Avisar(pl, $"habilidade desconhecida: {id}");

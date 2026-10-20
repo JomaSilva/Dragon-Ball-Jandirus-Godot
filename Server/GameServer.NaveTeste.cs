@@ -146,6 +146,9 @@ public partial class GameServer
 			Checa("no degrau 1 a nave nao deixa ninguem mais lento",
 				  pl.SpeedStat >= velANdando - 1e-4, $"{velANdando:0.00} -> {pl.SpeedStat:0.00}");
 
+			// (2026-10-19) O TETO DO DM E O DE QUEM TEM 100 DE TECNOLOGIA: com os 60 da fabricacao a velocidade para em 24x
+			// (`TetoPorTecnologia.VelocidadeDaNave`, medido na `--melhoriasteste`). O `techAntes` volta no fim.
+			pl.Ficha.techskill = TetoPorTecnologia.TechSemTeto;
 			int degraus = 0;
 			while (n.Velocidade < Naves.VelocidadeMaxima && degraus < Naves.VelocidadeMaxima + 5)
 			{ ComandoDeInteracao(pl, "nave_melhorar", ""); degraus++; }

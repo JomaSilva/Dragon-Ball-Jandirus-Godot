@@ -43,6 +43,9 @@ public partial class EsferaDesenhada : Node2D
 	///   * `Character Icons/Dragon.tres` -- "porunga" e "shenron", 256x353;
 	///   * `Misc/DragonStatue.tres` -- a estatua, 32x32.
 	///
+	/// (2026-10-19) As duas da ESFERA passaram pro Core (`EsferaNaMochila.ArteDaEsfera`): a esfera carregada aparece na mochila,
+	/// e o slot desenha a mesma folha -- um caminho escrito em dois lugares seria uma esfera que muda de cara ao ser pega.
+	///
 	/// A CAIXA DOS NOMES E A ARMADILHA QUE A FASE 0 APONTOU: o DM usa `icon_state = "Shenron"` com
 	/// maiuscula e o `.tres` convertido guarda "shenron". Quem resolve isso e o <see cref="Sanear"/>,
 	/// que e a MESMA funcao que a `ObraDesenhada` usa -- e por isso ela nao pode divergir daqui.
@@ -58,10 +61,9 @@ public partial class EsferaDesenhada : Node2D
 			("res://Assets/Sprites/Character Icons/Dragon.tres",
 			 folha == "porunga" ? "porunga" : "shenron"),
 
-		_ => (folha == "namek"
-				? "res://Assets/Sprites/Misc/dragonball.tres"
-				: "res://Assets/Sprites/Misc/Dragonballs.tres",
-			  Esferas.EstadoDoSprite(numero, inerte)),
+		// (2026-10-19) A FOLHA DA ESFERA SAI DO CORE, e a mochila le a mesma (`EsferaNaMochila.ArteDaEsfera`): a esfera pega tem a cara
+		// da esfera do chao.
+		_ => (EsferaNaMochila.ArteDaEsfera(folha == "namek"), Esferas.EstadoDoSprite(numero, inerte)),
 	};
 
 	public override void _Ready()

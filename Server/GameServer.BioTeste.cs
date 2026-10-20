@@ -723,8 +723,10 @@ public partial class GameServer
 			  $"{volta?.bio_skills}");
 
 		// ---- o Cell escolhe sozinho ----
-		SkillRacial doCell = SkillRacial.GuerreiroVeterano | SkillRacial.Disrupcao | SkillRacial.Ira | SkillRacial.SegundoFolego
-									   | SkillRacial.RacaGuerreira | SkillRacial.Resiliencia;
+		// (2026-10-19) o sangue que o dono deu a ele: Saiyajin, Namekuseijin e Frost Demon. Sem o Humano sai o Second Wind, e a segunda volta
+		// do rodizio chega ao Perfect Control.
+		SkillRacial doCell = SkillRacial.GuerreiroVeterano | SkillRacial.Disrupcao | SkillRacial.Ira
+									   | SkillRacial.RacaGuerreira | SkillRacial.Resiliencia | SkillRacial.Controle;
 		ServerPlayer? cell = NascerNpc("cell", host.Zone, host.Pos + new Vec2(0, 60 * Jandirus.Core.World.ZoneCollision.TileSize), ++_lugarDaBancadaDeBio);
 		if (cell == null) { Checa("PRECONDICAO: o Cell nasceu", false); return; }
 		try
@@ -734,13 +736,13 @@ public partial class GameServer
 			var naMaoDoCell = new List<string>();
 			for (int i = 0; i < naMao.Length; i++)
 				if (naMao[i] != 0) naMaoDoCell.Add(Jandirus.Core.Ai.AtivasRaciaisNaIa.Todas[i].Id);
-			Checa("O CELL (NPC) ESCOLHE SOZINHO, ao nascer: o rodizio do sangue dele (Saiyajin, Namekuseijin, Icer, Humano), as ativas primeiro -- "
-				  + "Seasoned Warrior, Spirit Disruption, Unrestrained Wrath, Second Wind, Warrior Race e Namekian Resilience",
-				  (SkillRacial)cell.Ficha.bio_skills == doCell && SkillsRaciais.EscolhaDoNpc(["Saiyan", "Namekian", "Icer", "Human"]) == doCell,
+			Checa("O CELL (NPC) ESCOLHE SOZINHO, ao nascer: o rodizio do sangue dele (Saiyajin, Namekuseijin, Icer), as ativas primeiro -- "
+				  + "Seasoned Warrior, Spirit Disruption, Unrestrained Wrath, Warrior Race, Namekian Resilience e Perfect Control",
+				  (SkillRacial)cell.Ficha.bio_skills == doCell && SkillsRaciais.EscolhaDoNpc(["Saiyan", "Namekian", "Icer"]) == doCell,
 				  SkillsRaciais.Nomes((SkillRacial)cell.Ficha.bio_skills));
-			Checa("...e a IA dele poe na mao as TRES ativas escolhidas (Spirit Disruption, Unrestrained Wrath, Second Wind) e nenhuma outra",
-				  naMaoDoCell.Count == 3 && naMaoDoCell.Contains(Passivas.Disrupcao) && naMaoDoCell.Contains(Passivas.Ira)
-				  && naMaoDoCell.Contains(Passivas.SegundoFolego), string.Join(", ", naMaoDoCell));
+			Checa("...e a IA dele poe na mao as DUAS ativas escolhidas (Spirit Disruption, Unrestrained Wrath) e nenhuma outra",
+				  naMaoDoCell.Count == 2 && naMaoDoCell.Contains(Passivas.Disrupcao) && naMaoDoCell.Contains(Passivas.Ira),
+				  string.Join(", ", naMaoDoCell));
 		}
 		finally { RemoverNpc(cell); }
 	}

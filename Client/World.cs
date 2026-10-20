@@ -77,8 +77,8 @@ public partial class World : Node2D
 	/// corpo pelo `FormaDef.Corpo`, que o `Transformacao.Assumir` ja veste no fim). Uma forma nova que
 	/// amanha mexa na ficha herda a ordem certa de graca.
 	///
-	/// O NOME NAO ESPERA -- ver <see cref="AoReceberAparencia"/>: ele nao e pixel do corpo, e o balao de
-	/// fala o procura por outra via.
+	/// O NOME NAO ESPERA -- ver <see cref="AoReceberAparencia"/>: ele nao e pixel do corpo, e quem o le
+	/// sao rotulos (o balao de fala nem o usa: acha o corpo pelo id da boca, ver <see cref="AoFalar"/>).
 	/// ======================================================================================================
 	/// </summary>
 	private readonly Dictionary<int, (string Raca, string Genero, Jandirus.Core.Appearance.Appearance Ap)> _pendentes = [];
@@ -397,11 +397,12 @@ public partial class World : Node2D
 			cli.SnapshotReceived += AoReceberSnapshot;
 			cli.PeerLeft += AoSair;
 			cli.PeerLooked += AoReceberAparencia;
-			cli.Falou += AoFalar;
+			cli.FalouPelaBoca += AoFalar;
 			cli.VozRecebida += AoOuvirVoz;
 			cli.Golpe += AoGolpe;
 			cli.GestoDoCorpo += AoGesto;
 			cli.GodKiDespertou += AoDespertarDivino;   // o som e o anel de luz -- ver `World.KiDivino.cs`
+			cli.DandoPoder += AoDarPoder;   // (2026-10-19) a corrente de poder do DU -- ver `World.CorrenteDePoder.cs`
 			cli.OlharCravado += AoCravarOlhar;
 			cli.FormaMudou += AoMudarForma;
 			cli.OozaruMudou += AoVirarOozaru;
@@ -495,11 +496,12 @@ public partial class World : Node2D
 			cli.SnapshotReceived -= AoReceberSnapshot;
 			cli.PeerLeft -= AoSair;
 			cli.PeerLooked -= AoReceberAparencia;
-			cli.Falou -= AoFalar;
+			cli.FalouPelaBoca -= AoFalar;
 			cli.VozRecebida -= AoOuvirVoz;
 			cli.Golpe -= AoGolpe;
 			cli.GestoDoCorpo -= AoGesto;
 			cli.GodKiDespertou -= AoDespertarDivino;
+			cli.DandoPoder -= AoDarPoder;
 			cli.OlharCravado -= AoCravarOlhar;
 			cli.FormaMudou -= AoMudarForma;
 			// METODO NOMEADO E `-=`, e nao lambda: ver a nota do `_Ready`. O `GameClient` sobrevive
@@ -997,7 +999,10 @@ public partial class World : Node2D
 		{
 			Name = $"Tiro{n.Id}",
 			Tipo = (Jandirus.Core.Combat.TipoDeProjetil)n.Tipo,
-			Cor = CorDoKiDe(n.Dono),
+			// (2026-10-19) o raio do Shattering the Limit e VERMELHO -- a cor (a da luz e do estouro) e os tons do desenho, que trocam os da
+			// arte (`ProjetilDesenhado.DoLimite`). Ver `NascimentoDeProjetil.DoLimite`.
+			Cor = n.DoLimite ? CorDoLimite : CorDoKiDe(n.Dono),
+			DoLimite = n.DoLimite,
 			// O RAIO SAI DA MAO DE QUEM ATIROU: e pelo dono que o desenho acha a mao (`ProjetilDesenhado.AMao`).
 			Dono = n.Dono,
 			Position = p,
@@ -1388,6 +1393,13 @@ public partial class World : Node2D
 		_looks.TryGetValue(id, out var l) && l.Ap.CorKi is { } c
 			? new Color(c.R / 255f, c.G / 255f, c.B / 255f)
 			: Aura.CorDoKiCru;
+
+	/// <summary>
+	/// (2026-10-19) A COR DO SHATTERING THE LIMIT -- a do raio que sai 2x e a da carga dele, no lugar da cor do ki do dono (pedido do dono:
+	/// a tecnica sai vermelha). A mesma pra todo mundo; ver `Passivas.CorDoLimite`.
+	/// </summary>
+	private static readonly Color CorDoLimite = new(Jandirus.Core.Races.Passivas.CorDoLimite.R / 255f,
+		Jandirus.Core.Races.Passivas.CorDoLimite.G / 255f, Jandirus.Core.Races.Passivas.CorDoLimite.B / 255f);
 
 	/// <summary>
 	/// TODO TIRO SOME AO TROCAR DE ZONA. Eles sao da zona que ficou pra tras, e o servidor nao vai
@@ -1860,8 +1872,8 @@ public partial class World : Node2D
 
 	/// <summary>
 	/// (2026-10-18) O SLEEP DO MAJIN (`Ocupacao.Dormindo`): o "z" subindo sobre o corpo que dorme (<see cref="SonoDesenhado"/>) -- o molde do
-	/// <see cref="MarcarSecando"/>, estado do corpo no snapshot. O corpo DEITADO e a pose: `Pose.Nocauteado` pros outros (o servidor a manda),
-	/// e o `LocalPlayer.Dormindo` pro meu (o ramo do corpo local o liga junto). O "z" e o que separa o sono do nocaute.
+	/// <see cref="MarcarSecando"/>, estado do corpo no snapshot. (2026-10-19) Quem dorme dorme EM PE (o sono nao mexe na pose, nem na minha
+	/// tela nem na dos outros), entao o "z" e o sono inteiro na tela.
 	/// </summary>
 	private void MarcarDormindo(int id, bool dormindo)
 	{
@@ -1877,7 +1889,7 @@ public partial class World : Node2D
 		if (ja == null) corpo.AddChild(new SonoDesenhado { Name = SonoDesenhado.NomeDoNode });
 	}
 
-	/// <summary>DEFEITO INJETADO (robo `--diagsono`): a tela ignora o sono -- nem o "z" nem o corpo local deitado. Falso em jogo, sempre.</summary>
+	/// <summary>DEFEITO INJETADO (robo `--diagsono`): a tela ignora o sono -- o corpo dorme sem "z" nenhum. Falso em jogo, sempre.</summary>
 	internal static bool SonoIgnoradoDeTeste;
 
 	private void MarcarDesfeito(int id, bool desfeito)
@@ -1985,8 +1997,9 @@ public partial class World : Node2D
 			Estado = e.CargaDoCanal,
 			Direcao = dir,
 			// `I.icon += rgb(blastR,blastG,blastB)` (`mobhandler.dm:8`) -- a cor de KI do dono, a mesma
-			// que o tiro dele vai usar, e nao a cor da chama. Ver `CorDoKiDe`.
-			Cor = CorDoKiDe(id),
+			// que o tiro dele vai usar, e nao a cor da chama. Ver `CorDoKiDe`. (2026-10-19) A carga do Shattering the Limit
+			// e vermelha, como o raio dela -- ver `EntityState.CanalDoLimite`.
+			Cor = e.CanalDoLimite ? CorDoLimite : CorDoKiDe(id),
 		});
 	}
 
@@ -3650,9 +3663,8 @@ public partial class World : Node2D
 				MarcarEsferaDemoniaca(e.Id, e.Ocupacao);
 				// (2026-10-17) E O MEU CORPO SECANDO, pela mesma frase: a vitima da execucao do bio ve o proprio corpo secar -- ver `MarcarSecando`.
 				MarcarSecando(e.Id, e.Ocupacao == Jandirus.Core.World.Ocupacao.Secando);
-				// (2026-10-18) E O MEU SONO, pela mesma frase: quem dorme o Sleep ve o proprio "z" -- e o corpo local, que escolhe a propria pose, deita.
+				// (2026-10-18) E O MEU SONO, pela mesma frase: quem dorme o Sleep ve o proprio "z".
 				MarcarDormindo(e.Id, e.Ocupacao == Jandirus.Core.World.Ocupacao.Dormindo);
-				_local?.Dormir(e.Ocupacao == Jandirus.Core.World.Ocupacao.Dormindo && !SonoIgnoradoDeTeste);
 				// E O CHAO TREMENDO: quem segura o C acima de 120% sente o proprio tremor pela MESMA linha
 				// que o faz tremer pros outros -- nao ha um "tremor local" escrito a parte.
 				MarcarCargaAlta(e.Id, e.CargaAlta);
@@ -5479,10 +5491,9 @@ public partial class World : Node2D
 	/// </summary>
 	/// <remarks>
 	/// `internal` PELO MESMO MOTIVO DO <see cref="AoFalar"/>: este e o UNICO lugar do jogo que
-	/// escreve o mapa id -> nome (`_nomes`), e a busca reversa do balao de fala vive dele. Com o
-	/// metodo privado, a bancada so alcanca o atalho do proprio jogador (`LocalName`) -- provaria o
-	/// balao de quem esta jogando e deixaria sem teste o dos OUTROS, que e onde o balao serve pra
-	/// alguma coisa.
+	/// escreve o mapa id -> nome (`_nomes`), e a bancada do balao precisa dele pra por em campo o que
+	/// o nome nao separa -- dois HOMONIMOS, a fusao que se apresenta com outro nome. E com eles que ela
+	/// prova que a fala acha o corpo pelo id da boca, e nao pelo nome (ver `AoFalar`).
 	/// </remarks>
 	/// <param name="fusao">
 	/// DE QUE TIPO DE FUSAO ESTE CORPO E (nulo = nao e fusao). Ver <see cref="_fusaoDaZona"/> pra o que
@@ -5501,9 +5512,9 @@ public partial class World : Node2D
 		// jogador esta olhando pra ela.
 		if (fusao is { } tf) _fusaoDaZona[id] = tf; else _fusaoDaZona.Remove(id);
 
-		// O NOME NAO ESPERA CENA NENHUMA: ele nao e pixel do corpo (quem o usa e a busca reversa do
-		// balao de fala, `IdPeloNome`), e segura-lo por 28 s faria as falas de quem esta virando
-		// sumirem no meio da propria cena.
+		// O NOME NAO ESPERA CENA NENHUMA: ele nao e pixel do corpo (quem o le sao rotulos -- a fala da
+		// cinematica no chat, o radio do scouter, a marca de alvo: `NomeDe`), e segura-lo por 28 s
+		// deixaria esses rotulos sem nome no meio da propria cena.
 		_nomes[id] = nome;
 
 		// A MEMORIA DA ABA PEOPLE: o que eu vi por ultimo de cada pessoa (`VistosDeGente`). O cadaver
@@ -5641,13 +5652,15 @@ public partial class World : Node2D
 	/// <summary>
 	/// ALGUEM FALOU E EU OUVI: acha o corpo e poe a frase sobre a cabeca dele.
 	///
-	/// ============================ O PACOTE TRAZ NOME, NAO ID ============================
-	/// `S2C.Chat` carrega `[canal][autor][texto]` (ver `GameClient`), e mudar isso mexeria no
-	/// protocolo do chat inteiro por causa de um balao. Nao precisa: o cliente JA TEM o mapa
-	/// id -> nome (`_nomes`, escrito por `PeerLook`), entao a busca reversa resolve com o que
-	/// existe. O preco e o caso de dois personagens homonimos na mesma zona -- o balao iria pro
-	/// primeiro. Nomes de personagem sao unicos por conta e a colisao e teorica; se um dia deixar
-	/// de ser, o conserto e por o id no pacote e apagar esta busca.
+	/// ============================ O PACOTE TRAZ O ID DA BOCA (2026-10-19) ============================
+	/// O corpo e o de id <paramref name="boca"/>, que o servidor poe no fim do `S2C.Chat`: ele e quem
+	/// sabe de que corpo a fala saiu. Aqui havia uma busca REVERSA pelo nome do autor no mapa id -> nome
+	/// (`_nomes`), com a nota "a colisao de nomes e teorica; se um dia deixar de ser, o conserto e por o
+	/// id no pacote e apagar esta busca". Deixou de ser, e era o *"as vezes o balao nao aparece sobre
+	/// eles mesmo eles falando"* do dono: habitantes homonimos aos montes, todo bicho com o nome da
+	/// especie, a fusao que se apresenta com outro nome, nome acima de 24 letras chegando vazio no
+	/// `PeerLook`. A busca pegava o PRIMEIRO dono do nome -- quase sempre outro corpo da zona, longe da
+	/// tela. O inventario inteiro esta no parametro `boca` do `GameServer.Mandar`.
 	/// ====================================================================================
 	///
 	/// O portao de canal e do <see cref="BalaoDeFala.EhDeCorpo"/> -- OOC e LOOC sao do jogador e
@@ -5655,17 +5668,25 @@ public partial class World : Node2D
 	/// </summary>
 	/// <remarks>
 	/// `internal` PELO MESMO MOTIVO DO <see cref="AoMudarForma"/>: quem chama isto em jogo e o
-	/// evento `GameClient.Falou`, e evento nao se dispara de fora da classe que o declara. Com o
+	/// evento `GameClient.FalouPelaBoca`, e evento nao se dispara de fora da classe que o declara. Com o
 	/// metodo privado a bancada so poderia chamar `BalaoDeFala.Dizer` na mao -- ou seja, provar que
 	/// o balao desenha sem provar que a FALA chega nele, que e justamente onde moram as duas regras
-	/// que importam (o portao de canal e a busca do corpo pelo nome).
+	/// que importam (o portao de canal e a busca do corpo).
 	/// </remarks>
-	internal void AoFalar(Protocol.Fala canal, string autor, string texto)
+	internal void AoFalar(Protocol.Fala canal, string autor, string texto, int boca)
 	{
-		if (autor.Length == 0 || !BalaoDeFala.EhDeCorpo(canal, texto)) return;
-		if (Corpo(IdPeloNome(autor)) is not { } corpo) return;
+		if (!BalaoDeFala.EhDeCorpo(canal, texto)) return;
+		int quem = BalaoPeloNomeDeTeste ? (autor.Length > 0 ? IdPeloNome(autor) : 0) : boca;
+		if (Corpo(quem) is not { } corpo) return;
 		corpo.GetNodeOrNull<BalaoDeFala>("Balao")?.Dizer(canal, texto);
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagbalao`): o <see cref="AoFalar"/> volta a achar o corpo pelo NOME do
+	/// autor (`IdPeloNome`), e nao pelo id da boca -- o codigo de antes de 2026-10-19, letra por letra. Quem
+	/// liga e o `RoboDeBalao`, dentro de um `try/finally`. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool BalaoPeloNomeDeTeste;
 
 	/// <summary>
 	/// CHEGOU UM QUADRO DE VOZ. Este metodo faz UMA coisa: achar o corpo de quem fala e entregar tudo
@@ -5766,6 +5787,10 @@ public partial class World : Node2D
 		Jandirus.Core.Forms.FormaDef? def = Jandirus.Core.Forms.Catalogo.PorRede((ushort)para);
 		if (def is { Id: "base" }) def = null;   // a base existe como entrada, mas nao acende nada
 
+		// (2026-10-19) O DESCONTROLE DO MUTANTE ANTES DA CENA: a aura vermelha e estado do corpo e vale nos dois caminhos de baixo.
+		// Ver `World.FrostMutante.cs`.
+		MarcarODescontrole(id, corpo);
+
 		PrepararAuraDaForma(corpo, def);
 
 		// ============================ O CONTORNO LOCAL SE GUARDA EM TODO CAMINHO ============================
@@ -5808,8 +5833,11 @@ public partial class World : Node2D
 		// que o servidor mandou, e o que garante que os dois nunca discordem sobre quanto tempo o corpo
 		// fica preso -- porque so existe uma conta, e ela mora no Core.
 		// ====================================================================================================
+		// (2026-10-19) O `instavel` E O BIT DO SERVIDOR: o Mutante subindo pra uma forma que nao segura ganha a cena vermelha do DM --
+		// a MESMA funcao que deu o prazo do corpo preso la (`GameServer.MarcarCena`). Ver `Cinematicas.NoDegrau`.
 		if (def != null
-			&& Jandirus.Core.Forms.Cinematicas.NoDegrau(def, degrau) is { } cena)
+			&& Jandirus.Core.Forms.Cinematicas.NoDegrau(def, degrau,
+				   GameClient.Instance?.FrostInstavel(id) == true) is { } cena)
 		{
 			bool souEu = id == GameClient.Instance?.LocalId;
 			// O NOME VAI JUNTO: e com ele que quem ASSISTE le "Zx: AINDA MAIS ALEM!" no chat. O
@@ -5869,6 +5897,12 @@ public partial class World : Node2D
 		// E QUANDO A FORMA TEM SOM PROPRIO (o do Ultra Instinto, 2026-10-17), ELE TOMA O LUGAR DO SWOOSH -- os dois juntos seriam dois
 		// instantes no mesmo instante.
 		if (de != para && !TocarSomDaForma(corpo, def, degrau)) AudioDirector.EfeitoNoLugar(corpo, Trilha.Dash, 0.9f);
+
+		// (2026-10-19) ...E O CORPO DA UM BRILHO BRANCO, pelo mesmo `de != para` do som: chegar numa zona onde alguem ja esta
+		// transformado nao e ve-lo virar. DEPOIS do `VestirAFormaSemCena` la de cima, e a ordem e o pedido: o branco cobre a forma JA
+		// vestida (inclusive as camadas que ela acabou de criar), entao quando ele escoa o personagem ja esta transformado. Ver
+		// `World.BrilhoDaInstantanea.cs`.
+		if (de != para) BrilharNaInstantanea(corpo);
 	}
 
 	/// <summary>
@@ -5935,6 +5969,9 @@ public partial class World : Node2D
 			// O OVERLAY COLADO NO CORPO (a fagulha do Legendary, o brilho do ki divino). MESMA REGRA
 			// DE ORDEM dos dois de cima: ele cria camada nova, e camada nova nasce com todo uniform no
 			// padrao -- o contorno la embaixo tem que vir DEPOIS. Ver `CharacterVisual.ColadasDaForma`.
+			// (2026-10-19) O DESCONTROLE DO MUTANTE ANTES, pelo motivo do dominio la em cima: este e o funil por onde nasce o boneco de
+			// quem eu ainda nao tinha visto, e a aura vermelha dele tem que estar no primeiro quadro.
+			vis.MarcarDescontrole(GameClient.Instance?.FrostDescontrolado(id) == true);
 			vis.ColadasDaForma(def);
 		}
 

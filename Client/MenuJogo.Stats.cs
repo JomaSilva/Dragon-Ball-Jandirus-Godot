@@ -51,18 +51,27 @@ public partial class MenuJogo
 		// e uma ausencia, nao um valor -- e o numero de verdade sai no laranja da casa. A porta de
 		// bancada le a faixa como "grande + legenda", que e exatamente o texto de antes.
 		bool scouter = _atributos.Tem(Protocol.Poder.Scouter);
-		// (2026-10-18) COM O SCOUTER, O QUE O VIDRO NAO ALCANCA CHEGA NaN: acima de 100 milhoes, ou o ki divino do proprio dono -- e a faixa
-		// escreve "???" (`Core/Stats/Scouter.cs`).
-		static string Lido(double bp) => double.IsNaN(bp) ? "???" : $"{bp:N0}";
-		bool estourou = scouter && (double.IsNaN(f.ExpressedBP) || double.IsNaN(f.BP));
 		PanelContainer faixa = scouter
 			? Faixa("Battle Power", Lido(f.ExpressedBP), $"(base {Lido(f.BP)})", double.IsNaN(f.ExpressedBP) ? Tema.TextoFraco : null)
 			: Faixa("Battle Power", "???", "(sem scouter)", Tema.TextoFraco);
-		faixa.TooltipText = !scouter
-			? "Ninguém lê o próprio poder de luta sem um aparelho que meça. Ligue um scouter na aba Equip."
-			: estourou
-				? "O scouter não lê poder acima de 100 milhões, nem ki divino: o que ele não alcança aparece como ???."
-				: "O poder que o mundo lê (expresso) e o que o treino sobe (base). Só existe em número com o scouter ligado.";
+		faixa.TooltipText = DicaDaFaixaDeBp(scouter, f);
+
+		// COM O SCOUTER A FAIXA E VIVA (2026-10-19): o BP sobe a cada tique de treino, e o numero se reescreve no lugar
+		// em vez de remontar a aba inteira (ver `Viva`). Sem ele ela e o "???" parado -- nada a reescrever.
+		if (scouter)
+		{
+			(Label grande, Label legenda) = PartesDaFaixa(faixa);
+			Color corDoGrande = double.IsNaN(f.ExpressedBP) ? Tema.TextoFraco : Tema.Destaque;
+			Viva(() =>
+			{
+				SheetState s = GameClient.Instance?.Sheet ?? default;
+				grande.Text = Lido(s.ExpressedBP);
+				legenda.Text = $"(base {Lido(s.BP)})";
+				Color cor = double.IsNaN(s.ExpressedBP) ? Tema.TextoFraco : Tema.Destaque;
+				if (cor != corDoGrande) { grande.AddThemeColorOverride("font_color", cor); corDoGrande = cor; }
+				faixa.TooltipText = DicaDaFaixaDeBp(true, s);
+			});
+		}
 
 		// A ORDEM E POR ALTURA E POR ASSUNTO. A grade da cada linha a altura do cartao mais alto dela,
 		// entao os pares tem que ter alturas parecidas: Vitais (cinco barras) com Treino em cima --
@@ -74,6 +83,20 @@ public partial class MenuJogo
 		Atributos(grade);
 		Estado(f, cli, grade);
 	}
+
+	/// <summary>
+	/// (2026-10-18) COM O SCOUTER, O QUE O VIDRO NAO ALCANCA CHEGA NaN: acima de 100 milhoes, ou o ki divino do proprio
+	/// dono -- e a faixa escreve "???" (`Core/Stats/Scouter.cs`).
+	/// </summary>
+	private static string Lido(double bp) => double.IsNaN(bp) ? "???" : $"{bp:N0}";
+
+	/// <summary>A dica da faixa do BP: sem scouter, com ele, e com ele estourado. Uma conta pra montagem e pra viva.</summary>
+	private static string DicaDaFaixaDeBp(bool scouter, SheetState f) =>
+		!scouter
+			? "Ninguém lê o próprio poder de luta sem um aparelho que meça. Ligue um scouter na aba Equip."
+			: double.IsNaN(f.ExpressedBP) || double.IsNaN(f.BP)
+				? "O scouter não lê poder acima de 100 milhões, nem ki divino: o que ele não alcança aparece como ???."
+				: "O poder que o mundo lê (expresso) e o que o treino sobe (base). Só existe em número com o scouter ligado.";
 
 	// =====================================================================
 	// VITAIS -- as barras do HUD, lidas dos MESMOS campos
@@ -89,25 +112,30 @@ public partial class MenuJogo
 		// A frase explica o que ela nao e: transformar multiplica os dois lados da fracao, entao a
 		// forma nao mexe nela. Quem mexe e Ki, ferimento, peso, gravidade e idade. Vem PRIMEIRO no
 		// cartao porque e o resumo das quatro barras abaixo.
-		Color corDoEfetivo = CorDaRazao(f.Inteireza, bom: 0.9, ruim: 0.5);
-		LinhaComBarra("Poder efetivo", $"{f.Inteireza * 100:0.#}%   (do seu pico sem desgaste)",
-			f.Inteireza, corDoEfetivo, c, corDoEfetivo);
+		VitalVivo("Poder efetivo", c, f, s =>
+		{
+			Color corDoEfetivo = CorDaRazao(s.Inteireza, bom: 0.9, ruim: 0.5);
+			return new Vital($"{s.Inteireza * 100:0.#}%   (do seu pico sem desgaste)", s.Inteireza, corDoEfetivo, corDoEfetivo);
+		});
 
-		LinhaComBarra("Vida", $"{f.HP:0}%", f.HP / 100, Tema.Vida, c, CorDaRazao(f.HP / 100));
+		VitalVivo("Vida", c, f, s => new Vital($"{s.HP:0}%", s.HP / 100, Tema.Vida, CorDaRazao(s.HP / 100)));
 
 		// A RAZAO SAI DO STRUCT, e nao de um `Ki / MaxKi` escrito aqui: era essa copia -- tres delas,
 		// nesta aba, na aba Ki e no HUD -- que deixava o corte de uma passar despercebido nas outras.
 		// A barra tem o trilho do teto de carga (`TrilhoDeKi`), como a do HUD: acima do tanque ela
 		// continua crescendo, na cor de excesso, e o texto acende -- e o power-up funcionando.
-		bool excesso = f.RazaoDeKi > 1;
-		LinhaComBarra("Ki", $"{f.Ki:N0} / {f.MaxKi:N0}   ({f.RazaoDeKi * 100:0}%)",
-			f.RazaoDeKi, excesso ? Tema.KiExcesso : Tema.Ki, c, excesso ? Tema.Destaque : Tema.Texto, teto: f.TrilhoDeKi);
+		VitalVivo("Ki", c, f, s =>
+		{
+			bool excesso = s.RazaoDeKi > 1;
+			return new Vital($"{s.Ki:N0} / {s.MaxKi:N0}   ({s.RazaoDeKi * 100:0}%)", s.RazaoDeKi,
+				excesso ? Tema.KiExcesso : Tema.Ki, excesso ? Tema.Destaque : Tema.Texto, s.TrilhoDeKi);
+		});
 
 		// O VIGOR VIVO da ficha rapida (`stamina / maxstamina`, o mesmo que a barra do HUD desenha),
 		// e nao o `Stamina` da ficha lenta que esta linha lia ate 2026-09-03. Duas telas lendo campos
 		// diferentes pra mesma barra e o defeito que ja mordeu o Ki; e a ficha lenta nem entrava na
 		// assinatura da pagina, entao o numero podia ficar congelado.
-		LinhaComBarra("Vigor", $"{f.RazaoDeVigor * 100:0}%", f.RazaoDeVigor, Tema.Vigor, c);
+		VitalVivo("Vigor", c, f, s => new Vital($"{s.RazaoDeVigor * 100:0}%", s.RazaoDeVigor, Tema.Vigor, null));
 
 		// ============================ A NUTRICAO EXPLICA O VIGOR ============================
 		// O vigor cai sozinho e so sobe as custas do tanque de comida. Sem este numero na tela, um
@@ -116,11 +144,34 @@ public partial class MenuJogo
 		//
 		// A COR AVISA ANTES DE DOER: o aviso de fome do servidor bate em 25% de vigor, mas quem fica
 		// sem tanque para de recuperar MUITO antes disso. A barra do HUD le esta mesma razao.
-		double pct = f.RazaoDeNutricao * 100;
-		LinhaComBarra("Nutrição", $"{f.Nutricao:0} / {f.NutricaoMax:0}   ({pct:0}%)",
-			f.RazaoDeNutricao, Tema.Nutricao, c, pct >= 50 ? Tema.Bom : pct <= 15 ? Tema.Perigo : Tema.Texto);
+		VitalVivo("Nutrição", c, f, s =>
+		{
+			double pct = s.RazaoDeNutricao * 100;
+			return new Vital($"{s.Nutricao:0} / {s.NutricaoMax:0}   ({pct:0}%)", s.RazaoDeNutricao,
+				Tema.Nutricao, pct >= 50 ? Tema.Bom : pct <= 15 ? Tema.Perigo : Tema.Texto);
+		});
 
 		Nota("O poder efetivo cai com Ki baixo, ferimento, fome, peso, gravidade e idade. Transformar não mexe nele.", c);
+	}
+
+	/// <summary>O que uma linha dos vitais escreve: o valor, a barra (razao e cor), a cor do valor e o teto da barra.</summary>
+	private readonly record struct Vital(string Texto, double Razao, Color Barra, Color? Valor, double Teto = 1);
+
+	/// <summary>
+	/// UMA LINHA DOS VITAIS, montada com a ficha de agora e registrada como VIVA pela MESMA leitura (2026-10-19). Em
+	/// luta os cinco numeros mudam a cada ficha, e reescreve-los no lugar e o que tirou a Stats das cinco remontagens
+	/// por segundo (ver `Viva`, MenuJogo.cs). Uma leitura so pras duas pontas: a linha que nasce e a que se reescreve
+	/// nao tem como divergir.
+	/// </summary>
+	private void VitalVivo(string rotulo, Control pai, SheetState f, Func<SheetState, Vital> ler)
+	{
+		Vital v = ler(f);
+		LinhaViva linha = LinhaComBarra(rotulo, v.Texto, v.Razao, v.Barra, pai, v.Valor, v.Teto);
+		Viva(() =>
+		{
+			Vital agora = ler(GameClient.Instance?.Sheet ?? default);
+			linha.Escrever(agora.Texto, agora.Razao, agora.Barra, agora.Valor, agora.Teto);
+		});
 	}
 
 	// =====================================================================
@@ -282,7 +333,9 @@ public partial class MenuJogo
 		// "usando todo o poder", "usando parte do poder (40%)", "relaxado", "escondendo o poder". Ver `MenuJogo.PoderEmUso.cs`.
 		LinhaDoPoderEmUso(c);
 
-		Linha("Cadência do soco", $"{f.SocoMs} ms", null, c);
+		// A CADENCIA, O ZENI E OS RECURSOS SAO VIVOS (2026-10-19): a cadencia anda com a carga de Ki e a carteira a
+		// cada segundo de mineracao -- tres textos reescritos no lugar, e nao a aba inteira (ver `Viva`).
+		Label cadencia = Linha("Cadência do soco", CadenciaDoSoco(f), null, c).GetChild<Label>(1);
 
 		// O ESTILO PELO NOME, e nao pelo id: o pacote de estilos traz os dois, e o id e nome cru.
 		Linha("Estilo de luta", NomeDoEstilo(cli), null, c);
@@ -290,15 +343,27 @@ public partial class MenuJogo
 		// MARCOS, ZENI E LUGAR eram a secao "PROGRESS & CURRENCY" do original. O lugar e o NOME da
 		// zona, e nao "[x], [y], [z]": coordenada nao diz nada a ninguem; "Namek" diz.
 		Linha("Marcos", $"{_livro.MarcosLivres} livres · {_livro.MarcosTotais} na vida", null, c);
-		double zeni = cli?.Zeni ?? 0;
-		Linha("Zeni", $"{zeni:N0}", null, c);
+		Label zeni = Linha("Zeni", ZeniDaStats(cli), null, c).GetChild<Label>(1);
 		// OS RECURSOS AO LADO DO ZENI: sao a outra carteira (a materia-prima que se minera e que paga
 		// tecnologia e base ao dobro do preco), e chegam no mesmo pacote que ele (`S2C.Carteira`).
-		Linha("Recursos", $"{cli?.Recursos ?? 0:N0}", null, c);
+		Label recursos = Linha("Recursos", RecursosDaStats(cli), null, c).GetChild<Label>(1);
+		Viva(() =>
+		{
+			cadencia.Text = CadenciaDoSoco(GameClient.Instance?.Sheet ?? default);
+			zeni.Text = ZeniDaStats(GameClient.Instance);
+			recursos.Text = RecursosDaStats(GameClient.Instance);
+		});
 		Linha("Lugar", cli?.NomeDoLugar ?? "", null, c);
 
 		Nota("Marcos são a moeda das habilidades (aba Learning). Recursos se tiram dos planetas (o verb Minerar) e pagam tecnologia no lugar do zeni, pelo dobro. A classe não aparece: ela se descobre jogando.", c);
 	}
+
+	/// <summary>Os tres textos vivos do cartao Estado. Uma conta so pra montagem e pra viva.</summary>
+	private static string CadenciaDoSoco(SheetState f) => $"{f.SocoMs} ms";
+
+	private static string ZeniDaStats(GameClient? cli) => $"{cli?.Zeni ?? 0:N0}";
+
+	private static string RecursosDaStats(GameClient? cli) => $"{cli?.Recursos ?? 0:N0}";
 
 	/// <summary>O nome do estilo de luta em uso, ou "nenhum". O id so sai se o catalogo nao o conhecer.</summary>
 	private static string NomeDoEstilo(GameClient? cli)
@@ -336,17 +401,19 @@ public partial class MenuJogo
 	/// <summary>
 	/// O PEDACO DESTA ABA NA ASSINATURA DE CACHE (ver `MenuJogo.Assinatura`): tudo que ESTA aba
 	/// desenha e que a assinatura basica (em MenuJogo.cs) nao cobre, nos mesmos arredondamentos em
-	/// que e desenhado. A basica ja tem BP expresso, Ki/MaxKi, vida, vigor, nutricao, quatro dos oito
-	/// atributos, idade, classe e a secao de treino; entram aqui o bit do scouter (o ramo da faixa),
-	/// o BP base, o trilho do Ki, os tanques, os outros quatro atributos, a vontade, a Sala, a raca,
-	/// a cadencia, o estilo, os marcos, o zeni, os recursos e o lugar.
+	/// que e desenhado. A basica ja tem a condicao e o golpe, quatro dos oito atributos, idade, classe e
+	/// a secao de treino; entram aqui o bit do scouter (o ramo da faixa), os tanques, os outros quatro
+	/// atributos, a vontade, a Sala, a raca, o estilo, os marcos e o lugar.
+	///
+	/// O QUE E VIVO NAO ENTRA (2026-10-19): o BP da faixa, os cinco vitais (com o trilho do Ki), a cadencia, o zeni
+	/// e os recursos se reescrevem no lugar (`Viva`) -- assinados, eles remontavam a aba a cada ficha em luta.
 	/// </summary>
 	private string ExtraDaAssinaturaDeStats(SheetState f)
 	{
 		GameClient? c = GameClient.Instance;
-		return $"{_atributos.Tem(Protocol.Poder.Scouter)}|{f.BP:0}|{f.TetoKi:0.##}|{f.VigorMax:0}|{f.NutricaoMax:0}"
+		return $"{_atributos.Tem(Protocol.Poder.Scouter)}|{f.VigorMax:0}|{f.NutricaoMax:0}"
 			 + $"|{_atributos.KiDef:0.##}|{_atributos.Technique:0.##}|{_atributos.KiSkill:0.##}|{_atributos.Esoteric:0.##}"
 			 + $"|{_atributos.Willpower:0.##}|{_atributos.ZonaMult:0.##}|{_atributos.SalaFase}|{_atributos.SalaMinutos:0.#}"
-			 + $"|{_atributos.Raca}|{f.SocoMs}|{c?.EstiloAtual}|{_livro.MarcosLivres}/{_livro.MarcosTotais}|{c?.Zeni:0}|{c?.Recursos:0}|{c?.NomeDoLugar}|{AssinaturaDoPoderEmUso()}";
+			 + $"|{_atributos.Raca}|{c?.EstiloAtual}|{_livro.MarcosLivres}/{_livro.MarcosTotais}|{c?.NomeDoLugar}|{AssinaturaDoPoderEmUso()}";
 	}
 }

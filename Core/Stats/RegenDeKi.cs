@@ -38,9 +38,13 @@ public static class RegenDeKi
 	private const double FracaoDeFolego = 0.10;
 
 	/// <summary>
-	/// FORMA NAO MASTERIZADA QUEIMA KI PRA SE SUSTENTAR: a regeneracao cai a 20% enquanto houver
-	/// dreno (`Ki.dm:21-26`). E o que faz o dreno ser LIQUIDO negativo -- sem isto a regeneracao
-	/// passa o dreno e o Super Saiyajin vira infinito, que e um defeito ja visto neste projeto.
+	/// FORMA QUE QUEIMA KI PRA SE SUSTENTAR: a regeneracao cai a 20% enquanto houver dreno
+	/// (`Ki.dm:21-26`). E o que faz o dreno ser LIQUIDO negativo -- sem isto a regeneracao passa o
+	/// dreno e o Super Saiyajin vira infinito, que e um defeito ja visto neste projeto.
+	///
+	/// Desde 2026-10-19 os 20% so valem pra forma JA DOMINADA que nao para de drenar (o SSJ2 e o SSJ3
+	/// aos 100%, as divinas de dreno fixo). Na que ainda nao se domina a passiva some inteira -- ver
+	/// o `semPassiva` do <see cref="Passo"/>.
 	/// </summary>
 	private const double RegenEmFormaComDreno = 0.2;
 
@@ -50,8 +54,18 @@ public static class RegenDeKi
 	/// <paramref name="drenoDaForma"/> e quanto a forma atual custa por segundo (0 = forma
 	/// masterizada ou forma base). Vem de fora porque quem conhece a escada de transformacao e o
 	/// servidor, e este arquivo e do Core.
+	///
+	/// ============================ (2026-10-19) FORMA NAO DOMINADA NAO REGENERA SOZINHA ============================
+	/// O dono: *"enquanto usa formas nao masterizadas q tem consumo de ki, a regeneracao passiva de ki deveria
+	/// ser desativada ate masterizar a forma"*. <paramref name="semPassiva"/> desliga a passiva INTEIRA -- o jato
+	/// do fundo do tanque, o ramo do folego, a parcela de luta ou de fora dela e o fio de 0,1 que o DM da "no
+	/// matter what" -- e, com cada parcela, o folego que ela cobraria. A MEDITACAO continua: ela e a regen ATIVA
+	/// (o `racialRegenKiAtiva` da v0.4.0), e o dono falou da passiva. A tecla C nem passa por aqui (`CargaDeKi`).
+	/// Quem decide e o servidor (`GameServer.FormaSemRegenPassiva`): so ele sabe se a forma consome Ki de verdade
+	/// e se ja foi dominada.
+	/// ==============================================================================================================
 	/// </summary>
-	public static void Passo(Fighter f, double dt, double drenoDaForma)
+	public static void Passo(Fighter f, double dt, double drenoDaForma, bool semPassiva = false)
 	{
 		if (dt <= 0) return;
 
@@ -64,17 +78,23 @@ public static class RegenDeKi
 		{
 			double piso = f.maxstamina * FracaoDeFolego;
 
-			// TANQUE NO FUNDO (<=10%): jato de emergencia, 3x, pago caro em folego. E o que
-			// impede alguem de ficar preso sem Ki nenhum -- do fundo do poco sempre se sai.
-			if (f.Ki <= f.MaxKi * 0.1 && f.stamina >= piso)
+			// A PASSIVA VEM EM DOIS PEDACOS, com a meditacao no meio -- e a ordem do DM (`Ki.dm:29-45`), mantida
+			// de proposito: o ramo do folego logo abaixo le o `stamina` ANTES de a meditacao cobrar o dela. Por
+			// isso o `semPassiva` aparece duas vezes.
+			if (!semPassiva)
 			{
-				f.Ki += f.KIregen * 3 * sp * f.racialRegenKiPassiva * PorSegundo * dt;
-				f.stamina -= f.KIregen * sp / 4 * PorSegundo * dt;
-			}
-			else if (f.stamina >= piso)
-			{
-				f.Ki += f.KIregen * sp / 6 * formRegen * f.racialRegenKiPassiva * PorSegundo * dt;
-				f.stamina -= f.KIregen * sp / maxKi / 9 * PorSegundo * dt;
+				// TANQUE NO FUNDO (<=10%): jato de emergencia, 3x, pago caro em folego. E o que
+				// impede alguem de ficar preso sem Ki nenhum -- do fundo do poco sempre se sai.
+				if (f.Ki <= f.MaxKi * 0.1 && f.stamina >= piso)
+				{
+					f.Ki += f.KIregen * 3 * sp * f.racialRegenKiPassiva * PorSegundo * dt;
+					f.stamina -= f.KIregen * sp / 4 * PorSegundo * dt;
+				}
+				else if (f.stamina >= piso)
+				{
+					f.Ki += f.KIregen * sp / 6 * formRegen * f.racialRegenKiPassiva * PorSegundo * dt;
+					f.stamina -= f.KIregen * sp / maxKi / 9 * PorSegundo * dt;
+				}
 			}
 
 			// MEDITAR E O CAMINHO BARATO, e o comentario do DM diz por que: "makes meditation
@@ -86,22 +106,26 @@ public static class RegenDeKi
 				f.stamina -= f.KIregen * sp / maxKi / 6 * PorSegundo * dt;
 			}
 
-			// EM LUTA REGENERA PELA METADE. Nao e penalidade: e o que faz a energia ser um
-			// recurso DENTRO da briga em vez de um poco sem fundo.
-			if (f.IsInFight)
+			if (!semPassiva)
 			{
-				f.Ki += f.KIregen * sp / 2 * formRegen * f.racialRegenKiPassiva * PorSegundo * dt;
-				f.stamina -= f.KIregen * sp / maxKi / 8 * PorSegundo * dt;
-			}
-			else
-			{
-				f.Ki += f.KIregen * sp * formRegen * f.racialRegenKiPassiva * PorSegundo * dt;
-				f.stamina -= f.KIregen * sp / maxKi / 3 * PorSegundo * dt;
-			}
+				// EM LUTA REGENERA PELA METADE. Nao e penalidade: e o que faz a energia ser um
+				// recurso DENTRO da briga em vez de um poco sem fundo.
+				if (f.IsInFight)
+				{
+					f.Ki += f.KIregen * sp / 2 * formRegen * f.racialRegenKiPassiva * PorSegundo * dt;
+					f.stamina -= f.KIregen * sp / maxKi / 8 * PorSegundo * dt;
+				}
+				else
+				{
+					f.Ki += f.KIregen * sp * formRegen * f.racialRegenKiPassiva * PorSegundo * dt;
+					f.stamina -= f.KIregen * sp / maxKi / 3 * PorSegundo * dt;
+				}
 
-			// "No matter what, you get a tiny amount of ki regen" (Ki.dm:45). E a rede que
-			// garante que ninguem fica com o Ki travado em zero pra sempre por stat ruim.
-			f.Ki += 0.1 * PorSegundo * dt;
+				// "No matter what, you get a tiny amount of ki regen" (Ki.dm:45). E a rede que
+				// garante que ninguem fica com o Ki travado em zero pra sempre por stat ruim. (Na forma nao
+				// dominada ela some com o resto: quem fica sem Ki ali perde a FORMA, e nao o Ki pra sempre.)
+				f.Ki += 0.1 * PorSegundo * dt;
+			}
 
 			// O TETO E OBRIGATORIO. Sem ele a regeneracao empurra o Ki acima do MaxKi, e
 			// `Fighter.Power` faz `kiratio = Ki/MaxKi` alimentar o BP expresso -- 200% de Ki

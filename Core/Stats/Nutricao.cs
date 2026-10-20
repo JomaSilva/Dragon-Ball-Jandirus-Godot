@@ -172,8 +172,22 @@ public static class Nutricao
 	/// criar ele"*) e o de TODO MORTO (*"mortos tem vigor infinito"* -- ver <see cref="MortoComMeioTanqueDeTeste"/>).
 	/// </summary>
 	public static bool VigorSempreCheio(Fighter f) =>
-		((f.Race == "Majin" || Races.SangueDoBio.Carrega(f, "Majin")) && !VigorDoMajinComPisoDeTeste) || (EnergiaInfinita(f) && !f.dead)
-		|| (f.dead && !MortoComMeioTanqueDeTeste);
+		VigorDeMajin(f) || (EnergiaInfinita(f) && !f.dead) || (f.dead && !MortoComMeioTanqueDeTeste);
+
+	/// <summary>
+	/// O VIGOR QUE NUNCA ACABA PELA RACA, e nao pelo estado: o do Majin (vivo ou fantasma), o do androide de energia infinita e o do bio com o
+	/// sangue de um deles -- o <see cref="VigorSempreCheio"/> sem o MORTO comum. E a quem a mesa de tecnicas nao paga ponto pelo folego
+	/// (`Skills.TecnicaCustomizada.VendeFolego`); o dono, 2026-10-19: *"só as raças com vigor infinito perdem a opção de fôlego"* -- o morto
+	/// tem o vigor travado no cheio, mas revive, e a tecnica dele volta a cobrar. O androide conta MESMO MORTO: o motor para com a morte, mas
+	/// morto o vigor trava no cheio do mesmo jeito -- vivo ou morto, ele nunca paga folego.
+	/// </summary>
+	public static bool VigorInfinitoDaRaca(Fighter f) => VigorDeMajin(f) || EnergiaInfinita(f) || (f.dead && MortoComoRacaDeTeste);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--tecnicateste`): o morto volta a contar como raca de vigor infinito -- a primeira versao da regra da mesa
+	/// (2026-10-19, antes de o dono escolher so as racas). Lido por <see cref="VigorInfinitoDaRaca"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool MortoComoRacaDeTeste;
 
 	/// <summary>
 	/// ============================ O MORTO TEM VIGOR INFINITO (dono, 2026-10-15) ============================
@@ -200,6 +214,10 @@ public static class Nutricao
 
 	/// <summary>DEFEITO INJETADO (`--v030teste`): o Ki do chefe de saga volta a acabar -- o jogo de antes. Falso em jogo, sempre.</summary>
 	public static bool KiDoChefeFinitoDeTeste;
+
+	/// <summary>O vigor do Majin, e o do bio com o sangue dele -- vivo ou fantasma. Ver <see cref="VigorDoMajinComPisoDeTeste"/>.</summary>
+	private static bool VigorDeMajin(Fighter f) =>
+		(f.Race == "Majin" || Races.SangueDoBio.Carrega(f, "Majin")) && !VigorDoMajinComPisoDeTeste;
 
 	/// <summary>O motor de energia infinita: o androide que o tem, e o bio que o herdou (`Races.SangueDoBio.InfinitoNoSangue`).</summary>
 	private static bool EnergiaInfinita(Fighter f) => f.AndroideInfinito || Races.SangueDoBio.InfinitoNoSangue(f);

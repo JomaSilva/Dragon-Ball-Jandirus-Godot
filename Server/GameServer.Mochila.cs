@@ -22,17 +22,27 @@ public sealed partial class GameServer
 	/// O INVENTARIO SO SAI QUANDO MUDA, como o corpo e os atributos. Ele muda em colheita e em
 	/// consumo -- eventos raros --, entao a assinatura corta o trafego a praticamente zero.
 	/// </summary>
-	private static void MandarMochila(ServerPlayer pl, bool forcar = false)
+	private void MandarMochila(ServerPlayer pl, bool forcar = false)
 	{
+		// (2026-10-19) AS ESFERAS DO DRAGAO NA MAO tambem: elas nao moram na mochila, mas a tela as desenha como slots (dono). Ver
+		// `GameServer.EsferasNaMochila.cs` -- e o id leva a pedra ou a esfera acesa, entao o set que acorda muda a assinatura.
+		List<string> esferas = EsferasNaMochilaDe(pl);
+
 		// O QUE SE VESTE VAI NA ASSINATURA E NO PACOTE: a mochila mostra a fileira "vestindo" (ver
 		// `RoupaGuardada`), e tirar uma peca com a mochila ja igual a de antes nao pode ser um pacote engolido.
 		string sig = string.Join(';', pl.Mochila.Pilhas.Select(p => $"{p.Id}x{p.Quantidade}"))
-					 + "|" + string.Join(';', pl.Visual.Roupa.Select(p => $"{p.Caminho}#{p.Cor}"));
+					 + "|" + string.Join(';', pl.Visual.Roupa.Select(p => $"{p.Caminho}#{p.Cor}"))
+					 + "|" + string.Join(';', esferas);
 		if (!forcar && sig == pl.SigMochila) return;
 		pl.SigMochila = sig;
+		// QUEM FICA COM SLOT DE ESFERA NA TELA e o que ESTE pacote leva: o tique varre essa lista pra mandar a mochila sem ela quando a esfera
+		// sai por fora (ver `SincronizarAsEsferasNasMochilas`).
+		if (esferas.Count > 0) _comEsferaNaMochila.Add(pl.Id); else _comEsferaNaMochila.Remove(pl.Id);
 
 		var w = Protocol.Begin(Protocol.S2C.Inventario);
-		w.PutInventario(pl.Mochila, pl.Visual.Roupa);
+		w.PutInventario(pl.Mochila, pl.Visual.Roupa, esferas);
+		// A BANCADA LE O FIO AQUI, como o das esferas (`EscutaDoFioDasEsferas`). Nula em jogo.
+		if (pl.Peer != null) EscutaDaMochila?.Add((pl.Id, w.CopyData()));
 		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
@@ -77,6 +87,11 @@ public sealed partial class GameServer
 		// (ver `RoupaGuardada`), entao "voce nao tem" seria a resposta errada pra quem a esta vestindo. Quem
 		// confere se ela esta mesmo no corpo e o proprio `TirarRoupa`.
 		if (acao == RoupaGuardada.AcaoTirar) { TirarRoupa(pl, arg); return true; }
+
+		// (2026-10-19) O SLOT DE UMA ESFERA DO DRAGAO tambem sai antes, pelo mesmo motivo: ela aparece na mochila e nao mora la (ver
+		// `Jandirus.Core.Magic.EsferaNaMochila`). Quem confere se ela esta mesmo na mao e o `AcaoDaEsferaNaMochila`.
+		if (!SlotDaEsferaNaoLargaDeTeste && Jandirus.Core.Magic.EsferaNaMochila.Ler(arg) is { } esfera)
+		{ AcaoDaEsferaNaMochila(pl, acao, esfera); return true; }
 
 		ItemDef? def = CatalogoDeItens.Get(arg);
 

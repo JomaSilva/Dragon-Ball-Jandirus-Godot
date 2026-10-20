@@ -39,6 +39,27 @@ public static class Miniaturas
 	public static Texture2D? DoItem(ItemDef def) => De(def.Arte, def.Estado);
 
 	/// <summary>
+	/// (2026-10-19) SO O DESENHO do primeiro quadro de `estado` em `arte`: o recorte pelos pixels visiveis (alfa acima de zero), sem o
+	/// vazio em volta. E o que deixa AMPLIAR um sprite pequeno num quadro grande -- a Esfera do Dragao e uma bola de 9x9 (a da Terra) ou
+	/// 16x16 (a de Namek) no meio de um quadro de 32x32, e ampliar o quadro inteiro amplia o vazio junto. Os pixels sao os MESMOS do
+	/// quadro (o recorte aponta pra mesma folha). Nulo sem quadro; o quadro inteiro se a imagem nao vier (headless) ou nao tiver vazio.
+	/// </summary>
+	public static Texture2D? Recortada(string arte, string estado)
+	{
+		string chave = "recorte|" + arte + "|" + estado;
+		if (_cache.TryGetValue(chave, out Texture2D? pronta)) return pronta;
+		Texture2D? quadro = De(arte, estado), tex = quadro;
+		if (quadro?.GetImage() is { } img && !img.IsEmpty() && img.GetUsedRect() is { Size: { X: > 0, Y: > 0 } } visivel && visivel.Size != img.GetSize())
+		{
+			// O QUADRO JA E UM PEDACO DA FOLHA (`AtlasTexture`): o recorte e a regiao dele, deslocada ate a parte visivel.
+			(Texture2D folha, Vector2 origem) = quadro is AtlasTexture { Atlas: { } a } at ? (a, at.Region.Position) : (quadro, Vector2.Zero);
+			tex = new AtlasTexture { Atlas = folha, Region = new Rect2(origem + visivel.Position, visivel.Size), FilterClip = true };
+		}
+		_cache[chave] = tex;
+		return tex;
+	}
+
+	/// <summary>
 	/// (2026-10-15) O ICONE DE UM ITEM COMO O DONO DA MOCHILA O VE: os PESOS de treino com a arte que escolheram pra eles
 	/// (dono: *"o icone do peso no inventario e o q vc dropa n muda quando vc muda a aparencia do peso, so muda quando vc
 	/// veste"*); todo o resto, o <see cref="DoItem"/>. (2026-10-18) A arte e a do PROPRIO peso, que vai no id dele -- dois pesos, dois icones.

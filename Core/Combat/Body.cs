@@ -387,7 +387,7 @@ public sealed class Body
 		// Golpe NAO-LETAL nunca leva o membro abaixo do limiar: e o que permite treinar e
 		// brigar sem matar sem querer. O piso e o MESMO limiar do nocaute, entao um soco
 		// nao-letal chega a nocautear -- so nao chega a matar.
-		double piso = letal ? 0 : alvo.VidaMax * Regras.LimiarQuebra * 0.99;
+		double piso = letal ? 0 : NaoLetal.Piso(alvo.VidaMax);
 		if (alvo.Vida < piso) alvo.Vida = piso;
 
 		// a propagacao usa o dano CRU, nao o que sobrou depois do piso: um golpe absurdo na

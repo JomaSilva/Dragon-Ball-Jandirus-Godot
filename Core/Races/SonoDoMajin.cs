@@ -57,8 +57,9 @@ public static class SonoDoMajin
 
 	/// <summary>A descricao na ficha da skill (o catalogo e em ingles, como o do DM).</summary>
 	public const string Descricao =
-		"Lie down and sleep for 5 seconds. If nothing disturbs you, your body knits itself back together and every limb recovers a large "
-		+ "part of its health. Moving, acting or getting hit wakes you up and the sleep is lost. 1 minute cooldown, even if interrupted.";
+		"Sleep standing up for 5 seconds. If nothing disturbs you, your body knits itself back together and every limb recovers a large "
+		+ "part of its health. Any Ki above 100% fades as you fall asleep, and you can't sleep while weights or gravity are crushing you. "
+		+ "Moving, acting or getting hit wakes you up and the sleep is lost. 1 minute cooldown, even if interrupted.";
 
 	/// <summary>
 	/// DEFEITO INJETADO (`--sonoteste`): o catalogo carrega sem o Sleep -- a arvore do Majin volta a pendurar a `Regenerate` e o login nao
@@ -111,6 +112,6 @@ public static class SonoDoMajin
 
 	/// <summary>O recado do login pra quem teve a skill trocada.</summary>
 	public const string AvisoDaTroca =
-		"a sua Regenerate de Majin agora se chama Sleep: deite e durma 5 s sem ser incomodado, e cada membro se refaz em boa parte. "
+		"a sua Regenerate de Majin agora se chama Sleep: durma 5 s em pé sem ser incomodado, e cada membro se refaz em boa parte. "
 		+ "Andar, agir ou apanhar acorda (e o sono se perde); a espera é de 1 min, acordado ou não. A regeneração passiva do Majin continua a mesma.";
 }

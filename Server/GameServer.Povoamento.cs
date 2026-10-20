@@ -352,8 +352,50 @@ public partial class GameServer
 				break;
 			}
 
-			NascerNpc(moldeId, zona, PontoDeHabitante(zona, lugar), lugar);
+			NascerNpc(moldeId, zona, PontoDoPedido(moldeId, zona, lugar), lugar);
 		}
+	}
+
+	/// <summary>
+	/// (2026-10-19) ONDE UM PEDIDO DA FILA NASCE: perto do berco quando a linha dele pede (`pertoDoBerco`, hoje so o Grande Patriarca de
+	/// Namek), e senao na vaga do habitat, como todo habitante.
+	/// </summary>
+	private Vec2 PontoDoPedido(string moldeId, ZoneKey zona, ulong lugar)
+	{
+		LinhaDePovoamento? linha = PertoDoBercoIgnoradoDeTeste ? null : _moldes?.Plano.FirstOrDefault(l => l.PertoDoBerco > 0
+			&& string.Equals(l.Molde, moldeId, StringComparison.OrdinalIgnoreCase)
+			&& string.Equals(l.Planeta, zona.Name, StringComparison.OrdinalIgnoreCase));
+		return linha == null ? PontoDeHabitante(zona, lugar) : PontoPertoDoBerco(zona, linha.PertoDoBerco, moldeId, lugar);
+	}
+
+	/// <summary>
+	/// (2026-10-19) DEFEITO INJETADO (`--patriarcateste`): a linha esquece o `pertoDoBerco` -- o Grande Patriarca nasceria numa vaga do
+	/// habitat, em qualquer canto de Namek. Lido pelo <see cref="PontoDoPedido"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool PertoDoBercoIgnoradoDeTeste;
+
+	/// <summary>
+	/// PERTO DO BERCO -- o `planet_spawn_turf` do DM (PlanetPopulation.dm:279-294): ate <see cref="Povoamento.TentativasPertoDoBerco"/>
+	/// sorteios a ate `raio` tiles (por eixo) do ponto de nascer do planeta, e fica o primeiro que serve de chao (parede, agua e beirada
+	/// ficam de fora, como em todo nascimento); nenhum, o proprio berco -- o `return locate(A.x, A.y, A.z)` do original.
+	///
+	/// O SORTEIO E DA SEMENTE DA FICHA (universo, molde, zona e lugar -- a mesma do `NascerNpc`): o lugar e funcao pura do pedido,
+	/// como a vaga do habitat. Quem morre e e reposto pela manutencao vem com outro `lugar`, e nasce noutro ponto perto do berco --
+	/// como no DM, que sorteava de novo a cada `make_namek_guru`.
+	/// </summary>
+	private Vec2 PontoPertoDoBerco(ZoneKey zona, int raio, string moldeId, ulong lugar)
+	{
+		Vec2 berco = PontoDeNascimento(zona);
+		if (MapaDaZonaOuCatalogo(zona) is not { } mapa) return berco;
+		int bx = (int)MathF.Floor(berco.X / ZoneCollision.TileSize), by = (int)MathF.Floor(berco.Y / ZoneCollision.TileSize);
+		Random sorte = SorteioDeNpc.Sorteador(
+			SorteioDeNpc.SementeDe(SeedDoUniverso, moldeId, Espaco.Misturar(zona.Hash, lugar, 0)), "perto do berco");
+		for (int i = 0; i < Povoamento.TentativasPertoDoBerco; i++)
+		{
+			int cx = bx + sorte.Next(-raio, raio + 1), cy = by + sorte.Next(-raio, raio + 1);
+			if (mapa.ServeDeChao(cx, cy)) return mapa.CentroDaCelula(cx, cy);
+		}
+		return berco;
 	}
 
 	/// <summary>

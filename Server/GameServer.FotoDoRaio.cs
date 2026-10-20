@@ -409,6 +409,15 @@ public sealed partial class GameServer
 		=> _players.TryGetValue(id, out ServerPlayer? pl) ? pl.Pos : null;
 
 	/// <summary>
+	/// (2026-10-19) ESTE CORPO FALA, pelo funil de toda fala de corpo (`Falar` -> `PorPerto` -> `Mandar`): o `S2C.Chat`
+	/// sai com o nome dele de autor e o id dele de boca. E a porta do `--diagbalao` pro nome comprido no fio.
+	/// </summary>
+	internal void FalarPeloCorpoDeFoto(int id, string frase)
+	{
+		if (_players.TryGetValue(id, out ServerPlayer? pl)) Falar(pl, Protocol.Fala.Diz, frase);
+	}
+
+	/// <summary>
 	/// A CELULA DEBAIXO DESTE PONTO E AGUA? -- a pergunta feita ao mapa do SERVIDOR.
 	///
 	/// A bancada do cliente tem a dela (`World.EhAgua`, que le o tilemap desenhado), e as duas

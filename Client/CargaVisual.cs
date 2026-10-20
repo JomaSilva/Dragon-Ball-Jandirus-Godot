@@ -404,7 +404,10 @@ public partial class CargaVisual : Node2D
 		// a chama DIVINA leva a cor da forma, e nunca o vermelho do Kaio-ken -- esse e do sprite, por cima dela
 		Color corDaForma = aura?.CorDaForma ?? Aura.CorDoKiCru;
 
-		if (!_ligado)
+		// (2026-10-19) A CENA DE FORMA POR CIMA CALA O DESENHO pelo mesmo ramo do C solto -- ver `_cenasPorCima`, no
+		// `CargaVisual.CenaPorCima.cs`. E e esse ramo de proposito: ele devolve a vez (e a luz) pra `Aura`, que e por onde a aura base
+		// EMPRESTADA da cena do Oozaru aparece, e a nuvem volta ao papel de overlay da forma.
+		if (!_ligado || (_cenasPorCima > 0 && !CargaPorCimaDaCenaDeTeste))
 		{
 			_desenho.Definir(false, cor);
 			_chama.Definir(false, corDaForma);

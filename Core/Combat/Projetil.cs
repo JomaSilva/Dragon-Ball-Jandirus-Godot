@@ -943,6 +943,14 @@ public sealed class Projetil
 	public bool Invisivel;
 
 	/// <summary>
+	/// (2026-10-19) O TIRO DO SHATTERING THE LIMIT -- o raio que saiu 2x pelo degrau SSJ4 (`EstadoRacial.FatorDoLimite`). Ele nasce
+	/// VERMELHO (`Passivas.CorDoLimite`, pedido do dono), e e o unico tiro cuja cor nao sai do dono: a do ki dele continua sendo a
+	/// resposta pra todo o resto (ver o `Nome`). Viaja no anuncio de nascimento, um bit; o pedaco que nasce de um CORTE herda (e o
+	/// mesmo raio).
+	/// </summary>
+	public bool DoLimite;
+
+	/// <summary>
 	/// O SOM COM QUE ESTE TIRO SAIU (`SonsDeKi.DoDisparo`, pela tecnica que o atirou). Viaja no anuncio de
 	/// nascimento, um byte. O pedaco que nasce de um CORTE fica em <see cref="SomDeKi.Nenhum"/>: ele ja estava no ar.
 	/// </summary>

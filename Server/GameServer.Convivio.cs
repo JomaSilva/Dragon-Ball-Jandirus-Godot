@@ -185,7 +185,7 @@ public partial class GameServer
 	{
 		if (!eu.Social.PodeVerDetalhes(outro.Assinatura)) return;
 		eu.Social.AprenderDetalhes(outro.Assinatura, outro.Historia,
-								   Cargos.Get(CargoDe(outro.Conta))?.Nome ?? "", agora);
+								   Cargos.Get(CargoDe(outro.Conta))?.Nome ?? TituloSemCargo(outro), agora);   // (2026-10-19) ...ou "Aprendiz de Kaioshin"
 	}
 
 	/// <summary>
@@ -480,6 +480,8 @@ public partial class GameServer
 		VilaoFoiDerrotado(vitima, algoz, morreu);
 		// (2026-10-16) E O VILAO DE SAGA QUE VOLTOU NO INFERNO -- o mesmo funil, a mesma primeira linha. Ver `GameServer.ViloesDoInferno.cs`.
 		VilaoDoInfernoFoiDerrotado(vitima, algoz);
+		// (2026-10-19) O NOCAUTE QUE CONTA NUM SERVICO DO OUTRO MUNDO (as almas, os fujoes do Inferno). Ver `GameServer.ServicosDoAlem.cs`.
+		ServicoDoAlemAoDerrotar(vitima, algoz);
 
 		// ============================ CAIR SEPARA A FUSAO ============================
 		// `defuse_on_downed()` (`Fusion.dm:75`), chamado do `KO()` do original. Ela entra AQUI e nao

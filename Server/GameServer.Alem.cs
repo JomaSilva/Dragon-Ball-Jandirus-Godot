@@ -640,10 +640,46 @@ public partial class GameServer
 	/// alma sai limpa (karma 0) e, se estiver fora do Outro Mundo, volta ao checkpoint; pena correndo e
 	/// corpo fora do Inferno -> de volta ao portao. E o que faz "sempre que tentar sair, volta" valer
 	/// tambem pra quem saiu por um caminho que a passagem nao viu (um admin, uma tecnica, um relog).
+	/// (2026-10-19) E quem esta VIVO com a pena correndo nao e puxado: o relogio para e o resto fica guardado
+	/// ate a alma chegar de novo ao Outro Mundo -- ver o bloco do vivo, logo abaixo.
 	/// </summary>
 	private void CumprirPenaNoInferno(ServerPlayer pl)
 	{
-		if (pl.Ficha.hell_lockout_until == 0 || !EhJogador(pl)) return;
+		if ((pl.Ficha.hell_lockout_until == 0 && pl.Ficha.pena_do_inferno_guardada_ms == 0) || !EhJogador(pl)) return;
+		// (2026-10-19) QUEM VOLTA A VIDA COM A PENA CORRENDO FICA LIVRE, E O RESTO ESPERA A PROXIMA MORTE. Nenhum revive mexia na pena
+		// (o Enma pago, as esferas, a tecnica de reviver, o verbo de admin, a volta no tempo) e este tique nao perguntava `dead`: o
+		// revivido acordava no mundo dos vivos e, no tique seguinte, era arrastado VIVO de volta ao portao do Inferno -- e, vencida a
+		// pena, levado vivo ao checkpoint do Outro Mundo. O DM tem o mesmo buraco (o `ReviveMe()`, `Death.dm:143-161`, nao mexe no
+		// `hell_lockout_until`, e o `afterlife_alignment_check()` nao pergunta `dead`). A regra e do dono: *"Vivo, ele fica livre;
+		// quando morrer de novo, volta pro Inferno pra cumprir o resto da pena"*. O relogio PARA enquanto ele vive (o tempo vivido nao
+		// e pena cumprida): o que faltava vai pra `pena_do_inferno_guardada_ms`, e o karma fica como esta. Mora AQUI, e nao em cada
+		// revive, pelo mesmo motivo do passe do Enma ao lado (`CumprirOPasseDoEnma`): uma linha so cobre toda porta de volta, ate o save
+		// gravado antes deste conserto (o tempo que ele passou fora do jogo correu no relogio velho, e o que sobrou e o que se guarda).
+		if (!pl.Ficha.dead && !PenaSegueOVivoDeTeste)
+		{
+			if (pl.Ficha.hell_lockout_until == 0) return;   // ja guardada: vivo, nada corre
+			long resto = Math.Max(0, pl.Ficha.hell_lockout_until - NowMs());
+			pl.Ficha.pena_do_inferno_guardada_ms = resto;
+			pl.Ficha.hell_lockout_until = 0;
+			if (resto > 0)
+				Avisar(pl, $"de volta à vida, a sua pena no Inferno fica parada: faltam {Math.Max(1, resto / 60_000)} minuto(s), e você só volta pra cumprir o resto se morrer de novo.");
+			// O RELOGIO PARADO VAI PRO DISCO AGORA: o revive gravou a ficha com o relogio ainda andando, e um servidor que cai antes do
+			// proximo save o devolveria andando -- o tempo fora do jogo comeria o resto.
+			Persistir(pl);
+			GD.Print($"[server] {pl.Name} voltou a vida com pena no Inferno: {resto / 1000} s guardados pra proxima morte, karma {pl.Karma}");
+			return;
+		}
+		// ...E A MORTE SEGUINTE O DEVOLVE: a alma que chega ao Outro Mundo (a viagem da morte termina na mesa do Enma) volta a correr o
+		// relogio de onde ele parou, e o resto deste tique a leva ao portao. Antes da chegada (o cadaver dos 2 s, o `Keep_Body` entre os
+		// vivos) a pena espera: a alma ainda nao saiu do mundo dos vivos.
+		if (pl.Ficha.pena_do_inferno_guardada_ms > 0 && Alem.EhOAlem(pl.Zone) && !PenaGuardadaSomeDeTeste)
+		{
+			pl.Ficha.hell_lockout_until = NowMs() + pl.Ficha.pena_do_inferno_guardada_ms;
+			Avisar(pl, $"a morte te devolve ao Inferno: faltam {Math.Max(1, pl.Ficha.pena_do_inferno_guardada_ms / 60_000)} minuto(s) da sua pena.");
+			pl.Ficha.pena_do_inferno_guardada_ms = 0;
+			GD.Print($"[server] {pl.Name} morreu de novo com pena guardada: de volta ao Inferno pra cumprir o resto");
+		}
+		if (pl.Ficha.hell_lockout_until == 0) return;
 		if (NowMs() >= pl.Ficha.hell_lockout_until)
 		{
 			pl.Ficha.hell_lockout_until = 0;

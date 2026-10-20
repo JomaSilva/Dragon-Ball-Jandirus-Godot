@@ -54,8 +54,8 @@ public sealed class EntradaRacial
 	/// <summary>O degrau SSJ4 da forma de agora (`Passivas.DegrauSsj4`).</summary>
 	public int DegrauSsj4;
 
-	/// <summary>Os recursos, em fracao do maximo: Ki, vigor, vida (o corpo inteiro) e o tronco.</summary>
-	public double Ki = 1, Vigor = 1, Vida = 1, Tronco = 1;
+	/// <summary>Os recursos, em fracao do maximo: Ki, vigor, vida (o corpo inteiro), o tronco e (2026-10-19, o Warrior Race) a cabeca.</summary>
+	public double Ki = 1, Vigor = 1, Vida = 1, Tronco = 1, Cabeca = 1;
 
 	/// <summary>A barra de poder (`Fighter.powerMod`, 0,01 a 1) e o relaxar.</summary>
 	public double Barra = 1;
@@ -363,12 +363,33 @@ public sealed class EstadoRacial
 	}
 
 	/// <summary>
-	/// SHATTERING THE LIMIT: o fator de um tiro CARREGADO que vai sair agora, pelo custo dele contra o Ki ATUAL. 2 com o kit Primal,
-	/// numa forma Saiyajin, quando o tiro custa 10% ou mais do Ki de agora; 1 no resto.
+	/// (2026-10-19) O WARRIOR RACE ESTA ACESO: o TRONCO ou a CABECA abaixo de 20% da propria vida. O dono: *"mudar de 20% de vida pra 20% do
+	/// tronco ou cabeça"* -- as duas partes que derrubam e matam (`Vitalidade.Nucleo`); um braco quebrado nao acende, e a cabeca rachada
+	/// acende mesmo com o resto inteiro. Uma pergunta so pro efeito e pra linha do HUD.
 	/// </summary>
-	public double FatorDoLimite(double custoDoTiro, double kiAtual) =>
-		(Entrada.Kit & KitRacial.Primal) != 0 && Entrada.FormaSaiyajin && Entrada.Forma != "base"
-		&& custoDoTiro > 0 && custoDoTiro >= kiAtual * Passivas.CustoDoLimite
+	private static bool GuerreiroAceso(EntradaRacial e) =>
+		e.Tem(SkillRacial.RacaGuerreira)
+		&& (Passivas.GuerreiroPelaVidaDeTeste
+			? e.Vida < Passivas.VidaDoGuerreiro
+			: e.Tronco < Passivas.VidaDoGuerreiro || e.Cabeca < Passivas.VidaDoGuerreiro);
+
+	/// <summary>
+	/// SHATTERING THE LIMIT: o fator de um tiro CARREGADO que vai sair agora, pelo custo dele contra o Ki ATUAL. 2 com o kit Primal,
+	/// no degrau SSJ4, quando o tiro custa 10% ou mais do Ki de agora; 1 no resto.
+	///
+	/// (2026-10-19) O "TRANSFORMADO" E SO O DEGRAU SSJ4. O dono: *"faça q esse "transformado" seja apenas no ssj4, ssj4 fp e ssj4 lb (pra
+	/// lendario primal é a mesma coisa mas a diferença q seria no lssj4 dele etc)"* -- e, logo depois, *"lendario tb tem as lssj4 fp e lssj4
+	/// lb n esqueça delas"*. Sao as seis formas do `Passivas.DegrauSsj4` (a escada que o Primal Evolution e o Limitless ja liam). Antes
+	/// valia em qualquer forma Saiyajin fora da base: o SSJ1 ja dobrava o tiro (`Passivas.LimiteEmQualquerFormaDeTeste`).
+	///
+	/// (2026-10-19) O KAMEHAMEHA PRONTO E A UNICA EXCECAO AOS 10%: no degrau SSJ4 ele e sempre o Kamehameha x10 (`Passivas.VerboDoKamehameha`,
+	/// pedido do dono) -- por isso o verb vem junto.
+	/// </summary>
+	public double FatorDoLimite(double custoDoTiro, double kiAtual, string verbo = "") =>
+		(Entrada.Kit & KitRacial.Primal) != 0
+		&& (Passivas.LimiteEmQualquerFormaDeTeste ? Entrada.FormaSaiyajin && Entrada.Forma != "base" : Entrada.DegrauSsj4 > 0)
+		&& (verbo == Passivas.VerboDoKamehameha && !Passivas.KamehamehaPedeOPisoDeTeste
+			|| custoDoTiro > 0 && custoDoTiro >= kiAtual * Passivas.CustoDoLimite)
 			? Passivas.MultDoLimite
 			: 1;
 
@@ -445,7 +466,7 @@ public sealed class EstadoRacial
 		AndarOVeterano(e, dt);
 		if (combate && e.Tem(SkillRacial.GuerreiroVeterano)) o.Bp *= 1 + Passivas.BonusVeterano(_veteranas.Count);
 
-		if (e.Vida < Passivas.VidaDoGuerreiro && e.Tem(SkillRacial.RacaGuerreira))
+		if (GuerreiroAceso(e))
 		{
 			o.Physoff *= Passivas.AtaqueDoGuerreiro;
 			o.Physdef *= Passivas.DefesaDoGuerreiro;
@@ -747,7 +768,7 @@ public sealed class EstadoRacial
 			L($"SEASONED WARRIOR · BP +{Passivas.BonusVeterano(_veteranas.Count) * 100:0}%");
 		if (agora < _resolveAte && _golpesDoTipo >= 2 && e.Tem(SkillRacial.Resolucao))
 			L($"SAIYAN'S RESOLVE · -{Passivas.ReducaoDoResolve(_golpesDoTipo):0}% de dano de {NomeDoTipo(_tipoDoResolve)}");
-		if (e.Vida < Passivas.VidaDoGuerreiro && e.Tem(SkillRacial.RacaGuerreira)) L("WARRIOR RACE · ataque +20%, defesa +30%");
+		if (GuerreiroAceso(e)) L("WARRIOR RACE · ataque +20%, defesa +30%");
 		if (o.Orgulho > 0) L($"PRIDEFUL · o orgulho não deixa se segurar (degrau {o.Orgulho})");
 		if (o.FalsaVantagem > 0) L($"FALSE ADVANTAGE · +{o.FalsaVantagem:0.#}x na forma · dreno pela metade");
 		if ((k & KitRacial.Primal) != 0)

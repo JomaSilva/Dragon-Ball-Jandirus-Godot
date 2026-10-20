@@ -134,7 +134,72 @@ public partial class TelaDoSistema : Control
 	/// <summary>Ja houve um enquadramento com tamanho de verdade? Ver o `Resized` acima.</summary>
 	private bool _enquadrouComTamanho;
 
-	public override void _Process(double delta) => QueueRedraw();
+	/// <summary>
+	/// REDESENHA SO QUANDO MUDA (2026-10-19) -- o mesmo desenho da carta (ver `MapaEstelar._Process` e o pedido do dono
+	/// la). O selo cobre camera, selecao, as quatro alternancias e "eu" na tela; os nomes chegam por evento. O PAINEL e
+	/// o que anda sozinho: ele escreve a hora de la e a distancia daqui, que mudam com o relogio do mundo e com o corpo
+	/// voando -- por isso, com um corpo selecionado, um redesenho a cada <see cref="SegundosDoPainel"/>. Sem selecao
+	/// nao ha painel, e a tela parada nao redesenha nada.
+	/// </summary>
+	public override void _Process(double delta)
+	{
+		_processos++;
+		if (!IsVisibleInTree()) return;
+		_desdeODesenho += delta;
+		bool relogio = _alvo != null && _desdeODesenho >= SegundosDoPainel;
+		if (MapaEstelar.CartaRedesenhaTodoQuadroDeTeste || _sujo || relogio || !Selo().Equals(_seloDesenhado)) QueueRedraw();
+	}
+
+	/// <summary>
+	/// De quanto em quanto o painel se reescreve sozinho. A hora la aparece por nome ("manha", "noite") e a viagem em
+	/// decimos de dia: meio segundo e mais fino que os dois, e sao dois desenhos por segundo de uma dezena de corpos.
+	/// </summary>
+	private const double SegundosDoPainel = 0.5;
+
+	private double _desdeODesenho;
+
+	/// <summary>O que esta tela desenha e pode mudar sem passar por um `QueueRedraw` -- ver o `_Process`.</summary>
+	private readonly record struct SeloDaTela(
+		Vector2 Centro, float Escala, Vector2 Tamanho, int? Alvo, bool Aneis, bool Rotulos, bool Habitavel, bool TamanhoReal,
+		Vector2? Eu, SistemaId? Sistema);
+
+	private SeloDaTela Selo()
+	{
+		Vector2? eu = null;
+		if (_tem && MapaEstelar.MinhaPosicaoNaGalaxia() is { } m)
+		{
+			Vector2 l = m - new Vector2(_sis.Estrela.Pos.X, _sis.Estrela.Pos.Y);
+			if (l.Length() <= _sis.RaioDoSistema * 1.15) eu = (ParaTela(l) * 2f).Round() / 2f;
+		}
+		return new SeloDaTela(_centro, _escala, Size, _alvo, _aneis, _rotulos, _habitavel, _tamanhoReal, eu, _tem ? _sis.Id : null);
+	}
+
+	private SeloDaTela _seloDesenhado;
+
+	/// <summary>Um mundo foi batizado: o rotulo dele mudou. O proximo quadro redesenha.</summary>
+	private bool _sujo;
+
+	private void Sujar() => _sujo = true;
+
+	public override void _EnterTree()
+	{
+		if (GameClient.Instance is { } cli) cli.NomesDosPlanetasMudaram += Sujar;
+	}
+
+	public override void _ExitTree()
+	{
+		if (GameClient.Instance is { } cli) cli.NomesDosPlanetasMudaram -= Sujar;
+	}
+
+	private int _processos, _desenhos, _mundosComArte;
+
+	/// <summary>Quantas vezes esta tela desenhou, e quantos `_Process` rodou. SO PRA BANCADA (`--diagmenuleve`).</summary>
+	public int DesenhosDeTeste => _desenhos;
+
+	public int ProcessosDeTeste => _processos;
+
+	/// <summary>Quantos mundos o ULTIMO desenho pintou com a arte (ver `ArteDePlaneta`). SO PRA BANCADA.</summary>
+	public int MundosComArteDeTeste => _mundosComArte;
 
 	/// <summary>
 	/// Aponta a tela pra um sistema. E o unico jeito de ela ganhar conteudo -- ela nao busca nada
@@ -334,7 +399,16 @@ public partial class TelaDoSistema : Control
 	/// <summary>O raio do corpo na TELA. No modo legivel ele tem um piso -- ver o botao.</summary>
 	private float RaioNaTela(float raioDeMundo) =>
 		_tamanhoReal ? Mathf.Max(raioDeMundo * _escala, 1f)
-					 : Mathf.Clamp(raioDeMundo * _escala, 5f, 60f);
+					 : Mathf.Clamp(raioDeMundo * _escala, RaioLegivelMinimo, 60f);
+
+	/// <summary>
+	/// O PISO DO MODO LEGIVEL, em pixels de tela. Era 5, e servia enquanto o mundo era um disco de cor; com a ARTE do
+	/// planeta (2026-10-19, ver `ArteDePlaneta`) um disco de 10 px era um borrao -- a foto da bancada mostrou a Terra e os
+	/// tres mundos gerados do sistema dela indistinguiveis das bolas de antes. Com 12 o quadro de 128 px sai em 24, e da pra
+	/// ler o mundo. No enquadramento padrao as orbitas ficam a 30-50 px uma da outra, entao vizinhos nao se encostam; e o
+	/// "tamanho real" continua sem piso nenhum.
+	/// </summary>
+	private const float RaioLegivelMinimo = 12f;
 
 	private float RaioDaEstrelaNaTela() =>
 		_tamanhoReal ? Mathf.Max(_sis.Estrela.Raio * _escala, 2f)
@@ -382,6 +456,12 @@ public partial class TelaDoSistema : Control
 	// =====================================================================
 	public override void _Draw()
 	{
+		_desenhos++;
+		_desdeODesenho = 0;
+		_sujo = false;
+		_mundosComArte = 0;
+		_seloDesenhado = Selo();
+
 		DrawRect(new Rect2(Vector2.Zero, Size), new Color("070912"));
 		if (!_tem)
 		{
@@ -477,9 +557,21 @@ public partial class TelaDoSistema : Control
 		float r = RaioNaTela(p.Raio);
 		if (c.X < -40 || c.Y < -40 || c.X > Size.X + 40 || c.Y > Size.Y + 40) return;
 
-		Color cor = CorDoCorpo(p);
-		DrawCircle(c, r + 2f, new Color(cor, 0.22f));
-		DrawCircle(c, r, cor);
+		// O MUNDO E A ARTE DELE (2026-10-19), o mesmo quadro do espaco e da carta (`ArteDePlaneta`), num quadrado de lado
+		// 2r porque o disco da folha encosta na borda. O disco da cor do bioma so fica pro "tamanho real", em que o mundo
+		// tem um ou dois pixels e a arte seria um borrao -- ver `MapaEstelar.DesenharPlaneta` e o pedido do dono la.
+		Texture2D? arte = ArteDoCorpo(p, r);
+		if (arte != null)
+		{
+			DrawTextureRect(arte, new Rect2(c - new Vector2(r, r), r * 2f, r * 2f), false);
+			_mundosComArte++;
+		}
+		else
+		{
+			Color cor = CorDoCorpo(p);
+			DrawCircle(c, r + 2f, new Color(cor, 0.22f));
+			DrawCircle(c, r, cor);
+		}
 
 		// O PRE-FEITO GANHA UM ANEL. Ele nao e "melhor": e o que tem mapa desenhado a mao em vez de
 		// terreno sorteado, e essa e a diferenca que muda o que o jogador encontra ao pousar.
@@ -546,23 +638,27 @@ public partial class TelaDoSistema : Control
 		const int tam = 10;
 		float y = Size.Y - 8;
 
-		var itens = new List<(Color cor, string texto)>();
-		if (_habitavel) itens.Add((new Color(Tema.Bom, 0.45f), "zona habitavel"));
+		// A ENTRADA DE UM MUNDO MOSTRA O QUE O MUNDO MOSTRA: o icone dele, quando ele e desenhado com a arte, e o quadrado
+		// da cor do bioma quando e o disco. Uma legenda de quadrados coloridos ao lado de planetas desenhados descreveria
+		// cores que nao estao na tela.
+		var itens = new List<(Color cor, Texture2D? arte, string texto)>();
+		if (_habitavel) itens.Add((new Color(Tema.Bom, 0.45f), null, "zona habitavel"));
 
 		var vistos = new HashSet<string>();
 		for (int k = _sis.Orbitas - 1; k >= 0; k--)
 		{
 			PlanetaNoEspaco p = _sis.Planeta(k);
 			string nome = p.Premade ? "mundo com mapa proprio" : NomeDoBioma(p);
-			if (vistos.Add(nome)) itens.Add((CorDoCorpo(p), nome));
+			if (vistos.Add(nome)) itens.Add((CorDoCorpo(p), ArteDoCorpo(p, RaioNaTela(p.Raio)), nome));
 		}
 		// O ANEL VERMELHO E O RAIO LETAL -- e agora ele merece o nome. Ate a Fase 3 dizia "raio da
 		// estrela" porque nenhuma linha de codigo feria ninguem; ver `DesenharEstrela`.
-		itens.Add((new Color(Tema.Perigo, 0.85f), "raio letal"));
+		itens.Add((new Color(Tema.Perigo, 0.85f), null, "raio letal"));
 
-		foreach ((Color cor, string texto) in itens)
+		foreach ((Color cor, Texture2D? arte, string texto) in itens)
 		{
-			DrawRect(new Rect2(10, y - 8, 9, 9), cor);
+			if (arte != null) DrawTextureRect(arte, new Rect2(8, y - 10, 13, 13), false);
+			else DrawRect(new Rect2(10, y - 8, 9, 9), cor);
 			DrawString(f, new Vector2(24, y), texto, HorizontalAlignment.Left, -1, tam, Tema.TextoFraco);
 			y -= 14;
 		}
@@ -769,6 +865,13 @@ public partial class TelaDoSistema : Control
 			_ => new Color("9aa3b8"),
 		};
 	}
+
+	/// <summary>
+	/// A ARTE DE UM CORPO NESTE RAIO DE TELA, ou nula: abaixo de `ArteDePlaneta.RaioMinimoDaArte` (o "tamanho real") o
+	/// mundo e o disco da cor do bioma. Uma pergunta so pro desenho e pra legenda -- os dois tem que concordar.
+	/// </summary>
+	private static Texture2D? ArteDoCorpo(PlanetaNoEspaco p, float raioNaTela) =>
+		raioNaTela >= ArteDePlaneta.RaioMinimoDaArte && !MapaEstelar.PlanetaSemArteDeTeste ? ArteDePlaneta.De(p) : null;
 
 	private static string NomeDoBioma(PlanetaNoEspaco p) =>
 		GeradorDeTerreno.BiomaDaSeed(p.Seed) switch

@@ -654,6 +654,9 @@ public sealed partial class GameServer
 			if (m.Zone.Name == "Hyperbolic_Time_Chamber" || m.Selo.Preso) continue;
 			// (2026-10-18) O KI DIVINO SO SE TRAVA COM KI DIVINO -- a regra do Sense (`AchoAEnergia`): quem nao o tem nao o sente, e nao tem onde mirar.
 			if (KiDivinoEscondido(m) && !SenteKiDivino(pl)) continue;
+			// (2026-10-19) ...E O ANDROIDE NAO TEM ASSINATURA DE KI PRA TRAVAR -- a mesma regra do Sense (`AndroideSemKi`). O DM deixava o teleporte
+			// achar o jogador androide (o `yardrat.dm` nao testa raca); o dono: *"androides nem deveriam aparecer no sense"*.
+			if (AndroideSemKi(m)) continue;
 
 			lista.Add((m, conhecido ? m.Name : m.Assinatura, conhecido));
 		}
@@ -762,7 +765,8 @@ public sealed partial class GameServer
 		{
 			double dano = CombatMath.DanoBase(f, quem.Ficha) + pl.ContadorDaLuta;
 			Soltar(quem, MotivoDaSoltura.Escapou);
-			Espalhar(quem, dano);
+			// `damage_mob(grabber,dmg)` (`Martial Skill Attacks.dm:316`): o golpe e o de quem se solta -- nao-letal, para no piso.
+			Espalhar(quem, dano, pl.Combate?.Letal == true);
 			AvisarPertoG3(pl, RaioDaVista, $"{pl.Name} se solta do aperto de {quem.Name} com uma cambalhota!");
 			GD.Print($"[G11] {pl.Name} escapou de {quem.Name} pelo Flip (chance {chance:0.##} x {pl.ContadorDaLuta:0})");
 			return;
@@ -1270,7 +1274,7 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>Uma dose (`:42-47`): 1% do MaxKi do doador vai pro alvo, com `SpreadHeal(1)`, e o `CooldownAmount` do DOADOR sobe.</summary>
-	private static void DoseDaDoacaoG11(ServerPlayer pl, DoacaoG11 d, ServerPlayer alvo)
+	private void DoseDaDoacaoG11(ServerPlayer pl, DoacaoG11 d, ServerPlayer alvo)
 	{
 		Fighter f = pl.Ficha;
 		double dose = f.MaxKi * 0.01;
@@ -1280,6 +1284,8 @@ public sealed partial class GameServer
 		alvo.Combate!.Corpo.Curar(1);
 		alvo.Combate.SincronizarVida();
 		f.CooldownAmount += alvo.Ficha.MaxKi / Math.Max(f.MaxKi, 1e-9);   // `:47` -- ver o cabecalho
+		// (2026-10-19) E A CORRENTE DO DU NA TELA DE QUEM ESTA PERTO: um folego por dose. Ver `GameServer.CorrenteDePoder.cs`.
+		AnunciarACorrenteDePoder(pl, alvo);
 	}
 
 	/// <summary>O fim da doacao (`givepower.dm:49-53`): o doador desmaia.</summary>

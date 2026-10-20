@@ -11,7 +11,7 @@ namespace Jandirus.Core.Verbos;
 /// deveriam so aparecer se o player tem os requisitos"*) ou chutar.
 ///
 /// Sao bits e nao um pacote por sistema porque a pergunta e sempre a mesma ("isto e verdade pra mim
-/// agora?") e a resposta muda devagar: um `uint` que sai so quando muda (`S2C.Fatos`, ver
+/// agora?") e a resposta muda devagar: um `ulong` que sai so quando muda (`S2C.Fatos`, ver
 /// `GameServer.Fatos.cs`). Fato novo = um bit aqui, uma linha la, uma linha na tabela de requisitos.
 ///
 /// O QUE **NAO** E FATO: circunstancia. "Estou perto de um banco", "tenho Ki", "marquei um alvo" mudam a
@@ -19,7 +19,7 @@ namespace Jandirus.Core.Verbos;
 /// ============================================================================================
 /// </summary>
 [Flags]
-public enum Fatos : uint
+public enum Fatos : ulong
 {
 	Nenhum = 0,
 
@@ -28,6 +28,11 @@ public enum Fatos : uint
 	AndroideDeAbsorcao = 1u << 0,
 	/// <summary>O ki divino esta desperto (`hasgodki`): pode desafiar o Deus da Destruicao.</summary>
 	GodKiDesperto = 1u << 1,
+	/// <summary>
+	/// (2026-10-19) A raca deste corpo tem o vigor infinito (`Stats.Nutricao.VigorInfinitoDaRaca`: o morto comum nao conta). Nao abre
+	/// verb: quem le e a mesa de tecnicas, que nao lhe vende folego (`Skills.TecnicaCustomizada.VendeFolego`).
+	/// </summary>
+	VigorInfinito = 1u << 30,
 
 	// ---- o que este personagem TEM no mundo ----
 	/// <summary>Tem um mestre (o discipulado): pode deixa-lo.</summary>
@@ -111,6 +116,25 @@ public enum Fatos : uint
 	// ---- (2026-10-18) o Neo Tuffle ----
 	/// <summary>Passou pela maquina do Neo Tuffle Lab (`Fighter.NeoTuffle`), e esta no proprio corpo: o verb de possuir um nocauteado e dele.</summary>
 	NeoTuffle = 1u << 28,
+
+	// ---- (2026-10-19) o King Yemma ----
+	/// <summary>
+	/// Esta VIVO no Outro Mundo com a volta do juiz guardada (`Fighter.VoltaDoJuizZona`): o botao da travessia e dele mesmo sem o
+	/// trono -- quem perdeu o cargo do lado de la nao fica preso entre os mortos. Ver `GameServer.TravessiaDoJuiz.cs`.
+	/// </summary>
+	VoltaDoOutroMundo = 1u << 29,
+
+	// ---- (2026-10-19) a vaga reciclada ----
+	/// <summary>
+	/// A Estatua do Dragao DESTE mundo perdeu o criador (ele foi apagado ou reencarnou) e esta inerte: um Namekuseijin do Cla do Dragao a
+	/// desperta e vira o criador dela. Ver `GameServer.VagaReciclada.cs`. Era O ULTIMO BIT de um `uint` -- o fio virou `ulong` com o fato
+	/// seguinte (2026-10-19, o aprendiz de Kaioshin).
+	/// </summary>
+	EstatuaSemCriadorAqui = 1u << 31,
+
+	// ---- (2026-10-19) o aprendiz de Kaioshin: o PRIMEIRO bit do `ulong` ----
+	/// <summary>Um Kaioshin se ofereceu pra te tomar como aprendiz (`aprendiz_aceitar`/`aprendiz_recusar`). Ver `GameServer.AprendizDeKaioshin.cs`.</summary>
+	OfertaDeAprendiz = 1ul << 32,
 }
 
 /// <summary>

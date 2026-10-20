@@ -123,7 +123,7 @@ public partial class GameServer
 			OFantasmaRegeneraLutaEMorreDeNovo(pl);
 			AsParedesDoOutroMundoNaoCaem();
 			AsPortasDoOutroMundoEAAlma(pl);
-			OCorpoQueFicaEOPrecoDoRevive(pl, forjados);
+			OCorpoQueFicaEOPrecoDoRevive(pl, forjados, zonaGuardada, posGuardada);
 
 			AfirmarAlem("a bancada chegou ao fim (sem esta linha, abortar no meio reportaria '0 falhas')",
 						true);
@@ -817,7 +817,7 @@ public partial class GameServer
 					!pl.Ficha.dead);
 	}
 
-	private void OCorpoQueFicaEOPrecoDoRevive(ServerPlayer pl, List<ServerPlayer> forjados)
+	private void OCorpoQueFicaEOPrecoDoRevive(ServerPlayer pl, List<ServerPlayer> forjados, ZoneKey zonaDosVivos, Vec2 pontoDosVivos)
 	{
 		GD.Print("[alem] -- 9) o corpo que fica (Keep_Body) e o preco do Revive de cargo --");
 
@@ -844,35 +844,64 @@ public partial class GameServer
 			return novo;
 		}
 
+		// ---- A MONTAGEM: o host VIVO, em casa ---------------------------------
+		// Esta familia roda depois da do fantasma, da das paredes e da das portas, e elas deixam o host MORTO
+		// no Outro Mundo. La o `PassoDaMorte` sai na primeira linha ("quem ja esta no Outro Mundo nao tem
+		// prazo") sem perguntar pelo `KeepsBody`: as reguas abaixo passavam sem medir nada -- "o corpo nao
+		// viaja" comparava o Outro Mundo com ele mesmo. O host volta VIVO pra zona de onde entrou, pela porta
+		// de zona, OITO TILES AO LADO do ponto de entrada: ali jazem o cadaver da familia 4 e os corpos
+		// forjados da 3, e o `Revive` da segunda metade pega o morto MAIS PERTO.
+		pl.Combate.Reviver();
+		pl.RelogioDaMorte = 0;
+		Vec2 aoLado = pontoDosVivos + new Vec2(8 * ZoneCollision.TileSize, 0);
+		Vec2 ondeCai = MapaDaZonaOuCatalogo(zonaDosVivos)?.PontoLivrePerto(aoLado) ?? aoLado;
+		MoveToZone(pl.Id, zonaDosVivos, ondeCai);
+		TickDasAureolas();
+		AfirmarAlem("(montagem) o host comeca VIVO, sem auréola e FORA do Outro Mundo (la o `PassoDaMorte` nem pergunta pelo `KeepsBody`)",
+					!pl.Ficha.dead && !pl.EnvAureola && !Alem.EhOAlem(pl.Zone),
+					$"morto={pl.Ficha.dead} auréola={pl.EnvAureola} zona={pl.Zone.Name}");
+
 		// ---- KEEP_BODY: o corpo fica ----------------------------------------
 		ZoneKey vivos = pl.Zone;
+		var cadaveresDeAntes = new HashSet<int>(ZoneList(vivos.Hash).Where(o => o.ECadaver).Select(o => o.Id));
 		pl.Ficha.KeepsBody = true;
 		pl.Ficha.Ki = pl.Ficha.MaxKi;
 		pl.MorteJaViajou = false;
 		pl.Combate.Morrer(ignorarSeguro: true);
 
+		// O PRAZO DOS 2 S VENCE, que e quando o tique chama a triagem. Sem isto o relogio que o `Morrer` armou
+		// continuaria no futuro, e um `PassoDaMorte` que esquecesse de rearmar passaria na regua do relogio.
+		pl.RelogioDaMorte = 0;
 		VenceuOPrazoDaMorte(pl);
 		AfirmarAlem("KEEP_BODY: vencido o prazo, o corpo NAO viaja -- ele fica no mundo dos vivos",
 					pl.Zone.Equals(vivos) && pl.Ficha.dead, pl.Zone.Name);
 
 		TickDasAureolas();
 		AfirmarAlem("...e a auréola acende MESMO SEM VIAGEM (e ela que denuncia o morto entre os vivos)",
-					pl.EnvAureola);
+					pl.EnvAureola && pl.Zone.Equals(vivos), $"auréola={pl.EnvAureola} zona={pl.Zone.Name}");
+		// "Desligado" e o `long.MaxValue` da triagem e da viagem: a pergunta nunca mais seria refeita.
 		AfirmarAlem("...e o relogio foi REARMADO, e nao desligado (a condicao do DM e continua)",
-					pl.RelogioDaMorte > NowMs());
+					pl.RelogioDaMorte > NowMs() && pl.RelogioDaMorte != long.MaxValue,
+					pl.RelogioDaMorte == long.MaxValue ? "desligado" : $"{pl.RelogioDaMorte - NowMs()} ms");
 
 		// ---- ...e o Ki abaixo de um sexto o leva ----------------------------
 		pl.Ficha.Ki = pl.Ficha.MaxKi / 6 - 1;
+		pl.RelogioDaMorte = 0;
 		VenceuOPrazoDaMorte(pl);
 		AfirmarAlem("...MAS com o Ki abaixo de um sexto o mesmo prazo o leva pro Outro Mundo",
 					Alem.EhOAlem(pl.Zone), pl.Zone.Name);
+
+		// O CADAVER QUE A VIAGEM DEIXOU SAI DO MUNDO: o host volta pro mesmo ponto, e o `Revive` pegaria
+		// esse corpo no lugar da alma.
+		foreach (ServerPlayer c in ZoneList(vivos.Hash).Where(o => o.ECadaver && !cadaveresDeAntes.Contains(o.Id)).ToList())
+			DesfazerOCadaver(c);
 
 		// O HOST VOLTA VIVO PRA SEGUNDA METADE. O `finally` da bancada tambem devolveria, mas o
 		// `Revive` precisa de um VIVO pra usar a tecnica -- e um morto nao ressuscita ninguem.
 		pl.Ficha.KeepsBody = false;
 		pl.Combate.Reviver();
 		pl.RelogioDaMorte = 0;
-		MoveToZone(pl.Id, vivos, pl.Pos);
+		MoveToZone(pl.Id, vivos, ondeCai);
 		pl.Ficha.Ki = pl.Ficha.MaxKi;
 
 		// ---- O REVIVE DE CARGO: a primeira volta e de graca ----------------
@@ -881,8 +910,9 @@ public partial class GameServer
 		ServerPlayer alma = ForjarMorto(7, "bancada: alma");
 		alma.Pos = pl.Pos;
 		alma.Combate.Morrer(ignorarSeguro: true);
-		AfirmarAlem("PRECONDICAO: ha um morto colado no host, e ele nunca voltou",
-					alma.Ficha.dead && alma.Ficha.ResurrectedCount == 0);
+		AfirmarAlem("PRECONDICAO: ha um morto colado no host -- o UNICO ao alcance do Revive --, e ele nunca voltou",
+					alma.Ficha.dead && alma.Ficha.ResurrectedCount == 0
+					&& AlvoDeTecnica(pl, RaioDeUmTileG4, o => o.Ficha.dead) == alma);
 
 		RessuscitarG4(pl);
 		AfirmarAlem("REVIVE DE CARGO: a alma volta a vida", !alma.Ficha.dead);
@@ -891,9 +921,10 @@ public partial class GameServer
 		AfirmarAlem("...e a PRIMEIRA volta nao cobra nada de quem ressuscitou", !pl.Ficha.dead);
 
 		// ---- ...e a segunda cobra uma vida ---------------------------------
+		// NO MUNDO DOS VIVOS o `Revive` puxa a alma aos pes de quem a trouxe (`PuxarParaG4`), e e ali que ela
+		// morre de novo: a segunda volta a acha sem ajuda da bancada. (Revivida dentro do Outro Mundo ela
+		// acordaria no berco -- era por isso que aqui havia um `MoveToZone` da alma.)
 		alma.Combate.Morrer(ignorarSeguro: true);
-		alma.Zone = pl.Zone;
-		alma.Pos = pl.Pos;
 		RessuscitarG4(pl);
 		AfirmarAlem("...a SEGUNDA volta da mesma alma tambem acontece",
 					!alma.Ficha.dead && alma.Ficha.ResurrectedCount == 2,
@@ -908,8 +939,6 @@ public partial class GameServer
 		pl.RelogioDaMorte = 0;
 		pl.Livro?.Esquecer("/datum/skill/rank/Revive");
 		alma.Combate.Morrer(ignorarSeguro: true);
-		alma.Zone = pl.Zone;
-		alma.Pos = pl.Pos;
 		int antes = alma.Ficha.ResurrectedCount;
 		RessuscitarG4(pl);
 		AfirmarAlem("SEM a skill de CARGO no livro, a mesma tecla ressuscita e NAO conta a volta",

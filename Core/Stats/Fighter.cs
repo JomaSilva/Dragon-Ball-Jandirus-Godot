@@ -610,6 +610,14 @@ public sealed partial class Fighter
 	public long hell_lockout_until;
 
 	/// <summary>
+	/// (2026-10-19) O RESTO DA PENA DE QUEM VOLTOU A VIDA COM ELA CORRENDO, em ms -- o relogio PARADO. Zero = nada guardado. O dono:
+	/// *"Vivo, ele fica livre; quando morrer de novo, volta pro Inferno pra cumprir o resto da pena"*. Vem em ms, e nao num instante
+	/// como o `hell_lockout_until` logo acima, porque o tempo vivido nao conta como pena cumprida. Quem guarda e quem devolve ao
+	/// relogio (na chegada da alma ao Outro Mundo) e o tique da pena (`CumprirPenaNoInferno`). Nao existe no DM.
+	/// </summary>
+	public long pena_do_inferno_guardada_ms;
+
+	/// <summary>
 	/// (v0.3.0) ATE QUANDO ESTE MORTO VISITA OS VIVOS -- o passe do Enma (100.000 zeni, sete dias do jogo), em ms do relogio
 	/// do servidor, como a pena do Inferno logo acima. Zero = sem passe. Quem escreve e o Enma
 	/// (`GameServer.EnmaPasse`); quem apaga e o relogio do passe, a volta a vida e o "morrer de novo". Nao existe no DM.

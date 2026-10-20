@@ -129,9 +129,31 @@ public partial class GameServer
 
 	/// <summary>
 	/// DEFEITO INJETADO (`--v030teste`, familia KK): o Kaio-ken volta a acender e a durar no Deus -- o jogo de antes. Lido
-	/// pelo botao (<see cref="Kaioken"/>) e pela entrada na forma (`EntrarNaForma`). Falso em jogo, sempre.
+	/// pelo funil das tres portas (<see cref="VetoDoKaiokenG2"/>). Falso em jogo, sempre.
 	/// </summary>
 	internal static bool KaiokenNoDeusDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--v030teste`, familia KS): o Kaio-ken volta a acender e a durar em todo Super Saiyajin, e no Blue de
+	/// qualquer classe e maestria e sem o teto de x20 -- o jogo de antes da v0.4.2. Lido pelo mesmo funil (<see cref="VetoDoKaiokenG2"/>),
+	/// pelo teto do Blue no botao e pelo aviso dos 50% de maestria divina (`TickDaMaestriaDivina`), que volta a prometer o Kaio-ken a
+	/// toda classe. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool KaiokenNoSuperSaiyajinDeTeste;
+
+	/// <summary>
+	/// A FORMA SUSTENTA O KAIO-KEN DESTE CORPO? A regra do Core (`Jandirus.Core.Skills.Kaioken.VetoDaForma`) com a classe e a
+	/// maestria divina da ficha (quem nunca despertou o ki divino tem zero). E o funil das TRES portas -- o botao
+	/// (<see cref="Kaioken"/>), a entrada na forma (`EntrarNaForma`) e o tique (<see cref="TickKaiokenG2"/>) --, e e nele que os
+	/// dois botoes de defeito desligam a regra: uma porta que perguntasse por conta propria escaparia do contra-exemplo.
+	/// </summary>
+	private static Jandirus.Core.Skills.Kaioken.Veto VetoDoKaiokenG2(ServerPlayer pl, Jandirus.Core.Forms.FormaDef? forma)
+	{
+		Jandirus.Core.Skills.Kaioken.Veto veto =
+			Jandirus.Core.Skills.Kaioken.VetoDaForma(forma, pl.Ficha.Class, pl.Ficha.godki?.mastery ?? 0);
+		bool desligado = veto == Jandirus.Core.Skills.Kaioken.Veto.Deus ? KaiokenNoDeusDeTeste : KaiokenNoSuperSaiyajinDeTeste;
+		return desligado ? Jandirus.Core.Skills.Kaioken.Veto.Nenhum : veto;
+	}
 
 	/// <summary>
 	/// A MAESTRIA DE VERDADE: `Fighter.KaiokenMastery`, que persiste. O piso de 4 fica como rede de
@@ -156,12 +178,14 @@ public partial class GameServer
 			return;
 		}
 
-		// (v0.3.0) O DEUS NAO SUSTENTA O KAIO-KEN -- regra do dono, *"o god n pode usar kaioken junto"* (a divergencia do DM
-		// esta declarada em `Jandirus.Core.Skills.Kaioken.CabeNaForma`). A outra metade e a entrada na forma: quem ja estava
-		// aceso e vira Deus perde o buff la (`EntrarNaForma`).
-		if (!KaiokenNoDeusDeTeste && !Jandirus.Core.Skills.Kaioken.CabeNaForma(Jandirus.Core.Forms.Catalogo.Def(pl.Forma.Atual)))
+		// A FORMA QUE NAO SUSTENTA O KAIO-KEN NAO O ACENDE: o Deus (v0.3.0, *"o god n pode usar kaioken junto"*) e todo Super
+		// Saiyajin menos o Blue de classe baixa ou media com 50% de maestria divina (v0.4.2). A regra, e a divergencia do DM, estao
+		// em `Jandirus.Core.Skills.Kaioken.VetoDaForma`; as outras duas portas sao a entrada na forma (`EntrarNaForma`) e o tique.
+		Jandirus.Core.Forms.FormaDef? forma = Jandirus.Core.Forms.Catalogo.Def(pl.Forma.Atual);
+		Jandirus.Core.Skills.Kaioken.Veto veto = VetoDoKaiokenG2(pl, forma);
+		if (veto != Jandirus.Core.Skills.Kaioken.Veto.Nenhum)
 		{
-			Avisar(pl, "o Kaio-ken não acende no Super Saiyajin God: o ki divino não o sustenta.");
+			Avisar(pl, Jandirus.Core.Skills.Kaioken.FraseDoVeto(veto, forma));
 			return;
 		}
 
@@ -170,20 +194,13 @@ public partial class GameServer
 		// (`Client/TelaDeKaioken`) e manda `Kaioken_N`.
 		double amt = pedido > 0 ? pedido : pl.Ficha.KaiokenVezes >= 2 ? pl.Ficha.KaiokenVezes : 2;
 
-		// KAIO-KEN NO BLUE (SetKaioken:141-147): dentro de forma divina COM SSJ empilhado, so
-		// Normal/Low-Class com 50% de maestria aguentam, e no maximo x20.
-		if (pl.Ficha.godki is { usage: true } gk && (pl.Ficha.ssj > 0 || pl.Ficha.lssj > 0))
+		// O TETO DO BLUE (`GODKI_KAIOKEN_CAP`, SetKaioken:145-147): quem chega aqui no Blue ja passou pela classe e pela maestria
+		// (o veto logo acima), e o Kaio-ken por cima dele vai ate x20. Era um bloco que perguntava pelo `Fighter.ssj` e pelo
+		// `godki.usage` -- que ninguem escreve neste port -- e nunca rodou: o Blue acendia ate x100.
+		if (!KaiokenNoSuperSaiyajinDeTeste && forma?.Id == Jandirus.Core.Forms.Catalogo.IdBlue && amt > KaiokenCapNoBlueG2)
 		{
-			if (!(pl.Ficha.Class is "Normal" or "Low-Class") || gk.mastery < GodKiState.RoyalePct)
-			{
-				Avisar(pl, "seu corpo não aguenta o Kaio-ken por cima do ki divino transformado.");
-				return;
-			}
-			if (amt > KaiokenCapNoBlueG2)
-			{
-				amt = KaiokenCapNoBlueG2;
-				Avisar(pl, $"sobre o Blue, o Kaio-ken vai até x{KaiokenCapNoBlueG2:0} -- além disso o corpo se despedaça.");
-			}
+			amt = KaiokenCapNoBlueG2;
+			Avisar(pl, $"sobre o Blue, o Kaio-ken vai até x{KaiokenCapNoBlueG2:0} -- além disso o corpo se despedaça.");
 		}
 
 		// `if(src.kaioamount<2) src.kaioamount=2`, o `round()` (PISO no DM) e o teto de 100 (SetKaioken:148-150) -- no Core.
@@ -627,12 +644,14 @@ public partial class GameServer
 				continue;
 			}
 
-			// KAIO-KEN NO BLUE, conferido AO VIVO (Loop:182-187): quem virou Blue DEPOIS de acender
-			// o Kaio-ken cai nas mesmas regras de classe e maestria.
-			if (pl.Ficha.godki is { usage: true } gk && (pl.Ficha.ssj > 0 || pl.Ficha.lssj > 0)
-				&& (!(pl.Ficha.Class is "Normal" or "Low-Class") || gk.mastery < GodKiState.RoyalePct))
+			// A FORMA QUE NAO SUSTENTA O KAIO-KEN, conferida AO VIVO -- o `Loop()` do DM (:182-187) ja fazia isto pro Blue. Quem chegou
+			// na forma por um caminho que nao passa pelo `EntrarNaForma` (o admin, a absorcao, a saga escrevem a forma direto) perde o
+			// Kaio-ken no segundo seguinte. Era a copia da regra do Blue pelo `Fighter.ssj`, morta como a do botao.
+			Jandirus.Core.Forms.FormaDef? forma = pl.Forma.Def;
+			Jandirus.Core.Skills.Kaioken.Veto veto = VetoDoKaiokenG2(pl, forma);
+			if (veto != Jandirus.Core.Skills.Kaioken.Veto.Nenhum)
 			{
-				Avisar(pl, "o ki divino transformado expulsa o Kaio-ken do seu corpo!");
+				Avisar(pl, Jandirus.Core.Skills.Kaioken.FraseDoVeto(veto, forma));
 				ReverterKaiokenG2(pl, porKO: false);
 				continue;
 			}

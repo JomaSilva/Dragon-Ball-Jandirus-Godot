@@ -130,18 +130,27 @@ public sealed class Rotina
 	/// </summary>
 	public readonly bool SoPasseia;
 
+	/// <summary>
+	/// (2026-10-19) NAO SAI DO LUGAR: o corpo cujo molde nao vagueia (`Npc.MoldeDeNpc.Vagueia`, o `idle_wandering = 0` do DM -- o
+	/// Grande Patriarca de Namek). Ele conversa e treina ali mesmo, como qualquer habitante; o que ele nao faz e PASSEAR -- o herdeiro
+	/// do `idle_wander_loop`, que e justamente o que o DM desliga nele -- nem SPAR, que o levaria pra longe do lugar dele numa luta
+	/// (ele nao convida, e recusa o convite).
+	/// </summary>
+	public readonly bool Parado;
+
 	private double _prazo;
 	private Vec2 _destino;
 	private double _proximaFala;
 	private bool _iniciei, _convidei, _esperandoResposta;
 	private string? _fraseAgendada;
 
-	public Rotina(RotinaConfig cfg, ulong semente, int meuId, bool soPasseia = false, string[]? conversas = null)
+	public Rotina(RotinaConfig cfg, ulong semente, int meuId, bool soPasseia = false, string[]? conversas = null, bool parado = false)
 	{
 		_cfg = cfg;
 		_conversas = conversas is { Length: > 0 } ? conversas : null;
 		MeuId = meuId;
 		SoPasseia = soPasseia;
+		Parado = parado;
 		_rng = Jandirus.Core.Npc.SorteioDeNpc.Sorteador(semente, "rotina");
 		// A PRIMEIRA ESPERA E SORTEADA por corpo: sem isso os quarenta habitantes da Terra decidiriam
 		// no mesmo tique, e o que se veria seria a cidade inteira andando em bloco.
@@ -214,7 +223,8 @@ public sealed class Rotina
 			return false;
 		}
 		bool assusta = razaoDePoder > _cfg.RazaoDePoderQueAssusta || razaoDePoder < 1 / _cfg.RazaoDePoderQueAssusta;
-		bool aceita = !assusta && _rng.NextDouble() < _cfg.ChanceDeAceitar;
+		// QUEM NAO SAI DO LUGAR NAO ENTRA EM SPAR (`Parado`): a luta o levaria pra longe de onde vao procura-lo
+		bool aceita = !Parado && !assusta && _rng.NextDouble() < _cfg.ChanceDeAceitar;
 		if (aceita)
 		{
 			Aceites++;
@@ -225,7 +235,7 @@ public sealed class Rotina
 		Recusas++;
 		_fraseAgendada = Frase(_cfg.Frases.Recusa);
 		_prazo = NoAfazer + PrazoDaDespedida;
-		Porque = assusta ? $"recusa: poder desigual ({razaoDePoder:0.0}x)" : "recusa: sem vontade";
+		Porque = Parado ? "recusa: nao sai do lugar" : assusta ? $"recusa: poder desigual ({razaoDePoder:0.0}x)" : "recusa: sem vontade";
 		return false;
 	}
 
@@ -268,6 +278,13 @@ public sealed class Rotina
 			Porque = "treinar sozinho";
 			return new Ordem { Treinar = true, Falar = _rng.NextDouble() < 0.5 ? Frase(_cfg.Frases.Treino) : null };
 		}
+		// QUEM NAO VAGUEIA NAO PASSEIA (`Parado`): o passeio e o herdeiro do `idle_wander_loop`, e e ele que o `idle_wandering = 0`
+		// do DM desliga. Fica ocioso e decide de novo no fim da espera.
+		if (Parado)
+		{
+			Voltar("parado: o lugar dele e o papel dele");
+			return Ordem.Parada;
+		}
 		Afazer = Afazer.Passeando;
 		NoAfazer = 0;
 		_prazo = Entre(_cfg.PasseioMin, _cfg.PasseioMax);
@@ -309,7 +326,8 @@ public sealed class Rotina
 		Vec2 olhar = Rumo(a.Minha, a.DoParceiro);
 		if (NoAfazer >= _prazo)
 		{
-			if (_iniciei && !_convidei && _rng.NextDouble() < _cfg.ChanceDeConvidar)
+			// (2026-10-19) quem nao sai do lugar (`Parado`) puxa conversa, mas nao chama pra spar
+			if (_iniciei && !_convidei && !Parado && _rng.NextDouble() < _cfg.ChanceDeConvidar)
 			{
 				_convidei = true;
 				_esperandoResposta = true;

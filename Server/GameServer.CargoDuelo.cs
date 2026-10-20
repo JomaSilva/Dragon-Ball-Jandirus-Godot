@@ -653,7 +653,11 @@ public partial class GameServer
 		Avisar(pl, $"-- GOD OF DESTRUCTION: {(dono.Length > 0 ? NomeDoDono(dono) : "trono VAGO")} --");
 		if (dono.Length == 0)
 		{
-			Avisar(pl, "com o trono vago, o titulo se ganha por outorga -- e se defende em duelo.");
+			// (2026-10-19) O CAMINHO DE VERDADE: ate aqui a frase dizia "outorga" (o admin), e o Bills na casa dele -- que coroa quem
+			// o vence (`GameServer.BillsTreino.cs`) -- nao estava escrito em lugar nenhum. O mesmo defeito injetado da frase do Core.
+			Avisar(pl, Cargos.DueloSemOBillsDeTeste
+				? "com o trono vago, o titulo se ganha por outorga -- e se defende em duelo."
+				: "com o trono vago, o titulo se ganha vencendo o Bills na casa dele (depois da saga de Boo) -- e se defende em duelo.");
 			return;
 		}
 

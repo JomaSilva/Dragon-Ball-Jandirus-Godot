@@ -217,6 +217,14 @@ public partial class GameServer
 		foreach (string aluno in AlunosDe(sig).ToList()) { _mestreDe.Remove(aluno); mudou = true; }
 		_nomePorAssinatura.Remove(sig);
 		if (mudou) { SalvarMestres(); GD.Print($"[server] discipulado: assinatura {sig} reciclada, vinculos limpos"); }
+
+		// (2026-10-19) E A ABA PEOPLE DE TODO MUNDO PELO MESMO MOTIVO: quem conhecia o personagem que deixou a vaga o esquece, senao o
+		// proximo da vaga herdaria o convivio e a declaracao dele. Ver `GameServer.ConvivioReciclado.cs`.
+		EsquecerAAssinaturaNoConvivio(sig);
+
+		// (2026-10-19) E O RESTO DO QUE O MUNDO GUARDAVA POR ELA -- bebes, dominios, o tanque de bio, as Super Esferas, a estatua, as
+		// esperas --, cada coisa como o dono decidiu. Ver `GameServer.VagaReciclada.cs`.
+		EsquecerAAssinaturaNoMundo(sig);
 	}
 
 	// =====================================================================

@@ -162,17 +162,12 @@ public partial class CeuDoEspaco : Node2D
 /// vez de um disco verde-agua indistinguivel de qualquer outro mundo verde.
 /// ===================================================================================
 ///
-/// PLANETA GERADO CAI NO ICONE DO BIOMA: `jungle`, `desert`, `icer_planet`. A folha nao tem um
-/// icone por seed -- nem poderia -- entao o que da pra fazer e escolher o parente mais proximo
-/// pelo tipo. Um Jardim sorteado se parece com selva porque ele E uma selva.
+/// PLANETA GERADO CAI NO ICONE DO BIOMA: `jungle`, `desert`, `icer_planet`. A escolha (e a folha)
+/// mora em `ArteDePlaneta` desde 2026-10-19, quando a carta estelar e a tela do sistema passaram a
+/// desenhar o mesmo icone: uma tabela so pras tres telas, e a Terra da carta e a Terra da janela.
 /// </summary>
 public partial class PlanetaDesenhado : Node2D
 {
-	private const string Folha = "res://Assets/Sprites/Misc/Planets.tres";
-
-	/// <summary>O lado do quadro na folha. Serve pra converter Raio (px) em escala.</summary>
-	private const float LadoDoIcone = 128f;
-
 	public string Nome = "";
 	public float Raio = 120;
 	public ulong Seed;
@@ -187,7 +182,7 @@ public partial class PlanetaDesenhado : Node2D
 	{
 		ZIndex = -60;   // atras dos corpos, na frente do ceu
 
-		(_icone, _agonia) = NovoIcone(Quadro(EstadoDoIcone()), Raio, Seed);
+		(_icone, _agonia) = NovoIcone(ArteDePlaneta.Quadro(EstadoDoIcone()), Raio, Seed);
 		AddChild(_icone);
 
 		// O NOME NAO E ESCRITO EM CIMA DO DISCO. Havia um rotulo aqui ("Earth", "Namek"...), e o dono
@@ -231,7 +226,7 @@ public partial class PlanetaDesenhado : Node2D
 			// ESCALA PELO DIAMETRO. O raio vem do servidor em pixels de mundo e e ele que decide a
 			// que distancia o pouso acontece; se o desenho nao casar com esse raio, o jogador
 			// pousa "no vazio" ao lado de um planeta que parecia estar longe.
-			Scale = Vector2.One * (raio * 2f / LadoDoIcone),
+			Scale = Vector2.One * (raio * 2f / ArteDePlaneta.LadoDoQuadro),
 			TextureFilter = TextureFilterEnum.Nearest,
 		};
 
@@ -514,49 +509,12 @@ public partial class PlanetaDesenhado : Node2D
 			: -1f;
 
 	/// <summary>
-	/// O estado da folha pra este planeta.
-	///
-	/// PRE-FEITO CASA PELO NOME (a Terra usa `earth`); GERADO cai no icone do BIOMA. Sem
-	/// correspondencia sobra um mundo generico -- nunca um quadrado vazio.
+	/// O estado da folha pra este planeta, pela tabela unica (`ArteDePlaneta`): PRE-FEITO casa pelo nome, GERADO cai no
+	/// icone do BIOMA. O `Tipo` e o nome do bioma (`MundoProcedural.Bioma`, ver o `World.DesenharPlanetas`); vazio ou
+	/// desconhecido cai no Rochoso, como caia antes.
 	/// </summary>
-	private string EstadoDoIcone()
-	{
-		if (Premade)
-			return Nome.Trim().ToLowerInvariant().Replace(' ', '_') switch
-			{
-				"earth" => "earth",
-				"namek" => "namek",
-				"vegeta" => "vegeta",
-				"icer_planet" or "icer" => "icer_planet",
-				"arlia" => "arlia",
-				"arconia" or "acronia" => "arconia",
-				"hell" => "hell",
-				"heaven" => "heaven",
-				"big_gete_star" => "big_gete_star",
-				"vampa" => "vampa",
-				_ => "jungle",
-			};
-
-		return Tipo.Trim().ToLowerInvariant() switch
-		{
-			"jardim" => "jungle",
-			"deserto" => "desert",
-			"gelado" => "icer_planet",
-			"vulcanico" => "hell",
-			"morto" => "big_gete_star",
-			_ => "vegeta",   // Rochoso: o mundo de pedra do original
-		};
-	}
-
-	private static Texture2D? Quadro(string estado)
-	{
-		var frames = FolhasPresas.Carregar(Folha);
-		if (frames == null) { GD.PushWarning("[planeta] sem Planets.tres"); return null; }
-		if (frames.HasAnimation(estado) && frames.GetFrameCount(estado) > 0)
-			return frames.GetFrameTexture(estado, 0);
-
-		GD.PushWarning($"[planeta] a folha nao tem o estado '{estado}'");
-		return frames.HasAnimation("jungle") && frames.GetFrameCount("jungle") > 0
-			? frames.GetFrameTexture("jungle", 0) : null;
-	}
+	private string EstadoDoIcone() =>
+		Premade
+			? ArteDePlaneta.EstadoDoPreFeito(Nome)
+			: ArteDePlaneta.EstadoDoBioma(Enum.TryParse(Tipo.Trim(), ignoreCase: true, out BiomaDeTerreno b) ? b : BiomaDeTerreno.Rochoso);
 }

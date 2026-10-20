@@ -222,6 +222,10 @@ public partial class GameServer
 	/// </summary>
 	private void RodarProvas(FamiliaDoVacuo f, PlacarDoVacuo p)
 	{
+		// (2026-10-19) O CASCO DO LEME TAMBEM BLINDA QUEM PILOTA (`GameServer.Leme.cs`): ao leme ninguem e alcancado, e o abrigo do vacuo (a
+		// sonda `Pilotando`) ficaria coberto duas vezes -- as familias da pod e da nave-capital ficariam CEGAS ao defeito "o abrigo foi
+		// esquecido". Esta bancada mede o abrigo do vacuo SOZINHO, como sempre mediu; o casco tem a bancada dele (`--lemeteste`).
+		LemeApanhaDeTeste = true;
 		try { RetratarOMundo(); f.Provas(p); }
 		catch (Exception e)
 		{
@@ -231,6 +235,7 @@ public partial class GameServer
 		}
 		finally
 		{
+			LemeApanhaDeTeste = false;
 			LimparAOficinaDoVacuo();
 			_sondasDoVacuo = null;
 			_vacFonteMutante = null;

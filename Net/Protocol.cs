@@ -260,7 +260,7 @@ public static class Protocol
     /// do servidor manda por ele, com autor vazio, o recado pessoal de uma pessoa so.
     ///
     /// ============================ O TEXTO NUNCA VEM COM O NOME DE QUEM FALA ============================
-    /// O autor viaja no proprio pacote (`S2C.Chat` = canal + autor + texto) e quem monta a frase e o
+    /// O autor viaja no proprio pacote (`S2C.Chat` = canal + autor + texto + boca) e quem monta a frase e o
     /// cliente -- "Fulano diz, '...'", "* Fulano faz X". Um `Falar(pl, Emote, $"{pl.Name} faz X")`
     /// sai na tela como "* Fulano Fulano faz X", e foi assim que quatro tecnicas do G4 ficaram
     /// (rasgo, ponto cronico x2, sugar vida). O balao sobre a cabeca deixou isso pior ainda: la o
@@ -555,7 +555,7 @@ public static class Protocol
         PeerLook = 9,      // a APARENCIA de alguem da zona -- mandada UMA vez, nao por tick
         Hit = 11,          // um golpe foi resolvido: quem, em quem, e no que deu
         Corpo = 12,        // o estado de CADA membro do meu personagem (so quando muda)
-        Chat = 13,         // alguem falou e eu estou no alcance: canal + quem + o que
+        Chat = 13,         // alguem falou e eu estou no alcance: canal + quem + o que + o id do corpo de onde saiu (0 = nenhum)
         Atributos = 14,    // a ficha LENTA: os 8 atributos e o que o menu abre com P mostra
         Skills = 15,       // o que eu aprendi, quantos marcos tenho, e o ESTADO das minhas arvores (ver PorEstadoDeSkills)
         Forma = 16,        // fulano mudou de forma: de, pra, e o byte de `Core.Forms.DegrauDeCena`
@@ -1384,6 +1384,13 @@ public static class Protocol
         RadarDeEsferas = 91,
 
         /// <summary>
+        /// (2026-10-19) O CARTAO DOS SERVICOS DO OUTRO MUNDO na aba World: o servico em curso (com o andamento e o prazo) e a rede inteira,
+        /// com o estado de cada um. Pessoal, e so quando o cartao muda (no maximo 1 Hz). O corpo mora em `FioDoServicoDoAlem`; a regra, em
+        /// `Core/World/ServicosDoAlem.cs` e `GameServer.ServicosDoAlem.cs`.
+        /// </summary>
+        ServicoDoAlem = 130,
+
+        /// <summary>
         /// **O REFUGIO**: o planeta natal desta pessoa foi destruido, e estas sao as saidas.
         ///
         /// ============================ POR QUE UM PACOTE, E NAO CHAT ============================
@@ -1559,7 +1566,26 @@ public static class Protocol
         /// corpo do possessor -- eu so assisto. Sai ao entrar e ao sair. Ver `GameServer.NeoTuffle.cs`.
         /// </summary>
         Possuido = 126,
+
+        /// <summary>
+        /// (2026-10-19) ALGUEM ESTA DANDO PODER A ALGUEM AQUI: `int doador` + `int alvo`. Sai a cada dose do `Give_Power` (0,2 s) pra quem
+        /// esta na zona e perto de um dos dois, e cada pacote e um FOLEGO da corrente: o cliente solta as bolinhas verdes do DU
+        /// (`Give Power.dmi`) do doador ao alvo enquanto eles chegam, e para sozinho quando param. Ver `GameServer.CorrenteDePoder.cs` e
+        /// `Client/CorrenteDePoder.cs`.
+        /// </summary>
+        DandoPoder = 127,
     }
+
+    /// <summary>
+    /// (2026-10-19) AS MARCAS DO FROST DEMON MUTANTE no fim do <see cref="S2C.Forma"/> -- um byte proprio, depois do dominio.
+    /// `MarcaInstavel`: a forma em que ele ENTROU nao se segura (a cena e a vermelha do DM, `Cinematicas.NoDegrau`).
+    /// `MarcaDescontrolado`: o ki dele esta fora de controle, e a aura ameacadora vermelha fica colada no corpo (`fd_menacing_red`).
+    /// `MarcaViradaDoDescontrole`: o ki travou (ou destravou) AGORA -- so o pacote do instante em que o motor muda o estado a leva
+    /// (`GameServer.AnunciarDescontrole`), e e por ela que o `chargeaura.wav` do DM (`icer.dm:63`) toca uma vez so: o pacote de
+    /// estado de quem chega na zona traz o descontrole e nao a virada, e o recem-chegado nao ouve o que aconteceu antes dele.
+    /// Zero pra todo corpo que nao e Mutante. Quem escreve e o `GameServer.MarcasDoFrost`.
+    /// </summary>
+    public const byte MarcaInstavel = 1, MarcaDescontrolado = 2, MarcaViradaDoDescontrole = 4;
 
     /// <summary>
     /// O QUE E ESTA COISA no pacote <see cref="S2C.Esferas"/>.
@@ -2165,6 +2191,45 @@ public static class Protocol
     /// <summary>Quantos caracteres uma fala pode ter. O BYOND cortava em 1000; aqui tambem.</summary>
     public const int MaxFala = 1000;
 
+    /// <summary>
+    /// O TETO DE UM NOME DE CORPO NO FIO: o nome do `S2C.PeerLook` e o autor do `S2C.Chat`. Quem le pergunta com ele, e
+    /// quem escreve corta nele (<see cref="NomeNoFio"/>) -- o `GetString(max)` do LiteNetLib NAO corta: acima do teto ele
+    /// devolve string VAZIA.
+    ///
+    /// ============================ (2026-10-19) POR QUE NAO E O 24 DA CRIACAO ============================
+    /// A criacao limita o nome a 24 letras, e o cliente lia o `PeerLook` com 24 e o autor do chat com 32. Mas o servidor
+    /// batiza corpos DERIVADOS de um nome, e eles passam disso: "Bio-Androide de X" (+16, e e o nome que fica no save),
+    /// "corpo de X" (+9), "X Android Body Model-#N" (+25, o droide do Super Computador), "X Simulation" (+11), "imagem de
+    /// X" (+10), "X (mente)" (+8), "X Copy" (+5) -- e um se poe sobre o outro: o corpo do droide de um Bio-Androide tem 74
+    /// letras. Nem precisa de jogador: o "corpo de Soldado do Freeza" da tropa de saga tem 26. Com o nome vazio o rotulo do
+    /// alvo virava "#id", a aba People "desconhecido #id" (e nao guardava a foto), o radio do scouter dizia "alguem", a fala
+    /// da cinematica alheia nem entrava no chat, e acima de 32 a linha do chat saia sem autor.
+    ///
+    /// 96 cobre todo derivado de um degrau e o Bio-Androide de um Bio-Androide (90); o corte do escritor garante que uma
+    /// cadeia mais funda chega como o COMECO do nome, e nunca vazia. Cortar no 24 do lado de quem escreve seria pior que o
+    /// vazio pra metade deles: o derivado poe o prefixo na frente, e "corpo de Bio-Androide de" nao diz de quem.
+    /// ==================================================================================================
+    /// </summary>
+    public const int MaxNomeNoFio = 96;
+
+    /// <summary>
+    /// DEFEITO INJETADO (bancada `--diagbalao`, "O NOME COMPRIDO NO FIO"): o servidor volta a escrever o nome sem o corte
+    /// do <see cref="NomeNoFio"/>, e o nome acima do teto chega VAZIO. Falso em jogo, sempre.
+    /// </summary>
+    public static bool NomeSemCorteDeTeste;
+
+    /// <summary>
+    /// O NOME COMO ELE VIAJA: inteiro ate o <see cref="MaxNomeNoFio"/>, cortado nele acima disso -- sem partir um par
+    /// substituto no meio (meio caractere e texto que o outro lado nao decodifica; e o `Cortar` do `FioDoMenuDoDragao`).
+    /// Quem escreve nome de corpo no fio passa por aqui: o `PacoteDeAparencia` e o `Mandar` do servidor.
+    /// </summary>
+    public static string NomeNoFio(string? nome)
+    {
+        if (string.IsNullOrEmpty(nome)) return "";
+        if (NomeSemCorteDeTeste || nome.Length <= MaxNomeNoFio) return nome;
+        return char.IsHighSurrogate(nome[MaxNomeNoFio - 1]) ? nome[..(MaxNomeNoFio - 1)] : nome[..MaxNomeNoFio];
+    }
+
     /// <summary>Um membro, do jeito que o boneco de dano precisa ver.</summary>
     public struct ParteState
     {
@@ -2614,8 +2679,12 @@ public static class Protocol
     /// o MUNDO ve (`GameServer.VisualVisivel`): fundido ou disfarcado, o que ele mostra nao e o guarda-roupa de
     /// quem joga. O formato de cada peca e o do `PutAppearance` (caminho + cor).
     /// </param>
+    /// <param name="esferas">
+    /// (2026-10-19) AS ESFERAS DO DRAGAO NA MAO, depois das pecas: o id de cada uma (`EsferaNaMochila`). Elas nao moram na
+    /// mochila -- nao ocupam os 30 nem vao pro save --, mas a tela as desenha como slots (dono). Sem lista, vai o zero.
+    /// </param>
     public static void PutInventario(this NetDataWriter w, Jandirus.Core.Items.Inventario inv,
-                                     IReadOnlyList<PecaDeRoupa> vestindo)
+                                     IReadOnlyList<PecaDeRoupa> vestindo, IReadOnlyList<string>? esferas = null)
     {
         w.Put((byte)Math.Min(inv.Pilhas.Count, Jandirus.Core.Items.Inventario.Slots));
         for (int i = 0; i < inv.Pilhas.Count && i < Jandirus.Core.Items.Inventario.Slots; i++)
@@ -2630,6 +2699,10 @@ public static class Protocol
             w.Put(vestindo[i].Caminho);
             w.PutRgb(vestindo[i].Cor);
         }
+
+        int ne = Math.Min(esferas?.Count ?? 0, Jandirus.Core.Magic.EsferaNaMochila.TetoNoPacote);
+        w.Put((byte)ne);
+        for (int i = 0; i < ne; i++) w.Put(esferas![i]);
     }
 
     public static Jandirus.Core.Items.Inventario GetInventario(this NetDataReader r, List<PecaDeRoupa> vestindo)
@@ -2657,6 +2730,15 @@ public static class Protocol
             string caminho = r.GetString(120);
             Rgb? cor = r.GetRgb();
             if (caminho.Length > 0) vestindo.Add(new PecaDeRoupa(caminho, cor));
+        }
+
+        // (2026-10-19) AS ESFERAS DO DRAGAO NA MAO entram na lista da tela DEPOIS dos itens, um slot cada -- alem dos 30, porque
+        // nao ocupam espaco da mochila (ver `PutInventario`). Id que nao e de esfera nao entra.
+        int ne = Math.Min((int)r.GetByte(), Jandirus.Core.Magic.EsferaNaMochila.TetoNoPacote);
+        for (int i = 0; i < ne; i++)
+        {
+            string id = r.GetString(64);
+            if (Jandirus.Core.Magic.EsferaNaMochila.Ler(id) != null) inv.Pilhas.Add(new Jandirus.Core.Items.Pilha(id, 1));
         }
         return inv;
     }
@@ -3096,10 +3178,17 @@ public struct SlotInfo
     /// </summary>
     public string RacaSorteada, LinhagemSorteada;
 
+    /// <summary>
+    /// (2026-10-19) A CLASSE DE FROST DEMON DESTA VAGA VAZIA -- `"Frost Demon"` ou `"Mutant Frost Demon"`, sorteada pelo servidor
+    /// e guardada na conta (`GameServer.ClasseDoFrostNaCriacao`). A criacao so a le se a raca escolhida for o Frost Demon: e ela
+    /// que decide se a tela de formas tem tres corpos ou sete, como no DM (`body_custom.dm:197-203`). Vazia na vaga ocupada.
+    /// </summary>
+    public string ClasseDoFrost;
+
     public void Write(NetDataWriter w)
     {
         w.Put(Ocupado);
-        if (!Ocupado) { w.Put(RacaSorteada ?? ""); w.Put(LinhagemSorteada ?? ""); return; }
+        if (!Ocupado) { w.Put(RacaSorteada ?? ""); w.Put(LinhagemSorteada ?? ""); w.Put(ClasseDoFrost ?? ""); return; }
         w.Put(Nome); w.Put(Raca); w.Put(Classe); w.Put(Genero);
         w.Put(Idade); w.Put(BP);
         w.PutAppearance(Visual);
@@ -3111,6 +3200,7 @@ public struct SlotInfo
         if (!s.Ocupado)
         {
             s.RacaSorteada = r.GetString(24); s.LinhagemSorteada = r.GetString(32);
+            s.ClasseDoFrost = r.GetString(32);
             s.Visual = new Appearance();
             return s;
         }
@@ -3563,6 +3653,17 @@ public struct EntityState
         set => Canal = (byte)(value ? Canal | 0x20 : Canal & ~0x20);
     }
 
+    /// <summary>
+    /// (2026-10-19) A CARGA DO SHATTERING THE LIMIT: a bola que se junta na mao sai VERMELHA (`Passivas.CorDoLimite`), como o raio que vai
+    /// sair dela -- o dono: a carga tambem. O 2x e decidido no comeco da carga (`CanalDeKi.Limite`), entao o bit ja vale no primeiro
+    /// snapshot do canal. O setimo bit do byte do canal.
+    /// </summary>
+    public bool CanalDoLimite
+    {
+        get => (Canal & 0x40) != 0;
+        set => Canal = (byte)(value ? Canal | 0x40 : Canal & ~0x40);
+    }
+
     public void Write(NetDataWriter w)
     {
         w.Put(Id);
@@ -3936,7 +4037,12 @@ public readonly record struct NascimentoDeProjetil(
     /// (`GameServer.Disparar`, `naMao`). O corpo nao faz o gesto de tiro, e o som da saida (`Som`) espera a bola SAIR -- o
     /// snapshot desligar o `ProjetilState.Inerte`. Bit 1 das flags do nascimento.
     /// </summary>
-    bool NaMao = false);
+    bool NaMao = false,
+    /// <summary>
+    /// (2026-10-19) O RAIO DO SHATTERING THE LIMIT: o cliente o pinta de vermelho (`Passivas.CorDoLimite`) no lugar da cor do ki do
+    /// dono -- ver `Core.Combat.Projetil.DoLimite`. Bit 2 das flags do nascimento.
+    /// </summary>
+    bool DoLimite = false);
 
 /// <summary>
 /// A SERIALIZACAO DE UMA TECNICA INVENTADA -- as duas pontas, no MESMO arquivo.

@@ -158,9 +158,13 @@ public partial class GameServer
 	private bool AlcancaOKiDivino(ServerPlayer pl) =>
 		GodKiSemRequisitoDeTeste || DespertarDivino.AlcancaORequisito(pl.Ficha, SementeDoGodKi(pl));
 
-	/// <summary>Este corpo esta num chao de atmosfera divina? Funcao pura da zona -- o cliente responde igual.</summary>
+	/// <summary>
+	/// Este corpo esta num chao de atmosfera divina? Funcao pura da zona -- o cliente responde igual. (2026-10-19) MENOS AO LEME: o ar de
+	/// fora nao entra no casco, e o bit `NaAtmosfera` que vai pro cliente sai daqui -- ver `GameServer.Leme.cs`.
+	/// </summary>
 	private bool EmAtmosferaDivina(ServerPlayer pl) =>
-		GodKiEmQualquerChaoDeTeste ? Espaco.EhPlaneta(pl.Zone) : AtmosferaDivina.Tem(SeedDoUniverso, pl.Zone);
+		(LemeRespiraOArDeTeste || !CascoIsola(pl))
+		&& (GodKiEmQualquerChaoDeTeste ? Espaco.EhPlaneta(pl.Zone) : AtmosferaDivina.Tem(SeedDoUniverso, pl.Zone));
 
 	/// <summary>
 	/// ESTE CORPO E UM "DEUS" PRO SEGUNDO CAMINHO? Carrega ki divino (desperto, ou numa forma divina) E e
@@ -474,7 +478,11 @@ public partial class GameServer
 			>= Catalogo.GodkiRoyalePct => prodigial
 				? $"maestria divina {marco:0}%: algo BESTIAL espreita no fundo do seu potencial."
 				: elite ? $"maestria divina {marco:0}%: a evolução da sua forma divina está ao alcance do seu sangue."
-						: $"maestria divina {marco:0}%: o seu corpo agora aguenta o Kaio-ken por cima da forma divina.",
+						// (v0.4.2) A PROMESSA DO KAIO-KEN SO PRA QUEM O BLUE O AGUENTA: a classe baixa e a media (`Kaioken.ClasseAguentaNoBlue`,
+						// a mesma pergunta do veto). Ela ia pra todo mundo -- o New Generation e o Primal cruzam os 50% sem ganhar nada disso.
+						: Jandirus.Core.Skills.Kaioken.ClasseAguentaNoBlue(classe) || KaiokenNoSuperSaiyajinDeTeste
+							? $"maestria divina {marco:0}%: o seu corpo agora aguenta o Kaio-ken por cima do Blue."
+							: $"o seu ki divino amadurece ({marco:0}%).",
 			_ => prodigial
 				? $"o seu ki divino amadurece ({marco:0}%): o Místico agora expressa o poder inteiro dele."
 				: $"o seu ki divino amadurece ({marco:0}%): o degrau seguinte das formas divinas está ao seu alcance.",

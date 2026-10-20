@@ -415,7 +415,11 @@ public static class CatalogoDeItens
 			return FerramentaVoltaACavarDeTeste && id is Pa or Furadeira ? mao with { Acoes = ["cavar"] } : mao;
 		}
 		if (LivroDeEnsinamentos.Ler(id) is { } livro) return livro.Ficha;
+		// (2026-10-19) A ESFERA DO DRAGAO NA MAO: a tela a desenha como slot, e ela nao mora na mochila. Ver `Magic.EsferaNaMochila`.
+		if (Magic.EsferaNaMochila.Ler(id) is { } esfera) return esfera.Ficha;
 		if (RoupaGuardada.Ler(id) is { } roupa) return roupa.Ficha(Visual);
+		// (2026-10-19) A MAQUINA RECOLHIDA COM AS MELHORIAS: o id leva a gaveta do estado dela. Ver `MaquinaGuardada`.
+		if (MaquinaGuardada.Ficha(id) is { } guardada) return guardada;
 
 		// A TECH DE BOLSO (v0.2.1): o item fabricado que tem acao propria -- e, as vezes, estado no id. Ver `TechDeBolso`.
 		if (TechDeBolso.Ficha(id, Obras) is { } deBolso) return deBolso;
@@ -493,10 +497,24 @@ public static class CatalogoDeItens
 	///
 	/// UMA CASA SO PRAS DUAS PONTAS: o fantasma do cliente desenha isto, e o servidor ergue isto. Escrita
 	/// em dois lugares, a previa mostraria uma coisa e o chao receberia outra.
+	///
+	/// (2026-10-19) A MAQUINA RECOLHIDA COM AS MELHORIAS (`Gravity|c12|500x`) vira a do tipo dela -- quem devolve o
+	/// estado da gaveta e o servidor, ao assentar. Ver <see cref="MaquinaGuardada"/>.
 	/// ====================================================================================
 	/// </summary>
 	public static string OQueAssenta(string idDoItem) =>
-		string.Equals(idDoItem, SementeDeMaca, StringComparison.OrdinalIgnoreCase) ? ArvoreDeMaca : idDoItem;
+		string.Equals(idDoItem, SementeDeMaca, StringComparison.OrdinalIgnoreCase) ? ArvoreDeMaca
+		: MaquinaGuardada.Eh(idDoItem) ? MaquinaGuardada.Tipo(idDoItem)
+		: idDoItem;
+
+	/// <summary>
+	/// ASSENTAR ISTO E PLANTAR? So quando o que fica no chao e OUTRA coisa que o proprio item (a semente vira a arvore) --
+	/// e nao quando e o mesmo tipo com estado (a maquina guardada vira a maquina dela). As duas pontas escolhem a frase por
+	/// aqui: o fantasma do cliente ("clique onde quer plantar") e o servidor ("você planta a semente").
+	/// </summary>
+	public static bool EhPlantio(string idDoItem) =>
+		!string.Equals(OQueAssenta(idDoItem), MaquinaGuardada.Eh(idDoItem) ? MaquinaGuardada.Tipo(idDoItem) : idDoItem,
+					   StringComparison.OrdinalIgnoreCase);
 
 	/// <summary>
 	/// DA PRA ASSENTAR ISTO NO CHAO?

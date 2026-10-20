@@ -168,6 +168,9 @@ public sealed partial class GameServer
 			? CoordenadaDoDmG8(z, 64, 290)
 			: CoordenadaDoDmG8(z, 175, 140);
 
+		// (2026-10-19) O JUIZ QUE SAI DO MUNDO DOS VIVOS PELO CARIMBO GUARDA A VOLTA, como o que sai pela travessia: o botao "Outro
+		// Mundo" o devolve ao lugar exato de onde ele saiu, e nao ao berco. Ver `GameServer.TravessiaDoJuiz.cs`.
+		if (!Alem.EhOAlem(pl.Zone)) GuardarAVoltaDoJuiz(pl);
 		Falar(pl, Protocol.Fala.Emote, "bate o carimbo e some do balcao.");
 		MoveToZone(pl.Id, z, ponto);
 		Avisar(pl, $"voce atravessa pro {alvo}.");

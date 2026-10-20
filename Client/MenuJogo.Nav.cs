@@ -175,8 +175,11 @@ public partial class MenuJogo
 		VBoxContainer legenda = Cartao("Legenda");
 		Nota("Cada pontinho e um SISTEMA. Clique pra selecionar, DUPLO CLIQUE pra abrir o mapa do "
 			 + "sistema -- estrela no centro, os mundos nos aneis de orbita. Arraste pra mover, roda pra zoom.", legenda);
+		// (2026-10-19) DE PERTO O MUNDO E A ARTE DELE, a mesma do espaco (`ArteDePlaneta`): a cor laranja/azul so sobra no
+		// ponto de longe, e quem diz "tem mapa proprio" de perto e o anel laranja. A frase acompanha o desenho.
 		Nota("A cor do ponto e a classe da estrela, medida na propria arte dela. Aproximando, os mundos "
-			 + "aparecem: o laranja tem mapa proprio, o azul-acinzentado e gerado. Duplo clique num MUNDO viaja.", legenda);
+			 + "aparecem: de longe um ponto (laranja tem mapa próprio, azul-acinzentado é gerado), de perto a arte "
+			 + "do mundo, a mesma que se vê do espaço, com um anel laranja nos de mapa próprio. Duplo clique num MUNDO viaja.", legenda);
 		Nota("O anel DOURADO em volta de um mundo gerado marca uma ATMOSFERA DIVINA: são raros, e quem tem poder de "
 			 + "base pra isso desperta o ki divino ficando neles.", legenda);
 		if (cli.CasaDeBills.Revelada)

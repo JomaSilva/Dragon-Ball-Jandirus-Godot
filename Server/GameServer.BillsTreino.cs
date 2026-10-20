@@ -163,6 +163,8 @@ public partial class GameServer
 			ligados++;
 
 			(int corpo, string tipo, string nome) = haCorpo ? DivinoAoAlcance(pl) : (0, "", "");
+			// (2026-10-19) O GRANDE PATRIARCA DE NAMEK e o terceiro corpo com menu, pelo mesmo pacote -- ver `GameServer.Patriarca.cs`.
+			if (corpo == 0) (corpo, tipo, nome) = PatriarcaAoAlcance(pl);
 			if (_divinoApontado.TryGetValue(pl.Id, out (ServerPlayer Quem, int Corpo, string Tipo) visto)
 				&& ReferenceEquals(visto.Quem, pl) && visto.Corpo == corpo && visto.Tipo == tipo) continue;
 

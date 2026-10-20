@@ -317,6 +317,12 @@ public partial class GameServer
 			// que o cliente faria, refeita fora do servidor -- e e a unica forma de o "os dois lados
 			// chegam nela sozinhos" do cabecalho do `SuperEsferas.PosicaoDa` valer alguma coisa.
 			// ====================================================================================
+			// (2026-10-19) A INVOCACAO DE CIMA TIROU AS SETE DA MAO E AS POS NO CHAO aos pes de quem invocou (dono: *"elas vao sair do seu
+			// inventario"*), e o dragao foi embora sem pedido: elas estao ali, e nao mais onde o espalhamento as pos. A medida desta secao e a
+			// do ESPALHAMENTO, entao o set se espalha de novo no MESMO ciclo, pelo funil de producao, e e esse resultado que a conta pura
+			// confere -- a injecao (e) continua caindo aqui.
+			set.Ciclo--;                 // o `EspalharOSet` incrementa: assim ele reconstroi o MESMO ciclo
+			EspalharOSet(set);
 			int bateram = 0;
 			foreach (Esfera e in _esferas.Where(x => x.Set == set.Id))
 			{

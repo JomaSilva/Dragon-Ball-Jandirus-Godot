@@ -180,7 +180,7 @@ public partial class GameServer
 		f.stamina = Math.Min(Math.Max(f.maxstamina, f.stamina), f.stamina + f.maxstamina * volta);
 
 		MarcarAgressao(alvo, pl);
-		ConsequenciaDoDano(alvo, pl, "furado pela cauda");
+		ConsequenciaDoDano(alvo, pl, "furado pela cauda", pl.Combate?.Letal == true);
 		AnunciarGolpe(pl, alvo, new Jandirus.Core.Combat.GolpeResultado
 		{
 			Desfecho = Jandirus.Core.Combat.Desfecho.Acertou, Dano = dano, Membro = membro.Nome,

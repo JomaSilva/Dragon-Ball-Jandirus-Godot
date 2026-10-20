@@ -312,7 +312,22 @@ public sealed class CombatState
 	/// a imunidade de cinematica significaria visitar os dezoito e acertar todos -- e o que sobrasse
 	/// seria o "as vezes" que ninguem consegue reproduzir.
 	/// </summary>
-	public bool Intocavel => Carencia > 0 || Desfeito || Invulneravel || Enterrado || Possuido || EmCinematica?.Invoke() == true;
+	public bool Intocavel => Carencia > 0 || Desfeito || Invulneravel || Enterrado || Possuido || EmCinematica?.Invoke() == true
+							 || AoLeme?.Invoke() == true;
+
+	/// <summary>
+	/// (2026-10-19) AO LEME DE UMA NAVE: o casco blinda quem pilota -- a setima razao do <see cref="Intocavel"/> (o dono: *"faça com q
+	/// nenhum efeito externo afete o personagem enquanto esta pilotando a nave"*; ver `GameServer.Leme.cs`). Por ultimo de proposito: e a
+	/// unica razao que custa um laco (as naves do servidor), e quase todo corpo ja saiu nas de cima.
+	///
+	/// **GANCHO E NAO CAMPO**, pelo motivo do <see cref="EmCinematica"/>: quem sabe quem esta ao leme e o servidor (o `PilotoId` da nave),
+	/// e o escudo cai no MESMO gesto em que o leme e largado -- desembarcar, voltar a ponte, a nave explodir --, sem bit pra apagar.
+	///
+	/// NA NAVE GRANDE O CORPO DA PONTE DIVIDE ESTE ESTADO com quem esta ao leme (`GameServer.CorpoLargado.cs`), entao ele tambem fica fora de
+	/// alcance enquanto o dono pilota -- o dono escolheu assim (2026-10-19, "blindar os dois ao leme"): largou o leme, o corpo volta a
+	/// poder apanhar, e a te acordar.
+	/// </summary>
+	public Func<bool>? AoLeme;
 
 	/// <summary>
 	/// (2026-10-17) A LARVA ENTERRADA (`GameServer.Larva.cs`): debaixo da terra ninguem a alcanca -- a quinta razao do <see cref="Intocavel"/>.

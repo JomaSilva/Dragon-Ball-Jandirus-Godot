@@ -301,6 +301,8 @@ public sealed partial class GameServer
 
 	private void TickDoTorneio(double dt)
 	{
+		// (2026-10-19) O TORNEIO DO CELL, o outro torneio da arena da Terra -- ver `GameServer.TorneioDoCell.cs`.
+		TickDoTorneioDoCell(dt);
 		if (_torneio == null)
 		{
 			long agora = NowMs();
@@ -342,6 +344,9 @@ public sealed partial class GameServer
 	private void ComecarTorneio(TipoDeTorneio tipo, string porQuem)
 	{
 		if (_torneio != null) return;
+		// (2026-10-19) A ARENA DA TERRA E DO CELL enquanto o torneio dele dura: o de artes marciais espera (a agenda tenta de novo a cada
+		// tique, e abre quando ela vagar). Ver `GameServer.TorneioDoCell.cs`.
+		if (tipo == TipoDeTorneio.Terra && ArenaComOCell) return;
 		PalcoDeTorneio palco = _torneioCfg.Palco(tipo);
 		var zona = ZoneKey.Premade(palco.Zona);
 		if (MapaDaZonaOuCatalogo(zona) == null)
@@ -385,15 +390,31 @@ public sealed partial class GameServer
 		SalvarAgenda();
 	}
 
-	/// <summary>`eligible`: Terra = vivo e na Terra; Alem = morto e no Outro Mundo (qualquer zona do alem).</summary>
+	/// <summary>`eligible`: Terra = vivo e na Terra; Alem = morto e no Outro Mundo (qualquer zona do alem), e solto do Inferno (<see cref="PresoPelaPena"/>).</summary>
 	private bool Elegivel(ServerPlayer p, TipoDeTorneio tipo) =>
 		EhJogador(p) && (tipo == TipoDeTorneio.Alem
-			? p.Ficha.dead && Alem.EhOAlem(p.Zone)
+			? p.Ficha.dead && Alem.EhOAlem(p.Zone) && !PresoPelaPena(p)
 			: !p.Ficha.dead && string.Equals(p.Zone.Name, _torneioCfg.Terra.Zona, StringComparison.OrdinalIgnoreCase));
 
-	/// <summary>`still_eligible` / `player_ok`: na Terra continua vivo; no Alem continua morto (reviveu = fora).</summary>
-	private static bool AindaElegivel(ServerPlayer p, TipoDeTorneio tipo) =>
-		tipo == TipoDeTorneio.Alem ? p.Ficha.dead : !p.Ficha.dead;
+	/// <summary>`still_eligible` / `player_ok`: na Terra continua vivo; no Alem continua morto (reviveu = fora) e solto do Inferno.</summary>
+	private bool AindaElegivel(ServerPlayer p, TipoDeTorneio tipo) =>
+		tipo == TipoDeTorneio.Alem ? p.Ficha.dead && !PresoPelaPena(p) : !p.Ficha.dead;
+
+	/// <summary>DEFEITO INJETADO (bancada `--torneioteste`, secao 4b): a pena no Inferno volta a nao barrar o torneio do Outro Mundo -- o jogo de antes de 2026-10-19. Falso em jogo.</summary>
+	internal static bool PenaNaoBarraOTorneioDeTeste;
+
+	/// <summary>
+	/// (2026-10-19) QUEM CUMPRE PENA NO INFERNO NAO VAI AO TORNEIO -- o dono, perguntado: *"Nao pode"*. O Inferno conta como alem
+	/// (`Alem.EhOAlem`), e o convite ia pro condenado: no fechamento o torneio o levava pra cadeira e a corrente da pena
+	/// (`CumprirPenaNoInferno`, o `afterlife_alignment_check` do DM no laco de fichas, 5 vezes por segundo) o devolvia ao portao
+	/// do Inferno, calada -- e de novo na hora da luta, que ele perdia por W.O. sem nunca ter pisado na arena. O DM tem o mesmo
+	/// encontro: o `eligible` do ceu e so `M.dead` (`Tournament.dm:656`) e a corrente e `SkyNPCs.dm:235-236`.
+	/// </summary>
+	private bool PresoPelaPena(ServerPlayer p) =>
+		!PenaNaoBarraOTorneioDeTeste && p.Ficha.hell_lockout_until != 0 && NowMs() < p.Ficha.hell_lockout_until;
+
+	/// <summary>Os minutos de pena que faltam, arredondados pra cima de 1 -- a conta da frase do `OInfernoNaoDeixaSair`.</summary>
+	private long MinutosDePena(ServerPlayer p) => Math.Max(1, (p.Ficha.hell_lockout_until - NowMs()) / 60_000);
 
 	private void Convidar(TorneioVivo t, ServerPlayer p)
 	{
@@ -545,7 +566,9 @@ public sealed partial class GameServer
 		if (t.Inscritos.ContainsKey(chave)) { Avisar(pl, "voce ja esta inscrito."); return; }
 		if (!Elegivel(pl, t.Tipo))
 		{
-			Avisar(pl, t.Tipo == TipoDeTorneio.Alem ? "so os mortos do Outro Mundo podem se inscrever." : "so quem esta vivo e na Terra pode se inscrever.");
+			Avisar(pl, t.Tipo != TipoDeTorneio.Alem ? "so quem esta vivo e na Terra pode se inscrever."
+				: PresoPelaPena(pl) ? $"as correntes do Inferno nao te soltam pro torneio: a sua pena ainda tem {MinutosDePena(pl)} minuto(s)."
+				: "so os mortos do Outro Mundo podem se inscrever.");
 			return;
 		}
 		if (t.Inscritos.Count >= _torneioCfg.Vagas) { Avisar(pl, $"as {_torneioCfg.Vagas} vagas do torneio ja foram preenchidas!"); return; }
@@ -603,7 +626,14 @@ public sealed partial class GameServer
 		foreach ((string chave, _) in t.Inscritos.ToList())
 		{
 			ServerPlayer? p = CorpoDaAssinatura(chave);
-			if (p == null || !AindaElegivel(p, t.Tipo)) { t.Inscritos.Remove(chave); continue; }
+			if (p == null || !AindaElegivel(p, t.Tipo))
+			{
+				t.Inscritos.Remove(chave);
+				// QUEM FOI JULGADO PRO INFERNO DEPOIS DE SE INSCREVER sai da chave sabendo por que (os outros cortes sao o morto que
+				// reviveu e o que saiu do jogo, e esses ja sabem).
+				if (p != null && PresoPelaPena(p)) Avisar(p, $"{t.Rotulo}: a sua pena no Inferno te tirou da chave -- as correntes nao soltam ninguem pro torneio.");
+				continue;
+			}
 			validos.Add(p);
 		}
 		foreach (ServerPlayer p in Jogadores.ToList())
@@ -874,13 +904,34 @@ public sealed partial class GameServer
 		SoltarDoEmbateDeKi(c.Id);
 		SoltarDoRaio(c.Id);
 
-		if (EhJogador(c)) CravarPosicao(c, pos);
-		else c.Pos = pos;
+		if (!EhJogador(c)) c.Pos = pos;
+		else if (TransporteComJanelaCurtaDeTeste) CravarPosicao(c, pos);
+		else CravarPosicao(c, pos, JanelaDoTransporteMs);
 		c.Moving = false;
 	}
 
 	/// <summary>DEFEITO INJETADO (bancada `--torneioteste`, secao 4): o transporte volta a deixar no corpo o embalo da luta.</summary>
 	internal static bool TransporteLevaOEmbaloDeTeste;
+
+	/// <summary>DEFEITO INJETADO (bancada `--torneioteste`, secao 4c): o transporte volta a abrir so o meio segundo de correcao esperada de todo salto -- o jogo de antes de 2026-10-19. Falso em jogo.</summary>
+	internal static bool TransporteComJanelaCurtaDeTeste;
+
+	/// <summary>
+	/// (2026-10-19) POR QUANTO TEMPO OS PACOTES VELHOS DE QUEM O TORNEIO MUDOU DE LUGAR NAO OPINAM: a contagem inteira e mais um
+	/// segundo. O dono: *"alguns jogadores relataram spawnar na hora de lutar na arena, fora da arena"* -- *"perto da arena mas fora
+	/// da area dela, perdendo automaticamente ao iniciar a luta"*.
+	///
+	/// O `CravarPosicao` padrao abre meio segundo, o tamanho de um salto por gesto proprio. Ate a correcao chegar, o cliente segue
+	/// mandando a posicao da CADEIRA, 30 vezes por segundo, e cada pacote que chega depois do meio segundo e julgado como PASSO: o
+	/// corpo e arrastado de volta pra cadeira no passo de caminhada (`MoveRules.ValidateStep`, o "pedido longe e arrastado"). Com o
+	/// cliente atrasado mais de meio segundo (ping alto, um engasgo), a contagem leva o lutador de volta pro lado de fora -- e no palco
+	/// do ceu as cadeiras ficam a 2 celulas da linha e os pontos de luta a 4-5 dela: o juiz o acha fora no primeiro tique do "COMECEM!"
+	/// e e RING-OUT. Na Terra o ponto fica a mais de 24 celulas da linha, e o mesmo arrasto pediria quase 4 s de atraso.
+	///
+	/// Dentro da janela o pedido LONGE do corpo e pacote velho e nao move nada; o passo perto continua valendo (quem quiser andar na
+	/// contagem anda, como no DM, que solta os dois antes dela -- `Tournament.dm:495-496`).
+	/// </summary>
+	private long JanelaDoTransporteMs => (long)(Math.Max(0, _torneioCfg.ContagemSegundos) * 1000) + 1000;
 
 	/// <summary>
 	/// (2026-10-17) QUEM E POSTO NA ESPERA (OU NA ARENA) CHEGA PARADO E SOLTO. O censo da `--torneioteste` achou o que a foto do
@@ -960,8 +1011,9 @@ public sealed partial class GameServer
 	/// Quem pergunta: o reflexo (`TickDoContraFeixe`) e o ramo do habitante (`TicarUmCorpo`).
 	/// </summary>
 	internal bool ForaDaVezNoTorneio(ServerPlayer npc) =>
-		_torneio is { } t && (t.Presos.Contains(npc.Id)
-			|| (!ContagemSoltaDeTeste && t.Npcs.Contains(npc.Id) && npc.Papel is { PresaDoRoteiro: 0 }));
+		(_torneio is { } t && (t.Presos.Contains(npc.Id)
+			|| (!ContagemSoltaDeTeste && t.Npcs.Contains(npc.Id) && npc.Papel is { PresaDoRoteiro: 0 })))
+		|| CellForaDaVez(npc);   // (2026-10-19) e o Cell do torneio dele, entre as lutas -- ver `GameServer.TorneioDoCell.cs`
 
 	// =====================================================================
 	// AS LUTAS (`run_match`)

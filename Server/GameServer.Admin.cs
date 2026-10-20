@@ -1220,6 +1220,8 @@ public sealed partial class GameServer
 		// destronava o dono legitimo e gravava o trono no nome de ninguem.
 		if (!EhPessoa(adm, p)) return;
 		if (chave.Length == 0) { Avisar(adm, "escreva a chave do cargo (veja em Ranks)."); return; }
+		// (2026-10-19) "Kaioshin Apprentice" do Give Rank do DM (`Rewards.dm:302`): nao e trono -- e o vinculo com o Kaioshin.
+		if (Jandirus.Core.Ranks.AprendizDeKaioshin.EAChaveDoAdmin(chave)) { AdminDarAprendiz(adm, p); return; }
 
 		Jandirus.Core.Ranks.RankDef? r = Jandirus.Core.Ranks.Cargos.Get(chave)
 			?? Array.Find(Jandirus.Core.Ranks.Cargos.Todos,
@@ -1252,6 +1254,12 @@ public sealed partial class GameServer
 		string[] partes = arg.Split('|');
 		string chave = partes[^1].Trim();
 		if (chave.Length == 0) { Avisar(adm, "escreva a chave do cargo (veja em Ranks)."); return; }
+		// (2026-10-19) "Kaioshin Apprentice (revogar)" (`Rewards.dm:305`): aqui o ALVO conta -- e dele que o aprendizado sai.
+		if (Jandirus.Core.Ranks.AprendizDeKaioshin.EAChaveDoAdmin(chave))
+		{
+			AdminTirarAprendiz(adm, partes.Length > 1 && int.TryParse(partes[0], out int idDoMarcado) ? _players.GetValueOrDefault(idDoMarcado) : null);
+			return;
+		}
 
 		Jandirus.Core.Ranks.RankDef? r = Jandirus.Core.Ranks.Cargos.Get(chave)
 			?? Array.Find(Jandirus.Core.Ranks.Cargos.Todos,

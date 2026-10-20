@@ -372,6 +372,46 @@ public sealed class TecnicaCustomizada
 	}
 
 	// =====================================================================
+	// O FOLEGO DE QUEM NUNCA CANSA
+	// =====================================================================
+	/// <summary>
+	/// AS DUAS COMPRAS QUE RENDEM PONTO PELO FOLEGO: ligar o gasto (devolve <see cref="PrecoDaEstamina"/>) e subir o degrau
+	/// (devolve 1). Desligar e baixar o degrau CUSTAM ponto, e por isso ficam abertas pra todo mundo -- ver <see cref="VendeFolego"/>.
+	/// </summary>
+	public static bool RendeComFolego(Compra c) => c is Compra.StaminaLigar or Compra.StaminaMais;
+
+	/// <summary>DEFEITO INJETADO (bancadas --tecnicateste e --diagmesa): a mesa volta a vender folego a quem nunca cansa. Falso em jogo, sempre.</summary>
+	public static bool FolegoSemPortaoDeTeste;
+
+	/// <summary>
+	/// A MESA VENDE FOLEGO A ESTE CORPO? <paramref name="vigorInfinito"/> responde "a raca dele tem o vigor infinito?" -- o
+	/// `Stats.Nutricao.VigorInfinitoDaRaca` do servidor (que decide) e o `Verbos.Fatos.VigorInfinito` que ele manda pra tela (que so
+	/// desenha): a MESMA regra nas duas pontas, como o <see cref="TipoAberto"/>.
+	///
+	/// ============================ NAO E PORTE: E PEDIDO DO DONO (2026-10-19) ============================
+	/// *"raças q tem vigor infinito n deveriam ter a opção de criar técnicas de ki q consomem vigor pra ganhar ponto na criação
+	/// customizada de técnicas"*. O folego rende ponto porque e DESVANTAGEM: o tiro cobra vigor alem do Ki. Pra quem o vigor nunca
+	/// acaba ela nao existe -- o cadeado do tique do corpo (`Nutricao.ManterOsInfinitos`) devolve no mesmo tique o que o tiro
+	/// cobrou --, e eram ate 5 pontos de graca numa tecnica de 5.
+	///
+	/// A PERGUNTA E A DA RACA, E NAO A DO ESTADO (o dono escolheu, 2026-10-19: *"só as raças com vigor infinito perdem a opção de
+	/// fôlego"*): o MORTO comum tem o vigor travado no cheio, mas revive -- e a tecnica volta a cobrar --, entao ele continua com a
+	/// troca. A raca e a do vigor, e nao a do nome: o androide de absorcao cansa e o de energia infinita nao; o bio cansa ou nao pelo
+	/// sangue que carrega. Quem responde e o `Nutricao`, ao lado do cadeado que segura o vigor no cheio, e nao uma lista copiada aqui.
+	///
+	/// SO A COMPRA SE FECHA, e nao a tecnica: a que ja gastava folego (inventada antes desta regra, ensinada por um mestre, herdada
+	/// no sangue do bio, ou de antes de o corpo virar androide) continua de pe -- e desliga-la, que custa ponto, continua aberto.
+	/// ====================================================================================================
+	/// </summary>
+	public static bool VendeFolego(bool vigorInfinito) => FolegoSemPortaoDeTeste || !vigorInfinito;
+
+	/// <summary>A recusa, numa fonte so: o chat do servidor (`ca_comprar`) e a nota que a tela poe no lugar da caixinha.</summary>
+	public const string SemFolegoPraVender = "seu vigor nunca acaba: gastar fôlego não te custaria nada, então não rende ponto.";
+
+	/// <summary>A mesma frase, com a maiuscula de quem abre uma nota na tela.</summary>
+	public const string SemFolegoNaTela = "Seu vigor nunca acaba: gastar fôlego não te custaria nada, então não rende ponto.";
+
+	// =====================================================================
 	// O ENCAIXE COM A CAMADA DO PROJETIL
 	// =====================================================================
 	/// <summary>

@@ -80,9 +80,10 @@ public partial class ClashQte : CanvasLayer
 
 	/// <summary>
 	/// O CONVITE (dono, 2026-10-12): quem segura um raio com as maos pode sair de lado sem baixar a guarda, e a tela e
-	/// o unico lugar que conta isso a quem esta olhando as letras.
+	/// o unico lugar que conta isso a quem esta olhando as letras. PELAS SETAS desde 2026-10-19: ali o WASD e do quick
+	/// time event (`LetrasDoEmbate`, `LocalPlayer.TeclasDeAndarSemAsLetras`).
 	/// </summary>
-	private const string ConviteDeSairDeLado = " -- ou ande de lado pra sair da frente";
+	private const string ConviteDeSairDeLado = " -- ou ande de lado pelas setas pra sair da frente";
 
 	/// <summary>
 	/// O PISCA DO VEREDITO: quanto falta do brilho, e se ele e verde (acertei) ou vermelho (errei).
@@ -626,8 +627,9 @@ public partial class ClashQte : CanvasLayer
 	/// <summary>
 	/// LE A TECLA CRUA e manda pro servidor, que julga.
 	///
-	/// `_UnhandledInput` e nao `IsActionJustPressed`: as letras do embate sao sorteadas em tempo de
-	/// execucao, e nao ha acao registrada no `InputMap` pra cada uma das 22.
+	/// A TECLA FISICA, e nao `IsActionJustPressed("move_up")`: as quatro letras do embate (`LetrasDoEmbate`) sao as
+	/// de andar, mas a acao de andar tem duas teclas (o W e a seta) e pode ter sido religada. A resposta e a letra
+	/// que esta na tela, no lugar onde ela fica no teclado.
 	///
 	/// `Foco.Digitando` e obrigatorio, como em todo ponto de leitura de teclado do jogo -- sem ele,
 	/// escrever no chat durante um embate mandaria cada letra digitada como resposta do quick time
@@ -652,8 +654,15 @@ public partial class ClashQte : CanvasLayer
 			return;
 		}
 
-		GameClient.Instance?.SendClashTecla((char)('A' + (t - Key.A)));
-		_respondi = true;
+		// (2026-10-19) SO O WASD RESPONDE (`LetrasDoEmbate`). As outras letras continuam engolidas -- com embate na tela
+		// o jogo so ve o quick time event, e nada abre por cima dele --, mas nao vao pro servidor: nao sao resposta, e o
+		// E ou o Q esbarrado ao lado do W nao custa o ponto do erro.
+		char letra = (char)('A' + (t - Key.A));
+		if (Jandirus.Core.Combat.LetrasDoEmbate.EhLetra(letra))
+		{
+			GameClient.Instance?.SendClashTecla(letra);
+			_respondi = true;
+		}
 		GetViewport().SetInputAsHandled();
 	}
 }

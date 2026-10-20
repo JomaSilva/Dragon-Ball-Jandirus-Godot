@@ -300,7 +300,7 @@ public partial class GameServer
 	/// O dono listou os casos e deu a razao numa frase so: *"qualquer um cujo lugar seja o papel dele.
 	/// Um NPC de conversa que sai andando quebra a missao de quem vai falar com ele."*
 	///
-	/// ============================ OS QUATRO QUE FICAM PARADOS ============================
+	/// ============================ OS CINCO QUE FICAM PARADOS ============================
 	///   1. **O QUE NAO E CORPO DO MUNDO** -- o crivo e o de `Core/Npc/Gente.cs` e nao um `if` novo. O
 	///      boneco do corpo largado e o reflexo da mente nao sao NPC do mundo, e teleportar o boneco de
 	///      quem esta meditando moveria o CORPO DE UM JOGADOR pra longe de onde ele se deitou. (O
@@ -324,6 +324,11 @@ public partial class GameServer
 	///      sozinha num planeta vazio ate o prazo vencer. Sem esta linha, quem voltasse encontraria a
 	///      defesa espalhada pelo mapa em vez de em volta da bandeira.
 	///
+	///   5. **(2026-10-19) QUEM NAO VAGUEIA** (`"vagueia": false` no molde, o `idle_wandering = 0` do DM) -- o
+	///      Grande Patriarca de Namek, o primeiro NPC de conversa que nasceu CORPO: ele nao passeia nem com
+	///      gente olhando (`Rotina.Parado`), entao nao ha passeio a simular, e quem vai falar com ele tem de
+	///      acha-lo onde ele nasceu, perto do berco. E a frase do dono la em cima, ao pe da letra.
+	///
 	/// ============================ E OS QUE O DONO CITOU E ESTE PORT NAO TEM ============================
 	/// Ficam escritos pra a ausencia ser PENDENCIA e nao esquecimento -- no dia em que nascerem, o
 	/// lugar de ensina-los ao embaralho e este metodo, e nao um `if` no laco:
@@ -342,6 +347,13 @@ public partial class GameServer
 		if (npc.Ficha.dead || npc.Ficha.KO) return false;
 		if (npc.Papel!.Molde.Tipo == TipoDeNpc.Chefe) return false;
 		if (campanha != null && campanha.Defensores.ContainsKey(npc.Id)) return false;
+		if (!npc.Papel.Molde.Vagueia && !EmbaralhoLevaQuemNaoVagueiaDeTeste) return false;
 		return true;
 	}
+
+	/// <summary>
+	/// (2026-10-19) DEFEITO INJETADO (`--patriarcateste`): o embaralho leva quem nao vagueia -- o Grande Patriarca acordaria noutro
+	/// bairro depois de o planeta ficar vazio. Lido pelo <see cref="PasseiaSozinho"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool EmbaralhoLevaQuemNaoVagueiaDeTeste;
 }

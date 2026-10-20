@@ -269,8 +269,126 @@ public partial class MapaEstelar : Control
 
 	private bool _enquadrou;
 
-	/// <summary>Redesenha todo quadro: o corpo do jogador se move, e o mapa mostra onde ele esta.</summary>
-	public override void _Process(double delta) => QueueRedraw();
+	// =====================================================================
+	// QUANDO REDESENHAR -- so quando o que a carta desenha mudou
+	// =====================================================================
+	/// <summary>
+	/// ============================ ERA UM REDESENHO POR QUADRO, E A CARTA QUASE NUNCA MUDA ============================
+	/// O dono (2026-10-19): *"as abas do menu P principalmente a de adm, tech, nav etc estao mt mal otimizadas,
+	/// quando vc joga com elas abertas o jogo fica extremamente lagado"*. Aqui o `_Process` pedia um `QueueRedraw`
+	/// todo quadro -- ate 1.500 estrelas, os mundos do enquadramento, os rotulos -- pra uma carta que, com o jogador
+	/// andando em terra, nao muda um pixel (em terra "eu" e a posicao do PLANETA, ver `MinhaPosicaoNaGalaxia`).
+	///
+	/// Agora a carta guarda o <see cref="Selo"/> do que desenhou -- camera, tamanho, onde "eu" cai na tela, a rota, a
+	/// selecao, a casa do Bills, a varredura -- e so redesenha quando ele muda. O que o selo nao ve chega por evento:
+	/// um mundo que morre ou e batizado (`MortosMudaram`, `NomesDosPlanetasMudaram`). A varredura dos planetas, que
+	/// anda alguns blocos por desenho, pede o proximo enquanto nao terminou.
+	///
+	/// E A CARTA ESCONDIDA NEM PERGUNTA: com a aba Nav fora da tela (ou a tela do sistema por cima) nao ha o que
+	/// desenhar -- e o menu ainda desliga o processamento da pagina escondida (`MenuJogo.Processar`).
+	/// ==============================================================================================================
+	/// </summary>
+	public override void _Process(double delta)
+	{
+		_processos++;
+		if (!IsVisibleInTree()) return;
+		if (CartaRedesenhaTodoQuadroDeTeste || _sujo || _varreduraPendente || !Selo().Equals(_seloDesenhado)) QueueRedraw();
+	}
+
+	/// <summary>
+	/// O QUE A CARTA DESENHA E PODE MUDAR SEM UM CLIQUE -- comparado com o do ultimo desenho. "Eu" entra pela posicao NA
+	/// TELA, arredondada a meio pixel: voando no espaco ela anda todo quadro so no zoom de perto, e e la que precisa.
+	/// </summary>
+	private readonly record struct SeloDaCarta(
+		Vector2 Centro, float Escala, Vector2 Tamanho, Vector2? Eu, Jandirus.Core.World.Vec2? Rota,
+		string? Mundo, ulong SementeDoMundo, SistemaId? Sistema, int Blocos, ulong Universo, bool CasaRevelada, ulong CasaSemente);
+
+	private SeloDaCarta Selo()
+	{
+		GameClient? cli = GameClient.Instance;
+		Vector2? eu = MinhaPosicaoNaGalaxia() is { } m && !SeloSemEuDeTeste ? (ParaTela(m) * 2f).Round() / 2f : null;
+		return new SeloDaCarta(_centro, _escala, Size, eu, World.Instancia?.DestinoDoPiloto,
+			Selecionado?.Nome, Selecionado?.Seed ?? 0, SistemaSelecionado?.Id, _cache.Count,
+			cli?.SeedDoUniverso ?? 0, cli?.CasaDeBills.Revelada ?? false, cli?.CasaDeBills.Semente ?? 0);
+	}
+
+	private SeloDaCarta _seloDesenhado;
+
+	/// <summary>Um evento disse que algo desenhado mudou (um mundo morreu, foi batizado). O proximo quadro redesenha.</summary>
+	private bool _sujo;
+
+	private void Sujar() => _sujo = true;
+
+	public override void _EnterTree()
+	{
+		if (GameClient.Instance is { } cli)
+		{
+			cli.MortosMudaram += Sujar;
+			cli.NomesDosPlanetasMudaram += Sujar;
+		}
+	}
+
+	public override void _ExitTree()
+	{
+		if (GameClient.Instance is { } cli)
+		{
+			cli.MortosMudaram -= Sujar;
+			cli.NomesDosPlanetasMudaram -= Sujar;
+		}
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagmenuleve`): a carta volta a pedir um redesenho por quadro, como antes de
+	/// 2026-10-19. Lido pelo `_Process`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool CartaRedesenhaTodoQuadroDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagmenuleve`): o selo esquece onde "eu" estou -- a carta pararia de seguir o corpo
+	/// no espaco. E o contra-exemplo de que o selo cobre o que se move sozinho. Lido pelo <see cref="Selo"/>. Falso em jogo.
+	/// </summary>
+	public static bool SeloSemEuDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagmenuleve`): o mundo volta a ser o disco de UI, sem a arte -- a carta e a tela do
+	/// sistema de antes de 2026-10-19. Lido pela linha da arte no `DesenharPlaneta` daqui e no da `TelaDoSistema`. Falso
+	/// em jogo, sempre.
+	/// </summary>
+	public static bool PlanetaSemArteDeTeste;
+
+	/// <summary>
+	/// ONDE "EU" ESTOU, FORCADO -- so pra bancada: em terra "eu" e a posicao do planeta e nao anda, e a `--diagmenuleve`
+	/// precisa mover o ponto pra ver a carta segui-lo sem decolar. Nulo em jogo, sempre.
+	/// </summary>
+	public static Vector2? EuDeTeste;
+
+	private int _processos, _desenhos, _mundosComArte, _mundosNoDesenho;
+
+	/// <summary>Quantas vezes esta carta desenhou, e quantos `_Process` rodou. SO PRA BANCADA (`--diagmenuleve`).</summary>
+	public int DesenhosDeTeste => _desenhos;
+
+	public int ProcessosDeTeste => _processos;
+
+	/// <summary>No ULTIMO desenho: quantos mundos vivos foram desenhados, e quantos deles com a arte (ver `ArteDePlaneta`).</summary>
+	public (int Mundos, int ComArte) ArteNoUltimoDesenhoDeTeste => (_mundosNoDesenho, _mundosComArte);
+
+	/// <summary>
+	/// QUANTOS BLOCOS DO ENQUADRAMENTO AINDA NAO FORAM VARRIDOS (zero fora do zoom dos mundos). SO PRA BANCADA, e so le:
+	/// perguntar a lista da carta (`PlanetasDeTeste`) anda a varredura por fora do desenho e esconderia justamente a
+	/// varredura que parou no meio.
+	/// </summary>
+	public int BlocosSemVarrerDeTeste
+	{
+		get
+		{
+			if (BlocosVisiveis(out int bx0, out int by0, out int bx1, out int by1) > BlocosVisiveisMax || !VendoSistemas) return 0;
+			int faltam = 0;
+			for (int by = by0; by <= by1; by++)
+				for (int bx = bx0; bx <= bx1; bx++)
+					if (!_cache.ContainsKey((bx, by))) faltam++;
+			return faltam;
+		}
+	}
 
 	/// <summary>
 	/// ONDE EU ESTOU NA GALAXIA -- que NAO e onde o meu corpo esta.
@@ -286,6 +404,7 @@ public partial class MapaEstelar : Control
 	/// </summary>
 	public static Vector2? MinhaPosicaoNaGalaxia()
 	{
+		if (EuDeTeste is { } forcado) return forcado;
 		if (GameClient.Instance is not { } cli) return null;
 
 		// ============================ A BORDO, "EU" SOU A NAVE ============================
@@ -595,7 +714,12 @@ public partial class MapaEstelar : Control
 
 	private void Revarrer()
 	{
-		if (_blocosQuandoEnquadrei == _cache.Count
+		// A VARREDURA PELA METADE TAMBEM REVARRE (2026-10-19). A conta guarda o tamanho do cache DEPOIS da varredura, ou
+		// seja ja com os blocos que ela mesma trouxe -- e com a camera parada nada mais mudava: os blocos que o orcamento
+		// deixou pro "proximo quadro" ficavam pra sempre sem varrer (os mundos de metade da tela so apareciam arrastando).
+		// Com a carta desenhando so quando muda, e o `_varreduraPendente` que pede o proximo desenho, e e ele que tem de
+		// abrir esta porta, senao o desenho pedido nao anda nada.
+		if (!_varreduraPendente && _blocosQuandoEnquadrei == _cache.Count
 			&& _enquadradoNa == _escala && _enquadradoEm == _centro) return;
 
 		Varrer();
@@ -612,6 +736,7 @@ public partial class MapaEstelar : Control
 		var sistemas = new List<SistemaSolar>();
 		_naTela = planetas;
 		_sistemasNaTela = sistemas;
+		_varreduraPendente = false;
 
 		ulong seed = GameClient.Instance?.SeedDoUniverso ?? 0;
 		if (seed == 0) return;
@@ -640,10 +765,15 @@ public partial class MapaEstelar : Control
 				// ORCAMENTO POR QUADRO PRO CARO: enumerar os planetas de um sistema monta uma string
 				// por corpo (~5 us medidos). Varrer sessenta celulas de uma vez no quadro em que o
 				// jogador soltou a roda daria um engasgo visivel.
-				if (!_cache.ContainsKey((bx, by)) && ++varridosAgora > BlocosPorQuadro) continue;
+				// O QUE FICOU PRO PROXIMO QUADRO PEDE O PROXIMO DESENHO: a carta so redesenha quando muda (ver
+				// `_Process`), e sem isto a varredura pararia no primeiro orcamento -- metade dos mundos sem aparecer.
+				if (!_cache.ContainsKey((bx, by)) && ++varridosAgora > BlocosPorQuadro) { _varreduraPendente = true; continue; }
 				planetas.AddRange(DoBloco(seed, bx, by));
 			}
 	}
+
+	/// <summary>A ultima varredura deixou bloco pro proximo quadro? Ver o orcamento no <see cref="Varrer"/>.</summary>
+	private bool _varreduraPendente;
 
 	/// <summary>Raio do disco na TELA. Preso num minimo pra um mundo distante nao sumir.</summary>
 	private float RaioNaTela(PlanetaNoEspaco p) => Mathf.Clamp(p.Raio * _escala, 2.5f, 46f);
@@ -856,6 +986,10 @@ public partial class MapaEstelar : Control
 	// =====================================================================
 	public override void _Draw()
 	{
+		_desenhos++;
+		_sujo = false;
+		_mundosNoDesenho = _mundosComArte = 0;
+
 		DrawRect(new Rect2(Vector2.Zero, Size), new Color("070912"));
 		DesenharGrade();
 
@@ -869,6 +1003,9 @@ public partial class MapaEstelar : Control
 		DesenharEu(eu);
 		DesenharNota();
 		DrawRect(new Rect2(Vector2.Zero, Size), Tema.Borda, false, 1);
+
+		// O SELO E TIRADO DEPOIS DA VARREDURA DESTE DESENHO: e com os blocos que ela trouxe que a carta ficou certa.
+		_seloDesenhado = Selo();
 	}
 
 	/// <summary>
@@ -1018,8 +1155,26 @@ public partial class MapaEstelar : Control
 		}
 		else
 		{
-			DrawCircle(c, r, new Color(cor, 0.22f));            // a atmosfera
-			DrawCircle(c, r * 0.72f, cor);                       // o corpo
+			// ============================ DE PERTO, O MUNDO E A ARTE DELE (2026-10-19) ============================
+			// O dono: *"quando vc der zoom em um sistema [...] poderia usar o proprio sprite do planeta pra mostrar
+			// ele assim como ta feito com as estrelas, ao inves de uma bola feita de ui do godot"*. O quadro e o MESMO
+			// que o espaco desenha (`ArteDePlaneta`, a porta que o `PlanetaDesenhado` tambem usa), encostado na borda
+			// do disco -- e por isso um quadrado de lado 2r. De longe, abaixo de `RaioMinimoDaArte`, fica o ponto de
+			// sempre: laranja e o mundo com mapa proprio, azul-acinzentado o gerado.
+			// =====================================================================================================
+			_mundosNoDesenho++;
+			Texture2D? arte = r >= ArteDePlaneta.RaioMinimoDaArte && !PlanetaSemArteDeTeste ? ArteDePlaneta.De(p) : null;
+			if (arte != null)
+			{
+				DrawTextureRect(arte, new Rect2(c - new Vector2(r, r), r * 2f, r * 2f), false);
+				_mundosComArte++;
+			}
+			else
+			{
+				DrawCircle(c, r, new Color(cor, 0.22f));            // a atmosfera
+				DrawCircle(c, r * 0.72f, cor);                       // o corpo
+			}
+			// O ANEL LARANJA continua dizendo "tem mapa proprio": com a arte, a cor do disco deixou de dize-lo.
 			if (p.Premade) DrawArc(c, r + 2, 0, Mathf.Tau, 24, new Color(cor, 0.55f), 1.5f);
 			// O ANEL DOURADO: este mundo tem ATMOSFERA DIVINA (dono, 2026-10-10). A carta o sabe pela seed, como
 			// sabe a gravidade -- ver `Core.World.AtmosferaDivina`. Um mundo destruido nao o ganha (ramo de cima).

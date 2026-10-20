@@ -275,6 +275,10 @@ public sealed partial class GameServer
 				   + " Recarrega o fôlego e o Ki do androide que estiver em cima dela.");
 		Avisar(pl, $"melhorias: eficiência +{EstacaoDeRecarga.PassoDeEficiencia:0.#} por {Recurso.DoisPrecos(EstacaoDeRecarga.CustoDaEficiencia(eficiencia))}; "
 				   + $"nível +1 por {Recurso.DoisPrecos(EstacaoDeRecarga.CustoDoNivel(nivel))}; painéis solares por {Recurso.DoisPrecos(EstacaoDeRecarga.CustoDosPaineis)}.");
+		// (2026-10-19) O TETO DE QUEM PERGUNTA (`TetoPorTecnologia`): ate onde a tecnologia dele leva as duas melhorias que sobem.
+		if (!TetoPorTecnologia.Livre(pl.Ficha.techskill))
+			Avisar(pl, $"a sua tecnologia leva a estação até o nível {TetoPorTecnologia.NivelDaEstacao(pl.Ficha.techskill)} "
+					   + $"e a eficiência {TetoPorTecnologia.EficienciaDaEstacao(pl.Ficha.techskill):0.#}.");
 	}
 
 	/// <summary>`verb/Upgrade()`: eficiencia, nivel ou paineis -- em zeni ou (o dobro) em recursos.</summary>
@@ -287,17 +291,24 @@ public sealed partial class GameServer
 		EstadoDeTech e = EstadoDaEstacao(o);
 		int nivel = (int)e.Num(EstacaoDeRecarga.ChaveNivel, 1);
 		double eficiencia = e.Num(EstacaoDeRecarga.ChaveEficiencia);
+		// (2026-10-19) O TETO DE QUEM PAGA (`TetoPorTecnologia`): a recusa vem antes da cobranca.
+		double tech = pl.Ficha.techskill;
 
 		switch (oQue)
 		{
 			case EstacaoDeRecarga.Eficiencia:
 				// `if(efficiency>=4) "You can't upgrade this any further!"`.
 				if (eficiencia >= EstacaoDeRecarga.EficienciaMaxima) { Avisar(pl, "a eficiência não sobe mais."); return; }
+				double tetoDaEficiencia = TetoPorTecnologia.EficienciaDaEstacao(tech);
+				if (eficiencia >= tetoDaEficiencia - 1e-9)
+				{ Avisar(pl, TetoPorTecnologia.Recusa("a eficiência da estação", tech, $"{tetoDaEficiencia:0.#}", proporcional: true)); return; }
 				if (!CobrarOuExplicar(pl, EstacaoDeRecarga.CustoDaEficiencia(eficiencia), moeda, "a eficiência da estação")) return;
 				e.N[EstacaoDeRecarga.ChaveEficiencia] = eficiencia + EstacaoDeRecarga.PassoDeEficiencia;
 				break;
 			case EstacaoDeRecarga.Nivel:
 				if (nivel >= EstacaoDeRecarga.NivelMaximo) { Avisar(pl, "o nível não sobe mais."); return; }
+				int tetoDoNivel = TetoPorTecnologia.NivelDaEstacao(tech);
+				if (nivel >= tetoDoNivel) { Avisar(pl, TetoPorTecnologia.Recusa("o nível da estação", tech, $"nível {tetoDoNivel}", proporcional: true)); return; }
 				if (!CobrarOuExplicar(pl, EstacaoDeRecarga.CustoDoNivel(nivel), moeda, "o nível da estação")) return;
 				e.N[EstacaoDeRecarga.ChaveNivel] = nivel + 1;
 				break;

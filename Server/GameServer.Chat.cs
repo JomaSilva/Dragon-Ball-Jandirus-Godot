@@ -85,56 +85,60 @@ public partial class GameServer
 				break;
 
 			case Protocol.Fala.Sussurro:
-				if (!soDentro) Sussurrar(a, a.Zone, a.Pos, texto, excetoEste: null);
-				if (daPonte != null) Sussurrar(a, daPonte.Zone, daPonte.Pos, texto, excetoEste: soDentro ? null : daPonte);
+				if (!soDentro) Sussurrar(a, a, texto, excetoEste: null);
+				if (daPonte != null) Sussurrar(a, daPonte, texto, excetoEste: soDentro ? null : daPonte);
 				break;
 
 			case Protocol.Fala.Diz:
 			{
 				float raio = texto.Contains('!') ? RaioDoGrito : RaioDaVista;
-				if (!soDentro) PorPerto(a, a.Zone, a.Pos, raio, canal, texto, excetoEste: null);
-				if (daPonte != null) PorPerto(a, daPonte.Zone, daPonte.Pos, raio, canal, texto, excetoEste: soDentro ? null : daPonte);
+				if (!soDentro) PorPerto(a, a, raio, canal, texto, excetoEste: null);
+				if (daPonte != null) PorPerto(a, daPonte, raio, canal, texto, excetoEste: soDentro ? null : daPonte);
 				break;
 			}
 
 			default:   // Pensa, Emote, Looc: todos no alcance da vista
-				if (!soDentro) PorPerto(a, a.Zone, a.Pos, RaioDaVista, canal, texto, excetoEste: null);
-				if (daPonte != null) PorPerto(a, daPonte.Zone, daPonte.Pos, RaioDaVista, canal, texto, excetoEste: soDentro ? null : daPonte);
+				if (!soDentro) PorPerto(a, a, RaioDaVista, canal, texto, excetoEste: null);
+				if (daPonte != null) PorPerto(a, daPonte, RaioDaVista, canal, texto, excetoEste: soDentro ? null : daPonte);
 				break;
 		}
 	}
 
 	/// <summary>
-	/// A FALA DE <paramref name="a"/> SAINDO DE UM PONTO -- o dele, ou o do corpo dele na ponte. <paramref name="excetoEste"/> nao ouve (o
+	/// A FALA DE <paramref name="a"/> SAINDO DA BOCA DE UM CORPO -- o dele, ou o dele na ponte. <paramref name="excetoEste"/> nao ouve (o
 	/// corpo da ponte de quem ja se ouviu do lado de fora). O OLHO de quem observa uma nave nao ouve o lado de fora: ele esta la so pra ver,
 	/// e o corpo dele, que ouve, esta la dentro.
+	///
+	/// (2026-10-19) A BOCA E UM CORPO, e nao uma zona e um ponto soltos: e dela que sai o alcance (zona e posicao) E o id que vai no pacote
+	/// pro balao (ver o parametro `boca` do <see cref="Mandar"/>). Com os tres vindo do mesmo objeto, a frase de quem pilota nao tem como
+	/// sair do corpo da ponte e ir parar no balao do piloto, que nem esta naquela zona.
 	/// </summary>
-	private void PorPerto(ServerPlayer a, ZoneKey zona, Vec2 de, float raio, Protocol.Fala canal, string texto, ServerPlayer? excetoEste)
+	private void PorPerto(ServerPlayer a, ServerPlayer boca, float raio, Protocol.Fala canal, string texto, ServerPlayer? excetoEste)
 	{
 		float raio2 = raio * raio;
-		foreach (ServerPlayer o in ZoneList(zona.Hash))
+		foreach (ServerPlayer o in ZoneList(boca.Zone.Hash))
 		{
 			if (o == excetoEste || EhOlhoDeFora(o)) continue;
-			Vec2 dd = o.Pos - de;
-			if (dd.X * dd.X + dd.Y * dd.Y <= raio2) Mandar(o, canal, a.Name, texto, a);
+			Vec2 dd = o.Pos - boca.Pos;
+			if (dd.X * dd.X + dd.Y * dd.Y <= raio2) Mandar(o, canal, a.Name, texto, a, boca.Id);
 		}
 	}
 
 	/// <summary>
-	/// O SUSSURRO, DE UM PONTO -- DOIS ENVIOS, como no original: quem esta colado ouve o que foi dito, e quem esta em volta recebe a fala
+	/// O SUSSURRO, DA BOCA DE UM CORPO -- DOIS ENVIOS, como no original: quem esta colado ouve o que foi dito, e quem esta em volta recebe a fala
 	/// VAZIA, que o cliente desenha como "Fulano sussurra alguma coisa...". Saber que houve um sussurro faz parte da cena. Os mesmos dois
 	/// crivos do <see cref="PorPerto"/>.
 	/// </summary>
-	private void Sussurrar(ServerPlayer a, ZoneKey zona, Vec2 de, string texto, ServerPlayer? excetoEste)
+	private void Sussurrar(ServerPlayer a, ServerPlayer boca, string texto, ServerPlayer? excetoEste)
 	{
-		foreach (ServerPlayer o in ZoneList(zona.Hash))
+		foreach (ServerPlayer o in ZoneList(boca.Zone.Hash))
 		{
 			if (o == excetoEste || EhOlhoDeFora(o)) continue;
-			float d = (o.Pos - de).Length;
-			if (d <= RaioDoSussurro) Mandar(o, Protocol.Fala.Sussurro, a.Name, texto, a);
+			float d = (o.Pos - boca.Pos).Length;
+			if (d <= RaioDoSussurro) Mandar(o, Protocol.Fala.Sussurro, a.Name, texto, a, boca.Id);
 			// QUEM SO VIU QUE HOUVE UM SUSSURRO NAO CONVIVEU: nao chegou palavra nenhuma,
 			// entao o `falante` vai nulo e a familiaridade nao anda.
-			else if (d <= RaioDaVista) Mandar(o, Protocol.Fala.Sussurro, a.Name, "", falante: null);
+			else if (d <= RaioDaVista) Mandar(o, Protocol.Fala.Sussurro, a.Name, "", falante: null, boca: boca.Id);
 		}
 	}
 
@@ -150,8 +154,33 @@ public partial class GameServer
 	/// e esquecer vira erro de compilacao em vez de um sistema que para de crescer em silencio.
 	/// ==========================================================================================
 	/// </param>
+	/// <param name="boca">
+	/// O ID DO CORPO DE ONDE A FALA SAI (0 = nenhum), o ultimo campo do `S2C.Chat`. E por ele que o cliente
+	/// acha o balao (`World.AoFalar`).
+	///
+	/// ============================ (2026-10-19) O BALAO ACHAVA O CORPO PELO NOME, E NOME REPETE ============================
+	/// O dono: *"as vezes o balao de fala dos personagens nao aparece sobre eles mesmo eles falando"*. O pacote
+	/// levava so o `autor`, e o cliente o devolvia a um id pela busca reversa no mapa id -> nome do `PeerLook` --
+	/// pegando o PRIMEIRO dono do nome na zona. Tres jeitos de errar, todos de jogo comum:
+	///   * HOMONIMOS: os 100 habitantes de Vegeta saem de listas de 6 a 25 nomes por raca (`npcs.json`,
+	///     `nomesPorRaca`), todo lobo se chama "Lobo", o corpo largado e o boneco da ponte levam o nome do dono. O
+	///     primeiro do mapa costuma ser OUTRO corpo da zona, longe da tela: o balao abria la, onde ninguem via, e
+	///     sobre quem falou nao aparecia nada -- ou aparecia no homonimo do lado;
+	///   * NOME VISIVEL != AUTOR: o `PeerLook` leva o `NomeVisivel` (o da fusao, o do disfarce) e o chat o `Name`;
+	///   * NOME COMPRIDO: o cliente lia o nome do `PeerLook` com teto de 24 letras, e acima dele vinha VAZIO (um
+	///     "Bio-Androide de " ja tem 16). Hoje o teto e o `Protocol.MaxNomeNoFio`, nas duas pontas.
+	/// Quem sabe de que corpo a fala saiu e o servidor, entao ele diz: e o conserto que o proprio `World.AoFalar`
+	/// deixou anotado pro dia em que a colisao de nomes deixasse de ser teorica.
+	///
+	/// PADRAO 0, ao contrario do <paramref name="falante"/>: os chamadores de fora deste arquivo sao todos recados
+	/// do servidor (`Avisar`, cargos, ranks), que nao saem de corpo nenhum; toda fala de corpo passa pelo
+	/// <see cref="PorPerto"/> e pelo <see cref="Sussurrar"/>, os dois unicos que conhecem a boca -- e quem quiser
+	/// um terceiro caminho de fala tem que passar por eles, porque so eles conhecem o alcance. O OOC fica no 0 de
+	/// proposito: e conversa do JOGADOR, sem corpo (o portao do balao tambem o recusa).
+	/// =====================================================================================================================
+	/// </param>
 	private void Mandar(ServerPlayer para, Protocol.Fala canal, string autor, string texto,
-						ServerPlayer? falante)
+						ServerPlayer? falante, int boca = 0)
 	{
 		// (2026-10-18) O CORPO DA PONTE OUVE PELO DONO: a fala (e o aviso) que chega no boneco de quem esta ao leme da nave grande, ou a
 		// observando de fora, chega NELE -- *"enquanto vc pilota, deveria dar pra escutar e ver o chat q rola dentro da nave"*. Ver
@@ -163,8 +192,10 @@ public partial class GameServer
 
 		var w = Protocol.Begin(Protocol.S2C.Chat);
 		w.Put((byte)canal);
-		w.Put(autor);
+		// O AUTOR CORTADO NO TETO COM QUE O CLIENTE O LE: acima dele a linha chegava sem autor. Ver `Protocol.MaxNomeNoFio`.
+		w.Put(Protocol.NomeNoFio(autor));
 		w.Put(texto);
+		w.Put(boca);
 		// CONFIAVEL, sempre. Fala perdida e a unica perda que o jogador percebe como sumico:
 		// um golpe faltando vira lag, uma frase faltando vira "ele me ignorou".
 		para.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);

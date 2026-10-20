@@ -41,6 +41,9 @@ public partial class MenuJogo
 				  ? $"{Jandirus.Core.World.Ceu.NomeDaHora(c.Hora)} ({c.Hora * 24:00.0}h)  ·  {Jandirus.Core.World.Ceu.NomeDoCiclo(r)}"
 				  : Jandirus.Core.World.Ceu.NomeDoCiclo(r));
 
+		// (2026-10-19) OS SERVICOS DO OUTRO MUNDO, so pro morto: o servico em curso e a rede. Ver `MenuJogo.ServicoDoAlem.cs`.
+		CartaoDoServicoDoAlem();
+
 		// O MAPA DO LUGAR E AS COORDENADAS, logo abaixo do nome: e a resposta de "onde eu estou". Ver `MenuJogo.Mapa.cs`.
 		if (cli != null) BlocoDoMapa(cli);
 
@@ -670,5 +673,6 @@ public partial class MenuJogo
 			+ $"|{(Jandirus.Core.World.ChaveDePlaneta.Da(c.Zone) is { } chave ? c.NomesDosPlanetas.De(chave.Texto)?.PorQuem : "")}"
 			+ $"|{PosseDoCliente.Assinatura()}"
 			+ $"|{AssinaturaDoKiDivino(c)}"
+			+ $"|{AssinaturaDoServicoDoAlem(c)}"
 			: "";
 }

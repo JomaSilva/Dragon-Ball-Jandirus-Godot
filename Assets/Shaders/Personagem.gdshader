@@ -104,6 +104,14 @@ uniform float ferida_deitado : hint_range(0.0, 1.0) = 0.0;
 uniform vec2 amp_braco = vec2(0.0);
 uniform vec2 amp_perna = vec2(0.0);
 
+// O PEDACO QUE O CORTE SOLTOU (2026-10-19, o dono: "o pedaco some junto"). As faixas do corte la embaixo foram medidas no
+// corpo de gente, e nas folhas de outra proporcao elas atravessam o que nao e o membro -- o rabo do Frost Demon que passa
+// pela lateral e pelo chao -- e deixavam um pedaco FLUTUANDO no ar. Achar pedaco solto e conta de vizinhanca, que shader
+// nao faz: quem acha e o cliente, no quadro (`PedacosSoltos.Mascara`), e manda a mascara aqui, do tamanho do quadro
+// (1 = some junto com o membro). Sem mascara (`amp_solto_tem` falso) nada muda.
+uniform bool amp_solto_tem = false;
+uniform sampler2D amp_solto : filter_nearest;
+
 // AS CORES sao as da referencia do jogo anterior, DESSATURADAS pra 32x32: num sprite deste
 // tamanho um roxo saturado nao le como hematoma, le como PERSONAGEM ROXO. Hematoma de verdade e
 // acinzentado, entre o vinho e o mofo.
@@ -273,6 +281,11 @@ void fragment() {
 		float so_perna = step(0.795, fuv.y);
 		float perdeu = so_braco * mix(amp_braco.x, amp_braco.y, lado)
 					 + so_perna * mix(amp_perna.x, amp_perna.y, lado);
+		// O PIXEL DA MASCARA PELO `quv`, que vai do centro do primeiro pixel do quadro ao do ultimo (a caixa do
+		// `BorraoDirecional.Caixa`): vezes (tamanho - 1) e arredondado, e o indice do pixel. `texelFetch` e nao
+		// `texture`: mascara de pixel nao se interpola.
+		if (amp_solto_tem)
+			perdeu += texelFetch(amp_solto, ivec2(round(quv * (vec2(textureSize(amp_solto, 0)) - 1.0))), 0).r;
 		c.a *= 1.0 - step(0.5, perdeu);
 
 		if (c.a > 0.01 && (hema > 0.001 || sang > 0.001)) {

@@ -973,10 +973,15 @@ public sealed partial class GameServer
 					   humanoNao && gente.Ficha.stamina > 50, $"humano parado {humanoNao}; com o defeito {gente.Ficha.stamina:0.##}");
 			p.Pos = naEstacao + new Vec2(T, 0);
 			double zeniDaEstacao = p.Ficha.Zeni;
+			// (2026-10-19) as melhorias tem teto pela tecnologia de quem paga (`TetoPorTecnologia`, medido na `--melhoriasteste`):
+			// aqui se mede a melhoria em si, com os 100 do jogo de antes -- e a tecnologia do engenheiro volta logo depois.
+			double techDoEngenheiro = p.Ficha.techskill;
+			p.Ficha.techskill = TetoPorTecnologia.TechSemTeto;
 			Ouvir(() => ComandoDeInteracao(p, EstacaoDeRecarga.VerboMelhorar, EstacaoDeRecarga.Eficiencia));
 			Ouvir(() => ComandoDeInteracao(p, EstacaoDeRecarga.VerboMelhorar, EstacaoDeRecarga.Nivel));
 			Ouvir(() => ComandoDeInteracao(p, EstacaoDeRecarga.VerboMelhorar, EstacaoDeRecarga.Solar));
 			List<string> jaTem = Ouvir(() => ComandoDeInteracao(p, EstacaoDeRecarga.VerboMelhorar, EstacaoDeRecarga.Solar));
+			p.Ficha.techskill = techDoEngenheiro;
 			double pagou = zeniDaEstacao - p.Ficha.Zeni;
 			estacao.Tech!.N[EstacaoDeRecarga.ChaveEnergia] = 0;
 			gente.Pos = c;
@@ -1127,8 +1132,13 @@ public sealed partial class GameServer
 			finally { Simulador.SemTetoDeTeste = false; foreach (int id in _simulacoes.Keys.ToList()) DesfazerSimulacao(id, null); }
 
 			double zeniDoSim = p.Ficha.Zeni;
+			// (2026-10-19) as duas melhorias com os 100 de tecnologia do jogo de antes (o teto pela tecnologia, `TetoPorTecnologia`, e
+			// medido na `--melhoriasteste`) -- e a do piloto volta logo depois.
+			double techDoPiloto = p.Ficha.techskill;
+			p.Ficha.techskill = TetoPorTecnologia.TechSemTeto;
 			Usar(p, Simulador.VerboMelhorar, Simulador.Poder);
 			Usar(p, Simulador.VerboMelhorar, Simulador.Energia);
+			p.Ficha.techskill = techDoPiloto;
 			Usar(p, Simulador.VerboIniciar);
 			ServerPlayer? maisForte = ASimulacao();
 			if (maisForte != null) maisForte.Ficha.KO = true;
@@ -1189,8 +1199,10 @@ public sealed partial class GameServer
 			p.Pos = c + new Vec2(-2 * T, 0);
 			Usar(p, MaquinaDeClonagem.VerboProgramar);
 			double zeniDoTanque = p.Ficha.Zeni;
+			p.Ficha.techskill = TetoPorTecnologia.TechSemTeto;   // (2026-10-19) idem, as melhorias da clonagem
 			Usar(p, MaquinaDeClonagem.VerboMelhorar, MaquinaDeClonagem.Tempo);
 			Usar(p, MaquinaDeClonagem.VerboMelhorar, MaquinaDeClonagem.Bateria);
+			p.Ficha.techskill = techDoPiloto;
 			Usar(p, MaquinaDeClonagem.VerboSenha, "kame");
 			vizinho.Pos = p.Pos;
 			List<string> negado = Usar(vizinho, MaquinaDeClonagem.VerboProgramar, "errada");

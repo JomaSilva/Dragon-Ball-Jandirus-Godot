@@ -22,7 +22,7 @@ public enum SkillRacial : uint
 	// ---- Saiyajin ----
 	/// <summary>Seasoned Warrior: +10% de BP por forma veterana.</summary>
 	GuerreiroVeterano = 1u << 0,
-	/// <summary>Warrior Race: abaixo de 20% de vida, ataque e defesa fisicos.</summary>
+	/// <summary>Warrior Race: com o tronco ou a cabeca abaixo de 20%, ataque e defesa fisicos.</summary>
 	RacaGuerreira = 1u << 1,
 	/// <summary>Saiyan's Resolve: o golpe do mesmo tipo em fila doi menos.</summary>
 	Resolucao = 1u << 2,
@@ -229,8 +229,9 @@ public static class SkillsRaciais
 	/// <summary>
 	/// A ESCOLHA DO BIO NPC (o Cell): as racas do sangue EM RODIZIO, na ordem das amostras, e dentro de cada uma as ATIVAS primeiro (a IA as
 	/// aperta -- `GameServer.AtivasRaciaisNaMao`) e depois as passivas, na ordem do catalogo, ate <see cref="LimiteDoBio"/>. ESCOLHA minha,
-	/// pra o chefe sair com um pouco de cada sangue. O Cell (Saiyajin, Namekuseijin, Icer, Humano) sai com Seasoned Warrior, Spirit
-	/// Disruption, Unrestrained Wrath, Second Wind, Warrior Race e Namekian Resilience.
+	/// pra o chefe sair com um pouco de cada sangue. O Cell (Saiyajin, Namekuseijin, Icer -- o sangue que o dono deu a ele em 2026-10-19) sai
+	/// com Seasoned Warrior, Spirit Disruption, Unrestrained Wrath, Warrior Race, Namekian Resilience e Perfect Control; o Cell Jr, clone
+	/// dele, com as mesmas.
 	/// </summary>
 	public static SkillRacial EscolhaDoNpc(IReadOnlyList<string> sangue)
 	{

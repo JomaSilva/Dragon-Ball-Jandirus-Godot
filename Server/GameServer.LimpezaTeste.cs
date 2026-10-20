@@ -811,6 +811,9 @@ public partial class GameServer
 		SalvarBebes();
 		// O CALENDARIO (2026-10-17): em producao ele so vai pro disco quando o mundo nasce; aqui e a mesma antecipacao.
 		SalvarCalendario();
+		// OS APRENDIZES DE KAIOSHIN (2026-10-20): em producao o livro vai pro disco quando um vinculo nasce ou cai; aqui e a mesma
+		// antecipacao (a r6 do `aprendiz` voltou pela falta dela: o arquivo declarado nao estava no disco depois de jogar).
+		SalvarAprendizes();
 		// AS CONTAS NAO TEM ESCRITOR COLETIVO -- cada uma e gravada por `Persistir`/`_store.Gravar`,
 		// e o `Persistir` esta medido na secao 3. Quem semeia conta aqui grava na hora.
 	}
@@ -1133,6 +1136,14 @@ public partial class GameServer
 		// A origem 300 dias atras: o mundo esta no ano 2. Sem isto o `calendario.json` teria o mesmo conteudo nos tres retratos e o
 		// `ZerarCalendario` passaria sem ser medido. (O tamanho do arquivo nao muda: o dia da Terra tem sete digitos.)
 		PorAOrigemDoCalendario(DiaDaTerraAgora - 300);
+
+		// ---------------------------------------------------------- 22. um APRENDIZ DE KAIOSHIN (2026-10-20)
+		// O vinculo de pe com um mestre. Sem isto o `aprendizes.json` teria o mesmo conteudo nos tres retratos e o `Zerar` dos
+		// aprendizes passaria sem ser medido.
+		_aprendizes["assinatura_do_aprendiz_do_wipe"] = new VinculoDeAprendiz
+		{
+			ContaDoMestre = "JogadorDoWipe", NomeDoMestre = "JogadorDoWipe", ContaDoAprendiz = "AprendizDoWipe", NomeDoAprendiz = "AprendizDoWipe",
+		};
 
 		ForcarGravacaoDeTudo();
 	}
@@ -1718,6 +1729,15 @@ public partial class GameServer
 				InvocarODragao(heroi);
 				AfirmarWt("...e o DRAGAO fica de pe (contador de sessao: nao existe no disco)",
 						  _invocacoes.ContainsKey(set.Id));
+
+				// (2026-10-19) A INVOCACAO TIRA AS SETE DA MAO (dono): elas vao pro chao aos pes do heroi. A ESFERA NA MAO que a limpeza tem
+				// de apagar volta pelo verbo de pegar, na mao de um segundo corpo que FICA na Terra -- o heroi vai ao espaco logo abaixo, e a
+				// esfera nao sai do planeta (`GameServer.EsferasNaMochila.cs`).
+				ServerPlayer portador = Forjar("Portador do Wipe", heroi.Pos, heroi.Zone, "portador_do_wipe");
+				forjados.Add(portador);
+				PegarEsfera(portador);
+				AfirmarWt("...e um segundo corpo, na Terra, pega uma delas do chao (a esfera NA MAO que a limpeza tem de apagar)",
+						  QuantasCarrega(portador.Id) == 1, $"{QuantasCarrega(portador.Id)} na mao");
 
 				// ------------------------------------------------------ 4. O CICLO DAS SUPER, ANDADO
 				// ============================ ELE PRECISA ANDAR, SENAO A AFIRMACAO E VAZIA ============================

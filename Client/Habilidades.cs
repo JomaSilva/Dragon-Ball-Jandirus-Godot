@@ -279,10 +279,12 @@ public static class Habilidades
 		DoDiscipulado();
 		DaFusao();
 		DosFilhos();
+		DoNeoTuffle();
 		DasRaciais();
 		DoEnsinoDeSkill();
 		DoEstudoDaMente();
 		HabilidadesDoDeus.Registrar();
+		HabilidadesDoJuiz.Registrar();   // (2026-10-19) a travessia do King Yemma -- ver `HabilidadesDoJuiz.cs`
 		DasDisciplinas();
 		DasSkills();
 		DosEstilos();
@@ -452,7 +454,7 @@ public static class Habilidades
 		Jandirus.Core.Races.SkillRacial.GuerreiroVeterano =>
 			"Saiyajin: em combate, cada forma de maestria que você sustenta (10 s a primeira, 20 s a segunda, 30 s a terceira...) vale +10% de "
 			+ "BP, até +60%. Descer pra uma forma mais fraca zera a conta.",
-		Jandirus.Core.Races.SkillRacial.RacaGuerreira => "Saiyajin: abaixo de 20% de vida, ataque físico +20% e defesa física +30%.",
+		Jandirus.Core.Races.SkillRacial.RacaGuerreira => "Saiyajin: com o tronco ou a cabeça abaixo de 20%, ataque físico +20% e defesa física +30%.",
 		Jandirus.Core.Races.SkillRacial.Resolucao =>
 			"Saiyajin: do 2º golpe seguido do MESMO tipo em diante (soco, lâmina ou ki), cada um dói 2% menos, até -20%, por 10 s.",
 		Jandirus.Core.Races.SkillRacial.Orgulho =>
@@ -564,6 +566,21 @@ public static class Habilidades
 			"As raças de ovo têm filho sozinhas: o ovo choca como o próximo personagem que alguém criar, da sua raça e da sua "
 			+ "linhagem. Um ovo por vez, e só depois de crescer.",
 			() => GameClient.Instance?.SendHabilidade("filho_ovo")) { Chave = "hab:filho_ovo" });
+	}
+
+	/// <summary>
+	/// (2026-10-18) O NEO TUFFLE -- o verb de quem passou pela maquina do Neo Tuffle Lab (`GameServer.NeoTuffle.cs`). A linha
+	/// `hab:tuffle_possuir` da tabela (`RequisitosDosVerbos`) so ESCONDE o botao de quem nao e Neo Tuffle: quem desenha o botao na aba Other
+	/// e este registro, e sem ele o verb existia no servidor e nao tinha botao nenhum (a contraprova por mutacao de 2026-10-19 achou).
+	/// </summary>
+	private static void DoNeoTuffle()
+	{
+		Verbos.Registrar(new Verbo(
+			"Possuir um nocauteado",
+			Verbos.Outros,
+			"Entra no corpo do jogador nocauteado mais perto e o dirige com o poder dele -- o mundo vê o dono do corpo, de cabelo "
+			+ "branco-acinzentado, e ele só assiste. Quando o corpo cair, você é expulso e volta pro seu.",
+			() => GameClient.Instance?.SendHabilidade("tuffle_possuir")) { Chave = "hab:tuffle_possuir" });
 	}
 
 	/// <summary>

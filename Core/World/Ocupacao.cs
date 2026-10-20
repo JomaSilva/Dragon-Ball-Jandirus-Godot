@@ -155,9 +155,9 @@ public enum Ocupacao : byte
 	GritoDoDesabafo = 16,
 
 	/// <summary>
-	/// (2026-10-18) DORMINDO O SLEEP DO MAJIN -- os 5 s deitado da skill (`Races.SonoDoMajin`, `GameServer.SonoDoMajin.cs`). E por este valor
-	/// que a tela desenha o "z" subindo sobre o corpo (`Client/SonoDesenhado.cs`); o corpo fica no chao (nao e empurrado), e qualquer outra
-	/// ocupacao o acorda -- por isso ele e o ULTIMO da cadeia do <see cref="CorpoOcupado.De"/>.
+	/// (2026-10-18) DORMINDO O SLEEP DO MAJIN -- os 5 s parado da skill, em pe (`Races.SonoDoMajin`, `GameServer.SonoDoMajin.cs`). E por este
+	/// valor que a tela desenha o "z" subindo sobre o corpo (`Client/SonoDesenhado.cs`); o corpo fica plantado (nao e empurrado), e qualquer
+	/// outra ocupacao o acorda -- por isso ele e o ULTIMO da cadeia do <see cref="CorpoOcupado.De"/>.
 	/// </summary>
 	Dormindo = 17,
 }

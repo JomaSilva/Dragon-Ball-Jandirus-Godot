@@ -43,7 +43,7 @@ public partial class MenuJogo
 	/// </summary>
 	private static readonly string[] OrdemDosGruposDeOutros =
 	[
-		"Treino e estudo", "Combate", "Sociedade", "Namek", "Ofertas recebidas", "Cópias (Split Form)",
+		"Treino e estudo", "Combate", "Sociedade", "Namek", "Aprendiz de Kaioshin", "Ofertas recebidas", "Cópias (Split Form)",
 		"Genkidama", "Trono de Vegeta", "Deus da Destruição", "Sala do Tempo", Diversos,
 	];
 
@@ -79,6 +79,11 @@ public partial class MenuJogo
 		["Appoint Elder"] = "Namek",
 		["Accept Elder Seat"] = "Namek",
 		["Decline Elder Seat"] = "Namek",
+
+		["Name Apprentice"] = "Aprendiz de Kaioshin",
+		["Dismiss Apprentice"] = "Aprendiz de Kaioshin",
+		["Accept Apprenticeship"] = "Aprendiz de Kaioshin",
+		["Decline Apprenticeship"] = "Aprendiz de Kaioshin",
 
 		["Accept Youth"] = "Ofertas recebidas",
 		["Decline Youth"] = "Ofertas recebidas",
@@ -133,7 +138,11 @@ public partial class MenuJogo
 	// A ABA
 	// =====================================================================
 	/// <summary>A aba Other: os cartoes por tema da categoria. E daqui que a aba se redesenha.</summary>
-	private void AbaOutros() => ListaDeVerbos(Verbos.Outros);
+	private void AbaOutros()
+	{
+		ListaDeVerbos(Verbos.Outros);
+		CartaoDasEscolhasDoAprendiz();   // (2026-10-19) a lista que o "Name/Dismiss Apprentice" pediu -- ver `MenuJogo.Aprendiz.cs`
+	}
 
 	/// <summary>
 	/// OS VERBS DE UMA CATEGORIA, EM CARTOES POR TEMA. A Admin usa o mesmo desenho pros verbs dela
@@ -204,5 +213,5 @@ public partial class MenuJogo
 	// outros nomes com o mesmo tamanho, tem que remontar a pagina. So o sinal nao distinguiria
 	// "Fund Earth entrou" de "Study saiu".
 	private string ExtraDaAssinaturaDeOutros(SheetState f) =>
-		string.Join("|", Verbos.Da(Verbos.Outros).Select(v => v.Nome + (v.PodeAgora ? '+' : '-')));
+		string.Join("|", Verbos.Da(Verbos.Outros).Select(v => v.Nome + (v.PodeAgora ? '+' : '-'))) + AssinaturaDasEscolhasDoAprendiz();
 }

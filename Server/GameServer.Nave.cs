@@ -526,8 +526,11 @@ public partial class GameServer
 	/// nao-empilhar, nao dentro de parede) -- elas valem pra nave exatamente como pra bancada.
 	///
 	/// A DIFERENCA E SO A CHAVE: aqui a zona vai inteira (tipo, nome, seed).
+	///
+	/// <paramref name="idDoItem"/> e o item que saiu da mochila: a nave recolhida com velocidade comprada (`Spacepod|c12|20x`)
+	/// volta com ela (2026-10-19, `DevolverAVelocidade`).
 	/// </summary>
-	private void AssentarNave(ServerPlayer pl, Construcao c, float x, float y)
+	private void AssentarNave(ServerPlayer pl, Construcao c, float x, float y, string idDoItem)
 	{
 		var nave = new Nave
 		{
@@ -549,15 +552,17 @@ public partial class GameServer
 			nave.ArmaduraMax = NaveGrande.ArmaduraMaxima(pl.Ficha.expressedBP);
 			nave.Armadura = nave.ArmaduraMax;
 		}
+		bool voltou = DevolverAVelocidade(nave, idDoItem);
 
 		_naves.Add(nave);
 		GravarNaves();
 
 		GD.Print($"[server] {pl.Name} assentou {c.Nome} (nave #{nave.Id}) em {pl.Zone} @ ({x:0},{y:0})"
-				 + (nave.ArmaduraMax > 0 ? $" -- casco {nave.ArmaduraMax:N0}" : ""));
-		Avisar(pl, NaveGrande.EhNaveGrande(c.Id)
+				 + (nave.ArmaduraMax > 0 ? $" -- casco {nave.ArmaduraMax:N0}" : "") + (voltou ? $" -- velocidade {nave.Velocidade}" : ""));
+		Avisar(pl, (NaveGrande.EhNaveGrande(c.Id)
 			? $"você assenta {c.Nome} no chão. Aperte E nela pra EMBARCAR -- a ponte fica lá dentro."
-			: $"você assenta {c.Nome} no chão. Aperte E nela pra entrar.");
+			: $"você assenta {c.Nome} no chão. Aperte E nela pra entrar.")
+			+ (voltou ? $" A velocidade que ela tinha volta com ela: {nave.Velocidade}x." : ""));
 		MandarObras(pl.Zone);
 	}
 
@@ -587,7 +592,7 @@ public partial class GameServer
 			return;
 		}
 
-		// (2026-10-18) SO DE TANQUE CHEIO: o item da mochila nao guarda estado (ver a velocidade logo abaixo), e a nave assentada de novo
+		// (2026-10-18) SO DE TANQUE CHEIO: o item da mochila nao guarda o tanque (so a velocidade, logo abaixo), e a nave assentada de novo
 		// nasce cheia -- recolher e assentar seria abastecer de graca, em qualquer lugar, e o combustivel que o dono pediu pra obrigar o
 		// pouso estrategico deixaria de obrigar qualquer coisa. Ver `GameServer.Combustivel.cs`.
 		if (!RecolheComTanqueFuradoDeTeste && Combustivel.TemTanque(n.Tipo) && !Combustivel.Cheio(n.Tipo, NivelDoTanque(n)))
@@ -597,21 +602,19 @@ public partial class GameServer
 			return;
 		}
 
-		// A VELOCIDADE COMPRADA SE PERDE, e isso e deliberado: o item da mochila e uma linha do
-		// catalogo ("Spacepod"), sem estado proprio. Guardar o degrau exigiria item COM ESTADO, que
-		// e um sistema que este port nao tem -- e fingir que tem seria pior. O aviso diz em voz alta,
-		// que e a regra 5 da casa (falhar alto em vez de silenciar).
-		if (n.Velocidade > Naves.VelocidadeInicial)
-			Avisar(pl, $"ao desmontar, os {n.Velocidade - 1} degraus de velocidade se perdem.");
-
 		// (2026-10-18) O QUE ESTA MONTADO DENTRO DA NAVE GRANDE SAI PRO LADO, SOLTO -- a mesma porta da explosao, e ANTES de a nave sair da
 		// lista. A recusa de cima e pra GENTE; uma maquina nao esta treinando. Ver `TirarAsObrasDaNave`.
 		int obras = TirarAsObrasDaNave(n);
 
+		// A VELOCIDADE COMPRADA VAI JUNTO (2026-10-19). Ela se perdia de proposito -- o item da mochila era a linha do catalogo
+		// ("Spacepod"), sem estado, e um aviso dizia em voz alta. Agora o item tem estado: a nave melhorada vai pra mochila com
+		// uma gaveta do cofre (`Spacepod|c12|20x`), como a maquina de gravidade. Ver `IdDaNaveAoRecolher` e `MaquinaGuardada`.
+		string recolhida = IdDaNaveAoRecolher(n);
 		_naves.Remove(n);
 		GravarNaves();
-		Guardar(pl, n.Tipo);
-		Avisar(pl, $"você recolhe {NomeDaNave(n)}.");
+		Guardar(pl, recolhida);
+		Avisar(pl, $"você recolhe {NomeDaNave(n)}."
+				   + (recolhida != n.Tipo ? $" A velocidade vai junto: assentada de novo, ela volta a {n.Velocidade}x." : ""));
 		if (obras > 0)
 			Avisar(pl, obras == 1
 				? "a construção que estava lá dentro fica no chão, ao lado -- solta."
@@ -648,6 +651,10 @@ public partial class GameServer
 		// pod, ficaria inalcancavel.
 		if (NaveGrande.EhNaveGrande(n.Tipo)) { EmbarcarNaNaveGrande(pl, n); return; }
 
+		// (2026-10-19) NAVE NENHUMA LEVA ESFERA DO DRAGAO (dono: *"naves e espaco vc e bloqueado de ir com elas"*): o pod nao abre pra
+		// quem carrega uma. A Capital Ship recusa na porta dela (`EmbarcarNaNaveGrande`). Ver `GameServer.EsferasNaMochila.cs`.
+		if (PorQueAsEsferasPrendem(pl) is { Length: > 0 } presas) { Avisar(pl, presas); return; }
+
 		// FOGUETE GASTO NAO SE PILOTA -- `if(icon_state != "stable") return` (`PlanetTech.dm:255`).
 		// Entrar num foguete usado nao faria mal nenhum, mas a unica coisa que ele faria depois seria
 		// recusar o lancamento -- e recusar na PORTA e dizer por que e melhor que deixar entrar e
@@ -681,6 +688,7 @@ public partial class GameServer
 		// original (:137). Sem isto o piloto ficaria preso dentro do proprio veiculo.
 		Avisar(pl, $"você entra em {NomeDaNave(n)}. Ela voa com você -- e atravessa o que houver embaixo. "
 				   + "Suba e desça como no voo: descendo até o chão ela pousa, e lá no alto ela sai do planeta.");
+		TomarOLeme(pl);   // (2026-10-19) o casco isola o piloto, e as tecnicas acesas se apagam -- ver `GameServer.Leme.cs`
 		GD.Print($"[server] {pl.Name} embarcou na nave #{n.Id} (velocidade {n.Velocidade})");
 		MandarObras(pl.Zone);
 	}
@@ -717,6 +725,7 @@ public partial class GameServer
 		MandarCombustivel(pl);   // (2026-10-18) ...e a barra do tanque some junto
 
 		Avisar(pl, $"você sai de {NomeDaNave(n)}.");
+		LargarOLeme(pl);   // (2026-10-19) fora do casco, o chao volta a pesar -- ver `GameServer.Leme.cs`
 		GD.Print($"[server] {pl.Name} desembarcou da nave #{n.Id} em {pl.Zone}");
 		MandarObras(pl.Zone);
 	}
@@ -1059,6 +1068,11 @@ public partial class GameServer
 
 		if (n.Velocidade >= Naves.VelocidadeMaxima)
 		{ Avisar(pl, $"{NomeDaNave(n)} já está no limite ({Naves.VelocidadeMaxima}x)."); return; }
+		// (2026-10-19) O TETO DE QUEM PAGA (`TetoPorTecnologia`): a recusa vem antes da cobranca, e a nave que ja passou dele
+		// continua como esta.
+		int teto = TetoPorTecnologia.VelocidadeDaNave(pl.Ficha.techskill);
+		if (n.Velocidade >= teto)
+		{ Avisar(pl, TetoPorTecnologia.Recusa($"a velocidade de {NomeDaNave(n)}", pl.Ficha.techskill, $"{teto}x", proporcional: true)); return; }
 
 		// EM ZENI OU, PELO DOBRO, EM RECURSOS (dono, 2026-10-10): a moeda vem no pedido -- ver `CobrarOuExplicar`.
 		double custo = Naves.CustoDoUpgrade(n.Velocidade);
@@ -1088,7 +1102,9 @@ public partial class GameServer
 		double d = Espaco.DistanciaTerraNamek;
 		Avisar(pl, $"-- {NomeDaNave(n)} #{n.Id} --");
 		Avisar(pl, $"  dono: {(n.DonoNome.Length > 0 ? n.DonoNome : "ninguém")}");
-		Avisar(pl, $"  velocidade: {n.Velocidade}x  (teto {Naves.VelocidadeMaxima}x)");
+		// (2026-10-19) ...e o teto de quem pergunta, quando a tecnologia dele nao chega ao do jogo (`TetoPorTecnologia`).
+		Avisar(pl, $"  velocidade: {n.Velocidade}x  (teto {Naves.VelocidadeMaxima}x"
+				   + (TetoPorTecnologia.Livre(pl.Ficha.techskill) ? ")" : $"; a sua tecnologia leva até {TetoPorTecnologia.VelocidadeDaNave(pl.Ficha.techskill)}x)"));
 		// (2026-10-18) O TANQUE, so em quem tem: o foguete nao viaja, e "0 de combustivel" nele diria que ele esta seco.
 		if (Combustivel.TemTanque(n.Tipo))
 			Avisar(pl, $"  combustível: {NivelDoTanque(n):N0} de {Combustivel.Capacidade(n.Tipo):N0} "

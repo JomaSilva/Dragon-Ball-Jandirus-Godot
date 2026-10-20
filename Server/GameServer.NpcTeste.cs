@@ -445,10 +445,45 @@ public partial class GameServer
 				// verdade, raca vinda do berco, `NascerNpc` inteiro. So em planeta sem ninguem
 				// conectado, pelo mesmo motivo que a zona la de cima e vazia.
 				ulong lugar = 900;
-				int vestidos = 0, pelados = 0, porDesenho = 0;
+				int vestidos = 0, pelados = 0, porDesenho = 0, peloSorteio = 0;
 				var nus = new List<string>();
 				var foraDoCatalogo = new List<string>();
 				var racasVistas = new HashSet<string>(StringComparer.Ordinal);
+
+				// ============================ "PELADO" NAO E UMA COISA SO ============================
+				// Ha mais de uma razao pra um corpo sair sem peca, e confundi-las era o defeito da
+				// primeira versao desta linha: ela reprovava o cidadao de Icer, que esta CERTO
+				// -- o sprite do Frost Demon ja e o bio-traje. Uma bancada que exige o
+				// impossivel e tao inutil quanto uma que nao exige nada; a diferenca e que
+				// esta aqui reprovava a REGRA em vez do defeito.
+				//
+				// A pergunta com dente e a outra: alguem que DEVIA estar vestido saiu nu? A
+				// resposta de quem se veste sozinho vem do Core (`RoupaDeNpc.OCorpoJaVeste`)
+				// e nao de uma segunda lista aqui -- ver o bloco de la.
+				//
+				// (2026-10-19) O SORTEIO DO DM E A TERCEIRA RAZAO, e era o mesmo defeito de novo: a regua reprovava ~3 de 4 rodadas com
+				// o jogo CERTO. `make_namekian` (PlanetPopulation.dm:413-414) veste a jaqueta com prob(60) e o cachecol com prob(50), e
+				// 20% do povo de Namek nasce sem peca nenhuma; com seis corpos por planeta e um universo novo por rodada (a semente do
+				// cidadao sai do `SeedDoUniverso`), quase sempre saia um. Quem diz se ESTE corpo devia estar vestido e a TABELA, pela
+				// semente DELE: a mesma porta (`RoupaDeNpc.Vestir`), a semente que o `NascerNpc` deu ao `AparenciaDeNpc`
+				// (`Papel.Semente`), o mesmo genero e a roupa cravada do molde. Nu com a tabela vazia e o DM; nu com a tabela vestindo
+				// e o funil que perdeu a roupa -- num Namekuseijin tambem. A d.1, mais abaixo, mede a tabela contra o DM e forca as
+				// duas metades em toda rodada.
+				// ================================================================================
+				const string PeloDesenho = "desenho", PeloSorteioDoDm = "sorteio";
+				bool ATabelaODeixaNu(ServerPlayer c) =>
+					RoupaDeNpc.Vestir(_visual, c.Race, c.Genero, c.Papel!.Semente, c.Papel.Molde.Roupa).Count == 0;
+				// nulo = vestido; vazio = nu SEM motivo (o defeito que a regua procura); senao, o motivo
+				string? MotivoDoNu(ServerPlayer c) =>
+					c.Visual.Roupa.Count > 0 ? null
+					: RoupaDeNpc.OCorpoJaVeste(c.Race) ? PeloDesenho
+					// (2026-10-19) O GRANDE PATRIARCA DE NAMEK TAMBEM SE VESTE PELO DESENHO: a folha dele ja e o manto, e a fabrica do DM
+					// nao o veste (`Npc.Patriarca`). Quem diz e o CORPO (o indice reservado da folha dele), e nao a raca -- o povo de
+					// Namek continua passando pela pergunta de cima.
+					: Patriarca.FolhaDoCorpo(c.Visual.Corpo) != null ? PeloDesenho
+					: ATabelaODeixaNu(c) ? PeloSorteioDoDm
+					: "";
+
 				foreach (LinhaDePovoamento linha in _moldes.Plano)
 				{
 					if (_players.Values.Any(p => p.Peer != null
@@ -468,20 +503,10 @@ public partial class GameServer
 						nascidos.Add(cid);
 						racasVistas.Add(cid.Race);
 
-						// ============================ "PELADO" NAO E UMA COISA SO ============================
-						// Ha DUAS razoes pra um corpo sair sem peca, e confundi-las era o defeito da
-						// primeira versao desta linha: ela reprovava o cidadao de Icer, que esta CERTO
-						// -- o sprite do Frost Demon ja e o bio-traje. Uma bancada que exige o
-						// impossivel e tao inutil quanto uma que nao exige nada; a diferenca e que
-						// esta aqui reprovava a REGRA em vez do defeito.
-						//
-						// A pergunta com dente e a outra: alguem que DEVIA estar vestido saiu nu? A
-						// resposta de quem se veste sozinho vem do Core (`RoupaDeNpc.OCorpoJaVeste`)
-						// e nao de uma segunda lista aqui -- ver o bloco de la.
-						// ================================================================================
-						bool nu = cid.Visual.Roupa.Count == 0;
-						if (!nu) vestidos++;
-						else if (RoupaDeNpc.OCorpoJaVeste(cid.Race)) porDesenho++;
+						string? motivo = MotivoDoNu(cid);
+						if (motivo == null) vestidos++;
+						else if (motivo == PeloDesenho) porDesenho++;
+						else if (motivo == PeloSorteioDoDm) peloSorteio++;
 						else { pelados++; nus.Add($"{cid.Name}/{cid.Race}@{linha.Planeta}"); }
 
 						// TODA peca que chegou aqui passou pelo catalogo -- se `Sanear` a tivesse
@@ -499,7 +524,7 @@ public partial class GameServer
 					  $"{vestidos} vestido(s), {pelados} pelado(s) SEM motivo: {string.Join(" | ", nus)}");
 				Checa("...e nenhuma peca deles esta fora do catalogo (nada inventado)",
 					  foraDoCatalogo.Count == 0, string.Join(" | ", foraDoCatalogo));
-				GD.Print($"       ({vestidos} vestidos, {porDesenho} sem peca por DESENHO -- sprite proprio) "
+				GD.Print($"       ({vestidos} vestidos, {porDesenho} sem peca por DESENHO -- sprite proprio, {peloSorteio} pelo SORTEIO do DM) "
 					   + $"racas exercitadas pelo caminho de producao: {string.Join(", ", racasVistas.OrderBy(x => x, StringComparer.Ordinal))}");
 
 				// AS TRES DO PEDIDO, pelo caminho de producao e nao so pela tabela. Se o berco dos
@@ -510,6 +535,61 @@ public partial class GameServer
 					if (!racasVistas.Contains(r))
 						GD.Print($"       (aviso: nenhum {r} nasceu nesta rodada -- a tabela dele so foi "
 							   + "exercitada pela secao (c), nao pelo corpo no mundo)");
+
+				// --- d.1) O NU DO SORTEIO: MEDIDO NUMA AMOSTRA FIXA, E FORCADO NO MUNDO ---
+				// ============================ O PERDAO E MEDIDO, E NAO TOLERADO ============================
+				// A regua de cima perdoa o nu que a TABELA decide -- entao uma tabela que despisse todo mundo seria perdoada junto. Ela e
+				// medida aqui contra o DM com sementes FIXAS (1..1000: a mesma conta em toda rodada, sem o universo sorteado): o unico povo
+				// que o DM deixa nu por sorteio e o Namekuseijin (`make_namekian`, :413-414 -- 40% sem jaqueta x 50% sem cachecol = 20%);
+				// o Saiyajin comum sempre ganha armadura (:368-369), o Humano sempre ganha o Gi ou a camisa (:396-402), e as escolhas
+				// minhas do `RoupaDeNpc` sempre vestem. Conta de mesa em 2026-10-19: 191 de 1000.
+				// ===========================================================================================
+				int nusDeNamek = 0, nusDeOutros = 0;
+				string outroNu = "";
+				for (ulong s = 1; s <= 1000; s++)
+				{
+					if (RoupaDeNpc.Vestir(_visual, "Namekian", "Male", s).Count == 0) nusDeNamek++;
+					foreach (string raca in _racas!.Protos.Keys)
+						if (raca != "Namekian" && !RoupaDeNpc.OCorpoJaVeste(raca))
+							foreach (string g in new[] { "Male", "Female" })
+								if (RoupaDeNpc.Vestir(_visual, raca, g, s).Count == 0) { nusDeOutros++; outroNu = $"{raca}/{g} semente {s}"; }
+				}
+				Checa("...e a TABELA so deixa nu o NAMEKUSEIJIN, em ~20% (DM: 40% sem jaqueta x 50% sem cachecol; sementes 1..1000)",
+					  nusDeNamek is >= 150 and <= 250 && nusDeOutros == 0,
+					  $"Namekuseijin nu em {nusDeNamek}/1000; {nusDeOutros} nu(s) de outra raca {outroNu}");
+
+				// ============================ AS DUAS METADES, FORCADAS ============================
+				// O perdao so roda quando o universo da rodada poe um Namekuseijin nu entre os seis de Namek -- e em ~1 de 4 rodadas
+				// nao poe: uma linha que so as vezes roda nao prova nada. Entao a bancada nasce cidadaos de Namek (o povo de la e
+				// Namekuseijin, pedido do dono -- ver `Bercos`) ate sair um que o sorteio deixou nu, e confere que a MESMA regua o
+				// perdoa. E o espelho, com o defeito injetado: o Namekuseijin que o sorteio VESTIA, despido pelo funil, a mesma regua
+				// acusa. Sem as duas, "perdoar quem a tabela deixa nu" e "perdoar todo Namekuseijin nu" dariam o mesmo verde.
+				// ===================================================================================
+				ServerPlayer? NamekQue(Func<ServerPlayer, bool> serve)
+				{
+					for (int k = 0; k < 80; k++)
+					{
+						ServerPlayer? c = NascerNpc("cidadao", ZoneKey.Premade("Namek"), new Vec2(0, 0), ++lugar);
+						if (c == null) continue;
+						nascidos.Add(c);
+						if (c.Race == "Namekian" && serve(c)) return c;
+					}
+					return null;
+				}
+				string Contar(ServerPlayer? c) => c == null ? "nenhum em 80 nascimentos"
+					: $"{c.Name}: {c.Visual.Roupa.Count} peca(s), motivo '{MotivoDoNu(c)}'";
+
+				ServerPlayer? nuDoSorteio = NamekQue(ATabelaODeixaNu);
+				Checa("...e o Namekuseijin que o SORTEIO do DM deixou nu nao conta como pelado (o perdao e da tabela, pela semente dele)",
+					  nuDoSorteio != null && MotivoDoNu(nuDoSorteio) == PeloSorteioDoDm, Contar(nuDoSorteio));
+				NpcSemRoupaDeTeste = true;
+				try
+				{
+					ServerPlayer? despido = NamekQue(c => !ATabelaODeixaNu(c));
+					Checa("(defeito injetado: o funil nao veste o cidadao) a mesma regua REPROVA o Namekuseijin que o sorteio vestia",
+						  despido != null && MotivoDoNu(despido) == "", Contar(despido));
+				}
+				finally { NpcSemRoupaDeTeste = false; }
 
 				// --- d.2) E ELA CHEGA NO FIO INTEIRA ---
 				// ============================ O TETO DE 120 CARACTERES POR CAMINHO ============================

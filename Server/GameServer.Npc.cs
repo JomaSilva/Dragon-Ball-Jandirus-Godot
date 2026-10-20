@@ -418,6 +418,12 @@ public partial class GameServer
 	/// </summary>
 	internal static bool FrostNpcSemVariedadeDeTeste;
 
+	/// <summary>
+	/// (2026-10-19) DEFEITO INJETADO (`--npcteste`): o cidadao volta a nascer SEM ROUPA -- o jogo de antes do *"todo npc ta nascendo SEM
+	/// ROUPAS"*, em que este metodo nunca tocava em `ap.Roupa`. Lido pela propria linha que veste pela tabela da raca. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool NpcSemRoupaDeTeste;
+
 	private Appearance AparenciaDeNpc(MoldeDeNpc molde, string raca, string genero, ulong semente)
 	{
 		var ap = new Appearance();
@@ -476,7 +482,7 @@ public partial class GameServer
 		var faltando = new List<string>();
 		if (molde.Roupa.Length > 0)
 			ap.Roupa.AddRange(RoupaDeNpc.Vestir(_visual, raca, genero, semente, molde.Roupa, faltando));
-		else if (!molde.EhChefe)
+		else if (!molde.EhChefe && !NpcSemRoupaDeTeste)
 			ap.Roupa.AddRange(RoupaDeNpc.Vestir(_visual, raca, genero, semente, null, faltando));
 
 		if (faltando.Count > 0)
@@ -494,6 +500,17 @@ public partial class GameServer
 		string queixa = _visual.Sanear(ap, raca, genero);
 		if (queixa.Length > 0)
 			GD.PushWarning($"[server] aparencia de NPC do molde '{molde.Id}' ({raca}): {queixa}");
+
+		// (2026-10-19) A FOLHA DO GRANDE PATRIARCA DE NAMEK -- o `M.icon = 'NamekOld - Guru Style.dmi'` da fabrica dele
+		// (PlanetPopulation.dm:449). DEPOIS do `Sanear` e de proposito, e nao e a "segunda forma de vestir" do paragrafo de cima: a
+		// folha nao esta no catalogo (ninguem a escolhe na criacao, e o saneamento a zeraria), e o guarda dela e a constante do Core,
+		// nao o cliente. Ver `Npc.Patriarca.Corpo`. E SEM ROUPA: a folha ja e o manto dele, e a fabrica do DM nao chama `npc_wear_*`
+		// (como as do Freeza, do Cell e do Boo) -- o casaco e o cachecol do povo de Namek cairiam por cima do desenho.
+		if (molde.Id == Patriarca.Molde && !PatriarcaComOCorpoDoPovoDeTeste)
+		{
+			ap.Corpo = Patriarca.Corpo;
+			ap.Roupa.Clear();
+		}
 
 		ap.CorAura = Jandirus.Core.Appearance.CorDeAura.DeSemente(semente);
 

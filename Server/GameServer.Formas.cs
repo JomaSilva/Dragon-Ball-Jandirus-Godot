@@ -1054,12 +1054,13 @@ public partial class GameServer
 	/// </param>
 	private void EntrarNaForma(ServerPlayer pl, FormaDef alvo, bool semCena = false)
 	{
-		// (v0.3.0) ENTRAR NO DEUS APAGA O KAIO-KEN, de graca (a saida voluntaria, sem a conta do nocaute) -- a outra metade da
-		// regra do dono, *"o god n pode usar kaioken junto"* (`Jandirus.Core.Skills.Kaioken.CabeNaForma`): o botao recusa
-		// acender no Deus, e quem ja estava aceso perde o buff aqui, antes de o buff da forma entrar.
-		if (!KaiokenNoDeusDeTeste && TemBuff(pl, BuffKaiokenG2) && !Jandirus.Core.Skills.Kaioken.CabeNaForma(alvo))
+		// ENTRAR NUMA FORMA QUE NAO SUSTENTA O KAIO-KEN O APAGA, de graca (a saida voluntaria, sem a conta do nocaute) -- o Deus
+		// (v0.3.0, *"o god n pode usar kaioken junto"*) e todo Super Saiyajin menos o Blue de classe baixa ou media (v0.4.2; a
+		// regra e `Jandirus.Core.Skills.Kaioken.VetoDaForma`). O botao recusa acender nela, e quem ja estava aceso perde o buff
+		// aqui, antes de o buff da forma entrar: o Kaio-ken da base nao atravessa o SSJ1 a caminho do Blue.
+		if (TemBuff(pl, BuffKaiokenG2) && VetoDoKaiokenG2(pl, alvo) is var veto && veto != Jandirus.Core.Skills.Kaioken.Veto.Nenhum)
 		{
-			Avisar(pl, "o ki divino não sustenta o Kaio-ken.");
+			Avisar(pl, Jandirus.Core.Skills.Kaioken.FraseDoVeto(veto, alvo));
 			ReverterKaiokenG2(pl, porKO: false);
 		}
 
@@ -1503,8 +1504,10 @@ public partial class GameServer
 	/// entra na zona nao prendem corpo nenhum -- e o que nao prende nao congela.
 	/// ========================================================================================
 	/// </summary>
-	private static void MarcarCena(ServerPlayer pl, FormaDef? d, DegrauDeCena degrau) =>
-		pl.CenaSegundos = d != null && Cinematicas.NoDegrau(d, degrau) is { } cena
+	/// (2026-10-19) <paramref name="instavel"/>: o Mutante entrando numa forma que nao segura -- a cena e a vermelha (ver
+	/// `Cinematicas.NoDegrau`). O MESMO bit vai no `S2C.Forma`, e as duas pontas tiram o prazo da MESMA cena.
+	private static void MarcarCena(ServerPlayer pl, FormaDef? d, DegrauDeCena degrau, bool instavel = false) =>
+		pl.CenaSegundos = d != null && Cinematicas.NoDegrau(d, degrau, instavel) is { } cena
 			? cena.SegundosPreso
 			: 0;
 
@@ -1584,7 +1587,8 @@ public partial class GameServer
 		// marca a cena da BASE (zero) -- ou seja o congelamento cai junto com a forma, no mesmo gesto,
 		// sem uma segunda linha pra alguem esquecer.
 		// (MENOS A FURY do Deus da Destruicao, que no DM atravessa o nocaute e a morte -- ver `FuryAtravessaAQueda`.)
-		if (CaidoPraForma(pl) && !FuryAtravessaAQueda(pl)) { Reverter(pl, "voce cai, e a forma se desfaz."); return; }
+		// (2026-10-19) E MENOS A ESCADA DO FROST DEMON NO NOCAUTE, que no DM tambem fica -- ver `FrostAtravessaONocaute`.
+		if (CaidoPraForma(pl) && !FuryAtravessaAQueda(pl) && !FrostAtravessaONocaute(pl)) { Reverter(pl, "voce cai, e a forma se desfaz."); return; }
 
 		// SSJ4 SEM RABO SE DESFAZ (`supersaiyanbuff.dm:135-162`, os tres degraus) -- ver `Ssj4SemRabo`, `GameServer.Membros.cs`.
 		if (Ssj4SemRabo(pl)) { Reverter(pl, "seu rabo se foi, e o Super Saiyajin 4 se desfaz com ele."); return; }
@@ -1610,7 +1614,8 @@ public partial class GameServer
 		double dreno = est.DrenoPorSegundo() * pl.Ficha.MaxKi * dt * pl.Racial.Efeito.Dreno;
 		pl.Ficha.Ki -= dreno;
 
-		if (pl.Ficha.Ki <= 0 && !FuryAtravessaAQueda(pl))   // a Fury nao cobra Ki, entao nao cai por falta dele
+		// (2026-10-19) A ESCADA DO FROST DEMON TAMBEM NAO CAI POR FALTA DE KI -- ver `FrostNaoCaiPorKi`.
+		if (pl.Ficha.Ki <= 0 && !FuryAtravessaAQueda(pl) && !FrostNaoCaiPorKi(pl))   // a Fury nao cobra Ki, entao nao cai por falta dele
 		{
 			pl.Ficha.Ki = 0;
 			Reverter(pl, "o Ki acaba e a forma se desfaz.");
@@ -1637,8 +1642,9 @@ public partial class GameServer
 		// dentro por outro motivo: la sao TRES escritores e a recusa tem que valer pros tres.)
 		// ================================================================================================
 		bool dominavaAntes = Dominou(pl, est.Atual);
-		if (Catalogo.SustentarTreina(est.Def)
-			&& SubirMaestriaDaZona(pl, est.Atual, Catalogo.MaestriaPorSegundo, dt, out string marco))
+		// (2026-10-19) E A ESCADA DO FROST DEMON NAO TREINA COM O CORPO CAIDO -- ver `FrostNaoTreinaCaido`.
+		if (Catalogo.SustentarTreina(est.Def) && !FrostNaoTreinaCaido(pl)
+			&& SubirMaestriaDaZona(pl, est.Atual, TaxaDeMaestriaDaForma(pl), dt, out string marco))
 		{
 			// O NOME SAI DO FUNIL, e aqui isso muda o texto de verdade: quem acaba de cruzar os 100%
 			// no SSJ1 le "Super Saiyajin Grade 4: forma DOMINADA" -- o nome novo chega junto com o
@@ -1692,9 +1698,10 @@ public partial class GameServer
 	/// <see cref="ParaOndeSeRecua"/> pro caminho voluntario.
 	///
 	/// A diferenca e a intencao: recuar e uma DECISAO (afrouxa um ponto e para onde quiser), e cair
-	/// nao e -- quem desmaia larga tudo. Pro Frost Demon isso quer dizer que o Mutante nocauteado
-	/// volta a primeira supressao, que e onde o corpo dele descansa, e nao a base que ele ainda nao
-	/// segura.
+	/// nao e -- quem desmaia larga tudo. (2026-10-19) O Frost Demon nao passa mais por aqui nem no
+	/// nocaute nem no Ki zerado (ver `FrostAtravessaONocaute` e `FrostNaoCaiPorKi`, o DM nao mexe no
+	/// `fd_form` nos dois): so a MORTE desfaz a escada dele, e ai o Mutante volta a primeira
+	/// supressao, que e onde o corpo dele descansa.
 	/// </summary>
 	private void Reverter(ServerPlayer pl, string motivo)
 	{
@@ -1744,11 +1751,16 @@ public partial class GameServer
 			? DegrauDeCena.Nenhuma
 			: Cinematicas.Degrau(Catalogo.Def(para), estreia, MaestriaDaForma(pl, para));
 
+		// (2026-10-19) O MUTANTE SUBINDO PRA UMA FORMA QUE NAO SEGURA -- a cena vermelha do DM. Decidido AQUI, no mesmo funil do
+		// degrau, e pelo mesmo motivo: subir, a tecla de forma, o mestre e a raiva passam todos por esta linha. Ver `GameServer.Frost.cs`.
+		bool instavel = SobeProDescontrole(pl, de, para);
+		AoMudarFormaDoFrost(pl, de, para, instavel);
+
 		// E O SERVIDOR ANOTA O PRAZO NO MESMO GESTO. Aqui, e nao no `Transformar`, pelo motivo que o
 		// bloco acima ja explica pro degrau: este e o funil unico -- subir, descer, cair por Ki zerado
 		// e o DirectSSJ do admin passam todos por esta linha. Descer marca ZERO (a base nao tem cena),
 		// e e assim que o congelamento acaba junto com a forma quando alguem e nocauteado no meio.
-		MarcarCena(pl, Catalogo.Def(para), degrau);
+		MarcarCena(pl, Catalogo.Def(para), degrau, instavel);
 
 		// A BANCADA ESCUTA O DEGRAU AQUI. Ele nasce nesta linha e some no fio -- e as duas regras que
 		// mais custam pra o jogador sao exatamente sobre ele: a estreia do SSJ4 que TEM que tocar, e a
@@ -1762,7 +1774,7 @@ public partial class GameServer
 
 		// A MESMA LEITURA DE MAESTRIA QUE DEU O DEGRAU, e por isso ela nao se repete: o `Degrau` acima
 		// pergunta se passou de 50%, este bit pergunta se chegou a 100%. Duas faixas da mesma barra.
-		NetDataWriter w = PacoteDeForma(pl.Id, de, para, degrau, Dominou(pl, para));
+		NetDataWriter w = PacoteDeForma(pl.Id, de, para, degrau, Dominou(pl, para), MarcasDoFrost(pl, instavel));
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
 		{
 			// A BANCADA ESCUTA PRA QUEM O ANUNCIO FOI, e ela escuta DE DENTRO do laco de proposito.
@@ -1792,7 +1804,7 @@ public partial class GameServer
 	/// formato do pacote, e a segunda envelheceria calada no dia em que um campo entrasse.
 	/// </summary>
 	private static NetDataWriter PacoteDeForma(int id, string de, string para, DegrauDeCena degrau,
-											   bool dominada)
+											   bool dominada, byte marcasDoFrost)
 	{
 		var w = Protocol.Begin(Protocol.S2C.Forma);
 		w.Put(id);
@@ -1818,6 +1830,12 @@ public partial class GameServer
 		// alto la faria o pacote inteiro cair em `DegrauDeCena.Nenhuma`.
 		// =============================================================================================
 		w.Put(dominada);
+
+		// (2026-10-19) AS MARCAS DO FROST DEMON MUTANTE, num byte proprio depois do dominio (o degrau tem o `Enum.IsDefined` do
+		// cliente, ver acima): `MarcaInstavel` -- a forma em que ele ENTROU nao se segura, e a cena e a vermelha -- e
+		// `MarcaDescontrolado` -- o ki dele esta fora de controle, e a aura vermelha fica colada no corpo. Zero pra todo o resto.
+		// Ver `Protocol.MarcaInstavel` e `GameServer.Frost.cs`.
+		w.Put(marcasDoFrost);
 		return w;
 	}
 
@@ -1903,7 +1921,7 @@ public partial class GameServer
 
 		if (!quem.Forma.NaBase)
 			saida.Add(PacoteDeForma(quem.Id, quem.Forma.Atual, quem.Forma.Atual, DegrauDeCena.Nenhuma,
-									Dominou(quem, quem.Forma.Atual)));
+									Dominou(quem, quem.Forma.Atual), MarcasDoFrost(quem, instavel: false)));
 
 		// A FERA DEPOIS DA ESCADA, e a ordem e a mesma do jogo (ver `AnunciarOozaru`): o macaco cobre o
 		// que a forma desenhou. Invertido, o `S2C.Forma` chegaria por cima e devolveria o lutador de

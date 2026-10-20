@@ -610,6 +610,10 @@ public partial class GameServer
 		var pod = new Nave { Id = _proximaNaveId++, Tipo = "Spacepod", X = dentro.X + 12, Y = dentro.Y, DonoConta = pl.Conta, DonoNome = pl.Name };
 		pod.PorZona(ZonaDoEspaco);
 		_naves.Add(pod);
+		// (2026-10-19) O CASCO DO LEME TAMBEM BLINDA QUEM PILOTA (`GameServer.Leme.cs`: ao leme ninguem e alcancado, nem pelo calor), e com ele
+		// ligado a linha do sol ficaria coberta duas vezes -- o contra-exemplo la embaixo nao queimaria mais. Esta cena mede a linha do sol
+		// SOZINHA, como em 2026-10-18; o casco tem a bancada dele (`--lemeteste`).
+		LemeApanhaDeTeste = true;
 		try
 		{
 			UsarNave(pl);
@@ -641,6 +645,7 @@ public partial class GameServer
 		{
 			PilotoQueimaNaEstrelaDeTeste = false;
 			PilotoNaPoseDeVooDeTeste = false;
+			LemeApanhaDeTeste = false;
 			if (NaveDoPiloto(pl) is { } n) Desembarcar(pl, n);
 			_naves.Remove(pod);
 			GravarNaves();

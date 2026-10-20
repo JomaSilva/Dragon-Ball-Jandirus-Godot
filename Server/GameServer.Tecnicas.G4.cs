@@ -153,9 +153,11 @@ public partial class GameServer
 	/// Os tres testes de `Communication.dm:53`, num lugar so. O piso dos 5 e medido SEM a barra de poder (regra do
 	/// dono de 2026-10-12, <see cref="TemEnergiaQueSeSente"/>): quem se segura continua achavel; quem RELAXA expressa
 	/// a constante 5 e some por ele.
+	/// (2026-10-19) A raca "Android" e a letra do DM; o `AndroideSemKi` soma o que ela nao acha -- o androide NPC da saga do Cell, que nasce
+	/// "Human" pelo molde (o dono: *"androides nem deveriam aparecer no sense ou scouter por serem androides"*).
 	/// </summary>
 	private static bool AchoAEnergiaG4(ServerPlayer m) =>
-		!m.Ficha.isconcealed && m.Race != "Android" && TemEnergiaQueSeSente(m);
+		!m.Ficha.isconcealed && m.Race != "Android" && !AndroideSemKi(m) && TemEnergiaQueSeSente(m);
 
 	private void ListarMentesG4(ServerPlayer pl)
 	{
@@ -267,7 +269,13 @@ public partial class GameServer
 		alvo.Ficha.Statify();
 
 		// --- `M.loc = locate(usr.x, usr.y, usr.z)` -------------------------
-		PuxarParaG4(alvo, pl.Zone, pl.Pos);
+		// (2026-10-19) QUEM VOLTA A VIDA DENTRO DO OUTRO MUNDO ACORDA NO MUNDO DOS VIVOS, no berco -- escolha do dono quando o King
+		// Yemma passou a ir la reviver (`GameServer.TravessiaDoJuiz.cs`). Puxado pra perto de quem o reviveu ele ficaria VIVO no
+		// Outro Mundo, sem porta de saida (as passagens de la so levam ao Ceu e ao Inferno). Vai pelo funil do renascer -- o berco,
+		// ou o dominio escolhido --, o mesmo da volta paga do Enma.
+		bool doAlem = Alem.EhOAlem(alvo.Zone) && !RevividoFicaNoAlemDeTeste;
+		if (doAlem) MandarProBerco(alvo);
+		else PuxarParaG4(alvo, pl.Zone, pl.Pos);
 
 		// ============================ E AQUI A VERSAO DE CARGO COBRA ============================
 		// `M.ResurrectedCount += 1` (`OtherworldRankSkills.dm:237`) -- e ele so e escrito pela versao
@@ -279,7 +287,9 @@ public partial class GameServer
 
 		Persistir(alvo);
 
-		Avisar(pl, $"você traz {alvo.Name} de volta, e o corpo se refaz aos seus pes.");
+		Avisar(pl, doAlem
+			? $"você traz {alvo.Name} de volta: a alma desce pro mundo dos vivos e acorda em casa."
+			: $"você traz {alvo.Name} de volta, e o corpo se refaz aos seus pes.");
 		Avisar(alvo, $"{pl.Name} trouxe você de volta ao mundo dos vivos!");
 		GD.Print($"[server] {pl.Name} RESSUSCITOU {alvo.Name}"
 				 + (deCargo ? $" (volta n.{alvo.Ficha.ResurrectedCount}, pelo cargo)" : " (skill racial)"));

@@ -158,6 +158,9 @@ public sealed class Esfera
 	/// caso e resolvido no `Logout` (que espalha, :217) e no filtro do save (que exige `x>=1`, ou seja
 	/// **esfera em inventario nunca era salva**) -- as duas metades dizendo "esfera sempre volta pro
 	/// chao". Aqui uma linha diz isso: o portador nao persiste.
+	///
+	/// (2026-10-19) A ESFERA NA MAO APARECE NA MOCHILA (dono), e este campo continua sendo a unica resposta: a mochila so a
+	/// MOSTRA, pelo pacote -- ver `Jandirus.Core.Magic.EsferaNaMochila` e `GameServer.EsferasNaMochila.cs`.
 	/// </summary>
 	[JsonIgnore] public int Portador;
 
@@ -1002,7 +1005,10 @@ public sealed partial class GameServer
 			// a mesma regra de pe: nocauteado ou morto, ela cai, e e so assim que ela volta pros jogadores.
 			bool podeCarregar = quem != null && (quem.Peer != null || CarregaComoSoldado(quem)) && !quem.Ficha.dead && !quem.Ficha.KO;
 
-			if (podeCarregar && quem!.Zone.Hash == e.Zona.Hash) continue;
+			// (2026-10-19) ...E ELA ANDA COM ELE POR DENTRO DO PLANETA DELA -- a caverna, o Lookout (dono: *"locais como cavernas, lookout
+			// etc vc pode ir pq ainda estao dentro do planeta"*). Antes a pergunta era "a mesma zona", e toda porta derrubava. A zona e o
+			// ponto dela seguem o corpo (`AcompanharOPortador`). Ver `GameServer.EsferasNaMochila.cs`.
+			if (podeCarregar && SetPorId(e.Set) is { } doSet && DentroDoPlanetaDoSet(quem!.Zone, doSet)) { AcompanharOPortador(e, quem); continue; }
 
 			// A ESFERA CAI ONDE O CORPO ESTAVA -- nocaute, morte, logout ou troca de zona, o mesmo
 			// gesto. Se ele levou a esfera pra outro mundo, a policia (4) a devolve no segundo
@@ -1028,7 +1034,9 @@ public sealed partial class GameServer
 			{
 				if (e.Portador != 0) continue;   // carregada: o DM pula a checagem (`if(!container)`)
 
-				if (e.Zona.Hash != zona.Hash)
+				// (2026-10-19) NO CHAO DA CAVERNA OU DO LOOKOUT ELA FICA: e chao do planeta dela (`DentroDoPlanetaDoSet`), e quem a
+				// carregou ate la pode larga-la la.
+				if (!DentroDoPlanetaDoSet(e.Zona, s))
 				{
 					// FORA DO PLANETA DELA: volta. **Nao da pra levar uma esfera pra outro mundo** --
 					// e a regra que faz reunir as sete ser uma viagem, e nao um saque.
@@ -1069,6 +1077,10 @@ public sealed partial class GameServer
 
 		// O DISCO DO DRAGON RADAR le o estado que este tique acabou de fechar. Ver `GameServer.RadarDeEsferas.cs`.
 		TickDoRadarDeEsferas();
+
+		// (2026-10-19) ...E A MOCHILA de quem ganhou ou perdeu esfera por fora (a queda do item 3, o espalhar, o set que acordou e
+		// trocou a pedra pela esfera acesa). Ver `GameServer.EsferasNaMochila.cs`.
+		SincronizarAsEsferasNasMochilas();
 	}
 
 	// =====================================================================
@@ -1088,16 +1100,23 @@ public sealed partial class GameServer
 		// cadaver (`CaidoPelaMorte`), e nao o `dead` cru.
 		if (pl.Ficha.KO || CaidoPelaMorte(pl)) { Avisar(pl, "você não consegue nem se levantar."); return; }
 
+		// (2026-10-19) AO LEME, NAO: nave nenhuma leva esfera (dono: *"naves e espaco vc e bloqueado de ir com elas"*) -- e quem pilota um
+		// pod continua no chao do planeta, com a mao ao alcance dela. Ver `GameServer.EsferasNaMochila.cs`.
+		if (PilotandoPorFecho(pl.Id) && !PegaDeDentroDaNaveDeTeste)
+		{ Avisar(pl, "de dentro de uma nave não dá pra pegar uma Esfera do Dragão -- nave nenhuma leva uma."); return; }
+
 		if (EsferaPerto(pl) is not { } e) { Avisar(pl, "não há nenhuma Esfera do Dragão ao seu alcance."); return; }
 
 		e.Portador = pl.Id;
 		SalvarEsferas();
 		MandarEsferas(pl.Zone);
+		// (2026-10-19) ...E ELA VAI PRA MOCHILA (dono), com o sprite do chao: a tela recebe o slot na hora.
+		MandarMochila(pl);
 
 		SetDeEsferas? s = SetPorId(e.Set);
 		int quantas = QuantasCarrega(pl.Id);
-		Avisar(pl, $"você pega a {Esferas.NomeDaEsfera(e.Numero)} ({quantas}/{Esferas.Total} com você)"
-				 + (s != null && !SetAtivo(s) ? " -- ela está apagada, o set ainda se refaz." : "."));
+		Avisar(pl, $"você pega a {Esferas.NomeDaEsfera(e.Numero)} e a guarda na mochila ({quantas}/{Esferas.Total} com você)"
+				 + (s != null && !SetAtivo(s) ? " -- ela está apagada (pedra): o set ainda se refaz." : "."));
 	}
 
 	private void LargarEsferas(ServerPlayer pl)
@@ -1114,6 +1133,7 @@ public sealed partial class GameServer
 		}
 		SalvarEsferas();
 		MandarEsferas(pl.Zone);
+		MandarMochila(pl);   // (2026-10-19) os slots delas saem da mochila -- ver `GameServer.EsferasNaMochila.cs`
 		Avisar(pl, $"você põe {minhas.Count} esfera(s) no chão.");
 	}
 
@@ -1202,7 +1222,9 @@ public sealed partial class GameServer
 		{
 			// As duas mortes tem mensagens diferentes de proposito: uma passa, a outra pede alguem.
 			Avisar(pl, s.Inerte
-				? "as esferas estão INERTES -- só quem as criou pode despertá-las de novo."
+				? EstatuaSemCriador(s)
+					? "as esferas estão INERTES -- quem as criou deixou de existir, e só um Namekuseijin do Clã do Dragão as desperta."
+					: "as esferas estão INERTES -- só quem as criou pode despertá-las de novo."
 				: $"as esferas ainda se refazem. Falta {(s.AtivoEm - TempoDoMundo) / 3600.0:0.#} h real(is).");
 			return;
 		}
@@ -1212,6 +1234,22 @@ public sealed partial class GameServer
 
 		if (s.Pedidos >= s.Desejos)
 		{ Avisar(pl, "este set já deu tudo o que tinha nesta ativação."); return; }
+
+		// (2026-10-19) O DRAGAO SO SOBE NO MUNDO DO SET, A CEU ABERTO. Com a esfera entrando em caverna e no Lookout (ver
+		// `GameServer.EsferasNaMochila.cs`) as sete podem se juntar la dentro -- e o dragao de pe se desenha na zona do SET
+		// (`MandarEsferas`): invocado no Lookout, ele subiria no ceu da Terra, longe de quem chamou. A ULTIMA RECUSA, e de proposito:
+		// set apagado, inerte, com o dragao de pe ou sem pedido responde isso primeiro, de onde for -- e a `--porungateste` (passo 7) mede
+		// "ainda se refazem" de quem junta as sete do Porunga longe de Namek.
+		if (pl.Zone.Hash != s.Zona.Hash && !DragaoSobeForaDoSetDeTeste)
+		{
+			Avisar(pl, $"o dragão só se ergue a céu aberto, em {NomeDoPlaneta(s.ZonaNome)} -- aqui dentro ele não cabe.");
+			return;
+		}
+
+		// (2026-10-19) AS SETE SAEM DA MOCHILA (dono: *"caso vc tenha as 7 no inventario e clique no verb q ja existe de invocar o dragao
+		// elas vao sair do seu inventario"*): vao pro chao aos pes de quem invoca, e o resto e o de sempre -- depois do ultimo pedido, o
+		// `ContarUmDesejo` as espalha de la. Ver `GameServer.EsferasNaMochila.cs`.
+		TirarDaMochilaPraInvocacao(pl, sete);
 
 		// O DRAGAO NASCE UM TILE AO NORTE de quem invocou -- `locate(src.x, src.y+1, src.z)` (:220),
 		// com o Y invertido (no BYOND ele cresce pra cima).
@@ -1561,15 +1599,23 @@ public sealed partial class GameServer
 				 + "As sete se espalharam de novo.");
 	}
 
-	/// <summary>`Revive_Set()` (:90-101) -- so o criador, e so vivo. E a UNICA volta de um set inerte.</summary>
+	/// <summary>
+	/// `Revive_Set()` (:90-101) -- so o criador, e so vivo. E a UNICA volta de um set inerte. (2026-10-19) E A ESTATUA QUE PERDEU O CRIADOR
+	/// (apagado ou reencarnado -- `GameServer.VagaReciclada.cs`) e despertada por OUTRO Namekuseijin do Cla do Dragao, que vira o criador
+	/// dela (o dono: *"precisando de outro namek clan dragao pra reviver as esferas nesse planeta"*).
+	/// </summary>
 	private void ReviverOSet(ServerPlayer pl)
 	{
 		SetDeEsferas? s = _sets.Find(x => x.Zona.Hash == pl.Zone.Hash);
 		if (s == null) { Avisar(pl, "não há Estátua do Dragão neste mundo."); return; }
-		if (!string.Equals(s.CriadorSig, pl.Assinatura, StringComparison.Ordinal))
+		bool semCriador = EstatuaSemCriador(s);
+		if (semCriador && !DoClaDoDragao(pl))
+		{ Avisar(pl, "quem ergueu esta estátua deixou de existir: só um Namekuseijin do Clã do Dragão a desperta."); return; }
+		if (!semCriador && !string.Equals(s.CriadorSig, pl.Assinatura, StringComparison.Ordinal))
 		{ Avisar(pl, "só quem ergueu a estátua pode despertá-la."); return; }
 		if (pl.Ficha.dead) { Avisar(pl, "um morto não desperta nada."); return; }
 
+		if (semCriador) AdotarAEstatua(s, pl);
 		s.Inerte = false;
 		if (_esferas.Count(e => e.Set == s.Id) < Esferas.Total) RefazerAsEsferas(s);
 		SalvarEsferas();
@@ -1769,7 +1815,9 @@ public sealed partial class GameServer
 		Avisar(pl, $"  pedidos por invocação: {s.Desejos} (já usados nesta ativação: {s.Pedidos})");
 		Avisar(pl, $"  poder do set: {s.Poder:N0}");
 
-		if (s.Inerte) Avisar(pl, "  INERTES: só quem as criou pode despertá-las.");
+		if (s.Inerte) Avisar(pl, EstatuaSemCriador(s)
+			? "  INERTES: quem as criou deixou de existir -- um Namekuseijin do Clã do Dragão pode despertá-las."
+			: "  INERTES: só quem as criou pode despertá-las.");
 		else if (TempoDoMundo < s.AtivoEm)
 			Avisar(pl, $"  apagadas -- acordam em {(s.AtivoEm - TempoDoMundo) / 3600.0:0.#} h real(is).");
 		else Avisar(pl, "  ACORDADAS. Reúna as sete e invoque.");

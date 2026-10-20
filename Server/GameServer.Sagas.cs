@@ -397,6 +397,15 @@ public partial class GameServer
 				if (ec.Fase != FaseDoChefe.ACaminho) continue;
 				if (!soAsChegadasDeHoje) ec.DiasRestantes--;
 
+				// (2026-10-19) O CELL A CAMINHO DO TORNEIO DELE: o lembrete e o do torneio, e com a arena ocupada (o torneio de artes marciais
+				// aberto) ele espera ela vagar -- quem o poe la depois e a `ChegadaAdiadaDoCell` (`GameServer.TorneioDoCell.cs`).
+				if (ec.NoTorneio)
+				{
+					if (ec.DiasRestantes <= 0) { if (!TorneioAtivo) NascerChefeDaSaga(elo, est, ec); }
+					else if (!soAsChegadasDeHoje) AnunciarNoMundo(TorneioDoCell.Lembrete(_moldes?.Get(ec.Molde)?.Nome ?? ec.Molde, ec.DiasRestantes));
+					continue;
+				}
+
 				if (ec.DiasRestantes <= 0) NascerChefeDaSaga(elo, est, ec);
 				else menor = Math.Min(menor, ec.DiasRestantes);
 			}
@@ -480,6 +489,10 @@ public partial class GameServer
 
 		// O RELOGIO DO ULTIMATO comeca a correr na CHEGADA (o `s1_spawn_time`, BossEvents.dm:466).
 		ec.UltimatoEm = elo.DestroiPlaneta ? _relogioDoMundo + elo.MinutosDeOcio * 60 : 0;
+
+		// (2026-10-19) O CELL DO TORNEIO nasce NA ARENA da Terra (e, voltando Super Perfeito, encerra o torneio) -- ver
+		// `GameServer.TorneioDoCell.cs`. As frases e a cena da chegada sao as do torneio.
+		if (ec.NoTorneio && AbrirOTorneioDoCell(elo, ec, npc, como == ComoChegou.Ressurgindo, como == ComoChegou.Retomando)) return;
 
 		ChefeDaSaga? ficha = Array.Find(elo.Chefes, c => c.Molde == ec.Molde);
 		string frase = como switch
@@ -712,6 +725,9 @@ public partial class GameServer
 
 		if (corpo.Ficha.dead) { MorreuOChefe(elo, est, ec, corpo); return; }
 
+		// (2026-10-19) O CELL QUE CHEGOU NA FORMA DO TORNEIO anuncia o torneio e sai do mundo -- ver `GameServer.TorneioDoCell.cs`.
+		if (IrProTorneioDoCell(elo, ec, corpo)) return;
+
 		// APANHOU = FOI ENFRENTADO. E o `if(!s1_engaged && boss1.target)` do original com o sinal que
 		// este port ja tem: `UltimoAgressor` + `RancorAte` sao o funil unico de "alguem bateu em mim"
 		// (ver `MarcarAgressao`). Usar "tem alvo" exigiria expor o alvo da IA, que hoje e uma variavel
@@ -826,8 +842,9 @@ public partial class GameServer
 		// campo e 1-based porque e assim que o dono conta degrau no `npcs.json`; `ec.Degrau` e 0-based.
 		// A conferencia do degrau seguinte existir e obrigatoria: sem ela um dado errado marcaria o
 		// chefe pra voltar num degrau que nao existe e o elo nunca fecharia.
+		// (2026-10-19) ...MENOS O CELL QUE PERDEU O KAMEHAMEHA NUMA DISPUTA DE KI: essa morte e a do anime, de vez (`KamehamehaDoCellPerdeu`).
 		// =====================================================================================
-		if (ficha is { RessurgeNoDegrau: > 0 } && molde != null
+		if (!MorreuSemVolta(corpo.Id) && ficha is { RessurgeNoDegrau: > 0 } && molde != null
 			&& ec.Degrau + 1 == ficha.RessurgeNoDegrau
 			&& ec.Degrau + 1 < molde.Estagios.Length)
 		{
@@ -892,6 +909,12 @@ public partial class GameServer
 	// =====================================================================
 	// O ULTIMATO E O GANCHO DA DESTRUICAO
 	// =====================================================================
+	/// <summary>
+	/// DEFEITO INJETADO (`--chefesteste`, familia N): o prazo que vence com o chefe CAIDO ergue a esfera assim mesmo -- o jogo de antes de
+	/// 2026-10-19. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool EsferaSobeNoChaoDeTeste;
+
 	private void CorrerOUltimato(EloDaSaga elo, EstadoDoElo est, EstadoDoChefe ec, ServerPlayer corpo)
 	{
 		MoldeDeNpc? molde = _moldes?.Get(ec.Molde);
@@ -930,6 +953,20 @@ public partial class GameServer
 		}
 
 		if (_relogioDoMundo < ec.UltimatoEm) return;
+
+		// ============================ (2026-10-19) DERRUBADO ANTES DA ESFERA, O PLANETA FICA ============================
+		// O dono: *"freeza quando é derrotado em namek ele explode o planeta de qualquer forma aparentemente, ele se for derrotado antes de usar
+		// a deathball pra explodir o planeta, o planeta deveria ser salvo"*. O prazo vencia com o chefe CAIDO -- a janela de finaliza-lo -- e a
+		// esfera subia assim mesmo: ela o deixa intocavel (`ComecarASupernova`), entao ninguem mais o finalizava ali no chao, e se ele levantasse
+		// antes da queda o planeta explodia. Caido na hora da carga e o mesmo nocaute que interrompe a carga (logo abaixo): a esfera nao sobe, o
+		// prazo anda os 2 min do `BEV_PD_RETRY` e a janela continua aberta -- morto nela, o elo fecha vencido e o planeta fica. Vale pras duas
+		// sagas que destroem (a Supernova de Vegeta tambem).
+		// =========================================================================================================
+		if (!ec.Carregando && corpo.Ficha.KO && !EsferaSobeNoChaoDeTeste)
+		{
+			ec.UltimatoEm = _relogioDoMundo + 120;
+			return;
+		}
 
 		// ============================ A SUPERNOVA (v0.3.0): A CARGA COM CORPO NA TELA ============================
 		// No DM era a carga de 30 s com a bola do `15.dmi` sobre o chefe (`BEV_PD_CHARGE`, BossEvents.dm:29) -- e a JANELA

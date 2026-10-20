@@ -134,6 +134,13 @@ public static class VerbosDoJogo
 			+ "Grade 2 e pelo Grade 3 antes do SSJ2; desligados, vai direto pro SSJ2.",
 			() => C?.SendVerbo("graus")) { Requisito = Do("graus") });
 
+		// (2026-10-19) OS CORPOS DAS FORMAS DO FROST DEMON -- o `Icer_Form_Settings` do DM (`icer.dm:77-83`, aba Other), que todo Frost
+		// Demon recebe (`fd_login_check`). O botao abre a tela; quem manda o verb `formas_frost` e o Salvar dela. Ver `TelaDeFormasDoFrost`.
+		Verbos.Registrar(new Verbo("Icer Form Settings", Verbos.Outros,
+			"Re-escolhe o corpo de cada forma do Frost Demon (as supressões do Mutante, a base e as duas evoluções). "
+			+ "Trocar os corpos devolve você à forma inicial.",
+			() => TelaDeFormasDoFrost.Instancia?.Abrir()) { Requisito = Do("formas_frost") });
+
 		// ============================ O `Goto Spawn` MUDOU DE ABA -- DECISAO DO DONO ============================
 		// Ele ficava aqui, em "Other", pra todo mundo. Saiu por ordem do dono (*"tire o verb
 		// gotospawn, deixe ele so pra adm"*) e reapareceu la embaixo em `Verbos.Admin`.
@@ -181,6 +188,25 @@ public static class VerbosDoJogo
 		Verbos.Registrar(new Verbo("Decline Elder Seat", Verbos.Outros,
 			"Recusa o assento de Anciao.",
 			() => C?.SendVerbo("cargo_nomear_recusar")) { Requisito = Do("cargo_nomear_recusar") });
+
+		// (2026-10-19) O PATRONATO DO KAIOSHIN (`KaioshinApprentice.dm`): os dois verbos da skill `Kaioshin Apprenticeship` e a resposta de
+		// quem foi convidado -- ver `GameServer.AprendizDeKaioshin.cs`. Sem ninguem marcado, o "Name Apprentice" pede a lista de quem por
+		// perto pode ser aprendiz (o cartao da aba Other).
+		Verbos.Registrar(new Verbo("Name Apprentice", Verbos.Outros,
+			"So o Kaioshin no trono: toma como Aprendiz de Kaioshin quem esta marcado (a ate 4 tiles) -- sem ninguem marcado, mostra quem por perto pode ser.",
+			() => C?.SendVerbo("aprendiz_nomear", (C?.AlvoId ?? 0) is var id and not 0 ? id.ToString() : "")) { Requisito = Do("aprendiz_nomear") });
+
+		Verbos.Registrar(new Verbo("Dismiss Apprentice", Verbos.Outros,
+			"So o Kaioshin: mostra os seus aprendizes pra dispensar um -- ele perde o kit e recebe os Marcos de volta.",
+			() => C?.SendVerbo("aprendiz_dispensar", "")) { Requisito = Do("aprendiz_dispensar") });
+
+		Verbos.Registrar(new Verbo("Accept Apprenticeship", Verbos.Outros,
+			"Aceita ser Aprendiz de Kaioshin de quem te ofereceu.",
+			() => C?.SendVerbo("aprendiz_aceitar")) { Requisito = Do("aprendiz_aceitar") });
+
+		Verbos.Registrar(new Verbo("Decline Apprenticeship", Verbos.Outros,
+			"Recusa o aprendizado.",
+			() => C?.SendVerbo("aprendiz_recusar")) { Requisito = Do("aprendiz_recusar") });
 
 		// ============================ A RESPOSTA A OFERTA DE JUVENTUDE ============================
 		// O `Restore_Youth` do Grand Kai e do Demon Lord (lote G8) abre uma OFERTA, porque no DM o

@@ -1558,6 +1558,27 @@ public static class FormasBench
 		Checa("a sobrecarga de um argumento e exatamente `semRedeas: false`",
 			  divergiram.Count == 0, string.Join(", ", divergiram));
 
+		// ---- 7b. O GRADE 3 APAGA A IRIS SEMPRE (dono, 2026-10-19) ----
+		// *"super saiyajin grade 3 ficar com as pupilas brancas (igual no lssj descontrolado)"*: o MESMO branco da furia,
+		// com ou sem posse (o Grade 3 nunca perde o controle, entao a posse nao pode mudar nada nele). O GRADE 2 e a outra
+		// metade da regua: tem o mesmo cabelo `USSj` e o mesmo corpo musculoso, e continua no verde da escada -- sem ele, um
+		// "a escada inteira ficou branca" passaria aqui.
+		FormaDef grade3 = Catalogo.Def(Catalogo.IdGrade3)!, grade2 = Catalogo.Def("grade2")!;
+		bool Grade3SemIris() => Catalogo.CorDoOlho(grade3, semRedeas: false) == branco
+							 && Catalogo.CorDoOlho(grade3, semRedeas: true) == branco;
+		Checa($"o Grade 3 fica de olho BRANCO sem iris (#{branco}), o mesmo do LSSJ possuido, com ou sem posse",
+			  Grade3SemIris(), Catalogo.CorDoOlho(grade3) ?? "nada");
+		Checa($"-- e o Grade 2 (mesmo cabelo, mesmo corpo) continua no verde da escada (#{verde})",
+			  Catalogo.CorDoOlho(grade2) == verde, Catalogo.CorDoOlho(grade2) ?? "nada");
+		Checa($"-- e o SSJ1 tambem (#{verde})", Catalogo.CorDoOlho(ssj1) == verde, Catalogo.CorDoOlho(ssj1) ?? "nada");
+		Catalogo.Grade3DeIrisVerdeDeTeste = true;
+		try
+		{
+			Checa("(defeito injetado: o Grade 3 no verde da escada, o jogo de antes) a mesma regua REPROVA",
+				  !Grade3SemIris(), Catalogo.CorDoOlho(grade3) ?? "nada");
+		}
+		finally { Catalogo.Grade3DeIrisVerdeDeTeste = false; }
+
 		// ---- 8. A CURVA E QUADRATICA, E ISSO SE MEDE PELA RAZAO ----
 		// ============================ POR QUE UM PONTO NAO BASTA, E DUAS PONTAS TAMBEM NAO ============================
 		// Tudo acima prova que a curva SOBE e que ela e simetrica. Uma RETA (`D * f`) passa em todas

@@ -41,6 +41,12 @@ public sealed partial class GameServer
 	/// <summary>A bancada troca a config (durações curtas, chances cheias) antes de forjar os corpos.</summary>
 	internal RotinaConfig RotinaDeTeste { get => _rotina; set => _rotina = value; }
 
+	/// <summary>
+	/// (2026-10-19) DEFEITO INJETADO (`--patriarcateste`): o molde que nao vagueia ganha a rotina de todo habitante -- o Grande Patriarca
+	/// passeia e aceita spar. Lido na linha que monta a rotina (`TicarARotina`). Falso em jogo, sempre.
+	/// </summary>
+	internal static bool QuemNaoVagueiaPasseiaDeTeste;
+
 	private void CarregarRotina()
 	{
 		const string caminho = "res://Assets/Data/rotina.json";
@@ -116,8 +122,11 @@ public sealed partial class GameServer
 		destino = npc.Pos;
 		// QUEM NAO E HABITANTE so passeia (ver `Rotina.SoPasseia`): o chefe sem presa anda por ai,
 		// como o corpo antigo andava, e nao entra na vida social do povo.
+		// (2026-10-19) E QUEM NAO VAGUEIA FICA NO LUGAR DELE (`"vagueia": false` no molde, o Grande Patriarca de Namek): sem passeio
+		// e sem spar -- ver `Rotina.Parado`.
 		Rotina r = npc.Rotina ??= new Rotina(_rotina, npc.Papel?.Semente ?? (ulong)npc.Id, npc.Id,
-											 soPasseia: npc.Papel is not { Pacifico: true }, conversas: ConversaDaAlma(npc));
+											 soPasseia: npc.Papel is not { Pacifico: true }, conversas: ConversaDaAlma(npc),
+											 parado: !QuemNaoVagueiaPasseiaDeTeste && npc.Papel is { Molde.Vagueia: false });
 		Arredores a = LerArredores(npc, r);
 		Ordem o = r.Tique(dtDaMente, a);
 		// (2026-10-17) COM TORNEIO NO AR, O PALCO E SO DOS DOIS DA VEZ: o passeio desvia dele -- ver `ForaDoPalcoDoTorneio`.

@@ -318,9 +318,10 @@ public partial class GameServer
 			MedirAAbsorcao(Checa);
 
 			// =====================================================================
-			// 10. A FICHA NOVA NA SAGA QUE JA DISPAROU (2026-10-18)
+			// 10. A FICHA NOVA NA SAGA QUE JA DISPAROU (2026-10-18; os androides e o Cell, 2026-10-19)
 			// =====================================================================
 			MedirOPisoDaFichaNova(Checa);
+			MedirOPisoDaFichaNovaDoCell(Checa);
 
 			Checa("a bancada chegou ao fim (ver o `catch`: sem ele, abortar no meio reportava '0 falhas')",
 				  true);
@@ -562,8 +563,8 @@ public partial class GameServer
 		ServerPlayer? cell = Corpo(eCell);
 		ServerPlayer? a17 = Corpo(e17);
 		Checa("o Cell chegou dois dias in-game depois", cell != null, $"{eCell.Fase}");
-		Checa("...no primeiro degrau da ficha dele (150 M)",
-			  cell != null && cell.Papel!.Estagio == 0 && Math.Abs(cell.Ficha.BP - 150_000_000) < 1,
+		Checa("...no primeiro degrau da ficha dele (300 M, o dobro do DM -- dono, 2026-10-19)",
+			  cell != null && cell.Papel!.Estagio == 0 && Math.Abs(cell.Ficha.BP - 300_000_000) < 1,
 			  $"{cell?.Ficha.BP:N0}");
 
 		if (cell == null || a17 == null) return;
@@ -589,8 +590,8 @@ public partial class GameServer
 
 		Checa("encostando no androide caido, o Cell o ABSORVE e ele sai do mundo",
 			  !_players.ContainsKey(a17.Id) && e17.Fase == FaseDoChefe.Consumido, $"{e17.Fase}");
-		Checa("...e o Cell sobe um degrau da PROPRIA ficha (o mesmo AvancarEstagio do dano)",
-			  cell.Papel!.Estagio == 1 && Math.Abs(cell.Ficha.BP - 500_000_000) < 1,
+		Checa("...e o Cell sobe um degrau da PROPRIA ficha (o mesmo AvancarEstagio do dano) -- a Semi-Perfeita, 1 B",
+			  cell.Papel!.Estagio == 1 && Math.Abs(cell.Ficha.BP - 1_000_000_000) < 1,
 			  $"degrau {cell.Papel!.Estagio + 1} BP {cell.Ficha.BP:N0}");
 		Checa("...e o mundo ouviu",
 			  EscutaDasSagas!.Any(t => t.Contains("ABSORVEU")), string.Join(" | ", EscutaDasSagas!));
@@ -726,6 +727,77 @@ public partial class GameServer
 		finally
 		{
 			PinoAbaixoDaFichaDeTeste = false;
+			foreach (ServerPlayer c in ChefesNoMundo()) RemoverNpc(c);
+		}
+	}
+
+	/// <summary>
+	/// (2026-10-19) ...E O MESMO PROS ANDROIDES E O CELL -- o dono: *"dobre o bp dos androides 17 e 18 e aumente o poder do cell primeira forma
+	/// e segunda da mesma forma, a forma perfeita e super perfeita pode manter igual"*. A ficha nova, e a saga que ja disparou: o save de antes
+	/// do update (os dois androides no mundo com os 100 milhoes pinados, o Cell a caminho com os 150 e 500 milhoes) volta do reinicio com a
+	/// ficha nova -- pelo mesmo piso da carga (`ErguerOsPinosAteAFicha`), que nao sabe de Freeza nem de Cell: e todo chefe de todo elo.
+	/// </summary>
+	private void MedirOPisoDaFichaNovaDoCell(Checagem Checa)
+	{
+		EloDaSaga? elo = Array.Find(_cadeia, e => e.Id == "cell");
+		MoldeDeNpc? m17 = _moldes?.Get("androide_17"), m18 = _moldes?.Get("androide_18"), mCell = _moldes?.Get("cell");
+		if (elo == null || m17 is not { Estagios.Length: 1 } || m18 is not { Estagios.Length: 1 } || mCell is not { Estagios.Length: 4 })
+		{
+			Checa("(montagem) a saga do Cell, os dois androides de um degrau e o Cell de quatro", false);
+			return;
+		}
+
+		double[] fichaDoCell = [.. mCell.Estagios.Select(s => s.Bp)];
+		Checa("**A FICHA NOVA DOS ANDROIDES E DO CELL** (*\"dobre o bp dos androides 17 e 18 e aumente o poder do cell primeira forma e segunda da "
+			  + "mesma forma, a forma perfeita e super perfeita pode manter igual\"*): os androides com 200 milhoes, o Cell com 300 milhoes e 1 bilhao "
+			  + "nas formas 1 e 2 -- o dobro do DM (`BEV_ANDROID_BP`, `BEV_CELL_BPS`) --, e a Perfeita e a Super Perfeita como no DM (3,5 e 5 bilhoes)",
+			  m17.Estagios[0].Bp == 2 * 100_000_000 && m18.Estagios[0].Bp == 2 * 100_000_000
+			  && fichaDoCell.SequenceEqual([2 * 150_000_000, 2 * 500_000_000, 3_500_000_000, 5_000_000_000]),
+			  $"17 {m17.Estagios[0].Bp:N0}; 18 {m18.Estagios[0].Bp:N0}; Cell " + string.Join(" / ", fichaDoCell.Select(b => b.ToString("N0"))));
+
+		try
+		{
+			// O SAVE DE ANTES DO UPDATE, escrito pelo `SalvarSagas` de producao: os elos de antes vencidos (a cadeia e sequencial), a saga do
+			// Cell em curso, os dois androides no mundo com os 100 milhoes pinados e o Cell a caminho com os 150 e 500 milhoes das formas 1 e 2.
+			Zerar();
+			foreach (EloDaSaga e in _cadeia)
+			{
+				if (e.Id == elo.Id) break;
+				Elo(e.Id).Disparou = true;
+				Elo(e.Id).Fase = FaseDaSaga.Vencida;
+			}
+			EstadoDoElo est = Elo(elo.Id);
+			est.Disparou = true;
+			est.Fase = FaseDaSaga.EmCurso;
+			est.Chefes.Add(new EstadoDoChefe { Molde = "androide_17", Fase = FaseDoChefe.NoMundo, Bps = [100_000_000] });
+			est.Chefes.Add(new EstadoDoChefe { Molde = "androide_18", Fase = FaseDoChefe.NoMundo, Bps = [100_000_000] });
+			est.Chefes.Add(new EstadoDoChefe
+			{
+				Molde = "cell", Fase = FaseDoChefe.ACaminho, DiasRestantes = 5, Bps = [150_000_000, 500_000_000, 3_500_000_000, 5_000_000_000],
+			});
+			SalvarSagas();
+
+			// O REINICIO: o mundo esquece tudo e le do disco, pelas duas funcoes que o servidor chama no boot e no primeiro tique.
+			foreach (ServerPlayer c in ChefesNoMundo()) RemoverNpc(c);
+			_sagas = new EstadoDasSagas();
+			CarregarSagas();
+			TickDasSagas();
+
+			EstadoDoElo depois = Elo(elo.Id);
+			EstadoDoChefe? e17 = depois.Chefes.Find(c => c.Molde == "androide_17"), e18 = depois.Chefes.Find(c => c.Molde == "androide_18");
+			EstadoDoChefe? eCell = depois.Chefes.Find(c => c.Molde == "cell");
+			ServerPlayer? a17 = e17 == null ? null : Corpo(e17), a18 = e18 == null ? null : Corpo(e18);
+			Checa("**OS ANDROIDES DA SAGA QUE JA DISPAROU VOLTAM COM A FICHA NOVA**: o save tinha os 100 milhoes, e os dois voltam do reinicio "
+				  + "com os 200 milhoes de agora",
+				  a17 != null && a18 != null && Math.Abs(a17.Ficha.BP - m17.Estagios[0].Bp) < 1 && Math.Abs(a18.Ficha.BP - m18.Estagios[0].Bp) < 1,
+				  $"17 {a17?.Ficha.BP:N0}; 18 {a18?.Ficha.BP:N0}");
+			Checa("...e o CELL A CAMINHO tambem: o vetor que o nascimento dele vai ler ja tem os 300 milhoes e 1 bilhao das formas 1 e 2 -- e a "
+				  + "Perfeita e a Super Perfeita, iguais a ficha, ficam",
+				  eCell is { Fase: FaseDoChefe.ACaminho } && eCell.Bps.SequenceEqual(fichaDoCell),
+				  eCell == null ? "sem estado" : $"{eCell.Fase}: " + string.Join(" / ", eCell.Bps.Select(b => b.ToString("N0"))));
+		}
+		finally
+		{
 			foreach (ServerPlayer c in ChefesNoMundo()) RemoverNpc(c);
 		}
 	}

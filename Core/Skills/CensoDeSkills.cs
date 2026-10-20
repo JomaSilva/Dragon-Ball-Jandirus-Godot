@@ -116,6 +116,9 @@ public static class CensoDeSkills
 		["Appoint_Elder"] = "cargo_nomear",
 		["RankChat"] = "cargo_falar",
 		["Permission"] = "sala_autorizar",
+		// (2026-10-19) o patronato do Kaioshin, que esperava aqui embaixo como "patronato de Kaishin" -- ver `GameServer.AprendizDeKaioshin.cs`
+		["Nomear_Aprendiz"] = "aprendiz_nomear",
+		["Dispensar_Aprendiz"] = "aprendiz_dispensar",
 
 		// AS DUAS FORMAS QUE SAO DEGRAU DA ESCADA, e nao tecnica: no DM cada forma tem o proprio
 		// verb; aqui existe UM canal de transformacao e um catalogo de 33 formas. O verb sumiu
@@ -348,7 +351,6 @@ public static class CensoDeSkills
 		// A CONSTANTE `SistSigilo` FOI DELETADA junto, e nao esquecida aqui "por via das duvidas": um
 		// grupo sem nenhum verb dentro sai do relatorio como uma linha de zero, que e ruido.
 		// ==========================================================================================================
-		["Nomear_Aprendiz"] = SistPatronato, ["Dispensar_Aprendiz"] = SistPatronato,
 		// O `Detect_Shard` SAIU daqui pelo lote G8, e este e o caso mais gritante da tabela inteira:
 		// ele estava marcado como dependente do sistema das esferas do dragao, e o corpo do verb no DM
 		// e **uma linha de texto** -- *"The Master Emerald is no more; there is nothing to detect."*
@@ -381,7 +383,6 @@ public static class CensoDeSkills
 	private const string SistTempo = "parar o tempo";
 	private const string SistArvore = "arvore-arma (arrancar cenario e usar como arma)";
 	private const string SistTrem = "raio em TREM DE SEGMENTOS (o port colapsou o raio num objeto so)";
-	private const string SistPatronato = "patronato de Kaishin (aprendiz com varios donos)";
 
 	// =====================================================================
 	// AS TRES LISTAS NAO PODEM SE CONTRADIZER

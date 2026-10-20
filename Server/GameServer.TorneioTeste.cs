@@ -799,6 +799,130 @@ public sealed partial class GameServer
 			Checa("a agenda do Outro Mundo foi consumida (o proximo e a Terra quem marca)", AgendaDeTeste.ProximoDoAlemMs == 0);
 
 			// =====================================================================
+			// 4b) QUEM CUMPRE PENA NO INFERNO NAO VAI AO TORNEIO (2026-10-19)
+			// =====================================================================
+			// O Inferno conta como alem, e o convite ia pro condenado; a corrente da pena (`CumprirPenaNoInferno`, no `TickFichas` que o
+			// `Tiques` anda) o devolvia ao portao no fechamento e de novo na hora da luta. O dono, perguntado: *"Nao pode"*.
+			GD.Print("[torneio] -- 4b) quem cumpre pena no Inferno nao vai ao torneio --");
+			{
+				var inferno = ZoneKey.Premade(Alem.ZonaDoInferno);
+				long penaDoHost = pl.Ficha.hell_lockout_until;
+				try
+				{
+					MoveToZone(pl.Id, inferno, PortaoDoInferno(inferno));
+					pl.Ficha.hell_lockout_until = NowMs() + 3_600_000;   // uma hora de pena
+					ComandoDeTorneio(pl, "trn_iniciar", "alem");
+					Avisos();
+					ComandoDeTorneio(pl, "trn_participar", "");
+					List<string> recusa = Avisos();
+					Checa("PRECONDICAO: o torneio do Outro Mundo abriu com o host morto no INFERNO, cumprindo pena",
+						  TorneioAtivo && FaseDoTorneioDeTeste == "Inscricao" && pl.Zone.Hash == inferno.Hash && pl.Ficha.dead, pl.Zone.Name);
+					Checa("**QUEM CUMPRE PENA NAO SE INSCREVE**: o `trn_participar` do condenado e recusado, dizendo quanto falta",
+						  InscritosDeTeste == 0 && recusa.Any(x => x.Contains("pena", StringComparison.Ordinal)), string.Join(" | ", recusa));
+
+					// O CONTRA-EXEMPLO E O CAMINHO QUE O JOGADOR VIA: a regra de antes (a pena nao barra). O condenado entra; no fechamento o
+					// torneio o leva pra cadeira, e o tique de ficha seguinte o devolve ao portao do Inferno.
+					bool entrou, voltou;
+					PenaNaoBarraOTorneioDeTeste = true;
+					try
+					{
+						ComandoDeTorneio(pl, "trn_participar", "");
+						entrou = InscritosDeTeste == 1;
+						PularSegundos(6);
+						Tiques(3);
+						voltou = TorneioAtivo && pl.Zone.Hash == inferno.Hash && ChaveDeTeste?.Quem(pl.Assinatura) != null;
+					}
+					finally { PenaNaoBarraOTorneioDeTeste = false; }
+					Checa("(defeito injetado: a pena nao barra o torneio) o condenado entra na chave, e no fechamento a corrente o puxa da cadeira de volta pro portao do Inferno -- dali ele nunca chega a arena",
+						  entrou && voltou, $"inscrito {entrou}; depois do fechamento em {pl.Zone.Name}, na chave {ChaveDeTeste?.Quem(pl.Assinatura) != null}");
+					if (TorneioAtivo) ComandoDeTorneio(pl, "trn_cancelar", "");
+
+					// E QUEM E JULGADO DEPOIS DE SE INSCREVER sai no fechamento, avisado.
+					pl.Ficha.hell_lockout_until = 0;
+					MoveToZone(pl.Id, alem, MesaDoEnma(alem));
+					ComandoDeTorneio(pl, "trn_iniciar", "alem");
+					ComandoDeTorneio(pl, "trn_participar", "");
+					bool inscritoSolto = InscritosDeTeste == 1;
+					pl.Ficha.hell_lockout_until = NowMs() + 3_600_000;
+					Avisos();
+					PularSegundos(6);
+					Tiques(2);
+					List<string> corte = Avisos();
+					Checa("...e quem e julgado pro Inferno DEPOIS de se inscrever sai da chave no fechamento, avisado",
+						  inscritoSolto && ChaveDeTeste?.Quem(pl.Assinatura) == null && corte.Any(x => x.Contains("te tirou da chave", StringComparison.Ordinal)),
+						  $"inscrito antes {inscritoSolto}; {string.Join(" | ", corte)}");
+					if (TorneioAtivo) ComandoDeTorneio(pl, "trn_cancelar", "");
+				}
+				finally
+				{
+					pl.Ficha.hell_lockout_until = penaDoHost;
+					if (pl.Zone.Hash != alem.Hash) MoveToZone(pl.Id, alem, MesaDoEnma(alem));
+				}
+			}
+
+			// =====================================================================
+			// 4c) A LUTA DO HOST CHAMADA COM O CLIENTE ATRASADO (2026-10-19)
+			// =====================================================================
+			// O dono: *"perto da arena mas fora da area dela, perdendo automaticamente ao iniciar a luta"*. O torneio leva o lutador da
+			// cadeira pro ponto de luta, e ate a correcao chegar o cliente dele segue dizendo "estou na cadeira". Aqui os pacotes do
+			// `GameClient.SendState` sao forjados no `AplicarInput` de producao, um por tique (30 por segundo), com a posicao da cadeira a
+			// contagem INTEIRA: o pior cliente, que so le a chamada no "COMECEM!". Com um atraso menor o arrasto depende do lado e da
+			// cadeira sorteados -- com 3 s, o host do lado B e a cadeira do outro lado do palco pararam meia celula pra dentro da linha
+			// (rodada r3 do agente `torneioalem`) --, e a contagem inteira alcanca qualquer cadeira. A contagem e a de producao.
+			GD.Print("[torneio] -- 4c) a luta do host chamada com o cliente atrasado --");
+			{
+				double contagemDaBancada = cfg.ContagemSegundos;
+				(bool Chamado, bool Dentro, bool RingOut, string Onde) LutaComClienteAtrasado()
+				{
+					ComandoDeTorneio(pl, "trn_iniciar", "alem");
+					ComandoDeTorneio(pl, "trn_participar", "");
+					PularSegundos(6);
+					Tiques(2);
+					Vec2 cadeira = pl.Pos;
+					// A CHAVE ANDA ATE A LUTA DO HOST: cada fase da luta alheia pulada pelo verbo de admin.
+					for (int i = 0; i < 400 && TorneioAtivo && LutadoresDeTeste.A != pl.Id && LutadoresDeTeste.B != pl.Id; i++)
+					{
+						ComandoDeTorneio(pl, "trn_avancar", "");
+						Tiques(1);
+					}
+					bool chamado = FaseDoTorneioDeTeste == "Contagem" && (LutadoresDeTeste.A == pl.Id || LutadoresDeTeste.B == pl.Id);
+					Arena arena = cfg.Alem.Arena;
+					int tiques = 0;
+					while (chamado && FaseDoTorneioDeTeste == "Contagem" && tiques < 600)
+					{
+						AplicarInput(pl, pl.SeqInput + 1, (uint)NowMs(), cadeira, 0);
+						Tiques(1);
+						tiques++;
+					}
+					bool dentro = arena.ContemEm(pl.Pos);
+					string onde = $"host em ({MathF.Floor(pl.Pos.X / ZoneCollision.TileSize)},{MathF.Floor(pl.Pos.Y / ZoneCollision.TileSize)}) no COMECEM, "
+								+ $"a cadeira em ({MathF.Floor(cadeira.X / ZoneCollision.TileSize)},{MathF.Floor(cadeira.Y / ZoneCollision.TileSize)}), {tiques} tiques de contagem";
+					Ouvidos();
+					Tiques(1);   // o primeiro tique da luta: e nele que o juiz olha o ring-out
+					bool ringOut = Ouvidos().Any(x => x.Contains("RING-OUT", StringComparison.Ordinal) && x.Contains(pl.Name, StringComparison.Ordinal));
+					if (TorneioAtivo) ComandoDeTorneio(pl, "trn_cancelar", "");
+					return (chamado, dentro, ringOut, onde);
+				}
+				try
+				{
+					cfg.ContagemSegundos = original.ContagemSegundos;
+					(bool chamado, bool dentro, bool ringOut, string onde) = LutaComClienteAtrasado();
+					Checa("PRECONDICAO: a chave chamou a luta do host, na contagem de producao", chamado, onde);
+					Checa("**O CLIENTE ATRASADO NAO TIRA O LUTADOR DA ARENA**: a contagem inteira de pacotes ainda dizendo \"estou na cadeira\" depois da chamada, e no \"COMECEM!\" o host esta DENTRO, sem ring-out",
+						  chamado && dentro && !ringOut, onde);
+					TransporteComJanelaCurtaDeTeste = true;
+					try
+					{
+						(bool chamado2, bool dentro2, bool ringOut2, string onde2) = LutaComClienteAtrasado();
+						Checa("(defeito injetado: o transporte abre so o meio segundo de todo salto) os pacotes velhos arrastam o host de volta pra cadeira na contagem, e o \"COMECEM!\" o pega fora -- RING-OUT, o relato do dono",
+							  chamado2 && !dentro2 && ringOut2, onde2);
+					}
+					finally { TransporteComJanelaCurtaDeTeste = false; }
+				}
+				finally { cfg.ContagemSegundos = contagemDaBancada; }
+			}
+
+			// =====================================================================
 			// 5) A AGENDA PERSISTIDA
 			// =====================================================================
 			GD.Print("[torneio] -- 5) a agenda persistida --");

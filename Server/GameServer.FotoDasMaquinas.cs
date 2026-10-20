@@ -58,11 +58,16 @@ public partial class GameServer
 	/// <summary>
 	/// UMA MAQUINA A (dx, dy) TILES DO DONO, assentada pelo funil de producao (`AssentarDeTeste`: mochila +
 	/// `posicionar`). Nasce SOLTA, como toda maquina que alguem assenta -- o parafuso e do menu.
+	///
+	/// (2026-10-19) O DONO GANHA OS 100 DE TECNOLOGIA do jogo de antes: as melhorias tem teto pela tecnologia de quem paga
+	/// (`TetoPorTecnologia`), e o corpo da foto nasce com zero -- com zero o tanque turbinado da cena nao subiria a velocidade, o
+	/// campo nao sairia do tile da maquina e a Drill (`--diagdrill`) nao passaria do nivel 1.
 	/// </summary>
 	/// <returns>o id da obra, ou 0 se o servidor recusou.</returns>
 	internal int MaquinaDaFoto(int idDono, string tipo, int dx, int dy)
 	{
 		if (!_players.TryGetValue(idDono, out ServerPlayer? pl)) return 0;
+		pl.Ficha.techskill = Math.Max(pl.Ficha.techskill, TetoPorTecnologia.TechSemTeto);
 		(int cx, int cy) = CatalogoDeObras.Celula(pl.Pos.X, pl.Pos.Y);
 		if (AssentarDeTeste(pl, tipo, cx + dx, cy + dy) is not { } obra) return 0;
 		_fotoDasMaquinasObras.Add(obra);

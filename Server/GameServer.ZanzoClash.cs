@@ -290,15 +290,6 @@ public sealed partial class GameServer
 	/// </summary>
 	private readonly Dictionary<int, long> _sorteioLivreEm = [];
 
-	/// <summary>
-	/// AS LETRAS QUE PODEM SAIR.
-	///
-	/// So letras sem acento, como o dono pediu ("mantenha nas letras sem simbolo ou numeros"). WASD
-	/// ficam DE FORA: sao as teclas de andar, e pedir a alguem que aperte "W" no meio de um embate
-	/// e pedir que ele tente correr. O mesmo vale pras teclas que ja tem funcao em combate.
-	/// </summary>
-	private const string Letras = "BCEFGHIJKLMNOPQRTUVXYZ";
-
 	// =====================================================================
 	// COMECAR
 	// =====================================================================
@@ -511,8 +502,8 @@ public sealed partial class GameServer
 	/// erro mudasse -- que ja mudou uma vez ("errando vc perde 1 ponto do clash").
 	///
 	/// ERRAR E MANDAR UMA LETRA QUALQUER, e nao um caminho de erro proprio: assim o erro da maquina
-	/// paga o MESMO preco que o do jogador, e (uma em vinte e duas vezes) o chute ate acerta -- que e
-	/// literalmente o que acontece com quem chuta.
+	/// paga o MESMO preco que o do jogador, e (uma em quatro vezes, desde que o embate e so WASD) o
+	/// chute ate acerta -- que e literalmente o que acontece com quem chuta.
 	/// </summary>
 	private void ResponderPelaMaquina(Embate e, ServerPlayer p, long agora)
 	{
@@ -535,12 +526,15 @@ public sealed partial class GameServer
 	// AS PECAS QUE OS DOIS EMBATES DIVIDEM
 	// =====================================================================
 	/// <summary>
-	/// UMA LETRA DO MESMO ALFABETO. Compartilhada com a colisao de ki
-	/// (`GameServer.EmbateDeKi.cs`) -- ver <see cref="Letras"/> pra saber por que WASD esta de fora,
-	/// que e uma regra que vale igual nos dois: pedir "W" a quem esta empurrando um feixe e pedir que
-	/// ele tente andar.
+	/// UMA LETRA DO MESMO ALFABETO. Compartilhada com a colisao de ki (`GameServer.EmbateDeKi.cs`) e com a danca da
+	/// fusao -- e o alfabeto e o do Core (`LetrasDoEmbate`: so W, A, S e D, pedido do dono de 2026-10-19), porque a tela
+	/// do embate pergunta a mesma lista o que e resposta.
 	/// </summary>
-	private char SortearLetraDeEmbate() => Letras[_rng.Next(Letras.Length)];
+	private char SortearLetraDeEmbate()
+	{
+		string letras = LetrasDoEmbate.Letras;
+		return letras[_rng.Next(letras.Length)];
+	}
 
 	/// <summary>
 	/// "APERTE ESTA LETRA", com o prazo. O MESMO pacote dos dois embates -- ver

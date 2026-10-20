@@ -274,6 +274,13 @@ public sealed partial class GameServer
 		_canais.TryGetValue(id, out CanalDeKi? c) ? (true, c.Atirando, c.Carga) : (false, false, 0);
 
 	/// <summary>
+	/// (2026-10-19) A CARGA DESTE CORPO E A DO SHATTERING THE LIMIT (o raio que vai sair 2x)? E o que pinta de vermelho a bola na mao
+	/// (`EntityState.CanalDoLimite`), como o raio (`Projetil.DoLimite`); `Passivas.LimiteSemVermelhoDeTeste` apaga os dois.
+	/// </summary>
+	private bool CargaDoLimite(int id) =>
+		!Jandirus.Core.Races.Passivas.LimiteSemVermelhoDeTeste && _canais.TryGetValue(id, out CanalDeKi? c) && c.Limite > 1;
+
+	/// <summary>
 	/// APANHOU: O RAIO CAI. E o `if(KB) stopbeaming()` do laco do `ShootBeam` (`beams.dm:73-74`).
 	///
 	/// ============================ ESTA REGRA FALTAVA INTEIRA ============================
@@ -534,8 +541,12 @@ public sealed partial class GameServer
 	/// SAIR (o snapshot desligar o `Inerte`, que quem liga continua sendo quem chama). O dono, 2026-10-16: *"sempre q a
 	/// genkidama aumenta o personagem faz animaçao de soco oq n deveria ser"*.
 	/// </param>
+	/// <param name="doLimite">
+	/// (2026-10-19) O RAIO DO SHATTERING THE LIMIT: nasce vermelho (`Projetil.DoLimite`). Parametro, e nao conta feita aqui, porque o 2x e
+	/// decidido na CARGA (`CanalDeKi.Limite`, o Ki de antes de pagar) -- e o anuncio de nascimento sai daqui de dentro.
+	/// </param>
 	private Projetil Disparar(ServerPlayer pl, ReceitaDeProjetil r,
-							  Vec2? rumoDado = null, Vec2? deOnde = null, string verbo = "", bool naMao = false)
+							  Vec2? rumoDado = null, Vec2? deOnde = null, string verbo = "", bool naMao = false, bool doLimite = false)
 	{
 		// COM ALGUEM MARCADO, O TIRO SAI NELE (dono, 2026-10-09) -- e o corpo vira junto. Ver `RumoDoTiro`.
 		// Quem ja traz o rumo pronto (a rajada sorteada, a mina que nasce em volta do alvo) nao e mexido.
@@ -612,6 +623,7 @@ public sealed partial class GameServer
 			Nome = r.Nome,
 			Arte = arte,
 			Invisivel = r.Invisivel,
+			DoLimite = doLimite,   // (2026-10-19) o raio do Shattering the Limit nasce vermelho -- ver `Projetil.DoLimite`
 			ZonaCerta = r.ZonaCerta,
 			Dom = r.Dom,
 			Colossal = r.Colossal,   // (v0.3.0) a Genkidama -- ver `ReceitaDeProjetil.Colossal`
@@ -841,8 +853,9 @@ public sealed partial class GameServer
 	{
 		if (!PodeAtirar(pl, custo, out string porque)) { Avisar(pl, porque); return; }
 
-		// (v0.4.0) O SHATTERING THE LIMIT pergunta o custo contra o Ki de ANTES de pagar.
-		double limite = pl.Racial.FatorDoLimite(custo, pl.Ficha.Ki);
+		// (v0.4.0) O SHATTERING THE LIMIT pergunta o custo contra o Ki de ANTES de pagar. (2026-10-19) O verb vai junto: o Kamehameha pronto
+		// no degrau SSJ4 e o x10 sem os 10% -- ver `Passivas.VerboDoKamehameha`.
+		double limite = pl.Racial.FatorDoLimite(custo, pl.Ficha.Ki, verbo);
 		pl.Ficha.Ki -= custo;
 
 		// O CORPO JA VIRA PRO MARCADO AO COMECAR A CARGA (dono, 2026-10-09): quem reune energia encara em quem
@@ -926,7 +939,9 @@ public sealed partial class GameServer
 	/// </summary>
 	private void NascerORaio(ServerPlayer pl, CanalDeKi c)
 	{
-		Projetil raio = Disparar(pl, c.Receita, verbo: c.Verbo);
+		// (2026-10-19) o raio do Shattering the Limit nasce VERMELHO (dono) -- a marca vai no anuncio de nascimento, ver `Projetil.DoLimite`
+		Projetil raio = Disparar(pl, c.Receita, verbo: c.Verbo,
+								 doLimite: c.Limite > 1 && !Jandirus.Core.Races.Passivas.LimiteSemVermelhoDeTeste);
 		if (!raio.Vivo)
 		{
 			FecharCanal(pl.Id, c, "nao ha espaco pra mais energia solta aqui.");
@@ -2154,7 +2169,7 @@ public sealed partial class GameServer
 		if (cadaver) return;
 		AoTiroEncostar(p, dono, FatorDaLuta(dono, alvo));
 		MarcarAgressao(alvo, dono);
-		ConsequenciaDoDano(alvo, dono, "na explosao de ki", porKi: !p.Fisico);
+		ConsequenciaDoDano(alvo, dono, "na explosao de ki", p.Letal, porKi: !p.Fisico);
 	}
 
 	/// <summary>
@@ -2936,7 +2951,8 @@ public sealed partial class GameServer
 			// AS FLAGS VAO NO FIM (crescer pelo fim e o que mantem escritor e leitor faceis de conferir
 			// lado a lado): bit 0 = nasceu invisivel (a lamina de ar do Kiai). Ver `Projetil.Invisivel`.
 			// (v0.3.1) bit 1 = nasceu NA MAO (a Genkidama se formando): ver o `naMao` do `Disparar`.
-			w.Put((byte)((p.Invisivel ? 1 : 0) | (naMao ? 2 : 0)));
+			// (2026-10-19) bit 2 = o raio do Shattering the Limit, que o cliente pinta de vermelho: ver `Projetil.DoLimite`.
+			w.Put((byte)((p.Invisivel ? 1 : 0) | (naMao ? 2 : 0) | (p.DoLimite ? 4 : 0)));
 			// ...E DEPOIS DELAS, O SOM (2026-10-13): com que arquivo o tiro sai. Ver `SomDeKi`.
 			w.Put((byte)p.Som);
 		}

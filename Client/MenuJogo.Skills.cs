@@ -499,6 +499,10 @@ public partial class MenuJogo
 				if (r.Tipo != TipoDeRegra.AbreArvore) continue;
 				if (cat.Get(r.Alvo) is not { Arvore: true } alvo) continue;
 				if (minhas.Contains(alvo) || !vistas.Add(alvo.Path)) continue;
+				// (2026-10-20) A ARVORE DO APRENDIZ DE KAIOSHIN NAO SE ANUNCIA: quem a da e o mestre (`KaioshinApprentice.dm:86`), nao o
+				// progresso -- e a regra que a abre mora na Strength of Spirit, que todo mundo tem. Sem esta linha a aba de TODO jogador
+				// mostrava o cartao apagado dela; no DM ela nem existe pra quem nao e aprendiz (o `ksap_strip` a tira ate da vitrine).
+				if (!Jandirus.Core.Ranks.AprendizDeKaioshin.ArvoreAnunciadaDeTeste && string.Equals(alvo.Path, Jandirus.Core.Ranks.AprendizDeKaioshin.Arvore, StringComparison.OrdinalIgnoreCase)) continue;
 				yield return (alvo, r.Condicao, arv.Nome);
 			}
 	}

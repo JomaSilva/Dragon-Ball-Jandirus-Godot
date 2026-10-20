@@ -30,7 +30,7 @@ namespace Jandirus.Server;
 ///
 /// ============================ O QUE SE REUSOU DO ZANZO CLASH ============================
 /// O molde e ele, como a instrucao desta camada pediu, e o reuso e literal:
-///   * o ALFABETO, a JANELA e o PISO DE CADENCIA da letra (`Letras`, `MsPorTecla`,
+///   * o ALFABETO, a JANELA e o PISO DE CADENCIA da letra (`SortearLetraDeEmbate`, `MsPorTecla`,
 ///     `MsMinimoEntreLetras`) -- e a licao que mora la: o acerto ADIANTA a proxima letra, e quem
 ///     impede que isso vire concurso de digitacao e o piso, que e o `BCL_PRESS_TICK_CAP` do DM;
 ///   * o CANAL da tecla (`C2S.ClashTecla`), o OPCODE (`S2C.Clash`) e a TELA (`Client/ClashQte.cs`),
@@ -484,7 +484,7 @@ public sealed partial class GameServer
 			: $"os ataques de {a.Quem.Name} e {b.Quem.Name} colidem!";
 		Avisar(a.Quem, $"DISPUTA DE KI: {oque} Acerte as letras pra empurrar.");
 		Avisar(b.Quem, tipo == Protocol.TipoDeEmbate.FeixeContraGuarda
-			? $"voce agarra o ataque de {a.Quem.Name}! Acerte as letras pra devolve-lo -- ou ande de lado pra sair da frente dele."
+			? $"voce agarra o ataque de {a.Quem.Name}! Acerte as letras pra devolve-lo -- ou ande de lado pelas setas pra sair da frente dele."
 			: $"DISPUTA DE KI contra {a.Quem.Name}! Acerte as letras pra empurrar.");
 
 		// O ESTOURO INICIAL, no mundo: o mesmo `createShockwavemisc(center, 3)` do `start()`.
@@ -981,6 +981,9 @@ public sealed partial class GameServer
 
 		GD.Print($"[server] EMBATE DE KI acabou: {venc.Quem.Name} vence ({motivo}) "
 				 + $"| medidor {d.Medidor:0.#} | {d.Corridos:0.#}s");
+
+		// (2026-10-19) E SE QUEM PERDEU ERA O CELL COM O KAMEHAMEHA QUE IA EXPLODIR A TERRA, ele morre ali -- `GameServer.TorneioDoCell.cs`.
+		KamehamehaDoCellPerdeu(perd.Quem, venc.Quem);
 	}
 
 	/// <summary>
@@ -1140,6 +1143,9 @@ public sealed partial class GameServer
 		OndaDeChoqueDoEmpate(d, cabecas);
 		Anunciar(d, 0, 0);   // os dois zerados = empate. Ver `Protocol.ClashSub.Acabou`.
 		GD.Print($"[server] EMBATE DE KI: EMPATE em {d.Corridos:0.#}s (medidor {d.Medidor:0.#})");
+
+		// (2026-10-19) ...e o Kamehameha do Cell que empata nao explode a Terra: ele carrega outro -- `GameServer.TorneioDoCell.cs`.
+		KamehamehaDoCellEmpatou(d.A.Quem, d.B.Quem);
 	}
 
 	/// <summary>

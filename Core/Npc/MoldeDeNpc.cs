@@ -235,6 +235,14 @@ public sealed class MoldeDeNpc
 	/// </summary>
 	public bool NomesUnicos;
 
+	/// <summary>
+	/// (2026-10-19) ELE SAI VAGANDO? -- o `idle_wandering` do `mob/npc/Citizen` (PlanetPopulation.dm:79, ligado em todo habitante),
+	/// escrito `"vagueia": false` no molde de quem NAO sai do lugar: o Grande Patriarca de Namek (`idle_wandering = 0`, :219 -- ver
+	/// <see cref="Patriarca"/>). Falso, a vida diaria nao passeia nem entra em spar -- conversa e treina ali mesmo (`Ai.Rotina.Parado`)
+	/// -- e o embaralho do planeta vazio o deixa onde esta (`GameServer.PasseiaSozinho`): o lugar dele e o papel dele.
+	/// </summary>
+	public bool Vagueia = true;
+
 	// =====================================================================
 	// QUEM ELE E
 	// =====================================================================
@@ -585,6 +593,7 @@ public sealed class CatalogoDeMoldes
 				SangueDoBio = Lista(e, "sangueDoBio"),
 				Alma = Bit(e, "alma", false),
 				NomesUnicos = Bit(e, "nomesUnicos", false),
+				Vagueia = Bit(e, "vagueia", true),
 			};
 
 			if (e.TryGetProperty("perfil", out JsonElement perfil) && perfil.ValueKind == JsonValueKind.Object)

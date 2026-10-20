@@ -126,8 +126,45 @@ public sealed partial class GameServer
 		// `mundo.json` de antes desta mudanca voltam do disco sem ele, e uma delas sem estado seria
 		// uma excecao nula no primeiro uso.
 		obra.Gravidade ??= new GravidadeDaObra();
+		// (2026-10-19) A MAQUINA DE ANTES DO TETO DO MUNDO NA FORCA desce pra ele no primeiro toque -- ver `TetoDaForca`.
+		ApararAoTetoDoMundo(obra.Gravidade);
 		return obra.Gravidade;
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--melhoriasteste`): a forca do campo passa do teto de gravidade do mundo -- o jogo de antes de
+	/// 2026-10-19, em que a maquina chegava a 535x e nao ligava acima de 500x. Lido pelas duas linhas do conserto
+	/// (<see cref="TetoDaForca"/> e <see cref="ApararAoTetoDoMundo"/>). Falso em jogo, sempre.
+	/// </summary>
+	internal bool ForcaPassaDoTetoDoMundoDeTeste;
+
+	/// <summary>
+	/// ============================ ATE ONDE A FORCA DO CAMPO SOBE (dono, 2026-10-19) ============================
+	/// *"a gravidade ta dando pra dar upgrades alem do teto do server (nao da pra colocar acima do teto q no meu caso é 500x,
+	/// mas da pra da upgrades alem do teto, e fica estranho a maquina te a capacidade de 550x gravidae e n conseguir por conta
+	/// do teto do server, o certo seria capar o upgrade em 500x ou qualquer valor q o server tenha como teto)"*.
+	///
+	/// A melhoria multiplica por 1,2 e arredonda (`Gravity.dm:236`): 446x vira 535x, e o teto do mundo
+	/// (<see cref="Interacoes.TetoDeGravidade"/>) so cortava na hora de LIGAR. Agora o degrau que passaria dele para nele, e a
+	/// maquina no teto do mundo nao oferece mais a melhoria (`MelhoriasFeitas`). Por baixo do teto do mundo, o da tecnologia de
+	/// quem paga (<see cref="TetoPorTecnologia.ForcaDaGravidade"/>) -- os dois sao o mesmo aos 100 de tecnologia.
+	/// ============================================================================================================
+	/// </summary>
+	private double TetoDaForca(ServerPlayer pl) =>
+		ForcaPassaDoTetoDoMundoDeTeste ? double.PositiveInfinity
+		: TetoPorTecnologia.ForcaDaGravidade(pl.Ficha.techskill, Interacoes.TetoDeGravidade);
+
+	/// <summary>A maquina melhorada alem do teto do mundo (antes do conserto) desce pra ele: e o que ela liga, e o que ela diz que aguenta.</summary>
+	private void ApararAoTetoDoMundo(GravidadeDaObra g)
+	{
+		if (!ForcaPassaDoTetoDoMundoDeTeste && g.Max > Interacoes.TetoDeGravidade) g.Max = Interacoes.TetoDeGravidade;
+	}
+
+	/// <summary>Quantas vezes a bateria desta maquina ja dobrou desde a de fabrica (uma carga).</summary>
+	private static int DobrasDaBateria(GravidadeDaObra g) => (int)Math.Round(Math.Log2(Math.Max(g.EnergiaMax, 1)));
+
+	/// <summary>A carga, como a tela a escreve (cem por carga), de uma bateria que dobrou tantas vezes.</summary>
+	private static double BateriaComDobras(int dobras) => 100 * Math.Pow(2, dobras);
 
 	/// <summary>
 	/// O `Click()` DA MAQUINA (`Gravity.dm:277-321`).
@@ -153,8 +190,8 @@ public sealed partial class GameServer
 		if (!double.TryParse(arg, out double pedido) || !NumeroFinito(pedido)) { Avisar(pl, "número inválido."); return; }
 
 		// TRES CORTES, na ordem do original: o teto da MAQUINA, o piso, e o teto do MUNDO. O do
-		// mundo vem por ultimo porque ele vale mesmo pra uma maquina melhorada alem dele -- a
-		// progressao de forca passa de 500 por volta da vigesima segunda melhoria.
+		// mundo e o cinto: desde 2026-10-19 a forca para nele (`TetoDaForca`), e a maquina melhorada
+		// alem dele antes disso desce pra ele no primeiro toque (`ApararAoTetoDoMundo`).
 		double teto = Math.Min(g.Max, Interacoes.TetoDeGravidade);
 		g.Pedida = Math.Clamp(pedido, 0, teto);
 		if (g.Pedida < pedido) Avisar(pl, $"esta máquina não passa de {teto:0}x.");
@@ -213,17 +250,34 @@ public sealed partial class GameServer
 	/// OS PRECOS SAO DO ESTADO ATUAL, e por isso saem daqui e nao do catalogo de interacoes -- eles mudam a
 	/// cada melhoria comprada. NAS DUAS MOEDAS (dono, 2026-10-10): cada melhoria se paga em zeni ou, pelo
 	/// dobro, em recursos; e o SALDO vai junto, que e com ele que se escolhe.
+	///
+	/// (2026-10-19) E O TETO DE QUEM PERGUNTA: ate onde a tecnologia dele leva cada melhoria (`TetoPorTecnologia`), e a
+	/// que ja chegou la diz isso no lugar do preco.
 	/// </summary>
 	private void DizerOsPrecosDaGravidade(ServerPlayer pl, GravidadeDaObra g)
 	{
+		double tech = pl.Ficha.techskill;
+		double forca = TetoDaForca(pl);
+		int dobras = TetoPorTecnologia.DobrasDaBateriaDaGravidade(tech);
+		int alcance = TetoPorTecnologia.AlcanceDaGravidade(tech, AlcanceMaximo);
+		int nanites = TetoPorTecnologia.NanitesDaGravidade(tech);
+		// (com 100 de tecnologia o teto e o do jogo, e a linha fica a de antes)
+		bool livre = TetoPorTecnologia.Livre(tech);
+		string AteOnde(string escrito) => livre ? "" : $" (a sua tecnologia leva até {escrito})";
+
 		Avisar(pl, "-- melhorias (em zeni, ou o dobro em recursos) --");
-		Avisar(pl, $"  força do campo: {Recurso.DoisPrecos(CustoDeForca(g))}");
-		Avisar(pl, $"  bateria: {Recurso.DoisPrecos(CustoDeBateria(g))}");
-		Avisar(pl, g.Range < AlcanceMaximo
-			? $"  alcance: {Recurso.DoisPrecos(CustoDeAlcance(g))}"
-			: $"  alcance: no máximo ({AlcanceMaximo})");
+		Avisar(pl, g.Max >= Interacoes.TetoDeGravidade ? $"  força do campo: no teto do mundo ({Interacoes.TetoDeGravidade:0}x)"
+			: g.Max >= forca ? $"  força do campo: no teto da sua tecnologia ({forca:0}x)"
+			: $"  força do campo: {Recurso.DoisPrecos(CustoDeForca(g))}{AteOnde($"{forca:0}x")}");
+		Avisar(pl, DobrasDaBateria(g) >= dobras ? $"  bateria: no teto da sua tecnologia ({BateriaComDobras(dobras):N0})"
+			: $"  bateria: {Recurso.DoisPrecos(CustoDeBateria(g))}{AteOnde($"{BateriaComDobras(dobras):N0}")}");
+		Avisar(pl, g.Range >= AlcanceMaximo ? $"  alcance: no máximo ({AlcanceMaximo})"
+			: g.Range >= alcance ? $"  alcance: no teto da sua tecnologia ({alcance})"
+			: $"  alcance: {Recurso.DoisPrecos(CustoDeAlcance(g))}{AteOnde($"{alcance}")}");
 		Avisar(pl, g.Estavel ? "  estabilização: já comprada" : $"  estabilização: {Recurso.DoisPrecos(CustoDeEstabilidade)}");
-		Avisar(pl, $"  nanites: {Recurso.DoisPrecos(CustoDeNanites(g))} (pede {TechDosNanites:0} de tecnologia)");
+		Avisar(pl, g.Nanites >= nanites ? $"  nanites: no teto da sua tecnologia ({nanites})"
+			: $"  nanites: {Recurso.DoisPrecos(CustoDeNanites(g))} (pede {TechDosNanites:0} de tecnologia"
+			  + (livre ? ")" : $"; a sua leva até {nanites})"));
 		Avisar(pl, $"  você tem {CarteiraEscrita(pl)}.");
 	}
 
@@ -250,16 +304,28 @@ public sealed partial class GameServer
 		double custo;
 		string feito;
 
+		// (2026-10-19) O TETO DE QUEM PAGA: cada melhoria para onde a tecnologia dele alcanca -- ver `TetoPorTecnologia`. A recusa
+		// vem antes da cobranca, e a maquina que ja passou dele continua como esta.
+		double tech = pl.Ficha.techskill;
+
 		switch (qual)
 		{
 			case "forca":
+				double forca = TetoDaForca(pl);
+				if (g.Max >= Interacoes.TetoDeGravidade && !ForcaPassaDoTetoDoMundoDeTeste)
+				{ Avisar(pl, $"a força do campo já está no teto do mundo ({Interacoes.TetoDeGravidade:0}x)."); return; }
+				if (g.Max >= forca) { Avisar(pl, TetoPorTecnologia.Recusa("a força do campo", tech, $"{forca:0}x", proporcional: true)); return; }
 				custo = CustoDeForca(g);
 				if (!CobrarOuExplicar(pl, custo, moeda, "a força do campo")) return;
-				g.Max = Math.Round(g.Max * 1.2);
-				feito = $"o campo aguenta {g.Max:0}x agora";
+				// O DEGRAU QUE PASSARIA DO TETO PARA NELE (446x vira 500x, e nao 535x) -- ver `TetoDaForca`.
+				g.Max = Math.Min(Math.Round(g.Max * 1.2), forca);
+				feito = g.Max >= Interacoes.TetoDeGravidade ? $"o campo aguenta {g.Max:0}x agora -- o teto do mundo" : $"o campo aguenta {g.Max:0}x agora";
 				break;
 
 			case "bateria":
+				int dobras = TetoPorTecnologia.DobrasDaBateriaDaGravidade(tech);
+				if (DobrasDaBateria(g) >= dobras)
+				{ Avisar(pl, TetoPorTecnologia.Recusa("a bateria", tech, $"{BateriaComDobras(dobras):N0} de carga", proporcional: false)); return; }
 				custo = CustoDeBateria(g);
 				if (!CobrarOuExplicar(pl, custo, moeda, "a bateria")) return;
 				g.EnergiaMax *= 2;
@@ -269,6 +335,8 @@ public sealed partial class GameServer
 
 			case "alcance":
 				if (g.Range >= AlcanceMaximo) { Avisar(pl, $"o alcance já está no máximo ({AlcanceMaximo})."); return; }
+				int alcance = TetoPorTecnologia.AlcanceDaGravidade(tech, AlcanceMaximo);
+				if (g.Range >= alcance) { Avisar(pl, TetoPorTecnologia.Recusa("o alcance", tech, $"{alcance}", proporcional: true)); return; }
 				custo = CustoDeAlcance(g);
 				if (!CobrarOuExplicar(pl, custo, moeda, "o alcance")) return;
 				g.Range++;
@@ -291,6 +359,8 @@ public sealed partial class GameServer
 					Avisar(pl, $"nanites pedem {TechDosNanites:0} de tecnologia -- você tem {pl.Ficha.techskill:0}.");
 					return;
 				}
+				int nanites = TetoPorTecnologia.NanitesDaGravidade(tech);
+				if (g.Nanites >= nanites) { Avisar(pl, TetoPorTecnologia.Recusa("a regeneração de nanites", tech, $"{nanites}", proporcional: false)); return; }
 				custo = CustoDeNanites(g);
 				if (!CobrarOuExplicar(pl, custo, moeda, "a regeneração de nanites")) return;
 				g.Nanites++;
@@ -302,7 +372,7 @@ public sealed partial class GameServer
 
 		GravarMundo();
 		Avisar(pl, $"você melhora a máquina por {Recurso.PrecoEscrito(custo, moeda)}: {feito}. Restam {CarteiraEscrita(pl)}.");
-		// O MENU DE QUEM ESTA NA ZONA FICA SABENDO: a estabilizacao comprada e o alcance no teto saem da lista.
+		// O MENU DE QUEM ESTA NA ZONA FICA SABENDO: a estabilizacao comprada, o alcance no teto e a forca no teto do mundo saem da lista.
 		MandarObras(obra.Zona);
 	}
 
@@ -358,6 +428,8 @@ public sealed partial class GameServer
 				if (o.Zona.Equals(pl.Zone) && CampoDeGravidade.Alcanca(o.X, o.Y, g.Range, pl.Pos, g.Cheias!))
 					campo += g.Grav;
 			}
+			// (2026-10-19) AO LEME O CAMPO NAO ALCANCA: o casco isola a gravidade de fora, a da maquina tambem -- ver `GameServer.Leme.cs`.
+			if (!LemeNoCampoDeTeste && CascoIsola(pl)) campo = 0;
 
 			if (Math.Abs(pl.Ficha.gravmult - campo) < 0.001) continue;
 

@@ -419,8 +419,9 @@ public partial class Microfone : Node
 	/// e o unico jeito de a pessoa descobrir isso seria alguem contando pra ela. E a mesma guarda que
 	/// as outras vinte teclas do jogo ja passam, pelo mesmo funil.
 	///
-	/// E O "V" E UMA DAS 22 LETRAS DO EMBATE: com so o `Digitando` aqui, responder ao quick time event
-	/// com a letra V abria o microfone do jogador no meio da briga. Ver `Foco.AtalhosMudos` -- e repare
+	/// E O "V" ERA UMA DAS 22 LETRAS DO EMBATE (ate 2026-10-19, quando ele virou so WASD): com so o
+	/// `Digitando` aqui, responder ao quick time event com a letra V abria o microfone do jogador no
+	/// meio da briga -- e o silencio ficou. Ver `Foco.AtalhosMudos` -- e repare
 	/// que este e um ponto de SONDA (`IsActionPressed`), o tipo que `SetInputAsHandled` nao alcanca:
 	/// aqui o bloqueio so pode ser no ponto de LEITURA.
 	///

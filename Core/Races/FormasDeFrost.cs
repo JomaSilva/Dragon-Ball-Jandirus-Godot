@@ -247,6 +247,14 @@ public static class FormasDeFrost
 	/// Roda no SERVIDOR, e nao so na tela: a lista chega pela rede, e uma lista curta demais, longa
 	/// demais ou com um nome que nao existe no catalogo criaria um personagem sem corpo. Slot vazio
 	/// ou desconhecido vira o padrao do degrau.
+	///
+	/// ============================ A LISTA SE CASA POR DEGRAU, E NAO POR POSICAO (2026-10-19) ============================
+	/// Uma lista de corpos comeca no degrau que o TAMANHO dela diz (ver <see cref="SlotDoDegrau"/>): sete corpos comecam na
+	/// 1a supressao, tres comecam na forma base. Casar pela posicao so dava certo enquanto a lista e a classe concordavam -- e
+	/// o Mutante nascia discordando: a criacao mostrava os tres corpos do normal e o sorteio do servidor o fazia Mutante
+	/// depois. Pela posicao, o corpo escolhido pra BASE ia parar na 1a supressao, o da 1a evolucao na 2a supressao, o da 2a
+	/// evolucao na 3a -- e a base e as evolucoes de verdade ficavam com o padrao. Era parte do *"ta todo bugado"* do dono.
+	/// ===================================================================================================================
 	/// </summary>
 	public static List<string> Sanear(string classe, IReadOnlyList<string>? escolhidos)
 	{
@@ -255,12 +263,52 @@ public static class FormasDeFrost
 
 		for (int i = 0; i < degraus.Length; i++)
 		{
-			string? veio = escolhidos != null && i < escolhidos.Count ? escolhidos[i] : null;
+			int slot = escolhidos == null ? -1
+				: CorposPorPosicaoDeTeste ? (i < escolhidos.Count ? i : -1)
+				: SlotDoDegrau(degraus[i], escolhidos.Count);
+			string? veio = slot >= 0 ? escolhidos![slot] : null;
 			bool serve = veio is { Length: > 0 } && Array.IndexOf(Catalogo, veio) >= 0;
 			saida.Add(serve ? veio! : Padrao(classe, degraus[i]));
 		}
 
 		return saida;
+	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--frostteste`): o <see cref="Sanear"/> volta a casar a lista pela POSICAO -- o Mutante que
+	/// escolheu os tres corpos do normal ganha o da base na 1a supressao. Falso em jogo, sempre.
+	/// </summary>
+	public static bool CorposPorPosicaoDeTeste;
+
+	/// <summary>
+	/// (2026-10-19) A LISTA QUE O `Sanear` POR POSICAO ENTORTOU? -- a marca que o defeito deixou no save de todo Mutante criado antes
+	/// do conserto (o caso do dono, achado pela sessao do corpo do Frost): SETE corpos, os quatro de cima com os padroes dos degraus 4 a
+	/// 7 (o que o `Sanear` antigo enchia depois dos tres escolhidos) e os tres de baixo NAO todos padrao dos degraus 1 a 3 -- uma lista
+	/// inteira de padrao nao e torta, e e a que o NPC e a bancada fazem.
+	///
+	/// SO VALE UMA VEZ POR SAVE (`CharacterSave.CorposVersao`): depois do conserto a criacao produz listas de sete LEGITIMAS que casam
+	/// com a mesma marca (o Mutante que escolhe as tres primeiras cascas e deixa o resto no padrao).
+	/// </summary>
+	public static bool ListaTortaDoMutante(IReadOnlyList<string> c) =>
+		c.Count == Total
+		&& c[3] == PadraoDoDegrau(4) && c[4] == PadraoDoDegrau(5) && c[5] == PadraoDoDegrau(6) && c[6] == PadraoDoDegrau(7)
+		&& !(c[0] == PadraoDoDegrau(1) && c[1] == PadraoDoDegrau(2) && c[2] == PadraoDoDegrau(3));
+
+	/// <summary>
+	/// (2026-10-19) A LISTA TORTA, DESENTORTADA: os tres corpos que o jogador escolheu na criacao (a base, a 1a e a 2a evolucao, que o
+	/// `Sanear` antigo pos nas tres primeiras supressoes) voltam pros degraus 5, 6 e 7, e as quatro supressoes ficam no padrao -- que e
+	/// o que a lista teria sido se o `Sanear` ja casasse por degrau. Lista que nao e torta volta igual. As supressoes ele escolhe
+	/// depois, em jogo (o `Icer Form Settings`).
+	/// </summary>
+	public static List<string> DesentortarDoMutante(IReadOnlyList<string> corpos)
+	{
+		if (!ListaTortaDoMutante(corpos)) return [.. corpos];
+		var certa = new List<string>(Total);
+		for (int d = PrimeiraSupressao; d <= UltimaSupressao; d++) certa.Add(PadraoDoDegrau(d));
+		certa.Add(corpos[0]);
+		certa.Add(corpos[1]);
+		certa.Add(corpos[2]);
+		return certa;
 	}
 
 	/// <summary>
@@ -354,6 +402,19 @@ public static class FormasDeFrost
 	public const double RegeneracaoPorGrauPct = 0.2;
 
 	/// <summary>
+	/// `FD_MASTERY_PER_MIN` (2): pontos de maestria da BASE que o Mutante ganha por MINUTO sustentando a forma base ou acima
+	/// (`icer.dm:39-41`) -- 100% em ~50 min, e uma casca estavel nova a cada ~12 min e meio.
+	///
+	/// ============================ ESTE KNOB FALTAVA, E O MUTANTE TREINAVA NA TAXA DA ESCADA (2026-10-19) ============================
+	/// Os outros cinco `FD_*` do motor vieram pra ca e este nao: a barra do Mutante subia pelo `Catalogo.MaestriaPorSegundo` -- as
+	/// ~3 h da escada Saiyajin, 3,6 vezes mais devagar que no original, e a 2a Forma so ficava estavel aos 45 min em vez de 12 e
+	/// meio. So o MUTANTE anda nesta taxa: no DM o Frost Demon normal nem tem maestria (`if(!S.fd_is_mutant()) return`,
+	/// `icer.dm:32`), e a barra dele aqui -- a que dispensa a cena aos 50% -- continua na taxa de toda forma.
+	/// ==============================================================================================================================
+	/// </summary>
+	public const double MaestriaDaBasePorMinuto = 2;
+
+	/// <summary>
 	/// O `fd_form_losstime` (`IcerTransform.dm:60-68`): o FATOR de tempo do fusivel em cada forma.
 	///
 	/// Quanto mais perto da base, menos tempo sobra -- e as evolucoes queimam ainda mais rapido: a
@@ -395,4 +456,14 @@ public static class FormasDeFrost
 	/// ninguem redigitar os 25/50/75/100.
 	/// </summary>
 	public static readonly double[] MarcosDaBase = [25, 50, 75, 100];
+
+	/// <summary>
+	/// O VERMELHO DO DESCONTROLE -- `obj/overlay/effects/fd_menacing_red` (`IcerTransform.dm:166-169`): a folha cinza do C-Type
+	/// (`god - grey.dmi`) tingida de `rgb(255, 80, 60)`. Ela fica COLADA no corpo enquanto o ki do Mutante esta fora de controle
+	/// (`icer.dm:62` acende, `:50` apaga) e durante a cena grande da forma que ele nao segura (`IcerTransform.dm:202`, `:256`).
+	/// </summary>
+	public const string VermelhoDoDescontrole = "ff503c";
+
+	/// <summary>A camada colada do descontrole -- ver <see cref="VermelhoDoDescontrole"/>.</summary>
+	public static readonly Forms.Colada ColadaDoDescontrole = new(Forms.FolhaColada.Ameacadora, VermelhoDoDescontrole);
 }

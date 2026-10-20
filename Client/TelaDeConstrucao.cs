@@ -142,7 +142,9 @@ public partial class TelaDeConstrucao : CanvasLayer
 		// lugar da ARVORE. A casa e a mesma que o servidor consulta ao erguer (`OQueAssenta`).
 		Jandirus.Core.Items.ItemDef noChao =
 			Jandirus.Core.Items.CatalogoDeItens.Get(Jandirus.Core.Items.CatalogoDeItens.OQueAssenta(id)) ?? def;
-		bool plantio = !string.Equals(noChao.Id, def.Id, StringComparison.OrdinalIgnoreCase);
+		// (2026-10-19) PLANTIO E SO A SEMENTE: a maquina recolhida com as melhorias (`Gravity|c12|500x`) tambem assenta um id
+		// diferente do dela, e e instalada, nao plantada. A pergunta e a mesma do servidor (`EhPlantio`).
+		bool plantio = Jandirus.Core.Items.CatalogoDeItens.EhPlantio(id);
 
 		_naMao = id;
 		_fantasma = new Sprite2D

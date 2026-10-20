@@ -15,6 +15,10 @@ namespace Jandirus.Client;
 /// UM CARTAO POR PRESENCA: cabecalho com o nome (ou "??? (assinatura)" pra quem nao se conhece,
 /// `HtmlUI.dm:374`) e a pilula do alcance; a barra do poder relativo (ou o BP exato); a barra de vida
 /// (so perto); a distancia e o rumo (o `get_dist`/`sense_dir_word`); o lugar (so na galaxia).
+///
+/// (2026-10-19) A BUSCA E O RASTRO -- ver `RastroDoSense`: a caixa "procurar pessoa pelo nome..." filtra os cartoes, e o NOME
+/// de cada cartao e clicavel: segue aquela presenca (o selo e a seta do HUD, `RastroNaTela`), e clicar de novo para. O nome
+/// continua sendo um `Label` -- e por ele que os robos acham o cartao (`RoboDeAlunos.PoderNaAbaSense`).
 /// </summary>
 public partial class MenuJogo
 {
@@ -38,8 +42,9 @@ public partial class MenuJogo
 		if (GameClient.Instance is not { } cli) return;
 		// A FREQUENCIA DO RADIO entra pelo mesmo gancho e pelo mesmo motivo (ver `MenuJogo.Radio.cs`): ela chega
 		// num pacote proprio, e parado na aba Equip nenhum pacote de ficha a traria pra tela.
-		if (what == NotificationReady) { cli.SentidosMudaram += AoSentidos; cli.RadioMudou += AoRadio; }
-		else if (what == NotificationExitTree) { cli.SentidosMudaram -= AoSentidos; cli.RadioMudou -= AoRadio; }
+		// (2026-10-19) O RASTRO TAMBEM: comecar, trocar ou parar de seguir alguem acende o cartao dele e o do rastro.
+		if (what == NotificationReady) { cli.SentidosMudaram += AoSentidos; cli.RadioMudou += AoRadio; RastroDoSense.Mudou += AoSentidos; }
+		else if (what == NotificationExitTree) { cli.SentidosMudaram -= AoSentidos; cli.RadioMudou -= AoRadio; RastroDoSense.Mudou -= AoSentidos; }
 	}
 
 	/// <summary>Mesma regra do `AoConhecidos`: so remonta se a aba aberta e a que desenha isto.</summary>
@@ -59,6 +64,10 @@ public partial class MenuJogo
 				   : $"Sense nível {nivel} de {Jandirus.Core.Skills.SenseEmNiveis.NivelMaximo} · alcance: "
 					+ Jandirus.Core.Skills.SenseEmNiveis.NomeDoAlcance(nivel), Tema.Ki);
 
+		// (2026-10-19) O RASTRO EM CURSO vem antes de tudo -- inclusive com a lista vazia, que e justamente quando ele se perdeu e
+		// alguem quer parar de segui-lo.
+		if (RastroDoSense.Ativo) CartaoDoRastro(lista);
+
 		if (lista.Count == 0)
 		{
 			VBoxContainer vazio = Cartao(scan ? "Scouter" : "Leitura de Ki");
@@ -67,13 +76,19 @@ public partial class MenuJogo
 			return;
 		}
 
-		foreach (Protocol.PresencaState p in lista) CartaoDePresenca(p);
+		CaixaDeBuscaDoSense();
+		int mostradas = 0;
+		for (int i = 0; i < lista.Count; i++)
+			if (RastroDoSense.CasaComABusca(lista[i], _buscaDoSense)) { CartaoDePresenca(lista[i], i); mostradas++; }
+		if (mostradas == 0)
+			Nota($"Ninguém chamado \"{_buscaDoSense.Trim()}\" no alcance do seu {(scan ? "scouter" : "Sense")}.", Cartao("Busca"));
 	}
 
-	private void CartaoDePresenca(Protocol.PresencaState p)
+	private void CartaoDePresenca(Protocol.PresencaState p, int linha)
 	{
-		// CHEFE E DESTAQUE (borda laranja): e o corpo que se olha primeiro.
-		VBoxContainer c = Cartao("", destaque: p.Chefe);
+		bool seguido = RastroDoSense.EhOAlvo(p);
+		// CHEFE E DESTAQUE (borda laranja): e o corpo que se olha primeiro -- e a presenca seguida tambem.
+		VBoxContainer c = Cartao("", destaque: p.Chefe || seguido);
 		bool conhecido = p.Nome.Length > 0;
 		string nome = conhecido ? p.Nome : p.Assinatura.Length > 0 ? $"??? ({p.Assinatura})" : "???";
 		// (2026-10-18) os cinco alcances do Sense -- a pilula diz de que distancia a presenca foi sentida
@@ -85,7 +100,10 @@ public partial class MenuJogo
 			4 => (Jandirus.Core.Skills.SenseEmNiveis.NomeDoAlcance(4), Tema.Destaque),
 			_ => (Jandirus.Core.Skills.SenseEmNiveis.NomeDoAlcance(5), Tema.Destaque),
 		};
-		c.AddChild(Cabecalho(nome, conhecido ? Tema.Texto : Tema.TextoFraco, alcance, (p.Chefe ? "CHEFE" : "", Tema.Perigo)));
+		HBoxContainer cabecalho = Cabecalho(nome, conhecido ? Tema.Texto : Tema.TextoFraco, alcance, (p.Chefe ? "CHEFE" : "", Tema.Perigo),
+											 (seguido ? "RASTREANDO" : "", Tema.Ki));
+		if (cabecalho.GetChild(0) is Label titulo) NomeQueSegue(titulo, p, linha);
+		c.AddChild(cabecalho);
 
 		// O NUMERO SO EXISTE NO SCAN: no Sense ele chega NaN e a linha nao nasce (o sigilo e do servidor;
 		// aqui so se respeita a ausencia).
@@ -133,7 +151,8 @@ public partial class MenuJogo
 	private string ExtraDaAssinaturaDeSentidos(SheetState f)
 	{
 		GameClient? c = GameClient.Instance;
-		return $"{(c?.SentidosSaoDoScouter == true ? 'S' : 'K')}{c?.NivelDoSense}|" + string.Join(',', (c?.Sentidos ?? []).Select(p =>
+		// (2026-10-19) as duas buscas e o rastro -- ver `AssinaturaDaBuscaEDoRastro` (`MenuJogo.Rastro.cs`)
+		return $"{(c?.SentidosSaoDoScouter == true ? 'S' : 'K')}{c?.NivelDoSense}|{AssinaturaDaBuscaEDoRastro()}|" + string.Join(',', (c?.Sentidos ?? []).Select(p =>
 			$"{p.Nome}/{p.Assinatura}/{p.Alcance}/{p.PoderRelativo:0}/{p.Bp:0}/{p.Distancia}/{p.Rumo}/{p.X}/{p.Y}/{p.Zona}/{p.Chefe}"));
 	}
 }

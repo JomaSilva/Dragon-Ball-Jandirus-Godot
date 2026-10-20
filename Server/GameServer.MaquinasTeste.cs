@@ -156,6 +156,9 @@ public sealed partial class GameServer
 		ServerPlayer dono = Forjar("mq: o dono do tanque", No(tx, ty + 1), 1_000);
 		dono.Conta = "bancada_tanque";
 		dono.Ficha.Zeni = 10_000_000;
+		// (2026-10-19) AS MELHORIAS TEM TETO PELA TECNOLOGIA de quem paga (`TetoPorTecnologia`, medido na `--melhoriasteste`):
+		// aqui se mede a melhoria em si, e com 100 de tecnologia o teto e o do jogo de antes.
+		dono.Ficha.techskill = TetoPorTecnologia.TechSemTeto;
 
 		Obra? tanque = AssentarDeTeste(dono, Regenerador.Tipo, tx, ty);
 		AfirmarMq("(montagem) o tanque assentou pelo funil de producao (`posicionar`), e e do dono",
@@ -372,6 +375,7 @@ public sealed partial class GameServer
 		ComandoDeInteracao(dono, "regen_up", "nanites");
 		AfirmarMq("NANITES pedem 6 de tecnologia e custam 2000 x (nivel + 1)",
 				  semTech && r.Nanites == 1 && Perto(zeni - dono.Ficha.Zeni, 2000) && Perto(Regenerador.CustoDeNanites(1), 4000));
+		dono.Ficha.techskill = TetoPorTecnologia.TechSemTeto;   // (de volta ao jogo de antes: com 6, a velocidade 3 ja passa do teto)
 
 		dono.Ficha.Zeni = 10;
 		falas = Ouvir(() => ComandoDeInteracao(dono, "regen_up", "velocidade"));
@@ -529,6 +533,7 @@ public sealed partial class GameServer
 		ServerPlayer dono = Forjar("mq: o dono da maquina", No(mx + 1, my + 1), 1_000);
 		dono.Conta = "bancada_gravidade";
 		dono.Ficha.Zeni = 100_000_000;
+		dono.Ficha.techskill = TetoPorTecnologia.TechSemTeto;   // (2026-10-19) o alcance inteiro, sem o teto da tecnologia (`TetoPorTecnologia`)
 
 		Obra? maq = AssentarDeTeste(dono, "Gravity", mx, my);
 		AfirmarMq("(montagem) a maquina assentou pelo funil de producao, e e do dono", maq is { Tipo: "Gravity", DonoConta: "bancada_gravidade" });

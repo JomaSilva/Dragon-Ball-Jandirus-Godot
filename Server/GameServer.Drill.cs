@@ -316,6 +316,11 @@ public sealed partial class GameServer
 
 		Avisar(pl, $"-- {NomeDaObra(obra)} --");
 		foreach (string linha in Drill.Descrever(EstadoPra(pl, obra, d, reserva))) Avisar(pl, "  " + linha);
+		// (2026-10-19) O TETO DE QUEM PERGUNTA: o painel e o mesmo pra todo mundo, e a tecnologia de cada um leva a Drill a um nivel.
+		int teto = TetoPorTecnologia.NivelDaDrill(pl.Ficha.techskill);
+		if (!Drill.NoMaximo(d.Nivel) && teto < Drill.NivelMaximo)
+			Avisar(pl, d.Nivel >= teto ? $"  a sua tecnologia já não leva esta Drill além do nível {teto}."
+				: $"  a sua tecnologia leva esta Drill até o nível {teto}.");
 	}
 
 	private void ColetarDaDrill(ServerPlayer pl)
@@ -359,6 +364,15 @@ public sealed partial class GameServer
 		if (d == null || obra == null) { Avisar(pl, "não há Drill por perto."); return; }
 		if (!ADrillEDele(obra, pl)) { Avisar(pl, $"esta Drill é de {obra.DonoNome}: só o dono melhora."); return; }
 		if (Drill.NoMaximo(d.Nivel)) { Avisar(pl, $"esta Drill já está no nível máximo ({Drill.NivelMaximo})."); return; }
+		// (2026-10-19) O TETO DE QUEM PAGA (dono: *"o mesmo pra maquina de regeneraçao e drill"*) -- ver `TetoPorTecnologia`. A
+		// recusa vem antes da cobranca, e o painel volta com o estado de agora.
+		int teto = TetoPorTecnologia.NivelDaDrill(pl.Ficha.techskill);
+		if (d.Nivel >= teto)
+		{
+			Avisar(pl, TetoPorTecnologia.Recusa("esta Drill", pl.Ficha.techskill, $"nível {teto}", proporcional: true));
+			MandarDrill(pl, EstadoPra(pl, obra, d, reserva));
+			return;
+		}
 
 		Moeda moeda;
 		switch (comOQue)

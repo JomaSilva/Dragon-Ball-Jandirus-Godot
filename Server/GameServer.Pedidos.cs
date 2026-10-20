@@ -87,6 +87,11 @@ public sealed partial class GameServer
 				saida.Add(new(Fatos.OfertaDeAssento,
 							  $"{OnlinePorConta(assento.Nomeador)?.Name ?? "Alguém"} te oferece um assento de Ancião.", 0));   // CargoPortas.cs:413
 
+			if (_ofertasDeAprendiz.TryGetValue(pl.Conta, out (string ContaDoMestre, string NomeDoMestre, long Ate) aprendizado)
+				&& agora <= aprendizado.Ate)
+				saida.Add(new(Fatos.OfertaDeAprendiz, $"{aprendizado.NomeDoMestre}, o Kaioshin, se oferece para te tomar como Aprendiz de Kaioshin.",
+							  SegundosAte(aprendizado.Ate, agora)));                                       // AprendizDeKaioshin.cs (2026-10-19)
+
 			if (_desafianteEsperando.Length > 0 && string.Equals(ContaDoDeus, pl.Conta, StringComparison.OrdinalIgnoreCase))
 				saida.Add(new(Fatos.DesafioAoTitulo,
 							  $"{OnlinePorConta(_desafianteEsperando)?.Name ?? "Alguém"} DESAFIA o seu título.",
@@ -137,7 +142,7 @@ public sealed partial class GameServer
 
 		PedidosPraTela(pl, _pedidosDoTique);
 
-		string assinatura = _pedidosDoTique.Count == 0 ? "" : string.Join('|', _pedidosDoTique.Select(p => $"{(uint)p.Fato}:{p.Texto}"));
+		string assinatura = _pedidosDoTique.Count == 0 ? "" : string.Join('|', _pedidosDoTique.Select(p => $"{(ulong)p.Fato}:{p.Texto}"));
 		bool jaTinha = _pedidosMandados.TryGetValue(pl.Id, out (NetPeer Tela, string Assinatura) antes) && ReferenceEquals(antes.Tela, tela);
 		if (jaTinha ? antes.Assinatura == assinatura : assinatura.Length == 0) return;   // (tela nova sem pedido nenhum: nada a dizer)
 		_pedidosMandados[pl.Id] = (tela, assinatura);
@@ -146,7 +151,7 @@ public sealed partial class GameServer
 		w.Put((byte)Math.Min(_pedidosDoTique.Count, byte.MaxValue));
 		foreach (PedidoNaTela p in _pedidosDoTique)
 		{
-			w.Put((uint)p.Fato);
+			w.Put((ulong)p.Fato);
 			w.Put(p.Texto);
 			w.Put((ushort)p.Segundos);
 		}

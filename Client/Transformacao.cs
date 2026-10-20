@@ -262,7 +262,11 @@ public partial class Transformacao : Node2D
 		_chamaGrande.DefinirFolha(f);
 		_auraGrande.DefinirFolha(SpriteDeAura.CaminhoDa(f) is null && !ChamaDeAura.Desenha(f)
 									 ? Jandirus.Core.Forms.FolhaDeAura.Base : f);
-		_chamaDaCena = (Aura.CorDaChamaDe(d, CorPessoalDoAlvo), Aura.ForcaDaChamaDe(d));
+		// (2026-10-19) A CENA COM COR PROPRIA (o descontrole do Mutante, `Cinematica.CorPropria`) acende a chama nela, e nao na da forma:
+		// e o `fd_red_aura_icon()` do DM, a aura grande tingida de vermelho (`IcerTransform.dm:172-176`). A folha continua a da forma.
+		string corPropria = CorPropriaDe(_cena);
+		_chamaDaCena = (corPropria.Length > 0 ? new Color(corPropria) : Aura.CorDaChamaDe(d, CorPessoalDoAlvo),
+						Aura.ForcaDaChamaDe(d));
 	}
 
 	/// <summary>
@@ -596,6 +600,7 @@ public partial class Transformacao : Node2D
 	public static Transformacao Rodar(Node pai, Node2D alvo, FormaDef? forma, Cinematica cena,
 									  bool souEu, string nome = "", Node2D? irmao = null)
 	{
+		string corPropria = CorPropriaDe(cena);
 		var t = new Transformacao
 		{
 			Name = "Cinematica",
@@ -606,8 +611,11 @@ public partial class Transformacao : Node2D
 			// SEM FORMA NAO HA `FormaDef.Aura` DE ONDE TIRAR A COR, e as duas caem no mesmo lugar: a cor que
 			// a CENA declara -- ver `CorSemForma`. (`CorDosRaios(null)` ja devolvia um neutro proprio, mas ele
 			// existe pra "forma desconhecida" e nao pra "cena sem forma".)
-			_corAura = forma != null ? new Color(forma.Aura) : CorSemForma(alvo, cena),
-			_corRaios = forma != null
+			// (2026-10-19) A COR PROPRIA DA CENA PASSA NA FRENTE DAS DUAS -- o vermelho do descontrole do Mutante (`Cinematica.CorPropria`).
+			_corAura = corPropria.Length > 0 ? new Color(corPropria)
+					 : forma != null ? new Color(forma.Aura) : CorSemForma(alvo, cena),
+			_corRaios = corPropria.Length > 0 ? new Color(corPropria)
+					  : forma != null
 							? new Color(Jandirus.Core.Forms.Catalogo.CorDosRaios(forma))
 							: CorSemForma(alvo, cena),
 			_souEu = souEu,
@@ -616,6 +624,18 @@ public partial class Transformacao : Node2D
 		pai.AddChild(t);
 		return t;
 	}
+
+	/// <summary>
+	/// (2026-10-19) A COR PROPRIA DESTA CENA, ou vazia -- o vermelho do descontrole do Mutante (`Cinematica.CorPropria`). Uma porta so
+	/// pros quatro leitores (a chama grande, os aneis, os raios e o banho de cor), e e por ela que o defeito injetado entra.
+	/// </summary>
+	internal static string CorPropriaDe(Cinematica cena) => CenaSemOVermelhoDeTeste ? "" : cena.CorPropria;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagmutante`): a cena do descontrole volta a sair na cor da forma e sem a aura vermelha colada no
+	/// corpo -- o jogo de antes. Lido pela <see cref="CorPropriaDe"/> e pela camada da largada. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool CenaSemOVermelhoDeTeste;
 
 	/// <summary>
 	/// DEFEITO INJETADO (bancada `--diagraiva`): a cena que pede a cor do corpo (`Cinematica.NaCorDoCorpo` -- a
@@ -826,6 +846,10 @@ public partial class Transformacao : Node2D
 		_soltou = _cena.SegundosPreso <= 0;
 		if (!_soltou) Prender();
 
+		// (2026-10-19) E A AURA DE CARGA DO CORPO SE CALA ATE A CENA ACABAR -- outro emprestimo deste nascimento, devolvido pelo
+		// `Soltar` como a tranca. Ver `Transformacao.CargaDaCena.cs`.
+		CalarACargaDoCorpo();
+
 		// ============================ O CORPO SO PARA -- NAO CONGELA ============================
 		// O `move = 0; dir = SOUTH` do DM. E "parar" aqui e exatamente o que o corpo ja faz quando
 		// o jogador solta a tecla depois de andar: `SetMotion(..., moving: false)`, e o resto do
@@ -854,6 +878,15 @@ public partial class Transformacao : Node2D
 		// corpo que continua andando (a furia) deixaria o boneco deslizando pelo chao em pose parada.
 		// Ver o bloco de cima.
 		if (!_soltou) _alvo.GetNodeOrNull<CharacterVisual>("Visual")?.TravarPose(true);
+
+		// (2026-10-19) A CAMADA DA CENA ACENDE NA LARGADA -- a aura ameacadora vermelha do descontrole do Mutante
+		// (`Cinematica.ColadaDaCena`), o `updateOverlay(fd_menacing_red)` que abre o `fd_grand_cinematic()` (`IcerTransform.dm:202`).
+		// Quem apaga e a virada (`Assumir`, o `removeOverlay` de `:256`) -- e o `Soltar`, em todo caminho de saida.
+		if (_cena.ColadaDaCena is { } colada && !CenaSemOVermelhoDeTeste && _alvo.GetNodeOrNull<CharacterVisual>("Visual") is { } vc)
+		{
+			vc.VestirColadaDaCena(colada);
+			_coladaAcesa = true;
+		}
 
 		// ONDE ESTA CENA ACONTECEU. Lido aqui e guardado porque o rumor da aura base pergunta por ele
 		// TODO QUADRO, e `Espaco.EhPlaneta` varre os pre-feitos -- sessenta varreduras por segundo
@@ -1540,6 +1573,7 @@ public partial class Transformacao : Node2D
 		if (_proximo >= _cena.Beats.Length && _t > _cena.Segundos)
 		{
 			_fim = FimDaCena.Sozinha;
+			DevolverACargaDoCorpo();   // (2026-10-19) no quadro em que a cena acaba, e nao no `_ExitTree` adiado -- ver la
 			QueueFree();
 		}
 	}
@@ -1563,12 +1597,17 @@ public partial class Transformacao : Node2D
 		// no fim deste metodo.
 		ApagarSilhueta();
 		ApagarPassagem();   // (2026-10-16) a metamorfose da saga do Majin, pela mesma regra da silhueta
+		ApagarColadaDaCena();   // (2026-10-19) a aura vermelha do descontrole, pela mesma regra
 
 		// E A LUZ DA FUSAO E O QUARTO EMPRESTIMO, pela mesma regra dos tres. Ver `ApagarALuzDaFusao`:
 		// no fim BOM o ultimo estouro ja se apagou sozinho e tirar o node e formalidade; nos outros
 		// tres fins (o teto, o alvo sumindo, o `_ExitTree`) a cena pode morrer NO MEIO de um estouro,
 		// e sem esta linha o clarão sobreviveria a cena que o acendeu.
 		ApagarALuzDaFusao();
+
+		// (2026-10-19) E A AURA DE CARGA VOLTA, pela mesma regra: a cena que a calou devolve em todo caminho de saida, e nao so no
+		// bom. Ela pergunta sozinha se o alvo vive (ver `Transformacao.CargaDaCena.cs`).
+		DevolverACargaDoCorpo();
 
 		// ============================ O CORTE DO ALVO INVALIDO VIROU UM BLOCO ============================
 		// Era um `return` no meio, e ele passou a ser caro: o <see cref="Virar"/> la embaixo PRECISA
@@ -1646,6 +1685,22 @@ public partial class Transformacao : Node2D
 		_passagemAcesa = false;
 		if (IsInstanceValid(_alvo))
 			_alvo.GetNodeOrNull<CharacterVisual>("Visual")?.EncerrarPassagem();
+	}
+
+	/// <summary>
+	/// (2026-10-19) A CENA VESTIU A CAMADA DELA (`Cinematica.ColadaDaCena`)? Irma da <see cref="_silhuetaAcesa"/>, pelo mesmo motivo:
+	/// so quem acendeu apaga, e em todo caminho de saida -- uma cena do descontrole interrompida nao pode deixar a aura vermelha da
+	/// CENA grudada (a do ESTADO, quando o ki trava, e outra e quem a apaga e o servidor).
+	/// </summary>
+	private bool _coladaAcesa;
+
+	/// <inheritdoc cref="_coladaAcesa"/>
+	private void ApagarColadaDaCena()
+	{
+		if (!_coladaAcesa) return;
+		_coladaAcesa = false;
+		if (IsInstanceValid(_alvo))
+			_alvo.GetNodeOrNull<CharacterVisual>("Visual")?.VestirColadaDaCena(null);
 	}
 
 	// ======================================================================================
@@ -2335,9 +2390,11 @@ public partial class Transformacao : Node2D
 		// SEM FORMA NAO HA BANHO: `Aura.CorDaChamaDe(null)` devolve o branco do ki cru, e lavar o
 		// corpo de branco no meio de uma cena vermelha nao e o gesto do DM -- os cinco `animate` que
 		// isto porta sao todos de transformacao.
+		// (2026-10-19) A CENA COM COR PROPRIA (o descontrole do Mutante) lava o corpo NELA, pela mesma regra da chama.
 		if (b.Faz.HasFlag(Efeito.BanhoDeCor) && _forma != null
 			&& _alvo.GetNodeOrNull<CharacterVisual>("Visual") is { } vb)
-			vb.Banhar(Aura.CorDaChamaDe(_forma, CorPessoalDoAlvo), Cinematicas.SegundosDoBanho);
+			vb.Banhar(CorPropriaDe(_cena) is { Length: > 0 } corPropria ? new Color(corPropria) : Aura.CorDaChamaDe(_forma, CorPessoalDoAlvo),
+					  Cinematicas.SegundosDoBanho);
 
 		// ============================ A SILHUETA BRANCA -- O MESMO CANAL, CHEIO E DEVAGAR ============================
 		// *"o personagem da fusao brilhando, corpo completamente BRANCO, so a silhueta"*. E o `Banhar`
@@ -2554,6 +2611,8 @@ public partial class Transformacao : Node2D
 		// (2026-10-16) E A PASSAGEM, pela mesma regra: a metamorfose sai no MESMO quadro em que o corpo novo entra (o `Vestir` e o
 		// `Virar` logo abaixo) -- nenhum quadro de corpo velho no meio. Ver `Efeito.Passagem`.
 		ApagarPassagem();
+		// (2026-10-19) E A CAMADA DA CENA -- o `removeOverlay(fd_menacing_red)` do climax do DM (`IcerTransform.dm:256`).
+		ApagarColadaDaCena();
 
 		// ============================ E QUANDO NAO HA FORMA, A VIRADA NAO VESTE NINGUEM ============================
 		// Este e o ponto em que o <see cref="Efeito.Assumir"/> deixa de ser "assumir a forma" e passa a
@@ -3311,6 +3370,9 @@ public partial class Transformacao : Node2D
 	/// PEDIDO ao `CombatFx.Onda`; o que chega na tela, a `--diagraiva` mede no pixel.
 	/// </summary>
 	public Color CorDosAneisDeTeste => _corAura;
+
+	/// <summary>(2026-10-19) A cor da chama grande desta cena (a aura que sobe em volta do corpo). Pra bancada (`--diagmutante`).</summary>
+	public Color CorDaChamaDaCenaDeTeste => _chamaDaCena.Cor;
 
 	/// <inheritdoc cref="AneisDeTeste"/>
 	public int DescargasDeTeste { get; private set; }

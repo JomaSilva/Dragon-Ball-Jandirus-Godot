@@ -20,8 +20,14 @@ namespace Jandirus.Client;
 /// servidor deste processo passa pelo censo da bancada (`GameServer.ContarNaArena`); as fotos (com janela) sao
 /// `torneio-4-alem-luta`, `torneio-5-alem-intervalo` e `torneio-6-alem-luta2`.
 ///
+/// A MINHA LUTA (2026-10-19, o dono: *"perto da arena mas fora da area dela, perdendo automaticamente ao iniciar a luta"*): depois das
+/// duas lutas de NPC a chave anda ate chamar a do host, e o `AmostrarMinhaLuta` anota onde o servidor e esta tela poem o corpo dele
+/// ate o "COMECEM!" -- dentro da arena nas duas pontas, e sem ring-out no primeiro tique.
+///
 /// COMO RODAR (uma janela so, ou headless):
 ///     Godot --path . --host --rede 7932 --diagtorneio --raca Human --conta &lt;NOVA&gt; --nome Zx
+/// `--janelacurta` liga o `TransporteComJanelaCurtaDeTeste` na minha luta (o transporte de antes): e a rodada de depurar que diz o
+/// que o jogo de antes fazia com a rede deste processo (latencia ~0). O arrasto do cliente ATRASADO e medido na `--torneioteste` (4c).
 /// </summary>
 public partial class RoboDeTorneio : Node
 {
@@ -57,6 +63,8 @@ public partial class RoboDeTorneio : Node
 		}
 		_espera = 0;
 		_t += delta;
+		_relogio += delta;
+		if (_passo >= 20) AmostrarMinhaLuta(servidor, cli);
 		switch (_passo)
 		{
 			case 0:
@@ -260,6 +268,7 @@ public partial class RoboDeTorneio : Node
 				World.Instancia?.AplicarZoom(1);
 				_participantes = [.. servidor.NpcsDoTorneioDeTeste, cli.LocalId];
 				_censo = new GameServer.CensoDaArena();
+				GameServer.EscutaDoTorneio = [];   // os anuncios, pro fim da MINHA luta (ver `AmostrarMinhaLuta`)
 				Passar();
 				break;
 			}
@@ -309,10 +318,56 @@ public partial class RoboDeTorneio : Node
 				Conferir(_censo is { TirosNaContagem: 0, FalasNaContagem: 0, AndouNaContagem: 0 },
 						 "na contagem (\"5... 4...\") os NPCs da vez ficaram no lugar, sem atirar nem falar");
 				GameServer.EscutaDeFalas = null;
+				Passar();
+				break;
+
+			// =====================================================================
+			// A MINHA LUTA NO OUTRO MUNDO (2026-10-19). O dono: *"alguns jogadores relataram spawnar na hora de lutar na arena, fora da
+			// arena"* -- *"perto da arena mas fora da area dela, perdendo automaticamente ao iniciar a luta"*. As duas lutas de cima sao de
+			// NPC; aqui a chave anda (`trn_avancar`, uma vez por fase da luta ALHEIA) ate chamar a do host, e a contagem dele corre
+			// sozinha. Quem anota onde o servidor e esta tela poem o meu corpo e o `AmostrarMinhaLuta`, desde o nascer da chave.
+			// =====================================================================
+			case 26:
+				GD.Print("[diagtorneio] ===== A MINHA LUTA NO OUTRO MUNDO: CHAMADO PRA ARENA, O MEU CORPO ESTA NELA? =====");
+				// `--janelacurta`: a mesma luta com o transporte de antes (o meio segundo de correcao esperada de todo salto) -- a
+				// rodada que diz se, com a rede deste processo (latencia ~0), o jogo de antes ja tirava o lutador da arena.
+				if (Array.IndexOf(OS.GetCmdlineArgs(), "--janelacurta") >= 0)
+				{
+					GameServer.TransporteComJanelaCurtaDeTeste = true;
+					GD.Print("[diagtorneio]   (defeito ligado: --janelacurta)");
+				}
+				Passar();
+				break;
+			case 27:
+			{
+				if (_meuComecemEm >= 0)
+				{
+					if (_relogio - _meuComecemEm >= 2.0) Passar();
+					return;
+				}
+				if (!servidor.TorneioAtivo || _t > 120)
+				{
+					Conferir(false, $"em {_t:0}s a chave chamou a MINHA luta (torneio ativo: {servidor.TorneioAtivo}, fase {servidor.FaseDoTorneioDeTeste})");
+					Passar();
+					break;
+				}
+				(int a, int b) = servidor.LutadoresDeTeste;
+				string fase = servidor.FaseDoTorneioDeTeste;
+				if (a == cli.LocalId || b == cli.LocalId) _faseAvancada = "";
+				else if (fase != _faseAvancada) { _faseAvancada = fase; cli.SendVerbo("trn_avancar"); }
+				return;
+			}
+			case 28:
+				foreach (string linha in _trilha) GD.Print("[diagtorneio]     " + linha);
+				Conferir(_meuComecemEm >= 0, "a minha luta no Outro Mundo foi chamada e chegou ao COMECEM!");
+				Conferir(_dentroNoComecemNoServidor, $"no COMECEM! o SERVIDOR tinha o meu corpo DENTRO da arena ({_ondeNoComecemNoServidor})");
+				Conferir(_dentroNoComecemNaTela, $"...e a MINHA TELA tambem ({_ondeNoComecemNaTela})");
+				Conferir(!_ringOutMeu, $"...e a minha luta nao acabou em RING-OUT logo no comeco ({_fimDaMinhaLuta})");
+				GameServer.EscutaDoTorneio = null;
 				cli.SendVerbo("trn_cancelar");
 				Passar();
 				break;
-			case 26:
+			case 29:
 				if (servidor.TorneioAtivo && _t < 5) return;
 				Conferir(!servidor.TorneioAtivo, "o torneio do Outro Mundo foi cancelado");
 				Fechar();
@@ -322,6 +377,62 @@ public partial class RoboDeTorneio : Node
 
 	private GameServer.CensoDaArena? _censo;
 	private int[] _participantes = [];
+
+	// --- a minha luta no Outro Mundo ---
+	private double _relogio;
+	private readonly List<string> _trilha = [];
+	private string _ultimoEstado = "", _faseAvancada = "", _faseDaMinhaLuta = "";
+	private bool _euLutava, _dentroNoComecemNoServidor, _dentroNoComecemNaTela, _ringOutMeu;
+	private double _meuComecemEm = -1;
+	private string _ondeNoComecemNoServidor = "", _ondeNoComecemNaTela = "", _fimDaMinhaLuta = "(a luta nao acabou)";
+
+	/// <summary>
+	/// A SONDA DA MINHA LUTA: enquanto o host e um dos dois da vez, anota -- so quando muda -- a fase, a celula do corpo no servidor
+	/// e nesta tela, se cada uma esta dentro da arena e por que o corpo local nao anda. No "COMECEM!" guarda as duas posicoes; no
+	/// fim da luta, o anuncio que a decidiu.
+	/// </summary>
+	private void AmostrarMinhaLuta(GameServer servidor, GameClient cli)
+	{
+		int eu = cli.LocalId;
+		(int a, int b) = servidor.LutadoresDeTeste;
+		bool euLuto = eu != 0 && (a == eu || b == eu);
+		if (!euLuto && !_euLutava) return;
+		string fase = servidor.FaseDoTorneioDeTeste;
+		Jandirus.Core.World.Arena arena = servidor.TorneioDeTeste.Alem.Arena;
+		Jandirus.Core.World.Vec2? noServidor = servidor.PosicaoDeTeste(eu);
+		Jandirus.Core.World.Vec2? naTela = World.Instancia?.PassoLocalDeTeste is { } passo ? new Jandirus.Core.World.Vec2(passo.Exata.X, passo.Exata.Y) : null;
+		string porque = World.Instancia?.PorQueOCorpoNaoAnda ?? "?";
+		bool espera = cli.EfeitosAtivos.Contains("torneio_espera");
+		string Onde(Jandirus.Core.World.Vec2? p) => p is { } q
+			? $"({MathF.Floor(q.X / Jandirus.Core.World.ZoneCollision.TileSize)},{MathF.Floor(q.Y / Jandirus.Core.World.ZoneCollision.TileSize)}) {(arena.ContemEm(q) ? "DENTRO" : "fora")}"
+			: "(sem corpo)";
+		string estado = $"{euLuto}|{fase}|{Onde(noServidor)}|{Onde(naTela)}|{porque}|{espera}";
+		if (estado != _ultimoEstado)
+		{
+			_ultimoEstado = estado;
+			_trilha.Add($"t={_relogio:0.00}s {(euLuto ? "EU LUTO" : "acabou")} fase={fase} servidor={Onde(noServidor)} tela={Onde(naTela)} "
+					  + $"espera={(espera ? "sim" : "nao")} seq={cli.SeqConfirmada} nao-anda=\"{porque}\"");
+		}
+		if (euLuto && fase == "Luta" && _faseDaMinhaLuta != "Luta")
+		{
+			_meuComecemEm = _relogio;
+			_dentroNoComecemNoServidor = noServidor is { } s && arena.ContemEm(s);
+			_dentroNoComecemNaTela = naTela is { } v && arena.ContemEm(v);
+			_ondeNoComecemNoServidor = Onde(noServidor);
+			_ondeNoComecemNaTela = Onde(naTela);
+		}
+		if (!euLuto && _euLutava)
+		{
+			string nome = servidor.CorpoDoTrailer(eu).Nome;
+			List<string> ouvidos = GameServer.EscutaDoTorneio ?? [];
+			_fimDaMinhaLuta = ouvidos.LastOrDefault(x => x.Contains(" vence a luta contra ", StringComparison.Ordinal) && x.Contains(nome, StringComparison.Ordinal)) ?? "(sem anuncio)";
+			// (so o ring-out do PRIMEIRO meio segundo: o do juiz no tique do "COMECEM!". Depois disso pode ser o oponente me empurrando.)
+			_ringOutMeu = _relogio - _meuComecemEm < 0.5
+				&& ouvidos.Any(x => x.Contains("RING-OUT", StringComparison.Ordinal) && x.Contains(nome, StringComparison.Ordinal));
+		}
+		_euLutava = euLuto;
+		_faseDaMinhaLuta = euLuto ? fase : "";
+	}
 
 	/// <summary>Uma amostra do censo da arena, no servidor deste processo (o mesmo da `--torneioteste`).</summary>
 	private void Contar(GameServer servidor)
@@ -344,9 +455,12 @@ public partial class RoboDeTorneio : Node
 		_passos.Add($"  --     foto {caminho} ({img.GetWidth()}x{img.GetHeight()})");
 	}
 
+	public override void _ExitTree() => GameServer.TransporteComJanelaCurtaDeTeste = false;
+
 	private void Fechar()
 	{
 		_acabou = true;
+		GameServer.TransporteComJanelaCurtaDeTeste = false;
 		foreach (string p in _passos) GD.Print("[diagtorneio] " + p);
 		GD.Print(_falhas.Count == 0 ? "[diagtorneio] ===== TUDO OK =====" : $"[diagtorneio] ===== {_falhas.Count} FALHA(S) =====");
 		foreach (string f in _falhas) GD.Print("[diagtorneio]   - " + f);

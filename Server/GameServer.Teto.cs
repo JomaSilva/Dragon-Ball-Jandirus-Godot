@@ -36,8 +36,12 @@ namespace Jandirus.Server;
 /// </summary>
 public sealed partial class GameServer
 {
-	/// <summary>ESTE CORPO ESTA SOB TETO AGORA?</summary>
-	private bool SobTeto(ServerPlayer pl) => SobTeto(pl.Zone, pl.Pos);
+	/// <summary>
+	/// ESTE CORPO ESTA SOB TETO AGORA? (2026-10-19) O CASCO DA NAVE TAMBEM E TETO: ao leme a lua cheia nao pega o Saiyajin e o raio da
+	/// tempestade nao procura o piloto -- o casco isola quem pilota (ver `GameServer.Leme.cs`). Desembarcado sob a lua, a lua o ve como recem
+	/// chegada, como a quem sai de casa.
+	/// </summary>
+	private bool SobTeto(ServerPlayer pl) => (!LemeSemTetoDeTeste && CascoIsola(pl)) || SobTeto(pl.Zone, pl.Pos);
 
 	/// <summary>
 	/// A mesma pergunta pra um ponto qualquer da zona (o CENTRO de um corpo; a celula que conta e a

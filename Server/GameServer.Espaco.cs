@@ -66,6 +66,9 @@ public partial class GameServer
 		// PELO LUGAR e nao pelo reflexo: o visitante da mente alheia nao tem clone nenhum, e sem esta
 		// troca ele decolaria de dentro da cabeca de outra pessoa. Ver `GameServer.Mente.NaMente`.
 		if (NaMente(pl)) { Avisar(pl, "primeiro saia do transe."); return; }
+		// (2026-10-19) A ESFERA DO DRAGAO NAO SAI DO PLANETA (dono: *"naves e espaco vc e bloqueado de ir com elas"*). E a porta de toda
+		// subida: o verbo, o voo que rompe a atmosfera, o pod que decola. Ver `GameServer.EsferasNaMochila.cs`.
+		if (PorQueAsEsferasPrendem(pl) is { Length: > 0 } presas) { Avisar(pl, presas); return; }
 
 		// MUNDO GERADO SOBE POR OUTRO CAMINHO -- e sem esta linha ele nao subia de jeito nenhum.
 		//

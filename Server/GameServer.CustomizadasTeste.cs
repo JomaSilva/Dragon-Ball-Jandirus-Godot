@@ -35,6 +35,9 @@ namespace Jandirus.Server;
 ///     quatro portas (inventar, trocar o tipo, ajustar, confirmar). E, na familia 5, os outros dois
 ///     pedidos do mesmo dia: a carga do raio FICA NA MAO ate o segundo aperto (o "sai sozinho" e quem
 ///     o dispensa, sem zerar a carga) e o grito do disparo e o que o jogador escreveu.
+///  9. QUEM NUNCA CANSA NAO VENDE FOLEGO (dono, 2026-10-19): o Majin (vivo ou morto) e o androide de energia infinita nao
+///     ligam o folego nem sobem o degrau dele (os dois RENDEM ponto), tem o fato que a tela le, e desligam o folego de uma
+///     tecnica de antes da regra; o Humano, o androide de absorcao e o Humano MORTO (a regra e da raca) compram como sempre.
 /// =========================================================================
 ///
 /// ============================ CHAMA O CODIGO DE PRODUCAO ============================
@@ -132,6 +135,7 @@ public sealed partial class GameServer
 			ODespachoDoVerbo();
 			ACorDoKi();
 			AMesaAbrePorPartes();
+			QuemNuncaCansaNaoVendeFolego();
 		}
 		finally
 		{
@@ -1385,5 +1389,137 @@ public sealed partial class GameServer
 		CancelarMesa(pl);
 
 		LimparTudoDaBancada();
+	}
+
+	// =====================================================================
+	// 9) QUEM NUNCA CANSA NAO VENDE FOLEGO (dono, 2026-10-19)
+	// =====================================================================
+	/// <summary>
+	/// A MESA NAO VENDE FOLEGO A QUEM TEM O VIGOR INFINITO -- ver <c>TecnicaCustomizada.VendeFolego</c>. Cada corpo abre a mesa
+	/// com 4 pontos gastos (o folego so RENDE: sem saldo o piso o recusaria por outro motivo, e a regua ficaria verde por
+	/// acidente) e pede o folego pelo funil de producao (`ca_comprar`, o texto que o clique manda). O Humano e o androide de
+	/// ABSORCAO sao os controles: os dois cansam, e compram. O Humano MORTO tambem compra -- a regra e da raca (o dono escolheu):
+	/// ele revive, e a tecnica volta a cobrar --, e o Majin morto continua sem.
+	/// </summary>
+	private void QuemNuncaCansaNaoVendeFolego()
+	{
+		GD.Print("[tecnica] -- 9) QUEM NUNCA CANSA NAO VENDE FOLEGO (dono, 2026-10-19): vigor infinito nao ganha ponto com o folego");
+
+		ServerPlayer Inventor(string nome, Action<ServerPlayer> corpo)
+		{
+			ServerPlayer p = ForjarInventor(nome, CorredorLivre(4), bp: 5_000);
+			corpo(p);
+			CriarTecnica(p);
+			for (int i = 0; i < 4; i++) ComandoDeTecnicaCustomizada(p, "ca_comprar", nameof(Compra.DanoMais));
+			return p;
+		}
+		void Androide(ServerPlayer p, bool infinito)
+		{
+			p.Race = p.Ficha.Race = "Android";
+			p.Ficha.AndroideInfinito = infinito;
+			p.Ficha.AndroideAbsorcao = !infinito;
+		}
+		List<string> Pedir(ServerPlayer p, Compra c) => Ouvir(() => ComandoDeTecnicaCustomizada(p, "ca_comprar", c.ToString()));
+		bool TemOFato(ServerPlayer p) => (FatosDe(p) & Jandirus.Core.Verbos.Fatos.VigorInfinito) != 0;
+		// A REGUA: o pedido foi RECUSADO com a frase da regra, e a mesa ficou como estava (sem folego, os 4 gastos).
+		bool Recusou(ServerPlayer p, List<string> falas) =>
+			p.Mesa is { UsaStamina: false, Gasto: 4 } && Disse(falas, TecnicaCustomizada.SemFolegoPraVender);
+		string Mesa(ServerPlayer p, List<string> falas) =>
+			$"folego {p.Mesa?.UsaStamina}, gasto {p.Mesa?.Gasto}, custo {p.Mesa?.CustoStamina} | {Ultimos(falas)}";
+
+		try
+		{
+			// ---------------------------------------------------------------- os controles: cansam, e compram
+			ServerPlayer humano = Inventor("Suado", _ => { });
+			List<string> falas = Pedir(humano, Compra.StaminaLigar);
+			AfirmarTc("(controle) o HUMANO cansa: ligar o folego DEVOLVE os 2 pontos de sempre, e ele nao tem o fato do vigor infinito",
+					  humano.Mesa is { UsaStamina: true, Gasto: 2 } && !TemOFato(humano) && !Disse(falas, TecnicaCustomizada.SemFolegoPraVender),
+					  Mesa(humano, falas));
+			ServerPlayer absorcao = Inventor("Coletor", p => Androide(p, infinito: false));
+			falas = Pedir(absorcao, Compra.StaminaLigar);
+			AfirmarTc("(controle) o androide de ABSORCAO cansa (a pergunta e o vigor, nao a raca): ele liga o folego e ganha os 2",
+					  absorcao.Mesa is { UsaStamina: true, Gasto: 2 } && !TemOFato(absorcao), Mesa(absorcao, falas));
+
+			// ---------------------------------------------------------------- quem nunca cansa
+			ServerPlayer majin = Inventor("Incansavel", p => p.Race = p.Ficha.Race = "Majin");
+			falas = Pedir(majin, Compra.StaminaLigar);
+			AfirmarTc("**O MAJIN NAO LIGA O FOLEGO**: o vigor dele nunca sai do cheio, a mesa RECUSA dizendo por que e os 4 pontos ficam gastos",
+					  Recusou(majin, falas), Mesa(majin, falas));
+			AfirmarTc("**O MAJIN TEM O FATO DO VIGOR INFINITO** (`Fatos.VigorInfinito`: e por ele que a tela some com a caixinha)",
+					  TemOFato(majin));
+
+			ServerPlayer infinito = Inventor("Motor Perpetuo", p => Androide(p, infinito: true));
+			falas = Pedir(infinito, Compra.StaminaLigar);
+			AfirmarTc("**O ANDROIDE DE ENERGIA INFINITA NAO LIGA O FOLEGO** (o de absorcao, la em cima, liga)",
+					  Recusou(infinito, falas), Mesa(infinito, falas));
+			AfirmarTc("**O ANDROIDE DE ENERGIA INFINITA TEM O FATO** do vigor infinito", TemOFato(infinito));
+
+			// O MORTO COMUM (o dono, 2026-10-19: *"só as raças com vigor infinito perdem a opção de fôlego"*): o vigor dele trava no cheio
+			// enquanto esta morto, mas ele revive e a tecnica volta a cobrar -- ele LIGA o folego, e nao tem o fato.
+			ServerPlayer morto = Inventor("Defunto Suado", p => p.Ficha.dead = true);
+			falas = Pedir(morto, Compra.StaminaLigar);
+			AfirmarTc("**O HUMANO MORTO LIGA O FOLEGO** (a regra e da raca: ele revive, e a tecnica volta a cobrar), e nao tem o fato",
+					  morto.Mesa is { UsaStamina: true, Gasto: 2 } && !TemOFato(morto) && !Disse(falas, TecnicaCustomizada.SemFolegoPraVender),
+					  Mesa(morto, falas));
+			// ...e o contra-exemplo, num morto de mesa intacta: contando o morto como raca (a primeira versao) a mesma regua reprova
+			ServerPlayer outroMorto = Inventor("Outro Defunto", p => p.Ficha.dead = true);
+			Jandirus.Core.Stats.Nutricao.MortoComoRacaDeTeste = true;
+			try
+			{
+				falas = Pedir(outroMorto, Compra.StaminaLigar);
+				AfirmarTc("(defeito injetado: o morto conta como raca de vigor infinito) o Humano morto e RECUSADO e ganha o fato -- a mesma regua REPROVA",
+						  Recusou(outroMorto, falas) && TemOFato(outroMorto), Mesa(outroMorto, falas));
+			}
+			finally { Jandirus.Core.Stats.Nutricao.MortoComoRacaDeTeste = false; }
+
+			// O MAJIN MORTO: a raca e a mesma, vivo ou fantasma -- continua sem o folego
+			ServerPlayer fantasma = Inventor("Fantasma Rosa", p => { p.Race = p.Ficha.Race = "Majin"; p.Ficha.dead = true; });
+			falas = Pedir(fantasma, Compra.StaminaLigar);
+			AfirmarTc("**O MAJIN MORTO TAMBEM NAO LIGA O FOLEGO** (a raca e a mesma vivo ou fantasma), e tem o fato",
+					  Recusou(fantasma, falas) && TemOFato(fantasma), Mesa(fantasma, falas));
+
+			// O CONTRA-EXEMPLO: a mesa sem a porta do folego vende ao Majin -- a mesma regua reprova
+			TecnicaCustomizada.FolegoSemPortaoDeTeste = true;
+			try
+			{
+				falas = Pedir(majin, Compra.StaminaLigar);
+				AfirmarTc("(defeito injetado: a mesa vende folego a quem nunca cansa) o Majin liga o folego e embolsa os 2 -- a mesma regua REPROVA",
+						  !Recusou(majin, falas) && majin.Mesa is { UsaStamina: true, Gasto: 2 }, Mesa(majin, falas));
+			}
+			finally { TecnicaCustomizada.FolegoSemPortaoDeTeste = false; }
+
+			// ---------------------------------------------------------------- a tecnica que JA gastava folego
+			// Feita pelo Core direto, como o disco devolve uma tecnica de antes da regra (ou o aluno recebe a do mestre).
+			var antiga = new TecnicaCustomizada { Id = 2, Nome = "Suor de Antes", Criada = true };
+			antiga.PorTipo(TipoDeProjetil.Blast);
+			for (int i = 0; i < 4; i++) antiga.Aplicar(Compra.DanoMais, 0, out _);
+			antiga.Aplicar(Compra.StaminaLigar, 0, out _);
+			majin.Customizadas.Add(antiga);
+			EditarTecnica(majin, "2");
+			falas = Pedir(majin, Compra.StaminaMais);
+			AfirmarTc("**NEM SOBE O DEGRAU DO FOLEGO** de uma tecnica que ja o gastava (de antes da regra): o degrau tambem rende, e e recusado",
+					  majin.Mesa is { Id: 2, UsaStamina: true, Gasto: 2 } && Math.Abs(majin.Mesa.CustoStamina - 1) < 1e-9
+					  && Disse(falas, TecnicaCustomizada.SemFolegoPraVender), Mesa(majin, falas));
+			falas = Pedir(majin, Compra.StaminaDesligar);
+			AfirmarTc("...mas DESLIGA-LO continua aberto (cobra os 2 de volta): quem tem a tecnica de antes pode desfaze-la",
+					  majin.Mesa is { Id: 2, UsaStamina: false, Gasto: 4 }, Mesa(majin, falas));
+		}
+		finally
+		{
+			TecnicaCustomizada.FolegoSemPortaoDeTeste = false;
+			Jandirus.Core.Stats.Nutricao.MortoComoRacaDeTeste = false;
+			LimparTudoDaBancada();
+		}
+	}
+
+	/// <summary>
+	/// (robo `--diagmesa`) O CORPO LOGADO VIRA MAJIN, ou volta a Humano -- o campo que a mesa pergunta
+	/// (`Nutricao.VigorInfinitoDaRaca`). O fato chega a tela pelo tique dos fatos, como em jogo. Falso = o corpo nao existe.
+	/// </summary>
+	internal bool MajinNaMesaDeBancada(int id, bool majin)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl)) return false;
+		pl.Race = pl.Ficha.Race = majin ? "Majin" : "Human";
+		return true;
 	}
 }

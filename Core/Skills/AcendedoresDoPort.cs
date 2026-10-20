@@ -47,6 +47,7 @@ public static class AcendedoresDoPort
 	public const string ArvoreDeBuff = "/datum/skill/tree/kibuffmas";
 	public const string ArvoreDoGray = "/datum/skill/tree/gray";
 	public const string ArvoreDoNamek = "/datum/skill/tree/namek";
+	public const string ArvoreDoEspirito = "/datum/skill/tree/Spirit";   // uma das tres de todo mundo (`skilltrees.json`, `todos`)
 
 	public const string BasicKiEffusion = "/datum/skill/mind/Basic_Ki_Effusion";
 	public const string BrainPower = "/datum/skill/gray/brainpower";
@@ -71,8 +72,14 @@ public static class AcendedoresDoPort
 	/// </summary>
 	public const string TemOndeErguer = "temOndeErguerAEstatua";
 
+	/// <summary>
+	/// (2026-10-19) "TEM UM MESTRE KAIOSHIN DE PE?" -- o `Rank == "Kaioshin Apprentice" && ksap_bond_ok(savant)` do `growbranches` da
+	/// arvore do aprendiz (`KaioshinApprentice.dm:259`). Quem responde e o servidor (`GameServer.ContadorDoServidor`).
+	/// </summary>
+	public const string ComMestreKaioshin = "comMestreKaioshin";
+
 	/// <summary>O port responde por este identificador de regra, mesmo ele nao sendo campo da ficha?</summary>
-	public static bool EDoServidor(string ident) => ident == TemOndeErguer;
+	public static bool EDoServidor(string ident) => ident == TemOndeErguer || ident == ComMestreKaioshin;
 
 	// =====================================================================
 	// AS TABELAS
@@ -88,6 +95,10 @@ public static class AcendedoresDoPort
 		.. BasicasDeBuff.Select(p => (ArvoreDeBuff, $"acende;{p};")),
 		(ArvoreDoGray, $"acende;{BrainPower};Class=='Hermano'"),
 		(ArvoreDoNamek, $"acende;{EstatuaDoDragao};Class=='Dragon clan'&&{TemOndeErguer}"),
+		// (2026-10-19) O APRENDIZ DE KAIOSHIN: a arvore dele abre pra quem tem o vinculo de pe (o `RankTreeAssign(4)` do DM), e as duas
+		// skills de cargo do kit, apagadas no catalogo (`ligada 0`), acendem nela -- a Telepatia e o Observar ja nascem acesos.
+		(ArvoreDoEspirito, $"arvore;{Ranks.AprendizDeKaioshin.Arvore};{ComMestreKaioshin}"),
+		.. Ranks.AprendizDeKaioshin.ApagadasNoCatalogo.Select(p => (Ranks.AprendizDeKaioshin.Arvore, $"acende;{p};{ComMestreKaioshin}")),
 	];
 
 	/// <summary>Pre-requisitos que o port deu a uma folha.</summary>

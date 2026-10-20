@@ -248,7 +248,7 @@ public sealed partial class GameServer
 		c.SincronizarVida();
 		if (autor != vitima) MarcarAgressao(vitima, autor);
 
-		ConsequenciaDoDano(vitima, autor, $"com dano direto ({membro.Nome})");   // a mesma cauda do `EspalharDanoG3`
+		ConsequenciaDoDano(vitima, autor, $"com dano direto ({membro.Nome})", letal);   // a mesma cauda do `EspalharDanoG3`
 	}
 
 	/// <summary>

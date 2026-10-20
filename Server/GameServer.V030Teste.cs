@@ -68,6 +68,8 @@ namespace Jandirus.Server;
 ///      43): ver `GameServer.V030AdendoTeste.cs`.
 ///   KP. (adendo 16, v0.3.1) O KAIO-KEN PRESO NO SAVE -- o disco nao leva o buff aceso, e o login cura quem ja ficou preso
 ///      (item 47): ver `GameServer.V030AdendoTeste.cs`.
+///   KS. (v0.4.2) O KAIO-KEN NAS FORMAS DE SUPER SAIYAJIN -- so no Blue, e so pra classe baixa e media com 50% de maestria
+///      divina: ver `GameServer.V030AdendoTeste.cs`.
 ///   GS. (adendo 15, v0.3.1) A GENKIDAMA SO SOCA AO SAIR -- nada de pose ao formar e crescer, e o soco do lancamento ate a
 ///      trava soltar (item 46): ver `GameServer.V030AdendoTeste.cs`.
 /// </summary>
@@ -130,6 +132,7 @@ public sealed partial class GameServer
 			AGenkidamaEmCimaDaCabecaV30();
 			AGenkidamaSoSocaAoSairV30();   // (adendo 15) antes da GD, pelo corredor de terra firme que ela racha
 			OKaiokenV30();
+			OKaiokenNoSuperSaiyajinV30();   // (v0.4.2) antes da GD, pelo mesmo motivo da KP logo abaixo
 			OKaiokenPresoNoSaveV30();   // (adendo 16) antes da GD: nao precisa de chao, mas a GD racha o que houver
 			ADeathBallSoSocaAoSairV30();   // (adendo 18) antes da GD, pelo corredor de terra firme devolvido no fim
 			AGenkidamaQueArrastaV30();
@@ -204,6 +207,7 @@ public sealed partial class GameServer
 		CanoCegoDeTeste = false;
 		GenkidamaComoAntesDeTeste = false;
 		XNaoApagaOKaiokenDeTeste = false;
+		KaiokenNoSuperSaiyajinDeTeste = false;
 		ColossalMoiNoMuroDeTeste = false;
 		BuffVaiProDiscoDeTeste = false;
 		KaiokenAcesoAtravessaOLoginDeTeste = false;
@@ -967,7 +971,7 @@ public sealed partial class GameServer
 			cs.EntrarEmCombate();
 			cs.Ferir(cs.Corpo.Achar("Torso")!, 1e9, letal: false);
 			cs.SincronizarVida();
-			ConsequenciaDoDano(v, algoz, "na bancada v030", porKi: false);
+			ConsequenciaDoDano(v, algoz, "na bancada v030", letal: false, porKi: false);
 			if (!v.Ficha.KO) return -1;
 			for (double s = Protocol.TickSeconds; s <= teto; s += Protocol.TickSeconds)
 			{

@@ -114,7 +114,8 @@ public partial class MenuJogo
 		};
 		string chave = c.Chave;
 		b.Pressed += () => cli.SendCargo(chave);
-		corpo.AddChild(b);
+		// (2026-10-19) O `alert()` DO DM (`RankQuests.dm:321`), escrito ANTES do clique: o botao ergue o Espirito do Cargo.
+		corpo.AddChild(BotaoComDescricao(b, Jandirus.Core.Ranks.ProvaDoCargo.FraseDoBotao));
 	}
 
 	private static string NomeDoCargo(string chave) =>

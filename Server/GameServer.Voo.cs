@@ -550,7 +550,10 @@ public partial class GameServer
 		// `RomperAAtmosferaComANave` (`GameServer.Nave.cs`).
 		if (!NaveSoSaiPeloMenuDeTeste && NaveDoPiloto(pl) is { } nave) { RomperAAtmosferaComANave(pl, nave); return; }
 
-		if (Voo.PodeRomperAAtmosfera(pl.Ficha.Ki, pl.Ficha.expressedBP, HabilidadeDeVoo(pl)))
+		// (2026-10-19) COM ESFERA DO DRAGAO NA MOCHILA O TETO NAO ROMPE: ela nao sai do planeta (dono). A recusa vem ANTES de desligar o
+		// voo -- quem bate no teto continua no ar, e ouve por que, no intervalo do aviso do teto. Ver `GameServer.EsferasNaMochila.cs`.
+		string presas = PorQueAsEsferasPrendem(pl);
+		if (presas.Length == 0 && Voo.PodeRomperAAtmosfera(pl.Ficha.Ki, pl.Ficha.expressedBP, HabilidadeDeVoo(pl)))
 		{
 			pl.Voando = false;
 			pl.Altitude = 0f;
@@ -563,6 +566,7 @@ public partial class GameServer
 		long agora = NowMs();
 		if (agora < pl.AvisoDeTetoAte) return;
 		pl.AvisoDeTetoAte = agora + 4000;
+		if (presas.Length > 0) { Avisar(pl, presas); return; }
 
 		// O AVISO DIZ QUAL PORTAO FALTA. "Voce nao consegue" nao ensina nada -- e o jogador que nao
 		// sabe o que falta tenta a mesma coisa de novo.

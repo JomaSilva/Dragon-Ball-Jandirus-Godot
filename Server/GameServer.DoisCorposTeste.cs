@@ -1536,7 +1536,7 @@ public sealed partial class GameServer
 				 GritarODesabafoDeTeste(b.Id);
 			 }, null, 3f, TiquesDoPasseio),
 
-			// ---- (2026-10-18) O SLEEP DO MAJIN: os 5 s deitado ----
+			// ---- (2026-10-18) O SLEEP DO MAJIN: os 5 s parado, em pe ----
 			// Pela porta de producao (`UsarHabilidade` -> `Dormir`), com Beta posto no ponto de dormir (`DormirDeTeste`: a skill no livro, a
 			// recarga livre). O passeio inteiro cabe no sono, e o esbarrao do andador nao o acorda: um corpo ocupado nao sai do lugar.
 			(Ocupacao.Dormindo,
@@ -1992,7 +1992,7 @@ public sealed partial class GameServer
 				"O CADAVER FICA: cem tiques depois ele continua no chao (nao ha prazo, so lotacao)",
 				"o corpo DESTROCADO pelo golpe -- o `verb/Destroy()` do DM, `Corpse.dm:22-26`",
 				() => { Tiques(100); return zonaDoCorpo.Contains(c); },
-				() => { Espalhar(c, 10_000); Tiques(TicksPorFicha + 1); },
+				() => { Espalhar(c, 10_000, letal: true); Tiques(TicksPorFicha + 1); },   // letal: o golpe que DESTROCA (o nao-letal para no piso)
 				() =>
 				{
 					if (!zonaDoCorpo.Contains(c)) zonaDoCorpo.Add(c);

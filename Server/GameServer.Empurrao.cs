@@ -438,12 +438,14 @@ public sealed partial class GameServer
 						// `ZoneList` (e por isso na grade) e NAO no `_players` -- ver o comentario da
 						// fonte em `GameServer.Corpos.MontarAsGrades`. Buscar pelo dicionario faria o
 						// corpo em transe parar o arremesso e nao levar dano nenhum.
+						// O BAQUE NAO MATA NINGUEM: `SpreadDamage(duration,0)` nos dois, o `0` e o nao-letal -- seja qual for
+						// o golpe de quem jogou. Ver `Espalhar`.
 						if (CorpoNaMinhaZona(pl, quem) is { } batido)
 						{
-							Espalhar(batido, pl.TiquesDeVoo);
+							Espalhar(batido, pl.TiquesDeVoo, letal: false);
 							AvisarSePessoa(batido, $"{pl.Name} colide com você!");
 						}
-						Espalhar(pl, pl.TiquesDeVoo);
+						Espalhar(pl, pl.TiquesDeVoo, letal: false);
 						parou = true;
 						break;   // para no ultimo ponto livre, como na parede que resiste
 					}
@@ -479,8 +481,8 @@ public sealed partial class GameServer
 						continue;
 					}
 
-					// RESISTIU: o corpo se arrebenta nela e o voo acaba no ultimo ponto livre.
-					Espalhar(pl, pl.TiquesDeVoo);
+					// RESISTIU: o corpo se arrebenta nela e o voo acaba no ultimo ponto livre -- nao-letal, como o baque no corpo.
+					Espalhar(pl, pl.TiquesDeVoo, letal: false);
 					parou = true;
 				}
 				destino = andado;
@@ -721,11 +723,30 @@ public sealed partial class GameServer
 	/// No arremesso ele e o baque, e a dose e o que faltava voar. Mas o mecanismo nao e do
 	/// arremesso: passar fome usa o mesmo caminho (`TickDoEstomago`), e por isso a dose e um
 	/// `double` -- o dano de fome e fracionario por passada, e um `int` o truncaria pra zero.
+	///
+	/// ============================ LETAL OU NAO E DE QUEM CHAMA (2026-10-19) ============================
+	/// O dono: *"modo nao letal ainda ta matando as vezes"*. Este metodo descia todo membro ate ZERO, nucleo
+	/// incluso, sem perguntar o golpe de ninguem -- e sem a cauda do nocaute e da morte, entao o corpo ficava de
+	/// pe com a cabeca zerada ate o PROXIMO golpe, de qualquer um: o soco nao-letal seguinte via `DeveMorrer` e
+	/// matava. No DM nenhum dos chamadores mata assim: o baque e `SpreadDamage(duration,0)`
+	/// (`Movement Effects.dm:72`, `:79-80`) e a fome e `SpreadDamage(x)` (`StaminaDrain.dm:69`), os dois no ramo
+	/// `DamageMe(damage,1)`, o nao-letal (`Injuries.dm:82-83`; la `null == 0`); o arremesso do agarrao e a
+	/// cambalhota sao `damage_mob` (`Throw.dm:27`, `Martial Skill Attacks.dm:316`), que leva o `murderToggle` de
+	/// quem joga (`calcs.dm:176`).
+	///
+	/// O PISO E O DO `Body.Ferir` (`NaoLetal.Piso`: o mesmo do soco nao-letal, logo abaixo da linha do nocaute), com a
+	/// regra do `DamageMe` nao-letal (`mobparts_logic.dm:87-91`): o dano para no piso e NAO SOBE quem ja estava abaixo dele.
+	/// O botao de defeito (`EspalharSemPisoDeTeste`) mora na bancada, `GameServer.NaoLetalTeste.cs`.
+	/// ===================================================================================================
 	/// </summary>
-	private static void Espalhar(ServerPlayer pl, double dano)
+	private static void Espalhar(ServerPlayer pl, double dano, bool letal)
 	{
 		foreach (Jandirus.Core.Combat.BodyPart parte in pl.Combate.Corpo.Partes)
-			parte.Vida = Math.Max(0, parte.Vida - dano / pl.Combate.Corpo.Partes.Count);
+		{
+			double nova = parte.Vida - dano / pl.Combate.Corpo.Partes.Count;
+			double piso = letal || EspalharSemPisoDeTeste ? 0 : NaoLetal.Piso(parte.VidaMax);
+			parte.Vida = nova >= piso ? nova : Math.Max(Math.Min(piso, parte.Vida), 0);
+		}
 		pl.Combate.SincronizarVida();
 	}
 

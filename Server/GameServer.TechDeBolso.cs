@@ -30,6 +30,9 @@ public sealed class CofreDeTech
 
 	/// <summary>As criaturas das capsulas de companheiro (ver `Jandirus.Core.Tech.Companheiros`).</summary>
 	public Dictionary<int, Jandirus.Core.Tech.Companheiro> Companheiros = [];
+
+	/// <summary>(2026-10-19) O estado das maquinas recolhidas com melhorias, ate serem assentadas de novo (ver `GameServer.MaquinaGuardada.cs`).</summary>
+	public Dictionary<int, MaquinaNaGaveta> Maquinas = [];
 }
 
 /// <summary>

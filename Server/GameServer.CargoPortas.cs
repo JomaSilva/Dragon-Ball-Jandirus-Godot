@@ -155,6 +155,10 @@ public partial class GameServer
 	{
 		if (!EhPessoa(pl) || pl.Livro == null) return;
 
+		// (2026-10-19) O APRENDIZ DE KAIOSHIN CAIDO, ANTES DE TUDO: o kit que ele comprou sai com os Marcos de volta -- se a reconciliacao
+		// chegasse primeiro, apagaria a Cura sem devolver nada. Ver `AplicarAQuedaDoAprendiz`.
+		AplicarAQuedaDoAprendiz(pl);
+
 		// O KIT DO DEUS DA DESTRUICAO nao e skill de livro (ver `DadivaDeCargo`, que deixa o kit dele vazio de
 		// proposito): o que entra e o que sai com o titulo e reconciliado por `GameServer.KitDoDeus.cs`, aqui,
 		// pelo mesmo argumento do cabecalho deste metodo.
@@ -162,12 +166,16 @@ public partial class GameServer
 
 		string[] kit = DadivaDeCargo.De(CargoDe(pl.Conta));
 		bool mudou = false;
+		// (2026-10-19) O APRENDIZ DE KAIOSHIN COMPRA na arvore dele duas skills que sao de cargo (a Cura e o Ver Mortos): com o vinculo de
+		// pe, o passo 1 nao as toca. Quando ele cai, quem as tira -- devolvendo os Marcos -- e o `DesfazerOAprendizado`.
+		bool aprendiz = !AprendizDeKaioshin.KitApagadoDeTeste && EAprendizDeKaioshin(pl);
 
 		// 1. O QUE SOBROU DE UM CARGO QUE ELE NAO TEM MAIS -- o que SO um cargo poderia ter dado, e
 		//    que ninguem lhe ensinou. Ver `DadivaDeCargo.Revogavel` e o `treeshrink` do DM.
 		foreach (string path in DadivaDeCargo.Todas)
 		{
 			if (kit.Contains(path, StringComparer.OrdinalIgnoreCase)) continue;
+			if (aprendiz && AprendizDeKaioshin.Kit.Contains(path, StringComparer.OrdinalIgnoreCase)) continue;
 			if (!pl.Livro.Sabe(path)) continue;
 			if (!DadivaDeCargo.Revogavel(SoDeCargo, pl.Livro, path)) continue;
 			pl.Livro.Esquecer(path);
@@ -365,12 +373,23 @@ public partial class GameServer
 		foreach (ServerPlayer pl in _players.Values)
 			if (EhJogador(pl)) ReconciliarDadiva(pl);
 
+		// (2026-10-19) OS VINCULOS DE APRENDIZ DE KAIOSHIN: o que caiu com o mestre fora do trono, e o convite vencido. Ver
+		// `GameServer.AprendizDeKaioshin.cs`.
+		TickDosAprendizes();
+
 		TickDoDuelo();
 
 		// OS DEVERES DOS 17 CARGOS COM TAREFA. Ele entra AQUI e nao no bloco de 1 Hz de fora pelo
 		// mesmo motivo do duelo: quem manda no passo e o relogio do MUNDO, e este metodo so pergunta
 		// se ja deu a hora (uma volta por minuto -- ver `TickDasMissoes`). Ver `GameServer.CargoMissoes.cs`.
 		TickDasMissoes();
+
+		// (2026-10-19) O TRONO DE QUEM SUMIU: 7 dias de servidor no ar sem o dono entrar e o cargo vaga (menos o Anjo). Uma volta a
+		// cada 10 min. Ver `GameServer.CargoLivre.cs`.
+		TickDoAbandono();
+
+		// (2026-10-19) O JUIZ DA PROVA DO ESPIRITO DO CARGO: recrava o espirito e decide quem venceu. Ver `GameServer.ProvaDoCargo.cs`.
+		TickDasProvas();
 	}
 
 	// =====================================================================
@@ -658,6 +677,13 @@ public partial class GameServer
 			case "cargo_nomear": VerboNomearAnciao(pl, arg); return true;
 			case "cargo_nomear_aceitar": VerboResponderNomeacao(pl, aceitou: true); return true;
 			case "cargo_nomear_recusar": VerboResponderNomeacao(pl, aceitou: false); return true;
+
+			// (2026-10-19) o patronato do Kaioshin -- ver `GameServer.AprendizDeKaioshin.cs`. A resposta mora aqui pelo motivo da juventude
+			// de baixo: quem responde e o convidado, que nao tem a skill.
+			case AprendizDeKaioshin.VerboNomear: VerboNomearAprendiz(pl, arg); return true;
+			case AprendizDeKaioshin.VerboDispensar: VerboDispensarAprendiz(pl, arg); return true;
+			case AprendizDeKaioshin.VerboAceitar: VerboResponderAprendizado(pl, aceitou: true); return true;
+			case AprendizDeKaioshin.VerboRecusar: VerboResponderAprendizado(pl, aceitou: false); return true;
 
 			case "cargo_herdeiro": VerboHerdeiro(pl, arg, nomear: true); return true;
 			case "cargo_herdeiro_tirar": VerboHerdeiro(pl, arg, nomear: false); return true;

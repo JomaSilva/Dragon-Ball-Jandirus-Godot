@@ -251,20 +251,61 @@ public partial class GameServer
 		if (Array.IndexOf(args, "--paradateste") >= 0) RodarBancadaDaParada(porta);
 		// `--saidaembateteste`: sair do jogo no meio de um ZanzoClash. Ver `GameServer.SaidaDoEmbateTeste.cs`.
 		if (Array.IndexOf(args, "--saidaembateteste") >= 0) RodarBancadaDaSaidaDoEmbate(porta);
+		// `--passorapidoteste`: (2026-10-19) o passo recusado pela velocidade (o quadro longo) nao atravessa mais o muro, e em campo aberto
+		// continua andando o orcamento. Mapa feito na bancada. Ver `GameServer.PassoRapidoTeste.cs`.
+		if (Array.IndexOf(args, "--passorapidoteste") >= 0) RodarBancadaDoPassoRapido();
 		// `--adminlocalteste`: o admin de quem HOSPEDA (a prova do anfitriao) e o `--admin`. Ver `GameServer.AdminLocalTeste.cs`.
 		if (Array.IndexOf(args, "--adminlocalteste") >= 0) RodarBancadaDoAdminLocal(porta);
+		// `--penavivoteste`: (2026-10-19) quem volta a vida com a pena do Inferno correndo fica livre, e a proxima morte o leva a cumprir o
+		// resto -- cada porta de revive (a tecnica, as esferas, o Enma, o admin) e o save de antes do conserto. O jogador entra pela porta.
+		// Ver `GameServer.PenaDoVivoTeste.cs`.
+		if (Array.IndexOf(args, "--penavivoteste") >= 0) RodarBancadaDaPenaDoVivo(porta);
 		// `--ganhoteste`: de onde o poder da luta vem -- o soco no ar, o objeto, a troca entre jogadores e o ki que so
 		// rende encostando. Os jogadores entram pela porta. Ver `GameServer.GanhoTeste.cs`.
 		if (Array.IndexOf(args, "--ganhoteste") >= 0) RodarBancadaDeGanho(porta);
+		// `--torneiocellteste`: (2026-10-19) o torneio do Cell -- o sangue dele, a forma Perfeita que marca o torneio, a arena no dia, o x1 so de
+		// jogador (o golpe de quem se mete desfeito), a regra da arena que o Cell derruba e os sete Cell Jr (clones dele) na plateia, a morte na
+		// luta e a volta Super Perfeita, e o Kamehameha da fila vazia. Os jogadores entram pela porta. Ver `GameServer.TorneioDoCellTeste.cs`.
+		// (Aqui no meio, entre duas linhas velhas, e nao no fim: o fim e onde todo agente acrescenta a sua, e a fusao dava conflito.)
+		if (Array.IndexOf(args, "--torneiocellteste") >= 0) RodarBancadaDoTorneioDoCell(porta);
 		// `--niveisteste`: (adendo 18) as skills que nao subiam de nivel -- a Ki Effusion, o Spirit Gun e o Fist, a Rapid
 		// Movement, a lamina/espada/escudo de Ki, o Full Power e o gigante. O jogador entra pela porta. Ver `GameServer.NiveisQueNaoSubiamTeste.cs`.
 		if (Array.IndexOf(args, "--niveisteste") >= 0) RodarBancadaDosNiveis(porta);
+		// `--patriarcateste`: (2026-10-19) o Grande Patriarca de Namek -- o molde e o plano, o nascimento perto do berco, a folha dele, a
+		// vida diaria que nao sai do lugar, o menu E e a conversa que desperta o potencial. O jogador entra pela porta. Ver
+		// `GameServer.PatriarcaTeste.cs`.
+		if (Array.IndexOf(args, "--patriarcateste") >= 0) RodarBancadaDoPatriarca(porta);
+		// `--servicosteste`: (2026-10-19) os servicos do Outro Mundo -- os doadores, so os mortos, a entrega e a rede, a recarga, o lugar do
+		// treino e da meditacao, o nocaute, o prazo e o revive, o cartao e o save. O jogador entra pela porta. Ver `GameServer.ServicosTeste.cs`.
+		if (Array.IndexOf(args, "--servicosteste") >= 0) RodarBancadaDosServicos(porta);
 		// `--filhosteste`: (adendo 42) os filhos -- o amor correspondido, o pedido e o "sim", a fila dos bebes e o parto pela criacao. Os
 		// pais e o filho entram pela porta. Ver `GameServer.FilhosTeste.cs`.
 		if (Array.IndexOf(args, "--filhosteste") >= 0) RodarBancadaDosFilhos(porta);
+		// `--esferamochilateste`: (2026-10-19) as Esferas do Dragao na mochila -- o slot com o sprite do chao, largar uma, a caverna e o
+		// Lookout que sao do planeta, as portas que recusam quem carrega e a invocacao que as tira da mochila. O jogador entra pela porta.
+		// Ver `GameServer.EsferasNaMochilaTeste.cs`.
+		if (Array.IndexOf(args, "--esferamochilateste") >= 0) RodarBancadaDasEsferasNaMochila(porta);
 		// `--tuffleteste`: (2026-10-18) o Neo Tuffle -- o laboratorio do Tsufurujin, a conversao, a posse de um jogador nocauteado e a expulsao
 		// quando o corpo cai. Os jogadores entram pela porta. Ver `GameServer.TuffleTeste.cs`.
 		if (Array.IndexOf(args, "--tuffleteste") >= 0) RodarBancadaDoTuffle(porta);
+		// `--aprendizteste`: (2026-10-19) o APRENDIZ DE KAIOSHIN -- o convite pelo cartao, a arvore que abre, o kit que a reconciliacao nao
+		// apaga, os tres por Kaioshin, a queda com o mestre fora do trono e a formatura, a devolucao dos Marcos, o dispensar e o admin.
+		// Os jogadores entram pela porta. Ver `GameServer.AprendizTeste.cs`.
+		if (Array.IndexOf(args, "--aprendizteste") >= 0) RodarBancadaDoAprendiz(porta);
+		// `--recicladoteste`: (2026-10-19) quem sai da vaga (apagado, reencarnado) sai da aba People de todo mundo, e a varredura do boot. Os
+		// jogadores entram pela porta, numa pasta de saves temporaria. Ver `GameServer.RecicladoTeste.cs`.
+		if (Array.IndexOf(args, "--recicladoteste") >= 0) RodarBancadaDoReciclado(porta);
+		// `--juizteste`: (2026-10-19) o King Yemma vai e volta do Outro Mundo -- a ida, o revive la dentro, a volta exata, o carimbo, as
+		// portas. Corpos forjados. Ver `GameServer.JuizTeste.cs`.
+		if (Array.IndexOf(args, "--juizteste") >= 0) RodarBancadaDoJuiz();
+		// `--cargolivreteste`: (2026-10-19) os cargos sem admin -- os onze que o dono abriu (os sete do espaco e os Anciaos de Namek), a
+		// reivindicacao de producao, o trono de Vegeta condenado, as frases do trono vago que cabem no fio e o trono de quem sumiu ha 7
+		// dias. Corpos forjados. Ver `GameServer.CargoLivreTeste.cs`.
+		if (Array.IndexOf(args, "--cargolivreteste") >= 0) RodarBancadaDosCargosSemAdmin();
+		// `--provacargoteste`: (2026-10-19) a PROVA DO ESPIRITO DO CARGO -- o Reivindicar que ergue o espirito, a caca, o cravo, a vitoria,
+		// o intruso, a vergonha, a fuga, a trava, o morto do Outro Mundo, a campanha do Presidente e a saida no meio. O jogador entra pela
+		// porta. Ver `GameServer.ProvaCargoTeste.cs`.
+		if (Array.IndexOf(args, "--provacargoteste") >= 0) RodarBancadaDaProvaDoCargo(porta);
 		// `--calendarioteste`: (2026-10-17) o calendario e a idade que anda com ele -- a data, o dia e o mes que viram, os meses de quem esta
 		// no jogo e de quem volta, a velhice, a Sala do Tempo por cima. O jogador entra pela porta. Ver `GameServer.CalendarioTeste.cs`.
 		if (Array.IndexOf(args, "--calendarioteste") >= 0) RodarBancadaDoCalendario(porta);
@@ -278,6 +319,9 @@ public partial class GameServer
 		// `--pesosteste`: (2026-10-18) os pesos com estado no id (dois pesos, dois itens; o que cai e o que se pega e o mesmo peso; a migracao do
 		// save de antes) e a maestria de gravidade que o peso travava. O jogador entra pela porta. Ver `GameServer.PesosTeste.cs`.
 		if (Array.IndexOf(args, "--pesosteste") >= 0) RodarBancadaDosPesos(porta);
+		// `--lemeteste`: (2026-10-19) o casco isola quem pilota -- a gravidade, a lua, o ar, os golpes de fora, e nenhum poder ao leme. O
+		// jogador entra pela porta. Ver `GameServer.LemeTeste.cs`.
+		if (Array.IndexOf(args, "--lemeteste") >= 0) RodarBancadaDoLeme(porta);
 	}
 
 	/// <summary>

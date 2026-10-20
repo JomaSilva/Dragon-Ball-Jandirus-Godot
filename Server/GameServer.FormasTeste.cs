@@ -1126,21 +1126,60 @@ public partial class GameServer
 			// Y" a qualquer um. A regra principal do BP: em numero so pra quem tem scouter; sem ele vai a FRACAO da porta
 			// (`PoderNaFrase.FracaoDoLimiar` -- a porta e sorteada e secreta, entao a porcentagem nao entrega o BP de
 			// ninguem). As tres leituras saem do `Apeshit` de producao, que recusa toda vez sem mexer em nada.
+			//
+			// (2026-10-19) E O VIDRO TEM TETO: o scouter so le ate `Scouter.TetoDeLeitura` (100 milhoes, dono 2026-10-18), e esta
+			// porta e o `ultrassjat` sorteado entre 675 e 975 milhoes. Acima do teto o scouter marca "???" e a frase cai pra mesma
+			// FRACAO de quem nao tem scouter (`ScouterMostra`, `GameServer.Sigilo.cs`). A regua de antes pedia os dois numeros COM
+			// scouter nesta porta e ficou vermelha no dia do teto: o jogo estava certo, a regua e que era de antes dele. Por isso a
+			// recusa e medida duas vezes: na porta de verdade (sem numero nem com scouter) e numa porta de METADE do teto (dentro
+			// dele, com scouter, os dois numeros) -- senao "o scouter mostra o numero" ficaria sem prova nenhuma.
 			// ===========================================================================================================================
 			double bpDeVerdade = pl.Ficha.BP, portaDoDourado = PortaDoDourado(pl);
 			pl.Ficha.BP = Math.Floor(portaDoDourado * 0.62);
 			double bpCurto = pl.Ficha.BP;
 			var (semScouter, comScouter, comDefeito) = AsTresLeiturasDoPoder(pl, () => Apeshit(pl));
-			pl.Ficha.BP = bpDeVerdade;
-			Checa("(palco) a porta pessoal do Dourado existe, e com 62% dela a lua nao faz fera nenhuma",
-				  portaDoDourado >= 1000 && pl.Oozaru == FormaOozaru.Nao, $"porta {portaDoDourado:0}, {pl.Oozaru}");
+
+			// o defeito do TETO, com o scouter ligado: o vidro que le qualquer poder (o jogo de antes de 2026-10-18)
+			bool tinhaScouter = TemScouter(pl);
+			List<string> semTeto;
+			Jandirus.Core.Stats.Scouter.SemTetoDeTeste = true;
+			ScouterDeBancada(pl, true);
+			try { semTeto = OuvirEDevolver(() => Apeshit(pl)); }
+			finally { Jandirus.Core.Stats.Scouter.SemTetoDeTeste = false; ScouterDeBancada(pl, tinhaScouter); }
+
+			// a mesma recusa DENTRO do teto: um limiar de metade dele no lugar do sorteado (so o do Dourado conta nesta recusa)
+			LimiaresPessoais? limiaresReais = pl.Forma.Limiares;
+			double portaNoTeto, bpNoTeto;
+			List<string> semScouterNoTeto, comScouterNoTeto;
+			pl.Forma.Limiares = new LimiaresPessoais { Rolado = true, ultrassjat = Jandirus.Core.Stats.Scouter.TetoDeLeitura / 2 };
+			try
+			{
+				portaNoTeto = PortaDoDourado(pl);
+				pl.Ficha.BP = bpNoTeto = Math.Floor(portaNoTeto * 0.62);
+				(semScouterNoTeto, comScouterNoTeto, _) = AsTresLeiturasDoPoder(pl, () => Apeshit(pl));
+			}
+			finally { pl.Forma.Limiares = limiaresReais; pl.Ficha.BP = bpDeVerdade; }
+
+			Checa("(palco) a porta pessoal do Dourado existe e PASSA do teto do scouter, e com 62% dela a lua nao faz fera nenhuma",
+				  portaDoDourado > Jandirus.Core.Stats.Scouter.TetoDeLeitura && pl.Oozaru == FormaOozaru.Nao, $"porta {portaDoDourado:0}, {pl.Oozaru}");
 			Checa("SEM scouter, a recusa por poder diz a FRACAO da porta ('62% do que ela pede') e nao traz o BP nem a porta",
 				  semScouter.Any(a => a.Contains("62% do que ela pede"))
 				  && !TrazOPoder(semScouter, bpCurto) && !TrazOPoder(semScouter, portaDoDourado), string.Join(" | ", semScouter));
-			Checa("COM o scouter ligado, a mesma recusa traz os dois numeros (o BP base e a porta)",
-				  TrazOPoder(comScouter, bpCurto) && TrazOPoder(comScouter, portaDoDourado), string.Join(" | ", comScouter));
+			Checa("COM o scouter ligado, a porta de verdade passa do teto: o vidro marca ??? e a recusa diz a MESMA fracao, sem o BP nem a porta",
+				  comScouter.Any(a => a.Contains("62% do que ela pede"))
+				  && !TrazOPoder(comScouter, bpCurto) && !TrazOPoder(comScouter, portaDoDourado), string.Join(" | ", comScouter));
 			Checa("(defeito injetado: o numero sem medidor) sem scouter os numeros voltam -- a regua de cima reprovaria",
 				  TrazOPoder(comDefeito, bpCurto) && TrazOPoder(comDefeito, portaDoDourado), string.Join(" | ", comDefeito));
+			Checa("(defeito injetado: o scouter sem teto) com o scouter ligado os dois numeros voltam -- a regua do teto reprovaria",
+				  TrazOPoder(semTeto, bpCurto) && TrazOPoder(semTeto, portaDoDourado), string.Join(" | ", semTeto));
+			Checa("(palco) com uma porta de METADE do teto, os 62% dela tambem sao recusa",
+				  portaNoTeto <= Jandirus.Core.Stats.Scouter.TetoDeLeitura && comScouterNoTeto.Count > 0 && pl.Oozaru == FormaOozaru.Nao,
+				  $"porta {portaNoTeto:0}, {comScouterNoTeto.Count} fala(s), {pl.Oozaru}");
+			Checa("DENTRO do teto, COM o scouter ligado, a mesma recusa traz os dois numeros (o BP base e a porta)",
+				  TrazOPoder(comScouterNoTeto, bpNoTeto) && TrazOPoder(comScouterNoTeto, portaNoTeto), string.Join(" | ", comScouterNoTeto));
+			Checa("...e SEM scouter, dentro do teto, continua a FRACAO, sem os dois numeros",
+				  semScouterNoTeto.Any(a => a.Contains("62% do que ela pede"))
+				  && !TrazOPoder(semScouterNoTeto, bpNoTeto) && !TrazOPoder(semScouterNoTeto, portaNoTeto), string.Join(" | ", semScouterNoTeto));
 
 			// 3. NA BASE, com as duas fechaduras abertas: sai o REGULAR.
 			Transformar(pl, subir: false);

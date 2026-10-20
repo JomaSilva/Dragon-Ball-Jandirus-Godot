@@ -60,18 +60,34 @@ public partial class MenuJogo
 		if (GameClient.Instance is not { } cli) { AindaNao("Tech"); return; }
 
 		// ---- o numero da aba: o nivel, com xp e a carteira (zeni e recursos) na legenda
-		double alvo = Math.Max(cli.TechXpAlvo, 1e-9);
-		Faixa("Tecnologia", $"nível {cli.TechNivel:0.#}",
-			  $"{cli.TechXp:0} / {cli.TechXpAlvo:0} xp  ·  {cli.Zeni:N0} zeni  ·  {cli.Recursos:N0} recursos");
+		Label legenda = PartesDaFaixa(Faixa("Tecnologia", $"nível {cli.TechNivel:0.#}", LegendaDaTech(cli))).Legenda;
 
 		// ---- estudo
 		VBoxContainer estudo = Cartao("Estudo");
-		LinhaComBarra("Experiência", $"{cli.TechXp:0} / {cli.TechXpAlvo:0}", cli.TechXp / alvo, Tema.Destaque, estudo);
+		LinhaViva xp = LinhaComBarra("Experiência", XpDaTech(cli), RazaoDoXp(cli), Tema.Destaque, estudo);
 		Nota("Study, na bancada de pesquisa, é o único jeito de ganhar tecnologia. Cada nível abre construções novas no catálogo.", estudo);
+
+		// A LEGENDA E A BARRA SAO VIVAS (2026-10-19): a carteira chega a cada segundo de mineracao, e reescrever dois
+		// textos no lugar e o que deixa a aba aberta sem remontar os cem cards do catalogo a cada pazada (ver `Viva`).
+		Viva(() =>
+		{
+			if (GameClient.Instance is not { } c) return;
+			legenda.Text = LegendaDaTech(c);
+			xp.Escrever(XpDaTech(c), RazaoDoXp(c), Tema.Destaque);
+		});
 
 		CatalogoDeObrasNaAba(cli);
 		ObrasDaZona(cli);
 	}
+
+	/// <summary>A legenda da faixa: o xp e as duas carteiras. Uma conta so pra montagem e pra viva.</summary>
+	private static string LegendaDaTech(GameClient c) =>
+		$"{c.TechXp:0} / {c.TechXpAlvo:0} xp  ·  {c.Zeni:N0} zeni  ·  {c.Recursos:N0} recursos";
+
+	/// <summary>O valor da linha "Experiência" e a razao da barra dela.</summary>
+	private static string XpDaTech(GameClient c) => $"{c.TechXp:0} / {c.TechXpAlvo:0}";
+
+	private static double RazaoDoXp(GameClient c) => c.TechXp / Math.Max(c.TechXpAlvo, 1e-9);
 
 	// =====================================================================
 	// O CATALOGO
@@ -401,24 +417,25 @@ public partial class MenuJogo
 	}
 
 	/// <summary>
-	/// O PEDACO DESTA ABA NA ASSINATURA DE CACHE (ver `MenuJogo.Assinatura`). A basica cobre nivel,
-	/// zeni, xp e as CONTAGENS de obras e ofertas. O que esta aba desenha alem disso:
+	/// O PEDACO DESTA ABA NA ASSINATURA DE CACHE (ver `MenuJogo.Assinatura`). A basica cobre o nivel e
+	/// as CONTAGENS de obras e ofertas. O que esta aba desenha alem disso:
 	///
 	///   * as DUAS RECUSAS de cada oferta, a em zeni e a em recursos, com a carteira de agora (elas mudam
 	///     quando o saldo muda, sem a contagem mudar) -- um caractere por oferta e por moeda, na ordem do
 	///     catalogo;
-	///   * o saldo de RECURSOS (a faixa o escreve);
-	///   * o xp do proximo nivel (a barra e a razao dele);
 	///   * se o catalogo JA FOI PEDIDO: a nota "pedindo..." vira "não ofereceu nada" na remontagem
 	///     seguinte, e sem este pedaco a pagina vazia ficaria com a frase velha pra sempre;
 	///   * o "aparafusada/solta" de cada obra, que o Bolt troca sem mudar a contagem.
+	///
+	/// O XP E AS DUAS CARTEIRAS NAO ENTRAM desde 2026-10-19: a faixa e a barra do estudo sao VIVAS (reescritas no
+	/// lugar a cada pedido, ver `AbaTech`). O que a carteira muda nos CARDS chega pelas recusas acima.
 	/// </summary>
 	private string ExtraDaAssinaturaDeTech(SheetState f)
 	{
 		if (GameClient.Instance is not { } c) return "";
 		return string.Concat(c.Catalogo.Select(o => (char)('0' + Math.Clamp((int)c.VereditoDe(o, Moeda.Zeni), 0, 9))))
 			 + "|" + string.Concat(c.Catalogo.Select(o => (char)('0' + Math.Clamp((int)c.VereditoDe(o, Moeda.Recursos), 0, 9))))
-			 + $"|{c.Recursos:0}|{c.TechXpAlvo:0}|{_pediCatalogo}|"
+			 + $"|{_pediCatalogo}|"
 			 + string.Join(',', c.Obras.Select(o => $"{o.Id}{(o.Aparafusada ? '+' : '-')}"));
 	}
 }

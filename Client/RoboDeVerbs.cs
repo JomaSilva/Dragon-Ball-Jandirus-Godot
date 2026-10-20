@@ -352,6 +352,8 @@ public partial class RoboDeVerbs : Node
 					Jandirus.Core.Races.SkillsRaciais.DoKit(Jandirus.Core.Races.KitRacial.Saiyajin | Jandirus.Core.Races.KitRacial.Humano),
 					Jandirus.Core.Races.SkillRacial.RacaGuerreira | Jandirus.Core.Races.SkillRacial.SegundoFolego)),
 			("androide de absorção", Gente("Android", "Normal", terra, Fatos.AndroideDeAbsorcao)),
+			// (2026-10-18) O NEO TUFFLE: o Tsufurujin que passou pela maquina ve o "Possuir um nocauteado" (`Fatos.NeoTuffle`).
+			("Neo Tuffle", Gente("Tsujin", "Normal", terra, Fatos.NeoTuffle)),
 			("humano no espaço", Gente("Human", "Normal", Lugar.Espaco)),
 			("humano com tudo na mesa (ofertas, mestre, aluno, fusão, cópias, God Ki, arma de fogo, um amor)",
 				Gente("Human", "Normal", terra, ofertas | Fatos.TemMestre | Fatos.TemAluno | Fatos.DirigeUmaFusao | Fatos.TemCopias | Fatos.GodKiDesperto
@@ -365,6 +367,10 @@ public partial class RoboDeVerbs : Node
 			("Deus da Destruição", Gente("Human", "Normal", terra, cargos: [Jandirus.Core.Ranks.KitDoDeus.Cargo])),
 			("Deus da Destruição que trilha o Instinto",
 				Gente("Human", "Normal", terra, Fatos.KitDaDestruicaoEmprestado, cargos: [Jandirus.Core.Ranks.KitDoDeus.Cargo])),
+			// (2026-10-19) O KING YEMMA: a travessia pro Outro Mundo e do trono dele -- e quem perdeu o trono la dentro guarda a volta
+			// (`Fatos.VoltaDoOutroMundo`, `GameServer.TravessiaDoJuiz.cs`).
+			("King Yemma", Gente("Human", "Normal", terra, cargos: [Jandirus.Core.World.TravessiaDoJuiz.Cargo])),
+			("ex-King Yemma vivo no Outro Mundo, com a volta guardada", Gente("Human", "Normal", terra, Fatos.VoltaDoOutroMundo)),
 		];
 
 		var telas = new Dictionary<string, Dictionary<string, HashSet<string>>>();

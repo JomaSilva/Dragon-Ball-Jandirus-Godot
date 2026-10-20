@@ -13,14 +13,16 @@ namespace Jandirus.Client;
 ///   0. a LOJA: a busca "Sleep" na aba Learning acha a skill na arvore `Majin Racials` -- foto `sono-0-loja.png` --, e a ficha dela abre --
 ///      foto `sono-0b-ficha.png`;
 ///   1. o BOTAO "Sleep" na aba Skills, com a descricao -- foto `sono-1-botao.png`;
-///   2. ferido a 30%, aperta o botao: o corpo DEITA NA HORIZONTAL e o "z" sobe; e um Majin ao lado, que olhava pro sul, dorme visto de FORA
-///      (o boneco remoto), deitado na horizontal tambem -- foto `sono-2-dormindo.png`;
+///   2. ferido a 30%, aperta o botao: o corpo DORME EM PE (dono, 2026-10-19: *"ele ta deitando pra dormir na skill de regeneraçao dele, ele
+///      deveria dormir em pé"*) e o "z" sobe; e um Majin ao lado, que olhava pro sul, dorme visto de FORA (o boneco remoto), em pe tambem --
+///      foto `sono-2-dormindo.png`;
 ///   3. os 5 s de relogio de verdade, e cada parte acorda em 90% -- foto `sono-3-refeito.png`;
 ///   4. ferido de novo, dorme e ANDA no meio: acorda, nada se refaz, e o Sleep espera o minuto -- foto `sono-4-acordou.png`;
-///   5. CONTRA-EXEMPLO (`World.SonoIgnoradoDeTeste`): o servidor poe o corpo pra dormir e a tela nao mostra nem o "z" nem o corpo deitado --
-///      foto `sono-5-defeito.png`;
-///   6. CONTRA-EXEMPLO (`GameServer.SonoNaVerticalDeTeste`, o jogo de antes da foto): o Majin ao lado dorme de cabeca pro norte, deitado na
-///      VERTICAL -- em pe na tela -- foto `sono-6-defeito-vertical.png`.
+///   5. CONTRA-EXEMPLO (`World.SonoIgnoradoDeTeste`): o servidor poe o corpo pra dormir e a tela nao mostra o "z" -- foto `sono-5-defeito.png`;
+///   6. CONTRA-EXEMPLO (`GameServer.SonoDeitadoDeTeste`, o jogo da 0.4.1): o Majin ao lado dorme DEITADO no quadro de nocaute -- foto
+///      `sono-6-defeito-deitado.png`;
+///   7. (2026-10-19) O KI ACIMA DE 100%: a 120% na barra, o botao o poe pra dormir e a barra cai pra 100% -- fotos `sono-7a-ki-acima.png` e
+///      `sono-7b-ki-dormindo.png` (*"ao dormir caso o ki dele esteja acima de 100% ele volta pra 100%"*).
 ///
 ///     Godot --path . --host --rede 8463 --campoteste 12 --horateste 0.5 --semfauna --skillteste /datum/skill/majin/Sleep --diagsono
 ///           --raca Majin --conta bancada_sono --nome Dorminhoco
@@ -49,19 +51,20 @@ public partial class RoboDoSono : Node
 		Fechar();
 	}
 
-	private LocalPlayer? Eu() => World.Instancia?.CorpoDeTeste(C?.LocalId ?? 0) as LocalPlayer;
-
 	private SonoDesenhado? Zs(int eu) => (World.Instancia?.CorpoDeTeste(eu))?.GetNodeOrNull<SonoDesenhado>(SonoDesenhado.NomeDoNode);
 
 	/// <summary>O desenho (`CharacterVisual`) do corpo deste id na tela -- o meu, ou o boneco remoto de um figurante.</summary>
 	private static CharacterVisual? Desenho(int id) => World.Instancia?.CorpoDeTeste(id)?.GetNodeOrNull<CharacterVisual>("Visual");
 
 	/// <summary>
-	/// DEITADO NA HORIZONTAL: o quadro de nocaute (`ko`, um desenho deitado de cabeca pro leste) a 0 ou a 180 graus. A noventa ele fica em pe
-	/// na tela -- o defeito da foto de 2026-10-18.
+	/// (2026-10-19) DE PE: o quadro de quem esta parado (`default`), sem giro -- e nao o de nocaute (`ko`, o desenho deitado que a 0.4.1 vestia
+	/// em quem dormia).
 	/// </summary>
-	private static bool NaHorizontal(CharacterVisual? v) =>
-		v != null && v.EstadoDeTeste == "ko" && Math.Abs(Mathf.Wrap(v.RotationDegrees, -180f, 180f)) is < 1f or > 179f;
+	private static bool DePe(CharacterVisual? v) =>
+		v != null && v.EstadoDeTeste == "default" && Math.Abs(Mathf.Wrap(v.RotationDegrees, -180f, 180f)) < 1f;
+
+	/// <summary>Como o desenho deste corpo esta agora, pro rodape das linhas: o quadro e o giro.</summary>
+	private static string Como(CharacterVisual? v) => v == null ? "sem desenho" : $"quadro {v.EstadoDeTeste}, {v.RotationDegrees:0} grau(s)";
 
 	private async Tarefa Percurso()
 	{
@@ -120,15 +123,14 @@ public partial class RoboDoSono : Node
 		botao?.EmitSignal(BaseButton.SignalName.Pressed);
 		ulong t0 = Time.GetTicksMsec();
 		menu.Fechar();
-		bool deitou = await Ate(() => srv.SonoDeTeste(eu).Dormindo && Eu() is { Dormindo: true } && Zs(eu) is { LetrasDeTeste: > 0 }
-																  && NaHorizontal(Desenho(eu)), 3);
-		Conferir(deitou, "2. DORMINDO: o botao poe o corpo pra dormir -- o servidor conta, o corpo local DEITA NA HORIZONTAL (o quadro de nocaute a "
-								  + $"{Desenho(eu)?.RotationDegrees:0} grau(s)) e o \"z\" sobe sobre ele");
+		bool dormindo = await Ate(() => srv.SonoDeTeste(eu).Dormindo && Zs(eu) is { LetrasDeTeste: > 0 } && DePe(Desenho(eu)), 3);
+		Conferir(dormindo, "2. DORMINDO EM PE: o botao poe o corpo pra dormir -- o servidor conta, o corpo local fica DE PE (o quadro de quem esta "
+								  + $"parado, sem giro: {Como(Desenho(eu))}) e o \"z\" sobe sobre ele");
 		bool vizinhoDorme = srv.DormirOlhandoDeTeste(fig, Jandirus.Core.World.Facing.South);
-		bool deFora = await Ate(() => NaHorizontal(Desenho(fig)) && Zs(fig) is { LetrasDeTeste: > 0 }, 3);
+		bool deFora = await Ate(() => srv.SonoDeTeste(fig).Dormindo && DePe(Desenho(fig)) && Zs(fig) is { LetrasDeTeste: > 0 }, 3);
 		Conferir(vizinhoDorme && deFora,
-							  "...e VISTO DE FORA: o Majin ao lado, que olhava pro sul, dorme deitado na horizontal tambem (o quadro de nocaute a "
-							  + $"{Desenho(fig)?.RotationDegrees:0} grau(s)), com o \"z\" -- a cabeca e o bit `Deitado` vao no snapshot");
+							  "...e VISTO DE FORA: o Majin ao lado, que olhava pro sul, dorme em pe tambem, com o \"z\" -- a pose vai no snapshot "
+							  + $"({Como(Desenho(fig))})");
 		await Segundos(0.4);
 		Fotografar("user://sono-2-dormindo.png");
 
@@ -137,7 +139,7 @@ public partial class RoboDoSono : Node
 		double levou = (Time.GetTicksMsec() - t0) / 1000.0;
 		await Segundos(0.6);
 		double vida = srv.SonoVidaMinimaDeTeste(eu);
-		Conferir(acordou && levou is > 4.5 and < 7 && vida > 0.85 && Eu() is { Dormindo: false } && Zs(eu) == null,
+		Conferir(acordou && levou is > 4.5 and < 7 && vida > 0.85 && DePe(Desenho(eu)) && Zs(eu) == null,
 				 $"3. OS 5 S DE RELOGIO DE VERDADE: ele acorda em {levou:0.0} s, com cada parte refeita (a menor em {vida:P0}), de pe e sem o \"z\"");
 		Fotografar("user://sono-3-refeito.png");
 
@@ -158,7 +160,7 @@ public partial class RoboDoSono : Node
 		Input.ParseInputEvent(new InputEventKey { Keycode = Key.D, PhysicalKeycode = Key.D, Pressed = false });
 		await Segundos(4.5);   // o tempo que o sono levaria pra fechar: nada se refaz
 		double vidaDepois = srv.SonoVidaMinimaDeTeste(eu);
-		Conferir(dormiuDeNovo && perdeu && vidaDepois < 0.35 && Eu() is { Dormindo: false },
+		Conferir(dormiuDeNovo && perdeu && vidaDepois < 0.35 && Zs(eu) == null,
 				 $"4. ACORDADO NO MEIO: andar (a tecla D) acorda -- o sono se perde e nada se refaz (a menor parte segue em {vidaDepois:P0}), o \"se for "
 				 + "interrompido nesses 5s nada acontece\" do dono");
 		Fotografar("user://sono-4-acordou.png");
@@ -178,27 +180,49 @@ public partial class RoboDoSono : Node
 			srv.SonoLivreDeTeste(eu);
 			bool dorme = srv.DormirDeTeste(eu);
 			await Segundos(1.0);
-			Conferir(dorme && srv.SonoDeTeste(eu).Dormindo && Zs(eu) == null && Eu() is { Dormindo: false },
-					 "CONTRA-EXEMPLO (defeito injetado: a tela ignora o sono): o servidor poe o corpo pra dormir e a tela nao mostra nem o \"z\" nem o "
-					 + "corpo deitado -- a regua do passo 2 reprovaria");
+			Conferir(dorme && srv.SonoDeTeste(eu).Dormindo && Zs(eu) == null,
+					 "CONTRA-EXEMPLO (defeito injetado: a tela ignora o sono): o servidor poe o corpo pra dormir e a tela nao mostra o \"z\" -- a regua "
+					 + "do passo 2 reprovaria");
 			Fotografar("user://sono-5-defeito.png");
 		}
 		finally { World.SonoIgnoradoDeTeste = false; }
 
-		// ---- 6. o contra-exemplo da cabeca ----
-		Jandirus.Server.GameServer.SonoNaVerticalDeTeste = true;
+		// ---- 6. o contra-exemplo do corpo deitado ----
+		Jandirus.Server.GameServer.SonoDeitadoDeTeste = true;
 		try
 		{
+			await Ate(() => !srv.SonoDeTeste(fig).Dormindo, 7);   // o sono do passo 2 ja fechou sozinho; a espera e so a rede
 			srv.SonoLivreDeTeste(fig);
 			bool dorme = srv.DormirOlhandoDeTeste(fig, Jandirus.Core.World.Facing.South);
-			bool deitado = await Ate(() => Desenho(fig) is { EstadoDeTeste: "ko" } v && Math.Abs(Math.Abs(Mathf.Wrap(v.RotationDegrees, -180f, 180f)) - 90f) < 1f, 3);
+			bool deitado = await Ate(() => srv.SonoDeTeste(fig).Dormindo && Desenho(fig) is { EstadoDeTeste: "ko" }, 3);
 			await Segundos(0.4);
-			Conferir(dorme && deitado && !NaHorizontal(Desenho(fig)),
-							  "CONTRA-EXEMPLO (defeito injetado: a cabeca do nocaute de olhar, o jogo de antes da foto): o Majin ao lado dorme de cabeca pro norte, a "
-							  + $"{Desenho(fig)?.RotationDegrees:0} graus -- deitado na VERTICAL, em pe na tela -- e a regua do passo 2 reprovaria");
-			Fotografar("user://sono-6-defeito-vertical.png");
+			Conferir(dorme && deitado && !DePe(Desenho(fig)),
+							  "CONTRA-EXEMPLO (defeito injetado: quem dorme deita no quadro de nocaute, o jogo da 0.4.1): o Majin ao lado dorme DEITADO "
+							  + $"({Como(Desenho(fig))}) -- e a regua do passo 2 reprovaria");
+			Fotografar("user://sono-6-defeito-deitado.png");
 		}
-		finally { Jandirus.Server.GameServer.SonoNaVerticalDeTeste = false; }
+		finally { Jandirus.Server.GameServer.SonoDeitadoDeTeste = false; }
+
+		// ---- 7. o Ki acima de 100% ----
+		// A 120% e nao mais: acima do teto seguro (`kicapacity`, 130% de fabrica) a sobrecarga fere, e um golpe no corpo acordaria quem dorme.
+		await Ate(() => !srv.SonoDeTeste(eu).Dormindo, 7);   // o sono do passo 5 fecha sozinho
+		srv.SonoLivreDeTeste(eu);
+		srv.SonoKiDeTeste(eu, 1.2);
+		bool acima = await Ate(() => cli.Sheet.MaxKi > 0 && cli.Sheet.Ki > cli.Sheet.MaxKi * 1.15, 3);
+		double kiAntes = cli.Sheet.MaxKi > 0 ? cli.Sheet.Ki / cli.Sheet.MaxKi : 0;
+		Fotografar("user://sono-7a-ki-acima.png");
+		menu.Abrir();
+		menu.IrPara(Verbos.Skills);
+		menu.ForcarRedesenho();
+		await Quadros(3);
+		BotaoDoSono(menu)?.EmitSignal(BaseButton.SignalName.Pressed);
+		menu.Fechar();
+		bool caiu = await Ate(() => srv.SonoDeTeste(eu).Dormindo && cli.Sheet.MaxKi > 0 && Math.Abs(cli.Sheet.Ki / cli.Sheet.MaxKi - 1) < 0.005, 3);
+		await Segundos(0.4);
+		Conferir(acima && caiu,
+				 $"7. O KI ACIMA DE 100%: a {kiAntes:P0} na barra, o botao o poe pra dormir e a barra cai pra "
+				 + $"{(cli.Sheet.MaxKi > 0 ? cli.Sheet.Ki / cli.Sheet.MaxKi : 0):P0} -- *\"ao dormir caso o ki dele esteja acima de 100% ele volta pra 100%\"*");
+		Fotografar("user://sono-7b-ki-dormindo.png");
 		srv.PalcoCorpos_Tirar(vizinhos);
 		srv.SonoFerirDeTeste(eu, 1.0);
 	}
@@ -256,7 +280,7 @@ public partial class RoboDoSono : Node
 	private void Fechar()
 	{
 		World.SonoIgnoradoDeTeste = false;
-		Jandirus.Server.GameServer.SonoNaVerticalDeTeste = false;
+		Jandirus.Server.GameServer.SonoDeitadoDeTeste = false;
 		foreach (string l in _linhas) GD.Print("[dsono] " + l);
 		GD.Print(_falhas.Count == 0 ? "[dsono] ===== TUDO OK =====" : $"[dsono] ===== {_falhas.Count} FALHA(S) =====");
 		foreach (string f in _falhas) GD.Print("[dsono]   - " + f);

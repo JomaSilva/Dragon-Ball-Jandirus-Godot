@@ -201,6 +201,9 @@ public sealed partial class GameServer
 
 		ServerPlayer dona = Forjar("dr: a dona", DrNo(px + 2, py + 2), 1_000);
 		dona.Conta = "bancada_drill_dona";
+		// (2026-10-19) o nivel tem teto pela tecnologia de quem paga (`TetoPorTecnologia`, medido na `--melhoriasteste`): com
+		// 100 a Drill sobe ate o nivel maximo do jogo, que e o que esta bancada mede.
+		dona.Ficha.techskill = TetoPorTecnologia.TechSemTeto;
 
 		Obra? drill = AssentarDeTeste(dona, Drill.Tipo, px + 2, py + 1);
 		AfirmarDr("(montagem) a Drill assentou pelo funil de producao (`posicionar`), e e da dona",

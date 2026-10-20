@@ -27,6 +27,8 @@ public sealed partial class GameServer
 			"O guardião da Torre. Cultiva as sementes Senzu.",
 			"res://Assets/Sprites/NPCs/Korin.tres", ZoneKey.Premade(NpcsDeConversa.ZonaDoKorin),
 			NpcsDeConversa.CelulaDoKorin);
+		// (2026-10-19) os tres doadores dos servicos do Outro Mundo, pelo mesmo molde -- ver `GameServer.ServicosDoAlem.cs`
+		SemearOsDoadoresDoAlem();
 	}
 
 	private void SemearUmNpcDeConversa(string tipo, string nome, string desc, string arte, ZoneKey zona,

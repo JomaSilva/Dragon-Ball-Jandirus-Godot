@@ -253,12 +253,28 @@ public sealed class EstadoDeForma
 	/// tirar do caminho -- em vez da recusa do SSJ2, que e a que o dono pediu que ele ouvisse.
 	/// ======================================================================================================
 	///
-	/// **RAMO LATERAL E MAIS GERAL QUE "GRADE" DE PROPOSITO.** As supressoes do Frost Demon tambem sao
-	/// <see cref="FormaDef.ForaDoTronco"/> e nao mudam de comportamento nenhum: elas valem MENOS que a
-	/// forma em que se esta e o C so sobe, entao nunca foram oferecidas. Escrever "menos o grade2 e o
-	/// grade3" daria o mesmo resultado hoje e mentiria no dia do proximo ramo.
+	/// **RAMO LATERAL E MAIS GERAL QUE "GRADE" DE PROPOSITO.** Escrever "menos o grade2 e o grade3" daria o
+	/// mesmo resultado hoje e mentiria no dia do proximo ramo.
+	///
+	/// (2026-10-19) **E A CASCA FICA SEMPRE NO CAMINHO.** As supressoes do Frost Demon tambem sao
+	/// <see cref="FormaDef.ForaDoTronco"/>, e esta linha dizia que elas "valem menos que a forma em que se esta e
+	/// nunca foram oferecidas". Pro Mutante isso e falso: da 1a Forma ele SOBE pela 2a, pela 3a e pela 4a (ver o
+	/// passo 5b do <see cref="Avaliar"/>), e cada uma vale mais que a de baixo. Com os grades desligados elas sairiam
+	/// do caminho junto com os grades -- e o Mutante ficaria preso na 1a Forma pra sempre, sem degrau pra subir.
 	/// </summary>
-	public bool NoCaminhoDoC(FormaDef d) => !d.ForaDoTronco || GradesLigados != false;
+	public bool NoCaminhoDoC(FormaDef d) => !d.ForaDoTronco || GradesLigados != false || (EhCasca(d) && !CascaSaiDoCaminhoDeTeste);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--frostteste`): com os grades desligados as cascas do Mutante saem do caminho da tecla C junto com
+	/// eles -- o jogo de antes, em que ele ficava preso na 1a Forma. Lido pelo proprio <see cref="NoCaminhoDoC"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool CascaSaiDoCaminhoDeTeste;
+
+	/// <summary>
+	/// (2026-10-19) ESTE DEGRAU E UMA CASCA? -- fora do tronco, mais fraco que a base e de graca (`Catalogo.PodeSerRepouso`).
+	/// Sao as quatro supressoes do Frost Demon e nada mais: os grades tambem sao ramo lateral, mas valem MAIS que a base.
+	/// </summary>
+	private static bool EhCasca(FormaDef d) => d.ForaDoTronco && Catalogo.PodeSerRepouso(d) && d.Mult[0] < 1;
 
 	/// <summary>
 	/// O PROXIMO DEGRAU a partir de onde se esta: o mais FORTE que estiver aberto agora.
@@ -367,6 +383,12 @@ public sealed class EstadoDeForma
 	/// <see cref="Avaliar"/>. Falso em jogo, sempre.
 	/// </summary>
 	public static bool SaiDaFuryPelaEscadaDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--frostteste`): a casca de baixo deixa de ser cobrada -- o Mutante volta a pular da 1a Forma
+	/// direto pra forma base num aperto so. Lido pelo passo 5b do <see cref="Avaliar"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool PulaACascaDeTeste;
 
 	/// <summary>
 	/// DEFEITO INJETADO (bancada `--v021teste`): a forma CONCEDIDA volta a cobrar o degrau de baixo da linha dela -- o
@@ -560,6 +582,22 @@ public sealed class EstadoDeForma
 			bool ok = d.PedeFormaAtual.Length > 0 ? Despertou(ant.Id) : EstaEmOuAcimaDe(ant);
 			if (!ok) return RecusaForma.ForaDeOrdem;
 		}
+
+		// ============================ 5b. (2026-10-19) A CASCA DE BAIXO E DEGRAU DE QUEM A TEM ============================
+		// O `next = fd_form + 1` do Frost Demon (`IcerTransform.dm:87`): o Mutante abre a casca UMA por vez, e cada uma e uma
+		// forma com a cena dela. As supressoes sao `ForaDoTronco` pra que o NORMAL -- que nao tem nenhuma -- possa estar na
+		// propria forma base sem ter passado pela 4a; so que assim nenhuma delas era o anterior de ninguem, e o passo 5 nao
+		// cobrava nada: o `Proxima` escolhe o degrau MAIS FORTE que passa por aqui, e o Mutante pulava da 1a Forma (0,25x)
+		// direto pra forma base (1x) num aperto so. A tecla de forma e a aba Formas pulavam junto.
+		//
+		// A REGRA E DE CASCA, E NAO DE RACA: o degrau imediatamente abaixo do alvo (`Catalogo.DegrauAbaixo`) e uma casca
+		// (`EhCasca`) que ESTE corpo tem (a classe que ela pede e a dele)? Entao ela e cobrada como degrau. O
+		// normal nao tem casca nenhuma e nao muda; descer continua livre (quem recua ja esta acima da casca cobrada).
+		// ==================================================================================================================
+		if (!PulaACascaDeTeste && Catalogo.DegrauAbaixo(d) is { } casca && EhCasca(casca)
+			&& (casca.PedeClasseUmaDe.Length == 0 || Bate(casca.PedeClasseUmaDe, perfil.Classe))
+			&& !EstaEmOuAcimaDe(casca))
+			return RecusaForma.ForaDeOrdem;
 
 		// 6. MAESTRIA -- no degrau anterior, ou na forma que o campo apontar (ver PedeMaestriaDe).
 		string deQuem = d.PedeMaestriaDe.Length > 0 ? d.PedeMaestriaDe : ant?.Id ?? Catalogo.IdBase;

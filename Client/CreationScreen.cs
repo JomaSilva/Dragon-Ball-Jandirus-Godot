@@ -13,7 +13,8 @@ namespace Jandirus.Client;
 /// jogador nunca ocupa uma vaga no servidor enquanto decide o penteado.
 ///
 /// A tela e so COLETA e DESENHO. Quem decide stat, BP e classe e o servidor, com o mesmo
-/// RaceCatalog -- a classe continua sendo sorteio cego, por isso ela nao aparece aqui.
+/// RaceCatalog -- a classe continua sendo sorteio cego, por isso ela nao aparece aqui. (2026-10-19) Menos a do
+/// Frost Demon: o DM a diz na escolha da raca e a tela de formas depende dela -- ver `PaginaDeFormas`.
 /// </summary>
 public partial class CreationScreen : CanvasLayer
 {
@@ -30,7 +31,7 @@ public partial class CreationScreen : CanvasLayer
 
 	private OptionButton _corpo = null!;
 	private GridContainer _gradeCabelo = null!, _gradeRoupa = null!;
-	private GridContainer _gradeRaca = null!, _gradeFormas = null!;
+	private GridContainer _gradeRaca = null!;
 	private VBoxContainer _caixaLinhagem = null!;
 	private LineEdit _nome = null!;
 	private TextEdit _historia = null!;
@@ -60,9 +61,15 @@ public partial class CreationScreen : CanvasLayer
 	/// <summary>A RACA JA VEM DADA -- pelo sorteio da vaga ou pelo bebe --, e as etapas de mundo e raca somem (`Etapa.Cabe`).</summary>
 	private bool RacaDada => (_racaSorteada.Length > 0 || _filho != null) && !EtapasDoSorteioVisiveisDeTeste;
 
-	/// <summary>Qual dos corpos do Frost Demon a grade esta editando (0 = base).</summary>
-	private int _slotDeForma;
-	private HBoxContainer _linhaCorCabelo = null!, _linhaCorPele = null!;
+	/// <summary>(2026-10-19) A escolha dos corpos do Frost Demon -- as abas e a grade, num componente que a tela em jogo tambem usa.</summary>
+	private EscolhaDeFormasDoFrost _escolhaDeFormas = null!;
+
+	/// <summary>
+	/// (2026-10-19) A CLASSE DE FROST DEMON QUE O SERVIDOR SORTEOU PRA ESTA VAGA (`SlotInfo.ClasseDoFrost`) -- tres corpos ou sete.
+	/// Normal quando a vaga nao disse nada (o filho, a tela montada antes da lista de vagas). Ver `Reabrir`.
+	/// </summary>
+	private string _classeDoFrost = FormasDeFrost.ClasseNormal;
+	private HBoxContainer _linhaCorCabelo = null!, _linhaCorPele = null!, _linhaCorOlho = null!;
 	private ColorPickerButton _corCabelo = null!, _corOlho = null!, _corPele = null!;
 	private CheckBox _tingirCabelo = null!, _tingirOlho = null!, _tingirPele = null!;
 	private CharacterVisual _boneco = null!;
@@ -790,9 +797,9 @@ public partial class CreationScreen : CanvasLayer
 			() => { _visual.CorCabelo = _tingirCabelo.ButtonPressed ? DeCor(_corCabelo.Color) : null; Previa(); });
 		p.AddChild(_linhaCorCabelo);
 
-		(HBoxContainer linhaOlho, _tingirOlho, _corOlho) = LinhaDeCor("Colorir os olhos", new Color("2857c8"),
+		(_linhaCorOlho, _tingirOlho, _corOlho) = LinhaDeCor("Colorir os olhos", new Color("2857c8"),
 			() => { _visual.CorOlho = _tingirOlho.ButtonPressed ? DeCor(_corOlho.Color) : null; Previa(); });
-		p.AddChild(linhaOlho);
+		p.AddChild(_linhaCorOlho);
 
 		return p;
 	}
@@ -806,86 +813,52 @@ public partial class CreationScreen : CanvasLayer
 	/// pra ele e abre o `formchoose` (`body_custom.dm:197-203`). O dono confirmou com todas as
 	/// letras: "a aparencia do frost demon e onde ele escolhe as formas dele".
 	///
-	/// SAO TRES SLOTS, e nao sete. As quatro supressoes so existem pro Mutante, e ninguem sabe
-	/// AINDA se sera um: a classe e sorteada no servidor (1%). Pedir sete corpos a todo mundo seria
-	/// pedir quatro escolhas que 99 em cada 100 jogadores nunca veriam -- entao quem sair Mutante
-	/// recebe os quatro de baixo nos padroes do original, e pode re-escolher em jogo depois.
+	/// (2026-10-19) SAO TRES SLOTS PRO NORMAL E SETE PRO MUTANTE, como no DM (`form_pick_slots`, `body_custom.dm:197-203`).
+	/// Esta linha dizia "tres, e nao sete: ninguem sabe AINDA se sera um, a classe e sorteada no servidor" -- e o Mutante
+	/// escolhia os tres corpos do normal e ganhava as quatro supressoes no padrao (o dono: *"frost demon mutante deveria ter
+	/// como escolher todas as transformaçoes na criaçao de personagem assim como era nesse projeto"*). No DM a classe do Frost
+	/// Demon sai NA ESCOLHA DA RACA (`statfrost`) e a tela de formas ja abre sabendo; aqui o servidor sorteia a classe da vaga
+	/// quando manda a lista de vagas (`SlotInfo.ClasseDoFrost`, guardada na conta) e o nascimento usa a mesma.
+	///
+	/// AS ABAS E A GRADE MORAM NUM COMPONENTE (<see cref="EscolhaDeFormasDoFrost"/>), porque o DM abre esta mesma tela de novo
+	/// em jogo (o `Icer_Form_Settings`) -- e a `TelaDeFormasDoFrost` e essa segunda porta.
 	/// ================================================================================
 	/// </summary>
 	private Control PaginaDeFormas()
 	{
 		VBoxContainer p = NovaPagina();
-		int[] degraus = Jandirus.Core.Races.FormasDeFrost.DegrausDe(
-			Jandirus.Core.Races.FormasDeFrost.ClasseNormal);
-
-		var abas = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
-		abas.AddThemeConstantOverride("separation", 6);
-		p.AddChild(abas);
-
-		_gradeFormas = new GridContainer { Columns = 6 };
-		_gradeFormas.AddThemeConstantOverride("h_separation", 6);
-		_gradeFormas.AddThemeConstantOverride("v_separation", 6);
-		p.AddChild(Rolagem(_gradeFormas, 260));
-
-		for (int i = 0; i < degraus.Length; i++)
-		{
-			int slot = i;
-			int degrau = degraus[i];
-			var b = new Button
-			{
-				Text = Jandirus.Core.Races.FormasDeFrost.Nome(degrau),
-				ToggleMode = true,
-				TooltipText = degrau == Jandirus.Core.Races.FormasDeFrost.Base
-					? "onde você começa"
-					: $"multiplica o seu poder por {Jandirus.Core.Races.FormasDeFrost.Multiplicador(degrau):0}",
-			};
-			b.AddThemeFontSizeOverride("font_size", 12);
-			b.Pressed += () => { MarcarSelecionado(abas, b); _slotDeForma = slot; DesenharGradeDeFormas(); };
-			abas.AddChild(b);
-			if (i == 0) b.ButtonPressed = true;
-		}
-
+		_escolhaDeFormas = new EscolhaDeFormasDoFrost();
+		_escolhaDeFormas.Mudou += Previa;
+		p.AddChild(_escolhaDeFormas);
 		return p;
 	}
 
-	/// <summary>Os botoes do catalogo, por corpo. Montados UMA vez -- ver `DesenharGradeDeFormas`.</summary>
-	private readonly Dictionary<string, Button> _botoesDeForma = [];
+	/// <summary>
+	/// (2026-10-19) A LISTA DE CORPOS DO FROST DEMON, nos padroes da classe DESTA vaga, e a escolha aberta nela. Chamada na troca
+	/// de raca (a ida e a volta do Frost Demon) e no `Reabrir` (a vaga nova pode ser de outra classe que a anterior).
+	/// </summary>
+	private void PrepararFormasDoFrost()
+	{
+		_visual.FormasDeFrost.Clear();
+		foreach (int degrau in Jandirus.Core.Races.FormasDeFrost.DegrausDe(_classeDoFrost))
+			_visual.FormasDeFrost.Add(Jandirus.Core.Races.FormasDeFrost.Padrao(_classeDoFrost, degrau));
+		_escolhaDeFormas.Abrir(_classeDoFrost, _visual.FormasDeFrost, emJogo: false);
+	}
+
+	/// <summary>A escolha dos corpos da etapa de formas. Pra bancada (`--diagmutante`).</summary>
+	internal EscolhaDeFormasDoFrost EscolhaDeFormasDeTeste => _escolhaDeFormas;
 
 	/// <summary>
-	/// A GRADE DE CORPOS. Montada uma vez; trocar de aba so remarca qual esta aceso.
-	///
-	/// ============================ ERA UM ENGASGO POR CLIQUE ============================
-	/// A versao anterior destruia e reconstruia os 54 botoes a cada troca de aba, e cada botao
-	/// carrega um `SpriteFrames` do disco pra tirar a miniatura. Sao 54 leituras de recurso no meio
-	/// de um clique -- o dono sentiu exatamente isso ("ao clicar em frost demon o jogo da uma
-	/// travadinha"), e ele acontecia DE NOVO a cada vez que ele trocava de degrau.
-	///
-	/// Montando uma vez, o custo acontece uma vez. E depois disso trocar de aba e mudar um booleano
-	/// em 54 botoes, que e trabalho de um quadro.
-	/// ===================================================================================
+	/// DEFEITO INJETADO (bancada `--diagmutante`): a criacao ignora a classe da vaga e abre os tres corpos do Frost Demon normal pra
+	/// todo mundo -- o jogo de antes. Lido pelo <see cref="Reabrir"/>. Falso em jogo, sempre.
 	/// </summary>
-	private void DesenharGradeDeFormas()
-	{
-		if (_slotDeForma >= _visual.FormasDeFrost.Count) return;
+	internal static bool ClasseDoFrostIgnoradaDeTeste;
 
-		if (_botoesDeForma.Count == 0)
-			foreach (string corpo in Jandirus.Core.Races.FormasDeFrost.Catalogo)
-			{
-				string alvo = corpo;
-				Button b = BotaoIcone(Miniatura(Jandirus.Core.Races.FormasDeFrost.Caminho(corpo)), corpo);
-				b.Pressed += () =>
-				{
-					_visual.FormasDeFrost[_slotDeForma] = alvo;
-					MarcarSelecionado(_gradeFormas, b);
-					Previa();
-				};
-				_gradeFormas.AddChild(b);
-				_botoesDeForma[corpo] = b;
-			}
-
-		string atual = _visual.FormasDeFrost[_slotDeForma];
-		foreach ((string corpo, Button b) in _botoesDeForma) b.ButtonPressed = corpo == atual;
-	}
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagmutante`): a descricao do Frost Demon volta a dizer que o combate revela a classe -- o jogo de
+	/// antes, que desmentia o aviso do Mutante na mesma tela. Lido pelo <see cref="Descrever"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool ClasseDoFrostNoCombateDeTeste;
 
 	private Control PaginaDeRoupa()
 	{
@@ -1046,7 +1019,7 @@ public partial class CreationScreen : CanvasLayer
 	// GRADES DE ICONE
 	// =====================================================================
 	/// <summary>Uma area rolavel com altura fixa -- 59 cabelos nao cabem numa tela.</summary>
-	private static ScrollContainer Rolagem(Control dentro, int altura)
+	internal static ScrollContainer Rolagem(Control dentro, int altura)
 	{
 		var sc = new ScrollContainer
 		{
@@ -1067,7 +1040,7 @@ public partial class CreationScreen : CanvasLayer
 	/// tela saia, so pelo involucro C#. Era o estado de 225 das 227 miniaturas desta tela na entrada no mundo,
 	/// bem na hora em que os habitantes sao vestidos com as mesmas folhas.
 	/// </summary>
-	private static Texture2D? Miniatura(string caminho)
+	internal static Texture2D? Miniatura(string caminho)
 	{
 		var f = FolhasPresas.Carregar(caminho);
 		if (f == null) return null;
@@ -1087,7 +1060,7 @@ public partial class CreationScreen : CanvasLayer
 		return null;
 	}
 
-	private static Button BotaoIcone(Texture2D? icone, string dica)
+	internal static Button BotaoIcone(Texture2D? icone, string dica)
 	{
 		var b = new Button
 		{
@@ -1143,7 +1116,7 @@ public partial class CreationScreen : CanvasLayer
 	}
 
 	/// <summary>Grade de escolha unica: so um botao fica apertado.</summary>
-	private static void MarcarSelecionado(Node grade, Button escolhido)
+	internal static void MarcarSelecionado(Node grade, Button escolhido)
 	{
 		foreach (Node n in grade.GetChildren())
 			if (n is Button b) b.ButtonPressed = ReferenceEquals(b, escolhido);
@@ -1256,16 +1229,7 @@ public partial class CreationScreen : CanvasLayer
 		// outra raca LIMPA a lista (senao um Humano viajaria carregando tres corpos de Icer), e
 		// voltar pra ele encontraria a grade vazia -- ela le `FormasDeFrost[slot]` pra saber o que
 		// marcar. Preencher na troca de raca cobre a ida e a volta.
-		if (Jandirus.Core.Races.FormasDeFrost.EhFrost(raca))
-		{
-			_visual.FormasDeFrost.Clear();
-			foreach (int degrau in Jandirus.Core.Races.FormasDeFrost.DegrausDe(
-						 Jandirus.Core.Races.FormasDeFrost.ClasseNormal))
-				_visual.FormasDeFrost.Add(Jandirus.Core.Races.FormasDeFrost.PadraoDoNormal(degrau));
-
-			_slotDeForma = 0;
-			DesenharGradeDeFormas();
-		}
+		if (Jandirus.Core.Races.FormasDeFrost.EhFrost(raca)) PrepararFormasDoFrost();
 		else _visual.FormasDeFrost.Clear();
 
 		AoTrocarGenero();
@@ -1339,6 +1303,15 @@ public partial class CreationScreen : CanvasLayer
 			_visual.CorCabelo = null;
 		}
 
+		// (2026-10-19) olhos: a raca cuja folha ja traz os olhos desenhados (o Saibaman) nao veste a camada de olhos -- nao ha o que colorir
+		bool olhosNaFolha = VisualCatalog.OlhosNaFolhaDaRaca(_ficha.Race);
+		_linhaCorOlho.Visible = !olhosNaFolha;
+		if (olhosNaFolha)
+		{
+			_tingirOlho.ButtonPressed = false;
+			_visual.CorOlho = null;
+		}
+
 		Repintar();
 	}
 
@@ -1370,11 +1343,12 @@ public partial class CreationScreen : CanvasLayer
 		// a escolha de verdade continua em `_visual`. Mexer no `_visual` faria a previa reordenar a
 		// lista que vai pro servidor.
 		Appearance mostrar = _visual;
+		int slotAberto = _escolhaDeFormas.SlotAberto;
 		if (Jandirus.Core.Races.FormasDeFrost.EhFrost(_ficha.Race)
-			&& _slotDeForma > 0 && _slotDeForma < _visual.FormasDeFrost.Count)
+			&& slotAberto > 0 && slotAberto < _visual.FormasDeFrost.Count)
 		{
 			mostrar = _visual.Copiar();
-			mostrar.FormasDeFrost[0] = _visual.FormasDeFrost[_slotDeForma];
+			mostrar.FormasDeFrost[0] = _visual.FormasDeFrost[slotAberto];
 		}
 
 		_boneco.Vestir(_cat, mostrar, _ficha.Race, Genero());
@@ -1397,9 +1371,13 @@ public partial class CreationScreen : CanvasLayer
 			: "Sem variação de linhagem.";
 		// (2026-10-17) O FILHO COM A LINHAGEM DADA -- uma so, a de quem o gerou (o cla do ovo de Namekuseijin, os dois Saiyajins da mesma
 		// linhagem) -- nao escolhe: a tela nem mostra a etapa.
+		// (2026-10-19) A CLASSE DO FROST DEMON JA ESTA SORTEADA quando a criacao abre (`SlotInfo.ClasseDoFrost`, guardada na conta), e a etapa
+		// das formas a diz em vermelho pro Mutante: a frase do combate desmentia o aviso da mesma tela. O filho nao tem vaga, e fica com ela.
 		string escolhe = _filho is { Linhagens.Length: 1 } filho && filho.Linhagens[0] != "None" ? $" A sua vem de quem te gerou: {filho.Linhagens[0]}."
 			: CharacterDraft.EscolhasDeClasse(raca).Length > 0
 			? " Você escolhe a sua."
+			: _filho == null && Jandirus.Core.Races.FormasDeFrost.EhFrost(raca) && !ClasseDoFrostNoCombateDeTeste
+			? " A sua já está sorteada: se for Mutante, a etapa das formas avisa."
 			: linhagens.Length > 0
 			? " A sua é revelada quando o combate mostrar do que você é feito."
 			: "";
@@ -1452,8 +1430,16 @@ public partial class CreationScreen : CanvasLayer
 	/// <param name="anuncio">(v0.3.0) A frase que vai em cima -- a do Enma, na volta da reencarnacao. Vazio = nenhuma.</param>
 	/// <param name="racaSorteada">(v0.3.0) A raca sorteada da vaga (modo de racas aleatorias). Vazia = o jogador escolhe.</param>
 	/// <param name="linhagemSorteada">(v0.3.0) A sub-raca sorteada junto (Primal Saiyan, o cla do Namekuseijin), ou vazia.</param>
-	public void Reabrir(string anuncio = "", string racaSorteada = "", string linhagemSorteada = "")
+	/// <param name="classeDoFrost">(2026-10-19) A classe de Frost Demon que o servidor sorteou pra esta vaga (`SlotInfo.ClasseDoFrost`):
+	/// a etapa de formas abre com sete corpos pro Mutante e tres pro normal. Vazia = normal.</param>
+	public void Reabrir(string anuncio = "", string racaSorteada = "", string linhagemSorteada = "", string classeDoFrost = "")
 	{
+		// (2026-10-19) A CLASSE DO FROST DEMON DA VAGA ENTRA ANTES DA RACA SORTEADA (que pode ser o proprio Icer), e a lista de corpos
+		// se refaz se a raca que ficou da criacao anterior ja e o Frost Demon -- a vaga nova pode ser de outra classe.
+		_classeDoFrost = classeDoFrost == Jandirus.Core.Races.FormasDeFrost.ClasseMutante && !ClasseDoFrostIgnoradaDeTeste
+			? Jandirus.Core.Races.FormasDeFrost.ClasseMutante : Jandirus.Core.Races.FormasDeFrost.ClasseNormal;
+		if (Jandirus.Core.Races.FormasDeFrost.EhFrost(_ficha.Race)) PrepararFormasDoFrost();
+
 		// (2026-10-17) A CRIACAO COMUM NAO E A DO FILHO: a tela nao e destruida, e sem isto o bebe de uma criacao desistida -- e a
 		// idade travada em zero -- ficavam colados na proxima. Ver `ReabrirComoFilho`.
 		_filho = null;
@@ -1565,6 +1551,10 @@ public partial class CreationScreen : CanvasLayer
 
 	/// <summary>(robo `--diagcorposderaca`) O texto da raca na etapa aberta -- o `Descrever`.</summary>
 	internal string DescricaoDeTeste => _descricao.Text;
+
+	/// <summary>(2026-10-19, robo `--diagcorposderaca`) A linha "Colorir os olhos" esta na etapa da aparencia? E a previa veste os olhos de gente?</summary>
+	internal bool ColorirOsOlhosDeTeste => _linhaCorOlho.Visible;
+	internal bool OlhosNaPreviaDeTeste => _boneco.OlhosVisiveisDeTeste;
 
 	/// <summary>
 	/// DEFEITO INJETADO (robo `--diagcorposderaca`): o "None" do DM volta pra lista de linhagens -- "Linhagens possíveis: None.", o jogo de

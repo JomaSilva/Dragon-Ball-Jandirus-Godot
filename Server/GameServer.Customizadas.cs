@@ -410,6 +410,15 @@ public sealed partial class GameServer
 			return;
 		}
 
+		// QUEM NUNCA CANSA NAO VENDE FOLEGO (dono, 2026-10-19). A regra tambem e do `Core` (`TecnicaCustomizada.VendeFolego`): daqui
+		// sai so o que o servidor sabe do corpo -- se a RACA dele tem o vigor infinito (o morto comum nao: ele revive).
+		if (TecnicaCustomizada.RendeComFolego(c) && !TecnicaCustomizada.VendeFolego(Jandirus.Core.Stats.Nutricao.VigorInfinitoDaRaca(pl.Ficha)))
+		{
+			Avisar(pl, TecnicaCustomizada.SemFolegoPraVender);
+			MandarCustomizadas(pl);
+			return;
+		}
+
 		if (!m.Aplicar(c, valor, out string porque)) Avisar(pl, porque);
 		MandarCustomizadas(pl);
 	}

@@ -1,3 +1,5 @@
+using Jandirus.Core.Forms;
+
 namespace Jandirus.Core.Skills;
 
 /// <summary>
@@ -34,13 +36,67 @@ public static class Kaioken
 	public const double RazaoQueEstouraNoNocaute = 1.6;
 
 	/// <summary>
-	/// (v0.3.0) O KAIO-KEN CABE NESTA FORMA? Nao no Deus -- regra do dono, *"o god n pode usar kaioken junto"*.
-	///
-	/// DIVERGENCIA DECLARADA: no DM o `SetKaioken` so barra o ki divino COM Super Saiyajin por baixo (`kaioken.dm:141-147`,
-	/// o teto x20 do Blue), e o SSG acende o Kaio-ken sem teto nenhum. Quem cobra aqui sao o botao (o servidor recusa
-	/// acender no Deus) e a entrada na forma (virar Deus apaga o Kaio-ken aceso) -- os dois em `GameServer`.
+	/// (v0.4.2) O QUE IMPEDE O KAIO-KEN NUMA FORMA -- a resposta de <see cref="VetoDaForma"/>. Cada veto tem a sua frase
+	/// (<see cref="FraseDoVeto"/>): e o que o jogador le quando o botao recusa e quando a forma apaga o Kaio-ken aceso.
 	/// </summary>
-	public static bool CabeNaForma(Jandirus.Core.Forms.FormaDef? d) => !Jandirus.Core.Forms.Catalogo.EhDeusSemSuperSaiyajin(d);
+	public enum Veto
+	{
+		/// <summary>A forma sustenta o Kaio-ken.</summary>
+		Nenhum,
+		/// <summary>O SSG (e o da linha Rose): o ki divino sobre a BASE -- a regra do dono da v0.3.0.</summary>
+		Deus,
+		/// <summary>Um Super Saiyajin que nao e o Blue.</summary>
+		SuperSaiyajin,
+		/// <summary>O Blue de quem nao e Saiyajin de classe baixa nem media.</summary>
+		ClasseNoBlue,
+		/// <summary>O Blue de quem ainda nao tem 50% de maestria divina.</summary>
+		MaestriaNoBlue,
+	}
+
+	/// <summary>
+	/// O KAIO-KEN CABE NESTA FORMA? Duas regras do dono, a de agora por cima da da v0.3.0:
+	///   * *"o god n pode usar kaioken junto"* (v0.3.0) -- o SSG nao o sustenta;
+	///   * *"faca com q n de pra usar kaioken nas formas de super saiyajin, somente no ssj blue pra quem e saiyajin de classe
+	///     baixa e media"* (v0.4.2, 2026-10-19) -- nenhum Super Saiyajin o sustenta (<see cref="Catalogo.EhSuperSaiyajin"/>: a
+	///     escada, a do futuro, as lendarias e as divinas acima do SSG), MENOS o Blue, e no Blue so o Saiyajin de classe baixa
+	///     ou media (<see cref="ClasseAguentaNoBlue"/>).
+	///
+	/// OS 50% DE MAESTRIA DIVINA NO BLUE SAO DO DM DO DONO, e nao meus: o rework do ki divino de 2026-07-18 (`kaioken.dm:138-147`)
+	/// diz *"so Normal/Low-Class com maestria 50%+ aguentam o Kaioken por cima"*, e o jogo ja PROMETE isso no aviso dos 50%
+	/// (`GameServer.TickDaMaestriaDivina`). O port tinha a regra no `GameServer`, MORTA: ela perguntava pelo `Fighter.ssj` e pelo
+	/// `godki.usage`, que ninguem escreve aqui (a forma mora no `EstadoDeForma`) -- o Blue acendia o Kaio-ken pra qualquer classe.
+	/// O teto de x20 sobre o Blue e do servidor (`GameServer.KaiokenCapNoBlueG2`), que e quem conhece o multiplicador pedido.
+	///
+	/// DIVERGENCIA DECLARADA, a mesma da v0.3.0 e mais larga: no DM o Kaio-ken acende no SSG e em todo Super Saiyajin sem ki divino.
+	/// Quem pergunta sao as TRES portas do servidor: o botao (recusa acender), a entrada na forma (apaga o aceso, de graca) e o
+	/// tique do Kaio-ken (apaga o de quem chegou na forma por um caminho que nao passa pela entrada -- o admin, a absorcao, a saga).
+	/// </summary>
+	public static Veto VetoDaForma(FormaDef? d, string? classe, double maestriaDivina)
+	{
+		if (Catalogo.EhDeusSemSuperSaiyajin(d)) return Veto.Deus;
+		if (!Catalogo.EhSuperSaiyajin(d)) return Veto.Nenhum;
+		if (d!.Id != Catalogo.IdBlue) return Veto.SuperSaiyajin;
+		if (!ClasseAguentaNoBlue(classe)) return Veto.ClasseNoBlue;
+		return maestriaDivina < Catalogo.GodkiRoyalePct ? Veto.MaestriaNoBlue : Veto.Nenhum;
+	}
+
+	/// <summary>
+	/// A CLASSE QUE AGUENTA O KAIO-KEN NO BLUE: a baixa e a media do Saiyajin -- o `Class == "Normal" || Class == "Low-Class"` do
+	/// DM (`kaioken.dm:142`). O Elite fica de fora porque o caminho dele aos 50% e o Blue Evolution (o comentario do proprio DM),
+	/// e o New Generation (o meio-Saiyajin que tambem chega no Blue) porque o dono disse SAIYAJIN de classe baixa e media.
+	/// </summary>
+	public static bool ClasseAguentaNoBlue(string? classe) => classe is "Low-Class" or "Normal";
+
+	/// <summary>A FRASE DO VETO -- a mesma no botao que recusa, na forma que apaga o Kaio-ken aceso e no tique que o expulsa.</summary>
+	public static string FraseDoVeto(Veto v, FormaDef? d) => v switch
+	{
+		Veto.Deus => "o Kaio-ken não se sustenta no Super Saiyajin God: o ki divino não o aguenta.",
+		Veto.SuperSaiyajin => $"o Kaio-ken não se sustenta no {d?.Nome ?? "Super Saiyajin"}: em Super Saiyajin, só o Blue o aguenta "
+							  + "-- e só pro Saiyajin de classe baixa ou média.",
+		Veto.ClasseNoBlue => "no Blue, só o Saiyajin de classe baixa ou média aguenta o Kaio-ken.",
+		Veto.MaestriaNoBlue => $"seu corpo ainda não aguenta o Kaio-ken por cima do Blue: ele pede {Catalogo.GodkiRoyalePct:0}% de maestria divina.",
+		_ => "",
+	};
 
 	/// <summary>A TABELA DO MULTIPLICADOR REAL DE PODER, literal de `kaioken.dm:11-19`.</summary>
 	public static double Multiplicador(double vezes)

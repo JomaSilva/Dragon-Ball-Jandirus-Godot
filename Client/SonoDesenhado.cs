@@ -3,8 +3,8 @@ using Godot;
 namespace Jandirus.Client;
 
 /// <summary>
-/// (2026-10-18) O "Z" DE QUEM DORME O SLEEP DO MAJIN (`Ocupacao.Dormindo`). E o que separa o sono do nocaute na tela: os dois DEITAM o corpo
-/// (a folha nao tem pose de sono; a de nocaute e o corpo no chao), e so quem dorme solta as letras subindo e sumindo. Quem o liga e desliga e
+/// (2026-10-18) O "Z" DE QUEM DORME O SLEEP DO MAJIN (`Ocupacao.Dormindo`). Quem dorme dorme EM PE (dono, 2026-10-19 -- a folha nao tem pose
+/// de sono, e o sono nao mexe na pose), entao sao as letras subindo e sumindo sobre a cabeca que dizem que ele dorme. Quem o liga e desliga e
 /// o <see cref="World.MarcarDormindo"/>, pelo snapshot -- pro dono do corpo e pra quem esta em volta, inclusive quem chega no meio do sono.
 /// Filho do corpo: morre com ele.
 /// </summary>

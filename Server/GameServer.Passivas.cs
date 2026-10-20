@@ -71,6 +71,7 @@ public sealed partial class GameServer
 		e.Vigor = f.maxstamina > 0 ? f.stamina / f.maxstamina : 0;
 		e.Vida = f.HP / 100;
 		e.Tronco = c.Corpo.Achar(Body.NomeDoTronco) is { } t ? (t.Decepado ? 0 : t.Fracao) : 1;
+		e.Cabeca = c.Corpo.Achar("Cabeca") is { } h ? (h.Decepado ? 0 : h.Fracao) : 1;   // (2026-10-19) o Warrior Race -- `EstadoRacial.GuerreiroAceso`
 		e.Barra = f.powerMod;
 		e.Relaxado = f.relaxado;
 		e.TemRabo = c.Corpo.Achar("Rabo") is { Decepado: false };

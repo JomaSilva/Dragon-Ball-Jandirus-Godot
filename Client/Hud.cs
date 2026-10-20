@@ -111,6 +111,8 @@ public partial class Hud : CanvasLayer
 		// O DISCO DO DRAGON RADAR, no mesmo canto (dono, 2026-10-10): so aparece pra quem tem o aparelho, e o
 		// convite do torneio encosta a esquerda dele. Ver `RadarNaTela`.
 		raiz.AddChild(new RadarNaTela { Name = "RadarDeEsferas" });
+		// O RASTRO DO SENSE (2026-10-19): o selo no alto e no meio, e a seta em volta do corpo. Ver `RastroNaTela`.
+		raiz.AddChild(new RastroNaTela { Name = "Rastro" });
 		// O CHAVEAMENTO (centro, abre sozinho quando a chave nasce) e o canto "Assistir torneio"
 		// (inferior esquerdo, pra quem espera a vez ou nao participa). Dono, 2026-09-07.
 		// O CHAVEAMENTO MORA NUMA CAMADA ACIMA DO CHAT (o chat e a camada 2, o HUD a 1): e uma janela, e

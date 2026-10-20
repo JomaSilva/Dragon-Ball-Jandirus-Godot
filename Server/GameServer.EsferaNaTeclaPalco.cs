@@ -45,4 +45,24 @@ public partial class GameServer
 	{
 		if (_players.TryGetValue(id, out ServerPlayer? pl) && QuantasCarrega(pl.Id) > 0) LargarEsferas(pl);
 	}
+
+	/// <summary>
+	/// (2026-10-19) O SET DAS ESFERAS QUE ESTE CORPO CARREGA DORME (ou acorda) -- o relogio do set, como a espera de nascimento o poe -- e a
+	/// mochila vai de novo, inteira: e o pacote que o tique mandaria no segundo seguinte (`SincronizarAsEsferasNasMochilas`). Falso se ele
+	/// nao carrega esfera nenhuma.
+	/// </summary>
+	internal bool PalcoEE_ApagarOSet(int id, bool apagar)
+	{
+		if (!_players.TryGetValue(id, out ServerPlayer? pl) || _esferas.Find(e => e.Portador == pl.Id) is not { } e
+			|| SetPorId(e.Set) is not { } s) return false;
+		s.AtivoEm = apagar ? TempoDoMundo + 999_999 : TempoDoMundo - 1;
+		MandarMochila(pl, forcar: true);
+		return true;
+	}
+
+	/// <summary>(2026-10-19) A mochila deste corpo vai de novo, inteira -- o contra-exemplo do robo (o slot que some com o defeito ligado).</summary>
+	internal void PalcoEE_MandarMochila(int id)
+	{
+		if (_players.TryGetValue(id, out ServerPlayer? pl)) MandarMochila(pl, forcar: true);
+	}
 }

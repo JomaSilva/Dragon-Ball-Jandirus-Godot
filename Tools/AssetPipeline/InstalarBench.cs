@@ -189,19 +189,25 @@ public static class InstalarBench
 	];
 
 	/// <summary>
-	/// AS 12 QUE NINGUEM COMPRA -- mobilia que ja esta nos `.dmm` (custo negativo, ver
+	/// AS 13 QUE NINGUEM COMPRA -- mobilia que ja esta nos `.dmm` (custo negativo, ver
 	/// <see cref="Construcao.Construivel"/>). A classificacao delas nao governa nada, porque elas nunca
 	/// chegam a uma mochila; a bancada as afirma mesmo assim, com a segunda metade junto: que o servidor
 	/// nao as vende. Sem essa segunda metade, "e mobilia" seria uma desculpa e nao um fato.
 	///
 	/// (O `Sacred_Water` entrou no `construcoes.json` a mao em 2026-10-10, com o jarro do Mirante, e ficou
 	/// sem linha aqui: as duas cobrancas de fecho da A2 estavam vermelhas por ele.)
+	///
+	/// (O `Egg` repetiu a historia: entrou no extrator e no `construcoes.json` em 2026-10-17, com o ovo das racas
+	/// que poem ovo (`Filhos.TipoDoOvo`), e a A2 ficou vermelha por ele ate 2026-10-19. Ele nao vem de mapa -- o
+	/// servidor o poe no chao (`PorOOvoNoChao`, o `Lay_Egg` do DM) --, mas e mobilia no sentido que importa aqui:
+	/// custo -1 e nenhum verbo que o leve pra uma mochila.)
 	/// </summary>
 	private static readonly (string Id, bool Chao)[] MobiliaDeMapa =
 	[
 		("AppleTree",         false),   // usr
 		("Bank",              true ),   // oview
 		("Cooked_Meat",       false),   // usr
+		("Egg",               true ),   // -- (o `mob/Egg` de `NPClist.dm:15-25`: um mob no chao, sem verbo; o extrator o escreve a mao)
 		("Grave_1",           true ),   // --
 		("Grave_2",           true ),   // --
 		("Grave_3",           true ),   // --

@@ -54,11 +54,24 @@ public readonly struct FichaDeRank
 	///
 	/// Ele entra aqui porque a especificacao das quests de cargo vai querer dizer "conquiste um
 	/// planeta", e porque uma API de conquista que ninguem consulta e o defeito que este projeto ja
-	/// pagou uma vez inteiro (o sigilo de BP, escrito e 100% orfao). Nenhum cargo do DM exige isto
-	/// hoje -- o campo existe LIGADO e sem regra que o use, e essa e a ordem certa: a regra e uma
-	/// linha, a fiacao e que e cara.
+	/// pagou uma vez inteiro (o sigilo de BP, escrito e 100% orfao). Nenhum cargo do DM exige isto --
+	/// e a regra que o usa chegou com os cargos do espaco (2026-10-19): o Mutany Leader pede um planeta
+	/// dominado, qualquer um. A regra foi uma linha, como a fiacao prometia.
 	/// </summary>
 	public int PlanetasDominados { get; init; }
+
+	/// <summary>
+	/// (2026-10-19) QUAIS PLANETAS PRE-FEITOS esta alma domina, pelo nome da zona ("Arconia") -- o King of Acronia pede o
+	/// planeta DELE, e a contagem acima nao diz qual. Nulo = "este servidor nao respondeu", e a regra REPROVA (o mesmo cuidado
+	/// da reputacao: um campo que faltasse nao pode abrir cargo de graca).
+	/// </summary>
+	public IReadOnlyCollection<string>? PlanetasQueDomina { get; init; }
+
+	/// <summary>
+	/// (2026-10-19) VEGETA ESTA CONDENADO (destruido, ou agonizando no pavio): o Rei NPC nao renasce, e o trono vago do Rei de
+	/// Vegeta deixaria de ter caminho -- so o admin. Verdadeiro, o `Cargos.OqueFalta` abre a porta de requisito dele.
+	/// </summary>
+	public bool VegetaCondenado { get; init; }
 }
 
 /// <summary>O que um requisito olha na ficha.</summary>
@@ -77,6 +90,9 @@ public enum CampoDeRank
 
 	/// <summary>Quantos planetas esta alma domina (`conq_count_owned`).</summary>
 	Dominios,
+
+	/// <summary>(2026-10-19) Domina ESTE planeta pre-feito: `Valores[0]` e o nome da zona.</summary>
+	DominaOPlaneta,
 }
 
 /// <summary>Uma condicao unica. Varias delas ANDadas formam uma OPCAO de uma <see cref="Regra"/>.</summary>
@@ -108,6 +124,9 @@ public sealed class Exigencia
 							  && f.ReputacaoCom(Valores.Length > 0 ? Valores[0] : "") >= Valor,
 
 		CampoDeRank.Dominios => f.PlanetasDominados >= Valor,
+		// NULO REPROVA, pelo mesmo motivo da reputacao
+		CampoDeRank.DominaOPlaneta => f.PlanetasQueDomina != null && Valores.Length > 0
+								   && f.PlanetasQueDomina.Contains(Valores[0], StringComparer.OrdinalIgnoreCase),
 		_ => true,
 	};
 }
@@ -148,7 +167,10 @@ public enum PortaDoCargo
 	/// <summary>`RQ_CLAIMABLE`: requisitos + prova contra o Espirito do Cargo.</summary>
 	Prova,
 
-	/// <summary>So o verb `Give Rank` do admin (`Rewards.dm`). O DM nao escreveu requisito nenhum.</summary>
+	/// <summary>
+	/// So o verb `Give Rank` do admin (`Rewards.dm`). Desde 2026-10-19 e so o ANJO -- o dono: *"todos os cargos do jogo tenham
+	/// requisitos e n precisem de adm (tirando o anjo)"*.
+	/// </summary>
 	Admin,
 
 	/// <summary>Duelo formal pelo titulo (o Deus da Destruicao).</summary>
@@ -157,8 +179,8 @@ public enum PortaDoCargo
 	/// <summary>Sucessao violenta: matar o portador (o Rei de Vegeta, o Lorde do Gelo).</summary>
 	Sucessao,
 
-	/// <summary>Nomeado por quem ja tem o cargo de cima (os quatro Anciaos de Namek).</summary>
-	Nomeacao,
+	// (2026-10-19) A NOMEACAO DEIXOU DE SER PORTA UNICA: os quatro Anciaos de Namek se reivindicam com requisito (`Prova`), e a
+	// nomeacao pelo Grande Anciao virou a SEGUNDA porta deles -- como a sucessao do Lorde do Gelo (ver `PortasDeCargo.Nomeacao`).
 }
 
 /// <summary>Um cargo. Um dono por vez no mundo, e a alma so carrega um.</summary>
@@ -172,6 +194,13 @@ public sealed class RankDef
 	public string Global = "";
 
 	public PortaDoCargo Porta = PortaDoCargo.Admin;
+
+	/// <summary>
+	/// (2026-10-19) A PORTA DE REQUISITO FOI O DONO QUE ABRIU, e nao o DM: no original o cargo nao tem `RQ_CLAIMABLE` (os sete do
+	/// espaco e os quatro Anciaos de Namek). O <see cref="Cargos.Conferir"/> pula a comparacao da porta deles, e o defeito injetado
+	/// <see cref="Cargos.PortasDoDonoFechadasDeTeste"/> os devolve ao admin.
+	/// </summary>
+	public bool PortaDoDono;
 
 	/// <summary>Cargos que este cargo exige como degrau anterior. Vazio = porta de entrada.</summary>
 	public string[] Degraus = [];
@@ -192,6 +221,12 @@ public sealed class RankDef
 
 	/// <summary>O que o cargo concede no DM. Texto, porque a maior parte ainda nao existe no port.</summary>
 	public string[] Concede = [];
+
+	/// <summary>
+	/// (2026-10-19) O ZENI COBRADO AO VENCER A PROVA -- so o Presidente (`RQ_PRESIDENT_CAMPAIGN`, `RankQuests.dm:405`). A regra
+	/// do bolso (<see cref="Cargos.CampanhaDoPresidente"/>) confere antes; quem cobra e o `ReivindicarCargo`, na concessao.
+	/// </summary>
+	public double Campanha;
 
 	/// <summary>
 	/// Requisitos que o DM COBRA e que este port ainda nao tem como medir. Ficam de fora do
@@ -237,19 +272,25 @@ public sealed class RankDef
 /// 2. **KARMA E A PORTA MORAL.** A escola da Tartaruga pede karma alto; a do Grou pede karma ZERO
 ///    OU MENOS ("nao forma santos"); o Demon Lord pede -50 ou pior. E o unico sistema do jogo em
 ///    que ser mau ABRE porta em vez de fechar.
-/// 3. **SO DEZESSEIS DOS TRINTA SE REIVINDICAM.** O resto e do admin, do duelo (Deus da
-///    Destruicao), do assassinato (Rei de Vegeta, Lorde do Gelo) ou da nomeacao (Anciaos de
-///    Namek). Cargo sem requisito no DM sai daqui SEM requisito inventado -- e com a porta
-///    fechada pro verb de reivindicar, que e o que o original faz.
+/// 3. **VINTE E SETE DOS TRINTA SE REIVINDICAM** (eram dezesseis ate 2026-10-19). O dono: *"fazer
+///    com q todos os cargos do jogo tenham requisitos e n precisem de adm (tirando o anjo)"* -- e ele
+///    aprovou a tabela dos onze que o DM deixava sem requisito (os sete do espaco e os quatro Anciaos de
+///    Namek, marcados com `PortaDoDono`). Fora da reivindicacao sobram tres: o Deus da Destruicao (o
+///    Bills na casa dele com o trono vago, o duelo formal com dono), o Rei de Vegeta (matar o Rei, ou o
+///    requisito com Vegeta condenado) e o Anjo, o unico que so o admin da.
 ///
-/// O QUE AINDA NAO ESTA AQUI: a PROVA contra o Espirito do Cargo (NPC a 1,15x do seu BP expresso,
-/// RankQuests.dm:48). **As outras duas dividas foram pagas**: o motor de tarefas com prazo e
-/// destituicao existe (`Core/Ranks/MissoesDeCargo.cs` + `Server/GameServer.CargoMissoes.cs`,
-/// bancada `--cargomissoes`) e o RENOME de 3 tarefas e cobrado pelo `ReivindicarCargo`, entao a
-/// escada dos Kaios deixou de subir so com o requisito.
+/// **AS TRES DIVIDAS FORAM PAGAS**: o motor de tarefas com prazo e destituicao existe
+/// (`Core/Ranks/MissoesDeCargo.cs` + `Server/GameServer.CargoMissoes.cs`, bancada `--cargomissoes`), o RENOME de 3
+/// tarefas e cobrado pelo `ReivindicarCargo` (a escada dos Kaios deixou de subir so com o requisito) e, a ultima
+/// (2026-10-19), a PROVA contra o Espirito do Cargo (NPC a 1,15x do seu BP expresso, `RankQuests.dm:48`): o
+/// "Reivindicar" da aba ergue o espirito e so o cargo de quem o derruba -- ver `Core/Ranks/ProvaDoCargo.cs` e
+/// `Server/GameServer.ProvaDoCargo.cs`.
 /// </summary>
 public static class Cargos
 {
+	/// <summary>`RQ_PRESIDENT_CAMPAIGN`: o zeni da campanha do Presidente -- conferido no bolso e cobrado ao vencer a prova.</summary>
+	public const double CampanhaDoPresidente = 250_000;
+
 	// ---------------------------------------------------------------------------------------
 	// atalhos de construcao (so pra tabela abaixo caber na tela)
 	// ---------------------------------------------------------------------------------------
@@ -279,14 +320,20 @@ public static class Cargos
 
 	/// <summary>
 	/// "Domine N planetas". **Nenhum cargo do DM exige isto**, e por isso ela e PUBLICA em vez de
-	/// privada: quem a exercita hoje e a bancada da conquista, que monta a regra e afirma que ela
+	/// privada: quem a exercitava era a bancada da conquista, que monta a regra e afirma que ela
 	/// reprova com zero dominios e passa com um. Sem esse uso o campo seria API escrita e nunca
 	/// chamada -- o defeito exato que o sigilo de BP ja custou a este projeto uma vez.
 	///
-	/// Quando as quests de cargo forem construidas, "conquiste um planeta" e uma linha usando isto.
+	/// (2026-10-19) "Conquiste um planeta" virou a linha prometida: o requisito do Mutany Leader.
 	/// </summary>
 	public static Exigencia ExigirDominios(int quantos) =>
 		new() { Campo = CampoDeRank.Dominios, Valor = quantos };
+
+	/// <summary>(2026-10-19) "Domine ESTE planeta pre-feito" -- o nome e o da ZONA, como a reputacao ("Arconia").</summary>
+	private static Exigencia Domina(string planeta) => new() { Campo = CampoDeRank.DominaOPlaneta, Valores = [planeta] };
+
+	/// <summary>De onde saem os numeros dos onze cargos que o DM deixava sem requisito: a tabela que o dono aprovou.</summary>
+	private const string DoDono = "dono, 2026-10-19";
 
 	/// <summary>
 	/// FROST DEMON x ICER: no DM a raca se chama "Frost Demon" (staticer.dm:13) e o requisito
@@ -363,11 +410,12 @@ public static class Cargos
 			Chave = "president", Global = "President", Nome = "Presidente da Terra", Porta = PortaDoCargo.Prova,
 			Desc = "Eleito. Taxa até 30 zeni por hora, comissiona a polícia e decreta recompensas por cabeças.",
 			TemDeveres = true,
+			Campanha = CampanhaDoPresidente,
 			Regras =
 			[
 				R("karma 0+", "Modules/Ranks/RankQuests.dm:241", KarmaMin(0)),
-				// o zeni e COBRADO ao vencer a prova (RankQuests.dm:405), nao so exigido em caixa
-				R("250.000 zeni de campanha (cobrados ao vencer a prova)", "Modules/Ranks/RankQuests.dm:243", Zeni(250_000)),
+				// o zeni e COBRADO ao vencer a prova (RankQuests.dm:405) -- o `Campanha` logo acima --, nao so exigido em caixa
+				R("250.000 zeni de campanha (cobrados ao vencer a prova)", "Modules/Ranks/RankQuests.dm:243", Zeni(CampanhaDoPresidente)),
 				R("ser Amigável com o povo da Terra (reputação 15+)", "Modules/Ranks/RankQuests.dm:242",
 					Rep("Earth", Social.Reputacao.LimiarDeAmigavel)),
 			],
@@ -538,26 +586,58 @@ public static class Cargos
 			// (`Sucessao`) e a linha de sangue é escrita pelo próprio Rei (verb `cargo_herdeiro`,
 			// o `Vegeta Managament` do DM). Matar o Rei sendo Saiyajin toma o trono; não sendo, o
 			// herdeiro nomeado herda; não havendo, o trono VAGA.
+			//
+			// (2026-10-19) E O TRONO VAGO COM VEGETA CONDENADO: o Rei NPC não renasce num planeta morto
+			// (`GameServer.Povoamento`), e o trono ficaria sem caminho nenhum além do admin. Só então estas
+			// regras valem (`Cargos.OqueFalta`, `FichaDeRank.VegetaCondenado`) -- a tabela que o dono aprovou.
+			Regras =
+			[
+				R("sangue Saiyajin (com Vegeta condenado, o trono vago se reivindica)", DoDono, Raca("Saiyan")),
+				R("5M de BP base", DoDono, Bp(5_000_000)),
+			],
 		},
-		SoDeAdmin("kingofacronia", "King_Of_Acronia", "King Of Acronia", "Modules/Admin/Rewards.dm:310",
-			"O trono de Acronia.", ["Kill Driver", "estilo Alienígena"]),
-		SoDeAdmin("arconianguardian", "Arconian_Guardian", "Arconian Guardian", "Modules/Admin/Rewards.dm:311",
+		// (2026-10-19) OS SETE DO ESPACO SE REIVINDICAM. No DM eles so saem do `Give Rank` do admin (`Rewards.dm:310-333`) e
+		// ninguem os pediu ao Espirito do Cargo; os requisitos sao a tabela que o dono aprovou -- cada um amarrado ao que o
+		// cargo diz ser (o planeta, o povo, o lado da moral).
+		DoEspaco("kingofacronia", "King_Of_Acronia", "King Of Acronia", "Modules/Admin/Rewards.dm:310",
+			"O trono de Acronia.", ["Kill Driver", "estilo Alienígena"],
+			R("dominar o planeta Arconia (a bandeira de conquista)", DoDono, Domina("Arconia")),
+			R("3M de BP base", DoDono, Bp(3_000_000))),
+		DoEspaco("arconianguardian", "Arconian_Guardian", "Arconian Guardian", "Modules/Admin/Rewards.dm:311",
 			"O guardião ligado à Master Emerald.",
-			["Selo Superior", "Cura", "Atalho Sagrado", "estilo Alienígena", "Detectar Fragmento"]),
-		SoDeAdmin("saibamenrougeleader", "Saibamen_Rouge_Leader", "Saibamen Rouge Leader", "Modules/Admin/Rewards.dm:312",
+			["Selo Superior", "Cura", "Atalho Sagrado", "estilo Alienígena", "Detectar Fragmento"],
+			R("karma 50+ (um guardião)", DoDono, KarmaMin(50)),
+			R("2M de BP base", DoDono, Bp(2_000_000))),
+		DoEspaco("saibamenrougeleader", "Saibamen_Rouge_Leader", "Saibamen Rouge Leader", "Modules/Admin/Rewards.dm:312",
 			"O líder dos Saibamen renegados.",
-			["(nenhum: ganha a árvore do Espaço, mas o DM não habilita skill nenhuma para ele)"]),
-		SoDeAdmin("capt", "capt", "Captain/King of Pirates", "Modules/Admin/Rewards.dm:330",
-			"O rei dos piratas do espaço.", ["Death Beam", "estilo Alienígena", "Death Ball"]),
-		SoDeAdmin("geti", "Geti", "Geti Star King/Queen", "Modules/Admin/Rewards.dm:331",
+			["(nenhum: ganha a árvore do Espaço, mas o DM não habilita skill nenhuma para ele)"],
+			R("sangue Saibaman", DoDono, Raca("Saibaman")),
+			R("karma 0 ou menos (um renegado)", DoDono, KarmaMax(0)),
+			R("1M de BP base", DoDono, Bp(1_000_000))),
+		DoEspaco("capt", "capt", "Captain/King of Pirates", "Modules/Admin/Rewards.dm:330",
+			"O rei dos piratas do espaço.", ["Death Beam", "estilo Alienígena", "Death Ball"],
+			R("karma -25 ou menos (um pirata)", DoDono, KarmaMax(-25)),
+			R("3M de BP base", DoDono, Bp(3_000_000)),
+			// EXIGIDO, e nao cobrado: e a fortuna que um rei pirata tem no bolso
+			R("1M de zeni no bolso", DoDono, Zeni(1_000_000))),
+		DoEspaco("geti", "Geti", "Geti Star King/Queen", "Modules/Admin/Rewards.dm:331",
 			"O soberano da Big Geti Star.",
-			["Divisão de corpo", "Death Ball", "Paralisia", "estilo Alienígena", "Dança da Fusão"]),
-		SoDeAdmin("mutany", "mutany", "Mutany Leader", "Modules/Admin/Rewards.dm:332",
+			["Divisão de corpo", "Death Ball", "Paralisia", "estilo Alienígena", "Dança da Fusão"],
+			// a Big Gete Star nao esta na carta estelar do port: quem a representa e o povo dela (`Geti Star.dm:14`)
+			R("sangue Meta (o povo da Big Gete Star)", DoDono, Raca("Meta")),
+			R("3M de BP base", DoDono, Bp(3_000_000))),
+		DoEspaco("mutany", "mutany", "Mutany Leader", "Modules/Admin/Rewards.dm:332",
 			"O líder do motim.",
-			["(nenhum: ganha a árvore do Espaço, mas o DM não habilita skill nenhuma para ele)"]),
-		SoDeAdmin("arlian", "Arlian", "Arlian King", "Modules/Admin/Rewards.dm:333",
+			["(nenhum: ganha a árvore do Espaço, mas o DM não habilita skill nenhuma para ele)"],
+			R("dominar um planeta (a bandeira de conquista)", DoDono, ExigirDominios(1)),
+			R("karma 0 ou menos (um amotinado)", DoDono, KarmaMax(0)),
+			R("2M de BP base", DoDono, Bp(2_000_000))),
+		DoEspaco("arlian", "Arlian", "Arlian King", "Modules/Admin/Rewards.dm:333",
 			"O rei de Arlia.",
-			["(nenhum: o DM nem dá nome de Rank a este cargo -- ver relatório)"]),
+			["(nenhum: o DM nem dá nome de Rank a este cargo -- ver relatório)"],
+			R("sangue Arlian", DoDono, Raca("Arlian")),
+			R("ser Amigável com o povo de Arlia (reputação 15+)", DoDono, Rep("Arlia", Social.Reputacao.LimiarDeAmigavel)),
+			R("1M de BP base", DoDono, Bp(1_000_000))),
 
 		// ===================== OS DOIS DO ALTO ========================
 		new()
@@ -640,29 +720,44 @@ public static class Cargos
 		Concede = concede,
 	};
 
+	/// <summary>
+	/// UM DOS QUATRO ANCIAOS DE NAMEK. (2026-10-19) DUAS PORTAS: o requisito que o dono aprovou (sangue Namekuseijin e karma 10+,
+	/// mais leve que o do Grande Anciao, que tambem pede a amizade do povo) e a NOMEACAO pelo Grande Anciao, que continua ligada
+	/// (`Nomeacao`, em `Core/Ranks/PortasDeCargo.cs`) e serve pra quem so tem o sangue. Antes era so a nomeacao -- e sem Grande
+	/// Anciao os quatro assentos so saiam do admin (no DM, do `Give Rank` em <paramref name="fonte"/>).
+	/// </summary>
 	private static RankDef AnciaoCardeal(string chave, string global, string nome, string fonte) => new()
 	{
-		Chave = chave, Global = global, Nome = nome, Porta = PortaDoCargo.Nomeacao,
+		Chave = chave, Global = global, Nome = nome, Porta = PortaDoCargo.Prova, PortaDoDono = true,
 		Desc = "Guardião de 1 Esfera do Dragão de Namek.",
+		Regras =
+		[
+			R("sangue Namekuseijin", DoDono, Raca("Namekian")),
+			R("karma 10+", DoDono, KarmaMin(10)),
+		],
 		Concede = ["estilo Namek", "Makankosappo", "Enkumei", "Liberar Potencial", "Telepatia", "Cura"],
-		// A NOMEAÇÃO ESTÁ LIGADA (`Nomeacao`, em `Core/Ranks/PortasDeCargo.cs`): o Grande Ancião
-		// oferece o assento pelo verb `cargo_nomear`, o convidado aceita, e o kit dos quatro chega
-		// pela dádiva. **Duas coisas do DM não vieram junto de propósito, e as duas são bugs dele**:
-		// `North_Elder=key` (NamekRanks.dm:63) grava a `key` de QUEM NOMEIA -- e o `Rank_Verb_Assign`
-		// compara os quatro globais por SIGNATURE (RankAssign.dm:95) --, e `if(M.Rank=="Namekian
-		// Elder")` (:58) só deixa nomear quem JÁ é Ancião, porta trancada por dentro num servidor novo.
+		// A NOMEAÇÃO ESTÁ LIGADA: o Grande Ancião oferece o assento pelo verb `cargo_nomear`, o convidado
+		// aceita, e o kit dos quatro chega pela dádiva. **Duas coisas do DM não vieram junto de propósito,
+		// e as duas são bugs dele**: `North_Elder=key` (NamekRanks.dm:63) grava a `key` de QUEM NOMEIA -- e
+		// o `Rank_Verb_Assign` compara os quatro globais por SIGNATURE (RankAssign.dm:95) --, e
+		// `if(M.Rank=="Namekian Elder")` (:58) só deixa nomear quem JÁ é Ancião, porta trancada por dentro
+		// num servidor novo.
 		Pendencias =
 		[
-			$"o DM não dá requisito próprio ao assento -- ele também sai do verb Give Rank do admin em {fonte}",
 			"no DM os quatro compartilham o mesmo mob.Rank (\"Namekian Elder\"), então a árvore de skills não os distingue",
 		],
 	};
 
-	private static RankDef SoDeAdmin(string chave, string global, string nome, string fonte, string desc, string[] concede) => new()
+	/// <summary>
+	/// UM DOS SETE CARGOS DO ESPACO. (2026-10-19) Se reivindica com os requisitos que o dono aprovou -- no DM ele so sai do verb
+	/// `Give Rank` do admin (<paramref name="fonte"/>), sem requisito nenhum escrito.
+	/// </summary>
+	private static RankDef DoEspaco(string chave, string global, string nome, string fonte, string desc, string[] concede,
+									params Regra[] regras) => new()
 	{
-		Chave = chave, Global = global, Nome = nome, Desc = desc, Porta = PortaDoCargo.Admin,
+		Chave = chave, Global = global, Nome = nome, Desc = desc, Porta = PortaDoCargo.Prova, PortaDoDono = true,
+		Regras = regras,
 		Concede = concede,
-		Pendencias = [$"o DM não escreve requisito nenhum: o cargo sai do verb Give Rank do admin ({fonte})"],
 	};
 
 	// ---------------------------------------------------------------------------------------
@@ -671,8 +766,29 @@ public static class Cargos
 	public static RankDef? Get(string chave) =>
 		Array.Find(Todos, r => string.Equals(r.Chave, chave, StringComparison.OrdinalIgnoreCase));
 
-	/// <summary>Os que dá para tomar pelo verb de reivindicar. Os outros 14 têm dono por outra via.</summary>
+	/// <summary>Os que dá para tomar pelo verb de reivindicar. Os outros 3 têm dono por outra via (o duelo, a sucessão e o admin).</summary>
 	public static IEnumerable<RankDef> Reivindicaveis => Todos.Where(r => r.Porta == PortaDoCargo.Prova);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--cargolivreteste`): os onze cargos que o dono abriu (`PortaDoDono`) voltam a ser so do admin --
+	/// o jogo de antes de 2026-10-19. Lido pelo <see cref="OqueFalta"/>. Falso em jogo.
+	/// </summary>
+	public static bool PortasDoDonoFechadasDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--cargolivreteste`): o trono vago de Vegeta condenado continua sem caminho nenhum (so o admin), o
+	/// jogo de antes. Lido pelo <see cref="OqueFalta"/>. Falso em jogo.
+	/// </summary>
+	public static bool VegetaSemPortaDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--cargolivreteste`): a frase de antes do Deus da Destruicao, que so falava do duelo -- quem via o
+	/// trono VAGO lia um caminho que nao existe (desafiar quem?). Lido pelo <see cref="OqueFalta"/>. Falso em jogo.
+	/// </summary>
+	public static bool DueloSemOBillsDeTeste;
+
+	/// <summary>A frase do cargo de admin -- hoje so o Anjo (e os onze do dono com o defeito injetado acima).</summary>
+	private const string SoDoAdmin = "este cargo não se reivindica: no original ele é dado por um administrador";
 
 	/// <summary>
 	/// O QUE FALTA pra reivindicar. Nulo = apto.
@@ -686,22 +802,26 @@ public static class Cargos
 	/// </summary>
 	public static string? OqueFalta(RankDef r, FichaDeRank f)
 	{
+		if (r.PortaDoDono && PortasDoDonoFechadasDeTeste) return SoDoAdmin;
 		switch (r.Porta)
 		{
 			case PortaDoCargo.Admin:
-				return "este cargo não se reivindica: no original ele é dado por um administrador";
-			// AS TRES FRASES ABAIXO DEIXARAM DE SER SO UMA RECUSA. Enquanto as portas não existiam,
-			// dizer "não se reivindica" era tudo o que havia de honesto; agora as três têm mecanismo
-			// (ver `PortasDeCargo.cs`), então a frase diz COMO -- que é a mesma regra do resto deste
-			// método: um "não pode" seco faz a pessoa tentar de novo sem saber o que mudar.
+				return SoDoAdmin;
+			// AS DUAS FRASES ABAIXO NAO SAO SO UMA RECUSA: as duas portas tem mecanismo (ver `PortasDeCargo.cs`), entao a frase diz
+			// COMO -- que e a mesma regra do resto deste metodo: um "nao pode" seco faz a pessoa tentar de novo sem saber o que mudar.
+			// (2026-10-19) E AS DUAS PASSARAM A DIZER O CAMINHO DO TRONO VAGO, que existia e nao estava escrito: o Bills na casa dele
+			// (`GameServer.BillsTreino.cs`, depois da saga de Boo) e o Rei NPC de Vegeta (`GameServer.ReiDeVegeta.cs`).
+			// CABEM NO FIO: o cliente le esta frase por `GetString(160)` (`GameClient.cs`), e acima disso chega VAZIA -- e o cargo
+			// apareceria apto, com o botao. A `--cargolivreteste` mede cada uma.
 			case PortaDoCargo.Duelo:
-				return "este cargo não se reivindica: toma-se em DUELO FORMAL pelo título "
-					 + "(verb Challenge God of Destruction; exige God Ki desperto)";
+				return DueloSemOBillsDeTeste
+					? "este cargo não se reivindica: toma-se em DUELO FORMAL pelo título (verb Challenge God of Destruction; exige God Ki desperto)"
+					: "este cargo não se reivindica: vago, vence-se o Bills na casa dele (depois da saga de Boo); com dono, duelo formal (God Ki desperto)";
 			case PortaDoCargo.Sucessao:
-				return "este cargo não se reivindica: toma-se MATANDO quem o carrega, sendo do sangue "
-					 + "-- ou herda-se, sendo da linha de sucessão";
-			case PortaDoCargo.Nomeacao:
-				return "este cargo não se reivindica: é NOMEADO pelo Grande Ancião de Namek";
+				// (2026-10-19) VEGETA CONDENADO: o Rei NPC nao renasce num planeta morto, e o trono vago ficaria so do admin. Ai valem as
+				// regras do cargo (a tabela do dono) -- o `ReivindicarCargo` ja confere que o trono esta vago.
+				if (f.VegetaCondenado && string.Equals(r.Chave, Sucessao.ReiDeVegeta, StringComparison.OrdinalIgnoreCase) && !VegetaSemPortaDeTeste) break;
+				return "este cargo não se reivindica: mata-se o Rei (o jogador, ou o NPC com o trono vago) sendo Saiyajin -- ou herda-se pela linha de sucessão";
 		}
 
 		foreach (Regra g in r.Regras)
@@ -743,7 +863,7 @@ public static class Cargos
 				achados.Add($"{chave}: global '{meu.Global}' na tabela, '{global}' no DM");
 
 			bool claim = c.GetProperty("reivindicavel").GetBoolean();
-			if (claim != (meu.Porta == PortaDoCargo.Prova))
+			if (claim != (meu.Porta == PortaDoCargo.Prova) && !meu.PortaDoDono)   // (2026-10-19) a porta que o dono abriu nao e a do DM
 				achados.Add($"{chave}: RQ_CLAIMABLE={claim} no DM, porta={meu.Porta} na tabela");
 
 			// os NUMEROS: karma, BP, zeni e maestria. Sao eles que quebram o jogo em silencio.

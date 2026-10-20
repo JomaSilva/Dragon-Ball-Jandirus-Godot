@@ -122,6 +122,17 @@ public partial class TelaDeTecnicas : CanvasLayer
 	public bool BotaoApagado(string texto) =>
 		Todos(_raiz).OfType<Button>().Any(x => x.Text == texto && x.IsVisibleInTree() && x.Disabled);
 
+	/// <summary>O botao (ou a caixinha) com este texto esta na tela? Sem aperta-lo, ao contrario do `ClicarBotao`.</summary>
+	public bool TemBotao(string texto) =>
+		Todos(_raiz).OfType<Button>().Any(x => x.Text == texto && x.IsVisibleInTree());
+
+	/// <summary>Rola a coluna dos numeros ate o fim (o folego mora la embaixo), pra foto. So vale depois do quadro que a mediu.</summary>
+	public void RolarAteOFim()
+	{
+		if (_corpo.GetParent() is ScrollContainer rolagem)
+			rolagem.ScrollVertical = (int)rolagem.GetVScrollBar().MaxValue;
+	}
+
 	/// <summary>Alguma legenda visivel da tela traz este pedaco de texto?</summary>
 	public bool TemTexto(string pedaco) =>
 		Todos(_raiz).OfType<Label>().Any(l => l.IsVisibleInTree() && l.Text.Contains(pedaco, StringComparison.Ordinal));
@@ -633,10 +644,13 @@ public partial class TelaDeTecnicas : CanvasLayer
 		// linha e a mesma regra dita antes -- e e a UNICA coisa que esta tela deduz sobre pontos: nao e um
 		// preco, e o zero.
 		// ============================================================================================
+		// (2026-10-19) Quem nunca cansa nao tem folego pra vender: a lista de desvantagens nao o promete -- ver a secao do folego.
+		bool vendeFolego = TecnicaCustomizada.VendeFolego(VigorInfinito());
 		if (m.Gasto == 0)
 			_corpo.AddChild(Nota(
 				"Você ainda não gastou nada. Desvantagens (menos potência, energia mais cara, carga mais longa, "
-				+ "tiro mais lento, gastar fôlego) pagam com pontos de volta — e com o orçamento inteiro não há o "
+				+ (vendeFolego ? "tiro mais lento, gastar fôlego) " : "tiro mais lento) ")
+				+ "pagam com pontos de volta — e com o orçamento inteiro não há o "
 				+ "que devolver, então elas são RECUSADAS em vez de sair de graça. Compre alguma vantagem primeiro.",
 				Tema.Perigo, 11));
 
@@ -742,13 +756,20 @@ public partial class TelaDeTecnicas : CanvasLayer
 
 		// ---------------------------------------------------------------- folego
 		_corpo.AddChild(new HSeparator());
+		// ============================ QUEM NUNCA CANSA NAO VE A TROCA (dono, 2026-10-19) ============================
+		// A mesma regra que o servidor confere no `ca_comprar` (`TecnicaCustomizada.VendeFolego`), com o fato que ele manda: no
+		// lugar da caixinha, a frase do porque. A tecnica que JA gastava folego (de antes da regra, ensinada, herdada) mostra so a
+		// caixinha, pra ser desligada -- desligar custa ponto e o servidor deixa. O degrau some: o `+` e a outra compra que rende,
+		// e baixar o gasto de quem nao cansa seria pagar por nada.
+		// ==========================================================================================================
+		if (!vendeFolego)
+			_corpo.AddChild(Nota(TecnicaCustomizada.SemFolegoNaTela, Tema.TextoFraco, 11));
 		// O UNICO ESTORNO DE DOIS PONTOS: ele exige DOIS ja gastos, e nao um.
-		Interruptor($"Gasta fôlego além da energia (devolve {TecnicaCustomizada.PrecoDaEstamina} pontos — "
-					+ $"precisa ter {TecnicaCustomizada.PrecoDaEstamina} gastos)",
-					m.UsaStamina, null,
-					() => GameClient.Instance?.SendVerbo("ca_comprar",
-						m.UsaStamina ? nameof(Compra.StaminaDesligar) : nameof(Compra.StaminaLigar)));
-		if (m.UsaStamina)
+		if (vendeFolego || m.UsaStamina)
+			Interruptor(RotuloDoFolego, m.UsaStamina, null,
+						() => GameClient.Instance?.SendVerbo("ca_comprar",
+							m.UsaStamina ? nameof(Compra.StaminaDesligar) : nameof(Compra.StaminaLigar)));
+		if (vendeFolego && m.UsaStamina)
 			Degrau("Fôlego gasto", $"{m.CustoStamina:0}", Compra.StaminaMenos, Compra.StaminaMais,
 				   "Cada ponto de fôlego a mais devolve 1 ponto de criação. Mínimo 1.");
 
@@ -876,6 +897,9 @@ public partial class TelaDeTecnicas : CanvasLayer
 	{
 		foreach (Node n in raiz.GetChildren())
 		{
+			// O QUE O REDESENHO JA MANDOU EMBORA fica na arvore ate o fim do quadro: quem pergunta logo depois de um redesenho
+			// (o robo da `--diagmesa`, com o defeito ligado e desligado no mesmo quadro) leria a tela velha junto da nova.
+			if (n.IsQueuedForDeletion()) continue;
 			yield return n;
 			foreach (Node m in Todos(n)) yield return m;
 		}
@@ -896,6 +920,18 @@ public partial class TelaDeTecnicas : CanvasLayer
 	internal static bool Aberto(TipoDeProjetil t) =>
 		GameClient.Instance is { } cli
 		&& TecnicaCustomizada.TipoAberto(t, v => cli.VerbosAtivos.Contains(v, StringComparer.OrdinalIgnoreCase));
+
+	/// <summary>
+	/// A MINHA RACA TEM O VIGOR INFINITO? O fato que o servidor manda (`Fatos.VigorInfinito`, do `Nutricao.VigorInfinitoDaRaca` de la) --
+	/// a tela so desenha com isto (`TecnicaCustomizada.VendeFolego`); quem recusa a compra e o servidor.
+	/// </summary>
+	internal static bool VigorInfinito() =>
+		GameClient.Instance is { } cli && (cli.Fatos & Jandirus.Core.Verbos.Fatos.VigorInfinito) != 0;
+
+	/// <summary>O rotulo da caixinha do folego: a tela e o robo da `--diagmesa` leem o mesmo.</summary>
+	internal static string RotuloDoFolego =>
+		$"Gasta fôlego além da energia (devolve {TecnicaCustomizada.PrecoDaEstamina} pontos — "
+		+ $"precisa ter {TecnicaCustomizada.PrecoDaEstamina} gastos)";
 
 	/// <summary>"o raio, com Onda de Ki" -- o que falta aprender pra um tipo abrir.</summary>
 	private static string ComoAbre(TipoDeProjetil t) => t switch

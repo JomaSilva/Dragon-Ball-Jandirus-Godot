@@ -65,6 +65,8 @@
     { "planeta": "Makyo_Star", "molde": "cidadao", "quantos": 30 },
     { "planeta": "Vegeta",     "molde": "rei_vegeta",      "quantos": 1, "tronoVago": "kov" },
     { "planeta": "Vegeta",     "molde": "principe_vegeta", "quantos": 1, "tronoVago": "kov" },
+    { "planeta": "Namek",      "molde": "patriarca",       "quantos": 1, "pertoDoBerco": 10,
+      "_nota": "(2026-10-19) O GRANDE PATRIARCA (o Guru): um so, como no populate_namek do PlanetPopulation.dm (:459-460, 'o Guru e unico, como o Rei/Principe de Vegeta') -- morto, a manutencao poe outro. 'pertoDoBerco' e o planet_spawn_turf do DM (:279-294): ele nasce a ate 10 tiles do ponto de nascer de Namek, e nao espalhado pelo planeta como o povo (Core/Npc/Povoamento.cs, LinhaDePovoamento.PertoDoBerco)." },
     { "planeta": "Afterlife",  "molde": "alma",            "quantos": 40 },
     { "planeta": "Heaven",     "molde": "alma",            "quantos": 20 },
     { "planeta": "Hell",       "molde": "alma_condenada",  "quantos": 30 },
@@ -138,10 +140,11 @@
           "anuncioDaQueda": "A Androide 18 foi destruida!" },
         { "molde": "cell", "diasMin": 2, "diasMax": 2, "recompensa": 100,
           "absorve": true, "ressurgeNoDegrau": 3, "ressurgeEmSegundos": 60,
+          "torneioNoDegrau": 3, "diasAteOTorneio": 5,
           "anuncioDaChegada": "Uma criatura aterrorizante emergiu na Terra... CELL esta cacando os androides!",
           "anuncioDaQueda": "CELL FOI DESTRUIDO! A Terra esta a salvo!" }
       ],
-      "_nota": "BEV_M3_TRIGGER_BP 5M, BEV_CELL_DELAY_DAYS 2. 'absorve' e o cell_absorb_contact (:680): encostar num androide NOCAUTEADO sobe um degrau da ficha dele. 'ressurgeNoDegrau: 3' e o Cell morto na forma Perfeita voltando Super Perfeito em 1 min (:760). Esta saga NAO destroi planeta -- no original ela tambem nao."
+      "_nota": "BEV_M3_TRIGGER_BP 5M, BEV_CELL_DELAY_DAYS 2. 'absorve' e o cell_absorb_contact (:680): encostar num androide NOCAUTEADO sobe um degrau da ficha dele. 'ressurgeNoDegrau: 3' e o Cell morto na forma Perfeita voltando Super Perfeito em 1 min (:760). Esta saga NAO destroi planeta -- no original ela tambem nao. (2026-10-19) 'torneioNoDegrau: 3' e o TORNEIO DO CELL (o dono: 'se ele virar perfeito, ele avisa q em 5 dias tera um torneio do cell'): chegando na Perfeita ele para a luta e some; em 'diasAteOTorneio' dias espera na arena da Terra os desafiantes, um por vez, no x1. Nocauteado ele 'morre na luta' e volta Super Perfeito pelo 'ressurgeNoDegrau' -- por isso os dois tem de ser o mesmo degrau; vencendo todos (a fila vazia por 5 min), ele explode a Terra com um Kamehameha (Core/Npc/TorneioDoCell.cs, Server/GameServer.TorneioDoCell.cs)."
     },
     {
       "id": "boo",
@@ -533,6 +536,28 @@
     },
 
     {
+      "id": "patriarca",
+      "nome": "Guru",
+      "tipo": "cidadao",
+      "racas": ["Namekian"],
+      "classe": "Dragon clan",
+      "generos": ["Male"],
+      "nomes": ["Guru"],
+      "bpMin": 9000, "bpMax": 12000,
+      "vagueia": false,
+      "talentos": ["/datum/skill/ki/Ki_Wave", "/datum/skill/mind/Ki_Unlocked@35", "/datum/skill/ki/Scattering_Bullet",
+                   "/datum/skill/mind/Basic_Ki_Control@30", "/datum/skill/ki/Afterimage"],
+      "quantosTalentos": 0.8,
+      "marcosBase": 2, "marcosPorDecada": 1.2,
+      "vocacao": ["/datum/skill/tree/Body", "/datum/skill/tree/Mind"],
+      "nivelDasSkills": 20,
+      "escadaAutomatica": false,
+      "inteligencia": 50, "agressividade": 60, "coragem": 80, "furia": 70,
+      "perfil": { "voa": 0.5, "ki": 0.6 },
+      "_nota": "(2026-10-19) O GRANDE PATRIARCA DE NAMEK -- o dono: 'adicione o patriarca em namek assim como tinha no Finale-master'. E o mob/npc/Citizen/Guru do PlanetPopulation.dm (:213-235) e a fabrica make_namek_guru (:444-452): Namekuseijin do Cla do Dragao ('Dragon clan'), homem, o nome 'Guru', BP rand(9000,12000) e o corpo 'NamekOld - Guru Style', SEM roupa (a fabrica dele nao chama npc_wear_*: a folha ja e o manto). A folha e cravada no codigo, num indice reservado do corpo (Core/Npc/Patriarca.cs). 'vagueia': false e o idle_wandering = 0 (:219): ele nao passeia nem entra em spar, e o embaralho do planeta vazio nao o leva. O resto e o de todo habitante (o init_citizen do DM e o mesmo pipeline): o temperamento e o behavior_vals do mob/npc/Citizen, e ele revida quem bate nele. Falar com ele (tecla E) desperta o potencial oculto UMA vez na vida, se a reputacao com Namek nao for 'Malvisto' pra baixo (Server/GameServer.Patriarca.cs)."
+    },
+
+    {
       "id": "guardiao_saiyajin",
       "nome": "Guardiao",
       "tipo": "chefe",
@@ -631,7 +656,8 @@
       "escadaAutomatica": false,
       "ascendePorDecisao": false,
       "inteligencia": 80, "agressividade": 85, "coragem": 95, "furia": 40,
-      "estagios": [ { "bp": 100000000 } ],
+      "estagios": [ { "bp": 200000000 } ],
+      "_bp": "(2026-10-19, dono: 'dobre o bp dos androides 17 e 18') 200 milhoes, o DOBRO do BEV_ANDROID_BP do DM. A saga que ja disparou antes desta mudanca tem o BP velho pinado no sagas.json: a carga ergue todo degrau pinado que ficou abaixo da ficha (GameServer.Sagas.cs, ErguerOsPinosAteAFicha).",
       "_nota": "BEV_ANDROID_BP 100M (BossEvents.dm:55). UM degrau: androide nao transforma. A raca e Human/classe cravada como no original (init_event_boss usa \"Human\",\"Normal\" e so depois escreve Race=\"Android\" -- e o proprio comentario de la diz que isso e COSMETICO e nao afeta os stats). O 'inf_ki'/'inf_stam' do original (nucleo de energia infinita) NAO esta portado: nao ha canal de Ki infinito neste port."
     },
     {
@@ -651,7 +677,8 @@
       "escadaAutomatica": false,
       "ascendePorDecisao": false,
       "inteligencia": 80, "agressividade": 80, "coragem": 90, "furia": 40,
-      "estagios": [ { "bp": 100000000 } ],
+      "estagios": [ { "bp": 200000000 } ],
+      "_bp": "(2026-10-19) O dobro do DM, como o 17 -- ver o '_bp' dele.",
       "_nota": "Igual ao 17, com genero feminino -- e os dois sao MOLDES SEPARADOS e nao um com dois generos, porque a saga cita cada um pelo id e paga 50 de reputacao por cabeca (BEV_HERO_REP_ANDROID)."
     },
     {
@@ -659,12 +686,12 @@
       "nome": "Cell",
       "tipo": "chefe",
       "racas": ["BioAndroid"],
-      "sangueDoBio": ["Saiyan", "Namekian", "Icer", "Human"],
-      "_sangueDoBio": "(v0.3.0) As racas do sangue dele -- o Cell do anime foi feito de Goku e Vegeta (Saiyajin), Piccolo (Namekuseijin), Freeza e o Rei Cold (Icer) e dos humanos. O dono (2026-10-15): o bio sozinho nao tem nada, e as passivas e as skills de raca vem das racas que o fizeram (Core/Races/SangueDoBio.cs).",
+      "sangueDoBio": ["Saiyan", "Namekian", "Icer"],
+      "_sangueDoBio": "(2026-10-19) O dono: 'o cell vai ser um bio androide com o dna das seguintes raças Saiyajins, Namekuseijins, frost demon. assim como um jogador bio androide, ele vai ter 6 skills raciais dessas raças alem das passivas q normalmente essas raças sempre tem (zenkai dos saiyajins, respirar no espaço dos frost demons, e a skill de regenerar dos nameks)' -- e '6 skills raciais ... é sobre q bio androides escolhem ate 6 skills raciais das raças q eles pegaram o dna'. Saiu o Humano. As seis o NPC escolhe sozinho ao nascer, do sangue (Races.SkillsRaciais.EscolhaDoNpc); o Zenkai vem do sangue Saiyajin, o folego no vacuo do Frost Demon (bio_dna_respira), e a Regenerate e DADA (logo abaixo: no port ela nao pende da arvore do Namekuseijin). (v0.3.0) As racas do sangue dele -- o Cell do anime foi feito de Goku e Vegeta (Saiyajin), Piccolo (Namekuseijin), Freeza e o Rei Cold (Icer) e dos humanos. O dono (2026-10-15): o bio sozinho nao tem nada, e as passivas e as skills de raca vem das racas que o fizeram (Core/Races/SangueDoBio.cs).",
       "classe": "Majin-Type",
       "generos": ["Male"],
       "marcosBase": 8, "marcosPorDecada": 2.2,
-      "dadas": ["/datum/skill/ki/Ki_Wave", "/datum/skill/rank/Kamehameha", "/datum/skill/rank/Death_Beam"],
+      "dadas": ["/datum/skill/ki/Ki_Wave", "/datum/skill/rank/Kamehameha", "/datum/skill/rank/Death_Beam", "/datum/skill/general/regenerate"],
       "_ataques": "(v0.3.0, item 5) Os ATAQUES DELE: o dono pediu os chefes com 'ataques mais individuais como o freeza com death beam e death ball'. O arsenal de longe da IA (Core/Skills/TecnicasDeLonge.cs) ja usa toda tecnica que o corpo SABE, pela mesma porta do jogador -- o que faltava era o chefe saber.",
       "_dadas": "O `isBlaster` do DM (NPCAI.dm:39) -- la o NPC atira por FLAG, e nao por skill. Aqui ele passa pelo funil do jogador, entao a flag vira a skill DADA (`SkillBook.Dar`, o caminho de quem foi ENSINADO): `/datum/skill/ki/Ki_Wave` e comum e ligada, mas nao pende de arvore nenhuma -- nem aqui nem no DM --, entao ela so entra por este campo. Sem esta linha o contra-feixe (NPCAI.dm:374) e a colisao de ki entre NPCs nunca aconteciam em jogo: nenhum corpo do mundo sabia um raio.",
       "vocacao": ["/datum/skill/tree/Spirit", "/datum/skill/tree/Mind", "/datum/skill/tree/Body"],
@@ -673,15 +700,35 @@
       "ascendePorDecisao": false,
       "inteligencia": 90, "agressividade": 85, "coragem": 95, "furia": 60,
       "estagios": [
-        { "bp": 150000000,  "gatilhoMembro": 0.35, "cura": 0.6, "degrauDoBio": 2 },
-        { "bp": 500000000,  "gatilhoMembro": 0.30, "cura": 0.6, "degrauDoBio": 3, "cena": "bio_semi",
+        { "bp": 300000000,  "gatilhoMembro": 0.35, "cura": 0.6, "degrauDoBio": 2 },
+        { "bp": 1000000000, "gatilhoMembro": 0.30, "cura": 0.6, "degrauDoBio": 3, "cena": "bio_semi",
           "anuncio": "O corpo de Cell se retorce -- Semi-Perfeito." },
         { "bp": 3500000000, "gatilhoMembro": 0.25, "cura": 0.6, "degrauDoBio": 4, "cena": "bio_perfeito",
           "anuncio": "CELL ATINGIU A FORMA PERFEITA! Um poder monstruoso emana dele!" },
         { "bp": 5000000000, "cura": 1.0, "degrauDoBio": 4,
           "anuncio": "IMPOSSIVEL... CELL VOLTOU DA MORTE em seu poder maximo!" }
       ],
+      "_bp": "(2026-10-19, dono: 'aumente o poder do cell primeira forma e segunda da mesma forma, a forma perfeita e super perfeita pode manter igual') A forma 1 e a Semi-Perfeita tem o DOBRO do DM: 300 milhoes e 1 bilhao, e nao os 150e6 e 500e6 do BEV_CELL_BPS. A Perfeita (3,5 bilhoes) e a Super Perfeita (5 bilhoes) sao as do DM. A saga que ja disparou tem o BP velho pinado: a carga o ergue ate a ficha (ErguerOsPinosAteAFicha).",
       "_nota": "BEV_CELL_BPS (BossEvents.dm:56). A escada dele sobe por DOIS gatilhos: absorver um androide nocauteado (o 'absorve' da saga -- e o caminho canonico) OU o dano no membro mais ferido, pra ele nao ficar preso na forma 1 se os jogadores matarem os androides antes. DIVERGENCIA CONSCIENTE: o original constroi Cell com genoma Human e so troca o Race por cosmetica (o comentario dele admite isso); aqui ele nasce da raca BioAndroid que este port TEM -- a mesma que um jogador vira no laboratorio de DNA. Ganha-se coerencia com o resto do jogo; perde-se a literalidade do spread de stats, que o BP pinado torna quase invisivel."
+    },
+    {
+      "id": "cell_jr",
+      "nome": "Cell Jr.",
+      "tipo": "lutador",
+      "racas": ["BioAndroid"],
+      "sangueDoBio": ["Saiyan", "Namekian", "Icer"],
+      "classe": "Majin-Type",
+      "generos": ["Male"],
+      "nomes": ["Cell Jr."],
+      "bpMin": 1000, "bpMax": 1000,
+      "marcosBase": 8, "marcosPorDecada": 2.2,
+      "dadas": ["/datum/skill/ki/Ki_Wave", "/datum/skill/rank/Kamehameha", "/datum/skill/rank/Death_Beam", "/datum/skill/general/regenerate"],
+      "vocacao": ["/datum/skill/tree/Spirit", "/datum/skill/tree/Mind", "/datum/skill/tree/Body"],
+      "nivelDasSkills": 85,
+      "escadaAutomatica": false,
+      "ascendePorDecisao": false,
+      "inteligencia": 90, "agressividade": 85, "coragem": 95, "furia": 60,
+      "_nota": "(2026-10-19) OS CELL JR do torneio do Cell -- o dono: 'se o cell cair da arena alem dele falar q vai ignorar essa regra, ele vai spawnar cell jr ... ao todo 7, ao qual vao mirar nos participantes q nao estao lutando no torneio' e 'os cell jr vao ter 90% do bp do cell perfeito' -- e 'os cell jr vao ser literalmente um clone do cell original mas com 90% do bp dele': a ficha e a do Cell (a raca, o sangue e as seis skills dele, as tecnicas dadas, as arvores, o nivel e o cerebro). Tipo 'lutador': so nasce pelo evento (nunca pelo povoamento) e a presa e imposta -- cada um mira um jogador de fora da luta. O BP do molde e so o de nascer: quem os solta ESCREVE 90% do BP do Cell de agora (Core/Npc/TorneioDoCell.cs, FracaoDoBpDoCellJr). O corpo e um indice reservado do bio-androide (CorpoDoCellJr), desenhado com a folha Cell Jr.png."
     },
     {
       "id": "majin_boo",

@@ -40,6 +40,15 @@ public sealed class LinhaDePovoamento
 	/// sumir desses 5"*. Vazio = o alvo e o <see cref="Quantos"/>. Ver <see cref="Povoamento.AlvoDaLinha"/>.
 	/// </summary>
 	public string CadaDonoTiraUm = "";
+
+	/// <summary>
+	/// (2026-10-19) PERTO DO BERCO, em tiles: a linha nasce a ate N tiles (por eixo) do ponto de nascer do planeta, e nao numa vaga do
+	/// <see cref="Habitat"/> espalhada pelo planeta inteiro. E o `planet_spawn_turf` do DM (PlanetPopulation.dm:279-294: `rand(-10,10)`
+	/// em volta do SpawnPoint, ate 25 tentativas) -- o lugar de TODO habitante no original, e aqui so o do Grande Patriarca de Namek: o
+	/// povo se espalha pelo planeta a pedido do dono, e quem vai falar com o Guru precisa acha-lo perto de onde se chega. Zero = o habitat.
+	/// Ver `GameServer.PontoPertoDoBerco`.
+	/// </summary>
+	public int PertoDoBerco;
 }
 
 /// <summary>
@@ -301,6 +310,12 @@ public static class Povoamento
 	/// </summary>
 	public const int TentativasDoEmbaralho = 8;
 
+	/// <summary>
+	/// (2026-10-19) QUANTOS PONTOS O NASCIMENTO PERTO DO BERCO SORTEIA antes de ficar no proprio berco (<see cref="LinhaDePovoamento.PertoDoBerco"/>).
+	/// **LITERAL**: o `for(var/tries = 1 to 25)` do `planet_spawn_turf` (PlanetPopulation.dm:285), que depois das 25 fica no SpawnPoint.
+	/// </summary>
+	public const int TentativasPertoDoBerco = 25;
+
 	// =====================================================================
 	// O PLANO, LIDO DO `npcs.json`
 	// =====================================================================
@@ -325,6 +340,8 @@ public static class Povoamento
 					? q.GetInt32() : 0,
 				TronoVago = e.TryGetProperty("tronoVago", out JsonElement tv) ? tv.GetString() ?? "" : "",
 				CadaDonoTiraUm = e.TryGetProperty("cadaDonoTiraUm", out JsonElement cd) ? cd.GetString() ?? "" : "",
+				PertoDoBerco = e.TryGetProperty("pertoDoBerco", out JsonElement pb) && pb.ValueKind == JsonValueKind.Number
+					? pb.GetInt32() : 0,
 			};
 			if (linha.Planeta.Length > 0 && linha.Molde.Length > 0) l.Add(linha);
 		}
@@ -349,6 +366,9 @@ public static class Povoamento
 
 			if (l.Quantos > MaxPorZona)
 				p.Add($"povoamento de '{l.Planeta}' pede {l.Quantos}, acima do teto por zona ({MaxPorZona})");
+
+			if (l.PertoDoBerco < 0)
+				p.Add($"povoamento de '{l.Planeta}' com molde '{l.Molde}': 'pertoDoBerco' e {l.PertoDoBerco} -- e um raio em tiles (0 = o habitat)");
 
 			// O PLANO E DE HABITANTES. Chefe de saga NAO entra aqui: quem o poe no mundo e a cadeia
 			// de sagas (o gatilho por BP e a contagem em dias), e nao uma cota por planeta. Uma linha

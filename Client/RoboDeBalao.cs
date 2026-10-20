@@ -11,9 +11,15 @@ namespace Jandirus.Client;
 /// Olhando pra tela da pra ver que apareceu um texto sobre a cabeca. O que a foto NAO diz:
 ///   * o balao pega o canal CERTO? (OOC e do jogador, nao do personagem; o sussurro de longe
 ///     chega com o texto VAZIO -- os dois viram balao errado sem ninguem reclamar)
-///   * a fala acha o CORPO CERTO? O pacote traz NOME e o cliente so tem id -- a busca reversa e
-///     uma regra inteira, e ela so e exercitada de verdade por um corpo que NAO E O MEU (o meu
-///     tem atalho pelo `LocalName` e nunca encosta no mapa `_nomes`).
+///   * a fala acha o CORPO CERTO? Desde 2026-10-19 o pacote traz o id da BOCA, porque o nome nao
+///     separa corpos: dois homonimos em campo, a fusao que se apresenta com outro nome, quem fala
+///     antes do proprio `PeerLook`. A busca pelo nome abria o balao no primeiro dono do nome da zona
+///     -- o *"as vezes o balao nao aparece sobre eles mesmo eles falando"* do dono. Ver `OsHomonimos`.
+///   * e a fala que passa pelo SERVIDOR chega com esse id? Ver `OFio`: e a unica medida que sai do
+///     `SendChat` e volta pela rede, em vez de entrar pelo `World.AoFalar`.
+///   * o NOME DERIVADO comprido ("corpo de X", "Bio-Androide de X") atravessa o fio, no `PeerLook` e de autor
+///     no chat? O leitor do LiteNetLib devolve VAZIO acima do teto, e o teto era o 24 da criacao. Ver
+///     `ONomeComprido`: corpos de verdade do servidor do `--host`, com o nome dado e lido pelas duas pontas.
 ///   * o corpo remoto nasce COM o balao? Sao duas linhas em dois lugares do `World` (a local e a
 ///     remota) e esquecer a segunda deixa metade do jogo mudo sem nenhum erro.
 ///   * uma frase de 400 letras QUEBRA, ou vira a faixa atravessando a tela?
@@ -67,6 +73,48 @@ public partial class RoboDeBalao : Node
 	/// <summary>O corpo remoto do teste: um id que o servidor nunca vai usar nesta sessao.</summary>
 	private const int IdDoRemoto = 4242;
 	private const string NomeDoRemoto = "Kakaroto";
+
+	/// <summary>
+	/// Os corpos de `OsHomonimos`: quatro por medida, a partir daqui. Longe dos ids do servidor (que conta de 1
+	/// em 1 a cada corpo que nasce) e do <see cref="IdDoRemoto"/>.
+	/// </summary>
+	private const int IdDosHomonimos = 900_000;
+
+	/// <summary>
+	/// O nome repetido. Nenhum NPC se chama assim: se um se chamasse, a busca pelo nome iria pra ELE e os dois
+	/// homonimos ficariam mudos -- a medida com defeito continuaria reprovando, so que por outra porta.
+	/// </summary>
+	private const string NomeDosHomonimos = "Gemeo de Bancada";
+
+	/// <summary>As frases de `OFio`: as que saem do MEU corpo pelo servidor de verdade -- uma de cada funil (`PorPerto`, `Sussurrar`).</summary>
+	private const string FraseDoFio = "esta passou pelo servidor", SussurroDoFio = "e esta tambem";
+
+	/// <summary>O id da boca que o `S2C.Chat` de cada frase do fio trouxe; a frase so entra quando ele chega.</summary>
+	private readonly Dictionary<string, int> _bocasDoFio = [];
+
+	/// <summary>A frase dos corpos de `ONomeComprido`, dita pelo servidor (`FalarPeloCorpoDeFoto`).</summary>
+	private const string FraseDoNomeComprido = "meu nome nao cabia no fio";
+
+	/// <summary>
+	/// Quanto uma medida de `ONomeComprido` espera pelos dois pacotes dela (o `PeerLook` e a fala). Passado o prazo, o que
+	/// faltou sai na regua como "nao chegou" -- e nao como "chegou vazio", que e o defeito.
+	/// </summary>
+	private const double PrazoDoNome = 5.0;
+
+	/// <summary>
+	/// UMA MEDIDA DE `ONomeComprido`: o corpo que o servidor forjou, o nome que ele deu, e o que o cliente LEU -- o nome no
+	/// `PeerLook`, o autor no chat (nulo = o pacote nao chegou), e o que o mapa id -> nome do `World` responde depois.
+	/// </summary>
+	private sealed class MedidaDoNome
+	{
+		public int Id;
+		public string Enviado = "";
+		public string? Lido, Autor, NoMapa;
+		public bool Falou;
+	}
+
+	private MedidaDoNome _medida = new();
+	private MedidaDoNome? _comDefeitoNoCliente, _umDegrau, _alemDoTeto, _comDefeitoNoServidor;
 
 	// O que o balao do LOCAL deve continuar mostrando quando a fala e de outra pessoa.
 	private const string FraseDoLocal = "eu ando e falo";
@@ -128,23 +176,24 @@ public partial class RoboDeBalao : Node
 			// A FALA CHEGA NO CORPO -- pelo caminho do EVENTO, e nao pelo `Dizer` na mao
 			// -------------------------------------------------------------
 			case 1:
-				mundo.AoFalar(Protocol.Fala.Diz, cli.LocalName, "sai da frente");
+				mundo.AoFalar(Protocol.Fala.Diz, cli.LocalName, "sai da frente", cli.LocalId);
 				Conferir(balao.Visible && balao.TextoDeTeste == "sai da frente",
-						 $"a fala achou o meu corpo pelo NOME e virou balao (\"{balao.TextoDeTeste}\")");
+						 $"a fala achou o meu corpo pelo id da boca e virou balao (\"{balao.TextoDeTeste}\")");
 
-				mundo.AoFalar(Protocol.Fala.Ooc, cli.LocalName, "isto e fora do personagem");
-				mundo.AoFalar(Protocol.Fala.Looc, cli.LocalName, "isto tambem");
-				mundo.AoFalar(Protocol.Fala.Sistema, "", "zona carregada");
-				mundo.AoFalar(Protocol.Fala.Sussurro, cli.LocalName, "");
+				mundo.AoFalar(Protocol.Fala.Ooc, cli.LocalName, "isto e fora do personagem", cli.LocalId);
+				mundo.AoFalar(Protocol.Fala.Looc, cli.LocalName, "isto tambem", cli.LocalId);
+				mundo.AoFalar(Protocol.Fala.Sistema, "", "zona carregada", 0);
+				mundo.AoFalar(Protocol.Fala.Sussurro, cli.LocalName, "", cli.LocalId);
 				Conferir(balao.TextoDeTeste == "sai da frente" && balao.NaFilaDeTeste == 0,
 						 "OOC, LOOC, Sistema e o sussurro-sem-texto NAO viram balao (nem entram na fila)");
 
-				mundo.AoFalar(Protocol.Fala.Diz, "Ninguem Com Esse Nome", "oi");
+				mundo.AoFalar(Protocol.Fala.Diz, "Ninguem Com Esse Nome", "oi", 0);
+				mundo.AoFalar(Protocol.Fala.Diz, "Ninguem Com Esse Nome", "oi", IdDosHomonimos - 1);
 				Conferir(balao.TextoDeTeste == "sai da frente",
-						 "fala de nome desconhecido nao encosta em corpo nenhum");
+						 "fala sem boca (0) ou de uma boca que nao esta em campo nao encosta em corpo nenhum");
 
 				// A SEGUNDA FRASE, DENTRO DO PISO: tem que ESPERAR, e nao apagar a primeira.
-				mundo.AoFalar(Protocol.Fala.Diz, cli.LocalName, "vou te acertar");
+				mundo.AoFalar(Protocol.Fala.Diz, cli.LocalName, "vou te acertar", cli.LocalId);
 				Conferir(balao.TextoDeTeste == "sai da frente" && balao.NaFilaDeTeste == 1,
 						 "fala nova dentro do piso de leitura ENTRA NA FILA -- a primeira nao e apagada");
 				Passar();
@@ -172,7 +221,7 @@ public partial class RoboDeBalao : Node
 						 "...e para de gastar quadro (corpo calado nao custa `_Process`)");
 
 				// O ANDAR COMECA AGORA: fala, guarda onde estava e solta o piloto automatico.
-				mundo.AoFalar(Protocol.Fala.Diz, cli.LocalName, FraseDoLocal);
+				mundo.AoFalar(Protocol.Fala.Diz, cli.LocalName, FraseDoLocal, cli.LocalId);
 				Comecar(corpo);
 				mundo.AndarDeTeste(Vector2.Right);
 				Passar();
@@ -241,6 +290,8 @@ public partial class RoboDeBalao : Node
 				// `RemotePlayer.LimiteDeSalto`): acima dele o corpo CRAVA, e cravar e teleporte --
 				// o que se quer medir aqui e o corpo deslizando.
 				Snapshot(mundo, _ondeORemoto + new Vector2(12, 0), 0f, andando: true);
+				// Os quatro de `OsHomonimos` ainda estao em campo: meio segundo de balao aberto e a foto.
+				if (_homonimosNaTela.Count > 0 && _t >= 0.5) FotografarOsHomonimos(mundo);
 				if (_t < 1.0) return;
 
 				Conferir(_andou > 24f,
@@ -248,7 +299,7 @@ public partial class RoboDeBalao : Node
 				Conferir(_pior < 0.01f,
 						 $"e o balao dele foi junto (pior desvio {_pior:0.###} px)");
 				// A SUBIDA COMECA: ele fala de novo, pra que haja texto na tela DURANTE o voo.
-				mundo.AoFalar(Protocol.Fala.Diz, NomeDoRemoto, FraseNoAr);
+				mundo.AoFalar(Protocol.Fala.Diz, NomeDoRemoto, FraseNoAr, IdDoRemoto);
 				Passar();
 				break;
 
@@ -277,7 +328,7 @@ public partial class RoboDeBalao : Node
 				// encolhe por 1/zoom e a fonte cresce por zoom), depois na FOTO -- que e o que o dono ve.
 				ONitidoPorConstrucao(mundo, balao);
 				mundo.AplicarZoom(ZoomDaFoto);
-				mundo.AoFalar(Protocol.Fala.Diz, cli.LocalName, FraseDaFoto);
+				mundo.AoFalar(Protocol.Fala.Diz, cli.LocalName, FraseDaFoto, cli.LocalId);
 				Passar();
 				break;
 			case 11:
@@ -304,8 +355,99 @@ public partial class RoboDeBalao : Node
 					Conferir(_nitido > _serrilhado, "...e a foto nitida e mais nitida que a serrilhada pela mesma regua");
 				}
 				mundo.AplicarZoom(Math.Max(1, Boot.Config.Zoom));
+				// O FIO: as duas ultimas falas saem pelo servidor de verdade (o `--host` e este processo).
+				cli.FalouPelaBoca += OuvirOFio;
+				cli.SendChat(Protocol.Fala.Diz, FraseDoFio);
+				Passar();
+				break;
+			case 13:
+				// 0,6 S ENTRE AS DUAS: o servidor joga fora a fala que chega antes dos 400 ms da anterior
+				// (`GameServer.MsEntreFalas`), calado.
+				if ((!_bocasDoFio.ContainsKey(FraseDoFio) || balao.TextoDeTeste != FraseDoFio || _t < 0.6) && _t < 5.0) return;
+				OFio(cli, balao, FraseDoFio, "a fala");
+				cli.SendChat(Protocol.Fala.Sussurro, SussurroDoFio);
+				Passar();
+				break;
+			case 14:
+				// O sussurro chega dentro do piso de leitura da fala de cima: espera a fila do balao andar.
+				if ((!_bocasDoFio.ContainsKey(SussurroDoFio) || !balao.TextoDeTeste.Contains(SussurroDoFio)) && _t < 5.0) return;
+				OFio(cli, balao, SussurroDoFio, "o sussurro");
+				cli.FalouPelaBoca -= OuvirOFio;
+				Passar();
+				break;
+
+			// -------------------------------------------------------------
+			// O NOME COMPRIDO NO FIO (2026-10-19) -- quatro medidas em fila, cada uma esperando os PROPRIOS pacotes
+			// -------------------------------------------------------------
+			case 15:
+				if (Jandirus.Server.GameServer.Instance is not { } srv)
+				{
+					Conferir(false, "o servidor do `--host` roda neste processo (sem ele ninguem escreve o nome comprido no fio)");
+					Fechar();
+					break;
+				}
+				AsContasDoNome();
+				cli.PeerLooked += OuvirONome;
+				cli.FalouPelaBoca += OuvirOAutor;
+				// A PRIMEIRA E A DO DEFEITO DO CLIENTE: o botao fica ligado ate os DOIS pacotes da medida serem lidos.
+				GameClient.NomeComTetoVelhoDeTeste = true;
+				ComecarMedida(srv, cli, DerivadoDeUmDegrau('A'), 0);
+				Passar();
+				break;
+			case 16:
+				if (!MedidaAndou()) return;
+				GameClient.NomeComTetoVelhoDeTeste = false;
+				_comDefeitoNoCliente = FecharMedida(mundo);
+				ComecarMedida(Jandirus.Server.GameServer.Instance!, cli, DerivadoDeUmDegrau('B'), 1);
+				Passar();
+				break;
+			case 17:
+				if (!MedidaAndou()) return;
+				_umDegrau = FecharMedida(mundo);
+				ComecarMedida(Jandirus.Server.GameServer.Instance!, cli, DerivadoAlemDoTeto('C'), 2);
+				Passar();
+				break;
+			case 18:
+				if (!MedidaAndou()) return;
+				_alemDoTeto = FecharMedida(mundo);
+				Passar();
+				break;
+			case 19:
+				// Meio segundo pra o balao e a linha do chat da ultima fala serem DESENHADOS antes da foto.
+				if (_t < 0.5) return;
+				FotografarONomeComprido();
+				// A ULTIMA E A DO DEFEITO DO SERVIDOR: ele escreve sem o corte, e o leitor (com o teto novo) devolve vazio.
+				Protocol.NomeSemCorteDeTeste = true;
+				ComecarMedida(Jandirus.Server.GameServer.Instance!, cli, DerivadoAlemDoTeto('D'), 3);
+				Passar();
+				break;
+			case 20:
+				if (!MedidaAndou()) return;
+				Protocol.NomeSemCorteDeTeste = false;
+				_comDefeitoNoServidor = FecharMedida(mundo);
+				cli.PeerLooked -= OuvirONome;
+				cli.FalouPelaBoca -= OuvirOAutor;
+				Jandirus.Server.GameServer.Instance?.LimparAFoto();
+				ONomeComprido();
 				Fechar();
 				break;
+		}
+	}
+
+	public override void _ExitTree()
+	{
+		// O DEFEITO INJETADO NAO SOBREVIVE A BANCADA: `OsHomonimos` ja o desliga no `finally`, e este e o
+		// segundo cinto (uma excecao fora dele, a janela fechada no meio).
+		World.BalaoPeloNomeDeTeste = false;
+		// Os dois de `ONomeComprido` ficam ligados ATRAVES de quadros (o pacote e lido depois), entao este cinto e o unico
+		// que os pega quando a janela fecha no meio de uma medida.
+		GameClient.NomeComTetoVelhoDeTeste = false;
+		Protocol.NomeSemCorteDeTeste = false;
+		if (GameClient.Instance is { } cli)
+		{
+			cli.FalouPelaBoca -= OuvirOFio;
+			cli.PeerLooked -= OuvirONome;
+			cli.FalouPelaBoca -= OuvirOAutor;
 		}
 	}
 
@@ -502,13 +644,9 @@ public partial class RoboDeBalao : Node
 	/// <summary>
 	/// ALGUEM ENTRA NO MEU CAMPO DE VISAO E FALA.
 	///
-	/// Este e o caso que o balao existe pra resolver -- e o unico que exercita a busca reversa
-	/// nome -> id: o meu proprio nome tem atalho (`LocalName`) e nunca chega a olhar o mapa.
-	///
-	/// A ORDEM E DE PROPOSITO: o corpo entra em campo pelo snapshot ANTES do `PeerLook`, que e o
-	/// que acontece em jogo (o snapshot e por tique, a aparencia chega uma vez). Falar nesse vao
-	/// nao pode achar corpo nenhum -- se achasse, seria sinal de que a busca esta pegando "o
-	/// primeiro remoto que houver" em vez do dono do nome.
+	/// Este e o caso que o balao existe pra resolver. O corpo entra em campo pelo snapshot e o nome
+	/// pelo `PeerLook`, como em jogo; a fala traz o id da boca -- e o que nao se separa pelo nome (os
+	/// homonimos, a fusao, quem fala antes do proprio `PeerLook`) e medido em `OsHomonimos`.
 	/// </summary>
 	private void OutroCorpoEntraEmCampo(World mundo, BalaoDeFala meuBalao)
 	{
@@ -527,22 +665,301 @@ public partial class RoboDeBalao : Node
 			   + "`World` -- esquecer ela deixaria mudo todo mundo menos eu)");
 		if (dele == null) return;
 
-		mundo.AoFalar(Protocol.Fala.Diz, NomeDoRemoto, "ainda nao me apresentei");
-		Conferir(!dele.Visible,
-				 "antes do `PeerLook` o nome nao existe e a fala nao acha corpo nenhum "
-			   + "(a busca e pelo NOME, e nao \"o primeiro remoto que houver\")");
-
-		// O PeerLook: e ele que escreve o mapa id -> nome de que a busca reversa vive.
 		mundo.AoReceberAparencia(IdDoRemoto, NomeDoRemoto, "Saiyan", "Male",
 								 new Jandirus.Core.Appearance.Appearance());
 
-		mundo.AoFalar(Protocol.Fala.Diz, NomeDoRemoto, FraseDoRemoto);
+		mundo.AoFalar(Protocol.Fala.Diz, NomeDoRemoto, FraseDoRemoto, IdDoRemoto);
 		Conferir(dele.Visible && dele.TextoDeTeste == FraseDoRemoto,
-				 $"depois do `PeerLook` a fala dele acha o corpo DELE (\"{dele.TextoDeTeste}\")");
+				 $"a fala dele acha o corpo DELE (\"{dele.TextoDeTeste}\")");
 		Conferir(meuBalao.TextoDeTeste != FraseDoRemoto,
 				 "...e nao caiu no MEU balao (dois corpos em campo, cada frase no dono certo)");
 
+		OsHomonimos(mundo);
+
 		Comecar(r);
+	}
+
+	// =====================================================================
+	// 4b. O QUE O NOME NAO SEPARA (2026-10-19)
+	// =====================================================================
+	/// <summary>
+	/// O *"as vezes o balao de fala dos personagens nao aparece sobre eles mesmo eles falando"* do dono. O
+	/// balao achava o corpo pelo NOME do autor, pegando o primeiro dono do nome na zona -- e ha tres jeitos de
+	/// jogo comum em que o nome nao aponta quem falou. Um corpo pra cada, cada um com a sua frase:
+	///   * A e B, HOMONIMOS em campo (os habitantes saem de listas curtas de nome por raca, todo bicho tem o
+	///     nome da especie). Pelo nome as duas frases iam pro mesmo corpo e o outro ficava MUDO -- qualquer
+	///     que seja a ordem do mapa, e por isso a medida nao depende dela;
+	///   * C, a FUSAO: o `PeerLook` traz o nome visivel e o chat o do personagem;
+	///   * D, quem fala ANTES do proprio `PeerLook` (snapshot e aparencia viajam em canais sem ordem entre si).
+	///
+	/// MEDIDO DUAS VEZES, com corpos novos em cada: com o defeito injetado (a busca pelo nome de antes,
+	/// `World.BalaoPeloNomeDeTeste`), em que a MESMA regua tem que reprovar as tres, e limpo. Os corpos da
+	/// medida com defeito saem de cena na hora; os da limpa ficam pra foto (`FotografarOsHomonimos`).
+	/// </summary>
+	private void OsHomonimos(World mundo)
+	{
+		(bool Homonimos, bool Fusao, bool AntesDoNome) comDefeito;
+		string comoComDefeito;
+		World.BalaoPeloNomeDeTeste = true;
+		try { comDefeito = MedirAsBocas(mundo, IdDosHomonimos + 10, out comoComDefeito); }
+		finally { World.BalaoPeloNomeDeTeste = false; }
+		for (int id = IdDosHomonimos + 10; id < IdDosHomonimos + 14; id++) mundo.AoSair(id);
+
+		var limpo = MedirAsBocas(mundo, IdDosHomonimos, out string comoLimpo);
+		for (int id = IdDosHomonimos; id < IdDosHomonimos + 4; id++) _homonimosNaTela.Add(id);
+
+		Conferir(limpo.Homonimos,
+				 $"dois HOMONIMOS (\"{NomeDosHomonimos}\") em campo, cada um com a sua frase: cada frase abre no balao de "
+			   + $"QUEM FALOU, pelo id da boca ({comoLimpo})");
+		Conferir(limpo.Fusao, "a FUSAO (`PeerLook` \"Gogeta\", autor \"Goku\" no chat) fala e o balao abre sobre ela");
+		Conferir(limpo.AntesDoNome, "quem fala ANTES do proprio `PeerLook` ganha o balao -- o id basta, o nome nem chegou");
+		Conferir(!comDefeito.Homonimos,
+				 $"(defeito injetado: o balao acha o corpo pelo NOME, o codigo de antes) a mesma regua REPROVA os "
+			   + $"homonimos -- um deles fica mudo ({comoComDefeito})");
+		Conferir(!comDefeito.Fusao, "(defeito injetado) ...a fusao fica sem balao");
+		Conferir(!comDefeito.AntesDoNome, "(defeito injetado) ...e quem fala antes do `PeerLook` tambem");
+	}
+
+	/// <summary>
+	/// UMA MEDIDA: os quatro corpos de `OsHomonimos` nascem a partir de <paramref name="id0"/> e falam.
+	/// <paramref name="como"/> diz o que os balaoes de A e B mostraram. Quem chama os tira de cena.
+	/// </summary>
+	private (bool Homonimos, bool Fusao, bool AntesDoNome) MedirAsBocas(World mundo, int id0, out string como)
+	{
+		const string FraseDeA = "eu sou o primeiro", FraseDeB = "eu sou o outro", FraseDaFusao = "duas vozes numa so",
+					 FraseDeD = "ainda nao me apresentei";
+		int a = id0, b = id0 + 1, c = id0 + 2, d = id0 + 3;
+		Vector2 aqui = World.Instancia?.PosicaoLocal ?? Vector2.Zero;
+
+		SnapshotDe(mundo, a, aqui + new Vector2(-96, 0));
+		SnapshotDe(mundo, b, aqui + new Vector2(-96, 64));
+		SnapshotDe(mundo, c, aqui + new Vector2(0, 96));
+		SnapshotDe(mundo, d, aqui + new Vector2(0, -96));
+		mundo.AoReceberAparencia(a, NomeDosHomonimos, "Saiyan", "Male", new Jandirus.Core.Appearance.Appearance());
+		mundo.AoReceberAparencia(b, NomeDosHomonimos, "Saiyan", "Male", new Jandirus.Core.Appearance.Appearance());
+		mundo.AoReceberAparencia(c, "Gogeta", "Saiyan", "Male", new Jandirus.Core.Appearance.Appearance());
+
+		mundo.AoFalar(Protocol.Fala.Diz, NomeDosHomonimos, FraseDeA, a);
+		mundo.AoFalar(Protocol.Fala.Diz, NomeDosHomonimos, FraseDeB, b);
+		mundo.AoFalar(Protocol.Fala.Diz, "Goku", FraseDaFusao, c);
+		mundo.AoFalar(Protocol.Fala.Diz, "Recem Chegado", FraseDeD, d);
+
+		BalaoDeFala? BalaoDe(int id) => mundo.CorpoDeTeste(id)?.GetNodeOrNull<BalaoDeFala>("Balao");
+		bool Disse(int id, string frase) => BalaoDe(id) is { Visible: true } bl && bl.TextoDeTeste == frase;
+		string Mostra(int id) => BalaoDe(id) is { Visible: true } bl
+			? $"\"{bl.TextoDeTeste}\"{(bl.NaFilaDeTeste > 0 ? $" +{bl.NaFilaDeTeste} na fila" : "")}"
+			: "mudo";
+
+		como = $"A {Mostra(a)}, B {Mostra(b)}";
+		return (Disse(a, FraseDeA) && Disse(b, FraseDeB), Disse(c, FraseDaFusao), Disse(d, FraseDeD));
+	}
+
+	/// <summary>Os corpos da medida limpa de `OsHomonimos`, ainda em campo esperando a foto.</summary>
+	private readonly List<int> _homonimosNaTela = [];
+
+	/// <summary>
+	/// A FOTO DOS QUATRO, cada balao sobre quem falou (so com janela: headless nao renderiza) -- e depois eles saem de
+	/// cena pelo `AoSair`, o caminho da rede: o andar e o voo que vem em seguida sao do remoto do teste.
+	/// </summary>
+	private void FotografarOsHomonimos(World mundo)
+	{
+		Image? img = GetViewport()?.GetTexture()?.GetImage();
+		if (img != null && !img.IsEmpty())
+		{
+			string caminho = ProjectSettings.GlobalizePath("user://balao-3-homonimos.png");
+			img.SavePng(caminho);
+			Nota($"foto {caminho}: os dois homonimos, a fusao e quem falou antes do `PeerLook`, cada um com o seu balao");
+		}
+		foreach (int id in _homonimosNaTela) mundo.AoSair(id);
+		_homonimosNaTela.Clear();
+	}
+
+	/// <summary>Um corpo parado em <paramref name="onde"/>, pelo snapshot -- o caminho por que todo corpo remoto nasce.</summary>
+	private static void SnapshotDe(World mundo, int id, Vector2 onde)
+		=> mundo.AoReceberSnapshot([new EntityState
+		{
+			Id = id,
+			Pos = new Vec2(onde.X, onde.Y),
+			Facing = (byte)Jandirus.Core.World.Facing.South,
+			Pose = Protocol.Pose.Normal,
+		}]);
+
+	// =====================================================================
+	// 11. O FIO (a fala que passa pelo servidor)
+	// =====================================================================
+	private void OuvirOFio(Protocol.Fala canal, string autor, string texto, int boca)
+	{
+		if (texto is FraseDoFio or SussurroDoFio) _bocasDoFio[texto] = boca;
+	}
+
+	/// <summary>
+	/// A FALA DE VERDADE: sai pelo `SendChat`, passa pelo `GameServer.Falar` e volta no `S2C.Chat`. Todo o resto
+	/// da bancada entra pelo `World.AoFalar` com o id na mao -- e o que so esta medida prova e que o servidor
+	/// ESCREVE o id da boca e o cliente o LE no lugar certo (um campo lido fora de ordem ou esquecido num dos
+	/// dois funis do `GameServer.Chat.cs` volta como 0 ou lixo, e o balao nao abre em ninguem).
+	/// </summary>
+	private void OFio(GameClient cli, BalaoDeFala balao, string frase, string oque)
+	{
+		int? boca = _bocasDoFio.TryGetValue(frase, out int b) ? b : null;
+		Conferir(boca == cli.LocalId,
+				 $"{oque} que passou pelo SERVIDOR voltou no `S2C.Chat` com o id da MINHA boca "
+			   + $"({(boca is { } x ? x.ToString() : "nao chegou")}, eu sou {cli.LocalId})");
+		Conferir(balao.Visible && balao.TextoDeTeste.Contains(frase),
+				 $"...e {oque} virou balao no meu corpo pelo caminho do jogo (\"{balao.TextoDeTeste}\")");
+	}
+
+	// =====================================================================
+	// 12. O NOME COMPRIDO NO FIO (2026-10-19)
+	// =====================================================================
+	/// <summary>
+	/// O NOME DE 24 LETRAS, o maior que a criacao aceita (`CreationScreen`, `MaxLength = 24`): a raiz dos derivados. A letra
+	/// do fim separa as medidas -- os corpos de cada uma continuam em campo ate o fim.
+	/// </summary>
+	private static string NomeDeCriacao(char qual) => "Fulano de Tal Comprido " + qual;
+
+	/// <summary>
+	/// O DERIVADO MAIS COMPRIDO DE UM DEGRAU, pelas receitas do jogo: o corpo (`Cadaver.NomeDo`) do droide
+	/// (`SuperComputador.NomeDoDroide`, modelo de 4 algarismos) de um Bio-Androide (o batismo do `NascerBioAndroide`, que
+	/// nao e funcao). Tem 74 letras: passa dos dois tetos de antes (24 e 32) e cabe no novo.
+	/// </summary>
+	private static string DerivadoDeUmDegrau(char qual) =>
+		Cadaver.NomeDo(Jandirus.Core.Tech.SuperComputador.NomeDoDroide($"Bio-Androide de {NomeDeCriacao(qual)}",
+																	   Jandirus.Core.Tech.SuperComputador.MaxDoModelo));
+
+	/// <summary>A cadeia mais funda que o teto: tres Bio-Androides em fila (106 letras). Tem que chegar CORTADA, nunca vazia.</summary>
+	private static string DerivadoAlemDoTeto(char qual) =>
+		Cadaver.NomeDo(Jandirus.Core.Tech.SuperComputador.NomeDoDroide(
+			$"Bio-Androide de Bio-Androide de Bio-Androide de {NomeDeCriacao(qual)}", Jandirus.Core.Tech.SuperComputador.MaxDoModelo));
+
+	/// <summary>
+	/// AS CONTAS, antes do fio: os dois derivados tem o tamanho que a regua precisa (um passa dos tetos de antes e cabe no
+	/// novo; o outro passa do novo), e o corte nao parte um caractere de dois pedacos -- um emoji na beirada do teto.
+	/// </summary>
+	private void AsContasDoNome()
+	{
+		string um = DerivadoDeUmDegrau('A'), alem = DerivadoAlemDoTeto('C');
+		Conferir(NomeDeCriacao('A').Length == 24, $"a raiz tem 24 letras, o maximo da criacao (\"{NomeDeCriacao('A')}\")");
+		Conferir(um.Length > 32 && um.Length <= Protocol.MaxNomeNoFio,
+				 $"o derivado de um degrau tem {um.Length} letras: passa dos dois tetos de antes (24 e 32) e cabe no novo "
+			   + $"({Protocol.MaxNomeNoFio})");
+		Conferir(alem.Length > Protocol.MaxNomeNoFio, $"a cadeia funda tem {alem.Length} letras: passa do teto novo");
+
+		string comEmoji = new string('x', Protocol.MaxNomeNoFio - 1) + "\U0001F409" + " fim";
+		string cortado = Protocol.NomeNoFio(comEmoji);
+		Conferir(cortado.Length == Protocol.MaxNomeNoFio - 1 && !char.IsHighSurrogate(cortado[^1]),
+				 $"o corte nao parte o emoji que cai na beirada do teto: fica com {cortado.Length} letras, e nao com meio caractere");
+	}
+
+	/// <summary>
+	/// O SERVIDOR FORJA UM CORPO com este nome ao meu lado (`ForjarCorpoDeFoto`: o mundo de verdade, apresentado pela
+	/// `TrocarAparencias` -- o `PeerLook` de producao). A fala vem depois, quando o nome ja chegou (`MedidaAndou`).
+	/// </summary>
+	private void ComecarMedida(Jandirus.Server.GameServer srv, GameClient cli, string nome, int i)
+	{
+		_medida = new MedidaDoNome { Enviado = nome };
+		// Cada corpo num tile, a poucos tiles de mim: dentro do alcance da fala (22 tiles), e na foto.
+		_medida.Id = srv.ForjarCorpoDeFoto(cli.LocalId,
+										   new Vec2((2 + 2 * i) * ZoneCollision.TileSize, 2 * ZoneCollision.TileSize),
+										   nome, bp: 1000, comEscada: false);
+	}
+
+	/// <summary>
+	/// ANDA A MEDIDA: o `PeerLook` do corpo chegou? entao ele fala (`FalarPeloCorpoDeFoto`, o funil de toda fala de corpo).
+	/// A fala chegou? acabou. O prazo fecha a medida com o que faltou como "nao chegou".
+	/// </summary>
+	private bool MedidaAndou()
+	{
+		if (!_medida.Falou && _medida.Lido != null)
+		{
+			Jandirus.Server.GameServer.Instance?.FalarPeloCorpoDeFoto(_medida.Id, FraseDoNomeComprido);
+			_medida.Falou = true;
+		}
+		return (_medida.Falou && _medida.Autor != null) || _t > PrazoDoNome;
+	}
+
+	private void OuvirONome(int quem, string nome, string raca, string genero, Jandirus.Core.Appearance.Appearance ap,
+							Jandirus.Core.Social.TipoDeFusao? fusao)
+	{
+		if (quem != 0 && quem == _medida.Id) _medida.Lido = nome;
+	}
+
+	private void OuvirOAutor(Protocol.Fala canal, string autor, string texto, int boca)
+	{
+		if (boca != 0 && boca == _medida.Id && texto == FraseDoNomeComprido) _medida.Autor = autor;
+	}
+
+	/// <summary>
+	/// Fecha a medida com o que o mapa id -> nome do `World` responde agora: o `NomeDe`, pela porta do radio do scouter
+	/// (`RadioOuvido.QuemE`) -- o mesmo mapa que o rotulo do alvo e a aba People leem.
+	/// </summary>
+	private MedidaDoNome FecharMedida(World mundo)
+	{
+		MedidaDoNome m = _medida;
+		m.NoMapa = mundo.GetNodeOrNull<RadioOuvido>("RadioOuvido")?.QuemE?.Invoke(m.Id);
+		_medida = new MedidaDoNome();
+		return m;
+	}
+
+	/// <summary>
+	/// A FOTO DO NOME COMPRIDO (so com janela): os corpos falando, com o balao, e as linhas do chat -- a da medida com o
+	/// defeito do cliente sem autor, a do derivado de um degrau com o nome inteiro, a da cadeia funda com o nome cortado.
+	/// </summary>
+	private void FotografarONomeComprido()
+	{
+		Image? img = GetViewport()?.GetTexture()?.GetImage();
+		if (img == null || img.IsEmpty())
+		{
+			Nota("sem foto do nome comprido (headless nao renderiza)");
+			return;
+		}
+		string caminho = ProjectSettings.GlobalizePath("user://balao-4-nome-comprido.png");
+		img.SavePng(caminho);
+		Nota($"foto {caminho}: as falas dos corpos de nome comprido e as linhas do chat com o autor de cada uma");
+	}
+
+	/// <summary>
+	/// O NOME DERIVADO NO FIO. A criacao limita o nome a 24 letras, e o cliente lia o `PeerLook` com 24 e o autor do chat
+	/// com 32 -- mas o servidor batiza corpos derivados ("corpo de X", "Bio-Androide de X", o droide) que passam disso, e o
+	/// `GetString(max)` do LiteNetLib devolve VAZIO acima do teto. Hoje as duas pontas usam o `Protocol.MaxNomeNoFio`: quem
+	/// le pergunta com ele, quem escreve corta nele.
+	///
+	/// Corpos DE VERDADE do servidor do `--host`, apresentados pelo `PeerLook` de producao e falando pelo funil de toda fala
+	/// de corpo: os dois pacotes saem do servidor e sao lidos pelo `GameClient`, como em jogo. Confere-se o que o leitor
+	/// entregou (`PeerLooked`, `FalouPelaBoca`) e o que o mapa id -> nome do `World` responde depois.
+	///
+	/// Cada defeito tem a SUA medida, com corpo e pacotes proprios -- o do cliente (os tetos de antes) e o do servidor (sem o
+	/// corte) --, e nas duas a regua da medida limpa tem que reprovar pelo motivo certo: o pacote CHEGOU, e chegou vazio.
+	/// </summary>
+	private void ONomeComprido()
+	{
+		static string Mostrar(string? s) => s == null ? "nao chegou" : s.Length == 0 ? "VAZIO" : $"\"{s}\" ({s.Length} letras)";
+		MedidaDoNome um = _umDegrau ?? new(), alem = _alemDoTeto ?? new();
+		MedidaDoNome noCliente = _comDefeitoNoCliente ?? new(), noServidor = _comDefeitoNoServidor ?? new();
+		string comeco = Protocol.NomeNoFio(alem.Enviado);
+
+		Conferir(um.Lido == um.Enviado,
+				 $"o nome DERIVADO de {um.Enviado.Length} letras chega INTEIRO no `PeerLook` (lido: {Mostrar(um.Lido)})");
+		Conferir(um.NoMapa == um.Enviado,
+				 "...e o mapa id -> nome do `World` o guarda: o rotulo do alvo, a aba People e o radio do scouter dizem o nome, "
+			   + $"e nao \"#id\" nem \"alguem\" (o mapa responde {Mostrar(um.NoMapa)})");
+		Conferir(um.Autor == um.Enviado, $"...e a fala dele chega no chat COM o autor (autor lido: {Mostrar(um.Autor)})");
+		Conferir(alem.Lido == comeco && comeco.Length == Protocol.MaxNomeNoFio,
+				 $"o nome de {alem.Enviado.Length} letras, alem do teto, chega CORTADO nele -- as {Protocol.MaxNomeNoFio} primeiras "
+			   + $"letras --, e nao vazio (lido: {Mostrar(alem.Lido)})");
+		Conferir(alem.Autor == comeco, $"...e o autor da fala dele tambem (autor lido: {Mostrar(alem.Autor)})");
+
+		Conferir(noCliente.Lido == "",
+				 "(defeito injetado: o cliente le com os tetos de antes, 24 e 32) a mesma regua REPROVA: o nome de "
+			   + $"{noCliente.Enviado.Length} letras chega VAZIO no `PeerLook` (lido: {Mostrar(noCliente.Lido)})");
+		Conferir(noCliente.NoMapa == "",
+				 $"(defeito injetado) ...o mapa do `World` fica sem nome -- o \"#id\", o \"alguem\" (responde {Mostrar(noCliente.NoMapa)})");
+		Conferir(noCliente.Autor == "",
+				 $"(defeito injetado) ...e a linha do chat sai sem autor (autor lido: {Mostrar(noCliente.Autor)})");
+		Conferir(noServidor.Lido == "",
+				 "(defeito injetado: o servidor escreve sem o corte) a regua do nome alem do teto REPROVA: ele chega VAZIO "
+			   + $"(lido: {Mostrar(noServidor.Lido)})");
+		Conferir(noServidor.Autor == "",
+				 $"(defeito injetado) ...e o autor da fala tambem (autor lido: {Mostrar(noServidor.Autor)})");
 	}
 
 	private void OVoadorSubiu(World mundo)
@@ -590,7 +1007,7 @@ public partial class RoboDeBalao : Node
 		// balao na cabeca do vizinho.
 		// ============================================================================
 		mundo.AoSair(IdDoRemoto);
-		mundo.AoFalar(Protocol.Fala.Diz, NomeDoRemoto, "ainda estou aqui?");
+		mundo.AoFalar(Protocol.Fala.Diz, NomeDoRemoto, "ainda estou aqui?", IdDoRemoto);
 		Conferir(Remoto(mundo) == null, "quem sai de cena leva o corpo (e o balao) junto");
 	}
 

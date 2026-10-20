@@ -116,8 +116,18 @@ public static class Passivas
 
 	public static double BonusVeterano(int pagas) => Math.Min(pagas * BonusPorFormaVeterana, TetoDoVeterano);
 
-	/// <summary>Warrior Race: abaixo de 20% de vida, ataque fisico +20% e defesa fisica +30%.</summary>
+	/// <summary>
+	/// Warrior Race: com o TRONCO ou a CABECA abaixo de 20% da propria vida, ataque fisico +20% e defesa fisica +30%. (2026-10-19) O dono:
+	/// *"mudar de 20% de vida pra 20% do tronco ou cabeça"* -- era a vida do corpo inteiro (`GuerreiroPelaVidaDeTeste`).
+	/// </summary>
 	public const double VidaDoGuerreiro = 0.20, AtaqueDoGuerreiro = 1.20, DefesaDoGuerreiro = 1.30;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--passivasteste`): o Warrior Race pela vida do corpo INTEIRO, a regra de antes de 2026-10-19 -- a vida
+	/// baixa acende com o tronco e a cabeca inteiros, e o tronco ou a cabeca quebrados nao acendem. Lido pelo `EstadoRacial.GuerreiroAceso`.
+	/// Falso em jogo, sempre.
+	/// </summary>
+	public static bool GuerreiroPelaVidaDeTeste;
 
 	/// <summary>Saiyan's Resolve: a partir do 2o golpe do MESMO tipo, 2% de reducao por golpe, ate 20%; dura 10 s, o golpe renova.</summary>
 	public const double ResolvePorGolpe = 2, TetoDoResolve = 20, SegundosDoResolve = 10;
@@ -177,10 +187,49 @@ public static class Passivas
 
 	public const double SegundosDoLimitless = 60, RecargaDoLimitless = 2 * 60;
 
-	/// <summary>Shattering the Limit: o tiro carregado que custa 10% ou mais do Ki ATUAL sai 2x, e o grito ganha o prefixo.</summary>
+	/// <summary>
+	/// Shattering the Limit: o tiro carregado que custa 10% ou mais do Ki ATUAL sai 2x, e o grito ganha o prefixo -- so no degrau SSJ4
+	/// (<see cref="DegrauSsj4"/>; quem decide e o `EstadoRacial.FatorDoLimite`).
+	/// </summary>
 	public const double CustoDoLimite = 0.10, MultDoLimite = 2;
 
 	public const string PrefixoDoLimite = "10x ";
+
+	/// <summary>
+	/// (2026-10-19) O KAMEHAMEHA X10 -- o verb do Kamehameha PRONTO (a tecnica inventada tem outro, `Custom_AttackN`). O dono: *"faça com q o
+	/// kamehameha seja a unica exceção ao qual ele n precisa gastar 10% do ki pra ativar o bonus de x10, e sim sempre q estiver em umas dessas
+	/// formas de ssj4 a skill pré feita do kamehameha vira o kamehamehax10 q é vermelho e tem todas os bonus da passiva"*. No degrau SSJ4 ele
+	/// sai 2x, vermelho e com o "10x" seja qual for o custo; as outras tecnicas continuam pedindo os 10% (`CustoDoLimite`).
+	/// </summary>
+	public const string VerboDoKamehameha = "Kamehameha";
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--passivasteste` e `--diaglimite`): o Kamehameha pede os 10% do Ki como as outras tecnicas -- a regra de
+	/// antes do pedido do Kamehameha x10. Lido pelo `EstadoRacial.FatorDoLimite`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool KamehamehaPedeOPisoDeTeste;
+
+	/// <summary>
+	/// (2026-10-19) A COR DO TIRO DO SHATTERING THE LIMIT. O dono: *"faça com q a técnica de ki em questao saia vermelha"* -- e, perguntado,
+	/// a carga na mao tambem. Vale no lugar da cor do ki de quem atira, so no tiro que sai 2x: o servidor marca o raio (`Projetil.DoLimite`,
+	/// o bit viaja no nascimento) e a carga (`EntityState.CanalDoLimite`, no snapshot), e o cliente pinta os dois com esta. ESCOLHA: um
+	/// vermelho vivo, sem azul, que nao some no gramado.
+	/// </summary>
+	public static readonly Jandirus.Core.Appearance.Rgb CorDoLimite = new(235, 25, 20);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--passivasteste` e `--diaglimite`): o Shattering the Limit em QUALQUER forma Saiyajin fora da base -- a
+	/// regra de antes de 2026-10-19 (o SSJ1, o SSJ3 e o LSSJ3 tambem dobravam o tiro). Lido pelo `EstadoRacial.FatorDoLimite`. Falso em
+	/// jogo, sempre.
+	/// </summary>
+	public static bool LimiteEmQualquerFormaDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancadas `--passivasteste` e `--diaglimite`): o tiro do Shattering the Limit nasce sem a marca vermelha -- sai 2x na
+	/// cor do ki de quem atira, a carga tambem, como antes de 2026-10-19. Lido pelo `GameServer.NascerORaio` e pelo `GameServer.CargaDoLimite`.
+	/// Falso em jogo, sempre.
+	/// </summary>
+	public static bool LimiteSemVermelhoDeTeste;
 
 	/// <summary>Roaring Evolution: -10% de efeito por degrau, ate imune; no maximo um degrau a cada 10 s por skill.</summary>
 	public const double PerdaPorRugido = 0.10, SegundosEntreRugidos = 10;
