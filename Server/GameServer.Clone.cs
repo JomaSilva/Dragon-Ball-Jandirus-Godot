@@ -366,6 +366,10 @@ public partial class GameServer
 			// errada e ninguem saberia. Por corpo, o estrago e um NPC que vira estatua, com o nome
 			// dele e a excecao no console; o resto da zona nao percebe.
 			// ==========================================================================================
+			// (2026-10-20) O CHEFE DE SAGA NA CENA DA PROPRIA TRANSFORMACAO NAO PENSA (o Cell, o Freeza): parado, sem golpe e sem raio, ate a cena
+			// acabar -- ver `ChefeParadoNaCena`
+			if (ChefeParadoNaCena(npc)) { LargarOInput(npc); continue; }
+
 			try { TicarUmCorpo(npc, dt, dtDaMente); }
 			catch (Exception ex)
 			{

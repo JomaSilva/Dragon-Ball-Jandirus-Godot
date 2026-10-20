@@ -1644,6 +1644,11 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtrava") >= 0)
 			AddChild(new RoboDaTrava { Name = "RoboDaTrava" });
 
+		// --diagespacovoo (2026-10-20): NO ESPACO SO SE ANDA VOANDO, na tela -- o corpo local parado no vazio nem tenta o passo, o piloto
+		// automatico espera, e voando (ou ao leme) ele anda. Ver RoboDoEspacoSoVoando.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagespacovoo") >= 0)
+			AddChild(new RoboDoEspacoSoVoando { Name = "RoboDoEspacoSoVoando" });
+
 		// --diagsomui (2026-10-17): o SOM DO ULTRA INSTINTO fora da estreia, pelo `World.AoMudarForma` e contado no espiao do audio.
 		// Ver RoboDoSomDoInstinto.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagsomui") >= 0)

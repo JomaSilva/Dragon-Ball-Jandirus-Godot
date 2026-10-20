@@ -163,6 +163,7 @@ public sealed partial class GameServer
 		MortoNaoVoaDeTeste = false;
 		Nutricao.VigorDoMajinComPisoDeTeste = false;
 		Nutricao.KiDoAndroideSemPisoDeTeste = false;
+		Nutricao.MotorParaNaMorteDeTeste = false;
 		AbsorvidoDeixaCorpoDeTeste = false;
 		SoNpcDoMundoSomeDeTeste = false;
 		AvisoSemTomDeTeste = false;
@@ -1343,7 +1344,8 @@ public sealed partial class GameServer
 				   Math.Abs(dr.Ki / dr.MaxKi - 1.3) < 1e-9, $"{dr.Ki / dr.MaxKi:P1}");
 
 		// MORTO (item 29 -- o dono: *"mortos tem vigor infinito"*): TODO morto trava o vigor no cheio -- o Majin, o androide e o
-		// Humano. E o Ki do androide morto NAO trava: o motor perpetuo para com a morte, como sempre parou.
+		// Humano. E o Ki do androide morto TAMBEM trava (dono, 2026-10-20: *"eles mortos ficam sem energia infinita"* -- o motor perpetuo
+		// parava com a morte, e isso era o bug); o Humano morto continua com o Ki onde estava. O bio com o motor no sangue vai junto.
 		m.dead = true;
 		dr.dead = true;
 		h.dead = true;
@@ -1353,8 +1355,24 @@ public sealed partial class GameServer
 		Nutricao.ManterOsInfinitos(dr);
 		Nutricao.ManterOsInfinitos(h);
 		bool mortosCheios = m.stamina >= m.maxstamina - 1e-9 && dr.stamina >= dr.maxstamina - 1e-9 && h.stamina >= h.maxstamina - 1e-9;
-		bool kiDoDroideMortoSolto = dr.Ki < dr.MaxKi * 0.5;
 		string vigoresMortos = $"majin {m.stamina / m.maxstamina:P0}; droide vigor {dr.stamina / dr.maxstamina:P0} ki {dr.Ki / dr.MaxKi:P0}; humano {h.stamina / h.maxstamina:P0}";
+		var bioMorto = new Fighter { Race = Jandirus.Core.Races.BioAndroids.Raca, bio_racas_dna = ["Android"], bio_dna_infinito = true, dead = true };
+		bioMorto.Ki = bioMorto.MaxKi * 0.30;
+		Nutricao.ManterOsInfinitos(bioMorto);
+		bool motorDosMortos = dr.Ki >= dr.MaxKi - 1e-9 && bioMorto.Ki >= bioMorto.MaxKi - 1e-9 && h.Ki < h.MaxKi * 0.5;
+		string kisMortos = $"droide ki {dr.Ki / dr.MaxKi:P0}; bio do motor ki {bioMorto.Ki / bioMorto.MaxKi:P0}; humano ki {h.Ki / h.MaxKi:P0}";
+		Nutricao.MotorParaNaMorteDeTeste = true;
+		double kiDoDroideComDefeito, kiDoBioComDefeito;
+		try
+		{
+			dr.Ki = dr.MaxKi * 0.30;
+			bioMorto.Ki = bioMorto.MaxKi * 0.30;
+			Nutricao.ManterOsInfinitos(dr);
+			Nutricao.ManterOsInfinitos(bioMorto);
+			kiDoDroideComDefeito = dr.Ki / dr.MaxKi;
+			kiDoBioComDefeito = bioMorto.Ki / bioMorto.MaxKi;
+		}
+		finally { Nutricao.MotorParaNaMorteDeTeste = false; }
 		Nutricao.MortoComMeioTanqueDeTeste = true;
 		double humanoComDefeito;
 		try
@@ -1368,8 +1386,12 @@ public sealed partial class GameServer
 		m.dead = false;
 		dr.dead = false;
 		h.dead = false;
-		AfirmarV30("**O MORTO TEM VIGOR INFINITO** (item 29: *\"mortos tem vigor infinito\"*): o Majin, o androide e o Humano mortos ficam com o vigor no CHEIO -- e o Ki do androide morto continua solto (o motor perpetuo para com a morte)",
-				   mortosCheios && kiDoDroideMortoSolto, vigoresMortos);
+		AfirmarV30("**O MORTO TEM VIGOR INFINITO** (item 29: *\"mortos tem vigor infinito\"*): o Majin, o androide e o Humano mortos ficam com o vigor no CHEIO",
+				   mortosCheios, vigoresMortos);
+		AfirmarV30("**O MOTOR PERPETUO NAO PARA COM A MORTE** (dono, 2026-10-20: *\"eles mortos ficam sem energia infinita\"*): o androide de energia infinita morto -- e o bio com o motor dele no sangue -- volta ao Ki CHEIO no cadeado do corpo; o Humano morto, nao",
+				   motorDosMortos, kisMortos);
+		AfirmarV30("(defeito injetado: o motor para com a morte, o jogo de antes) o Ki do androide morto e o do bio com o motor ficam nos 30% -- a regua de cima REPROVA",
+				   kiDoDroideComDefeito < 0.31 && kiDoBioComDefeito < 0.31, $"droide {kiDoDroideComDefeito:P0}; bio {kiDoBioComDefeito:P0}");
 		AfirmarV30("(defeito injetado: o meio tanque do DM, `StaminaDrain.dm:35-36`) o Humano morto fica cravado em 50% -- *\"Mortos atualmente o vigor fica preso em 50%\"*",
 				   Math.Abs(humanoComDefeito - 0.5) < 1e-9, $"{humanoComDefeito:P1}");
 

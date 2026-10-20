@@ -178,8 +178,8 @@ public static class Nutricao
 	/// O VIGOR QUE NUNCA ACABA PELA RACA, e nao pelo estado: o do Majin (vivo ou fantasma), o do androide de energia infinita e o do bio com o
 	/// sangue de um deles -- o <see cref="VigorSempreCheio"/> sem o MORTO comum. E a quem a mesa de tecnicas nao paga ponto pelo folego
 	/// (`Skills.TecnicaCustomizada.VendeFolego`); o dono, 2026-10-19: *"só as raças com vigor infinito perdem a opção de fôlego"* -- o morto
-	/// tem o vigor travado no cheio, mas revive, e a tecnica dele volta a cobrar. O androide conta MESMO MORTO: o motor para com a morte, mas
-	/// morto o vigor trava no cheio do mesmo jeito -- vivo ou morto, ele nunca paga folego.
+	/// tem o vigor travado no cheio, mas revive, e a tecnica dele volta a cobrar. O androide conta MESMO MORTO: o motor nao para com a morte
+	/// (<see cref="KiSempreCheio"/>), e morto o vigor trava no cheio do mesmo jeito -- vivo ou morto, ele nunca paga folego.
 	/// </summary>
 	public static bool VigorInfinitoDaRaca(Fighter f) => VigorDeMajin(f) || EnergiaInfinita(f) || (f.dead && MortoComoRacaDeTeste);
 
@@ -194,8 +194,8 @@ public static class Nutricao
 	/// *"Mortos atualmente o vigor fica preso em 50% seria melhor deixar preso em 100% logo, mortos tem vigor infinito"*.
 	/// DESVIO DECLARADO DO ORIGINAL: no DM o morto fica cravado em meio tanque (`else if(dead) stamina = 0.5*maxstamina`,
 	/// `StaminaDrain.dm:35-36`); aqui o cadeado do tique do corpo o segura no cheio (<see cref="VigorSempreCheio"/>), e o
-	/// estomago nao o queima (<see cref="QueimarVigor"/>). O Ki do morto continua o de sempre -- e o do androide morto continua
-	/// sem o motor (<see cref="KiSempreCheio"/>).
+	/// estomago nao o queima (<see cref="QueimarVigor"/>). O Ki do morto continua o de sempre -- menos o do androide de energia
+	/// infinita, que segue com o motor (<see cref="KiSempreCheio"/>, 2026-10-20).
 	///
 	/// DEFEITO INJETADO (bancadas `--v030teste` e `--alemteste`): o morto volta a ficar em meio tanque -- o jogo de antes. Falso
 	/// em jogo, sempre.
@@ -204,13 +204,23 @@ public static class Nutricao
 	public static bool MortoComMeioTanqueDeTeste;
 
 	/// <summary>
-	/// O Ki deste corpo nunca fica abaixo de 100%: o do androide de energia infinita vivo (e o do bio que tem o motor dele no
-	/// sangue) e, desde a v0.3.0, o do CHEFE DE SAGA (`Fighter.KiDeChefe`: *"faça boss de saga de ki infinito pra deixar mais
+	/// O Ki deste corpo nunca fica abaixo de 100%: o do androide de energia infinita (e o do bio que tem o motor dele no sangue), vivo
+	/// OU MORTO, e, desde a v0.3.0, o do CHEFE DE SAGA (`Fighter.KiDeChefe`: *"faça boss de saga de ki infinito pra deixar mais
 	/// desafiador"*). ACIMA de 100% ele carrega, escorre e para no teto de carga como o de qualquer um -- o cadeado so segura o
 	/// piso.
+	///
+	/// O MOTOR NAO PARA COM A MORTE (dono, 2026-10-20: *"eles mortos ficam sem energia infinita"* -- era um bug pra ele). Aqui morava um
+	/// `!f.dead` -- o laco do DM (`dnl_start_infinite`, `DNALabs.dm:201-210`) morre com o corpo --, e o morto ficava com o vigor cheio pela
+	/// regra de todo morto e o Ki drenando como o de qualquer um. O bio com o motor no sangue vai junto (a mesma escolha do dono).
 	/// </summary>
 	public static bool KiSempreCheio(Fighter f) =>
-		(EnergiaInfinita(f) && !f.dead && !KiDoAndroideSemPisoDeTeste) || (f.KiDeChefe && !KiDoChefeFinitoDeTeste);
+		(EnergiaInfinita(f) && !(f.dead && MotorParaNaMorteDeTeste) && !KiDoAndroideSemPisoDeTeste) || (f.KiDeChefe && !KiDoChefeFinitoDeTeste);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--v030teste`): o motor do androide de energia infinita volta a parar com a morte -- o Ki do morto
+	/// solto, o jogo de antes de 2026-10-20. Lido pela propria linha do <see cref="KiSempreCheio"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool MotorParaNaMorteDeTeste;
 
 	/// <summary>DEFEITO INJETADO (`--v030teste`): o Ki do chefe de saga volta a acabar -- o jogo de antes. Falso em jogo, sempre.</summary>
 	public static bool KiDoChefeFinitoDeTeste;

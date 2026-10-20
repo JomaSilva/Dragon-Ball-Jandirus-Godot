@@ -177,12 +177,34 @@ public sealed partial class GameServer
 		Transportar(pl, t.Zona, new Vec2(a.X2 - 2 - tilesAOeste + 0.5f, cy + 0.5f) * ZoneCollision.TileSize);
 		CravarOlhar(pl, Facing.East);
 		_palcoDoCell = cell.Id;
+		PalcoTC_LinhaDoTiroLivre(cell);
 		Kamehameha(t, cell);
 		return true;
 	}
 
 	/// <summary>O Cell da ultima cena do Kamehameha (o torneio fecha quando ele morre ou a Terra explode, e as perguntas abaixo continuam).</summary>
 	private int _palcoDoCell;
+
+	/// <summary>
+	/// (2026-10-20) A LINHA DO KAMEHAMEHA LIVRE, PRA FOTO: todo corpo que nao e jogador nem o Cell da cena, a ate quarenta tiles dele, fica
+	/// intocavel -- o raio atravessa quem esta intocavel (`Colidiu`), como atravessa o jogador do robo. Na rodada g2 um habitante perto do fim do
+	/// raio o levou antes da foto do feixe (no jogo e assim mesmo: quem entra na frente do Kamehameha e atingido, e o raio acaba ali).
+	/// </summary>
+	private void PalcoTC_LinhaDoTiroLivre(ServerPlayer cell)
+	{
+		float raio = 40 * ZoneCollision.TileSize;
+		foreach (ServerPlayer o in ZoneList(cell.Zone.Hash))
+			if (o != cell && !EhJogador(o) && o.Combate is { } c && (o.Pos - cell.Pos).LengthSquared < raio * raio) c.Carencia = CarenciaDeEspera;
+	}
+
+	/// <summary>
+	/// (2026-10-20) A LINHA DO KAMEHAMEHA LIVRE DE NOVO -- o robo chama a cada espera das cenas do Kamehameha: o povoamento poe bicho e habitante
+	/// perto do jogador enquanto a cena corre, e na rodada g3 uma vaca que nasceu depois da primeira protecao levou o raio.
+	/// </summary>
+	internal void PalcoTC_LinhaLivreDeNovo()
+	{
+		if (_players.TryGetValue(_palcoDoCell, out ServerPlayer? cell)) PalcoTC_LinhaDoTiroLivre(cell);
+	}
 
 	/// <summary>O Cell esta com o Kamehameha na mao, carregando? (o canal da tecnica aberto, o raio ainda nao saiu)</summary>
 	internal bool PalcoTC_CarregandoOKamehameha() => _canais.GetValueOrDefault(_palcoDoCell) is { Verbo: "Kamehameha", Raio: null };
@@ -204,6 +226,7 @@ public sealed partial class GameServer
 		Vec2 onde = cell.Pos + new Vec2((float)(-(1 + alcance - 2) * ZoneCollision.TileSize), 0);
 		Transportar(pl, cell.Zone, onde);
 		CravarOlhar(pl, Facing.East);
+		PalcoTC_LinhaDoTiroLivre(cell);
 		return true;
 	}
 
@@ -286,6 +309,7 @@ public sealed partial class GameServer
 			if (p.Nome == Jandirus.Core.Combat.Body.NomeDoTronco) p.Vida = p.VidaMax * (nocauteado ? 0.10 : 0.22);
 		cell.Combate.SincronizarVida();
 		if (nocauteado) cell.Combate.Nocautear(30);
+		PalcoTC_LinhaDoTiroLivre(cell);
 		TickDoTorneioDoCell(0);
 		return cell.Id;
 	}
@@ -300,6 +324,99 @@ public sealed partial class GameServer
 		Jandirus.Core.Combat.BodyPart? tronco = cell.Combate.Corpo.Partes.Find(p => p.Nome == Jandirus.Core.Combat.Body.NomeDoTronco);
 		return (PalcoTC_CarregandoOKamehameha() && _kamehamehaDoCell?.Cell == cell.Id, cell.Papel.Estagio, _torneioDoCell != null,
 				tronco == null ? 1 : tronco.Vida / tronco.VidaMax, cell.Ficha.KO);
+	}
+
+	// ---- (2026-10-20) O CELL CACA OS ANDROIDES ----
+	private int _palcoDoA17, _palcoDoA18;
+
+	/// <summary>
+	/// (2026-10-20) O CELL IMPERFEITO E OS DOIS ANDROIDES, PRA FOTO DA CACA -- o dono: *"faça ele atacar os androides como prioridade maxima
+	/// dele"*. A saga do Cell em curso pelo nascimento de producao (como quem retoma: sem a cena da chegada, que cobriria o quadro), na linha do
+	/// meio da arena da Terra: o jogador (intocavel) tres tiles a oeste do meio, o Cell um a oeste, o 17 tres a leste e a 18 nove. O jogador e o
+	/// mais perto do Cell, e mesmo assim o monitor da saga (uma vez por segundo) o manda no 17. Devolve o id do Cell (zero = nao montou).
+	/// </summary>
+	internal int PalcoTC_CellCacaOsAndroides(int jogador)
+	{
+		if (!_players.TryGetValue(jogador, out ServerPlayer? pl) || _sagas.Do("cell") is not { } est
+			|| Array.Find(_cadeia, e => e.Id == "cell") is not { } elo) return 0;
+		PalcoTC_DevolverATerra(jogador);
+		foreach (ServerPlayer chefe in _players.Values.Where(p => p.Papel is { EhChefe: true }).ToList()) RemoverNpc(chefe);
+		foreach (int id in _cellJrs.ToList()) if (_players.TryGetValue(id, out ServerPlayer? jr)) RemoverNpc(jr);
+		_cellJrs.Clear();
+		foreach (string saga in new[] { "freeza_vegeta", "freeza_namek" })
+			if (_sagas.Do(saga) is { } outra) outra.Fase = FaseDaSaga.Vencida;
+		est.Disparou = true;
+		est.Fase = FaseDaSaga.EmCurso;
+		est.Chefes.Clear();
+		var palco = _torneioCfg.Terra;
+		var zona = ZoneKey.Premade(palco.Zona);
+		Arena a = palco.Arena;
+		int cx = (a.X1 + a.X2) / 2, cy = (a.Y1 + a.Y2) / 2;
+		Vec2 Tile(int dx) => new Vec2(cx + dx + 0.5f, cy + 0.5f) * ZoneCollision.TileSize;
+		int Nascer(string molde, int dx)
+		{
+			if (_moldes?.Get(molde) is not { } m) return 0;
+			var ec = new EstadoDoChefe { Molde = molde, Fase = FaseDoChefe.ACaminho, DiasRestantes = 0, Bps = Sagas.Pinar(m, MediaDoServidor()) };
+			est.Chefes.Add(ec);
+			NascerChefeDaSaga(elo, est, ec, ComoChegou.Retomando);
+			if (!_players.TryGetValue(ec.Corpo, out ServerPlayer? c)) return 0;
+			c.Voando = false;
+			c.Altitude = 0f;
+			Transportar(c, zona, Tile(dx));
+			return c.Id;
+		}
+		Transportar(pl, zona, Tile(-3));
+		CravarOlhar(pl, Facing.East);
+		pl.Combate.Carencia = CarenciaDeEspera;
+		_palcoDoA17 = Nascer("androide_17", 3);
+		_palcoDoA18 = Nascer("androide_18", 9);
+		_palcoDoCell = Nascer("cell", -1);
+		// OS ANDROIDES PARADOS (sem cerebro): eles cacam o jogador do robo, que esta intocavel -- e o tiro deles o atravessava e pegava o Cell, que
+		// na rodada g4 subiu de forma pelo dano antes de absorver alguem. A foto e da caca; as regras sao da bancada.
+		foreach (int id in new[] { _palcoDoA17, _palcoDoA18 })
+			if (_players.TryGetValue(id, out ServerPlayer? androide)) { androide.Cerebro = null; LargarOInput(androide); }
+		return _palcoDoCell;
+	}
+
+	/// <summary>
+	/// (2026-10-20) A caca do palco: o alvo imposto do Cell (0 = nenhum), o degrau dele (0-based) e quantos dos dois androides ainda estao no
+	/// mundo -- o Cell vai no androide de pe mais perto a cada segundo, e eles andam: o primeiro absorvido pode ser qualquer um.
+	/// </summary>
+	internal (int Alvo, int Degrau, int Androides) PalcoTC_ACaca()
+	{
+		int androides = (_players.ContainsKey(_palcoDoA17) ? 1 : 0) + (_players.ContainsKey(_palcoDoA18) ? 1 : 0);
+		return _players.TryGetValue(_palcoDoCell, out ServerPlayer? c) && c.Papel != null
+			? (c.Papel.PresaDoRoteiro, c.Papel.Estagio, androides)
+			: (0, -1, androides);
+	}
+
+	/// <summary>
+	/// (2026-10-20) O jogador vai pra dois tiles a oeste do Cell da cena, olhando pra ele: a camera segue o jogador, e o Cell que correu atras
+	/// de um androide saia do quadro (a foto da absorcao da g2 ficou so com o chat).
+	/// </summary>
+	internal bool PalcoTC_IrProCell(int jogador)
+	{
+		if (!_players.TryGetValue(_palcoDoCell, out ServerPlayer? cell) || !_players.TryGetValue(jogador, out ServerPlayer? pl)) return false;
+		Transportar(pl, cell.Zone, cell.Pos + new Vec2(-2 * ZoneCollision.TileSize, 0));
+		CravarOlhar(pl, Facing.East);
+		return true;
+	}
+
+	/// <summary>(2026-10-20) O Cell da cena: na cena da transformacao? intocavel? com um raio na mao? E onde esta (x, y).</summary>
+	internal (bool EmCena, bool Intocavel, bool Canal, float X, float Y) PalcoTC_CellNaCena() =>
+		_players.TryGetValue(_palcoDoCell, out ServerPlayer? c)
+			? (EmCena(c), c.Combate.Intocavel, _canais.ContainsKey(c.Id), c.Pos.X, c.Pos.Y)
+			: (false, false, false, 0f, 0f);
+
+	/// <summary>O id do 17 do palco da caca.</summary>
+	internal int PalcoTC_O17() => _palcoDoA17;
+
+	/// <summary>Depois da caca: os chefes saem, e a saga do Cell volta a dormir (os capitulos seguintes nao a usam).</summary>
+	internal void PalcoTC_LimparACaca()
+	{
+		foreach (ServerPlayer chefe in _players.Values.Where(p => p.Papel is { EhChefe: true }).ToList()) RemoverNpc(chefe);
+		if (_sagas.Do("cell") is { } est) { est.Chefes.Clear(); est.Fase = FaseDaSaga.Adormecida; est.Disparou = false; }
+		_palcoDoCell = _palcoDoA17 = _palcoDoA18 = 0;
 	}
 
 	/// <summary>A disputa de ki do Cell da cena esta de pe?</summary>
@@ -461,4 +578,34 @@ public sealed partial class GameServer
 		_palcoDoFreeza = 0;
 		if (_sagas.Do("freeza_namek") is { } est) { est.Chefes.Clear(); est.Fase = FaseDaSaga.Adormecida; est.Disparou = false; }
 	}
+
+	/// <summary>
+	/// (2026-10-20) O FREEZA NA CENA DA PROPRIA TRANSFORMACAO, pra foto -- o dono: *"todo chefe de saga fica parado, sem atacar e intocável na
+	/// cena da própria transformação (o Freeza também)"*. O Freeza de Namek nasce a tres tiles a OESTE do jogador no degrau pedido, com o
+	/// Death Beam na mao (o canal aberto, carregando), e sobe um degrau pelo `AvancarEstagio` de producao: do primeiro, a troca de corpo (a cena
+	/// curta); do quarto, a forma final (a cena grande). Sai pelo `PalcoNM_Limpar`. Devolve o id dele.
+	///
+	/// A OESTE porque o leste e do capitulo N do robo: o Freeza dele sai do mundo com a Death Ball no ar (o contra-exemplo), e a tela le essa
+	/// saida como a esfera caindo -- na foto da g8 ela cobriu o Freeza da troca de corpo.
+	/// </summary>
+	internal int PalcoFZ_FreezaNaCena(int jogador, int degrau)
+	{
+		if (!_players.TryGetValue(jogador, out ServerPlayer? pl)) return 0;
+		PalcoNM_Limpar();
+		ServerPlayer? freeza = NascerNpc("freeza_namek", pl.Zone, pl.Pos + new Vec2(-3 * ZoneCollision.TileSize, 0), 7_600_200);
+		if (freeza?.Papel == null) return 0;
+		_palcoDoFreeza = freeza.Id;
+		freeza.Papel.Estagio = degrau;
+		EntrarNoDegrau(freeza, cura: 0, anunciar: false);
+		freeza.Ficha.Ki = freeza.Ficha.MaxKi;
+		RaioNomeadoG6(freeza, "Death_Beam");
+		AvancarEstagio(freeza);
+		return freeza.Id;
+	}
+
+	/// <summary>(2026-10-20) O Freeza do palco: na cena? intocavel? com um raio na mao? E onde esta (x, y).</summary>
+	internal (bool EmCena, bool Intocavel, bool Canal, float X, float Y) PalcoFZ_ANaCena() =>
+		_players.TryGetValue(_palcoDoFreeza, out ServerPlayer? f)
+			? (EmCena(f), f.Combate.Intocavel, _canais.ContainsKey(f.Id), f.Pos.X, f.Pos.Y)
+			: (false, false, false, 0f, 0f);
 }

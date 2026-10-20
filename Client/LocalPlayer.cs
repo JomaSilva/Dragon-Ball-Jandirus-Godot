@@ -720,6 +720,26 @@ public partial class LocalPlayer : Node2D
 		|| Godot.Input.IsActionPressed(Teclas.NomeNoMotor("move_down")) || Godot.Input.IsActionPressed(Teclas.NomeNoMotor("move_up"));
 
 	/// <summary>
+	/// (2026-10-20) NO ESPACO SO SE ANDA VOANDO -- a pergunta do `GameServer.ParadoNoEspaco`, com o bit de voo CRU do snapshot (o do mesmo
+	/// pacote da altura) e a zona do fio. Ao leme quem anda e a nave, como la. O servidor recusa o passo; aqui ele nem e tentado -- senao seria
+	/// uma correcao por pacote, o corpo tremendo no vazio.
+	///
+	/// O BIT, E NAO A ALTURA, deste lado: o servidor ainda aceita o passo enquanto o corpo desce ate a altura zero, e parar ANTES dele nunca
+	/// gera correcao (so andar depois dele geraria). Ligar o voo solta o corpo assim que o snapshot o diz no ar.
+	/// </summary>
+	private bool ParadoNoEspaco =>
+		!_voando && !AoLeme && !APeNoEspacoAndaDeTeste && GameClient.Instance is { } cli && Jandirus.Core.World.Espaco.EhEspaco(cli.Zone);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagespacovoo`): no espaco o cliente volta a prever o passo de quem nao voa -- e o servidor o devolve a cada
+	/// pacote. Lido pela propria linha do <see cref="ParadoNoEspaco"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool APeNoEspacoAndaDeTeste;
+
+	/// <summary>O motivo que o <see cref="PorQueNaoAnda"/> devolve a quem esta parado no espaco.</summary>
+	private const string MotivoNoEspaco = "no espaco sem voar (so voando se sai do lugar)";
+
+	/// <summary>
 	/// DEFEITO INJETADO (bancada `--diagv020`): agarrado, o bit de andar volta a ser so o deslocamento -- que e
 	/// zero, porque o corpo preso nao integra tecla. Ninguem se debate. Falso em jogo, sempre.
 	/// </summary>
@@ -942,6 +962,7 @@ public partial class LocalPlayer : Node2D
 		: PresoPelaTecnica                        ? "preso pela tecnica (a Genkidama, a Death Ball, uma rajada)"
 		: NaveSemCombustivel                      ? "a nave esta sem combustivel (E > Abastecer)"
 		: NavePousada                             ? "a nave esta pousada (suba pra decolar)"
+		: ParadoNoEspaco                          ? MotivoNoEspaco
 		: SemPernasNoChao                         ? MotivoSemPernas
 		: "";
 
@@ -1151,6 +1172,9 @@ public partial class LocalPlayer : Node2D
 		string porQueNaoAnda = PorQueNaoAnda;
 		if (porQueNaoAnda == MotivoSemPernas && TeclaDeAndarApertada())
 			AvisarDoMembro(Jandirus.Core.Combat.DebuffsDeMembro.AvisoDeChao);
+		// (2026-10-20) ...E NO ESPACO SEM VOAR a frase diz a tecla do voo, pelo mesmo relogio (a tecla e segurada, a frase nao).
+		if (porQueNaoAnda == MotivoNoEspaco && TeclaDeAndarApertada())
+			AvisarDoMembro($"no espaço só se anda voando: aperte {Teclas.NomeDaAcao("voar")} pra voar.");
 
 		// (2026-10-13) AGARRADO, A TECLA DE ANDAR SO VIRA O CORPO: *"ele so fica virando de direçao conforme a direçao
 		// q o jogador agarrado apertou, mas ele n vai tocar animaçao de andar, nem se mover de verdade"*. O passo
@@ -1200,8 +1224,13 @@ public partial class LocalPlayer : Node2D
 			Destino = null;
 			Chat.Sistema("piloto automatico desligado.");
 		}
+		// (2026-10-20) NO ESPACO SEM VOAR O PILOTO ESPERA, e nao desliga: ele nao reenche o passo de um corpo que nao sai do lugar (o
+		// servidor o devolveria a cada pacote -- o tranco), e quem liga o voo segue viagem; quem fica exausto no meio do caminho so para
+		// ali. A frase diz por que, pelo relogio das frases de membro. Ver `ParadoNoEspaco`.
+		bool pilotoEspera = ParadoNoEspaco && Destino != null;
+		if (pilotoEspera) AvisarDoMembro($"o piloto automático espera: no espaço só se anda voando (aperte {Teclas.NomeDaAcao("voar")}).");
 
-		if (!tentandoAndar && Destino is { } alvo)
+		if (!tentandoAndar && !pilotoEspera && Destino is { } alvo)
 		{
 			Vec2 rumo = alvo - _pos;
 			if (rumo.LengthSquared < 64 * 64) { Destino = null; Chat.Sistema("voce chegou."); }

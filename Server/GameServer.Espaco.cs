@@ -182,6 +182,39 @@ public partial class GameServer
 	}
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancada `--espacovooteste`): no espaco o corpo volta a andar sem voar -- o jogo de antes de 2026-10-20. Lido pela
+	/// propria linha do <see cref="ParadoNoEspaco"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool APeNoEspacoAndaDeTeste;
+
+	/// <summary>
+	/// ============================ NO ESPACO SO SE ANDA VOANDO (dono, 2026-10-20) ============================
+	/// *"n permita q de pra andar no espaço so voar, assim personagens q pararem de voar ficam parados e n conseguem se mover, somente
+	/// voando pra se movimentar"*. No vazio nao ha chao pra empurrar: quem nao voa fica onde esta ate ligar o voo de novo.
+	///
+	/// ENTRA NO `PodeMexerOCorpo` (`GameServer.Ia.cs`), o funil de vetor, e por isso vale de uma vez pro passo do jogador (o `AplicarInput`
+	/// devolve o pacote inteiro, com a correcao), pro passo da IA e pro arranque do golpe e das corridas: quem nao sai do lugar nao investe.
+	/// As escolhas do dono, perguntadas antes:
+	///   * NPC E QUEM ACORDA DO NOCAUTE: a mesma regra. O nocaute ja derruba o voo (`TickDoVoo`), entao quem levanta no vazio fica parado ate
+	///     voar de novo. (A IA nao sabe decolar sozinha no espaco -- e NPC quase nunca vai la.)
+	///   * AO LEME NAO VALE: quem anda e a nave, como sempre andou. A subida da nave apaga o voo do piloto (o `MoveToZone` apaga o de todo
+	///     mundo que troca de zona), e a nave de tanque seco ja para pelo `ParadoPorFaltaDeCombustivel`. Por ULTIMO na pergunta: e uma
+	///     varredura das naves, e so chega nela quem esta no espaco sem voar.
+	///   * O GOLPE QUE ARREMESSA, O FEIXE QUE ARRASTA E O COLO DE QUEM VOA continuam levando o corpo: nenhum dos tres e passo dele (o
+	///     arremesso tem porta propria no `AplicarInput`; o arrasto e o colo escrevem a posicao pelo servidor). O colo e o resgate de quem
+	///     nao sabe voar. E o ARREMESSADO NAO ESTA PARADO (`TiquesDeVoo`): enquanto o golpe o leva, o pacote dele segue pela porta do
+	///     arremesso, que guarda o olhar que o cliente manda -- como em qualquer chao --, e nao pela recusa de quem nao sai do lugar.
+	///   * QUEM ROMPE A ATMOSFERA VOANDO CHEGA VOANDO -- ver `TentarRomperAAtmosfera` (`GameServer.Voo.cs`).
+	///
+	/// "VOANDO" E O BIT **E** A ALTURA, como no `SemPernasNoChao`: quem desliga o voo ainda desce uns quadros ate a altura zero (o
+	/// `TickDoVoo`), e o cliente -- que para de prever o passo no instante em que o snapshot diz "sem voo" (`LocalPlayer.ParadoNoEspaco`) --
+	/// nao leva correcao nenhuma nesse meio-tempo.
+	/// ======================================================================================================================================
+	/// </summary>
+	private bool ParadoNoEspaco(ServerPlayer pl) =>
+		!pl.Voando && pl.Altitude <= 0f && pl.TiquesDeVoo <= 0 && !APeNoEspacoAndaDeTeste && Espaco.EhEspaco(pl.Zone) && !EstaPilotando(pl.Id);
+
+	/// <summary>
 	/// O SNAPSHOT DO ESPACO: um por jogador, recortado por CHUNK.
 	///
 	/// Nas zonas normais o mesmo buffer serve pra todo mundo, porque quem esta na zona ve todo

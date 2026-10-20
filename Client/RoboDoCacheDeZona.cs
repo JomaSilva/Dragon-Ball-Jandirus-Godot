@@ -377,6 +377,13 @@ public partial class RoboDoCacheDeZona : Node
 	{
 		ZoneKey chao = Espaco.ZonaDe(mundo);
 
+		// (2026-10-20) NO ESPACO SO SE ANDA VOANDO (dono): a cobaia chega a orbita a pe (o `MoveToZone` e a decolagem das bancadas apagam
+		// o voo) e liga o voo pela porta do jogador antes de ir contra o disco -- ver `LigarOVooDaCobaiaNoTeste`. O piloto espera o voo.
+		if (!servidor.LigarOVooDaCobaiaNoTeste(cli.LocalId))
+		{
+			Afirmar($"(roteiro) {qual}: a cobaia ligou o voo no vazio", false, OndeEstou());
+			return null;
+		}
 		World.Instancia?.IrAteDeTeste(mundo.Pos);
 		bool pousou = await EsperarOMundoEm(z => z.Equals(chao), 20.0);
 		World.Instancia?.PararDeTeste();

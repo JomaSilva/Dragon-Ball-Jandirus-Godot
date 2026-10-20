@@ -37,6 +37,18 @@ namespace Jandirus.Server;
 ///      disputa, ele morre de vez; Gohan PERDENDO, a Terra explode (*"Se o jogador perder o clash obviamente a terra tb explode"*). E ele SEMPRE o
 ///      solta: nocauteado, levanta e solta (contra: `SuperPerfeitoCaidoNaoSoltaDeTeste`); e o golpe que o mataria vira o Kamehameha (contra:
 ///      `SuperPerfeitoMorreDeTeste`).
+///   M. (2026-10-20) O CELL CACA OS ANDROIDES: sem androide caido, o alvo do Cell Imperfeito e o androide de pe mais perto, mesmo com um
+///      jogador mais perto (contra: `CellNaoCacaOsAndroidesDeTeste`); o golpe dele que mataria o androide so o derruba (contra:
+///      `CellMataOAndroideDeTeste`); e o caido e absorvido. E no x1 o monitor da saga nao apaga o desafiante do Cell -- familia D (contra:
+///      `AbsorcaoMexeNoTorneioDeTeste`). E (2026-10-20, depois da g6) perto do caido ele da o BOTE e o absorve (contra: `CellSemBoteDeTeste`), e na
+///      cena da transformacao nao absorve ninguem (contra: `ChefeAgeNaCenaDeTeste`).
+///   P. (2026-10-20) NA CENA DA TRANSFORMACAO O CELL NAO AGE: ele larga o raio que segurava e fica intocavel, e por oito segundos de jogo com um
+///      jogador colado nele nao golpeia, nao atira e nao anda (contra: `ChefeAgeNaCenaDeTeste`). OITO segundos: com o raio na mao ele so age
+///      quando a carga fecha, e a g5 mediu tres -- a contraprova sem as duas linhas passou nessa janela.
+///   Q. (2026-10-20) ...E TODO CHEFE DE SAGA (*"todo chefe de saga fica parado, sem atacar e intocável na cena da própria transformação (o Freeza
+///      também)"*): o Freeza de Namek larga o Death Beam e fica intocavel na troca de corpo, e na forma final nao age por dez segundos de jogo
+///      com um jogador colado nele (contra: `ChefeAgeNaCenaDeTeste`); e a Death Ball do ultimato, que escreve o mesmo relogio da cena, segue
+///      como era -- o cerebro ligado.
 ///   J. (2026-10-20) A CABECA DO CELL JR DE FRENTE: nas 24 poses da folha dele, de frente a crista chega tao alto quanto de costas -- a arte do DM
 ///      cortava as duas pontas de frente (contra: a mesma arte, a folha dos mobs do DU, sem o conserto).
 ///
@@ -98,6 +110,9 @@ public sealed partial class GameServer
 			TcelAFilaVazia(arena, todos);
 			TcelOEmbate(arena, todos);
 			TcelOSuperPerfeitoPerdendo(arena, todos);
+			TcelACacaAosAndroides(todos);
+			TcelACenaDaTransformacao(todos);
+			TcelACenaDoFreeza(arena, todos);
 		}
 		catch (Exception e)
 		{
@@ -109,6 +124,8 @@ public sealed partial class GameServer
 			CellTransformaNoTorneioDeTeste = NpcDesafiaOCellDeTeste = CellCacaNaEsperaDeTeste = SemCellJrDeTeste = CellJrSemOLivroDoCellDeTeste = false;
 			KamehamehaDoTamanhoNormalDeTeste = CellSobreviveAoEmbateDeTeste = CellVoltaDoEmbateDeTeste = EmpateExplodeATerraDeTeste = false;
 			SuperPerfeitoNaoSoltaDeTeste = SuperPerfeitoCaidoNaoSoltaDeTeste = SuperPerfeitoMorreDeTeste = false;
+			CellNaoCacaOsAndroidesDeTeste = CellMataOAndroideDeTeste = AbsorcaoMexeNoTorneioDeTeste = CellSemBoteDeTeste = false;
+			ChefeAgeNaCenaDeTeste = false;
 			foreach (int id in _canais.Keys.ToList()) FecharCanal(id, _canais[id], null);
 			foreach (int id in _emEmbateDeKi.Keys.ToList()) SoltarDoEmbateDeKi(id);
 			EncerrarOTorneioDoCell();
@@ -425,6 +442,22 @@ public sealed partial class GameServer
 		TickDoTorneioDoCell(0.05);
 		AfirmarTcel("...e o golpe do Goku, o desafiante, FICA", Math.Abs(membro.Vida - depois) < 1e-6 && depois < inteira - 1,
 				  $"vida {membro.Vida:0.##} (depois do golpe {depois:0.##})");
+		// (2026-10-20) O ALVO DO CELL NO X1 E O DESAFIANTE, MESMO COM O MONITOR DA SAGA (uma vez por segundo, `MonitorarChefe`): a absorcao, que
+		// mexe no alvo imposto, nao toca o Cell do torneio. Primeiro com o defeito (ela mexe, o jogo de antes) e depois de verdade.
+		EloDaSaga eloDoCell = Array.Find(_cadeia, e => e.Id == "cell")!;
+		EstadoDoElo estDoCell = _sagas.Do("cell")!;
+		EstadoDoChefe ecDoCell = estDoCell.Chefes.Find(c => c.Corpo == cell.Id)!;
+		AbsorcaoMexeNoTorneioDeTeste = true;
+		int alvoComODefeito;
+		try { MonitorarChefe(eloDoCell, estDoCell, ecDoCell); alvoComODefeito = cell.Papel!.PresaDoRoteiro; }
+		finally { AbsorcaoMexeNoTorneioDeTeste = false; }
+		cell.Papel!.PresaDoRoteiro = goku.Id;   // (o que o defeito apagou volta: o x1 segue)
+		MonitorarChefe(eloDoCell, estDoCell, ecDoCell);
+		AfirmarTcel("**NO X1 O ALVO DO CELL E O DESAFIANTE, E O MONITOR DA SAGA NAO O APAGA** -- ele roda uma vez por segundo e apagava: o Cell ia "
+				  + "atras de quem estivesse mais perto, ate de quem assiste", cell.Papel.PresaDoRoteiro == goku.Id,
+				  $"alvo {cell.Papel.PresaDoRoteiro} (o desafiante {goku.Id})");
+		AfirmarTcel("   CONTRA-EXEMPLO (a absorcao mexendo no Cell do torneio, o jogo de antes): o alvo sumiria -- a regua de cima reprovaria",
+				  alvoComODefeito == 0, $"alvo {alvoComODefeito}");
 		CurarPraLuta(cell);
 		TickDoTorneioDoCell(0.05);
 	}
@@ -984,6 +1017,317 @@ public sealed partial class GameServer
 					+ $"no chao {morrendo.Combate.Corpo.DeveNocautear()}; kamehameha {_kamehamehaDoCell?.Cell}; canal {_canais.GetValueOrDefault(morrendo.Id)?.Verbo}; "
 					+ $"intocavel {morrendo.Combate.Intocavel}; {EscutaDoCell()}");
 		AfirmarTcel("   CONTRA-EXEMPLO (a porta da morte de sempre): o golpe letal nao viraria o Kamehameha -- a regua de cima reprovaria", !viraria);
+	}
+
+	// =====================================================================
+	// M. O CELL CACA OS ANDROIDES (dono, 2026-10-20)
+	// =====================================================================
+	private void TcelACacaAosAndroides(ServerPlayer[] todos)
+	{
+		GD.Print("[torneiocell] -- M) o Cell Imperfeito caca os androides: prioridade maxima, derruba e absorve");
+		var terra = ZoneKey.Premade("Earth");
+		ServerPlayer goku = todos[0];
+		if (MorteDaZona(terra) is { Fase: FaseDaMorte.Explodindo }) AbortarMorte(terra, "bancada do torneio do Cell");
+		SagasLimpas();
+		TickDoTorneioDoCell(1.0);   // (o Kamehameha e o torneio de antes, se ficaram, fecham: o corpo deles saiu com as sagas)
+		foreach (string saga in new[] { "freeza_vegeta", "freeza_namek" }) _sagas.Do(saga)!.Fase = FaseDaSaga.Vencida;
+		EloDaSaga elo = Array.Find(_cadeia, e => e.Id == "cell")!;
+		EstadoDoElo est = _sagas.Do("cell")!;
+		est.Disparou = true;
+		est.Fase = FaseDaSaga.EmCurso;
+		EstadoDoChefe Nascer(string molde)
+		{
+			var ec = new EstadoDoChefe
+			{
+				Molde = molde, Fase = FaseDoChefe.ACaminho, DiasRestantes = 0, Bps = Sagas.Pinar(_moldes!.Get(molde)!, MediaDoServidor()),
+			};
+			est.Chefes.Add(ec);
+			NascerChefeDaSaga(elo, est, ec, ComoChegou.Retomando);
+			return ec;
+		}
+		EstadoDoChefe e17 = Nascer("androide_17"), e18 = Nascer("androide_18"), eCell = Nascer("cell");
+		ServerPlayer? a17 = _players.GetValueOrDefault(e17.Corpo), a18 = _players.GetValueOrDefault(e18.Corpo), cell = _players.GetValueOrDefault(eCell.Corpo);
+		AfirmarTcel("(montagem) a saga do Cell com os dois androides e o Cell IMPERFEITO no mundo",
+					a17 != null && a18 != null && cell?.Papel is { Estagio: 0 }, $"17 {a17 != null}; 18 {a18 != null}; cell degrau {cell?.Papel?.Estagio + 1}");
+		if (a17 == null || a18 == null || cell == null) return;
+
+		// O LUGAR: o Cell no meio da arena, o Goku a TRES tiles (o jogador mais perto, e tocavel), o 17 a dez e a 18 a quinze
+		Vec2 centro = _torneioCfg.Terra.Arena.Centro;
+		const float T = ZoneCollision.TileSize;
+		Transportar(cell, terra, centro);
+		Transportar(a17, terra, centro + new Vec2(10 * T, 0));
+		Transportar(a18, terra, centro + new Vec2(15 * T, 0));
+		foreach (ServerPlayer p in todos) p.Combate.Carencia = 0;
+		Transportar(goku, terra, centro + new Vec2(-3 * T, 0));
+
+		// ---- A CACA, PRIORIDADE MAXIMA: o monitor da saga (uma vez por segundo) impoe o androide de pe mais perto, mesmo com o Goku mais perto
+		CellNaoCacaOsAndroidesDeTeste = true;
+		ServerPlayer? presaComODefeito;
+		try { MonitorarChefe(elo, est, eCell); presaComODefeito = PresaDoNpc(cell); }
+		finally { CellNaoCacaOsAndroidesDeTeste = false; }
+		MonitorarChefe(elo, est, eCell);
+		ServerPlayer? presa = PresaDoNpc(cell);
+		AfirmarTcel("**O CELL CACA OS ANDROIDES, PRIORIDADE MAXIMA** (*\"faça ele atacar os androides como prioridade maxima dele\"*): com o Goku a "
+					+ "3 tiles e o 17 a 10, o alvo do Cell Imperfeito e o 17 -- o androide de pe mais perto",
+					cell.Papel!.PresaDoRoteiro == a17.Id && presa == a17,
+					$"alvo imposto {cell.Papel.PresaDoRoteiro}; presa {presa?.Name} (17 {a17.Id}, Goku {goku.Id})");
+		AfirmarTcel("   CONTRA-EXEMPLO (o jogo de antes: ele so ia no androide que outro derrubou): a presa seria um jogador -- a regua de cima reprovaria",
+					presaComODefeito is { } pc && EhJogador(pc), $"presa {presaComODefeito?.Name}");
+
+		// ---- O GOLPE DELE QUE MATARIA O ANDROIDE SO O DERRUBA: primeiro com o defeito (mata) na 18, e de verdade no 17
+		bool Derrubado(ServerPlayer a) => !a.Ficha.dead && a.Ficha.KO && !a.Combate.Corpo.DeveMorrer();
+		a18.UltimoAgressor = cell.Id;
+		TcelTroncoA(a18, 0);
+		CellMataOAndroideDeTeste = true;
+		bool derrubadoComODefeito;
+		try { a18.Combate.Morrer(); derrubadoComODefeito = Derrubado(a18); }
+		finally { CellMataOAndroideDeTeste = false; }
+		a17.UltimoAgressor = cell.Id;
+		TcelTroncoA(a17, 0);
+		bool morreu = a17.Combate.Morrer();
+		AfirmarTcel("**O GOLPE DO CELL QUE MATARIA O ANDROIDE SO O DERRUBA** -- ele caca pra absorver: o 17 com o tronco zerado pelo Cell nao morre, "
+					+ "cai nocauteado, por um fio",
+					!morreu && Derrubado(a17), $"morreu {morreu}; morto {a17.Ficha.dead}; caido {a17.Ficha.KO}; perdido {a17.Combate.Corpo.DeveMorrer()}");
+		AfirmarTcel("   CONTRA-EXEMPLO (o golpe letal de sempre): a 18 nao ficaria so caida -- a regua de cima reprovaria", !derrubadoComODefeito,
+					$"morta {a18.Ficha.dead}; caida {a18.Ficha.KO}");
+
+		// ---- ...E O CAIDO E ABSORVIDO: longe, ele vai atras dele (o alvo imposto); perto, da o BOTE e o absorve -- primeiro sem o bote (so
+		// encostando, o jogo da rodada g6) a seis tiles, e depois de verdade
+		Vec2 doCaido = a17.Pos;
+		cell.Pos = doCaido + new Vec2(30 * T, 0);
+		MonitorarChefe(elo, est, eCell);
+		bool foiAtras = cell.Papel.PresaDoRoteiro == a17.Id && _players.ContainsKey(a17.Id);
+		cell.Pos = doCaido + new Vec2(6 * T, 0);
+		CellSemBoteDeTeste = true;
+		bool absorveuSemBote;
+		try { MonitorarChefe(elo, est, eCell); absorveuSemBote = !_players.ContainsKey(a17.Id); }
+		finally { CellSemBoteDeTeste = false; }
+		EscutaDasSagas!.Clear();
+		MonitorarChefe(elo, est, eCell);
+		AfirmarTcel("**...E O CAIDO E ABSORVIDO** -- longe (30 tiles) o Cell vai atras do 17 no chao; a 6 tiles ele da o BOTE, encosta e o absorve: a "
+					+ "Semi-Perfeita, 1 B",
+					foiAtras && e17.Fase == FaseDoChefe.Consumido && !_players.ContainsKey(a17.Id) && cell.Papel.Estagio == 1
+					&& (cell.Pos - doCaido).LengthSquared <= 4 * T * T && EscutaDasSagas.Any(f => f.Contains("ABSORVEU", StringComparison.Ordinal)),
+					$"foi atras {foiAtras}; 17 {e17.Fase}; degrau {cell.Papel.Estagio + 1}; o Cell a {(cell.Pos - doCaido).Length / T:0.#} tile(s) dele; "
+					+ $"{string.Join(" | ", EscutaDasSagas)}");
+		AfirmarTcel("   CONTRA-EXEMPLO (sem o bote, so encostando -- o robo da g6 ficou nisso 90 s): a 6 tiles ele nao o absorveria -- a regua de cima reprovaria",
+					!absorveuSemBote, $"absorveu {absorveuSemBote}");
+
+		// ---- E NA CENA DA TRANSFORMACAO ELE NAO ABSORVE NINGUEM: uma saga nova, os dois androides caidos a um e tres tiles dele, e a Semi-Perfeita
+		// comecando (o `AvancarEstagio` de producao). Primeiro de verdade, depois com o defeito (ele age na cena, e o 17 encostado e engolido)
+		SagasLimpas();
+		TickDoTorneioDoCell(1.0);
+		est = _sagas.Do("cell")!;
+		est.Disparou = true;
+		est.Fase = FaseDaSaga.EmCurso;
+		EstadoDoChefe f17 = Nascer("androide_17"), f18 = Nascer("androide_18"), fCell = Nascer("cell");
+		if (!_players.TryGetValue(f17.Corpo, out ServerPlayer? b17) || !_players.TryGetValue(f18.Corpo, out ServerPlayer? b18)
+			|| !_players.TryGetValue(fCell.Corpo, out ServerPlayer? cell3) || cell3.Papel == null)
+		{
+			AfirmarTcel("**...E NA CENA DA TRANSFORMACAO ELE NAO ABSORVE NINGUEM**", false, "a saga nova nao nasceu");
+			return;
+		}
+		Transportar(cell3, terra, centro);
+		Transportar(b17, terra, centro + new Vec2(T, 0));
+		Transportar(b18, terra, centro + new Vec2(3 * T, 0));
+		b17.Combate.Nocautear(120);
+		b18.Combate.Nocautear(120);
+		AvancarEstagio(cell3);   // a Semi-Perfeita, e a cena dela
+		MonitorarChefe(elo, est, fCell);
+		bool ninguem = _players.ContainsKey(b17.Id) && _players.ContainsKey(b18.Id) && cell3.Papel.Estagio == 1;
+		bool naCena = EmCena(cell3);
+		ChefeAgeNaCenaDeTeste = true;
+		bool absorveriaNaCena;
+		try { MonitorarChefe(elo, est, fCell); absorveriaNaCena = !_players.ContainsKey(b17.Id) || !_players.ContainsKey(b18.Id); }
+		finally { ChefeAgeNaCenaDeTeste = false; }
+		AfirmarTcel("**...E NA CENA DA TRANSFORMACAO ELE NAO ABSORVE NINGUEM**: os dois androides caidos a um e tres tiles dele, e ele fica na cena -- "
+					+ "a proxima absorcao espera ela acabar",
+					ninguem && naCena, $"os dois no mundo {ninguem}; em cena {naCena}; degrau {cell3.Papel.Estagio + 1}");
+		AfirmarTcel("   CONTRA-EXEMPLO (o Cell agindo na cena): ele engoliria um deles no meio dela -- a regua de cima reprovaria", absorveriaNaCena,
+					$"absorveu {absorveriaNaCena}");
+	}
+
+	// =====================================================================
+	// P. NA CENA DA TRANSFORMACAO O CELL NAO AGE (dono, 2026-10-20)
+	// =====================================================================
+	private void TcelACenaDaTransformacao(ServerPlayer[] todos)
+	{
+		GD.Print("[torneiocell] -- P) na cena da transformacao o Cell nao age: larga o raio, nao golpeia, nao atira, e fica intocavel");
+		Arena arena = _torneioCfg.Terra.Arena;
+		const float T = ZoneCollision.TileSize;
+
+		// A CENA: o Cell Imperfeito da saga com o Kamehameha na mao (o canal aberto, carregando) e um jogador DE PE colado nele -- e o degrau
+		// seguinte pelo `AvancarEstagio` de producao (o que a absorcao e o dano chamam): a cena da Semi-Perfeita
+		(ServerPlayer Cell, ServerPlayer Alvo)? Montar(ServerPlayer alvo)
+		{
+			if (TcelCellDaSagaSemTorneio(arena, todos, degrau: 0) is not { } m) return null;
+			ServerPlayer cell = m.Cell;
+			alvo.Combate.Carencia = 0;
+			if (alvo.Ficha.KO) alvo.Combate.Levantar();
+			Transportar(alvo, cell.Zone, cell.Pos + new Vec2(-T, 0));
+			cell.Ficha.Ki = cell.Ficha.MaxKi;
+			RaioNomeadoG6(cell, "Kamehameha");
+			AvancarEstagio(cell);
+			return (cell, alvo);
+		}
+		// ---- primeiro com o defeito (o cerebro segue pensando na cena e o raio fica na mao -- o jogo de antes), contra o Kuririn
+		ChefeAgeNaCenaDeTeste = true;
+		bool seguravaComODefeito = false, agiuComODefeito = false;
+		try
+		{
+			if (Montar(todos[1]) is { } d)
+			{
+				seguravaComODefeito = _canais.ContainsKey(d.Cell.Id);
+				agiuComODefeito = TcelRodarACena(d.Cell, d.Alvo, 8);
+			}
+		}
+		finally { ChefeAgeNaCenaDeTeste = false; }
+
+		// ---- e de verdade, contra o Goku
+		if (Montar(todos[0]) is not { } m2)
+		{
+			AfirmarTcel("**NA CENA DA TRANSFORMACAO ELE LARGA O RAIO E FICA INTOCAVEL**", false, "o Cell nao nasceu");
+			return;
+		}
+		(ServerPlayer cell2, ServerPlayer goku) = m2;
+		AfirmarTcel("**NA CENA DA TRANSFORMACAO ELE LARGA O RAIO E FICA INTOCAVEL** (*\"faça o cell nao atacar ou se mover enquanto se transforma na "
+					+ "proxima forma. e ele fica intocavel nessa cinematica\"*): a Semi-Perfeita comeca, o Kamehameha que ele carregava some da mao, e "
+					+ "ninguem o atinge",
+					cell2.Papel!.Estagio == 1 && EmCena(cell2) && cell2.Combate.Intocavel && !_canais.ContainsKey(cell2.Id),
+					$"degrau {cell2.Papel.Estagio + 1}; em cena {EmCena(cell2)} ({cell2.CenaSegundos:0.#} s); intocavel {cell2.Combate.Intocavel}; "
+					+ $"canal {_canais.GetValueOrDefault(cell2.Id)?.Verbo}");
+		Vec2 onde = cell2.Pos;
+		bool agiu = TcelRodarACena(cell2, goku, 8);
+		AfirmarTcel("**...E NAO AGE ATE ELA ACABAR**: oito segundos de jogo com o Goku colado nele -- nenhum golpe, nenhum raio, e ele nao sai do lugar",
+					!agiu && (cell2.Pos - onde).LengthSquared < 1 && EmCena(cell2),
+					$"agiu {agiu}; andou {(cell2.Pos - onde).Length:0.#} px; em cena {EmCena(cell2)}");
+		AfirmarTcel("   CONTRA-EXEMPLO (o jogo de antes: o cerebro seguia pensando na cena): ele seguiria com o raio na mao e agiria -- a regua de cima reprovaria",
+					seguravaComODefeito && agiuComODefeito, $"segurava {seguravaComODefeito}; agiu {agiuComODefeito}");
+	}
+
+	// =====================================================================
+	// Q. ...E TODO CHEFE DE SAGA NA CENA DA PROPRIA TRANSFORMACAO: O FREEZA (dono, 2026-10-20)
+	// =====================================================================
+	private void TcelACenaDoFreeza(Arena arena, ServerPlayer[] todos)
+	{
+		GD.Print("[torneiocell] -- Q) todo chefe de saga na cena da propria transformacao: o Freeza de Namek no corpo novo e na forma final");
+		const float T = ZoneCollision.TileSize;
+		const string Pedido = "(*\"todo chefe de saga fica parado, sem atacar e intocável na cena da própria transformação (o Freeza também)\"*)";
+
+		// A CENA: o Freeza da saga de Namek no degrau pedido, com o Death Beam na mao (o canal aberto, carregando) e um jogador DE PE colado nele
+		// -- e o degrau seguinte pelo `AvancarEstagio` de producao (o que o dano e o golpe que o mataria chamam)
+		(ServerPlayer Freeza, ServerPlayer Alvo)? Montar(ServerPlayer alvo, int degrau)
+		{
+			if (TcelFreezaDaSaga(arena, todos, degrau) is not { } freeza) return null;
+			alvo.Combate.Carencia = 0;
+			if (alvo.Ficha.KO) alvo.Combate.Levantar();
+			Transportar(alvo, freeza.Zone, freeza.Pos + new Vec2(-T, 0));
+			freeza.Ficha.Ki = freeza.Ficha.MaxKi;
+			RaioNomeadoG6(freeza, "Death_Beam");
+			AvancarEstagio(freeza);
+			return (freeza, alvo);
+		}
+
+		// ---- O CORPO NOVO (a primeira troca, a cena curta de 2,5 s) -- primeiro com o defeito (o jogo de antes: so o Cell parava), contra o Kuririn
+		ChefeAgeNaCenaDeTeste = true;
+		bool seguravaComODefeito = false;
+		try { if (Montar(todos[1], 0) is { } d1) seguravaComODefeito = _canais.ContainsKey(d1.Freeza.Id); }
+		finally { ChefeAgeNaCenaDeTeste = false; }
+		if (Montar(todos[0], 0) is not { } m1)
+		{
+			AfirmarTcel("**...E O FREEZA NA TROCA DE CORPO LARGA O RAIO E FICA INTOCAVEL**", false, "o Freeza nao nasceu");
+			return;
+		}
+		ServerPlayer f1 = m1.Freeza;
+		AfirmarTcel($"**...E O FREEZA NA TROCA DE CORPO LARGA O RAIO E FICA INTOCAVEL** {Pedido}: a segunda forma comeca, o Death Beam que ele "
+					+ "carregava some da mao, ninguem o atinge e o cerebro para",
+					f1.Papel!.Estagio == 1 && EmCena(f1) && f1.Combate.Intocavel && !_canais.ContainsKey(f1.Id) && ChefeParadoNaCena(f1),
+					$"degrau {f1.Papel.Estagio + 1}; em cena {EmCena(f1)} ({f1.CenaSegundos:0.#} s); intocavel {f1.Combate.Intocavel}; "
+					+ $"canal {_canais.GetValueOrDefault(f1.Id)?.Verbo}; parado {ChefeParadoNaCena(f1)}");
+		AfirmarTcel("   CONTRA-EXEMPLO (o jogo de antes: so o Cell parava na cena): o Freeza seguiria com o Death Beam na mao -- a regua de cima reprovaria",
+					seguravaComODefeito, $"segurava {seguravaComODefeito}");
+
+		// ---- A FORMA FINAL (a cena grande, 28 s): dez segundos de jogo com o jogador colado nele -- primeiro com o defeito, contra o Kuririn.
+		// DEZ e nao oito, como na familia P: com o raio na mao ele so age quando a carga fecha, e a carga e o cerebro do Freeza nao sao os do Cell
+		ChefeAgeNaCenaDeTeste = true;
+		bool agiuComODefeito = false;
+		try { if (Montar(todos[1], 3) is { } d2) agiuComODefeito = TcelRodarACena(d2.Freeza, d2.Alvo, 10); }
+		finally { ChefeAgeNaCenaDeTeste = false; }
+		if (Montar(todos[0], 3) is not { } m2)
+		{
+			AfirmarTcel("**...E NA FORMA FINAL NAO AGE ATE A CENA ACABAR**", false, "o Freeza nao nasceu");
+			return;
+		}
+		(ServerPlayer f2, ServerPlayer goku) = m2;
+		bool naVirada = f2.Papel!.Estagio == 4 && EmCena(f2) && f2.Combate.Intocavel && !_canais.ContainsKey(f2.Id);
+		Vec2 onde = f2.Pos;
+		bool agiu = TcelRodarACena(f2, goku, 10);
+		AfirmarTcel("**...E NA FORMA FINAL NAO AGE ATE A CENA ACABAR**: a forma final comeca sem o raio na mao, e dez segundos de jogo com o Goku "
+					+ "colado nele -- nenhum golpe, nenhum raio, e ele nao sai do lugar",
+					naVirada && !agiu && (f2.Pos - onde).LengthSquared < 1 && EmCena(f2),
+					$"degrau {f2.Papel.Estagio + 1}; na virada {naVirada}; agiu {agiu}; andou {(f2.Pos - onde).Length:0.#} px; em cena {EmCena(f2)} "
+					+ $"({f2.CenaSegundos:0.#} s)");
+		AfirmarTcel("   CONTRA-EXEMPLO (o jogo de antes): ele agiria no meio da forma final -- a regua de cima reprovaria", agiuComODefeito,
+					$"agiu {agiuComODefeito}");
+
+		// ---- E A ESFERA DO ULTIMATO NAO E TRANSFORMACAO: a Death Ball escreve o MESMO relogio da cena (parado e intocavel enquanto ela cresce),
+		// e ali o cerebro segue ligado, como era
+		f2.CenaSegundos = 0;
+		ComecarASupernova(f2, Jandirus.Core.Npc.AtaqueDoUltimato.DeathBall);
+		bool naEsfera = EmCena(f2) && f2.SupernovaDesde != 0, pensa = !ChefeParadoNaCena(f2);
+		AcabarASupernova(f2);
+		AfirmarTcel("**...E A DEATH BALL DO ULTIMATO SEGUE COMO ERA**: ela prende o corpo pelo mesmo relogio da cena, mas nao e transformacao -- o "
+					+ "cerebro continua ligado", naEsfera && pensa, $"na esfera {naEsfera}; pensa {pensa}");
+	}
+
+	/// <summary>
+	/// O JOGO RODANDO NA CENA, por <paramref name="segundos"/>: o tique dos corpos (o cerebro) e o dos canais (o raio que sai da mao). Agiu =
+	/// golpeou o alvo, soltou o raio, ou tem um golpe no ar (familias P e Q).
+	/// </summary>
+	private bool TcelRodarACena(ServerPlayer chefe, ServerPlayer alvo, double segundos)
+	{
+		long ataqueAntes = chefe.AtaqueAte;
+		alvo.UltimoAgressor = 0;
+		for (int i = 0; i < (int)(segundos / Protocol.TickSeconds); i++)
+		{
+			TickDosCorposSemDono(Protocol.TickSeconds);
+			TickDosCanaisDeKi(Protocol.TickSeconds);
+			if (alvo.UltimoAgressor == chefe.Id || _canais.GetValueOrDefault(chefe.Id)?.Raio != null || chefe.AtaqueAte > ataqueAntes) return true;
+		}
+		return false;
+	}
+
+	/// <summary>
+	/// (2026-10-20) O FREEZA DA SAGA DE NAMEK -- as sagas limpas, a de Vegeta vencida e a de Namek em curso com ele chegando hoje NO DEGRAU pedido
+	/// (o nascimento de producao, `NascerChefeDaSaga`), trazido pro meio da arena da Terra (o chao que a familia P ja usa: a regra nao olha o
+	/// planeta), e os quatro fora dela e INTOCAVEIS. Nulo = nao nasceu.
+	/// </summary>
+	private ServerPlayer? TcelFreezaDaSaga(Arena arena, ServerPlayer[] todos, int degrau)
+	{
+		var terra = ZoneKey.Premade("Earth");
+		if (MorteDaZona(terra) is { Fase: FaseDaMorte.Explodindo }) AbortarMorte(terra, "bancada do torneio do Cell");
+		SagasLimpas();
+		TickDoTorneioDoCell(1.0);
+		_sagas.Do("freeza_vegeta")!.Fase = FaseDaSaga.Vencida;
+		EloDaSaga elo = Array.Find(_cadeia, e => e.Id == "freeza_namek")!;
+		EstadoDoElo est = _sagas.Do("freeza_namek")!;
+		est.Disparou = true;
+		est.Fase = FaseDaSaga.EmCurso;
+		var ec = new EstadoDoChefe
+		{
+			Molde = "freeza_namek", Fase = FaseDoChefe.ACaminho, DiasRestantes = 0, Degrau = degrau,
+			Bps = Sagas.Pinar(_moldes!.Get("freeza_namek")!, MediaDoServidor()),
+		};
+		est.Chefes.Add(ec);
+		NascerChefeDaSaga(elo, est, ec);
+		for (int i = 0; i < todos.Length; i++)
+		{
+			Transportar(todos[i], terra, ForaDaArenaDeTeste(arena, i));
+			todos[i].Combate.Carencia = CarenciaDeEspera;
+		}
+		if (!_players.TryGetValue(ec.Corpo, out ServerPlayer? freeza)) return null;
+		Transportar(freeza, terra, arena.Centro);
+		return freeza;
 	}
 
 	/// <summary>

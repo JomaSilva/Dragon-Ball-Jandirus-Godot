@@ -233,6 +233,10 @@ public partial class RoboDoGodKi : Node
 		ZoneKey chao = Espaco.ZonaDe(mundo.Corpo);
 		_falas.Clear();   // a frase do verb tambem diz "atmosfera divina": daqui pra frente so vale o que o POUSO disser
 
+		// (2026-10-20) NO ESPACO SO SE ANDA VOANDO (dono): o salto do verb larga o corpo a pe (o `MoveToZone` apaga o voo), e um Mortal
+		// novo nem sabe voar. Ele aprende e decola pela porta do jogador (`LigarOVooDaCobaiaNoTeste`, o palco da `--diagespacovoo`).
+		Checa("(montagem) a cobaia liga o voo no vazio (so voando se sai do lugar la)", srv.LigarOVooDaCobaiaNoTeste(cli.LocalId));
+
 		// O RUMO E DADO DE NOVO A CADA QUADRO, e nao uma vez so: o salto do verb recarrega a zona no cliente, e a
 		// chegada dessa carga DESLIGA o piloto automatico ("chegou noutro lugar: o piloto anterior nao vale mais",
 		// `LocalPlayer`). Dado uma vez, o rumo as vezes morria ali -- e o corpo ficava em orbita ate sufocar (foi

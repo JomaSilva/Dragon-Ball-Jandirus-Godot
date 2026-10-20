@@ -604,6 +604,9 @@ public partial class GameServer
 		{
 			a18.Combate.Nocautear(120);
 			cell.Pos = a18.Pos;
+			// (2026-10-20) a cena da Semi-Perfeita (a da primeira absorcao) ainda o prendia -- e na cena o Cell nao absorve ninguem
+			// (`AbsorverCompanheiroCaido`). O relogio dela anda no tique, e a bancada nao espera: a cena acaba aqui.
+			cell.CenaSegundos = 0;
 			TickDasSagas();
 		}
 		Checa("absorvendo a segunda, ele chega ao degrau 3 (a forma Perfeita, 3,5 B)",

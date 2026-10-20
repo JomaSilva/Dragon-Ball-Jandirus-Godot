@@ -522,7 +522,10 @@ public partial class RoboDoTrailer
 			yield return OptN("antes", 2);
 		}
 
-		Marca($"espaco: rumo a {destino.Nome}, a {(destino.Pos - eu).Length():N0} px (raio {destino.Raio:0})");
+		// (2026-10-20) NO ESPACO SO SE ANDA VOANDO (dono): o salto pro vazio larga o heroi a pe (o `MoveToZone` apaga o voo), e ele liga o
+		// voo pela porta do jogador antes do rumo -- ver `LigarOVooDaCobaiaNoTeste`. O piloto automatico espera o voo chegar ao cliente.
+		bool voando = S?.LigarOVooDaCobaiaNoTeste(_eu) ?? false;
+		Marca($"espaco: rumo a {destino.Nome}, a {(destino.Pos - eu).Length():N0} px (raio {destino.Raio:0}) -- voando {voando}");
 		Input.ActionPress("run");
 		M?.Pilotar(destino.Pos);
 

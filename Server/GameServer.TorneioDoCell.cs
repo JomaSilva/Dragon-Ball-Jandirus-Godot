@@ -660,6 +660,7 @@ public sealed partial class GameServer
 		cell.Combate.Carencia = CarenciaDeEspera;
 		cell.Ficha.Ki = cell.Ficha.MaxKi;
 		MirarOKamehameha(cell);
+		RaioNomeadoG6(cell, "Kamehameha");
 		if (!_canais.TryGetValue(cell.Id, out CanalDeKi? c) || c.Verbo != "Kamehameha") return;   // nao abriu: o tique tenta de novo
 		c.Receita.EscalaVisual = c.Receita.MultDeOnda * (KamehamehaDoTamanhoNormalDeTeste ? 1 : TorneioDoCell.EscalaDoKamehameha);
 		c.CargaRestante = TorneioDoCell.SegundosDeCargaDoKamehameha;

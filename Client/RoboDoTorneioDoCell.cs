@@ -17,9 +17,12 @@ namespace Jandirus.Client;
 ///   S. (2026-10-20) O SUPER PERFEITO PERDENDO, na luta livre: o tronco abaixo de 25% e ele carrega o MESMO Kamehameha sozinho; o jogador que
 ///      PERDE a disputa contra ele -- o raio segue e a Terra explode --; ele NOCAUTEADO por um golpe alto, que levanta e carrega do mesmo jeito;
 ///      e o jogador que vence -- o Super Perfeito desintegrado, a Terra inteira;
+///   C. (2026-10-20) O CELL CACA OS ANDROIDES: o Cell Imperfeito, com o jogador mais perto, vai no 17 (prioridade maxima), derruba um
+///      androide e o absorve -- o Semi-Perfeito; e na cena da transformacao ele fica parado, sem raio na mao e intocavel;
 ///   A. OS ANDROIDES: o Scan e o Sense com um humano e tres androides (os dois tipos do jogador e o 17 NPC) -- so o humano aparece; e o
 ///      contra-exemplo, o Scan de antes, com os tres;
 ///   N. NAMEK: o Freeza de Namek caido quando o prazo vence -- sem Death Ball; e o contra-exemplo, o jogo de antes: a esfera sobre o corpo caido.
+///   F. (2026-10-20) O FREEZA NA CENA DA PROPRIA TRANSFORMACAO: na troca de corpo e na forma final ele fica parado, sem raio na mao e intocavel.
 /// As regras sao das bancadas (`--torneiocellteste`, `--sentidosteste`, `--chefesteste`); aqui e o desenho.
 /// </summary>
 public partial class RoboDoTorneioDoCell : Node
@@ -108,8 +111,10 @@ public partial class RoboDoTorneioDoCell : Node
 		foreach (object passo in OTorneio(cli, mundo, srv, eu)) yield return passo;
 		foreach (object passo in OEmbate(mundo, srv, eu)) yield return passo;
 		foreach (object passo in OSuperPerfeito(mundo, srv, eu)) yield return passo;
+		foreach (object passo in ACaca(mundo, srv, eu)) yield return passo;
 		foreach (object passo in OsAndroides(cli, srv, eu)) yield return passo;
 		foreach (object passo in Namek(mundo, srv, eu)) yield return passo;
+		foreach (object passo in OFreezaNaCena(mundo, srv, eu)) yield return passo;
 	}
 
 	// =====================================================================
@@ -178,12 +183,13 @@ public partial class RoboDoTorneioDoCell : Node
 				comecou && srv.PalcoTC_CarregandoOKamehameha() && mundo.CorpoDeTeste(cell) != null, $"comecou {comecou}");
 		srv.PalcoTC_IrProFimDoKamehameha(eu);
 		int raio = 0;
-		for (int i = 0; i < 80 && (raio = srv.PalcoTC_RaioDoKamehameha().Id) == 0; i++) yield return 0.1;
+		// (2026-10-20) a linha do tiro fica livre a cada espera (`PalcoTC_LinhaLivreDeNovo`): o bicho que o povoamento poe perto de mim levava o raio
+		for (int i = 0; i < 80 && (raio = srv.PalcoTC_RaioDoKamehameha().Id) == 0; i++) { srv.PalcoTC_LinhaLivreDeNovo(); yield return 0.1; }
 		ProjetilDesenhado? desenho = null;
-		for (int i = 0; i < 20 && raio != 0 && (desenho = mundo.TiroDesenhadoDeTeste(raio)) == null; i++) yield return 0.05;
+		for (int i = 0; i < 20 && raio != 0 && (desenho = mundo.TiroDesenhadoDeTeste(raio)) == null; i++) { srv.PalcoTC_LinhaLivreDeNovo(); yield return 0.05; }
 		// o raio chegando: a foto sai com a cabeca desenhada a menos de quatro tiles de mim (a camera me segue)
 		for (int i = 0; i < 80 && desenho != null && IsInstanceValid(desenho) && mundo.PosicaoLocal is { } aqui
-						&& desenho.Position.DistanceTo(aqui) > 4 * 32; i++) yield return 0.02;
+						&& desenho.Position.DistanceTo(aqui) > 4 * 32; i++) { srv.PalcoTC_LinhaLivreDeNovo(); yield return 0.02; }
 		Fotografar("tc-7-kamehameha-o-feixe-2x");
 		double escala = srv.PalcoTC_RaioDoKamehameha().Escala;
 		float desenhada = desenho != null && IsInstanceValid(desenho) ? desenho.Escala : 0;
@@ -191,7 +197,7 @@ public partial class RoboDoTorneioDoCell : Node
 				raio != 0 && Math.Abs(escala - 2) < 1e-6 && Math.Abs(desenhada - 2f) < 0.06f,
 				$"raio {raio}; escala no servidor {escala:0.##}; desenhada {desenhada:0.##}");
 		bool explodiu = false;
-		for (int i = 0; i < 100 && !(explodiu = srv.PalcoTC_TerraExplodindo()); i++) yield return 0.05;
+		for (int i = 0; i < 100 && !(explodiu = srv.PalcoTC_TerraExplodindo()); i++) { srv.PalcoTC_LinhaLivreDeNovo(); yield return 0.05; }
 		yield return 0.25;
 		Fotografar("tc-8-a-terra-explode");
 		Afirmar("**...o raio chega ao fim** -- o estouro na minha tela, e a destruicao da Terra comeca", explodiu);
@@ -208,7 +214,7 @@ public partial class RoboDoTorneioDoCell : Node
 		int cell = srv.PalcoTC_Abrir(eu);
 		yield return 2.0;
 		bool montou = cell != 0 && srv.PalcoTC_EmbateDoKamehameha(eu, vezesOBp: 100);
-		for (int i = 0; i < 120 && montou && !srv.PalcoTC_EmEmbate(); i++) yield return 0.1;
+		for (int i = 0; i < 120 && montou && !srv.PalcoTC_EmEmbate(); i++) { srv.PalcoTC_LinhaLivreDeNovo(); yield return 0.1; }
 		bool abriu = srv.PalcoTC_EmEmbate();
 		yield return 0.3;
 		int raios = mundo.TirosDesenhados().Count(t => t.Tipo == Jandirus.Core.Combat.TipoDeProjetil.Beam);
@@ -216,7 +222,7 @@ public partial class RoboDoTorneioDoCell : Node
 		Afirmar("**O EMBATE: o meu Kamehameha contra o dele, 2x** -- a disputa de ki abre, com os dois raios na minha tela",
 				abriu && raios >= 2, $"montou {montou}; abriu {abriu}; raios desenhados {raios}");
 		// a disputa: eu aperto cada letra -- o servidor nao aperta por quem tem teclado
-		for (int i = 0; i < 900 && srv.PalcoTC_EmEmbate(); i++) { srv.PalcoTC_ApertarNoEmbate(eu); yield return 0.02; }
+		for (int i = 0; i < 900 && srv.PalcoTC_EmEmbate(); i++) { srv.PalcoTC_ApertarNoEmbate(eu); srv.PalcoTC_LinhaLivreDeNovo(); yield return 0.02; }
 		yield return 0.6;
 		Fotografar("tc-10-o-cell-desintegrado");
 		(bool morto, bool terraInteira) = srv.PalcoTC_DepoisDoEmbate();
@@ -235,7 +241,7 @@ public partial class RoboDoTorneioDoCell : Node
 		GD.Print("[dtorneiocell] --- S: o Super Perfeito perdendo solta o Kamehameha que explode a Terra ---");
 		// ---- ele perdendo, o tronco a 22%: o vigia do jogo o faz soltar o Kamehameha sozinho, na luta livre
 		int cell = srv.PalcoTC_SuperPerfeitoPerdendo(eu, tilesAOeste: 6);
-		for (int i = 0; i < 40 && cell != 0 && !srv.PalcoTC_CarregandoOKamehameha(); i++) yield return 0.1;
+		for (int i = 0; i < 40 && cell != 0 && !srv.PalcoTC_CarregandoOKamehameha(); i++) { srv.PalcoTC_LinhaLivreDeNovo(); yield return 0.1; }
 		yield return 1.5;
 		(bool carregando, int degrau, bool torneio, double tronco, bool caido) = srv.PalcoTC_OSuperPerfeito();
 		Fotografar("tc-11-super-perfeito-perdendo-carrega-o-kamehameha");
@@ -246,12 +252,12 @@ public partial class RoboDoTorneioDoCell : Node
 		// ---- eu entro na disputa com um milesimo do BP dele e nao aperto nada: PERCO -- o raio dele segue (eu vou pro fim dele, pra camera), e a
 		// Terra explode
 		bool montou = cell != 0 && srv.PalcoTC_DisputarOKamehameha(eu, vezesOBp: 0.001);
-		for (int i = 0; i < 120 && montou && !srv.PalcoTC_EmEmbate(); i++) yield return 0.1;
+		for (int i = 0; i < 120 && montou && !srv.PalcoTC_EmEmbate(); i++) { srv.PalcoTC_LinhaLivreDeNovo(); yield return 0.1; }
 		bool abriu = srv.PalcoTC_EmEmbate();
-		for (int i = 0; i < 600 && srv.PalcoTC_EmEmbate(); i++) yield return 0.05;
+		for (int i = 0; i < 600 && srv.PalcoTC_EmEmbate(); i++) { srv.PalcoTC_LinhaLivreDeNovo(); yield return 0.05; }
 		srv.PalcoTC_IrProFimDoKamehameha(eu);
 		bool explodiu = false;
-		for (int i = 0; i < 300 && !(explodiu = srv.PalcoTC_TerraExplodindo()); i++) yield return 0.05;
+		for (int i = 0; i < 300 && !(explodiu = srv.PalcoTC_TerraExplodindo()); i++) { srv.PalcoTC_LinhaLivreDeNovo(); yield return 0.05; }
 		yield return 0.25;
 		Fotografar("tc-12-perdi-a-disputa-a-terra-explode");
 		Afirmar("**EU PERCO A DISPUTA CONTRA O SUPER PERFEITO: o Kamehameha dele segue, e a Terra explode** (*\"Se o jogador perder o clash obviamente a "
@@ -262,7 +268,7 @@ public partial class RoboDoTorneioDoCell : Node
 
 		// ---- de novo, NOCAUTEADO por um golpe alto de uma vez (o tronco a 10%, no chao): o vigia o levanta, e ele carrega do mesmo jeito
 		cell = srv.PalcoTC_SuperPerfeitoPerdendo(eu, tilesAOeste: 6, nocauteado: true);
-		for (int i = 0; i < 40 && cell != 0 && !srv.PalcoTC_CarregandoOKamehameha(); i++) yield return 0.1;
+		for (int i = 0; i < 40 && cell != 0 && !srv.PalcoTC_CarregandoOKamehameha(); i++) { srv.PalcoTC_LinhaLivreDeNovo(); yield return 0.1; }
 		yield return 1.5;
 		(carregando, degrau, torneio, _, caido) = srv.PalcoTC_OSuperPerfeito();
 		Fotografar("tc-13-nocauteado-ele-levanta-e-carrega-o-kamehameha");
@@ -272,9 +278,9 @@ public partial class RoboDoTorneioDoCell : Node
 
 		// ---- ...e agora eu VENCO a disputa (cem vezes o BP dele, apertando cada letra): o Super Perfeito e desintegrado, e a Terra fica inteira
 		montou = cell != 0 && srv.PalcoTC_DisputarOKamehameha(eu, vezesOBp: 100);
-		for (int i = 0; i < 120 && montou && !srv.PalcoTC_EmEmbate(); i++) yield return 0.1;
+		for (int i = 0; i < 120 && montou && !srv.PalcoTC_EmEmbate(); i++) { srv.PalcoTC_LinhaLivreDeNovo(); yield return 0.1; }
 		abriu = srv.PalcoTC_EmEmbate();
-		for (int i = 0; i < 900 && srv.PalcoTC_EmEmbate(); i++) { srv.PalcoTC_ApertarNoEmbate(eu); yield return 0.02; }
+		for (int i = 0; i < 900 && srv.PalcoTC_EmEmbate(); i++) { srv.PalcoTC_ApertarNoEmbate(eu); srv.PalcoTC_LinhaLivreDeNovo(); yield return 0.02; }
 		yield return 0.6;
 		Fotografar("tc-14-super-perfeito-desintegrado");
 		(bool morto, bool terraInteira) = srv.PalcoTC_DepoisDoEmbate();
@@ -283,6 +289,43 @@ public partial class RoboDoTorneioDoCell : Node
 		srv.PalcoTC_DevolverOBp();
 		srv.PalcoTC_DevolverATerra(eu);
 		yield return 1.5;
+	}
+
+	// =====================================================================
+	// C. O CELL CACA OS ANDROIDES (dono, 2026-10-20)
+	// =====================================================================
+	private IEnumerable ACaca(World mundo, GameServer srv, int eu)
+	{
+		GD.Print("[dtorneiocell] --- C: o Cell Imperfeito caca os androides ---");
+		int cell = srv.PalcoTC_CellCacaOsAndroides(eu);
+		int a17 = srv.PalcoTC_O17();
+		// o monitor da saga roda uma vez por segundo: em ate 4 s o alvo imposto e o 17 -- e eu estou mais perto dele
+		for (int i = 0; i < 40 && cell != 0 && srv.PalcoTC_ACaca().Alvo != a17; i++) yield return 0.1;
+		yield return 1.5;
+		(int alvo, int degrau, int androides) = srv.PalcoTC_ACaca();
+		Fotografar("tc-15-cell-imperfeito-caca-o-androide");
+		Afirmar("**O CELL IMPERFEITO CACA O ANDROIDE, PRIORIDADE MAXIMA** -- eu estou mais perto, e o alvo dele e o 17, na minha tela",
+				cell != 0 && alvo == a17 && degrau == 0 && androides == 2 && mundo.CorpoDeTeste(cell) != null && mundo.CorpoDeTeste(a17) != null,
+				$"cell {cell}; alvo {alvo} (o 17 {a17}, eu {eu}); degrau {degrau + 1}; androides {androides}");
+		// ...ate derrubar um androide e absorve-lo: o Semi-Perfeito. Os androides andam e a caca e refeita a cada segundo (o de pe mais perto):
+		// o primeiro pode ser qualquer um dos dois. A camera vai ate o Cell antes da foto.
+		for (int i = 0; i < 900 && cell != 0 && srv.PalcoTC_ACaca().Degrau == 0; i++) yield return 0.1;
+		srv.PalcoTC_IrProCell(eu);
+		var naCena = srv.PalcoTC_CellNaCena();
+		yield return 2.0;
+		var depois = srv.PalcoTC_CellNaCena();
+		(alvo, degrau, androides) = srv.PalcoTC_ACaca();
+		Fotografar("tc-16-cell-absorveu-o-androide-semi-perfeito");
+		Afirmar("**...ELE DERRUBA UM ANDROIDE E O ABSORVE** -- o Cell vira Semi-Perfeito, e um dos dois sai do mundo", degrau == 1 && androides == 1,
+				$"degrau {degrau + 1}; androides no mundo {androides}");
+		Afirmar("**E NA CENA DA TRANSFORMACAO ELE NAO AGE** (*\"faça o cell nao atacar ou se mover enquanto se transforma\"*): dois segundos de cena -- "
+				+ "parado, sem raio na mao, intocavel",
+				naCena.EmCena && depois.EmCena && depois.Intocavel && !naCena.Canal && !depois.Canal
+				&& Math.Abs(naCena.X - depois.X) < 1 && Math.Abs(naCena.Y - depois.Y) < 1,
+				$"em cena {naCena.EmCena}/{depois.EmCena}; intocavel {depois.Intocavel}; raio na mao {naCena.Canal}/{depois.Canal}; "
+				+ $"andou {Math.Abs(naCena.X - depois.X) + Math.Abs(naCena.Y - depois.Y):0.#} px");
+		srv.PalcoTC_LimparACaca();
+		yield return 1.0;
 	}
 
 	// =====================================================================
@@ -341,6 +384,42 @@ public partial class RoboDoTorneioDoCell : Node
 		Fotografar("nm-2-contra-exemplo-death-ball-no-freeza-caido");
 		Afirmar("   CONTRA-EXEMPLO (o jogo de antes): a Death Ball sobe sobre o Freeza caido -- e esta no ar quando ele levanta (a tela desenha o "
 				+ "nocaute antes da esfera); a regua de cima reprovaria", subiu, $"esfera {subiu}");
+		srv.PalcoNM_Limpar();
+		yield return 1.0;
+	}
+
+	// =====================================================================
+	// F. O FREEZA NA CENA DA PROPRIA TRANSFORMACAO (dono, 2026-10-20)
+	// =====================================================================
+	private IEnumerable OFreezaNaCena(World mundo, GameServer srv, int eu)
+	{
+		GD.Print("[dtorneiocell] --- F: o Freeza na cena da propria transformacao ---");
+		// (a Death Ball do capitulo N cai na tela quando o Freeza de la sai do mundo com ela no ar: ela termina de cair antes, e este Freeza nasce
+		// do outro lado, a oeste -- na foto da g8 ela o cobriu)
+		yield return 3.0;
+		// ---- a troca de corpo (a cena curta, 2,5 s): ele larga o Death Beam que carregava e fica intocavel
+		int freeza = srv.PalcoFZ_FreezaNaCena(eu, degrau: 0);
+		for (int i = 0; i < 15 && freeza != 0 && mundo.CorpoDeTeste(freeza) == null; i++) yield return 0.05;
+		yield return 0.4;
+		var troca = srv.PalcoFZ_ANaCena();
+		Fotografar("fz-1-freeza-troca-de-corpo-larga-o-raio");
+		Afirmar("**O FREEZA NA TROCA DE CORPO LARGA O RAIO E FICA INTOCAVEL** (*\"todo chefe de saga fica parado, sem atacar e intocável na cena da "
+				+ "própria transformação (o Freeza também)\"*) -- na minha tela",
+				freeza != 0 && mundo.CorpoDeTeste(freeza) != null && troca.EmCena && troca.Intocavel && !troca.Canal,
+				$"freeza {freeza}; em cena {troca.EmCena}; intocavel {troca.Intocavel}; raio na mao {troca.Canal}");
+
+		// ---- a forma final (a cena grande, 28 s): dois segundos de cena -- parado, sem raio na mao, intocavel
+		freeza = srv.PalcoFZ_FreezaNaCena(eu, degrau: 3);
+		for (int i = 0; i < 15 && freeza != 0 && mundo.CorpoDeTeste(freeza) == null; i++) yield return 0.05;
+		var naCena = srv.PalcoFZ_ANaCena();
+		yield return 2.0;
+		var depois = srv.PalcoFZ_ANaCena();
+		Fotografar("fz-2-freeza-forma-final-parado-na-cena");
+		Afirmar("**E NA FORMA FINAL ELE NAO AGE**: dois segundos de cena -- parado, sem raio na mao, intocavel, na minha tela",
+				freeza != 0 && mundo.CorpoDeTeste(freeza) != null && naCena.EmCena && depois.EmCena && depois.Intocavel && !naCena.Canal && !depois.Canal
+				&& Math.Abs(naCena.X - depois.X) < 1 && Math.Abs(naCena.Y - depois.Y) < 1,
+				$"freeza {freeza}; em cena {naCena.EmCena}/{depois.EmCena}; intocavel {depois.Intocavel}; raio na mao {naCena.Canal}/{depois.Canal}; "
+				+ $"andou {Math.Abs(naCena.X - depois.X) + Math.Abs(naCena.Y - depois.Y):0.#} px");
 		srv.PalcoNM_Limpar();
 		yield return 1.0;
 	}

@@ -271,6 +271,10 @@ public partial class GameServer
 		// `--niveisteste`: (adendo 18) as skills que nao subiam de nivel -- a Ki Effusion, o Spirit Gun e o Fist, a Rapid
 		// Movement, a lamina/espada/escudo de Ki, o Full Power e o gigante. O jogador entra pela porta. Ver `GameServer.NiveisQueNaoSubiamTeste.cs`.
 		if (Array.IndexOf(args, "--niveisteste") >= 0) RodarBancadaDosNiveis(porta);
+		// `--espacovooteste`: (2026-10-20) no espaco so se anda voando -- a pe o corpo fica parado (o jogador e a IA), voando anda; ao leme a
+		// nave anda; o colo e o golpe ainda levam; quem rompe a atmosfera voando chega voando. O jogador entra pela porta. Ver
+		// `GameServer.EspacoSoVoandoTeste.cs`.
+		if (Array.IndexOf(args, "--espacovooteste") >= 0) RodarBancadaDoEspacoSoVoando(porta);
 		// `--patriarcateste`: (2026-10-19) o Grande Patriarca de Namek -- o molde e o plano, o nascimento perto do berco, a folha dele, a
 		// vida diaria que nao sai do lugar, o menu E e a conversa que desperta o potencial. O jogador entra pela porta. Ver
 		// `GameServer.PatriarcaTeste.cs`.

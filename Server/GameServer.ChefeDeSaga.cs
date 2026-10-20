@@ -81,6 +81,8 @@ public partial class GameServer
 	{
 		if (ChefeSemCenaDeTeste || Cinematicas.DoChefe(qual) is not { } cena) return;
 		chefe.CenaSegundos = cena.SegundosPreso;
+		// (2026-10-20) ...e o chefe de saga larga o que tinha na mao -- o raio que segurava, a carga: na cena ele nao ataca (`ChefeParadoNaCena`)
+		if (ChefeParadoNaCena(chefe) && _canais.TryGetValue(chefe.Id, out CanalDeKi? naMao)) FecharCanal(chefe.Id, naMao, null);
 
 		var w = Protocol.Begin(Protocol.S2C.CenaDoChefe);
 		w.Put(chefe.Id);
@@ -91,4 +93,30 @@ public partial class GameServer
 		EscutaDeCenasDeChefe?.Add((chefe.Id, qual));
 		GD.Print($"[server] {chefe.Name}: CENA DO CHEFE '{qual}' ({chefe.CenaSegundos:0.#}s preso)");
 	}
+
+	/// <summary>
+	/// (2026-10-20) O CHEFE DE SAGA QUE NAO AGE NA CENA DA PROPRIA TRANSFORMACAO -- o dono, primeiro pro Cell: *"faça o cell nao atacar ou se
+	/// mover enquanto se transforma na proxima forma. e ele fica intocavel nessa cinematica"*; e no mesmo dia pra todos: *"todo chefe de saga
+	/// fica parado, sem atacar e intocável na cena da própria transformação (o Freeza também)"*. A cena ja o prendia no lugar (o
+	/// `PodeMexerOCorpo` le o `EmCena`) e o deixava intocavel (o `EmCinematica`, posto em todo corpo pelo `PrepararCombate`), mas o cerebro
+	/// seguia pensando: o golpe de perto continua sem sair do lugar, e o raio nao pergunta pela cena. Agora ele nao pensa ate ela acabar
+	/// (`TickDosCorposSemDono`), e larga o raio que segurava quando ela comeca.
+	///
+	/// QUEM: o molde de um chefe que alguma saga poe no mundo (<see cref="EhMoldeDeChefeDeSaga"/>) -- o Freeza, os androides, o Cell, o Boo --,
+	/// nascido da saga ou de um admin, como o Cell ja era. Hoje so o Freeza de Namek (o corpo novo e a forma final) e o Cell (a Semi-Perfeita e
+	/// a Perfeita) tem cena de transformacao; o guardiao Saiyajin, o Bills e o Whis nao sao chefes de saga e seguem como eram.
+	///
+	/// A ESFERA DO ULTIMATO FICA DE FORA: a Supernova e a Death Ball do Freeza escrevem o MESMO relogio da cena (parado e intocavel enquanto
+	/// ela cresce, `ComecarASupernova`), mas nao sao transformacao -- ali tudo segue como era (`SupernovaDesde`).
+	/// </summary>
+	private bool ChefeParadoNaCena(ServerPlayer npc) =>
+		!ChefeAgeNaCenaDeTeste && EmCena(npc) && npc.SupernovaDesde == 0
+		&& npc.Papel is { EhChefe: true } papel && EhMoldeDeChefeDeSaga(papel.Molde.Id);
+
+	/// <summary>Este molde e o de um chefe que alguma saga da cadeia poe no mundo (os `"chefes"` das sagas no `npcs.json`)?</summary>
+	private bool EhMoldeDeChefeDeSaga(string molde) =>
+		Array.Exists(_cadeia, e => Array.Exists(e.Chefes, c => string.Equals(c.Molde, molde, StringComparison.OrdinalIgnoreCase)));
+
+	/// <summary>DEFEITO INJETADO (`--torneiocellteste`, familias P e Q): o chefe de saga na cena segue pensando e segurando o raio -- o jogo de antes.</summary>
+	internal static bool ChefeAgeNaCenaDeTeste;
 }

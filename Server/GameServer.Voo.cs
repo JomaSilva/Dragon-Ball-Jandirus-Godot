@@ -534,6 +534,13 @@ public partial class GameServer
 	}
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancada `--espacovooteste`): quem rompe a atmosfera voando volta a chegar ao espaco SEM VOO -- o jogo de antes de
+	/// 2026-10-20, que com a regra nova o deixaria parado no vazio. Lido pela propria linha do <see cref="TentarRomperAAtmosfera"/>. Falso em
+	/// jogo, sempre.
+	/// </summary>
+	internal static bool ChegaSemVooNoEspacoDeTeste;
+
+	/// <summary>
 	/// NO TETO, COM OS PORTOES DO `Space_Flight` -- sai do planeta. Sem eles, para e diz por que.
 	///
 	/// O original nao tem teto de altitude: la o `Space_Flight` e um verb com portoes fixos
@@ -558,8 +565,13 @@ public partial class GameServer
 			pl.Voando = false;
 			pl.Altitude = 0f;
 			pl.VooRapido = false;
-			MandarEfeito(pl, "voo", 0);
 			Decolar(pl);
+			// (2026-10-20) ...E CHEGA VOANDO (dono): no espaco so se anda voando (`ParadoNoEspaco`, `GameServer.Espaco.cs`), e quem subiu
+			// voando continua no ar do outro lado. O `MoveToZone` do `Decolar` apaga o voo de toda troca de zona ("o voo nao atravessa a
+			// porta"); aqui ele volta, na altura de pairar -- a mesma de quem liga o voo la em cima --, sem cobrar a decolagem de novo e sem
+			// o "voo" desligado no fio. Se o `Decolar` recusou, o corpo ficou no planeta e o voo cai como sempre caiu.
+			if (Espaco.EhEspaco(pl.Zone) && !ChegaSemVooNoEspacoDeTeste) { pl.Voando = true; pl.Altitude = Voo.AlturaDePairar; }
+			else MandarEfeito(pl, "voo", 0);
 			return;
 		}
 

@@ -161,6 +161,8 @@ public partial class GameServer
 	{
 		// (2026-10-20) O SUPER PERFEITO, ANTES DE TUDO: o golpe que o mataria vira o Kamehameha que explode a Terra -- ver `GameServer.TorneioDoCell.cs`
 		if (NegarAMorteDoSuperPerfeito(npc)) return true;
+		// (2026-10-20) E O ANDROIDE QUE O CELL CACA: o golpe dele que o mataria o derruba, pra ser absorvido -- ver `NegarAMorteDoAndroideDoCell`
+		if (NegarAMorteDoAndroideDoCell(npc)) return true;
 		if (ChefeMorreAntesDaHoraDeTeste || npc.Papel is not { EhChefe: true } papel || papel.GatilhoAtual < 0) return false;
 		if (ChefesQueMorremAntesDaHora.Contains(papel.Molde.Id)) return false;
 		AvancarEstagio(npc);

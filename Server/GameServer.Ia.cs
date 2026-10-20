@@ -492,6 +492,9 @@ public partial class GameServer
 		// do `gravParalysis` de cima). So o corpo que o DONO dirige: a IA nao passa pelo `unitimer` do DM, e um NPC
 		// sem pernas nao pode virar estatua. Ver `SemPernasNoChao`, `GameServer.Membros.cs`.
 		&& !SemPernasNoChao(pl)
+		// (2026-10-20) NO ESPACO, SO VOANDO (dono: *"personagens q pararem de voar ficam parados"*) -- a irma da linha de cima, com o
+		// vazio no lugar das pernas. Vale pra IA tambem, pela escolha do dono. Ver `ParadoNoEspaco`, `GameServer.Espaco.cs`.
+		&& !ParadoNoEspaco(pl)
 		// PLANTADO POR UMA TECNICA DO LOTE G12 (`usr.move = 0` da Death Ball e da Genkidama, `canmove = 0`
 		// das rajadas). Mesmo funil, pela mesma razao de tudo acima.
 		&& !PresoPeloG12(pl.Id)

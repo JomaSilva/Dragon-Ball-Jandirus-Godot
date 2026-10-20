@@ -779,25 +779,43 @@ public partial class GameServer
 	/// depois ja evoluido. E um SEGUNDO caminho pro mesmo resultado, e o que ele acrescenta -- o susto
 	/// do desaparecimento -- nao paga o estado a mais. O Cell ferido aqui luta ate o fim no degrau em
 	/// que esta, que e o que o proprio original faz quando nao ha androide vivo pra absorver.
+	///
+	/// (2026-10-20) E ELE CACA OS ANDROIDES -- o dono: *"faça ele atacar os androides como prioridade maxima dele"*. Sem androide caido, o
+	/// alvo imposto e o androide DE PE mais perto, na mesma zona: ele larga a luta com o jogador e vai bater nele. O golpe do chefe de saga e
+	/// letal, mas o androide que ele caca nao morre pelas maos dele (`NegarAMorteDoAndroideDoCell`): cai, e e absorvido aqui. DIVERGENCIA
+	/// DECLARADA: no DM o Cell so absorve o androide que outro derrubou (*"AI nao ataca AI"*).
 	/// </summary>
 	private void AbsorverCompanheiroCaido(EloDaSaga elo, EstadoDoElo est, EstadoDoChefe ec, ServerPlayer corpo)
 	{
 		ChefeDaSaga? ficha = Array.Find(elo.Chefes, c => c.Molde == ec.Molde);
 		if (ficha is not { Absorve: true } || corpo.Papel == null) return;
-		if (corpo.Ficha.KO || corpo.Papel.Proximo == null) return;   // caido nao absorve; no ultimo degrau nao ha pra onde subir
+		// (2026-10-20) NO TORNEIO DO CELL QUEM MANDA NO ALVO DELE E O JUIZ -- o desafiante do x1 (`ComecarALutaDoCell`). Este monitor, uma vez
+		// por segundo, apagava esse alvo, e o Cell do x1 ia atras de quem estivesse mais perto -- ate de quem assiste.
+		if (ec.NoTorneio && !AbsorcaoMexeNoTorneioDeTeste) return;
+		// (2026-10-20) ...e na cena da propria transformacao ele nao absorve ninguem: ali ele nao age (`ChefeParadoNaCena`) -- sem isto, com os dois
+		// androides caidos perto, ele engoliria o segundo no meio da cena do primeiro
+		if (corpo.Ficha.KO || ChefeParadoNaCena(corpo) || corpo.Papel.Proximo == null) return;   // caido nao absorve; no ultimo degrau nao ha pra onde subir
 
-		// A VITIMA: outro chefe DESTE elo, no mundo, nocauteado e na mesma zona.
+		// A VITIMA: outro chefe DESTE elo, no mundo, nocauteado e na mesma zona. (2026-10-20) E, sem nenhum caido, o DE PE mais perto: a caca.
 		EstadoDoChefe? presa = null;
-		ServerPlayer? corpoDaPresa = null;
+		ServerPlayer? corpoDaPresa = null, deEmPe = null;
+		float perto = float.MaxValue;
 		foreach (EstadoDoChefe outro in est.Chefes)
 		{
 			if (outro == ec || outro.Fase != FaseDoChefe.NoMundo) continue;
 			if (!_players.TryGetValue(outro.Corpo, out ServerPlayer? c2)) continue;
-			if (!c2.Ficha.KO || c2.Ficha.dead || c2.Zone.Hash != corpo.Zone.Hash) continue;
-			presa = outro; corpoDaPresa = c2; break;
+			if (c2.Ficha.dead || c2.Zone.Hash != corpo.Zone.Hash) continue;
+			if (c2.Ficha.KO) { presa = outro; corpoDaPresa = c2; break; }
+			float d2 = (c2.Pos - corpo.Pos).LengthSquared;
+			if (d2 < perto) { perto = d2; deEmPe = c2; }
 		}
 
-		if (presa == null || corpoDaPresa == null) { corpo.Papel.PresaDoRoteiro = 0; return; }
+		// (2026-10-20) A CACA: sem caido, o alvo imposto e o androide de pe -- o mesmo canal do `bev_prey`, entao ele larga o jogador e vai nele
+		if (presa == null || corpoDaPresa == null)
+		{
+			corpo.Papel.PresaDoRoteiro = deEmPe != null && !CellNaoCacaOsAndroidesDeTeste ? deEmPe.Id : 0;
+			return;
+		}
 
 		// PRIORIDADE ABSOLUTA: larga a luta atual e vai. O canal e o mesmo que o `PresaDoNpc` consulta.
 		corpo.Papel.PresaDoRoteiro = corpoDaPresa.Id;
@@ -806,7 +824,13 @@ public partial class GameServer
 		// porque aqui a posicao e continua e nao uma grade: exigir a distancia exata de um tile faria
 		// o Cell orbitar a vitima sem nunca "encostar".
 		const float Contato = 48f;
-		if ((corpoDaPresa.Pos - corpo.Pos).LengthSquared > Contato * Contato) return;
+		float aoCaido = (corpoDaPresa.Pos - corpo.Pos).LengthSquared;
+		// (2026-10-20) O BOTE: perto do caido (ate `TilesDoBote`), ele avanca sobre ele e o absorve ja. A caca de verdade (o robo da rodada g6)
+		// mostrou o Cell derrubando os androides de longe, com o raio, e nunca encostando: cada golpe que mataria o caido so o mantinha no chao, e
+		// a absorcao nao vinha. Longe, ele segue indo atras (o alvo imposto, acima).
+		bool bote = !CellSemBoteDeTeste && aoCaido <= TilesDoBote * TilesDoBote * ZoneCollision.TileSize * ZoneCollision.TileSize;
+		if (aoCaido > Contato * Contato && !bote) return;
+		if (aoCaido > Contato * Contato) Transportar(corpo, corpoDaPresa.Zone, corpoDaPresa.Pos + new Vec2(ZoneCollision.TileSize, 0));
 
 		string nome = corpoDaPresa.Name;
 		presa.Fase = FaseDoChefe.Consumido;
@@ -822,6 +846,53 @@ public partial class GameServer
 		GD.Print($"[server] SAGA '{elo.Id}': {corpo.Name} absorveu {nome} -> degrau "
 			   + $"{corpo.Papel.Estagio + 1} | BP {corpo.Ficha.BP:N0}");
 		SalvarSagas();
+	}
+
+	/// <summary>DEFEITO INJETADO (`--torneiocellteste`, familia M): o Cell nao caca os androides de pe -- so vai no que outro derrubou (o jogo de antes).</summary>
+	internal static bool CellNaoCacaOsAndroidesDeTeste;
+
+	/// <summary>DEFEITO INJETADO (`--torneiocellteste`, familia M): o golpe do Cell que mataria o androide cacado mata (`NegarAMorteDoAndroideDoCell`).</summary>
+	internal static bool CellMataOAndroideDeTeste;
+
+	/// <summary>DEFEITO INJETADO (`--torneiocellteste`, familia D): a absorcao mexe no alvo do Cell do torneio -- o monitor apaga o desafiante do x1.</summary>
+	internal static bool AbsorcaoMexeNoTorneioDeTeste;
+
+	/// <summary>DEFEITO INJETADO (`--torneiocellteste`, familia M): sem o bote -- o Cell so absorve o caido encostando (o jogo da rodada g6).</summary>
+	internal static bool CellSemBoteDeTeste;
+
+	/// <summary>Ate quantos tiles do androide caido o Cell da o bote (avanca e absorve). O arranque de todo corpo vai ate quinze; este e o do Cell.</summary>
+	private const int TilesDoBote = 10;
+
+	/// <summary>Quanto tempo o androide que o Cell derrubou fica no chao: folga pro monitor (uma vez por segundo) ver o Cell encostado.</summary>
+	private const double SegundosDoAndroideNoChao = 60;
+
+	/// <summary>
+	/// (2026-10-20) O ANDROIDE QUE O CELL CACA NAO MORRE PELAS MAOS DELE: o golpe que o mataria o deixa CAIDO, por um fio -- a caca e pra
+	/// absorver (`AbsorverCompanheiroCaido`), e o golpe do chefe de saga e letal (e o letal finaliza quem cai, `Cerebro.Finaliza`). Pendurado no
+	/// `NegarMorte`, pelo `NegarMorteDoChefe`. Quem mata o androide continua sendo qualquer outro: o jogador, o admin.
+	/// </summary>
+	private bool NegarAMorteDoAndroideDoCell(ServerPlayer npc)
+	{
+		if (CellMataOAndroideDeTeste || npc.Papel == null || !_players.TryGetValue(npc.UltimoAgressor, out ServerPlayer? cell)
+			|| cell.Papel?.Proximo == null || cell.Ficha.dead) return false;
+		foreach (EloDaSaga elo in _cadeia)
+		{
+			if (_sagas.Do(elo.Id) is not { Fase: FaseDaSaga.EmCurso } est) continue;
+			EstadoDoChefe? doCell = est.Chefes.Find(c => c.Corpo == cell.Id && c.Fase == FaseDoChefe.NoMundo && !c.NoTorneio);
+			if (doCell == null || Array.Find(elo.Chefes, c => c.Molde == doCell.Molde) is not { Absorve: true }) continue;
+			if (!est.Chefes.Exists(c => c.Corpo == npc.Id && c.Fase == FaseDoChefe.NoMundo)) return false;
+			// CAIDO, POR UM FIO: o membro vital arrancado volta, cada nucleo fica com o minimo de vida -- e ele cai
+			foreach (Jandirus.Core.Combat.BodyPart p in npc.Combate.Corpo.Partes
+						 .Where(q => q.Decepado && q.Papel == Jandirus.Core.Combat.Vitalidade.Nucleo).ToList())
+				npc.Combate.Corpo.Regenerar(p);
+			foreach (Jandirus.Core.Combat.BodyPart p in npc.Combate.Corpo.Partes)
+				if (!p.Decepado && p.Papel == Jandirus.Core.Combat.Vitalidade.Nucleo && p.Vida < p.VidaMax * 0.05) p.Vida = p.VidaMax * 0.05;
+			npc.Combate.SincronizarVida();
+			npc.Combate.Nocautear(SegundosDoAndroideNoChao);
+			GD.Print($"[server] SAGA '{elo.Id}': o golpe de {cell.Name} que mataria {npc.Name} o derrubou -- pra ser absorvido");
+			return true;
+		}
+		return false;
 	}
 
 	// =====================================================================
