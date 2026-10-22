@@ -2160,6 +2160,7 @@ public sealed partial class GameServer
 			cd.EntrarEmCombate();
 			dono.Combate?.EntrarEmCombate();
 		}
+		int membrosAntes = MembrosDeForaPerdidos(cd);
 		foreach (BodyPart m in membros) cd.Ferir(m, total / membros.Count, p.Letal);
 		cd.SincronizarVida();
 		AnunciarGolpe(dono, alvo, new GolpeResultado
@@ -2169,7 +2170,7 @@ public sealed partial class GameServer
 		if (cadaver) return;
 		AoTiroEncostar(p, dono, FatorDaLuta(dono, alvo));
 		MarcarAgressao(alvo, dono);
-		ConsequenciaDoDano(alvo, dono, "na explosao de ki", p.Letal, porKi: !p.Fisico);
+		ConsequenciaDoDano(alvo, dono, "na explosao de ki", p.Letal, porKi: !p.Fisico, perdeuMembro: MembrosDeForaPerdidos(cd) > membrosAntes);
 	}
 
 	/// <summary>

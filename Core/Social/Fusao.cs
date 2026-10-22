@@ -1,4 +1,5 @@
 using Jandirus.Core.Appearance;
+using Jandirus.Core.Races;
 using Jandirus.Core.Stats;
 
 namespace Jandirus.Core.Social;
@@ -9,7 +10,7 @@ namespace Jandirus.Core.Social;
 /// </summary>
 public enum TipoDeFusao
 {
-	/// <summary>A Danca (Metamoro). `FType == 1`. 900 de energia, roupa `Metamoran Vest`.</summary>
+	/// <summary>A Danca (Metamoro). `FType == 1`. 900 de energia, roupa `Fusion clothes`.</summary>
 	Danca = 1,
 
 	/// <summary>Os brincos Potara. `FType == 2`. 1800 de energia, sem QTE, qualquer raca.</summary>
@@ -201,18 +202,10 @@ public static class Fusao
 	/// <summary>
 	/// A RAIZ RACIAL: o que conta como "a mesma raca" pro portao da Danca.
 	///
-	/// *"so entre pessoas da MESMA RACA -- meio saiyajin com saiyajin puro ainda funciona"*. No
-	/// catalogo deste port o meio-Saiyajin e a raca `Halfbreed` (`races.json`), e ele nao tem
-	/// prototipo proprio: `Birth.cs:123` ja resolve o corpo dele **pelo Saiyajin**
-	/// (`protoRaca = raca == "Halfbreed" ? "Saiyan" : raca`). Esta funcao e a mesma resposta na
-	/// mesma forma -- e por ser uma funcao, no dia em que outra mestiçagem entrar, ela entra aqui e
-	/// em nenhum outro lugar.
+	/// *"so entre pessoas da MESMA RACA -- meio saiyajin com saiyajin puro ainda funciona"*. E o
+	/// mesmo mapa do corpo (<see cref="RaceCatalog.ProtoDoCorpo"/>): o meio-Saiyajin e Saiyajin.
 	/// </summary>
-	public static string RaizDaRaca(string raca) =>
-		raca.Equals("Halfbreed", StringComparison.OrdinalIgnoreCase)
-		|| raca.Equals("Half-Saiyan", StringComparison.OrdinalIgnoreCase)
-			? "Saiyan"
-			: raca;
+	public static string RaizDaRaca(string raca) => RaceCatalog.ProtoDoCorpo(raca);
 
 	/// <summary>A mesma raca, pela <see cref="RaizDaRaca"/>.</summary>
 	public static bool MesmaRaca(string a, string b) =>
@@ -595,20 +588,23 @@ public static class Fusao
 	// A APARENCIA DA FUSAO -- roupa e cabelo
 	// =====================================================================
 	/// <summary>
-	/// A ROUPA DA METAMORO: **so o colete**, e o dono foi explicito (*"roupa: apenas `Metamoran
-	/// Vest.png`"*).
+	/// A ROUPA DA METAMORO: **so o uniforme metamoriano inteiro** -- o colete preto de ombreiras laranja, a
+	/// faixa azul, a calca branca e as botas --, o `Fusion clothes.dmi` (dono, 2026-10-20: *"mude a
+	/// roupa/overlay da fusao da danca (metamoro) por essa"*). Antes era so o colete (`Metamoran Vest`).
 	///
 	/// ============================ O DM VESTE OUTRA COISA, E E ENGANO DELE ============================
-	/// `Fusion.dm:217` poe `/obj/overlay/clothes/FusionPads` (`Clothes_FusionPads.dmi`) -- as OMBREIRAS,
-	/// e nao o colete. O `Metamoran Vest.dmi` existe no disco do original e **nao e citado por uma linha
-	/// de codigo em todo o `Code/`**: e arte comprada e nunca ligada. O dono pediu a peca certa.
+	/// `Fusion.dm:217` poe `/obj/overlay/clothes/FusionPads` (`Clothes_FusionPads.dmi`) -- so as OMBREIRAS.
+	/// O `Fusion clothes.dmi` existe no disco do original (`Icons/Character Icons/`) e **nao e citado por
+	/// uma linha de codigo em todo o `Code/`**: e arte comprada e nunca ligada. O dono escolheu esta.
 	/// ============================================================================================
 	///
 	/// NOME DE ARQUIVO E NAO CAMINHO, pela mesma regra que o <see cref="VisualCatalog.Peca"/> ja
 	/// defende: a fonte e o DM, e la a peca e citada por arquivo. Quem traduz nome em `res://` e o
-	/// catalogo -- e no dia em que a pasta mudar, nada aqui envelhece.
+	/// servidor (`GameServer.CaminhoDaPecaDeFusao`). Ela NAO esta no guarda-roupa, como o brinco abaixo:
+	/// mora em `Character Icons/` (a pasta do original), que o extrator de roupa nao varre -- o uniforme e
+	/// da fusao, e nao uma peca da criacao de personagem.
 	/// </summary>
-	public const string PecaDoColeteMetamoran = "Metamoran Vest";
+	public const string PecaDaRoupaDaDanca = "Fusion clothes";
 
 	/// <summary>
 	/// A PECA DA POTARA -- `potara.dmi` (`Fusion.dm:218` e `:692`), a MESMA do original.
@@ -635,7 +631,7 @@ public static class Fusao
 	/// </summary>
 	public static string PecaDe(TipoDeFusao t) => t switch
 	{
-		TipoDeFusao.Danca => PecaDoColeteMetamoran,
+		TipoDeFusao.Danca => PecaDaRoupaDaDanca,
 		TipoDeFusao.Potara => PecaDosBrincosPotara,
 		_ => "",
 	};
@@ -643,8 +639,9 @@ public static class Fusao
 	/// <summary>
 	/// A ROUPA DA FUSAO, montada. As duas regras do dono, e elas sao OPOSTAS uma da outra:
 	///
-	///   * **Metamoro** -- *"apenas `Metamoran Vest.png`"*: a peca SUBSTITUI o guarda-roupa inteiro. O
-	///     colete metamoriano e um uniforme, e quem funde dancando veste o uniforme;
+	///   * **Metamoro** -- *"apenas `Metamoran Vest.png`"* (hoje o `Fusion clothes`, ver
+	///     <see cref="PecaDaRoupaDaDanca"/>): a peca SUBSTITUI o guarda-roupa inteiro. A roupa metamoriana e
+	///     um uniforme, e quem funde dancando veste o uniforme;
 	///   * **Potara** -- *"`potara.png` + a roupa de quem convidou"*: a peca SOMA. O brinco e um
 	///     acessorio, e o corpo continua vestido do que quem convidou estava vestindo.
 	///

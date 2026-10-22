@@ -1,0 +1,14 @@
+[gd_resource type="SpriteFrames" load_steps=2 format=3]
+
+[ext_resource type="Texture2D" path="res://Assets/Sprites/Character Icons/4bd622a4-63f7-4ca5-8b63-42931876969c.png" id="1_shenlong"]
+
+[resource]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": ExtResource("1_shenlong")
+}],
+"loop": true,
+"name": &"shenlong",
+"speed": 5.0
+}]

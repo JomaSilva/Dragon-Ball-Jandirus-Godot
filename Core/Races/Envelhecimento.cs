@@ -47,9 +47,7 @@ public static class Envelhecimento
 	/// ZERO QUER DIZER IMORTAL, e nao "auge aos zero anos": o Majin nao envelhece
 	/// (`biologicallyimmortal = 1` no DM). Ver <see cref="NaoEnvelhece"/>.
 	///
-	/// OS NOMES SAO OS DO PORT, e nem sempre os do DM: a raca do Freeza se chama "Icer" aqui
-	/// (o extrator de protos pegou a folha do typepath) e "Frost Demon" la. As duas grafias
-	/// respondem, porque as duas circulam no codigo -- ver `Ranks.cs`.
+	/// A raca do Freeza se chama "Frost Demon". "Icer" ainda responde: e a chave dos saves de antes.
 	/// </summary>
 	public static double AugeDaRaca(string raca) => raca switch
 	{
@@ -57,7 +55,7 @@ public static class Envelhecimento
 		"Saiyan" or "Legendary Saiyan" => 80,
 		"Half-Saiyan" or "Halfbreed" or "Half-Breed" => 70,
 		"Quarter-Saiyan" => 60,
-		"Icer" or "Frost Demon" => 2000,
+		"Frost Demon" or "Icer" => 2000,
 		"Majin" => 0,                       // nao envelhece
 		"Namekian" => 200,
 		"Android" => 200,

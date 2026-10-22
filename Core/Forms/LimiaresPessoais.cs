@@ -10,12 +10,13 @@ namespace Jandirus.Core.Forms;
 /// de fabrica por um `rand()` (`statsaiyan.dm:45-77`) ou trocando por uma faixa absoluta
 /// (`statheran.dm:26-42`). Duas coisas se perdem quando isso vira constante:
 ///
-/// 1. **A FAIXA E CARACTERIZACAO, NAO RUIDO.** O Elite acende o SSJ1 MAIS TARDE (x1,1..1,4) e o
-///    SSJ2 MAIS CEDO (x0,9..1,2); o Low-Class faz o contrario (statsaiyan.dm:58-64). Nao da pra
-///    tirar a media disso sem apagar a diferenca entre as duas classes: o Elite e quem custa a
-///    virar Super Saiyajin e depois dispara, o Low-Class e quem vira cedo e empaca. O Legendary
-///    nem aparece no meio -- ele nao mexe em ssjat/ssj2at porque a escada dele e outra
-///    (restssjat/unrestssjat/lssjat, statsaiyan.dm:65-70).
+/// 1. **A FAIXA E CARACTERIZACAO, NAO RUIDO.** No DM o Elite acende o SSJ1 MAIS TARDE (x1,1..1,4) e
+///    o SSJ2 MAIS CEDO (x0,9..1,2), e o Low-Class faz o contrario (statsaiyan.dm:58-64). Este port
+///    trocou isso a pedido do dono (2026-10-21, ver <see cref="RolarSaiyajin"/>): o Low-Class e a
+///    classe que transforma mais facil, em toda a escada, e o Elite a que transforma mais tarde. Nao
+///    da pra tirar a media disso sem apagar a diferenca entre as classes. O Legendary nem aparece no
+///    meio -- ele nao mexe em ssjat/ssj2at porque a escada dele e outra (restssjat/unrestssjat/lssjat,
+///    statsaiyan.dm:65-70).
 ///
 /// 2. **DUAS PESSOAS DA MESMA CLASSE NAO SAO A MESMA PESSOA.** Dentro do Elite ainda ha 4
 ///    resultados possiveis (rand(11,14) e DISCRETO: 1,1 / 1,2 / 1,3 / 1,4). E o que faz "quando
@@ -229,34 +230,49 @@ public sealed class LimiaresPessoais
 	}
 
 	/// <summary>
-	/// statsaiyan.dm:45-77.
+	/// statsaiyan.dm:45-77, com a troca do dono de 2026-10-21.
 	///
-	/// Primeiro as formas que TODA classe sorteia igual (linhas 52-56), depois o switch por
-	/// classe (57-77). A ordem nao muda resultado nenhum aqui -- cada campo tem gerador proprio
-	/// -- mas a estrutura e a mesma do DM de proposito, pra conferencia.
+	/// Primeiro as formas da escada alta (linhas 52-56), depois o switch por classe (57-77). A
+	/// ordem nao muda resultado nenhum aqui -- cada campo tem gerador proprio -- mas a estrutura e
+	/// a mesma do DM de proposito, pra conferencia.
+	///
+	/// ============================ O LOW-CLASS TRANSFORMA MAIS FACIL (dono, 2026-10-21) ============================
+	/// *"faca o low class ser a classe q pega as transformacoes mais facilmente (atualmente ta o contrario)"*. No DM
+	/// a classe so mexia no SSJ1 e no SSJ2, e cruzado: o Low-Class virava SSJ1 cedo e SSJ2 tarde, o Elite o contrario.
+	/// O dono escolheu a ESCADA INTEIRA, com estas faixas (fator sobre o limiar de fabrica):
+	///
+	///                SSJ1       SSJ2       SSJ3 / SSJ4 / Oozaru Dourado
+	///   Low-Class    0,8-1,0    0,8-1,0    0,7-1,0
+	///   Normal...    1,0-1,2    0,9-1,2    0,9-1,3      (o `else` do DM, igual a antes)
+	///   Elite        1,1-1,4    1,1-1,4    1,0-1,4
+	///
+	/// As classes do `else` (Normal, Normal Primal, Kaio, as linhagens do meio-Saiyajin), o Legendary e o Legendary
+	/// Primal nao mudaram. O sorteio e gravado no nascimento: o Low-Class que ja nasceu desce no login
+	/// (<see cref="DescerAoSorteioDoLowClass"/>), e o Elite antigo fica como esta.
+	/// ============================================================================================================
 	/// </summary>
 	private void RolarSaiyajin(string classe)
 	{
-		// --- iguais pra todas as classes (statsaiyan.dm:52-56) ---------------
-		ssj3at = Catalogo.Ssj3atInicial * Faixa("ssj3at", 9, 13);          // :52
-		ultrassjat = Catalogo.UltrassjatInicial * Faixa("ultrassjat", 9, 13); // :53
-		rawssj4at = Catalogo.RawSsj4atInicial * Faixa("rawssj4at", 9, 13); // :54
+		// --- a escada alta (statsaiyan.dm:52-56): igual pra toda classe no DM; aqui o Low-Class e o Elite tem a deles ---
+		ssj3at = Catalogo.Ssj3atInicial * FaixaDaEscada("ssj3at", classe);          // :52
+		ultrassjat = Catalogo.UltrassjatInicial * FaixaDaEscada("ultrassjat", classe); // :53
+		rawssj4at = Catalogo.RawSsj4atInicial * FaixaDaEscada("rawssj4at", classe); // :54
 		unrestssjat = UnrestSsjatInicial * Faixa("unrestssjat", 9, 13);          // :55
 		lssjat = LssjatInicial * Faixa("lssjat", 9, 13);                         // :56
 
 		// --- por classe (statsaiyan.dm:57-77) --------------------------------
 		switch (classe)
 		{
-			// ELITE: SSJ1 mais TARDE (1,1-1,4x), SSJ2 mais CEDO (0,9-1,2x). statsaiyan.dm:58-61
+			// ELITE: o mais TARDE nas duas (1,1-1,4x). No DM o SSJ2 dele era o mais cedo (0,9-1,2x, statsaiyan.dm:58-61).
 			case "Elite":
 				ssjat = Catalogo.SsjatInicial * Faixa("ssjat", 11, 14);
-				ssj2at = Catalogo.Ssj2atInicial * Faixa("ssj2at", 9, 12);
+				ssj2at = Catalogo.Ssj2atInicial * Faixa("ssj2at", 11, 14);
 				break;
 
-			// LOW-CLASS: o espelho do Elite -- SSJ1 cedo, SSJ2 tarde. statsaiyan.dm:62-64
+			// LOW-CLASS: o mais CEDO nas duas (0,8-1,0x). No DM eram 0,9-1,2x e 1,1-1,4x (statsaiyan.dm:62-64).
 			case "Low-Class":
-				ssjat = Catalogo.SsjatInicial * Faixa("ssjat", 9, 12);
-				ssj2at = Catalogo.Ssj2atInicial * Faixa("ssj2at", 11, 14);
+				ssjat = Catalogo.SsjatInicial * Faixa("ssjat", 8, 10);
+				ssj2at = Catalogo.Ssj2atInicial * Faixa("ssj2at", 8, 10);
 				break;
 
 			// LEGENDARY: NAO mexe em ssjat/ssj2at (statsaiyan.dm:65-70). Nao e esquecimento do
@@ -288,6 +304,46 @@ public sealed class LimiaresPessoais
 		if (classe != "Legendary")
 			ssj3LearnReq = ssj3at / 10 * (Sorteador("ssj3LearnReq").Next(200, 301) / 100.0);
 	}
+
+	/// <summary>
+	/// A FAIXA DA ESCADA ALTA (SSJ3, SSJ4 e o `ultrassjat` do Oozaru Dourado) por classe -- o quadro esta em
+	/// <see cref="RolarSaiyajin"/>. Quem nao e Low-Class nem Elite fica com o `rand(9,13)/10` do DM.
+	/// </summary>
+	private double FaixaDaEscada(string campo, string classe) => classe switch
+	{
+		"Low-Class" => Faixa(campo, 7, 10),
+		"Elite" => Faixa(campo, 10, 14),
+		_ => Faixa(campo, 9, 13),
+	};
+
+	/// <summary>
+	/// (2026-10-21) O LOW-CLASS QUE JA NASCEU ACOMPANHA A FAIXA NOVA -- SO PRA BAIXO. Chamado no login.
+	///
+	/// Os limiares sao sorteados uma vez e gravados, entao a faixa nova de <see cref="RolarSaiyajin"/> so chegaria
+	/// a personagem novo. O dono escolheu que o Low-Class antigo tambem ganhe: cada limiar da escada dele fica com o
+	/// MENOR entre o gravado e o que a mesma semente sorteia hoje.
+	///
+	/// SO PRA BAIXO e o que deixa mexer no que ja rolou sem quebrar a invariante do <see cref="Rolado"/>: re-sortear
+	/// pra CIMA destransforma quem ja tinha a forma, e uma porta que desce nunca tira forma de ninguem. Pelo mesmo
+	/// motivo o Elite antigo NAO sobe (escolha do dono), e o desconto que alguem ja ganhou (a metade do `ssj2at` da
+	/// absorcao, `GameServer.Absorcao`) fica, porque o gravado ja e o menor. Quem nunca rolou (save de antes dos
+	/// limiares) fica de fora: ele nao tem semente pra perguntar.
+	/// </summary>
+	public void DescerAoSorteioDoLowClass(string raca, string? classe)
+	{
+		if (!Rolado || raca != "Saiyan" || classe != "Low-Class" || LowClassAntigoParadoDeTeste) return;
+		LimiaresPessoais hoje = Rolar(raca, classe, Semente);
+		ssjat = Math.Min(ssjat, hoje.ssjat);
+		ssj2at = Math.Min(ssj2at, hoje.ssj2at);
+		ssj3at = Math.Min(ssj3at, hoje.ssj3at);
+		ultrassjat = Math.Min(ultrassjat, hoje.ultrassjat);
+		rawssj4at = Math.Min(rawssj4at, hoje.rawssj4at);
+		// o zero e "nunca aprende assim" (ver o campo): ele nao vira requisito por esta conta
+		if (ssj3LearnReq > 0) ssj3LearnReq = Math.Min(ssj3LearnReq, hoje.ssj3LearnReq);
+	}
+
+	/// <summary>DEFEITO INJETADO (`--formasteste`): o login nao desce o Low-Class antigo -- ele fica com a faixa do DM.</summary>
+	public static bool LowClassAntigoParadoDeTeste;
 
 	/// <summary>
 	/// statheran.dm:26-42.
@@ -340,11 +396,13 @@ public sealed class LimiaresPessoais
 	///   * **Demon clan** -- `Starting BP` 35, `Battle Power` 1,4. O meio, e leva o `else` do DM:
 	///     **1,0x a 1,2x**;
 	///   * **Dragon clan** -- `Starting BP` 25, `Battle Power` 1,2. E o Low-Class de Namek (o cla de
-	///     suporte, o mais fraco de briga) e leva a faixa dele: **0,9x a 1,2x**. Transforma cedo,
-	///     porque e o unico consolo que ele tem.
+	///     suporte, o mais fraco de briga) e leva a faixa do Low-Class do DM: **0,9x a 1,2x**. Transforma
+	///     cedo, porque e o unico consolo que ele tem.
 	///
-	/// A FAIXA RESULTANTE E **1.350.000 a 2.100.000** -- a mesma do SSJ, numero por numero. Que e o
-	/// pedido do dono lido ao pe da letra.
+	/// A FAIXA RESULTANTE E **1.350.000 a 2.100.000** -- a mesma do SSJ do DM, numero por numero. Que e o
+	/// pedido do dono lido ao pe da letra. (2026-10-21) O Low-Class SAIYAJIN desceu pra 0,8-1,0x (ver
+	/// <see cref="RolarSaiyajin"/>) e a borda de baixo do SSJ foi junto, pra 1.200.000; o Dragon clan NAO foi:
+	/// o pedido foi do Low-Class, e uma classe com o mesmo papel em outra raca nao entra sem o dono dizer.
 	/// ======================================================================================================
 	/// </summary>
 	/// <param name="cla">O `Class` do Namekuseijin: "Warrior clan", "Demon clan" ou "Dragon clan".</param>

@@ -192,11 +192,19 @@ public partial class CargaVisual : Node2D
 		if (!ligado) { PararLaco(); return; }
 		if (!(retrato && estreia))
 		{
-			AudioDirector.EfeitoNoLugar(this, Trilha.CargaInicio, 0.55f);
+			Estalar(this);
 			EstalosDeTeste++;
 		}
 		LigarLaco();
 	}
+
+	/// <summary>
+	/// O ESTALO DE COMECAR A CARGA, tocado em <paramref name="onde"/>. Estatico e fora do <see cref="Som"/> porque ha um segundo
+	/// gesto que soa exatamente assim: a transformacao instantanea (dono, 2026-10-20: *"deveria ser o mesmo som inicial q faz ao
+	/// apertar C"*, ver o fim do `World.AoMudarForma`). Uma chamada so pros dois -- arquivo e volume copiados em dois lugares
+	/// discordariam no primeiro ajuste de um deles.
+	/// </summary>
+	public static void Estalar(Node2D onde) => AudioDirector.EfeitoNoLugar(onde, Trilha.CargaInicio, 0.55f);
 
 	private bool _comSom, _jaSoube;
 

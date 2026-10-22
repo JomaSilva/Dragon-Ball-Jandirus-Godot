@@ -27,16 +27,34 @@ namespace Jandirus.Client;
 ///
 /// O MOLDE E O DA `TelaDeRefugio` (camada 4, ancora + `CenterContainer`, fundo que come o clique) e ela NAO TRAVA TECLA:
 /// os controles nao pegam foco, e o jogo continua por baixo. Ela nao decide nada -- manda o verbo e o servidor responde.
+///
+/// ============================ A FORMA QUE NAO O SUSTENTA (v0.4.2, 2026-10-21) ============================
+/// O dono (2026-10-19): *"faca com q n de pra usar kaioken nas formas de super saiyajin, somente no ssj blue pra quem e saiyajin de
+/// classe baixa e media"* (e, em 2026-10-21, *"kaioken n poderia ser usado com NENHUMA transformacao, o blue e a unica excecao a
+/// regra"*) -- e o servidor ja recusa nas tres portas (`Kaioken.VetoDaForma`). So que esta tela continuava oferecendo
+/// "Acender o Kaio-ken xN" num Super Saiyajin, e o porque so aparecia no chat DEPOIS do aperto. Agora ela o diz ANTES: a frase do
+/// servidor em vermelho logo acima dos botoes, e o botao desligado (<see cref="RecusaDaForma"/>). Continua sem decidir nada: e a mesma
+/// regra do Core com o que ja chega ao cliente, e o servidor segue recusando por conta propria.
+/// =======================================================================================================
 /// </summary>
 public partial class TelaDeKaioken : CanvasLayer
 {
 	public static TelaDeKaioken? Instancia { get; private set; }
 
+	/// <summary>DEFEITO INJETADO (robo --diagkaiokenveto): a tela e o cartao da aba Forms nao veem a recusa da forma -- o jogo de antes, que oferecia acender em qualquer forma. Falso em jogo, sempre.</summary>
+	public static bool RecusaCegaDeTeste;
+
+	/// <summary>DEFEITO INJETADO (robo --diagkaiokenveto): o segundo aperto da tecla acende mesmo com o botao desligado pela recusa. Falso em jogo, sempre.</summary>
+	public static bool AcendeComRecusaDeTeste;
+
+	/// <summary>DEFEITO INJETADO (robo --diagkaiokenveto): a tela aberta nao ouve o ki divino mudar, e a recusa do Blue fica velha. Falso em jogo, sempre.</summary>
+	public static bool SurdaAoKiDivinoDeTeste;
+
 	/// <summary>Os degraus a um clique: os de sempre do anime, e os do DM.</summary>
 	private static readonly int[] Degraus = [2, 3, 4, 10, 20, 50, 100];
 
 	private Control _raiz = null!;
-	private Label _maestria = null!, _vezes = null!, _poder = null!, _risco = null!, _nota = null!;
+	private Label _maestria = null!, _vezes = null!, _poder = null!, _risco = null!, _nota = null!, _recusa = null!;
 	private HSlider _deslizador = null!;
 	private Button _acender = null!;
 
@@ -116,6 +134,11 @@ public partial class TelaDeKaioken : CanvasLayer
 		coluna.AddChild(_risco);
 		coluna.AddChild(new HSeparator());
 
+		// (v0.4.2) A RECUSA DA FORMA, logo acima do botao que ela desliga -- ver o cabecalho.
+		_recusa = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart, Visible = false };
+		_recusa.AddThemeColorOverride("font_color", Tema.Perigo);
+		coluna.AddChild(_recusa);
+
 		var botoes = new HBoxContainer();
 		botoes.AddThemeConstantOverride("separation", 8);
 		coluna.AddChild(botoes);
@@ -132,19 +155,55 @@ public partial class TelaDeKaioken : CanvasLayer
 		coluna.AddChild(_nota);
 
 		// METODO NOMEADO E NAO LAMBDA: assinatura com lambda nao se cancela (ver `_ExitTree`).
-		if (GameClient.Instance is { } cli) cli.AtributosRecebidos += AoAtributos;
+		if (GameClient.Instance is { } cli)
+		{
+			cli.AtributosRecebidos += AoAtributos;
+			cli.KiDivinoMudou += AoKiDivino;
+		}
 		Atualizar();
 	}
 
 	public override void _ExitTree()
 	{
-		if (GameClient.Instance is { } cli) cli.AtributosRecebidos -= AoAtributos;
+		if (GameClient.Instance is { } cli)
+		{
+			cli.AtributosRecebidos -= AoAtributos;
+			cli.KiDivinoMudou -= AoKiDivino;
+		}
 		if (Instancia == this) Instancia = null;
 	}
 
 	private void AoAtributos(Jandirus.Net.Protocol.AtributosState _)
 	{
 		if (NaTela) Atualizar();
+	}
+
+	/// <summary>
+	/// (v0.4.2) O KI DIVINO MUDOU: a maestria divina e uma das pecas da recusa no Blue (os 50% do DM), e ela chega no `S2C.GodKi`, e nao
+	/// na ficha lenta -- sem este ouvido, a tela aberta no Blue continuaria recusando depois de o corpo cruzar os 50%.
+	/// </summary>
+	private void AoKiDivino()
+	{
+		if (NaTela && !SurdaAoKiDivinoDeTeste) Atualizar();
+	}
+
+	/// <summary>
+	/// (v0.4.2) A RECUSA DA FORMA DE AGORA, com a frase que o servidor mandaria no chat -- ou nulo, quando a forma sustenta o Kaio-ken.
+	/// E a regra do Core que as tres portas do servidor perguntam (`Kaioken.VetoDaForma`), com as tres pecas que ja chegam aqui: a forma e
+	/// a classe da ficha lenta (`AtributosState.FormaAtual` e `.Classe`, que e a `Fighter.Class` que o servidor le) e a maestria divina do
+	/// `S2C.GodKi` (zero pra quem nao despertou, o `godki?.mastery ?? 0` de la). No Oozaru a ficha diz o macaco e o servidor pergunta pela
+	/// base: nenhum dos dois veta. A primeira letra sobe porque aqui a frase abre a linha.
+	///
+	/// Publica porque o cartao do Kaio-ken da aba Forms (`MenuJogo.CartaoDoKaioken`) escreve a mesma.
+	/// </summary>
+	public static string? RecusaDaForma(GameClient cli)
+	{
+		Jandirus.Core.Forms.FormaDef? forma = Jandirus.Core.Forms.Catalogo.PorRede(cli.Atributos.FormaAtual);
+		KaiokenCore.Veto veto = RecusaCegaDeTeste ? KaiokenCore.Veto.Nenhum
+			: KaiokenCore.VetoDaForma(forma, cli.Atributos.Classe, cli.KiDivino.Maestria);
+		if (veto == KaiokenCore.Veto.Nenhum) return null;
+		string frase = KaiokenCore.FraseDoVeto(veto, forma);
+		return char.ToUpperInvariant(frase[0]) + frase[1..];
 	}
 
 	// =====================================================================
@@ -187,6 +246,9 @@ public partial class TelaDeKaioken : CanvasLayer
 	private void Acender()
 	{
 		if (GameClient.Instance is not { } cli) return;
+		// (v0.4.2) O BOTAO DESLIGADO PELA RECUSA NAO ACENDE PELA TECLA: o segundo aperto e o mesmo botao (ver o cabecalho). O servidor
+		// recusaria do mesmo jeito, mas a tela se fecharia levando junto o porque.
+		if (_acender.Disabled && !AcendeComRecusaDeTeste) return;
 		cli.SendHabilidade(cli.Atributos.KaiokenAceso ? VerboDoKaioken : $"{VerboDoKaioken}_{_escolhido}");
 		Fechar();
 	}
@@ -236,7 +298,15 @@ public partial class TelaDeKaioken : CanvasLayer
 			_ => Tema.Perigo,
 		});
 
-		_acender.Text = a.KaiokenAceso ? $"Apagar o Kaio-ken (aceso em x{a.KaiokenVezes})" : $"Acender o Kaio-ken x{_escolhido}";
+		// (v0.4.2) A FORMA QUE NAO O SUSTENTA: a frase do servidor acima dos botoes e o botao desligado -- ver o cabecalho. Aceso, nao ha o
+		// que recusar: apagar sempre pode, e a forma que nao o sustenta ja o apagou no servidor.
+		string? recusa = a.KaiokenAceso || GameClient.Instance is not { } cli ? null : RecusaDaForma(cli);
+		_recusa.Text = recusa ?? "";
+		_recusa.Visible = recusa != null;
+		_acender.Disabled = recusa != null;
+		_acender.Text = a.KaiokenAceso ? $"Apagar o Kaio-ken (aceso em x{a.KaiokenVezes})"
+			: recusa != null ? "Não acende nesta forma"
+			: $"Acender o Kaio-ken x{_escolhido}";
 		_acender.AddThemeColorOverride("font_color", a.KaiokenAceso ? Tema.Texto : Aura.CorDoKaioken);
 		_nota.Text = a.KaiokenAceso
 			? "Pra trocar de multiplicador, apague primeiro (como no original)."
@@ -250,6 +320,9 @@ public partial class TelaDeKaioken : CanvasLayer
 	/// <summary>O que a tela mostra agora. So pra bancada.</summary>
 	public (int Escolhido, string Maestria, string Poder, string Risco, string Botao) TextosDeTeste() =>
 		(_escolhido, _maestria.Text, _poder.Text, _risco.Text, _acender.Text);
+
+	/// <summary>(v0.4.2) A recusa como a tela a mostra agora: o texto vermelho, se ele esta a vista, e se o botao esta desligado. So pra bancada.</summary>
+	public (string Texto, bool Visivel, bool Desligado) RecusaDeTeste() => (_recusa.Text, _recusa.IsVisibleInTree(), _acender.Disabled);
 
 	/// <summary>Arrasta o deslizador (o mesmo `ValueChanged` do mouse). So pra bancada.</summary>
 	public void ArrastarDeTeste(int vezes) => _deslizador.Value = vezes;

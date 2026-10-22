@@ -426,7 +426,8 @@ public partial class GameServer
 	private static bool Igual(Protocol.PresencaState a, Protocol.PresencaState b) =>
 		a.Nome == b.Nome && a.Assinatura == b.Assinatura && a.Alcance == b.Alcance
 		&& (a.PoderRelativo.Equals(b.PoderRelativo)) && a.Bp.Equals(b.Bp)
-		&& a.Distancia == b.Distancia && a.Rumo == b.Rumo && a.X == b.X && a.Y == b.Y && a.Zona == b.Zona && a.Chefe == b.Chefe;
+		&& a.Distancia == b.Distancia && a.Rumo == b.Rumo && a.X == b.X && a.Y == b.Y && a.Zona == b.Zona && a.Chefe == b.Chefe
+		&& a.Corpo == b.Corpo;
 
 	// =====================================================================
 	// 4) O REENVIO

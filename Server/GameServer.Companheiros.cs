@@ -33,7 +33,16 @@ public sealed partial class GameServer
 		public Vec2 OndeComecou;
 
 		public double RelogioDeExp, RelogioDeRelacao, RelogioDoInterceptador;
+
+		/// <summary>
+		/// (2026-10-21) O ALIADO que este corpo e (o habitante recrutado pela amizade), ou nulo pra criatura de capsula. O registro dele
+		/// mora na FICHA do dono (`Fighter.Aliados`), e nao numa gaveta do cofre (`Gaveta` fica zero). Ver `GameServer.Aliados.cs`.
+		/// </summary>
+		public Jandirus.Core.Npc.Aliado? Aliado;
 	}
+
+	/// <summary>O registro do motor deste corpo solto: o do aliado (na ficha do dono) ou o da gaveta da capsula (no cofre).</summary>
+	private Companheiro? CriaturaDoSolto(CompanheiroSolto s) => s.Aliado?.Criatura ?? _cofreDeTech.Companheiros.GetValueOrDefault(s.Gaveta);
 
 	/// <summary>id do corpo da criatura -> o estado dela. So memoria: o que dura (nome, poder, nivel) mora no cofre.</summary>
 	private readonly Dictionary<int, CompanheiroSolto> _companheiros = [];
@@ -149,8 +158,9 @@ public sealed partial class GameServer
 	/// <summary>
 	/// O CORPO DA CRIATURA (`add_linked_mob`): nasce a um passo do dono, com o nome, a cara e os numeros que a capsula
 	/// guarda (`update_linked_mob`), e com o golpe letal do dono (`mob_reference.murderToggle = usr.murderToggle`).
+	/// (2026-10-21) O ALIADO nasce pela mesma porta, com o registro da ficha (`aliado`) -- e, recrutado, onde o habitante estava (`onde`).
 	/// </summary>
-	private ServerPlayer CriarCompanheiro(ServerPlayer dono, Companheiro c, int gaveta)
+	private ServerPlayer CriarCompanheiro(ServerPlayer dono, Companheiro c, int gaveta, Jandirus.Core.Npc.Aliado? aliado = null, Vec2? onde = null)
 	{
 		Vec2 aFrente = dono.Pos + MeleeArea.Frente(dono.Facing) * ZoneCollision.TileSize;
 		var corpo = new ServerPlayer
@@ -159,7 +169,7 @@ public sealed partial class GameServer
 			Peer = null,
 			Name = c.Nome,
 			Zone = dono.Zone,
-			Pos = PontoLivre(dono.Zone, aFrente) ?? dono.Pos,
+			Pos = PontoLivre(dono.Zone, onde ?? aFrente) ?? dono.Pos,
 			Facing = dono.Facing,
 			Race = c.Raca,
 			Genero = c.Genero,
@@ -188,7 +198,7 @@ public sealed partial class GameServer
 		PorNoMundo(corpo);
 		corpo.Combate.Letal = dono.Combate?.Letal ?? false;
 		TrocarAparencias(corpo);
-		_companheiros[corpo.Id] = new CompanheiroSolto { Dono = dono.Id, Gaveta = gaveta };
+		_companheiros[corpo.Id] = new CompanheiroSolto { Dono = dono.Id, Gaveta = gaveta, Aliado = aliado };
 		return corpo;
 	}
 
@@ -258,16 +268,22 @@ public sealed partial class GameServer
 	private void OrdenarOAtaque(ServerPlayer pl, ItemDef def, bool matar)
 	{
 		if (SoltoOuRecusa(pl, def) is not { } x) return;
-		if (!EntendeAOrdem(pl, x.Criatura, matar ? Companheiros.IntDeMatar : Companheiros.IntDeObedecer)) return;
+		MandarAtacar(pl, x.Corpo, x.Estado, x.Criatura, matar);
+	}
+
+	/// <summary>A ordem de atacar (ou matar) o alvo marcado, pra criatura de capsula e pro aliado (a aba Allies) -- a mesma regra.</summary>
+	private void MandarAtacar(ServerPlayer pl, ServerPlayer corpo, CompanheiroSolto s, Companheiro c, bool matar)
+	{
+		if (!EntendeAOrdem(pl, c, matar ? Companheiros.IntDeMatar : Companheiros.IntDeObedecer)) return;
 		if (pl.AlvoId == 0 || !_players.TryGetValue(pl.AlvoId, out ServerPlayer? alvo)) { Avisar(pl, "marque um alvo primeiro (duplo clique)."); return; }
-		if (alvo == x.Corpo || alvo == pl || alvo.Zone.Hash != pl.Zone.Hash || alvo.Ficha.dead
+		if (alvo == corpo || alvo == pl || alvo.Zone.Hash != pl.Zone.Hash || alvo.Ficha.dead
 			|| Vec2.Distance(alvo.Pos, pl.Pos) > TilesDaOrdemDeAtaque * ZoneCollision.TileSize)
 		{ Avisar(pl, "o alvo tem de estar a até cinco tiles de você."); return; }
 
-		x.Estado.Presa = alvo.Id;
-		x.Estado.OndeComecou = x.Corpo.Pos;
-		if (matar) x.Corpo.Combate.Letal = true;
-		Avisar(pl, matar ? $"{x.Criatura.Nome} parte pra matar {NomeVisivel(alvo)}." : $"{x.Criatura.Nome} parte pra cima de {NomeVisivel(alvo)}.");
+		s.Presa = alvo.Id;
+		s.OndeComecou = corpo.Pos;
+		if (matar) corpo.Combate.Letal = true;
+		Avisar(pl, matar ? $"{c.Nome} parte pra matar {NomeVisivel(alvo)}." : $"{c.Nome} parte pra cima de {NomeVisivel(alvo)}.");
 	}
 
 	/// <summary>"Stop": `mob_reference.target = null; resetState()` -- larga a presa, volta, e o corpo se refaz.</summary>
@@ -292,6 +308,12 @@ public sealed partial class GameServer
 	{
 		int gaveta = Companheiros.Gaveta(def.Id);
 		if (_cofreDeTech.Companheiros.GetValueOrDefault(gaveta) is not { } c) { Avisar(pl, "esta cápsula não guarda criatura nenhuma."); return; }
+		AlternarReflexoDe(pl, c, quandoAtaco);
+	}
+
+	/// <summary>Os dois reflexos, pra criatura de capsula e pro aliado (a aba Allies): inteligencia E confianca, e a frase de cada lado.</summary>
+	private void AlternarReflexoDe(ServerPlayer pl, Companheiro c, bool quandoAtaco)
+	{
 		if (!EntendeAOrdem(pl, c, quandoAtaco ? Companheiros.IntDeQuandoAtaco : Companheiros.IntDeQuandoApanho)) return;
 		if (c.Relacao <= Companheiros.RelacaoDeConfianca)
 		{ Avisar(pl, $"{c.Nome} ainda não confia em você o bastante pra isso (relação {c.Relacao:0} de mais de {Companheiros.RelacaoDeConfianca:0}): ela cresce com o tempo solta ao seu lado."); return; }
@@ -339,8 +361,17 @@ public sealed partial class GameServer
 	{
 		int gaveta = Companheiros.Gaveta(def.Id);
 		if (_cofreDeTech.Companheiros.GetValueOrDefault(gaveta) is not { } c) { Avisar(pl, "esta cápsula não guarda criatura nenhuma."); return; }
-		if (c.Sobras <= 0) { Avisar(pl, $"{c.Nome} não tem melhoria pra gastar: ela ganha uma a cada nível (lutando)."); return; }
-		if (!int.TryParse(arg2, out int qual) || qual is < 1 or > 4) { Avisar(pl, "escolha: 1 físicos, 2 Ki, 3 variados, 4 poder."); return; }
+		if (GastarAMelhoriaDe(pl, c, arg2, SoltoDaGaveta(gaveta)?.Corpo, "ela ganha uma a cada nível (lutando)")) GravarOCofreDeTech();
+	}
+
+	/// <summary>
+	/// A MELHORIA GASTA, pra criatura de capsula e pro aliado (a aba Allies): o grupo escolhido sobe, e o corpo solto recebe os numeros
+	/// novos. Falso = recusada (dita). `comoGanha` e o fim da frase de quem nao tem melhoria.
+	/// </summary>
+	private bool GastarAMelhoriaDe(ServerPlayer pl, Companheiro c, string arg2, ServerPlayer? corpoSolto, string comoGanha)
+	{
+		if (c.Sobras <= 0) { Avisar(pl, $"{c.Nome} não tem melhoria pra gastar: {comoGanha}."); return false; }
+		if (!int.TryParse(arg2, out int qual) || qual is < 1 or > 4) { Avisar(pl, "escolha: 1 físicos, 2 Ki, 3 variados, 4 poder."); return false; }
 
 		c.Sobras--;
 		string onde;
@@ -356,9 +387,9 @@ public sealed partial class GameServer
 				onde = "o poder";
 				break;
 		}
-		GravarOCofreDeTech();
-		if (SoltoDaGaveta(gaveta) is { } solto) ReaplicarNoCorpo(solto.Corpo, c);
+		if (corpoSolto != null) ReaplicarNoCorpo(corpoSolto, c);
 		Avisar(pl, $"{c.Nome}: a melhoria vai pra {onde}. Restam {c.Sobras}.");
+		return true;
 	}
 
 	/// <summary>
@@ -393,8 +424,9 @@ public sealed partial class GameServer
 		// `for(var/mob/npc/pet/M in view(1,usr))`.
 		float alcance = 1.5f * ZoneCollision.TileSize;
 		(ServerPlayer Corpo, CompanheiroSolto Estado)? perto = null;
+		// (2026-10-21) O ALIADO NAO COME RACAO: ele e gente, e o registro dele nao mora numa gaveta do cofre (`s.Aliado`).
 		foreach ((int id, CompanheiroSolto s) in _companheiros)
-			if (s.Dono == pl.Id && _players.TryGetValue(id, out ServerPlayer? corpo) && corpo.Zone.Hash == pl.Zone.Hash
+			if (s.Dono == pl.Id && s.Aliado == null && _players.TryGetValue(id, out ServerPlayer? corpo) && corpo.Zone.Hash == pl.Zone.Hash
 				&& Vec2.Distance(corpo.Pos, pl.Pos) <= alcance)
 			{ perto = (corpo, s); break; }
 		if (perto is not { } x || _cofreDeTech.Companheiros.GetValueOrDefault(x.Estado.Gaveta) is not { } c)
@@ -455,18 +487,22 @@ public sealed partial class GameServer
 		// QUEM SAI DA ZONA (OU DO JOGO) LEVA A CRIATURA PRA CAPSULA -- ver o cabecalho do `Companheiros`.
 		if (!_players.TryGetValue(s.Dono, out ServerPlayer? dono) || dono.Zone.Hash != corpo.Zone.Hash)
 		{
-			RecolherCompanheiro(corpo.Id, "a sua criatura volta pra cápsula.");
+			RecolherCompanheiro(corpo.Id, s.Aliado is { } aliado ? $"{aliado.Criatura.Nome} volta pra casa: chame-o de novo pela aba {Jandirus.Core.Npc.Aliados.NomeDaAba}."
+																   : "a sua criatura volta pra cápsula.");
 			return false;
 		}
 		if (corpo.Ficha.dead || corpo.Ficha.KO) { corpo.Moving = false; return false; }
 		const float T = ZoneCollision.TileSize;
 
 		// OS DOIS REFLEXOS, pra quem tem a ordem ligada: o alvo de quem o dono esta batendo, e quem bate no dono.
-		if (s.Presa == 0 && _cofreDeTech.Companheiros.GetValueOrDefault(s.Gaveta) is { } c)
+		if (s.Presa == 0 && CriaturaDoSolto(s) is { } c)
 		{
 			int novo = 0;
 			if (c.QuandoApanho && dono.UltimoAgressor != 0 && NowMs() < dono.RancorAte) novo = dono.UltimoAgressor;
 			else if (c.QuandoAtaco && dono.Combate is { EmCombate: > 0 } && dono.AlvoId != 0) novo = dono.AlvoId;
+			// (2026-10-21) O PARCEIRO DE UM TREINO DE AMIZADE NAO E INIMIGO: o golpe dele no dono, e o do dono nele, sao o treino -- ver
+			// `GameServer.Amizade.cs`. Sem isto, o companheiro com reflexo entraria no treino e o encerraria como intrometido.
+			if (novo != 0 && TreinoDeAmizadeDe(dono) is { } treino && treino.Npc.Id == novo) novo = 0;
 			if (novo != 0 && ServeDePresa(corpo, s, novo, out _)) { s.Presa = novo; s.OndeComecou = corpo.Pos; }
 		}
 
@@ -503,7 +539,8 @@ public sealed partial class GameServer
 			c.Nivel++;
 			c.Sobras++;
 			if (_players.TryGetValue(s.Dono, out ServerPlayer? dono))
-				Avisar(dono, $"{c.Nome} sobe pro nível {c.Nivel}: há uma melhoria pra gastar (pela cápsula).");
+				Avisar(dono, $"{c.Nome} sobe pro nível {c.Nivel}: há uma melhoria pra gastar "
+							 + (s.Aliado != null ? $"(pela aba {Jandirus.Core.Npc.Aliados.NomeDaAba})." : "(pela cápsula)."));
 		}
 		_cofreSujo = true;
 	}
@@ -536,11 +573,13 @@ public sealed partial class GameServer
 		foreach ((int id, CompanheiroSolto s) in _companheiros.ToList())
 		{
 			if (!_players.TryGetValue(id, out ServerPlayer? corpo)) { _companheiros.Remove(id); continue; }
-			if (_cofreDeTech.Companheiros.GetValueOrDefault(s.Gaveta) is not { } c) { RecolherCompanheiro(id, null); continue; }
+			if (CriaturaDoSolto(s) is not { } c) { RecolherCompanheiro(id, null); continue; }
 
 			// `mobDeath()`: deixa um punhado de zeni no chao, e o corpo some. A capsula continua guardando a criatura.
 			if (corpo.Ficha.dead)
 			{
+				// (2026-10-21) O ALIADO NAO VOLTA: ele morre como o habitante que era -- ver `MorreuOAliado` (`GameServer.Aliados.cs`).
+				if (s.Aliado != null) { MorreuOAliado(id, corpo, s); continue; }
 				PorNoChao(corpo.Zone, corpo.Pos, TipoDeLargado.Zeni, "", _rng.Next(Companheiros.ZeniMinDaMorte, Companheiros.ZeniMaxDaMorte + 1));
 				RecolherCompanheiro(id, $"{c.Nome} foi morta. A cápsula ainda guarda a forma dela: é só soltá-la de novo.");
 				continue;

@@ -36,12 +36,19 @@ public sealed partial class GameServer
 	/// <summary>A ficha de clima de uma zona: o que pode cair aqui.</summary>
 	public ClimaDoPlaneta ClimaDaZona(ZoneKey zona) => Clima.DaZona(zona, _planetas);
 
-	/// <summary>O céu meteorológico de uma zona agora -- natural, ou o que mandaram.</summary>
+	/// <summary>
+	/// O céu meteorológico de uma zona agora -- natural, ou o que mandaram.
+	///
+	/// (2026-10-21) O FORCADO DE UMA SUB-ZONA E O DO PLANETA DELA: o temporal que a Terra recebeu cai no Lookout e na caverna dela (a
+	/// ficha natural ja vem do planeta pelo Core). Sem a posicao o Lookout inteiro e Terra -- quem tem o corpo pergunta pelo
+	/// <see cref="ClimaDe"/>, que acha o castelo do Rei Vegeta. Ver `GameServer.SubZonas.cs`.
+	/// </summary>
 	public EstadoDoClima ClimaAgora(ZoneKey zona) => Clima.De(
 		ClimaDaZona(zona), TempoDoMundo, Clima.SalDaZona(zona),
-		_climaForcado.TryGetValue(zona.Hash, out ClimaForcado f) ? f : default);
+		_climaForcado.TryGetValue((PlateiaSoDaZonaDeTeste ? zona : SubZonas.ZonaDoCeu(zona)).Hash, out ClimaForcado f) ? f : default);
 
-	public EstadoDoClima ClimaDe(ServerPlayer pl) => ClimaAgora(pl.Zone);
+	/// <summary>O céu meteorológico de onde ESTE corpo está -- o do planeta da sub-zona, e o de Vegeta no castelo do Lookout.</summary>
+	public EstadoDoClima ClimaDe(ServerPlayer pl) => ClimaAgora(PlanetaDoCorpo(pl));
 
 	// =====================================================================
 	// O GANCHO: MANDAR NO CÉU
@@ -66,6 +73,12 @@ public sealed partial class GameServer
 	public void ForcarClima(ZoneKey zona, TipoDeClima tipo, double segundos, double forca = 1,
 							string motivo = "")
 	{
+		// (2026-10-21) QUEM FORCA O CEU DE UMA SUB-ZONA FORCA O DO PLANETA DELA: o ceu do Lookout E o da Terra (`SubZonas`), e um
+		// temporal guardado na chave do Lookout nao chegaria a ninguem -- quem esta la le o da Terra. Vale pros chamadores que passam
+		// `pl.Zone` (o Super Shenron, as fotos, o trailer). Sem a posicao o Lookout inteiro e Terra: o castelo do Rei Vegeta chega aqui
+		// ja resolvido por quem tem o corpo (`PlanetaDoCorpo`).
+		if (!PlateiaSoDaZonaDeTeste) zona = SubZonas.ZonaDoCeu(zona);
+
 		// ============================ `segundos <= 0` CANCELA; `Limpo` COM PRAZO **FORCA CEU ABERTO** ============================
 		// Antes as duas coisas eram a mesma linha (`segundos <= 0 || tipo == Limpo` cancelava), e com
 		// isso **nao havia como pedir ceu aberto**: a unica saida era devolver a zona ao ciclo natural
@@ -271,37 +284,43 @@ public sealed partial class GameServer
 		// FORÇA O CLIMA MESMO QUE O PLANETA NÃO O TENHA NA LISTA, e avisa. É ferramenta de
 		// depuração: recusar "neve em Vampa" tiraria justamente o caso que se quer olhar (o
 		// desenho da neve) por causa de uma regra que vale pro SORTEIO, não pro comando.
-		ClimaDoPlaneta daqui = ClimaDaZona(adm.Zone);
+		//
+		// (2026-10-21) O CEU DE ONDE O ADMIN ESTA: no Lookout e na caverna o da Terra, no castelo do Rei Vegeta o de Vegeta -- e e o
+		// nome DELE que o aviso diz, pra quem forcou saber que mexeu no planeta inteiro. Ver `GameServer.SubZonas.cs`.
+		ZoneKey ceu = PlanetaDoCorpo(adm);
+		ClimaDoPlaneta daqui = ClimaDaZona(ceu);
 		bool estranho = Array.IndexOf(daqui.Permitidos, tipo) < 0;
 
-		ForcarClima(adm.Zone, tipo, SegundosDoClimaDeAdmin, forca, $"admin {adm.Name}");
+		ForcarClima(ceu, tipo, SegundosDoClimaDeAdmin, forca, $"admin {adm.Name}");
 
-		Avisar(adm, $"{Clima.Nome(tipo)} em {adm.Zone.Name} por {SegundosDoClimaDeAdmin / 60:0} min"
+		Avisar(adm, $"{Clima.Nome(tipo)} em {ceu.Name} por {SegundosDoClimaDeAdmin / 60:0} min"
 					+ (forca < 1 ? $", a {forca:P0} de forca" : "") + "."
 					+ (estranho ? $" (este clima NAO cai aqui naturalmente -- aqui podem cair: {ClimasDaMinhaZona(adm)})" : ""));
-		Registrar(adm, $"forcou {Clima.Nome(tipo)} em {adm.Zone.Name}");
+		Registrar(adm, $"forcou {Clima.Nome(tipo)} em {ceu.Name}");
 	}
 
 	/// <summary>Devolve o céu desta zona ao ciclo natural.</summary>
 	private void AdminClimaNatural(ServerPlayer adm)
 	{
-		if (!_climaForcado.ContainsKey(adm.Zone.Hash))
+		ZoneKey ceu = PlanetaDoCorpo(adm);
+		if (!_climaForcado.ContainsKey(ceu.Hash))
 		{
 			Avisar(adm, "o ceu daqui ja esta no ciclo natural.");
 			return;
 		}
-		ForcarClima(adm.Zone, TipoDeClima.Limpo, 0);
-		Avisar(adm, $"o ceu de {adm.Zone.Name} volta ao ciclo natural.");
-		Registrar(adm, $"soltou o clima de {adm.Zone.Name}");
+		ForcarClima(ceu, TipoDeClima.Limpo, 0);
+		Avisar(adm, $"o ceu de {ceu.Name} volta ao ciclo natural.");
+		Registrar(adm, $"soltou o clima de {ceu.Name}");
 	}
 
 	/// <summary>A ficha de clima da zona -- o que cai aqui, e o que esta caindo agora.</summary>
 	private void AdminClimaFicha(ServerPlayer adm)
 	{
-		ClimaDoPlaneta daqui = ClimaDaZona(adm.Zone);
-		EstadoDoClima agora = ClimaAgora(adm.Zone);
+		ZoneKey ceu = PlanetaDoCorpo(adm);
+		ClimaDoPlaneta daqui = ClimaDaZona(ceu);
+		EstadoDoClima agora = ClimaAgora(ceu);
 
-		Avisar(adm, $"--- ceu de {adm.Zone.Name} ---");
+		Avisar(adm, $"--- ceu de {ceu.Name} ---");
 		Avisar(adm, $"agora: {Clima.Nome(agora.Tipo)} a {agora.Forca:P0}"
 					+ (agora.Forcado ? " (FORCADO)" : " (natural)")
 					+ $" | cinza {agora.Cinza:P0} | encobre {agora.Encobre:P0}");
@@ -311,7 +330,7 @@ public sealed partial class GameServer
 
 	private string ClimasDaMinhaZona(ServerPlayer adm)
 	{
-		ClimaDoPlaneta c = ClimaDaZona(adm.Zone);
+		ClimaDoPlaneta c = ClimaDaZona(PlanetaDoCorpo(adm));
 		return c.Existe && c.Permitidos.Length > 0
 			? string.Join(", ", c.Permitidos.Select(Clima.Nome))
 			: "nada";
@@ -330,11 +349,18 @@ public sealed partial class GameServer
 		return w;
 	}
 
+	/// <summary>
+	/// O CEU FORCADO MUDOU: vai pra quem esta debaixo dele. (2026-10-21) Debaixo do ceu da Terra esta tambem quem esta no Lookout e na
+	/// caverna dela -- a plateia e a do CEU (`PlateiaDoCeu`), e nao so a da zona. Ver `GameServer.SubZonas.cs`.
+	/// </summary>
 	private void AnunciarClima(ZoneKey zona, ClimaForcado f)
 	{
 		NetDataWriter w = PacoteDeClima(f);
-		foreach (ServerPlayer o in ZoneList(zona.Hash))
+		foreach (ServerPlayer o in PlateiaDoCeu(zona))
+		{
+			EscutaDoClimaMandado?.Add((o.Id, zona.Hash, f.Tipo));
 			o.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		}
 	}
 
 	/// <summary>
@@ -343,11 +369,17 @@ public sealed partial class GameServer
 	/// SEM ISTO, quem chega no meio de um temporal não vê temporal nenhum: o pacote saiu quando
 	/// ele não estava, e o clima forçado não se deriva do tempo pra ele se corrigir sozinho. É a
 	/// mesma família de defeito que já mordeu as portas, as construções e as feridas.
+	///
+	/// (2026-10-21) O DO CEU DE ONDE ELE ESTA: no Lookout e na caverna, o do planeta; no castelo do Rei Vegeta, o de Vegeta. E quem cruza
+	/// a fronteira do castelo dentro do Lookout recebe o do outro ceu no tique seguinte (`TickDasSubZonas`), que le o que ficou anotado.
 	/// </summary>
 	private void MandarClima(ServerPlayer pl)
 	{
-		_climaForcado.TryGetValue(pl.Zone.Hash, out ClimaForcado f);
+		ZoneKey ceu = PlanetaDoCorpo(pl);
+		_climaForcado.TryGetValue(ceu.Hash, out ClimaForcado f);
 		if (!f.Vivo(TempoDoMundo)) f = default;
+		_ceuDoClimaMandado[pl.Id] = ceu.Hash;
+		EscutaDoClimaMandado?.Add((pl.Id, ceu.Hash, f.Tipo));
 		pl.Peer?.Send(PacoteDeClima(f), Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
@@ -393,38 +425,61 @@ public sealed partial class GameServer
 		{
 			if (zona.Count == 0) continue;
 
-			EstadoDoClima ceu = ClimaAgora(zona[0].Zone);
-			if (!Clima.TemRaio(ceu.Tipo) || ceu.Forca < 0.45)
+			// (2026-10-21) UMA ZONA, MAIS DE UM CEU: o Lookout tem o da Terra e, no castelo do Rei Vegeta, o de Vegeta (`SubZonas`). Cada
+			// ceu tem o proprio relogio de descarga e so puxa raio quem esta debaixo dele -- senao o temporal da Terra cairia no patio do
+			// castelo, debaixo do ceu limpo de Vegeta. Toda outra zona tem um ceu so, e segue com a lista dela e a chave de sempre.
+			if (!SubZonas.TemDoisCeus(zona[0].Zone))
 			{
-				_proximoRaio.Remove(hash);
+				RaioNoCeu(hash, SubZonas.ZonaDoCeu(zona[0].Zone), zona, zona, agora);
 				continue;
 			}
-
-			if (!_proximoRaio.TryGetValue(hash, out double quando))
+			foreach (ZoneKey ceu in SubZonas.CeusDaZona(zona[0].Zone))
 			{
-				_proximoRaio[hash] = agora + Sortear(EsperaDeRaioMin, EsperaDeRaioMax);
-				continue;
+				List<ServerPlayer> debaixo = zona.FindAll(p => PlanetaDoCorpo(p).Equals(ceu));
+				if (debaixo.Count > 0) RaioNoCeu(hash ^ ceu.Hash, ceu, debaixo, zona, agora);
+				else _proximoRaio.Remove(hash ^ ceu.Hash);
 			}
-			if (agora < quando) continue;
-
-			// MAIS RAIO NUMA TEMPESTADE MAIS FORTE -- é como ela se anuncia sem precisar de texto.
-			double aperto = 1.9 - ceu.Forca;
-			_proximoRaio[hash] = agora + Sortear(EsperaDeRaioMin, EsperaDeRaioMax) * aperto;
-
-			// perto de ALGUÉM da zona, e não do mesmo alguém sempre
-			if (SortearQuemPuxaORaio(zona, ceu.Tipo) is not { } perto) continue;
-			double ang = _sorteioDoRaio.NextDouble() * Math.PI * 2;
-			double dist = Sortear(RaioPertoMin, RaioPertoMax);
-			var onde = new Vec2(
-				perto.Pos.X + (float)(Math.Cos(ang) * dist),
-				perto.Pos.Y + (float)(Math.Sin(ang) * dist));
-
-			var w = Protocol.Begin(Protocol.S2C.Raio);
-			w.PutVec(onde);
-			w.Put((float)(_sorteioDoRaio.NextDouble() * 1000));
-			foreach (ServerPlayer o in zona)
-				o.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 		}
+	}
+
+	/// <summary>
+	/// UMA DESCARGA (ou nao) DESTE CEU, perto de alguem de <paramref name="debaixo"/>, contada pra <paramref name="zona"/> inteira -- o
+	/// ponto e da zona, e quem esta nela ve o risco ou o clarao. <paramref name="chave"/> e o relogio de descarga deste ceu nesta zona.
+	/// </summary>
+	private void RaioNoCeu(ulong chave, ZoneKey ceu, List<ServerPlayer> debaixo, List<ServerPlayer> zona, double agora)
+	{
+		EstadoDoClima clima = ClimaAgora(ceu);
+		if (!Clima.TemRaio(clima.Tipo) || clima.Forca < 0.45)
+		{
+			_proximoRaio.Remove(chave);
+			return;
+		}
+
+		if (!_proximoRaio.TryGetValue(chave, out double quando))
+		{
+			_proximoRaio[chave] = agora + Sortear(EsperaDeRaioMin, EsperaDeRaioMax);
+			return;
+		}
+		if (agora < quando) return;
+
+		// MAIS RAIO NUMA TEMPESTADE MAIS FORTE -- é como ela se anuncia sem precisar de texto.
+		double aperto = 1.9 - clima.Forca;
+		_proximoRaio[chave] = agora + Sortear(EsperaDeRaioMin, EsperaDeRaioMax) * aperto;
+
+		// perto de ALGUÉM debaixo deste ceu, e não do mesmo alguém sempre
+		if (SortearQuemPuxaORaio(debaixo, clima.Tipo) is not { } perto) return;
+		double ang = _sorteioDoRaio.NextDouble() * Math.PI * 2;
+		double dist = Sortear(RaioPertoMin, RaioPertoMax);
+		var onde = new Vec2(
+			perto.Pos.X + (float)(Math.Cos(ang) * dist),
+			perto.Pos.Y + (float)(Math.Sin(ang) * dist));
+
+		EscutaDosRaios?.Add((perto.Id, ceu.Hash));
+		var w = Protocol.Begin(Protocol.S2C.Raio);
+		w.PutVec(onde);
+		w.Put((float)(_sorteioDoRaio.NextDouble() * 1000));
+		foreach (ServerPlayer o in zona)
+			o.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
 	}
 
 	/// <summary>
@@ -516,10 +571,13 @@ public sealed partial class GameServer
 		GD.Print($"[server] BANCADA: clima travado em {Clima.Nome(t)}");
 	}
 
-	/// <summary>Aplica o clima da bancada na zona de quem entrou.</summary>
+	/// <summary>
+	/// Aplica o clima da bancada no ceu de quem entrou. (2026-10-21) O CEU, e nao a zona: quem entra no castelo do Rei Vegeta trava o de
+	/// Vegeta, e no Lookout o da Terra (que e o mesmo de la). Ver `GameServer.SubZonas.cs`.
+	/// </summary>
 	private void ClimaDeTeste(ServerPlayer pl)
 	{
 		if (_climaDeTeste == TipoDeClima.Limpo) return;
-		ForcarClima(pl.Zone, _climaDeTeste, 3600, 1, "bancada");
+		ForcarClima(PlanetaDoCorpo(pl), _climaDeTeste, 3600, 1, "bancada");
 	}
 }

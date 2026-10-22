@@ -200,6 +200,19 @@ public static class Protocol
         /// mesmas (`RegrasDeBloco`) so pra o jogador nao clicar as cegas.
         /// </summary>
         Bloco = 25,
+
+        /// <summary>
+        /// A TECLA DO TREINO FOCADO: um byte com a letra (W, A, S ou D). Vai crua, como o
+        /// <see cref="ClashTecla"/>. Quem sorteou a letra e quem diz se ela bate e o servidor --
+        /// um byte de "acertei" seria o cliente ditando o ganho.
+        /// </summary>
+        TreinoTecla = 27,
+
+        /// <summary>
+        /// O ESPACO DA MEDITACAO FOCADA. Sem payload: a hora em que o pacote chega e o que o
+        /// servidor julga, com a folga de latencia da regra. Nao ha "acertei" neste pacote.
+        /// </summary>
+        RespiracaoTecla = 28,
     }
 
     /// <summary>As duas acoes do <see cref="C2S.Bloco"/>.</summary>
@@ -953,6 +966,14 @@ public static class Protocol
         MestreEAlunos = 99,
 
         /// <summary>
+        /// (2026-10-21) **A ABA ALLIES**: os aliados deste personagem (os habitantes recrutados pela amizade -- nivel, poder ESCRITO pela
+        /// regra do BP, relacao, ordens) e as amizades em andamento (o medidor de cada habitante). Pessoal, e so quando o que a aba desenha
+        /// muda (no maximo 1 Hz, e na hora de cada gesto); a primeira de cada sessao sai sempre, vazia que seja -- vazia, a aba nao existe.
+        /// O corpo mora em `FioDosAliados`; a regra, em `Core/Npc/Amizade.cs` e `GameServer.Aliados.cs`.
+        /// </summary>
+        Aliados = 152,
+
+        /// <summary>
         /// A CASA DO BILLS (dono, 2026-10-11; ver `Core.Npc.BillsEWhis` e `GameServer.Bills.cs`): `bool revelada`
         /// e, so quando revelada, `int sx` + `int sy` (a celula do sistema) + `byte orbita` + `ulong semente do
         /// mundo`. Pessoal, e so sai quando a resposta muda pra aquele jogador (no login, quando o Bills cai na
@@ -1064,6 +1085,15 @@ public static class Protocol
         /// ================================================================================
         /// </summary>
         Mortos = 39,
+
+        /// <summary>
+        /// (2026-10-21) OS PLANETAS COM CHEFE DE SAGA NO MUNDO -- a lista inteira, no login e sempre que ela muda, pra todo jogador:
+        /// `byte n` + n x `string chave` (`Core.World.ChaveDePlaneta.Texto`). Irmao do <see cref="Mortos"/>: com os dois o cliente sabe
+        /// sozinho se o chao em que ele pisa (ou o planeta da sub-zona dele) esta em perigo, e toca a trilha de combate -- o dono:
+        /// *"enquanto vc estiver em um planeta q esta explodindo, a trilha sonora do jogo vai ser a mesma q toca ao entrar em combate, o
+        /// mesmo vale quando vc ta em um planeta q ta com boss de saga ativo"*. Ver `GameServer.SubZonas.cs` e `World.SubZonas.cs`.
+        /// </summary>
+        ChefesNosPlanetas = 161,
 
         /// <summary>
         /// ONDE ESTA A MINHA NAVE, na coordenada da GALAXIA -- o "Observar" da ponte da Capital Ship.
@@ -1436,6 +1466,19 @@ public static class Protocol
         Sentidos = 52,
 
         /// <summary>
+        /// O PISCAR DO INSTANT TRANSMISSION, pra zona inteira: <c>int corpo</c> + <c>float x</c> + <c>float y</c>.
+        /// O mesmo efeito de desviar um golpe, na saida e na chegada. O som e do cliente, posicionado.
+        /// Ver <c>GameServer.Transmissao.cs</c>.
+        /// </summary>
+        TransmissaoPiscar = 164,
+
+        /// <summary>
+        /// O NIVEL DO INSTANT TRANSMISSION de quem joga: um <c>byte</c> (0 = nao tem a skill; 1..5 = o alcance).
+        /// A aba Sense so desenha o botao nos cartoes cujo alcance cabe neste nivel. Sai junto da lista.
+        /// </summary>
+        NivelDaTransmissao = 165,
+
+        /// <summary>
         /// OS FATOS DE QUEM JOGA: um `uint` com os bits de `Core.Verbos.Fatos` -- o que so o servidor sabe
         /// e que decide quais VERBS existem pra este personagem (tem coletores? ha um convite de fusao na
         /// mesa? guia um aluno? a bandeira deste planeta e dele?). Raca, livro, mochila e cargos ja
@@ -1574,6 +1617,25 @@ public static class Protocol
         /// `Client/CorrenteDePoder.cs`.
         /// </summary>
         DandoPoder = 127,
+
+        /// <summary>
+        /// A LETRA do anel do treino focado: <c>byte letra</c>, <c>int prazoMs</c> (o que ainda falta,
+        /// pra o anel fechar) e <c>byte veredito</c> (0 letra nova, 1 o aperto anterior acertou, 2 errou).
+        /// O veredito so pinta a tela. Quem somou o BP foi o servidor, no passe do treino.
+        /// </summary>
+        TreinoFocado = 155,
+
+        /// <summary>
+        /// A RESPIRACAO da meditacao focada: <c>long inicio</c>, <c>int periodoMs</c>, <c>long agora</c>
+        /// (os tres no relogio do servidor, pra o marcador andar na fase que ele julga) e <c>byte veredito</c>.
+        /// </summary>
+        Respiracao = 156,
+
+        /// <summary>
+        /// O FOCO ligou, pausou ou desligou: <c>byte modo</c> (0 ninguem, 1 treino, 2 meditacao),
+        /// <c>byte pausado</c>, <c>double bonus</c>. O bonus e o que o servidor esta pagando.
+        /// </summary>
+        Foco = 157,
     }
 
     /// <summary>
@@ -2022,6 +2084,13 @@ public static class Protocol
         public float GanhoDeTreino, Gravidade, PesoMult, ZonaMult, Esmagamento;
 
         /// <summary>
+        /// O pedaço do VIGOR no ganho de BP (`StamBPGainMod`): 1,25 com o tanque em 62,5% ou mais,
+        /// 1 por volta da metade, 0,5 no fundo. Já está dentro de <see cref="GanhoDeTreino"/>; viaja
+        /// solto pra a pílula "Nx vigor" do painel.
+        /// </summary>
+        public float VigorMult;
+
+        /// <summary>
         /// (2026-10-16) O BONUS DE PODER DA ACLIMATACAO -- o `gravFelt` do corpo quando ele domina mais gravidade do que a do
         /// chao (1 = nenhum). A aba de Formas o mostra como "Aclimatado +N% nesta gravidade". Ocupa no fio o lugar da antiga
         /// `GravEfetiva` (a gravidade com a folga da aclimatacao), que saiu quando a aclimatacao deixou de mexer no treino.
@@ -2132,6 +2201,7 @@ public static class Protocol
             w.Put(PesoPct);
             w.Put(KaiokenMaestria); w.Put(KaiokenVezes); w.Put(KaiokenAceso);
             w.Put(SkillsRaciais); w.Put(SkillsDoSangue);
+            w.Put(VigorMult);
         }
 
         public static AtributosState Read(NetDataReader r) => new()
@@ -2169,6 +2239,7 @@ public static class Protocol
             KaiokenAceso = r.GetBool(),
             SkillsRaciais = r.GetUInt(),
             SkillsDoSangue = r.GetUInt(),
+            VigorMult = r.GetFloat(),
         };
 
         private static (ushort, float)[] LerMaestrias(NetDataReader r)
@@ -2306,12 +2377,18 @@ public static class Protocol
         /// <summary>E um chefe NPC (o `isBoss` do DM, que e o unico NPC que o scouter le).</summary>
         public bool Chefe;
 
+        /// <summary>
+        /// O id do corpo no servidor. O nome nao distingue homonimos (o jogo esta cheio deles); o botao do
+        /// Instant Transmission mira por aqui. 0 = o pacote nao apontou um corpo.
+        /// </summary>
+        public int Corpo;
+
         public readonly void Write(NetDataWriter w)
         {
             w.Put(Nome ?? ""); w.Put(Assinatura ?? "");
             w.Put(Alcance); w.Put(PoderRelativo); w.Put(Bp);
             w.Put(Distancia); w.Put(Rumo); w.Put(X); w.Put(Y);
-            w.Put(Zona ?? ""); w.Put(Chefe);
+            w.Put(Zona ?? ""); w.Put(Chefe); w.Put(Corpo);
         }
 
         public static PresencaState Read(NetDataReader r) => new()
@@ -2319,7 +2396,7 @@ public static class Protocol
             Nome = r.GetString(64), Assinatura = r.GetString(16),
             Alcance = r.GetByte(), PoderRelativo = r.GetFloat(), Bp = r.GetDouble(),
             Distancia = r.GetUShort(), Rumo = r.GetByte(), X = r.GetShort(), Y = r.GetShort(),
-            Zona = r.GetString(64), Chefe = r.GetBool(),
+            Zona = r.GetString(64), Chefe = r.GetBool(), Corpo = r.GetInt(),
         };
     }
 

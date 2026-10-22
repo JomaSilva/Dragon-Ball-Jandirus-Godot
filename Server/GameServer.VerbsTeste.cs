@@ -367,7 +367,7 @@ public sealed partial class GameServer
 			bioDeLab.Ficha.bio_stage = Jandirus.Core.Races.BioAndroids.Imperfeito;
 			// (2026-10-17) O SANGUE QUE DA AS SKILLS DO DNA (`Races.SkillsRaciais`): quatro dos cinco kits de raca -- o quinto, o Namekuseijin, e do
 			// casulo da secao 6, e assim toda linha da escolha tem quem a veja.
-			bioDeLab.Ficha.bio_racas_dna = ["Saiyan", "Human", "Halfbreed", "Icer"];
+			bioDeLab.Ficha.bio_racas_dna = ["Saiyan", "Human", "Halfbreed", "Frost Demon"];
 			ServerPlayer larvaDeBio = Gente("LarvaDeBio", Jandirus.Core.Races.BioAndroids.Raca);
 			larvaDeBio.Ficha.bio_lab_born = true;
 			larvaDeBio.Ficha.bio_stage = Jandirus.Core.Races.BioAndroids.Larva;
@@ -392,8 +392,8 @@ public sealed partial class GameServer
 			ServerPlayer lendario = Gente("SaiyajinLendario", "Saiyan", "Legendary");
 			ServerPlayer primal = Gente("SaiyajinPrimal", "Saiyan", "Normal Primal Saiyan");
 			ServerPlayer lendarioPrimal = Gente("LendarioPrimal", "Saiyan", "Legendary Primal Saiyan");
-			ServerPlayer frost = Gente("FrostDemon", "Icer", "Frost Demon");
-			ServerPlayer mutante = Gente("FrostMutante", "Icer", "Mutant Frost Demon");
+			ServerPlayer frost = Gente("FrostDemon", "Frost Demon", "Frost Demon");
+			ServerPlayer mutante = Gente("FrostMutante", "Frost Demon", "Mutant Frost Demon");
 			ServerPlayer noEspaco = Gente("HumanoNoEspaco", "Human");
 			noEspaco.Zone = espaco;
 			noEspaco.Pos = naSuper;

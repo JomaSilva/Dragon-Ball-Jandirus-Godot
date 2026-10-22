@@ -112,6 +112,9 @@ public partial class GameServer
 			_disputasDeSuper.Clear();
 			_invocacoes.Clear();
 			_benefSig = ""; _benefNome = ""; _pedidoDoBenef = ""; _alvoDoPedido = "";
+			// (2026-10-22) AS BLACK STAR DORMEM: elas se espalham por planetas sorteados, e a que caisse na Terra entrava na conta do radar
+			// ("estrela negra neste mundo: 1 no chão" -- "achou 8"). O radar delas e da `--radarteste` e da `--esferanegrateste`.
+			NegrasDormemDeTeste = true;
 
 			var terra = ZoneKey.Premade("Earth");
 			MoveToZone(pl.Id, terra, PontoDeNascimento(terra));
@@ -317,47 +320,44 @@ public partial class GameServer
 			// que o cliente faria, refeita fora do servidor -- e e a unica forma de o "os dois lados
 			// chegam nela sozinhos" do cabecalho do `SuperEsferas.PosicaoDa` valer alguma coisa.
 			// ====================================================================================
-			// (2026-10-19) A INVOCACAO DE CIMA TIROU AS SETE DA MAO E AS POS NO CHAO aos pes de quem invocou (dono: *"elas vao sair do seu
-			// inventario"*), e o dragao foi embora sem pedido: elas estao ali, e nao mais onde o espalhamento as pos. A medida desta secao e a
-			// do ESPALHAMENTO, entao o set se espalha de novo no MESMO ciclo, pelo funil de producao, e e esse resultado que a conta pura
-			// confere -- a injecao (e) continua caindo aqui.
-			set.Ciclo--;                 // o `EspalharOSet` incrementa: assim ele reconstroi o MESMO ciclo
+			// (2026-10-21) O dono pediu espalhada aleatoria de verdade. A conta pura deixou de ser
+			// (semente, set, numero, ciclo) + PontoLivrePerto. Agora e o SAL guardado no set e a vaga
+			// do habitat (terra navegavel, sem ilhota). A injecao (e) continua sendo "o servidor pos
+			// onde a conta manda" -- a conta e outra.
 			EspalharOSet(set);
+			var habitatDoSet = HabitatDaZona(set.Zona);
+			ulong[] lugaresDoSal = habitatDoSet is { Vagas: > 0 }
+				? EsferasNegras.LugaresDoSal(set.LerSal(), habitatDoSet.Vagas) : [];
 			int bateram = 0;
-			foreach (Esfera e in _esferas.Where(x => x.Set == set.Id))
-			{
-				(int cx, int cy) = Esferas.CelulaDoEspalhamento(
-					set.Zona.Seed ^ Espaco.Hash64(set.ZonaNome), set.Id, e.Numero, set.Ciclo,
-					mapa?.Width ?? 256, mapa?.Height ?? 256);
-
-				const int t = ZoneCollision.TileSize;
-				var cru = new Vec2(cx * t + t / 2f, cy * t + t / 2f);
-				Vec2 esperado = mapa != null ? mapa.PontoLivrePerto(cru) : cru;
-
-				if (e.X.Equals(esperado.X) && e.Y.Equals(esperado.Y)) bateram++;
-			}
-			Checa("onde o SERVIDOR pos cada esfera e exatamente onde a conta PURA manda "
+			if (habitatDoSet != null)
+				foreach (Esfera e in _esferas.Where(x => x.Set == set.Id))
+				{
+					(int x, int y) = habitatDoSet.Vaga(lugaresDoSal[e.Numero - 1]);
+					float px = x * ZoneCollision.TileSize + ZoneCollision.TileSize / 2f;
+					float py = y * ZoneCollision.TileSize + ZoneCollision.TileSize / 2f;
+					if (e.X.Equals(px) && e.Y.Equals(py)) bateram++;
+				}
+			Checa("onde o SERVIDOR pos cada esfera e a vaga do habitat do sal "
 				+ "(bit a bit, e nao 'quase')",
 				  bateram == Esferas.Total, $"bateram {bateram} de {Esferas.Total}");
 
-			// ESPALHAR O MESMO CICLO DUAS VEZES DA O MESMO LUGAR. E o que um reinicio faz.
 			var antesDoReespalho = _esferas.Where(e => e.Set == set.Id)
 										   .Select(e => new Vec2(e.X, e.Y)).ToList();
-			set.Ciclo--;                 // o `EspalharOSet` incrementa: assim ele reconstroi o MESMO ciclo
 			EspalharOSet(set);
 			var depoisDoReespalho = _esferas.Where(e => e.Set == set.Id)
 											.Select(e => new Vec2(e.X, e.Y)).ToList();
-			Checa("...e espalhar o MESMO ciclo de novo cai no MESMO lugar (sobrevive a um reinicio)",
-				  antesDoReespalho.Zip(depoisDoReespalho).All(p => p.First.X.Equals(p.Second.X)
-															   && p.First.Y.Equals(p.Second.Y)));
-
-			// A METADE QUE PEGA A FUNCAO CONSTANTE: um ciclo NOVO tem que mudar tudo de lugar.
-			EspalharOSet(set);
-			var noCicloNovo = _esferas.Where(e => e.Set == set.Id)
-									  .Select(e => new Vec2(e.X, e.Y)).ToList();
-			int mudou = depoisDoReespalho.Zip(noCicloNovo).Count(p => (p.First - p.Second).Length > 1);
-			Checa("...e um ciclo NOVO muda tudo de lugar (senao 'deterministico' seria uma constante)",
+			int mudou = antesDoReespalho.Zip(depoisDoReespalho).Count(p => (p.First - p.Second).Length > 1);
+			Checa("...e uma espalhada NOVA cai em outro lugar (o sal nao e o ciclo)",
 				  mudou >= Esferas.Total - 1, $"{mudou} das {Esferas.Total} mudaram");
+
+			SalFixoDeTeste = true;
+			EspalharOSet(set);
+			var comSalFixo = _esferas.Where(e => e.Set == set.Id).Select(e => new Vec2(e.X, e.Y)).ToList();
+			EspalharOSet(set);
+			var salFixoDeNovo = _esferas.Where(e => e.Set == set.Id).Select(e => new Vec2(e.X, e.Y)).ToList();
+			SalFixoDeTeste = false;
+			Checa("...e o sal FIXO repete o lugar (o contra-exemplo da regra nova)",
+				  comSalFixo.Zip(salFixoDeNovo).All(p => p.First.X.Equals(p.Second.X) && p.First.Y.Equals(p.Second.Y)));
 
 			// =====================================================================
 			// 7. O ESPACO: ACHAR E REIVINDICAR -- a corrente das Super, do zero
@@ -704,6 +704,7 @@ public partial class GameServer
 		}
 		finally
 		{
+			NegrasDormemDeTeste = false;   // (2026-10-22) ver o comeco
 			// ============================ O TESTADOR VOLTA PRO MUNDO ANTES DE TUDO ============================
 			// A secao 11 TIRA o testador de `_players` de proposito (a rota 3 do inimigo e "espere ele
 			// deslogar"). Se uma excecao acontecesse entre a saida e a volta, o `finally` restauraria o

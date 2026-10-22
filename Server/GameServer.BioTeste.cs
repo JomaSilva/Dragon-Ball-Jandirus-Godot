@@ -252,6 +252,23 @@ public partial class GameServer
 			  mainframe.Lab == 2, $"Lab={mainframe.Lab}");
 		Checa("...e o laboratorio responde ao `LabDeBio` (o alcance e o dono batem)",
 			  LabDeBio(pl) != null);
+
+		// ---- (2026-10-21) o desenho: o Bio-Android Lab vira o Cell Pod, e o Android Lab continua o do catalogo (`ArteDoLaboratorio`) ----
+		// (os caminhos estao escritos aqui de novo, e nao lidos das constantes; o Android Lab e uma copia do mesmo mainframe com o laboratorio 1)
+		Jandirus.Core.Tech.Construcao? doCatalogo = _obras?.Get(mainframe.Tipo);
+		var doBio = ArteDaObra(mainframe, doCatalogo);
+		var doAndroide = ArteDaObra(new Obra { Tipo = mainframe.Tipo, Aparafusada = true, Lab = 1 }, doCatalogo);
+		Checa("O BIO-ANDROID LAB VIRA O CELL POD no pacote das construcoes (a folha, a animacao `default` e o -8 que centra o pod de 48 px no "
+			  + "tile) -- e o Android Lab continua no desenho padrao do mainframe (`64x64tech`, `android_pod`)",
+			  doBio is ("res://Assets/Sprites/DU/Items/Cell Pod.tres", "default", -8f, 0f)
+			  && doAndroide is ("res://Assets/Sprites/Misc/Objects/Technology/64x64tech.tres", "android_pod", 0f, 0f),
+			  $"bio {doBio}; androide {doAndroide}");
+		Jandirus.Core.Tech.ArteDoLaboratorio.LabSemCellPodDeTeste = true;
+		(string Arte, string Estado, float PixelX, float PixelY) semPod;
+		try { semPod = ArteDaObra(mainframe, doCatalogo); }
+		finally { Jandirus.Core.Tech.ArteDoLaboratorio.LabSemCellPodDeTeste = false; }
+		Checa("CONTRA-EXEMPLO (defeito injetado: nenhum laboratorio troca o desenho): o Bio-Android Lab sai no desenho padrao -- a regua do "
+			  + "Cell Pod REPROVA", semPod is not ("res://Assets/Sprites/DU/Items/Cell Pod.tres", "default", -8f, 0f), $"{semPod}");
 	}
 
 	// =====================================================================
@@ -738,7 +755,7 @@ public partial class GameServer
 				if (naMao[i] != 0) naMaoDoCell.Add(Jandirus.Core.Ai.AtivasRaciaisNaIa.Todas[i].Id);
 			Checa("O CELL (NPC) ESCOLHE SOZINHO, ao nascer: o rodizio do sangue dele (Saiyajin, Namekuseijin, Icer), as ativas primeiro -- "
 				  + "Seasoned Warrior, Spirit Disruption, Unrestrained Wrath, Warrior Race, Namekian Resilience e Perfect Control",
-				  (SkillRacial)cell.Ficha.bio_skills == doCell && SkillsRaciais.EscolhaDoNpc(["Saiyan", "Namekian", "Icer"]) == doCell,
+				  (SkillRacial)cell.Ficha.bio_skills == doCell && SkillsRaciais.EscolhaDoNpc(["Saiyan", "Namekian", "Frost Demon"]) == doCell,
 				  SkillsRaciais.Nomes((SkillRacial)cell.Ficha.bio_skills));
 			Checa("...e a IA dele poe na mao as DUAS ativas escolhidas (Spirit Disruption, Unrestrained Wrath) e nenhuma outra",
 				  naMaoDoCell.Count == 2 && naMaoDoCell.Contains(Passivas.Disrupcao) && naMaoDoCell.Contains(Passivas.Ira),

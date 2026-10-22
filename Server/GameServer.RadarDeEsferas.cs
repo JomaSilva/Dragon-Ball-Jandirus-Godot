@@ -105,6 +105,7 @@ public sealed partial class GameServer
 			}
 			else sinais.Add(new SinalDeEsfera(e.X, e.Y, Carregada: false, Comigo: false));
 		}
+		AcrescentarSinaisNegros(pl, sinais);
 		return sinais;
 	}
 

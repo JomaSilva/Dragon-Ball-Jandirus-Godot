@@ -240,7 +240,6 @@
         "train": false,
         "med": false,
         "minuteshot": false,
-        "train_med_to_hp": false,
         "missedtrain": 0,
         "minuteshot_ig_ki": 0,
         "tmp_activ_gains": 0,

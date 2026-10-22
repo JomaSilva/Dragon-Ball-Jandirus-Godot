@@ -106,6 +106,9 @@ public partial class GameServer
 				npc.SigAtributos = "";
 			}
 
+			// (2026-10-20) ...E OS ATRIBUTOS: o dobro do jogador mais forte de agora, e a pericia no maximo -- ver `DarODobroAoChefe`
+			DarODobroAoChefe(npc);
+
 			// (2026-10-19) O CELL DO TORNEIO NAO TROCA DE FORMA POR DANO: no x1 ele cai nocauteado, e a volta Super Perfeita e a da morte -- o dono:
 			// *"se ele for derrotado por nocaute o jogo vai falar q ele foi morto na luta e volta super perfeito"*. Ver `GameServer.TorneioDoCell.cs`.
 			if (CellNoTorneio(npc)) continue;
@@ -113,6 +116,8 @@ public partial class GameServer
 			double gatilho = papel.GatilhoAtual;
 			if (gatilho < 0) continue;                     // ultimo degrau: nada o encerra
 			if (PiorMembro(npc) > gatilho) continue;
+			// Na mente, a lembranca nao sobe alem da ultima forma que o dono viu.
+			if (!LembrancaPodeSubir(npc)) continue;
 
 			AvancarEstagio(npc);
 		}
@@ -165,6 +170,7 @@ public partial class GameServer
 		if (NegarAMorteDoAndroideDoCell(npc)) return true;
 		if (ChefeMorreAntesDaHoraDeTeste || npc.Papel is not { EhChefe: true } papel || papel.GatilhoAtual < 0) return false;
 		if (ChefesQueMorremAntesDaHora.Contains(papel.Molde.Id)) return false;
+		if (!LembrancaPodeSubir(npc)) return false;
 		AvancarEstagio(npc);
 		npc.Combate.Curar();
 		GD.Print($"[server] ROTEIRO: '{npc.Name}' nao morre antes da hora -- o golpe letal virou a transformacao (degrau {papel.Estagio + 1})");

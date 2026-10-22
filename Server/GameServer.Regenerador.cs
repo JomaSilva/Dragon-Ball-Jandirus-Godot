@@ -110,6 +110,17 @@ public sealed partial class GameServer
 				? (o.Tech?.Num(LuaArtificial.ChaveAcesaAte) > 0 ? LuaArtificial.ArteAcesa : LuaArtificial.ArteApagada)
 			: c?.Estado ?? "";
 
+	/// <summary>
+	/// (2026-10-21) A ARTE INTEIRA DE UMA OBRA pro pacote de construcoes -- a folha, o estado e o deslocamento. Sao os do catalogo, com o
+	/// estado do <see cref="EstadoDaArte"/>, menos o mainframe de androides com o Bio-Android Lab ou o Neo Tuffle Lab, que vira o Cell Pod
+	/// (o pedido do dono, em `ArteDoLaboratorio`). Uma conta so, pro desenho e pra bancada que o confere.
+	/// </summary>
+	private static (string Arte, string Estado, float PixelX, float PixelY) ArteDaObra(Obra o, Construcao? c) =>
+		ArteDoLaboratorio.NoCellPod(o.Tipo, o.Lab)
+			? (ArteDoLaboratorio.FolhaDoCellPod, ArteDoLaboratorio.EstadoDoCellPod,
+			   (float)ArteDoLaboratorio.DeslocamentoXDoCellPod, (float)ArteDoLaboratorio.DeslocamentoYDoCellPod)
+			: (c?.Arte ?? "", EstadoDaArte(o, c), (float)(c?.PixelX ?? 0), (float)(c?.PixelY ?? 0));
+
 	// =====================================================================
 	// O INTERRUPTOR
 	// =====================================================================

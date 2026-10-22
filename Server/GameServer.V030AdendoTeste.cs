@@ -499,14 +499,15 @@ public sealed partial class GameServer
 	/// O dono (2026-10-19): *"faca com q n de pra usar kaioken nas formas de super saiyajin, somente no ssj blue pra quem e saiyajin
 	/// de classe baixa e media"*. A regra e uma so (`Kaioken.VetoDaForma`), e cada porta do servidor e medida pela de producao:
 	///   (a) A TABELA: o catalogo inteiro contra a lista do dono ESCRITA AQUI, e nao derivada -- os Super Saiyajin vetam menos o
-	///       Blue, o SSG e o SSG Rose seguem no veto do Deus, e toda outra forma nao veta. Um degrau novo numa linha de Super
-	///       Saiyajin cai fora da lista e reprova ate alguem decidir o que ele faz com o Kaio-ken.
+	///       Blue, o SSG e o SSG Rose seguem no veto do Deus, e (2026-10-21) toda outra forma veta como transformacao, menos a base e
+	///       as supressoes do Frost Demon. Um degrau novo numa linha de Super Saiyajin cai fora da lista e reprova ate alguem decidir o
+	///       que ele faz com o Kaio-ken.
 	///   (b) O BOTAO: o corpo que o Blue aceita (classe baixa, 50% de maestria divina) acende no Blue e NAO acende em nenhum outro
 	///       Super Saiyajin -- cada recusa dizendo que so o Blue o aguenta.
 	///   (c) O BLUE: a classe media acende; o Elite e o New Generation, com 100% de maestria, nao (a classe); a classe baixa com 49%
 	///       nao (os 50% do DM do dono); e o pedido de x50 acende x20 (o teto do DM).
 	///   (d) A ENTRADA NA FORMA: aceso na base, virar SSJ1 pelo funil de toda transformacao apaga o Kaio-ken na hora; virar Mistico
-	///       (que nao e Super Saiyajin) o deixa aceso.
+	///       (que nao e Super Saiyajin) tambem -- desde 2026-10-21, pela outra frase (ver a KT, logo abaixo).
 	///   (e) O TIQUE: aceso na base e com o SSJ2 escrito direto -- o caminho do admin e da saga, que nao passa pela entrada --, o tique
 	///       seguinte o apaga; no Blue de classe baixa a 50%, o tique o deixa aceso.
 	///   (f) O AVISO DOS 50% DE MAESTRIA DIVINA: a classe baixa ouve que o corpo aguenta o Kaio-ken por cima do Blue; o New
@@ -534,20 +535,25 @@ public sealed partial class GameServer
 			"blue", "blue_evolution", "rose", "rose2",
 		];
 		string[] deus = ["ssg", "rose_ssg"];
-		List<string> erradas = superSaiyajin.Concat(deus).Where(id => Jandirus.Core.Forms.Catalogo.Def(id) == null)
+		// (2026-10-21) O CORPO SEM TRANSFORMACAO: a base e as supressoes do Frost Demon (o corpo dele suprimido, escolha do dono). Toda
+		// outra forma e transformacao e veta -- *"kaioken n poderia ser usado com NENHUMA transformacao, o blue e a unica excecao"*.
+		string[] semTransformacao = ["base", "frost1", "frost2", "frost3", "frost4", "frost5"];
+		List<string> erradas = superSaiyajin.Concat(deus).Concat(semTransformacao).Where(id => Jandirus.Core.Forms.Catalogo.Def(id) == null)
 			.Select(id => $"{id} nao existe no catalogo").ToList();
 		int outras = 0;
 		foreach (Jandirus.Core.Forms.FormaDef d in Jandirus.Core.Forms.Catalogo.Todas)
 		{
 			KaiokenCore.Veto esperado = deus.Contains(d.Id) ? KaiokenCore.Veto.Deus
 				: superSaiyajin.Contains(d.Id) && d.Id != blue ? KaiokenCore.Veto.SuperSaiyajin
-				: KaiokenCore.Veto.Nenhum;
-			if (!deus.Contains(d.Id) && !superSaiyajin.Contains(d.Id)) outras++;
+				: d.Id == blue || semTransformacao.Contains(d.Id) ? KaiokenCore.Veto.Nenhum
+				: KaiokenCore.Veto.Transformacao;
+			if (esperado == KaiokenCore.Veto.Transformacao) outras++;
 			KaiokenCore.Veto veto = KaiokenCore.VetoDaForma(d, "Low-Class", meia);
 			if (veto != esperado) erradas.Add($"{d.Id}: {veto} (o dono: {esperado})");
 		}
 		AfirmarV30($"**A TABELA DO DONO**: no catalogo inteiro, pra classe baixa com 50% de maestria divina, os {superSaiyajin.Length - 1} Super "
-				   + $"Saiyajin que nao sao o Blue vetam o Kaio-ken, o Blue nao, o SSG e o SSG Rose seguem no veto do Deus e as outras {outras} formas nao vetam",
+				   + $"Saiyajin que nao sao o Blue vetam o Kaio-ken, o Blue nao, o SSG e o SSG Rose seguem no veto do Deus, as outras {outras} "
+				   + $"transformacoes vetam (2026-10-21) e so a base e as {semTransformacao.Length - 1} supressoes do Frost Demon nao vetam",
 				   erradas.Count == 0, string.Join(" | ", erradas));
 
 		(bool Botao, bool Classe, bool Maestria, bool Teto, bool Entrada, bool Tique, bool Aviso, string Detalhe) Medir(bool defeito)
@@ -607,7 +613,8 @@ public sealed partial class GameServer
 				}
 				var noSsj1 = Virar("SSJ1 KS", Jandirus.Core.Forms.Catalogo.IdSsj1);
 				var noMistico = Virar("Mistico KS", Jandirus.Core.Forms.Catalogo.IdMistico);
-				bool entrada = noSsj1.Estava && !noSsj1.Ficou && Disse(noSsj1.Falas, "só o Blue o aguenta") && noMistico.Estava && noMistico.Ficou;
+				bool entrada = noSsj1.Estava && !noSsj1.Ficou && Disse(noSsj1.Falas, "só o Blue o aguenta")
+							   && noMistico.Estava && !noMistico.Ficou && Disse(noMistico.Falas, "transformação nenhuma");
 
 				// ---- (e) O TIQUE: a forma escrita direto nao passa pela entrada ----
 				ServerPlayer direto = ForjarDaClasseKS("Direto KS", c, "Low-Class", meia);
@@ -655,7 +662,7 @@ public sealed partial class GameServer
 				   limpo.Maestria, limpo.Detalhe);
 		AfirmarV30("**O TETO DO BLUE E X20** (`GODKI_KAIOKEN_CAP`): a classe baixa a 50% pede x50 e acende x20, avisada -- o bloco que fazia isto perguntava pelo `Fighter.ssj` e nunca rodou",
 				   limpo.Teto, limpo.Detalhe);
-		AfirmarV30("**VIRAR SUPER SAIYAJIN APAGA O KAIO-KEN**: aceso na base, o corpo vira SSJ1 pelo funil de toda transformacao (`EntrarNaForma`) e perde o buff na hora, dizendo por que; virar Mistico (que nao e Super Saiyajin) o deixa aceso",
+		AfirmarV30("**VIRAR SUPER SAIYAJIN APAGA O KAIO-KEN**: aceso na base, o corpo vira SSJ1 pelo funil de toda transformacao (`EntrarNaForma`) e perde o buff na hora, dizendo por que; virar Mistico (que nao e Super Saiyajin) tambem o apaga, pela frase da transformacao (2026-10-21)",
 				   limpo.Entrada, limpo.Detalhe);
 		AfirmarV30("**O TIQUE EXPULSA O KAIO-KEN DO SUPER SAIYAJIN** (o `Loop()` do DM ja fazia isto pro Blue): aceso na base e com o SSJ2 escrito direto -- o caminho do admin e da saga, que nao passa pela entrada --, o tique seguinte o apaga; no Blue de classe baixa a 50%, o tique o deixa aceso",
 				   limpo.Tique, limpo.Detalhe);
@@ -665,8 +672,120 @@ public sealed partial class GameServer
 		AfirmarV30("(defeito injetado: o Kaio-ken em todo Super Saiyajin, o jogo de antes) ele acende no SSJ e no Blue de qualquer classe e maestria, sem teto, atravessa a entrada e o tique, e o aviso o promete a todos -- as sete reguas de cima REPROVAM",
 				   !comDefeito.Botao && !comDefeito.Classe && !comDefeito.Maestria && !comDefeito.Teto && !comDefeito.Entrada && !comDefeito.Tique
 				   && !comDefeito.Aviso, comDefeito.Detalhe);
+		OKaiokenEmNenhumaTransformacaoV30(c);   // (2026-10-21) no mesmo chao, antes de a varredura voltar
 		LimparTudoDaBancada();
 		_pjProximoCorredor = varreduraAntes;
+	}
+
+	// =====================================================================
+	// KT) O KAIO-KEN EM NENHUMA TRANSFORMACAO (2026-10-21)
+	// =====================================================================
+	/// <summary>
+	/// O dono (2026-10-21): *"kaioken n poderia ser usado com NENHUMA transformacao, o blue e a unica excecao a regra"* -- e as tres
+	/// escolhas dele nas bordas: o Oozaru recusa, as supressoes do Frost Demon nao contam (sao o corpo dele em repouso), a Forma Pura
+	/// do Majin recusa sempre. A tabela do catalogo inteiro e a da KS (a); aqui, cada porta do servidor pela de producao:
+	///   (a) O BOTAO: o corpo que o Blue aceita (o da KS) e recusado em cada transformacao da lista ESCRITA AQUI -- uma de cada linha que
+	///       nao e Super Saiyajin, e a Forma Pura --, cada recusa dizendo que nenhuma transformacao o sustenta; na Forma Base e na 1a
+	///       supressao do Frost Demon ele acende.
+	///   (b) O OOZARU: o macaco (`VirarFera`, que deixa a escada na base) recusa o botao; e quem vira macaco com o Kaio-ken aceso o perde
+	///       no tique seguinte (virar Oozaru nao passa pelo `EntrarNaForma`).
+	///   (c) A ENTRADA NA FORMA: aceso na base, virar Mistico pelo funil de toda transformacao apaga o Kaio-ken na hora.
+	///   (d) O TIQUE: aceso na base e com o Super Namekuseijin escrito direto (o caminho do admin), o tique seguinte o apaga.
+	/// E o contra-exemplo: com `KaiokenNaTransformacaoDeTeste` (o jogo de antes de hoje) as quatro reguas REPROVAM.
+	/// </summary>
+	private void OKaiokenEmNenhumaTransformacaoV30(Vec2 c)
+	{
+		GD.Print("[v030] --- KT) o Kaio-ken em nenhuma transformacao: so o Blue e a excecao (2026-10-21) ---");
+		LimparTudoDaBancada();
+		double meia = Jandirus.Core.Forms.Catalogo.GodkiRoyalePct;
+		string[] transformacoes = ["mistico", "beast", "ui_sign", "destroyer", "god_fury", "frost6", "snamek", "heran1", "alien1",
+								   "super_perfect", "majin_pura", "alta_tensao"];
+		string[] repouso = ["frost5", "frost1"];
+		const string Porque = "transformação nenhuma";
+
+		(bool Botao, bool Oozaru, bool Entrada, bool Tique, string Detalhe) Medir(bool defeito)
+		{
+			KaiokenNaTransformacaoDeTeste = defeito;
+			try
+			{
+				// ---- (a) O BOTAO, em cada transformacao da lista e nas duas supressoes ----
+				ServerPlayer b = ForjarDaClasseKS("Botao KT", c, "Low-Class", meia);
+				List<string> acenderam = [], semPorque = [], recusaram = [];
+				foreach (string id in transformacoes)
+				{
+					b.Forma.Entrar(id);
+					List<string> falas = ApertarEOuvir(b, "Kaioken_5");
+					if (TemBuff(b, BuffKaiokenG2)) { acenderam.Add(id); UsarHabilidade(b, "Kaioken"); }
+					else if (!Disse(falas, Porque)) semPorque.Add($"{id}: {Ultimos(falas)}");
+				}
+				foreach (string id in repouso)
+				{
+					b.Forma.Entrar(id);
+					List<string> falas = ApertarEOuvir(b, "Kaioken_5");
+					if (TemBuff(b, BuffKaiokenG2)) UsarHabilidade(b, "Kaioken");
+					else recusaram.Add($"{id}: {Ultimos(falas)}");
+				}
+				b.Forma.Entrar(Jandirus.Core.Forms.Catalogo.IdBase);
+				bool botao = acenderam.Count == 0 && semPorque.Count == 0 && recusaram.Count == 0;
+
+				// ---- (b) O OOZARU: o botao no macaco, e o macaco que chega com ele aceso ----
+				ServerPlayer fera = ForjarDaClasseKS("Fera KT", c, "Low-Class", meia);
+				VirarFera(fera, Jandirus.Core.Forms.FormaOozaru.Regular);
+				List<string> falasDaFera = ApertarEOuvir(fera, "Kaioken_5");
+				bool feraAcendeu = TemBuff(fera, BuffKaiokenG2);
+				if (feraAcendeu) UsarHabilidade(fera, "Kaioken");
+				ServerPlayer macaco = ForjarDaClasseKS("Macaco KT", c, "Low-Class", meia);
+				UsarHabilidade(macaco, "Kaioken_3");
+				bool estava = TemBuff(macaco, BuffKaiokenG2);
+				VirarFera(macaco, Jandirus.Core.Forms.FormaOozaru.Regular);
+				List<string> tiqueDoMacaco = Ouvir(TickTecnicasG2);
+				bool macacoApagou = !TemBuff(macaco, BuffKaiokenG2);
+				if (!macacoApagou) UsarHabilidade(macaco, "Kaioken");
+				bool oozaru = !feraAcendeu && Disse(falasDaFera, Porque) && estava && macacoApagou && Disse(tiqueDoMacaco, "Oozaru");
+
+				// ---- (c) A ENTRADA NA FORMA, pelo funil de toda transformacao ----
+				ServerPlayer e = ForjarDaClasseKS("Entrada KT", c, "Low-Class", meia);
+				UsarHabilidade(e, "Kaioken_3");
+				bool acesoNaBase = TemBuff(e, BuffKaiokenG2);
+				List<string> falasDaEntrada = Ouvir(() => EntrarNaForma(e, Jandirus.Core.Forms.Catalogo.Def(Jandirus.Core.Forms.Catalogo.IdMistico)!, semCena: true));
+				bool ficou = TemBuff(e, BuffKaiokenG2) && e.Ficha.KaioPcnt > 1.0001;
+				if (TemBuff(e, BuffKaiokenG2)) UsarHabilidade(e, "Kaioken");
+				bool entrada = acesoNaBase && !ficou && Disse(falasDaEntrada, Porque);
+
+				// ---- (d) O TIQUE: a forma escrita direto nao passa pela entrada ----
+				ServerPlayer t = ForjarDaClasseKS("Tique KT", c, "Low-Class", meia);
+				UsarHabilidade(t, "Kaioken_3");
+				t.Forma.Entrar("snamek");
+				bool atravessou = TemBuff(t, BuffKaiokenG2);
+				List<string> noTique = Ouvir(TickTecnicasG2);
+				bool tiqueApagou = !TemBuff(t, BuffKaiokenG2);
+				if (!tiqueApagou) UsarHabilidade(t, "Kaioken");
+				bool tique = atravessou && tiqueApagou && Disse(noTique, "Super Namekuseijin");
+
+				return (botao, oozaru, entrada, tique,
+						$"(a) acenderam [{string.Join(", ", acenderam)}]; sem o porque [{string.Join(" || ", semPorque)}]; repouso recusado [{string.Join(" || ", recusaram)}]"
+						+ $" (b) fera acendeu {feraAcendeu} [{Ultimos(falasDaFera)}]; macaco {estava} -> apagou {macacoApagou} [{Ultimos(tiqueDoMacaco)}]"
+						+ $" (c) Mistico {acesoNaBase} -> {ficou} [{Ultimos(falasDaEntrada)}]"
+						+ $" (d) atravessou {atravessou}; apagou no tique {tiqueApagou} [{Ultimos(noTique)}]");
+			}
+			finally { KaiokenNaTransformacaoDeTeste = false; }
+		}
+
+		var limpo = Medir(defeito: false);
+		AfirmarV30($"**NENHUMA TRANSFORMACAO SUSTENTA O KAIO-KEN** (*\"kaioken n poderia ser usado com NENHUMA transformacao, o blue e a unica excecao\"*): "
+				   + $"o corpo que o Blue aceita e recusado nas {transformacoes.Length} transformacoes da lista (uma de cada linha que nao e Super Saiyajin, "
+				   + "e a Forma Pura), cada recusa dizendo por que; na Forma Base e na 1a supressao do Frost Demon (repouso, escolha do dono) ele acende",
+				   limpo.Botao, limpo.Detalhe);
+		AfirmarV30("**O OOZARU TAMBEM** (escolha do dono): o macaco recusa o botao, e quem vira macaco com o Kaio-ken aceso o perde no tique seguinte",
+				   limpo.Oozaru, limpo.Detalhe);
+		AfirmarV30("**VIRAR MISTICO APAGA O KAIO-KEN**: aceso na base, o corpo vira Mistico pelo funil de toda transformacao (`EntrarNaForma`) e perde o buff na hora, dizendo por que",
+				   limpo.Entrada, limpo.Detalhe);
+		AfirmarV30("**O TIQUE EXPULSA O KAIO-KEN DE TODA TRANSFORMACAO**: aceso na base e com o Super Namekuseijin escrito direto (o caminho do admin), o tique seguinte o apaga",
+				   limpo.Tique, limpo.Detalhe);
+		var comDefeito = Medir(defeito: true);
+		AfirmarV30("(defeito injetado: o Kaio-ken nas transformacoes que nao sao Super Saiyajin, o jogo de antes de hoje) ele acende e dura no Mistico, no Oozaru e no "
+				   + "Super Namekuseijin -- as quatro reguas de cima REPROVAM",
+				   !comDefeito.Botao && !comDefeito.Oozaru && !comDefeito.Entrada && !comDefeito.Tique, comDefeito.Detalhe);
 	}
 
 	// =====================================================================
@@ -1280,7 +1399,8 @@ public sealed partial class GameServer
 			morto.RelogioDaMorte = long.MaxValue;
 			morto.PassagemAte = 0;
 			morto.Combate.Carencia = 0;
-			morto.Ficha.teleskill = 100;   // a espera de 1,5 s (`max(600/teleskill, 15)` decimos)
+			morto.Ficha.teleskill = 100;   // o custo; o alcance ate a Terra e o nivel 5 da skill
+			morto.Niveis.Por(Jandirus.Core.Skills.TransmissaoEmNiveis.Path, Jandirus.Core.Skills.TransmissaoEmNiveis.Universo);
 			morto.Ficha.Ki = morto.Ficha.MaxKi;
 			List<string> pedido = Ouvir(() => TeletransporteG11(morto, vivo.Name));
 			if (!_transmissaoG11.TryGetValue(morto.Id, out TransmissaoG11? tr)) return (false, false, Ultimos(pedido));

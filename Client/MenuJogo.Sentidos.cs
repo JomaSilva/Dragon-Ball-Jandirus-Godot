@@ -120,6 +120,23 @@ public partial class MenuJogo
 
 		// o `(?,?,z[D.z])` do DM: so o lugar, sem coordenada
 		if (p.Zona.Length > 0) Linha("onde", $"(?, ?, {p.Zona})", null, c);
+
+		// (2026-10-21) O BOTAO DO INSTANT TRANSMISSION. O servidor manda o nivel (0 = sem a skill) e o id do corpo:
+		// o nome nao distingue homonimo. No Scan o botao nao aparece -- a aba que o dono pediu e a do Sense.
+		// O texto e o verbo, "Teletransportar" (pedido do dono, 2026-10-21), e nao o nome da tecnica.
+		int nivelIt = GameClient.Instance?.NivelDaTransmissao ?? 0;
+		if (GameClient.Instance?.SentidosSaoDoScouter != true && nivelIt > 0 && p.Corpo != 0 && p.Alcance <= nivelIt)
+		{
+			var ir = new Button
+			{
+				Text = "Teletransportar",
+				FocusMode = Control.FocusModeEnum.None,
+			};
+			ir.SetMeta("teletransporte", p.Corpo);
+			int corpo = p.Corpo;
+			ir.Pressed += () => GameClient.Instance?.SendHabilidade("Instant_Transmission:#" + corpo);
+			c.AddChild(ir);
+		}
 	}
 
 	/// <summary>O rotulo da linha do poder relativo. As bancadas a procuram por aqui (e pelo metadado `linha`).</summary>
@@ -152,7 +169,7 @@ public partial class MenuJogo
 	{
 		GameClient? c = GameClient.Instance;
 		// (2026-10-19) as duas buscas e o rastro -- ver `AssinaturaDaBuscaEDoRastro` (`MenuJogo.Rastro.cs`)
-		return $"{(c?.SentidosSaoDoScouter == true ? 'S' : 'K')}{c?.NivelDoSense}|{AssinaturaDaBuscaEDoRastro()}|" + string.Join(',', (c?.Sentidos ?? []).Select(p =>
-			$"{p.Nome}/{p.Assinatura}/{p.Alcance}/{p.PoderRelativo:0}/{p.Bp:0}/{p.Distancia}/{p.Rumo}/{p.X}/{p.Y}/{p.Zona}/{p.Chefe}"));
+		return $"{(c?.SentidosSaoDoScouter == true ? 'S' : 'K')}{c?.NivelDoSense}|{c?.NivelDaTransmissao}|{AssinaturaDaBuscaEDoRastro()}|" + string.Join(',', (c?.Sentidos ?? []).Select(p =>
+			$"{p.Nome}/{p.Assinatura}/{p.Alcance}/{p.PoderRelativo:0}/{p.Bp:0}/{p.Distancia}/{p.Rumo}/{p.X}/{p.Y}/{p.Zona}/{p.Chefe}/{p.Corpo}"));
 	}
 }

@@ -74,7 +74,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void AdminLuaCheia(ServerPlayer pl)
 	{
-		RelogioDoPlaneta relogio = RelogioDaZona(pl.Zone);
+		RelogioDoPlaneta relogio = RelogioDoLugar(pl);
 		double agora = TempoDoMundo;
 		const double Teto = 60 * 60 * 24 * 45;   // 45 dias: planeta sem lua nao adianta procurar mais
 		const double Passo = 60;
@@ -135,7 +135,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void AdminMeioDia(ServerPlayer pl)
 	{
-		RelogioDoPlaneta relogio = RelogioDaZona(pl.Zone);
+		RelogioDoPlaneta relogio = RelogioDoLugar(pl);
 		double dia = relogio.DiaLocal(TempoDoMundo);
 
 		// A PARTE INTEIRA É QUAL DIA, A FRAÇÃO É A HORA. O `+1` cobre o caso de já ter passado do
@@ -155,8 +155,11 @@ public sealed partial class GameServer
 				 + "Encoberto? use o clima pra limpar.");
 	}
 
-	/// <summary>O céu que este jogador está vendo agora.</summary>
-	public EstadoDoCeu CeuDe(ServerPlayer pl) => Ceu.De(RelogioDaZona(pl.Zone), TempoDoMundo);
+	/// <summary>
+	/// O céu que este jogador está vendo agora. (2026-10-21) O do LUGAR em que o corpo esta: no Lookout e nas cavernas, o do planeta
+	/// delas; no castelo do Rei Vegeta, o de Vegeta (`RelogioDoLugar`, `GameServer.SubZonas.cs`).
+	/// </summary>
+	public EstadoDoCeu CeuDe(ServerPlayer pl) => Ceu.De(RelogioDoLugar(pl), TempoDoMundo);
 
 	// =====================================================================
 	// A BANCADA
@@ -244,6 +247,7 @@ public sealed partial class GameServer
 		TickDoClima();
 		TickDoRaio(agora);
 		TickDoCalendario();   // (2026-10-17) o dia e o mes que viram -- ver `GameServer.Calendario.cs`
+		TickDasSubZonas();    // (2026-10-21) o ceu de quem cruza o castelo, a sub-zona de um mundo morto e os chefes no mundo -- ver `GameServer.SubZonas.cs`
 
 		// O PALCO DA FOTO (`--macacovivo`), e ele mora AQUI e não num relógio próprio: o que ele faz é
 		// abrir o corpo do Saiyajin de cena no segundo combinado, e o gatilho que vai lê-lo é o laço
@@ -268,7 +272,7 @@ public sealed partial class GameServer
 			// corpos pra nada) e sai pelas guardas baratas antes de perguntar o céu.
 			// ==========================================================================================================
 			if (pl.Peer == null) { ALuaPegaOSaiyajin(pl, agora); continue; }
-			OlharProCeu(pl, Ceu.De(RelogioDaZona(pl.Zone), agora));
+			OlharProCeu(pl, Ceu.De(RelogioDoLugar(pl), agora));
 		}
 	}
 
@@ -368,7 +372,7 @@ public sealed partial class GameServer
 		//    `Cheia && LuaNoCeu`. Função pura de (relógio da zona, instante), então não há nada
 		//    pendurado no NPC pra ficar velho, e zona de interior/espaço devolve `SemCeu` -- que é o
 		//    `current_area.name != "Inside"` do DM saindo de graça.
-		EstadoDoCeu ceu = Ceu.De(RelogioDaZona(npc.Zone), agora);
+		EstadoDoCeu ceu = Ceu.De(RelogioDoLugar(npc), agora);
 		if (!ceu.Cheia || !ceu.LuaNoCeu) return;
 
 		//    ...E O TETO, que NAO sai de graca: a zona `SemCeu` cobre a nave, e nao a casa de um mapa

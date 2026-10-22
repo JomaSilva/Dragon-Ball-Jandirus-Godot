@@ -25,6 +25,51 @@ public partial class GameServer
 		GD.Print($"[server] {pl.Name}: a inteligencia da raca entrou na ficha ({antes:0.##} -> {pl.Ficha.techmod:0.##})");
 	}
 
+	/// <summary>
+	/// (2026-10-21) O "BATTLE POWER" QUE CADA RACA/CLASSE DAVA ANTES DO PEDIDO DO DONO -- so as tres que mudaram (*"deixa androide em 1.2 e majin
+	/// corrupted em 1.3 e o majin normal em 1.0"*). A classe vazia e a do corpo, quando a classe nao tem "Battle Power" proprio.
+	/// </summary>
+	private static readonly Dictionary<(string Raca, string Classe), double> PoderDaRacaDeAntes = new()
+	{
+		[("Android", "")] = 2.0,
+		[("Majin", "")] = 2.3,
+		[("Majin", "Corrupted Majin")] = 2.5,
+	};
+
+	/// <summary>
+	/// QUANTO A BASE DO `BPMod` MUDOU PRA ESTE GENOMA: por ancestral, a fracao dele vezes (o de agora - o de antes), so nas raca/classe da tabela
+	/// <see cref="PoderDaRacaDeAntes"/>. O que a Saga do Majin e as skills somaram nao entra (nao mora no proto).
+	/// </summary>
+	internal static double DiferencaDoPoderDaRaca(RaceCatalog cat, Genome? g)
+	{
+		if (g == null) return 0;
+		double d = 0;
+		foreach ((string raca, double pct) in g.Ancestry)
+		{
+			if (!cat.Protos.TryGetValue(raca, out RaceProto? proto)) continue;
+			bool daClasse = proto.ClassStats.TryGetValue(g.Class, out Dictionary<string, double>? doClasse) && doClasse.ContainsKey("Battle Power");
+			if (!PoderDaRacaDeAntes.TryGetValue((raca, daClasse ? g.Class : ""), out double velho)) continue;
+			double novo = daClasse ? doClasse!["Battle Power"] : proto.Stats.GetValueOrDefault("Battle Power", 1);
+			d += (novo - velho) * pct / 100.0;
+		}
+		return d;
+	}
+
+	/// <summary>
+	/// O PODER DE LUTA DA RACA, UMA VEZ (2026-10-21): a ficha salva antes guarda a base velha DENTRO do `BPMod`, e o login troca so a base
+	/// (<see cref="DiferencaDoPoderDaRaca"/>). Chamada no login, logo depois do save virar jogador; a versao vai pro disco no `DeJogador`, e a
+	/// segunda entrada nao troca de novo.
+	/// </summary>
+	private void MigrarPoderDaRaca(ServerPlayer pl)
+	{
+		if (pl.PoderDaRacaVersao >= CharacterSave.VersaoDoPoderDaRaca || _racas == null) return;
+		double antes = pl.Ficha.BPMod;
+		pl.Ficha.BPMod = Math.Max(0.1, pl.Ficha.BPMod + DiferencaDoPoderDaRaca(_racas, pl.Ficha.Genoma));
+		pl.PoderDaRacaVersao = CharacterSave.VersaoDoPoderDaRaca;
+		if (antes != pl.Ficha.BPMod)
+			GD.Print($"[server] {pl.Name}: o poder de luta da raca mudou ({antes:0.##} -> {pl.Ficha.BPMod:0.##})");
+	}
+
 	// =====================================================================
 	// A BANCADA `--inteligenciateste`
 	// =====================================================================
@@ -100,6 +145,46 @@ public partial class GameServer
 			// ---- 5. o nome ----
 			Checa("**O TSUJIN SE CHAMA TSUFURUJIN NA TELA** (*\"a raça tsujin (q deveria ser tsufurujin no jogo)\"*); a chave continua a do DM",
 				  NomeDaRaca.Bonito(InteligenciaDaRaca.Tsufurujin) == "Tsufurujin" && NomeDaRaca.EhChaveCrua("Tsujin"), NomeDaRaca.Bonito("Tsujin"));
+
+			// ---- 6. o poder de luta da raca (dono, 2026-10-21: *"deixa androide em 1.2 e majin corrupted em 1.3 e o majin normal em 1.0"*) ----
+			double BpModDe(string raca, string classe) => Birth.Nascer(_racas, raca, "", sorte, "Medido", classeForcada: classe).BPMod;
+			static bool Perto(double a, double b) => Math.Abs(a - b) < 1e-9;
+			double andro = BpModDe("Android", ""), majin = BpModDe("Majin", "Majin"), corrompido = BpModDe("Majin", "Corrupted Majin"),
+				   yardrat = BpModDe("Yardrat", "");
+			Checa("**O PODER DE LUTA DA RACA MUDOU** (o \"Battle Power\" do `races.json`, que multiplica todo ganho de BP e o teto de treino): o "
+				  + "Androide nasce com 1,2, o Majin com 1 e o Majin Corrompido com 1,3 -- e o Yardrat, que nao e do pedido, com o 1,2 de sempre",
+				  Perto(andro, 1.2) && Perto(majin, 1) && Perto(corrompido, 1.3) && Perto(yardrat, 1.2),
+				  $"androide {andro} | majin {majin} | corrompido {corrompido} | yardrat {yardrat}");
+
+			// quem ja existia: o save guarda a base VELHA dentro do `BPMod`, com o que a saga e as skills somaram por cima
+			ServerPlayer Veterano(string raca, string classe, double bpModDoSave)
+			{
+				var v = new ServerPlayer { Name = "Veterano " + raca, Race = raca, Ficha = Birth.Nascer(_racas, raca, "", sorte, "Veterano", classeForcada: classe) };
+				v.Ficha.BPMod = bpModDoSave;
+				v.PoderDaRacaVersao = 0;
+				return v;
+			}
+			ServerPlayer vCorrompido = Veterano("Majin", "Corrupted Majin", 2.5 + 2 * SagaDoMajin.PoderDeLutaPorDegrau);   // dois degraus da saga
+			ServerPlayer vMajin = Veterano("Majin", "Majin", 2.3);
+			ServerPlayer vAndro = Veterano("Android", "", 2.0 + 0.1);                                                      // uma skill genetica
+			ServerPlayer vYardrat = Veterano("Yardrat", "", 1.2 + 0.3);
+			foreach (ServerPlayer v in new[] { vCorrompido, vMajin, vAndro, vYardrat }) MigrarPoderDaRaca(v);
+			double corrompido1 = vCorrompido.Ficha.BPMod;
+			foreach (ServerPlayer v in new[] { vCorrompido, vMajin, vAndro, vYardrat }) MigrarPoderDaRaca(v);
+			Checa("**QUEM JA EXISTIA TROCA SO A BASE, UMA VEZ**: o Corrompido com dois degraus da saga vai de 4,5 a 3,3, o Majin de 2,3 a 1, o "
+				  + "Androide com uma skill de 2,1 a 1,3, o Yardrat fica nos 1,5 dele -- e a segunda entrada nao troca de novo",
+				  Perto(corrompido1, 2.5 + 2 * SagaDoMajin.PoderDeLutaPorDegrau - 1.2) && Perto(vCorrompido.Ficha.BPMod, corrompido1)
+				  && Perto(vMajin.Ficha.BPMod, 1) && Perto(vAndro.Ficha.BPMod, 1.3) && Perto(vYardrat.Ficha.BPMod, 1.5)
+				  && vCorrompido.PoderDaRacaVersao == CharacterSave.VersaoDoPoderDaRaca,
+				  $"corrompido {corrompido1} -> {vCorrompido.Ficha.BPMod} | majin {vMajin.Ficha.BPMod} | androide {vAndro.Ficha.BPMod} | "
+				  + $"yardrat {vYardrat.Ficha.BPMod}; versao {vCorrompido.PoderDaRacaVersao}");
+
+			// ---- 7. a regeneracao do Majin Corrompido (dono, 2026-10-21: *"faça o corrupted majin tb ter regeneraçao em 100 pq ele ta como 70"*) ----
+			// O corpo ja regenerava como o Majin: o `EixoDeRegen` le a RACA (`RegeneracaoDaRaca`), e nao a classe. O 70 da classe no catalogo
+			// era um numero que ninguem lia -- agora ele diz o mesmo que o jogo faz.
+			double regDaClasse = _racas.Protos["Majin"].ClassStats["Corrupted Majin"]["Regeneration"];
+			Checa("**O MAJIN CORROMPIDO REGENERA 100**: o catalogo diz 100 na classe (era 70, sem leitor) e o corpo regenera como o do Majin",
+				  regDaClasse == 100 && RegeneracaoDaRaca("Majin") == 100, $"classe {regDaClasse}, corpo {RegeneracaoDaRaca("Majin")}");
 		}
 		catch (Exception e)
 		{

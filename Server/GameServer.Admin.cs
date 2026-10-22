@@ -512,6 +512,8 @@ public sealed partial class GameServer
 			case "admin_saga_resetar": AdminResetarSaga(pl, arg); break;
 			// (2026-10-18) e o "chegar agora": os dias de aviso pulados, os chefes no mundo ja
 			case "admin_saga_agora": AdminSagaAgora(pl, arg); break;
+			// (2026-10-20) e o "pular": a saga fecha vencida, com os chefes dela mortos
+			case "admin_saga_pular": AdminPularSaga(pl, arg); break;
 			case "admin_morte_lenta": AdminMorteLenta(pl); break;
 			case "admin_destruir_planeta": AdminDestruirPlaneta(pl); break;
 			case "admin_abortar_morte": AdminAbortarMorte(pl); break;

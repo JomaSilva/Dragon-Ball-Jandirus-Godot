@@ -2153,11 +2153,9 @@ public partial class World : Node2D
 		// estado em que o dono achou o jogo, e naquele estado a mente era um interior generico --
 		// `Ceu.SemCeu`, crepusculo parado. Sem esta linha a foto do "antes" sairia com a luz de HOJE
 		// por cima do mapa de ONTEM, que e um lugar que nunca existiu.
-		_luzDoMundo.Relogio = MenteAntiga && Jandirus.Core.World.DimensaoMental.EhAMente(zona)
-			? Jandirus.Core.World.Ceu.SemCeu
-			: Planetas.Relogio(zona);
-		_luzDoMundo.ClimaDaqui = Planetas.Clima(zona);
-		_luzDoMundo.SalDoClima = Jandirus.Core.World.Clima.SalDaZona(zona);
+		// (2026-10-21) E O CEU E O DO LUGAR, e nao so o da zona: a caverna e o Lookout tem o do planeta deles, e o castelo do Rei Vegeta,
+		// no canto do Lookout, o de Vegeta -- por isso o ponto de chegada vai junto. Ver `World.SubZonas.cs`.
+		AcertarCeuDoLugar(zona, centro);
 
 		// O TETO TAMBEM E DO LUGAR, e zera aqui pelo mesmo motivo do ceu: dos cinco caminhos desta
 		// funcao so o do mapa pre-feito tem plano, e os outros quatro ficariam com o do planeta
@@ -2168,6 +2166,13 @@ public partial class World : Node2D
 		// na cena da zona, e as camadas que eles escreveram no mapa de colisao (que e CACHEADO por sessao)
 		// voltariam junto na proxima visita. Quem os repoe e o `ReaplicarBlocos`, no fim de cada ramo.
 		LimparBlocosDaCena();
+
+		// AS PORTAS DO MAPA TAMBEM SAO DO LUGAR. Quem as poe e o `MontarPortas`, e ele so roda no ramo pre-feito:
+		// enquanto a leva velha so saia la dentro, os outros caminhos (o espaco, a nave, a mente, o Majin, o mundo
+		// gerado) ficavam com as portas do mapa ANTERIOR desenhadas nas mesmas celulas. O dono achou as da casa da
+		// Terra espalhadas por um mundo sorteado (2026-10-20) e as tomou pela porta da Sala do Tempo -- nenhuma
+		// abria, porque o servidor nao tem porta nenhuma ali.
+		if (!PortasDoMapaFicamDeTeste) TirarAsPortasDoMapa();
 
 		_catalogo ??= Godot.FileAccess.FileExists(Manifesto)
 			? ZoneCatalog.Parse(Godot.FileAccess.GetFileAsString(Manifesto))
@@ -2771,7 +2776,19 @@ public partial class World : Node2D
 	}
 
 	/// <summary>
-	/// AS PORTAS DA ZONA: uma leva de nodes, trocada inteira a cada entrada.
+	/// NENHUMA PORTA DE MAPA NA CENA: a leva da zona anterior sai inteira. Chamado no comeco do `CarregarZona`,
+	/// antes de qualquer ramo -- a porta mora fora da cena da zona (`_portas`), e nao sai com ela.
+	/// </summary>
+	private void TirarAsPortasDoMapa()
+	{
+		foreach (Porta p in _portasPorCelula.Values)
+			if (GodotObject.IsInstanceValid(p)) p.QueueFree();
+		_portasPorCelula.Clear();
+	}
+
+	/// <summary>
+	/// AS PORTAS DA ZONA: uma leva de nodes, trocada inteira a cada entrada (a de antes ja saiu no
+	/// comeco do `CarregarZona`, em <see cref="TirarAsPortasDoMapa"/>).
 	///
 	/// TODAS NASCEM FECHADAS, e o `.col`/`.vis` da zona volta ao estado de arquivo. E o que impede
 	/// a porta de ficar aberta pra sempre: os dois mapas sao CACHEADOS por sessao, entao sem este
@@ -2780,10 +2797,6 @@ public partial class World : Node2D
 	/// </summary>
 	private void MontarPortas(ZoneEntry e)
 	{
-		foreach (Porta p in _portasPorCelula.Values)
-			if (GodotObject.IsInstanceValid(p)) p.QueueFree();
-		_portasPorCelula.Clear();
-
 		_colisao?.FecharTudo();
 		_veu.Mapa?.FecharTudo();
 		_veu.InvalidarOComodo();
@@ -3082,6 +3095,21 @@ public partial class World : Node2D
 	/// <summary>A porta do mapa desenhada nesta celula, se ha uma -- so pras bancadas.</summary>
 	public Porta? PortaDoMapaDeTeste(int cx, int cy) =>
 		_portasPorCelula.TryGetValue((cx, cy), out Porta? p) && IsInstanceValid(p) ? p : null;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada --diagsalas): a troca de zona nao tira as portas do mapa anterior -- o jogo de antes
+	/// de 2026-10-20, em que as portas da Terra apareciam num mundo sorteado. Lido pela propria linha do conserto, no
+	/// comeco do `CarregarZona`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool PortasDoMapaFicamDeTeste;
+
+	/// <summary>
+	/// Quantas portas DE MAPA estao de pe na cena: os nodes do `_portas`, menos as portas erguidas (que moram no
+	/// mesmo no) e as que ja vao sair no fim do quadro -- so pras bancadas. O indice por celula (<see cref="Portas"/>)
+	/// sozinho nao basta: o que se ve e o node.
+	/// </summary>
+	public int PortasDoMapaDesenhadasDeTeste() =>
+		_portas.GetChildren().Count(n => n is Porta p && !p.IsQueuedForDeletion() && !_portasErguidas.ContainsValue(p));
 
 	// =====================================================================
 	// OS BLOCOS ERGUIDOS (parede, piso, porta) -- ver `GameServer.Blocos.cs`
@@ -4465,7 +4493,9 @@ public partial class World : Node2D
 		if (!souEu || h.Alvo == 0) return;
 		// uma faixa DIFERENTE a cada briga, e ela ja esta na memoria: o `AudioDirector` le a proxima do saco numa
 		// thread de carga antes de a luta comecar (`AudioDirector.Adiantar`), em vez de aqui, no quadro do golpe
-		if (_lutaAte <= 0) AudioDirector.Instance?.Musica(Trilha.Combate(), AudioDirector.Camada.Combate,
+		// (2026-10-21) ...menos se o PERIGO DO CHAO ja pos a trilha de combate no ar (`World.SubZonas.cs`): a briga entra na faixa que esta
+		// tocando, e nao sorteia outra no meio dela.
+		if (_lutaAte <= 0 && !_perigoTocando) AudioDirector.Instance?.Musica(Trilha.Combate(), AudioDirector.Camada.Combate,
 														 "1o golpe que me envolve: tag de combate SUBIU");
 		_lutaAte = SegundosDeLuta;
 
@@ -4524,10 +4554,14 @@ public partial class World : Node2D
 		TickDosDecalques(delta);
 		TickDosTirosNoFim();
 		TickDosChoquesDeKi();
+		TickDoCeuDoLugar();       // (2026-10-21) quem cruza a fronteira do castelo dentro do Lookout troca de ceu -- ver `World.SubZonas.cs`
+		TickDaTrilhaDoPerigo();   // (2026-10-21) o planeta explodindo ou com chefe de saga toca a trilha de combate -- idem
 
 		if (_lutaAte <= 0) return;
 		_lutaAte -= delta;
-		if (_lutaAte <= 0) AudioDirector.Instance?.PararCamada(AudioDirector.Camada.Combate, "a tag de combate CAIU");
+		// (2026-10-21) A TAG CAINDO NAO CALA O PERIGO: com o chao em perigo a trilha de combate segue, e quem a solta e o fim do perigo.
+		if (_lutaAte <= 0 && !CombateSeguradoPeloPerigo)
+			AudioDirector.Instance?.PararCamada(AudioDirector.Camada.Combate, "a tag de combate CAIU");
 	}
 
 	/// <summary>As pedras que sobem de um planeta morrendo. Ver <see cref="PedrasDaAgonia"/>.</summary>
@@ -4561,7 +4595,8 @@ public partial class World : Node2D
 		if (GameClient.Instance is not { } cli) { _pedras.Agonia = 0; return; }
 
 		_pedras.Seed = cli.SeedDoUniverso ^ cli.Zone.Hash;
-		_pedras.Agonia = Jandirus.Core.World.ChaveDePlaneta.Da(cli.Zone) is { } chave
+		// (2026-10-21) O PLANETA DO CHAO EM QUE EU PISO: a caverna e o Lookout agonizam com o planeta deles (`World.SubZonas.cs`).
+		_pedras.Agonia = Jandirus.Core.World.ChaveDePlaneta.Da(PlanetaDoMeuChao(cli)) is { } chave
 			? cli.IntensidadeDaAgonia(chave)
 			: 0;
 	}
@@ -5894,9 +5929,20 @@ public partial class World : Node2D
 		// so que no ouvido. E ela nao tira o som de ninguem: "de X pra X" nao e uma mudanca que exista.
 		// ====================================================================================
 		//
-		// E QUANDO A FORMA TEM SOM PROPRIO (o do Ultra Instinto, 2026-10-17), ELE TOMA O LUGAR DO SWOOSH -- os dois juntos seriam dois
+		// ============================ E O SOM E O ESTALO DO C ============================
+		// O dono, 2026-10-20: *"o som de transformar instantaneamente quando a maestria e acima de 50% deveria ser o mesmo som inicial
+		// q faz ao apertar C"*. Era o swoosh do dash (`Trilha.Dash`, a 0,9) -- o rasgo de quem investe, emprestado pra um gesto que nao
+		// atravessa distancia nenhuma. Agora e o estalo de comecar a carga, pela MESMA chamada que o C faz (`CargaVisual.Estalar`):
+		// arquivo e volume moram num lugar so, e no dia em que o C mudar de som a instantanea muda junto.
+		//
+		// E QUANDO A FORMA TEM SOM PROPRIO (o do Ultra Instinto, 2026-10-17), ELE TOMA O LUGAR DO ESTALO -- os dois juntos seriam dois
 		// instantes no mesmo instante.
-		if (de != para && !TocarSomDaForma(corpo, def, degrau)) AudioDirector.EfeitoNoLugar(corpo, Trilha.Dash, 0.9f);
+		// ==================================================================================
+		if (de != para && !TocarSomDaForma(corpo, def, degrau))
+		{
+			if (InstantaneaComSwooshDeTeste) AudioDirector.EfeitoNoLugar(corpo, Trilha.Dash, 0.9f);
+			else CargaVisual.Estalar(corpo);
+		}
 
 		// (2026-10-19) ...E O CORPO DA UM BRILHO BRANCO, pelo mesmo `de != para` do som: chegar numa zona onde alguem ja esta
 		// transformado nao e ve-lo virar. DEPOIS do `VestirAFormaSemCena` la de cima, e a ordem e o pedido: o branco cobre a forma JA
@@ -5907,7 +5953,7 @@ public partial class World : Node2D
 
 	/// <summary>
 	/// O SOM PROPRIO DA TRANSFORMACAO, quando a forma tem um (`Cinematicas.SomDoDegrau`: hoje o do Ultra Instinto, fora da estreia).
-	/// Devolve se tocou -- na instantanea ele toma o lugar do swoosh.
+	/// Devolve se tocou -- na instantanea ele toma o lugar do estalo do C.
 	/// </summary>
 	private static bool TocarSomDaForma(Node2D corpo, Jandirus.Core.Forms.FormaDef def, Jandirus.Core.Forms.DegrauDeCena degrau)
 	{
@@ -5916,6 +5962,12 @@ public partial class World : Node2D
 		AudioDirector.EfeitoNoLugar(corpo, caminho, 0.9f);
 		return true;
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diagsomui`): a instantanea volta ao swoosh do dash, o som de antes de 2026-10-20, no lugar do
+	/// estalo do C. Lido pela propria linha do conserto, no fim do <see cref="AoMudarForma"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool InstantaneaComSwooshDeTeste;
 
 	/// <summary>
 	/// A FORMA POSTA NO CORPO DIRETO, sem cena nenhuma: cabelo, corpo proprio, contorno e raios no

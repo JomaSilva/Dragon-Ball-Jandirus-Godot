@@ -116,7 +116,7 @@ public static class CuraBench
 			  !namek.MembroVolta);
 		Prova("o HUMANO nao tem nem uma coisa nem outra", !hum.CuraEmCombate && !hum.MembroVolta);
 		Prova("o FROST DEMON (Icer) NAO cura em combate, apesar do comentario do DM dizer que sim",
-			  !Perfil(cat, "Icer").CuraEmCombate);
+			  !Perfil(cat, "Frost Demon").CuraEmCombate);
 		Prova("o SHAPESHIFTER nao refaz membro (estava na lista cravada do port, e nao devia)",
 			  !Perfil(cat, "Shapeshifter").MembroVolta);
 		Prova("KAI, META, TSUJIN e YARDRAT refazem membro (estavam FORA da lista cravada)",

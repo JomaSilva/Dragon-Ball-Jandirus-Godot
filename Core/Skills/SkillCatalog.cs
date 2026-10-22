@@ -96,8 +96,9 @@ public sealed class Skill
 	public string EscolhaSegue = "";
 
 	/// <summary>
-	/// O GANHO NA COMPRA COM EXPRESSAO: `BP += max(1, BP*0.01)`, `hiddenpotential += relBPmax*2`
-	/// (One_Hundred, Bodybuilding.dm:89-92; One_Punch/One_Training com `relBPmax*0.5`). Nao e buff
+	/// O GANHO NA COMPRA COM EXPRESSAO: `BP += max(1, BP*0.05)` na One Hundred e na One Training.
+	/// O potencial oculto saiu dessas compras (2026-10-21): ele fica com a idade. A One Punch nao
+	/// soma BP -- o efeito dela e o de combate. Nao e buff
 	/// (nao se reaplica no login: e um ganho que o corpo ABSORVE uma vez e devolve ao esquecer), e o
 	/// valor depende da ficha no instante da compra. Ver <see cref="GanhoNaCompra"/>.
 	/// </summary>
@@ -234,7 +235,7 @@ public sealed class SkillCatalog
 	private static string NomeDoDm(string raca) => raca switch
 	{
 		Races.BioAndroids.Raca => Races.BioAndroids.RacaDoDm,
-		Races.FormasDeFrost.Raca => Races.FormasDeFrost.ClasseNormal,   // "Icer" -> "Frost Demon"
+		Races.FormasDeFrost.Raca or Races.FormasDeFrost.RacaLegada => Races.FormasDeFrost.ClasseNormal,
 		"Saibaman" => "Saibamen",
 		"SpiritDoll" => "Spirit Doll",
 		_ => raca,
@@ -368,6 +369,8 @@ public sealed class SkillCatalog
 		Races.SonoDoMajin.Aplicar(cat);
 		// ...E O SENSE COM CINCO NIVEIS, e nao o um do DM (dono, 2026-10-18).
 		SenseEmNiveis.Aplicar(cat);
+		// ...E O INSTANT TRANSMISSION, na mesma escada de cinco (dono, 2026-10-21).
+		TransmissaoEmNiveis.Aplicar(cat);
 		return cat;
 	}
 

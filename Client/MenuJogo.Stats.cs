@@ -263,6 +263,9 @@ public partial class MenuJogo
 		var partes = new List<(string Texto, Color Cor)>();
 		if (_atributos.Gravidade > 0) partes.Add(($"{_atributos.Gravidade:0.#}x grav", Tema.Texto));
 		// (A ACLIMATACAO NAO ENTRA AQUI desde 2026-10-16: ela e PODER, e nao treino -- a linha dela mora na aba de Formas.)
+		float vigor = _atributos.VigorMult;
+		if (vigor >= 1.02f) partes.Add(($"{vigor:0.##}x vigor", Tema.Bom));
+		else if (vigor > 0 && vigor <= 0.98f) partes.Add(($"{vigor:0.##}x vigor", Tema.Perigo));
 		if (_atributos.PesoMult > 1.001f) partes.Add(($"{_atributos.PesoMult:0.##}x pesos", Tema.Destaque));
 		if (_atributos.ZonaMult > 1.001f) partes.Add(($"Sala {_atributos.ZonaMult:0}x", Tema.Destaque));
 		else if (_atributos.ZonaMult < 0.999f) partes.Add(($"zona {_atributos.ZonaMult:0.##}x", Tema.Perigo));
@@ -272,7 +275,7 @@ public partial class MenuJogo
 		ganho.TooltipText = (partes.Count > 0
 			? $"{g:0.##}x   ({string.Join(" · ", partes.Select(p => p.Texto))})"
 			: $"{g:0.##}x")
-			+ "   -- comparado com uma sessão neutra: gravidade 1, sem peso, fora de zona especial";
+			+ "   -- gravidade, peso, zona e vigor. O 1x do vigor é o tanque pela metade; cheio (a partir de 62,5%) vale 1,25x, e no fundo 0,5x";
 		if (partes.Count > 0) c.AddChild(Pilulas([.. partes]));
 
 		// ============================ A SESSAO DA SALA DO TEMPO ============================

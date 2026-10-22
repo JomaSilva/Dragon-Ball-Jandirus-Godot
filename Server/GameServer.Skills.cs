@@ -117,6 +117,20 @@ public partial class GameServer
 			Avisar(pl, $"a habilidade {skill.Nome} ainda não existe neste jogo (falta {skill.Falta}) e saiu do seu livro. "
 					 + $"{devolvidos} marco(s) gasto(s) nela voltaram: você tem {pl.Livro.MarcosLivres} livre(s).");
 		pl.SkillsQueFecharam = [];
+
+		foreach (GanhoNaCompra.CompraAntigaDevolvida d in pl.ComprasAntigasDevolvidas)
+		{
+			string devolveu = string.Join(", ", d.Campos
+				.Where(kv => kv.Key != GanhoNaCompra.CampoDaRazao)
+				.Select(kv => $"{NomesLegiveis.Campo(kv.Key)} -{kv.Value:0.##}"));
+			Avisar(pl, devolveu.Length > 0
+				? $"a {d.Nome} que você comprou era a versão antiga: saiu do livro, {d.Marcos} marco(s) voltaram "
+				  + $"(você tem {pl.Livro.MarcosLivres} livre(s)) e o corpo devolveu {devolveu}. compre de novo pra ganhar 5% de BP."
+				: $"a {d.Nome} que você comprou era a versão antiga: saiu do livro e {d.Marcos} marco(s) voltaram "
+				  + $"(você tem {pl.Livro.MarcosLivres} livre(s)). compre de novo pra ganhar 5% de BP.");
+			GD.Print($"[skills] {pl.Name}: {d.Nome} antiga devolvida (+{d.Marcos} marcos, {devolveu})");
+		}
+		pl.ComprasAntigasDevolvidas = [];
 	}
 
 	/// <summary>A versao do razao que este servidor grava. Ver `CharacterSave.RazaoVersao`.</summary>
@@ -362,7 +376,7 @@ public partial class GameServer
 		AnotarACompraDoAprendiz(pl, path);   // (2026-10-19) a compra feita pelo aprendizado de Kaioshin -- ver `GameServer.AprendizDeKaioshin.cs`
 		AplicarNiveisDeTeste(pl, so: path);   // `--nivelteste`: a skill comprada ja nasce no nivel pedido (so bancada)
 
-		// O GANHO NA COMPRA COM EXPRESSAO -- `BP += max(1, BP*0.01)`, `hiddenpotential += relBPmax*2`
+		// O GANHO NA COMPRA COM EXPRESSAO -- One Hundred e One Training: `BP += max(1, BP*0.05)`
 		// (One Hundred, Bodybuilding.dm:89-92). Uma vez, agora, sobre a ficha de agora; o que somou
 		// fica no livro pra ser devolvido ao esquecer. Ver `GanhoNaCompra`.
 		Dictionary<string, double> somou = GanhoNaCompra.Aplicar(pl.Ficha, pl.Livro, s);

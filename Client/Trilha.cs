@@ -235,6 +235,9 @@ public static class Trilha
     /// <summary>O "sopro" do golpe saindo, que toca junto com o impacto no original.</summary>
     public const string Assobio = P + "meleeflash.ogg";
 
+    /// <summary>O Instant Transmission (dono, 2026-10-21): o piscar usa o efeito do desvio, e este som no lugar do assobio.</summary>
+    public const string TransmissaoInstantanea = E + "instanttransmission.wav";
+
     /// <summary>
     /// Guarda aparou. DESVIO CONSCIENTE: no original bloquear e MUDO -- o `BlockLimbs.dm`
     /// nao toca nada, e o `parry.ogg` so sai no contra-ataque. Guarda silenciosa nao da

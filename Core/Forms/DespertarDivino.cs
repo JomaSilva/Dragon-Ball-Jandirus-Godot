@@ -82,11 +82,20 @@ public static class DespertarDivino
 	// =====================================================================
 	// 1. O REQUISITO -- "o bp base minimo do god ki PESSOAL dele"
 	// =====================================================================
-	/// <summary>`godki_at` (`godkiattain.dm:2`): 250 milhoes de BP BASE. E o centro de onde sai o de cada um.</summary>
-	public const double BpBaseDeFabrica = 2.5e8;
+	/// <summary>
+	/// UM BILHAO DE BP BASE: o centro de onde sai o requisito de cada um.
+	///
+	/// (2026-10-21) PEDIDO DO DONO: *"suba o requisito pra god ki pra 1 bilhao"*. Ele escolheu manter o requisito
+	/// pessoal em volta desse numero (a faixa abaixo continua a mesma), e nao um piso nem um numero unico. O DM
+	/// cobra 250 milhoes (`godki_at`, `godkiattain.dm:2`) -- este port pede o quadruplo, de proposito.
+	///
+	/// O DESEJO DE LIBERAR O POTENCIAL DO NAMEKUSEIJIN SOBE JUNTO: ele pede "o poder minimo de god ki dele" (palavra do
+	/// dono, `GameServer.PorQueNaoLiberaOPotencial`), e le este mesmo requisito.
+	/// </summary>
+	public const double BpBaseDeFabrica = 1e9;
 
 	/// <summary>
-	/// A FAIXA PESSOAL, em decimos: de x0,9 a x1,3 -- 225 a 325 milhoes, em cinco valores.
+	/// A FAIXA PESSOAL, em decimos: de x0,9 a x1,3 -- 900 milhoes a 1,3 bilhao, em cinco valores.
 	///
 	/// ============================ DIVERGENCIA DECLARADA: NO DM ELE E UM SO ============================
 	/// `godki_at` e uma `var` global (`godkiattain.dm:2`, com um botao de admin em `:58-59`): todo mundo

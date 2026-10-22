@@ -1958,10 +1958,13 @@ public partial class GameServer
 			// A ARTE VIAJA JUNTO. O cliente tem o catalogo, mas so o que ELE pode comprar -- e a
 			// bancada de outra pessoa tem que aparecer do mesmo jeito. Mandar o caminho aqui evita
 			// que "ver" dependa de "poder construir".
-			w.Put(c?.Arte ?? "");
-			w.Put(EstadoDaArte(o, c));   // o do catalogo -- menos o tanque LIGADO, que ganha a campanula
-			w.Put((float)(c?.PixelX ?? 0));
-			w.Put((float)(c?.PixelY ?? 0));
+			// (2026-10-21) Folha, estado e deslocamento numa conta so (`ArteDaObra`): os do catalogo -- menos o tanque LIGADO, que ganha a
+			// campanula, e o mainframe com o laboratorio do bio ou do Neo Tuffle, que vira o Cell Pod.
+			(string arte, string estado, float px, float py) = ArteDaObra(o, c);
+			w.Put(arte);
+			w.Put(estado);
+			w.Put(px);
+			w.Put(py);
 			// ...e a DENSIDADE pelo mesmo motivo: o cliente tem que barrar o corpo no que o
 			// servidor barra, e sem isto ele teria que adivinhar pelo catalogo -- que so lista o
 			// que ELE pode comprar.
@@ -2003,7 +2006,9 @@ public partial class GameServer
 		"Gravity" => (byte)((o.Gravidade?.Estavel == true ? Jandirus.Core.Tech.Interacoes.MelhoriaUnicaFeita : 0)
 						   | (o.Gravidade?.Range >= AlcanceMaximo ? Jandirus.Core.Tech.Interacoes.MelhoriaNoTeto : 0)
 						   // (2026-10-19) a forca no teto do mundo: dali nao sobe pra ninguem (`TetoDaForca`)
-						   | (o.Gravidade?.Max >= Jandirus.Core.Tech.Interacoes.TetoDeGravidade ? Jandirus.Core.Tech.Interacoes.ForcaNoTetoDoMundo : 0)),
+						   | (o.Gravidade?.Max >= Jandirus.Core.Tech.Interacoes.TetoDeGravidade ? Jandirus.Core.Tech.Interacoes.ForcaNoTetoDoMundo : 0)
+						   // (2026-10-21) a trava de seguranca, compra unica, bit proprio (o 1 ja e a estabilizacao)
+						   | (o.Gravidade?.Trava == true ? Jandirus.Core.Tech.Interacoes.TravaDeSegurancaFeita : 0)),
 		// (v0.2.1) a ressurreicao de androide do super computador: comprada uma vez, sai do menu dele.
 		Jandirus.Core.Tech.SuperComputador.Tipo =>
 			(byte)(o.Tech?.Ligado(Jandirus.Core.Tech.SuperComputador.ChaveRessurreicao) == true

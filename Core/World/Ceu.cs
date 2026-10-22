@@ -395,6 +395,13 @@ public static class Ceu
 
 		if (zona.Kind == ZoneKey.KindProcedural) return DaSeed(zona.Seed);
 
+		// (2026-10-21) A SUB-ZONA CORRE O RELOGIO DO PLANETA DELA (dono: *"sincronizar o horario ... lookout com a terra"*): o Lookout e
+		// a caverna da Terra tem a hora, a defasagem e a lua da Terra, e a caverna de Vegeta as de Vegeta. Sem esta linha cada uma sorteava
+		// o proprio dia e a propria lua pelo NOME -- o Lookout anoitecia noutra hora e tinha lua cheia numa noite em que a Terra nao tinha.
+		// O castelo do Rei Vegeta, no canto do Lookout, e por POSICAO: quem tem um corpo pergunta com ele (`SubZonas.ZonaDoCeu`). A Sala
+		// do Tempo nao e sub-zona de ninguem (outra dimensao): segue com a ficha dela.
+		if (SubZonas.PlanetaMae(zona) is { } mae && !SubZonas.CeuProprioDeTeste) zona = mae;
+
 		FichaDePlaneta? f = catalogo?.De(zona.Name);
 		return new RelogioDoPlaneta
 		{

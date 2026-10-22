@@ -712,7 +712,7 @@ public partial class GameServer
 
 		// POTARA de proposito: so ela permite racas diferentes, e sem raca diferente a afirmacao "a
 		// fusao e da raca de quem convidou" nao tem como ficar vermelha.
-		ServerPlayer a = ForjarNaFusaoDupla("Zarbon", "Icer", 4_000_000, sabeDancar: false, 0);
+		ServerPlayer a = ForjarNaFusaoDupla("Zarbon", "Frost Demon", 4_000_000, sabeDancar: false, 0);
 		ServerPlayer b = ForjarNaFusaoDupla("Nail", "Namekian", 3_800_000, sabeDancar: false, 1);
 
 		// QUEM CONVIDA ESTA TRANSFORMADO (4x), e quem aceita esta noutra forma (8x pelo `transBuff`).
@@ -723,7 +723,7 @@ public partial class GameServer
 		AfirmarFd("F1 a fusao aconteceu", f != null && EstaFundido(a.Id));
 		if (f == null) return;
 
-		AfirmarFd("F2 a fusao e da RACA de quem convidou", a.Race == "Icer", a.Race);
+		AfirmarFd("F2 a fusao e da RACA de quem convidou", a.Race == "Frost Demon", a.Race);
 
 		Mutacao(AfirmarFd,
 			"F3 quem convidou transformado -> a fusao JA COMECA transformada (mult 4x de pe)",

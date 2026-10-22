@@ -1637,8 +1637,8 @@ public sealed partial class GameServer
 	///
 	/// ============================ DUAS PORTAS, E A SEGUNDA NAO E PREGUICA ============================
 	/// A primeira e o catalogo (<see cref="Jandirus.Core.Appearance.VisualCatalog.Peca"/>), que e a
-	/// porta certa e a que o `Metamoran Vest` usa: por NOME, entao mover a pasta de arte nao quebra nada
-	/// e a arte SUMIR devolve nulo -- que e o unico jeito de a falta ser denunciada em vez de silenciosa.
+	/// porta certa pra peca que e roupa de guarda-roupa: por NOME, entao mover a pasta de arte nao quebra
+	/// nada e a arte SUMIR devolve nulo -- que e o unico jeito de a falta ser denunciada em vez de silenciosa.
 	///
 	/// A segunda existe pro `potara`, e ela nao contorna a primeira: o brinco **nao esta no catalogo de
 	/// proposito**. O extrator o recusa por nome (`DmAppearanceScanner.Varrer`, a lista `fora`), porque a
@@ -1647,22 +1647,32 @@ public sealed partial class GameServer
 	/// mudar**; o que muda e que a fusao nao esta pedindo uma roupa de guarda-roupa, esta pedindo um
 	/// overlay -- a mesma coisa que o `Fusion.dm:218` faz com `potara.dmi`.
 	///
+	/// (2026-10-20) A SEGUNDA PORTA OLHA DUAS PASTAS (<see cref="PastasDasPecasDeFusao"/>): o uniforme da Danca
+	/// (`Fusion clothes`, escolha do dono) mora em `Character Icons/`, onde o original o guardava, e nao em
+	/// `Clothes/` -- tambem fora do catalogo, porque o extrator de roupa nao varre aquela pasta. Copiar a folha
+	/// pra `Clothes/` seriam duas artes iguais envelhecendo separadas.
+	///
 	/// O precedente de escrever `res://` deste lado da casa e o `GameServer.Feridas.cs:81`, e a fronteira
 	/// e a mesma: quem escolhe a peca e o Core (`Fusao.PecaDe`), quem sabe onde ela mora e o servidor.
+	///
+	/// ESTATICA, COM O CATALOGO DE FORA: o robo `--diagfusaolook` resolve a peca por ESTA porta, e nao por uma
+	/// copia dela.
 	/// ============================================================================================
 	/// </summary>
-	private string? CaminhoDaPecaDeFusao(string nomeDoArquivo)
+	internal static string? CaminhoDaPecaDeFusao(Jandirus.Core.Appearance.VisualCatalog? catalogo, string nomeDoArquivo)
 	{
 		if (nomeDoArquivo.Length == 0) return null;
-		if (_visual?.Peca(nomeDoArquivo) is { } doCatalogo) return doCatalogo;
-
-		string direto = $"res://Assets/Sprites/Clothes/{nomeDoArquivo}.tres";
+		if (catalogo?.Peca(nomeDoArquivo) is { } doCatalogo) return doCatalogo;
 
 		// PERGUNTA AO BANCO DE RECURSOS IMPORTADOS, e nao ao disco. Este projeto ja perdeu tempo duas
 		// vezes com arte que estava na pasta e que o Godot nunca importou (os 35 atlas, depois os sons):
 		// `ResourceLoader.Exists` e a unica pergunta que corresponde ao que o jogo vai conseguir
 		// carregar. Ver `ColadasDeForma.Existe`, que faz a mesma e diz o mesmo.
-		if (ResourceLoader.Exists(direto)) return direto;
+		foreach (string pasta in PastasDasPecasDeFusao)
+		{
+			string direto = $"res://Assets/Sprites/{pasta}/{nomeDoArquivo}.tres";
+			if (ResourceLoader.Exists(direto)) return direto;
+		}
 
 		// A FALTA E DENUNCIADA UMA VEZ, EM LOG, e a fusao continua acontecendo com a roupa de quem
 		// convidou (ver `Fusao.RoupaDaFusao`). Abortar a fusao por causa de um sprite seria punir o
@@ -1671,6 +1681,12 @@ public sealed partial class GameServer
 					 + "a fusao vai sair sem ela.");
 		return null;
 	}
+
+	/// <summary>
+	/// AS PASTAS DE `Assets/Sprites/` ONDE A SEGUNDA PORTA DO <see cref="CaminhoDaPecaDeFusao"/> PROCURA, em ordem: `Clothes/` (o brinco
+	/// `potara`) e `Character Icons/` (o uniforme da Danca, `Fusion clothes`).
+	/// </summary>
+	private static readonly string[] PastasDasPecasDeFusao = ["Clothes", "Character Icons"];
 
 	/// <summary>
 	/// QUEM A FUSAO E, do lado de fora: a aparencia que o mundo ve enquanto ela dura.
@@ -1688,7 +1704,7 @@ public sealed partial class GameServer
 	///     de quem convidou" quer dizer no desenho;
 	///   * **o cabelo** -- Goku + Vegeta da Vegito, e o resto fica com o penteado de quem convidou
 	///     (`Fusao.CabeloDaFusao`);
-	///   * **a roupa** -- a Danca SUBSTITUI pelo colete, a Potara SOMA o brinco (`Fusao.RoupaDaFusao`).
+	///   * **a roupa** -- a Danca SUBSTITUI pelo uniforme metamoriano, a Potara SOMA o brinco (`Fusao.RoupaDaFusao`).
 	/// </summary>
 	private Jandirus.Core.Appearance.Appearance AparenciaDaFusao(
 		ServerPlayer dono, ServerPlayer passageiro, TipoDeFusao tipo)
@@ -1703,7 +1719,7 @@ public sealed partial class GameServer
 		// continua sendo o de quem convidou, a cor dele continua tambem: e o mesmo cabelo.
 		if (!string.Equals(ap.Cabelo, dono.Visual.Cabelo, StringComparison.Ordinal)) ap.CorCabelo = null;
 
-		ap.Roupa = Fusao.RoupaDaFusao(tipo, dono.Visual.Roupa, CaminhoDaPecaDeFusao(Fusao.PecaDe(tipo)));
+		ap.Roupa = Fusao.RoupaDaFusao(tipo, dono.Visual.Roupa, CaminhoDaPecaDeFusao(_visual, Fusao.PecaDe(tipo)));
 		return ap;
 	}
 
@@ -1726,7 +1742,7 @@ public sealed partial class GameServer
 	///
 	/// **NAO "recalcula a aparencia certa": DESCARTA a emprestada.** A aparencia de verdade nunca foi
 	/// tocada (esse e o desenho inteiro do <see cref="ServerPlayer.LookDeFusao"/>), entao devolver e
-	/// apagar um campo -- e nao ha caminho em que o jogador acorde com o colete metamoriano vestido
+	/// apagar um campo -- e nao ha caminho em que o jogador acorde com o uniforme metamoriano vestido
 	/// porque alguem esqueceu de reverter uma peca.
 	/// </summary>
 	private void DespirADeFusao(ServerPlayer p)

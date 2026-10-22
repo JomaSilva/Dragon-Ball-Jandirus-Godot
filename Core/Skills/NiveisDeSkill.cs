@@ -1535,5 +1535,7 @@ public static class RegrasDeNivel
 
 		// (2026-10-18) O SENSE EM CINCO NIVEIS -- regra do dono, e do port: no DM a skill tem um nivel so. Ver `SenseEmNiveis`.
 		Registrar(SenseEmNiveis.Regra());
+		// (2026-10-21) O INSTANT TRANSMISSION NA MESMA ESCADA. Ver `TransmissaoEmNiveis`.
+		Registrar(TransmissaoEmNiveis.Regra());
 	}
 }

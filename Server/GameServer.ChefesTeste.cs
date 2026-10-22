@@ -17,7 +17,8 @@ namespace Jandirus.Server;
 /// requisito dela ela inicie novamente de onde parou ou do começo caso o jogo atualmente n salve muitas informaçoes da saga"*.
 ///
 /// Um cliente cru entra pela porta (o marco da saga e de JOGADOR), e cada familia mede pela porta de PRODUCAO, com o contra-exemplo:
-///   A. O CUSPE ACIDO -- a bola sai com metade do dano-base do DM (20) e a recarga dobra (2 s). Contra: `CuspeComoNoDmDeTeste`.
+///   A. O CUSPE ACIDO -- a bola sai com um oitavo do dano-base do DM (5; o nerf de 18/10 dava 20, e o dono o baixou de novo em 2026-10-22) e a
+///      recarga dobra (2 s). Contra: `CuspeComoNoDmDeTeste`.
 ///   S. O SPIRIT GUN -- a bola carrega o BP de quem atira, e o multiplicador fica so no dano-base. Contra: `SpiritGunComoNoDmDeTeste`.
 ///   D. O DEATH BEAM DO FREEZA -- o Freeza de saga, numa luta pelo tique de producao, solta o raio dele.
 ///   F. A FORMA NO DISCO -- o Freeza de Namek que se transforma por dano vai pro `sagas.json` NA HORA, e volta do reinicio na forma em que
@@ -33,6 +34,9 @@ namespace Jandirus.Server;
 ///   R. RESETAR UMA SAGA (2026-10-18) -- o verb de admin lista as sagas pelas escolhas e reseta a do Freeza de Namek (o Freeza morto na forma
 ///      3): os chefes saem do mundo e ela recomeca do marco, com a contagem.
 ///   P. PULAR OS DIAS (2026-10-18) -- o verb de admin poe no mundo, na hora, o chefe que estava a caminho. Contra: `AgoraEsperaAViradaDeTeste`.
+///   V. PULAR UMA SAGA JA COM O CHEFE MORTO (2026-10-20) -- o verb de admin fecha a saga vencida: o Freeza no mundo (com a Death Ball no ar)
+///      sai, o Cell que ia voltar Super Perfeito nao volta, a saga adormecida do Boo fecha com ele derrotado; os derrotados viram vilao do
+///      Inferno. Contra: `PularSoAFaseDeTeste`.
 ///   N. NAMEK SALVA (2026-10-19) -- o Freeza caido quando o prazo vence nao ergue a Death Ball; morto nessa janela, a saga fecha vencida e o
 ///      planeta fica. As familias estao em `GameServer.NamekSalvaTeste.cs`. Contra: `EsferaSobeNoChaoDeTeste`.
 ///   T. A TROPA DO FREEZA EM NAMEK (2026-10-18) -- o desembarque, a esfera do chao, o povo, quem carrega, o derrotado e a partida com o
@@ -90,6 +94,7 @@ public sealed partial class GameServer
 			NamekSalvaDoFreezaCaido();   // (2026-10-19) ver `GameServer.NamekSalvaTeste.cs`
 			ResetarUmaSaga(pl);
 			PularOsDiasDaSaga(pl);
+			PularUmaSaga(pl);
 			ATropaDoFreeza(pl);
 		}
 		catch (Exception e)
@@ -106,6 +111,7 @@ public sealed partial class GameServer
 			MarcoSoDeQuemEstaAquiDeTeste = false;
 			SemAuditoriaDeTeste = false;
 			ChefeMorreAntesDaHoraDeTeste = false;
+			PularSoAFaseDeTeste = false;
 			AgoraEsperaAViradaDeTeste = TropaNaoVemDeTeste = TropaFicaSemOChefeDeTeste = SoldadoComoHostilComumDeTeste = false;
 			SoldadoDerrotadoVoltaDeTeste = SoldadoIgnoraQuemCarregaDeTeste = SoldadoNaoSeguraEsferaDeTeste = false;
 			SoldadoProvocaOPovoDeTeste = EsferaSomeComOSoldadoDeTeste = false;
@@ -113,6 +119,7 @@ public sealed partial class GameServer
 			EscutaDeEscolhas = null;
 			DiscoComAsBancadasDeTeste = false;
 			Fighter.ChefeSemPisoDeTanqueDeTeste = false;
+			AtivasRaciaisNaIa.IaSemAtivasDeTeste = false;   // (2026-10-22) a familia L a liga -- ver `OChefeDeSagaMata`
 
 			foreach (ServerPlayer c in ChefesNoMundo()) RemoverNpc(c);
 			TirarATropaDaBancada();
@@ -145,7 +152,7 @@ public sealed partial class GameServer
 	// =====================================================================
 	private void OCuspeAcido()
 	{
-		GD.Print("[chefes] -- A) o cuspe acido: metade do dano-base do DM e o dobro da recarga --");
+		GD.Print("[chefes] -- A) o cuspe acido: um oitavo do dano-base do DM (o segundo nerf, 2026-10-22) e o dobro da recarga --");
 		ServerPlayer saiba = ForjarV2("Saibaman da bancada", TerraFirmeG12(12), 50_000, "Saibaman");
 		saiba.Livro.Dar("/datum/skill/saiba/Acid_Spit");
 		saiba.Facing = Facing.East;
@@ -175,11 +182,15 @@ public sealed partial class GameServer
 		}
 
 		var agora2 = Cuspir();
-		AfirmarCh("**O CUSPE ACIDO NERFADO** (*\"acido do saibaman ta meio op, da uma nerfada\"*): pela porta de producao, a bola sai com dano-base "
-				  + "20 (o DM: 40, o do Kikoho) e a recarga e de 2 s (o DM: 1) -- um quarto do dano por segundo; meio prazo depois o segundo cuspe e "
+		// (2026-10-22) O SEGUNDO NERF: *"tao falando q ele ta MUITO op dando one shot em npcs em torneios"* -- o dano-base 5, a escolha do dono
+		double daBolaBasica = saiba.Ficha.Ekioff * Jandirus.Core.Combat.DanoDeKi.Log10Min(saiba.Ficha.blastskill, 10);
+		AfirmarCh("**O CUSPE ACIDO NERFADO** (*\"acido do saibaman ta meio op, da uma nerfada\"* e, em 2026-10-22, *\"tao falando q ele ta MUITO op "
+				  + "dando one shot em npcs em torneios\"*): pela porta de producao, a bola sai com dano-base 5 (o DM: 40, o do Kikoho; o nerf de "
+				  + "18/10: 20) e a recarga e de 2 s (o DM: 1) -- um dezesseis avos do dano por segundo do DM; meio prazo depois o segundo cuspe e "
 				  + "recusado, e depois do prazo ele sai",
-				  Math.Abs(agora2.Dano - 20) < 1e-9 && agora2.Recarga is >= 1990 and <= 2010 && agora2.MeioTempoRecusa && agora2.DepoisSai,
-				  $"dano-base {agora2.Dano}; recarga {agora2.Recarga} ms; meio prazo recusa {agora2.MeioTempoRecusa}; depois sai {agora2.DepoisSai}");
+				  Math.Abs(agora2.Dano - 5) < 1e-9 && agora2.Recarga is >= 1990 and <= 2010 && agora2.MeioTempoRecusa && agora2.DepoisSai,
+				  $"dano-base {agora2.Dano} (a bola basica deste corpo: {daBolaBasica:0.##}); recarga {agora2.Recarga} ms; meio prazo recusa "
+				  + $"{agora2.MeioTempoRecusa}; depois sai {agora2.DepoisSai}");
 
 		CuspeComoNoDmDeTeste = true;
 		(double Dano, long Recarga, bool MeioTempoRecusa, bool DepoisSai) doDm;
@@ -390,8 +401,13 @@ public sealed partial class GameServer
 		if (elo == null) { AfirmarCh("(montagem) a cadeia tem a saga do Freeza de Namek", false); return; }
 
 		// UMA LUTA: o chefe pelo nascimento de producao, a vitima a dois tiles dele, nocauteada, e ate 20 s de tique de producao. Devolve se ela morreu.
+		//
+		// (2026-10-22) SEM AS ATIVAS DA RACA: o Freeza virou Frost Demon Mutante, e a execucao do Ruthless Mind tambem acaba com o caido -- ela
+		// entra ANTES do golpe letal do plano (`Cerebro.ExecutaOAlvo`, antes do `Finaliza`) e nao pergunta pelo "letal que larga o caido". Esta
+		// familia mede o golpe letal do PLANO; a execucao do Freeza tem a prova dela na `--iaraciaisteste` (familia E).
 		(bool Letal, bool Morreu, string Porque) Luta(ulong semente)
 		{
+			AtivasRaciaisNaIa.IaSemAtivasDeTeste = true;
 			SagasLimpas();
 			(_, _, EstadoDoChefe ec) = SagaComOChefeNoMundo(elo.Id, "freeza_namek");
 			if (!_players.TryGetValue(ec.Corpo, out ServerPlayer? freeza) || freeza.Papel == null) return (false, false, "o chefe nao nasceu");
@@ -409,6 +425,7 @@ public sealed partial class GameServer
 				if (freeza.Cerebro?.Porque is { Length: > 0 } p) porque = p;
 			}
 			(bool, bool, string) r = (freeza.Combate.Letal, vitima.Ficha.dead, porque);
+			AtivasRaciaisNaIa.IaSemAtivasDeTeste = false;
 			RemoverNpc(freeza);
 			RemoverNpc(vitima);
 			LimparEmbatesDaBancada();
@@ -477,6 +494,100 @@ public sealed partial class GameServer
 				  + string.Join(" | ", resetou));
 		List<string> errou = Ouvir(() => VerboDeAdmin(pl, "admin_saga_resetar", "nao_existe"));
 		AfirmarCh("...e um id que nao existe e recusado com a lista das sagas", errou.Any(f => f.Contains(elo.Id, StringComparison.Ordinal)), string.Join(" | ", errou));
+		SagasLimpas();
+	}
+
+	// =====================================================================
+	// V) PULAR UMA SAGA JA COM O CHEFE MORTO (dono, 2026-10-20)
+	// =====================================================================
+	private void PularUmaSaga(ServerPlayer pl)
+	{
+		GD.Print("[chefes] -- V) pular uma saga ja com o chefe morto, pelo verb de admin (dono, 2026-10-20) --");
+		const string Pedido = "(*\"adicione um botao q pula uma saga ja matando o boss, pq sem querer resetei todas as sagas do server\"*)";
+
+		// O FREEZA DE NAMEK NO MUNDO, pelo nascimento de producao da saga, com a Death Ball do ultimato no ar
+		(EstadoDoElo Est, EstadoDoChefe Ec, ServerPlayer? Corpo) FreezaNoMundo()
+		{
+			SagasLimpas();
+			(_, EstadoDoElo est, EstadoDoChefe ec) = SagaComOChefeNoMundo("freeza_namek", "freeza_namek");
+			ServerPlayer? corpo = _players.GetValueOrDefault(ec.Corpo);
+			if (corpo != null) ComecarASupernova(corpo, Jandirus.Core.Npc.AtaqueDoUltimato.DeathBall);
+			return (est, ec, corpo);
+		}
+
+		// O CELL MORTO NA FORMA PERFEITA E VOLTANDO EM UM MINUTO (o Super Perfeito armado: `MorreuOChefe`) -- onde o "pular" mais importa
+		(EstadoDoElo Est, EstadoDoChefe Ec) CellVoltando()
+		{
+			SagasLimpas();
+			(_, EstadoDoElo est, EstadoDoChefe ec) = SagaComOChefeNoMundo("cell", "cell");
+			if (_players.TryGetValue(ec.Corpo, out ServerPlayer? c)) RemoverNpc(c);
+			ec.Fase = FaseDoChefe.Derrotado;
+			ec.Corpo = 0;
+			ec.Degrau = 3;
+			ec.RessurgeEm = _relogioDoMundo + 60;
+			est.Fase = FaseDaSaga.EmCurso;
+			return (est, ec);
+		}
+
+		// UM MINUTO DE MUNDO DEPOIS: o Cell voltou? E ele e candidato a vilao do Inferno (derrotado e sem volta armada)?
+		(bool Voltou, bool NoInferno) UmMinutoDepois()
+		{
+			_relogioDoMundo += 61;
+			TickDasSagas();
+			return (ChefesNoMundo().Any(c => c.Papel?.Molde.Id == "cell"),
+					ViloesDoInferno.Candidatos(_cadeia, _sagas).Any(x => x.Ficha.Molde == "cell"));
+		}
+
+		// ---- O FREEZA: a saga fecha VENCIDA, ele sai do mundo (a Death Ball desfeita) e o admin ouve o que mudou
+		(EstadoDoElo estF, EstadoDoChefe ecF, ServerPlayer? freeza) = FreezaNoMundo();
+		bool estavaNoMundo = freeza != null && ecF.Fase == FaseDoChefe.NoMundo && freeza.SupernovaDesde != 0;
+		List<string> pulou = Ouvir(() => VerboDeAdmin(pl, "admin_saga_pular", "freeza_namek"));
+		bool saiu = freeza == null || !_players.ContainsKey(freeza.Id);
+		AfirmarCh($"**O ADMIN PULA A SAGA JA COM O CHEFE MORTO** {Pedido}: a do Freeza de Namek, com ele no mundo e a Death Ball no ar, fecha VENCIDA "
+				  + "-- ele derrotado e fora do mundo, a esfera desfeita, e o admin ouve o que mudou",
+				  estavaNoMundo && estF.Fase == FaseDaSaga.Vencida && ecF.Fase == FaseDoChefe.Derrotado && ecF.Corpo == 0 && saiu
+				  && freeza is { SupernovaDesde: 0 } && pulou.Any(f => f.Contains("pulada", StringComparison.Ordinal)),
+				  $"no mundo com a esfera {estavaNoMundo}; saga {estF.Fase}; chefe {ecF.Fase}; saiu {saiu}; esfera {freeza?.SupernovaDesde}; "
+				  + string.Join(" | ", pulou));
+
+		// ---- O CELL VOLTANDO: pulada, a saga nao o traz Super Perfeito -- e o derrotado vira vilao do Inferno, como na vitoria
+		(EstadoDoElo estC, EstadoDoChefe ecC) = CellVoltando();
+		Ouvir(() => VerboDeAdmin(pl, "admin_saga_pular", "cell"));
+		(bool voltou, bool noInferno) = UmMinutoDepois();
+		AfirmarCh("**...E QUEM IA VOLTAR NAO VOLTA**: o Cell morto na forma perfeita, voltando Super Perfeito em um minuto -- pulada a saga, um minuto "
+				  + "depois ele nao esta no mundo, e e candidato a vilao do Inferno (o que a vitoria faz)",
+				  estC.Fase == FaseDaSaga.Vencida && ecC.RessurgeEm == 0 && !voltou && noInferno,
+				  $"saga {estC.Fase}; volta em {ecC.RessurgeEm:0}; voltou {voltou}; no Inferno {noInferno}");
+
+		// ---- A SAGA ADORMECIDA (o marco nunca batido): a do Boo fecha vencida, com ele derrotado -- e o Bills acorda pelo estado
+		SagasLimpas();
+		Ouvir(() => VerboDeAdmin(pl, "admin_saga_pular", BillsEWhis.SagaQueOAcorda));
+		EstadoDoElo? boo = _sagas.Do(BillsEWhis.SagaQueOAcorda);
+		AfirmarCh("**...E A SAGA QUE NEM COMECOU TAMBEM**: a do Boo, adormecida, fecha vencida com ele derrotado -- o vilao do Inferno e a historia "
+				  + "do Bills (que pergunta pelo Boo vencido) vem do estado",
+				  boo is { Fase: FaseDaSaga.Vencida } && boo.Chefes.Any(c => c.Molde == "majin_boo" && c.Fase == FaseDoChefe.Derrotado)
+				  && ViloesDoInferno.Candidatos(_cadeia, _sagas).Any(x => x.Ficha.Molde == "majin_boo"),
+				  $"saga {boo?.Fase}; chefes {string.Join(", ", boo?.Chefes.Select(c => $"{c.Molde} {c.Fase}") ?? [])}");
+
+		List<string> errou = Ouvir(() => VerboDeAdmin(pl, "admin_saga_pular", "nao_existe"));
+		AfirmarCh("...e um id que nao existe e recusado com a lista das sagas", errou.Any(f => f.Contains("freeza_namek", StringComparison.Ordinal)),
+				  string.Join(" | ", errou));
+
+		// ---- CONTRA-EXEMPLO: o pular que so troca a fase -- o Freeza fica no mundo, e o Cell segue armado pra voltar (fora do Inferno)
+		PularSoAFaseDeTeste = true;
+		bool freezaFicou, cellForaDoInferno;
+		try
+		{
+			(_, _, ServerPlayer? f2) = FreezaNoMundo();
+			Ouvir(() => VerboDeAdmin(pl, "admin_saga_pular", "freeza_namek"));
+			freezaFicou = f2 != null && _players.ContainsKey(f2.Id);
+			CellVoltando();
+			Ouvir(() => VerboDeAdmin(pl, "admin_saga_pular", "cell"));
+			cellForaDoInferno = !UmMinutoDepois().NoInferno;
+		}
+		finally { PularSoAFaseDeTeste = false; }
+		AfirmarCh("   CONTRA-EXEMPLO (o pular que so troca a fase): o Freeza ficaria no mundo e o Cell, armado pra voltar, fora do Inferno -- as reguas de "
+				  + "cima reprovariam", freezaFicou && cellForaDoInferno, $"o Freeza ficou {freezaFicou}; o Cell fora do Inferno {cellForaDoInferno}");
 		SagasLimpas();
 	}
 

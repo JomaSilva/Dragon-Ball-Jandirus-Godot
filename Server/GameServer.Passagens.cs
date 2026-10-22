@@ -220,7 +220,7 @@ public sealed partial class GameServer
 		Avisar(pl, $"você atravessa e chega em {destino}.");
 		GD.Print($"[server] {pl.Name}: {pl.Zone.Name} -> {p.Zona} ({destino})");
 
-		MoveToZone(pl.Id, ZoneKey.Premade(p.Zona), ChegadaDaPassagem(pl.Zone.Name, p));
+		ViajarVoluntario(pl, ZoneKey.Premade(p.Zona), ChegadaDaPassagem(pl.Zone.Name, p));
 	}
 
 	/// <summary>

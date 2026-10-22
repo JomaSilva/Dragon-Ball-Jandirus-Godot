@@ -102,6 +102,16 @@ public sealed class CharacterSave
     /// <summary>(2026-10-18) A versao da inteligencia da raca que este servidor grava. Ver <see cref="InteligenciaVersao"/>.</summary>
     public const int VersaoDaInteligencia = 1;
 
+    /// <summary>
+    /// (2026-10-21) ATE QUE VERSAO O PODER DE LUTA DA RACA (o "Battle Power" do `races.json`, que vira o `BPMod`) JA FOI ACERTADO NESTA FICHA.
+    /// Zero = save de antes do pedido do dono (Androide 2 -> 1,2; Majin 2,3 -> 1; Majin Corrompido 2,5 -> 1,3): o login troca a BASE uma vez
+    /// (`GameServer.MigrarPoderDaRaca`), com o que a Saga do Majin e as skills somaram preservado. Mesmo padrao do <see cref="InteligenciaVersao"/>.
+    /// </summary>
+    public int PoderDaRacaVersao;
+
+    /// <summary>(2026-10-21) A versao do poder de luta da raca que este servidor grava. Ver <see cref="PoderDaRacaVersao"/>.</summary>
+    public const int VersaoDoPoderDaRaca = 1;
+
     public Appearance Visual = new();
 
     /// <summary>
@@ -187,7 +197,7 @@ public sealed class CharacterSave
     /// O QUE CADA SKILL SOMOU NA FICHA AO SER COMPRADA (typepath -> campo -> quanto): o `storedBP` e o
     /// `hiddenpot` que o datum do DM guarda (Bodybuilding.dm:85-86) pra devolver no `before_forget`.
     /// Sem persistir, esquecer a One Hundred depois de um relog devolveria zero -- ou o login somaria
-    /// o 1% de novo. Ver `Core.Skills.GanhoNaCompra`.
+    /// o ganho de novo. Ver `Core.Skills.GanhoNaCompra`.
     /// </summary>
     public Dictionary<string, Dictionary<string, double>> SkillsGanhos = [];
 
@@ -275,6 +285,13 @@ public sealed class CharacterSave
     /// so renomeando uma saga) -- quem recusa e a convocacao, que pergunta ao catalogo.
     /// </summary>
     public List<string> ChefesVistos = [];
+
+    /// <summary>
+    /// AS ETAPAS VISTAS DE CADA CHEFE, uma linha por molde: "freeza_namek:0,2". O indice e o
+    /// <c>PapelDeNpc.Estagio</c>. Lista vazia num save de antes deste campo: a carga da a etapa 1
+    /// a todo chefe que ja estava em <see cref="ChefesVistos"/>.
+    /// </summary>
+    public List<string> EtapasDeChefe = [];
 
     /// <summary>
     /// AS PORTAS QUE UM MESTRE CORTOU PELA METADE. Ver
@@ -603,13 +620,19 @@ public sealed class Reencarnacao
     /// <summary>Quem reencarnou -- so pro log.</summary>
     public string De = "";
 
-    /// <summary>O BP BASE de quem reencarnou (o `oldBP`).</summary>
+    /// <summary>O BP BASE de quem reencarnou (o `oldBP`). Desde 2026-10-22 ele INTEIRO vira o potencial oculto do novo.</summary>
     public double BPAntigo;
 
-    /// <summary>A fracao que o novo leva (o `startBPMult`: 0,1 pelo Enma).</summary>
+    /// <summary>
+    /// A fracao que o novo levava em BP (o `startBPMult`: 0,1 pelo Enma) -- a regra de 2026-10-15 a 2026-10-22, que hoje so o
+    /// defeito injetado `GameServer.EcoDeDezPorCentoDeTeste` le.
+    /// </summary>
     public double Fracao;
 
-    /// <summary>O BP base com que o novo nasce, no minimo: `round(oldBP * startBPMult)` -- o `round` de um argumento do DM e o chao.</summary>
+    /// <summary>
+    /// O BP base com que o novo nascia, no minimo: `round(oldBP * startBPMult)` -- o `round` de um argumento do DM e o chao. So o
+    /// defeito injetado o le (ver <see cref="Fracao"/>).
+    /// </summary>
     public double BPDoNovo() => DmMath.Round(BPAntigo * Fracao);
 }
 
@@ -916,6 +939,7 @@ public sealed class AccountStore(string pasta)
         ItensVersao = Jandirus.Core.Items.ItensAposentados.VersaoAtual,
         CorposVersao = CharacterSave.VersaoDosCorpos,   // (2026-10-18) o visual de quem esta em jogo ja foi acertado no login
         InteligenciaVersao = pl.InteligenciaVersao,     // (2026-10-18) a do jogador: so o login (que tem o catalogo de racas) a sobe
+        PoderDaRacaVersao = pl.PoderDaRacaVersao,       // (2026-10-21) idem, o poder de luta da raca -- ver `GameServer.MigrarPoderDaRaca`
         Visual = pl.Visual,
         Ficha = pl.Ficha,
         Membros = pl.Combate != null ? GameServer.FotografarCorpo(pl.Combate) : [],
@@ -963,6 +987,7 @@ public sealed class AccountStore(string pasta)
         // cada `Persistir`, entao campo nao escrito e campo APAGADO (foi assim que os `Limiares`
         // sumiram do disco por meses; ver o bloco mais abaixo).
         ChefesVistos = [.. pl.ChefesVistos],
+        EtapasDeChefe = Jandirus.Core.Npc.EtapasDaMente.Gravar(pl.EtapasDeChefe),
 
         // A SALA DO TEMPO. As tres escritas AQUI e nao so declaradas la em cima: este metodo monta
         // o save do ZERO a cada `Persistir`, e campo nao escrito e campo APAGADO -- foi assim que
@@ -1048,6 +1073,7 @@ public sealed class AccountStore(string pasta)
         pl.Genero = s.Genero;
         pl.Linhagem = s.Linhagem;
         pl.InteligenciaVersao = s.InteligenciaVersao;   // (2026-10-18) a migracao e do servidor -- ver `GameServer.MigrarInteligencia`
+        pl.PoderDaRacaVersao = s.PoderDaRacaVersao;     // (2026-10-21) idem -- ver `GameServer.MigrarPoderDaRaca`
         pl.Idade = s.Idade;
         pl.MesesDaIdade = s.MesesDaIdade;
         pl.MesDaIdade = s.MesDaIdade;
@@ -1205,7 +1231,9 @@ public sealed class AccountStore(string pasta)
         // divisor de idade le daqui. Sem esta linha a curva de `Envelhecimento` receberia sempre o
         // 18 do valor inicial, e um ancia de 300 anos lutaria como um adulto no auge.
         pl.Ficha.Idade = s.Idade;
-        pl.Ficha.Race = s.Raca;   // o mesmo motivo: o divisor de idade e por raca
+        pl.Race = Jandirus.Core.Races.FormasDeFrost.Canonica(pl.Race);
+        pl.Ficha.Race = pl.Race;   // o mesmo motivo: o divisor de idade e por raca
+        Jandirus.Core.Races.FormasDeFrost.RenomearNaFicha(pl.Ficha);
         pl.Pos = new Vec2(s.X, s.Y);
         pl.CriadoEm = s.CriadoEm;
 

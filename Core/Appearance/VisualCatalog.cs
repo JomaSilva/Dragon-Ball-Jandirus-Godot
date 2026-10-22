@@ -58,11 +58,18 @@ public sealed class VisualCatalog
     public const string CorpoDeBebeF = "res://Assets/Sprites/DU/Mobs/Baby Girl.tres";
 
     /// <summary>
+    /// (2026-10-20) A FOLHA DO NEO TUFFLE NO PROPRIO CORPO -- `Bebi 1 Alt.dmi` (o Baby, cinza, de roupa vermelha e amarela), a que o dono
+    /// escolheu. Uma so pros dois generos: o Baby e um. Tem o vocabulario de um lutador (andar, voar, KO, meditar, treinar, soco e raio).
+    /// Ver `Appearance.CorpoDoTuffle`.
+    /// </summary>
+    public const string CorpoDoNeoTuffle = "res://Assets/Sprites/Character Icons/Androids/Bebi 1 Alt.tres";
+
+    /// <summary>
     /// Racas que NAO passam pelo passo de cabelo -- as mesmas seis do jogo. Nao e cosmetico:
     /// um Namekuseijin de cabelo espetado seria outra coisa.
     /// </summary>
     private static readonly string[] SemCabelo =
-        ["Namekian", "Majin", "Shapeshifter", "Saibaman", "Icer", "BioAndroid"];
+        ["Namekian", "Majin", "Shapeshifter", "Saibaman", "Frost Demon", "BioAndroid"];
 
     // (O BICHO tambem nao tem cabelo, e nao esta na lista de cima porque nao e raca do jogo: o corpo dele e
     // UMA folha de sprite inteira -- ver `Npc.Animais`.)
@@ -333,6 +340,10 @@ public sealed class VisualCatalog
         // (2026-10-18) O RECEM-NASCIDO ANDA NA FOLHA DO BEBE, antes de qualquer regra de raca: o corpo de quem acabou de nascer e o do
         // bebe, e o que ele escolheu na criacao volta quando ele cresce (`Appearance.Bebe`). O resto do boneco some na `Escondida`.
         if (ap.Bebe) return genero == "Female" ? CorpoDeBebeF : CorpoDeBebeM;
+
+        // (2026-10-20) O NEO TUFFLE NO PROPRIO CORPO ANDA NA FOLHA DO BABY, pelo mesmo argumento do bebe: o corpo dele e esse, seja qual for o
+        // que ele escolheu na criacao (`Appearance.CorpoDoTuffle`). O cabelo e os olhos de gente somem na `Escondida`; a roupa fica.
+        if (ap.CorpoDoTuffle) return CorpoDoNeoTuffle;
 
         // ============================ O FROST DEMON NAO TEM CORPO NO CATALOGO ============================
         // E de proposito, e nao um buraco: o corpo dele E a forma em que ele esta, e as formas sao

@@ -39,6 +39,12 @@ public sealed class GravidadeDaObra
 	/// </summary>
 	public bool Estavel;
 
+	/// <summary>
+	/// A trava de seguranca (dono, 2026-10-21): compra unica. Com ela, um desmaio dentro do campo desliga a
+	/// maquina. Nao e a estabilizacao -- aquela continua sem efeito, como no original.
+	/// </summary>
+	public bool Trava;
+
 	public double Energia = 1, EnergiaMax = 1;
 
 	/// <summary>Nivel de regeneracao por nanites: a chance, em pontos percentuais, de recarregar.</summary>
@@ -231,6 +237,7 @@ public sealed partial class GameServer
 		if (g is { Grav: > 0, Cheias: { } cheias })
 			Avisar(pl, $"  o campo alcança {cheias.Count - 1} tile(s) agora");
 		Avisar(pl, $"  estabilização: {(g.Estavel ? "sim" : "não")}");
+		Avisar(pl, $"  trava de segurança: {(g.Trava ? "sim" : "não")}");
 		if (g.Nanites > 0) Avisar(pl, $"  nanites: {g.Nanites}");
 
 		DizerOsPrecosDaGravidade(pl, g);
@@ -275,6 +282,7 @@ public sealed partial class GameServer
 			: g.Range >= alcance ? $"  alcance: no teto da sua tecnologia ({alcance})"
 			: $"  alcance: {Recurso.DoisPrecos(CustoDeAlcance(g))}{AteOnde($"{alcance}")}");
 		Avisar(pl, g.Estavel ? "  estabilização: já comprada" : $"  estabilização: {Recurso.DoisPrecos(CustoDeEstabilidade)}");
+		Avisar(pl, g.Trava ? "  trava de segurança: já comprada" : $"  trava de segurança: {Recurso.DoisPrecos(CustoDaTravaDeSeguranca)}");
 		Avisar(pl, g.Nanites >= nanites ? $"  nanites: no teto da sua tecnologia ({nanites})"
 			: $"  nanites: {Recurso.DoisPrecos(CustoDeNanites(g))} (pede {TechDosNanites:0} de tecnologia"
 			  + (livre ? ")" : $"; a sua leva até {nanites})"));
@@ -284,6 +292,12 @@ public sealed partial class GameServer
 	// Os precos do `verb/Upgrade` do DM (Gravity.dm:229-233), cada um em funcao do estado atual.
 	private const int AlcanceMaximo = 10;
 	private const double CustoDeEstabilidade = 500_000;
+
+	/// <summary>
+	/// A trava de seguranca (dono, 2026-10-21): 1 milhao de zeni. Em recursos o dobro sai sozinho
+	/// (<see cref="Recurso.RecursosPorZeni"/>), 2 milhoes. Sem tecnologia minima.
+	/// </summary>
+	private const double CustoDaTravaDeSeguranca = 1_000_000;
 	private const double TechDosNanites = 6;
 	private static double CustoDeForca(GravidadeDaObra g) => 5 * g.Max;
 	private static double CustoDeBateria(GravidadeDaObra g) => 50 * g.EnergiaMax;
@@ -351,6 +365,14 @@ public sealed partial class GameServer
 				if (!CobrarOuExplicar(pl, custo, moeda, "a estabilização")) return;
 				g.Estavel = true;
 				feito = "campo estabilizado";
+				break;
+
+			case "trava":
+				if (g.Trava) { Avisar(pl, "esta máquina já tem a trava de segurança."); return; }
+				custo = CustoDaTravaDeSeguranca;
+				if (!CobrarOuExplicar(pl, custo, moeda, "a trava de segurança")) return;
+				g.Trava = true;
+				feito = "trava de segurança instalada";
 				break;
 
 			case "nanites":

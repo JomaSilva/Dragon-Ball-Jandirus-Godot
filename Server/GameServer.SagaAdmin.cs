@@ -17,6 +17,9 @@ namespace Jandirus.Server;
 /// nascer agora. Os chefes A CAMINHO daquela saga chegam ja, pelo MESMO nascimento da virada do dia (`VirouODia` -> `NascerChefeDaSaga`: o BP
 /// pinado, o letal, a cena da chegada pra todos). A saga que nao esta contando (adormecida, ou ja acabada) dispara do marco antes, pelo
 /// `DispararElo` do Resetar -- e a contagem que ele arma e a que se pula. Quem ja esta no mundo fica como esta.
+///
+/// (2026-10-20) `admin_saga_pular id` PULA A SAGA JA COM O CHEFE MORTO -- o dono: *"adicione um botao q pula uma saga ja matando o boss, pq sem
+/// querer resetei todas as sagas do server"*. Ela fecha VENCIDA, como se os jogadores a tivessem vencido. Ver <see cref="AdminPularSaga"/>.
 /// </summary>
 public partial class GameServer
 {
@@ -116,6 +119,71 @@ public partial class GameServer
 				 + $" Era: {antes}. Agora: {DescreverElo(est)}.");
 		GD.Print($"[server] ADMIN {pl.Name} pulou os dias da saga '{elo.Id}' ({chegam} chefe(s); era: {antes})");
 	}
+
+	/// <summary>
+	/// PULA UMA SAGA, JA COM O CHEFE MORTO: ela fecha VENCIDA, como se os jogadores a tivessem vencido. Os chefes dela que estao no mundo saem (a
+	/// esfera do ultimato no ar se desfaz antes -- a tela leria a saida do corpo como a esfera caindo), os a caminho nao chegam mais e quem ia
+	/// voltar do alem (o Cell Super Perfeito) nao volta: todos ficam DERROTADOS, cada um na forma em que estava. A saga que nunca disparou (o
+	/// marco nao batido) fecha do mesmo jeito, com os chefes da ficha derrotados na forma 1.
+	///
+	/// O RESTO DA VITORIA VEM DO ESTADO, sem codigo novo: o elo seguinte fica destravado (dispara pelo marco dele, como sempre), os derrotados
+	/// viram candidatos a vilao do Inferno (`ViloesDoInferno.Candidatos`), o Boo vencido acorda a historia do Bills, e a tropa, os Cell Jr e o
+	/// torneio do Cell vao embora no tique seguinte (eles perguntam pelo chefe no mundo e pela saga em curso). NINGUEM vira heroi -- nao houve
+	/// matador -- e o mundo nao ouve o anuncio da vitoria: e uma correcao de admin, e quem joga nao viu luta nenhuma. O admin ouve o que mudou.
+	/// </summary>
+	private void AdminPularSaga(ServerPlayer pl, string arg)
+	{
+		string id = arg.Trim();
+		EloDaSaga? elo = Array.Find(_cadeia, e => string.Equals(e.Id, id, StringComparison.OrdinalIgnoreCase));
+		if (elo == null)
+		{
+			Avisar(pl, $"não há saga \"{id}\". As da cadeia: {string.Join(", ", _cadeia.Select(e => e.Id))}.");
+			return;
+		}
+
+		EstadoDoElo? est = _sagas.Do(elo.Id);
+		if (est == null)
+		{
+			est = new EstadoDoElo { Id = elo.Id };
+			_sagas.Elos.Add(est);
+		}
+		string antes = DescreverElo(est);
+
+		int mortos = 0;
+		if (!PularSoAFaseDeTeste)
+		{
+			// OS CHEFES DA FICHA QUE A SAGA NUNCA POS NO MUNDO (ela nao disparou): entram derrotados, na forma 1
+			foreach (ChefeDaSaga ficha in elo.Chefes)
+				if (!est.Chefes.Exists(c => string.Equals(c.Molde, ficha.Molde, StringComparison.OrdinalIgnoreCase)))
+					est.Chefes.Add(new EstadoDoChefe { Molde = ficha.Molde, Fase = FaseDoChefe.Derrotado });
+
+			foreach (EstadoDoChefe ec in est.Chefes)
+			{
+				if (ec.Corpo != 0 && _players.TryGetValue(ec.Corpo, out ServerPlayer? corpo) && corpo.Peer == null)
+				{
+					AcabarASupernova(corpo);
+					RemoverNpc(corpo);
+					mortos++;
+				}
+				if (ec.Fase != FaseDoChefe.Consumido) ec.Fase = FaseDoChefe.Derrotado;
+				ec.RessurgeEm = 0;
+				ec.Corpo = 0;
+				ec.Carregando = false;
+				ec.UltimatoEm = 0;
+			}
+		}
+		est.Disparou = true;
+		est.Condenado = false;
+		est.Fase = FaseDaSaga.Vencida;
+		SalvarSagas();
+
+		Avisar(pl, $"saga \"{elo.Nome}\" pulada: vencida" + (mortos > 0 ? $", {mortos} chefe(s) morto(s) e tirado(s) do mundo" : "")
+				 + $". Era: {antes}. Agora: {DescreverElo(est)}.");
+		GD.Print($"[server] ADMIN {pl.Name} pulou a saga '{elo.Id}': vencida, {mortos} chefe(s) tirado(s) do mundo (era: {antes})");
+	}
+
+	/// <summary>DEFEITO INJETADO (`--chefesteste`, familia V): o pular so troca a fase -- os chefes ficam no mundo e o Cell segue armado pra voltar.</summary>
+	internal static bool PularSoAFaseDeTeste;
 
 	/// <summary>O estado de uma saga em palavras -- a fase e, por chefe, onde ele esta e em que forma.</summary>
 	private static string DescreverElo(EstadoDoElo? est)

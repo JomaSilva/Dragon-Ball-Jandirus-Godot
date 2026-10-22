@@ -227,7 +227,7 @@ public partial class RoboDeDesejos : Node
 		yield return 1.5;   // o dragao termina de subir, pra foto
 
 		Afirmar("o cabecalho diz QUAL dragao, quantos pedidos restam e quanto ele ainda espera",
-				janela.NomeDesenhado == "SHENRON" && janela.ContagemDesenhada.Contains("3 de 3", StringComparison.Ordinal)
+				janela.NomeDesenhado == "SHENLONG" && janela.ContagemDesenhada.Contains("3 de 3", StringComparison.Ordinal)
 				&& janela.ContagemDesenhada.Contains("espera mais", StringComparison.Ordinal)
 				&& janela.EstadoDesenhado.Contains("aguarda o seu pedido", StringComparison.Ordinal),
 				$"'{janela.NomeDesenhado}' | '{janela.ContagemDesenhada}' | '{janela.EstadoDesenhado}'");
@@ -299,8 +299,10 @@ public partial class RoboDeDesejos : Node
 		janela.ApertarBotao("Pedir");
 		for (double t = 0; t < 3 && srv.SetDoPalcoDeTeste(eu).Pedidos == 0; t += 0.1) yield return 0.1;
 		yield return 0.5;
-		Afirmar("PEDIR concede: +50.000.000 de zeni no servidor, e UM pedido gasto",
-				Math.Abs((srv.CorpoDosDesejosDeTeste(eu)?.Zeni ?? 0) - (zeniAntes + Desejos.ZeniDoDesejo)) < 1 && srv.SetDoPalcoDeTeste(eu).Pedidos == 1,
+		// (2026-10-22) A FORCA DIVIDIDA: o set do palco tem 3 pedidos, e cada um vale um terco da forca -- a riqueza e um terco dos 50.000.000
+		double riqueza = Desejos.ZeniDoDesejo * ConfigDaEstatua.ForcaDeCadaPedido(srv.SetDoPalcoDeTeste(eu).Desejos);
+		Afirmar($"PEDIR concede: +{riqueza:N0} de zeni no servidor (a força dividida pelos 3 pedidos), e UM pedido gasto",
+				Math.Abs((srv.CorpoDosDesejosDeTeste(eu)?.Zeni ?? 0) - (zeniAntes + riqueza)) < 1 && srv.SetDoPalcoDeTeste(eu).Pedidos == 1,
 				$"zeni {zeniAntes:N0} -> {srv.CorpoDosDesejosDeTeste(eu)?.Zeni:N0}, pedidos {srv.SetDoPalcoDeTeste(eu).Pedidos}");
 		Afirmar("...e a janela continua aberta, de volta na lista, com a contagem nova (restam 2 de 3)",
 				janela.NaTela && janela.EtapaDeTeste == "Lista" && janela.ContagemDesenhada.Contains("2 de 3", StringComparison.Ordinal),
@@ -446,13 +448,13 @@ public partial class RoboDeDesejos : Node
 		// `ProceduralSpace.dm:1580`). O portao e do servidor (`GameServer.DianteDeUmaSuper`) e quem o mede e a
 		// `--validacoesteste`; daqui se mede a JANELA dos dois lados dele: longe, ela mostra e nao pede; ao lado,
 		// pede. (Ate 2026-10-10 este passo pedia a riqueza de pe na Terra -- o furo que o portao fechou.)
-		Nota("-- 10) o Super Shenron, LONGE de uma Super Esfera: a janela mostra e nao pede --");
+		Nota("-- 10) o Super Shenlong, LONGE de uma Super Esfera: a janela mostra e nao pede --");
 		int ciclo = srv.SupersNaMaoDeTeste(eu);
 		for (double t = 0; t < 3 && !janela.LinhasDesenhadas().Exists(l => l.Id == AcoesDoDragao.Super); t += 0.1) yield return 0.1;
-		Afirmar("com as sete Super Esferas na mao, a janela ABERTA ganha sozinha o atalho 'Super Shenron' (o servidor a mantem em dia)",
+		Afirmar("com as sete Super Esferas na mao, a janela ABERTA ganha sozinha o atalho 'Super Shenlong' (o servidor a mantem em dia)",
 				janela.LinhasDesenhadas().Exists(l => l.Id == AcoesDoDragao.Super && l.Pode));
 		janela.ApertarLinha(AcoesDoDragao.Super);
-		for (double t = 0; t < 3 && janela.NomeDesenhado != "SUPER SHENRON"; t += 0.1) yield return 0.1;
+		for (double t = 0; t < 3 && janela.NomeDesenhado != "SUPER SHENLONG"; t += 0.1) yield return 0.1;
 		yield return 0.3;
 
 		// O CRITERIO DO LADO DE CA DO PORTAO, lido da TELA: os tres desejos apagados e a frase que diz onde ir.
@@ -461,13 +463,13 @@ public partial class RoboDeDesejos : Node
 		bool LongeMostraENaoPede()
 		{
 			List<(string Id, string Nome, bool Pode, string Motivo)> l = janela.LinhasDesenhadas();
-			return janela.NomeDesenhado == "SUPER SHENRON" && janela.EtapaDeTeste == "Lista"
+			return janela.NomeDesenhado == "SUPER SHENLONG" && janela.EtapaDeTeste == "Lista"
 				&& desejosDoSuper.All(id => l.Exists(x => x.Id == id && !x.Pode))
 				&& janela.EstadoDesenhado.Contains(fraseDoPortao, StringComparison.Ordinal);
 		}
 
 		linhas = janela.LinhasDesenhadas();
-		Afirmar("(a) LONGE de qualquer Super Esfera (de pe na Terra, com as sete e a Lingua dos Deuses) o atalho troca a janela pro SUPER SHENRON "
+		Afirmar("(a) LONGE de qualquer Super Esfera (de pe na Terra, com as sete e a Lingua dos Deuses) o atalho troca a janela pro SUPER SHENLONG "
 				+ "na hora -- com os tres desejos APAGADOS, a frase do portao no alto, e o gesto de emprestar as sete",
 				LongeMostraENaoPede() && linhas.Exists(l => l.Id == AcoesDoDragao.Emprestar) && !janela.ApertarLinha("sdb_riqueza"),
 				$"'{janela.NomeDesenhado}' | '{janela.EstadoDesenhado}' | {string.Join(",", linhas.Select(l => l.Id + (l.Pode ? "" : "(x)")))}");
@@ -717,23 +719,23 @@ public partial class RoboDeDesejos : Node
 		for (double t = 0; t < 3 && cli.MinhasSupers != SuperEsferas.Total; t += 0.1) yield return 0.1;
 
 		// ---- e, com a esfera na tela, o Super Shenron
-		Nota("-- 10c) o Super Shenron, AO LADO da Super Esfera: os desejos acendem e o pedido entra --");
+		Nota("-- 10c) o Super Shenlong, AO LADO da Super Esfera: os desejos acendem e o pedido entra --");
 		menu.Abrir();
 		menu.IrPara("World");
 		yield return 0.6;
 		// (o cartao se acha pelo metadado do titulo, como a `--diagabas` os acha.)
 		PanelContainer? cartaoDoSuper = menu.PaginaDeTeste("World") is { } abaNoEspaco
-			? Todos(abaNoEspaco).OfType<PanelContainer>().FirstOrDefault(p => p.HasMeta("titulo") && p.GetMeta("titulo").AsString() == "O pedido ao Super Shenron")
+			? Todos(abaNoEspaco).OfType<PanelContainer>().FirstOrDefault(p => p.HasMeta("titulo") && p.GetMeta("titulo").AsString() == "O pedido ao Super Shenlong")
 			: null;
-		Afirmar("no espaco o cartao do pedido e o do SUPER SHENRON: 'Ver os desejos' continua la, e 'Derrubar a estátua' nao (nao ha estatua no espaco)",
+		Afirmar("no espaco o cartao do pedido e o do SUPER SHENLONG: 'Ver os desejos' continua la, e 'Derrubar a estátua' nao (nao ha estatua no espaco)",
 				cartaoDoSuper != null && BotaoDe(cartaoDoSuper, "Ver os desejos") != null && BotaoDe(cartaoDoSuper, "Derrubar a estátua") == null);
 		apertou = ApertarNaAbaWorld("Ver os desejos");
-		for (double t = 0; t < 3 && !(janela.NaTela && janela.NomeDesenhado == "SUPER SHENRON"); t += 0.1) yield return 0.1;
+		for (double t = 0; t < 3 && !(janela.NaTela && janela.NomeDesenhado == "SUPER SHENLONG"); t += 0.1) yield return 0.1;
 		yield return 0.4;
 		linhas = janela.LinhasDesenhadas();
-		Afirmar("(b) AO LADO de uma Super Esfera 'Ver os desejos' abre a janela do SUPER SHENRON com os desejos ACESOS e sem a frase do portao: "
-				+ "SUPER SHENRON atende UM desejo",
-				apertou && janela.NaTela && janela.NomeDesenhado == "SUPER SHENRON" && janela.EtapaDeTeste == "Lista"
+		Afirmar("(b) AO LADO de uma Super Esfera 'Ver os desejos' abre a janela do SUPER SHENLONG com os desejos ACESOS e sem a frase do portao: "
+				+ "SUPER SHENLONG atende UM desejo",
+				apertou && janela.NaTela && janela.NomeDesenhado == "SUPER SHENLONG" && janela.EtapaDeTeste == "Lista"
 				&& linhas.Exists(l => l.Id == "sdb_riqueza" && l.Pode) && linhas.Exists(l => l.Id == "sdb_supremo" && l.Pode)
 				&& !janela.EstadoDesenhado.Contains(fraseDoPortao, StringComparison.Ordinal)
 				&& janela.EstadoDesenhado.Contains("atende UM desejo", StringComparison.Ordinal),

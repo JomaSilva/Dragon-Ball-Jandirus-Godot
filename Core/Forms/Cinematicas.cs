@@ -4089,7 +4089,7 @@ public static class Cinematicas
 	/// (`Effects/UltraInstinctSoundEffect.ogg`, 4,2 s).
 	///
 	/// Devolve o NOME do som -- o cliente o leva ao arquivo pelo mesmo `Transformacao.CaminhoDoSom` dos beats; vazio = o de sempre
-	/// (o swoosh da instantanea; a encurtada so com os beats dela). PELA LINHA e nao por id, pelo motivo da excecao do Oozaru do
+	/// (o estalo do C na instantanea; a encurtada so com os beats dela). PELA LINHA e nao por id, pelo motivo da excecao do Oozaru do
 	/// <see cref="Degrau"/>: a forma do instinto que entrar no catalogo depois ja nasce soando. A ESTREIA nao o leva: ela e a cena
 	/// cheia, com o tema da forma -- o "depois da primeira cinematica" da frase.
 	/// </summary>
@@ -4099,7 +4099,7 @@ public static class Cinematicas
 	/// <summary>O nome do som do instinto (a familia do `Beat.Som`).</summary>
 	public const string SomDoUltraInstinto = "ultrainstinto";
 
-	/// <summary>DEFEITO INJETADO (bancada `--diagsomui`): o instinto volta a se transformar com o swoosh comum. Falso em jogo.</summary>
+	/// <summary>DEFEITO INJETADO (bancada `--diagsomui`): o instinto volta a se transformar com o som comum (o estalo do C). Falso em jogo.</summary>
 	public static bool SomDoInstintoMudoDeTeste;
 
 	/// <summary>

@@ -319,8 +319,9 @@ public static class FonteBench
 
 		// ---- o arquivo publicado, pelo parser do jogo
 		RaceCatalog racas = RaceCatalog.Parse(File.ReadAllText(Path.Combine(dados, "races.json")));
-		Checa("F3.2 races.json: a `Dog` saiu, e ficaram as 23 racas que o original compila (da `Alien` a `Yardrat`)",
-			  racas.Get("Dog") == null && racas.Protos.Count == 23 && racas.Get("Alien") != null && racas.Get("Human") != null
+		Checa("F3.2 races.json: a `Dog` saiu, o `Halfbreed` nao e proto (o meio-Saiyajin usa o corpo do Saiyajin), e ficaram 22 racas (da `Alien` a `Yardrat`)",
+			  racas.Get("Dog") == null && racas.Get("Halfbreed") == null && racas.Protos.Count == 22
+			  && racas.Get("Alien") != null && racas.Get("Human") != null
 			  && racas.Get("Saiyan") != null && racas.Get("Yardrat") != null, $"{racas.Protos.Count} racas: {string.Join(", ", racas.Protos.Keys.Order())}");
 		Console.WriteLine();
 	}

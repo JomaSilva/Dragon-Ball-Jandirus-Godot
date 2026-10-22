@@ -298,6 +298,12 @@ public sealed class ServerPlayer
 	public long RaivaComumAte;
 
 	/// <summary>
+	/// ATE QUANDO ESTE CORPO ESTA IRRITADO (relogio real, ms). O degrau de apanhar, abaixo da raiva comum.
+	/// NAO PERSISTE, como as outras janelas. Quem escreve e so <see cref="AcenderJanelaDeRaiva"/>.
+	/// </summary>
+	public long IrritadoAte;
+
+	/// <summary>
 	/// DESDE QUANDO ESTE CORPO ESTA NA RAIVA DE UMA INJECAO (relogio real, ms; zero = nao esta), e que fracao da folga de
 	/// raiva ela acendeu (`Jandirus.Core.Tech.Sintetizador.FracaoDaRaiva`). E a TERCEIRA fonte do numero de raiva
 	/// (`GameServer.RaivaComoNumero`), e so do numero: nao e um degrau -- `NivelDaRaivaDe` nao a ve --, entao nao abre
@@ -635,6 +641,13 @@ public sealed class ServerPlayer
 	public HashSet<string> ChefesVistos = [];
 
 	/// <summary>
+	/// AS ETAPAS EM QUE ESTE PERSONAGEM VIU CADA CHEFE, por id de molde. O indice e o
+	/// <c>PapelDeNpc.Estagio</c> (0 = a primeira forma, a "etapa 1" que o jogador le). Save antigo
+	/// ganha o 0 na carga. Ver <c>EtapasDaMente</c>.
+	/// </summary>
+	public Dictionary<string, HashSet<int>> EtapasDeChefe = new(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
 	/// AS TECNICAS DE KI QUE ESTE PERSONAGEM CRIOU. RECONSTRUIDO; tipo pinado pelo save
 	/// (`CharacterSave.Customizadas`, `List&lt;TecnicaCustomizada&gt;`) e por `pl.Customizadas.Count`.
 	/// </summary>
@@ -734,6 +747,12 @@ public sealed class ServerPlayer
 
 	/// <summary>O mesmo, pras skills FECHADAS que eu tinha comprado (`SkillsFechadas.Limpar`): os marcos voltaram.</summary>
 	public List<(Jandirus.Core.Skills.SkillsFechadas.Fechada Skill, int Devolvidos)> SkillsQueFecharam = [];
+
+	/// <summary>
+	/// One Hundred e One Training compradas na versao que somava potencial oculto: o login devolveu o marco
+	/// e tirou o que a compra somou, pra comprar de novo e pegar os 5% de BP. Vive ate o recado.
+	/// </summary>
+	public List<Jandirus.Core.Skills.GanhoNaCompra.CompraAntigaDevolvida> ComprasAntigasDevolvidas = [];
 
 	/// <summary>
 	/// O que o login tirou da minha mochila porque saiu do jogo (`ItensAposentados.Limpar`), esperando o
@@ -836,6 +855,9 @@ public sealed class ServerPlayer
 	/// </summary>
 	public double BpDaSessao;
 	public bool EmSessao;
+
+	/// <summary>(2026-10-20) QUANDO a sessao comecou (`NowMs`): a media de ganho por segundo do "View Session" -- ver `GameServer.VerboSessao`.</summary>
+	public long SessaoDesdeMs;
 
 	/// <summary>
 	/// `knockbackon`: meus golpes arremessam? Ligado por padrao, como no original
@@ -1541,6 +1563,9 @@ public sealed class ServerPlayer
 	/// <summary>(2026-10-18) A versao da inteligencia da raca nesta ficha -- ver `CharacterSave.InteligenciaVersao` e `GameServer.MigrarInteligencia`.</summary>
 	public int InteligenciaVersao;
 
+	/// <summary>(2026-10-21) A versao do poder de luta da raca nesta ficha -- ver `CharacterSave.PoderDaRacaVersao` e `GameServer.MigrarPoderDaRaca`.</summary>
+	public int PoderDaRacaVersao;
+
 	/// <summary>
 	/// (2026-10-17) OS MESES VIVIDOS RUMO AO PROXIMO ANO (0 a 9) e O MES DO CALENDARIO ATE O QUAL A IDADE JA FOI CONTADA -- os decimos do
 	/// `Age` e o `LastYear` do DM. Vao pro disco. Ver `GameServer.Calendario.cs` e `Envelhecimento.ContarMeses`.
@@ -1652,7 +1677,7 @@ public sealed class ServerPlayer
 	/// minutos e uma Potara 30 -- ou seja qualquer fusao atravessa sete a quinze gravacoes.
 	///
 	/// Escrever a fusao em `pl.Visual` gravaria no disco, pra sempre: o guarda-roupa do jogador
-	/// SUBSTITUIDO pelo colete metamoriano (a Danca nao herda roupa nenhuma -- ver
+	/// SUBSTITUIDO pelo uniforme metamoriano (a Danca nao herda roupa nenhuma -- ver
 	/// `Fusao.RoupaDaFusao`) e o penteado dele trocado pelo do Vegito. Uma queda do servidor no meio de
 	/// uma fusao apagaria a roupa que a pessoa escolheu na criacao, e nada no jogo diria por que.
 	///
@@ -2349,6 +2374,7 @@ public partial class GameServer : Node
 	public override void _Ready()
 	{
 		Instance = this;
+		CombatState.AoDesmaiar = AoDesmaiarNaGravidade;
 		SetProcess(false);   // dormente ate alguem mandar subir
 
 		string[] args = OS.GetCmdlineArgs();
@@ -2841,6 +2867,10 @@ public partial class GameServer : Node
 		_doisCorposDeTeste = Array.IndexOf(args, "--doiscorposteste") >= 0;
 		if (_doisCorposDeTeste) GD.Print("[server] BANCADA: dois corpos (agarrao, colisao, cadaver), no 1o login");
 
+		// `--levarjuntoteste`: quem esta no agarrao vai junto na viagem voluntaria, menos pro espaco.
+		_levarJuntoDeTeste = Array.IndexOf(args, "--levarjuntoteste") >= 0;
+		if (_levarJuntoDeTeste) GD.Print("[server] BANCADA: levar junto (porta, nave, pouso; nao o espaco), no 1o login");
+
 		// `--tiquedamorte`: O QUADRO INTEIRO NO INSTANTE DA MORTE -- e a bancada que faltava embaixo
 		// das outras tres.
 		//
@@ -2946,6 +2976,9 @@ public partial class GameServer : Node
 		// fim. So com a flag, e de preferencia em conta e porta proprias.
 		_esferaDeTeste = Array.IndexOf(args, "--esferateste") >= 0;
 		if (_esferaDeTeste) GD.Print("[server] BANCADA: esferas do dragao no 1o login");
+
+		_negraDeTeste = Array.IndexOf(args, "--esferanegrateste") >= 0;
+		if (_negraDeTeste) GD.Print("[server] BANCADA: black star e o espalhamento aleatorio no 1o login");
 
 		// `--desejoteste`: A TABELA DE DESEJOS, A LINGUA DOS DEUSES E O PROCURADOR -- a Fase 2.
 		//
@@ -3215,6 +3248,10 @@ public partial class GameServer : Node
 			// dos astros mexe no relogio do ceu e o devolve no fim. Ver `GameServer.G11Teste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--g11teste") >= 0) RodarBancadaG11();
 
+			// `--teleporteteste`: o Instant Transmission pela aba Sense (cinco niveis, carona meditando, agarrado).
+			// Mesma infraestrutura da `--g11teste`. Ver `GameServer.TransmissaoTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--teleporteteste") >= 0) RodarBancadaDaTransmissao();
+
 			// `--tecnicateste`: a criacao de tecnicas de ki. No boot pelos mesmos dois motivos da de
 			// cima -- ela precisa de zonas com colisao (a familia 5 dispara de verdade e o tiro tem
 			// que ter chao) e do `AccountStore` (a familia 4 grava e le), mas nao precisa de ninguem
@@ -3346,6 +3383,8 @@ public partial class GameServer : Node
 			// O que ela NAO cobre e a porta (`EntrarNaMente`), que exige `Peer`: quem exercita aquilo
 			// e o robo, com `--socar --mente N`. Ver `GameServer.MenteTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--menteteste") >= 0) RodarBancadaDaMente();
+			// (2026-10-21) a etapa escolhida do chefe ja visto. O mesmo boot: precisa do npcs.json.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--mentechefeteste") >= 0) RodarBancadaDaEtapaDoChefe();
 
 			// `--conhecidosteste`: A ABA PEOPLE NO SERVIDOR -- o convivio que o jogo conta, a declaracao que
 			// o jogador escolhe (a afinidade automatica saiu em 2026-10-10) e a corrente ate a furia. No boot
@@ -3491,6 +3530,7 @@ public partial class GameServer : Node
 			// Ver `GameServer.DrillTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--drillteste") >= 0) RodarBancadaDaDrill();
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--melhoriasteste") >= 0) RodarBancadaDasMelhorias();   // (2026-10-19) `--melhoriasteste`: a maquina recolhida leva as melhorias, o teto delas pela tecnologia e a forca no teto do mundo; colada nas duas de cima pelo mesmo motivo (corpos forjados, maquinas pelo funil). Ver `GameServer.MelhoriasTeste.cs`.
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--gravtravateste") >= 0) RodarBancadaDaGravTrava();   // (2026-10-21) `--gravtravateste`: a simulacao copia a maestria de gravidade, e a trava da camara desliga no desmaio. Ver `GameServer.GravTravaTeste.cs`.
 
 			// `--macieirateste`: A SEMENTE DE MACIEIRA -- a fruta que deixa semente e a semente que vira arvore.
 			// No boot pelo mesmo motivo da vizinha: o corpo e forjado, e o que ela precisa (a Terra com
@@ -3508,6 +3548,7 @@ public partial class GameServer : Node
 			// `--saqueteste`: O SAQUE DE QUEM ESTA NOCAUTEADO (item 9b do playtest de 2026-10-10) -- o que sai, o
 			// que fica, e quem pode ser revistado. Ver `GameServer.SaqueTeste.cs`.
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--saqueteste") >= 0) RodarBancadaDoSaque();
+			if (Array.IndexOf(OS.GetCmdlineArgs(), "--aliadosteste") >= 0) RodarBancadaDosAliados();   // (2026-10-21) amizade, treino e aliados -- ver GameServer.AliadosTeste.cs
 			if (Array.IndexOf(OS.GetCmdlineArgs(), "--aposentadosteste") >= 0) RodarBancadaDosItensAposentados();   // `--aposentadosteste`: o item que saiu do jogo sai da mochila no login com a frase que diz por que, e sem zeni de volta. Ver `GameServer.ItensAposentadosTeste.cs`.
 
 			// `--aguateste`: A AGUA ULTRA DIVINA DO MIRANTE (item 11 do playtest de 2026-10-10) -- o jarro no mapa,
@@ -4170,6 +4211,18 @@ public partial class GameServer : Node
 				break;
 			}
 
+			// A TECLA CRUA DO TREINO FOCADO e o ESPACO DA RESPIRACAO. Quem julga e o servidor. Ver GameServer.TreinoFocado.cs.
+			case Protocol.C2S.TreinoTecla:
+			{
+				if (_byPeer.TryGetValue(peer, out ServerPlayer? quemTreina)) TeclaDoTreinoFocado(quemTreina, (char)reader.GetByte());
+				break;
+			}
+			case Protocol.C2S.RespiracaoTecla:
+			{
+				if (_byPeer.TryGetValue(peer, out ServerPlayer? quemMedita)) EspacoDaRespiracao(quemMedita);
+				break;
+			}
+
 			case Protocol.C2S.Verbo:
 			{
 				string cmd = reader.GetString(24);
@@ -4579,9 +4632,9 @@ public partial class GameServer : Node
 		string classeDoFrost = bebe == null ? GastarAClasseDoFrost(acc, slot, ficha) : "";
 		Fighter lutador = bebe == null ? Nascer(ficha, nome, classeRara.Length > 0 ? classeRara : classeDoFrost) : NascerDoBebe(ficha, nome, bebe);
 
-		// (v0.3.0) A REENCARNACAO PELO ENMA: quem nasce numa conta com eco leva 10% do BP de quem reencarnou -- o
-		// `CheckIncarnate` do DM, chamado no mesmo ponto da criacao (`CharacterCreation.dm:208`). Consumido aqui, antes do
-		// gravar logo abaixo. Ver `AplicarOEcoDaReencarnacao`.
+		// (v0.3.0) A REENCARNACAO PELO ENMA: quem nasce numa conta com eco leva o BP de quem reencarnou como potencial oculto
+		// (2026-10-22; antes, 10% dele em BP) -- no ponto do `CheckIncarnate` do DM (`CharacterCreation.dm:208`). Consumido aqui,
+		// antes do gravar logo abaixo. Ver `AplicarOEcoDaReencarnacao`.
 		Reencarnacao? eco = AplicarOEcoDaReencarnacao(acc, lutador);
 
 		// APARENCIA: saneada, nunca recusada. Ela nao da vantagem nenhuma, entao um indice
@@ -4630,6 +4683,8 @@ public partial class GameServer : Node
 		{
 			// (2026-10-18) a ficha acabou de nascer com a inteligencia da raca (`Fighter.FromGenome`): nada a migrar
 			InteligenciaVersao = CharacterSave.VersaoDaInteligencia,
+			// (2026-10-21) ...e com o poder de luta da raca de agora: nada a migrar
+			PoderDaRacaVersao = CharacterSave.VersaoDoPoderDaRaca,
 			// (2026-10-19) e com as listas de corpos de agora: nenhuma migracao de corpo vale pra quem nasce hoje (ver `ParaJogador`)
 			CorposVersao = NasceSemAVersaoDosCorposDeTeste ? 0 : CharacterSave.VersaoDosCorpos,
 			Nome = nome, Raca = ficha.Race, Planeta = ficha.Planet, Genero = ficha.Gender,
@@ -4729,6 +4784,8 @@ public partial class GameServer : Node
 		AccountStore.ParaJogador(c, pl);
 		// (2026-10-18) A INTELIGENCIA DA RACA, UMA VEZ: quem nasceu antes dela ganha a diferenca -- ver `InteligenciaDaRaca`.
 		if (c != null) MigrarInteligencia(pl);
+		// (2026-10-21) O PODER DE LUTA DA RACA, UMA VEZ: o Androide, o Majin e o Majin Corrompido de antes trocam a base -- ver `MigrarPoderDaRaca`.
+		if (c != null) MigrarPoderDaRaca(pl);
 		pl.Conta = acc.Conta;
 		pl.Slot = slot;
 		// A ZONA VOLTA INTEIRA: tipo + nome + seed. Ver `CharacterSave.ZonaTipo`.
@@ -4790,6 +4847,11 @@ public partial class GameServer : Node
 		pl.SpeedStat = MoveRules.SpeedStatFrom(pl.Ficha.Espeed);
 		PrepararCombate(pl, c);
 		PrepararSkills(pl, c);
+		// (2026-10-21) A COMPRA ANTIGA da One Hundred e da One Training somava potencial oculto. Devolve o marco
+		// e o que ela somou, DEPOIS do `Reconciliar` (a razao garantida entra no registro e o `Desfazer` a tira)
+		// e ANTES dos efeitos, que senao reaplicariam o buff de uma skill que o livro ja nao tem.
+		if (_skills != null && pl.Livro != null)
+			pl.ComprasAntigasDevolvidas = Jandirus.Core.Skills.GanhoNaCompra.ReembolsarVersaoAntiga(pl.Ficha, pl.Livro, _skills);
 
 		// O `skillpointMod` DA RACA, pro limiar dos marcos do BP -- ver `ConferirMarcosDoBp`. Aqui e nao dentro
 		// do `PrepararSkills` porque ele e estatico e quem tem o catalogo de racas e a instancia.
@@ -5033,6 +5095,9 @@ public partial class GameServer : Node
 		// bancadas de cima contam corpos.
 		if (_doisCorposDeTeste) { _doisCorposDeTeste = false; RodarBancadaDosDoisCorpos(pl); }
 
+		// A DO LEVAR JUNTO no primeiro login: embarcar empresta o Peer do host (NPC nao entra na nave).
+		if (_levarJuntoDeTeste) { _levarJuntoDeTeste = false; RodarBancadaDoLevarJunto(pl); }
+
 		// A DO QUADRO DA MORTE logo depois das tres da morte, e a ordem tem razao: ela e a unica que
 		// roda o `Tick()` INTEIRO -- varias centenas de vezes --, entao o mundo em que ela mede ja
 		// passou por tudo o que as outras poem e tiram. Ela nao mata o host (forja o proprio algoz e
@@ -5074,6 +5139,7 @@ public partial class GameServer : Node
 		// A DA RAIVA POR AMIGO (`--raivateste`): o host e o enlutado -- ve o amigo cair, morrer e ser absorvido. A flag
 		// e lida la dentro. Ver `GameServer.RaivaPorAmigoTeste.cs`.
 		RodarBancadaDaRaivaSePedida(pl);
+		RodarBancadaDoIrritadoSePedida(pl);
 
 		// A DO REVERTER: o host cai, libera e desce a escada degrau a degrau. Ver `GameServer.ReverterTeste.cs`.
 		if (_reverterDeTeste) { _reverterDeTeste = false; RodarBancadaDoReverter(pl); }
@@ -5097,6 +5163,7 @@ public partial class GameServer : Node
 		// so existe com conta e slot), o `MoveToZone` so mexe em quem esta no `_players`, e o claim da
 		// Super Esfera cai quando o disputante "saiu do mundo" -- que e literalmente `Peer == null`.
 		if (_esferaDeTeste) { _esferaDeTeste = false; RodarBancadaDasEsferas(pl); }
+		if (_negraDeTeste) { _negraDeTeste = false; RodarBancadaDasNegras(pl); }
 
 		// A DOS DESEJOS pelas MESMAS tres razoes da de cima, mais uma sua: o bloqueio do criador
 		// compara ASSINATURA (`CreatorSig` contra a de quem pede) e a procuracao guarda a assinatura do
@@ -5276,6 +5343,7 @@ public partial class GameServer : Node
 		// desenhada com o que chegou, e quem entra num servidor onde Vegeta ja explodiu ha semanas
 		// nunca receberia o pacote de mudanca. Ver `S2C.Mortos`.
 		MandarMortos(pl);
+		MandarChefesNosPlanetas(pl);   // (2026-10-21) ...e onde ha chefe de saga no mundo: a trilha de combate do planeta -- ver `GameServer.SubZonas.cs`
 
 		// E OS NOMES DADOS AOS PLANETAS, com a descoberta junto: esta e uma das duas portas de entrada no
 		// mundo (a outra e o `MoveToZone`), e quem nasce num mundo gerado em que ninguem pisou e o
@@ -5492,8 +5560,12 @@ public partial class GameServer : Node
 		// bebe e sem nada por cima (`Appearance.Bebe`, `GameServer.Bebe.cs`). So no corpo proprio -- fundido ou disfarcado, o mundo ve outro.
 		// (2026-10-18) O BIT 1 E O CABELO DO NEO TUFFLE: o corpo que ele veste anda de cabelo branco-acinzentado (`Appearance.CabeloDoTuffle`,
 		// `GameServer.NeoTuffle.cs`).
+		// (2026-10-20) O BIT 2 E O CORPO DO NEO TUFFLE: no proprio corpo ele anda na folha do Baby, careca, com a roupa da criacao por cima
+		// (`Appearance.CorpoDoTuffle`).
+		// So no corpo proprio, como o bebe -- dentro do hospede o mundo ve o hospede, e fundido, a fusao.
 		w.Put((byte)((corpoProprio && EhBebe(p) && !BebeSemMarcaNoPacoteDeTeste ? 1 : 0)
-					 | (p.CorpoDaPosse != null && !TuffleSemCabeloBrancoDeTeste ? 2 : 0)));
+					 | (p.CorpoDaPosse != null && !TuffleSemCabeloBrancoDeTeste ? 2 : 0)
+					 | (corpoProprio && p.Ficha.NeoTuffle && !TuffleSemCorpoDoBabyDeTeste ? 4 : 0)));
 		return w;
 	}
 
@@ -6432,6 +6504,7 @@ public partial class GameServer : Node
 		// o adiantamento do acerto -- que e o "quanto mais rapido melhor" do dono -- deixaria de
 		// existir. Ver `GameServer.Fusao.cs`.
 		TickDasLetrasDaDanca();
+		TicarTreinoFocado();
 
 		// O PUXAO DA POTARA ANDA AQUI PELO MOTIVO DO ARREMESSO, e nao pelo das letras: ele move CORPO,
 		// a 1280 px/s cada um (os 32 px do `step_to` a cada `world.tick_lag` de um mundo a 40 fps -- ver
@@ -6597,7 +6670,7 @@ public partial class GameServer : Node
 
 			// ============================ O TOPO E DE QUEM JOGA -- a mesma regra do `MediaDoServidor` ============================
 			// `TopBP` e "o maior BP **BASE** do servidor", ele so SOBE e ele entra na escala de ganho de
-			// todo mundo e no teto do potencial escondido. Este laco varre o `_players` inteiro, e o
+			// todo mundo. Este laco varre o `_players` inteiro, e o
 			// `_players` tem corpo sem dono desde o primeiro NPC -- entao um chefe de saga de 1e12 fixava
 			// o topo do servidor pra sempre, e o `MediaDoServidor` ja recusa esse mesmo emprestimo com o
 			// argumento inteiro: *"incluir NPC na media daria realimentacao"*.
@@ -6748,14 +6821,17 @@ public partial class GameServer : Node
 		// se ha um saco aparafusado por perto, treinar rende mais. Um campo "estou no saco" ficaria
 		// preso ligado quando o jogador andasse pra longe. Ver `BonusDeTreinoPerto`.
 		double aparelho = f.train ? BonusDeTreinoPerto(pl) : 1;
+		// O FOCADO multiplica SO este passe, e so enquanto a sessao dura. Fora dela o fator e 1: o AFK nao muda.
+		double foco = MultiplicadorDoTreinoFocado(pl);
+		if (TreinoFocado.BonusNaoMultiplicaDeTeste) foco = 1;
 
 		if (f.train)
 		{
 			// (2026-10-13) O TREINO CANSA, e para quando o corpo nao aguenta -- ver `PagarOVigorDoTreino`.
 			if (!PagarOVigorDoTreino(pl)) { f.BufferTick(); return; }
-			f.TrainGain(_rng, 6.0 / (1 + Math.Log(2)) * aparelho);
+			f.TrainGain(_rng, 6.0 / (1 + Math.Log(2)) * aparelho * foco);
 		}
-		else if (f.med) f.MedGain(_rng);
+		else if (f.med) f.MedGain(_rng, foco);
 		else { f.BufferTick(); return; }   // parado: so acumula pro proximo treino
 
 		if (MaestriaSoNoTreinoDeTeste) f.GravGain();   // o jogo de antes (o defeito injetado): a maestria so no passe do treino

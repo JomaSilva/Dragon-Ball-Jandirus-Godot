@@ -23,6 +23,11 @@ namespace Jandirus.Client;
 ///      contra-exemplo, o Scan de antes, com os tres;
 ///   N. NAMEK: o Freeza de Namek caido quando o prazo vence -- sem Death Ball; e o contra-exemplo, o jogo de antes: a esfera sobre o corpo caido.
 ///   F. (2026-10-20) O FREEZA NA CENA DA PROPRIA TRANSFORMACAO: na troca de corpo e na forma final ele fica parado, sem raio na mao e intocavel.
+///   D. (2026-10-20) O DOBRO DO JOGADOR MAIS FORTE: com 1,9 bilhao, doze segundos de Kamehameha na cara do Super Perfeito de 5 -- ele de pe; e o
+///      contra-exemplo, o Super Perfeito de antes (a ficha de recem-criado), que o mesmo raio derruba.
+///   P. (2026-10-20) O BOTAO PULAR do cartao Sagas da aba Admin: o Freeza de Namek chega agora, e o Pular da saga dele a fecha vencida, com ele
+///      fora do mundo -- em DOIS cliques (o primeiro so pede a confirmacao); o Resetar tambem pede, e desarma sozinho; e o contra-exemplo, o
+///      botao de um clique so (`MenuJogo.SagaDeUmCliqueDeTeste`).
 /// As regras sao das bancadas (`--torneiocellteste`, `--sentidosteste`, `--chefesteste`); aqui e o desenho.
 /// </summary>
 public partial class RoboDoTorneioDoCell : Node
@@ -115,6 +120,8 @@ public partial class RoboDoTorneioDoCell : Node
 		foreach (object passo in OsAndroides(cli, srv, eu)) yield return passo;
 		foreach (object passo in Namek(mundo, srv, eu)) yield return passo;
 		foreach (object passo in OFreezaNaCena(mundo, srv, eu)) yield return passo;
+		foreach (object passo in ODobro(mundo, srv, eu)) yield return passo;
+		foreach (object passo in PularASaga(cli, srv)) yield return passo;
 	}
 
 	// =====================================================================
@@ -422,5 +429,180 @@ public partial class RoboDoTorneioDoCell : Node
 				+ $"andou {Math.Abs(naCena.X - depois.X) + Math.Abs(naCena.Y - depois.Y):0.#} px");
 		srv.PalcoNM_Limpar();
 		yield return 1.0;
+	}
+
+	// =====================================================================
+	// D. O DOBRO DO JOGADOR MAIS FORTE: O RAIO NA CARA DO SUPER PERFEITO (dono, 2026-10-20)
+	// =====================================================================
+	private IEnumerable ODobro(World mundo, GameServer srv, int eu)
+	{
+		GD.Print("[dtorneiocell] --- D: o Kamehameha na cara do Super Perfeito, com o dobro do jogador mais forte ---");
+		// ---- de verdade: o Super Perfeito com o dobro dos meus atributos e a pericia no maximo -- doze segundos de Kamehameha e ele de pe
+		int cell = srv.PalcoTC_RaioNoSuperPerfeito(eu, comODefeito: false);
+		for (int i = 0; i < 60 && cell != 0 && !srv.PalcoTC_OCellDoRaio(eu).Raio; i++) yield return 0.1;   // a carga
+		bool saiu = srv.PalcoTC_OCellDoRaio(eu).Raio;
+		double menor = 1;
+		for (int i = 0; i < 20; i++) { menor = Math.Min(menor, srv.PalcoTC_OCellDoRaio(eu).Tronco); yield return 0.1; }
+		Fotografar("tc-17-kamehameha-na-cara-do-super-perfeito-ele-aguenta");
+		for (int i = 0; i < 100; i++)
+		{
+			var agora = srv.PalcoTC_OCellDoRaio(eu);
+			if (!agora.Raio || agora.Caido) break;
+			menor = Math.Min(menor, agora.Tronco);
+			yield return 0.1;
+		}
+		var depois = srv.PalcoTC_OCellDoRaio(eu);
+		srv.PalcoTC_LargarORaio(eu);
+		Afirmar("**O SUPER PERFEITO AGUENTA O RAIO** (*\"eu tinha 1,9B no ssj grade 4 + buffs e o cell 5bi e ainda venci tranquilamente\"*): com 1,9 "
+				+ "bilhao, doze segundos de Kamehameha na cara dele -- ele toma (o tronco desce) e fica de pe: o dobro dos meus atributos e a pericia no "
+				+ "maximo",
+				cell != 0 && saiu && mundo.CorpoDeTeste(cell) != null && !depois.Caido && menor is > 0.2 and < 1,
+				$"cell {cell}; o raio saiu {saiu}; caido {depois.Caido}; o menor tronco {menor:P0}");
+		srv.PalcoTC_LimparORaio();
+		yield return 1.0;
+
+		// ---- o contra-exemplo: o Super Perfeito de antes, com a ficha de recem-criado -- o mesmo raio o derruba
+		cell = srv.PalcoTC_RaioNoSuperPerfeito(eu, comODefeito: true);
+		for (int i = 0; i < 60 && cell != 0 && !srv.PalcoTC_OCellDoRaio(eu).Raio; i++) yield return 0.1;
+		bool caiu = false;
+		for (int i = 0; i < 120 && !(caiu = srv.PalcoTC_OCellDoRaio(eu).Caido); i++) yield return 0.1;
+		yield return 0.5;
+		Fotografar("tc-18-contra-exemplo-o-super-perfeito-de-antes-cai");
+		Afirmar("   CONTRA-EXEMPLO (o Super Perfeito de antes, com a ficha de recem-criado): o mesmo raio o derruba -- a regua de cima reprovaria", caiu,
+				$"caiu {caiu}; tronco {srv.PalcoTC_OCellDoRaio(eu).Tronco:P0}");
+		srv.PalcoTC_LargarORaio(eu);
+		srv.PalcoTC_LimparORaio();
+		yield return 1.0;
+	}
+
+	// =====================================================================
+	// P. O BOTAO PULAR DO CARTAO SAGAS (dono, 2026-10-20)
+	// =====================================================================
+	/// <summary>O botao de uma saga no cartao Sagas da aba Admin, pelo metadado (`agora_saga`, `pular_saga`) e o id dela.</summary>
+	private static Button? BotaoDaSaga(string meta, string id) =>
+		MenuJogo.Instancia is { } menu ? BotaoComMeta(menu, meta, id) : null;
+
+	private static Button? BotaoComMeta(Node n, string meta, string id)
+	{
+		foreach (Node f in n.GetChildren())
+		{
+			if (f is Button b && b.IsVisibleInTree() && b.HasMeta(meta) && b.GetMeta(meta).AsString() == id) return b;
+			if (BotaoComMeta(f, meta, id) is { } achou) return achou;
+		}
+		return null;
+	}
+
+	private static int QuantosComMeta(Node n, string meta)
+	{
+		int q = 0;
+		foreach (Node f in n.GetChildren())
+		{
+			if (f is Button b && b.IsVisibleInTree() && b.HasMeta(meta)) q++;
+			q += QuantosComMeta(f, meta);
+		}
+		return q;
+	}
+
+	/// <summary>Rola a aba Admin ate o cartao Sagas ficar na tela (o cartao leva a meta `titulo`).</summary>
+	private static void MostrarOCartaoDasSagas()
+	{
+		if (MenuJogo.Instancia is not { } menu || AcharCartao(menu, "Sagas") is not { } cartao) return;
+		for (Node? p = cartao.GetParent(); p != null; p = p.GetParent())
+			if (p is ScrollContainer rol) { rol.EnsureControlVisible(cartao); break; }
+	}
+
+	private static Control? AcharCartao(Node n, string titulo)
+	{
+		foreach (Node f in n.GetChildren())
+		{
+			if (f is PanelContainer c && c.IsVisibleInTree() && c.HasMeta("titulo") && c.GetMeta("titulo").AsString() == titulo) return c;
+			if (AcharCartao(f, titulo) is { } achou) return achou;
+		}
+		return null;
+	}
+
+	private IEnumerable PularASaga(GameClient cli, GameServer srv)
+	{
+		GD.Print("[dtorneiocell] --- P: o botao Pular do cartao Sagas (a aba Admin) ---");
+		// ---- o Freeza de Namek chega agora (o botao de antes), pra o Pular ter quem matar
+		AbrirAba("Admin");
+		yield return 0.6;
+		if (MenuJogo.Instancia is { } menu && Botao(menu, "Ver as sagas") is { } ver) ver.EmitSignal(BaseButton.SignalName.Pressed);
+		for (int i = 0; i < 40 && BotaoDaSaga("agora_saga", "freeza_namek") == null; i++) yield return 0.2;
+		BotaoDaSaga("agora_saga", "freeza_namek")?.EmitSignal(BaseButton.SignalName.Pressed);
+		FecharOMenu();   // a cena da chegada se desenha sobre o mundo, e nao sobre a lista
+		for (int i = 0; i < 40 && !srv.PalcoSP_ASaga("freeza_namek").ChefeNoMundo; i++) yield return 0.2;
+		var antes = srv.PalcoSP_ASaga("freeza_namek");
+		yield return CenaDaChegada.Duracao + 0.5;
+
+		// ---- o Pular: a aba Admin de novo, "Ver as sagas" (a lista com o Freeza no mundo), e o Pular da saga dele
+		AbrirAba("Admin");
+		yield return 0.6;
+		if (MenuJogo.Instancia is { } menu2 && Botao(menu2, "Ver as sagas") is { } ver2) ver2.EmitSignal(BaseButton.SignalName.Pressed);
+		for (int i = 0; i < 40 && BotaoDaSaga("pular_saga", "freeza_namek") == null; i++) yield return 0.2;
+		yield return 0.6;
+		int comOBotao = MenuJogo.Instancia is { } m3 ? QuantosComMeta(m3, "pular_saga") : 0;
+		MostrarOCartaoDasSagas();
+		yield return 0.3;
+		Fotografar("sp-1-o-botao-pular-em-cada-saga");
+
+		// o PRIMEIRO clique so pede a confirmacao: o texto muda, e a saga segue em curso com ele no mundo
+		BotaoDaSaga("pular_saga", "freeza_namek")?.EmitSignal(BaseButton.SignalName.Pressed);
+		yield return 1.0;
+		string textoArmado = BotaoDaSaga("pular_saga", "freeza_namek")?.Text ?? "";
+		var noMeio = srv.PalcoSP_ASaga("freeza_namek");
+		MostrarOCartaoDasSagas();
+		yield return 0.3;
+		Fotografar("sp-2-o-primeiro-clique-pede-confirmacao");
+		Afirmar("**O PULAR PEDE CONFIRMACAO** (*\"o primeiro clique pede confirmação, o segundo faz\"*): o primeiro clique so arma -- o botao vira "
+				+ "\"Confirmar o pular?\" e a saga segue em curso, com o Freeza no mundo",
+				textoArmado == "Confirmar o pular?" && noMeio.Fase == "EmCurso" && noMeio.ChefeNoMundo,
+				$"texto \"{textoArmado}\"; saga {noMeio.Fase}; no mundo {noMeio.ChefeNoMundo}");
+
+		// ...e o SEGUNDO faz
+		BotaoDaSaga("pular_saga", "freeza_namek")?.EmitSignal(BaseButton.SignalName.Pressed);
+		for (int i = 0; i < 40 && srv.PalcoSP_ASaga("freeza_namek").Fase != "Vencida"; i++) yield return 0.2;
+		yield return 1.2;   // a lista volta com o estado novo
+		MostrarOCartaoDasSagas();
+		yield return 0.3;
+		var depois = srv.PalcoSP_ASaga("freeza_namek");
+		bool naLista = cli.Escolhas is { Verbo: "admin_sagas" } l
+					   && l.Itens.Any(x => x.StartsWith("freeza_namek|", StringComparison.Ordinal) && x.Contains("vencida") && x.Contains("derrotado"));
+		Fotografar("sp-3-o-segundo-clique-pula-a-saga-do-freeza");
+		Afirmar("**O BOTAO PULAR** (*\"adicione um botao q pula uma saga ja matando o boss\"*): em cada saga do cartao Sagas, ao lado do Resetar e do "
+				+ "Chegar agora -- e o da saga do Freeza de Namek, com ele no mundo, a fecha VENCIDA: ele derrotado e fora do mundo, no servidor e na lista",
+				comOBotao >= 4 && antes.ChefeNoMundo && depois.Fase == "Vencida" && !depois.ChefeNoMundo && naLista,
+				$"botoes {comOBotao}; antes: {antes.Fase}, no mundo {antes.ChefeNoMundo}; depois: {depois.Fase}, no mundo {depois.ChefeNoMundo}; "
+				+ $"na lista {naLista}");
+
+		// ---- o Resetar tambem pede confirmacao -- e o primeiro clique sozinho desarma em quatro segundos: a saga fica como estava
+		string faseAntes = srv.PalcoSP_ASaga("freeza_vegeta").Fase;
+		BotaoDaSaga("resetar_saga", "freeza_vegeta")?.EmitSignal(BaseButton.SignalName.Pressed);
+		yield return 1.0;
+		string textoDoReset = BotaoDaSaga("resetar_saga", "freeza_vegeta")?.Text ?? "";
+		yield return 4.5;
+		string textoDepois = BotaoDaSaga("resetar_saga", "freeza_vegeta")?.Text ?? "";
+		string faseDepois = srv.PalcoSP_ASaga("freeza_vegeta").Fase;
+		Afirmar("**...E O RESETAR TAMBEM**: o primeiro clique vira \"Confirmar o reset?\", e sem o segundo o botao desarma sozinho em quatro segundos "
+				+ "-- a saga fica como estava",
+				textoDoReset == "Confirmar o reset?" && textoDepois == "Resetar" && faseDepois == faseAntes,
+				$"no primeiro clique \"{textoDoReset}\"; depois \"{textoDepois}\"; saga {faseAntes} -> {faseDepois}");
+
+		// ---- o contra-exemplo: o botao de antes, de um clique so -- o Pular da saga do Boo a fecha na hora
+		bool pulouNumClique = false;
+		MenuJogo.SagaDeUmCliqueDeTeste = true;
+		try
+		{
+			if (MenuJogo.Instancia is { } m4 && Botao(m4, "Ver as sagas") is { } ver3) ver3.EmitSignal(BaseButton.SignalName.Pressed);
+			yield return 1.5;   // a lista volta, e o cartao se refaz com os botoes de um clique
+			BotaoDaSaga("pular_saga", "boo")?.EmitSignal(BaseButton.SignalName.Pressed);
+			for (int i = 0; i < 10 && srv.PalcoSP_ASaga("boo").Fase != "Vencida"; i++) yield return 0.1;
+			pulouNumClique = srv.PalcoSP_ASaga("boo").Fase == "Vencida";
+		}
+		finally { MenuJogo.SagaDeUmCliqueDeTeste = false; }
+		Afirmar("   CONTRA-EXEMPLO (o botao de antes, de um clique so): o Pular da saga do Boo a fecharia no primeiro clique -- a regua de cima reprovaria",
+				pulouNumClique, $"pulou num clique {pulouNumClique}");
+		FecharOMenu();
+		yield return 0.5;
 	}
 }

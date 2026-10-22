@@ -1,5 +1,6 @@
 using Godot;
 using Jandirus.Core.Forms;
+using Jandirus.Core.Stats;
 using Jandirus.Net;
 using LiteNetLib;
 
@@ -119,4 +120,57 @@ public partial class GameServer
 
 	/// <summary>DEFEITO INJETADO (`--torneiocellteste`, familias P e Q): o chefe de saga na cena segue pensando e segurando o raio -- o jogo de antes.</summary>
 	internal static bool ChefeAgeNaCenaDeTeste;
+
+	/// <summary>
+	/// (2026-10-20) O CHEFE COM O DOBRO DO JOGADOR MAIS FORTE -- o dono: *"faça os stats do boss(todos os de saga e contando o bills) ser o dobro
+	/// do jogador mais forte, a pericia deles sempre é a maxima, e a potencia depende do ataque, podendo manter a mesma"*. Ate aqui a ficha de
+	/// luta do chefe era a de um personagem RECEM-CRIADO da raca, a mesma em todo degrau (so o BP pinado mudava): o Cell Perfeito de 3,5 bilhoes
+	/// caia com um raio de quem tinha 1,5, e perdia o embate pra quem tinha 1,9.
+	///
+	/// OS OITO ATRIBUTOS DA ABA STATS (o `R` de cada um: as ofensivas e as defesas fisica e de ki, a tecnica, a pericia de ki, a velocidade e o
+	/// esoterico) ficam em DUAS VEZES os do jogador de MAIOR BP BASE que esta no servidor agora -- com a forma e os buffs que ele tiver ligados,
+	/// porque e o numero que ele ve (`Fighter.FixarAtributos`). AS PERICIAS DE LUTA ficam no maximo: 100, o teto da escala do DM (o ultimo
+	/// degrau dos raios), ou a maior de quem esta jogando, se alguem passou disso (`Fighter.PericiasNoMaximo`). A POTENCIA de cada ataque e a da
+	/// tecnica, como era -- com a pericia de raio no maximo o Kamehameha sai no ultimo degrau dele. O BP segue o pinado do degrau.
+	///
+	/// QUANDO: no nascimento (`NascerNpc`) e a cada segundo (`TickDoRoteiro`) -- o mais forte transforma, sobe ou entra no meio da luta. Sem
+	/// ninguem jogando, o chefe fica como esta. QUEM: o molde de um chefe que alguma saga poe no mundo (<see cref="EhMoldeDeChefeDeSaga"/>, como
+	/// na cena) e o Bills, pelo nome; o Whis, o guardiao Saiyajin e os NPCs comuns seguem como eram.
+	/// </summary>
+	private void DarODobroAoChefe(ServerPlayer npc)
+	{
+		if (ChefeSemODobroDeTeste || !ChefeComODobro(npc)) return;
+		ServerPlayer? maisForte = null;
+		var jogadores = new List<Fighter>();
+		foreach (ServerPlayer p in _players.Values)
+		{
+			if (!EhJogador(p) || p.Ficha is not { BP: > 0 } f) continue;
+			jogadores.Add(f);
+			if (maisForte == null || f.BP > maisForte.Ficha.BP) maisForte = p;
+		}
+		if (maisForte == null) return;
+		Fighter m = maisForte.Ficha;
+		npc.Ficha.PericiasNoMaximo(PericiaDoChefe, jogadores);
+		npc.Ficha.FixarAtributos(VezesOMaisForte * m.Rphysoff, VezesOMaisForte * m.Rphysdef, VezesOMaisForte * m.Rtechnique,
+								 VezesOMaisForte * m.Rkioff, VezesOMaisForte * m.Rkidef, VezesOMaisForte * m.Rkiskill,
+								 VezesOMaisForte * m.Rspeed, VezesOMaisForte * m.Rmagiskill);
+		npc.SigAtributos = "";
+	}
+
+	/// <summary>Este corpo e de um chefe que ganha o dobro: o molde de um chefe de saga, ou o Bills.</summary>
+	private bool ChefeComODobro(ServerPlayer npc) =>
+		npc.Papel is { EhChefe: true } papel
+		&& (EhMoldeDeChefeDeSaga(papel.Molde.Id) || string.Equals(papel.Molde.Id, "bills", StringComparison.OrdinalIgnoreCase));
+
+	/// <summary>Quantas vezes os atributos do jogador mais forte o chefe tem.</summary>
+	private const double VezesOMaisForte = 2;
+
+	/// <summary>A pericia de luta do chefe: o teto da escala do DM (o ultimo degrau dos raios, `beamskill` 100).</summary>
+	private const double PericiaDoChefe = 100;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--torneiocellteste`, familia W, e o robo `--diagtorneiocell`): a ficha de recem-criado -- o jogo de antes. E a cena da
+	/// boca da `--iateste` nasce o Freeza com ele: ela mede o cerebro, e o arsenal do chefe no maximo (a Death Ball barata) grita por outro caminho.
+	/// </summary>
+	internal static bool ChefeSemODobroDeTeste;
 }

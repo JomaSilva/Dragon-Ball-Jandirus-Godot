@@ -1364,6 +1364,10 @@ public partial class GameServer
 
 		AsFerramentasDeAdmin(pl, Checa);
 
+		// (2026-10-21) A FAIXA DE CADA CLASSE -- o Low-Class transforma mais facil -- e o login do Low-Class antigo. Antes
+		// das escadas raciais, que trocam a raca do corpo; ela repoe o corpo pelo funil do login, como os grades.
+		AFaixaDeCadaClasse(pl, Checa);
+
 		// ============================ AS OUTRAS ESCADAS DE SANGUE, PELA MESMA TECLA C ============================
 		// POR ULTIMO, e nao por ordem de importancia: esta secao troca a RACA do personagem uma vez por
 		// linha (Saiyajin, meio-Saiyajin, Frost Demon, Namekuseijin, Alien, Heran, Bio-Androide), compra
@@ -1697,6 +1701,160 @@ public partial class GameServer
 		pl.Ficha.BP = bpAntes;
 		pl.Ficha.Ki = pl.Ficha.MaxKi;
 		AplicarForma(pl);
+	}
+
+	/// <summary>
+	/// ============================ O LOW-CLASS TRANSFORMA MAIS FACIL (dono, 2026-10-21) ============================
+	/// *"faca o low class ser a classe q pega as transformacoes mais facilmente (atualmente ta o contrario)"*, com as tres
+	/// escolhas dele: a ESCADA INTEIRA (SSJ1, SSJ2, SSJ3, SSJ4 e Oozaru Dourado), o Low-Class antigo descendo no login e o
+	/// Elite antigo ficando como esta. O quadro das faixas mora em `LimiaresPessoais.RolarSaiyajin`.
+	///
+	/// TRES COISAS, e a terceira e a razao de estar no servidor:
+	///   * O SORTEIO -- seiscentos nascimentos por classe e, em cada porta, o CONJUNTO de fatores que sai. O `rand` e
+	///     discreto, entao a faixa inteira aparece: uma borda a mais ou a menos e uma faixa errada.
+	///   * A ORDEM, que e o pedido em si: em toda porta o Low-Class pede menos que o Normal, e o Normal menos que o Elite.
+	///   * O LOGIN, pelo funil de producao (`RestaurarFormaEDisciplina`, o mesmo do `Entrar`): o save gravado com a faixa
+	///     do DM chega ali, e so ali se ve se ele desce.
+	/// ============================================================================================================
+	/// </summary>
+	private void AFaixaDeCadaClasse(ServerPlayer pl, Action<string, bool, string> Checa)
+	{
+		// AS PORTAS DA ESCADA e o limiar de fabrica de cada uma: o fator e o sorteado dividido por ele.
+		(string Nome, Func<LimiaresPessoais, double> Le, double Fabrica)[] portas =
+		[
+			("SSJ1", l => l.ssjat, Catalogo.SsjatInicial),
+			("SSJ2", l => l.ssj2at, Catalogo.Ssj2atInicial),
+			("SSJ3", l => l.ssj3at, Catalogo.Ssj3atInicial),
+			("SSJ4", l => l.rawssj4at, Catalogo.RawSsj4atInicial),
+			("Oozaru Dourado", l => l.ultrassjat, Catalogo.UltrassjatInicial),
+		];
+
+		// os fatores, em decimos, que 600 nascimentos desta classe tiram nesta porta (sementes fixas: a rodada e sempre a mesma)
+		SortedSet<int> Fatores(string classe, int porta)
+		{
+			var vistos = new SortedSet<int>();
+			for (int i = 0; i < 600; i++)
+			{
+				LimiaresPessoais l = LimiaresPessoais.Rolar("Saiyan", classe,
+					LimiaresPessoais.SementeDe("faixa/" + classe, 1_700_000_000_000 + i));
+				vistos.Add((int)Math.Round(portas[porta].Le(l) / portas[porta].Fabrica * 10));
+			}
+			return vistos;
+		}
+		string[] classes = ["Low-Class", "Normal", "Elite"];
+		var fatores = classes.ToDictionary(c => c, c => Enumerable.Range(0, portas.Length).Select(p => Fatores(c, p)).ToArray());
+		bool De(string classe, int porta, int de, int ate) => fatores[classe][porta].SetEquals(Enumerable.Range(de, ate - de + 1));
+		string Faixa(string classe, int porta)
+		{
+			SortedSet<int> s = fatores[classe][porta];
+			return $"{portas[porta].Nome} {s.Min / 10.0:0.0}-{s.Max / 10.0:0.0} ({s.Count} valores)";
+		}
+		string Escada(string classe) => string.Join(", ", Enumerable.Range(2, 3).Select(p => Faixa(classe, p)));
+
+		// ---------------------------------------------------------------- 1. o sorteio, classe por classe
+		Checa("[classe] o Low-Class sorteia o SSJ1 de 0,8 a 1,0x do de fabrica (no DM, 0,9-1,2x)",
+			  De("Low-Class", 0, 8, 10), Faixa("Low-Class", 0));
+		Checa("[classe] o Low-Class sorteia o SSJ2 de 0,8 a 1,0x (no DM, 1,1-1,4x: era a classe que virava SSJ2 mais TARDE)",
+			  De("Low-Class", 1, 8, 10), Faixa("Low-Class", 1));
+		Checa("[classe] o Low-Class sorteia o SSJ3, o SSJ4 e o Oozaru Dourado de 0,7 a 1,0x (no DM, 0,9-1,3x pra toda classe)",
+			  Enumerable.Range(2, 3).All(p => De("Low-Class", p, 7, 10)), Escada("Low-Class"));
+		Checa("[classe] o Normal nao mudou: SSJ1 1,0-1,2x, SSJ2 0,9-1,2x e o resto da escada 0,9-1,3x (o `else` do DM)",
+			  De("Normal", 0, 10, 12) && De("Normal", 1, 9, 12) && Enumerable.Range(2, 3).All(p => De("Normal", p, 9, 13)),
+			  string.Join(", ", Enumerable.Range(0, portas.Length).Select(p => Faixa("Normal", p))));
+		Checa("[classe] o Elite sorteia o SSJ1 de 1,1 a 1,4x (o do DM, que ja era o mais tarde)",
+			  De("Elite", 0, 11, 14), Faixa("Elite", 0));
+		Checa("[classe] o Elite sorteia o SSJ2 de 1,1 a 1,4x (no DM, 0,9-1,2x: era a classe que virava SSJ2 mais CEDO)",
+			  De("Elite", 1, 11, 14), Faixa("Elite", 1));
+		Checa("[classe] o Elite sorteia o SSJ3, o SSJ4 e o Oozaru Dourado de 1,0 a 1,4x",
+			  Enumerable.Range(2, 3).All(p => De("Elite", p, 10, 14)), Escada("Elite"));
+
+		// ---------------------------------------------------------------- 2. a ordem: o pedido em si
+		// Pela media do CONJUNTO de fatores (e nao da amostra): duas classes com a mesma faixa empatam sempre, e o empate e
+		// a falha -- "mais facil" e estrito.
+		double Media(string classe, int porta) => fatores[classe][porta].Average() / 10.0;
+		Checa("[classe] O LOW-CLASS E O QUE TRANSFORMA MAIS FACIL em toda porta, e o Elite o mais tarde (media dos fatores: "
+			  + "Low-Class < Normal < Elite)",
+			  Enumerable.Range(0, portas.Length).All(p => Media("Low-Class", p) < Media("Normal", p) && Media("Normal", p) < Media("Elite", p)),
+			  string.Join(" | ", Enumerable.Range(0, portas.Length).Select(p =>
+				  $"{portas[p].Nome} {Media("Low-Class", p):0.00}/{Media("Normal", p):0.00}/{Media("Elite", p):0.00}")));
+
+		// ---------------------------------------------------------------- 3. o login
+		// O corpo e reposto pelo MESMO funil no fim (o padrao do `OsGradesNoCaminhoDoC`): `DeJogador` fotografa e o
+		// `RestaurarFormaEDisciplina` devolve.
+		CharacterSave antes = AccountStore.DeJogador(pl, 0);
+		const ulong SementeDoTeste = 20261021;
+		LimiaresPessoais hoje = LimiaresPessoais.Rolar("Saiyan", "Low-Class", SementeDoTeste);
+
+		// O SAVE COMO A FAIXA DO DM O DEIXOU: o pior caso de cada porta do Low-Class de antes (SSJ1 1,2x; SSJ2 1,4x; a escada
+		// 1,3x), com o aprendizado do SSJ3 saindo do SSJ3 velho. Todo valor de hoje fica abaixo dele.
+		LimiaresPessoais Velho(bool rolado = true) => new()
+		{
+			Semente = SementeDoTeste, Rolado = rolado,
+			ssjat = Catalogo.SsjatInicial * 1.2, ssj2at = Catalogo.Ssj2atInicial * 1.4,
+			ssj3at = Catalogo.Ssj3atInicial * 1.3, rawssj4at = Catalogo.RawSsj4atInicial * 1.3,
+			ultrassjat = Catalogo.UltrassjatInicial * 1.3, ssj3LearnReq = Catalogo.Ssj3atInicial * 1.3 / 10 * 3,
+		};
+
+		// o login de um save destes: a ficha do save e a classe que se quer, o resto e o do proprio corpo
+		LimiaresPessoais Logar(string classe, LimiaresPessoais gravados)
+		{
+			CharacterSave c = AccountStore.DeJogador(pl, 0);
+			c.Raca = "Saiyan";
+			c.Ficha = new Jandirus.Core.Stats.Fighter { Race = "Saiyan", Class = classe };
+			c.Limiares = gravados;
+			RestaurarFormaEDisciplina(pl, c);
+			return pl.Forma.Limiares!;
+		}
+		bool IgualA(double a, double b) => Math.Abs(a - b) <= Math.Abs(b) * 1e-12;
+
+		try
+		{
+			LimiaresPessoais desceu = Logar("Low-Class", Velho());
+			Checa("[classe] LOGIN: o Low-Class antigo DESCE no SSJ1 e no SSJ2 pro que a semente dele sorteia hoje",
+				  IgualA(desceu.ssjat, hoje.ssjat) && IgualA(desceu.ssj2at, hoje.ssj2at),
+				  $"SSJ1 {desceu.ssjat:N0} (hoje {hoje.ssjat:N0}), SSJ2 {desceu.ssj2at:N0} (hoje {hoje.ssj2at:N0})");
+			Checa("[classe] LOGIN: ...e no SSJ3, no SSJ4, no Oozaru Dourado e no BP de aprender o SSJ3",
+				  IgualA(desceu.ssj3at, hoje.ssj3at) && IgualA(desceu.rawssj4at, hoje.rawssj4at)
+				  && IgualA(desceu.ultrassjat, hoje.ultrassjat) && IgualA(desceu.ssj3LearnReq, hoje.ssj3LearnReq),
+				  $"SSJ3 {desceu.ssj3at:N0}/{hoje.ssj3at:N0}, SSJ4 {desceu.rawssj4at:N0}/{hoje.rawssj4at:N0}, "
+				  + $"Dourado {desceu.ultrassjat:N0}/{hoje.ultrassjat:N0}, aprender {desceu.ssj3LearnReq:N0}/{hoje.ssj3LearnReq:N0}");
+
+			// O ELITE ANTIGO FICA (escolha do dono): o SSJ2 dele no DM era 0,9x e hoje sairia 1,1-1,4x -- subir tiraria a forma
+			// de quem ja a tem.
+			LimiaresPessoais eliteVelho = Velho();
+			eliteVelho.ssj2at = Catalogo.Ssj2atInicial * 0.9;
+			eliteVelho.ssj3at = Catalogo.Ssj3atInicial * 0.9;
+			LimiaresPessoais elite = Logar("Elite", eliteVelho);
+			Checa("[classe] LOGIN: o Elite antigo NAO sobe (o SSJ2 de 0,9x do DM continua 0,9x)",
+				  IgualA(elite.ssj2at, Catalogo.Ssj2atInicial * 0.9) && IgualA(elite.ssj3at, Catalogo.Ssj3atInicial * 0.9),
+				  $"SSJ2 {elite.ssj2at:N0}, SSJ3 {elite.ssj3at:N0}");
+
+			// O DESCONTO QUE ELE JA GANHOU FICA: a absorcao corta o `ssj2at` pela metade (`GameServer.Absorcao`).
+			LimiaresPessoais absorvido = Velho();
+			absorvido.ssj2at = hoje.ssj2at / 2;
+			LimiaresPessoais aMetade = Logar("Low-Class", absorvido);
+			Checa("[classe] LOGIN: o desconto que o Low-Class ja ganhou (a metade do SSJ2 da absorcao) nao volta a subir",
+				  IgualA(aMetade.ssj2at, hoje.ssj2at / 2), $"{aMetade.ssj2at:N0} (a metade de hoje e {hoje.ssj2at / 2:N0})");
+
+			// SAVE DE ANTES DOS LIMIARES: nunca rolou, nao tem semente -- fica como estava.
+			LimiaresPessoais semSorteio = Logar("Low-Class", Velho(rolado: false));
+			Checa("[classe] LOGIN: o save que nunca sorteou (Rolado falso) fica como estava",
+				  IgualA(semSorteio.ssjat, Catalogo.SsjatInicial * 1.2), $"{semSorteio.ssjat:N0}");
+
+			// O CONTRA-EXEMPLO DA PRIMEIRA REGUA: com o login parado ela tem de reprovar.
+			LimiaresPessoais.LowClassAntigoParadoDeTeste = true;
+			LimiaresPessoais parado = Logar("Low-Class", Velho());
+			Checa("[classe]    (defeito injetado: o login nao desce o Low-Class antigo) a mesma regua do SSJ1/SSJ2 REPROVA",
+				  !(IgualA(parado.ssjat, hoje.ssjat) && IgualA(parado.ssj2at, hoje.ssj2at)),
+				  $"SSJ1 {parado.ssjat:N0}, SSJ2 {parado.ssj2at:N0}");
+		}
+		finally
+		{
+			LimiaresPessoais.LowClassAntigoParadoDeTeste = false;
+			RestaurarFormaEDisciplina(pl, antes);
+			pl.Ficha.Ki = pl.Ficha.MaxKi;
+			AplicarForma(pl);
+		}
 	}
 
 	/// <summary>
@@ -2121,14 +2279,15 @@ public partial class GameServer
 		try
 		{
 			// ============================ 1. O BLOQUEIO E UMA LISTA, E ELA E ESTA ============================
-			// Os SETE comandos que mexem no corpo. Escritos a mao e nao lidos do `ComandoDeCorpo`: uma
+			// Os comandos que mexem no corpo. Escritos a mao e nao lidos do `ComandoDeCorpo`: uma
 			// lista que se conferisse com ela mesma passaria em qualquer valor. (Eram seis ate 2026-10-09:
-			// o setimo e a ATIVIDADE -- o corpo que a IA dirige nao treina nem medita por pedido do dono.)
+			// o setimo e a ATIVIDADE -- o corpo que a IA dirige nao treina nem medita por pedido do dono.
+			// 2026-10-21: a tecla do treino focado e o espaco da respiracao tambem sao o corpo.)
 			Protocol.C2S[] devemParar =
 			[
 				Protocol.C2S.Action, Protocol.C2S.Guard, Protocol.C2S.Carregar,
 				Protocol.C2S.Habilidade, Protocol.C2S.Transformar, Protocol.C2S.Zanzoken,
-				Protocol.C2S.Activity,
+				Protocol.C2S.Activity, Protocol.C2S.TreinoTecla, Protocol.C2S.RespiracaoTecla,
 			];
 
 			// E O QUE TEM QUE CONTINUAR PASSANDO -- cada um com o motivo dele:
@@ -2166,7 +2325,7 @@ public partial class GameServer
 
 			var passouQuemDevia = todos.Where(c => devemParar.Contains(c) && !ComandoDeCorpo(c)).ToArray();
 			var parouQuemNaoDevia = todos.Where(c => devemPassar.Contains(c) && ComandoDeCorpo(c)).ToArray();
-			Checa("os SETE comandos de corpo sao recusados durante a posse",
+			Checa("os comandos de corpo sao recusados durante a posse",
 				  passouQuemDevia.Length == 0, string.Join(", ", passouQuemDevia));
 			Checa("...e NENHUM outro e -- o bloqueio e uma lista, nao um portao geral",
 				  parouQuemNaoDevia.Length == 0, string.Join(", ", parouQuemNaoDevia));

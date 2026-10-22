@@ -40,11 +40,11 @@ public static class SorteioDeRaca
 {
 	/// <summary>
 	/// A TABELA DO SORTEIO, em pontos de 100. As seis primeiras sao as do dono, literais; as treze seguintes sao o resto
-	/// da criacao, com 1 ponto cada. A chave e a da ficha ("Icer" e o Frost Demon, "Namekian" e o Namekuseijin).
+	/// da criacao, com 1 ponto cada. A chave e a da ficha ("Frost Demon" e o Frost Demon, "Namekian" e o Namekuseijin).
 	/// </summary>
 	public static readonly (string Raca, int Peso)[] Pesos =
 	[
-		("Alien", 22), ("Human", 20), ("Namekian", 18), ("Saiyan", 15), ("Icer", 8), ("Majin", 4),
+		("Alien", 22), ("Human", 20), ("Namekian", 18), ("Saiyan", 15), ("Frost Demon", 8), ("Majin", 4),
 		("Shapeshifter", 1), ("Demigod", 1), ("Tsujin", 1), ("Saibaman", 1), ("Heran", 1), ("Meta", 1), ("Arlian", 1),
 		("Makyo", 1), ("Gray", 1), ("Kanassa", 1), ("Yardrat", 1), ("Kai", 1), ("Demon", 1),
 	];

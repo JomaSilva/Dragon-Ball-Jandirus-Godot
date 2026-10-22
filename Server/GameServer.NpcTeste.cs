@@ -438,7 +438,7 @@ public partial class GameServer
 					  SoDe("Human", "Female", ["ClothesGiFemale", "Clothes_TankTop",
 											   "Clothes_ShortSleeveShirt", "Clothes_LongSleeveShirt"]));
 				Checa("o FROST DEMON nao ganha roupa nenhuma (o corpo dele E a forma)",
-					  Enumerable.Range(1, 40).All(i => RoupaDeNpc.Vestir(_visual, "Icer", "Male", (ulong)i).Count == 0));
+					  Enumerable.Range(1, 40).All(i => RoupaDeNpc.Vestir(_visual, "Frost Demon", "Male", (ulong)i).Count == 0));
 
 				// --- d) O CORPO NO MUNDO: a peca sobreviveu ao `Sanear` e chegou na aparencia ---
 				// Pela linha de POVOAMENTO, que e o caminho de producao do cidadao: planeta de

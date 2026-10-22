@@ -439,7 +439,11 @@ public partial class GameServer
 	private void DesfazerOOponente(ServerPlayer dono, string aviso)
 	{
 		if (dono.CloneId == 0) return;
-		if (_players.TryGetValue(dono.CloneId, out ServerPlayer? corpo)) RemoverNpc(corpo);
+		if (_players.TryGetValue(dono.CloneId, out ServerPlayer? corpo))
+		{
+			EsquecerTetoDaLembranca(corpo.Id);
+			RemoverNpc(corpo);
+		}
 		dono.CloneId = 0;
 		if (aviso.Length > 0) Avisar(dono, aviso);
 	}
@@ -768,7 +772,9 @@ public partial class GameServer
 			// poder ser medido pelo caminho de producao -- ver `--menteteste`.
 			if (!EhPessoa(o)) continue;
 			if ((o.Pos - chefe.Pos).LengthSquared > raio2) continue;
-			if (!o.ChefesVistos.Add(papel.Molde.Id)) continue;
+			bool primeira = o.ChefesVistos.Add(papel.Molde.Id);
+			AnotarEtapaVista(o, papel);
+			if (!primeira) continue;
 
 			Avisar(o, $"voce grava {chefe.Name} na memoria -- na sua mente, podera enfrenta-lo de novo.");
 			MandarChefesDaMente(o);
@@ -793,8 +799,9 @@ public partial class GameServer
 	/// em lista nenhuma.
 	/// ==================================================================================================
 	/// </summary>
-	private void ChamarChefe(ServerPlayer pl, string moldeId)
+	private void ChamarChefe(ServerPlayer pl, string pedido)
 	{
+		(string moldeId, int? escolhida) = EtapasDaMente.SepararPedido(pedido);
 		if (!NaMente(pl)) { Avisar(pl, "isso so acontece dentro da sua mente."); return; }
 
 		// **SO NA PROPRIA MENTE.** As lembrancas sao de quem sonha: um visitante nao convoca chefe na
@@ -825,6 +832,28 @@ public partial class GameServer
 		MoldeDeNpc? molde = _moldes?.Get(moldeId);
 		if (molde is not { EhChefe: true }) { Avisar(pl, "essa lembranca ja nao existe."); return; }
 
+		// Chefe visto sem etapa gravada (save antigo, ou a bancada da mente que so escreve o conjunto)
+		// lembra a etapa 1. Quem ja tem etapa nao ganha a primeira por cima.
+		HashSet<int> vistas;
+		if (!pl.EtapasDeChefe.TryGetValue(moldeId, out HashSet<int>? lidas) || lidas == null || lidas.Count == 0)
+		{
+			vistas = [0];
+			pl.EtapasDeChefe[moldeId] = vistas;
+		}
+		else vistas = lidas;
+		if (DevePerguntarAEtapa(escolhida, vistas.Count))
+		{
+			PedirEtapaDaLembranca(pl, molde, vistas);
+			return;
+		}
+		int indice = EtapaEmQueNasce(escolhida ?? vistas.Min());
+		if (indice < 0 || indice >= molde.Estagios.Length || (!vistas.Contains(indice) && !NasceSemAEtapaEscolhidaDeTeste))
+		{
+			Avisar(pl, "Você não viu essa forma.");
+			return;
+		}
+		int teto = vistas.Max();
+
 		// O QUE ESTIVER DE PE SAI ANTES: o reflexo, ou o chefe anterior. Um por vez -- ver
 		// `ServerPlayer.CloneId`.
 		DesfazerOOponente(pl, "");
@@ -837,8 +866,9 @@ public partial class GameServer
 		// do nascimento de saga. `Pinar` com a media de agora: a lembranca e do inimigo, mas a
 		// dificuldade e do servidor de hoje, que e o que o proprio `bpRelativo` do molde pede.
 		chefe.Papel.BpsPinados = Sagas.Pinar(molde, MediaDoServidor());
-		chefe.Papel.Estagio = 0;
+		chefe.Papel.Estagio = indice;
 		EntrarNoDegrau(chefe, cura: 0, anunciar: false);
+		MarcarTetoDaLembranca(chefe, teto);
 
 		// ============================ AS DUAS LINHAS QUE FAZEM DELE UMA LEMBRANCA ============================
 		//   * `DonoDoClone` o poe no ramo do REFLEXO no `TicarUmCorpo`: ele vem atras de VOCE, some se
@@ -853,7 +883,8 @@ public partial class GameServer
 		pl.CloneId = chefe.Id;
 
 		Avisar(pl, $"a lembranca toma forma: {chefe.Name} esta diante de voce.");
-		GD.Print($"[server] {pl.Name} convocou '{moldeId}' na mente (id {chefe.Id}, BP {chefe.Ficha.BP:N0})");
+		GD.Print($"[server] {pl.Name} convocou '{moldeId}' na mente (id {chefe.Id}, BP {chefe.Ficha.BP:N0}, etapa {indice + 1})");
+		MandarEscolhas(pl, EtapasDaMente.Verbo, []);
 	}
 
 	/// <summary>
@@ -880,7 +911,7 @@ public partial class GameServer
 		foreach (MoldeDeNpc m in vistos.Take(byte.MaxValue))
 		{
 			w.Put(m.Id);
-			w.Put(m.Nome.Length > 0 ? m.Nome : m.Id);
+			w.Put(RotuloDoChefeNaMente(m, vistos));
 		}
 		peer.Send(w, Protocol.ChannelReliable, LiteNetLib.DeliveryMethod.ReliableOrdered);
 	}

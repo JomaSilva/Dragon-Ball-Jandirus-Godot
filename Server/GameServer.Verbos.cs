@@ -32,13 +32,15 @@ public sealed partial class GameServer
 	///
 	/// O RELATORIO RESPEITA O SIGILO, como no original: com scouter sai o numero absoluto; sem
 	/// ele sai a PORCENTAGEM, que diz o quanto voce evoluiu sem entregar o seu proprio BP -- a
-	/// mesma regra do painel de Stats.
+	/// mesma regra do painel de Stats. E (2026-10-20) diz ha quanto tempo a sessao corre e a
+	/// MEDIA POR SEGUNDO, na mesma regua -- ver <see cref="MediaDaSessao"/>.
 	/// </summary>
 	private void VerboSessao(ServerPlayer pl, bool nova)
 	{
 		if (nova)
 		{
 			pl.BpDaSessao = pl.Ficha.BP;
+			pl.SessaoDesdeMs = NowMs();
 			pl.EmSessao = true;
 			Avisar(pl, "sessao de treino iniciada.");
 			return;
@@ -46,13 +48,50 @@ public sealed partial class GameServer
 		if (!pl.EmSessao) { Avisar(pl, "comece uma sessao primeiro."); return; }
 
 		double ganho = pl.Ficha.BP - pl.BpDaSessao;
+		double segundos = Math.Max((NowMs() - pl.SessaoDesdeMs) / 1000.0, 1);
 		// (2026-10-18) o numero so dentro do teto do scouter, e nunca de ki divino -- ver `ScouterMostra`
 		if (ScouterMostra(pl, pl, pl.BpDaSessao, pl.Ficha.BP))
-			Avisar(pl, $"nesta sessao voce ganhou {ganho:N0} de poder base ({pl.BpDaSessao:N0} -> {pl.Ficha.BP:N0}).");
+			Avisar(pl, $"nesta sessao voce ganhou {ganho:N0} de poder base ({pl.BpDaSessao:N0} -> {pl.Ficha.BP:N0})"
+					   + MediaDaSessao(ganho / segundos, "", " em", segundos) + ".");
 		else if (pl.BpDaSessao > 0)
-			Avisar(pl, $"voce esta cerca de {ganho / pl.BpDaSessao * 100:0.#}% mais forte do que quando comecou.");
+			Avisar(pl, $"voce esta cerca de {ganho / pl.BpDaSessao * 100:0.#}% mais forte do que quando comecou"
+					   + MediaDaSessao(ganho / pl.BpDaSessao * 100 / segundos, "%", ", ha", segundos) + ".");
 		else
 			Avisar(pl, "voce sente que evoluiu nesta sessao, mas nao tem como medir o quanto.");
+	}
+
+	/// <summary>
+	/// A MEDIA DA SESSAO, o pedaco do fim da frase -- o dono (2026-10-20): *"adicione com isso no training session ao clicar em view session
+	/// a media de ganhos de bp por segundo"*. O ganho inteiro sobre o tempo inteiro desde o "Training Session" (treinando ou parado: a
+	/// sessao e "esta jogatina"), na regua do resto da frase -- BP com o scouter, porcentagem do BP do comeco sem ele (o sigilo).
+	/// </summary>
+	internal static string MediaDaSessao(double porSegundo, string unidade, string conector, double segundos) =>
+		SessaoSemMediaDeTeste ? "" : $"{conector} {TempoDaSessao(segundos)}: em media {NumeroDaMedia(porSegundo)}{unidade} por segundo";
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--ganhoteste`, familia 8): o "View Session" volta a dizer so o ganho, sem o tempo e a media -- o jogo de
+	/// antes de 2026-10-20. Lido por <see cref="MediaDaSessao"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool SessaoSemMediaDeTeste;
+
+	/// <summary>"45 s", "1 min 40 s", "2 h 05 min" -- quanto a sessao ja dura, pra baixo (o que passou, e nao o que falta).</summary>
+	private static string TempoDaSessao(double segundos)
+	{
+		long s = (long)segundos;
+		if (s < 60) return $"{s} s";
+		if (s < 3600) return $"{s / 60} min {s % 60:00} s";
+		return $"{s / 3600} h {s / 60 % 60:00} min";
+	}
+
+	/// <summary>
+	/// A MEDIA ESCRITA: duas casas a partir de 1, e abaixo disso as casas que mostrem dois algarismos -- a porcentagem por segundo de quem
+	/// ja e forte vive nos milesimos (0,00050%), e "0,00" nao diria nada.
+	/// </summary>
+	internal static string NumeroDaMedia(double v)
+	{
+		double a = Math.Abs(v);
+		int casas = a >= 1 || a == 0 ? 2 : Math.Min((int)Math.Ceiling(-Math.Log10(a)) + 1, 10);
+		return v.ToString("N" + casas);
 	}
 
 	/// <summary>
@@ -99,6 +138,7 @@ public sealed partial class GameServer
 		// banco -- e um sistema inteiro com regras proprias, e nao meia duzia de `case`.
 		if (ComandoDeConvivio(pl, cmd, arg)) return;
 		if (ComandoDeAlunos(pl, cmd, arg)) return;   // a aba Alunos/Mestre: o pedido do painel e os dois gestos do cartao de um aluno -- ver GameServer.Alunos.cs
+		if (ComandoDeAliados(pl, cmd, arg)) return;   // (2026-10-21) a amizade com os habitantes (tecla E) e as ordens da aba Allies -- ver GameServer.Amizade.cs
 
 		// A CRIACAO DE TECNICAS DE KI. Arquivo proprio, e prefixo `ca_` proprio, pela mesma razao do
 		// banco: sao dez comandos com um estado compartilhado (a mesa aberta) -- ver
@@ -139,6 +179,7 @@ public sealed partial class GameServer
 		if (ComandoDosServicosDoAlem(pl, cmd, arg)) return;   // (2026-10-19) os servicos do Outro Mundo: pedir, entregar, desistir -- ver GameServer.ServicosDoAlem.cs
 		// AS ORDENS DAS COPIAS DO SPLIT FORM E A RESPOSTA A GENKIDAMA (lote G12).
 		if (ComandoG12(pl, cmd, arg)) return;
+		if (ComandoDeTreinoFocado(pl, cmd, arg)) return;   // o treino focado e a meditacao focada -- ver GameServer.TreinoFocado.cs
 
 		switch (cmd)
 		{
@@ -151,6 +192,8 @@ public sealed partial class GameServer
 			// e nao pelo canal de habilidades: aquele e barrado pro corpo possuido e pra espera do torneio,
 			// e esta saida tem que funcionar sempre. Ver `SairDoTranse`.
 			case "mente_sair": SairDoTranse(pl); break;
+			// (2026-10-21) a forma escolhida na lista da mente. Ver GameServer.MenteChefe.cs.
+			case Jandirus.Core.Npc.EtapasDaMente.Verbo: EscolherEtapaDaLembranca(pl, arg); break;
 
 			// O PROGRESSO DAS SKILLS -- o `Check_Skill_Stats` do original. Ver `VerProgressoDasSkills`.
 			case "skills_progresso": VerProgressoDasSkills(pl); break;

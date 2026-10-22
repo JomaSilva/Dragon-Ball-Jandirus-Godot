@@ -621,6 +621,12 @@ public partial class GameServer
 			// fera. Ver `GuiarOCompanheiro` (`GameServer.Companheiros.cs`).
 			if (!GuiarOCompanheiro(npc, criaturaSolta, out presa, out destino)) return;
 		}
+		else if (_treinosDeAmizade.TryGetValue(npc.Id, out TreinoDeAmizade? treinoDeAmizade))
+		{
+			// (2026-10-21) O HABITANTE NUM TREINO DE AMIZADE COM UM JOGADOR: a presa e o parceiro, e o cerebro sabe que e treino -- ANTES do
+			// ramo do habitante, que lhe tiraria o `LutaDeTreino` ao ver uma presa. Ver `GuiarOTreinoDeAmizade` (`GameServer.Amizade.cs`).
+			if (!GuiarOTreinoDeAmizade(npc, treinoDeAmizade, out presa, out destino)) return;
+		}
 		else if (_droides.TryGetValue(npc.Id, out Droide? droideDoComputador))
 		{
 			// (v0.2.1) O DROIDE DO SUPER COMPUTADOR: segue o dono e ataca quem ele manda -- nem molde, nem fera. Ver
@@ -1449,5 +1455,6 @@ public partial class GameServer
 	private static bool ComandoDeCorpo(Protocol.C2S id) => id is Protocol.C2S.Action
 		or Protocol.C2S.Guard or Protocol.C2S.Carregar or Protocol.C2S.Habilidade
 		or Protocol.C2S.Transformar or Protocol.C2S.Zanzoken
+		or Protocol.C2S.TreinoTecla or Protocol.C2S.RespiracaoTecla
 		|| (id == Protocol.C2S.Activity && !Jandirus.Core.Forms.Oozaru.FeraMeditaDeTeste);
 }

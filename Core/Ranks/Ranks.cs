@@ -336,11 +336,7 @@ public static class Cargos
 	private const string DoDono = "dono, 2026-10-19";
 
 	/// <summary>
-	/// FROST DEMON x ICER: no DM a raca se chama "Frost Demon" (staticer.dm:13) e o requisito
-	/// compara com essa string (RankQuests.dm:251). No port, o `races.json` gravou "Icer" -- o
-	/// extrator de protos pegou a folha do typepath (`/datum/genetics/proto/Icer`) em vez do
-	/// `name` declarado. Enquanto isso nao se resolve do lado das racas, o cargo aceita os DOIS
-	/// nomes: fechar o Lorde do Gelo por causa de um rotulo seria um bug invisivel.
+	/// A raca e "Frost Demon". Saves de antes gravaram "Icer". O cargo aceita os dois.
 	/// </summary>
 	private const string RacaFrostDemon = "Frost Demon";
 	private const string RacaFrostDemonNoPort = "Icer";

@@ -90,7 +90,9 @@ public partial class GameServer
 
 		// DE ONDE ELE VEIO. E o que a plataforma de saida devolve quando a nave nao esta em lugar
 		// nenhum que aceite pouso -- ver `SairDaNave`.
-		MoveToZone(pl.Id, dentro, NaveGrande.PixelDe(NaveGrande.CelDaChegada));
+		// A esfera do agarrado recusa a porta inteira (os dois ficam). O interior nao e espaco.
+		if (!ViajarVoluntario(pl, dentro, NaveGrande.PixelDe(NaveGrande.CelDaChegada), esferasRecusam: true))
+			return;
 		MandarObras(dentro);
 
 		Avisar(pl, $"você embarca em {NomeDaNave(n)}. A ponte fica no canto -- siga a parede à esquerda.");
@@ -209,7 +211,7 @@ public partial class GameServer
 		if (!NaPlataforma(pl)) { Avisar(pl, "a plataforma de saída fica no centro da nave."); return; }
 
 		Vec2 fora = PontoAoLadoDaNave(n, pl);
-		MoveToZone(pl.Id, n.Zona, fora);
+		ViajarVoluntario(pl, n.Zona, fora);
 		Avisar(pl, $"você desce de {NomeDaNave(n)}, em {n.Zona.Name}.");
 		GD.Print($"[server] {pl.Name} desembarcou da nave #{n.Id} em {n.Zona}");
 	}

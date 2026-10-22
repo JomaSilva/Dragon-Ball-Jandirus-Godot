@@ -15,7 +15,10 @@ namespace Jandirus.Net;
 /// </summary>
 public static class FioDoMenuDoDragao
 {
-	public const int MaxId = 48, MaxVerbo = 32, MaxPedido = 120, MaxNome = 96, MaxDesc = 260, MaxMotivo = 300,
+	// (2026-10-22) O `MaxPedido` e o teto do argumento do verbo (`Protocol.MaxArgDeVerbo`), e nao os 120 de antes: o "Configurar o dragao"
+	// leva a configuracao do set inteira (`Core/Magic/ConfigDaEstatua.cs`, ate ~210), e cortada ela abriria o menu da estatua com desejos
+	// religados -- que o "Refazer" mandaria de volta, calado.
+	public const int MaxId = 48, MaxVerbo = 32, MaxPedido = Protocol.MaxArgDeVerbo, MaxNome = 96, MaxDesc = 260, MaxMotivo = 300,
 					 MaxPergunta = 96, MaxRotulo = 64, MaxNota = 120, MaxEstado = 320, MaxTitulo = 64;
 
 	/// <summary>O teto de linhas do menu. A tabela do Shenron tem 20 (`Desejos.Todos`), mais os gestos.</summary>

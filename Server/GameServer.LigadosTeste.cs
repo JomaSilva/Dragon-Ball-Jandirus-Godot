@@ -544,20 +544,20 @@ public partial class GameServer
 				meio.Ancestry["Human"] = 50;
 				meio.MajorityRace = "Saiyan";
 
-				Jandirus.Core.Races.Genome icer = Jandirus.Core.Races.Genome.Pure("Icer");
+				Jandirus.Core.Races.Genome icer = Jandirus.Core.Races.Genome.Pure("Frost Demon");
 				Jandirus.Core.Races.Genome cria = Jandirus.Core.Races.Genome.Child(meio, icer);
 
 				Checa("filho de meio-saiyajin com Icer da 25 Saiyan / 25 Human / 50 Icer",
 					  Math.Abs(cria.RacePercent("Saiyan") - 25) < 1e-9
 					  && Math.Abs(cria.RacePercent("Human") - 25) < 1e-9
-					  && Math.Abs(cria.RacePercent("Icer") - 50) < 1e-9,
-					  $"Saiyan {cria.RacePercent("Saiyan")}, Human {cria.RacePercent("Human")}, Icer {cria.RacePercent("Icer")}");
+					  && Math.Abs(cria.RacePercent("Frost Demon") - 50) < 1e-9,
+					  $"Saiyan {cria.RacePercent("Saiyan")}, Human {cria.RacePercent("Human")}, Icer {cria.RacePercent("Frost Demon")}");
 
 				Checa("...e a AVO humana sobrevive a geracao (era o que a assinatura antiga perdia)",
 					  cria.RacePercent("Human") > 0, "a ancestralidade humana sumiu");
 
 				Checa("...e a maior fatia vira a raca majoritaria",
-					  cria.MajorityRace == "Icer", $"MajorityRace = '{cria.MajorityRace}'");
+					  cria.MajorityRace == "Frost Demon", $"MajorityRace = '{cria.MajorityRace}'");
 
 				// ============ DUAS GERACOES, QUE E ONDE O DEFEITO ANTIGO SO APARECERIA ============
 				// O neto de (meio-saiyajin x Icer) com uma Namekiana tem que carregar QUATRO
@@ -573,10 +573,10 @@ public partial class GameServer
 					  neto.Ancestry.Count == 4
 					  && Math.Abs(neto.RacePercent("Saiyan") - 12.5) < 1e-9
 					  && Math.Abs(neto.RacePercent("Human") - 12.5) < 1e-9
-					  && Math.Abs(neto.RacePercent("Icer") - 25) < 1e-9
+					  && Math.Abs(neto.RacePercent("Frost Demon") - 25) < 1e-9
 					  && Math.Abs(neto.RacePercent("Namekian") - 50) < 1e-9,
 					  $"{neto.Ancestry.Count} ancestral(is): Saiyan {neto.RacePercent("Saiyan")},"
-					  + $" Human {neto.RacePercent("Human")}, Icer {neto.RacePercent("Icer")},"
+					  + $" Human {neto.RacePercent("Human")}, Icer {neto.RacePercent("Frost Demon")},"
 					  + $" Namekian {neto.RacePercent("Namekian")}");
 
 				Checa("...e a ancestralidade do NETO tambem soma 100 (a arvore nao vaza nem infla)",

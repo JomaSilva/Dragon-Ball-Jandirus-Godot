@@ -115,9 +115,14 @@ public partial class RoboDeAtividade : Node
 	/// <summary>A tecla T como um dedo: desce, o corpo a le no quadro em que desceu, e sobe.</summary>
 	private async System.Threading.Tasks.Task ApertarT()
 	{
+		bool iaTreinar = Corpo?.AtividadeDeTeste == Protocol.Activity.Treinando;
 		Tecla("train", true);
 		await Quadros(2);
 		Tecla("train", false);
+		await Quadros(2);
+		// (2026-10-21) O T abre a telinha. O "treinar" desta bancada e o botao normal -- o AFK de sempre.
+		if (!iaTreinar && TelaDeTreino.Instancia is { NaTela: true } tela)
+			tela.ApertarDesenhado(EscolhaDoTreino.Normal);
 		await Quadros(1);
 	}
 

@@ -38,6 +38,7 @@ public enum RecusaForma
 	SemFuria,         // o despertar pede RAIVA e a que este corpo tem nao chega la (ver NivelDeRaiva)
 	SemPoderPraRaivaComum,   // a raiva COMUM abre esta forma, mas cobra mais BP do que ele tem (FormaDef.AgioNaRaivaComum)
 	SemHabilidade,    // a forma se COMPRA antes de se ter (ver FormaDef.PedeFlag)
+	SemPoderPraIrritado, // o IRRITADO abre a forma, mas cobra a porta x PortaDoIrritado (2,5)
 }
 
 /// <summary>
@@ -357,6 +358,18 @@ public sealed class EstadoDeForma
 	public static bool RaivaComumSemAgioDeTeste;
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancada <c>--irritadoteste</c>): o irritado paga a porta x1, o preco da furia. Lido pelo
+	/// passo 9b do <see cref="Avaliar"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool IrritadoSemPortaDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada <c>--irritadoteste</c>): o irritado nao abre forma nenhuma -- o jogo de antes. Lido
+	/// pelo passo 9 do <see cref="Avaliar"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool IrritadoNaoAbreFormaDeTeste;
+
+	/// <summary>
 	/// DA PRA IR PRA ESTA FORMA AGORA?
 	///
 	/// ============================ A ORDEM DAS CHECAGENS E A MENSAGEM ============================
@@ -651,7 +664,12 @@ public sealed class EstadoDeForma
 		NivelDeRaiva pedeRaiva = Catalogo.RaivaExigida(d);
 		if (pedeRaiva != NivelDeRaiva.Nenhuma && !Despertou(d.Id))
 		{
-			if (perfil.Raiva < pedeRaiva) return RecusaForma.SemFuria;
+			// O irritado fica ABAIXO da comum no enum, mas abre as formas que a comum abre (menos o Beast, que pede
+			// a extrema). Sem esta linha o `>=` recusaria o SSJ1 pra quem so esta irritado.
+			bool irritadoPagaAComum = perfil.Raiva == NivelDeRaiva.Irritado
+				&& pedeRaiva == NivelDeRaiva.Comum
+				&& !IrritadoNaoAbreFormaDeTeste;
+			if (perfil.Raiva < pedeRaiva && !irritadoPagaAComum) return RecusaForma.SemFuria;
 
 			// ============================ 9b. A RAIVA COMUM PAGA MAIS CARO -- o `if("Angry")` do DM ============================
 			// O dono (2026-10-11): *"o rage normal tb faz vc se transformar da mesma forma q o extreme, porem o
@@ -670,7 +688,12 @@ public sealed class EstadoDeForma
 			// (`GameServer.FraseDaRecusa`) -- "falta poder" mandaria treinar quem esta a um luto de distancia,
 			// e "falta furia" diria a quem esta enfurecido que ele nao esta.
 			// ==========================================================================================================
-			if (perfil.Raiva < NivelDeRaiva.Extrema && fatorDaPorta >= 1 && !RaivaComumSemAgioDeTeste
+			// O IRRITADO paga a porta x2,5 (uma constante so). A COMUM continua no agio dela -- antes este `if` cobria
+			// tudo abaixo da extrema, porque so existia a comum. Os dois precos nao podem mais ser o mesmo `if`.
+			if (perfil.Raiva == NivelDeRaiva.Irritado && fatorDaPorta >= 1 && !IrritadoSemPortaDeTeste
+				&& d.PortaBp > 0 && bpBase < PortaDeBp(d) * Catalogo.PortaDoIrritado)
+				return RecusaForma.SemPoderPraIrritado;
+			if (perfil.Raiva == NivelDeRaiva.Comum && fatorDaPorta >= 1 && !RaivaComumSemAgioDeTeste
 				&& d.PortaBp > 0 && bpBase < PortaDeBp(d) * d.AgioNaRaivaComum)
 				return RecusaForma.SemPoderPraRaivaComum;
 		}

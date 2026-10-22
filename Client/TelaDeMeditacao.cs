@@ -50,6 +50,7 @@ public partial class TelaDeMeditacao : CanvasLayer
 	private Control _raiz = null!;
 	private Button _normal = null!;
 	private Button _profunda = null!;
+	private Button _focada = null!;
 	private Label _motivo = null!;
 
 	/// <summary>
@@ -59,7 +60,7 @@ public partial class TelaDeMeditacao : CanvasLayer
 	/// assinavam com lambda e deixavam 19 orfaos por relog). Aqui ha um campo so, quem abre escreve
 	/// nele, e cancelar o apaga -- nao ha lista pra crescer.
 	/// </summary>
-	private Action<bool>? _resposta;
+	private Action<EscolhaDaMeditacao>? _resposta;
 
 	/// <summary>A zona em que a telinha abriu -- ver `_Process`: mudar de mundo com ela aberta a fecha.</summary>
 	private ZoneKey _zonaDeAbertura;
@@ -125,6 +126,17 @@ public partial class TelaDeMeditacao : CanvasLayer
 		_profunda.Pressed += EscolherProfunda;
 		caixa.AddChild(_profunda);
 
+		// (2026-10-21) A FOCADA fica AO LADO das duas de sempre. Normal e profunda nao mudam de texto,
+		// de dica nem de caminho. A escolha da etapa do chefe NAO entra nesta tela.
+		_focada = new Button
+		{
+			Text = "Meditação focada",
+			TooltipText = "Uma barra vai e volta. Aperte espaço quando o marcador passar na faixa. "
+						  + "Cada acerto sobe o ganho da meditação, até o dobro; errar derruba o bônus e custa vigor.",
+		};
+		_focada.Pressed += EscolherFocada;
+		caixa.AddChild(_focada);
+
 		// A LINHA DO MOTIVO. Ela e a metade que faz a recusa valer a pena: um botao cinza sem frase
 		// nenhuma e a mesma parede do verb apagado que esta telinha veio substituir.
 		_motivo = new Label
@@ -151,8 +163,10 @@ public partial class TelaDeMeditacao : CanvasLayer
 	/// PERGUNTA. <paramref name="resposta"/> recebe `true` pra profunda e `false` pra normal, e
 	/// **nao e chamada nenhuma vez** se o jogador cancelar (Esc, o botao, ou o M de novo).
 	/// </summary>
-	public void Abrir(Action<bool> resposta)
+	public void Abrir(Action<EscolhaDaMeditacao> resposta)
 	{
+		// (2026-10-21, revisao) UMA TELINHA POR VEZ -- ver `TelaDeTreino.Abrir`.
+		if (!TelaDeTreino.TelasJuntasDeTeste) TelaDeTreino.Instancia?.Fechar();
 		_resposta = resposta;
 		_zonaDeAbertura = GameClient.Instance?.Zone ?? default;
 		_raiz.Visible = true;
@@ -172,7 +186,7 @@ public partial class TelaDeMeditacao : CanvasLayer
 		_raiz.Visible = false;
 	}
 
-	private void EscolherNormal() => Responder(profunda: false);
+	private void EscolherNormal() => Responder(EscolhaDaMeditacao.Normal);
 
 	private void EscolherProfunda()
 	{
@@ -180,14 +194,16 @@ public partial class TelaDeMeditacao : CanvasLayer
 		// do Godot e a bancada aperta por sinal tambem (`ApertarDesenhado`): a guarda tem que estar
 		// no CAMINHO, e nao so na aparencia dele.
 		if (Recusa().Length > 0) { Atualizar(); return; }
-		Responder(profunda: true);
+		Responder(EscolhaDaMeditacao.Profunda);
 	}
 
-	private void Responder(bool profunda)
+	private void EscolherFocada() => Responder(EscolhaDaMeditacao.Focada);
+
+	private void Responder(EscolhaDaMeditacao escolha)
 	{
-		Action<bool>? quem = _resposta;
-		Fechar();               // apaga a `_resposta` ANTES de responder: uma escolha, um envio
-		quem?.Invoke(profunda);
+		Action<EscolhaDaMeditacao>? quem = _resposta;
+		Fechar();
+		quem?.Invoke(escolha);
 	}
 
 	// =====================================================================
@@ -293,7 +309,7 @@ public partial class TelaDeMeditacao : CanvasLayer
 	{
 		var r = new List<string>();
 		if (!NaTela) return r;
-		foreach (Button b in new[] { _normal, _profunda })
+		foreach (Button b in new[] { _normal, _profunda, _focada })
 			if (IsInstanceValid(b)) r.Add(b.Disabled ? $"{b.Text} (apagado)" : b.Text);
 		return r;
 	}
@@ -312,6 +328,14 @@ public partial class TelaDeMeditacao : CanvasLayer
 		Button b = profunda ? _profunda : _normal;
 		if (!IsInstanceValid(b) || b.Disabled) return false;
 		b.EmitSignal(BaseButton.SignalName.Pressed);
+		return true;
+	}
+
+	/// <summary>Aperta "Meditação focada" pelo sinal, como o dedo. Falso se a telinha nao esta na tela.</summary>
+	public bool ApertarFocada()
+	{
+		if (!NaTela || !IsInstanceValid(_focada) || _focada.Disabled) return false;
+		_focada.EmitSignal(BaseButton.SignalName.Pressed);
 		return true;
 	}
 }

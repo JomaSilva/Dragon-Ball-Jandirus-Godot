@@ -688,6 +688,7 @@ public partial class GameServer
 		// original (:137). Sem isto o piloto ficaria preso dentro do proprio veiculo.
 		Avisar(pl, $"você entra em {NomeDaNave(n)}. Ela voa com você -- e atravessa o que houver embaixo. "
 				   + "Suba e desça como no voo: descendo até o chão ela pousa, e lá no alto ela sai do planeta.");
+		SoltarPraNaoLevarAoEspaco(pl);   // o pod vai pro espaco: o agarrao acaba com essa frase, antes do leme
 		TomarOLeme(pl);   // (2026-10-19) o casco isola o piloto, e as tecnicas acesas se apagam -- ver `GameServer.Leme.cs`
 		GD.Print($"[server] {pl.Name} embarcou na nave #{n.Id} (velocidade {n.Velocidade})");
 		MandarObras(pl.Zone);
@@ -1013,7 +1014,7 @@ public partial class GameServer
 		var desejado = new Vec2(n.VoltaX, n.VoltaY);
 		Vec2 onde = MapaDaZonaOuCatalogo(destino)?.PontoLivrePerto(desejado) ?? desejado;
 
-		MoveToZone(pl.Id, destino, onde);
+		ViajarVoluntario(pl, destino, onde);
 		n.PorZona(destino);
 		n.X = onde.X;
 		n.Y = onde.Y;

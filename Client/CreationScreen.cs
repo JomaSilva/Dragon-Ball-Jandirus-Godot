@@ -726,7 +726,7 @@ public partial class CreationScreen : CanvasLayer
 			"O mundo vermelho dos guerreiros, e o chão mais pesado onde alguém escolhe morar.",
 		"Namekian" or "Gray" or "Kanassa" or "Yardrat" =>
 			"O planeta verde, de três sóis e nenhuma noite.",
-		"Icer" => "O mundo gelado da estirpe que cobrou tributo do universo inteiro.",
+		"Frost Demon" => "O mundo gelado da estirpe que cobrou tributo do universo inteiro.",
 		"Arlian" => "Arlia, o mundo dos insetos -- pequeno, duro e esquecido.",
 		"Makyo" => "A Estrela Makyo, que só se aproxima da Terra a cada cinco mil anos.",
 		"Kai" => "O Paraíso. Não se chega aqui de nave.",

@@ -19,8 +19,9 @@ namespace Jandirus.Server;
 /// `UsarAtivaRacial`) e o tique racial e o de producao (`TickDasRaciais`). A bancada so monta a cena, anda o relogio
 /// (`AdiantoDoRelogioDeTeste`) e le o estado racial -- o que o verb ACEITOU, e nao so o que o cerebro pediu.
 ///
-///   A. O POVO E OS CHEFES TEM O KIT -- o Freeza e o Guardiao Saiyajin pela fabrica, com as passivas valendo; a copia sem kit.
-///      CONTRA-EXEMPLO: `Passivas.SoPessoaTemKitDeTeste` (o portao da v0.4.0).
+///   A. O POVO E OS CHEFES TEM O KIT -- o Freeza e o Guardiao Saiyajin pela fabrica, com as passivas valendo; a copia sem kit. (2026-10-22) O
+///      Freeza e Frost Demon MUTANTE: o kit do Mutante junto, e o repouso na forma base dominada (e nao na 1a supressao).
+///      CONTRA-EXEMPLOS: `Passivas.SoPessoaTemKitDeTeste` (o portao da v0.4.0) e `ChefeNaSupressaoDeTeste` (o molde sem repouso).
 ///   B. A MAO DA IA -- as ativas de cada kit no repertorio de luta, a recarga que tira, o toggle ligado, nenhuma das treze de fora, e a
 ///      leitura de 1 Hz sem lixo. CONTRA-EXEMPLO: `AtivasRaciaisNaIa.IaSemAtivasDeTeste`.
 ///   C. AS TRES RECEITAS PROPRIAS numa tabela de decisao (o cerebro sozinho, com a cena escrita): o Demonic (longe sim, colado nao), o
@@ -29,7 +30,8 @@ namespace Jandirus.Server;
 ///   D. NA LUTA, PELO TIQUE DE PRODUCAO -- cada kit liga os reforcos dele, os socorros acodem, o Max Power cai com o Ki baixo, o Overflowing
 ///      Power desabafa antes de o tronco cobrar (com o defeito, o corpo cai sozinho), o Demonic carrega parado e a execucao mata o caido
 ///      so com o golpe letal.
-///   E. O CHEFE DE SAGA NA LUTA -- o Freeza da fabrica liga a Ira dele.
+///   E. O CHEFE DE SAGA NA LUTA -- o Freeza da fabrica liga a Ira dele e (2026-10-22, Mutante) o Sadistic Nature, e executa o caido pelo
+///      Ruthless Mind. CONTRA-EXEMPLO: `AtivasRaciaisNaIa.IaSemAtivasDeTeste`.
 ///
 /// COMO RODAR: `Godot --headless --path . --server --port 8456 --iaraciaisteste`
 /// </summary>
@@ -73,6 +75,8 @@ public partial class GameServer
 			Passivas.SoPessoaTemKitDeTeste = false;
 			AtivasRaciaisNaIa.IaSemAtivasDeTeste = false;
 			Cerebro.SemDesabafoDeTeste = false;
+			Cerebro.LetalLargaOCaidoDeTeste = false;   // (2026-10-22) a execucao do Freeza (familia E)
+			ChefeNaSupressaoDeTeste = false;           // (2026-10-22) o repouso do Freeza (familia A)
 			EscutaDeTecnicasDaIa = null;
 			AdiantoDoRelogioDeTeste = relogioDeAntes;
 			LimparABancadaDaIaRacial();
@@ -295,8 +299,11 @@ public partial class GameServer
 		TickDasRaciais(guardiao, 0.05);
 
 		KitRacial doGuardiao = Passivas.KitDe(guardiao.Race, guardiao.Ficha.Class, guardiao.Ficha.SaiyanLineage);
-		AfirmarIr("O CHEFE DE SAGA TEM O KIT DA RACA DELE (o dono: *\"os boss de saga tb vao ter todas essas passivas e ativas a depender de sua raça\"*): o Freeza (Icer, Frost Demon) tem o do Frost Demon; o Guardiao, o do sangue Saiyajin dele",
-				  freeza.Racial.Entrada.Kit == KitRacial.FrostDemon && doGuardiao != KitRacial.Nenhum && guardiao.Racial.Entrada.Kit == doGuardiao,
+		// (2026-10-22) O FREEZA E MUTANTE -- o dono: *"o boss freeza (namek e vegeta) a classe dele ta como frost demon sendo q deveria ser mutante
+		// e ele deveria usar as skills de mutante dele"*. O kit dele e o do Frost Demon E o do Mutante (`Passivas.KitDe`, pela classe).
+		AfirmarIr("O CHEFE DE SAGA TEM O KIT DA RACA DELE (o dono: *\"os boss de saga tb vao ter todas essas passivas e ativas a depender de sua raça\"*): o Freeza -- Frost Demon MUTANTE desde 2026-10-22 (*\"deveria ser mutante e ele deveria usar as skills de mutante dele\"*) -- tem o do Frost Demon E o do Mutante; o Guardiao, o do sangue Saiyajin dele",
+				  freeza.Ficha.Class == Passivas.ClasseMutante && freeza.Racial.Entrada.Kit == (KitRacial.FrostDemon | KitRacial.Mutante)
+				  && doGuardiao != KitRacial.Nenhum && guardiao.Racial.Entrada.Kit == doGuardiao,
 				  $"{freeza.Race}/{freeza.Ficha.Class}: {freeza.Racial.Entrada.Kit}; {guardiao.Race}/{guardiao.Ficha.Class}/{guardiao.Ficha.SaiyanLineage}: {guardiao.Racial.Entrada.Kit}");
 		EfeitoRacial ef = freeza.Racial.Efeito;
 		AfirmarIr("...e as PASSIVAS valem pra ele pelo tique racial: o Perfect Control do Freeza (dano de ki 1,15x, carga de tecnica 2x) e a Extreme Tenacity",
@@ -304,10 +311,32 @@ public partial class GameServer
 				  $"dano de ki {ef.DanoDeKi:0.###}, carga {ef.CargaDeTecnica:0.###}, tenaz {ef.Tenaz}");
 
 		List<string> doFreeza = RaciaisNaMaoIr(LerCapacidades(freeza).DeLuta);
-		AfirmarIr("...e a ATIVA do Freeza (a Unrestrained Wrath) esta no repertorio de luta da IA dele",
-				  doFreeza.Count == 1 && doFreeza[0] == Passivas.Ira, string.Join(",", doFreeza));
+		AfirmarIr("...e as ATIVAS do Freeza (a Unrestrained Wrath do Frost Demon e o Sadistic Nature do Mutante) estao no repertorio de luta da IA dele -- o Ruthless Mind e da receita propria (familia E)",
+				  doFreeza.SequenceEqual(new[] { Passivas.Ira, Passivas.Sadismo }), string.Join(",", doFreeza));
 
-		ServerPlayer copia = ForjarIr("copia", "Icer", "Frost Demon", chao + new Vec2(12 * T, 0), doMundo: false);
+		// (2026-10-22) ...E ELE REPOUSA NA FORMA BASE, DOMINADA. O Mutante jogador nasce na 1a supressao (0,25x, `Catalogo.PisoDaEscada`): o
+		// molde do chefe impoe a base (`MoldeDeNpc.Repouso`, lido pelo `GameServer.RepousoDoMolde`) e a abre com a maestria dele (100%). Dois
+		// minutos de tique do Frost na base: o fusivel do Mutante nao queima -- com a base sem maestria o ki travaria aos 90 s e vazaria.
+		bool naBase = Jandirus.Core.Forms.Catalogo.DegrauDoFrost(freeza.Forma.Def) == FormasDeFrost.Base;
+		double maestriaDaBase = MaestriaDaBaseDeFrost(freeza);
+		freeza.CenaSegundos = 0;
+		for (int s = 0; s < 120; s++) TickDoFrost(freeza, 1.0);
+		bool firme = !freeza.Ficha.fd_ki_locked && freeza.Ficha.fd_release >= 1 - 1e-9;
+		AfirmarIr("...e o Freeza Mutante REPOUSA NA FORMA BASE (1x) e nao na 1a supressao do Mutante jogador (0,25x) -- sem isto ele lutaria com um quarto do BP do degrau --, com a base DOMINADA: dois minutos de tique do Frost e o ki segue solto, a liberacao cheia",
+				  naBase && maestriaDaBase >= 100 && firme,
+				  $"forma {freeza.Forma.Atual} (degrau {Jandirus.Core.Forms.Catalogo.DegrauDoFrost(freeza.Forma.Def)}); maestria da base {maestriaDaBase:0}%; "
+				  + $"ki travado {freeza.Ficha.fd_ki_locked}; liberacao {freeza.Ficha.fd_release:0.##}");
+
+		ChefeNaSupressaoDeTeste = true;
+		ServerPlayer? naSupressao;
+		try { naSupressao = NascerNpc("freeza_vegeta", ZonaDaBancadaDeProjetil, chao + new Vec2(14 * T, 0), 994); }
+		finally { ChefeNaSupressaoDeTeste = false; }
+		if (naSupressao != null) _irNascidos.Add(naSupressao);
+		AfirmarIr("   DEFEITO INJETADO (`ChefeNaSupressaoDeTeste`, o molde sem repouso): o Freeza Mutante nasce na 1a supressao, com 0,25x -- a prova de cima REPROVARIA",
+				  naSupressao != null && Jandirus.Core.Forms.Catalogo.DegrauDoFrost(naSupressao.Forma.Def) == FormasDeFrost.PrimeiraSupressao,
+				  naSupressao == null ? "nao nasceu" : $"forma {naSupressao.Forma.Atual}");
+
+		ServerPlayer copia = ForjarIr("copia", "Frost Demon", "Frost Demon", chao + new Vec2(12 * T, 0), doMundo: false);
 		AfirmarIr("a COPIA (sem papel de NPC e sem conta: o reflexo da mente, a Divisao do Corpo) continua SEM kit -- e sem ativa na mao",
 				  copia.Racial.Entrada.Kit == KitRacial.Nenhum && !EhNpcDoMundo(copia) && !EhPessoa(copia)
 				  && RaciaisNaMaoIr(LerCapacidades(copia).DeLuta).Count == 0, copia.Racial.Entrada.Kit.ToString());
@@ -336,8 +365,8 @@ public partial class GameServer
 		[
 			("Humano", "Human", "", "", [Passivas.PoderMaximo, Passivas.SegundoFolego, Passivas.ForcaDeVontade]),
 			("Namekuseijin", "Namekian", "Warrior clan", "", [Passivas.Disrupcao]),
-			("Frost Demon", "Icer", "Frost Demon", "", [Passivas.Ira]),
-			("Frost Demon mutante", "Icer", Passivas.ClasseMutante, "", [Passivas.Ira, Passivas.Sadismo]),
+			("Frost Demon", "Frost Demon", "Frost Demon", "", [Passivas.Ira]),
+			("Frost Demon mutante", "Frost Demon", Passivas.ClasseMutante, "", [Passivas.Ira, Passivas.Sadismo]),
 			("Saiyajin Lendario", "Saiyan", Passivas.ClasseLendaria, "Saiyan", [Passivas.Transbordar, Passivas.ForcaImparavel]),
 			("Saiyajin Primal", "Saiyan", "Normal Primal Saiyan", "Primal Saiyan", [Passivas.Ferocidade]),
 			("Lendario Primal", "Saiyan", Passivas.ClasseLendariaPrimal, "Primal Saiyan", [Passivas.Ferocidade, Passivas.TransbordarKi, Passivas.SedeDeSangue]),
@@ -502,8 +531,8 @@ public partial class GameServer
 		[
 			("Humano", "Human", "", "", "o Max Power", n => n.Racial.PoderMaximo),
 			("Namekuseijin", "Namekian", "Warrior clan", "", "a Spirit Disruption", n => RecargaIr(n, Passivas.Disrupcao) > 0),
-			("Frost Demon", "Icer", "Frost Demon", "", "a Unrestrained Wrath", n => n.Racial.IraDesde >= 0),
-			("Frost Demon mutante", "Icer", Passivas.ClasseMutante, "", "a Ira e a Sadistic Nature",
+			("Frost Demon", "Frost Demon", "Frost Demon", "", "a Unrestrained Wrath", n => n.Racial.IraDesde >= 0),
+			("Frost Demon mutante", "Frost Demon", Passivas.ClasseMutante, "", "a Ira e a Sadistic Nature",
 				 n => n.Racial.IraDesde >= 0 && RecargaIr(n, Passivas.Sadismo) > 0),
 			("Saiyajin Primal", "Saiyan", "Normal Primal Saiyan", "Primal Saiyan", "a Unmatched Ferocity", n => RecargaIr(n, Passivas.Ferocidade) > 0),
 			("Saiyajin Lendario", "Saiyan", Passivas.ClasseLendaria, "Saiyan", "o Overflowing Power e a Unstoppable Force",
@@ -636,7 +665,7 @@ public partial class GameServer
 		// ---- D6. A EXECUCAO DO RUTHLESS MIND, SO COM O GOLPE LETAL ----
 		foreach (bool letal in new[] { true, false })
 		{
-			(ServerPlayer npc, ServerPlayer alvo) = DuploIr(letal ? "Mutante letal" : "Mutante sem letal", "Icer", Passivas.ClasseMutante, "", 1.0f);
+			(ServerPlayer npc, ServerPlayer alvo) = DuploIr(letal ? "Mutante letal" : "Mutante sem letal", "Frost Demon", Passivas.ClasseMutante, "", 1.0f);
 			npc.Combate.Letal = letal;
 			alvo.Combate.Nocautear(600);   // no chao, e assim fica
 			Vec2 onde = npc.Pos;
@@ -669,6 +698,46 @@ public partial class GameServer
 		AfirmarIr("O FREEZA DA FABRICA (`freeza_vegeta`), numa luta, LIGA a Unrestrained Wrath dele pela IA -- e o tique racial da o BP +20% dela",
 				  em >= 0 && Math.Abs(freeza.Racial.Efeito.Bp - Passivas.BpDaIra) < 1e-6,
 				  em >= 0 ? $"aos {em:0.0} s, BP racial {freeza.Racial.Efeito.Bp:0.###}" : $"nada em 8 s; apertou [{ApertosIr(freeza)}]");
+
+		// (2026-10-22) O FREEZA MUTANTE USA AS SKILLS DE MUTANTE DELE -- o dono: *"ele deveria usar as skills de mutante dele"*
+		double sadico = freeza.Racial.SadismoAte > NowMs() ? 0 : TiquesAteIr(freeza, alvo, 8, () => freeza.Racial.SadismoAte > NowMs());
+		AfirmarIr("**O FREEZA USA AS SKILLS DE MUTANTE DELE** (*\"ele deveria usar as skills de mutante dele\"*, 2026-10-22): na mesma luta, a IA liga o Sadistic Nature -- 1 min em que cada golpe sem guarda deixa o proximo mais forte",
+				  sadico >= 0 && RecargaIr(freeza, Passivas.Sadismo) > 0,
+				  sadico >= 0 ? $"ligado; apertou [{ApertosIr(freeza)}]" : $"nada em mais 8 s; apertou [{ApertosIr(freeza)}]");
 		LimparABancadaDaIaRacial();
+
+		// ...E O RUTHLESS MIND: o Freeza letal (o chefe de saga nasce letal pelo `NascerChefeDaSaga`; pela fabrica, a bancada o liga), um caido a
+		// um tile na frente e uma testemunha a dez. O golpe letal do plano fica DESLIGADO (`LetalLargaOCaidoDeTeste`): so a execucao mata.
+		(bool Morreu, double Em, bool Recarga, double DaTestemunha, string Apertos) Execucao(bool semAtivas)
+		{
+			Vec2 c = CorredorSecoIr(14);
+			ServerPlayer? f = NascerNpc("freeza_vegeta", ZonaDaBancadaDeProjetil, c, 995);
+			if (f == null) return (false, -1, false, 0, "o Freeza nao nasceu");
+			_irNascidos.Add(f);
+			f.Perfil = PerfilDeCombate.SoCorpo;
+			f.Combate.Letal = true;
+			f.Combate.EmCombate = 90;
+			ServerPlayer caido = ForjarIr("caido do Freeza", "Human", "", c + new Vec2(1.0f * ZoneCollision.TileSize, 0), doMundo: false, comCerebro: false);
+			ServerPlayer testemunha = ForjarIr("testemunha do Freeza", "Human", "", c + new Vec2(10 * ZoneCollision.TileSize, 0), doMundo: false,
+																																comCerebro: false);
+			caido.Combate.Nocautear(600);
+			Cerebro.LetalLargaOCaidoDeTeste = true;
+			AtivasRaciaisNaIa.IaSemAtivasDeTeste = semAtivas;
+			double morreu;
+			try { morreu = TiquesAteIr(f, caido, 8, () => caido.Ficha.dead, alvoDePe: false); }
+			finally { Cerebro.LetalLargaOCaidoDeTeste = false; AtivasRaciaisNaIa.IaSemAtivasDeTeste = false; }
+			double debuff = testemunha.Racial.MenteCruelAte > NowMs() ? testemunha.Racial.MenteCruel : 0;
+			var r = (caido.Ficha.dead, morreu, RecargaIr(f, Passivas.MenteCruel) > 0, debuff, ApertosIr(f));
+			LimparABancadaDaIaRacial();
+			return r;
+		}
+
+		var exec = Execucao(semAtivas: false);
+		AfirmarIr("**...E EXECUTA PELO RUTHLESS MIND**: com um caido na frente, o Freeza se debruca 3 s sobre ele e o mata -- e quem esta em volta (a dez tiles) leva o -10% em todos os stats dela",
+				  exec.Morreu && exec.Em >= Passivas.SegundosDaExecucao - 0.2 && exec.Recarga && Math.Abs(exec.DaTestemunha - Passivas.DebuffDaMenteCruel) < 1e-6,
+				  exec.Morreu ? $"morreu aos {exec.Em:0.0} s; testemunha -{exec.DaTestemunha * 100:0}%; apertou [{exec.Apertos}]" : $"vivo depois de 8 s; apertou [{exec.Apertos}]");
+		var semAsAtivas = Execucao(semAtivas: true);
+		AfirmarIr("   DEFEITO INJETADO (`IaSemAtivasDeTeste`): o mesmo Freeza, com a IA sem as ativas da raca, deixa o caido vivo -- a prova de cima REPROVARIA",
+				  !semAsAtivas.Morreu && !semAsAtivas.Recarga, $"morreu {semAsAtivas.Morreu}; apertou [{semAsAtivas.Apertos}]");
 	}
 }

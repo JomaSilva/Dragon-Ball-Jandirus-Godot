@@ -793,6 +793,7 @@ public partial class GameServer
 		// alguma coisa; aqui e a mesma antecipacao dos outros.
 		SalvarReservas();
 		SalvarEsferas();
+		SalvarNegras();
 		SalvarSupers();
 		SalvarMissoes();
 		SalvarCargos();
@@ -1860,8 +1861,8 @@ public partial class GameServer
 				AfirmarWt("ANTES: o ciclo das Super esta FORA de zero (senao o 'voltou a zero' e vazio)",
 						  _cicloDasSupers > 0, $"{_cicloDasSupers}");
 
-				// A MARCA NO ETERNO. Ela nao muda nada no jogo -- ela existe pra a direcao 2 poder
-				// distinguir "o set eterno voltou" de "o set eterno nunca saiu".
+				// A MARCA NO ETERNO. O ciclo nao e mais o endereco das celulas (2026-10-21, o sal e);
+				// a marca continua distinguindo "recriado" de "o mesmo objeto poupado".
 				if (eternoAntes != null) eternoAntes.Ciclo = 4242;
 
 				// ------------------------------------------------------ **A LIMPEZA**

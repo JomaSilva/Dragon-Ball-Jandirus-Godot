@@ -258,18 +258,19 @@ public sealed partial class GameServer
 			return true;
 		}
 
+		// (2026-10-21) O AGARRADO NAO FURA LOTACAO NEM RECARGA. Sem chave aqui: esta porta nao tem Guardiao.
+		if (PorQueLevarOAgarradoBarraASala(pl, false) is { Length: > 0 } barraDaSala)
+		{
+			Avisar(pl, barraDaSala);
+			return true;
+		}
+
 		// A RECARGA E ARMADA NA ENTRADA, com a dilatacao DESTA sala, e a sessao comeca do zero -- as mesmas tres
 		// linhas da porta do Templo, mais o nome do mundo (a sessao aberta: ver o cabecalho).
 		double dilatacao = SalaDePlaneta.Dilatacao(pl.Zone.Seed);
+		string mundoNome = pl.Zone.Name;
 		string mundo = NomeDoMundo(pl.Zone);
-		pl.SalaUltimaEntrada = agora;
-		pl.SalaDilatacao = dilatacao;
-		pl.SalaPlaneta = pl.Zone.Name;
-		pl.SalaDiasDaSessao = 0;
-		pl.SalaJanelaAte = 0;
-		_avisoDaSala.Remove(pl.Id);
-		_saidaPendenteDaSala.Remove(pl.Id);
-		_avisadosDaPortaFria.Remove(pl.Id);
+		AbrirSessaoDaSalaDePlaneta(pl, agora, dilatacao, mundoNome);
 
 		// O MESMO PONTO DE CHEGADA DA SALA DA TERRA (`HTC_ENTRY_LOC`): e o mesmo quarto.
 		const int t = ZoneCollision.TileSize;
@@ -279,7 +280,7 @@ public sealed partial class GameServer
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
 			if (o != pl) Avisar(o, $"{NomeVisivel(pl)} atravessa a porta na rocha.");
 
-		MoveToZone(pl.Id, sala, destino);
+		ViajarVoluntario(pl, sala, destino, aoLevar: c => AbrirSessaoDaSalaDePlaneta(c, agora, dilatacao, mundoNome));
 
 		string passa = SalaDePlaneta.TextoDaDilatacao(dilatacao);
 		int anosMaisVelho = SalaDoTempo.AnosFechados(0, SalaDoTempo.SessaoEmDias, dilatacao);
@@ -412,7 +413,7 @@ public sealed partial class GameServer
 		long falta = FimDaRecargaDasSalas(pl) - NowMs();
 		double dias = pl.SalaDiasDaSessao;
 		FecharASessaoDePlaneta(pl);
-		MoveToZone(pl.Id, mundo, soleira);
+		ViajarVoluntario(pl, mundo, soleira, aoLevar: c => { if (TemSessaoDePlaneta(c)) FecharASessaoDePlaneta(c); });
 
 		Avisar(pl, expulso
 			? $"a sessão acabou, e a Sala do Tempo te devolve à porta: você está de volta a {nome}."

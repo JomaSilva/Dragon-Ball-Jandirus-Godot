@@ -35,6 +35,13 @@ public partial class EsferaDesenhada : Node2D
 
 	private AnimatedSprite2D? _sprite;
 
+	/// <summary>DEFEITO INJETADO (robo --diagestrelanegra): o Shenlong desenha no tamanho cru da arte, enorme. Falso em jogo.</summary>
+	public static bool ShenlongSemEscalaDeTeste;
+
+	/// <summary>A escala do dragao. O Shenlong vermelho desce pra altura do Shenron de hoje.</summary>
+	public static float EscalaDoDragao(string folha) =>
+		folha == EsferasNegras.Dragao && !ShenlongSemEscalaDeTeste ? EsferasNegras.EscalaDoShenlong : 1f;
+
 	/// <summary>
 	/// ============================ O SIMBOLO VIRA CAMINHO **AQUI**, E SO AQUI ============================
 	/// As quatro folhas ja existem no repo e foram conferidas na Fase 0:
@@ -57,13 +64,15 @@ public partial class EsferaDesenhada : Node2D
 		Protocol.CoisaDeEsfera.Estatua =>
 			("res://Assets/Sprites/Misc/DragonStatue.tres", ""),
 
-		Protocol.CoisaDeEsfera.Dragao =>
-			("res://Assets/Sprites/Character Icons/Dragon.tres",
-			 folha == "porunga" ? "porunga" : "shenron"),
+		Protocol.CoisaDeEsfera.Dragao => folha == EsferasNegras.Dragao
+			? (EsferasNegras.ArteDoShenlong, EsferasNegras.Dragao)
+			: ("res://Assets/Sprites/Character Icons/Dragon.tres",
+			   folha == "porunga" ? "porunga" : "shenron"),
 
-		// (2026-10-19) A FOLHA DA ESFERA SAI DO CORE, e a mochila le a mesma (`EsferaNaMochila.ArteDaEsfera`): a esfera pega tem a cara
-		// da esfera do chao.
-		_ => (EsferaNaMochila.ArteDaEsfera(folha == "namek"), Esferas.EstadoDoSprite(numero, inerte)),
+		_ => (EsferaNaMochila.ArteDaFolha(folha),
+			  folha == EsferasNegras.Folha
+				  ? EsferasNegras.EstadoDoSprite(numero, inerte)
+				  : Esferas.EstadoDoSprite(numero, inerte)),
 	};
 
 	public override void _Ready()
@@ -120,10 +129,12 @@ public partial class EsferaDesenhada : Node2D
 		// sete esferas no mesmo tile sao um sprite so -- e quem reuniu as sete nao ve as sete.
 		// ================================================================================================
 		float dx, dy;
+		float escala = Tipo == Protocol.CoisaDeEsfera.Dragao ? EscalaDoDragao(Folha) : 1f;
+		float largura = tam.X * escala, altura = tam.Y * escala;
 		if (Tipo == Protocol.CoisaDeEsfera.Dragao)
 		{
-			dx = ZoneCollision.TileSize - tam.X / 2f;
-			dy = -tam.Y;
+			dx = ZoneCollision.TileSize - largura / 2f;
+			dy = -altura;
 		}
 		else
 		{
@@ -140,6 +151,7 @@ public partial class EsferaDesenhada : Node2D
 			Animation = anim,
 			Centered = false,
 			Position = new Vector2(dx, dy),
+			Scale = new Vector2(escala, escala),
 		};
 		AddChild(_sprite);
 		_sprite.Play();

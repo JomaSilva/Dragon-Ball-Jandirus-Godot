@@ -32,6 +32,9 @@ public sealed class PosseDoTuffle
 /// O mainframe de androides ganha o terceiro laboratorio, o Neo Tuffle Lab (`Obra.Lab = 3`), que so um Tsufurujin instala, com a mesma
 /// tecnologia dos outros dois (`TechDoLaboratorio`). Dentro dele o Tsufurujin vira Neo Tuffle (`Fighter.NeoTuffle`, no disco), pagando como
 /// a conversao em androide de absorcao: um milhao de zeni ou o dobro em recursos. O poder nao muda -- o poder dele passa a ser o dos outros.
+/// (2026-10-20) O CORPO MUDA: no proprio corpo o Neo Tuffle anda na folha do Baby (`Bebi 1 Alt`), careca e sem os olhos de gente, com a roupa
+/// da criacao por cima -- o pedido do dono, *"ao inves de usar o sprite normal do personagem q se transformou em neotuffle"*, e a escolha dele
+/// sobre a roupa. Ver `Appearance.CorpoDoTuffle`.
 ///
 /// ============================ A POSSE: O TUFFLE ANDA NO CORPO DO OUTRO ============================
 /// O verb "Possuir um nocauteado" (aba Other) pega o jogador nocauteado mais perto, ao alcance de uso. O cliente so dirige o proprio id
@@ -84,10 +87,19 @@ public sealed partial class GameServer
 	/// <summary>DEFEITO INJETADO (`--tuffleteste`): o Tsufurujin comum possui como o Neo Tuffle -- a maquina nao serve pra nada. Falso em jogo, sempre.</summary>
 	internal static bool PosseSemAMaquinaDeTeste;
 
+	/// <summary>
+	/// DEFEITO INJETADO (`--tuffleteste` e `--diagtuffle`): o pacote de aparencia sem a marca do corpo do Neo Tuffle -- ele anda com a cara da
+	/// criacao, cabelo e roupa, como antes de 2026-10-20. Lido pelo `PacoteDeAparencia`. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool TuffleSemCorpoDoBabyDeTeste;
+
 	// =====================================================================
 	// A MAQUINA
 	// =====================================================================
-	/// <summary>VIRAR NEO TUFFLE, dentro do Neo Tuffle Lab: o Tsufurujin com a tecnologia e o dinheiro. O poder e a cara nao mudam.</summary>
+	/// <summary>
+	/// VIRAR NEO TUFFLE, dentro do Neo Tuffle Lab: o Tsufurujin com a tecnologia e o dinheiro. O poder nao muda; o CORPO sim (2026-10-20, o dono):
+	/// ele passa a andar na folha do Baby, careca, com a roupa da criacao por cima (`Appearance.CorpoDoTuffle`) -- e a zona ve na hora.
+	/// </summary>
 	private void VirarNeoTuffle(ServerPlayer pl, Moeda moeda)
 	{
 		if (ObraPerto(pl) is not { Aparafusada: true, Lab: LabDoNeoTuffle })
@@ -103,6 +115,9 @@ public sealed partial class GameServer
 
 		pl.Ficha.NeoTuffle = true;
 		pl.SigAtributos = "";
+		// O CORPO NOVO APARECE AGORA, pra ele e pra quem esta perto -- o pacote de aparencia leva a marca (`PacoteDeAparencia`, o bit 2 do
+		// segundo byte de marcas). Sem esta linha a folha do Baby so chegaria na proxima troca de zona.
+		ReapresentarAparencia(pl);
 		GD.Print($"[server] {pl.Name} virou Neo Tuffle");
 		Avisar(pl, "a máquina se fecha sobre você. Quando abre, você sente que caberia dentro de outro corpo -- e o dirigiria por dentro. "
 				   + "(aba Other: \"Possuir um nocauteado\")");

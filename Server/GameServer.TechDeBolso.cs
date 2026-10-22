@@ -719,6 +719,7 @@ public sealed partial class GameServer
 		TickDasMaquinasGrandes(dt);
 		TickDasComunicacoes();
 		TickDosCompanheiros(dt);
+		TickDosAliados(dt);   // (2026-10-21) o treino de amizade, a poda dos lacos e a aba Allies -- `GameServer.Aliados.cs`
 		TickDoSintetizador(dt);
 		TickDosSuperComputadores(dt);
 		DescarregarOCofre(dt);

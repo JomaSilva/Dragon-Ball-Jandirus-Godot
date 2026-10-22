@@ -340,6 +340,8 @@ public partial class GameServer
 		// o multiplicador de forma volta pra 1 (ele comeca na base) e a ficha fecha
 		AplicarForma(npc);
 		SorteioDeNpc.Normalizar(npc.Ficha);
+		// (2026-10-20) O CHEFE DE SAGA (E O BILLS) JA NASCE COM O DOBRO DO JOGADOR MAIS FORTE -- ver `DarODobroAoChefe` (GameServer.ChefeDeSaga.cs)
+		DarODobroAoChefe(npc);
 
 		// quem esta na zona precisa VER o corpo novo; pro NPC os envios de volta sao no-op (`Peer?.`)
 		TrocarAparencias(npc);

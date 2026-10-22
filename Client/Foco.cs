@@ -25,9 +25,10 @@ public static class Foco
 	// A QUINTA FONTE e a caixa de texto do menu E (`CaixaDeTexto`, a lapide): um `LineEdit` de verdade,
 	// com o teclado dentro dele -- sem esta linha o "E" do epitafio abriria outro menu por cima.
 	// A SEXTA e a pergunta da senha, ao erguer uma porta (`ModoDeConstruir`): outro `LineEdit` de verdade.
+	// (2026-10-22) A SETIMA e o nome do dragao, no menu da estatua (`JanelaDaEstatua`).
 	public static bool Digitando =>
 		Chat.Digitando || MenuJogo.Digitando || TelaDeTecnicas.Digitando || TelaDeTeclas.Digitando
-		|| CaixaDeTexto.Digitando || ModoDeConstruir.Digitando;
+		|| CaixaDeTexto.Digitando || ModoDeConstruir.Digitando || JanelaDaEstatua.Digitando;
 
 	/// <summary>
 	/// POSSO DISPARAR UM ATALHO AGORA? A pergunta dos ATALHOS -- menu, aba, mochila, interacao, chat,

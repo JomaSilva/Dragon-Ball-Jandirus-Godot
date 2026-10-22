@@ -46,7 +46,8 @@ namespace Jandirus.Client;
 ///      vizinhanca, o botao escolhe pelo fio e a vizinhanca desfaz (adendo 11) -- e a pergunta aparece UMA vez: a oferta do
 ///      login seguinte nao a empurra, o cartao do menu P a abre, e o natal que volta apaga a marca (item 39);
 ///   L  A REENCARNACAO: o mundo cai, o cliente disca de novo e a CRIACAO abre na vaga que vagou, com a frase do Enma; o
-///      novo nasce com 10% do poder (item 7). E a ULTIMA familia: ela troca o personagem.
+///      novo nasce com o BP da raca e o poder do anterior como potencial oculto (item 7; 2026-10-22, antes 10% do BP). E a
+///      ULTIMA familia: ela troca o personagem.
 ///
 /// O QUE ELA NAO PROVA: pixel nenhum. Sem janela o que se mede e a INTENCAO -- o texto do painel, o canal da linha, a
 /// textura que o slot recebeu, a folha que o desenho do chao usou.
@@ -978,8 +979,9 @@ public partial class RoboDaV030 : Node
 			bool abriu = await AbrirATelinhaDoMeditar();
 			TelaDeMeditacao? tela = TelaDeMeditacao.Instancia;
 			List<string> botoes = tela?.BotoesDesenhados() ?? [];
-			Checa("**A TELINHA DO MEDITAR OFERECE A PROFUNDA AO FANTASMA**: os dois botoes acesos (a recusa sai da mesma regra do servidor -- so o cadaver e recusado)",
-				  abriu && botoes.Count == 2 && !botoes.Exists(b => b.EndsWith("(apagado)", StringComparison.Ordinal)),
+			Checa("**A TELINHA DO MEDITAR OFERECE A PROFUNDA AO FANTASMA**: os tres botoes acesos (a recusa sai da mesma regra do servidor -- so o cadaver e recusado)",
+				  abriu && botoes.Count == 3 && botoes.Contains("Meditação profunda")
+				  && !botoes.Exists(b => b.EndsWith("(apagado)", StringComparison.Ordinal)),
 				  $"abriu {abriu}; botoes [{string.Join(" | ", botoes)}]; motivo '{tela?.MotivoNaTela}'");
 			bool apertou = tela?.ApertarDesenhado(profunda: true) == true;
 			bool entrou = apertou && await Ate(() => Jandirus.Core.World.DimensaoMental.EhAMente(cli.Zone), 15);
@@ -1057,7 +1059,7 @@ public partial class RoboDaV030 : Node
 	// =====================================================================
 	private async Tarefa L_AReencarnacao(GameClient cli, Jandirus.Server.GameServer srv)
 	{
-		Nota("--- L: reencarnar pelo Enma me devolve a CRIACAO, na vaga que vagou, e o novo nasce com 10% do poder (item 7) ---");
+		Nota("--- L: reencarnar pelo Enma me devolve a CRIACAO, na vaga que vagou, e o novo nasce com o BP da raca e o poder do anterior como potencial (item 7) ---");
 		if (GetParent() is not Boot boot) { Checa("(montagem) o robo nasceu debaixo do Boot", false); return; }
 		(string conta, string nome) = srv.PalcoV30_QuemE(cli.LocalId);
 
@@ -1068,10 +1070,12 @@ public partial class RoboDaV030 : Node
 		raiz.AddChild(this);
 		await Quadros(1);
 
-		srv.PalcoV30_BpBase(cli.LocalId, 20_000);
+		// (2026-10-22) 200.000: os 10% da regra de antes dariam 20.000, acima do BP de nascimento de qualquer classe -- a regua do novo
+		// separa as duas regras por ai
+		srv.PalcoV30_BpBase(cli.LocalId, 200_000);
 		bool naMesa = srv.PalcoV30_MortoAoLadoDoEnma(cli.LocalId, 0);
 		bool morto = naMesa && await Ate(() => cli.Sheet.Morto, 15);
-		Checa("(montagem) o robo saiu de baixo do Boot; morto, ao lado do Enma, com 20.000 de BP base", morto && GetParent() == raiz,
+		Checa("(montagem) o robo saiu de baixo do Boot; morto, ao lado do Enma, com 200.000 de BP base", morto && GetParent() == raiz,
 			  $"conta {conta}; nome {nome}");
 		if (!morto) return;
 
@@ -1092,15 +1096,16 @@ public partial class RoboDaV030 : Node
 			Checa("**REENCARNAR ME DEVOLVE A CRIACAO**: o mundo cai, o cliente disca de novo sozinho e a CRIACAO abre na vaga que vagou, com a frase do Enma em cima -- sem o painel de \"DESCONECTADO\"",
 				  naCriacao && !boot.MundoMontado && vaga == 0 && anuncio.Contains("recomeçar") && boot.AvisoDeQuedaNaTela() == null && cli.Connected,
 				  $"criacao {naCriacao}; vaga {vaga}; anuncio '{anuncio}'; aviso '{boot.AvisoDeQuedaNaTela()}'");
-			Checa("...e do lado de la o slot vagou e a conta guarda o eco (10% de 20.000 = 2.000)", !ocupado && eco == 2_000,
+			Checa("...e do lado de la o slot vagou e a conta guarda o eco: os 200.000 de BP base, que o proximo leva como potencial", !ocupado && eco == 200_000,
 				  $"ocupado {ocupado}; eco {eco}");
 
 			// O "CONFIRMAR" DA CRIACAO: a ficha da linha de comando, pela mesma porta do modo automatico
 			boot.AutoDeTeste = true;
 			boot.CriarComoOAutomaticoDeTeste();
-			bool renasceu = await Ate(() => boot.MundoMontado && cli.LocalId != 0 && srv.PalcoV30_DaConta(conta, nome) is { BP: >= 2_000 }, 30);
-			Checa("**O NOVO NASCE COM 10% DO PODER**: criado na vaga, ele entra no mundo com o BP base do eco (2.000) -- e a conta nao guarda mais eco nenhum",
-				  renasceu && srv.PalcoV30_Conta(conta, 0) is { Ocupado: true, Eco: null }, $"{srv.PalcoV30_DaConta(conta, nome)}");
+			bool renasceu = await Ate(() => boot.MundoMontado && cli.LocalId != 0 && srv.PalcoV30_DaConta(conta, nome) != null, 30);
+			Checa("**O NOVO NASCE COM O BP DA RACA E O PODER DO ANTERIOR COMO POTENCIAL**: criado na vaga, ele entra no mundo com o BP de um recem-criado (abaixo dos 20.000 que os 10% de antes dariam) e 200.000 de potencial oculto -- e a conta nao guarda mais eco nenhum",
+				  renasceu && srv.PalcoV30_DaConta(conta, nome) is { BP: < 20_000, Potencial: >= 200_000 } && srv.PalcoV30_Conta(conta, 0) is { Ocupado: true, Eco: null },
+				  $"{srv.PalcoV30_DaConta(conta, nome)}");
 		}
 		finally { boot.AutoDeTeste = true; }
 

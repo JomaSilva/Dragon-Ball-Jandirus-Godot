@@ -8,7 +8,8 @@ namespace Jandirus.Server;
 /// AS DUAS SAIDAS NOVAS DA MESA DO ENMA (v0.3.0) -- o pedido do dono de 2026-10-15, itens 7 e 11:
 ///
 ///   * A REENCARNACAO (o `enma_reincarnate()` do DM, `SkyNPCs.dm:200-204` + `Reincarnation.dm`): o personagem acaba PARA
-///     SEMPRE, o jogador volta pra criacao, e o proximo personagem da conta nasce com 10% do BP dele;
+///     SEMPRE, o jogador volta pra criacao, e o proximo personagem da conta nasce com o BP da raca e todo o BP dele como
+///     POTENCIAL OCULTO (dono, 2026-10-22; ate entao, 10% do BP -- ver `AplicarOEcoDaReencarnacao`);
 ///   * O PASSE (nao existe no DM): 100.000 zeni pra visitar os vivos por sete dias -- morto, de aureola, e de volta pro
 ///     Outro Mundo quando o prazo vence.
 ///
@@ -19,6 +20,12 @@ public sealed partial class GameServer
 {
 	/// <summary>DEFEITO INJETADO (`--v030teste`): o eco da reencarnacao e ignorado -- o novo personagem nasce do zero, o jogo de antes.</summary>
 	internal static bool EcoDaReencarnacaoIgnoradoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--v030teste` L, `--diagv030` L): o eco volta a dar 10% do BP e nenhum potencial -- a regra de 2026-10-15 a
+	/// 2026-10-22. Lido pelo <see cref="AplicarOEcoDaReencarnacao"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool EcoDeDezPorCentoDeTeste;
 
 	/// <summary>DEFEITO INJETADO (`--v030teste`): o passe nao poe o morto de pe -- entre os vivos ele e o cadaver de sempre.</summary>
 	internal static bool PasseDeitaDeTeste;
@@ -33,9 +40,10 @@ public sealed partial class GameServer
 	// 1. A REENCARNACAO (item 7)
 	// =====================================================================
 	/// <summary>
-	/// REENCARNAR: o personagem acaba PARA SEMPRE e o jogador volta pra CRIACAO; o proximo personagem da conta nasce com 10%
-	/// do BP deste. O dono (2026-10-15): *"falta a opcao de reencarnar no enma, ao qual vc perde seu personagem voltando pra
-	/// criacao de personagem porem o personagem reencarnado comeca com 10% do bp do personagem anterior"*.
+	/// REENCARNAR: o personagem acaba PARA SEMPRE e o jogador volta pra CRIACAO; o proximo personagem da conta nasce com o BP da
+	/// raca e o BP deste inteiro como potencial oculto. O dono (2026-10-15): *"falta a opcao de reencarnar no enma, ao qual vc perde
+	/// seu personagem voltando pra criacao de personagem porem o personagem reencarnado comeca com 10% do bp do personagem
+	/// anterior"* -- e os 10% viraram potencial em 2026-10-22 (ver <see cref="AplicarOEcoDaReencarnacao"/>).
 	///
 	/// A CONFIRMACAO E A DO `DeleteChar` DESTE PORT (digitar o nome), e nao o `alert()` de dois botoes do DM: e o mesmo gesto
 	/// -- apagar um personagem pra sempre --, e o port ja escolheu como se confirma isso.
@@ -64,8 +72,8 @@ public sealed partial class GameServer
 		}
 		if (!string.Equals(digitado.Trim(), pl.Name, StringComparison.OrdinalIgnoreCase))
 		{
-			Avisar(pl, $"Enma Daioh: \"Reencarnar apaga {pl.Name} PARA SEMPRE, e a próxima vida começa com um eco de 10% do "
-					 + $"poder. Se é isso mesmo, escreva o nome -- \"{pl.Name}\" -- e eu carimbo.\"");
+			Avisar(pl, $"Enma Daioh: \"Reencarnar apaga {pl.Name} PARA SEMPRE. Você renasce do começo -- mas com um potencial muito "
+					 + $"maior. Se é isso mesmo, escreva o nome -- \"{pl.Name}\" -- e eu carimbo.\"");
 			return;
 		}
 		if (PodeApagarOPersonagem(pl, out string porque) == null)
@@ -75,23 +83,37 @@ public sealed partial class GameServer
 		}
 
 		var eco = new Reencarnacao { De = pl.Name, BPAntigo = pl.Ficha.BP, Fracao = Alem.FracaoDaReencarnacao };
-		GD.Print($"[server] {pl.Name} pediu ao Enma pra reencarnar: o proximo personagem de {pl.Conta} nasce com {eco.BPDoNovo():0} de BP");
+		GD.Print($"[server] {pl.Name} pediu ao Enma pra reencarnar: o proximo personagem de {pl.Conta} nasce com o BP da raca e {eco.BPAntigo:0} de potencial oculto");
 		ApagarOPersonagemParaSempre(pl, "reencarnou pelo Enma", eco);
 	}
 
 	/// <summary>
-	/// A frase da reencarnacao -- a do DM (`SkyNPCs.dm:203`) e o que vem depois. Vai no chat e na despedida (a criacao a
-	/// mostra em cima). Sem numero de poder: e a regra principal do dono, e "10%" e uma razao, nao uma leitura.
+	/// A frase da reencarnacao -- a abertura do DM (`SkyNPCs.dm:203`) e o que vem depois. Vai no chat e na despedida (a criacao a
+	/// mostra em cima). Sem numero de poder, e sem a regra por extenso (dono, 2026-10-22: *"n faça o enma dizer em detalhes q o
+	/// hidden dele vai ser o bp, faça o enma falar algo como 'vc ira renascer com um potencial muito maior'"*).
 	/// </summary>
 	private static string FraseDaReencarnacao(string nome) =>
-		"Enma Daioh: \"Uma alma que escolhe recomeçar... que assim seja. Vá -- renasça, e leve só um eco de quem você foi.\" "
-		+ $"{nome} se foi. A próxima vida desta conta nasce com 10% do poder de {nome}.";
+		"Enma Daioh: \"Uma alma que escolhe recomeçar... que assim seja. Vá -- renasça. Você vai renascer com um potencial muito maior.\" "
+		+ $"{nome} se foi.";
 
 	/// <summary>
-	/// O ECO NASCE COM O PROXIMO PERSONAGEM -- o `CheckIncarnate()` do DM (`Reincarnation.dm:4-16`), chamado no mesmo ponto
-	/// da criacao (`CharacterCreation.dm:208`): `BP = max(BP, round(oldBP * startBPMult))`, uma vez so. O eco e consumido
-	/// aqui, em TODAS as copias vivas da conta, antes de o slot novo ir pro disco (quem grava e o `CreateChar`, logo depois);
-	/// sem isto, a segunda copia (a tela de selecao de outra conexao) o daria de novo.
+	/// O ECO NASCE COM O PROXIMO PERSONAGEM -- no ponto do `CheckIncarnate()` do DM (`Reincarnation.dm:4-16`), chamado da
+	/// criacao (`CharacterCreation.dm:208`), uma vez so. O eco e consumido aqui, em TODAS as copias vivas da conta, antes de o
+	/// slot novo ir pro disco (quem grava e o `CreateChar`, logo depois); sem isto, a segunda copia (a tela de selecao de outra
+	/// conexao) o daria de novo.
+	///
+	/// ============================ O PODER VIRA POTENCIAL (dono, 2026-10-22) ============================
+	/// *"reencarnar no jogo agr ao inves de vc voltar com 10% do bp original, vc volta com hidden potential = do seu personagem
+	/// anterior"* e *"o bp inicial é o da raça normal"* -- e, perguntado, *"todo bp da vida anterior vira potencial e q afeta o ki
+	/// max"*. O novo nasce com o BP que a raca da (o `CheckIncarnate` do DM o levava a `round(oldBP * 0,1)`, a regra daqui de
+	/// 2026-10-15 ate esse dia), e o BP base inteiro da vida anterior SOMA no potencial oculto: ele pinga no treino, na meditacao
+	/// e na luta (`Fighter.TrainGain` e irmaos -- uns 0,2% dele por hora de treino com o vigor cheio, enquanto for maior que o BP)
+	/// e engorda o Ki maximo (`Fighter.KiBasePeloPotencial`). DIVERGENCIA DECLARADA.
+	///
+	/// NASCE DESCANSADO, como no `Fighter.FromGenome`: o potencial novo engorda o Ki maximo, e sem o `Statify` e o tanque cheio
+	/// aqui o renascido entraria no mundo com o Ki do corpo de antes do eco -- uma fracao do tanque novo, e o poder expresso
+	/// cortado pelo Ki baixo ate a regen o encher.
+	/// =================================================================================================
 	///
 	/// A `naturalization` do God Ki que o DM carrega junto (`:14`) nao vem: o port nao tem naturalizacao.
 	/// </summary>
@@ -102,8 +124,14 @@ public sealed partial class GameServer
 		EmTodaCopiaViva(acc.Conta, v => v.Reencarnacao = null);
 		if (EcoDaReencarnacaoIgnoradoDeTeste) return null;
 
-		lutador.BP = Math.Max(lutador.BP, eco.BPDoNovo());
-		GD.Print($"[server] {acc.Conta}: o eco de {eco.De} nasce junto -- BP base {lutador.BP:0}");
+		if (EcoDeDezPorCentoDeTeste) lutador.BP = Math.Max(lutador.BP, eco.BPDoNovo());
+		else
+		{
+			lutador.hiddenpotential += eco.BPAntigo;
+			lutador.Statify();
+			lutador.Ki = lutador.MaxKi;
+		}
+		GD.Print($"[server] {acc.Conta}: o eco de {eco.De} nasce junto -- BP base {lutador.BP:0}, potencial oculto {lutador.hiddenpotential:0}");
 		return eco;
 	}
 

@@ -105,12 +105,28 @@ public partial class GameServer
 		Vec2 posGuardada = pl.Pos;
 		string racaGuardada = pl.Race, classeGuardada = pl.Class;
 		string tronoGuardado = _tronos.GetValueOrDefault("guardian", "");
+		var negrasGuardadas = _negras.Select(x => (x.Numero, x.Zona, x.Cx, x.Cy, x.Portador, x.PrecisaAssentar)).ToList();
+		double negroAtivoGuardado = _setNegro.AtivoEm;
 
 		EscutaDasEsferas = [];
 		EscutaDasSupers = [];
 
 		try
 		{
+			// (2026-10-21) UMA BLACK STAR NA TERRA, E O SET NEGRO DORMINDO a bancada inteira: o radar comum tambem acende as Black Star do
+			// chao deste mundo (`AcrescentarSinaisNegros`), e as reguas daqui contam as sete do set comum -- com uma Black Star sorteada na
+			// Terra o radar dizia 8 e elas reprovavam pela sorte. A Black Star fica na Terra DE PROPOSITO (o pior sorteio), o set acordado
+			// por baixo, e a chave de bancada o dorme (`NegrasDormemDeTeste`, estatica: o reinicio simulado daqui recarrega o set negro do
+			// disco). A `--radarteste` mede o oitavo sinal.
+			EsferaNegra negraNaTerra = _negras.First(x => x.Numero == 1);
+			negraNaTerra.Portador = 0;
+			negraNaTerra.PorZona(ZoneKey.Premade("Earth"));
+			negraNaTerra.Cx = 30;
+			negraNaTerra.Cy = 30;
+			negraNaTerra.PrecisaAssentar = false;
+			_setNegro.AtivoEm = TempoDoMundo - 1;
+			NegrasDormemDeTeste = true;
+
 			// =====================================================================
 			// 1. DETERMINISMO -- as duas metades
 			// =====================================================================
@@ -339,14 +355,11 @@ public partial class GameServer
 				Checa("...e as sete estao em lugares NOVOS", mudaram >= Esferas.Total - 1,
 					  $"so {mudaram} mudaram de lugar");
 
-				// E O CAMINHO DE VOLTA: mesma seed, mesmo set, mesmo ciclo -> mesma celula. E o que
-				// prova que "espalhou de novo" nao virou "sorteou em runtime".
-				(int cx1, int cy1) = Esferas.CelulaDoEspalhamento(
-					terra.Seed ^ Espaco.Hash64(terra.Name), set.Id, 4, set.Ciclo, 300, 300);
-				(int cx2, int cy2) = Esferas.CelulaDoEspalhamento(
-					terra.Seed ^ Espaco.Hash64(terra.Name), set.Id, 4, set.Ciclo, 300, 300);
-				Checa("o espalhamento e reproduzivel a partir de (semente, set, numero, ciclo)",
-					  cx1 == cx2 && cy1 == cy2);
+				// (2026-10-21) O dono: o lugar nao sai mais de (semente, set, numero, ciclo). Cada espalhada
+				// sorteia um sal, guardado no set. A regua (dois lugares diferentes, nenhuma em agua) e a
+				// --esferanegrateste. Aqui so fica que o sal viaja com o set.
+				Checa("o sal da espalhada fica no set (16 hex) -- e ele, nao o ciclo, que escolhe o lugar",
+					  set.SalHex.Length == 16, set.SalHex);
 			}
 
 			// =====================================================================
@@ -476,6 +489,7 @@ public partial class GameServer
 			// 11. SOBREVIVE AO REINICIO -- com defeito injetado
 			// =====================================================================
 			int cicloReal = set?.Ciclo ?? 0;
+			string salReal = set?.SalHex ?? "";
 			int idReal = set?.Id ?? 0;
 
 			// ============================ O CRITERIO GUARDA O NUMERO ANTES, E NAO O RELE ============================
@@ -498,7 +512,7 @@ public partial class GameServer
 
 				SetDeEsferas? volta = _sets.Find(s => !s.Eterno);
 				bool bom = volta != null
-						&& volta.Id == idReal && volta.Ciclo == cicloReal
+						&& volta.Id == idReal && volta.Ciclo == cicloReal && volta.SalHex == salReal
 						&& volta.Zona.Hash == terra.Hash
 						&& _esferas.Count(e => e.Set == volta.Id) == Esferas.Total;
 
@@ -508,11 +522,11 @@ public partial class GameServer
 			}
 
 			MutacaoDeEsfera(Checa,
-				"o set volta do `esferas.json` com id, ciclo, zona e as sete",
-				"o ciclo zerado no arquivo -- o campo que carrega ONDE as sete estao",
+				"o set volta do `esferas.json` com id, sal, ciclo, zona e as sete",
+				"o sal zerado no arquivo -- o campo que escolhe ONDE as sete caem na proxima espalhada",
 				VoltaDoDisco,
-				() => { if (set != null) set.Ciclo = 0; },
-				() => { if (set != null) set.Ciclo = cicloReal; });
+				() => { if (set != null) set.GravarSal(0); },
+				() => { if (set != null) set.SalHex = salReal; });
 
 			// =====================================================================
 			// 12. O SET ETERNO DE NAMEK
@@ -545,6 +559,18 @@ public partial class GameServer
 			AcordarCaladoDeTeste = false;
 			_trincoSolto = false;
 			EscutaDoFioDasEsferas = null;
+
+			NegrasDormemDeTeste = false;
+			_setNegro.AtivoEm = negroAtivoGuardado;
+			foreach ((int numNegra, ZoneKey zonaNegra, int cxNegra, int cyNegra, int donoNegra, bool assentaNegra) in negrasGuardadas)
+				if (_negras.Find(x => x.Numero == numNegra) is { } negraVolta)
+				{
+					negraVolta.PorZona(zonaNegra);
+					negraVolta.Cx = cxNegra;
+					negraVolta.Cy = cyNegra;
+					negraVolta.Portador = donoNegra;
+					negraVolta.PrecisaAssentar = assentaNegra;
+				}
 
 			_sets.Clear(); _sets.AddRange(setsGuardados);
 			_esferas.Clear(); _esferas.AddRange(esferasGuardadas);
@@ -803,6 +829,17 @@ public partial class GameServer
 	{
 		var terra = ZoneKey.Premade("Earth");
 		var namek = ZoneKey.Premade(Esferas.PlanetaEterno);
+
+		// (2026-10-21) O REINICIO SIMULADO DE CIMA (`CarregarEsferas` -> `CarregarNegras`) RECARREGOU AS BLACK STAR DO DISCO: a de 1 estrela
+		// volta pra Terra e o set negro fica acordado por baixo. Quem o dorme e so a chave de bancada -- sem ela, esta secao ve o oitavo
+		// sinal (a contraprova da `estrelanegra` r6).
+		EsferaNegra negraNaTerra = _negras.First(x => x.Numero == 1);
+		negraNaTerra.Portador = 0;
+		negraNaTerra.PorZona(terra);
+		negraNaTerra.Cx = 30;
+		negraNaTerra.Cy = 30;
+		negraNaTerra.PrecisaAssentar = false;
+		_setNegro.AtivoEm = TempoDoMundo - 1;
 
 		// O PALCO: nenhum dragao de pe, nenhuma esfera na mao de ninguem, e so o eterno em `_sets`. O set da Terra
 		// que as secoes de cima deixaram ja foi gasto, espalhado e remexido a mao -- nao e nascimento de nada.

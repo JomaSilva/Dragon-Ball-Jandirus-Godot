@@ -560,6 +560,10 @@ public partial class GameServer
 		// (2026-10-19) COM ESFERA DO DRAGAO NA MOCHILA O TETO NAO ROMPE: ela nao sai do planeta (dono). A recusa vem ANTES de desligar o
 		// voo -- quem bate no teto continua no ar, e ouve por que, no intervalo do aviso do teto. Ver `GameServer.EsferasNaMochila.cs`.
 		string presas = PorQueAsEsferasPrendem(pl);
+		// (2026-10-21) ...E DA CAVERNA E DA SALA DO TEMPO O TETO TAMBEM NAO ROMPE (dono), na mesma hora e pelo mesmo caminho: antes de
+		// desligar o voo, com o aviso no intervalo do teto. Sem esta linha o corpo perdia o voo e caia no chao da caverna a cada subida (o
+		// `Decolar` ainda recusaria, mas depois do voo ja desligado). Ver `GameServer.SubZonas.cs`.
+		if (presas.Length == 0) presas = SemCeuPraRomper(pl);
 		if (presas.Length == 0 && Voo.PodeRomperAAtmosfera(pl.Ficha.Ki, pl.Ficha.expressedBP, HabilidadeDeVoo(pl)))
 		{
 			pl.Voando = false;

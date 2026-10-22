@@ -10,7 +10,9 @@ namespace Jandirus.Core.Magic;
 /// </summary>
 /// <param name="Carregada">Esta na mao de alguem (o ponto anda com a pessoa).</param>
 /// <param name="Comigo">Esta na MINHA mao -- desenhada no centro do disco, e nao pela posicao.</param>
-public readonly record struct SinalDeEsfera(float X, float Y, bool Carregada, bool Comigo);
+/// <param name="Negra">(2026-10-21) E uma Black Star (ou, no espaco, um planeta com uma): o disco a pinta de VERMELHO, e as comuns de
+/// amarelo (dono: *"faca no radar do dragao vermelho ser as black star dragon ball e amarelo as normais"*).</param>
+public readonly record struct SinalDeEsfera(float X, float Y, bool Carregada, bool Comigo, bool Negra = false);
 
 /// <summary>
 /// **O DISCO DO DRAGON RADAR** -- a geometria e as constantes, sem tela e sem servidor.

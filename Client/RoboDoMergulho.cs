@@ -298,8 +298,9 @@ public partial class RoboDoMergulho : Node2D
 				$"natela={tela.NaTela} atividade={Atividade()}");
 
 		List<string> botoes = tela.BotoesDesenhados();
-		Afirmar("...com os DOIS caminhos desenhados, e os dois acesos",
-				botoes.Count == 2 && botoes.All(b => !b.Contains("(apagado)")),
+		Afirmar("...com os TRES caminhos desenhados, e os tres acesos",
+				botoes.Count == 3 && botoes.Contains("Meditar normal") && botoes.Contains("Meditação profunda")
+				&& botoes.Contains("Meditação focada") && botoes.All(b => !b.Contains("(apagado)")),
 				string.Join(" | ", botoes));
 		Nota($"botoes na tela: {string.Join(" | ", botoes)}"
 			 + (tela.MotivoNaTela.Length > 0 ? $" | aviso: \"{tela.MotivoNaTela}\"" : ""));

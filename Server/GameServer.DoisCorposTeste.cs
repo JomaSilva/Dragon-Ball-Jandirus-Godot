@@ -890,8 +890,11 @@ public sealed partial class GameServer
 		b.Zone = ZoneKey.Premade(Alem.ZonaDoOutroMundo);            // qualquer zona diferente serve: o `if` e sobre o hash
 		ZoneList(b.Zone.Hash).Add(b);
 		TiqueDoMundo();
-		AfirmarDc("ZONA DIFERENTE: SOLTOU (a linha cobre passagem, pouso, nave, Sala do Tempo, mente e "
-				+ "a viagem pro Outro Mundo de uma vez -- todas terminam noutra zona)",
+		// (2026-10-21) A REGRA MUDOU. Passagem, nave, sala, nuvem e pouso LEVAM junto (ViajarVoluntario,
+		// bancada --levarjuntoteste). Este bloco continua medindo o tique quando o corpo JA esta noutra
+		// zona sem ter passado por essa porta: o aperto acaba. Nao e mais "toda troca de zona solta".
+		AfirmarDc("ZONA DIFERENTE SEM A PORTA VOLUNTARIA: o tique SOLTA (quem ja estava noutra zona; "
+				+ "a passagem, a nave, a sala, a nuvem e o pouso levam junto)",
 				  a.AgarrandoId == 0 && b.AgarradoPorId == 0);
 		ZoneList(b.Zone.Hash).Remove(b);
 		b.Zone = zonaDeBeta;

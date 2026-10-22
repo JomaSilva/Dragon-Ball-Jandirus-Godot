@@ -25,6 +25,8 @@ namespace Jandirus.Server;
 ///   I. A SALA DO TEMPO POR CIMA: o ano da sala e o mes do calendario se somam.
 ///   J. O GROWTH SPURT E UM MES, nos mesmos meses do calendario; o DESEJO DE JUVENTUDE poe uma idade redonda.
 ///   K. CONTRA-EXEMPLO (`Envelhecimento.CalendarioParadoDeTeste`, o port de antes): dez meses passam e a idade nao anda.
+///   O ANO QUE FECHA SOMA O POTENCIAL OCULTO (`hiddenpotential += BP*UPMod*anos`, `Aging.dm:125-139`): um mes nao soma, o
+///      aniversario soma um ano no BP de agora, os anos la fora somam de uma vez, morto e Deus nao somam, a sala e o estirao somam.
 /// </summary>
 public sealed partial class GameServer
 {
@@ -112,6 +114,20 @@ public sealed partial class GameServer
 			AfirmarCa("QUEM NAO ENVELHECE deixa o tempo passar (a idade fica e o mes contado anda), e o RELOGIO QUE VOLTA nao desenvelhece (a conta espera ele passar)",
 				morto is { Idade: 20, Meses: 3, MesContado: 12, AnosFechados: 0 } && voltou is { Idade: 20, Meses: 3, MesContado: 12, AnosFechados: 0 },
 				$"{morto} | {voltou}");
+			var amostra = new Jandirus.Core.Stats.Fighter { BP = 1_000_000, UPMod = 3, hiddenpotential = 1 };
+			amostra.SomarPotencialOcultoDaIdade(1);
+			bool umAno = Math.Abs(amostra.hiddenpotential - 3_000_001) < 1e-6;
+			amostra.SomarPotencialOcultoDaIdade(0);
+			bool mesQuieto = Math.Abs(amostra.hiddenpotential - 3_000_001) < 1e-6;
+			amostra.SomarPotencialOcultoDaIdade(2);
+			AfirmarCa("O ANO SOMA O POTENCIAL OCULTO (`hiddenpotential += BP*UPMod*anos`): 1.000.000 de BP e Potential 3 viram +3.000.000 num ano, nada num mes, e +6.000.000 em dois anos de uma vez no BP de agora",
+				umAno && mesQuieto && Math.Abs(amostra.hiddenpotential - 9_000_001) < 1e-6, $"{amostra.hiddenpotential:0}");
+			var majinVelho = new Jandirus.Core.Stats.Fighter { BP = 1000, UPMod = 2, hiddenpotential = 1, Idade = 45_356_546 };
+			majinVelho.SomarPotencialOcultoDaIdade(1);
+			AfirmarCa("A IDADE DA FICHA NAO ENTRA: Majin criado com 45356546 anos que vive 1 ano soma BP*Potential*1, e os anos desde a criacao ficam em 1",
+				majinVelho.anosDesdeACriacao == 1 && Math.Abs(majinVelho.hiddenpotential - (1 + 1000 * 2)) < 1e-6
+				&& Math.Abs(majinVelho.Idade - 45_356_546) < 1e-6,
+				$"vividos {majinVelho.anosDesdeACriacao}, estoque {majinVelho.hiddenpotential:0}, idade {majinVelho.Idade:0}");
 
 			// ============================================================ B) a origem
 			GD.Print("[calendario] -- B) a origem deste mundo --");
@@ -141,7 +157,10 @@ public sealed partial class GameServer
 
 			// ============================================================ D) o mes que vira
 			GD.Print("[calendario] -- D) o mes que vira --");
+			double hpNoMes = pl.Ficha.hiddenpotential;
 			List<string> mesNovo = Ouvir(() => AndarMesesDoCalendario(1));
+			AfirmarCa("O MES QUE NAO FECHA ANO NAO SOMA POTENCIAL OCULTO: um mes passou e o estoque ficou",
+				Math.Abs(pl.Ficha.hiddenpotential - hpNoMes) < 1e-6, $"{hpNoMes:0} -> {pl.Ficha.hiddenpotential:0}");
 			AfirmarCa("O MES QUE VIRA ANUNCIA A DATA COM O ANO (o `Years()` do DM) e conta UM MES na idade de quem esta no jogo: 18 anos e 1 mes",
 				mesNovo.Contains($"Começa o mês de {Hoje.NomeDoMes}. Hoje é {Hoje.Extenso}.") && pl is { Idade: 18, MesesDaIdade: 1 } && pl.MesDaIdade == MesDoCalendario,
 				$"{Ultimos(mesNovo)} || {IdadeEscrita(pl)}");
@@ -152,7 +171,14 @@ public sealed partial class GameServer
 
 			// ============================================================ E) o ano
 			GD.Print("[calendario] -- E) o ano que fecha, e o ano novo --");
+			double hpNoAno = pl.Ficha.hiddenpotential, bpNoAno = pl.Ficha.BP, upNoAno = pl.Ficha.UPMod;
 			List<string> aniversario = Ouvir(() => AndarMesesDoCalendario(9));
+			AfirmarCa("O ANO QUE FECHA SOMA O POTENCIAL OCULTO no BP de agora (`BP * Potential * 1`)",
+				Math.Abs(pl.Ficha.hiddenpotential - (hpNoAno + bpNoAno * upNoAno)) < 1e-4,
+				$"{hpNoAno:0} + {bpNoAno:0}*{upNoAno:0.##} = {pl.Ficha.hiddenpotential:0}");
+			AfirmarCa("QUEM NASCE AOS 18 E FAZ 19 CONTA 1 ANO DESDE A CRIACAO, nao 19",
+				pl.Idade == 19 && pl.Ficha.anosDesdeACriacao == 1,
+				$"idade {pl.Idade}, vividos {pl.Ficha.anosDesdeACriacao}");
 			AfirmarCa("DEZ MESES DEPOIS, UM ANO: 19 anos e zero meses -- no corpo e na ficha de poder -- e ele ouve 'Você faz 19 anos.'",
 				pl is { Idade: 19, MesesDaIdade: 0 } && Math.Abs(pl.Ficha.Idade - 19) < 1e-9 && aniversario.Contains("Você faz 19 anos."),
 				$"{IdadeEscrita(pl)} | {Ultimos(aniversario)}");
@@ -164,6 +190,7 @@ public sealed partial class GameServer
 			// ============================================================ F) o tempo la fora
 			GD.Print("[calendario] -- F) o tempo la fora --");
 			int idadeNaSaida = pl.Idade, mesesNaSaida = pl.MesesDaIdade;
+			double hpNaSaida = pl.Ficha.hiddenpotential, bpNaSaida = pl.Ficha.BP, upNaSaida = pl.Ficha.UPMod;
 			bool saiu = mesa.SaiDoJogo(c[0], um);
 			CharacterSave? salvo = mesa.NoDisco(um);
 			AfirmarCa("A SAIDA GRAVA A IDADE, OS MESES E O MES CONTADO (o `LastYear = Year` da saida do DM)",
@@ -179,6 +206,9 @@ public sealed partial class GameServer
 			AfirmarCa("...e ouve a DATA DE HOJE e o tempo que passou (o `src<<checkthetimeidiot()` do `AgeCheck`)",
 				volta.Contains($"Hoje é {Hoje.Extenso}.") && volta.Any(x => x.Contains($"{anosFora} anos se passaram enquanto você esteve fora")),
 				Ultimos(volta));
+			AfirmarCa("OS ANOS LA FORA SOMAM O POTENCIAL OCULTO DE UMA VEZ, no BP do login (`BP * Potential * anos`)",
+				deVolta != null && Math.Abs(deVolta.Ficha.hiddenpotential - (hpNaSaida + bpNaSaida * upNaSaida * anosFora)) < 1e-4,
+				$"{hpNaSaida:0} + {bpNaSaida:0}*{upNaSaida:0.##}*{anosFora} = {deVolta?.Ficha.hiddenpotential:0}");
 			if (deVolta == null) return;
 			pl = deVolta;
 
@@ -187,12 +217,15 @@ public sealed partial class GameServer
 			pl.Combate.Morrer(ignorarSeguro: true);   // a porta unica de toda morte (`AdminMatar`)
 			MandarFicha(pl);
 			int idadeDoMorto = pl.Idade, mesesDoMorto = pl.MesesDaIdade;
+			double hpDoMorto = pl.Ficha.hiddenpotential;
 			AndarMesesDoCalendario(10);
 			AfirmarCa("O MORTO NAO ENVELHECE (`if(!dead ...)`, `Aging.dm:145`): dez meses passam, a idade fica -- e o mes contado anda",
 				pl.Ficha.dead && pl.Idade == idadeDoMorto && pl.MesesDaIdade == mesesDoMorto && pl.MesDaIdade == MesDoCalendario, IdadeEscrita(pl));
 			EnvelhecerMeses(pl, Calendario.MesesPorAno);   // os meses de FORA do calendario: o Toque do Tempo num corpo morto
 			AfirmarCa("...nem pelos meses de FORA do calendario (o Toque do Tempo num morto) -- o dono: *\"lembrando q morto n envelhece\"*",
 				pl.Idade == idadeDoMorto && pl.MesesDaIdade == mesesDoMorto, IdadeEscrita(pl));
+			AfirmarCa("...e o morto nao ganha o potencial oculto desses anos",
+				Math.Abs(pl.Ficha.hiddenpotential - hpDoMorto) < 1e-6, $"{hpDoMorto:0} -> {pl.Ficha.hiddenpotential:0}");
 			Restaurar(pl, reviver: true);   // a volta do admin (`AdminReviver`)
 			AndarMesesDoCalendario(1);
 			(int idadeVivo, int mesesVivo, _) = Envelhecimento.MaisMeses(idadeDoMorto, mesesDoMorto, 1);
@@ -200,9 +233,12 @@ public sealed partial class GameServer
 				!pl.Ficha.dead && pl.Idade == idadeVivo && pl.MesesDaIdade == mesesVivo, IdadeEscrita(pl));
 			_tronos[cargoDoDeus] = pl.Conta;
 			int idadeDoDeus = pl.Idade, mesesDoDeus = pl.MesesDaIdade;
+			double hpDoDeus = pl.Ficha.hiddenpotential;
 			AndarMesesDoCalendario(10);
 			AfirmarCa("O DEUS DA DESTRUICAO NAO ENVELHECE enquanto carrega o titulo (`!god_is_god(src)`): dez meses e a idade fica",
 				EhDeusDaDestruicao(pl) && pl.Idade == idadeDoDeus && pl.MesesDaIdade == mesesDoDeus, IdadeEscrita(pl));
+			AfirmarCa("...nem o potencial oculto dele anda",
+				Math.Abs(pl.Ficha.hiddenpotential - hpDoDeus) < 1e-6, $"{hpDoDeus:0} -> {pl.Ficha.hiddenpotential:0}");
 			if (tinhaDeus) _tronos[cargoDoDeus] = deusAntes!; else _tronos.Remove(cargoDoDeus);
 
 			// ============================================================ H) a velhice
@@ -215,7 +251,11 @@ public sealed partial class GameServer
 				ancia.Ficha.Idade = 74;
 				ancia.MesesDaIdade = 9;
 				ancia.Ficha.Statify();
+				double hpDoAnciao = ancia.Ficha.hiddenpotential, bpDoAnciao = ancia.Ficha.BP, upDoAnciao = ancia.Ficha.UPMod;
 				List<string> fim = Ouvir(() => AndarMesesDoCalendario(1));
+				AfirmarCa("O ANO QUE MATA DE VELHICE ainda soma o potencial oculto (a conta do `AgeCheck` vem antes do `Body < 0.1`)",
+					Math.Abs(ancia.Ficha.hiddenpotential - (hpDoAnciao + bpDoAnciao * upDoAnciao)) < 1e-4,
+					$"{hpDoAnciao:0} + {bpDoAnciao:0}*{upDoAnciao:0.##} = {ancia.Ficha.hiddenpotential:0}");
 				AfirmarCa("A VELHICE CHEGA NO MES QUE FECHA O ANO: o Humano de 74 anos e 9 meses faz 75 -- o fim da vida dele (auge 50 x 1,5) -- e morre de velhice, sem volta (`aged_out`)",
 					ancia.Idade == 75 && ancia.Ficha.dead && ancia.Ficha.aged_out && fim.Contains("Você faz 75 anos."),
 					$"{IdadeEscrita(ancia)} morto={ancia.Ficha.dead} aged_out={ancia.Ficha.aged_out} | {Ultimos(fim)}");
@@ -225,7 +265,11 @@ public sealed partial class GameServer
 			GD.Print("[calendario] -- I) a Sala do Tempo por cima --");
 			pl.MesesDaIdade = 3;
 			int idadeDaSala = pl.Idade;
+			double hpDaSala = pl.Ficha.hiddenpotential, bpDaSala = pl.Ficha.BP, upDaSala = pl.Ficha.UPMod;
 			EnvelhecerNaSala(pl);          // um ano da sala fechou (`HTC_AGE_PER_GAME_DAY`)...
+			AfirmarCa("O ANO DA SALA DO TEMPO SOMA O POTENCIAL OCULTO (`BP * Potential`)",
+				Math.Abs(pl.Ficha.hiddenpotential - (hpDaSala + bpDaSala * upDaSala)) < 1e-4,
+				$"{hpDaSala:0} + {bpDaSala:0}*{upDaSala:0.##} = {pl.Ficha.hiddenpotential:0}");
 			AndarMesesDoCalendario(1);     // ...e o calendario de fora seguiu
 			AfirmarCa("A SALA DO TEMPO ENVELHECE POR CIMA (o dono: *\"nas salas do tempo a pessoa envelhece mais rapido mesmo com esse sistema de calendario\"*): o ano da sala e o mes do calendario se somam -- um ano e um mes a mais",
 				pl.Idade == idadeDaSala + 1 && pl.MesesDaIdade == 4, $"{idadeDaSala}a3m -> {IdadeEscrita(pl)}");
@@ -234,25 +278,40 @@ public sealed partial class GameServer
 			GD.Print("[calendario] -- J) o Growth Spurt e um mes; o desejo de juventude poe idade redonda --");
 			pl.MesesDaIdade = 9;
 			int idadeDoEstirao = pl.Idade;
+			double hpDoEstirao = pl.Ficha.hiddenpotential, bpDoEstirao = pl.Ficha.BP, upDoEstirao = pl.Ficha.UPMod;
 			EnvelhecerMeses(pl, 1);   // o `Age += 0.1` do Growth Spurt e do Toque do Tempo
+			AfirmarCa("O ESTIRAO QUE FECHA O ANO SOMA O POTENCIAL OCULTO",
+				Math.Abs(pl.Ficha.hiddenpotential - (hpDoEstirao + bpDoEstirao * upDoEstirao)) < 1e-4,
+				$"{hpDoEstirao:0} + {bpDoEstirao:0}*{upDoEstirao:0.##} = {pl.Ficha.hiddenpotential:0}");
 			AfirmarCa("O GROWTH SPURT E UM MES (`Age += 0.1`), nos mesmos meses do calendario: 9 meses mais 1 fecham o ano",
 				pl.Idade == idadeDoEstirao + 1 && pl.MesesDaIdade == 0 && Math.Abs(pl.Ficha.Idade - pl.Idade) < 1e-9, IdadeEscrita(pl));
 			pl.MesesDaIdade = 6;
+			int vividosAntesDaJuventude = pl.Ficha.anosDesdeACriacao;
+			double hpAntesDaJuventude = pl.Ficha.hiddenpotential;
 			PorIdade(pl, 16);
 			AfirmarCa("O DESEJO DE JUVENTUDE poe uma idade REDONDA: 16 anos e zero meses (o `Age = N` do DM nao guarda decimo)",
 				pl is { Idade: 16, MesesDaIdade: 0 }, IdadeEscrita(pl));
+			AfirmarCa("...e nao mexe nos anos desde a criacao nem no potencial oculto: a idade nova nao e tempo vivido",
+				pl.Ficha.anosDesdeACriacao == vividosAntesDaJuventude && Math.Abs(pl.Ficha.hiddenpotential - hpAntesDaJuventude) < 1e-6,
+				$"vividos {pl.Ficha.anosDesdeACriacao}, estoque {pl.Ficha.hiddenpotential:0}");
 
 			// ============================================================ K) o contra-exemplo
 			GD.Print("[calendario] -- K) contra-exemplo --");
 			int idadeParada = pl.Idade, mesesParados = pl.MesesDaIdade;
+			double hpParado = pl.Ficha.hiddenpotential;
 			Envelhecimento.CalendarioParadoDeTeste = true;
 			try { AndarMesesDoCalendario(10); }
 			finally { Envelhecimento.CalendarioParadoDeTeste = false; }
 			AfirmarCa("CONTRA-EXEMPLO (defeito injetado: o calendario parado, o port de antes): dez meses passam e a idade NAO anda -- a prova do ano (E) reprovaria",
 				pl.Idade == idadeParada && pl.MesesDaIdade == mesesParados, IdadeEscrita(pl));
+			AfirmarCa("...nem o potencial oculto", Math.Abs(pl.Ficha.hiddenpotential - hpParado) < 1e-6, $"{pl.Ficha.hiddenpotential:0}");
+			double bpParado = pl.Ficha.BP, upParado = pl.Ficha.UPMod;
 			AndarMesesDoCalendario(10);
 			AfirmarCa("...e o mesmo salto, com o calendario de volta, fecha o ano",
 				pl.Idade == idadeParada + 1 && pl.MesesDaIdade == mesesParados, IdadeEscrita(pl));
+			AfirmarCa("...e esse ano soma o potencial oculto",
+				Math.Abs(pl.Ficha.hiddenpotential - (hpParado + bpParado * upParado)) < 1e-4,
+				$"{hpParado:0} + {bpParado:0}*{upParado:0.##} = {pl.Ficha.hiddenpotential:0}");
 		}
 		catch (Exception e)
 		{

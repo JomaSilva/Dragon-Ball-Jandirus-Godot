@@ -60,7 +60,7 @@ public partial class GameServer
 		string[] racas =
 		[
 			"Human", "Shapeshifter", "Demigod", "Majin", "Alien",
-			"Saiyan", "Tsujin", "Saibaman", "Heran", "Meta", "Icer",
+			"Saiyan", "Tsujin", "Saibaman", "Heran", "Meta", "Frost Demon",
 			"Namekian", "Arlian", "Makyo", "Gray", "Kanassa", "Yardrat",
 			"Kai", "Demon",
 			"Android", "BioAndroid", "SpiritDoll",
@@ -205,7 +205,7 @@ public partial class GameServer
 
 		// ---------------------------------------------------------------- 4. O PEDIDO DE VIZINHO
 		GD.Print("[diagberco] -- nascer perto de casa");
-		foreach (string raca in new[] { "Human", "Saiyan", "Namekian", "Icer", "Arlian", "Makyo", "Kai" })
+		foreach (string raca in new[] { "Human", "Saiyan", "Namekian", "Frost Demon", "Arlian", "Makyo", "Kai" })
 		{
 			string natal = Bercos.PlanetaNatal(raca);
 			int irmas = Bercos.IrmasDoNatal(natal).Count;

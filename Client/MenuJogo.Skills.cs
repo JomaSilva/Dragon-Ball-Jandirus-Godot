@@ -604,6 +604,7 @@ public partial class MenuJogo
 	/// </summary>
 	private void VerbosDeAprendizado()
 	{
+		DesenharEtapasDaMente();
 		Secao("Ações de aprendizado");
 		var lista = Verbos.Da(Verbos.Aprendizado).ToList();
 		if (lista.Count == 0) { Aviso("Nenhuma acao aqui ainda."); return; }

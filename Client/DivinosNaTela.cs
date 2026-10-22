@@ -32,8 +32,9 @@ public static class DivinosNaTela
 		if (GameClient.Instance is not { DivinoPerto: not 0 } cli) return;
 		if (!Interacoes.Interativo(cli.TipoDoDivinoPerto)) return;
 
-		// A SAIDA DA LUTA: distancia zero (o alvo e posto em mim), e por isso ela ganha de qualquer coisa por perto.
-		if (cli.TipoDoDivinoPerto is BillsEWhis.TipoEmTreino or BillsEWhis.TipoEmDesafio)
+		// A SAIDA DA LUTA: distancia zero (o alvo e posto em mim), e por isso ela ganha de qualquer coisa por perto. (2026-10-21) Vale tambem
+		// pro treino de amizade com um habitante (`Amizade.TipoEmTreino`): o parceiro tambem luta de longe.
+		if (cli.TipoDoDivinoPerto is BillsEWhis.TipoEmTreino or BillsEWhis.TipoEmDesafio or Amizade.TipoEmTreino)
 		{
 			melhorDist = 0;
 			melhor = new GameClient.ObraInfo(0, cli.TipoDoDivinoPerto, cli.NomeDoDivinoPerto, eu,

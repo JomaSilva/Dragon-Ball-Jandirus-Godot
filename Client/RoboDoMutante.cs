@@ -444,7 +444,7 @@ public partial class RoboDoMutante : Node
 		string pra2 = await CDuplo();
 		await AteACenaAcabar();
 		_ditas.Clear();
-		Verbo? verbo = Verbos.PorChave("Icer Form Settings");
+		Verbo? verbo = Verbos.PorChave("Frost Demon Form Settings");
 		verbo?.Acionar?.Invoke();
 		TelaDeFormasDoFrost? tela = TelaDeFormasDoFrost.Instancia;
 		bool abriu = await Ate(() => tela?.AbertaDeTeste == true, 4);

@@ -3649,6 +3649,10 @@ public partial class CharacterVisual : Node2D
 		// bebe (`VisualCatalog.CorpoSprite`); some a roupa e o cabelo da criacao, o que ele usa, o rabo, os olhos de gente (a folha traz o
 		// rosto) e o corpo e as coladas de forma. A AUREOLA FICA: ela nao e roupa, e o aviso de que o corpo esta morto.
 		if (_ficha is { Bebe: true } && !BebeVesteTudoDeTeste) return !ReferenceEquals(s, _corpo) && !ReferenceEquals(s, _aureola);
+		// (2026-10-20) O NEO TUFFLE NO PROPRIO CORPO E CARECA E SEM OS OLHOS DE GENTE: a folha do Baby (`VisualCatalog.CorpoSprite`) ja traz a
+		// cabeca e o rosto dele. O dono: *"como neotuffle ele n tem cabelo, ele fica careca"*. A ROUPA DA CRIACAO CONTINUA POR CIMA, e o que ele
+		// usa tambem -- escolha do dono no mesmo dia, ao contrario do bebe.
+		if (_ficha is { CorpoDoTuffle: true } && !TuffleComCabeloDeTeste && (ReferenceEquals(s, _cabelo) || ReferenceEquals(s, _olhos))) return true;
 		if (ReferenceEquals(s, _corpoDaForma)) return false;
 		// (2026-10-16) O CORPO DE BAIXO SOME quando o corpo da forma o substitui (o Kid Boo da Forma Pura) -- sem isto eram dois corpos,
 		// um em cima do outro. Ver `Catalogo.CorpoDaFormaEscondeOBase`.
@@ -3664,6 +3668,12 @@ public partial class CharacterVisual : Node2D
 	/// folha do bebe. Falso em jogo, sempre.
 	/// </summary>
 	public static bool BebeVesteTudoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--diagtuffle`): o Neo Tuffle no proprio corpo volta a vestir o cabelo e os olhos de gente da ficha por cima da folha
+	/// do Baby. Falso em jogo, sempre.
+	/// </summary>
+	public static bool TuffleComCabeloDeTeste;
 
 	/// <summary>
 	/// O CORPO QUE ESTE BONECO VESTE AGORA DESENHA UM ROSTO? -- e a pergunta que apaga os olhos da

@@ -17,7 +17,9 @@ namespace Jandirus.Server;
 ///   A. ANTES DA MAQUINA: o Tsufurujin comum nao possui ninguem -- e o CONTRA-EXEMPLO `PosseSemAMaquinaDeTeste` (a maquina nao serviria pra
 ///      nada).
 ///   M. A MAQUINA: o menu do mainframe (o laboratorio e a conversao nas duas moedas), o Neo Tuffle Lab que so o Tsufurujin instala (com a
-///      tecnologia do laboratorio), a conversao que so o Tsufurujin faz e que cobra, o disco e o verb que acende.
+///      tecnologia do laboratorio), a conversao que so o Tsufurujin faz e que cobra, o disco e o verb que acende -- e (2026-10-20) o corpo que
+///      vira o do Baby no pacote de aparencia (CONTRA-EXEMPLO `TuffleSemCorpoDoBabyDeTeste`) -- e (2026-10-21) o Neo Tuffle Lab que vai pro
+///      pacote das construcoes no desenho do Cell Pod (CONTRA-EXEMPLO `ArteDoLaboratorio.LabSemCellPodDeTeste`).
 ///   P. A POSSE: as recusas (de pe, longe); a entrada (o poder e os stats do Vegeta, o corpo levantado, o lugar dele); o que o mundo ve (o
 ///      nome, a raca e o cabelo branco-acinzentado -- CONTRA-EXEMPLO `TuffleSemCabeloBrancoDeTeste`); o corpo de verdade do Vegeta escondido,
 ///      fora da grade, intocavel e fora das buscas de quem pega um nocauteado (CONTRA-EXEMPLO `HospedeAVistaDeTeste`), andando com o Tuffle; o
@@ -104,8 +106,8 @@ public sealed partial class GameServer
 				return o;
 			}
 			// O PACOTE DE APARENCIA LIDO COMO O CLIENTE O LE (`GameClient`, no `case S2C.PeerLook`): o nome, a raca, o segundo byte de marcas
-			// (o bit 1 e o cabelo do Neo Tuffle) e os bytes que sobraram.
-			(string Nome, string Raca, bool CabeloBranco, int Sobra) Look(ServerPlayer p)
+			// (o bit 1 e o cabelo do Neo Tuffle; o bit 2, de 2026-10-20, o corpo do Baby) e os bytes que sobraram.
+			(string Nome, string Raca, bool CabeloBranco, bool CorpoDoBaby, int Sobra) Look(ServerPlayer p)
 			{
 				var fio = new NetDataReader(PacoteDeAparencia(p).CopyData());
 				fio.GetByte();
@@ -114,8 +116,8 @@ public sealed partial class GameServer
 				fio.GetString(8);
 				fio.GetAppearance();
 				fio.GetByte(); fio.GetByte(); fio.GetString(120);
-				bool branco = (fio.GetByte() & 2) != 0;
-				return (nome, raca, branco, fio.AvailableBytes);
+				byte marcas2 = fio.GetByte();
+				return (nome, raca, (marcas2 & 2) != 0, (marcas2 & 4) != 0, fio.AvailableBytes);
 			}
 			ServerPlayer? Possuir(ServerPlayer tuffle, out List<string> ouvi)
 			{
@@ -184,9 +186,24 @@ public sealed partial class GameServer
 				doBaby.Lab == 0 && semTech.Any(x => x.Contains("tecnologia")) && androide.Any(x => x.Contains("pede um humano")),
 				$"{Ultimos(semTech)} || {Ultimos(androide)}");
 			baby.Ficha.techskill = 80;
+			var arteCrua = ArteDaObra(doBaby, _obras?.Get(doBaby.Tipo));
 			List<string> instalou = Ouvir(() => ComandoDeTech(baby, "lab_tuffle", ""));
 			AfirmarTf("...e com ela o mainframe vira um Neo Tuffle Lab (o laboratorio 3)",
 				doBaby.Lab == LabDoNeoTuffle && instalou.Any(x => x.Contains("Neo Tuffle Lab")), Ultimos(instalou));
+			// (2026-10-21) O DESENHO DO LAB: o pacote das construcoes manda o Cell Pod pro Neo Tuffle Lab (o pedido do dono, `ArteDoLaboratorio`)
+			// -- e o mainframe cru, antes da instalacao, ia no do catalogo. Os caminhos estao escritos aqui de novo, e nao lidos das constantes.
+			var arteDoLab = ArteDaObra(doBaby, _obras?.Get(doBaby.Tipo));
+			AfirmarTf("O NEO TUFFLE LAB VIRA O CELL POD: cru, o mainframe ia no desenho do catalogo (`64x64tech`, `android_pod`); instalado o "
+				+ "laboratorio 3, o pacote das construcoes manda a folha do Cell Pod, a animacao `default` e o -8 que centra o pod de 48 px no tile",
+				arteCrua is ("res://Assets/Sprites/Misc/Objects/Technology/64x64tech.tres", "android_pod", 0f, 0f)
+				&& arteDoLab is ("res://Assets/Sprites/DU/Items/Cell Pod.tres", "default", -8f, 0f),
+				$"cru {arteCrua}; com o lab {arteDoLab}");
+			Jandirus.Core.Tech.ArteDoLaboratorio.LabSemCellPodDeTeste = true;
+			(string Arte, string Estado, float PixelX, float PixelY) semPod;
+			try { semPod = ArteDaObra(doBaby, _obras?.Get(doBaby.Tipo)); }
+			finally { Jandirus.Core.Tech.ArteDoLaboratorio.LabSemCellPodDeTeste = false; }
+			AfirmarTf("CONTRA-EXEMPLO (defeito injetado: nenhum laboratorio troca o desenho): o Neo Tuffle Lab sai no desenho cru -- a regua do "
+				+ "Cell Pod REPROVA", semPod is not ("res://Assets/Sprites/DU/Items/Cell Pod.tres", "default", -8f, 0f), $"{semPod}");
 
 			bulma.Pos = baby.Pos;
 			List<string> bulmaConverte = Ouvir(() => ComandoDeTech(bulma, "virar_tuffle", ""));
@@ -197,6 +214,7 @@ public sealed partial class GameServer
 				!bulma.Ficha.NeoTuffle && bulmaConverte.Any(x => x.Contains("Tsufurujin")) && !baby.Ficha.NeoTuffle && semZeni.Count > 0,
 				$"{Ultimos(bulmaConverte)} || {Ultimos(semZeni)}");
 			bool viaOVerbAntes = VeOVerb(baby, "hab:tuffle_possuir");
+			bool corpoDoBabyAntes = Look(baby).CorpoDoBaby;
 			baby.Ficha.Zeni = 1_500_000;
 			List<string> virou = Ouvir(() => ComandoDeTech(baby, "virar_tuffle", ""));
 			AfirmarTf("...com um milhao de zeni, o Baby vira NEO TUFFLE: a marca na ficha, o zeni descontado, e a frase que aponta o verb",
@@ -204,10 +222,27 @@ public sealed partial class GameServer
 			AfirmarTf("...e vai pro disco, e o verb \"Possuir um nocauteado\" acende so pra ele (antes apagado; a Bulma nao ve)",
 				mesa.NoDisco(ContasDaBancadaDoTuffle[0])?.Ficha.NeoTuffle == true && !viaOVerbAntes && VeOVerb(baby, "hab:tuffle_possuir")
 				&& !VeOVerb(bulma, "hab:tuffle_possuir"));
+			// (2026-10-20) O CORPO DO NEO TUFFLE: o pacote de aparencia do Baby passa a levar a marca do corpo (a folha do Baby, careca e sem nada
+			// por cima, no cliente -- `Appearance.CorpoDoTuffle`). O Tsufurujin comum nao a leva, nem a Bulma.
+			var convertido = Look(baby);
+			AfirmarTf("...E O CORPO VIRA O DO BABY: o pacote de aparencia dele passa a levar a marca do corpo do Neo Tuffle (antes da maquina nao levava; "
+				+ "a Bulma nao leva) -- o nome e a raca continuam os dele",
+				!corpoDoBabyAntes && convertido is { Nome: "Baby", Raca: "Tsujin", CorpoDoBaby: true, CabeloBranco: false, Sobra: 0 } && !Look(bulma).CorpoDoBaby,
+				$"antes {corpoDoBabyAntes}, depois {convertido}, Bulma {Look(bulma).CorpoDoBaby}");
+			TuffleSemCorpoDoBabyDeTeste = true;
+			bool semCorpo;
+			try { semCorpo = !Look(baby).CorpoDoBaby; }
+			finally { TuffleSemCorpoDoBabyDeTeste = false; }
+			AfirmarTf("CONTRA-EXEMPLO (defeito injetado: o pacote sem a marca do corpo do Neo Tuffle): ele sai com a cara da criacao -- a regua do corpo REPROVA",
+				semCorpo);
 			_noChao.RemoveAll(o => o.Id >= IdDoPalcoDoTuffle && o.Id < IdDoPalcoDoTuffle + 100);
 
 			// ============================================================ P) A POSSE
 			GD.Print("[tuffle] -- P) a posse: o Neo Tuffle entra no Vegeta nocauteado --");
+			// (2026-10-20) O PODER QUE O SENSE LE (`expressedBP`) SO MUDA NO TIQUE DE FICHA, a 5 Hz, e esta bancada nao bombeia o servidor desde o
+			// login dos tres: se o login da Bulma acabava antes de um tique, o Vegeta seguia com o poder de quem nunca tiquou (0) e o controle
+			// dizia que a Bulma nao o sentia NEM SEM A POSSE -- a r2 do `tetonome` e a r1 do `roupababy` cairam nisso. O tique de producao, aqui.
+			vegeta.Ficha.Tick(agoraMs: NowMs());
 			bool sentiaOVegeta = AchoAEnergia(bulma, vegeta);   // o controle do Sense: de pe e sem posse, a Bulma o sente
 			Possuir(baby, out List<string> dePe);
 			vegeta.Pos = baby.Pos + new Vec2(6 * T, 0);
@@ -234,8 +269,9 @@ public sealed partial class GameServer
 				$"KO {baby.Ficha.KO}, vida {baby.Ficha.HP:0.#}, Ki {baby.Ficha.Ki:N0}/{baby.Ficha.MaxKi:N0}, a {Vec2.Distance(baby.Pos, ondeOVegetaCaiu):0.#} px");
 
 			var visto = Look(baby);
-			AfirmarTf("O QUE O MUNDO VE: o corpo do Baby vai pro mundo como o Vegeta -- o nome, a raca -- e com o CABELO BRANCO-ACINZENTADO, sem sobrar byte",
-				visto is { Nome: "Vegeta", Raca: "Saiyan", CabeloBranco: true, Sobra: 0 }, $"{visto}");
+			AfirmarTf("O QUE O MUNDO VE: o corpo do Baby vai pro mundo como o Vegeta -- o nome, a raca, o corpo (sem a folha do Baby) -- e com o CABELO "
+				+ "BRANCO-ACINZENTADO, sem sobrar byte",
+				visto is { Nome: "Vegeta", Raca: "Saiyan", CabeloBranco: true, CorpoDoBaby: false, Sobra: 0 }, $"{visto}");
 			TuffleSemCabeloBrancoDeTeste = true;
 			bool semBranco;
 			try { semBranco = !Look(baby).CabeloBranco; }
@@ -334,8 +370,8 @@ public sealed partial class GameServer
 				$"KO {vegeta.Ficha.KO}, oculto {EstaOculto(vegeta.Id)}, deitado pra {vegeta.DirecaoDeitado} (o emprestado: {caiuPara}), "
 				+ $"perna {vegeta.Combate.Corpo.Achar("Perna esquerda")?.Decepado}");
 			var deVolta = Look(baby);
-			AfirmarTf("...e o mundo volta a ver o Baby: o nome dele, a raca dele, o cabelo de sempre",
-				deVolta is { Nome: "Baby", Raca: "Tsujin", CabeloBranco: false, Sobra: 0 }, $"{deVolta}");
+			AfirmarTf("...e o mundo volta a ver o Baby: o nome dele, a raca dele, sem o cabelo branco -- e de novo no corpo do Neo Tuffle",
+				deVolta is { Nome: "Baby", Raca: "Tsujin", CabeloBranco: false, CorpoDoBaby: true, Sobra: 0 }, $"{deVolta}");
 
 			// ============================================================ S) A SAIDA DO JOGO NO MEIO
 			GD.Print("[tuffle] -- S) a saida do jogo no meio da posse --");
@@ -377,6 +413,8 @@ public sealed partial class GameServer
 		finally
 		{
 			PosseSemAMaquinaDeTeste = HospedeAVistaDeTeste = HospedeComAsRedeasDeTeste = TuffleSemCabeloBrancoDeTeste = PosseNaoAcabaNoNocauteDeTeste = false;
+			TuffleSemCorpoDoBabyDeTeste = false;
+			Jandirus.Core.Tech.ArteDoLaboratorio.LabSemCellPodDeTeste = false;
 			foreach (PosseDoTuffle p in _posses.Values.Distinct().ToList()) Expulsar(p, "");
 			_noChao.RemoveAll(o => o.Id >= IdDoPalcoDoTuffle && o.Id < IdDoPalcoDoTuffle + 100);
 			mesa.Fecha();

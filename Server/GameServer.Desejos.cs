@@ -112,9 +112,49 @@ public sealed partial class GameServer
 	/// A LISTA QUE ESTE JOGADOR VE. So costura os cinco fatos e chama a funcao pura do Core -- a escada
 	/// nao tem uma segunda copia aqui dentro.
 	/// </summary>
+	/// <summary>
+	/// (2026-10-21) O FATOR DOS NUMEROS DESTE DRAGAO: 1 no Porunga ancestral, os 5 das Black Star (`FatorNegro`), e os 20 do Super Shenlong
+	/// -- 4 x a Black Star em tudo (dono: *"super shenlong seria 4 vezes o poder da black star em tudo, menos no potencial"*).
+	///
+	/// (2026-10-22) E NOS SETS DE JOGADOR, A FORCA DIVIDIDA: a forca do set se divide pelos pedidos -- 1 pedido = 100%, 2 = 50% cada, 3 = 33%
+	/// cada (`ConfigDaEstatua.ForcaDeCadaPedido`). O dono pediu o menu de criacao com *"a quantidade, a força etc"* e escolheu esta troca: o
+	/// Shenlong de um pedido forte, o dragao de tres pedidos fracos. Vale pros sets que ja existiam.
+	/// </summary>
+	internal double FatorDoDragao(SetDeEsferas s) =>
+		s.Id == Desejos.IdDoSetDoSuper ? (SuperSemMultiplicadorDeTeste ? 1 : Desejos.MultiplicadorDoSuper)
+		: Esferas.SetDeJogador(s.Id) ? (ForcaInteiraDeTeste ? 1 : ConfigDaEstatua.ForcaDeCadaPedido(s.Desejos))
+		: FatorNegro(s);
+
+	/// <summary>
+	/// (2026-10-22) DEFEITO INJETADO (`--desejoteste`, `--menudodragaoteste`, robo `--diagdesejos`): o set de jogador da a forca inteira em
+	/// cada pedido, quantos houver -- o jogo de antes do menu da estatua. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool ForcaInteiraDeTeste;
+
+	/// <summary>(2026-10-22) A forca de UM pedido deste set: nos de jogador, a do set dividida pelos pedidos; nos outros, a do set.</summary>
+	internal double PoderDeCadaPedido(SetDeEsferas s) => Esferas.SetDeJogador(s.Id) ? s.Poder * FatorDoDragao(s) : s.Poder;
+
+	/// <summary>(2026-10-21) DEFEITO INJETADO (bancada `--desejoteste`): o Super com os numeros do Shenron. Falso em jogo, sempre.</summary>
+	internal static bool SuperSemMultiplicadorDeTeste;
+
+	/// <summary>(2026-10-21) Os marcos deste dragao: os 15 do Super, e nos outros os do Shenron vezes o fator (10 nas Black Star).</summary>
+	internal int MarcosNoDragao(SetDeEsferas s) =>
+		s.Id == Desejos.IdDoSetDoSuper ? Desejos.MarcosDoSuper : Desejos.MarcosDoFator(FatorDoDragao(s));
+
 	private IEnumerable<DesejoDef> MenuDaqui(ServerPlayer pl, SetDeEsferas s) =>
-		Desejos.Menu(s.Poder, s.Desejos, s.TemSupremo, EhKaioshinDoCorpo(pl),
-					 pl.Ficha.Genoma?.RacePercent("Saiyan") ?? 0);
+		Desejos.Menu(s.Poder, s.Desejos,
+			s.Id == EsferasNegras.IdDoSet ? BlackStarComSupremoDeTeste : s.TemSupremo,
+			EhKaioshinDoCorpo(pl),
+			pl.Ficha.Genoma?.RacePercent("Saiyan") ?? 0)
+		// (2026-10-22) O QUE O CRIADOR DESLIGOU no menu da estatua nao esta no dragao dele -- nem na janela, nem no pedido por verbo (que
+		// procura AQUI dentro)
+		.Where(d => DesligadosIgnoradosDeTeste || !s.Desligados.Contains(d.Id));
+
+	/// <summary>
+	/// (2026-10-22) DEFEITO INJETADO (`--menudodragaoteste`, `--desejoteste`): o dragao ignora os desejos que o criador desligou -- o jogo de
+	/// antes do menu da estatua. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool DesligadosIgnoradosDeTeste;
 
 	/// <summary>
 	/// `kai_body_wish_ok(M)` (`WishTable.dm:55-56`) -- os TRES ao mesmo tempo: raca Kai, classe Golden
@@ -252,6 +292,7 @@ public sealed partial class GameServer
 		"curar_planeta" => DesejoDeCurarPlaneta(pl, s, alvo),
 		"super_saiyajin" => DesejoDeSuperSaiyajin(pl, s),
 		"potencial" => DesejoDePotencial(pl, s),
+		"aumentar_potencial" => DesejoDeAumentarPotencial(pl, s),
 		"reviver_todos" => DesejoDeReviverTodos(pl, s),
 		"matar" => DesejoDeMatar(pl, s, alvo),
 		"supremo" => DesejoSupremo(pl, s, pl),
@@ -271,7 +312,8 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool DesejoDeNada(ServerPlayer pl, SetDeEsferas s)
 	{
-		s.Poder *= Desejos.GordoDoDesejoVazio;
+		double gordo = 1 + (Desejos.GordoDoDesejoVazio - 1) * FatorDoDragao(s);
+		s.Poder *= gordo;
 		SalvarEsferas();
 		AnunciarDesejo($"{pl.Name} não pede nada -- e as esferas de {s.NomeDoDragao} ficam mais fortes.");
 		Avisar(pl, $"o poder do set sobe para {s.Poder:N0}.");
@@ -281,10 +323,11 @@ public sealed partial class GameServer
 	/// <summary>"Cash" -- `WishTable.dm:306-309`. `originator.zenni+=50000000`.</summary>
 	private bool DesejoDeDinheiro(ServerPlayer pl, SetDeEsferas s)
 	{
-		pl.Ficha.Zeni += Desejos.ZeniDoDesejo;
+		double zeni = Desejos.ZeniDoDesejo * FatorDoDragao(s);
+		pl.Ficha.Zeni += zeni;
 		Persistir(pl);
 		AnunciarDesejo($"{pl.Name} pede RIQUEZA a {s.NomeDoDragao}!");
-		Avisar(pl, $"você recebe {Desejos.ZeniDoDesejo:N0} zeni. No bolso: {pl.Ficha.Zeni:N0}.");
+		Avisar(pl, $"você recebe {zeni:N0} zeni. No bolso: {pl.Ficha.Zeni:N0}.");
 		return true;
 	}
 
@@ -309,13 +352,15 @@ public sealed partial class GameServer
 			return false;
 		}
 
-		pl.Ficha.wishedpoints += Desejos.MarcosDoDesejo;
-		pl.Livro?.Conceder(Desejos.MarcosDoDesejo);
+		// (2026-10-21) o Super da os 15 dele, e nao os 40 do fator (dono: *"pra n ficar muito broken"*)
+		int marcos = MarcosNoDragao(s);
+		pl.Ficha.wishedpoints += marcos;
+		pl.Livro?.Conceder(marcos);
 		MandarSkills(pl, forcar: true);
 		Persistir(pl);
 
 		AnunciarDesejo($"{pl.Name} pede SABEDORIA a {s.NomeDoDragao}!");
-		Avisar(pl, $"você ganha {Desejos.MarcosDoDesejo} Marcos. Livres agora: {pl.Livro?.MarcosLivres ?? 0}.");
+		Avisar(pl, $"você ganha {marcos} Marcos. Livres agora: {pl.Livro?.MarcosLivres ?? 0}.");
 		return true;
 	}
 
@@ -337,7 +382,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool DesejoDeTecnologia(ServerPlayer pl, SetDeEsferas s)
 	{
-		double xp = Desejos.XpDoDesejoDeTecnologia(pl.Ficha.techskill);
+		double xp = Desejos.XpDoDesejoDeTecnologia(pl.Ficha.techskill) * FatorDoDragao(s);
 		int subiu = pl.Ficha.Estudar(xp);
 		Persistir(pl);
 
@@ -361,7 +406,7 @@ public sealed partial class GameServer
 	private bool DesejoDePoder(ServerPlayer pl, SetDeEsferas s)
 	{
 		double antes = pl.Ficha.BP;
-		pl.Ficha.BP += pl.Ficha.CapCheck(pl.Ficha.relBPmax * Desejos.FracaoDoDesejoDePoder);
+		pl.Ficha.BP += pl.Ficha.CapCheck(pl.Ficha.relBPmax * Desejos.FracaoDoDesejoDePoder) * FatorDoDragao(s);
 		pl.Ficha.Statify();
 		AplicarPoderes(pl);
 		MandarFicha(pl);
@@ -384,7 +429,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private bool DesejoDeInteligencia(ServerPlayer pl, SetDeEsferas s)
 	{
-		pl.Ficha.techmod += Desejos.PontosDeInteligencia;
+		pl.Ficha.techmod += Desejos.PontosDeInteligencia * FatorDoDragao(s);
 		Persistir(pl);
 
 		AnunciarDesejo($"{pl.Name} pede INTELIGÊNCIA a {s.NomeDoDragao}!");
@@ -566,7 +611,7 @@ public sealed partial class GameServer
 
 		AnunciarDesejo($"{pl.Name} pede a {s.NomeDoDragao} a MORTE de {alvo.Name}!");
 
-		if (alvo.Ficha.expressedBP >= s.Poder)
+		if (alvo.Ficha.expressedBP >= s.Poder * FatorDoDragao(s))
 		{
 			AnunciarDesejo($"...e {alvo.Name} é forte demais para as esferas. O desejo FALHA.");
 			Avisar(alvo, "algo tentou apagar você do mundo -- e não conseguiu.");
@@ -755,6 +800,39 @@ public sealed partial class GameServer
 	internal static bool RequisitoDoPotencialIgnoradoDeTeste;
 
 	/// <summary>
+	/// DEFEITO INJETADO (`--desejoteste`): as Black Star multiplicam a fracao do potencial pelos 5x dos outros desejos delas -- o
+	/// absurdo que o dono vetou. Lido pela linha da fracao em <see cref="DesejoDeAumentarPotencial"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool PotencialNegroComOs5xDeTeste;
+
+	/// <summary>
+	/// "AUMENTAR O MEU POTENCIAL" (dono, 2026-10-21) -- nao e o "Liberar" de cima. Soma no `hiddenpotential` uma FRACAO de um ano de
+	/// vida, na unidade da idade (`BP * UPMod`, `Fighter.SomarPotencialOcultoDaIdade`), pelo BP de agora. Shenron e Porunga pela forca
+	/// do set (<see cref="Desejos.FracaoDoAnoDoSet"/>); as Black Star, a fracao FIXA delas (<see cref="Desejos.FracaoDoAnoNaBlackStar"/>),
+	/// SEM o `FatorNegro`. O Super Shenron tem o ramo dele em `ConcederDoSuper`. Pede-se quantas vezes houver pedido.
+	/// </summary>
+	private bool DesejoDeAumentarPotencial(ServerPlayer pl, SetDeEsferas s)
+	{
+		double fracao = s.Id == EsferasNegras.IdDoSet
+			? Desejos.FracaoDoAnoNaBlackStar * (PotencialNegroComOs5xDeTeste ? FatorNegro(s) : 1)
+			: Desejos.FracaoDoAnoDoSet(PoderDeCadaPedido(s));   // (2026-10-22) a forca de UM pedido -- a forca dividida
+		AnunciarDesejo($"{pl.Name} pede a {s.NomeDoDragao} que AUMENTE O SEU POTENCIAL!");
+		SomarPotencialDoDesejo(pl, fracao);
+		return true;
+	}
+
+	/// <summary>
+	/// A SOMA, o aviso e o save -- a mesma pros quatro dragoes. A frase diz a parte do ano, e nao numero de poder (a regra principal
+	/// do BP: sem scouter ninguem sabe o proprio BP).
+	/// </summary>
+	private void SomarPotencialDoDesejo(ServerPlayer quem, double fracaoDoAno)
+	{
+		quem.Ficha.hiddenpotential += Desejos.PotencialDoDesejo(quem.Ficha.BP, quem.Ficha.UPMod, fracaoDoAno);
+		Avisar(quem, $"um poder escondido se acumula em você: o que {fracaoDoAno * 100:0.#}% de um ano de vida daria.");
+		Persistir(quem);
+	}
+
+	/// <summary>
 	/// "Strongest in the Universe" -- `WishTable.dm:198-204` + `proc/sw_strongest_wish` (:102-113).
 	///
 	/// ============================ ELE NAO E UM BUFF: E UMA SENTENCA ============================
@@ -791,7 +869,7 @@ public sealed partial class GameServer
 		MandarFicha(quem);
 		Persistir(quem);
 
-		string dragao = s?.NomeDoDragao ?? "SUPER SHENRON";
+		string dragao = s?.NomeDoDragao ?? "SUPER SHENLONG";
 		AnunciarDesejo($"{quem.Name} trocou a própria VIDA por poder absoluto -- o ser mais forte do "
 					 + $"universo caminha entre nós... por um ano. ({dragao})");
 		// O NUMERO SO PRA QUEM TEM SCOUTER, como no desejo de poder -- ver `PoderNaFrase`.
@@ -840,7 +918,7 @@ public sealed partial class GameServer
 
 		VestirCorpoSaiyajin(pl, molde);
 
-		string dragao = s?.NomeDoDragao ?? "SUPER SHENRON";
+		string dragao = s?.NomeDoDragao ?? "SUPER SHENLONG";
 		AnunciarDesejo($"O céu range... {pl.Name} vestiu a carne de um mortal: o corpo de {molde.Name} "
 					 + $"agora é DELE. ({dragao})");
 		Avisar(pl, "o corpo é seu. Você é um Saiyajin de classe KAIO -- e o ki divino tinge as suas "

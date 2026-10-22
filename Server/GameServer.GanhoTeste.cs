@@ -23,6 +23,12 @@ namespace Jandirus.Server;
 ///   6. (2026-10-16) O LUGAR MULTIPLICA O TIQUE: um minuto de `Treinar` de producao em 1x, 10x e 100x, com peso, meditando e
 ///      no espaco, e o soco de producao em 10x -- o BP medido segue o numero do painel (1x sem nada); a aclimatacao NAO mexe no
 ///      ganho (e PODER: o `gravFelt`, que o pacote da aba de Formas leva). Contra-exemplo: `GainKnobs.GravidadeNaoMultiplicaDeTeste`.
+///   7. (2026-10-20) O POTENCIAL OCULTO PINGA IGUAL EM QUALQUER LUGAR: no treino a 500x com o peso no teto, meditando e no soco, a
+///      parcela dele e a de 1x (o esforco e que leva o lugar); e o caso do relato -- uma hora de treino a 500x com peso, de 1B com o
+///      potencial de quem comprou a One Hundred com 1B -- sobe o pingo do DM, e nao 13B. Contra-exemplo:
+///      `GainKnobs.PotencialOcultoComOLugarDeTeste`.
+///   8. (2026-10-20) O "VIEW SESSION" DIZ A MEDIA DE GANHO POR SEGUNDO, com o scouter em BP e sem ele em porcentagem. Contra-exemplo:
+///      `SessaoSemMediaDeTeste`.
 ///
 /// AS RAZOES SAO DO SOCO, E NAO DO TIRO: o `Attack_Gain` e linear no multiplicador com o estado zerado (o mesmo
 /// preparo da `GanhoDeUmSoco`), e por isso 0,1 e 2 se medem como razao. O `Blast_Gain` tem janela de tiro e sorteio
@@ -84,14 +90,16 @@ public partial class GameServer
 				_ultimoAtaque.Remove((b.Id, a.Id));
 			}
 			// UM SOCO DE PRODUCAO EM ALGUEM, com o preparo de todas as medidas desta bancada (o da `GanhoDeUmSoco`, mais
-			// o vigor cheio: o `CapCheck` le o folego, e duas medidas com folegos diferentes nao dariam razao).
-			SocoMedido SocoEm(ServerPlayer quem, ServerPlayer alvo)
+			// o vigor cheio: o `CapCheck` le o folego, e duas medidas com folegos diferentes nao dariam razao). O potencial
+			// oculto e zero, menos na familia 7, que o mede.
+			SocoMedido SocoEm(ServerPlayer quem, ServerPlayer alvo, double potencial = 0)
 			{
 				SemMarca();
 				// O TERCEIRO SAI DA PISTA: quem socou antes ficou parado no comeco dela, e o soco acha o mais perto.
 				foreach (ServerPlayer outro in new[] { a, b, n })
 					if (outro != quem && outro != alvo) Estacionar(outro);
 				PrepararParaMedir(quem, bp);
+				quem.Ficha.hiddenpotential = potencial;
 				alvo.Altitude = 0;
 				alvo.Ficha.expressedBP = 1_000;
 				double mult = quem.Ficha.FightGainMult(alvo.Ficha, EhMeuMestre(quem, alvo), EhColegaDeMestre(quem, alvo));
@@ -251,19 +259,20 @@ public partial class GameServer
 			// O dono (2026-10-16): *"em 1x gravidade diz 4,8x e em 10x diz 15,63x oq daria uma grande diferença, pq eu lembro q no DM esses
 			// valores realmente multiplicavam o bp gain e aqui deveria ser assim tb"*. UM MINUTO de treino pelo `Treinar` de producao (300
 			// passadas, o `TickFichas` a 5 Hz) com tudo que nao e o lugar congelado -- o preparo da `--salateste` (`OQuantoRendeDeVerdade`) --
-			// e o potencial escondido do tamanho do BP: em quem tem idade ele e quase o ganho inteiro, e se ele nao seguisse o lugar o painel
-			// mentiria de novo.
+			// e o potencial oculto em ZERO: desde 2026-10-20 ele pinga igual em qualquer lugar (a familia 7 o mede), e aqui se mede o que o
+			// lugar multiplica, o esforco.
 			GD.Print("[ganho] -- 6) A GRAVIDADE E O PESO MULTIPLICAM O TIQUE, E A ACLIMATACAO E PODER: o painel diz o que o treino paga (dono, 2026-10-16) --");
 			Estacionar(b, n);
-			(double Bp, double Painel) UmMinuto(double gravidade, double maestria, string peso = "0", bool meditando = false)
+			(double Bp, double Painel) UmMinuto(double gravidade, double maestria, string peso = "0", bool meditando = false,
+												double potencial = 0, double bpDePartida = 0, int passadas = 300)
 			{
 				Fighter f = a.Ficha;
-				PrepararParaMedir(a, bp);
+				PrepararParaMedir(a, bpDePartida > 0 ? bpDePartida : bp);
 				// AS FAMILIAS DE CIMA SOCARAM: o corpo ainda esta "em briga", e a briga interrompe o treino (`PorQueNaoTreinaNemMedita`).
 				a.Combate.LutandoDeVerdade = a.Combate.EmCombate = a.Combate.BrigandoComAlguem = 0;
 				f.IsInFight = false;
 				f.Tick(agoraMs: NowMs());          // o recorde do corpo pro peso (`weight_cap_hw`) sai do `WeightTick`
-				f.hiddenpotential = bp;
+				f.hiddenpotential = potencial;
 				f.UPMod = 1e6;                     // o teto pessoal fora da conta (ver a `--salateste`)
 				f.bp_milestone_mult = 1;
 				f.BPBuffer = 0;
@@ -284,7 +293,7 @@ public partial class GameServer
 				f.med = meditando;
 				double painel = f.MultiplicadorDeGanho();
 				double antes = f.BP;
-				for (int i = 0; i < 300; i++)
+				for (int i = 0; i < passadas; i++)
 				{
 					f.stamina = f.maxstamina;      // o treino cansa (`PagarOVigorDoTreino`), e o folego nao e o assunto
 					Treinar(a);
@@ -298,11 +307,26 @@ public partial class GameServer
 			static double Vezes(double x, double y) => y > 0 ? x / y : 0;
 			static bool Bate(double real, double esperado) => esperado > 0 && Math.Abs(real / esperado - 1) < 0.02;
 
+			// (2026-10-21) O VIGOR ENTROU NO PAINEL (dono: *"coloque no bp gain no painel esse multiplicador de vigor, pros jogadores
+			// saberem"*). Sem gravidade, sem peso e fora da Sala o painel diz SO o vigor: 1,25x de tanque cheio (o `UmMinuto` enche o
+			// tanque) e 1x pela metade -- o "sem nada, 1x" de 2026-10-16. A raca (`Egains`) continua paga so no tique: e do corpo.
+			double PainelComOTanqueEm(double fracao)
+			{
+				Fighter f = a.Ficha;
+				double guardado = f.stamina;
+				f.stamina = f.maxstamina * fracao;
+				f.Statify();
+				double p = f.MultiplicadorDeGanho();
+				f.stamina = guardado;
+				f.Statify();
+				return p;
+			}
 			var em1 = UmMinuto(1, 1);
+			double meioTanque = PainelComOTanqueEm(0.5);   // logo depois do de 1x: o corpo ainda esta sem gravidade, sem peso e fora da Sala
 			var em10 = UmMinuto(10, 10);
 			var em100 = UmMinuto(100, 100);
-			AfirmarGn("**SEM NADA, O PAINEL DIZ 1x** (*\"o bp gain mais baixo quando vc n tem aclimation nem nada deveria ser 1x e nao 1,25\"*): o vigor cheio e o multiplicador da raca pagam no tique, mas sao do corpo",
-					  Math.Abs(em1.Painel - 1) < 1e-9, $"{em1.Painel:0.###}x");
+			AfirmarGn("**SEM NADA, O PAINEL DIZ SO O VIGOR** (dono, 2026-10-21: *\"coloque no bp gain no painel esse multiplicador de vigor\"*): de tanque cheio 1,25x, e pela metade 1x (*\"o bp gain mais baixo quando vc n tem aclimation nem nada deveria ser 1x\"*)",
+					  Math.Abs(em1.Painel - 1.25) < 1e-9 && Math.Abs(meioTanque - 1) < 1e-9, $"cheio {em1.Painel:0.###}x; metade {meioTanque:0.###}x");
 			AfirmarGn("**TREINAR EM 10x RENDE 10x O DE 1x** -- e o painel diz o mesmo: o numero da tela e o que o tique paga",
 					  Bate(Vezes(em10.Bp, em1.Bp), 10) && Bate(Vezes(em10.Painel, em1.Painel), 10),
 					  $"1x: {em1.Bp:0.####} BP/min, painel {em1.Painel:0.##}x | 10x: {em10.Bp:0.####} BP/min, painel {em10.Painel:0.##}x | {Vezes(em10.Bp, em1.Bp):0.###}x");
@@ -310,9 +334,10 @@ public partial class GameServer
 					  $"{Vezes(em100.Bp, em1.Bp):0.###}x; painel {Vezes(em100.Painel, em1.Painel):0.###}x");
 
 			var aclimatado = UmMinuto(1, 10);
-			AfirmarGn("**A ACLIMATACAO NAO MEXE NO GANHO** (*\"fora isso ele n deveria dar ganho de bp eterno\"*): dominando 10x, treinar em 1x rende o mesmo que sem dominar -- e o painel diz 1x",
-					  Bate(Vezes(aclimatado.Bp, em1.Bp), 1) && Math.Abs(aclimatado.Painel - 1) < 1e-9,
-					  $"{Vezes(aclimatado.Bp, em1.Bp):0.###}x; painel {aclimatado.Painel:0.###}x");
+			// (2026-10-21) o painel de quem domina e o MESMO de quem nao domina (e nao mais "1x": o vigor cheio esta nos dois)
+			AfirmarGn("**A ACLIMATACAO NAO MEXE NO GANHO** (*\"fora isso ele n deveria dar ganho de bp eterno\"*): dominando 10x, treinar em 1x rende o mesmo que sem dominar -- e o painel diz o mesmo",
+					  Bate(Vezes(aclimatado.Bp, em1.Bp), 1) && Math.Abs(aclimatado.Painel - em1.Painel) < 1e-9,
+					  $"{Vezes(aclimatado.Bp, em1.Bp):0.###}x; painel {aclimatado.Painel:0.###}x contra {em1.Painel:0.###}x");
 
 			// ...ELA E PODER: o `gravFelt` do DM (soma na base), e o pacote da aba de Formas o leva (a linha "Aclimatado")
 			double PoderAclimatado(double maestria)
@@ -371,7 +396,115 @@ public partial class GameServer
 						  Bate(Vezes(comODefeito.Bp, em1.Bp), 1), $"{Vezes(comODefeito.Bp, em1.Bp):0.###}x");
 			}
 			finally { GainKnobs.GravidadeNaoMultiplicaDeTeste = false; }
+
+			// ---------------------------------------------------------------- 7. o potencial oculto nao segue o lugar
+			// O dono (2026-10-20): *"teve um jogador q de alguma forma treinou na gravidade de 500x com peso no maximo ... ganhou 20 BILHOES de
+			// bp"*, e a escolha dele, "como no DM": o lugar (gravidade, peso, zona) multiplica o ESFORCO, e o potencial oculto pinga cru em
+			// qualquer chao (`Fighter.LugarDoPotencialOculto`). A parcela do potencial se mede pela DIFERENCA -- o mesmo minuto, no mesmo lugar,
+			// com o potencial (dez vezes o BP: o de quem comprou a One Hundred mais alto) e sem ele --, porque a 500x o esforco a afogaria.
+			GD.Print("[ganho] -- 7) O POTENCIAL OCULTO PINGA IGUAL EM QUALQUER LUGAR, e o lugar multiplica so o esforco (dono, 2026-10-20) --");
+			const double potencialAlto = 10 * bp;
+			double PingoNoTreino(double gravidade, string peso) =>
+				UmMinuto(gravidade, gravidade, peso, potencial: potencialAlto).Bp - UmMinuto(gravidade, gravidade, peso).Bp;
+			double PingoMeditando(double gravidade) =>
+				UmMinuto(gravidade, gravidade, meditando: true, potencial: potencialAlto).Bp - UmMinuto(gravidade, gravidade, meditando: true).Bp;
+			double PingoNoSoco(double gravidade)
+			{
+				a.Ficha.Planetgrav = gravidade;
+				a.Ficha.GravMastered = gravidade;
+				SocoMedido com = SocoEm(a, n, potencialAlto);
+				Estacionar(n);
+				SocoMedido sem = SocoEm(a, n);
+				Estacionar(n);
+				return com.Acertou && sem.Acertou ? com.Ganho - sem.Ganho : -1;
+			}
+			// O CASO DO RELATO, de ponta a ponta: 1B de BP com o potencial de quem comprou as tres skills com 1B (14x o BP, o de um Majin),
+			// UMA HORA de `Treinar` de producao (18.000 passadas) a 500x com o peso no teto e o folego sempre cheio (o do morto, que nao cansa).
+			// No DM esse corpo vai a 1,03B; com o potencial levando o lugar passava de 14B (medido fora do jogo, com a mesma DLL). Roda por
+			// ULTIMO: o recorde do corpo pro peso (`weight_cap_hw`) nunca desce, e o de 1B ficaria nas medidas seguintes.
+			double UmaHoraDoRelato() => UmMinuto(500, 500, "100", potencial: 14e9, bpDePartida: 1e9, passadas: 18_000).Bp;
+
+			double treino1 = PingoNoTreino(1, "0"), treino500 = PingoNoTreino(500, "100");
+			AfirmarGn("**O POTENCIAL OCULTO PINGA NO TREINO A 500x COM O PESO NO MAXIMO O MESMO QUE EM 1x SEM PESO** -- como no DM (*\"treinou na gravidade de 500x com peso no maximo\"*: era ai que ele pingava 4000x)",
+					  treino1 > 0 && Bate(Vezes(treino500, treino1), 1), $"1x: +{treino1:0.####} por minuto | 500x com peso: +{treino500:0.####} ({Vezes(treino500, treino1):0.###}x)");
+			var esforco500 = UmMinuto(500, 500, "100");
+			AfirmarGn("...e o ESFORCO, no mesmo lugar, continua pagando o que o painel diz: 500x de gravidade com o peso no teto (8x) = 4000x o de 1x",
+					  Bate(Vezes(esforco500.Bp, em1.Bp), 4000) && Bate(Vezes(esforco500.Painel, em1.Painel), 4000),
+					  $"{Vezes(esforco500.Bp, em1.Bp):0.#}x; painel {esforco500.Painel:0.##}x");
+			double med1 = PingoMeditando(1), med500 = PingoMeditando(500);
+			AfirmarGn("**...MEDITANDO TAMBEM**: a 500x o potencial pinga o mesmo que em 1x (a meditacao nao cansa nem pede peso: era a porta mais barata)",
+					  med1 > 0 && Bate(Vezes(med500, med1), 1), $"1x: +{med1:0.####} | 500x: +{med500:0.####} ({Vezes(med500, med1):0.###}x)");
+			double soco1Oculto = PingoNoSoco(1), soco500Oculto = PingoNoSoco(500);
+			AfirmarGn("**...E NA LUTA**: o mesmo soco de producao no mesmo NPC paga a 500x o mesmo pingo de potencial que em 1x",
+					  soco1Oculto > 0 && Bate(Vezes(soco500Oculto, soco1Oculto), 1),
+					  $"1x: +{soco1Oculto:0.####} | 500x: +{soco500Oculto:0.####} ({Vezes(soco500Oculto, soco1Oculto):0.###}x)");
+
+			GainKnobs.PotencialOcultoComOLugarDeTeste = true;
+			try
+			{
+				double treino500DeAntes = PingoNoTreino(500, "100");
+				AfirmarGn("(defeito injetado: o potencial leva o lugar -- o jogo de 2026-10-16 a 2026-10-20) no treino a 500x com o peso no maximo ele pinga 4000x o de 1x. A prova do treino sabe reprovar",
+						  Bate(Vezes(treino500DeAntes, treino1), 4000), $"{Vezes(treino500DeAntes, treino1):0.#}x");
+				double med500DeAntes = PingoMeditando(500);
+				AfirmarGn("(defeito injetado: o mesmo) meditando a 500x ele pinga 500x o de 1x. A prova da meditacao sabe reprovar",
+						  Bate(Vezes(med500DeAntes, med1), 500), $"{Vezes(med500DeAntes, med1):0.#}x");
+				double soco500DeAntes = PingoNoSoco(500);
+				AfirmarGn("(defeito injetado: o mesmo) o soco a 500x paga 500x o pingo de 1x. A prova da luta sabe reprovar",
+						  Bate(Vezes(soco500DeAntes, soco1Oculto), 500), $"{Vezes(soco500DeAntes, soco1Oculto):0.#}x");
+			}
+			finally { GainKnobs.PotencialOcultoComOLugarDeTeste = false; }
+
+			double hora = UmaHoraDoRelato();
+			AfirmarGn("**O CASO DO RELATO**: 1B com o potencial de quem comprou as tres skills com 1B, uma hora de treino a 500x com o peso no maximo e o folego do morto -- sobe o pingo do DM (menos de 50M), e nao os 13B de antes",
+					  hora > 0 && hora < 50e6, $"+{hora:N0} de BP na hora");
+			GainKnobs.PotencialOcultoComOLugarDeTeste = true;
+			try
+			{
+				double horaDeAntes = UmaHoraDoRelato();
+				AfirmarGn("(defeito injetado: o mesmo) a hora do relato passa de 10B -- os 20 bilhoes do dono. A prova do relato sabe reprovar",
+						  horaDeAntes > 10e9, $"+{horaDeAntes:N0} de BP na hora");
+			}
+			finally { GainKnobs.PotencialOcultoComOLugarDeTeste = false; }
 			AplicarGravidade(a);   // a gravidade do chao de volta
+
+			// ---------------------------------------------------------------- 8. a media da sessao de treino
+			// O dono (2026-10-20): *"adicione com isso no training session ao clicar em view session a media de ganhos de bp por segundo"*.
+			// Pelo verbo de producao (`VerboSessao`, o do "sessao_ver"): a sessao comecou ha 100 s e o BP subiu 500 -- com o scouter, 5 por
+			// segundo; sem ele, 0,05% do BP do comeco em 100 s, 0,0005% por segundo.
+			GD.Print("[ganho] -- 8) O VIEW SESSION DIZ HA QUANTO TEMPO A SESSAO CORRE E A MEDIA DE GANHO POR SEGUNDO (dono, 2026-10-20) --");
+			Protocol.Poder poderesAntes = a.Poderes;
+			try
+			{
+				string Relatorio() => string.Join(" | ", Ouvir(() => VerboSessao(a, nova: false)));
+				PorBp(a, bp);
+				VerboSessao(a, nova: true);
+				a.SessaoDesdeMs = NowMs() - 100_000;
+				a.Ficha.BP = bp + 500;
+				a.Poderes |= Protocol.Poder.Scouter;
+				string comScouter = Relatorio();
+				string cincoPorSegundo = $"{NumeroDaMedia(5)} por segundo";
+				AfirmarGn("**O VIEW SESSION DIZ A MEDIA POR SEGUNDO** (*\"a media de ganhos de bp por segundo\"*): +500 de BP em 1 min 40 s, com o scouter, e 5 por segundo",
+						  comScouter.Contains(cincoPorSegundo) && comScouter.Contains("1 min 40 s") && comScouter.Contains("500"), comScouter);
+				a.Poderes &= ~Protocol.Poder.Scouter;
+				string semScouter = Relatorio();
+				AfirmarGn("...e sem o scouter, em porcentagem do BP do comeco (o sigilo do resto da frase): 0,05% em 100 s, 0,0005% por segundo",
+						  semScouter.Contains($"{NumeroDaMedia(0.0005)}% por segundo") && !semScouter.Contains(cincoPorSegundo), semScouter);
+
+				a.Poderes |= Protocol.Poder.Scouter;
+				SessaoSemMediaDeTeste = true;
+				try
+				{
+					string deAntes = Relatorio();
+					AfirmarGn("(defeito injetado: o View Session de antes) a frase diz o ganho e nao a media. A prova da media sabe reprovar",
+							  deAntes.Contains("500") && !deAntes.Contains("por segundo"), deAntes);
+				}
+				finally { SessaoSemMediaDeTeste = false; }
+			}
+			finally
+			{
+				a.Poderes = poderesAntes;
+				a.EmSessao = false;
+			}
 		}
 		catch (Exception e)
 		{
@@ -381,6 +514,8 @@ public partial class GameServer
 		{
 			GainKnobs.SocoNoArRendeDeTeste = GainKnobs.KiRendeNoDisparoDeTeste = GainKnobs.PvpSemTrocaDeTeste = false;
 			GainKnobs.GravidadeNaoMultiplicaDeTeste = false;
+			GainKnobs.PotencialOcultoComOLugarDeTeste = false;
+			SessaoSemMediaDeTeste = false;
 			LimparTudoDaBancada();
 			mesa.Fecha();
 			ApagarContasDaBancadaDeGanho();

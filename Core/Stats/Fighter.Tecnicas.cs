@@ -128,6 +128,41 @@ public partial class Fighter
 	public double kiaiskill, kibuffskill, kiawarenessskill;
 
 	/// <summary>
+	/// (2026-10-20) AS PERICIAS DE LUTA NO MAXIMO -- o chefe de saga e o Bills (dono: *"a pericia deles sempre é a maxima"*; ver
+	/// `GameServer.DarODobroAoChefe`). As dezessete `*skill` de Ki que crescem usando: as deste arquivo (os debuffs, a defesa de ki, a
+	/// eficiencia, o raio e a efusao, a bola, as rajadas, o alvo, o teleguiado, a perseguicao, a carga, o kiai, os buffs, a leitura) e as tres do
+	/// Ki2.0 (`kicirculationskill`, `kigatheringskill`, `kicontrolskill`). Cada uma vai pra <paramref name="piso"/> -- ou pra maior entre os
+	/// <paramref name="jogadores"/>, se algum passou dele: o chefe nunca fica abaixo de ninguem. Ficam de fora as que nao sao de luta (a
+	/// tecnologia, o teleporte, a aura do Jiren, os contadores que abrem arvore).
+	/// </summary>
+	public void PericiasNoMaximo(double piso, IReadOnlyList<Fighter> jogadores)
+	{
+		double M(Func<Fighter, double> ler)
+		{
+			double m = piso;
+			foreach (Fighter j in jogadores) m = Math.Max(m, ler(j));
+			return m;
+		}
+		kidebuffskill = M(f => f.kidebuffskill);
+		kidefenseskill = M(f => f.kidefenseskill);
+		kiefficiencyskill = M(f => f.kiefficiencyskill);
+		beamskill = M(f => f.beamskill);
+		kieffusionskill = M(f => f.kieffusionskill);
+		blastskill = M(f => f.blastskill);
+		volleyskill = M(f => f.volleyskill);
+		targetedskill = M(f => f.targetedskill);
+		guidedskill = M(f => f.guidedskill);
+		homingskill = M(f => f.homingskill);
+		chargedskill = M(f => f.chargedskill);
+		kiaiskill = M(f => f.kiaiskill);
+		kibuffskill = M(f => f.kibuffskill);
+		kiawarenessskill = M(f => f.kiawarenessskill);
+		kicirculationskill = M(f => f.kicirculationskill);
+		kigatheringskill = M(f => f.kigatheringskill);
+		kicontrolskill = M(f => f.kicontrolskill);
+	}
+
+	/// <summary>
 	/// O `haszanzo = 0` DO `Afterimage_Toggle` (`Ki/misc.dm:91-98`): quem sabe a tecnica da Miragem a GUARDOU. No DM o
 	/// verb alterna o proprio `haszanzo` (que o `after_learn()` da skill pos em 1); aqui o "sabe" e o livro, entao o
 	/// que se guarda e so o botao. Vai pro save com a ficha, como la.

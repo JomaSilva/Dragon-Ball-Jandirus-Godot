@@ -67,6 +67,8 @@ public sealed partial class GameServer
 		string tronoGuardado = _tronos.GetValueOrDefault("guardian", "");
 		int radaresGuardados = pl.Mochila.Quantos(CatalogoDeItens.Radar);
 		const int idDoOutro = 2_000_000_123;
+		var negrasGuardadas = _negras.Select(x => (x.Numero, x.Zona, x.Cx, x.Cy, x.Portador, x.PrecisaAssentar)).ToList();
+		double negroAtivoGuardado = _setNegro.AtivoEm;
 
 		EscutaDoRadar = [];
 		try
@@ -88,6 +90,27 @@ public sealed partial class GameServer
 			if (set == null || sete.Count != Esferas.Total) return;
 			set.AtivoEm = TempoDoMundo - 1;
 			pl.Mochila.Tirar(CatalogoDeItens.Radar, 99);
+
+			// (2026-10-21) UMA BLACK STAR NA TERRA, E O SET NEGRO DORMINDO. O radar comum tambem acende as Black Star do chao deste mundo
+			// (`AcrescentarSinaisNegros`, a regra delas), e o sorteio as espalha por planetas: uma na Terra virava o oitavo sinal e as reguas
+			// de "as sete" reprovavam pela sorte (5 a 12 linhas, conforme a rodada). Aqui ela fica na Terra DE PROPOSITO -- o pior sorteio --,
+			// o set fica acordado por baixo e a chave de bancada o dorme (`NegrasDormemDeTeste`); so a linha do oitavo sinal, logo abaixo
+			// das sete, a solta.
+			EsferaNegra negraNaTerra = _negras.First(x => x.Numero == 1);
+			negraNaTerra.Portador = 0;
+			negraNaTerra.PorZona(terra);
+			negraNaTerra.Cx = 30;
+			negraNaTerra.Cy = 30;
+			negraNaTerra.PrecisaAssentar = false;
+			// ...e as OUTRAS seis longe da Terra: o sorteio de producao podia ter posto mais uma aqui (a r1 da `radarcor` viu 9 sinais).
+			foreach (EsferaNegra outra in _negras.Where(x => x.Numero != 1))
+			{
+				outra.Portador = 0;
+				outra.PorZona(ZoneKey.Premade("Vegeta"));
+				outra.PrecisaAssentar = false;
+			}
+			_setNegro.AtivoEm = TempoDoMundo - 1;
+			NegrasDormemDeTeste = true;
 
 			// O QUE SAIU PRO TESTADOR NUM TIQUE, ja desmontado pelo leitor de producao.
 			List<(bool Ligado, List<SinalDeEsfera> Sinais)> Tique()
@@ -121,6 +144,31 @@ public sealed partial class GameServer
 				  primeiro.Count == 1 && primeiro[0].Ligado && primeiro[0].Sinais.Count == Esferas.Total, Resumo(primeiro));
 			bool nasPosicoes = primeiro.Count == 1 && sete.All(e => primeiro[0].Sinais.Any(s => s.X.Equals(e.X) && s.Y.Equals(e.Y) && !s.Carregada && !s.Comigo));
 			Checa("...cada sinal na posicao EXATA de uma esfera do chao, sem marca de carregada", nasPosicoes);
+
+			// (2026-10-21) ...E A BLACK STAR ACORDADA NO CHAO DESTE MUNDO E O OITAVO SINAL (a regra delas: o radar acha as do mundo onde se
+			// esta; no espaco, os planetas -- a `--esferanegrateste` mede). Ela volta a dormir antes do resto.
+			NegrasDormemDeTeste = false;
+			_radarMandado.Clear();
+			List<(bool Ligado, List<SinalDeEsfera> Sinais)> comANegra = Tique();
+			NegrasDormemDeTeste = true;
+			Checa("...e com a Black Star da Terra acordada, ela e o OITAVO sinal (o radar comum acha as Black Star do mundo onde se esta)",
+				  comANegra.Count == 1 && comANegra[0].Sinais.Count == Esferas.Total + 1
+				  && comANegra[0].Sinais.Any(s => s.X.Equals(negraNaTerra.X) && s.Y.Equals(negraNaTerra.Y)), Resumo(comANegra));
+
+			// (2026-10-21) ...E SO ELA CHEGA MARCADA DE BLACK STAR, pelo leitor de producao do fio: o disco a pinta de vermelho e as sete
+			// comuns de amarelo (dono). Os dois defeitos -- o fio sem a marca e o servidor sem marcar -- deixariam o ponto amarelo.
+			bool SoANegraVermelha()
+			{
+				NegrasDormemDeTeste = false;
+				_radarMandado.Clear();
+				List<(bool Ligado, List<SinalDeEsfera> Sinais)> p = Tique();
+				NegrasDormemDeTeste = true;
+				return p.Count == 1 && p[0].Sinais.Count(s => s.Negra) == 1 && p[0].Sinais.Count(s => !s.Negra) == Esferas.Total
+					   && p[0].Sinais.Single(s => s.Negra) is var n && n.X.Equals(negraNaTerra.X) && n.Y.Equals(negraNaTerra.Y);
+			}
+			Checa("...e SO ela chega com a marca de Black Star (o disco a pinta de VERMELHO; as sete comuns, de amarelo)", SoANegraVermelha());
+			ComDefeito("o fio nao leva a marca da Black Star", v => FioDoRadarDeEsferas.SemMarcaNegraDeTeste = v, SoANegraVermelha);
+			ComDefeito("o servidor nao marca o sinal da Black Star", v => NegraSemMarcaNoRadarDeTeste = v, SoANegraVermelha);
 
 			bool SoQuandoMuda()
 			{
@@ -283,9 +331,22 @@ public sealed partial class GameServer
 		{
 			RadarSemPortaoDeTeste = RadarVeApagadaDeTeste = RadarVeOutroMundoDeTeste = RadarSemComparaDeTeste = RadarMedeDeOndeFoiPegaDeTeste = false;
 			RadarDeEsferas.NorteParaBaixoDeTeste = RadarDeEsferas.SemPrenderNaBordaDeTeste = false;
+			FioDoRadarDeEsferas.SemMarcaNegraDeTeste = NegraSemMarcaNoRadarDeTeste = false;
 			_players.Remove(idDoOutro);
 			EscutaDoRadar = null;
 			EscutaDeAvisos = null;
+
+			NegrasDormemDeTeste = false;
+			_setNegro.AtivoEm = negroAtivoGuardado;
+			foreach ((int numNegra, ZoneKey zonaNegra, int cxNegra, int cyNegra, int donoNegra, bool assentaNegra) in negrasGuardadas)
+				if (_negras.Find(x => x.Numero == numNegra) is { } negraVolta)
+				{
+					negraVolta.PorZona(zonaNegra);
+					negraVolta.Cx = cxNegra;
+					negraVolta.Cy = cyNegra;
+					negraVolta.Portador = donoNegra;
+					negraVolta.PrecisaAssentar = assentaNegra;
+				}
 
 			_sets.Clear(); _sets.AddRange(setsGuardados);
 			_esferas.Clear(); _esferas.AddRange(esferasGuardadas);

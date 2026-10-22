@@ -608,4 +608,81 @@ public sealed partial class GameServer
 		_players.TryGetValue(_palcoDoFreeza, out ServerPlayer? f)
 			? (EmCena(f), f.Combate.Intocavel, _canais.ContainsKey(f.Id), f.Pos.X, f.Pos.Y)
 			: (false, false, false, 0f, 0f);
+
+	/// <summary>
+	/// (2026-10-20) O RAIO NA CARA DO SUPER PERFEITO, PRA FOTO -- o caso do dono (*"eu tinha 1,9B no ssj grade 4 + buffs e o cell 5bi e ainda venci
+	/// tranquilamente"*): o Cell (o molde) no ULTIMO degrau -- o Super Perfeito de 5 bilhoes, que nao sobe de forma por dano -- na beirada leste
+	/// da arena da Terra, sem cerebro e atordoado (nao anda nem desvia: o que se mede e o raio inteiro em cima dele), e o jogador seis tiles a
+	/// oeste com 1,9 bilhao, soltando nele o Kamehameha (a potencia 2,3 do primeiro degrau). O Cell nasce com o dobro do jogador mais forte -- o
+	/// do robo, o unico jogando; <paramref name="comODefeito"/>: o Cell de antes, com a ficha de recem-criado. Devolve o id dele.
+	/// </summary>
+	internal int PalcoTC_RaioNoSuperPerfeito(int jogador, bool comODefeito)
+	{
+		if (!_players.TryGetValue(jogador, out ServerPlayer? pl)) return 0;
+		PalcoTC_LimparORaio();
+		var terra = ZoneKey.Premade("Earth");
+		Arena a = _torneioCfg.Terra.Arena;
+		int cy = (a.Y1 + a.Y2) / 2;
+		const float T = ZoneCollision.TileSize;
+		_bpDoPalco = (pl.Id, pl.Ficha.BP);
+		pl.Ficha.BP = 1.9e9;
+		pl.Ficha.Statify();
+		pl.Ficha.PowerLevel();
+		pl.Ficha.Ki = pl.Ficha.MaxKi;
+		ChefeSemODobroDeTeste = comODefeito;
+		ServerPlayer? cell = NascerNpc("cell", terra, new Vec2(a.X2 - 2 + 0.5f, cy + 0.5f) * T, comODefeito ? 7_600_501UL : 7_600_500UL);
+		if (cell?.Papel == null) return 0;
+		_palcoDoRaio = cell.Id;
+		cell.Papel.Estagio = cell.Papel.Molde.Estagios.Length - 1;
+		EntrarNoDegrau(cell, cura: 0, anunciar: false);
+		cell.Cerebro = null;
+		LargarOInput(cell);
+		cell.Combate.Stun = 60;
+		Transportar(pl, terra, new Vec2(a.X2 - 2 - 6 + 0.5f, cy + 0.5f) * T);
+		CravarOlhar(pl, Facing.East);
+		pl.AlvoId = cell.Id;
+		// (2026-10-20) MIRANDO O TRONCO, a mira de quem atira (`Body.Sortear`: 53% das batidas nele): sem ela as batidas se espalham pelos membros,
+		// e o contra-exemplo da g13 parou em 21% do tronco nos doze segundos -- um nocaute a um ponto. A mira de antes volta no `PalcoTC_LimparORaio`.
+		_miraDoPalco = (pl.Id, pl.Combate.ZonaMirada);
+		pl.Combate.ZonaMirada = "torso";
+		PalcoTC_LinhaDoTiroLivre(cell);
+		if (_canais.TryGetValue(pl.Id, out CanalDeKi? velho)) FecharCanal(pl.Id, velho, null);
+		RaioNomeadoG6(pl, "Kamehameha");
+		return cell.Id;
+	}
+
+	/// <summary>(2026-10-20) O Cell do raio: caido? quanto do tronco sobra (0 a 1)? e o raio do jogador saindo da mao?</summary>
+	internal (bool Caido, double Tronco, bool Raio) PalcoTC_OCellDoRaio(int jogador) =>
+		_players.TryGetValue(_palcoDoRaio, out ServerPlayer? c) && c.Combate?.Corpo.Achar(Jandirus.Core.Combat.Body.NomeDoTronco) is { } t
+			? (c.Ficha.KO, t.Vida / t.VidaMax, _canais.GetValueOrDefault(jogador)?.Raio != null)
+			: (false, 0, false);
+
+	/// <summary>(2026-10-20) O jogador larga o raio.</summary>
+	internal void PalcoTC_LargarORaio(int jogador)
+	{
+		if (_canais.TryGetValue(jogador, out CanalDeKi? c)) FecharCanal(jogador, c, null);
+	}
+
+	/// <summary>(2026-10-20) O Cell do raio sai, o jogador volta ao BP dele e o defeito desliga.</summary>
+	internal void PalcoTC_LimparORaio()
+	{
+		if (_players.TryGetValue(_palcoDoRaio, out ServerPlayer? c)) RemoverNpc(c);
+		_palcoDoRaio = 0;
+		ChefeSemODobroDeTeste = false;
+		PalcoTC_DevolverOBp();
+		if (_miraDoPalco.Id != 0 && _players.TryGetValue(_miraDoPalco.Id, out ServerPlayer? quemMirou)) quemMirou.Combate.ZonaMirada = _miraDoPalco.Zona;
+		_miraDoPalco = default;
+	}
+
+	/// <summary>(2026-10-20) A mira de quem atirou no palco do raio, antes do tronco (volta no `PalcoTC_LimparORaio`).</summary>
+	private (int Id, string? Zona) _miraDoPalco;
+
+	/// <summary>O Cell do palco do raio.</summary>
+	private int _palcoDoRaio;
+
+	/// <summary>(2026-10-20) Uma saga, pro robo do botao Pular: a fase, e se algum chefe dela esta de pe no mundo.</summary>
+	internal (string Fase, bool ChefeNoMundo) PalcoSP_ASaga(string id) =>
+		_sagas.Do(id) is { } est
+			? (est.Fase.ToString(), est.Chefes.Any(c => c.Corpo != 0 && _players.TryGetValue(c.Corpo, out ServerPlayer? p) && !p.Ficha.dead))
+			: ("", false);
 }

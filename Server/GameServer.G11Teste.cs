@@ -504,10 +504,11 @@ public sealed partial class GameServer
 				   Ultimos(falas));
 
 		UsarHabilidade(yd, $"Instant_Transmission:{farol.Assinatura}");
-		long esperaEsperada = (long)(Math.Max(600 / 70.0, 15) * 100);
-		AfirmarG11("com a assinatura ele entra em concentracao por `max(600/teleskill, 15)` decimos",
+		long esperaEsperada = Jandirus.Core.Skills.TransmissaoEmNiveis.MsDaConcentracao(
+			NivelDaTransmissao(yd), yardrat: true, semTeto: false);
+		AfirmarG11("com a assinatura ele entra em concentracao (nivel 1 = 5 s; o Yardrat, mais rapido; nunca passa de 5 s)",
 				   _transmissaoG11.TryGetValue(yd.Id, out TransmissaoG11? t)
-				   && Math.Abs(t.QuandoMs - NowMs() - esperaEsperada) <= 60, $"{esperaEsperada} ms");
+				   && Math.Abs(t.QuandoMs - NowMs() - esperaEsperada) <= 60 && esperaEsperada <= 5000, $"{esperaEsperada} ms");
 
 		yd.Pos = yd.Pos + new Vec2(10, 0);   // "You moved!"
 		falas = Ouvir(() => TickDoEfetorG11());
@@ -521,8 +522,8 @@ public sealed partial class GameServer
 		TickDoEfetorG11();
 		AfirmarG11("vencida a concentracao, o Yardrat aparece ao LADO do farol",
 				   Vec2.Distance(yd.Pos, farol.Pos) <= 1.5 * ZoneCollision.TileSize, $"{Vec2.Distance(yd.Pos, farol.Pos):0} px");
-		AfirmarG11("...quem estava COLADO chegou junto, quem estava longe nao",
-				   Vec2.Distance(colado.Pos, farol.Pos) <= 1.5 * ZoneCollision.TileSize
+		AfirmarG11("...quem estava COLADO DE PE nao foi (a carona agora e quem medita junto), e quem estava longe tambem nao",
+				   Vec2.Distance(colado.Pos, farol.Pos) > 10 * ZoneCollision.TileSize
 				   && Vec2.Distance(longe.Pos, farol.Pos) > 10 * ZoneCollision.TileSize);
 		double kireq70 = Math.Min(yd.Ficha.MaxKi, yd.Ficha.MaxKi / (70.0 / 100));   // = MaxKi: ate teleskill 100 o custo e o tanque inteiro
 		AfirmarG11("...e cobrou exatamente `kireq = min(MaxKi, MaxKi/(teleskill/100))` -- com teleskill 70 isso e o tanque INTEIRO, por conta propria e nao por um BaseDrain em cima (yardrat.dm:101)",

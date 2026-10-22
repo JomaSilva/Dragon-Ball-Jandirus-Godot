@@ -915,6 +915,9 @@ public partial class GameServer
 			// catalogo e a senha da porta. Alcance, terreno, dono e teto quem confere e o servidor
 			// (`GameServer.RecusaDeErguer`), e bloco nao fere ninguem
 			Protocol.C2S.Bloco,
+			// O TREINO FOCADO (2026-10-21): a letra vai crua, como o ClashTecla, e o espaco da respiracao
+			// nao carrega numero nenhum. Quem julga e quem sorteou; o ganho sai no Treinar, nao neste byte.
+			Protocol.C2S.TreinoTecla, Protocol.C2S.RespiracaoTecla,
 		];
 		static List<string> SemArgumento(Protocol.C2S[] lista) =>
 			[.. Enum.GetValues<Protocol.C2S>().Where(c => Array.IndexOf(lista, c) < 0).Select(c => c.ToString())];

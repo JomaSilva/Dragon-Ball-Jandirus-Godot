@@ -793,13 +793,20 @@ public partial class MenuJogo
 	///
 	/// (2026-10-18) E O "CHEGAR AGORA" ao lado (`admin_saga_agora id`): o pedido do dono de o admin pular os dias de aviso do chefe e ele nascer
 	/// agora. Mesmo metadado do Resetar, pra a bancada achar o botao DESTA saga.
+	///
+	/// (2026-10-20) E O "PULAR" (`admin_saga_pular id`): *"adicione um botao q pula uma saga ja matando o boss, pq sem querer resetei todas as
+	/// sagas do server"* -- a saga fecha vencida, com os chefes dela mortos. Ver `GameServer.AdminPularSaga`.
+	///
+	/// (2026-10-20) E O RESETAR E O PULAR PEDEM DOIS CLIQUES (*"ponha confirmação nos botões Pular e Resetar das sagas (o primeiro clique pede
+	/// confirmação, o segundo faz)"*) -- ver <see cref="BotaoDaSagaQueConfirma"/>. O "Chegar agora" segue de um clique.
 	/// </summary>
 	private void PainelDasSagas(GameClient cli)
 	{
 		VBoxContainer corpo = Cartao("Sagas");
 		Nota("Resetar recomeça a saga do marco: os chefes dela saem do mundo e a contagem em dias volta ao começo -- eles chegam de novo na "
 		   + "forma 1. Chegar agora pula os dias de aviso: os chefes a caminho chegam já (a saga que não começou dispara do marco e chega "
-		   + "na hora). As outras sagas ficam como estão.", corpo);
+		   + "na hora). Pular fecha a saga VENCIDA, com os chefes dela mortos (ninguém vira herói, e quem joga não ouve anúncio). As outras "
+		   + "sagas ficam como estão. Resetar e Pular pedem dois cliques: o primeiro pede a confirmação, o segundo faz.", corpo);
 		var pedir = new Button { Text = "Ver as sagas", TooltipText = "pergunta ao servidor o estado de cada saga da cadeia" };
 		pedir.Pressed += () => cli.SendVerbo("admin_sagas", "");
 		corpo.AddChild(pedir);
@@ -818,14 +825,9 @@ public partial class MenuJogo
 				SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
 			};
 			h.AddChild(rotulo);
-			var b = new Button { Text = "Resetar", TooltipText = $"recomeça a saga \"{id}\" do marco" };
+			Button b = BotaoDaSagaQueConfirma("Resetar", "Confirmar o reset?", "admin_saga_resetar", id, $"recomeça a saga \"{id}\" do marco");
 			// A CHAVE VAI EM METADADO, como a do planeta: a bancada acha o botao DESTA saga por ela.
 			b.SetMeta("resetar_saga", id);
-			b.Pressed += () =>
-			{
-				cli.SendVerbo("admin_saga_resetar", id);
-				cli.SendVerbo("admin_sagas", "");   // a lista volta com o estado novo
-			};
 			h.AddChild(b);
 			var agora = new Button { Text = "Chegar agora", TooltipText = $"pula os dias de aviso da saga \"{id}\": os chefes a caminho chegam já" };
 			agora.SetMeta("agora_saga", id);
@@ -835,9 +837,41 @@ public partial class MenuJogo
 				cli.SendVerbo("admin_sagas", "");   // a lista volta com o estado novo
 			};
 			h.AddChild(agora);
+			Button pular = BotaoDaSagaQueConfirma("Pular", "Confirmar o pular?", "admin_saga_pular", id,
+												  $"fecha a saga \"{id}\" VENCIDA, com os chefes dela mortos (ninguém vira herói)");
+			pular.SetMeta("pular_saga", id);
+			h.AddChild(pular);
 			corpo.AddChild(h);
 		}
 	}
+
+	/// <summary>
+	/// (2026-10-20) UM BOTAO DE SAGA DE DOIS CLIQUES (o Resetar, o Pular) -- o dono: *"ponha confirmação nos botões Pular e Resetar das sagas (o
+	/// primeiro clique pede confirmação, o segundo faz)"*; o "sem querer resetei todas as sagas do server" foi um clique so em cada uma. E o
+	/// botao de dois cliques da aba dos alunos (`BotaoDeConfirmar`): o primeiro ARMA (o texto vira a confirmacao, na cor de perigo), o segundo --
+	/// em ate quatro segundos -- manda o verbo e pede a lista de novo; sem ele, o botao desarma sozinho (a assinatura da aba leva o armado). A
+	/// chave e o verbo com a saga, entao armar um botao desarma os outros. Na letra dos outros botoes do cartao.
+	/// </summary>
+	private Button BotaoDaSagaQueConfirma(string rotulo, string confirmacao, string verbo, string id, string dica)
+	{
+		void Fazer()
+		{
+			GameClient.Instance?.SendVerbo(verbo, id);
+			GameClient.Instance?.SendVerbo("admin_sagas", "");   // a lista volta com o estado novo
+		}
+		if (SagaDeUmCliqueDeTeste)
+		{
+			var direto = new Button { Text = rotulo, TooltipText = dica };
+			direto.Pressed += Fazer;
+			return direto;
+		}
+		Button b = BotaoDeConfirmar(rotulo, confirmacao, $"{verbo}:{id}", verbo, dica + " -- dois cliques: o primeiro pede a confirmação", Fazer);
+		b.RemoveThemeFontSizeOverride("font_size");
+		return b;
+	}
+
+	/// <summary>DEFEITO INJETADO (o robo `--diagtorneiocell`, capitulo P): o Resetar e o Pular de um clique so -- o jogo de antes.</summary>
+	internal static bool SagaDeUmCliqueDeTeste;
 
 	private void PainelDosPlanetasDestruidos(GameClient cli)
 	{
@@ -1120,5 +1154,7 @@ public partial class MenuJogo
 		+ $"|{(GameClient.Instance is { } c ? string.Join(",", PlanetasDestruidos(c.Mortos).Select(e => e.Chave)) : "")}"
 		+ $"|{GameClient.Instance?.ModoDeRacas}"
 		// (2026-10-18) E A LISTA DAS SAGAS, pela mesma razao: ela chega pelas escolhas sem mexer em mais nada desta assinatura.
-		+ $"|{(GameClient.Instance?.Escolhas is { Verbo: "admin_sagas" } sagas ? sagas.ChegouEm : 0)}";
+		+ $"|{(GameClient.Instance?.Escolhas is { Verbo: "admin_sagas" } sagas ? sagas.ChegouEm : 0)}"
+		// (2026-10-20) E O BOTAO DE SAGA ARMADO (o Resetar e o Pular de dois cliques): sem isto ele seguiria dizendo "Confirmar" depois de desarmar.
+		+ $"|{(Time.GetTicksMsec() < _gestoArmadoAteMs ? _gestoArmado : "")}";
 }

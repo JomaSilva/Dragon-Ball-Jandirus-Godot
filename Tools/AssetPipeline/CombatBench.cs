@@ -73,7 +73,7 @@ public static class CombatBench
 		// O EIXO DA CURA SAI DO PROTO, igual ao servidor (`GameServer.EixoDeRegen`): o `races.json` e
 		// que diz o `Regeneration` de cada raca. Era `raca == "Namekian"`, um bool que ja estava
 		// errado -- o rework do DM tira o `canheallopped` do Namekuseijin.
-		double reg = cat?.Get(raca == "Halfbreed" ? "Saiyan" : raca)?.MiscStat("Regeneration") ?? 1;
+		double reg = cat?.Corpo(raca)?.MiscStat("Regeneration") ?? 1;
 		return (f, new CombatState(f, raca == "Saiyan", PerfilDeRegen.De(raca, reg)));
 	}
 

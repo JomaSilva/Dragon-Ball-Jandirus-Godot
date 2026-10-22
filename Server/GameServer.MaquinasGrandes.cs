@@ -140,6 +140,13 @@ public sealed partial class GameServer
 		c.HP = 100;   // `x.HP=100`
 		c.KO = false; c.dead = false;
 		c.maxstamina = d.maxstamina; c.stamina = d.maxstamina;
+		// (2026-10-21) A MAESTRIA DE GRAVIDADE VAI JUNTO, antes do Statify e do PorNoMundo. O clone nascia com 1
+		// (`Fighter.GravMastered`) e o berco so SOBE (`AclimatarAoBerco`): num campo que o dono aguenta, a simulacao
+		// era esmagada, presa, e o `GuiarASimulacao` dizia que voce a derrotou. O droide ja copiava (`CriarDroide`).
+		if (!SimulacaoSemAMaestriaDeTeste)
+		{
+			c.GravMastered = d.GravMastered;
+		}
 		c.Statify();
 		c.Ki = c.MaxKi;
 		c.PowerLevel();

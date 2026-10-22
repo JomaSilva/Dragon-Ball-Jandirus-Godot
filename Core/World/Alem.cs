@@ -190,8 +190,9 @@ public static class Alem
 	public const long MsDoDebuffDoEnma = 3_600_000;
 
 	/// <summary>
-	/// (v0.3.0) A FRACAO DO PODER QUE A REENCARNACAO LEVA: o `Reincarnate(0.1)` do Enma (`SkyNPCs.dm:204`) -- o proximo
-	/// personagem da conta nasce com `round(oldBP * 0.1)` de BP base (`Reincarnation.dm:9`).
+	/// (v0.3.0) A FRACAO DO PODER QUE A REENCARNACAO LEVAVA: o `Reincarnate(0.1)` do Enma (`SkyNPCs.dm:204`) -- o proximo
+	/// personagem da conta nascia com `round(oldBP * 0.1)` de BP base (`Reincarnation.dm:9`). Desde 2026-10-22 o BP inteiro vira
+	/// potencial oculto (`GameServer.AplicarOEcoDaReencarnacao`); a fracao so vale no defeito injetado da regra de antes.
 	/// </summary>
 	public const double FracaoDaReencarnacao = 0.1;
 

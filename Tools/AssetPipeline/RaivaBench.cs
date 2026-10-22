@@ -791,7 +791,10 @@ public static class RaivaBench
 		// OS DOIS CHAMADORES DE PRODUCAO, e cada um por um caminho do DM: o LUTO do funil da derrota
 		// (`Death.dm:73-85`, `KO.dm:29-41`) e a ABSORCAO do Majin (`MajinSaga.dm:169-175`). A do bio-androide
 		// MATA a vitima e chega pelo primeiro; a fusao Namekuseijin nao chega por nenhum (ver mais abaixo).
-		string[] chamadoresDeProducao = ["GameServer.Convivio.cs", "GameServer.AbsorcaoMajin.cs"];
+		// (2026-10-21) E MAIS DOIS, que sao regra do dono e nao do DM: o CORPO ACHADO depois (`GameServer.RaivaDoCorpo.cs`, 2026-10-18 --
+		// chamava o gancho desde entao, e esta lista nao sabia) e o ALIADO, o habitante recrutado pela amizade (`GameServer.Aliados.cs`,
+		// `LutoDoAliado`: *"como amigo jogador"*). Os quatro chegam ao gancho; nenhum escreve janela.
+		string[] chamadoresDeProducao = ["GameServer.Convivio.cs", "GameServer.AbsorcaoMajin.cs", "GameServer.RaivaDoCorpo.cs", "GameServer.Aliados.cs"];
 
 		// QUEM PODE ESCREVER NAS DUAS JANELAS: so quem as define (o `AmigoAbatido` mora la) e as
 		// bancadas, que as puxam pra tras pra nao esperar dois minutos de teste.
@@ -847,7 +850,7 @@ public static class RaivaBench
 					}
 
 					// E AS DUAS JANELAS DIRETAMENTE: quem quiser burlar o gancho escreveria no campo.
-					bool escreve = (l.Contains("FuriaExtremaAte") || l.Contains("RaivaComumAte"))
+					bool escreve = (l.Contains("FuriaExtremaAte") || l.Contains("RaivaComumAte") || l.Contains("IrritadoAte"))
 								   && l.Contains('=') && !l.Contains("==") && !l.Contains(">");
 					if (escreve && Array.IndexOf(podemEscreverAJanela, nome) < 0 && !EhBancada(nome))
 						escritoresDaJanela.Add($"{nome}:{i + 1}");
@@ -889,7 +892,7 @@ public static class RaivaBench
 		// O CORACAO DESTA SECAO. Se isto reprovar com zero, o SSJ1 voltou a ser um verb de admin.
 		Checa("o gancho TEM chamador de producao (o luto do convivio)", chamadores.Count > 0,
 			  "nenhum -- o SSJ1 voltou a so sair por admin");
-		Checa("os chamadores de producao sao o LUTO (`GameServer.Convivio.cs`) e a ABSORCAO (`GameServer.AbsorcaoMajin.cs`), e so eles",
+		Checa("os chamadores de producao sao o LUTO (`GameServer.Convivio.cs`), a ABSORCAO (`GameServer.AbsorcaoMajin.cs`), o CORPO ACHADO (`GameServer.RaivaDoCorpo.cs`) e o ALIADO (`GameServer.Aliados.cs`), e so eles",
 			  chamadores.All(c => chamadoresDeProducao.Any(p => c.StartsWith(p + ":")))
 			  && chamadoresDeProducao.All(p => chamadores.Any(c => c.StartsWith(p + ":"))),
 			  string.Join(" | ", chamadores));
@@ -976,6 +979,12 @@ public static class RaivaBench
 
 		Checa("ninguem escreve as duas janelas de raiva por fora do gancho",
 			  escritoresDaJanela.Count == 0, string.Join(" | ", escritoresDaJanela));
+		string[] irritadoFonte = LerFonte(raiz, "Server", "GameServer.Irritado.cs");
+		Checa("o IRRITADO acende pela mao unica (`AcenderJanelaDeRaiva`), e o gatilho mora em `GameServer.Irritado.cs`",
+			  irritadoFonte.Any(l => l.Contains("AcenderJanelaDeRaiva(pl, NivelDeRaiva.Irritado,"))
+			  && irritadoFonte.Any(l => l.Contains("GatilhoDoIrritado.Acende("))
+			  && !irritadoFonte.Any(l => !l.TrimStart().StartsWith("//") && l.Contains("IrritadoAte") && l.Contains('=') && !l.Contains("==")),
+			  "a janela do irritado so pode ser escrita em GameServer.Formas.cs");
 
 		// ============================ A RAIVA COMO NUMERO TEM UMA MAO SO, E ELA ANDA ============================
 		Checa("ninguem ACENDE o `Anger` por fora da projecao (apagar pra 100 pode em qualquer lugar)",
@@ -1010,7 +1019,8 @@ public static class RaivaBench
 			  && PerfilDeFormas.Comum.Raiva == NivelDeRaiva.Nenhuma
 			  && PerfilDeFormas.MeioSangue.Raiva == NivelDeRaiva.Nenhuma);
 		Checa("e a calma e o MENOR nivel (a comparacao `>=` depende dessa ordem)",
-			  NivelDeRaiva.Nenhuma < NivelDeRaiva.Comum
+			  NivelDeRaiva.Nenhuma < NivelDeRaiva.Irritado
+			  && NivelDeRaiva.Irritado < NivelDeRaiva.Comum
 			  && NivelDeRaiva.Comum < NivelDeRaiva.Extrema);
 
 		Console.WriteLine("  -> quem acende a raiva e ver um amigo cair ou morrer na sua frente.");
@@ -1548,6 +1558,12 @@ public static class RaivaBench
 		Checa("raiva COMUM (o nocaute) NAO salta, com o mesmo controle na mao",
 			  !Salta(b, NivelDeRaiva.Comum) && b.Ki == 50 && !b.overcharge, $"Ki {b.Ki:0}");
 		Checa("...nem a calma", !Salta(b, NivelDeRaiva.Nenhuma) && b.Ki == 50);
+		Jandirus.Core.Stats.Fighter irritadoKi = Corpo(50);
+		double topoIrritado = Jandirus.Core.Combat.RaivaEmDegraus.Topo(NivelDeRaiva.Irritado, 120);
+		Checa("o IRRITADO vale o Annoyed do DM (100 + folga/4,25) e NAO salta o Ki",
+			  Math.Abs(topoIrritado - (100 + 20 / 4.25)) < 1e-9
+			  && !Salta(irritadoKi, NivelDeRaiva.Irritado) && irritadoKi.Ki == 50,
+			  $"{topoIrritado:0.###}");
 
 		Jandirus.Core.Stats.Fighter semControle = Corpo(50, controle: false);
 		Checa("SEM o controle (so Ki Unlocked) a furia extrema nao mexe no Ki",
@@ -1833,6 +1849,22 @@ public static class RaivaBench
 		RecusaForma beastFuria = eb.Avaliar("beast", muito, 1, false, pb with { Raiva = NivelDeRaiva.Extrema });
 		Checa("o BEAST com a raiva COMUM e poder sem fim: recusado por FURIA -- e com a extrema abre",
 			  beastComum == RecusaForma.SemFuria && beastFuria == RecusaForma.Pode, $"comum {beastComum}, extrema {beastFuria}");
+		RecusaForma beastIrritado = eb.Avaliar("beast", muito, 1, false, pb with { Raiva = NivelDeRaiva.Irritado });
+		Checa("o BEAST com o IRRITADO tambem nao abre (so a furia)",
+			  beastIrritado == RecusaForma.SemFuria, beastIrritado.ToString());
+
+		FormaDef ssjDaPorta = Catalogo.Def("ssj1")!;
+		(EstadoDeForma ei, PerfilDeFormas pi, _) = Preparado(ssjDaPorta, NivelDeRaiva.Irritado);
+		double portaI = ei.PortaDeBp(ssjDaPorta);
+		PerfilDeFormas soIrritado = pi with { Raiva = NivelDeRaiva.Irritado };
+		RecusaForma naPorta = ei.Avaliar("ssj1", portaI, 1, false, soIrritado);
+		RecusaForma noPreco = ei.Avaliar("ssj1", portaI * Catalogo.PortaDoIrritado, 1, false, soIrritado);
+		Checa("o IRRITADO abre o SSJ1 so em x2,5 da porta (a furia paga x1; a comum continua no agio dela)",
+			  Math.Abs(Catalogo.PortaDoIrritado - 2.5) < 1e-12
+			  && naPorta == RecusaForma.SemPoderPraIrritado && noPreco == RecusaForma.Pode,
+			  $"na porta {naPorta}, a 2,5x {noPreco}");
+		Checa("...e a estreia automatica usa o mesmo plano da raiva comum",
+			  SubidaPelaRaiva.Planejar(ei, portaI * Catalogo.PortaDoIrritado, soIrritado)?.Alvo.Id == "ssj1");
 
 		// ---- o outro defeito: a regra de antes (a comum nao abre o tronco) ----
 		FormaDef ssj1 = Catalogo.Def("ssj1")!, wrathful = Catalogo.Def(Catalogo.IdWrathful)!;

@@ -517,6 +517,7 @@ public partial class MenuJogo : CanvasLayer
 	{
 		var abas = new List<string>(Fixas);
 		PorAAbaDoDiscipulado(abas);   // "Alunos" / "Mestre", logo depois da People: so pra quem tem o vinculo (`MenuJogo.Alunos.cs`)
+		PorAAbaDosAliados(abas);   // (2026-10-21) "Allies", logo depois delas: so pra quem tem aliado ou amizade em andamento (`MenuJogo.Allies.cs`)
 
 		if (_atributos.Tem(Protocol.Poder.Sense))
 			abas.Add(_atributos.Tem(Protocol.Poder.Scouter) ? "Scan" : "Sense");
@@ -600,6 +601,7 @@ public partial class MenuJogo : CanvasLayer
 		"Ki" => ExtraDaAssinaturaDeKi(f),
 		"People" => ExtraDaAssinaturaDeGente(f),
 		AbaDeAlunos or AbaDeMestre => ExtraDaAssinaturaDeAlunos(f),
+		AbaDosAliados => ExtraDaAssinaturaDeAliados(f),
 		"World" => ExtraDaAssinaturaDeMundo(f),
 		"Cargos" => ExtraDaAssinaturaDeCargos(f),
 		"Nav" => ExtraDaAssinaturaDeNav(f),
@@ -637,7 +639,7 @@ public partial class MenuJogo : CanvasLayer
 			"Stats" => $"{comum}{CorpoNaAssinatura(f.KO, f.Morto, f.Letal)}{VitaisNaAssinatura(f)}"
 					 + $"|{_atributos.PhysOff:0.##}|{_atributos.PhysDef:0.##}|{_atributos.KiOff:0.##}"
 					 + $"|{_atributos.Speed:0.##}|{_atributos.Idade}|{f.Class}"
-					 + $"|{_atributos.GanhoDeTreino:0.##}|{_atributos.Gravidade:0.#}"
+					 + $"|{_atributos.GanhoDeTreino:0.##}|{_atributos.VigorMult:0.##}|{_atributos.Gravidade:0.#}"
 					 + $"|{_atributos.PesoMult:0.##}"
 					 + $"|{_atributos.ZonaMult:0.#}|{_atributos.Esmagamento:0.##}",
 			"Body" => $"{comum}|{string.Join(',', CorpoDaAba().Select(p => p.Nome + p.Vida + (p.Decepado ? "x" : "")))}",
@@ -1042,6 +1044,7 @@ public partial class MenuJogo : CanvasLayer
 			case "Ki": Ki(f); break;
 			case "People": Gente(); break;
 			case AbaDeAlunos or AbaDeMestre: AbaDoDiscipulado(); break;
+			case AbaDosAliados: AbaAliados(); break;
 			case "World": Mundo(); break;
 			case "Learning": Aprendizado(); break;
 			case "Forms": AbaFormas(f); break;

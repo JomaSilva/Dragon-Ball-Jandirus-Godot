@@ -113,9 +113,9 @@ public static class StatBench
         foreach ((string raca, string lin) in new[]
                  { ("Human", ""), ("Saiyan", "Saiyan"), ("Saiyan", "Primal Saiyan"),
                    ("Namekian", "Warrior clan"), ("Namekian", "Dragon clan"),
-                   ("Halfbreed", "Future Lineage"), ("Icer", ""), ("Kai", ""), ("Majin", "") })
+                   ("Halfbreed", "Future Lineage"), ("Frost Demon", ""), ("Kai", ""), ("Majin", "") })
         {
-            if (cat.Get(raca == "Halfbreed" ? "Saiyan" : raca) == null) continue;
+            if (cat.Corpo(raca) == null) continue;
             Fighter f = Birth.Nascer(cat, raca, lin, rng, raca);
 
             Console.WriteLine($"{raca + "/" + f.Class,-30} {f.BP,10:0.0} " +

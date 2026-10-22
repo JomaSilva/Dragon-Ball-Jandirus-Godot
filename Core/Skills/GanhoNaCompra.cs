@@ -3,9 +3,13 @@ using Jandirus.Core.Stats;
 namespace Jandirus.Core.Skills;
 
 /// <summary>
-/// O GANHO NA COMPRA COM EXPRESSAO -- `savant.BP += max(1, savant.BP*0.01)`,
-/// `savant.hiddenpotential += savant.relBPmax*2` (One_Hundred, Bodybuilding.dm:89-92; One_Punch e
-/// One_Training com `relBPmax*0.5`, :335-338 e :381-384).
+/// O GANHO NA COMPRA COM EXPRESSAO. No DM era `BP += max(1, BP*0.01)` e
+/// `hiddenpotential += relBPmax*2` (One Hundred) ou `*0.5` (One Punch e One Training).
+/// Desde 2026-10-21 a One Hundred e a One Training somam `max(1, BP*0.05)` e nao mexem no
+/// potencial: esse estoque e da idade. A One Punch nao soma BP. Quem comprou as duas primeiras
+/// na versao que somava potencial recebe o marco de volta no login (<see cref="ReembolsarVersaoAntiga"/>),
+/// e o que a compra somou sai da ficha, pra poder comprar de novo e pegar os 5%. O mecanismo ainda
+/// avalia qualquer expressao que o dado traga.
 ///
 /// ============================ POR QUE NAO E UM BUFF ============================
 /// O extrator so lia CONSTANTE (`physoffBuff += 0.5`) e estas linhas caiam no chao: as tres skills
@@ -151,5 +155,50 @@ public sealed class GanhoNaCompra
 		}
 		livro.EsquecerGanho(path);
 		return devolveu;
+	}
+
+	/// <summary>One Hundred e One Training: as duas cuja compra mudou em 2026-10-21. A One Punch fica.</summary>
+	public static readonly string[] VersaoAntiga =
+	[
+		"/datum/skill/Bodybuilding/One_Hundred",
+		"/datum/skill/Bodybuilding/One_Training",
+	];
+
+	/// <summary>O que o login tirou de uma compra antiga, pra avisar o dono.</summary>
+	public readonly record struct CompraAntigaDevolvida(string Path, string Nome, int Marcos, Dictionary<string, double> Campos);
+
+	/// <summary>
+	/// TIRA A COMPRA ANTIGA da One Hundred e da One Training, devolve o marco de quem pagou e desfaz o que
+	/// ela somou na ficha (o 1% de BP e o potencial oculto). A compra nova, que so grava BP, nao entra aqui:
+	/// rodar de novo num save ja migrado nao tira a skill que ele recomprou.
+	///
+	/// Tambem entra quem comprou e nao tem registro nenhum: essa e a versao de antes do ganho ser gravado,
+	/// e enquanto a skill ficar no livro a compra nova (os 5%) nunca acontece.
+	///
+	/// NAO ENCOLHE A ARVORE. A One Punch pede a One Hundred e o efeito dela e o de combate: tira-la junto
+	/// seria tirar uma skill que o dono nao pediu de volta.
+	/// Copia ensinada ou dada nao custou marco e nao leva o ganho da compra: fica.
+	/// </summary>
+	public static List<CompraAntigaDevolvida> ReembolsarVersaoAntiga(Fighter f, SkillBook livro, SkillCatalog cat)
+	{
+		var saiu = new List<CompraAntigaDevolvida>();
+		foreach (string path in VersaoAntiga)
+		{
+			if (!livro.Sabe(path) || !livro.FoiComprada(path) || livro.FoiEnsinada(path)) continue;
+			bool antiga = !livro.GanhosNaCompra.TryGetValue(path, out Dictionary<string, double>? reg)
+						  || reg.ContainsKey(nameof(Fighter.hiddenpotential));
+			if (!antiga) continue;
+
+			Dictionary<string, double> campos = Desfazer(f, livro, path);
+			int marcos = 0;
+			if (cat.Get(path) is { Arvore: false } s)
+			{
+				marcos = SkillCatalog.CustoDe(s);
+				livro.MarcosLivres += marcos;
+			}
+			livro.Esquecer(path);
+			saiu.Add(new CompraAntigaDevolvida(path, cat.Get(path)?.Nome ?? path, marcos, campos));
+		}
+		return saiu;
 	}
 }

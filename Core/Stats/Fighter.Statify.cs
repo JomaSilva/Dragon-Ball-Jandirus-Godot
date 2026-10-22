@@ -22,6 +22,64 @@ namespace Jandirus.Core.Stats;
 /// </summary>
 public sealed partial class Fighter
 {
+    /// <summary>
+    /// O ANO QUE O <c>AgeCheck</c> CONTA (<c>Aging.dm:125-139</c>): <c>hiddenpotential += BP * UPMod * anosVividos</c>.
+    ///
+    /// <paramref name="anosVividos"/> e quantos anos de vida fecharam NESTA conta, contados da criacao do
+    /// personagem. Nao e <see cref="Idade"/>. Quem nasce aos 18 e faz 19 passa 1. Um Majin criado com
+    /// 45 milhoes na ficha, no primeiro aniversario, tambem passa 1: a idade da ficha nao entra na conta,
+    /// senao a criacao vira poder. O BP e o de agora, numa soma so.
+    /// Zero nao soma: o mes que nao fecha ano deixa o estoque quieto, e a razao cai ate o proximo ano, como no DM.
+    /// </summary>
+    public void SomarPotencialOcultoDaIdade(int anosVividos)
+    {
+        if (anosVividos <= 0) return;
+        anosDesdeACriacao += anosVividos;
+        hiddenpotential += BP * UPMod * anosVividos;
+    }
+
+    /// <summary>
+    /// O MAIOR "Ki base x multiplicador do potencial" que este corpo ja teve com o multiplicador acima de 1 -- o piso do Ki maximo
+    /// (ver <see cref="KiBasePeloPotencial"/>). Zero = o potencial nunca engordou o Ki dele. Vai pro save com a ficha.
+    /// </summary>
+    public double recordeDoKiPeloPotencial;
+
+    /// <summary>
+    /// O KI BASE QUE O POTENCIAL ENGORDA, E QUE NAO EMAGRECE (dono, 2026-10-22).
+    ///
+    /// O multiplicador do potencial e `log4(potencial / BP)` (o `hdnptlmod`, no piso de 1): ganha 1x a cada vez que a razao
+    /// quadruplica e perde 1x a cada vez que o BP quadruplica. Com a reencarnacao passando o BP inteiro da vida anterior pro
+    /// potencial, o Ki maximo de quem renasce comecava bem acima do normal e escorregava ate o normal conforme o BP alcancava. O
+    /// dono: *"caso o novo teto esteja abaixo do teto anterior por conta do potencial, o teto n cai, pq n faz sentido o cara perder
+    /// ki max pq ele atingiu o potencial"*.
+    ///
+    /// O RECORDE (<see cref="recordeDoKiPeloPotencial"/>) guarda o maior Ki base x multiplicador, e o Ki maximo nunca sai dele: o
+    /// crescimento normal (o Ki base subindo com o treino e o BP) passa dele quando passar. SO O MULTIPLICADOR ACIMA DE 1 ESCREVE
+    /// O RECORDE: quem nunca teve potencial acima de 4x o BP tem a conta de sempre. O que vem DEPOIS na conta (Energy Level,
+    /// amplificadores, forma, o corte de selo) fica fora do recorde -- continua entrando e saindo na hora.
+    ///
+    /// DIVERGENCIA DECLARADA: no DM o Ki maximo cai junto com a razao (`master.dm:181`).
+    /// </summary>
+    private double KiBasePeloPotencial(double hdnptlmod)
+    {
+        double agora = baseKi * hdnptlmod;
+        if (PotencialNoKiCaiDeTeste) return agora;
+        if (hdnptlmod > 1) recordeDoKiPeloPotencial = Math.Max(recordeDoKiPeloPotencial, agora);
+        return Math.Max(agora, recordeDoKiPeloPotencial);
+    }
+
+    /// <summary>
+    /// DEFEITO INJETADO (bancada `--v030teste`, familia L): o Ki maximo volta a cair quando o BP alcanca o potencial -- o DM, e o
+    /// jogo de antes de 2026-10-22. Lido por <see cref="KiBasePeloPotencial"/>. Falso em jogo, sempre.
+    /// </summary>
+    public static bool PotencialNoKiCaiDeTeste;
+
+    /// <summary>
+    /// DEFEITO INJETADO (bancada `--v030teste`, familia L): o potencial volta a multiplicar a regen de Ki e o teto seguro da carga
+    /// -- o DM (`master.dm:182` e `:184`), e o jogo de antes de 2026-10-22. Lido pelo <see cref="Statify"/>. Falso em jogo, sempre.
+    /// </summary>
+    public static bool PotencialNaRegenENaCargaDeTeste;
+
     public void Statify()
     {
         if (BP == 0) return;
@@ -124,30 +182,27 @@ public sealed partial class Fighter
 
         // --- potencial escondido ----------------------------------------
         // Quem tem muito mais potencial do que poder (o "modo Uub") ganha teto de Ki e de
-        // raiva -- nao ganha stat.
+        // raiva -- nao ganha stat. (2026-10-22, dono) Desde entao so o Ki maximo (que nao cai mais: `KiBasePeloPotencial`)
+        // e a raiva maxima leem o multiplicador; a regen e o teto seguro da carga, nao.
         //
         // ============================ POR QUE O TETO DE KI CAIA A CADA SOCO ============================
-        // `hdnptlmod = log4(hiddenpotential / BP)`. No DM o numerador cresce todo ano de jogo
-        // (`Aging.dm:125-139`, `AgeCheck`: `hiddenpotential += BP*UPMod*anos`, proporcional ao BP), e
-        // a razao se sustenta. Este port NAO portou essa linha: as unicas escritas em `hiddenpotential`
-        // sao o nascimento (1) e o presente de compra da One Hundred/One Punch/One Training
-        // (`hiddenpotential += relBPmax*k`, `Bodybuilding.dm:87-96`). Numerador CONGELADO, denominador
-        // subindo a cada soco, treino e meditacao -> `MaxKi`, `kicapacity`, `powerupcap`, `KIregen` e
-        // `MaxAnger` DESCIAM sozinhos, e o soco basico nem gasta Ki do atacante -- o dono viu "o Ki
-        // maximo cai em vez do atual" (2026-09-04). A One Hundred ainda acelerava a propria queda: com
-        // `hiddenpotential >= BP` o `AttackGain` toma o ramo gordo (1/6 em vez de 1/12).
+        // `hdnptlmod = log4(hiddenpotential / BP)`. No DM o numerador cresce no ano que o `AgeCheck` conta
+        // (`Aging.dm:125-139`: `hiddenpotential += BP*UPMod*anos`). Entre um ano e o outro o BP sobe no
+        // treino e a razao cai. Este port ficou sem essa linha ate 2026-10-21: as unicas escritas eram o
+        // nascimento (1), a heranca do filho e a compra da One Hundred/One Punch/One Training
+        // (`hiddenpotential += relBPmax*k`, `Bodybuilding.dm:87-96`). Numerador parado, denominador
+        // subindo -> `MaxKi` e `MaxAnger` desciam sozinhos (o dono, 2026-09-04).
         //
-        // O CONSERTO: a razao que a compra deu fica GARANTIDA (`potencialGarantido`, somada na compra,
-        // devolvida ao esquecer). O numerador efetivo e o maior entre o potencial gravado e
-        // `BP * potencialGarantido` -- a mesma razao no dia da compra e em qualquer dia depois, e o bonus
-        // de Ki que a skill deu e o bonus que ela mantem. O campo `hiddenpotential` em si NAO muda, de
-        // proposito: ele tambem governa o ritmo de ganho de BP (`AttackGain`/`MedGain`), e tornar ESSE
-        // permanente seria mudar a progressao inteira, o que ninguem pediu.
+        // DUAS COISAS SEGURAM A RAZAO, E NAO SAO A MESMA:
+        //   * O ANO (`SomarPotencialOcultoDaIdade`) escreve o estoque de verdade, como no DM. Isso tambem
+        //     engorda o pinga de BP do treino, da meditacao e do soco, que leem `hiddenpotential` cru.
+        //   * A COMPRA ANTIGA (`potencialGarantido`) ainda segura o piso de Ki de quem comprou One Hundred,
+        //     One Punch ou One Training antes de 2026-10-21. Compra nova dessas skills nao escreve potencial
+        //     (so BP na One Hundred e na One Training; a One Punch nao soma nada). O numerador efetivo e o
+        //     maior entre o estoque gravado e `BP * potencialGarantido`.
         //
-        // DIVERGENCIA DECLARADA: o DM tambem nao mantem a razao dentro do ano (ela decai ate o proximo
-        // `AgeCheck`) e a corta em `TopBP` (`Stats.dm:171-173`). Nenhuma das duas pontas foi portada; o
-        // que se garante aqui e o que a skill promete ao jogador -- mais Ki, e nao "mais Ki ate o
-        // proximo treino".
+        // DIVERGENCIA DECLARADA: o DM corta a razao em `TopBP` (`Stats.dm:171-173`). Essa ponta nao foi
+        // portada.
         // ==================================================================================================
         hdnptltoBP = Math.Max(Math.Max(hiddenpotential, BP * potencialGarantido), 1) / Math.Max(BP, 1);
         double hdnptlmod = hdnptltoBP > 1 ? Math.Max(DmMath.Log(4, hdnptltoBP), 1) : 1;
@@ -158,7 +213,8 @@ public sealed partial class Fighter
         // bancada; em jogo ele e sempre falso.)
         MaxAnger = Math.Max(120, hdnptlmod * Ewillpower * angerMod * baseAnger)
                    + (Jandirus.Core.Combat.RaivaEmDegraus.LegendaryAngerSoNoTetoDeTeste ? 0 : legendaryAngerBonus);
-        MaxKi = baseKi * KiMod * kiAmp * trueKiMod * hdnptlmod * Math.Max(0.01, kicapacity_remove) * TMaxKi * racialMaxKi;
+        // (2026-10-22) o potencial engorda o Ki maximo e ele nao emagrece quando o BP alcanca o potencial -- ver `KiBasePeloPotencial`
+        MaxKi = KiBasePeloPotencial(hdnptlmod) * KiMod * kiAmp * trueKiMod * Math.Max(0.01, kicapacity_remove) * TMaxKi * racialMaxKi;
 
         // (2026-10-18) O TANQUE DO CHEFE DE SAGA TEM PISO -- o dono: *"o freeza n ta usando death beam"*. O Ki sem fim do chefe (o
         // cadeado `Nutricao.KiSempreCheio`) reenchia um tanque de NPC -- 259 no Freeza de Namek --, e o Death Beam cobra `kireq*25` por
@@ -170,8 +226,11 @@ public sealed partial class Fighter
         // Capacidade de concentrar Ki no corpo antes de se machucar, e o teto do power-up.
         // O max(...,1) envolve o ARGUMENTO INTEIRO do log: so o fator de skill protegido nao
         // bastava -- um KiMod zerado fazia log(8, 0) derrubar o statify a cada tick.
+        // (2026-10-22) SEM O POTENCIAL: o teto seguro e das pericias, do Energy Level e do Ki Skill -- o dono: *"potencial n deveria
+        // afetar regen, carga do ki"*. DIVERGENCIA DECLARADA do DM (`master.dm:182`, que le o `hdnptlmod` dentro do log8). O teto
+        // absoluto continua proporcional ao Ki maximo, que o potencial engorda.
         double skillKi = Math.Max(kicirculationskill / 10 * (kigatheringskill / 10), 1)
-                         * KiMod * hdnptlmod * Math.Max(Ekiskill, 0.1);
+                         * KiMod * (PotencialNaRegenENaCargaDeTeste ? hdnptlmod : 1) * Math.Max(Ekiskill, 0.1);
         kicapacity = 1.3 * kicapacityMod
                      * Math.Max(MaxKi * Math.Max(DmMath.Log(8, Math.Max(skillKi, 1)), 1) * OozaruBuff, 1.3 * MaxKi);
 
@@ -194,13 +253,49 @@ public sealed partial class Fighter
         powerupcap *= Math.Max(racialTetoDaCarga, 0.01);
 
         // Regeneracao de Ki: sempre passa por Ki Skill e pela MAIOR entre tecnica e esoterico.
-        KIregen = kiregenMod * basekiregen * kiregenStyle * trueKiMod * hdnptlmod * Tkiregen
+        // (2026-10-22) E SEM O POTENCIAL, pelo pedido do dono logo acima: ela continua proporcional ao Ki maximo (o tanque que o
+        // potencial engorda rende mais Ki por segundo), mas enche no MESMO ritmo, em %, de quem nao tem potencial. No DM o
+        // `hdnptlmod` entrava aqui direto e de novo pelo `MaxKi` (`master.dm:184`): ~135x mais Ki por segundo a 11,6x de
+        // multiplicador. DIVERGENCIA DECLARADA.
+        KIregen = kiregenMod * basekiregen * kiregenStyle * trueKiMod * (PotencialNaRegenENaCargaDeTeste ? hdnptlmod : 1) * Tkiregen
                   * Ekiskill * Math.Max(Emagiskill, Etechnique)
                   * (MaxKi / 100) * (statstamina * 5) * concealeddeBuff
                   * DmMath.Log(10, Math.Max(kigatheringskill, 10)) / 900;
 
         MagicCap = 2000 * Emagiskill * mana_cap_mod;
     }
+
+    /// <summary>
+    /// (2026-10-20) A CONTA DE VOLTA DO <see cref="Statify"/>: os oito atributos CRUS que fazem o `R` de cada um sair no ALVO pedido. E o chefe
+    /// de saga (e o Bills) com o DOBRO do jogador mais forte -- o dono: *"faça os stats do boss(todos os de saga e contando o bills) ser o dobro
+    /// do jogador mais forte"* (ver `GameServer.DarODobroAoChefe`). O `R` e o numero que a aba Stats mostra (vezes 10), e ele e LINEAR no cru:
+    /// `R = (max(cru,0.1) x max(Mod,0.1) + soma) x fator`, com a soma (buff + T) e o fator (estilo, forma, racial, fadiga) que o corpo tem
+    /// agora -- as oito linhas do `R` acima, lidas de tras pra frente. Roda o `Statify` antes (os canais de agora) e depois (o `R` novo).
+    ///
+    /// QUEM MEXER NAS LINHAS DO `R` ACIMA MEXE AQUI JUNTO: a bancada (`--torneiocellteste`, familia W) confere o `R` dos oito no alvo.
+    /// </summary>
+    public void FixarAtributos(double physoffR, double physdefR, double techniqueR, double kioffR, double kidefR, double kiskillR,
+                               double speedR, double magiR)
+    {
+        Statify();
+        double fadiga = DmMath.Clamp(statstamina * Ewillpower, 0.6, 1);
+        physoff = CruPara(physoffR, physoffMod, Math.Max(physoffBuff + Tphysoff, 0.1),
+                          physoffStyle * formaPhysoff * racialPhysoff * fadiga * Math.Max(0.01, phys_remove));
+        physdef = CruPara(physdefR, physdefMod, Math.Max(physdefBuff + Tphysdef + Items.ArmaduraDeTech.Bonus(this), 0.1),
+                          physdefStyle * formaPhysdef * racialPhysdef * fadiga);
+        technique = CruPara(techniqueR, techniqueMod, Math.Max(techniqueBuff + Ttechnique, 0.1), techniqueStyle * formaTecnica * racialTecnica);
+        kioff = CruPara(kioffR, kioffMod, Math.Max(kioffBuff + Tkioff, 0.1), kioffStyle * formaKioff * racialKioff * fadiga);
+        kidef = CruPara(kidefR, kidefMod, Math.Max(kidefBuff + Tkidef, 0.1), kidefStyle * formaKidef * racialKidef * fadiga);
+        kiskill = CruPara(kiskillR, kiskillMod, Math.Max(kiskillBuff + Tkiskill, 0.1), kiskillStyle * racialKiskill);
+        speed = CruPara(speedR, speedMod, Math.Max(speedBuff * Tspeed, 0.1),
+                        speedStyle * formaSpeed * racialSpeed * DmMath.Clamp(staminapercent * Ewillpower, 0.75, 1));
+        magiskill = CruPara(magiR, magiMod, Math.Max(magiBuff + Tmagi, 0.1), Tmagimon * magiStyle);
+        Statify();
+    }
+
+    /// <summary>O cru que da este `R`: `(R / fator - soma) / max(Mod, 0.1)`, no piso de 0,1 que o `Statify` poe no cru.</summary>
+    private static double CruPara(double r, double mod, double soma, double fator) =>
+        Math.Max((r / Math.Max(fator, 1e-9) - soma) / Math.Max(mod, 0.1), 0.1);
 
     /// <summary>Ajuste global de armadura de ki (era `globalkiarmormod`, um knob de admin).</summary>
     public static double GlobalKiArmorMod = 1;

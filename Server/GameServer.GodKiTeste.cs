@@ -26,7 +26,7 @@ namespace Jandirus.Server;
 /// a bancada varre a carta em volta da origem e escolhe o divino mais leve e um comum leve.
 ///
 /// ============================ AS OITO FAMILIAS ============================
-///   1. O REQUISITO -- pessoal, em torno dos 250 milhoes do DM, e sobre o BP BASE.
+///   1. O REQUISITO -- pessoal, em torno de 1 bilhao (o dono, 2026-10-21; o DM pede 250 milhoes), e sobre o BP BASE.
 ///   2. O UNIVERSO -- quais mundos sao divinos: a raridade, a garantia (com o sorteio desligado), o que
 ///      nunca e (o espaco, a Terra) e o que e por natureza (o Reino dos Deuses).
 ///   3. A ATMOSFERA -- abaixo do requisito nada acumula e a frase e uma; acima, o tempo enche o medidor;
@@ -200,7 +200,7 @@ public partial class GameServer
 	// =====================================================================
 	private void GkORequisito(ServerPlayer pl)
 	{
-		GD.Print("[godki] -- 1) o requisito: pessoal, em torno dos 250 milhoes, e sobre o BP BASE --");
+		GD.Print("[godki] -- 1) o requisito: pessoal, em torno de 1 bilhao, e sobre o BP BASE --");
 
 		// MIL PERSONAGENS: a faixa, os valores discretos, e a mesma semente dando sempre o mesmo numero.
 		var valores = new SortedSet<double>();
@@ -217,9 +217,16 @@ public partial class GameServer
 		}
 		int esperados = DespertarDivino.FaixaPessoalAte - DespertarDivino.FaixaPessoalDe + 1;
 		AfirmarGk($"o requisito e PESSOAL: mil personagens caem em {esperados} valores, de {valores.Min:N0} a {valores.Max:N0} "
-				  + $"(o `godki_at` do DM, {DespertarDivino.BpBaseDeFabrica:N0}, vezes {DespertarDivino.FaixaPessoalDe / 10.0:0.0} a {DespertarDivino.FaixaPessoalAte / 10.0:0.0})",
+				  + $"(o centro, {DespertarDivino.BpBaseDeFabrica:N0}, vezes {DespertarDivino.FaixaPessoalDe / 10.0:0.0} a {DespertarDivino.FaixaPessoalAte / 10.0:0.0})",
 				  naFaixa && valores.Count == esperados, $"{valores.Count} valores");
 		AfirmarGk("...e a mesma semente da sempre o mesmo numero (nada e re-sorteado no login)", estavel);
+
+		// O NUMERO DO DONO, CRAVADO: a regua de cima le a propria constante e passaria com qualquer centro (com os 250
+		// milhoes do DM inclusive). Esta e a que reprova se o requisito voltar a ser o de antes.
+		AfirmarGk("o centro e 1 BILHAO de BP base (dono, 2026-10-21: *\"suba o requisito pra god ki pra 1 bilhao\"*): "
+				  + "mil personagens vao de 900 milhoes a 1,3 bilhao",
+				  Math.Abs(valores.Min - 9e8) < 1 && Math.Abs(valores.Max - 1.3e9) < 1,
+				  $"{valores.Min:N0} a {valores.Max:N0}");
 
 		double meu = RequisitoDeGodKi(pl);
 		AfirmarGk("o do HOST sai da semente dos limiares dele (a gravada no save), e o servidor responde o mesmo duas vezes",

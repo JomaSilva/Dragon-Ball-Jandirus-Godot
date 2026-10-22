@@ -4336,7 +4336,28 @@ public partial class GameServer
 						return (primeira, comVisada, t, raios);
 					}
 
-					ServerPlayer? chefao = NascerNpc("freeza_vegeta", zona, ondeNasce, 991);
+					// ============================ (2026-10-20) ...E SEM O DOBRO DO JOGADOR MAIS FORTE ============================
+					// O chefe de saga nasce com as pericias de luta no maximo e o dobro dos atributos do jogador mais forte
+					// (`GameServer.DarODobroAoChefe`) -- e com a de eficiencia em 100 a Death Ball do Freeza fica barata: ele abre a
+					// briga com ela, o comeco dela GRITA pelo `Falar` (o mesmo caso da Ira, logo acima) e, com a esfera nas maos, o
+					// `Ki_Wave` nao sai -- a armadilha la embaixo o pegou na rodada g10 do `freezaraiva` ("falou aos 1,8 s", "0 raio(s)
+					// aberto(s)"). O que esta cena mede e a BOCA do cerebro, entao os dois Freezas dela nascem com a ficha de antes.
+					//
+					// (2026-10-22) ...E SEM A DEATH BALL NO LIVRO: o Freeza virou Frost Demon Mutante, e a ficha de recem-criado da classe
+					// dele ja paga a Death Ball (309 de Ki) no comeco da briga -- a armadilha pegou de novo, pelo mesmo caminho ("falou aos
+					// 1,8 s", "0 raio(s) aberto(s)"). O arsenal desta cena e o raio; a Death Ball dele e da `--chefesteste` e da `--v030teste`.
+					// ================================================================================================================
+					ServerPlayer? NascerSemODobro()
+					{
+						ServerPlayer? n;
+						ChefeSemODobroDeTeste = true;
+						try { n = NascerNpc("freeza_vegeta", zona, ondeNasce, 991); }
+						finally { ChefeSemODobroDeTeste = false; }
+						n?.Livro?.Esquecer("/datum/skill/rank/DeathBall");
+						return n;
+					}
+
+					ServerPlayer? chefao = NascerSemODobro();
 					Checa("(preparo) o chefe nasceu pelo funil de producao, com cerebro",
 						  chefao is { Cerebro: not null }, chefao == null ? "nao nasceu" : "sem cerebro");
 
@@ -4416,7 +4437,7 @@ public partial class GameServer
 						// "SPIRIT GUN!") vazaria pelo `Falar`. Sem `TickDosCanaisDeKi` no laco, so um APERTO abre o canal,
 						// entao cada vez que o `EnraizadoPorKi` dele liga e um aperto do `Ki_Wave`.
 						// ================================================================================================================
-						if (NascerNpc("freeza_vegeta", zona, ondeNasce, 991) is { Cerebro: not null } chefeMudo)
+						if (NascerSemODobro() is { Cerebro: not null } chefeMudo)
 						{
 							nascidos.Add(chefeMudo);
 							chefeMudo.Cerebro!.Boca.Ligado = false;

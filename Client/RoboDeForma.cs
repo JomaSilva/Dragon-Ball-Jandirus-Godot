@@ -11601,7 +11601,7 @@ public partial class RoboDeForma : Node
 				 $"...mas o boneco ja aparece transformado (penteado `{vis.CabeloDeTeste.GetFile()}`)");
 
 		// ============================ O ESTALO E DE UM INSTANTE QUE NAO HOUVE ============================
-		// O caminho instantaneo toca um `Trilha.Dash` no fim -- o estalo que marca a transformacao. Chegar
+		// O caminho instantaneo toca o estalo do C no fim -- o que marca a transformacao. Chegar
 		// num planeta com tres transformados dispararia tres estalos de coisas que aconteceram antes de eu
 		// existir ali: a mesma mentira da cinematica, so que no ouvido.
 		//
@@ -12674,15 +12674,16 @@ public partial class RoboDeForma : Node
 			// vale o QUADRO INTEIRO em que a tecla desceu, mesmo ja solta, e esta bancada aperta as duas no mesmo
 			// quadro -- entao o T de la de cima ainda "acabou de ser apertado" aqui, e ele vem antes do M na
 			// leitura. O que o defeito produz e a tecla VALENDO; qual delas, depende do relogio do motor.
-			bool telinha = TelaDeMeditacao.Instancia is { NaTela: true };
+			bool telinha = TelaDeMeditacao.Instancia is { NaTela: true } || TelaDeTreino.Instancia is { NaTela: true };
 			Conferir(corpo.AtividadeDeTeste != Jandirus.Net.Protocol.Activity.Parado || telinha,
 					 $"(defeito injetado: o ramo da posse volta a ler as teclas de atividade) a mesma regua REPROVA -- "
-					 + $"possuido, a tecla volta a valer (atividade `{corpo.AtividadeDeTeste}`, telinha de meditacao "
+					 + $"possuido, a tecla volta a valer (atividade `{corpo.AtividadeDeTeste}`, telinha "
 					 + $"{(telinha ? "ABERTA" : "fechada")})");
 
 			// e desfaz, pra o resto da bancada nao herdar nem a atividade nem a tela -- pela mesma tecla que a
 			// ligou, que alterna (tres voltas cobrem o pior caso: o T ainda "recem-apertado" trocando uma pela outra)
-			if (telinha) TelaDeMeditacao.Instancia?.Fechar();
+			TelaDeMeditacao.Instancia?.Fechar();
+			TelaDeTreino.Instancia?.Fechar();
 			for (int i = 0; i < 3 && corpo.AtividadeDeTeste != Jandirus.Net.Protocol.Activity.Parado; i++)
 			{
 				string tecla = corpo.AtividadeDeTeste == Jandirus.Net.Protocol.Activity.Treinando ? "train" : "meditate";

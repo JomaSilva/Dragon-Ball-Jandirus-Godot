@@ -531,187 +531,10 @@ public sealed partial class GameServer
 	}
 
 	// =====================================================================
-	// 8. INSTANT TRANSMISSION -- `yardrat.dm:99-197`
+	// 8. INSTANT TRANSMISSION -- o corpo mudou pra GameServer.Transmissao.cs (2026-10-21).
+	// O registro do verbo, a classe TransmissaoG11, o tique e o PontoAoLadoG11 ficaram aqui.
 	// =====================================================================
-	/// <summary>
-	/// O TELETRANSPORTE POR ASSINATURA DE KI, em duas viagens: sem argumento LISTA quem da pra
-	/// sentir (`generateShunkanList`, `:170-197`); com nome, se concentra e vai.
-	///
-	/// ============================ A CONTA DE QUEM DA PRA SENTIR (`:172-196`) ============================
-	///     distancemod    = max(get_dist, 1) / 30          (outro planeta conta como 30 tiles aqui)
-	///     zlevelmod      = max(1, |dz|) * 2               (MESMO andar = 2, e do DM)
-	///     skillmod       = 50 / teleskill
-	///     familiaritymod = log10(famili) se famili > 1, senao 1
-	///     entra se BP <= expressedBP_dele * familiaritymod / (zlevelmod * max(distancemod, 0.2) * skillmod)
-	/// e sai da lista quem esconde o poder (`expressedBP <= BP/3`), quem esta no Outro Mundo
-	/// (Afterlife/Hell/Heaven -- o `canAL` nunca e escrito no DM) e quem esta na Sala do Tempo ou
-	/// selado. Conhecido (familiaridade > 0) aparece pelo NOME; desconhecido, pela ASSINATURA.
-	/// ==============================================================================================
-	///
-	/// ============================ O CUSTO, E O DEFEITO QUE ELE CARREGAVA ============================
-	/// `kireq = min(MaxKi, MaxKi/(teleskill/100))` (`:101`) e depois `Ki -= kireq*BaseDrain`
-	/// (`:146`): o `kireq` JA e uma fracao do tanque (o tanque inteiro ate `teleskill` 100, um terco
-	/// em 300, um quinto em 500 -- e o proprio comentario do `:101`), e o `BaseDrain` (raiz do MaxKi/140)
-	/// o multiplicava de novo: pra qualquer tanque acima de 140 o custo passava do proprio Ki e o
-	/// `max(Ki,0)` da linha seguinte ZERAVA a energia, sempre. Por decisao do dono (2026-09-02,
-	/// "corrija esses bugs q vc citou") o verb cobra o que confere: `Ki -= kireq`. E a mesma familia
-	/// que o G5/G6/G7 ja fecharam ("conferia X e cobrava X*BaseDrain").
-	/// ==========================================================================================
-	///
-	/// A ESPERA `max(600/teleskill, 15)` decimos (`:136`) virou agenda no efetor: o corpo fica
-	/// ANCORADO e, se sair do lugar, "You moved!" cancela (`:160-164`). O `teleskill` cresce com a
-	/// distancia (`:140-145`: Yardrat `+0,2/tile` ate 500, os outros `+0,1/tile` ate 300) e e campo do
-	/// lutador -- persiste. A carona `oview(1)` (`:151-154`) so vai `if(M.client)` -- quirk do DM: o
-	/// teste e sobre o ALVO ter cliente, e nao sobre o carona.
-	/// </summary>
-	private void TeletransporteG11(ServerPlayer pl, string arg)
-	{
-		if (RecusarPelaMenteFragmentada(pl)) return;
-		Fighter f = pl.Ficha;
-		if (f.KO || EhCadaver(pl)) { Avisar(pl, "nao da, caido."); return; }
-		// (v0.3.2) O MORTO DE PE TRANSMITE -- e quem sai do Outro Mundo chega entre os vivos DE PASSAGEM: 5 s, meio transparente, e a
-		// alma volta (dono, 2026-10-16; ver `GameServer.PassagemDoMorto.cs`). De 2026-10-15 ate aqui ele ouvia a frase abaixo, a porta
-		// do `PodeSaltarDePlaneta` -- que continua fechada pro salto de planeta e pras naves.
-		if (f.dead && MortoNaoTransmiteDeTeste) { Avisar(pl, "um morto nao sai do Outro Mundo por conta propria."); return; }
-		if (pl.Combate is { Stun: > 0 }) { Avisar(pl, "voce ainda esta atordoado."); return; }
-		if (Agarrado(pl)) { Avisar(pl, "preso num agarrao voce nao se concentra."); return; }
-		if (f.med || f.train || NaMente(pl) || pl.Selo.Preso || _canais.ContainsKey(pl.Id))
-		{
-			Avisar(pl, "voce nao consegue fazer isso agora.");
-			return;
-		}
-		// DE ONDE NAO SE SAI, NAO SE SAI PELA TRANSMISSAO: a pergunta de todo teleporte (`PorQueNaoSaiDaqui`,
-		// `GameServer.Validacoes.cs`). A linha de cima so sabia da mente e do selo -- o preso da Sala do Tempo, o
-		// absorvido e o passageiro de uma fusao iam embora por aqui.
-		if (PorQueNaoSaiDaqui(pl) is { Length: > 0 } preso) { Avisar(pl, preso); return; }
-		if (_transmissaoG11.ContainsKey(pl.Id)) { Avisar(pl, "voce ja esta se concentrando -- nao se mexa."); return; }
 
-		List<(ServerPlayer Quem, string Rotulo, bool Conhecido)> lista = ListaDeAssinaturasG11(pl);
-		if (lista.Count == 0)
-		{
-			Avisar(pl, "voce nao sente nenhuma assinatura valida. Chegue mais perto, ou conheca melhor as pessoas.");
-			return;
-		}
-
-		if (arg.Length == 0)
-		{
-			Avisar(pl, "assinaturas de Ki ao alcance:");
-			foreach ((ServerPlayer q, string rotulo, bool conhecido) in lista)
-			{
-				// (contra o poder que quem le COMPARA: escondido, o expresso dele e a constante 5 -- ver `PoderQueSeCompara`)
-				double razao = q.Ficha.expressedBP / Math.Max(PoderQueSeCompara(pl), 1e-9);
-				if (!conhecido) razao *= _rng.Next(100, 1001) / 500.0;   // `(rand(100,1000)/500)` -- "a bit random for unfamiliarity"
-				Avisar(pl, $"  {rotulo}: parece ter {razao:0.##}x o seu poder");
-			}
-			Avisar(pl, "para ir: Instant_Transmission:<nome ou assinatura>");
-			return;
-		}
-
-		ServerPlayer? alvo = null;
-		foreach ((ServerPlayer q, string rotulo, _) in lista)
-			if (string.Equals(rotulo, arg, StringComparison.OrdinalIgnoreCase)
-				|| string.Equals(q.Name, arg, StringComparison.OrdinalIgnoreCase)) { alvo = q; break; }
-		if (alvo == null) { Avisar(pl, $"nao ha assinatura '{arg}' ao seu alcance."); return; }
-
-		double teleskill = Math.Max(f.teleskill, 1e-9);
-		double kireq = Math.Min(f.MaxKi, f.MaxKi / (teleskill / 100));   // `:101`
-		long espera = (long)(Math.Max(600 / teleskill, 15) * 100);        // decimos -> ms (`:136`)
-
-		_transmissaoG11[pl.Id] = new TransmissaoG11
-		{
-			Alvo = alvo.Id, QuandoMs = NowMs() + espera, Ancora = pl.Pos, Kireq = kireq,
-		};
-		MandarEfeito(pl, "transmissao", espera);
-		Avisar(pl, $"voce esta se teletransportando -- nao se mexa ({espera / 1000.0:0.#}s).");
-		GD.Print($"[G11] {pl.Name} se concentra em {alvo.Name} ({espera} ms, teleskill {f.teleskill:0.#})");
-	}
-
-	/// <summary>O `generateShunkanList()` (`yardrat.dm:170-197`). Ver <see cref="TeletransporteG11"/>.</summary>
-	private List<(ServerPlayer Quem, string Rotulo, bool Conhecido)> ListaDeAssinaturasG11(ServerPlayer pl)
-	{
-		var lista = new List<(ServerPlayer, string, bool)>();
-		Fighter f = pl.Ficha;
-		double skillmod = 50 / Math.Max(f.teleskill, 1e-9);
-
-		foreach (ServerPlayer m in _players.Values)
-		{
-			if (m == pl || !EhPessoa(m) || m.Ficha.dead) continue;
-
-			bool mesmaZona = m.Zone.Hash == pl.Zone.Hash;
-			double distTiles = mesmaZona ? Vec2.Distance(m.Pos, pl.Pos) / ZoneCollision.TileSize : 30;
-			double distancemod = Math.Max(distTiles, 1) / 30;
-			double zlevelmod = (mesmaZona ? 1 : 1) * 2;   // `max(1, abs(dz)) * 2`: mesmo andar da 2
-			int famili = pl.Social.Familiaridade(m.Assinatura);
-			bool conhecido = famili > 0;
-			double familiaritymod = famili > 1 ? Math.Log10(famili) : 1;
-
-			bool alcanca = f.BP <= m.Ficha.expressedBP * familiaritymod
-								  / (zlevelmod * Math.Max(distancemod, 0.2) * skillmod);
-			if (!alcanca) continue;
-
-			if (m.Ficha.expressedBP <= m.Ficha.BP / 3) continue;   // "weak or concealing"
-			if (m.Zone.Name is "Hell" or "Afterlife" or "Heaven") continue;   // `!canAL`, que nunca liga
-			if (m.Zone.Name == "Hyperbolic_Time_Chamber" || m.Selo.Preso) continue;
-			// (2026-10-18) O KI DIVINO SO SE TRAVA COM KI DIVINO -- a regra do Sense (`AchoAEnergia`): quem nao o tem nao o sente, e nao tem onde mirar.
-			if (KiDivinoEscondido(m) && !SenteKiDivino(pl)) continue;
-			// (2026-10-19) ...E O ANDROIDE NAO TEM ASSINATURA DE KI PRA TRAVAR -- a mesma regra do Sense (`AndroideSemKi`). O DM deixava o teleporte
-			// achar o jogador androide (o `yardrat.dm` nao testa raca); o dono: *"androides nem deveriam aparecer no sense"*.
-			if (AndroideSemKi(m)) continue;
-
-			lista.Add((m, conhecido ? m.Name : m.Assinatura, conhecido));
-		}
-		return lista;
-	}
-
-	/// <summary>A chegada do teletransporte, no fim da concentracao (`yardrat.dm:137-159`).</summary>
-	private void ChegarPelaTransmissaoG11(ServerPlayer pl, TransmissaoG11 t)
-	{
-		Fighter f = pl.Ficha;
-		if (!_players.TryGetValue(t.Alvo, out ServerPlayer? alvo) || alvo.Ficha.dead)
-		{
-			Avisar(pl, "a assinatura que voce seguia se apagou.");
-			return;
-		}
-
-		// A CHEGADA E SEGUNDOS DEPOIS DO PEDIDO, e as duas perguntas se refazem aqui, ANTES de cobrar: quem se
-		// concentrava pode ter ficado preso no meio (a janela da Sala do Tempo fecha sozinha), e a assinatura pode
-		// ter entrado onde nao se chega por teleporte -- a lista (`ListaDeAssinaturasG11`) so tira quem ja estava
-		// na Sala ou selado na hora de LISTAR.
-		if (PorQueNaoSaiDaqui(pl) is { Length: > 0 } preso) { Avisar(pl, preso); return; }
-		if (alvo.Zone.Hash != pl.Zone.Hash && ZonaFechadaAoTeleporte(alvo.Zone))
-		{
-			Avisar(pl, "a assinatura que voce seguia entrou num lugar onde nao se chega assim.");
-			return;
-		}
-
-		bool mesmaZona = alvo.Zone.Hash == pl.Zone.Hash;
-		double distTiles = mesmaZona ? Vec2.Distance(alvo.Pos, pl.Pos) / ZoneCollision.TileSize : 30;
-
-		// `:140-145` -- a pericia cresce com a distancia; Yardrat ate 500, os outros ate 300
-		bool yardrat = string.Equals(pl.Race, "Yardrat", StringComparison.OrdinalIgnoreCase);
-		if (yardrat && f.teleskill < 500) f.teleskill = Math.Min(500, f.teleskill + distTiles * 0.2);
-		else if (!yardrat && f.teleskill < 300) f.teleskill = Math.Min(300, f.teleskill + distTiles * 0.1);
-
-		f.Ki -= t.Kireq;   // o `:146` cobrava `kireq*BaseDrain` e zerava o Ki -- ver o cabecalho
-		f.Ki = Math.Max(f.Ki, 0);
-
-		// `for(var/mob/nnM in oview(1)) if(M.client)` (`:151`) -- so ha carona quando se chega numa PESSOA
-		List<ServerPlayer> caronas = EhPessoa(alvo) ? LevarCaronas(pl) : [];
-		// (v0.3.2) QUEM SAI DO OUTRO MUNDO MORTO CHEGA DE PASSAGEM -- o dono e cada carona morta; armada ANTES do salto, pra a zona de
-		// chegada ja o receber meio transparente (a apresentacao da aureola, `TrocarAureolas`). Ver `GameServer.PassagemDoMorto.cs`.
-		List<ServerPlayer> dePassagem = [.. caronas.Prepend(pl).Where(q => q.Ficha.dead && Alem.EhOAlem(q.Zone) && !Alem.EhOAlem(alvo.Zone))];
-		foreach (ServerPlayer quem in dePassagem) ArmarAPassagem(quem);
-		AvisarPertoG3(pl, RaioDaVista, $"{pl.Name} desaparece num clarao!", excetoCentro: true);
-		Saltar(pl, alvo.Zone, PontoAoLadoG11(alvo), caronas, "te leva junto no Teletransporte.");
-		foreach (ServerPlayer quem in dePassagem) AvisarSePessoa(quem, FraseDaPassagem);
-		MandarEfeito(pl, "zanzoken", 500);
-
-		Avisar(pl, "voce localiza a assinatura e aparece num instante!");
-		Avisar(alvo, $"{pl.Name} aparece num instante ao seu lado!");
-		GD.Print($"[G11] {pl.Name} se teletransportou ate {alvo.Name} (teleskill {f.teleskill:0.#}, +{caronas.Count} carona)");
-	}
-
-	/// <summary>O tile ao lado do alvo (`usr.loc = M.loc` poe os dois no MESMO tile; aqui um tile a leste, se livre).</summary>
 	private Vec2 PontoAoLadoG11(ServerPlayer alvo)
 		=> PontoLivre(alvo.Zone, new Vec2(alvo.Pos.X + ZoneCollision.TileSize, alvo.Pos.Y)) ?? alvo.Pos;
 
@@ -1680,13 +1503,11 @@ public sealed partial class GameServer
 		if (Vec2.Distance(pl.Pos, t.Ancora) > 4 || pl.Ficha.KO || CaidoPelaMorte(pl))   // (v0.3.2) o morto de pe se concentra
 		{
 			_transmissaoG11.Remove(pl.Id);
-			MandarEfeito(pl, "transmissao", 0);
 			Avisar(pl, "voce se mexeu! A concentracao se perde.");
 			return;
 		}
 		if (agora < t.QuandoMs) return;
 		_transmissaoG11.Remove(pl.Id);
-		MandarEfeito(pl, "transmissao", 0);
 		ChegarPelaTransmissaoG11(pl, t);
 	}
 

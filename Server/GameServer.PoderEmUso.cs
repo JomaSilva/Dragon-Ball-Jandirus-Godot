@@ -242,6 +242,7 @@ public sealed partial class GameServer
 		{
 			case Jandirus.Core.Forms.NivelDeRaiva.Extrema: bits |= BitsDoPoderEmUso.Furioso; break;
 			case Jandirus.Core.Forms.NivelDeRaiva.Comum: bits |= BitsDoPoderEmUso.ComRaiva; break;
+			case Jandirus.Core.Forms.NivelDeRaiva.Irritado: bits |= BitsDoPoderEmUso.Irritado; break;
 		}
 		return new PoderEmUsoState((byte)PoderEmUso.Porcento(pl.Ficha), bits);
 	}

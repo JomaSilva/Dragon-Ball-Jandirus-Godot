@@ -212,6 +212,6 @@ public partial class GameServer
 		Avisar(pl, ClasseDeNuvem.AvisoDaQueda(origem));
 		GD.Print($"[server] {pl.Name}: caiu pela nuvem {origem} -> {destino.Zona}");
 
-		MoveToZone(pl.Id, ZoneKey.Premade(destino.Zona), onde);
+		ViajarVoluntario(pl, ZoneKey.Premade(destino.Zona), onde);
 	}
 }

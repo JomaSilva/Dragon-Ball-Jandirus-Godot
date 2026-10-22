@@ -188,15 +188,15 @@ public sealed partial class GameServer
 			GD.Print("[filhos] -- A) as regras: quem cruza, quem gera, a classe mais rara, a idade zero --");
 			AfirmarFl("Humano com Saiyajin da o meio-Saiyajin, a mesma raca da a mesma raca, e o resto NAO cruza (o pedido do dono)",
 				Filhos.RacaDoFilho("Human", "Saiyan") == Filhos.MeioSaiyajin && Filhos.RacaDoFilho("Saiyan", "Human") == Filhos.MeioSaiyajin
-				&& Filhos.RacaDoFilho("Majin", "Majin") == "Majin" && Filhos.RacaDoFilho("Human", "Majin") == "" && Filhos.RacaDoFilho("Saiyan", "Icer") == "");
+				&& Filhos.RacaDoFilho("Majin", "Majin") == "Majin" && Filhos.RacaDoFilho("Human", "Majin") == "" && Filhos.RacaDoFilho("Saiyan", "Frost Demon") == "");
 			if (_racas is not { } cat) { AfirmarFl("o catalogo de racas carregou", false); return; }
 			AfirmarFl("COMO CADA RACA GERA (o 'Breed Type' do proto, e o dono por cima): Humano, Saiyajin e meio-Saiyajin com um par; Frost Demon e Namekuseijin sozinhos, pelo ovo; o Majin dos dois jeitos; o androide de energia infinita com um par, o de absorcao nao",
 				Filhos.ComoGera(cat, "Human", false) == ModoDeGerar.Gravidez && Filhos.ComoGera(cat, "Saiyan", false) == ModoDeGerar.Gravidez
 				&& Filhos.ComoGera(cat, Filhos.MeioSaiyajin, false) == ModoDeGerar.Gravidez
-				&& Filhos.ComoGera(cat, "Icer", false) == ModoDeGerar.Ovo && Filhos.ComoGera(cat, "Namekian", false) == ModoDeGerar.Ovo
+				&& Filhos.ComoGera(cat, "Frost Demon", false) == ModoDeGerar.Ovo && Filhos.ComoGera(cat, "Namekian", false) == ModoDeGerar.Ovo
 				&& Filhos.ComoGera(cat, "Majin", false) == (ModoDeGerar.Gravidez | ModoDeGerar.Ovo)
 				&& Filhos.ComoGera(cat, "Android", true) == ModoDeGerar.Gravidez && Filhos.ComoGera(cat, "Android", false) == ModoDeGerar.Nenhum,
-				$"{Filhos.PorQueNaoTemFilhoComPar(cat, "Icer", false)} | {Filhos.PorQueNaoTemFilhoComPar(cat, "Android", false)} | {Filhos.PorQueNaoPoeOvo(cat, "Human", false)}");
+				$"{Filhos.PorQueNaoTemFilhoComPar(cat, "Frost Demon", false)} | {Filhos.PorQueNaoTemFilhoComPar(cat, "Android", false)} | {Filhos.PorQueNaoPoeOvo(cat, "Human", false)}");
 			BebeACaminho Par(string raca, string cPai, string lPai, string cMae, string lMae) => new()
 				{ Raca = raca, ClasseDoPai = cPai, LinhagemDoPai = lPai, ClasseDaMae = cMae, LinhagemDaMae = lMae };
 			var rng = new Random(7);

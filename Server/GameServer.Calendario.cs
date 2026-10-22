@@ -171,7 +171,8 @@ public sealed partial class GameServer
 	// =====================================================================
 	/// <summary>
 	/// CONTA OS MESES DESTE PERSONAGEM ate o mes de agora (<see cref="Envelhecimento.ContarMeses"/>) -- o `AgeCheck` do DM. Quem nao
-	/// envelhece: o morto e o Deus da Destruicao com o titulo (`Aging.dm:145`). O ano que fecha passa pela pergunta da velhice
+	/// envelhece: o morto e o Deus da Destruicao com o titulo (`Aging.dm:145`). O ano que fecha soma o potencial oculto
+	/// (`Fighter.SomarPotencialOcultoDaIdade`, `Aging.dm:125-139`) e passa pela pergunta da velhice
 	/// (`ConferirMorteDeVelhice`), uma vez, com a idade inteira de uma vez -- como o DM, que soma `Year - LastYear` e so entao olha o
 	/// corpo. Devolve quantos anos fecharam.
 	/// </summary>
@@ -189,6 +190,8 @@ public sealed partial class GameServer
 
 		pl.Idade = c.Idade;
 		pl.Ficha.Idade = c.Idade;
+		// O estoque do ano (`Aging.dm:125-139`), antes da velhice: o ano que mata tambem soma.
+		pl.Ficha.SomarPotencialOcultoDaIdade(c.AnosFechados);
 		pl.Ficha.Statify();
 		pl.SigAtributos = "";
 		if (avisar) Avisar(pl, $"Você faz {pl.Idade} anos.");
@@ -224,6 +227,7 @@ public sealed partial class GameServer
 		if (anos == 0) return;
 		pl.Idade = idade;
 		pl.Ficha.Idade = idade;
+		pl.Ficha.SomarPotencialOcultoDaIdade(anos);
 		pl.Ficha.Statify();
 		ConferirMorteDeVelhice(pl);
 	}

@@ -29,6 +29,12 @@ public static class AcoesDoDragao
 	/// <summary>Quantos pedidos a estatua da por invocacao -- o `Redo()` do criador (`Dragonballs.dm:59-89`).</summary>
 	public const string Pedidos = "pedidos";
 
+	/// <summary>
+	/// (2026-10-22) O MENU DA ESTATUA: o nome, os pedidos e os desejos do dragao -- so quem ergueu a estatua. A linha leva a configuracao de
+	/// agora (`ConfigDaEstatua`), e a janela de desejos a abre no menu da estatua (`Client/JanelaDaEstatua.cs`) em vez de uma etapa propria.
+	/// </summary>
+	public const string Configurar = "configurar";
+
 	/// <summary>Derrubar a estatua -- `Destroy_Statue()` (`Dragonballs.dm:50-58`).</summary>
 	public const string Derrubar = "derrubar";
 

@@ -319,6 +319,17 @@ public sealed partial class GameServer
 			Zerar = ZerarEsferas,
 		});
 
+		// Black Star: arquivo proprio. A contagem fica em zero -- elas nascem de novo no wipe, como o Porunga,
+		// e conta-las faria a previa prometer apagar o que a limpeza recria.
+		_sistemasDoMundo.Add(new SistemaDoMundo
+		{
+			Nome = "Esferas de Estrela Negra (um set global, espalhado por planetas)",
+			Arquivos = ["esferas-negras.txt"],
+			Unidade = "vinculo(s) que o wipe apaga",
+			Contar = () => 0,
+			Zerar = ZerarNegras,
+		});
+
 		// ---------------------------------------------------------- super esferas
 		// ============================ SEM ESTA INSCRICAO, O SUPER SHENRON FICA TRANCADO PRA SEMPRE ============================
 		// E o achado mais duro da medicao, e ele nao e "um fantasma a mais": a PROCURACAO da lingua dos
@@ -337,7 +348,7 @@ public sealed partial class GameServer
 		// ================================================================================================================
 		_sistemasDoMundo.Add(new SistemaDoMundo
 		{
-			Nome = "Super Esferas: posse, disputa e a procuracao do Super Shenron",
+			Nome = "Super Esferas: posse, disputa e a procuracao do Super Shenlong",
 			Arquivos = ["superesferas.json"],
 			Unidade = "vinculo(s) com as Super Esferas",
 			Contar = QuantoAsSupersPrendem,

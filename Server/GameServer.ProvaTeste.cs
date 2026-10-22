@@ -357,8 +357,8 @@ public partial class GameServer
 		// ve, e uma bancada que as vezes ve nao e bancada.
 		// ============================================================================================
 		Checa("a tabela do MENU de criacao realmente poe Icer em Vegeta (e por isso ela serve de defeito)",
-			  CharacterDraft.RacasDoPlaneta("Vegeta").Contains("Icer")
-			  && !Bercos.RacasNascidasEm("Vegeta", todasAsRacas).Contains("Icer"));
+			  CharacterDraft.RacasDoPlaneta("Vegeta").Contains("Frost Demon")
+			  && !Bercos.RacasNascidasEm("Vegeta", todasAsRacas).Contains("Frost Demon"));
 
 		MoldeDeNpc cidadao = _moldes.Get("cidadao")!;
 		string[] original = cidadao.Racas;
@@ -372,7 +372,7 @@ public partial class GameServer
 			NinguemNoPlanetaErrado,
 			() =>
 			{
-				cidadao.Racas = ["Icer"];
+				cidadao.Racas = ["Frost Demon"];
 				intruso = NascerNpc("cidadao", deVegeta,
 									PontoDeHabitante(deVegeta, 970_001), 970_001);
 				if (intruso != null) forjados.Add(intruso);

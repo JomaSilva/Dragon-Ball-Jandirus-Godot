@@ -1186,6 +1186,7 @@ public partial class GameServer
 		c.EntrarEmCombate(comAlguem: autor != vitima);
 		if (autor != vitima) autor.Combate?.EntrarEmCombate();
 
+		int membrosAntes = MembrosDeForaPerdidos(c);
 		foreach (BodyPart p in c.Corpo.Partes.ToList())
 		{
 			if (p.Decepado || p.Aninhado) continue;
@@ -1197,7 +1198,7 @@ public partial class GameServer
 		}
 		c.SincronizarVida();
 		if (autor != vitima) MarcarAgressao(vitima, autor);
-		ConsequenciaDoDano(vitima, autor, "com dano em area", letal, porKi);
+		ConsequenciaDoDano(vitima, autor, "com dano em area", letal, porKi, MembrosDeForaPerdidos(c) > membrosAntes);
 	}
 
 	/// <summary>
@@ -1218,9 +1219,10 @@ public partial class GameServer
 	/// <param name="letal">(2026-10-19) o dano era LETAL -- so ele mata; o nao-letal que acha um nucleo ja zerado so derruba (ver
 	/// `MeleeResolver.AplicarNoMembro`). Obrigatorio de proposito: cada fonte diz o que e, e uma nova nao herda o lado errado calada.</param>
 	/// <param name="porKi">(2026-10-15) o dano era de ki -- ver `CombatState.QuandoONucleoCede`.</param>
-	private void ConsequenciaDoDano(ServerPlayer vitima, ServerPlayer autor, string relato, bool letal, bool porKi = false)
+	private void ConsequenciaDoDano(ServerPlayer vitima, ServerPlayer autor, string relato, bool letal, bool porKi = false, bool perdeuMembro = false)
 	{
 		if (vitima.Combate is not { } c) return;
+		if (autor != vitima) TalvezIrritar(vitima, autor, perdeuMembro);
 		// O GOD'S TEMPER conta tambem o dano DIRETO de outro corpo (explosao em area, tecnica de corpo) -- ver
 		// `ContarGolpeNoTemper`, em `GameServer.KitDoDeus.cs`. O preco que um corpo paga a si mesmo nao e golpe.
 		if (autor != vitima) ContarGolpeNoTemper(vitima);

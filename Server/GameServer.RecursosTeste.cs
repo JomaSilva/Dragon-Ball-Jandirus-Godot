@@ -1074,7 +1074,7 @@ public partial class GameServer
 			static bool AsDuas(Interacoes.Acao[] acoes, string verbo, string oQue) =>
 				acoes.Any(a => a.Verbo == verbo && a.Arg == oQue && a.Forma == Interacoes.Forma.Direta)
 				&& acoes.Any(a => a.Verbo == verbo && a.Arg == Recurso.PedidoPago(oQue, Moeda.Recursos) && a.Forma == Interacoes.Forma.Direta);
-			string[] daGravidade = ["forca", "bateria", "alcance", "estabilidade", "nanites"];
+			string[] daGravidade = ["forca", "bateria", "alcance", "estabilidade", "trava", "nanites"];
 			string[] doTanque = ["recarga", "bateria", "velocidade", "ferimentos", "nanites"];
 			AfirmarRc("O MENU DAS MAQUINAS: cada uma das cinco melhorias da gravidade e do regenerador abre a pagina das duas formas de pagar -- e o servidor aceita o verbo dela (duas paginas abaixo da raiz)",
 					  daGravidade.All(m => AsDuas(Interacoes.De($"Gravity/upgrades/{m}"), "grav_up", m))
@@ -1141,8 +1141,9 @@ public partial class GameServer
 			AfirmarRc("GRAVIDADE: a pergunta do menu (`grav_precos`) responde o preco de CADA melhoria nas duas moedas e o saldo -- e o \"Ver estado\" termina com as mesmas linhas",
 					  Disse(precos, $"força do campo: {Recurso.DoisPrecos(CustoDeForca(g))}") && Disse(precos, $"bateria: {Recurso.DoisPrecos(CustoDeBateria(g))}")
 					  && Disse(precos, $"alcance: {Recurso.DoisPrecos(CustoDeAlcance(g))}") && Disse(precos, $"estabilização: {Recurso.DoisPrecos(CustoDeEstabilidade)}")
+					  && Disse(precos, $"trava de segurança: {Recurso.DoisPrecos(CustoDaTravaDeSeguranca)}")
 					  && Disse(precos, $"nanites: {Recurso.DoisPrecos(CustoDeNanites(g))}") && Disse(precos, oSaldo)
-					  && precos.Count == 7 && estado.Count > precos.Count && estado.TakeLast(precos.Count).SequenceEqual(precos),
+					  && precos.Count == 8 && estado.Count > precos.Count && estado.TakeLast(precos.Count).SequenceEqual(precos),
 					  Ultimos(precos));
 
 			RcPagaNasDuas("GRAVIDADE (alcance)", dono, () => CustoDeAlcance(g), m => PedirGravidade("alcance", m), () => g.Range);
@@ -1150,11 +1151,11 @@ public partial class GameServer
 			double PrecoDaGravidade(string qual) => qual switch
 			{
 				"forca" => CustoDeForca(g), "bateria" => CustoDeBateria(g), "alcance" => CustoDeAlcance(g),
-				"estabilidade" => CustoDeEstabilidade, _ => CustoDeNanites(g),
+				"estabilidade" => CustoDeEstabilidade, "trava" => CustoDaTravaDeSeguranca, _ => CustoDeNanites(g),
 			};
-			AfirmarRc("...e as CINCO melhorias da gravidade saem dos recursos pelo dobro, com o zeni em zero",
+			AfirmarRc("...e as SEIS melhorias da gravidade saem dos recursos pelo dobro, com o zeni em zero",
 					  RcTodasEmRecursos(dono, daGravidade, PrecoDaGravidade, PedirGravidade, out string contaDaGravidade)
-					  && g is { Estavel: true, Nanites: 1 }, contaDaGravidade);
+					  && g is { Estavel: true, Nanites: 1, Trava: true }, contaDaGravidade);
 			TirarDoChao();
 
 			// ------------------------------------------------------------ 7.2 o regenerador

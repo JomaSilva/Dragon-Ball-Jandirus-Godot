@@ -32,7 +32,7 @@ public static class IconesDeRaca
 		// dele tem o ícone de um NPC específico, que não representa a raça.
 		"Saiyan" or "Human" or "Halfbreed" or "Demigod" => Base + "NewPaleMale.tres",
 
-		"Icer" => Base + "Frost Demons/Changling - Form 1.tres",
+		"Frost Demon" or "Icer" => Base + "Frost Demons/Changling - Form 1.tres",
 		"Namekian" => Base + "Namekians/Namek Young.tres",
 		"Majin" => Base + "Majins/Majin1.tres",
 		"BioAndroid" => Base + "Bioandroids/Bio Android 1.tres",

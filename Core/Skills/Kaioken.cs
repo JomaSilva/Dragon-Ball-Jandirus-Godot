@@ -51,15 +51,24 @@ public static class Kaioken
 		ClasseNoBlue,
 		/// <summary>O Blue de quem ainda nao tem 50% de maestria divina.</summary>
 		MaestriaNoBlue,
+		/// <summary>(2026-10-21) Qualquer outra transformacao: o Mistico, as divinas, o Oozaru, as das outras racas.</summary>
+		Transformacao,
 	}
 
 	/// <summary>
-	/// O KAIO-KEN CABE NESTA FORMA? Duas regras do dono, a de agora por cima da da v0.3.0:
+	/// O KAIO-KEN CABE NESTA FORMA? Tres regras do dono, cada uma por cima da anterior:
 	///   * *"o god n pode usar kaioken junto"* (v0.3.0) -- o SSG nao o sustenta;
 	///   * *"faca com q n de pra usar kaioken nas formas de super saiyajin, somente no ssj blue pra quem e saiyajin de classe
 	///     baixa e media"* (v0.4.2, 2026-10-19) -- nenhum Super Saiyajin o sustenta (<see cref="Catalogo.EhSuperSaiyajin"/>: a
 	///     escada, a do futuro, as lendarias e as divinas acima do SSG), MENOS o Blue, e no Blue so o Saiyajin de classe baixa
-	///     ou media (<see cref="ClasseAguentaNoBlue"/>).
+	///     ou media (<see cref="ClasseAguentaNoBlue"/>);
+	///   * *"kaioken n poderia ser usado com NENHUMA transformacao, o blue e a unica excecao a regra"* (2026-10-21) -- toda forma
+	///     veta: o Mistico, as divinas, as das outras racas e o Oozaru. Fica de fora so o corpo SEM transformacao: a base e as formas
+	///     de repouso (<see cref="Catalogo.PodeSerRepouso"/>: as supressoes do Frost Demon, que sao o corpo dele suprimido -- escolha do
+	///     dono). A Forma Pura do Majin veta sempre, mesmo no Majin Corrompido preso nela (escolha do dono). O SSG e os Super Saiyajin
+	///     guardam as frases deles; o resto e a <see cref="Veto.Transformacao"/>. O OOZARU mora fora da escada no servidor
+	///     (`ServerPlayer.Oozaru`, com a forma na base): quem pergunta passa a forma DO MACACO (`GameServer.FormaDoKaiokenG2`) -- a
+	///     mesma que a ficha lenta manda ao cliente.
 	///
 	/// OS 50% DE MAESTRIA DIVINA NO BLUE SAO DO DM DO DONO, e nao meus: o rework do ki divino de 2026-07-18 (`kaioken.dm:138-147`)
 	/// diz *"so Normal/Low-Class com maestria 50%+ aguentam o Kaioken por cima"*, e o jogo ja PROMETE isso no aviso dos 50%
@@ -67,17 +76,21 @@ public static class Kaioken
 	/// `godki.usage`, que ninguem escreve aqui (a forma mora no `EstadoDeForma`) -- o Blue acendia o Kaio-ken pra qualquer classe.
 	/// O teto de x20 sobre o Blue e do servidor (`GameServer.KaiokenCapNoBlueG2`), que e quem conhece o multiplicador pedido.
 	///
-	/// DIVERGENCIA DECLARADA, a mesma da v0.3.0 e mais larga: no DM o Kaio-ken acende no SSG e em todo Super Saiyajin sem ki divino.
+	/// DIVERGENCIA DECLARADA, a mesma da v0.3.0 e mais larga: no DM o Kaio-ken acende no SSG, em todo Super Saiyajin sem ki divino e
+	/// nas outras transformacoes.
 	/// Quem pergunta sao as TRES portas do servidor: o botao (recusa acender), a entrada na forma (apaga o aceso, de graca) e o
 	/// tique do Kaio-ken (apaga o de quem chegou na forma por um caminho que nao passa pela entrada -- o admin, a absorcao, a saga).
 	/// </summary>
 	public static Veto VetoDaForma(FormaDef? d, string? classe, double maestriaDivina)
 	{
+		if (d == null || d.Id == Catalogo.IdBase || Catalogo.PodeSerRepouso(d)) return Veto.Nenhum;
+		if (d.Id == Catalogo.IdBlue)
+		{
+			if (!ClasseAguentaNoBlue(classe)) return Veto.ClasseNoBlue;
+			return maestriaDivina < Catalogo.GodkiRoyalePct ? Veto.MaestriaNoBlue : Veto.Nenhum;
+		}
 		if (Catalogo.EhDeusSemSuperSaiyajin(d)) return Veto.Deus;
-		if (!Catalogo.EhSuperSaiyajin(d)) return Veto.Nenhum;
-		if (d!.Id != Catalogo.IdBlue) return Veto.SuperSaiyajin;
-		if (!ClasseAguentaNoBlue(classe)) return Veto.ClasseNoBlue;
-		return maestriaDivina < Catalogo.GodkiRoyalePct ? Veto.MaestriaNoBlue : Veto.Nenhum;
+		return Catalogo.EhSuperSaiyajin(d) ? Veto.SuperSaiyajin : Veto.Transformacao;
 	}
 
 	/// <summary>
@@ -95,6 +108,9 @@ public static class Kaioken
 							  + "-- e só pro Saiyajin de classe baixa ou média.",
 		Veto.ClasseNoBlue => "no Blue, só o Saiyajin de classe baixa ou média aguenta o Kaio-ken.",
 		Veto.MaestriaNoBlue => $"seu corpo ainda não aguenta o Kaio-ken por cima do Blue: ele pede {Catalogo.GodkiRoyalePct:0}% de maestria divina.",
+		// (o nome da forma abre a frase: um "no/na" na frente dependeria do genero de cada uma -- "no Forma Pura")
+		Veto.Transformacao => $"{d?.Nome ?? "Esta forma"}: o Kaio-ken não se soma a transformação nenhuma -- só o Super Saiyajin Blue "
+							  + "o aguenta, e só pro Saiyajin de classe baixa ou média.",
 		_ => "",
 	};
 

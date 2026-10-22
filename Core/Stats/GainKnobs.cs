@@ -93,6 +93,13 @@ public static class GainKnobs
 	/// </summary>
 	public static bool GravidadeNaoMultiplicaDeTeste;
 
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--ganhoteste`, familia 7): o potencial oculto volta a levar o lugar -- a gravidade (e no treino o peso
+	/// e a zona) --, o jogo de 2026-10-16 a 2026-10-20, dos 20 bilhoes em algumas horas de treino a 500x com peso. Lido por
+	/// `Fighter.LugarDoPotencialOculto`. Falso em jogo, sempre.
+	/// </summary>
+	public static bool PotencialOcultoComOLugarDeTeste;
+
 
 	/// <summary>Teto absoluto de maestria de gravidade.</summary>
 	public static double GravityCap = 500;
@@ -209,8 +216,8 @@ public static class GainKnobs
 	public const double MindDimensionMult = 0.25;
 
 	/// <summary>
-	/// O MAIOR BP base do servidor. Entra em duas escalas de ganho (alvo de Ki, sombra de
-	/// treino, blast) e no teto do potencial escondido. O servidor mantem atualizado.
+	/// O MAIOR BP base do servidor. Entra nas escalas de ganho (alvo de Ki, sombra de
+	/// treino, blast). O servidor mantem atualizado.
 	/// </summary>
 	public static double TopBP = 1;
 

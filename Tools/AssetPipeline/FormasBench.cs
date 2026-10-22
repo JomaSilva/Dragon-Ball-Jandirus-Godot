@@ -2547,7 +2547,7 @@ public static class FormasBench
 				// Mundo) -> `SemArvore`. Nas duas a loja continua recusando, que e o que esta linha mede.
 				var livro = new Jandirus.Core.Skills.SkillBook();
 				livro.Conceder(99);
-				Jandirus.Core.Skills.Recusa r = livro.PodeAprender(cat, path, "Icer", "Frost Demon", vilao: false);
+				Jandirus.Core.Skills.Recusa r = livro.PodeAprender(cat, path, "Frost Demon", "Frost Demon", vilao: false);
 				//
 				// E MUDOU DE NOVO EM 2026-10-13: a Golden Form FECHOU (`SkillsFechadas`) -- o unico efeito dela e o verb da
 				// camada Golden, que este port ainda nao tem --, e a loja a recusa por `ForaDoPort` ANTES de olhar arvore e
@@ -2562,7 +2562,7 @@ public static class FormasBench
 				{
 					Jandirus.Core.Skills.Recusa porBaixo;
 					Jandirus.Core.Skills.SkillsFechadas.TudoAbertoDeTeste = true;
-					try { porBaixo = livro.PodeAprender(cat, path, "Icer", "Frost Demon", vilao: false); }
+					try { porBaixo = livro.PodeAprender(cat, path, "Frost Demon", "Frost Demon", vilao: false); }
 					finally { Jandirus.Core.Skills.SkillsFechadas.TudoAbertoDeTeste = false; }
 					Checa($"...e por baixo da porta fechada o acendedor continua recusando ({s.Nome}, com as fechadas abertas): AguardaAcendedor",
 						  porBaixo == Jandirus.Core.Skills.Recusa.AguardaAcendedor, porBaixo.ToString());
@@ -2730,8 +2730,13 @@ public static class FormasBench
 		// fica de fora porque ele NAO toca o `ssjat` (`statsaiyan.dm:65-70`, a escada dele e outra) --
 		// incluí-lo poria 1.500.000 de fabrica na amostra e inflaria a dispersao com um valor que
 		// ninguem usa.
+		//
+		// (2026-10-21) O LOW-CLASS SAIU DA AMOSTRA: o dono o fez a classe que transforma mais facil (SSJ1 de 0,8-1,0x,
+		// `LimiaresPessoais.RolarSaiyajin`), e o pedido foi do Low-Class -- o Dragon clan, que copiava a faixa dele do DM,
+		// ficou nos 0,9-1,2x. Com ele aqui a borda de baixo do SSJ desceria a 1.200.000 e a do Namek nao. A regua do Super
+		// Namekuseijin continua a mesma ("aprox no mesmo requisito do SSJ"), medida contra as classes que o pedido nao tocou.
 		string[] clas = ["Warrior clan", "Demon clan", "Dragon clan"];
-		string[] classes = ["Elite", "Low-Class", "Normal", "Legendary Primal Saiyan"];
+		string[] classes = ["Elite", "Normal", "Legendary Primal Saiyan"];
 
 		double[] namek = new double[Quantos], saiya = new double[Quantos];
 		for (int i = 0; i < Quantos; i++)
@@ -2749,7 +2754,7 @@ public static class FormasBench
 		Console.WriteLine($"       Super Namekuseijin ({Quantos} nascimentos, 3 clas): "
 						+ $"{N.Distintos} valores distintos, {N.Min:N0} .. {N.Max:N0}, "
 						+ $"media {N.Media:N0}, desvio {N.Desvio:N0} ({N.Desvio / N.Media:P1})");
-		Console.WriteLine($"       Super Saiyajin     ({Quantos} nascimentos, 4 classes): "
+		Console.WriteLine($"       Super Saiyajin     ({Quantos} nascimentos, {classes.Length} classes): "
 						+ $"{S.Distintos} valores distintos, {S.Min:N0} .. {S.Max:N0}, "
 						+ $"media {S.Media:N0}, desvio {S.Desvio:N0} ({S.Desvio / S.Media:P1})");
 

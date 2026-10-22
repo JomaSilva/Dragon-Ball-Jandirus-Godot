@@ -19,6 +19,21 @@ public sealed class RaceCatalog
 
 	public RaceProto? Get(string nome) => _protos.GetValueOrDefault(nome);
 
+	/// <summary>
+	/// DE ONDE SAEM OS NUMEROS DESTE CORPO. O meio-Saiyajin nao tem prototipo: a raca gravada e
+	/// <c>Halfbreed</c>, e o corpo e o do Saiyajin. As linhagens New Generation, Future Lineage e
+	/// Prodigial moram na entrada do Saiyajin por isso.
+	/// </summary>
+	public static string ProtoDoCorpo(string raca) =>
+		raca.Equals("Halfbreed", StringComparison.OrdinalIgnoreCase)
+		|| raca.Equals("Half-Saiyan", StringComparison.OrdinalIgnoreCase)
+		|| raca.Equals("Half-Breed", StringComparison.OrdinalIgnoreCase)
+			? "Saiyan"
+			: raca;
+
+	/// <summary>O prototipo de <see cref="ProtoDoCorpo"/>, ou nulo se essa raca nao esta no catalogo.</summary>
+	public RaceProto? Corpo(string raca) => Get(ProtoDoCorpo(raca));
+
 	public static RaceCatalog Parse(string json)
 	{
 		var cat = new RaceCatalog();

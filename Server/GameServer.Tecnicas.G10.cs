@@ -244,11 +244,13 @@ public sealed partial class GameServer
 		// O FUNIL ARRANCA: e o `DamageLimb` -> `DamageMe` -> `LopLimb` do DM inteiro numa chamada
 		// (ver `CombatState.Ferir`). O membro que zera por golpe letal cai, e a peca sai pelo
 		// `AoDecepar` -- antes, este caminho feria e parava.
+		bool jaEraDecepado = GatilhoDoIrritado.EhMembroDeFora(membro) && membro.Decepado;
 		c.Ferir(membro, dano, letal);
 		c.SincronizarVida();
 		if (autor != vitima) MarcarAgressao(vitima, autor);
 
-		ConsequenciaDoDano(vitima, autor, $"com dano direto ({membro.Nome})", letal);   // a mesma cauda do `EspalharDanoG3`
+		bool perdeu = GatilhoDoIrritado.EhMembroDeFora(membro) && membro.Decepado && !jaEraDecepado;
+		ConsequenciaDoDano(vitima, autor, $"com dano direto ({membro.Nome})", letal, perdeuMembro: perdeu);
 	}
 
 	/// <summary>

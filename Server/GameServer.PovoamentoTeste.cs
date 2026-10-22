@@ -89,8 +89,8 @@ public partial class GameServer
 			}
 
 			Checa("o berco de Vegeta NAO inclui Icer (a tabela do menu de criacao inclui)",
-				  !Bercos.RacasNascidasEm("Vegeta", todasAsRacas).Contains("Icer")
-				  && CharacterDraft.RacasDoPlaneta("Vegeta").Contains("Icer"));
+				  !Bercos.RacasNascidasEm("Vegeta", todasAsRacas).Contains("Frost Demon")
+				  && CharacterDraft.RacasDoPlaneta("Vegeta").Contains("Frost Demon"));
 			Checa("...e o de Namek NAO inclui Arlian nem Makyo (a do menu inclui os dois)",
 				  !Bercos.RacasNascidasEm("Namek", todasAsRacas).Contains("Arlian")
 				  && CharacterDraft.RacasDoPlaneta("Namek").Contains("Arlian"));

@@ -41,6 +41,8 @@ namespace Jandirus.Client;
 /// chao continua sendo pela mochila (tecla I -> "Instalar no chão" -> `TelaDeConstrucao.Segurar`),
 /// porque instalar pede um LUGAR, e lugar se escolhe com o mouse no mundo, nao num menu.
 /// ====================================================================================
+///
+/// (2026-10-21) A BUSCA DO CATALOGO (a caixa "procurar construção...", pelo nome e pela descricao) mora em `MenuJogo.BuscaDeTech.cs`.
 /// </summary>
 public partial class MenuJogo
 {
@@ -112,11 +114,14 @@ public partial class MenuJogo
 			return;
 		}
 
-		Secao($"Catálogo de construções  ({cli.Catalogo.Count})");
+		// (2026-10-21) O TITULO COM A CAIXA DE BUSCA LOGO ABAIXO -- ver `MenuJogo.BuscaDeTech.cs`
+		CabecalhoDaBuscaDaTech(cli.Catalogo.Count);
 		Aviso("O que você fabrica vai pra mochila (tecla I); instalar no chão é de lá. Cada coisa se paga em zeni "
 			+ "ou em recursos (o dobro) -- recursos se tiram dos planetas, com o verb Minerar. As possíveis vêm primeiro.");
 		GridContainer grade = Colunas();
 		foreach (GameClient.OfertaDeObra o in OfertasOrdenadas(cli)) grade.AddChild(CartaoDeOferta(cli, o));
+		// A PAGINA NASCE JA FILTRADA: ela e refeita quando o catalogo ou a carteira chegam, com a busca escrita na caixa.
+		if (!BuscaDaTechEsquecidaNaRemontagemDeTeste) FiltrarOCatalogo();
 	}
 
 	/// <summary>
@@ -197,6 +202,8 @@ public partial class MenuJogo
 		// interessa a quem parou o mouse em cima.
 		string desc = Jandirus.Core.Items.CatalogoDeItens.Get(o.Id)?.Descricao ?? "";
 		if (desc.Length > 0) card.TooltipText = desc;
+		// (2026-10-21) ...e e nela, com o nome, que a busca do catalogo procura (`MenuJogo.BuscaDeTech.cs`).
+		NaBuscaDaTech(card, o.Nome, desc);
 
 		var h = new HBoxContainer();
 		h.AddThemeConstantOverride("separation", 8);
@@ -429,6 +436,9 @@ public partial class MenuJogo
 	///
 	/// O XP E AS DUAS CARTEIRAS NAO ENTRAM desde 2026-10-19: a faixa e a barra do estudo sao VIVAS (reescritas no
 	/// lugar a cada pedido, ver `AbaTech`). O que a carteira muda nos CARDS chega pelas recusas acima.
+	///
+	/// A BUSCA DO CATALOGO TAMBEM NAO ENTRA (2026-10-21): a letra esconde e mostra os cards ja montados, sem remontar a
+	/// pagina -- ver `MenuJogo.BuscaDeTech.cs`.
 	/// </summary>
 	private string ExtraDaAssinaturaDeTech(SheetState f)
 	{

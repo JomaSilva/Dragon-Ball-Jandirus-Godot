@@ -34,8 +34,8 @@ public sealed partial class GameServer
 		var ids = new List<int>();
 		for (int i = 0; i < casas.Length; i++)
 		{
-			ServerPlayer f = FigurantePalcoV21(pl, $"Frost {i + 1}", "Icer", new Vec2(casas[i].X * t, casas[i].Y * t), 5_000_000);
-			f.Visual = AparenciaDeNpc(molde, "Icer", "Male", (ulong)(5_000 + 131 * i));
+			ServerPlayer f = FigurantePalcoV21(pl, $"Frost {i + 1}", "Frost Demon", new Vec2(casas[i].X * t, casas[i].Y * t), 5_000_000);
+			f.Visual = AparenciaDeNpc(molde, "Frost Demon", "Male", (ulong)(5_000 + 131 * i));
 			TrocarAparencias(f);
 			ids.Add(f.Id);
 		}

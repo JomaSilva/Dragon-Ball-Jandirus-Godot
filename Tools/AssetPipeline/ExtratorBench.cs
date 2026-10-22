@@ -546,10 +546,16 @@ public static class ExtratorBench
 					 + "ele le o arquivo",
 					 vs.Contains(verbo, StringComparer.OrdinalIgnoreCase), string.Join(",", vs));
 		}
-		Conferir("e o `skills.json` NO DISCO ja tem as casas da Trinity, a Grace seguindo, a compra da One Hundred e o pitted do Arlian",
+		// A compra no disco divergiu do DM em 2026-10-21: One Hundred e One Training somam 5% de BP e
+		// nao escrevem potencial; a One Punch nao soma nada. O extrator acima continua lendo o DM (2 linhas).
+		Jandirus.Core.Skills.Skill? cemDisco = cat.Get("/datum/skill/Bodybuilding/One_Hundred");
+		Jandirus.Core.Skills.Skill? treinoDisco = cat.Get("/datum/skill/Bodybuilding/One_Training");
+		Conferir("e o `skills.json` NO DISCO ja tem as casas da Trinity, a Grace seguindo, a compra da One Hundred (5% de BP, sem potencial) e o pitted do Arlian",
 				 cat.Get("/datum/skill/Bodybuilding/TheHolyTrinity") is { Escolhas.Length: 3, Buffs.Count: 0 }
 				 && cat.Get("/datum/skill/Bodybuilding/Grace")?.EscolhaSegue == "/datum/skill/Bodybuilding/TheHolyTrinity"
-				 && cat.Get("/datum/skill/Bodybuilding/One_Hundred")?.Compra.Length == 2
+				 && cemDisco is { Compra.Length: 1 } && cemDisco.Compra[0].Expressao.Contains("0.05")
+				 && treinoDisco is { Compra.Length: 1 } && treinoDisco.Compra[0].Expressao.Contains("0.05")
+				 && cat.Get("/datum/skill/Bodybuilding/One_Punch")?.Compra.Length == 0
 				 && cat.Get("/datum/skill/tree/arlian")?.Regras.Contains("apaga;/datum/skill/arlian/Supa;pitted==1") == true);
 
 		// O EFEITO POR RACA NO DISCO, e o Core aplicando-o SO pra raca certa (o consumidor de verdade).

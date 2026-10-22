@@ -48,6 +48,21 @@ public sealed partial class GameServer
 		return true;
 	}
 
+	/// <summary>
+	/// Leva o corpo ao chao livre mais perto desta CELULA do mundo -- a foto das portas de outro mapa olha um lugar
+	/// escolhido (onde Vegeta tem as dela), e nao a porta da sala. Falso enquanto o mundo ainda esta nascendo.
+	/// </summary>
+	internal bool PalcoDasSalas_IrParaACelula(int id, PlanetaNoEspaco p, int cx, int cy)
+	{
+		if (!_players.ContainsKey(id)) return false;
+		ZoneKey zona = Espaco.ZonaDe(p);
+		if (MundoDaZona(zona, p) == null) return false;
+
+		Vec2 alvo = CorpoNaCelulaDaSala(cx, cy);
+		MoveToZone(id, zona, MapaDaZonaOuCatalogo(zona)?.PontoLivrePerto(alvo) ?? alvo);
+		return true;
+	}
+
 	/// <summary>A celula da porta deste mundo no servidor, se ele esta vivo (pro robo conferir o que o cliente desenha).</summary>
 	internal (int X, int Y)? PalcoDasSalas_Porta(ZoneKey mundo) =>
 		_portasDasSalas.TryGetValue(mundo.Hash, out PortaNoTerreno porta) ? (porta.X, porta.Y) : null;

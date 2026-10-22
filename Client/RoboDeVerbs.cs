@@ -207,9 +207,9 @@ public partial class RoboDeVerbs : Node
 		// OS BOTOES DA FOTO DO DONO, pelo texto LITERAL (e nao tirado da tabela: e a tabela que esta em prova).
 		string[] daFoto =
 		[
-			"Erguer Estátua do Dragão", "Erguer + gravar o SUPREMO (2.000.000 zeni)", "Despertar as esferas", "Radar",
+			"Erguer Estátua do Dragão", "Despertar as esferas", "Radar",   // (2026-10-22) o "Erguer + SUPREMO" virou caixa do menu da estatua
 			"Ver as esferas daqui", "Pegar esfera", "Largar tudo", "INVOCAR",
-			"Super Esferas: placar", "Reivindicar Super Esfera", "Chamar o Super Shenron",
+			"Super Esferas: placar", "Reivindicar Super Esfera", "Chamar o Super Shenlong",
 			"Meus domínios", "Coletar tributo", "Renascer aqui", "Abandonar domínio",
 		];
 		string[] deOutros =
@@ -321,8 +321,8 @@ public partial class RoboDeVerbs : Node
 			("Saiyajin Lendário", Gente("Saiyan", "Legendary", terra)),
 			("Saiyajin Primal", Gente("Saiyan", "Normal Primal Saiyan", terra)),
 			("Lendário Primal", Gente("Saiyan", "Legendary Primal Saiyan", terra)),
-			("Frost Demon", Gente("Icer", "Frost Demon", terra)),
-			("Frost Demon mutante", Gente("Icer", "Mutant Frost Demon", terra)),
+			("Frost Demon", Gente("Frost Demon", "Frost Demon", terra)),
+			("Frost Demon mutante", Gente("Frost Demon", "Mutant Frost Demon", terra)),
 			// (2026-10-13) A FUSAO NAMEKUSEIJIN PEDE A SKILL DELA (`Fusion- Namek Style`): o guerreiro e o do Cla a
 			// aprenderam; o "Cla do Dragao que nao aprendeu a estatua" e o Namekuseijin que so tem o que e da raca.
 			// (2026-10-17) E ELE E ADULTO: poe ovo (`Fatos.PoeOvo`) -- as racas de ovo tem filho sozinhas.
@@ -401,7 +401,8 @@ public partial class RoboDeVerbs : Node
 		// ---- os casos do dono, pelo texto literal ----
 		bool Tem(string quem, string aba, params string[] textos) => textos.All(telas[quem][aba].Contains);
 		bool NaoTem(string quem, string aba, params string[] textos) => !textos.Any(telas[quem][aba].Contains);
-		string[] doCla = ["Erguer Estátua do Dragão", "Erguer + gravar o SUPREMO (2.000.000 zeni)", "Erguer + gravar o SUPREMO (4.000.000 recursos)"];
+		// (2026-10-22) o supremo mora no menu da estatua: o botao do Cla do Dragao e um so
+		string[] doCla = ["Erguer Estátua do Dragão"];
 		string[] doSplit = ["Split Form: Follow", "Split Form: Stop", "Split Form: Attack Target", "Split Form: Attack Nearest", "Split Form: Destroy"];
 
 		Checa("VERBS DE CLA DO DRAGAO: o Namekuseijin do Cla QUE APRENDEU A ESTATUA ve Erguer Estatua e Erguer + SUPREMO; o do Cla que nao aprendeu, o guerreiro de Namek, o Saiyajin e o humano nao",
@@ -445,8 +446,8 @@ public partial class RoboDeVerbs : Node
 						   .All(e => NaoTem(e.Nome, Verbos.Skills, doDna)),
 			  string.Join(" | ", telas[jaEscolheu][Verbos.Skills].Where(t => t.StartsWith("DNA: ", StringComparison.Ordinal))));
 		Checa("AS SUPER ESFERAS: os tres botoes so pra quem esta no espaco",
-			  Tem("humano no espaço", "World", "Super Esferas: placar", "Reivindicar Super Esfera", "Chamar o Super Shenron")
-			  && NaoTem("humano novato", "World", "Super Esferas: placar", "Reivindicar Super Esfera", "Chamar o Super Shenron"));
+			  Tem("humano no espaço", "World", "Super Esferas: placar", "Reivindicar Super Esfera", "Chamar o Super Shenlong")
+			  && NaoTem("humano novato", "World", "Super Esferas: placar", "Reivindicar Super Esfera", "Chamar o Super Shenlong"));
 		Checa("OS CARGOS: o Anciao nomeia, o Rei escolhe herdeiro, o Presidente deposita a verba, o Guardiao autoriza e solta -- cada um so o seu",
 			  Tem("Grande Ancião de Namek", Verbos.Outros, "Appoint Elder") && NaoTem("Rei de Vegeta", Verbos.Outros, "Appoint Elder")
 			  && Tem("Rei de Vegeta", Verbos.Outros, "Name Heir", "Remove Heir") && NaoTem("Presidente da Terra", Verbos.Outros, "Name Heir")

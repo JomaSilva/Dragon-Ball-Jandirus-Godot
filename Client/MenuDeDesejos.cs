@@ -432,6 +432,15 @@ public partial class MenuDeDesejos : CanvasLayer
 		if (!e.Pode) return;
 		if (e.Direto) { Mandar(e.Verbo, e.Pedido); return; }
 
+		// (2026-10-22) "CONFIGURAR O DRAGAO" NAO TEM ETAPA AQUI: ele abre o menu da estatua (`JanelaDaEstatua`) com o que o set tem -- o
+		// servidor manda a configuracao de agora no argumento da linha, e o menu devolve a nova pelo mesmo verbo (`db_refazer`).
+		if (e.Id == AcoesDoDragao.Configurar && ConfigDaEstatua.Ler(e.Pedido) is { } atual && GameClient.Instance is { } cli
+			&& JanelaDaEstatua.Instancia is { } estatua)
+		{
+			estatua.AbrirParaRefazer(cli.Zone.Name, cli.NomeDoLugar, atual);
+			return;
+		}
+
 		_entrada = e.Id;
 		_resposta = "";
 		_etapa = e.TemPergunta ? Etapa.Resposta : Etapa.Confirmar;

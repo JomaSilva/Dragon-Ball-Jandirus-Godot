@@ -48,6 +48,9 @@ public partial class GameServer
 		// gesto de ki sem tiro (o sopro, o rugido) paga o ganho dele em quem pegou -- ver `GameServer.Ganhos.cs`.
 		RegistrarAtaque(agressor, vitima);
 		PagarOGestoSemTiro(agressor, vitima);
+		// (2026-10-21) BATER DE VERDADE NUM HABITANTE ZERA A AMIZADE de quem bateu com ele (fora do treino dos dois) -- ver `AmizadeAoApanhar`
+		// (`GameServer.Amizade.cs`). O rancor e o de sempre, logo abaixo.
+		AmizadeAoApanhar(vitima, agressor);
 
 		// ============================ HABITANTE QUE ACERTA HABITANTE ESTA TREINANDO (v0.2.1) ============================
 		// O unico jeito de um cidadao acertar outro e a vida diaria: o SPAR da rotina (`GameServer.Rotina.cs`), o soco
@@ -245,7 +248,7 @@ public partial class GameServer
 
 	/// <summary>
 	/// O `misc_stats["Regeneration"]` DO PROTO DESTA RACA (o `races.json`); 1 quando ela nao tem proto. O Half-Saiyan nao tem
-	/// proto proprio -- o corpo vem do Saiyajin. Mesma ponte do `Birth.Nascer`.
+	/// proto proprio -- o corpo vem do Saiyajin (<see cref="Jandirus.Core.Races.RaceCatalog.ProtoDoCorpo"/>). Mesma ponte do `Birth.Nascer`.
 	/// </summary>
 	private double RegeneracaoDaRaca(string raca) =>
 		_racas?.Get(raca == "Halfbreed" ? "Saiyan" : raca)?.MiscStat("Regeneration") ?? 1;
@@ -765,6 +768,8 @@ public partial class GameServer
 		// UM CADAVER NAO TEM VIDA SOCIAL NEM CAI: quem ja esta morto nao "e nocauteado", nao rende convivio e
 		// nao entra no luto de ninguem. O golpe feriu o corpo (ver `MeleeResolver`), e e so isso que ele faz.
 		if (EhCadaver(d)) return;
+		if ((r.Dano > 0 || r.Decepou || r.RaboArrancado) && d.Combate != null)
+			TalvezIrritar(d, a, r.Decepou || r.RaboArrancado);
 		// O GOD'S TEMPER conta o dano que ENCOSTOU no Deus da Destruicao (soco e tiro saem daqui) -- ver
 		// `ContarGolpeNoTemper`, em `GameServer.KitDoDeus.cs`.
 		if (r.Encostou) ContarGolpeNoTemper(d);
@@ -1769,6 +1774,7 @@ public partial class GameServer
 			// deles mexe de verdade.
 			// ================================================================================================
 			GanhoDeTreino = (float)f.MultiplicadorDeGanho(),
+			VigorMult = (float)f.StamBPGainMod,
 			Gravidade = (float)Jandirus.Core.Stats.Esmagamento.Gravidade(f),
 			// (2026-10-16) A ACLIMATACAO E PODER, e nao treino: o bonus do `gravFelt` (>= 1) -- a linha "Aclimatado" da aba de Formas.
 			Aclimatacao = (float)Math.Max(f.gravBuff, 1),
@@ -1805,7 +1811,7 @@ public partial class GameServer
 		string sig = $"{a.PhysOff:0.##}|{a.PhysDef:0.##}|{a.KiOff:0.##}|{a.KiDef:0.##}|"
 				   + $"{a.Technique:0.##}|{a.KiSkill:0.##}|{a.Speed:0.##}|{a.Esoteric:0.##}|"
 				   + $"{a.Willpower:0.##}|{a.Stamina:0.#}|{a.Poderes}|{a.Idade}|{a.MesesDaIdade}|{a.FormaAtual}|"
-				   + $"{a.GanhoDeTreino:0.#}|{a.Gravidade:0.#}|{a.Aclimatacao:0.##}|{a.PesoMult:0.##}|"
+				   + $"{a.GanhoDeTreino:0.#}|{a.VigorMult:0.##}|{a.Gravidade:0.#}|{a.Aclimatacao:0.##}|{a.PesoMult:0.##}|"
 				   + $"{a.ZonaMult:0.#}|{a.Esmagamento:0.##}|{a.SalaFase}|{a.SalaMinutos:0}|{a.PesoKg:0}|{a.PesoVestido}|{a.PesoDegrausDoCorpo}|{a.Sangue}|{a.PesoPct}|{a.KaiokenMaestria:0.#}|{a.KaiokenVezes}|{a.KaiokenAceso}|{a.SkillsRaciais}|{a.SkillsDoSangue}|"
 				   + string.Join(',', a.Maestrias.Select(m => $"{m.Forma}:{m.Pct:0.#}"))
 				   // AS PERICIAS ENTRAM COM UMA CASA (`0.#`), pelo mesmo motivo do ganho de treino: sao os

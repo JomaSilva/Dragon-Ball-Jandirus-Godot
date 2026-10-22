@@ -290,25 +290,19 @@ public sealed partial class GameServer
 			return;
 		}
 
+		// (2026-10-21) QUEM VAI NO AGARRAO NAO FURA A SALA. Chave, lotacao e recarga sao as dele tambem:
+		// se ele sozinho seria recusado, ninguem entra e a chave de quem carrega nao se gasta.
+		if (PorQueLevarOAgarradoBarraASala(pl, true) is { Length: > 0 } barraDaSala)
+		{
+			Avisar(pl, barraDaSala);
+			return;
+		}
+
 		// A AUTORIZACAO E CONSUMIDA E A RECARGA E ARMADA **NA ENTRADA**, os dois como no DM
 		// (`permission = 0; htc_last_visit = world.realtime`). Marcar a recarga na saida abriria a
-		// reentrada de graca pra quem entrasse e saisse no mesmo minuto.
-		pl.SalaAutorizada = false;
-		pl.SalaUltimaEntrada = agora;
-		// ...COM A DILATACAO DESTA SALA (1 ano por dia): e o par que faz a recarga ser uma so pra todas.
-		pl.SalaDilatacao = SalaDePlaneta.DilatacaoDaTerra;
-		// ...E A MARCA DA SESSAO ABERTA: e ela -- e nao a lista de vagas -- que diz quem o tique conta e quem o funil
-		// paga. Ver `GameServer.SalaPresenca.cs`.
-		pl.SalaPlaneta = SalaDoTempo.PortaDaTerra;
-
-		// SESSAO NOVA COMECA A CONTA DO ZERO -- o `htc_session_years = 0` do DM, na mesma linha em
-		// que ele arma a recarga. E aqui, e nao no tique: e a ENTRADA que abre uma sessao, e um
-		// tique que zerasse sozinho apagaria a conta de quem relogou la dentro.
-		pl.SalaDiasDaSessao = 0;
-		pl.SalaJanelaAte = 0;
-		_avisoDaSala.Remove(pl.Id);
-
-		if (pl.Assinatura.Length > 0) _naSala[pl.Assinatura] = agora;
+		// reentrada de graca pra quem entrasse e saisse no mesmo minuto. O agarrado que entra de
+		// verdade abre a mesma sessao (aoLevar), senao ocuparia a sala sem vaga e sem recarga.
+		AbrirSessaoDaSalaDaTerra(pl, agora);
 
 		const int t = ZoneCollision.TileSize;
 		var destino = new Vec2((EntradaByondX - 1) * t + t / 2f,
@@ -320,7 +314,7 @@ public sealed partial class GameServer
 		foreach (ServerPlayer o in ZoneList(pl.Zone.Hash))
 			if (o != pl) Avisar(o, $"{pl.Name} atravessa a porta da Sala do Tempo.");
 
-		MoveToZone(pl.Id, ZoneKey.Premade(ZonaDaSala), destino);
+		ViajarVoluntario(pl, ZoneKey.Premade(ZonaDaSala), destino, aoLevar: c => AbrirSessaoDaSalaDaTerra(c, agora));
 		Avisar(pl, "você atravessa a porta da Sala do Tempo. Um ano se passa aqui a cada dia.");
 		Avisar(pl, $"a sessão dura {Jandirus.Core.World.SalaDoTempo.SessaoEmDias:0} dias in-game "
 				   + $"(~{Jandirus.Core.World.SalaDoTempo.SessaoEmMinutosReais:0} min) e você sai "

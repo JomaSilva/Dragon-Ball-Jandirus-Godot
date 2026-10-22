@@ -142,14 +142,28 @@ public static class Desejos
 	/// <summary>
 	/// `SDB_WISH_ZENNI 5000000` (`ProceduralSpace.dm:43`) -- a riqueza do **Super** Shenron.
 	///
-	/// ============================ E ELA E DEZ VEZES MENOR QUE A DO SHENRON COMUM ============================
-	/// Cinco milhoes contra os cinquenta de <see cref="ZeniDoDesejo"/>, e o Super custa cacar sete
-	/// planetoides pela galaxia contra sete esferas num planeta so. **O desequilibrio e do original** e
-	/// foi portado 1:1 de proposito -- a regra da casa e formula 1:1, e "consertar" isto seria escolher
-	/// um numero novo sem o dono ter pedido. Fica medido aqui pra que a escolha seja dele.
+	/// ============================ E ELA ERA DEZ VEZES MENOR QUE A DO SHENRON COMUM ============================
+	/// Cinco milhoes contra os cinquenta de <see cref="ZeniDoDesejo"/> -- o desequilibrio do original, portado 1:1 ate o dono escolher.
+	/// (2026-10-21) O DONO ESCOLHEU: *"super shenlong seria 4 vezes o poder da black star em tudo"* -- 4 x os 250 milhoes das Black Star
+	/// (5 x os 50 do Shenron) = UM BILHAO.
 	/// ====================================================================================================
 	/// </summary>
-	public const double ZeniDoSuperDesejo = 5_000_000;
+	public const double ZeniDoSuperDesejo = MultiplicadorDoSuper * ZeniDoDesejo;
+
+	/// <summary>(2026-10-21) O Super Shenlong vale 4 x as Black Star em tudo -- menos no potencial e nos marcos (dono).</summary>
+	public const double MultiplicadorDoSuperSobreABlackStar = 4;
+
+	/// <summary>O fator dos numeros do Super Shenlong sobre os do Shenron: 4 x os 5 das Black Star = 20.</summary>
+	public const double MultiplicadorDoSuper = MultiplicadorDoSuperSobreABlackStar * EsferasNegras.MultiplicadorDaBlackStar;
+
+	/// <summary>(2026-10-21) Os marcos do Super: 15 e nao os 40 do fator (dono: *"ele daria 15 marcos pra n ficar muito broken"*).</summary>
+	public const int MarcosDoSuper = 15;
+
+	/// <summary>
+	/// O ID DO SET "VIRTUAL" DO SUPER SHENLONG: os desejos da lista do Shenron, pedidos ao Super, passam pelos efeitos de sempre com este
+	/// set (o fator 20 sai daqui). Fora da faixa dos sets de jogador (1..999, `Esferas.SetDeJogador`) e da das Black Star (1000).
+	/// </summary>
+	public const int IdDoSetDoSuper = 2000;
 
 	/// <summary>`originator.BP+=originator.capcheck(originator.relBPmax/4)` (`WishTable.dm:208`).</summary>
 	public const double FracaoDoDesejoDePoder = 0.25;
@@ -194,6 +208,59 @@ public static class Desejos
 
 	/// <summary>`A.IntPower = 100 * originator.techskill**2` (`WishTable.dm:380`).</summary>
 	public static double XpDoDesejoDeTecnologia(double techskill) => 100 * techskill * techskill;
+
+	// =====================================================================
+	// "AUMENTAR O MEU POTENCIAL" -- regra do dono (2026-10-21), sem par no `WishTable.dm`
+	// =====================================================================
+	// Nao e o "Liberar o meu potencial" (que DESPERTA o potencial, uma vez por vida): este SOMA no estoque
+	// `hiddenpotential`, na mesma unidade da idade -- um ano de vida soma `BP * UPMod`
+	// (`Fighter.SomarPotencialOcultoDaIdade`, `Aging.dm:125-139`), e o desejo soma uma FRACAO de um ano, pelo BP
+	// de agora. O freio e a propria fracao: a conta da idade tambem nao tem teto, e o `CapHiddenPotential`
+	// (`TopBP * 5`) so roda com `train_med_to_hp` ligado, um bool que ninguem liga -- o desejo nao depende dele.
+	// As fracoes sao as de partida do dono, pra ajustar aqui se ele achar pouco ou muito.
+
+	/// <summary>A fracao de um ano do SUPER SHENRON -- a maior de todas.</summary>
+	public const double FracaoDoAnoNoSuper = 1.0 / 4;
+
+	/// <summary>
+	/// A fracao das BLACK STAR -- sempre a segunda, numero FIXO. Ela NAO leva os 5x dos outros desejos das Black Star
+	/// (`EsferasNegras.MultiplicadorDaBlackStar`): cinco quartos de ano de uma vez e o absurdo que o dono vetou.
+	/// </summary>
+	public const double FracaoDoAnoNaBlackStar = 1.0 / 6;
+
+	/// <summary>A fracao do set mais fraco (Shenron de jogador fraco). Ver <see cref="FracaoDoAnoDoSet"/>.</summary>
+	public const double FracaoDoAnoMinima = 1.0 / 25;
+
+	/// <summary>A fracao do set mais forte. Fica ABAIXO da Black Star de proposito.</summary>
+	public const double FracaoDoAnoMaxima = 1.0 / 8;
+
+	/// <summary>O poder do set (o `WishPower`) em que a fracao e a minima, e em que ela chega na maxima.</summary>
+	public const double PoderDaFracaoMinima = 1e4, PoderDaFracaoMaxima = 1e9;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--desejoteste`): a forca do set nao conta -- todo Shenron e Porunga da a fracao
+	/// minima. Lido por <see cref="FracaoDoAnoDoSet"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool FracaoSemForcaDoSetDeTeste;
+
+	/// <summary>
+	/// QUANTO DE UM ANO O SHENRON OU O PORUNGA SOMAM, pela forca do set: de <see cref="FracaoDoAnoMinima"/> ate
+	/// <see cref="FracaoDoAnoMaxima"/>, em ESCALA LOGARITMICA do poder entre <see cref="PoderDaFracaoMinima"/> e
+	/// <see cref="PoderDaFracaoMaxima"/>. O `PoderVerdadeiro` nao entra direto: ele e quadrado do log e um criador
+	/// forte o estouraria. O eterno de Namek (2 milhoes) da perto de 1/13.
+	/// </summary>
+	public static double FracaoDoAnoDoSet(double poderDoSet)
+	{
+		if (FracaoSemForcaDoSetDeTeste) return FracaoDoAnoMinima;
+		double lo = Math.Log10(PoderDaFracaoMinima), hi = Math.Log10(PoderDaFracaoMaxima);
+		double t = (Math.Log10(Math.Max(poderDoSet, 1)) - lo) / (hi - lo);
+		t = Math.Clamp(t, 0, 1);
+		return FracaoDoAnoMinima + (FracaoDoAnoMaxima - FracaoDoAnoMinima) * t;
+	}
+
+	/// <summary>O potencial que o desejo soma: a mesma conta de um ano da idade, vezes a fracao.</summary>
+	public static double PotencialDoDesejo(double bp, double upMod, double fracaoDoAno) =>
+		Math.Max(bp, 0) * Math.Max(upMod, 0) * Math.Max(fracaoDoAno, 0);
 
 	// =====================================================================
 	// A TABELA
@@ -315,6 +382,13 @@ public static class Desejos
 				Nome = "Liberar o meu potencial", Patamar = 6,
 				Desc = "O dragão desperta o potencial que dorme em você (uma vez por vida). Um Namekuseijin com o poder do ki divino ganha também o Místico e o Orange." },
 
+		// (2026-10-21, regra do dono) NAO E O DE CIMA: este soma potencial escondido, uma fracao de um ano de vida pela forca
+		// do set -- `FracaoDoAnoDoSet`, e nas Black Star a fracao fixa delas. No mesmo patamar do "Liberar". Pede-se quantas
+		// vezes houver pedido.
+		new() { Id = "aumentar_potencial", Dm = "(nao existe no DM)", Linha = "regra do dono, 2026-10-21 -- sem par no WishTable.dm",
+				Nome = "Aumentar o meu potencial", Patamar = 6,
+				Desc = "O dragão soma ao seu potencial escondido uma parte de um ano de vida -- quanto mais forte o set, maior a parte." },
+
 		// -------------------------------------------------- TrueWishPower >= 7 E Wishs <= 2
 		new() { Id = "reviver_todos", Dm = "Revive-All", Linha = "WishTable.dm:238-251",
 				Nome = "Ressuscitar TODOS", Patamar = 7, SoAteDoisPedidos = true,
@@ -409,12 +483,17 @@ public static class Desejos
 	public static readonly DesejoDef[] DoSuper =
 	[
 		new() { Id = "sdb_riqueza", Dm = "Riqueza colossal", Linha = "ProceduralSpace.dm:1638-1641",
-				Nome = "Riqueza colossal (5.000.000 zeni)",
-				Desc = "Cinco milhões de zeni -- pro BENEFICIÁRIO, se houver um." },
+				Nome = "Riqueza colossal (1.000.000.000 zeni)",
+				Desc = "Um bilhão de zeni -- quatro vezes a riqueza das Esferas de Estrela Negra. Pro BENEFICIÁRIO, se houver um." },
 
 		new() { Id = "sdb_reviver", Dm = "Reviver um guerreiro caido", Linha = "ProceduralSpace.dm:1606-1618",
 				Nome = "Reviver um guerreiro caído", Alvo = AlvoDoDesejo.Morto,
-				Desc = "Traz um morto de volta. Nem o Super Shenron reverte a morte de velhice." },
+				Desc = "Traz um morto de volta. Nem o Super Shenlong reverte a morte de velhice." },
+
+		// (2026-10-21, regra do dono) a MAIOR fracao de um ano de potencial (`FracaoDoAnoNoSuper`), pro BENEFICIARIO, se houver.
+		new() { Id = "sdb_aumentar_potencial", Dm = "(nao existe no DM)", Linha = "regra do dono, 2026-10-21 -- sem par no ProceduralSpace.dm",
+				Nome = "Aumentar o meu potencial",
+				Desc = "Um quarto de um ano de vida somado ao potencial escondido -- a maior parte que um dragão dá. Pro BENEFICIÁRIO, se houver um." },
 
 		new() { Id = "sdb_supremo", Dm = "Strongest in the Universe", Linha = "ProceduralSpace.dm:1631-1637",
 				Nome = "O Mais Forte do Universo (a VIDA por poder)",
@@ -435,12 +514,76 @@ public static class Desejos
 	/// pra beneficiario)"*. E uma das cinco travas que impedem o procurador de virar o desejo pra si --
 	/// sem ela, um Kaioshin aceitaria a guarda de qualquer um e trocaria de corpo com o desejo alheio.
 	/// </summary>
-	public static IEnumerable<DesejoDef> MenuDoSuper(bool ehKaioshin, bool haProcuracao)
+	public static IEnumerable<DesejoDef> MenuDoSuper(bool ehKaioshin, bool haProcuracao, double sangueSaiyajin = 0)
 	{
-		foreach (DesejoDef d in DoSuper)
+		// a riqueza dele primeiro, como era
+		yield return DoSuper[0];
+
+		// (2026-10-21) A LISTA INTEIRA DAS BLACK STAR, a 4x (dono: *"super shenlong seria 4 vezes o poder da black star em tudo"*): os
+		// desejos do Shenron que o Super nao tinha, sem escada de poder. Os que ele ja tem na versao dele ficam so na versao dele.
+		if (!SuperSoComOsDeleDeTeste)
+			foreach (DesejoDef d in Todos)
+			{
+				if (DoShenronQueOSuperNaoRepete.Contains(d.Id)) continue;
+				if (d.PedeSangueSaiyajin && sangueSaiyajin < SangueSaiyajinMinimo) continue;
+				yield return d;
+			}
+
+		foreach (DesejoDef d in DoSuper.Skip(1))
 		{
 			if (d.PedeKaioshin && (!ehKaioshin || haProcuracao)) continue;
 			yield return d;
 		}
 	}
+
+	/// <summary>
+	/// (2026-10-21) Os ids da lista do Shenron que o Super NAO repete: o "nada" (engordaria um set que ele nao tem), o "cancelar" (e o gesto
+	/// de dispensar), e os que ele ja tem na versao dele -- riqueza, reviver, aumentar o potencial, o supremo e o corpo Saiyajin.
+	/// </summary>
+	public static readonly HashSet<string> DoShenronQueOSuperNaoRepete =
+		["nada", "cancelar", "dinheiro", "reviver", "aumentar_potencial", "supremo", "corpo_saiyajin"];
+
+	/// <summary>(2026-10-21) DEFEITO INJETADO (bancada `--desejoteste`): o Super so com os cinco dele, o jogo de antes.</summary>
+	public static bool SuperSoComOsDeleDeTeste;
+
+	/// <summary>(2026-10-21) DEFEITO INJETADO (bancada `--desejoteste`): a janela com o texto fixo de cada desejo, os numeros do Shenron.</summary>
+	public static bool DescricaoFixaDeTeste;
+
+	/// <summary>
+	/// (2026-10-21) O TEXTO DE UM DESEJO DIANTE DESTE DRAGAO: os numeros saem com o fator dele (1 no Shenron, 5 nas Black Star, 20 no Super)
+	/// -- antes a janela das Black Star dizia "50.000.000 de zeni" e dava 250 milhoes. Os outros desejos ficam com o texto de sempre.
+	/// </summary>
+	/// <param name="marcos">Os marcos deste dragao (o Super tem os 15 dele, e nao o fator).</param>
+	/// <param name="temCriador">O set tem quem o criou (o Super e as Black Star nao): o "o CRIADOR nao pode pedir" so vale com ele.</param>
+	public static string DescricaoNoDragao(DesejoDef d, double fator, int marcos, bool temCriador)
+	{
+		if (DescricaoFixaDeTeste) return d.Desc;
+		var br = System.Globalization.CultureInfo.GetCultureInfo("pt-BR");
+		string Num(double x) => x.ToString("N0", br);
+		string Vezes(double x) => x.ToString("0.##", br);
+		// (2026-10-22) A FORCA DIVIDIDA do set de jogador (`ConfigDaEstatua.ForcaDeCadaPedido`): o fator abaixo de 1 e a fatia de cada pedido
+		bool dividida = fator < 1;
+		return d.Id switch
+		{
+			"nada" => $"Você não pede nada -- e as esferas ficam {Vezes((GordoDoDesejoVazio - 1) * 100 * fator)}% mais fortes.",
+			"dinheiro" => $"{Num(ZeniDoDesejo * fator)} de zeni no bolso.",
+			// (2026-10-22, r2) "1 Marco", e nao "1 Marcos": a forca dividida da 1 Marco no set de 2 ou 3 pedidos
+			"marcos" => $"{marcos} {(marcos == 1 ? "Marco" : "Marcos")}. UMA VEZ por personagem, pra sempre.",
+			"tecnologia" => $"Um tratado que vale {Num(100 * fator)} x (sua tecnologia)² de estudo.",
+			"poder" => (fator == 1 ? "Um quarto do" : dividida ? $"{Vezes(FracaoDoDesejoDePoder * fator * 100)}% do"
+						: $"{Vezes(FracaoDoDesejoDePoder * fator)} vezes o") + " que ainda cabe no seu teto de treino."
+					   + (temCriador ? " O CRIADOR do set não pode pedir." : ""),
+			"inteligencia" => $"+{Vezes(PontosDeInteligencia * fator)} no seu multiplicador de aprendizado de tecnologia.",
+			"matar" when dividida => $"Mata quem for MAIS FRACO que {Vezes(fator * 100)}% do poder do set (a força de um pedido). Contra quem for mais forte, falha.",
+			"aumentar_potencial" when dividida => d.Desc + $" Com a força dividida, cada pedido usa {Vezes(fator * 100)}% da força do set.",
+			_ => d.Desc,
+		};
+	}
+
+	/// <summary>
+	/// (2026-10-22) OS MARCOS DE UM DRAGAO DE FATOR <paramref name="fator"/>: os 2 do DM vezes o fator, arredondados -- 10 nas Black Star, e
+	/// NUNCA MENOS DE 1: o set de jogador de 2 ou 3 pedidos (a forca dividida) da 1, e nao zero. ESCOLHA minha: zero marcos seria um desejo
+	/// que gasta o pedido e nao da nada. O Super tem os 15 dele, fora desta conta.
+	/// </summary>
+	public static int MarcosDoFator(double fator) => Math.Max(1, (int)Math.Round(MarcosDoDesejo * fator));
 }

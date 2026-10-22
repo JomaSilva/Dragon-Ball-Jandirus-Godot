@@ -296,6 +296,12 @@ public static class Interacoes
 					 "ele desperta o poder oculto de quem o povo de Namek não vê com maus olhos -- uma vez na vida"),
 		],
 
+		// (2026-10-21) O HABITANTE COMUM: a amizade (presente e treino) e, com o laco cheio, o recrutamento -- um CORPO, apontado pelo mesmo
+		// `S2C.DivinoPerto`. As acoes moram com a regra, em `Npc.Amizade`; quem confere tudo na hora e o servidor (`GameServer.Amizade.cs`).
+		Npc.Amizade.TipoDoHabitante => Npc.Amizade.AcoesDoHabitante,
+		Npc.Amizade.TipoDoAmigo => Npc.Amizade.AcoesDoAmigo,
+		Npc.Amizade.TipoEmTreino => Npc.Amizade.AcoesNoTreino,
+
 		"AppleTree" =>
 		[
 			new Acao("Colher uma maçã", "colher", "", "a árvore leva um tempo pra repor"),
@@ -347,12 +353,14 @@ public static class Interacoes
 			EscolherComoPagar("Bateria", "grav_como", "upgrades/bateria", "dobra a carga e enche na hora"),
 			EscolherComoPagar("Alcance", "grav_como", "upgrades/alcance", "o campo cresce um tile de lado (o teto é 10, e o da sua tecnologia) -- sem alcance ela não pega ninguém"),
 			EscolherComoPagar("Estabilização", "grav_como", "upgrades/estabilidade", "uma vez só, e cara"),
+			EscolherComoPagar("Trava de segurança", "grav_como", "upgrades/trava", "desliga a gravidade se alguém desmaiar no campo"),
 			EscolherComoPagar("Regeneração de nanites", "grav_como", "upgrades/nanites", "recarrega sozinha quando desligada"),
 		],
 		"Gravity/upgrades/forca" => DuasFormasDePagar("Força do campo", "grav_up", "forca"),
 		"Gravity/upgrades/bateria" => DuasFormasDePagar("Bateria", "grav_up", "bateria"),
 		"Gravity/upgrades/alcance" => DuasFormasDePagar("Alcance", "grav_up", "alcance"),
 		"Gravity/upgrades/estabilidade" => DuasFormasDePagar("Estabilização", "grav_up", "estabilidade"),
+		"Gravity/upgrades/trava" => DuasFormasDePagar("Trava de segurança", "grav_up", "trava"),
 		"Gravity/upgrades/nanites" => DuasFormasDePagar("Regeneração de nanites", "grav_up", "nanites"),
 
 		// ============================ O MAINFRAME E OS DOIS LABORATORIOS ============================
@@ -1196,6 +1204,12 @@ public static class Interacoes
 	public const byte ForcaNoTetoDoMundo = 4;
 
 	/// <summary>
+	/// (2026-10-21) Bit da trava de seguranca da maquina de gravidade. O bit 1 ja e a estabilizacao; este e outro,
+	/// pra a compra unica sair do menu sem esconder a estabilizacao.
+	/// </summary>
+	public const byte TravaDeSegurancaFeita = 8;
+
+	/// <summary>
 	/// DEFEITO INJETADO (bancada `--v020teste`): a melhoria ja comprada continua na lista -- o menu de antes de
 	/// 2026-10-12, em que o botao so sabia recusar depois do clique. Falso em jogo, sempre.
 	/// </summary>
@@ -1215,6 +1229,7 @@ public static class Interacoes
 	{
 		(Regenerador.Tipo, "upgrades/ferimentos") => MelhoriaUnicaFeita,
 		("Gravity", "upgrades/estabilidade") => MelhoriaUnicaFeita,
+		("Gravity", "upgrades/trava") => TravaDeSegurancaFeita,
 		("Gravity", "upgrades/alcance") => MelhoriaNoTeto,
 		("Gravity", "upgrades/forca") => ForcaNoTetoDoMundo,
 		(SuperComputador.Tipo, "melhorias/ressurreicao") => MelhoriaUnicaFeita,

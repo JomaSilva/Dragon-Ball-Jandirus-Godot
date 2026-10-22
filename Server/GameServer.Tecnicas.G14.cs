@@ -280,11 +280,17 @@ public sealed partial class GameServer
 	/// jogo, tem dano-base de 1 a 4 (`Ekioff * log10(blastskill)`): o cuspe valia de 10 a 40 bolas por tiro, um tiro por segundo. Agora a bola
 	/// e a METADE e a recarga o DOBRO -- um quarto do dano por segundo --, e o veneno e o preco continuam os mesmos. Vale pro Arlian tambem: o
 	/// verb e um so (`arlian.dm:42`, que a arvore do Saibaman empresta).
+	///
+	/// ============================ O SEGUNDO NERF (dono, 2026-10-22) ============================
+	/// *"ia pedir tb pra ver o acid spit pq tao falando q ele ta MUITO op dando one shot em npcs em torneios"*. Com 20 o cuspe ainda valia de 5 a
+	/// 20 bolas basicas por tiro. Perguntado, o dono escolheu o dano-base 5 com a mesma recarga de 2 s: um QUARTO do nerf de 18/10 (um
+	/// dezesseis avos do dano por segundo do DM) -- de 1,25 a 5 bolas por tiro, e ele continua a arma de longe mais forte do Saibaman. O veneno
+	/// e o preco nao mudam.
 	/// ===========================================================================================================
 	/// </summary>
-	internal const double DanoDoCuspeG14 = 20;
+	internal const double DanoDoCuspeG14 = 5;
 
-	/// <summary>A recarga do cuspe, em ms -- ver <see cref="DanoDoCuspeG14"/> (no DM, `sleep(10)`: 1 s).</summary>
+	/// <summary>A recarga do cuspe, em ms -- ver <see cref="DanoDoCuspeG14"/> (no DM, `sleep(10)`: 1 s; o segundo nerf a manteve).</summary>
 	internal const long MsDaRecargaDoCuspeG14 = 2000;
 
 	/// <summary>DEFEITO INJETADO (`--chefesteste`): o cuspe volta a ser o do DM -- 40 de dano-base e 1 s de recarga. Falso em jogo, sempre.</summary>

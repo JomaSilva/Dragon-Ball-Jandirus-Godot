@@ -1090,18 +1090,25 @@ public enum NivelDeRaiva
 	Nenhuma = 0,
 
 	/// <summary>
-	/// A RAIVA COMUM: ver um amigo CAIR numa luta (o "Angry" do DM). Abre toda forma de raiva menos o Beast, pela
-	/// porta de BP VEZES o agio da entrada (<see cref="FormaDef.AgioNaRaivaComum"/>). (Ate 2026-10-13 este degrau
-	/// se chamava `Lendaria` -- ver o cabecalho.)
+	/// O IRRITADO (dono, 2026-10-21): apanhar muito numa luta de verdade. Fica ABAIXO da raiva comum. Abre as
+	/// mesmas formas que a <see cref="Comum"/> abre, menos o Beast, pela porta de BP vezes
+	/// <see cref="Catalogo.PortaDoIrritado"/> (2,5). Sem salto de Ki e sem cena. Os de cima satisfazem este.
 	/// </summary>
-	Comum = 1,
+	Irritado = 1,
+
+	/// <summary>
+	/// A RAIVA COMUM: ver um amigo CAIR numa luta (o "Angry" do DM). Abre toda forma de raiva menos o Beast, pela
+	/// porta de BP VEZES o agio da entrada (<see cref="FormaDef.AgioNaRaivaComum"/>). Satisfaz o
+	/// <see cref="Irritado"/>. (Ate 2026-10-13 este degrau se chamava `Lendaria` -- ver o cabecalho.)
+	/// </summary>
+	Comum = 2,
 
 	/// <summary>
 	/// A FURIA EXTREMA: ver um amigo proximo MORRER (ou ser absorvido) na sua frente -- o "Very Angry" do DM. Abre
 	/// toda forma de raiva pela porta dela, e e a unica que abre o Beast. Satisfaz a <see cref="Comum"/> por
 	/// ser maior -- ver o cabecalho.
 	/// </summary>
-	Extrema = 2,
+	Extrema = 3,
 }
 
 /// <summary>
@@ -3234,6 +3241,12 @@ public static class Catalogo
 	public const double AgioComumNoLimiarDoSsj3 = 1.3;
 
 	/// <summary>
+	/// A PORTA DO IRRITADO (dono, 2026-10-21): *"os requisitos de desbloquear formas por essa raiva e 2,5x o da furia"*.
+	/// Uma so, pra toda forma que a raiva comum abre. A furia paga a porta x1; a comum continua no agio dela.
+	/// </summary>
+	public const double PortaDoIrritado = 2.5;
+
+	/// <summary>
 	/// ============================ A PORTA DE PODER DO OOZARU DOURADO ============================
 	/// O dono pediu que o Dourado cobrasse, alem do SSJ1 dominado, "um poder minimo (tambem
 	/// requisito pessoal, dentro da margem definida)". Ele NAO ganhou limiar novo: reusa o
@@ -3619,10 +3632,9 @@ public static class Catalogo
 	public const string RacaNamekuseijin = "Namekian", RacaHeran = "Heran", RacaAlien = "Alien";
 
 	/// <summary>
-	/// O MEIO-SAIYAJIN, como o `races.json` o escreve: <b>"Halfbreed"</b> -- e a grafia e o problema
-	/// inteiro (ver <see cref="EhSaiyajin"/>). Na tela ele se chama "Half-Saiyan"
-	/// (`CreationScreen.cs:1135`), no genoma ele carrega o proto "Saiyan" (`Birth.cs:98`), e a raca
-	/// gravada no personagem e esta.
+	/// O MEIO-SAIYAJIN. A raca gravada e <b>"Halfbreed"</b> -- e a grafia e o problema inteiro
+	/// (ver <see cref="EhSaiyajin"/>). Na tela ele se chama "Half-Saiyan". Nao tem prototipo:
+	/// o corpo sai do Saiyajin (<see cref="Jandirus.Core.Races.RaceCatalog.ProtoDoCorpo"/>).
 	/// </summary>
 	public const string RacaMeioSaiyajin = "Halfbreed";
 

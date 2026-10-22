@@ -142,16 +142,40 @@ public partial class GameServer
 	internal static bool KaiokenNoSuperSaiyajinDeTeste;
 
 	/// <summary>
+	/// DEFEITO INJETADO (`--v030teste`, familia KT): o Kaio-ken volta a acender e a durar nas transformacoes que nao sao Super
+	/// Saiyajin nem o SSG (o Mistico, as divinas, o Oozaru, as das outras racas) -- o jogo de antes de 2026-10-21. Lido pelo mesmo
+	/// funil (<see cref="VetoDoKaiokenG2"/>). Falso em jogo, sempre.
+	/// </summary>
+	internal static bool KaiokenNaTransformacaoDeTeste;
+
+	/// <summary>
+	/// (2026-10-21) A FORMA QUE O KAIO-KEN PERGUNTA: a de agora, e o MACACO quando ha um. O Oozaru mora fora da escada
+	/// (`ServerPlayer.Oozaru`; o `VirarFera` deixa a escada na base), e o dono disse que nenhuma transformacao sustenta o Kaio-ken --
+	/// o Oozaru incluso (escolha dele). E a mesma forma que a ficha lenta manda ao cliente (`AtributosState.FormaAtual`), e por isso a
+	/// tela do Kaio-ken recusa no macaco pelo mesmo motivo. Quem pergunta e o botao e o tique: virar Oozaru nao passa pelo
+	/// `EntrarNaForma`, e o tique seguinte apaga o Kaio-ken aceso.
+	/// </summary>
+	private static Jandirus.Core.Forms.FormaDef? FormaDoKaiokenG2(ServerPlayer pl) =>
+		pl.Oozaru != Jandirus.Core.Forms.FormaOozaru.Nao
+			? Jandirus.Core.Forms.Catalogo.Def(Jandirus.Core.Forms.Oozaru.Id(pl.Oozaru))
+			: pl.Forma.Def;
+
+	/// <summary>
 	/// A FORMA SUSTENTA O KAIO-KEN DESTE CORPO? A regra do Core (`Jandirus.Core.Skills.Kaioken.VetoDaForma`) com a classe e a
 	/// maestria divina da ficha (quem nunca despertou o ki divino tem zero). E o funil das TRES portas -- o botao
 	/// (<see cref="Kaioken"/>), a entrada na forma (`EntrarNaForma`) e o tique (<see cref="TickKaiokenG2"/>) --, e e nele que os
-	/// dois botoes de defeito desligam a regra: uma porta que perguntasse por conta propria escaparia do contra-exemplo.
+	/// tres botoes de defeito desligam a regra: uma porta que perguntasse por conta propria escaparia do contra-exemplo.
 	/// </summary>
 	private static Jandirus.Core.Skills.Kaioken.Veto VetoDoKaiokenG2(ServerPlayer pl, Jandirus.Core.Forms.FormaDef? forma)
 	{
 		Jandirus.Core.Skills.Kaioken.Veto veto =
 			Jandirus.Core.Skills.Kaioken.VetoDaForma(forma, pl.Ficha.Class, pl.Ficha.godki?.mastery ?? 0);
-		bool desligado = veto == Jandirus.Core.Skills.Kaioken.Veto.Deus ? KaiokenNoDeusDeTeste : KaiokenNoSuperSaiyajinDeTeste;
+		bool desligado = veto switch
+		{
+			Jandirus.Core.Skills.Kaioken.Veto.Deus => KaiokenNoDeusDeTeste,
+			Jandirus.Core.Skills.Kaioken.Veto.Transformacao => KaiokenNaTransformacaoDeTeste,
+			_ => KaiokenNoSuperSaiyajinDeTeste,
+		};
 		return desligado ? Jandirus.Core.Skills.Kaioken.Veto.Nenhum : veto;
 	}
 
@@ -178,10 +202,11 @@ public partial class GameServer
 			return;
 		}
 
-		// A FORMA QUE NAO SUSTENTA O KAIO-KEN NAO O ACENDE: o Deus (v0.3.0, *"o god n pode usar kaioken junto"*) e todo Super
-		// Saiyajin menos o Blue de classe baixa ou media com 50% de maestria divina (v0.4.2). A regra, e a divergencia do DM, estao
-		// em `Jandirus.Core.Skills.Kaioken.VetoDaForma`; as outras duas portas sao a entrada na forma (`EntrarNaForma`) e o tique.
-		Jandirus.Core.Forms.FormaDef? forma = Jandirus.Core.Forms.Catalogo.Def(pl.Forma.Atual);
+		// A FORMA QUE NAO SUSTENTA O KAIO-KEN NAO O ACENDE: o Deus (v0.3.0, *"o god n pode usar kaioken junto"*), todo Super
+		// Saiyajin menos o Blue de classe baixa ou media com 50% de maestria divina (v0.4.2) e, desde 2026-10-21, toda transformacao
+		// (o Oozaru incluso). A regra, e a divergencia do DM, estao em `Jandirus.Core.Skills.Kaioken.VetoDaForma`; as outras duas
+		// portas sao a entrada na forma (`EntrarNaForma`) e o tique.
+		Jandirus.Core.Forms.FormaDef? forma = FormaDoKaiokenG2(pl);
 		Jandirus.Core.Skills.Kaioken.Veto veto = VetoDoKaiokenG2(pl, forma);
 		if (veto != Jandirus.Core.Skills.Kaioken.Veto.Nenhum)
 		{
@@ -646,8 +671,9 @@ public partial class GameServer
 
 			// A FORMA QUE NAO SUSTENTA O KAIO-KEN, conferida AO VIVO -- o `Loop()` do DM (:182-187) ja fazia isto pro Blue. Quem chegou
 			// na forma por um caminho que nao passa pelo `EntrarNaForma` (o admin, a absorcao, a saga escrevem a forma direto) perde o
-			// Kaio-ken no segundo seguinte. Era a copia da regra do Blue pelo `Fighter.ssj`, morta como a do botao.
-			Jandirus.Core.Forms.FormaDef? forma = pl.Forma.Def;
+			// Kaio-ken no segundo seguinte. Era a copia da regra do Blue pelo `Fighter.ssj`, morta como a do botao. (2026-10-21) O macaco
+			// tambem: virar Oozaru nao passa pelo `EntrarNaForma` -- e aqui que ele perde o Kaio-ken (`FormaDoKaiokenG2`).
+			Jandirus.Core.Forms.FormaDef? forma = FormaDoKaiokenG2(pl);
 			Jandirus.Core.Skills.Kaioken.Veto veto = VetoDoKaiokenG2(pl, forma);
 			if (veto != Jandirus.Core.Skills.Kaioken.Veto.Nenhum)
 			{

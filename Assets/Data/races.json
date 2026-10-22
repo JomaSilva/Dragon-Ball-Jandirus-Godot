@@ -8,7 +8,7 @@
   },
   {
     "nome": "Android",
-    "stats": {"Physical Offense": 1.5, "Physical Defense": 2, "Ki Offense": 1, "Ki Defense": 1, "Ki Skill": 1.2, "Technique": 1.5, "Speed": 1.5, "Esoteric Skill": 0.1, "Skillpoint Mod": 1, "Ascension Mod": 8, "Energy Level": 1.5, "Battle Power": 2},
+    "stats": {"Physical Offense": 1.5, "Physical Defense": 2, "Ki Offense": 1, "Ki Defense": 1, "Ki Skill": 1.2, "Technique": 1.5, "Speed": 1.5, "Esoteric Skill": 0.1, "Skillpoint Mod": 1, "Ascension Mod": 8, "Energy Level": 1.5, "Battle Power": 1.2},
     "misc": {"Lifespan": 32, "Potential": 0.5, "Regeneration": 1, "Breed Type": 3, "Zanzoken Mod": 1, "Gravity Mod": 1, "Med Mod": 4, "Spar Mod": 2, "Train Mod": 0.8, "Ki Regeneration": 1, "Anger": 1, "Space Breath": 1, "Starting BP": 25, "Tech Modifier": 4},
     "classes": {},
     "spread": []
@@ -49,13 +49,6 @@
     "spread": [["Hermano", 5], ["Gray", 95]]
   },
   {
-    "nome": "Halfbreed",
-    "stats": {"Physical Offense": 1, "Physical Defense": 1, "Ki Offense": 1, "Ki Defense": 1, "Ki Skill": 1, "Technique": 1, "Speed": 1, "Esoteric Skill": 1, "Skillpoint Mod": 1.2, "Ascension Mod": 10, "Energy Level": 1, "Battle Power": 1.5},
-    "misc": {"Lifespan": 5, "Potential": 2, "Regeneration": 1, "Breed Type": 3, "Zanzoken Mod": 1, "Gravity Mod": 5, "Med Mod": 3, "Spar Mod": 3, "Train Mod": 3, "Ki Regeneration": 2, "Anger": 1.2, "Space Breath": 1, "Starting BP": 2, "Tech Modifier": 1},
-    "classes": {},
-    "spread": []
-  },
-  {
     "nome": "Heran",
     "stats": {"Physical Offense": 1.3, "Physical Defense": 1.2, "Ki Offense": 1.3, "Ki Defense": 1.4, "Ki Skill": 1.4, "Technique": 1, "Speed": 1.5, "Esoteric Skill": 0.5, "Skillpoint Mod": 1.3, "Ascension Mod": 3, "Energy Level": 1.3, "Battle Power": 2.5},
     "misc": {"Lifespan": 2, "Potential": 2, "Regeneration": 1, "Breed Type": 1, "Zanzoken Mod": 4, "Gravity Mod": 6, "Med Mod": 1, "Spar Mod": 1.8, "Train Mod": 1.8, "Ki Regeneration": 0.7, "Anger": 1.3, "Space Breath": 0, "Starting BP": 150, "Tech Modifier": 2.5},
@@ -70,7 +63,7 @@
     "spread": [["Ancient Hermit", 5], ["Triclops Descendant", 10], ["Peak Human", 25], ["Normal", 60]]
   },
   {
-    "nome": "Icer",
+    "nome": "Frost Demon",
     "stats": {"Physical Offense": 1.5, "Physical Defense": 1.1, "Ki Offense": 2, "Ki Defense": 1.1, "Ki Skill": 1.5, "Technique": 1, "Speed": 1.3, "Esoteric Skill": 0.2, "Skillpoint Mod": 1.1, "Ascension Mod": 7, "Energy Level": 2, "Battle Power": 1.5},
     "misc": {"Lifespan": 10, "Potential": 2, "Regeneration": 1, "Breed Type": 0, "Zanzoken Mod": 5, "Gravity Mod": 10, "Med Mod": 1.5, "Spar Mod": 1.5, "Train Mod": 1, "Ki Regeneration": 1, "Anger": 1.1, "Space Breath": 1, "Starting BP": 1000, "Tech Modifier": 3},
     "classes": {"Frost Demon": {"Physical Offense": 1.4, "Physical Defense": 1.4, "Technique": 1.3, "Ki Offense": 1.5, "Ki Defense": 1.5, "Speed": 1.4, "Skillpoint Mod": 1.1, "Battle Power": 1.45, "Energy Level": 1.4, "Tech Modifier": 2, "Ki Regeneration": 1, "Starting BP": 110, "Potential": 2.2}, "Mutant Frost Demon": {"Physical Offense": 2.2, "Physical Defense": 1.8, "Technique": 1.4, "Ki Offense": 2.4, "Ki Defense": 1.8, "Ki Skill": 1.8, "Speed": 1.7, "Skillpoint Mod": 1.1, "Battle Power": 3, "Energy Level": 2, "Tech Modifier": 2, "Ki Regeneration": 1.2, "Starting BP": 1200, "Potential": 2.8, "Anger": 1.5}},
@@ -92,9 +85,9 @@
   },
   {
     "nome": "Majin",
-    "stats": {"Physical Offense": 0.9, "Physical Defense": 1.2, "Ki Offense": 0.9, "Ki Defense": 0.5, "Ki Skill": 2.1, "Technique": 1, "Speed": 2, "Esoteric Skill": 1, "Skillpoint Mod": 1.2, "Ascension Mod": 5, "Energy Level": 1.1, "Battle Power": 2.3},
+    "stats": {"Physical Offense": 0.9, "Physical Defense": 1.2, "Ki Offense": 0.9, "Ki Defense": 0.5, "Ki Skill": 2.1, "Technique": 1, "Speed": 2, "Esoteric Skill": 1, "Skillpoint Mod": 1.2, "Ascension Mod": 5, "Energy Level": 1.1, "Battle Power": 1},
     "misc": {"Lifespan": 30, "Potential": 1, "Regeneration": 100, "Breed Type": 2, "Zanzoken Mod": 1, "Gravity Mod": 10, "Med Mod": 1, "Spar Mod": 1.8, "Train Mod": 1.2, "Ki Regeneration": 4, "Anger": 1.3, "Space Breath": 1, "Starting BP": 900, "Tech Modifier": 1},
-    "classes": {"Corrupted Majin": {"Physical Offense": 1.5, "Physical Defense": 0.9, "Ki Offense": 1.6, "Ki Defense": 0.4, "Speed": 2.6, "Battle Power": 2.5, "Energy Level": 1.2, "Regeneration": 70, "Anger": 2.4, "Spar Mod": 2.2, "Starting BP": 500000}},
+    "classes": {"Corrupted Majin": {"Physical Offense": 1.5, "Physical Defense": 0.9, "Ki Offense": 1.6, "Ki Defense": 0.4, "Speed": 2.6, "Battle Power": 1.3, "Energy Level": 1.2, "Regeneration": 100, "Anger": 2.4, "Spar Mod": 2.2, "Starting BP": 500000}},
     "spread": [["Corrupted Majin", 5], ["Majin", 95]]
   },
   {

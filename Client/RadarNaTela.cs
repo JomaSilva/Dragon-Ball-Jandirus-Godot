@@ -51,7 +51,17 @@ public partial class RadarNaTela : Control
 	private static readonly Color Feixe = new("7dffa8");
 	private static readonly Color Eu = new("e9fff0");
 	public static readonly Color Amarelo = new("ffd23a");
+	// (2026-10-21) As Black Star em VERMELHO, as comuns em amarelo (dono: *"faca no radar do dragao vermelho ser as black star dragon ball
+	// e amarelo as normais"*).
+	public static readonly Color Vermelho = new("ff3b30");
 	private static readonly Color Contorno = new("3a2a00d9");
+
+	/// <summary>(2026-10-21) DEFEITO INJETADO (robo `--diagnegra`): o disco ignora a marca da Black Star e pinta tudo de amarelo, o jogo de
+	/// antes. Falso em jogo, sempre.</summary>
+	public static bool PintaTudoDeAmareloDeTeste;
+
+	/// <summary>A tinta de um ponto: vermelho a Black Star, amarelo a comum.</summary>
+	public static Color TintaDo(Ponto p) => p.Negra && !PintaTudoDeAmareloDeTeste ? Vermelho : Amarelo;
 
 	/// <summary>O degrau do zoom. Do PROCESSO, e nao do node: relogar nao devolve o alcance de fabrica.</summary>
 	private static int _degrau = RadarDeEsferas.AlcanceDeFabrica;
@@ -63,7 +73,7 @@ public partial class RadarNaTela : Control
 	private Font? _fonte;
 
 	/// <summary>Um ponto do disco, ja em pixels deste node. E o que o `_Draw` pinta -- e o que a bancada le.</summary>
-	public readonly record struct Ponto(Vector2 Onde, bool NaBorda, bool Carregada, bool Comigo);
+	public readonly record struct Ponto(Vector2 Onde, bool NaBorda, bool Carregada, bool Comigo, bool Negra = false);
 
 	private readonly List<Ponto> _pontos = [];
 
@@ -153,12 +163,12 @@ public partial class RadarNaTela : Control
 			{
 				// AS QUE EU CARREGO ficam em roda do centro, e nao em cima dele: tres na mao tem que ler tres.
 				float a = comigo++ * (Mathf.Tau / 7f) - Mathf.Pi / 2f;
-				_pontos.Add(new Ponto(Centro + new Vector2(MathF.Cos(a), MathF.Sin(a)) * 11f, false, true, true));
+				_pontos.Add(new Ponto(Centro + new Vector2(MathF.Cos(a), MathF.Sin(a)) * 11f, false, true, true, s.Negra));
 				continue;
 			}
 
 			(float x, float y, bool naBorda) = RadarDeEsferas.NoDisco(s.X - eu.X, s.Y - eu.Y, alcance);
-			_pontos.Add(new Ponto(Centro + new Vector2(x, y) * raio, naBorda, s.Carregada, false));
+			_pontos.Add(new Ponto(Centro + new Vector2(x, y) * raio, naBorda, s.Carregada, false, s.Negra));
 		}
 	}
 
@@ -201,10 +211,11 @@ public partial class RadarNaTela : Control
 			float brilho = p.Comigo ? 0f : (float)Math.Exp(-atras * 1.6);
 			float raio = p.Comigo ? 2.8f : p.NaBorda ? 3.2f : 4.4f;
 
-			if (brilho > 0.05f) DrawCircle(p.Onde, raio + 4f, new Color(Amarelo, 0.30f * brilho));
+			Color tinta = TintaDo(p);
+			if (brilho > 0.05f) DrawCircle(p.Onde, raio + 4f, new Color(tinta, 0.30f * brilho));
 			DrawCircle(p.Onde, raio + 1.2f, Contorno);
-			DrawCircle(p.Onde, raio, p.NaBorda ? Amarelo.Darkened(0.12f) : Amarelo);
-			if (p.Carregada && !p.Comigo) DrawArc(p.Onde, raio + 3.2f, 0, Mathf.Tau, 20, Amarelo, 1.2f, true);
+			DrawCircle(p.Onde, raio, p.NaBorda ? tinta.Darkened(0.12f) : tinta);
+			if (p.Carregada && !p.Comigo) DrawArc(p.Onde, raio + 3.2f, 0, Mathf.Tau, 20, tinta, 1.2f, true);
 		}
 
 		if (_fonte == null) return;

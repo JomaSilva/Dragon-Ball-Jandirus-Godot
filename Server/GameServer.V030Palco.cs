@@ -212,19 +212,22 @@ public sealed partial class GameServer
 	internal (string Conta, string Nome) PalcoV30_QuemE(int id) =>
 		_players.TryGetValue(id, out ServerPlayer? pl) ? (pl.Conta, pl.Name) : ("", "");
 
-	/// <summary>O corpo VIVO desta conta com este nome, e o BP base dele -- nulo se nao ha.</summary>
-	internal (int Id, double BP)? PalcoV30_DaConta(string conta, string nome) =>
+	/// <summary>O corpo VIVO desta conta com este nome, o BP base e o potencial oculto dele -- nulo se nao ha.</summary>
+	internal (int Id, double BP, double Potencial)? PalcoV30_DaConta(string conta, string nome) =>
 		_players.Values.FirstOrDefault(p => string.Equals(p.Conta, conta, StringComparison.OrdinalIgnoreCase)
 											&& string.Equals(p.Name, nome, StringComparison.OrdinalIgnoreCase)
 											&& !p.PersonagemConsumido) is { } achado
-			? (achado.Id, achado.Ficha.BP)
+			? (achado.Id, achado.Ficha.BP, achado.Ficha.hiddenpotential)
 			: null;
 
-	/// <summary>A conta (a viva, ou a do disco): este slot esta ocupado? E o eco que ela guarda (o BP com que o proximo nasce).</summary>
+	/// <summary>
+	/// A conta (a viva, ou a do disco): este slot esta ocupado? E o eco que ela guarda -- o BP de quem reencarnou, que o proximo leva
+	/// como potencial oculto (2026-10-22).
+	/// </summary>
 	internal (bool Ocupado, double? Eco) PalcoV30_Conta(string conta, int slot)
 	{
 		AccountSave? acc = ContaViva(conta) ?? _store?.Carregar(conta);
-		return (acc?.Slots[slot] != null, acc?.Reencarnacao?.BPDoNovo());
+		return (acc?.Slots[slot] != null, acc?.Reencarnacao?.BPAntigo);
 	}
 
 	/// <summary>
@@ -553,13 +556,15 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
-	/// (adendo 18) O MORTO NO OUTRO MUNDO COM A TRANSMISSAO (a skill de verdade, e a pericia em 100: 1,5 s de concentracao) e um VIVO
-	/// na Terra pra mirar, dez vezes mais forte (a assinatura alcanca). Devolve o nome do vivo, ou vazio.
+	/// (adendo 18) O MORTO NO OUTRO MUNDO COM A TRANSMISSAO (a skill de verdade) e um VIVO na Terra pra mirar. Desde 2026-10-21 o
+	/// alcance e o nivel da skill, como o do Sense (`TransmissaoEmNiveis`): do Outro Mundo a Terra so o nivel 5, o universo, alcanca --
+	/// e ele concentra em 1 s. Devolve o nome do vivo, ou vazio.
 	/// </summary>
 	internal string PalcoV30_MortoComUmVivoNaTerra(int id)
 	{
 		if (!_players.TryGetValue(id, out ServerPlayer? pl) || !PalcoV30_MortoAoLadoDoEnma(id, 0)) return "";
 		if (!pl.Livro.Sabe("/datum/skill/shunkanido")) { pl.Livro.Dar("/datum/skill/shunkanido"); MandarSkills(pl); }
+		pl.Niveis.Por(Jandirus.Core.Skills.TransmissaoEmNiveis.Path, Jandirus.Core.Skills.TransmissaoEmNiveis.Universo);
 		pl.Ficha.teleskill = 100;
 		pl.Ficha.Ki = pl.Ficha.MaxKi;
 		ZoneKey terra = ZoneKey.Premade("Earth");

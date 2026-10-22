@@ -151,7 +151,7 @@ public static class LinguaDosDeuses
 	/// ======================================================================================
 	/// </summary>
 	public const string FraseDaRecusa =
-		"Você grita para os céus... e NADA acontece. Só a LÍNGUA DOS DEUSES desperta o Super Shenron "
+		"Você grita para os céus... e NADA acontece. Só a LÍNGUA DOS DEUSES desperta o Super Shenlong "
 		+ "-- cargos divinos (atuais ou passados) a conhecem, e o sangue Kai ou Demigod nasce com ela. "
 		+ "Ou TRANSFIRA as sete a alguém que fale (verbo Transferir Super Esferas).";
 }

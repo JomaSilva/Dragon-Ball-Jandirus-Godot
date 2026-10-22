@@ -745,8 +745,8 @@ public sealed partial class GameServer
 
 		// ------------------------------------------------------------ A ESTABILIZACAO, UMA VEZ SO (e por ultimo)
 		ComandoDeInteracao(dono, "grav_up", "estabilidade");
-		AfirmarMq("comprada a ESTABILIZACAO (uma vez so), ela tambem sai do menu: sobram forca, bateria e nanites",
-				  g.Estavel && MelhoriasNoMenu(maq).SequenceEqual(["upgrades/forca", "upgrades/bateria", "upgrades/nanites"]),
+		AfirmarMq("comprada a ESTABILIZACAO (uma vez so), ela tambem sai do menu: sobram forca, bateria, a trava de seguranca e nanites",
+				  g.Estavel && MelhoriasNoMenu(maq).SequenceEqual(["upgrades/forca", "upgrades/bateria", "upgrades/trava", "upgrades/nanites"]),
 				  string.Join(",", MelhoriasNoMenu(maq)));
 	}
 }

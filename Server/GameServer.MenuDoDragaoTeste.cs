@@ -43,6 +43,7 @@ namespace Jandirus.Server;
 ///   H. `ListaNaOrdemDaTabelaDeTeste`    -> a lista abre em "Nada" e numa "Calcinha" apagada, antes do que da pra pedir.
 ///   I. `GestoDeOutroMundoDeTeste`       -> "Pedidos por invocação" aparece em outro mundo, onde mexeria na estatua errada.
 ///   J. `PosseDaSuperSoPraQuemTomouDeTeste` -> a guarda aceita so avisa os dois: quem olha uma Super Esfera le o dono de antes.
+///   K. `DesligadosIgnoradosDeTeste`     -> (2026-10-22) o desejo que o criador desligou no menu da estatua volta a janela.
 /// ========================================================================================
 ///
 ///     Godot --headless --path . --host --rede 8180 --conta bancada_menudragao --senha teste
@@ -279,8 +280,10 @@ public partial class GameServer
 			double zeniAntes = pl.Ficha.Zeni;
 			int marca = fio.Count;
 			bool pediu = Pedir(pl, "dinheiro");
-			Checa("RIQUEZA pelo caminho da janela (linha sem pergunta) e concedida, e gasta UM pedido",
-				  pediu && Math.Abs(pl.Ficha.Zeni - (zeniAntes + Desejos.ZeniDoDesejo)) < 1 && set.Pedidos == 1,
+			// (2026-10-22) A FORCA DIVIDIDA: os tres pedidos deste set dividem a forca dele -- a riqueza e um terco da de um pedido so
+			double riquezaDoSet = Desejos.ZeniDoDesejo * ConfigDaEstatua.ForcaDeCadaPedido(set.Desejos);
+			Checa("RIQUEZA pelo caminho da janela (linha sem pergunta) e concedida -- um terco dos 50.000.000, a forca dividida pelos 3 pedidos -- e gasta UM pedido",
+				  pediu && Math.Abs(pl.Ficha.Zeni - (zeniAntes + riquezaDoSet)) < 1 && set.Pedidos == 1,
 				  $"pediu={pediu}, zeni {zeniAntes:N0} -> {pl.Ficha.Zeni:N0}, pedidos {set.Pedidos}");
 			Checa("...e a janela de quem pediu recebe a contagem nova NA HORA: restam 2 de 3, sem mandar abrir de novo",
 				  Desde(marca, pl).LastOrDefault() is { Restam: 2, Total: 3, Abrir: false, DePe: true, Fechar: false },
@@ -527,9 +530,10 @@ public partial class GameServer
 
 				DragaoPara(raditz);
 				string[] semPergunta = [.. MenuDe(raditz).Entradas.Where(e => !e.Acao && e.Pode && !e.TemPergunta).Select(e => e.Id)];
-				// (v0.3.0) "Liberar o meu potencial" e de toda raca: o Saiyajin a ve acesa e o laco abaixo a pede
-				string[] esperadas = ["nada", "dinheiro", "marcos", "tecnologia", "poder", "inteligencia", "super_saiyajin", "potencial", "reviver_todos", "supremo"];
-				Checa("(montagem) pra um Saiyajin que NAO ergueu a estatua, num set de 2 pedidos com o supremo, a janela acende as 10 linhas sem pergunta",
+				// (v0.3.0) "Liberar o meu potencial" e de toda raca: o Saiyajin a ve acesa e o laco abaixo a pede. (2026-10-21) E o
+				// "Aumentar o meu potencial" (dono) entra ao lado dele, sem pergunta: a 11a linha, que o laco tambem pede.
+				string[] esperadas = ["nada", "dinheiro", "marcos", "tecnologia", "poder", "inteligencia", "super_saiyajin", "potencial", "aumentar_potencial", "reviver_todos", "supremo"];
+				Checa("(montagem) pra um Saiyajin que NAO ergueu a estatua, num set de 2 pedidos com o supremo, a janela acende as 11 linhas sem pergunta",
 					  semPergunta.ToHashSet().SetEquals(esperadas), string.Join(",", semPergunta));
 
 				var naoConcedeu = new List<string>();
@@ -763,6 +767,36 @@ public partial class GameServer
 				  pediu && set.Desejos == 2 && !SetAtivo(set), $"pediu={pediu}, desejos {set.Desejos}");
 			Checa("...e o gesto NAO aparece pra quem nao ergueu a estatua", MenuDe(vizinho).Entrada(AcoesDoDragao.Pedidos) == null);
 
+			// ---- familia K (2026-10-22): "CONFIGURAR O DRAGAO" -- o menu da estatua, pela janela de desejos
+			// O dono: *"e ao criar um set de esferas crie um menu bem intuitivo e bem feito pro jogador q criou o set escolher os desejos, a
+			// quantidade, a força etc"*. A linha leva a configuracao de agora (o cliente abre o menu da estatua com ela) e o verbo dela e o
+			// `db_refazer`, que le a configuracao nova. Aqui e a Terra: o nome digitado nao pega, o Shenlong fica.
+			EntradaDoDragao? configurar = MenuDe(pl).Entrada(AcoesDoDragao.Configurar);
+			ConfigDaEstatua? daLinha = ConfigDaEstatua.Ler(configurar?.Pedido);
+			Checa("**\"CONFIGURAR O DRAGÃO\" LEVA O QUE O SET TEM** (o menu da estatua abre com isso): o nome, os 2 pedidos de agora e nenhum desejo desligado -- e e um gesto do criador, pelo `db_refazer`",
+				  configurar is { Acao: true, Verbo: "db_refazer", Pode: true } && daLinha is { Pedidos: 2, Desligados.Count: 0 } && daLinha.Nome == set.NomeDoDragao
+				  && MenuDe(vizinho).Entrada(AcoesDoDragao.Configurar) == null,
+				  $"linha {configurar?.Pedido}; o vizinho {(MenuDe(vizinho).Entrada(AcoesDoDragao.Configurar) == null ? "nao a ve" : "A VE")}");
+			var novaConfig = new ConfigDaEstatua { Nome = "Outro Nome", Pedidos = 1 };
+			novaConfig.Desligados.Add("matar");
+			novaConfig.Desligados.Add("juventude_alheia");
+			Verbo(pl, "db_refazer", novaConfig.Codificar());
+			MenuDoDragao depoisDeConfigurar = MenuDe(pl);
+			Checa("...e o `db_refazer` com a configuracao nova: 1 pedido, o \"Matar alguém\" e o \"Rejuvenescer outro\" fora da janela -- e o nome da Terra continua o Shenlong",
+				  set.Desejos == 1 && set.NomeDoDragao == Esferas.NomeDoShenlong && depoisDeConfigurar.Entrada("matar") == null
+				  && depoisDeConfigurar.Entrada("dinheiro") != null && !MenuDaqui(pl, set).Any(d => d.Id == "juventude_alheia")
+				  && ConfigDaEstatua.Ler(depoisDeConfigurar.Entrada(AcoesDoDragao.Configurar)?.Pedido) is { Pedidos: 1 } relida
+				  && relida.Desligados.SetEquals(["matar", "juventude_alheia"]),
+				  $"desejos {set.Desejos}; nome {set.NomeDoDragao}; matar {(depoisDeConfigurar.Entrada("matar") == null ? "fora" : "NA JANELA")}; "
+				  + $"linha {depoisDeConfigurar.Entrada(AcoesDoDragao.Configurar)?.Pedido}");
+			DesligadosIgnoradosDeTeste = true;
+			bool matarVolta;
+			try { matarVolta = MenuDe(pl).Entrada("matar") != null; }
+			finally { DesligadosIgnoradosDeTeste = false; }
+			Checa("   CONTRA-EXEMPLO (defeito injetado: o menu ignora os desejos desligados) -- o \"Matar alguém\" volta a janela, e a regua de cima REPROVA",
+				  matarVolta);
+			Verbo(pl, "db_refazer", new ConfigDaEstatua { Pedidos = 2 }.Codificar());
+
 			pediu = Pedir(pl, AcoesDoDragao.Derrubar);
 			Checa("\"Derrubar a estátua\" pela janela: o set deste mundo deixa de existir",
 				  pediu && !_sets.Contains(set) && !_esferas.Exists(e => e.Set == set.Id), $"pediu={pediu}");
@@ -971,6 +1005,7 @@ public partial class GameServer
 			AlvoForaDaListaDeTeste = ListaNaOrdemDaTabelaDeTeste = GestoDeOutroMundoDeTeste = PosseDaSuperSoPraQuemTomouDeTeste = false;
 			ContagemZeraTodoTiqueDeTeste = DragaoNaoRenovaAEsperaDeTeste = false;
 			SuperShenronDeQualquerLugarDeTeste = false;   // o palco da secao 8
+			DesligadosIgnoradosDeTeste = false;           // (2026-10-22) a familia K
 
 			foreach (ServerPlayer f in forjados)
 			{

@@ -93,7 +93,23 @@ public partial class GameServer
 
 		// (2026-10-16) O REPOUSO QUE A SAGA DO CORRUPTED MAJIN IMPOE -- a Forma Pura, quando ela e o corpo dele. Ver
 		// `ServerPlayer.PisoDoMajin` e `PerfilDeFormas.PisoProprio`.
-		PisoProprio: PuraSemPisoDeTeste ? "" : pl.PisoDoMajin);
+		// (2026-10-22) ...OU O QUE O MOLDE DO CHEFE DECLARA -- o Freeza Mutante na forma base. Ver `RepousoDoMolde`.
+		PisoProprio: !PuraSemPisoDeTeste && pl.PisoDoMajin is { Length: > 0 } puro ? puro : RepousoDoMolde(pl));
+
+	/// <summary>
+	/// (2026-10-22) O REPOUSO QUE O MOLDE DESTE CORPO IMPOE (`MoldeDeNpc.Repouso`), ou vazio. O dono: *"o boss freeza (namek e vegeta) a classe
+	/// dele ta como frost demon sendo q deveria ser mutante e ele deveria usar as skills de mutante dele"* -- e, perguntado, o Mutante completo
+	/// com a escada de chefe de hoje. O Mutante jogador NASCE na 1a supressao (0,25x, `Catalogo.PisoDaEscada`): sem o repouso do molde o
+	/// Freeza lutaria com um quarto do BP que o degrau anuncia. Vale onde o repouso e perguntado -- o nascimento (`NascerNpc`), o recuo, o
+	/// cadaver.
+	/// </summary>
+	private static string RepousoDoMolde(ServerPlayer pl) => ChefeNaSupressaoDeTeste ? "" : pl.Papel?.Molde.Repouso ?? "";
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--iaraciaisteste`, familia A): o molde sem repouso -- o Freeza Mutante nasce na 1a supressao, como o Mutante jogador.
+	/// Falso em jogo, sempre.
+	/// </summary>
+	internal static bool ChefeNaSupressaoDeTeste;
 
 	/// <summary>
 	/// EM QUE RAIVA ESTE CORPO ESTA -- a mais alta das duas janelas que ainda estiver aberta.
@@ -108,6 +124,7 @@ public partial class GameServer
 		long agora = NowMs();
 		if (pl.FuriaExtremaAte > agora) return NivelDeRaiva.Extrema;
 		if (pl.RaivaComumAte > agora) return NivelDeRaiva.Comum;
+		if (pl.IrritadoAte > agora) return NivelDeRaiva.Irritado;
 		return NivelDeRaiva.Nenhuma;
 	}
 
@@ -202,7 +219,8 @@ public partial class GameServer
 			: Math.Max(100, 100 + folga * (pl.RaivaDeInjecaoFracao - (agora - pl.RaivaDeInjecaoDesde) / 1000.0 / SegundosDeGotejamento));
 
 		return Math.Max(daInjecao, Math.Max(DaJanela(NivelDeRaiva.Extrema, pl.FuriaExtremaAte),
-											DaJanela(NivelDeRaiva.Comum, pl.RaivaComumAte)));
+											Math.Max(DaJanela(NivelDeRaiva.Comum, pl.RaivaComumAte),
+													 DaJanela(NivelDeRaiva.Irritado, pl.IrritadoAte))));
 	}
 
 	/// <summary>
@@ -489,7 +507,8 @@ public partial class GameServer
 	{
 		if (grau == NivelDeRaiva.Nenhuma) return;
 		if (grau == NivelDeRaiva.Extrema) pl.FuriaExtremaAte = prazo;
-		else pl.RaivaComumAte = prazo;
+		else if (grau == NivelDeRaiva.Comum) pl.RaivaComumAte = prazo;
+		else if (grau == NivelDeRaiva.Irritado) pl.IrritadoAte = prazo;
 
 		// E A RAIVA VALE JA. Ver o bloco do buff no cabecalho do `AmigoAbatido`: isto nao acumula
 		// nada, so traz o numero derivado (que a janela acima acabou de mudar) pra dentro da ficha
@@ -540,6 +559,7 @@ public partial class GameServer
 
 		pl.FuriaExtremaAte = 0;
 		pl.RaivaComumAte = 0;
+		pl.IrritadoAte = 0;
 		pl.RaivaDeInjecaoDesde = 0;   // (v0.2.1) a raiva de injecao tambem: meditar acalma TODA raiva
 		pl.Ficha.Anger = 100;
 
@@ -1254,6 +1274,9 @@ public partial class GameServer
 			RecusaForma.SemPoderPraRaivaComum =>
 				$"{nome} quase vem -- mas a raiva que voce sente pede mais poder do que voce tem. "
 				+ "So uma dor maior o traria agora.",
+			RecusaForma.SemPoderPraIrritado =>
+				$"{nome} quase vem -- mas irritado assim ele pede bem mais poder do que você tem. "
+				+ "Uma raiva de verdade o traria por menos.",
 			RecusaForma.SemEnergia => $"{nome} pede mais energia de Ultra Ego.",
 
 			// ============================ A UNICA RECUSA QUE SE RESOLVE NA LOJA ============================
@@ -1901,8 +1924,8 @@ public partial class GameServer
 	///
 	/// ============================ `de` == `para`: "ELE ESTA EM", E NAO "ELE MUDOU PRA" ============================
 	/// Nao existe forma anterior pra quem acaba de chegar, e a escolha do que por no `de` nao e
-	/// decorativa: o cliente USA a diferenca. O caminho instantaneo do `World.AoMudarForma` toca um
-	/// `Trilha.Dash` no fim -- o estalo que marca o instante da transformacao --, e um recem-chegado
+	/// decorativa: o cliente USA a diferenca. O caminho instantaneo do `World.AoMudarForma` toca o
+	/// estalo do C no fim -- o que marca o instante da transformacao --, e um recem-chegado
 	/// numa zona com tres transformados ouviria tres estalos de coisas que aconteceram antes de ele
 	/// existir ali. E a mesma familia do erro da cinematica, so que no ouvido.
 	///
@@ -1968,6 +1991,9 @@ public partial class GameServer
 		List<string> maestriasDescartadas = pl.Forma.Maestria.DoSave(c?.Maestrias);
 		// OS LIMIARES DESTE PERSONAGEM vem do disco -- sorteados no nascimento, nunca de novo.
 		pl.Forma.Limiares = c?.Limiares;
+		// (2026-10-21) ...menos o Low-Class antigo, que DESCE pra faixa nova do dono (so pra baixo: ninguem perde forma).
+		// A raca e a classe sao as do proprio save, que e de onde os limiares vieram.
+		if (c != null) pl.Forma.Limiares?.DescerAoSorteioDoLowClass(c.Raca, c.Ficha?.Class);
 
 		// ============================ A PREFERENCIA DOS GRADES, E O NULO QUE VIRA `true` ============================
 		// **AQUI E QUE UM CORPO GANHA OPINIAO.** `EstadoDeForma.GradesLigados` nasce NULO de proposito
@@ -2025,6 +2051,7 @@ public partial class GameServer
 		pl.ChefesVistos = c?.ChefesVistos is { Count: > 0 } cv
 			? new HashSet<string>(cv, StringComparer.OrdinalIgnoreCase)
 			: new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		AplicarEtapasDoSave(pl, c?.EtapasDeChefe);
 
 		// A SALA DO TEMPO **NAO ENTRA AQUI**, e a ausencia e uma decisao: os tres campos dela
 		// (recarga, chave do Guardiao, prisao) sao lidos no `AccountStore.ParaJogador`, que se

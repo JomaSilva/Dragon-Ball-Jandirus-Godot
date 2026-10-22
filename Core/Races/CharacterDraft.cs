@@ -88,7 +88,7 @@ public sealed class CharacterDraft
 
 	/// <summary>Raças que nascem carecas: o passo de cabelo nem aparece.</summary>
 	public static readonly string[] SemCabelo =
-		["Namekian", "Majin", "Icer", "BioAndroid", "Saibaman", "Shapeshifter"];
+		["Namekian", "Majin", "Frost Demon", "BioAndroid", "Saibaman", "Shapeshifter"];
 
 	/// <summary>
 	/// As tres racas em que o jogador escolhe a classe, e as opcoes de cada uma.
@@ -110,7 +110,7 @@ public sealed class CharacterDraft
 	public static string[] RacasDoPlaneta(string planeta) => planeta switch
 	{
 		"Earth" => ["Human", "Shapeshifter", "Demigod", "Majin", "Alien"],
-		"Vegeta" => ["Saiyan", "Tsujin", "Saibaman", "Heran", "Meta", "Icer", "Alien"],
+		"Vegeta" => ["Saiyan", "Tsujin", "Saibaman", "Heran", "Meta", "Frost Demon", "Alien"],
 		"Namek" => ["Namekian", "Arlian", "Makyo", "Gray", "Alien", "Kanassa", "Yardrat"],
 		"Heaven" => ["Demigod", "Kai"],
 		"Hell" => ["Demon", "Demigod"],

@@ -3347,9 +3347,9 @@ public sealed partial class GameServer
 			double kiDoSaiba = saiba.Ficha.Ki, precoDoCuspe = 12 * saiba.Ficha.BaseDrain();
 			ApertarEOuvir(saiba, "Acid_Spit");
 			Projetil? cuspe = TirosDeG12(saiba).FirstOrDefault();
-			// (2026-10-18) o `basedamage` e o do NERF do dono (*"acido do saibaman ta meio op, da uma nerfada"*): 20, e nao os 40 do DM -- ver
-			// `DanoDoCuspeG14`. A regua do nerf mora na `--chefesteste`.
-			AfirmarV21("**O CUSPE ACIDO** (`arlian.dm:42-63`): quem aprendeu a skill solta uma bola de `basedamage` 20 (o nerf do dono; o DM: 40) que carrega o veneno, por `12 x BaseDrain` de Ki -- e quem nao aprendeu ouve que nao sabe",
+			// (2026-10-18) o `basedamage` e o do NERF do dono (*"acido do saibaman ta meio op, da uma nerfada"*): 20, e nao os 40 do DM -- e, no
+			// segundo nerf (2026-10-22), 5 -- ver `DanoDoCuspeG14`. A regua do nerf mora na `--chefesteste`.
+			AfirmarV21($"**O CUSPE ACIDO** (`arlian.dm:42-63`): quem aprendeu a skill solta uma bola de `basedamage` {DanoDoCuspeG14:0.#} (o nerf do dono; o DM: 40) que carrega o veneno, por `12 x BaseDrain` de Ki -- e quem nao aprendeu ouve que nao sabe",
 					   Disse(semSaber, "voce nao sabe") && cuspe is { Dom: DomDeProjetil.Veneno, Tipo: TipoDeProjetil.Blast } && Math.Abs(cuspe.BaseDano - DanoDoCuspeG14) < 1e-6
 					   && Math.Abs(kiDoSaiba - saiba.Ficha.Ki - precoDoCuspe) < 1e-6 && precoDoCuspe > 0,
 					   $"{Ultimos(semSaber)}; bola {(cuspe == null ? "nenhuma" : $"dano base {cuspe.BaseDano:0.#}, dom {cuspe.Dom}")}; ki -{kiDoSaiba - saiba.Ficha.Ki:0.###} (preco {precoDoCuspe:0.###})");

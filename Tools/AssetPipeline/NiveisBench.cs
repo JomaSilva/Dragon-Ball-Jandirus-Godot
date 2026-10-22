@@ -74,6 +74,7 @@ public static class NiveisBench
 	private const string Kaioken = "/datum/skill/kaioken";
 	private const string OneHundred = "/datum/skill/Bodybuilding/One_Hundred";
 	private const string OnePunch = "/datum/skill/Bodybuilding/One_Punch";
+	private const string OneTraining = "/datum/skill/Bodybuilding/One_Training";
 	private const string Trinity = "/datum/skill/Bodybuilding/TheHolyTrinity";
 	private const string Grace = "/datum/skill/Bodybuilding/Grace";
 
@@ -463,67 +464,151 @@ public static class NiveisBench
 	// =====================================================================
 	private static void OGanhoNaCompra(SkillCatalog cat)
 	{
-		Console.WriteLine("\n-- F1e) O GANHO NA COMPRA: `BP += max(1, BP*0.01)`, `hiddenpotential += relBPmax*2` (Bodybuilding.dm:89-92) --");
+		Console.WriteLine("\n-- F1e) O GANHO NA COMPRA: One Hundred e One Training somam 5% de BP, sem potencial oculto (2026-10-21) --");
 		Skill? s = cat.Get(OneHundred);
-		Conferir("o skills.json traz as duas expressoes da One Hundred", s is { Compra.Length: 2 },
+		Conferir("a One Hundred so soma BP, 5%", s is { Compra.Length: 1 } && s.Compra[0].Campo == "BP" && s.Compra[0].Expressao.Contains("0.05"),
 				 string.Join(" ; ", s?.Compra.Select(g => $"{g.Campo}{(g.Sinal > 0 ? "+=" : "-=")}{g.Expressao}") ?? []));
-		Conferir("...e a One Punch com relBPmax*0,5", cat.Get(OnePunch)?.Compra.Any(g => g.Expressao.Contains("0.5")) == true);
+		Conferir("a One Training tambem, 5% e sem potencial", cat.Get(OneTraining)?.Compra is { Length: 1 } c && c[0].Expressao.Contains("0.05") && !c[0].Expressao.Contains("hidden"));
+		Conferir("a One Punch nao soma BP nem potencial: o efeito dela e o de combate", cat.Get(OnePunch)?.Compra.Length == 0);
 
 		Fighter f = Corpo(bp: 1000);
-		double bp0 = f.BP, hp0 = f.hiddenpotential, rel = f.relBPmax;
-		Conferir("pre-condicao: a ficha tem relBPmax > 0 (senao a prova do potencial mede zero)", rel > 0, $"{rel}");
+		double bp0 = f.BP, hp0 = f.hiddenpotential;
 		var livro = new SkillBook();
 		livro.Dar(OneHundred);
 		Dictionary<string, double> somou = GanhoNaCompra.Aplicar(f, livro, s!);
-		// contra o DM, numero por numero: max(1, 1000*0.01) = 10; relBPmax*2
-		Conferir("BP: 1000 -> 1010 (max(1, 1%) = 10)", Perto(f.BP, bp0 + 10), $"{f.BP}");
-		Conferir($"hiddenpotential: +relBPmax*2 = +{rel * 2:0.##}", rel > 0 && Perto(f.hiddenpotential, hp0 + rel * 2), $"{f.hiddenpotential - hp0}");
-		Conferir("o livro registrou o que somou (o `storedBP` do datum) -- e a RAZAO garantida junto",
-				 livro.GanhosNaCompra.TryGetValue(OneHundred, out var reg) && Perto(reg.GetValueOrDefault("BP"), 10) && somou.Count == 3
-				 && Perto(reg.GetValueOrDefault(GanhoNaCompra.CampoDaRazao), (hp0 + rel * 2) / (bp0 + 10)));
-		Conferir("aplicar de novo NAO soma de novo (o relog)", GanhoNaCompra.Aplicar(f, livro, s!).Count == 0 && Perto(f.BP, bp0 + 10));
+		Conferir("BP: 1000 -> 1050 (max(1, 5%) = 50)", Perto(f.BP, bp0 + 50), $"{f.BP}");
+		Conferir("o potencial oculto nao mexe", Perto(f.hiddenpotential, hp0) && Perto(f.potencialGarantido, 0), $"{f.hiddenpotential}");
+		Conferir("o livro registrou so o BP somado",
+				 livro.GanhosNaCompra.TryGetValue(OneHundred, out var reg) && Perto(reg.GetValueOrDefault("BP"), 50) && somou.Count == 1
+				 && !reg.ContainsKey("hiddenpotential"));
+		Conferir("aplicar de novo NAO soma de novo (o relog)", GanhoNaCompra.Aplicar(f, livro, s!).Count == 0 && Perto(f.BP, bp0 + 50));
 
-		Fighter g = Corpo(bp: 50);
+		Fighter g = Corpo(bp: 10);
 		var l2 = new SkillBook();
 		l2.Dar(OneHundred);
 		GanhoNaCompra.Aplicar(g, l2, s!);
-		Conferir("com BP 50 o piso do `max(1, ...)` vale: +1, e nao +0,5", Perto(g.BP, 51), $"{g.BP}");
+		Conferir("com BP 10 o piso do `max(1, ...)` vale: +1, e nao +0,5", Perto(g.BP, 11), $"{g.BP}");
 
-		OTetoDeKiQueNaoCaiMais(cat, f, s!);
+		OTetoDeKiQueNaoCaiMais();
 
 		Dictionary<string, double> devolveu = GanhoNaCompra.Desfazer(f, livro, OneHundred);
-		Conferir("esquecer DEVOLVE exatamente o que somou (BP, potencial e a razao garantida) -- o before_forget (:98-100)",
-				 Perto(f.BP, bp0) && Perto(f.hiddenpotential, hp0) && Perto(f.potencialGarantido, 0) && devolveu.Count == 3 && !livro.GanhosNaCompra.ContainsKey(OneHundred),
-				 $"{f.BP}/{f.hiddenpotential}/{f.potencialGarantido}");
+		Conferir("esquecer DEVOLVE o BP somado",
+				 Perto(f.BP, bp0) && Perto(f.hiddenpotential, hp0) && devolveu.Count == 1 && !livro.GanhosNaCompra.ContainsKey(OneHundred),
+				 $"{f.BP}/{f.hiddenpotential}");
 		Conferir("desfazer de novo nao tira nada", GanhoNaCompra.Desfazer(f, livro, OneHundred).Count == 0 && Perto(f.BP, bp0));
+
+		OReembolsoDaVersaoAntiga(cat);
+	}
+
+	/// <summary>Livro em que estes paths foram COMPRADOS, com zero marcos livres.</summary>
+	private static SkillBook LivroComprado(params string[] paths)
+	{
+		var livro = new SkillBook();
+		livro.Carregar(paths);
+		livro.CarregarCompradas(paths);
+		return livro;
+	}
+
+	private static Skill Antiga(string path, string potencial) => new()
+	{
+		Path = path,
+		Compra =
+		[
+			GanhoNaCompra.Parse("BP+=(max(1,BP*0.01))")!,
+			GanhoNaCompra.Parse(potencial)!,
+		],
+	};
+
+	// =====================================================================
+	// F1e3) A COMPRA ANTIGA VOLTA, PRA COMPRAR DE NOVO OS 5%
+	// =====================================================================
+	private static void OReembolsoDaVersaoAntiga(SkillCatalog cat)
+	{
+		Console.WriteLine("\n-- F1e3) QUEM COMPROU A VERSAO ANTIGA recebe o marco de volta e o que ela somou sai da ficha --");
+		Fighter f = Corpo(bp: 1000);
+		var livro = LivroComprado(OneHundred, OneTraining, OnePunch);
+		GanhoNaCompra.Aplicar(f, livro, Antiga(OneHundred, "hiddenpotential+=((relBPmax*2))"));
+		GanhoNaCompra.Aplicar(f, livro, Antiga(OneTraining, "hiddenpotential+=((relBPmax*0.5))"));
+		GanhoNaCompra.Aplicar(f, livro, Antiga(OnePunch, "hiddenpotential+=((relBPmax*0.5))"));
+		double bpVelho = f.BP, hpVelho = f.hiddenpotential, razaoVelha = f.potencialGarantido;
+		Conferir("pre-condicao: as tres somaram BP e potencial", bpVelho > 1000 && hpVelho > 1 && razaoVelha > 0, $"BP {bpVelho} hp {hpVelho} razao {razaoVelha}");
+
+		List<GanhoNaCompra.CompraAntigaDevolvida> saiu = GanhoNaCompra.ReembolsarVersaoAntiga(f, livro, cat);
+		int custoCem = SkillCatalog.CustoDe(cat.Get(OneHundred)!);
+		int custoTreino = SkillCatalog.CustoDe(cat.Get(OneTraining)!);
+		Conferir("devolveu One Hundred e One Training, e a One Punch nao",
+				 saiu.Count == 2 && saiu.Any(d => d.Path == OneHundred) && saiu.Any(d => d.Path == OneTraining),
+				 string.Join(", ", saiu.Select(d => d.Nome)));
+		Conferir("as duas sairam do livro e a One Punch ficou",
+				 !livro.Sabe(OneHundred) && !livro.Sabe(OneTraining) && livro.Sabe(OnePunch) && livro.FoiComprada(OnePunch));
+		Conferir("os marcos das duas voltaram (o custo de tier, nao o 1 do json)",
+				 livro.MarcosLivres == custoCem + custoTreino && custoCem == 2 && custoTreino == 2, $"{livro.MarcosLivres}");
+		Conferir("o BP e o potencial das duas voltaram; o da One Punch ficou",
+				 f.BP < bpVelho && f.hiddenpotential < hpVelho && f.hiddenpotential > 1 && f.potencialGarantido > 0 && f.potencialGarantido < razaoVelha,
+				 $"BP {f.BP} hp {f.hiddenpotential} razao {f.potencialGarantido}");
+		Conferir("rodar de novo nao tira mais nada", GanhoNaCompra.ReembolsarVersaoAntiga(f, livro, cat).Count == 0 && livro.Sabe(OnePunch));
+
+		// a compra NOVA, so com BP, nao e a versao antiga
+		var nova = LivroComprado(OneHundred);
+		Fighter g = Corpo(bp: 1000);
+		GanhoNaCompra.Aplicar(g, nova, cat.Get(OneHundred)!);
+		double bpNova = g.BP, hpNova = g.hiddenpotential;
+		Conferir("quem ja comprou os 5% nao e reembolsado",
+				 GanhoNaCompra.ReembolsarVersaoAntiga(g, nova, cat).Count == 0 && nova.Sabe(OneHundred)
+				 && Perto(g.BP, bpNova) && Perto(g.hiddenpotential, hpNova) && nova.MarcosLivres == 0);
+
+		// comprou quando o ganho ainda nao era gravado: a skill sai e o marco volta, a ficha nao mexe
+		var semRegistro = LivroComprado(OneTraining);
+		Fighter h = Corpo(bp: 1000);
+		double bpH = h.BP, hpH = h.hiddenpotential;
+		List<GanhoNaCompra.CompraAntigaDevolvida> sem = GanhoNaCompra.ReembolsarVersaoAntiga(h, semRegistro, cat);
+		Conferir("compra sem registro tambem volta (senao os 5% nunca acontecem), e a ficha nao perde nada",
+				 sem.Count == 1 && !semRegistro.Sabe(OneTraining) && semRegistro.MarcosLivres == custoTreino
+				 && Perto(h.BP, bpH) && Perto(h.hiddenpotential, hpH) && sem[0].Campos.Count == 0);
+
+		// presente e licao nao custaram marco
+		var presente = new SkillBook();
+		presente.Dar(OneHundred);
+		var licao = new SkillBook();
+		licao.DarComoEnsinada(OneTraining);
+		licao.CarregarCompradas(null);
+		Conferir("skill dada e skill ensinada ficam",
+				 GanhoNaCompra.ReembolsarVersaoAntiga(Corpo(), presente, cat).Count == 0 && presente.Sabe(OneHundred)
+				 && GanhoNaCompra.ReembolsarVersaoAntiga(Corpo(), licao, cat).Count == 0 && licao.Sabe(OneTraining));
+
+		// e ai a compra nova pega os 5%, sem potencial
+		var deNovo = LivroComprado(OneHundred);
+		Fighter i = Corpo(bp: 1000);
+		double hpI = i.hiddenpotential;
+		GanhoNaCompra.Aplicar(i, deNovo, cat.Get(OneHundred)!);
+		Conferir("recomprada, a One Hundred soma 5% e nao mexe no potencial",
+				 Perto(i.BP, 1050) && Perto(i.hiddenpotential, hpI) && Perto(i.potencialGarantido, 0));
 	}
 
 	// =====================================================================
 	// F1e2) O TETO DE KI QUE CAIA A CADA SOCO (2026-09-04)
 	// =====================================================================
 	/// <summary>
-	/// A One Hundred sobe o `MaxKi` pela razao `hiddenpotential/BP` (`master.dm:176-184`), e o port
-	/// congelava o numerador: cada ganho de BP derrubava o teto (ver a nota em `Fighter.Statify`). A prova
-	/// e a mesma conta de antes, com o BP dobrado DEPOIS da compra: o fator `hdnptltoBP` e o `MaxKi` nao
-	/// podem cair. O `baseKi` fica onde estava (so treino o sobe), entao o `MaxKi` so pode mudar por este
-	/// fator -- e e por isso que a comparacao e limpa.
+	/// Uma compra que soma `hiddenpotential` garante a razao (`potencialGarantido`): dobrar o BP depois
+	/// nao derruba o `MaxKi`. A One Hundred viva nao faz mais isso (o potencial ficou com a idade); a
+	/// prova usa a expressao antiga, que saves de antes ainda carregam.
 	/// </summary>
-	private static void OTetoDeKiQueNaoCaiMais(SkillCatalog cat, Fighter humano, Skill oneHundred)
+	private static void OTetoDeKiQueNaoCaiMais()
 	{
-		Console.WriteLine("\n-- F1e2) O TETO DE KI NAO CAI COM O BP: a razao da compra fica GARANTIDA (Fighter.potencialGarantido) --");
-		// NUM SAIYAJIN, e nao no humano da prova de cima: a razao que a One Hundred da e ~2*(1+UPMod)*BPMod,
-		// independente do BP -- 3,8 no humano (log4 < 1: a skill nem mexe no Ki dele) e ~12,8 no Saiyajin
-		// (hdnptlmod 1,83, +83% de Ki). A prova precisa de um corpo em que o teto de fato subiu, senao
-		// "nao caiu" e verdade vazia. O humano segue na prova do desfazer, la em cima.
-		_ = humano;
-		// OS NUMEROS DE RACA SAO ENTRADA DA PROVA: `Corpo()` nao passa pelo nascimento (que e quem escreve
-		// `UPMod`/`BPMod` a partir do races.json), entao eles vao a mao -- os de um Saiyajin (potencial 3,
-		// BPMod 1,6), que dao razao 2*(1+3)*1,6 = 12,8 e hdnptlmod 1,83. Sem eles a razao e 4 - 1/BP e o
-		// log4 fica um fio ABAIXO de 1: a skill nao mexeria no Ki, e "nao caiu" seria verdade vazia.
+		Console.WriteLine("\n-- F1e2) O TETO DE KI NAO CAI COM O BP: a razao de uma compra antiga fica GARANTIDA --");
+		Skill antiga = new()
+		{
+			Path = OneHundred,
+			Compra =
+			[
+				GanhoNaCompra.Parse("BP+=(max(1,BP*0.01))")!,
+				GanhoNaCompra.Parse("hiddenpotential+=((relBPmax*2))")!,
+			],
+		};
 		Fighter comprou = Saiyajin(1000);
 		var livroS = new SkillBook();
 		livroS.Dar(OneHundred);
-		GanhoNaCompra.Aplicar(comprou, livroS, oneHundred);
+		GanhoNaCompra.Aplicar(comprou, livroS, antiga);
 		comprou.Statify(); comprou.PowerLevel();
 		Conferir("pre-condicao: no Saiyajin a One Hundred SOBE o teto de Ki de verdade (log4 da razao > 1)", DmMath.Log(4, comprou.hdnptltoBP) > 1.5, $"razao {comprou.hdnptltoBP:0.##}, log4 {DmMath.Log(4, comprou.hdnptltoBP):0.##}");
 		Fighter semSkill = Saiyajin(1000);
@@ -554,7 +639,7 @@ public static class NiveisBench
 		Fighter velho = Corpo(bp: 1000);
 		var livroVelho = new SkillBook();
 		livroVelho.Dar(OneHundred);
-		Dictionary<string, double> somouVelho = GanhoNaCompra.Aplicar(velho, livroVelho, oneHundred);
+		Dictionary<string, double> somouVelho = GanhoNaCompra.Aplicar(velho, livroVelho, antiga);
 		double razaoDaCompra = velho.potencialGarantido;
 		velho.potencialGarantido = 0;                                            // o campo nao existia
 		livroVelho.GanhosNaCompra[OneHundred].Remove(GanhoNaCompra.CampoDaRazao);   // e o registro nao tinha a chave

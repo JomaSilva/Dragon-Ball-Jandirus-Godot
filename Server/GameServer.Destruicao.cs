@@ -912,7 +912,8 @@ public partial class GameServer
 		int mortos = 0;
 
 		// COPIA: `Morrer` mexe no mundo, e o `RemoverNpc` da morte tira o corpo da lista da zona.
-		foreach (ServerPlayer npc in ZoneList(zona.Hash).ToList())
+		// (2026-10-21) A PLATEIA DO CEU, e nao so a zona: quem esta na caverna ou no Lookout esta no planeta (`GameServer.SubZonas.cs`).
+		foreach (ServerPlayer npc in PlateiaDoCeu(zona))
 		{
 			// `if(M.isNPC)` (`:54`). O `Papel` e o `isNPC` deste port -- e ele exclui de graca o
 			// clone da mente e o corpo de bancada, que tambem tem `Peer` nulo e nao moram aqui.
@@ -964,7 +965,10 @@ public partial class GameServer
 		// zona vazia ou com dois jogadores ele nunca morde; numa cheia, ele reparte o mesmo estrago
 		// entre quem esta la em vez de somar.
 		// =========================================================================================
-		var gente = ZoneList(zona.Hash).Where(p => p.Peer != null).ToList();
+		//
+		// (2026-10-21) A PLATEIA E A DO CEU DO PLANETA: o chao da caverna e do Lookout tambem racha perto de quem esta la -- e a celula e
+		// a do MAPA DE CADA UM (`pl.Zone`), que e onde ele esta pisando. Ver `GameServer.SubZonas.cs`.
+		var gente = PlateiaDoCeu(zona).Where(p => p.Peer != null).ToList();
 		if (gente.Count == 0) return;
 
 		int orcamento = Math.Min(porJogador * gente.Count, TetoDeCelulasPorVolta);
@@ -979,7 +983,7 @@ public partial class GameServer
 
 			// O sorteio pode nao achar celula derrubavel, e tudo bem -- na proxima volta ele tenta
 			// de novo.
-			DerrubarCelula(zona, cx, cy);
+			DerrubarCelula(pl.Zone, cx, cy);
 		}
 	}
 
@@ -1045,7 +1049,8 @@ public partial class GameServer
 		ForcarClima(zona, TipoDeClima.Destruicao, Agonia.SegundosDeExplosao + 60,
 					ForcaDoCeuNaAgonia(MortePlanetaria.PisoDaAgonia), $"destruicao de {zona.Name}");
 
-		foreach (ServerPlayer pl in ZoneList(zona.Hash))
+		// (2026-10-21) QUEM ESTA NA CAVERNA OU NO LOOKOUT ESTA NO PLANETA: a plateia e a do ceu dele (`GameServer.SubZonas.cs`).
+		foreach (ServerPlayer pl in PlateiaDoCeu(zona))
 		{
 			if (pl.Peer == null) continue;
 			Avisar(pl, "*O PLANETA COMEÇA A SE PARTIR AO SEU REDOR!!*");
@@ -1104,10 +1109,15 @@ public partial class GameServer
 
 		int npcsMortos = 0, feridos = 0, mortos = 0, evacuados = 0;
 
-		foreach (ServerPlayer pl in ZoneList(zona.Hash).ToList())
+		// (2026-10-21) QUEM ESTA NA CAVERNA OU NO LOOKOUT MORRE JUNTO (dono, *"Efeitos e morte"*): a plateia e a do CEU do planeta --
+		// a zona dele mais as sub-zonas, e no Lookout so quem esta debaixo do ceu dele (o castelo do Rei Vegeta e de Vegeta). O DM faz o
+		// mesmo: o `DestroyPlanet` roda em toda area com o mesmo `Planet` (`Area_Death.dm:80-82`), e a caverna e o Templo sao areas da
+		// Terra. Quem sobrevive sobe pela mesma evacuacao, pro espaco em volta do planeta. A Sala do Tempo nao entra. Ver
+		// `GameServer.SubZonas.cs` e a nota da `SaidaParaUmMundoMorto`.
+		foreach (ServerPlayer pl in PlateiaDoCeu(zona))
 		{
 			if (pl.Ficha.dead) continue;                      // `:132` -- ja esta no Outro Mundo
-			if (!pl.Zone.Equals(zona)) continue;              // `:133` -- saiu antes do fim
+			if (!PlanetaDoCorpo(pl).Equals(zona)) continue;   // `:133` -- saiu antes do fim
 			if (pl.Combate == null) continue;
 
 			// ============================ O CORPO INTOCAVEL ATRAVESSA O FIM DO MUNDO ============================
@@ -1313,7 +1323,10 @@ public partial class GameServer
 			return;
 		}
 
-		if (!ZonaMorta(pl.Zone)) return;
+		// (2026-10-21) ...E A CAVERNA E O LOOKOUT DE UM PLANETA QUE EXPLODIU TAMBEM NAO EXISTEM MAIS: eles morrem com ele (dono, *"Efeitos
+		// e morte"*). Quem deslogou la acorda no berco, pelo mesmo motivo do planeta -- ver `SubZonaDeMundoMorto` e a nota da
+		// `SaidaParaUmMundoMorto` logo abaixo.
+		if (!ZonaMorta(pl.Zone) && SubZonaDeMundoMorto(pl) == null) return;
 
 		GD.Print($"[server] {pl.Name} deslogou em '{pl.Zone.Name}', que foi DESTRUIDO desde entao "
 			   + "-- o corpo acorda no berco");
@@ -1326,27 +1339,31 @@ public partial class GameServer
 	/// acontece com *"todos q estao no planeta"* -- e ha gente que nao esta no planeta e mesmo assim
 	/// depende dele. As zonas de INTERIOR ancoradas num mundo:
 	///
-	///   Lookout (o Templo) ......... unica saida: Earth
+	///   Lookout (o Templo) ......... unica saida: Earth (o castelo do Rei Vegeta, no canto dele, sai em Vegeta)
 	///   Hyperbolic_Time_Chamber .... sai pelo Lookout, que sai na Earth
 	///   Earth_Cave (tres bocas) .... Earth
 	///   Vegeta_Cave ................ Vegeta
 	///   o SELO ..................... volta pra `Selo.ZonaDeVolta`, gravada quando a pessoa foi presa
 	///
-	/// Elas **nao sao planetas** (`Espaco.EhPlaneta` so aceita procedural e os 7 pre-feitos), entao nao
-	/// morrem, nao sao varridas pelo commit e ninguem la dentro leva dano nem e evacuado. Isso esta
-	/// certo -- quem esta na Sala do Tempo nao esta no planeta. O que estava errado e o CAMINHO DE
-	/// VOLTA: ele e cravado no mapa e nao consultava a lista de mortos, entao quem saisse do Templo
-	/// depois de a Terra explodir era depositado no cadaver, sem uma linha de aviso.
+	/// Elas **nao sao planetas** (`Espaco.EhPlaneta` so aceita procedural e os 7 pre-feitos). O CAMINHO DE VOLTA e cravado no mapa e
+	/// nao consultava a lista de mortos, entao quem saisse do Templo depois de a Terra explodir era depositado no cadaver, sem uma
+	/// linha de aviso -- e e isso que esta porta conserta.
 	///
-	/// ============================ A ESCOLHA: O INTERIOR VIVE, A PORTA MUDA ============================
-	/// A alternativa era evacuar as zonas de interior junto com o planeta, no commit. Foi recusada:
-	/// a Sala do Tempo e UMA zona pro servidor inteiro (nao ha uma por planeta) e o Selo pode ter
-	/// gente presa por gente de outro mundo -- "o interior e do planeta" simplesmente nao e verdade
-	/// aqui. O que e verdade e que a SAIDA deixou de existir.
+	/// ============================ (2026-10-21) O LOOKOUT E AS CAVERNAS MORREM JUNTO; A SALA DO TEMPO E O SELO, NAO ============================
+	/// Ate 2026-10-21 nenhuma delas morria com o planeta: o commit nao as varria e ninguem la dentro levava dano nem era evacuado. O dono
+	/// mudou isso pra metade delas -- *"sincronizar o horario, clima e efeitos de destruiçao de planetas em sub zonas do planeta"* e,
+	/// perguntado, *"Efeitos e morte"*. O LOOKOUT E AS CAVERNAS SAO O PLANETA: no DM sao areas com o mesmo `Planet` (`/area/Lookout` e
+	/// "Earth", as cavernas sao `Inside` da Terra e de Vegeta), e o `DestroyPlanet` roda em todas (`Area_Death.dm:80-82`). Entao o ceu,
+	/// o tremor e o commit chegam la (`PlateiaDoCeu`, `GameServer.SubZonas.cs`) e quem sobrevive sobe pela mesma evacuacao; e quem chega
+	/// DEPOIS do fim -- pela saida da Sala do Tempo, pelo voo que entra no castelo de uma Vegeta morta -- e rebocado pro espaco pelo
+	/// tique das sub-zonas, que e o "tique de Stats" do DM pra quem esta numa area destruida (`Stats.dm:427-434`); quem estava deslogado
+	/// acorda no berco (<see cref="OndeEsteCorpoPodeAcordar"/>).
 	///
-	/// Entao a pessoa sai -- ninguem fica preso -- e sai pelo mesmo lugar que todo mundo que estava
-	/// no chao: o <see cref="EvacuarParaOEspaco"/>, que larga o corpo exatamente onde o planeta
-	/// ficava. E o X4 do dono aplicado tarde, pelo funil que ja existe.
+	/// A SALA DO TEMPO E O SELO SEGUEM A REGRA DE ANTES -- O INTERIOR VIVE, A PORTA MUDA. A Sala e outra dimensao (`Planet = "Hyperbolic
+	/// Time Dimension"`; o dono: *"obviamente n da pra voar pro espaço pela sala do tempo"*) e UMA zona pro servidor inteiro, e o Selo
+	/// pode ter gente presa por gente de outro mundo: "o interior e do planeta" nao e verdade pra elas. O que e verdade e que a SAIDA
+	/// deixou de existir -- e a pessoa sai, ninguem fica preso, pelo mesmo lugar que todo mundo que estava no chao: o
+	/// <see cref="EvacuarParaOEspaco"/>, que larga o corpo exatamente onde o planeta ficava. E o X4 do dono aplicado tarde.
 	/// ============================================================================================
 	/// </summary>
 	/// <returns>Verdadeiro quando o destino era um cadaver e o corpo JA foi mandado pro espaco.</returns>
@@ -1568,7 +1585,9 @@ public partial class GameServer
 		// =====================================================================================================
 		int porJogador = Math.Max(1, (int)Math.Round(TetoDeCelulasPorSegundo * agonia * intervalo));
 
-		foreach (ServerPlayer pl in ZoneList(zona.Hash).ToList())
+		// (2026-10-21) O TREMOR CHEGA NA CAVERNA E NO LOOKOUT: a plateia e a do ceu do planeta (`GameServer.SubZonas.cs`). A cratera e o
+		// chao que cai saem no mapa de cada um (`pl.Zone`).
+		foreach (ServerPlayer pl in PlateiaDoCeu(zona))
 		{
 			if (pl.Peer == null || pl.Ficha.dead) continue;   // `:98`
 
@@ -2110,10 +2129,12 @@ public partial class GameServer
 	/// <summary>
 	/// UMA LINHA PRA QUEM ESTA NO PLANETA. Nao usa o `AnunciarNoMundo` (que fala com o servidor
 	/// inteiro): a maior parte dos avisos da morte lenta so faz sentido pra quem esta olhando o ceu.
+	///
+	/// (2026-10-21) No planeta esta tambem quem esta na caverna e no Lookout dele -- a plateia e a do ceu (`GameServer.SubZonas.cs`).
 	/// </summary>
 	private void AnunciarNoPlaneta(ZoneKey zona, string texto)
 	{
-		foreach (ServerPlayer p in ZoneList(zona.Hash))
+		foreach (ServerPlayer p in PlateiaDoCeu(zona))
 			if (p.Peer != null) Avisar(p, texto);
 		GD.Print($"[planeta] {zona.Name}: {texto}");
 	}

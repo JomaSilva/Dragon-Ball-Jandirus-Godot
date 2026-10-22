@@ -33,7 +33,7 @@ if (args.Length >= 2 && args[0] == "chars")
     Console.WriteLine($"{"RACA",-14} {"CLASSE",-22} {"%",6} {"BP medio",12} {"physoff",8}");
     Console.WriteLine(new string('-', 68));
 
-    foreach (string raca in new[] { "Saiyan", "Human", "Namekian", "Icer", "Kai", "Majin", "Heran" })
+    foreach (string raca in new[] { "Saiyan", "Human", "Namekian", "Frost Demon", "Kai", "Majin", "Heran" })
     {
         Jandirus.Core.Races.RaceProto? proto = cat.Get(raca);
         if (proto == null) { Console.WriteLine($"{raca,-14} (ausente do catalogo)"); continue; }
@@ -1297,7 +1297,7 @@ if (args.Length >= 3 && args[0] == "skills")
 
     Console.WriteLine($"\n{"RACA",-14} {"ARVORES",8} {"OFERTAS",8}  primeiras");
     Console.WriteLine(new string('-', 74));
-    foreach (string raca in new[] { "Saiyan", "Human", "Namekian", "Icer", "Kai", "Majin", "Heran", "Android", "Alien", "Bio-Android" })
+    foreach (string raca in new[] { "Saiyan", "Human", "Namekian", "Frost Demon", "Kai", "Majin", "Heran", "Android", "Alien", "Bio-Android" })
     {
         var livro = new Jandirus.Core.Skills.SkillBook();
         livro.Conceder(99);

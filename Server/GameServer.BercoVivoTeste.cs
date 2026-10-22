@@ -123,7 +123,7 @@ public partial class GameServer
 	// =====================================================================
 	/// <summary>
 	/// A varredura e do CONJUNTO, e o conjunto vem de duas fontes independentes: o `races.json`
-	/// (extraido do DM pelo AssetPipeline -- 23 racas, e ele conhece as que nenhuma lista
+	/// (extraido do DM pelo AssetPipeline -- 22 racas, e ele conhece as que nenhuma lista
 	/// escrita a mao lembraria) e o menu de criacao (`CharacterDraft.RacasDoPlaneta`, os gates `can*`
 	/// do BYOND). A uniao das duas e o que o jogo pode entregar; qualquer raca que entre amanha em
 	/// qualquer uma das duas cai nesta bancada sozinha.
@@ -236,6 +236,7 @@ public partial class GameServer
 		var set = new SortedSet<string>(StringComparer.Ordinal);
 		if (_racas != null)
 			foreach (string r in _racas.Protos.Keys) set.Add(r);
+		set.Add("Halfbreed");   // o meio-Saiyajin nao tem proto; o berco dele continua valendo
 
 		foreach (string planeta in CharacterDraft.Planetas)
 			foreach (string r in CharacterDraft.RacasDoPlaneta(planeta)) set.Add(r);
@@ -478,7 +479,7 @@ public partial class GameServer
 		(string Raca, string Natal)[] vizinhancas =
 		[
 			("Human", "Earth"), ("Saiyan", "Vegeta"), ("Namekian", "Namek"),
-			("Icer", "Icer"), ("Arlian", "Arlia"), ("Makyo", "Makyo_Star"),
+			("Frost Demon", "Icer"), ("Arlian", "Arlia"), ("Makyo", "Makyo_Star"),
 		];
 
 		foreach ((string raca, string natal) in vizinhancas)
@@ -629,7 +630,7 @@ public partial class GameServer
 			("Saiyan", "Saiyan", "Low-Class", false),
 			("Saiyan", "Saiyan", "Low-Class", true),
 			("Saiyan", "Saiyan", "Legendary", false),
-			("Icer", "", "Normal", false),
+			("Frost Demon", "", "Normal", false),
 			("Namekian", "Warrior clan", "Warrior clan", true),
 		];
 
@@ -783,7 +784,7 @@ public partial class GameServer
 		(string Nome, string Raca, string Linhagem, string Classe, bool Perto)[] casos =
 		[
 			("Terraqueo vizinho", "Human", "", "Normal", true),
-			("Frost vizinho", "Icer", "", "Normal", true),
+			("Frost vizinho", "Frost Demon", "", "Normal", true),
 			("Lendario exilado", "Saiyan", "Saiyan", "Legendary", false),
 		];
 

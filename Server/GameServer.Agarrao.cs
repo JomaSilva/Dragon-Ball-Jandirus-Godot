@@ -33,6 +33,12 @@ public enum MotivoDaSoltura
 	/// *"solta o agarrao pendente (o Majin costuma agarrar pra absorver)"*). Quem conta o que houve e a absorcao.
 	/// </summary>
 	Absorvido,
+
+	/// <summary>O destino da viagem voluntaria e o espaco, ou o pod que vai pra la. Ninguem e levado a forca.</summary>
+	ProEspaco,
+
+	/// <summary>Quem era carregado nao pode sair de onde esta. Quem carrega segue sozinho.</summary>
+	FicouPreso,
 }
 
 /// <summary>
@@ -370,7 +376,14 @@ public sealed partial class GameServer
 			MotivoDaSoltura.Tecla => ($"você solta {d.Name}.", $"{a.Name} solta você."),
 			MotivoDaSoltura.Desfaleceu => ($"você desfalece e solta {d.Name}.",
 										   $"{a.Name} desfalece e solta você."),
-			MotivoDaSoltura.OutraZona => ($"o mundo muda sob os seus pés e você perde {d.Name}.", null),
+			// Viagem voluntaria nao chega aqui: ela leva junto, ou solta com ProEspaco / FicouPreso.
+			// Este ramo so o tique ve, e hoje ele e inalcancavel (QuemEuSeguro exige a mesma zona e
+			// limpa calado antes). A frase nao diz mais que toda porta perde a pessoa.
+			MotivoDaSoltura.OutraZona => ($"você perde {d.Name}: vocês não estão mais no mesmo lugar.", null),
+			MotivoDaSoltura.ProEspaco => ($"você solta {d.Name}: {FraseDeNaoLevarAoEspaco}.",
+										  $"{a.Name} solta você: {FraseDeNaoLevarAoEspaco}."),
+			MotivoDaSoltura.FicouPreso => ($"você segue, mas {d.Name} fica: {FraseDeQuemFicaPreso}.",
+										   $"{a.Name} segue sem você."),
 			MotivoDaSoltura.Distancia => ($"{d.Name} escapa do seu alcance.",
 										  $"você escapa do alcance de {a.Name}."),
 			MotivoDaSoltura.Absorvido => ($"{d.Name} some das suas mãos, engolido.", null),
@@ -477,9 +490,10 @@ public sealed partial class GameServer
 			if (a.Ficha.KO || (a.Ficha.dead && !a.MortoDePe))
 			{ Soltar(a, MotivoDaSoltura.Desfaleceu); continue; }
 
-			// ZONA DIFERENTE -- o `grabbee.z != usr.z` de `:192`. Cobre de uma vez a passagem, o
-			// pouso, a nave, a Sala do Tempo, a mente e a viagem pro Outro Mundo: nenhum desses
-			// caminhos precisou de uma linha propria, porque todos terminam numa zona diferente.
+			// ZONA DIFERENTE -- o `grabbee.z != usr.z` de `:192`. A viagem VOLUNTARIA (passagem, nave,
+			// sala, nuvem, pouso) nao chega aqui: o ViajarVoluntario move os dois antes deste tique.
+			// O que sobra e a separacao que ninguem pediu (morte, admin, evacuacao, transe). E este
+			// ramo segue inalcancavel: QuemEuSeguro, logo acima, exige a mesma zona e limpa calado.
 			if (a.Zone.Hash != d.Zone.Hash)
 			{ Soltar(a, MotivoDaSoltura.OutraZona); continue; }
 

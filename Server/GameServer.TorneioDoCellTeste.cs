@@ -2,6 +2,7 @@ using Godot;
 using Jandirus.Core.Combat;
 using Jandirus.Core.Npc;
 using Jandirus.Core.Races;
+using Jandirus.Core.Stats;
 using Jandirus.Core.Torneio;
 using Jandirus.Core.World;
 using Jandirus.Net;
@@ -49,6 +50,11 @@ namespace Jandirus.Server;
 ///      também)"*): o Freeza de Namek larga o Death Beam e fica intocavel na troca de corpo, e na forma final nao age por dez segundos de jogo
 ///      com um jogador colado nele (contra: `ChefeAgeNaCenaDeTeste`); e a Death Ball do ultimato, que escreve o mesmo relogio da cena, segue
 ///      como era -- o cerebro ligado.
+///   W. (2026-10-20) O DOBRO DO JOGADOR MAIS FORTE (*"faça os stats do boss(todos os de saga e contando o bills) ser o dobro do jogador mais
+///      forte, a pericia deles sempre é a maxima"*): o Cell Perfeito da saga nasce com os oito atributos da aba Stats no dobro dos do Goku (o de
+///      maior BP) e as pericias de luta em 100 (a de raio em 250, a do Gohan), e acompanha o Goku no tique seguinte do roteiro; o raio de
+///      potencia 2 de quem tem 1,5 bilhao (o caso do dono) nao o derruba em doze segundos, e o embate e dele; o Bills tambem, o Whis nao, e todo
+///      chefe de saga (contra: `ChefeSemODobroDeTeste`).
 ///   J. (2026-10-20) A CABECA DO CELL JR DE FRENTE: nas 24 poses da folha dele, de frente a crista chega tao alto quanto de costas -- a arte do DM
 ///      cortava as duas pontas de frente (contra: a mesma arte, a folha dos mobs do DU, sem o conserto).
 ///
@@ -113,6 +119,7 @@ public sealed partial class GameServer
 			TcelACacaAosAndroides(todos);
 			TcelACenaDaTransformacao(todos);
 			TcelACenaDoFreeza(arena, todos);
+			TcelODobroDoMaisForte(arena, todos);
 		}
 		catch (Exception e)
 		{
@@ -126,6 +133,7 @@ public sealed partial class GameServer
 			SuperPerfeitoNaoSoltaDeTeste = SuperPerfeitoCaidoNaoSoltaDeTeste = SuperPerfeitoMorreDeTeste = false;
 			CellNaoCacaOsAndroidesDeTeste = CellMataOAndroideDeTeste = AbsorcaoMexeNoTorneioDeTeste = CellSemBoteDeTeste = false;
 			ChefeAgeNaCenaDeTeste = false;
+			ChefeSemODobroDeTeste = false;
 			foreach (int id in _canais.Keys.ToList()) FecharCanal(id, _canais[id], null);
 			foreach (int id in _emEmbateDeKi.Keys.ToList()) SoltarDoEmbateDeKi(id);
 			EncerrarOTorneioDoCell();
@@ -272,7 +280,7 @@ public sealed partial class GameServer
 	// =====================================================================
 	// S. O SANGUE DO CELL (dono, 2026-10-19)
 	// =====================================================================
-	private static readonly string[] SangueDoCellDoDono = ["Saiyan", "Namekian", "Icer"];
+	private static readonly string[] SangueDoCellDoDono = ["Saiyan", "Namekian", "Frost Demon"];
 	private const string Regenerate = "/datum/skill/general/regenerate";
 
 	/// <summary>O MESMO LIVRO: as mesmas skills, cada uma no mesmo nivel (o clone do Cell Jr).</summary>
@@ -1329,6 +1337,166 @@ public sealed partial class GameServer
 		Transportar(freeza, terra, arena.Centro);
 		return freeza;
 	}
+
+	// =====================================================================
+	// W. O DOBRO DO JOGADOR MAIS FORTE E A PERICIA NO MAXIMO (dono, 2026-10-20)
+	// =====================================================================
+	private void TcelODobroDoMaisForte(Arena arena, ServerPlayer[] todos)
+	{
+		GD.Print("[torneiocell] -- W) os chefes de saga e o Bills com o dobro do jogador mais forte, e a pericia no maximo");
+		const string Pedido = "(*\"faça os stats do boss(todos os de saga e contando o bills) ser o dobro do jogador mais forte, a pericia deles sempre "
+							  + "é a maxima\"*)";
+		const float T = ZoneCollision.TileSize;
+		ServerPlayer goku = todos[0], gohan = todos[3];
+		Fighter g = goku.Ficha;
+		var guardado = todos.Select(p => (P: p, Bp: p.Ficha.BP, Po: p.Ficha.physoff, Ko: p.Ficha.kioff, Kd: p.Ficha.kidef, Raio: p.Ficha.beamskill)).ToList();
+		var extras = new List<ServerPlayer>();
+
+		// O MAXIMO DE CADA PERICIA DE LUTA: 100, ou a maior dos quatro, se algum passou
+		bool PericiaNoMaximo(Fighter c, out string fora)
+		{
+			fora = string.Join(", ", TcelPericias.Where(p => Math.Abs(p.Ler(c) - Math.Max(100, todos.Max(j => p.Ler(j.Ficha)))) > 1e-9)
+												 .Select(p => $"{p.Nome} {p.Ler(c):0.#}"));
+			return fora.Length == 0;
+		}
+
+		try
+		{
+			// O MAIS FORTE: o Goku, com 1,5 bilhao -- o BP do dono quando o raio dele derrubou o Cell Perfeito -- e os crus de quem treinou (o dobro
+			// de um recem-criado nao provaria nada); os outros tres abaixo de um bilhao. E o Gohan com a pericia de raio em 250: a de um jogador
+			// acima de 100, que o chefe acompanha
+			foreach (ServerPlayer p in todos)
+			{
+				p.Ficha.BP = p == goku ? 1.5e9 : Math.Min(p.Ficha.BP, 1e9);
+				p.Ficha.Statify();
+				p.Ficha.PowerLevel();
+			}
+			g.physoff *= 1.5;
+			g.kioff *= 1.8;
+			g.kidef *= 1.6;
+			g.Statify();
+			gohan.Ficha.beamskill = 250;
+
+			// ---- O CELL PERFEITO DA SAGA, pelo nascimento de producao: o dobro chega NO NASCIMENTO, antes de qualquer tique
+			if (TcelCellDaSagaSemTorneio(arena, todos, degrau: 2) is not { } m)
+			{
+				AfirmarTcel("**O CELL PERFEITO NASCE COM O DOBRO DO JOGADOR MAIS FORTE**", false, "o Cell nao nasceu");
+				return;
+			}
+			ServerPlayer cell = m.Cell;
+			AfirmarTcel($"**O CELL PERFEITO NASCE COM O DOBRO DO JOGADOR MAIS FORTE** {Pedido}: os oito atributos da aba Stats dele sao o dobro dos do "
+						+ "Goku, o de maior BP -- antes de qualquer tique",
+						TcelODobroDe(cell.Ficha, g), $"Cell {TcelOito(cell.Ficha)} | Goku {TcelOito(g)}");
+			bool noMaximo = PericiaNoMaximo(cell.Ficha, out string fora);
+			AfirmarTcel("**...E A PERICIA NO MAXIMO**: as dezessete pericias de luta em 100 -- e a de raio em 250, porque o Gohan passou de 100",
+						noMaximo && cell.Ficha.beamskill == 250,
+						noMaximo ? $"raio {cell.Ficha.beamskill:0}; defesa de ki {cell.Ficha.kidefenseskill:0}; carga {cell.Ficha.chargedskill:0}"
+								 : $"fora do maximo: {fora}");
+
+			// ---- ...E A CADA SEGUNDO: o Goku sobe a ofensiva de ki (um treino, uma forma) e, no tique seguinte do roteiro, o Cell acompanha
+			g.kioff *= 1.5;
+			g.Statify();
+			bool aindaODeAntes = Math.Abs(cell.Ficha.Rkioff - 2 * g.Rkioff) > 0.05 * g.Rkioff;
+			TickDoRoteiro();
+			AfirmarTcel("**...E ACOMPANHA A CADA SEGUNDO**: o Goku sobe a ofensiva de ki e, no tique seguinte do roteiro, o Cell tem o dobro da nova",
+						aindaODeAntes && TcelODobroDe(cell.Ficha, g),
+						$"antes do tique, o dobro da velha {aindaODeAntes}; Cell {TcelOito(cell.Ficha)} | Goku {TcelOito(g)}");
+
+			// ---- O CASO DO DONO, pela conta do servidor: o raio de potencia 2 do Goku no Cell Perfeito
+			(double Dano, double NoTronco, double Embate) raio = TcelORaioDoGoku(g, cell);
+			AfirmarTcel("**...E UM RAIO SO NAO O DERRUBA MAIS** (*\"eu tinha 1.5B de bp e venci o cell perfeito com um beam na cara, o beam tinha potencia "
+						+ "em 2\"*): doze segundos desse raio mirados no tronco (60 batidas, 53% nele) nao tiram nem metade dos 80 que nocauteiam",
+						raio.NoTronco < 40, $"{raio.Dano:0.##} por batida; 12 s no tronco {raio.NoTronco:0.#}");
+			AfirmarTcel("**...E O EMBATE E DELE** (*\"tive uma vantagem enorme no ki mesmo sendo mt mais fraco q o cell\"*): a Onda de Ki do Cell -- a "
+						+ "potencia 1, o raio mais fraco que ele usa -- tem mais poder que esse raio",
+						raio.Embate > 1, $"Cell/Goku {raio.Embate:0.##}");
+
+			// ---- O BILLS TAMBEM -- e o Whis, que o pedido nao nomeia, fica com a ficha dele
+			Vec2 aqui = cell.Pos;
+			ServerPlayer? bills = NascerNpc("bills", cell.Zone, aqui + new Vec2(8 * T, 0), 7_600_401);
+			ServerPlayer? whis = NascerNpc("whis", cell.Zone, aqui + new Vec2(8 * T, 2 * T), 7_600_402);
+			foreach (ServerPlayer? x in new[] { bills, whis }) if (x != null) extras.Add(x);
+			AfirmarTcel("**O BILLS TAMBEM TEM O DOBRO** (*\"contando o bills\"*), e a pericia no maximo -- e o Whis, que o pedido nao nomeia, fica com "
+						+ "a ficha dele",
+						bills != null && whis != null && TcelODobroDe(bills.Ficha, g) && PericiaNoMaximo(bills.Ficha, out _) && !TcelODobroDe(whis.Ficha, g),
+						$"Bills {(bills == null ? "-" : TcelOito(bills.Ficha))} | Whis {(whis == null ? "-" : TcelOito(whis.Ficha))} | Goku {TcelOito(g)}");
+
+			// ---- ...E TODO CHEFE DE SAGA: um corpo de cada outro molde que as sagas poem no mundo
+			var errados = new List<string>();
+			ulong lugar = 7_600_410;
+			foreach (string molde in new[] { "freeza_vegeta", "freeza_namek", "androide_17", "androide_18", "majin_boo" })
+			{
+				ServerPlayer? c = NascerNpc(molde, cell.Zone, aqui + new Vec2(-8 * T, 0), lugar++);
+				if (c != null) extras.Add(c);
+				if (c == null || !TcelODobroDe(c.Ficha, g) || !PericiaNoMaximo(c.Ficha, out _)) errados.Add(molde);
+			}
+			AfirmarTcel("**...E TODO CHEFE DE SAGA**: o Freeza de Vegeta e o de Namek, os dois androides e o Boo nascem com o dobro e a pericia no maximo",
+						errados.Count == 0, errados.Count == 0 ? "os cinco" : $"fora: {string.Join(", ", errados)}");
+
+			// ---- O CONTRA-EXEMPLO: o Cell Perfeito com a ficha de recem-criado (o jogo de antes)
+			ChefeSemODobroDeTeste = true;
+			(double Dano, double NoTronco, double Embate)? antes = null;
+			bool dobroDeAntes = true, periciaDeAntes = true;
+			try
+			{
+				if (TcelCellDaSagaSemTorneio(arena, todos, degrau: 2) is { } velho)
+				{
+					antes = TcelORaioDoGoku(g, velho.Cell);
+					dobroDeAntes = TcelODobroDe(velho.Cell.Ficha, g);
+					periciaDeAntes = PericiaNoMaximo(velho.Cell.Ficha, out _);
+				}
+			}
+			finally { ChefeSemODobroDeTeste = false; }
+			AfirmarTcel("   CONTRA-EXEMPLO (a ficha de recem-criado, o jogo de antes): sem o dobro nem a pericia, o raio o derrubaria em doze segundos e o "
+						+ "embate seria do Goku -- as reguas de cima reprovariam",
+						antes is { } a && !dobroDeAntes && !periciaDeAntes && a.NoTronco >= 80 && a.Embate < 1,
+						antes is { } b ? $"{b.Dano:0.##} por batida; 12 s no tronco {b.NoTronco:0.#}; embate {b.Embate:0.##}" : "o Cell de antes nao nasceu");
+		}
+		finally
+		{
+			ChefeSemODobroDeTeste = false;
+			foreach (ServerPlayer x in extras) if (_players.ContainsKey(x.Id)) RemoverNpc(x);
+			foreach (var s in guardado)
+			{
+				(s.P.Ficha.BP, s.P.Ficha.physoff, s.P.Ficha.kioff, s.P.Ficha.kidef, s.P.Ficha.beamskill) = (s.Bp, s.Po, s.Ko, s.Kd, s.Raio);
+				s.P.Ficha.Statify();
+				s.P.Ficha.PowerLevel();
+			}
+		}
+	}
+
+	/// <summary>
+	/// O RAIO DE POTENCIA 2 DE QUEM ATIRA (o do dono) num chefe, pela conta do servidor: o dano por batida (`DanoDeKi.Final`), o que doze segundos
+	/// dele mirados no tronco tiram (60 batidas, 53% no tronco -- o `Body.Sortear` com a mira), e o embate: o poder da Onda de Ki do chefe (a
+	/// potencia 1, o raio mais fraco que ele usa) sobre o desse raio (`EmbateDeKi.PoderDoFeixe`).
+	/// </summary>
+	private static (double Dano, double NoTronco, double Embate) TcelORaioDoGoku(Fighter quem, ServerPlayer chefe)
+	{
+		double mods = Projetil.ModsDoTiro(quem, TipoDeProjetil.Beam) * 2;
+		double dano = DanoDeKi.Final(mods, 2, 0, quem.expressedBP, chefe.Combate!, bloqueando: false);
+		double doChefe = EmbateDeKi.PoderDoFeixe(chefe.Ficha.expressedBP, Projetil.ModsDoTiro(chefe.Ficha, TipoDeProjetil.Beam), 1);
+		return (dano, dano * 60 * 0.533, doChefe / EmbateDeKi.PoderDoFeixe(quem.expressedBP, mods, 2));
+	}
+
+	/// <summary>Os oito atributos da aba Stats (o `R` de cada um), na ordem do `Fighter.FixarAtributos`.</summary>
+	private static double[] TcelOsOito(Fighter f) => [f.Rphysoff, f.Rphysdef, f.Rtechnique, f.Rkioff, f.Rkidef, f.Rkiskill, f.Rspeed, f.Rmagiskill];
+
+	/// <summary>Este chefe tem o DOBRO de cada um dos oito atributos deste jogador? (1% de folga)</summary>
+	private static bool TcelODobroDe(Fighter chefe, Fighter jogador) =>
+		TcelOsOito(chefe).Zip(TcelOsOito(jogador)).All(p => Math.Abs(p.First - 2 * p.Second) <= 0.01 * 2 * p.Second);
+
+	/// <summary>Os oito como a aba Stats os escreve (vezes 10).</summary>
+	private static string TcelOito(Fighter f) => string.Join(" ", TcelOsOito(f).Select(x => $"{x * 10:0.#}"));
+
+	/// <summary>As dezessete pericias de luta, com o nome que a bancada escreve -- a mesma lista do `Fighter.PericiasNoMaximo`.</summary>
+	private static readonly (string Nome, Func<Fighter, double> Ler)[] TcelPericias =
+	[
+		("debuff", f => f.kidebuffskill), ("defesa de ki", f => f.kidefenseskill), ("eficiencia", f => f.kiefficiencyskill),
+		("raio", f => f.beamskill), ("efusao", f => f.kieffusionskill), ("bola", f => f.blastskill), ("rajada", f => f.volleyskill),
+		("alvo", f => f.targetedskill), ("teleguiado", f => f.guidedskill), ("perseguicao", f => f.homingskill), ("carga", f => f.chargedskill),
+		("kiai", f => f.kiaiskill), ("buff", f => f.kibuffskill), ("leitura", f => f.kiawarenessskill), ("circulacao", f => f.kicirculationskill),
+		("coleta", f => f.kigatheringskill), ("controle", f => f.kicontrolskill),
+	];
 
 	/// <summary>
 	/// (2026-10-20) O CELL DA SAGA NA TERRA, SEM TORNEIO -- a luta livre: as sagas limpas, a do Cell em curso com ele chegando hoje NO DEGRAU

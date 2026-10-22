@@ -17,7 +17,7 @@ namespace Jandirus.Client;
 ///     fusao-a1-cena.png        o AUGE do estouro: **UM** disco, no ponto medio dos dois
 ///     fusao-a2-branco.png      o corpo completamente BRANCO, so a silhueta, logo depois da virada
 ///     fusao-a3-branco-escoando.png  o branco na cauda, com a silhueta ja legivel
-///     fusao-b1-metamoro.png    a METAMORO pronta -- colete metamoriano, cabelo do Vegito
+///     fusao-b1-metamoro.png    a METAMORO pronta -- uniforme metamoriano (`Fusion clothes`), cabelo do Vegito
 ///     fusao-b2-potara.png      a POTARA pronta -- brinco SOMADO a roupa de quem convidou
 ///     fusao-B-lado-a-lado.png  as duas coladas, que e como o dono pediu ("roupa e cabelo diferem")
 ///     fusao-c1-ssj4-danca.png  a DANCA em SSJ4, de cabelo VERMELHO
@@ -1186,8 +1186,8 @@ public partial class RoboDeFotoDeFusao : Node
 		Vector2 onde = mundo.PosicaoDesenhadaDe(cli.LocalId) is { } p ? ParaTela(p) : Meio();
 		if (metamoro)
 		{
-			Conferir(e.Roupa.Length == 1 && e.Roupa[0].Contains("Metamoran", StringComparison.OrdinalIgnoreCase),
-					 "...e a roupa e SO o colete metamoriano (ela SUBSTITUI o guarda-roupa)");
+			Conferir(e.Roupa.Length == 1 && e.Roupa[0].Contains(Fusao.PecaDaRoupaDaDanca, StringComparison.OrdinalIgnoreCase),
+					 "...e a roupa e SO o uniforme metamoriano, o `Fusion clothes` (ela SUBSTITUI o guarda-roupa)");
 			Retrato("fusao-b1-metamoro", "B1 a METAMORO pronta", onde);
 		}
 		else
@@ -2125,8 +2125,8 @@ public partial class RoboDeFotoDeFusao : Node
 
 		var e = srv.EstadoNaFotoDeFusao(cli.LocalId);
 		Conferir(!e.Fundido, "desfeita a metamoro, o corpo volta a ser o do jogador");
-		Conferir(e.Roupa.All(r => !r.Contains("Metamoran", StringComparison.OrdinalIgnoreCase)),
-				 "...e o colete metamoriano SAI junto (nada fica vestido pra sempre)");
+		Conferir(e.Roupa.All(r => !r.Contains(Fusao.PecaDaRoupaDaDanca, StringComparison.OrdinalIgnoreCase)),
+				 "...e o uniforme metamoriano SAI junto (nada fica vestido pra sempre)");
 
 		// O PASSAGEIRO VOLTA AO LADO DE QUEM DIRIGIA -- ou seja, EM CIMA de mim. O portao pra o lado e
 		// cenario, e nao a coisa medida: sem isso os dois corpos sairiam empilhados na foto seguinte.

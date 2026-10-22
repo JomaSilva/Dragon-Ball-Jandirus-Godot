@@ -426,6 +426,13 @@ public static class Clima
 		if (zona.Kind == ZoneKey.KindProcedural)
 			return ClimaDoPlaneta.DoBioma(MundoProcedural.DaSeed(zona.Seed, zona.Name).Bioma, zona.Seed);
 
+		// (2026-10-21) A SUB-ZONA TEM O CLIMA DO PLANETA DELA (dono: *"sincronizar o horario, clima ... lookout com a terra"*). O Lookout
+		// e as cavernas nao estao no `planetas.json`, e sem esta linha nao tinham clima nenhum. Na CAVERNA o clima e o do planeta mas nao
+		// se ve: ela e toda sob teto (o `.dentro` cobre cada celula andavel do z22 e do z23), e o teto ja tira chuva, neve e noite de quem
+		// esta dentro (`CelulaInterna`) -- menos o ceu da DESTRUICAO, que o DM desenha ate dentro de casa. O castelo do Rei Vegeta e por
+		// posicao (`SubZonas.ZonaDoCeu`). A Sala do Tempo nao e sub-zona: o clima caotico dela continua dela.
+		if (SubZonas.PlanetaMae(zona) is { } mae && !SubZonas.ClimaProprioDeTeste) zona = mae;
+
 		FichaDePlaneta? f = catalogo?.De(zona.Name);
 		if (f == null) return ClimaDoPlaneta.Nenhum;
 
@@ -450,6 +457,13 @@ public static class Clima
 	///
 	/// Sai do nome pelo mesmo motivo da defasagem da lua -- precisa ser igual nas duas pontas sem
 	/// viajar no fio, e planeta não muda de nome.
+	///
+	/// (2026-10-21) A SUB-ZONA SORTEIA COM O SAL DO PLANETA DELA: a mesma ficha com outro sal daria outra chuva no mesmo minuto -- o
+	/// Lookout molhado debaixo do ceu limpo da Terra. Ver o <see cref="DaZona"/> e a <see cref="SubZonas"/>.
 	/// </summary>
-	public static ulong SalDaZona(ZoneKey zona) => Espaco.Hash64(zona.Name + "|clima") ^ zona.Seed;
+	public static ulong SalDaZona(ZoneKey zona)
+	{
+		if (SubZonas.PlanetaMae(zona) is { } mae && !SubZonas.ClimaProprioDeTeste) zona = mae;
+		return Espaco.Hash64(zona.Name + "|clima") ^ zona.Seed;
+	}
 }

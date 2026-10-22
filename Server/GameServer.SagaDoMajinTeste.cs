@@ -820,7 +820,7 @@ public partial class GameServer
 		foreach ((string raca, string classe, bool rara) in new[]
 		{
 			("Majin", "Corrupted Majin", true), ("Kai", "Golden Apple", true), ("Saiyan", "Legendary", true),
-			("Saiyan", "Legendary Primal Saiyan", true), ("Icer", "Mutant Frost Demon", true),
+			("Saiyan", "Legendary Primal Saiyan", true), ("Frost Demon", "Mutant Frost Demon", true),
 			("Saiyan", "Elite", false), ("Human", "Normal", false),
 		})
 		{

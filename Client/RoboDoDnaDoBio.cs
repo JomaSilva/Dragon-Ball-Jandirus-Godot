@@ -61,7 +61,7 @@ public partial class RoboDoDnaDoBio : Node
 		// ---- a premissa: um bio perfeito com o sangue do Cell ----
 		srv.EmbateDeFoto_CeuLimpo(eu);
 		srv.VirarBioDeLaboratorioDeTeste(eu, BioAndroids.Perfeito, 2);
-		srv.DarSangueDeTeste(eu, ["Saiyan", "Namekian", "Icer", "Human"]);
+		srv.DarSangueDeTeste(eu, ["Saiyan", "Namekian", "Frost Demon", "Human"]);
 		// o NUCLEO ja escolhido (pelo fio do botao): os cinco botoes dele saem da aba, e e no braco esquerdo que ele vai morar no fim
 		cli.SendHabilidade("nucleo:Braco esquerdo");
 		bool chegou = await Ate(() => cli.Atributos.Raca == BioAndroids.Raca && cli.Atributos.SkillsDoSangue != 0

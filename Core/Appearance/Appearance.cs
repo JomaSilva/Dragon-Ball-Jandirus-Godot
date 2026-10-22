@@ -240,6 +240,19 @@ public sealed class Appearance
     /// <summary>O branco-acinzentado do cabelo possuido -- SOMADO ao molde quase preto do cabelo, como toda cor de cabelo.</summary>
     public static readonly Rgb CinzaDoTuffle = new(196, 196, 204);
 
+    /// <summary>
+    /// (2026-10-20) ESTE CORPO E O DE UM NEO TUFFLE, NO PROPRIO CORPO: o dono -- *"faca com q os neotuffle tenham esse sprite (`Bebi 1
+    /// Alt.png`) ao inves de usar o sprite normal do personagem q se transformou em neotuffle"*. O corpo vira a folha do Baby
+    /// (`VisualCatalog.CorpoSprite`), que ja traz cabeca e rosto: careca (*"ele n tem cabelo, ele fica careca"*) e sem os olhos de gente
+    /// (`CharacterVisual.Escondida`). A roupa da criacao CONTINUA por cima -- escolha do dono, ao contrario do <see cref="Bebe"/>. Dentro de
+    /// outro corpo (a posse) o mundo ve o hospede, e este bit nao vai.
+    ///
+    /// Irmao do <see cref="CabeloDoTuffle"/>: o bit 2 do segundo byte de marcas do `S2C.PeerLook`, e quem sabe e o servidor
+    /// (`Fighter.NeoTuffle`, `GameServer.NeoTuffle.cs`). A aparencia escolhida na criacao continua no disco, intocada.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool CorpoDoTuffle;
+
     public Appearance Copiar() => new()
     {
         Corpo = Corpo, Tom = Tom, CorPele = CorPele,
@@ -265,6 +278,7 @@ public sealed class Appearance
         SemSangue = SemSangue,
         Bebe = Bebe,
         CabeloDoTuffle = CabeloDoTuffle,
+        CorpoDoTuffle = CorpoDoTuffle,
     };
 }
 

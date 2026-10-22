@@ -159,7 +159,7 @@ public partial class RoboDeSlot : Node
 			case 3:
 				Conferir(Tem(NomeA), $"'{NomeA}' foi criado no slot 1");
 				// O SOBREVIVENTE E UM FROST DEMON: e ele que prova o nome da raca no slot (ver o cabecalho).
-				CriarEm(1, NomeB, "Icer", "Vegeta");
+				CriarEm(1, NomeB, "Frost Demon", "Vegeta");
 				break;
 
 			case 4:
@@ -240,7 +240,7 @@ public partial class RoboDeSlot : Node
 		if (i < 0) { Conferir(false, $"'{NomeB}' esta na lista pra medir o nome da raca"); return; }
 		SlotInfo gelado = _slots[i];
 
-		Conferir(gelado.Raca == "Icer", $"o fio traz a CHAVE da raca, 'Icer', como o races.json a chama ('{gelado.Raca}')");
+		Conferir(gelado.Raca == "Frost Demon", $"o fio traz a raca Frost Demon ('{gelado.Raca}')");
 		string rotulo = CharacterSelect.RotuloDoSlot(gelado);
 		Conferir(rotulo.Contains("Frost Demon") && !rotulo.Contains("Icer"),
 				 $"o rotulo do slot diz 'Frost Demon', e nao 'Icer' (\"{rotulo}\")");

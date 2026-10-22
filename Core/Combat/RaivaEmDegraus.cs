@@ -95,6 +95,18 @@ public static class RaivaEmDegraus
 	public const double DivisorDaRaivaComum = 1.30;
 
 	/// <summary>
+	/// O "Annoyed" do DM (`Voting.dm:5-60`: `Anger = folga/4.25 + 100`). O irritado vale isto, sem o +10% de Ki
+	/// daquele verb -- o dono pediu o bonus de BP e nao o salto de Ki. Com MaxAnger 120 da ~1,047x.
+	/// </summary>
+	public const double DivisorDoIrritado = 4.25;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada <c>--irritadoteste</c>): o irritado nao da bonus nenhum (Anger fica 100). Lido por
+	/// <see cref="Topo"/>. Falso em jogo, sempre.
+	/// </summary>
+	public static bool IrritadoSemBonusDeTeste;
+
+	/// <summary>
 	/// O NUMERO DA RAIVA NO INSTANTE EM QUE O DEGRAU ACENDE (o `Anger` do DM; 100 = calmo = 1,0x de BP).
 	///
 	///   * extrema: `MaxAnger` inteiro (`Murder.dm:112`);
@@ -110,6 +122,7 @@ public static class RaivaEmDegraus
 		{
 			NivelDeRaiva.Extrema => 100 + folga,
 			NivelDeRaiva.Comum => NocauteNoTopoDeTeste ? 100 + folga : 100 + folga / DivisorDaRaivaComum,
+			NivelDeRaiva.Irritado => IrritadoSemBonusDeTeste ? 100 : 100 + folga / DivisorDoIrritado,
 			_ => 100,
 		};
 	}
@@ -141,7 +154,7 @@ public static class RaivaEmDegraus
 
 	/// <summary>
 	/// ESTE DEGRAU, NESTE CORPO, LEVA O KI AO TETO? So a furia EXTREMA, e so pra quem tem o controle
-	/// (<see cref="TemOControleDeKiExigido"/>). A raiva comum, nunca.
+	/// (<see cref="TemOControleDeKiExigido"/>). A raiva comum, nunca. O irritado, nunca.
 	/// </summary>
 	public static bool SaltaOKi(NivelDeRaiva grau, Fighter f) =>
 		!SemSaltoDeKiDeTeste

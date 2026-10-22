@@ -220,8 +220,9 @@ public static class Bercos
 		// O spawnpoint "(Icer)" aponta pra "Icer Planet" e o "(Arlia)" pra "Arlia"; a criacao punha
 		// os dois em Vegeta e Namek, entao nenhum dos dois era alcancavel. Com a raca como fonte,
 		// eles passam a funcionar sem uma linha de codigo falando deles.
-		// ATENCAO: "Icer" e nome de RACA e de PLANETA ao mesmo tempo. Nao e engano de digitacao.
-		"Icer" => "Icer",
+		// A raca e Frost Demon. O planeta natal continua se chamando Icer. A chave velha "Icer"
+		// ainda cai aqui, pra um save que nao passou pela carga.
+		"Frost Demon" or "Icer" => "Icer",
 		"Arlian" => "Arlia",
 		"Makyo" => "Makyo_Star",
 
@@ -394,7 +395,7 @@ public static class Bercos
 	/// alimenta o MENU DE CRIACAO. E ela **nao e** a inversa desta -- ela tem tres divergencias que
 	/// o proprio cabecalho da <see cref="PlanetaNatal"/> ja explicava:
 	///
-	///   `RacasDoPlaneta("Vegeta")` inclui **Icer**, mas `PlanetaNatal("Icer") = "Icer"`;
+	///   `RacasDoPlaneta("Vegeta")` inclui **Frost Demon**, mas `PlanetaNatal("Frost Demon") = "Icer"`;
 	///   `RacasDoPlaneta("Namek")`  inclui **Arlian** e **Makyo**, cujos bercos sao Arlia e Makyo_Star.
 	///
 	/// A divergencia e legitima la (o menu do DM oferecia os tres nesses planetas, e o berco

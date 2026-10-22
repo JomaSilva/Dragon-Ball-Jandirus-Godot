@@ -175,7 +175,7 @@ public partial class GameServer
 		("Demon",        ["Clothes Daimaou", "ClothesDaimaouCape"]),   // Clothes.dm:157-158 e :286-287
 
 		// --- o sprite ja E a roupa: lista vazia e a resposta, e nao um buraco ---
-		("Icer",         []),
+		("Frost Demon",         []),
 		("BioAndroid",   []),
 		("Saibaman",     []),
 		("SpiritDoll",   []),

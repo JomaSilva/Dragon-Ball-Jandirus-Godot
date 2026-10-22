@@ -30,20 +30,31 @@ public sealed record EsferaNaMochila(int Set, int Numero, bool Apagada, bool DeN
 	public const string Prefixo = "Esfera|";
 
 	/// <summary>
-	/// QUANTAS O PACOTE LEVA, no maximo: duas vezes sete. Um corpo so segura esfera de um set cujo planeta contem o lugar em
-	/// que ele esta (`GameServer.DentroDoPlanetaDoSet`), e hoje so um lugar e de dois planetas -- o Lookout, que tem saida pra
-	/// Terra e pro castelo de Vegeta. O teto vale nas duas pontas: o leitor le exatamente o que o escritor escreveu.
+	/// QUANTAS O PACOTE LEVA. Sete do planeta, sete de outro (Lookout) e as sete Black Star, que saem do planeta.
 	/// </summary>
-	public const int TetoNoPacote = 2 * Esferas.Total;
+	public const int TetoNoPacote = 3 * Esferas.Total;
+
+	/// <summary>A Black Star. O id ganha "negra" no lugar de "comum"/"namek"; os dois antigos continuam valendo.</summary>
+	public bool Negra { get; init; }
+
+	public string Folha => Negra ? EsferasNegras.Folha : DeNamek ? "namek" : "comum";
 
 	/// <summary>
-	/// A FOLHA DA ESFERA: `Dragonballs.dmi` (o set da Terra) ou o `dragonball.dmi` de Namek, ja convertidas. Uma casa so pro
-	/// chao (`EsferaDesenhada.FolhaDe`) e pra mochila -- escrita duas vezes, a esfera mudaria de cara ao ser pega.
+	/// A FOLHA DA ESFERA: Terra, Namek ou estrela negra. Uma casa so pro chao e pra mochila.
 	/// </summary>
 	public static string ArteDaEsfera(bool deNamek) =>
 		deNamek ? "res://Assets/Sprites/Misc/dragonball.tres" : "res://Assets/Sprites/Misc/Dragonballs.tres";
 
-	public string Id => $"{Prefixo}{Set}|{Numero}|{(Apagada ? "pedra" : "acesa")}|{(DeNamek ? "namek" : "comum")}";
+	public static string ArteDaFolha(string folha) => folha switch
+	{
+		"namek" => "res://Assets/Sprites/Misc/dragonball.tres",
+		EsferasNegras.Folha => EsferasNegras.ArteDaEsfera,
+		_ => "res://Assets/Sprites/Misc/Dragonballs.tres",
+	};
+
+	public string Id => $"{Prefixo}{Set}|{Numero}|{(Apagada ? "pedra" : "acesa")}|{Folha}";
+
+	public string Estado => Negra ? EsferasNegras.EstadoDoSprite(Numero, Apagada) : Esferas.EstadoDoSprite(Numero, Apagada);
 
 	/// <summary>
 	/// A ficha que a tela le. Sem acao propria: "largar" a mochila acrescenta a todo item (`ItemDef.AcoesDoItem`), e e a
@@ -51,13 +62,17 @@ public sealed record EsferaNaMochila(int Set, int Numero, bool Apagada, bool DeN
 	/// </summary>
 	public ItemDef Ficha => new(
 		Id,
-		Esferas.NomeDaEsfera(Numero),
-		(Apagada ? "Uma das sete Esferas do Dragão -- APAGADA: virou pedra até o set se refazer. "
-				 : "Uma das sete Esferas do Dragão. ")
-		+ "Com as sete na mochila, INVOCAR (aba World) as tira daqui e chama o dragão. Ela não sai do planeta: nave, espaço e "
-		+ "teleporte recusam quem a carrega (caverna e Lookout, não). Nocauteado ou morto, você a derruba.",
-		ArteDaEsfera(DeNamek),
-		Esferas.EstadoDoSprite(Numero, Apagada),
+		Negra ? EsferasNegras.NomeDaEsfera(Numero) : Esferas.NomeDaEsfera(Numero),
+		Negra
+			? (Apagada ? "Uma Esfera de Estrela Negra -- APAGADA: pedra até o ano do dragão passar. "
+					   : "Uma Esfera de Estrela Negra. ")
+			  + "Ela sai do planeta com você. Com as sete, INVOCAR (aba World) chama o Shenlong. Um desejo só, bem mais forte."
+			: (Apagada ? "Uma das sete Esferas do Dragão -- APAGADA: virou pedra até o set se refazer. "
+					   : "Uma das sete Esferas do Dragão. ")
+			  + "Com as sete na mochila, INVOCAR (aba World) as tira daqui e chama o dragão. Ela não sai do planeta: nave, espaço e "
+			  + "teleporte recusam quem a carrega (caverna e Lookout, não). Nocauteado ou morto, você a derruba.",
+		ArteDaFolha(Folha),
+		Estado,
 		Empilhavel: false,
 		Acoes: []);
 
@@ -73,8 +88,9 @@ public sealed record EsferaNaMochila(int Set, int Numero, bool Apagada, bool DeN
 		if (!int.TryParse(partes[1], out int set) || set < 0) return null;
 		if (!int.TryParse(partes[2], out int numero) || numero < 1 || numero > Esferas.Total) return null;
 		bool? apagada = partes[3] switch { "pedra" => true, "acesa" => false, _ => null };
-		bool? deNamek = partes[4] switch { "namek" => true, "comum" => false, _ => null };
+		bool negra = partes[4] == EsferasNegras.Folha;
+		bool? deNamek = partes[4] switch { "namek" => true, "comum" => false, EsferasNegras.Folha => false, _ => null };
 		if (apagada is not { } a || deNamek is not { } n) return null;
-		return new EsferaNaMochila(set, numero, a, n);
+		return new EsferaNaMochila(set, numero, a, n) { Negra = negra };
 	}
 }

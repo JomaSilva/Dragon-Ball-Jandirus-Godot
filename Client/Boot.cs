@@ -1080,6 +1080,8 @@ public partial class Boot : Node2D
 		// O QUICK TIME EVENT DO EMBATE. Vive montado e invisivel: ele nasce de um pacote que chega
 		// no meio de uma briga, e montar tela nessa hora e o jeito de perder o primeiro prazo.
 		AddChild(new ClashQte { Name = "ClashQte" });
+		// O anel do treino focado e a barra da respiracao. Nao cala atalho: o silencio e so do embate.
+		AddChild(new TelaDoTreinoFocado { Name = "TreinoFocado" });
 		AddChild(new MenuJogo { Name = "Menu" });
 		// O CATALOGO DE CONSTRUCOES TAMBEM DO LADO DE CA. O servidor manda as OFERTAS (o que eu
 		// posso comprar agora, com preco e motivo do nao), mas a mochila precisa de outra coisa: a
@@ -1111,6 +1113,7 @@ public partial class Boot : Node2D
 		// A TECLA M: meditar normal ou mergulhar na propria mente. Ver `TelaDeMeditacao` -- ela vive
 		// montada e invisivel, e e o `LocalPlayer` que a abre (a atividade e dele).
 		AddChild(new TelaDeMeditacao { Name = "Meditacao" });
+		AddChild(new TelaDeTreino { Name = "Treino" });
 		// A SAIDA DA MEDITACAO PROFUNDA: a faixa do alto da tela, que so aparece dentro de uma mente.
 		AddChild(new SaidaDaMente { Name = "SaidaDaMente" });
 		// A FAIXA DA MINERACAO: logo acima do chat, so enquanto o corpo minera (o verb "Minerar"). Ver `PainelDeMineracao`.
@@ -1128,6 +1131,9 @@ public partial class Boot : Node2D
 		// A JANELA DE DESEJOS: abre sozinha quando o dragao sobe, pra quem o invocou. Vive montada e
 		// invisivel, como o refugio logo abaixo -- ela nasce de um pacote. Ver `MenuDeDesejos`.
 		AddChild(new MenuDeDesejos { Name = "Desejos" });
+		// (2026-10-22) O MENU DA ESTATUA DO DRAGAO: o "Erguer" da aba World e o "Configurar o dragao" da janela de desejos o abrem. DEPOIS dela,
+		// de proposito: o ESC chega nele primeiro (o `_Input` corre do ultimo filho pro primeiro). Ver `JanelaDaEstatua`.
+		AddChild(new JanelaDaEstatua { Name = "Estatua" });
 		// (a TELA DE CARREGAMENTO nao nasce mais aqui: ela existe desde o lobby -- ver o campo
 		// `_carga`. Cria-la neste ponto era o que a impedia de cobrir a propria entrada no mundo,
 		// e uma segunda instancia roubaria a `TelaDeCarregamento.Instancia` da que ja esta no ar.)
@@ -1174,6 +1180,10 @@ public partial class Boot : Node2D
 		// puxa. Hospedando, com janela. Ver RoboDoMenuLeve.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmenuleve") >= 0)
 			AddChild(new RoboDoMenuLeve { Name = "RoboDoMenuLeve" });
+		// --diagbuscatech: (2026-10-21) A BUSCA DO CATALOGO DA ABA TECH -- pelo nome e pela descricao, sem acento, sem remontar a pagina, e o
+		// foco que atravessa a remontagem. Hospedando, com janela. Ver RoboDaBuscaDeTech.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagbuscatech") >= 0)
+			AddChild(new RoboDaBuscaDeTech { Name = "RoboDaBuscaDeTech" });
 
 		// --diagmuda: A PAREDE INVISIVEL, FOTOGRAFADA. O censo fecha em zero e a `--socoteste` mede a
 		// recusa em numero -- e as duas ficariam verdes num mundo em que nada disso chega a tela, que e
@@ -1208,6 +1218,8 @@ public partial class Boot : Node2D
 		// derrubam, pedir no ar e recusado, e o corpo local larga a pose. Ver RoboDeAtividade.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagatividade") >= 0)
 			AddChild(new RoboDeAtividade { Name = "RoboDeAtividade" });
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagtreinofocado") >= 0)
+			AddChild(new RoboDeTreinoFocado { Name = "RoboDeTreinoFocado" });
 
 		// --diagvizinho: O QUE QUEM ESTA PERTO OUVE E SENTE -- o zumbido de quem reune Ki, o rasgo de quem
 		// arranca e o chao tremendo acima de 120%, tudo de um corpo ALHEIO e pelo fio. Ver RoboDosVizinhos.
@@ -1223,6 +1235,10 @@ public partial class Boot : Node2D
 		// dono saltando pro teto, e a transformacao cortando o tema (so com `--host`). Ver RoboDaRaiva.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagraiva") >= 0)
 			AddChild(new RoboDaRaiva { Name = "RoboDaRaiva" });
+
+		// --diagirritado: (2026-10-21) o HUD "IRRITADO" e a forma que ele estreia (so com `--host`, janela). Ver RoboDoIrritado.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagirritado") >= 0)
+			AddChild(new RoboDoIrritado { Name = "RoboDoIrritado" });
 
 		// --diagtorneiocell: (2026-10-19) O TORNEIO DO CELL NA TELA -- o Cell esperando na arena, o x1 e o Kamehameha que explode a
 		// Terra (so com `--host`). Ver RoboDoTorneioDoCell.
@@ -1266,6 +1282,12 @@ public partial class Boot : Node2D
 		// UM SO: a reencarnacao (familia L) derruba o mundo e o monta de novo, e esta linha roda outra vez -- ver `RoboDaV030.Vivo`.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagv030") >= 0 && !RoboDaV030.Vivo)
 			AddChild(new RoboDaV030 { Name = "RoboDaV030" });
+
+		// --diagkaiokenveto: (2026-10-21) A RECUSA DO KAIO-KEN NA TELA -- a escolha e o cartao da aba Forms dizem, antes do aperto, quando a
+		// forma nao o sustenta (toda transformacao menos o Blue de classe baixa ou media com 50% de maestria divina), com a frase do
+		// servidor. Hospedando, com janela. Ver RoboDaRecusaDoKaioken.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagkaiokenveto") >= 0)
+			AddChild(new RoboDaRecusaDoKaioken { Name = "RoboDaRecusaDoKaioken" });
 
 		// --diagjanelas: O ARRANJO DA TELA -- o menu P arrastado, redimensionado e destacado numa janela do sistema,
 		// o chat e os dois paineis do topo em outros tamanhos, e o que mora em volta acompanhando. Modo host e com
@@ -1314,6 +1336,11 @@ public partial class Boot : Node2D
 		// junto da `--alunosteste` do servidor. Ver RoboDeAlunos.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagalunos") >= 0)
 			AddChild(new RoboDeAlunos { Name = "RoboDeAlunos" });
+
+		// --diagaliados (2026-10-21): a tecla E no habitante, o presente, o treino, o Recrutar e a aba Allies.
+		// Modo host, com janela, no campo aberto. Ver RoboDosAliados.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagaliados") >= 0)
+			AddChild(new RoboDosAliados { Name = "RoboDosAliados" });
 
 		// --diagdegrau: O BOTAO DO VERB CONCEDIDO POR DEGRAU (e por CASA), num cliente que DISCA e sem
 		// janela. Irma da `--diagskills` pelo mesmo motivo dos dois processos: so um cliente que disca mede
@@ -1415,6 +1442,16 @@ public partial class Boot : Node2D
 		// da sala. Modo host + `--campoteste` + JANELA. Ver RoboDasMaquinas.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmaquinas") >= 0)
 			AddChild(new RoboDasMaquinas { Name = "RoboDasMaquinas" });
+
+		// --diagcellpod: (2026-10-21) O MAINFRAME DO BIO E DO NEO TUFFLE NO CELL POD -- quatro mainframes, os laboratorios pelos verbos, o
+		// desenho no node e na foto. Modo host + `--campoteste` + JANELA. Ver RoboDoCellPod.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagcellpod") >= 0)
+			AddChild(new RoboDoCellPod { Name = "RoboDoCellPod" });
+
+		// --diaggravtrava: O MENU DA CAMARA COM A TRAVA DE SEGURANCA, E O AVISO NO CHAT DEPOIS DO DESMAIO
+		// (2026-10-21). Modo host + JANELA. Ver RoboDaTravaDeGravidade.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaggravtrava") >= 0)
+			AddChild(new RoboDaTravaDeGravidade { Name = "RoboDaTravaDeGravidade" });
 
 		// --diagdrill: A DRILL NA TELA -- o menu da tecla E com o painel dela (nivel, taxa, estoque andando, a
 		// reserva do planeta e o preco da proxima melhoria), coletar e melhorar com as duas moedas. Modo host +
@@ -1706,6 +1743,11 @@ public partial class Boot : Node2D
 		// --diagesferae (2026-10-18): a ESFERA DO DRAGAO pela tecla E -- a dica de pegar, o contra-exemplo e o E de verdade. Ver RoboDaEsferaNaTeclaE.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagesferae") >= 0)
 			AddChild(new RoboDaEsferaNaTeclaE { Name = "RoboDaEsferaNaTeclaE" });
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagestrelanegra") >= 0)
+			AddChild(new RoboDaEstrelaNegra { Name = "RoboDaEstrelaNegra" });
+		// --diagestatua (2026-10-22): o menu de criacao do set de esferas, com fotos e o contra-exemplo da forca dividida. Ver RoboDaEstatua.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagestatua") >= 0)
+			AddChild(new RoboDaEstatua { Name = "RoboDaEstatua" });
 		// --diagsentidos (2026-10-18): o SCOUTER com teto e sem ki divino, e os CINCO NIVEIS do Sense -- fotos e contra-exemplos. Ver RoboDosSentidos.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagsentidos") >= 0)
 			AddChild(new RoboDosSentidos { Name = "RoboDosSentidos" });
@@ -1713,6 +1755,9 @@ public partial class Boot : Node2D
 		// a linha, o rastro que se perde e volta; fotos e contra-exemplos. Ver RoboDoRastro.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagsenserastro") >= 0)
 			AddChild(new RoboDoRastro { Name = "RoboDoRastro" });
+		// --diagteleporte (2026-10-21): o Instant Transmission pela aba Sense -- o botao, a testa, o piscar, quem medita e o agarrado.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagteleporte") >= 0)
+			AddChild(new RoboDaTransmissao { Name = "RoboDaTransmissao" });
 		// --diagprovacargo (2026-10-19): a PROVA DO ESPIRITO DO CARGO na tela -- o cartao com a frase da prova, o espirito que se ergue (de
 		// aureola, meio transparente), a luta, a vitoria e a derrota com a vergonha; fotos. Ver RoboDaProvaDoCargo.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagprovacargo") >= 0)
@@ -1980,6 +2025,11 @@ public partial class Boot : Node2D
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagagua") >= 0)
 			AddChild(new RoboDeAgua { Name = "RoboDeAgua" });
 
+		// --diagetapa (2026-10-21): a lista de formas do chefe na aba Learning, e o corpo nascido
+		// nessa forma dentro da mente. Precisa de janela pra foto e de --host (o palco planta as lembrancas).
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagetapa") >= 0)
+			AddChild(new RoboDaEtapa { Name = "RoboDaEtapa" });
+
 		// --fotodamente: a FOTO da dimensao mental (o relato A do dono). Medita, mergulha e salva o
 		// pixel -- com a cor media e a fracao de branco medidas no relatorio, pra a prova nao depender
 		// de alguem abrir a pasta. Precisa de JANELA (headless nao renderiza).
@@ -2045,6 +2095,11 @@ public partial class Boot : Node2D
 		// junto do `--luateste` no servidor -- sem ele a lua cheia so volta a cada tres horas.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagceu") >= 0)
 			AddChild(new RoboDeLua { Name = "RoboDeLua" });
+
+		// --diagsubzonas: o ceu do Lookout igual ao da Terra, a caverna sem a chuva, o Lookout na destruicao
+		// da Terra e a decolagem pro espaco. Ver RoboDeSubZonas.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagsubzonas") >= 0)
+			AddChild(new RoboDeSubZonas { Name = "RoboDeSubZonas" });
 
 		// --diagclima: bancada do CLIMA. Confere que cada planeta sorteia da lista DELE (a do DM),
 		// que as duas pontas chegam ao mesmo ceu sem trocar byte, que o custo das particulas e

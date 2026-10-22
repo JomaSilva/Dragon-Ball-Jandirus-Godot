@@ -263,6 +263,9 @@ public partial class GameServer
 		// `--ganhoteste`: de onde o poder da luta vem -- o soco no ar, o objeto, a troca entre jogadores e o ki que so
 		// rende encostando. Os jogadores entram pela porta. Ver `GameServer.GanhoTeste.cs`.
 		if (Array.IndexOf(args, "--ganhoteste") >= 0) RodarBancadaDeGanho(porta);
+		// `--treinofocadoteste`: o treino focado e a meditacao focada (anel de WASD, respiracao, bonus ate 2x, o AFK intacto).
+		// Roda no boot, sem jogador. Ver `GameServer.TreinoFocadoTeste.cs`.
+		if (Array.IndexOf(args, "--treinofocadoteste") >= 0) RodarBancadaDoTreinoFocado();
 		// `--torneiocellteste`: (2026-10-19) o torneio do Cell -- o sangue dele, a forma Perfeita que marca o torneio, a arena no dia, o x1 so de
 		// jogador (o golpe de quem se mete desfeito), a regra da arena que o Cell derruba e os sete Cell Jr (clones dele) na plateia, a morte na
 		// luta e a volta Super Perfeita, e o Kamehameha da fila vazia. Os jogadores entram pela porta. Ver `GameServer.TorneioDoCellTeste.cs`.
@@ -275,6 +278,10 @@ public partial class GameServer
 		// nave anda; o colo e o golpe ainda levam; quem rompe a atmosfera voando chega voando. O jogador entra pela porta. Ver
 		// `GameServer.EspacoSoVoandoTeste.cs`.
 		if (Array.IndexOf(args, "--espacovooteste") >= 0) RodarBancadaDoEspacoSoVoando(porta);
+		// `--subzonasteste`: (2026-10-21) as sub-zonas sao o planeta delas -- o Lookout e as cavernas com a hora, a lua, o clima e o fim do mundo
+		// do planeta (o castelo do Rei Vegeta, o de Vegeta), a subida pro espaco pelo Lookout, a caverna e a Sala do Tempo que recusam, e a lista
+		// de chefes de saga no mundo. Os jogadores entram pela porta. Ver `GameServer.SubZonasTeste.cs`.
+		if (Array.IndexOf(args, "--subzonasteste") >= 0) RodarBancadaDasSubZonas(porta);
 		// `--patriarcateste`: (2026-10-19) o Grande Patriarca de Namek -- o molde e o plano, o nascimento perto do berco, a folha dele, a
 		// vida diaria que nao sai do lugar, o menu E e a conversa que desperta o potencial. O jogador entra pela porta. Ver
 		// `GameServer.PatriarcaTeste.cs`.

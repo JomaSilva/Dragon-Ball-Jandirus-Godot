@@ -90,6 +90,7 @@ public partial class GameServer
 		APortaDaMorteEUnica(Checa);
 		OArremessoAndaNoEspaco(Checa);
 		OPilotoNaoQueima(Checa);   // (2026-10-18)
+		ORegeneradorMorreNaEstrela(Checa);   // (2026-10-21)
 
 		GD.Print($"===== BANCADA DO SOL: {ok} OK, {falhou} FALHA(S) =====\n");
 	}
@@ -557,21 +558,27 @@ public partial class GameServer
 	/// entra no `_players` e na `ZoneList` porque as funcoes de producao varrem as duas, e sai no
 	/// `finally` -- entra e sai dentro do mesmo bloco sincrono, entao nenhum tique do jogo o ve.
 	/// </summary>
-	private ServerPlayer Forjar(int i, string nome, Vec2 onde, double bp)
+	private ServerPlayer Forjar(int i, string nome, Vec2 onde, double bp, string raca = "Human", string sangue = "")
 	{
 		var novo = new ServerPlayer
 		{
 			Id = IdBaseDoSolDeTeste + i,
 			Peer = null,
 			Name = nome,
-			Race = "Human",
+			Race = raca,
 			Genero = "Male",
 			Idade = 25,
 			Zone = ZonaDoEspaco,
 			Pos = onde,
 			Conta = $"bancada_sol_{i}",
 			Slot = 0,
-			Ficha = new Jandirus.Core.Stats.Fighter { Race = "Human", BP = bp },
+			Ficha = new Jandirus.Core.Stats.Fighter
+			{
+				Race = raca,
+				BP = bp,
+				// O bio sozinho regenera como Humano (v0.3.0). O sangue e o que lhe da o eixo.
+				bio_racas_dna = sangue.Length > 0 ? new List<string> { sangue } : [],
+			},
 		};
 		novo.Ficha.Class = "Normal";
 		PorNoMundo(novo);
@@ -650,6 +657,89 @@ public partial class GameServer
 			_naves.Remove(pod);
 			GravarNaves();
 			Recolher(pl);
+		}
+	}
+
+	// =====================================================================
+	// 9) QUEM REGENERA MEMBRO TAMBEM MORRE (dono, 2026-10-21)
+	// =====================================================================
+	/// <summary>
+	/// *"cair na estrela pode matar qualquer um, ate mesmo majins"*. Quem refaz membro caia no nocaute
+	/// e cozinhava para sempre. A morte e a mesma porta de quem nao regenera: <c>Morrer()</c>, corpo
+	/// consumido, prazo de renascer -- nao o coma e nao o "se desfaz" do soco.
+	///
+	/// O bio sozinho nao regenera desde a v0.3.0 (sangue nenhum = regen de Humano). O caso dele e o
+	/// bio COM sangue Majin: e ai que o jogo lhe da <see cref="Body.RegeneraDecepado"/> e o gancho de
+	/// se desfazer. O Namekuseijin tem Regeneration 10 no proto e mesmo assim NAO refaz membro (o
+	/// return proprio do rework): ele ja morria, e continua morrendo. O Humano e o outro controle.
+	/// </summary>
+	private void ORegeneradorMorreNaEstrela(Action<string, bool, string> Checa)
+	{
+		GD.Print("--- 9) QUEM REGENERA MEMBRO TAMBEM MORRE NA ESTRELA (dono, 2026-10-21) ---");
+
+		Estrela e = EstrelaDeTeste(ClasseDeEstrela.Amarela, out _);
+
+		void CozinhaEMorre(int i, string raca, string sangue, bool regenera, string frase)
+		{
+			ServerPlayer pl = Forjar(i, "bancada: " + raca, e.Pos, 1_000_000, raca, sangue);
+			try
+			{
+				Checa($"(montagem) {raca}: RegeneraDecepado e {(regenera ? "verdadeiro" : "falso")}",
+					  pl.Combate!.Corpo.RegeneraDecepado == regenera, $"{pl.Combate.Corpo.RegeneraDecepado}");
+
+				EscutaDeAvisos = [];
+				(bool morreu, double s, double queimou) = Cozinhar(pl);
+				List<string> ditos = EscutaDeAvisos!;
+				EscutaDeAvisos = null;
+
+				Checa(frase,
+					  morreu && pl.Ficha.dead && !pl.Combate.Desfeito && pl.RelogioDaMorte > 0 && queimou > 0
+					  && ditos.Any(l => l.Contains("consumido")),
+					  $"morto {pl.Ficha.dead} desfeito {pl.Combate.Desfeito} relogio {pl.RelogioDaMorte} "
+					  + $"queimou {queimou:0.#} em {s:0.0} s | {string.Join(" | ", ditos.TakeLast(2))}");
+			}
+			finally
+			{
+				EscutaDeAvisos = null;
+				Recolher(pl);
+			}
+		}
+
+		CozinhaEMorre(91, "Majin", "", regenera: true,
+			"**O MAJIN MORRE NA ESTRELA**: consumido, com a bandeira dead e o prazo de renascer, sem se desfazer");
+		CozinhaEMorre(92, "BioAndroid", "Majin", regenera: true,
+			"**O BIO-ANDROIDE MORRE NA ESTRELA**: o sangue Majin lhe da o eixo e o gancho de se desfazer, e a estrela mesmo assim o consome");
+		CozinhaEMorre(93, "Namekian", "", regenera: false,
+			"**O NAMEKUSEIJIN MORRE NA ESTRELA**: Regeneration 10 no proto, mas o rework nao devolve membro, e ele morre como antes");
+		CozinhaEMorre(94, "Human", "", regenera: false,
+			"**O HUMANO MORRE NA ESTRELA**: o controle de quem ja morria");
+
+		// A fuga antiga, lida pela propria linha. Com o botao, o Majin chega no limiar e NAO morre.
+		SolPoupaRegeneradorDeTeste = true;
+		ServerPlayer poupado = Forjar(95, "bancada: majin poupado", e.Pos, 1_000_000, "Majin");
+		try
+		{
+			bool noLimiar = false;
+			for (int t = 0; t < TiquesMaximosDaMedicao && !poupado.Ficha.dead; t++)
+			{
+				if (t % TicksPorFicha == 0) poupado.Ficha.Tick(agoraMs: NowMs());
+				RegenerarPassivo(poupado, Protocol.TickSeconds);
+				TickDoEspaco(poupado);
+				if (poupado.Combate!.Corpo.DeveMorrer()) { noLimiar = true; break; }
+			}
+			for (int i = 0; i < 30 && !poupado.Ficha.dead; i++)
+			{
+				RegenerarPassivo(poupado, Protocol.TickSeconds);
+				TickDoEspaco(poupado);
+			}
+			Checa("(defeito injetado: a estrela poupa quem regenera membro) a mesma regua REPROVA",
+				  noLimiar && !poupado.Ficha.dead && poupado.Ficha.KO && !poupado.Combate!.Desfeito,
+				  $"limiar {noLimiar} morto {poupado.Ficha.dead} nocaute {poupado.Ficha.KO} desfeito {poupado.Combate.Desfeito}");
+		}
+		finally
+		{
+			SolPoupaRegeneradorDeTeste = false;
+			Recolher(poupado);
 		}
 	}
 }

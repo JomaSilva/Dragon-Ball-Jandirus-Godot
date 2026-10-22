@@ -1193,6 +1193,8 @@ public partial class LocalPlayer : Node2D
 			? Vector2.Zero   // no chao nao se anda: ver OnSheet
 			// (2026-10-19) SEGURANDO UM RAIO COM AS MAOS, O WASD E DO QUICK TIME EVENT: o passo de lado e pelas setas.
 			: eixoDoRaio != null && !LetraDoQteAndaNaGuardaDeTeste ? TeclasDeAndarSemAsLetras()
+			// (2026-10-21) NO TREINO FOCADO O WASD E A LETRA DO ANEL. A seta continua andando e derruba o treino.
+			: WasdDoTreinoFocado() ? TeclasDeAndarSemAsLetras()
 			: new Vector2(
 				Godot.Input.GetActionStrength(Teclas.NomeNoMotor("move_right")) - Godot.Input.GetActionStrength(Teclas.NomeNoMotor("move_left")),
 				Godot.Input.GetActionStrength(Teclas.NomeNoMotor("move_down")) - Godot.Input.GetActionStrength(Teclas.NomeNoMotor("move_up")));
@@ -1703,7 +1705,7 @@ public partial class LocalPlayer : Node2D
 		// UM soco por vez. Sem esta trava, martelar o espaco re-armava o cronometro a cada
 		// tecla e o personagem ficava preso na pose de soco pra sempre -- e como todo estado
 		// do .dmi tem loop, o ciclo se repetia sem nunca voltar a ficar de pe.
-		if (!Foco.Digitando && Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("attack")) && _ataqueAte <= 0)
+		if (!Foco.Digitando && !EspacoDaRespiracaoFocada() && Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("attack")) && _ataqueAte <= 0)
 		{
 			// SHIFT + ESPACO = GOLPE PESADO, e com ele a investida longa. So ESPACO = golpe
 			// leve, com um passo curto pra fechar o meio metro que falta. Nao ha tecla
@@ -1910,7 +1912,10 @@ public partial class LocalPlayer : Node2D
 		// nao (eram letras do embate ate ele virar so WASD, e o silencio ficou). Ver `Foco.AtalhosMudos`.
 		else if (Foco.AtalhosMudos) { }
 		else if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("train")))
-			nova = _atividade == Protocol.Activity.Treinando ? Protocol.Activity.Parado : Protocol.Activity.Treinando;
+		{
+			// A TELINHA, como a do M: normal (o AFK de hoje) ou focado. Quem ja treina, para.
+			if (!LerOTreino(andando, ref nova)) return;
+		}
 		else if (Godot.Input.IsActionJustPressed(Teclas.NomeNoMotor("meditate")))
 		{
 			// ============================ O M PERGUNTA ANTES DE MEDITAR ============================
@@ -1979,13 +1984,16 @@ public partial class LocalPlayer : Node2D
 	/// nao o encanamento. Nada mudou no servidor por causa dela.
 	/// ================================================================================
 	/// </summary>
-	private void EscolheuMeditar(bool profunda)
+	private void EscolheuMeditar(EscolhaDaMeditacao escolha)
 	{
+		// A FOCADA senta e pede o anel da respiracao. Normal e profunda ficam o caminho de sempre.
+		if (escolha == EscolhaDaMeditacao.Focada) { EscolheuMeditarFocada(); return; }
+
 		// PELO CAMINHO DE SEMPRE: escrever o `_atividade` aqui e o que faz a pose de meditar aparecer
 		// no proprio corpo (`PorAPoseDoCorpo`) e o M seguinte PARAR a meditacao em vez de reperguntar.
 		_atividade = Protocol.Activity.Meditando;
 		GameClient.Instance?.SendActivity(Protocol.Activity.Meditando);
-		if (profunda) GameClient.Instance?.SendHabilidade("mente");
+		if (escolha == EscolhaDaMeditacao.Profunda) GameClient.Instance?.SendHabilidade("mente");
 	}
 
 	/// <summary>Eu era fera no quadro passado? A virada e o que derruba a atividade -- ver <see cref="LerAtividade"/>.</summary>

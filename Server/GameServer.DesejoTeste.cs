@@ -210,8 +210,10 @@ public partial class GameServer
 			PedirDesejo(pl, "dinheiro");
 			Checa("...e um desejo PORTADO consome (senao 'nao consome' nao quer dizer nada)",
 				  set.Pedidos == pedidosAntes + 1, $"{pedidosAntes} -> {set.Pedidos}");
-			Checa($"...e a riqueza entrou: +{Desejos.ZeniDoDesejo:N0} zeni",
-				  Math.Abs(pl.Ficha.Zeni - (zeniAntes + Desejos.ZeniDoDesejo)) < 1,
+			// (2026-10-22) A FORCA DIVIDIDA: este set tem 3 pedidos, e cada um vale um terco da forca dele
+			double riquezaDoSet = Desejos.ZeniDoDesejo * ConfigDaEstatua.ForcaDeCadaPedido(set.Desejos);
+			Checa($"...e a riqueza entrou: +{riquezaDoSet:N0} zeni -- um terco dos {Desejos.ZeniDoDesejo:N0}, a forca dividida pelos 3 pedidos do set",
+				  Math.Abs(pl.Ficha.Zeni - (zeniAntes + riquezaDoSet)) < 1,
 				  $"{zeniAntes:N0} -> {pl.Ficha.Zeni:N0}");
 
 			// ============================ E O MUNDO OUVIU ============================
@@ -337,14 +339,15 @@ public partial class GameServer
 			int marcosAntes = pl.Livro?.MarcosLivres ?? 0;
 			PorODragaoDePe(pl, set);
 			PedirDesejo(pl, "marcos");
-			Checa($"o desejo de Marcos da {Desejos.MarcosDoDesejo} (WishTable.dm:367-370)",
-				  (pl.Livro?.MarcosLivres ?? 0) == marcosAntes + Desejos.MarcosDoDesejo,
+			// (2026-10-22) os 2 Marcos do DM na forca dividida deste set de 3 pedidos: 1 (`Desejos.MarcosDoFator`, nunca menos de 1)
+			Checa($"o desejo de Marcos da {MarcosNoDragao(set)} neste set de 3 pedidos (os {Desejos.MarcosDoDesejo} do WishTable.dm:367-370, na forca dividida)",
+				  (pl.Livro?.MarcosLivres ?? 0) == marcosAntes + MarcosNoDragao(set) && MarcosNoDragao(set) == 1,
 				  $"{marcosAntes} -> {pl.Livro?.MarcosLivres}");
 
 			int pedidosDepois = set.Pedidos;
 			PedirDesejo(pl, "marcos");
 			Checa("...e a SEGUNDA vez e recusada, sem consumir pedido (uma vez por vida)",
-				  (pl.Livro?.MarcosLivres ?? 0) == marcosAntes + Desejos.MarcosDoDesejo
+				  (pl.Livro?.MarcosLivres ?? 0) == marcosAntes + MarcosNoDragao(set)
 				  && set.Pedidos == pedidosDepois,
 				  $"marcos {pl.Livro?.MarcosLivres}, pedidos {pedidosDepois} -> {set.Pedidos}");
 
@@ -380,6 +383,11 @@ public partial class GameServer
 			rodadas.Clear();
 			(semScouter, comScouter, comDefeito) = AsTresLeiturasDoPoder(estranho, () =>
 			{
+				// (2026-10-21) CADA LEITURA PARTE DO MESMO PODER. O supremo dobra o mais forte, e as tres em cadeia (91 mi, 183 mi, 366 mi)
+				// passavam do teto do vidro (`Scouter.TetoDeLeitura`, 100 mi, desde 2026-10-18) justo na leitura COM scouter: ele marcava
+				// "???", a frase saia sem numero (o certo) e esta bancada ficou vermelha desde 2026-10-19.
+				estranho.Ficha.BP = bpDoSupremo;
+				estranho.Ficha.Statify();
 				double a = estranho.Ficha.BP;
 				DesejoSupremo(estranho, set, estranho);
 				rodadas.Add((a, estranho.Ficha.BP));
@@ -454,7 +462,7 @@ public partial class GameServer
 			// =====================================================================
 			// 10. O PORTAO DO SUPER SHENRON
 			// =====================================================================
-			GD.Print("  -- o Super Shenron --");
+			GD.Print("  -- o Super Shenlong --");
 
 			// (palco) O ELENCO DAQUI ESTA NA TERRA, e o dragao so e chamado ao lado de uma Super Esfera (`set src in
 			// oview(2)`, `ProceduralSpace.dm:1580`): quem mede o LUGAR e a `--validacoesteste`, e a corrente inteira,
@@ -495,7 +503,7 @@ public partial class GameServer
 
 			// FAMILIA A -- o defeito injetado e a flag ligada na mao.
 			MutacaoDeDesejo(Checa,
-				"sem a LINGUA o Super Shenron recusa, e NADA e consumido (:1587-1589)",
+				"sem a LINGUA o Super Shenlong recusa, e NADA e consumido (:1587-1589)",
 				"o campo `godtongue` ligado na mao",
 				SuperRecusaSemLingua,
 				() => mudo.Ficha.godtongue = true,
@@ -791,6 +799,288 @@ public partial class GameServer
 				  string.Equals(_benefSig, sigNoDisco, StringComparison.Ordinal)
 				  && _pedidoDoBenef == pedidoNoDisco,
 				  $"'{_benefSig}'/'{_pedidoDoBenef}' vs '{sigNoDisco}'/'{pedidoNoDisco}'");
+
+			// =====================================================================
+			// (2026-10-21) "AUMENTAR O MEU POTENCIAL" -- regra do dono, sem par no DM
+			// =====================================================================
+			// Soma no estoque escondido uma FRACAO de um ano de vida (`BP * UPMod`), pela forca do set; as Black Star a fracao fixa
+			// delas (1/6, sem os 5x), o Super a maior (1/4). O BP e o UPMod do testador sao cravados pra conta sair limpa; o BP
+			// volta no `finally`, o estoque e o UPMod no fim desta familia.
+			double bpDaConta = 1_000_000, upDaConta = 2, umAno = bpDaConta * upDaConta;
+			double estoqueAntes = pl.Ficha.hiddenpotential, upGuardado = pl.Ficha.UPMod;
+			pl.Ficha.BP = bpDaConta;
+			pl.Ficha.UPMod = upDaConta;
+			double SomaDe(Func<bool> pedir)
+			{
+				double antes = pl.Ficha.hiddenpotential;
+				pedir();
+				return pl.Ficha.hiddenpotential - antes;
+			}
+			var fraco = new SetDeEsferas { Id = 990, Poder = Desejos.PoderDaFracaoMinima, Desejos = 1, NomeDoDragao = "SHENRON" };
+			var forte = new SetDeEsferas { Id = 991, Poder = Desejos.PoderDaFracaoMaxima, Desejos = 1, NomeDoDragao = "SHENRON" };
+			double noFraco = SomaDe(() => DesejoDeAumentarPotencial(pl, fraco));
+			double noForte = SomaDe(() => DesejoDeAumentarPotencial(pl, forte));
+			Checa("AUMENTAR O POTENCIAL: o set mais fraco soma 1/25 de um ano de vida (BP x UPMod), e o mais forte 1/8",
+				  Math.Abs(noFraco - umAno / 25) < 1e-6 && Math.Abs(noForte - umAno / 8) < 1e-6,
+				  $"fraco {noFraco:0.##}, forte {noForte:0.##}, um ano {umAno:0}");
+			Desejos.FracaoSemForcaDoSetDeTeste = true;
+			double forteSemForca;
+			try { forteSemForca = SomaDe(() => DesejoDeAumentarPotencial(pl, forte)); }
+			finally { Desejos.FracaoSemForcaDoSetDeTeste = false; }
+			Checa("   CONTRA-EXEMPLO (defeito injetado: a forca do set nao conta): o set forte soma o do fraco -- a regua de cima REPROVA",
+				  Math.Abs(forteSemForca - umAno / 8) > 1e-6, $"{forteSemForca:0.##}");
+
+			double naNegra = SomaDe(() => DesejoDeAumentarPotencial(pl, _setNegro));
+			Checa("...as Black Star somam 1/6 FIXO de um ano, sem os 5x dos outros desejos delas",
+				  Math.Abs(naNegra - umAno / 6) < 1e-6, $"{naNegra:0.##}");
+			PotencialNegroComOs5xDeTeste = true;
+			double negraCom5x;
+			try { negraCom5x = SomaDe(() => DesejoDeAumentarPotencial(pl, _setNegro)); }
+			finally { PotencialNegroComOs5xDeTeste = false; }
+			Checa("   CONTRA-EXEMPLO (defeito injetado: as Black Star com os 5x): cinco sextos de um ano -- a regua de cima REPROVA",
+				  Math.Abs(negraCom5x - umAno / 6) > 1e-6, $"{negraCom5x:0.##}");
+
+			DesejoDef superPotencial = Desejos.DoSuper.First(d => d.Id == "sdb_aumentar_potencial");
+			double noSuper = SomaDe(() => ConcederDoSuper(pl, pl, superPotencial, ""));
+			Checa("...e o SUPER SHENLONG soma a maior parte de todas: 1/4 de um ano",
+				  Math.Abs(noSuper - umAno / 4) < 1e-6 && noSuper > naNegra && naNegra > noForte, $"{noSuper:0.##}");
+			Checa("o desejo esta no menu do Shenron e no do Super, ao lado do 'Liberar o meu potencial' (que continua la)",
+				  Desejos.Menu(Esferas.PoderDoEterno, 1, false, false, 0).Any(d => d.Id == "aumentar_potencial")
+				  && Desejos.MenuDoSuper(false, false).Any(d => d.Id == "sdb_aumentar_potencial")
+				  && Desejos.Todos.Any(d => d.Id == "potencial"));
+			pl.Ficha.hiddenpotential = estoqueAntes;
+			pl.Ficha.UPMod = upGuardado;
+
+			// =====================================================================
+			// (2026-10-21) O SUPER SHENLONG: A LISTA INTEIRA DAS BLACK STAR, A 4x -- regra do dono
+			// =====================================================================
+			// *"super shenlong seria 4 vezes o poder da black star em tudo, menos no potencial, super shenlong sempre vai ter o pedido supremo"*
+			// e *"ele daria 15 marcos pra n ficar muito broken"*. Medido pelo `ConcederDoSuper` de producao, com o testador de pedinte.
+			string[] doSuper = [.. Desejos.MenuDoSuper(false, false, 0).Select(d => d.Id)];
+			string[] precisaTer = ["sdb_riqueza", "marcos", "tecnologia", "juventude", "poder", "inteligencia", "juventude_alheia",
+								   "curar_planeta", "potencial", "reviver_todos", "matar", "sdb_reviver", "sdb_aumentar_potencial", "sdb_supremo"];
+			bool listaInteira(string[] ids) => precisaTer.All(ids.Contains) && !ids.Contains("dinheiro") && !ids.Contains("reviver")
+											   && !ids.Contains("supremo") && !ids.Contains("aumentar_potencial") && !ids.Contains("nada")
+											   && !ids.Contains("cancelar");
+			Checa("**O SUPER SHENLONG TEM A LISTA INTEIRA DAS BLACK STAR** (os desejos do Shenron que ele nao tinha) e o Supremo SEMPRE -- sem os "
+				  + "repetidos: a riqueza, o reviver, o potencial e o supremo so na versao dele", listaInteira(doSuper), string.Join(",", doSuper));
+			Desejos.SuperSoComOsDeleDeTeste = true;
+			string[] soOsDele;
+			try { soOsDele = [.. Desejos.MenuDoSuper(false, false, 0).Select(d => d.Id)]; }
+			finally { Desejos.SuperSoComOsDeleDeTeste = false; }
+			Checa("   CONTRA-EXEMPLO (defeito injetado: o Super so com os cinco dele, o jogo de antes) -- a regua de cima REPROVA",
+				  !listaInteira(soOsDele), string.Join(",", soOsDele));
+			Checa("...e o 'Super Saiyajin' do Super segue o sangue de quem pede, como no Shenron",
+				  !doSuper.Contains("super_saiyajin") && Desejos.MenuDoSuper(false, false, 100).Any(d => d.Id == "super_saiyajin"));
+
+			DesejoDef DefDe(string id) => Desejos.Todos.Concat(Desejos.DoSuper).First(d => d.Id == id);
+			double zeniDoTeste = pl.Ficha.Zeni;
+			ConcederDoSuper(pl, pl, DefDe("sdb_riqueza"), "");
+			double riquezaDoSuper = pl.Ficha.Zeni - zeniDoTeste;
+			pl.Ficha.Zeni = zeniDoTeste;
+			Checa("**A RIQUEZA DO SUPER VALE 4 VEZES A DAS BLACK STAR**: 1 bilhao de zeni (as Black Star dao 250 milhoes, o Shenron 50)",
+				  Math.Abs(riquezaDoSuper - 1e9) < 1 && Math.Abs(riquezaDoSuper - 4 * EsferasNegras.MultiplicadorDaBlackStar * Desejos.ZeniDoDesejo) < 1,
+				  $"{riquezaDoSuper:N0}");
+
+			double techDoTeste = pl.Ficha.techmod;
+			double IntelDo(Func<bool> pedir) { pl.Ficha.techmod = techDoTeste; pedir(); double d = pl.Ficha.techmod - techDoTeste; pl.Ficha.techmod = techDoTeste; return d; }
+			double intelSuper = IntelDo(() => ConcederDoSuper(pl, pl, DefDe("inteligencia"), ""));
+			double intelNegra = IntelDo(() => DesejoDeInteligencia(pl, _setNegro));
+			Checa("**A INTELIGENCIA DO SUPER (UM DESEJO DO SHENRON QUE ELE NAO TINHA) VALE 4 VEZES A DAS BLACK STAR**: +40 (as Black Star dao +10, o "
+				  + "Shenron +2)", Math.Abs(intelSuper - 40) < 1e-9 && Math.Abs(intelSuper - 4 * intelNegra) < 1e-9, $"super {intelSuper}, negra {intelNegra}");
+			double intelSemFator;
+			SuperSemMultiplicadorDeTeste = true;
+			try { intelSemFator = IntelDo(() => ConcederDoSuper(pl, pl, DefDe("inteligencia"), "")); }
+			finally { SuperSemMultiplicadorDeTeste = false; }
+			Checa("   CONTRA-EXEMPLO (defeito injetado: o Super com os numeros do Shenron): +2 -- a regua de cima REPROVA",
+				  Math.Abs(intelSemFator - 40) > 1e-9, $"{intelSemFator}");
+
+			// os marcos: UMA vez por vida (`wishedpoints`) -- zerados entre um dragao e outro, e devolvidos no fim
+			int livresDoTeste = pl.Livro?.MarcosLivres ?? 0;
+			var pedidosDoTeste = pl.Ficha.wishedpoints;
+			double MarcosDo(Func<bool> pedir) { pl.Ficha.wishedpoints = 0; pedir(); double m = pl.Ficha.wishedpoints; pl.Ficha.wishedpoints = 0; return m; }
+			double marcosSuper = MarcosDo(() => ConcederDoSuper(pl, pl, DefDe("marcos"), ""));
+			double marcosNegra = MarcosDo(() => DesejoDeMarcos(pl, _setNegro));
+			double marcosShenron = MarcosDo(() => DesejoDeMarcos(pl, fraco));
+			pl.Ficha.wishedpoints = pedidosDoTeste;
+			if (pl.Livro != null) pl.Livro.MarcosLivres = livresDoTeste;
+			Checa("**OS MARCOS DO SUPER SAO 15** (*\"ele daria 15 marcos pra n ficar muito broken\"*), e nao os 40 do fator: as Black Star dao 10, "
+				  + "o Shenron 2", marcosSuper == Desejos.MarcosDoSuper && marcosSuper == 15 && marcosNegra == 10 && marcosShenron == 2,
+				  $"super {marcosSuper}, negra {marcosNegra}, shenron {marcosShenron}");
+
+			// a janela: os numeros DESTE dragao (antes as Black Star diziam "50.000.000" e davam 250 milhoes)
+			string Texto(string id, SetDeEsferas s) => Desejos.DescricaoNoDragao(DefDe(id), FatorDoDragao(s), MarcosNoDragao(s), false);
+			bool numerosCertos() => Texto("dinheiro", _setNegro).Contains("250.000.000") && Texto("dinheiro", fraco).Contains("50.000.000")
+									// ...e a LINHA da janela, pelo construtor de producao (e nao so a funcao do texto)
+									&& EntradaDoDesejo(pl, _setNegro, DefDe("dinheiro"), posso: true, juntas: false).Desc.Contains("250.000.000")
+									&& Texto("marcos", SetDoSuper).StartsWith("15 Marcos", StringComparison.Ordinal)
+									&& Texto("marcos", _setNegro).StartsWith("10 Marcos", StringComparison.Ordinal)
+									&& Texto("inteligencia", SetDoSuper).Contains("+40", StringComparison.Ordinal);
+			Checa("**A JANELA DIZ OS NUMEROS DE CADA DRAGAO**: a riqueza das Black Star em 250.000.000, a do Shenron em 50.000.000, os marcos do "
+				  + "Super em 15 e os das Black Star em 10, a inteligencia do Super em +40", numerosCertos(),
+				  $"{Texto("dinheiro", _setNegro)} | {Texto("marcos", SetDoSuper)} | {Texto("inteligencia", SetDoSuper)}");
+			bool numerosComDefeito;
+			Desejos.DescricaoFixaDeTeste = true;
+			try { numerosComDefeito = numerosCertos(); }
+			finally { Desejos.DescricaoFixaDeTeste = false; }
+			Checa("   CONTRA-EXEMPLO (defeito injetado: o texto fixo, o jogo de antes) -- a regua de cima REPROVA", !numerosComDefeito);
+
+			// o nome: o set desta bancada foi erguido na Terra
+			Checa("**O DRAGAO DA TERRA SE CHAMA SHENLONG** (*\"shenlong e so o dragao da terra\"*): o set erguido aqui nasce com esse nome",
+				  set.NomeDoDragao == Esferas.NomeDoShenlong && Esferas.NomeDoShenlong == "SHENLONG", set.NomeDoDragao);
+
+			// =====================================================================
+			// (2026-10-21) O NAMEKUSEIJIN QUE JA LIBEROU O POTENCIAL PEDE DE NOVO -- regra do dono
+			// =====================================================================
+			// *"namek q ja teve potencial liberado, pode pedir pro shenlong liberar o potencial, mas ele n vai ganhar o potential unlocked, ele
+			// so vai ganhar o mistico/potential unleashed se ele n tiver e a forma orange"*. O poder do ki divino continua sendo o portao do
+			// Namekuseijin (a regra da v0.3.0): este tem o dobro dele.
+			ServerPlayer doGuru = Forjar("bancada: o namek do Guru", pl.Pos, terra, "bancada_desejo_g");
+			forjados.Add(doGuru);
+			doGuru.Race = "Namekian"; doGuru.Ficha.Race = "Namekian";
+			doGuru.Ficha.unlockPotential = 1;                    // o Guru ja o despertou
+			doGuru.Ficha.BP = Math.Max(doGuru.Ficha.BP, RequisitoDeGodKi(doGuru) * 2);
+			doGuru.Ficha.Statify();
+			double bpDoGuru = doGuru.Ficha.BP;
+			bool podiaPedir = PorQueNaoLiberaOPotencial(doGuru) == null;
+			bool liberou = DesejoDePotencial(doGuru, set);
+			Checa("**O NAMEKUSEIJIN QUE JA LIBEROU O POTENCIAL PODE PEDIR DE NOVO** (*\"ele so vai ganhar o mistico ... e a forma orange\"*): ganha o "
+				  + "Mistico e o Orange, e o potencial NAO desperta outra vez (o BP fica onde estava)",
+				  podiaPedir && liberou && doGuru.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdMistico)
+				  && doGuru.Forma.Despertou(Jandirus.Core.Forms.Catalogo.IdOrange) && doGuru.Ficha.unlockPotential == 1
+				  && Math.Abs(doGuru.Ficha.BP - bpDoGuru) < 1e-6,
+				  $"podia {podiaPedir}, liberou {liberou}, potencial {doGuru.Ficha.unlockPotential}, BP {bpDoGuru:N0} -> {doGuru.Ficha.BP:N0}");
+			Checa("...e com os tres na mao o dragao nao tem mais o que dar: a linha apaga, e o pedido nao gasta",
+				  PorQueNaoLiberaOPotencial(doGuru) != null && !DesejoDePotencial(doGuru, set));
+
+			// =====================================================================
+			// (2026-10-22) O MENU DA ESTATUA -- regra do dono
+			// =====================================================================
+			// *"e ao criar um set de esferas crie um menu bem intuitivo e bem feito pro jogador q criou o set escolher os desejos, a quantidade, a
+			// força etc"* -- e, perguntado: o nome escolhido fora da Terra e de Namek, a FORCA DIVIDIDA (1 pedido = 100%, 2 = 50% cada, 3 = 33%)
+			// e a lista LIGA E DESLIGA. A janela (`Client/JanelaDaEstatua.cs`) so monta o texto do verbo; aqui e o verbo de producao, num
+			// mundo que o testador domina (Vegeta, com a bandeira posta pela bancada).
+			var vegeta = ZoneKey.Premade("Vegeta");
+			_sets.RemoveAll(s => !s.Eterno && s.Zona.Hash == vegeta.Hash);
+			_esferas.RemoveAll(e => !_sets.Any(s => s.Id == e.Set));
+			MoveToZone(pl.Id, vegeta, PontoDeNascimento(vegeta));
+			var dominioDaBancada = new Dominio { PreFeito = true, Planeta = "Vegeta", Assinatura = pl.Assinatura, Conta = pl.Conta, Nome = pl.Name };
+			_dominios.Add(dominioDaBancada);
+			try
+			{
+				SetDeEsferas? DeVegeta() => _sets.Find(s => !s.Eterno && s.Zona.Hash == vegeta.Hash);
+
+				// ---- as recusas ANTES de erguer: nada sobe e nada se cobra
+				pl.Ficha.Zeni = Desejos.PrecoDoSupremo - 1;
+				var semBolso = new ConfigDaEstatua { Pedidos = 1, Supremo = ConfigDaEstatua.SupremoEmZeni };
+				List<string> nomeRuim = Ouvir(() => ErguerEstatua(pl, new ConfigDaEstatua { Nome = "A", Pedidos = 1 }.Codificar()));
+				var tudoDesligado = new ConfigDaEstatua { Pedidos = 1 };
+				foreach (DesejoDef d in ConfigDaEstatua.Ajustaveis) tudoDesligado.Desligados.Add(d.Id);
+				List<string> semDesejo = Ouvir(() => ErguerEstatua(pl, tudoDesligado.Codificar()));
+				List<string> semDinheiro = Ouvir(() => ErguerEstatua(pl, semBolso.Codificar()));
+				Checa("**O MENU DA ESTATUA RECUSA ANTES DE ERGUER**: o nome de uma letra so, o dragao sem desejo nenhum ligado e o supremo marcado sem "
+					  + "dinheiro pra ele -- nada sobe, e nada se cobra",
+					  DeVegeta() == null && Disse(nomeRuim, "pelo menos 2 letras") && Disse(semDesejo, "pelo menos um desejo")
+					  && Disse(semDinheiro, "não subiu") && Math.Abs(pl.Ficha.Zeni - (Desejos.PrecoDoSupremo - 1)) < 1e-6,
+					  $"{Ultimos(nomeRuim)} | {Ultimos(semDesejo)} | {Ultimos(semDinheiro)}");
+				SupremoSemConferirOBolsoDeTeste = true;
+				try { Ouvir(() => ErguerEstatua(pl, semBolso.Codificar())); }
+				finally { SupremoSemConferirOBolsoDeTeste = false; }
+				Checa("   CONTRA-EXEMPLO (defeito injetado: o menu nao confere o bolso do supremo) -- a estatua sobe SEM o desejo que ele marcou, e a "
+					  + "regua de cima REPROVA", DeVegeta() is { TemSupremo: false }, $"{DeVegeta()?.TemSupremo}");
+				_sets.RemoveAll(s => !s.Eterno && s.Zona.Hash == vegeta.Hash);
+				_esferas.RemoveAll(e => !_sets.Any(s => s.Id == e.Set));
+
+				// ---- erguer pelo menu: o nome, 2 pedidos, o Matar desligado, o supremo em zeni
+				pl.Ficha.Zeni = 3 * Desejos.PrecoDoSupremo;
+				var escolhida = new ConfigDaEstatua { Nome = "  mega   shenron ", Pedidos = 2, Supremo = ConfigDaEstatua.SupremoEmZeni };
+				escolhida.Desligados.Add("matar");
+				List<string> ergueu = Ouvir(() => ErguerEstatua(pl, escolhida.Codificar()));
+				SetDeEsferas? doMenu = DeVegeta();
+				Checa("**O MENU DA ESTATUA ERGUE O SET QUE O CRIADOR ESCOLHEU** (*\"o player q criar o set de esferas escolhe o nome\"*): MEGA SHENRON "
+					  + "(o nome limpo, em maiusculas), 2 pedidos, o \"Matar alguém\" desligado e o supremo gravado -- e os 2.000.000 de zeni cobrados",
+					  doMenu is { NomeDoDragao: "MEGA SHENRON", Desejos: 2, TemSupremo: true } && doMenu.Desligados.SequenceEqual(["matar"])
+					  && Math.Abs(pl.Ficha.Zeni - 2 * Desejos.PrecoDoSupremo) < 1e-6 && _esferas.Count(e => e.Set == doMenu.Id) == Esferas.Total,
+					  $"set {doMenu?.NomeDoDragao}/{doMenu?.Desejos}/{string.Join(",", doMenu?.Desligados ?? [])}/{doMenu?.TemSupremo}; zeni {pl.Ficha.Zeni:N0}; "
+					  + Ultimos(ergueu));
+				if (doMenu == null) throw new InvalidOperationException("sem o set do menu: o resto da familia nao roda");
+
+				// ---- a forca dividida: o fator, a riqueza, os marcos, o potencial e a frase da janela
+				double zeniAntesDaRiqueza = pl.Ficha.Zeni;
+				DesejoDeDinheiro(pl, doMenu);
+				double riquezaDividida = pl.Ficha.Zeni - zeniAntesDaRiqueza;
+				SetDeEsferas? eterno = _sets.Find(s => s.Eterno);
+				bool eternoInteiro = eterno == null || Math.Abs(FatorDoDragao(eterno) - 1) < 1e-9;
+				Checa("**A FORCA DIVIDIDA** (*\"1 pedido = 100%, 2 = 50% cada, 3 = 33% cada\"*, a escolha do dono): no set de 2 pedidos o fator e 1/2 e "
+					  + "a riqueza 25.000.000 -- e o Porunga ancestral, que nao e de jogador, continua com a forca inteira",
+					  Math.Abs(FatorDoDragao(doMenu) - 0.5) < 1e-9 && Math.Abs(riquezaDividida - Desejos.ZeniDoDesejo / 2) < 1 && eternoInteiro,
+					  $"fator {FatorDoDragao(doMenu)}; riqueza {riquezaDividida:N0}; eterno {(eterno == null ? "-" : FatorDoDragao(eterno).ToString())}");
+				double riquezaInteira;
+				ForcaInteiraDeTeste = true;
+				try
+				{
+					double z = pl.Ficha.Zeni;
+					DesejoDeDinheiro(pl, doMenu);
+					riquezaInteira = pl.Ficha.Zeni - z;
+				}
+				finally { ForcaInteiraDeTeste = false; }
+				Checa("   CONTRA-EXEMPLO (defeito injetado: a forca inteira em cada pedido, o jogo de antes) -- 50.000.000, e a regua de cima REPROVA",
+					  Math.Abs(riquezaInteira - Desejos.ZeniDoDesejo) < 1, $"{riquezaInteira:N0}");
+				Checa("...e o potencial usa a forca de UM pedido (a do set pela metade), e a janela diz os numeros divididos: 25.000.000, 1 Marco, 12,5% do teto",
+					  Math.Abs(PoderDeCadaPedido(doMenu) - doMenu.Poder / 2) < 1e-6 && MarcosNoDragao(doMenu) == 1
+					  && EntradaDoDesejo(pl, doMenu, DefDe("dinheiro"), posso: true, juntas: false).Desc.Contains("25.000.000")
+					  && Desejos.DescricaoNoDragao(DefDe("poder"), FatorDoDragao(doMenu), MarcosNoDragao(doMenu), true).Contains("12,5%"),
+					  $"poder de um pedido {PoderDeCadaPedido(doMenu):N0} de {doMenu.Poder:N0}; marcos {MarcosNoDragao(doMenu)}");
+
+				// ---- o desligado: fora do menu, e o pedido por verbo recusado sem gastar
+				doMenu.AtivoEm = TempoDoMundo - 1;
+				PorODragaoDePe(pl, doMenu);
+				int pedidosAntesDoMatar = doMenu.Pedidos;
+				ServerPlayer vitima = Forjar("bancada: a vitima do desligado", pl.Pos, vegeta, "bancada_desejo_v");
+				forjados.Add(vitima);
+				PedirDesejo(pl, "matar " + vitima.Name);
+				Checa("**O DESEJO DESLIGADO NAO ESTA NO DRAGAO**: o \"Matar alguém\" fora do menu dele -- e pedido por verbo, recusado sem gastar pedido",
+					  _invocacoes.ContainsKey(doMenu.Id) && !MenuDaqui(pl, doMenu).Any(d => d.Id == "matar") && MenuDaqui(pl, doMenu).Any(d => d.Id == "dinheiro")
+					  && doMenu.Pedidos == pedidosAntesDoMatar && !vitima.Ficha.dead,
+					  $"dragao de pe {_invocacoes.ContainsKey(doMenu.Id)}; pedidos {pedidosAntesDoMatar} -> {doMenu.Pedidos}; vitima morta {vitima.Ficha.dead}");
+				bool matarNoMenu;
+				DesligadosIgnoradosDeTeste = true;
+				try { matarNoMenu = MenuDaqui(pl, doMenu).Any(d => d.Id == "matar"); }
+				finally { DesligadosIgnoradosDeTeste = false; }
+				Checa("   CONTRA-EXEMPLO (defeito injetado: o dragao ignora o desligado) -- o Matar volta ao menu, e a regua de cima REPROVA", matarNoMenu);
+				FecharAInvocacao(doMenu.Id, "");
+
+				// ---- refazer pelo menu: outro nome, 1 pedido, o Matar de volta -- e o supremo fica (ele nao se compra nem se perde aqui)
+				var refeita = new ConfigDaEstatua { Nome = "Shenron Dourado", Pedidos = 1, Supremo = ConfigDaEstatua.SupremoEmZeni };
+				double zeniAntesDoRefazer = pl.Ficha.Zeni;
+				List<string> refez = Ouvir(() => RefazerOSet(pl, refeita.Codificar()));
+				Checa("**REFAZER PELO MENU** (o \"Configurar o dragão\"): SHENRON DOURADO, 1 pedido, nenhum desligado -- o supremo continua gravado e "
+					  + "nao se cobra de novo (ele so se compra ao erguer)",
+					  doMenu is { NomeDoDragao: "SHENRON DOURADO", Desejos: 1, TemSupremo: true } && doMenu.Desligados.Count == 0
+					  && Math.Abs(pl.Ficha.Zeni - zeniAntesDoRefazer) < 1e-6,
+					  $"{doMenu.NomeDoDragao}/{doMenu.Desejos}/{string.Join(",", doMenu.Desligados)}/{doMenu.TemSupremo}; zeni {zeniAntesDoRefazer:N0} -> "
+					  + $"{pl.Ficha.Zeni:N0}; {Ultimos(refez)}");
+
+				// ---- o disco: o nome e os desligados atravessam o arquivo
+				var paraODisco = new ConfigDaEstatua { Nome = "Shenron Dourado", Pedidos = 3 };
+				paraODisco.Desligados.Add("tecnologia");
+				Ouvir(() => RefazerOSet(pl, paraODisco.Codificar()));
+				SalvarEsferas();
+				LivroDasEsferas? lido = System.Text.Json.JsonSerializer.Deserialize<LivroDasEsferas>(System.IO.File.ReadAllText(CaminhoDasEsferas),
+					new System.Text.Json.JsonSerializerOptions { IncludeFields = true });
+				SetDeEsferas? doDisco = lido?.Sets.Find(s => s.Id == doMenu.Id);
+				Checa("...e O DISCO GUARDA A CONFIGURACAO: o nome, os 3 pedidos e o desejo desligado voltam do esferas.json",
+					  doDisco is { NomeDoDragao: "SHENRON DOURADO", Desejos: 3 } && doDisco.Desligados.SequenceEqual(["tecnologia"]),
+					  $"{doDisco?.NomeDoDragao}/{doDisco?.Desejos}/{string.Join(",", doDisco?.Desligados ?? [])}");
+
+				Checa("...e o nome so e livre fora da Terra e de Namek: o Shenlong e o Porunga nao mudam pelo menu",
+					  ConfigDaEstatua.NomeNoPlaneta("Earth", "Outro") == Esferas.NomeDoShenlong && ConfigDaEstatua.NomeNoPlaneta("Namek", "Outro") == "PORUNGA");
+			}
+			finally
+			{
+				_dominios.Remove(dominioDaBancada);
+				SupremoSemConferirOBolsoDeTeste = ForcaInteiraDeTeste = DesligadosIgnoradosDeTeste = false;
+			}
 		}
 		catch (Exception ex)
 		{

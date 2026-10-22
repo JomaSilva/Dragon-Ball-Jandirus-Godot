@@ -81,6 +81,11 @@ public partial class GameServer
 	///
 	/// (O `EhJogador` do mesmo arquivo **nao serve aqui**, e por escrito: ele exige dono na tela, e
 	/// um vinculo nao acaba quando a pessoa desloga -- ver o bloco acima.)
+	///
+	/// (2026-10-21) A EXCECAO DO DONO, que ele escolheu sabendo deste bloco: o ALIADO -- o habitante recrutado pela amizade (`GameServer.Aliados.cs`)
+	/// -- entra no luto "como amigo jogador" (o nocaute acende a raiva do dono dele, a morte a furia), por um caminho proprio
+	/// (`LutoDoAliado`), e nao por aqui. A morte dele e definitiva, e ele custa uma amizade cheia: e o que fecha a fabrica. Todo outro NPC
+	/// continua fora.
 	/// ==========================================================================================================
 	/// </summary>
 	private static bool EhPessoa(ServerPlayer pl) =>
@@ -474,6 +479,8 @@ public partial class GameServer
 		// quem treina, e cair e a aula -- com as consequencias de derrota, apanhar de proposito viraria fabrica de
 		// Zenkai. Pelo mesmo argumento do corte de cima, ele mora no funil. Ver `GameServer.BillsTreino.cs`.
 		if (TreinoDivinoEntre(vitima, algoz)) return;
+		// (2026-10-21) NEM NUM TREINO DE AMIZADE COM UM HABITANTE -- o molde do treino com o Bills. Ver `GameServer.Amizade.cs`.
+		if (TreinoDeAmizadeEntre(vitima, algoz)) return;
 
 		// O VILAO AVULSO QUE CAIU: nocauteado ou morto por um jogador, o karma vai pra esse jogador e o evento
 		// acaba. Sai na primeira linha quando a vitima nao e vilao de evento nenhum. Ver `GameServer.Viloes.cs`.
@@ -508,6 +515,9 @@ public partial class GameServer
 
 		ZenkaiPorDerrota(vitima, algoz);
 		LutoNaVizinhanca(vitima, algoz, morreu);
+		// (2026-10-21) ...e o do ALIADO (o habitante recrutado): "como amigo jogador", decisao do dono -- o veto do `EhPessoa` acima continua
+		// valendo pra todo NPC que nao e aliado. Ver `LutoDoAliado` (`GameServer.Aliados.cs`).
+		LutoDoAliado(vitima, algoz, morreu);
 
 		// O CONVIVIO DOS DOIS SOBE -- e so isso: a derrota nao muda o que um E pro outro (nao ha mais
 		// pontos de amizade pra cair nem inimigo declarado sozinho; ver o cabecalho do `Convivio`).

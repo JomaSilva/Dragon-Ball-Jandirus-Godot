@@ -17,6 +17,11 @@ namespace Jandirus.Client;
 /// mede o que o JOGADOR VE -- e, com janela, FOTOGRAFA o que numero nenhum mede: a porta encravada na rocha, o
 /// quarto branco la dentro, o aviso da dilatacao.
 ///
+/// (2026-10-20) E SO A PORTA DA SALA: o dono achou as portas da casa da Terra espalhadas por um mundo sorteado, e
+/// nenhuma abria -- o cliente so trocava a leva de portas de mapa no ramo do mapa pre-feito (`World.TirarAsPortasDoMapa`).
+/// A chegada confere que nenhuma porta da casa vem junto, e o passo 8 faz Vegeta -> mundo sorteado com foto, com e
+/// sem o defeito.
+///
 ///     Godot --janela -- --host --rede 8352 --horateste 0.5 --diagsalas --raca Human --conta bancada_dsalas --nome Viajante
 /// </summary>
 public partial class RoboDasSalas : Node
@@ -63,9 +68,17 @@ public partial class RoboDasSalas : Node
 
 	private void AoFalar(Jandirus.Net.Protocol.Fala canal, string autor, string texto) => _falas.Add(texto);
 
+	/// <summary>Os botoes de defeito nunca ficam ligados depois do robo, nem se ele sair por fora do `Encerrar`.</summary>
+	public override void _ExitTree()
+	{
+		SalaDePlaneta.NenhumaSalaDeTeste = false;
+		World.PortasDoMapaFicamDeTeste = false;
+	}
+
 	private void Encerrar(int codigo)
 	{
 		SalaDePlaneta.NenhumaSalaDeTeste = false;
+		World.PortasDoMapaFicamDeTeste = false;
 		if (_escutando && C is { } cli) cli.Falou -= AoFalar;
 		World.Instancia?.PararDeTeste();
 		CamadasDeTela(true);
@@ -104,6 +117,11 @@ public partial class RoboDasSalas : Node
 		Checa("no mundo em que se nasce NAO ha pista: a aba World nao tem a linha 'Sala do Tempo'",
 			  !MenuJogo.MundoComSalaDoTempo(cli) && menu.ValorDesenhado("World", "Sala do Tempo") == null, $"zona {cli.Zone.Name}");
 
+		// AS PORTAS DE MAPA DA CASA (a Terra tem sete, no `.portas` dela): sao elas que nao podem ir junto no passo 2.
+		int portasDeCasa = World.Instancia?.PortasDoMapaDesenhadasDeTeste() ?? 0;
+		Checa("(montagem) a casa tem portas de mapa desenhadas -- as que NAO podem ir junto pro mundo sorteado",
+			  portasDeCasa > 0, $"{portasDeCasa} em {casa.Name}");
+
 		// ---- 2) a porta na montanha ----
 		if (srv.PalcoDasSalas_Mundo() is not { } alvo)
 		{
@@ -121,6 +139,8 @@ public partial class RoboDasSalas : Node
 		await Segundos(3.0);   // o terreno pinta por pedaco e a porta chega no pacote de obras
 		Checa("o corpo esta no mundo com sala, na soleira da porta (o cliente gerou o mesmo chao da seed)", chegou, $"zona {cli.Zone.Name}");
 		if (!chegou) { Encerrar(1); return; }
+		Checa($"**AS PORTAS DA CASA NAO VEM JUNTO**: no mundo sorteado nao sobra nenhuma das {portasDeCasa} portas de mapa de {casa.Name} (o defeito de 2026-10-20: elas ficavam desenhadas nas mesmas celulas, e nenhuma abria)",
+			  SemPortaDeMapa(), PortasDeMapa());
 
 		Vector2 eu2 = World.Instancia?.PosicaoLocal ?? Vector2.Zero;
 		GameClient.ObraInfo? porta = cli.Obras.Where(o => o.Tipo == "Time_Chamber_Door")
@@ -199,12 +219,59 @@ public partial class RoboDasSalas : Node
 		await Segundos(0.6);
 		await Foto("a-recarga");
 
+		// ---- 8) as portas de outro mapa: Vegeta -> o mundo sorteado, com e sem o defeito ----
+		// AS DA TERRA FICAM FORA DO MUNDO DO PALCO (y >= 262 num mundo de 192): o passo 2 as conta, mas foto nenhuma
+		// as alcanca. As de Vegeta ficam dentro (x 64..110, y 162..167), e e la que as duas fotos olham. Cada volta
+		// tem a PROPRIA viagem Vegeta -> mundo: a do defeito nao aproveita a chegada da boa.
+		ZoneKey vegeta = ZoneKey.Premade("Vegeta");
+		const int fotoX = 96, fotoY = 165;
+		bool emVegeta = await IrPara(vegeta, () => { srv.ViajarDeTeste(eu, vegeta); return true; });
+		int portasDeVegeta = World.Instancia?.PortasDoMapaDesenhadasDeTeste() ?? 0;
+		Checa("(montagem) Vegeta tem portas de mapa desenhadas, uma delas na celula (96,162) -- dentro do mundo do palco",
+			  emVegeta && portasDeVegeta > 0 && World.Instancia?.PortaDoMapaDeTeste(96, 162) != null,
+			  $"zona {cli.Zone.Name}; {portasDeVegeta} porta(s) de pe");
+
+		bool deVolta = await IrPara(mundo, () => srv.PalcoDasSalas_IrParaACelula(eu, alvo.Corpo, fotoX, fotoY));
+		Checa($"**...E AS DE OUTRO MAPA TAMBEM NAO**: de Vegeta pro mundo sorteado, nenhuma das {portasDeVegeta} portas de Vegeta fica desenhada",
+			  deVolta && SemPortaDeMapa(), $"zona {cli.Zone.Name}; {PortasDeMapa()}");
+		await FotoDoMundo(menu, "onde-vegeta-tem-portas-o-mundo-sorteado-sem-elas", 1);
+
+		await IrPara(vegeta, () => { srv.ViajarDeTeste(eu, vegeta); return true; });
+		World.PortasDoMapaFicamDeTeste = true;
+		try
+		{
+			bool comDefeito = await IrPara(mundo, () => srv.PalcoDasSalas_IrParaACelula(eu, alvo.Corpo, fotoX, fotoY));
+			Injeta("a troca de zona nao tira as portas do mapa anterior: as de Vegeta aparecem no mundo sorteado (o jogo de antes do conserto)",
+				   comDefeito && World.Instancia?.PortaDoMapaDeTeste(96, 162) != null && !SemPortaDeMapa(), $"zona {cli.Zone.Name}; {PortasDeMapa()}");
+			await FotoDoMundo(menu, "defeito-as-portas-de-vegeta-no-mundo-sorteado", 1);
+		}
+		finally { World.PortasDoMapaFicamDeTeste = false; }
+
 		Encerrar(_falha + _injFalha == 0 ? 0 : 1);
 	}
 
 	// =====================================================================
 	// OS AUXILIARES (o molde do RoboDoGodKi)
 	// =====================================================================
+	/// <summary>Pede a viagem ao palco ate ele aceitar e espera o cliente montar a zona (mais 2 s pros pedacos e pras obras).</summary>
+	private async System.Threading.Tasks.Task<bool> IrPara(ZoneKey zona, Func<bool> pedir)
+	{
+		bool foi = await Ate(pedir, 30)
+				   && await Ate(() => C is { } c && c.Zone.Equals(zona) && World.Instancia?.ZonaMontadaDeTeste == zona.Hash, 30);
+		await Segundos(2.0);
+		return foi;
+	}
+
+	/// <summary>Nenhuma porta de mapa de pe na cena: nem node, nem entrada no indice por celula.</summary>
+	private static bool SemPortaDeMapa() =>
+		World.Instancia is { } w && w.PortasDoMapaDesenhadasDeTeste() == 0 && w.Portas.Count == 0;
+
+	private static string PortasDeMapa() =>
+		World.Instancia is { } w
+			? $"{w.PortasDoMapaDesenhadasDeTeste()} porta(s) de mapa de pe, {w.Portas.Count} no indice"
+			  + (w.Portas.Count > 0 ? $" (uma em {w.Portas.Keys.First()})" : "")
+			: "sem World";
+
 	private bool Disse(string trecho) => _falas.Exists(f => f.Contains(trecho, StringComparison.OrdinalIgnoreCase));
 
 	private string Ultimas() => string.Join(" | ", _falas.TakeLast(4).Select(f => f.Length > 110 ? f[..110] + "..." : f));

@@ -136,7 +136,7 @@ public static class VerbosDoJogo
 
 		// (2026-10-19) OS CORPOS DAS FORMAS DO FROST DEMON -- o `Icer_Form_Settings` do DM (`icer.dm:77-83`, aba Other), que todo Frost
 		// Demon recebe (`fd_login_check`). O botao abre a tela; quem manda o verb `formas_frost` e o Salvar dela. Ver `TelaDeFormasDoFrost`.
-		Verbos.Registrar(new Verbo("Icer Form Settings", Verbos.Outros,
+		Verbos.Registrar(new Verbo("Frost Demon Form Settings", Verbos.Outros,
 			"Re-escolhe o corpo de cada forma do Frost Demon (as supressões do Mutante, a base e as duas evoluções). "
 			+ "Trocar os corpos devolve você à forma inicial.",
 			() => TelaDeFormasDoFrost.Instancia?.Abrir()) { Requisito = Do("formas_frost") });

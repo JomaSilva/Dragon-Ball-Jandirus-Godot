@@ -180,13 +180,15 @@ public partial class GameServer
 	{
 		(_, List<Protocol.PresencaState> lista) = SentidosDe(pl);
 		byte nivel = scan ? (byte)0 : (byte)NivelDoSense(pl);
-		string sig = AssinaturaDosSentidos(scan, nivel, lista);
+		byte nivelIt = NivelItNoFio(pl);
+		string sig = AssinaturaDosSentidos(scan, nivel, nivelIt, lista);
 		if (_sigSentidos.TryGetValue(pl.Id, out string? antiga) && antiga == sig) return;
 		_sigSentidos[pl.Id] = sig;
 
 		NetDataWriter w = PacoteDeSentidos(scan, nivel, lista);
 		EscutaDeSentidos?.Add((pl.Id, w));
 		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+		EnviarNivelDaTransmissao(pl, nivelIt);
 	}
 
 	/// <summary>O pacote, pronto pro fio: `S2C.Sentidos` + `bool scan` + o nivel do Sense + a lista. Separado pra bancada abrir com o leitor do cliente.</summary>
@@ -197,20 +199,29 @@ public partial class GameServer
 		return w;
 	}
 
+	/// <summary>O nivel do Instant Transmission, no pacote proprio, junto da lista: a aba decide o botao por ele.</summary>
+	private static void EnviarNivelDaTransmissao(ServerPlayer pl, byte nivelIt)
+	{
+		NetDataWriter w = Protocol.Begin(Protocol.S2C.NivelDaTransmissao);
+		w.Put(nivelIt);
+		pl.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);
+	}
+
 	/// <summary>
 	/// O RESUMO DA LISTA. Os numeros ja saem inteiros do <see cref="SentidosDe"/> (a razao e o BP sao
 	/// arredondados como o DM arredonda), entao assinar o valor e assinar o que a tela vai escrever --
 	/// nem mais fino (remandaria por ruido), nem mais grosso (seguraria uma mudanca visivel).
 	/// </summary>
-	private static string AssinaturaDosSentidos(bool scan, byte nivel, List<Protocol.PresencaState> lista)
+	private static string AssinaturaDosSentidos(bool scan, byte nivel, byte nivelIt, List<Protocol.PresencaState> lista)
 	{
 		var sb = new System.Text.StringBuilder();
-		sb.Append(scan ? 'S' : 'K').Append(nivel);   // (o nivel tambem: subir de nivel com a lista igual muda a aba)
+		sb.Append(scan ? 'S' : 'K').Append(nivel).Append('T').Append(nivelIt);
 		foreach (Protocol.PresencaState p in lista)
 			sb.Append('|').Append(p.Nome).Append('/').Append(p.Assinatura).Append('/').Append(p.Alcance)
 			  .Append('/').Append(p.PoderRelativo).Append('/').Append(p.Bp)
 			  .Append('/').Append(p.Distancia).Append('/').Append(p.Rumo).Append('/').Append(p.X)
-			  .Append('/').Append(p.Y).Append('/').Append(p.Zona).Append('/').Append(p.Chefe ? 'c' : '-');
+			  .Append('/').Append(p.Y).Append('/').Append(p.Zona).Append('/').Append(p.Chefe ? 'c' : '-')
+			  .Append('#').Append(p.Corpo);
 		return sb.ToString();
 	}
 
@@ -288,6 +299,7 @@ public partial class GameServer
 					X = (short)Math.Clamp(ox, -1, short.MaxValue), Y = (short)Math.Clamp(oy, -1, short.MaxValue),
 					Zona = "",
 					Chefe = o.Papel?.EhChefe == true,
+					Corpo = IdNoCartaoDoSense(o),
 				}, o.Id));
 			}
 			return (true, Ordenada(achados));
@@ -337,6 +349,7 @@ public partial class GameServer
 					Rumo = 0, X = -1, Y = -1,
 					Zona = o.Zone.Name,
 					Chefe = o.Papel?.EhChefe == true,
+					Corpo = IdNoCartaoDoSense(o),
 				}, o.Id));
 			}
 
@@ -368,6 +381,7 @@ public partial class GameServer
 			X = -1, Y = -1,
 			Zona = "",
 			Chefe = o.Papel?.EhChefe == true,
+			Corpo = IdNoCartaoDoSense(o),
 		};
 	}
 

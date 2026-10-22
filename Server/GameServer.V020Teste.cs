@@ -1148,8 +1148,8 @@ public sealed partial class GameServer
 		string[] Lista(string tipo, byte feitas) =>
 			[.. Interacoes.De($"{tipo}/upgrades").Where(a => !Interacoes.SaiDoMenu(tipo, a, feitas)).Select(a => a.Arg)];
 
-		AfirmarV2("sem nada comprado, o regenerador oferece as cinco melhorias e a maquina de gravidade tambem",
-				  Lista(Regenerador.Tipo, 0).Length == 5 && Lista("Gravity", 0).Length == 5,
+		AfirmarV2("sem nada comprado, o regenerador oferece as cinco melhorias e a maquina de gravidade as seis (a trava de seguranca)",
+				  Lista(Regenerador.Tipo, 0).Length == 5 && Lista("Gravity", 0).Length == 6,
 				  $"{string.Join(",", Lista(Regenerador.Tipo, 0))} | {string.Join(",", Lista("Gravity", 0))}");
 		AfirmarV2("**REGENERADOR**: com 'tratar ferimentos' comprada, so ELA sai da lista",
 				  Lista(Regenerador.Tipo, Interacoes.MelhoriaUnicaFeita).SequenceEqual(
@@ -1160,9 +1160,14 @@ public sealed partial class GameServer
 				  && Lista("Gravity", Interacoes.MelhoriaUnicaFeita).Contains("upgrades/alcance")
 				  && !Lista("Gravity", Interacoes.MelhoriaNoTeto).Contains("upgrades/alcance")
 				  && Lista("Gravity", Interacoes.MelhoriaNoTeto).Contains("upgrades/estabilidade"));
-		AfirmarV2("CONTRA-EXEMPLO: o que se compra varias vezes (bateria, velocidade, forca) nunca sai, com bit nenhum",
+		// (2026-10-21) A FORCA DO CAMPO TEM BIT DESDE O `ForcaNoTetoDoMundo`: no teto do mundo ela sai do menu, como o alcance no teto
+		// dele, e o "255" a escondia -- esta linha ficou vermelha desde 2026-10-19. O resto da pergunta e o mesmo: a bateria e a
+		// velocidade nao tem bit nenhum, e a forca so sai pelo dela.
+		AfirmarV2("CONTRA-EXEMPLO: o que se compra varias vezes (bateria, velocidade) nunca sai, com bit nenhum -- e a forca do campo so pelo bit do teto do mundo",
 				  Lista(Regenerador.Tipo, 255).Contains("upgrades/bateria") && Lista(Regenerador.Tipo, 255).Contains("upgrades/velocidade")
-				  && Lista("Gravity", 255).Contains("upgrades/forca") && Lista("Gravity", 255).Contains("upgrades/bateria"));
+				  && Lista("Gravity", 255).Contains("upgrades/bateria")
+				  && Lista("Gravity", (byte)(255 & ~Interacoes.ForcaNoTetoDoMundo)).Contains("upgrades/forca")
+				  && !Lista("Gravity", Interacoes.ForcaNoTetoDoMundo).Contains("upgrades/forca"));
 		AfirmarV2("...e o bit de uma maquina nao some com botao de OUTRO tipo (a Drill tem melhorias, e nenhuma e de uma vez so)",
 				  Interacoes.De($"{Drill.Tipo}/upgrades").All(a => !Interacoes.SaiDoMenu(Drill.Tipo, a, 255)));
 

@@ -811,10 +811,19 @@ public sealed partial class Fighter
 	public double hiddenpotential = 1, hdnptltoBP = 1;
 
 	/// <summary>
-	/// A RAZAO potencial-escondido/BP que as skills de compra GARANTEM pra sempre (One Hundred, One
-	/// Punch, One Training -- as tres unicas fontes de `hiddenpotential` deste port). Somada na compra
-	/// (`GanhoNaCompra.Aplicar`), devolvida ao esquecer, gravada com a ficha. Ver `Statify`, onde ela
-	/// entra na conta do `hdnptlmod`, e o porque de ela existir.
+	/// ANOS VIVIDOS DEPOIS QUE O PERSONAGEM FOI CRIADO. Nao e a idade da ficha.
+	///
+	/// Quem nasce aos 18 e faz 19 tem 1 aqui. Nasce em 0 ate num Majin criado com a idade no milhao:
+	/// a idade digitada na criacao, o desejo de juventude e o admin nao entram. So sobe quando um ano
+	/// de vida de verdade fecha (calendario, sala do tempo, estirao), em <see cref="SomarPotencialOcultoDaIdade"/>.
+	/// </summary>
+	public int anosDesdeACriacao;
+
+	/// <summary>
+	/// A RAZAO potencial-escondido/BP que uma compra antiga de One Punch ainda garante. One Hundred e
+	/// One Training dessa versao sao devolvidas no login (<see cref="Jandirus.Core.Skills.GanhoNaCompra.ReembolsarVersaoAntiga"/>).
+	/// O estoque novo vem da idade (<see cref="SomarPotencialOcultoDaIdade"/>).
+	/// Ver `Statify`, onde a razao entra no `hdnptlmod`.
 	/// </summary>
 	public double potencialGarantido;
 	public double BoostMult = 0;
@@ -867,7 +876,7 @@ public sealed partial class Fighter
 	public double zoneMasteryMult = 1;
 
 	// --- estado do laco de treino (o que o BYOND guardava em tmp) ---------
-	public bool train, med, minuteshot, train_med_to_hp;
+	public bool train, med, minuteshot;
 	public int missedtrain, minuteshot_ig_ki;
 	public double tmp_activ_gains;
 	public Facing lastdir = Facing.South, dir = Facing.South;

@@ -17,7 +17,7 @@ namespace Jandirus.Client;
 ///      do pedido que veio com numeros conferiveis, entao ela e a primeira.
 ///   B. **O NOME** -- Metamoro e Potara dos MESMOS dois jogadores tem que dar nomes DIFERENTES, e os
 ///      dois tem que ser deterministicos (a mesma dupla, o mesmo nome, sempre).
-///   C. **A ROUPA** -- a Danca SUBSTITUI o guarda-roupa pelo colete; a Potara SOMA o brinco.
+///   C. **A ROUPA** -- a Danca SUBSTITUI o guarda-roupa pelo uniforme metamoriano; a Potara SOMA o brinco.
 ///   D. **O CABELO** -- Goku + Vegeta da Vegito; o resto fica com o penteado de quem convidou.
 ///   E. **A ARTE EXISTE E RESOLVE** -- as cinco pecas, pelo banco de recursos IMPORTADOS e nao pela
 ///      pasta. Este projeto ja perdeu tempo duas vezes com arte que estava no disco e que o Godot
@@ -195,7 +195,9 @@ public partial class RoboDeFusaoLook : Node
 	{
 		GD.Print("[fusaolook] -- C. a roupa --");
 
-		string colete = cat.Peca(Fusao.PecaDoColeteMetamoran) ?? "";
+		// (2026-10-20) PELA PORTA DO SERVIDOR, e nao pelo catalogo: o uniforme da Danca (`Fusion clothes`) mora em `Character Icons/`, fora
+		// do guarda-roupa -- ver `GameServer.CaminhoDaPecaDeFusao`.
+		string uniforme = Jandirus.Server.GameServer.CaminhoDaPecaDeFusao(cat, Fusao.PecaDe(TipoDeFusao.Danca)) ?? "";
 		const string brinco = "res://Assets/Sprites/Clothes/potara.tres";
 
 		var doConvidador = new List<PecaDeRoupa>
@@ -204,9 +206,10 @@ public partial class RoboDeFusaoLook : Node
 			new("res://Assets/Sprites/Clothes/Clothes_GiBottom.tres"),
 		};
 
-		List<PecaDeRoupa> daDanca = Fusao.RoupaDaFusao(TipoDeFusao.Danca, doConvidador, colete);
-		Conferir(daDanca.Count == 1 && daDanca[0].Caminho == colete,
-				 $"C1 a Metamoro veste SO o colete metamoriano ({daDanca.Count} peca(s))");
+		List<PecaDeRoupa> daDanca = Fusao.RoupaDaFusao(TipoDeFusao.Danca, doConvidador, uniforme);
+		Conferir(daDanca.Count == 1 && daDanca[0].Caminho == uniforme
+				 && uniforme == "res://Assets/Sprites/Character Icons/Fusion clothes.tres",
+				 $"C1 a Metamoro veste SO o uniforme metamoriano, o `Fusion clothes` ({daDanca.Count} peca(s): {uniforme})");
 
 		List<PecaDeRoupa> daPotara = Fusao.RoupaDaFusao(TipoDeFusao.Potara, doConvidador, brinco);
 		Conferir(daPotara.Count == 3 && daPotara[0].Caminho == brinco,
@@ -231,7 +234,7 @@ public partial class RoboDeFusaoLook : Node
 		// ARTE QUE NAO RESOLVEU NAO DEIXA NINGUEM PELADO. A Danca cai na roupa de quem convidou -- e a
 		// alternativa (lista vazia) seria um personagem sem roupa que ninguem saberia explicar.
 		List<PecaDeRoupa> semArte = Fusao.RoupaDaFusao(TipoDeFusao.Danca, doConvidador, null);
-		Conferir(semArte.Count == doConvidador.Count, "C5 sem a arte do colete, a Danca herda a roupa em vez de ficar pelada");
+		Conferir(semArte.Count == doConvidador.Count, "C5 sem a arte do uniforme, a Danca herda a roupa em vez de ficar pelada");
 
 		// A NAMEKUSEIJIN NAO VESTE NADA POR CIMA -- `Fusion.dm:271` nao tem ramo de roupa pra ela.
 		Conferir(Fusao.PecaDe(TipoDeFusao.Namek).Length == 0, "C6 a fusao Namekuseijin nao tem peca propria");
@@ -253,18 +256,18 @@ public partial class RoboDeFusaoLook : Node
 
 		corpo.Vestir(cat, new Appearance { Cabelo = "Goku", Roupa = daDanca }, "Saiyan", "Male");
 		List<string> naDanca = corpo.RoupasNoCorpoDeTeste();
-		Conferir(naDanca.Count == 1 && naDanca[0].Contains("Metamoran"),
-				 $"C8 a Metamoro nasce com UMA camada, e ela e o colete ({string.Join(",", naDanca)})");
+		Conferir(naDanca.Count == 1 && naDanca[0].Contains(Fusao.PecaDaRoupaDaDanca),
+				 $"C8 a Metamoro nasce com UMA camada, e ela e o uniforme ({string.Join(",", naDanca)})");
 
 		// ============================ E TROCAR A APARENCIA TIRA A CAMADA QUE SOBROU ============================
 		// A prova de que a fusao se DESFAZ no desenho. `Vestir` remonta as camadas, e o caminho de
 		// producao (`Separar` -> `TrocarAparencias`) e exatamente esta chamada com a aparencia de
-		// verdade: se ela nao derrubasse as camadas antigas, o jogador ficaria com o colete metamoriano
+		// verdade: se ela nao derrubasse as camadas antigas, o jogador ficaria com o uniforme metamoriano
 		// por cima da propria roupa depois que a fusao acabasse.
 		// =================================================================================================
 		corpo.Vestir(cat, new Appearance { Cabelo = "Goku", Roupa = doConvidador }, "Saiyan", "Male");
 		List<string> devolta = corpo.RoupasNoCorpoDeTeste();
-		Conferir(devolta.Count == 2 && !devolta.Any(p => p.Contains("Metamoran") || p.Contains("potara")),
+		Conferir(devolta.Count == 2 && !devolta.Any(p => p.Contains(Fusao.PecaDaRoupaDaDanca) || p.Contains("potara")),
 				 $"C9 desfeita a fusao, as pecas dela somem do corpo ({devolta.Count} camadas)");
 
 		corpo.QueueFree();
@@ -303,17 +306,18 @@ public partial class RoboDeFusaoLook : Node
 
 		// PELO BANCO DE RECURSOS e nao pela pasta: `ResourceLoader.Exists` e a unica pergunta que
 		// corresponde ao que o jogo vai conseguir carregar. Ver `ColadasDeForma.Existe`.
-		Conferir(ResourceLoader.Exists("res://Assets/Sprites/Clothes/Metamoran Vest.tres"),
-				 "E1 `Metamoran Vest` importado");
+		Conferir(ResourceLoader.Exists("res://Assets/Sprites/Character Icons/Fusion clothes.tres"),
+				 "E1 `Fusion clothes` importado");
 		Conferir(ResourceLoader.Exists("res://Assets/Sprites/Clothes/potara.tres"), "E2 `potara` importado");
 		Conferir(ResourceLoader.Exists("res://Assets/Sprites/Hair/VegitoHairPVP.tres"),
 				 "E3 `VegitoHairPVP` importado");
 		Conferir(ResourceLoader.Exists(CabelosDeForma.FolhaDoSsj4DaFusao), "E4 `Hair_SSJ4Gogeta` importado");
 
-		// O COLETE ESTA NO CATALOGO -- e e por ele que o servidor o acha, por NOME, pra a pasta poder
-		// mudar sem quebrar nada.
-		Conferir(cat.Peca(Fusao.PecaDoColeteMetamoran) != null,
-				 "E5 o colete resolve pelo catalogo (por nome, nao por caminho)");
+		// (2026-10-20) O UNIFORME DA DANCA NAO ESTA NO GUARDA-ROUPA, como o brinco logo abaixo: e uma peca da fusao, e nao da criacao de
+		// personagem. Quem o acha e a segunda porta do servidor, pela pasta `Character Icons/` (ver `GameServer.CaminhoDaPecaDeFusao`).
+		Conferir(cat.Peca(Fusao.PecaDaRoupaDaDanca) == null
+				 && Jandirus.Server.GameServer.CaminhoDaPecaDeFusao(cat, Fusao.PecaDaRoupaDaDanca)?.Contains("/Character Icons/") == true,
+				 "E5 o uniforme da Danca resolve pela porta da fusao, em `Character Icons/` (e nao esta no guarda-roupa)");
 
 		// ============================ E O BRINCO **NAO** ESTA, E ISSO E UMA PROVA E NAO UM BURACO ============================
 		// O extrator o recusa por nome (`DmAppearanceScanner.Varrer`, a lista `fora`) porque a pasta

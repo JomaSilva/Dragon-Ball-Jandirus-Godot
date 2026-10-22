@@ -69,6 +69,9 @@ public partial class GameServer
 		// (2026-10-19) A ESFERA DO DRAGAO NAO SAI DO PLANETA (dono: *"naves e espaco vc e bloqueado de ir com elas"*). E a porta de toda
 		// subida: o verbo, o voo que rompe a atmosfera, o pod que decola. Ver `GameServer.EsferasNaMochila.cs`.
 		if (PorQueAsEsferasPrendem(pl) is { Length: > 0 } presas) { Avisar(pl, presas); return; }
+		// (2026-10-21) DA CAVERNA E DA SALA DO TEMPO NAO SE SOBE (dono): a caverna nao tem ceu aberto, e a Sala e outra dimensao. Ver
+		// `GameServer.SubZonas.cs`.
+		if (SemCeuPraRomper(pl) is { Length: > 0 } semCeu) { Avisar(pl, semCeu); return; }
 
 		// MUNDO GERADO SOBE POR OUTRO CAMINHO -- e sem esta linha ele nao subia de jeito nenhum.
 		//
@@ -82,9 +85,13 @@ public partial class GameServer
 		// desenha centenas deles e poe um botao "Viajar" em cada um.
 		if (DecolarDeProcedural(pl)) return;
 
+		// (2026-10-21) DO LOOKOUT SE SOBE PRO ESPACO DA TERRA (dono: *"pode ir pro espaço do proprio lookout pois é considerado terra"*), e
+		// do castelo do Rei Vegeta, no canto dele, pro de Vegeta: o chao de onde se decola e o planeta do ceu daqui. Ver
+		// `GameServer.SubZonas.cs`.
+		ZoneKey chao = ChaoDaDecolagem(pl);
 		PlanetaNoEspaco? daqui = null;
 		foreach (PlanetaNoEspaco p in Espaco.PreFeitos())
-			if (string.Equals(p.Nome, pl.Zone.Name, StringComparison.OrdinalIgnoreCase)) { daqui = p; break; }
+			if (string.Equals(p.Nome, chao.Name, StringComparison.OrdinalIgnoreCase)) { daqui = p; break; }
 
 		if (daqui == null)
 		{
@@ -93,7 +100,7 @@ public partial class GameServer
 		}
 
 		pl.PlanetaDeOrigem = daqui.Value.Nome;
-		MoveToZone(pl.Id, ZonaDoEspaco, Espaco.PontoDeDecolagem(daqui.Value));
+		ViajarVoluntario(pl, ZonaDoEspaco, Espaco.PontoDeDecolagem(daqui.Value));
 		// A CHUNK DE CHEGADA JA E A ATUAL: sem isto o tick veria "mudou de chunk" no quadro
 		// seguinte e mandaria a vizinhanca DE NOVO, duplicada, a cada decolagem.
 		pl.ChunkAtual = ChunkId.De(pl.Pos);
@@ -175,7 +182,7 @@ public partial class GameServer
 		var zonaDoPouso = ZoneKey.Premade(destino.Nome);
 		// (2026-10-18) QUEM PILOTA POUSA NUM LUGAR SORTEADO, em terra firme, e o pod abre cratera -- ver `GameServer.PousoDaNave.cs`. Quem voa
 		// sozinho continua chegando no berco.
-		MoveToZone(pl.Id, zonaDoPouso, PousoDeQuemPilota(pl, zonaDoPouso) ?? PontoDeNascimento(zonaDoPouso));
+		ViajarVoluntario(pl, zonaDoPouso, PousoDeQuemPilota(pl, zonaDoPouso) ?? PontoDeNascimento(zonaDoPouso));
 		AoPousarDoEspaco(pl);
 		Avisar(pl, $"voce pousa em {NomeDoMundo(destino)}.");
 		GD.Print($"[server] {pl.Name} pousou em {destino.Nome}");

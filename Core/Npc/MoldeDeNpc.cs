@@ -77,6 +77,12 @@ public sealed class EstagioDeChefe
 	/// sem isto a cena de evolucao acabaria no corpo de antes. So o DESENHO: o BP do chefe e o pinado.
 	/// </summary>
 	public int DegrauDoBio;
+
+	/// <summary>
+	/// (2026-10-21) O NOME QUE O JOGADOR LE ao escolher esta etapa na mente ("Forma Final", "Perfeito").
+	/// Vazio = "Etapa N". Nao muda o anuncio da saga.
+	/// </summary>
+	public string Nome = "";
 }
 
 /// <summary>
@@ -416,6 +422,14 @@ public sealed class MoldeDeNpc
 	/// <summary>Maestria (0..100) nas formas liberadas. E ela que abre o degrau seguinte da escada.</summary>
 	public double Maestria;
 
+	/// <summary>
+	/// (2026-10-22) O REPOUSO QUE O MOLDE IMPOE (um id do <see cref="Forms.Catalogo"/>; vazio = o que a escada da raca e da classe derivaria,
+	/// `Catalogo.PisoDaEscada`). O Freeza das sagas virou Frost Demon MUTANTE, e o Mutante jogador nasce na 1a supressao (0,25x): o chefe
+	/// repousa na forma base (`frost5`, 1x), como repousava quando era Frost Demon comum, e expressa o BP pinado do degrau. Quem o le e o
+	/// `Perfil` do servidor, que o entrega ao catalogo como `PerfilDeFormas.PisoProprio`.
+	/// </summary>
+	public string Repouso = "";
+
 	// =====================================================================
 	// O QUE A FICHA DECLARA SOBRE O COMPORTAMENTO
 	// =====================================================================
@@ -490,6 +504,10 @@ public sealed class MoldeDeNpc
 		if (EhChefe && AscendePorDecisao)
 			p.Add($"'{Id}': tem roteiro de estagios E ascendePorDecisao=true -- os dois moveriam a "
 				+ "mesma escada (o roteiro pelo dano, a IA pela decisao). Escolha um.");
+
+		// (2026-10-22) um repouso que o catalogo nao conhece seria ignorado calado (o `PisoDaEscada` cai na derivacao da classe)
+		if (Repouso.Length > 0 && Forms.Catalogo.Def(Repouso) == null)
+			p.Add($"'{Id}': repouso '{Repouso}' nao e uma forma do catalogo");
 
 		if (!EhChefe && BpRelativo <= 0 && BpMax <= 0)
 			p.Add($"'{Id}': sem estagios, sem bpRelativo e sem bpMax -- este NPC nasceria com BP 0.");
@@ -584,6 +602,7 @@ public sealed class CatalogoDeMoldes
 				EscadaAutomatica = Bit(e, "escadaAutomatica", true),
 				Formas = Lista(e, "formas"),
 				Maestria = Num(e, "maestria", 0),
+				Repouso = Txt(e, "repouso"),
 				AscendePorDecisao = Bit(e, "ascendePorDecisao", true),
 				Inteligencia = Num(e, "inteligencia", 35),
 				Agressividade = Num(e, "agressividade", 50),
@@ -651,6 +670,7 @@ public sealed class CatalogoDeMoldes
 						NomeDaCena = Txt(s, "cena"),
 						Cena = Forms.Cinematicas.CenaDeChefePorNome(Txt(s, "cena")) ?? Forms.Cinematicas.CenaDeChefe.Nenhuma,
 						DegrauDoBio = (int)Num(s, "degrauDoBio", 0),
+						Nome = Txt(s, "nome"),
 					});
 				m.Estagios = [.. l];
 			}

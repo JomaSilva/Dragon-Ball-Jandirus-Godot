@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Godot;
 using Jandirus.Core.Magic;
+using Jandirus.Core.Npc;
 using Jandirus.Core.World;
 using Jandirus.Net;
 using LiteNetLib;
@@ -73,13 +74,23 @@ public sealed class SetDeEsferas
 	public double AtivoEm;
 
 	/// <summary>
-	/// **QUANTAS VEZES ESTE SET JA SE ESPALHOU.** E o unico estado que a posicao precisa.
-	///
-	/// Ver <see cref="Esferas.CelulaDoEspalhamento"/>: a celula de cada esfera e funcao pura de
-	/// (seed da zona, set, numero, ciclo). Espalhar de novo e `Ciclo + 1` -- nao ha sorteio em runtime
-	/// e nao ha posicao inventada em lugar nenhum.
+	/// **QUANTAS VEZES ESTE SET JA SE ESPALHOU.** Conta espalhadas. Nao e mais o endereco das celulas.
 	/// </summary>
 	public int Ciclo;
+
+	/// <summary>
+	/// O SAL DESTA ESPALHADA, 16 hex. O dono (2026-10-21): cada uso sorteia um sal de verdade, guardado
+	/// aqui e no <c>esferas.json</c>. O mesmo sal cai nas mesmas vagas do habitat; um sal novo, nao.
+	/// Largura fixa pra o retrato da limpeza, que compara o tamanho do arquivo.
+	/// </summary>
+	public string SalHex = "0000000000000000";
+
+	public ulong LerSal() =>
+		ulong.TryParse(SalHex, System.Globalization.NumberStyles.HexNumber,
+			System.Globalization.CultureInfo.InvariantCulture, out ulong v) ? v : 0UL;
+
+	public void GravarSal(ulong sal) =>
+		SalHex = sal.ToString("X16", System.Globalization.CultureInfo.InvariantCulture);
 
 	/// <summary>`WishCount` -- quantos desejos ja saíram desta ativacao. Do SET, ver o cabecalho.</summary>
 	public int Pedidos;
@@ -112,7 +123,7 @@ public sealed class SetDeEsferas
 	public bool TemSupremo;
 
 	/// <summary>`dragonname` e `title` (:45-47). O eterno nasce com os dele (:386-387).</summary>
-	public string NomeDoDragao = "SHENRON", TituloDoDragao = "O DRAGÃO ETERNO";
+	public string NomeDoDragao = "SHENLONG", TituloDoDragao = "O DRAGÃO ETERNO";
 
 	/// <summary>
 	/// O SIMBOLO da folha do dragao -- "shenron" ou "porunga". **Simbolo, e nao `res://`**.
@@ -125,6 +136,12 @@ public sealed class SetDeEsferas
 
 	/// <summary>A folha da ESFERA: "comum" (`Dragonballs.dmi`) ou "namek" (`dragonball.dmi`).</summary>
 	public string Folha = "comum";
+
+	/// <summary>
+	/// (2026-10-22) OS DESEJOS QUE O CRIADOR TIROU DESTE DRAGAO -- o menu da estatua (`ConfigDaEstatua`, "liga e desliga, sem troca"). Ids
+	/// de `Desejos.Todos`. O dragao nao os oferece (`GameServer.MenuDaqui`), e o pedido por verbo cai na mesma recusa. Vai pro disco.
+	/// </summary>
+	public List<string> Desligados = [];
 
 	/// <summary>Pro log: "#12 em Earth".</summary>
 	[JsonIgnore] public string Etiqueta => $"#{Id} em {ZonaNome}";
@@ -148,6 +165,7 @@ public sealed class Esfera
 
 	public void PorZona(ZoneKey z) { ZonaTipo = z.Kind; ZonaNome = z.Name; ZonaSeed = z.Seed; }
 
+	[System.Text.Json.Serialization.JsonConverter(typeof(CoordenadaFixa))]
 	public float X, Y;
 
 	/// <summary>
@@ -341,6 +359,11 @@ public sealed partial class GameServer
 		if (setsOrfaos > 0 || esferasOrfas > 0)
 			GD.PushWarning($"[server] esferas: {setsOrfaos} set(s) e {esferasOrfas} esfera(s) sem dona -- descartados");
 
+		// (2026-10-21) O DRAGAO DA TERRA SE CHAMA SHENLONG (dono): o set da Terra salvo antes nasceu "SHENRON", e muda de nome na carga.
+		foreach (SetDeEsferas s in _sets)
+			if (!s.Eterno && s.NomeDoDragao == "SHENRON" && string.Equals(s.ZonaNome, "Earth", StringComparison.OrdinalIgnoreCase))
+				s.NomeDoDragao = Esferas.NomeDoShenlong;
+
 		GD.Print($"[server] esferas: {_sets.Count} set(s), {_esferas.Count} esfera(s)"
 			   + (_sets.Count > 0 ? " -- " + string.Join(", ", _sets.Select(s => s.Etiqueta)) : ""));
 
@@ -365,6 +388,7 @@ public sealed partial class GameServer
 
 		ErguerOSetEterno();
 		SalvarEsferas();
+		CarregarNegras();
 	}
 
 	/// <summary>
@@ -673,6 +697,8 @@ public sealed partial class GameServer
 	/// </summary>
 	private int EnterrarSetsDeMundosMortos()
 	{
+		// Black Star em planeta morto espalha de novo, mesmo sem estatua naquele mundo.
+		RecolherNegrasDePlanetasMortos();
 		List<SetDeEsferas> caidos = [.. _sets.Where(s => ZonaMorta(s.Zona))];
 		if (caidos.Count == 0) return 0;
 
@@ -777,6 +803,8 @@ public sealed partial class GameServer
 	private void EspalharOSet(SetDeEsferas s)
 	{
 		s.Ciclo++;
+		// (2026-10-21) O sal e sorteado de verdade. O ciclo so conta. Sal fixo (bancada) repete o lugar.
+		s.GravarSal(SalFixoDeTeste ? EsferasNegras.SalCravado : SortearSalNovo(s.LerSal()));
 		ZoneKey zona = s.Zona;
 		ZoneCollision? mapa = MapaDaZonaOuCatalogo(zona);
 
@@ -792,34 +820,40 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
-	/// PoE UMA ESFERA NO PONTO QUE A SEMENTE MANDA, encaixada numa celula livre.
-	///
-	/// As duas metades sao funcoes puras -- a celula sai de <see cref="Esferas.CelulaDoEspalhamento"/>
-	/// e o encaixe sai do `PontoLivrePerto` de um mapa que e funcao pura da seed (§0.2). Sem mapa
-	/// (mundo gerado que ninguem visita) a esfera fica no centro da celula crua e marca
-	/// <see cref="Esfera.PrecisaAssentar"/>: o tique a reencaixa quando a zona nascer.
+	/// Poe a esfera numa vaga do habitat da zona, escolhida pelo sal guardado no set.
+	/// Sem mapa (planeta gerado que ninguem visitou) fica o bilhete <see cref="Esfera.PrecisaAssentar"/>.
 	/// </summary>
-	private static void Assentar(Esfera e, SetDeEsferas s, ZoneCollision? mapa)
+	private void Assentar(Esfera e, SetDeEsferas s, ZoneCollision? mapa)
 	{
-		int w = mapa?.Width ?? 256, h = mapa?.Height ?? 256;
-		(int cx, int cy) = Esferas.CelulaDoEspalhamento(
-			s.Zona.Seed ^ Espaco.Hash64(s.ZonaNome), s.Id, e.Numero, s.Ciclo, w, h);
-
 		const int t = ZoneCollision.TileSize;
-		var cru = new Vec2(cx * t + t / 2f, cy * t + t / 2f);
+		if (EsferaForaDoHabitatDeTeste) { AssentarForaDoHabitat(e); return; }
+		Habitat? habitat = mapa != null ? HabitatDaZona(s.Zona) : null;
+		if (habitat is not { Vagas: > 0 })
+		{
+			e.PrecisaAssentar = true;
+			return;
+		}
+		ulong lugar = EsferasNegras.LugaresDoSal(s.LerSal(), habitat.Vagas)[Math.Clamp(e.Numero, 1, Esferas.Total) - 1];
+		(int x, int y) = habitat.Vaga(lugar);
+		e.X = x * t + t / 2f;
+		e.Y = y * t + t / 2f;
+		e.PrecisaAssentar = false;
+	}
 
-		if (mapa == null) { e.X = cru.X; e.Y = cru.Y; e.PrecisaAssentar = true; return; }
-
-		Vec2 livre = mapa.PontoLivrePerto(cru);
-		e.X = livre.X;
-		e.Y = livre.Y;
+	/// <summary>O defeito injetado: celula (0,0), que o habitat recusa (borda, agua ou ilhota).</summary>
+	private static void AssentarForaDoHabitat(Esfera e)
+	{
+		const int t = ZoneCollision.TileSize;
+		e.X = t / 2f;
+		e.Y = t / 2f;
 		e.PrecisaAssentar = false;
 	}
 
 	// =====================================================================
 	// CONSULTA
 	// =====================================================================
-	public SetDeEsferas? SetPorId(int id) => _sets.Find(s => s.Id == id);
+	public SetDeEsferas? SetPorId(int id) =>
+		id == EsferasNegras.IdDoSet ? _setNegro : _sets.Find(s => s.Id == id);
 
 	/// <summary>O set esta VALENDO agora? E a soma das duas mortes: a espera e a inercia.</summary>
 	public bool SetAtivo(SetDeEsferas s) => !s.Inerte && TempoDoMundo >= s.AtivoEm;
@@ -1076,6 +1110,7 @@ public sealed partial class GameServer
 		SincronizarOsMenusDoDragao();
 
 		// O DISCO DO DRAGON RADAR le o estado que este tique acabou de fechar. Ver `GameServer.RadarDeEsferas.cs`.
+		TickDasNegras();
 		TickDoRadarDeEsferas();
 
 		// (2026-10-19) ...E A MOCHILA de quem ganhou ou perdeu esfera por fora (a queda do item 3, o espalhar, o set que acordou e
@@ -1105,7 +1140,12 @@ public sealed partial class GameServer
 		if (PilotandoPorFecho(pl.Id) && !PegaDeDentroDaNaveDeTeste)
 		{ Avisar(pl, "de dentro de uma nave não dá pra pegar uma Esfera do Dragão -- nave nenhuma leva uma."); return; }
 
-		if (EsferaPerto(pl) is not { } e) { Avisar(pl, "não há nenhuma Esfera do Dragão ao seu alcance."); return; }
+		if (EsferaPerto(pl) is not { } e)
+		{
+			if (TentarPegarNegra(pl)) return;
+			Avisar(pl, "não há nenhuma Esfera do Dragão ao seu alcance.");
+			return;
+		}
 
 		e.Portador = pl.Id;
 		SalvarEsferas();
@@ -1122,7 +1162,9 @@ public sealed partial class GameServer
 	private void LargarEsferas(ServerPlayer pl)
 	{
 		List<Esfera> minhas = [.. _esferas.Where(e => e.Portador == pl.Id)];
-		if (minhas.Count == 0) { Avisar(pl, "você não está carregando nenhuma esfera."); return; }
+		int negras = LargarNegras(pl);
+		if (minhas.Count == 0 && negras == 0) { Avisar(pl, "você não está carregando nenhuma esfera."); return; }
+		if (minhas.Count == 0) return;
 
 		foreach (Esfera e in minhas)
 		{
@@ -1196,6 +1238,19 @@ public sealed partial class GameServer
 	private void InvocarODragao(ServerPlayer pl)
 	{
 		if (pl.Ficha.dead || pl.Ficha.KO) { Avisar(pl, "você não está em condições de invocar nada."); return; }
+
+		// Black Star: na superficie, com as 7, e sem as 7 do set local juntas. No espaco, nao.
+		if (Espaco.EhPlaneta(pl.Zone) && NegrasJuntas(pl) >= Esferas.Total)
+		{
+			int melhorLocal = 0;
+			foreach (SetDeEsferas cand in _sets)
+				melhorLocal = Math.Max(melhorLocal, SeteJuntas(pl, cand).Count);
+			if (melhorLocal < Esferas.Total)
+			{
+				InvocarANegraSeCouber(pl);
+				return;
+			}
+		}
 
 		// QUAL SET: o das esferas que estao aqui. Perguntar ao jogador seria pedir que ele soubesse o
 		// numero de um set -- que e um detalhe interno, e nao uma coisa que o mundo mostra.
@@ -1303,6 +1358,12 @@ public sealed partial class GameServer
 			return;
 		}
 
+		if (s.Id == EsferasNegras.IdDoSet)
+		{
+			DepoisDoDesejoNegro();
+			return;
+		}
+
 		s.AtivoEm = PrazoEmSegundos(
 			Esferas.SegundosDe(Esferas.EsperaDepoisDoDesejo(s.OffTime, s.Pedidos, s.Desejos)));
 
@@ -1358,8 +1419,12 @@ public sealed partial class GameServer
 
 		if (achadas.Count == 0)
 		{
-			Avisar(pl, "o radar varre o horizonte e não devolve nada. Nenhuma Esfera do Dragão "
-					 + "ACORDADA neste mundo.");
+			AvisarNegrasNoRadar(pl);
+			bool viuNegra = SetNegroAtivo() && _negras.Any(e =>
+				Espaco.EhEspaco(pl.Zone) ? e.Portador == 0 : e.Zona.Hash == pl.Zone.Hash || e.Portador == pl.Id);
+			if (!viuNegra)
+				Avisar(pl, "o radar varre o horizonte e não devolve nada. Nenhuma Esfera do Dragão "
+						 + "ACORDADA neste mundo.");
 			return;
 		}
 
@@ -1369,6 +1434,7 @@ public sealed partial class GameServer
 					 + $"a {Rumo(pl.Pos, OndeEstaAEsfera(e))}"
 					 + (e.Portador != 0 ? $" -- com {NomeDoCorpo(e.Portador)}" : "")
 					 + (s.Eterno ? " [Namek]" : ""));
+		AvisarNegrasNoRadar(pl);
 	}
 
 	/// <summary>O rumo em palavras. Um numero de coordenada nao ajuda ninguem a andar.</summary>
@@ -1474,6 +1540,30 @@ public sealed partial class GameServer
 		if (id < 0) { Avisar(pl, "não há mais lugar para um set de esferas neste mundo."); return; }
 
 		bool emNamek = string.Equals(corpo.Nome, Esferas.PlanetaEterno, StringComparison.OrdinalIgnoreCase);
+		bool emTerra = string.Equals(corpo.Nome, "Earth", StringComparison.OrdinalIgnoreCase);
+
+		// ============================ (2026-10-22) O MENU DA ESTATUA ============================
+		// O dono: *"e ao criar um set de esferas crie um menu bem intuitivo e bem feito pro jogador q criou o set escolher os desejos, a
+		// quantidade, a força etc"*. A janela (`Client/JanelaDaEstatua.cs`) manda a configuracao no argumento (`ConfigDaEstatua`): o nome
+		// (so fora da Terra e de Namek), os pedidos e os desejos desligados, e o supremo com a moeda. Ela e conferida AQUI, antes de
+		// qualquer coisa subir ou ser cobrada -- e quem marcou o supremo e nao tem como paga-lo nao ergue: a estatua sem o desejo que ele
+		// escolheu seria outra coisa do que ele pediu. O argumento de antes (`db_estatua supremo [recursos]`) continua valendo.
+		// =========================================================================================
+		ConfigDaEstatua? cfg = ConfigDaEstatua.Ler(arg);
+		if (cfg != null && cfg.PorQueNaoServe(nomeLivre: !emNamek && !emTerra) is { } recusa) { Avisar(pl, recusa); return; }
+		(string oQue, Jandirus.Core.Economia.Moeda moeda) = cfg != null
+			? (cfg.Supremo.Length > 0 ? "supremo" : "",
+			   cfg.Supremo == ConfigDaEstatua.SupremoEmRecursos ? Jandirus.Core.Economia.Moeda.Recursos : Jandirus.Core.Economia.Moeda.Zeni)
+			: Jandirus.Core.Economia.Recurso.LerPedidoPago(arg);
+		if (cfg != null && oQue.Length > 0 && !SupremoSemConferirOBolsoDeTeste
+			&& SaldoNa(pl, moeda) < (moeda == Jandirus.Core.Economia.Moeda.Recursos
+				? Jandirus.Core.Economia.Recurso.CustoEmRecursos(Desejos.PrecoDoSupremo) : Desejos.PrecoDoSupremo))
+		{
+			Avisar(pl, $"o desejo supremo custa {Jandirus.Core.Economia.Recurso.PrecoEscrito(Desejos.PrecoDoSupremo, moeda)} -- você tem "
+					 + $"{CarteiraEscrita(pl)}. A estátua não subiu: desmarque o supremo no menu, ou junte o que falta.");
+			return;
+		}
+
 		var s = new SetDeEsferas
 		{
 			Id = id,
@@ -1486,12 +1576,15 @@ public sealed partial class GameServer
 			// `A.WishPower = BP` (namekian.dm:97) -- o BP do criador NA HORA. Ele nunca se atualiza
 			// sozinho, e e de proposito: o set carrega o poder de quem o fez, e nao o de quem o usa.
 			Poder = pl.Ficha.BP,
-			Desejos = 1,
+			Desejos = cfg?.Pedidos ?? 1,
 			OffTime = Esferas.OffTimeDeJogador,
+			Desligados = cfg == null ? [] : [.. cfg.Desligados.OrderBy(x => x, StringComparer.Ordinal)],
 
 			// O ramo "Make it Default" do `Redo()` (:79-88) escolhe pelo PLANETA: em Namek, Porunga;
 			// fora, Shenron. Aqui isso e o padrao de nascimento em vez de uma escolha de menu.
-			NomeDoDragao = emNamek ? "PORUNGA" : "SHENRON",
+			// (2026-10-21) O dono: *"shenlong e so o dragao da terra"* -- o da Terra e o SHENLONG (a grafia dele), Namek sempre Porunga.
+			// (2026-10-22) ...e fora delas, o nome que o criador escolheu no menu da estatua (`ConfigDaEstatua.NomeNoPlaneta`).
+			NomeDoDragao = ConfigDaEstatua.NomeNoPlaneta(corpo.Nome, cfg?.Nome),
 			TituloDoDragao = emNamek ? "O DRAGÃO DOS SONHOS" : "O DRAGÃO ETERNO",
 			Dragao = emNamek ? "porunga" : "shenron",
 			Folha = emNamek ? "namek" : "comum",
@@ -1512,7 +1605,7 @@ public sealed partial class GameServer
 		// EM ZENI OU, PELO DOBRO, EM RECURSOS (dono, 2026-10-10: *"a estatua SUPREMA [...] mude pra aceitarem
 		// resource"*): a moeda e a ultima palavra do argumento (`db_estatua supremo recursos`), e quem cobra e o
 		// contrato -- sem saldo NAQUELA moeda a estatua sobe sem o desejo, como sempre subiu.
-		(string oQue, Jandirus.Core.Economia.Moeda moeda) = Jandirus.Core.Economia.Recurso.LerPedidoPago(arg);
+		// (2026-10-22) o pedido e a moeda ja sairam da configuracao (ou do argumento de antes), la em cima
 		if (string.Equals(oQue, "supremo", StringComparison.OrdinalIgnoreCase))
 		{
 			if (CobrarOuExplicar(pl, Desejos.PrecoDoSupremo, moeda, "gravar o desejo supremo"))
@@ -1539,6 +1632,10 @@ public sealed partial class GameServer
 
 		AnunciarNoMundo($"{pl.Name} ergue uma Estátua do Dragão em {NomeDoPlaneta(corpo.Nome)}. "
 					  + "Sete esferas se espalham pelo mundo.");
+		// (2026-10-22) o que o menu da estatua escolheu, dito a quem ergueu
+		Avisar(pl, $"{s.NomeDoDragao}: {(s.Desejos == 1 ? "1 pedido" : $"{s.Desejos} pedidos")} por invocação, cada um com "
+				 + $"{ConfigDaEstatua.PorcentagemDaForca(s.Desejos)} da força do set"
+				 + (s.Desligados.Count > 0 ? $"; {s.Desligados.Count} desejo(s) desligado(s)." : "; todos os desejos ligados."));
 		Avisar(pl, $"as sete esferas nascem APAGADAS e acordam em "
 				 + $"{Esferas.SegundosDe(Esferas.EsperaDeNascimento) / 3600.0:0.#} h reais.");
 		GD.Print($"[esferas] {pl.Name} ergueu o set {s.Etiqueta}");
@@ -1571,12 +1668,22 @@ public sealed partial class GameServer
 		if (!string.Equals(s.CriadorSig, pl.Assinatura, StringComparison.Ordinal))
 		{ Avisar(pl, "só quem ergueu a estátua pode reconfigurá-la."); return; }
 
-		if (!int.TryParse(arg.Trim(), out int quantos))
+		// (2026-10-22) O MENU DA ESTATUA refaz com a configuracao inteira (o nome, os pedidos, os desejos); o numero solto de antes so muda
+		// os pedidos. O supremo nao se compra aqui: ele so se grava ao erguer, como no DM.
+		ConfigDaEstatua? cfg = ConfigDaEstatua.Ler(arg);
+		int quantos = 0;
+		if (cfg == null && !int.TryParse(arg.Trim(), out quantos))
 		{
 			Avisar(pl, $"a estátua concede {s.Desejos} pedido(s) por invocação. Pra mudar, abra o menu do "
-					 + "dragão (aba World, \"Ver os desejos\") e escolha 1, 2 ou 3 -- MAIS PEDIDOS DEIXA CADA "
+					 + "dragão (aba World, \"Ver os desejos\") e use \"Configurar o dragão\" -- MAIS PEDIDOS DEIXA CADA "
 					 + "UM MAIS FRACO.");
 			return;
+		}
+		string planeta = CorpoDaZona(pl.Zone)?.Nome ?? "";
+		if (cfg != null)
+		{
+			if (cfg.PorQueNaoServe(nomeLivre: !ConfigDaEstatua.NomeFixoEm(planeta)) is { } recusa) { Avisar(pl, recusa); return; }
+			quantos = cfg.Pedidos;
 		}
 
 		// ============================ REFAZER COM O DRAGAO DE PE O MANDA EMBORA ============================
@@ -1591,13 +1698,37 @@ public sealed partial class GameServer
 
 		// `max(min(input,3),1)` (:65). Um a tres, e o teto e o que separa Shenron de Porunga.
 		s.Desejos = Math.Clamp(quantos, 1, 3);
+		if (cfg != null)
+		{
+			s.NomeDoDragao = ConfigDaEstatua.NomeNoPlaneta(planeta, cfg.Nome);
+			s.Desligados = [.. cfg.Desligados.OrderBy(x => x, StringComparer.Ordinal)];
+		}
 		s.Poder = pl.Ficha.BP;
 		RefazerAsEsferas(s);
 		SalvarEsferas();
 
 		Avisar(pl, $"a estátua agora concede {s.Desejos} pedido(s) por invocação, com o seu poder atual. "
 				 + "As sete se espalharam de novo.");
+		if (cfg != null)
+			Avisar(pl, $"{s.NomeDoDragao}: cada pedido com {ConfigDaEstatua.PorcentagemDaForca(s.Desejos)} da força do set"
+					 + (s.Desligados.Count > 0 ? $"; {s.Desligados.Count} desejo(s) desligado(s)." : "; todos os desejos ligados."));
 	}
+
+	/// <summary>
+	/// (2026-10-22) A CONFIGURACAO DE AGORA DESTE SET, como o menu da estatua a le -- a linha "Configurar o dragão" da janela de desejos.
+	/// </summary>
+	internal static ConfigDaEstatua ConfigDoSet(SetDeEsferas s)
+	{
+		var c = new ConfigDaEstatua { Nome = s.NomeDoDragao, Pedidos = s.Desejos, SupremoGravado = s.TemSupremo };
+		foreach (string id in s.Desligados) c.Desligados.Add(id);
+		return c;
+	}
+
+	/// <summary>
+	/// (2026-10-22) DEFEITO INJETADO (`--desejoteste`): o menu da estatua deixa erguer com o supremo marcado e sem como paga-lo -- a estatua
+	/// sobe sem o desejo que o criador escolheu, o jogo de antes. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool SupremoSemConferirOBolsoDeTeste;
 
 	/// <summary>
 	/// `Revive_Set()` (:90-101) -- so o criador, e so vivo. E a UNICA volta de um set inerte. (2026-10-19) E A ESTATUA QUE PERDEU O CRIADOR
@@ -1686,9 +1817,11 @@ public sealed partial class GameServer
 		List<SetDeEsferas> setsDaqui = [.. _sets.Where(s => s.Zona.Hash == zona.Hash)];
 		List<Esfera> noChao = EsferasNoChaoDe(zona);
 		List<Invocacao> dragoes = [.. _invocacoes.Values.Where(
-			i => SetPorId(i.Set) is { } s && s.Zona.Hash == zona.Hash)];
+			i => SetPorId(i.Set) is { } s && s.Zona.Hash == zona.Hash && s.Id != EsferasNegras.IdDoSet)];
+		List<EsferaNegra> negrasAqui = [.. _negras.Where(e => e.Portador == 0 && !e.PrecisaAssentar && e.Zona.Hash == zona.Hash)];
+		bool dragaoNegro = _invocacoes.ContainsKey(EsferasNegras.IdDoSet) && _zonaDoDragaoNegro.Hash == zona.Hash;
 
-		w.Put((ushort)(setsDaqui.Count + noChao.Count + dragoes.Count));
+		w.Put((ushort)(setsDaqui.Count + noChao.Count + dragoes.Count + negrasAqui.Count + (dragaoNegro ? 1 : 0)));
 
 		foreach (SetDeEsferas s in setsDaqui)
 		{
@@ -1712,6 +1845,9 @@ public sealed partial class GameServer
 			w.Put(s == null || !SetAtivo(s));
 			w.Put(s?.Folha ?? "comum");
 		}
+
+		foreach (EsferaNegra n in negrasAqui) EscreverUmaNegra(w, n);
+		if (dragaoNegro) EscreverODragaoNegro(w);
 
 		foreach (Invocacao i in dragoes)
 		{
@@ -1812,7 +1948,13 @@ public sealed partial class GameServer
 			? "  a estátua ancestral de Namek: não se destrói e não se reconfigura -- mas ela acaba "
 			  + "com o mundo que a guarda, e só volta se ele voltar."
 			: $"  erguida por {s.CriadorNome}.");
-		Avisar(pl, $"  pedidos por invocação: {s.Desejos} (já usados nesta ativação: {s.Pedidos})");
+		Avisar(pl, $"  pedidos por invocação: {s.Desejos}"
+				 + (Esferas.SetDeJogador(s.Id) ? $", cada um com {ConfigDaEstatua.PorcentagemDaForca(s.Desejos)} da força do set" : "")
+				 + $" (já usados nesta ativação: {s.Pedidos})");
+		// (2026-10-22) o que o criador desligou no menu da estatua
+		if (s.Desligados.Count > 0)
+			Avisar(pl, "  desligados por quem ergueu: "
+					 + string.Join(", ", s.Desligados.Select(id => Desejos.Todos.FirstOrDefault(d => d.Id == id)?.Nome ?? id)));
 		Avisar(pl, $"  poder do set: {s.Poder:N0}");
 
 		if (s.Inerte) Avisar(pl, EstatuaSemCriador(s)

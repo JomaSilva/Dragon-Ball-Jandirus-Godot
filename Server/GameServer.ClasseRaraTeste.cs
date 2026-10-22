@@ -42,7 +42,7 @@ public partial class GameServer
 			// ------------------------------------------------------------------ 1. a tabela
 			(string Raca, string Linhagem, string[] Esperadas)[] casos =
 			[
-				("Human", "", ["Ancient Hermit"]), ("Icer", "", ["Mutant Frost Demon"]), ("Kai", "", ["Golden Apple"]),
+				("Human", "", ["Ancient Hermit"]), ("Frost Demon", "", ["Mutant Frost Demon"]), ("Kai", "", ["Golden Apple"]),
 				("Majin", "", ["Corrupted Majin"]), ("Gray", "", ["Hermano"]), ("Heran", "", ["Omega"]), ("BioAndroid", "", ["Majin-Type"]),
 				("Saiyan", "Saiyan", ["Legendary"]), ("Saiyan", "Primal Saiyan", ["Legendary Primal Saiyan"]),
 				("Namekian", "Warrior clan", ["Warrior clan"]), ("Namekian", "Dragon clan", ["Warrior clan", "Demon clan"]),

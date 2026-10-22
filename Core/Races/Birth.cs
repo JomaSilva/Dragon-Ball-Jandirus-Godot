@@ -169,8 +169,8 @@ public static class Birth
 	public static Fighter Nascer(RaceCatalog cat, string raca, string linhagem, Random rng, string nome = "",
 								 double bpPai = 0, double bpMae = 0, string classeForcada = "")
 	{
-		// Half-Saiyan nao tem proto proprio: o corpo vem do Saiyajin, a linhagem manda no resto
-		string protoRaca = raca == "Halfbreed" ? "Saiyan" : raca;
+		// O meio-Saiyajin nao tem proto: o corpo e o do Saiyajin, a linhagem manda no resto.
+		string protoRaca = RaceCatalog.ProtoDoCorpo(raca);
 
 		var genoma = Genome.Pure(protoRaca);
 		genoma.Class = classeForcada.Length > 0 ? classeForcada : RollClass(cat, raca, linhagem, rng);

@@ -214,15 +214,9 @@ public static class RequisitosDosVerbos
 			"não há Esferas do Dragão aqui"),
 		new(ChaveDoVerbo("db_estatua"), "Erguer Estátua do Dragão", AbaWorldEsferas, EscultorDaEstatua.E(SemEstatua),
 			"apenas Namekuseijins do Clã do Dragão|ainda não aprendeu a moldar a Estátua|só pode erguer uma Estátua|somente o Guardião da Terra"),
-		new(ChaveDoVerbo("db_estatua", "supremo"), "Erguer + gravar o SUPREMO (2.000.000 zeni)", AbaWorldEsferas,
-			EscultorDaEstatua.E(SemEstatua),
-			"apenas Namekuseijins do Clã do Dragão|ainda não aprendeu a moldar a Estátua|só pode erguer uma Estátua|somente o Guardião da Terra"),
-		// O MESMO GESTO, PAGO EM RECURSOS (dono, 2026-10-10): a moeda vai no fim do argumento, e o requisito e o
-		// da linha de cima -- e o mesmo botao pra mesma gente.
-		new(ChaveDoVerbo("db_estatua", Economia.Recurso.PedidoPago("supremo", Economia.Moeda.Recursos)),
-			"Erguer + gravar o SUPREMO (4.000.000 recursos)", AbaWorldEsferas,
-			EscultorDaEstatua.E(SemEstatua),
-			"apenas Namekuseijins do Clã do Dragão|ainda não aprendeu a moldar a Estátua|só pode erguer uma Estátua|somente o Guardião da Terra"),
+		// (2026-10-22) OS DOIS "Erguer + gravar o SUPREMO" SAIRAM: o "Erguer Estátua do Dragão" abre o menu da estatua
+		// (`Client/JanelaDaEstatua.cs`), e o supremo -- em zeni ou em recursos -- e uma caixa dele. O verbo de antes (`db_estatua supremo
+		// [recursos]`) continua valendo no servidor; so nao tem mais botao.
 		// (2026-10-19) ...e a estatua que perdeu o criador (apagado ou reencarnado) e despertada por OUTRO do Cla do Dragao -- o dono.
 		new(ChaveDoVerbo("db_reviver"), "Despertar as esferas", AbaWorldEsferas,
 			Fato(Fatos.CriouAEstatuaDaqui, "ergueu a estátua deste mundo")
@@ -234,7 +228,7 @@ public static class RequisitosDosVerbos
 		new(ChaveDoVerbo("sdb_status"), "Super Esferas: placar", AbaWorldEsferas, NoEspaco),
 		new(ChaveDoVerbo("sdb_reivindicar"), "Reivindicar Super Esfera", AbaWorldEsferas, NoEspaco,
 			"as Super Esferas ficam no espaço"),
-		new(ChaveDoVerbo("sdb_invocar"), "Chamar o Super Shenron", AbaWorldEsferas, NoEspaco,
+		new(ChaveDoVerbo("sdb_invocar"), "Chamar o Super Shenlong", AbaWorldEsferas, NoEspaco,
 			"ao lado de uma delas"),
 
 		// ---------------------------------------------------------- World: o pedido ao dragao
@@ -272,7 +266,7 @@ public static class RequisitosDosVerbos
 
 		// (2026-10-19) OS CORPOS DAS FORMAS DO FROST DEMON -- o `Icer_Form_Settings` do DM, de todo Frost Demon (`fd_login_check`,
 		// `IcerTransform.dm:148`). Quem recusa quem nao e um e o servidor (`GameServer.Frost.ComandoDasFormasDoFrost`).
-		new(ChaveDoVerbo("formas_frost"), "Icer Form Settings", AbaOther, Raca(Races.FormasDeFrost.Raca), "só um Frost Demon"),
+		new(ChaveDoVerbo("formas_frost"), "Frost Demon Form Settings", AbaOther, Raca(Races.FormasDeFrost.Raca), "só um Frost Demon"),
 
 		new(ChaveDoVerbo("splitform_seguir"), "Split Form: Follow", AbaOther, Copias, "nenhuma copia de pe"),
 		new(ChaveDoVerbo("splitform_parar"), "Split Form: Stop", AbaOther, Copias, "nenhuma copia de pe"),

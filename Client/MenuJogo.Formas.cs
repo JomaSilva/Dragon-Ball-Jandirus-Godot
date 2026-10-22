@@ -332,6 +332,10 @@ public partial class MenuJogo
 				? $"aceso em x{_atributos.KaiokenVezes} ({Jandirus.Core.Skills.Kaioken.Multiplicador(_atributos.KaiokenVezes):0.##}x de poder)"
 				: "apagado",
 			  aceso ? Aura.CorDoKaioken : Tema.TextoFraco, corpo);
+		// (v0.4.2) A FORMA QUE NAO O SUSTENTA, ja no cartao: a mesma frase em vermelho que a tela da escolha poe acima do botao
+		// desligado (`TelaDeKaioken.RecusaDaForma`) -- quem le a aba fica sabendo sem abrir a escolha pra descobrir.
+		if (!aceso && GameClient.Instance is { } cli && TelaDeKaioken.RecusaDaForma(cli) is { } recusa)
+			LinhaDeTextoLongo("nesta forma", recusa, Tema.Perigo, corpo);
 		Nota("A maestria só cresce com o Kaio-ken aceso -- devagar até x20, e muito devagar depois. Acima dela ele cobra mais "
 			  + "Ki, vigor e carne; passar do dobro dela e ficar sem Ki despedaça o corpo.", corpo);
 		var escolher = new Button
@@ -360,10 +364,17 @@ public partial class MenuJogo
 	///
 	/// (2026-10-16) E A LINHA "Aclimatado": o bonus de poder, a duas casas -- sem ele aqui, a linha so apareceria (ou sumiria) no
 	/// proximo redesenho por outro motivo.
+	///
+	/// (v0.4.2) E A RECUSA DO KAIO-KEN NO CARTAO, pela frase: a forma ja esta na basica, mas a classe e a maestria divina (os 50% do
+	/// Blue, que chegam no `S2C.GodKi`) nao -- o corpo que cruzasse os 50% com a aba aberta continuaria lendo a recusa.
 	/// </summary>
 	private string ExtraDaAssinaturaDeFormas(SheetState f) =>
 		$"{PosseDoCliente.Atual.SabeTecnica(TelaDeKaioken.VerboDoKaioken)}|{_atributos.KaiokenMaestria:0.#}"
-		+ $"|{_atributos.KaiokenVezes}|{_atributos.KaiokenAceso}|{_atributos.Aclimatacao:0.##}";
+		+ $"|{_atributos.KaiokenVezes}|{_atributos.KaiokenAceso}|{_atributos.Aclimatacao:0.##}"
+		+ $"|{(GameClient.Instance is { } cli && !RecusaForaDaAssinaturaDeTeste ? TelaDeKaioken.RecusaDaForma(cli) : "")}";
+
+	/// <summary>DEFEITO INJETADO (robo --diagkaiokenveto): a recusa do Kaio-ken fica fora da assinatura da aba Forms, e o cartao congela quando so a maestria divina muda. Falso em jogo, sempre.</summary>
+	public static bool RecusaForaDaAssinaturaDeTeste;
 
 	/// <summary>
 	/// O TEXTO DA LINHA "Aclimatado": o bonus de poder da aclimatacao (`AtributosState.Aclimatacao`, o `gravFelt`) em porcentagem,

@@ -1411,6 +1411,10 @@ public partial class GameClient : Node
 
 	/// <summary>(2026-10-18) O NIVEL DO MEU SENSE -- o alcance que eu tenho (`SenseEmNiveis`); 0 no modo Scan.</summary>
 	public int NivelDoSense { get; private set; }
+
+	/// <summary>(2026-10-21) O NIVEL DO MEU INSTANT TRANSMISSION. 0 = nao tenho a skill; a aba nao desenha o botao.</summary>
+	public int NivelDaTransmissao { get; private set; }
+
 	public event Action? SentidosMudaram;
 
 	/// <summary>Chave vazia = so me manda a lista; com chave = reivindico aquele cargo.</summary>
@@ -2063,6 +2067,7 @@ public partial class GameClient : Node
 				byte marcas2 = reader.GetByte();
 				ap.Bebe = (marcas2 & 1) != 0;
 				ap.CabeloDoTuffle = (marcas2 & 2) != 0;   // o bit 1: o corpo que o Neo Tuffle veste, de cabelo branco-acinzentado
+				ap.CorpoDoTuffle = (marcas2 & 4) != 0;   // (2026-10-20) o bit 2: o Neo Tuffle no proprio corpo, na folha do Baby e careca
 				PeerLooked?.Invoke(quem, nome, raca, genero, ap,
 					tipoFus == 0 ? null : (Jandirus.Core.Social.TipoDeFusao)tipoFus);
 				break;
@@ -2286,6 +2291,10 @@ public partial class GameClient : Node
 				}
 				break;
 			}
+
+			case Protocol.S2C.Foco: LerFoco(reader); break;
+			case Protocol.S2C.TreinoFocado: LerTreinoFocado(reader); break;
+			case Protocol.S2C.Respiracao: LerRespiracao(reader); break;
 
 			case Protocol.S2C.Efeito:
 			{
@@ -2730,6 +2739,7 @@ public partial class GameClient : Node
 
 			// O PAINEL DA ABA ALUNOS/MESTRE -- so chega pra quem tem o vinculo. Ver `GameClient.Alunos.cs`.
 			case Protocol.S2C.MestreEAlunos: LerMestreEAlunos(reader); break;
+			case Protocol.S2C.Aliados: LerAliados(reader); break;   // (2026-10-21) a aba Allies: os aliados e as amizades -- ver `GameClient.Aliados.cs`
 
 			case Protocol.S2C.Sentidos:
 			{
@@ -2742,6 +2752,15 @@ public partial class GameClient : Node
 				SentidosMudaram?.Invoke();
 				break;
 			}
+
+			case Protocol.S2C.TransmissaoPiscar:
+				World.Instancia?.PiscarDaTransmissao(reader.GetInt(), reader.GetFloat(), reader.GetFloat());
+				break;
+
+			case Protocol.S2C.NivelDaTransmissao:
+				NivelDaTransmissao = reader.GetByte();
+				SentidosMudaram?.Invoke();
+				break;
 
 			case Protocol.S2C.Feridas:
 			{
@@ -2976,6 +2995,9 @@ public partial class GameClient : Node
 				AplicarMortos(lista);
 				break;
 			}
+
+			// (2026-10-21) OS PLANETAS COM CHEFE DE SAGA NO MUNDO -- a trilha de perigo. Ver `GameClient.SubZonas.cs`.
+			case Protocol.S2C.ChefesNosPlanetas: LerChefesNosPlanetas(reader); break;
 
 			// OS NOMES DADOS AOS PLANETAS. A lista e a INTEIRA (substitui), e o cabecalho e so meu -- ver
 			// `Protocol.S2C.NomesDePlanetas`.

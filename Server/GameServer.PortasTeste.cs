@@ -569,7 +569,7 @@ public partial class GameServer
 		AfirmarPrt("o Lorde do Gelo tambem sai pela CLASSE (o `|Class==` do DM)",
 			Sucessao.AlgozHerda("frostlord", "Human", "Human", "Frost Demon"));
 		AfirmarPrt("e 'Icer' vale por 'Frost Demon' (o rotulo do races.json)",
-			Sucessao.AlgozHerda("frostlord", "Icer", "Icer", "Normal"));
+			Sucessao.AlgozHerda("frostlord", "Frost Demon", "Frost Demon", "Normal"));
 		AfirmarPrt("so o trono de Vegeta tem linha de sangue",
 			Sucessao.TemHerdeiros("kov") && !Sucessao.TemHerdeiros("frostlord"));
 		AfirmarPrt("herdeiro MORTO nao herda", !Sucessao.HerdeiroServe("Saiyan", "Saiyan", morto: true));

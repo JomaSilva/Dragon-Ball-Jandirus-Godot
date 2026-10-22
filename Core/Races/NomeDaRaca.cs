@@ -5,7 +5,9 @@ namespace Jandirus.Core.Races;
 ///
 /// ============================ DUAS GRAFIAS CIRCULAM, E SO UMA E DO JOGO ============================
 /// O `races.json` (e tudo que o le: `RaceCatalog`, `Fighter.Race`, o `SlotInfo` do fio, o save) chama
-/// a raca pela CHAVE: "Icer", "Saibaman", "Kanassa", "BioAndroid", "SpiritDoll", "Halfbreed". Sao
+/// a raca pela CHAVE: "Saibaman", "Kanassa", "BioAndroid", "SpiritDoll". "Frost Demon" ja e o nome.
+/// "Icer" so existe em save velho e ainda vira "Frost Demon" aqui. "Halfbreed" e a
+/// raca do meio-Saiyajin e nao tem linha no arquivo: o corpo e o do Saiyajin. Sao
 /// identificadores -- sem espaco, sem hifen -- herdados dos nomes de ARQUIVO do DM (`icer.dm`,
 /// `IcerTransform.dm`), e nunca foram o nome que o jogo mostra.
 ///

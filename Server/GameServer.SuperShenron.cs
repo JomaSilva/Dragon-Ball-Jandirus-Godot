@@ -138,8 +138,8 @@ public sealed partial class GameServer
 
 	/// <summary>A recusa de quem chama o dragao longe delas: diz ONDE se chama.</summary>
 	private static string FraseDeLongeDasSupers(ServerPlayer pl) => Espaco.EhEspaco(pl.Zone)
-		? "não há Super Esfera ao seu alcance: o Super Shenron só é chamado ao lado de uma delas."
-		: "as Super Esferas ficam no espaço -- o Super Shenron só é chamado ao lado de uma delas.";
+		? "não há Super Esfera ao seu alcance: o Super Shenlong só é chamado ao lado de uma delas."
+		: "as Super Esferas ficam no espaço -- o Super Shenlong só é chamado ao lado de uma delas.";
 
 	// =====================================================================
 	// A INVOCACAO -- `Invocar_Super_Shenron` (:1578-1644)
@@ -242,7 +242,7 @@ public sealed partial class GameServer
 			return;
 		}
 
-		List<DesejoDef> menu = [.. Desejos.MenuDoSuper(EhKaioshinDoCorpo(pl), procurando)];
+		List<DesejoDef> menu = [.. Desejos.MenuDoSuper(EhKaioshinDoCorpo(pl), procurando, SangueSaiyajinDe(alvo))];
 
 		// SEM PEDIDO NENHUM, O QUE SE QUER E A LISTA -- e a lista e a janela de desejos (era uma linha de chat
 		// por desejo, com o id pra digitar de volta). As sete e a lingua ja foram conferidas ai em cima: quem
@@ -257,9 +257,9 @@ public sealed partial class GameServer
 		if (escolha == null)
 		{
 			Avisar(pl, procurando
-				? $"o pedido registrado ('{id}') não está entre os que o Super Shenron atende agora. "
+				? $"o pedido registrado ('{id}') não está entre os que o Super Shenlong atende agora. "
 				  + $"{_benefNome} precisa registrar outro."
-				: "o Super Shenron não conhece esse desejo. Escolha um da lista da janela de desejos.");
+				: "o Super Shenlong não conhece esse desejo. Escolha um da lista da janela de desejos.");
 			return;
 		}
 
@@ -292,8 +292,16 @@ public sealed partial class GameServer
 				AnunciarInvocacaoDoSuper(pl);
 				alvo.Ficha.Zeni += Desejos.ZeniDoSuperDesejo;
 				Persistir(alvo);
-				AnunciarSupers($"SUPER SHENRON concedeu riqueza colossal a {alvo.Name}!");
+				AnunciarSupers($"SUPER SHENLONG concedeu riqueza colossal a {alvo.Name}!");
 				if (alvo != pl) Avisar(pl, $"a riqueza foi para {alvo.Name} -- você apenas pronunciou.");
+				return true;
+
+			// -------------------------------------------------- (2026-10-21, regra do dono) o potencial, a MAIOR fracao de um ano
+			case "sdb_aumentar_potencial":
+				AnunciarInvocacaoDoSuper(pl);
+				SomarPotencialDoDesejo(alvo, Desejos.FracaoDoAnoNoSuper);
+				AnunciarSupers($"SUPER SHENLONG aumentou o potencial de {alvo.Name}!");
+				if (alvo != pl) Avisar(pl, $"o potencial foi para {alvo.Name} -- você apenas pronunciou.");
 				return true;
 
 			// -------------------------------------------------- reviver (:1606-1618)
@@ -334,7 +342,7 @@ public sealed partial class GameServer
 				// `T.loc = locate(U.x + 1, U.y, U.z)` (:1617) -- ao lado de QUEM FALOU, e nao do pedinte:
 				// e o dragao que esta ali, e a alma volta onde o dragao esta.
 				Ressuscitar(t, pl.Zone, new Vec2(pl.Pos.X + ZoneCollision.TileSize, pl.Pos.Y));
-				AnunciarSupers($"SUPER SHENRON trouxe {t.Name} de volta à vida!");
+				AnunciarSupers($"SUPER SHENLONG trouxe {t.Name} de volta à vida!");
 				return true;
 			}
 
@@ -376,9 +384,31 @@ public sealed partial class GameServer
 				AnunciarInvocacaoDoSuper(pl);
 				return DesejoDeCorpoSaiyajin(pl, null, nome);
 
-			default: return false;
+			// -------------------------------------------------- (2026-10-21) a lista inteira das Black Star, a 4x
+			// Os desejos do Shenron que o Super nao tinha (dono: *"super shenlong seria 4 vezes o poder da black star em tudo, menos no
+			// potencial"*): o efeito de sempre, pelo set do Super (`SetDoSuper`, fator 20; os marcos sao 15). Quem recebe e o PEDINTE, como
+			// nos outros ramos. Um desejo que falha (alvo que sumiu, quem ja pediu marcos) devolve falso e as sete NAO se consomem.
+			default:
+				if (!Desejos.Todos.Any(x => x.Id == d.Id) || Desejos.DoShenronQueOSuperNaoRepete.Contains(d.Id)) return false;
+				AnunciarInvocacaoDoSuper(pl);
+				bool deu = Conceder(alvo, SetDoSuper, d, nome);
+				if (deu && alvo != pl) Avisar(pl, $"o desejo foi para {alvo.Name} -- você apenas pronunciou.");
+				return deu;
 		}
 	}
+
+	/// <summary>
+	/// (2026-10-21) O SET "VIRTUAL" DO SUPER SHENLONG: nao esta em `_sets`, nao tem estatua nem criador -- so carrega o nome, o fator (pelo
+	/// id, ver `FatorDoDragao`) e o poder que abre a lista inteira, pros efeitos do Shenron pedidos ao Super.
+	/// </summary>
+	private SetDeEsferas SetDoSuper { get; } = new()
+	{
+		Id = Desejos.IdDoSetDoSuper, Poder = Esferas.PoderDoEterno, Desejos = 1,
+		NomeDoDragao = "SUPER SHENLONG", TituloDoDragao = "O DRAGÃO DAS SUPER ESFERAS",
+	};
+
+	/// <summary>(2026-10-21) O sangue Saiyajin de quem pede (o portao do "Super Saiyajin", como no Shenron).</summary>
+	private static double SangueSaiyajinDe(ServerPlayer p) => p.Ficha.Genoma?.RacePercent("Saiyan") ?? 0;
 
 	/// <summary>
 	/// O PRECO DO SUPREMO ESPERANDO A PALAVRA: (conta de quem paga, id de quem fala, vencimento).
@@ -435,7 +465,7 @@ public sealed partial class GameServer
 	/// </summary>
 	private void AnunciarInvocacaoDoSuper(ServerPlayer quem)
 	{
-		AnunciarSupers($"O céu de TODA a galáxia escurece... {quem.Name} invocou SUPER SHENRON na "
+		AnunciarSupers($"O céu de TODA a galáxia escurece... {quem.Name} invocou SUPER SHENLONG na "
 					 + "língua dos deuses!");
 		ForcarClima(quem.Zone, TipoDeClima.Tempestade, 30);
 	}
@@ -579,7 +609,7 @@ public sealed partial class GameServer
 		SalvarSupers();
 
 		AnunciarSupers($"{o.DeNome} confiou as {SuperEsferas.Total} Super Esferas a {pl.Name}!");
-		Avisar(pl, $"você carrega a guarda das sete. Invoque o SUPER SHENRON perto de qualquer uma -- "
+		Avisar(pl, $"você carrega a guarda das sete. Invoque o SUPER SHENLONG perto de qualquer uma -- "
 				 + $"e o desejo será de {o.DeNome}, que é quem o escolhe.");
 		if (doador != null)
 		{
@@ -654,11 +684,11 @@ public sealed partial class GameServer
 		if (!HaProcuracao || !string.Equals(_benefSig, pl.Assinatura, StringComparison.Ordinal))
 		{
 			Avisar(pl, "você não emprestou as sete a ninguém -- não há pedido a registrar. "
-					 + "(Quem tem as sete e fala a língua pede direto ao Super Shenron.)");
+					 + "(Quem tem as sete e fala a língua pede direto ao Super Shenlong.)");
 			return;
 		}
 
-		List<DesejoDef> menu = [.. Desejos.MenuDoSuper(ehKaioshin: false, haProcuracao: true)];
+		List<DesejoDef> menu = [.. Desejos.MenuDoSuper(ehKaioshin: false, haProcuracao: true, sangueSaiyajin: SangueSaiyajinDe(pl))];
 
 		// SEM PEDIDO, O QUE SE QUER E A LISTA -- e a lista e a janela de desejos, que diz tambem qual esta
 		// registrado agora. (Era uma linha de chat por desejo, com o id pra digitar de volta.)
@@ -670,7 +700,7 @@ public sealed partial class GameServer
 		}
 
 		DesejoDef? d2 = menu.Find(x => string.Equals(x.Id, p[0], StringComparison.OrdinalIgnoreCase));
-		if (d2 == null) { Avisar(pl, "o Super Shenron não atende esse pedido."); return; }
+		if (d2 == null) { Avisar(pl, "o Super Shenlong não atende esse pedido."); return; }
 
 		_pedidoDoBenef = d2.Id;
 		_alvoDoPedido = p.Length > 1 ? p[1].Trim() : "";
@@ -685,7 +715,7 @@ public sealed partial class GameServer
 		if (falante != null)
 			Avisar(falante, $"{pl.Name} registrou o pedido dele(a): {d2.Nome}"
 						  + (_alvoDoPedido.Length > 0 ? $" ({_alvoDoPedido})" : "")
-						  + ". Você pode pronunciá-lo: chame o Super Shenron.");
+						  + ". Você pode pronunciá-lo: chame o Super Shenlong.");
 	}
 
 	/// <summary>

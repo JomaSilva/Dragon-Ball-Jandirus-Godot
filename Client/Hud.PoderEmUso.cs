@@ -73,14 +73,14 @@ public partial class Hud
 		string raiva = RaivaMudaDeTeste ? "" : NaRaiva(e);
 		_raiva.Text = raiva;
 		_raiva.Visible = raiva.Length > 0;
-		_raiva.AddThemeColorOverride("font_color", e.Furioso ? CorDaFuria : CorDaRaiva);
+		_raiva.AddThemeColorOverride("font_color", e.Furioso ? CorDaFuria : e.ComRaiva ? CorDaRaiva : CorDoIrritado);
 	}
 
-	/// <summary>A linha da raiva: "FURIOSO" (a extrema), "COM RAIVA" (a comum), ou nada.</summary>
-	public static string NaRaiva(PoderEmUsoState e) => e.Furioso ? "FURIOSO" : e.ComRaiva ? "COM RAIVA" : "";
+	/// <summary>A linha da raiva: "FURIOSO" (a extrema), "COM RAIVA" (a comum), "IRRITADO", ou nada.</summary>
+	public static string NaRaiva(PoderEmUsoState e) => e.Furioso ? "FURIOSO" : e.ComRaiva ? "COM RAIVA" : e.Irritado ? "IRRITADO" : "";
 
-	/// <summary>O laranja-fogo da raiva comum e o vermelho vivo da furia (os do chat sao irmaos destes).</summary>
-	private static readonly Color CorDaRaiva = new("ff8a3c"), CorDaFuria = new("ff3b2f");
+	/// <summary>O ambar do irritado, o laranja-fogo da raiva comum e o vermelho vivo da furia.</summary>
+	private static readonly Color CorDoIrritado = new("ffd15a"), CorDaRaiva = new("ff8a3c"), CorDaFuria = new("ff3b2f");
 
 	// =====================================================================
 	// AS FRASES -- uma fonte pro HUD e pro menu

@@ -355,7 +355,7 @@ public sealed partial class GameServer
 			RecadoAoDono(exDono, $"Você PERDEU a Super Esfera #{alvo.Numero} para {quem.Name}.");
 
 		if (quantas >= SuperEsferas.Total)
-			Avisar(quem, "as SETE são suas. Chame o Super Shenron -- se você souber falar com ele.");
+			Avisar(quem, "as SETE são suas. Chame o Super Shenlong -- se você souber falar com ele.");
 
 		GD.Print($"[super] {quem.Name} tomou a #{alvo.Numero}"
 			   + (exNome.Length > 0 ? $" de {exNome}" : " (livre)"));

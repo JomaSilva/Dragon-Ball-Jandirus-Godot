@@ -83,7 +83,7 @@ public static class Vacuo
 	public const double SegundosDeFolego = 20.0;
 
 	/// <summary>
-	/// AS TRES RACAS QUE O DONO NOMEOU. **"Icer" e o nome do proto; "Frost Demon" e o da CLASSE**
+	/// AS TRES RACAS QUE O DONO NOMEOU. A raca e "Frost Demon" (`FormasDeFrost.Raca`). "Icer" e o planeta.
 	/// dentro dele -- ver <see cref="Jandirus.Core.Races.FormasDeFrost.Raca"/>, que documenta que um
 	/// `Race == "Frost Demon"` nunca casa com ninguem. As duas grafias entram aqui pelo mesmo motivo
 	/// que o `EhFrost` de la aceita as duas: o erro e facil e mudo.

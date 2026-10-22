@@ -864,12 +864,12 @@ public partial class GameServer
 				  td.TemEfeito && td.PorNivel.SequenceEqual(["nível 2: controle de Ki +1"]), string.Join(" | ", td.PorNivel));
 		AfirmarMn("...e a skill SEM regra de nivel nao fala de nivel (o `maxlevel = 3` de fabrica do DM nao e progressao)",
 				  FichaDeSkill.Montar(_skills!, muda, null).Progressao.Length == 0);
-		// O GANHO NA COMPRA, com a expressao do extrator desembrulhada: `(max(1,BP*0.01))` -> "max(1, BP×0,01)"
+		// O GANHO NA COMPRA, com a expressao desembrulhada: `(max(1,BP*0.05))` -> "max(1, BP×0,05)"
 		Skill? cem = _skills!.Get("/datum/skill/Bodybuilding/One_Hundred");
 		string? ganho = cem == null ? null : FichaDeSkill.Montar(_skills, cem, RegrasDeNivel.Get(cem.Path)).NaCompra
 			.FirstOrDefault(l => l.StartsWith("na compra: BP", StringComparison.Ordinal));
-		AfirmarMn("One Hundred: 'na compra: BP + max(1, BP×0,01)' (Bodybuilding.dm:89, sem os parenteses do extrator)",
-				  ganho == "na compra: BP + max(1, BP×0,01)", ganho ?? "(sem linha de compra)");
+		AfirmarMn("One Hundred: 'na compra: BP + max(1, BP×0,05)' (5% desde 2026-10-21, sem os parenteses do extrator)",
+				  ganho == "na compra: BP + max(1, BP×0,05)", ganho ?? "(sem linha de compra)");
 
 		// ---- (d) a MARCA DE HONESTIDADE: o campo que o Fighter nao tem sai dizendo que nao chega ----
 		var semCampo = new RegraDeNivel { Path = muda.Path, Degraus = [new Degrau { Nivel = 1, Buffs = { ["lssjmult"] = 0.5 } }] };

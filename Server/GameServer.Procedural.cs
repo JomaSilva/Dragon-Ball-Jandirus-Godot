@@ -332,7 +332,7 @@ public partial class GameServer
 		// (2026-10-18) QUEM PILOTA POUSA NUM LUGAR SORTEADO, em terra firme, e o pod abre cratera -- ver `GameServer.PousoDaNave.cs`. Sem
 		// lugar que sirva (e pra quem voa sozinho), na chegada que o gerador garantiu livre.
 		Vec2? sorteado = PousoDeQuemPilota(pl, zona);
-		MoveToZone(pl.Id, zona, sorteado ?? viva.Chegada);
+		ViajarVoluntario(pl, zona, sorteado ?? viva.Chegada);
 		AoPousarDoEspaco(pl);
 
 		Avisar(pl, $"voce pousa em {NomeDoMundo(destino)} — {viva.Ficha.Descricao()}.");
@@ -357,7 +357,7 @@ public partial class GameServer
 		if (!_zonasGeradas.TryGetValue(pl.Zone.Hash, out ZonaGerada? viva)) return false;
 
 		pl.PlanetaDeOrigem = viva.NoEspaco.Nome;
-		MoveToZone(pl.Id, ZonaDoEspaco, Espaco.PontoDeDecolagem(viva.NoEspaco));
+		ViajarVoluntario(pl, ZonaDoEspaco, Espaco.PontoDeDecolagem(viva.NoEspaco));
 		pl.ChunkAtual = ChunkId.De(pl.Pos);   // ver o mesmo carimbo no `Decolar`
 		// FORCAR a vizinhanca: ela so sai quando a CHUNK muda, e decolar cai na mesma chunk do
 		// planeta. Sem isto o jogador chega ao espaco sem nenhum planeta desenhado -- inclusive

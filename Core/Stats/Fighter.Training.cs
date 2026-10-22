@@ -58,8 +58,8 @@ public sealed partial class Fighter
         if (mult == 0) mult = 1;
         mult *= GainKnobs.GlobalTrainGain * zoneGainMult * racialGanhoDeTreino;   // (v0.4.0) o Persistence -- `Fighter.racialGanhoDeTreino`
 
-        // (2026-10-16) O LUGAR MULTIPLICA O TIQUE INTEIRO: a gravidade efetiva na parcela da atividade (que ja levava o peso e a
-        // zona) E na do potencial escondido (que passa a levar os tres). E o numero do painel -- ver `FatorDaGravidade`.
+        // (2026-10-16) O LUGAR MULTIPLICA A ATIVIDADE: a gravidade efetiva na parcela da atividade, que ja levava o peso e a zona. E
+        // o numero do painel -- ver `FatorDaGravidade`. A parcela do potencial oculto NAO o leva (dono, 2026-10-20): `LugarDoPotencialOculto`.
         double lugar = FatorDaGravidade();
 
         if (BP < relBPmax)
@@ -79,12 +79,12 @@ public sealed partial class Fighter
                 tmp_activ_gains = Math.Max(0, tmp_activ_gains - 25);
             }
 
-            if (train_med_to_hp) { hiddenpotential += amount / 4; CapHiddenPotential(); }
-            else BP += CapCheck(amount);
+            BP += CapCheck(amount);
 
-            // potencial escondido vira poder sozinho, mais rapido se ja passou do BP atual
+            // potencial escondido vira poder sozinho, mais rapido se ja passou do BP atual -- e sem o lugar, o peso e a zona, como no
+            // DM (`Train.dm:26-29`): ver `LugarDoPotencialOculto`
             BP += CapCheck(hiddenpotential * GainKnobs.BPTick * (hiddenpotential >= BP ? 1.0 / 32 : 1.0 / 64)
-                           * lugar * weight * zoneGainMult);
+                           * LugarDoPotencialOculto(lugar * weight * zoneGainMult));
         }
 
         if (DmMath.Prob(rng, 10)) maxstamina += 0.01 * weight;
@@ -96,7 +96,7 @@ public sealed partial class Fighter
     public void MedGain(Random rng, double multi = 1)
     {
         if (multi == 0) multi = 1;
-        double lugar = FatorDaGravidade();   // (2026-10-16) a gravidade multiplica a meditacao tambem -- ver `FatorDaGravidade`
+        double lugar = FatorDaGravidade();   // (2026-10-16) a gravidade multiplica a meditacao tambem (a atividade) -- ver `FatorDaGravidade`
 
         if (BP < relBPmax)
         {
@@ -108,11 +108,10 @@ public sealed partial class Fighter
             double amount = CapCheck(BpGainBase() * GainKnobs.BPTick * GainKnobs.GlobalMedGain * multi
                                      * Egains * MedMod * (1.0 / 24) * GainKnobs.MeditarRende * lugar);
 
-            if (train_med_to_hp) hiddenpotential += amount / 4;
-            else BP += amount;
+            BP += amount;
 
             BP += CapCheck(hiddenpotential * GainKnobs.BPTick * (hiddenpotential >= BP ? 1.0 / 30 : 1.0 / 50)
-                           * GainKnobs.MeditarRende * lugar);
+                           * GainKnobs.MeditarRende * LugarDoPotencialOculto(lugar));   // sem o lugar, como no DM (`Meditate.dm:12-15`)
         }
 
         if (baseKi <= baseKiMax)
@@ -144,10 +143,11 @@ public sealed partial class Fighter
             if (BP < 10 && (KiUnlockPercent == 1 || DmMath.Prob(rng, 50))
                 && DmMath.Prob(rng, 1) && DmMath.Prob(rng, 50)) BP += 1;
 
-            // (2026-10-16) a gravidade multiplica a luta -- ver `FatorDaGravidade`
+            // (2026-10-16) a gravidade multiplica a luta -- ver `FatorDaGravidade` (o potencial oculto nao: `LugarDoPotencialOculto`,
+            // `combatgains.dm:156-159`)
             double lugar = FatorDaGravidade();
             BP += CapCheck(GainKnobs.BPTick * BpGainBase() * Etechnique * SparMod * Egains * weight * mult * lugar);
-            BP += CapCheck(hiddenpotential * GainKnobs.BPTick * (hiddenpotential >= BP ? 1.0 / 6 : 1.0 / 12) * lugar);
+            BP += CapCheck(hiddenpotential * GainKnobs.BPTick * (hiddenpotential >= BP ? 1.0 / 6 : 1.0 / 12) * LugarDoPotencialOculto(lugar));
         }
 
         if (DmMath.Prob(rng, 20)) maxstamina += 0.01 * weight;
@@ -206,8 +206,7 @@ public sealed partial class Fighter
 
         if (baseKi <= baseKiMax && kamount != 0) baseKi += KiCapCheck(kamount);
 
-        if (train_med_to_hp) { hiddenpotential += amount / 15; CapHiddenPotential(); }
-        else if (BP < relBPmax && amount != 0) BP += CapCheck(amount);
+        if (BP < relBPmax && amount != 0) BP += CapCheck(amount);
     }
 
     /// <summary>
@@ -240,9 +239,9 @@ public sealed partial class Fighter
     // =====================================================================
     /// <summary>
     /// QUANTO A GRAVIDADE MULTIPLICA O TIQUE -- a gravidade de verdade do chao (o planeta mais o campo de maquina), nunca abaixo
-    /// de 1: o espaco (gravidade zero) nao zera o treino, so nao ajuda. Multiplica a parcela da atividade E a do potencial
-    /// escondido, no treino, na meditacao, na luta e no ki. Parado nao se ganha nada em gravidade nenhuma: ela multiplica o
-    /// que a atividade paga, e quem nao faz nada nao recebe nada pra multiplicar.
+    /// de 1: o espaco (gravidade zero) nao zera o treino, so nao ajuda. Multiplica a parcela da ATIVIDADE no treino, na meditacao,
+    /// na luta e no ki -- a do potencial oculto nao (dono, 2026-10-20: ver <see cref="LugarDoPotencialOculto"/>). Parado nao se
+    /// ganha nada em gravidade nenhuma: ela multiplica o que a atividade paga, e quem nao faz nada nao recebe nada pra multiplicar.
     ///
     /// ============================ ELA SO SOMAVA, E SOMAVA QUASE NADA (dono, 2026-10-16) ============================
     /// *"em 1x gravidade diz 4,8x e em 10x diz 15,63x oq daria uma grande diferença, pq eu lembro q no DM esses valores
@@ -270,6 +269,24 @@ public sealed partial class Fighter
         double gravidade = Planetgrav + gravmult;
         return 1 + Math.Max(gravidade - 1, 0) * Math.Max(GainKnobs.GlobalGravGain, 0);
     }
+
+    /// <summary>
+    /// O QUE O LUGAR FAZ COM O POTENCIAL OCULTO: nada -- 1, e a parcela pinga igual em qualquer chao, como no DM
+    /// (`Train.dm:26-29`, `Meditate.dm:12-15`, `combatgains.dm:156-159`: `hiddenpotential*BPTick*(1/N)`, sem gravidade, peso
+    /// ou zona). <paramref name="lugar"/> e o que a parcela da atividade da MESMA chamada leva, e e o que o defeito injetado devolve.
+    ///
+    /// ============================ OS 20 BILHOES (dono, 2026-10-20) ============================
+    /// *"teve um jogador q de alguma forma treinou na gravidade de 500x com peso no maximo ... ganhou 20 BILHOES de bp"*. De
+    /// 2026-10-16 a 2026-10-20 o lugar multiplicava o tique INTEIRO, potencial incluso (a escolha daquele dia, que o dono nao
+    /// tinha confirmado). A atividade e linear e pequena (base fixa x marcos); o potencial nao: a One Hundred da `relBPmax*2`
+    /// e a One Punch e a One Training `relBPmax*0,5` cada (`GanhoNaCompra`) -- de 14 a 20 vezes o BP do dia da compra -- e ele
+    /// nunca se gasta. A 500x com o peso no teto (8x) a parcela pingava 4000x a do DM: medido fora do jogo, um Majin de 1B com
+    /// as tres compradas com 1B ia a 14B em uma hora de treino e a 20B em tres (morto, o vigor nao acaba); no DM, a 1,03B. Sem
+    /// as compras nada muda: uns 270 mil de BP por hora nesse mesmo lugar. O dono escolheu "como no DM": o lugar multiplica o
+    /// esforco (treino, luta, meditacao, ki), e o potencial pinga cru.
+    /// ======================================================================================
+    /// </summary>
+    private static double LugarDoPotencialOculto(double lugar) => GainKnobs.PotencialOcultoComOLugarDeTeste ? lugar : 1;
 
     /// <summary>
     /// A MAESTRIA DE GRAVIDADE: o teto de aclimatacao so sobe encarando gravidade ACIMA dele -- a cada passe de ficha de todo jogador
@@ -307,12 +324,13 @@ public sealed partial class Fighter
     /// A conta e a razao entre o ganho de agora e o de uma sessao neutra (gravidade 1, sem peso,
     /// fora de zona especial) DO MESMO CORPO: `FatorDaGravidade * weight * zona`. Gravidade e LINEAR,
     /// entao 10x de gravidade le 10x -- e desde 2026-10-16 e isso que o tique de treino PAGA (antes a
-    /// gravidade so somava uma parcela de `gravidade/1500`, e o painel mentia).
+    /// gravidade so somava uma parcela de `gravidade/1500`, e o painel mentia). E o numero do ESFORCO: o
+    /// potencial oculto pinga o mesmo em qualquer lugar (2026-10-20, <see cref="LugarDoPotencialOculto"/>).
     ///
-    /// SEM NADA, 1x (dono, 2026-10-16: *"o bp gain mais baixo quando vc n tem aclimation nem nada deveria
-    /// ser 1x e nao 1,25"*). A AREA -- `Egains` (o multiplicador de treino da raca, do rabo, da Sala),
-    /// `StamBPGainMod` (o vigor: 1,25x cheio, 0,5x no fundo) e o `GainsRate` -- continua pagando no tique,
-    /// mas e do CORPO e nao do lugar, e entrava aqui como o 1,25 que o dono via parado em 1x.
+    /// O VIGOR ENTRA NO NUMERO (dono, 2026-10-21: *"coloque no bp gain no painel esse multiplicador de
+    /// vigor, pros jogadores saberem"*). `StamBPGainMod` e 1,25 com o tanque em 62,5% ou mais e 0,5 no
+    /// fundo. Em 2026-10-16 ele tinha saido daqui pra o 1x de gravidade nao aparecer como 1,25; o tique
+    /// sempre pagou o vigor, e o painel agora mostra o que paga.
     ///
     /// ============================ UMA DIVERGENCIA DELIBERADA DO DM ============================
     /// O `bp_gain_mult()` original **nao inclui o `htc_gain_mult()`**: dentro da Sala do Tempo o
@@ -329,7 +347,7 @@ public sealed partial class Fighter
         // prende entre 1 e 8.
         double wmult = weight > 1 ? weight : 1;
 
-        return Math.Max(gmult, 0.01) * wmult * Math.Max(zoneGainMult, 0);
+        return Math.Max(gmult, 0.01) * wmult * Math.Max(zoneGainMult, 0) * Math.Max(StamBPGainMod, 0);
     }
 
     /// <summary>
@@ -382,13 +400,6 @@ public sealed partial class Fighter
             }
         }
         else Gaintimer--;
-    }
-
-    /// <summary>Teto do potencial escondido, ancorado no maior BP do servidor.</summary>
-    private void CapHiddenPotential()
-    {
-        hiddenpotential = Math.Min(GainKnobs.TopBP * 5, hiddenpotential);
-        hiddenpotential = Math.Max(GainKnobs.TopBP / 25, hiddenpotential);
     }
 
     // =====================================================================

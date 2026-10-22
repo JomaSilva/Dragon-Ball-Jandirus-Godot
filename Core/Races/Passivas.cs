@@ -58,8 +58,8 @@ public static class Passivas
 		MeioSaiyajinRaca => KitRacial.MeioSaiyajin,
 		"Human" => KitRacial.Humano,
 		"Namekian" => KitRacial.Namekuseijin,
-		"Icer" when classe == ClasseMutante => KitRacial.FrostDemon | KitRacial.Mutante,
-		"Icer" => KitRacial.FrostDemon,
+		FormasDeFrost.Raca or FormasDeFrost.RacaLegada when classe == ClasseMutante => KitRacial.FrostDemon | KitRacial.Mutante,
+		FormasDeFrost.Raca or FormasDeFrost.RacaLegada => KitRacial.FrostDemon,
 		_ => KitRacial.Nenhum,
 	};
 

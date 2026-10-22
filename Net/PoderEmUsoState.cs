@@ -22,6 +22,9 @@ public enum BitsDoPoderEmUso : byte
 
 	/// <summary>(2026-10-15) Furioso: a raiva EXTREMA (`NivelDeRaiva.Extrema`). O HUD escreve "FURIOSO".</summary>
 	Furioso = 8,
+
+	/// <summary>(2026-10-21) Irritado: o degrau abaixo da raiva comum. O HUD escreve "IRRITADO".</summary>
+	Irritado = 16,
 }
 
 /// <summary>
@@ -42,6 +45,7 @@ public readonly record struct PoderEmUsoState(byte Porcento, BitsDoPoderEmUso Bi
 	public bool Relaxado => (Bits & BitsDoPoderEmUso.Relaxado) != 0;
 	public bool ComRaiva => (Bits & BitsDoPoderEmUso.ComRaiva) != 0;
 	public bool Furioso => (Bits & BitsDoPoderEmUso.Furioso) != 0;
+	public bool Irritado => (Bits & BitsDoPoderEmUso.Irritado) != 0;
 
 	/// <summary>Nada fora do padrao: 100% e a vista. E quando o HUD nao escreve linha nenhuma.</summary>
 	/// (A raiva nao conta: ela tem a linha dela no HUD, e um corpo com raiva usando o poder inteiro e a vista continua

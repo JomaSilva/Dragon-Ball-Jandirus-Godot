@@ -72,6 +72,7 @@ public sealed partial class GameServer
 		AdormecerAEstatua(sig);
 		EsquecerAsEsperas(sig);
 		EsquecerOAprendiz(sig);   // (2026-10-19) o vinculo de aprendiz de Kaioshin era do personagem que saiu da vaga
+		EsquecerAsAmizades(sig);   // (2026-10-21) os lacos de amizade com os habitantes (os aliados vao embora com a ficha) -- `GameServer.Amizade.cs`
 	}
 
 	/// <summary>

@@ -273,7 +273,9 @@ public partial class MenuJogo
 	/// filtrado, e verb sem linha na tabela nao tem requisito e aparece. Devolve nulo quando nao desenhou.
 	/// ==================================================================================================
 	/// </summary>
-	private static Button? BotaoDeVerbo(GameClient cli, string rotulo, string cmd, string arg, string dica, Control pai)
+	/// <param name="aoApertar">(2026-10-22) O que o botao faz, quando nao e mandar o verbo: o "Erguer Estátua do Dragão" abre o menu da
+	/// estatua. O requisito continua sendo o do verbo -- o botao so nasce pra quem o servidor atenderia.</param>
+	private static Button? BotaoDeVerbo(GameClient cli, string rotulo, string cmd, string arg, string dica, Control pai, Action? aoApertar = null)
 	{
 		if (!RequisitosDosVerbos.DoVerbo(cmd, arg).Atende(PosseDoCliente.Atual)) return null;
 
@@ -285,7 +287,7 @@ public partial class MenuJogo
 		};
 		b.AddThemeFontSizeOverride("font_size", 12);
 		string c = cmd, a = arg;
-		b.Pressed += () => cli.SendVerbo(c, a);
+		b.Pressed += aoApertar ?? (() => cli.SendVerbo(c, a));
 		pai.AddChild(b);
 		return b;
 	}
@@ -522,6 +524,8 @@ public partial class MenuJogo
 			  cli.MinhasSupers > 0 ? Tema.Destaque : null, corpo);
 
 		GridContainer grade = GradeDeBotoes(corpo);
+		// (2026-10-22) o "Erguer Estátua do Dragão" abre o menu da estatua, no mundo em que se esta
+		Action abrirAEstatua = () => JanelaDaEstatua.Instancia?.AbrirParaErguer(cli.Zone.Name, cli.NomeDoLugar);
 		foreach ((string rotulo, string cmd, string arg, string dica) in
 			new (string, string, string, string)[]
 			{
@@ -534,23 +538,12 @@ public partial class MenuJogo
 				("INVOCAR", "db_invocar", "",
 					"com as sete reunidas: no chão ao seu redor ou com você"),
 
+				// (2026-10-22) O MENU DA ESTATUA: este botao abre a janela de criacao (`JanelaDaEstatua`) -- o nome do dragao, os pedidos
+				// por invocacao, os desejos que ele atende e o desejo supremo (que era a porta dos dois "Erguer + gravar o SUPREMO": ele
+				// continua sendo comprado so na hora de erguer, `namekian.dm:101-109`, e agora e uma caixa do menu). Ver o laco abaixo.
 				("Erguer Estátua do Dragão", "db_estatua", "",
-					"só num mundo que você domine (ou na Terra, se for o Guardião)"),
-
-				// ============================ ELE E A UNICA PORTA DO DESEJO SUPREMO ============================
-				// `namekian.dm:101-109`: o "Strongest in the Universe" nao sai da escada de poder -- ele e
-				// COMPRADO por 2.000.000 de zeni **na hora de erguer a estatua**, e nunca depois. No
-				// original isso e um `alert()` que aparece sozinho; aqui virou argumento, e um argumento
-				// sem botao seria um desejo que so existe pra quem digita verbo. Segundo botao, e nao um
-				// campo de texto, porque a escolha e binaria.
-				// ========================================================================================
-				("Erguer + gravar o SUPREMO (2.000.000 zeni)", "db_estatua", "supremo",
-					"grava nestas esferas o desejo O MAIS FORTE DO UNIVERSO -- a única forma de ele "
-					+ "existir num set de jogador. Cobra na hora"),
-				// O MESMO GESTO, PAGO EM RECURSOS (dono, 2026-10-10): o dobro, e a moeda vai no fim do argumento.
-				("Erguer + gravar o SUPREMO (4.000.000 recursos)", "db_estatua",
-					Jandirus.Core.Economia.Recurso.PedidoPago("supremo", Jandirus.Core.Economia.Moeda.Recursos),
-					"o mesmo desejo O MAIS FORTE DO UNIVERSO, pago em recursos (o dobro). Cobra na hora"),
+					"abre o menu da estátua: o nome do dragão, quantos pedidos, quais desejos e o desejo supremo. Só num mundo que "
+					+ "você domine (ou na Terra, se for o Guardião)"),
 				("Despertar as esferas", "db_reviver", "",
 					"só vivo -- é a única volta de um set inerte"),
 
@@ -559,13 +552,13 @@ public partial class MenuJogo
 				("Reivindicar Super Esfera", "sdb_reivindicar", "",
 					"chegue perto dela no espaço. 10s se estiver livre, 5 MINUTOS se for de alguém -- "
 					+ "e o dono é avisado"),
-				("Chamar o Super Shenron", "sdb_invocar", "",
+				("Chamar o Super Shenlong", "sdb_invocar", "",
 					"com as sete Super Esferas. A Língua dos Deuses é a Fase 2"),
 			})
 			// O RECORTE (de LUGAR e de POSSE) e o da tabela de requisitos, e quem o aplica e o
 			// `BotaoDeVerbo`: Super so no espaco, estatua e esferas so em terra, e cada botao so pra quem
 			// tem o que ele pede. Botao que nunca poderia funcionar dali -- ou com este corpo -- e ruido.
-			BotaoDeVerbo(cli, rotulo, cmd, arg, dica, grade);
+			BotaoDeVerbo(cli, rotulo, cmd, arg, dica, grade, cmd == "db_estatua" ? abrirAEstatua : null);
 
 		// NENHUM BOTAO NASCEU (um mundo sem estatua, visto por quem nao tem radar nem pode erguer uma): a
 		// grade vazia sai, senao ela deixa um vao no cartao.
@@ -617,7 +610,7 @@ public partial class MenuJogo
 	/// </summary>
 	private void BlocoDoPedido(GameClient cli, bool noEspaco)
 	{
-		VBoxContainer corpo = Cartao(noEspaco ? "O pedido ao Super Shenron" : "O pedido ao dragão");
+		VBoxContainer corpo = Cartao(noEspaco ? "O pedido ao Super Shenlong" : "O pedido ao dragão");
 		GridContainer grade = GradeDeBotoes(corpo);
 
 		// O ROTULO "Ver os desejos" E CONTRATO: a `--diagnav` e a `--diagabas` acham este botao pelo texto, em
@@ -627,7 +620,7 @@ public partial class MenuJogo
 		// preco esperando) chega a janela dele estando num planeta.
 		BotaoDeVerbo(cli, "Ver os desejos", "db_menu", "",
 			noEspaco
-				? "abre a janela do Super Shenron: o que ele atende, o que falta pra você pedir, e os gestos da "
+				? "abre a janela do Super Shenlong: o que ele atende, o que falta pra você pedir, e os gestos da "
 				+ "guarda das sete (emprestar, retomar, aceitar, pronunciar)"
 				: "abre a janela de desejos: o que o dragão deste mundo atende, quantos pedidos restam e, com ele "
 				+ "de pé, o pedido. Ela abre sozinha quando você invoca",
@@ -643,10 +636,10 @@ public partial class MenuJogo
 			grade);
 
 		Nota(noEspaco
-			? "Só quem fala a LÍNGUA DOS DEUSES desperta o Super Shenron. Quem não fala empresta as sete a quem "
+			? "Só quem fala a LÍNGUA DOS DEUSES desperta o Super Shenlong. Quem não fala empresta as sete a quem "
 			+ "fale -- pela janela -- e o desejo continua sendo de quem emprestou."
-			: "A janela de desejos abre sozinha quando o dragão sobe. Quem ergueu a estátua muda nela os pedidos "
-			+ "por invocação.",
+			: "A janela de desejos abre sozinha quando o dragão sobe. Quem ergueu a estátua configura nela o dragão: "
+			+ "o nome, os pedidos por invocação e os desejos que ele atende.",
 			corpo);
 	}
 

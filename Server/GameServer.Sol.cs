@@ -54,6 +54,13 @@ public sealed partial class GameServer
 	internal static bool PilotoQueimaNaEstrelaDeTeste;
 
 	/// <summary>
+	/// DEFEITO INJETADO (bancada --solteste): a estrela volta a poupar quem regenera membro decepado -- o jogo de antes de
+	/// 2026-10-21, em que o Majin desmaiava e cozinhava para sempre. Falso em jogo, sempre. Lido pela propria linha da morte
+	/// em <see cref="Queimar"/>.
+	/// </summary>
+	internal static bool SolPoupaRegeneradorDeTeste;
+
+	/// <summary>
 	/// O TIQUE DO SOL -- roda dentro do <see cref="TickDoEspaco"/>, que ja e por jogador e por tique
 	/// e ja devolveu quem nao esta no espaco.
 	///
@@ -176,7 +183,15 @@ public sealed partial class GameServer
 		// A MORTE PRIMEIRO, O NOCAUTE DEPOIS -- e nao o contrario. Um corpo que zerou um nucleo
 		// satisfaz as DUAS perguntas (`DeveMorrer` implica `DeveNocautear`), e nocautear antes
 		// deixaria o cadaver de pe por um tique com a bandeira errada.
-		if (c.Corpo.DeveMorrer() && !c.Corpo.RegeneraDecepado)
+		//
+		// (2026-10-21) A ESTRELA MATA NO LIMIAR, INCLUSIVE QUEM REFAZ MEMBRO. O dono: cair na estrela
+		// mata qualquer vivo, ate o Majin. Quem regenera membro (Majin, bio com sangue que regenera,
+		// Kai, Meta, Tsujin, Yardrat) caia no nocaute e cozinhava para sempre -- o nocaute derruba o
+		// voo e no espaco sem voo ninguem sai. O desfecho e o mesmo `Morrer()` de quem nao regenera:
+		// o corpo e consumido, nao o coma nem o "se desfaz" do soco (esse volta inteiro). O ki do
+		// Majin ja mata pela mesma porta (`QuandoONucleoCede` com porKi). SolPoupaRegeneradorDeTeste
+		// devolve a fuga antiga so para a bancada medir que a regua reprova.
+		if (c.Corpo.DeveMorrer() && !(c.Corpo.RegeneraDecepado && SolPoupaRegeneradorDeTeste))
 		{
 			// O RETORNO E OLHADO: a Aura of Destruction nega mortes, e ela nega esta tambem. Quem
 			// foi salvo continua queimando no proximo tique -- e o certo: a aura barra a morte, nao

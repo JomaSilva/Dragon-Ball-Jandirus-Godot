@@ -57,7 +57,9 @@ namespace Jandirus.Server;
 ///   N. O SR. KAIOH E O KORIN -- no lugar do DM (o Sr. Kaioh na ilha do norte), com a conversa e as licoes dele (item 18).
 ///   J. O PASSE DO ENMA -- 100.000 zeni, sete dias do jogo entre os vivos: morto, de aureola e DE PE; de volta a mesa do Enma
 ///      no fim (item 11).
-///   L. A REENCARNACAO -- o personagem acaba pra sempre, a conta guarda o eco, e o proximo nasce com 10% do BP (item 7).
+///   L. A REENCARNACAO -- o personagem acaba pra sempre, a conta guarda o eco, e o proximo nasce com o BP da raca e o BP do anterior
+///      como potencial oculto (item 7; 2026-10-22, antes 10% do BP). E o potencial no Ki (2026-10-22): engorda o Ki maximo, que nao
+///      cai quando o BP o alcanca; nao mexe na regen nem no teto seguro da carga; a raiva maxima continua lendo.
 ///   T. O TRONO DE VEGETA -- o Rei Vegeta e o Principe nascem so com o trono vago; matar o Rei sendo Saiyajin o toma
 ///      (item 17).
 ///   D. O DESEJO DE LIBERAR O POTENCIAL -- de toda raca (so o potencial); o Namekuseijin com o poder do ki divino ganha
@@ -178,6 +180,9 @@ public sealed partial class GameServer
 		VoltaNaFaixaDoDmDeTeste = false;
 		ZoneCollision.QuemVoaSaiDoMapaDeTeste = false;
 		EcoDaReencarnacaoIgnoradoDeTeste = false;
+		EcoDeDezPorCentoDeTeste = false;
+		Fighter.PotencialNoKiCaiDeTeste = false;
+		Fighter.PotencialNaRegenENaCargaDeTeste = false;
 		PasseDeitaDeTeste = false;
 		PasseSemVoltaDeTeste = false;
 		Povoamento.TronoIgnoradoDeTeste = false;
@@ -241,7 +246,7 @@ public sealed partial class GameServer
 		AfirmarV30("os prazos da Supernova: o sol nasce brasa e chega ao cheio no fim da carga, cai os tres tiles do DM, e a explosao e a carga mais a queda",
 				   prazos);
 
-		ServerPlayer chefe = ForjarV2("Freeza", TerraFirmeG12(4), 500_000, "Icer");
+		ServerPlayer chefe = ForjarV2("Freeza", TerraFirmeG12(4), 500_000, "Frost Demon");
 		bool livreAntes = OcupacaoDe(chefe) == Ocupacao.Livre && PodeMexerOCorpo(chefe) && !chefe.Combate!.Intocavel;
 		List<string> fala = Ouvir(() => ComecarASupernova(chefe));
 		bool concentrando = OcupacaoDe(chefe) == Ocupacao.Supernova && chefe.Combate!.Intocavel && !PodeMexerOCorpo(chefe)
@@ -719,7 +724,7 @@ public sealed partial class GameServer
 	// =====================================================================
 	private void AReencarnacaoV30()
 	{
-		GD.Print("[v030] --- L) a reencarnacao pelo Enma: o personagem acaba, e o proximo da conta nasce com 10% do poder (item 7) ---");
+		GD.Print("[v030] --- L) a reencarnacao pelo Enma: o personagem acaba, e o proximo da conta nasce com o BP da raca e o poder dele como potencial oculto (item 7; 2026-10-22) ---");
 		LimparTudoDaBancada();
 		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
 		Obra? enma = _noChao.Find(o => o.Tipo == Alem.TipoDoEnma && o.Zona.Equals(alem));
@@ -737,7 +742,6 @@ public sealed partial class GameServer
 		pl.Karma = 0;
 		AccountSave acc = palco.Emprestar(pl.Conta, pl.Slot, AccountStore.DeJogador(pl, NowMs()));
 		var ficha = new Jandirus.Core.Races.CharacterDraft { Name = "Renascido", Race = "Human", Planet = "Earth", Gender = "Male", Age = 18 };
-		double baseDoNascido = Nascer(ficha, "Renascido").BP;
 
 		// O VIVO, O NOME ERRADO E O CORACAO NEGRO: nada se apaga
 		pl.Ficha.dead = false;
@@ -755,32 +759,52 @@ public sealed partial class GameServer
 				   $"{Ultimos(vivo)} / {Ultimos(errado)} / inferno {noInferno}");
 
 		// O NOME CERTO (caixa e espacos nao importam): o personagem acaba, e a conta guarda o eco -- no disco tambem
-		double bpAntigo = pl.Ficha.BP, esperado = DmMath.Round(bpAntigo * 0.1);
+		double bpAntigo = pl.Ficha.BP;
 		List<string> certo = Ouvir(() => EnmaReencarnar(pl, "  renascente "));
 		Reencarnacao? noDisco = _store?.Carregar(pl.Conta)?.Reencarnacao;
-		AfirmarV30("**REENCARNAR APAGA O PERSONAGEM PARA SEMPRE**: o slot vaga, o corpo nao se grava mais, e a conta guarda o ECO -- 10% do BP base (`round(oldBP * 0.1)`) --, gravado no MESMO arquivo que perdeu o slot",
-				   acc.Slots[pl.Slot] == null && pl.PersonagemConsumido && acc.Reencarnacao?.BPDoNovo() == esperado && noDisco?.BPDoNovo() == esperado,
-				   $"slot {(acc.Slots[pl.Slot] == null ? "vazio" : "cheio")}; consumido {pl.PersonagemConsumido}; eco {acc.Reencarnacao?.BPDoNovo()} (disco {noDisco?.BPDoNovo()}), esperado {esperado}");
-		AfirmarV30("...e o Enma diz a frase do DM (\"Uma alma que escolhe recomecar...\") e o \"10%\" -- sem numero de poder",
-				   Disse(certo, "recomeçar") && Disse(certo, "10%") && !certo.Exists(l => l.Contains($"{bpAntigo:0}") || l.Contains($"{esperado:0}")),
-				   Ultimos(certo));
+		AfirmarV30("**REENCARNAR APAGA O PERSONAGEM PARA SEMPRE**: o slot vaga, o corpo nao se grava mais, e a conta guarda o ECO -- o BP base inteiro --, gravado no MESMO arquivo que perdeu o slot",
+				   acc.Slots[pl.Slot] == null && pl.PersonagemConsumido && acc.Reencarnacao?.BPAntigo == bpAntigo && noDisco?.BPAntigo == bpAntigo,
+				   $"slot {(acc.Slots[pl.Slot] == null ? "vazio" : "cheio")}; consumido {pl.PersonagemConsumido}; eco {acc.Reencarnacao?.BPAntigo} (disco {noDisco?.BPAntigo}), esperado {bpAntigo}");
+		AfirmarV30("**...E O ENMA PROMETE UM POTENCIAL MUITO MAIOR** (dono, 2026-10-22: *\"n faça o enma dizer em detalhes q o hidden dele vai ser o bp\"*): a frase do DM (\"Uma alma que escolhe recomecar...\"), sem numero de poder e sem a regra por extenso",
+				   Disse(certo, "recomeçar") && Disse(certo, "potencial muito maior") && Disse(errado, "potencial muito maior")
+				   && !certo.Exists(l => l.Contains($"{bpAntigo:0}") || l.Contains("10%")),
+				   $"{Ultimos(certo)} / {Ultimos(errado)}");
 
-		// O PROXIMO NASCE COM O ECO, UMA VEZ SO
+		// O PROXIMO NASCE COM O ECO, UMA VEZ SO -- e a REGUA da regra nova e uma so, pra ela reprovar nos dois defeitos de baixo
+		bool NasceuPelaRegra(Fighter f, double bpNoNascimento, double potencialNoNascimento) =>
+			f.BP == bpNoNascimento && f.hiddenpotential == potencialNoNascimento + bpAntigo;
 		Fighter novo = Nascer(ficha, "Renascido");
+		double bpDoNovo = novo.BP, potencialDoNovo = novo.hiddenpotential, kiDoNovo = novo.MaxKi;
 		Reencarnacao? aplicado = AplicarOEcoDaReencarnacao(acc, novo);
 		Fighter segundo = Nascer(ficha, "Segundo");
+		double potencialDoSegundo = segundo.hiddenpotential;
 		Reencarnacao? deNovo = AplicarOEcoDaReencarnacao(acc, segundo);
-		AfirmarV30("**O PROXIMO PERSONAGEM NASCE COM 10% DO PODER** (`BP = max(BP, round(oldBP * 0.1))`, o `CheckIncarnate` do DM) -- e o eco e consumido: o segundo a nascer nasce do zero",
-				   aplicado != null && novo.BP == Math.Max(baseDoNascido, esperado) && novo.BP > baseDoNascido && deNovo == null && acc.Reencarnacao == null && segundo.BP < novo.BP,
-				   $"base {baseDoNascido}; novo {novo.BP}; segundo {segundo.BP}; esperado {esperado}");
+		AfirmarV30("**O PROXIMO PERSONAGEM NASCE COM O BP DA RACA E O PODER DO ANTERIOR COMO POTENCIAL OCULTO** (dono, 2026-10-22: *\"o bp inicial é o da raça normal\"*, *\"todo bp da vida anterior vira potencial\"*) -- e o eco e consumido: o segundo a nascer nasce sem ele",
+				   aplicado != null && NasceuPelaRegra(novo, bpDoNovo, potencialDoNovo)
+				   && deNovo == null && acc.Reencarnacao == null && segundo.hiddenpotential == potencialDoSegundo,
+				   $"BP {bpDoNovo} -> {novo.BP}; potencial {potencialDoNovo} -> {novo.hiddenpotential} (esperado +{bpAntigo}); segundo {potencialDoSegundo} -> {segundo.hiddenpotential}");
+		AfirmarV30("**...E NASCE DESCANSADO**: o potencial engorda o Ki maximo, e o renascido entra com o tanque novo cheio",
+				   novo.MaxKi > kiDoNovo * 2 && novo.Ki == novo.MaxKi, $"Ki maximo {kiDoNovo:0} -> {novo.MaxKi:0}; Ki {novo.Ki:0}");
 
 		acc.Reencarnacao = new Reencarnacao { De = "Renascente", BPAntigo = bpAntigo, Fracao = Alem.FracaoDaReencarnacao };
 		EcoDaReencarnacaoIgnoradoDeTeste = true;
 		Fighter semEco = Nascer(ficha, "SemEco");
-		AplicarOEcoDaReencarnacao(acc, semEco);
-		EcoDaReencarnacaoIgnoradoDeTeste = false;
-		AfirmarV30("   DEFEITO INJETADO (o eco ignorado, o jogo de antes): o novo nasceria do zero -- a afirmacao de cima ficaria vermelha (defeito injetado: o eco que nao nasce)",
-				   semEco.BP < esperado, $"{semEco.BP}");
+		double bpSemEco = semEco.BP, potencialSemEco = semEco.hiddenpotential;
+		try { AplicarOEcoDaReencarnacao(acc, semEco); }
+		finally { EcoDaReencarnacaoIgnoradoDeTeste = false; }
+		AfirmarV30("   DEFEITO INJETADO (o eco ignorado, o jogo de antes da v0.3.0): o novo nasceria sem nada -- a regua de cima REPROVA (defeito injetado: o eco que nao nasce)",
+				   !NasceuPelaRegra(semEco, bpSemEco, potencialSemEco) && semEco.hiddenpotential == potencialSemEco, $"potencial {semEco.hiddenpotential}");
+
+		acc.Reencarnacao = new Reencarnacao { De = "Renascente", BPAntigo = bpAntigo, Fracao = Alem.FracaoDaReencarnacao };
+		EcoDeDezPorCentoDeTeste = true;
+		Fighter deAntes = Nascer(ficha, "DeAntes");
+		double bpDeAntes = deAntes.BP, potencialDeAntes = deAntes.hiddenpotential;
+		try { AplicarOEcoDaReencarnacao(acc, deAntes); }
+		finally { EcoDeDezPorCentoDeTeste = false; }
+		AfirmarV30("(defeito injetado: a regra de 2026-10-15) o novo nasceria com 10% do BP e SEM potencial -- a regua de cima REPROVA",
+				   !NasceuPelaRegra(deAntes, bpDeAntes, potencialDeAntes) && deAntes.BP == Math.Max(bpDeAntes, DmMath.Round(bpAntigo * 0.1))
+				   && deAntes.hiddenpotential == potencialDeAntes,
+				   $"BP {bpDeAntes} -> {deAntes.BP}; potencial {deAntes.hiddenpotential}");
 
 		// A DESPEDIDA NO FIO: o cliente le o motivo, a vaga e a frase -- e carga que nao e despedida le nulo
 		byte[] carga = FioDaDespedida.Escrever(FioDaDespedida.Motivo.Reencarnou, 2, FraseDaReencarnacao("Renascente"));
@@ -790,6 +814,54 @@ public sealed partial class GameServer
 		AfirmarV30("...e a desconexao leva a DESPEDIDA (`FioDaDespedida`): o motivo, a vaga e a frase atravessam o fio -- e carga vazia ou de lixo nao vira despedida",
 				   lida is { Motivo: FioDaDespedida.Motivo.Reencarnou, Slot: 2 } d && d.Texto == FraseDaReencarnacao("Renascente") && lixo && carga.Length < 1000,
 				   $"{lida}; {carga.Length} bytes");
+
+		// ---- O POTENCIAL NO KI (dono, 2026-10-22) ----
+		// *"caso o novo teto esteja abaixo do teto anterior por conta do potencial, o teto n cai"* e *"potencial n deveria afetar regen,
+		// carga do ki, a raiva pode manter"*. Um recem-nascido com o potencial de quem renasceu de 1B, posto a MAO (e nao pelo eco: estas
+		// reguas tem os mutantes delas e nao podem depender da linha da reencarnacao), com as pericias de circulacao e de reuniao em 100 --
+		// sem elas o log8 do teto seguro fica abaixo do piso de 130% com ou sem o potencial, e a regua da carga nao veria nada.
+		Fighter potente = Nascer(ficha, "Potente");
+		potente.kicirculationskill = potente.kigatheringskill = 100;
+		potente.Statify();
+		double bpDoPotente = potente.BP, kiSemPotencial = potente.MaxKi, regenSemPotencial = potente.KIregen / potente.MaxKi,
+			   cargaSemPotencial = potente.kicapacity / potente.MaxKi, raivaSemPotencial = potente.MaxAnger;
+		potente.hiddenpotential += 1e9;
+		potente.Statify();
+		double multiplicador = Math.Max(DmMath.Log(4, potente.hdnptltoBP), 1);
+		AfirmarV30("**O POTENCIAL ENGORDA O KI MAXIMO** (dono: *\"todo bp da vida anterior vira potencial e q afeta o ki max\"*): `log4(potencial / BP)` vezes o de antes",
+				   multiplicador > 5 && Math.Abs(potente.MaxKi / kiSemPotencial / multiplicador - 1) < 1e-6,
+				   $"multiplicador {multiplicador:0.##}; Ki maximo {kiSemPotencial:0} -> {potente.MaxKi:0}");
+		AfirmarV30("**...MAS NAO A REGEN DE KI**: o tanque maior enche no MESMO ritmo, em %, de quem nao tem potencial",
+				   multiplicador > 5 && Math.Abs(potente.KIregen / potente.MaxKi / regenSemPotencial - 1) < 1e-6,
+				   $"regen {regenSemPotencial * 100:0.######}% -> {potente.KIregen / potente.MaxKi * 100:0.######}% do tanque");
+		AfirmarV30("**...NEM O TETO SEGURO DA CARGA**: em % do Ki maximo, o mesmo de antes",
+				   multiplicador > 5 && Math.Abs(potente.kicapacity / potente.MaxKi / cargaSemPotencial - 1) < 1e-6,
+				   $"{cargaSemPotencial * 100:0.#}% -> {potente.kicapacity / potente.MaxKi * 100:0.#}%");
+		AfirmarV30("...e a RAIVA MAXIMA continua lendo o potencial (dono: *\"a raiva pode manter\"*)",
+				   potente.MaxAnger > raivaSemPotencial * 2, $"{raivaSemPotencial:0} -> {potente.MaxAnger:0}");
+
+		// O BP ALCANCA O POTENCIAL: o multiplicador volta a 1, e o Ki maximo fica no tamanho do auge
+		double kiNoAuge = potente.MaxKi;
+		potente.BP = potente.hiddenpotential;
+		potente.Statify();
+		AfirmarV30("**O KI MAXIMO NAO CAI QUANDO O BP ALCANCA O POTENCIAL** (dono: *\"o teto n cai, pq n faz sentido o cara perder ki max pq ele atingiu o potencial\"*): com o multiplicador de volta a 1, o tanque fica do tamanho do auge",
+				   potente.hdnptltoBP <= 1 + 1e-9 && Math.Abs(potente.MaxKi / kiNoAuge - 1) < 1e-6,
+				   $"razao {potente.hdnptltoBP:0.####}; Ki maximo {kiNoAuge:0} -> {potente.MaxKi:0}");
+		Fighter.PotencialNoKiCaiDeTeste = true;
+		try { potente.Statify(); }
+		finally { Fighter.PotencialNoKiCaiDeTeste = false; }
+		AfirmarV30("(defeito injetado: o Ki maximo do DM) com o BP no potencial ele cairia ao de quem nunca teve potencial -- a regua de cima REPROVA",
+				   Math.Abs(potente.MaxKi / kiSemPotencial - 1) < 1e-6, $"cairia a {potente.MaxKi:0} (sem potencial {kiSemPotencial:0}; no auge {kiNoAuge:0})");
+
+		// E A REGEN E A CARGA DO DM: o mesmo corpo de volta ao BP de recem-nascido (o multiplicador alto de novo), com o potencial nas duas
+		potente.BP = bpDoPotente;
+		Fighter.PotencialNaRegenENaCargaDeTeste = true;
+		try { potente.Statify(); }
+		finally { Fighter.PotencialNaRegenENaCargaDeTeste = false; }
+		double regenComoNoDm = potente.KIregen / potente.MaxKi, cargaComoNoDm = potente.kicapacity / potente.MaxKi;
+		AfirmarV30("(defeito injetado: a regen e a carga do DM) com o potencial a regen em % sairia multiplicada por ele e o teto seguro maior -- as duas reguas de cima REPROVAM",
+				   regenComoNoDm > regenSemPotencial * 5 && cargaComoNoDm > cargaSemPotencial * 1.1,
+				   $"regen {regenComoNoDm * 100:0.######}%; carga {cargaComoNoDm * 100:0.#}%");
 	}
 
 	// =====================================================================
@@ -2204,7 +2276,7 @@ public sealed partial class GameServer
 		List<string> tabela = [.. Jandirus.Core.Races.SorteioDeRaca.Pesos.Select(p => p.Raca)];
 		int Peso(string r) => Jandirus.Core.Races.SorteioDeRaca.Pesos.First(p => p.Raca == r).Peso;
 		bool cobre = tabela.Distinct().Count() == tabela.Count && criacao.SetEquals(tabela);
-		bool doDono = Peso("Alien") == 22 && Peso("Human") == 20 && Peso("Namekian") == 18 && Peso("Saiyan") == 15 && Peso("Icer") == 8 && Peso("Majin") == 4;
+		bool doDono = Peso("Alien") == 22 && Peso("Human") == 20 && Peso("Namekian") == 18 && Peso("Saiyan") == 15 && Peso("Frost Demon") == 8 && Peso("Majin") == 4;
 		var tresMaiores = Jandirus.Core.Races.SorteioDeRaca.Pesos.OrderByDescending(p => p.Peso).Take(3).Select(p => p.Raca).ToHashSet();
 		AfirmarV30("**A TABELA DO DONO** (*\"alien 22%, terraqueo 20%, namek 18%, saiyajin 15%, frost demon 8%, majin 4% ... alien, terraqueo e namek sempre terao a maior chance\"*): os seis numeros literais, as outras treze racas da criacao com 1% cada, a soma em 100 -- e a tabela tem TODA raca que a criacao oferece, e nenhuma outra",
 				   cobre && doDono && Jandirus.Core.Races.SorteioDeRaca.SomaDosPesos == 100 && tresMaiores.SetEquals(["Alien", "Human", "Namekian"]),
@@ -2230,7 +2302,7 @@ public sealed partial class GameServer
 		var m = Medir();
 		double Pct(string r) => 100.0 * m.Contagem.GetValueOrDefault(r) / N;
 		bool perto = Jandirus.Core.Races.SorteioDeRaca.Pesos.All(p => Math.Abs(Pct(p.Raca) - p.Peso) <= Math.Max(0.6, p.Peso * 0.08));
-		AfirmarV30($"**O SORTEIO SEGUE A TABELA**: em {N} sorteios cada raca sai na porcentagem dela (Alien {Pct("Alien"):0.0}%, Humano {Pct("Human"):0.0}%, Namek {Pct("Namekian"):0.0}%, Saiyajin {Pct("Saiyan"):0.0}%, Frost {Pct("Icer"):0.0}%, Majin {Pct("Majin"):0.0}%) -- e toda raca da criacao sai",
+		AfirmarV30($"**O SORTEIO SEGUE A TABELA**: em {N} sorteios cada raca sai na porcentagem dela (Alien {Pct("Alien"):0.0}%, Humano {Pct("Human"):0.0}%, Namek {Pct("Namekian"):0.0}%, Saiyajin {Pct("Saiyan"):0.0}%, Frost {Pct("Frost Demon"):0.0}%, Majin {Pct("Majin"):0.0}%) -- e toda raca da criacao sai",
 				   perto && Jandirus.Core.Races.SorteioDeRaca.Pesos.All(p => m.Contagem.GetValueOrDefault(p.Raca) > 0),
 				   string.Join(" ", Jandirus.Core.Races.SorteioDeRaca.Pesos.Select(p => $"{p.Raca} {Pct(p.Raca):0.0}")));
 		double pctPrimal = 100.0 * m.Primal / Math.Max(1, m.Saiyan);

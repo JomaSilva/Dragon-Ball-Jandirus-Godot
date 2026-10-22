@@ -241,7 +241,7 @@ public sealed partial class GameServer
 			// `NascerNpc` chama), em doze sementes de Icer; e os Frost que ESTE torneio nasceu, de verdade.
 			{
 				Jandirus.Core.Npc.MoldeDeNpc molde = _moldes!.Get(cfg.MoldeDoNpc)!;
-				string[] Bases() => [.. Enumerable.Range(0, 12).Select(i => AparenciaDeNpc(molde, "Icer", "Male", (ulong)(1000 + 37 * i)).FormasDeFrost[0])];
+				string[] Bases() => [.. Enumerable.Range(0, 12).Select(i => AparenciaDeNpc(molde, "Frost Demon", "Male", (ulong)(1000 + 37 * i)).FormasDeFrost[0])];
 				string[] bases = Bases();
 				Checa("OS FROST DEMONS DE NPC VARIAM (*\"tem varios sprites de frost\"*): doze sementes de Icer pela `AparenciaDeNpc` saem com corpos de "
 					  + "repouso diferentes, todos do catalogo e nenhum o dourado",
@@ -254,7 +254,7 @@ public sealed partial class GameServer
 				Checa("(defeito injetado: a lista padrao do DM, o jogo de antes) as doze saem com o MESMO corpo -- a regua de cima REPROVA",
 					  comODefeito.Distinct().Count() == 1, string.Join(", ", comODefeito.Distinct()));
 				Checa("...e o CHEFE de saga (o Freeza de Vegeta) continua com a escada padrao: o roteiro crava o corpo de cada estagio dele",
-					  _moldes.Get("freeza_vegeta") is { } freeza && AparenciaDeNpc(freeza, "Icer", "Male", 7).FormasDeFrost
+					  _moldes.Get("freeza_vegeta") is { } freeza && AparenciaDeNpc(freeza, "Frost Demon", "Male", 7).FormasDeFrost
 						  .SequenceEqual(Jandirus.Core.Races.FormasDeFrost.Sanear(Jandirus.Core.Races.FormasDeFrost.ClasseNormal, null)));
 				string[] doTorneio = [.. npcs.Select(i => _players.GetValueOrDefault(i))
 					.Where(n => n != null && Jandirus.Core.Races.FormasDeFrost.EhFrost(n.Race) && n.Visual.FormasDeFrost.Count > 0)

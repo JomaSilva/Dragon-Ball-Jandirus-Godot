@@ -688,7 +688,14 @@ public sealed class CombatState
 		NocautePorVital = porVital;
 		// (2026-10-15) O PISO DO DESMAIO, so no nocaute por nucleo -- o unico que a cura encerra (ver `SegundosMinimosDoDesmaio`).
 		DesmaioMinimo = porVital && !DesmaioSemMinimoDeTeste ? SegundosMinimosDoDesmaio : 0;
+		// (2026-10-21) O funil unico do desmaio: a trava da maquina de gravidade ouve aqui, seja soco ou esmagamento.
+		AoDesmaiar?.Invoke(this);
 	}
+
+	/// <summary>
+	/// Quem quiser reagir ao desmaio (a trava de seguranca da gravidade) arma isto. Nulo, o nocaute segue sozinho.
+	/// </summary>
+	public static Action<CombatState>? AoDesmaiar;
 
 	/// <summary>
 	/// ============================ LEVANTAR NAO E CURAR -- `Un_KO()` (`KO.dm:126-134`) ============================

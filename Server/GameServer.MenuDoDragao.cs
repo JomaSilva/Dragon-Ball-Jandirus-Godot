@@ -409,6 +409,16 @@ public sealed partial class GameServer
 					},
 				});
 			m.Entradas.Add(pedidos);
+
+			// (2026-10-22) O MENU DA ESTATUA (dono: *"um menu bem intuitivo e bem feito pro jogador q criou o set escolher os desejos, a
+			// quantidade, a força etc"*): a linha leva a configuracao de agora, e a janela de desejos abre o menu da estatua com ela; o
+			// verbo e o `db_refazer`, que le a configuracao nova. A mesma pergunta de quem pode do "Pedidos por invocação", logo acima.
+			m.Entradas.Add(new EntradaDoDragao
+			{
+				Id = AcoesDoDragao.Configurar, Acao = true, Verbo = "db_refazer", Pedido = ConfigDoSet(s).Codificar(),
+				Nome = "Configurar o dragão",
+				Desc = "O nome, os pedidos por invocação e os desejos que ele atende, no menu da estátua. Refazer espalha as sete de novo.",
+			});
 		}
 
 		// `Destroy_Statue()` (`:50-58`): qualquer um AO LADO dela, e nunca a ancestral -- a mesma pergunta do
@@ -435,7 +445,9 @@ public sealed partial class GameServer
 	{
 		var e = new EntradaDoDragao
 		{
-			Id = d.Id, Verbo = "db_desejar", Pedido = d.Id, Nome = d.Nome, Desc = d.Desc,
+			Id = d.Id, Verbo = "db_desejar", Pedido = d.Id, Nome = d.Nome,
+			// (2026-10-21) os numeros DESTE dragao: a janela das Black Star dizia os do Shenron e dava cinco vezes mais
+			Desc = Desejos.DescricaoNoDragao(d, FatorDoDragao(s), MarcosNoDragao(s), temCriador: !string.IsNullOrEmpty(s.CriadorSig)),
 			// O DESEJO QUE COBRA A VIDA vem em vermelho, como o do Super Shenron: um ano depois ele mata, e dessa
 			// morte nao ha volta (`sw_strongest_wish`, `WishTable.dm:102-113`).
 			Perigo = d.Id == "supremo",
@@ -638,7 +650,7 @@ public sealed partial class GameServer
 		m.Entradas.Add(new EntradaDoDragao
 		{
 			Id = AcoesDoDragao.Super, Acao = true, Direto = true, Verbo = "db_menu", Pedido = "super",
-			Nome = "Super Shenron",
+			Nome = "Super Shenlong",
 			Desc = "Você tem assunto com ele: abre o menu das Super Esferas.",
 		});
 	}
@@ -672,12 +684,12 @@ public sealed partial class GameServer
 		// O LUGAR, pela mesma pergunta do verbo (`set src in oview(2)`, `:1580`): a janela abre em qualquer canto
 		// (quem emprestou escolhe o pedido de dentro de um planeta), mas CHAMAR o dragao e so ao lado de uma esfera.
 		bool diante = DianteDeUmaSuper(pl);
-		const string vaAteUma = "O Super Shenron só é chamado AO LADO de uma Super Esfera: vá até uma delas, no espaço.";
+		const string vaAteUma = "O Super Shenlong só é chamado AO LADO de uma Super Esfera: vá até uma delas, no espaço.";
 
 		var m = new MenuDoDragao
 		{
 			Dragao = QualDragao.Super,
-			Nome = "SUPER SHENRON",
+			Nome = "SUPER SHENLONG",
 			Titulo = "O DEUS DRAGÃO",
 			Restam = 1,
 			Total = 1,
@@ -685,7 +697,8 @@ public sealed partial class GameServer
 
 		if (carregoProcuracao)
 		{
-			List<DesejoDef> doPedinte = [.. Desejos.MenuDoSuper(EhKaioshinDoCorpo(pl), haProcuracao: true)];
+			// (o sangue nao barra aqui: o pedido ja passou pelo portao do pedinte quando foi registrado)
+			List<DesejoDef> doPedinte = [.. Desejos.MenuDoSuper(EhKaioshinDoCorpo(pl), haProcuracao: true, sangueSaiyajin: 100)];
 			DesejoDef? registrado = doPedinte.Find(d => d.Id == _pedidoDoBenef);
 			bool pedinteNoMundo = Pessoas.Any(p => string.Equals(p.Assinatura, _benefSig, StringComparison.Ordinal));
 
@@ -695,7 +708,7 @@ public sealed partial class GameServer
 						  : !falo ? "Você não fala a Língua dos Deuses."
 						  : !pedinteNoMundo ? $"{_benefNome} precisa estar no mundo para receber o desejo."
 						  : _pedidoDoBenef.Length == 0 ? $"{_benefNome} ainda não disse o que pedir. Só ele(a) escolhe."
-						  : registrado == null ? $"O pedido registrado não é dos que o Super Shenron atende agora: {_benefNome} precisa escolher outro."
+						  : registrado == null ? $"O pedido registrado não é dos que o Super Shenlong atende agora: {_benefNome} precisa escolher outro."
 						  : "";
 
 			m.DePe = motivo.Length == 0;
@@ -718,8 +731,7 @@ public sealed partial class GameServer
 			m.Estado = $"Você emprestou as sete a {comQuem}. O desejo é SEU: escolha o pedido, e ele(a) só pronuncia"
 					 + (_pedidoDoBenef.Length > 0 ? " -- dá pra trocar até a hora em que for dito." : ".");
 
-			foreach (DesejoDef d in Desejos.MenuDoSuper(ehKaioshin: false, haProcuracao: true))
-				m.Entradas.Add(EntradaDoSuper(pl, d, "sdb_pedido", posso: true, registrando: true));
+			m.Entradas.AddRange(EntradasDoSuper(pl, "sdb_pedido", posso: true, registrando: true, ehKaioshin: false, haProcuracao: true));
 
 			m.Entradas.Add(new EntradaDoDragao
 			{
@@ -733,14 +745,13 @@ public sealed partial class GameServer
 			bool posso = falo && emCondicoes && diante;
 			m.DePe = posso;
 			m.Estado = !emCondicoes ? "Você não está em condições de chamar coisa nenhuma."
-					 : !falo ? "As sete são suas, mas só a LÍNGUA DOS DEUSES desperta o Super Shenron: cargos divinos a "
+					 : !falo ? "As sete são suas, mas só a LÍNGUA DOS DEUSES desperta o Super Shenlong: cargos divinos a "
 					 + "conhecem, e o sangue Kai ou Demigod nasce com ela. Empreste as sete a quem fale -- o desejo "
 					 + "continua sendo seu."
 					 : !diante ? "As sete Super Esferas são suas, e você fala a Língua dos Deuses. " + vaAteUma
-					 : "As sete Super Esferas são suas, e você fala a Língua dos Deuses. SUPER SHENRON atende UM desejo.";
+					 : "As sete Super Esferas são suas, e você fala a Língua dos Deuses. SUPER SHENLONG atende UM desejo.";
 
-			foreach (DesejoDef d in Desejos.MenuDoSuper(EhKaioshinDoCorpo(pl), haProcuracao: false))
-				m.Entradas.Add(EntradaDoSuper(pl, d, "sdb_invocar", posso, registrando: false));
+			m.Entradas.AddRange(EntradasDoSuper(pl, "sdb_invocar", posso, registrando: false, EhKaioshinDoCorpo(pl), haProcuracao: false));
 
 			m.Entradas.Add(EntradaDeEmprestar(pl));
 		}
@@ -748,8 +759,7 @@ public sealed partial class GameServer
 		{
 			m.Estado = $"Você reivindicou {minhas} de {SuperEsferas.Total} Super Esferas. O dragão exige TODAS -- "
 					 + "esta é a lista do que ele atende.";
-			foreach (DesejoDef d in Desejos.MenuDoSuper(EhKaioshinDoCorpo(pl), haProcuracao: false))
-				m.Entradas.Add(EntradaDoSuper(pl, d, "sdb_invocar", posso: false, registrando: false));
+			m.Entradas.AddRange(EntradasDoSuper(pl, "sdb_invocar", posso: false, registrando: false, EhKaioshinDoCorpo(pl), haProcuracao: false));
 		}
 
 		// ---------------------------------------------------------- o que espera a MINHA palavra
@@ -795,6 +805,25 @@ public sealed partial class GameServer
 		return m;
 	}
 
+	/// <summary>
+	/// (2026-10-21) AS LINHAS DO SUPER SHENLONG: as cinco dele (`EntradaDoSuper`) e a lista inteira das Black Star a 4x, cada uma pelo
+	/// MESMO construtor do Shenron (`EntradaDoDesejo`, com o set do Super) -- a segunda pergunta, os portoes de "ja pediu marcos" e "nao
+	/// ha morto" e os numeros vem dele -- e o verbo do Super. "Rejuvenescer outro" mora dentro de "Juventude", como no Shenron.
+	/// </summary>
+	private IEnumerable<EntradaDoDragao> EntradasDoSuper(ServerPlayer pl, string verbo, bool posso, bool registrando, bool ehKaioshin, bool haProcuracao)
+	{
+		List<DesejoDef> lista = [.. Desejos.MenuDoSuper(ehKaioshin, haProcuracao, SangueSaiyajinDe(pl))];
+		bool juntas = lista.Exists(d => d.Id == "juventude") && lista.Exists(d => d.Id == "juventude_alheia");
+		foreach (DesejoDef d in lista)
+		{
+			if (d.Id == "juventude_alheia" && juntas) continue;
+			if (Desejos.DoSuper.Any(x => x.Id == d.Id)) { yield return EntradaDoSuper(pl, d, verbo, posso, registrando); continue; }
+			EntradaDoDragao e = EntradaDoDesejo(pl, SetDoSuper, d, posso, juntas);
+			e.Verbo = verbo;
+			yield return e;
+		}
+	}
+
 	/// <summary>UMA LINHA DE DESEJO do Super Shenron.</summary>
 	/// <param name="verbo">`sdb_invocar` (quem fala pede) ou `sdb_pedido` (quem emprestou registra).</param>
 	/// <param name="registrando">O pedido vai ser GUARDADO e dito depois: o alvo viaja pelo nome.</param>
@@ -818,7 +847,7 @@ public sealed partial class GameServer
 				if (e.Escolhas.Count == 0)
 				{
 					e.Pode = false;
-					e.Motivo = "Nenhum guerreiro caído que possa voltar (a morte de VELHICE nem o Super Shenron reverte).";
+					e.Motivo = "Nenhum guerreiro caído que possa voltar (a morte de VELHICE nem o Super Shenlong reverte).";
 				}
 				break;
 

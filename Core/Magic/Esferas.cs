@@ -18,14 +18,9 @@ namespace Jandirus.Core.Magic;
 /// cai em lugares diferentes a cada reinicio -- e nada no BYOND se importava, porque a posicao ia pro
 /// savefile.
 ///
-/// Aqui a regra da casa e outra (§0.2: *"o universo, o terreno e o ceu sao funcoes puras de (seed,
-/// coordenada)"*), e ela vale pra isto tambem. O que muda de verdade entre um espalhamento e o
-/// seguinte e **o CICLO** -- quantas vezes aquele set ja foi consumido --, e o ciclo e um inteiro
-/// pequeno que o servidor guarda. Com ele, <see cref="CelulaDoEspalhamento"/> devolve a mesma celula
-/// pra sempre, em qualquer maquina, sem uma linha de posicao no disco.
-///
-/// A CONSEQUENCIA PRATICA que essa escolha compra: um servidor que perde o arquivo das esferas nao
-/// perde ONDE elas estavam -- ele so precisa saber quantos ciclos ja se passaram.
+/// (2026-10-21) O dono pediu que cada uso espalhe de verdade. O lugar nao e mais funcao de
+/// (semente, set, numero, ciclo): o servidor sorteia um sal, guarda no set, e a celula sai de
+/// <see cref="EsferasNegras.LugaresDoSal"/> mais o habitat da zona (so terra navegavel).
 /// ============================================================================================
 /// </summary>
 public static class Esferas
@@ -120,6 +115,9 @@ public static class Esferas
 	/// <summary>`ETERNAL_DB_PLANET "Namek"`. A lore nao admite outro lugar -- ver :421-423.</summary>
 	public const string PlanetaEterno = "Namek";
 
+	/// <summary>(2026-10-21) O dragao da Terra -- e so dela (dono: *"shenlong e so o dragao da terra"*), na grafia do dono.</summary>
+	public const string NomeDoShenlong = "SHENLONG";
+
 	/// <summary>`ETERNAL_DB_WISHES 3`. E a UNICA diferenca mecanica entre Porunga e Shenron.</summary>
 	public const int DesejosDoEterno = 3;
 
@@ -138,43 +136,8 @@ public static class Esferas
 	/// </summary>
 	public static bool SetDeJogador(int id) => id >= 1 && id <= 999;
 
-	// =====================================================================
-	// O ESPALHAMENTO
-	// =====================================================================
-	/// <summary>Sal desta camada. Ver o porque em <see cref="Sistemas"/> -- cada sorteio no seu espaco.</summary>
-	private const ulong SalDoEspalhamento = 0xC2B2AE3D27D4EB4FUL;
-
-	/// <summary>
-	/// **ONDE ESTA ESFERA CAI**, em celulas do mapa da zona. Funcao pura de
-	/// (seed da zona, set, numero, ciclo).
-	///
-	/// ============================ ELA NAO PERGUNTA SE A CELULA E LIVRE ============================
-	/// De proposito: o Core nao tem mapa. Quem chama (o servidor) passa o resultado pelo
-	/// `PontoLivrePerto` da colisao, que **tambem** e funcao pura (o terreno e funcao pura da seed,
-	/// §0.2) -- entao a composicao das duas continua sendo deterministica, e o servidor nao precisa
-	/// carregar a zona pra saber que ela vai cair no mesmo lugar amanha.
-	///
-	/// O DM faz o oposto (`pickTurf(area, 2)` sorteia DENTRO da lista de turfs andaveis) e podia:
-	/// la o mundo inteiro estava sempre na memoria. Aqui um planeta gerado so tem colisao quando
-	/// alguem esta nele, e a esfera precisa ter posicao mesmo com o planeta vazio.
-	/// ==========================================================================================
-	///
-	/// A MARGEM tira as bordas do sorteio: o `pickTurf` do DM ja excluia turf denso, e a moldura de um
-	/// mapa e quase toda parede. Sortear la faria o `PontoLivrePerto` empurrar quase toda esfera pro
-	/// mesmo anel, e as sete apareceriam encostadas na borda do mundo.
-	/// </summary>
-	public static (int Cx, int Cy) CelulaDoEspalhamento(
-		ulong seedDaZona, int idDoSet, int numero, int ciclo, int largura, int altura)
-	{
-		const int margem = 8;
-		int w = Math.Max(largura - 2 * margem, 1);
-		int h = Math.Max(altura - 2 * margem, 1);
-
-		ulong a = ((ulong)(uint)idDoSet << 32) | (uint)numero;
-		ulong q = Espaco.Misturar(seedDaZona ^ SalDoEspalhamento, a, (ulong)(uint)ciclo);
-
-		return (margem + (int)(q % (ulong)w), margem + (int)((q >> 32) % (ulong)h));
-	}
+	// O ESPALHAMENTO SAIU DAQUI (2026-10-21). A celula e <see cref="EsferasNegras.LugaresDoSal"/>
+	// com o habitat da zona. O sal e sorteado no servidor e gravado no set.
 
 	// =====================================================================
 	// O LEQUE -- `Tick()` :308-322

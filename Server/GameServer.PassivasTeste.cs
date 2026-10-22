@@ -318,8 +318,8 @@ public partial class GameServer
 			("Halfbreed", "New Generation", "", KitRacial.MeioSaiyajin),
 			("Human", "", "", KitRacial.Humano),
 			("Namekian", "Warrior clan", "", KitRacial.Namekuseijin),
-			("Icer", "Frost Demon", "", KitRacial.FrostDemon),
-			("Icer", "Mutant Frost Demon", "", KitRacial.FrostDemon | KitRacial.Mutante),
+			("Frost Demon", "Frost Demon", "", KitRacial.FrostDemon),
+			("Frost Demon", "Mutant Frost Demon", "", KitRacial.FrostDemon | KitRacial.Mutante),
 			("Android", "", "", KitRacial.Nenhum),
 			("Tsujin", "", "", KitRacial.Nenhum),
 		];
@@ -1183,7 +1183,7 @@ public partial class GameServer
 		GD.Print("[passivas] -- I. FROST DEMON --");
 		Vec2 chao = CorredorLivre(14);
 		const float T = ZoneCollision.TileSize;
-		ServerPlayer fd = ForjarPs("Frost Demon", "Icer", "Frost Demon", bp: 1e8, onde: chao);
+		ServerPlayer fd = ForjarPs("Frost Demon", "Frost Demon", "Frost Demon", bp: 1e8, onde: chao);
 		ServerPlayer humano = ForjarPs("Humano perto do Frost", Catalogo.RacaHumano, "", bp: 1e3, onde: chao + new Vec2(2 * T, 0));
 		ServerPlayer longe = ForjarPs("Humano longe do Frost", Catalogo.RacaHumano, "", bp: 1e3, onde: chao + new Vec2(9 * T, 0));
 		AndarPs(fd, 0.1);
@@ -1252,7 +1252,7 @@ public partial class GameServer
 		GD.Print("[passivas] -- J. FROST DEMON MUTANTE (o kit do Frost Demon e o dele) --");
 		Vec2 chao = CorredorLivre(14);
 		const float T = ZoneCollision.TileSize;
-		ServerPlayer mu = ForjarPs("Mutante", "Icer", "Mutant Frost Demon", bp: 1e8, onde: chao);
+		ServerPlayer mu = ForjarPs("Mutante", "Frost Demon", "Mutant Frost Demon", bp: 1e8, onde: chao);
 		mu.Facing = Facing.East;
 		AndarPs(mu, 0.1);
 

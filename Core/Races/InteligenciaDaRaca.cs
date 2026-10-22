@@ -57,7 +57,7 @@ public static class InteligenciaDaRaca
 	public static double DaFicha(RaceCatalog cat, Stats.Fighter f)
 	{
 		if (f.Genoma != null) return f.Genoma.Build(cat.Protos).Misc.GetValueOrDefault(Chave, 1);
-		if (cat.Get(f.Race) is not { } p) return 1;
+		if (cat.Corpo(f.Race) is not { } p) return 1;
 		return p.ClassStats.TryGetValue(f.Class, out Dictionary<string, double>? c) && c.TryGetValue(Chave, out double v)
 			? v : p.Misc.GetValueOrDefault(Chave, 1);
 	}

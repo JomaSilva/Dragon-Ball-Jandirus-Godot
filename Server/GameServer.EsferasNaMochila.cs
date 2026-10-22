@@ -94,6 +94,7 @@ public sealed partial class GameServer
 			bool apagada = !EsferaSempreAcesaNaMochilaDeTeste && (s == null || !SetAtivo(s));
 			ids.Add(new EsferaNaMochila(e.Set, e.Numero, apagada, s?.Folha == "namek").Id);
 		}
+		AcrescentarNegrasNaMochila(pl, ids);
 		return ids;
 	}
 
@@ -124,6 +125,8 @@ public sealed partial class GameServer
 		var alvo = new HashSet<int>(_comEsferaNaMochila);
 		foreach (Esfera e in _esferas)
 			if (e.Portador != 0) alvo.Add(e.Portador);
+		foreach (EsferaNegra n in _negras)
+			if (n.Portador != 0) alvo.Add(n.Portador);
 
 		foreach (int id in alvo)
 		{
@@ -142,6 +145,7 @@ public sealed partial class GameServer
 	private void AcaoDaEsferaNaMochila(ServerPlayer pl, string acao, EsferaNaMochila qual)
 	{
 		Esfera? e = _esferas.Find(x => x.Set == qual.Set && x.Numero == qual.Numero && x.Portador == pl.Id);
+		if (e == null && LargarNegraDoSlot(pl, qual)) return;
 		string nome = Esferas.NomeDaEsfera(qual.Numero);
 		if (e == null)
 		{

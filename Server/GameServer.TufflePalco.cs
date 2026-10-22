@@ -62,8 +62,9 @@ public sealed partial class GameServer
 	}
 
 	/// <summary>
-	/// O NEO TUFFLE DE PALCO: um Tsufurujin careca de fraque (a `TuffleTux` do DU), a `dx` tiles do robo, ja com a marca de Neo Tuffle. Devolve
-	/// o id, ou zero.
+	/// O NEO TUFFLE DE PALCO: um Tsufurujin careca de fraque na ficha (a `TuffleTux` do DU), a `dx` tiles do robo, ja com a marca de Neo Tuffle.
+	/// (2026-10-20) O mundo o ve na folha do Baby, de fraque por cima e sem os olhos de gente.
+	/// Devolve o id, ou zero.
 	/// </summary>
 	internal int PalcoN_Tuffle(int id, float dx)
 	{
@@ -106,6 +107,13 @@ public sealed partial class GameServer
 		if (_players.TryGetValue(idDoTuffle, out ServerPlayer? t)) TrocarAparencias(t);
 	}
 
+	/// <summary>(2026-10-20) Liga (ou desliga) o defeito do pacote sem a marca do corpo do Neo Tuffle, e a zona recebe o corpo dele de novo.</summary>
+	internal void PalcoN_SemCorpoDoBaby(int idDoTuffle, bool ligado)
+	{
+		TuffleSemCorpoDoBabyDeTeste = ligado;
+		if (_players.TryGetValue(idDoTuffle, out ServerPlayer? t)) TrocarAparencias(t);
+	}
+
 	/// <summary>O corpo possuido anda `dx` tiles -- pra ver o dono assistindo de onde ele esta.</summary>
 	internal void PalcoN_Andar(int idDoTuffle, float dx)
 	{
@@ -131,7 +139,7 @@ public sealed partial class GameServer
 	/// <summary>Tira o Tuffle de palco (saindo do corpo, se estiver dentro), o mainframe e o defeito; o robo levanta.</summary>
 	internal void PalcoN_Limpar(int idDoRobo)
 	{
-		TuffleSemCabeloBrancoDeTeste = false;
+		TuffleSemCabeloBrancoDeTeste = TuffleSemCorpoDoBabyDeTeste = false;
 		if (_tuffleDoPalco is { } t)
 		{
 			if (PosseDoTuffleDe(t.Id) is { } p) Expulsar(p, "");

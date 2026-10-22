@@ -43,18 +43,42 @@ public static class FormasDeFrost
 	public const string ClasseMutante = "Mutant Frost Demon";
 
 	/// <summary>
-	/// O NOME DA RACA NO `races.json`: <b>"Icer"</b> -- e ele NAO e "Frost Demon".
+	/// O NOME DA RACA. E <b>"Frost Demon"</b>, o mesmo nome da classe comum
+	/// (<see cref="ClasseNormal"/>). O planeta natal continua se chamando Icer.
 	///
-	/// As duas grafias existem e as duas sao do original: `Icer` e o nome do proto racial (e do
-	/// planeta natal), e `Frost Demon` e o nome da CLASSE comum dentro dele (a outra e
-	/// `Mutant Frost Demon`). Ler uma pela outra e um erro facil e mudo -- um `Race == "Frost Demon"`
-	/// nunca casa com ninguem --, entao a constante existe pra quem precisa escrever o nome.
+	/// Saves de antes desta troca gravaram a folha do typepath do DM, <c>"Icer"</c>
+	/// (<see cref="RacaLegada"/>). <see cref="Canonica"/> devolve o nome de agora.
 	/// </summary>
-	public const string Raca = "Icer";
+	public const string Raca = "Frost Demon";
 
-	/// <summary>Esta raca usa este sistema? Aceita as duas grafias que circulam no projeto.</summary>
+	/// <summary>A chave antiga da raca, a folha `/datum/genetics/proto/Icer`. So existe em save velho.</summary>
+	public const string RacaLegada = "Icer";
+
+	/// <summary>Esta raca usa este sistema? A chave velha ainda conta, pra save que nao passou pela carga.</summary>
 	public static bool EhFrost(string raca) =>
-		raca is Raca or ClasseNormal;
+		string.Equals(raca, Raca, StringComparison.OrdinalIgnoreCase)
+		|| string.Equals(raca, RacaLegada, StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>A raca no nome de agora. <c>"Icer"</c> vira <see cref="Raca"/>; o resto passa.</summary>
+	public static string Canonica(string? raca) =>
+		string.Equals(raca, RacaLegada, StringComparison.OrdinalIgnoreCase) ? Raca : raca ?? "";
+
+	/// <summary>Reescreve a chave velha na ficha: a raca, o sangue, o genoma. A classe nao mexe.</summary>
+	public static void RenomearNaFicha(Jandirus.Core.Stats.Fighter? f)
+	{
+		if (f == null) return;
+		f.Race = Canonica(f.Race);
+		f.ParentRace = Canonica(f.ParentRace);
+		for (int i = 0; i < f.bio_racas_dna.Count; i++)
+			f.bio_racas_dna[i] = Canonica(f.bio_racas_dna[i]);
+		if (f.Genoma == null) return;
+		f.Genoma.MajorityRace = Canonica(f.Genoma.MajorityRace);
+		if (f.Genoma.Ancestry.TryGetValue(RacaLegada, out double parte))
+		{
+			f.Genoma.Ancestry.Remove(RacaLegada);
+			f.Genoma.Ancestry[Raca] = f.Genoma.Ancestry.GetValueOrDefault(Raca) + parte;
+		}
+	}
 
 	/// <summary>
 	/// O MULTIPLICADOR DE PODER de cada degrau -- o `fd_form_mult` (IcerTransform.dm:38-46).

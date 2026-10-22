@@ -187,13 +187,19 @@ public partial class GameServer
 
 		var linhasDeRaca = new HashSet<LinhaDeForma>();
 
-		foreach (string raca in _racas.Protos.Keys.OrderBy(x => x, StringComparer.Ordinal))
+		// O meio-Saiyajin nao esta no `races.json`: a raca e `Halfbreed` e o corpo e o do Saiyajin.
+		// Sem esta linha a varredura deixaria de cobrar a escada dele.
+		foreach (string raca in _racas.Protos.Keys
+			.Append(Catalogo.RacaMeioSaiyajin)
+			.Distinct(StringComparer.OrdinalIgnoreCase)
+			.OrderBy(x => x, StringComparer.Ordinal))
 		{
 			// AS CLASSES QUE ESTE CORPO PODE TER, das DUAS fontes que o jogo usa: o sorteio do
 			// `races.json` (`Class_Spread`) e a escolha da criacao. A cadeia vazia entra porque um save
 			// antigo pode nao ter classe, e a escada nao pode depender disso.
 			var classes = new List<string> { "" };
-			classes.AddRange(_racas.Protos[raca].ClassSpread.Select(c => c.Classe));
+			if (_racas.Protos.TryGetValue(raca, out RaceProto? proto))
+				classes.AddRange(proto.ClassSpread.Select(c => c.Classe));
 			classes.AddRange(CharacterDraft.EscolhasDeClasse(raca));
 
 			foreach (string classe in classes.Distinct(StringComparer.Ordinal))
