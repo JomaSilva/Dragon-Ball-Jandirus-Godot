@@ -47,12 +47,11 @@ public partial class GameServer
 
 	private static string TextoDoModo(ModoDeRacas modo) => modo == ModoDeRacas.Aleatorio ? "aleatorio" : "padrao";
 
-	private static ModoDeRacas? ModoDoTexto(string texto) => texto.Trim().ToLowerInvariant() switch
-	{
-		"padrao" or "padrão" => ModoDeRacas.Padrao,
-		"aleatorio" or "aleatório" or "aleatorias" or "aleatórias" => ModoDeRacas.Aleatorio,
-		_ => null,
-	};
+	// as grafias de sempre (com e sem acento) e o "default"/"random" do aviso em ingles -- ver `PalavrasDeComando`
+	private static ModoDeRacas? ModoDoTexto(string texto) =>
+		Jandirus.Core.Lingua.PalavrasDeComando.E(texto, "padrao") ? ModoDeRacas.Padrao
+		: Jandirus.Core.Lingua.PalavrasDeComando.E(texto, "aleatorio") ? ModoDeRacas.Aleatorio
+		: null;
 
 	/// <summary>A pasta de saves deste processo -- a mesma do `AccountStore` (`CarregarVisual`), sem precisar dele de pe.</summary>
 	private static string PastaDosSaves() => ProjectSettings.GlobalizePath("user://saves");

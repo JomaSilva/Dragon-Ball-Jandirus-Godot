@@ -23,7 +23,10 @@ namespace Jandirus.Client;
 ///   F3  a busca e a tecla ligada obedecem ao mesmo crivo;
 ///   F4  o radar dourado pelo FIO: sem o aparelho a frase nem chega, e o cliente nao a desenha nem que chegue;
 ///   F5  a tecnica e a oferta pelo FIO: o botao nasce sozinho quando o servidor conta, e some quando acaba;
-///   F6  a tecla E no mainframe: as opcoes de humano so pra humano.
+///   F6  a tecla E no mainframe: as opcoes de humano so pra humano;
+///   F7  o verb sem corpo nao vira botao;
+///   F8  do cargo, so o ataque de ki vira "Ensinar" (dono, 2026-10-23: a chave da Sala do Tempo nao se ensina);
+///   F9  sem ninguem marcado, a chave da Sala do Tempo e o destrancar vao no proprio id (dono, 2026-10-23).
 ///
 /// O defeito injetado e o de sempre da regra: `Requisito.MostrarTudoDeTeste` (o menu de antes).
 ///
@@ -77,6 +80,8 @@ public partial class RoboDeVerbs : Node
 		// O MUNDO VOLTA: nenhum botao de defeito nem personagem postico sobrevive ao roteiro.
 		Requisito.MostrarTudoDeTeste = false;
 		PosseDoCliente.DeTeste = null;
+		Jandirus.Core.Skills.EnsinoDeSkill.CargoSeEnsinaComoAntesDeTeste = false;
+		VerbosDoJogo.SoNoAlvoMarcadoDeTeste = false;
 		if (S is { } srv) srv.SinalSemRadarDeTeste = false;
 
 		Nota("==================================================================================");
@@ -118,6 +123,8 @@ public partial class RoboDeVerbs : Node
 		await F5_ATecnicaEAOfertaPeloFio(menu, cli, srv);
 		await F6_ATeclaE(menu, cli, srv);
 		await F7_OVerbSemCorpoNaoEBotao(menu, cli);
+		await F8_OEnsinarDoCargo(menu, cli);
+		F9_AChaveEmMim(cli);
 
 		menu.Fechar();
 		Encerrar(_falha == 0 && _injFalha == 0 ? 0 : 1);
@@ -498,6 +505,102 @@ public partial class RoboDeVerbs : Node
 			foreach (string p in postas) cli.SkillsAprendidas.Remove(p);
 			Habilidades.Montar(cli.Atributos.Raca ?? "");
 			await Tela(menu, null);
+		}
+	}
+
+	// =====================================================================
+	// F8 -- DO CARGO, SO O ATAQUE DE KI VIRA "ENSINAR"
+	// =====================================================================
+	/// <summary>
+	/// O dono, 2026-10-23: *"ta dando pra ensinar skills de entrar na sala do tempo pros outros, unica skill de cargo q pode ensinar
+	/// é a skill de ataques de ki"*. Medido na TELA (aba Learning), como a F7, com tres skills de cargo postas no livro do cliente: a
+	/// chave da Sala do Tempo (`rank/Permission`, que nao se ensina mais), o Makankosappo (ataque de ki) e a Fusion Dance (que se
+	/// ensina por escolha do dono). O "Esquecer a licao" da chave fica: ele e de quem a aprendeu, e nao de quem a ensinaria.
+	/// O defeito injetado e o da regra: `EnsinoDeSkill.CargoSeEnsinaComoAntesDeTeste` (o kit inteiro ensinavel, como antes).
+	/// </summary>
+	private async Tarefa F8_OEnsinarDoCargo(MenuJogo menu, GameClient cli)
+	{
+		Nota("--- F8: do cargo, so o ataque de ki vira \"Ensinar\" (a chave da Sala do Tempo nao) ---");
+		menu.Abrir();
+		await Quadros(3);
+		Jandirus.Core.Skills.SkillCatalog? cat = MenuJogo.CatalogoPublico();
+		const string chave = "/datum/skill/rank/Permission", tiro = "/datum/skill/rank/Makkankosappo", danca = "/datum/skill/rank/Fusion_Dance";
+		string nChave = cat?.Get(chave)?.Nome ?? "", nTiro = cat?.Get(tiro)?.Nome ?? "", nDanca = cat?.Get(danca)?.Nome ?? "";
+		Checa("F8. PRECONDICAO: o catalogo do cliente tem as tres (a chave da Sala, o Makankosappo e a Fusion Dance)",
+			  nChave.Length > 0 && nTiro.Length > 0 && nDanca.Length > 0, $"'{nChave}' '{nTiro}' '{nDanca}'");
+		List<string> postas = [.. new[] { chave, tiro, danca }.Where(cli.SkillsAprendidas.Add)];
+		static bool NaAprendizado(Dictionary<string, HashSet<string>> tela, string texto) =>
+			tela.TryGetValue(Verbos.Aprendizado, out HashSet<string>? b) && b.Contains(texto);
+		try
+		{
+			Habilidades.Montar(cli.Atributos.Raca ?? "");
+			Dictionary<string, HashSet<string>> tela = await Tela(menu, null);
+			string doLearning = string.Join(" | ", tela.GetValueOrDefault(Verbos.Aprendizado) ?? []);
+			Checa($"F8a. quem sabe a chave da Sala do Tempo NAO ve \"Ensinar: {nChave}\" na aba Learning -- e o \"Esquecer a licao: {nChave}\" continua la",
+				  !NaAprendizado(tela, $"Ensinar: {nChave}") && NaAprendizado(tela, $"Esquecer a licao: {nChave}"), doLearning);
+			Checa($"F8b. ...e ve \"Ensinar: {nTiro}\" (ataque de ki do cargo) e \"Ensinar: {nDanca}\" (escolha do dono)",
+				  NaAprendizado(tela, $"Ensinar: {nTiro}") && NaAprendizado(tela, $"Ensinar: {nDanca}"), doLearning);
+
+			Jandirus.Core.Skills.EnsinoDeSkill.CargoSeEnsinaComoAntesDeTeste = true;
+			Habilidades.Montar(cli.Atributos.Raca ?? "");
+			Dictionary<string, HashSet<string>> antes = await Tela(menu, null);
+			Injeta($"F8x. com o kit de cargo ensinavel de novo, o \"Ensinar: {nChave}\" volta pra aba Learning -- o botao de antes de 2026-10-23",
+				   NaAprendizado(antes, $"Ensinar: {nChave}"), string.Join(" | ", antes.GetValueOrDefault(Verbos.Aprendizado) ?? []));
+		}
+		finally
+		{
+			Jandirus.Core.Skills.EnsinoDeSkill.CargoSeEnsinaComoAntesDeTeste = false;
+			foreach (string p in postas) cli.SkillsAprendidas.Remove(p);
+			Habilidades.Montar(cli.Atributos.Raca ?? "");
+			await Tela(menu, null);
+		}
+	}
+
+	// =====================================================================
+	// F9 -- SEM NINGUEM MARCADO, A CHAVE E O DESTRANCAR VAO EM MIM
+	// =====================================================================
+	/// <summary>
+	/// O dono, 2026-10-23: *"permita o proprio guardiao poder se autorizar a entrar na sala do tempo"*. O proprio corpo nao se marca (o
+	/// duplo clique nele SOLTA o alvo), entao sem ninguem marcado os dois botoes do Guardiao vao no proprio id. Medido no FIO: o espiao de
+	/// verbos do cliente (`GameClient.EspiaoDeVerbos`) pega o que o botao manda e o engole -- nada chega ao servidor, e o novato da bancada
+	/// nem precisa saber fazer a chave. O que o servidor faz com o id e a `--salateste` que prova (secao 19).
+	/// </summary>
+	private void F9_AChaveEmMim(GameClient cli)
+	{
+		Nota("--- F9: sem ninguem marcado, a chave da Sala do Tempo e o destrancar vao no proprio id ---");
+		Verbo? autorizar = Verbos.Todos.FirstOrDefault(v => v.Nome == "Time Chamber: Authorize");
+		Verbo? soltar = Verbos.Todos.FirstOrDefault(v => v.Nome == "Time Chamber: Release");
+		Checa("F9. PRECONDICAO: os dois botoes estao no registro, e ninguem esta marcado",
+			  autorizar?.Acionar != null && soltar?.Acionar != null && cli.AlvoId == 0, $"alvo {cli.AlvoId}");
+		if (autorizar?.Acionar is not { } aAutorizar || soltar?.Acionar is not { } aSoltar) return;
+
+		List<(string Cmd, string Arg)> saiu = [];
+		string Fio() => string.Join(" | ", saiu.Select(s => $"{s.Cmd}:{s.Arg}"));
+		Func<string, string, bool>? espiaoDeAntes = GameClient.EspiaoDeVerbos;
+		GameClient.EspiaoDeVerbos = (cmd, arg) => { saiu.Add((cmd, arg)); return false; };
+		try
+		{
+			string eu = cli.LocalId.ToString();
+			aAutorizar();
+			Checa($"F9a. \"Time Chamber: Authorize\" sem ninguem marcado manda a chave pro PROPRIO id ({eu})",
+				  saiu.Count == 1 && saiu[0] == ("sala_autorizar", eu), Fio());
+			saiu.Clear();
+			aSoltar();
+			Checa("F9b. ...e \"Time Chamber: Release\" tambem: o Guardiao preso se destranca por dentro",
+				  saiu.Count == 1 && saiu[0] == ("sala_soltar", eu), Fio());
+			Checa("F9c. ...e com alguem marcado o gesto continua indo NELE (a conta do botao, sem mexer na mira de verdade)",
+				  VerbosDoJogo.AlvoOuEu(7, 5) == 7 && VerbosDoJogo.AlvoOuEu(0, 5) == 5);
+
+			saiu.Clear();
+			VerbosDoJogo.SoNoAlvoMarcadoDeTeste = true;
+			aAutorizar();
+			Injeta("F9x. com a chave pedindo alvo marcado de novo, sem ninguem marcado o botao nao manda nada -- o Guardiao nao se autoriza, como antes",
+				   saiu.Count == 0, Fio());
+		}
+		finally
+		{
+			VerbosDoJogo.SoNoAlvoMarcadoDeTeste = false;
+			GameClient.EspiaoDeVerbos = espiaoDeAntes;
 		}
 	}
 

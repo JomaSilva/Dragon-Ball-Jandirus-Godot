@@ -47,7 +47,22 @@ public partial class GameServer
 
 	private readonly Dictionary<int, long> _ultimaFala = [];
 
-	private void Falar(ServerPlayer a, Protocol.Fala canal, string texto)
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--diaglingua`): toda fala sai SEM a marca de automatica (`Protocol.MarcaDeFalaAutomatica`)
+	/// -- o jogo de antes da lingua: o grito da raiva de quem joga em portugues chega em portugues a quem joga em ingles.
+	/// Lido pelo <see cref="Mandar"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool FalaSemMarcaDeTeste;
+
+	/// <param name="digitada">
+	/// (2026-10-22) A FRASE FOI ESCRITA POR UMA PESSOA: a do `C2S.Chat` e as que repetem o que alguem escreveu (o grito que o
+	/// jogador deu a tecnica dele, a frase que ele mandou o companheiro dizer). Todo o resto -- o grito da raiva, o da
+	/// transformacao, o emote do golpe, a fala do NPC -- e do servidor, e vai com a marca de AUTOMATICA: e o que deixa a tela
+	/// de quem joga em ingles traduzi-la, e so ela (ver `Client/Idioma.cs`). Padrao FALSO de proposito: o chamador novo do
+	/// futuro quase sempre e mais uma frase do jogo, e o repasse de texto digitado que esquecer o argumento so faz o tradutor
+	/// TENTAR a frase -- e frase escrita por gente quase nunca casa com uma do dicionario.
+	/// </param>
+	private void Falar(ServerPlayer a, Protocol.Fala canal, string texto, bool digitada = false)
 	{
 		// SO OS SEIS CANAIS DE FALA. O byte do canal vem do cliente (`C2S.Chat`), e o `default` la embaixo
 		// repassava QUALQUER valor a quem estivesse a vista -- com 200 (`Fala.Sistema`, que "nunca sai na rede")
@@ -74,6 +89,8 @@ public partial class GameServer
 		// corpo da ponte dele fica fora da volta de dentro (senao a frase chegaria duas vezes). Ver `GameServer.NaveObservar.cs`.
 		ServerPlayer? daPonte = LemeMudoPraDentroDeTeste ? null : CorpoNaPonteDe(a);
 		bool soDentro = daPonte != null && EhOlhoDeFora(a);
+		// DE ONDE A FRASE VEIO, uma vez so pra todos os envios: ver `Protocol.MarcaDeFalaAutomatica`
+		byte marca = (byte)((digitada ? 0 : Protocol.MarcaDeFalaAutomatica) | (EhNpcDoMundo(a) ? Protocol.MarcaDeAutorNpc : 0));
 
 		switch (canal)
 		{
@@ -81,25 +98,25 @@ public partial class GameServer
 				// o unico canal que atravessa planeta: e conversa de jogador, nao de personagem --
 				// por isso o `falante: null`, que e o que impede duas pessoas em galaxias
 				// diferentes de se conhecerem por escrito (ver `Ouviu`)
-				foreach (ServerPlayer o in _players.Values) Mandar(o, canal, a.Name, texto, falante: null);
+				foreach (ServerPlayer o in _players.Values) Mandar(o, canal, a.Name, texto, falante: null, marca: marca);
 				break;
 
 			case Protocol.Fala.Sussurro:
-				if (!soDentro) Sussurrar(a, a, texto, excetoEste: null);
-				if (daPonte != null) Sussurrar(a, daPonte, texto, excetoEste: soDentro ? null : daPonte);
+				if (!soDentro) Sussurrar(a, a, texto, excetoEste: null, marca);
+				if (daPonte != null) Sussurrar(a, daPonte, texto, excetoEste: soDentro ? null : daPonte, marca);
 				break;
 
 			case Protocol.Fala.Diz:
 			{
 				float raio = texto.Contains('!') ? RaioDoGrito : RaioDaVista;
-				if (!soDentro) PorPerto(a, a, raio, canal, texto, excetoEste: null);
-				if (daPonte != null) PorPerto(a, daPonte, raio, canal, texto, excetoEste: soDentro ? null : daPonte);
+				if (!soDentro) PorPerto(a, a, raio, canal, texto, excetoEste: null, marca);
+				if (daPonte != null) PorPerto(a, daPonte, raio, canal, texto, excetoEste: soDentro ? null : daPonte, marca);
 				break;
 			}
 
 			default:   // Pensa, Emote, Looc: todos no alcance da vista
-				if (!soDentro) PorPerto(a, a, RaioDaVista, canal, texto, excetoEste: null);
-				if (daPonte != null) PorPerto(a, daPonte, RaioDaVista, canal, texto, excetoEste: soDentro ? null : daPonte);
+				if (!soDentro) PorPerto(a, a, RaioDaVista, canal, texto, excetoEste: null, marca);
+				if (daPonte != null) PorPerto(a, daPonte, RaioDaVista, canal, texto, excetoEste: soDentro ? null : daPonte, marca);
 				break;
 		}
 	}
@@ -113,14 +130,14 @@ public partial class GameServer
 	/// pro balao (ver o parametro `boca` do <see cref="Mandar"/>). Com os tres vindo do mesmo objeto, a frase de quem pilota nao tem como
 	/// sair do corpo da ponte e ir parar no balao do piloto, que nem esta naquela zona.
 	/// </summary>
-	private void PorPerto(ServerPlayer a, ServerPlayer boca, float raio, Protocol.Fala canal, string texto, ServerPlayer? excetoEste)
+	private void PorPerto(ServerPlayer a, ServerPlayer boca, float raio, Protocol.Fala canal, string texto, ServerPlayer? excetoEste, byte marca)
 	{
 		float raio2 = raio * raio;
 		foreach (ServerPlayer o in ZoneList(boca.Zone.Hash))
 		{
 			if (o == excetoEste || EhOlhoDeFora(o)) continue;
 			Vec2 dd = o.Pos - boca.Pos;
-			if (dd.X * dd.X + dd.Y * dd.Y <= raio2) Mandar(o, canal, a.Name, texto, a, boca.Id);
+			if (dd.X * dd.X + dd.Y * dd.Y <= raio2) Mandar(o, canal, a.Name, texto, a, boca.Id, marca);
 		}
 	}
 
@@ -129,16 +146,16 @@ public partial class GameServer
 	/// VAZIA, que o cliente desenha como "Fulano sussurra alguma coisa...". Saber que houve um sussurro faz parte da cena. Os mesmos dois
 	/// crivos do <see cref="PorPerto"/>.
 	/// </summary>
-	private void Sussurrar(ServerPlayer a, ServerPlayer boca, string texto, ServerPlayer? excetoEste)
+	private void Sussurrar(ServerPlayer a, ServerPlayer boca, string texto, ServerPlayer? excetoEste, byte marca)
 	{
 		foreach (ServerPlayer o in ZoneList(boca.Zone.Hash))
 		{
 			if (o == excetoEste || EhOlhoDeFora(o)) continue;
 			float d = (o.Pos - boca.Pos).Length;
-			if (d <= RaioDoSussurro) Mandar(o, Protocol.Fala.Sussurro, a.Name, texto, a, boca.Id);
+			if (d <= RaioDoSussurro) Mandar(o, Protocol.Fala.Sussurro, a.Name, texto, a, boca.Id, marca);
 			// QUEM SO VIU QUE HOUVE UM SUSSURRO NAO CONVIVEU: nao chegou palavra nenhuma,
 			// entao o `falante` vai nulo e a familiaridade nao anda.
-			else if (d <= RaioDaVista) Mandar(o, Protocol.Fala.Sussurro, a.Name, "", falante: null, boca: boca.Id);
+			else if (d <= RaioDaVista) Mandar(o, Protocol.Fala.Sussurro, a.Name, "", falante: null, boca: boca.Id, marca);
 		}
 	}
 
@@ -155,7 +172,7 @@ public partial class GameServer
 	/// ==========================================================================================
 	/// </param>
 	/// <param name="boca">
-	/// O ID DO CORPO DE ONDE A FALA SAI (0 = nenhum), o ultimo campo do `S2C.Chat`. E por ele que o cliente
+	/// O ID DO CORPO DE ONDE A FALA SAI (0 = nenhum), o campo do `S2C.Chat` depois do texto. E por ele que o cliente
 	/// acha o balao (`World.AoFalar`).
 	///
 	/// ============================ (2026-10-19) O BALAO ACHAVA O CORPO PELO NOME, E NOME REPETE ============================
@@ -179,8 +196,13 @@ public partial class GameServer
 	/// proposito: e conversa do JOGADOR, sem corpo (o portao do balao tambem o recusa).
 	/// =====================================================================================================================
 	/// </param>
+	/// <param name="marca">
+	/// (2026-10-22) DE ONDE A FRASE VEIO -- `Protocol.MarcaDeFalaAutomatica` e `MarcaDeAutorNpc`, o ultimo campo. PADRAO
+	/// AUTOMATICA pelo mesmo motivo da `boca`: quem chama de fora deste arquivo manda recado do servidor; a fala de corpo
+	/// vem do <see cref="Falar"/>, que sabe se alguem a digitou.
+	/// </param>
 	private void Mandar(ServerPlayer para, Protocol.Fala canal, string autor, string texto,
-						ServerPlayer? falante, int boca = 0)
+						ServerPlayer? falante, int boca = 0, byte marca = Protocol.MarcaDeFalaAutomatica)
 	{
 		// (2026-10-18) O CORPO DA PONTE OUVE PELO DONO: a fala (e o aviso) que chega no boneco de quem esta ao leme da nave grande, ou a
 		// observando de fora, chega NELE -- *"enquanto vc pilota, deveria dar pra escutar e ver o chat q rola dentro da nave"*. Ver
@@ -196,6 +218,7 @@ public partial class GameServer
 		w.Put(Protocol.NomeNoFio(autor));
 		w.Put(texto);
 		w.Put(boca);
+		w.Put(FalaSemMarcaDeTeste ? (byte)0 : marca);
 		// CONFIAVEL, sempre. Fala perdida e a unica perda que o jogador percebe como sumico:
 		// um golpe faltando vira lag, uma frase faltando vira "ele me ignorou".
 		para.Peer?.Send(w, Protocol.ChannelReliable, DeliveryMethod.ReliableOrdered);

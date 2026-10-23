@@ -465,8 +465,9 @@ public partial class TelaDoSistema : Control
 		DrawRect(new Rect2(Vector2.Zero, Size), new Color("070912"));
 		if (!_tem)
 		{
+			// todo texto desta tela e desenhado a mao, e nao passa pela traducao do Godot: a lingua vem do `Idioma` (2026-10-22)
 			DrawString(ThemeDB.FallbackFont, new Vector2(14, BarraAlta + 24),
-					   "nenhum sistema aberto", HorizontalAlignment.Left, -1, 13, Tema.TextoFraco);
+					   Idioma.T("nenhum sistema aberto"), HorizontalAlignment.Left, -1, 13, Tema.TextoFraco);
 			return;
 		}
 
@@ -623,7 +624,7 @@ public partial class TelaDoSistema : Control
 		Font f = ThemeDB.FallbackFont;
 		string t = $"{_sis.NomeDaEstrela}  ·  estrela {ArteDeEstrela.NomeDaClasse(_sis.Estrela.Classe)}"
 				 + $"  ·  {_sis.Orbitas} mundo{(_sis.Orbitas == 1 ? "" : "s")}";
-		DrawString(f, new Vector2(10, BarraAlta + 15), t, HorizontalAlignment.Left, -1, 13, Tema.Destaque);
+		DrawString(f, new Vector2(10, BarraAlta + 15), Idioma.T(t), HorizontalAlignment.Left, -1, 13, Tema.Destaque);
 	}
 
 	/// <summary>
@@ -659,7 +660,7 @@ public partial class TelaDoSistema : Control
 		{
 			if (arte != null) DrawTextureRect(arte, new Rect2(8, y - 10, 13, 13), false);
 			else DrawRect(new Rect2(10, y - 8, 9, 9), cor);
-			DrawString(f, new Vector2(24, y), texto, HorizontalAlignment.Left, -1, tam, Tema.TextoFraco);
+			DrawString(f, new Vector2(24, y), Idioma.T(texto), HorizontalAlignment.Left, -1, tam, Tema.TextoFraco);
 			y -= 14;
 		}
 	}
@@ -692,27 +693,28 @@ public partial class TelaDoSistema : Control
 		float x = caixa.Position.X + 10, y = caixa.Position.Y + 18;
 		float larguraUtil = largo - 20;
 
+		// as quatro portas de texto da ficha traduzem aqui, uma vez, e nao em cada uma das quinze linhas
 		void Titulo(string s)
 		{
-			DrawString(f, new Vector2(x, y), s, HorizontalAlignment.Left, larguraUtil, 13, Tema.Destaque);
+			DrawString(f, new Vector2(x, y), Idioma.T(s), HorizontalAlignment.Left, larguraUtil, 13, Tema.Destaque);
 			y += 20;
 		}
 		void Bloco(string s)
 		{
 			y += 4;
-			DrawString(f, new Vector2(x, y), s, HorizontalAlignment.Left, larguraUtil, 10, Tema.BordaViva);
+			DrawString(f, new Vector2(x, y), Idioma.T(s), HorizontalAlignment.Left, larguraUtil, 10, Tema.BordaViva);
 			y += 14;
 		}
 		void Linha(string rotulo, string valor)
 		{
-			DrawString(f, new Vector2(x, y), rotulo, HorizontalAlignment.Left, 92, 11, Tema.TextoFraco);
-			DrawString(f, new Vector2(x + 96, y), valor, HorizontalAlignment.Left, larguraUtil - 96, 11, Tema.Texto);
+			DrawString(f, new Vector2(x, y), Idioma.T(rotulo), HorizontalAlignment.Left, 92, 11, Tema.TextoFraco);
+			DrawString(f, new Vector2(x + 96, y), Idioma.T(valor), HorizontalAlignment.Left, larguraUtil - 96, 11, Tema.Texto);
 			y += 15;
 		}
 		void Nota(string s)
 		{
 			y += 2;
-			DrawString(f, new Vector2(x, y), s, HorizontalAlignment.Left, larguraUtil, 10, Tema.TextoFraco);
+			DrawString(f, new Vector2(x, y), Idioma.T(s), HorizontalAlignment.Left, larguraUtil, 10, Tema.TextoFraco);
 			y += 13;
 		}
 

@@ -1775,7 +1775,7 @@ public sealed partial class GameServer
 		if (s == null) { Avisar(pl, "não há Estátua do Dragão ao seu alcance."); return; }
 		if (s.Eterno) { Avisar(pl, "uma proteção ancestral impede que a estátua seja destruída."); return; }
 
-		if (!string.Equals(arg.Trim(), "sim", StringComparison.OrdinalIgnoreCase))
+		if (!Jandirus.Core.Lingua.PalavrasDeComando.E(arg, "sim"))   // o "sim" ou o "yes" (`PalavrasDeComando`)
 		{
 			Avisar(pl, "derrubar a estátua APAGA as sete esferas deste mundo, para sempre. "
 					 + "Confirme no menu do dragão (aba World, \"Derrubar a estátua\").");

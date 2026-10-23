@@ -170,7 +170,9 @@ public partial class GameServer
 	/// `PorQueNaoVincula` do discipulado -- e aqui ela carrega uma carga extra: as duas frases de
 	/// <see cref="RecusaDeLicao.AprendeuDeAlguem"/> e <see cref="RecusaDeLicao.SemMarcos"/> sao o
 	/// unico lugar do jogo onde o jogador descobre as duas regras centrais do sistema (nao se
-	/// repassa o que foi ensinado; o custo e limiar e nao preco).
+	/// repassa o que foi ensinado; o custo e limiar e nao preco). A de <see cref="RecusaDeLicao.DoCargo"/>
+	/// diz a regra do dono INTEIRA (2026-10-23), e nao so "esta nao": sem a lista, o Guardiao tentaria o
+	/// kit skill por skill pra descobrir o que passa.
 	/// </summary>
 	private string PorQueNaoEnsina(RecusaDeLicao r, Skill? s, ServerPlayer aluno,
 								   ServerPlayer mestre, long agora) => r switch
@@ -178,6 +180,8 @@ public partial class GameServer
 		RecusaDeLicao.NaoExiste => "essa habilidade nao existe.",
 		RecusaDeLicao.NaoSabe => "voce nao sabe isso.",
 		RecusaDeLicao.NaoSeEnsina => $"{s?.Nome ?? "isso"} nao se ensina a um estranho -- so um mestre mostra isso ao proprio aluno.",
+		RecusaDeLicao.DoCargo =>
+			$"{s?.Nome ?? "isso"} e do cargo e nao se ensina: do kit de um cargo so passam adiante os ataques de ki, a Fusion Dance e o Mafuba.",
 		RecusaDeLicao.NaoEDoCorpoDele => s != null && Jandirus.Core.Skills.SkillsFechadas.De(s.Path) is { } fechada
 			? $"{s.Nome} ainda nao existe neste jogo (falta {fechada.Falta}): nem um mestre a ensina."
 			: $"{s?.Nome ?? "isso"} nao e do corpo de {aluno.Name}: nem um mestre ensina o que a raca ou a classe dele nao alcanca.",

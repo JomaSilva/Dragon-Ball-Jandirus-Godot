@@ -2137,8 +2137,17 @@ public partial class GameClient : Node
 				// O AUTOR E UM NOME DE CORPO, e le com o mesmo teto do `PeerLook` -- ver `Protocol.MaxNomeNoFio`.
 				string autor = reader.GetString(NomeComTetoVelhoDeTeste ? 32 : Protocol.MaxNomeNoFio);
 				string texto = reader.GetString(Protocol.MaxFala);
-				// O CORPO DE ONDE A FALA SAIU, o ultimo campo -- ver `GameServer.Mandar`, parametro `boca`.
+				// O CORPO DE ONDE A FALA SAIU -- ver `GameServer.Mandar`, parametro `boca`.
 				int boca = reader.GetInt();
+				// (2026-10-22) A MARCA, o ultimo campo: a frase e do SERVIDOR (o grito, o emote, a fala do NPC) e o autor e
+				// NPC do mundo? E o que decide o que se traduz pra quem joga em ingles -- o digitado por gente passa cru.
+				// Traduzido AQUI, antes dos dois eventos: o chat e o balao mostram a mesma frase. Ver `Idioma.DoServidor`.
+				// O SERVIDOR DE ANTES NAO MANDA A MARCA, e a digital do protocolo nao enxerga campo escrito a mao dentro do
+				// pacote (`Core/Versao.cs`): sem este cuidado o cliente novo estouraria na primeira fala de um servidor velho.
+				// Sem marca, o recado se traduz e a fala fica como veio.
+				byte marca = reader.AvailableBytes > 0 ? reader.GetByte() : (byte)0;
+				texto = Idioma.DoServidor(canal, texto, (marca & Protocol.MarcaDeFalaAutomatica) != 0);
+				autor = Idioma.AutorDoServidor(autor, (marca & Protocol.MarcaDeAutorNpc) != 0);
 				Falou?.Invoke(canal, autor, texto);
 				FalouPelaBoca?.Invoke(canal, autor, texto, boca);
 				break;

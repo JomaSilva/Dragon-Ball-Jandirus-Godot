@@ -298,6 +298,17 @@ public static class Protocol
     }
 
     /// <summary>
+    /// (2026-10-22) A MARCA DA FALA, o ultimo byte do <see cref="S2C.Chat"/>: de onde a frase veio. Existe pela lingua do
+    /// jogo (`Client/Idioma.cs`): quem joga em ingles le o grito da raiva, o emote do golpe e a fala do NPC em ingles --
+    /// mesmo que quem gritou jogue em portugues -- e le o que uma PESSOA digitou exatamente como ela digitou. Quem sabe a
+    /// diferenca e o servidor, que e quem escreve a frase automatica (`GameServer.Falar`, parametro `digitada`).
+    /// </summary>
+    public const byte MarcaDeFalaAutomatica = 1;
+
+    /// <summary>...e o autor e NPC do mundo: o nome dele ("Lobo", "Rei Vegeta") e texto do jogo, e se traduz tambem.</summary>
+    public const byte MarcaDeAutorNpc = 2;
+
+    /// <summary>
     /// As zonas do corpo que da pra mirar. A zona nao GARANTE o membro -- so pesa o sorteio a
     /// favor dele (ver <see cref="Jandirus.Core.Combat.Body.Sortear"/>).
     /// </summary>
@@ -568,7 +579,7 @@ public static class Protocol
         PeerLook = 9,      // a APARENCIA de alguem da zona -- mandada UMA vez, nao por tick
         Hit = 11,          // um golpe foi resolvido: quem, em quem, e no que deu
         Corpo = 12,        // o estado de CADA membro do meu personagem (so quando muda)
-        Chat = 13,         // alguem falou e eu estou no alcance: canal + quem + o que + o id do corpo de onde saiu (0 = nenhum)
+        Chat = 13,         // alguem falou e eu estou no alcance: canal + quem + o que + o id do corpo de onde saiu (0 = nenhum) + a marca (`MarcaDeFalaAutomatica`)
         Atributos = 14,    // a ficha LENTA: os 8 atributos e o que o menu abre com P mostra
         Skills = 15,       // o que eu aprendi, quantos marcos tenho, e o ESTADO das minhas arvores (ver PorEstadoDeSkills)
         Forma = 16,        // fulano mudou de forma: de, pra, e o byte de `Core.Forms.DegrauDeCena`

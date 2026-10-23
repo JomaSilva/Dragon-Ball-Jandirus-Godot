@@ -431,6 +431,21 @@ public sealed partial class GameServer
 			return;
 		}
 
+		// A CHAVE PRA SI MESMO (dono, 2026-10-23: o proprio Guardiao se autoriza; sem ninguem marcado, o botao manda o id de quem o
+		// aperta -- `VerbosDoJogo.NoAlvoOuEmMim`). Uma frase so: as duas de baixo, ditas a mesma pessoa, seriam "voce faz a chave pra
+		// Fulano" e "Fulano autorizou a sua entrada". E quem ja tem a sua ouve como fazer a de outra pessoa.
+		if (o == pl)
+		{
+			if (pl.SalaAutorizada)
+			{
+				Avisar(pl, "você já está autorizado -- pra fazer a chave de outra pessoa, marque-a antes (duplo clique nela).");
+				return;
+			}
+			pl.SalaAutorizada = true;
+			Avisar(pl, "você faz a chave da Sala do Tempo pra você mesmo. Ela vale por UMA entrada.");
+			return;
+		}
+
 		if (o.SalaAutorizada) { Avisar(pl, $"{o.Name} já está autorizado."); return; }
 
 		o.SalaAutorizada = true;
@@ -460,6 +475,13 @@ public sealed partial class GameServer
 	/// Guardiao, e nao a distancia entre os dois. O admin continua soltando de onde estiver -- a valvula nao
 	/// depende de ninguem estar de pe no Templo.
 	/// ====================================================================================================
+	///
+	/// ============================ O GUARDIAO PRESO SE SOLTA POR DENTRO (dono, 2026-10-23) ============================
+	/// Desde que o Guardiao faz a chave pra si, ele entra -- e quem passa da janela fica preso. A regra do Templo e de quem
+	/// solta OUTRO (e da porta, por fora, que se destranca a Sala), e preso la dentro ele nunca esta no Templo: ficaria
+	/// esperando um admin ou a morte. O dono escolheu que ele se destranque por dentro. So ele mesmo, so la dentro (a Sala
+	/// da Terra, de pe ou num bolso), e o preso que nao e o Guardiao continua dependendo do Templo.
+	/// ==================================================================================================================
 	/// </summary>
 	private void SoltarDaSala(ServerPlayer pl, string arg, bool porAdmin)
 	{
@@ -468,30 +490,50 @@ public sealed partial class GameServer
 			Avisar(pl, "só o Guardião da Terra tira alguém da Sala do Tempo.");
 			return;
 		}
-		if (!porAdmin && !SoltaDeLongeDeTeste
+
+		ServerPlayer? o = PorNome(arg);
+		bool eleMesmoLaDentro = !porAdmin && o == pl && !GuardiaoPresoSoSaiPeloTemploDeTeste && NaSalaDaTerraDeVerdade(pl);
+		if (!porAdmin && !SoltaDeLongeDeTeste && !eleMesmoLaDentro
 			&& !string.Equals(pl.Zone.Name, ClasseDeNuvem.ZonaDoTemplo, StringComparison.OrdinalIgnoreCase))
 		{
 			Avisar(pl, "a porta da Sala do Tempo fica no Templo Sagrado: é de lá que o Guardião a destranca. Vá até o Templo.");
 			return;
 		}
 
-		ServerPlayer? o = PorNome(arg);
 		if (o == null || !EhPessoa(o))
 		{
 			Avisar(pl, "marque alguém antes (duplo clique nele) pra soltar.");
 			return;
 		}
 
-		if (!o.SalaPreso) { Avisar(pl, $"{o.Name} não está preso na Sala do Tempo."); return; }
+		if (!o.SalaPreso)
+		{
+			// (sem ninguem marcado, o botao manda o proprio id: o Guardiao solto, no Templo, quase sempre queria soltar OUTRO)
+			Avisar(pl, o == pl
+				? "você não está preso na Sala do Tempo -- pra soltar alguém, marque a pessoa antes (duplo clique nela)."
+				: $"{o.Name} não está preso na Sala do Tempo.");
+			return;
+		}
 
 		o.SalaPreso = false;
-		Avisar(pl, $"você destranca a porta pra {o.Name}.");
-		Avisar(o, porAdmin
-			? "a porta da Sala do Tempo se destranca sozinha. Saia enquanto pode."
-			: $"{pl.Name} destranca a porta da Sala do Tempo. Saia enquanto pode.");
+		if (o == pl)
+			Avisar(pl, "você destranca a porta da Sala do Tempo por dentro. Saia enquanto pode.");
+		else
+		{
+			Avisar(pl, $"você destranca a porta pra {o.Name}.");
+			Avisar(o, porAdmin
+				? "a porta da Sala do Tempo se destranca sozinha. Saia enquanto pode."
+				: $"{pl.Name} destranca a porta da Sala do Tempo. Saia enquanto pode.");
+		}
 		GD.Print($"[server] sala do tempo: {pl.Name} soltou {o.Name}"
-				 + (porAdmin ? " (por admin -- a valvula do risco)" : ""));
+				 + (porAdmin ? " (por admin -- a valvula do risco)" : o == pl ? " (ele mesmo, por dentro)" : ""));
 	}
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--salateste`, secao 19): o Guardiao preso la dentro volta a nao se soltar -- a regra do Templo vale
+	/// pra ele tambem, como antes de 2026-10-23. Lido pelo `SoltarDaSala`. Falso em jogo, sempre.
+	/// </summary>
+	internal bool GuardiaoPresoSoSaiPeloTemploDeTeste;
 
 	/// <summary>O caminho de admin, chamado do despacho de admin (ver `GameServer.Admin.cs`).</summary>
 	private void AdminSoltarDaSala(ServerPlayer adm, string arg) => SoltarDaSala(adm, arg, porAdmin: true);

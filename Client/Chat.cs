@@ -73,6 +73,10 @@ public partial class Chat : CanvasLayer
 		("/pensa", Protocol.Fala.Pensa),
 		("/diz", Protocol.Fala.Diz),
 		("/s", Protocol.Fala.Diz),
+		// (2026-10-22) os mesmos canais com o nome em ingles -- a ajuda do chat em ingles cita estes (ver `Idioma`)
+		("/whisper", Protocol.Fala.Sussurro),
+		("/think", Protocol.Fala.Pensa),
+		("/say", Protocol.Fala.Diz),
 	];
 
 	private PanelContainer _painel = null!;
@@ -399,7 +403,7 @@ public partial class Chat : CanvasLayer
 	/// e do desenvolvedor; o jogador precisa ler isso na tela.
 	/// </summary>
 	public static void Sistema(string texto) =>
-		Instancia?.Somar(new Linha(Protocol.Fala.Sistema, "", texto, Instancia.Hora()));
+		Instancia?.Somar(new Linha(Protocol.Fala.Sistema, "", Idioma.T(texto), Instancia.Hora()));
 
 	private void Somar(Linha l)
 	{
@@ -437,6 +441,9 @@ public partial class Chat : CanvasLayer
 		string hora = $"[color=#6c7690]{l.Hora}[/color] ";
 		string quem = Esc(l.Autor);
 		string oque = Esc(l.Texto);
+		// (2026-10-22) EM INGLES, OS VERBOS DO ORIGINAL (`Talking.dm`: "says", "yells", "whispers", "thinks to themselves"). Ficam
+		// aqui e nao no dicionario: a frase do meio e de quem falou, e o tradutor nao pode encostar nela. Ver `Idioma`.
+		bool en = Idioma.EmIngles;
 
 		return l.Canal switch
 		{
@@ -459,22 +466,22 @@ public partial class Chat : CanvasLayer
 
 			// sem texto = o teaser: alguem sussurrou e eu estava perto o bastante pra notar
 			Protocol.Fala.Sussurro when l.Texto.Length == 0 =>
-				$"{hora}[color=#77809a][i]- {quem} sussurra alguma coisa...[/i][/color]",
+				$"{hora}[color=#77809a][i]- {quem} {(en ? "whispers something..." : "sussurra alguma coisa...")}[/i][/color]",
 
 			Protocol.Fala.Sussurro =>
-				$"{hora}[color=#9aa4bd][i]* {quem} sussurra: {oque}[/i][/color]",
+				$"{hora}[color=#9aa4bd][i]* {quem} {(en ? "whispers" : "sussurra")}: {oque}[/i][/color]",
 
 			Protocol.Fala.Emote =>
 				$"{hora}[color=#e8d06f][i]* {quem} {oque}[/i][/color]",
 
 			Protocol.Fala.Pensa =>
-				$"{hora}[color=#9d8fc4][i]{quem} pensa consigo mesmo, '{oque}'[/i][/color]",
+				$"{hora}[color=#9d8fc4][i]{quem} {(en ? "thinks to themselves" : "pensa consigo mesmo")}, '{oque}'[/i][/color]",
 
 			// "!" no texto e grito -- a MESMA regra que o servidor usa pra esticar o alcance
 			_ when l.Texto.Contains('!') =>
-				$"{hora}[color=#f0a041]{quem} grita, '{oque}'[/color]",
+				$"{hora}[color=#f0a041]{quem} {(en ? "yells" : "grita")}, '{oque}'[/color]",
 
-			_ => $"{hora}[color=#e6e9f2]{quem} diz, '[/color][color=#ffffff]{oque}[/color][color=#e6e9f2]'[/color]",
+			_ => $"{hora}[color=#e6e9f2]{quem} {(en ? "says" : "diz")}, '[/color][color=#ffffff]{oque}[/color][color=#e6e9f2]'[/color]",
 		};
 	}
 

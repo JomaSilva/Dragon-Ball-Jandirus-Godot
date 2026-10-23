@@ -33,6 +33,13 @@ public sealed partial class GameServer
 	/// <summary>DEFEITO INJETADO (`--v030teste`): o passe nunca vence -- o morto fica entre os vivos pra sempre.</summary>
 	internal static bool PasseSemVoltaDeTeste;
 
+	/// <summary>
+	/// DEFEITO INJETADO (`--alemteste` 9e): a alma posta entre os vivos sem passe FICA -- deitada como cadaver, sem andar e com o
+	/// relogio da morte trancado, pra sempre (o jogo de antes de 2026-10-23). Lido pelo <see cref="PuxarAAlmaPerdida"/>. Falso em
+	/// jogo, sempre.
+	/// </summary>
+	internal static bool AlmaPerdidaFicaDeTeste;
+
 	/// <summary>DEFEITO INJETADO (`--v030teste` J, `--diagv030` J): o livro dos mundos so sai no chat -- o menu fica sem a lista, o jogo de antes.</summary>
 	internal static bool PasseSemListaDeTeste;
 
@@ -263,6 +270,8 @@ public sealed partial class GameServer
 	/// </summary>
 	private void CumprirOPasseDoEnma(ServerPlayer pl)
 	{
+		// (2026-10-23) ...e quem esta entre os vivos sem passe NENHUM volta tambem -- ver `PuxarAAlmaPerdida`.
+		PuxarAAlmaPerdida(pl);
 		long ate = pl.Ficha.passe_do_enma_ate;
 		if (ate == 0) return;
 		if (!pl.Ficha.dead)
@@ -291,18 +300,46 @@ public sealed partial class GameServer
 		pl.Ficha.passe_do_enma_ate = 0;
 		pl.AvisadoDoFimDoPasse = false;
 		Avisar(pl, frase);
-		if (!Alem.EhOAlem(pl.Zone))
-		{
-			// QUEM ESTA FORA DO CORPO VOLTA PRO CORPO ANTES DE VIAJAR (a mente, o leme) -- a mesma linha do `Drop`.
-			if (pl.BonecoLargado != null) VoltarDeOndeEstiver(pl, "");
-			// (2026-10-18) E QUEM ESTA NUMA NAVE DESEMBARCA ANTES: a nave segue o piloto pra qualquer zona (`TickDasNaves`), e o morto pilota
-			// agora (`NaoPilota`) -- sem esta linha o pod iria junto pro Outro Mundo. Ele fica entre os vivos, onde estava.
-			if (NaveDoPiloto(pl) is { } nave) Desembarcar(pl, nave);
-			ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
-			MoveToZone(pl.Id, alem, MesaDoEnma(alem));
-		}
+		if (!Alem.EhOAlem(pl.Zone)) DevolverAMesaDoEnma(pl);
 		MandarFicha(pl);
 		Persistir(pl);
 		GD.Print($"[server] {pl.Name}: o passe do Enma acabou -- de volta ao Outro Mundo");
+	}
+
+	/// <summary>A VOLTA DA ALMA A MESA DO ENMA, de onde ela estiver entre os vivos: a do passe vencido e a da alma perdida.</summary>
+	private void DevolverAMesaDoEnma(ServerPlayer pl)
+	{
+		// QUEM ESTA FORA DO CORPO VOLTA PRO CORPO ANTES DE VIAJAR (a mente, o leme) -- a mesma linha do `Drop`.
+		if (pl.BonecoLargado != null) VoltarDeOndeEstiver(pl, "");
+		// (2026-10-18) E QUEM ESTA NUMA NAVE DESEMBARCA ANTES: a nave segue o piloto pra qualquer zona (`TickDasNaves`), e o morto pilota
+		// agora (`NaoPilota`) -- sem esta linha o pod iria junto pro Outro Mundo. Ele fica entre os vivos, onde estava.
+		if (NaveDoPiloto(pl) is { } nave) Desembarcar(pl, nave);
+		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
+		MoveToZone(pl.Id, alem, MesaDoEnma(alem));
+	}
+
+	/// <summary>
+	/// ============================ A ALMA NAO FICA ENTRE OS VIVOS SEM O PASSE (dono, 2026-10-23) ============================
+	/// O laco de estado do DM (`Stats.dm:275-292`): `if(dead) if(Planet && Planet!="Afterlife" ...)` ... `else if(!KeepsBody)` --
+	/// *"[src] cannot exist outside of the Afterlife."* -- e o `loc=locate(187,104,6)` na hora. Faltava aqui: quem ja viajou e era
+	/// tirado do Outro Mundo por outro caminho (o Trazer e o Trazer todos do admin; e toda porta que move sem perguntar `dead`, como
+	/// o ponto do Chrono e a soltura do selo pro berco) ficava entre os vivos como CADAVER -- deitado, sem andar, sem curar e com o
+	/// relogio da morte trancado pelo `IrProAlem` --, ou seja no chao pra sempre, com a vida cheia da chegada. O dono escolheu a
+	/// regra do DM: a alma volta pra mesa do Enma, por qualquer caminho.
+	///
+	/// QUEM FICA: o morto de pe por direito (`MortoDePe`: o Outro Mundo, a mente, o passe, a passagem de 5 s); o cadaver que ainda
+	/// nao viajou (o relogio dele o leva); o `Keep_Body` (o corpo fica de proposito, ver `PassoDaMorte`); e o passageiro de uma fusao
+	/// (o bolso do selo nao e lugar de morto, e a fusao o devolve).
+	/// ======================================================================================================================
+	/// </summary>
+	private void PuxarAAlmaPerdida(ServerPlayer pl)
+	{
+		if (AlmaPerdidaFicaDeTeste || !pl.Ficha.dead || !pl.MorteJaViajou || pl.MortoDePe || pl.Ficha.KeepsBody || EstaFundido(pl.Id))
+			return;
+		Avisar(pl, "a sua alma não pode existir fora do Outro Mundo sem o passe do Enma -- ela é puxada de volta pra mesa dele.");
+		DevolverAMesaDoEnma(pl);
+		MandarFicha(pl);
+		Persistir(pl);
+		GD.Print($"[server] {pl.Name}: morto fora do Outro Mundo sem passe -- de volta a mesa do Enma");
 	}
 }

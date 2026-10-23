@@ -406,6 +406,13 @@ if (args.Length >= 1 && args[0] == "formas")
     return FormasBench.Rodar();
 }
 
+if (args.Length >= 1 && args[0] == "lingua")
+{
+    // lingua [dicionario] : o tradutor do jogo (o ingles por opcao, 2026-10-22) e o dicionario de verdade -- toda frase
+    // volta no ingles dela. Roda da RAIZ do repo (le Assets/Data/lingua-en.json). Ver LinguaBench.
+    return LinguaBench.Rodar(args.Length >= 2 ? args[1] : null);
+}
+
 if (args.Length >= 1 && args[0] == "raiva")
 {
     // raiva : de que furia cada forma nasce, e quem fica sem porta. Varre o catalogo INTEIRO pelo

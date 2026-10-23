@@ -4315,7 +4315,8 @@ public partial class GameServer : Node
 				string texto = reader.GetString(Protocol.MaxFala);
 				if (!_byPeer.TryGetValue(peer, out ServerPlayer? a)) break;
 				if (EstaCalado(a)) { Avisar(a, "voce esta calado."); break; }
-				Falar(a, canal, texto);
+				// DIGITADA: a frase de uma pessoa nunca se traduz na tela de quem joga em outra lingua (`Protocol.MarcaDeFalaAutomatica`)
+				Falar(a, canal, texto, digitada: true);
 				break;
 			}
 

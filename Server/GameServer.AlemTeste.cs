@@ -121,6 +121,8 @@ public partial class GameServer
 			DoAlemNaoSeSaiAndando(pl);
 			OEnmaEAVoltaPaga(pl);
 			OFantasmaRegeneraLutaEMorreDeNovo(pl);
+			OFantasmaGravadoCaidoLevantaNoLogin(forjados, zonaGuardada, posGuardada);
+			AAlmaForaDoOutroMundoVolta(pl, forjados, zonaGuardada, posGuardada);
 			AsParedesDoOutroMundoNaoCaem();
 			AsPortasDoOutroMundoEAAlma(pl);
 			OCorpoQueFicaEOPrecoDoRevive(pl, forjados, zonaGuardada, posGuardada);
@@ -1152,6 +1154,360 @@ public partial class GameServer
 		c.Levantar();
 
 		if (cadaver != null) DesfazerOCadaver(cadaver);
+	}
+
+	/// <summary>
+	/// UM CORPO DE JOGADOR SEM TELA pras familias 9d e 9e, onde se pedir -- o molde dos `Forjar` das familias 3 e 12. O `Peer` nulo
+	/// impede o `Persistir` dele de tocar o disco de verdade. Com fome e vigor de sobra: a cura do fantasma os cobra
+	/// (`Regeneracao.TemEnergia`).
+	/// </summary>
+	private ServerPlayer ForjarCorpoDoAlem(List<ServerPlayer> forjados, int i, string nome, ZoneKey zona, Vec2 onde)
+	{
+		var novo = new ServerPlayer
+		{
+			Id = IdBaseDoAlemDeTeste + i,
+			Peer = null,
+			Name = nome,
+			Race = "Human",
+			Genero = "Male",
+			Idade = 25,
+			Zone = zona,
+			Pos = onde,
+			Conta = $"bancada_alem_{i}",
+			Slot = 0,
+			Ficha = new Fighter { Race = "Human", BP = 1000 },
+			Livro = new Jandirus.Core.Skills.SkillBook(),
+		};
+		novo.Ficha.Class = "Normal";
+		PorNoMundo(novo);
+		novo.Ficha.CurrentNutrition = Math.Max(novo.Ficha.CurrentNutrition, 50);
+		novo.Ficha.stamina = Math.Max(novo.Ficha.stamina, novo.Ficha.maxstamina * 0.5);
+		forjados.Add(novo);
+		return novo;
+	}
+
+	// =====================================================================
+	// 9d. O FANTASMA GRAVADO CAIDO LEVANTA NO LOGIN
+	// =====================================================================
+	/// <summary>
+	/// ============================ O DONO, 2026-10-23 ============================
+	/// *"tem um bug q as vezes personagens ficam caidos pra sempre, mesmo 100% bem de vida"* -- *"era player"*. O fantasma cai no
+	/// Outro Mundo (a "morte de novo" o cura e o deixa 2 s em coma; o soco de outro morto o poe no coma por nucleo), o save o grava
+	/// caido (o salvamento de 2 em 2 minutos, ou o `Drop` de quem sai no chao), e o login de quem esta morto saia do
+	/// `PrepararCombate` ANTES de rearmar o nocaute: ele voltava com o `KO` e sem relogio, e nenhum tique o erguia -- nem relogando
+	/// de novo. E o vivo que voltava caido so pela bandeira ficava os 225 s do teto; o DM da 10 (`Login.dm:248-250`), e o dono
+	/// escolheu os 10.
+	///
+	/// PELO CAMINHO DE PRODUCAO: a queda (o `Morrer` de um morto, que cai no `MorrerDeNovoNoAlem`; o `Nocautear` por nucleo do
+	/// `MeleeResolver`; o nocaute do verb de admin), o disco (o que o `Persistir` grava -- `AccountStore.DeJogador` com a
+	/// `FichaSemOsBuffs` -- num `AccountStore` de verdade, e de volta), o login na ordem do `Entrar` (`ParaJogador`, a zona do
+	/// save, `PrepararCombate` com o save) e o tique que ergue: o `CombatState.Tick` e a cura (`RegenerarPassivo`), os dois passos
+	/// do `TickCombate` pra este corpo. O `TickCombate` inteiro nao serve aqui: ele drenaria os corpos que as familias de cima
+	/// deixaram na fila dos mortos (o cidadao da 3), e a 12 conta com eles no lugar. O AVESSO no mesmo disco: o CADAVER (morto
+	/// entre os vivos, antes da viagem) volta sem nocaute, so com o relogio da viagem -- mesmo com a cabeca abaixo da linha, que e
+	/// o que o nocaute do vivo pegaria.
+	/// ==========================================================================
+	/// </summary>
+	private void OFantasmaGravadoCaidoLevantaNoLogin(List<ServerPlayer> forjados, ZoneKey zonaDosVivos, Vec2 pontoDosVivos)
+	{
+		GD.Print("[alem] -- 9d) o fantasma gravado caido levanta no login --");
+		// O `KO(10, 1)` do `OnLogin` (`Login.dm:249`), LITERAL de proposito: a regua nao le a constante do conserto.
+		const double DoDm = 10;
+		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
+		Vec2 mesa = MesaDoEnma(alem);
+		float t = ZoneCollision.TileSize;
+		string pasta = Path.Combine(Path.GetTempPath(), "jandirus_fantasmacaido_" + Guid.NewGuid().ToString("N"));
+		var loja = new AccountStore(pasta);
+		int proximo = 30;   // ids 91_330 em diante: as familias de cima vao ate o 7, e a 9e comeca no 50
+
+		// O QUE O `Persistir` GRAVA (a ficha sem os buffs), e o corpo SAI do mundo: deslogou.
+		void GravarESair(ServerPlayer corpo)
+		{
+			CharacterSave salvo = AccountStore.DeJogador(corpo, NowMs());
+			salvo.Ficha = FichaSemOsBuffs(corpo);
+			var conta = new AccountSave { Conta = corpo.Conta };
+			conta.Slots[0] = salvo;
+			loja.Gravar(conta);
+			_players.Remove(corpo.Id);
+			ZoneList(corpo.Zone.Hash).Remove(corpo);
+		}
+
+		// O LOGIN, na ordem do `Entrar`: o save vira corpo (`ParaJogador` traz a ficha e o ponto), a zona sai do save, e o
+		// `PrepararCombate` monta o corpo de luta COM o save. Ele fica fora das listas: so esta familia o tica.
+		ServerPlayer? Logar(string conta)
+		{
+			CharacterSave? volta = loja.Carregar(conta)?.Slots[0];
+			if (volta == null) return null;
+			var novo = new ServerPlayer { Id = IdBaseDoAlemDeTeste + proximo++, Peer = null, Conta = conta, Slot = 0 };
+			AccountStore.ParaJogador(volta, novo);
+			novo.Zone = new ZoneKey(volta.ZonaTipo, volta.Zona, volta.ZonaSeed);
+			PrepararCombate(novo, volta);
+			return novo;
+		}
+
+		// QUANTOS SEGUNDOS ATE LEVANTAR, pelos dois passos do `TickCombate` pra este corpo (ver o cabecalho). Nulo = caido no prazo.
+		double? AteLevantar(ServerPlayer corpo, double prazo)
+		{
+			for (double s = Protocol.TickSeconds; s <= prazo + 1e-9; s += Protocol.TickSeconds)
+			{
+				corpo.Combate.Tick(Protocol.TickSeconds);
+				RegenerarPassivo(corpo, Protocol.TickSeconds);
+				if (!corpo.Ficha.KO) return s;
+			}
+			return null;
+		}
+
+		// O QUE O `CombatState.Tick` VAI OLHAR, no instante do login.
+		bool Armado(ServerPlayer c) => c.Combate.NocauteRestante > 0 || c.Combate.NocautePorVital;
+		string Relogio(ServerPlayer c) =>
+			$"KO={c.Ficha.KO} resta={c.Combate.NocauteRestante:0.##} s porVital={c.Combate.NocautePorVital} hp={c.Ficha.HP:0.##}";
+
+		try
+		{
+			// ---- 9d.1) A "MORTE DE NOVO": curado, 2 s de coma -- e o save no meio deles ----
+			// (um vivo que morre DENTRO do Outro Mundo fica la, de pe e sem prazo: a primeira linha do `PassoDaMorte`)
+			ServerPlayer fantasma = ForjarCorpoDoAlem(forjados, proximo++, "bancada: fantasma que cai", alem, mesa + new Vec2(6 * t, 0));
+			fantasma.Combate.Morrer(ignorarSeguro: true);
+			PassoDaMorte(fantasma);
+			fantasma.Combate.Morrer();   // o morto que "morre" de novo: `AoMorrerDeNovo` -> `MorrerDeNovoNoAlem`
+			AfirmarAlem("(montagem) o fantasma caiu pela \"morte de novo\": morto e de pe no Outro Mundo, CAIDO, e com a vida cheia",
+						fantasma.Ficha.dead && fantasma.MortoDePe && fantasma.Ficha.KO && fantasma.Ficha.HP >= 99.99, Relogio(fantasma));
+			GravarESair(fantasma);
+			ServerPlayer? voltou = Logar(fantasma.Conta);
+			AfirmarAlem("(montagem) o disco o devolve CAIDO, morto, no Outro Mundo e com a vida cheia (o `KO` mora na ficha, e a ficha vai inteira)",
+						voltou is { Ficha: { dead: true, KO: true } } v && Alem.EhOAlem(v.Zone) && v.Ficha.HP >= 99.99,
+						voltou == null ? "o disco nao devolveu nada" : $"{voltou.Zone.Name} {Relogio(voltou)}");
+			if (voltou == null) return;
+			string noLogin = Relogio(voltou);
+			bool armado = Armado(voltou);
+			double? levantou = AteLevantar(voltou, DoDm + 1);
+			AfirmarAlem($"**O FANTASMA GRAVADO CAIDO LEVANTA NO LOGIN**: o login rearma o nocaute dele como o do vivo -- os {DoDm:0} s do `OnLogin` do DM -- e o tique o ergue; antes ele voltava SEM relogio e ficava no chao pra sempre, com a vida cheia (o relato do dono)",
+						armado && levantou is { } s && s >= DoDm - 0.5 && s <= DoDm + 0.5 && voltou.Ficha.dead && voltou.MortoDePe,
+						$"no login: {noLogin}; levantou em {levantou?.ToString("0.00") ?? "nunca"} s");
+
+			FantasmaCaidoSemRelogioDeTeste = true;
+			ServerPlayer? semRelogio;
+			try { semRelogio = Logar(fantasma.Conta); }
+			finally { FantasmaCaidoSemRelogioDeTeste = false; }
+			string semRelogioNoLogin = semRelogio == null ? "" : Relogio(semRelogio);
+			bool armadoComODefeito = semRelogio != null && Armado(semRelogio);
+			double? levantouComODefeito = semRelogio == null ? 0 : AteLevantar(semRelogio, MeleeResolver.TetoDoNocaute + 1);
+			AfirmarAlem("(defeito injetado: o login do morto sai antes do nocaute) o MESMO save volta caido e SEM relogio, e passado o teto do nocaute continua no chao com a vida cheia -- a regua de cima reprova",
+						semRelogio != null && !armadoComODefeito && levantouComODefeito == null && semRelogio.Ficha.KO && semRelogio.Ficha.HP >= 99.99,
+						$"no login: {semRelogioNoLogin}; levantou em {levantouComODefeito?.ToString("0.00") ?? "nunca"} s");
+
+			// ---- 9d.2) O SOCO DE OUTRO MORTO: o coma por nucleo, com a cabeca abaixo da linha ----
+			ServerPlayer socado = ForjarCorpoDoAlem(forjados, proximo++, "bancada: fantasma socado", alem, mesa + new Vec2(8 * t, 0));
+			socado.Combate.Morrer(ignorarSeguro: true);
+			PassoDaMorte(socado);
+			BodyPart cabeca = socado.Combate.Corpo.Achar("Cabeca")!;
+			cabeca.Vida = cabeca.VidaMax * 0.199;   // um fio abaixo da linha: a cura de fora de combate a cruza logo depois do piso
+			socado.Combate.SincronizarVida();
+			socado.Combate.Nocautear(MeleeResolver.TetoDoNocaute, porVital: true);   // o ramo do nocaute do `MeleeResolver`
+			GravarESair(socado);
+			ServerPlayer? socadoDeVolta = Logar(socado.Conta);
+			bool comaNoLogin = socadoDeVolta != null && socadoDeVolta.Ficha.KO && socadoDeVolta.Combate.NocautePorVital;
+			string socadoNoLogin = socadoDeVolta == null ? "o disco nao devolveu nada" : Relogio(socadoDeVolta);
+			double? levantouSocado = socadoDeVolta == null ? null : AteLevantar(socadoDeVolta, MeleeResolver.TetoDoNocaute);
+			AfirmarAlem("...e o fantasma que caiu de um SOCO (a cabeca abaixo da linha) volta no coma por nucleo, e levanta quando a cabeca sara -- pela cura, e nao pelo teto",
+						comaNoLogin && levantouSocado is { } ls && ls < MeleeResolver.TetoDoNocaute - 1,
+						$"no login: {socadoNoLogin}; levantou em {levantouSocado?.ToString("0.00") ?? "nunca"} s");
+
+			// ---- 9d.3) O VIVO que saiu caido so pela bandeira: o nocaute do verb de admin, cronometrado e com a vida cheia ----
+			ServerPlayer vivo = ForjarCorpoDoAlem(forjados, proximo++, "bancada: vivo que sai caido", zonaDosVivos, pontoDosVivos + new Vec2(10 * t, 0));
+			Nocautear(vivo);
+			AfirmarAlem("(montagem) o vivo esta caido pelo relogio, com a vida cheia",
+						vivo.Ficha.KO && !vivo.Ficha.dead && !vivo.Combate.NocautePorVital && vivo.Ficha.HP >= 99.99, Relogio(vivo));
+			GravarESair(vivo);
+			ServerPlayer? vivoDeVolta = Logar(vivo.Conta);
+			string vivoNoLogin = vivoDeVolta == null ? "o disco nao devolveu nada" : Relogio(vivoDeVolta);
+			double? levantouVivo = vivoDeVolta == null ? null : AteLevantar(vivoDeVolta, DoDm + 1);
+			AfirmarAlem($"**O VIVO QUE VOLTA CAIDO SO PELA BANDEIRA FICA {DoDm:0} S NO CHAO** (o `KO(10, 1)` do `OnLogin`), e nao os 225 s do teto do nocaute",
+						levantouVivo is { } lv && lv >= DoDm - 0.5 && lv <= DoDm + 0.5,
+						$"no login: {vivoNoLogin}; levantou em {levantouVivo?.ToString("0.00") ?? "nunca"} s");
+
+			NocauteDoLoginNoTetoDeTeste = true;
+			ServerPlayer? noTeto;
+			try { noTeto = Logar(vivo.Conta); }
+			finally { NocauteDoLoginNoTetoDeTeste = false; }
+			string noTetoNoLogin = noTeto == null ? "o disco nao devolveu nada" : Relogio(noTeto);
+			double? levantouNoTeto = noTeto == null ? 0 : AteLevantar(noTeto, DoDm + 1);
+			AfirmarAlem("(defeito injetado: o login no teto do nocaute) o mesmo save continua no chao passados os 10 s, com a vida cheia -- a regua de cima reprova",
+						noTeto != null && levantouNoTeto == null && noTeto.Ficha.KO && noTeto.Ficha.HP >= 99.99,
+						$"no login: {noTetoNoLogin}; levantou em {levantouNoTeto?.ToString("0.00") ?? "nunca"} s");
+
+			// ---- 9d.4) O AVESSO: o CADAVER que ainda nao viajou, com a cabeca abaixo da linha ----
+			ServerPlayer morto = ForjarCorpoDoAlem(forjados, proximo++, "bancada: cadaver gravado", zonaDosVivos, pontoDosVivos + new Vec2(14 * t, 0));
+			BodyPart cabecaDoMorto = morto.Combate.Corpo.Achar("Cabeca")!;
+			cabecaDoMorto.Vida = cabecaDoMorto.VidaMax * 0.05;
+			morto.Combate.SincronizarVida();
+			morto.Combate.Morrer(ignorarSeguro: true);
+			AfirmarAlem("(montagem) o cadaver: morto entre os vivos, ainda sem viajar, sem nocaute -- e com a cabeca abaixo da linha",
+						morto.Ficha.dead && !morto.MortoDePe && !morto.MorteJaViajou && !morto.Ficha.KO && morto.Combate.Corpo.DeveNocautear(),
+						Relogio(morto));
+			GravarESair(morto);
+			ServerPlayer? cadaverDeVolta = Logar(morto.Conta);
+			AfirmarAlem("...e o CADAVER gravado volta SEM nocaute: o login dele continua parando no relogio da viagem (com a cabeca abaixo da linha, o nocaute do vivo o pegaria)",
+						cadaverDeVolta is { Ficha: { dead: true, KO: false } } cv && !cv.MorteJaViajou && cv.RelogioDaMorte != long.MaxValue,
+						cadaverDeVolta == null ? "o disco nao devolveu nada"
+							: $"{Relogio(cadaverDeVolta)}; relogio da morte {(cadaverDeVolta.RelogioDaMorte == long.MaxValue ? "trancado" : "armado")}");
+		}
+		finally
+		{
+			FantasmaCaidoSemRelogioDeTeste = false;
+			NocauteDoLoginNoTetoDeTeste = false;
+			try { if (Directory.Exists(pasta)) Directory.Delete(pasta, recursive: true); }
+			catch (Exception e) { GD.Print($"[alem] nao consegui apagar {pasta}: {e.Message}"); }
+		}
+	}
+
+	// =====================================================================
+	// 9e. A ALMA FORA DO OUTRO MUNDO VOLTA PRA MESA DO ENMA
+	// =====================================================================
+	/// <summary>
+	/// ============================ O DONO, 2026-10-23 ============================
+	/// O outro caminho do mesmo relato: o morto que ja viajou e posto entre os vivos sem o passe (o Trazer e o Trazer todos do admin;
+	/// e toda porta que move sem perguntar `dead`) ficava la como CADAVER -- deitado, sem andar, sem curar e com o relogio trancado
+	/// pelo `IrProAlem` --, com a vida cheia da chegada. O dono escolheu a regra do DM (`Stats.dm:275-292`, *"cannot exist outside
+	/// of the Afterlife"*): a alma volta pra mesa do Enma, por qualquer caminho -- e o Trazer e o Trazer todos pulam o morto e
+	/// avisam o admin.
+	///
+	/// O HOST E A ALMA: ele chega aqui como o fantasma de pe que a familia 9 deixou, e sai igual, na mesa do Enma (a 11 conta com
+	/// isso). O "qualquer caminho" e o `MoveToZone` cru; a volta, o laco de fichas de producao (`TickFichas`, que passa pelo relogio
+	/// do passe). Os avessos: quem tem o passe e o `Keep_Body` ficam entre os vivos, o cadaver que ainda nao viajou fica pro relogio
+	/// dele, o passageiro de uma fusao de mortos fica no bolso do selo, o vivo e trazido como sempre, e o admin DENTRO do Outro Mundo
+	/// traz o morto.
+	/// ==========================================================================
+	/// </summary>
+	private void AAlmaForaDoOutroMundoVolta(ServerPlayer pl, List<ServerPlayer> forjados, ZoneKey zonaDosVivos, Vec2 pontoDosVivos)
+	{
+		GD.Print("[alem] -- 9e) a alma fora do Outro Mundo volta pra mesa do Enma --");
+		ZoneKey alem = ZoneKey.Premade(Alem.ZonaDoOutroMundo);
+		Vec2 mesa = MesaDoEnma(alem);
+		float t = ZoneCollision.TileSize;
+		Vec2 entreOsVivos = MapaDaZonaOuCatalogo(zonaDosVivos)?.PontoLivrePerto(pontoDosVivos + new Vec2(12 * t, 0)) ?? pontoDosVivos;
+		// O `Ouvir` desliga a escuta ao sair, e esta bancada roda sobre UMA escuta ligada la em cima -- ver a nota da familia 9.
+		List<string>? escutaDaBancada = EscutaDeAvisos;
+
+		bool NaMesa() => Alem.EhOAlem(pl.Zone) && Vec2.Distance(pl.Pos, mesa) < 1f;
+		bool PresoComoCadaver() =>
+			pl.Ficha.dead && !Alem.EhOAlem(pl.Zone) && !pl.MortoDePe && pl.Pose(NowMs(), false) == Protocol.Pose.Nocauteado;
+		string Onde() => $"zona={pl.Zone.Name} dePe={pl.MortoDePe} pose={pl.Pose(NowMs(), false)} "
+						 + $"relogio={(pl.RelogioDaMorte == long.MaxValue ? "trancado" : $"{pl.RelogioDaMorte - NowMs()} ms")}";
+
+		try
+		{
+			AfirmarAlem("(montagem) o host e o fantasma de pe do Outro Mundo: morto, ja viajou, sem passe e com o relogio trancado",
+						pl.Ficha.dead && pl.MorteJaViajou && pl.MortoDePe && Alem.EhOAlem(pl.Zone) && pl.Ficha.passe_do_enma_ate == 0
+						&& pl.RelogioDaMorte == long.MaxValue, Onde());
+			pl.Pos = mesa;
+
+			// ---- 9e.1) por QUALQUER caminho: o `MoveToZone` cru, entre os vivos ----
+			MoveToZone(pl.Id, zonaDosVivos, entreOsVivos);
+			bool preso = PresoComoCadaver() && pl.RelogioDaMorte == long.MaxValue;
+			string comoFicou = Onde();
+			List<string> noLaco = Ouvir(() => TickFichas());
+			EscutaDeAvisos = escutaDaBancada;
+			AfirmarAlem("**A ALMA FORA DO OUTRO MUNDO VOLTA**: o morto posto entre os vivos sem o passe (deitado como cadaver, o relogio trancado) e puxado de volta pra mesa do Enma no laco de fichas -- de pe, e avisado (`Stats.dm:275-292`)",
+						preso && NaMesa() && pl.MortoDePe && Disse(noLaco, "fora do Outro Mundo"),
+						$"entre os vivos: {comoFicou}; depois do laco: {Onde()} | {Ultimos(noLaco)}");
+
+			MoveToZone(pl.Id, zonaDosVivos, entreOsVivos);
+			AlmaPerdidaFicaDeTeste = true;
+			try { TickFichas(); }
+			finally { AlmaPerdidaFicaDeTeste = false; }
+			AfirmarAlem("(defeito injetado: a alma perdida fica) o mesmo morto continua entre os vivos depois do laco -- deitado, sem andar e com o relogio trancado: o \"caido pra sempre, com a vida cheia\" do relato",
+						PresoComoCadaver() && pl.RelogioDaMorte == long.MaxValue, Onde());
+			TickFichas();
+			AfirmarAlem("...e desligado o defeito, o mesmo laco o devolve", NaMesa(), Onde());
+
+			// ---- 9e.2) OS AVESSOS: quem fica entre os vivos ----
+			pl.Ficha.passe_do_enma_ate = NowMs() + 60_000;
+			MoveToZone(pl.Id, zonaDosVivos, entreOsVivos);
+			TickFichas();
+			AfirmarAlem("...e quem tem o PASSE fica entre os vivos, de pe (o laco nao o puxa)",
+						!Alem.EhOAlem(pl.Zone) && pl.MortoDePe, Onde());
+			pl.Ficha.passe_do_enma_ate = 1;   // vencido: quem o devolve e o relogio do passe, pela porta dele
+			TickFichas();
+			AfirmarAlem("(montagem) vencido o passe, ele volta pela porta do passe", NaMesa() && pl.Ficha.passe_do_enma_ate == 0, Onde());
+
+			pl.Ficha.KeepsBody = true;
+			MoveToZone(pl.Id, zonaDosVivos, entreOsVivos);
+			TickFichas();
+			AfirmarAlem("...e o `Keep_Body` tambem fica (o corpo que fica entre os vivos de proposito -- `PassoDaMorte`)",
+						!Alem.EhOAlem(pl.Zone) && pl.Ficha.dead, Onde());
+			pl.Ficha.KeepsBody = false;
+			TickFichas();
+			AfirmarAlem("(montagem) sem o `Keep_Body`, o mesmo laco o devolve", NaMesa(), Onde());
+
+			// O CADAVER QUE AINDA NAO VIAJOU: vivo de novo entre os vivos, e morto ali mesmo -- o relogio dos 2 s, sem viagem.
+			pl.Combate.Reviver();
+			MoveToZone(pl.Id, zonaDosVivos, entreOsVivos);
+			pl.Combate.Morrer(ignorarSeguro: true);
+			TickFichas();
+			AfirmarAlem("...e o CADAVER que ainda nao viajou fica pro relogio dele (o laco nao o arranca antes de o corpo ficar no chao)",
+						pl.Ficha.dead && !pl.MorteJaViajou && !Alem.EhOAlem(pl.Zone) && pl.RelogioDaMorte != long.MaxValue, Onde());
+			// (desfaz) de volta ao fantasma da mesa sem deixar cadaver: vivo, morto DENTRO do Outro Mundo e trancado la
+			pl.Combate.Reviver();
+			MoveToZone(pl.Id, alem, mesa);
+			pl.Combate.Morrer(ignorarSeguro: true);
+			PassoDaMorte(pl);
+			AfirmarAlem("(montagem) de volta: o host e o fantasma de pe da mesa do Enma de novo",
+						NaMesa() && pl.MortoDePe && pl.MorteJaViajou && pl.RelogioDaMorte == long.MaxValue, Onde());
+
+			// O PASSAGEIRO DE UMA FUSAO: dois mortos fundem no Outro Mundo (o morto de pe funde -- `Fundir`, a porta da danca e dos
+			// brincos), e o passageiro vai pro bolso do selo, que nao e lugar de morto. Quem o devolve e a fusao quando acaba.
+			ServerPlayer parceiro = ForjarCorpoDoAlem(forjados, 53, "bancada: fantasma que funde", alem, mesa + new Vec2(2 * t, 0));
+			parceiro.Combate.Morrer(ignorarSeguro: true);
+			PassoDaMorte(parceiro);
+			Fundir(parceiro, pl, TipoDeFusao.Potara, estragada: false);
+			bool noBolso = EstaFundido(pl.Id) && pl.Zone.Equals(ZonaDoSelo(parceiro.Id)) && !pl.MortoDePe;
+			TickFichas();
+			AfirmarAlem("...e o PASSAGEIRO de uma fusao de mortos fica no bolso do selo (nao e lugar de morto, mas quem o devolve e a fusao)",
+						noBolso && EstaFundido(pl.Id) && pl.Zone.Equals(ZonaDoSelo(parceiro.Id)), Onde());
+			if (FusaoDe(pl.Id) is { } fusao) Separar(fusao, "fim da prova");
+			AfirmarAlem("(montagem) separados, o host volta pro lado do parceiro, de pe no Outro Mundo",
+						!EstaFundido(pl.Id) && Alem.EhOAlem(pl.Zone) && pl.MortoDePe, Onde());
+			pl.Pos = mesa;
+
+			// ---- 9e.3) O TRAZER E O TRAZER TODOS PULAM O MORTO, e avisam ----
+			ServerPlayer adm = ForjarCorpoDoAlem(forjados, 50, "bancada: admin que traz", zonaDosVivos, entreOsVivos + new Vec2(2 * t, 0));
+			List<string> aoTrazer = Ouvir(() => AdminTrazer(adm, pl.Name));
+			EscutaDeAvisos = escutaDaBancada;
+			AfirmarAlem("**O TRAZER NAO LEVA O MORTO** pra junto dos vivos: ele fica na mesa do Enma, e o admin ouve por que",
+						NaMesa() && Disse(aoTrazer, "está morto"), $"{Onde()} | {Ultimos(aoTrazer)}");
+			List<string> aoTrazerTodos = Ouvir(() => AdminTrazerTodos(adm));
+			EscutaDeAvisos = escutaDaBancada;
+			AfirmarAlem("...nem o TRAZER TODOS: o morto fica, e a conta diz quantos ficaram no Outro Mundo",
+						NaMesa() && Disse(aoTrazerTodos, "1 morto(s) ficaram no Outro Mundo"), $"{Onde()} | {Ultimos(aoTrazerTodos)}");
+
+			TrazerLevaMortoDeTeste = true;
+			try { AdminTrazer(adm, pl.Name); }
+			finally { TrazerLevaMortoDeTeste = false; }
+			AfirmarAlem("(defeito injetado: o Trazer leva o morto) o mesmo verb arrasta o morto pra junto dos vivos, deitado como cadaver -- a regua de cima reprova",
+						PresoComoCadaver(), Onde());
+			TickFichas();   // (desfaz) e a alma volta pela regra da 9e.1
+
+			ServerPlayer vivo = ForjarCorpoDoAlem(forjados, 51, "bancada: vivo trazido", alem, mesa + new Vec2(10 * t, 0));
+			AdminTrazer(adm, vivo.Name);
+			AfirmarAlem("...e o VIVO e trazido como sempre (o crivo e do morto)",
+						vivo.Zone.Equals(adm.Zone) && Vec2.Distance(vivo.Pos, adm.Pos) < 1f, $"{vivo.Zone.Name} a {Vec2.Distance(vivo.Pos, adm.Pos):0} px");
+			ServerPlayer admDoAlem = ForjarCorpoDoAlem(forjados, 52, "bancada: admin do Outro Mundo", alem, mesa + new Vec2(-6 * t, 0));
+			AdminTrazer(admDoAlem, pl.Name);
+			AfirmarAlem("...e o admin DENTRO do Outro Mundo traz o morto (la a alma fica de pe)",
+						Alem.EhOAlem(pl.Zone) && Vec2.Distance(pl.Pos, admDoAlem.Pos) < 1f && pl.MortoDePe, Onde());
+		}
+		finally
+		{
+			EscutaDeAvisos = escutaDaBancada;
+			AlmaPerdidaFicaDeTeste = false;
+			TrazerLevaMortoDeTeste = false;
+			pl.Ficha.KeepsBody = false;
+			pl.Ficha.passe_do_enma_ate = 0;
+			// O HOST SAI COMO ENTROU: o fantasma de pe da mesa do Enma (a familia 11 o pega daqui).
+			if (pl.Ficha.dead && !Alem.EhOAlem(pl.Zone)) MoveToZone(pl.Id, alem, mesa);
+			else pl.Pos = mesa;
+		}
 	}
 
 	// =====================================================================

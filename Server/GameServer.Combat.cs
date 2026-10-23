@@ -392,7 +392,16 @@ public partial class GameServer
 			// Quem loga ja no Outro Mundo NAO ganha prazo nenhum (nao ha volta automatica -- ver
 			// `Alem.TipoDoEnma`); quem loga caido no mundo dos vivos ainda tem os 15 s ate subir.
 			pl.RelogioDaMorte = jaViajou ? long.MaxValue : NowMs() + Alem.MsNoChao;
-			return;
+
+			// ============================ O CADAVER PARA AQUI; O FANTASMA SEGUE PRO NOCAUTE DE BAIXO ============================
+			// (2026-10-23) o dono: *"as vezes personagens ficam caidos pra sempre, mesmo 100% bem de vida"* -- *"era player"*. O
+			// fantasma de pe apanha e cai como um vivo (o soco; e a "morte de novo" do Outro Mundo, que cura e deixa 2 s de coma), e
+			// o save o grava caido: o salvamento de 2 em 2 minutos, ou o `Drop` de quem sai do jogo no chao. Este `return` vinha
+			// ANTES do nocaute de baixo, entao ele voltava com o `KO` da ficha e sem relogio nenhum -- e o `CombatState.Tick` nunca
+			// o erguia, nem com a vida cheia (o fantasma regenera), nem relogando de novo. O `OnLogin` do DM tambem nao olha `dead`
+			// (`Login.dm:248-250`). O CADAVER nao passa: o `Morrer` apaga o `KO`, e o que ele tem e o relogio da viagem.
+			// =====================================================================================================================
+			if (!jaViajou || FantasmaCaidoSemRelogioDeTeste) return;
 		}
 
 		// NOCAUTE NAO ATRAVESSA O LOGOUT DE GRACA. O `KO` mora na ficha (que e salva) mas o
@@ -404,9 +413,37 @@ public partial class GameServer
 		// linha esta no COMA de `Injuries.dm:283` e levanta quando o nucleo subir; quem volta so com
 		// a bandeira `KO` ligada (o nucleo ja sarou offline) tem um nocaute cronometrado comum. Ver
 		// `CombatState.NocautePorVital`.
+		//
+		// (2026-10-23) E O CRONOMETRADO E O DO DM, 10 s: o `OnLogin` faz `KO = 0; KO(10, 1)` (`Login.dm:248-250`, e o `KO()`
+		// agenda o `Un_KO` em `10*KOtimer` decisegundos). Esta linha nasceu quando o teto do nocaute era 12 s e o herdou ao
+		// virar os 225 s do coma -- quem saia do jogo caido voltava quase quatro minutos no chao com a vida cheia. O dono
+		// escolheu os 10 s, pro vivo e pro fantasma. O coma por nucleo continua no teto: quem o ergue e a cura.
 		if (pl.Ficha.KO || pl.Combate.Corpo.DeveNocautear())
-			pl.Combate.Nocautear(MeleeResolver.TetoDoNocaute, porVital: pl.Combate.Corpo.DeveNocautear());
+		{
+			bool porVital = pl.Combate.Corpo.DeveNocautear();
+			pl.Combate.Nocautear(porVital || NocauteDoLoginNoTetoDeTeste ? MeleeResolver.TetoDoNocaute : SegundosDoNocauteDoLogin, porVital);
+		}
 	}
+
+	/// <summary>
+	/// QUANTO FICA NO CHAO QUEM VOLTA CAIDO SO PELA BANDEIRA (o nucleo ja sarou): o `KO(10, 1)` do `OnLogin` do DM
+	/// (`Login.dm:248-250`). Ver o fim do <see cref="PrepararCombate"/>.
+	/// </summary>
+	private const double SegundosDoNocauteDoLogin = 10;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--alemteste`, familia 9d): o login do morto volta a sair antes do nocaute, como o do cadaver
+	/// -- o fantasma gravado caido volta sem relogio e fica no chao pra sempre. Lido pela propria linha do conserto, no
+	/// <see cref="PrepararCombate"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal bool FantasmaCaidoSemRelogioDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--alemteste`, familia 9d): quem volta caido so pela bandeira volta a ficar o teto do nocaute
+	/// (225 s) no chao, e nao os 10 s do `OnLogin` do DM. Lido pela propria linha do conserto, no <see cref="PrepararCombate"/>.
+	/// Falso em jogo, sempre.
+	/// </summary>
+	internal bool NocauteDoLoginNoTetoDeTeste;
 
 	/// <summary>
 	/// O RABO NO RITMO DE TREINO. Com rabo, o Saiyajin ganha METADE (`tailgain = 0.5`); sem
@@ -753,6 +790,13 @@ public partial class GameServer
 			RacharChao(a.Zone, alvo.Pos, Math.Max(a.Ficha.expressedBP, alvo.Ficha.expressedBP));
 	}
 
+	/// <summary>
+	/// DEFEITO INJETADO (`--raivateste`, familia 14): o golpe que acabou de matar volta a ser tratado como golpe em cadaver -- a
+	/// morte por soco, tiro de ki ou tecnica sem consequencia nenhuma (o port de 2026-09-05 a 2026-10-23). Lido pelo
+	/// <see cref="ResolverDesfecho"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool MorteDoGolpeEngolidaDeTeste;
+
 	/// <summary>As consequencias fora do corpo: nocaute, morte, Zenkai.</summary>
 	private void ResolverDesfecho(ServerPlayer a, ServerPlayer d, GolpeResultado r)
 	{
@@ -767,7 +811,12 @@ public partial class GameServer
 		// responde "este golpe teve consequencia".
 		// UM CADAVER NAO TEM VIDA SOCIAL NEM CAI: quem ja esta morto nao "e nocauteado", nao rende convivio e
 		// nao entra no luto de ninguem. O golpe feriu o corpo (ver `MeleeResolver`), e e so isso que ele faz.
-		if (EhCadaver(d)) return;
+		// (2026-10-23) MENOS O CADAVER QUE ESTE GOLPE ACABOU DE FAZER -- o dono: *"quando matei ele n ficou furioso"* (o nocaute
+		// enfurecia). O `Morrer()` roda DENTRO do golpe (`MeleeResolver.AplicarNoMembro`), entao quem ele matou ja chega aqui
+		// morto, e este corte engolia a morte inteira desde 2026-09-05: o `AoPerderALuta(morreu: true)` la de baixo -- o luto de
+		// quem viu, a saga do Majin, o karma, a sucessao -- nunca rodava pra morte por soco, tiro de ki ou tecnica. E `r.Morreu`
+		// so e verdade quando ESTE golpe matou: o `Morrer()` de quem ja estava morto devolve falso.
+		if (EhCadaver(d) && (!r.Morreu || MorteDoGolpeEngolidaDeTeste)) return;
 		if ((r.Dano > 0 || r.Decepou || r.RaboArrancado) && d.Combate != null)
 			TalvezIrritar(d, a, r.Decepou || r.RaboArrancado);
 		// O GOD'S TEMPER conta o dano que ENCOSTOU no Deus da Destruicao (soco e tiro saem daqui) -- ver

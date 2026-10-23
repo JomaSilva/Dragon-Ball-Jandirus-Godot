@@ -61,6 +61,30 @@ public static class VerbosDoJogo
 	}
 
 	/// <summary>
+	/// O VERB QUE QUEM O TEM TAMBEM USA EM SI (dono, 2026-10-23: *"permita o proprio guardiao poder se autorizar a entrar na sala
+	/// do tempo"*). Com alguem marcado vai nele; sem ninguem, vai em MIM. O proprio corpo nao se marca -- o duplo clique nele SOLTA
+	/// o alvo, regra do dono de 2026-09-05 --, entao "ninguem marcado" e o unico jeito de dizer "eu". Hoje sao dois: a chave da
+	/// Sala do Tempo (que o servidor ja aceitava pra si: o `view()` do DM inclui quem a faz) e o destrancar do Guardiao preso la
+	/// dentro.
+	/// </summary>
+	private static void NoAlvoOuEmMim(string cmd)
+	{
+		if (C is not { } c) return;
+		int id = AlvoOuEu(c.AlvoId, c.LocalId);
+		if (id == 0) { Chat.Sistema("marque alguem antes (duplo clique nele)."); return; }
+		c.SendVerbo(cmd, id.ToString());
+	}
+
+	/// <summary>A quem vai o gesto de <see cref="NoAlvoOuEmMim"/>: o alvo marcado, ou eu sem ninguem marcado.</summary>
+	internal static int AlvoOuEu(int alvoId, int meuId) => alvoId != 0 ? alvoId : SoNoAlvoMarcadoDeTeste ? 0 : meuId;
+
+	/// <summary>
+	/// DEFEITO INJETADO (robo `--diagverbs`, F9): a chave e o destrancar voltam a pedir alvo marcado -- e quem os tem nao consegue
+	/// usa-los em si, como antes de 2026-10-23. Lido pelo <see cref="AlvoOuEu"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool SoNoAlvoMarcadoDeTeste;
+
+	/// <summary>
 	/// UM VERB DE ADMIN SOBRE ALGUEM. Com alguem marcado, vai nele; sem ninguem -- ou com a marca em MIM
 	/// mesmo -- abre a lista de quem esta online pra escolher (o `input(... in world)` do original). O dono
 	/// (2026-09-05): *"verbs de adm que dizem que afetam quem voce ta com target, caso voce tenha target
@@ -319,13 +343,16 @@ public static class VerbosDoJogo
 		// A CHAVE E DE QUEM SABE FAZE-LA, e nao so do trono: o servidor cobra a skill `Permission`, que o
 		// kit do Guardiao da e o do Mestre Korin tambem. O botao era so do Guardiao, e o Korin ficava com a
 		// skill, com o servidor aceitando, e sem ter onde apertar. SOLTAR continua sendo so do Guardiao.
+		//
+		// E OS DOIS VALEM EM SI, SEM NINGUEM MARCADO (dono, 2026-10-23): a chave pra si mesmo, e o Guardiao preso la dentro se
+		// destranca por dentro. Ver `NoAlvoOuEmMim`.
 		Verbos.Registrar(new Verbo("Time Chamber: Authorize", Verbos.Outros,
-			"So quem sabe fazer a chave (o Guardiao da Terra e o Mestre Korin). Da ao alvo marcado UMA entrada na Sala do Tempo.",
-			() => NoAlvo("sala_autorizar")) { Requisito = Do("sala_autorizar") });
+			"So quem sabe fazer a chave (o Guardiao da Terra e o Mestre Korin). Da ao alvo marcado UMA entrada na Sala do Tempo -- e, sem ninguem marcado, a chave e sua.",
+			() => NoAlvoOuEmMim("sala_autorizar")) { Requisito = Do("sala_autorizar") });
 
 		Verbos.Registrar(new Verbo("Time Chamber: Release", Verbos.Outros,
-			"So o Guardiao da Terra. Destranca a porta pra quem ficou preso la dentro.",
-			() => NoAlvo("sala_soltar")) { Requisito = Do("sala_soltar") });
+			"So o Guardiao da Terra. Destranca, do Templo, a porta pra quem ficou preso la dentro -- e, sem ninguem marcado, a sua: preso la dentro, voce se solta por dentro.",
+			() => NoAlvoOuEmMim("sala_soltar")) { Requisito = Do("sala_soltar") });
 
 		Verbos.Registrar(new Verbo("Tech Catalog", Verbos.Outros,
 			"O catalogo de construcoes, com o custo e o motivo de cada nao.",

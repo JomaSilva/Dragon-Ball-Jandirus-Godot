@@ -1024,7 +1024,8 @@ public partial class MapaEstelar : Control
 				: VendoProcedurais ? "" : "todas as estrelas. Aproxime mais pra ver os mundos.";
 
 		if (nota.Length == 0) return;
-		DrawString(ThemeDB.FallbackFont, new Vector2(8, Size.Y - 7), nota,
+		// desenhado a mao nao passa pela traducao do Godot: a lingua da tela vem do `Idioma` (2026-10-22)
+		DrawString(ThemeDB.FallbackFont, new Vector2(8, Size.Y - 7), Idioma.T(nota),
 				   HorizontalAlignment.Left, Size.X - 16, 10, Tema.TextoFraco);
 	}
 
@@ -1120,7 +1121,7 @@ public partial class MapaEstelar : Control
 
 		Font f = ThemeDB.FallbackFont;
 		int tam = s.Ancorado ? 12 : 10;
-		string nome = s.NomeDaEstrela;
+		string nome = Idioma.T(s.NomeDaEstrela);
 		Vector2 medida = f.GetStringSize(nome, HorizontalAlignment.Left, -1, tam);
 		DrawString(f, c + new Vector2(-medida.X / 2f, -r - 5), nome,
 				   HorizontalAlignment.Left, -1, tam, s.Ancorado ? Tema.Texto : Tema.TextoFraco);
@@ -1205,7 +1206,7 @@ public partial class MapaEstelar : Control
 		// jogador precisa saber antes de sair voando pra la.
 		// O NOME E O QUE SE MOSTRA: o batizado, se alguem batizou (ver `GameClient.NomeDoPlaneta`).
 		string nomeVisto = GameClient.Instance?.NomeDoPlaneta(p) ?? p.Nome;
-		string rotulo = morto ? $"{nomeVisto} (destruído)" : casaDeBills ? $"{nomeVisto} (casa de Bills)" : nomeVisto;
+		string rotulo = Idioma.T(morto ? $"{nomeVisto} (destruído)" : casaDeBills ? $"{nomeVisto} (casa de Bills)" : nomeVisto);
 		Vector2 medida = fonte.GetStringSize(rotulo, HorizontalAlignment.Left, -1, tam);
 		DrawString(fonte, c + new Vector2(-medida.X / 2f, r + tam + 2), rotulo,
 				   HorizontalAlignment.Left, -1, tam,

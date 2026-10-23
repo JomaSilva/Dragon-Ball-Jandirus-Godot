@@ -1032,6 +1032,10 @@ public partial class GameServer
 			// ============================ 13. (2026-10-18) A FURIA AO ACHAR O CORPO DO AMIGO ============================
 			// Ver `GameServer.RaivaDoCorpoTeste.cs`.
 			AFuriaAoAcharOCorpo(pl, Checa, forjados);
+
+			// ============================ 14. (2026-10-23) O AMIGO MORTO PELO GOLPE DE VERDADE ============================
+			// Ver `AMorteDoGolpe`, logo abaixo.
+			AMorteDoGolpe(pl, Checa, forjados);
 		}
 		catch (Exception e)
 		{
@@ -1051,6 +1055,8 @@ public partial class GameServer
 			SubidaPelaRaiva.PraBaixoDeTeste = false;
 			EstadoDeForma.RaivaComumSemAgioDeTeste = false;
 			Catalogo.SoAFuriaAbreOTroncoDeTeste = false;
+			MorteDoGolpeEngolidaDeTeste = false;
+			CadaverIrritadoDeTeste = false;
 			EscutaDeFurias = furiasDeFora;
 			EscutaDeAnuncios = anunciosDeFora;
 			EscutaDeQuemViuAFuria = null;
@@ -1101,6 +1107,111 @@ public partial class GameServer
 			if (entrouPelaBancada) daZona.Remove(pl);
 
 			GD.Print($"[raiva] ================ {ok} OK, {falhou} FALHA(S) ================");
+		}
+	}
+
+	/// <summary>
+	/// FAMILIA 14 (2026-10-23): O AMIGO MORTO PELO GOLPE DE VERDADE. O dono: *"agora ele so ficou irritado pelo ko, mas quando matei
+	/// ele n ficou furioso"*. As familias de cima chamam o funil da derrota A MAO (`AoPerderALuta`), e o defeito morava ANTES dele: o
+	/// `Morrer()` roda dentro do golpe (`MeleeResolver.AplicarNoMembro`), e o `ResolverDesfecho` via o corpo que o golpe acabara de
+	/// matar como cadaver e saia sem chamar o funil -- o nocaute enfurecia, a morte nao. Aqui a queda e a morte saem pelo dano pronto
+	/// de producao (`MeleeResolver.AplicarDanoPronto`) e pelo `ResolverDesfecho`, o caminho do soco e do tiro de ki.
+	/// </summary>
+	private void AMorteDoGolpe(ServerPlayer pl, Action<string, bool, string> checa, List<ServerPlayer> forjados)
+	{
+		GD.Print("[raiva] -- 14) o amigo MORTO pelo golpe de verdade: a queda e a morte pelo ResolverDesfecho (2026-10-23) --");
+		var sorte = new Random(2310);
+		NivelDeRaiva Nivel() => NivelDaRaivaDe(pl);
+		void EmPaz()
+		{
+			pl.FuriaExtremaAte = 0;
+			pl.RaivaComumAte = 0;
+			pl.FuriaCenaAte = 0;
+			ProjetarRaiva(pl);
+		}
+		// O ALGOZ, a 3 tiles: ninguem o declarou -- pra vitima e pro host ele e inimigo (`Convivio.AlgozEhInimigo`).
+		ServerPlayer algoz = ForjarPessoaDaRaiva(pl, 60, "bancada: o algoz do golpe", 3);
+		forjados.Add(algoz);
+		// O AMIGO DECLARADO, a 2 tiles.
+		ServerPlayer Amigo(int i, string nome)
+		{
+			ServerPlayer p = ForjarPessoaDaRaiva(pl, i, nome, 2);
+			forjados.Add(p);
+			DeclararDeTeste(pl, p, Relacao.Bom);
+			return p;
+		}
+		// O GOLPE NA CABECA, como o 2b da `--v030teste`: os membros de fora saem do sorteio, o dano pronto de producao fere (e mata, se
+		// letal) DENTRO do Core, e o desfecho sai pelo `ResolverDesfecho`. Com `jogador`, a vitima leva o `Peer` do host emprestado so
+		// neste golpe: o irritado so pergunta por quem tem dono (o corpo sem dono e "npc"), e ela volta a ser corpo sem dono antes de
+		// qualquer tique.
+		GolpeResultado Golpe(ServerPlayer vitima, bool letal, bool jogador = false)
+		{
+			foreach (BodyPart p in vitima.Combate!.Corpo.Partes)
+				if (p.Papel != Vitalidade.Nucleo) p.Chance = 0;
+			if (jogador) vitima.Peer = pl.Peer;
+			try
+			{
+				GolpeResultado r = MeleeResolver.AplicarDanoPronto(vitima.Combate, 1e9, letal, sorte, "cabeca", porKi: false);
+				ResolverDesfecho(algoz, vitima, r);
+				return r;
+			}
+			finally { vitima.Peer = null; }
+		}
+
+		try
+		{
+			// ---- a. o nocaute pelo golpe: o controle (este ja enfurecia) ----
+			EmPaz();
+			ServerPlayer amigo = Amigo(61, "bancada: o amigo do golpe");
+			GolpeResultado caiu = Golpe(amigo, letal: false);
+			checa("14a. (controle) o amigo CAI pelo golpe de verdade (nao letal): raiva comum -- o nocaute ja enfurecia",
+				  caiu.Nocauteou && amigo.Ficha.KO && !amigo.Ficha.dead && Nivel() == NivelDeRaiva.Comum,
+				  $"nocauteou {caiu.Nocauteou}, KO {amigo.Ficha.KO}, morto {amigo.Ficha.dead}, {Nivel()}");
+
+			// ---- b. o golpe letal no caido ----
+			GolpeResultado morte = default;
+			List<string> falas = Ouvir(() => morte = Golpe(amigo, letal: true, jogador: true));
+			checa("14b. (montagem) o golpe letal MATA o caido -- e o corpo ja e cadaver quando o desfecho e resolvido",
+				  morte.Morreu && amigo.Ficha.dead && EhCadaver(amigo), $"morreu {morte.Morreu}, morto {amigo.Ficha.dead}, membro '{morte.Membro}'");
+			checa("14c. **o amigo MORTO pelo golpe, na frente dele: FURIA EXTREMA** (o dono: 'quando matei ele n ficou furioso')",
+				  Nivel() == NivelDeRaiva.Extrema && Disse(falas, "se foi"), $"{Nivel()} | {Ultimos(falas)}");
+			checa("14d. ...e a morte deixa o REGISTRO no corpo, pra quem o achar depois (o luto da familia 13 nasce daqui)",
+				  _mortesComCorpo.Exists(m => m.Corpo == amigo && m.Algoz == algoz.Assinatura), $"{_mortesComCorpo.Count} registro(s)");
+			checa("14e. ...e o MORTO nao se irrita com o golpe que o matou (o cadaver fica fora do irritado)",
+				  amigo.IrritadoAte == 0 && NivelDaRaivaDe(amigo) == NivelDeRaiva.Nenhuma, NivelDaRaivaDe(amigo).ToString());
+
+			// ---- os contra-exemplos, cada um com um amigo novo (o primeiro esta morto) ----
+			EmPaz();
+			ServerPlayer amigo2 = Amigo(62, "bancada: o segundo amigo do golpe");
+			Golpe(amigo2, letal: false);
+			MorteDoGolpeEngolidaDeTeste = true;
+			try
+			{
+				GolpeResultado r2 = Golpe(amigo2, letal: true);
+				checa("14f. (defeito injetado: o golpe que mata volta a ser golpe em cadaver -- o port de 2026-09-05 a 2026-10-23) a checagem 14c REPROVA",
+					  r2.Morreu && amigo2.Ficha.dead && Nivel() != NivelDeRaiva.Extrema, $"morreu {r2.Morreu}, {Nivel()}");
+			}
+			finally { MorteDoGolpeEngolidaDeTeste = false; }
+
+			EmPaz();
+			ServerPlayer amigo3 = Amigo(63, "bancada: o terceiro amigo do golpe");
+			Golpe(amigo3, letal: false);
+			CadaverIrritadoDeTeste = true;
+			try
+			{
+				GolpeResultado r3 = Golpe(amigo3, letal: true, jogador: true);
+				checa("14g. (defeito injetado: o cadaver tambem se irrita) a checagem 14e REPROVA",
+					  r3.Morreu && amigo3.IrritadoAte > 0, NivelDaRaivaDe(amigo3).ToString());
+			}
+			finally { CadaverIrritadoDeTeste = false; }
+		}
+		finally
+		{
+			MorteDoGolpeEngolidaDeTeste = false;
+			CadaverIrritadoDeTeste = false;
+			// os registros destes corpos saem com eles: nenhum pulso de depois acha o que a bancada matou
+			_mortesComCorpo.RemoveAll(m => forjados.Contains(m.Corpo));
+			EmPaz();
 		}
 	}
 

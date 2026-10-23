@@ -321,8 +321,11 @@ public static class DadivaDeCargo
 		Kits.Values.SelectMany(v => v).Append(CanalDosCargos)
 			.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-	/// <summary>O espaco de nomes das skills que so um cargo tem -- `RankTree.dm:5`.</summary>
-	private const string EspacoDoCargo = "/datum/skill/rank/";
+	/// <summary>
+	/// O espaco de nomes das skills que so um cargo tem -- `RankTree.dm:5`. (Interno e nao privado: o ensino pergunta por ele,
+	/// `Skills.EnsinoDeSkill.FicaNoCargo`.)
+	/// </summary>
+	internal const string EspacoDoCargo = "/datum/skill/rank/";
 
 	/// <summary>
 	/// O PREFIXO DAS ARVORES DE CARGO. Pega as cinco ordenadas (`Rank/Earth`, `Rank/Otherworld`,
@@ -402,6 +405,10 @@ public static class DadivaDeCargo
 	/// E ela conserta um defeito NA OUTRA DIRECAO que a versao por prefixo tinha e ninguem via: o
 	/// Eremita Tartaruga ensina o Kamehameha (`teacher = TRUE`) a um aluno sem cargo nenhum, e o
 	/// tique de 1 Hz comia a licao um segundo depois, calado, porque o typepath era `rank/`.
+	///
+	/// (2026-10-23) E A LICAO QUE O ENSINO NAO DA MAIS NAO SEGURA A SKILL: a copia ensinada das
+	/// <see cref="LevantarEnsinadasQueSaem"/> sai tambem -- a chave da Sala do Tempo aprendida de um
+	/// Guardiao, antes da regra do dono, deixa de abrir a Sala pra quem nao tem o cargo.
 	/// </summary>
 	/// <param name="soDeCargo">
 	/// O resultado de <see cref="LevantarRevogaveis"/>, guardado pelo servidor. E
@@ -409,6 +416,33 @@ public static class DadivaDeCargo
 	/// `Contains` cairia no `Enumerable.Contains`, que e varredura linear -- 52 comparacoes por
 	/// skill, por pessoa, por segundo, dentro do tique.
 	/// </param>
-	public static bool Revogavel(IReadOnlySet<string> soDeCargo, Skills.SkillBook livro, string path) =>
-		soDeCargo.Contains(path) && !livro.FoiEnsinada(path);
+	/// <param name="ensinadaQueSai">
+	/// O resultado de <see cref="LevantarEnsinadasQueSaem"/>, guardado pelo servidor do mesmo jeito. Nulo = nenhuma: a pergunta
+	/// de antes da regra, que a bancada `--cargoportas` ainda faz pra comparar.
+	/// </param>
+	public static bool Revogavel(IReadOnlySet<string> soDeCargo, Skills.SkillBook livro, string path,
+								 IReadOnlySet<string>? ensinadaQueSai = null) =>
+		soDeCargo.Contains(path)
+		&& (!livro.FoiEnsinada(path) || (!EnsinadaDoCargoFicaDeTeste && ensinadaQueSai?.Contains(path) == true));
+
+	/// <summary>
+	/// A COPIA ENSINADA QUE NAO FICA (dono, 2026-10-23: quem ja tinha aprendido *"perde a skill"*) -- as skills dos kits que o
+	/// ensino deixava passar a qualquer um (`teacher = TRUE`) e que agora ficam no cargo (`Skills.EnsinoDeSkill.FicaNoCargo`): a
+	/// chave da Sala do Tempo, a do Kaioh, a nomeacao de Anciao, a Dead Zone, a Agua Sagrada, o Selo Superior e o Liberar
+	/// Potencial. Quem as aprendeu de alguem antes da regra -- ou as herdou do doador, num bio -- nao as guarda sem o cargo.
+	/// Levantado UMA vez, como o <see cref="LevantarRevogaveis"/>.
+	///
+	/// SO AS QUE SE ENSINAVAM, de proposito: a copia ensinada de uma skill de cargo que nunca se ensinou (o `Revive`, o `Judge`)
+	/// nao veio de licao nenhuma, e a regra do dono e sobre o ensino.
+	/// </summary>
+	public static HashSet<string> LevantarEnsinadasQueSaem(Skills.SkillCatalog cat) =>
+		Todas.Where(p => cat.Get(p) is { Ensinavel: true } s && Skills.EnsinoDeSkill.FicaNoCargo(s))
+			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--ensinoteste`, secao 11): a copia ensinada de uma skill de cargo que nao se ensina mais FICA --
+	/// quem aprendeu a chave da Sala antes da regra continua fazendo chaves, e o bio herda a do doador. Lido pelo
+	/// <see cref="Revogavel"/> e pela heranca do bio (`GameServer.HerdarOLivroDosDoadores`). Falso em jogo, sempre.
+	/// </summary>
+	public static bool EnsinadaDoCargoFicaDeTeste;
 }

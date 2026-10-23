@@ -960,8 +960,10 @@ public sealed partial class GameServer
 		// cima do intervalo, uma vez por raio -- e cada raio paga o Ki e a carga dele, entao isto nao vira megafone.
 		if (c.Grito is { Length: > 0 }) _ultimaFala.Remove(pl.Id);
 		// (v0.4.0) o tiro do Shattering the Limit grita com o "10x " na frente
+		// (2026-10-22) o grito ESCRITO pelo jogador na mesa e digitado (nao se traduz); o nome da tecnica e do jogo
+		bool escrito = c.Grito is { Length: > 0 } && !GritoDaMesaIgnoradoDeTeste;
 		Falar(pl, Protocol.Fala.Diz, (c.Limite > 1 ? Jandirus.Core.Races.Passivas.PrefixoDoLimite : "")
-			  + (c.Grito is { Length: > 0 } grito && !GritoDaMesaIgnoradoDeTeste ? grito : c.Receita.Nome + "!!"));
+			  + (escrito ? c.Grito! : c.Receita.Nome + "!!"), digitada: escrito);
 	}
 
 	/// <summary>

@@ -151,6 +151,17 @@ public partial class GameServer
 
 	private HashSet<string>? _soDeCargo;
 
+	/// <summary>
+	/// (2026-10-23) A COPIA ENSINADA QUE NAO FICA, levantada uma vez pelo mesmo motivo do <see cref="SoDeCargo"/>. Ver
+	/// <see cref="DadivaDeCargo.LevantarEnsinadasQueSaem"/>.
+	/// </summary>
+	private IReadOnlySet<string> EnsinadasQueSaem =>
+		_ensinadasQueSaem ??= _skills == null
+			? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+			: DadivaDeCargo.LevantarEnsinadasQueSaem(_skills);
+
+	private HashSet<string>? _ensinadasQueSaem;
+
 	private void ReconciliarDadiva(ServerPlayer pl)
 	{
 		if (!EhPessoa(pl) || pl.Livro == null) return;
@@ -171,14 +182,20 @@ public partial class GameServer
 		bool aprendiz = !AprendizDeKaioshin.KitApagadoDeTeste && EAprendizDeKaioshin(pl);
 
 		// 1. O QUE SOBROU DE UM CARGO QUE ELE NAO TEM MAIS -- o que SO um cargo poderia ter dado, e
-		//    que ninguem lhe ensinou. Ver `DadivaDeCargo.Revogavel` e o `treeshrink` do DM.
+		//    que ninguem lhe ensinou (ou que lhe ensinaram e o ensino nao da mais, 2026-10-23). Ver
+		//    `DadivaDeCargo.Revogavel` e o `treeshrink` do DM.
 		foreach (string path in DadivaDeCargo.Todas)
 		{
 			if (kit.Contains(path, StringComparer.OrdinalIgnoreCase)) continue;
 			if (aprendiz && AprendizDeKaioshin.Kit.Contains(path, StringComparer.OrdinalIgnoreCase)) continue;
 			if (!pl.Livro.Sabe(path)) continue;
-			if (!DadivaDeCargo.Revogavel(SoDeCargo, pl.Livro, path)) continue;
+			if (!DadivaDeCargo.Revogavel(SoDeCargo, pl.Livro, path, EnsinadasQueSaem)) continue;
+			// A LICAO QUE SAI SE EXPLICA: quem perde o cargo sabe por que o kit foi embora, mas quem so tinha aprendido a chave da
+			// Sala com o Guardiao a veria sumir calada. (Copia ensinada que sai e so a da regra de 2026-10-23.)
+			bool ensinada = pl.Livro.FoiEnsinada(path);
 			pl.Livro.Esquecer(path);
+			if (ensinada)
+				Avisar(pl, $"{_skills?.Get(path)?.Nome ?? path} é skill de cargo e saiu do seu livro: só quem tem o cargo fica com ela.");
 			mudou = true;
 		}
 

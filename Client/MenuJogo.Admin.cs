@@ -673,13 +673,17 @@ public partial class MenuJogo
 				var h = new HBoxContainer();
 				h.AddThemeConstantOverride("separation", 6);
 
+				// (2026-10-22) A CONTA E OS PERSONAGENS SAO NOMES, e nome nao se traduz: o rotulo fica fora da traducao do Godot e
+				// so as etiquetas passam pelo `Idioma` (com o jogo em ingles, uma conta chamada "bancada" continua "bancada")
 				var nome = new Label
 				{
 					Text = (a.Online ? "● " : "○ ") + a.Conta
-						 + (a.Admin ? "   [admin]" : "") + (a.Banida ? "   [banida]" : "") + (a.ClasseRara ? "   [classe rara no próximo]" : ""),
+						 + (a.Admin ? "   [admin]" : "") + (a.Banida ? Idioma.T("   [banida]") : "")
+						 + (a.ClasseRara ? Idioma.T("   [classe rara no próximo]") : ""),
 					SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
 					VerticalAlignment = VerticalAlignment.Center,
-					TooltipText = a.Personagens.Length > 0 ? a.Personagens : "sem personagens",
+					TooltipText = a.Personagens.Length > 0 ? a.Personagens : Idioma.T("sem personagens"),
+					AutoTranslateMode = Node.AutoTranslateModeEnum.Disabled,
 				};
 				nome.AddThemeColorOverride("font_color",
 					a.Banida ? Tema.Perigo : a.Admin ? Tema.Destaque : Tema.Texto);

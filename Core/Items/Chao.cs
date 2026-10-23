@@ -137,7 +137,7 @@ public static class Chao
 	public static double Quanto(string pedido, double tem, double semPedido = 1)
 	{
 		if (pedido.Length == 0) return Math.Min(semPedido, tem);
-		if (string.Equals(pedido, PalavraDeTudo, StringComparison.OrdinalIgnoreCase)) return tem;
+		if (Lingua.PalavrasDeComando.E(pedido, PalavraDeTudo)) return tem;   // o "tudo" ou o "all" do aviso em ingles
 		return double.TryParse(pedido, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double n)
 			   && !double.IsNaN(n) && !double.IsInfinity(n) && n >= 1
 			? Math.Min(Math.Floor(n), tem)

@@ -363,6 +363,9 @@ public partial class PauseMenu : CanvasLayer
         caixa.AddChild(_titulo);
         caixa.AddChild(new HSeparator());
 
+        // --- idioma --- a primeira de todas: e de quem nao le a lingua que esta na tela. Ver `PauseMenu.Idioma.cs`.
+        MontarOIdioma(caixa);
+
         // --- video ---
         caixa.AddChild(Secao("Video"));
 

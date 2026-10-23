@@ -719,6 +719,13 @@ public static class Habilidades
 	/// do jogo onde a regra central deste sistema e dita em voz alta. Esconder o botao esconderia a
 	/// regra.
 	/// ==================================================================================================
+	///
+	/// ============================ O QUE FICA NO CARGO NAO VIRA BOTAO (dono, 2026-10-23) ============================
+	/// Do kit de um cargo so os ataques de ki se ensinam (`EnsinoDeSkill.CargoTrancaOEnsino`). Aqui o caso e o
+	/// contrario do de cima: isto o cliente SABE, porque esta no catalogo -- e um "Ensinar: Give Permission" que
+	/// recusa pra todo Guardiao, sempre, e o botao poluido que o dono mandou limpar em 2026-10-10. O "Esquecer a
+	/// licao" da mesma skill fica: ele e de quem a aprendeu, e nao de quem a ensinaria.
+	/// ===============================================================================================================
 	/// </summary>
 	public static void DoEnsinoDeSkill()
 	{
@@ -746,16 +753,17 @@ public static class Habilidades
 			if (s == null || s.Arvore || !s.Ensinavel || s.Nome.Length == 0) continue;
 			string idLocal = path;
 
-			Verbos.Registrar(new Verbo(
-				$"Ensinar: {s.Nome}",
-				Verbos.Aprendizado,
-				$"Mostra {s.Nome} a quem estiver colado na sua frente. Ele precisa ter "
-				+ $"{Jandirus.Core.Skills.SkillCatalog.CustoDoEnsino(s)} marco(s) livre(s) -- e nao gasta "
-				+ "nenhum. Quem aprende assim NAO pode repassar, e voce fica "
-				+ $"{Jandirus.Core.Skills.EnsinoDeSkill.RecargaSegundos:0} s sem poder ensinar de novo. "
-				+ "Voce nao ganha nada com isso.",
-				() => GameClient.Instance?.SendHabilidade($"ens_ensinar:{idLocal}"))
-				{ Chave = $"hab:ens_ensinar:{idLocal}" });
+			if (!Jandirus.Core.Skills.EnsinoDeSkill.CargoTrancaOEnsino(s))
+				Verbos.Registrar(new Verbo(
+					$"Ensinar: {s.Nome}",
+					Verbos.Aprendizado,
+					$"Mostra {s.Nome} a quem estiver colado na sua frente. Ele precisa ter "
+					+ $"{Jandirus.Core.Skills.SkillCatalog.CustoDoEnsino(s)} marco(s) livre(s) -- e nao gasta "
+					+ "nenhum. Quem aprende assim NAO pode repassar, e voce fica "
+					+ $"{Jandirus.Core.Skills.EnsinoDeSkill.RecargaSegundos:0} s sem poder ensinar de novo. "
+					+ "Voce nao ganha nada com isso.",
+					() => GameClient.Instance?.SendHabilidade($"ens_ensinar:{idLocal}"))
+					{ Chave = $"hab:ens_ensinar:{idLocal}" });
 
 			Verbos.Registrar(new Verbo(
 				$"Esquecer a licao: {s.Nome}",

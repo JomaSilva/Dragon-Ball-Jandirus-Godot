@@ -19,7 +19,7 @@ namespace Jandirus.Server;
 /// com TRES corpos, porque com dois o segundo elo da corrente nao existe pra ser recusado.
 /// ==============================================================================
 ///
-/// AS DEZ SECOES:
+/// AS ONZE SECOES:
 ///  1. O CATALOGO -- `teacher` e `teachCost` sairam do DM, e o segundo MUDA o preco.
 ///  2. OS PORTOES DESLIGADOS -- o ensino atravessa arvore, raca e `enabled`, e e assim que tem que ser.
 ///  3. A CORRENTE NAO SE FORMA -- os dois sentidos, com tres corpos.
@@ -30,6 +30,7 @@ namespace Jandirus.Server;
 ///  8. ESQUECER A LICAO -- so o que foi ensinado, e sem devolver marco.
 ///  9. A VARREDURA -- nenhuma linha de producao do ensino mexe em marco de ninguem.
 /// 10. A LICAO ALCANCA QUEM ESTA EM CENA -- o escudo da cinematica e da carencia e contra golpe.
+/// 11. DO CARGO, SO OS ATAQUES DE KI SE ENSINAM (dono, 2026-10-23) -- a chave da Sala do Tempo nao passa adiante.
 ///
 /// OS CORPOS SAO FORJADOS, no molde do `--mestreteste`: sem `Peer`, numa zona pre-feita sem
 /// ninguem conectado, entrando e saindo do `_players`/`ZoneList` no mesmo bloco sincrono.
@@ -112,6 +113,7 @@ public partial class GameServer
 			EsquecerSoOQueFoiEnsinado(a, b);
 			NinguemMexeEmMarco();
 			ALicaoAlcancaQuemEstaEmCena(a, d);
+			DoCargoSoOAtaqueDeKi(a, b);
 		}
 		catch (Exception e)
 		{
@@ -685,6 +687,192 @@ public partial class GameServer
 				   $"cena {aluno.CenaSegundos:0.#} s, carencia {aluno.Combate.Carencia:0.#} s");
 		AfirmarEns("a licao tambem alcanca quem acabou de renascer (a carencia e escudo contra golpe, nao contra gesto)",
 				   Licao(a, aluno, dois));
+	}
+
+	// =====================================================================
+	// 11) DO CARGO, SO OS ATAQUES DE KI SE ENSINAM (dono, 2026-10-23)
+	// =====================================================================
+	/// <summary>
+	/// *"ta dando pra ensinar skills de entrar na sala do tempo pros outros, unica skill de cargo q pode ensinar é a skill de
+	/// ataques de ki, fora isso n poderia ensinar mais nada"* -- e o dono escolheu: so o espaco `rank/`; a Fusion Dance, o Mafuba e
+	/// a Paralysis continuam ensinaveis; quem ja tinha aprendido perde; o bio nao herda.
+	///
+	/// AS SETE PERGUNTAS, cada uma pela porta de producao dela (o codigo na frente de cada rotulo e o que o ciclo procura):
+	///   11a  a chave da Sala do Tempo pelo VERBO `ens_ensinar`: nem a oferta chega, e a recusa diz a regra inteira;
+	///   11b  o controle: o Kamehameha (ataque de ki do cargo) passa pelo MESMO verbo;
+	///   11c  a TABELA: toda skill `rank/` que o DM deixava ensinar -- e as que fecham sao exatamente as sete do enunciado;
+	///   11d  as LISTAS: `PodeRepassar`, `Repassaveis` e `OQueOMestreEnsina` (esta e a do cartao do aluno);
+	///   11e  a LICAO DE MESTRE: o mestre nao abre o `Revive` ao proprio aluno, nem com a skill no corpo dele;
+	///   11f  a copia ENSINADA de antes da regra sai na reconciliacao do cargo, com aviso -- e a do Kamehameha fica;
+	///   11g  o BIO nao herda a chave do doador, e herda o Kamehameha.
+	/// E os dois defeitos injetados, cada um com as reguas dele: `EnsinoDeSkill.CargoSeEnsinaComoAntesDeTeste` (11a-11e) e
+	/// `DadivaDeCargo.EnsinadaDoCargoFicaDeTeste` (11f, 11g).
+	///
+	/// A TABELA NAO PERGUNTA A REGRA QUE MEDE: "ataque de ki" e conferido aqui pela tabela de tiros (`TecnicasDeLonge`), a mao, e
+	/// as duas da escolha do dono pelo nome -- se a bancada perguntasse ao `FicaNoCargo`, um defeito nele passaria pelos dois lados.
+	/// </summary>
+	private void DoCargoSoOAtaqueDeKi(ServerPlayer a, ServerPlayer b)
+	{
+		GD.Print("[ensino] -- 11) DO CARGO, SO OS ATAQUES DE KI SE ENSINAM (dono, 2026-10-23)");
+
+		const string Cargo = "/datum/skill/rank/";
+		Skill? chave = _skills!.Get(SkillDaChaveDaSala);
+		Skill? kame = _skills.Get(Cargo + "Kamehameha");
+		Skill? revive = _skills.Get(Cargo + "Revive");
+		static bool TiroDeKi(Skill s) => s.Verbos.Length > 0 && s.Verbos.All(v => TecnicasDeLonge.Get(v) != null);
+		if (chave == null || kame == null || revive == null || !chave.Ensinavel || TiroDeKi(chave) || !kame.Ensinavel || !TiroDeKi(kame) || revive.Ensinavel)
+		{
+			AfirmarEns("11. PRECONDICAO: a chave da Sala (ensinavel no DM, nao atira), o Kamehameha (ensinavel, tiro de ki) e o Revive (nunca se ensinou)",
+					   false, $"{chave?.Nome} / {kame?.Nome} / {revive?.Nome}");
+			return;
+		}
+
+		// O QUE O ENSINO DIRIA DE CADA SKILL `rank/` QUE O DM DEIXAVA ENSINAR, pela avaliacao de producao: (as que nao saem como a
+		// tabela manda, as que fecham). Um mestre que a sabe, um aluno com marcos de sobra, colados, fora da recarga.
+		(List<string> Erradas, List<string> Fecham) TabelaDoCargo()
+		{
+			List<string> errou = [], fechou = [];
+			foreach (Skill s in _skills.Todas.Where(x => x.Ensinavel && !x.Arvore && x.Path.StartsWith(Cargo, StringComparison.Ordinal))
+						 .OrderBy(x => x.Path, StringComparer.Ordinal))
+			{
+				bool passa = TiroDeKi(s) || s.Path is Cargo + "Fusion_Dance" or Cargo + "Mafuba";
+				var doMestre = new SkillBook();
+				doMestre.Dar(s.Path);
+				var doAluno = new SkillBook();
+				doAluno.Conceder(50);
+				RecusaDeLicao r = EnsinoDeSkill.Avaliar(doMestre, doAluno, s, true, true, false, 1, false);
+				string nome = s.Path[Cargo.Length..];
+				if (passa ? r != RecusaDeLicao.Pode : r != RecusaDeLicao.DoCargo) errou.Add($"{nome}={r}");
+				if (r == RecusaDeLicao.DoCargo) fechou.Add(nome);
+			}
+			return (errou, fechou);
+		}
+
+		// A LICAO DE MESTRE, pura: o vinculo de discipulado nao entra -- o que se mede e se a porta do mestre abre o cargo. O
+		// `Recusa.Pode` diz que a skill SERIA do corpo do aluno, o caso mais aberto que ha.
+		static RecusaDeLicao DeMestre(Skill s)
+		{
+			var doMestre = new SkillBook();
+			doMestre.Dar(s.Path);
+			var doAluno = new SkillBook();
+			doAluno.Conceder(50);
+			return EnsinoDeSkill.Avaliar(doMestre, doAluno, s, true, true, false, 1, false, eMeuAluno: true, doAlunoSozinho: Recusa.Pode);
+		}
+
+		string[] doEnunciado = ["Appoint_Elder", "DeadZone", "Grow_Senzu", "KaiPermission", "Permission", "SuperiorSeal", "Unlock_Potential"];
+
+		// ---- 11a) A CHAVE DA SALA PELO VERBO ----
+		Zerar(a, b);
+		a.Livro.Dar(chave.Path);
+		a.Livro.Dar(kame.Path);
+		a.Livro.Dar(revive.Path);
+		b.Livro.Conceder(50);
+		Estacionar(a, 0);
+		Encostar(a, b, tiles: 1);
+
+		List<string> falas = Ouvir(() => UsarVerboDeEnsino(a, $"ens_ensinar:{chave.Path}"));
+		AfirmarEns($"11a1. a CHAVE DA SALA DO TEMPO ('{chave.Nome}') nao se ensina: o Guardiao aponta pra quem esta colado e a oferta nem chega",
+				   b.PedidoDeLicao == null && !b.Livro.Sabe(chave.Path), b.PedidoDeLicao?.ToString() ?? "");
+		AfirmarEns("11a2. ...e a recusa diz a regra INTEIRA (do kit de um cargo so passam adiante os ataques de ki, a Fusion Dance e o Mafuba)",
+				   Disse(falas, "e do cargo e nao se ensina") && Disse(falas, "os ataques de ki, a Fusion Dance e o Mafuba"), Ultimos(falas));
+		AfirmarEns("11a3. ...e ela vem antes do gesto: a recarga de 6 s do Guardiao nao foi gasta", a.RecargaDaLicao == 0, $"{a.RecargaDaLicao}");
+
+		// ---- 11b) O CONTROLE, PELO MESMO VERBO ----
+		// (cada medida parte do zero: sem a regra, a 11a teria deixado a oferta pendurada e a recarga correndo)
+		a.RecargaDaLicao = 0;
+		b.PedidoDeLicao = null;
+		AfirmarEns($"11b. CONTROLE: o {kame.Nome} (ataque de ki do cargo do Eremita) passa pelo MESMO verbo e entra no livro do aluno",
+				   Licao(a, b, kame) && b.Livro.FoiEnsinada(kame.Path));
+
+		// ---- 11c) A TABELA ----
+		(List<string> erradas, List<string> fecham) = TabelaDoCargo();
+		AfirmarEns("11c1. A TABELA: toda skill `rank/` que o DM deixava ensinar passa se e so se e ataque de ki -- ou a Fusion Dance e o Mafuba (escolha do dono)",
+				   erradas.Count == 0, string.Join(", ", erradas));
+		AfirmarEns("11c2. ...e as que fecham sao EXATAMENTE as sete do enunciado (a chave da Sala, a do Kaioh, o Anciao, a Dead Zone, a Agua Sagrada, o Selo Superior e o Liberar Potencial)",
+				   fecham.SequenceEqual(doEnunciado), string.Join(",", fecham));
+
+		// ---- 11d) AS LISTAS ----
+		AfirmarEns("11d1. AS LISTAS: o Guardiao nao REPASSA a chave (`PodeRepassar`) e repassa o Kamehameha",
+				   !EnsinoDeSkill.PodeRepassar(a.Livro, chave) && EnsinoDeSkill.PodeRepassar(a.Livro, kame));
+		List<string> repassaveis = [.. EnsinoDeSkill.Repassaveis(_skills, a.Livro).Select(s => s.Path)];
+		AfirmarEns("11d2. ...a lista do `Teach_Skill` (`Repassaveis`) tem o Kamehameha e nao tem a chave",
+				   repassaveis.Contains(kame.Path) && !repassaveis.Contains(chave.Path), string.Join(",", repassaveis));
+		List<string> doCartao = [.. EnsinoDeSkill.OQueOMestreEnsina(_skills, a.Livro.Aprendidas).Select(s => s.Path)];
+		AfirmarEns("11d3. ...e a do cartao do aluno (`OQueOMestreEnsina`) tem o Kamehameha e nao tem nem a chave nem o Revive",
+				   doCartao.Contains(kame.Path) && !doCartao.Contains(chave.Path) && !doCartao.Contains(revive.Path), string.Join(",", doCartao));
+
+		// ---- 11e) A LICAO DE MESTRE ----
+		RecusaDeLicao deMestre = DeMestre(revive);
+		AfirmarEns("11e. A LICAO DE MESTRE nao abre o que o cargo guarda: nem o Revive (que nunca se ensinou) pro proprio aluno, com a skill no corpo dele",
+				   deMestre == RecusaDeLicao.DoCargo, $"{deMestre}");
+
+		// ---- 11f) A COPIA ENSINADA DE ANTES DA REGRA ----
+		Zerar(b);
+		b.Livro.DarComoEnsinada(chave.Path);   // a licao que o Guardiao dava antes de 2026-10-23
+		b.Livro.DarComoEnsinada(kame.Path);
+		List<string> avisos = Ouvir(() => ReconciliarDadiva(b));
+		AfirmarEns("11f1. QUEM JA TINHA APRENDIDO a chave da Sala (a licao de antes da regra) a perde na reconciliacao do cargo -- ele nao tem cargo nenhum",
+				   !b.Livro.Sabe(chave.Path), $"sabe={b.Livro.Sabe(chave.Path)}");
+		AfirmarEns("11f2. ...e o jogo diz por que ela saiu", Disse(avisos, "skill de cargo e saiu do seu livro"), Ultimos(avisos));
+		AfirmarEns("11f3. CONTROLE: o Kamehameha ensinado fica (ataque de ki do cargo se ensina, e a licao segura a skill)",
+				   b.Livro.Sabe(kame.Path) && b.Livro.FoiEnsinada(kame.Path));
+
+		// ---- 11g) O BIO ----
+		Zerar(b);
+		int herdadas = HerdarOLivroDosDoadores(b, new Gestacao
+		{
+			Amostras = { new Amostra { Doador = "bancada: o Guardiao doador" } },
+			Tecnicas = { chave.Path, kame.Path },
+		});
+		AfirmarEns("11g. O BIO nao herda a chave da Sala do doador Guardiao -- e herda o Kamehameha dele (o parto conta UMA skill)",
+				   !b.Livro.Sabe(chave.Path) && b.Livro.Sabe(kame.Path) && herdadas == 1,
+				   $"herdadas {herdadas}, chave {b.Livro.Sabe(chave.Path)}, Kamehameha {b.Livro.Sabe(kame.Path)}");
+
+		// ---- OS DOIS DEFEITOS INJETADOS ----
+		try
+		{
+			EnsinoDeSkill.CargoSeEnsinaComoAntesDeTeste = true;
+			Zerar(a, b);
+			a.Livro.Dar(chave.Path);
+			a.Livro.Dar(revive.Path);
+			b.Livro.Conceder(50);
+			Encostar(a, b, tiles: 1);
+			UsarVerboDeEnsino(a, $"ens_ensinar:{chave.Path}");
+			AfirmarEns("11x1. (defeito injetado: o kit de cargo ensinavel como antes) a mesma regua REPROVA -- a oferta da chave chega ao aluno",
+					   b.PedidoDeLicao?.Path == chave.Path, b.PedidoDeLicao?.ToString() ?? "nenhuma oferta");
+			(List<string> erradasAntes, List<string> fechamAntes) = TabelaDoCargo();
+			AfirmarEns("11x2. (defeito injetado) ...e a tabela reprova: as sete passam, nenhuma fecha",
+					   erradasAntes.Count == doEnunciado.Length && fechamAntes.Count == 0, string.Join(", ", erradasAntes));
+			AfirmarEns("11x3. (defeito injetado) ...e as listas oferecem a chave e o Revive",
+					   EnsinoDeSkill.PodeRepassar(a.Livro, chave)
+					   && EnsinoDeSkill.OQueOMestreEnsina(_skills, a.Livro.Aprendidas).Any(s => s.Path == revive.Path));
+			RecusaDeLicao deMestreAntes = DeMestre(revive);
+			AfirmarEns("11x4. (defeito injetado) ...e a licao de mestre abre o Revive", deMestreAntes == RecusaDeLicao.Pode, $"{deMestreAntes}");
+		}
+		finally
+		{
+			EnsinoDeSkill.CargoSeEnsinaComoAntesDeTeste = false;
+			a.RecargaDaLicao = 0;
+			b.PedidoDeLicao = null;
+		}
+
+		try
+		{
+			Jandirus.Core.Ranks.DadivaDeCargo.EnsinadaDoCargoFicaDeTeste = true;
+			Zerar(b);
+			b.Livro.DarComoEnsinada(chave.Path);
+			ReconciliarDadiva(b);
+			AfirmarEns("11y1. (defeito injetado: a copia ensinada de cargo fica) a mesma regua REPROVA -- a chave aprendida antes da regra continua no livro",
+					   b.Livro.Sabe(chave.Path));
+			Zerar(b);
+			int herdadasAntes = HerdarOLivroDosDoadores(b, new Gestacao { Amostras = { new Amostra() }, Tecnicas = { chave.Path } });
+			AfirmarEns("11y2. (defeito injetado) ...e o bio herda a chave do doador", b.Livro.Sabe(chave.Path) && herdadasAntes == 1, $"herdadas {herdadasAntes}");
+		}
+		finally
+		{
+			Jandirus.Core.Ranks.DadivaDeCargo.EnsinadaDoCargoFicaDeTeste = false;
+			Zerar(b);
+		}
 	}
 
 	// =====================================================================

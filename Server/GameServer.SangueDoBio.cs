@@ -71,6 +71,10 @@ public sealed partial class GameServer
 	/// <summary>
 	/// O LIVRO DOS DOADORES ENTRA NO BIO: cada skill de cada amostra, ENSINADA (ele sabe e nao repassa -- o laboratorio nao
 	/// vira lavanderia de skill), no MAIOR nivel em que um doador a tinha. Devolve quantas entraram.
+	///
+	/// (dono, 2026-10-23) MENOS A SKILL DE CARGO QUE O ENSINO NAO DA MAIS (a chave da Sala do Tempo de um Guardiao doador): a copia
+	/// que o bio levaria e ensinada, e a reconciliacao do cargo a tiraria no tique seguinte -- o parto contaria uma skill que ele nao
+	/// tem. A amostra continua guardando o livro inteiro; quem escolhe e o parto.
 	/// </summary>
 	private int HerdarOLivroDosDoadores(ServerPlayer pl, Gestacao g)
 	{
@@ -84,6 +88,7 @@ public sealed partial class GameServer
 		foreach (string path in g.Tecnicas)
 		{
 			if (_skills.Get(path) == null || pl.Livro.Sabe(path)) continue;
+			if (EnsinadasQueSaem.Contains(path) && !Jandirus.Core.Ranks.DadivaDeCargo.EnsinadaDoCargoFicaDeTeste) continue;
 			pl.Livro.DarComoEnsinada(path);
 			herdadas++;
 		}

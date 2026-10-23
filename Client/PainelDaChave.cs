@@ -221,7 +221,8 @@ public partial class DesenhoDaChave : Control
 			int n = existe ? padrao[col].Lutas.Count : Math.Max(1, n0 >> col);
 			// A RODADA QUE AINDA VAI EXISTIR ganha o nome que o servidor vai lhe dar (a mesma funcao).
 			string nome = existe ? padrao[col].Nome : Jandirus.Core.Torneio.Chave.NomeDaRodada(n * 2);
-			DrawString(_fonte, new Vector2(Margem + col * ColW, Cabeca - 8), nome.ToUpperInvariant(), HorizontalAlignment.Left, BoxW, 11, Tema.TextoFraco);
+			// desenhado a mao nao passa pela traducao do Godot: a lingua da tela vem do `Idioma` (2026-10-22)
+			DrawString(_fonte, new Vector2(Margem + col * ColW, Cabeca - 8), Idioma.T(nome).ToUpperInvariant(), HorizontalAlignment.Left, BoxW, 11, Tema.TextoFraco);
 			for (int i = 0; i < n; i++)
 			{
 				Vector2 centro = CentroDaCaixa(col, i, n);
@@ -251,7 +252,7 @@ public partial class DesenhoDaChave : Control
 			Caixa(c, caixaFinal, lutaFinal, finalAgora, finalMinha);
 
 			float yTerceiro = caixaFinal.Position.Y + BoxH + Passo * 0.9f;
-			DrawString(_fonte, new Vector2(x, yTerceiro - 6), "3o LUGAR", HorizontalAlignment.Left, BoxW, 11, Tema.TextoFraco);
+			DrawString(_fonte, new Vector2(x, yTerceiro - 6), Idioma.T("3o LUGAR"), HorizontalAlignment.Left, BoxW, 11, Tema.TextoFraco);
 			var caixaTerceiro = new Rect2(x, yTerceiro, BoxW, BoxH);
 			var lutaTerceiro = terceiro.Lutas is { Count: > 0 } lt ? lt[0] : ((short)-1, (short)-1, (short)-1);
 			int iTerceiro = c.Rodadas.IndexOf(terceiro);

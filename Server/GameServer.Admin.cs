@@ -642,6 +642,11 @@ public sealed partial class GameServer
 	{
 		ServerPlayer? p = PorNome(alvo);
 		if (p == null) { Avisar(adm, "marque alguem antes (duplo clique nele)."); return; }
+		if (MortoNaoFicaDePeEm(p, adm.Zone))
+		{
+			Avisar(adm, $"{p.Name} está morto: fora do Outro Mundo a alma não fica -- reviva-o antes, ou vá até ele.");
+			return;
+		}
 		MoveToZone(p.Id, adm.Zone, adm.Pos);
 		Avisar(adm, $"voce traz {p.Name}.");
 		Avisar(p, "uma forca invisivel te puxa.");
@@ -1325,16 +1330,32 @@ public sealed partial class GameServer
 
 	private void AdminTrazerTodos(ServerPlayer adm)
 	{
-		int n = 0;
+		int n = 0, mortos = 0;
 		foreach (ServerPlayer p in Jogadores.ToList())
 		{
 			if (p == adm) continue;
+			if (MortoNaoFicaDePeEm(p, adm.Zone)) { mortos++; continue; }
 			MoveToZone(p.Id, adm.Zone, adm.Pos);
 			Avisar(p, "uma forca invisivel te puxa.");
 			n++;
 		}
-		Avisar(adm, $"{n} jogador(es) trazidos.");
+		Avisar(adm, mortos == 0 ? $"{n} jogador(es) trazidos." : $"{n} jogador(es) trazidos; {mortos} morto(s) ficaram no Outro Mundo.");
 	}
+
+	/// <summary>
+	/// (2026-10-23) O TRAZER NAO LEVA O MORTO PRA ONDE A ALMA NAO FICA DE PE. O dono escolheu a regra do DM pra alma fora do Outro
+	/// Mundo -- ela volta pra mesa do Enma (`PuxarAAlmaPerdida`) --, entao trazer um morto pra junto dos vivos so o faria piscar la e
+	/// voltar; antes ele ficava deitado pra sempre. A pergunta e a do `MortoDePe`, feita no DESTINO: o Outro Mundo e a mente aceitam
+	/// o morto, e o passe e a passagem vao com ele. Lido pela linha do conserto nos dois verbs.
+	/// </summary>
+	private bool MortoNaoFicaDePeEm(ServerPlayer p, ZoneKey destino) =>
+		!TrazerLevaMortoDeTeste && p.Ficha.dead && !Alem.MortoDePe(true, destino.Name) && !p.EmVisita && !p.EmPassagem;
+
+	/// <summary>
+	/// DEFEITO INJETADO (`--alemteste` 9e): o Trazer e o Trazer todos voltam a levar o morto pra junto dos vivos -- o jogo de antes de
+	/// 2026-10-23. Lido pelo <see cref="MortoNaoFicaDePeEm"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal bool TrazerLevaMortoDeTeste;
 
 	/// <summary>
 	/// DESFAZ A DESTRUICAO da minha zona -- o `Restaurar_Planeta` do original.

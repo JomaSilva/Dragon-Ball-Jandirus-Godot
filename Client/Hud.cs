@@ -203,7 +203,8 @@ public partial class Hud : CanvasLayer
 		v.AddThemeConstantOverride("separation", 6);
 		painel.AddChild(v);
 
-		_nome = new Label { Text = "..." };
+		// O NOME E DE QUEM O ESCOLHEU: com o jogo em ingles, um personagem chamado "Lobo" continua "Lobo" (ver `Idioma`)
+		_nome = new Label { Text = "...", AutoTranslateMode = Node.AutoTranslateModeEnum.Disabled };
 		_nome.AddThemeFontSizeOverride("font_size", 18);
 		v.AddChild(_nome);
 

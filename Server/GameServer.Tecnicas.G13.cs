@@ -291,7 +291,7 @@ public partial class GameServer
 			return;
 		}
 
-		if (string.Equals(arg, "nenhuma", StringComparison.OrdinalIgnoreCase))
+		if (Jandirus.Core.Lingua.PalavrasDeComando.E(arg, "nenhuma"))   // ou o "none" do aviso em ingles
 		{
 			_focoG13.Remove(pl.Id);
 			Avisar(pl, "voce solta o foco: o estudo volta a render um pouco em tudo.");
@@ -336,7 +336,7 @@ public partial class GameServer
 
 		if (_escritaG13.TryGetValue(pl.Id, out EscritaG13? emObra))
 		{
-			if (string.Equals(arg, "parar", StringComparison.OrdinalIgnoreCase))
+			if (Jandirus.Core.Lingua.PalavrasDeComando.E(arg, "parar"))   // ou o "stop" do aviso em ingles
 			{
 				// `if("Stop")`: zera TUDO -- "You will lose all progress if you stop." (`:171-179`)
 				_escritaG13.Remove(pl.Id);

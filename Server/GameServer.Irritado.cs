@@ -13,7 +13,8 @@ namespace Jandirus.Server;
 /// NAO CONTA, e isto fica anotado pro dono confirmar (sobretudo o membro perdido por autodano): treino e spar
 /// (amigo declarado, ou habitante pacifico), a mente, o treino do Bills/Whis, bicho, e autodano (gravidade,
 /// Kaio-ken, sobrecarga, estrela -- esses caminhos nem chamam <see cref="TalvezIrritar"/>). NPC e chefe nao
-/// ficam irritados: eles tem as etapas deles. So jogador.
+/// ficam irritados: eles tem as etapas deles. So jogador. E nem o cadaver (2026-10-23): o golpe que acabou de matar
+/// nao irrita o morto.
 /// </summary>
 public sealed partial class GameServer
 {
@@ -34,6 +35,12 @@ public sealed partial class GameServer
 	/// <see cref="AcenderOIrritado"/>. Falso em jogo, sempre.
 	/// </summary>
 	internal static bool IrritadoMudoDeTeste;
+
+	/// <summary>
+	/// DEFEITO INJETADO (<c>--raivateste</c>, familia 14): o cadaver tambem se irrita -- o golpe que acaba de matar acende o
+	/// irritado no morto. Lido por <see cref="PorQueEsteGolpeNaoIrrita"/>. Falso em jogo, sempre.
+	/// </summary>
+	internal static bool CadaverIrritadoDeTeste;
 
 	/// <summary>
 	/// UM GOLPE DE OUTRO CORPO JA FERIO ESTE. Chamado depois do dano, nos funis que tem algoz (soco, tiro, explosao,
@@ -59,6 +66,9 @@ public sealed partial class GameServer
 	{
 		if (IrritadoContaOQueNaoELutaDeTeste) return null;
 		if (vitima.Peer == null) return "npc";
+		// O CADAVER: desde 2026-10-23 o golpe que acabou de matar segue pelo `ResolverDesfecho` (a morte dele e contada la), e
+		// sem esta linha o morto ainda acenderia o irritado -- o aviso e o despertar de forma num corpo caido no chao.
+		if (EhCadaver(vitima) && !CadaverIrritadoDeTeste) return "cadaver";
 		if (ReferenceEquals(agressor, vitima) || agressor.Id == vitima.Id) return "autodano";
 		if (NaMente(vitima)) return "mente";
 		if (TreinoDivinoEntre(vitima, agressor)) return "bills";

@@ -232,11 +232,12 @@ public partial class MapaDoLugarNaTela : Control
 		{
 			DrawRect(quadro, Tema.Borda, false, 1f);
 			// A FRASE NO MEIO DO QUADRO VAZIO: quem olha pro quadro le por que ele esta vazio sem procurar ao lado.
+			// (Desenhada a mao, nao passa pela traducao do Godot: a lingua vem do `Idioma`.)
 			if (_fonte != null && _mapa is not { Estado: MapasDosLugares.Estado.SemMapa })
-				DrawMultilineString(_fonte, new Vector2(12f, quadro.Size.Y / 2f), _frase, HorizontalAlignment.Center,
+				DrawMultilineString(_fonte, new Vector2(12f, quadro.Size.Y / 2f), Idioma.T(_frase), HorizontalAlignment.Center,
 									quadro.Size.X - 24f, 13, -1, Tema.TextoFraco);
 			else if (_fonte != null)
-				DrawMultilineString(_fonte, new Vector2(12f, quadro.Size.Y / 2f + 5f), "SEM MAPA AQUI", HorizontalAlignment.Center,
+				DrawMultilineString(_fonte, new Vector2(12f, quadro.Size.Y / 2f + 5f), Idioma.T("SEM MAPA AQUI"), HorizontalAlignment.Center,
 									quadro.Size.X - 24f, 13, -1, Tema.TextoFraco);
 		}
 

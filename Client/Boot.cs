@@ -100,6 +100,8 @@ public partial class Boot : Node2D
 		Config = Settings.Carregar();
 		Teclas.Aplicar(Config);
 		Config.Aplicar();
+		// A LINGUA ANTES DA PRIMEIRA TELA: quem joga em ingles nao ve o login em portugues piscar. Ver `Idioma.cs`.
+		Idioma.Aplicar(Config.Lingua);
 
 		// ============================ `--semfoco`: A JANELA DA BANCADA NAO ROUBA O TECLADO ============================
 		// A regra da casa manda a janela de bancada nascer no SEGUNDO monitor pra nao atrapalhar o dono
@@ -625,6 +627,12 @@ public partial class Boot : Node2D
 		// Ver RoboDoMarcavel.
 		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diagmarcavel") >= 0)
 			AddChild(new RoboDoMarcavel { Name = "RoboDoMarcavel" });
+
+		// `--diaglingua`: A LINGUA DO JOGO (2026-10-22). Vizinha da `--diagopcoes` e pelo mesmo motivo: o seletor
+		// "Idioma / Language" mora na `PauseMenu` que o `Boot` acabou de pendurar, e o robo o aperta pelo botao "Opções"
+		// do lobby; depois o `--lobbyteste` disca e ele olha o mundo e o chat. Ver RoboDaLingua.
+		if (Array.IndexOf(OS.GetCmdlineArgs(), "--diaglingua") >= 0)
+			AddChild(new RoboDaLingua { Name = "RoboDaLingua" });
 
 		// `--diagcarga`: A ENTRADA NO MUNDO, CRONOMETRADA NA TELA. Vizinha da `--diagopcoes` e pelo
 		// mesmo motivo dela: ela mede o lobby DE VERDADE -- o botao "Hospedar", o "Criar personagem"

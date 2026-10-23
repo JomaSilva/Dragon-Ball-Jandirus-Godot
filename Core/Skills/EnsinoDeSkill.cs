@@ -20,6 +20,12 @@ public enum RecusaDeLicao
 	/// nenhuma do aluno (e de outra raca, de outra classe, so de vilao). Ver <see cref="EnsinoDeSkill.Avaliar"/>.
 	/// </summary>
 	NaoEDoCorpoDele,
+
+	/// <summary>
+	/// (dono, 2026-10-23) A skill e do CARGO e nao e ataque de ki: nao passa adiante por porta nenhuma -- nem a quem chega perto,
+	/// nem do mestre ao proprio aluno. Ver <see cref="EnsinoDeSkill.CargoTrancaOEnsino"/>.
+	/// </summary>
+	DoCargo,
 }
 
 /// <summary>
@@ -53,7 +59,8 @@ public enum RecusaDeLicao
 ///
 /// A consequencia de desenho e grande e vale ser dita: **ensinar e barato pra quem recebe e de
 /// graca pra quem da**. O que limita o sistema nao e economia, sao as duas travas que sobram --
-/// `teacher` (poucas skills se ensinam) e `wastaught` (quem recebeu nao repassa).
+/// `teacher` (poucas skills se ensinam) e `wastaught` (quem recebeu nao repassa). E desde 2026-10-23
+/// uma terceira, do dono: do kit de um cargo so os ataques de ki passam adiante (<see cref="CargoTrancaOEnsino"/>).
 /// =====================================================================================
 ///
 /// ============================ E O MESTRE NAO GANHA NADA ============================
@@ -109,7 +116,7 @@ public static class EnsinoDeSkill
 	// O cabecalho desta classe diz que o ensino NAO pede vinculo de mestre, e continua verdade pras skills que
 	// "se ensinam" (`teacher = TRUE`): qualquer um as mostra a qualquer um, de graca, como no original. O que entrou
 	// e uma SEGUNDA porta, e ela so abre entre mestre e aluno do discipulado: **o mestre ensina ao aluno DELE qualquer
-	// skill que saiba**, inclusive as que nao se ensinam a estranho.
+	// skill que saiba**, inclusive as que nao se ensinam a estranho. (Menos a que fica no cargo -- `CargoTrancaOEnsino`, 2026-10-23.)
 	//
 	// O QUE O MESTRE ABRE, E O QUE ELE NAO ABRE. Pro aluno, a licao do mestre e uma COMPRA COM A PORTA ABERTA: o
 	// pre-requisito que falta, o tier da arvore que ele ainda nao alcancou e a skill que nasce apagada esperando um
@@ -147,19 +154,67 @@ public static class EnsinoDeSkill
 		doAlunoSozinho is Recusa.NaoExiste or Recusa.SoVilao or Recusa.RacaOuClasse or Recusa.SemArvore or Recusa.Apagada
 			or Recusa.ForaDoPort;
 
+	// =====================================================================
+	// DO CARGO, SO OS ATAQUES DE KI SE ENSINAM -- regra do dono (2026-10-23), e ela DIVERGE do DM de olho aberto
+	// =====================================================================
+	// *"ta dando pra ensinar skills de entrar na sala do tempo pros outros, unica skill de cargo q pode ensinar é a skill de
+	// ataques de ki, fora isso n poderia ensinar mais nada"*.
+	//
+	// No DM a skill de cargo nasce `teacher = TRUE`, e o ensino e de proposito a porta dela (ver o `Avaliar`). Entao o Guardiao
+	// mostrava a chave da Sala do Tempo (`rank/Permission`) a quem estivesse colado nele, e quem aprendia fazia chaves -- pra si
+	// mesmo inclusive -- sem cargo nenhum, pra sempre.
+	//
+	// O QUE E "SKILL DE CARGO": o espaco `/datum/skill/rank/` (escolha do dono -- os estilos, o Kaio-ken, o Mistico e o Majin,
+	// que tambem so um cargo da, continuam se ensinando como no DM). O QUE E "ATAQUE DE KI": todo verbo da skill e um tiro da
+	// tabela de ataques de longe (`TecnicasDeLonge`): Kamehameha, Galick Ho, Final Flash, Death Ball, Spirit Bomb, Paralysis...
+	// A pergunta e ao catalogo e nao a uma lista: o ataque de cargo que entrar na tabela se ensina sozinho, e a skill de cargo
+	// nova que nao atira nao se ensina. A Fusion Dance e o Mafuba ficam ensinaveis por escolha do dono (a danca e tambem da
+	// raca Metamoran e pede os dois dancarinos; o Mafuba sai como raio).
+	//
+	// E VALE NAS TRES PORTAS -- o verbo `ens_ensinar`, o cartao do aluno e a LICAO DE MESTRE (o mestre nao abre o que o cargo
+	// guarda). Quem ja tinha aprendido assim perde a copia: ver `DadivaDeCargo.Revogavel`.
+
+	/// <summary>
+	/// DEFEITO INJETADO (bancada `--ensinoteste`, secao 11, e robo `--diagverbs`, F8): o kit de cargo inteiro volta a se ensinar
+	/// -- a chave da Sala do Tempo passa de mao em mao, como antes de 2026-10-23. Lido pelo <see cref="CargoTrancaOEnsino"/>.
+	/// Falso em jogo, sempre.
+	/// </summary>
+	public static bool CargoSeEnsinaComoAntesDeTeste;
+
+	/// <summary>As duas skills de cargo que nao sao ataque de ki e se ensinam mesmo assim -- escolha do dono (2026-10-23).</summary>
+	private static readonly string[] CargoQueSeEnsinaPorEscolha = ["/datum/skill/rank/Fusion_Dance", "/datum/skill/rank/Mafuba"];
+
+	/// <summary>ESTA SKILL E UM ATAQUE DE KI? Todo verbo dela e um tiro da tabela de longe -- e skill sem verbo nenhum nao e.</summary>
+	public static bool AtaqueDeKi(Skill s) =>
+		s.Verbos.Length > 0 && Array.TrueForAll(s.Verbos, v => TecnicasDeLonge.Get(v) != null);
+
+	/// <summary>
+	/// ESTA SKILL FICA NO CARGO -- e do espaco de cargo, nao e ataque de ki nem uma das duas da escolha do dono. A pergunta PURA,
+	/// sem o defeito de teste: e ela que tambem diz qual copia ensinada sai do livro e o que o bio nao herda (o servidor a guarda
+	/// num conjunto levantado uma vez so).
+	/// </summary>
+	public static bool FicaNoCargo(Skill s) =>
+		s.Path.StartsWith(Ranks.DadivaDeCargo.EspacoDoCargo, StringComparison.OrdinalIgnoreCase)
+		&& !AtaqueDeKi(s)
+		&& !Array.Exists(CargoQueSeEnsinaPorEscolha, p => string.Equals(p, s.Path, StringComparison.OrdinalIgnoreCase));
+
+	/// <summary>A TRAVA DO ENSINO -- a <see cref="FicaNoCargo"/> nas tres portas (o bloco acima).</summary>
+	public static bool CargoTrancaOEnsino(Skill s) => !CargoSeEnsinaComoAntesDeTeste && FicaNoCargo(s);
+
 	/// <summary>
 	/// ESTE LIVRO PODE REPASSAR ESTA SKILL? As tres condicoes do `Teach_Skill` (`:9-10`), e a
 	/// terceira e a regra inteira do sistema:
 	///
 	///   1. ele **sabe** a skill;
-	///   2. o tipo diz que ela se ensina (`teacher = TRUE`);
+	///   2. o tipo diz que ela se ensina (`teacher = TRUE`) -- e, desde 2026-10-23, ela nao fica no cargo
+	///      (<see cref="CargoTrancaOEnsino"/>);
 	///   3. ele **nao a aprendeu de alguem** (`teacher = FALSE` na copia ensinada, `:53`).
 	///
 	/// A (3) e o que impede a corrente: A ensina B, e B nao ensina C. Sem ela uma skill rara
 	/// atravessa o servidor inteiro numa tarde, e o `teacher` do catalogo vira decoracao.
 	/// </summary>
 	public static bool PodeRepassar(SkillBook livro, Skill s) =>
-		s.Ensinavel && livro.Sabe(s.Path) && !livro.FoiEnsinada(s.Path);
+		s.Ensinavel && !CargoTrancaOEnsino(s) && livro.Sabe(s.Path) && !livro.FoiEnsinada(s.Path);
 
 	/// <summary>
 	/// TUDO O QUE A LICAO PERGUNTA, sem nada de servidor dentro -- e na ordem em que o original
@@ -176,7 +231,8 @@ public static class EnsinoDeSkill
 	/// no caminho do ensino**. E isso e o desenho, nao um descuido de la: o comentario do
 	/// `RankChat` (`RankTree.dm:21`) manda em voz alta que *"todas as skills de cargo PRECISAM
 	/// estar desabilitadas"* exatamente pra que a unica porta delas seja o ensino. Ligar esses
-	/// portoes aqui apagaria as 83 skills ensinaveis do jogo de uma vez, em silencio.
+	/// portoes aqui apagaria as 83 skills ensinaveis do jogo de uma vez, em silencio. (Desde 2026-10-23
+	/// a porta do ensino so fica aberta pros ataques de ki do cargo: ver <see cref="CargoTrancaOEnsino"/>.)
 	///
 	/// **A unica porta de aprendizado que sobrevive e o `AlunoJaSabe`**, e ela vem do FILTRO DE
 	/// ALVOS (`:12`, `!(Choice.type in M.learned_skills)`) e nao do `Study` -- que sozinho deixaria
@@ -196,6 +252,8 @@ public static class EnsinoDeSkill
 	{
 		if (s == null || s.Arvore) return RecusaDeLicao.NaoExiste;
 		if (!doMestre.Sabe(s.Path)) return RecusaDeLicao.NaoSabe;
+		// ANTES da licao de mestre: ela nao abre o que o cargo guarda (dono, 2026-10-23).
+		if (CargoTrancaOEnsino(s)) return RecusaDeLicao.DoCargo;
 		if (!s.Ensinavel && !LicaoDeMestre(s, eMeuAluno)) return RecusaDeLicao.NaoSeEnsina;
 		if (doMestre.FoiEnsinada(s.Path)) return RecusaDeLicao.AprendeuDeAlguem;
 		if (!mestreTemAssinatura || !alunoTemAssinatura) return RecusaDeLicao.SemAssinatura;
@@ -237,14 +295,15 @@ public static class EnsinoDeSkill
 	}
 
 	/// <summary>
-	/// O QUE ESTE MESTRE TEM PRA ENSINAR A UM ALUNO DELE -- tudo o que ele sabe e nao e arvore. A lista e o que a tela
-	/// oferece; cada licao ainda passa pelo <see cref="Avaliar"/> (o que foi ensinado a ele nao repassa, e a tela nao
-	/// sabe disso: quem diz e a recusa).
+	/// O QUE ESTE MESTRE TEM PRA ENSINAR A UM ALUNO DELE -- tudo o que ele sabe e nao e arvore, menos o que fica no cargo
+	/// (<see cref="CargoTrancaOEnsino"/>: a tela sabe disso pelo catalogo, e um botao que recusa pra todo mundo e so ruido). A
+	/// lista e o que a tela oferece; cada licao ainda passa pelo <see cref="Avaliar"/> (o que foi ensinado a ele nao repassa, e
+	/// a tela nao sabe disso: quem diz e a recusa).
 	/// </summary>
 	public static IEnumerable<Skill> OQueOMestreEnsina(SkillCatalog cat, IEnumerable<string> aprendidas)
 	{
 		foreach (string path in aprendidas)
-			if (cat.Get(path) is { Arvore: false, Nome.Length: > 0 } s) yield return s;
+			if (cat.Get(path) is { Arvore: false, Nome.Length: > 0 } s && !CargoTrancaOEnsino(s)) yield return s;
 	}
 
 	/// <summary>

@@ -376,6 +376,14 @@ public partial class RoboDeOpcoes : Node
 	}
 
 	/// <summary>
+	/// O SELETOR DE RESOLUCAO, pelo que ele mostra ("1280 x 720..."). Era o primeiro `OptionButton` da tela -- e desde
+	/// 2026-10-22 o primeiro e o da lingua (`PauseMenu.Idioma.cs`, a primeira secao de proposito).
+	/// </summary>
+	private static OptionButton? SeletorDeResolucao(Node p) =>
+		Todos<OptionButton>(p).FirstOrDefault(o => o.ItemCount > 0
+			&& System.Text.RegularExpressions.Regex.IsMatch(o.GetItemText(0), @"^\d+ x \d+"));
+
+	/// <summary>
 	/// Um botao pelo TEXTO, como quem le a tela. Só conta se estiver VISIVEL de verdade.
 	///
 	/// **EXATO PRIMEIRO, prefixo depois**, e isso nao e capricho: "Fechar" e "Fechar o jogo" convivem
@@ -640,7 +648,7 @@ public partial class RoboDeOpcoes : Node
 		}
 		yield return 0.8;
 
-		if (Todos<OptionButton>(p).FirstOrDefault() is { } ob)
+		if (SeletorDeResolucao(p) is { } ob)
 		{
 			int i = Enumerable.Range(0, ob.ItemCount)
 							  .FirstOrDefault(k => ob.GetItemText(k).StartsWith($"{pequena.L} x {pequena.A}"));
@@ -981,7 +989,7 @@ public partial class RoboDeOpcoes : Node
 
 		Menu?.Abrir();
 		yield return 0.4;
-		if (Painel is not { } p || Todos<OptionButton>(p).FirstOrDefault() is not { } lista)
+		if (Painel is not { } p || SeletorDeResolucao(p) is not { } lista)
 		{
 			Checa("achei o seletor de resolucao na tela de opcoes", false);
 			yield break;

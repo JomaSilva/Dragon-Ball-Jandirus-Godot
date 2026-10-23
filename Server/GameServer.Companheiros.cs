@@ -332,7 +332,8 @@ public sealed partial class GameServer
 		string frase = TextoLivre(cru, Vigilancia.MaxDeFrase);
 		if (frase.Length == 0) return;
 		if (EstaCalado(pl)) { Avisar(pl, "você está silenciado."); return; }
-		Falar(x.Corpo, Protocol.Fala.Diz, frase);
+		// a frase e do DONO (ele a escreveu): digitada, nao se traduz
+		Falar(x.Corpo, Protocol.Fala.Diz, frase, digitada: true);
 	}
 
 	/// <summary>"Change Name": `name=input() as text`.</summary>

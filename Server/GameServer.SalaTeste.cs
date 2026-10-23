@@ -185,6 +185,7 @@ public sealed partial class GameServer
 			OGotoSpawnSaiuDasMaosDoJogador(a, kami, lookout, sala);
 			AMorteEASaidaCara(a, kami, lookout, sala);
 			OClimaDaSalaFica();
+			OGuardiaoEASuaChave(a, kami, lookout);
 		}
 		catch (Exception e) { AfirmarSala($"a bancada rodou inteira (estourou: {e.Message})", false, e.StackTrace ?? ""); }
 		finally
@@ -1909,5 +1910,139 @@ public sealed partial class GameServer
 		}
 		AfirmarSala($"O CEU DA SALA ACONTECE MESMO: em {amostras} blocos sairam varios climas",
 					vistos.Count >= 2, $"{vistos.Count} tipo(s): {string.Join(", ", vistos)}");
+	}
+
+	// =====================================================================
+	// 19) O GUARDIAO E A CHAVE DELE (dono, 2026-10-23)
+	// =====================================================================
+	/// <summary>
+	/// *"permita o proprio guardiao poder se autorizar a entrar na sala do tempo"* -- e o dono escolheu: no mesmo botao, sem ninguem
+	/// marcado, a chave e de quem o aperta (o cliente manda o proprio id, `VerbosDoJogo.NoAlvoOuEmMim`, e o robo `--diagverbs` F9 prova
+	/// a ligacao), e o Guardiao que ficar preso la dentro se destranca por dentro.
+	///
+	/// A CORRENTE INTEIRA, pela producao: o Guardiao faz a chave pra si (uma frase so), ENTRA com ela pela porta, passa da janela e o
+	/// tique o PRENDE -- e ai se solta por dentro e sai andando. E os controles do que NAO mudou: soltar OUTRO preso de dentro continua
+	/// sendo do Templo, e quem nao e o Guardiao nao se solta. O codigo na frente de cada rotulo e o que o ciclo procura.
+	/// </summary>
+	private void OGuardiaoEASuaChave(ServerPlayer a, ServerPlayer kami, ZoneKey lookout)
+	{
+		_naSala.Clear();
+		RecolherComidaDaSala();
+		// a chave vem do kit, pelo funil de verdade (o mesmo atalho de trono da secao 5)
+		_tronos["guardian"] = kami.Conta;
+		ReconciliarDadiva(kami);
+
+		void NoTemplo(ServerPlayer p)
+		{
+			ZoneList(p.Zone.Hash).Remove(p);
+			p.Zone = lookout;
+			ZoneList(lookout.Hash).Add(p);
+			p.Pos = new Vec2(124 * ZoneCollision.TileSize + 16, 81 * ZoneCollision.TileSize + 16);
+			p.Moving = false;
+		}
+
+		// O tique da sessao que PRENDE, pela producao (o mesmo da secao 14): a sessao acaba, a janela arma e vence.
+		void PassarDaJanela(ServerPlayer p)
+		{
+			p.SalaDiasDaSessao = Jandirus.Core.World.SalaDoTempo.SessaoEmDias;
+			TickDaSessaoDaSala(1.0);
+			p.SalaJanelaAte = NowMs() - 1;
+			TickDaSessaoDaSala(1.0);
+		}
+
+		// ---- 19a) a chave pra si ----
+		NoTemplo(kami);
+		kami.SalaAutorizada = false;
+		EscutaDeAvisos?.Clear();
+		ComandoDaSalaDoTempo(kami, "sala_autorizar", kami.Id.ToString());
+		List<string> falas = [.. EscutaDeAvisos ?? []];
+		AfirmarSala("19a. O GUARDIAO FAZ A CHAVE PRA SI (o proprio id, que o botao manda sem ninguem marcado) -- e ouve UMA frase so, a da chave pra si",
+					kami.SalaAutorizada && falas.Count == 1 && falas[0].Contains("pra você mesmo", StringComparison.Ordinal),
+					string.Join(" | ", falas));
+		EscutaDeAvisos?.Clear();
+		ComandoDaSalaDoTempo(kami, "sala_autorizar", kami.Id.ToString());
+		AfirmarSala("19a2. ...e de novo, com a chave na mao, ele ouve como fazer a de outra pessoa (marcar antes)",
+					UltimoAviso().Contains("marque-a antes", StringComparison.Ordinal), UltimoAviso());
+
+		// ---- 19b) a chave que ele fez ABRE a porta (sem o `EntrarPelaPortaDeVerdade`, que poe a chave a mao) ----
+		kami.SalaUltimaEntrada = 0;
+		kami.SalaPreso = false;
+		kami.SalaDiasDaSessao = 0;
+		kami.SalaJanelaAte = 0;
+		kami.Ficha.dead = kami.Ficha.KO = false;
+		kami.Voando = false;
+		EscutaDeAvisos?.Clear();
+		ComandoDaSalaDoTempo(kami, "sala_entrar", "");
+		AfirmarSala("19b. ...e a chave que ele fez pra si ABRE a porta: ele entra, e ela e gasta",
+					NaSala(kami) && !kami.SalaAutorizada, $"zona {kami.Zone.Name}, chave {kami.SalaAutorizada} | {UltimoAviso()}");
+
+		// ---- 19c) preso, pela producao ----
+		PassarDaJanela(kami);
+		AfirmarSala("19c. (montagem) passada a janela, o tique PRENDE o Guardiao como prenderia qualquer um", kami.SalaPreso);
+
+		// ---- 19d) controle: de dentro, ele nao solta OUTRO ----
+		a.SalaPreso = true;
+		EscutaDeAvisos?.Clear();
+		ComandoDaSalaDoTempo(kami, "sala_soltar", a.Id.ToString());
+		AfirmarSala("19d. CONTROLE: preso la dentro, ele NAO solta outro preso -- soltar alguem continua sendo do Templo",
+					a.SalaPreso && UltimoAviso().Contains("Templo", StringComparison.Ordinal), UltimoAviso());
+		a.SalaPreso = false;
+
+		// ---- 19e/19f) ele se solta por dentro, e sai andando ----
+		EscutaDeAvisos?.Clear();
+		ComandoDaSalaDoTempo(kami, "sala_soltar", kami.Id.ToString());
+		AfirmarSala("19e. O GUARDIAO PRESO SE SOLTA POR DENTRO (o proprio id, sem ninguem marcado) -- e ouve que foi ele quem destrancou",
+					!kami.SalaPreso && UltimoAviso().Contains("por dentro", StringComparison.Ordinal), UltimoAviso());
+		kami.Pos = new Vec2(145 * ZoneCollision.TileSize + 16, 339 * ZoneCollision.TileSize + 8);
+		kami.Facing = Facing.North;
+		kami.Moving = true;
+		_acabouDeAtravessar.Remove(kami.Id);
+		_naBocaDaPassagem.Remove(kami.Id);
+		_avisoDePrisao.Remove(kami.Id);
+		TickDasPassagens();
+		AfirmarSala("19f. ...e sai andando pela saida (soltar nao teleporta)",
+					string.Equals(kami.Zone.Name, "Lookout", StringComparison.OrdinalIgnoreCase), kami.Zone.Name);
+
+		// ---- 19g) controle: quem nao e o Guardiao nao se solta ----
+		a.SalaPreso = true;
+		EscutaDeAvisos?.Clear();
+		ComandoDaSalaDoTempo(a, "sala_soltar", a.Id.ToString());
+		AfirmarSala("19g. CONTROLE: o preso que NAO e o Guardiao nao se solta sozinho",
+					a.SalaPreso && UltimoAviso().Contains("só o Guardião", StringComparison.Ordinal), UltimoAviso());
+		a.SalaPreso = false;
+
+		// ---- 19h) solto, no Templo, sem ninguem marcado ----
+		// (cada medida parte do zero: sem a regra nova, a 19e o teria deixado preso la dentro)
+		NoTemplo(kami);
+		kami.SalaPreso = false;
+		EscutaDeAvisos?.Clear();
+		ComandoDaSalaDoTempo(kami, "sala_soltar", kami.Id.ToString());
+		AfirmarSala("19h. ...e o Guardiao solto, no Templo, sem ninguem marcado, ouve como soltar outra pessoa (marcar antes)",
+					UltimoAviso().Contains("marque a pessoa antes", StringComparison.Ordinal), UltimoAviso());
+
+		// ---- o defeito injetado: a regra do Templo valendo pro Guardiao preso ----
+		EntrarPelaPortaDeVerdade(kami, lookout);
+		PassarDaJanela(kami);
+		GuardiaoPresoSoSaiPeloTemploDeTeste = true;
+		try
+		{
+			EscutaDeAvisos?.Clear();
+			ComandoDaSalaDoTempo(kami, "sala_soltar", kami.Id.ToString());
+			AfirmarSala("19x. (defeito injetado: a regra do Templo vale pro Guardiao preso) a mesma regua REPROVA -- ele continua preso la dentro",
+						kami.SalaPreso && UltimoAviso().Contains("Templo", StringComparison.Ordinal), UltimoAviso());
+		}
+		finally
+		{
+			GuardiaoPresoSoSaiPeloTemploDeTeste = false;
+			// A BANCADA TERMINA COMO COMECOU: o Guardiao fora, solto, sem sessao, sem chave e sem comida no chao.
+			kami.SalaPreso = false;
+			kami.SalaAutorizada = false;
+			kami.SalaDiasDaSessao = 0;
+			kami.SalaJanelaAte = 0;
+			_naSala.Clear();
+			RecolherComidaDaSala();
+			NoTemplo(kami);
+			AplicarGravidade(kami);
+		}
 	}
 }

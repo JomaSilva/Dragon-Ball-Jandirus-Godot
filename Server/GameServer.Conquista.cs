@@ -822,7 +822,8 @@ public partial class GameServer
 		Dominio? d = MeuDominioAqui(pl);
 		if (d == null) { Avisar(pl, "você não tem domínio neste planeta."); return; }
 
-		if (!string.Equals(arg.Trim(), "sim", StringComparison.OrdinalIgnoreCase))
+		// o "sim" ou o "yes" do aviso em ingles (`PalavrasDeComando`)
+		if (!Jandirus.Core.Lingua.PalavrasDeComando.E(arg, "sim"))
 		{
 			Avisar(pl, $"abandonar {NomeVisivel(d.Planeta)}? A posse se perde na hora. "
 					 + "Repita com o argumento 'sim' pra confirmar.");

@@ -127,6 +127,13 @@ public sealed class Settings
     public bool AberturaAnimada = true;
 
     /// <summary>
+    /// A LINGUA DA TELA (2026-10-22): "pt" (a de fabrica) ou "en". E a secao "Idioma / Language" das opcoes; quem a
+    /// poe na tela e o <see cref="Idioma"/>. Texto e nao enum pelo motivo das teclas acima: o arquivo nao pode depender
+    /// da ordem de nada.
+    /// </summary>
+    public string Lingua = Idioma.Portugues;
+
+    /// <summary>
     /// Ampliacao da camera. INTEIRO de proposito: em arte de pixel um zoom quebrado mapeia
     /// texel em pixel de tela de forma irregular e a imagem cintila andando.
     /// </summary>

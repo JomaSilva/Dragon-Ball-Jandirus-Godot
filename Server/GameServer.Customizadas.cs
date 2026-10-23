@@ -303,7 +303,7 @@ public sealed partial class GameServer
 		}
 
 		Jandirus.Core.Appearance.Rgb cor;
-		if (arg.Trim().Equals("sortear", StringComparison.OrdinalIgnoreCase))
+		if (Jandirus.Core.Lingua.PalavrasDeComando.E(arg, "sortear"))   // ou o "random" do aviso em ingles
 			cor = Jandirus.Core.Appearance.CorDoTiro.Sortear(unchecked((ulong)_rng.NextInt64()));
 		else if (!LerCor(arg, out cor))
 		{
@@ -606,8 +606,9 @@ public sealed partial class GameServer
 		if (!PodeAtirar(pl, custo, out string porque)) { Avisar(pl, porque); return; }
 		if (!TemFolego(pl, t, out porque)) { Avisar(pl, porque); return; }
 
+		// os gritos da mesa sao do JOGADOR (ele os escreveu ao criar a tecnica): digitados, nao se traduzem
 		if (t.DizGritoDeCarga && t.GritoDeCarga.Length > 0)
-			Falar(pl, Protocol.Fala.Diz, t.GritoDeCarga);
+			Falar(pl, Protocol.Fala.Diz, t.GritoDeCarga, digitada: true);
 
 		// O RAIO TELEGUIADO SEM NINGUEM MARCADO SAI RETO, E AVISA -- a frase da bola teleguiada
 		// (`customattacks.dm:536`), pelo mesmo motivo: sem ela o jogador acha que o que comprou nao funciona.
@@ -650,7 +651,7 @@ public sealed partial class GameServer
 			}
 		}
 
-		if (t.DizGrito && t.Grito.Length > 0) Falar(pl, Protocol.Fala.Diz, t.Grito);
+		if (t.DizGrito && t.Grito.Length > 0) Falar(pl, Protocol.Fala.Diz, t.Grito, digitada: true);
 
 		pl.Ficha.Ki -= custo;
 		if (t.UsaStamina) pl.Ficha.stamina = Math.Max(0, pl.Ficha.stamina - t.CustoStamina);

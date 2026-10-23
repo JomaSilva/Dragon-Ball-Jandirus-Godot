@@ -168,7 +168,8 @@ public partial class CharacterSelect : CanvasLayer
 
         if (s.Ocupado)
         {
-            var nome = new Label { Text = s.Nome, HorizontalAlignment = HorizontalAlignment.Center };
+            // o nome e de quem o escolheu: nao se traduz com o jogo em ingles (ver `Idioma`)
+            var nome = new Label { Text = s.Nome, HorizontalAlignment = HorizontalAlignment.Center, AutoTranslateMode = Node.AutoTranslateModeEnum.Disabled };
             nome.AddThemeFontSizeOverride("font_size", 19);
             caixa.AddChild(nome);
 
